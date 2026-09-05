@@ -108,6 +108,7 @@ func TestClient_ConnectAndClose(t *testing.T) {
 func TestClient_LoginWithUsernamePassword(t *testing.T) {
 	addr := startTestServer(t, &fakeServer{accessToken: "access", refreshToken: "refresh", expiresIn: 1800})
 	c := NewClient(NewTransport(), &stubSession{accessToken: "access"})
+	require.NoError(t, c.Connect(context.Background(), addr))
 
 	got, err := c.LoginWithUsernamePassword(context.Background(), addr, "apin", "secret")
 	require.NoError(t, err)
@@ -122,6 +123,7 @@ func TestClient_LoginWithUsernamePassword(t *testing.T) {
 func TestClient_LoginWithUsernamePassword_ServerError(t *testing.T) {
 	addr := startTestServer(t, &fakeServer{loginErr: status.Error(codes.InvalidArgument, "bad credentials")})
 	c := NewClient(NewTransport(), &stubSession{})
+	require.NoError(t, c.Connect(context.Background(), addr))
 
 	_, err := c.LoginWithUsernamePassword(context.Background(), addr, "apin", "secret")
 	require.Error(t, err)
@@ -131,6 +133,7 @@ func TestClient_LoginWithUsernamePassword_ServerError(t *testing.T) {
 func TestClient_LoginWithRefreshToken(t *testing.T) {
 	addr := startTestServer(t, &fakeServer{accessToken: "access", refreshToken: "refresh", expiresIn: 1800})
 	c := NewClient(NewTransport(), &stubSession{accessToken: "access"})
+	require.NoError(t, c.Connect(context.Background(), addr))
 
 	got, err := c.LoginWithRefreshToken(context.Background(), addr, "refresh")
 	require.NoError(t, err)
@@ -145,6 +148,7 @@ func TestClient_LoginWithRefreshToken(t *testing.T) {
 func TestClient_LoginWithRefreshToken_ServerError(t *testing.T) {
 	addr := startTestServer(t, &fakeServer{refreshErr: status.Error(codes.InvalidArgument, "invalid refresh token")})
 	c := NewClient(NewTransport(), &stubSession{})
+	require.NoError(t, c.Connect(context.Background(), addr))
 
 	_, err := c.LoginWithRefreshToken(context.Background(), addr, "expired")
 	require.Error(t, err)

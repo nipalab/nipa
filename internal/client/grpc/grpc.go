@@ -124,16 +124,10 @@ func (c *Client) Close() error {
 }
 
 func (c *Client) LoginWithUsernamePassword(ctx context.Context, host, username, password string) (*domain.LoginResult, error) {
-	if err := c.Connect(ctx, host); err != nil {
-		return nil, err
-	}
 	return c.transport.LoginWithUsernamePassword(ctx, host, username, password)
 }
 
 func (c *Client) LoginWithRefreshToken(ctx context.Context, host, refreshToken string) (*domain.LoginResult, error) {
-	if err := c.Connect(ctx, host); err != nil {
-		return nil, err
-	}
 	return c.transport.LoginWithRefreshToken(ctx, host, refreshToken)
 }
 

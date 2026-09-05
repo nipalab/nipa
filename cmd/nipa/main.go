@@ -25,7 +25,7 @@ func main() {
 		repoUsecase: repoUsecase,
 	}
 
-	cliClient := cli.NewCli(registry)
+	cliClient := cli.NewCli(registry, grpcClient)
 	if err := cliClient.Run(); err != nil {
 		handleError(err)
 	}

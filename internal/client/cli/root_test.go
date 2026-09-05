@@ -18,9 +18,10 @@ func (f *fakeUsecaseContainer) Auth() *usecase.Auth { return f.auth }
 func (f *fakeUsecaseContainer) Repo() *usecase.Repo { return f.repo }
 
 func TestNewCli(t *testing.T) {
-	c := NewCli(&fakeUsecaseContainer{})
+	c := NewCli(&fakeUsecaseContainer{}, &fakeConnector{})
 	require.NotNil(t, c)
 	require.Equal(t, &fakeUsecaseContainer{}, c.useCase)
+	require.Equal(t, &fakeConnector{}, c.connector)
 }
 
 func withArgs(t *testing.T, args []string, fn func()) {
