@@ -14,10 +14,11 @@ func main() {
 	secureStorage := securestorage.New()
 	prompter := cli.NewPrompter()
 
-	authUsecase := usecase.NewAuth(nil, secureStorage, prompter)
-	grpcClient := grpc.NewClient(authUsecase)
-	authUsecase.SetLoginExecutor(grpcClient)
+	transport := grpc.NewTransport()
+	session := usecase.NewSession(secureStorage, transport)
+	grpcClient := grpc.NewClient(transport, session)
 
+	authUsecase := usecase.NewAuth(grpcClient, secureStorage, prompter)
 	repoUsecase := usecase.NewRepo(authUsecase, grpcClient)
 	registry := &Registry{
 		authUsecase: authUsecase,

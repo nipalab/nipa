@@ -7,6 +7,7 @@ import (
 )
 
 type repoInterface interface {
+	Connect(ctx context.Context, host string) error
 	GetDefaultBranch(ctx context.Context, org, project string) (*domain.Branch, error)
 	GetTreeNodeManifest(ctx context.Context, org, project, branch string) (*domain.TreeNode, error)
 }
@@ -24,7 +25,11 @@ func NewRepo(auth *Auth, repoInterface repoInterface) *Repo {
 }
 
 func (r *Repo) Clone(ctx context.Context, host, org, project, branch, path, target string) error {
-	err := r.auth.MakeSureLoggedIn(ctx, host)
+	err := r.repoInterface.Connect(ctx, host)
+	if err != nil {
+		return err
+	}
+	err = r.auth.MakeSureLoggedIn(ctx, host)
 	if err != nil {
 		return err
 	}

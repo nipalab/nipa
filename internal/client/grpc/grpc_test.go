@@ -15,31 +15,21 @@ import (
 	pb "github.com/nipalab/nipa/internal/grpc/pb"
 )
 
-type stubTokenProvider struct {
-	getTokenErr         error
-	failSecondGetToken  bool
-	getTokenCalls       int
-	accessToken         string
-	afterRefreshToken   string
-	refreshErr          error
-	refreshTokenCalled  bool
+type stubSession struct {
+	accessToken  string
+	getTokenErr  error
+	refreshToken string
+	refreshErr   error
+	refreshCalls int
 }
 
-func (s *stubTokenProvider) GetToken(_ context.Context, _ string) (string, error) {
-	s.getTokenCalls++
-	if s.getTokenErr != nil {
-		return "", s.getTokenErr
-	}
-	if s.failSecondGetToken && s.getTokenCalls > 1 {
-		return "", status.Error(codes.Unavailable, "no token after refresh")
-	}
-	return s.accessToken, nil
+func (s *stubSession) AccessToken(_ context.Context, _ string) (string, error) {
+	return s.accessToken, s.getTokenErr
 }
 
-func (s *stubTokenProvider) LoginWithRefreshToken(_ context.Context, _ string, _ string) error {
-	s.refreshTokenCalled = true
-	s.accessToken = s.afterRefreshToken
-	return s.refreshErr
+func (s *stubSession) Refresh(_ context.Context, _ string) (string, error) {
+	s.refreshCalls++
+	return s.refreshToken, s.refreshErr
 }
 
 type fakeServer struct {
@@ -94,30 +84,30 @@ func startTestServer(t *testing.T, srv pb.NipaServiceServer) string {
 }
 
 func TestNewClient(t *testing.T) {
-	c := NewClient(&stubTokenProvider{})
+	c := NewClient(NewTransport(), &stubSession{})
 	require.NotNil(t, c)
-	require.Nil(t, c.clientConn)
+	require.Nil(t, c.transport.clientConn)
 }
 
 func TestClient_Close_NoConnection(t *testing.T) {
-	c := NewClient(&stubTokenProvider{})
+	c := NewClient(NewTransport(), &stubSession{})
 	require.NoError(t, c.Close())
 }
 
 func TestClient_ConnectAndClose(t *testing.T) {
 	addr := startTestServer(t, &fakeServer{accessToken: "tok", refreshToken: "ref", expiresIn: 1800})
-	c := NewClient(&stubTokenProvider{})
+	c := NewClient(NewTransport(), &stubSession{})
 
-	require.NoError(t, c.Connect(addr))
-	require.Equal(t, addr, c.url)
-	require.NotNil(t, c.clientConn)
+	require.NoError(t, c.Connect(context.Background(), addr))
+	require.Equal(t, addr, c.transport.url)
+	require.NotNil(t, c.transport.clientConn)
 
 	require.NoError(t, c.Close())
 }
 
 func TestClient_LoginWithUsernamePassword(t *testing.T) {
 	addr := startTestServer(t, &fakeServer{accessToken: "access", refreshToken: "refresh", expiresIn: 1800})
-	c := NewClient(&stubTokenProvider{accessToken: "access"})
+	c := NewClient(NewTransport(), &stubSession{accessToken: "access"})
 
 	got, err := c.LoginWithUsernamePassword(context.Background(), addr, "apin", "secret")
 	require.NoError(t, err)
@@ -131,7 +121,7 @@ func TestClient_LoginWithUsernamePassword(t *testing.T) {
 
 func TestClient_LoginWithUsernamePassword_ServerError(t *testing.T) {
 	addr := startTestServer(t, &fakeServer{loginErr: status.Error(codes.InvalidArgument, "bad credentials")})
-	c := NewClient(&stubTokenProvider{})
+	c := NewClient(NewTransport(), &stubSession{})
 
 	_, err := c.LoginWithUsernamePassword(context.Background(), addr, "apin", "secret")
 	require.Error(t, err)
@@ -140,7 +130,7 @@ func TestClient_LoginWithUsernamePassword_ServerError(t *testing.T) {
 
 func TestClient_LoginWithRefreshToken(t *testing.T) {
 	addr := startTestServer(t, &fakeServer{accessToken: "access", refreshToken: "refresh", expiresIn: 1800})
-	c := NewClient(&stubTokenProvider{accessToken: "access"})
+	c := NewClient(NewTransport(), &stubSession{accessToken: "access"})
 
 	got, err := c.LoginWithRefreshToken(context.Background(), addr, "refresh")
 	require.NoError(t, err)
@@ -154,7 +144,7 @@ func TestClient_LoginWithRefreshToken(t *testing.T) {
 
 func TestClient_LoginWithRefreshToken_ServerError(t *testing.T) {
 	addr := startTestServer(t, &fakeServer{refreshErr: status.Error(codes.InvalidArgument, "invalid refresh token")})
-	c := NewClient(&stubTokenProvider{})
+	c := NewClient(NewTransport(), &stubSession{})
 
 	_, err := c.LoginWithRefreshToken(context.Background(), addr, "expired")
 	require.Error(t, err)
@@ -162,7 +152,7 @@ func TestClient_LoginWithRefreshToken_ServerError(t *testing.T) {
 }
 
 func TestClient_LoginMethodPassthrough(t *testing.T) {
-	c := NewClient(&stubTokenProvider{accessToken: "tok"})
+	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
 	interceptor := c.unaryAuthInterceptor()
 
 	invoker := func(ctx context.Context, _ string, _, _ any, _ *grpc.ClientConn, _ ...grpc.CallOption) error {
@@ -176,8 +166,7 @@ func TestClient_LoginMethodPassthrough(t *testing.T) {
 }
 
 func TestClient_AuthenticatedRequest(t *testing.T) {
-	tp := &stubTokenProvider{accessToken: "abc123"}
-	c := NewClient(tp)
+	c := NewClient(NewTransport(), &stubSession{accessToken: "abc123"})
 	interceptor := c.unaryAuthInterceptor()
 
 	var gotAuth string
@@ -192,8 +181,8 @@ func TestClient_AuthenticatedRequest(t *testing.T) {
 	require.Equal(t, "Bearer abc123", gotAuth)
 }
 
-func TestClient_GetTokenError(t *testing.T) {
-	c := NewClient(&stubTokenProvider{getTokenErr: status.Error(codes.NotFound, "no token")})
+func TestClient_AccessTokenError(t *testing.T) {
+	c := NewClient(NewTransport(), &stubSession{getTokenErr: status.Error(codes.NotFound, "no token")})
 	interceptor := c.unaryAuthInterceptor()
 
 	err := interceptor(context.Background(), "/greet.NipaService/GetBranch", nil, nil, nil, func(ctx context.Context, _ string, _, _ any, _ *grpc.ClientConn, _ ...grpc.CallOption) error {
@@ -204,8 +193,8 @@ func TestClient_GetTokenError(t *testing.T) {
 }
 
 func TestClient_RefreshAndRetry(t *testing.T) {
-	tp := &stubTokenProvider{accessToken: "old-token", afterRefreshToken: "new-token"}
-	c := NewClient(tp)
+	session := &stubSession{accessToken: "old-token", refreshToken: "new-token"}
+	c := NewClient(NewTransport(), session)
 	interceptor := c.unaryAuthInterceptor()
 
 	firstCall := true
@@ -222,18 +211,15 @@ func TestClient_RefreshAndRetry(t *testing.T) {
 
 	err := interceptor(context.Background(), "/greet.NipaService/GetBranch", nil, nil, nil, invoker)
 	require.NoError(t, err)
-	require.True(t, tp.refreshTokenCalled)
+	require.Equal(t, 1, session.refreshCalls)
 	require.Equal(t, "Bearer new-token", gotAuth)
 }
 
 func TestClient_RefreshFails(t *testing.T) {
-	tp := &stubTokenProvider{
-		getTokenErr:       nil,
-		accessToken:       "old-token",
-		refreshErr:        status.Error(codes.Unavailable, "network down"),
-		afterRefreshToken: "",
-	}
-	c := NewClient(tp)
+	c := NewClient(NewTransport(), &stubSession{
+		accessToken: "old-token",
+		refreshErr:  status.Error(codes.Unavailable, "network down"),
+	})
 	interceptor := c.unaryAuthInterceptor()
 
 	invoker := func(ctx context.Context, _ string, _, _ any, _ *grpc.ClientConn, _ ...grpc.CallOption) error {
@@ -242,22 +228,4 @@ func TestClient_RefreshFails(t *testing.T) {
 
 	err := interceptor(context.Background(), "/greet.NipaService/GetBranch", nil, nil, nil, invoker)
 	require.Equal(t, codes.Unavailable, status.Code(err))
-}
-
-func TestClient_GetTokenAfterRefreshFails(t *testing.T) {
-	tp := &stubTokenProvider{
-		accessToken:        "old-token",
-		afterRefreshToken:  "new-token",
-		failSecondGetToken: true,
-	}
-	c := NewClient(tp)
-	interceptor := c.unaryAuthInterceptor()
-
-	invoker := func(ctx context.Context, _ string, _, _ any, _ *grpc.ClientConn, _ ...grpc.CallOption) error {
-		return status.Error(codes.Unauthenticated, "token expired")
-	}
-
-	err := interceptor(context.Background(), "/greet.NipaService/GetBranch", nil, nil, nil, invoker)
-	require.Equal(t, codes.Unauthenticated, status.Code(err))
-	require.True(t, tp.refreshTokenCalled)
 }

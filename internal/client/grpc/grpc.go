@@ -17,95 +17,53 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-type tokenProvider interface {
-	LoginWithRefreshToken(ctx context.Context, host, refreshToken string) error
-	GetToken(ctx context.Context, host string) (string, error)
+type Transport struct {
+	url        string
+	clientConn *grpc.ClientConn
 }
 
-type Client struct {
-	url           string
-	clientConn    *grpc.ClientConn
-	tokenProvider tokenProvider
+func NewTransport() *Transport {
+	return &Transport{}
 }
 
-func NewClient(tokenProvider tokenProvider) *Client {
-	return &Client{
-		tokenProvider: tokenProvider,
-	}
-}
-
-func (c *Client) Close() error {
-	if c.clientConn != nil {
-		return c.clientConn.Close()
-	}
-	return nil
-}
-
-func (c *Client) Connect(url string) error {
-	if c.clientConn != nil {
-		if url != c.url {
-			err := c.clientConn.Close()
-			if err != nil {
-				slog.Error("unable to close grpc connection", "url", url, "error", err)
-			}
-			c.clientConn = nil
-			c.url = ""
-		} else {
-			return nil
+func (t *Transport) Connect(url string, opts ...grpc.DialOption) error {
+	if t.clientConn != nil && url != t.url {
+		err := t.clientConn.Close()
+		if err != nil {
+			slog.Error("unable to close grpc connection", "url", url, "error", err)
 		}
+		t.clientConn = nil
+		t.url = ""
 	}
-	conn, err := grpc.NewClient(url, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithUnaryInterceptor(c.unaryAuthInterceptor()))
+	opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(url, opts...)
 	if err != nil {
 		return err
 	}
-	c.url = url
-	c.clientConn = conn
+	t.url = url
+	t.clientConn = conn
 	return nil
 }
 
-func (c *Client) unaryAuthInterceptor() grpc.UnaryClientInterceptor {
-	return func(
-		ctx context.Context,
-		method string,
-		req, reply any,
-		cc *grpc.ClientConn,
-		invoker grpc.UnaryInvoker,
-		opts ...grpc.CallOption,
-	) error {
-		if method == "/greet.NipaService/LoginWithUsernamePassword" || method == "/greet.NipaService/LoginWithRefreshToken" {
-			return invoker(ctx, method, req, reply, cc, opts...)
-		}
-
-		accToken, err := c.tokenProvider.GetToken(ctx, c.url)
-		if err != nil {
-			return status.Error(codes.Unauthenticated, "unable to get access token")
-		}
-		authCtx := metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+accToken)
-
-		err = invoker(authCtx, method, req, reply, cc, opts...)
-		if status.Code(err) != codes.Unauthenticated {
-			return err
-		}
-
-		err = c.tokenProvider.LoginWithRefreshToken(ctx, c.url, "")
-		if err != nil {
-			return err
-		}
-
-		accToken, err = c.tokenProvider.GetToken(ctx, c.url)
-		if err != nil {
-			return status.Error(codes.Unauthenticated, "unable to get access token after refresh")
-		}
-		retryCtx := metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+accToken)
-		return invoker(retryCtx, method, req, reply, cc, opts...)
+func (t *Transport) Close() error {
+	if t.clientConn != nil {
+		return t.clientConn.Close()
 	}
+	return nil
 }
 
-func (c *Client) LoginWithUsernamePassword(ctx context.Context, host, username, password string) (*domain.LoginResult, error) {
-	if err := c.Connect(host); err != nil {
+func (t *Transport) NipaServiceClient() (pb.NipaServiceClient, error) {
+	if t.clientConn == nil {
+		return nil, errors.New("not connected to a nipa server")
+	}
+	return pb.NewNipaServiceClient(t.clientConn), nil
+}
+
+func (t *Transport) LoginWithUsernamePassword(ctx context.Context, host, username, password string) (*domain.LoginResult, error) {
+	client, err := t.NipaServiceClient()
+	if err != nil {
 		return nil, err
 	}
-	client := pb.NewNipaServiceClient(c.clientConn)
 	res, err := client.LoginWithUsernamePassword(ctx, &pb.LoginUsernamePasswordRequest{
 		Username: username,
 		Password: password,
@@ -121,11 +79,11 @@ func (c *Client) LoginWithUsernamePassword(ctx context.Context, host, username, 
 	}, nil
 }
 
-func (c *Client) LoginWithRefreshToken(ctx context.Context, host, refreshToken string) (*domain.LoginResult, error) {
-	if err := c.Connect(host); err != nil {
+func (t *Transport) LoginWithRefreshToken(ctx context.Context, host, refreshToken string) (*domain.LoginResult, error) {
+	client, err := t.NipaServiceClient()
+	if err != nil {
 		return nil, err
 	}
-	client := pb.NewNipaServiceClient(c.clientConn)
 	res, err := client.LoginWithRefreshToken(ctx, &pb.LoginWithRefreshRequest{
 		RefreshToken: refreshToken,
 	})
@@ -140,11 +98,83 @@ func (c *Client) LoginWithRefreshToken(ctx context.Context, host, refreshToken s
 	}, nil
 }
 
-func (c *Client) GetDefaultBranch(ctx context.Context, org, project string) (*serverDomain.Branch, error) {
-	if err := c.requireConnection(); err != nil {
+type tokenSession interface {
+	AccessToken(ctx context.Context, host string) (string, error)
+	Refresh(ctx context.Context, host string) (string, error)
+}
+
+type Client struct {
+	transport *Transport
+	session   tokenSession
+}
+
+func NewClient(transport *Transport, session tokenSession) *Client {
+	return &Client{
+		transport: transport,
+		session:   session,
+	}
+}
+
+func (c *Client) Connect(ctx context.Context, host string) error {
+	return c.transport.Connect(host, grpc.WithUnaryInterceptor(c.unaryAuthInterceptor()))
+}
+
+func (c *Client) Close() error {
+	return c.transport.Close()
+}
+
+func (c *Client) LoginWithUsernamePassword(ctx context.Context, host, username, password string) (*domain.LoginResult, error) {
+	if err := c.Connect(ctx, host); err != nil {
 		return nil, err
 	}
-	client := pb.NewNipaServiceClient(c.clientConn)
+	return c.transport.LoginWithUsernamePassword(ctx, host, username, password)
+}
+
+func (c *Client) LoginWithRefreshToken(ctx context.Context, host, refreshToken string) (*domain.LoginResult, error) {
+	if err := c.Connect(ctx, host); err != nil {
+		return nil, err
+	}
+	return c.transport.LoginWithRefreshToken(ctx, host, refreshToken)
+}
+
+func (c *Client) unaryAuthInterceptor() grpc.UnaryClientInterceptor {
+	return func(
+		ctx context.Context,
+		method string,
+		req, reply any,
+		cc *grpc.ClientConn,
+		invoker grpc.UnaryInvoker,
+		opts ...grpc.CallOption,
+	) error {
+		if method == "/greet.NipaService/LoginWithUsernamePassword" || method == "/greet.NipaService/LoginWithRefreshToken" {
+			return invoker(ctx, method, req, reply, cc, opts...)
+		}
+
+		accToken, err := c.session.AccessToken(ctx, c.transport.url)
+		if err != nil {
+			return status.Error(codes.Unauthenticated, "unable to get access token")
+		}
+		authCtx := metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+accToken)
+
+		err = invoker(authCtx, method, req, reply, cc, opts...)
+		if status.Code(err) != codes.Unauthenticated {
+			return err
+		}
+
+		accToken, err = c.session.Refresh(ctx, c.transport.url)
+		if err != nil {
+			return err
+		}
+		retryCtx := metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+accToken)
+		return invoker(retryCtx, method, req, reply, cc, opts...)
+	}
+}
+
+func (c *Client) GetDefaultBranch(ctx context.Context, org, project string) (*serverDomain.Branch, error) {
+	client, err := c.transport.NipaServiceClient()
+	if err != nil {
+		return nil, err
+	}
 	res, err := client.GetDefaultBranch(ctx, &pb.GetDefaultBranchRequest{
 		Context: &pb.ProjectContext{Org: org, Project: project},
 	})
@@ -155,10 +185,10 @@ func (c *Client) GetDefaultBranch(ctx context.Context, org, project string) (*se
 }
 
 func (c *Client) GetTreeNodeManifest(ctx context.Context, org, project, branch string) (*serverDomain.TreeNode, error) {
-	if err := c.requireConnection(); err != nil {
+	client, err := c.transport.NipaServiceClient()
+	if err != nil {
 		return nil, err
 	}
-	client := pb.NewNipaServiceClient(c.clientConn)
 	res, err := client.GetTreeManifest(ctx, &pb.GetTreeManifestRequest{
 		Context:   &pb.ProjectContext{Org: org, Project: project},
 		Branch:    branch,
@@ -168,13 +198,6 @@ func (c *Client) GetTreeNodeManifest(ctx context.Context, org, project, branch s
 		return nil, err
 	}
 	return toServerTreeNode(res.GetRootTree()), nil
-}
-
-func (c *Client) requireConnection() error {
-	if c.clientConn == nil {
-		return errors.New("not connected to a nipa server")
-	}
-	return nil
 }
 
 func toServerBranch(pbBranch *pb.Branch) *serverDomain.Branch {

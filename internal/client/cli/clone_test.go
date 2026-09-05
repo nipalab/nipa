@@ -54,6 +54,10 @@ func (f *fakeInput) PromptUsernameAndPassword() (string, string, error) {
 
 type fakeRepoInterface struct{}
 
+func (fakeRepoInterface) Connect(_ context.Context, _ string) error {
+	return nil
+}
+
 func (fakeRepoInterface) GetDefaultBranch(_ context.Context, _, _ string) (*serverDomain.Branch, error) {
 	return &serverDomain.Branch{Name: "main"}, nil
 }

@@ -12,10 +12,17 @@ import (
 )
 
 type stubRepoInterface struct {
+	connectErr    error
 	defaultBranch *serverDomain.Branch
 	defaultErr    error
 	manifest      *serverDomain.TreeNode
 	manifestErr   error
+	lastHost      string
+}
+
+func (s *stubRepoInterface) Connect(_ context.Context, host string) error {
+	s.lastHost = host
+	return s.connectErr
 }
 
 func (s *stubRepoInterface) GetDefaultBranch(_ context.Context, _, _ string) (*serverDomain.Branch, error) {
@@ -41,8 +48,10 @@ func TestRepo_Clone_Success(t *testing.T) {
 		manifest:      &serverDomain.TreeNode{},
 	})
 
+	s := repo.repoInterface.(*stubRepoInterface)
 	err := repo.Clone(context.Background(), "example.com", "org", "project", "main", "/src", "/target")
 	require.NoError(t, err)
+	require.Equal(t, "example.com", s.lastHost)
 }
 
 func TestRepo_Clone_Success_NeedLogin(t *testing.T) {
@@ -74,6 +83,19 @@ func TestRepo_Clone_Error_PromptFailed(t *testing.T) {
 
 	err := repo.Clone(context.Background(), "example.com", "org", "project", "main", "/src", "/target")
 	require.ErrorIs(t, err, wantErr)
+}
+
+func TestRepo_Clone_Error_ConnectFailed(t *testing.T) {
+	wantErr := errors.New("connect failed")
+	token := signTestToken(t, "secret")
+	storage := &stubSecureStorage{loadResult: &domain.LoginResult{AccessToken: token}}
+	auth := NewAuth(nil, storage, nil)
+	s := &stubRepoInterface{connectErr: wantErr}
+	repo := NewRepo(auth, s)
+
+	err := repo.Clone(context.Background(), "example.com", "org", "project", "main", "/src", "/target")
+	require.ErrorIs(t, err, wantErr)
+	require.Equal(t, "example.com", s.lastHost)
 }
 
 func TestRepo_Clone_Error_LoginFailed(t *testing.T) {
