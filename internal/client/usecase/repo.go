@@ -2,20 +2,37 @@ package usecase
 
 import (
 	"context"
+
+	"github.com/nipalab/nipa/internal/domain"
 )
 
-type Repo struct {
-	auth *Auth
+type repoInterface interface {
+	GetDefaultBranch(ctx context.Context, org, project string) (*domain.Branch, error)
+	GetTreeNodeManifest(ctx context.Context, org, project, branch string) (*domain.TreeNode, error)
 }
 
-func NewRepo(auth *Auth) *Repo {
+type Repo struct {
+	auth          *Auth
+	repoInterface repoInterface
+}
+
+func NewRepo(auth *Auth, repoInterface repoInterface) *Repo {
 	return &Repo{
-		auth: auth,
+		auth:          auth,
+		repoInterface: repoInterface,
 	}
 }
 
 func (r *Repo) Clone(ctx context.Context, host, org, project, branch, path, target string) error {
 	err := r.auth.MakeSureLoggedIn(ctx, host)
+	if err != nil {
+		return err
+	}
+	domainBranch, err := r.repoInterface.GetDefaultBranch(ctx, org, project)
+	if err != nil {
+		return err
+	}
+	_, err = r.repoInterface.GetTreeNodeManifest(ctx, org, project, domainBranch.Name)
 	if err != nil {
 		return err
 	}

@@ -6,8 +6,8 @@ option go_package = "./pb";
 import "google/protobuf/timestamp.proto";
 
 message ProjectContext {
-    string org_id = 1;
-    string project_id = 2;
+    string org = 1;
+    string project = 2;
 }
 
 enum FileMode {
@@ -71,6 +71,10 @@ message GetBranchRequest {
     string branch_id = 2;
 }
 
+message GetDefaultBranchRequest {
+    ProjectContext context = 1;
+}
+
 message GetBranchResponse {
     Branch branch = 1;
 }
@@ -96,5 +100,6 @@ service NipaService {
 
     rpc GetListBranch(GetListBranchRequest) returns (GetListBranchResponse);
     rpc GetBranch(GetBranchRequest) returns (GetBranchResponse);
+    rpc GetDefaultBranch(GetDefaultBranchRequest) returns (GetBranchResponse);
     rpc GetTreeManifest(GetTreeManifestRequest) returns (GetTreeManifestResponse);
 }

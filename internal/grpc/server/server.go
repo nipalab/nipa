@@ -9,6 +9,7 @@ type usecaseContainer interface {
 	Auth() *usecase.Auth
 	User() *usecase.User
 	Branch() *usecase.Branch
+	Common() *usecase.Common
 }
 
 type nipaServer struct {

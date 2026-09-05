@@ -18,7 +18,7 @@ func main() {
 	grpcClient := grpc.NewClient(authUsecase)
 	authUsecase.SetLoginExecutor(grpcClient)
 
-	repoUsecase := usecase.NewRepo(authUsecase)
+	repoUsecase := usecase.NewRepo(authUsecase, grpcClient)
 	registry := &Registry{
 		authUsecase: authUsecase,
 		repoUsecase: repoUsecase,

@@ -52,13 +52,23 @@ func (f *fakeInput) PromptUsernameAndPassword() (string, string, error) {
 	return "user", "pass", f.err
 }
 
+type fakeRepoInterface struct{}
+
+func (fakeRepoInterface) GetDefaultBranch(_ context.Context, _, _ string) (*serverDomain.Branch, error) {
+	return &serverDomain.Branch{Name: "main"}, nil
+}
+
+func (fakeRepoInterface) GetTreeNodeManifest(_ context.Context, _, _, _ string) (*serverDomain.TreeNode, error) {
+	return &serverDomain.TreeNode{}, nil
+}
+
 func helperAuth(t *testing.T) (*usecase.Repo, *fakeStorage) {
 	t.Helper()
 
 	token := signTestJWT(t)
 	storage := &fakeStorage{token: token}
 	auth := usecase.NewAuth(fakeExecutor{}, storage, &fakeInput{})
-	repo := usecase.NewRepo(auth)
+	repo := usecase.NewRepo(auth, fakeRepoInterface{})
 	return repo, storage
 }
 
@@ -104,7 +114,7 @@ func TestSetupCloneCmd_RepoError(t *testing.T) {
 	wantErr := errors.New("prompt interrupted")
 	storage := &fakeStorage{loadErr: errors.New("no stored token")}
 	auth := usecase.NewAuth(fakeExecutor{}, storage, &fakeInput{err: wantErr})
-	cli := NewCli(&fakeUsecaseContainer{auth: auth, repo: usecase.NewRepo(auth)})
+	cli := NewCli(&fakeUsecaseContainer{auth: auth, repo: usecase.NewRepo(auth, fakeRepoInterface{})})
 
 	cmd := cli.setupCloneCmd()
 	cmd.SetArgs([]string{"http://example.com/org/project", "./target"})

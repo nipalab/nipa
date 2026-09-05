@@ -12,9 +12,9 @@ import (
 )
 
 func (n *nipaServer) GetListBranch(ctx context.Context, req *pb.GetListBranchRequest) (*pb.GetListBranchResponse, error) {
-	projectID, err := snow.ParseBase36(req.Context.ProjectId)
+	_, project, err := n.uc.Common().ResolveBySlug(ctx, req.Context.Org, req.Context.Project)
 	if err != nil {
-		return nil, handleError(err)
+		return nil, err
 	}
 	var lastUpdate *time.Time
 	if req.LastUpdatedAt != nil {
@@ -28,7 +28,7 @@ func (n *nipaServer) GetListBranch(ctx context.Context, req *pb.GetListBranchReq
 			return nil, handleError(err)
 		}
 	}
-	branches, err := n.uc.Branch().ListBranches(ctx, projectID, int(req.Limit), lastUpdate, lastID)
+	branches, err := n.uc.Branch().ListBranches(ctx, project.ID, int(req.Limit), lastUpdate, lastID)
 	if err != nil {
 		return nil, handleError(err)
 	}
@@ -41,17 +41,31 @@ func (n *nipaServer) GetListBranch(ctx context.Context, req *pb.GetListBranchReq
 }
 
 func (n *nipaServer) GetBranch(ctx context.Context, req *pb.GetBranchRequest) (*pb.GetBranchResponse, error) {
-	projectID, err := snow.ParseBase36(req.Context.ProjectId)
+	_, project, err := n.uc.Common().ResolveBySlug(ctx, req.Context.Org, req.Context.Project)
 	if err != nil {
-		return nil, handleError(err)
+		return nil, err
 	}
 	branchID, err := snow.ParseBase36(req.BranchId)
 	if err != nil {
 		return nil, handleError(err)
 	}
-	branch, err := n.uc.Branch().GetByProjectIDAndID(ctx, projectID, branchID)
+	branch, err := n.uc.Branch().GetByProjectIDAndID(ctx, project.ID, branchID)
 	if err != nil {
 		return nil, handleError(err)
+	}
+	return &pb.GetBranchResponse{
+		Branch: domainBranchToPB(branch),
+	}, nil
+}
+
+func (n *nipaServer) GetDefaultBranch(ctx context.Context, req *pb.GetDefaultBranchRequest) (*pb.GetBranchResponse, error) {
+	_, project, err := n.uc.Common().ResolveBySlug(ctx, req.Context.Org, req.Context.Project)
+	if err != nil {
+		return nil, err
+	}
+	branch, err := n.uc.Branch().GetDefault(ctx, project.ID)
+	if err != nil {
+		return nil, err
 	}
 	return &pb.GetBranchResponse{
 		Branch: domainBranchToPB(branch),
