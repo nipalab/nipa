@@ -14,7 +14,7 @@ import (
 func (n *nipaServer) GetListBranch(ctx context.Context, req *pb.GetListBranchRequest) (*pb.GetListBranchResponse, error) {
 	_, project, err := n.uc.Common().ResolveBySlug(ctx, req.Context.Org, req.Context.Project)
 	if err != nil {
-		return nil, err
+		return nil, handleError(err)
 	}
 	var lastUpdate *time.Time
 	if req.LastUpdatedAt != nil {
@@ -61,11 +61,11 @@ func (n *nipaServer) GetBranch(ctx context.Context, req *pb.GetBranchRequest) (*
 func (n *nipaServer) GetDefaultBranch(ctx context.Context, req *pb.GetDefaultBranchRequest) (*pb.GetBranchResponse, error) {
 	_, project, err := n.uc.Common().ResolveBySlug(ctx, req.Context.Org, req.Context.Project)
 	if err != nil {
-		return nil, err
+		return nil, handleError(err)
 	}
 	branch, err := n.uc.Branch().GetDefault(ctx, project.ID)
 	if err != nil {
-		return nil, err
+		return nil, handleError(err)
 	}
 	return &pb.GetBranchResponse{
 		Branch: domainBranchToPB(branch),

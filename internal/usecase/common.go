@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/snow"
@@ -29,11 +30,11 @@ func NewCommon(orgRepository orgRepository, projectRepository projectRepository)
 func (c *Common) ResolveBySlug(ctx context.Context, orgSlug, projectSlug string) (org *domain.Organization, project *domain.Project, err error) {
 	org, err = c.orgRepository.GetBySlug(ctx, orgSlug)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("org not found: %w", err)
 	}
 	project, err = c.projectRepository.GetByOrgIDAndSlug(ctx, org.ID, projectSlug)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, err //fmt.Errorf("project not found: %w", err)
 	}
 	return
 }

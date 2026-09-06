@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"context"
+	"database/sql"
 
 	"github.com/nipalab/nipa/internal/domain"
 	sqlcSqlite "github.com/nipalab/nipa/internal/repository/sqlc/sqlite"
@@ -12,9 +13,9 @@ type OrgRepository struct {
 	queries *sqlcSqlite.Queries
 }
 
-func NewOrgRepository(queries *sqlcSqlite.Queries) *OrgRepository {
+func NewOrgRepository(db *sql.DB) *OrgRepository {
 	return &OrgRepository{
-		queries: queries,
+		queries: sqlcSqlite.New(db),
 	}
 }
 
