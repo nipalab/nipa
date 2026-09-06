@@ -69,7 +69,7 @@ func (t *Transport) LoginWithUsernamePassword(ctx context.Context, host, usernam
 		Password: password,
 	})
 	if err != nil {
-		return nil, err
+		return nil, toDomainError(err)
 	}
 	return &domain.LoginResult{
 		AccessToken:  res.GetAccessToken(),
@@ -88,7 +88,7 @@ func (t *Transport) LoginWithRefreshToken(ctx context.Context, host, refreshToke
 		RefreshToken: refreshToken,
 	})
 	if err != nil {
-		return nil, err
+		return nil, toDomainError(err)
 	}
 	return &domain.LoginResult{
 		AccessToken:  res.GetAccessToken(),
@@ -173,7 +173,7 @@ func (c *Client) GetDefaultBranch(ctx context.Context, org, project string) (*se
 		Context: &pb.ProjectContext{Org: org, Project: project},
 	})
 	if err != nil {
-		return nil, err
+		return nil, toDomainError(err)
 	}
 	return toServerBranch(res.GetBranch()), nil
 }
@@ -189,7 +189,7 @@ func (c *Client) GetTreeNodeManifest(ctx context.Context, org, project, branch s
 		Recursive: true,
 	})
 	if err != nil {
-		return nil, err
+		return nil, toDomainError(err)
 	}
 	return toServerTreeNode(res.GetRootTree()), nil
 }
@@ -257,4 +257,26 @@ func decodeHash(s string) (serverDomain.Hash, error) {
 	}
 	_, err := hex.Decode(h[:], []byte(s))
 	return h, err
+}
+
+func toDomainError(err error) error {
+	if err == nil {
+		return nil
+	}
+	st, ok := status.FromError(err)
+	if !ok {
+		return err
+	}
+	switch st.Code() {
+	case codes.NotFound:
+		return &domain.Error{Code: 404, Message: st.Message()}
+	case codes.InvalidArgument:
+		return &domain.Error{Code: 400, Message: st.Message()}
+	case codes.Unauthenticated:
+		return &domain.Error{Code: 401, Message: st.Message()}
+	case codes.PermissionDenied:
+		return &domain.Error{Code: 403, Message: st.Message()}
+	default:
+		return err
+	}
 }

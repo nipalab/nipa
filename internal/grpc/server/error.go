@@ -1,6 +1,8 @@
 package server
 
 import (
+	"errors"
+
 	"github.com/nipalab/nipa/internal/domain"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -11,8 +13,8 @@ func handleError(err error) error {
 		return nil
 	}
 
-	e, ok := err.(*domain.Error)
-	if !ok {
+	var e *domain.Error
+	if !errors.As(err, &e) {
 		return status.Error(codes.Internal, err.Error())
 	}
 

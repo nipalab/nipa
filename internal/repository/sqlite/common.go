@@ -11,9 +11,18 @@ import (
 func handleError(err error) error {
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return domain.NewErrorRecordNotFound()
+			return &domain.Error{
+				Code:    404,
+				Message: "record not found",
+				Cause:   err,
+			}
 		}
-		return domain.NewErrorDatabase(err.Error())
+		return &domain.Error{
+			Code:            500,
+			Message:         "database error",
+			InternalMessage: err.Error(),
+			Cause:           err,
+		}
 	}
 	return nil
 }

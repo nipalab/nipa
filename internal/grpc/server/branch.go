@@ -43,7 +43,7 @@ func (n *nipaServer) GetListBranch(ctx context.Context, req *pb.GetListBranchReq
 func (n *nipaServer) GetBranch(ctx context.Context, req *pb.GetBranchRequest) (*pb.GetBranchResponse, error) {
 	_, project, err := n.uc.Common().ResolveBySlug(ctx, req.Context.Org, req.Context.Project)
 	if err != nil {
-		return nil, err
+		return nil, handleError(err)
 	}
 	branchID, err := snow.ParseBase36(req.BranchId)
 	if err != nil {

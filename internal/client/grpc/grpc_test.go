@@ -42,6 +42,15 @@ type fakeServer struct {
 	lastUsername     string
 	lastPassword     string
 	lastRefreshToken string
+	defaultBranchErr error
+	defaultBranch    *pb.Branch
+}
+
+func (f *fakeServer) GetDefaultBranch(_ context.Context, _ *pb.GetDefaultBranchRequest) (*pb.GetBranchResponse, error) {
+	if f.defaultBranchErr != nil {
+		return nil, f.defaultBranchErr
+	}
+	return &pb.GetBranchResponse{Branch: f.defaultBranch}, nil
 }
 
 func (f *fakeServer) LoginWithUsernamePassword(_ context.Context, req *pb.LoginUsernamePasswordRequest) (*pb.LoginResponse, error) {
@@ -127,7 +136,11 @@ func TestClient_LoginWithUsernamePassword_ServerError(t *testing.T) {
 
 	_, err := c.LoginWithUsernamePassword(context.Background(), addr, "apin", "secret")
 	require.Error(t, err)
-	require.Equal(t, codes.InvalidArgument, status.Code(err))
+
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 400, domErr.Code)
+	require.Equal(t, "bad credentials", domErr.Message)
 }
 
 func TestClient_LoginWithRefreshToken(t *testing.T) {
@@ -152,7 +165,11 @@ func TestClient_LoginWithRefreshToken_ServerError(t *testing.T) {
 
 	_, err := c.LoginWithRefreshToken(context.Background(), addr, "expired")
 	require.Error(t, err)
-	require.Equal(t, codes.InvalidArgument, status.Code(err))
+
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 400, domErr.Code)
+	require.Equal(t, "invalid refresh token", domErr.Message)
 }
 
 func TestClient_LoginMethodPassthrough(t *testing.T) {
@@ -232,4 +249,61 @@ func TestClient_RefreshFails(t *testing.T) {
 
 	err := interceptor(context.Background(), "/greet.NipaService/GetBranch", nil, nil, nil, invoker)
 	require.Equal(t, codes.Unavailable, status.Code(err))
+}
+
+func TestClient_GetDefaultBranch_NotFound(t *testing.T) {
+	addr := startTestServer(t, &fakeServer{defaultBranchErr: status.Error(codes.NotFound, `project "sample" not found`)})
+	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
+	require.NoError(t, c.Connect(context.Background(), addr))
+
+	_, err := c.GetDefaultBranch(context.Background(), "default", "sample")
+	require.Error(t, err)
+
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 404, domErr.Code)
+	require.Equal(t, `project "sample" not found`, domErr.Message)
+}
+
+func TestClient_GetDefaultBranch_NotConnected(t *testing.T) {
+	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
+
+	_, err := c.GetDefaultBranch(context.Background(), "default", "sample")
+	require.Error(t, err)
+	require.Equal(t, "not connected to a nipa server", err.Error())
+}
+
+func TestToDomainError(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		code int
+		msg  string
+	}{
+		{"not found", status.Error(codes.NotFound, `project "sample" not found`), 404, `project "sample" not found`},
+		{"invalid argument", status.Error(codes.InvalidArgument, "bad credentials"), 400, "bad credentials"},
+		{"unauthenticated", status.Error(codes.Unauthenticated, "invalid token"), 401, "invalid token"},
+		{"permission denied", status.Error(codes.PermissionDenied, "no permission"), 403, "no permission"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := toDomainError(tt.err)
+			require.Error(t, err)
+
+			var domErr *domain.Error
+			require.ErrorAs(t, err, &domErr)
+			require.Equal(t, tt.code, domErr.Code)
+			require.Equal(t, tt.msg, domErr.Message)
+		})
+	}
+}
+
+func TestToDomainError_UnmappedCodePassthrough(t *testing.T) {
+	err := toDomainError(status.Error(codes.Unavailable, "network down"))
+	require.Equal(t, codes.Unavailable, status.Code(err))
+}
+
+func TestToDomainError_Nil(t *testing.T) {
+	require.NoError(t, toDomainError(nil))
 }
