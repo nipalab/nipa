@@ -404,7 +404,7 @@ type Branch struct {
 	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
 	Id            string                 `protobuf:"bytes,3,opt,name=id,proto3" json:"id,omitempty"`
 	Name          string                 `protobuf:"bytes,4,opt,name=name,proto3" json:"name,omitempty"`
-	CommitId      string                 `protobuf:"bytes,5,opt,name=commit_id,json=commitId,proto3" json:"commit_id,omitempty"`
+	CommitId      *string                `protobuf:"bytes,5,opt,name=commit_id,json=commitId,proto3,oneof" json:"commit_id,omitempty"`
 	IsProtected   bool                   `protobuf:"varint,6,opt,name=is_protected,json=isProtected,proto3" json:"is_protected,omitempty"`
 	IsDefault     bool                   `protobuf:"varint,7,opt,name=is_default,json=isDefault,proto3" json:"is_default,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -470,8 +470,8 @@ func (x *Branch) GetName() string {
 }
 
 func (x *Branch) GetCommitId() string {
-	if x != nil {
-		return x.CommitId
+	if x != nil && x.CommitId != nil {
+		return *x.CommitId
 	}
 	return ""
 }
@@ -928,18 +928,20 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"_tree_hash\"c\n" +
 	"\x17GetTreeManifestResponse\x12\x16\n" +
 	"\x06branch\x18\x01 \x01(\tR\x06branch\x120\n" +
-	"\troot_tree\x18\x02 \x01(\v2\x13.greet.TreeManifestR\brootTree\"\x81\x02\n" +
+	"\troot_tree\x18\x02 \x01(\v2\x13.greet.TreeManifestR\brootTree\"\x94\x02\n" +
 	"\x06Branch\x129\n" +
 	"\n" +
 	"created_at\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
 	"updated_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12\x0e\n" +
 	"\x02id\x18\x03 \x01(\tR\x02id\x12\x12\n" +
-	"\x04name\x18\x04 \x01(\tR\x04name\x12\x1b\n" +
-	"\tcommit_id\x18\x05 \x01(\tR\bcommitId\x12!\n" +
+	"\x04name\x18\x04 \x01(\tR\x04name\x12 \n" +
+	"\tcommit_id\x18\x05 \x01(\tH\x00R\bcommitId\x88\x01\x01\x12!\n" +
 	"\fis_protected\x18\x06 \x01(\bR\visProtected\x12\x1d\n" +
 	"\n" +
-	"is_default\x18\a \x01(\bR\tisDefault\"\xe4\x01\n" +
+	"is_default\x18\a \x01(\bR\tisDefaultB\f\n" +
+	"\n" +
+	"_commit_id\"\xe4\x01\n" +
 	"\x14GetListBranchRequest\x12/\n" +
 	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12\x14\n" +
 	"\x05limit\x18\x02 \x01(\x05R\x05limit\x12G\n" +
@@ -1051,6 +1053,7 @@ func file_internal_grpc_proto_server_proto_init() {
 		return
 	}
 	file_internal_grpc_proto_server_proto_msgTypes[3].OneofWrappers = []any{}
+	file_internal_grpc_proto_server_proto_msgTypes[5].OneofWrappers = []any{}
 	file_internal_grpc_proto_server_proto_msgTypes[6].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{

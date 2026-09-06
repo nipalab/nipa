@@ -78,8 +78,16 @@ func domainBranchToPB(branch *domain.Branch) *pb.Branch {
 		Name:        branch.Name,
 		IsProtected: branch.IsProtected,
 		IsDefault:   branch.IsDefault,
-		CommitId:    branch.CommitID.Base36(),
+		CommitId:    snowPtrToStringPtr(branch.CommitID),
 		UpdatedAt:   timestamppb.New(branch.UpdatedAt),
 		CreatedAt:   timestamppb.New(branch.CreatedAt),
 	}
+}
+
+func snowPtrToStringPtr(ID *snow.ID) *string {
+	if ID == nil {
+		return nil
+	}
+	val := ID.Base36()
+	return &val
 }

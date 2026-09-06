@@ -54,10 +54,12 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	authUsecase := usecase.NewAuth(cfg.JWTKey, passwordHasher, userRepo, authRepo)
 	reg := &Registry{
-		authUsecase:   usecase.NewAuth(cfg.JWTKey, passwordHasher, userRepo, authRepo),
+		authUsecase:   authUsecase,
 		userUsecase:   usecase.NewUser(snowUser),
 		commonUsecase: usecase.NewCommon(orgRepo, projectRepo),
+		branchUsecase: usecase.NewBranch(authUsecase, sqlite.NewBranchRepository(dbConn)),
 	}
 
 	apiApp := api.NewAPI(reg)
