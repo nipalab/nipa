@@ -300,13 +300,9 @@ func TestBranch_GetTreeManifest_NoCommit(t *testing.T) {
 		Return(&domain.Branch{ID: 1, ProjectID: 1, Name: "main"}, nil)
 
 	uc := NewBranch(perm, repo)
-	_, err := uc.GetTreeManifest(context.Background(), snow.ID(1), "main", "", "", true)
-	require.Error(t, err)
-
-	var domErr *domain.Error
-	require.ErrorAs(t, err, &domErr)
-	require.Equal(t, 404, domErr.Code)
-	require.Equal(t, `branch "main" has no commits yet`, domErr.Message)
+	got, err := uc.GetTreeManifest(context.Background(), snow.ID(1), "main", "", "", true)
+	require.NoError(t, err)
+	require.Nil(t, got)
 }
 
 func TestBranch_GetTreeManifest_Recursive(t *testing.T) {
