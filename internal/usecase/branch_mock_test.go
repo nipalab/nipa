@@ -81,6 +81,21 @@ func (m *MockbranchRepository) EXPECT() *MockbranchRepositoryMockRecorder {
 	return m.recorder
 }
 
+// GetBranchByName mocks base method.
+func (m *MockbranchRepository) GetBranchByName(ctx context.Context, projectID snow.ID, name string) (*domain.Branch, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetBranchByName", ctx, projectID, name)
+	ret0, _ := ret[0].(*domain.Branch)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetBranchByName indicates an expected call of GetBranchByName.
+func (mr *MockbranchRepositoryMockRecorder) GetBranchByName(ctx, projectID, name any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBranchByName", reflect.TypeOf((*MockbranchRepository)(nil).GetBranchByName), ctx, projectID, name)
+}
+
 // GetByProjectIDAndID mocks base method.
 func (m *MockbranchRepository) GetByProjectIDAndID(ctx context.Context, projectID, branchID snow.ID) (*domain.Branch, error) {
 	m.ctrl.T.Helper()
@@ -94,6 +109,21 @@ func (m *MockbranchRepository) GetByProjectIDAndID(ctx context.Context, projectI
 func (mr *MockbranchRepositoryMockRecorder) GetByProjectIDAndID(ctx, projectID, branchID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByProjectIDAndID", reflect.TypeOf((*MockbranchRepository)(nil).GetByProjectIDAndID), ctx, projectID, branchID)
+}
+
+// GetCommit mocks base method.
+func (m *MockbranchRepository) GetCommit(ctx context.Context, commitID snow.ID) (*domain.Commit, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetCommit", ctx, commitID)
+	ret0, _ := ret[0].(*domain.Commit)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetCommit indicates an expected call of GetCommit.
+func (mr *MockbranchRepositoryMockRecorder) GetCommit(ctx, commitID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetCommit", reflect.TypeOf((*MockbranchRepository)(nil).GetCommit), ctx, commitID)
 }
 
 // GetDefaultBranch mocks base method.
@@ -111,6 +141,36 @@ func (mr *MockbranchRepositoryMockRecorder) GetDefaultBranch(ctx, projectID any)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDefaultBranch", reflect.TypeOf((*MockbranchRepository)(nil).GetDefaultBranch), ctx, projectID)
 }
 
+// GetTreeChildByName mocks base method.
+func (m *MockbranchRepository) GetTreeChildByName(ctx context.Context, parentID int64, name string) (*domain.TreeNode, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetTreeChildByName", ctx, parentID, name)
+	ret0, _ := ret[0].(*domain.TreeNode)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetTreeChildByName indicates an expected call of GetTreeChildByName.
+func (mr *MockbranchRepositoryMockRecorder) GetTreeChildByName(ctx, parentID, name any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTreeChildByName", reflect.TypeOf((*MockbranchRepository)(nil).GetTreeChildByName), ctx, parentID, name)
+}
+
+// GetTreeNode mocks base method.
+func (m *MockbranchRepository) GetTreeNode(ctx context.Context, id int64) (*domain.TreeNode, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetTreeNode", ctx, id)
+	ret0, _ := ret[0].(*domain.TreeNode)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetTreeNode indicates an expected call of GetTreeNode.
+func (mr *MockbranchRepositoryMockRecorder) GetTreeNode(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTreeNode", reflect.TypeOf((*MockbranchRepository)(nil).GetTreeNode), ctx, id)
+}
+
 // ListBranches mocks base method.
 func (m *MockbranchRepository) ListBranches(ctx context.Context, projectID snow.ID, limit int, updatedAfter *time.Time, lastID snow.ID) ([]*domain.Branch, error) {
 	m.ctrl.T.Helper()
@@ -124,4 +184,34 @@ func (m *MockbranchRepository) ListBranches(ctx context.Context, projectID snow.
 func (mr *MockbranchRepositoryMockRecorder) ListBranches(ctx, projectID, limit, updatedAfter, lastID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListBranches", reflect.TypeOf((*MockbranchRepository)(nil).ListBranches), ctx, projectID, limit, updatedAfter, lastID)
+}
+
+// ListFilesByTree mocks base method.
+func (m *MockbranchRepository) ListFilesByTree(ctx context.Context, treeID int64) ([]*domain.File, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListFilesByTree", ctx, treeID)
+	ret0, _ := ret[0].([]*domain.File)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListFilesByTree indicates an expected call of ListFilesByTree.
+func (mr *MockbranchRepositoryMockRecorder) ListFilesByTree(ctx, treeID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListFilesByTree", reflect.TypeOf((*MockbranchRepository)(nil).ListFilesByTree), ctx, treeID)
+}
+
+// ListTreeChildren mocks base method.
+func (m *MockbranchRepository) ListTreeChildren(ctx context.Context, parentID int64) ([]*domain.TreeNode, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListTreeChildren", ctx, parentID)
+	ret0, _ := ret[0].([]*domain.TreeNode)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListTreeChildren indicates an expected call of ListTreeChildren.
+func (mr *MockbranchRepositoryMockRecorder) ListTreeChildren(ctx, parentID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListTreeChildren", reflect.TypeOf((*MockbranchRepository)(nil).ListTreeChildren), ctx, parentID)
 }

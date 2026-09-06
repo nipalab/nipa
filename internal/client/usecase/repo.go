@@ -28,11 +28,14 @@ func (r *Repo) Clone(ctx context.Context, host, org, project, branch, path, targ
 	if err != nil {
 		return err
 	}
-	domainBranch, err := r.repoInterface.GetDefaultBranch(ctx, org, project)
-	if err != nil {
-		return err
+	if branch == "" {
+		domainBranch, err := r.repoInterface.GetDefaultBranch(ctx, org, project)
+		if err != nil {
+			return err
+		}
+		branch = domainBranch.Name
 	}
-	_, err = r.repoInterface.GetTreeNodeManifest(ctx, org, project, domainBranch.Name)
+	_, err = r.repoInterface.GetTreeNodeManifest(ctx, org, project, branch)
 	if err != nil {
 		return err
 	}

@@ -244,3 +244,214 @@ func TestBranch_GetDefault_RepositoryError(t *testing.T) {
 	_, err := uc.GetDefault(context.Background(), snow.ID(1))
 	require.ErrorIs(t, err, wantErr)
 }
+
+func TestBranch_GetTreeManifest_NoPermission(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := NewMockpermissionUsecase(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).
+		Return(false)
+
+	uc := NewBranch(perm, repo)
+	_, err := uc.GetTreeManifest(context.Background(), snow.ID(1), "main", "", "", true)
+	require.Error(t, err)
+
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 403, domErr.Code)
+}
+
+func TestBranch_GetTreeManifest_BranchNotFound(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := NewMockpermissionUsecase(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).
+		Return(true)
+
+	repo.EXPECT().
+		GetBranchByName(gomock.Any(), snow.ID(1), "main").
+		Return(nil, domain.NewErrorRecordNotFound())
+
+	uc := NewBranch(perm, repo)
+	_, err := uc.GetTreeManifest(context.Background(), snow.ID(1), "main", "", "", true)
+	require.Error(t, err)
+
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 404, domErr.Code)
+	require.Equal(t, `branch "main" not found`, domErr.Message)
+}
+
+func TestBranch_GetTreeManifest_NoCommit(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := NewMockpermissionUsecase(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).
+		Return(true)
+
+	repo.EXPECT().
+		GetBranchByName(gomock.Any(), snow.ID(1), "main").
+		Return(&domain.Branch{ID: 1, ProjectID: 1, Name: "main"}, nil)
+
+	uc := NewBranch(perm, repo)
+	_, err := uc.GetTreeManifest(context.Background(), snow.ID(1), "main", "", "", true)
+	require.Error(t, err)
+
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 404, domErr.Code)
+	require.Equal(t, `branch "main" has no commits yet`, domErr.Message)
+}
+
+func TestBranch_GetTreeManifest_Recursive(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := NewMockpermissionUsecase(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+
+	commitID := snow.ID(9)
+	branch := &domain.Branch{ID: 1, ProjectID: 1, Name: "main", CommitID: &commitID}
+	commit := &domain.Commit{ID: commitID, TreeID: 100}
+	root := &domain.TreeNode{ID: 100, Name: "root"}
+	rootFiles := []*domain.File{{ID: 1, Name: "a.txt"}}
+	child := &domain.TreeNode{ID: 200, Name: "assets"}
+	childFiles := []*domain.File{{ID: 2, Name: "b.png"}}
+
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).
+		Return(true)
+
+	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(branch, nil)
+	repo.EXPECT().GetCommit(gomock.Any(), commitID).Return(commit, nil)
+	repo.EXPECT().GetTreeNode(gomock.Any(), int64(100)).Return(root, nil)
+	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(100)).Return(rootFiles, nil)
+	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(100)).Return([]*domain.TreeNode{child}, nil)
+	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(200)).Return(childFiles, nil)
+	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(200)).Return(nil, nil)
+
+	uc := NewBranch(perm, repo)
+	got, err := uc.GetTreeManifest(context.Background(), snow.ID(1), "main", "", "", true)
+	require.NoError(t, err)
+	require.Equal(t, root, got)
+	require.Equal(t, rootFiles, got.FileChildren)
+	require.Len(t, got.TreeChildren, 1)
+	require.Equal(t, child, got.TreeChildren[0])
+	require.Equal(t, childFiles, got.TreeChildren[0].FileChildren)
+}
+
+func TestBranch_GetTreeManifest_NotRecursive(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := NewMockpermissionUsecase(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+
+	commitID := snow.ID(9)
+	branch := &domain.Branch{ID: 1, ProjectID: 1, Name: "main", CommitID: &commitID}
+	commit := &domain.Commit{ID: commitID, TreeID: 100}
+	root := &domain.TreeNode{ID: 100, Name: "root"}
+	rootFiles := []*domain.File{{ID: 1, Name: "a.txt"}}
+
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).
+		Return(true)
+
+	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(branch, nil)
+	repo.EXPECT().GetCommit(gomock.Any(), commitID).Return(commit, nil)
+	repo.EXPECT().GetTreeNode(gomock.Any(), int64(100)).Return(root, nil)
+	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(100)).Return(rootFiles, nil)
+
+	uc := NewBranch(perm, repo)
+	got, err := uc.GetTreeManifest(context.Background(), snow.ID(1), "main", "", "", false)
+	require.NoError(t, err)
+	require.Equal(t, rootFiles, got.FileChildren)
+	require.Empty(t, got.TreeChildren)
+}
+
+func TestBranch_GetTreeManifest_WithPath(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := NewMockpermissionUsecase(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+
+	commitID := snow.ID(9)
+	branch := &domain.Branch{ID: 1, ProjectID: 1, Name: "main", CommitID: &commitID}
+	commit := &domain.Commit{ID: commitID, TreeID: 100}
+	root := &domain.TreeNode{ID: 100, Name: "root"}
+	assets := &domain.TreeNode{ID: 200, Name: "assets"}
+	shaders := &domain.TreeNode{ID: 300, Name: "shaders"}
+
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).
+		Return(true)
+
+	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(branch, nil)
+	repo.EXPECT().GetCommit(gomock.Any(), commitID).Return(commit, nil)
+	repo.EXPECT().GetTreeNode(gomock.Any(), int64(100)).Return(root, nil)
+	repo.EXPECT().GetTreeChildByName(gomock.Any(), int64(100), "assets").Return(assets, nil)
+	repo.EXPECT().GetTreeChildByName(gomock.Any(), int64(200), "shaders").Return(shaders, nil)
+	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(300)).Return(nil, nil)
+
+	uc := NewBranch(perm, repo)
+	got, err := uc.GetTreeManifest(context.Background(), snow.ID(1), "main", "assets/shaders", "", false)
+	require.NoError(t, err)
+	require.Equal(t, shaders, got)
+}
+
+func TestBranch_GetTreeManifest_PathNotFound(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := NewMockpermissionUsecase(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+
+	commitID := snow.ID(9)
+	branch := &domain.Branch{ID: 1, ProjectID: 1, Name: "main", CommitID: &commitID}
+	commit := &domain.Commit{ID: commitID, TreeID: 100}
+	root := &domain.TreeNode{ID: 100, Name: "root"}
+
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).
+		Return(true)
+
+	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(branch, nil)
+	repo.EXPECT().GetCommit(gomock.Any(), commitID).Return(commit, nil)
+	repo.EXPECT().GetTreeNode(gomock.Any(), int64(100)).Return(root, nil)
+	repo.EXPECT().GetTreeChildByName(gomock.Any(), int64(100), "missing").
+		Return(nil, domain.NewErrorRecordNotFound())
+
+	uc := NewBranch(perm, repo)
+	_, err := uc.GetTreeManifest(context.Background(), snow.ID(1), "main", "missing", "", false)
+	require.Error(t, err)
+
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 404, domErr.Code)
+	require.Equal(t, `path "missing" not found in branch "main"`, domErr.Message)
+}
+
+func TestBranch_GetTreeManifest_TreeHashMatch(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := NewMockpermissionUsecase(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+
+	commitID := snow.ID(9)
+	branch := &domain.Branch{ID: 1, ProjectID: 1, Name: "main", CommitID: &commitID}
+	commit := &domain.Commit{ID: commitID, TreeID: 100}
+	var hash domain.Hash
+	hash[0] = 1
+	root := &domain.TreeNode{ID: 100, Name: "root", Hash: hash}
+
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).
+		Return(true)
+
+	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(branch, nil)
+	repo.EXPECT().GetCommit(gomock.Any(), commitID).Return(commit, nil)
+	repo.EXPECT().GetTreeNode(gomock.Any(), int64(100)).Return(root, nil)
+
+	uc := NewBranch(perm, repo)
+	got, err := uc.GetTreeManifest(context.Background(), snow.ID(1), "main", "", hash.String(), true)
+	require.NoError(t, err)
+	require.Nil(t, got)
+}

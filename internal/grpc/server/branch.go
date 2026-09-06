@@ -72,6 +72,23 @@ func (n *nipaServer) GetDefaultBranch(ctx context.Context, req *pb.GetDefaultBra
 	}, nil
 }
 
+func (n *nipaServer) GetTreeManifest(ctx context.Context, req *pb.GetTreeManifestRequest) (*pb.GetTreeManifestResponse, error) {
+	_, project, err := n.uc.Common().ResolveBySlug(ctx, req.Context.Org, req.Context.Project)
+	if err != nil {
+		return nil, handleError(err)
+	}
+
+	root, err := n.uc.Branch().GetTreeManifest(ctx, project.ID, req.Branch, req.Path, req.GetTreeHash(), req.Recursive)
+	if err != nil {
+		return nil, handleError(err)
+	}
+
+	return &pb.GetTreeManifestResponse{
+		Branch:   req.Branch,
+		RootTree: domainTreeToPB(root),
+	}, nil
+}
+
 func domainBranchToPB(branch *domain.Branch) *pb.Branch {
 	return &pb.Branch{
 		Id:          branch.ID.Base36(),
@@ -90,4 +107,45 @@ func snowPtrToStringPtr(ID *snow.ID) *string {
 	}
 	val := ID.Base36()
 	return &val
+}
+
+func domainTreeToPB(node *domain.TreeNode) *pb.TreeManifest {
+	if node == nil {
+		return nil
+	}
+	manifest := &pb.TreeManifest{
+		TreeHash: node.Hash.String(),
+		Path:     node.Name,
+	}
+	for _, file := range node.FileChildren {
+		manifest.Files = append(manifest.Files, domainFileToPB(file))
+	}
+	for _, child := range node.TreeChildren {
+		manifest.SubTrees = append(manifest.SubTrees, domainTreeToPB(child))
+	}
+	return manifest
+}
+
+func domainFileToPB(file *domain.File) *pb.FileNode {
+	node := &pb.FileNode{
+		Path:      file.Name,
+		Mode:      domainFileModeToPB(file.Mode),
+		SizeBytes: file.SizeBytes,
+		IsBinary:  file.IsBinary,
+	}
+	for _, chunk := range file.Chunks {
+		node.ChunkHashes = append(node.ChunkHashes, chunk.Hash.String())
+	}
+	return node
+}
+
+func domainFileModeToPB(mode int) pb.FileMode {
+	switch mode {
+	case 444, 0o444:
+		return pb.FileMode_FILE_MODE_READ_ONLY
+	case 755, 0o755:
+		return pb.FileMode_FILE_MODE_EXECUTABLE
+	default:
+		return pb.FileMode_FILE_MODE_READ_WRITE
+	}
 }

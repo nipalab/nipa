@@ -134,7 +134,7 @@ func TestGetListBranch_Success(t *testing.T) {
 	require.Equal(t, branchID.Base36(), b.Id)
 	require.Equal(t, "main", b.Name)
 	require.True(t, b.IsProtected)
-	require.Equal(t, commitID.Base36(), b.CommitId)
+	require.Equal(t, commitID.Base36(), b.GetCommitId())
 	require.Equal(t, now.Unix(), b.CreatedAt.AsTime().Unix())
 	require.Equal(t, now.Unix(), b.UpdatedAt.AsTime().Unix())
 }
@@ -264,7 +264,7 @@ func TestGetBranch_Success(t *testing.T) {
 	require.Equal(t, branchID.Base36(), resp.Branch.Id)
 	require.Equal(t, "develop", resp.Branch.Name)
 	require.False(t, resp.Branch.IsProtected)
-	require.Equal(t, commitID.Base36(), resp.Branch.CommitId)
+	require.Equal(t, commitID.Base36(), resp.Branch.GetCommitId())
 }
 
 func TestGetBranch_NotFound(t *testing.T) {
@@ -336,4 +336,160 @@ func timePtrToTimestamp(t *time.Time) *timestamppb.Timestamp {
 		return nil
 	}
 	return timestamppb.New(*t)
+}
+
+func TestGetTreeManifest_Success(t *testing.T) {
+	branch, perm, repo := newTestBranchUc(t)
+	srv := New(newMockUsecaseContainer(t, branch))
+
+	projectID := snow.ID(42)
+	commitID := snow.ID(9)
+	var hash domain.Hash
+	for i := range hash {
+		hash[i] = byte(i)
+	}
+
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), projectID, domain.PermissionRead).
+		Return(true)
+
+	repo.EXPECT().
+		GetBranchByName(gomock.Any(), projectID, "main").
+		Return(&domain.Branch{ID: 1, ProjectID: projectID, Name: "main", CommitID: &commitID}, nil)
+	repo.EXPECT().
+		GetCommit(gomock.Any(), commitID).
+		Return(&domain.Commit{ID: commitID, TreeID: 100}, nil)
+	repo.EXPECT().
+		GetTreeNode(gomock.Any(), int64(100)).
+		Return(&domain.TreeNode{ID: 100, Name: "root", Hash: hash}, nil)
+	repo.EXPECT().
+		ListFilesByTree(gomock.Any(), int64(100)).
+		Return([]*domain.File{
+			{ID: 1, Name: "a.txt", Mode: 0o644, SizeBytes: 10, Chunks: []domain.Chunk{{ID: 1, Hash: hash}}},
+		}, nil)
+	repo.EXPECT().
+		ListTreeChildren(gomock.Any(), int64(100)).
+		Return([]*domain.TreeNode{{ID: 200, Name: "assets", Hash: hash}}, nil)
+	repo.EXPECT().
+		ListFilesByTree(gomock.Any(), int64(200)).
+		Return(nil, nil)
+	repo.EXPECT().
+		ListTreeChildren(gomock.Any(), int64(200)).
+		Return(nil, nil)
+
+	resp, err := srv.GetTreeManifest(context.Background(), &pb.GetTreeManifestRequest{
+		Context:   &pb.ProjectContext{Org: "org", Project: "proj"},
+		Branch:    "main",
+		Recursive: true,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "main", resp.Branch)
+	require.NotNil(t, resp.RootTree)
+	require.Equal(t, hash.String(), resp.RootTree.TreeHash)
+	require.Equal(t, "root", resp.RootTree.Path)
+	require.Len(t, resp.RootTree.Files, 1)
+	require.Equal(t, "a.txt", resp.RootTree.Files[0].Path)
+	require.Equal(t, pb.FileMode_FILE_MODE_READ_WRITE, resp.RootTree.Files[0].Mode)
+	require.Equal(t, int64(10), resp.RootTree.Files[0].SizeBytes)
+	require.Equal(t, []string{hash.String()}, resp.RootTree.Files[0].ChunkHashes)
+	require.Len(t, resp.RootTree.SubTrees, 1)
+	require.Equal(t, "assets", resp.RootTree.SubTrees[0].Path)
+	require.Equal(t, hash.String(), resp.RootTree.SubTrees[0].TreeHash)
+}
+
+func TestGetTreeManifest_NotRecursive(t *testing.T) {
+	branch, perm, repo := newTestBranchUc(t)
+	srv := New(newMockUsecaseContainer(t, branch))
+
+	projectID := snow.ID(42)
+	commitID := snow.ID(9)
+
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), projectID, domain.PermissionRead).
+		Return(true)
+
+	repo.EXPECT().
+		GetBranchByName(gomock.Any(), projectID, "main").
+		Return(&domain.Branch{ID: 1, ProjectID: projectID, Name: "main", CommitID: &commitID}, nil)
+	repo.EXPECT().
+		GetCommit(gomock.Any(), commitID).
+		Return(&domain.Commit{ID: commitID, TreeID: 100}, nil)
+	repo.EXPECT().
+		GetTreeNode(gomock.Any(), int64(100)).
+		Return(&domain.TreeNode{ID: 100, Name: "root"}, nil)
+	repo.EXPECT().
+		ListFilesByTree(gomock.Any(), int64(100)).
+		Return(nil, nil)
+
+	resp, err := srv.GetTreeManifest(context.Background(), &pb.GetTreeManifestRequest{
+		Context: &pb.ProjectContext{Org: "org", Project: "proj"},
+		Branch:  "main",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, resp.RootTree)
+	require.Empty(t, resp.RootTree.SubTrees)
+}
+
+func TestGetTreeManifest_TreeHashMatch(t *testing.T) {
+	branch, perm, repo := newTestBranchUc(t)
+	srv := New(newMockUsecaseContainer(t, branch))
+
+	projectID := snow.ID(42)
+	commitID := snow.ID(9)
+	var hash domain.Hash
+	hash[0] = 1
+
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), projectID, domain.PermissionRead).
+		Return(true)
+
+	repo.EXPECT().
+		GetBranchByName(gomock.Any(), projectID, "main").
+		Return(&domain.Branch{ID: 1, ProjectID: projectID, Name: "main", CommitID: &commitID}, nil)
+	repo.EXPECT().
+		GetCommit(gomock.Any(), commitID).
+		Return(&domain.Commit{ID: commitID, TreeID: 100}, nil)
+	repo.EXPECT().
+		GetTreeNode(gomock.Any(), int64(100)).
+		Return(&domain.TreeNode{ID: 100, Name: "root", Hash: hash}, nil)
+
+	resp, err := srv.GetTreeManifest(context.Background(), &pb.GetTreeManifestRequest{
+		Context:  &pb.ProjectContext{Org: "org", Project: "proj"},
+		Branch:   "main",
+		TreeHash: &[]string{hash.String()}[0],
+	})
+	require.NoError(t, err)
+	require.Equal(t, "main", resp.Branch)
+	require.Nil(t, resp.RootTree)
+}
+
+func TestGetTreeManifest_BranchNotFound(t *testing.T) {
+	branch, perm, repo := newTestBranchUc(t)
+	srv := New(newMockUsecaseContainer(t, branch))
+
+	projectID := snow.ID(42)
+
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), projectID, domain.PermissionRead).
+		Return(true)
+
+	repo.EXPECT().
+		GetBranchByName(gomock.Any(), projectID, "unknown").
+		Return(nil, domain.NewErrorRecordNotFound())
+
+	_, err := srv.GetTreeManifest(context.Background(), &pb.GetTreeManifestRequest{
+		Context: &pb.ProjectContext{Org: "org", Project: "proj"},
+		Branch:  "unknown",
+	})
+	require.Error(t, err)
+}
+
+func TestGetTreeManifest_ResolveError(t *testing.T) {
+	srv := New(newMockUsecaseContainer(t, nil))
+
+	_, err := srv.GetTreeManifest(context.Background(), &pb.GetTreeManifestRequest{
+		Context: &pb.ProjectContext{Org: "unknown", Project: "unknown"},
+		Branch:  "main",
+	})
+	require.Error(t, err)
 }

@@ -66,6 +66,37 @@ func (q *Queries) BranchGet(ctx context.Context, arg BranchGetParams) (Branch, e
 	return i, err
 }
 
+const branchGetByName = `-- name: BranchGetByName :one
+SELECT id, project_id, name, "key", is_protected, is_default, commit_id, updated_at, created_at, deleted, deleted_at
+FROM branches
+WHERE project_id = ?1 AND name = ?2
+LIMIT 1
+`
+
+type BranchGetByNameParams struct {
+	ProjectID int64  `json:"project_id"`
+	Name      string `json:"name"`
+}
+
+func (q *Queries) BranchGetByName(ctx context.Context, arg BranchGetByNameParams) (Branch, error) {
+	row := q.db.QueryRowContext(ctx, branchGetByName, arg.ProjectID, arg.Name)
+	var i Branch
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.Name,
+		&i.Key,
+		&i.IsProtected,
+		&i.IsDefault,
+		&i.CommitID,
+		&i.UpdatedAt,
+		&i.CreatedAt,
+		&i.Deleted,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
 const branchGetDefault = `-- name: BranchGetDefault :one
 SELECT id, project_id, name, "key", is_protected, is_default, commit_id, updated_at, created_at, deleted, deleted_at
 FROM branches

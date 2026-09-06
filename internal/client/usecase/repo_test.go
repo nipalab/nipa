@@ -114,7 +114,7 @@ func TestRepo_Clone_Error_GetDefaultBranchFailed(t *testing.T) {
 	auth := NewAuth(nil, storage, nil)
 	repo := NewRepo(auth, &stubRepoInterface{defaultErr: wantErr})
 
-	err := repo.Clone(context.Background(), "example.com", "org", "project", "main", "/src", "/target")
+	err := repo.Clone(context.Background(), "example.com", "org", "project", "", "/src", "/target")
 	require.ErrorIs(t, err, wantErr)
 }
 
