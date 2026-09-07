@@ -178,7 +178,7 @@ func (c *Client) GetDefaultBranch(ctx context.Context, org, project string) (*se
 	return toServerBranch(res.GetBranch()), nil
 }
 
-func (c *Client) GetTreeNodeManifest(ctx context.Context, org, project, branch string) (*serverDomain.TreeNode, error) {
+func (c *Client) GetTreeNodeManifest(ctx context.Context, org, project, branch, path string) (*serverDomain.TreeNode, error) {
 	client, err := c.transport.NipaServiceClient()
 	if err != nil {
 		return nil, err
@@ -186,6 +186,7 @@ func (c *Client) GetTreeNodeManifest(ctx context.Context, org, project, branch s
 	res, err := client.GetTreeManifest(ctx, &pb.GetTreeManifestRequest{
 		Context:   &pb.ProjectContext{Org: org, Project: project},
 		Branch:    branch,
+		Path:      path,
 		Recursive: true,
 	})
 	if err != nil {

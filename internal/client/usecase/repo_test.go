@@ -3,6 +3,8 @@ package usecase
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -22,7 +24,7 @@ func (s *stubRepoInterface) GetDefaultBranch(_ context.Context, _, _ string) (*s
 	return s.defaultBranch, s.defaultErr
 }
 
-func (s *stubRepoInterface) GetTreeNodeManifest(_ context.Context, _, _, _ string) (*serverDomain.TreeNode, error) {
+func (s *stubRepoInterface) GetTreeNodeManifest(_ context.Context, _, _, _, _ string) (*serverDomain.TreeNode, error) {
 	return s.manifest, s.manifestErr
 }
 
@@ -61,14 +63,15 @@ func TestRepo_Clone_Success(t *testing.T) {
 	storage := &stubSecureStorage{loadResult: &domain.LoginResult{AccessToken: token}}
 	auth := NewAuth(nil, storage, nil)
 	local := &stubLocalRepo{}
+	target := t.TempDir()
 	repo := NewRepo(auth, &stubRepoInterface{
 		defaultBranch: &serverDomain.Branch{Name: "main"},
 		manifest:      &serverDomain.TreeNode{},
 	}, local)
 
-	err := repo.Clone(context.Background(), "http://example.com/org/project", "example.com", "org", "project", "main", "/src", "/target")
+	err := repo.Clone(context.Background(), "http://example.com/org/project", "example.com", "org", "project", "main", "/src", target)
 	require.NoError(t, err)
-	require.Equal(t, "/target", local.initTarget)
+	require.Equal(t, target, local.initTarget)
 	require.Equal(t, domain.Config{Url: "http://example.com/org/project", Branch: "main"}, local.config)
 	require.NotNil(t, local.tree)
 }
@@ -83,7 +86,7 @@ func TestRepo_Clone_Success_DefaultBranch(t *testing.T) {
 		manifest:      &serverDomain.TreeNode{},
 	}, local)
 
-	err := repo.Clone(context.Background(), "http://example.com/org/project", "example.com", "org", "project", "", "/src", "/target")
+	err := repo.Clone(context.Background(), "http://example.com/org/project", "example.com", "org", "project", "", "/src", t.TempDir())
 	require.NoError(t, err)
 	require.Equal(t, domain.Config{Url: "http://example.com/org/project", Branch: "dev"}, local.config)
 }
@@ -102,7 +105,7 @@ func TestRepo_Clone_Success_NeedLogin(t *testing.T) {
 		manifest:      &serverDomain.TreeNode{},
 	}, &stubLocalRepo{})
 
-	err := repo.Clone(context.Background(), "http://example.com/org/project", "example.com", "org", "project", "main", "/src", "/target")
+	err := repo.Clone(context.Background(), "http://example.com/org/project", "example.com", "org", "project", "main", "/src", t.TempDir())
 	require.NoError(t, err)
 	require.Equal(t, "apin", executor.lastUsername)
 	require.Equal(t, "secret", executor.lastPassword)
@@ -115,7 +118,7 @@ func TestRepo_Clone_Error_PromptFailed(t *testing.T) {
 	auth := NewAuth(nil, storage, input)
 	repo := NewRepo(auth, &stubRepoInterface{}, &stubLocalRepo{})
 
-	err := repo.Clone(context.Background(), "http://example.com/org/project", "example.com", "org", "project", "main", "/src", "/target")
+	err := repo.Clone(context.Background(), "http://example.com/org/project", "example.com", "org", "project", "main", "/src", t.TempDir())
 	require.ErrorIs(t, err, wantErr)
 }
 
@@ -127,7 +130,7 @@ func TestRepo_Clone_Error_LoginFailed(t *testing.T) {
 	auth := NewAuth(executor, storage, input)
 	repo := NewRepo(auth, &stubRepoInterface{}, &stubLocalRepo{})
 
-	err := repo.Clone(context.Background(), "http://example.com/org/project", "example.com", "org", "project", "main", "/src", "/target")
+	err := repo.Clone(context.Background(), "http://example.com/org/project", "example.com", "org", "project", "main", "/src", t.TempDir())
 	require.ErrorIs(t, err, wantErr)
 }
 
@@ -144,7 +147,7 @@ func TestRepo_Clone_MalformedToken(t *testing.T) {
 		manifest:      &serverDomain.TreeNode{},
 	}, &stubLocalRepo{})
 
-	err := repo.Clone(context.Background(), "http://example.com/org/project", "example.com", "org", "project", "main", "/src", "/target")
+	err := repo.Clone(context.Background(), "http://example.com/org/project", "example.com", "org", "project", "main", "/src", t.TempDir())
 	require.NoError(t, err)
 	require.Equal(t, "apin", executor.lastUsername)
 	require.Equal(t, "secret", executor.lastPassword)
@@ -160,7 +163,7 @@ func TestRepo_Clone_EmptyRepo(t *testing.T) {
 		manifest:      nil,
 	}, local)
 
-	err := repo.Clone(context.Background(), "http://example.com/org/project", "example.com", "org", "project", "main", "/src", "/target")
+	err := repo.Clone(context.Background(), "http://example.com/org/project", "example.com", "org", "project", "main", "/src", t.TempDir())
 	require.NoError(t, err)
 	require.Equal(t, domain.Config{Url: "http://example.com/org/project", Branch: "main"}, local.config)
 	require.Nil(t, local.tree)
@@ -173,7 +176,7 @@ func TestRepo_Clone_Error_GetDefaultBranchFailed(t *testing.T) {
 	auth := NewAuth(nil, storage, nil)
 	repo := NewRepo(auth, &stubRepoInterface{defaultErr: wantErr}, &stubLocalRepo{})
 
-	err := repo.Clone(context.Background(), "http://example.com/org/project", "example.com", "org", "project", "", "/src", "/target")
+	err := repo.Clone(context.Background(), "http://example.com/org/project", "example.com", "org", "project", "", "/src", t.TempDir())
 	require.ErrorIs(t, err, wantErr)
 }
 
@@ -187,7 +190,7 @@ func TestRepo_Clone_Error_GetManifestFailed(t *testing.T) {
 		manifestErr:   wantErr,
 	}, &stubLocalRepo{})
 
-	err := repo.Clone(context.Background(), "http://example.com/org/project", "example.com", "org", "project", "main", "/src", "/target")
+	err := repo.Clone(context.Background(), "http://example.com/org/project", "example.com", "org", "project", "main", "/src", t.TempDir())
 	require.ErrorIs(t, err, wantErr)
 }
 
@@ -200,7 +203,7 @@ func TestRepo_Clone_Error_LocalInitFailed(t *testing.T) {
 		manifest: &serverDomain.TreeNode{},
 	}, &stubLocalRepo{initErr: wantErr})
 
-	err := repo.Clone(context.Background(), "http://example.com/org/project", "example.com", "org", "project", "main", "/src", "/target")
+	err := repo.Clone(context.Background(), "http://example.com/org/project", "example.com", "org", "project", "main", "/src", t.TempDir())
 	require.ErrorIs(t, err, wantErr)
 }
 
@@ -213,8 +216,42 @@ func TestRepo_Clone_Error_SaveConfigFailed(t *testing.T) {
 		manifest: &serverDomain.TreeNode{},
 	}, &stubLocalRepo{configErr: wantErr})
 
-	err := repo.Clone(context.Background(), "http://example.com/org/project", "example.com", "org", "project", "main", "/src", "/target")
+	err := repo.Clone(context.Background(), "http://example.com/org/project", "example.com", "org", "project", "main", "/src", t.TempDir())
 	require.ErrorIs(t, err, wantErr)
+}
+
+func TestRepo_Clone_Error_TargetNotEmpty(t *testing.T) {
+	token := signTestToken(t, "secret")
+	storage := &stubSecureStorage{loadResult: &domain.LoginResult{AccessToken: token}}
+	auth := NewAuth(nil, storage, nil)
+	repo := NewRepo(auth, &stubRepoInterface{
+		defaultBranch: &serverDomain.Branch{Name: "main"},
+		manifest:      &serverDomain.TreeNode{},
+	}, &stubLocalRepo{})
+
+	target := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(target, "existing.txt"), []byte("x"), 0o644))
+
+	err := repo.Clone(context.Background(), "http://example.com/org/project", "example.com", "org", "project", "main", "/src", target)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "not empty")
+}
+
+func TestRepo_Clone_Error_TargetIsFile(t *testing.T) {
+	token := signTestToken(t, "secret")
+	storage := &stubSecureStorage{loadResult: &domain.LoginResult{AccessToken: token}}
+	auth := NewAuth(nil, storage, nil)
+	repo := NewRepo(auth, &stubRepoInterface{
+		defaultBranch: &serverDomain.Branch{Name: "main"},
+		manifest:      &serverDomain.TreeNode{},
+	}, &stubLocalRepo{})
+
+	target := filepath.Join(t.TempDir(), "file.txt")
+	require.NoError(t, os.WriteFile(target, []byte("x"), 0o644))
+
+	err := repo.Clone(context.Background(), "http://example.com/org/project", "example.com", "org", "project", "main", "/src", target)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "not a directory")
 }
 
 func TestRepo_Clone_Error_SaveTreeFailed(t *testing.T) {
@@ -226,6 +263,6 @@ func TestRepo_Clone_Error_SaveTreeFailed(t *testing.T) {
 		manifest: &serverDomain.TreeNode{},
 	}, &stubLocalRepo{treeErr: wantErr})
 
-	err := repo.Clone(context.Background(), "http://example.com/org/project", "example.com", "org", "project", "main", "/src", "/target")
+	err := repo.Clone(context.Background(), "http://example.com/org/project", "example.com", "org", "project", "main", "/src", t.TempDir())
 	require.ErrorIs(t, err, wantErr)
 }

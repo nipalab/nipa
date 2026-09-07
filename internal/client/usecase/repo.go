@@ -2,6 +2,8 @@ package usecase
 
 import (
 	"context"
+	"fmt"
+	"os"
 
 	"github.com/nipalab/nipa/internal/client/domain"
 	serverDomain "github.com/nipalab/nipa/internal/domain"
@@ -9,7 +11,7 @@ import (
 
 type repoInterface interface {
 	GetDefaultBranch(ctx context.Context, org, project string) (*serverDomain.Branch, error)
-	GetTreeNodeManifest(ctx context.Context, org, project, branch string) (*serverDomain.TreeNode, error)
+	GetTreeNodeManifest(ctx context.Context, org, project, branch, path string) (*serverDomain.TreeNode, error)
 }
 
 type localRepo interface {
@@ -33,6 +35,9 @@ func NewRepo(auth *Auth, repoInterface repoInterface, localRepo localRepo) *Repo
 }
 
 func (r *Repo) Clone(ctx context.Context, url, host, org, project, branch, path, target string) error {
+	if err := ensureEmptyTarget(target); err != nil {
+		return err
+	}
 	err := r.auth.MakeSureLoggedIn(ctx, host)
 	if err != nil {
 		return err
@@ -44,7 +49,7 @@ func (r *Repo) Clone(ctx context.Context, url, host, org, project, branch, path,
 		}
 		branch = domainBranch.Name
 	}
-	root, err := r.repoInterface.GetTreeNodeManifest(ctx, org, project, branch)
+	root, err := r.repoInterface.GetTreeNodeManifest(ctx, org, project, branch, path)
 	if err != nil {
 		return err
 	}
@@ -55,4 +60,25 @@ func (r *Repo) Clone(ctx context.Context, url, host, org, project, branch, path,
 		return err
 	}
 	return r.localRepo.SaveTree(root)
+}
+
+func ensureEmptyTarget(target string) error {
+	info, err := os.Stat(target)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("target %q is not a directory", target)
+	}
+	entries, err := os.ReadDir(target)
+	if err != nil {
+		return err
+	}
+	if len(entries) > 0 {
+		return fmt.Errorf("target directory %q is not empty", target)
+	}
+	return nil
 }
