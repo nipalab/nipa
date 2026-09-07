@@ -356,6 +356,76 @@ func TestBranchRepositorySQLite_GetDefaultBranch_IsolatedPerProject(t *testing.T
 	requireRecordNotFound(t, err)
 }
 
+func TestBranchRepositorySQLite_GetBranchByName(t *testing.T) {
+	ctx := context.Background()
+	db, q := newSQLiteTestDB(t)
+	repo := NewBranchRepository(db)
+
+	projectID := seedProject(t, q, 1, "test-project")
+	branchID := seedBranch(t, db, projectID, "develop", sql.NullInt64{})
+
+	got, err := repo.GetBranchByName(ctx, projectID, "develop")
+	require.NoError(t, err)
+	require.Equal(t, branchID, got.ID)
+	require.Equal(t, projectID, got.ProjectID)
+	require.Equal(t, "develop", got.Name)
+	require.False(t, got.IsProtected)
+	require.False(t, got.IsDefault)
+	require.Nil(t, got.CommitID)
+	require.False(t, got.Deleted)
+	require.Nil(t, got.DeletedAt)
+}
+
+func TestBranchRepositorySQLite_GetBranchByName_WithCommitID(t *testing.T) {
+	ctx := context.Background()
+	db, q := newSQLiteTestDB(t)
+	repo := NewBranchRepository(db)
+
+	projectID := seedProject(t, q, 1, "test-project")
+
+	node := newTestNode(t)
+	commitID := node.Generate()
+
+	branchID := seedBranch(t, db, projectID, "develop", sql.NullInt64{Int64: commitID.Int64(), Valid: true})
+
+	got, err := repo.GetBranchByName(ctx, projectID, "develop")
+	require.NoError(t, err)
+	require.Equal(t, branchID, got.ID)
+	require.NotNil(t, got.CommitID)
+	require.Equal(t, commitID, *got.CommitID)
+}
+
+func TestBranchRepositorySQLite_GetBranchByName_NotFound(t *testing.T) {
+	ctx := context.Background()
+	db, q := newSQLiteTestDB(t)
+	repo := NewBranchRepository(db)
+
+	projectID := seedProject(t, q, 1, "test-project")
+	seedBranch(t, db, projectID, "develop", sql.NullInt64{})
+
+	_, err := repo.GetBranchByName(ctx, projectID, "missing")
+	requireRecordNotFound(t, err)
+}
+
+func TestBranchRepositorySQLite_GetBranchByName_IsolatedPerProject(t *testing.T) {
+	ctx := context.Background()
+	db, q := newSQLiteTestDB(t)
+	repo := NewBranchRepository(db)
+
+	projectA := seedProject(t, q, 1, "project-a")
+	projectB := seedProject(t, q, 1, "project-b")
+	branchAID := seedBranch(t, db, projectA, "main", sql.NullInt64{})
+	branchBID := seedBranch(t, db, projectB, "main", sql.NullInt64{})
+
+	got, err := repo.GetBranchByName(ctx, projectA, "main")
+	require.NoError(t, err)
+	require.Equal(t, branchAID, got.ID)
+
+	gotB, err := repo.GetBranchByName(ctx, projectB, "main")
+	require.NoError(t, err)
+	require.Equal(t, branchBID, gotB.ID)
+}
+
 var testHashCounter int64
 
 func testHashBytes() []byte {

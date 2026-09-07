@@ -331,6 +331,95 @@ func TestGetBranch_UsecaseError(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestGetDefaultBranch_Success(t *testing.T) {
+	branch, perm, repo := newTestBranchUc(t)
+	srv := New(newMockUsecaseContainer(t, branch))
+
+	projectID := snow.ID(42)
+	now := time.Now().Truncate(time.Second)
+	branchID := snow.ID(99)
+	commitID := snow.ID(7)
+
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), projectID, domain.PermissionRead).
+		Return(true)
+
+	repo.EXPECT().
+		GetDefaultBranch(gomock.Any(), projectID).
+		Return(&domain.Branch{
+			ID:          branchID,
+			ProjectID:   projectID,
+			Name:        "main",
+			IsProtected: true,
+			IsDefault:   true,
+			CommitID:    &commitID,
+			UpdatedAt:   now,
+			CreatedAt:   now,
+		}, nil)
+
+	resp, err := srv.GetDefaultBranch(context.Background(), &pb.GetDefaultBranchRequest{
+		Context: &pb.ProjectContext{Org: "org", Project: "proj"},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, resp.Branch)
+	require.Equal(t, branchID.Base36(), resp.Branch.Id)
+	require.Equal(t, "main", resp.Branch.Name)
+	require.True(t, resp.Branch.IsProtected)
+	require.True(t, resp.Branch.IsDefault)
+	require.Equal(t, commitID.Base36(), resp.Branch.GetCommitId())
+	require.Equal(t, now.Unix(), resp.Branch.CreatedAt.AsTime().Unix())
+	require.Equal(t, now.Unix(), resp.Branch.UpdatedAt.AsTime().Unix())
+}
+
+func TestGetDefaultBranch_NotFound(t *testing.T) {
+	branch, perm, repo := newTestBranchUc(t)
+	srv := New(newMockUsecaseContainer(t, branch))
+
+	projectID := snow.ID(42)
+
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), projectID, domain.PermissionRead).
+		Return(true)
+
+	repo.EXPECT().
+		GetDefaultBranch(gomock.Any(), projectID).
+		Return(nil, domain.NewErrorRecordNotFound())
+
+	_, err := srv.GetDefaultBranch(context.Background(), &pb.GetDefaultBranchRequest{
+		Context: &pb.ProjectContext{Org: "org", Project: "proj"},
+	})
+	require.Error(t, err)
+}
+
+func TestGetDefaultBranch_ResolveError(t *testing.T) {
+	srv := New(newMockUsecaseContainer(t, nil))
+
+	_, err := srv.GetDefaultBranch(context.Background(), &pb.GetDefaultBranchRequest{
+		Context: &pb.ProjectContext{Org: "unknown", Project: "unknown"},
+	})
+	require.Error(t, err)
+}
+
+func TestGetDefaultBranch_UsecaseError(t *testing.T) {
+	branch, perm, repo := newTestBranchUc(t)
+	srv := New(newMockUsecaseContainer(t, branch))
+
+	projectID := snow.ID(42)
+
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), projectID, domain.PermissionRead).
+		Return(true)
+
+	repo.EXPECT().
+		GetDefaultBranch(gomock.Any(), projectID).
+		Return(nil, errors.New("db down"))
+
+	_, err := srv.GetDefaultBranch(context.Background(), &pb.GetDefaultBranchRequest{
+		Context: &pb.ProjectContext{Org: "org", Project: "proj"},
+	})
+	require.Error(t, err)
+}
+
 func timePtrToTimestamp(t *time.Time) *timestamppb.Timestamp {
 	if t == nil {
 		return nil
