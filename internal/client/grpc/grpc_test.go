@@ -359,7 +359,7 @@ func TestTransport_Connect_Reconnect(t *testing.T) {
 
 	require.NoError(t, tr.Connect(addr2))
 	require.Equal(t, addr2, tr.url)
-	require.NotEqual(t, conn1, tr.clientConn, "connecting to a different url should replace the connection")
+	require.NotSame(t, conn1, tr.clientConn, "connecting to a different url should replace the connection")
 }
 
 func TestClient_GetDefaultBranch_Success(t *testing.T) {
