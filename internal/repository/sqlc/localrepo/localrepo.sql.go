@@ -7,17 +7,7 @@ package localrepo
 
 import (
 	"context"
-	"database/sql"
 )
-
-const chunkClear = `-- name: ChunkClear :exec
-DELETE FROM chunks
-`
-
-func (q *Queries) ChunkClear(ctx context.Context) error {
-	_, err := q.db.ExecContext(ctx, chunkClear)
-	return err
-}
 
 const chunkUpsert = `-- name: ChunkUpsert :one
 INSERT INTO chunks (hash, size_bytes)
@@ -38,67 +28,56 @@ func (q *Queries) ChunkUpsert(ctx context.Context, arg ChunkUpsertParams) (int64
 	return id, err
 }
 
-const fileChunkClear = `-- name: FileChunkClear :exec
-DELETE FROM file_chunks
-`
-
-func (q *Queries) FileChunkClear(ctx context.Context) error {
-	_, err := q.db.ExecContext(ctx, fileChunkClear)
-	return err
-}
-
 const fileChunkInsert = `-- name: FileChunkInsert :exec
-INSERT INTO file_chunks (file_id, chunk_id, chunk_index)
+INSERT INTO file_chunks (file_path, chunk_id, chunk_index)
 VALUES (?1, ?2, ?3)
+ON CONFLICT(file_path, chunk_index) DO UPDATE SET chunk_id = excluded.chunk_id
 `
 
 type FileChunkInsertParams struct {
-	FileID     int64 `json:"file_id"`
-	ChunkID    int64 `json:"chunk_id"`
-	ChunkIndex int64 `json:"chunk_index"`
+	FilePath   string `json:"file_path"`
+	ChunkID    int64  `json:"chunk_id"`
+	ChunkIndex int64  `json:"chunk_index"`
 }
 
 func (q *Queries) FileChunkInsert(ctx context.Context, arg FileChunkInsertParams) error {
-	_, err := q.db.ExecContext(ctx, fileChunkInsert, arg.FileID, arg.ChunkID, arg.ChunkIndex)
+	_, err := q.db.ExecContext(ctx, fileChunkInsert, arg.FilePath, arg.ChunkID, arg.ChunkIndex)
 	return err
 }
 
-const fileClear = `-- name: FileClear :exec
-DELETE FROM files
+const fileUpsert = `-- name: FileUpsert :exec
+INSERT INTO files (path, tree_path, hash, size_bytes, mode, is_binary, snapshot_id)
+VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+ON CONFLICT(path) DO UPDATE SET
+    tree_path = excluded.tree_path,
+    hash = excluded.hash,
+    size_bytes = excluded.size_bytes,
+    mode = excluded.mode,
+    is_binary = excluded.is_binary,
+    snapshot_id = excluded.snapshot_id
 `
 
-func (q *Queries) FileClear(ctx context.Context) error {
-	_, err := q.db.ExecContext(ctx, fileClear)
-	return err
+type FileUpsertParams struct {
+	Path       string `json:"path"`
+	TreePath   string `json:"tree_path"`
+	Hash       []byte `json:"hash"`
+	SizeBytes  int64  `json:"size_bytes"`
+	Mode       int64  `json:"mode"`
+	IsBinary   bool   `json:"is_binary"`
+	SnapshotID string `json:"snapshot_id"`
 }
 
-const fileInsert = `-- name: FileInsert :one
-INSERT INTO files (name, mode, tree_id, hash, size_bytes, is_binary)
-VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-RETURNING id
-`
-
-type FileInsertParams struct {
-	Name      string        `json:"name"`
-	Mode      int64         `json:"mode"`
-	TreeID    sql.NullInt64 `json:"tree_id"`
-	Hash      []byte        `json:"hash"`
-	SizeBytes int64         `json:"size_bytes"`
-	IsBinary  bool          `json:"is_binary"`
-}
-
-func (q *Queries) FileInsert(ctx context.Context, arg FileInsertParams) (int64, error) {
-	row := q.db.QueryRowContext(ctx, fileInsert,
-		arg.Name,
-		arg.Mode,
-		arg.TreeID,
+func (q *Queries) FileUpsert(ctx context.Context, arg FileUpsertParams) error {
+	_, err := q.db.ExecContext(ctx, fileUpsert,
+		arg.Path,
+		arg.TreePath,
 		arg.Hash,
 		arg.SizeBytes,
+		arg.Mode,
 		arg.IsBinary,
+		arg.SnapshotID,
 	)
-	var id int64
-	err := row.Scan(&id)
-	return id, err
+	return err
 }
 
 const metaGet = `-- name: MetaGet :one
@@ -131,36 +110,51 @@ func (q *Queries) MetaSet(ctx context.Context, arg MetaSetParams) error {
 	return err
 }
 
-const treeInsert = `-- name: TreeInsert :one
-INSERT INTO tree_nodes (hash, name, mode, parent_tree_id)
-VALUES (?1, ?2, ?3, ?4)
-RETURNING id
+const staleFileDelete = `-- name: StaleFileDelete :exec
+DELETE FROM files
+WHERE snapshot_id <> ?1
 `
 
-type TreeInsertParams struct {
-	Hash         []byte        `json:"hash"`
-	Name         string        `json:"name"`
-	Mode         int64         `json:"mode"`
-	ParentTreeID sql.NullInt64 `json:"parent_tree_id"`
+func (q *Queries) StaleFileDelete(ctx context.Context, snapshotID string) error {
+	_, err := q.db.ExecContext(ctx, staleFileDelete, snapshotID)
+	return err
 }
 
-func (q *Queries) TreeInsert(ctx context.Context, arg TreeInsertParams) (int64, error) {
-	row := q.db.QueryRowContext(ctx, treeInsert,
-		arg.Hash,
-		arg.Name,
-		arg.Mode,
-		arg.ParentTreeID,
-	)
-	var id int64
-	err := row.Scan(&id)
-	return id, err
-}
-
-const treeNodeClear = `-- name: TreeNodeClear :exec
+const staleTreeNodeDelete = `-- name: StaleTreeNodeDelete :exec
 DELETE FROM tree_nodes
+WHERE snapshot_id <> ?1
 `
 
-func (q *Queries) TreeNodeClear(ctx context.Context) error {
-	_, err := q.db.ExecContext(ctx, treeNodeClear)
+func (q *Queries) StaleTreeNodeDelete(ctx context.Context, snapshotID string) error {
+	_, err := q.db.ExecContext(ctx, staleTreeNodeDelete, snapshotID)
+	return err
+}
+
+const treeNodeUpsert = `-- name: TreeNodeUpsert :exec
+INSERT INTO tree_nodes (path, parent_path, hash, mode, snapshot_id)
+VALUES (?1, ?2, ?3, ?4, ?5)
+ON CONFLICT(path) DO UPDATE SET
+    parent_path = excluded.parent_path,
+    hash = excluded.hash,
+    mode = excluded.mode,
+    snapshot_id = excluded.snapshot_id
+`
+
+type TreeNodeUpsertParams struct {
+	Path       string `json:"path"`
+	ParentPath string `json:"parent_path"`
+	Hash       []byte `json:"hash"`
+	Mode       int64  `json:"mode"`
+	SnapshotID string `json:"snapshot_id"`
+}
+
+func (q *Queries) TreeNodeUpsert(ctx context.Context, arg TreeNodeUpsertParams) error {
+	_, err := q.db.ExecContext(ctx, treeNodeUpsert,
+		arg.Path,
+		arg.ParentPath,
+		arg.Hash,
+		arg.Mode,
+		arg.SnapshotID,
+	)
 	return err
 }

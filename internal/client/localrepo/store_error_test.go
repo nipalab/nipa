@@ -59,17 +59,7 @@ func TestSaveTree_BeginFails_WhenDBClosed(t *testing.T) {
 	require.Error(t, err)
 }
 
-func createTrigger(t *testing.T, db *sql.DB, triggerName, table, condition string) {
-	t.Helper()
-	createTriggerEvent(t, db, triggerName, table, "BEFORE INSERT", condition)
-}
-
-func createDeleteTrigger(t *testing.T, db *sql.DB, triggerName, table string) {
-	t.Helper()
-	createTriggerEvent(t, db, triggerName, table, "BEFORE DELETE", "")
-}
-
-func createTriggerEvent(t *testing.T, db *sql.DB, triggerName, table, event, condition string) {
+func createTrigger(t *testing.T, db *sql.DB, triggerName, table, event, condition string) {
 	t.Helper()
 	when := ""
 	if condition != "" {
@@ -81,13 +71,37 @@ func createTriggerEvent(t *testing.T, db *sql.DB, triggerName, table, event, con
 	require.NoError(t, err)
 }
 
-func TestSaveTree_Error_ClearTrigger(t *testing.T) {
+func TestSaveTree_Error_UpsertTrigger(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
 		table string
 	}{
-		{name: "file_chunks", table: "file_chunks"},
+		{name: "meta", table: "meta"},
+		{name: "tree_nodes", table: "tree_nodes"},
+		{name: "files", table: "files"},
 		{name: "chunks", table: "chunks"},
+		{name: "file_chunks", table: "file_chunks"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			target := t.TempDir()
+			lr := NewLocalRepo()
+			require.NoError(t, lr.Init(target))
+			defer lr.Close()
+
+			createTrigger(t, lr.db, "fail_upsert_"+tc.name, tc.name, "BEFORE INSERT", "")
+
+			require.Error(t, lr.SaveTree(treeFixture()))
+			require.Equal(t, 0, countRows(t, lr.db, "tree_nodes"))
+			require.Equal(t, 0, countRows(t, lr.db, "files"))
+		})
+	}
+}
+
+func TestSaveTree_Error_SweepDeleteTrigger(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		table string
+	}{
 		{name: "files", table: "files"},
 		{name: "tree_nodes", table: "tree_nodes"},
 	} {
@@ -98,76 +112,19 @@ func TestSaveTree_Error_ClearTrigger(t *testing.T) {
 			defer lr.Close()
 
 			require.NoError(t, lr.SaveTree(treeFixture()))
+			require.Equal(t, 2, countRows(t, lr.db, "tree_nodes"))
+			require.Equal(t, 1, countRows(t, lr.db, "files"))
 
-			createDeleteTrigger(t, lr.db, "fail_delete_"+tc.name, tc.table)
+			createTrigger(t, lr.db, "fail_sweep_"+tc.name, tc.name, "BEFORE DELETE", "")
 
-			require.Error(t, lr.SaveTree(&serverDomain.TreeNode{Name: "root"}))
-			require.Equal(t, 2, countRows(t, lr.db, "tree_nodes"), "failed clear should roll back")
+			require.Error(t, lr.SaveTree(&serverDomain.TreeNode{Hash: serverDomain.Hash{0x10}, Name: "empty"}))
+			require.Equal(t, 2, countRows(t, lr.db, "tree_nodes"), "failed sweep should roll back")
+			require.Equal(t, 1, countRows(t, lr.db, "files"), "failed sweep should roll back")
 		})
 	}
 }
 
-func TestSaveTree_Error_MetaSet(t *testing.T) {
-	target := t.TempDir()
-	lr := NewLocalRepo()
-	require.NoError(t, lr.Init(target))
-	defer lr.Close()
-
-	createTrigger(t, lr.db, "fail_meta", "meta", "")
-
-	require.Error(t, lr.SaveTree(treeFixture()))
-	require.Equal(t, 0, countRows(t, lr.db, "tree_nodes"))
-}
-
-func TestSaveTree_Error_TreeInsert(t *testing.T) {
-	target := t.TempDir()
-	lr := NewLocalRepo()
-	require.NoError(t, lr.Init(target))
-	defer lr.Close()
-
-	createTrigger(t, lr.db, "fail_tree_insert", "tree_nodes", "")
-
-	require.Error(t, lr.SaveTree(treeFixture()))
-	require.Equal(t, 0, countRows(t, lr.db, "tree_nodes"))
-}
-
-func TestSaveTree_Error_TreeInsertChild(t *testing.T) {
-	target := t.TempDir()
-	lr := NewLocalRepo()
-	require.NoError(t, lr.Init(target))
-	defer lr.Close()
-
-	createTrigger(t, lr.db, "fail_tree_child", "tree_nodes", "NEW.parent_tree_id IS NOT NULL")
-
-	require.Error(t, lr.SaveTree(treeFixture()))
-	require.Equal(t, 0, countRows(t, lr.db, "tree_nodes"))
-}
-
-func TestSaveTree_Error_FilePath(t *testing.T) {
-	for _, tc := range []struct {
-		name  string
-		table string
-	}{
-		{name: "files", table: "files"},
-		{name: "chunks", table: "chunks"},
-		{name: "file_chunks", table: "file_chunks"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			target := t.TempDir()
-			lr := NewLocalRepo()
-			require.NoError(t, lr.Init(target))
-			defer lr.Close()
-
-			createTrigger(t, lr.db, "fail_file_"+tc.name, tc.table, "")
-
-			require.Error(t, lr.SaveTree(treeFixture()))
-			require.Equal(t, 0, countRows(t, lr.db, "tree_nodes"))
-			require.Equal(t, 0, countRows(t, lr.db, "files"))
-		})
-	}
-}
-
-func TestSaveTree_RollsBackPreviousTree_OnError(t *testing.T) {
+func TestSaveTree_RollsBackPreviousTree_OnUpsertError(t *testing.T) {
 	target := t.TempDir()
 	lr := NewLocalRepo()
 	require.NoError(t, lr.Init(target))
@@ -176,10 +133,19 @@ func TestSaveTree_RollsBackPreviousTree_OnError(t *testing.T) {
 	require.NoError(t, lr.SaveTree(treeFixture()))
 	require.Equal(t, 2, countRows(t, lr.db, "tree_nodes"))
 
-	createTrigger(t, lr.db, "fail_meta_after", "meta", "")
+	createTrigger(t, lr.db, "fail_tree_upsert", "tree_nodes", "BEFORE INSERT", "NEW.path = '/docs'")
 
-	require.Error(t, lr.SaveTree(&serverDomain.TreeNode{Name: "new-root"}))
-	require.Equal(t, 2, countRows(t, lr.db, "tree_nodes"), "previous tree should survive a failed replace")
+	require.Error(t, lr.SaveTree(&serverDomain.TreeNode{
+		Hash: serverDomain.Hash{0x20},
+		Name: "new-root",
+		TreeChildren: []*serverDomain.TreeNode{{
+			Hash: serverDomain.Hash{0x21},
+			Name: "docs",
+		}},
+	}))
+
+	require.Equal(t, 2, countRows(t, lr.db, "tree_nodes"), "failed upsert should roll back")
+	require.Equal(t, 1, countRows(t, lr.db, "files"))
 
 	var treeHash string
 	require.NoError(t, lr.db.QueryRow(`SELECT value FROM meta WHERE key='tree_hash'`).Scan(&treeHash))
@@ -248,24 +214,18 @@ func TestSaveTree_TreeWithFilesAtRootAndChild(t *testing.T) {
 	require.NoError(t, lr.Init(target))
 	defer lr.Close()
 
-	rootHash := serverDomain.Hash{0x21}
-	dirHash := serverDomain.Hash{0x22}
-	rootFileHash := serverDomain.Hash{0x23}
-	childFileHash := serverDomain.Hash{0x24}
-	chunkHash := serverDomain.Hash{0x25}
-
-	chunk := serverDomain.Chunk{Hash: chunkHash, SizeBytes: 3}
+	chunk := serverDomain.Chunk{Hash: serverDomain.Hash{0x25}, SizeBytes: 3}
 	root := &serverDomain.TreeNode{
-		Hash: rootHash,
+		Hash: serverDomain.Hash{0x21},
 		Name: "root",
 		FileChildren: []*serverDomain.File{{
-			Hash: rootFileHash, Name: "root.txt", SizeBytes: 3, Chunks: []serverDomain.Chunk{chunk},
+			Hash: serverDomain.Hash{0x23}, Name: "root.txt", SizeBytes: 3, Chunks: []serverDomain.Chunk{chunk},
 		}},
 		TreeChildren: []*serverDomain.TreeNode{{
-			Hash: dirHash,
+			Hash: serverDomain.Hash{0x22},
 			Name: "sub",
 			FileChildren: []*serverDomain.File{{
-				Hash: childFileHash, Name: "deep.txt", SizeBytes: 3, Chunks: []serverDomain.Chunk{chunk},
+				Hash: serverDomain.Hash{0x24}, Name: "deep.txt", SizeBytes: 3, Chunks: []serverDomain.Chunk{chunk},
 			}},
 		}},
 	}

@@ -16,20 +16,19 @@ type Chunk struct {
 }
 
 type File struct {
-	ID        int64         `json:"id"`
-	Name      string        `json:"name"`
-	Mode      int64         `json:"mode"`
-	TreeID    sql.NullInt64 `json:"tree_id"`
-	Hash      []byte        `json:"hash"`
-	SizeBytes int64         `json:"size_bytes"`
-	IsBinary  bool          `json:"is_binary"`
-	CreatedAt sql.NullTime  `json:"created_at"`
+	Path       string `json:"path"`
+	TreePath   string `json:"tree_path"`
+	Hash       []byte `json:"hash"`
+	SizeBytes  int64  `json:"size_bytes"`
+	Mode       int64  `json:"mode"`
+	IsBinary   bool   `json:"is_binary"`
+	SnapshotID string `json:"snapshot_id"`
 }
 
 type FileChunk struct {
-	FileID     int64 `json:"file_id"`
-	ChunkID    int64 `json:"chunk_id"`
-	ChunkIndex int64 `json:"chunk_index"`
+	FilePath   string `json:"file_path"`
+	ChunkID    int64  `json:"chunk_id"`
+	ChunkIndex int64  `json:"chunk_index"`
 }
 
 type Meta struct {
@@ -38,9 +37,9 @@ type Meta struct {
 }
 
 type TreeNode struct {
-	ID           int64         `json:"id"`
-	Hash         []byte        `json:"hash"`
-	Name         string        `json:"name"`
-	Mode         int64         `json:"mode"`
-	ParentTreeID sql.NullInt64 `json:"parent_tree_id"`
+	Path       string `json:"path"`
+	ParentPath string `json:"parent_path"`
+	Hash       []byte `json:"hash"`
+	Mode       int64  `json:"mode"`
+	SnapshotID string `json:"snapshot_id"`
 }

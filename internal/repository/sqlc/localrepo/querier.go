@@ -9,16 +9,14 @@ import (
 )
 
 type Querier interface {
-	ChunkClear(ctx context.Context) error
 	ChunkUpsert(ctx context.Context, arg ChunkUpsertParams) (int64, error)
-	FileChunkClear(ctx context.Context) error
 	FileChunkInsert(ctx context.Context, arg FileChunkInsertParams) error
-	FileClear(ctx context.Context) error
-	FileInsert(ctx context.Context, arg FileInsertParams) (int64, error)
+	FileUpsert(ctx context.Context, arg FileUpsertParams) error
 	MetaGet(ctx context.Context, key string) (string, error)
 	MetaSet(ctx context.Context, arg MetaSetParams) error
-	TreeInsert(ctx context.Context, arg TreeInsertParams) (int64, error)
-	TreeNodeClear(ctx context.Context) error
+	StaleFileDelete(ctx context.Context, snapshotID string) error
+	StaleTreeNodeDelete(ctx context.Context, snapshotID string) error
+	TreeNodeUpsert(ctx context.Context, arg TreeNodeUpsertParams) error
 }
 
 var _ Querier = (*Queries)(nil)

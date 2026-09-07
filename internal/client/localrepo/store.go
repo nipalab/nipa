@@ -32,7 +32,7 @@ func (l *LocalRepo) Init(target string) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	db, err := sql.Open("sqlite", filepath.Join(dir, DBFile))
+	db, err := sql.Open("sqlite", filepath.Join(dir, DBFile)+"?_pragma=foreign_keys(ON)")
 	if err != nil {
 		return err
 	}
@@ -72,78 +72,73 @@ func (l *LocalRepo) SaveTree(root *domain.TreeNode) error {
 	defer func() { _ = tx.Rollback() }()
 
 	q := sqlcLocalrepo.New(tx)
-	if err := clearTree(ctx, q); err != nil {
-		return err
+
+	token := ""
+	if root != nil {
+		token = root.Hash.String()
 	}
 
-	treeHash := ""
-	if root != nil {
-		treeHash = root.Hash.String()
-	}
 	if err := q.MetaSet(ctx, sqlcLocalrepo.MetaSetParams{
 		Key:   "tree_hash",
-		Value: treeHash,
+		Value: token,
 	}); err != nil {
 		return err
 	}
 
-	if root == nil {
-		return tx.Commit()
+	if root != nil {
+		if err := l.insertTreeNode(ctx, q, root, "", "", token); err != nil {
+			return err
+		}
 	}
 
-	if err := l.insertTreeNode(ctx, q, root, sql.NullInt64{}); err != nil {
+	// Mark-and-sweep: only rows not stamped with the current snapshot are
+	// stale (files removed or renamed since the last save), so the DELETE
+	// here is bounded by the size of the change, not the whole repo.
+	if err := q.StaleFileDelete(ctx, token); err != nil {
+		return err
+	}
+	if err := q.StaleTreeNodeDelete(ctx, token); err != nil {
 		return err
 	}
 	return tx.Commit()
 }
 
-func clearTree(ctx context.Context, q *sqlcLocalrepo.Queries) error {
-	if err := q.FileChunkClear(ctx); err != nil {
-		return err
-	}
-	if err := q.ChunkClear(ctx); err != nil {
-		return err
-	}
-	if err := q.FileClear(ctx); err != nil {
-		return err
-	}
-	return q.TreeNodeClear(ctx)
-}
-
-func (l *LocalRepo) insertTreeNode(ctx context.Context, q *sqlcLocalrepo.Queries, node *domain.TreeNode, parentID sql.NullInt64) error {
-	nodeID, err := q.TreeInsert(ctx, sqlcLocalrepo.TreeInsertParams{
-		Hash:         node.Hash.Bytes(),
-		Name:         node.Name,
-		Mode:         int64(node.Mode),
-		ParentTreeID: parentID,
-	})
-	if err != nil {
+func (l *LocalRepo) insertTreeNode(ctx context.Context, q *sqlcLocalrepo.Queries, node *domain.TreeNode, parentPath, path, token string) error {
+	if err := q.TreeNodeUpsert(ctx, sqlcLocalrepo.TreeNodeUpsertParams{
+		Path:       path,
+		ParentPath: parentPath,
+		Hash:       node.Hash.Bytes(),
+		Mode:       int64(node.Mode),
+		SnapshotID: token,
+	}); err != nil {
 		return err
 	}
 
 	for _, file := range node.FileChildren {
-		if err := l.insertFile(ctx, q, nodeID, file); err != nil {
+		if err := l.insertFile(ctx, q, path, token, file); err != nil {
 			return err
 		}
 	}
 	for _, child := range node.TreeChildren {
-		if err := l.insertTreeNode(ctx, q, child, sql.NullInt64{Int64: nodeID, Valid: true}); err != nil {
+		childPath := path + "/" + child.Name
+		if err := l.insertTreeNode(ctx, q, child, path, childPath, token); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (l *LocalRepo) insertFile(ctx context.Context, q *sqlcLocalrepo.Queries, treeID int64, file *domain.File) error {
-	fileID, err := q.FileInsert(ctx, sqlcLocalrepo.FileInsertParams{
-		Name:      file.Name,
-		Mode:      int64(file.Mode),
-		TreeID:    sql.NullInt64{Int64: treeID, Valid: true},
-		Hash:      file.Hash.Bytes(),
-		SizeBytes: file.SizeBytes,
-		IsBinary:  file.IsBinary,
-	})
-	if err != nil {
+func (l *LocalRepo) insertFile(ctx context.Context, q *sqlcLocalrepo.Queries, treePath, token string, file *domain.File) error {
+	filePath := treePath + "/" + file.Name
+	if err := q.FileUpsert(ctx, sqlcLocalrepo.FileUpsertParams{
+		Path:       filePath,
+		TreePath:   treePath,
+		Hash:       file.Hash.Bytes(),
+		SizeBytes:  file.SizeBytes,
+		Mode:       int64(file.Mode),
+		IsBinary:   file.IsBinary,
+		SnapshotID: token,
+	}); err != nil {
 		return err
 	}
 	for index, chunk := range file.Chunks {
@@ -155,7 +150,7 @@ func (l *LocalRepo) insertFile(ctx context.Context, q *sqlcLocalrepo.Queries, tr
 			return err
 		}
 		if err := q.FileChunkInsert(ctx, sqlcLocalrepo.FileChunkInsertParams{
-			FileID:     fileID,
+			FilePath:   filePath,
 			ChunkID:    chunkID,
 			ChunkIndex: int64(index),
 		}); err != nil {

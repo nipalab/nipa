@@ -9,27 +9,25 @@ INSERT INTO meta (key, value)
 VALUES (:key, :value)
 ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 
--- name: FileChunkClear :exec
-DELETE FROM file_chunks;
+-- name: TreeNodeUpsert :exec
+INSERT INTO tree_nodes (path, parent_path, hash, mode, snapshot_id)
+VALUES (:path, :parent_path, :hash, :mode, :snapshot_id)
+ON CONFLICT(path) DO UPDATE SET
+    parent_path = excluded.parent_path,
+    hash = excluded.hash,
+    mode = excluded.mode,
+    snapshot_id = excluded.snapshot_id;
 
--- name: ChunkClear :exec
-DELETE FROM chunks;
-
--- name: FileClear :exec
-DELETE FROM files;
-
--- name: TreeNodeClear :exec
-DELETE FROM tree_nodes;
-
--- name: TreeInsert :one
-INSERT INTO tree_nodes (hash, name, mode, parent_tree_id)
-VALUES (:hash, :name, :mode, :parent_tree_id)
-RETURNING id;
-
--- name: FileInsert :one
-INSERT INTO files (name, mode, tree_id, hash, size_bytes, is_binary)
-VALUES (:name, :mode, :tree_id, :hash, :size_bytes, :is_binary)
-RETURNING id;
+-- name: FileUpsert :exec
+INSERT INTO files (path, tree_path, hash, size_bytes, mode, is_binary, snapshot_id)
+VALUES (:path, :tree_path, :hash, :size_bytes, :mode, :is_binary, :snapshot_id)
+ON CONFLICT(path) DO UPDATE SET
+    tree_path = excluded.tree_path,
+    hash = excluded.hash,
+    size_bytes = excluded.size_bytes,
+    mode = excluded.mode,
+    is_binary = excluded.is_binary,
+    snapshot_id = excluded.snapshot_id;
 
 -- name: ChunkUpsert :one
 INSERT INTO chunks (hash, size_bytes)
@@ -38,5 +36,14 @@ ON CONFLICT(hash) DO UPDATE SET hash = excluded.hash
 RETURNING id;
 
 -- name: FileChunkInsert :exec
-INSERT INTO file_chunks (file_id, chunk_id, chunk_index)
-VALUES (:file_id, :chunk_id, :chunk_index);
+INSERT INTO file_chunks (file_path, chunk_id, chunk_index)
+VALUES (:file_path, :chunk_id, :chunk_index)
+ON CONFLICT(file_path, chunk_index) DO UPDATE SET chunk_id = excluded.chunk_id;
+
+-- name: StaleFileDelete :exec
+DELETE FROM files
+WHERE snapshot_id <> :snapshot_id;
+
+-- name: StaleTreeNodeDelete :exec
+DELETE FROM tree_nodes
+WHERE snapshot_id <> :snapshot_id;

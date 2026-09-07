@@ -1,9 +1,9 @@
 CREATE TABLE IF NOT EXISTS tree_nodes (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    hash BLOB NOT NULL UNIQUE,
-    name TEXT NOT NULL,
+    path TEXT PRIMARY KEY,
+    parent_path TEXT NOT NULL,
+    hash BLOB NOT NULL,
     mode INTEGER NOT NULL DEFAULT 444,
-    parent_tree_id INTEGER REFERENCES tree_nodes(id) ON DELETE CASCADE
+    snapshot_id TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS chunks (
@@ -14,24 +14,28 @@ CREATE TABLE IF NOT EXISTS chunks (
 );
 
 CREATE TABLE IF NOT EXISTS files (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    mode INTEGER NOT NULL DEFAULT 444,
-    tree_id INTEGER REFERENCES tree_nodes(id) ON DELETE CASCADE,
+    path TEXT PRIMARY KEY,
+    tree_path TEXT NOT NULL REFERENCES tree_nodes(path) ON DELETE CASCADE,
     hash BLOB NOT NULL,
     size_bytes INTEGER NOT NULL,
+    mode INTEGER NOT NULL DEFAULT 444,
     is_binary BOOLEAN NOT NULL DEFAULT FALSE,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    snapshot_id TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS file_chunks (
-    file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+    file_path TEXT NOT NULL REFERENCES files(path) ON DELETE CASCADE,
     chunk_id INTEGER NOT NULL REFERENCES chunks(id),
     chunk_index INTEGER NOT NULL,
-    PRIMARY KEY (file_id, chunk_index)
+    PRIMARY KEY (file_path, chunk_index)
 );
 
 CREATE TABLE IF NOT EXISTS meta (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+
+CREATE INDEX IF NOT EXISTS idx_tree_nodes_parent ON tree_nodes(parent_path);
+CREATE INDEX IF NOT EXISTS idx_files_tree ON files(tree_path);
+CREATE INDEX IF NOT EXISTS idx_tree_nodes_snapshot ON tree_nodes(snapshot_id);
+CREATE INDEX IF NOT EXISTS idx_files_snapshot ON files(snapshot_id);
