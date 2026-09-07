@@ -82,6 +82,9 @@ func (b *Branch) GetTreeManifest(ctx context.Context, projectID snow.ID, branchN
 		return nil, err
 	}
 	if branch.CommitID == nil {
+		if path != "" && path != "/" {
+			return nil, domain.NewErrorNotFound(fmt.Sprintf("path %q not found in branch %q", path, branchName))
+		}
 		return nil, nil
 	}
 	commit, err := b.branchRepo.GetCommit(ctx, *branch.CommitID)

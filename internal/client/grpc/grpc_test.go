@@ -54,6 +54,7 @@ type fakeServer struct {
 	treeManifest     *pb.TreeManifest
 	lastBranch       string
 	lastRecursive    bool
+	lastPath         string
 }
 
 func (f *fakeServer) GetDefaultBranch(_ context.Context, _ *pb.GetDefaultBranchRequest) (*pb.GetBranchResponse, error) {
@@ -66,6 +67,7 @@ func (f *fakeServer) GetDefaultBranch(_ context.Context, _ *pb.GetDefaultBranchR
 func (f *fakeServer) GetTreeManifest(_ context.Context, req *pb.GetTreeManifestRequest) (*pb.GetTreeManifestResponse, error) {
 	f.lastBranch = req.GetBranch()
 	f.lastRecursive = req.GetRecursive()
+	f.lastPath = req.GetPath()
 	if f.treeManifestErr != nil {
 		return nil, f.treeManifestErr
 	}
@@ -421,10 +423,11 @@ func TestClient_GetTreeNodeManifest_Success(t *testing.T) {
 	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
 	require.NoError(t, c.Connect(context.Background(), addr))
 
-	got, err := c.GetTreeNodeManifest(context.Background(), "default", "sample", "main")
+	got, err := c.GetTreeNodeManifest(context.Background(), "default", "sample", "main", "src/sedotan")
 	require.NoError(t, err)
 	require.Equal(t, "main", fs.lastBranch, "client should send the requested branch")
 	require.True(t, fs.lastRecursive, "client should request a recursive manifest")
+	require.Equal(t, "src/sedotan", fs.lastPath, "client should send the requested path")
 
 	require.Equal(t, "root", got.Name)
 	require.Len(t, got.FileChildren, 1)
@@ -452,7 +455,7 @@ func TestClient_GetTreeNodeManifest_NotFound(t *testing.T) {
 	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
 	require.NoError(t, c.Connect(context.Background(), addr))
 
-	_, err := c.GetTreeNodeManifest(context.Background(), "default", "sample", "main")
+	_, err := c.GetTreeNodeManifest(context.Background(), "default", "sample", "main", "missing")
 	require.Error(t, err)
 
 	var domErr *domain.Error
@@ -464,7 +467,7 @@ func TestClient_GetTreeNodeManifest_NotFound(t *testing.T) {
 func TestClient_GetTreeNodeManifest_NotConnected(t *testing.T) {
 	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
 
-	_, err := c.GetTreeNodeManifest(context.Background(), "default", "sample", "main")
+	_, err := c.GetTreeNodeManifest(context.Background(), "default", "sample", "main", "src")
 	require.Error(t, err)
 	require.Equal(t, "not connected to a nipa server", err.Error())
 }

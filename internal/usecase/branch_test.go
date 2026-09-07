@@ -305,6 +305,26 @@ func TestBranch_GetTreeManifest_NoCommit(t *testing.T) {
 	require.Nil(t, got)
 }
 
+func TestBranch_GetTreeManifest_NoCommit_PathNotFound(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := NewMockpermissionUsecase(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).
+		Return(true)
+
+	repo.EXPECT().
+		GetBranchByName(gomock.Any(), snow.ID(1), "main").
+		Return(&domain.Branch{ID: 1, ProjectID: 1, Name: "main"}, nil)
+
+	uc := NewBranch(perm, repo)
+	_, err := uc.GetTreeManifest(context.Background(), snow.ID(1), "main", "sedotan", "", false)
+	require.Error(t, err)
+	require.True(t, domain.IsErrorNotFound(err))
+	require.Equal(t, `path "sedotan" not found in branch "main"`, err.Error())
+}
+
 func TestBranch_GetTreeManifest_Recursive(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	perm := NewMockpermissionUsecase(ctrl)

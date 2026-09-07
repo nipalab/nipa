@@ -36,7 +36,7 @@ func TestCli_Run_Success(t *testing.T) {
 	repo, _ := helperAuth(t)
 	cli := newCloneCli(repo)
 
-	withArgs(t, []string{"nipa", "clone", "http://example.com/org/project", "."}, func() {
+	withArgs(t, []string{"nipa", "clone", "http://example.com/org/project", t.TempDir()}, func() {
 		require.NoError(t, cli.Run())
 	})
 }
@@ -45,14 +45,14 @@ func TestCli_Run_CloneInvalidURL(t *testing.T) {
 	repo, _ := helperAuth(t)
 	cli := newCloneCli(repo)
 
-	withArgs(t, []string{"nipa", "clone", "http://example.com/onlyone", "."}, func() {
+	withArgs(t, []string{"nipa", "clone", "http://example.com/onlyone", t.TempDir()}, func() {
 		require.Error(t, cli.Run())
 	})
 }
 
 func TestCli_Run_NoArgs(t *testing.T) {
 	auth := usecase.NewAuth(fakeExecutor{}, &fakeStorage{}, &fakeInput{})
-	cli := newCloneCli(usecase.NewRepo(auth, fakeRepoInterface{}))
+	cli := newCloneCli(usecase.NewRepo(auth, fakeRepoInterface{}, fakeLocalRepo{}))
 
 	withArgs(t, []string{"nipa"}, func() {
 		require.NoError(t, cli.Run())
