@@ -52,13 +52,33 @@ func (f *fakeInput) PromptUsernameAndPassword() (string, string, error) {
 	return "user", "pass", f.err
 }
 
+type fakeConnector struct {
+	lastHost string
+	err      error
+}
+
+func (f *fakeConnector) Connect(_ context.Context, host string) error {
+	f.lastHost = host
+	return f.err
+}
+
+type fakeRepoInterface struct{}
+
+func (fakeRepoInterface) GetDefaultBranch(_ context.Context, _, _ string) (*serverDomain.Branch, error) {
+	return &serverDomain.Branch{Name: "main"}, nil
+}
+
+func (fakeRepoInterface) GetTreeNodeManifest(_ context.Context, _, _, _ string) (*serverDomain.TreeNode, error) {
+	return &serverDomain.TreeNode{}, nil
+}
+
 func helperAuth(t *testing.T) (*usecase.Repo, *fakeStorage) {
 	t.Helper()
 
 	token := signTestJWT(t)
 	storage := &fakeStorage{token: token}
 	auth := usecase.NewAuth(fakeExecutor{}, storage, &fakeInput{})
-	repo := usecase.NewRepo(auth)
+	repo := usecase.NewRepo(auth, fakeRepoInterface{})
 	return repo, storage
 }
 
@@ -77,16 +97,18 @@ func signTestJWT(t *testing.T) string {
 
 func newCloneCli(repo *usecase.Repo) *Cli {
 	auth := usecase.NewAuth(fakeExecutor{}, &fakeStorage{}, &fakeInput{})
-	return NewCli(&fakeUsecaseContainer{auth: auth, repo: repo})
+	return NewCli(&fakeUsecaseContainer{auth: auth, repo: repo}, &fakeConnector{})
 }
 
 func TestSetupCloneCmd_Valid(t *testing.T) {
 	repo, storage := helperAuth(t)
-	cli := newCloneCli(repo)
+	connector := &fakeConnector{}
+	cli := NewCli(&fakeUsecaseContainer{auth: usecase.NewAuth(fakeExecutor{}, storage, &fakeInput{}), repo: repo}, connector)
 
 	cmd := cli.setupCloneCmd()
 	cmd.SetArgs([]string{"http://example.com/org/project/path/to/repo", "./target"})
 	require.NoError(t, cmd.Execute())
+	require.Equal(t, "example.com", connector.lastHost)
 	require.Equal(t, "example.com", storage.lastHost)
 }
 
@@ -104,10 +126,22 @@ func TestSetupCloneCmd_RepoError(t *testing.T) {
 	wantErr := errors.New("prompt interrupted")
 	storage := &fakeStorage{loadErr: errors.New("no stored token")}
 	auth := usecase.NewAuth(fakeExecutor{}, storage, &fakeInput{err: wantErr})
-	cli := NewCli(&fakeUsecaseContainer{auth: auth, repo: usecase.NewRepo(auth)})
+	cli := NewCli(&fakeUsecaseContainer{auth: auth, repo: usecase.NewRepo(auth, fakeRepoInterface{})}, &fakeConnector{})
 
 	cmd := cli.setupCloneCmd()
 	cmd.SetArgs([]string{"http://example.com/org/project", "./target"})
 	err := cmd.Execute()
 	require.ErrorIs(t, err, wantErr)
+}
+
+func TestSetupCloneCmd_ConnectError(t *testing.T) {
+	wantErr := errors.New("connection refused")
+	connector := &fakeConnector{err: wantErr}
+	cli := NewCli(&fakeUsecaseContainer{}, connector)
+
+	cmd := cli.setupCloneCmd()
+	cmd.SetArgs([]string{"http://example.com/org/project", "./target"})
+	err := cmd.Execute()
+	require.ErrorIs(t, err, wantErr)
+	require.Equal(t, "example.com", connector.lastHost)
 }

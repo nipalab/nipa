@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"context"
+
 	"github.com/nipalab/nipa/internal/client/usecase"
 	"github.com/spf13/cobra"
 )
@@ -10,13 +12,19 @@ type usecaseContainer interface {
 	Repo() *usecase.Repo
 }
 
-type Cli struct {
-	useCase usecaseContainer
+type connector interface {
+	Connect(ctx context.Context, host string) error
 }
 
-func NewCli(useCase usecaseContainer) *Cli {
+type Cli struct {
+	useCase   usecaseContainer
+	connector connector
+}
+
+func NewCli(useCase usecaseContainer, connector connector) *Cli {
 	return &Cli{
-		useCase: useCase,
+		useCase:   useCase,
+		connector: connector,
 	}
 }
 

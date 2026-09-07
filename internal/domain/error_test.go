@@ -2,6 +2,7 @@ package domain
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -15,6 +16,12 @@ func TestError_ErrorReturnsMessage(t *testing.T) {
 	require.Equal(t, "internal server error", NewErrorInternalServer("boom").Error())
 }
 
+func TestError_Unwrap(t *testing.T) {
+	cause := errors.New("sql: no rows in result set")
+	err := &Error{Code: 404, Message: "record not found", Cause: cause}
+	require.True(t, errors.Is(err, cause))
+}
+
 func TestError_String(t *testing.T) {
 	err := NewErrorInternalServer("boom")
 	err.Message = "oops"
@@ -26,6 +33,11 @@ func TestIsErrorNotFound(t *testing.T) {
 	require.False(t, IsErrorNotFound(errors.New("plain")))
 	require.False(t, IsErrorNotFound(NewErrorUser("not found")))
 	require.True(t, IsErrorNotFound(NewErrorRecordNotFound()))
+	require.True(t, IsErrorNotFound(NewErrorNotFound("project not found")))
+}
+
+func TestIsErrorNotFound_Wrapped(t *testing.T) {
+	require.True(t, IsErrorNotFound(fmt.Errorf("wrapped: %w", NewErrorRecordNotFound())))
 }
 
 func TestIsErrorNoPermission(t *testing.T) {

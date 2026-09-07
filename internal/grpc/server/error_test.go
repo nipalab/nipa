@@ -2,6 +2,7 @@ package server
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -62,4 +63,10 @@ func TestHandleError_DomainOther(t *testing.T) {
 	require.Error(t, err)
 	require.Equal(t, codes.Internal, status.Code(err))
 	require.Equal(t, "weird code", status.Convert(err).Message())
+}
+
+func TestHandleError_WrappedDomainError(t *testing.T) {
+	err := handleError(fmt.Errorf("boom: %w", &domain.Error{Code: 404, Message: "record not found", Cause: errors.New("sql: no rows")}))
+	require.Error(t, err)
+	require.Equal(t, codes.NotFound, status.Code(err))
 }

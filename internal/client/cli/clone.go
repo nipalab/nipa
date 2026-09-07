@@ -23,7 +23,12 @@ func (c *Cli) setupCloneCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return c.useCase.Repo().Clone(context.Background(), nipaUrl.Host, nipaUrl.Org, nipaUrl.Project, branch, nipaUrl.Path, target)
+			ctx := context.Background()
+			err = c.connector.Connect(ctx, nipaUrl.Host)
+			if err != nil {
+				return err
+			}
+			return c.useCase.Repo().Clone(ctx, nipaUrl.Host, nipaUrl.Org, nipaUrl.Project, branch, nipaUrl.Path, target)
 		},
 	}
 	cmd.Flags().StringP("branch", "b", "main", "Specify the branch to clone")

@@ -17,22 +17,14 @@ import (
 type stubLoginExecutor struct {
 	usernameResult *domain.LoginResult
 	usernameErr    error
-	refreshResult  *domain.LoginResult
-	refreshErr     error
 	lastUsername   string
 	lastPassword   string
-	lastRefresh    string
 }
 
 func (s *stubLoginExecutor) LoginWithUsernamePassword(_ context.Context, _, username, password string) (*domain.LoginResult, error) {
 	s.lastUsername = username
 	s.lastPassword = password
 	return s.usernameResult, s.usernameErr
-}
-
-func (s *stubLoginExecutor) LoginWithRefreshToken(_ context.Context, _, refreshToken string) (*domain.LoginResult, error) {
-	s.lastRefresh = refreshToken
-	return s.refreshResult, s.refreshErr
 }
 
 type stubSecureStorage struct {
@@ -78,13 +70,6 @@ func signTestToken(t *testing.T, secret string) string {
 	return signed
 }
 
-func TestAuth_SetLoginExecutor(t *testing.T) {
-	executor := &stubLoginExecutor{}
-	auth := NewAuth(nil, &stubSecureStorage{}, &stubUserInput{})
-	auth.SetLoginExecutor(executor)
-	require.Equal(t, executor, auth.loginExecutor)
-}
-
 func TestAuth_LoginWithUsernamePassword_Success(t *testing.T) {
 	executor := &stubLoginExecutor{usernameResult: &domain.LoginResult{AccessToken: "tok", Host: "h"}}
 	storage := &stubSecureStorage{}
@@ -127,50 +112,6 @@ func TestAuth_LoginWithUsernamePassword_SaveError(t *testing.T) {
 	auth := NewAuth(executor, storage, nil)
 
 	err := auth.LoginWithUsernamePassword(context.Background(), "example.com", "apin", "secret")
-	require.ErrorIs(t, err, wantErr)
-}
-
-func TestAuth_LoginWithRefreshToken_Success(t *testing.T) {
-	executor := &stubLoginExecutor{refreshResult: &domain.LoginResult{AccessToken: "tok", Host: "h"}}
-	storage := &stubSecureStorage{}
-	auth := NewAuth(executor, storage, nil)
-
-	err := auth.LoginWithRefreshToken(context.Background(), "example.com", "refresh-token")
-	require.NoError(t, err)
-	require.Equal(t, "refresh-token", executor.lastRefresh)
-	require.Len(t, storage.savedTokens, 1)
-}
-
-func TestAuth_LoginWithRefreshToken_EmptyToken(t *testing.T) {
-	auth := NewAuth(&stubLoginExecutor{}, &stubSecureStorage{}, nil)
-
-	err := auth.LoginWithRefreshToken(context.Background(), "example.com", "")
-	require.Error(t, err)
-
-	var domErr *domain.Error
-	require.ErrorAs(t, err, &domErr)
-	require.Equal(t, 400, domErr.Code)
-	require.Equal(t, "refresh token cannot be empty", domErr.Message)
-}
-
-func TestAuth_LoginWithRefreshToken_ExecutorError(t *testing.T) {
-	wantErr := errors.New("refresh failed")
-	executor := &stubLoginExecutor{refreshErr: wantErr}
-	storage := &stubSecureStorage{}
-	auth := NewAuth(executor, storage, nil)
-
-	err := auth.LoginWithRefreshToken(context.Background(), "example.com", "refresh-token")
-	require.ErrorIs(t, err, wantErr)
-	require.Empty(t, storage.savedTokens)
-}
-
-func TestAuth_LoginWithRefreshToken_SaveError(t *testing.T) {
-	wantErr := errors.New("save failed")
-	executor := &stubLoginExecutor{refreshResult: &domain.LoginResult{AccessToken: "tok"}}
-	storage := &stubSecureStorage{saveErr: wantErr}
-	auth := NewAuth(executor, storage, nil)
-
-	err := auth.LoginWithRefreshToken(context.Background(), "example.com", "refresh-token")
 	require.ErrorIs(t, err, wantErr)
 }
 
@@ -234,22 +175,4 @@ func TestAuth_IsLoggedIn_InvalidToken(t *testing.T) {
 	var domErr *domain.Error
 	require.ErrorAs(t, err, &domErr)
 	require.Equal(t, 401, domErr.Code)
-}
-
-func TestAuth_GetToken_Success(t *testing.T) {
-	storage := &stubSecureStorage{loadResult: &domain.LoginResult{AccessToken: "access-token", Host: "example.com"}}
-	auth := NewAuth(nil, storage, nil)
-
-	token, err := auth.GetToken(context.Background(), "example.com")
-	require.NoError(t, err)
-	require.Equal(t, "access-token", token)
-}
-
-func TestAuth_GetToken_Error(t *testing.T) {
-	wantErr := errors.New("load failed")
-	storage := &stubSecureStorage{loadErr: wantErr}
-	auth := NewAuth(nil, storage, nil)
-
-	_, err := auth.GetToken(context.Background(), "example.com")
-	require.ErrorIs(t, err, wantErr)
 }

@@ -27,8 +27,8 @@ func seedOrg(t *testing.T, q *sqlite.Queries, name, slug string) snow.ID {
 
 func TestOrgRepositorySQLite_GetBySlug_Success(t *testing.T) {
 	ctx := context.Background()
-	_, q := newSQLiteTestDB(t)
-	repo := NewOrgRepository(q)
+	db, q := newSQLiteTestDB(t)
+	repo := NewOrgRepository(db)
 
 	orgID := seedOrg(t, q, "Acme Corp", "acme")
 
@@ -43,8 +43,8 @@ func TestOrgRepositorySQLite_GetBySlug_Success(t *testing.T) {
 
 func TestOrgRepositorySQLite_GetBySlug_SeededDefault(t *testing.T) {
 	ctx := context.Background()
-	_, q := newSQLiteTestDB(t)
-	repo := NewOrgRepository(q)
+	db, _ := newSQLiteTestDB(t)
+	repo := NewOrgRepository(db)
 
 	got, err := repo.GetBySlug(ctx, "default")
 	require.NoError(t, err)
@@ -55,8 +55,8 @@ func TestOrgRepositorySQLite_GetBySlug_SeededDefault(t *testing.T) {
 
 func TestOrgRepositorySQLite_GetBySlug_NotFound(t *testing.T) {
 	ctx := context.Background()
-	_, q := newSQLiteTestDB(t)
-	repo := NewOrgRepository(q)
+	db, _ := newSQLiteTestDB(t)
+	repo := NewOrgRepository(db)
 
 	_, err := repo.GetBySlug(ctx, "does-not-exist")
 	requireRecordNotFound(t, err)
@@ -64,8 +64,8 @@ func TestOrgRepositorySQLite_GetBySlug_NotFound(t *testing.T) {
 
 func TestOrgRepositorySQLite_GetBySlug_DeletedOrg(t *testing.T) {
 	ctx := context.Background()
-	_, q := newSQLiteTestDB(t)
-	repo := NewOrgRepository(q)
+	db, q := newSQLiteTestDB(t)
+	repo := NewOrgRepository(db)
 
 	orgID := seedOrg(t, q, "Acme Corp", "acme")
 	require.NoError(t, q.DeleteOrganization(ctx, orgID.Int64()))

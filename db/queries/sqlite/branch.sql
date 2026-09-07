@@ -26,3 +26,9 @@ SELECT *
 FROM branches
 WHERE project_id = :project_id AND id = :id
 LIMIT 1;
+
+-- name: BranchGetByName :one
+SELECT *
+FROM branches
+WHERE project_id = :project_id AND name = :name
+LIMIT 1;

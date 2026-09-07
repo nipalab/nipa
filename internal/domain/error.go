@@ -1,19 +1,23 @@
 package domain
 
 import (
+	"errors"
 	"fmt"
 )
-
-var ()
 
 type Error struct {
 	Code            int    // the code uses the HTTP just to make it simpler
 	Message         string // message show to the user
 	InternalMessage string // uses for internal logging
+	Cause           error  // underlying error, if any
 }
 
 func (e *Error) Error() string {
 	return e.Message
+}
+
+func (e *Error) Unwrap() error {
+	return e.Cause
 }
 
 func (e *Error) String() string {
@@ -32,8 +36,8 @@ func isDomainError(err error, code int) bool {
 	if err == nil {
 		return false
 	}
-	e, ok := err.(*Error)
-	if !ok {
+	var e *Error
+	if !errors.As(err, &e) {
 		return false
 	}
 	return e.Code == code
@@ -43,6 +47,13 @@ func NewErrorRecordNotFound() *Error {
 	return &Error{
 		Code:    404,
 		Message: "record not found",
+	}
+}
+
+func NewErrorNotFound(message string) *Error {
+	return &Error{
+		Code:    404,
+		Message: message,
 	}
 }
 

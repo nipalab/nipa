@@ -18,9 +18,10 @@ func (f *fakeUsecaseContainer) Auth() *usecase.Auth { return f.auth }
 func (f *fakeUsecaseContainer) Repo() *usecase.Repo { return f.repo }
 
 func TestNewCli(t *testing.T) {
-	c := NewCli(&fakeUsecaseContainer{})
+	c := NewCli(&fakeUsecaseContainer{}, &fakeConnector{})
 	require.NotNil(t, c)
 	require.Equal(t, &fakeUsecaseContainer{}, c.useCase)
+	require.Equal(t, &fakeConnector{}, c.connector)
 }
 
 func withArgs(t *testing.T, args []string, fn func()) {
@@ -51,7 +52,7 @@ func TestCli_Run_CloneInvalidURL(t *testing.T) {
 
 func TestCli_Run_NoArgs(t *testing.T) {
 	auth := usecase.NewAuth(fakeExecutor{}, &fakeStorage{}, &fakeInput{})
-	cli := newCloneCli(usecase.NewRepo(auth))
+	cli := newCloneCli(usecase.NewRepo(auth, fakeRepoInterface{}))
 
 	withArgs(t, []string{"nipa"}, func() {
 		require.NoError(t, cli.Run())

@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"encoding/binary"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -353,4 +354,288 @@ func TestBranchRepositorySQLite_GetDefaultBranch_IsolatedPerProject(t *testing.T
 
 	_, err = repo.GetDefaultBranch(ctx, projectB)
 	requireRecordNotFound(t, err)
+}
+
+func TestBranchRepositorySQLite_GetBranchByName(t *testing.T) {
+	ctx := context.Background()
+	db, q := newSQLiteTestDB(t)
+	repo := NewBranchRepository(db)
+
+	projectID := seedProject(t, q, 1, "test-project")
+	branchID := seedBranch(t, db, projectID, "develop", sql.NullInt64{})
+
+	got, err := repo.GetBranchByName(ctx, projectID, "develop")
+	require.NoError(t, err)
+	require.Equal(t, branchID, got.ID)
+	require.Equal(t, projectID, got.ProjectID)
+	require.Equal(t, "develop", got.Name)
+	require.False(t, got.IsProtected)
+	require.False(t, got.IsDefault)
+	require.Nil(t, got.CommitID)
+	require.False(t, got.Deleted)
+	require.Nil(t, got.DeletedAt)
+}
+
+func TestBranchRepositorySQLite_GetBranchByName_WithCommitID(t *testing.T) {
+	ctx := context.Background()
+	db, q := newSQLiteTestDB(t)
+	repo := NewBranchRepository(db)
+
+	projectID := seedProject(t, q, 1, "test-project")
+
+	node := newTestNode(t)
+	commitID := node.Generate()
+
+	branchID := seedBranch(t, db, projectID, "develop", sql.NullInt64{Int64: commitID.Int64(), Valid: true})
+
+	got, err := repo.GetBranchByName(ctx, projectID, "develop")
+	require.NoError(t, err)
+	require.Equal(t, branchID, got.ID)
+	require.NotNil(t, got.CommitID)
+	require.Equal(t, commitID, *got.CommitID)
+}
+
+func TestBranchRepositorySQLite_GetBranchByName_NotFound(t *testing.T) {
+	ctx := context.Background()
+	db, q := newSQLiteTestDB(t)
+	repo := NewBranchRepository(db)
+
+	projectID := seedProject(t, q, 1, "test-project")
+	seedBranch(t, db, projectID, "develop", sql.NullInt64{})
+
+	_, err := repo.GetBranchByName(ctx, projectID, "missing")
+	requireRecordNotFound(t, err)
+}
+
+func TestBranchRepositorySQLite_GetBranchByName_IsolatedPerProject(t *testing.T) {
+	ctx := context.Background()
+	db, q := newSQLiteTestDB(t)
+	repo := NewBranchRepository(db)
+
+	projectA := seedProject(t, q, 1, "project-a")
+	projectB := seedProject(t, q, 1, "project-b")
+	branchAID := seedBranch(t, db, projectA, "main", sql.NullInt64{})
+	branchBID := seedBranch(t, db, projectB, "main", sql.NullInt64{})
+
+	got, err := repo.GetBranchByName(ctx, projectA, "main")
+	require.NoError(t, err)
+	require.Equal(t, branchAID, got.ID)
+
+	gotB, err := repo.GetBranchByName(ctx, projectB, "main")
+	require.NoError(t, err)
+	require.Equal(t, branchBID, gotB.ID)
+}
+
+var testHashCounter int64
+
+func testHashBytes() []byte {
+	n := atomic.AddInt64(&testHashCounter, 1)
+	b := make([]byte, 32)
+	binary.LittleEndian.PutUint64(b, uint64(n))
+	return b
+}
+
+func seedTreeNode(t *testing.T, db *sql.DB, name string, parentID sql.NullInt64) int64 {
+	t.Helper()
+
+	res, err := db.ExecContext(context.Background(),
+		`INSERT INTO tree_nodes (hash, name, mode, parent_tree_id) VALUES (?, ?, ?, ?)`,
+		testHashBytes(), name, 0o755, parentID,
+	)
+	require.NoError(t, err)
+	id, err := res.LastInsertId()
+	require.NoError(t, err)
+	return id
+}
+
+func seedFile(t *testing.T, db *sql.DB, treeID int64, name string, sizeBytes int64) int64 {
+	t.Helper()
+
+	res, err := db.ExecContext(context.Background(),
+		`INSERT INTO files (name, mode, tree_id, hash, size_bytes, is_binary) VALUES (?, ?, ?, ?, ?, ?)`,
+		name, 0o644, treeID, testHashBytes(), sizeBytes, false,
+	)
+	require.NoError(t, err)
+	id, err := res.LastInsertId()
+	require.NoError(t, err)
+	return id
+}
+
+func seedChunk(t *testing.T, db *sql.DB, fileID int64, index int) int64 {
+	t.Helper()
+
+	res, err := db.ExecContext(context.Background(),
+		`INSERT INTO chunks (hash, size_bytes) VALUES (?, ?)`,
+		testHashBytes(), 100,
+	)
+	require.NoError(t, err)
+	chunkID, err := res.LastInsertId()
+	require.NoError(t, err)
+
+	_, err = db.ExecContext(context.Background(),
+		`INSERT INTO file_chunks (file_id, chunk_id, chunk_index) VALUES (?, ?, ?)`,
+		fileID, chunkID, index,
+	)
+	require.NoError(t, err)
+	return chunkID
+}
+
+func seedCommit(t *testing.T, db *sql.DB, q *sqlcSqlite.Queries, projectID snow.ID, treeID int64) snow.ID {
+	t.Helper()
+
+	userID := seedUser(t, q, "committer", "committer@example.com", sql.NullString{})
+	node := newTestNode(t)
+	id := node.Generate()
+
+	_, err := db.ExecContext(context.Background(),
+		`INSERT INTO commits (id, hash, project_id, tree_id, user_id, message) VALUES (?, ?, ?, ?, ?, ?)`,
+		id.Int64(), testHashBytes(), projectID.Int64(), treeID, userID.Int64(), "initial commit",
+	)
+	require.NoError(t, err)
+	return id
+}
+
+func TestBranchRepositorySQLite_GetCommit(t *testing.T) {
+	ctx := context.Background()
+	db, q := newSQLiteTestDB(t)
+	repo := NewBranchRepository(db)
+
+	projectID := seedProject(t, q, 1, "test-project")
+	treeID := seedTreeNode(t, db, "root", sql.NullInt64{})
+	commitID := seedCommit(t, db, q, projectID, treeID)
+
+	got, err := repo.GetCommit(ctx, commitID)
+	require.NoError(t, err)
+	require.Equal(t, commitID, got.ID)
+	require.Equal(t, projectID, got.ProjectID)
+	require.Equal(t, treeID, got.TreeID)
+	require.Equal(t, "initial commit", got.Message)
+	require.Nil(t, got.Parent1ID)
+	require.Nil(t, got.Parent2ID)
+}
+
+func TestBranchRepositorySQLite_GetCommit_NotFound(t *testing.T) {
+	ctx := context.Background()
+	db, _ := newSQLiteTestDB(t)
+	repo := NewBranchRepository(db)
+
+	_, err := repo.GetCommit(ctx, 999999)
+	requireRecordNotFound(t, err)
+}
+
+func TestBranchRepositorySQLite_GetTreeNode(t *testing.T) {
+	ctx := context.Background()
+	db, _ := newSQLiteTestDB(t)
+	repo := NewBranchRepository(db)
+
+	rootID := seedTreeNode(t, db, "root", sql.NullInt64{})
+	childID := seedTreeNode(t, db, "assets", sql.NullInt64{Int64: rootID, Valid: true})
+
+	got, err := repo.GetTreeNode(ctx, childID)
+	require.NoError(t, err)
+	require.Equal(t, childID, got.ID)
+	require.Equal(t, "assets", got.Name)
+	require.NotNil(t, got.ParentID)
+	require.Equal(t, rootID, *got.ParentID)
+}
+
+func TestBranchRepositorySQLite_GetTreeNode_NotFound(t *testing.T) {
+	ctx := context.Background()
+	db, _ := newSQLiteTestDB(t)
+	repo := NewBranchRepository(db)
+
+	_, err := repo.GetTreeNode(ctx, 999999)
+	requireRecordNotFound(t, err)
+}
+
+func TestBranchRepositorySQLite_GetTreeChildByName(t *testing.T) {
+	ctx := context.Background()
+	db, _ := newSQLiteTestDB(t)
+	repo := NewBranchRepository(db)
+
+	rootID := seedTreeNode(t, db, "root", sql.NullInt64{})
+	childID := seedTreeNode(t, db, "assets", sql.NullInt64{Int64: rootID, Valid: true})
+
+	got, err := repo.GetTreeChildByName(ctx, rootID, "assets")
+	require.NoError(t, err)
+	require.Equal(t, childID, got.ID)
+	require.Equal(t, "assets", got.Name)
+}
+
+func TestBranchRepositorySQLite_GetTreeChildByName_NotFound(t *testing.T) {
+	ctx := context.Background()
+	db, _ := newSQLiteTestDB(t)
+	repo := NewBranchRepository(db)
+
+	rootID := seedTreeNode(t, db, "root", sql.NullInt64{})
+
+	_, err := repo.GetTreeChildByName(ctx, rootID, "missing")
+	requireRecordNotFound(t, err)
+}
+
+func TestBranchRepositorySQLite_ListTreeChildren(t *testing.T) {
+	ctx := context.Background()
+	db, _ := newSQLiteTestDB(t)
+	repo := NewBranchRepository(db)
+
+	rootID := seedTreeNode(t, db, "root", sql.NullInt64{})
+	otherID := seedTreeNode(t, db, "other", sql.NullInt64{})
+	seedTreeNode(t, db, "b-dir", sql.NullInt64{Int64: rootID, Valid: true})
+	seedTreeNode(t, db, "a-dir", sql.NullInt64{Int64: rootID, Valid: true})
+	seedTreeNode(t, db, "unrelated", sql.NullInt64{Int64: otherID, Valid: true})
+
+	children, err := repo.ListTreeChildren(ctx, rootID)
+	require.NoError(t, err)
+	require.Len(t, children, 2)
+	require.Equal(t, "a-dir", children[0].Name)
+	require.Equal(t, "b-dir", children[1].Name)
+}
+
+func TestBranchRepositorySQLite_ListTreeChildren_Empty(t *testing.T) {
+	ctx := context.Background()
+	db, _ := newSQLiteTestDB(t)
+	repo := NewBranchRepository(db)
+
+	rootID := seedTreeNode(t, db, "root", sql.NullInt64{})
+
+	children, err := repo.ListTreeChildren(ctx, rootID)
+	require.NoError(t, err)
+	require.Empty(t, children)
+}
+
+func TestBranchRepositorySQLite_ListFilesByTree(t *testing.T) {
+	ctx := context.Background()
+	db, _ := newSQLiteTestDB(t)
+	repo := NewBranchRepository(db)
+
+	treeID := seedTreeNode(t, db, "root", sql.NullInt64{})
+	fileID := seedFile(t, db, treeID, "a.txt", 10)
+	chunkIdx1 := seedChunk(t, db, fileID, 1)
+	chunkIdx0 := seedChunk(t, db, fileID, 0)
+	seedFile(t, db, treeID, "b.txt", 20)
+
+	files, err := repo.ListFilesByTree(ctx, treeID)
+	require.NoError(t, err)
+	require.Len(t, files, 2)
+
+	require.Equal(t, "a.txt", files[0].Name)
+	require.Equal(t, int64(10), files[0].SizeBytes)
+	require.Len(t, files[0].Chunks, 2)
+	require.Equal(t, chunkIdx0, files[0].Chunks[0].ID)
+	require.Equal(t, chunkIdx1, files[0].Chunks[1].ID)
+
+	require.Equal(t, "b.txt", files[1].Name)
+	require.Empty(t, files[1].Chunks)
+}
+
+func TestBranchRepositorySQLite_ListFilesByTree_Empty(t *testing.T) {
+	ctx := context.Background()
+	db, _ := newSQLiteTestDB(t)
+	repo := NewBranchRepository(db)
+
+	treeID := seedTreeNode(t, db, "root", sql.NullInt64{})
+
+	files, err := repo.ListFilesByTree(ctx, treeID)
+	require.NoError(t, err)
+	require.Empty(t, files)
 }

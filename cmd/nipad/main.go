@@ -43,6 +43,8 @@ func main() {
 	}
 	slog.Info("database migration completed")
 
+	orgRepo := sqlite.NewOrgRepository(dbConn)
+	projectRepo := sqlite.NewProjectRepository(dbConn)
 	authRepo := sqlite.NewAuthRepository(dbConn)
 	userRepo := sqlite.NewUserRepository(dbConn)
 
@@ -52,9 +54,12 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	authUsecase := usecase.NewAuth(cfg.JWTKey, passwordHasher, userRepo, authRepo)
 	reg := &Registry{
-		authUsecase: usecase.NewAuth(cfg.JWTKey, passwordHasher, userRepo, authRepo),
-		userUsecase: usecase.NewUser(snowUser),
+		authUsecase:   authUsecase,
+		userUsecase:   usecase.NewUser(snowUser),
+		commonUsecase: usecase.NewCommon(orgRepo, projectRepo),
+		branchUsecase: usecase.NewBranch(authUsecase, sqlite.NewBranchRepository(dbConn)),
 	}
 
 	apiApp := api.NewAPI(reg)

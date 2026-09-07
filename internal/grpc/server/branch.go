@@ -12,7 +12,7 @@ import (
 )
 
 func (n *nipaServer) GetListBranch(ctx context.Context, req *pb.GetListBranchRequest) (*pb.GetListBranchResponse, error) {
-	projectID, err := snow.ParseBase36(req.Context.ProjectId)
+	_, project, err := n.uc.Common().ResolveBySlug(ctx, req.Context.Org, req.Context.Project)
 	if err != nil {
 		return nil, handleError(err)
 	}
@@ -28,7 +28,7 @@ func (n *nipaServer) GetListBranch(ctx context.Context, req *pb.GetListBranchReq
 			return nil, handleError(err)
 		}
 	}
-	branches, err := n.uc.Branch().ListBranches(ctx, projectID, int(req.Limit), lastUpdate, lastID)
+	branches, err := n.uc.Branch().ListBranches(ctx, project.ID, int(req.Limit), lastUpdate, lastID)
 	if err != nil {
 		return nil, handleError(err)
 	}
@@ -41,7 +41,7 @@ func (n *nipaServer) GetListBranch(ctx context.Context, req *pb.GetListBranchReq
 }
 
 func (n *nipaServer) GetBranch(ctx context.Context, req *pb.GetBranchRequest) (*pb.GetBranchResponse, error) {
-	projectID, err := snow.ParseBase36(req.Context.ProjectId)
+	_, project, err := n.uc.Common().ResolveBySlug(ctx, req.Context.Org, req.Context.Project)
 	if err != nil {
 		return nil, handleError(err)
 	}
@@ -49,12 +49,43 @@ func (n *nipaServer) GetBranch(ctx context.Context, req *pb.GetBranchRequest) (*
 	if err != nil {
 		return nil, handleError(err)
 	}
-	branch, err := n.uc.Branch().GetByProjectIDAndID(ctx, projectID, branchID)
+	branch, err := n.uc.Branch().GetByProjectIDAndID(ctx, project.ID, branchID)
 	if err != nil {
 		return nil, handleError(err)
 	}
 	return &pb.GetBranchResponse{
 		Branch: domainBranchToPB(branch),
+	}, nil
+}
+
+func (n *nipaServer) GetDefaultBranch(ctx context.Context, req *pb.GetDefaultBranchRequest) (*pb.GetBranchResponse, error) {
+	_, project, err := n.uc.Common().ResolveBySlug(ctx, req.Context.Org, req.Context.Project)
+	if err != nil {
+		return nil, handleError(err)
+	}
+	branch, err := n.uc.Branch().GetDefault(ctx, project.ID)
+	if err != nil {
+		return nil, handleError(err)
+	}
+	return &pb.GetBranchResponse{
+		Branch: domainBranchToPB(branch),
+	}, nil
+}
+
+func (n *nipaServer) GetTreeManifest(ctx context.Context, req *pb.GetTreeManifestRequest) (*pb.GetTreeManifestResponse, error) {
+	_, project, err := n.uc.Common().ResolveBySlug(ctx, req.Context.Org, req.Context.Project)
+	if err != nil {
+		return nil, handleError(err)
+	}
+
+	root, err := n.uc.Branch().GetTreeManifest(ctx, project.ID, req.Branch, req.Path, req.GetTreeHash(), req.Recursive)
+	if err != nil {
+		return nil, handleError(err)
+	}
+
+	return &pb.GetTreeManifestResponse{
+		Branch:   req.Branch,
+		RootTree: domainTreeToPB(root),
 	}, nil
 }
 
@@ -64,8 +95,57 @@ func domainBranchToPB(branch *domain.Branch) *pb.Branch {
 		Name:        branch.Name,
 		IsProtected: branch.IsProtected,
 		IsDefault:   branch.IsDefault,
-		CommitId:    branch.CommitID.Base36(),
+		CommitId:    snowPtrToStringPtr(branch.CommitID),
 		UpdatedAt:   timestamppb.New(branch.UpdatedAt),
 		CreatedAt:   timestamppb.New(branch.CreatedAt),
+	}
+}
+
+func snowPtrToStringPtr(ID *snow.ID) *string {
+	if ID == nil {
+		return nil
+	}
+	val := ID.Base36()
+	return &val
+}
+
+func domainTreeToPB(node *domain.TreeNode) *pb.TreeManifest {
+	if node == nil {
+		return nil
+	}
+	manifest := &pb.TreeManifest{
+		TreeHash: node.Hash.String(),
+		Path:     node.Name,
+	}
+	for _, file := range node.FileChildren {
+		manifest.Files = append(manifest.Files, domainFileToPB(file))
+	}
+	for _, child := range node.TreeChildren {
+		manifest.SubTrees = append(manifest.SubTrees, domainTreeToPB(child))
+	}
+	return manifest
+}
+
+func domainFileToPB(file *domain.File) *pb.FileNode {
+	node := &pb.FileNode{
+		Path:      file.Name,
+		Mode:      domainFileModeToPB(file.Mode),
+		SizeBytes: file.SizeBytes,
+		IsBinary:  file.IsBinary,
+	}
+	for _, chunk := range file.Chunks {
+		node.ChunkHashes = append(node.ChunkHashes, chunk.Hash.String())
+	}
+	return node
+}
+
+func domainFileModeToPB(mode int) pb.FileMode {
+	switch mode {
+	case 444, 0o444:
+		return pb.FileMode_FILE_MODE_READ_ONLY
+	case 755, 0o755:
+		return pb.FileMode_FILE_MODE_EXECUTABLE
+	default:
+		return pb.FileMode_FILE_MODE_READ_WRITE
 	}
 }

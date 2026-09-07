@@ -6,19 +6,24 @@ package sqlite
 
 import (
 	"context"
+	"database/sql"
 )
 
 type Querier interface {
 	BranchCreate(ctx context.Context, arg BranchCreateParams) error
 	BranchGet(ctx context.Context, arg BranchGetParams) (Branch, error)
+	BranchGetByName(ctx context.Context, arg BranchGetByNameParams) (Branch, error)
 	BranchGetDefault(ctx context.Context, projectID int64) (Branch, error)
 	BranchList(ctx context.Context, arg BranchListParams) ([]Branch, error)
 	BranchRemoveDefault(ctx context.Context, projectID int64) error
 	BranchUpdate(ctx context.Context, arg BranchUpdateParams) error
+	ChunkListByFile(ctx context.Context, fileID int64) ([]Chunk, error)
+	CommitGet(ctx context.Context, id int64) (Commit, error)
 	CreateOrganization(ctx context.Context, arg CreateOrganizationParams) (Organization, error)
 	CreateProject(ctx context.Context, arg CreateProjectParams) (Project, error)
 	DeleteOrganization(ctx context.Context, id int64) error
 	DeleteProject(ctx context.Context, id int64) error
+	FileListByTree(ctx context.Context, treeID sql.NullInt64) ([]File, error)
 	GetOrganization(ctx context.Context, id int64) (Organization, error)
 	GetOrganizationBySlug(ctx context.Context, slug string) (Organization, error)
 	GetProject(ctx context.Context, id int64) (Project, error)
@@ -28,6 +33,9 @@ type Querier interface {
 	ListProjectsByOrgId(ctx context.Context, orgID int64) ([]Project, error)
 	RefreshTokenCreate(ctx context.Context, arg RefreshTokenCreateParams) (int64, error)
 	RefreshTokenDeleteByToken(ctx context.Context, token string) (RefreshToken, error)
+	TreeNodeGet(ctx context.Context, id int64) (TreeNode, error)
+	TreeNodeGetChildByName(ctx context.Context, arg TreeNodeGetChildByNameParams) (TreeNode, error)
+	TreeNodeListChildren(ctx context.Context, parentTreeID sql.NullInt64) ([]TreeNode, error)
 	UserCreate(ctx context.Context, arg UserCreateParams) (int64, error)
 	UserDeleteByID(ctx context.Context, id int64) error
 	UserGetByEmail(ctx context.Context, email string) (User, error)
