@@ -10,6 +10,16 @@ sql:
         emit_json_tags: true
         emit_interface: true
 
+  - engine: "sqlite"
+    schema: "internal/client/localrepo/schema"
+    queries: "internal/client/localrepo/queries"
+    gen:
+      go:
+        package: "localrepo"
+        out: "internal/repository/sqlc/localrepo"
+        emit_json_tags: true
+        emit_interface: true
+
   - engine: "postgresql"
     schema: "db/migrations/postgres"
     queries: "db/queries/postgres"

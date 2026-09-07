@@ -1,55 +1,22 @@
 package localrepo
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"os"
 	"path/filepath"
 
+	_ "embed"
+
 	_ "modernc.org/sqlite"
 
 	"github.com/nipalab/nipa/internal/domain"
+	sqlcLocalrepo "github.com/nipalab/nipa/internal/repository/sqlc/localrepo"
 )
 
-const schemaSQL = `
-CREATE TABLE IF NOT EXISTS tree_nodes (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    hash BLOB NOT NULL UNIQUE,
-    name TEXT NOT NULL,
-    mode INTEGER NOT NULL DEFAULT 444,
-    parent_tree_id INTEGER REFERENCES tree_nodes(id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS chunks (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    hash BLOB NOT NULL UNIQUE,
-    size_bytes INTEGER NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS files (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    mode INTEGER NOT NULL DEFAULT 444,
-    tree_id INTEGER REFERENCES tree_nodes(id) ON DELETE CASCADE,
-    hash BLOB NOT NULL,
-    size_bytes INTEGER NOT NULL,
-    is_binary BOOLEAN NOT NULL DEFAULT FALSE,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS file_chunks (
-    file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
-    chunk_id INTEGER NOT NULL REFERENCES chunks(id),
-    chunk_index INTEGER NOT NULL,
-    PRIMARY KEY (file_id, chunk_index)
-);
-
-CREATE TABLE IF NOT EXISTS meta (
-    key TEXT PRIMARY KEY,
-    value TEXT NOT NULL
-);
-`
+//go:embed schema/schema.sql
+var schemaSQL string
 
 type LocalRepo struct {
 	target string
@@ -97,109 +64,103 @@ func (l *LocalRepo) SaveTree(root *domain.TreeNode) error {
 		return errors.New("local repo not initialized")
 	}
 
+	ctx := context.Background()
 	tx, err := l.db.Begin()
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	if err := clearTree(tx); err != nil {
+	q := sqlcLocalrepo.New(tx)
+	if err := clearTree(ctx, q); err != nil {
 		return err
 	}
 
-	if _, err := tx.Exec(`INSERT INTO meta (key, value) VALUES (?, ?)
-		ON CONFLICT(key) DO UPDATE SET value = excluded.value`, "tree_hash", root.Hash.String()); err != nil {
+	treeHash := ""
+	if root != nil {
+		treeHash = root.Hash.String()
+	}
+	if err := q.MetaSet(ctx, sqlcLocalrepo.MetaSetParams{
+		Key:   "tree_hash",
+		Value: treeHash,
+	}); err != nil {
 		return err
 	}
 
-	var parent sql.NullInt64
-	if err := l.insertTreeNode(tx, root, parent); err != nil {
+	if root == nil {
+		return tx.Commit()
+	}
+
+	if err := l.insertTreeNode(ctx, q, root, sql.NullInt64{}); err != nil {
 		return err
 	}
 	return tx.Commit()
 }
 
-func clearTree(tx *sql.Tx) error {
-	statements := []string{
-		`DELETE FROM file_chunks`,
-		`DELETE FROM files`,
-		`DELETE FROM chunks`,
-		`DELETE FROM tree_nodes`,
-	}
-	for _, stmt := range statements {
-		if _, err := tx.Exec(stmt); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (l *LocalRepo) insertTreeNode(tx *sql.Tx, node *domain.TreeNode, parentID sql.NullInt64) error {
-	res, err := tx.Exec(`INSERT INTO tree_nodes (hash, name, mode, parent_tree_id) VALUES (?, ?, ?, ?)`,
-		node.Hash.Bytes(), node.Name, node.Mode, nullableInt64(parentID))
-	if err != nil {
+func clearTree(ctx context.Context, q *sqlcLocalrepo.Queries) error {
+	if err := q.FileChunkClear(ctx); err != nil {
 		return err
 	}
-	nodeID, err := res.LastInsertId()
+	if err := q.ChunkClear(ctx); err != nil {
+		return err
+	}
+	if err := q.FileClear(ctx); err != nil {
+		return err
+	}
+	return q.TreeNodeClear(ctx)
+}
+
+func (l *LocalRepo) insertTreeNode(ctx context.Context, q *sqlcLocalrepo.Queries, node *domain.TreeNode, parentID sql.NullInt64) error {
+	nodeID, err := q.TreeInsert(ctx, sqlcLocalrepo.TreeInsertParams{
+		Hash:         node.Hash.Bytes(),
+		Name:         node.Name,
+		Mode:         int64(node.Mode),
+		ParentTreeID: parentID,
+	})
 	if err != nil {
 		return err
 	}
 
 	for _, file := range node.FileChildren {
-		if err := l.insertFile(tx, nodeID, file); err != nil {
+		if err := l.insertFile(ctx, q, nodeID, file); err != nil {
 			return err
 		}
 	}
 	for _, child := range node.TreeChildren {
-		if err := l.insertTreeNode(tx, child, sql.NullInt64{Int64: nodeID, Valid: true}); err != nil {
+		if err := l.insertTreeNode(ctx, q, child, sql.NullInt64{Int64: nodeID, Valid: true}); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (l *LocalRepo) insertFile(tx *sql.Tx, treeID int64, file *domain.File) error {
-	res, err := tx.Exec(`INSERT INTO files (name, mode, tree_id, hash, size_bytes, is_binary) VALUES (?, ?, ?, ?, ?, ?)`,
-		file.Name, file.Mode, treeID, file.Hash.Bytes(), file.SizeBytes, file.IsBinary)
-	if err != nil {
-		return err
-	}
-	fileID, err := res.LastInsertId()
+func (l *LocalRepo) insertFile(ctx context.Context, q *sqlcLocalrepo.Queries, treeID int64, file *domain.File) error {
+	fileID, err := q.FileInsert(ctx, sqlcLocalrepo.FileInsertParams{
+		Name:      file.Name,
+		Mode:      int64(file.Mode),
+		TreeID:    sql.NullInt64{Int64: treeID, Valid: true},
+		Hash:      file.Hash.Bytes(),
+		SizeBytes: file.SizeBytes,
+		IsBinary:  file.IsBinary,
+	})
 	if err != nil {
 		return err
 	}
 	for index, chunk := range file.Chunks {
-		chunkID, err := l.upsertChunk(tx, chunk.Hash)
+		chunkID, err := q.ChunkUpsert(ctx, sqlcLocalrepo.ChunkUpsertParams{
+			Hash:      chunk.Hash.Bytes(),
+			SizeBytes: chunk.SizeBytes,
+		})
 		if err != nil {
 			return err
 		}
-		if _, err := tx.Exec(`INSERT INTO file_chunks (file_id, chunk_id, chunk_index) VALUES (?, ?, ?)`,
-			fileID, chunkID, index); err != nil {
+		if err := q.FileChunkInsert(ctx, sqlcLocalrepo.FileChunkInsertParams{
+			FileID:     fileID,
+			ChunkID:    chunkID,
+			ChunkIndex: int64(index),
+		}); err != nil {
 			return err
 		}
 	}
 	return nil
-}
-
-func (l *LocalRepo) upsertChunk(tx *sql.Tx, hash domain.Hash) (int64, error) {
-	var id int64
-	err := tx.QueryRow(`SELECT id FROM chunks WHERE hash = ?`, hash.Bytes()).Scan(&id)
-	if err == nil {
-		return id, nil
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
-		return 0, err
-	}
-	res, err := tx.Exec(`INSERT INTO chunks (hash, size_bytes) VALUES (?, 0)`, hash.Bytes())
-	if err != nil {
-		return 0, err
-	}
-	return res.LastInsertId()
-}
-
-func nullableInt64(v sql.NullInt64) any {
-	if !v.Valid {
-		return nil
-	}
-	return v.Int64
 }

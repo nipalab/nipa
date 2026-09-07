@@ -38,6 +38,20 @@ func TestSaveConfig_NotInitialized(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestInit_Idempotent(t *testing.T) {
+	target := t.TempDir()
+	lr := NewLocalRepo()
+	require.NoError(t, lr.Init(target))
+	require.NoError(t, lr.Init(target))
+	require.NoError(t, lr.Init(target))
+	lr.Close()
+
+	again := NewLocalRepo()
+	require.NoError(t, again.Init(target))
+	require.NoError(t, again.SaveTree(nil))
+	again.Close()
+}
+
 func TestSaveTree_Flattens(t *testing.T) {
 	target := t.TempDir()
 	lr := NewLocalRepo()
@@ -75,6 +89,22 @@ func TestSaveTree_ReplacesPrevious(t *testing.T) {
 
 	require.Equal(t, 2, countRows(t, lr.db, "tree_nodes"))
 	require.Equal(t, 1, countRows(t, lr.db, "files"))
+}
+
+func TestSaveTree_Empty(t *testing.T) {
+	target := t.TempDir()
+	lr := NewLocalRepo()
+	require.NoError(t, lr.Init(target))
+	defer lr.Close()
+
+	require.NoError(t, lr.SaveTree(nil))
+
+	require.Equal(t, 0, countRows(t, lr.db, "tree_nodes"))
+	require.Equal(t, 0, countRows(t, lr.db, "files"))
+
+	var treeHash string
+	require.NoError(t, lr.db.QueryRow(`SELECT value FROM meta WHERE key='tree_hash'`).Scan(&treeHash))
+	require.Equal(t, "", treeHash)
 }
 
 func TestSaveTree_NotInitialized(t *testing.T) {

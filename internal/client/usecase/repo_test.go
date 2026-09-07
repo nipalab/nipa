@@ -150,6 +150,22 @@ func TestRepo_Clone_MalformedToken(t *testing.T) {
 	require.Equal(t, "secret", executor.lastPassword)
 }
 
+func TestRepo_Clone_EmptyRepo(t *testing.T) {
+	token := signTestToken(t, "secret")
+	storage := &stubSecureStorage{loadResult: &domain.LoginResult{AccessToken: token}}
+	auth := NewAuth(nil, storage, nil)
+	local := &stubLocalRepo{}
+	repo := NewRepo(auth, &stubRepoInterface{
+		defaultBranch: &serverDomain.Branch{Name: "main"},
+		manifest:      nil,
+	}, local)
+
+	err := repo.Clone(context.Background(), "http://example.com/org/project", "example.com", "org", "project", "main", "/src", "/target")
+	require.NoError(t, err)
+	require.Equal(t, domain.Config{Url: "http://example.com/org/project", Branch: "main"}, local.config)
+	require.Nil(t, local.tree)
+}
+
 func TestRepo_Clone_Error_GetDefaultBranchFailed(t *testing.T) {
 	wantErr := errors.New("get default branch failed")
 	token := signTestToken(t, "secret")
