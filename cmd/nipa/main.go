@@ -6,6 +6,7 @@ import (
 
 	"github.com/nipalab/nipa/internal/client/cli"
 	"github.com/nipalab/nipa/internal/client/grpc"
+	"github.com/nipalab/nipa/internal/client/localrepo"
 	"github.com/nipalab/nipa/internal/client/securestorage"
 	"github.com/nipalab/nipa/internal/client/usecase"
 )
@@ -19,7 +20,7 @@ func main() {
 	grpcClient := grpc.NewClient(transport, session)
 
 	authUsecase := usecase.NewAuth(grpcClient, secureStorage, prompter)
-	repoUsecase := usecase.NewRepo(authUsecase, grpcClient)
+	repoUsecase := usecase.NewRepo(authUsecase, grpcClient, localrepo.NewLocalRepo())
 	registry := &Registry{
 		authUsecase: authUsecase,
 		repoUsecase: repoUsecase,

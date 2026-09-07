@@ -52,7 +52,7 @@ func TestCli_Run_CloneInvalidURL(t *testing.T) {
 
 func TestCli_Run_NoArgs(t *testing.T) {
 	auth := usecase.NewAuth(fakeExecutor{}, &fakeStorage{}, &fakeInput{})
-	cli := newCloneCli(usecase.NewRepo(auth, fakeRepoInterface{}))
+	cli := newCloneCli(usecase.NewRepo(auth, fakeRepoInterface{}, fakeLocalRepo{}))
 
 	withArgs(t, []string{"nipa"}, func() {
 		require.NoError(t, cli.Run())

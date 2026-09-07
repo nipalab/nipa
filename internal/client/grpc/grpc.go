@@ -223,6 +223,9 @@ func toServerTreeNode(manifest *pb.TreeManifest) *serverDomain.TreeNode {
 		TreeChildren: make([]*serverDomain.TreeNode, 0, len(manifest.GetSubTrees())),
 		FileChildren: make([]*serverDomain.File, 0, len(manifest.GetFiles())),
 	}
+	if hash, err := decodeHash(manifest.GetTreeHash()); err == nil {
+		node.Hash = hash
+	}
 	for _, sub := range manifest.GetSubTrees() {
 		node.TreeChildren = append(node.TreeChildren, toServerTreeNode(sub))
 	}

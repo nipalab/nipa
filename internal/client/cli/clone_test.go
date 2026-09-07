@@ -25,10 +25,10 @@ func (fakeExecutor) LoginWithRefreshToken(_ context.Context, _, _ string) (*doma
 }
 
 type fakeStorage struct {
-	token   string
-	loadErr error
+	token    string
+	loadErr  error
 	lastHost string
-	saved   []*domain.LoginResult
+	saved    []*domain.LoginResult
 }
 
 func (s *fakeStorage) SaveToken(data *domain.LoginResult) error {
@@ -72,13 +72,19 @@ func (fakeRepoInterface) GetTreeNodeManifest(_ context.Context, _, _, _ string) 
 	return &serverDomain.TreeNode{}, nil
 }
 
+type fakeLocalRepo struct{}
+
+func (fakeLocalRepo) Init(_ string) error                     { return nil }
+func (fakeLocalRepo) SaveConfig(_ domain.Config) error        { return nil }
+func (fakeLocalRepo) SaveTree(_ *serverDomain.TreeNode) error { return nil }
+
 func helperAuth(t *testing.T) (*usecase.Repo, *fakeStorage) {
 	t.Helper()
 
 	token := signTestJWT(t)
 	storage := &fakeStorage{token: token}
 	auth := usecase.NewAuth(fakeExecutor{}, storage, &fakeInput{})
-	repo := usecase.NewRepo(auth, fakeRepoInterface{})
+	repo := usecase.NewRepo(auth, fakeRepoInterface{}, fakeLocalRepo{})
 	return repo, storage
 }
 
@@ -126,7 +132,7 @@ func TestSetupCloneCmd_RepoError(t *testing.T) {
 	wantErr := errors.New("prompt interrupted")
 	storage := &fakeStorage{loadErr: errors.New("no stored token")}
 	auth := usecase.NewAuth(fakeExecutor{}, storage, &fakeInput{err: wantErr})
-	cli := NewCli(&fakeUsecaseContainer{auth: auth, repo: usecase.NewRepo(auth, fakeRepoInterface{})}, &fakeConnector{})
+	cli := NewCli(&fakeUsecaseContainer{auth: auth, repo: usecase.NewRepo(auth, fakeRepoInterface{}, fakeLocalRepo{})}, &fakeConnector{})
 
 	cmd := cli.setupCloneCmd()
 	cmd.SetArgs([]string{"http://example.com/org/project", "./target"})
