@@ -18,12 +18,12 @@ func (c *Cli) setupBranchCmd() *cobra.Command {
 		SilenceUsage:  true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			all, _ := cmd.Flags().GetBool("all")
-			if all {
-				return c.listAllBranches(cmd)
-			}
 			cfg, err := c.loadConfig()
 			if err != nil {
 				return err
+			}
+			if all {
+				return c.listAllBranches(cmd, cfg)
 			}
 			cmd.Println(cfg.Branch)
 			return nil
@@ -46,11 +46,7 @@ func (c *Cli) loadConfig() (*domain.Config, error) {
 	return cfg, nil
 }
 
-func (c *Cli) listAllBranches(cmd *cobra.Command) error {
-	cfg, err := c.loadConfig()
-	if err != nil {
-		return err
-	}
+func (c *Cli) listAllBranches(cmd *cobra.Command, cfg *domain.Config) error {
 	nipaUrl, err := domain.ParseNipaUrl(cfg.Url)
 	if err != nil {
 		return err
@@ -65,7 +61,7 @@ func (c *Cli) listAllBranches(cmd *cobra.Command) error {
 	}
 	for _, b := range branches {
 		line := b.Name
-		if b.IsDefault {
+		if line == cfg.Branch {
 			line += " *"
 		}
 		cmd.Println(line)

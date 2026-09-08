@@ -105,7 +105,7 @@ func TestSetupBranchCmd_DepthMax32(t *testing.T) {
 }
 
 func TestSetupBranchCmd_All(t *testing.T) {
-	root := setupRepo(t, "main")
+	root := setupRepo(t, "feature")
 	cli := newBranchCli(
 		&serverDomain.Branch{Name: "main", IsDefault: true},
 		&serverDomain.Branch{Name: "dev"},
@@ -114,7 +114,7 @@ func TestSetupBranchCmd_All(t *testing.T) {
 
 	out, err := runBranchCmd(t, cli, root, "-a")
 	require.NoError(t, err)
-	require.Equal(t, "main *\ndev\nfeature\n", out)
+	require.Equal(t, "main\ndev\nfeature *\n", out)
 }
 
 func TestSetupBranchCmd_All_NotARepo(t *testing.T) {
