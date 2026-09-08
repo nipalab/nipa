@@ -72,6 +72,10 @@ func (fakeRepoInterface) GetTreeNodeManifest(_ context.Context, _, _, _, _ strin
 	return &serverDomain.TreeNode{}, nil
 }
 
+func (fakeRepoInterface) ListBranches(_ context.Context, _, _ string) ([]*serverDomain.Branch, error) {
+	return nil, nil
+}
+
 type fakeLocalRepo struct{}
 
 func (fakeLocalRepo) Init(_ string) error                     { return nil }

@@ -12,6 +12,7 @@ import (
 type repoInterface interface {
 	GetDefaultBranch(ctx context.Context, org, project string) (*serverDomain.Branch, error)
 	GetTreeNodeManifest(ctx context.Context, org, project, branch, path string) (*serverDomain.TreeNode, error)
+	ListBranches(ctx context.Context, org, project string) ([]*serverDomain.Branch, error)
 }
 
 type localRepo interface {
@@ -60,6 +61,13 @@ func (r *Repo) Clone(ctx context.Context, url, host, org, project, branch, path,
 		return err
 	}
 	return r.localRepo.SaveTree(root)
+}
+
+func (r *Repo) ListBranches(ctx context.Context, host, org, project string) ([]*serverDomain.Branch, error) {
+	if err := r.auth.MakeSureLoggedIn(ctx, host); err != nil {
+		return nil, err
+	}
+	return r.repoInterface.ListBranches(ctx, org, project)
 }
 
 func ensureEmptyTarget(target string) error {

@@ -12,6 +12,94 @@ import (
 	serverDomain "github.com/nipalab/nipa/internal/domain"
 )
 
+func TestFindRepoRoot(t *testing.T) {
+	target := t.TempDir()
+	lr := NewLocalRepo()
+	require.NoError(t, lr.Init(target))
+	require.NoError(t, lr.SaveConfig(domain.Config{Url: "http://example.com/org/project", Branch: "main"}))
+	lr.Close()
+
+	withWD(t, target, func() {
+		root, err := FindRepoRoot()
+		require.NoError(t, err)
+		require.Equal(t, target, root)
+	})
+}
+
+func TestFindRepoRoot_AtChildDir(t *testing.T) {
+	target := t.TempDir()
+	lr := NewLocalRepo()
+	require.NoError(t, lr.Init(target))
+	require.NoError(t, lr.SaveConfig(domain.Config{Url: "http://example.com/org/project", Branch: "main"}))
+	lr.Close()
+
+	child := filepath.Join(target, "a", "b", "c")
+	require.NoError(t, os.MkdirAll(child, 0o755))
+
+	withWD(t, child, func() {
+		root, err := FindRepoRoot()
+		require.NoError(t, err)
+		require.Equal(t, target, root)
+	})
+}
+
+func TestFindRepoRoot_NotFound(t *testing.T) {
+	withWD(t, t.TempDir(), func() {
+		_, err := FindRepoRoot()
+		require.Error(t, err)
+		require.Equal(t, "not a nipa repository (or any of the parent directories)", err.Error())
+	})
+}
+
+func TestFindRepoRoot_MaxDepth(t *testing.T) {
+	target := t.TempDir()
+	lr := NewLocalRepo()
+	require.NoError(t, lr.Init(target))
+	require.NoError(t, lr.SaveConfig(domain.Config{Url: "http://example.com/org/project", Branch: "main"}))
+	lr.Close()
+
+	deep := target
+	for i := 0; i < MaxSearchDepth+1; i++ {
+		deep = filepath.Join(deep, "d")
+	}
+	require.NoError(t, os.MkdirAll(deep, 0o755))
+
+	withWD(t, deep, func() {
+		_, err := FindRepoRoot()
+		require.Error(t, err)
+	})
+}
+
+func withWD(t *testing.T, dir string, fn func()) {
+	t.Helper()
+	oldWD, err := os.Getwd()
+	require.NoError(t, err)
+	require.NoError(t, os.Chdir(dir))
+	defer func() { require.NoError(t, os.Chdir(oldWD)) }()
+	fn()
+}
+
+func TestNewLocalRepoWithTarget(t *testing.T) {
+	target := t.TempDir()
+	lr := NewLocalRepoWithTarget(target)
+	require.NotNil(t, lr)
+	require.Equal(t, target, lr.target)
+}
+
+func TestNewLocalRepoWithTarget_LoadConfig(t *testing.T) {
+	target := t.TempDir()
+	init := NewLocalRepo()
+	require.NoError(t, init.Init(target))
+	cfg := domain.Config{Url: "http://example.com/org/project", Branch: "main"}
+	require.NoError(t, init.SaveConfig(cfg))
+	init.Close()
+
+	lr := NewLocalRepoWithTarget(target)
+	got, err := lr.LoadConfig()
+	require.NoError(t, err)
+	require.Equal(t, cfg, *got)
+}
+
 func TestSaveConfig_LoadConfig(t *testing.T) {
 	target := t.TempDir()
 	lr := NewLocalRepo()
