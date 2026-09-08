@@ -18,6 +18,8 @@ type stubRepoInterface struct {
 	defaultErr    error
 	manifest      *serverDomain.TreeNode
 	manifestErr   error
+	listBranches  []*serverDomain.Branch
+	listErr       error
 }
 
 func (s *stubRepoInterface) GetDefaultBranch(_ context.Context, _, _ string) (*serverDomain.Branch, error) {
@@ -26,6 +28,10 @@ func (s *stubRepoInterface) GetDefaultBranch(_ context.Context, _, _ string) (*s
 
 func (s *stubRepoInterface) GetTreeNodeManifest(_ context.Context, _, _, _, _ string) (*serverDomain.TreeNode, error) {
 	return s.manifest, s.manifestErr
+}
+
+func (s *stubRepoInterface) ListBranches(_ context.Context, _, _ string) ([]*serverDomain.Branch, error) {
+	return s.listBranches, s.listErr
 }
 
 type stubLocalRepo struct {
@@ -264,5 +270,46 @@ func TestRepo_Clone_Error_SaveTreeFailed(t *testing.T) {
 	}, &stubLocalRepo{treeErr: wantErr})
 
 	err := repo.Clone(context.Background(), "http://example.com/org/project", "example.com", "org", "project", "main", "/src", t.TempDir())
+	require.ErrorIs(t, err, wantErr)
+}
+
+func TestRepo_ListBranches_Success(t *testing.T) {
+	token := signTestToken(t, "secret")
+	storage := &stubSecureStorage{loadResult: &domain.LoginResult{AccessToken: token}}
+	auth := NewAuth(nil, storage, nil)
+	stub := &stubRepoInterface{listBranches: []*serverDomain.Branch{
+		{Name: "main", IsDefault: true},
+		{Name: "dev"},
+	}}
+	repo := NewRepo(auth, stub, &stubLocalRepo{})
+
+	got, err := repo.ListBranches(context.Background(), "example.com", "org", "project")
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+	require.Equal(t, "main", got[0].Name)
+	require.True(t, got[0].IsDefault)
+	require.Equal(t, "dev", got[1].Name)
+}
+
+func TestRepo_ListBranches_LoginFailed(t *testing.T) {
+	wantErr := errors.New("login failed")
+	storage := &stubSecureStorage{loadErr: errors.New("not found")}
+	input := &stubUserInput{username: "apin", password: "secret"}
+	executor := &stubLoginExecutor{usernameErr: wantErr}
+	auth := NewAuth(executor, storage, input)
+	repo := NewRepo(auth, &stubRepoInterface{}, &stubLocalRepo{})
+
+	_, err := repo.ListBranches(context.Background(), "example.com", "org", "project")
+	require.ErrorIs(t, err, wantErr)
+}
+
+func TestRepo_ListBranches_ServerError(t *testing.T) {
+	wantErr := errors.New("list failed")
+	token := signTestToken(t, "secret")
+	storage := &stubSecureStorage{loadResult: &domain.LoginResult{AccessToken: token}}
+	auth := NewAuth(nil, storage, nil)
+	repo := NewRepo(auth, &stubRepoInterface{listErr: wantErr}, &stubLocalRepo{})
+
+	_, err := repo.ListBranches(context.Background(), "example.com", "org", "project")
 	require.ErrorIs(t, err, wantErr)
 }

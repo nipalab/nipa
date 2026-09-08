@@ -178,6 +178,27 @@ func (c *Client) GetDefaultBranch(ctx context.Context, org, project string) (*se
 	return toServerBranch(res.GetBranch()), nil
 }
 
+func (c *Client) ListBranches(ctx context.Context, org, project string) ([]*serverDomain.Branch, error) {
+	client, err := c.transport.NipaServiceClient()
+	if err != nil {
+		return nil, err
+	}
+	res, err := client.GetListBranch(ctx, &pb.GetListBranchRequest{
+		Context: &pb.ProjectContext{Org: org, Project: project},
+		Limit:   100,
+	})
+	if err != nil {
+		return nil, toDomainError(err)
+	}
+	branches := make([]*serverDomain.Branch, 0, len(res.GetBranches()))
+	for _, b := range res.GetBranches() {
+		if sb := toServerBranch(b); sb != nil {
+			branches = append(branches, sb)
+		}
+	}
+	return branches, nil
+}
+
 func (c *Client) GetTreeNodeManifest(ctx context.Context, org, project, branch, path string) (*serverDomain.TreeNode, error) {
 	client, err := c.transport.NipaServiceClient()
 	if err != nil {

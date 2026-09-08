@@ -55,6 +55,8 @@ type fakeServer struct {
 	lastBranch       string
 	lastRecursive    bool
 	lastPath         string
+	listBranchesErr  error
+	listBranches     []*pb.Branch
 }
 
 func (f *fakeServer) GetDefaultBranch(_ context.Context, _ *pb.GetDefaultBranchRequest) (*pb.GetBranchResponse, error) {
@@ -62,6 +64,13 @@ func (f *fakeServer) GetDefaultBranch(_ context.Context, _ *pb.GetDefaultBranchR
 		return nil, f.defaultBranchErr
 	}
 	return &pb.GetBranchResponse{Branch: f.defaultBranch}, nil
+}
+
+func (f *fakeServer) GetListBranch(_ context.Context, _ *pb.GetListBranchRequest) (*pb.GetListBranchResponse, error) {
+	if f.listBranchesErr != nil {
+		return nil, f.listBranchesErr
+	}
+	return &pb.GetListBranchResponse{Branches: f.listBranches}, nil
 }
 
 func (f *fakeServer) GetTreeManifest(_ context.Context, req *pb.GetTreeManifestRequest) (*pb.GetTreeManifestResponse, error) {
@@ -390,6 +399,47 @@ func TestClient_GetDefaultBranch_Success(t *testing.T) {
 	require.Equal(t, snow.ID(7), *got.CommitID)
 	require.Equal(t, now, got.CreatedAt)
 	require.Equal(t, now.Add(time.Hour), got.UpdatedAt)
+}
+
+func TestClient_ListBranches_Success(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	fs := &fakeServer{listBranches: []*pb.Branch{
+		{Id: snow.ID(1).Base36(), Name: "main", IsDefault: true, CreatedAt: timestamppb.New(now)},
+		{Id: snow.ID(2).Base36(), Name: "dev", CreatedAt: timestamppb.New(now)},
+	}}
+	addr := startTestServer(t, fs)
+	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
+	require.NoError(t, c.Connect(context.Background(), addr))
+
+	got, err := c.ListBranches(context.Background(), "default", "sample")
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+	require.Equal(t, snow.ID(1), got[0].ID)
+	require.Equal(t, "main", got[0].Name)
+	require.True(t, got[0].IsDefault)
+	require.Equal(t, "dev", got[1].Name)
+}
+
+func TestClient_ListBranches_Error(t *testing.T) {
+	addr := startTestServer(t, &fakeServer{listBranchesErr: status.Error(codes.NotFound, `project "sample" not found`)})
+	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
+	require.NoError(t, c.Connect(context.Background(), addr))
+
+	_, err := c.ListBranches(context.Background(), "default", "sample")
+	require.Error(t, err)
+
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 404, domErr.Code)
+	require.Equal(t, `project "sample" not found`, domErr.Message)
+}
+
+func TestClient_ListBranches_NotConnected(t *testing.T) {
+	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
+
+	_, err := c.ListBranches(context.Background(), "default", "sample")
+	require.Error(t, err)
+	require.Equal(t, "not connected to a nipa server", err.Error())
 }
 
 func TestClient_GetTreeNodeManifest_Success(t *testing.T) {

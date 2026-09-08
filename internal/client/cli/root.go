@@ -34,5 +34,6 @@ func (c *Cli) Run() error {
 		Short: "nipa is centralized version control system for your project",
 	}
 	rootCmd.AddCommand(c.setupCloneCmd())
+	rootCmd.AddCommand(c.setupBranchCmd())
 	return rootCmd.Execute()
 }
