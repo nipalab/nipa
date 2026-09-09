@@ -14,6 +14,11 @@ type Querier interface {
 	FileUpsert(ctx context.Context, arg FileUpsertParams) error
 	MetaGet(ctx context.Context, key string) (string, error)
 	MetaSet(ctx context.Context, arg MetaSetParams) error
+	SnapshotFileChunkList(ctx context.Context, snapshotID string) ([]SnapshotFileChunkListRow, error)
+	SnapshotFileList(ctx context.Context, snapshotID string) ([]SnapshotFileListRow, error)
+	StagedFileDelete(ctx context.Context, path string) error
+	StagedFileInsert(ctx context.Context, path string) error
+	StagedFileList(ctx context.Context) ([]string, error)
 	StaleFileDelete(ctx context.Context, snapshotID string) error
 	StaleTreeNodeDelete(ctx context.Context, snapshotID string) error
 	TreeNodeUpsert(ctx context.Context, arg TreeNodeUpsertParams) error

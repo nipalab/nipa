@@ -110,6 +110,138 @@ func (q *Queries) MetaSet(ctx context.Context, arg MetaSetParams) error {
 	return err
 }
 
+const snapshotFileChunkList = `-- name: SnapshotFileChunkList :many
+SELECT file_chunks.file_path, chunks.hash, chunks.size_bytes
+FROM file_chunks
+JOIN chunks ON chunks.id = file_chunks.chunk_id
+JOIN files ON files.path = file_chunks.file_path
+WHERE files.snapshot_id = ?1
+ORDER BY file_chunks.file_path, file_chunks.chunk_index
+`
+
+type SnapshotFileChunkListRow struct {
+	FilePath  string `json:"file_path"`
+	Hash      []byte `json:"hash"`
+	SizeBytes int64  `json:"size_bytes"`
+}
+
+func (q *Queries) SnapshotFileChunkList(ctx context.Context, snapshotID string) ([]SnapshotFileChunkListRow, error) {
+	rows, err := q.db.QueryContext(ctx, snapshotFileChunkList, snapshotID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SnapshotFileChunkListRow
+	for rows.Next() {
+		var i SnapshotFileChunkListRow
+		if err := rows.Scan(&i.FilePath, &i.Hash, &i.SizeBytes); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const snapshotFileList = `-- name: SnapshotFileList :many
+SELECT path, hash, size_bytes, mode, is_binary
+FROM files
+WHERE snapshot_id = ?1
+ORDER BY path
+`
+
+type SnapshotFileListRow struct {
+	Path      string `json:"path"`
+	Hash      []byte `json:"hash"`
+	SizeBytes int64  `json:"size_bytes"`
+	Mode      int64  `json:"mode"`
+	IsBinary  bool   `json:"is_binary"`
+}
+
+func (q *Queries) SnapshotFileList(ctx context.Context, snapshotID string) ([]SnapshotFileListRow, error) {
+	rows, err := q.db.QueryContext(ctx, snapshotFileList, snapshotID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SnapshotFileListRow
+	for rows.Next() {
+		var i SnapshotFileListRow
+		if err := rows.Scan(
+			&i.Path,
+			&i.Hash,
+			&i.SizeBytes,
+			&i.Mode,
+			&i.IsBinary,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const stagedFileDelete = `-- name: StagedFileDelete :exec
+DELETE FROM staged_files
+WHERE path = ?1
+`
+
+func (q *Queries) StagedFileDelete(ctx context.Context, path string) error {
+	_, err := q.db.ExecContext(ctx, stagedFileDelete, path)
+	return err
+}
+
+const stagedFileInsert = `-- name: StagedFileInsert :exec
+INSERT INTO staged_files (path)
+VALUES (?1)
+ON CONFLICT(path) DO NOTHING
+`
+
+func (q *Queries) StagedFileInsert(ctx context.Context, path string) error {
+	_, err := q.db.ExecContext(ctx, stagedFileInsert, path)
+	return err
+}
+
+const stagedFileList = `-- name: StagedFileList :many
+SELECT path
+FROM staged_files
+ORDER BY path
+`
+
+func (q *Queries) StagedFileList(ctx context.Context) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, stagedFileList)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var path string
+		if err := rows.Scan(&path); err != nil {
+			return nil, err
+		}
+		items = append(items, path)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const staleFileDelete = `-- name: StaleFileDelete :exec
 DELETE FROM files
 WHERE snapshot_id <> ?1

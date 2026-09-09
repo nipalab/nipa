@@ -81,6 +81,10 @@ type fakeLocalRepo struct{}
 func (fakeLocalRepo) Init(_ string) error                     { return nil }
 func (fakeLocalRepo) SaveConfig(_ domain.Config) error        { return nil }
 func (fakeLocalRepo) SaveTree(_ *serverDomain.TreeNode) error { return nil }
+func (fakeLocalRepo) Snapshot() (*domain.Snapshot, error)     { return &domain.Snapshot{}, nil }
+func (fakeLocalRepo) ListStaged() ([]string, error)           { return nil, nil }
+func (fakeLocalRepo) StageAdd(_ string) error                 { return nil }
+func (fakeLocalRepo) StageRemove(_ []string) error            { return nil }
 
 func helperAuth(t *testing.T) (*usecase.Repo, *fakeStorage) {
 	t.Helper()

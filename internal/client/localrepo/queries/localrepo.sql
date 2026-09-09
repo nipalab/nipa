@@ -47,3 +47,31 @@ WHERE snapshot_id <> :snapshot_id;
 -- name: StaleTreeNodeDelete :exec
 DELETE FROM tree_nodes
 WHERE snapshot_id <> :snapshot_id;
+
+-- name: StagedFileList :many
+SELECT path
+FROM staged_files
+ORDER BY path;
+
+-- name: StagedFileInsert :exec
+INSERT INTO staged_files (path)
+VALUES (:path)
+ON CONFLICT(path) DO NOTHING;
+
+-- name: StagedFileDelete :exec
+DELETE FROM staged_files
+WHERE path = :path;
+
+-- name: SnapshotFileList :many
+SELECT path, hash, size_bytes, mode, is_binary
+FROM files
+WHERE snapshot_id = :snapshot_id
+ORDER BY path;
+
+-- name: SnapshotFileChunkList :many
+SELECT file_chunks.file_path, chunks.hash, chunks.size_bytes
+FROM file_chunks
+JOIN chunks ON chunks.id = file_chunks.chunk_id
+JOIN files ON files.path = file_chunks.file_path
+WHERE files.snapshot_id = :snapshot_id
+ORDER BY file_chunks.file_path, file_chunks.chunk_index;
