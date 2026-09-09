@@ -12,30 +12,44 @@ import (
 	serverDomain "github.com/nipalab/nipa/internal/domain"
 )
 
-func TestRepo_Add_MarksNewFile(t *testing.T) {
+func newWorkingCopy(t *testing.T, local localRepo, root string) *workingCopy {
+	t.Helper()
+	wc, err := NewWorkingCopy(local, root)
+	require.NoError(t, err)
+	return wc
+}
+
+func TestNewWorkingCopy_InitError(t *testing.T) {
+	wantErr := os.ErrInvalid
+	_, err := NewWorkingCopy(&stubLocalRepo{initErr: wantErr}, t.TempDir())
+	require.ErrorIs(t, err, wantErr)
+}
+
+func TestWorkingCopy_Add_MarksNewFile(t *testing.T) {
 	root := t.TempDir()
 	writeRepoFile(t, root, "a.txt", "hello world")
 	local := &stubLocalRepo{snapshot: &domain.Snapshot{}}
-	repo := NewRepo(nil, &stubRepoInterface{}, local)
+	wc := newWorkingCopy(t, local, root)
 
-	err := repo.Add(context.Background(), root, []string{"a.txt"})
+	err := wc.Add(context.Background(), []string{"a.txt"})
 	require.NoError(t, err)
 	require.Equal(t, []string{"a.txt"}, local.stageAdd)
+	require.Equal(t, root, local.initTarget, "local repo is initialized exactly once, at construction")
 }
 
-func TestRepo_Add_DoesNotReadContent(t *testing.T) {
+func TestWorkingCopy_Add_DoesNotReadContent(t *testing.T) {
 	root := t.TempDir()
 	writeRepoFile(t, root, "a.txt", "original")
 	local := &stubLocalRepo{snapshot: &domain.Snapshot{Files: []domain.SnapshotFile{{
 		Path: "a.txt", Hash: contentHash(t, "original"),
 	}}}}
-	repo := NewRepo(nil, &stubRepoInterface{}, local)
+	wc := newWorkingCopy(t, local, root)
 
-	require.NoError(t, repo.Add(context.Background(), root, []string{"a.txt"}))
+	require.NoError(t, wc.Add(context.Background(), []string{"a.txt"}))
 	require.Equal(t, []string{"a.txt"}, local.stageAdd, "an unchanged file is still marked for push")
 }
 
-func TestRepo_Add_DirectoryAndWholeRepo(t *testing.T) {
+func TestWorkingCopy_Add_DirectoryAndWholeRepo(t *testing.T) {
 	root := t.TempDir()
 	writeRepoFile(t, root, "a.txt", "a")
 	writeRepoFile(t, root, "assets/logo.txt", "logo")
@@ -43,70 +57,63 @@ func TestRepo_Add_DirectoryAndWholeRepo(t *testing.T) {
 	writeRepoFile(t, root, ".nipa/ignored.bin", "secret")
 	writeRepoFile(t, root, "sub/.nipa/hidden.txt", "hidden")
 	local := &stubLocalRepo{snapshot: &domain.Snapshot{}}
-	repo := NewRepo(nil, &stubRepoInterface{}, local)
+	wc := newWorkingCopy(t, local, root)
 
-	require.NoError(t, repo.Add(context.Background(), root, []string{""}))
+	require.NoError(t, wc.Add(context.Background(), []string{""}))
 	require.Equal(t, []string{"a.txt", "assets/logo.txt", "docs/readme.md"}, local.stageAdd, ".nipa must be excluded")
 }
 
-func TestRepo_Add_MissingPath(t *testing.T) {
-	repo := NewRepo(nil, &stubRepoInterface{}, &stubLocalRepo{snapshot: &domain.Snapshot{}})
-	err := repo.Add(context.Background(), t.TempDir(), []string{"nope.txt"})
+func TestWorkingCopy_Add_MissingPath(t *testing.T) {
+	wc := newWorkingCopy(t, &stubLocalRepo{snapshot: &domain.Snapshot{}}, t.TempDir())
+	err := wc.Add(context.Background(), []string{"nope.txt"})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "does not exist")
 }
 
-func TestRepo_Add_PathInsideNipa(t *testing.T) {
+func TestWorkingCopy_Add_PathInsideNipa(t *testing.T) {
 	root := t.TempDir()
 	writeRepoFile(t, root, ".nipa/config", "{}")
-	repo := NewRepo(nil, &stubRepoInterface{}, &stubLocalRepo{snapshot: &domain.Snapshot{}})
-	err := repo.Add(context.Background(), root, []string{".nipa/config"})
+	wc := newWorkingCopy(t, &stubLocalRepo{snapshot: &domain.Snapshot{}}, root)
+	err := wc.Add(context.Background(), []string{".nipa/config"})
 	require.Error(t, err)
 }
 
-func TestRepo_Add_PathOutsideRepo(t *testing.T) {
-	repo := NewRepo(nil, &stubRepoInterface{}, &stubLocalRepo{snapshot: &domain.Snapshot{}})
-	err := repo.Add(context.Background(), t.TempDir(), []string{"../outside.txt"})
+func TestWorkingCopy_Add_PathOutsideRepo(t *testing.T) {
+	wc := newWorkingCopy(t, &stubLocalRepo{snapshot: &domain.Snapshot{}}, t.TempDir())
+	err := wc.Add(context.Background(), []string{"../outside.txt"})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "outside")
 }
 
-func TestRepo_Add_InitError(t *testing.T) {
-	wantErr := os.ErrInvalid
-	repo := NewRepo(nil, &stubRepoInterface{}, &stubLocalRepo{initErr: wantErr, snapshot: &domain.Snapshot{}})
-	err := repo.Add(context.Background(), t.TempDir(), []string{"a"})
-	require.ErrorIs(t, err, wantErr)
-}
-
-func TestRepo_Remove_ExactAndPrefix(t *testing.T) {
+func TestWorkingCopy_Remove_ExactAndPrefix(t *testing.T) {
 	local := &stubLocalRepo{staged: []string{"a.txt", "b/c.txt", "b/d/e.txt"}}
-	repo := NewRepo(nil, &stubRepoInterface{}, local)
+	wc := newWorkingCopy(t, local, t.TempDir())
 
-	require.NoError(t, repo.Remove(context.Background(), t.TempDir(), []string{"b"}))
+	require.NoError(t, wc.Remove(context.Background(), []string{"b"}))
 	require.Equal(t, []string{"b/c.txt", "b/d/e.txt"}, local.stageRemove)
 }
 
-func TestRepo_Remove_FileNotStaged(t *testing.T) {
+func TestWorkingCopy_Remove_FileNotStaged(t *testing.T) {
 	local := &stubLocalRepo{}
-	repo := NewRepo(nil, &stubRepoInterface{}, local)
-	require.NoError(t, repo.Remove(context.Background(), t.TempDir(), []string{"a.txt"}))
+	wc := newWorkingCopy(t, local, t.TempDir())
+	require.NoError(t, wc.Remove(context.Background(), []string{"a.txt"}))
 	require.Empty(t, local.stageRemove)
 }
 
-func TestRepo_Remove_WholeRepo(t *testing.T) {
+func TestWorkingCopy_Remove_WholeRepo(t *testing.T) {
 	local := &stubLocalRepo{staged: []string{"a.txt", "b/c.txt"}}
-	repo := NewRepo(nil, &stubRepoInterface{}, local)
-	require.NoError(t, repo.Remove(context.Background(), t.TempDir(), []string{""}))
+	wc := newWorkingCopy(t, local, t.TempDir())
+	require.NoError(t, wc.Remove(context.Background(), []string{""}))
 	require.Equal(t, []string{"a.txt", "b/c.txt"}, local.stageRemove)
 }
 
-func TestRepo_Remove_PathOutsideRepo(t *testing.T) {
-	repo := NewRepo(nil, &stubRepoInterface{}, &stubLocalRepo{})
-	err := repo.Remove(context.Background(), t.TempDir(), []string{"../outside.txt"})
+func TestWorkingCopy_Remove_PathOutsideRepo(t *testing.T) {
+	wc := newWorkingCopy(t, &stubLocalRepo{}, t.TempDir())
+	err := wc.Remove(context.Background(), []string{"../outside.txt"})
 	require.Error(t, err)
 }
 
-func TestRepo_Status(t *testing.T) {
+func TestWorkingCopy_Status(t *testing.T) {
 	root := t.TempDir()
 	writeRepoFile(t, root, "tracked.txt", "original")
 	writeRepoFile(t, root, "modified.txt", "changed")
@@ -122,9 +129,9 @@ func TestRepo_Status(t *testing.T) {
 		}},
 		staged: []string{"staged.txt"},
 	}
-	repo := NewRepo(nil, &stubRepoInterface{}, local)
+	wc := newWorkingCopy(t, local, root)
 
-	st, err := repo.Status(context.Background(), root)
+	st, err := wc.Status(context.Background())
 	require.NoError(t, err)
 
 	require.Equal(t, []string{"staged.txt"}, st.Staged)
@@ -133,13 +140,13 @@ func TestRepo_Status(t *testing.T) {
 	require.Equal(t, []string{"new.txt"}, st.Untracked)
 }
 
-func TestRepo_Status_StagedFileIsNotListedTwice(t *testing.T) {
+func TestWorkingCopy_Status_StagedFileIsNotListedTwice(t *testing.T) {
 	root := t.TempDir()
 	writeRepoFile(t, root, "staged.txt", "content")
 	local := &stubLocalRepo{snapshot: &domain.Snapshot{}, staged: []string{"staged.txt"}}
-	repo := NewRepo(nil, &stubRepoInterface{}, local)
+	wc := newWorkingCopy(t, local, root)
 
-	st, err := repo.Status(context.Background(), root)
+	st, err := wc.Status(context.Background())
 	require.NoError(t, err)
 	require.Equal(t, []string{"staged.txt"}, st.Staged)
 	require.Empty(t, st.Modified)

@@ -16,27 +16,33 @@ import (
 
 const nipaDir = ".nipa"
 
-func (r *Repo) Add(ctx context.Context, root string, targets []string) error {
-	if err := r.localRepo.Init(root); err != nil {
-		return err
+type workingCopy struct {
+	localRepo localRepo
+	root      string
+}
+
+func NewWorkingCopy(localRepo localRepo, root string) (*workingCopy, error) {
+	if err := localRepo.Init(root); err != nil {
+		return nil, err
 	}
-	paths, err := expandAddTargets(root, targets)
+	return &workingCopy{localRepo: localRepo, root: root}, nil
+}
+
+func (w *workingCopy) Add(ctx context.Context, targets []string) error {
+	paths, err := w.expandAddTargets(targets)
 	if err != nil {
 		return err
 	}
 	for _, path := range paths {
-		if err := r.localRepo.StageAdd(path); err != nil {
+		if err := w.localRepo.StageAdd(path); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (r *Repo) Remove(ctx context.Context, root string, targets []string) error {
-	if err := r.localRepo.Init(root); err != nil {
-		return err
-	}
-	stagedByPath, err := r.listStagedSet()
+func (w *workingCopy) Remove(ctx context.Context, targets []string) error {
+	stagedByPath, err := w.listStagedSet()
 	if err != nil {
 		return err
 	}
@@ -74,18 +80,15 @@ func (r *Repo) Remove(ctx context.Context, root string, targets []string) error 
 	if len(paths) == 0 {
 		return nil
 	}
-	return r.localRepo.StageRemove(paths)
+	return w.localRepo.StageRemove(paths)
 }
 
-func (r *Repo) Status(ctx context.Context, root string) (*domain.Status, error) {
-	if err := r.localRepo.Init(root); err != nil {
-		return nil, err
-	}
-	snapshot, err := r.localRepo.Snapshot()
+func (w *workingCopy) Status(ctx context.Context) (*domain.Status, error) {
+	snapshot, err := w.localRepo.Snapshot()
 	if err != nil {
 		return nil, err
 	}
-	staged, err := r.localRepo.ListStaged()
+	staged, err := w.localRepo.ListStaged()
 	if err != nil {
 		return nil, err
 	}
@@ -99,11 +102,11 @@ func (r *Repo) Status(ctx context.Context, root string) (*domain.Status, error) 
 	}
 
 	var working []string
-	err = filepath.WalkDir(root, func(p string, d fs.DirEntry, walkErr error) error {
+	err = filepath.WalkDir(w.root, func(p string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
-		rel, err := filepath.Rel(root, p)
+		rel, err := filepath.Rel(w.root, p)
 		if err != nil {
 			return err
 		}
@@ -142,7 +145,7 @@ func (r *Repo) Status(ctx context.Context, root string) (*domain.Status, error) 
 			st.Untracked = append(st.Untracked, path)
 			continue
 		}
-		got, err := workingFileHash(root, path)
+		got, err := w.workingFileHash(path)
 		if err != nil {
 			continue
 		}
@@ -158,8 +161,8 @@ func (r *Repo) Status(ctx context.Context, root string) (*domain.Status, error) 
 	return st, nil
 }
 
-func (r *Repo) listStagedSet() (map[string]bool, error) {
-	staged, err := r.localRepo.ListStaged()
+func (w *workingCopy) listStagedSet() (map[string]bool, error) {
+	staged, err := w.localRepo.ListStaged()
 	if err != nil {
 		return nil, err
 	}
@@ -170,7 +173,7 @@ func (r *Repo) listStagedSet() (map[string]bool, error) {
 	return set, nil
 }
 
-func expandAddTargets(root string, targets []string) ([]string, error) {
+func (w *workingCopy) expandAddTargets(targets []string) ([]string, error) {
 	var out []string
 	seen := make(map[string]bool)
 	for _, t := range targets {
@@ -180,9 +183,9 @@ func expandAddTargets(root string, targets []string) ([]string, error) {
 		if isNipaPath(t) {
 			return nil, fmt.Errorf("cannot operate on path inside %q", nipaDir)
 		}
-		abs := root
+		abs := w.root
 		if t != "" {
-			abs = filepath.Join(root, filepath.FromSlash(t))
+			abs = filepath.Join(w.root, filepath.FromSlash(t))
 		}
 		info, err := os.Stat(abs)
 		if err != nil {
@@ -205,7 +208,7 @@ func expandAddTargets(root string, targets []string) ([]string, error) {
 				}
 				return nil
 			}
-			rel, err := filepath.Rel(root, p)
+			rel, err := filepath.Rel(w.root, p)
 			if err != nil {
 				return err
 			}
@@ -230,8 +233,8 @@ func expandAddTargets(root string, targets []string) ([]string, error) {
 	return out, nil
 }
 
-func workingFileHash(root, path string) (serverDomain.Hash, error) {
-	data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(path)))
+func (w *workingCopy) workingFileHash(path string) (serverDomain.Hash, error) {
+	data, err := os.ReadFile(filepath.Join(w.root, filepath.FromSlash(path)))
 	if err != nil {
 		return serverDomain.Hash{}, err
 	}
