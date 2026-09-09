@@ -19,6 +19,10 @@ type localRepo interface {
 	Init(target string) error
 	SaveConfig(cfg domain.Config) error
 	SaveTree(root *serverDomain.TreeNode) error
+	Snapshot() (*domain.Snapshot, error)
+	ListStaged() ([]string, error)
+	StageAdd(path string) error
+	StageRemove(paths []string) error
 }
 
 type Repo struct {

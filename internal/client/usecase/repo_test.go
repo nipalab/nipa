@@ -35,12 +35,20 @@ func (s *stubRepoInterface) ListBranches(_ context.Context, _, _ string) ([]*ser
 }
 
 type stubLocalRepo struct {
-	initTarget string
-	config     domain.Config
-	tree       *serverDomain.TreeNode
-	initErr    error
-	configErr  error
-	treeErr    error
+	initTarget     string
+	config         domain.Config
+	tree           *serverDomain.TreeNode
+	snapshot       *domain.Snapshot
+	staged         []string
+	initErr        error
+	configErr      error
+	treeErr        error
+	snapshotErr    error
+	stagedErr      error
+	stageAdd       []string
+	stageAddErr    error
+	stageRemove    []string
+	stageRemoveErr error
 }
 
 func (s *stubLocalRepo) Init(target string) error {
@@ -56,6 +64,24 @@ func (s *stubLocalRepo) SaveConfig(cfg domain.Config) error {
 func (s *stubLocalRepo) SaveTree(root *serverDomain.TreeNode) error {
 	s.tree = root
 	return s.treeErr
+}
+
+func (s *stubLocalRepo) Snapshot() (*domain.Snapshot, error) {
+	return s.snapshot, s.snapshotErr
+}
+
+func (s *stubLocalRepo) ListStaged() ([]string, error) {
+	return s.staged, s.stagedErr
+}
+
+func (s *stubLocalRepo) StageAdd(path string) error {
+	s.stageAdd = append(s.stageAdd, path)
+	return s.stageAddErr
+}
+
+func (s *stubLocalRepo) StageRemove(paths []string) error {
+	s.stageRemove = append(s.stageRemove, paths...)
+	return s.stageRemoveErr
 }
 
 func TestNewRepo(t *testing.T) {

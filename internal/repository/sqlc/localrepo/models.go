@@ -36,6 +36,11 @@ type Meta struct {
 	Value string `json:"value"`
 }
 
+type StagedFile struct {
+	Path     string       `json:"path"`
+	StagedAt sql.NullTime `json:"staged_at"`
+}
+
 type TreeNode struct {
 	Path       string `json:"path"`
 	ParentPath string `json:"parent_path"`
