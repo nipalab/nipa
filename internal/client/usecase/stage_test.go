@@ -12,7 +12,7 @@ import (
 	serverDomain "github.com/nipalab/nipa/internal/domain"
 )
 
-func newWorkingCopy(t *testing.T, local localRepo, root string) *workingCopy {
+func newWorkingCopy(t *testing.T, local WorkingCopyRepo, root string) *WorkingCopy {
 	t.Helper()
 	wc, err := NewWorkingCopy(local, root)
 	require.NoError(t, err)
