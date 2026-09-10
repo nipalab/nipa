@@ -16,19 +16,27 @@ import (
 
 const nipaDir = ".nipa"
 
-type workingCopy struct {
-	localRepo localRepo
+type WorkingCopyRepo interface {
+	Init(target string) error
+	Snapshot() (*domain.Snapshot, error)
+	ListStaged() ([]string, error)
+	StageAdd(path string) error
+	StageRemove(paths []string) error
+}
+
+type WorkingCopy struct {
+	localRepo WorkingCopyRepo
 	root      string
 }
 
-func NewWorkingCopy(localRepo localRepo, root string) (*workingCopy, error) {
+func NewWorkingCopy(localRepo WorkingCopyRepo, root string) (*WorkingCopy, error) {
 	if err := localRepo.Init(root); err != nil {
 		return nil, err
 	}
-	return &workingCopy{localRepo: localRepo, root: root}, nil
+	return &WorkingCopy{localRepo: localRepo, root: root}, nil
 }
 
-func (w *workingCopy) Add(ctx context.Context, targets []string) error {
+func (w *WorkingCopy) Add(ctx context.Context, targets []string) error {
 	paths, err := w.expandAddTargets(targets)
 	if err != nil {
 		return err
@@ -41,7 +49,7 @@ func (w *workingCopy) Add(ctx context.Context, targets []string) error {
 	return nil
 }
 
-func (w *workingCopy) Remove(ctx context.Context, targets []string) error {
+func (w *WorkingCopy) Remove(ctx context.Context, targets []string) error {
 	stagedByPath, err := w.listStagedSet()
 	if err != nil {
 		return err
@@ -83,7 +91,7 @@ func (w *workingCopy) Remove(ctx context.Context, targets []string) error {
 	return w.localRepo.StageRemove(paths)
 }
 
-func (w *workingCopy) Status(ctx context.Context) (*domain.Status, error) {
+func (w *WorkingCopy) Status(ctx context.Context) (*domain.Status, error) {
 	snapshot, err := w.localRepo.Snapshot()
 	if err != nil {
 		return nil, err
@@ -161,7 +169,7 @@ func (w *workingCopy) Status(ctx context.Context) (*domain.Status, error) {
 	return st, nil
 }
 
-func (w *workingCopy) listStagedSet() (map[string]bool, error) {
+func (w *WorkingCopy) listStagedSet() (map[string]bool, error) {
 	staged, err := w.localRepo.ListStaged()
 	if err != nil {
 		return nil, err
@@ -173,7 +181,7 @@ func (w *workingCopy) listStagedSet() (map[string]bool, error) {
 	return set, nil
 }
 
-func (w *workingCopy) expandAddTargets(targets []string) ([]string, error) {
+func (w *WorkingCopy) expandAddTargets(targets []string) ([]string, error) {
 	var out []string
 	seen := make(map[string]bool)
 	for _, t := range targets {
@@ -233,7 +241,7 @@ func (w *workingCopy) expandAddTargets(targets []string) ([]string, error) {
 	return out, nil
 }
 
-func (w *workingCopy) workingFileHash(path string) (serverDomain.Hash, error) {
+func (w *WorkingCopy) workingFileHash(path string) (serverDomain.Hash, error) {
 	data, err := os.ReadFile(filepath.Join(w.root, filepath.FromSlash(path)))
 	if err != nil {
 		return serverDomain.Hash{}, err

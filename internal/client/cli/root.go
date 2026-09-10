@@ -35,5 +35,8 @@ func (c *Cli) Run() error {
 	}
 	rootCmd.AddCommand(c.setupCloneCmd())
 	rootCmd.AddCommand(c.setupBranchCmd())
+	rootCmd.AddCommand(c.setupAddCmd())
+	rootCmd.AddCommand(c.setupRemoveCmd())
+	rootCmd.AddCommand(c.setupStatusCmd())
 	return rootCmd.Execute()
 }
