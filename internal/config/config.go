@@ -14,6 +14,7 @@ type Config struct {
 	LogLevel        string `mapstructure:"LOG_LEVEL"`
 	SnowflakeNodeID int64  `mapstructure:"SNOWFLAKE_NODE_ID"`
 	HasherWorkers   int    `mapstructure:"HASHER_WORKERS"`
+	ChunkStorageDir string `mapstructure:"CHUNK_STORAGE_DIR"`
 }
 
 func LoadConfig() (*Config, error) {

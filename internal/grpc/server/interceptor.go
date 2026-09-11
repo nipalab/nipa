@@ -59,3 +59,45 @@ func (i *Interceptor) JWTUnary() func(ctx context.Context, req interface{}, info
 		return handler(ctx, req)
 	}
 }
+
+type wrappedStream struct {
+	grpc.ServerStream
+	ctx context.Context
+}
+
+func (w *wrappedStream) Context() context.Context {
+	return w.ctx
+}
+
+func (i *Interceptor) JWTStream() grpc.StreamServerInterceptor {
+	return func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+		if info.FullMethod == "/greet.NipaService/LoginWithUsernamePassword" || info.FullMethod == "/greet.NipaService/LoginWithRefreshToken" || info.FullMethod == "/nipa.AuthService/health" {
+			return handler(srv, ss)
+		}
+
+		md, ok := metadata.FromIncomingContext(ss.Context())
+		if !ok {
+			return status.Error(codes.Unauthenticated, "missing metadata")
+		}
+
+		authHeader := md["authorization"]
+		if len(authHeader) == 0 {
+			return status.Error(codes.Unauthenticated, "missing authorization header")
+		}
+
+		tokenString := authHeader[0]
+		if len(tokenString) < 7 || tokenString[:7] != "Bearer " {
+			return status.Error(codes.Unauthenticated, "invalid authorization header")
+		}
+		tokenString = tokenString[7:]
+
+		claims, err := i.tokenValidator.ValidateToken(ss.Context(), tokenString)
+		if err != nil {
+			return status.Error(codes.Unauthenticated, "invalid token")
+		}
+
+		ctx := domain.ContextWithClaim(ss.Context(), *claims)
+
+		return handler(srv, &wrappedStream{ServerStream: ss, ctx: ctx})
+	}
+}

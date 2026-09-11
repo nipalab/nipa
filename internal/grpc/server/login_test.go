@@ -27,8 +27,8 @@ func (s *stubUserRepo) GetByID(_ context.Context, _ snow.ID) (*domain.User, erro
 }
 
 type stubAuthRepo struct {
-	saveErr    error
-	refreshErr error
+	saveErr      error
+	refreshErr   error
 	refreshToken *domain.RefreshToken
 }
 
@@ -53,6 +53,8 @@ func (m *loginMockContainer) Auth() *usecase.Auth     { return m.auth }
 func (m *loginMockContainer) User() *usecase.User     { return nil }
 func (m *loginMockContainer) Branch() *usecase.Branch { return nil }
 func (m *loginMockContainer) Common() *usecase.Common { return nil }
+func (m *loginMockContainer) Push() *usecase.Push     { return nil }
+func (m *loginMockContainer) Chunk() *usecase.Chunk   { return nil }
 
 func newLoginServer(t *testing.T, userRepo *stubUserRepo, authRepo *stubAuthRepo) *nipaServer {
 	t.Helper()
@@ -62,10 +64,10 @@ func newLoginServer(t *testing.T, userRepo *stubUserRepo, authRepo *stubAuthRepo
 
 func TestLoginWithUsernamePassword_Success(t *testing.T) {
 	user := &domain.User{
-		ID:       snow.ID(42),
-		Name:     "alice",
-		Email:    "alice@example.com",
-		IsAdmin:  true,
+		ID:      snow.ID(42),
+		Name:    "alice",
+		Email:   "alice@example.com",
+		IsAdmin: true,
 	}
 	srv := newLoginServer(t,
 		&stubUserRepo{user: user},

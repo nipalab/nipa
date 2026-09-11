@@ -17,6 +17,19 @@ func (h Hash) String() string {
 	return hex.EncodeToString(h.Bytes())
 }
 
+func ParseHashHex(s string) (Hash, error) {
+	var h Hash
+	b, err := hex.DecodeString(s)
+	if err != nil {
+		return h, err
+	}
+	if len(b) != len(h) {
+		return h, NewErrorUser("invalid hash length")
+	}
+	copy(h[:], b)
+	return h, nil
+}
+
 type TreeNode struct {
 	ID           int64       `json:"id"`
 	Hash         Hash        `json:"hash"`

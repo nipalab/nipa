@@ -136,3 +136,94 @@ func TestInterceptor_ValidToken(t *testing.T) {
 	require.Equal(t, wantClaims.UserID, gotClaims.UserID)
 	require.True(t, gotClaims.IsAdmin)
 }
+
+func streamHandler(t *testing.T, check func(ctx context.Context)) grpc.StreamHandler {
+	t.Helper()
+	return func(srv interface{}, stream grpc.ServerStream) error {
+		if check != nil {
+			check(stream.Context())
+		}
+		return nil
+	}
+}
+
+func serverStreamWithContext(ctx context.Context) grpc.ServerStream {
+	return &wrappedStream{ServerStream: &fakeServerStream{ctx: ctx}, ctx: ctx}
+}
+
+func TestStreamInterceptor_PublicRoutes(t *testing.T) {
+	publicRoutes := []string{
+		"/greet.NipaService/LoginWithUsernamePassword",
+		"/greet.NipaService/LoginWithRefreshToken",
+		"/nipa.AuthService/health",
+	}
+
+	for _, route := range publicRoutes {
+		t.Run(route, func(t *testing.T) {
+			interceptor := NewInterceptor(nil)
+			err := interceptor.JWTStream()(nil, serverStreamWithContext(context.Background()), &grpc.StreamServerInfo{FullMethod: route}, streamHandler(t, nil))
+			require.NoError(t, err)
+		})
+	}
+}
+
+func TestStreamInterceptor_MissingAuthorization(t *testing.T) {
+	t.Run("missing metadata", func(t *testing.T) {
+		interceptor := NewInterceptor(nil)
+		err := interceptor.JWTStream()(nil, serverStreamWithContext(context.Background()), &grpc.StreamServerInfo{FullMethod: "/nipa.SomeService/Stream"}, streamHandler(t, nil))
+		require.Error(t, err)
+		require.Equal(t, codes.Unauthenticated, status.Code(err))
+	})
+
+	t.Run("missing header", func(t *testing.T) {
+		interceptor := NewInterceptor(nil)
+		ctx := metadata.NewIncomingContext(context.Background(), metadata.MD{})
+		err := interceptor.JWTStream()(nil, serverStreamWithContext(ctx), &grpc.StreamServerInfo{FullMethod: "/nipa.SomeService/Stream"}, streamHandler(t, nil))
+		require.Error(t, err)
+		require.Equal(t, codes.Unauthenticated, status.Code(err))
+	})
+
+	t.Run("no bearer prefix", func(t *testing.T) {
+		interceptor := NewInterceptor(nil)
+		ctx := metadata.NewIncomingContext(context.Background(), metadata.MD{
+			"authorization": []string{"token123"},
+		})
+		err := interceptor.JWTStream()(nil, serverStreamWithContext(ctx), &grpc.StreamServerInfo{FullMethod: "/nipa.SomeService/Stream"}, streamHandler(t, nil))
+		require.Error(t, err)
+		require.Equal(t, codes.Unauthenticated, status.Code(err))
+	})
+}
+
+func TestStreamInterceptor_InvalidToken(t *testing.T) {
+	validator := &mockTokenValidator{err: errors.New("bad token")}
+	interceptor := NewInterceptor(validator)
+
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.MD{
+		"authorization": []string{"Bearer bad-token"},
+	})
+	err := interceptor.JWTStream()(nil, serverStreamWithContext(ctx), &grpc.StreamServerInfo{FullMethod: "/nipa.SomeService/Stream"}, streamHandler(t, nil))
+	require.Error(t, err)
+	require.Equal(t, codes.Unauthenticated, status.Code(err))
+}
+
+func TestStreamInterceptor_ValidToken(t *testing.T) {
+	wantClaims := &domain.Claims{UserID: 42, IsAdmin: true}
+	validator := &mockTokenValidator{claims: wantClaims}
+	interceptor := NewInterceptor(validator)
+
+	var gotClaims domain.Claims
+	handler := func(_ interface{}, stream grpc.ServerStream) error {
+		claims, ok := domain.ClaimFromContext(stream.Context())
+		require.True(t, ok)
+		gotClaims = claims
+		return nil
+	}
+
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.MD{
+		"authorization": []string{"Bearer valid-token"},
+	})
+	err := interceptor.JWTStream()(nil, serverStreamWithContext(ctx), &grpc.StreamServerInfo{FullMethod: "/nipa.SomeService/Stream"}, handler)
+	require.NoError(t, err)
+	require.Equal(t, wantClaims.UserID, gotClaims.UserID)
+	require.True(t, gotClaims.IsAdmin)
+}

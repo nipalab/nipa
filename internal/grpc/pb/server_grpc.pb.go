@@ -25,6 +25,9 @@ const (
 	NipaService_GetBranch_FullMethodName                 = "/greet.NipaService/GetBranch"
 	NipaService_GetDefaultBranch_FullMethodName          = "/greet.NipaService/GetDefaultBranch"
 	NipaService_GetTreeManifest_FullMethodName           = "/greet.NipaService/GetTreeManifest"
+	NipaService_Push_FullMethodName                      = "/greet.NipaService/Push"
+	NipaService_UploadChunks_FullMethodName              = "/greet.NipaService/UploadChunks"
+	NipaService_DownloadChunks_FullMethodName            = "/greet.NipaService/DownloadChunks"
 )
 
 // NipaServiceClient is the client API for NipaService service.
@@ -37,6 +40,9 @@ type NipaServiceClient interface {
 	GetBranch(ctx context.Context, in *GetBranchRequest, opts ...grpc.CallOption) (*GetBranchResponse, error)
 	GetDefaultBranch(ctx context.Context, in *GetDefaultBranchRequest, opts ...grpc.CallOption) (*GetBranchResponse, error)
 	GetTreeManifest(ctx context.Context, in *GetTreeManifestRequest, opts ...grpc.CallOption) (*GetTreeManifestResponse, error)
+	Push(ctx context.Context, in *PushRequest, opts ...grpc.CallOption) (*PushResponse, error)
+	UploadChunks(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[ChunkUploadRequest, UploadChunksResponse], error)
+	DownloadChunks(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[DownloadChunksRequest, DownloadChunk], error)
 }
 
 type nipaServiceClient struct {
@@ -107,6 +113,42 @@ func (c *nipaServiceClient) GetTreeManifest(ctx context.Context, in *GetTreeMani
 	return out, nil
 }
 
+func (c *nipaServiceClient) Push(ctx context.Context, in *PushRequest, opts ...grpc.CallOption) (*PushResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PushResponse)
+	err := c.cc.Invoke(ctx, NipaService_Push_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nipaServiceClient) UploadChunks(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[ChunkUploadRequest, UploadChunksResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &NipaService_ServiceDesc.Streams[0], NipaService_UploadChunks_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[ChunkUploadRequest, UploadChunksResponse]{ClientStream: stream}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type NipaService_UploadChunksClient = grpc.ClientStreamingClient[ChunkUploadRequest, UploadChunksResponse]
+
+func (c *nipaServiceClient) DownloadChunks(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[DownloadChunksRequest, DownloadChunk], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &NipaService_ServiceDesc.Streams[1], NipaService_DownloadChunks_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[DownloadChunksRequest, DownloadChunk]{ClientStream: stream}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type NipaService_DownloadChunksClient = grpc.BidiStreamingClient[DownloadChunksRequest, DownloadChunk]
+
 // NipaServiceServer is the server API for NipaService service.
 // All implementations must embed UnimplementedNipaServiceServer
 // for forward compatibility.
@@ -117,6 +159,9 @@ type NipaServiceServer interface {
 	GetBranch(context.Context, *GetBranchRequest) (*GetBranchResponse, error)
 	GetDefaultBranch(context.Context, *GetDefaultBranchRequest) (*GetBranchResponse, error)
 	GetTreeManifest(context.Context, *GetTreeManifestRequest) (*GetTreeManifestResponse, error)
+	Push(context.Context, *PushRequest) (*PushResponse, error)
+	UploadChunks(grpc.ClientStreamingServer[ChunkUploadRequest, UploadChunksResponse]) error
+	DownloadChunks(grpc.BidiStreamingServer[DownloadChunksRequest, DownloadChunk]) error
 	mustEmbedUnimplementedNipaServiceServer()
 }
 
@@ -144,6 +189,15 @@ func (UnimplementedNipaServiceServer) GetDefaultBranch(context.Context, *GetDefa
 }
 func (UnimplementedNipaServiceServer) GetTreeManifest(context.Context, *GetTreeManifestRequest) (*GetTreeManifestResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetTreeManifest not implemented")
+}
+func (UnimplementedNipaServiceServer) Push(context.Context, *PushRequest) (*PushResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Push not implemented")
+}
+func (UnimplementedNipaServiceServer) UploadChunks(grpc.ClientStreamingServer[ChunkUploadRequest, UploadChunksResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method UploadChunks not implemented")
+}
+func (UnimplementedNipaServiceServer) DownloadChunks(grpc.BidiStreamingServer[DownloadChunksRequest, DownloadChunk]) error {
+	return status.Errorf(codes.Unimplemented, "method DownloadChunks not implemented")
 }
 func (UnimplementedNipaServiceServer) mustEmbedUnimplementedNipaServiceServer() {}
 func (UnimplementedNipaServiceServer) testEmbeddedByValue()                     {}
@@ -274,6 +328,38 @@ func _NipaService_GetTreeManifest_Handler(srv interface{}, ctx context.Context, 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _NipaService_Push_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PushRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaServiceServer).Push(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaService_Push_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaServiceServer).Push(ctx, req.(*PushRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NipaService_UploadChunks_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(NipaServiceServer).UploadChunks(&grpc.GenericServerStream[ChunkUploadRequest, UploadChunksResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type NipaService_UploadChunksServer = grpc.ClientStreamingServer[ChunkUploadRequest, UploadChunksResponse]
+
+func _NipaService_DownloadChunks_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(NipaServiceServer).DownloadChunks(&grpc.GenericServerStream[DownloadChunksRequest, DownloadChunk]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type NipaService_DownloadChunksServer = grpc.BidiStreamingServer[DownloadChunksRequest, DownloadChunk]
+
 // NipaService_ServiceDesc is the grpc.ServiceDesc for NipaService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -305,7 +391,23 @@ var NipaService_ServiceDesc = grpc.ServiceDesc{
 			MethodName: "GetTreeManifest",
 			Handler:    _NipaService_GetTreeManifest_Handler,
 		},
+		{
+			MethodName: "Push",
+			Handler:    _NipaService_Push_Handler,
+		},
 	},
-	Streams:  []grpc.StreamDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "UploadChunks",
+			Handler:       _NipaService_UploadChunks_Handler,
+			ClientStreams: true,
+		},
+		{
+			StreamName:    "DownloadChunks",
+			Handler:       _NipaService_DownloadChunks_Handler,
+			ServerStreams: true,
+			ClientStreams: true,
+		},
+	},
 	Metadata: "internal/grpc/proto/server.proto",
 }
