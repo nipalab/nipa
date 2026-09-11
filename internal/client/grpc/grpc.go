@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"errors"
+	"io"
 	"log/slog"
 
 	"github.com/nipalab/nipa/internal/client/domain"
@@ -216,6 +217,138 @@ func (c *Client) GetTreeNodeManifest(ctx context.Context, org, project, branch, 
 	return toServerTreeNode(res.GetRootTree()), nil
 }
 
+func (c *Client) Push(ctx context.Context, org, project, branch, baseTreeHash, message string, files []*serverDomain.PushFile, removed []string) (*serverDomain.PushResult, error) {
+	client, err := c.transport.NipaServiceClient()
+	if err != nil {
+		return nil, err
+	}
+	req := &pb.PushRequest{
+		Context:      &pb.ProjectContext{Org: org, Project: project},
+		Branch:       branch,
+		BaseTreeHash: baseTreeHash,
+		Message:      message,
+		RemovedFiles: removed,
+	}
+	for _, f := range files {
+		pf := &pb.PushFile{
+			Path:      f.Path,
+			Mode:      intToPBFileMode(f.Mode),
+			SizeBytes: f.SizeBytes,
+			IsBinary:  f.IsBinary,
+			FileHash:  f.FileHash.String(),
+		}
+		for _, h := range f.ChunkHashes {
+			pf.ChunkHashes = append(pf.ChunkHashes, h.String())
+		}
+		req.Files = append(req.Files, pf)
+	}
+
+	res, err := client.Push(ctx, req)
+	if err != nil {
+		return nil, toDomainError(err)
+	}
+	commitID, _ := snow.ParseBase36(res.GetCommitId())
+	commitHash, err := decodeHash(res.GetCommitHash())
+	if err != nil {
+		return nil, err
+	}
+	treeHash, err := decodeHash(res.GetTreeHash())
+	if err != nil {
+		return nil, err
+	}
+	return &serverDomain.PushResult{
+		CommitID:   commitID,
+		CommitHash: commitHash,
+		TreeHash:   treeHash,
+	}, nil
+}
+
+func (c *Client) UploadChunks(ctx context.Context, chunks []*serverDomain.ChunkData) (int, int, error) {
+	client, err := c.transport.NipaServiceClient()
+	if err != nil {
+		return 0, 0, err
+	}
+	authedCtx, err := c.authedContext(ctx)
+	if err != nil {
+		return 0, 0, err
+	}
+	stream, err := client.UploadChunks(authedCtx)
+	if err != nil {
+		return 0, 0, toDomainError(err)
+	}
+	for _, ch := range chunks {
+		if err := stream.Send(&pb.ChunkUploadRequest{Hash: ch.Hash.String(), Data: ch.Data}); err != nil {
+			return 0, 0, err
+		}
+	}
+	if err := stream.CloseSend(); err != nil {
+		return 0, 0, err
+	}
+	res, err := stream.CloseAndRecv()
+	if err != nil {
+		return 0, 0, toDomainError(err)
+	}
+	return int(res.GetUploaded()), int(res.GetSkipped()), nil
+}
+
+func (c *Client) DownloadChunks(ctx context.Context, hashes []serverDomain.Hash) (map[serverDomain.Hash][]byte, error) {
+	client, err := c.transport.NipaServiceClient()
+	if err != nil {
+		return nil, err
+	}
+	authedCtx, err := c.authedContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	stream, err := client.DownloadChunks(authedCtx)
+	if err != nil {
+		return nil, toDomainError(err)
+	}
+	for _, h := range hashes {
+		if err := stream.Send(&pb.DownloadChunksRequest{Hash: h.String()}); err != nil {
+			return nil, err
+		}
+	}
+	if err := stream.CloseSend(); err != nil {
+		return nil, err
+	}
+	out := make(map[serverDomain.Hash][]byte, len(hashes))
+	for {
+		recv, err := stream.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, toDomainError(err)
+		}
+		hash, err := decodeHash(recv.GetHash())
+		if err != nil {
+			return nil, err
+		}
+		out[hash] = recv.GetData()
+	}
+	return out, nil
+}
+
+func (c *Client) authedContext(ctx context.Context) (context.Context, error) {
+	accToken, err := c.session.AccessToken(ctx, c.transport.url)
+	if err != nil {
+		return nil, status.Error(codes.Unauthenticated, "unable to get access token")
+	}
+	return metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+accToken), nil
+}
+
+func intToPBFileMode(mode int) pb.FileMode {
+	switch mode {
+	case 0o444, 444:
+		return pb.FileMode_FILE_MODE_READ_ONLY
+	case 0o755, 755:
+		return pb.FileMode_FILE_MODE_EXECUTABLE
+	default:
+		return pb.FileMode_FILE_MODE_READ_WRITE
+	}
+}
+
 func toServerBranch(pbBranch *pb.Branch) *serverDomain.Branch {
 	if pbBranch == nil {
 		return nil
@@ -301,6 +434,8 @@ func toDomainError(err error) error {
 		return &domain.Error{Code: 401, Message: st.Message()}
 	case codes.PermissionDenied:
 		return &domain.Error{Code: 403, Message: st.Message()}
+	case codes.FailedPrecondition:
+		return &domain.Error{Code: 409, Message: st.Message()}
 	default:
 		return err
 	}

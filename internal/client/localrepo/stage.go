@@ -3,6 +3,7 @@ package localrepo
 import (
 	"context"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"strings"
 
@@ -56,6 +57,43 @@ func (l *LocalRepo) ListStaged() ([]string, error) {
 		paths[i] = path
 	}
 	return paths, nil
+}
+
+func (l *LocalRepo) ClearStaged() error {
+	if l.db == nil {
+		return errors.New("local repo not initialized")
+	}
+	ctx := context.Background()
+	q := sqlcLocalrepo.New(l.db)
+	return q.StagedFileDeleteAll(ctx)
+}
+
+func (l *LocalRepo) MissingChunks(hashes []serverDomain.Hash) ([]serverDomain.Hash, error) {
+	if l.db == nil {
+		return nil, errors.New("local repo not initialized")
+	}
+	if len(hashes) == 0 {
+		return nil, nil
+	}
+	ctx := context.Background()
+	q := sqlcLocalrepo.New(l.db)
+	seen := make(map[string]bool, len(hashes))
+	var missing []serverDomain.Hash
+	for _, h := range hashes {
+		key := hex.EncodeToString(h[:])
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		exists, err := q.ChunkExists(ctx, h.Bytes())
+		if err != nil {
+			return nil, err
+		}
+		if !exists {
+			missing = append(missing, h)
+		}
+	}
+	return missing, nil
 }
 
 func (l *LocalRepo) Snapshot() (*domain.Snapshot, error) {

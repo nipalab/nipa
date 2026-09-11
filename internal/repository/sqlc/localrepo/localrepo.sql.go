@@ -9,6 +9,17 @@ import (
 	"context"
 )
 
+const chunkExists = `-- name: ChunkExists :one
+SELECT EXISTS(SELECT 1 FROM chunks WHERE hash = ?1)
+`
+
+func (q *Queries) ChunkExists(ctx context.Context, hash []byte) (bool, error) {
+	row := q.db.QueryRowContext(ctx, chunkExists, hash)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const chunkUpsert = `-- name: ChunkUpsert :one
 INSERT INTO chunks (hash, size_bytes)
 VALUES (?1, ?2)
@@ -199,6 +210,16 @@ WHERE path = ?1
 
 func (q *Queries) StagedFileDelete(ctx context.Context, path string) error {
 	_, err := q.db.ExecContext(ctx, stagedFileDelete, path)
+	return err
+}
+
+const stagedFileDeleteAll = `-- name: StagedFileDeleteAll :exec
+DELETE FROM staged_files
+WHERE path IS NOT NULL
+`
+
+func (q *Queries) StagedFileDeleteAll(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, stagedFileDeleteAll)
 	return err
 }
 

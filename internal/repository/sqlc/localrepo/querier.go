@@ -9,6 +9,7 @@ import (
 )
 
 type Querier interface {
+	ChunkExists(ctx context.Context, hash []byte) (bool, error)
 	ChunkUpsert(ctx context.Context, arg ChunkUpsertParams) (int64, error)
 	FileChunkInsert(ctx context.Context, arg FileChunkInsertParams) error
 	FileUpsert(ctx context.Context, arg FileUpsertParams) error
@@ -17,6 +18,7 @@ type Querier interface {
 	SnapshotFileChunkList(ctx context.Context, snapshotID string) ([]SnapshotFileChunkListRow, error)
 	SnapshotFileList(ctx context.Context, snapshotID string) ([]SnapshotFileListRow, error)
 	StagedFileDelete(ctx context.Context, path string) error
+	StagedFileDeleteAll(ctx context.Context) error
 	StagedFileInsert(ctx context.Context, path string) error
 	StagedFileList(ctx context.Context) ([]string, error)
 	StaleFileDelete(ctx context.Context, snapshotID string) error

@@ -37,11 +37,13 @@ func (s *stubRepoInterface) ListBranches(_ context.Context, _, _ string) ([]*ser
 type stubLocalRepo struct {
 	initTarget     string
 	config         domain.Config
+	loadConfig     *domain.Config
 	tree           *serverDomain.TreeNode
 	snapshot       *domain.Snapshot
 	staged         []string
 	initErr        error
 	configErr      error
+	configLoadErr  error
 	treeErr        error
 	snapshotErr    error
 	stagedErr      error
@@ -49,6 +51,12 @@ type stubLocalRepo struct {
 	stageAddErr    error
 	stageRemove    []string
 	stageRemoveErr error
+
+	missingChunks      []serverDomain.Hash
+	missingChunksErr   error
+	missingChunksInput []serverDomain.Hash
+	clearedStaged      bool
+	clearStagedErr     error
 }
 
 func (s *stubLocalRepo) Init(target string) error {
@@ -59,6 +67,17 @@ func (s *stubLocalRepo) Init(target string) error {
 func (s *stubLocalRepo) SaveConfig(cfg domain.Config) error {
 	s.config = cfg
 	return s.configErr
+}
+
+func (s *stubLocalRepo) LoadConfig() (*domain.Config, error) {
+	if s.configLoadErr != nil {
+		return nil, s.configLoadErr
+	}
+	if s.loadConfig != nil {
+		return s.loadConfig, nil
+	}
+	cfg := s.config
+	return &cfg, nil
 }
 
 func (s *stubLocalRepo) SaveTree(root *serverDomain.TreeNode) error {
@@ -82,6 +101,16 @@ func (s *stubLocalRepo) StageAdd(path string) error {
 func (s *stubLocalRepo) StageRemove(paths []string) error {
 	s.stageRemove = append(s.stageRemove, paths...)
 	return s.stageRemoveErr
+}
+
+func (s *stubLocalRepo) MissingChunks(hashes []serverDomain.Hash) ([]serverDomain.Hash, error) {
+	s.missingChunksInput = hashes
+	return s.missingChunks, s.missingChunksErr
+}
+
+func (s *stubLocalRepo) ClearStaged() error {
+	s.clearedStaged = true
+	return s.clearStagedErr
 }
 
 func TestNewRepo(t *testing.T) {
