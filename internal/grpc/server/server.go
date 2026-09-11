@@ -10,6 +10,8 @@ type usecaseContainer interface {
 	User() *usecase.User
 	Branch() *usecase.Branch
 	Common() *usecase.Common
+	Push() *usecase.Push
+	Chunk() *usecase.Chunk
 }
 
 type nipaServer struct {

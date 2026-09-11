@@ -20,6 +20,7 @@ import (
 	"github.com/nipalab/nipa/internal/http/api"
 	"github.com/nipalab/nipa/internal/repository/sqlite"
 	"github.com/nipalab/nipa/internal/snow"
+	"github.com/nipalab/nipa/internal/storage"
 	"github.com/nipalab/nipa/internal/usecase"
 	"google.golang.org/grpc"
 	_ "modernc.org/sqlite"
@@ -47,6 +48,8 @@ func main() {
 	projectRepo := sqlite.NewProjectRepository(dbConn)
 	authRepo := sqlite.NewAuthRepository(dbConn)
 	userRepo := sqlite.NewUserRepository(dbConn)
+	branchRepository := sqlite.NewBranchRepository(dbConn)
+	pushRepository := sqlite.NewPushRepository(dbConn)
 
 	passwordHasher := hasher.NewHasher(cfg.HasherWorkers)
 
@@ -55,11 +58,18 @@ func main() {
 		panic(err)
 	}
 	authUsecase := usecase.NewAuth(cfg.JWTKey, passwordHasher, userRepo, authRepo)
+	chunkStore, err := storage.NewLocalStore(cfg.ChunkStorageDir)
+	if err != nil {
+		panic(fmt.Errorf("create chunk store: %w", err))
+	}
+	defer chunkStore.Close()
 	reg := &Registry{
 		authUsecase:   authUsecase,
 		userUsecase:   usecase.NewUser(snowUser),
 		commonUsecase: usecase.NewCommon(orgRepo, projectRepo),
-		branchUsecase: usecase.NewBranch(authUsecase, sqlite.NewBranchRepository(dbConn)),
+		branchUsecase: usecase.NewBranch(authUsecase, branchRepository),
+		pushUsecase:   usecase.NewPush(authUsecase, branchRepository, pushRepository, snowUser),
+		chunkUsecase:  usecase.NewChunk(pushRepository, chunkStore),
 	}
 
 	apiApp := api.NewAPI(reg)
@@ -71,7 +81,10 @@ func main() {
 
 	grpcInterceptor := server.NewInterceptor(reg.Auth())
 
-	grpcRegistrar := grpc.NewServer(grpc.UnaryInterceptor(grpcInterceptor.JWTUnary()))
+	grpcRegistrar := grpc.NewServer(
+		grpc.UnaryInterceptor(grpcInterceptor.JWTUnary()),
+		grpc.StreamInterceptor(grpcInterceptor.JWTStream()),
+	)
 	grpcServer := server.New(reg)
 	pb.RegisterNipaServiceServer(grpcRegistrar, grpcServer)
 

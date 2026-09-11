@@ -17,13 +17,20 @@ type Querier interface {
 	BranchList(ctx context.Context, arg BranchListParams) ([]Branch, error)
 	BranchRemoveDefault(ctx context.Context, projectID int64) error
 	BranchUpdate(ctx context.Context, arg BranchUpdateParams) error
+	BranchUpdateCommit(ctx context.Context, arg BranchUpdateCommitParams) error
+	ChunkGetByHash(ctx context.Context, hash []byte) (Chunk, error)
+	ChunkInsertOrIgnore(ctx context.Context, arg ChunkInsertOrIgnoreParams) error
 	ChunkListByFile(ctx context.Context, fileID int64) ([]Chunk, error)
 	CommitGet(ctx context.Context, id int64) (Commit, error)
+	CommitInsert(ctx context.Context, arg CommitInsertParams) error
 	CreateOrganization(ctx context.Context, arg CreateOrganizationParams) (Organization, error)
 	CreateProject(ctx context.Context, arg CreateProjectParams) (Project, error)
 	DeleteOrganization(ctx context.Context, id int64) error
 	DeleteProject(ctx context.Context, id int64) error
+	FileChunkInsert(ctx context.Context, arg FileChunkInsertParams) error
+	FileInsert(ctx context.Context, arg FileInsertParams) (int64, error)
 	FileListByTree(ctx context.Context, treeID sql.NullInt64) ([]File, error)
+	FileSetTree(ctx context.Context, arg FileSetTreeParams) error
 	GetOrganization(ctx context.Context, id int64) (Organization, error)
 	GetOrganizationBySlug(ctx context.Context, slug string) (Organization, error)
 	GetProject(ctx context.Context, id int64) (Project, error)
@@ -35,7 +42,9 @@ type Querier interface {
 	RefreshTokenDeleteByToken(ctx context.Context, token string) (RefreshToken, error)
 	TreeNodeGet(ctx context.Context, id int64) (TreeNode, error)
 	TreeNodeGetChildByName(ctx context.Context, arg TreeNodeGetChildByNameParams) (TreeNode, error)
+	TreeNodeInsert(ctx context.Context, arg TreeNodeInsertParams) (int64, error)
 	TreeNodeListChildren(ctx context.Context, parentTreeID sql.NullInt64) ([]TreeNode, error)
+	TreeNodeSetParent(ctx context.Context, arg TreeNodeSetParentParams) error
 	UserCreate(ctx context.Context, arg UserCreateParams) (int64, error)
 	UserDeleteByID(ctx context.Context, id int64) error
 	UserGetByEmail(ctx context.Context, email string) (User, error)

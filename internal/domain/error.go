@@ -32,6 +32,10 @@ func IsErrorNoPermission(err error) bool {
 	return isDomainError(err, 403)
 }
 
+func IsErrorConflict(err error) bool {
+	return isDomainError(err, 409)
+}
+
 func isDomainError(err error, code int) bool {
 	if err == nil {
 		return false
@@ -76,6 +80,13 @@ func NewErrorNoPermission() *Error {
 	return &Error{
 		Code:    403,
 		Message: "no permission",
+	}
+}
+
+func NewErrorConflict(message string) *Error {
+	return &Error{
+		Code:    409,
+		Message: message,
 	}
 }
 

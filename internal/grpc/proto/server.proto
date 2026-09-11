@@ -45,6 +45,49 @@ message GetTreeManifestResponse {
     TreeManifest root_tree = 2;
 }
 
+message PushFile {
+    string path = 1; // repository-relative file path, e.g. "assets/logo.png"
+    FileMode mode = 2;
+    int64 size_bytes = 3;
+    bool is_binary = 4;
+    string file_hash = 5;
+    repeated string chunk_hashes = 6;
+}
+
+message ChunkUploadRequest {
+    string hash = 1; // hex-encoded BLAKE3 hash of data
+    bytes data = 2;
+}
+
+message UploadChunksResponse {
+    int32 uploaded = 1;
+    int32 skipped = 2;
+}
+
+message DownloadChunksRequest {
+    string hash = 1; // hex-encoded BLAKE3 hash of data
+}
+
+message DownloadChunk {
+    string hash = 1; // hex-encoded BLAKE3 hash of data
+    bytes data = 2;
+}
+
+message PushRequest {
+    ProjectContext context = 1;
+    string branch = 2;
+    string base_tree_hash = 3; // tree hash the client is based on, empty for branches without commits
+    string message = 4;
+    repeated PushFile files = 5;
+    repeated string removed_files = 6; // paths removed relative to the base tree
+}
+
+message PushResponse {
+    string commit_id = 1;
+    string commit_hash = 2;
+    string tree_hash = 3;
+}
+
 message Branch {
     google.protobuf.Timestamp created_at = 1;
     google.protobuf.Timestamp updated_at = 2;
@@ -102,4 +145,7 @@ service NipaService {
     rpc GetBranch(GetBranchRequest) returns (GetBranchResponse);
     rpc GetDefaultBranch(GetDefaultBranchRequest) returns (GetBranchResponse);
     rpc GetTreeManifest(GetTreeManifestRequest) returns (GetTreeManifestResponse);
+    rpc Push(PushRequest) returns (PushResponse);
+    rpc UploadChunks(stream ChunkUploadRequest) returns (UploadChunksResponse);
+    rpc DownloadChunks(stream DownloadChunksRequest) returns (stream DownloadChunk);
 }

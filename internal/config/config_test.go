@@ -17,7 +17,7 @@ func writeFile(t *testing.T, dir, name, content string) {
 // otherwise pick up and override file-based values.
 func clearConfigEnv(t *testing.T) {
 	t.Helper()
-	for _, k := range []string{"DATABASE_DSN", "SERVER_ADDRESS", "SERVER_PORT", "JWT_KEY", "LOG_LEVEL"} {
+	for _, k := range []string{"DATABASE_DSN", "SERVER_ADDRESS", "SERVER_PORT", "JWT_KEY", "LOG_LEVEL", "HASHER_WORKERS", "SNOWFLAKE_NODE_ID", "CHUNK_STORAGE_DIR"} {
 		if old, ok := os.LookupEnv(k); ok {
 			os.Unsetenv(k)
 			t.Cleanup(func() { os.Setenv(k, old) })
@@ -30,6 +30,7 @@ SERVER_PORT: 6745
 DATABASE_DSN: sqlite://nipa.db
 JWT_KEY: yaml-secret
 LOG_LEVEL: debug
+CHUNK_STORAGE_DIR: ./chunks
 `
 
 func TestLoadConfig_FromYAML(t *testing.T) {
@@ -46,6 +47,7 @@ func TestLoadConfig_FromYAML(t *testing.T) {
 	require.Equal(t, "sqlite://nipa.db", cfg.DatabaseDSN)
 	require.Equal(t, "yaml-secret", cfg.JWTKey)
 	require.Equal(t, "debug", cfg.LogLevel)
+	require.Equal(t, "./chunks", cfg.ChunkStorageDir)
 }
 
 func TestLoadConfig_EnvFileOverridesYAML(t *testing.T) {

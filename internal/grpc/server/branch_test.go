@@ -19,12 +19,16 @@ import (
 type mockUsecaseContainer struct {
 	branch *usecase.Branch
 	common *usecase.Common
+	push   *usecase.Push
+	chunk  *usecase.Chunk
 }
 
 func (m *mockUsecaseContainer) Auth() *usecase.Auth     { return nil }
 func (m *mockUsecaseContainer) User() *usecase.User     { return nil }
 func (m *mockUsecaseContainer) Branch() *usecase.Branch { return m.branch }
 func (m *mockUsecaseContainer) Common() *usecase.Common { return m.common }
+func (m *mockUsecaseContainer) Push() *usecase.Push     { return m.push }
+func (m *mockUsecaseContainer) Chunk() *usecase.Chunk   { return m.chunk }
 
 func newMockUsecaseContainer(t *testing.T, branch *usecase.Branch) *mockUsecaseContainer {
 	t.Helper()
