@@ -12,10 +12,12 @@ import (
 type fakeUsecaseContainer struct {
 	auth *usecase.Auth
 	repo *usecase.Repo
+	push *usecase.Push
 }
 
 func (f *fakeUsecaseContainer) Auth() *usecase.Auth { return f.auth }
 func (f *fakeUsecaseContainer) Repo() *usecase.Repo { return f.repo }
+func (f *fakeUsecaseContainer) Push() *usecase.Push { return f.push }
 
 func TestNewCli(t *testing.T) {
 	c := NewCli(&fakeUsecaseContainer{}, &fakeConnector{})

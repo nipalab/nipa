@@ -57,6 +57,17 @@ type fakeServer struct {
 	lastPath         string
 	listBranchesErr  error
 	listBranches     []*pb.Branch
+	lastPushReq      *pb.PushRequest
+	pushErr          error
+	pushResp         *pb.PushResponse
+	uploadedChunks   []*pb.ChunkUploadRequest
+	uploadResp       *pb.UploadChunksResponse
+	uploadErr        error
+	uploadStreamAuth string
+	downloadRequests []string
+	downloadData     map[string][]byte
+	downloadErr      error
+	downloadStreamAuth string
 }
 
 func (f *fakeServer) GetDefaultBranch(_ context.Context, _ *pb.GetDefaultBranchRequest) (*pb.GetBranchResponse, error) {
@@ -330,6 +341,7 @@ func TestToDomainError(t *testing.T) {
 		{"invalid argument", status.Error(codes.InvalidArgument, "bad credentials"), 400, "bad credentials"},
 		{"unauthenticated", status.Error(codes.Unauthenticated, "invalid token"), 401, "invalid token"},
 		{"permission denied", status.Error(codes.PermissionDenied, "no permission"), 403, "no permission"},
+		{"conflict", status.Error(codes.FailedPrecondition, "branch has moved"), 409, "branch has moved"},
 	}
 
 	for _, tt := range tests {

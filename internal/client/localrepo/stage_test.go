@@ -120,6 +120,63 @@ func TestSnapshot_MultipleFilesWithChunks(t *testing.T) {
 	require.Equal(t, chunker.FileHash(nil), snap.Files[1].Hash, "a zero-length file has no chunks")
 }
 
+func TestClearStaged(t *testing.T) {
+	lr := newTestLocalRepo(t)
+	require.NoError(t, lr.StageAdd("a.txt"))
+	require.NoError(t, lr.StageAdd("b.txt"))
+
+	require.NoError(t, lr.ClearStaged())
+	got, err := lr.ListStaged()
+	require.NoError(t, err)
+	require.Empty(t, got)
+}
+
+func TestClearStaged_Idempotent(t *testing.T) {
+	lr := newTestLocalRepo(t)
+	require.NoError(t, lr.ClearStaged())
+	require.NoError(t, lr.ClearStaged())
+}
+
+func TestClearStaged_NotInitialized(t *testing.T) {
+	lr := NewLocalRepo()
+	require.Error(t, lr.ClearStaged())
+}
+
+func TestMissingChunks(t *testing.T) {
+	lr := newTestLocalRepo(t)
+	require.NoError(t, lr.SaveTree(treeFixture()))
+
+	cached := serverDomain.Hash{0x04}
+	missingA := serverDomain.Hash{0xa1}
+	missingB := serverDomain.Hash{0xa2}
+
+	got, err := lr.MissingChunks([]serverDomain.Hash{cached, missingA, missingB, cached, missingA})
+	require.NoError(t, err)
+	require.Equal(t, []serverDomain.Hash{missingA, missingB}, got, "known chunks are skipped, input is deduped")
+}
+
+func TestMissingChunks_AllKnown(t *testing.T) {
+	lr := newTestLocalRepo(t)
+	require.NoError(t, lr.SaveTree(treeFixture()))
+
+	got, err := lr.MissingChunks([]serverDomain.Hash{{0x04}})
+	require.NoError(t, err)
+	require.Empty(t, got)
+}
+
+func TestMissingChunks_Empty(t *testing.T) {
+	lr := newTestLocalRepo(t)
+	got, err := lr.MissingChunks(nil)
+	require.NoError(t, err)
+	require.Empty(t, got)
+}
+
+func TestMissingChunks_NotInitialized(t *testing.T) {
+	lr := NewLocalRepo()
+	_, err := lr.MissingChunks([]serverDomain.Hash{{0x01}})
+	require.Error(t, err)
+}
+
 func newTestLocalRepo(t *testing.T) *LocalRepo {
 	t.Helper()
 	lr := NewLocalRepo()

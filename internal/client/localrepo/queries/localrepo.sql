@@ -35,6 +35,9 @@ VALUES (:hash, :size_bytes)
 ON CONFLICT(hash) DO UPDATE SET hash = excluded.hash
 RETURNING id;
 
+-- name: ChunkExists :one
+SELECT EXISTS(SELECT 1 FROM chunks WHERE hash = :hash);
+
 -- name: FileChunkInsert :exec
 INSERT INTO file_chunks (file_path, chunk_id, chunk_index)
 VALUES (:file_path, :chunk_id, :chunk_index)
@@ -61,6 +64,10 @@ ON CONFLICT(path) DO NOTHING;
 -- name: StagedFileDelete :exec
 DELETE FROM staged_files
 WHERE path = :path;
+
+-- name: StagedFileDeleteAll :exec
+DELETE FROM staged_files
+WHERE path IS NOT NULL;
 
 -- name: SnapshotFileList :many
 SELECT path, hash, size_bytes, mode, is_binary
