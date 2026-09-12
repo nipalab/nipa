@@ -10,7 +10,9 @@ import (
 
 type Querier interface {
 	ChunkExists(ctx context.Context, hash []byte) (bool, error)
+	ChunkGetData(ctx context.Context, hash []byte) ([]byte, error)
 	ChunkUpsert(ctx context.Context, arg ChunkUpsertParams) (int64, error)
+	ChunkUpsertContent(ctx context.Context, arg ChunkUpsertContentParams) (int64, error)
 	FileChunkInsert(ctx context.Context, arg FileChunkInsertParams) error
 	FileUpsert(ctx context.Context, arg FileUpsertParams) error
 	MetaGet(ctx context.Context, key string) (string, error)

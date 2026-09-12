@@ -36,7 +36,16 @@ ON CONFLICT(hash) DO UPDATE SET hash = excluded.hash
 RETURNING id;
 
 -- name: ChunkExists :one
-SELECT EXISTS(SELECT 1 FROM chunks WHERE hash = :hash);
+SELECT EXISTS(SELECT 1 FROM chunks WHERE hash = :hash AND data IS NOT NULL);
+
+-- name: ChunkUpsertContent :one
+INSERT INTO chunks (hash, size_bytes, data)
+VALUES (:hash, :size_bytes, :data)
+ON CONFLICT(hash) DO UPDATE SET size_bytes = excluded.size_bytes, data = excluded.data
+RETURNING id;
+
+-- name: ChunkGetData :one
+SELECT data FROM chunks WHERE hash = :hash LIMIT 1;
 
 -- name: FileChunkInsert :exec
 INSERT INTO file_chunks (file_path, chunk_id, chunk_index)

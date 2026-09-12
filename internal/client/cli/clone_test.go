@@ -76,6 +76,10 @@ func (fakeRepoInterface) ListBranches(_ context.Context, _, _ string) ([]*server
 	return nil, nil
 }
 
+func (fakeRepoInterface) DownloadChunks(_ context.Context, _ []serverDomain.Hash) (map[serverDomain.Hash][]byte, error) {
+	return nil, nil
+}
+
 type fakeLocalRepo struct{}
 
 func (fakeLocalRepo) Init(_ string) error                     { return nil }
@@ -85,6 +89,11 @@ func (fakeLocalRepo) Snapshot() (*domain.Snapshot, error)     { return &domain.S
 func (fakeLocalRepo) ListStaged() ([]string, error)           { return nil, nil }
 func (fakeLocalRepo) StageAdd(_ string) error                 { return nil }
 func (fakeLocalRepo) StageRemove(_ []string) error            { return nil }
+func (fakeLocalRepo) MissingChunks(_ []serverDomain.Hash) ([]serverDomain.Hash, error) {
+	return nil, nil
+}
+func (fakeLocalRepo) StoreChunk(_ serverDomain.Hash, _ []byte) error { return nil }
+func (fakeLocalRepo) LoadChunk(_ serverDomain.Hash) ([]byte, error)  { return nil, nil }
 
 func helperAuth(t *testing.T) (*usecase.Repo, *fakeStorage) {
 	t.Helper()

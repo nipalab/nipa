@@ -10,7 +10,7 @@ import (
 )
 
 const chunkExists = `-- name: ChunkExists :one
-SELECT EXISTS(SELECT 1 FROM chunks WHERE hash = ?1)
+SELECT EXISTS(SELECT 1 FROM chunks WHERE hash = ?1 AND data IS NOT NULL)
 `
 
 func (q *Queries) ChunkExists(ctx context.Context, hash []byte) (bool, error) {
@@ -18,6 +18,17 @@ func (q *Queries) ChunkExists(ctx context.Context, hash []byte) (bool, error) {
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
+}
+
+const chunkGetData = `-- name: ChunkGetData :one
+SELECT data FROM chunks WHERE hash = ?1 LIMIT 1
+`
+
+func (q *Queries) ChunkGetData(ctx context.Context, hash []byte) ([]byte, error) {
+	row := q.db.QueryRowContext(ctx, chunkGetData, hash)
+	var data []byte
+	err := row.Scan(&data)
+	return data, err
 }
 
 const chunkUpsert = `-- name: ChunkUpsert :one
@@ -34,6 +45,26 @@ type ChunkUpsertParams struct {
 
 func (q *Queries) ChunkUpsert(ctx context.Context, arg ChunkUpsertParams) (int64, error) {
 	row := q.db.QueryRowContext(ctx, chunkUpsert, arg.Hash, arg.SizeBytes)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
+const chunkUpsertContent = `-- name: ChunkUpsertContent :one
+INSERT INTO chunks (hash, size_bytes, data)
+VALUES (?1, ?2, ?3)
+ON CONFLICT(hash) DO UPDATE SET size_bytes = excluded.size_bytes, data = excluded.data
+RETURNING id
+`
+
+type ChunkUpsertContentParams struct {
+	Hash      []byte `json:"hash"`
+	SizeBytes int64  `json:"size_bytes"`
+	Data      []byte `json:"data"`
+}
+
+func (q *Queries) ChunkUpsertContent(ctx context.Context, arg ChunkUpsertContentParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, chunkUpsertContent, arg.Hash, arg.SizeBytes, arg.Data)
 	var id int64
 	err := row.Scan(&id)
 	return id, err

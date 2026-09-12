@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/nipalab/nipa/internal/chunker"
 	"github.com/nipalab/nipa/internal/client/domain"
 	serverDomain "github.com/nipalab/nipa/internal/domain"
 )
@@ -20,6 +21,9 @@ type stubRepoInterface struct {
 	manifestErr   error
 	listBranches  []*serverDomain.Branch
 	listErr       error
+	download      map[serverDomain.Hash][]byte
+	downloadErr   error
+	downloaded    []serverDomain.Hash
 }
 
 func (s *stubRepoInterface) GetDefaultBranch(_ context.Context, _, _ string) (*serverDomain.Branch, error) {
@@ -32,6 +36,18 @@ func (s *stubRepoInterface) GetTreeNodeManifest(_ context.Context, _, _, _, _ st
 
 func (s *stubRepoInterface) ListBranches(_ context.Context, _, _ string) ([]*serverDomain.Branch, error) {
 	return s.listBranches, s.listErr
+}
+
+func (s *stubRepoInterface) DownloadChunks(_ context.Context, hashes []serverDomain.Hash) (map[serverDomain.Hash][]byte, error) {
+	s.downloaded = append(s.downloaded, hashes...)
+	if s.downloadErr != nil {
+		return nil, s.downloadErr
+	}
+	out := make(map[serverDomain.Hash][]byte, len(hashes))
+	for _, h := range hashes {
+		out[h] = s.download[h]
+	}
+	return out, nil
 }
 
 type stubLocalRepo struct {
@@ -57,6 +73,10 @@ type stubLocalRepo struct {
 	missingChunksInput []serverDomain.Hash
 	clearedStaged      bool
 	clearStagedErr     error
+
+	storedChunks  map[serverDomain.Hash][]byte
+	storeChunkErr error
+	loadChunkErr  error
 }
 
 func (s *stubLocalRepo) Init(target string) error {
@@ -86,7 +106,10 @@ func (s *stubLocalRepo) SaveTree(root *serverDomain.TreeNode) error {
 }
 
 func (s *stubLocalRepo) Snapshot() (*domain.Snapshot, error) {
-	return s.snapshot, s.snapshotErr
+	if s.snapshot != nil {
+		return s.snapshot, s.snapshotErr
+	}
+	return &domain.Snapshot{}, s.snapshotErr
 }
 
 func (s *stubLocalRepo) ListStaged() ([]string, error) {
@@ -111,6 +134,28 @@ func (s *stubLocalRepo) MissingChunks(hashes []serverDomain.Hash) ([]serverDomai
 func (s *stubLocalRepo) ClearStaged() error {
 	s.clearedStaged = true
 	return s.clearStagedErr
+}
+
+func (s *stubLocalRepo) StoreChunk(hash serverDomain.Hash, data []byte) error {
+	if s.storeChunkErr != nil {
+		return s.storeChunkErr
+	}
+	if s.storedChunks == nil {
+		s.storedChunks = make(map[serverDomain.Hash][]byte)
+	}
+	s.storedChunks[hash] = data
+	return nil
+}
+
+func (s *stubLocalRepo) LoadChunk(hash serverDomain.Hash) ([]byte, error) {
+	if s.loadChunkErr != nil {
+		return nil, s.loadChunkErr
+	}
+	data, ok := s.storedChunks[hash]
+	if !ok {
+		return nil, errors.New("chunk not found")
+	}
+	return data, nil
 }
 
 func TestNewRepo(t *testing.T) {
@@ -326,6 +371,159 @@ func TestRepo_Clone_Error_SaveTreeFailed(t *testing.T) {
 
 	err := repo.Clone(context.Background(), "http://example.com/org/project", "example.com", "org", "project", "main", "/src", t.TempDir())
 	require.ErrorIs(t, err, wantErr)
+}
+
+func TestRepo_Clone_MaterializesWorkingCopy(t *testing.T) {
+	content := "real file bytes"
+	chunked, err := chunker.ChunkAll([]byte(content))
+	require.NoError(t, err)
+	chunkHash := chunked[0].Hash
+	fileHash := chunker.FileHash([]serverDomain.Hash{chunkHash})
+
+	manifest := &serverDomain.TreeNode{
+		Name: "root",
+		FileChildren: []*serverDomain.File{{
+			Name:      "hello.txt",
+			Mode:      2,
+			SizeBytes: int64(len(content)),
+			Hash:      fileHash,
+			Chunks:    []serverDomain.Chunk{{Hash: chunkHash, SizeBytes: int64(len(content))}},
+		}},
+	}
+	token := signTestToken(t, "secret")
+	storage := &stubSecureStorage{loadResult: &domain.LoginResult{AccessToken: token}}
+	auth := NewAuth(nil, storage, nil)
+	local := &stubLocalRepo{missingChunks: []serverDomain.Hash{chunkHash}}
+	target := t.TempDir()
+	repo := NewRepo(auth, &stubRepoInterface{
+		defaultBranch: &serverDomain.Branch{Name: "main"},
+		manifest:      manifest,
+		download:      map[serverDomain.Hash][]byte{chunkHash: []byte(content)},
+	}, local)
+
+	require.NoError(t, repo.Clone(context.Background(), "http://example.com/org/project", "example.com", "org", "project", "main", "", target))
+
+	data, err := os.ReadFile(filepath.Join(target, "hello.txt"))
+	require.NoError(t, err)
+	require.Equal(t, content, string(data), "clone must download the real file content into the working copy")
+	require.Equal(t, []byte(content), local.storedChunks[chunkHash], "downloaded content must land in the local chunk cache")
+	require.NotNil(t, local.tree)
+}
+
+func TestRepo_Clone_NestedFilesMaterialized(t *testing.T) {
+	content := "nested"
+	chunked, err := chunker.ChunkAll([]byte(content))
+	require.NoError(t, err)
+	chunkHash := chunked[0].Hash
+
+	manifest := &serverDomain.TreeNode{
+		Name: "root",
+		TreeChildren: []*serverDomain.TreeNode{{
+			Name: "assets",
+			FileChildren: []*serverDomain.File{{
+				Name:      "logo.png",
+				Mode:      2,
+				SizeBytes: int64(len(content)),
+				Chunks:    []serverDomain.Chunk{{Hash: chunkHash, SizeBytes: int64(len(content))}},
+			}},
+		}},
+	}
+	token := signTestToken(t, "secret")
+	storage := &stubSecureStorage{loadResult: &domain.LoginResult{AccessToken: token}}
+	auth := NewAuth(nil, storage, nil)
+	local := &stubLocalRepo{missingChunks: []serverDomain.Hash{chunkHash}}
+	repo := NewRepo(auth, &stubRepoInterface{
+		defaultBranch: &serverDomain.Branch{Name: "main"},
+		manifest:      manifest,
+		download:      map[serverDomain.Hash][]byte{chunkHash: []byte(content)},
+	}, local)
+
+	target := t.TempDir()
+	require.NoError(t, repo.Clone(context.Background(), "http://example.com/org/project", "example.com", "org", "project", "main", "", target))
+
+	data, err := os.ReadFile(filepath.Join(target, "assets", "logo.png"))
+	require.NoError(t, err)
+	require.Equal(t, content, string(data), "nested files must be flattened into their directory path")
+}
+
+func TestRepo_Clone_SubdirCloneSkipsMaterialization(t *testing.T) {
+	fileHash := chunker.FileHash(nil)
+	token := signTestToken(t, "secret")
+	storage := &stubSecureStorage{loadResult: &domain.LoginResult{AccessToken: token}}
+	auth := NewAuth(nil, storage, nil)
+	local := &stubLocalRepo{}
+	clientStub := &stubRepoInterface{
+		defaultBranch: &serverDomain.Branch{Name: "main"},
+		manifest: &serverDomain.TreeNode{
+			Name:         "src",
+			FileChildren: []*serverDomain.File{{Name: "main.go", Mode: 2, Hash: fileHash}},
+		},
+	}
+	repo := NewRepo(auth, clientStub, local)
+	target := t.TempDir()
+
+	require.NoError(t, repo.Clone(context.Background(), "http://example.com/org/project/src", "example.com", "org", "project", "main", "/src", target))
+
+	require.Empty(t, clientStub.downloaded, "subdirectory clones stay metadata-only until layout support lands")
+	_, err := os.Stat(filepath.Join(target, "main.go"))
+	require.Error(t, err)
+	require.NotNil(t, local.tree)
+}
+
+func TestRepo_Clone_Error_DownloadFails(t *testing.T) {
+	content := "bytes"
+	chunked, err := chunker.ChunkAll([]byte(content))
+	require.NoError(t, err)
+	chunkHash := chunked[0].Hash
+	manifest := &serverDomain.TreeNode{
+		Name: "root",
+		FileChildren: []*serverDomain.File{{
+			Name:      "a.txt",
+			Mode:      2,
+			SizeBytes: int64(len(content)),
+			Chunks:    []serverDomain.Chunk{{Hash: chunkHash, SizeBytes: int64(len(content))}},
+		}},
+	}
+	wantErr := errors.New("download failed")
+	token := signTestToken(t, "secret")
+	storage := &stubSecureStorage{loadResult: &domain.LoginResult{AccessToken: token}}
+	auth := NewAuth(nil, storage, nil)
+	repo := NewRepo(auth, &stubRepoInterface{
+		defaultBranch: &serverDomain.Branch{Name: "main"},
+		manifest:      manifest,
+		downloadErr:   wantErr,
+	}, &stubLocalRepo{missingChunks: []serverDomain.Hash{chunkHash}})
+
+	err = repo.Clone(context.Background(), "http://example.com/org/project", "example.com", "org", "project", "main", "", t.TempDir())
+	require.ErrorIs(t, err, wantErr)
+}
+
+func TestRepo_Clone_Error_ChunkHashMismatch(t *testing.T) {
+	content := "bytes"
+	chunked, err := chunker.ChunkAll([]byte(content))
+	require.NoError(t, err)
+	chunkHash := chunked[0].Hash
+	manifest := &serverDomain.TreeNode{
+		Name: "root",
+		FileChildren: []*serverDomain.File{{
+			Name:      "a.txt",
+			Mode:      2,
+			SizeBytes: int64(len(content)),
+			Chunks:    []serverDomain.Chunk{{Hash: chunkHash, SizeBytes: int64(len(content))}},
+		}},
+	}
+	token := signTestToken(t, "secret")
+	storage := &stubSecureStorage{loadResult: &domain.LoginResult{AccessToken: token}}
+	auth := NewAuth(nil, storage, nil)
+	repo := NewRepo(auth, &stubRepoInterface{
+		defaultBranch: &serverDomain.Branch{Name: "main"},
+		manifest:      manifest,
+		download:      map[serverDomain.Hash][]byte{chunkHash: []byte("corrupted")},
+	}, &stubLocalRepo{missingChunks: []serverDomain.Hash{chunkHash}})
+
+	err = repo.Clone(context.Background(), "http://example.com/org/project", "example.com", "org", "project", "main", "", t.TempDir())
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "hash mismatch")
 }
 
 func TestRepo_ListBranches_Success(t *testing.T) {

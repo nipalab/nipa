@@ -12,6 +12,7 @@ type Chunk struct {
 	ID        int64        `json:"id"`
 	Hash      []byte       `json:"hash"`
 	SizeBytes int64        `json:"size_bytes"`
+	Data      []byte       `json:"data"`
 	CreatedAt sql.NullTime `json:"created_at"`
 }
 
