@@ -13,6 +13,7 @@ type repoInterface interface {
 	GetDefaultBranch(ctx context.Context, org, project string) (*serverDomain.Branch, error)
 	GetTreeNodeManifest(ctx context.Context, org, project, branch, path string) (*serverDomain.TreeNode, error)
 	ListBranches(ctx context.Context, org, project string) ([]*serverDomain.Branch, error)
+	DownloadChunks(ctx context.Context, hashes []serverDomain.Hash) (map[serverDomain.Hash][]byte, error)
 }
 
 type localRepo interface {
@@ -23,6 +24,9 @@ type localRepo interface {
 	ListStaged() ([]string, error)
 	StageAdd(path string) error
 	StageRemove(paths []string) error
+	MissingChunks(hashes []serverDomain.Hash) ([]serverDomain.Hash, error)
+	StoreChunk(hash serverDomain.Hash, data []byte) error
+	LoadChunk(hash serverDomain.Hash) ([]byte, error)
 }
 
 type Repo struct {
@@ -63,6 +67,11 @@ func (r *Repo) Clone(ctx context.Context, url, host, org, project, branch, path,
 	}
 	if err := r.localRepo.SaveConfig(domain.Config{Url: url, Branch: branch}); err != nil {
 		return err
+	}
+	if path == "" {
+		if err := syncWorkingCopy(ctx, r.repoInterface, r.localRepo, target, root); err != nil {
+			return err
+		}
 	}
 	return r.localRepo.SaveTree(root)
 }

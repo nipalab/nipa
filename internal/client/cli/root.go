@@ -11,6 +11,7 @@ type usecaseContainer interface {
 	Auth() *usecase.Auth
 	Repo() *usecase.Repo
 	Push() *usecase.Push
+	Update() *usecase.Update
 }
 
 type connector interface {
@@ -40,5 +41,6 @@ func (c *Cli) Run() error {
 	rootCmd.AddCommand(c.setupRemoveCmd())
 	rootCmd.AddCommand(c.setupStatusCmd())
 	rootCmd.AddCommand(c.setupPushCmd())
+	rootCmd.AddCommand(c.setupUpdateCmd())
 	return rootCmd.Execute()
 }

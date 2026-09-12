@@ -145,8 +145,9 @@ func TestClearStaged_NotInitialized(t *testing.T) {
 func TestMissingChunks(t *testing.T) {
 	lr := newTestLocalRepo(t)
 	require.NoError(t, lr.SaveTree(treeFixture()))
-
 	cached := serverDomain.Hash{0x04}
+	require.NoError(t, lr.StoreChunk(cached, []byte("content")), "a chunk only counts as cached once its content is stored")
+
 	missingA := serverDomain.Hash{0xa1}
 	missingB := serverDomain.Hash{0xa2}
 
@@ -158,10 +159,20 @@ func TestMissingChunks(t *testing.T) {
 func TestMissingChunks_AllKnown(t *testing.T) {
 	lr := newTestLocalRepo(t)
 	require.NoError(t, lr.SaveTree(treeFixture()))
+	require.NoError(t, lr.StoreChunk(serverDomain.Hash{0x04}, []byte("content")))
 
 	got, err := lr.MissingChunks([]serverDomain.Hash{{0x04}})
 	require.NoError(t, err)
 	require.Empty(t, got)
+}
+
+func TestMissingChunks_MetadataOnlyRowIsMissing(t *testing.T) {
+	lr := newTestLocalRepo(t)
+	require.NoError(t, lr.SaveTree(treeFixture()), "SaveTree inserts chunk metadata without content")
+
+	got, err := lr.MissingChunks([]serverDomain.Hash{{0x04}})
+	require.NoError(t, err)
+	require.Equal(t, []serverDomain.Hash{{0x04}}, got, "a metadata-only chunk row must still count as missing content")
 }
 
 func TestMissingChunks_Empty(t *testing.T) {

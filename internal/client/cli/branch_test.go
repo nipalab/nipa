@@ -31,6 +31,10 @@ func (f fakeListRepoInterface) ListBranches(_ context.Context, _, _ string) ([]*
 	return f.branches, nil
 }
 
+func (f fakeListRepoInterface) DownloadChunks(_ context.Context, _ []serverDomain.Hash) (map[serverDomain.Hash][]byte, error) {
+	return nil, nil
+}
+
 func newBranchCli(branches ...*serverDomain.Branch) *Cli {
 	auth := usecase.NewAuth(fakeExecutor{}, &fakeStorage{}, &fakeInput{})
 	repo := usecase.NewRepo(auth, fakeListRepoInterface{branches: branches}, fakeLocalRepo{})
