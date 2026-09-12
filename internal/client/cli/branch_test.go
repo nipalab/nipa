@@ -31,7 +31,7 @@ func (f fakeListRepoInterface) ListBranches(_ context.Context, _, _ string) ([]*
 	return f.branches, nil
 }
 
-func (f fakeListRepoInterface) DownloadChunks(_ context.Context, _ []serverDomain.Hash) (map[serverDomain.Hash][]byte, error) {
+func (f fakeListRepoInterface) DownloadChunks(_ context.Context, _ []serverDomain.Hash, _ ...func(h serverDomain.Hash, data []byte)) (map[serverDomain.Hash][]byte, error) {
 	return nil, nil
 }
 

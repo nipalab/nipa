@@ -38,7 +38,7 @@ func (s *stubRepoInterface) ListBranches(_ context.Context, _, _ string) ([]*ser
 	return s.listBranches, s.listErr
 }
 
-func (s *stubRepoInterface) DownloadChunks(_ context.Context, hashes []serverDomain.Hash) (map[serverDomain.Hash][]byte, error) {
+func (s *stubRepoInterface) DownloadChunks(_ context.Context, hashes []serverDomain.Hash, onChunk ...func(h serverDomain.Hash, data []byte)) (map[serverDomain.Hash][]byte, error) {
 	s.downloaded = append(s.downloaded, hashes...)
 	if s.downloadErr != nil {
 		return nil, s.downloadErr
@@ -46,6 +46,9 @@ func (s *stubRepoInterface) DownloadChunks(_ context.Context, hashes []serverDom
 	out := make(map[serverDomain.Hash][]byte, len(hashes))
 	for _, h := range hashes {
 		out[h] = s.download[h]
+		if len(onChunk) > 0 && onChunk[0] != nil {
+			onChunk[0](h, out[h])
+		}
 	}
 	return out, nil
 }

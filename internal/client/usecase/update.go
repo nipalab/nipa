@@ -16,11 +16,23 @@ import (
 type updateClient interface {
 	Connect(ctx context.Context, host string) error
 	GetTreeNodeManifest(ctx context.Context, org, project, branch, path string) (*domain.TreeNode, error)
-	DownloadChunks(ctx context.Context, hashes []domain.Hash) (map[domain.Hash][]byte, error)
+	DownloadChunks(ctx context.Context, hashes []domain.Hash, onChunk ...func(h domain.Hash, data []byte)) (map[domain.Hash][]byte, error)
 }
 
 type chunkDownloader interface {
-	DownloadChunks(ctx context.Context, hashes []domain.Hash) (map[domain.Hash][]byte, error)
+	DownloadChunks(ctx context.Context, hashes []domain.Hash, onChunk ...func(h domain.Hash, data []byte)) (map[domain.Hash][]byte, error)
+}
+
+type DownloadProgress interface {
+	DownloadStart(objects int, estimatedBytes int64)
+	DownloadProgress(objectsDone int, bytesDone int64)
+	DownloadEnd()
+}
+
+type UploadProgress interface {
+	UploadStart(objects int, totalBytes int64)
+	UploadProgress(objectsDone int, bytesDone int64)
+	UploadEnd()
 }
 
 type workingCopyLocalRepo interface {
@@ -54,7 +66,7 @@ func NewUpdate(auth *Auth, client updateClient, localRepo updateLocalRepo) *Upda
 	}
 }
 
-func (u *Update) Run(ctx context.Context, root string) error {
+func (u *Update) Run(ctx context.Context, root string, progress ...DownloadProgress) error {
 	if err := u.localRepo.Init(root); err != nil {
 		return err
 	}
@@ -89,14 +101,14 @@ func (u *Update) Run(ctx context.Context, root string) error {
 	if err != nil {
 		return err
 	}
-	if err := syncWorkingCopy(ctx, u.client, u.localRepo, root, tree); err != nil {
+	if err := syncWorkingCopy(ctx, u.client, u.localRepo, root, tree, progress...); err != nil {
 		return err
 	}
 
 	return u.localRepo.SaveTree(tree)
 }
 
-func syncWorkingCopy(ctx context.Context, client chunkDownloader, lr workingCopyLocalRepo, root string, tree *domain.TreeNode) error {
+func syncWorkingCopy(ctx context.Context, client chunkDownloader, lr workingCopyLocalRepo, root string, tree *domain.TreeNode, progress ...DownloadProgress) error {
 	base, err := lr.Snapshot()
 	if err != nil {
 		return err
@@ -120,7 +132,25 @@ func syncWorkingCopy(ctx context.Context, client chunkDownloader, lr workingCopy
 		return err
 	}
 	if len(missing) > 0 {
-		got, err := client.DownloadChunks(ctx, missing)
+		var prog DownloadProgress
+		if len(progress) > 0 {
+			prog = progress[0]
+		}
+		if prog != nil {
+			prog.DownloadStart(len(missing), estimateBytesToDownload(newFiles, missing))
+		}
+
+		doneObjects, doneBytes := 0, int64(0)
+		var onChunk func(h domain.Hash, data []byte)
+		if prog != nil {
+			onChunk = func(h domain.Hash, data []byte) {
+				doneObjects++
+				doneBytes += int64(len(data))
+				prog.DownloadProgress(doneObjects, doneBytes)
+			}
+		}
+
+		got, err := client.DownloadChunks(ctx, missing, onChunk)
 		if err != nil {
 			return err
 		}
@@ -135,6 +165,9 @@ func syncWorkingCopy(ctx context.Context, client chunkDownloader, lr workingCopy
 			if err := lr.StoreChunk(h, data); err != nil {
 				return err
 			}
+		}
+		if prog != nil {
+			prog.DownloadEnd()
 		}
 	}
 
@@ -190,6 +223,23 @@ func flattenTree(node *domain.TreeNode, prefix string) []materializedFile {
 		files = append(files, flattenTree(child, prefix+"/"+child.Name)...)
 	}
 	return files
+}
+
+func estimateBytesToDownload(files []materializedFile, missing []domain.Hash) int64 {
+	missingSet := make(map[domain.Hash]struct{}, len(missing))
+	for _, h := range missing {
+		missingSet[h] = struct{}{}
+	}
+	var total int64
+	for _, f := range files {
+		for _, h := range f.ChunkHashes {
+			if _, ok := missingSet[h]; ok {
+				total += f.SizeBytes
+				break
+			}
+		}
+	}
+	return total
 }
 
 func fileExists(root, path string) bool {

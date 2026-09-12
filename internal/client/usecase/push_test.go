@@ -43,8 +43,13 @@ func (s *stubPushClient) Push(_ context.Context, org, project, branch, baseTreeH
 	return s.pushResult, s.pushErr
 }
 
-func (s *stubPushClient) UploadChunks(_ context.Context, chunks []*serverDomain.ChunkData) (int, int, error) {
+func (s *stubPushClient) UploadChunks(_ context.Context, chunks []*serverDomain.ChunkData, onChunk ...func(ch *serverDomain.ChunkData)) (int, int, error) {
 	s.uploadedChunks = chunks
+	for _, ch := range chunks {
+		if len(onChunk) > 0 && onChunk[0] != nil {
+			onChunk[0](ch)
+		}
+	}
 	return s.uploaded, s.skipped, s.uploadErr
 }
 
@@ -228,6 +233,51 @@ func TestPush_Run_Error_SubpathClone(t *testing.T) {
 	err := pusher.Run(context.Background(), t.TempDir(), "push")
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "subdirectory")
+}
+
+func TestPush_Run_ReportsUploadProgress(t *testing.T) {
+	root := t.TempDir()
+	content := "new upload bytes"
+	writeRepoFile(t, root, "a.txt", content)
+	_, chunks, err := chunkFile([]byte(content))
+	require.NoError(t, err)
+
+	local := &stubLocalRepo{
+		loadConfig:    &domain.Config{Url: "http://example.com/org/project", Branch: "main"},
+		snapshot:      &domain.Snapshot{},
+		staged:        []string{"a.txt"},
+		missingChunks: []serverDomain.Hash{chunks[0].Hash},
+	}
+	client := &stubPushClient{manifest: &serverDomain.TreeNode{Name: "root"}}
+	pusher := newTestPush(t, local, client)
+	prog := &stubProgress{}
+
+	require.NoError(t, pusher.Run(context.Background(), root, "add a.txt", prog))
+
+	require.Equal(t, []progressStart{{objects: 1, bytes: int64(len(content))}}, prog.starts)
+	require.Equal(t, []progressCount{{objects: 1, bytes: int64(len(content))}}, prog.counts)
+	require.True(t, prog.endCalled)
+}
+
+func TestPush_Run_NoProgressWhenChunksAreCached(t *testing.T) {
+	root := t.TempDir()
+	writeRepoFile(t, root, "a.txt", "hello world")
+
+	local := &stubLocalRepo{
+		loadConfig:    &domain.Config{Url: "http://example.com/org/project", Branch: "main"},
+		snapshot:      &domain.Snapshot{},
+		staged:        []string{"a.txt"},
+		missingChunks: nil, // everything already cached
+	}
+	client := &stubPushClient{manifest: &serverDomain.TreeNode{Name: "root"}}
+	pusher := newTestPush(t, local, client)
+	prog := &stubProgress{}
+
+	require.NoError(t, pusher.Run(context.Background(), root, "add a.txt", prog))
+
+	require.Empty(t, prog.starts, "no upload progress must be reported when nothing needs uploading")
+	require.Len(t, client.uploadedChunks, 0)
+	require.False(t, prog.endCalled)
 }
 
 func TestPush_Run_Error_UploadFails(t *testing.T) {

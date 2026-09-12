@@ -16,7 +16,7 @@ import (
 type pushClient interface {
 	Connect(ctx context.Context, host string) error
 	Push(ctx context.Context, org, project, branch, baseTreeHash, message string, files []*serverDomain.PushFile, removed []string) (*serverDomain.PushResult, error)
-	UploadChunks(ctx context.Context, chunks []*serverDomain.ChunkData) (int, int, error)
+	UploadChunks(ctx context.Context, chunks []*serverDomain.ChunkData, onChunk ...func(ch *serverDomain.ChunkData)) (int, int, error)
 	GetTreeNodeManifest(ctx context.Context, org, project, branch, path string) (*serverDomain.TreeNode, error)
 }
 
@@ -44,7 +44,7 @@ func NewPush(auth *Auth, pushClient pushClient, localRepo pushLocalRepo) *Push {
 	}
 }
 
-func (p *Push) Run(ctx context.Context, root, message string) error {
+func (p *Push) Run(ctx context.Context, root, message string, progress ...UploadProgress) error {
 	if strings.TrimSpace(message) == "" {
 		return domain.NewUserError("commit message is required")
 	}
@@ -121,8 +121,34 @@ func (p *Push) Run(ctx context.Context, root, message string) error {
 		return err
 	}
 	if len(missing) > 0 {
-		if _, _, err := p.pushClient.UploadChunks(ctx, dedupeChunkData(allChunkData, missing)); err != nil {
+		toUpload := dedupeChunkData(allChunkData, missing)
+		var prog UploadProgress
+		if len(progress) > 0 {
+			prog = progress[0]
+		}
+		if prog != nil {
+			var totalBytes int64
+			for _, c := range toUpload {
+				totalBytes += int64(len(c.Data))
+			}
+			prog.UploadStart(len(toUpload), totalBytes)
+		}
+
+		doneObjects, doneBytes := 0, int64(0)
+		var onChunk func(ch *serverDomain.ChunkData)
+		if prog != nil {
+			onChunk = func(ch *serverDomain.ChunkData) {
+				doneObjects++
+				doneBytes += int64(len(ch.Data))
+				prog.UploadProgress(doneObjects, doneBytes)
+			}
+		}
+
+		if _, _, err := p.pushClient.UploadChunks(ctx, toUpload, onChunk); err != nil {
 			return err
+		}
+		if prog != nil {
+			prog.UploadEnd()
 		}
 	}
 

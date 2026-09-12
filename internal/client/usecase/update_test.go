@@ -36,10 +36,15 @@ func (s *stubUpdateClient) GetTreeNodeManifest(_ context.Context, org, project, 
 	return s.manifest, s.manifestErr
 }
 
-func (s *stubUpdateClient) DownloadChunks(_ context.Context, hashes []serverDomain.Hash) (map[serverDomain.Hash][]byte, error) {
+func (s *stubUpdateClient) DownloadChunks(_ context.Context, hashes []serverDomain.Hash, onChunk ...func(h serverDomain.Hash, data []byte)) (map[serverDomain.Hash][]byte, error) {
 	s.downloadHashes = hashes
 	if s.downloadErr != nil {
 		return nil, s.downloadErr
+	}
+	for _, h := range hashes {
+		if len(onChunk) > 0 && onChunk[0] != nil {
+			onChunk[0](h, s.downloadData[h])
+		}
 	}
 	return s.downloadData, nil
 }

@@ -13,7 +13,7 @@ type repoInterface interface {
 	GetDefaultBranch(ctx context.Context, org, project string) (*serverDomain.Branch, error)
 	GetTreeNodeManifest(ctx context.Context, org, project, branch, path string) (*serverDomain.TreeNode, error)
 	ListBranches(ctx context.Context, org, project string) ([]*serverDomain.Branch, error)
-	DownloadChunks(ctx context.Context, hashes []serverDomain.Hash) (map[serverDomain.Hash][]byte, error)
+	DownloadChunks(ctx context.Context, hashes []serverDomain.Hash, onChunk ...func(h serverDomain.Hash, data []byte)) (map[serverDomain.Hash][]byte, error)
 }
 
 type localRepo interface {
@@ -43,7 +43,7 @@ func NewRepo(auth *Auth, repoInterface repoInterface, localRepo localRepo) *Repo
 	}
 }
 
-func (r *Repo) Clone(ctx context.Context, url, host, org, project, branch, path, target string) error {
+func (r *Repo) Clone(ctx context.Context, url, host, org, project, branch, path, target string, progress ...DownloadProgress) error {
 	if err := ensureEmptyTarget(target); err != nil {
 		return err
 	}
@@ -69,7 +69,7 @@ func (r *Repo) Clone(ctx context.Context, url, host, org, project, branch, path,
 		return err
 	}
 	if path == "" {
-		if err := syncWorkingCopy(ctx, r.repoInterface, r.localRepo, target, root); err != nil {
+		if err := syncWorkingCopy(ctx, r.repoInterface, r.localRepo, target, root, progress...); err != nil {
 			return err
 		}
 	}
