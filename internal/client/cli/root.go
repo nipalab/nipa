@@ -42,5 +42,6 @@ func (c *Cli) Run() error {
 	rootCmd.AddCommand(c.setupStatusCmd())
 	rootCmd.AddCommand(c.setupPushCmd())
 	rootCmd.AddCommand(c.setupUpdateCmd())
+	rootCmd.AddCommand(c.setupSwitchCmd())
 	return rootCmd.Execute()
 }

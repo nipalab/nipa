@@ -45,6 +45,9 @@ type workingCopyLocalRepo interface {
 type updateLocalRepo interface {
 	Init(target string) error
 	LoadConfig() (*clientDomain.Config, error)
+	SaveConfig(cfg clientDomain.Config) error
+	ListStaged() ([]string, error)
+	SaveCommit(commitID, commitHash string) error
 	Snapshot() (*clientDomain.Snapshot, error)
 	MissingChunks(hashes []domain.Hash) ([]domain.Hash, error)
 	StoreChunk(hash domain.Hash, data []byte) error
@@ -106,6 +109,57 @@ func (u *Update) Run(ctx context.Context, root string, progress ...DownloadProgr
 	}
 
 	return u.localRepo.SaveTree(tree)
+}
+
+func (u *Update) Switch(ctx context.Context, root, branch string, progress ...DownloadProgress) error {
+	if err := u.localRepo.Init(root); err != nil {
+		return err
+	}
+	cfg, err := u.localRepo.LoadConfig()
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(branch) == "" {
+		return clientDomain.NewUserError("branch name is required")
+	}
+	if branch == cfg.Branch {
+		return nil
+	}
+	nu, err := clientDomain.ParseNipaUrl(cfg.Url)
+	if err != nil {
+		return err
+	}
+	if nu.Path != "" {
+		return clientDomain.NewUserError("switching branches in a subdirectory clone is not supported yet")
+	}
+	staged, err := u.localRepo.ListStaged()
+	if err != nil {
+		return err
+	}
+	if len(staged) > 0 {
+		return clientDomain.NewUserError("cannot switch branches with staged changes; push or reset them first")
+	}
+	if err := u.client.Connect(ctx, nu.Host); err != nil {
+		return err
+	}
+	if err := u.auth.MakeSureLoggedIn(ctx, nu.Host); err != nil {
+		return err
+	}
+
+	tree, err := u.client.GetTreeNodeManifest(ctx, nu.Org, nu.Project, branch, "")
+	if err != nil {
+		return err
+	}
+	if err := syncWorkingCopy(ctx, u.client, u.localRepo, root, tree, progress...); err != nil {
+		return err
+	}
+	if err := u.localRepo.SaveTree(tree); err != nil {
+		return err
+	}
+	if err := u.localRepo.SaveConfig(clientDomain.Config{Url: cfg.Url, Branch: branch}); err != nil {
+		return err
+	}
+	return u.localRepo.SaveCommit("", "")
 }
 
 func syncWorkingCopy(ctx context.Context, client chunkDownloader, lr workingCopyLocalRepo, root string, tree *domain.TreeNode, progress ...DownloadProgress) error {

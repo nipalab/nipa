@@ -73,6 +73,8 @@ type stubLocalRepo struct {
 	loadConfig     *domain.Config
 	tree           *serverDomain.TreeNode
 	snapshot       *domain.Snapshot
+	snapshotCalls  int
+	snapshotErrOn  int
 	staged         []string
 	initErr        error
 	configErr      error
@@ -129,10 +131,15 @@ func (s *stubLocalRepo) SaveTree(root *serverDomain.TreeNode) error {
 }
 
 func (s *stubLocalRepo) Snapshot() (*domain.Snapshot, error) {
-	if s.snapshot != nil {
-		return s.snapshot, s.snapshotErr
+	s.snapshotCalls++
+	err := s.snapshotErr
+	if s.snapshotErrOn > 0 && s.snapshotCalls != s.snapshotErrOn {
+		err = nil
 	}
-	return &domain.Snapshot{}, s.snapshotErr
+	if s.snapshot != nil {
+		return s.snapshot, err
+	}
+	return &domain.Snapshot{}, err
 }
 
 func (s *stubLocalRepo) ListStaged() ([]string, error) {
