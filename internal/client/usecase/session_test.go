@@ -11,14 +11,24 @@ import (
 )
 
 type stubRefreshExecutor struct {
-	result      *domain.LoginResult
-	err         error
-	lastRefresh string
+	result         *domain.LoginResult
+	err            error
+	lastRefresh    string
+	passwordResult *domain.LoginResult
+	passwordErr    error
+	lastUsername   string
+	lastPassword   string
 }
 
 func (s *stubRefreshExecutor) LoginWithRefreshToken(_ context.Context, _, refreshToken string) (*domain.LoginResult, error) {
 	s.lastRefresh = refreshToken
 	return s.result, s.err
+}
+
+func (s *stubRefreshExecutor) LoginWithUsernamePassword(_ context.Context, _, username, password string) (*domain.LoginResult, error) {
+	s.lastUsername = username
+	s.lastPassword = password
+	return s.passwordResult, s.passwordErr
 }
 
 func TestSession_AccessToken_Success(t *testing.T) {
@@ -91,4 +101,86 @@ func TestSession_Refresh_SaveError(t *testing.T) {
 
 	_, err := session.Refresh(context.Background(), "example.com")
 	require.ErrorIs(t, err, wantErr)
+}
+
+func TestSession_Refresh_RejectedFallsBackToPasswordLogin(t *testing.T) {
+	storage := &stubSecureStorage{loadResult: &domain.LoginResult{RefreshToken: "revoked", Host: "example.com"}}
+	executor := &stubRefreshExecutor{
+		err:            domain.NewTokenError("refresh token expired"),
+		passwordResult: &domain.LoginResult{AccessToken: "password-access", RefreshToken: "new-refresh", Host: "example.com"},
+	}
+	session := NewSession(storage, executor, &stubUserInput{username: "apin", password: "secret"})
+
+	token, err := session.Refresh(context.Background(), "example.com")
+	require.NoError(t, err)
+	require.Equal(t, "password-access", token, "a rejected refresh token must trigger a fresh username/password login")
+	require.Equal(t, "revoked", executor.lastRefresh)
+	require.Equal(t, "apin", executor.lastUsername)
+	require.Equal(t, "secret", executor.lastPassword)
+	require.Len(t, storage.savedTokens, 1)
+	require.Equal(t, "password-access", storage.savedTokens[0].AccessToken)
+}
+
+func TestSession_Refresh_RejectedNoPrompt(t *testing.T) {
+	wantErr := domain.NewTokenError("refresh token not found")
+	storage := &stubSecureStorage{loadResult: &domain.LoginResult{RefreshToken: "revoked", Host: "example.com"}}
+	executor := &stubRefreshExecutor{err: wantErr}
+	session := NewSession(storage, executor)
+
+	_, err := session.Refresh(context.Background(), "example.com")
+	require.ErrorAs(t, err, &wantErr)
+	require.Empty(t, storage.savedTokens)
+}
+
+func TestSession_Refresh_RejectedPromptFails(t *testing.T) {
+	wantErr := errors.New("prompt interrupted")
+	storage := &stubSecureStorage{loadResult: &domain.LoginResult{RefreshToken: "revoked", Host: "example.com"}}
+	executor := &stubRefreshExecutor{err: domain.NewTokenError("refresh token expired")}
+	session := NewSession(storage, executor, &stubUserInput{err: wantErr})
+
+	_, err := session.Refresh(context.Background(), "example.com")
+	require.ErrorIs(t, err, wantErr)
+}
+
+func TestSession_Refresh_RejectedLoginFails(t *testing.T) {
+	wantErr := errors.New("invalid credentials")
+	storage := &stubSecureStorage{loadResult: &domain.LoginResult{RefreshToken: "revoked", Host: "example.com"}}
+	executor := &stubRefreshExecutor{
+		err:         domain.NewTokenError("refresh token expired"),
+		passwordErr: wantErr,
+	}
+	session := NewSession(storage, executor, &stubUserInput{username: "apin", password: "secret"})
+
+	_, err := session.Refresh(context.Background(), "example.com")
+	require.ErrorIs(t, err, wantErr)
+	require.Empty(t, storage.savedTokens)
+}
+
+func TestSession_Refresh_RejectedSaveFails(t *testing.T) {
+	wantErr := errors.New("save failed")
+	storage := &stubSecureStorage{
+		saveErr:    wantErr,
+		loadResult: &domain.LoginResult{RefreshToken: "revoked", Host: "example.com"},
+	}
+	executor := &stubRefreshExecutor{
+		err:            domain.NewTokenError("refresh token expired"),
+		passwordResult: &domain.LoginResult{AccessToken: "password-access", Host: "example.com"},
+	}
+	session := NewSession(storage, executor, &stubUserInput{username: "apin", password: "secret"})
+
+	_, err := session.Refresh(context.Background(), "example.com")
+	require.ErrorIs(t, err, wantErr)
+}
+
+func TestSession_Refresh_NoRefreshTokenFallsBackToPasswordLogin(t *testing.T) {
+	storage := &stubSecureStorage{loadResult: &domain.LoginResult{AccessToken: "access", Host: "example.com"}}
+	executor := &stubRefreshExecutor{
+		passwordResult: &domain.LoginResult{AccessToken: "password-access", RefreshToken: "new-refresh", Host: "example.com"},
+	}
+	session := NewSession(storage, executor, &stubUserInput{username: "apin", password: "secret"})
+
+	token, err := session.Refresh(context.Background(), "example.com")
+	require.NoError(t, err)
+	require.Equal(t, "password-access", token)
+	require.Equal(t, "apin", executor.lastUsername)
 }
