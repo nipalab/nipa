@@ -130,7 +130,7 @@ func startTestServer(t *testing.T, dbConn *sql.DB) string {
 
 	authUc := serverusecase.NewAuth(e2eJWTSecret, passwordHasher, userRepo, authRepo)
 	commonUc := serverusecase.NewCommon(orgRepo, projectRepo)
-	branchUc := serverusecase.NewBranch(authUc, branchRepo)
+	branchUc := serverusecase.NewBranch(authUc, branchRepo, node)
 	chunkStore, err := storage.NewLocalStore(t.TempDir())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = chunkStore.Close() })
@@ -344,4 +344,79 @@ func TestEndToEnd_RefreshTokenRevoked_FallsBackToPasswordLogin(t *testing.T) {
 	refreshed, err := store.LoadToken(host)
 	require.NoError(t, err)
 	require.NotEqual(t, "revoked-refresh-token", refreshed.RefreshToken, "the re-authenticated session must persist the fresh refresh token")
+}
+
+func TestEndToEnd_CreateBranch(t *testing.T) {
+	ctx := context.Background()
+	host := startTestServer(t, openTestDB(t))
+
+	store := newMemoryStore()
+	transport := clientgrpc.NewTransport()
+	grpcClient := clientgrpc.NewClient(transport, clientusecase.NewSession(store, transport, failPrompt{}))
+	require.NoError(t, grpcClient.Connect(ctx, host))
+
+	loginResult, err := grpcClient.LoginWithUsernamePassword(ctx, host, e2eSuperAdminEmail, e2eSuperAdminPass)
+	require.NoError(t, err)
+	require.NoError(t, store.SaveToken(loginResult))
+
+	auth := clientusecase.NewAuth(grpcClient, store, failPrompt{})
+	repo := clientusecase.NewRepo(auth, grpcClient, localrepo.NewLocalRepo())
+	pusher := clientusecase.NewPush(auth, grpcClient, localrepo.NewLocalRepo())
+	url := "http://" + host + "/" + e2eOrgSlug + "/" + e2eProjectSlug
+
+	target := filepath.Join(t.TempDir(), "work")
+	require.NoError(t, repo.Clone(ctx, url, host, e2eOrgSlug, e2eProjectSlug, "", "", target))
+	writeFile(t, target, "a.txt", "branch base content\n")
+	stagePath(t, target, "a.txt")
+	require.NoError(t, pusher.Run(ctx, target, "seed main"))
+
+	mainManifest, err := grpcClient.GetTreeNodeManifest(ctx, e2eOrgSlug, e2eProjectSlug, "main", "")
+	require.NoError(t, err)
+	require.NotNil(t, mainManifest)
+
+	pinned := localrepo.NewLocalRepo()
+	require.NoError(t, pinned.Init(target))
+	defer pinned.Close()
+	localCommit, err := pinned.LoadCommit()
+	require.NoError(t, err)
+	require.NotEmpty(t, localCommit.CommitID, "the push must pin the created commit locally")
+	require.NotEmpty(t, localCommit.CommitHash)
+
+	created, err := grpcClient.CreateBranch(ctx, e2eOrgSlug, e2eProjectSlug, "feature", "main", localCommit.CommitID, localCommit.CommitHash)
+	require.NoError(t, err)
+	require.Equal(t, "feature", created.Name)
+	require.False(t, created.IsDefault)
+	require.NotNil(t, created.CommitID)
+	pinnedID, err := snow.ParseBase36(localCommit.CommitID)
+	require.NoError(t, err)
+	require.Equal(t, pinnedID, *created.CommitID, "a branch created with commit+branch must fork at the exact pinned commit")
+
+	featureManifest, err := grpcClient.GetTreeNodeManifest(ctx, e2eOrgSlug, e2eProjectSlug, "feature", "")
+	require.NoError(t, err)
+	require.NotNil(t, featureManifest)
+	require.Equal(t, mainManifest.Hash, featureManifest.Hash, "a forked branch must expose the same tree as its source")
+
+	branches, err := grpcClient.ListBranches(ctx, e2eOrgSlug, e2eProjectSlug)
+	require.NoError(t, err)
+	names := make([]string, 0, len(branches))
+	for _, b := range branches {
+		names = append(names, b.Name)
+	}
+	require.Contains(t, names, "feature")
+
+	_, err = grpcClient.CreateBranch(ctx, e2eOrgSlug, e2eProjectSlug, "feature", "main", "", "")
+	require.Error(t, err)
+
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 409, domErr.Code)
+	require.Equal(t, `branch "feature" already exists`, domErr.Message)
+
+	empty, err := grpcClient.CreateBranch(ctx, e2eOrgSlug, e2eProjectSlug, "empty", "does-not-exist", "", "")
+	require.Error(t, err)
+	require.Nil(t, empty)
+
+	var notFound *domain.Error
+	require.ErrorAs(t, err, &notFound)
+	require.Equal(t, 404, notFound.Code)
 }

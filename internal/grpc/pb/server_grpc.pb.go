@@ -24,6 +24,7 @@ const (
 	NipaService_GetListBranch_FullMethodName             = "/greet.NipaService/GetListBranch"
 	NipaService_GetBranch_FullMethodName                 = "/greet.NipaService/GetBranch"
 	NipaService_GetDefaultBranch_FullMethodName          = "/greet.NipaService/GetDefaultBranch"
+	NipaService_CreateBranch_FullMethodName              = "/greet.NipaService/CreateBranch"
 	NipaService_GetTreeManifest_FullMethodName           = "/greet.NipaService/GetTreeManifest"
 	NipaService_Push_FullMethodName                      = "/greet.NipaService/Push"
 	NipaService_UploadChunks_FullMethodName              = "/greet.NipaService/UploadChunks"
@@ -39,6 +40,7 @@ type NipaServiceClient interface {
 	GetListBranch(ctx context.Context, in *GetListBranchRequest, opts ...grpc.CallOption) (*GetListBranchResponse, error)
 	GetBranch(ctx context.Context, in *GetBranchRequest, opts ...grpc.CallOption) (*GetBranchResponse, error)
 	GetDefaultBranch(ctx context.Context, in *GetDefaultBranchRequest, opts ...grpc.CallOption) (*GetBranchResponse, error)
+	CreateBranch(ctx context.Context, in *CreateBranchRequest, opts ...grpc.CallOption) (*CreateBranchResponse, error)
 	GetTreeManifest(ctx context.Context, in *GetTreeManifestRequest, opts ...grpc.CallOption) (*GetTreeManifestResponse, error)
 	Push(ctx context.Context, in *PushRequest, opts ...grpc.CallOption) (*PushResponse, error)
 	UploadChunks(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[ChunkUploadRequest, UploadChunksResponse], error)
@@ -103,6 +105,16 @@ func (c *nipaServiceClient) GetDefaultBranch(ctx context.Context, in *GetDefault
 	return out, nil
 }
 
+func (c *nipaServiceClient) CreateBranch(ctx context.Context, in *CreateBranchRequest, opts ...grpc.CallOption) (*CreateBranchResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CreateBranchResponse)
+	err := c.cc.Invoke(ctx, NipaService_CreateBranch_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *nipaServiceClient) GetTreeManifest(ctx context.Context, in *GetTreeManifestRequest, opts ...grpc.CallOption) (*GetTreeManifestResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetTreeManifestResponse)
@@ -158,6 +170,7 @@ type NipaServiceServer interface {
 	GetListBranch(context.Context, *GetListBranchRequest) (*GetListBranchResponse, error)
 	GetBranch(context.Context, *GetBranchRequest) (*GetBranchResponse, error)
 	GetDefaultBranch(context.Context, *GetDefaultBranchRequest) (*GetBranchResponse, error)
+	CreateBranch(context.Context, *CreateBranchRequest) (*CreateBranchResponse, error)
 	GetTreeManifest(context.Context, *GetTreeManifestRequest) (*GetTreeManifestResponse, error)
 	Push(context.Context, *PushRequest) (*PushResponse, error)
 	UploadChunks(grpc.ClientStreamingServer[ChunkUploadRequest, UploadChunksResponse]) error
@@ -186,6 +199,9 @@ func (UnimplementedNipaServiceServer) GetBranch(context.Context, *GetBranchReque
 }
 func (UnimplementedNipaServiceServer) GetDefaultBranch(context.Context, *GetDefaultBranchRequest) (*GetBranchResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetDefaultBranch not implemented")
+}
+func (UnimplementedNipaServiceServer) CreateBranch(context.Context, *CreateBranchRequest) (*CreateBranchResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreateBranch not implemented")
 }
 func (UnimplementedNipaServiceServer) GetTreeManifest(context.Context, *GetTreeManifestRequest) (*GetTreeManifestResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetTreeManifest not implemented")
@@ -310,6 +326,24 @@ func _NipaService_GetDefaultBranch_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
+func _NipaService_CreateBranch_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateBranchRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaServiceServer).CreateBranch(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaService_CreateBranch_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaServiceServer).CreateBranch(ctx, req.(*CreateBranchRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _NipaService_GetTreeManifest_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetTreeManifestRequest)
 	if err := dec(in); err != nil {
@@ -386,6 +420,10 @@ var NipaService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetDefaultBranch",
 			Handler:    _NipaService_GetDefaultBranch_Handler,
+		},
+		{
+			MethodName: "CreateBranch",
+			Handler:    _NipaService_CreateBranch_Handler,
 		},
 		{
 			MethodName: "GetTreeManifest",

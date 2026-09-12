@@ -1,5 +1,5 @@
 -- name: BranchCreate :exec
-INSERT INTO branches (id, project_id, name, commit_id, is_default, is_protected) VALUES (?, ?, ?, ?, ?, ?);
+INSERT INTO branches (id, project_id, name, key, commit_id, is_default, is_protected) VALUES (?, ?, ?, ?, ?, ?, ?);
 
 -- name: BranchUpdate :exec
 UPDATE branches SET name = ?, key = ?, commit_id = ?, is_protected = ?, is_default = ? WHERE id = :id;

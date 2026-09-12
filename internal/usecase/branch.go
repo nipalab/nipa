@@ -19,22 +19,32 @@ type branchRepository interface {
 	GetByProjectIDAndID(ctx context.Context, projectID snow.ID, branchID snow.ID) (*domain.Branch, error)
 	GetDefaultBranch(ctx context.Context, projectID snow.ID) (*domain.Branch, error)
 	GetBranchByName(ctx context.Context, projectID snow.ID, name string) (*domain.Branch, error)
+	CreateBranch(ctx context.Context, branch domain.Branch) (*domain.Branch, error)
 	GetCommit(ctx context.Context, commitID snow.ID) (*domain.Commit, error)
+	GetCommitByHash(ctx context.Context, hash domain.Hash) (*domain.Commit, error)
 	GetTreeNode(ctx context.Context, id int64) (*domain.TreeNode, error)
 	GetTreeChildByName(ctx context.Context, parentID int64, name string) (*domain.TreeNode, error)
 	ListTreeChildren(ctx context.Context, parentID int64) ([]*domain.TreeNode, error)
 	ListFilesByTree(ctx context.Context, treeID int64) ([]*domain.File, error)
 }
 
+type BranchForkPoint struct {
+	BranchName string
+	CommitID   *snow.ID
+	CommitHash *domain.Hash
+}
+
 type Branch struct {
 	permUc     permissionUsecase
 	branchRepo branchRepository
+	snowNode   snow.Node
 }
 
-func NewBranch(permUc permissionUsecase, branchRepo branchRepository) *Branch {
+func NewBranch(permUc permissionUsecase, branchRepo branchRepository, snowNode snow.Node) *Branch {
 	return &Branch{
 		permUc:     permUc,
 		branchRepo: branchRepo,
+		snowNode:   snowNode,
 	}
 }
 
@@ -68,6 +78,104 @@ func (b *Branch) GetDefault(ctx context.Context, projectID snow.ID) (*domain.Bra
 		return nil, domain.NewErrorNoPermission()
 	}
 	return b.branchRepo.GetDefaultBranch(ctx, projectID)
+}
+
+func (b *Branch) CreateBranch(ctx context.Context, projectID snow.ID, name string, fork BranchForkPoint) (*domain.Branch, error) {
+	if !b.permUc.HasProjectAccess(ctx, projectID, domain.PermissionWrite) {
+		return nil, domain.NewErrorNoPermission()
+	}
+	name = strings.TrimSpace(name)
+	if err := validateBranchName(name); err != nil {
+		return nil, err
+	}
+
+	if _, err := b.branchRepo.GetBranchByName(ctx, projectID, name); err == nil {
+		return nil, domain.NewErrorConflict(fmt.Sprintf("branch %q already exists", name))
+	} else if !domain.IsErrorNotFound(err) {
+		return nil, err
+	}
+
+	fromCommitID, err := b.resolveForkPoint(ctx, projectID, fork)
+	if err != nil {
+		return nil, err
+	}
+
+	return b.branchRepo.CreateBranch(ctx, domain.Branch{
+		ID:        b.snowNode.Generate(),
+		ProjectID: projectID,
+		Name:      name,
+		CommitID:  fromCommitID,
+	})
+}
+
+func (b *Branch) resolveForkPoint(ctx context.Context, projectID snow.ID, fork BranchForkPoint) (*snow.ID, error) {
+	if fork.CommitID != nil {
+		commit, err := b.branchRepo.GetCommit(ctx, *fork.CommitID)
+		if err != nil {
+			if domain.IsErrorNotFound(err) {
+				return nil, domain.NewErrorNotFound(fmt.Sprintf("commit %s not found", fork.CommitID.Base36()))
+			}
+			return nil, err
+		}
+		if commit.ProjectID != projectID {
+			return nil, domain.NewErrorNotFound(fmt.Sprintf("commit %s not found", fork.CommitID.Base36()))
+		}
+		id := commit.ID
+		return &id, nil
+	}
+
+	if fork.CommitHash != nil {
+		commit, err := b.branchRepo.GetCommitByHash(ctx, *fork.CommitHash)
+		if err != nil {
+			if domain.IsErrorNotFound(err) {
+				return nil, domain.NewErrorNotFound(fmt.Sprintf("commit %s not found", fork.CommitHash.String()))
+			}
+			return nil, err
+		}
+		if commit.ProjectID != projectID {
+			return nil, domain.NewErrorNotFound(fmt.Sprintf("commit %s not found", fork.CommitHash.String()))
+		}
+		id := commit.ID
+		return &id, nil
+	}
+
+	if fork.BranchName != "" {
+		from, err := b.branchRepo.GetBranchByName(ctx, projectID, fork.BranchName)
+		if domain.IsErrorNotFound(err) {
+			return nil, domain.NewErrorNotFound(fmt.Sprintf("branch %q not found", fork.BranchName))
+		}
+		if err != nil {
+			return nil, err
+		}
+		return from.CommitID, nil
+	}
+
+	def, err := b.branchRepo.GetDefaultBranch(ctx, projectID)
+	if domain.IsErrorNotFound(err) {
+		return nil, domain.NewErrorNotFound("no default branch found")
+	}
+	if err != nil {
+		return nil, err
+	}
+	return def.CommitID, nil
+}
+
+func validateBranchName(name string) error {
+	if name == "" {
+		return domain.NewErrorUser("branch name must not be empty")
+	}
+	if strings.ContainsRune(name, '/') {
+		return domain.NewErrorUser(fmt.Sprintf("invalid branch name %q", name))
+	}
+	if name == "." || name == ".." {
+		return domain.NewErrorUser(fmt.Sprintf("invalid branch name %q", name))
+	}
+	for _, r := range name {
+		if r <= 0x20 || r == 0x7f {
+			return domain.NewErrorUser(fmt.Sprintf("invalid branch name %q", name))
+		}
+	}
+	return nil
 }
 
 func (b *Branch) GetTreeManifest(ctx context.Context, projectID snow.ID, branchName, path, treeHash string, recursive bool) (*domain.TreeNode, error) {

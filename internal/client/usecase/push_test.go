@@ -40,6 +40,9 @@ func (s *stubPushClient) Connect(_ context.Context, host string) error {
 func (s *stubPushClient) Push(_ context.Context, org, project, branch, baseTreeHash, message string, files []*serverDomain.PushFile, removed []string) (*serverDomain.PushResult, error) {
 	s.org, s.project, s.branch, s.baseTreeHash, s.message = org, project, branch, baseTreeHash, message
 	s.pushFiles, s.pushRemoved = files, removed
+	if s.pushResult == nil {
+		return &serverDomain.PushResult{}, s.pushErr
+	}
 	return s.pushResult, s.pushErr
 }
 
@@ -111,6 +114,8 @@ func TestPush_Run_Success(t *testing.T) {
 
 	require.NotNil(t, local.tree, "working copy snapshot must be refreshed from the server after push")
 	require.True(t, local.clearedStaged, "staged markers are cleared only after a fully successful push")
+	require.Equal(t, snow.ID(1).Base36(), local.savedCommitID, "the pushed commit id must be pinned locally")
+	require.Equal(t, fileHash.String(), local.savedCommitHash, "the pushed commit hash must be pinned locally")
 }
 
 func TestPush_Run_DeduplicatesNewChunks(t *testing.T) {

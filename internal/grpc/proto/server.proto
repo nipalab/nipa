@@ -122,6 +122,18 @@ message GetBranchResponse {
     Branch branch = 1;
 }
 
+message CreateBranchRequest {
+    ProjectContext context = 1;
+    string name = 2;
+    string from_branch = 3; // branch to fork from; empty to fork from the default branch
+    string from_commit_id = 4; // exact commit to fork from (base36 snow ID); takes precedence over from_commit_hash and from_branch
+    string from_commit_hash = 5; // exact commit to fork from (hex content hash); takes precedence over from_branch
+}
+
+message CreateBranchResponse {
+    Branch branch = 1;
+}
+
 message LoginUsernamePasswordRequest {
     string username = 1;
     string password = 2;
@@ -144,6 +156,7 @@ service NipaService {
     rpc GetListBranch(GetListBranchRequest) returns (GetListBranchResponse);
     rpc GetBranch(GetBranchRequest) returns (GetBranchResponse);
     rpc GetDefaultBranch(GetDefaultBranchRequest) returns (GetBranchResponse);
+    rpc CreateBranch(CreateBranchRequest) returns (CreateBranchResponse);
     rpc GetTreeManifest(GetTreeManifestRequest) returns (GetTreeManifestResponse);
     rpc Push(PushRequest) returns (PushResponse);
     rpc UploadChunks(stream ChunkUploadRequest) returns (UploadChunksResponse);

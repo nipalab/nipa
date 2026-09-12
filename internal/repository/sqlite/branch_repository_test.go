@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/nipalab/nipa/internal/domain"
 	sqlcSqlite "github.com/nipalab/nipa/internal/repository/sqlc/sqlite"
 	"github.com/nipalab/nipa/internal/snow"
 )
@@ -638,4 +639,144 @@ func TestBranchRepositorySQLite_ListFilesByTree_Empty(t *testing.T) {
 	files, err := repo.ListFilesByTree(ctx, treeID)
 	require.NoError(t, err)
 	require.Empty(t, files)
+}
+
+func TestBranchRepositorySQLite_CreateBranch(t *testing.T) {
+	ctx := context.Background()
+	db, q := newSQLiteTestDB(t)
+	repo := NewBranchRepository(db)
+
+	projectID := seedProject(t, q, 1, "create-project")
+	node := newTestNode(t)
+	branchID := node.Generate()
+	commitID := node.Generate()
+
+	created, err := repo.CreateBranch(ctx, domain.Branch{
+		ID:        branchID,
+		ProjectID: projectID,
+		Name:      "feature",
+		CommitID:  &commitID,
+	})
+	require.NoError(t, err)
+	require.Equal(t, branchID, created.ID)
+	require.Equal(t, projectID, created.ProjectID)
+	require.Equal(t, "feature", created.Name)
+	require.False(t, created.IsProtected)
+	require.False(t, created.IsDefault)
+	require.NotNil(t, created.CommitID)
+	require.Equal(t, commitID, *created.CommitID)
+	require.False(t, created.UpdatedAt.IsZero())
+	require.False(t, created.CreatedAt.IsZero())
+
+	got, err := repo.GetBranchByName(ctx, projectID, "feature")
+	require.NoError(t, err)
+	require.Equal(t, branchID, got.ID)
+	require.Equal(t, "feature", got.Name)
+}
+
+func TestBranchRepositorySQLite_CreateBranch_WithoutCommit(t *testing.T) {
+	ctx := context.Background()
+	db, q := newSQLiteTestDB(t)
+	repo := NewBranchRepository(db)
+
+	projectID := seedProject(t, q, 1, "create-project")
+	node := newTestNode(t)
+
+	created, err := repo.CreateBranch(ctx, domain.Branch{
+		ID:        node.Generate(),
+		ProjectID: projectID,
+		Name:      "empty-branch",
+	})
+	require.NoError(t, err)
+	require.Nil(t, created.CommitID)
+}
+
+func TestBranchRepositorySQLite_CreateBranch_IsolatedPerProject(t *testing.T) {
+	ctx := context.Background()
+	db, q := newSQLiteTestDB(t)
+	repo := NewBranchRepository(db)
+
+	projectA := seedProject(t, q, 1, "project-a")
+	projectB := seedProject(t, q, 1, "project-b")
+	node := newTestNode(t)
+
+	_, err := repo.CreateBranch(ctx, domain.Branch{
+		ID:        node.Generate(),
+		ProjectID: projectA,
+		Name:      "feature",
+	})
+	require.NoError(t, err)
+
+	_, err = repo.CreateBranch(ctx, domain.Branch{
+		ID:        node.Generate(),
+		ProjectID: projectB,
+		Name:      "feature",
+	})
+	require.NoError(t, err)
+}
+
+func TestBranchRepositorySQLite_CreateBranch_DuplicateName(t *testing.T) {
+	ctx := context.Background()
+	db, q := newSQLiteTestDB(t)
+	repo := NewBranchRepository(db)
+
+	projectID := seedProject(t, q, 1, "create-project")
+	node := newTestNode(t)
+
+	_, err := repo.CreateBranch(ctx, domain.Branch{
+		ID:        node.Generate(),
+		ProjectID: projectID,
+		Name:      "feature",
+	})
+	require.NoError(t, err)
+
+	_, err = repo.CreateBranch(ctx, domain.Branch{
+		ID:        node.Generate(),
+		ProjectID: projectID,
+		Name:      "feature",
+	})
+	require.Error(t, err)
+
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 500, domErr.Code)
+}
+
+func TestBranchRepositorySQLite_GetCommitByHash(t *testing.T) {
+	ctx := context.Background()
+	db, q := newSQLiteTestDB(t)
+	repo := NewBranchRepository(db)
+
+	projectID := seedProject(t, q, 1, "test-project")
+	treeID := seedTreeNode(t, db, "root", sql.NullInt64{})
+	userID := seedUser(t, q, "committer", "committer@example.com", sql.NullString{})
+
+	var hash domain.Hash
+	hash[0] = 0xca
+	hash[31] = 0xfe
+	node := newTestNode(t)
+	commitID := node.Generate()
+	_, err := db.ExecContext(ctx,
+		`INSERT INTO commits (id, hash, project_id, tree_id, user_id, message) VALUES (?, ?, ?, ?, ?, ?)`,
+		commitID.Int64(), hash.Bytes(), projectID.Int64(), treeID, userID.Int64(), "pinned commit",
+	)
+	require.NoError(t, err)
+
+	got, err := repo.GetCommitByHash(ctx, hash)
+	require.NoError(t, err)
+	require.Equal(t, commitID, got.ID)
+	require.Equal(t, projectID, got.ProjectID)
+	require.Equal(t, treeID, got.TreeID)
+	require.Equal(t, "pinned commit", got.Message)
+}
+
+func TestBranchRepositorySQLite_GetCommitByHash_NotFound(t *testing.T) {
+	ctx := context.Background()
+	db, _ := newSQLiteTestDB(t)
+	repo := NewBranchRepository(db)
+
+	var missing domain.Hash
+	missing[0] = 0xde
+	_, err := repo.GetCommitByHash(ctx, missing)
+	requireRecordNotFound(t, err)
 }

@@ -13,12 +13,19 @@ import (
 	"github.com/nipalab/nipa/internal/snow"
 )
 
+func newTestBranchNode(t *testing.T) snow.Node {
+	t.Helper()
+	node, err := snow.NewNode(1)
+	require.NoError(t, err)
+	return node
+}
+
 func TestNewBranch(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	perm := NewMockpermissionUsecase(ctrl)
 	repo := NewMockbranchRepository(ctrl)
 
-	uc := NewBranch(perm, repo)
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
 	require.NotNil(t, uc)
 }
 
@@ -31,7 +38,7 @@ func TestBranch_ListBranches_NoPermission(t *testing.T) {
 		HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).
 		Return(false)
 
-	uc := NewBranch(perm, repo)
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
 	_, err := uc.ListBranches(context.Background(), snow.ID(1), 10, nil, 0)
 	require.Error(t, err)
 
@@ -60,7 +67,7 @@ func TestBranch_ListBranches_Success(t *testing.T) {
 		ListBranches(gomock.Any(), snow.ID(1), 10, &after, lastID).
 		Return(want, nil)
 
-	uc := NewBranch(perm, repo)
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
 	got, err := uc.ListBranches(context.Background(), snow.ID(1), 10, &after, lastID)
 	require.NoError(t, err)
 	require.Equal(t, want, got)
@@ -81,7 +88,7 @@ func TestBranch_ListBranches_RepositoryError(t *testing.T) {
 		ListBranches(gomock.Any(), snow.ID(1), 10, gomock.Nil(), snow.ID(0)).
 		Return(nil, wantErr)
 
-	uc := NewBranch(perm, repo)
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
 	_, err := uc.ListBranches(context.Background(), snow.ID(1), 10, nil, 0)
 	require.ErrorIs(t, err, wantErr)
 }
@@ -99,7 +106,7 @@ func TestBranch_ListBranches_Empty(t *testing.T) {
 		ListBranches(gomock.Any(), snow.ID(1), 10, gomock.Nil(), snow.ID(0)).
 		Return([]*domain.Branch{}, nil)
 
-	uc := NewBranch(perm, repo)
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
 	got, err := uc.ListBranches(context.Background(), snow.ID(1), 10, nil, 0)
 	require.NoError(t, err)
 	require.Empty(t, got)
@@ -114,7 +121,7 @@ func TestBranch_GetByProjectIDAndID_NoPermission(t *testing.T) {
 		HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).
 		Return(false)
 
-	uc := NewBranch(perm, repo)
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
 	_, err := uc.GetByProjectIDAndID(context.Background(), snow.ID(1), snow.ID(2))
 	require.Error(t, err)
 
@@ -138,7 +145,7 @@ func TestBranch_GetByProjectIDAndID_Success(t *testing.T) {
 		GetByProjectIDAndID(gomock.Any(), snow.ID(1), snow.ID(2)).
 		Return(want, nil)
 
-	uc := NewBranch(perm, repo)
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
 	got, err := uc.GetByProjectIDAndID(context.Background(), snow.ID(1), snow.ID(2))
 	require.NoError(t, err)
 	require.Equal(t, want, got)
@@ -159,7 +166,7 @@ func TestBranch_GetByProjectIDAndID_RepositoryError(t *testing.T) {
 		GetByProjectIDAndID(gomock.Any(), snow.ID(1), snow.ID(2)).
 		Return(nil, wantErr)
 
-	uc := NewBranch(perm, repo)
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
 	_, err := uc.GetByProjectIDAndID(context.Background(), snow.ID(1), snow.ID(2))
 	require.ErrorIs(t, err, wantErr)
 }
@@ -177,7 +184,7 @@ func TestBranch_GetByProjectIDAndID_NotFound(t *testing.T) {
 		GetByProjectIDAndID(gomock.Any(), snow.ID(1), snow.ID(2)).
 		Return(nil, domain.NewErrorRecordNotFound())
 
-	uc := NewBranch(perm, repo)
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
 	_, err := uc.GetByProjectIDAndID(context.Background(), snow.ID(1), snow.ID(2))
 	require.Error(t, err)
 
@@ -195,7 +202,7 @@ func TestBranch_GetDefault_NoPermission(t *testing.T) {
 		HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).
 		Return(false)
 
-	uc := NewBranch(perm, repo)
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
 	_, err := uc.GetDefault(context.Background(), snow.ID(1))
 	require.Error(t, err)
 
@@ -219,7 +226,7 @@ func TestBranch_GetDefault_Success(t *testing.T) {
 		GetDefaultBranch(gomock.Any(), snow.ID(1)).
 		Return(want, nil)
 
-	uc := NewBranch(perm, repo)
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
 	got, err := uc.GetDefault(context.Background(), snow.ID(1))
 	require.NoError(t, err)
 	require.Equal(t, want, got)
@@ -240,7 +247,7 @@ func TestBranch_GetDefault_RepositoryError(t *testing.T) {
 		GetDefaultBranch(gomock.Any(), snow.ID(1)).
 		Return(nil, wantErr)
 
-	uc := NewBranch(perm, repo)
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
 	_, err := uc.GetDefault(context.Background(), snow.ID(1))
 	require.ErrorIs(t, err, wantErr)
 }
@@ -254,7 +261,7 @@ func TestBranch_GetTreeManifest_NoPermission(t *testing.T) {
 		HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).
 		Return(false)
 
-	uc := NewBranch(perm, repo)
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
 	_, err := uc.GetTreeManifest(context.Background(), snow.ID(1), "main", "", "", true)
 	require.Error(t, err)
 
@@ -276,7 +283,7 @@ func TestBranch_GetTreeManifest_BranchNotFound(t *testing.T) {
 		GetBranchByName(gomock.Any(), snow.ID(1), "main").
 		Return(nil, domain.NewErrorRecordNotFound())
 
-	uc := NewBranch(perm, repo)
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
 	_, err := uc.GetTreeManifest(context.Background(), snow.ID(1), "main", "", "", true)
 	require.Error(t, err)
 
@@ -299,7 +306,7 @@ func TestBranch_GetTreeManifest_NoCommit(t *testing.T) {
 		GetBranchByName(gomock.Any(), snow.ID(1), "main").
 		Return(&domain.Branch{ID: 1, ProjectID: 1, Name: "main"}, nil)
 
-	uc := NewBranch(perm, repo)
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
 	got, err := uc.GetTreeManifest(context.Background(), snow.ID(1), "main", "", "", true)
 	require.NoError(t, err)
 	require.Nil(t, got)
@@ -318,7 +325,7 @@ func TestBranch_GetTreeManifest_NoCommit_PathNotFound(t *testing.T) {
 		GetBranchByName(gomock.Any(), snow.ID(1), "main").
 		Return(&domain.Branch{ID: 1, ProjectID: 1, Name: "main"}, nil)
 
-	uc := NewBranch(perm, repo)
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
 	_, err := uc.GetTreeManifest(context.Background(), snow.ID(1), "main", "sedotan", "", false)
 	require.Error(t, err)
 	require.True(t, domain.IsErrorNotFound(err))
@@ -350,7 +357,7 @@ func TestBranch_GetTreeManifest_Recursive(t *testing.T) {
 	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(200)).Return(childFiles, nil)
 	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(200)).Return(nil, nil)
 
-	uc := NewBranch(perm, repo)
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
 	got, err := uc.GetTreeManifest(context.Background(), snow.ID(1), "main", "", "", true)
 	require.NoError(t, err)
 	require.Equal(t, root, got)
@@ -380,7 +387,7 @@ func TestBranch_GetTreeManifest_NotRecursive(t *testing.T) {
 	repo.EXPECT().GetTreeNode(gomock.Any(), int64(100)).Return(root, nil)
 	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(100)).Return(rootFiles, nil)
 
-	uc := NewBranch(perm, repo)
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
 	got, err := uc.GetTreeManifest(context.Background(), snow.ID(1), "main", "", "", false)
 	require.NoError(t, err)
 	require.Equal(t, rootFiles, got.FileChildren)
@@ -410,7 +417,7 @@ func TestBranch_GetTreeManifest_WithPath(t *testing.T) {
 	repo.EXPECT().GetTreeChildByName(gomock.Any(), int64(200), "shaders").Return(shaders, nil)
 	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(300)).Return(nil, nil)
 
-	uc := NewBranch(perm, repo)
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
 	got, err := uc.GetTreeManifest(context.Background(), snow.ID(1), "main", "assets/shaders", "", false)
 	require.NoError(t, err)
 	require.Equal(t, shaders, got)
@@ -436,7 +443,7 @@ func TestBranch_GetTreeManifest_PathNotFound(t *testing.T) {
 	repo.EXPECT().GetTreeChildByName(gomock.Any(), int64(100), "missing").
 		Return(nil, domain.NewErrorRecordNotFound())
 
-	uc := NewBranch(perm, repo)
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
 	_, err := uc.GetTreeManifest(context.Background(), snow.ID(1), "main", "missing", "", false)
 	require.Error(t, err)
 
@@ -466,7 +473,7 @@ func TestBranch_GetTreeManifest_TreeHashMatch(t *testing.T) {
 	repo.EXPECT().GetCommit(gomock.Any(), commitID).Return(commit, nil)
 	repo.EXPECT().GetTreeNode(gomock.Any(), int64(100)).Return(root, nil)
 
-	uc := NewBranch(perm, repo)
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
 	got, err := uc.GetTreeManifest(context.Background(), snow.ID(1), "main", "", hash.String(), true)
 	require.NoError(t, err)
 	require.Nil(t, got)
@@ -481,7 +488,7 @@ func TestBranch_GetBranchByName_NoPermission(t *testing.T) {
 		HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).
 		Return(false)
 
-	uc := NewBranch(perm, repo)
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
 	_, err := uc.GetBranchByName(context.Background(), snow.ID(1), "main")
 	require.Error(t, err)
 
@@ -505,7 +512,7 @@ func TestBranch_GetBranchByName_Success(t *testing.T) {
 		GetBranchByName(gomock.Any(), snow.ID(1), "main").
 		Return(want, nil)
 
-	uc := NewBranch(perm, repo)
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
 	got, err := uc.GetBranchByName(context.Background(), snow.ID(1), "main")
 	require.NoError(t, err)
 	require.Equal(t, want, got)
@@ -524,7 +531,7 @@ func TestBranch_GetBranchByName_NotFound(t *testing.T) {
 		GetBranchByName(gomock.Any(), snow.ID(1), "main").
 		Return(nil, domain.NewErrorRecordNotFound())
 
-	uc := NewBranch(perm, repo)
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
 	_, err := uc.GetBranchByName(context.Background(), snow.ID(1), "main")
 	require.Error(t, err)
 
@@ -549,7 +556,7 @@ func TestBranch_GetBranchByName_RepositoryError(t *testing.T) {
 		GetBranchByName(gomock.Any(), snow.ID(1), "main").
 		Return(nil, wantErr)
 
-	uc := NewBranch(perm, repo)
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
 	_, err := uc.GetBranchByName(context.Background(), snow.ID(1), "main")
 	require.ErrorIs(t, err, wantErr)
 }
@@ -567,7 +574,7 @@ func TestBranch_GetTreeManifest_BranchRepoError(t *testing.T) {
 
 	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(nil, wantErr)
 
-	uc := NewBranch(perm, repo)
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
 	_, err := uc.GetTreeManifest(context.Background(), snow.ID(1), "main", "", "", true)
 	require.ErrorIs(t, err, wantErr)
 }
@@ -588,7 +595,7 @@ func TestBranch_GetTreeManifest_GetCommitError(t *testing.T) {
 	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(branch, nil)
 	repo.EXPECT().GetCommit(gomock.Any(), commitID).Return(nil, wantErr)
 
-	uc := NewBranch(perm, repo)
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
 	_, err := uc.GetTreeManifest(context.Background(), snow.ID(1), "main", "", "", true)
 	require.ErrorIs(t, err, wantErr)
 }
@@ -611,7 +618,7 @@ func TestBranch_GetTreeManifest_GetTreeNodeError(t *testing.T) {
 	repo.EXPECT().GetCommit(gomock.Any(), commitID).Return(commit, nil)
 	repo.EXPECT().GetTreeNode(gomock.Any(), int64(100)).Return(nil, wantErr)
 
-	uc := NewBranch(perm, repo)
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
 	_, err := uc.GetTreeManifest(context.Background(), snow.ID(1), "main", "", "", true)
 	require.ErrorIs(t, err, wantErr)
 }
@@ -636,7 +643,7 @@ func TestBranch_GetTreeManifest_PathRepoError(t *testing.T) {
 	repo.EXPECT().GetTreeNode(gomock.Any(), int64(100)).Return(root, nil)
 	repo.EXPECT().GetTreeChildByName(gomock.Any(), int64(100), "assets").Return(nil, wantErr)
 
-	uc := NewBranch(perm, repo)
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
 	_, err := uc.GetTreeManifest(context.Background(), snow.ID(1), "main", "assets", "", true)
 	require.ErrorIs(t, err, wantErr)
 }
@@ -661,7 +668,7 @@ func TestBranch_GetTreeManifest_ListFilesByTreeError(t *testing.T) {
 	repo.EXPECT().GetTreeNode(gomock.Any(), int64(100)).Return(root, nil)
 	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(100)).Return(nil, wantErr)
 
-	uc := NewBranch(perm, repo)
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
 	_, err := uc.GetTreeManifest(context.Background(), snow.ID(1), "main", "", "", true)
 	require.ErrorIs(t, err, wantErr)
 }
@@ -687,7 +694,7 @@ func TestBranch_GetTreeManifest_ListTreeChildrenError(t *testing.T) {
 	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(100)).Return(nil, nil)
 	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(100)).Return(nil, wantErr)
 
-	uc := NewBranch(perm, repo)
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
 	_, err := uc.GetTreeManifest(context.Background(), snow.ID(1), "main", "", "", true)
 	require.ErrorIs(t, err, wantErr)
 }
@@ -715,7 +722,481 @@ func TestBranch_GetTreeManifest_ChildLoadError(t *testing.T) {
 	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(100)).Return([]*domain.TreeNode{child}, nil)
 	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(200)).Return(nil, wantErr)
 
-	uc := NewBranch(perm, repo)
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
 	_, err := uc.GetTreeManifest(context.Background(), snow.ID(1), "main", "", "", true)
 	require.ErrorIs(t, err, wantErr)
+}
+
+func TestBranch_CreateBranch_NoPermission(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := NewMockpermissionUsecase(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).
+		Return(false)
+
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
+	_, err := uc.CreateBranch(context.Background(), snow.ID(1), "feature", BranchForkPoint{BranchName: "main"})
+
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 403, domErr.Code)
+}
+
+func TestBranch_CreateBranch_EmptyName(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := NewMockpermissionUsecase(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).
+		Return(true)
+
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
+	_, err := uc.CreateBranch(context.Background(), snow.ID(1), "   ", BranchForkPoint{BranchName: "main"})
+
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 400, domErr.Code)
+	require.Equal(t, "branch name must not be empty", domErr.Message)
+}
+
+func TestBranch_CreateBranch_InvalidName(t *testing.T) {
+	for _, name := range []string{"feat/ure", "..", ".", "feat ure"} {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			perm := NewMockpermissionUsecase(ctrl)
+			repo := NewMockbranchRepository(ctrl)
+
+			perm.EXPECT().
+				HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).
+				Return(true)
+
+			uc := NewBranch(perm, repo, newTestBranchNode(t))
+			_, err := uc.CreateBranch(context.Background(), snow.ID(1), name, BranchForkPoint{BranchName: "main"})
+
+			var domErr *domain.Error
+			require.ErrorAs(t, err, &domErr)
+			require.Equal(t, 400, domErr.Code)
+		})
+	}
+}
+
+func TestBranch_CreateBranch_AlreadyExists(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := NewMockpermissionUsecase(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).
+		Return(true)
+
+	repo.EXPECT().
+		GetBranchByName(gomock.Any(), snow.ID(1), "feature").
+		Return(&domain.Branch{ID: 5, ProjectID: 1, Name: "feature"}, nil)
+
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
+	_, err := uc.CreateBranch(context.Background(), snow.ID(1), "feature", BranchForkPoint{BranchName: "main"})
+
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 409, domErr.Code)
+	require.Equal(t, `branch "feature" already exists`, domErr.Message)
+}
+
+func TestBranch_CreateBranch_FromBranchByCommit(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := NewMockpermissionUsecase(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+
+	commitID := snow.ID(99)
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).
+		Return(true)
+
+	gomock.InOrder(
+		repo.EXPECT().
+			GetBranchByName(gomock.Any(), snow.ID(1), "feature").
+			Return(nil, domain.NewErrorRecordNotFound()),
+		repo.EXPECT().
+			GetBranchByName(gomock.Any(), snow.ID(1), "main").
+			Return(&domain.Branch{ID: 2, ProjectID: 1, Name: "main", CommitID: &commitID}, nil),
+	)
+
+	var captured domain.Branch
+	repo.EXPECT().
+		CreateBranch(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, b domain.Branch) (*domain.Branch, error) {
+			captured = b
+			return &b, nil
+		})
+
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
+	created, err := uc.CreateBranch(context.Background(), snow.ID(1), "feature", BranchForkPoint{BranchName: "main"})
+	require.NoError(t, err)
+	require.Equal(t, "feature", created.Name)
+	require.Equal(t, snow.ID(1), created.ProjectID)
+	require.NotZero(t, captured.ID)
+	require.Equal(t, "feature", captured.Name)
+	require.Equal(t, snow.ID(1), captured.ProjectID)
+	require.NotNil(t, captured.CommitID)
+	require.Equal(t, commitID, *captured.CommitID)
+	require.False(t, captured.IsDefault)
+	require.False(t, captured.IsProtected)
+}
+
+func TestBranch_CreateBranch_FromBranchNotFound(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := NewMockpermissionUsecase(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).
+		Return(true)
+
+	gomock.InOrder(
+		repo.EXPECT().
+			GetBranchByName(gomock.Any(), snow.ID(1), "feature").
+			Return(nil, domain.NewErrorRecordNotFound()),
+		repo.EXPECT().
+			GetBranchByName(gomock.Any(), snow.ID(1), "main").
+			Return(nil, domain.NewErrorRecordNotFound()),
+	)
+
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
+	_, err := uc.CreateBranch(context.Background(), snow.ID(1), "feature", BranchForkPoint{BranchName: "main"})
+
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 404, domErr.Code)
+	require.Equal(t, `branch "main" not found`, domErr.Message)
+}
+
+func TestBranch_CreateBranch_FromDefaultBranch(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := NewMockpermissionUsecase(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+
+	commitID := snow.ID(7)
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).
+		Return(true)
+
+	gomock.InOrder(
+		repo.EXPECT().
+			GetBranchByName(gomock.Any(), snow.ID(1), "feature").
+			Return(nil, domain.NewErrorRecordNotFound()),
+		repo.EXPECT().
+			GetDefaultBranch(gomock.Any(), snow.ID(1)).
+			Return(&domain.Branch{ID: 2, ProjectID: 1, Name: "main", CommitID: &commitID}, nil),
+	)
+
+	var captured domain.Branch
+	repo.EXPECT().
+		CreateBranch(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, b domain.Branch) (*domain.Branch, error) {
+			captured = b
+			return &b, nil
+		})
+
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
+	created, err := uc.CreateBranch(context.Background(), snow.ID(1), "feature", BranchForkPoint{})
+	require.NoError(t, err)
+	require.Equal(t, "feature", created.Name)
+	require.NotNil(t, captured.CommitID)
+	require.Equal(t, commitID, *captured.CommitID)
+}
+
+func TestBranch_CreateBranch_NoDefaultBranch(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := NewMockpermissionUsecase(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).
+		Return(true)
+
+	gomock.InOrder(
+		repo.EXPECT().
+			GetBranchByName(gomock.Any(), snow.ID(1), "feature").
+			Return(nil, domain.NewErrorRecordNotFound()),
+		repo.EXPECT().
+			GetDefaultBranch(gomock.Any(), snow.ID(1)).
+			Return(nil, domain.NewErrorRecordNotFound()),
+	)
+
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
+	_, err := uc.CreateBranch(context.Background(), snow.ID(1), "feature", BranchForkPoint{})
+
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 404, domErr.Code)
+	require.Equal(t, "no default branch found", domErr.Message)
+}
+
+func TestBranch_CreateBranch_UniquenessCheckError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := NewMockpermissionUsecase(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+
+	wantErr := errors.New("db down")
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).
+		Return(true)
+
+	repo.EXPECT().
+		GetBranchByName(gomock.Any(), snow.ID(1), "feature").
+		Return(nil, wantErr)
+
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
+	_, err := uc.CreateBranch(context.Background(), snow.ID(1), "feature", BranchForkPoint{BranchName: "main"})
+	require.ErrorIs(t, err, wantErr)
+}
+
+func TestBranch_CreateBranch_RepositoryError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := NewMockpermissionUsecase(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+
+	wantErr := errors.New("tx failed")
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).
+		Return(true)
+
+	gomock.InOrder(
+		repo.EXPECT().
+			GetBranchByName(gomock.Any(), snow.ID(1), "feature").
+			Return(nil, domain.NewErrorRecordNotFound()),
+		repo.EXPECT().
+			GetBranchByName(gomock.Any(), snow.ID(1), "main").
+			Return(&domain.Branch{ID: 2, ProjectID: 1, Name: "main"}, nil),
+		repo.EXPECT().
+			CreateBranch(gomock.Any(), gomock.Any()).
+			Return(nil, wantErr),
+	)
+
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
+	_, err := uc.CreateBranch(context.Background(), snow.ID(1), "feature", BranchForkPoint{BranchName: "main"})
+	require.ErrorIs(t, err, wantErr)
+}
+
+func TestBranch_CreateBranch_FromCommitID(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := NewMockpermissionUsecase(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+
+	projectID := snow.ID(1)
+	commit := &domain.Commit{ID: snow.ID(99), ProjectID: projectID}
+	forkID := commit.ID
+
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), projectID, domain.PermissionWrite).
+		Return(true)
+
+	gomock.InOrder(
+		repo.EXPECT().
+			GetBranchByName(gomock.Any(), projectID, "feature").
+			Return(nil, domain.NewErrorRecordNotFound()),
+		repo.EXPECT().
+			GetCommit(gomock.Any(), forkID).
+			Return(commit, nil),
+	)
+
+	var captured domain.Branch
+	repo.EXPECT().
+		CreateBranch(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, b domain.Branch) (*domain.Branch, error) {
+			captured = b
+			return &b, nil
+		})
+
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
+	created, err := uc.CreateBranch(context.Background(), projectID, "feature", BranchForkPoint{CommitID: &forkID, BranchName: "main"})
+	require.NoError(t, err)
+	require.Equal(t, "feature", created.Name)
+	require.NotNil(t, captured.CommitID)
+	require.Equal(t, commit.ID, *captured.CommitID, "an explicit commit ID must win over the branch name")
+}
+
+func TestBranch_CreateBranch_FromCommitID_NotFound(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := NewMockpermissionUsecase(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+
+	missing := snow.ID(404)
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).
+		Return(true)
+
+	gomock.InOrder(
+		repo.EXPECT().
+			GetBranchByName(gomock.Any(), snow.ID(1), "feature").
+			Return(nil, domain.NewErrorRecordNotFound()),
+		repo.EXPECT().
+			GetCommit(gomock.Any(), missing).
+			Return(nil, domain.NewErrorRecordNotFound()),
+	)
+
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
+	_, err := uc.CreateBranch(context.Background(), snow.ID(1), "feature", BranchForkPoint{CommitID: &missing})
+
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 404, domErr.Code)
+}
+
+func TestBranch_CreateBranch_FromCommitID_OtherProject(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := NewMockpermissionUsecase(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+
+	forkID := snow.ID(99)
+	otherProjectCommit := &domain.Commit{ID: forkID, ProjectID: snow.ID(2)}
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).
+		Return(true)
+
+	gomock.InOrder(
+		repo.EXPECT().
+			GetBranchByName(gomock.Any(), snow.ID(1), "feature").
+			Return(nil, domain.NewErrorRecordNotFound()),
+		repo.EXPECT().
+			GetCommit(gomock.Any(), forkID).
+			Return(otherProjectCommit, nil),
+	)
+
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
+	_, err := uc.CreateBranch(context.Background(), snow.ID(1), "feature", BranchForkPoint{CommitID: &forkID})
+
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 404, domErr.Code)
+}
+
+func TestBranch_CreateBranch_FromCommitHash(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := NewMockpermissionUsecase(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+
+	projectID := snow.ID(1)
+	commit := &domain.Commit{ID: snow.ID(99), ProjectID: projectID}
+	hash := commitHashFromBytes([]byte{0xbe, 0xef})
+	forkHash := hash
+
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), projectID, domain.PermissionWrite).
+		Return(true)
+
+	gomock.InOrder(
+		repo.EXPECT().
+			GetBranchByName(gomock.Any(), projectID, "feature").
+			Return(nil, domain.NewErrorRecordNotFound()),
+		repo.EXPECT().
+			GetCommitByHash(gomock.Any(), forkHash).
+			Return(commit, nil),
+	)
+
+	var captured domain.Branch
+	repo.EXPECT().
+		CreateBranch(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, b domain.Branch) (*domain.Branch, error) {
+			captured = b
+			return &b, nil
+		})
+
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
+	created, err := uc.CreateBranch(context.Background(), projectID, "feature", BranchForkPoint{CommitHash: &forkHash, BranchName: "main"})
+	require.NoError(t, err)
+	require.Equal(t, "feature", created.Name)
+	require.NotNil(t, captured.CommitID)
+	require.Equal(t, commit.ID, *captured.CommitID, "a commit hash must win over the branch name")
+}
+
+func TestBranch_CreateBranch_FromCommitHash_NotFound(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := NewMockpermissionUsecase(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+
+	missing := commitHashFromBytes([]byte{0xde, 0xad, 0xbe, 0xef})
+	forkHash := missing
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).
+		Return(true)
+
+	gomock.InOrder(
+		repo.EXPECT().
+			GetBranchByName(gomock.Any(), snow.ID(1), "feature").
+			Return(nil, domain.NewErrorRecordNotFound()),
+		repo.EXPECT().
+			GetCommitByHash(gomock.Any(), forkHash).
+			Return(nil, domain.NewErrorRecordNotFound()),
+	)
+
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
+	_, err := uc.CreateBranch(context.Background(), snow.ID(1), "feature", BranchForkPoint{CommitHash: &forkHash})
+
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 404, domErr.Code)
+}
+
+func TestBranch_CreateBranch_FromCommitHash_OtherProject(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := NewMockpermissionUsecase(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+
+	hash := commitHashFromBytes([]byte{0xf0, 0x0d})
+	forkHash := hash
+	otherProjectCommit := &domain.Commit{ID: snow.ID(99), ProjectID: snow.ID(2)}
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).
+		Return(true)
+
+	gomock.InOrder(
+		repo.EXPECT().
+			GetBranchByName(gomock.Any(), snow.ID(1), "feature").
+			Return(nil, domain.NewErrorRecordNotFound()),
+		repo.EXPECT().
+			GetCommitByHash(gomock.Any(), forkHash).
+			Return(otherProjectCommit, nil),
+	)
+
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
+	_, err := uc.CreateBranch(context.Background(), snow.ID(1), "feature", BranchForkPoint{CommitHash: &forkHash})
+
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 404, domErr.Code)
+}
+
+func TestBranch_CreateBranch_CommitLookupError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := NewMockpermissionUsecase(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+
+	wantErr := errors.New("db down")
+	forkID := snow.ID(99)
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).
+		Return(true)
+
+	gomock.InOrder(
+		repo.EXPECT().
+			GetBranchByName(gomock.Any(), snow.ID(1), "feature").
+			Return(nil, domain.NewErrorRecordNotFound()),
+		repo.EXPECT().
+			GetCommit(gomock.Any(), forkID).
+			Return(nil, wantErr),
+	)
+
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
+	_, err := uc.CreateBranch(context.Background(), snow.ID(1), "feature", BranchForkPoint{CommitID: &forkID})
+	require.ErrorIs(t, err, wantErr)
+}
+
+func commitHashFromBytes(b []byte) domain.Hash {
+	var h domain.Hash
+	copy(h[:], b)
+	return h
 }

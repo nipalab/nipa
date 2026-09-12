@@ -11,13 +11,14 @@ import (
 )
 
 const branchCreate = `-- name: BranchCreate :exec
-INSERT INTO branches (id, project_id, name, commit_id, is_default, is_protected) VALUES (?, ?, ?, ?, ?, ?)
+INSERT INTO branches (id, project_id, name, key, commit_id, is_default, is_protected) VALUES (?, ?, ?, ?, ?, ?, ?)
 `
 
 type BranchCreateParams struct {
 	ID          int64         `json:"id"`
 	ProjectID   int64         `json:"project_id"`
 	Name        string        `json:"name"`
+	Key         string        `json:"key"`
 	CommitID    sql.NullInt64 `json:"commit_id"`
 	IsDefault   bool          `json:"is_default"`
 	IsProtected bool          `json:"is_protected"`
@@ -28,6 +29,7 @@ func (q *Queries) BranchCreate(ctx context.Context, arg BranchCreateParams) erro
 		arg.ID,
 		arg.ProjectID,
 		arg.Name,
+		arg.Key,
 		arg.CommitID,
 		arg.IsDefault,
 		arg.IsProtected,

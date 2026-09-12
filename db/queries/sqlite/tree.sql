@@ -4,6 +4,12 @@ FROM commits
 WHERE id = :id
 LIMIT 1;
 
+-- name: CommitGetByHash :one
+SELECT *
+FROM commits
+WHERE hash = :hash
+LIMIT 1;
+
 -- name: TreeNodeGet :one
 SELECT *
 FROM tree_nodes

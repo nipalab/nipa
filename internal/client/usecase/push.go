@@ -28,6 +28,7 @@ type pushLocalRepo interface {
 	MissingChunks(hashes []serverDomain.Hash) ([]serverDomain.Hash, error)
 	ClearStaged() error
 	SaveTree(root *serverDomain.TreeNode) error
+	SaveCommit(commitID, commitHash string) error
 }
 
 type Push struct {
@@ -152,7 +153,11 @@ func (p *Push) Run(ctx context.Context, root, message string, progress ...Upload
 		}
 	}
 
-	if _, err := p.pushClient.Push(ctx, nipaUrl.Org, nipaUrl.Project, cfg.Branch, snapshot.TreeHash, message, files, removed); err != nil {
+	result, err := p.pushClient.Push(ctx, nipaUrl.Org, nipaUrl.Project, cfg.Branch, snapshot.TreeHash, message, files, removed)
+	if err != nil {
+		return err
+	}
+	if err := p.localRepo.SaveCommit(result.CommitID.Base36(), result.CommitHash.String()); err != nil {
 		return err
 	}
 

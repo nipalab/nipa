@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/nipalab/nipa/internal/client/domain"
 	serverDomain "github.com/nipalab/nipa/internal/domain"
@@ -13,12 +14,14 @@ type repoInterface interface {
 	GetDefaultBranch(ctx context.Context, org, project string) (*serverDomain.Branch, error)
 	GetTreeNodeManifest(ctx context.Context, org, project, branch, path string) (*serverDomain.TreeNode, error)
 	ListBranches(ctx context.Context, org, project string) ([]*serverDomain.Branch, error)
+	CreateBranch(ctx context.Context, org, project, name, fromBranch, fromCommitID, fromCommitHash string) (*serverDomain.Branch, error)
 	DownloadChunks(ctx context.Context, hashes []serverDomain.Hash, onChunk ...func(h serverDomain.Hash, data []byte)) (map[serverDomain.Hash][]byte, error)
 }
 
 type localRepo interface {
 	Init(target string) error
 	SaveConfig(cfg domain.Config) error
+	LoadConfig() (*domain.Config, error)
 	SaveTree(root *serverDomain.TreeNode) error
 	Snapshot() (*domain.Snapshot, error)
 	ListStaged() ([]string, error)
@@ -27,6 +30,8 @@ type localRepo interface {
 	MissingChunks(hashes []serverDomain.Hash) ([]serverDomain.Hash, error)
 	StoreChunk(hash serverDomain.Hash, data []byte) error
 	LoadChunk(hash serverDomain.Hash) ([]byte, error)
+	SaveCommit(commitID, commitHash string) error
+	LoadCommit() (*domain.LocalCommit, error)
 }
 
 type Repo struct {
@@ -81,6 +86,35 @@ func (r *Repo) ListBranches(ctx context.Context, host, org, project string) ([]*
 		return nil, err
 	}
 	return r.repoInterface.ListBranches(ctx, org, project)
+}
+
+func (r *Repo) CreateBranch(ctx context.Context, root, host, org, project, name string) (*serverDomain.Branch, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return nil, domain.NewUserError("branch name is required")
+	}
+	if err := r.auth.MakeSureLoggedIn(ctx, host); err != nil {
+		return nil, err
+	}
+	if err := r.localRepo.Init(root); err != nil {
+		return nil, err
+	}
+	cfg, err := r.localRepo.LoadConfig()
+	if err != nil {
+		return nil, err
+	}
+	localCommit, err := r.localRepo.LoadCommit()
+	if err != nil {
+		return nil, err
+	}
+	created, err := r.repoInterface.CreateBranch(ctx, org, project, name, cfg.Branch, localCommit.CommitID, localCommit.CommitHash)
+	if err != nil {
+		return nil, err
+	}
+	if err := r.localRepo.SaveConfig(domain.Config{Url: cfg.Url, Branch: name}); err != nil {
+		return nil, err
+	}
+	return created, nil
 }
 
 func ensureEmptyTarget(target string) error {

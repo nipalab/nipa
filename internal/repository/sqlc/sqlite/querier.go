@@ -22,6 +22,7 @@ type Querier interface {
 	ChunkInsertOrIgnore(ctx context.Context, arg ChunkInsertOrIgnoreParams) error
 	ChunkListByFile(ctx context.Context, fileID int64) ([]Chunk, error)
 	CommitGet(ctx context.Context, id int64) (Commit, error)
+	CommitGetByHash(ctx context.Context, hash []byte) (Commit, error)
 	CommitInsert(ctx context.Context, arg CommitInsertParams) error
 	CreateOrganization(ctx context.Context, arg CreateOrganizationParams) (Organization, error)
 	CreateProject(ctx context.Context, arg CreateProjectParams) (Project, error)

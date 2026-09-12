@@ -1,7 +1,9 @@
 package server
 
 import (
+	"bytes"
 	"context"
+	"encoding/hex"
 	"errors"
 	"testing"
 	"time"
@@ -91,7 +93,9 @@ func newTestBranchUc(t *testing.T) (*usecase.Branch, *MockpermissionUsecase, *Mo
 	ctrl := gomock.NewController(t)
 	perm := NewMockpermissionUsecase(ctrl)
 	repo := NewMockbranchRepository(ctrl)
-	return usecase.NewBranch(perm, repo), perm, repo
+	node, err := snow.NewNode(1)
+	require.NoError(t, err)
+	return usecase.NewBranch(perm, repo, node), perm, repo
 }
 
 func TestNew(t *testing.T) {
@@ -585,4 +589,210 @@ func TestGetTreeManifest_ResolveError(t *testing.T) {
 		Branch:  "main",
 	})
 	require.Error(t, err)
+}
+
+func TestCreateBranch_Success(t *testing.T) {
+	branch, perm, repo := newTestBranchUc(t)
+	srv := New(newMockUsecaseContainer(t, branch))
+
+	projectID := snow.ID(42)
+	commitID := snow.ID(7)
+
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), projectID, domain.PermissionWrite).
+		Return(true)
+
+	gomock.InOrder(
+		repo.EXPECT().
+			GetBranchByName(gomock.Any(), projectID, "feature").
+			Return(nil, domain.NewErrorRecordNotFound()),
+		repo.EXPECT().
+			GetBranchByName(gomock.Any(), projectID, "main").
+			Return(&domain.Branch{ID: 2, ProjectID: projectID, Name: "main", CommitID: &commitID}, nil),
+	)
+
+	repo.EXPECT().
+		CreateBranch(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, b domain.Branch) (*domain.Branch, error) {
+			return &b, nil
+		})
+
+	resp, err := srv.CreateBranch(context.Background(), &pb.CreateBranchRequest{
+		Context:    &pb.ProjectContext{Org: "org", Project: "proj"},
+		Name:       "feature",
+		FromBranch: "main",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, resp.GetBranch())
+	require.Equal(t, "feature", resp.GetBranch().GetName())
+	require.False(t, resp.GetBranch().GetIsDefault())
+	require.NotEmpty(t, resp.GetBranch().GetId())
+}
+
+func TestCreateBranch_ResolveError(t *testing.T) {
+	srv := New(newMockUsecaseContainer(t, nil))
+
+	_, err := srv.CreateBranch(context.Background(), &pb.CreateBranchRequest{
+		Context: &pb.ProjectContext{Org: "unknown", Project: "unknown"},
+		Name:    "feature",
+	})
+	require.Error(t, err)
+}
+
+func TestCreateBranch_UsecaseError(t *testing.T) {
+	branch, perm, repo := newTestBranchUc(t)
+	srv := New(newMockUsecaseContainer(t, branch))
+
+	projectID := snow.ID(42)
+
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), projectID, domain.PermissionWrite).
+		Return(true)
+
+	repo.EXPECT().
+		GetBranchByName(gomock.Any(), projectID, "feature").
+		Return(nil, errors.New("db down"))
+
+	_, err := srv.CreateBranch(context.Background(), &pb.CreateBranchRequest{
+		Context: &pb.ProjectContext{Org: "org", Project: "proj"},
+		Name:    "feature",
+	})
+	require.Error(t, err)
+}
+
+func TestCreateBranch_Conflict(t *testing.T) {
+	branch, perm, repo := newTestBranchUc(t)
+	srv := New(newMockUsecaseContainer(t, branch))
+
+	projectID := snow.ID(42)
+
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), projectID, domain.PermissionWrite).
+		Return(true)
+
+	repo.EXPECT().
+		GetBranchByName(gomock.Any(), projectID, "feature").
+		Return(&domain.Branch{ID: 5, ProjectID: projectID, Name: "feature"}, nil)
+
+	_, err := srv.CreateBranch(context.Background(), &pb.CreateBranchRequest{
+		Context: &pb.ProjectContext{Org: "org", Project: "proj"},
+		Name:    "feature",
+	})
+	require.Error(t, err)
+}
+
+func TestCreateBranch_FromCommitID(t *testing.T) {
+	branch, perm, repo := newTestBranchUc(t)
+	srv := New(newMockUsecaseContainer(t, branch))
+
+	projectID := snow.ID(42)
+	forkID := snow.ID(77)
+	commit := &domain.Commit{ID: forkID, ProjectID: projectID}
+
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), projectID, domain.PermissionWrite).
+		Return(true)
+
+	gomock.InOrder(
+		repo.EXPECT().
+			GetBranchByName(gomock.Any(), projectID, "feature").
+			Return(nil, domain.NewErrorRecordNotFound()),
+		repo.EXPECT().
+			GetCommit(gomock.Any(), forkID).
+			Return(commit, nil),
+	)
+
+	var captured domain.Branch
+	repo.EXPECT().
+		CreateBranch(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, b domain.Branch) (*domain.Branch, error) {
+			captured = b
+			return &b, nil
+		})
+
+	resp, err := srv.CreateBranch(context.Background(), &pb.CreateBranchRequest{
+		Context:        &pb.ProjectContext{Org: "org", Project: "proj"},
+		Name:           "feature",
+		FromBranch:     "main",
+		FromCommitId:   mustBase36(forkID),
+		FromCommitHash: someHashHex(t, 0xab),
+	})
+	require.NoError(t, err)
+	require.Equal(t, "feature", resp.GetBranch().GetName())
+	require.NotNil(t, captured.CommitID)
+	require.Equal(t, forkID, *captured.CommitID, "commit id must win over commit hash and branch name")
+}
+
+func TestCreateBranch_FromCommitHash(t *testing.T) {
+	branch, perm, repo := newTestBranchUc(t)
+	srv := New(newMockUsecaseContainer(t, branch))
+
+	projectID := snow.ID(42)
+	commit := &domain.Commit{ID: snow.ID(88), ProjectID: projectID}
+	wantHash, err := domain.ParseHashHex(someHashHex(t, 0xcd))
+	require.NoError(t, err)
+
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), projectID, domain.PermissionWrite).
+		Return(true)
+
+	gomock.InOrder(
+		repo.EXPECT().
+			GetBranchByName(gomock.Any(), projectID, "feature").
+			Return(nil, domain.NewErrorRecordNotFound()),
+		repo.EXPECT().
+			GetCommitByHash(gomock.Any(), wantHash).
+			Return(commit, nil),
+	)
+
+	var captured domain.Branch
+	repo.EXPECT().
+		CreateBranch(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, b domain.Branch) (*domain.Branch, error) {
+			captured = b
+			return &b, nil
+		})
+
+	resp, err := srv.CreateBranch(context.Background(), &pb.CreateBranchRequest{
+		Context:        &pb.ProjectContext{Org: "org", Project: "proj"},
+		Name:           "feature",
+		FromBranch:     "main",
+		FromCommitHash: someHashHex(t, 0xcd),
+	})
+	require.NoError(t, err)
+	require.Equal(t, "feature", resp.GetBranch().GetName())
+	require.NotNil(t, captured.CommitID)
+	require.Equal(t, commit.ID, *captured.CommitID, "commit hash must win over the branch name")
+}
+
+func TestCreateBranch_InvalidCommitID(t *testing.T) {
+	branch, _, _ := newTestBranchUc(t)
+	srv := New(newMockUsecaseContainer(t, branch))
+
+	_, err := srv.CreateBranch(context.Background(), &pb.CreateBranchRequest{
+		Context:      &pb.ProjectContext{Org: "org", Project: "proj"},
+		Name:         "feature",
+		FromCommitId: "!!!not-base36!!!",
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "invalid commit id")
+}
+
+func TestCreateBranch_InvalidCommitHash(t *testing.T) {
+	branch, _, _ := newTestBranchUc(t)
+	srv := New(newMockUsecaseContainer(t, branch))
+
+	_, err := srv.CreateBranch(context.Background(), &pb.CreateBranchRequest{
+		Context:        &pb.ProjectContext{Org: "org", Project: "proj"},
+		Name:           "feature",
+		FromCommitHash: "zzz",
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "invalid commit hash")
+}
+
+func someHashHex(t *testing.T, b byte) string {
+	t.Helper()
+	h := bytes.Repeat([]byte{b}, 32)
+	return hex.EncodeToString(h)
 }

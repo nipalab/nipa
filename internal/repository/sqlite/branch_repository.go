@@ -62,8 +62,36 @@ func (b *BranchRepository) GetBranchByName(ctx context.Context, projectID snow.I
 	return branchToDomain(row), nil
 }
 
+func (b *BranchRepository) CreateBranch(ctx context.Context, branch domain.Branch) (*domain.Branch, error) {
+	var commitID sql.NullInt64
+	if branch.CommitID != nil {
+		commitID = sql.NullInt64{Int64: branch.CommitID.Int64(), Valid: true}
+	}
+	err := b.queries.BranchCreate(ctx, sqlcSqlite.BranchCreateParams{
+		ID:          branch.ID.Int64(),
+		ProjectID:   branch.ProjectID.Int64(),
+		Name:        branch.Name,
+		Key:         branch.Name,
+		CommitID:    commitID,
+		IsDefault:   branch.IsDefault,
+		IsProtected: branch.IsProtected,
+	})
+	if err != nil {
+		return nil, handleError(err)
+	}
+	return b.GetBranchByName(ctx, branch.ProjectID, branch.Name)
+}
+
 func (b *BranchRepository) GetCommit(ctx context.Context, commitID snow.ID) (*domain.Commit, error) {
 	row, err := b.queries.CommitGet(ctx, commitID.Int64())
+	if err != nil {
+		return nil, handleError(err)
+	}
+	return commitToDomain(row), nil
+}
+
+func (b *BranchRepository) GetCommitByHash(ctx context.Context, hash domain.Hash) (*domain.Commit, error) {
+	row, err := b.queries.CommitGetByHash(ctx, hash.Bytes())
 	if err != nil {
 		return nil, handleError(err)
 	}

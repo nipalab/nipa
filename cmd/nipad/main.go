@@ -67,7 +67,7 @@ func main() {
 		authUsecase:   authUsecase,
 		userUsecase:   usecase.NewUser(snowUser),
 		commonUsecase: usecase.NewCommon(orgRepo, projectRepo),
-		branchUsecase: usecase.NewBranch(authUsecase, branchRepository),
+		branchUsecase: usecase.NewBranch(authUsecase, branchRepository, snowUser),
 		pushUsecase:   usecase.NewPush(authUsecase, branchRepository, pushRepository, snowUser),
 		chunkUsecase:  usecase.NewChunk(pushRepository, chunkStore),
 	}
