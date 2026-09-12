@@ -335,3 +335,45 @@ func treeFixture() *serverDomain.TreeNode {
 		},
 	}
 }
+
+func TestSaveCommit_LoadCommit(t *testing.T) {
+	lr := NewLocalRepo()
+	require.NoError(t, lr.Init(t.TempDir()))
+	defer lr.Close()
+
+	require.NoError(t, lr.SaveCommit("zzz123", "beefcafe"))
+	got, err := lr.LoadCommit()
+	require.NoError(t, err)
+	require.Equal(t, "zzz123", got.CommitID)
+	require.Equal(t, "beefcafe", got.CommitHash)
+}
+
+func TestSaveCommit_UpdatesExisting(t *testing.T) {
+	lr := NewLocalRepo()
+	require.NoError(t, lr.Init(t.TempDir()))
+	defer lr.Close()
+
+	require.NoError(t, lr.SaveCommit("old", "oldhash"))
+	require.NoError(t, lr.SaveCommit("new", "newhash"))
+	got, err := lr.LoadCommit()
+	require.NoError(t, err)
+	require.Equal(t, "new", got.CommitID)
+	require.Equal(t, "newhash", got.CommitHash)
+}
+
+func TestLoadCommit_NeverPushed(t *testing.T) {
+	lr := NewLocalRepo()
+	require.NoError(t, lr.Init(t.TempDir()))
+	defer lr.Close()
+
+	got, err := lr.LoadCommit()
+	require.NoError(t, err)
+	require.Equal(t, &domain.LocalCommit{}, got, "a clone that has never been pushed reports no pinning commit")
+}
+
+func TestSaveCommit_NotInitialized(t *testing.T) {
+	lr := NewLocalRepo()
+	require.Error(t, lr.SaveCommit("zzz123", "beefcafe"))
+	_, err := lr.LoadCommit()
+	require.Error(t, err)
+}

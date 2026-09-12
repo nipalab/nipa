@@ -70,6 +70,30 @@ func (q *Queries) CommitGet(ctx context.Context, id int64) (Commit, error) {
 	return i, err
 }
 
+const commitGetByHash = `-- name: CommitGetByHash :one
+SELECT id, hash, project_id, tree_id, parent_1_id, parent_2_id, user_id, message, created_at
+FROM commits
+WHERE hash = ?1
+LIMIT 1
+`
+
+func (q *Queries) CommitGetByHash(ctx context.Context, hash []byte) (Commit, error) {
+	row := q.db.QueryRowContext(ctx, commitGetByHash, hash)
+	var i Commit
+	err := row.Scan(
+		&i.ID,
+		&i.Hash,
+		&i.ProjectID,
+		&i.TreeID,
+		&i.Parent1ID,
+		&i.Parent2ID,
+		&i.UserID,
+		&i.Message,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const fileListByTree = `-- name: FileListByTree :many
 SELECT id, name, mode, tree_id, hash, size_bytes, is_binary, created_at
 FROM files

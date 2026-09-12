@@ -81,6 +81,21 @@ func (m *MockbranchRepository) EXPECT() *MockbranchRepositoryMockRecorder {
 	return m.recorder
 }
 
+// CreateBranch mocks base method.
+func (m *MockbranchRepository) CreateBranch(ctx context.Context, branch domain.Branch) (*domain.Branch, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateBranch", ctx, branch)
+	ret0, _ := ret[0].(*domain.Branch)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateBranch indicates an expected call of CreateBranch.
+func (mr *MockbranchRepositoryMockRecorder) CreateBranch(ctx, branch any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateBranch", reflect.TypeOf((*MockbranchRepository)(nil).CreateBranch), ctx, branch)
+}
+
 // GetBranchByName mocks base method.
 func (m *MockbranchRepository) GetBranchByName(ctx context.Context, projectID snow.ID, name string) (*domain.Branch, error) {
 	m.ctrl.T.Helper()
@@ -124,6 +139,21 @@ func (m *MockbranchRepository) GetCommit(ctx context.Context, commitID snow.ID) 
 func (mr *MockbranchRepositoryMockRecorder) GetCommit(ctx, commitID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetCommit", reflect.TypeOf((*MockbranchRepository)(nil).GetCommit), ctx, commitID)
+}
+
+// GetCommitByHash mocks base method.
+func (m *MockbranchRepository) GetCommitByHash(ctx context.Context, hash domain.Hash) (*domain.Commit, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetCommitByHash", ctx, hash)
+	ret0, _ := ret[0].(*domain.Commit)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetCommitByHash indicates an expected call of GetCommitByHash.
+func (mr *MockbranchRepositoryMockRecorder) GetCommitByHash(ctx, hash any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetCommitByHash", reflect.TypeOf((*MockbranchRepository)(nil).GetCommitByHash), ctx, hash)
 }
 
 // GetDefaultBranch mocks base method.

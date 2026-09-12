@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -16,7 +17,9 @@ import (
 )
 
 type fakeListRepoInterface struct {
-	branches []*serverDomain.Branch
+	branches         []*serverDomain.Branch
+	createdBranch    *serverDomain.Branch
+	createdBranchErr error
 }
 
 func (f fakeListRepoInterface) GetDefaultBranch(_ context.Context, _, _ string) (*serverDomain.Branch, error) {
@@ -29,6 +32,13 @@ func (f fakeListRepoInterface) GetTreeNodeManifest(_ context.Context, _, _, _, _
 
 func (f fakeListRepoInterface) ListBranches(_ context.Context, _, _ string) ([]*serverDomain.Branch, error) {
 	return f.branches, nil
+}
+
+func (f fakeListRepoInterface) CreateBranch(_ context.Context, _, _, name, _, _, _ string) (*serverDomain.Branch, error) {
+	if f.createdBranch != nil {
+		return f.createdBranch, f.createdBranchErr
+	}
+	return &serverDomain.Branch{Name: name}, f.createdBranchErr
 }
 
 func (f fakeListRepoInterface) DownloadChunks(_ context.Context, _ []serverDomain.Hash, _ ...func(h serverDomain.Hash, data []byte)) (map[serverDomain.Hash][]byte, error) {
@@ -128,4 +138,47 @@ func TestSetupBranchCmd_All_NotARepo(t *testing.T) {
 	_, err := runBranchCmd(t, cli, dir, "-a")
 	require.Error(t, err)
 	require.Equal(t, "not a nipa repository (or any of the parent directories)", err.Error())
+}
+
+func TestSetupBranchCmd_Create(t *testing.T) {
+	root := setupRepo(t, "main")
+	cli := newBranchCli()
+
+	out, err := runBranchCmd(t, cli, root, "-c", "feature")
+	require.NoError(t, err)
+	require.Equal(t, "Created and switched to branch \"feature\"\n", out)
+}
+
+func TestSetupBranchCmd_Create_LongFlag(t *testing.T) {
+	root := setupRepo(t, "main")
+	cli := newBranchCli()
+
+	out, err := runBranchCmd(t, cli, root, "--create", "feature")
+	require.NoError(t, err)
+	require.Equal(t, "Created and switched to branch \"feature\"\n", out)
+}
+
+func TestSetupBranchCmd_Create_NotARepo(t *testing.T) {
+	dir := t.TempDir()
+	cli := newBranchCli()
+
+	_, err := runBranchCmd(t, cli, dir, "-c", "feature")
+	require.Error(t, err)
+	require.Equal(t, "not a nipa repository (or any of the parent directories)", err.Error())
+}
+
+func TestSetupBranchCmd_Create_ServerError(t *testing.T) {
+	root := setupRepo(t, "main")
+	wantErr := errors.New(`branch "feature" already exists`)
+	cli := NewCli(&fakeUsecaseContainer{
+		auth: usecase.NewAuth(fakeExecutor{}, &fakeStorage{}, &fakeInput{}),
+		repo: usecase.NewRepo(
+			usecase.NewAuth(fakeExecutor{}, &fakeStorage{}, &fakeInput{}),
+			fakeListRepoInterface{createdBranchErr: wantErr},
+			fakeLocalRepo{},
+		),
+	}, &fakeConnector{})
+
+	_, err := runBranchCmd(t, cli, root, "-c", "feature")
+	require.ErrorIs(t, err, wantErr)
 }

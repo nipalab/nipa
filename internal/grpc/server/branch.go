@@ -2,11 +2,13 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/grpc/pb"
 	"github.com/nipalab/nipa/internal/snow"
+	"github.com/nipalab/nipa/internal/usecase"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"gopkg.in/typ.v4/slices"
 )
@@ -68,6 +70,35 @@ func (n *nipaServer) GetDefaultBranch(ctx context.Context, req *pb.GetDefaultBra
 		return nil, handleError(err)
 	}
 	return &pb.GetBranchResponse{
+		Branch: domainBranchToPB(branch),
+	}, nil
+}
+
+func (n *nipaServer) CreateBranch(ctx context.Context, req *pb.CreateBranchRequest) (*pb.CreateBranchResponse, error) {
+	_, project, err := n.uc.Common().ResolveBySlug(ctx, req.Context.Org, req.Context.Project)
+	if err != nil {
+		return nil, handleError(err)
+	}
+	fork := usecase.BranchForkPoint{BranchName: req.GetFromBranch()}
+	if commitID := req.GetFromCommitId(); commitID != "" {
+		id, err := snow.ParseBase36(commitID)
+		if err != nil {
+			return nil, handleError(domain.NewErrorUser("invalid commit id"))
+		}
+		fork.CommitID = &id
+	}
+	if commitHash := req.GetFromCommitHash(); commitHash != "" {
+		hash, err := domain.ParseHashHex(commitHash)
+		if err != nil {
+			return nil, handleError(domain.NewErrorUser(fmt.Sprintf("invalid commit hash %q", commitHash)))
+		}
+		fork.CommitHash = &hash
+	}
+	branch, err := n.uc.Branch().CreateBranch(ctx, project.ID, req.GetName(), fork)
+	if err != nil {
+		return nil, handleError(err)
+	}
+	return &pb.CreateBranchResponse{
 		Branch: domainBranchToPB(branch),
 	}, nil
 }

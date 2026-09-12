@@ -57,6 +57,9 @@ type fakeServer struct {
 	lastPath         string
 	listBranchesErr  error
 	listBranches     []*pb.Branch
+	createBranch     *pb.Branch
+	createBranchErr  error
+	createReq        *pb.CreateBranchRequest
 	lastPushReq      *pb.PushRequest
 	pushErr          error
 	pushResp         *pb.PushResponse
@@ -82,6 +85,14 @@ func (f *fakeServer) GetListBranch(_ context.Context, _ *pb.GetListBranchRequest
 		return nil, f.listBranchesErr
 	}
 	return &pb.GetListBranchResponse{Branches: f.listBranches}, nil
+}
+
+func (f *fakeServer) CreateBranch(_ context.Context, req *pb.CreateBranchRequest) (*pb.CreateBranchResponse, error) {
+	f.createReq = req
+	if f.createBranchErr != nil {
+		return nil, f.createBranchErr
+	}
+	return &pb.CreateBranchResponse{Branch: f.createBranch}, nil
 }
 
 func (f *fakeServer) GetTreeManifest(_ context.Context, req *pb.GetTreeManifestRequest) (*pb.GetTreeManifestResponse, error) {
@@ -615,4 +626,58 @@ func TestDecodeHash(t *testing.T) {
 
 	_, err = decodeHash(strings.Repeat("z", 64))
 	require.Error(t, err)
+}
+func TestClient_CreateBranch_Success(t *testing.T) {
+	fs := &fakeServer{
+		createBranch: &pb.Branch{
+			Id:       snow.ID(9).Base36(),
+			Name:     "feature",
+			CommitId: mustBase36Ptr(snow.ID(7)),
+		},
+	}
+	addr := startTestServer(t, fs)
+	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
+	require.NoError(t, c.Connect(context.Background(), addr))
+
+	got, err := c.CreateBranch(context.Background(), "default", "sample", "feature", "main", "abc123", "beefcafe")
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	require.Equal(t, snow.ID(9), got.ID)
+	require.Equal(t, "feature", got.Name)
+	require.NotNil(t, got.CommitID)
+	require.Equal(t, snow.ID(7), *got.CommitID)
+	require.NotNil(t, fs.createReq)
+	require.Equal(t, "feature", fs.createReq.GetName())
+	require.Equal(t, "main", fs.createReq.GetFromBranch())
+	require.Equal(t, "abc123", fs.createReq.GetFromCommitId())
+	require.Equal(t, "beefcafe", fs.createReq.GetFromCommitHash())
+	require.Equal(t, "default", fs.createReq.GetContext().GetOrg())
+	require.Equal(t, "sample", fs.createReq.GetContext().GetProject())
+}
+
+func mustBase36Ptr(id snow.ID) *string {
+	s := id.Base36()
+	return &s
+}
+
+func TestClient_CreateBranch_Conflict(t *testing.T) {
+	addr := startTestServer(t, &fakeServer{createBranchErr: status.Error(codes.FailedPrecondition, `branch "feature" already exists`)})
+	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
+	require.NoError(t, c.Connect(context.Background(), addr))
+
+	_, err := c.CreateBranch(context.Background(), "default", "sample", "feature", "main", "abc123", "beefcafe")
+	require.Error(t, err)
+
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 409, domErr.Code)
+	require.Equal(t, `branch "feature" already exists`, domErr.Message)
+}
+
+func TestClient_CreateBranch_NotConnected(t *testing.T) {
+	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
+
+	_, err := c.CreateBranch(context.Background(), "default", "sample", "feature", "main", "abc123", "beefcafe")
+	require.Error(t, err)
+	require.Equal(t, "not connected to a nipa server", err.Error())
 }

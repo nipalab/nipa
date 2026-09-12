@@ -15,15 +15,21 @@ import (
 )
 
 type stubRepoInterface struct {
-	defaultBranch *serverDomain.Branch
-	defaultErr    error
-	manifest      *serverDomain.TreeNode
-	manifestErr   error
-	listBranches  []*serverDomain.Branch
-	listErr       error
-	download      map[serverDomain.Hash][]byte
-	downloadErr   error
-	downloaded    []serverDomain.Hash
+	defaultBranch   *serverDomain.Branch
+	defaultErr      error
+	manifest        *serverDomain.TreeNode
+	manifestErr     error
+	listBranches    []*serverDomain.Branch
+	listErr         error
+	createdBranch   *serverDomain.Branch
+	createErr       error
+	created         string
+	createdFrom     string
+	createdFromID   string
+	createdFromHash string
+	download        map[serverDomain.Hash][]byte
+	downloadErr     error
+	downloaded      []serverDomain.Hash
 }
 
 func (s *stubRepoInterface) GetDefaultBranch(_ context.Context, _, _ string) (*serverDomain.Branch, error) {
@@ -36,6 +42,14 @@ func (s *stubRepoInterface) GetTreeNodeManifest(_ context.Context, _, _, _, _ st
 
 func (s *stubRepoInterface) ListBranches(_ context.Context, _, _ string) ([]*serverDomain.Branch, error) {
 	return s.listBranches, s.listErr
+}
+
+func (s *stubRepoInterface) CreateBranch(_ context.Context, _, _, name, fromBranch, fromCommitID, fromCommitHash string) (*serverDomain.Branch, error) {
+	s.created = name
+	s.createdFrom = fromBranch
+	s.createdFromID = fromCommitID
+	s.createdFromHash = fromCommitHash
+	return s.createdBranch, s.createErr
 }
 
 func (s *stubRepoInterface) DownloadChunks(_ context.Context, hashes []serverDomain.Hash, onChunk ...func(h serverDomain.Hash, data []byte)) (map[serverDomain.Hash][]byte, error) {
@@ -70,6 +84,12 @@ type stubLocalRepo struct {
 	stageAddErr    error
 	stageRemove    []string
 	stageRemoveErr error
+
+	loadCommit      *domain.LocalCommit
+	loadCommitErr   error
+	savedCommitID   string
+	savedCommitHash string
+	saveCommitErr   error
 
 	missingChunks      []serverDomain.Hash
 	missingChunksErr   error
@@ -137,6 +157,22 @@ func (s *stubLocalRepo) MissingChunks(hashes []serverDomain.Hash) ([]serverDomai
 func (s *stubLocalRepo) ClearStaged() error {
 	s.clearedStaged = true
 	return s.clearStagedErr
+}
+
+func (s *stubLocalRepo) SaveCommit(commitID, commitHash string) error {
+	s.savedCommitID = commitID
+	s.savedCommitHash = commitHash
+	return s.saveCommitErr
+}
+
+func (s *stubLocalRepo) LoadCommit() (*domain.LocalCommit, error) {
+	if s.loadCommitErr != nil {
+		return nil, s.loadCommitErr
+	}
+	if s.loadCommit != nil {
+		return s.loadCommit, nil
+	}
+	return &domain.LocalCommit{}, nil
 }
 
 func (s *stubLocalRepo) StoreChunk(hash serverDomain.Hash, data []byte) error {
@@ -568,4 +604,140 @@ func TestRepo_ListBranches_ServerError(t *testing.T) {
 
 	_, err := repo.ListBranches(context.Background(), "example.com", "org", "project")
 	require.ErrorIs(t, err, wantErr)
+}
+
+func TestRepo_CreateBranch_Success(t *testing.T) {
+	token := signTestToken(t, "secret")
+	storage := &stubSecureStorage{loadResult: &domain.LoginResult{AccessToken: token}}
+	auth := NewAuth(nil, storage, nil)
+	local := &stubLocalRepo{loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "main"}}
+	stub := &stubRepoInterface{createdBranch: &serverDomain.Branch{Name: "feature"}}
+	repo := NewRepo(auth, stub, local)
+	root := t.TempDir()
+
+	created, err := repo.CreateBranch(context.Background(), root, "example.com", "org", "project", "feature")
+	require.NoError(t, err)
+	require.Equal(t, "feature", created.Name)
+	require.Equal(t, "feature", stub.created)
+	require.Equal(t, "main", stub.createdFrom, "must fork from the current local branch")
+	require.Empty(t, stub.createdFromID, "no pinned commit on record yet")
+	require.Empty(t, stub.createdFromHash, "no pinned commit on record yet")
+	require.Equal(t, root, local.initTarget)
+	require.Equal(t, domain.Config{Url: "http://example.com/org/project", Branch: "feature"}, local.config)
+}
+
+func TestRepo_CreateBranch_FromPinnedCommit(t *testing.T) {
+	token := signTestToken(t, "secret")
+	storage := &stubSecureStorage{loadResult: &domain.LoginResult{AccessToken: token}}
+	auth := NewAuth(nil, storage, nil)
+	local := &stubLocalRepo{
+		loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "main"},
+		loadCommit: &domain.LocalCommit{CommitID: "abc123", CommitHash: "beef"},
+	}
+	stub := &stubRepoInterface{createdBranch: &serverDomain.Branch{Name: "feature"}}
+	repo := NewRepo(auth, stub, local)
+
+	created, err := repo.CreateBranch(context.Background(), t.TempDir(), "example.com", "org", "project", "feature")
+	require.NoError(t, err)
+	require.Equal(t, "feature", created.Name)
+	require.Equal(t, "main", stub.createdFrom, "branch name must still be sent as the fallback source")
+	require.Equal(t, "abc123", stub.createdFromID, "the pinned commit id must accompany the branch name")
+	require.Equal(t, "beef", stub.createdFromHash, "the pinned commit hash must accompany the branch name")
+}
+
+func TestRepo_CreateBranch_LoadCommitFailed(t *testing.T) {
+	wantErr := errors.New("meta unreadable")
+	token := signTestToken(t, "secret")
+	storage := &stubSecureStorage{loadResult: &domain.LoginResult{AccessToken: token}}
+	auth := NewAuth(nil, storage, nil)
+	stub := &stubRepoInterface{}
+	repo := NewRepo(auth, stub, &stubLocalRepo{
+		loadConfig:    &domain.Config{Url: "http://example.com/org/project", Branch: "main"},
+		loadCommitErr: wantErr,
+	})
+
+	_, err := repo.CreateBranch(context.Background(), t.TempDir(), "example.com", "org", "project", "feature")
+	require.ErrorIs(t, err, wantErr)
+	require.Empty(t, stub.created, "create must not run without knowing the fork source")
+}
+
+func TestRepo_CreateBranch_EmptyName(t *testing.T) {
+	token := signTestToken(t, "secret")
+	storage := &stubSecureStorage{loadResult: &domain.LoginResult{AccessToken: token}}
+	auth := NewAuth(nil, storage, nil)
+	repo := NewRepo(auth, &stubRepoInterface{}, &stubLocalRepo{})
+
+	_, err := repo.CreateBranch(context.Background(), t.TempDir(), "example.com", "org", "project", "  ")
+	require.Error(t, err)
+
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 400, domErr.Code)
+	require.Equal(t, "branch name is required", domErr.Message)
+}
+
+func TestRepo_CreateBranch_LoginFailed(t *testing.T) {
+	wantErr := errors.New("login failed")
+	storage := &stubSecureStorage{loadErr: errors.New("not found")}
+	input := &stubUserInput{username: "apin", password: "secret"}
+	executor := &stubLoginExecutor{usernameErr: wantErr}
+	auth := NewAuth(executor, storage, input)
+	repo := NewRepo(auth, &stubRepoInterface{}, &stubLocalRepo{})
+
+	_, err := repo.CreateBranch(context.Background(), t.TempDir(), "example.com", "org", "project", "feature")
+	require.ErrorIs(t, err, wantErr)
+}
+
+func TestRepo_CreateBranch_InitFailed(t *testing.T) {
+	wantErr := errors.New("init failed")
+	token := signTestToken(t, "secret")
+	storage := &stubSecureStorage{loadResult: &domain.LoginResult{AccessToken: token}}
+	auth := NewAuth(nil, storage, nil)
+	repo := NewRepo(auth, &stubRepoInterface{}, &stubLocalRepo{initErr: wantErr})
+
+	_, err := repo.CreateBranch(context.Background(), t.TempDir(), "example.com", "org", "project", "feature")
+	require.ErrorIs(t, err, wantErr)
+}
+
+func TestRepo_CreateBranch_LoadConfigFailed(t *testing.T) {
+	wantErr := errors.New("config missing")
+	token := signTestToken(t, "secret")
+	storage := &stubSecureStorage{loadResult: &domain.LoginResult{AccessToken: token}}
+	auth := NewAuth(nil, storage, nil)
+	stub := &stubRepoInterface{}
+	repo := NewRepo(auth, stub, &stubLocalRepo{configLoadErr: wantErr})
+
+	_, err := repo.CreateBranch(context.Background(), t.TempDir(), "example.com", "org", "project", "feature")
+	require.ErrorIs(t, err, wantErr)
+	require.Empty(t, stub.created, "create must not be called when config can't be loaded")
+}
+
+func TestRepo_CreateBranch_ServerError(t *testing.T) {
+	wantErr := domain.NewUserError(`branch "denied" already exists`)
+	token := signTestToken(t, "secret")
+	storage := &stubSecureStorage{loadResult: &domain.LoginResult{AccessToken: token}}
+	auth := NewAuth(nil, storage, nil)
+	local := &stubLocalRepo{loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "main"}}
+	repo := NewRepo(auth, &stubRepoInterface{createErr: wantErr}, local)
+
+	_, err := repo.CreateBranch(context.Background(), t.TempDir(), "example.com", "org", "project", "denied")
+	require.ErrorIs(t, err, wantErr)
+	require.Empty(t, local.config, "config must not be switched when creation fails on the server")
+}
+
+func TestRepo_CreateBranch_SaveConfigFailed(t *testing.T) {
+	wantErr := errors.New("save config failed")
+	token := signTestToken(t, "secret")
+	storage := &stubSecureStorage{loadResult: &domain.LoginResult{AccessToken: token}}
+	auth := NewAuth(nil, storage, nil)
+	local := &stubLocalRepo{
+		loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "main"},
+		configErr:  wantErr,
+	}
+	stub := &stubRepoInterface{createdBranch: &serverDomain.Branch{Name: "feature"}}
+	repo := NewRepo(auth, stub, local)
+
+	_, err := repo.CreateBranch(context.Background(), t.TempDir(), "example.com", "org", "project", "feature")
+	require.ErrorIs(t, err, wantErr)
+	require.Equal(t, "feature", stub.created, "server creation must have happened before the local switch")
 }
