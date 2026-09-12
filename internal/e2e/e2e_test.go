@@ -420,3 +420,73 @@ func TestEndToEnd_CreateBranch(t *testing.T) {
 	require.ErrorAs(t, err, &notFound)
 	require.Equal(t, 404, notFound.Code)
 }
+
+func TestEndToEnd_SwitchBranch(t *testing.T) {
+	ctx := context.Background()
+	host := startTestServer(t, openTestDB(t))
+
+	store := newMemoryStore()
+	transport := clientgrpc.NewTransport()
+	grpcClient := clientgrpc.NewClient(transport, clientusecase.NewSession(store, transport, failPrompt{}))
+	require.NoError(t, grpcClient.Connect(ctx, host))
+
+	loginResult, err := grpcClient.LoginWithUsernamePassword(ctx, host, e2eSuperAdminEmail, e2eSuperAdminPass)
+	require.NoError(t, err)
+	require.NoError(t, store.SaveToken(loginResult))
+
+	auth := clientusecase.NewAuth(grpcClient, store, failPrompt{})
+	repo := clientusecase.NewRepo(auth, grpcClient, localrepo.NewLocalRepo())
+	pusher := clientusecase.NewPush(auth, grpcClient, localrepo.NewLocalRepo())
+	updater := clientusecase.NewUpdate(auth, grpcClient, localrepo.NewLocalRepo())
+	url := "http://" + host + "/" + e2eOrgSlug + "/" + e2eProjectSlug
+
+	target := filepath.Join(t.TempDir(), "work")
+	require.NoError(t, repo.Clone(ctx, url, host, e2eOrgSlug, e2eProjectSlug, "", "", target))
+	writeFile(t, target, "a.txt", "base content\n")
+	stagePath(t, target, "a.txt")
+	require.NoError(t, pusher.Run(ctx, target, "seed main"))
+
+	created, err := grpcClient.CreateBranch(ctx, e2eOrgSlug, e2eProjectSlug, "feature", "main", "", "")
+	require.NoError(t, err)
+	require.Equal(t, "feature", created.Name)
+
+	featureManifest, err := grpcClient.GetTreeNodeManifest(ctx, e2eOrgSlug, e2eProjectSlug, "feature", "")
+	require.NoError(t, err)
+	require.NotNil(t, featureManifest)
+
+	checkout := filepath.Join(t.TempDir(), "checkout")
+	require.NoError(t, repo.Clone(ctx, url, host, e2eOrgSlug, e2eProjectSlug, "", "", checkout))
+	assertFileContent(t, checkout, "a.txt", "base content\n")
+	require.Equal(t, "main", loadBranchConfig(t, checkout))
+
+	require.NoError(t, updater.Switch(ctx, checkout, "feature"))
+	require.Equal(t, "feature", loadBranchConfig(t, checkout), "switch must point the local repository at the new branch")
+	assertFileContent(t, checkout, "a.txt", "base content\n")
+	snap := snapshotOf(t, checkout)
+	require.Equal(t, featureManifest.Hash.String(), snap.TreeHash, "the snapshot must match the switched-to branch's tree")
+
+	pinned := localrepo.NewLocalRepo()
+	require.NoError(t, pinned.Init(checkout))
+	defer pinned.Close()
+	notPinned, err := pinned.LoadCommit()
+	require.NoError(t, err)
+	require.Empty(t, notPinned.CommitID, "a switch must clear the stale pinned commit of the previous branch")
+	require.Empty(t, notPinned.CommitHash)
+
+	err = updater.Switch(ctx, checkout, "does-not-exist")
+	require.Error(t, err, "switching to a missing branch must fail")
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 404, domErr.Code)
+	require.Equal(t, "feature", loadBranchConfig(t, checkout), "a failed switch must not change the branch")
+}
+
+func loadBranchConfig(t *testing.T, target string) string {
+	t.Helper()
+	lr := localrepo.NewLocalRepo()
+	require.NoError(t, lr.Init(target))
+	defer lr.Close()
+	cfg, err := lr.LoadConfig()
+	require.NoError(t, err)
+	return cfg.Branch
+}

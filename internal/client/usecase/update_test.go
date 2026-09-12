@@ -438,3 +438,169 @@ func TestUpdate_Run_Error_LoginRequired(t *testing.T) {
 	err := updater.Run(context.Background(), t.TempDir())
 	require.ErrorIs(t, err, wantErr)
 }
+
+func TestSwitch_Success(t *testing.T) {
+	root := t.TempDir()
+	fileHash, chunks, err := chunkFile([]byte("dev content"))
+	require.NoError(t, err)
+
+	local := &stubLocalRepo{
+		loadConfig:    &domain.Config{Url: "http://example.com/org/project", Branch: "main"},
+		snapshot:      &domain.Snapshot{},
+		missingChunks: []serverDomain.Hash{chunks[0].Hash},
+	}
+	client := &stubUpdateClient{
+		manifest: &serverDomain.TreeNode{
+			Name: "root",
+			FileChildren: []*serverDomain.File{{
+				Name:      "d.txt",
+				Mode:      0o644,
+				SizeBytes: int64(len("dev content")),
+				Hash:      fileHash,
+				Chunks:    chunks,
+			}},
+		},
+		downloadData: map[serverDomain.Hash][]byte{chunks[0].Hash: []byte("dev content")},
+	}
+	updater := newTestUpdate(t, local, client)
+
+	require.NoError(t, updater.Switch(context.Background(), root, "dev"))
+
+	require.Equal(t, root, local.initTarget)
+	require.Equal(t, "example.com", client.connectHost)
+	require.Equal(t, "org", client.org)
+	require.Equal(t, "project", client.project)
+	require.Equal(t, "dev", client.branch, "the target branch must be fetched, not the configured one")
+	require.Equal(t, "", client.treePath)
+	require.Equal(t, "dev content", string(readRepoFile(t, root, "d.txt")))
+	require.Equal(t, domain.Config{Url: "http://example.com/org/project", Branch: "dev"}, local.config)
+	require.Equal(t, "dev content", string(local.storedChunks[chunks[0].Hash]))
+	require.NotNil(t, local.tree)
+}
+
+func TestSwitch_AlreadyOnBranch(t *testing.T) {
+	local := &stubLocalRepo{
+		loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "main"},
+	}
+	client := &stubUpdateClient{}
+	updater := newTestUpdate(t, local, client)
+
+	require.NoError(t, updater.Switch(context.Background(), t.TempDir(), "main"))
+	require.Empty(t, client.connectHost, "switching to the current branch must not hit the server")
+	require.Nil(t, local.tree, "no snapshot refresh is needed when already on the branch")
+}
+
+func TestSwitch_StagedChangesBlocked(t *testing.T) {
+	root := t.TempDir()
+	local := &stubLocalRepo{
+		loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "main"},
+		staged:     []string{"a.txt"},
+	}
+	client := &stubUpdateClient{}
+	updater := newTestUpdate(t, local, client)
+
+	err := updater.Switch(context.Background(), root, "dev")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "staged changes")
+	require.Empty(t, client.connectHost, "staged changes must abort before any network call")
+
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 400, domErr.Code)
+}
+
+func TestSwitch_Error_StagedCheckFails(t *testing.T) {
+	wantErr := errors.New("staged check failed")
+	local := &stubLocalRepo{
+		loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "main"},
+		stagedErr:  wantErr,
+	}
+	updater := newTestUpdate(t, local, &stubUpdateClient{})
+
+	err := updater.Switch(context.Background(), t.TempDir(), "dev")
+	require.ErrorIs(t, err, wantErr)
+}
+
+func TestSwitch_EmptyBranch(t *testing.T) {
+	local := &stubLocalRepo{
+		loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "main"},
+	}
+	updater := newTestUpdate(t, local, &stubUpdateClient{})
+
+	err := updater.Switch(context.Background(), t.TempDir(), "  ")
+	require.Error(t, err)
+
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 400, domErr.Code)
+	require.Equal(t, "branch name is required", domErr.Message)
+}
+
+func TestSwitch_Error_SubdirClone(t *testing.T) {
+	local := &stubLocalRepo{
+		loadConfig: &domain.Config{Url: "http://example.com/org/project/src", Branch: "main"},
+	}
+	updater := newTestUpdate(t, local, &stubUpdateClient{})
+
+	err := updater.Switch(context.Background(), t.TempDir(), "dev")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "subdirectory clone")
+}
+
+func TestSwitch_ClearsPinnedCommit(t *testing.T) {
+	root := t.TempDir()
+	local := &stubLocalRepo{
+		loadConfig:   &domain.Config{Url: "http://example.com/org/project", Branch: "main"},
+		loadCommit:   &domain.LocalCommit{CommitID: "abc123", CommitHash: "beef"},
+		snapshot:     &domain.Snapshot{},
+		storedChunks: map[serverDomain.Hash][]byte{},
+	}
+	client := &stubUpdateClient{manifest: &serverDomain.TreeNode{Name: "root"}}
+	updater := newTestUpdate(t, local, client)
+
+	require.NoError(t, updater.Switch(context.Background(), root, "dev"))
+	require.Empty(t, local.savedCommitID, "a branch switch must drop the stale pinned commit")
+	require.Empty(t, local.savedCommitHash)
+}
+
+func TestSwitch_Error_ManifestFails(t *testing.T) {
+	wantErr := errors.New("manifest failed")
+	local := &stubLocalRepo{
+		loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "main"},
+		snapshot:   &domain.Snapshot{},
+	}
+	client := &stubUpdateClient{manifestErr: wantErr}
+	updater := newTestUpdate(t, local, client)
+
+	err := updater.Switch(context.Background(), t.TempDir(), "dev")
+	require.ErrorIs(t, err, wantErr)
+	require.Empty(t, local.config.Branch, "config must not change when the manifest fetch fails")
+}
+
+func TestSwitch_Error_ManifestNotFound(t *testing.T) {
+	notFound := errors.New(`branch "missing" not found`)
+	local := &stubLocalRepo{
+		loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "main"},
+		snapshot:   &domain.Snapshot{},
+	}
+	client := &stubUpdateClient{manifestErr: notFound}
+	updater := newTestUpdate(t, local, client)
+
+	err := updater.Switch(context.Background(), t.TempDir(), "missing")
+	require.ErrorIs(t, err, notFound)
+	require.Empty(t, local.config.Branch, "config must not change when the branch does not exist")
+}
+
+func TestSwitch_Error_SaveConfigFails(t *testing.T) {
+	wantErr := errors.New("save config failed")
+	local := &stubLocalRepo{
+		loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "main"},
+		snapshot:   &domain.Snapshot{},
+		configErr:  wantErr,
+	}
+	client := &stubUpdateClient{manifest: &serverDomain.TreeNode{Name: "root"}}
+	updater := newTestUpdate(t, local, client)
+
+	err := updater.Switch(context.Background(), t.TempDir(), "dev")
+	require.ErrorIs(t, err, wantErr)
+}
