@@ -16,7 +16,7 @@ func main() {
 	prompter := cli.NewPrompter()
 
 	transport := grpc.NewTransport()
-	session := usecase.NewSession(secureStorage, transport)
+	session := usecase.NewSession(secureStorage, transport, prompter)
 	grpcClient := grpc.NewClient(transport, session)
 
 	authUsecase := usecase.NewAuth(grpcClient, secureStorage, prompter)

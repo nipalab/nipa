@@ -9,7 +9,9 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	_ "modernc.org/sqlite"
@@ -83,6 +85,31 @@ type failPrompt struct{}
 
 func (failPrompt) PromptUsernameAndPassword() (string, string, error) {
 	return "", "", errors.New("unexpected interactive prompt in e2e test")
+}
+
+type scriptedPrompt struct {
+	username string
+	password string
+	calls    int
+}
+
+func (p *scriptedPrompt) PromptUsernameAndPassword() (string, string, error) {
+	p.calls++
+	return p.username, p.password, nil
+}
+
+func expiredAccessToken(t *testing.T) string {
+	t.Helper()
+	claims := serverDomain.Claims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:   snow.ID(42).Base36(),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(-time.Hour)),
+		},
+		UserID: snow.ID(42),
+	}
+	signed, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(e2eJWTSecret))
+	require.NoError(t, err)
+	return signed
 }
 
 func startTestServer(t *testing.T, dbConn *sql.DB) string {
@@ -189,7 +216,7 @@ func TestEndToEnd_CloneAddPushFetch(t *testing.T) {
 
 	store := newMemoryStore()
 	transport := clientgrpc.NewTransport()
-	session := clientusecase.NewSession(store, transport)
+	session := clientusecase.NewSession(store, transport, failPrompt{})
 	grpcClient := clientgrpc.NewClient(transport, session)
 	auth := clientusecase.NewAuth(grpcClient, store, failPrompt{})
 
@@ -281,4 +308,40 @@ func TestEndToEnd_CloneAddPushFetch(t *testing.T) {
 	require.EqualValues(t, len(contentB), snapAfter.Files[0].SizeBytes)
 	assertFileContent(t, checkoutAfter, "b.txt", contentB)
 	require.NoFileExists(t, filepath.Join(checkoutAfter, "a.txt"), "a fresh clone must only materialize files that still exist on the server")
+}
+
+func TestEndToEnd_RefreshTokenRevoked_FallsBackToPasswordLogin(t *testing.T) {
+	ctx := context.Background()
+	host := startTestServer(t, openTestDB(t))
+
+	store := newMemoryStore()
+	transport := clientgrpc.NewTransport()
+	prompt := &scriptedPrompt{username: e2eSuperAdminEmail, password: e2eSuperAdminPass}
+	session := clientusecase.NewSession(store, transport, prompt)
+	grpcClient := clientgrpc.NewClient(transport, session)
+
+	require.NoError(t, grpcClient.Connect(ctx, host))
+
+	loginResult, err := grpcClient.LoginWithUsernamePassword(ctx, host, e2eSuperAdminEmail, e2eSuperAdminPass)
+	require.NoError(t, err)
+	require.NoError(t, store.SaveToken(loginResult))
+
+	require.NoError(t, store.SaveToken(&domain.LoginResult{
+		AccessToken:  expiredAccessToken(t),
+		RefreshToken: "revoked-refresh-token",
+		Host:         host,
+	}))
+
+	branch, err := grpcClient.GetDefaultBranch(ctx, e2eOrgSlug, e2eProjectSlug)
+	require.NoError(t, err, "an expired access token with a revoked refresh token must re-prompt for credentials instead of failing")
+	require.Equal(t, "main", branch.Name)
+	require.Equal(t, 1, prompt.calls, "exactly one credential prompt is expected during re-authentication")
+
+	branch, err = grpcClient.GetDefaultBranch(ctx, e2eOrgSlug, e2eProjectSlug)
+	require.NoError(t, err, "the session must keep working after re-authentication")
+	require.Equal(t, "main", branch.Name)
+
+	refreshed, err := store.LoadToken(host)
+	require.NoError(t, err)
+	require.NotEqual(t, "revoked-refresh-token", refreshed.RefreshToken, "the re-authenticated session must persist the fresh refresh token")
 }
