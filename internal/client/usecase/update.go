@@ -23,10 +23,16 @@ type chunkDownloader interface {
 	DownloadChunks(ctx context.Context, hashes []domain.Hash, onChunk ...func(h domain.Hash, data []byte)) (map[domain.Hash][]byte, error)
 }
 
-type Progress interface {
+type DownloadProgress interface {
 	DownloadStart(objects int, estimatedBytes int64)
 	DownloadProgress(objectsDone int, bytesDone int64)
 	DownloadEnd()
+}
+
+type UploadProgress interface {
+	UploadStart(objects int, totalBytes int64)
+	UploadProgress(objectsDone int, bytesDone int64)
+	UploadEnd()
 }
 
 type workingCopyLocalRepo interface {
@@ -60,7 +66,7 @@ func NewUpdate(auth *Auth, client updateClient, localRepo updateLocalRepo) *Upda
 	}
 }
 
-func (u *Update) Run(ctx context.Context, root string, progress ...Progress) error {
+func (u *Update) Run(ctx context.Context, root string, progress ...DownloadProgress) error {
 	if err := u.localRepo.Init(root); err != nil {
 		return err
 	}
@@ -102,7 +108,7 @@ func (u *Update) Run(ctx context.Context, root string, progress ...Progress) err
 	return u.localRepo.SaveTree(tree)
 }
 
-func syncWorkingCopy(ctx context.Context, client chunkDownloader, lr workingCopyLocalRepo, root string, tree *domain.TreeNode, progress ...Progress) error {
+func syncWorkingCopy(ctx context.Context, client chunkDownloader, lr workingCopyLocalRepo, root string, tree *domain.TreeNode, progress ...DownloadProgress) error {
 	base, err := lr.Snapshot()
 	if err != nil {
 		return err
@@ -126,7 +132,7 @@ func syncWorkingCopy(ctx context.Context, client chunkDownloader, lr workingCopy
 		return err
 	}
 	if len(missing) > 0 {
-		var prog Progress
+		var prog DownloadProgress
 		if len(progress) > 0 {
 			prog = progress[0]
 		}

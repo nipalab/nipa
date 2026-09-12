@@ -263,7 +263,7 @@ func (c *Client) Push(ctx context.Context, org, project, branch, baseTreeHash, m
 	}, nil
 }
 
-func (c *Client) UploadChunks(ctx context.Context, chunks []*serverDomain.ChunkData) (int, int, error) {
+func (c *Client) UploadChunks(ctx context.Context, chunks []*serverDomain.ChunkData, onChunk ...func(ch *serverDomain.ChunkData)) (int, int, error) {
 	client, err := c.transport.NipaServiceClient()
 	if err != nil {
 		return 0, 0, err
@@ -279,6 +279,9 @@ func (c *Client) UploadChunks(ctx context.Context, chunks []*serverDomain.ChunkD
 	for _, ch := range chunks {
 		if err := stream.Send(&pb.ChunkUploadRequest{Hash: ch.Hash.String(), Data: ch.Data}); err != nil {
 			return 0, 0, err
+		}
+		if len(onChunk) > 0 && onChunk[0] != nil {
+			onChunk[0](ch)
 		}
 	}
 	if err := stream.CloseSend(); err != nil {

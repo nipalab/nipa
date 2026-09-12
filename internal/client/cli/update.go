@@ -18,7 +18,7 @@ func (c *Cli) setupUpdateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return c.useCase.Update().Run(cmd.Context(), root, newDownloadProgress(cmd.OutOrStdout()))
+			return c.useCase.Update().Run(cmd.Context(), root, newProgressRenderer(cmd.OutOrStdout()))
 		},
 	}
 	return cmd

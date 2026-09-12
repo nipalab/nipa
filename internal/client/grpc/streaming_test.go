@@ -186,6 +186,30 @@ func TestClient_UploadChunks_Success(t *testing.T) {
 	require.Equal(t, []byte("bbbb"), fs.uploadedChunks[1].GetData())
 }
 
+func TestClient_UploadChunks_ReportsEachChunk(t *testing.T) {
+	var h1, h2 serverDomain.Hash
+	h1[0] = 0x01
+	h2[0] = 0x02
+
+	fs := &fakeServer{uploadResp: &pb.UploadChunksResponse{}}
+	addr := startTestServer(t, fs)
+	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
+	require.NoError(t, c.Connect(context.Background(), addr))
+
+	var gotObject int
+	var gotBytes int64
+	_, _, err := c.UploadChunks(context.Background(), []*serverDomain.ChunkData{
+		{Hash: h1, Data: []byte("aaaa")},
+		{Hash: h2, Data: []byte("bbbb")},
+	}, func(_ *serverDomain.ChunkData) {
+		gotObject++
+		gotBytes += 4
+	})
+	require.NoError(t, err)
+	require.Equal(t, 2, gotObject, "the per-chunk callback must fire for every sent chunk")
+	require.Equal(t, int64(8), gotBytes)
+}
+
 func TestClient_UploadChunks_NoChunks(t *testing.T) {
 	fs := &fakeServer{uploadResp: &pb.UploadChunksResponse{}}
 	addr := startTestServer(t, fs)

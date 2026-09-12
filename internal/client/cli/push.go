@@ -19,7 +19,7 @@ func (c *Cli) setupPushCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return c.useCase.Push().Run(cmd.Context(), root, message)
+			return c.useCase.Push().Run(cmd.Context(), root, message, newProgressRenderer(cmd.OutOrStdout()))
 		},
 	}
 	cmd.Flags().StringP("message", "m", "", "Commit message for the push (required)")

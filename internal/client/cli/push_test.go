@@ -34,8 +34,13 @@ func (f *fakePushClient) Push(_ context.Context, org, project, branch, baseTreeH
 	return &serverDomain.PushResult{}, nil
 }
 
-func (f *fakePushClient) UploadChunks(_ context.Context, chunks []*serverDomain.ChunkData) (int, int, error) {
+func (f *fakePushClient) UploadChunks(_ context.Context, chunks []*serverDomain.ChunkData, onChunk ...func(ch *serverDomain.ChunkData)) (int, int, error) {
 	f.uploaded = append(f.uploaded, chunks)
+	for _, ch := range chunks {
+		if len(onChunk) > 0 && onChunk[0] != nil {
+			onChunk[0](ch)
+		}
+	}
 	return len(chunks), 0, nil
 }
 
@@ -60,7 +65,7 @@ func TestSetupPushCmd_Success(t *testing.T) {
 
 	out, err := runCmdInDir(t, root, cli.setupPushCmd(), "-m", "add a.txt")
 	require.NoError(t, err)
-	require.Empty(t, out)
+	require.Contains(t, out, "Uploading 1 objects (11 B)...", "push must announce how many chunk objects are uploaded")
 
 	require.Equal(t, "example.com", client.host)
 	require.Equal(t, "org", client.org)

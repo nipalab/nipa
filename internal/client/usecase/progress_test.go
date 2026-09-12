@@ -39,6 +39,18 @@ func (s *stubProgress) DownloadEnd() {
 	s.endCalled = true
 }
 
+func (s *stubProgress) UploadStart(objects int, bytes int64) {
+	s.starts = append(s.starts, progressStart{objects: objects, bytes: bytes})
+}
+
+func (s *stubProgress) UploadProgress(objects int, bytes int64) {
+	s.counts = append(s.counts, progressCount{objects: objects, bytes: bytes})
+}
+
+func (s *stubProgress) UploadEnd() {
+	s.endCalled = true
+}
+
 func TestRepo_Clone_ReportsDownloadProgress(t *testing.T) {
 	content := "real file bytes"
 	chunked, err := chunker.ChunkAll([]byte(content))

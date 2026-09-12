@@ -43,7 +43,7 @@ func NewRepo(auth *Auth, repoInterface repoInterface, localRepo localRepo) *Repo
 	}
 }
 
-func (r *Repo) Clone(ctx context.Context, url, host, org, project, branch, path, target string, progress ...Progress) error {
+func (r *Repo) Clone(ctx context.Context, url, host, org, project, branch, path, target string, progress ...DownloadProgress) error {
 	if err := ensureEmptyTarget(target); err != nil {
 		return err
 	}
