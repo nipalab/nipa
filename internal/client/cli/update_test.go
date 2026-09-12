@@ -38,7 +38,7 @@ func (f *fakeUpdateClient) GetTreeNodeManifest(_ context.Context, org, project, 
 	return f.manifest, nil
 }
 
-func (f *fakeUpdateClient) DownloadChunks(_ context.Context, hashes []serverDomain.Hash) (map[serverDomain.Hash][]byte, error) {
+func (f *fakeUpdateClient) DownloadChunks(_ context.Context, hashes []serverDomain.Hash, onChunk ...func(h serverDomain.Hash, data []byte)) (map[serverDomain.Hash][]byte, error) {
 	f.downloaded = append(f.downloaded, hashes...)
 	out := make(map[serverDomain.Hash][]byte, len(hashes))
 	for _, h := range hashes {
@@ -47,6 +47,9 @@ func (f *fakeUpdateClient) DownloadChunks(_ context.Context, hashes []serverDoma
 			data = []byte("from server")
 		}
 		out[h] = data
+		if len(onChunk) > 0 && onChunk[0] != nil {
+			onChunk[0](h, data)
+		}
 	}
 	return out, nil
 }
@@ -92,7 +95,7 @@ func TestSetupUpdateCmd_MaterializesFiles(t *testing.T) {
 
 	out, err := runCmdInDir(t, root, cli.setupUpdateCmd())
 	require.NoError(t, err)
-	require.Empty(t, out)
+	require.Contains(t, out, "Downloading 1 objects (17 B)...", "update must announce how many objects are fetched")
 
 	require.Equal(t, "example.com", client.host)
 	require.Equal(t, "org", client.org)

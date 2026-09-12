@@ -76,7 +76,7 @@ func (fakeRepoInterface) ListBranches(_ context.Context, _, _ string) ([]*server
 	return nil, nil
 }
 
-func (fakeRepoInterface) DownloadChunks(_ context.Context, _ []serverDomain.Hash) (map[serverDomain.Hash][]byte, error) {
+func (fakeRepoInterface) DownloadChunks(_ context.Context, _ []serverDomain.Hash, _ ...func(h serverDomain.Hash, data []byte)) (map[serverDomain.Hash][]byte, error) {
 	return nil, nil
 }
 

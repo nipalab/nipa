@@ -247,6 +247,30 @@ func TestClient_DownloadChunks_Success(t *testing.T) {
 	require.Equal(t, []string{h1.String(), h2.String()}, fs.downloadRequests)
 }
 
+func TestClient_DownloadChunks_ReportsEachChunk(t *testing.T) {
+	var h1, h2 serverDomain.Hash
+	h1[0] = 0x01
+	h2[0] = 0x02
+
+	fs := &fakeServer{downloadData: map[string][]byte{
+		h1.String(): []byte("aaaa"),
+		h2.String(): []byte("bbbb"),
+	}}
+	addr := startTestServer(t, fs)
+	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
+	require.NoError(t, c.Connect(context.Background(), addr))
+
+	var gotObject int
+	var gotBytes int64
+	_, err := c.DownloadChunks(context.Background(), []serverDomain.Hash{h1, h2}, func(_ serverDomain.Hash, data []byte) {
+		gotObject++
+		gotBytes += int64(len(data))
+	})
+	require.NoError(t, err)
+	require.Equal(t, 2, gotObject, "the per-chunk callback must fire for every received chunk")
+	require.Equal(t, int64(8), gotBytes)
+}
+
 func TestClient_DownloadChunks_ServerError(t *testing.T) {
 	fs := &fakeServer{downloadErr: status.Error(codes.NotFound, "chunk missing")}
 	addr := startTestServer(t, fs)

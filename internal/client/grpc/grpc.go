@@ -291,7 +291,7 @@ func (c *Client) UploadChunks(ctx context.Context, chunks []*serverDomain.ChunkD
 	return int(res.GetUploaded()), int(res.GetSkipped()), nil
 }
 
-func (c *Client) DownloadChunks(ctx context.Context, hashes []serverDomain.Hash) (map[serverDomain.Hash][]byte, error) {
+func (c *Client) DownloadChunks(ctx context.Context, hashes []serverDomain.Hash, onChunk ...func(h serverDomain.Hash, data []byte)) (map[serverDomain.Hash][]byte, error) {
 	client, err := c.transport.NipaServiceClient()
 	if err != nil {
 		return nil, err
@@ -326,6 +326,9 @@ func (c *Client) DownloadChunks(ctx context.Context, hashes []serverDomain.Hash)
 			return nil, err
 		}
 		out[hash] = recv.GetData()
+		if len(onChunk) > 0 && onChunk[0] != nil {
+			onChunk[0](hash, recv.GetData())
+		}
 	}
 	return out, nil
 }

@@ -28,7 +28,7 @@ func (c *Cli) setupCloneCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return c.useCase.Repo().Clone(ctx, nipaUrl.Url, nipaUrl.Host, nipaUrl.Org, nipaUrl.Project, branch, nipaUrl.Path, target)
+			return c.useCase.Repo().Clone(ctx, nipaUrl.Url, nipaUrl.Host, nipaUrl.Org, nipaUrl.Project, branch, nipaUrl.Path, target, newDownloadProgress(cmd.OutOrStdout()))
 		},
 	}
 	cmd.Flags().StringP("branch", "b", "main", "Specify the branch to clone")
