@@ -604,3 +604,426 @@ func TestSwitch_Error_SaveConfigFails(t *testing.T) {
 	err := updater.Switch(context.Background(), t.TempDir(), "dev")
 	require.ErrorIs(t, err, wantErr)
 }
+
+type recordingProgress struct {
+	startObjects    int
+	startBytes      int64
+	progressObjects []int
+	progressBytes   []int64
+	endCalls        int
+}
+
+func (r *recordingProgress) DownloadStart(objects int, estimatedBytes int64) {
+	r.startObjects = objects
+	r.startBytes = estimatedBytes
+}
+
+func (r *recordingProgress) DownloadProgress(objectsDone int, bytesDone int64) {
+	r.progressObjects = append(r.progressObjects, objectsDone)
+	r.progressBytes = append(r.progressBytes, bytesDone)
+}
+
+func (r *recordingProgress) DownloadEnd() {
+	r.endCalls++
+}
+
+func TestUpdate_Run_Error_InitFails(t *testing.T) {
+	wantErr := errors.New("init failed")
+	updater := newTestUpdate(t, &stubLocalRepo{initErr: wantErr}, &stubUpdateClient{})
+
+	err := updater.Run(context.Background(), t.TempDir())
+	require.ErrorIs(t, err, wantErr)
+}
+
+func TestUpdate_Run_Error_ParseUrlFails(t *testing.T) {
+	local := &stubLocalRepo{loadConfig: &domain.Config{Url: "http://example.com/onlyone", Branch: "main"}}
+	updater := newTestUpdate(t, local, &stubUpdateClient{})
+
+	err := updater.Run(context.Background(), t.TempDir())
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "invalid URL path")
+}
+
+func TestUpdate_Run_Error_ConnectFails(t *testing.T) {
+	wantErr := errors.New("connection refused")
+	client := &stubUpdateClient{connectErr: wantErr}
+	updater := newTestUpdate(t, &stubLocalRepo{
+		loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "main"},
+	}, client)
+
+	err := updater.Run(context.Background(), t.TempDir())
+	require.ErrorIs(t, err, wantErr)
+}
+
+func TestUpdate_Run_Error_SnapshotFails(t *testing.T) {
+	wantErr := errors.New("snapshot failed")
+	local := &stubLocalRepo{
+		loadConfig:  &domain.Config{Url: "http://example.com/org/project", Branch: "main"},
+		snapshotErr: wantErr,
+	}
+	updater := newTestUpdate(t, local, &stubUpdateClient{})
+
+	err := updater.Run(context.Background(), t.TempDir())
+	require.ErrorIs(t, err, wantErr)
+}
+
+func TestUpdate_Run_Error_SyncSnapshotFails(t *testing.T) {
+	wantErr := errors.New("snapshot failed")
+	local := &stubLocalRepo{
+		loadConfig:    &domain.Config{Url: "http://example.com/org/project", Branch: "main"},
+		snapshotErr:   wantErr,
+		snapshotErrOn: 2,
+	}
+	updater := newTestUpdate(t, local, &stubUpdateClient{manifest: &serverDomain.TreeNode{Name: "root"}})
+
+	err := updater.Run(context.Background(), t.TempDir())
+	require.ErrorIs(t, err, wantErr, "a snapshot failure while materializing must abort the update")
+}
+
+func TestUpdate_Run_Error_MissingChunksFails(t *testing.T) {
+	wantErr := errors.New("missing chunks failed")
+	local := &stubLocalRepo{
+		loadConfig:       &domain.Config{Url: "http://example.com/org/project", Branch: "main"},
+		snapshot:         &domain.Snapshot{},
+		missingChunksErr: wantErr,
+	}
+	updater := newTestUpdate(t, local, &stubUpdateClient{manifest: &serverDomain.TreeNode{Name: "root"}})
+
+	err := updater.Run(context.Background(), t.TempDir())
+	require.ErrorIs(t, err, wantErr)
+}
+
+func TestUpdate_Run_Error_StoreChunkFails(t *testing.T) {
+	wantErr := errors.New("store chunk failed")
+	_, chunks, err := chunkFile([]byte("data"))
+	require.NoError(t, err)
+	fileHash := chunker.FileHash([]serverDomain.Hash{chunks[0].Hash})
+
+	local := &stubLocalRepo{
+		loadConfig:    &domain.Config{Url: "http://example.com/org/project", Branch: "main"},
+		snapshot:      &domain.Snapshot{},
+		missingChunks: []serverDomain.Hash{chunks[0].Hash},
+		storeChunkErr: wantErr,
+	}
+	client := &stubUpdateClient{
+		manifest: &serverDomain.TreeNode{
+			Name: "root",
+			FileChildren: []*serverDomain.File{{
+				Name:      "a.txt",
+				Mode:      0o644,
+				SizeBytes: int64(len("data")),
+				Hash:      fileHash,
+				Chunks:    chunks,
+			}},
+		},
+		downloadData: map[serverDomain.Hash][]byte{chunks[0].Hash: []byte("data")},
+	}
+	updater := newTestUpdate(t, local, client)
+
+	err = updater.Run(context.Background(), t.TempDir())
+	require.ErrorIs(t, err, wantErr)
+}
+
+func TestUpdate_Run_Error_LoadChunkFails(t *testing.T) {
+	wantErr := errors.New("chunk store unreadable")
+	_, chunks, err := chunkFile([]byte("data"))
+	require.NoError(t, err)
+	fileHash := chunker.FileHash([]serverDomain.Hash{chunks[0].Hash})
+
+	local := &stubLocalRepo{
+		loadConfig:   &domain.Config{Url: "http://example.com/org/project", Branch: "main"},
+		snapshot:     &domain.Snapshot{},
+		loadChunkErr: wantErr,
+	}
+	client := &stubUpdateClient{
+		manifest: &serverDomain.TreeNode{
+			Name: "root",
+			FileChildren: []*serverDomain.File{{
+				Name:      "a.txt",
+				Mode:      0o644,
+				SizeBytes: int64(len("data")),
+				Hash:      fileHash,
+				Chunks:    chunks,
+			}},
+		},
+	}
+	updater := newTestUpdate(t, local, client)
+
+	err = updater.Run(context.Background(), t.TempDir())
+	require.ErrorIs(t, err, wantErr)
+}
+
+func TestUpdate_Run_Error_ContentLengthMismatch(t *testing.T) {
+	_, chunks, err := chunkFile([]byte("data"))
+	require.NoError(t, err)
+	fileHash := chunker.FileHash([]serverDomain.Hash{chunks[0].Hash})
+
+	local := &stubLocalRepo{
+		loadConfig:   &domain.Config{Url: "http://example.com/org/project", Branch: "main"},
+		snapshot:     &domain.Snapshot{},
+		storedChunks: map[serverDomain.Hash][]byte{chunks[0].Hash: []byte("data")},
+	}
+	client := &stubUpdateClient{
+		manifest: &serverDomain.TreeNode{
+			Name: "root",
+			FileChildren: []*serverDomain.File{{
+				Name:      "a.txt",
+				Mode:      0o644,
+				SizeBytes: 999,
+				Hash:      fileHash,
+				Chunks:    chunks,
+			}},
+		},
+	}
+	updater := newTestUpdate(t, local, client)
+
+	err = updater.Run(context.Background(), t.TempDir())
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "content length mismatch")
+}
+
+func TestUpdate_Run_Error_MkdirFails(t *testing.T) {
+	root := t.TempDir()
+	_, chunks, err := chunkFile([]byte("ok"))
+	require.NoError(t, err)
+	fileHash := chunker.FileHash([]serverDomain.Hash{chunks[0].Hash})
+	require.NoError(t, os.WriteFile(filepath.Join(root, "blocked"), []byte("blocked"), 0o600))
+
+	local := &stubLocalRepo{
+		loadConfig:   &domain.Config{Url: "http://example.com/org/project", Branch: "main"},
+		snapshot:     &domain.Snapshot{},
+		storedChunks: map[serverDomain.Hash][]byte{chunks[0].Hash: []byte("ok")},
+	}
+	client := &stubUpdateClient{
+		manifest: &serverDomain.TreeNode{
+			Name: "root",
+			TreeChildren: []*serverDomain.TreeNode{{
+				Name: "blocked",
+				FileChildren: []*serverDomain.File{{
+					Name:      "x.txt",
+					Mode:      0o644,
+					SizeBytes: int64(len("ok")),
+					Hash:      fileHash,
+					Chunks:    chunks,
+				}},
+			}},
+		},
+	}
+	updater := newTestUpdate(t, local, client)
+
+	err = updater.Run(context.Background(), root)
+	require.Error(t, err)
+}
+
+func TestUpdate_Run_MaterializesExecutableFile(t *testing.T) {
+	root := t.TempDir()
+	fileHash, chunks, err := chunkFile([]byte("run me"))
+	require.NoError(t, err)
+
+	local := &stubLocalRepo{
+		loadConfig:   &domain.Config{Url: "http://example.com/org/project", Branch: "main"},
+		snapshot:     &domain.Snapshot{},
+		storedChunks: map[serverDomain.Hash][]byte{chunks[0].Hash: []byte("run me")},
+	}
+	client := &stubUpdateClient{
+		manifest: &serverDomain.TreeNode{
+			Name: "root",
+			FileChildren: []*serverDomain.File{{
+				Name:      "tool.sh",
+				Mode:      3, // FILE_MODE_EXECUTABLE
+				SizeBytes: int64(len("run me")),
+				Hash:      fileHash,
+				Chunks:    chunks,
+			}},
+		},
+	}
+	updater := newTestUpdate(t, local, client)
+
+	require.NoError(t, updater.Run(context.Background(), root))
+	fi, err := os.Stat(filepath.Join(root, "tool.sh"))
+	require.NoError(t, err)
+	require.Equal(t, os.FileMode(0o755), fi.Mode(), "executable files must be materialized as 0o755")
+}
+
+func TestUpdate_Run_MaterializesReadOnlyFile(t *testing.T) {
+	root := t.TempDir()
+	fileHash, chunks, err := chunkFile([]byte("locked"))
+	require.NoError(t, err)
+
+	local := &stubLocalRepo{
+		loadConfig:   &domain.Config{Url: "http://example.com/org/project", Branch: "main"},
+		snapshot:     &domain.Snapshot{},
+		storedChunks: map[serverDomain.Hash][]byte{chunks[0].Hash: []byte("locked")},
+	}
+	client := &stubUpdateClient{
+		manifest: &serverDomain.TreeNode{
+			Name: "root",
+			FileChildren: []*serverDomain.File{{
+				Name:      "locked.txt",
+				Mode:      1, // FILE_MODE_READ_ONLY
+				SizeBytes: int64(len("locked")),
+				Hash:      fileHash,
+				Chunks:    chunks,
+			}},
+		},
+	}
+	updater := newTestUpdate(t, local, client)
+
+	require.NoError(t, updater.Run(context.Background(), root))
+	fi, err := os.Stat(filepath.Join(root, "locked.txt"))
+	require.NoError(t, err)
+	require.Equal(t, os.FileMode(0o444), fi.Mode(), "read-only files must be materialized as 0o444")
+}
+
+func TestUpdate_Run_Error_RemoveReadError(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.Mkdir(filepath.Join(root, "x"), 0o700))
+
+	fileHash := chunker.FileHash(nil)
+	local := &stubLocalRepo{
+		loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "main"},
+		snapshot: &domain.Snapshot{Files: []domain.SnapshotFile{{
+			Path: "x",
+			Hash: fileHash,
+			Mode: 0o644,
+		}}},
+	}
+	updater := newTestUpdate(t, local, &stubUpdateClient{manifest: &serverDomain.TreeNode{Name: "root"}})
+
+	err := updater.Run(context.Background(), root)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "remove x")
+}
+
+func TestUpdate_Run_ReportsProgress(t *testing.T) {
+	root := t.TempDir()
+	content := "progress content"
+	fileHash, chunks, err := chunkFile([]byte(content))
+	require.NoError(t, err)
+
+	local := &stubLocalRepo{
+		loadConfig:    &domain.Config{Url: "http://example.com/org/project", Branch: "main"},
+		snapshot:      &domain.Snapshot{},
+		missingChunks: []serverDomain.Hash{chunks[0].Hash},
+	}
+	client := &stubUpdateClient{
+		manifest: &serverDomain.TreeNode{
+			Name: "root",
+			FileChildren: []*serverDomain.File{{
+				Name:      "a.txt",
+				Mode:      0o644,
+				SizeBytes: int64(len(content)),
+				Hash:      fileHash,
+				Chunks:    chunks,
+			}},
+		},
+		downloadData: map[serverDomain.Hash][]byte{chunks[0].Hash: []byte(content)},
+	}
+	updater := newTestUpdate(t, local, client)
+	prog := &recordingProgress{}
+
+	require.NoError(t, updater.Run(context.Background(), root, prog))
+	require.Equal(t, 1, prog.startObjects)
+	require.Equal(t, int64(len(content)), prog.startBytes)
+	require.Equal(t, []int{1}, prog.progressObjects)
+	require.Equal(t, []int64{int64(len(content))}, prog.progressBytes)
+	require.Equal(t, 1, prog.endCalls)
+}
+
+func TestSwitch_Error_InitFails(t *testing.T) {
+	wantErr := errors.New("init failed")
+	updater := newTestUpdate(t, &stubLocalRepo{initErr: wantErr}, &stubUpdateClient{})
+
+	err := updater.Switch(context.Background(), t.TempDir(), "dev")
+	require.ErrorIs(t, err, wantErr)
+}
+
+func TestSwitch_Error_LoadConfigFails(t *testing.T) {
+	wantErr := errors.New("config missing")
+	updater := newTestUpdate(t, &stubLocalRepo{configLoadErr: wantErr}, &stubUpdateClient{})
+
+	err := updater.Switch(context.Background(), t.TempDir(), "dev")
+	require.ErrorIs(t, err, wantErr)
+}
+
+func TestSwitch_Error_ParseUrlFails(t *testing.T) {
+	local := &stubLocalRepo{loadConfig: &domain.Config{Url: "http://example.com/onlyone", Branch: "main"}}
+	updater := newTestUpdate(t, local, &stubUpdateClient{})
+
+	err := updater.Switch(context.Background(), t.TempDir(), "dev")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "invalid URL path")
+}
+
+func TestSwitch_Error_ConnectFails(t *testing.T) {
+	wantErr := errors.New("connection refused")
+	client := &stubUpdateClient{connectErr: wantErr}
+	updater := newTestUpdate(t, &stubLocalRepo{
+		loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "main"},
+	}, client)
+
+	err := updater.Switch(context.Background(), t.TempDir(), "dev")
+	require.ErrorIs(t, err, wantErr)
+}
+
+func TestSwitch_Error_LoginRequired(t *testing.T) {
+	wantErr := errors.New("login failed")
+	storage := &stubSecureStorage{loadErr: errors.New("not found")}
+	input := &stubUserInput{username: "apin", password: "secret"}
+	executor := &stubLoginExecutor{usernameErr: wantErr}
+	auth := NewAuth(executor, storage, input)
+	updater := NewUpdate(auth, &stubUpdateClient{}, &stubLocalRepo{
+		loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "main"},
+		snapshot:   &domain.Snapshot{},
+	})
+
+	err := updater.Switch(context.Background(), t.TempDir(), "dev")
+	require.ErrorIs(t, err, wantErr)
+}
+
+func TestSwitch_Error_SyncingFails(t *testing.T) {
+	root := t.TempDir()
+	_, chunks, err := chunkFile([]byte("data"))
+	require.NoError(t, err)
+	fileHash := chunker.FileHash([]serverDomain.Hash{chunks[0].Hash})
+
+	wantErr := errors.New("download failed")
+	local := &stubLocalRepo{
+		loadConfig:    &domain.Config{Url: "http://example.com/org/project", Branch: "main"},
+		snapshot:      &domain.Snapshot{},
+		missingChunks: []serverDomain.Hash{chunks[0].Hash},
+	}
+	client := &stubUpdateClient{
+		manifest: &serverDomain.TreeNode{
+			Name: "root",
+			FileChildren: []*serverDomain.File{{
+				Name:      "a.txt",
+				Mode:      0o644,
+				SizeBytes: int64(len("data")),
+				Hash:      fileHash,
+				Chunks:    chunks,
+			}},
+		},
+		downloadErr: wantErr,
+	}
+	updater := newTestUpdate(t, local, client)
+
+	err = updater.Switch(context.Background(), root, "dev")
+	require.ErrorIs(t, err, wantErr)
+	require.Empty(t, local.config.Branch, "config must not change when materialization fails")
+}
+
+func TestSwitch_Error_SaveTreeFails(t *testing.T) {
+	wantErr := errors.New("save tree failed")
+	local := &stubLocalRepo{
+		loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "main"},
+		snapshot:   &domain.Snapshot{},
+		treeErr:    wantErr,
+	}
+	client := &stubUpdateClient{manifest: &serverDomain.TreeNode{Name: "root"}}
+	updater := newTestUpdate(t, local, client)
+
+	err := updater.Switch(context.Background(), t.TempDir(), "dev")
+	require.ErrorIs(t, err, wantErr)
+	require.Empty(t, local.config.Branch, "config must not change when the tree cannot be saved")
+}
