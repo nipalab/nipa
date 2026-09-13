@@ -21,6 +21,7 @@ type stubMergeClient struct {
 
 	treeByBranch map[string]*serverDomain.TreeNode
 	treeErr      error
+	treeErrOn    int
 	manifestFor  []string
 
 	baseInfo *domain.MergeBaseInfo
@@ -53,14 +54,13 @@ func (s *stubMergeClient) Connect(_ context.Context, host string) error {
 
 func (s *stubMergeClient) GetTreeNodeManifest(_ context.Context, _, _, branch, _ string) (*serverDomain.TreeNode, error) {
 	s.manifestFor = append(s.manifestFor, branch)
-	if s.treeErr != nil {
+	if (s.treeErrOn > 0 && len(s.manifestFor) == s.treeErrOn) || (s.treeErrOn == 0 && s.treeErr != nil) {
 		return nil, s.treeErr
 	}
-	if s.treeByBranch == nil {
-		return &serverDomain.TreeNode{}, nil
-	}
-	if t, ok := s.treeByBranch[branch]; ok {
-		return t, nil
+	if s.treeByBranch != nil {
+		if t, ok := s.treeByBranch[branch]; ok {
+			return t, nil
+		}
 	}
 	return &serverDomain.TreeNode{}, nil
 }
@@ -161,15 +161,20 @@ func fileOf(path string, hash serverDomain.Hash, chunks []serverDomain.Chunk) se
 	return serverDomain.File{Name: path, Mode: 2, Hash: hash, SizeBytes: size, Chunks: chunks}
 }
 
-func newTestMerge(t *testing.T, client *stubMergeClient, local *stubLocalRepo, push *Push) *Merge {
+func newTestMerge(t *testing.T, client *stubMergeClient, local *stubLocalRepo, push *Push, auth ...*Auth) *Merge {
 	t.Helper()
-	token := signTestToken(t, "secret")
-	storage := &stubSecureStorage{loadResult: &domain.LoginResult{AccessToken: token}}
-	auth := NewAuth(nil, storage, nil)
-	if push == nil {
-		push = NewPush(auth, client, local)
+	var a *Auth
+	if len(auth) > 0 && auth[0] != nil {
+		a = auth[0]
+	} else {
+		token := signTestToken(t, "secret")
+		storage := &stubSecureStorage{loadResult: &domain.LoginResult{AccessToken: token}}
+		a = NewAuth(nil, storage, nil)
 	}
-	return NewMerge(auth, client, local, push)
+	if push == nil {
+		push = NewPush(a, client, local)
+	}
+	return NewMerge(a, client, local, push)
 }
 
 func TestMerge_Run_Error_FFOnlyAndNoFF(t *testing.T) {

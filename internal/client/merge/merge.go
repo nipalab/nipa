@@ -2,6 +2,7 @@ package merge
 
 import (
 	"sort"
+	"strings"
 
 	"github.com/nipalab/nipa/internal/chunker"
 	"github.com/nipalab/nipa/internal/domain"
@@ -28,10 +29,7 @@ func flatten(node *domain.TreeNode, prefix string, out map[string]File) {
 		return
 	}
 	for _, f := range node.FileChildren {
-		path := prefix + "/" + f.Name
-		if prefix == "" {
-			path = f.Name
-		}
+		path := strings.TrimPrefix(prefix+"/"+f.Name, "/")
 		hashes := make([]domain.Hash, len(f.Chunks))
 		sizes := make([]int64, len(f.Chunks))
 		for i, c := range f.Chunks {
@@ -49,6 +47,9 @@ func flatten(node *domain.TreeNode, prefix string, out map[string]File) {
 		}
 	}
 	for _, child := range node.TreeChildren {
+		if child == nil {
+			continue
+		}
 		flatten(child, prefix+"/"+child.Name, out)
 	}
 }

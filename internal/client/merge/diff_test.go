@@ -161,6 +161,34 @@ func TestThreeWay_OursOnlyChanged(t *testing.T) {
 	require.Empty(t, res.Conflicts)
 }
 
+func TestThreeWay_SameChangeOnBothSides(t *testing.T) {
+	res := ThreeWayFromStrings(t,
+		map[string]string{"f.txt": "x"},
+		map[string]string{"f.txt": "y"},
+		map[string]string{"f.txt": "y"})
+	require.Equal(t, KeepOurs, res.Entries["f.txt"].Decision)
+	require.Empty(t, res.Conflicts)
+}
+
+func TestThreeWay_OursDeletedTheirsUnchanged(t *testing.T) {
+	res := ThreeWayFromStrings(t,
+		map[string]string{"f.txt": "base"},
+		map[string]string{},
+		map[string]string{"f.txt": "base"})
+	require.Empty(t, res.Entries)
+	require.Equal(t, []string{"f.txt"}, res.Deleted)
+	require.Empty(t, res.Conflicts)
+}
+
+func TestThreeWay_AddedOnlyOnOurs(t *testing.T) {
+	res := ThreeWayFromStrings(t,
+		map[string]string{},
+		map[string]string{"new.txt": "content"},
+		map[string]string{})
+	require.Equal(t, KeepOurs, res.Entries["new.txt"].Decision)
+	require.Empty(t, res.Conflicts)
+}
+
 func TestThreeWay_TheirsOnlyChanged(t *testing.T) {
 	res := ThreeWayFromStrings(t,
 		map[string]string{"f.txt": "x"},
