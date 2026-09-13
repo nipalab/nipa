@@ -60,7 +60,7 @@ func (q *Queries) ChunkInsertOrIgnore(ctx context.Context, arg ChunkInsertOrIgno
 }
 
 const commitInsert = `-- name: CommitInsert :exec
-INSERT INTO commits (id, hash, project_id, tree_id, parent_1_id, user_id, message) VALUES (?, ?, ?, ?, ?, ?, ?)
+INSERT INTO commits (id, hash, project_id, tree_id, parent_1_id, parent_2_id, user_id, message) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type CommitInsertParams struct {
@@ -69,6 +69,7 @@ type CommitInsertParams struct {
 	ProjectID int64         `json:"project_id"`
 	TreeID    int64         `json:"tree_id"`
 	Parent1ID sql.NullInt64 `json:"parent_1_id"`
+	Parent2ID sql.NullInt64 `json:"parent_2_id"`
 	UserID    int64         `json:"user_id"`
 	Message   string        `json:"message"`
 }
@@ -80,6 +81,7 @@ func (q *Queries) CommitInsert(ctx context.Context, arg CommitInsertParams) erro
 		arg.ProjectID,
 		arg.TreeID,
 		arg.Parent1ID,
+		arg.Parent2ID,
 		arg.UserID,
 		arg.Message,
 	)

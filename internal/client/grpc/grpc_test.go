@@ -40,37 +40,43 @@ func (s *stubSession) Refresh(_ context.Context, _ string) (string, error) {
 
 type fakeServer struct {
 	pb.UnimplementedNipaServiceServer
-	loginErr         error
-	refreshErr       error
-	accessToken      string
-	refreshToken     string
-	expiresIn        int32
-	lastUsername     string
-	lastPassword     string
-	lastRefreshToken string
-	defaultBranchErr error
-	defaultBranch    *pb.Branch
-	treeManifestErr  error
-	treeManifest     *pb.TreeManifest
-	lastBranch       string
-	lastRecursive    bool
-	lastPath         string
-	listBranchesErr  error
-	listBranches     []*pb.Branch
-	createBranch     *pb.Branch
-	createBranchErr  error
-	createReq        *pb.CreateBranchRequest
-	lastPushReq      *pb.PushRequest
-	pushErr          error
-	pushResp         *pb.PushResponse
-	uploadedChunks   []*pb.ChunkUploadRequest
-	uploadResp       *pb.UploadChunksResponse
-	uploadErr        error
-	uploadStreamAuth string
-	downloadRequests []string
-	downloadData     map[string][]byte
-	downloadErr      error
+	loginErr           error
+	refreshErr         error
+	accessToken        string
+	refreshToken       string
+	expiresIn          int32
+	lastUsername       string
+	lastPassword       string
+	lastRefreshToken   string
+	defaultBranchErr   error
+	defaultBranch      *pb.Branch
+	treeManifestErr    error
+	treeManifest       *pb.TreeManifest
+	lastBranch         string
+	lastRecursive      bool
+	lastPath           string
+	listBranchesErr    error
+	listBranches       []*pb.Branch
+	createBranch       *pb.Branch
+	createBranchErr    error
+	createReq          *pb.CreateBranchRequest
+	lastPushReq        *pb.PushRequest
+	pushErr            error
+	pushResp           *pb.PushResponse
+	uploadedChunks     []*pb.ChunkUploadRequest
+	uploadResp         *pb.UploadChunksResponse
+	uploadErr          error
+	uploadStreamAuth   string
+	downloadRequests   []string
+	downloadData       map[string][]byte
+	downloadErr        error
 	downloadStreamAuth string
+	mergeBaseErr       error
+	mergeBaseResp      *pb.GetMergeBaseResponse
+	lastMergeReq       *pb.GetMergeBaseRequest
+	ffErr              error
+	ffResp             *pb.MergeFastForwardResponse
+	lastFFReq          *pb.MergeFastForwardRequest
 }
 
 func (f *fakeServer) GetDefaultBranch(_ context.Context, _ *pb.GetDefaultBranchRequest) (*pb.GetBranchResponse, error) {
@@ -128,6 +134,22 @@ func (f *fakeServer) LoginWithRefreshToken(_ context.Context, req *pb.LoginWithR
 		RefreshToken: f.refreshToken,
 		ExpiresIn:    f.expiresIn,
 	}, nil
+}
+
+func (f *fakeServer) GetMergeBase(_ context.Context, req *pb.GetMergeBaseRequest) (*pb.GetMergeBaseResponse, error) {
+	f.lastMergeReq = req
+	if f.mergeBaseErr != nil {
+		return nil, f.mergeBaseErr
+	}
+	return f.mergeBaseResp, nil
+}
+
+func (f *fakeServer) MergeFastForward(_ context.Context, req *pb.MergeFastForwardRequest) (*pb.MergeFastForwardResponse, error) {
+	f.lastFFReq = req
+	if f.ffErr != nil {
+		return nil, f.ffErr
+	}
+	return f.ffResp, nil
 }
 
 func startTestServer(t *testing.T, srv pb.NipaServiceServer) string {
@@ -678,6 +700,125 @@ func TestClient_CreateBranch_NotConnected(t *testing.T) {
 	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
 
 	_, err := c.CreateBranch(context.Background(), "default", "sample", "feature", "main", "abc123", "beefcafe")
+	require.Error(t, err)
+	require.Equal(t, "not connected to a nipa server", err.Error())
+}
+
+func TestClient_GetMergeBase_Success(t *testing.T) {
+	fs := &fakeServer{mergeBaseResp: &pb.GetMergeBaseResponse{
+		TargetBranch:      "main",
+		SourceBranch:      "feature",
+		TargetCommitId:    snow.ID(1).Base36(),
+		SourceCommitId:    snow.ID(2).Base36(),
+		MergeBaseCommitId: snow.ID(3).Base36(),
+		TargetCommitHash:  "target-hash",
+		SourceCommitHash:  "source-hash",
+		MergeBaseTree:     &pb.TreeManifest{Path: "root", Files: []*pb.FileNode{{Path: "README.md", Mode: pb.FileMode_FILE_MODE_READ_WRITE, SizeBytes: 12}}},
+	}}
+	addr := startTestServer(t, fs)
+	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
+	require.NoError(t, c.Connect(context.Background(), addr))
+
+	got, err := c.GetMergeBase(context.Background(), "default", "sample", "main", "feature")
+	require.NoError(t, err)
+	require.NotNil(t, fs.lastMergeReq)
+	require.Equal(t, "default", fs.lastMergeReq.GetContext().GetOrg())
+	require.Equal(t, "sample", fs.lastMergeReq.GetContext().GetProject())
+	require.Equal(t, "main", fs.lastMergeReq.GetTargetBranch())
+	require.Equal(t, "feature", fs.lastMergeReq.GetSourceBranch())
+
+	require.Equal(t, "main", got.TargetBranch)
+	require.Equal(t, "feature", got.SourceBranch)
+	require.Equal(t, snow.ID(1).Base36(), got.TargetCommitID)
+	require.Equal(t, snow.ID(2).Base36(), got.SourceCommitID)
+	require.Equal(t, snow.ID(3).Base36(), got.MergeBaseCommitID)
+	require.Equal(t, "target-hash", got.TargetCommitHash)
+	require.Equal(t, "source-hash", got.SourceCommitHash)
+	require.NotNil(t, got.MergeBaseTree)
+	require.Equal(t, "root", got.MergeBaseTree.Name)
+	require.Len(t, got.MergeBaseTree.FileChildren, 1)
+	require.Equal(t, "README.md", got.MergeBaseTree.FileChildren[0].Name)
+}
+
+func TestClient_GetMergeBase_NilTree(t *testing.T) {
+	fs := &fakeServer{mergeBaseResp: &pb.GetMergeBaseResponse{
+		TargetBranch: "main",
+		SourceBranch: "feature",
+	}}
+	addr := startTestServer(t, fs)
+	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
+	require.NoError(t, c.Connect(context.Background(), addr))
+
+	got, err := c.GetMergeBase(context.Background(), "default", "sample", "main", "feature")
+	require.NoError(t, err)
+	require.Nil(t, got.MergeBaseTree)
+}
+
+func TestClient_GetMergeBase_Error(t *testing.T) {
+	addr := startTestServer(t, &fakeServer{mergeBaseErr: status.Error(codes.NotFound, `branch "feature" not found`)})
+	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
+	require.NoError(t, c.Connect(context.Background(), addr))
+
+	_, err := c.GetMergeBase(context.Background(), "default", "sample", "main", "feature")
+	require.Error(t, err)
+
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 404, domErr.Code)
+	require.Equal(t, `branch "feature" not found`, domErr.Message)
+}
+
+func TestClient_GetMergeBase_NotConnected(t *testing.T) {
+	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
+
+	_, err := c.GetMergeBase(context.Background(), "default", "sample", "main", "feature")
+	require.Error(t, err)
+	require.Equal(t, "not connected to a nipa server", err.Error())
+}
+
+func TestClient_MergeFastForward_Success(t *testing.T) {
+	commitID := snow.ID(7).Base36()
+	fs := &fakeServer{ffResp: &pb.MergeFastForwardResponse{
+		Branch:          &pb.Branch{Id: snow.ID(42).Base36(), Name: "main", CommitId: &commitID},
+		MovedToCommitId: commitID,
+	}}
+	addr := startTestServer(t, fs)
+	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
+	require.NoError(t, c.Connect(context.Background(), addr))
+
+	got, err := c.MergeFastForward(context.Background(), "default", "sample", "main", "feature")
+	require.NoError(t, err)
+	require.NotNil(t, fs.lastFFReq)
+	require.Equal(t, "default", fs.lastFFReq.GetContext().GetOrg())
+	require.Equal(t, "sample", fs.lastFFReq.GetContext().GetProject())
+	require.Equal(t, "main", fs.lastFFReq.GetTargetBranch())
+	require.Equal(t, "feature", fs.lastFFReq.GetSourceBranch())
+
+	require.NotNil(t, got)
+	require.Equal(t, snow.ID(42), got.ID)
+	require.Equal(t, "main", got.Name)
+	require.NotNil(t, got.CommitID)
+	require.Equal(t, snow.ID(7), *got.CommitID)
+}
+
+func TestClient_MergeFastForward_Error(t *testing.T) {
+	addr := startTestServer(t, &fakeServer{ffErr: status.Error(codes.FailedPrecondition, "not a fast-forward")})
+	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
+	require.NoError(t, c.Connect(context.Background(), addr))
+
+	_, err := c.MergeFastForward(context.Background(), "default", "sample", "main", "feature")
+	require.Error(t, err)
+
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 409, domErr.Code)
+	require.Equal(t, "not a fast-forward", domErr.Message)
+}
+
+func TestClient_MergeFastForward_NotConnected(t *testing.T) {
+	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
+
+	_, err := c.MergeFastForward(context.Background(), "default", "sample", "main", "feature")
 	require.Error(t, err)
 	require.Equal(t, "not connected to a nipa server", err.Error())
 }

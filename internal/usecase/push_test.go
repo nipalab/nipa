@@ -37,7 +37,7 @@ func TestPush_NoPermission(t *testing.T) {
 	uc, perm, _, _, ctx := newPushFixture(t)
 	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(false)
 
-	_, err := uc.Push(ctx, snow.ID(1), "main", "", "msg", nil, nil)
+	_, err := uc.Push(ctx, snow.ID(1), "main", "", "msg", nil, nil, "")
 	require.Error(t, err)
 	var dErr *domain.Error
 	require.ErrorAs(t, err, &dErr)
@@ -48,7 +48,7 @@ func TestPush_MissingMessage(t *testing.T) {
 	uc, perm, _, _, ctx := newPushFixture(t)
 	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
 
-	_, err := uc.Push(ctx, snow.ID(1), "main", "", "  ", nil, nil)
+	_, err := uc.Push(ctx, snow.ID(1), "main", "", "  ", nil, nil, "")
 	require400(t, err, "commit message is required")
 }
 
@@ -58,7 +58,7 @@ func TestPush_InvalidPath(t *testing.T) {
 
 	ch, _ := chunkAndFileHash(t, "x")
 	file := &domain.PushFile{Path: "../escape", Mode: 0o644, FileHash: ch, ChunkHashes: []domain.Hash{ch}}
-	_, err := uc.Push(ctx, snow.ID(1), "main", "", "msg", []*domain.PushFile{file}, nil)
+	_, err := uc.Push(ctx, snow.ID(1), "main", "", "msg", []*domain.PushFile{file}, nil, "")
 	require400(t, err, "invalid file path")
 }
 
@@ -68,7 +68,7 @@ func TestPush_FileHashMismatch(t *testing.T) {
 
 	ch, _ := chunkAndFileHash(t, "x")
 	file := &domain.PushFile{Path: "a.txt", Mode: 0o644, FileHash: domain.Hash{9}, ChunkHashes: []domain.Hash{ch}}
-	_, err := uc.Push(ctx, snow.ID(1), "main", "", "msg", []*domain.PushFile{file}, nil)
+	_, err := uc.Push(ctx, snow.ID(1), "main", "", "msg", []*domain.PushFile{file}, nil, "")
 	require400(t, err, "file hash mismatch")
 }
 
@@ -78,7 +78,7 @@ func TestPush_SamePathPushedAndRemoved(t *testing.T) {
 
 	ch, fh := chunkAndFileHash(t, "x")
 	file := &domain.PushFile{Path: "a.txt", Mode: 0o644, FileHash: fh, ChunkHashes: []domain.Hash{ch}}
-	_, err := uc.Push(ctx, snow.ID(1), "main", "", "msg", []*domain.PushFile{file}, []string{"a.txt"})
+	_, err := uc.Push(ctx, snow.ID(1), "main", "", "msg", []*domain.PushFile{file}, []string{"a.txt"}, "")
 	require400(t, err, "both pushed and removed")
 }
 
@@ -88,7 +88,7 @@ func TestPush_BranchNotFound(t *testing.T) {
 	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").
 		Return(nil, domain.NewErrorRecordNotFound())
 
-	_, err := uc.Push(ctx, snow.ID(1), "main", "", "msg", nil, nil)
+	_, err := uc.Push(ctx, snow.ID(1), "main", "", "msg", nil, nil, "")
 	require.Error(t, err)
 	require.True(t, domain.IsErrorNotFound(err))
 }
@@ -99,7 +99,7 @@ func TestPush_ProtectedBranch(t *testing.T) {
 	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").
 		Return(&domain.Branch{ID: 5, ProjectID: 1, Name: "main", IsProtected: true}, nil)
 
-	_, err := uc.Push(ctx, snow.ID(1), "main", "", "msg", nil, nil)
+	_, err := uc.Push(ctx, snow.ID(1), "main", "", "msg", nil, nil, "")
 	require.Error(t, err)
 	require.True(t, domain.IsErrorNoPermission(err))
 }
@@ -115,7 +115,7 @@ func TestPush_StaleBaseConflict(t *testing.T) {
 	repo.EXPECT().GetTreeNode(gomock.Any(), int64(100)).
 		Return(&domain.TreeNode{ID: 100, Hash: domain.Hash{2}, Name: "root"}, nil)
 
-	_, err := uc.Push(ctx, snow.ID(1), "main", "basehash", "msg", nil, nil)
+	_, err := uc.Push(ctx, snow.ID(1), "main", "basehash", "msg", nil, nil, "")
 	require.Error(t, err)
 	require.True(t, domain.IsErrorConflict(err))
 }
@@ -146,7 +146,7 @@ func TestPush_FirstCommitSuccess(t *testing.T) {
 
 	result, err := uc.Push(ctx, snow.ID(1), "main", "", "msg",
 		[]*domain.PushFile{fileB, fileA},
-		nil)
+		nil, "")
 	require.NoError(t, err)
 	require.Equal(t, result.TreeHash, rootHash)
 	require.Equal(t, result.CommitHash, wantCommitHash)
@@ -220,7 +220,7 @@ func TestPush_IncrementalWithRemoval(t *testing.T) {
 	fileY := &domain.PushFile{Path: "d/y.txt", Mode: 0o644, SizeBytes: 1, FileHash: fhY, ChunkHashes: []domain.Hash{chY}}
 	result, err := uc.Push(ctx, snow.ID(1), "main", oldRootHash.String(), "msg",
 		[]*domain.PushFile{fileY},
-		[]string{"keep.txt"})
+		[]string{"keep.txt"}, "")
 	require.NoError(t, err)
 	require.Equal(t, newRootHash, result.TreeHash)
 	require.Equal(t, wantCommit, result.CommitHash)
@@ -260,7 +260,7 @@ func TestPush_StaleBaseSkipsApply(t *testing.T) {
 	ch, fh := chunkAndFileHash(t, "unwanted")
 	_, err := uc.Push(ctx, snow.ID(1), "main", "wrong-base", "msg",
 		[]*domain.PushFile{{Path: "a.txt", Mode: 0o644, FileHash: fh, ChunkHashes: []domain.Hash{ch}}},
-		nil)
+		nil, "")
 	require.True(t, domain.IsErrorConflict(err))
 }
 
@@ -274,3 +274,99 @@ func require400(t *testing.T, err error, msg string) {
 }
 
 func idPtr(id snow.ID) *snow.ID { return &id }
+
+func TestPush_MergeWithParent2(t *testing.T) {
+	uc, perm, repo, pushRepo, ctx := newPushFixture(t)
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
+
+	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").
+		Return(&domain.Branch{ID: 5, ProjectID: 1, Name: "main", CommitID: idPtr(snow.ID(9))}, nil)
+	headHash := domain.Hash{5}
+	repo.EXPECT().GetCommit(gomock.Any(), snow.ID(9)).
+		Return(&domain.Commit{ID: 9, TreeID: 100, Hash: headHash, ProjectID: 1}, nil)
+
+	parent2ID := snow.ID(12)
+	parent2Hash := domain.Hash{6}
+	repo.EXPECT().GetCommitByHash(gomock.Any(), parent2Hash).
+		Return(&domain.Commit{ID: parent2ID, TreeID: 200, Hash: parent2Hash, ProjectID: 1}, nil)
+
+	ch, fh := chunkAndFileHash(t, "a")
+	baseRootHash := treehash.TreeHash(nil, nil)
+	newRootHash := treehash.TreeHash(
+		[]treehash.FileEntry{{Name: "a.txt", Mode: 0o644, Hash: fh}}, nil)
+	repo.EXPECT().GetTreeNode(gomock.Any(), int64(100)).
+		Return(&domain.TreeNode{ID: 100, Hash: baseRootHash, Name: "root"}, nil).
+		Times(2)
+	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(100)).Return(nil, nil)
+	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(100)).Return(nil, nil)
+
+	wantCommitHash := treehash.CommitHash(newRootHash, []domain.Hash{headHash, parent2Hash}, "merge msg")
+
+	var got ApplyPushRequest
+	pushRepo.EXPECT().ApplyPush(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, req ApplyPushRequest) error {
+			got = req
+			return nil
+		})
+
+	result, err := uc.Push(ctx, snow.ID(1), "main", baseRootHash.String(), "merge msg",
+		[]*domain.PushFile{{Path: "a.txt", Mode: 0o644, SizeBytes: 1, FileHash: fh, ChunkHashes: []domain.Hash{ch}}},
+		nil, parent2Hash.String())
+	require.NoError(t, err)
+	require.Equal(t, newRootHash, result.TreeHash)
+	require.Equal(t, wantCommitHash, result.CommitHash)
+	require.Equal(t, wantCommitHash, got.CommitHash)
+	require.NotNil(t, got.ParentID)
+	require.Equal(t, snow.ID(9), *got.ParentID)
+	require.NotNil(t, got.ParentID2)
+	require.Equal(t, parent2ID, *got.ParentID2)
+}
+
+func TestPush_MergeParent2NotFound(t *testing.T) {
+	uc, perm, repo, _, ctx := newPushFixture(t)
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
+
+	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").
+		Return(&domain.Branch{ID: 5, ProjectID: 1, Name: "main", CommitID: idPtr(snow.ID(9))}, nil)
+	repo.EXPECT().GetCommit(gomock.Any(), snow.ID(9)).
+		Return(&domain.Commit{ID: 9, TreeID: 100, Hash: domain.Hash{5}, ProjectID: 1}, nil)
+
+	repo.EXPECT().GetCommitByHash(gomock.Any(), gomock.Any()).
+		Return(nil, domain.NewErrorRecordNotFound())
+
+	_, err := uc.Push(ctx, snow.ID(1), "main", "", "merge msg", nil, nil, domain.Hash{9}.String())
+	require.Error(t, err)
+	require.True(t, domain.IsErrorNotFound(err))
+	require.Contains(t, err.Error(), "not found")
+}
+
+func TestPush_MergeParent2InvalidHash(t *testing.T) {
+	uc, perm, repo, _, ctx := newPushFixture(t)
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
+
+	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").
+		Return(&domain.Branch{ID: 5, ProjectID: 1, Name: "main", CommitID: idPtr(snow.ID(9))}, nil)
+	repo.EXPECT().GetCommit(gomock.Any(), snow.ID(9)).
+		Return(&domain.Commit{ID: 9, TreeID: 100, Hash: domain.Hash{5}, ProjectID: 1}, nil)
+
+	_, err := uc.Push(ctx, snow.ID(1), "main", "", "merge msg", nil, nil, "not-a-hash")
+	require400(t, err, "invalid parent_2 commit hash")
+}
+
+func TestPush_MergeParent2WrongProject(t *testing.T) {
+	uc, perm, repo, _, ctx := newPushFixture(t)
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
+
+	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").
+		Return(&domain.Branch{ID: 5, ProjectID: 1, Name: "main", CommitID: idPtr(snow.ID(9))}, nil)
+	repo.EXPECT().GetCommit(gomock.Any(), snow.ID(9)).
+		Return(&domain.Commit{ID: 9, TreeID: 100, Hash: domain.Hash{5}, ProjectID: 1}, nil)
+
+	parent2Hash := domain.Hash{6}
+	repo.EXPECT().GetCommitByHash(gomock.Any(), parent2Hash).
+		Return(&domain.Commit{ID: 12, TreeID: 200, Hash: parent2Hash, ProjectID: 99}, nil)
+
+	_, err := uc.Push(ctx, snow.ID(1), "main", "", "merge msg", nil, nil, parent2Hash.String())
+	require.Error(t, err)
+	require.True(t, domain.IsErrorNotFound(err))
+}

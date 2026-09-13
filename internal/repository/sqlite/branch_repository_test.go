@@ -780,3 +780,80 @@ func TestBranchRepositorySQLite_GetCommitByHash_NotFound(t *testing.T) {
 	_, err := repo.GetCommitByHash(ctx, missing)
 	requireRecordNotFound(t, err)
 }
+
+func TestBranchRepositorySQLite_UpdateCommitIf(t *testing.T) {
+	ctx := context.Background()
+	db, q := newSQLiteTestDB(t)
+	repo := NewBranchRepository(db)
+
+	projectID := seedProject(t, q, 1, "test-project")
+
+	node := newTestNode(t)
+	fromID := node.Generate()
+	toID := node.Generate()
+	treeID := newTestNode(t).Generate().Int64()
+	_, err := db.ExecContext(ctx,
+		`INSERT INTO commits (id, hash, project_id, tree_id, user_id, message) VALUES (?, ?, ?, ?, ?, ?)`,
+		fromID.Int64(), domain.Hash{1}.Bytes(), projectID.Int64(), treeID, 1, "from",
+	)
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx,
+		`INSERT INTO commits (id, hash, project_id, tree_id, user_id, message) VALUES (?, ?, ?, ?, ?, ?)`,
+		toID.Int64(), domain.Hash{2}.Bytes(), projectID.Int64(), treeID, 1, "to",
+	)
+	require.NoError(t, err)
+
+	branchID := seedBranch(t, db, projectID, "main", sql.NullInt64{Int64: fromID.Int64(), Valid: true})
+	otherID := seedBranch(t, db, projectID, "feature", sql.NullInt64{Int64: fromID.Int64(), Valid: true})
+
+	err = repo.UpdateCommitIf(ctx, branchID, &fromID, &toID)
+	require.NoError(t, err)
+
+	branch, err := repo.GetByProjectIDAndID(ctx, projectID, branchID)
+	require.NoError(t, err)
+	require.NotNil(t, branch.CommitID)
+	require.Equal(t, toID, *branch.CommitID)
+
+	other, err := repo.GetByProjectIDAndID(ctx, projectID, otherID)
+	require.NoError(t, err)
+	require.Equal(t, fromID, *other.CommitID)
+}
+
+func TestBranchRepositorySQLite_UpdateCommitIf_CASMismatch(t *testing.T) {
+	ctx := context.Background()
+	db, q := newSQLiteTestDB(t)
+	repo := NewBranchRepository(db)
+
+	projectID := seedProject(t, q, 1, "test-project")
+
+	node := newTestNode(t)
+	currentID := node.Generate()
+	otherID := node.Generate()
+	newHeadID := node.Generate()
+	treeID := newTestNode(t).Generate().Int64()
+	for _, c := range []struct {
+		id   int64
+		hash domain.Hash
+		msg  string
+	}{
+		{currentID.Int64(), domain.Hash{1}, "current"},
+		{otherID.Int64(), domain.Hash{2}, "other"},
+		{newHeadID.Int64(), domain.Hash{3}, "new"},
+	} {
+		_, err := db.ExecContext(ctx,
+			`INSERT INTO commits (id, hash, project_id, tree_id, user_id, message) VALUES (?, ?, ?, ?, ?, ?)`,
+			c.id, c.hash.Bytes(), projectID.Int64(), treeID, 1, c.msg,
+		)
+		require.NoError(t, err)
+	}
+
+	branchID := seedBranch(t, db, projectID, "main", sql.NullInt64{Int64: newHeadID.Int64(), Valid: true})
+
+	err := repo.UpdateCommitIf(ctx, branchID, &currentID, &otherID)
+	require.True(t, domain.IsErrorConflict(err))
+
+	branch, err := repo.GetByProjectIDAndID(ctx, projectID, branchID)
+	require.NoError(t, err)
+	require.NotNil(t, branch.CommitID)
+	require.Equal(t, newHeadID, *branch.CommitID)
+}

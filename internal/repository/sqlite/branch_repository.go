@@ -82,6 +82,25 @@ func (b *BranchRepository) CreateBranch(ctx context.Context, branch domain.Branc
 	return b.GetBranchByName(ctx, branch.ProjectID, branch.Name)
 }
 
+func (b *BranchRepository) UpdateCommitIf(ctx context.Context, branchID snow.ID, fromCommitID, toCommitID *snow.ID) error {
+	res, err := b.queries.BranchUpdateCommitIf(ctx, sqlcSqlite.BranchUpdateCommitIfParams{
+		ID:           branchID.Int64(),
+		FromCommitID: nullSnowID(fromCommitID),
+		ToCommitID:   nullSnowID(toCommitID),
+	})
+	if err != nil {
+		return handleError(err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return handleError(err)
+	}
+	if n == 0 {
+		return domain.NewErrorConflict("branch has moved; refresh and try again")
+	}
+	return nil
+}
+
 func (b *BranchRepository) GetCommit(ctx context.Context, commitID snow.ID) (*domain.Commit, error) {
 	row, err := b.queries.CommitGet(ctx, commitID.Int64())
 	if err != nil {

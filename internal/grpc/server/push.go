@@ -40,7 +40,7 @@ func (n *nipaServer) Push(ctx context.Context, req *pb.PushRequest) (*pb.PushRes
 		})
 	}
 
-	result, err := n.uc.Push().Push(ctx, project.ID, req.Branch, req.BaseTreeHash, req.Message, files, req.RemovedFiles)
+	result, err := n.uc.Push().Push(ctx, project.ID, req.Branch, req.BaseTreeHash, req.Message, files, req.RemovedFiles, req.GetParent_2CommitHash())
 	if err != nil {
 		return nil, handleError(err)
 	}

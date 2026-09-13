@@ -191,6 +191,59 @@ func TestPushRepositorySQLite_MissingChunkDataRejected(t *testing.T) {
 	require.Equal(t, 400, dErr.Code)
 }
 
+func TestPushRepositorySQLite_MergeCommitWithParent2(t *testing.T) {
+	ctx := context.Background()
+	repo, branchRepo, _, projectID, branchID := newPushTestEnv(t)
+
+	ch, sz, fh := chunkRow(t, "data")
+	require.NoError(t, repo.InsertChunkIfNotExists(ctx, ch, sz))
+
+	require.NoError(t, repo.ApplyPush(ctx, usecase.ApplyPushRequest{
+		ProjectID: projectID, BranchID: branchID, CommitID: snow.ID(1), UserID: snow.ID(1), Message: "A",
+		CommitHash: treehash.CommitHash(treehash.TreeHash(nil, nil), nil, "A"),
+		Nodes:      []usecase.PushNodeRow{{ID: 1, Hash: treehash.TreeHash(nil, nil), Name: "root", Mode: 0o444}},
+		Files:      []usecase.PushFileRow{{Name: "a.txt", Mode: 0o644, SizeBytes: sz, Hash: fh, TreeID: 1, ChunkHashes: []domain.Hash{ch}}},
+	}))
+
+	require.NoError(t, repo.ApplyPush(ctx, usecase.ApplyPushRequest{
+		ProjectID: projectID, BranchID: branchID, CommitID: snow.ID(2), UserID: snow.ID(1), Message: "B",
+		CommitHash: treehash.CommitHash(treehash.TreeHash(nil, nil), nil, "B"),
+		ParentID:   ptr(snow.ID(1)),
+		Nodes:      []usecase.PushNodeRow{{ID: 1, Hash: treehash.TreeHash(nil, nil), Name: "root", Mode: 0o444}},
+		Files:      []usecase.PushFileRow{{Name: "b.txt", Mode: 0o644, SizeBytes: sz, Hash: fh, TreeID: 1, ChunkHashes: []domain.Hash{ch}}},
+	}))
+
+	require.NoError(t, repo.ApplyPush(ctx, usecase.ApplyPushRequest{
+		ProjectID: projectID, BranchID: branchID, CommitID: snow.ID(3), UserID: snow.ID(1), Message: "merge",
+		CommitHash: treehash.CommitHash(treehash.TreeHash(nil, nil), []domain.Hash{{1}, {2}}, "merge"),
+		ParentID:   ptr(snow.ID(2)),
+		ParentID2:  ptr(snow.ID(1)),
+		Nodes:      []usecase.PushNodeRow{{ID: 1, Hash: treehash.TreeHash(nil, nil), Name: "root", Mode: 0o444}},
+	}))
+
+	branch := getBranch(t, branchRepo, projectID, branchID)
+	require.NotNil(t, branch.CommitID)
+	merge, err := branchRepo.GetCommit(ctx, *branch.CommitID)
+	require.NoError(t, err)
+	require.Equal(t, snow.ID(3), merge.ID)
+	require.NotNil(t, merge.Parent1ID)
+	require.Equal(t, snow.ID(2), *merge.Parent1ID)
+	require.NotNil(t, merge.Parent2ID)
+	require.Equal(t, snow.ID(1), *merge.Parent2ID)
+
+	parentB, err := branchRepo.GetCommit(ctx, snow.ID(2))
+	require.NoError(t, err)
+	require.Equal(t, "B", parentB.Message)
+	rb := getTreeNode(t, branchRepo, parentB.TreeID)
+	require.Equal(t, "b.txt", getFilesByTree(t, branchRepo, rb.ID)[0].Name)
+
+	parentA, err := branchRepo.GetCommit(ctx, snow.ID(1))
+	require.NoError(t, err)
+	require.Equal(t, "A", parentA.Message)
+	ra := getTreeNode(t, branchRepo, parentA.TreeID)
+	require.Equal(t, "a.txt", getFilesByTree(t, branchRepo, ra.ID)[0].Name)
+}
+
 func ptr[T any](v T) *T { return &v }
 
 func getBranch(t *testing.T, repo *BranchRepository, projectID, branchID snow.ID) *domain.Branch {

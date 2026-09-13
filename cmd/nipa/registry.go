@@ -7,6 +7,7 @@ type Registry struct {
 	repoUsecase   *usecase.Repo
 	pushUsecase   *usecase.Push
 	updateUsecase *usecase.Update
+	mergeUsecase  *usecase.Merge
 }
 
 func (r *Registry) Auth() *usecase.Auth {
@@ -23,4 +24,8 @@ func (r *Registry) Push() *usecase.Push {
 
 func (r *Registry) Update() *usecase.Update {
 	return r.updateUsecase
+}
+
+func (r *Registry) Merge() *usecase.Merge {
+	return r.mergeUsecase
 }

@@ -20,6 +20,7 @@ type stubPushClient struct {
 	branch         string
 	baseTreeHash   string
 	message        string
+	parent2hash    string
 	pushFiles      []*serverDomain.PushFile
 	pushRemoved    []string
 	pushResult     *serverDomain.PushResult
@@ -37,9 +38,10 @@ func (s *stubPushClient) Connect(_ context.Context, host string) error {
 	return s.connectErr
 }
 
-func (s *stubPushClient) Push(_ context.Context, org, project, branch, baseTreeHash, message string, files []*serverDomain.PushFile, removed []string) (*serverDomain.PushResult, error) {
+func (s *stubPushClient) Push(_ context.Context, org, project, branch, baseTreeHash, message string, files []*serverDomain.PushFile, removed []string, parent2CommitHash string) (*serverDomain.PushResult, error) {
 	s.org, s.project, s.branch, s.baseTreeHash, s.message = org, project, branch, baseTreeHash, message
 	s.pushFiles, s.pushRemoved = files, removed
+	s.parent2hash = parent2CommitHash
 	if s.pushResult == nil {
 		return &serverDomain.PushResult{}, s.pushErr
 	}

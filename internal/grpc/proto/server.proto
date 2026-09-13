@@ -80,6 +80,7 @@ message PushRequest {
     string message = 4;
     repeated PushFile files = 5;
     repeated string removed_files = 6; // paths removed relative to the base tree
+    optional string parent_2_commit_hash = 7; // second parent for merge commits; empty for normal pushes
 }
 
 message PushResponse {
@@ -134,6 +135,34 @@ message CreateBranchResponse {
     Branch branch = 1;
 }
 
+message GetMergeBaseRequest {
+    ProjectContext context = 1;
+    string target_branch = 2;
+    string source_branch = 3;
+}
+
+message GetMergeBaseResponse {
+    string target_branch = 1;
+    string source_branch = 2;
+    string target_commit_id = 3; // base36 snow ID; empty when the branch has no commits
+    string source_commit_id = 4; // base36 snow ID; empty when the branch has no commits
+    string merge_base_commit_id = 5; // base36 snow ID; empty when either head is empty
+    TreeManifest merge_base_tree = 6; // recursive manifest of the merge base tree
+    string target_commit_hash = 7; // hex commit hash; empty when the branch has no commits
+    string source_commit_hash = 8; // hex commit hash; empty when the branch has no commits
+}
+
+message MergeFastForwardRequest {
+    ProjectContext context = 1;
+    string target_branch = 2;
+    string source_branch = 3;
+}
+
+message MergeFastForwardResponse {
+    Branch branch = 1; // the target branch after the head moved to the source head
+    string moved_to_commit_id = 2; // base36 snow ID of the source head the target now points at
+}
+
 message LoginUsernamePasswordRequest {
     string username = 1;
     string password = 2;
@@ -158,6 +187,8 @@ service NipaService {
     rpc GetDefaultBranch(GetDefaultBranchRequest) returns (GetBranchResponse);
     rpc CreateBranch(CreateBranchRequest) returns (CreateBranchResponse);
     rpc GetTreeManifest(GetTreeManifestRequest) returns (GetTreeManifestResponse);
+    rpc GetMergeBase(GetMergeBaseRequest) returns (GetMergeBaseResponse);
+    rpc MergeFastForward(MergeFastForwardRequest) returns (MergeFastForwardResponse);
     rpc Push(PushRequest) returns (PushResponse);
     rpc UploadChunks(stream ChunkUploadRequest) returns (UploadChunksResponse);
     rpc DownloadChunks(stream DownloadChunksRequest) returns (stream DownloadChunk);

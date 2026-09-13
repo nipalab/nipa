@@ -245,3 +245,17 @@ func (mr *MockbranchRepositoryMockRecorder) ListTreeChildren(ctx, parentID any) 
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListTreeChildren", reflect.TypeOf((*MockbranchRepository)(nil).ListTreeChildren), ctx, parentID)
 }
+
+// UpdateCommitIf mocks base method.
+func (m *MockbranchRepository) UpdateCommitIf(ctx context.Context, branchID snow.ID, fromCommitID, toCommitID *snow.ID) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateCommitIf", ctx, branchID, fromCommitID, toCommitID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateCommitIf indicates an expected call of UpdateCommitIf.
+func (mr *MockbranchRepositoryMockRecorder) UpdateCommitIf(ctx, branchID, fromCommitID, toCommitID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateCommitIf", reflect.TypeOf((*MockbranchRepository)(nil).UpdateCommitIf), ctx, branchID, fromCommitID, toCommitID)
+}

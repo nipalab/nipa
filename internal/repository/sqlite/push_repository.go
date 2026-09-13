@@ -109,6 +109,7 @@ func (p *PushRepository) ApplyPush(ctx context.Context, req usecase.ApplyPushReq
 		ProjectID: req.ProjectID.Int64(),
 		TreeID:    rootID,
 		Parent1ID: nullID(req.ParentID),
+		Parent2ID: nullID(req.ParentID2),
 		UserID:    req.UserID.Int64(),
 		Message:   req.Message,
 	}); err != nil {

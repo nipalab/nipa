@@ -28,7 +28,7 @@ func (f *fakePushClient) Connect(_ context.Context, host string) error {
 	return nil
 }
 
-func (f *fakePushClient) Push(_ context.Context, org, project, branch, baseTreeHash, message string, files []*serverDomain.PushFile, removed []string) (*serverDomain.PushResult, error) {
+func (f *fakePushClient) Push(_ context.Context, org, project, branch, baseTreeHash, message string, files []*serverDomain.PushFile, removed []string, _ string) (*serverDomain.PushResult, error) {
 	f.org, f.project, f.branch, f.baseTreeHash, f.message = org, project, branch, baseTreeHash, message
 	f.files, f.removed = files, removed
 	return &serverDomain.PushResult{}, nil

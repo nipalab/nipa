@@ -122,6 +122,16 @@ func (q *Queries) FileUpsert(ctx context.Context, arg FileUpsertParams) error {
 	return err
 }
 
+const metaDelete = `-- name: MetaDelete :exec
+DELETE FROM meta
+WHERE key = ?1
+`
+
+func (q *Queries) MetaDelete(ctx context.Context, key string) error {
+	_, err := q.db.ExecContext(ctx, metaDelete, key)
+	return err
+}
+
 const metaGet = `-- name: MetaGet :one
 SELECT value
 FROM meta

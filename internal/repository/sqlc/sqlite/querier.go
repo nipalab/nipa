@@ -18,6 +18,7 @@ type Querier interface {
 	BranchRemoveDefault(ctx context.Context, projectID int64) error
 	BranchUpdate(ctx context.Context, arg BranchUpdateParams) error
 	BranchUpdateCommit(ctx context.Context, arg BranchUpdateCommitParams) error
+	BranchUpdateCommitIf(ctx context.Context, arg BranchUpdateCommitIfParams) (sql.Result, error)
 	ChunkGetByHash(ctx context.Context, hash []byte) (Chunk, error)
 	ChunkInsertOrIgnore(ctx context.Context, arg ChunkInsertOrIgnoreParams) error
 	ChunkListByFile(ctx context.Context, fileID int64) ([]Chunk, error)

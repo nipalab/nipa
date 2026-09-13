@@ -40,6 +40,11 @@ func newMockUsecaseContainer(t *testing.T, branch *usecase.Branch) *mockUsecaseC
 	}
 }
 
+func ptrSnow(id int64) *snow.ID {
+	i := snow.ID(id)
+	return &i
+}
+
 type stubOrgRepository struct {
 	orgs map[string]*domain.Organization
 }
@@ -795,4 +800,195 @@ func someHashHex(t *testing.T, b byte) string {
 	t.Helper()
 	h := bytes.Repeat([]byte{b}, 32)
 	return hex.EncodeToString(h)
+}
+
+func TestGetMergeBase_Success(t *testing.T) {
+	branch, perm, repo := newTestBranchUc(t)
+	srv := New(newMockUsecaseContainer(t, branch))
+
+	projectID := snow.ID(42)
+	base := snow.ID(10)
+	targetHead := snow.ID(11)
+	sourceHead := snow.ID(12)
+
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), projectID, domain.PermissionRead).
+		Return(true)
+
+	gomock.InOrder(
+		repo.EXPECT().
+			GetBranchByName(gomock.Any(), projectID, "main").
+			Return(&domain.Branch{ID: 1, ProjectID: projectID, Name: "main", CommitID: &targetHead}, nil),
+		repo.EXPECT().
+			GetBranchByName(gomock.Any(), projectID, "feature").
+			Return(&domain.Branch{ID: 2, ProjectID: projectID, Name: "feature", CommitID: &sourceHead}, nil),
+		repo.EXPECT().GetCommit(gomock.Any(), targetHead).
+			Return(&domain.Commit{ID: targetHead, TreeID: 101, Hash: domain.Hash{8}, Parent1ID: &base}, nil),
+		repo.EXPECT().GetCommit(gomock.Any(), sourceHead).
+			Return(&domain.Commit{ID: sourceHead, TreeID: 102, Hash: domain.Hash{9}, Parent1ID: &base}, nil),
+		repo.EXPECT().GetCommit(gomock.Any(), targetHead).
+			Return(&domain.Commit{ID: targetHead, TreeID: 101, Hash: domain.Hash{8}, Parent1ID: &base}, nil),
+		repo.EXPECT().GetCommit(gomock.Any(), sourceHead).
+			Return(&domain.Commit{ID: sourceHead, TreeID: 102, Hash: domain.Hash{9}, Parent1ID: &base}, nil),
+		repo.EXPECT().GetCommit(gomock.Any(), base).Return(&domain.Commit{ID: base, TreeID: 100}, nil),
+		repo.EXPECT().GetTreeNode(gomock.Any(), int64(100)).
+			Return(&domain.TreeNode{ID: 100, Name: "root"}, nil),
+		repo.EXPECT().ListFilesByTree(gomock.Any(), int64(100)).Return(nil, nil),
+		repo.EXPECT().ListTreeChildren(gomock.Any(), int64(100)).Return(nil, nil),
+	)
+
+	resp, err := srv.GetMergeBase(context.Background(), &pb.GetMergeBaseRequest{
+		Context:      &pb.ProjectContext{Org: "org", Project: "proj"},
+		TargetBranch: "main",
+		SourceBranch: "feature",
+	})
+	require.NoError(t, err)
+	require.Equal(t, "main", resp.TargetBranch)
+	require.Equal(t, "feature", resp.SourceBranch)
+	require.Equal(t, targetHead.Base36(), resp.TargetCommitId)
+	require.Equal(t, sourceHead.Base36(), resp.SourceCommitId)
+	require.Equal(t, base.Base36(), resp.MergeBaseCommitId)
+	require.NotNil(t, resp.MergeBaseTree)
+	require.Equal(t, "root", resp.MergeBaseTree.Path)
+	require.Equal(t, domain.Hash{8}.String(), resp.TargetCommitHash)
+	require.Equal(t, domain.Hash{9}.String(), resp.SourceCommitHash)
+}
+
+func TestGetMergeBase_EmptyBranches(t *testing.T) {
+	branch, perm, repo := newTestBranchUc(t)
+	srv := New(newMockUsecaseContainer(t, branch))
+
+	projectID := snow.ID(42)
+
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), projectID, domain.PermissionRead).
+		Return(true)
+
+	gomock.InOrder(
+		repo.EXPECT().
+			GetBranchByName(gomock.Any(), projectID, "main").
+			Return(&domain.Branch{ID: 1, ProjectID: projectID, Name: "main"}, nil),
+		repo.EXPECT().
+			GetBranchByName(gomock.Any(), projectID, "feature").
+			Return(&domain.Branch{ID: 2, ProjectID: projectID, Name: "feature"}, nil),
+	)
+
+	resp, err := srv.GetMergeBase(context.Background(), &pb.GetMergeBaseRequest{
+		Context:      &pb.ProjectContext{Org: "org", Project: "proj"},
+		TargetBranch: "main",
+		SourceBranch: "feature",
+	})
+	require.NoError(t, err)
+	require.Empty(t, resp.TargetCommitId)
+	require.Empty(t, resp.SourceCommitId)
+	require.Empty(t, resp.MergeBaseCommitId)
+	require.Nil(t, resp.MergeBaseTree)
+}
+
+func TestGetMergeBase_BranchNotFound(t *testing.T) {
+	branch, perm, repo := newTestBranchUc(t)
+	srv := New(newMockUsecaseContainer(t, branch))
+
+	projectID := snow.ID(42)
+
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), projectID, domain.PermissionRead).
+		Return(true)
+
+	repo.EXPECT().
+		GetBranchByName(gomock.Any(), projectID, "unknown").
+		Return(nil, domain.NewErrorRecordNotFound())
+
+	_, err := srv.GetMergeBase(context.Background(), &pb.GetMergeBaseRequest{
+		Context:      &pb.ProjectContext{Org: "org", Project: "proj"},
+		TargetBranch: "unknown",
+		SourceBranch: "feature",
+	})
+	require.Error(t, err)
+}
+
+func TestGetMergeBase_ResolveError(t *testing.T) {
+	srv := New(newMockUsecaseContainer(t, nil))
+
+	_, err := srv.GetMergeBase(context.Background(), &pb.GetMergeBaseRequest{
+		Context:      &pb.ProjectContext{Org: "unknown", Project: "unknown"},
+		TargetBranch: "main",
+		SourceBranch: "feature",
+	})
+	require.Error(t, err)
+}
+
+func TestMergeFastForward_Success(t *testing.T) {
+	branch, perm, repo := newTestBranchUc(t)
+	srv := New(newMockUsecaseContainer(t, branch))
+
+	projectID := snow.ID(42)
+	head := snow.ID(12)
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), projectID, domain.PermissionWrite).
+		Return(true)
+	gomock.InOrder(
+		repo.EXPECT().
+			GetBranchByName(gomock.Any(), projectID, "main").
+			Return(&domain.Branch{ID: 1, ProjectID: projectID, Name: "main", CommitID: ptrSnow(11)}, nil),
+		repo.EXPECT().
+			GetBranchByName(gomock.Any(), projectID, "feature").
+			Return(&domain.Branch{ID: 2, ProjectID: projectID, Name: "feature", CommitID: &head}, nil),
+		repo.EXPECT().GetCommit(gomock.Any(), snow.ID(11)).
+			Return(&domain.Commit{ID: 11, TreeID: 101, Parent1ID: ptrSnow(11)}, nil),
+		repo.EXPECT().GetCommit(gomock.Any(), head).
+			Return(&domain.Commit{ID: head, TreeID: 102, Parent1ID: ptrSnow(11)}, nil),
+	)
+	repo.EXPECT().UpdateCommitIf(gomock.Any(), snow.ID(1), ptrSnow(11), &head).Return(nil)
+	repo.EXPECT().GetByProjectIDAndID(gomock.Any(), projectID, snow.ID(1)).
+		Return(&domain.Branch{ID: 1, ProjectID: projectID, Name: "main", CommitID: &head}, nil)
+
+	resp, err := srv.MergeFastForward(context.Background(), &pb.MergeFastForwardRequest{
+		Context:      &pb.ProjectContext{Org: "org", Project: "proj"},
+		TargetBranch: "main",
+		SourceBranch: "feature",
+	})
+	require.NoError(t, err)
+	require.Equal(t, "main", resp.Branch.Name)
+	require.Equal(t, head.Base36(), resp.MovedToCommitId)
+}
+
+func TestMergeFastForward_Diverged(t *testing.T) {
+	branch, perm, repo := newTestBranchUc(t)
+	srv := New(newMockUsecaseContainer(t, branch))
+
+	projectID := snow.ID(42)
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), projectID, domain.PermissionWrite).
+		Return(true)
+	gomock.InOrder(
+		repo.EXPECT().
+			GetBranchByName(gomock.Any(), projectID, "main").
+			Return(&domain.Branch{ID: 1, ProjectID: projectID, Name: "main", CommitID: ptrSnow(11)}, nil),
+		repo.EXPECT().
+			GetBranchByName(gomock.Any(), projectID, "feature").
+			Return(&domain.Branch{ID: 2, ProjectID: projectID, Name: "feature", CommitID: ptrSnow(12)}, nil),
+		repo.EXPECT().GetCommit(gomock.Any(), snow.ID(11)).
+			Return(&domain.Commit{ID: 11, TreeID: 101, Parent1ID: ptrSnow(10)}, nil),
+		repo.EXPECT().GetCommit(gomock.Any(), snow.ID(12)).
+			Return(&domain.Commit{ID: 12, TreeID: 102, Parent1ID: ptrSnow(10)}, nil),
+	)
+
+	_, err := srv.MergeFastForward(context.Background(), &pb.MergeFastForwardRequest{
+		Context:      &pb.ProjectContext{Org: "org", Project: "proj"},
+		TargetBranch: "main",
+		SourceBranch: "feature",
+	})
+	require.Error(t, err)
+}
+
+func TestMergeFastForward_ResolveError(t *testing.T) {
+	srv := New(newMockUsecaseContainer(t, nil))
+
+	_, err := srv.MergeFastForward(context.Background(), &pb.MergeFastForwardRequest{
+		Context:      &pb.ProjectContext{Org: "unknown", Project: "unknown"},
+		TargetBranch: "main",
+		SourceBranch: "feature",
+	})
+	require.Error(t, err)
 }

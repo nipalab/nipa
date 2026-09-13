@@ -120,6 +120,59 @@ func (n *nipaServer) GetTreeManifest(ctx context.Context, req *pb.GetTreeManifes
 	}, nil
 }
 
+func (n *nipaServer) GetMergeBase(ctx context.Context, req *pb.GetMergeBaseRequest) (*pb.GetMergeBaseResponse, error) {
+	_, project, err := n.uc.Common().ResolveBySlug(ctx, req.Context.Org, req.Context.Project)
+	if err != nil {
+		return nil, handleError(err)
+	}
+
+	info, err := n.uc.Branch().GetMergeBase(ctx, project.ID, req.TargetBranch, req.SourceBranch)
+	if err != nil {
+		return nil, handleError(err)
+	}
+
+	resp := &pb.GetMergeBaseResponse{
+		TargetBranch:  info.TargetBranch,
+		SourceBranch:  info.SourceBranch,
+		MergeBaseTree: domainTreeToPB(info.MergeBaseTree),
+	}
+	if info.TargetCommitID != nil {
+		resp.TargetCommitId = info.TargetCommitID.Base36()
+	}
+	if info.SourceCommitID != nil {
+		resp.SourceCommitId = info.SourceCommitID.Base36()
+	}
+	if info.MergeBaseCommitID != nil {
+		resp.MergeBaseCommitId = info.MergeBaseCommitID.Base36()
+	}
+	if info.TargetCommitHash != nil {
+		resp.TargetCommitHash = info.TargetCommitHash.String()
+	}
+	if info.SourceCommitHash != nil {
+		resp.SourceCommitHash = info.SourceCommitHash.String()
+	}
+	return resp, nil
+}
+
+func (n *nipaServer) MergeFastForward(ctx context.Context, req *pb.MergeFastForwardRequest) (*pb.MergeFastForwardResponse, error) {
+	_, project, err := n.uc.Common().ResolveBySlug(ctx, req.Context.Org, req.Context.Project)
+	if err != nil {
+		return nil, handleError(err)
+	}
+
+	branch, err := n.uc.Branch().FastForward(ctx, project.ID, req.TargetBranch, req.SourceBranch)
+	if err != nil {
+		return nil, handleError(err)
+	}
+	resp := &pb.MergeFastForwardResponse{
+		Branch: domainBranchToPB(branch),
+	}
+	if branch.CommitID != nil {
+		resp.MovedToCommitId = branch.CommitID.Base36()
+	}
+	return resp, nil
+}
+
 func domainBranchToPB(branch *domain.Branch) *pb.Branch {
 	return &pb.Branch{
 		Id:          branch.ID.Base36(),

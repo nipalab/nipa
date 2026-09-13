@@ -26,6 +26,8 @@ const (
 	NipaService_GetDefaultBranch_FullMethodName          = "/greet.NipaService/GetDefaultBranch"
 	NipaService_CreateBranch_FullMethodName              = "/greet.NipaService/CreateBranch"
 	NipaService_GetTreeManifest_FullMethodName           = "/greet.NipaService/GetTreeManifest"
+	NipaService_GetMergeBase_FullMethodName              = "/greet.NipaService/GetMergeBase"
+	NipaService_MergeFastForward_FullMethodName          = "/greet.NipaService/MergeFastForward"
 	NipaService_Push_FullMethodName                      = "/greet.NipaService/Push"
 	NipaService_UploadChunks_FullMethodName              = "/greet.NipaService/UploadChunks"
 	NipaService_DownloadChunks_FullMethodName            = "/greet.NipaService/DownloadChunks"
@@ -42,6 +44,8 @@ type NipaServiceClient interface {
 	GetDefaultBranch(ctx context.Context, in *GetDefaultBranchRequest, opts ...grpc.CallOption) (*GetBranchResponse, error)
 	CreateBranch(ctx context.Context, in *CreateBranchRequest, opts ...grpc.CallOption) (*CreateBranchResponse, error)
 	GetTreeManifest(ctx context.Context, in *GetTreeManifestRequest, opts ...grpc.CallOption) (*GetTreeManifestResponse, error)
+	GetMergeBase(ctx context.Context, in *GetMergeBaseRequest, opts ...grpc.CallOption) (*GetMergeBaseResponse, error)
+	MergeFastForward(ctx context.Context, in *MergeFastForwardRequest, opts ...grpc.CallOption) (*MergeFastForwardResponse, error)
 	Push(ctx context.Context, in *PushRequest, opts ...grpc.CallOption) (*PushResponse, error)
 	UploadChunks(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[ChunkUploadRequest, UploadChunksResponse], error)
 	DownloadChunks(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[DownloadChunksRequest, DownloadChunk], error)
@@ -125,6 +129,26 @@ func (c *nipaServiceClient) GetTreeManifest(ctx context.Context, in *GetTreeMani
 	return out, nil
 }
 
+func (c *nipaServiceClient) GetMergeBase(ctx context.Context, in *GetMergeBaseRequest, opts ...grpc.CallOption) (*GetMergeBaseResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetMergeBaseResponse)
+	err := c.cc.Invoke(ctx, NipaService_GetMergeBase_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nipaServiceClient) MergeFastForward(ctx context.Context, in *MergeFastForwardRequest, opts ...grpc.CallOption) (*MergeFastForwardResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(MergeFastForwardResponse)
+	err := c.cc.Invoke(ctx, NipaService_MergeFastForward_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *nipaServiceClient) Push(ctx context.Context, in *PushRequest, opts ...grpc.CallOption) (*PushResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(PushResponse)
@@ -172,6 +196,8 @@ type NipaServiceServer interface {
 	GetDefaultBranch(context.Context, *GetDefaultBranchRequest) (*GetBranchResponse, error)
 	CreateBranch(context.Context, *CreateBranchRequest) (*CreateBranchResponse, error)
 	GetTreeManifest(context.Context, *GetTreeManifestRequest) (*GetTreeManifestResponse, error)
+	GetMergeBase(context.Context, *GetMergeBaseRequest) (*GetMergeBaseResponse, error)
+	MergeFastForward(context.Context, *MergeFastForwardRequest) (*MergeFastForwardResponse, error)
 	Push(context.Context, *PushRequest) (*PushResponse, error)
 	UploadChunks(grpc.ClientStreamingServer[ChunkUploadRequest, UploadChunksResponse]) error
 	DownloadChunks(grpc.BidiStreamingServer[DownloadChunksRequest, DownloadChunk]) error
@@ -205,6 +231,12 @@ func (UnimplementedNipaServiceServer) CreateBranch(context.Context, *CreateBranc
 }
 func (UnimplementedNipaServiceServer) GetTreeManifest(context.Context, *GetTreeManifestRequest) (*GetTreeManifestResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetTreeManifest not implemented")
+}
+func (UnimplementedNipaServiceServer) GetMergeBase(context.Context, *GetMergeBaseRequest) (*GetMergeBaseResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetMergeBase not implemented")
+}
+func (UnimplementedNipaServiceServer) MergeFastForward(context.Context, *MergeFastForwardRequest) (*MergeFastForwardResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method MergeFastForward not implemented")
 }
 func (UnimplementedNipaServiceServer) Push(context.Context, *PushRequest) (*PushResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Push not implemented")
@@ -362,6 +394,42 @@ func _NipaService_GetTreeManifest_Handler(srv interface{}, ctx context.Context, 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _NipaService_GetMergeBase_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetMergeBaseRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaServiceServer).GetMergeBase(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaService_GetMergeBase_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaServiceServer).GetMergeBase(ctx, req.(*GetMergeBaseRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NipaService_MergeFastForward_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MergeFastForwardRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaServiceServer).MergeFastForward(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaService_MergeFastForward_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaServiceServer).MergeFastForward(ctx, req.(*MergeFastForwardRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _NipaService_Push_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(PushRequest)
 	if err := dec(in); err != nil {
@@ -428,6 +496,14 @@ var NipaService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetTreeManifest",
 			Handler:    _NipaService_GetTreeManifest_Handler,
+		},
+		{
+			MethodName: "GetMergeBase",
+			Handler:    _NipaService_GetMergeBase_Handler,
+		},
+		{
+			MethodName: "MergeFastForward",
+			Handler:    _NipaService_MergeFastForward_Handler,
 		},
 		{
 			MethodName: "Push",

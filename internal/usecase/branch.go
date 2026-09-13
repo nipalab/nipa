@@ -1,5 +1,7 @@
 package usecase
 
+//go:generate go run go.uber.org/mock/mockgen -source=$GOFILE -destination=branch_mock_test.go -package=usecase
+
 import (
 	"context"
 	"fmt"
@@ -20,6 +22,7 @@ type branchRepository interface {
 	GetDefaultBranch(ctx context.Context, projectID snow.ID) (*domain.Branch, error)
 	GetBranchByName(ctx context.Context, projectID snow.ID, name string) (*domain.Branch, error)
 	CreateBranch(ctx context.Context, branch domain.Branch) (*domain.Branch, error)
+	UpdateCommitIf(ctx context.Context, branchID snow.ID, fromCommitID, toCommitID *snow.ID) error
 	GetCommit(ctx context.Context, commitID snow.ID) (*domain.Commit, error)
 	GetCommitByHash(ctx context.Context, hash domain.Hash) (*domain.Commit, error)
 	GetTreeNode(ctx context.Context, id int64) (*domain.TreeNode, error)

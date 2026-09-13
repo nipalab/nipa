@@ -377,3 +377,98 @@ func TestSaveCommit_NotInitialized(t *testing.T) {
 	_, err := lr.LoadCommit()
 	require.Error(t, err)
 }
+
+func TestMergeState_RoundTrip(t *testing.T) {
+	lr := NewLocalRepo()
+	require.NoError(t, lr.Init(t.TempDir()))
+	defer lr.Close()
+
+	state := &domain.MergeState{
+		SourceBranch:     "feature",
+		SourceCommitID:   "f1",
+		SourceCommitHash: "src-hash",
+		BaseCommitID:     "b1",
+		BaseTreeHash:     "base-hash",
+		Conflicts:        []string{"a.txt", "b.txt"},
+	}
+	require.NoError(t, lr.SaveMergeState(state))
+
+	got, err := lr.LoadMergeState()
+	require.NoError(t, err)
+	require.Equal(t, state, got)
+}
+
+func TestMergeState_NoConflicts(t *testing.T) {
+	lr := NewLocalRepo()
+	require.NoError(t, lr.Init(t.TempDir()))
+	defer lr.Close()
+
+	state := &domain.MergeState{
+		SourceBranch:     "feature",
+		SourceCommitID:   "f1",
+		SourceCommitHash: "src-hash",
+		BaseCommitID:     "b1",
+		BaseTreeHash:     "base-hash",
+	}
+	require.NoError(t, lr.SaveMergeState(state))
+
+	got, err := lr.LoadMergeState()
+	require.NoError(t, err)
+	require.Empty(t, got.Conflicts)
+}
+
+func TestMergeState_OverwritesPrevious(t *testing.T) {
+	lr := NewLocalRepo()
+	require.NoError(t, lr.Init(t.TempDir()))
+	defer lr.Close()
+
+	require.NoError(t, lr.SaveMergeState(&domain.MergeState{SourceBranch: "old"}))
+	require.NoError(t, lr.SaveMergeState(&domain.MergeState{SourceBranch: "feature", SourceCommitHash: "src-hash"}))
+
+	got, err := lr.LoadMergeState()
+	require.NoError(t, err)
+	require.Equal(t, "feature", got.SourceBranch)
+	require.Equal(t, "src-hash", got.SourceCommitHash)
+}
+
+func TestMergeState_LoadEmpty(t *testing.T) {
+	lr := NewLocalRepo()
+	require.NoError(t, lr.Init(t.TempDir()))
+	defer lr.Close()
+
+	got, err := lr.LoadMergeState()
+	require.NoError(t, err)
+	require.Nil(t, got, "no pending merge when nothing was saved")
+}
+
+func TestMergeState_Clear(t *testing.T) {
+	lr := NewLocalRepo()
+	require.NoError(t, lr.Init(t.TempDir()))
+	defer lr.Close()
+
+	require.NoError(t, lr.SaveMergeState(&domain.MergeState{SourceBranch: "feature"}))
+	require.NoError(t, lr.ClearMergeState())
+
+	got, err := lr.LoadMergeState()
+	require.NoError(t, err)
+	require.Nil(t, got)
+}
+
+func TestMergeState_ClearWhenEmpty(t *testing.T) {
+	lr := NewLocalRepo()
+	require.NoError(t, lr.Init(t.TempDir()))
+	defer lr.Close()
+
+	require.NoError(t, lr.ClearMergeState())
+	got, err := lr.LoadMergeState()
+	require.NoError(t, err)
+	require.Nil(t, got)
+}
+
+func TestMergeState_NotInitialized(t *testing.T) {
+	lr := NewLocalRepo()
+	require.Error(t, lr.SaveMergeState(&domain.MergeState{SourceBranch: "feature"}))
+	_, err := lr.LoadMergeState()
+	require.Error(t, err)
+	require.Error(t, lr.ClearMergeState())
+}

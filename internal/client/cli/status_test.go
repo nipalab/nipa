@@ -5,6 +5,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/nipalab/nipa/internal/client/domain"
+	"github.com/nipalab/nipa/internal/client/localrepo"
 	serverDomain "github.com/nipalab/nipa/internal/domain"
 )
 
@@ -59,4 +61,33 @@ func TestSetupStatusCmd_NotARepo(t *testing.T) {
 	_, err := runCmdInDir(t, dir, cli.setupStatusCmd())
 	require.Error(t, err)
 	require.Equal(t, "not a nipa repository (or any of the parent directories)", err.Error())
+}
+
+func TestSetupStatusCmd_ShowsMergeConflicts(t *testing.T) {
+	root := setupRepo(t, "main")
+	lr := localrepo.NewLocalRepo()
+	require.NoError(t, lr.Init(root))
+	defer lr.Close()
+	require.NoError(t, lr.SaveMergeState(&domain.MergeState{
+		SourceBranch:     "feature",
+		SourceCommitID:   "f1",
+		SourceCommitHash: "src-hash",
+		BaseCommitID:     "b1",
+		BaseTreeHash:     "base-hash",
+		Conflicts:        []string{"a.txt", "src/b.txt"},
+	}))
+	cli := newStageCli()
+
+	out, err := runCmdInDir(t, root, cli.setupStatusCmd())
+	require.NoError(t, err)
+	require.Equal(t, "C  a.txt\nC  src/b.txt\n", out)
+}
+
+func TestSetupStatusCmd_NoConflictsWhenNoMerge(t *testing.T) {
+	root := setupRepo(t, "main")
+	cli := newStageCli()
+
+	out, err := runCmdInDir(t, root, cli.setupStatusCmd())
+	require.NoError(t, err)
+	require.Empty(t, out)
 }

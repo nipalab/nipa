@@ -23,4 +23,5 @@ type Status struct {
 	Modified  []string
 	Untracked []string
 	Missing   []string
+	Conflicts []string
 }
