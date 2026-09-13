@@ -185,44 +185,8 @@ func syncWorkingCopy(ctx context.Context, client chunkDownloader, lr workingCopy
 	if err != nil {
 		return err
 	}
-	if len(missing) > 0 {
-		var prog DownloadProgress
-		if len(progress) > 0 {
-			prog = progress[0]
-		}
-		if prog != nil {
-			prog.DownloadStart(len(missing), estimateBytesToDownload(newFiles, missing))
-		}
-
-		doneObjects, doneBytes := 0, int64(0)
-		var onChunk func(h domain.Hash, data []byte)
-		if prog != nil {
-			onChunk = func(h domain.Hash, data []byte) {
-				doneObjects++
-				doneBytes += int64(len(data))
-				prog.DownloadProgress(doneObjects, doneBytes)
-			}
-		}
-
-		got, err := client.DownloadChunks(ctx, missing, onChunk)
-		if err != nil {
-			return err
-		}
-		for _, h := range missing {
-			data, ok := got[h]
-			if !ok {
-				return fmt.Errorf("server did not return chunk %s", h)
-			}
-			if chunker.Sum(data) != h {
-				return fmt.Errorf("chunk hash mismatch for %s", h)
-			}
-			if err := lr.StoreChunk(h, data); err != nil {
-				return err
-			}
-		}
-		if prog != nil {
-			prog.DownloadEnd()
-		}
+	if err := downloadMissing(ctx, client, lr, missing, estimateBytesToDownload(newFiles, missing), progress...); err != nil {
+		return err
 	}
 
 	for _, f := range newFiles {
@@ -243,6 +207,50 @@ func syncWorkingCopy(ctx context.Context, client chunkDownloader, lr workingCopy
 		}
 	}
 
+	return nil
+}
+
+func downloadMissing(ctx context.Context, client chunkDownloader, lr workingCopyLocalRepo, missing []domain.Hash, estimatedBytes int64, progress ...DownloadProgress) error {
+	if len(missing) == 0 {
+		return nil
+	}
+	var prog DownloadProgress
+	if len(progress) > 0 {
+		prog = progress[0]
+	}
+	if prog != nil {
+		prog.DownloadStart(len(missing), estimatedBytes)
+	}
+
+	doneObjects, doneBytes := 0, int64(0)
+	var onChunk func(h domain.Hash, data []byte)
+	if prog != nil {
+		onChunk = func(h domain.Hash, data []byte) {
+			doneObjects++
+			doneBytes += int64(len(data))
+			prog.DownloadProgress(doneObjects, doneBytes)
+		}
+	}
+
+	got, err := client.DownloadChunks(ctx, missing, onChunk)
+	if err != nil {
+		return err
+	}
+	for _, h := range missing {
+		data, ok := got[h]
+		if !ok {
+			return fmt.Errorf("server did not return chunk %s", h)
+		}
+		if chunker.Sum(data) != h {
+			return fmt.Errorf("chunk hash mismatch for %s", h)
+		}
+		if err := lr.StoreChunk(h, data); err != nil {
+			return err
+		}
+	}
+	if prog != nil {
+		prog.DownloadEnd()
+	}
 	return nil
 }
 

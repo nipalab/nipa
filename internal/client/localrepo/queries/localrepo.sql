@@ -9,6 +9,10 @@ INSERT INTO meta (key, value)
 VALUES (:key, :value)
 ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 
+-- name: MetaDelete :exec
+DELETE FROM meta
+WHERE key = :key;
+
 -- name: TreeNodeUpsert :exec
 INSERT INTO tree_nodes (path, parent_path, hash, mode, snapshot_id)
 VALUES (:path, :parent_path, :hash, :mode, :snapshot_id)

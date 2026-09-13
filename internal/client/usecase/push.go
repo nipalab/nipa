@@ -15,7 +15,7 @@ import (
 
 type pushClient interface {
 	Connect(ctx context.Context, host string) error
-	Push(ctx context.Context, org, project, branch, baseTreeHash, message string, files []*serverDomain.PushFile, removed []string) (*serverDomain.PushResult, error)
+	Push(ctx context.Context, org, project, branch, baseTreeHash, message string, files []*serverDomain.PushFile, removed []string, parent2CommitHash string) (*serverDomain.PushResult, error)
 	UploadChunks(ctx context.Context, chunks []*serverDomain.ChunkData, onChunk ...func(ch *serverDomain.ChunkData)) (int, int, error)
 	GetTreeNodeManifest(ctx context.Context, org, project, branch, path string) (*serverDomain.TreeNode, error)
 }
@@ -29,6 +29,8 @@ type pushLocalRepo interface {
 	ClearStaged() error
 	SaveTree(root *serverDomain.TreeNode) error
 	SaveCommit(commitID, commitHash string) error
+	LoadMergeState() (*domain.MergeState, error)
+	ClearMergeState() error
 }
 
 type Push struct {
@@ -153,7 +155,15 @@ func (p *Push) Run(ctx context.Context, root, message string, progress ...Upload
 		}
 	}
 
-	result, err := p.pushClient.Push(ctx, nipaUrl.Org, nipaUrl.Project, cfg.Branch, snapshot.TreeHash, message, files, removed)
+	var parent2 string
+	mergeState, err := p.localRepo.LoadMergeState()
+	if err != nil {
+		return err
+	}
+	if mergeState != nil {
+		parent2 = mergeState.SourceCommitHash
+	}
+	result, err := p.pushClient.Push(ctx, nipaUrl.Org, nipaUrl.Project, cfg.Branch, snapshot.TreeHash, message, files, removed, parent2)
 	if err != nil {
 		return err
 	}
@@ -168,7 +178,10 @@ func (p *Push) Run(ctx context.Context, root, message string, progress ...Upload
 	if err := p.localRepo.SaveTree(rootTree); err != nil {
 		return err
 	}
-	return p.localRepo.ClearStaged()
+	if err := p.localRepo.ClearStaged(); err != nil {
+		return err
+	}
+	return p.localRepo.ClearMergeState()
 }
 
 func buildPushFile(path string, info fs.FileInfo, abs string) (*serverDomain.PushFile, []*serverDomain.ChunkData, error) {

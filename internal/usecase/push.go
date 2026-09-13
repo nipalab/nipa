@@ -22,6 +22,7 @@ type ApplyPushRequest struct {
 	CommitID   snow.ID
 	CommitHash domain.Hash
 	ParentID   *snow.ID
+	ParentID2  *snow.ID
 	UserID     snow.ID
 	Message    string
 	Nodes      []PushNodeRow
@@ -65,7 +66,7 @@ func NewPush(permUc permissionUsecase, branchRepo branchRepository, pushRepo pus
 	}
 }
 
-func (p *Push) Push(ctx context.Context, projectID snow.ID, branchName, baseTreeHash, message string, files []*domain.PushFile, removed []string) (*domain.PushResult, error) {
+func (p *Push) Push(ctx context.Context, projectID snow.ID, branchName, baseTreeHash, message string, files []*domain.PushFile, removed []string, parent2CommitHash string) (*domain.PushResult, error) {
 	if !p.permUc.HasProjectAccess(ctx, projectID, domain.PermissionWrite) {
 		return nil, domain.NewErrorNoPermission()
 	}
@@ -103,6 +104,23 @@ func (p *Push) Push(ctx context.Context, projectID snow.ID, branchName, baseTree
 		}
 	}
 
+	var parent2Commit *domain.Commit
+	if parent2CommitHash != "" {
+		hash, err := domain.ParseHashHex(parent2CommitHash)
+		if err != nil {
+			return nil, domain.NewErrorUser(fmt.Sprintf("invalid parent_2 commit hash %q", parent2CommitHash))
+		}
+		if parent2Commit, err = p.branchRepo.GetCommitByHash(ctx, hash); err != nil {
+			if domain.IsErrorNotFound(err) {
+				return nil, domain.NewErrorNotFound(fmt.Sprintf("parent_2 commit %s not found", parent2CommitHash))
+			}
+			return nil, err
+		}
+		if parent2Commit.ProjectID != projectID {
+			return nil, domain.NewErrorNotFound(fmt.Sprintf("parent_2 commit %s not found", parent2CommitHash))
+		}
+	}
+
 	headTreeHash, err := p.headTreeHash(ctx, headCommit)
 	if err != nil {
 		return nil, err
@@ -118,7 +136,7 @@ func (p *Push) Push(ctx context.Context, projectID snow.ID, branchName, baseTree
 	if err != nil {
 		return nil, err
 	}
-	req := p.toApplyRequest(ctx, projectID, branch, headCommit, message, root)
+	req := p.toApplyRequest(ctx, projectID, branch, headCommit, parent2Commit, message, root)
 
 	claim, ok := domain.ClaimFromContext(ctx)
 	if !ok {
@@ -147,13 +165,19 @@ func (p *Push) headTreeHash(ctx context.Context, headCommit *domain.Commit) (dom
 	return root.Hash, nil
 }
 
-func (p *Push) toApplyRequest(ctx context.Context, projectID snow.ID, branch *domain.Branch, headCommit *domain.Commit, message string, root *pushTreeNode) ApplyPushRequest {
+func (p *Push) toApplyRequest(ctx context.Context, projectID snow.ID, branch *domain.Branch, headCommit, parent2Commit *domain.Commit, message string, root *pushTreeNode) ApplyPushRequest {
 	var parentHashes []domain.Hash
 	var parentID *snow.ID
+	var parentID2 *snow.ID
 	if headCommit != nil {
 		parentHashes = []domain.Hash{headCommit.Hash}
 		pid := branch.CommitID
 		parentID = pid
+		if parent2Commit != nil {
+			parentHashes = append(parentHashes, parent2Commit.Hash)
+			id := parent2Commit.ID
+			parentID2 = &id
+		}
 	}
 
 	req := ApplyPushRequest{
@@ -162,6 +186,7 @@ func (p *Push) toApplyRequest(ctx context.Context, projectID snow.ID, branch *do
 		CommitID:   p.snowNode.Generate(),
 		CommitHash: treehash.CommitHash(root.Hash, parentHashes, message),
 		ParentID:   parentID,
+		ParentID2:  parentID2,
 		Message:    message,
 	}
 

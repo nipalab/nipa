@@ -15,6 +15,7 @@ type Querier interface {
 	ChunkUpsertContent(ctx context.Context, arg ChunkUpsertContentParams) (int64, error)
 	FileChunkInsert(ctx context.Context, arg FileChunkInsertParams) error
 	FileUpsert(ctx context.Context, arg FileUpsertParams) error
+	MetaDelete(ctx context.Context, key string) error
 	MetaGet(ctx context.Context, key string) (string, error)
 	MetaSet(ctx context.Context, arg MetaSetParams) error
 	SnapshotFileChunkList(ctx context.Context, snapshotID string) ([]SnapshotFileChunkListRow, error)

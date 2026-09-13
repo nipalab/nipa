@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/snow"
 )
 
 func handleError(err error) error {
@@ -39,6 +40,13 @@ func nullInt64Ptr(i sql.NullInt64) *int64 {
 		return nil
 	}
 	return &i.Int64
+}
+
+func nullSnowID(id *snow.ID) sql.NullInt64 {
+	if id == nil {
+		return sql.NullInt64{}
+	}
+	return sql.NullInt64{Int64: id.Int64(), Valid: true}
 }
 
 func timePtrToNullTime(t *time.Time) sql.NullTime {

@@ -104,3 +104,50 @@ func TestPushHandler_Success(t *testing.T) {
 	require.NotEmpty(t, resp.CommitHash)
 	require.NotEmpty(t, resp.TreeHash)
 }
+
+func TestPushHandler_MergeWithParent2(t *testing.T) {
+	push, perm, repo, pushRepo := newPushUsecase(t)
+	pushCtx := domain.ContextWithClaim(context.Background(), domain.Claims{UserID: snow.ID(7)})
+	srv := New(&mockUsecaseContainer{common: newTestCommon(), push: push})
+
+	headCommitID := snow.ID(9)
+	parent2ID := snow.ID(12)
+	hdHash := treehash.TreeHash(nil, nil)
+
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(42), domain.PermissionWrite).Return(true)
+	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(42), "main").
+		Return(&domain.Branch{ID: 5, ProjectID: 42, Name: "main", CommitID: &headCommitID}, nil)
+	repo.EXPECT().GetCommit(gomock.Any(), headCommitID).
+		Return(&domain.Commit{ID: headCommitID, TreeID: 100, Hash: domain.Hash{1}, ProjectID: 42}, nil)
+
+	parent2Hash := domain.Hash{2}
+	repo.EXPECT().GetCommitByHash(gomock.Any(), parent2Hash).
+		Return(&domain.Commit{ID: parent2ID, TreeID: 200, Hash: parent2Hash, ProjectID: 42}, nil)
+	repo.EXPECT().GetTreeNode(gomock.Any(), int64(100)).
+		Return(&domain.TreeNode{ID: 100, Hash: hdHash, Name: "root"}, nil).
+		Times(2)
+	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(100)).Return(nil, nil)
+	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(100)).Return(nil, nil)
+
+	var got usecase.ApplyPushRequest
+	pushRepo.EXPECT().ApplyPush(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, req usecase.ApplyPushRequest) error {
+			got = req
+			return nil
+		})
+
+	parent2HashStr := parent2Hash.String()
+	resp, err := srv.Push(pushCtx, &pb.PushRequest{
+		Context:            &pb.ProjectContext{Org: "org", Project: "proj"},
+		Branch:             "main",
+		BaseTreeHash:       hdHash.String(),
+		Message:            "merge feature",
+		Parent_2CommitHash: &parent2HashStr,
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, resp.CommitId)
+	require.NotNil(t, got.ParentID)
+	require.Equal(t, headCommitID, *got.ParentID)
+	require.NotNil(t, got.ParentID2)
+	require.Equal(t, parent2ID, *got.ParentID2)
+}

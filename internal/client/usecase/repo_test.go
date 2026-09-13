@@ -99,6 +99,13 @@ type stubLocalRepo struct {
 	clearedStaged      bool
 	clearStagedErr     error
 
+	mergeState    *domain.MergeState
+	mergeStateErr error
+	savedMerge    *domain.MergeState
+	saveMergeErr  error
+	clearedMerge  bool
+	clearMergeErr error
+
 	storedChunks  map[serverDomain.Hash][]byte
 	storeChunkErr error
 	loadChunkErr  error
@@ -148,6 +155,7 @@ func (s *stubLocalRepo) ListStaged() ([]string, error) {
 
 func (s *stubLocalRepo) StageAdd(path string) error {
 	s.stageAdd = append(s.stageAdd, path)
+	s.staged = append(s.staged, path)
 	return s.stageAddErr
 }
 
@@ -164,6 +172,21 @@ func (s *stubLocalRepo) MissingChunks(hashes []serverDomain.Hash) ([]serverDomai
 func (s *stubLocalRepo) ClearStaged() error {
 	s.clearedStaged = true
 	return s.clearStagedErr
+}
+
+func (s *stubLocalRepo) LoadMergeState() (*domain.MergeState, error) {
+	return s.mergeState, s.mergeStateErr
+}
+
+func (s *stubLocalRepo) SaveMergeState(state *domain.MergeState) error {
+	s.savedMerge = state
+	s.mergeState = state
+	return s.saveMergeErr
+}
+
+func (s *stubLocalRepo) ClearMergeState() error {
+	s.clearedMerge = true
+	return s.clearMergeErr
 }
 
 func (s *stubLocalRepo) SaveCommit(commitID, commitHash string) error {

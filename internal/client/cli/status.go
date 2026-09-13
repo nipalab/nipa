@@ -43,4 +43,7 @@ func writeStatus(cmd *cobra.Command, st *domain.Status) {
 	for _, p := range st.Missing {
 		cmd.Printf("!  %s\n", p)
 	}
+	for _, p := range st.Conflicts {
+		cmd.Printf("C  %s\n", p)
+	}
 }

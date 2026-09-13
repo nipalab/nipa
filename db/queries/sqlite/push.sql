@@ -30,7 +30,7 @@ INSERT INTO file_chunks (file_id, chunk_id, chunk_index) VALUES (?, ?, ?)
 ON CONFLICT(file_id, chunk_index) DO UPDATE SET chunk_id = excluded.chunk_id;
 
 -- name: CommitInsert :exec
-INSERT INTO commits (id, hash, project_id, tree_id, parent_1_id, user_id, message) VALUES (?, ?, ?, ?, ?, ?, ?);
+INSERT INTO commits (id, hash, project_id, tree_id, parent_1_id, parent_2_id, user_id, message) VALUES (?, ?, ?, ?, ?, ?, ?, ?);
 
 -- name: BranchUpdateCommit :exec
 UPDATE branches

@@ -683,15 +683,16 @@ func (x *DownloadChunk) GetData() []byte {
 }
 
 type PushRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Context       *ProjectContext        `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
-	Branch        string                 `protobuf:"bytes,2,opt,name=branch,proto3" json:"branch,omitempty"`
-	BaseTreeHash  string                 `protobuf:"bytes,3,opt,name=base_tree_hash,json=baseTreeHash,proto3" json:"base_tree_hash,omitempty"` // tree hash the client is based on, empty for branches without commits
-	Message       string                 `protobuf:"bytes,4,opt,name=message,proto3" json:"message,omitempty"`
-	Files         []*PushFile            `protobuf:"bytes,5,rep,name=files,proto3" json:"files,omitempty"`
-	RemovedFiles  []string               `protobuf:"bytes,6,rep,name=removed_files,json=removedFiles,proto3" json:"removed_files,omitempty"` // paths removed relative to the base tree
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	Context            *ProjectContext        `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
+	Branch             string                 `protobuf:"bytes,2,opt,name=branch,proto3" json:"branch,omitempty"`
+	BaseTreeHash       string                 `protobuf:"bytes,3,opt,name=base_tree_hash,json=baseTreeHash,proto3" json:"base_tree_hash,omitempty"` // tree hash the client is based on, empty for branches without commits
+	Message            string                 `protobuf:"bytes,4,opt,name=message,proto3" json:"message,omitempty"`
+	Files              []*PushFile            `protobuf:"bytes,5,rep,name=files,proto3" json:"files,omitempty"`
+	RemovedFiles       []string               `protobuf:"bytes,6,rep,name=removed_files,json=removedFiles,proto3" json:"removed_files,omitempty"`                          // paths removed relative to the base tree
+	Parent_2CommitHash *string                `protobuf:"bytes,7,opt,name=parent_2_commit_hash,json=parent2CommitHash,proto3,oneof" json:"parent_2_commit_hash,omitempty"` // second parent for merge commits; empty for normal pushes
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *PushRequest) Reset() {
@@ -764,6 +765,13 @@ func (x *PushRequest) GetRemovedFiles() []string {
 		return x.RemovedFiles
 	}
 	return nil
+}
+
+func (x *PushRequest) GetParent_2CommitHash() string {
+	if x != nil && x.Parent_2CommitHash != nil {
+		return *x.Parent_2CommitHash
+	}
+	return ""
 }
 
 type PushResponse struct {
@@ -1290,6 +1298,278 @@ func (x *CreateBranchResponse) GetBranch() *Branch {
 	return nil
 }
 
+type GetMergeBaseRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Context       *ProjectContext        `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
+	TargetBranch  string                 `protobuf:"bytes,2,opt,name=target_branch,json=targetBranch,proto3" json:"target_branch,omitempty"`
+	SourceBranch  string                 `protobuf:"bytes,3,opt,name=source_branch,json=sourceBranch,proto3" json:"source_branch,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetMergeBaseRequest) Reset() {
+	*x = GetMergeBaseRequest{}
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetMergeBaseRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetMergeBaseRequest) ProtoMessage() {}
+
+func (x *GetMergeBaseRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetMergeBaseRequest.ProtoReflect.Descriptor instead.
+func (*GetMergeBaseRequest) Descriptor() ([]byte, []int) {
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *GetMergeBaseRequest) GetContext() *ProjectContext {
+	if x != nil {
+		return x.Context
+	}
+	return nil
+}
+
+func (x *GetMergeBaseRequest) GetTargetBranch() string {
+	if x != nil {
+		return x.TargetBranch
+	}
+	return ""
+}
+
+func (x *GetMergeBaseRequest) GetSourceBranch() string {
+	if x != nil {
+		return x.SourceBranch
+	}
+	return ""
+}
+
+type GetMergeBaseResponse struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	TargetBranch      string                 `protobuf:"bytes,1,opt,name=target_branch,json=targetBranch,proto3" json:"target_branch,omitempty"`
+	SourceBranch      string                 `protobuf:"bytes,2,opt,name=source_branch,json=sourceBranch,proto3" json:"source_branch,omitempty"`
+	TargetCommitId    string                 `protobuf:"bytes,3,opt,name=target_commit_id,json=targetCommitId,proto3" json:"target_commit_id,omitempty"`            // base36 snow ID; empty when the branch has no commits
+	SourceCommitId    string                 `protobuf:"bytes,4,opt,name=source_commit_id,json=sourceCommitId,proto3" json:"source_commit_id,omitempty"`            // base36 snow ID; empty when the branch has no commits
+	MergeBaseCommitId string                 `protobuf:"bytes,5,opt,name=merge_base_commit_id,json=mergeBaseCommitId,proto3" json:"merge_base_commit_id,omitempty"` // base36 snow ID; empty when either head is empty
+	MergeBaseTree     *TreeManifest          `protobuf:"bytes,6,opt,name=merge_base_tree,json=mergeBaseTree,proto3" json:"merge_base_tree,omitempty"`               // recursive manifest of the merge base tree
+	TargetCommitHash  string                 `protobuf:"bytes,7,opt,name=target_commit_hash,json=targetCommitHash,proto3" json:"target_commit_hash,omitempty"`      // hex commit hash; empty when the branch has no commits
+	SourceCommitHash  string                 `protobuf:"bytes,8,opt,name=source_commit_hash,json=sourceCommitHash,proto3" json:"source_commit_hash,omitempty"`      // hex commit hash; empty when the branch has no commits
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *GetMergeBaseResponse) Reset() {
+	*x = GetMergeBaseResponse{}
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetMergeBaseResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetMergeBaseResponse) ProtoMessage() {}
+
+func (x *GetMergeBaseResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetMergeBaseResponse.ProtoReflect.Descriptor instead.
+func (*GetMergeBaseResponse) Descriptor() ([]byte, []int) {
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *GetMergeBaseResponse) GetTargetBranch() string {
+	if x != nil {
+		return x.TargetBranch
+	}
+	return ""
+}
+
+func (x *GetMergeBaseResponse) GetSourceBranch() string {
+	if x != nil {
+		return x.SourceBranch
+	}
+	return ""
+}
+
+func (x *GetMergeBaseResponse) GetTargetCommitId() string {
+	if x != nil {
+		return x.TargetCommitId
+	}
+	return ""
+}
+
+func (x *GetMergeBaseResponse) GetSourceCommitId() string {
+	if x != nil {
+		return x.SourceCommitId
+	}
+	return ""
+}
+
+func (x *GetMergeBaseResponse) GetMergeBaseCommitId() string {
+	if x != nil {
+		return x.MergeBaseCommitId
+	}
+	return ""
+}
+
+func (x *GetMergeBaseResponse) GetMergeBaseTree() *TreeManifest {
+	if x != nil {
+		return x.MergeBaseTree
+	}
+	return nil
+}
+
+func (x *GetMergeBaseResponse) GetTargetCommitHash() string {
+	if x != nil {
+		return x.TargetCommitHash
+	}
+	return ""
+}
+
+func (x *GetMergeBaseResponse) GetSourceCommitHash() string {
+	if x != nil {
+		return x.SourceCommitHash
+	}
+	return ""
+}
+
+type MergeFastForwardRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Context       *ProjectContext        `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
+	TargetBranch  string                 `protobuf:"bytes,2,opt,name=target_branch,json=targetBranch,proto3" json:"target_branch,omitempty"`
+	SourceBranch  string                 `protobuf:"bytes,3,opt,name=source_branch,json=sourceBranch,proto3" json:"source_branch,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MergeFastForwardRequest) Reset() {
+	*x = MergeFastForwardRequest{}
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MergeFastForwardRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MergeFastForwardRequest) ProtoMessage() {}
+
+func (x *MergeFastForwardRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MergeFastForwardRequest.ProtoReflect.Descriptor instead.
+func (*MergeFastForwardRequest) Descriptor() ([]byte, []int) {
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *MergeFastForwardRequest) GetContext() *ProjectContext {
+	if x != nil {
+		return x.Context
+	}
+	return nil
+}
+
+func (x *MergeFastForwardRequest) GetTargetBranch() string {
+	if x != nil {
+		return x.TargetBranch
+	}
+	return ""
+}
+
+func (x *MergeFastForwardRequest) GetSourceBranch() string {
+	if x != nil {
+		return x.SourceBranch
+	}
+	return ""
+}
+
+type MergeFastForwardResponse struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Branch          *Branch                `protobuf:"bytes,1,opt,name=branch,proto3" json:"branch,omitempty"`                                              // the target branch after the head moved to the source head
+	MovedToCommitId string                 `protobuf:"bytes,2,opt,name=moved_to_commit_id,json=movedToCommitId,proto3" json:"moved_to_commit_id,omitempty"` // base36 snow ID of the source head the target now points at
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *MergeFastForwardResponse) Reset() {
+	*x = MergeFastForwardResponse{}
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MergeFastForwardResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MergeFastForwardResponse) ProtoMessage() {}
+
+func (x *MergeFastForwardResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MergeFastForwardResponse.ProtoReflect.Descriptor instead.
+func (*MergeFastForwardResponse) Descriptor() ([]byte, []int) {
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *MergeFastForwardResponse) GetBranch() *Branch {
+	if x != nil {
+		return x.Branch
+	}
+	return nil
+}
+
+func (x *MergeFastForwardResponse) GetMovedToCommitId() string {
+	if x != nil {
+		return x.MovedToCommitId
+	}
+	return ""
+}
+
 type LoginUsernamePasswordRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Username      string                 `protobuf:"bytes,1,opt,name=username,proto3" json:"username,omitempty"`
@@ -1300,7 +1580,7 @@ type LoginUsernamePasswordRequest struct {
 
 func (x *LoginUsernamePasswordRequest) Reset() {
 	*x = LoginUsernamePasswordRequest{}
-	mi := &file_internal_grpc_proto_server_proto_msgTypes[20]
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1312,7 +1592,7 @@ func (x *LoginUsernamePasswordRequest) String() string {
 func (*LoginUsernamePasswordRequest) ProtoMessage() {}
 
 func (x *LoginUsernamePasswordRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_grpc_proto_server_proto_msgTypes[20]
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1325,7 +1605,7 @@ func (x *LoginUsernamePasswordRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LoginUsernamePasswordRequest.ProtoReflect.Descriptor instead.
 func (*LoginUsernamePasswordRequest) Descriptor() ([]byte, []int) {
-	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{20}
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *LoginUsernamePasswordRequest) GetUsername() string {
@@ -1351,7 +1631,7 @@ type LoginWithRefreshRequest struct {
 
 func (x *LoginWithRefreshRequest) Reset() {
 	*x = LoginWithRefreshRequest{}
-	mi := &file_internal_grpc_proto_server_proto_msgTypes[21]
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1363,7 +1643,7 @@ func (x *LoginWithRefreshRequest) String() string {
 func (*LoginWithRefreshRequest) ProtoMessage() {}
 
 func (x *LoginWithRefreshRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_grpc_proto_server_proto_msgTypes[21]
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1376,7 +1656,7 @@ func (x *LoginWithRefreshRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LoginWithRefreshRequest.ProtoReflect.Descriptor instead.
 func (*LoginWithRefreshRequest) Descriptor() ([]byte, []int) {
-	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{21}
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *LoginWithRefreshRequest) GetRefreshToken() string {
@@ -1397,7 +1677,7 @@ type LoginResponse struct {
 
 func (x *LoginResponse) Reset() {
 	*x = LoginResponse{}
-	mi := &file_internal_grpc_proto_server_proto_msgTypes[22]
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1409,7 +1689,7 @@ func (x *LoginResponse) String() string {
 func (*LoginResponse) ProtoMessage() {}
 
 func (x *LoginResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_grpc_proto_server_proto_msgTypes[22]
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1422,7 +1702,7 @@ func (x *LoginResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LoginResponse.ProtoReflect.Descriptor instead.
 func (*LoginResponse) Descriptor() ([]byte, []int) {
-	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{22}
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *LoginResponse) GetAccessToken() string {
@@ -1495,14 +1775,16 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"\x04hash\x18\x01 \x01(\tR\x04hash\"7\n" +
 	"\rDownloadChunk\x12\x12\n" +
 	"\x04hash\x18\x01 \x01(\tR\x04hash\x12\x12\n" +
-	"\x04data\x18\x02 \x01(\fR\x04data\"\xe2\x01\n" +
+	"\x04data\x18\x02 \x01(\fR\x04data\"\xb1\x02\n" +
 	"\vPushRequest\x12/\n" +
 	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12\x16\n" +
 	"\x06branch\x18\x02 \x01(\tR\x06branch\x12$\n" +
 	"\x0ebase_tree_hash\x18\x03 \x01(\tR\fbaseTreeHash\x12\x18\n" +
 	"\amessage\x18\x04 \x01(\tR\amessage\x12%\n" +
 	"\x05files\x18\x05 \x03(\v2\x0f.greet.PushFileR\x05files\x12#\n" +
-	"\rremoved_files\x18\x06 \x03(\tR\fremovedFiles\"i\n" +
+	"\rremoved_files\x18\x06 \x03(\tR\fremovedFiles\x124\n" +
+	"\x14parent_2_commit_hash\x18\a \x01(\tH\x00R\x11parent2CommitHash\x88\x01\x01B\x17\n" +
+	"\x15_parent_2_commit_hash\"i\n" +
 	"\fPushResponse\x12\x1b\n" +
 	"\tcommit_id\x18\x01 \x01(\tR\bcommitId\x12\x1f\n" +
 	"\vcommit_hash\x18\x02 \x01(\tR\n" +
@@ -1546,7 +1828,27 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"\x0efrom_commit_id\x18\x04 \x01(\tR\ffromCommitId\x12(\n" +
 	"\x10from_commit_hash\x18\x05 \x01(\tR\x0efromCommitHash\"=\n" +
 	"\x14CreateBranchResponse\x12%\n" +
-	"\x06branch\x18\x01 \x01(\v2\r.greet.BranchR\x06branch\"V\n" +
+	"\x06branch\x18\x01 \x01(\v2\r.greet.BranchR\x06branch\"\x90\x01\n" +
+	"\x13GetMergeBaseRequest\x12/\n" +
+	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12#\n" +
+	"\rtarget_branch\x18\x02 \x01(\tR\ftargetBranch\x12#\n" +
+	"\rsource_branch\x18\x03 \x01(\tR\fsourceBranch\"\xfe\x02\n" +
+	"\x14GetMergeBaseResponse\x12#\n" +
+	"\rtarget_branch\x18\x01 \x01(\tR\ftargetBranch\x12#\n" +
+	"\rsource_branch\x18\x02 \x01(\tR\fsourceBranch\x12(\n" +
+	"\x10target_commit_id\x18\x03 \x01(\tR\x0etargetCommitId\x12(\n" +
+	"\x10source_commit_id\x18\x04 \x01(\tR\x0esourceCommitId\x12/\n" +
+	"\x14merge_base_commit_id\x18\x05 \x01(\tR\x11mergeBaseCommitId\x12;\n" +
+	"\x0fmerge_base_tree\x18\x06 \x01(\v2\x13.greet.TreeManifestR\rmergeBaseTree\x12,\n" +
+	"\x12target_commit_hash\x18\a \x01(\tR\x10targetCommitHash\x12,\n" +
+	"\x12source_commit_hash\x18\b \x01(\tR\x10sourceCommitHash\"\x94\x01\n" +
+	"\x17MergeFastForwardRequest\x12/\n" +
+	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12#\n" +
+	"\rtarget_branch\x18\x02 \x01(\tR\ftargetBranch\x12#\n" +
+	"\rsource_branch\x18\x03 \x01(\tR\fsourceBranch\"n\n" +
+	"\x18MergeFastForwardResponse\x12%\n" +
+	"\x06branch\x18\x01 \x01(\v2\r.greet.BranchR\x06branch\x12+\n" +
+	"\x12moved_to_commit_id\x18\x02 \x01(\tR\x0fmovedToCommitId\"V\n" +
 	"\x1cLoginUsernamePasswordRequest\x12\x1a\n" +
 	"\busername\x18\x01 \x01(\tR\busername\x12\x1a\n" +
 	"\bpassword\x18\x02 \x01(\tR\bpassword\">\n" +
@@ -1561,7 +1863,7 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"\x15FILE_MODE_UNSPECIFIED\x10\x00\x12\x17\n" +
 	"\x13FILE_MODE_READ_ONLY\x10\x01\x12\x18\n" +
 	"\x14FILE_MODE_READ_WRITE\x10\x02\x12\x18\n" +
-	"\x14FILE_MODE_EXECUTABLE\x10\x032\xee\x05\n" +
+	"\x14FILE_MODE_EXECUTABLE\x10\x032\x8c\a\n" +
 	"\vNipaService\x12V\n" +
 	"\x19LoginWithUsernamePassword\x12#.greet.LoginUsernamePasswordRequest\x1a\x14.greet.LoginResponse\x12M\n" +
 	"\x15LoginWithRefreshToken\x12\x1e.greet.LoginWithRefreshRequest\x1a\x14.greet.LoginResponse\x12J\n" +
@@ -1569,7 +1871,9 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"\tGetBranch\x12\x17.greet.GetBranchRequest\x1a\x18.greet.GetBranchResponse\x12L\n" +
 	"\x10GetDefaultBranch\x12\x1e.greet.GetDefaultBranchRequest\x1a\x18.greet.GetBranchResponse\x12G\n" +
 	"\fCreateBranch\x12\x1a.greet.CreateBranchRequest\x1a\x1b.greet.CreateBranchResponse\x12P\n" +
-	"\x0fGetTreeManifest\x12\x1d.greet.GetTreeManifestRequest\x1a\x1e.greet.GetTreeManifestResponse\x12/\n" +
+	"\x0fGetTreeManifest\x12\x1d.greet.GetTreeManifestRequest\x1a\x1e.greet.GetTreeManifestResponse\x12G\n" +
+	"\fGetMergeBase\x12\x1a.greet.GetMergeBaseRequest\x1a\x1b.greet.GetMergeBaseResponse\x12S\n" +
+	"\x10MergeFastForward\x12\x1e.greet.MergeFastForwardRequest\x1a\x1f.greet.MergeFastForwardResponse\x12/\n" +
 	"\x04Push\x12\x12.greet.PushRequest\x1a\x13.greet.PushResponse\x12H\n" +
 	"\fUploadChunks\x12\x19.greet.ChunkUploadRequest\x1a\x1b.greet.UploadChunksResponse(\x01\x12H\n" +
 	"\x0eDownloadChunks\x12\x1c.greet.DownloadChunksRequest\x1a\x14.greet.DownloadChunk(\x010\x01B\x06Z\x04./pbb\x06proto3"
@@ -1587,7 +1891,7 @@ func file_internal_grpc_proto_server_proto_rawDescGZIP() []byte {
 }
 
 var file_internal_grpc_proto_server_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_internal_grpc_proto_server_proto_msgTypes = make([]protoimpl.MessageInfo, 23)
+var file_internal_grpc_proto_server_proto_msgTypes = make([]protoimpl.MessageInfo, 27)
 var file_internal_grpc_proto_server_proto_goTypes = []any{
 	(FileMode)(0),                        // 0: greet.FileMode
 	(*ProjectContext)(nil),               // 1: greet.ProjectContext
@@ -1610,10 +1914,14 @@ var file_internal_grpc_proto_server_proto_goTypes = []any{
 	(*GetBranchResponse)(nil),            // 18: greet.GetBranchResponse
 	(*CreateBranchRequest)(nil),          // 19: greet.CreateBranchRequest
 	(*CreateBranchResponse)(nil),         // 20: greet.CreateBranchResponse
-	(*LoginUsernamePasswordRequest)(nil), // 21: greet.LoginUsernamePasswordRequest
-	(*LoginWithRefreshRequest)(nil),      // 22: greet.LoginWithRefreshRequest
-	(*LoginResponse)(nil),                // 23: greet.LoginResponse
-	(*timestamppb.Timestamp)(nil),        // 24: google.protobuf.Timestamp
+	(*GetMergeBaseRequest)(nil),          // 21: greet.GetMergeBaseRequest
+	(*GetMergeBaseResponse)(nil),         // 22: greet.GetMergeBaseResponse
+	(*MergeFastForwardRequest)(nil),      // 23: greet.MergeFastForwardRequest
+	(*MergeFastForwardResponse)(nil),     // 24: greet.MergeFastForwardResponse
+	(*LoginUsernamePasswordRequest)(nil), // 25: greet.LoginUsernamePasswordRequest
+	(*LoginWithRefreshRequest)(nil),      // 26: greet.LoginWithRefreshRequest
+	(*LoginResponse)(nil),                // 27: greet.LoginResponse
+	(*timestamppb.Timestamp)(nil),        // 28: google.protobuf.Timestamp
 }
 var file_internal_grpc_proto_server_proto_depIdxs = []int32{
 	0,  // 0: greet.FileNode.mode:type_name -> greet.FileMode
@@ -1624,41 +1932,49 @@ var file_internal_grpc_proto_server_proto_depIdxs = []int32{
 	0,  // 5: greet.PushFile.mode:type_name -> greet.FileMode
 	1,  // 6: greet.PushRequest.context:type_name -> greet.ProjectContext
 	6,  // 7: greet.PushRequest.files:type_name -> greet.PushFile
-	24, // 8: greet.Branch.created_at:type_name -> google.protobuf.Timestamp
-	24, // 9: greet.Branch.updated_at:type_name -> google.protobuf.Timestamp
+	28, // 8: greet.Branch.created_at:type_name -> google.protobuf.Timestamp
+	28, // 9: greet.Branch.updated_at:type_name -> google.protobuf.Timestamp
 	1,  // 10: greet.GetListBranchRequest.context:type_name -> greet.ProjectContext
-	24, // 11: greet.GetListBranchRequest.last_updated_at:type_name -> google.protobuf.Timestamp
+	28, // 11: greet.GetListBranchRequest.last_updated_at:type_name -> google.protobuf.Timestamp
 	13, // 12: greet.GetListBranchResponse.branches:type_name -> greet.Branch
 	1,  // 13: greet.GetBranchRequest.context:type_name -> greet.ProjectContext
 	1,  // 14: greet.GetDefaultBranchRequest.context:type_name -> greet.ProjectContext
 	13, // 15: greet.GetBranchResponse.branch:type_name -> greet.Branch
 	1,  // 16: greet.CreateBranchRequest.context:type_name -> greet.ProjectContext
 	13, // 17: greet.CreateBranchResponse.branch:type_name -> greet.Branch
-	21, // 18: greet.NipaService.LoginWithUsernamePassword:input_type -> greet.LoginUsernamePasswordRequest
-	22, // 19: greet.NipaService.LoginWithRefreshToken:input_type -> greet.LoginWithRefreshRequest
-	14, // 20: greet.NipaService.GetListBranch:input_type -> greet.GetListBranchRequest
-	16, // 21: greet.NipaService.GetBranch:input_type -> greet.GetBranchRequest
-	17, // 22: greet.NipaService.GetDefaultBranch:input_type -> greet.GetDefaultBranchRequest
-	19, // 23: greet.NipaService.CreateBranch:input_type -> greet.CreateBranchRequest
-	4,  // 24: greet.NipaService.GetTreeManifest:input_type -> greet.GetTreeManifestRequest
-	11, // 25: greet.NipaService.Push:input_type -> greet.PushRequest
-	7,  // 26: greet.NipaService.UploadChunks:input_type -> greet.ChunkUploadRequest
-	9,  // 27: greet.NipaService.DownloadChunks:input_type -> greet.DownloadChunksRequest
-	23, // 28: greet.NipaService.LoginWithUsernamePassword:output_type -> greet.LoginResponse
-	23, // 29: greet.NipaService.LoginWithRefreshToken:output_type -> greet.LoginResponse
-	15, // 30: greet.NipaService.GetListBranch:output_type -> greet.GetListBranchResponse
-	18, // 31: greet.NipaService.GetBranch:output_type -> greet.GetBranchResponse
-	18, // 32: greet.NipaService.GetDefaultBranch:output_type -> greet.GetBranchResponse
-	20, // 33: greet.NipaService.CreateBranch:output_type -> greet.CreateBranchResponse
-	5,  // 34: greet.NipaService.GetTreeManifest:output_type -> greet.GetTreeManifestResponse
-	12, // 35: greet.NipaService.Push:output_type -> greet.PushResponse
-	8,  // 36: greet.NipaService.UploadChunks:output_type -> greet.UploadChunksResponse
-	10, // 37: greet.NipaService.DownloadChunks:output_type -> greet.DownloadChunk
-	28, // [28:38] is the sub-list for method output_type
-	18, // [18:28] is the sub-list for method input_type
-	18, // [18:18] is the sub-list for extension type_name
-	18, // [18:18] is the sub-list for extension extendee
-	0,  // [0:18] is the sub-list for field type_name
+	1,  // 18: greet.GetMergeBaseRequest.context:type_name -> greet.ProjectContext
+	3,  // 19: greet.GetMergeBaseResponse.merge_base_tree:type_name -> greet.TreeManifest
+	1,  // 20: greet.MergeFastForwardRequest.context:type_name -> greet.ProjectContext
+	13, // 21: greet.MergeFastForwardResponse.branch:type_name -> greet.Branch
+	25, // 22: greet.NipaService.LoginWithUsernamePassword:input_type -> greet.LoginUsernamePasswordRequest
+	26, // 23: greet.NipaService.LoginWithRefreshToken:input_type -> greet.LoginWithRefreshRequest
+	14, // 24: greet.NipaService.GetListBranch:input_type -> greet.GetListBranchRequest
+	16, // 25: greet.NipaService.GetBranch:input_type -> greet.GetBranchRequest
+	17, // 26: greet.NipaService.GetDefaultBranch:input_type -> greet.GetDefaultBranchRequest
+	19, // 27: greet.NipaService.CreateBranch:input_type -> greet.CreateBranchRequest
+	4,  // 28: greet.NipaService.GetTreeManifest:input_type -> greet.GetTreeManifestRequest
+	21, // 29: greet.NipaService.GetMergeBase:input_type -> greet.GetMergeBaseRequest
+	23, // 30: greet.NipaService.MergeFastForward:input_type -> greet.MergeFastForwardRequest
+	11, // 31: greet.NipaService.Push:input_type -> greet.PushRequest
+	7,  // 32: greet.NipaService.UploadChunks:input_type -> greet.ChunkUploadRequest
+	9,  // 33: greet.NipaService.DownloadChunks:input_type -> greet.DownloadChunksRequest
+	27, // 34: greet.NipaService.LoginWithUsernamePassword:output_type -> greet.LoginResponse
+	27, // 35: greet.NipaService.LoginWithRefreshToken:output_type -> greet.LoginResponse
+	15, // 36: greet.NipaService.GetListBranch:output_type -> greet.GetListBranchResponse
+	18, // 37: greet.NipaService.GetBranch:output_type -> greet.GetBranchResponse
+	18, // 38: greet.NipaService.GetDefaultBranch:output_type -> greet.GetBranchResponse
+	20, // 39: greet.NipaService.CreateBranch:output_type -> greet.CreateBranchResponse
+	5,  // 40: greet.NipaService.GetTreeManifest:output_type -> greet.GetTreeManifestResponse
+	22, // 41: greet.NipaService.GetMergeBase:output_type -> greet.GetMergeBaseResponse
+	24, // 42: greet.NipaService.MergeFastForward:output_type -> greet.MergeFastForwardResponse
+	12, // 43: greet.NipaService.Push:output_type -> greet.PushResponse
+	8,  // 44: greet.NipaService.UploadChunks:output_type -> greet.UploadChunksResponse
+	10, // 45: greet.NipaService.DownloadChunks:output_type -> greet.DownloadChunk
+	34, // [34:46] is the sub-list for method output_type
+	22, // [22:34] is the sub-list for method input_type
+	22, // [22:22] is the sub-list for extension type_name
+	22, // [22:22] is the sub-list for extension extendee
+	0,  // [0:22] is the sub-list for field type_name
 }
 
 func init() { file_internal_grpc_proto_server_proto_init() }
@@ -1667,6 +1983,7 @@ func file_internal_grpc_proto_server_proto_init() {
 		return
 	}
 	file_internal_grpc_proto_server_proto_msgTypes[3].OneofWrappers = []any{}
+	file_internal_grpc_proto_server_proto_msgTypes[10].OneofWrappers = []any{}
 	file_internal_grpc_proto_server_proto_msgTypes[12].OneofWrappers = []any{}
 	file_internal_grpc_proto_server_proto_msgTypes[13].OneofWrappers = []any{}
 	type x struct{}
@@ -1675,7 +1992,7 @@ func file_internal_grpc_proto_server_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_internal_grpc_proto_server_proto_rawDesc), len(file_internal_grpc_proto_server_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   23,
+			NumMessages:   27,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -214,3 +214,19 @@ func (q *Queries) BranchUpdate(ctx context.Context, arg BranchUpdateParams) erro
 	)
 	return err
 }
+
+const branchUpdateCommitIf = `-- name: BranchUpdateCommitIf :execresult
+UPDATE branches
+SET commit_id = ?1, updated_at = CURRENT_TIMESTAMP
+WHERE id = ?2 AND deleted = FALSE AND commit_id = ?3
+`
+
+type BranchUpdateCommitIfParams struct {
+	ToCommitID   sql.NullInt64 `json:"to_commit_id"`
+	ID           int64         `json:"id"`
+	FromCommitID sql.NullInt64 `json:"from_commit_id"`
+}
+
+func (q *Queries) BranchUpdateCommitIf(ctx context.Context, arg BranchUpdateCommitIfParams) (sql.Result, error) {
+	return q.db.ExecContext(ctx, branchUpdateCommitIf, arg.ToCommitID, arg.ID, arg.FromCommitID)
+}
