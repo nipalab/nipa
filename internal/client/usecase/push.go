@@ -25,7 +25,6 @@ type pushLocalRepo interface {
 	LoadConfig() (*domain.Config, error)
 	Snapshot() (*domain.Snapshot, error)
 	ListStaged() ([]string, error)
-	MissingChunks(hashes []serverDomain.Hash) ([]serverDomain.Hash, error)
 	ClearStaged() error
 	SaveTree(root *serverDomain.TreeNode) error
 	SaveCommit(commitID, commitHash string) error
@@ -119,40 +118,34 @@ func (p *Push) Run(ctx context.Context, root, message string, progress ...Upload
 		}
 	}
 
-	missing, err := p.localRepo.MissingChunks(allChunkHashes(allChunkData))
-	if err != nil {
+	toUpload := dedupeChunkData(allChunkData)
+	var prog UploadProgress
+	if len(progress) > 0 {
+		prog = progress[0]
+	}
+	if prog != nil {
+		var totalBytes int64
+		for _, c := range toUpload {
+			totalBytes += int64(len(c.Data))
+		}
+		prog.UploadStart(len(toUpload), totalBytes)
+	}
+
+	doneObjects, doneBytes := 0, int64(0)
+	var onChunk func(ch *serverDomain.ChunkData)
+	if prog != nil {
+		onChunk = func(ch *serverDomain.ChunkData) {
+			doneObjects++
+			doneBytes += int64(len(ch.Data))
+			prog.UploadProgress(doneObjects, doneBytes)
+		}
+	}
+
+	if _, _, err := p.pushClient.UploadChunks(ctx, toUpload, onChunk); err != nil {
 		return err
 	}
-	if len(missing) > 0 {
-		toUpload := dedupeChunkData(allChunkData, missing)
-		var prog UploadProgress
-		if len(progress) > 0 {
-			prog = progress[0]
-		}
-		if prog != nil {
-			var totalBytes int64
-			for _, c := range toUpload {
-				totalBytes += int64(len(c.Data))
-			}
-			prog.UploadStart(len(toUpload), totalBytes)
-		}
-
-		doneObjects, doneBytes := 0, int64(0)
-		var onChunk func(ch *serverDomain.ChunkData)
-		if prog != nil {
-			onChunk = func(ch *serverDomain.ChunkData) {
-				doneObjects++
-				doneBytes += int64(len(ch.Data))
-				prog.UploadProgress(doneObjects, doneBytes)
-			}
-		}
-
-		if _, _, err := p.pushClient.UploadChunks(ctx, toUpload, onChunk); err != nil {
-			return err
-		}
-		if prog != nil {
-			prog.UploadEnd()
-		}
+	if prog != nil {
+		prog.UploadEnd()
 	}
 
 	var parent2 string
@@ -160,10 +153,14 @@ func (p *Push) Run(ctx context.Context, root, message string, progress ...Upload
 	if err != nil {
 		return err
 	}
+	baseTreeHash := snapshot.TreeHash
 	if mergeState != nil {
 		parent2 = mergeState.SourceCommitHash
+		if mergeState.TargetTreeHash != "" {
+			baseTreeHash = mergeState.TargetTreeHash
+		}
 	}
-	result, err := p.pushClient.Push(ctx, nipaUrl.Org, nipaUrl.Project, cfg.Branch, snapshot.TreeHash, message, files, removed, parent2)
+	result, err := p.pushClient.Push(ctx, nipaUrl.Org, nipaUrl.Project, cfg.Branch, baseTreeHash, message, files, removed, parent2)
 	if err != nil {
 		return err
 	}
@@ -209,23 +206,11 @@ func buildPushFile(path string, info fs.FileInfo, abs string) (*serverDomain.Pus
 	}, chunkData, nil
 }
 
-func allChunkHashes(chunkData []*serverDomain.ChunkData) []serverDomain.Hash {
-	hashes := make([]serverDomain.Hash, len(chunkData))
-	for i, c := range chunkData {
-		hashes[i] = c.Hash
-	}
-	return hashes
-}
-
-func dedupeChunkData(all []*serverDomain.ChunkData, missing []serverDomain.Hash) []*serverDomain.ChunkData {
-	want := make(map[serverDomain.Hash]bool, len(missing))
-	for _, h := range missing {
-		want[h] = true
-	}
-	seen := make(map[serverDomain.Hash]bool, len(missing))
+func dedupeChunkData(all []*serverDomain.ChunkData) []*serverDomain.ChunkData {
+	seen := make(map[serverDomain.Hash]bool, len(all))
 	var out []*serverDomain.ChunkData
 	for _, c := range all {
-		if !want[c.Hash] || seen[c.Hash] {
+		if seen[c.Hash] {
 			continue
 		}
 		seen[c.Hash] = true

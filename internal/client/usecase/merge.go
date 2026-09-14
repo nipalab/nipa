@@ -179,7 +179,7 @@ func (m *Merge) trueMerge(ctx context.Context, root string, url *domain.NipaUrl,
 		case merge.KeepTheirs:
 			needs = append(needs, e.Theirs)
 		case merge.TextMerge:
-			needs = append(needs, e.Base, e.Theirs)
+			needs = append(needs, e.Base, e.Ours, e.Theirs)
 		}
 	}
 	var want []serverDomain.Hash
@@ -290,6 +290,7 @@ func (m *Merge) trueMerge(ctx context.Context, root string, url *domain.NipaUrl,
 		SourceCommitHash: info.SourceCommitHash,
 		BaseCommitID:     info.MergeBaseCommitID,
 		BaseTreeHash:     baseTreeHash(info),
+		TargetTreeHash:   targetTree.Hash.String(),
 		Conflicts:        conflictedPaths,
 	}
 	if len(conflictedPaths) > 0 {
