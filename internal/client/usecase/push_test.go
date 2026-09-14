@@ -77,10 +77,9 @@ func TestPush_Run_Success(t *testing.T) {
 	require.NoError(t, err)
 
 	local := &stubLocalRepo{
-		loadConfig:    &domain.Config{Url: "http://example.com/org/project", Branch: "main"},
-		snapshot:      &domain.Snapshot{},
-		staged:        []string{"a.txt"},
-		missingChunks: []serverDomain.Hash{chunks[0].Hash},
+		loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "main"},
+		snapshot:   &domain.Snapshot{},
+		staged:     []string{"a.txt"},
 	}
 	client := &stubPushClient{
 		pushResult: &serverDomain.PushResult{
@@ -109,7 +108,6 @@ func TestPush_Run_Success(t *testing.T) {
 	require.Equal(t, int64(len("hello world")), client.pushFiles[0].SizeBytes)
 	require.Equal(t, chunks[0].Hash, client.pushFiles[0].ChunkHashes[0])
 
-	require.Equal(t, []serverDomain.Hash{chunks[0].Hash}, local.missingChunksInput)
 	require.Len(t, client.uploadedChunks, 1)
 	require.Equal(t, chunks[0].Hash, client.uploadedChunks[0].Hash)
 	require.Equal(t, "hello world", string(client.uploadedChunks[0].Data))
@@ -124,14 +122,11 @@ func TestPush_Run_DeduplicatesNewChunks(t *testing.T) {
 	root := t.TempDir()
 	writeRepoFile(t, root, "a.txt", "hello world")
 	writeRepoFile(t, root, "b.txt", "hello world")
-	_, chunks, err := chunkFile([]byte("hello world"))
-	require.NoError(t, err)
 
 	local := &stubLocalRepo{
-		loadConfig:    &domain.Config{Url: "http://example.com/org/project", Branch: "main"},
-		snapshot:      &domain.Snapshot{},
-		staged:        []string{"a.txt", "b.txt"},
-		missingChunks: []serverDomain.Hash{chunks[0].Hash},
+		loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "main"},
+		snapshot:   &domain.Snapshot{},
+		staged:     []string{"a.txt", "b.txt"},
 	}
 	client := &stubPushClient{manifest: &serverDomain.TreeNode{Name: "root"}}
 	pusher := newTestPush(t, local, client)
@@ -142,7 +137,7 @@ func TestPush_Run_DeduplicatesNewChunks(t *testing.T) {
 	require.Len(t, client.uploadedChunks, 1, "an identical chunk in two files is uploaded only once")
 }
 
-func TestPush_Run_SkipsChunksAlreadyCached(t *testing.T) {
+func TestPush_Run_UploadsEveryChunkForIdempotentStore(t *testing.T) {
 	root := t.TempDir()
 	writeRepoFile(t, root, "a.txt", "hello world")
 	_, chunks, err := chunkFile([]byte("hello world"))
@@ -158,8 +153,8 @@ func TestPush_Run_SkipsChunksAlreadyCached(t *testing.T) {
 
 	require.NoError(t, pusher.Run(context.Background(), root, "add"))
 
-	require.Empty(t, client.uploadedChunks, "chunks already present locally are not re-uploaded")
 	require.Equal(t, chunks[0].Hash, client.pushFiles[0].ChunkHashes[0], "file still lists every chunk hash")
+	require.Len(t, client.uploadedChunks, 1, "the client offers every staged chunk; the server dedupes by hash")
 }
 
 func TestPush_Run_UsesBaseTreeHash(t *testing.T) {
@@ -246,14 +241,11 @@ func TestPush_Run_ReportsUploadProgress(t *testing.T) {
 	root := t.TempDir()
 	content := "new upload bytes"
 	writeRepoFile(t, root, "a.txt", content)
-	_, chunks, err := chunkFile([]byte(content))
-	require.NoError(t, err)
 
 	local := &stubLocalRepo{
-		loadConfig:    &domain.Config{Url: "http://example.com/org/project", Branch: "main"},
-		snapshot:      &domain.Snapshot{},
-		staged:        []string{"a.txt"},
-		missingChunks: []serverDomain.Hash{chunks[0].Hash},
+		loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "main"},
+		snapshot:   &domain.Snapshot{},
+		staged:     []string{"a.txt"},
 	}
 	client := &stubPushClient{manifest: &serverDomain.TreeNode{Name: "root"}}
 	pusher := newTestPush(t, local, client)
@@ -266,37 +258,15 @@ func TestPush_Run_ReportsUploadProgress(t *testing.T) {
 	require.True(t, prog.endCalled)
 }
 
-func TestPush_Run_NoProgressWhenChunksAreCached(t *testing.T) {
-	root := t.TempDir()
-	writeRepoFile(t, root, "a.txt", "hello world")
-
-	local := &stubLocalRepo{
-		loadConfig:    &domain.Config{Url: "http://example.com/org/project", Branch: "main"},
-		snapshot:      &domain.Snapshot{},
-		staged:        []string{"a.txt"},
-		missingChunks: nil, // everything already cached
-	}
-	client := &stubPushClient{manifest: &serverDomain.TreeNode{Name: "root"}}
-	pusher := newTestPush(t, local, client)
-	prog := &stubProgress{}
-
-	require.NoError(t, pusher.Run(context.Background(), root, "add a.txt", prog))
-
-	require.Empty(t, prog.starts, "no upload progress must be reported when nothing needs uploading")
-	require.Len(t, client.uploadedChunks, 0)
-	require.False(t, prog.endCalled)
-}
-
 func TestPush_Run_Error_UploadFails(t *testing.T) {
 	root := t.TempDir()
 	writeRepoFile(t, root, "a.txt", "hello world")
 	unexpected := errors.New("upload failed")
 
 	local := &stubLocalRepo{
-		loadConfig:    &domain.Config{Url: "http://example.com/org/project", Branch: "main"},
-		snapshot:      &domain.Snapshot{},
-		staged:        []string{"a.txt"},
-		missingChunks: []serverDomain.Hash{{0x01}},
+		loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "main"},
+		snapshot:   &domain.Snapshot{},
+		staged:     []string{"a.txt"},
 	}
 	client := &stubPushClient{uploadErr: unexpected}
 	pusher := newTestPush(t, local, client)
