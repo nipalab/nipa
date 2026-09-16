@@ -63,6 +63,13 @@ yet.
   content) and the staged file list.
 - Content is stored server-side as FastCDC chunks addressed by BLAKE3 hash;
   the tree is a recursive manifest of directories, files and their chunk lists.
+- **Web UI** (work in progress) — a Vite/React single-page app in `web/`
+  using Primer React (GitHub's design system, `@primer/react`), built into
+  `web/server/dist` and embedded into the `nipad` binary
+  (`go:embed`), served on the same port as the REST/gRPC APIs. Run
+  `make web && make build` to embed a fresh UI, or `make web-dev` for the
+  Vite dev server (proxies `/auth`, `/docs`, `/api` to `localhost:6745`).
+
 
 ## License
 

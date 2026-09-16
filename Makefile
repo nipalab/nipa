@@ -4,7 +4,7 @@ DRIVER     ?= sqlite3
 DSN        ?= nipa.db
 MIGRATIONS_DIR := db/migrations
 
-.PHONY: sqlc mock migrate-up migrate-down migrate-create build test lint
+.PHONY: sqlc mock migrate-up migrate-down migrate-create build build-all test lint web web-dev web-install
 
 GOLANGCI_LINT_IMAGE ?= docker.io/golangci/golangci-lint:latest
 
@@ -33,6 +33,22 @@ migrate-create:
 
 build:
 	go build -o bin/nipad ./cmd/nipad
+
+## Install web UI dependencies (first time, or after changes to web/package.json).
+web-install:
+	cd web && npm install
+
+## Build the web UI into web/server/dist, embedded into the nipad binary via go:embed.
+web:
+	cd web && npm run build
+
+## Run the Vite dev server: proxies /auth, /docs and /api to a running nipad
+## (default http://localhost:6745, override with NIPA_SERVER_URL).
+web-dev:
+	cd web && npm run dev
+
+## Build the server including the web UI.
+build-all: web build
 
 proto:
 	protoc --go_out=internal/grpc --go-grpc_out=internal/grpc internal/grpc/proto/server.proto

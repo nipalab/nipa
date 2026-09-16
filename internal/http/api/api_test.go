@@ -82,6 +82,31 @@ func TestAPIRoutes(t *testing.T) {
 		require.Equal(t, snow.ID(userID), parsed.UserID)
 	})
 
+	t.Run("refresh token", func(t *testing.T) {
+		body := bytes.NewBufferString(`{"email":"alice@example.com","password":"whatever"}`)
+		resp, err := http.Post(server.URL+"/auth/", "application/json", body)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		defer resp.Body.Close()
+
+		var loginResponse model.LoginResponse
+		require.NoError(t, json.NewDecoder(resp.Body).Decode(&loginResponse))
+		require.NotEmpty(t, loginResponse.RefreshToken)
+
+		refreshBody := bytes.NewBufferString(`{"refresh_token": "` + loginResponse.RefreshToken + `"}`)
+		refreshResp, err := http.Post(server.URL+"/auth/refresh", "application/json", refreshBody)
+		require.NoError(t, err)
+		defer refreshResp.Body.Close()
+
+		require.Equal(t, http.StatusOK, refreshResp.StatusCode)
+
+		var refreshed model.LoginResponse
+		require.NoError(t, json.NewDecoder(refreshResp.Body).Decode(&refreshed))
+		require.Equal(t, "Bearer", refreshed.TokenType)
+		require.NotEmpty(t, refreshed.AccessToken)
+		require.NotEmpty(t, refreshed.RefreshToken)
+	})
+
 	t.Run("login unknown user", func(t *testing.T) {
 		body := bytes.NewBufferString(`{"email":"ghost@example.com","password":"whatever"}`)
 		resp, err := http.Post(server.URL+"/auth/", "application/json", body)

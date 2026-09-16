@@ -39,4 +39,8 @@ config.yaml
 .idea/
 .vscode/
 
+node_modules/
+web/server/dist/*
+!web/server/dist/index.html
+
 config.yaml
