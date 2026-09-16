@@ -1,3 +1,4 @@
+/// <reference types="vitest" />
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
@@ -19,6 +20,14 @@ export default defineConfig({
       '/auth': API_TARGET,
       '/docs': API_TARGET,
       '/api': API_TARGET,
+    },
+  },
+  test: {
+    environment: 'jsdom',
+    server: {
+      deps: {
+        inline: [/@primer\//, /octicons/],
+      },
     },
   },
 })
