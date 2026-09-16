@@ -42,6 +42,7 @@ Run `nipa <command> --help` for full details.
 | `nipa status`               | Show the working copy status: `A` staged, `M` modified, `?` untracked, `!` missing. |
 | `nipa push -m "<message>"`  | Upload staged changes to the server and commit them on the configured branch. |
 | `nipa update`               | Fetch and apply the latest changes of the configured branch.                |
+| `nipa log`                  | Show the commit history of the current branch. Interactive and scrollable when stdout is a terminal; `-n` limits, `--oneline` prints one line per commit, `--no-pager` disables the pager. |
 
 Branch creation (`nipa branch -c <name>`) forks from the exact commit the
 working copy is pinned to (a push records the server's commit id and hash

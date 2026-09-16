@@ -166,6 +166,46 @@ func (b *BranchRepository) ListFilesByTree(ctx context.Context, treeID int64) ([
 	return files, nil
 }
 
+func (b *BranchRepository) CommitLog(ctx context.Context, projectID snow.ID, startCommitID snow.ID, limit int) ([]*domain.CommitLogEntry, error) {
+	rows, err := b.queries.CommitLog(ctx, sqlcSqlite.CommitLogParams{
+		ProjectID:     projectID.Int64(),
+		StartCommitID: startCommitID.Int64(),
+		Limit:         int64(limit),
+	})
+	if err != nil {
+		return nil, handleError(err)
+	}
+	return slices.Map(rows, func(row sqlcSqlite.CommitLogRow) *domain.CommitLogEntry {
+		return commitLogEntryToDomain(row)
+	}), nil
+}
+
+func commitLogEntryToDomain(row sqlcSqlite.CommitLogRow) *domain.CommitLogEntry {
+	return &domain.CommitLogEntry{
+		Commit: domain.Commit{
+			ID:        snow.ID(row.ID),
+			Hash:      bytesToHash(row.Hash),
+			ProjectID: snow.ID(row.ProjectID),
+			TreeID:    row.TreeID,
+			Parent1ID: nullInt64SnowIDPtr(row.Parent1ID),
+			Parent2ID: nullInt64SnowIDPtr(row.Parent2ID),
+			UserID:    snow.ID(row.UserID),
+			Message:   row.Message,
+			CreatedAt: row.CreatedAt,
+		},
+		AuthorName:  row.AuthorName,
+		AuthorEmail: row.AuthorEmail,
+	}
+}
+
+func nullInt64SnowIDPtr(i sql.NullInt64) *snow.ID {
+	if !i.Valid {
+		return nil
+	}
+	id := snow.ID(i.Int64)
+	return &id
+}
+
 func branchToDomain(b sqlcSqlite.Branch) *domain.Branch {
 	var commitID *snow.ID
 	if b.CommitID.Valid {

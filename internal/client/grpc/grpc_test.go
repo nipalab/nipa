@@ -77,6 +77,9 @@ type fakeServer struct {
 	ffErr              error
 	ffResp             *pb.MergeFastForwardResponse
 	lastFFReq          *pb.MergeFastForwardRequest
+	commitLogErr       error
+	commitLog          []*pb.CommitLogEntry
+	lastCommitLogReq   *pb.GetCommitLogRequest
 }
 
 func (f *fakeServer) GetDefaultBranch(_ context.Context, _ *pb.GetDefaultBranchRequest) (*pb.GetBranchResponse, error) {
@@ -150,6 +153,14 @@ func (f *fakeServer) MergeFastForward(_ context.Context, req *pb.MergeFastForwar
 		return nil, f.ffErr
 	}
 	return f.ffResp, nil
+}
+
+func (f *fakeServer) GetCommitLog(_ context.Context, req *pb.GetCommitLogRequest) (*pb.GetCommitLogResponse, error) {
+	f.lastCommitLogReq = req
+	if f.commitLogErr != nil {
+		return nil, f.commitLogErr
+	}
+	return &pb.GetCommitLogResponse{Branch: req.GetBranch(), Commits: f.commitLog}, nil
 }
 
 func startTestServer(t *testing.T, srv pb.NipaServiceServer) string {
@@ -819,6 +830,81 @@ func TestClient_MergeFastForward_NotConnected(t *testing.T) {
 	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
 
 	_, err := c.MergeFastForward(context.Background(), "default", "sample", "main", "feature")
+	require.Error(t, err)
+	require.Equal(t, "not connected to a nipa server", err.Error())
+}
+
+func TestClient_GetCommitLog_Success(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	commitID := snow.ID(42)
+	parentID := snow.ID(7)
+	var hash serverDomain.Hash
+	hash[0] = 0xaa
+	parentStr := parentID.Base36()
+	fs := &fakeServer{commitLog: []*pb.CommitLogEntry{
+		{
+			CommitId:    commitID.Base36(),
+			CommitHash:  hash.String(),
+			Parent_1Id:  &parentStr,
+			AuthorName:  "Alice",
+			AuthorEmail: "alice@example.com",
+			Message:     "first commit",
+			CreatedAt:   timestamppb.New(now),
+		},
+	}}
+	addr := startTestServer(t, fs)
+	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
+	require.NoError(t, c.Connect(context.Background(), addr))
+
+	got, err := c.GetCommitLog(context.Background(), "default", "sample", "main", nil, 10)
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	e := got[0]
+	require.Equal(t, commitID, e.ID)
+	require.Equal(t, hash, e.Hash)
+	require.NotNil(t, e.Parent1ID)
+	require.Equal(t, parentID, *e.Parent1ID)
+	require.Equal(t, "Alice", e.AuthorName)
+	require.Equal(t, "alice@example.com", e.AuthorEmail)
+	require.Equal(t, "first commit", e.Message)
+	require.Equal(t, now, e.CreatedAt)
+	require.Equal(t, "main", fs.lastCommitLogReq.GetBranch())
+	require.Equal(t, int32(10), fs.lastCommitLogReq.GetLimit())
+	require.Nil(t, fs.lastCommitLogReq.StartCommitId)
+}
+
+func TestClient_GetCommitLog_WithCursor(t *testing.T) {
+	fs := &fakeServer{}
+	addr := startTestServer(t, fs)
+	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
+	require.NoError(t, c.Connect(context.Background(), addr))
+
+	start := snow.ID(123)
+	_, err := c.GetCommitLog(context.Background(), "default", "sample", "dev", &start, 50)
+	require.NoError(t, err)
+	require.NotNil(t, fs.lastCommitLogReq.GetStartCommitId())
+	require.Equal(t, start.Base36(), fs.lastCommitLogReq.GetStartCommitId())
+	require.Equal(t, "dev", fs.lastCommitLogReq.GetBranch())
+}
+
+func TestClient_GetCommitLog_Error(t *testing.T) {
+	addr := startTestServer(t, &fakeServer{commitLogErr: status.Error(codes.NotFound, `branch "nope" not found`)})
+	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
+	require.NoError(t, c.Connect(context.Background(), addr))
+
+	_, err := c.GetCommitLog(context.Background(), "default", "sample", "nope", nil, 10)
+	require.Error(t, err)
+
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 404, domErr.Code)
+	require.Equal(t, `branch "nope" not found`, domErr.Message)
+}
+
+func TestClient_GetCommitLog_NotConnected(t *testing.T) {
+	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
+
+	_, err := c.GetCommitLog(context.Background(), "default", "sample", "main", nil, 10)
 	require.Error(t, err)
 	require.Equal(t, "not connected to a nipa server", err.Error())
 }

@@ -200,6 +200,34 @@ func (c *Client) ListBranches(ctx context.Context, org, project string) ([]*serv
 	return branches, nil
 }
 
+func (c *Client) GetCommitLog(ctx context.Context, org, project, branch string, startCommitID *snow.ID, limit int) ([]*serverDomain.CommitLogEntry, error) {
+	client, err := c.transport.NipaServiceClient()
+	if err != nil {
+		return nil, err
+	}
+	var startID *string
+	if startCommitID != nil {
+		s := startCommitID.Base36()
+		startID = &s
+	}
+	res, err := client.GetCommitLog(ctx, &pb.GetCommitLogRequest{
+		Context:       &pb.ProjectContext{Org: org, Project: project},
+		Branch:        branch,
+		StartCommitId: startID,
+		Limit:         int32(limit),
+	})
+	if err != nil {
+		return nil, toDomainError(err)
+	}
+	entries := make([]*serverDomain.CommitLogEntry, 0, len(res.GetCommits()))
+	for _, e := range res.GetCommits() {
+		if se := toServerCommitLogEntry(e); se != nil {
+			entries = append(entries, se)
+		}
+	}
+	return entries, nil
+}
+
 func (c *Client) CreateBranch(ctx context.Context, org, project, name, fromBranch, fromCommitID, fromCommitHash string) (*serverDomain.Branch, error) {
 	client, err := c.transport.NipaServiceClient()
 	if err != nil {
@@ -393,6 +421,33 @@ func toServerBranch(pbBranch *pb.Branch) *serverDomain.Branch {
 		CommitID:    commitID,
 		UpdatedAt:   pbBranch.GetUpdatedAt().AsTime(),
 		CreatedAt:   pbBranch.GetCreatedAt().AsTime(),
+	}
+}
+
+func toServerCommitLogEntry(e *pb.CommitLogEntry) *serverDomain.CommitLogEntry {
+	if e == nil {
+		return nil
+	}
+	id, _ := snow.ParseBase36(e.GetCommitId())
+	hash, _ := decodeHash(e.GetCommitHash())
+	var parent1ID, parent2ID *snow.ID
+	if p, err := snow.ParseBase36(e.GetParent_1Id()); err == nil && e.GetParent_1Id() != "" {
+		parent1ID = &p
+	}
+	if p, err := snow.ParseBase36(e.GetParent_2Id()); err == nil && e.GetParent_2Id() != "" {
+		parent2ID = &p
+	}
+	return &serverDomain.CommitLogEntry{
+		Commit: serverDomain.Commit{
+			ID:        id,
+			Hash:      hash,
+			Parent1ID: parent1ID,
+			Parent2ID: parent2ID,
+			Message:   e.GetMessage(),
+			CreatedAt: e.GetCreatedAt().AsTime(),
+		},
+		AuthorName:  e.GetAuthorName(),
+		AuthorEmail: e.GetAuthorEmail(),
 	}
 }
 

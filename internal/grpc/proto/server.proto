@@ -163,6 +163,29 @@ message MergeFastForwardResponse {
     string moved_to_commit_id = 2; // base36 snow ID of the source head the target now points at
 }
 
+message CommitLogEntry {
+    string commit_id = 1; // base36 snow ID
+    string commit_hash = 2; // hex-encoded BLAKE3 content hash
+    optional string parent_1_id = 3; // base36 snow ID; empty for a root commit
+    optional string parent_2_id = 4; // base36 snow ID; set for merge commits
+    string author_name = 5;
+    string author_email = 6;
+    string message = 7;
+    google.protobuf.Timestamp created_at = 8;
+}
+
+message GetCommitLogRequest {
+    ProjectContext context = 1;
+    string branch = 2; // empty to use the default branch
+    optional string start_commit_id = 3; // base36 snow ID; empty to start from the branch head
+    int32 limit = 4;
+}
+
+message GetCommitLogResponse {
+    string branch = 1;
+    repeated CommitLogEntry commits = 2;
+}
+
 message LoginUsernamePasswordRequest {
     string username = 1;
     string password = 2;
@@ -187,6 +210,7 @@ service NipaService {
     rpc GetDefaultBranch(GetDefaultBranchRequest) returns (GetBranchResponse);
     rpc CreateBranch(CreateBranchRequest) returns (CreateBranchResponse);
     rpc GetTreeManifest(GetTreeManifestRequest) returns (GetTreeManifestResponse);
+    rpc GetCommitLog(GetCommitLogRequest) returns (GetCommitLogResponse);
     rpc GetMergeBase(GetMergeBaseRequest) returns (GetMergeBaseResponse);
     rpc MergeFastForward(MergeFastForwardRequest) returns (MergeFastForwardResponse);
     rpc Push(PushRequest) returns (PushResponse);

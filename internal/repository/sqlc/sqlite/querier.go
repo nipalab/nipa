@@ -25,6 +25,7 @@ type Querier interface {
 	CommitGet(ctx context.Context, id int64) (Commit, error)
 	CommitGetByHash(ctx context.Context, hash []byte) (Commit, error)
 	CommitInsert(ctx context.Context, arg CommitInsertParams) error
+	CommitLog(ctx context.Context, arg CommitLogParams) ([]CommitLogRow, error)
 	CreateOrganization(ctx context.Context, arg CreateOrganizationParams) (Organization, error)
 	CreateProject(ctx context.Context, arg CreateProjectParams) (Project, error)
 	DeleteOrganization(ctx context.Context, id int64) error

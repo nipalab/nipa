@@ -81,6 +81,21 @@ func (m *MockbranchRepository) EXPECT() *MockbranchRepositoryMockRecorder {
 	return m.recorder
 }
 
+// CommitLog mocks base method.
+func (m *MockbranchRepository) CommitLog(ctx context.Context, projectID, startCommitID snow.ID, limit int) ([]*domain.CommitLogEntry, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CommitLog", ctx, projectID, startCommitID, limit)
+	ret0, _ := ret[0].([]*domain.CommitLogEntry)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CommitLog indicates an expected call of CommitLog.
+func (mr *MockbranchRepositoryMockRecorder) CommitLog(ctx, projectID, startCommitID, limit any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CommitLog", reflect.TypeOf((*MockbranchRepository)(nil).CommitLog), ctx, projectID, startCommitID, limit)
+}
+
 // CreateBranch mocks base method.
 func (m *MockbranchRepository) CreateBranch(ctx context.Context, branch domain.Branch) (*domain.Branch, error) {
 	m.ctrl.T.Helper()
