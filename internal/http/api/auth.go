@@ -22,4 +22,14 @@ func setupAuthRouter(ws *restful.WebService, h *handler.Handler) {
 			Returns(http.StatusOK, "login status", model.LoginResponse{}).
 			Operation("loginUsernamePassword").
 			Metadata(restfulspec.KeyOpenAPITags, tags))
+
+	ws.Route(
+		ws.POST("/refresh").
+			To(wrap(h.AuthRefreshToken)).
+			Reads(model.RefreshTokenRequest{}).
+			Doc("Exchange a refresh token for a new access token pair").
+			Notes("Exchange a refresh token for a new access token pair").
+			Returns(http.StatusOK, "new tokens", model.LoginResponse{}).
+			Operation("loginRefreshToken").
+			Metadata(restfulspec.KeyOpenAPITags, tags))
 }

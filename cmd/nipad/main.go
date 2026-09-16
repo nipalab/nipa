@@ -22,6 +22,7 @@ import (
 	"github.com/nipalab/nipa/internal/snow"
 	"github.com/nipalab/nipa/internal/storage"
 	"github.com/nipalab/nipa/internal/usecase"
+	webui "github.com/nipalab/nipa/web/server"
 	"google.golang.org/grpc"
 	_ "modernc.org/sqlite"
 )
@@ -88,13 +89,17 @@ func main() {
 	grpcServer := server.New(reg)
 	pb.RegisterNipaServiceServer(grpcRegistrar, grpcServer)
 
+	webUI := webui.Handler()
+
 	mainHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		slog.Info("incoming connection", "content", r.Header.Get("Content-Type"), "method", r.Method, "url", r.URL.String(), "ProtoMajor", r.ProtoMajor)
 		if r.ProtoMajor == 2 && strings.HasPrefix(r.Header.Get("Content-Type"), "application/grpc") {
 			slog.Info("grpc connection is coming")
 			grpcRegistrar.ServeHTTP(w, r)
-		} else {
+		} else if isAPIPath(r.URL.Path) {
 			container.ServeHTTP(w, r)
+		} else {
+			webUI.ServeHTTP(w, r)
 		}
 	})
 
@@ -132,4 +137,10 @@ func createDatabaseConnection(dsn string) (*sql.DB, error) {
 		return nil, err
 	}
 	return db, nil
+}
+
+func isAPIPath(p string) bool {
+	return strings.HasPrefix(p, "/auth") ||
+		strings.HasPrefix(p, "/docs") ||
+		strings.HasPrefix(p, "/api")
 }
