@@ -8,6 +8,7 @@ import (
 
 	"github.com/nipalab/nipa/internal/client/domain"
 	serverDomain "github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/snow"
 )
 
 type repoInterface interface {
@@ -16,6 +17,7 @@ type repoInterface interface {
 	ListBranches(ctx context.Context, org, project string) ([]*serverDomain.Branch, error)
 	CreateBranch(ctx context.Context, org, project, name, fromBranch, fromCommitID, fromCommitHash string) (*serverDomain.Branch, error)
 	DownloadChunks(ctx context.Context, hashes []serverDomain.Hash, onChunk ...func(h serverDomain.Hash, data []byte)) (map[serverDomain.Hash][]byte, error)
+	GetCommitLog(ctx context.Context, org, project, branch string, startCommitID *snow.ID, limit int) ([]*serverDomain.CommitLogEntry, error)
 }
 
 type localRepo interface {
@@ -136,4 +138,54 @@ func ensureEmptyTarget(target string) error {
 		return fmt.Errorf("target directory %q is not empty", target)
 	}
 	return nil
+}
+
+const commitLogPageSize = 500
+
+func (r *Repo) Log(ctx context.Context, host, org, project, branch string, opts ...CommitLogOption) ([]*serverDomain.CommitLogEntry, error) {
+	if err := r.auth.MakeSureLoggedIn(ctx, host); err != nil {
+		return nil, err
+	}
+	cfg := &commitLogConfig{pageSize: commitLogPageSize}
+	for _, o := range opts {
+		o(cfg)
+	}
+	var (
+		all     []*serverDomain.CommitLogEntry
+		startID *snow.ID
+	)
+	for i := 0; i < 200; i++ {
+		page, err := r.repoInterface.GetCommitLog(ctx, org, project, branch, startID, cfg.pageSize)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, page...)
+		if cfg.max > 0 && len(all) >= cfg.max {
+			all = all[:cfg.max]
+			break
+		}
+		if len(page) < cfg.pageSize {
+			break
+		}
+		id := page[len(page)-1].ID
+		startID = &id
+	}
+	return all, nil
+}
+
+type commitLogConfig struct {
+	pageSize int
+	max      int
+}
+
+type CommitLogOption func(*commitLogConfig)
+
+// WithCommitLogPageSize sets how many commits are fetched per request.
+func WithCommitLogPageSize(n int) CommitLogOption {
+	return func(c *commitLogConfig) { c.pageSize = n }
+}
+
+// WithCommitLogMax caps the total number of commits returned (the -n flag).
+func WithCommitLogMax(n int) CommitLogOption {
+	return func(c *commitLogConfig) { c.max = n }
 }

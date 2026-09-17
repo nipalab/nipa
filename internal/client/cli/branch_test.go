@@ -14,6 +14,7 @@ import (
 	"github.com/nipalab/nipa/internal/client/localrepo"
 	"github.com/nipalab/nipa/internal/client/usecase"
 	serverDomain "github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/snow"
 )
 
 type fakeListRepoInterface struct {
@@ -42,6 +43,10 @@ func (f fakeListRepoInterface) CreateBranch(_ context.Context, _, _, name, _, _,
 }
 
 func (f fakeListRepoInterface) DownloadChunks(_ context.Context, _ []serverDomain.Hash, _ ...func(h serverDomain.Hash, data []byte)) (map[serverDomain.Hash][]byte, error) {
+	return nil, nil
+}
+
+func (f fakeListRepoInterface) GetCommitLog(_ context.Context, _, _, _ string, _ *snow.ID, _ int) ([]*serverDomain.CommitLogEntry, error) {
 	return nil, nil
 }
 

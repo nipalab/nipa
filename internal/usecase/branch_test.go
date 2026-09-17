@@ -1200,3 +1200,165 @@ func commitHashFromBytes(b []byte) domain.Hash {
 	copy(h[:], b)
 	return h
 }
+
+func TestBranch_GetCommitLog_NoPermission(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := NewMockpermissionUsecase(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).
+		Return(false)
+
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
+	_, err := uc.GetCommitLog(context.Background(), snow.ID(1), "main", nil, 10)
+	require.Error(t, err)
+
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 403, domErr.Code)
+}
+
+func TestBranch_GetCommitLog_Success(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := NewMockpermissionUsecase(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+
+	projectID := snow.ID(1)
+	commitID := snow.ID(99)
+	startID := snow.ID(88)
+	want := []*domain.CommitLogEntry{
+		{Commit: domain.Commit{ID: 99, Message: "latest"}, AuthorName: "Alice"},
+		{Commit: domain.Commit{ID: 88, Message: "older"}, AuthorName: "Bob"},
+	}
+
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), projectID, domain.PermissionRead).
+		Return(true)
+	repo.EXPECT().
+		GetBranchByName(gomock.Any(), projectID, "main").
+		Return(&domain.Branch{ID: 2, ProjectID: projectID, Name: "main", CommitID: &commitID}, nil)
+	repo.EXPECT().
+		CommitLog(gomock.Any(), projectID, startID, 10).
+		Return(want, nil)
+
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
+	got, err := uc.GetCommitLog(context.Background(), projectID, "main", &startID, 10)
+	require.NoError(t, err)
+	require.Equal(t, want, got)
+}
+
+func TestBranch_GetCommitLog_StartsAtBranchHead(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := NewMockpermissionUsecase(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+
+	projectID := snow.ID(1)
+	commitID := snow.ID(99)
+
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), projectID, domain.PermissionRead).
+		Return(true)
+	repo.EXPECT().
+		GetBranchByName(gomock.Any(), projectID, "main").
+		Return(&domain.Branch{ID: 2, ProjectID: projectID, Name: "main", CommitID: &commitID}, nil)
+	repo.EXPECT().
+		CommitLog(gomock.Any(), projectID, commitID, 50).
+		Return([]*domain.CommitLogEntry{}, nil)
+
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
+	got, err := uc.GetCommitLog(context.Background(), projectID, "main", nil, 0)
+	require.NoError(t, err)
+	require.Empty(t, got)
+}
+
+func TestBranch_GetCommitLog_DefaultBranch(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := NewMockpermissionUsecase(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+
+	projectID := snow.ID(1)
+	commitID := snow.ID(99)
+
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), projectID, domain.PermissionRead).
+		Return(true)
+	repo.EXPECT().
+		GetDefaultBranch(gomock.Any(), projectID).
+		Return(&domain.Branch{ID: 2, ProjectID: projectID, Name: "main", CommitID: &commitID}, nil)
+	repo.EXPECT().
+		CommitLog(gomock.Any(), projectID, commitID, 10).
+		Return([]*domain.CommitLogEntry{}, nil)
+
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
+	_, err := uc.GetCommitLog(context.Background(), projectID, "", nil, 10)
+	require.NoError(t, err)
+}
+
+func TestBranch_GetCommitLog_EmptyBranch(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := NewMockpermissionUsecase(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+
+	projectID := snow.ID(1)
+
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), projectID, domain.PermissionRead).
+		Return(true)
+	repo.EXPECT().
+		GetBranchByName(gomock.Any(), projectID, "empty").
+		Return(&domain.Branch{ID: 3, ProjectID: projectID, Name: "empty", CommitID: nil}, nil)
+
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
+	got, err := uc.GetCommitLog(context.Background(), projectID, "empty", nil, 10)
+	require.NoError(t, err)
+	require.Empty(t, got)
+}
+
+func TestBranch_GetCommitLog_BranchNotFound(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := NewMockpermissionUsecase(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+
+	projectID := snow.ID(1)
+
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), projectID, domain.PermissionRead).
+		Return(true)
+	repo.EXPECT().
+		GetBranchByName(gomock.Any(), projectID, "nope").
+		Return(nil, domain.NewErrorRecordNotFound())
+
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
+	_, err := uc.GetCommitLog(context.Background(), projectID, "nope", nil, 10)
+	require.Error(t, err)
+
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 404, domErr.Code)
+	require.Equal(t, `branch "nope" not found`, domErr.Message)
+}
+
+func TestBranch_GetCommitLog_RepositoryError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := NewMockpermissionUsecase(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+
+	projectID := snow.ID(1)
+	commitID := snow.ID(99)
+	wantErr := errors.New("db down")
+
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), projectID, domain.PermissionRead).
+		Return(true)
+	repo.EXPECT().
+		GetBranchByName(gomock.Any(), projectID, "main").
+		Return(&domain.Branch{ID: 2, ProjectID: projectID, Name: "main", CommitID: &commitID}, nil)
+	repo.EXPECT().
+		CommitLog(gomock.Any(), projectID, commitID, 10).
+		Return(nil, wantErr)
+
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
+	_, err := uc.GetCommitLog(context.Background(), projectID, "main", nil, 10)
+	require.ErrorIs(t, err, wantErr)
+}

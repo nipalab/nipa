@@ -857,3 +857,197 @@ func TestBranchRepositorySQLite_UpdateCommitIf_CASMismatch(t *testing.T) {
 	require.NotNil(t, branch.CommitID)
 	require.Equal(t, newHeadID, *branch.CommitID)
 }
+
+func TestBranchRepositorySQLite_CommitLog_Chain(t *testing.T) {
+	ctx := context.Background()
+	db, q := newSQLiteTestDB(t)
+	repo := NewBranchRepository(db)
+
+	projectID := seedProject(t, q, 1, "test-project")
+	treeID := newTestNode(t).Generate().Int64()
+	node := newTestNode(t)
+
+	// build a chain: root <- mid <- tip
+	rootID := node.Generate()
+	midID := node.Generate()
+	tipID := node.Generate()
+
+	for _, c := range []struct {
+		id       int64
+		hash     domain.Hash
+		parentID sql.NullInt64
+		msg      string
+	}{
+		{rootID.Int64(), domain.Hash{1}, sql.NullInt64{}, "root commit"},
+		{midID.Int64(), domain.Hash{2}, sql.NullInt64{Int64: rootID.Int64(), Valid: true}, "mid commit"},
+		{tipID.Int64(), domain.Hash{3}, sql.NullInt64{Int64: midID.Int64(), Valid: true}, "tip commit"},
+	} {
+		_, err := db.ExecContext(ctx,
+			`INSERT INTO commits (id, hash, project_id, tree_id, parent_1_id, user_id, message) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			c.id, c.hash.Bytes(), projectID.Int64(), treeID, c.parentID, 1, c.msg,
+		)
+		require.NoError(t, err)
+	}
+
+	got, err := repo.CommitLog(ctx, projectID, tipID, 10)
+	require.NoError(t, err)
+	require.Len(t, got, 3)
+
+	// tip-first ordering
+	require.Equal(t, tipID, got[0].ID)
+	require.Equal(t, domain.Hash{3}, got[0].Hash)
+	require.Equal(t, "tip commit", got[0].Message)
+	require.NotNil(t, got[0].Parent1ID)
+	require.Equal(t, midID, *got[0].Parent1ID)
+	require.Nil(t, got[0].Parent2ID)
+
+	require.Equal(t, midID, got[1].ID)
+	require.Equal(t, "mid commit", got[1].Message)
+
+	require.Equal(t, rootID, got[2].ID)
+	require.Equal(t, "root commit", got[2].Message)
+	require.Nil(t, got[2].Parent1ID)
+
+	// author joined from users table (user id 1 = Super Admin)
+	for _, e := range got {
+		require.Equal(t, projectID, e.ProjectID)
+		require.Equal(t, treeID, e.TreeID)
+		require.Equal(t, int64(1), e.UserID.Int64())
+		require.NotEmpty(t, e.AuthorName)
+		require.NotEmpty(t, e.AuthorEmail)
+		require.False(t, e.CreatedAt.IsZero())
+	}
+}
+
+func TestBranchRepositorySQLite_CommitLog_Limit(t *testing.T) {
+	ctx := context.Background()
+	db, q := newSQLiteTestDB(t)
+	repo := NewBranchRepository(db)
+
+	projectID := seedProject(t, q, 1, "test-project")
+	treeID := newTestNode(t).Generate().Int64()
+	node := newTestNode(t)
+
+	rootID := node.Generate()
+	midID := node.Generate()
+	tipID := node.Generate()
+
+	for _, c := range []struct {
+		id       int64
+		hash     domain.Hash
+		parentID sql.NullInt64
+		msg      string
+	}{
+		{rootID.Int64(), domain.Hash{1}, sql.NullInt64{}, "root"},
+		{midID.Int64(), domain.Hash{2}, sql.NullInt64{Int64: rootID.Int64(), Valid: true}, "mid"},
+		{tipID.Int64(), domain.Hash{3}, sql.NullInt64{Int64: midID.Int64(), Valid: true}, "tip"},
+	} {
+		_, err := db.ExecContext(ctx,
+			`INSERT INTO commits (id, hash, project_id, tree_id, parent_1_id, user_id, message) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			c.id, c.hash.Bytes(), projectID.Int64(), treeID, c.parentID, 1, c.msg,
+		)
+		require.NoError(t, err)
+	}
+
+	got, err := repo.CommitLog(ctx, projectID, tipID, 2)
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+	require.Equal(t, tipID, got[0].ID)
+	require.Equal(t, midID, got[1].ID)
+}
+
+func TestBranchRepositorySQLite_CommitLog_ScopedToProject(t *testing.T) {
+	ctx := context.Background()
+	db, q := newSQLiteTestDB(t)
+	repo := NewBranchRepository(db)
+
+	projectA := seedProject(t, q, 1, "project-a")
+	projectB := seedProject(t, q, 1, "project-b")
+	treeID := newTestNode(t).Generate().Int64()
+	node := newTestNode(t)
+
+	rootID := node.Generate()
+	tipID := node.Generate()
+
+	for _, c := range []struct {
+		projectID snow.ID
+		id        int64
+		hash      domain.Hash
+		parentID  sql.NullInt64
+	}{
+		{projectA, rootID.Int64(), domain.Hash{1}, sql.NullInt64{}},
+		{projectA, tipID.Int64(), domain.Hash{2}, sql.NullInt64{Int64: rootID.Int64(), Valid: true}},
+	} {
+		_, err := db.ExecContext(ctx,
+			`INSERT INTO commits (id, hash, project_id, tree_id, parent_1_id, user_id, message) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			c.id, c.hash.Bytes(), c.projectID.Int64(), treeID, c.parentID, 1, "msg",
+		)
+		require.NoError(t, err)
+	}
+
+	// a commit belonging to projectB must not leak into projectA's log
+	otherID := node.Generate()
+	_, err := db.ExecContext(ctx,
+		`INSERT INTO commits (id, hash, project_id, tree_id, parent_1_id, user_id, message) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		otherID.Int64(), domain.Hash{3}.Bytes(), projectB.Int64(), treeID, sql.NullInt64{}, 1, "other project",
+	)
+	require.NoError(t, err)
+
+	got, err := repo.CommitLog(ctx, projectA, tipID, 10)
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+	for _, e := range got {
+		require.Equal(t, projectA, e.ProjectID)
+	}
+}
+
+func TestBranchRepositorySQLite_CommitLog_StartCommitUnrelatedToBranch(t *testing.T) {
+	ctx := context.Background()
+	db, q := newSQLiteTestDB(t)
+	repo := NewBranchRepository(db)
+
+	projectID := seedProject(t, q, 1, "test-project")
+	treeID := newTestNode(t).Generate().Int64()
+	node := newTestNode(t)
+
+	// two unrelated root commits; starting from the second should only return it
+	firstID := node.Generate()
+	secondID := node.Generate()
+	for _, c := range []struct {
+		id   int64
+		hash domain.Hash
+	}{
+		{firstID.Int64(), domain.Hash{1}},
+		{secondID.Int64(), domain.Hash{2}},
+	} {
+		_, err := db.ExecContext(ctx,
+			`INSERT INTO commits (id, hash, project_id, tree_id, user_id, message) VALUES (?, ?, ?, ?, ?, ?)`,
+			c.id, c.hash.Bytes(), projectID.Int64(), treeID, 1, "msg",
+		)
+		require.NoError(t, err)
+	}
+
+	got, err := repo.CommitLog(ctx, projectID, secondID, 10)
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	require.Equal(t, secondID, got[0].ID)
+}
+
+func TestBranchRepositorySQLite_CommitLog_DatabaseError(t *testing.T) {
+	ctx := context.Background()
+	db, q := newSQLiteTestDB(t)
+	repo := NewBranchRepository(db)
+
+	projectID := seedProject(t, q, 1, "test-project")
+
+	// drop the joined table to force a query error
+	_, err := db.ExecContext(ctx, `DROP TABLE users`)
+	require.NoError(t, err)
+
+	_, err = repo.CommitLog(ctx, projectID, snow.ID(1), 10)
+	require.Error(t, err)
+
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 500, domErr.Code)
+}

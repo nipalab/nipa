@@ -12,6 +12,7 @@ import (
 	"github.com/nipalab/nipa/internal/client/domain"
 	"github.com/nipalab/nipa/internal/client/usecase"
 	serverDomain "github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/snow"
 )
 
 type fakeExecutor struct{}
@@ -81,6 +82,10 @@ func (fakeRepoInterface) CreateBranch(_ context.Context, _, _, name, _, _, _ str
 }
 
 func (fakeRepoInterface) DownloadChunks(_ context.Context, _ []serverDomain.Hash, _ ...func(h serverDomain.Hash, data []byte)) (map[serverDomain.Hash][]byte, error) {
+	return nil, nil
+}
+
+func (fakeRepoInterface) GetCommitLog(_ context.Context, _, _, _ string, _ *snow.ID, _ int) ([]*serverDomain.CommitLogEntry, error) {
 	return nil, nil
 }
 

@@ -29,6 +29,7 @@ type branchRepository interface {
 	GetTreeChildByName(ctx context.Context, parentID int64, name string) (*domain.TreeNode, error)
 	ListTreeChildren(ctx context.Context, parentID int64) ([]*domain.TreeNode, error)
 	ListFilesByTree(ctx context.Context, treeID int64) ([]*domain.File, error)
+	CommitLog(ctx context.Context, projectID snow.ID, startCommitID snow.ID, limit int) ([]*domain.CommitLogEntry, error)
 }
 
 type BranchForkPoint struct {
@@ -250,4 +251,39 @@ func (b *Branch) loadTreeManifest(ctx context.Context, node *domain.TreeNode, re
 		}
 	}
 	return nil
+}
+
+func (b *Branch) GetCommitLog(ctx context.Context, projectID snow.ID, branchName string, startCommitID *snow.ID, limit int) ([]*domain.CommitLogEntry, error) {
+	if !b.permUc.HasProjectAccess(ctx, projectID, domain.PermissionRead) {
+		return nil, domain.NewErrorNoPermission()
+	}
+	if limit <= 0 {
+		limit = 50
+	}
+	var (
+		branch *domain.Branch
+		err    error
+	)
+	if branchName == "" {
+		branch, err = b.branchRepo.GetDefaultBranch(ctx, projectID)
+	} else {
+		branch, err = b.branchRepo.GetBranchByName(ctx, projectID, branchName)
+	}
+	if domain.IsErrorNotFound(err) {
+		if branchName == "" {
+			return nil, domain.NewErrorNotFound("default branch not found")
+		}
+		return nil, domain.NewErrorNotFound(fmt.Sprintf("branch %q not found", branchName))
+	}
+	if err != nil {
+		return nil, err
+	}
+	if branch.CommitID == nil {
+		return []*domain.CommitLogEntry{}, nil
+	}
+	startID := *branch.CommitID
+	if startCommitID != nil {
+		startID = *startCommitID
+	}
+	return b.branchRepo.CommitLog(ctx, projectID, startID, limit)
 }

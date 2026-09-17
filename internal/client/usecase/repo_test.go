@@ -12,6 +12,7 @@ import (
 	"github.com/nipalab/nipa/internal/chunker"
 	"github.com/nipalab/nipa/internal/client/domain"
 	serverDomain "github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/snow"
 )
 
 type stubRepoInterface struct {
@@ -30,6 +31,7 @@ type stubRepoInterface struct {
 	download        map[serverDomain.Hash][]byte
 	downloadErr     error
 	downloaded      []serverDomain.Hash
+	commitLogFn     func(ctx context.Context, org, project, branch string, startCommitID *snow.ID, limit int) ([]*serverDomain.CommitLogEntry, error)
 }
 
 func (s *stubRepoInterface) GetDefaultBranch(_ context.Context, _, _ string) (*serverDomain.Branch, error) {
@@ -65,6 +67,13 @@ func (s *stubRepoInterface) DownloadChunks(_ context.Context, hashes []serverDom
 		}
 	}
 	return out, nil
+}
+
+func (s *stubRepoInterface) GetCommitLog(ctx context.Context, org, project, branch string, startCommitID *snow.ID, limit int) ([]*serverDomain.CommitLogEntry, error) {
+	if s.commitLogFn != nil {
+		return s.commitLogFn(ctx, org, project, branch, startCommitID, limit)
+	}
+	return nil, nil
 }
 
 type stubLocalRepo struct {
@@ -770,4 +779,140 @@ func TestRepo_CreateBranch_SaveConfigFailed(t *testing.T) {
 	_, err := repo.CreateBranch(context.Background(), t.TempDir(), "example.com", "org", "project", "feature")
 	require.ErrorIs(t, err, wantErr)
 	require.Equal(t, "feature", stub.created, "server creation must have happened before the local switch")
+}
+
+func commitLogStub(entries []*serverDomain.CommitLogEntry) *stubRepoInterface {
+	return &stubRepoInterface{
+		commitLogFn: func(_ context.Context, _, _, _ string, _ *snow.ID, _ int) ([]*serverDomain.CommitLogEntry, error) {
+			return entries, nil
+		},
+	}
+}
+
+func TestRepo_Log_LoginFailed(t *testing.T) {
+	wantErr := errors.New("login failed")
+	storage := &stubSecureStorage{loadErr: errors.New("not found")}
+	input := &stubUserInput{username: "apin", password: "secret"}
+	executor := &stubLoginExecutor{usernameErr: wantErr}
+	auth := NewAuth(executor, storage, input)
+	repo := NewRepo(auth, &stubRepoInterface{}, &stubLocalRepo{})
+
+	_, err := repo.Log(context.Background(), "example.com", "org", "project", "main")
+	require.ErrorIs(t, err, wantErr)
+}
+
+func TestRepo_Log_SinglePage(t *testing.T) {
+	token := signTestToken(t, "secret")
+	storage := &stubSecureStorage{loadResult: &domain.LoginResult{AccessToken: token}}
+	auth := NewAuth(nil, storage, nil)
+	entries := []*serverDomain.CommitLogEntry{
+		{Commit: serverDomain.Commit{ID: 1, Message: "one"}},
+		{Commit: serverDomain.Commit{ID: 2, Message: "two"}},
+	}
+	repo := NewRepo(auth, commitLogStub(entries), &stubLocalRepo{})
+
+	got, err := repo.Log(context.Background(), "example.com", "org", "project", "main")
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+	require.Equal(t, snow.ID(1), got[0].ID)
+	require.Equal(t, "two", got[1].Message)
+}
+
+func TestRepo_Log_Paginates(t *testing.T) {
+	token := signTestToken(t, "secret")
+	storage := &stubSecureStorage{loadResult: &domain.LoginResult{AccessToken: token}}
+	auth := NewAuth(nil, storage, nil)
+	var pages [][]*serverDomain.CommitLogEntry
+	for i := 0; i < 3; i++ {
+		page := make([]*serverDomain.CommitLogEntry, 0, commitLogPageSize)
+		for j := 0; j < commitLogPageSize; j++ {
+			page = append(page, &serverDomain.CommitLogEntry{Commit: serverDomain.Commit{ID: snow.ID(i*commitLogPageSize + j + 1)}})
+		}
+		pages = append(pages, page)
+	}
+	stub := &stubRepoInterface{
+		commitLogFn: func(_ context.Context, _, _, _ string, startCommitID *snow.ID, limit int) ([]*serverDomain.CommitLogEntry, error) {
+			require.Equal(t, commitLogPageSize, limit)
+			if startCommitID == nil {
+				return pages[0], nil
+			}
+			switch *startCommitID {
+			case snow.ID(commitLogPageSize):
+				return pages[1], nil
+			case snow.ID(2 * commitLogPageSize):
+				return pages[2], nil
+			case snow.ID(3 * commitLogPageSize):
+				return []*serverDomain.CommitLogEntry{{Commit: serverDomain.Commit{ID: snow.ID(3*commitLogPageSize + 1)}}}, nil
+			}
+			t.Fatalf("unexpected cursor %v", *startCommitID)
+			return nil, nil
+		},
+	}
+	repo := NewRepo(auth, stub, &stubLocalRepo{})
+
+	got, err := repo.Log(context.Background(), "example.com", "org", "project", "main")
+	require.NoError(t, err)
+	require.Len(t, got, 3*commitLogPageSize+1)
+}
+
+func TestRepo_Log_StopsAtShortPage(t *testing.T) {
+	token := signTestToken(t, "secret")
+	storage := &stubSecureStorage{loadResult: &domain.LoginResult{AccessToken: token}}
+	auth := NewAuth(nil, storage, nil)
+	full := make([]*serverDomain.CommitLogEntry, 0, commitLogPageSize)
+	for j := 0; j < commitLogPageSize; j++ {
+		full = append(full, &serverDomain.CommitLogEntry{Commit: serverDomain.Commit{ID: snow.ID(j + 1)}})
+	}
+	calls := 0
+	stub := &stubRepoInterface{
+		commitLogFn: func(_ context.Context, _, _, _ string, _ *snow.ID, _ int) ([]*serverDomain.CommitLogEntry, error) {
+			calls++
+			if calls == 1 {
+				return full, nil
+			}
+			return []*serverDomain.CommitLogEntry{{Commit: serverDomain.Commit{ID: snow.ID(501)}}}, nil
+		},
+	}
+	repo := NewRepo(auth, stub, &stubLocalRepo{})
+
+	got, err := repo.Log(context.Background(), "example.com", "org", "project", "main")
+	require.NoError(t, err)
+	require.Len(t, got, commitLogPageSize+1)
+	require.Equal(t, 2, calls)
+}
+
+func TestRepo_Log_ServerError(t *testing.T) {
+	wantErr := errors.New("log failed")
+	token := signTestToken(t, "secret")
+	storage := &stubSecureStorage{loadResult: &domain.LoginResult{AccessToken: token}}
+	auth := NewAuth(nil, storage, nil)
+	stub := &stubRepoInterface{
+		commitLogFn: func(_ context.Context, _, _, _ string, _ *snow.ID, _ int) ([]*serverDomain.CommitLogEntry, error) {
+			return nil, wantErr
+		},
+	}
+	repo := NewRepo(auth, stub, &stubLocalRepo{})
+
+	_, err := repo.Log(context.Background(), "example.com", "org", "project", "main")
+	require.ErrorIs(t, err, wantErr)
+}
+
+func TestRepo_Log_WithMaxCap(t *testing.T) {
+	token := signTestToken(t, "secret")
+	storage := &stubSecureStorage{loadResult: &domain.LoginResult{AccessToken: token}}
+	auth := NewAuth(nil, storage, nil)
+	page := make([]*serverDomain.CommitLogEntry, 0, commitLogPageSize)
+	for j := 0; j < commitLogPageSize; j++ {
+		page = append(page, &serverDomain.CommitLogEntry{Commit: serverDomain.Commit{ID: snow.ID(j + 1)}})
+	}
+	stub := &stubRepoInterface{
+		commitLogFn: func(_ context.Context, _, _, _ string, _ *snow.ID, _ int) ([]*serverDomain.CommitLogEntry, error) {
+			return page, nil
+		},
+	}
+	repo := NewRepo(auth, stub, &stubLocalRepo{})
+
+	got, err := repo.Log(context.Background(), "example.com", "org", "project", "main", WithCommitLogMax(10))
+	require.NoError(t, err)
+	require.Len(t, got, 10)
 }
