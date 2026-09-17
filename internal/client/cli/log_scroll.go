@@ -163,11 +163,7 @@ func parseEscapeSequence(rest []byte) logKey {
 }
 
 func shortHash(h serverDomain.Hash) string {
-	s := h.String()
-	if len(s) > 12 {
-		return s[:12]
-	}
-	return s
+	return h.String()[:12]
 }
 
 func authorLine(e *serverDomain.CommitLogEntry) string {

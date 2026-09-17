@@ -1,9 +1,13 @@
 package cli
 
 import (
+	"errors"
+	"io"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	serverDomain "github.com/nipalab/nipa/internal/domain"
 )
@@ -183,6 +187,18 @@ func TestViewportKeyNavigation(t *testing.T) {
 	}
 }
 
+func TestViewportPageUpFromTopClampsToZero(t *testing.T) {
+	vp := newLogViewport([]string{"a", "b", "c", "d", "e"}, 3)
+	vp.handleKey(keyPageUp)
+	if vp.top != 0 {
+		t.Errorf("top should be clamped to 0, got %d", vp.top)
+	}
+	vp.handleKey(keyUp)
+	if vp.top != 0 {
+		t.Errorf("top should stay 0 at top, got %d", vp.top)
+	}
+}
+
 func TestViewportQuit(t *testing.T) {
 	vp := newLogViewport([]string{"a", "b"}, 2)
 	if !vp.handleKey(keyQuit) {
@@ -238,7 +254,20 @@ func TestReadKeyFrom(t *testing.T) {
 		{"arrow-down", "\x1b[B", keyDown},
 		{"arrow-home", "\x1b[H", keyHome},
 		{"arrow-end", "\x1b[F", keyEnd},
+		{"pgup-csi", "\x1b[5~", keyPageUp},
+		{"pgdn-csi", "\x1b[6~", keyPageDown},
+		{"home-csi-1", "\x1b[1~", keyHome},
+		{"home-csi-7", "\x1b[7~", keyHome},
+		{"end-csi-4", "\x1b[4~", keyEnd},
+		{"end-csi-8", "\x1b[8~", keyEnd},
+		{"ss3-up", "\x1bOA", keyUp},
+		{"ss3-down", "\x1bOB", keyDown},
+		{"ss3-home", "\x1bOH", keyHome},
+		{"ss3-end", "\x1bOF", keyEnd},
+		{"unknown-seq", "\x1b[3~", keyQuit},
+		{"short-esc", "\x1bX", keyQuit},
 		{"bare-esc", "\x1b", keyQuit},
+		{"unknown-char", "x", keyNone},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -251,6 +280,67 @@ func TestReadKeyFrom(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestReadKeyFrom_EOF(t *testing.T) {
+	_, err := readKeyFrom(strings.NewReader(""))
+	require.ErrorIs(t, err, io.EOF)
+}
+
+func TestReadKeyFrom_ZeroRead(t *testing.T) {
+	_, err := readKeyFrom(&zeroReader{})
+	require.ErrorIs(t, err, io.ErrUnexpectedEOF)
+}
+
+type zeroReader struct{}
+
+func (zeroReader) Read(_ []byte) (int, error) { return 0, nil }
+
+func TestReadKeyFrom_ShortRead(t *testing.T) {
+	// a reader that returns a chunk larger than the internal buffer boundary
+	_, err := readKeyFrom(&shortReader{data: "\x1b[A"})
+	require.NoError(t, err)
+}
+
+type shortReader struct {
+	data string
+	done bool
+}
+
+func (r *shortReader) Read(p []byte) (int, error) {
+	if r.done {
+		return 0, io.EOF
+	}
+	r.done = true
+	return copy(p, r.data), nil
+}
+
+func TestShortHash_Short(t *testing.T) {
+	h := mustHashStr(strings.Repeat("a", 64))
+	require.Equal(t, "aaaaaaaaaaaa", shortHash(h))
+}
+
+func TestAuthorLine_UnknownName(t *testing.T) {
+	e := testEntries()[0]
+	e2 := &serverDomain.CommitLogEntry{AuthorName: "", AuthorEmail: "x@y.z"}
+	got := authorLine(e2)
+	require.Equal(t, "unknown <x@y.z>", got)
+	_ = e
+}
+
+func TestLogLines_SkipsNil(t *testing.T) {
+	lines := logLines([]*serverDomain.CommitLogEntry{nil, testEntries()[0]}, true)
+	require.Len(t, lines, 1)
+}
+
+type errorWriter struct{}
+
+func (errorWriter) Write([]byte) (int, error) { return 0, errors.New("write failed") }
+
+func TestPrintLogPlain_Error(t *testing.T) {
+	err := printLogPlain(errorWriter{}, testEntries(), true)
+	require.Error(t, err)
+	require.Equal(t, "write failed", err.Error())
 }
 
 func TestPrintLogPlain(t *testing.T) {

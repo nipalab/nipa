@@ -38,28 +38,34 @@ func (c *Cli) setupLogCmd() *cobra.Command {
 			if noPager || !isTTY(out) {
 				return printLogPlain(out, entries, oneline)
 			}
-			fd := int(os.Stdin.Fd())
-			state, err := term.MakeRaw(fd)
-			if err != nil {
-				return err
-			}
-			defer term.Restore(fd, state)
-			sigs := make(chan os.Signal, 1)
-			signal.Notify(sigs, syscall.SIGWINCH)
-			defer signal.Stop(sigs)
-			return runLogPager(out, os.Stdin, entries, oneline, func() (int, int) {
-				w, h, err := term.GetSize(fd)
-				if err != nil {
-					return 80, 24
-				}
-				return w, h
-			}, sigs)
+			return c.runLogInteractive(out, os.Stdin, entries, oneline)
 		},
 	}
 	cmd.Flags().IntP("limit", "n", 0, "Limit the number of commits shown (0 = full history)")
 	cmd.Flags().BoolP("oneline", "o", false, "Show one line per commit")
 	cmd.Flags().Bool("no-pager", false, "Print log without the interactive pager")
 	return cmd
+}
+
+// runLogInteractive puts the input terminal in raw mode, watches for window
+// resize signals, and drives the scrollable pager until the user quits.
+func (c *Cli) runLogInteractive(out io.Writer, in *os.File, entries []*serverDomain.CommitLogEntry, oneline bool) error {
+	fd := int(in.Fd())
+	state, err := term.MakeRaw(fd)
+	if err != nil {
+		return err
+	}
+	defer term.Restore(fd, state)
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGWINCH)
+	defer signal.Stop(sigs)
+	return runLogPager(out, in, entries, oneline, func() (int, int) {
+		w, h, err := term.GetSize(fd)
+		if err != nil {
+			return 80, 24
+		}
+		return w, h
+	}, sigs)
 }
 
 func (c *Cli) fetchLog(cmd *cobra.Command, cfg *domain.Config, limit int) ([]*serverDomain.CommitLogEntry, error) {
