@@ -195,6 +195,19 @@ func hunkRanges(ops []Op, context int) [][2]int {
 	return append(ranges, [2]int{base + start, base + len(ops)})
 }
 
+// Stat counts added and removed lines between two file contents.
+func Stat(old, new []byte) (added, removed int) {
+	for _, op := range Lines(splitLines(old), splitLines(new)) {
+		switch op.Kind {
+		case '+':
+			added++
+		case '-':
+			removed++
+		}
+	}
+	return added, removed
+}
+
 // splitLines splits content into lines keeping their trailing newlines. An
 // empty file yields no lines. A trailing newline does not produce an extra
 // empty line.

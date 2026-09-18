@@ -166,3 +166,29 @@ func TestHeaderLine(t *testing.T) {
 	require.Equal(t, "diff --nipa a/f.txt b/f.txt", HeaderLine(c, Options{}))
 	require.Equal(t, "diff --nipa o/f.txt n/f.txt", HeaderLine(c, Options{AHeader: "o/", BHeader: "n/"}))
 }
+
+func TestStat(t *testing.T) {
+	added, removed := Stat([]byte("a\nb\nc\n"), []byte("a\nB\nc\nd\n"))
+	require.Equal(t, 2, added)
+	require.Equal(t, 1, removed)
+
+	added, removed = Stat(nil, nil)
+	require.Equal(t, 0, added)
+	require.Equal(t, 0, removed)
+
+	added, removed = Stat([]byte("same\n"), []byte("same\n"))
+	require.Equal(t, 0, added)
+	require.Equal(t, 0, removed)
+
+	added, removed = Stat(nil, []byte("l1\nl2\n"))
+	require.Equal(t, 2, added)
+	require.Equal(t, 0, removed)
+
+	added, removed = Stat([]byte("l1\nl2\n"), nil)
+	require.Equal(t, 0, added)
+	require.Equal(t, 2, removed)
+
+	added, removed = Stat([]byte("a\nb"), []byte("a\nc"))
+	require.Equal(t, 1, added)
+	require.Equal(t, 1, removed)
+}
