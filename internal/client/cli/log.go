@@ -50,13 +50,6 @@ func (c *Cli) setupLogCmd() *cobra.Command {
 // runLogInteractive puts the input terminal in raw mode, watches for window
 // resize signals, and drives the scrollable pager until the user quits.
 func (c *Cli) runLogInteractive(out io.Writer, in *os.File, entries []*serverDomain.CommitLogEntry, oneline bool) error {
-	return runInteractivePager(out, in, logLines(entries, oneline), logFooter)
-}
-
-// runInteractivePager puts the input terminal in raw mode, watches for
-// window resize signals, and drives the scrollable pager over pre-rendered
-// lines until the user quits.
-func runInteractivePager(out io.Writer, in *os.File, lines []string, footer func(*logViewport) string) error {
 	fd := int(in.Fd())
 	state, err := term.MakeRaw(fd)
 	if err != nil {
@@ -66,7 +59,7 @@ func runInteractivePager(out io.Writer, in *os.File, lines []string, footer func
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGWINCH)
 	defer signal.Stop(sigs)
-	return runViewportPager(out, in, lines, footer, func() (int, int) {
+	return runLogPager(out, in, entries, oneline, func() (int, int) {
 		w, h, err := term.GetSize(fd)
 		if err != nil {
 			return 80, 24
