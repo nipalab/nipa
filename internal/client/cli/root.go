@@ -3,6 +3,8 @@ package cli
 import (
 	"context"
 
+	clientconfig "github.com/nipalab/nipa/internal/client/config"
+	"github.com/nipalab/nipa/internal/client/difftool"
 	"github.com/nipalab/nipa/internal/client/usecase"
 	"github.com/spf13/cobra"
 )
@@ -21,14 +23,18 @@ type connector interface {
 }
 
 type Cli struct {
-	useCase   usecaseContainer
-	connector connector
+	useCase        usecaseContainer
+	connector      connector
+	externalRunner difftool.Runner
+	userConfig     func() (clientconfig.Config, error)
 }
 
 func NewCli(useCase usecaseContainer, connector connector) *Cli {
 	return &Cli{
-		useCase:   useCase,
-		connector: connector,
+		useCase:        useCase,
+		connector:      connector,
+		externalRunner: difftool.ExecRunner{},
+		userConfig:     clientconfig.Load,
 	}
 }
 

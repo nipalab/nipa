@@ -62,6 +62,21 @@ type DiffResult struct {
 	Files []DiffFile
 }
 
+// DiffOption customizes Diff.Run.
+type DiffOption func(*diffConfig)
+
+type diffConfig struct {
+	// includeBinaryContent forces content loading for binary files.
+	// Patch rendering never needs it (binaries render as one line), but
+	// external diff tools do.
+	includeBinaryContent bool
+}
+
+// WithBinaryContent loads binary file contents for external display.
+func WithBinaryContent() DiffOption {
+	return func(c *diffConfig) { c.includeBinaryContent = true }
+}
+
 // Run compares revisions or the working copy:
 //
 //	nipa diff           working tree vs last synced snapshot (offline)
@@ -69,7 +84,11 @@ type DiffResult struct {
 //	nipa diff <a> <b>   revision vs revision
 //
 // A revision is a branch name, a commit ID (base36) or a commit hash (hex).
-func (d *Diff) Run(ctx context.Context, root string, revs []string) (*DiffResult, error) {
+func (d *Diff) Run(ctx context.Context, root string, revs []string, opts ...DiffOption) (*DiffResult, error) {
+	var dopts diffConfig
+	for _, o := range opts {
+		o(&dopts)
+	}
 	if err := d.localRepo.Init(root); err != nil {
 		return nil, err
 	}
@@ -92,9 +111,9 @@ func (d *Diff) Run(ctx context.Context, root string, revs []string) (*DiffResult
 			return nil, err
 		}
 		if len(revs) == 1 {
-			return d.workingVsRevision(ctx, nu, root, cfg, revs[0])
+			return d.workingVsRevision(ctx, nu, root, cfg, revs[0], dopts)
 		}
-		return d.revisionDiff(ctx, nu, revs[0], revs[1])
+		return d.revisionDiff(ctx, nu, revs[0], revs[1], dopts)
 	default:
 		return nil, clientDomain.NewUserError("too many revisions")
 	}
@@ -131,7 +150,7 @@ func (d *Diff) workingDiff(root string, cfg *clientDomain.Config) (*DiffResult, 
 	}, nil
 }
 
-func (d *Diff) workingVsRevision(ctx context.Context, nu *clientDomain.NipaUrl, root string, cfg *clientDomain.Config, rev string) (*DiffResult, error) {
+func (d *Diff) workingVsRevision(ctx context.Context, nu *clientDomain.NipaUrl, root string, cfg *clientDomain.Config, rev string, dopts diffConfig) (*DiffResult, error) {
 	remote, err := d.resolveRevision(ctx, nu.Org, nu.Project, rev)
 	if err != nil {
 		return nil, err
@@ -148,7 +167,7 @@ func (d *Diff) workingVsRevision(ctx context.Context, nu *clientDomain.NipaUrl, 
 	}
 
 	changes := clientDiff.Compare(oldMap, newMap)
-	if err := d.ensureContent(ctx, changes, true, false); err != nil {
+	if err := d.ensureContent(ctx, changes, true, false, dopts.includeBinaryContent); err != nil {
 		return nil, err
 	}
 	oldContents := make(map[string][]byte)
@@ -166,7 +185,7 @@ func (d *Diff) workingVsRevision(ctx context.Context, nu *clientDomain.NipaUrl, 
 	}, nil
 }
 
-func (d *Diff) revisionDiff(ctx context.Context, nu *clientDomain.NipaUrl, revA, revB string) (*DiffResult, error) {
+func (d *Diff) revisionDiff(ctx context.Context, nu *clientDomain.NipaUrl, revA, revB string, dopts diffConfig) (*DiffResult, error) {
 	treeA, err := d.resolveRevision(ctx, nu.Org, nu.Project, revA)
 	if err != nil {
 		return nil, err
@@ -179,7 +198,7 @@ func (d *Diff) revisionDiff(ctx context.Context, nu *clientDomain.NipaUrl, revA,
 		scopeEntries(clientDiff.FromTree(treeA), nu.Path),
 		scopeEntries(clientDiff.FromTree(treeB), nu.Path),
 	)
-	if err := d.ensureContent(ctx, changes, true, true); err != nil {
+	if err := d.ensureContent(ctx, changes, true, true, dopts.includeBinaryContent); err != nil {
 		return nil, err
 	}
 	oldContents := make(map[string][]byte)
@@ -233,11 +252,11 @@ func isNotFoundError(err error) bool {
 	return false
 }
 
-func (d *Diff) ensureContent(ctx context.Context, changes []clientDiff.Change, old, new bool) error {
+func (d *Diff) ensureContent(ctx context.Context, changes []clientDiff.Change, old, new, includeBinary bool) error {
 	set := make(map[serverDomain.Hash]struct{})
 	var estimated int64
 	for _, c := range changes {
-		if c.Old.IsBinary || c.New.IsBinary {
+		if !includeBinary && (c.Old.IsBinary || c.New.IsBinary) {
 			continue
 		}
 		if old && (c.Status == clientDiff.Deleted || c.Status == clientDiff.Modified) {

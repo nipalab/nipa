@@ -6,7 +6,9 @@ import (
 	"os"
 	"strings"
 
+	clientconfig "github.com/nipalab/nipa/internal/client/config"
 	clientDiff "github.com/nipalab/nipa/internal/client/diff"
+	"github.com/nipalab/nipa/internal/client/difftool"
 	"github.com/nipalab/nipa/internal/client/localrepo"
 	"github.com/nipalab/nipa/internal/client/usecase"
 	"github.com/spf13/cobra"
@@ -16,7 +18,7 @@ func (c *Cli) setupDiffCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "diff [rev1] [rev2]",
 		Short:         "Show working-copy and revision changes",
-		Long:          "Show changes as a unified patch. With no arguments, compares the working copy against the last synced tree (tracked modifications and staged new files; untracked files are listed by nipa status). With one revision, compares the revision against the working copy; with two, compares the first revision against the second. A revision is a branch name, a commit ID, or a commit hash. Use -U to change the context size, --stat for a per-file summary, --name-only/--name-status for path lists, or --no-pager to print without the interactive pager.",
+		Long:          "Show changes as a unified patch. With no arguments, compares the working copy against the last synced tree (tracked modifications and staged new files; untracked files are listed by nipa status). With one revision, compares the revision against the working copy; with two, compares the first revision against the second. A revision is a branch name, a commit ID, or a commit hash. Use -U to change the context size, --stat for a per-file summary, --name-only/--name-status for path lists, or --no-pager to print without the interactive pager. Use --tool '<cmd>' or --external to open each changed file in an external app instead ($LOCAL/$REMOTE placeholders, configured via NIPA_DIFF_TOOL or diffTool in the user config).",
 		Args:          cobra.MaximumNArgs(2),
 		SilenceErrors: true,
 		SilenceUsage:  true,
@@ -31,6 +33,8 @@ func (c *Cli) setupDiffCmd() *cobra.Command {
 			stat, _ := cmd.Flags().GetBool("stat")
 			nameOnly, _ := cmd.Flags().GetBool("name-only")
 			nameStatus, _ := cmd.Flags().GetBool("name-status")
+			toolFlag, _ := cmd.Flags().GetString("tool")
+			external, _ := cmd.Flags().GetBool("external")
 			modes := 0
 			for _, on := range []bool{stat, nameOnly, nameStatus} {
 				if on {
@@ -39,6 +43,15 @@ func (c *Cli) setupDiffCmd() *cobra.Command {
 			}
 			if modes > 1 {
 				return fmt.Errorf("only one of --stat, --name-only, --name-status may be given")
+			}
+			if toolFlag != "" && external {
+				return fmt.Errorf("only one of --tool, --external may be given")
+			}
+			if (toolFlag != "" || external) && modes > 0 {
+				return fmt.Errorf("--tool and --external cannot be combined with --stat, --name-only, --name-status")
+			}
+			if toolFlag != "" || external {
+				return c.runExternalDiff(cmd, root, args, toolFlag)
 			}
 			res, err := c.useCase.Diff().Run(cmd.Context(), root, args)
 			if err != nil {
@@ -81,7 +94,57 @@ func (c *Cli) setupDiffCmd() *cobra.Command {
 	cmd.Flags().Bool("stat", false, "Show a per-file summary instead of patches")
 	cmd.Flags().Bool("name-only", false, "Show only changed file paths")
 	cmd.Flags().Bool("name-status", false, "Show changed file paths with A/M/D status")
+	cmd.Flags().String("tool", "", "Show each changed file in an external app, e.g. --tool 'code --diff $LOCAL $REMOTE'")
+	cmd.Flags().Bool("external", false, "Show each changed file in the configured external diff tool")
 	return cmd
+}
+
+func (c *Cli) runExternalDiff(cmd *cobra.Command, root string, args []string, toolFlag string) error {
+	tmplStr, err := clientconfig.ResolveDiffTool(toolFlag)
+	if err != nil {
+		return err
+	}
+	if tmplStr == "" {
+		path, _ := clientconfig.Path()
+		return fmt.Errorf("no external diff tool configured (use --tool, set %s, or set diffTool in %s)", clientconfig.EnvDiffTool, path)
+	}
+	tmpl, err := difftool.Parse(tmplStr)
+	if err != nil {
+		return err
+	}
+	res, err := c.useCase.Diff().Run(cmd.Context(), root, args, usecase.WithBinaryContent())
+	if err != nil {
+		return err
+	}
+	files := make([]difftool.File, 0, len(res.Files))
+	for _, f := range res.Files {
+		df := difftool.File{Path: f.Change.Path, Status: f.Change.Status.String()}
+		switch f.Change.Status {
+		case clientDiff.Added:
+			df.New = f.New
+			df.Unavailable = f.NewUnavailable
+		case clientDiff.Deleted:
+			df.Old = f.Old
+			df.Unavailable = f.OldUnavailable
+		default:
+			df.Old, df.New = f.Old, f.New
+			df.Unavailable = f.OldUnavailable || f.NewUnavailable
+		}
+		files = append(files, df)
+	}
+	tree, pairs, skipped, err := difftool.Materialize(files)
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(tree.Dir)
+	errW := cmd.ErrOrStderr()
+	for _, s := range skipped {
+		fmt.Fprintf(errW, "warning: skipping '%s': content not available locally\n", s)
+	}
+	if len(pairs) == 0 {
+		return nil
+	}
+	return difftool.Run(cmd.Context(), c.externalRunner, tmpl, tree, pairs, errW)
 }
 
 func diffPatchLines(files []usecase.DiffFile, unified int) []string {

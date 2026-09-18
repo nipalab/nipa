@@ -3,6 +3,7 @@
 package cli
 
 import (
+	"io"
 	"os"
 	"strings"
 	"testing"
@@ -102,4 +103,30 @@ func TestSetupDiffCmd_NoColorEnv(t *testing.T) {
 	out := drainPty(t, slave)
 	require.Contains(t, out, "+new")
 	require.NotContains(t, out, "\x1b[")
+}
+
+func TestSetupDiffCmd_ToolBypassesPager(t *testing.T) {
+	// With stdout on a terminal, --tool must not enter the interactive
+	// pager: entering it would fail in MakeRaw on non-terminal stdin.
+	master, slave := openPty(t)
+	defer master.Close()
+	defer slave.Close()
+
+	root := setupRepoWithTree(t, "main", diffTree(diffFile("a.txt", "old\n")))
+	writeFile(t, root, "a.txt", "new\n")
+	storeContent(t, root, "old\n")
+	runner := &stubRunner{}
+	cli := newDiffToolCli(runner)
+
+	oldWD, err := os.Getwd()
+	require.NoError(t, err)
+	defer func() { require.NoError(t, os.Chdir(oldWD)) }()
+	require.NoError(t, os.Chdir(root))
+
+	cmd := cli.setupDiffCmd()
+	cmd.SetOut(master)
+	cmd.SetErr(io.Discard)
+	cmd.SetArgs([]string{"--tool", "tool $LOCAL"})
+	require.NoError(t, cmd.Execute())
+	require.Len(t, runner.calls, 1)
 }

@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -377,4 +379,273 @@ func TestPlural(t *testing.T) {
 	require.Equal(t, "file changed", plural(1, "file changed", "files changed"))
 	require.Equal(t, "files changed", plural(2, "file changed", "files changed"))
 	require.Equal(t, "insertions(+)", plural(0, "insertion(+)", "insertions(+)"))
+}
+
+type stubRunner struct {
+	calls []runnerCall
+	errs  []error
+}
+
+type runnerCall struct {
+	argv []string
+	env  []string
+}
+
+func (s *stubRunner) Run(_ context.Context, argv, env []string) error {
+	s.calls = append(s.calls, runnerCall{argv: argv, env: env})
+	if len(s.errs) > 0 {
+		err := s.errs[0]
+		s.errs = s.errs[1:]
+		return err
+	}
+	return nil
+}
+
+func newDiffToolCli(runner *stubRunner) *Cli {
+	cli := newDiffCli()
+	cli.externalRunner = runner
+	return cli
+}
+
+// isolateToolConfig detaches tool resolution from the ambient machine:
+// no env override and a user config dir guaranteed to be empty.
+func isolateToolConfig(t *testing.T) {
+	t.Helper()
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	t.Setenv("HOME", dir)
+	t.Setenv("APPDATA", dir)
+	t.Setenv("NIPA_DIFF_TOOL", "")
+}
+
+func TestSetupDiffCmd_Tool(t *testing.T) {
+	isolateToolConfig(t)
+	root := setupRepoWithTree(t, "main", diffTree(diffFile("a.txt", "old\n")))
+	writeFile(t, root, "a.txt", "new\n")
+	storeContent(t, root, "old\n")
+	runner := &stubRunner{}
+	cli := newDiffToolCli(runner)
+
+	out, err := runCmdInDir(t, root, cli.setupDiffCmd(), "--tool", "mytool --left $LOCAL --right $REMOTE")
+	require.NoError(t, err)
+	require.Len(t, runner.calls, 1)
+	call := runner.calls[0]
+	require.Equal(t, "mytool", call.argv[0])
+	require.True(t, strings.HasSuffix(call.argv[2], filepath.Join("old", "a.txt")), call.argv)
+	require.True(t, strings.HasSuffix(call.argv[4], filepath.Join("new", "a.txt")), call.argv)
+	require.Contains(t, call.env, "NIPA_PATH=a.txt")
+	require.Contains(t, call.env, "NIPA_STATUS=M")
+	require.Contains(t, out, "Viewing (1/1): 'a.txt'\n")
+	require.NotContains(t, out, "diff --nipa")
+
+	_, statErr := os.Stat(call.argv[2])
+	require.True(t, os.IsNotExist(statErr), "temp materialization must be cleaned up")
+}
+
+func TestSetupDiffCmd_ToolOverridesEnv(t *testing.T) {
+	isolateToolConfig(t)
+	t.Setenv("NIPA_DIFF_TOOL", "envtool $LOCAL")
+	root := setupRepoWithTree(t, "main", diffTree(diffFile("a.txt", "old\n")))
+	writeFile(t, root, "a.txt", "new\n")
+	storeContent(t, root, "old\n")
+	runner := &stubRunner{}
+	cli := newDiffToolCli(runner)
+
+	_, err := runCmdInDir(t, root, cli.setupDiffCmd(), "--tool", "flagtool $LOCAL")
+	require.NoError(t, err)
+	require.Len(t, runner.calls, 1)
+	require.Equal(t, "flagtool", runner.calls[0].argv[0])
+}
+
+func TestSetupDiffCmd_ExternalFromEnv(t *testing.T) {
+	isolateToolConfig(t)
+	t.Setenv("NIPA_DIFF_TOOL", "envtool $LOCAL $REMOTE")
+	root := setupRepoWithTree(t, "main", diffTree(diffFile("a.txt", "old\n")))
+	writeFile(t, root, "a.txt", "new\n")
+	storeContent(t, root, "old\n")
+	runner := &stubRunner{}
+	cli := newDiffToolCli(runner)
+
+	_, err := runCmdInDir(t, root, cli.setupDiffCmd(), "--external")
+	require.NoError(t, err)
+	require.Len(t, runner.calls, 1)
+	require.Equal(t, "envtool", runner.calls[0].argv[0])
+}
+
+func TestSetupDiffCmd_ExternalFromConfig(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	t.Setenv("HOME", dir)
+	t.Setenv("APPDATA", dir)
+	t.Setenv("NIPA_DIFF_TOOL", "")
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "nipa"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "nipa", "config.json"), []byte(`{"diffTool": "cfgtool $LOCAL"}`), 0o644))
+
+	root := setupRepoWithTree(t, "main", diffTree(diffFile("a.txt", "old\n")))
+	writeFile(t, root, "a.txt", "new\n")
+	storeContent(t, root, "old\n")
+	runner := &stubRunner{}
+	cli := newDiffToolCli(runner)
+
+	_, err := runCmdInDir(t, root, cli.setupDiffCmd(), "--external")
+	require.NoError(t, err)
+	require.Len(t, runner.calls, 1)
+	require.Equal(t, "cfgtool", runner.calls[0].argv[0])
+}
+
+func TestSetupDiffCmd_ExternalNotConfigured(t *testing.T) {
+	isolateToolConfig(t)
+	root := setupRepo(t, "main")
+	runner := &stubRunner{}
+	cli := newDiffToolCli(runner)
+
+	_, err := runCmdInDir(t, root, cli.setupDiffCmd(), "--external")
+	require.ErrorContains(t, err, "no external diff tool configured")
+	require.ErrorContains(t, err, "NIPA_DIFF_TOOL")
+	require.Empty(t, runner.calls)
+}
+
+func TestSetupDiffCmd_ToolExitCodeTolerated(t *testing.T) {
+	isolateToolConfig(t)
+	root := setupRepoWithTree(t, "main", diffTree(diffFile("a.txt", "old\n")))
+	writeFile(t, root, "a.txt", "new\n")
+	storeContent(t, root, "old\n")
+	runner := &stubRunner{errs: []error{&exec.ExitError{}}}
+	cli := newDiffToolCli(runner)
+
+	_, err := runCmdInDir(t, root, cli.setupDiffCmd(), "--tool", "tool $LOCAL")
+	require.NoError(t, err, "a tool exit status means differences shown, not failure")
+}
+
+func TestSetupDiffCmd_ToolLaunchFailure(t *testing.T) {
+	isolateToolConfig(t)
+	root := setupRepoWithTree(t, "main", diffTree(
+		diffFile("a.txt", "old1\n"),
+		diffFile("b.txt", "old2\n"),
+	))
+	writeFile(t, root, "a.txt", "new1\n")
+	writeFile(t, root, "b.txt", "new2\n")
+	storeContent(t, root, "old1\n")
+	storeContent(t, root, "old2\n")
+	runner := &stubRunner{errs: []error{errors.New("boom")}}
+	cli := newDiffToolCli(runner)
+
+	_, err := runCmdInDir(t, root, cli.setupDiffCmd(), "--tool", "tool $LOCAL")
+	require.ErrorContains(t, err, "boom")
+	require.Len(t, runner.calls, 1, "later files must not run after a launch failure")
+}
+
+func TestSetupDiffCmd_ToolEmptyDiff(t *testing.T) {
+	isolateToolConfig(t)
+	root := setupRepoWithTree(t, "main", diffTree(diffFile("a.txt", "same\n")))
+	writeFile(t, root, "a.txt", "same\n")
+	runner := &stubRunner{}
+	cli := newDiffToolCli(runner)
+
+	out, err := runCmdInDir(t, root, cli.setupDiffCmd(), "--tool", "tool $LOCAL")
+	require.NoError(t, err)
+	require.Empty(t, out)
+	require.Empty(t, runner.calls)
+}
+
+func TestSetupDiffCmd_ToolSkipsUnavailable(t *testing.T) {
+	isolateToolConfig(t)
+	root := setupRepoWithTree(t, "main", diffTree(diffFile("gone.txt", "bye\n")))
+	runner := &stubRunner{}
+	cli := newDiffToolCli(runner)
+
+	out, err := runCmdInDir(t, root, cli.setupDiffCmd(), "--tool", "tool $LOCAL")
+	require.NoError(t, err)
+	require.Empty(t, runner.calls)
+	require.Contains(t, out, "warning: skipping 'gone.txt'")
+}
+
+func TestSetupDiffCmd_ToolInvalidTemplate(t *testing.T) {
+	isolateToolConfig(t)
+	root := setupRepo(t, "main")
+	runner := &stubRunner{}
+	cli := newDiffToolCli(runner)
+
+	_, err := runCmdInDir(t, root, cli.setupDiffCmd(), "--tool", "'oops")
+	require.ErrorContains(t, err, "unterminated")
+	require.Empty(t, runner.calls)
+}
+
+func TestSetupDiffCmd_ToolConflicts(t *testing.T) {
+	isolateToolConfig(t)
+	root := setupRepo(t, "main")
+	cli := newDiffToolCli(&stubRunner{})
+
+	_, err := runCmdInDir(t, root, cli.setupDiffCmd(), "--tool", "tool", "--external")
+	require.ErrorContains(t, err, "only one of --tool, --external may be given")
+
+	_, err = runCmdInDir(t, root, cli.setupDiffCmd(), "--tool", "tool", "--stat")
+	require.ErrorContains(t, err, "cannot be combined")
+
+	_, err = runCmdInDir(t, root, cli.setupDiffCmd(), "--external", "--name-only")
+	require.ErrorContains(t, err, "cannot be combined")
+}
+
+func TestSetupDiffCmd_ToolAddedFile(t *testing.T) {
+	isolateToolConfig(t)
+	root := setupRepo(t, "main")
+	writeFile(t, root, "new.txt", "fresh\n")
+	stagePath(t, root, "new.txt")
+	runner := &stubRunner{}
+	cli := newDiffToolCli(runner)
+
+	_, err := runCmdInDir(t, root, cli.setupDiffCmd(), "--tool", "tool $LOCAL $REMOTE")
+	require.NoError(t, err)
+	require.Len(t, runner.calls, 1)
+	// added files get an empty old side under old/, new content under new/
+	require.True(t, strings.HasSuffix(runner.calls[0].argv[1], filepath.Join("old", "new.txt")), runner.calls[0].argv)
+	require.True(t, strings.HasSuffix(runner.calls[0].argv[2], filepath.Join("new", "new.txt")), runner.calls[0].argv)
+	_, statErr := os.Stat(runner.calls[0].argv[1])
+	require.True(t, os.IsNotExist(statErr), "temp materialization must be cleaned up")
+}
+
+func TestSetupDiffCmd_ToolDiffError(t *testing.T) {
+	isolateToolConfig(t)
+	root := setupRepo(t, "main")
+	auth := usecase.NewAuth(fakeExecutor{}, &fakeStorage{}, &fakeInput{})
+	diff := usecase.NewDiff(auth, stubDiffClient{manifestErr: errors.New("server down")}, localrepo.NewLocalRepo())
+	cli := NewCli(&fakeUsecaseContainer{diff: diff}, &fakeConnector{})
+	cli.externalRunner = &stubRunner{}
+
+	_, err := runCmdInDir(t, root, cli.setupDiffCmd(), "--tool", "tool $LOCAL", "main")
+	require.ErrorContains(t, err, "server down")
+}
+
+func TestSetupDiffCmd_ToolConfigError(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	t.Setenv("HOME", dir)
+	t.Setenv("APPDATA", dir)
+	t.Setenv("NIPA_DIFF_TOOL", "")
+	// a directory at the config path fails the read
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "nipa", "config.json"), 0o755))
+
+	root := setupRepo(t, "main")
+	runner := &stubRunner{}
+	cli := newDiffToolCli(runner)
+
+	_, err := runCmdInDir(t, root, cli.setupDiffCmd(), "--external")
+	require.ErrorContains(t, err, "read user config")
+	require.Empty(t, runner.calls)
+}
+
+func TestSetupDiffCmd_ToolMaterializeError(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TMPDIR", filepath.Join(tmp, "does-not-exist"))
+	isolateToolConfig(t)
+	t.Setenv("TMPDIR", filepath.Join(tmp, "does-not-exist"))
+	root := setupRepoWithTree(t, "main", diffTree(diffFile("a.txt", "old\n")))
+	writeFile(t, root, "a.txt", "new\n")
+	storeContent(t, root, "old\n")
+	runner := &stubRunner{}
+	cli := newDiffToolCli(runner)
+
+	_, err := runCmdInDir(t, root, cli.setupDiffCmd(), "--tool", "tool $LOCAL")
+	require.Error(t, err)
+	require.Empty(t, runner.calls)
 }

@@ -722,3 +722,46 @@ func TestScopeEntries(t *testing.T) {
 	require.Empty(t, scopeEntries(m, "missing"))
 	require.Empty(t, scopeEntries(nil, "sub"))
 }
+
+func TestDiff_Run_WithBinaryContent(t *testing.T) {
+	newBinaryTrees := func(t *testing.T) map[snow.ID]*serverDomain.TreeNode {
+		t.Helper()
+		mk := func(content string) *serverDomain.TreeNode {
+			tree := diffTreeNode(t, map[string]string{"img.png": content})
+			tree.FileChildren[0].IsBinary = true
+			return tree
+		}
+		return map[snow.ID]*serverDomain.TreeNode{snow.ID(11): mk("PNG-old"), snow.ID(22): mk("PNG-new")}
+	}
+	run := func(t *testing.T, opts ...DiffOption) (*DiffResult, *stubDiffClient) {
+		t.Helper()
+		stub, root := diffTestRepo(t, nil, nil)
+		stub.missingChunks = chunkHashes(t, "PNG-old", "PNG-new")
+		trees := newBinaryTrees(t)
+		client := &stubDiffClient{
+			manifestErr:  &domain.Error{Code: 404, Message: "not a branch"},
+			commitFn:     func(id *snow.ID, _ *serverDomain.Hash) (*serverDomain.TreeNode, error) { return trees[*id], nil },
+			downloadData: chunkDataMap(t, "PNG-old", "PNG-new"),
+		}
+		res, err := newTestDiff(t, stub, client).Run(context.Background(), root, []string{snow.ID(11).Base36(), snow.ID(22).Base36()}, opts...)
+		require.NoError(t, err)
+		return res, client
+	}
+
+	t.Run("skipped by default", func(t *testing.T) {
+		res, client := run(t)
+		require.Len(t, res.Files, 1)
+		require.Nil(t, res.Files[0].Old)
+		require.Nil(t, res.Files[0].New)
+		require.Empty(t, client.downloadHashes)
+	})
+
+	t.Run("loaded with option", func(t *testing.T) {
+		res, client := run(t, WithBinaryContent())
+		require.Len(t, res.Files, 1)
+		require.Equal(t, []byte("PNG-old"), res.Files[0].Old)
+		require.Equal(t, []byte("PNG-new"), res.Files[0].New)
+		require.False(t, res.Files[0].OldUnavailable)
+		require.Len(t, client.downloadHashes, 2)
+	})
+}
