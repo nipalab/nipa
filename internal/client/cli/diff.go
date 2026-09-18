@@ -11,9 +11,9 @@ import (
 
 func (c *Cli) setupDiffCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:           "diff",
-		Short:         "Show working-copy changes",
-		Long:          "Show changes between the working copy and the last synced tree. Tracked modifications and staged new files are shown as a unified patch; use -U to change the context size, or --no-pager to print without the interactive pager. Untracked files are listed by nipa status.",
+		Use:           "diff [rev1] [rev2]",
+		Short:         "Show working-copy and revision changes",
+		Long:          "Show changes as a unified patch. With no arguments, compares the working copy against the last synced tree (tracked modifications and staged new files; untracked files are listed by nipa status). With one revision, compares the revision against the working copy; with two, compares the first revision against the second. A revision is a branch name, a commit ID, or a commit hash. Use -U to change the context size, or --no-pager to print without the interactive pager.",
 		Args:          cobra.MaximumNArgs(2),
 		SilenceErrors: true,
 		SilenceUsage:  true,

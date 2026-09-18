@@ -263,6 +263,27 @@ func (c *Client) GetTreeNodeManifest(ctx context.Context, org, project, branch, 
 	return toServerTreeNode(res.GetRootTree()), nil
 }
 
+func (c *Client) GetTreeNodeManifestByCommit(ctx context.Context, org, project string, commitID *snow.ID, commitHash *serverDomain.Hash) (*serverDomain.TreeNode, error) {
+	client, err := c.transport.NipaServiceClient()
+	if err != nil {
+		return nil, err
+	}
+	req := &pb.GetCommitTreeRequest{
+		Context: &pb.ProjectContext{Org: org, Project: project},
+	}
+	if commitID != nil {
+		req.CommitId = commitID.Base36()
+	}
+	if commitHash != nil {
+		req.CommitHash = commitHash.String()
+	}
+	res, err := client.GetCommitTree(ctx, req)
+	if err != nil {
+		return nil, toDomainError(err)
+	}
+	return toServerTreeNode(res.GetRootTree()), nil
+}
+
 func (c *Client) Push(ctx context.Context, org, project, branch, baseTreeHash, message string, files []*serverDomain.PushFile, removed []string, parent2CommitHash string) (*serverDomain.PushResult, error) {
 	client, err := c.transport.NipaServiceClient()
 	if err != nil {

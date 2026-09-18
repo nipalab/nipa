@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -9,13 +10,43 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/nipalab/nipa/internal/chunker"
+	"github.com/nipalab/nipa/internal/client/domain"
 	"github.com/nipalab/nipa/internal/client/localrepo"
 	"github.com/nipalab/nipa/internal/client/usecase"
 	serverDomain "github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/snow"
 )
 
 func newDiffCli() *Cli {
-	return NewCli(&fakeUsecaseContainer{diff: usecase.NewDiff(localrepo.NewLocalRepo())}, &fakeConnector{})
+	return newDiffCliWithManifests(nil)
+}
+
+func newDiffCliWithManifests(manifests map[string]*serverDomain.TreeNode) *Cli {
+	auth := usecase.NewAuth(fakeExecutor{}, &fakeStorage{}, &fakeInput{})
+	diff := usecase.NewDiff(auth, stubDiffClient{manifests: manifests}, localrepo.NewLocalRepo())
+	return NewCli(&fakeUsecaseContainer{diff: diff}, &fakeConnector{})
+}
+
+type stubDiffClient struct {
+	fakeRepoInterface
+	manifests   map[string]*serverDomain.TreeNode
+	manifestErr error
+}
+
+func (stubDiffClient) Connect(_ context.Context, _ string) error { return nil }
+
+func (s stubDiffClient) GetTreeNodeManifest(_ context.Context, _, _, branch, _ string) (*serverDomain.TreeNode, error) {
+	if s.manifestErr != nil {
+		return nil, s.manifestErr
+	}
+	return s.manifests[branch], nil
+}
+
+func (s stubDiffClient) GetTreeNodeManifestByCommit(_ context.Context, _, _ string, _ *snow.ID, _ *serverDomain.Hash) (*serverDomain.TreeNode, error) {
+	if s.manifestErr != nil {
+		return nil, s.manifestErr
+	}
+	return s.manifests["commit"], nil
 }
 
 func storeContent(t *testing.T, root, content string) {
@@ -134,13 +165,42 @@ func TestSetupDiffCmd_UnifiedFlag(t *testing.T) {
 	require.Equal(t, "diff --nipa a/f.txt b/f.txt\n--- a/f.txt\n+++ b/f.txt\n@@ -2,2 +2,2 @@\n l2\n-l3\n+changed\n", out)
 }
 
-func TestSetupDiffCmd_RevisionsRejected(t *testing.T) {
+func TestSetupDiffCmd_RevisionBranch(t *testing.T) {
 	root := setupRepo(t, "main")
-	cli := newDiffCli()
+	writeFile(t, root, "a.txt", "new\n")
+	storeContent(t, root, "old\n")
+	cli := newDiffCliWithManifests(map[string]*serverDomain.TreeNode{
+		"main": diffTree(diffFile("a.txt", "old\n")),
+	})
 
-	_, err := runCmdInDir(t, root, cli.setupDiffCmd(), "main")
+	out, err := runCmdInDir(t, root, cli.setupDiffCmd(), "main")
+	require.NoError(t, err)
+	require.Equal(t, "diff --nipa a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1,1 +1,1 @@\n-old\n+new\n", out)
+}
+
+func TestSetupDiffCmd_TwoRevisions(t *testing.T) {
+	root := setupRepo(t, "main")
+	storeContent(t, root, "v1\n")
+	storeContent(t, root, "v2\n")
+	cli := newDiffCliWithManifests(map[string]*serverDomain.TreeNode{
+		"v1": diffTree(diffFile("a.txt", "v1\n")),
+		"v2": diffTree(diffFile("a.txt", "v2\n")),
+	})
+
+	out, err := runCmdInDir(t, root, cli.setupDiffCmd(), "v1", "v2")
+	require.NoError(t, err)
+	require.Equal(t, "diff --nipa a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1,1 +1,1 @@\n-v1\n+v2\n", out)
+}
+
+func TestSetupDiffCmd_RevisionNotFound(t *testing.T) {
+	root := setupRepo(t, "main")
+	auth := usecase.NewAuth(fakeExecutor{}, &fakeStorage{}, &fakeInput{})
+	diff := usecase.NewDiff(auth, stubDiffClient{manifestErr: &domain.Error{Code: 404, Message: "nope"}}, localrepo.NewLocalRepo())
+	cli := NewCli(&fakeUsecaseContainer{diff: diff}, &fakeConnector{})
+
+	_, err := runCmdInDir(t, root, cli.setupDiffCmd(), "nope!!!")
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "not supported yet")
+	require.Contains(t, err.Error(), `revision "nope!!!" not found`)
 }
 
 func TestSetupDiffCmd_TooManyArgs(t *testing.T) {
