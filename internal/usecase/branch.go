@@ -38,18 +38,6 @@ type BranchForkPoint struct {
 	CommitHash *domain.Hash
 }
 
-// CommitRef identifies a commit by snow ID or content hash.
-type CommitRef struct {
-	CommitID   *snow.ID
-	CommitHash *domain.Hash
-}
-
-// CommitTree is the recursive tree manifest of one commit.
-type CommitTree struct {
-	CommitID snow.ID
-	Tree     *domain.TreeNode
-}
-
 type Branch struct {
 	permUc     permissionUsecase
 	branchRepo branchRepository
@@ -125,10 +113,31 @@ func (b *Branch) CreateBranch(ctx context.Context, projectID snow.ID, name strin
 }
 
 func (b *Branch) resolveForkPoint(ctx context.Context, projectID snow.ID, fork BranchForkPoint) (*snow.ID, error) {
-	if fork.CommitID != nil || fork.CommitHash != nil {
-		commit, err := b.resolveCommit(ctx, projectID, CommitRef{CommitID: fork.CommitID, CommitHash: fork.CommitHash})
+	if fork.CommitID != nil {
+		commit, err := b.branchRepo.GetCommit(ctx, *fork.CommitID)
 		if err != nil {
+			if domain.IsErrorNotFound(err) {
+				return nil, domain.NewErrorNotFound(fmt.Sprintf("commit %s not found", fork.CommitID.Base36()))
+			}
 			return nil, err
+		}
+		if commit.ProjectID != projectID {
+			return nil, domain.NewErrorNotFound(fmt.Sprintf("commit %s not found", fork.CommitID.Base36()))
+		}
+		id := commit.ID
+		return &id, nil
+	}
+
+	if fork.CommitHash != nil {
+		commit, err := b.branchRepo.GetCommitByHash(ctx, *fork.CommitHash)
+		if err != nil {
+			if domain.IsErrorNotFound(err) {
+				return nil, domain.NewErrorNotFound(fmt.Sprintf("commit %s not found", fork.CommitHash.String()))
+			}
+			return nil, err
+		}
+		if commit.ProjectID != projectID {
+			return nil, domain.NewErrorNotFound(fmt.Sprintf("commit %s not found", fork.CommitHash.String()))
 		}
 		id := commit.ID
 		return &id, nil
@@ -242,54 +251,6 @@ func (b *Branch) loadTreeManifest(ctx context.Context, node *domain.TreeNode, re
 		}
 	}
 	return nil
-}
-
-func (b *Branch) GetCommitTree(ctx context.Context, projectID snow.ID, ref CommitRef) (*CommitTree, error) {
-	if !b.permUc.HasProjectAccess(ctx, projectID, domain.PermissionRead) {
-		return nil, domain.NewErrorNoPermission()
-	}
-	commit, err := b.resolveCommit(ctx, projectID, ref)
-	if err != nil {
-		return nil, err
-	}
-	root, err := b.branchRepo.GetTreeNode(ctx, commit.TreeID)
-	if err != nil {
-		return nil, err
-	}
-	if err := b.loadTreeManifest(ctx, root, true); err != nil {
-		return nil, err
-	}
-	return &CommitTree{CommitID: commit.ID, Tree: root}, nil
-}
-
-func (b *Branch) resolveCommit(ctx context.Context, projectID snow.ID, ref CommitRef) (*domain.Commit, error) {
-	if ref.CommitID != nil {
-		commit, err := b.branchRepo.GetCommit(ctx, *ref.CommitID)
-		if err != nil {
-			if domain.IsErrorNotFound(err) {
-				return nil, domain.NewErrorNotFound(fmt.Sprintf("commit %s not found", ref.CommitID.Base36()))
-			}
-			return nil, err
-		}
-		if commit.ProjectID != projectID {
-			return nil, domain.NewErrorNotFound(fmt.Sprintf("commit %s not found", ref.CommitID.Base36()))
-		}
-		return commit, nil
-	}
-	if ref.CommitHash != nil {
-		commit, err := b.branchRepo.GetCommitByHash(ctx, *ref.CommitHash)
-		if err != nil {
-			if domain.IsErrorNotFound(err) {
-				return nil, domain.NewErrorNotFound(fmt.Sprintf("commit %s not found", ref.CommitHash.String()))
-			}
-			return nil, err
-		}
-		if commit.ProjectID != projectID {
-			return nil, domain.NewErrorNotFound(fmt.Sprintf("commit %s not found", ref.CommitHash.String()))
-		}
-		return commit, nil
-	}
-	return nil, domain.NewErrorUser("commit id or commit hash is required")
 }
 
 func (b *Branch) GetCommitLog(ctx context.Context, projectID snow.ID, branchName string, startCommitID *snow.ID, limit int) ([]*domain.CommitLogEntry, error) {

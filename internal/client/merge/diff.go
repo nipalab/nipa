@@ -3,9 +3,14 @@ package merge
 import (
 	"sort"
 	"strings"
-
-	clientDiff "github.com/nipalab/nipa/internal/client/diff"
 )
+
+// DiffOp is one edit operation in a Myers edit script between two line slices.
+type DiffOp struct {
+	op         byte // '=', '-', '+'
+	line       string
+	aIdx, bIdx int
+}
 
 const (
 	mergeStart = "<<<<<<< ours\n"
@@ -211,20 +216,20 @@ func ensureTrailingNL(lines []string) []string {
 // the side, in base order. Pure insertions produce zero-width ranges
 // (aStart == aEnd) at the insertion point.
 func changeRanges(base, side []string, which byte) []srange {
-	ops := clientDiff.Lines(base, side)
+	ops := diffLines(base, side)
 	var out []srange
 	aPos, bPos := 0, 0
 	i := 0
 	for i < len(ops) {
-		if ops[i].Kind == '=' {
-			aPos = ops[i].A + 1
-			bPos = ops[i].B + 1
+		if ops[i].op == '=' {
+			aPos = ops[i].aIdx + 1
+			bPos = ops[i].bIdx + 1
 			i++
 			continue
 		}
 		aStart, bStart := aPos, bPos
-		for i < len(ops) && ops[i].Kind != '=' {
-			if ops[i].Kind == '-' {
+		for i < len(ops) && ops[i].op != '=' {
+			if ops[i].op == '-' {
 				aPos++
 			} else {
 				bPos++
@@ -238,6 +243,90 @@ func changeRanges(base, side []string, which byte) []srange {
 		})
 	}
 	return out
+}
+
+// diffLines computes a forward-ordered Myers edit script for a → b.
+func diffLines(a, b []string) []DiffOp {
+	n, m := len(a), len(b)
+	if n == 0 {
+		ops := make([]DiffOp, 0, m)
+		for y := 0; y < m; y++ {
+			ops = append(ops, DiffOp{op: '+', line: b[y], aIdx: 0, bIdx: y})
+		}
+		return ops
+	}
+	if m == 0 {
+		ops := make([]DiffOp, 0, n)
+		for x := 0; x < n; x++ {
+			ops = append(ops, DiffOp{op: '-', line: a[x], aIdx: x, bIdx: 0})
+		}
+		return ops
+	}
+
+	max := n + m
+	v := make([]int, 2*max+1)
+	trace := make([][]int, 0, max+1)
+	d, found := 0, false
+	for d = 0; d <= max; d++ {
+		for k := -d; k <= d; k += 2 {
+			var x int
+			if k == -d || (k != d && v[k-1+max] < v[k+1+max]) {
+				x = v[k+1+max]
+			} else {
+				x = v[k-1+max] + 1
+			}
+			y := x - k
+			for x < n && y < m && a[x] == b[y] {
+				x++
+				y++
+			}
+			v[k+max] = x
+			if x >= n && y >= m {
+				found = true
+				break
+			}
+		}
+		trace = append(trace, append([]int{}, v...))
+		if found {
+			break
+		}
+	}
+
+	x, y := n, m
+	ops := make([]DiffOp, 0, n+m)
+	for ; d > 0; d-- {
+		k := x - y
+		prevV := trace[d-1]
+		var prevK int
+		if k == -d || (k != d && prevV[k-1+max] < prevV[k+1+max]) {
+			prevK = k + 1
+		} else {
+			prevK = k - 1
+		}
+		prevX := prevV[prevK+max]
+		prevY := prevX - prevK
+		for x > prevX && y > prevY {
+			ops = append(ops, DiffOp{op: '=', line: a[x-1], aIdx: x - 1, bIdx: y - 1})
+			x--
+			y--
+		}
+		if x == prevX {
+			ops = append(ops, DiffOp{op: '+', line: b[y-1], aIdx: x, bIdx: y - 1})
+			y--
+		} else {
+			ops = append(ops, DiffOp{op: '-', line: a[x-1], aIdx: x - 1, bIdx: y})
+			x--
+		}
+	}
+	for x > 0 && y > 0 && a[x-1] == b[y-1] {
+		ops = append(ops, DiffOp{op: '=', line: a[x-1], aIdx: x - 1, bIdx: y - 1})
+		x--
+		y--
+	}
+	for i, j := 0, len(ops)-1; i < j; i, j = i+1, j-1 {
+		ops[i], ops[j] = ops[j], ops[i]
+	}
+	return ops
 }
 
 func equalLines(a, b []string) bool {

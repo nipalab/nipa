@@ -80,9 +80,6 @@ type fakeServer struct {
 	commitLogErr       error
 	commitLog          []*pb.CommitLogEntry
 	lastCommitLogReq   *pb.GetCommitLogRequest
-	commitTreeErr      error
-	commitTree         *pb.TreeManifest
-	lastCommitTreeReq  *pb.GetCommitTreeRequest
 }
 
 func (f *fakeServer) GetDefaultBranch(_ context.Context, _ *pb.GetDefaultBranchRequest) (*pb.GetBranchResponse, error) {
@@ -164,14 +161,6 @@ func (f *fakeServer) GetCommitLog(_ context.Context, req *pb.GetCommitLogRequest
 		return nil, f.commitLogErr
 	}
 	return &pb.GetCommitLogResponse{Branch: req.GetBranch(), Commits: f.commitLog}, nil
-}
-
-func (f *fakeServer) GetCommitTree(_ context.Context, req *pb.GetCommitTreeRequest) (*pb.GetCommitTreeResponse, error) {
-	f.lastCommitTreeReq = req
-	if f.commitTreeErr != nil {
-		return nil, f.commitTreeErr
-	}
-	return &pb.GetCommitTreeResponse{CommitId: req.GetCommitId(), RootTree: f.commitTree}, nil
 }
 
 func startTestServer(t *testing.T, srv pb.NipaServiceServer) string {
@@ -585,74 +574,6 @@ func TestClient_GetTreeNodeManifest_NotConnected(t *testing.T) {
 	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
 
 	_, err := c.GetTreeNodeManifest(context.Background(), "default", "sample", "main", "src")
-	require.Error(t, err)
-	require.Equal(t, "not connected to a nipa server", err.Error())
-}
-
-func TestClient_GetTreeNodeManifestByCommit_ByID(t *testing.T) {
-	var chunkHash serverDomain.Hash
-	chunkHash[15] = 0xab
-	fs := &fakeServer{commitTree: &pb.TreeManifest{
-		Path: "root",
-		Files: []*pb.FileNode{{
-			Path:        "a.txt",
-			Mode:        pb.FileMode_FILE_MODE_READ_WRITE,
-			SizeBytes:   3,
-			ChunkHashes: []string{chunkHash.String()},
-		}},
-	}}
-	addr := startTestServer(t, fs)
-	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
-	require.NoError(t, c.Connect(context.Background(), addr))
-
-	id := snow.ID(99)
-	got, err := c.GetTreeNodeManifestByCommit(context.Background(), "default", "sample", &id, nil)
-	require.NoError(t, err)
-	require.Equal(t, id.Base36(), fs.lastCommitTreeReq.GetCommitId())
-	require.Empty(t, fs.lastCommitTreeReq.GetCommitHash())
-	require.Equal(t, "root", got.Name)
-	require.Len(t, got.FileChildren, 1)
-	require.Equal(t, "a.txt", got.FileChildren[0].Name)
-	require.Len(t, got.FileChildren[0].Chunks, 1)
-	require.Equal(t, chunkHash, got.FileChildren[0].Chunks[0].Hash)
-}
-
-func TestClient_GetTreeNodeManifestByCommit_ByHash(t *testing.T) {
-	fs := &fakeServer{commitTree: &pb.TreeManifest{Path: "root"}}
-	addr := startTestServer(t, fs)
-	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
-	require.NoError(t, c.Connect(context.Background(), addr))
-
-	var hash serverDomain.Hash
-	hash[0] = 0x01
-	got, err := c.GetTreeNodeManifestByCommit(context.Background(), "default", "sample", nil, &hash)
-	require.NoError(t, err)
-	require.Empty(t, fs.lastCommitTreeReq.GetCommitId())
-	require.Equal(t, hash.String(), fs.lastCommitTreeReq.GetCommitHash())
-	require.Equal(t, "root", got.Name)
-}
-
-func TestClient_GetTreeNodeManifestByCommit_NotFound(t *testing.T) {
-	addr := startTestServer(t, &fakeServer{
-		commitTreeErr: status.Error(codes.NotFound, "commit abc not found"),
-	})
-	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
-	require.NoError(t, c.Connect(context.Background(), addr))
-
-	id := snow.ID(99)
-	_, err := c.GetTreeNodeManifestByCommit(context.Background(), "default", "sample", &id, nil)
-	require.Error(t, err)
-
-	var domErr *domain.Error
-	require.ErrorAs(t, err, &domErr)
-	require.Equal(t, 404, domErr.Code)
-}
-
-func TestClient_GetTreeNodeManifestByCommit_NotConnected(t *testing.T) {
-	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
-
-	id := snow.ID(99)
-	_, err := c.GetTreeNodeManifestByCommit(context.Background(), "default", "sample", &id, nil)
 	require.Error(t, err)
 	require.Equal(t, "not connected to a nipa server", err.Error())
 }
