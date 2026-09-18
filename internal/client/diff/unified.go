@@ -37,6 +37,12 @@ func (o Options) headers() (string, string) {
 	return a, b
 }
 
+// HeaderLine returns the "diff --nipa a/<path> b/<path>" header for a change.
+func HeaderLine(c Change, opts Options) string {
+	aHeader, bHeader := opts.headers()
+	return fmt.Sprintf("diff --nipa %s%s %s%s", aHeader, c.Path, bHeader, c.Path)
+}
+
 // FilePatch renders one file change as git-style unified patch lines
 // (a "diff --nipa" header, optional mode lines, ---/+++ file lines, and
 // @@ hunks). Returned lines carry no trailing newline; a missing final
@@ -44,7 +50,7 @@ func (o Options) headers() (string, string) {
 // marker, so the output can be printed line by line.
 func FilePatch(c Change, old, new []byte, opts Options) []string {
 	aHeader, bHeader := opts.headers()
-	lines := []string{fmt.Sprintf("diff --nipa %s%s %s%s", aHeader, c.Path, bHeader, c.Path)}
+	lines := []string{HeaderLine(c, opts)}
 
 	switch c.Status {
 	case Added:

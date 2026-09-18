@@ -160,3 +160,9 @@ func TestFilePatch_CustomOptions(t *testing.T) {
 		"+l3-changed",
 	}, got)
 }
+
+func TestHeaderLine(t *testing.T) {
+	c := modifiedChange("f.txt", 2, 2)
+	require.Equal(t, "diff --nipa a/f.txt b/f.txt", HeaderLine(c, Options{}))
+	require.Equal(t, "diff --nipa o/f.txt n/f.txt", HeaderLine(c, Options{AHeader: "o/", BHeader: "n/"}))
+}

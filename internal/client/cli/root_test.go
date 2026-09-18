@@ -15,6 +15,7 @@ type fakeUsecaseContainer struct {
 	push   *usecase.Push
 	update *usecase.Update
 	merge  *usecase.Merge
+	diff   *usecase.Diff
 }
 
 func (f *fakeUsecaseContainer) Auth() *usecase.Auth     { return f.auth }
@@ -22,6 +23,7 @@ func (f *fakeUsecaseContainer) Repo() *usecase.Repo     { return f.repo }
 func (f *fakeUsecaseContainer) Push() *usecase.Push     { return f.push }
 func (f *fakeUsecaseContainer) Update() *usecase.Update { return f.update }
 func (f *fakeUsecaseContainer) Merge() *usecase.Merge   { return f.merge }
+func (f *fakeUsecaseContainer) Diff() *usecase.Diff     { return f.diff }
 
 func TestNewCli(t *testing.T) {
 	c := NewCli(&fakeUsecaseContainer{}, &fakeConnector{})
