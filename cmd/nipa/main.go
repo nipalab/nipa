@@ -24,12 +24,14 @@ func main() {
 	pushUsecase := usecase.NewPush(authUsecase, grpcClient, localrepo.NewLocalRepo())
 	updateUsecase := usecase.NewUpdate(authUsecase, grpcClient, localrepo.NewLocalRepo())
 	mergeUsecase := usecase.NewMerge(authUsecase, grpcClient, localrepo.NewLocalRepo(), pushUsecase)
+	diffUsecase := usecase.NewDiff(authUsecase, grpcClient, localrepo.NewLocalRepo())
 	registry := &Registry{
 		authUsecase:   authUsecase,
 		repoUsecase:   repoUsecase,
 		pushUsecase:   pushUsecase,
 		updateUsecase: updateUsecase,
 		mergeUsecase:  mergeUsecase,
+		diffUsecase:   diffUsecase,
 	}
 
 	cliClient := cli.NewCli(registry, grpcClient)

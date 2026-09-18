@@ -111,34 +111,10 @@ func (w *WorkingCopy) Status(ctx context.Context) (*domain.Status, error) {
 	}
 
 	var working []string
-	err = filepath.WalkDir(w.root, func(p string, d fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		rel, err := filepath.Rel(w.root, p)
-		if err != nil {
-			return err
-		}
-		relSlash := filepath.ToSlash(rel)
-		if d.Name() == nipaDir {
-			if d.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if d.IsDir() {
-			return nil
-		}
-		if !d.Type().IsRegular() {
-			return nil
-		}
-		working = append(working, relSlash)
-		return nil
-	})
+	working, err = walkWorkingFiles(w.root)
 	if err != nil {
 		return nil, err
 	}
-	sort.Strings(working)
 	workingSet := make(map[string]bool, len(working))
 	for _, p := range working {
 		workingSet[p] = true
@@ -187,6 +163,39 @@ func (w *WorkingCopy) listStagedSet() (map[string]bool, error) {
 		set[p] = true
 	}
 	return set, nil
+}
+
+func walkWorkingFiles(root string) ([]string, error) {
+	var working []string
+	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		rel, err := filepath.Rel(root, p)
+		if err != nil {
+			return err
+		}
+		relSlash := filepath.ToSlash(rel)
+		if d.Name() == nipaDir {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if d.IsDir() {
+			return nil
+		}
+		if !d.Type().IsRegular() {
+			return nil
+		}
+		working = append(working, relSlash)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	sort.Strings(working)
+	return working, nil
 }
 
 func (w *WorkingCopy) expandAddTargets(targets []string) ([]string, error) {

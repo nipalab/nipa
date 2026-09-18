@@ -186,6 +186,17 @@ message GetCommitLogResponse {
     repeated CommitLogEntry commits = 2;
 }
 
+message GetCommitTreeRequest {
+    ProjectContext context = 1;
+    string commit_id = 2; // base36 snow ID; either commit_id or commit_hash is required
+    string commit_hash = 3; // hex-encoded BLAKE3 content hash
+}
+
+message GetCommitTreeResponse {
+    string commit_id = 1; // base36 snow ID of the resolved commit
+    TreeManifest root_tree = 2; // recursive manifest of the commit tree
+}
+
 message LoginUsernamePasswordRequest {
     string username = 1;
     string password = 2;
@@ -211,6 +222,7 @@ service NipaService {
     rpc CreateBranch(CreateBranchRequest) returns (CreateBranchResponse);
     rpc GetTreeManifest(GetTreeManifestRequest) returns (GetTreeManifestResponse);
     rpc GetCommitLog(GetCommitLogRequest) returns (GetCommitLogResponse);
+    rpc GetCommitTree(GetCommitTreeRequest) returns (GetCommitTreeResponse);
     rpc GetMergeBase(GetMergeBaseRequest) returns (GetMergeBaseResponse);
     rpc MergeFastForward(MergeFastForwardRequest) returns (MergeFastForwardResponse);
     rpc Push(PushRequest) returns (PushResponse);
