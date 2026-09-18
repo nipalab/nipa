@@ -53,12 +53,12 @@ func testEntries() []*serverDomain.CommitLogEntry {
 }
 
 func TestLogLinesOneline(t *testing.T) {
-	lines := logLines(testEntries(), true)
+	lines := logLines(testEntries(), true, false)
 	if len(lines) != 3 {
 		t.Fatalf("expected 3 lines, got %d: %v", len(lines), lines)
 	}
-	if !strings.HasPrefix(lines[0], "aaaaaaaaaaaa ") {
-		t.Errorf("expected short hash prefix, got %q", lines[0])
+	if !strings.HasPrefix(lines[0], "6y1 ") {
+		t.Errorf("expected commit id prefix, got %q", lines[0])
 	}
 	if !strings.Contains(lines[1], "second commit") {
 		t.Errorf("expected subject for second, got %q", lines[1])
@@ -66,7 +66,7 @@ func TestLogLinesOneline(t *testing.T) {
 }
 
 func TestLogLinesFull(t *testing.T) {
-	lines := logLines(testEntries(), false)
+	lines := logLines(testEntries(), false, false)
 	if len(lines) < 10 {
 		t.Fatalf("expected many lines for full mode, got %d", len(lines))
 	}
@@ -76,9 +76,9 @@ func TestLogLinesFull(t *testing.T) {
 }
 
 func TestFormatCommitFull(t *testing.T) {
-	lines := formatCommitFull(testEntries()[1])
-	if lines[0] != "commit bbbbbbbbbbbb" {
-		t.Errorf("expected commit bbb, got %q", lines[0])
+	lines := formatCommitFull(testEntries()[1], false)
+	if lines[0] != "commit 6y2" {
+		t.Errorf("expected commit id, got %q", lines[0])
 	}
 	if !strings.Contains(lines[1], "Bob <bob@example.com>") {
 		t.Errorf("expected author line with email, got %q", lines[1])
@@ -92,7 +92,7 @@ func TestFormatCommitFull(t *testing.T) {
 }
 
 func TestFormatCommitFullNoEmail(t *testing.T) {
-	lines := formatCommitFull(testEntries()[2])
+	lines := formatCommitFull(testEntries()[2], false)
 	if !strings.Contains(lines[1], "Charlie") {
 		t.Errorf("expected Charlie, got %q", lines[1])
 	}
@@ -102,12 +102,36 @@ func TestFormatCommitFullNoEmail(t *testing.T) {
 }
 
 func TestFormatCommitOneline(t *testing.T) {
-	line := formatCommitOneline(testEntries()[0])
-	if !strings.HasPrefix(line, "aaaaaaaaaaaa ") {
-		t.Errorf("expected short hash, got %q", line)
+	line := formatCommitOneline(testEntries()[0], false)
+	if !strings.HasPrefix(line, "6y1 ") {
+		t.Errorf("expected commit id, got %q", line)
 	}
 	if !strings.Contains(line, "first commit") {
 		t.Errorf("expected message, got %q", line)
+	}
+}
+
+func TestFormatCommitOnelineColored(t *testing.T) {
+	line := formatCommitOneline(testEntries()[0], true)
+	if !strings.HasPrefix(line, ansiColorYellow) {
+		t.Errorf("expected yellow id prefix, got %q", line)
+	}
+	if !strings.Contains(line, ansiColorReset) {
+		t.Errorf("expected color reset, got %q", line)
+	}
+	if !strings.HasSuffix(line, "first commit") {
+		t.Errorf("expected plain subject, got %q", line)
+	}
+}
+
+func TestLogLinesColored(t *testing.T) {
+	lines := logLines(testEntries(), true, true)
+	if !strings.HasPrefix(lines[0], ansiColorYellow+"6y1") {
+		t.Errorf("expected colored oneline, got %q", lines[0])
+	}
+	plain := logLines(testEntries(), true, false)
+	if strings.Contains(plain[0], ansiColorYellow) {
+		t.Errorf("expected plain when color disabled, got %q", plain[0])
 	}
 }
 
@@ -315,9 +339,9 @@ func (r *shortReader) Read(p []byte) (int, error) {
 	return copy(p, r.data), nil
 }
 
-func TestShortHash_Short(t *testing.T) {
-	h := mustHashStr(strings.Repeat("a", 64))
-	require.Equal(t, "aaaaaaaaaaaa", shortHash(h))
+func TestCommitIDStr(t *testing.T) {
+	require.Equal(t, "6y1", commitIDStr(testEntries()[0]))
+	require.Equal(t, "6y2", commitIDStr(testEntries()[1]))
 }
 
 func TestAuthorLine_UnknownName(t *testing.T) {
@@ -329,7 +353,7 @@ func TestAuthorLine_UnknownName(t *testing.T) {
 }
 
 func TestLogLines_SkipsNil(t *testing.T) {
-	lines := logLines([]*serverDomain.CommitLogEntry{nil, testEntries()[0]}, true)
+	lines := logLines([]*serverDomain.CommitLogEntry{nil, testEntries()[0]}, true, false)
 	require.Len(t, lines, 1)
 }
 
@@ -349,8 +373,8 @@ func TestPrintLogPlain(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := sb.String()
-	if !strings.Contains(out, "aaaaaaaaaaaa") {
-		t.Errorf("expected short hash in output, got %q", out)
+	if !strings.Contains(out, "6y1") {
+		t.Errorf("expected commit id in output, got %q", out)
 	}
 	if !strings.Contains(out, "first commit") {
 		t.Errorf("expected commit message, got %q", out)

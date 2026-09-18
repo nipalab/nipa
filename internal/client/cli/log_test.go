@@ -57,7 +57,7 @@ func TestSetupLogCmd_Plain(t *testing.T) {
 
 	out, err := runLogCmd(t, cli, root, "--no-pager")
 	require.NoError(t, err)
-	require.Contains(t, out, "commit aaaaaaaaaaaa")
+	require.Contains(t, out, "commit 6y1")
 	require.Contains(t, out, "Author: Alice <alice@example.com>")
 	require.Contains(t, out, "first commit")
 }
@@ -68,7 +68,7 @@ func TestSetupLogCmd_Oneline(t *testing.T) {
 
 	out, err := runLogCmd(t, cli, root, "--oneline", "--no-pager")
 	require.NoError(t, err)
-	require.Contains(t, out, "aaaaaaaaaaaa first commit")
+	require.Contains(t, out, "6y1 first commit")
 	require.NotContains(t, out, "Author:")
 }
 
