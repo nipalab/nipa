@@ -162,9 +162,10 @@ func parseEscapeSequence(rest []byte) logKey {
 	return keyQuit
 }
 
-func shortHash(h serverDomain.Hash) string {
-	return h.String()[:12]
-}
+const (
+	ansiColorYellow = "\x1b[33m"
+	ansiColorReset  = "\x1b[0m"
+)
 
 func authorLine(e *serverDomain.CommitLogEntry) string {
 	name := e.AuthorName
@@ -184,9 +185,17 @@ func commitSubject(e *serverDomain.CommitLogEntry) string {
 	return e.Message
 }
 
-func formatCommitFull(e *serverDomain.CommitLogEntry) []string {
+func commitIDStr(e *serverDomain.CommitLogEntry) string {
+	return e.ID.Base36()
+}
+
+func formatCommitFull(e *serverDomain.CommitLogEntry, color bool) []string {
+	commitLine := fmt.Sprintf("commit %s", commitIDStr(e))
+	if color {
+		commitLine = ansiColorYellow + commitLine + ansiColorReset
+	}
 	lines := []string{
-		fmt.Sprintf("commit %s", shortHash(e.Hash)),
+		commitLine,
 		fmt.Sprintf("Author: %s", authorLine(e)),
 		fmt.Sprintf("Date:   %s", e.CreatedAt.Format("Mon Jan 2 15:04:05 2006 -0700")),
 		"",
@@ -200,27 +209,31 @@ func formatCommitFull(e *serverDomain.CommitLogEntry) []string {
 	return lines
 }
 
-func formatCommitOneline(e *serverDomain.CommitLogEntry) string {
-	return fmt.Sprintf("%s %s", shortHash(e.Hash), commitSubject(e))
+func formatCommitOneline(e *serverDomain.CommitLogEntry, color bool) string {
+	idStr := commitIDStr(e)
+	if color {
+		idStr = ansiColorYellow + idStr + ansiColorReset
+	}
+	return fmt.Sprintf("%s %s", idStr, commitSubject(e))
 }
 
-func logLines(entries []*serverDomain.CommitLogEntry, oneline bool) []string {
+func logLines(entries []*serverDomain.CommitLogEntry, oneline bool, color bool) []string {
 	var lines []string
 	for _, e := range entries {
 		if e == nil {
 			continue
 		}
 		if oneline {
-			lines = append(lines, formatCommitOneline(e))
+			lines = append(lines, formatCommitOneline(e, color))
 		} else {
-			lines = append(lines, formatCommitFull(e)...)
+			lines = append(lines, formatCommitFull(e, color)...)
 		}
 	}
 	return lines
 }
 
 func printLogPlain(out io.Writer, entries []*serverDomain.CommitLogEntry, oneline bool) error {
-	for _, line := range logLines(entries, oneline) {
+	for _, line := range logLines(entries, oneline, false) {
 		if _, err := fmt.Fprintln(out, line); err != nil {
 			return err
 		}
@@ -236,7 +249,10 @@ func heightRows(total int) int {
 }
 
 func runLogPager(out io.Writer, in io.Reader, entries []*serverDomain.CommitLogEntry, oneline bool, getSize func() (int, int), sigs <-chan os.Signal) error {
-	lines := logLines(entries, oneline)
+	io.WriteString(out, "\x1b[?1049h\x1b[?25l")
+	defer io.WriteString(out, "\x1b[?25h\x1b[?1049l")
+
+	lines := logLines(entries, oneline, true)
 	_, height := getSize()
 	vp := newLogViewport(lines, heightRows(height))
 	drawLog(out, vp, logFooter(vp))
@@ -260,7 +276,6 @@ func runLogPager(out io.Writer, in io.Reader, entries []*serverDomain.CommitLogE
 				return nil
 			}
 			if vp.handleKey(k) {
-				io.WriteString(out, "\x1b[2J\x1b[H")
 				return nil
 			}
 			drawLog(out, vp, logFooter(vp))
@@ -273,15 +288,17 @@ func runLogPager(out io.Writer, in io.Reader, entries []*serverDomain.CommitLogE
 }
 
 func drawLog(out io.Writer, vp *logViewport, footer string) {
-	io.WriteString(out, "\x1b[H\x1b[2J")
+	var b strings.Builder
+	b.WriteString("\x1b[H")
 	lines := vp.visibleLines()
 	for i := 0; i < vp.height; i++ {
 		if i < len(lines) {
-			io.WriteString(out, lines[i])
+			b.WriteString(lines[i])
 		}
-		io.WriteString(out, "\x1b[K\r\n")
+		b.WriteString("\x1b[K\r\n")
 	}
-	io.WriteString(out, "\x1b[K"+footer+"\r\n")
+	b.WriteString("\x1b[K" + footer)
+	io.WriteString(out, b.String())
 }
 
 func logFooter(vp *logViewport) string {

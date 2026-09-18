@@ -34,6 +34,9 @@ migrate-create:
 build:
 	go build -o bin/nipad ./cmd/nipad
 
+build-client:
+	go build -o bin/nipa ./cmd/nipa
+
 ## Install web UI dependencies (first time, or after changes to web/package.json).
 web-install:
 	cd web && npm install
@@ -48,7 +51,7 @@ web-dev:
 	cd web && npm run dev
 
 ## Build the server including the web UI.
-build-all: web build
+build-all: web build build-client
 
 proto:
 	protoc --go_out=internal/grpc --go-grpc_out=internal/grpc internal/grpc/proto/server.proto

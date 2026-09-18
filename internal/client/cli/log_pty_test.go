@@ -67,7 +67,8 @@ func TestRunLogInteractive_Oneline(t *testing.T) {
 	_, err := master.Write([]byte("q"))
 	require.NoError(t, err)
 	require.NoError(t, <-done)
-	require.Contains(t, out.String(), "aaaaaaaaaaaa first commit")
+	require.Contains(t, out.String(), "first commit")
+	require.Contains(t, out.String(), ansiColorYellow+"6y1"+ansiColorReset)
 }
 
 func TestRunLogInteractive_NonTerminalInput(t *testing.T) {
