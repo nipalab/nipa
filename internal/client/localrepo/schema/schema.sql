@@ -6,14 +6,6 @@ CREATE TABLE IF NOT EXISTS tree_nodes (
     snapshot_id TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS chunks (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    hash BLOB NOT NULL UNIQUE,
-    size_bytes INTEGER NOT NULL,
-    data BLOB,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-
 CREATE TABLE IF NOT EXISTS files (
     path TEXT PRIMARY KEY,
     tree_path TEXT NOT NULL REFERENCES tree_nodes(path) ON DELETE CASCADE,
@@ -22,13 +14,6 @@ CREATE TABLE IF NOT EXISTS files (
     mode INTEGER NOT NULL DEFAULT 444,
     is_binary BOOLEAN NOT NULL DEFAULT FALSE,
     snapshot_id TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS file_chunks (
-    file_path TEXT NOT NULL REFERENCES files(path) ON DELETE CASCADE,
-    chunk_id INTEGER NOT NULL REFERENCES chunks(id),
-    chunk_index INTEGER NOT NULL,
-    PRIMARY KEY (file_path, chunk_index)
 );
 
 CREATE TABLE IF NOT EXISTS meta (

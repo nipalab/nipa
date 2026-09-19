@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"sort"
 	"strings"
 
@@ -35,6 +36,7 @@ type mergeLocalRepo interface {
 	StageAdd(path string) error
 	MissingChunks(hashes []serverDomain.Hash) ([]serverDomain.Hash, error)
 	StoreChunks(chunks []*serverDomain.ChunkData) error
+	OpenChunk(hash serverDomain.Hash) (io.ReadCloser, error)
 	LoadChunk(hash serverDomain.Hash) ([]byte, error)
 }
 
@@ -214,7 +216,7 @@ func (m *Merge) trueMerge(ctx context.Context, root string, url *domain.NipaUrl,
 			finalFiles[p] = e.Ours
 
 		case merge.KeepTheirs:
-			if err := materializeFile(root, toMaterialized(e.Theirs), m.localRepo.LoadChunk); err != nil {
+			if err := materializeFile(root, toMaterialized(e.Theirs), m.localRepo.OpenChunk); err != nil {
 				return nil, err
 			}
 			finalFiles[p] = e.Theirs
@@ -238,7 +240,7 @@ func (m *Merge) trueMerge(ctx context.Context, root string, url *domain.NipaUrl,
 			if err != nil {
 				return nil, err
 			}
-			if err := materializeFile(root, toMaterialized(mf), m.localRepo.LoadChunk); err != nil {
+			if err := materializeFile(root, toMaterialized(mf), m.localRepo.OpenChunk); err != nil {
 				return nil, err
 			}
 			finalFiles[p] = mf

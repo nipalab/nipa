@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"errors"
+	"io"
 	"testing"
 	"time"
 
@@ -105,6 +106,9 @@ func (fakeLocalRepo) MissingChunks(_ []serverDomain.Hash) ([]serverDomain.Hash, 
 	return nil, nil
 }
 func (fakeLocalRepo) StoreChunks(_ []*serverDomain.ChunkData) error { return nil }
+func (fakeLocalRepo) OpenChunk(_ serverDomain.Hash) (io.ReadCloser, error) {
+	return nil, nil
+}
 func (fakeLocalRepo) LoadChunk(_ serverDomain.Hash) ([]byte, error) { return nil, nil }
 func (fakeLocalRepo) SaveCommit(_, _ string) error                  { return nil }
 func (fakeLocalRepo) LoadCommit() (*domain.LocalCommit, error)      { return &domain.LocalCommit{}, nil }

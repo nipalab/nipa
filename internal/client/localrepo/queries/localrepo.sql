@@ -33,34 +33,6 @@ ON CONFLICT(path) DO UPDATE SET
     is_binary = excluded.is_binary,
     snapshot_id = excluded.snapshot_id;
 
--- name: ChunkUpsert :one
-INSERT INTO chunks (hash, size_bytes)
-VALUES (:hash, :size_bytes)
-ON CONFLICT(hash) DO UPDATE SET hash = excluded.hash
-RETURNING id;
-
--- name: ChunkExists :one
-SELECT EXISTS(SELECT 1 FROM chunks WHERE hash = :hash AND data IS NOT NULL);
-
--- name: ChunkExistingHashes :many
-SELECT hash
-FROM chunks
-WHERE data IS NOT NULL AND hash IN (sqlc.slice('hashes'));
-
--- name: ChunkUpsertContent :one
-INSERT INTO chunks (hash, size_bytes, data)
-VALUES (:hash, :size_bytes, :data)
-ON CONFLICT(hash) DO UPDATE SET size_bytes = excluded.size_bytes, data = excluded.data
-RETURNING id;
-
--- name: ChunkGetData :one
-SELECT data FROM chunks WHERE hash = :hash LIMIT 1;
-
--- name: FileChunkInsert :exec
-INSERT INTO file_chunks (file_path, chunk_id, chunk_index)
-VALUES (:file_path, :chunk_id, :chunk_index)
-ON CONFLICT(file_path, chunk_index) DO UPDATE SET chunk_id = excluded.chunk_id;
-
 -- name: StaleFileDelete :exec
 DELETE FROM files
 WHERE snapshot_id <> :snapshot_id;
@@ -92,11 +64,3 @@ SELECT path, hash, size_bytes, mode, is_binary
 FROM files
 WHERE snapshot_id = :snapshot_id
 ORDER BY path;
-
--- name: SnapshotFileChunkList :many
-SELECT file_chunks.file_path, chunks.hash, chunks.size_bytes
-FROM file_chunks
-JOIN chunks ON chunks.id = file_chunks.chunk_id
-JOIN files ON files.path = file_chunks.file_path
-WHERE files.snapshot_id = :snapshot_id
-ORDER BY file_chunks.file_path, file_chunks.chunk_index;

@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -38,6 +39,7 @@ type workingCopyLocalRepo interface {
 	Snapshot() (*clientDomain.Snapshot, error)
 	MissingChunks(hashes []domain.Hash) ([]domain.Hash, error)
 	StoreChunks(chunks []*domain.ChunkData) error
+	OpenChunk(hash domain.Hash) (io.ReadCloser, error)
 	LoadChunk(hash domain.Hash) ([]byte, error)
 }
 
@@ -50,6 +52,7 @@ type updateLocalRepo interface {
 	Snapshot() (*clientDomain.Snapshot, error)
 	MissingChunks(hashes []domain.Hash) ([]domain.Hash, error)
 	StoreChunks(chunks []*domain.ChunkData) error
+	OpenChunk(hash domain.Hash) (io.ReadCloser, error)
 	LoadChunk(hash domain.Hash) ([]byte, error)
 	SaveTree(root *domain.TreeNode) error
 }
@@ -192,7 +195,7 @@ func syncWorkingCopy(ctx context.Context, client chunkDownloader, lr workingCopy
 		if base, ok := baseByPath[f.Path]; ok && base.Hash == f.FileHash && base.Mode == f.Mode && fileExists(root, f.Path) {
 			continue
 		}
-		if err := materializeFile(root, f, lr.LoadChunk); err != nil {
+		if err := materializeFile(root, f, lr.OpenChunk); err != nil {
 			return err
 		}
 	}
@@ -332,7 +335,7 @@ func fileExists(root, path string) bool {
 	return err == nil
 }
 
-func materializeFile(root string, f materializedFile, loadChunk func(domain.Hash) ([]byte, error)) error {
+func materializeFile(root string, f materializedFile, openChunk func(domain.Hash) (io.ReadCloser, error)) error {
 	fp := filepath.Join(root, filepath.FromSlash(f.Path))
 	dir := filepath.Dir(fp)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -347,16 +350,18 @@ func materializeFile(root string, f materializedFile, loadChunk func(domain.Hash
 
 	var written int64
 	for _, h := range f.ChunkHashes {
-		data, err := loadChunk(h)
+		rc, err := openChunk(h)
 		if err != nil {
 			_ = tmp.Close()
 			return fmt.Errorf("load chunk %s: %w", h, err)
 		}
-		if _, err := tmp.Write(data); err != nil {
+		n, err := io.Copy(tmp, io.LimitReader(rc, f.SizeBytes-written+1))
+		_ = rc.Close()
+		if err != nil {
 			_ = tmp.Close()
 			return err
 		}
-		written += int64(len(data))
+		written += n
 		if written > f.SizeBytes {
 			_ = tmp.Close()
 			return fmt.Errorf("content length mismatch for %s: got %d want %d", f.Path, written, f.SizeBytes)

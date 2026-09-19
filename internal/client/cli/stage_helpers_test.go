@@ -66,6 +66,16 @@ func stagePath(t *testing.T, root, path string) {
 	require.NoError(t, lr.StageAdd(path))
 }
 
+func fileHash(t *testing.T, content string) serverDomain.Hash {
+	t.Helper()
+	chunks := chunksOf(t, content)
+	hashes := make([]serverDomain.Hash, len(chunks))
+	for i, c := range chunks {
+		hashes[i] = c.Hash
+	}
+	return chunker.FileHash(hashes)
+}
+
 func chunksOf(t *testing.T, content string) []serverDomain.Chunk {
 	t.Helper()
 	chunks, err := chunker.ChunkAll([]byte(content))

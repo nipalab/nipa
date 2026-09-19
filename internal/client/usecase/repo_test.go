@@ -1,8 +1,10 @@
 package usecase
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -229,6 +231,17 @@ func (s *stubLocalRepo) StoreChunks(chunks []*serverDomain.ChunkData) error {
 		s.storedChunks[c.Hash] = c.Data
 	}
 	return nil
+}
+
+func (s *stubLocalRepo) OpenChunk(hash serverDomain.Hash) (io.ReadCloser, error) {
+	if s.loadChunkErr != nil {
+		return nil, s.loadChunkErr
+	}
+	data, ok := s.storedChunks[hash]
+	if !ok {
+		return nil, errors.New("chunk not found in cache")
+	}
+	return io.NopCloser(bytes.NewReader(data)), nil
 }
 
 func (s *stubLocalRepo) LoadChunk(hash serverDomain.Hash) ([]byte, error) {

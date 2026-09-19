@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 
+	"github.com/nipalab/nipa/internal/chunker"
 	"github.com/nipalab/nipa/internal/client/domain"
 	serverDomain "github.com/nipalab/nipa/internal/domain"
 	pb "github.com/nipalab/nipa/internal/grpc/pb"
@@ -492,11 +493,14 @@ func toServerFile(node *pb.FileNode) *serverDomain.File {
 		SizeBytes: node.GetSizeBytes(),
 		IsBinary:  node.GetIsBinary(),
 	}
+	var hashes []serverDomain.Hash
 	for _, h := range node.GetChunkHashes() {
 		if hash, err := decodeHash(h); err == nil {
+			hashes = append(hashes, hash)
 			file.Chunks = append(file.Chunks, serverDomain.Chunk{Hash: hash})
 		}
 	}
+	file.Hash = chunker.FileHash(hashes)
 	return file
 }
 

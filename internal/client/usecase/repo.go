@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -31,6 +32,7 @@ type localRepo interface {
 	StageRemove(paths []string) error
 	MissingChunks(hashes []serverDomain.Hash) ([]serverDomain.Hash, error)
 	StoreChunks(chunks []*serverDomain.ChunkData) error
+	OpenChunk(hash serverDomain.Hash) (io.ReadCloser, error)
 	LoadChunk(hash serverDomain.Hash) ([]byte, error)
 	SaveCommit(commitID, commitHash string) error
 	LoadCommit() (*domain.LocalCommit, error)

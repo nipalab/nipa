@@ -179,36 +179,34 @@ func TestSaveTree_ReplacesPrevious(t *testing.T) {
 	require.Equal(t, 1, countRows(t, lr.db, "files"))
 }
 
-func TestSaveTree_ChunksAreCachedAcrossSaves(t *testing.T) {
+func TestSaveTree_KeepsCachedObjects(t *testing.T) {
 	target := t.TempDir()
 	lr := NewLocalRepo()
 	require.NoError(t, lr.Init(target))
 	defer lr.Close()
 
+	firstHash := serverDomain.Hash{0x70}
+	secondHash := serverDomain.Hash{0x71}
+	first := []byte("first object")
+	second := []byte("second object")
+	require.NoError(t, lr.StoreChunks([]*serverDomain.ChunkData{
+		{Hash: firstHash, Data: first},
+		{Hash: secondHash, Data: second},
+	}))
+
 	require.NoError(t, lr.SaveTree(treeFixture()))
-	require.Equal(t, 1, countRows(t, lr.db, "chunks"))
-	require.Equal(t, 1, countRows(t, lr.db, "file_chunks"))
 
 	reSave := treeFixture()
 	reSave.Name = "root-v2"
 	require.NoError(t, lr.SaveTree(reSave))
-	require.Equal(t, 1, countRows(t, lr.db, "chunks"), "re-saving a chunk with the same hash should not duplicate it")
-	require.Equal(t, 1, countRows(t, lr.db, "file_chunks"), "file_chunks is snapshot-per-replace")
 
-	otherChunk := serverDomain.Hash{0x60}
-	replaced := &serverDomain.TreeNode{
-		Hash: serverDomain.Hash{0x61},
-		Name: "root",
-		FileChildren: []*serverDomain.File{{
-			Hash:      serverDomain.Hash{0x62},
-			Name:      "new.bin",
-			SizeBytes: 4,
-			Chunks:    []serverDomain.Chunk{{Hash: otherChunk, SizeBytes: 4}},
-		}},
+	require.NoError(t, lr.SaveTree(nil), "clearing the snapshot must not erase cached objects")
+
+	for hash, data := range map[serverDomain.Hash][]byte{firstHash: first, secondHash: second} {
+		got, err := lr.LoadChunk(hash)
+		require.NoError(t, err)
+		require.Equal(t, data, got)
 	}
-	require.NoError(t, lr.SaveTree(replaced))
-	require.Equal(t, 2, countRows(t, lr.db, "chunks"), "cache should keep the now-orphaned old chunk")
-	require.Equal(t, 1, countRows(t, lr.db, "file_chunks"), "only the current file's mapping remains")
 }
 
 func TestSaveTree_Empty(t *testing.T) {
@@ -239,7 +237,6 @@ func TestSaveTree_EmptyClearsPreviousSnapshot(t *testing.T) {
 	require.NoError(t, lr.SaveTree(nil))
 	require.Equal(t, 0, countRows(t, lr.db, "tree_nodes"))
 	require.Equal(t, 0, countRows(t, lr.db, "files"))
-	require.Equal(t, 0, countRows(t, lr.db, "file_chunks"))
 
 	var treeHash string
 	require.NoError(t, lr.db.QueryRow(`SELECT value FROM meta WHERE key='tree_hash'`).Scan(&treeHash))
@@ -293,7 +290,6 @@ func TestSaveTree_IncrementalUpdate(t *testing.T) {
 
 	require.Equal(t, 3, countRows(t, lr.db, "tree_nodes"), "assets keeps its row, docs is added")
 	require.Equal(t, 2, countRows(t, lr.db, "files"))
-	require.Equal(t, 2, countRows(t, lr.db, "chunks"), "chunk cache accumulates")
 }
 
 func TestSaveTree_NotInitialized(t *testing.T) {

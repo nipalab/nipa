@@ -251,11 +251,12 @@ func TestEndToEnd_CloneAddPushFetch(t *testing.T) {
 	require.Equal(t, "a.txt", snap1.Files[0].Path)
 	require.False(t, snap1.Files[0].IsBinary)
 	require.EqualValues(t, len(contentA), snap1.Files[0].SizeBytes)
-	require.NotEmpty(t, snap1.Files[0].Chunks)
 	require.NotEmpty(t, snap1.TreeHash, "after push the local tree hash must track the server head")
 
-	hashes := make([]serverDomain.Hash, 0, len(snap1.Files[0].Chunks))
-	for _, c := range snap1.Files[0].Chunks {
+	chunked, err := chunker.ChunkAll([]byte(contentA))
+	require.NoError(t, err)
+	hashes := make([]serverDomain.Hash, 0, len(chunked))
+	for _, c := range chunked {
 		hashes = append(hashes, c.Hash)
 	}
 	downloaded := make(map[serverDomain.Hash][]byte, len(hashes))

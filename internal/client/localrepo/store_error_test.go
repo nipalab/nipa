@@ -79,8 +79,6 @@ func TestSaveTree_Error_UpsertTrigger(t *testing.T) {
 		{name: "meta", table: "meta"},
 		{name: "tree_nodes", table: "tree_nodes"},
 		{name: "files", table: "files"},
-		{name: "chunks", table: "chunks"},
-		{name: "file_chunks", table: "file_chunks"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			target := t.TempDir()
@@ -204,8 +202,6 @@ func TestSaveTree_BinaryFileWithManyChunks(t *testing.T) {
 
 	require.Equal(t, 1, countRows(t, lr.db, "tree_nodes"))
 	require.Equal(t, 1, countRows(t, lr.db, "files"))
-	require.Equal(t, 5, countRows(t, lr.db, "chunks"))
-	require.Equal(t, 5, countRows(t, lr.db, "file_chunks"))
 }
 
 func TestSaveTree_TreeWithFilesAtRootAndChild(t *testing.T) {
@@ -234,6 +230,4 @@ func TestSaveTree_TreeWithFilesAtRootAndChild(t *testing.T) {
 
 	require.Equal(t, 2, countRows(t, lr.db, "tree_nodes"))
 	require.Equal(t, 2, countRows(t, lr.db, "files"))
-	require.Equal(t, 1, countRows(t, lr.db, "chunks"))
-	require.Equal(t, 2, countRows(t, lr.db, "file_chunks"))
 }

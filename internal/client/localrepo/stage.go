@@ -4,9 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"io/fs"
+	"os"
 	"strings"
 
-	"github.com/nipalab/nipa/internal/chunker"
 	"github.com/nipalab/nipa/internal/client/domain"
 	serverDomain "github.com/nipalab/nipa/internal/domain"
 	sqlcLocalrepo "github.com/nipalab/nipa/internal/repository/sqlc/localrepo"
@@ -74,47 +75,20 @@ func (l *LocalRepo) MissingChunks(hashes []serverDomain.Hash) ([]serverDomain.Ha
 	if len(hashes) == 0 {
 		return nil, nil
 	}
-	ctx := context.Background()
-	q := sqlcLocalrepo.New(l.db)
-
-	unique := make([]serverDomain.Hash, 0, len(hashes))
 	seen := make(map[serverDomain.Hash]bool, len(hashes))
+	var missing []serverDomain.Hash
 	for _, h := range hashes {
 		if seen[h] {
 			continue
 		}
 		seen[h] = true
-		unique = append(unique, h)
-	}
-
-	const batchSize = 500
-	present := make(map[serverDomain.Hash]bool, len(unique))
-	for start := 0; start < len(unique); start += batchSize {
-		end := start + batchSize
-		if end > len(unique) {
-			end = len(unique)
-		}
-		blobs := make([][]byte, 0, end-start)
-		for i := start; i < end; i++ {
-			blobs = append(blobs, unique[i].Bytes())
-		}
-		existing, err := q.ChunkExistingHashes(ctx, blobs)
-		if err != nil {
-			return nil, err
-		}
-		for _, b := range existing {
-			var h serverDomain.Hash
-			if copy(h[:], b) != len(h) {
-				continue
-			}
-			present[h] = true
-		}
-	}
-
-	var missing []serverDomain.Hash
-	for _, h := range unique {
-		if !present[h] {
+		_, err := os.Stat(l.objectPath(h))
+		switch {
+		case err == nil:
+		case errors.Is(err, fs.ErrNotExist):
 			missing = append(missing, h)
+		default:
+			return nil, err
 		}
 	}
 	return missing, nil
@@ -137,44 +111,22 @@ func (l *LocalRepo) Snapshot() (*domain.Snapshot, error) {
 	if err != nil {
 		return nil, err
 	}
-	chunkRows, err := q.SnapshotFileChunkList(ctx, treeHash)
-	if err != nil {
-		return nil, err
-	}
 
 	files := make([]domain.SnapshotFile, 0, len(rows))
-	ci := 0
 	for _, r := range rows {
-		path := stripRoot(r.Path)
-		sf := domain.SnapshotFile{
-			Path:      path,
+		files = append(files, domain.SnapshotFile{
+			Path:      stripRoot(r.Path),
+			Hash:      hashFromBytes(r.Hash),
 			Mode:      int(r.Mode),
 			IsBinary:  r.IsBinary,
 			SizeBytes: r.SizeBytes,
-		}
-		for ci < len(chunkRows) && stripRoot(chunkRows[ci].FilePath) == path {
-			sf.Chunks = append(sf.Chunks, serverDomain.Chunk{
-				Hash:      hashFromBytes(chunkRows[ci].Hash),
-				SizeBytes: chunkRows[ci].SizeBytes,
-			})
-			ci++
-		}
-		sf.Hash = fileHashOf(sf.Chunks)
-		files = append(files, sf)
+		})
 	}
 	return &domain.Snapshot{TreeHash: treeHash, Files: files}, nil
 }
 
 func stripRoot(path string) string {
 	return strings.TrimPrefix(path, "/")
-}
-
-func fileHashOf(chunks []serverDomain.Chunk) serverDomain.Hash {
-	hashes := make([]serverDomain.Hash, len(chunks))
-	for i, c := range chunks {
-		hashes[i] = c.Hash
-	}
-	return chunker.FileHash(hashes)
 }
 
 func hashFromBytes(b []byte) serverDomain.Hash {
