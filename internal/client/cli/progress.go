@@ -10,6 +10,9 @@ type progressRenderer struct {
 	verb         string
 	totalObjects int
 	totalBytes   int64
+	doneObjects  int
+	doneBytes    int64
+	reported     bool
 }
 
 func newProgressRenderer(w io.Writer) *progressRenderer {
@@ -48,6 +51,9 @@ func (p *progressRenderer) begin(verb string, objects int, bytes int64) {
 }
 
 func (p *progressRenderer) update(objectsDone int, bytesDone int64) {
+	p.doneObjects = objectsDone
+	p.doneBytes = bytesDone
+	p.reported = true
 	pct := int64(0)
 	if p.totalBytes > 0 {
 		pct = bytesDone * 100 / p.totalBytes
@@ -59,7 +65,11 @@ func (p *progressRenderer) update(objectsDone int, bytesDone int64) {
 }
 
 func (p *progressRenderer) finish(verb string) {
-	fmt.Fprintf(p.w, "\r  %s %d objects (%s)\n", verb, p.totalObjects, humanBytes(p.totalBytes))
+	objects, bytes := p.totalObjects, p.totalBytes
+	if p.reported {
+		objects, bytes = p.doneObjects, p.doneBytes
+	}
+	fmt.Fprintf(p.w, "\r  %s %d objects (%s)\n", verb, objects, humanBytes(bytes))
 }
 
 func pastTense(verb string) string {

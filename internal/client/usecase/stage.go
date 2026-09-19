@@ -1,8 +1,10 @@
 package usecase
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -250,24 +252,29 @@ func (w *WorkingCopy) expandAddTargets(targets []string) ([]string, error) {
 }
 
 func (w *WorkingCopy) workingFileHash(path string) (serverDomain.Hash, error) {
-	data, err := os.ReadFile(filepath.Join(w.root, filepath.FromSlash(path)))
+	f, err := os.Open(filepath.Join(w.root, filepath.FromSlash(path)))
 	if err != nil {
 		return serverDomain.Hash{}, err
 	}
-	hash, _, err := chunkFile(data)
+	defer func() { _ = f.Close() }()
+	hash, _, err := chunkReader(f)
 	return hash, err
 }
 
 func chunkFile(data []byte) (serverDomain.Hash, []serverDomain.Chunk, error) {
-	chunks, err := chunker.ChunkAll(data)
+	return chunkReader(bytes.NewReader(data))
+}
+
+func chunkReader(r io.Reader) (serverDomain.Hash, []serverDomain.Chunk, error) {
+	var hashes []serverDomain.Hash
+	var wrapped []serverDomain.Chunk
+	err := chunker.Scan(r, func(c chunker.Chunk) error {
+		hashes = append(hashes, c.Hash)
+		wrapped = append(wrapped, serverDomain.Chunk{Hash: c.Hash, SizeBytes: int64(len(c.Data))})
+		return nil
+	})
 	if err != nil {
 		return serverDomain.Hash{}, nil, err
-	}
-	hashes := make([]serverDomain.Hash, len(chunks))
-	wrapped := make([]serverDomain.Chunk, len(chunks))
-	for i, c := range chunks {
-		hashes[i] = c.Hash
-		wrapped[i] = serverDomain.Chunk{Hash: c.Hash, SizeBytes: int64(len(c.Data))}
 	}
 	return chunker.FileHash(hashes), wrapped, nil
 }

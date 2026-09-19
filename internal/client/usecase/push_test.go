@@ -26,6 +26,7 @@ type stubPushClient struct {
 	pushResult     *serverDomain.PushResult
 	pushErr        error
 	uploadedChunks []*serverDomain.ChunkData
+	uploadCalls    int
 	uploaded       int
 	skipped        int
 	uploadErr      error
@@ -49,7 +50,8 @@ func (s *stubPushClient) Push(_ context.Context, org, project, branch, baseTreeH
 }
 
 func (s *stubPushClient) UploadChunks(_ context.Context, chunks []*serverDomain.ChunkData, onChunk ...func(ch *serverDomain.ChunkData)) (int, int, error) {
-	s.uploadedChunks = chunks
+	s.uploadCalls++
+	s.uploadedChunks = append(s.uploadedChunks, chunks...)
 	for _, ch := range chunks {
 		if len(onChunk) > 0 && onChunk[0] != nil {
 			onChunk[0](ch)
@@ -155,6 +157,46 @@ func TestPush_Run_UploadsEveryChunkForIdempotentStore(t *testing.T) {
 
 	require.Equal(t, chunks[0].Hash, client.pushFiles[0].ChunkHashes[0], "file still lists every chunk hash")
 	require.Len(t, client.uploadedChunks, 1, "the client offers every staged chunk; the server dedupes by hash")
+}
+
+func TestPush_Run_StreamsChunksInBatches(t *testing.T) {
+	oldBatch := uploadBatchBytes
+	uploadBatchBytes = 1024
+	t.Cleanup(func() { uploadBatchBytes = oldBatch })
+
+	root := t.TempDir()
+	content := make([]byte, 1<<20)
+	x := uint32(12345)
+	for i := range content {
+		x = x*1664525 + 1013904223
+		content[i] = byte(x >> 24)
+	}
+	writeRepoFile(t, root, "big.bin", string(content))
+
+	local := &stubLocalRepo{
+		loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "main"},
+		snapshot:   &domain.Snapshot{},
+		staged:     []string{"big.bin"},
+	}
+	client := &stubPushClient{manifest: &serverDomain.TreeNode{Name: "root"}}
+	pusher := newTestPush(t, local, client)
+
+	require.NoError(t, pusher.Run(context.Background(), root, "add big"))
+
+	require.Greater(t, client.uploadCalls, 1, "large files must not buffer every chunk before uploading")
+
+	hashes := make([]serverDomain.Hash, len(client.uploadedChunks))
+	var total int
+	seen := make(map[serverDomain.Hash]bool, len(hashes))
+	for i, ch := range client.uploadedChunks {
+		require.False(t, seen[ch.Hash], "chunk %s uploaded twice", ch.Hash)
+		seen[ch.Hash] = true
+		hashes[i] = ch.Hash
+		total += len(ch.Data)
+	}
+	require.Equal(t, client.pushFiles[0].ChunkHashes, hashes)
+	require.Equal(t, len(content), total)
+	require.Equal(t, int64(len(content)), client.pushFiles[0].SizeBytes)
 }
 
 func TestPush_Run_UsesBaseTreeHash(t *testing.T) {

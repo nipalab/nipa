@@ -1,6 +1,7 @@
 package usecase
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"sort"
@@ -354,18 +355,15 @@ func (m *Merge) abort(ctx context.Context, root string, url *domain.NipaUrl, bra
 }
 
 func (m *Merge) storeMergedFile(path string, data []byte, mode int, isBinary bool) (merge.File, error) {
-	chunks, err := chunker.ChunkAll(data)
+	var hashes []serverDomain.Hash
+	var sizes []int64
+	err := chunker.Scan(bytes.NewReader(data), func(c chunker.Chunk) error {
+		hashes = append(hashes, c.Hash)
+		sizes = append(sizes, int64(len(c.Data)))
+		return m.localRepo.StoreChunk(c.Hash, c.Data)
+	})
 	if err != nil {
 		return merge.File{}, err
-	}
-	hashes := make([]serverDomain.Hash, len(chunks))
-	sizes := make([]int64, len(chunks))
-	for i, c := range chunks {
-		hashes[i] = c.Hash
-		sizes[i] = int64(len(c.Data))
-		if err := m.localRepo.StoreChunk(c.Hash, c.Data); err != nil {
-			return merge.File{}, err
-		}
 	}
 	return merge.File{
 		Path:        path,

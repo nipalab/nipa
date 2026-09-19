@@ -3,6 +3,7 @@ package chunker
 import (
 	"bytes"
 	"encoding/hex"
+	"errors"
 	"io"
 	"math/rand"
 	"testing"
@@ -98,6 +99,45 @@ func TestChunkStreamingMatchesInMemory(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestScanMatchesChunkAll(t *testing.T) {
+	sizes := []int{0, 1, 17, 1 << 17, 1<<20 + 1234}
+	for _, size := range sizes {
+		for _, width := range []int{1, 7, 65536} {
+			data := randData(size, 11)
+			want, err := ChunkAll(data)
+			require.NoError(t, err)
+			got := make([]Chunk, 0, len(want))
+			err = Scan(&tinyReader{data: data, width: width}, func(c Chunk) error {
+				got = append(got, c)
+				return nil
+			})
+			require.NoError(t, err)
+			require.Equal(t, want, got, "size %d width %d", size, width)
+		}
+	}
+}
+
+func TestScanPropagatesCallbackError(t *testing.T) {
+	unexpected := errors.New("stop")
+	calls := 0
+	err := Scan(bytes.NewReader(randData(1<<20, 5)), func(Chunk) error {
+		calls++
+		return unexpected
+	})
+	require.ErrorIs(t, err, unexpected)
+	require.Equal(t, 1, calls)
+}
+
+func TestScanRejectsInvalidConfig(t *testing.T) {
+	called := false
+	err := Scan(bytes.NewReader([]byte("data")), func(Chunk) error {
+		called = true
+		return nil
+	}, Config{Min: 64, Avg: 100, Max: 400})
+	require.Error(t, err)
+	require.False(t, called)
 }
 
 func TestDeterminism(t *testing.T) {

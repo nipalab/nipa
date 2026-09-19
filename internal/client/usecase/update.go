@@ -344,20 +344,20 @@ func materializedMode(mode int) os.FileMode {
 
 func guardedRemove(root string, base clientDomain.SnapshotFile) (bool, error) {
 	fp := filepath.Join(root, filepath.FromSlash(base.Path))
-	data, err := os.ReadFile(fp)
+	f, err := os.Open(fp)
 	if os.IsNotExist(err) {
 		return true, nil
 	}
 	if err != nil {
 		return false, err
 	}
-	chunks, err := chunker.ChunkAll(data)
-	if err != nil {
+	defer func() { _ = f.Close() }()
+	var hashes []domain.Hash
+	if err := chunker.Scan(f, func(c chunker.Chunk) error {
+		hashes = append(hashes, c.Hash)
+		return nil
+	}); err != nil {
 		return false, err
-	}
-	hashes := make([]domain.Hash, len(chunks))
-	for i, c := range chunks {
-		hashes[i] = c.Hash
 	}
 	if chunker.FileHash(hashes) == base.Hash {
 		return true, os.Remove(fp)
