@@ -38,20 +38,18 @@ func (f *fakeUpdateClient) GetTreeNodeManifest(_ context.Context, org, project, 
 	return f.manifest, nil
 }
 
-func (f *fakeUpdateClient) DownloadChunks(_ context.Context, hashes []serverDomain.Hash, onChunk ...func(h serverDomain.Hash, data []byte)) (map[serverDomain.Hash][]byte, error) {
+func (f *fakeUpdateClient) DownloadChunks(_ context.Context, hashes []serverDomain.Hash, onChunk func(h serverDomain.Hash, data []byte) error) error {
 	f.downloaded = append(f.downloaded, hashes...)
-	out := make(map[serverDomain.Hash][]byte, len(hashes))
 	for _, h := range hashes {
 		data, ok := f.chunkData[h]
 		if !ok {
 			data = []byte("from server")
 		}
-		out[h] = data
-		if len(onChunk) > 0 && onChunk[0] != nil {
-			onChunk[0](h, data)
+		if err := onChunk(h, data); err != nil {
+			return err
 		}
 	}
-	return out, nil
+	return nil
 }
 
 func newUpdateCli(t *testing.T, client *fakeUpdateClient) *Cli {

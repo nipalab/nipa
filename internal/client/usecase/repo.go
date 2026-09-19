@@ -16,7 +16,7 @@ type repoInterface interface {
 	GetTreeNodeManifest(ctx context.Context, org, project, branch, path string) (*serverDomain.TreeNode, error)
 	ListBranches(ctx context.Context, org, project string) ([]*serverDomain.Branch, error)
 	CreateBranch(ctx context.Context, org, project, name, fromBranch, fromCommitID, fromCommitHash string) (*serverDomain.Branch, error)
-	DownloadChunks(ctx context.Context, hashes []serverDomain.Hash, onChunk ...func(h serverDomain.Hash, data []byte)) (map[serverDomain.Hash][]byte, error)
+	DownloadChunks(ctx context.Context, hashes []serverDomain.Hash, onChunk func(h serverDomain.Hash, data []byte) error) error
 	GetCommitLog(ctx context.Context, org, project, branch string, startCommitID *snow.ID, limit int) ([]*serverDomain.CommitLogEntry, error)
 }
 
@@ -30,7 +30,7 @@ type localRepo interface {
 	StageAdd(path string) error
 	StageRemove(paths []string) error
 	MissingChunks(hashes []serverDomain.Hash) ([]serverDomain.Hash, error)
-	StoreChunk(hash serverDomain.Hash, data []byte) error
+	StoreChunks(chunks []*serverDomain.ChunkData) error
 	LoadChunk(hash serverDomain.Hash) ([]byte, error)
 	SaveCommit(commitID, commitHash string) error
 	LoadCommit() (*domain.LocalCommit, error)

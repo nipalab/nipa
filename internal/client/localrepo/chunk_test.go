@@ -21,6 +21,29 @@ func TestStoreChunk_LoadChunk(t *testing.T) {
 	require.Equal(t, data, got)
 }
 
+func TestStoreChunks_StoresAll(t *testing.T) {
+	lr := newTestLocalRepo(t)
+
+	first := []byte("first chunk")
+	second := []byte("second chunk")
+	require.NoError(t, lr.StoreChunks([]*serverDomain.ChunkData{
+		{Hash: chunker.Sum(first), Data: first},
+		{Hash: chunker.Sum(second), Data: second},
+	}))
+
+	gotFirst, err := lr.LoadChunk(chunker.Sum(first))
+	require.NoError(t, err)
+	require.Equal(t, first, gotFirst)
+	gotSecond, err := lr.LoadChunk(chunker.Sum(second))
+	require.NoError(t, err)
+	require.Equal(t, second, gotSecond)
+}
+
+func TestStoreChunks_Empty(t *testing.T) {
+	lr := newTestLocalRepo(t)
+	require.NoError(t, lr.StoreChunks(nil))
+}
+
 func TestStoreChunk_Overwrites(t *testing.T) {
 	lr := newTestLocalRepo(t)
 

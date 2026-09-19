@@ -1,7 +1,10 @@
 package grpc
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
+	"errors"
 	"io"
 	"testing"
 
@@ -264,12 +267,58 @@ func TestClient_DownloadChunks_Success(t *testing.T) {
 	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
 	require.NoError(t, c.Connect(context.Background(), addr))
 
-	got, err := c.DownloadChunks(context.Background(), []serverDomain.Hash{h1, h2})
+	got := make(map[serverDomain.Hash][]byte)
+	err := c.DownloadChunks(context.Background(), []serverDomain.Hash{h1, h2}, func(h serverDomain.Hash, data []byte) error {
+		got[h] = data
+		return nil
+	})
 	require.NoError(t, err)
 	require.Equal(t, []byte("aaaa"), got[h1])
 	require.Equal(t, []byte("bbbb"), got[h2])
 	require.Equal(t, "Bearer tok", fs.downloadStreamAuth, "streaming RPCs must carry the access token")
 	require.Equal(t, []string{h1.String(), h2.String()}, fs.downloadRequests)
+}
+
+func TestClient_DownloadChunks_ManyChunks(t *testing.T) {
+	const n = 3000
+	data := make(map[string][]byte, n)
+	hashes := make([]serverDomain.Hash, 0, n)
+	for i := 0; i < n; i++ {
+		var h serverDomain.Hash
+		binary.BigEndian.PutUint32(h[:4], uint32(i))
+		hashes = append(hashes, h)
+		data[h.String()] = bytes.Repeat([]byte{byte(i)}, 1024)
+	}
+	fs := &fakeServer{downloadData: data}
+	addr := startTestServer(t, fs)
+	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
+	require.NoError(t, c.Connect(context.Background(), addr))
+
+	var gotObjects int
+	var gotBytes int64
+	err := c.DownloadChunks(context.Background(), hashes, func(_ serverDomain.Hash, data []byte) error {
+		gotObjects++
+		gotBytes += int64(len(data))
+		return nil
+	})
+	require.NoError(t, err)
+	require.Equal(t, n, gotObjects)
+	require.Equal(t, int64(n*1024), gotBytes)
+}
+
+func TestClient_DownloadChunks_SinkErrorStops(t *testing.T) {
+	var h serverDomain.Hash
+	h[0] = 0x01
+	fs := &fakeServer{downloadData: map[string][]byte{h.String(): []byte("aaaa")}}
+	addr := startTestServer(t, fs)
+	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
+	require.NoError(t, c.Connect(context.Background(), addr))
+
+	unexpected := errors.New("sink failed")
+	err := c.DownloadChunks(context.Background(), []serverDomain.Hash{h}, func(serverDomain.Hash, []byte) error {
+		return unexpected
+	})
+	require.ErrorIs(t, err, unexpected)
 }
 
 func TestClient_DownloadChunks_ReportsEachChunk(t *testing.T) {
@@ -287,9 +336,10 @@ func TestClient_DownloadChunks_ReportsEachChunk(t *testing.T) {
 
 	var gotObject int
 	var gotBytes int64
-	_, err := c.DownloadChunks(context.Background(), []serverDomain.Hash{h1, h2}, func(_ serverDomain.Hash, data []byte) {
+	err := c.DownloadChunks(context.Background(), []serverDomain.Hash{h1, h2}, func(_ serverDomain.Hash, data []byte) error {
 		gotObject++
 		gotBytes += int64(len(data))
+		return nil
 	})
 	require.NoError(t, err)
 	require.Equal(t, 2, gotObject, "the per-chunk callback must fire for every received chunk")
@@ -302,7 +352,9 @@ func TestClient_DownloadChunks_ServerError(t *testing.T) {
 	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
 	require.NoError(t, c.Connect(context.Background(), addr))
 
-	_, err := c.DownloadChunks(context.Background(), []serverDomain.Hash{{0x01}})
+	err := c.DownloadChunks(context.Background(), []serverDomain.Hash{{0x01}}, func(serverDomain.Hash, []byte) error {
+		return nil
+	})
 	require.Error(t, err)
 
 	var domErr *domain.Error
@@ -313,7 +365,9 @@ func TestClient_DownloadChunks_ServerError(t *testing.T) {
 func TestClient_DownloadChunks_NotConnected(t *testing.T) {
 	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
 
-	_, err := c.DownloadChunks(context.Background(), []serverDomain.Hash{{0x01}})
+	err := c.DownloadChunks(context.Background(), []serverDomain.Hash{{0x01}}, func(serverDomain.Hash, []byte) error {
+		return nil
+	})
 	require.Error(t, err)
 	require.Equal(t, "not connected to a nipa server", err.Error())
 }

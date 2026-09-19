@@ -3,7 +3,6 @@ package localrepo
 import (
 	"context"
 	"database/sql"
-	"encoding/hex"
 	"errors"
 	"strings"
 
@@ -77,19 +76,44 @@ func (l *LocalRepo) MissingChunks(hashes []serverDomain.Hash) ([]serverDomain.Ha
 	}
 	ctx := context.Background()
 	q := sqlcLocalrepo.New(l.db)
-	seen := make(map[string]bool, len(hashes))
-	var missing []serverDomain.Hash
+
+	unique := make([]serverDomain.Hash, 0, len(hashes))
+	seen := make(map[serverDomain.Hash]bool, len(hashes))
 	for _, h := range hashes {
-		key := hex.EncodeToString(h[:])
-		if seen[key] {
+		if seen[h] {
 			continue
 		}
-		seen[key] = true
-		exists, err := q.ChunkExists(ctx, h.Bytes())
+		seen[h] = true
+		unique = append(unique, h)
+	}
+
+	const batchSize = 500
+	present := make(map[serverDomain.Hash]bool, len(unique))
+	for start := 0; start < len(unique); start += batchSize {
+		end := start + batchSize
+		if end > len(unique) {
+			end = len(unique)
+		}
+		blobs := make([][]byte, 0, end-start)
+		for i := start; i < end; i++ {
+			blobs = append(blobs, unique[i].Bytes())
+		}
+		existing, err := q.ChunkExistingHashes(ctx, blobs)
 		if err != nil {
 			return nil, err
 		}
-		if !exists {
+		for _, b := range existing {
+			var h serverDomain.Hash
+			if copy(h[:], b) != len(h) {
+				continue
+			}
+			present[h] = true
+		}
+	}
+
+	var missing []serverDomain.Hash
+	for _, h := range unique {
+		if !present[h] {
 			missing = append(missing, h)
 		}
 	}

@@ -10,17 +10,33 @@ import (
 )
 
 func (l *LocalRepo) StoreChunk(hash serverDomain.Hash, data []byte) error {
+	return l.StoreChunks([]*serverDomain.ChunkData{{Hash: hash, Data: data}})
+}
+
+func (l *LocalRepo) StoreChunks(chunks []*serverDomain.ChunkData) error {
 	if l.db == nil {
 		return errors.New("local repo not initialized")
 	}
+	if len(chunks) == 0 {
+		return nil
+	}
 	ctx := context.Background()
-	q := sqlcLocalrepo.New(l.db)
-	_, err := q.ChunkUpsertContent(ctx, sqlcLocalrepo.ChunkUpsertContentParams{
-		Hash:      hash.Bytes(),
-		SizeBytes: int64(len(data)),
-		Data:      data,
-	})
-	return err
+	tx, err := l.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	q := sqlcLocalrepo.New(tx)
+	for _, c := range chunks {
+		if _, err := q.ChunkUpsertContent(ctx, sqlcLocalrepo.ChunkUpsertContentParams{
+			Hash:      c.Hash.Bytes(),
+			SizeBytes: int64(len(c.Data)),
+			Data:      c.Data,
+		}); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 func (l *LocalRepo) LoadChunk(hash serverDomain.Hash) ([]byte, error) {

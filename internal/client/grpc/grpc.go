@@ -343,46 +343,56 @@ func (c *Client) UploadChunks(ctx context.Context, chunks []*serverDomain.ChunkD
 	return int(res.GetUploaded()), int(res.GetSkipped()), nil
 }
 
-func (c *Client) DownloadChunks(ctx context.Context, hashes []serverDomain.Hash, onChunk ...func(h serverDomain.Hash, data []byte)) (map[serverDomain.Hash][]byte, error) {
+func (c *Client) DownloadChunks(ctx context.Context, hashes []serverDomain.Hash, onChunk func(h serverDomain.Hash, data []byte) error) error {
 	client, err := c.transport.NipaServiceClient()
 	if err != nil {
-		return nil, err
+		return err
 	}
 	authedCtx, err := c.authedContext(ctx)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	stream, err := client.DownloadChunks(authedCtx)
+	streamCtx, cancel := context.WithCancel(authedCtx)
+	defer cancel()
+	stream, err := client.DownloadChunks(streamCtx)
 	if err != nil {
-		return nil, toDomainError(err)
+		return toDomainError(err)
 	}
-	for _, h := range hashes {
-		if err := stream.Send(&pb.DownloadChunksRequest{Hash: h.String()}); err != nil {
-			return nil, err
+
+	sendErr := make(chan error, 1)
+	go func() {
+		for _, h := range hashes {
+			if err := stream.Send(&pb.DownloadChunksRequest{Hash: h.String()}); err != nil {
+				sendErr <- err
+				return
+			}
 		}
-	}
-	if err := stream.CloseSend(); err != nil {
-		return nil, err
-	}
-	out := make(map[serverDomain.Hash][]byte, len(hashes))
+		sendErr <- stream.CloseSend()
+	}()
+
 	for {
 		recv, err := stream.Recv()
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
-			return nil, toDomainError(err)
+			cancel()
+			<-sendErr
+			return toDomainError(err)
 		}
 		hash, err := decodeHash(recv.GetHash())
 		if err != nil {
-			return nil, err
+			cancel()
+			<-sendErr
+			return err
 		}
-		out[hash] = recv.GetData()
-		if len(onChunk) > 0 && onChunk[0] != nil {
-			onChunk[0](hash, recv.GetData())
+		if err := onChunk(hash, recv.GetData()); err != nil {
+			cancel()
+			<-sendErr
+			return err
 		}
 	}
-	return out, nil
+	return <-sendErr
 }
 
 func (c *Client) authedContext(ctx context.Context) (context.Context, error) {
