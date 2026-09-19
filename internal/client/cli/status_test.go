@@ -15,9 +15,9 @@ func TestSetupStatusCmd_ShowsAllSections(t *testing.T) {
 		Hash: serverDomain.Hash{0x01},
 		Name: "root",
 		FileChildren: []*serverDomain.File{
-			{Name: "tracked.txt", SizeBytes: int64(len("hello world")), Chunks: chunksOf(t, "hello world")},
-			{Name: "modified.txt", SizeBytes: int64(len("orig")), Chunks: chunksOf(t, "orig")},
-			{Name: "missing.txt", SizeBytes: int64(len("gone")), Chunks: chunksOf(t, "gone")},
+			{Name: "tracked.txt", Hash: fileHash(t, "hello world"), SizeBytes: int64(len("hello world")), Chunks: chunksOf(t, "hello world")},
+			{Name: "modified.txt", Hash: fileHash(t, "orig"), SizeBytes: int64(len("orig")), Chunks: chunksOf(t, "orig")},
+			{Name: "missing.txt", Hash: fileHash(t, "gone"), SizeBytes: int64(len("gone")), Chunks: chunksOf(t, "gone")},
 		},
 	}
 	root := setupRepoWithTree(t, "main", base)

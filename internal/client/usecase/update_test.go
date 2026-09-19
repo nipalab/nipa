@@ -1,8 +1,10 @@
 package usecase
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -847,17 +849,17 @@ func TestMaterializeFile_KeepsExistingFileOnFailure(t *testing.T) {
 
 	first := serverDomain.Hash{0x01}
 	second := serverDomain.Hash{0x02}
-	load := func(h serverDomain.Hash) ([]byte, error) {
+	open := func(h serverDomain.Hash) (io.ReadCloser, error) {
 		if h == second {
 			return nil, errors.New("load failed")
 		}
-		return []byte("partial"), nil
+		return io.NopCloser(bytes.NewReader([]byte("partial"))), nil
 	}
 	err := materializeFile(root, materializedFile{
 		Path:        "a.txt",
 		SizeBytes:   100,
 		ChunkHashes: []serverDomain.Hash{first, second},
-	}, load)
+	}, open)
 	require.Error(t, err)
 
 	got, err := os.ReadFile(fp)
@@ -881,7 +883,9 @@ func TestMaterializeFile_AppliesMode(t *testing.T) {
 		Mode:        3,
 		SizeBytes:   int64(len(data)),
 		ChunkHashes: []serverDomain.Hash{hash},
-	}, func(serverDomain.Hash) ([]byte, error) { return data, nil })
+	}, func(serverDomain.Hash) (io.ReadCloser, error) {
+		return io.NopCloser(bytes.NewReader(data)), nil
+	})
 	require.NoError(t, err)
 
 	info, err := os.Stat(filepath.Join(root, "run.sh"))

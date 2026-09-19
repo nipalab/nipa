@@ -36,6 +36,9 @@ func (l *LocalRepo) Init(target string) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
+	if err := os.MkdirAll(filepath.Join(dir, ObjectsDir), 0o755); err != nil {
+		return err
+	}
 	db, err := sql.Open("sqlite", filepath.Join(dir, DBFile)+"?_pragma=foreign_keys(ON)")
 	if err != nil {
 		return err
@@ -134,7 +137,7 @@ func (l *LocalRepo) insertTreeNode(ctx context.Context, q *sqlcLocalrepo.Queries
 
 func (l *LocalRepo) insertFile(ctx context.Context, q *sqlcLocalrepo.Queries, treePath, token string, file *domain.File) error {
 	filePath := treePath + "/" + file.Name
-	if err := q.FileUpsert(ctx, sqlcLocalrepo.FileUpsertParams{
+	return q.FileUpsert(ctx, sqlcLocalrepo.FileUpsertParams{
 		Path:       filePath,
 		TreePath:   treePath,
 		Hash:       file.Hash.Bytes(),
@@ -142,24 +145,5 @@ func (l *LocalRepo) insertFile(ctx context.Context, q *sqlcLocalrepo.Queries, tr
 		Mode:       int64(file.Mode),
 		IsBinary:   file.IsBinary,
 		SnapshotID: token,
-	}); err != nil {
-		return err
-	}
-	for index, chunk := range file.Chunks {
-		chunkID, err := q.ChunkUpsert(ctx, sqlcLocalrepo.ChunkUpsertParams{
-			Hash:      chunk.Hash.Bytes(),
-			SizeBytes: chunk.SizeBytes,
-		})
-		if err != nil {
-			return err
-		}
-		if err := q.FileChunkInsert(ctx, sqlcLocalrepo.FileChunkInsertParams{
-			FilePath:   filePath,
-			ChunkID:    chunkID,
-			ChunkIndex: int64(index),
-		}); err != nil {
-			return err
-		}
-	}
-	return nil
+	})
 }

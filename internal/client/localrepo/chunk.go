@@ -1,12 +1,10 @@
 package localrepo
 
 import (
-	"context"
-	"database/sql"
 	"errors"
+	"io"
 
 	serverDomain "github.com/nipalab/nipa/internal/domain"
-	sqlcLocalrepo "github.com/nipalab/nipa/internal/repository/sqlc/localrepo"
 )
 
 func (l *LocalRepo) StoreChunk(hash serverDomain.Hash, data []byte) error {
@@ -17,43 +15,19 @@ func (l *LocalRepo) StoreChunks(chunks []*serverDomain.ChunkData) error {
 	if l.db == nil {
 		return errors.New("local repo not initialized")
 	}
-	if len(chunks) == 0 {
-		return nil
-	}
-	ctx := context.Background()
-	tx, err := l.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-	q := sqlcLocalrepo.New(tx)
 	for _, c := range chunks {
-		if _, err := q.ChunkUpsertContent(ctx, sqlcLocalrepo.ChunkUpsertContentParams{
-			Hash:      c.Hash.Bytes(),
-			SizeBytes: int64(len(c.Data)),
-			Data:      c.Data,
-		}); err != nil {
+		if err := l.putObject(c.Hash, c.Data); err != nil {
 			return err
 		}
 	}
-	return tx.Commit()
+	return nil
 }
 
 func (l *LocalRepo) LoadChunk(hash serverDomain.Hash) ([]byte, error) {
-	if l.db == nil {
-		return nil, errors.New("local repo not initialized")
-	}
-	ctx := context.Background()
-	q := sqlcLocalrepo.New(l.db)
-	data, err := q.ChunkGetData(ctx, hash.Bytes())
+	rc, err := l.OpenChunk(hash)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, errors.New("chunk not found in cache")
-		}
 		return nil, err
 	}
-	if data == nil {
-		return nil, errors.New("chunk content not stored")
-	}
-	return data, nil
+	defer func() { _ = rc.Close() }()
+	return io.ReadAll(rc)
 }

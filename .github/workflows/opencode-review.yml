@@ -11,7 +11,7 @@ jobs:
     permissions:
       id-token: write
       contents: read
-      pull-requests: read
+      pull-requests: write
       issues: read
     steps:
       - name: Checkout repository
@@ -24,9 +24,36 @@ jobs:
         uses: anomalyco/opencode/github@b4a641921559031b53ac9dd782652e3def036d42
         env:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          OPENCODE_CONFIG_CONTENT: '{"permission":{"edit":"deny"}}'
         with:
           model: opencode-go/glm-5.3-flash
           prompt: |
-            Review this pull request.
-            - Check for correctness, potential bugs, and security issues
-            - Be concise and only report actionable findings
+            Review this pull request for correctness, potential bugs, and security issues.
+            Be concise and only report actionable findings.
+
+            Repository: ${{ github.repository }}
+            Pull request: #${{ github.event.pull_request.number }}
+            Head commit: ${{ github.event.pull_request.head.sha }}
+
+            Read the changes first:
+              gh pr diff "$PR_NUMBER"
+
+            For every actionable finding, post an inline review comment on the exact changed line:
+              gh api --method POST "repos/$PR_REPO/pulls/$PR_NUMBER/comments" \
+                -f body="<finding and suggested fix>" \
+                -f path="<file path>" \
+                -f commit_id="$PR_HEAD_SHA" \
+                -F line=<line number> \
+                -f side=RIGHT
+
+            Rules:
+            - Use side=RIGHT with the line number in the new file; for removed lines use side=LEFT with the old-file line number.
+            - Only comment on lines that are part of the PR diff; GitHub rejects comments outside the diff with 422.
+            - One focused, actionable comment per finding, with a concrete suggestion when possible.
+            - Do not edit, create, or delete files; do not commit or push. This run is comment-only.
+            - If nothing is actionable, post no inline comments.
+            - Finish with a short summary of the review; the summary is posted as a PR comment.

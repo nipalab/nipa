@@ -9,17 +9,10 @@ import (
 )
 
 type Querier interface {
-	ChunkExistingHashes(ctx context.Context, hashes [][]byte) ([][]byte, error)
-	ChunkExists(ctx context.Context, hash []byte) (bool, error)
-	ChunkGetData(ctx context.Context, hash []byte) ([]byte, error)
-	ChunkUpsert(ctx context.Context, arg ChunkUpsertParams) (int64, error)
-	ChunkUpsertContent(ctx context.Context, arg ChunkUpsertContentParams) (int64, error)
-	FileChunkInsert(ctx context.Context, arg FileChunkInsertParams) error
 	FileUpsert(ctx context.Context, arg FileUpsertParams) error
 	MetaDelete(ctx context.Context, key string) error
 	MetaGet(ctx context.Context, key string) (string, error)
 	MetaSet(ctx context.Context, arg MetaSetParams) error
-	SnapshotFileChunkList(ctx context.Context, snapshotID string) ([]SnapshotFileChunkListRow, error)
 	SnapshotFileList(ctx context.Context, snapshotID string) ([]SnapshotFileListRow, error)
 	StagedFileDelete(ctx context.Context, path string) error
 	StagedFileDeleteAll(ctx context.Context) error

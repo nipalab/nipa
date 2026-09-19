@@ -6,7 +6,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/nipalab/nipa/internal/chunker"
 	serverDomain "github.com/nipalab/nipa/internal/domain"
 )
 
@@ -63,10 +62,7 @@ func TestSnapshot_AfterSaveTree(t *testing.T) {
 
 	f := snap.Files[0]
 	require.Equal(t, "assets/logo.png", f.Path, "snapshot paths must not carry a leading slash")
-	require.Equal(t, chunker.FileHash([]serverDomain.Hash{{0x04}}), f.Hash)
-	require.Len(t, f.Chunks, 1)
-	require.Equal(t, serverDomain.Hash{0x04}, f.Chunks[0].Hash)
-	require.Equal(t, int64(10), f.Chunks[0].SizeBytes)
+	require.Equal(t, serverDomain.Hash{0x03}, f.Hash)
 	require.Equal(t, int64(10), f.SizeBytes)
 	require.True(t, f.IsBinary)
 	require.Equal(t, 0o644, f.Mode)
@@ -91,7 +87,7 @@ func TestSnapshot_EmptyTree(t *testing.T) {
 	require.Empty(t, snap.Files)
 }
 
-func TestSnapshot_MultipleFilesWithChunks(t *testing.T) {
+func TestSnapshot_MultipleFiles(t *testing.T) {
 	lr := newTestLocalRepo(t)
 	root := &serverDomain.TreeNode{
 		Hash: serverDomain.Hash{0x01},
@@ -117,8 +113,8 @@ func TestSnapshot_MultipleFilesWithChunks(t *testing.T) {
 	require.Len(t, snap.Files, 2)
 	require.Equal(t, "root.txt", snap.Files[0].Path)
 	require.Equal(t, "zero.txt", snap.Files[1].Path)
-	require.Equal(t, chunker.FileHash([]serverDomain.Hash{{0x03}}), snap.Files[0].Hash)
-	require.Equal(t, chunker.FileHash(nil), snap.Files[1].Hash, "a zero-length file has no chunks")
+	require.Equal(t, serverDomain.Hash{0x02}, snap.Files[0].Hash)
+	require.Equal(t, serverDomain.Hash{0x04}, snap.Files[1].Hash)
 }
 
 func TestClearStaged(t *testing.T) {
@@ -167,13 +163,13 @@ func TestMissingChunks_AllKnown(t *testing.T) {
 	require.Empty(t, got)
 }
 
-func TestMissingChunks_MetadataOnlyRowIsMissing(t *testing.T) {
+func TestMissingChunks_NoObjectIsMissing(t *testing.T) {
 	lr := newTestLocalRepo(t)
-	require.NoError(t, lr.SaveTree(treeFixture()), "SaveTree inserts chunk metadata without content")
+	require.NoError(t, lr.SaveTree(treeFixture()), "SaveTree only records metadata, never chunk content")
 
 	got, err := lr.MissingChunks([]serverDomain.Hash{{0x04}})
 	require.NoError(t, err)
-	require.Equal(t, []serverDomain.Hash{{0x04}}, got, "a metadata-only chunk row must still count as missing content")
+	require.Equal(t, []serverDomain.Hash{{0x04}}, got, "a chunk without a cached object counts as missing")
 }
 
 func TestMissingChunks_ManyHashes(t *testing.T) {

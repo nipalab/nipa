@@ -1,6 +1,7 @@
 package localrepo
 
 import (
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -44,7 +45,7 @@ func TestStoreChunks_Empty(t *testing.T) {
 	require.NoError(t, lr.StoreChunks(nil))
 }
 
-func TestStoreChunk_Overwrites(t *testing.T) {
+func TestStoreChunk_ObjectIsImmutable(t *testing.T) {
 	lr := newTestLocalRepo(t)
 
 	hash := chunker.Sum([]byte("first"))
@@ -53,7 +54,17 @@ func TestStoreChunk_Overwrites(t *testing.T) {
 
 	got, err := lr.LoadChunk(hash)
 	require.NoError(t, err)
-	require.Equal(t, []byte("second"), got)
+	require.Equal(t, []byte("first"), got, "content-addressed objects are never overwritten")
+}
+
+func TestStoreChunk_WritesObjectFile(t *testing.T) {
+	lr := newTestLocalRepo(t)
+
+	hash := chunker.Sum([]byte("on disk"))
+	require.NoError(t, lr.StoreChunk(hash, []byte("on disk")))
+
+	_, err := os.Stat(lr.objectPath(hash))
+	require.NoError(t, err, "content must live in .nipa/objects, not the database")
 }
 
 func TestStoreChunk_SaveTreeKeepsContent(t *testing.T) {

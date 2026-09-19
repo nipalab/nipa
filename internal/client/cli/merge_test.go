@@ -190,6 +190,10 @@ func TestSetupMergeCmd_Conflicts(t *testing.T) {
 // cliTree builds a recursive manifest for a single flat file entry.
 func cliTree(path, content string) *serverDomain.TreeNode {
 	chunks := chunkerChunks(content)
+	hashes := make([]serverDomain.Hash, len(chunks))
+	for i, c := range chunks {
+		hashes[i] = c.Hash
+	}
 	name := path
 	for i := len(path) - 1; i >= 0; i-- {
 		if path[i] == '/' {
@@ -203,6 +207,7 @@ func cliTree(path, content string) *serverDomain.TreeNode {
 			Name:      name,
 			Mode:      0o644,
 			SizeBytes: int64(len(content)),
+			Hash:      chunker.FileHash(hashes),
 			Chunks:    chunks,
 		}},
 	}

@@ -14,6 +14,7 @@ const (
 	ConfigDir      = ".nipa"
 	ConfigFile     = "config"
 	DBFile         = "nipa.db"
+	ObjectsDir     = "objects"
 	MaxSearchDepth = 32
 )
 

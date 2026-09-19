@@ -8,14 +8,6 @@ import (
 	"database/sql"
 )
 
-type Chunk struct {
-	ID        int64        `json:"id"`
-	Hash      []byte       `json:"hash"`
-	SizeBytes int64        `json:"size_bytes"`
-	Data      []byte       `json:"data"`
-	CreatedAt sql.NullTime `json:"created_at"`
-}
-
 type File struct {
 	Path       string `json:"path"`
 	TreePath   string `json:"tree_path"`
@@ -24,12 +16,6 @@ type File struct {
 	Mode       int64  `json:"mode"`
 	IsBinary   bool   `json:"is_binary"`
 	SnapshotID string `json:"snapshot_id"`
-}
-
-type FileChunk struct {
-	FilePath   string `json:"file_path"`
-	ChunkID    int64  `json:"chunk_id"`
-	ChunkIndex int64  `json:"chunk_index"`
 }
 
 type Meta struct {
