@@ -393,3 +393,76 @@ func TestPush_Run_Error_LoginRequired(t *testing.T) {
 	err := pusher.Run(context.Background(), root, "push")
 	require.ErrorIs(t, err, wantErr)
 }
+
+func TestPush_Run_UsesRevertStateBaseTree(t *testing.T) {
+	root := t.TempDir()
+	writeRepoFile(t, root, "a.txt", "reverted")
+
+	local := &stubLocalRepo{
+		loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "main"},
+		snapshot: &domain.Snapshot{
+			TreeHash: "marker-tree",
+			Files:    []domain.SnapshotFile{{Path: "a.txt", Hash: serverDomain.Hash{0x01}}},
+		},
+		staged: []string{"a.txt"},
+		revertState: &domain.RevertState{
+			Targets:          []domain.CommitRef{{ID: "3", Hash: "abc", Subject: "third"}},
+			CurrentTreeHash:  "head-tree",
+			OriginalTreeHash: "orig-tree",
+		},
+	}
+	client := &stubPushClient{manifest: &serverDomain.TreeNode{Name: "root"}}
+	pusher := newTestPush(t, local, client)
+
+	require.NoError(t, pusher.Run(context.Background(), root, `Revert "third"`))
+
+	require.Equal(t, "head-tree", client.baseTreeHash, "a pending revert commits on top of the branch head")
+	require.Empty(t, client.parent2hash, "a revert is a single-parent commit")
+	require.True(t, local.clearedRevert)
+}
+
+func TestPush_Run_Error_RevertSequencePending(t *testing.T) {
+	root := t.TempDir()
+	writeRepoFile(t, root, "a.txt", "hello")
+
+	local := &stubLocalRepo{
+		loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "main"},
+		snapshot:   &domain.Snapshot{},
+		staged:     []string{"a.txt"},
+		revertState: &domain.RevertState{
+			Targets:         []domain.CommitRef{{ID: "3"}, {ID: "2"}},
+			CurrentTreeHash: "head-tree",
+		},
+	}
+	pusher := newTestPush(t, local, &stubPushClient{})
+
+	err := pusher.Run(context.Background(), root, "push")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "revert sequence")
+	require.False(t, local.clearedStaged)
+}
+
+func TestPush_Run_Error_ClearRevertState(t *testing.T) {
+	root := t.TempDir()
+	writeRepoFile(t, root, "a.txt", "reverted")
+	wantErr := errors.New("clear revert failed")
+
+	local := &stubLocalRepo{
+		loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "main"},
+		snapshot: &domain.Snapshot{
+			TreeHash: "marker-tree",
+			Files:    []domain.SnapshotFile{{Path: "a.txt", Hash: serverDomain.Hash{0x01}}},
+		},
+		staged: []string{"a.txt"},
+		revertState: &domain.RevertState{
+			Targets:         []domain.CommitRef{{ID: "3"}},
+			CurrentTreeHash: "head-tree",
+		},
+		clearRevertErr: wantErr,
+	}
+	client := &stubPushClient{manifest: &serverDomain.TreeNode{Name: "root"}}
+	pusher := newTestPush(t, local, client)
+
+	err := pusher.Run(context.Background(), root, "revert")
+	require.ErrorIs(t, err, wantErr)
+}

@@ -30,6 +30,8 @@ type pushLocalRepo interface {
 	SaveCommit(commitID, commitHash string) error
 	LoadMergeState() (*domain.MergeState, error)
 	ClearMergeState() error
+	LoadRevertState() (*domain.RevertState, error)
+	ClearRevertState() error
 }
 
 type Push struct {
@@ -71,6 +73,37 @@ func (p *Push) Run(ctx context.Context, root, message string, progress ...Upload
 		return err
 	}
 
+	mergeState, err := p.localRepo.LoadMergeState()
+	if err != nil {
+		return err
+	}
+	revertState, err := p.localRepo.LoadRevertState()
+	if err != nil {
+		return err
+	}
+	if revertState != nil && len(revertState.Targets) > 1 {
+		return domain.NewUserError("a revert sequence is in progress; run nipa revert --continue")
+	}
+
+	var baseTreeHash, parent2 string
+	switch {
+	case mergeState != nil:
+		parent2 = mergeState.SourceCommitHash
+		baseTreeHash = mergeState.TargetTreeHash
+	case revertState != nil:
+		baseTreeHash = revertState.CurrentTreeHash
+	}
+
+	if err := p.pushStaged(ctx, root, nipaUrl, cfg.Branch, message, baseTreeHash, parent2, progress...); err != nil {
+		return err
+	}
+	if err := p.localRepo.ClearMergeState(); err != nil {
+		return err
+	}
+	return p.localRepo.ClearRevertState()
+}
+
+func (p *Push) pushStaged(ctx context.Context, root string, nipaUrl *domain.NipaUrl, branch, message, baseTreeHash, parent2 string, progress ...UploadProgress) error {
 	snapshot, err := p.localRepo.Snapshot()
 	if err != nil {
 		return err
@@ -163,19 +196,10 @@ func (p *Push) Run(ctx context.Context, root, message string, progress ...Upload
 		prog.UploadEnd()
 	}
 
-	var parent2 string
-	mergeState, err := p.localRepo.LoadMergeState()
-	if err != nil {
-		return err
+	if baseTreeHash == "" {
+		baseTreeHash = snapshot.TreeHash
 	}
-	baseTreeHash := snapshot.TreeHash
-	if mergeState != nil {
-		parent2 = mergeState.SourceCommitHash
-		if mergeState.TargetTreeHash != "" {
-			baseTreeHash = mergeState.TargetTreeHash
-		}
-	}
-	result, err := p.pushClient.Push(ctx, nipaUrl.Org, nipaUrl.Project, cfg.Branch, baseTreeHash, message, files, removed, parent2)
+	result, err := p.pushClient.Push(ctx, nipaUrl.Org, nipaUrl.Project, branch, baseTreeHash, message, files, removed, parent2)
 	if err != nil {
 		return err
 	}
@@ -183,17 +207,14 @@ func (p *Push) Run(ctx context.Context, root, message string, progress ...Upload
 		return err
 	}
 
-	rootTree, err := p.pushClient.GetTreeNodeManifest(ctx, nipaUrl.Org, nipaUrl.Project, cfg.Branch, "")
+	rootTree, err := p.pushClient.GetTreeNodeManifest(ctx, nipaUrl.Org, nipaUrl.Project, branch, "")
 	if err != nil {
 		return err
 	}
 	if err := p.localRepo.SaveTree(rootTree); err != nil {
 		return err
 	}
-	if err := p.localRepo.ClearStaged(); err != nil {
-		return err
-	}
-	return p.localRepo.ClearMergeState()
+	return p.localRepo.ClearStaged()
 }
 
 var uploadBatchBytes = 8 << 20
