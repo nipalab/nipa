@@ -12,6 +12,14 @@ import (
 	"github.com/nipalab/nipa/internal/snow"
 )
 
+type stubPushCall struct {
+	baseTreeHash string
+	message      string
+	parent2      string
+	files        []*serverDomain.PushFile
+	removed      []string
+}
+
 type stubPushClient struct {
 	connectHost    string
 	connectErr     error
@@ -24,6 +32,8 @@ type stubPushClient struct {
 	pushFiles      []*serverDomain.PushFile
 	pushRemoved    []string
 	pushResult     *serverDomain.PushResult
+	pushResults    []*serverDomain.PushResult
+	pushes         []stubPushCall
 	pushErr        error
 	uploadedChunks []*serverDomain.ChunkData
 	uploadCalls    int
@@ -43,6 +53,18 @@ func (s *stubPushClient) Push(_ context.Context, org, project, branch, baseTreeH
 	s.org, s.project, s.branch, s.baseTreeHash, s.message = org, project, branch, baseTreeHash, message
 	s.pushFiles, s.pushRemoved = files, removed
 	s.parent2hash = parent2CommitHash
+	s.pushes = append(s.pushes, stubPushCall{
+		baseTreeHash: baseTreeHash,
+		message:      message,
+		parent2:      parent2CommitHash,
+		files:        files,
+		removed:      removed,
+	})
+	if len(s.pushResults) > 0 {
+		result := s.pushResults[0]
+		s.pushResults = s.pushResults[1:]
+		return result, s.pushErr
+	}
 	if s.pushResult == nil {
 		return &serverDomain.PushResult{}, s.pushErr
 	}

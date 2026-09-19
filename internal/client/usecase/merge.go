@@ -1,14 +1,12 @@
 package usecase
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
 	"sort"
 	"strings"
 
-	"github.com/nipalab/nipa/internal/chunker"
 	"github.com/nipalab/nipa/internal/client/domain"
 	"github.com/nipalab/nipa/internal/client/merge"
 	serverDomain "github.com/nipalab/nipa/internal/domain"
@@ -176,27 +174,6 @@ func (m *Merge) trueMerge(ctx context.Context, root string, url *domain.NipaUrl,
 	theirs := merge.Flatten(sourceTree)
 	res := merge.ThreeWay(base, ours, theirs)
 
-	var needs []merge.File
-	for _, e := range res.Entries {
-		switch e.Decision {
-		case merge.KeepTheirs:
-			needs = append(needs, e.Theirs)
-		case merge.TextMerge:
-			needs = append(needs, e.Base, e.Ours, e.Theirs)
-		}
-	}
-	var want []serverDomain.Hash
-	for _, f := range needs {
-		want = append(want, f.ChunkHashes...)
-	}
-	missing, err := m.localRepo.MissingChunks(want)
-	if err != nil {
-		return nil, err
-	}
-	if err := downloadMissing(ctx, m.client, m.localRepo, missing, estimatedBytes(needs, missing)); err != nil {
-		return nil, err
-	}
-
 	snapshot, err := m.localRepo.Snapshot()
 	if err != nil {
 		return nil, err
@@ -206,87 +183,12 @@ func (m *Merge) trueMerge(ctx context.Context, root string, url *domain.NipaUrl,
 		baseByPath[f.Path] = f
 	}
 
-	finalFiles := make(map[string]merge.File)
-	var stagedPaths, conflictedPaths, deletedPaths []string
-
-	for _, p := range sortedEntryPaths(res.Entries) {
-		e := res.Entries[p]
-		switch e.Decision {
-		case merge.KeepOurs:
-			finalFiles[p] = e.Ours
-
-		case merge.KeepTheirs:
-			if err := materializeFile(root, toMaterialized(e.Theirs), m.localRepo.OpenChunk); err != nil {
-				return nil, err
-			}
-			finalFiles[p] = e.Theirs
-			stagedPaths = append(stagedPaths, p)
-
-		case merge.TextMerge:
-			baseContent, err := loadFileContent(m.localRepo.LoadChunk, e.Base)
-			if err != nil {
-				return nil, err
-			}
-			oursContent, err := loadFileContent(m.localRepo.LoadChunk, e.Ours)
-			if err != nil {
-				return nil, err
-			}
-			theirsContent, err := loadFileContent(m.localRepo.LoadChunk, e.Theirs)
-			if err != nil {
-				return nil, err
-			}
-			merged, wasConflict := merge.MergeText(baseContent, oursContent, theirsContent)
-			mf, err := m.storeMergedFile(p, merged, e.Ours.Mode, e.Ours.IsBinary || e.Theirs.IsBinary)
-			if err != nil {
-				return nil, err
-			}
-			if err := materializeFile(root, toMaterialized(mf), m.localRepo.OpenChunk); err != nil {
-				return nil, err
-			}
-			finalFiles[p] = mf
-			stagedPaths = append(stagedPaths, p)
-			if wasConflict {
-				conflictedPaths = append(conflictedPaths, p)
-			}
-
-		case merge.BinaryConflict, merge.AddAddConflict:
-			// Keep ours on disk (no markers in binaries); record the conflict.
-			finalFiles[p] = e.Ours
-			conflictedPaths = append(conflictedPaths, p)
-
-		case merge.ModifyDeleteConflict:
-			// Ours kept: the file stays as the target had it.
-			finalFiles[p] = e.Ours
-			conflictedPaths = append(conflictedPaths, p)
-
-		case merge.DeleteModifyConflict:
-			// Ours deleted the file; leave the working copy as-is.
-			conflictedPaths = append(conflictedPaths, p)
-		}
+	applied, err := applyThreeWay(ctx, m.client, m.localRepo, root, baseByPath, res)
+	if err != nil {
+		return nil, err
 	}
 
-	for _, p := range sortedStrings(res.Deleted) {
-		base, ok := baseByPath[p]
-		if !ok {
-			continue
-		}
-		removed, err := guardedRemove(root, base)
-		if err != nil {
-			return nil, fmt.Errorf("remove %s: %w", p, err)
-		}
-		if removed {
-			deletedPaths = append(deletedPaths, p)
-			stagedPaths = append(stagedPaths, p)
-		}
-	}
-
-	for _, p := range stagedPaths {
-		if err := m.localRepo.StageAdd(p); err != nil {
-			return nil, err
-		}
-	}
-
-	outcome := &Outcome{Conflicts: conflictedPaths}
+	outcome := &Outcome{Conflicts: applied.Conflicted}
 	state := &domain.MergeState{
 		SourceBranch:     sourceBranch,
 		SourceCommitID:   info.SourceCommitID,
@@ -294,10 +196,10 @@ func (m *Merge) trueMerge(ctx context.Context, root string, url *domain.NipaUrl,
 		BaseCommitID:     info.MergeBaseCommitID,
 		BaseTreeHash:     baseTreeHash(info),
 		TargetTreeHash:   targetTree.Hash.String(),
-		Conflicts:        conflictedPaths,
+		Conflicts:        applied.Conflicted,
 	}
-	if len(conflictedPaths) > 0 {
-		if err := m.localRepo.SaveTree(treeFromFiles(finalFiles)); err != nil {
+	if len(applied.Conflicted) > 0 {
+		if err := m.localRepo.SaveTree(treeFromFiles(applied.Files)); err != nil {
 			return nil, err
 		}
 		if err := m.localRepo.SaveMergeState(state); err != nil {
@@ -354,33 +256,6 @@ func (m *Merge) abort(ctx context.Context, root string, url *domain.NipaUrl, bra
 		return nil, err
 	}
 	return &Outcome{}, nil
-}
-
-func (m *Merge) storeMergedFile(path string, data []byte, mode int, isBinary bool) (merge.File, error) {
-	var hashes []serverDomain.Hash
-	var sizes []int64
-	batch := make([]*serverDomain.ChunkData, 0, 16)
-	err := chunker.Scan(bytes.NewReader(data), func(c chunker.Chunk) error {
-		hashes = append(hashes, c.Hash)
-		sizes = append(sizes, int64(len(c.Data)))
-		batch = append(batch, &serverDomain.ChunkData{Hash: c.Hash, Data: c.Data})
-		return nil
-	})
-	if err != nil {
-		return merge.File{}, err
-	}
-	if err := m.localRepo.StoreChunks(batch); err != nil {
-		return merge.File{}, err
-	}
-	return merge.File{
-		Path:        path,
-		Mode:        mode,
-		SizeBytes:   int64(len(data)),
-		IsBinary:    isBinary || chunker.IsBinary(data),
-		Hash:        chunker.FileHash(hashes),
-		ChunkHashes: hashes,
-		ChunkSizes:  sizes,
-	}, nil
 }
 
 func commitIDString(b *serverDomain.Branch) string {
