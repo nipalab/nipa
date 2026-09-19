@@ -39,9 +39,11 @@ Run `nipa <command> --help` for full details.
 | `nipa switch <branch>`      | Fetch the given branch, materialize its tree in the working copy, and repoint the local repository at it. Not allowed while changes are staged. |
 | `nipa add <path> [...]`     | Mark files (or everything inside directories) for the next push.            |
 | `nipa remove <path> [...]`  | Unmark files for the next push. `-a` unmarks everything.                    |
-| `nipa status`               | Show the working copy status: `A` staged, `M` modified, `?` untracked, `!` missing. |
+| `nipa status`               | Show the working copy status: `A` staged, `M` modified, `?` untracked, `!` missing, `C` conflicts. |
 | `nipa push -m "<message>"`  | Upload staged changes to the server and commit them on the configured branch. |
 | `nipa update`               | Fetch and apply the latest changes of the configured branch.                |
+| `nipa merge <branch>`       | Merge another branch into the current one. Fast-forwards when possible; `--no-ff` forces a merge commit, `--ff-only` refuses, `--abort` cancels a conflicted merge, `-m` sets the message. |
+| `nipa revert <commit>`      | Create new commits that undo the given commit or range (`<from>..<to>`, newest first, up to 16 commits) without rewriting history. `--mainline 1\|2` for merge commits, `--no-commit` stages without committing, `-m` sets the message (single commit only), `--continue` / `--abort` / `--skip` drive a conflicted revert. |
 | `nipa log`                  | Show the commit history of the current branch. Interactive and scrollable when stdout is a terminal; `-n` limits, `--oneline` prints one line per commit, `--no-pager` disables the pager. |
 
 Branch creation (`nipa branch -c <name>`) forks from the exact commit the
@@ -49,15 +51,22 @@ working copy is pinned to (a push records the server's commit id and hash
 locally), falling back to the current branch head when there is nothing pinned
 yet.
 
+Commit references are the base36 commit IDs printed by `nipa log`. A revert
+moves history forward: each reverted commit produces a new commit applying its
+inverse, on top of the current branch head. A conflicted revert stops with
+`C` files; resolve them and run `nipa revert --continue` (for a single pending
+commit a plain `nipa push` also finishes it), skip it with `nipa revert --skip`,
+or discard the whole operation with `nipa revert --abort`.
+
 ## Architecture
 
 - **Server** — `internal/`: `domain` (entities/errors), `usecase` (business
   logic), `repository` (SQLite/Postgres over sqlc), `grpc` (protobuf service +
   handlers), `http` (REST API).
 - **Client** — `internal/client/`: `cli` (cobra commands), `usecase`
-  (clone/branch/push/update orchestration), `grpc` (transport), `localrepo`
-  (`.nipa/` local metadata + SQLite), `securestorage` (keyring-backed token
-  store).
+  (clone/branch/push/update/merge/revert orchestration), `grpc` (transport),
+  `localrepo` (`.nipa/` local metadata + SQLite), `merge` (three-way tree merge
+  + diff3), `securestorage` (keyring-backed token store).
 - Local state lives in `.nipa/` inside the clone target: a JSON `config` with
   the repository URL and current branch, and a SQLite database tracking the tree
   snapshot, the content chunk cache (never erased, so updates can skip unchanged

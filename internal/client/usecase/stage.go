@@ -23,6 +23,7 @@ type WorkingCopyRepo interface {
 	Snapshot() (*domain.Snapshot, error)
 	ListStaged() ([]string, error)
 	LoadMergeState() (*domain.MergeState, error)
+	LoadRevertState() (*domain.RevertState, error)
 	StageAdd(path string) error
 	StageRemove(paths []string) error
 }
@@ -153,6 +154,13 @@ func (w *WorkingCopy) Status(ctx context.Context) (*domain.Status, error) {
 	}
 	if mergeState != nil {
 		st.Conflicts = append([]string(nil), mergeState.Conflicts...)
+	}
+	revertState, err := w.localRepo.LoadRevertState()
+	if err != nil {
+		return nil, err
+	}
+	if revertState != nil {
+		st.Conflicts = append(st.Conflicts, revertState.Conflicts...)
 	}
 	for _, path := range working {
 		if stagedByPath[path] {

@@ -119,6 +119,13 @@ type stubLocalRepo struct {
 	clearedMerge  bool
 	clearMergeErr error
 
+	revertState    *domain.RevertState
+	revertStateErr error
+	savedRevert    *domain.RevertState
+	saveRevertErr  error
+	clearedRevert  bool
+	clearRevertErr error
+
 	storedChunks  map[serverDomain.Hash][]byte
 	storeCalls    int
 	storeChunkErr error
@@ -201,6 +208,21 @@ func (s *stubLocalRepo) SaveMergeState(state *domain.MergeState) error {
 func (s *stubLocalRepo) ClearMergeState() error {
 	s.clearedMerge = true
 	return s.clearMergeErr
+}
+
+func (s *stubLocalRepo) LoadRevertState() (*domain.RevertState, error) {
+	return s.revertState, s.revertStateErr
+}
+
+func (s *stubLocalRepo) SaveRevertState(state *domain.RevertState) error {
+	s.savedRevert = state
+	s.revertState = state
+	return s.saveRevertErr
+}
+
+func (s *stubLocalRepo) ClearRevertState() error {
+	s.clearedRevert = true
+	return s.clearRevertErr
 }
 
 func (s *stubLocalRepo) SaveCommit(commitID, commitHash string) error {

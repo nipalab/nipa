@@ -154,6 +154,19 @@ func TestWorkingCopy_Status_StagedFileIsNotListedTwice(t *testing.T) {
 	require.Empty(t, st.Missing)
 }
 
+func TestWorkingCopy_Status_ReportsRevertConflicts(t *testing.T) {
+	root := t.TempDir()
+	local := &stubLocalRepo{
+		snapshot:    &domain.Snapshot{},
+		revertState: &domain.RevertState{Conflicts: []string{"a.txt"}},
+	}
+	wc := newWorkingCopy(t, local, root)
+
+	st, err := wc.Status(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, []string{"a.txt"}, st.Conflicts)
+}
+
 func contentHash(t *testing.T, content string) serverDomain.Hash {
 	t.Helper()
 	h, _, err := chunkFile([]byte(content))

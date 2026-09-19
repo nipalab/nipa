@@ -27,6 +27,8 @@ const (
 	NipaService_CreateBranch_FullMethodName              = "/greet.NipaService/CreateBranch"
 	NipaService_GetTreeManifest_FullMethodName           = "/greet.NipaService/GetTreeManifest"
 	NipaService_GetCommitLog_FullMethodName              = "/greet.NipaService/GetCommitLog"
+	NipaService_GetCommit_FullMethodName                 = "/greet.NipaService/GetCommit"
+	NipaService_WalkCommits_FullMethodName               = "/greet.NipaService/WalkCommits"
 	NipaService_GetMergeBase_FullMethodName              = "/greet.NipaService/GetMergeBase"
 	NipaService_MergeFastForward_FullMethodName          = "/greet.NipaService/MergeFastForward"
 	NipaService_Push_FullMethodName                      = "/greet.NipaService/Push"
@@ -46,6 +48,8 @@ type NipaServiceClient interface {
 	CreateBranch(ctx context.Context, in *CreateBranchRequest, opts ...grpc.CallOption) (*CreateBranchResponse, error)
 	GetTreeManifest(ctx context.Context, in *GetTreeManifestRequest, opts ...grpc.CallOption) (*GetTreeManifestResponse, error)
 	GetCommitLog(ctx context.Context, in *GetCommitLogRequest, opts ...grpc.CallOption) (*GetCommitLogResponse, error)
+	GetCommit(ctx context.Context, in *GetCommitRequest, opts ...grpc.CallOption) (*GetCommitResponse, error)
+	WalkCommits(ctx context.Context, in *WalkCommitsRequest, opts ...grpc.CallOption) (*WalkCommitsResponse, error)
 	GetMergeBase(ctx context.Context, in *GetMergeBaseRequest, opts ...grpc.CallOption) (*GetMergeBaseResponse, error)
 	MergeFastForward(ctx context.Context, in *MergeFastForwardRequest, opts ...grpc.CallOption) (*MergeFastForwardResponse, error)
 	Push(ctx context.Context, in *PushRequest, opts ...grpc.CallOption) (*PushResponse, error)
@@ -141,6 +145,26 @@ func (c *nipaServiceClient) GetCommitLog(ctx context.Context, in *GetCommitLogRe
 	return out, nil
 }
 
+func (c *nipaServiceClient) GetCommit(ctx context.Context, in *GetCommitRequest, opts ...grpc.CallOption) (*GetCommitResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetCommitResponse)
+	err := c.cc.Invoke(ctx, NipaService_GetCommit_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nipaServiceClient) WalkCommits(ctx context.Context, in *WalkCommitsRequest, opts ...grpc.CallOption) (*WalkCommitsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(WalkCommitsResponse)
+	err := c.cc.Invoke(ctx, NipaService_WalkCommits_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *nipaServiceClient) GetMergeBase(ctx context.Context, in *GetMergeBaseRequest, opts ...grpc.CallOption) (*GetMergeBaseResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetMergeBaseResponse)
@@ -209,6 +233,8 @@ type NipaServiceServer interface {
 	CreateBranch(context.Context, *CreateBranchRequest) (*CreateBranchResponse, error)
 	GetTreeManifest(context.Context, *GetTreeManifestRequest) (*GetTreeManifestResponse, error)
 	GetCommitLog(context.Context, *GetCommitLogRequest) (*GetCommitLogResponse, error)
+	GetCommit(context.Context, *GetCommitRequest) (*GetCommitResponse, error)
+	WalkCommits(context.Context, *WalkCommitsRequest) (*WalkCommitsResponse, error)
 	GetMergeBase(context.Context, *GetMergeBaseRequest) (*GetMergeBaseResponse, error)
 	MergeFastForward(context.Context, *MergeFastForwardRequest) (*MergeFastForwardResponse, error)
 	Push(context.Context, *PushRequest) (*PushResponse, error)
@@ -247,6 +273,12 @@ func (UnimplementedNipaServiceServer) GetTreeManifest(context.Context, *GetTreeM
 }
 func (UnimplementedNipaServiceServer) GetCommitLog(context.Context, *GetCommitLogRequest) (*GetCommitLogResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetCommitLog not implemented")
+}
+func (UnimplementedNipaServiceServer) GetCommit(context.Context, *GetCommitRequest) (*GetCommitResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetCommit not implemented")
+}
+func (UnimplementedNipaServiceServer) WalkCommits(context.Context, *WalkCommitsRequest) (*WalkCommitsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method WalkCommits not implemented")
 }
 func (UnimplementedNipaServiceServer) GetMergeBase(context.Context, *GetMergeBaseRequest) (*GetMergeBaseResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetMergeBase not implemented")
@@ -428,6 +460,42 @@ func _NipaService_GetCommitLog_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
+func _NipaService_GetCommit_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetCommitRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaServiceServer).GetCommit(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaService_GetCommit_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaServiceServer).GetCommit(ctx, req.(*GetCommitRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NipaService_WalkCommits_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(WalkCommitsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaServiceServer).WalkCommits(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaService_WalkCommits_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaServiceServer).WalkCommits(ctx, req.(*WalkCommitsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _NipaService_GetMergeBase_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetMergeBaseRequest)
 	if err := dec(in); err != nil {
@@ -534,6 +602,14 @@ var NipaService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetCommitLog",
 			Handler:    _NipaService_GetCommitLog_Handler,
+		},
+		{
+			MethodName: "GetCommit",
+			Handler:    _NipaService_GetCommit_Handler,
+		},
+		{
+			MethodName: "WalkCommits",
+			Handler:    _NipaService_WalkCommits_Handler,
 		},
 		{
 			MethodName: "GetMergeBase",

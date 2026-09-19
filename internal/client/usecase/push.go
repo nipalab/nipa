@@ -30,6 +30,8 @@ type pushLocalRepo interface {
 	SaveCommit(commitID, commitHash string) error
 	LoadMergeState() (*domain.MergeState, error)
 	ClearMergeState() error
+	LoadRevertState() (*domain.RevertState, error)
+	ClearRevertState() error
 }
 
 type Push struct {
@@ -71,16 +73,47 @@ func (p *Push) Run(ctx context.Context, root, message string, progress ...Upload
 		return err
 	}
 
-	snapshot, err := p.localRepo.Snapshot()
+	mergeState, err := p.localRepo.LoadMergeState()
 	if err != nil {
 		return err
+	}
+	revertState, err := p.localRepo.LoadRevertState()
+	if err != nil {
+		return err
+	}
+	if revertState != nil && len(revertState.Targets) > 1 {
+		return domain.NewUserError("a revert sequence is in progress; run nipa revert --continue")
+	}
+
+	var baseTreeHash, parent2 string
+	switch {
+	case mergeState != nil:
+		parent2 = mergeState.SourceCommitHash
+		baseTreeHash = mergeState.TargetTreeHash
+	case revertState != nil:
+		baseTreeHash = revertState.CurrentTreeHash
+	}
+
+	if _, err := p.pushStaged(ctx, root, nipaUrl, cfg.Branch, message, baseTreeHash, parent2, progress...); err != nil {
+		return err
+	}
+	if err := p.localRepo.ClearMergeState(); err != nil {
+		return err
+	}
+	return p.localRepo.ClearRevertState()
+}
+
+func (p *Push) pushStaged(ctx context.Context, root string, nipaUrl *domain.NipaUrl, branch, message, baseTreeHash, parent2 string, progress ...UploadProgress) (*serverDomain.PushResult, error) {
+	snapshot, err := p.localRepo.Snapshot()
+	if err != nil {
+		return nil, err
 	}
 	staged, err := p.localRepo.ListStaged()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if len(staged) == 0 {
-		return domain.NewUserError("nothing staged to push; run nipa add first")
+		return nil, domain.NewUserError("nothing staged to push; run nipa add first")
 	}
 
 	baseByPath := make(map[string]domain.SnapshotFile, len(snapshot.Files))
@@ -100,24 +133,24 @@ func (p *Push) Run(ctx context.Context, root, message string, progress ...Upload
 	var estBytes int64
 	for _, path := range staged {
 		if isNipaPath(path) {
-			return domain.NewUserError(fmt.Sprintf("cannot push path inside %q: %s", nipaDir, path))
+			return nil, domain.NewUserError(fmt.Sprintf("cannot push path inside %q: %s", nipaDir, path))
 		}
 		abs := filepath.Join(root, filepath.FromSlash(path))
 		info, err := os.Stat(abs)
 		switch {
 		case err == nil:
 			if !info.Mode().IsRegular() {
-				return domain.NewUserError(fmt.Sprintf("%q is not a regular file", path))
+				return nil, domain.NewUserError(fmt.Sprintf("%q is not a regular file", path))
 			}
 			toRead = append(toRead, stagedFile{path: path, info: info, abs: abs})
 			estBytes += info.Size()
 		case os.IsNotExist(err):
 			if _, inBase := baseByPath[path]; !inBase {
-				return domain.NewUserError(fmt.Sprintf("staged file %q does not exist", path))
+				return nil, domain.NewUserError(fmt.Sprintf("staged file %q does not exist", path))
 			}
 			removed = append(removed, path)
 		default:
-			return err
+			return nil, err
 		}
 	}
 
@@ -152,48 +185,39 @@ func (p *Push) Run(ctx context.Context, root, message string, progress ...Upload
 	for _, sf := range toRead {
 		file, err := scanPushFile(sf.path, sf.info, sf.abs, batcher)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		files = append(files, file)
 	}
 	if err := batcher.flush(); err != nil {
-		return err
+		return nil, err
 	}
 	if prog != nil {
 		prog.UploadEnd()
 	}
 
-	var parent2 string
-	mergeState, err := p.localRepo.LoadMergeState()
-	if err != nil {
-		return err
+	if baseTreeHash == "" {
+		baseTreeHash = snapshot.TreeHash
 	}
-	baseTreeHash := snapshot.TreeHash
-	if mergeState != nil {
-		parent2 = mergeState.SourceCommitHash
-		if mergeState.TargetTreeHash != "" {
-			baseTreeHash = mergeState.TargetTreeHash
-		}
-	}
-	result, err := p.pushClient.Push(ctx, nipaUrl.Org, nipaUrl.Project, cfg.Branch, baseTreeHash, message, files, removed, parent2)
+	result, err := p.pushClient.Push(ctx, nipaUrl.Org, nipaUrl.Project, branch, baseTreeHash, message, files, removed, parent2)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if err := p.localRepo.SaveCommit(result.CommitID.Base36(), result.CommitHash.String()); err != nil {
-		return err
+		return nil, err
 	}
 
-	rootTree, err := p.pushClient.GetTreeNodeManifest(ctx, nipaUrl.Org, nipaUrl.Project, cfg.Branch, "")
+	rootTree, err := p.pushClient.GetTreeNodeManifest(ctx, nipaUrl.Org, nipaUrl.Project, branch, "")
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if err := p.localRepo.SaveTree(rootTree); err != nil {
-		return err
+		return nil, err
 	}
 	if err := p.localRepo.ClearStaged(); err != nil {
-		return err
+		return nil, err
 	}
-	return p.localRepo.ClearMergeState()
+	return result, nil
 }
 
 var uploadBatchBytes = 8 << 20

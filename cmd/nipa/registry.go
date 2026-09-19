@@ -8,6 +8,7 @@ type Registry struct {
 	pushUsecase   *usecase.Push
 	updateUsecase *usecase.Update
 	mergeUsecase  *usecase.Merge
+	revertUsecase *usecase.Revert
 }
 
 func (r *Registry) Auth() *usecase.Auth {
@@ -28,4 +29,8 @@ func (r *Registry) Update() *usecase.Update {
 
 func (r *Registry) Merge() *usecase.Merge {
 	return r.mergeUsecase
+}
+
+func (r *Registry) Revert() *usecase.Revert {
+	return r.revertUsecase
 }

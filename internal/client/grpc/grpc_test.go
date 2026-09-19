@@ -80,6 +80,12 @@ type fakeServer struct {
 	commitLogErr       error
 	commitLog          []*pb.CommitLogEntry
 	lastCommitLogReq   *pb.GetCommitLogRequest
+	getCommitErr       error
+	getCommitResp      *pb.GetCommitResponse
+	lastGetCommitReq   *pb.GetCommitRequest
+	walkCommitsErr     error
+	walkCommitsResp    *pb.WalkCommitsResponse
+	lastWalkCommitsReq *pb.WalkCommitsRequest
 }
 
 func (f *fakeServer) GetDefaultBranch(_ context.Context, _ *pb.GetDefaultBranchRequest) (*pb.GetBranchResponse, error) {
