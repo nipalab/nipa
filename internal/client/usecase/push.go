@@ -88,9 +88,16 @@ func (p *Push) Run(ctx context.Context, root, message string, progress ...Upload
 		baseByPath[f.Path] = f
 	}
 
+	type stagedFile struct {
+		path string
+		info fs.FileInfo
+		abs  string
+	}
+
 	var files []*serverDomain.PushFile
 	var removed []string
-	var allChunkData []*serverDomain.ChunkData
+	var toRead []stagedFile
+	var estBytes int64
 	for _, path := range staged {
 		if isNipaPath(path) {
 			return domain.NewUserError(fmt.Sprintf("cannot push path inside %q: %s", nipaDir, path))
@@ -102,12 +109,8 @@ func (p *Push) Run(ctx context.Context, root, message string, progress ...Upload
 			if !info.Mode().IsRegular() {
 				return domain.NewUserError(fmt.Sprintf("%q is not a regular file", path))
 			}
-			file, chunkData, err := buildPushFile(path, info, abs)
-			if err != nil {
-				return err
-			}
-			files = append(files, file)
-			allChunkData = append(allChunkData, chunkData...)
+			toRead = append(toRead, stagedFile{path: path, info: info, abs: abs})
+			estBytes += info.Size()
 		case os.IsNotExist(err):
 			if _, inBase := baseByPath[path]; !inBase {
 				return domain.NewUserError(fmt.Sprintf("staged file %q does not exist", path))
@@ -118,22 +121,21 @@ func (p *Push) Run(ctx context.Context, root, message string, progress ...Upload
 		}
 	}
 
-	toUpload := dedupeChunkData(allChunkData)
 	var prog UploadProgress
 	if len(progress) > 0 {
 		prog = progress[0]
 	}
-	if prog != nil {
-		var totalBytes int64
-		for _, c := range toUpload {
-			totalBytes += int64(len(c.Data))
-		}
-		prog.UploadStart(len(toUpload), totalBytes)
-	}
-
 	doneObjects, doneBytes := 0, int64(0)
 	var onChunk func(ch *serverDomain.ChunkData)
 	if prog != nil {
+		estObjects := 0
+		if estBytes > 0 {
+			estObjects = int(estBytes / chunker.DefaultConfig.Avg)
+			if estObjects < 1 {
+				estObjects = 1
+			}
+		}
+		prog.UploadStart(estObjects, estBytes)
 		onChunk = func(ch *serverDomain.ChunkData) {
 			doneObjects++
 			doneBytes += int64(len(ch.Data))
@@ -141,7 +143,20 @@ func (p *Push) Run(ctx context.Context, root, message string, progress ...Upload
 		}
 	}
 
-	if _, _, err := p.pushClient.UploadChunks(ctx, toUpload, onChunk); err != nil {
+	batcher := &chunkBatcher{
+		ctx:     ctx,
+		client:  p.pushClient,
+		seen:    make(map[serverDomain.Hash]bool),
+		onChunk: onChunk,
+	}
+	for _, sf := range toRead {
+		file, err := scanPushFile(sf.path, sf.info, sf.abs, batcher)
+		if err != nil {
+			return err
+		}
+		files = append(files, file)
+	}
+	if err := batcher.flush(); err != nil {
 		return err
 	}
 	if prog != nil {
@@ -181,40 +196,64 @@ func (p *Push) Run(ctx context.Context, root, message string, progress ...Upload
 	return p.localRepo.ClearMergeState()
 }
 
-func buildPushFile(path string, info fs.FileInfo, abs string) (*serverDomain.PushFile, []*serverDomain.ChunkData, error) {
-	data, err := os.ReadFile(abs)
-	if err != nil {
-		return nil, nil, err
+var uploadBatchBytes = 8 << 20
+
+type chunkBatcher struct {
+	ctx     context.Context
+	client  pushClient
+	seen    map[serverDomain.Hash]bool
+	batch   []*serverDomain.ChunkData
+	bytes   int
+	onChunk func(ch *serverDomain.ChunkData)
+}
+
+func (b *chunkBatcher) add(ch *serverDomain.ChunkData) error {
+	if b.seen[ch.Hash] {
+		return nil
 	}
-	chunks, err := chunker.ChunkAll(data)
-	if err != nil {
-		return nil, nil, err
+	b.seen[ch.Hash] = true
+	b.batch = append(b.batch, ch)
+	b.bytes += len(ch.Data)
+	if b.bytes < uploadBatchBytes {
+		return nil
 	}
-	hashes := make([]serverDomain.Hash, len(chunks))
-	chunkData := make([]*serverDomain.ChunkData, 0, len(chunks))
-	for i, c := range chunks {
-		hashes[i] = c.Hash
-		chunkData = append(chunkData, &serverDomain.ChunkData{Hash: c.Hash, Data: c.Data})
+	return b.flush()
+}
+
+func (b *chunkBatcher) flush() error {
+	if len(b.batch) == 0 {
+		return nil
+	}
+	_, _, err := b.client.UploadChunks(b.ctx, b.batch, b.onChunk)
+	b.batch = nil
+	b.bytes = 0
+	return err
+}
+
+func scanPushFile(path string, info fs.FileInfo, abs string, batcher *chunkBatcher) (*serverDomain.PushFile, error) {
+	f, err := os.Open(abs)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = f.Close() }()
+	var hashes []serverDomain.Hash
+	isBinary := false
+	err = chunker.Scan(f, func(c chunker.Chunk) error {
+		hashes = append(hashes, c.Hash)
+		if len(hashes) == 1 {
+			isBinary = chunker.IsBinary(c.Data)
+		}
+		return batcher.add(&serverDomain.ChunkData{Hash: c.Hash, Data: c.Data})
+	})
+	if err != nil {
+		return nil, err
 	}
 	return &serverDomain.PushFile{
 		Path:        path,
 		Mode:        int(info.Mode().Perm()),
 		SizeBytes:   info.Size(),
-		IsBinary:    chunker.IsBinary(data),
+		IsBinary:    isBinary,
 		FileHash:    chunker.FileHash(hashes),
 		ChunkHashes: hashes,
-	}, chunkData, nil
-}
-
-func dedupeChunkData(all []*serverDomain.ChunkData) []*serverDomain.ChunkData {
-	seen := make(map[serverDomain.Hash]bool, len(all))
-	var out []*serverDomain.ChunkData
-	for _, c := range all {
-		if seen[c.Hash] {
-			continue
-		}
-		seen[c.Hash] = true
-		out = append(out, c)
-	}
-	return out
+	}, nil
 }

@@ -7,7 +7,47 @@ package localrepo
 
 import (
 	"context"
+	"strings"
 )
+
+const chunkExistingHashes = `-- name: ChunkExistingHashes :many
+SELECT hash
+FROM chunks
+WHERE data IS NOT NULL AND hash IN (/*SLICE:hashes*/?)
+`
+
+func (q *Queries) ChunkExistingHashes(ctx context.Context, hashes [][]byte) ([][]byte, error) {
+	query := chunkExistingHashes
+	var queryParams []interface{}
+	if len(hashes) > 0 {
+		for _, v := range hashes {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:hashes*/?", strings.Repeat(",?", len(hashes))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:hashes*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items [][]byte
+	for rows.Next() {
+		var hash []byte
+		if err := rows.Scan(&hash); err != nil {
+			return nil, err
+		}
+		items = append(items, hash)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
 
 const chunkExists = `-- name: ChunkExists :one
 SELECT EXISTS(SELECT 1 FROM chunks WHERE hash = ?1 AND data IS NOT NULL)

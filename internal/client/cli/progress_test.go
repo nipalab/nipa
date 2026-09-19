@@ -50,6 +50,19 @@ func TestProgressRenderer_PercentageIsCapped(t *testing.T) {
 	require.Contains(t, buf.String(), "(100%)", "the percentage must never exceed 100")
 }
 
+func TestProgressRenderer_FinishReportsActuals(t *testing.T) {
+	var buf bytes.Buffer
+	p := newProgressRenderer(&buf)
+
+	p.UploadStart(100, 1<<20)
+	p.UploadProgress(3, 32<<10)
+	p.UploadEnd()
+
+	out := buf.String()
+	require.Contains(t, out, "Uploaded 3 objects (32.0 KiB)")
+	require.NotContains(t, out, "Uploaded 100 objects")
+}
+
 func TestProgressRenderer_SmallTransfer(t *testing.T) {
 	var buf bytes.Buffer
 	p := newProgressRenderer(&buf)

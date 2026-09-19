@@ -84,20 +84,33 @@ func ChunkAll(data []byte) ([]Chunk, error) {
 }
 
 func ChunkAllWith(cfg Config, data []byte) ([]Chunk, error) {
-	s, err := NewSplitter(bytes.NewReader(data), cfg)
+	out := make([]Chunk, 0, 8)
+	err := Scan(bytes.NewReader(data), func(c Chunk) error {
+		out = append(out, c)
+		return nil
+	}, cfg)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]Chunk, 0, 8)
+	return out, nil
+}
+
+func Scan(r io.Reader, fn func(Chunk) error, cfgs ...Config) error {
+	s, err := NewSplitter(r, cfgs...)
+	if err != nil {
+		return err
+	}
 	for {
 		c, err := s.Next()
 		if err == io.EOF {
-			return out, nil
+			return nil
 		}
 		if err != nil {
-			return nil, err
+			return err
 		}
-		out = append(out, *c)
+		if err := fn(*c); err != nil {
+			return err
+		}
 	}
 }
 

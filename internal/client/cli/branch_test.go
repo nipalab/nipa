@@ -42,8 +42,8 @@ func (f fakeListRepoInterface) CreateBranch(_ context.Context, _, _, name, _, _,
 	return &serverDomain.Branch{Name: name}, f.createdBranchErr
 }
 
-func (f fakeListRepoInterface) DownloadChunks(_ context.Context, _ []serverDomain.Hash, _ ...func(h serverDomain.Hash, data []byte)) (map[serverDomain.Hash][]byte, error) {
-	return nil, nil
+func (f fakeListRepoInterface) DownloadChunks(_ context.Context, _ []serverDomain.Hash, _ func(h serverDomain.Hash, data []byte) error) error {
+	return nil
 }
 
 func (f fakeListRepoInterface) GetCommitLog(_ context.Context, _, _, _ string, _ *snow.ID, _ int) ([]*serverDomain.CommitLogEntry, error) {

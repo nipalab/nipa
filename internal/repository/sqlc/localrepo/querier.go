@@ -9,6 +9,7 @@ import (
 )
 
 type Querier interface {
+	ChunkExistingHashes(ctx context.Context, hashes [][]byte) ([][]byte, error)
 	ChunkExists(ctx context.Context, hash []byte) (bool, error)
 	ChunkGetData(ctx context.Context, hash []byte) ([]byte, error)
 	ChunkUpsert(ctx context.Context, arg ChunkUpsertParams) (int64, error)

@@ -65,19 +65,21 @@ func (s *stubMergeClient) GetTreeNodeManifest(_ context.Context, _, _, branch, _
 	return &serverDomain.TreeNode{}, nil
 }
 
-func (s *stubMergeClient) DownloadChunks(_ context.Context, hashes []serverDomain.Hash, onChunk ...func(h serverDomain.Hash, data []byte)) (map[serverDomain.Hash][]byte, error) {
+func (s *stubMergeClient) DownloadChunks(_ context.Context, hashes []serverDomain.Hash, onChunk func(h serverDomain.Hash, data []byte) error) error {
 	s.downloaded = append(s.downloaded, hashes...)
 	if s.downloadErr != nil {
-		return nil, s.downloadErr
+		return s.downloadErr
 	}
-	out := make(map[serverDomain.Hash][]byte, len(hashes))
 	for _, h := range hashes {
-		out[h] = s.download[h]
-		if len(onChunk) > 0 && onChunk[0] != nil {
-			onChunk[0](h, out[h])
+		data, ok := s.download[h]
+		if !ok {
+			continue
+		}
+		if err := onChunk(h, data); err != nil {
+			return err
 		}
 	}
-	return out, nil
+	return nil
 }
 
 func (s *stubMergeClient) GetMergeBase(_ context.Context, _, _, target, source string) (*domain.MergeBaseInfo, error) {

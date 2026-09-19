@@ -1,7 +1,6 @@
 package usecase
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -16,11 +15,11 @@ import (
 type updateClient interface {
 	Connect(ctx context.Context, host string) error
 	GetTreeNodeManifest(ctx context.Context, org, project, branch, path string) (*domain.TreeNode, error)
-	DownloadChunks(ctx context.Context, hashes []domain.Hash, onChunk ...func(h domain.Hash, data []byte)) (map[domain.Hash][]byte, error)
+	DownloadChunks(ctx context.Context, hashes []domain.Hash, onChunk func(h domain.Hash, data []byte) error) error
 }
 
 type chunkDownloader interface {
-	DownloadChunks(ctx context.Context, hashes []domain.Hash, onChunk ...func(h domain.Hash, data []byte)) (map[domain.Hash][]byte, error)
+	DownloadChunks(ctx context.Context, hashes []domain.Hash, onChunk func(h domain.Hash, data []byte) error) error
 }
 
 type DownloadProgress interface {
@@ -38,7 +37,7 @@ type UploadProgress interface {
 type workingCopyLocalRepo interface {
 	Snapshot() (*clientDomain.Snapshot, error)
 	MissingChunks(hashes []domain.Hash) ([]domain.Hash, error)
-	StoreChunk(hash domain.Hash, data []byte) error
+	StoreChunks(chunks []*domain.ChunkData) error
 	LoadChunk(hash domain.Hash) ([]byte, error)
 }
 
@@ -50,7 +49,7 @@ type updateLocalRepo interface {
 	SaveCommit(commitID, commitHash string) error
 	Snapshot() (*clientDomain.Snapshot, error)
 	MissingChunks(hashes []domain.Hash) ([]domain.Hash, error)
-	StoreChunk(hash domain.Hash, data []byte) error
+	StoreChunks(chunks []*domain.ChunkData) error
 	LoadChunk(hash domain.Hash) ([]byte, error)
 	SaveTree(root *domain.TreeNode) error
 }
@@ -210,6 +209,8 @@ func syncWorkingCopy(ctx context.Context, client chunkDownloader, lr workingCopy
 	return nil
 }
 
+var chunkStoreBatchBytes = 8 << 20
+
 func downloadMissing(ctx context.Context, client chunkDownloader, lr workingCopyLocalRepo, missing []domain.Hash, estimatedBytes int64, progress ...DownloadProgress) error {
 	if len(missing) == 0 {
 		return nil
@@ -223,30 +224,51 @@ func downloadMissing(ctx context.Context, client chunkDownloader, lr workingCopy
 	}
 
 	doneObjects, doneBytes := 0, int64(0)
-	var onChunk func(h domain.Hash, data []byte)
-	if prog != nil {
-		onChunk = func(h domain.Hash, data []byte) {
+	seen := make(map[domain.Hash]bool, len(missing))
+	pending := make([]*domain.ChunkData, 0, 64)
+	pendingBytes := 0
+	flush := func() error {
+		if len(pending) == 0 {
+			return nil
+		}
+		if err := lr.StoreChunks(pending); err != nil {
+			return err
+		}
+		pending = nil
+		pendingBytes = 0
+		return nil
+	}
+
+	err := client.DownloadChunks(ctx, missing, func(h domain.Hash, data []byte) error {
+		if seen[h] {
+			return nil
+		}
+		seen[h] = true
+		if chunker.Sum(data) != h {
+			return fmt.Errorf("chunk hash mismatch for %s", h)
+		}
+		pending = append(pending, &domain.ChunkData{Hash: h, Data: data})
+		pendingBytes += len(data)
+		if prog != nil {
 			doneObjects++
 			doneBytes += int64(len(data))
 			prog.DownloadProgress(doneObjects, doneBytes)
 		}
-	}
-
-	got, err := client.DownloadChunks(ctx, missing, onChunk)
+		if pendingBytes >= chunkStoreBatchBytes {
+			return flush()
+		}
+		return nil
+	})
 	if err != nil {
 		return err
 	}
 	for _, h := range missing {
-		data, ok := got[h]
-		if !ok {
+		if !seen[h] {
 			return fmt.Errorf("server did not return chunk %s", h)
 		}
-		if chunker.Sum(data) != h {
-			return fmt.Errorf("chunk hash mismatch for %s", h)
-		}
-		if err := lr.StoreChunk(h, data); err != nil {
-			return err
-		}
+	}
+	if err := flush(); err != nil {
+		return err
 	}
 	if prog != nil {
 		prog.DownloadEnd()
@@ -311,24 +333,47 @@ func fileExists(root, path string) bool {
 }
 
 func materializeFile(root string, f materializedFile, loadChunk func(domain.Hash) ([]byte, error)) error {
-	var buf bytes.Buffer
+	fp := filepath.Join(root, filepath.FromSlash(f.Path))
+	dir := filepath.Dir(fp)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(dir, ".nipa-materialize-*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	defer func() { _ = os.Remove(tmpName) }()
+
+	var written int64
 	for _, h := range f.ChunkHashes {
 		data, err := loadChunk(h)
 		if err != nil {
+			_ = tmp.Close()
 			return fmt.Errorf("load chunk %s: %w", h, err)
 		}
-		buf.Write(data)
+		if _, err := tmp.Write(data); err != nil {
+			_ = tmp.Close()
+			return err
+		}
+		written += int64(len(data))
+		if written > f.SizeBytes {
+			_ = tmp.Close()
+			return fmt.Errorf("content length mismatch for %s: got %d want %d", f.Path, written, f.SizeBytes)
+		}
 	}
-	content := buf.Bytes()
-	if int64(len(content)) != f.SizeBytes {
-		return fmt.Errorf("content length mismatch for %s: got %d want %d", f.Path, len(content), f.SizeBytes)
+	if written != f.SizeBytes {
+		_ = tmp.Close()
+		return fmt.Errorf("content length mismatch for %s: got %d want %d", f.Path, written, f.SizeBytes)
 	}
-
-	fp := filepath.Join(root, filepath.FromSlash(f.Path))
-	if err := os.MkdirAll(filepath.Dir(fp), 0o755); err != nil {
+	if err := tmp.Chmod(materializedMode(f.Mode)); err != nil {
+		_ = tmp.Close()
 		return err
 	}
-	return os.WriteFile(fp, content, materializedMode(f.Mode))
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmpName, fp)
 }
 
 func materializedMode(mode int) os.FileMode {
@@ -344,20 +389,20 @@ func materializedMode(mode int) os.FileMode {
 
 func guardedRemove(root string, base clientDomain.SnapshotFile) (bool, error) {
 	fp := filepath.Join(root, filepath.FromSlash(base.Path))
-	data, err := os.ReadFile(fp)
+	f, err := os.Open(fp)
 	if os.IsNotExist(err) {
 		return true, nil
 	}
 	if err != nil {
 		return false, err
 	}
-	chunks, err := chunker.ChunkAll(data)
-	if err != nil {
+	defer func() { _ = f.Close() }()
+	var hashes []domain.Hash
+	if err := chunker.Scan(f, func(c chunker.Chunk) error {
+		hashes = append(hashes, c.Hash)
+		return nil
+	}); err != nil {
 		return false, err
-	}
-	hashes := make([]domain.Hash, len(chunks))
-	for i, c := range chunks {
-		hashes[i] = c.Hash
 	}
 	if chunker.FileHash(hashes) == base.Hash {
 		return true, os.Remove(fp)

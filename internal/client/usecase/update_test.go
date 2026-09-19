@@ -36,17 +36,21 @@ func (s *stubUpdateClient) GetTreeNodeManifest(_ context.Context, org, project, 
 	return s.manifest, s.manifestErr
 }
 
-func (s *stubUpdateClient) DownloadChunks(_ context.Context, hashes []serverDomain.Hash, onChunk ...func(h serverDomain.Hash, data []byte)) (map[serverDomain.Hash][]byte, error) {
+func (s *stubUpdateClient) DownloadChunks(_ context.Context, hashes []serverDomain.Hash, onChunk func(h serverDomain.Hash, data []byte) error) error {
 	s.downloadHashes = hashes
 	if s.downloadErr != nil {
-		return nil, s.downloadErr
+		return s.downloadErr
 	}
 	for _, h := range hashes {
-		if len(onChunk) > 0 && onChunk[0] != nil {
-			onChunk[0](h, s.downloadData[h])
+		data, ok := s.downloadData[h]
+		if !ok {
+			continue
+		}
+		if err := onChunk(h, data); err != nil {
+			return err
 		}
 	}
-	return s.downloadData, nil
+	return nil
 }
 
 func newTestUpdate(t *testing.T, local updateLocalRepo, client updateClient) *Update {
@@ -780,6 +784,109 @@ func TestUpdate_Run_Error_ContentLengthMismatch(t *testing.T) {
 	err = updater.Run(context.Background(), t.TempDir())
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "content length mismatch")
+}
+
+func TestUpdate_Run_StoresChunksInBatches(t *testing.T) {
+	oldBatch := chunkStoreBatchBytes
+	chunkStoreBatchBytes = 1
+	t.Cleanup(func() { chunkStoreBatchBytes = oldBatch })
+
+	content := make([]byte, 1<<20)
+	x := uint32(12345)
+	for i := range content {
+		x = x*1664525 + 1013904223
+		content[i] = byte(x >> 24)
+	}
+	chunked, err := chunker.ChunkAll(content)
+	require.NoError(t, err)
+	require.Greater(t, len(chunked), 1)
+
+	hashes := make([]serverDomain.Hash, 0, len(chunked))
+	chunks := make([]serverDomain.Chunk, 0, len(chunked))
+	download := make(map[serverDomain.Hash][]byte, len(chunked))
+	for _, c := range chunked {
+		hashes = append(hashes, c.Hash)
+		chunks = append(chunks, serverDomain.Chunk{Hash: c.Hash, SizeBytes: int64(len(c.Data))})
+		download[c.Hash] = c.Data
+	}
+
+	local := &stubLocalRepo{
+		loadConfig:    &domain.Config{Url: "http://example.com/org/project", Branch: "main"},
+		snapshot:      &domain.Snapshot{},
+		missingChunks: hashes,
+	}
+	client := &stubUpdateClient{
+		manifest: &serverDomain.TreeNode{
+			Name: "root",
+			FileChildren: []*serverDomain.File{{
+				Name:      "big.bin",
+				Mode:      0o644,
+				SizeBytes: int64(len(content)),
+				Hash:      chunker.FileHash(hashes),
+				Chunks:    chunks,
+			}},
+		},
+		downloadData: download,
+	}
+	updater := newTestUpdate(t, local, client)
+	root := t.TempDir()
+
+	require.NoError(t, updater.Run(context.Background(), root))
+	require.Greater(t, local.storeCalls, 1, "chunks must be flushed in bounded batches")
+	require.Len(t, local.storedChunks, len(chunked))
+
+	got, err := os.ReadFile(filepath.Join(root, "big.bin"))
+	require.NoError(t, err)
+	require.Equal(t, content, got)
+}
+
+func TestMaterializeFile_KeepsExistingFileOnFailure(t *testing.T) {
+	root := t.TempDir()
+	fp := filepath.Join(root, "a.txt")
+	require.NoError(t, os.WriteFile(fp, []byte("original"), 0o644))
+
+	first := serverDomain.Hash{0x01}
+	second := serverDomain.Hash{0x02}
+	load := func(h serverDomain.Hash) ([]byte, error) {
+		if h == second {
+			return nil, errors.New("load failed")
+		}
+		return []byte("partial"), nil
+	}
+	err := materializeFile(root, materializedFile{
+		Path:        "a.txt",
+		SizeBytes:   100,
+		ChunkHashes: []serverDomain.Hash{first, second},
+	}, load)
+	require.Error(t, err)
+
+	got, err := os.ReadFile(fp)
+	require.NoError(t, err)
+	require.Equal(t, "original", string(got), "a failed materialization must not clobber the existing file")
+
+	entries, err := os.ReadDir(root)
+	require.NoError(t, err)
+	for _, e := range entries {
+		require.NotContains(t, e.Name(), ".nipa-materialize-", "temp files must be cleaned up")
+	}
+}
+
+func TestMaterializeFile_AppliesMode(t *testing.T) {
+	root := t.TempDir()
+	data := []byte("#!/bin/sh\n")
+	hash := chunker.Sum(data)
+
+	err := materializeFile(root, materializedFile{
+		Path:        "run.sh",
+		Mode:        3,
+		SizeBytes:   int64(len(data)),
+		ChunkHashes: []serverDomain.Hash{hash},
+	}, func(serverDomain.Hash) ([]byte, error) { return data, nil })
+	require.NoError(t, err)
+
+	info, err := os.Stat(filepath.Join(root, "run.sh"))
+	require.NoError(t, err)
+	require.Equal(t, os.FileMode(0o755), info.Mode().Perm())
 }
 
 func TestUpdate_Run_Error_MkdirFails(t *testing.T) {

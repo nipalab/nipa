@@ -258,7 +258,11 @@ func TestEndToEnd_CloneAddPushFetch(t *testing.T) {
 	for _, c := range snap1.Files[0].Chunks {
 		hashes = append(hashes, c.Hash)
 	}
-	downloaded, err := grpcClient.DownloadChunks(ctx, hashes)
+	downloaded := make(map[serverDomain.Hash][]byte, len(hashes))
+	err = grpcClient.DownloadChunks(ctx, hashes, func(h serverDomain.Hash, data []byte) error {
+		downloaded[h] = data
+		return nil
+	})
 	require.NoError(t, err)
 	require.Len(t, downloaded, len(hashes))
 	var blob []byte

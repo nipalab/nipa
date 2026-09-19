@@ -47,18 +47,20 @@ func (f *fakeMergeClient) GetTreeNodeManifest(_ context.Context, _, _, branch, _
 	return &serverDomain.TreeNode{Name: "root"}, nil
 }
 
-func (f *fakeMergeClient) DownloadChunks(_ context.Context, hashes []serverDomain.Hash, onChunk ...func(h serverDomain.Hash, data []byte)) (map[serverDomain.Hash][]byte, error) {
+func (f *fakeMergeClient) DownloadChunks(_ context.Context, hashes []serverDomain.Hash, onChunk func(h serverDomain.Hash, data []byte) error) error {
 	if f.downloadErr != nil {
-		return nil, f.downloadErr
+		return f.downloadErr
 	}
-	out := make(map[serverDomain.Hash][]byte, len(hashes))
 	for _, h := range hashes {
-		out[h] = f.download[h]
-		if len(onChunk) > 0 && onChunk[0] != nil {
-			onChunk[0](h, out[h])
+		data, ok := f.download[h]
+		if !ok {
+			continue
+		}
+		if err := onChunk(h, data); err != nil {
+			return err
 		}
 	}
-	return out, nil
+	return nil
 }
 
 func (f *fakeMergeClient) GetMergeBase(_ context.Context, _, _, _, _ string) (*domain.MergeBaseInfo, error) {

@@ -54,19 +54,21 @@ func (s *stubRepoInterface) CreateBranch(_ context.Context, _, _, name, fromBran
 	return s.createdBranch, s.createErr
 }
 
-func (s *stubRepoInterface) DownloadChunks(_ context.Context, hashes []serverDomain.Hash, onChunk ...func(h serverDomain.Hash, data []byte)) (map[serverDomain.Hash][]byte, error) {
+func (s *stubRepoInterface) DownloadChunks(_ context.Context, hashes []serverDomain.Hash, onChunk func(h serverDomain.Hash, data []byte) error) error {
 	s.downloaded = append(s.downloaded, hashes...)
 	if s.downloadErr != nil {
-		return nil, s.downloadErr
+		return s.downloadErr
 	}
-	out := make(map[serverDomain.Hash][]byte, len(hashes))
 	for _, h := range hashes {
-		out[h] = s.download[h]
-		if len(onChunk) > 0 && onChunk[0] != nil {
-			onChunk[0](h, out[h])
+		data, ok := s.download[h]
+		if !ok {
+			continue
+		}
+		if err := onChunk(h, data); err != nil {
+			return err
 		}
 	}
-	return out, nil
+	return nil
 }
 
 func (s *stubRepoInterface) GetCommitLog(ctx context.Context, org, project, branch string, startCommitID *snow.ID, limit int) ([]*serverDomain.CommitLogEntry, error) {
@@ -116,6 +118,7 @@ type stubLocalRepo struct {
 	clearMergeErr error
 
 	storedChunks  map[serverDomain.Hash][]byte
+	storeCalls    int
 	storeChunkErr error
 	loadChunkErr  error
 }
@@ -214,14 +217,17 @@ func (s *stubLocalRepo) LoadCommit() (*domain.LocalCommit, error) {
 	return &domain.LocalCommit{}, nil
 }
 
-func (s *stubLocalRepo) StoreChunk(hash serverDomain.Hash, data []byte) error {
+func (s *stubLocalRepo) StoreChunks(chunks []*serverDomain.ChunkData) error {
+	s.storeCalls++
 	if s.storeChunkErr != nil {
 		return s.storeChunkErr
 	}
 	if s.storedChunks == nil {
 		s.storedChunks = make(map[serverDomain.Hash][]byte)
 	}
-	s.storedChunks[hash] = data
+	for _, c := range chunks {
+		s.storedChunks[c.Hash] = c.Data
+	}
 	return nil
 }
 

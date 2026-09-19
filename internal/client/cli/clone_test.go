@@ -81,8 +81,8 @@ func (fakeRepoInterface) CreateBranch(_ context.Context, _, _, name, _, _, _ str
 	return &serverDomain.Branch{Name: name}, nil
 }
 
-func (fakeRepoInterface) DownloadChunks(_ context.Context, _ []serverDomain.Hash, _ ...func(h serverDomain.Hash, data []byte)) (map[serverDomain.Hash][]byte, error) {
-	return nil, nil
+func (fakeRepoInterface) DownloadChunks(_ context.Context, _ []serverDomain.Hash, _ func(h serverDomain.Hash, data []byte) error) error {
+	return nil
 }
 
 func (fakeRepoInterface) GetCommitLog(_ context.Context, _, _, _ string, _ *snow.ID, _ int) ([]*serverDomain.CommitLogEntry, error) {
@@ -104,10 +104,10 @@ func (fakeLocalRepo) StageRemove(_ []string) error            { return nil }
 func (fakeLocalRepo) MissingChunks(_ []serverDomain.Hash) ([]serverDomain.Hash, error) {
 	return nil, nil
 }
-func (fakeLocalRepo) StoreChunk(_ serverDomain.Hash, _ []byte) error { return nil }
-func (fakeLocalRepo) LoadChunk(_ serverDomain.Hash) ([]byte, error)  { return nil, nil }
-func (fakeLocalRepo) SaveCommit(_, _ string) error                   { return nil }
-func (fakeLocalRepo) LoadCommit() (*domain.LocalCommit, error)       { return &domain.LocalCommit{}, nil }
+func (fakeLocalRepo) StoreChunks(_ []*serverDomain.ChunkData) error { return nil }
+func (fakeLocalRepo) LoadChunk(_ serverDomain.Hash) ([]byte, error) { return nil, nil }
+func (fakeLocalRepo) SaveCommit(_, _ string) error                  { return nil }
+func (fakeLocalRepo) LoadCommit() (*domain.LocalCommit, error)      { return &domain.LocalCommit{}, nil }
 
 func helperAuth(t *testing.T) (*usecase.Repo, *fakeStorage) {
 	t.Helper()

@@ -42,6 +42,11 @@ RETURNING id;
 -- name: ChunkExists :one
 SELECT EXISTS(SELECT 1 FROM chunks WHERE hash = :hash AND data IS NOT NULL);
 
+-- name: ChunkExistingHashes :many
+SELECT hash
+FROM chunks
+WHERE data IS NOT NULL AND hash IN (sqlc.slice('hashes'));
+
 -- name: ChunkUpsertContent :one
 INSERT INTO chunks (hash, size_bytes, data)
 VALUES (:hash, :size_bytes, :data)

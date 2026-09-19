@@ -1,6 +1,7 @@
 package localrepo
 
 import (
+	"encoding/binary"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -173,6 +174,32 @@ func TestMissingChunks_MetadataOnlyRowIsMissing(t *testing.T) {
 	got, err := lr.MissingChunks([]serverDomain.Hash{{0x04}})
 	require.NoError(t, err)
 	require.Equal(t, []serverDomain.Hash{{0x04}}, got, "a metadata-only chunk row must still count as missing content")
+}
+
+func TestMissingChunks_ManyHashes(t *testing.T) {
+	lr := newTestLocalRepo(t)
+
+	const n = 1200
+	cached := make([]serverDomain.Hash, 0, n/10)
+	hashes := make([]serverDomain.Hash, 0, n)
+	for i := 0; i < n; i++ {
+		var h serverDomain.Hash
+		binary.BigEndian.PutUint32(h[:4], uint32(i))
+		hashes = append(hashes, h)
+		if i%10 == 0 {
+			cached = append(cached, h)
+		}
+	}
+	chunks := make([]*serverDomain.ChunkData, 0, len(cached))
+	for i, h := range cached {
+		chunks = append(chunks, &serverDomain.ChunkData{Hash: h, Data: []byte{byte(i)}})
+	}
+	require.NoError(t, lr.StoreChunks(chunks))
+
+	got, err := lr.MissingChunks(hashes)
+	require.NoError(t, err)
+	require.Len(t, got, n-len(cached), "hash lookups must span multiple batches")
+	require.NotContains(t, got, cached[0])
 }
 
 func TestMissingChunks_Empty(t *testing.T) {

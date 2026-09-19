@@ -1,6 +1,7 @@
 package usecase
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"sort"
@@ -15,7 +16,7 @@ import (
 type mergeClient interface {
 	Connect(ctx context.Context, host string) error
 	GetTreeNodeManifest(ctx context.Context, org, project, branch, path string) (*serverDomain.TreeNode, error)
-	DownloadChunks(ctx context.Context, hashes []serverDomain.Hash, onChunk ...func(h serverDomain.Hash, data []byte)) (map[serverDomain.Hash][]byte, error)
+	DownloadChunks(ctx context.Context, hashes []serverDomain.Hash, onChunk func(h serverDomain.Hash, data []byte) error) error
 	GetMergeBase(ctx context.Context, org, project, target, source string) (*domain.MergeBaseInfo, error)
 	MergeFastForward(ctx context.Context, org, project, target, source string) (*serverDomain.Branch, error)
 }
@@ -33,7 +34,7 @@ type mergeLocalRepo interface {
 	ClearStaged() error
 	StageAdd(path string) error
 	MissingChunks(hashes []serverDomain.Hash) ([]serverDomain.Hash, error)
-	StoreChunk(hash serverDomain.Hash, data []byte) error
+	StoreChunks(chunks []*serverDomain.ChunkData) error
 	LoadChunk(hash serverDomain.Hash) ([]byte, error)
 }
 
@@ -354,18 +355,20 @@ func (m *Merge) abort(ctx context.Context, root string, url *domain.NipaUrl, bra
 }
 
 func (m *Merge) storeMergedFile(path string, data []byte, mode int, isBinary bool) (merge.File, error) {
-	chunks, err := chunker.ChunkAll(data)
+	var hashes []serverDomain.Hash
+	var sizes []int64
+	batch := make([]*serverDomain.ChunkData, 0, 16)
+	err := chunker.Scan(bytes.NewReader(data), func(c chunker.Chunk) error {
+		hashes = append(hashes, c.Hash)
+		sizes = append(sizes, int64(len(c.Data)))
+		batch = append(batch, &serverDomain.ChunkData{Hash: c.Hash, Data: c.Data})
+		return nil
+	})
 	if err != nil {
 		return merge.File{}, err
 	}
-	hashes := make([]serverDomain.Hash, len(chunks))
-	sizes := make([]int64, len(chunks))
-	for i, c := range chunks {
-		hashes[i] = c.Hash
-		sizes[i] = int64(len(c.Data))
-		if err := m.localRepo.StoreChunk(c.Hash, c.Data); err != nil {
-			return merge.File{}, err
-		}
+	if err := m.localRepo.StoreChunks(batch); err != nil {
+		return merge.File{}, err
 	}
 	return merge.File{
 		Path:        path,
