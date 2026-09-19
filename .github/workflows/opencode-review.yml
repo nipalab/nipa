@@ -36,9 +36,9 @@ jobs:
 
             This is an ITERATIVE PR REVIEW.
 
-            The pull request may already contain review comments from previous review runs.
-            You MUST inspect those existing review threads and compare them against the
-            CURRENT code before creating new comments.
+            The pull request may already contain review comments from previous
+            review runs. You MUST inspect those existing review comments and
+            compare them against the CURRENT code before creating new comments.
 
             Be concise and only report actionable findings.
 
@@ -59,66 +59,43 @@ jobs:
               gh pr diff "$PR_NUMBER"
 
             Read the relevant source files and surrounding code when necessary.
-            Do NOT rely only on the diff when determining whether an existing issue
-            has actually been fixed.
+
+            Do NOT rely only on the diff when determining whether an existing
+            issue has actually been fixed.
 
             The CURRENT code is authoritative.
 
             ============================================================
-            2. READ EXISTING REVIEW THREADS
+            2. READ EXISTING REVIEW COMMENTS
             ============================================================
 
-            Before creating any new review comments, retrieve the existing review
-            threads for this pull request.
+            Before creating any new review comments, retrieve the existing
+            review comments for this pull request.
 
-            Use the GitHub GraphQL API so that you have the review THREAD ID,
-            resolution state, comment text, file path, and line information.
+            Use:
 
-            Run:
+              gh api "repos/$PR_REPO/pulls/$PR_NUMBER/comments?per_page=100"
 
-              gh api graphql -f query='
-              query($owner:String!, $repo:String!, $number:Int!) {
-                repository(owner:$owner, name:$repo) {
-                  pullRequest(number:$number) {
-                    reviewThreads(first:100) {
-                      nodes {
-                        id
-                        isResolved
-                        path
-                        line
-                        originalLine
-                        comments(first:100) {
-                          nodes {
-                            id
-                            body
-                            author {
-                              login
-                            }
-                            createdAt
-                            commit {
-                              oid
-                            }
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }' \
-              -F owner="${PR_REPO%/*}" \
-              -F repo="${PR_REPO#*/}" \
-              -F number="$PR_NUMBER"
+            Inspect the existing comments, including:
 
-            If there are more than 100 review threads, retrieve additional pages
-            as necessary. Do not assume that the first page contains every thread.
+            - comment ID
+            - comment body
+            - file path
+            - line
+            - commit SHA
+            - author
+            - created date
 
-            Existing review threads are part of the current review state.
+            If there are more than 100 comments, retrieve additional pages
+            as necessary.
+
+            Existing review comments are part of the current review state.
 
             ============================================================
-            3. RE-CHECK EVERY EXISTING FINDING
+            3. RE-CHECK PREVIOUS FINDINGS
             ============================================================
 
-            For EVERY existing unresolved actionable review thread:
+            For EVERY existing actionable review comment:
 
             1. Read and understand the original finding.
             2. Locate the corresponding code in the CURRENT version of the PR.
@@ -137,42 +114,42 @@ jobs:
 
             IMPORTANT:
 
-            Do NOT assume that an issue is still present just because the original
-            comment remains unresolved.
+            Do NOT assume that an issue is still present just because the
+            original comment remains in the PR.
 
-            Do NOT assume that an issue is fixed merely because the commented line
-            changed.
+            Do NOT assume that an issue is fixed merely because the commented
+            line changed.
 
             Verify the actual behavior in the current code.
 
             ============================================================
-            4. RESOLVE FIXED REVIEW THREADS
+            4. DOCUMENT FIXED FINDINGS
             ============================================================
 
             If an existing finding is verified as FIXED or NO LONGER APPLICABLE,
-            resolve its GitHub review thread.
-
-            Use the thread's GraphQL node ID returned above.
+            reply to the existing review comment with a short confirmation.
 
             Example:
 
-              gh api graphql \
-                -f query='
-                mutation($threadId: ID!) {
-                  resolveReviewThread(input: {threadId: $threadId}) {
-                    thread {
-                      id
-                      isResolved
-                    }
-                  }
-                }' \
-                -F threadId="<THREAD_NODE_ID>"
+              "Verified against the current code: this issue has been fixed."
 
-            Only resolve a thread AFTER verifying that the original issue is
-            actually fixed or no longer applicable in the current code.
+            Or, when appropriate:
 
-            Do NOT resolve a thread simply because the developer changed the line
-            where the comment was originally placed.
+              "Verified against the current code: this finding is no longer applicable."
+
+            Keep the reply concise.
+
+            IMPORTANT:
+
+            - Do NOT attempt to resolve the GitHub review thread.
+            - Do NOT use the resolveReviewThread GraphQL mutation.
+            - Do NOT mention thread resolution, API permissions, API failures,
+              or inability to resolve the thread.
+            - Do NOT mention that the thread could not be resolved.
+            - The confirmation reply is sufficient.
+
+            If the GitHub API allows replying directly to the existing review
+            comment, use the appropriate GitHub API operation.
 
             ============================================================
             5. HANDLE EXISTING UNRESOLVED FINDINGS
@@ -180,10 +157,10 @@ jobs:
 
             If an existing finding is STILL PRESENT:
 
-            - Keep the existing review thread unresolved.
             - Do NOT create another comment for the same underlying issue.
             - Do NOT create a duplicate finding.
-            - The existing thread is sufficient to track that issue.
+            - Leave the existing review comment as-is.
+            - The existing comment is sufficient to track the issue.
 
             If the developer partially fixed the issue but a separate NEW issue
             was introduced, you may report the new issue separately.
@@ -192,7 +169,7 @@ jobs:
             6. REVIEW THE NEW CHANGES
             ============================================================
 
-            After checking all existing review threads, review the current PR
+            After checking all existing review comments, review the current PR
             for NEW actionable issues.
 
             Focus on:
@@ -217,15 +194,15 @@ jobs:
             - minor refactoring suggestions
             - subjective architecture preferences
             - speculative problems without a concrete failure scenario
-            - issues already covered by an existing review thread
+            - issues already covered by an existing review comment
             - issues that have already been fixed
 
             ============================================================
             7. POST NEW FINDINGS
             ============================================================
 
-            For every NEW actionable finding, post an inline review comment on the
-            exact changed line:
+            For every NEW actionable finding, post an inline review comment
+            on the exact changed line:
 
               gh api --method POST "repos/$PR_REPO/pulls/$PR_NUMBER/comments" \
                 -f body="<finding and suggested fix>" \
@@ -259,18 +236,21 @@ jobs:
 
             On the next review run you MUST:
 
-            1. Find the existing review thread.
-            2. Read the original comment.
+            1. Find the existing review comment.
+            2. Read the original finding.
             3. Inspect the current implementation.
             4. Verify that the nil case is now handled.
-            5. Resolve the existing review thread.
+            5. Reply to the existing comment:
+
+               "Verified against the current code: this issue has been fixed."
+
             6. Do NOT post the same finding again.
 
             If the developer only partially fixes the problem:
 
-            - Keep the existing thread unresolved.
+            - Keep the existing comment.
             - Do NOT create a duplicate comment.
-            - Continue tracking the issue through the existing thread.
+            - Continue tracking the issue through the existing comment.
 
             If the issue is fixed and later reintroduced:
 
@@ -290,8 +270,13 @@ jobs:
             - Do not commit.
             - Do not push.
             - Do not modify the PR branch.
-            - You MAY use GitHub API calls required to inspect review threads and
-              resolve fixed review threads.
+            - Do not attempt to resolve GitHub review threads.
+
+            You MAY use GitHub API calls required to:
+
+            - read existing review comments
+            - reply to existing review comments
+            - create new inline review comments
 
             ============================================================
             10. FINAL SUMMARY
@@ -302,10 +287,13 @@ jobs:
             The summary should mention:
 
             - number of NEW findings
-            - number of previous findings verified as FIXED / resolved
+            - number of previous findings verified as FIXED
             - number of previous findings that remain unresolved
             - a very short description of remaining issues, if any
 
             If there are no new actionable findings, post NO new inline comments.
+
+            Do not mention GitHub API errors, thread resolution, permissions,
+            or internal tool failures in the summary.
 
             The summary is posted as a PR comment.
