@@ -27,6 +27,8 @@ type stubRevertClient struct {
 	walkLimit   int
 	headTree    *serverDomain.TreeNode
 	headErr     error
+	headCalls   int
+	headErrOn   int
 	chunks      map[serverDomain.Hash][]byte
 	downloadErr error
 	downloaded  []serverDomain.Hash
@@ -53,6 +55,10 @@ func (s *stubRevertClient) WalkCommits(_ context.Context, _, _, start, stop stri
 }
 
 func (s *stubRevertClient) GetTreeNodeManifest(_ context.Context, _, _, _, _ string) (*serverDomain.TreeNode, error) {
+	s.headCalls++
+	if s.headErrOn > 0 && s.headCalls >= s.headErrOn {
+		return nil, s.headErr
+	}
 	return s.headTree, s.headErr
 }
 
@@ -619,4 +625,83 @@ func TestRevert_Guards(t *testing.T) {
 		_, err := revert.Run(context.Background(), t.TempDir(), "", RevertOptions{Abort: true})
 		require.ErrorContains(t, err, "no revert in progress")
 	})
+}
+
+func TestRevert_Range_KeepsUntouchedFiles(t *testing.T) {
+	root := t.TempDir()
+	writeRepoFile(t, root, "a.txt", "three")
+	writeRepoFile(t, root, "b.txt", "blob")
+
+	a1 := testFile(t, "a.txt", "one")
+	a2 := testFile(t, "a.txt", "two")
+	a3 := testFile(t, "a.txt", "three")
+	b := testFile(t, "b.txt", "blob")
+	head := testTree(0xaa, a3.file, b.file)
+
+	client := &stubRevertClient{
+		walkEntries: []*domain.CommitWalkEntry{
+			{ID: "3", Hash: "h3", Parent1ID: "2", Message: "third"},
+			{ID: "2", Hash: "h2", Parent1ID: "1", Message: "second"},
+		},
+		details: map[string]*domain.CommitDetail{
+			"3": {ID: "3", Hash: "h3", Parent1ID: "2", Message: "third", Tree: testTree(0x03, a3.file, b.file)},
+			"2": {ID: "2", Hash: "h2", Parent1ID: "1", Message: "second", Tree: testTree(0x02, a2.file, b.file)},
+			"1": {ID: "1", Hash: "h1", Message: "first", Tree: testTree(0x01, a1.file, b.file)},
+		},
+		headTree: head,
+	}
+	local := &stubLocalRepo{loadConfig: revertConfig(), snapshot: snapshotOf(head)}
+	storeBlobs(local, a1, a2, b)
+
+	revert, pushClient := newTestRevert(t, client, local)
+	pushClient.pushResults = []*serverDomain.PushResult{
+		{CommitID: 10, CommitHash: serverDomain.Hash{0x10}, TreeHash: serverDomain.Hash{0x11}},
+		{CommitID: 11, CommitHash: serverDomain.Hash{0x12}, TreeHash: serverDomain.Hash{0x13}},
+	}
+
+	outcome, err := revert.Run(context.Background(), root, "1..3", RevertOptions{})
+	require.NoError(t, err)
+	require.True(t, outcome.Committed)
+	require.Len(t, pushClient.pushes, 2)
+	for _, pus := range pushClient.pushes {
+		require.Empty(t, pus.removed, "untouched files must never be staged as removals")
+	}
+	require.Equal(t, "one", string(readRepoFile(t, root, "a.txt")))
+	require.Equal(t, "blob", string(readRepoFile(t, root, "b.txt")), "an untouched file must survive a multi-commit revert")
+}
+
+func TestRevert_Range_NoCommit_KeepsUntouchedFiles(t *testing.T) {
+	root := t.TempDir()
+	writeRepoFile(t, root, "a.txt", "three")
+	writeRepoFile(t, root, "b.txt", "blob")
+
+	a1 := testFile(t, "a.txt", "one")
+	a2 := testFile(t, "a.txt", "two")
+	a3 := testFile(t, "a.txt", "three")
+	b := testFile(t, "b.txt", "blob")
+	head := testTree(0xaa, a3.file, b.file)
+
+	client := &stubRevertClient{
+		walkEntries: []*domain.CommitWalkEntry{
+			{ID: "3", Hash: "h3", Parent1ID: "2", Message: "third"},
+			{ID: "2", Hash: "h2", Parent1ID: "1", Message: "second"},
+		},
+		details: map[string]*domain.CommitDetail{
+			"3": {ID: "3", Hash: "h3", Parent1ID: "2", Message: "third", Tree: testTree(0x03, a3.file, b.file)},
+			"2": {ID: "2", Hash: "h2", Parent1ID: "1", Message: "second", Tree: testTree(0x02, a2.file, b.file)},
+			"1": {ID: "1", Hash: "h1", Message: "first", Tree: testTree(0x01, a1.file, b.file)},
+		},
+		headTree: head,
+	}
+	local := &stubLocalRepo{loadConfig: revertConfig(), snapshot: snapshotOf(head)}
+	storeBlobs(local, a1, a2, b)
+
+	revert, pushClient := newTestRevert(t, client, local)
+	outcome, err := revert.Run(context.Background(), root, "1..3", RevertOptions{NoCommit: true})
+	require.NoError(t, err)
+	require.False(t, outcome.Committed)
+	require.Empty(t, pushClient.pushes)
+	require.Equal(t, "one", string(readRepoFile(t, root, "a.txt")))
+	require.Equal(t, "blob", string(readRepoFile(t, root, "b.txt")))
+	require.Contains(t, merge.Flatten(local.tree), "b.txt", "the staged tree must keep untouched files")
 }

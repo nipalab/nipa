@@ -33,16 +33,200 @@ jobs:
           model: opencode-go/glm-5.3-flash
           prompt: |
             Review this pull request for correctness, potential bugs, and security issues.
+
+            This is an ITERATIVE PR REVIEW.
+
+            The pull request may already contain review comments from previous review runs.
+            You MUST inspect those existing review threads and compare them against the
+            CURRENT code before creating new comments.
+
             Be concise and only report actionable findings.
 
             Repository: ${{ github.repository }}
             Pull request: #${{ github.event.pull_request.number }}
             Head commit: ${{ github.event.pull_request.head.sha }}
 
-            Read the changes first:
+            PR_REPO="${{ github.repository }}"
+            PR_NUMBER="${{ github.event.pull_request.number }}"
+            PR_HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+
+            ============================================================
+            1. READ THE CURRENT PR
+            ============================================================
+
+            First inspect the complete current PR diff:
+
               gh pr diff "$PR_NUMBER"
 
-            For every actionable finding, post an inline review comment on the exact changed line:
+            Read the relevant source files and surrounding code when necessary.
+            Do NOT rely only on the diff when determining whether an existing issue
+            has actually been fixed.
+
+            The CURRENT code is authoritative.
+
+            ============================================================
+            2. READ EXISTING REVIEW THREADS
+            ============================================================
+
+            Before creating any new review comments, retrieve the existing review
+            threads for this pull request.
+
+            Use the GitHub GraphQL API so that you have the review THREAD ID,
+            resolution state, comment text, file path, and line information.
+
+            Run:
+
+              gh api graphql -f query='
+              query($owner:String!, $repo:String!, $number:Int!) {
+                repository(owner:$owner, name:$repo) {
+                  pullRequest(number:$number) {
+                    reviewThreads(first:100) {
+                      nodes {
+                        id
+                        isResolved
+                        path
+                        line
+                        originalLine
+                        comments(first:100) {
+                          nodes {
+                            id
+                            body
+                            author {
+                              login
+                            }
+                            createdAt
+                            commit {
+                              oid
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }' \
+              -F owner="${PR_REPO%/*}" \
+              -F repo="${PR_REPO#*/}" \
+              -F number="$PR_NUMBER"
+
+            If there are more than 100 review threads, retrieve additional pages
+            as necessary. Do not assume that the first page contains every thread.
+
+            Existing review threads are part of the current review state.
+
+            ============================================================
+            3. RE-CHECK EVERY EXISTING FINDING
+            ============================================================
+
+            For EVERY existing unresolved actionable review thread:
+
+            1. Read and understand the original finding.
+            2. Locate the corresponding code in the CURRENT version of the PR.
+            3. Inspect the current implementation and relevant surrounding code.
+            4. Determine whether the original issue is:
+
+               FIXED
+               - The problem identified by the reviewer no longer exists.
+
+               STILL PRESENT
+               - The problem identified by the reviewer still exists.
+
+               NO LONGER APPLICABLE
+               - The relevant code was removed or changed so that the original
+                 finding no longer applies.
+
+            IMPORTANT:
+
+            Do NOT assume that an issue is still present just because the original
+            comment remains unresolved.
+
+            Do NOT assume that an issue is fixed merely because the commented line
+            changed.
+
+            Verify the actual behavior in the current code.
+
+            ============================================================
+            4. RESOLVE FIXED REVIEW THREADS
+            ============================================================
+
+            If an existing finding is verified as FIXED or NO LONGER APPLICABLE,
+            resolve its GitHub review thread.
+
+            Use the thread's GraphQL node ID returned above.
+
+            Example:
+
+              gh api graphql \
+                -f query='
+                mutation($threadId: ID!) {
+                  resolveReviewThread(input: {threadId: $threadId}) {
+                    thread {
+                      id
+                      isResolved
+                    }
+                  }
+                }' \
+                -F threadId="<THREAD_NODE_ID>"
+
+            Only resolve a thread AFTER verifying that the original issue is
+            actually fixed or no longer applicable in the current code.
+
+            Do NOT resolve a thread simply because the developer changed the line
+            where the comment was originally placed.
+
+            ============================================================
+            5. HANDLE EXISTING UNRESOLVED FINDINGS
+            ============================================================
+
+            If an existing finding is STILL PRESENT:
+
+            - Keep the existing review thread unresolved.
+            - Do NOT create another comment for the same underlying issue.
+            - Do NOT create a duplicate finding.
+            - The existing thread is sufficient to track that issue.
+
+            If the developer partially fixed the issue but a separate NEW issue
+            was introduced, you may report the new issue separately.
+
+            ============================================================
+            6. REVIEW THE NEW CHANGES
+            ============================================================
+
+            After checking all existing review threads, review the current PR
+            for NEW actionable issues.
+
+            Focus on:
+
+            - correctness
+            - logic errors
+            - race conditions and concurrency issues
+            - error handling
+            - resource leaks
+            - data consistency
+            - security vulnerabilities
+            - authentication and authorization problems
+            - injection vulnerabilities
+            - unsafe input handling
+            - incorrect assumptions
+            - breaking behavior
+            - significant performance problems
+
+            Do NOT report:
+
+            - stylistic preferences
+            - minor refactoring suggestions
+            - subjective architecture preferences
+            - speculative problems without a concrete failure scenario
+            - issues already covered by an existing review thread
+            - issues that have already been fixed
+
+            ============================================================
+            7. POST NEW FINDINGS
+            ============================================================
+
+            For every NEW actionable finding, post an inline review comment on the
+            exact changed line:
+
               gh api --method POST "repos/$PR_REPO/pulls/$PR_NUMBER/comments" \
                 -f body="<finding and suggested fix>" \
                 -f path="<file path>" \
@@ -51,9 +235,77 @@ jobs:
                 -f side=RIGHT
 
             Rules:
-            - Use side=RIGHT with the line number in the new file; for removed lines use side=LEFT with the old-file line number.
-            - Only comment on lines that are part of the PR diff; GitHub rejects comments outside the diff with 422.
-            - One focused, actionable comment per finding, with a concrete suggestion when possible.
-            - Do not edit, create, or delete files; do not commit or push. This run is comment-only.
-            - If nothing is actionable, post no inline comments.
-            - Finish with a short summary of the review; the summary is posted as a PR comment.
+
+            - Use side=RIGHT with the line number in the new file.
+            - For removed lines, use side=LEFT with the old-file line number.
+            - Only comment on lines that are part of the PR diff.
+            - GitHub rejects comments outside the diff with HTTP 422.
+            - One focused, actionable comment per finding.
+            - Include a concrete suggested fix when possible.
+            - Do NOT create duplicate comments for existing findings.
+            - Do NOT comment on issues that have already been fixed.
+
+            ============================================================
+            8. IMPORTANT ITERATIVE REVIEW EXAMPLE
+            ============================================================
+
+            Example:
+
+            Previous review comment:
+
+              "foo() can return nil here and causes a panic."
+
+            Developer changes the code so that the nil case is handled.
+
+            On the next review run you MUST:
+
+            1. Find the existing review thread.
+            2. Read the original comment.
+            3. Inspect the current implementation.
+            4. Verify that the nil case is now handled.
+            5. Resolve the existing review thread.
+            6. Do NOT post the same finding again.
+
+            If the developer only partially fixes the problem:
+
+            - Keep the existing thread unresolved.
+            - Do NOT create a duplicate comment.
+            - Continue tracking the issue through the existing thread.
+
+            If the issue is fixed and later reintroduced:
+
+            - Treat the reintroduced problem as a new finding.
+            - Comment on the new problematic code.
+
+            ============================================================
+            9. REVIEW SCOPE
+            ============================================================
+
+            This run is comment-only.
+
+            - Do not edit files.
+            - Do not create files.
+            - Do not delete files.
+            - Do not modify source code.
+            - Do not commit.
+            - Do not push.
+            - Do not modify the PR branch.
+            - You MAY use GitHub API calls required to inspect review threads and
+              resolve fixed review threads.
+
+            ============================================================
+            10. FINAL SUMMARY
+            ============================================================
+
+            Finish with a short summary of the review.
+
+            The summary should mention:
+
+            - number of NEW findings
+            - number of previous findings verified as FIXED / resolved
+            - number of previous findings that remain unresolved
+            - a very short description of remaining issues, if any
+
+            If there are no new actionable findings, post NO new inline comments.
+
+            The summary is posted as a PR comment.

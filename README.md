@@ -43,7 +43,7 @@ Run `nipa <command> --help` for full details.
 | `nipa push -m "<message>"`  | Upload staged changes to the server and commit them on the configured branch. |
 | `nipa update`               | Fetch and apply the latest changes of the configured branch.                |
 | `nipa merge <branch>`       | Merge another branch into the current one. Fast-forwards when possible; `--no-ff` forces a merge commit, `--ff-only` refuses, `--abort` cancels a conflicted merge, `-m` sets the message. |
-| `nipa revert <commit>`      | Create new commits that undo the given commit or range (`<from>..<to>`, newest first) without rewriting history. `--mainline 1\|2` for merge commits, `--no-commit` stages without committing, `-m` sets the message (single commit only), `--continue` / `--abort` / `--skip` drive a conflicted revert. |
+| `nipa revert <commit>`      | Create new commits that undo the given commit or range (`<from>..<to>`, newest first, up to 16 commits) without rewriting history. `--mainline 1\|2` for merge commits, `--no-commit` stages without committing, `-m` sets the message (single commit only), `--continue` / `--abort` / `--skip` drive a conflicted revert. |
 | `nipa log`                  | Show the commit history of the current branch. Interactive and scrollable when stdout is a terminal; `-n` limits, `--oneline` prints one line per commit, `--no-pager` disables the pager. |
 
 Branch creation (`nipa branch -c <name>`) forks from the exact commit the

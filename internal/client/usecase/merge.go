@@ -183,7 +183,7 @@ func (m *Merge) trueMerge(ctx context.Context, root string, url *domain.NipaUrl,
 		baseByPath[f.Path] = f
 	}
 
-	applied, err := applyThreeWay(ctx, m.client, m.localRepo, root, baseByPath, res)
+	applied, err := applyThreeWay(ctx, m.client, m.localRepo, root, ours, baseByPath, res)
 	if err != nil {
 		return nil, err
 	}

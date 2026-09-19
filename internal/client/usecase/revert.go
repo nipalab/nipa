@@ -13,7 +13,7 @@ import (
 	serverDomain "github.com/nipalab/nipa/internal/domain"
 )
 
-const revertMaxTargets = 1000
+const revertMaxTargets = 16
 
 type revertClient interface {
 	Connect(ctx context.Context, host string) error
@@ -201,14 +201,14 @@ func (r *Revert) resolveTargets(ctx context.Context, url *domain.NipaUrl, target
 	if from == "" || to == "" {
 		return nil, domain.NewUserError("a revert range must be <from>..<to>")
 	}
-	entries, err := r.client.WalkCommits(ctx, url.Org, url.Project, to, from, revertMaxTargets)
+	entries, err := r.client.WalkCommits(ctx, url.Org, url.Project, to, from, revertMaxTargets+1)
 	if err != nil {
 		return nil, err
 	}
 	if len(entries) == 0 {
 		return nil, domain.NewUserError("no commits in the revert range")
 	}
-	if len(entries) >= revertMaxTargets {
+	if len(entries) > revertMaxTargets {
 		return nil, domain.NewUserError(fmt.Sprintf("revert range is too large (max %d commits)", revertMaxTargets))
 	}
 	refs := make([]domain.CommitRef, 0, len(entries))
@@ -243,7 +243,7 @@ func (r *Revert) process(ctx context.Context, root string, url *domain.NipaUrl, 
 		if err != nil {
 			return nil, err
 		}
-		applied, err := applyThreeWay(ctx, r.client, r.localRepo, root, baseByPath, res)
+		applied, err := applyThreeWay(ctx, r.client, r.localRepo, root, ours, baseByPath, res)
 		if err != nil {
 			return nil, err
 		}

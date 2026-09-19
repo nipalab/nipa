@@ -23,7 +23,7 @@ type threeWayResult struct {
 	Conflicted []string
 }
 
-func applyThreeWay(ctx context.Context, client chunkDownloader, local threeWayLocalRepo, root string, baseByPath map[string]domain.SnapshotFile, res *merge.Result) (*threeWayResult, error) {
+func applyThreeWay(ctx context.Context, client chunkDownloader, local threeWayLocalRepo, root string, ours map[string]merge.File, baseByPath map[string]domain.SnapshotFile, res *merge.Result) (*threeWayResult, error) {
 	var needs []merge.File
 	for _, e := range res.Entries {
 		switch e.Decision {
@@ -45,7 +45,10 @@ func applyThreeWay(ctx context.Context, client chunkDownloader, local threeWayLo
 		return nil, err
 	}
 
-	out := &threeWayResult{Files: make(map[string]merge.File)}
+	out := &threeWayResult{Files: make(map[string]merge.File, len(ours))}
+	for p, f := range ours {
+		out.Files[p] = f
+	}
 
 	for _, p := range sortedEntryPaths(res.Entries) {
 		e := res.Entries[p]
@@ -101,6 +104,7 @@ func applyThreeWay(ctx context.Context, client chunkDownloader, local threeWayLo
 	}
 
 	for _, p := range sortedStrings(res.Deleted) {
+		delete(out.Files, p)
 		base, ok := baseByPath[p]
 		if !ok {
 			continue

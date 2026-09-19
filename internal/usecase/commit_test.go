@@ -272,3 +272,46 @@ func TestBranch_WalkCommits_Limit(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []snow.ID{3, 2}, walkIDs(commits))
 }
+
+func TestBranch_WalkCommits_NodeCapExceeded(t *testing.T) {
+	oldCap := maxCommitWalkNodes
+	maxCommitWalkNodes = 3
+	t.Cleanup(func() { maxCommitWalkNodes = oldCap })
+
+	ctrl := gomock.NewController(t)
+	perm := NewMockpermissionUsecase(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).
+		Return(true)
+	repo.EXPECT().GetCommit(gomock.Any(), snow.ID(5)).Return(testCommit(5, 1, 4), nil)
+	repo.EXPECT().GetCommit(gomock.Any(), snow.ID(4)).Return(testCommit(4, 1, 3), nil)
+	repo.EXPECT().GetCommit(gomock.Any(), snow.ID(3)).Return(testCommit(3, 1, 2), nil)
+
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
+	_, err := uc.WalkCommits(context.Background(), snow.ID(1), snow.ID(5), nil, 100)
+	require.ErrorContains(t, err, "too large")
+}
+
+func TestBranch_WalkCommits_NodeCapAllowsExactHistory(t *testing.T) {
+	oldCap := maxCommitWalkNodes
+	maxCommitWalkNodes = 3
+	t.Cleanup(func() { maxCommitWalkNodes = oldCap })
+
+	ctrl := gomock.NewController(t)
+	perm := NewMockpermissionUsecase(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).
+		Return(true)
+	repo.EXPECT().GetCommit(gomock.Any(), snow.ID(1)).Return(testCommit(1, 1), nil)
+	repo.EXPECT().GetCommit(gomock.Any(), snow.ID(2)).Return(testCommit(2, 1, 1), nil)
+	repo.EXPECT().GetCommit(gomock.Any(), snow.ID(3)).Return(testCommit(3, 1, 2), nil)
+
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
+	commits, err := uc.WalkCommits(context.Background(), snow.ID(1), snow.ID(3), nil, 10)
+	require.NoError(t, err)
+	require.Equal(t, []snow.ID{3, 2, 1}, walkIDs(commits))
+}

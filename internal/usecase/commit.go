@@ -8,6 +8,8 @@ import (
 	"github.com/nipalab/nipa/internal/snow"
 )
 
+var maxCommitWalkNodes = 10000
+
 func (b *Branch) GetCommit(ctx context.Context, projectID snow.ID, commitID snow.ID) (*domain.Commit, *domain.TreeNode, error) {
 	if !b.permUc.HasProjectAccess(ctx, projectID, domain.PermissionRead) {
 		return nil, nil, domain.NewErrorNoPermission()
@@ -67,6 +69,9 @@ func (b *Branch) WalkCommits(ctx context.Context, projectID snow.ID, startCommit
 			p := parents[i]
 			if visited[p] {
 				continue
+			}
+			if len(visited) >= maxCommitWalkNodes {
+				return nil, domain.NewErrorUser("commit range is too large")
 			}
 			visited[p] = true
 			stack = append(stack, frame{id: p})

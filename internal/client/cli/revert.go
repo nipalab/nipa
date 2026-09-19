@@ -11,7 +11,7 @@ func (c *Cli) setupRevertCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "revert <commit>",
 		Short:         "Revert one or more commits",
-		Long:          "Create new commits that undo the changes introduced by the given commit or range of commits (newest first), without rewriting history. Conflicting files are left with merge markers; resolve them and run nipa revert --continue (or nipa push for a single commit).",
+		Long:          "Create new commits that undo the changes introduced by the given commit or range of commits (newest first, up to 16 commits), without rewriting history. Conflicting files are left with merge markers; resolve them and run nipa revert --continue (or nipa push for a single commit).",
 		Args:          cobra.MaximumNArgs(1),
 		SilenceErrors: true,
 		SilenceUsage:  true,

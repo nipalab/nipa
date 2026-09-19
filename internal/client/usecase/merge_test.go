@@ -11,6 +11,7 @@ import (
 
 	"github.com/nipalab/nipa/internal/chunker"
 	"github.com/nipalab/nipa/internal/client/domain"
+	"github.com/nipalab/nipa/internal/client/merge"
 	serverDomain "github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/snow"
 )
@@ -381,6 +382,28 @@ func TestMerge_Run_ConflictingMerge(t *testing.T) {
 	require.Equal(t, "src-hash", local.savedMerge.SourceCommitHash)
 	require.Equal(t, "feature", local.savedMerge.SourceBranch)
 	require.NotNil(t, local.tree, "the local snapshot must record the conflicted working copy")
+}
+
+func TestMerge_Run_ConflictingMergeKeepsUntouchedFile(t *testing.T) {
+	client, local, _ := setupThreeWaySeed(t, "a\nb\nc\n", "a\nX\nc\n", "a\nY\nc\n")
+	blobHash, blobChunks := cacheContent(t, local, client, "keep me\n")
+	blob := fileOf("b.txt", blobHash, blobChunks)
+	copied := blob
+	client.treeByBranch["main"].FileChildren = append(client.treeByBranch["main"].FileChildren, &blob)
+	client.treeByBranch["feature"].FileChildren = append(client.treeByBranch["feature"].FileChildren, &copied)
+	client.baseInfo.MergeBaseTree.FileChildren = append(client.baseInfo.MergeBaseTree.FileChildren, &copied)
+
+	root := t.TempDir()
+	writeRepoFile(t, root, "b.txt", "keep me\n")
+	local.snapshot = &domain.Snapshot{
+		Files: []domain.SnapshotFile{{Path: "b.txt", Hash: blobHash, Mode: 2, SizeBytes: blob.SizeBytes}},
+	}
+
+	mergeUse := newTestMerge(t, client, local, nil)
+	outcome, err := mergeUse.Run(context.Background(), root, "feature", MergeOptions{})
+	require.NoError(t, err)
+	require.Equal(t, []string{"a.txt"}, outcome.Conflicts)
+	require.Contains(t, merge.Flatten(local.tree), "b.txt", "the conflicted snapshot must keep untouched files")
 }
 
 func TestMerge_Run_Error_AbortNoMerge(t *testing.T) {

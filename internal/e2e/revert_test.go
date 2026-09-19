@@ -9,6 +9,7 @@ import (
 
 	"github.com/nipalab/nipa/internal/client/domain"
 	"github.com/nipalab/nipa/internal/client/localrepo"
+	"github.com/nipalab/nipa/internal/client/merge"
 	clientusecase "github.com/nipalab/nipa/internal/client/usecase"
 	"github.com/nipalab/nipa/internal/snow"
 )
@@ -182,5 +183,44 @@ func TestEndToEnd_Revert_Abort(t *testing.T) {
 	assertFileContent(t, dir, "a.txt", "a\nY\nc\n")
 	manifest, err := grpcClient.GetTreeNodeManifest(ctx, e2eOrgSlug, e2eProjectSlug, "main", "")
 	require.NoError(t, err)
+	require.Equal(t, manifest.Hash.String(), snapshotOf(t, dir).TreeHash)
+}
+
+func TestEndToEnd_Revert_RangeKeepsUntouchedFile(t *testing.T) {
+	ctx := context.Background()
+	dbConn := openTestDB(t)
+	host := startTestServer(t, dbConn)
+	grpcClient, auth := newLoggedInClient(t, host)
+
+	pusher := clientusecase.NewPush(auth, grpcClient, localrepo.NewLocalRepo())
+	reverter := clientusecase.NewRevert(auth, grpcClient, localrepo.NewLocalRepo(), pusher)
+
+	dir := cloneWorktree(t, grpcClient, auth, host, "main")
+	writeFile(t, dir, "a.txt", "one\n")
+	writeFile(t, dir, "b.txt", "keep me\n")
+	stagePath(t, dir, "a.txt")
+	stagePath(t, dir, "b.txt")
+	require.NoError(t, pusher.Run(ctx, dir, "seed"))
+	c1, _ := pinnedCommit(t, dir)
+
+	writeFile(t, dir, "a.txt", "two\n")
+	stagePath(t, dir, "a.txt")
+	require.NoError(t, pusher.Run(ctx, dir, "second"))
+
+	writeFile(t, dir, "a.txt", "three\n")
+	stagePath(t, dir, "a.txt")
+	require.NoError(t, pusher.Run(ctx, dir, "third"))
+	c3, _ := pinnedCommit(t, dir)
+
+	outcome, err := reverter.Run(ctx, dir, c1+".."+c3, clientusecase.RevertOptions{})
+	require.NoError(t, err)
+	require.True(t, outcome.Committed)
+
+	assertFileContent(t, dir, "a.txt", "one\n")
+	assertFileContent(t, dir, "b.txt", "keep me\n")
+
+	manifest, err := grpcClient.GetTreeNodeManifest(ctx, e2eOrgSlug, e2eProjectSlug, "main", "")
+	require.NoError(t, err)
+	require.Contains(t, merge.Flatten(manifest), "b.txt", "an untouched file must survive a range revert on the server")
 	require.Equal(t, manifest.Hash.String(), snapshotOf(t, dir).TreeHash)
 }
