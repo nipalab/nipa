@@ -226,6 +226,7 @@ func (r *Revert) resolveTargets(ctx context.Context, url *domain.NipaUrl, target
 
 func (r *Revert) process(ctx context.Context, root string, url *domain.NipaUrl, branch string, state *domain.RevertState, ours map[string]merge.File, progress ...UploadProgress) (*RevertOutcome, error) {
 	committed := false
+	changed := false
 	for len(state.Targets) > 0 {
 		target := state.Targets[0]
 		detail, err := r.client.GetCommit(ctx, url.Org, url.Project, target.ID)
@@ -268,6 +269,7 @@ func (r *Revert) process(ctx context.Context, root string, url *domain.NipaUrl, 
 			}
 			continue
 		}
+		changed = true
 
 		if state.NoCommit {
 			if err := r.localRepo.SaveTree(treeFromFiles(ours)); err != nil {
@@ -297,7 +299,7 @@ func (r *Revert) process(ctx context.Context, root string, url *domain.NipaUrl, 
 	if err := r.localRepo.ClearRevertState(); err != nil {
 		return nil, err
 	}
-	return &RevertOutcome{Committed: committed, NoChange: !committed}, nil
+	return &RevertOutcome{Committed: committed, NoChange: !changed}, nil
 }
 
 func (r *Revert) resume(ctx context.Context, root string, url *domain.NipaUrl, branch string, progress ...UploadProgress) (*RevertOutcome, error) {
