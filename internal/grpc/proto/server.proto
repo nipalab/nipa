@@ -186,6 +186,46 @@ message GetCommitLogResponse {
     repeated CommitLogEntry commits = 2;
 }
 
+message CommitDetail {
+    string commit_id = 1; // base36 snow ID
+    string commit_hash = 2; // hex-encoded BLAKE3 content hash
+    string tree_hash = 3; // hex-encoded root tree hash
+    optional string parent_1_id = 4; // base36 snow ID; empty for a root commit
+    optional string parent_2_id = 5; // base36 snow ID; set for merge commits
+    string message = 6;
+    google.protobuf.Timestamp created_at = 7;
+}
+
+message GetCommitRequest {
+    ProjectContext context = 1;
+    string commit_id = 2; // base36 snow ID
+}
+
+message GetCommitResponse {
+    CommitDetail commit = 1;
+    TreeManifest root_tree = 2; // recursive manifest of the commit tree
+}
+
+message CommitWalkEntry {
+    string commit_id = 1; // base36 snow ID
+    string commit_hash = 2; // hex-encoded BLAKE3 content hash
+    optional string parent_1_id = 3; // base36 snow ID; empty for a root commit
+    optional string parent_2_id = 4; // base36 snow ID; set for merge commits
+    string message = 5;
+    google.protobuf.Timestamp created_at = 6;
+}
+
+message WalkCommitsRequest {
+    ProjectContext context = 1;
+    string start_commit_id = 2; // base36 snow ID; walk starts here (inclusive)
+    optional string stop_commit_id = 3; // base36 snow ID; exclusive boundary
+    int32 limit = 4;
+}
+
+message WalkCommitsResponse {
+    repeated CommitWalkEntry commits = 1; // newest first
+}
+
 message LoginUsernamePasswordRequest {
     string username = 1;
     string password = 2;
@@ -211,6 +251,8 @@ service NipaService {
     rpc CreateBranch(CreateBranchRequest) returns (CreateBranchResponse);
     rpc GetTreeManifest(GetTreeManifestRequest) returns (GetTreeManifestResponse);
     rpc GetCommitLog(GetCommitLogRequest) returns (GetCommitLogResponse);
+    rpc GetCommit(GetCommitRequest) returns (GetCommitResponse);
+    rpc WalkCommits(WalkCommitsRequest) returns (WalkCommitsResponse);
     rpc GetMergeBase(GetMergeBaseRequest) returns (GetMergeBaseResponse);
     rpc MergeFastForward(MergeFastForwardRequest) returns (MergeFastForwardResponse);
     rpc Push(PushRequest) returns (PushResponse);
