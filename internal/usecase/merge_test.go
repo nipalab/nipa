@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -620,4 +621,277 @@ func TestBranch_GetMergeBase_CommitRefWrongProject(t *testing.T) {
 	uc := NewBranch(perm, repo, newTestBranchNode(t))
 	_, err := uc.GetMergeBase(context.Background(), snow.ID(1), MergeRef{CommitID: &other}, MergeRef{BranchName: "feature"})
 	require.True(t, domain.IsErrorNotFound(err))
+}
+
+func TestBranch_ResolveMergeRef_RepoErrors(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := newAllowAllPerm(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
+	ctx := context.Background()
+	wantErr := errors.New("db down")
+
+	commitID := snow.ID(11)
+	repo.EXPECT().GetCommit(gomock.Any(), commitID).Return(nil, wantErr)
+	_, err := uc.resolveMergeRef(ctx, snow.ID(1), MergeRef{CommitID: &commitID})
+	require.ErrorIs(t, err, wantErr)
+
+	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").Return(nil, wantErr)
+	_, err = uc.resolveMergeRef(ctx, snow.ID(1), MergeRef{BranchName: "feature"})
+	require.ErrorIs(t, err, wantErr)
+}
+
+func TestBranch_GetMergeBase_CommitHashLookupError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := newAllowAllPerm(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+	wantErr := errors.New("db down")
+
+	head := snow.ID(11)
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
+	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").
+		Return(&domain.Branch{Name: "main", CommitID: &head}, nil)
+	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").
+		Return(&domain.Branch{Name: "feature", CommitID: &head}, nil)
+	repo.EXPECT().GetCommit(gomock.Any(), head).Return(nil, wantErr)
+
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
+	_, err := uc.GetMergeBase(context.Background(), snow.ID(1),
+		MergeRef{BranchName: "main"}, MergeRef{BranchName: "feature"})
+	require.ErrorIs(t, err, wantErr)
+}
+
+func TestBranch_FastForward_RepoErrors(t *testing.T) {
+	ctx := context.Background()
+	wantErr := errors.New("db down")
+
+	t.Run("target lookup", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		perm := newAllowAllPerm(ctrl)
+		repo := NewMockbranchRepository(ctrl)
+		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
+		repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(nil, wantErr)
+
+		uc := NewBranch(perm, repo, newTestBranchNode(t))
+		_, err := uc.FastForward(ctx, snow.ID(1), "main", "feature")
+		require.ErrorIs(t, err, wantErr)
+	})
+
+	t.Run("source lookup", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		perm := newAllowAllPerm(ctrl)
+		repo := NewMockbranchRepository(ctrl)
+		head := snow.ID(11)
+		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
+		repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").
+			Return(&domain.Branch{ID: 2, Name: "main", CommitID: &head}, nil)
+		repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").Return(nil, wantErr)
+
+		uc := NewBranch(perm, repo, newTestBranchNode(t))
+		_, err := uc.FastForward(ctx, snow.ID(1), "main", "feature")
+		require.ErrorIs(t, err, wantErr)
+	})
+}
+
+func TestBranch_FastForward_MergeBaseError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := newAllowAllPerm(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+	wantErr := errors.New("db down")
+
+	targetHead := snow.ID(11)
+	sourceHead := snow.ID(12)
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
+	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").
+		Return(&domain.Branch{ID: 2, Name: "main", CommitID: &targetHead}, nil)
+	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").
+		Return(&domain.Branch{ID: 3, Name: "feature", CommitID: &sourceHead}, nil)
+	repo.EXPECT().GetCommit(gomock.Any(), targetHead).
+		Return(&domain.Commit{ID: targetHead, ProjectID: 1, TreeID: 101}, nil)
+	repo.EXPECT().GetCommit(gomock.Any(), sourceHead).Return(nil, wantErr)
+
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
+	_, err := uc.FastForward(context.Background(), snow.ID(1), "main", "feature")
+	require.ErrorIs(t, err, wantErr)
+}
+
+func TestBranch_FindMergeBase_AReachesSource(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := newAllowAllPerm(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+
+	a := snow.ID(11)
+	c := snow.ID(12)
+	repo.EXPECT().GetCommit(gomock.Any(), a).
+		Return(&domain.Commit{ID: a, ProjectID: 1, TreeID: 101, Parent1ID: &c}, nil)
+
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
+	got, err := uc.findMergeBase(context.Background(), &a, &c)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	require.Equal(t, c, *got)
+}
+
+func TestBranch_FindMergeBase_NoCommonAncestor(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := newAllowAllPerm(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+
+	a := snow.ID(21)
+	c := snow.ID(22)
+	mid := snow.ID(23)
+	root := snow.ID(24)
+	repo.EXPECT().GetCommit(gomock.Any(), a).Return(&domain.Commit{ID: a, ProjectID: 1, TreeID: 101}, nil)
+	repo.EXPECT().GetCommit(gomock.Any(), c).
+		Return(&domain.Commit{ID: c, ProjectID: 1, TreeID: 102, Parent1ID: &mid}, nil)
+	repo.EXPECT().GetCommit(gomock.Any(), mid).
+		Return(&domain.Commit{ID: mid, ProjectID: 1, TreeID: 103, Parent1ID: &root}, nil)
+	repo.EXPECT().GetCommit(gomock.Any(), root).
+		Return(&domain.Commit{ID: root, ProjectID: 1, TreeID: 104}, nil)
+
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
+	got, err := uc.findMergeBase(context.Background(), &a, &c)
+	require.NoError(t, err)
+	require.Nil(t, got)
+}
+
+func TestBranch_CommitTreeManifest_Errors(t *testing.T) {
+	ctx := context.Background()
+	projectID := snow.ID(1)
+	commitID := snow.ID(31)
+	wantErr := errors.New("db down")
+
+	t.Run("commit lookup", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		perm := newAllowAllPerm(ctrl)
+		repo := NewMockbranchRepository(ctrl)
+		repo.EXPECT().GetCommit(gomock.Any(), commitID).Return(nil, wantErr)
+
+		uc := NewBranch(perm, repo, newTestBranchNode(t))
+		_, err := uc.commitTreeManifest(ctx, projectID, commitID, true)
+		require.ErrorIs(t, err, wantErr)
+	})
+
+	t.Run("tree lookup", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		perm := newAllowAllPerm(ctrl)
+		repo := NewMockbranchRepository(ctrl)
+		repo.EXPECT().GetCommit(gomock.Any(), commitID).
+			Return(&domain.Commit{ID: commitID, ProjectID: projectID, TreeID: 101}, nil)
+		repo.EXPECT().GetTreeNode(gomock.Any(), int64(101)).Return(nil, wantErr)
+
+		uc := NewBranch(perm, repo, newTestBranchNode(t))
+		_, err := uc.commitTreeManifest(ctx, projectID, commitID, true)
+		require.ErrorIs(t, err, wantErr)
+	})
+
+	t.Run("filter", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		perm := NewMockpermissionUsecase(ctrl)
+		repo := NewMockbranchRepository(ctrl)
+		repo.EXPECT().GetCommit(gomock.Any(), commitID).
+			Return(&domain.Commit{ID: commitID, ProjectID: projectID, TreeID: 101}, nil)
+		repo.EXPECT().GetTreeNode(gomock.Any(), int64(101)).Return(&domain.TreeNode{ID: 101, Name: "root"}, nil)
+		perm.EXPECT().CompileFilter(gomock.Any(), projectID, domain.PermissionRead).Return(nil, wantErr)
+
+		uc := NewBranch(perm, repo, newTestBranchNode(t))
+		_, err := uc.commitTreeManifest(ctx, projectID, commitID, true)
+		require.ErrorIs(t, err, wantErr)
+	})
+
+	t.Run("manifest", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		perm := newAllowAllPerm(ctrl)
+		repo := NewMockbranchRepository(ctrl)
+		repo.EXPECT().GetCommit(gomock.Any(), commitID).
+			Return(&domain.Commit{ID: commitID, ProjectID: projectID, TreeID: 101}, nil)
+		repo.EXPECT().GetTreeNode(gomock.Any(), int64(101)).Return(&domain.TreeNode{ID: 101, Name: "root"}, nil)
+		repo.EXPECT().ListFilesByTree(gomock.Any(), int64(101)).Return(nil, wantErr)
+
+		uc := NewBranch(perm, repo, newTestBranchNode(t))
+		_, err := uc.commitTreeManifest(ctx, projectID, commitID, true)
+		require.ErrorIs(t, err, wantErr)
+	})
+}
+
+func TestBranch_EnsureTreeWrites_Errors(t *testing.T) {
+	ctx := context.Background()
+	projectID := snow.ID(1)
+	from := snow.ID(41)
+	to := snow.ID(42)
+	wantErr := errors.New("db down")
+
+	t.Run("from lookup", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		perm := newAllowAllPerm(ctrl)
+		repo := NewMockbranchRepository(ctrl)
+		repo.EXPECT().GetCommit(gomock.Any(), from).Return(nil, wantErr)
+
+		uc := NewBranch(perm, repo, newTestBranchNode(t))
+		err := uc.ensureTreeWrites(ctx, projectID, from, to)
+		require.ErrorIs(t, err, wantErr)
+	})
+
+	t.Run("to lookup", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		perm := newAllowAllPerm(ctrl)
+		repo := NewMockbranchRepository(ctrl)
+		repo.EXPECT().GetCommit(gomock.Any(), from).
+			Return(&domain.Commit{ID: from, ProjectID: projectID, TreeID: 101}, nil)
+		repo.EXPECT().GetTreeNode(gomock.Any(), int64(101)).Return(&domain.TreeNode{ID: 101, Name: "root"}, nil)
+		repo.EXPECT().ListFilesByTree(gomock.Any(), int64(101)).Return(nil, nil)
+		repo.EXPECT().ListTreeChildren(gomock.Any(), int64(101)).Return(nil, nil)
+		repo.EXPECT().GetCommit(gomock.Any(), to).Return(nil, wantErr)
+
+		uc := NewBranch(perm, repo, newTestBranchNode(t))
+		err := uc.ensureTreeWrites(ctx, projectID, from, to)
+		require.ErrorIs(t, err, wantErr)
+	})
+}
+
+func TestBranch_TreeEntries_Errors(t *testing.T) {
+	ctx := context.Background()
+	projectID := snow.ID(1)
+	commitID := snow.ID(51)
+	wantErr := errors.New("db down")
+
+	t.Run("commit not in project", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		perm := newAllowAllPerm(ctrl)
+		repo := NewMockbranchRepository(ctrl)
+		repo.EXPECT().GetCommit(gomock.Any(), commitID).
+			Return(&domain.Commit{ID: commitID, ProjectID: 2, TreeID: 101}, nil)
+
+		uc := NewBranch(perm, repo, newTestBranchNode(t))
+		_, err := uc.treeEntries(ctx, projectID, commitID)
+		require.True(t, domain.IsErrorNotFound(err))
+	})
+
+	t.Run("tree lookup", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		perm := newAllowAllPerm(ctrl)
+		repo := NewMockbranchRepository(ctrl)
+		repo.EXPECT().GetCommit(gomock.Any(), commitID).
+			Return(&domain.Commit{ID: commitID, ProjectID: projectID, TreeID: 101}, nil)
+		repo.EXPECT().GetTreeNode(gomock.Any(), int64(101)).Return(nil, wantErr)
+
+		uc := NewBranch(perm, repo, newTestBranchNode(t))
+		_, err := uc.treeEntries(ctx, projectID, commitID)
+		require.ErrorIs(t, err, wantErr)
+	})
+
+	t.Run("manifest", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		perm := newAllowAllPerm(ctrl)
+		repo := NewMockbranchRepository(ctrl)
+		repo.EXPECT().GetCommit(gomock.Any(), commitID).
+			Return(&domain.Commit{ID: commitID, ProjectID: projectID, TreeID: 101}, nil)
+		repo.EXPECT().GetTreeNode(gomock.Any(), int64(101)).Return(&domain.TreeNode{ID: 101, Name: "root"}, nil)
+		repo.EXPECT().ListFilesByTree(gomock.Any(), int64(101)).Return(nil, nil)
+		repo.EXPECT().ListTreeChildren(gomock.Any(), int64(101)).Return(nil, wantErr)
+
+		uc := NewBranch(perm, repo, newTestBranchNode(t))
+		_, err := uc.treeEntries(ctx, projectID, commitID)
+		require.ErrorIs(t, err, wantErr)
+	})
 }

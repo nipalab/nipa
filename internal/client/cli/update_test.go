@@ -16,14 +16,16 @@ import (
 )
 
 type fakeUpdateClient struct {
-	host       string
-	org        string
-	project    string
-	branch     string
-	path       string
-	manifest   *serverDomain.TreeNode
-	chunkData  map[serverDomain.Hash][]byte
-	downloaded []serverDomain.Hash
+	host        string
+	org         string
+	project     string
+	branch      string
+	path        string
+	manifest    *serverDomain.TreeNode
+	chunkData   map[serverDomain.Hash][]byte
+	downloaded  []serverDomain.Hash
+	branchErr   error
+	manifestErr error
 }
 
 func (f *fakeUpdateClient) Connect(_ context.Context, host string) error {
@@ -33,6 +35,9 @@ func (f *fakeUpdateClient) Connect(_ context.Context, host string) error {
 
 func (f *fakeUpdateClient) GetBranchByName(_ context.Context, org, project, name string) (*serverDomain.Branch, error) {
 	f.org, f.project, f.branch = org, project, name
+	if f.branchErr != nil {
+		return nil, f.branchErr
+	}
 	return &serverDomain.Branch{Name: name}, nil
 }
 
@@ -41,6 +46,9 @@ func (f *fakeUpdateClient) GetTreeNodeManifest(_ context.Context, org, project, 
 	f.path = ""
 	if len(paths) > 0 {
 		f.path = paths[0]
+	}
+	if f.manifestErr != nil {
+		return nil, f.manifestErr
 	}
 	if f.manifest == nil {
 		return &serverDomain.TreeNode{Name: "root"}, nil

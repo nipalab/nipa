@@ -86,3 +86,47 @@ func TestPrefixCanDescend(t *testing.T) {
 		})
 	}
 }
+
+func TestNewPrefixSet(t *testing.T) {
+	set, err := NewPrefixSet(nil)
+	require.NoError(t, err)
+	require.Nil(t, set)
+	require.True(t, set.Empty())
+
+	set, err = NewPrefixSet([]string{"  assets/ ", "src", "assets/textures/"})
+	require.NoError(t, err)
+	require.Equal(t, PrefixSet{"assets", "src", "assets/textures"}, set)
+	require.False(t, set.Empty())
+
+	_, err = NewPrefixSet([]string{"assets", "../etc"})
+	require.Error(t, err)
+}
+
+func TestPrefixSet_EmptyCoversEverything(t *testing.T) {
+	var set PrefixSet
+	require.True(t, set.Empty())
+	require.True(t, set.Covers("any/path"))
+	require.True(t, set.CanDescend("any"))
+}
+
+func TestPrefixSet_Covers(t *testing.T) {
+	set := PrefixSet{"assets", "src/main.go"}
+	require.True(t, set.Covers("assets/logo.png"))
+	require.True(t, set.Covers("src/main.go"))
+	require.False(t, set.Covers("docs/readme.md"))
+	require.False(t, set.Covers("assets2/logo.png"))
+}
+
+func TestPrefixSet_CanDescend(t *testing.T) {
+	set := PrefixSet{"assets/textures", "src/main.go"}
+	require.True(t, set.CanDescend("assets"))
+	require.True(t, set.CanDescend("src"))
+	require.False(t, set.CanDescend("docs"))
+}
+
+func TestPrefixSet_NormalizedPrefixes(t *testing.T) {
+	set, err := NewPrefixSet([]string{"assets/textures"})
+	require.NoError(t, err)
+	require.True(t, set.Covers("assets/textures/wood.png"))
+	require.True(t, set.CanDescend("assets"))
+}
