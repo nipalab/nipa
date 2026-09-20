@@ -127,6 +127,9 @@ func (b *Branch) FastForward(ctx context.Context, projectID snow.ID, targetBranc
 	if err != nil {
 		return nil, err
 	}
+	if target.IsProtected && !b.permUc.AdminHasProject(ctx, projectID) {
+		return nil, domain.NewErrorNoPermission()
+	}
 
 	if source.CommitID == nil {
 		return nil, domain.NewErrorConflict(fmt.Sprintf("cannot fast-forward branch %q: source branch %q has no commits", targetBranch, sourceBranch))

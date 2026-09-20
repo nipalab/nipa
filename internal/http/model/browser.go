@@ -51,3 +51,16 @@ type CommitDiffResponse struct {
 	BaseID   string             `json:"base_id,omitempty"`
 	Files    []DiffFileResponse `json:"files"`
 }
+
+type CreateBranchRequest struct {
+	Name string `json:"name"`
+	From string `json:"from"`
+}
+
+type RenameBranchRequest struct {
+	Name string `json:"name"`
+}
+
+type SetBranchProtectionRequest struct {
+	Protected bool `json:"protected"`
+}

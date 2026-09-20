@@ -15,7 +15,11 @@ type Querier interface {
 	BranchGetByName(ctx context.Context, arg BranchGetByNameParams) (Branch, error)
 	BranchGetDefault(ctx context.Context, projectID int64) (Branch, error)
 	BranchList(ctx context.Context, arg BranchListParams) ([]Branch, error)
+	BranchMarkDefault(ctx context.Context, arg BranchMarkDefaultParams) error
 	BranchRemoveDefault(ctx context.Context, projectID int64) error
+	BranchSetName(ctx context.Context, arg BranchSetNameParams) error
+	BranchSetProtection(ctx context.Context, arg BranchSetProtectionParams) error
+	BranchSoftDelete(ctx context.Context, arg BranchSoftDeleteParams) (int64, error)
 	BranchUpdate(ctx context.Context, arg BranchUpdateParams) error
 	BranchUpdateCommit(ctx context.Context, arg BranchUpdateCommitParams) error
 	BranchUpdateCommitIf(ctx context.Context, arg BranchUpdateCommitIfParams) (sql.Result, error)

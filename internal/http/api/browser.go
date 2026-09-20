@@ -27,6 +27,63 @@ func setupBrowserRouter(ws *restful.WebService, h *handler.Handler) {
 			Metadata(restfulspec.KeyOpenAPITags, tags))
 
 	ws.Route(
+		ws.POST("/orgs/{org}/projects/{project}/branches").
+			To(wrap(h.CreateProjectBranch)).
+			Param(ws.PathParameter("org", "organization slug")).
+			Param(ws.PathParameter("project", "project slug")).
+			Reads(model.CreateBranchRequest{}).
+			Doc("Create a branch (project write)").
+			Returns(http.StatusOK, "created branch", model.BranchResponse{}).
+			Operation("createProjectBranch").
+			Metadata(restfulspec.KeyOpenAPITags, tags))
+
+	ws.Route(
+		ws.PATCH("/orgs/{org}/projects/{project}/branches/{name}").
+			To(wrap(h.RenameProjectBranch)).
+			Param(ws.PathParameter("org", "organization slug")).
+			Param(ws.PathParameter("project", "project slug")).
+			Param(ws.PathParameter("name", "current branch name")).
+			Reads(model.RenameBranchRequest{}).
+			Doc("Rename a branch (project write; project admin when protected)").
+			Returns(http.StatusOK, "renamed branch", model.BranchResponse{}).
+			Operation("renameProjectBranch").
+			Metadata(restfulspec.KeyOpenAPITags, tags))
+
+	ws.Route(
+		ws.DELETE("/orgs/{org}/projects/{project}/branches/{name}").
+			To(wrap(h.DeleteProjectBranch)).
+			Param(ws.PathParameter("org", "organization slug")).
+			Param(ws.PathParameter("project", "project slug")).
+			Param(ws.PathParameter("name", "branch name")).
+			Doc("Delete a branch (project write; project admin when protected)").
+			Returns(http.StatusOK, "deleted", model.MessageResponse{}).
+			Operation("deleteProjectBranch").
+			Metadata(restfulspec.KeyOpenAPITags, tags))
+
+	ws.Route(
+		ws.POST("/orgs/{org}/projects/{project}/branches/{name}/default").
+			To(wrap(h.SetProjectBranchDefault)).
+			Param(ws.PathParameter("org", "organization slug")).
+			Param(ws.PathParameter("project", "project slug")).
+			Param(ws.PathParameter("name", "branch name")).
+			Doc("Make a branch the default (project admin)").
+			Returns(http.StatusOK, "default branch", model.BranchResponse{}).
+			Operation("setProjectBranchDefault").
+			Metadata(restfulspec.KeyOpenAPITags, tags))
+
+	ws.Route(
+		ws.PUT("/orgs/{org}/projects/{project}/branches/{name}/protection").
+			To(wrap(h.SetProjectBranchProtection)).
+			Param(ws.PathParameter("org", "organization slug")).
+			Param(ws.PathParameter("project", "project slug")).
+			Param(ws.PathParameter("name", "branch name")).
+			Reads(model.SetBranchProtectionRequest{}).
+			Doc("Enable or disable branch protection (project admin)").
+			Returns(http.StatusOK, "protected branch", model.BranchResponse{}).
+			Operation("setProjectBranchProtection").
+			Metadata(restfulspec.KeyOpenAPITags, tags))
+
+	ws.Route(
 		ws.GET("/orgs/{org}/projects/{project}/commits").
 			To(wrap(h.ListCommits)).
 			Param(ws.PathParameter("org", "organization slug")).

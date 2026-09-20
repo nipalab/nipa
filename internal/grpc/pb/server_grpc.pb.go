@@ -26,6 +26,10 @@ const (
 	NipaService_GetBranchByName_FullMethodName             = "/greet.NipaService/GetBranchByName"
 	NipaService_GetDefaultBranch_FullMethodName            = "/greet.NipaService/GetDefaultBranch"
 	NipaService_CreateBranch_FullMethodName                = "/greet.NipaService/CreateBranch"
+	NipaService_RenameBranch_FullMethodName                = "/greet.NipaService/RenameBranch"
+	NipaService_DeleteBranch_FullMethodName                = "/greet.NipaService/DeleteBranch"
+	NipaService_SetDefaultBranch_FullMethodName            = "/greet.NipaService/SetDefaultBranch"
+	NipaService_SetBranchProtection_FullMethodName         = "/greet.NipaService/SetBranchProtection"
 	NipaService_GetTreeManifest_FullMethodName             = "/greet.NipaService/GetTreeManifest"
 	NipaService_GetCommitLog_FullMethodName                = "/greet.NipaService/GetCommitLog"
 	NipaService_GetCommit_FullMethodName                   = "/greet.NipaService/GetCommit"
@@ -59,6 +63,10 @@ type NipaServiceClient interface {
 	GetBranchByName(ctx context.Context, in *GetBranchByNameRequest, opts ...grpc.CallOption) (*GetBranchByNameResponse, error)
 	GetDefaultBranch(ctx context.Context, in *GetDefaultBranchRequest, opts ...grpc.CallOption) (*GetBranchResponse, error)
 	CreateBranch(ctx context.Context, in *CreateBranchRequest, opts ...grpc.CallOption) (*CreateBranchResponse, error)
+	RenameBranch(ctx context.Context, in *RenameBranchRequest, opts ...grpc.CallOption) (*RenameBranchResponse, error)
+	DeleteBranch(ctx context.Context, in *DeleteBranchRequest, opts ...grpc.CallOption) (*DeleteBranchResponse, error)
+	SetDefaultBranch(ctx context.Context, in *SetDefaultBranchRequest, opts ...grpc.CallOption) (*SetDefaultBranchResponse, error)
+	SetBranchProtection(ctx context.Context, in *SetBranchProtectionRequest, opts ...grpc.CallOption) (*SetBranchProtectionResponse, error)
 	GetTreeManifest(ctx context.Context, in *GetTreeManifestRequest, opts ...grpc.CallOption) (*GetTreeManifestResponse, error)
 	GetCommitLog(ctx context.Context, in *GetCommitLogRequest, opts ...grpc.CallOption) (*GetCommitLogResponse, error)
 	GetCommit(ctx context.Context, in *GetCommitRequest, opts ...grpc.CallOption) (*GetCommitResponse, error)
@@ -153,6 +161,46 @@ func (c *nipaServiceClient) CreateBranch(ctx context.Context, in *CreateBranchRe
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(CreateBranchResponse)
 	err := c.cc.Invoke(ctx, NipaService_CreateBranch_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nipaServiceClient) RenameBranch(ctx context.Context, in *RenameBranchRequest, opts ...grpc.CallOption) (*RenameBranchResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RenameBranchResponse)
+	err := c.cc.Invoke(ctx, NipaService_RenameBranch_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nipaServiceClient) DeleteBranch(ctx context.Context, in *DeleteBranchRequest, opts ...grpc.CallOption) (*DeleteBranchResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DeleteBranchResponse)
+	err := c.cc.Invoke(ctx, NipaService_DeleteBranch_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nipaServiceClient) SetDefaultBranch(ctx context.Context, in *SetDefaultBranchRequest, opts ...grpc.CallOption) (*SetDefaultBranchResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SetDefaultBranchResponse)
+	err := c.cc.Invoke(ctx, NipaService_SetDefaultBranch_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nipaServiceClient) SetBranchProtection(ctx context.Context, in *SetBranchProtectionRequest, opts ...grpc.CallOption) (*SetBranchProtectionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SetBranchProtectionResponse)
+	err := c.cc.Invoke(ctx, NipaService_SetBranchProtection_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -376,6 +424,10 @@ type NipaServiceServer interface {
 	GetBranchByName(context.Context, *GetBranchByNameRequest) (*GetBranchByNameResponse, error)
 	GetDefaultBranch(context.Context, *GetDefaultBranchRequest) (*GetBranchResponse, error)
 	CreateBranch(context.Context, *CreateBranchRequest) (*CreateBranchResponse, error)
+	RenameBranch(context.Context, *RenameBranchRequest) (*RenameBranchResponse, error)
+	DeleteBranch(context.Context, *DeleteBranchRequest) (*DeleteBranchResponse, error)
+	SetDefaultBranch(context.Context, *SetDefaultBranchRequest) (*SetDefaultBranchResponse, error)
+	SetBranchProtection(context.Context, *SetBranchProtectionRequest) (*SetBranchProtectionResponse, error)
 	GetTreeManifest(context.Context, *GetTreeManifestRequest) (*GetTreeManifestResponse, error)
 	GetCommitLog(context.Context, *GetCommitLogRequest) (*GetCommitLogResponse, error)
 	GetCommit(context.Context, *GetCommitRequest) (*GetCommitResponse, error)
@@ -426,6 +478,18 @@ func (UnimplementedNipaServiceServer) GetDefaultBranch(context.Context, *GetDefa
 }
 func (UnimplementedNipaServiceServer) CreateBranch(context.Context, *CreateBranchRequest) (*CreateBranchResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CreateBranch not implemented")
+}
+func (UnimplementedNipaServiceServer) RenameBranch(context.Context, *RenameBranchRequest) (*RenameBranchResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RenameBranch not implemented")
+}
+func (UnimplementedNipaServiceServer) DeleteBranch(context.Context, *DeleteBranchRequest) (*DeleteBranchResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DeleteBranch not implemented")
+}
+func (UnimplementedNipaServiceServer) SetDefaultBranch(context.Context, *SetDefaultBranchRequest) (*SetDefaultBranchResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SetDefaultBranch not implemented")
+}
+func (UnimplementedNipaServiceServer) SetBranchProtection(context.Context, *SetBranchProtectionRequest) (*SetBranchProtectionResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SetBranchProtection not implemented")
 }
 func (UnimplementedNipaServiceServer) GetTreeManifest(context.Context, *GetTreeManifestRequest) (*GetTreeManifestResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetTreeManifest not implemented")
@@ -630,6 +694,78 @@ func _NipaService_CreateBranch_Handler(srv interface{}, ctx context.Context, dec
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(NipaServiceServer).CreateBranch(ctx, req.(*CreateBranchRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NipaService_RenameBranch_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RenameBranchRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaServiceServer).RenameBranch(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaService_RenameBranch_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaServiceServer).RenameBranch(ctx, req.(*RenameBranchRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NipaService_DeleteBranch_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteBranchRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaServiceServer).DeleteBranch(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaService_DeleteBranch_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaServiceServer).DeleteBranch(ctx, req.(*DeleteBranchRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NipaService_SetDefaultBranch_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetDefaultBranchRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaServiceServer).SetDefaultBranch(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaService_SetDefaultBranch_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaServiceServer).SetDefaultBranch(ctx, req.(*SetDefaultBranchRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NipaService_SetBranchProtection_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetBranchProtectionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaServiceServer).SetBranchProtection(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaService_SetBranchProtection_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaServiceServer).SetBranchProtection(ctx, req.(*SetBranchProtectionRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1006,6 +1142,22 @@ var NipaService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "CreateBranch",
 			Handler:    _NipaService_CreateBranch_Handler,
+		},
+		{
+			MethodName: "RenameBranch",
+			Handler:    _NipaService_RenameBranch_Handler,
+		},
+		{
+			MethodName: "DeleteBranch",
+			Handler:    _NipaService_DeleteBranch_Handler,
+		},
+		{
+			MethodName: "SetDefaultBranch",
+			Handler:    _NipaService_SetDefaultBranch_Handler,
+		},
+		{
+			MethodName: "SetBranchProtection",
+			Handler:    _NipaService_SetBranchProtection_Handler,
 		},
 		{
 			MethodName: "GetTreeManifest",

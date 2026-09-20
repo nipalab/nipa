@@ -607,6 +607,50 @@ func TestAPIRoutes(t *testing.T) {
 		hidden.Body.Close()
 	})
 
+	t.Run("branch management", func(t *testing.T) {
+		aliceLogin, _ := login(t)
+		bobLogin, _ := loginAs(t, "bob@example.com")
+		base := server.URL + "/api/v1/orgs/default/projects/default/branches"
+
+		create := doMethod(t, http.MethodPost, base, `{"name":"feature","from":"main"}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, create.StatusCode)
+		feature := decodeBody[model.BranchResponse](t, create)
+		require.Equal(t, "feature", feature.Name)
+
+		rename := doMethod(t, http.MethodPatch, base+"/feature", `{"name":"renamed"}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, rename.StatusCode)
+		renamed := decodeBody[model.BranchResponse](t, rename)
+		require.Equal(t, "renamed", renamed.Name)
+
+		protect := doMethod(t, http.MethodPut, base+"/renamed/protection", `{"protected":true}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, protect.StatusCode)
+		require.True(t, decodeBody[model.BranchResponse](t, protect).IsProtected)
+
+		denied := doMethod(t, http.MethodPost, base, `{"name":"nope"}`, bobLogin.AccessToken)
+		require.Equal(t, http.StatusForbidden, denied.StatusCode)
+		denied.Body.Close()
+
+		makeDefault := doMethod(t, http.MethodPost, base+"/renamed/default", `{}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, makeDefault.StatusCode)
+		require.True(t, decodeBody[model.BranchResponse](t, makeDefault).IsDefault)
+
+		blocked := doMethod(t, http.MethodDelete, base+"/renamed", "", aliceLogin.AccessToken)
+		require.Equal(t, http.StatusConflict, blocked.StatusCode)
+		blocked.Body.Close()
+
+		restore := doMethod(t, http.MethodPost, base+"/main/default", `{}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, restore.StatusCode)
+		restore.Body.Close()
+
+		remove := doMethod(t, http.MethodDelete, base+"/renamed", "", aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, remove.StatusCode)
+		remove.Body.Close()
+
+		branches := decodeBody[[]model.BranchResponse](t, doGet(t, base, aliceLogin.AccessToken))
+		require.Len(t, branches, 1)
+		require.Equal(t, "main", branches[0].Name)
+	})
+
 	t.Run("openapi doc is served", func(t *testing.T) {
 		resp, err := http.Get(server.URL + "/docs/api.json")
 		require.NoError(t, err)

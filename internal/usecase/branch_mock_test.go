@@ -43,6 +43,20 @@ func (m *MockpermissionUsecase) EXPECT() *MockpermissionUsecaseMockRecorder {
 	return m.recorder
 }
 
+// AdminHasProject mocks base method.
+func (m *MockpermissionUsecase) AdminHasProject(ctx context.Context, projectID snow.ID) bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AdminHasProject", ctx, projectID)
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// AdminHasProject indicates an expected call of AdminHasProject.
+func (mr *MockpermissionUsecaseMockRecorder) AdminHasProject(ctx, projectID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AdminHasProject", reflect.TypeOf((*MockpermissionUsecase)(nil).AdminHasProject), ctx, projectID)
+}
+
 // CompileFilter mocks base method.
 func (m *MockpermissionUsecase) CompileFilter(ctx context.Context, projectID snow.ID, permission domain.Permission) (*PathFilter, error) {
 	m.ctrl.T.Helper()
@@ -138,6 +152,20 @@ func (m *MockbranchRepository) CreateBranch(ctx context.Context, branch domain.B
 func (mr *MockbranchRepositoryMockRecorder) CreateBranch(ctx, branch any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateBranch", reflect.TypeOf((*MockbranchRepository)(nil).CreateBranch), ctx, branch)
+}
+
+// DeleteBranch mocks base method.
+func (m *MockbranchRepository) DeleteBranch(ctx context.Context, projectID, branchID snow.ID) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteBranch", ctx, projectID, branchID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteBranch indicates an expected call of DeleteBranch.
+func (mr *MockbranchRepositoryMockRecorder) DeleteBranch(ctx, projectID, branchID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteBranch", reflect.TypeOf((*MockbranchRepository)(nil).DeleteBranch), ctx, projectID, branchID)
 }
 
 // GetBranchByName mocks base method.
@@ -288,6 +316,48 @@ func (m *MockbranchRepository) ListTreeChildren(ctx context.Context, parentID in
 func (mr *MockbranchRepositoryMockRecorder) ListTreeChildren(ctx, parentID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListTreeChildren", reflect.TypeOf((*MockbranchRepository)(nil).ListTreeChildren), ctx, parentID)
+}
+
+// RenameBranch mocks base method.
+func (m *MockbranchRepository) RenameBranch(ctx context.Context, projectID, branchID snow.ID, name, key string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RenameBranch", ctx, projectID, branchID, name, key)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// RenameBranch indicates an expected call of RenameBranch.
+func (mr *MockbranchRepositoryMockRecorder) RenameBranch(ctx, projectID, branchID, name, key any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RenameBranch", reflect.TypeOf((*MockbranchRepository)(nil).RenameBranch), ctx, projectID, branchID, name, key)
+}
+
+// SetBranchProtection mocks base method.
+func (m *MockbranchRepository) SetBranchProtection(ctx context.Context, projectID, branchID snow.ID, protected bool) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetBranchProtection", ctx, projectID, branchID, protected)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetBranchProtection indicates an expected call of SetBranchProtection.
+func (mr *MockbranchRepositoryMockRecorder) SetBranchProtection(ctx, projectID, branchID, protected any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetBranchProtection", reflect.TypeOf((*MockbranchRepository)(nil).SetBranchProtection), ctx, projectID, branchID, protected)
+}
+
+// SetDefaultBranch mocks base method.
+func (m *MockbranchRepository) SetDefaultBranch(ctx context.Context, projectID, branchID snow.ID) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetDefaultBranch", ctx, projectID, branchID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetDefaultBranch indicates an expected call of SetDefaultBranch.
+func (mr *MockbranchRepositoryMockRecorder) SetDefaultBranch(ctx, projectID, branchID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetDefaultBranch", reflect.TypeOf((*MockbranchRepository)(nil).SetDefaultBranch), ctx, projectID, branchID)
 }
 
 // UpdateCommitIf mocks base method.

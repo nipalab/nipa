@@ -19,6 +19,7 @@ type permissionUsecase interface {
 	HasProjectAccess(ctx context.Context, projectID snow.ID, permission domain.Permission) bool
 	HasPathAccess(ctx context.Context, projectID snow.ID, path string, permission domain.Permission) bool
 	CompileFilter(ctx context.Context, projectID snow.ID, permission domain.Permission) (*PathFilter, error)
+	AdminHasProject(ctx context.Context, projectID snow.ID) bool
 }
 
 type branchRepository interface {
@@ -27,6 +28,10 @@ type branchRepository interface {
 	GetDefaultBranch(ctx context.Context, projectID snow.ID) (*domain.Branch, error)
 	GetBranchByName(ctx context.Context, projectID snow.ID, name string) (*domain.Branch, error)
 	CreateBranch(ctx context.Context, branch domain.Branch) (*domain.Branch, error)
+	RenameBranch(ctx context.Context, projectID, branchID snow.ID, name, key string) error
+	DeleteBranch(ctx context.Context, projectID, branchID snow.ID) error
+	SetBranchProtection(ctx context.Context, projectID, branchID snow.ID, protected bool) error
+	SetDefaultBranch(ctx context.Context, projectID, branchID snow.ID) error
 	UpdateCommitIf(ctx context.Context, branchID snow.ID, fromCommitID, toCommitID *snow.ID) error
 	GetCommit(ctx context.Context, commitID snow.ID) (*domain.Commit, error)
 	GetCommitByHash(ctx context.Context, hash domain.Hash) (*domain.Commit, error)
@@ -116,6 +121,104 @@ func (b *Branch) CreateBranch(ctx context.Context, projectID snow.ID, name strin
 		Name:      name,
 		CommitID:  fromCommitID,
 	})
+}
+
+func (b *Branch) Rename(ctx context.Context, projectID snow.ID, name, newName string) (*domain.Branch, error) {
+	branch, err := b.branchByName(ctx, projectID, name)
+	if err != nil {
+		return nil, err
+	}
+	if err := b.requireBranchManage(ctx, projectID, branch); err != nil {
+		return nil, err
+	}
+	newName = strings.TrimSpace(newName)
+	if err := validateBranchName(newName); err != nil {
+		return nil, err
+	}
+	if newName == branch.Name {
+		return branch, nil
+	}
+	if _, err := b.branchRepo.GetBranchByName(ctx, projectID, newName); err == nil {
+		return nil, domain.NewErrorConflict(fmt.Sprintf("branch %q already exists", newName))
+	} else if !domain.IsErrorNotFound(err) {
+		return nil, err
+	}
+	if err := b.branchRepo.RenameBranch(ctx, projectID, branch.ID, newName, newName); err != nil {
+		return nil, err
+	}
+	return b.branchRepo.GetByProjectIDAndID(ctx, projectID, branch.ID)
+}
+
+func (b *Branch) Delete(ctx context.Context, projectID snow.ID, name string) error {
+	branch, err := b.branchByName(ctx, projectID, name)
+	if err != nil {
+		return err
+	}
+	if err := b.requireBranchManage(ctx, projectID, branch); err != nil {
+		return err
+	}
+	if branch.IsDefault {
+		return domain.NewErrorConflict(fmt.Sprintf("cannot delete the default branch %q", name))
+	}
+	return b.branchRepo.DeleteBranch(ctx, projectID, branch.ID)
+}
+
+func (b *Branch) SetDefault(ctx context.Context, projectID snow.ID, name string) (*domain.Branch, error) {
+	if !b.permUc.AdminHasProject(ctx, projectID) {
+		return nil, domain.NewErrorNoPermission()
+	}
+	branch, err := b.branchByName(ctx, projectID, name)
+	if err != nil {
+		return nil, err
+	}
+	if branch.IsDefault {
+		return branch, nil
+	}
+	if err := b.branchRepo.SetDefaultBranch(ctx, projectID, branch.ID); err != nil {
+		return nil, err
+	}
+	return b.branchRepo.GetByProjectIDAndID(ctx, projectID, branch.ID)
+}
+
+func (b *Branch) SetProtection(ctx context.Context, projectID snow.ID, name string, protected bool) (*domain.Branch, error) {
+	if !b.permUc.AdminHasProject(ctx, projectID) {
+		return nil, domain.NewErrorNoPermission()
+	}
+	branch, err := b.branchByName(ctx, projectID, name)
+	if err != nil {
+		return nil, err
+	}
+	if branch.IsProtected == protected {
+		return branch, nil
+	}
+	if err := b.branchRepo.SetBranchProtection(ctx, projectID, branch.ID, protected); err != nil {
+		return nil, err
+	}
+	return b.branchRepo.GetByProjectIDAndID(ctx, projectID, branch.ID)
+}
+
+func (b *Branch) branchByName(ctx context.Context, projectID snow.ID, name string) (*domain.Branch, error) {
+	branch, err := b.branchRepo.GetBranchByName(ctx, projectID, name)
+	if domain.IsErrorNotFound(err) {
+		return nil, domain.NewErrorNotFound(fmt.Sprintf("branch %q not found", name))
+	}
+	if err != nil {
+		return nil, err
+	}
+	return branch, nil
+}
+
+func (b *Branch) requireBranchManage(ctx context.Context, projectID snow.ID, branch *domain.Branch) error {
+	if branch.IsProtected {
+		if !b.permUc.AdminHasProject(ctx, projectID) {
+			return domain.NewErrorNoPermission()
+		}
+		return nil
+	}
+	if !b.permUc.HasProjectAccess(ctx, projectID, domain.PermissionWrite) {
+		return domain.NewErrorNoPermission()
+	}
+	return nil
 }
 
 func (b *Branch) resolveForkPoint(ctx context.Context, projectID snow.ID, fork BranchForkPoint) (*snow.ID, error) {
