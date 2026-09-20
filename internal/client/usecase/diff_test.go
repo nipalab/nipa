@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -240,6 +241,23 @@ func TestDiff_StagedFilter(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, files, 1)
 	require.Equal(t, "a.txt", files[0].Change.Path)
+}
+
+func TestDiff_UnreadableTrackedFile(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root can read files regardless of permissions")
+	}
+	root := t.TempDir()
+	stub := newDiffStub()
+	withSnapshotFile(t, stub, "a.txt", "old\n")
+	writeRepoFile(t, root, "a.txt", "new\n")
+
+	target := filepath.Join(root, "a.txt")
+	require.NoError(t, os.Chmod(target, 0o000))
+	t.Cleanup(func() { _ = os.Chmod(target, 0o644) })
+
+	_, err := NewDiff(nil, nil, stub).Run(context.Background(), root, nil, DiffOptions{})
+	require.ErrorContains(t, err, "read a.txt", "an unreadable file must fail the diff, not look deleted")
 }
 
 func TestDiff_OldContentUnavailable(t *testing.T) {

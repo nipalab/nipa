@@ -355,15 +355,21 @@ func (d *Diff) scanWorking(root string, oldMap map[string]diff.Entry, staged map
 		fp := filepath.Join(root, filepath.FromSlash(p))
 		data, err := os.ReadFile(fp)
 		if err != nil {
-			continue
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			return nil, nil, fmt.Errorf("read %s: %w", p, err)
 		}
 		info, err := os.Stat(fp)
 		if err != nil {
-			continue
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			return nil, nil, fmt.Errorf("stat %s: %w", p, err)
 		}
 		hash, chunks, err := chunkFile(data)
 		if err != nil {
-			continue
+			return nil, nil, fmt.Errorf("chunk %s: %w", p, err)
 		}
 		hashes := make([]serverDomain.Hash, len(chunks))
 		sizes := make([]int64, len(chunks))
