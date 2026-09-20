@@ -180,3 +180,27 @@ func findLoadedTreeNode(root *domain.TreeNode, path string) *domain.TreeNode {
 	}
 	return node
 }
+
+// TreeDiffBetween diffs a base commit against a head commit with both sides
+// pruned by the caller's read filter.
+func (b *Branch) TreeDiffBetween(ctx context.Context, projectID snow.ID, baseID *snow.ID, headID snow.ID) ([]diff.FileDiff, error) {
+	if !b.permUc.HasProjectAccess(ctx, projectID, domain.PermissionRead) {
+		return nil, domain.NewErrorNoPermission()
+	}
+	var baseTree *domain.TreeNode
+	if baseID != nil {
+		baseCommit, err := b.commitByIDInProject(ctx, projectID, *baseID)
+		if err != nil {
+			return nil, err
+		}
+		baseTree, err = b.commitTreeManifest(ctx, projectID, baseCommit.ID, true)
+		if err != nil {
+			return nil, err
+		}
+	}
+	headTree, err := b.commitTreeManifest(ctx, projectID, headID, true)
+	if err != nil {
+		return nil, err
+	}
+	return diff.TreeDiff(baseTree, headTree, b.loadChunk(ctx)), nil
+}

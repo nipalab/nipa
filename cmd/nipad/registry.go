@@ -3,16 +3,17 @@ package main
 import "github.com/nipalab/nipa/internal/usecase"
 
 type Registry struct {
-	authUsecase       *usecase.Auth
-	userUsecase       *usecase.User
-	branchUsecase     *usecase.Branch
-	commonUsecase     *usecase.Common
-	pushUsecase       *usecase.Push
-	chunkUsecase      *usecase.Chunk
-	permissionUsecase *usecase.Permission
-	groupUsecase      *usecase.Group
-	orgUsecase        *usecase.Org
-	projectUsecase    *usecase.Project
+	authUsecase         *usecase.Auth
+	userUsecase         *usecase.User
+	branchUsecase       *usecase.Branch
+	commonUsecase       *usecase.Common
+	pushUsecase         *usecase.Push
+	chunkUsecase        *usecase.Chunk
+	permissionUsecase   *usecase.Permission
+	groupUsecase        *usecase.Group
+	orgUsecase          *usecase.Org
+	projectUsecase      *usecase.Project
+	mergeRequestUsecase *usecase.MergeRequest
 }
 
 func (r *Registry) Auth() *usecase.Auth {
@@ -53,4 +54,8 @@ func (r *Registry) Org() *usecase.Org {
 
 func (r *Registry) Project() *usecase.Project {
 	return r.projectUsecase
+}
+
+func (r *Registry) MergeRequest() *usecase.MergeRequest {
+	return r.mergeRequestUsecase
 }

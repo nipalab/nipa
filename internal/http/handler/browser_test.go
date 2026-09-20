@@ -18,6 +18,11 @@ import (
 
 func (env *handlerTestEnv) seedFiles(t *testing.T, files map[string]string) *domain.PushResult {
 	t.Helper()
+	return env.seedPushTo(t, "main", "", files)
+}
+
+func (env *handlerTestEnv) seedPushTo(t *testing.T, branch, baseCommitID string, files map[string]string) *domain.PushResult {
+	t.Helper()
 
 	ctx := domain.ContextWithClaim(context.Background(), domain.Claims{UserID: env.userID, IsAdmin: true})
 	pushFiles := make([]*domain.PushFile, 0, len(files))
@@ -39,7 +44,7 @@ func (env *handlerTestEnv) seedFiles(t *testing.T, files map[string]string) *dom
 			ChunkHashes: hashes,
 		})
 	}
-	result, err := env.pusher.Push(ctx, snow.ID(1), "main", "", "seed", pushFiles, nil, "", "")
+	result, err := env.pusher.Push(ctx, snow.ID(1), branch, "", "seed", pushFiles, nil, "", baseCommitID)
 	require.NoError(t, err)
 	return result
 }

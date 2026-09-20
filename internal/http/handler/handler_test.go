@@ -95,14 +95,15 @@ func (f *fakeAppContext) HandleError(err error) {
 }
 
 type handlerRegistry struct {
-	auth       *usecase.Auth
-	user       *usecase.User
-	common     *usecase.Common
-	permission *usecase.Permission
-	org        *usecase.Org
-	group      *usecase.Group
-	project    *usecase.Project
-	branch     *usecase.Branch
+	auth         *usecase.Auth
+	user         *usecase.User
+	common       *usecase.Common
+	permission   *usecase.Permission
+	org          *usecase.Org
+	group        *usecase.Group
+	project      *usecase.Project
+	branch       *usecase.Branch
+	mergeRequest *usecase.MergeRequest
 }
 
 func (r *handlerRegistry) Auth() *usecase.Auth             { return r.auth }
@@ -113,6 +114,9 @@ func (r *handlerRegistry) Org() *usecase.Org               { return r.org }
 func (r *handlerRegistry) Group() *usecase.Group           { return r.group }
 func (r *handlerRegistry) Project() *usecase.Project       { return r.project }
 func (r *handlerRegistry) Branch() *usecase.Branch         { return r.branch }
+func (r *handlerRegistry) MergeRequest() *usecase.MergeRequest {
+	return r.mergeRequest
+}
 
 type stubPasswordHasher struct{}
 
@@ -169,15 +173,19 @@ func newHandlerTestEnv(t *testing.T) *handlerTestEnv {
 	branchUc := usecase.NewBranchWithChunks(permissionUc, branchRepo, node, chunkStore)
 	pusher := usecase.NewPush(permissionUc, branchRepo, pushRepo, node)
 	chunkUc := usecase.NewChunk(pushRepo, chunkStore)
+	mergeRequestUc := usecase.NewMergeRequest(
+		sqlite.NewMergeRequestRepository(dbConn), branchRepo, permissionUc, branchUc, node,
+	)
 	reg := &handlerRegistry{
-		auth:       usecase.NewAuth("test-secret", stubPasswordHasher{}, userRepo, authRepo),
-		user:       usecase.NewUser(node, userRepo, stubPasswordHasher{}),
-		common:     usecase.NewCommon(orgRepo, sqlite.NewProjectRepository(dbConn)),
-		permission: permissionUc,
-		org:        orgUc,
-		group:      usecase.NewGroup(groupRepo, node, permissionUc, orgUc),
-		project:    projectUc,
-		branch:     branchUc,
+		auth:         usecase.NewAuth("test-secret", stubPasswordHasher{}, userRepo, authRepo),
+		user:         usecase.NewUser(node, userRepo, stubPasswordHasher{}),
+		common:       usecase.NewCommon(orgRepo, sqlite.NewProjectRepository(dbConn)),
+		permission:   permissionUc,
+		org:          orgUc,
+		group:        usecase.NewGroup(groupRepo, node, permissionUc, orgUc),
+		project:      projectUc,
+		branch:       branchUc,
+		mergeRequest: mergeRequestUc,
 	}
 	return &handlerTestEnv{
 		handler:    NewHandler(reg),

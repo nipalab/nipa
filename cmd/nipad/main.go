@@ -69,17 +69,26 @@ func main() {
 		panic(fmt.Errorf("create chunk store: %w", err))
 	}
 	defer chunkStore.Close()
+	branchUsecase := usecase.NewBranchWithChunks(permissionUsecase, branchRepository, snowUser, chunkStore)
+	mergeRequestUsecase := usecase.NewMergeRequest(
+		sqlite.NewMergeRequestRepository(dbConn),
+		branchRepository,
+		permissionUsecase,
+		branchUsecase,
+		snowUser,
+	)
 	reg := &Registry{
-		authUsecase:       authUsecase,
-		userUsecase:       usecase.NewUser(snowUser, userRepo, passwordHasher),
-		commonUsecase:     usecase.NewCommon(orgRepo, projectRepo),
-		branchUsecase:     usecase.NewBranchWithChunks(permissionUsecase, branchRepository, snowUser, chunkStore),
-		pushUsecase:       usecase.NewPush(permissionUsecase, branchRepository, pushRepository, snowUser),
-		chunkUsecase:      usecase.NewChunk(pushRepository, chunkStore),
-		permissionUsecase: permissionUsecase,
-		groupUsecase:      usecase.NewGroup(groupRepository, snowUser, permissionUsecase, orgUsecase),
-		orgUsecase:        orgUsecase,
-		projectUsecase:    projectUsecase,
+		authUsecase:         authUsecase,
+		userUsecase:         usecase.NewUser(snowUser, userRepo, passwordHasher),
+		commonUsecase:       usecase.NewCommon(orgRepo, projectRepo),
+		branchUsecase:       branchUsecase,
+		pushUsecase:         usecase.NewPush(permissionUsecase, branchRepository, pushRepository, snowUser),
+		chunkUsecase:        usecase.NewChunk(pushRepository, chunkStore),
+		permissionUsecase:   permissionUsecase,
+		groupUsecase:        usecase.NewGroup(groupRepository, snowUser, permissionUsecase, orgUsecase),
+		orgUsecase:          orgUsecase,
+		projectUsecase:      projectUsecase,
+		mergeRequestUsecase: mergeRequestUsecase,
 	}
 
 	apiApp := api.NewAPI(reg)

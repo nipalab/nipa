@@ -90,6 +90,13 @@ func NewErrorNoPermission() *Error {
 	}
 }
 
+func NewErrorForbidden(message string) *Error {
+	return &Error{
+		Code:    403,
+		Message: message,
+	}
+}
+
 func NewErrorConflict(message string) *Error {
 	return &Error{
 		Code:    409,

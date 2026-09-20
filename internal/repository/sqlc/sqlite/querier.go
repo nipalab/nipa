@@ -52,6 +52,11 @@ type Querier interface {
 	GroupMemberRemove(ctx context.Context, arg GroupMemberRemoveParams) error
 	ListOrganizations(ctx context.Context) ([]Organization, error)
 	ListProjectsByOrgId(ctx context.Context, orgID int64) ([]Project, error)
+	MergeRequestCreate(ctx context.Context, arg MergeRequestCreateParams) (MergeRequest, error)
+	MergeRequestGet(ctx context.Context, arg MergeRequestGetParams) (MergeRequest, error)
+	MergeRequestList(ctx context.Context, arg MergeRequestListParams) ([]MergeRequest, error)
+	MergeRequestListByStatus(ctx context.Context, arg MergeRequestListByStatusParams) ([]MergeRequest, error)
+	MergeRequestUpdateStatus(ctx context.Context, arg MergeRequestUpdateStatusParams) error
 	OrgMemberCountByRole(ctx context.Context, arg OrgMemberCountByRoleParams) (int64, error)
 	OrgMemberDelete(ctx context.Context, arg OrgMemberDeleteParams) error
 	OrgMemberGet(ctx context.Context, arg OrgMemberGetParams) (string, error)

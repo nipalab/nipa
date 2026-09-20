@@ -205,20 +205,19 @@ func TestBranch_SetProtection_NoPermission(t *testing.T) {
 	require.True(t, domain.IsErrorNoPermission(err))
 }
 
-func TestPush_ProtectedBranch_AdminAllowed(t *testing.T) {
-	uc, perm, repo, pushRepo, ctx := newPushFixture(t)
+func TestPush_ProtectedBranch_DeniedEvenForAdmins(t *testing.T) {
+	uc, perm, repo, _, ctx := newPushFixture(t)
 
 	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
-	perm.EXPECT().AdminHasProject(gomock.Any(), snow.ID(1)).Return(true)
 	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").
 		Return(&domain.Branch{ID: 5, ProjectID: 1, Name: "main", IsProtected: true}, nil)
-	pushRepo.EXPECT().ApplyPush(gomock.Any(), gomock.Any()).Return(nil)
 
 	_, err := uc.Push(ctx, snow.ID(1), "main", "", "msg", nil, nil, "", "")
-	require.NoError(t, err)
+	require.True(t, domain.IsErrorNoPermission(err))
+	require.Contains(t, err.Error(), "merge request")
 }
 
-func TestBranch_FastForward_ProtectedNeedsAdmin(t *testing.T) {
+func TestBranch_FastForward_ProtectedAlwaysDenied(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	perm := newAllowAllPerm(ctrl)
 	repo := NewMockbranchRepository(ctrl)
@@ -226,7 +225,6 @@ func TestBranch_FastForward_ProtectedNeedsAdmin(t *testing.T) {
 	targetHead := snow.ID(11)
 	sourceHead := snow.ID(12)
 	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
-	perm.EXPECT().AdminHasProject(gomock.Any(), snow.ID(1)).Return(false)
 	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").
 		Return(&domain.Branch{ID: 2, ProjectID: 1, Name: "main", CommitID: &targetHead, IsProtected: true}, nil)
 	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").
@@ -235,4 +233,59 @@ func TestBranch_FastForward_ProtectedNeedsAdmin(t *testing.T) {
 	uc := NewBranch(perm, repo, newTestBranchNode(t))
 	_, err := uc.FastForward(context.Background(), snow.ID(1), "main", "feature")
 	require.True(t, domain.IsErrorNoPermission(err))
+	require.Contains(t, err.Error(), "merge request")
+}
+
+func TestBranch_FastForwardForMergeRequest_Protected(t *testing.T) {
+	t.Run("project admin lands", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		perm := newAllowAllPerm(ctrl)
+		repo := NewMockbranchRepository(ctrl)
+
+		targetHead := snow.ID(11)
+		sourceHead := snow.ID(12)
+		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
+		perm.EXPECT().AdminHasProject(gomock.Any(), snow.ID(1)).Return(true)
+		repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").
+			Return(&domain.Branch{ID: 2, ProjectID: 1, Name: "main", CommitID: &targetHead, IsProtected: true}, nil)
+		repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").
+			Return(&domain.Branch{ID: 3, ProjectID: 1, Name: "feature", CommitID: &sourceHead}, nil)
+		repo.EXPECT().GetCommit(gomock.Any(), targetHead).
+			Return(&domain.Commit{ID: targetHead, ProjectID: 1, TreeID: 101, Parent1ID: &targetHead}, nil).Times(2)
+		repo.EXPECT().GetCommit(gomock.Any(), sourceHead).
+			Return(&domain.Commit{ID: sourceHead, ProjectID: 1, TreeID: 102, Parent1ID: &targetHead}, nil).Times(2)
+		repo.EXPECT().GetTreeNode(gomock.Any(), int64(101)).Return(&domain.TreeNode{ID: 101, Name: "root"}, nil)
+		repo.EXPECT().ListFilesByTree(gomock.Any(), int64(101)).Return(nil, nil)
+		repo.EXPECT().ListTreeChildren(gomock.Any(), int64(101)).Return(nil, nil)
+		repo.EXPECT().GetTreeNode(gomock.Any(), int64(102)).Return(&domain.TreeNode{ID: 102, Name: "root"}, nil)
+		repo.EXPECT().ListFilesByTree(gomock.Any(), int64(102)).Return(nil, nil)
+		repo.EXPECT().ListTreeChildren(gomock.Any(), int64(102)).Return(nil, nil)
+		repo.EXPECT().UpdateCommitIf(gomock.Any(), snow.ID(2), &targetHead, &sourceHead).Return(nil)
+		repo.EXPECT().GetByProjectIDAndID(gomock.Any(), snow.ID(1), snow.ID(2)).
+			Return(&domain.Branch{ID: 2, ProjectID: 1, Name: "main", CommitID: &sourceHead, IsProtected: true}, nil)
+
+		uc := NewBranch(perm, repo, newTestBranchNode(t))
+		updated, err := uc.FastForwardForMergeRequest(context.Background(), snow.ID(1), "main", "feature")
+		require.NoError(t, err)
+		require.Equal(t, &sourceHead, updated.CommitID)
+	})
+
+	t.Run("without project admin is denied", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		perm := newAllowAllPerm(ctrl)
+		repo := NewMockbranchRepository(ctrl)
+
+		targetHead := snow.ID(11)
+		sourceHead := snow.ID(12)
+		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
+		perm.EXPECT().AdminHasProject(gomock.Any(), snow.ID(1)).Return(false)
+		repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").
+			Return(&domain.Branch{ID: 2, ProjectID: 1, Name: "main", CommitID: &targetHead, IsProtected: true}, nil)
+		repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").
+			Return(&domain.Branch{ID: 3, ProjectID: 1, Name: "feature", CommitID: &sourceHead}, nil)
+
+		uc := NewBranch(perm, repo, newTestBranchNode(t))
+		_, err := uc.FastForwardForMergeRequest(context.Background(), snow.ID(1), "main", "feature")
+		require.True(t, domain.IsErrorNoPermission(err))
+	})
 }

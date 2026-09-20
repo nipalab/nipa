@@ -20,6 +20,7 @@ type usecaseContainer interface {
 	Group() *usecase.Group
 	Project() *usecase.Project
 	Branch() *usecase.Branch
+	MergeRequest() *usecase.MergeRequest
 }
 
 type API struct {
@@ -59,6 +60,7 @@ func (a *API) SetupRoute() http.Handler {
 	setupUserRouter(apiWs, handler)
 	setupProjectRouter(apiWs, handler)
 	setupBrowserRouter(apiWs, handler)
+	setupMergeRequestRouter(apiWs, handler)
 	setupOrgRouter(apiWs, handler)
 	setupGroupRouter(apiWs, handler)
 	setupPermissionRouter(apiWs, handler)

@@ -13,6 +13,7 @@ type usecaseContainer interface {
 	Group() *usecase.Group
 	Project() *usecase.Project
 	Branch() *usecase.Branch
+	MergeRequest() *usecase.MergeRequest
 }
 
 type Handler struct {

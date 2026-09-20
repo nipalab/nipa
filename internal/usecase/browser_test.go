@@ -466,3 +466,79 @@ func TestBranch_CommitDiff_BaseNotInProject(t *testing.T) {
 	_, _, err := uc.CommitDiff(context.Background(), snow.ID(1), headID, &baseID)
 	require.True(t, domain.IsErrorNotFound(err))
 }
+
+func TestBranch_TreeDiffBetween(t *testing.T) {
+	t.Run("with merge base", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		perm := NewMockpermissionUsecase(ctrl)
+		repo := NewMockbranchRepository(ctrl)
+		uc := NewBranchWithChunks(perm, repo, newTestBranchNode(t), &stubChunkReader{})
+
+		baseID := snow.ID(10)
+		headID := snow.ID(11)
+		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
+		perm.EXPECT().CompileFilter(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(AllowAllFilter(), nil).AnyTimes()
+		repo.EXPECT().GetCommit(gomock.Any(), baseID).Return(&domain.Commit{ID: baseID, ProjectID: 1, TreeID: 100}, nil).Times(2)
+		repo.EXPECT().GetCommit(gomock.Any(), headID).Return(&domain.Commit{ID: headID, ProjectID: 1, TreeID: 101}, nil)
+		repo.EXPECT().GetTreeNode(gomock.Any(), int64(100)).Return(&domain.TreeNode{ID: 100, Name: "root"}, nil)
+		repo.EXPECT().ListFilesByTree(gomock.Any(), int64(100)).Return(nil, nil)
+		repo.EXPECT().ListTreeChildren(gomock.Any(), int64(100)).Return(nil, nil)
+		repo.EXPECT().GetTreeNode(gomock.Any(), int64(101)).Return(&domain.TreeNode{ID: 101, Name: "root"}, nil)
+		repo.EXPECT().ListFilesByTree(gomock.Any(), int64(101)).Return([]*domain.File{
+			{ID: 1, Name: "a.txt", Hash: domain.Hash{9}, SizeBytes: 5, Chunks: []domain.Chunk{{Hash: domain.Hash{1}, SizeBytes: 5}}},
+		}, nil)
+		repo.EXPECT().ListTreeChildren(gomock.Any(), int64(101)).Return(nil, nil)
+
+		files, err := uc.TreeDiffBetween(context.Background(), snow.ID(1), &baseID, headID)
+		require.NoError(t, err)
+		require.Len(t, files, 1)
+		require.Equal(t, diff.Added, files[0].Change.Status)
+		require.Equal(t, "a.txt", files[0].Change.Path)
+	})
+
+	t.Run("root commit has no base", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		perm := NewMockpermissionUsecase(ctrl)
+		repo := NewMockbranchRepository(ctrl)
+		uc := NewBranchWithChunks(perm, repo, newTestBranchNode(t), &stubChunkReader{})
+
+		headID := snow.ID(11)
+		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
+		perm.EXPECT().CompileFilter(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(AllowAllFilter(), nil).AnyTimes()
+		repo.EXPECT().GetCommit(gomock.Any(), headID).Return(&domain.Commit{ID: headID, ProjectID: 1, TreeID: 101}, nil)
+		repo.EXPECT().GetTreeNode(gomock.Any(), int64(101)).Return(&domain.TreeNode{ID: 101, Name: "root"}, nil)
+		repo.EXPECT().ListFilesByTree(gomock.Any(), int64(101)).Return([]*domain.File{
+			{ID: 1, Name: "a.txt", Hash: domain.Hash{9}, SizeBytes: 5, Chunks: []domain.Chunk{{Hash: domain.Hash{1}, SizeBytes: 5}}},
+		}, nil)
+		repo.EXPECT().ListTreeChildren(gomock.Any(), int64(101)).Return(nil, nil)
+
+		files, err := uc.TreeDiffBetween(context.Background(), snow.ID(1), nil, headID)
+		require.NoError(t, err)
+		require.Len(t, files, 1)
+	})
+
+	t.Run("no read access", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		perm := NewMockpermissionUsecase(ctrl)
+		repo := NewMockbranchRepository(ctrl)
+		uc := NewBranchWithChunks(perm, repo, newTestBranchNode(t), &stubChunkReader{})
+
+		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(false)
+		_, err := uc.TreeDiffBetween(context.Background(), snow.ID(1), nil, snow.ID(11))
+		require.True(t, domain.IsErrorNoPermission(err))
+	})
+
+	t.Run("base commit missing", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		perm := NewMockpermissionUsecase(ctrl)
+		repo := NewMockbranchRepository(ctrl)
+		uc := NewBranchWithChunks(perm, repo, newTestBranchNode(t), &stubChunkReader{})
+
+		baseID := snow.ID(10)
+		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
+		repo.EXPECT().GetCommit(gomock.Any(), baseID).Return(nil, domain.NewErrorRecordNotFound())
+
+		_, err := uc.TreeDiffBetween(context.Background(), snow.ID(1), &baseID, snow.ID(11))
+		require.True(t, domain.IsErrorNotFound(err))
+	})
+}

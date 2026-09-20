@@ -25,14 +25,15 @@ import (
 )
 
 type testRegistry struct {
-	auth       *usecase.Auth
-	user       *usecase.User
-	common     *usecase.Common
-	permission *usecase.Permission
-	org        *usecase.Org
-	group      *usecase.Group
-	project    *usecase.Project
-	branch     *usecase.Branch
+	auth         *usecase.Auth
+	user         *usecase.User
+	common       *usecase.Common
+	permission   *usecase.Permission
+	org          *usecase.Org
+	group        *usecase.Group
+	project      *usecase.Project
+	branch       *usecase.Branch
+	mergeRequest *usecase.MergeRequest
 }
 
 func (r *testRegistry) Auth() *usecase.Auth             { return r.auth }
@@ -43,6 +44,9 @@ func (r *testRegistry) Org() *usecase.Org               { return r.org }
 func (r *testRegistry) Group() *usecase.Group           { return r.group }
 func (r *testRegistry) Project() *usecase.Project       { return r.project }
 func (r *testRegistry) Branch() *usecase.Branch         { return r.branch }
+func (r *testRegistry) MergeRequest() *usecase.MergeRequest {
+	return r.mergeRequest
+}
 
 type stubPasswordHasher struct{}
 
@@ -84,18 +88,22 @@ func TestAPIRoutes(t *testing.T) {
 	branchUc := usecase.NewBranchWithChunks(permissionUc, branchRepo, node, chunkStore)
 	pusher := usecase.NewPush(permissionUc, branchRepo, pushRepo, node)
 	chunkUc := usecase.NewChunk(pushRepo, chunkStore)
+	mergeRequestUc := usecase.NewMergeRequest(
+		sqlite.NewMergeRequestRepository(dbConn), branchRepo, permissionUc, branchUc, node,
+	)
 	reg := &testRegistry{
-		auth:       usecase.NewAuth("test-secret", stubPasswordHasher{}, userRepo, sqlite.NewAuthRepository(dbConn)),
-		user:       usecase.NewUser(node, userRepo, stubPasswordHasher{}),
-		common:     usecase.NewCommon(sqlite.NewOrgRepository(dbConn), sqlite.NewProjectRepository(dbConn)),
-		permission: permissionUc,
-		org:        orgUc,
-		group:      usecase.NewGroup(groupRepo, node, permissionUc, orgUc),
-		project:    projectUc,
-		branch:     branchUc,
+		auth:         usecase.NewAuth("test-secret", stubPasswordHasher{}, userRepo, sqlite.NewAuthRepository(dbConn)),
+		user:         usecase.NewUser(node, userRepo, stubPasswordHasher{}),
+		common:       usecase.NewCommon(sqlite.NewOrgRepository(dbConn), sqlite.NewProjectRepository(dbConn)),
+		permission:   permissionUc,
+		org:          orgUc,
+		group:        usecase.NewGroup(groupRepo, node, permissionUc, orgUc),
+		project:      projectUc,
+		branch:       branchUc,
+		mergeRequest: mergeRequestUc,
 	}
 
-	seedBrowserFiles := func(t *testing.T, files map[string]string) *domain.PushResult {
+	seedPushTo := func(t *testing.T, branch, baseCommitID string, files map[string]string) *domain.PushResult {
 		t.Helper()
 
 		pushCtx := domain.ContextWithClaim(context.Background(), domain.Claims{UserID: snow.ID(userID), IsAdmin: true})
@@ -117,9 +125,13 @@ func TestAPIRoutes(t *testing.T) {
 				ChunkHashes: hashes,
 			})
 		}
-		result, err := pusher.Push(pushCtx, snow.ID(1), "main", "", "seed", pushFiles, nil, "", "")
+		result, err := pusher.Push(pushCtx, snow.ID(1), branch, "", "seed", pushFiles, nil, "", baseCommitID)
 		require.NoError(t, err)
 		return result
+	}
+	seedBrowserFiles := func(t *testing.T, files map[string]string) *domain.PushResult {
+		t.Helper()
+		return seedPushTo(t, "main", "", files)
 	}
 
 	container := NewAPI(reg).SetupRoute()
@@ -649,6 +661,112 @@ func TestAPIRoutes(t *testing.T) {
 		branches := decodeBody[[]model.BranchResponse](t, doGet(t, base, aliceLogin.AccessToken))
 		require.Len(t, branches, 1)
 		require.Equal(t, "main", branches[0].Name)
+	})
+
+	t.Run("merge requests", func(t *testing.T) {
+		aliceLogin, _ := login(t)
+		base := server.URL + "/api/v1/orgs/default/projects/default"
+
+		createBranch := doMethod(t, http.MethodPost, base+"/branches", `{"name":"feature","from":"main"}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, createBranch.StatusCode)
+		createBranch.Body.Close()
+
+		branches := decodeBody[[]model.BranchResponse](t, doGet(t, base+"/branches", aliceLogin.AccessToken))
+		var mainHead string
+		for _, branch := range branches {
+			if branch.Name == "main" {
+				mainHead = branch.CommitID
+			}
+		}
+		require.NotEmpty(t, mainHead)
+		featurePush := seedPushTo(t, "feature", mainHead, map[string]string{"feature.txt": "feature"})
+
+		createMR := doMethod(t, http.MethodPost, base+"/merge-requests",
+			`{"title":"Add feature","description":"body","source_branch":"feature","target_branch":"main"}`,
+			aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, createMR.StatusCode)
+		mr := decodeBody[model.MergeRequestResponse](t, createMR)
+		require.Equal(t, "open", mr.Status)
+
+		mrURL := base + "/merge-requests/" + mr.ID
+		detail := decodeBody[model.MergeRequestResponse](t, doGet(t, mrURL, aliceLogin.AccessToken))
+		require.NotNil(t, detail.Mergeability)
+		require.Equal(t, domain.MergeabilityMergeable, detail.Mergeability.Status)
+
+		diff := decodeBody[model.MergeRequestDiffResponse](t, doGet(t, mrURL+"/diff", aliceLogin.AccessToken))
+		require.Len(t, diff.Files, 1)
+		require.Equal(t, "feature.txt", diff.Files[0].Path)
+
+		merge := doMethod(t, http.MethodPost, mrURL+"/merge", `{}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, merge.StatusCode)
+		merged := decodeBody[model.MergeRequestResponse](t, merge)
+		require.Equal(t, domain.MergeRequestMerged, merged.Status)
+		require.Equal(t, featurePush.CommitID.Base36(), merged.MergeCommitID)
+
+		again := doMethod(t, http.MethodPost, mrURL+"/merge", `{}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusConflict, again.StatusCode)
+		again.Body.Close()
+
+		// Diverged: lagging branch created before the merge, then main advances.
+		createBranch = doMethod(t, http.MethodPost, base+"/branches", `{"name":"lagging","from":"feature"}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, createBranch.StatusCode)
+		createBranch.Body.Close()
+		seedPushTo(t, "lagging", featurePush.CommitID.Base36(), map[string]string{"lagging.txt": "lag"})
+		seedPushTo(t, "main", featurePush.CommitID.Base36(), map[string]string{"after.txt": "after"})
+
+		createMR = doMethod(t, http.MethodPost, base+"/merge-requests",
+			`{"title":"Lagging","source_branch":"lagging","target_branch":"main"}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, createMR.StatusCode)
+		lagging := decodeBody[model.MergeRequestResponse](t, createMR)
+
+		laggingURL := base + "/merge-requests/" + lagging.ID
+		check := decodeBody[*model.MergeabilityResponse](t, doGet(t, laggingURL+"/check", aliceLogin.AccessToken))
+		require.Equal(t, domain.MergeabilityBehind, check.Status)
+
+		blocked := doMethod(t, http.MethodPost, laggingURL+"/merge", `{}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusConflict, blocked.StatusCode)
+		blocked.Body.Close()
+
+		closed := decodeBody[model.MergeRequestResponse](t,
+			doMethod(t, http.MethodPost, laggingURL+"/close", `{}`, aliceLogin.AccessToken))
+		require.Equal(t, domain.MergeRequestClosed, closed.Status)
+		reopened := decodeBody[model.MergeRequestResponse](t,
+			doMethod(t, http.MethodPost, laggingURL+"/reopen", `{}`, aliceLogin.AccessToken))
+		require.Equal(t, "open", reopened.Status)
+
+		list := decodeBody[[]model.MergeRequestResponse](t, doGet(t, base+"/merge-requests?status=merged", aliceLogin.AccessToken))
+		require.Len(t, list, 1)
+
+		// Protected targets can only be moved by merging a merge request.
+		createBranch = doMethod(t, http.MethodPost, base+"/branches", `{"name":"protected-fix","from":"main"}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, createBranch.StatusCode)
+		createBranch.Body.Close()
+		branches = decodeBody[[]model.BranchResponse](t, doGet(t, base+"/branches", aliceLogin.AccessToken))
+		var currentMain string
+		for _, branch := range branches {
+			if branch.Name == "main" {
+				currentMain = branch.CommitID
+			}
+		}
+		require.NotEmpty(t, currentMain)
+		seedPushTo(t, "protected-fix", currentMain, map[string]string{"fix.txt": "fix"})
+
+		protect := doMethod(t, http.MethodPut, base+"/branches/main/protection", `{"protected":true}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, protect.StatusCode)
+		protect.Body.Close()
+
+		createMR = doMethod(t, http.MethodPost, base+"/merge-requests",
+			`{"title":"Fix","source_branch":"protected-fix","target_branch":"main"}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, createMR.StatusCode)
+		fixMR := decodeBody[model.MergeRequestResponse](t, createMR)
+
+		merge = doMethod(t, http.MethodPost, base+"/merge-requests/"+fixMR.ID+"/merge", `{}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, merge.StatusCode)
+		require.Equal(t, domain.MergeRequestMerged, decodeBody[model.MergeRequestResponse](t, merge).Status)
+
+		unprotect := doMethod(t, http.MethodPut, base+"/branches/main/protection", `{"protected":false}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, unprotect.StatusCode)
+		unprotect.Body.Close()
 	})
 
 	t.Run("openapi doc is served", func(t *testing.T) {
