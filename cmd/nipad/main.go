@@ -69,7 +69,7 @@ func main() {
 	defer chunkStore.Close()
 	reg := &Registry{
 		authUsecase:       authUsecase,
-		userUsecase:       usecase.NewUser(snowUser),
+		userUsecase:       usecase.NewUser(snowUser, userRepo),
 		commonUsecase:     usecase.NewCommon(orgRepo, projectRepo),
 		branchUsecase:     usecase.NewBranch(permissionUsecase, branchRepository, snowUser),
 		pushUsecase:       usecase.NewPush(permissionUsecase, branchRepository, pushRepository, snowUser),

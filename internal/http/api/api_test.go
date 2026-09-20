@@ -21,12 +21,16 @@ import (
 )
 
 type testRegistry struct {
-	auth *usecase.Auth
-	user *usecase.User
+	auth       *usecase.Auth
+	user       *usecase.User
+	common     *usecase.Common
+	permission *usecase.Permission
 }
 
-func (r *testRegistry) Auth() *usecase.Auth { return r.auth }
-func (r *testRegistry) User() *usecase.User { return r.user }
+func (r *testRegistry) Auth() *usecase.Auth             { return r.auth }
+func (r *testRegistry) User() *usecase.User             { return r.user }
+func (r *testRegistry) Common() *usecase.Common         { return r.common }
+func (r *testRegistry) Permission() *usecase.Permission { return r.permission }
 
 type stubPasswordHasher struct{}
 
@@ -54,9 +58,16 @@ func TestAPIRoutes(t *testing.T) {
 	require.NoError(t, err)
 
 	node, _ := snow.NewNode(1)
+	userRepo := sqlite.NewUserRepository(dbConn)
 	reg := &testRegistry{
-		auth: usecase.NewAuth("test-secret", stubPasswordHasher{}, sqlite.NewUserRepository(dbConn), sqlite.NewAuthRepository(dbConn)),
-		user: usecase.NewUser(node),
+		auth:   usecase.NewAuth("test-secret", stubPasswordHasher{}, userRepo, sqlite.NewAuthRepository(dbConn)),
+		user:   usecase.NewUser(node, userRepo),
+		common: usecase.NewCommon(sqlite.NewOrgRepository(dbConn), sqlite.NewProjectRepository(dbConn)),
+		permission: usecase.NewPermission(
+			sqlite.NewPBACRepository(dbConn),
+			userRepo,
+			sqlite.NewGroupRepository(dbConn),
+		),
 	}
 
 	container := NewAPI(reg).SetupRoute()
@@ -224,6 +235,59 @@ func TestAPIRoutes(t *testing.T) {
 		require.Equal(t, http.StatusOK, resp.StatusCode)
 	})
 
+	t.Run("me returns the authenticated profile", func(t *testing.T) {
+		loginResponse, _ := login(t)
+
+		resp := doGet(t, server.URL+"/api/v1/me", loginResponse.AccessToken)
+		defer resp.Body.Close()
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+
+		var me model.MeResponse
+		require.NoError(t, json.NewDecoder(resp.Body).Decode(&me))
+		require.Equal(t, snow.ID(userID).Base36(), me.ID)
+		require.Equal(t, "alice", me.Name)
+		require.Equal(t, "alice@example.com", me.Email)
+		require.True(t, me.IsAdmin)
+	})
+
+	t.Run("me requires a token", func(t *testing.T) {
+		resp := doGet(t, server.URL+"/api/v1/me", "")
+		defer resp.Body.Close()
+		require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+	})
+
+	t.Run("me rejects an invalid token", func(t *testing.T) {
+		resp := doGet(t, server.URL+"/api/v1/me", "not-a-token")
+		defer resp.Body.Close()
+		require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+	})
+
+	t.Run("project permissions for an admin", func(t *testing.T) {
+		loginResponse, _ := login(t)
+
+		resp := doGet(t, server.URL+"/api/v1/orgs/default/projects/default/permissions/me", loginResponse.AccessToken)
+		defer resp.Body.Close()
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+
+		var perms model.ProjectPermissionResponse
+		require.NoError(t, json.NewDecoder(resp.Body).Decode(&perms))
+		require.Equal(t, uint64(domain.PermissionAll), perms.ProjectPermission)
+	})
+
+	t.Run("project permissions reject unknown projects", func(t *testing.T) {
+		loginResponse, _ := login(t)
+
+		resp := doGet(t, server.URL+"/api/v1/orgs/default/projects/missing/permissions/me", loginResponse.AccessToken)
+		defer resp.Body.Close()
+		require.Equal(t, http.StatusNotFound, resp.StatusCode)
+	})
+
+	t.Run("project permissions require a token", func(t *testing.T) {
+		resp := doGet(t, server.URL+"/api/v1/orgs/default/projects/default/permissions/me", "")
+		defer resp.Body.Close()
+		require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+	})
+
 	t.Run("openapi doc is served", func(t *testing.T) {
 		resp, err := http.Get(server.URL + "/docs/api.json")
 		require.NoError(t, err)
@@ -244,6 +308,19 @@ func doJSON(t *testing.T, url, body string, cookies []*http.Cookie, origin strin
 	}
 	for _, cookie := range cookies {
 		req.AddCookie(cookie)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	return resp
+}
+
+func doGet(t *testing.T, url, accessToken string) *http.Response {
+	t.Helper()
+
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	require.NoError(t, err)
+	if accessToken != "" {
+		req.Header.Set("Authorization", "Bearer "+accessToken)
 	}
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)

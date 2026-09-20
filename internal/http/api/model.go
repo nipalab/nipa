@@ -58,6 +58,10 @@ func (a *appContext) Cookie(name string) (*http.Cookie, error) {
 	return a.req.Request.Cookie(name)
 }
 
+func (a *appContext) PathParameter(name string) string {
+	return a.req.PathParameter(name)
+}
+
 func (a *appContext) HandleError(err error) {
 	apiErr, ok := err.(*domain.Error)
 	if !ok {

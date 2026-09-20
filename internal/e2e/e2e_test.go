@@ -146,7 +146,7 @@ func startTestServer(t *testing.T, dbConn *sql.DB) string {
 
 	reg := &testRegistry{
 		auth:       authUc,
-		user:       serverusecase.NewUser(node),
+		user:       serverusecase.NewUser(node, userRepo),
 		branch:     branchUc,
 		common:     commonUc,
 		push:       serverusecase.NewPush(permissionUc, branchRepo, pushRepo, node),

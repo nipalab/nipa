@@ -11,6 +11,20 @@ export interface TokenResponse {
 
 export interface MeResponse {
   id: string
-  username: string
+  name: string
   email: string
+  photo_url: string
+  is_admin: boolean
+  is_super_admin: boolean
+}
+
+export interface PermissionEntry {
+  path_prefix: string
+  permission: number
+}
+
+export interface ProjectPermissionResponse {
+  project_permission: number
+  rules: PermissionEntry[]
+  defaults: PermissionEntry[]
 }

@@ -8,6 +8,7 @@ import (
 
 	"github.com/emicklei/go-restful/v3"
 	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/snow"
 	"github.com/stretchr/testify/require"
 )
 
@@ -76,6 +77,7 @@ func TestAuthFilter_ValidTokenSetsAttributesAndContinuesChain(t *testing.T) {
 
 	var gotClaims *domain.Claims
 	var gotToken string
+	var gotContextClaims *domain.Claims
 	chainProcessed := false
 
 	resp := restful.NewResponse(httptest.NewRecorder())
@@ -85,6 +87,9 @@ func TestAuthFilter_ValidTokenSetsAttributesAndContinuesChain(t *testing.T) {
 				chainProcessed = true
 				gotClaims, _ = r.Attribute(AttributeClaims).(*domain.Claims)
 				gotToken, _ = r.Attribute(AttributeToken).(string)
+				if claims, ok := domain.ClaimFromContext(r.Request.Context()); ok {
+					gotContextClaims = &claims
+				}
 			},
 		},
 	}
@@ -93,5 +98,7 @@ func TestAuthFilter_ValidTokenSetsAttributesAndContinuesChain(t *testing.T) {
 	require.True(t, chainProcessed)
 	require.Same(t, wantClaims, gotClaims)
 	require.Equal(t, "valid-token", gotToken)
+	require.NotNil(t, gotContextClaims, "usecases read claims from the request context")
+	require.Equal(t, snow.ID(42), gotContextClaims.UserID)
 	require.Equal(t, http.StatusOK, resp.StatusCode())
 }

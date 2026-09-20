@@ -20,14 +20,26 @@ import (
 )
 
 type fakeAppContext struct {
-	body       []byte
-	statusCode int
-	response   any
-	cookies    map[string]*http.Cookie
+	body           []byte
+	statusCode     int
+	response       any
+	cookies        map[string]*http.Cookie
+	claims         *domain.Claims
+	pathParameters map[string]string
 }
 
-func (f *fakeAppContext) Context() context.Context { return context.Background() }
-func (f *fakeAppContext) Claims() *domain.Claims   { return nil }
+func (f *fakeAppContext) Context() context.Context {
+	if f.claims != nil {
+		return domain.ContextWithClaim(context.Background(), *f.claims)
+	}
+	return context.Background()
+}
+
+func (f *fakeAppContext) Claims() *domain.Claims { return f.claims }
+
+func (f *fakeAppContext) PathParameter(name string) string {
+	return f.pathParameters[name]
+}
 
 func (f *fakeAppContext) ReadJson(v any) error {
 	return json.Unmarshal(f.body, v)
@@ -65,19 +77,30 @@ func (f *fakeAppContext) HandleError(err error) {
 }
 
 type handlerRegistry struct {
-	auth *usecase.Auth
-	user *usecase.User
+	auth       *usecase.Auth
+	user       *usecase.User
+	common     *usecase.Common
+	permission *usecase.Permission
 }
 
-func (r *handlerRegistry) Auth() *usecase.Auth { return r.auth }
-func (r *handlerRegistry) User() *usecase.User { return r.user }
+func (r *handlerRegistry) Auth() *usecase.Auth             { return r.auth }
+func (r *handlerRegistry) User() *usecase.User             { return r.user }
+func (r *handlerRegistry) Common() *usecase.Common         { return r.common }
+func (r *handlerRegistry) Permission() *usecase.Permission { return r.permission }
 
 type stubPasswordHasher struct{}
 
 func (stubPasswordHasher) Hash(_ string) (string, error) { return "hash", nil }
 func (stubPasswordHasher) Compare(_, _ string) bool      { return true }
 
-func newHandlerTestSetup(t *testing.T) (*Handler, *sqlite.Auth, snow.ID) {
+type handlerTestEnv struct {
+	handler  *Handler
+	authRepo *sqlite.Auth
+	pbacRepo *sqlite.PBAC
+	userID   snow.ID
+}
+
+func newHandlerTestEnv(t *testing.T) *handlerTestEnv {
 	t.Helper()
 
 	dbConn, err := database.Open("sqlite3", ":memory:")
@@ -96,12 +119,32 @@ func newHandlerTestSetup(t *testing.T) (*Handler, *sqlite.Auth, snow.ID) {
 	require.NoError(t, err)
 
 	authRepo := sqlite.NewAuthRepository(dbConn)
+	userRepo := sqlite.NewUserRepository(dbConn)
+	pbacRepo := sqlite.NewPBACRepository(dbConn)
 	node, _ := snow.NewNode(1)
 	reg := &handlerRegistry{
-		auth: usecase.NewAuth("test-secret", stubPasswordHasher{}, sqlite.NewUserRepository(dbConn), authRepo),
-		user: usecase.NewUser(node),
+		auth:   usecase.NewAuth("test-secret", stubPasswordHasher{}, userRepo, authRepo),
+		user:   usecase.NewUser(node, userRepo),
+		common: usecase.NewCommon(sqlite.NewOrgRepository(dbConn), sqlite.NewProjectRepository(dbConn)),
+		permission: usecase.NewPermission(
+			pbacRepo,
+			userRepo,
+			sqlite.NewGroupRepository(dbConn),
+		),
 	}
-	return NewHandler(reg), authRepo, snow.ID(userID)
+	return &handlerTestEnv{
+		handler:  NewHandler(reg),
+		authRepo: authRepo,
+		pbacRepo: pbacRepo,
+		userID:   snow.ID(userID),
+	}
+}
+
+func newHandlerTestSetup(t *testing.T) (*Handler, *sqlite.Auth, snow.ID) {
+	t.Helper()
+
+	env := newHandlerTestEnv(t)
+	return env.handler, env.authRepo, env.userID
 }
 
 func TestNewHandler(t *testing.T) {
@@ -283,6 +326,116 @@ func TestHandler_AuthLogout_NoCookie(t *testing.T) {
 	cookie := appCtx.cookies[refreshCookieName]
 	require.NotNil(t, cookie)
 	require.Equal(t, -1, cookie.MaxAge)
+}
+
+func TestHandler_Me(t *testing.T) {
+	h, _, userID := newHandlerTestSetup(t)
+
+	appCtx := &fakeAppContext{claims: &domain.Claims{UserID: userID}}
+	h.Me(appCtx)
+
+	require.Equal(t, http.StatusOK, appCtx.statusCode)
+
+	me, ok := appCtx.response.(model.MeResponse)
+	require.True(t, ok)
+	require.Equal(t, userID.Base36(), me.ID)
+	require.Equal(t, "alice", me.Name)
+	require.Equal(t, "alice@example.com", me.Email)
+	require.True(t, me.IsAdmin)
+	require.False(t, me.IsSuperAdmin)
+}
+
+func TestHandler_Me_NoClaims(t *testing.T) {
+	h, _, _ := newHandlerTestSetup(t)
+
+	appCtx := &fakeAppContext{}
+	h.Me(appCtx)
+
+	require.Equal(t, http.StatusUnauthorized, appCtx.statusCode)
+}
+
+func TestHandler_Me_UnknownUser(t *testing.T) {
+	h, _, _ := newHandlerTestSetup(t)
+
+	appCtx := &fakeAppContext{claims: &domain.Claims{UserID: snow.ID(999)}}
+	h.Me(appCtx)
+
+	require.Equal(t, http.StatusNotFound, appCtx.statusCode)
+}
+
+func TestHandler_MyProjectPermissions_Admin(t *testing.T) {
+	h, _, userID := newHandlerTestSetup(t)
+
+	appCtx := &fakeAppContext{
+		claims:         &domain.Claims{UserID: userID, IsAdmin: true},
+		pathParameters: map[string]string{"org": "default", "project": "default"},
+	}
+	h.MyProjectPermissions(appCtx)
+
+	require.Equal(t, http.StatusOK, appCtx.statusCode)
+
+	resp, ok := appCtx.response.(model.ProjectPermissionResponse)
+	require.True(t, ok)
+	require.Equal(t, uint64(domain.PermissionAll), resp.ProjectPermission)
+	require.Empty(t, resp.Rules)
+	require.Empty(t, resp.Defaults)
+}
+
+func TestHandler_MyProjectPermissions_UnknownProject(t *testing.T) {
+	h, _, userID := newHandlerTestSetup(t)
+
+	appCtx := &fakeAppContext{
+		claims:         &domain.Claims{UserID: userID},
+		pathParameters: map[string]string{"org": "default", "project": "missing"},
+	}
+	h.MyProjectPermissions(appCtx)
+
+	require.Equal(t, http.StatusNotFound, appCtx.statusCode)
+}
+
+func TestHandler_MyProjectPermissions_WithRulesAndDefaults(t *testing.T) {
+	env := newHandlerTestEnv(t)
+	ctx := context.Background()
+	projectID := snow.ID(1)
+	userID := env.userID
+
+	_, err := env.pbacRepo.UpsertPathPermission(ctx, domain.ProjectPathPermission{
+		ProjectID: projectID, PathPrefix: "", Permission: domain.PermissionRead,
+	})
+	require.NoError(t, err)
+	_, err = env.pbacRepo.CreateRule(ctx, domain.PBACRule{
+		UserID: &userID, OrgID: 1, ProjectID: &projectID,
+		PathPrefix: "assets", Permission: domain.PermissionRead | domain.PermissionWrite,
+	})
+	require.NoError(t, err)
+
+	appCtx := &fakeAppContext{
+		claims:         &domain.Claims{UserID: userID},
+		pathParameters: map[string]string{"org": "default", "project": "default"},
+	}
+	env.handler.MyProjectPermissions(appCtx)
+
+	require.Equal(t, http.StatusOK, appCtx.statusCode)
+
+	resp, ok := appCtx.response.(model.ProjectPermissionResponse)
+	require.True(t, ok)
+	require.Equal(t, uint64(domain.PermissionRead|domain.PermissionWrite), resp.ProjectPermission)
+	require.Len(t, resp.Rules, 1)
+	require.Equal(t, "assets", resp.Rules[0].PathPrefix)
+	require.Equal(t, uint64(domain.PermissionRead|domain.PermissionWrite), resp.Rules[0].Permission)
+	require.Len(t, resp.Defaults, 1)
+	require.Equal(t, uint64(domain.PermissionRead), resp.Defaults[0].Permission)
+}
+
+func TestHandler_MyProjectPermissions_NoClaims(t *testing.T) {
+	h, _, _ := newHandlerTestSetup(t)
+
+	appCtx := &fakeAppContext{
+		pathParameters: map[string]string{"org": "default", "project": "default"},
+	}
+	h.MyProjectPermissions(appCtx)
+
+	require.Equal(t, http.StatusForbidden, appCtx.statusCode)
 }
 
 var _ httpApp.AppContext = (*fakeAppContext)(nil)

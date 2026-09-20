@@ -14,6 +14,8 @@ import (
 type usecaseContainer interface {
 	Auth() *usecase.Auth
 	User() *usecase.User
+	Common() *usecase.Common
+	Permission() *usecase.Permission
 }
 
 type API struct {
@@ -27,10 +29,9 @@ func NewAPI(useCase usecaseContainer) *API {
 }
 
 func (a *API) SetupRoute() http.Handler {
-	//authFilter := NewAuthFilter(a.useCase.Auth())
 	cors := restful.CrossOriginResourceSharing{
-		AllowedMethods: []string{"POST", "GET", "PUT", "DELETE"},
-		AllowedHeaders: []string{"Content-Type", "Accept"},
+		AllowedMethods: []string{"POST", "GET", "PUT", "PATCH", "DELETE"},
+		AllowedHeaders: []string{"Content-Type", "Accept", "Authorization"},
 	}
 
 	handler := handler.NewHandler(a.useCase)
@@ -43,6 +44,17 @@ func (a *API) SetupRoute() http.Handler {
 		Produces(restful.MIME_JSON)
 	setupAuthRouter(authWs, handler)
 	restful.Add(authWs)
+
+	apiWs := new(restful.WebService).ApiVersion("1.0.0")
+	apiWs.Path("/api/v1").
+		Filter(cors.Filter).
+		Filter(sameOriginFilter).
+		Filter(NewAuthFilter(a.useCase.Auth()).Auth()).
+		Consumes(restful.MIME_JSON).
+		Produces(restful.MIME_JSON)
+	setupMeRouter(apiWs, handler)
+	setupPermissionRouter(apiWs, handler)
+	restful.Add(apiWs)
 
 	swagger.SetupSwagger()
 

@@ -14,5 +14,6 @@ type AppContext interface {
 	WriteJson(statusCode int, v any) error
 	SetCookie(cookie *http.Cookie)
 	Cookie(name string) (*http.Cookie, error)
+	PathParameter(name string) string
 	HandleError(err error)
 }

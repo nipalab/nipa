@@ -42,6 +42,8 @@ func (f *AuthFilter) Auth() restful.FilterFunction {
 			resp.WriteHeaderAndJson(http.StatusUnauthorized, model.NewAPIError("unauthorized access, token not valid"), restful.MIME_JSON)
 			return
 		}
+		ctx := domain.ContextWithClaim(req.Request.Context(), *claim)
+		req.Request = req.Request.WithContext(ctx)
 		req.SetAttribute(AttributeClaims, claim)
 		req.SetAttribute(AttributeToken, tokenString)
 		chain.ProcessFilter(req, resp)
