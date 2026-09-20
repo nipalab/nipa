@@ -12,6 +12,7 @@ type usecaseContainer interface {
 	Org() *usecase.Org
 	Group() *usecase.Group
 	Project() *usecase.Project
+	Branch() *usecase.Branch
 }
 
 type Handler struct {

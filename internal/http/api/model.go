@@ -50,6 +50,12 @@ func (a *appContext) WriteJson(statusCode int, v any) error {
 	return nil
 }
 
+func (a *appContext) WriteBytes(statusCode int, contentType string, data []byte) {
+	a.resp.Header().Set("Content-Type", contentType)
+	a.resp.WriteHeader(statusCode)
+	_, _ = a.resp.Write(data)
+}
+
 func (a *appContext) SetCookie(cookie *http.Cookie) {
 	http.SetCookie(a.resp, cookie)
 }
@@ -60,6 +66,10 @@ func (a *appContext) Cookie(name string) (*http.Cookie, error) {
 
 func (a *appContext) PathParameter(name string) string {
 	return a.req.PathParameter(name)
+}
+
+func (a *appContext) QueryParameter(name string) string {
+	return a.req.QueryParameter(name)
 }
 
 func (a *appContext) HandleError(err error) {

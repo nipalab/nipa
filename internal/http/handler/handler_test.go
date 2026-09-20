@@ -15,18 +15,22 @@ import (
 	sqlcSqlite "github.com/nipalab/nipa/internal/repository/sqlc/sqlite"
 	"github.com/nipalab/nipa/internal/repository/sqlite"
 	"github.com/nipalab/nipa/internal/snow"
+	"github.com/nipalab/nipa/internal/storage"
 	"github.com/nipalab/nipa/internal/usecase"
 	"github.com/stretchr/testify/require"
 )
 
 type fakeAppContext struct {
-	body           []byte
-	statusCode     int
-	response       any
-	cookies        map[string]*http.Cookie
-	claims         *domain.Claims
-	pathParameters map[string]string
-	ctx            context.Context
+	body            []byte
+	statusCode      int
+	response        any
+	cookies         map[string]*http.Cookie
+	claims          *domain.Claims
+	pathParameters  map[string]string
+	ctx             context.Context
+	contentType     string
+	raw             []byte
+	queryParameters map[string]string
 }
 
 func (f *fakeAppContext) Context() context.Context {
@@ -45,6 +49,10 @@ func (f *fakeAppContext) PathParameter(name string) string {
 	return f.pathParameters[name]
 }
 
+func (f *fakeAppContext) QueryParameter(name string) string {
+	return f.queryParameters[name]
+}
+
 func (f *fakeAppContext) ReadJson(v any) error {
 	return json.Unmarshal(f.body, v)
 }
@@ -53,6 +61,12 @@ func (f *fakeAppContext) WriteJson(statusCode int, v any) error {
 	f.statusCode = statusCode
 	f.response = v
 	return nil
+}
+
+func (f *fakeAppContext) WriteBytes(statusCode int, contentType string, data []byte) {
+	f.statusCode = statusCode
+	f.contentType = contentType
+	f.raw = data
 }
 
 func (f *fakeAppContext) SetCookie(cookie *http.Cookie) {
@@ -88,6 +102,7 @@ type handlerRegistry struct {
 	org        *usecase.Org
 	group      *usecase.Group
 	project    *usecase.Project
+	branch     *usecase.Branch
 }
 
 func (r *handlerRegistry) Auth() *usecase.Auth             { return r.auth }
@@ -97,6 +112,7 @@ func (r *handlerRegistry) Permission() *usecase.Permission { return r.permission
 func (r *handlerRegistry) Org() *usecase.Org               { return r.org }
 func (r *handlerRegistry) Group() *usecase.Group           { return r.group }
 func (r *handlerRegistry) Project() *usecase.Project       { return r.project }
+func (r *handlerRegistry) Branch() *usecase.Branch         { return r.branch }
 
 type stubPasswordHasher struct{}
 
@@ -104,14 +120,18 @@ func (stubPasswordHasher) Hash(_ string) (string, error) { return "hash", nil }
 func (stubPasswordHasher) Compare(_, _ string) bool      { return true }
 
 type handlerTestEnv struct {
-	handler   *Handler
-	authRepo  *sqlite.Auth
-	pbacRepo  *sqlite.PBAC
-	userRepo  *sqlite.User
-	orgRepo   *sqlite.OrgRepository
-	groupRepo *sqlite.Group
-	node      snow.Node
-	userID    snow.ID
+	handler    *Handler
+	authRepo   *sqlite.Auth
+	pbacRepo   *sqlite.PBAC
+	userRepo   *sqlite.User
+	orgRepo    *sqlite.OrgRepository
+	groupRepo  *sqlite.Group
+	node       snow.Node
+	userID     snow.ID
+	branchRepo *sqlite.BranchRepository
+	chunkStore *storage.LocalStore
+	pusher     *usecase.Push
+	chunkUc    *usecase.Chunk
 }
 
 func newHandlerTestEnv(t *testing.T) *handlerTestEnv {
@@ -141,6 +161,14 @@ func newHandlerTestEnv(t *testing.T) *handlerTestEnv {
 	orgUc := usecase.NewOrg(orgRepo)
 	permissionUc := usecase.NewPermission(pbacRepo, userRepo, groupRepo, orgUc)
 	projectUc := usecase.NewProject(sqlite.NewProjectRepository(dbConn), node, permissionUc, orgUc)
+	branchRepo := sqlite.NewBranchRepository(dbConn)
+	chunkStore, err := storage.NewLocalStore(t.TempDir())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = chunkStore.Close() })
+	pushRepo := sqlite.NewPushRepository(dbConn)
+	branchUc := usecase.NewBranchWithChunks(permissionUc, branchRepo, node, chunkStore)
+	pusher := usecase.NewPush(permissionUc, branchRepo, pushRepo, node)
+	chunkUc := usecase.NewChunk(pushRepo, chunkStore)
 	reg := &handlerRegistry{
 		auth:       usecase.NewAuth("test-secret", stubPasswordHasher{}, userRepo, authRepo),
 		user:       usecase.NewUser(node, userRepo, stubPasswordHasher{}),
@@ -149,16 +177,21 @@ func newHandlerTestEnv(t *testing.T) *handlerTestEnv {
 		org:        orgUc,
 		group:      usecase.NewGroup(groupRepo, node, permissionUc, orgUc),
 		project:    projectUc,
+		branch:     branchUc,
 	}
 	return &handlerTestEnv{
-		handler:   NewHandler(reg),
-		authRepo:  authRepo,
-		pbacRepo:  pbacRepo,
-		userRepo:  userRepo,
-		orgRepo:   orgRepo,
-		groupRepo: groupRepo,
-		node:      node,
-		userID:    snow.ID(userID),
+		handler:    NewHandler(reg),
+		authRepo:   authRepo,
+		pbacRepo:   pbacRepo,
+		userRepo:   userRepo,
+		orgRepo:    orgRepo,
+		groupRepo:  groupRepo,
+		node:       node,
+		userID:     snow.ID(userID),
+		branchRepo: branchRepo,
+		chunkStore: chunkStore,
+		pusher:     pusher,
+		chunkUc:    chunkUc,
 	}
 }
 

@@ -19,6 +19,7 @@ type usecaseContainer interface {
 	Org() *usecase.Org
 	Group() *usecase.Group
 	Project() *usecase.Project
+	Branch() *usecase.Branch
 }
 
 type API struct {
@@ -57,6 +58,7 @@ func (a *API) SetupRoute() http.Handler {
 		Produces(restful.MIME_JSON)
 	setupUserRouter(apiWs, handler)
 	setupProjectRouter(apiWs, handler)
+	setupBrowserRouter(apiWs, handler)
 	setupOrgRouter(apiWs, handler)
 	setupGroupRouter(apiWs, handler)
 	setupPermissionRouter(apiWs, handler)

@@ -47,6 +47,7 @@ type Branch struct {
 	permUc     permissionUsecase
 	branchRepo branchRepository
 	snowNode   snow.Node
+	chunks     chunkReader
 }
 
 func NewBranch(permUc permissionUsecase, branchRepo branchRepository, snowNode snow.Node) *Branch {

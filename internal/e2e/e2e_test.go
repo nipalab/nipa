@@ -140,10 +140,10 @@ func startTestServer(t *testing.T, dbConn *sql.DB) string {
 	orgUc := serverusecase.NewOrg(orgRepo)
 	permissionUc := serverusecase.NewPermission(pbacRepo, userRepo, groupRepo, orgUc)
 	commonUc := serverusecase.NewCommon(orgRepo, projectRepo)
-	branchUc := serverusecase.NewBranch(permissionUc, branchRepo, node)
 	chunkStore, err := storage.NewLocalStore(t.TempDir())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = chunkStore.Close() })
+	branchUc := serverusecase.NewBranchWithChunks(permissionUc, branchRepo, node, chunkStore)
 
 	reg := &testRegistry{
 		auth:       authUc,

@@ -5,17 +5,21 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/golang-jwt/jwt/v5"
 	database "github.com/nipalab/nipa/db"
+	"github.com/nipalab/nipa/internal/chunker"
 	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/http/model"
 	sqlcSqlite "github.com/nipalab/nipa/internal/repository/sqlc/sqlite"
 	"github.com/nipalab/nipa/internal/repository/sqlite"
 	"github.com/nipalab/nipa/internal/snow"
+	"github.com/nipalab/nipa/internal/storage"
+	"github.com/nipalab/nipa/internal/treehash"
 	"github.com/nipalab/nipa/internal/usecase"
 	"github.com/stretchr/testify/require"
 )
@@ -28,6 +32,7 @@ type testRegistry struct {
 	org        *usecase.Org
 	group      *usecase.Group
 	project    *usecase.Project
+	branch     *usecase.Branch
 }
 
 func (r *testRegistry) Auth() *usecase.Auth             { return r.auth }
@@ -37,6 +42,7 @@ func (r *testRegistry) Permission() *usecase.Permission { return r.permission }
 func (r *testRegistry) Org() *usecase.Org               { return r.org }
 func (r *testRegistry) Group() *usecase.Group           { return r.group }
 func (r *testRegistry) Project() *usecase.Project       { return r.project }
+func (r *testRegistry) Branch() *usecase.Branch         { return r.branch }
 
 type stubPasswordHasher struct{}
 
@@ -66,9 +72,18 @@ func TestAPIRoutes(t *testing.T) {
 	node, _ := snow.NewNode(1)
 	userRepo := sqlite.NewUserRepository(dbConn)
 	groupRepo := sqlite.NewGroupRepository(dbConn)
+	pbacRepo := sqlite.NewPBACRepository(dbConn)
 	orgUc := usecase.NewOrg(sqlite.NewOrgRepository(dbConn))
-	permissionUc := usecase.NewPermission(sqlite.NewPBACRepository(dbConn), userRepo, groupRepo, orgUc)
+	permissionUc := usecase.NewPermission(pbacRepo, userRepo, groupRepo, orgUc)
 	projectUc := usecase.NewProject(sqlite.NewProjectRepository(dbConn), node, permissionUc, orgUc)
+	branchRepo := sqlite.NewBranchRepository(dbConn)
+	pushRepo := sqlite.NewPushRepository(dbConn)
+	chunkStore, err := storage.NewLocalStore(t.TempDir())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = chunkStore.Close() })
+	branchUc := usecase.NewBranchWithChunks(permissionUc, branchRepo, node, chunkStore)
+	pusher := usecase.NewPush(permissionUc, branchRepo, pushRepo, node)
+	chunkUc := usecase.NewChunk(pushRepo, chunkStore)
 	reg := &testRegistry{
 		auth:       usecase.NewAuth("test-secret", stubPasswordHasher{}, userRepo, sqlite.NewAuthRepository(dbConn)),
 		user:       usecase.NewUser(node, userRepo, stubPasswordHasher{}),
@@ -77,6 +92,34 @@ func TestAPIRoutes(t *testing.T) {
 		org:        orgUc,
 		group:      usecase.NewGroup(groupRepo, node, permissionUc, orgUc),
 		project:    projectUc,
+		branch:     branchUc,
+	}
+
+	seedBrowserFiles := func(t *testing.T, files map[string]string) *domain.PushResult {
+		t.Helper()
+
+		pushCtx := domain.ContextWithClaim(context.Background(), domain.Claims{UserID: snow.ID(userID), IsAdmin: true})
+		pushFiles := make([]*domain.PushFile, 0, len(files))
+		for path, content := range files {
+			chunks, err := chunker.ChunkAll([]byte(content))
+			require.NoError(t, err)
+			hashes := make([]domain.Hash, 0, len(chunks))
+			for _, c := range chunks {
+				_, err := chunkUc.Upload(pushCtx, c.Hash, c.Data)
+				require.NoError(t, err)
+				hashes = append(hashes, c.Hash)
+			}
+			pushFiles = append(pushFiles, &domain.PushFile{
+				Path:        path,
+				Mode:        0o644,
+				SizeBytes:   int64(len(content)),
+				FileHash:    treehash.FileHash(hashes),
+				ChunkHashes: hashes,
+			})
+		}
+		result, err := pusher.Push(pushCtx, snow.ID(1), "main", "", "seed", pushFiles, nil, "", "")
+		require.NoError(t, err)
+		return result
 	}
 
 	container := NewAPI(reg).SetupRoute()
@@ -504,6 +547,64 @@ func TestAPIRoutes(t *testing.T) {
 		gone := doGet(t, base+"/my-game", aliceLogin.AccessToken)
 		require.Equal(t, http.StatusNotFound, gone.StatusCode)
 		gone.Body.Close()
+	})
+
+	t.Run("repository browser", func(t *testing.T) {
+		seed := seedBrowserFiles(t, map[string]string{
+			"public/a.txt":   "hello",
+			"secret/key.bin": "top secret",
+		})
+		aliceLogin, _ := login(t)
+		base := server.URL + "/api/v1/orgs/default/projects/default"
+
+		tree := decodeBody[model.TreeResponse](t, doGet(t, base+"/tree?rev=main", aliceLogin.AccessToken))
+		require.Len(t, tree.Entries, 2)
+
+		subtree := decodeBody[model.TreeResponse](t, doGet(t, base+"/tree?rev=main&path=public", aliceLogin.AccessToken))
+		require.Len(t, subtree.Entries, 1)
+		require.Equal(t, "public/a.txt", subtree.Entries[0].Path)
+
+		blob := doGet(t, base+"/blob?rev=main&path=public/a.txt", aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, blob.StatusCode)
+		raw, err := io.ReadAll(blob.Body)
+		blob.Body.Close()
+		require.NoError(t, err)
+		require.Equal(t, "hello", string(raw))
+
+		commits := decodeBody[[]model.CommitResponse](t, doGet(t, base+"/commits?branch=main", aliceLogin.AccessToken))
+		require.Len(t, commits, 1)
+		require.Equal(t, seed.CommitID.Base36(), commits[0].ID)
+		require.Equal(t, "seed", commits[0].Message)
+
+		commitDiff := decodeBody[model.CommitDiffResponse](t,
+			doGet(t, base+"/commits/"+seed.CommitID.Base36()+"/diff", aliceLogin.AccessToken))
+		require.Len(t, commitDiff.Files, 2)
+		require.NotEmpty(t, commitDiff.Files[0].Patch)
+
+		branches := decodeBody[[]model.BranchResponse](t, doGet(t, base+"/branches", aliceLogin.AccessToken))
+		require.Len(t, branches, 1)
+		require.Equal(t, "main", branches[0].Name)
+		require.True(t, branches[0].IsDefault)
+
+		reader, err := userRepo.Create(context.Background(), domain.User{
+			ID: node.Generate(), Name: "reader", Email: "reader@example.com", Password: "hashed-password",
+		})
+		require.NoError(t, err)
+		projectID := snow.ID(1)
+		_, err = pbacRepo.CreateRule(context.Background(), domain.PBACRule{
+			UserID: &reader.ID, OrgID: 1, ProjectID: &projectID,
+			PathPrefix: "public", Permission: domain.PermissionRead,
+		})
+		require.NoError(t, err)
+
+		readerLogin, _ := loginAs(t, "reader@example.com")
+		readerTree := decodeBody[model.TreeResponse](t, doGet(t, base+"/tree?rev=main", readerLogin.AccessToken))
+		require.Len(t, readerTree.Entries, 1)
+		require.Equal(t, "public", readerTree.Entries[0].Path)
+
+		hidden := doGet(t, base+"/blob?rev=main&path=secret/key.bin", readerLogin.AccessToken)
+		require.Equal(t, http.StatusNotFound, hidden.StatusCode)
+		hidden.Body.Close()
 	})
 
 	t.Run("openapi doc is served", func(t *testing.T) {

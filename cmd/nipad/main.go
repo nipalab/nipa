@@ -73,7 +73,7 @@ func main() {
 		authUsecase:       authUsecase,
 		userUsecase:       usecase.NewUser(snowUser, userRepo, passwordHasher),
 		commonUsecase:     usecase.NewCommon(orgRepo, projectRepo),
-		branchUsecase:     usecase.NewBranch(permissionUsecase, branchRepository, snowUser),
+		branchUsecase:     usecase.NewBranchWithChunks(permissionUsecase, branchRepository, snowUser, chunkStore),
 		pushUsecase:       usecase.NewPush(permissionUsecase, branchRepository, pushRepository, snowUser),
 		chunkUsecase:      usecase.NewChunk(pushRepository, chunkStore),
 		permissionUsecase: permissionUsecase,
