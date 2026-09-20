@@ -13,6 +13,19 @@ function jsonResponse(body: unknown, status = 200): Response {
   } as Response
 }
 
+async function waitForText(container: HTMLElement, text: string, timeoutMs = 2000) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (container.textContent?.includes(text)) {
+      return
+    }
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    })
+  }
+  throw new Error(`timed out waiting for ${text}`)
+}
+
 beforeEach(() => {
   clearSession()
 })
@@ -29,7 +42,6 @@ async function renderApp() {
   const root = createRoot(container)
   await act(async () => {
     root.render(<App />)
-    await new Promise((resolve) => setTimeout(resolve, 0))
   })
   return { container, root }
 }
@@ -39,7 +51,7 @@ describe('App', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ error: 'refresh token required' }, 401)))
 
     const { container, root } = await renderApp()
-    expect(container.textContent).toContain('Sign in')
+    await waitForText(container, 'Sign in')
     expect(container.querySelectorAll('input')).toHaveLength(2)
     act(() => root.unmount())
   })
@@ -53,7 +65,7 @@ describe('App', () => {
     )
 
     const { container, root } = await renderApp()
-    expect(container.textContent).toContain('Signed in')
+    await waitForText(container, 'Signed in')
     act(() => root.unmount())
   })
 })

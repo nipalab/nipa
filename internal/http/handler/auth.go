@@ -41,7 +41,11 @@ func (h *Handler) AuthRefreshToken(appCtx http.AppContext) {
 	}
 	result, err := h.useCase.Auth().LoginWithRefreshToken(appCtx.Context(), cookie.Value)
 	if err != nil {
-		clearRefreshCookie(appCtx)
+		// A missing token means another tab rotated the cookie first; keep the
+		// browser cookie so the loser can retry with the newer value.
+		if !domain.IsErrorNotFound(err) {
+			clearRefreshCookie(appCtx)
+		}
 		appCtx.HandleError(err)
 		return
 	}

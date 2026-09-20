@@ -1,10 +1,51 @@
 import type { LoginRequest, TokenResponse } from './models'
 
+export type SessionEvent = 'login' | 'logout'
+
+const REFRESH_RETRY_DELAY_MS = 150
+const REFRESH_ATTEMPTS = 3
+
 let accessToken: string | null = null
 let refreshInFlight: Promise<TokenResponse> | null = null
+const sessionListeners = new Set<(event: SessionEvent) => void>()
+
+const channel: BroadcastChannel | null =
+  typeof window !== 'undefined' && typeof window.BroadcastChannel !== 'undefined'
+    ? new window.BroadcastChannel('nipa.auth')
+    : null
+
+channel?.addEventListener('message', (message) => {
+  const event = message.data as SessionEvent
+  if (event === 'logout') {
+    clearSession()
+  }
+  notify(event)
+})
 
 interface ApiRequestInit extends RequestInit {
   retry?: boolean
+}
+
+function notify(event: SessionEvent): void {
+  sessionListeners.forEach((listener) => listener(event))
+}
+
+function broadcast(event: SessionEvent): void {
+  channel?.postMessage(event)
+}
+
+function handleSessionLost(): void {
+  // Only clear this tab: another tab may still hold a valid session (for
+  // example when it won a concurrent refresh rotation).
+  clearSession()
+  notify('logout')
+}
+
+export function subscribeSession(listener: (event: SessionEvent) => void): () => void {
+  sessionListeners.add(listener)
+  return () => {
+    sessionListeners.delete(listener)
+  }
 }
 
 export function getAccessToken(): string | null {
@@ -29,6 +70,7 @@ export async function login(req: LoginRequest): Promise<TokenResponse> {
     body: JSON.stringify(req),
   })
   setSession(tokens)
+  broadcast('login')
   return tokens
 }
 
@@ -37,10 +79,11 @@ export async function logout(): Promise<void> {
     await apiFetch('/api/v1/auth/logout', { method: 'POST' })
   } finally {
     clearSession()
+    broadcast('logout')
   }
 }
 
-async function refresh(): Promise<TokenResponse> {
+function refreshOnce(): Promise<TokenResponse> {
   if (!refreshInFlight) {
     refreshInFlight = requestJson<TokenResponse>('/api/v1/auth/refresh', {
       method: 'POST',
@@ -57,12 +100,29 @@ async function refresh(): Promise<TokenResponse> {
   return refreshInFlight
 }
 
+async function refresh(): Promise<TokenResponse> {
+  let lastError: unknown
+  for (let attempt = 0; attempt < REFRESH_ATTEMPTS; attempt++) {
+    if (attempt > 0) {
+      // Another tab may have rotated the cookie between our request and its
+      // response; wait briefly so the retry sends the newer cookie value.
+      await new Promise((resolve) => setTimeout(resolve, REFRESH_RETRY_DELAY_MS))
+    }
+    try {
+      return await refreshOnce()
+    } catch (err) {
+      lastError = err
+    }
+  }
+  throw lastError
+}
+
 export async function bootstrap(): Promise<boolean> {
   try {
     await refresh()
     return true
   } catch {
-    clearSession()
+    handleSessionLost()
     return false
   }
 }
@@ -83,7 +143,7 @@ export async function apiFetch(path: string, init: ApiRequestInit = {}): Promise
       await refresh()
       return await apiFetch(path, { ...init, retry: true })
     } catch {
-      clearSession()
+      handleSessionLost()
     }
   }
   return res

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Spinner, Stack } from '@primer/react'
 import HomePage from './pages/HomePage'
 import LoginPage from './pages/LoginPage'
-import { bootstrap, logout } from './api/client'
+import { bootstrap, logout, subscribeSession } from './api/client'
 
 type Status = 'loading' | 'authenticated' | 'anonymous'
 
@@ -20,6 +20,20 @@ export default function App() {
       active = false
     }
   }, [])
+
+  useEffect(
+    () =>
+      subscribeSession((event) => {
+        if (event === 'logout') {
+          setStatus('anonymous')
+          return
+        }
+        bootstrap().then((authenticated) => {
+          setStatus(authenticated ? 'authenticated' : 'anonymous')
+        })
+      }),
+    [],
+  )
 
   async function handleLogout() {
     await logout()

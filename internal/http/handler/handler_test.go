@@ -243,7 +243,8 @@ func TestHandler_AuthRefreshToken_UnknownToken(t *testing.T) {
 
 	cookie := appCtx.cookies[refreshCookieName]
 	require.NotNil(t, cookie)
-	require.Equal(t, -1, cookie.MaxAge)
+	require.Equal(t, "unknown", cookie.Value, "another tab may hold the rotated cookie")
+	require.NotEqual(t, -1, cookie.MaxAge)
 }
 
 func TestHandler_AuthLogout(t *testing.T) {

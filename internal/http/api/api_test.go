@@ -158,6 +158,35 @@ func TestAPIRoutes(t *testing.T) {
 		require.Equal(t, http.StatusNotFound, replay.StatusCode)
 	})
 
+	t.Run("stale refresh does not clobber a rotated cookie", func(t *testing.T) {
+		_, first := login(t)
+
+		rotatedResp := doJSON(t, server.URL+"/api/v1/auth/refresh", `{}`, []*http.Cookie{first}, "")
+		defer rotatedResp.Body.Close()
+		require.Equal(t, http.StatusOK, rotatedResp.StatusCode)
+
+		var second *http.Cookie
+		for _, cookie := range rotatedResp.Cookies() {
+			if cookie.Name == "nipa_refresh" {
+				second = cookie
+			}
+		}
+		require.NotNil(t, second)
+
+		staleResp := doJSON(t, server.URL+"/api/v1/auth/refresh", `{}`, []*http.Cookie{first}, "")
+		defer staleResp.Body.Close()
+		require.Equal(t, http.StatusNotFound, staleResp.StatusCode)
+		for _, cookie := range staleResp.Cookies() {
+			if cookie.Name == "nipa_refresh" {
+				require.NotEqual(t, -1, cookie.MaxAge, "the losing tab must not clear the rotated cookie")
+			}
+		}
+
+		okResp := doJSON(t, server.URL+"/api/v1/auth/refresh", `{}`, []*http.Cookie{second}, "")
+		defer okResp.Body.Close()
+		require.Equal(t, http.StatusOK, okResp.StatusCode)
+	})
+
 	t.Run("login unknown user", func(t *testing.T) {
 		resp := doJSON(t, server.URL+"/api/v1/auth/login", `{"email":"ghost@example.com","password":"whatever"}`, nil, "")
 		defer resp.Body.Close()
