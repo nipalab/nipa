@@ -114,12 +114,17 @@ func (l *LocalRepo) Snapshot() (*domain.Snapshot, error) {
 
 	files := make([]domain.SnapshotFile, 0, len(rows))
 	for _, r := range rows {
+		chunks, err := decodeChunkHashes(r.Chunks)
+		if err != nil {
+			return nil, err
+		}
 		files = append(files, domain.SnapshotFile{
 			Path:      stripRoot(r.Path),
 			Hash:      hashFromBytes(r.Hash),
 			Mode:      int(r.Mode),
 			IsBinary:  r.IsBinary,
 			SizeBytes: r.SizeBytes,
+			Chunks:    chunks,
 		})
 	}
 	return &domain.Snapshot{TreeHash: treeHash, Files: files}, nil

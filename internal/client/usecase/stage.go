@@ -113,35 +113,10 @@ func (w *WorkingCopy) Status(ctx context.Context) (*domain.Status, error) {
 		stagedByPath[p] = true
 	}
 
-	var working []string
-	err = filepath.WalkDir(w.root, func(p string, d fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		rel, err := filepath.Rel(w.root, p)
-		if err != nil {
-			return err
-		}
-		relSlash := filepath.ToSlash(rel)
-		if d.Name() == nipaDir {
-			if d.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if d.IsDir() {
-			return nil
-		}
-		if !d.Type().IsRegular() {
-			return nil
-		}
-		working = append(working, relSlash)
-		return nil
-	})
+	working, err := walkWorkingFiles(w.root)
 	if err != nil {
 		return nil, err
 	}
-	sort.Strings(working)
 	workingSet := make(map[string]bool, len(working))
 	for _, p := range working {
 		workingSet[p] = true
@@ -185,6 +160,40 @@ func (w *WorkingCopy) Status(ctx context.Context) (*domain.Status, error) {
 		}
 	}
 	return st, nil
+}
+
+// walkWorkingFiles returns the repo-relative slash paths of regular files in
+// the working tree, sorted, skipping the .nipa metadata directory.
+func walkWorkingFiles(root string) ([]string, error) {
+	var paths []string
+	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		rel, err := filepath.Rel(root, p)
+		if err != nil {
+			return err
+		}
+		if d.Name() == nipaDir {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if d.IsDir() {
+			return nil
+		}
+		if !d.Type().IsRegular() {
+			return nil
+		}
+		paths = append(paths, filepath.ToSlash(rel))
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	sort.Strings(paths)
+	return paths, nil
 }
 
 func (w *WorkingCopy) listStagedSet() (map[string]bool, error) {

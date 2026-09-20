@@ -137,6 +137,10 @@ func (l *LocalRepo) insertTreeNode(ctx context.Context, q *sqlcLocalrepo.Queries
 
 func (l *LocalRepo) insertFile(ctx context.Context, q *sqlcLocalrepo.Queries, treePath, token string, file *domain.File) error {
 	filePath := treePath + "/" + file.Name
+	hashes := make([]domain.Hash, 0, len(file.Chunks))
+	for _, c := range file.Chunks {
+		hashes = append(hashes, c.Hash)
+	}
 	return q.FileUpsert(ctx, sqlcLocalrepo.FileUpsertParams{
 		Path:       filePath,
 		TreePath:   treePath,
@@ -144,6 +148,7 @@ func (l *LocalRepo) insertFile(ctx context.Context, q *sqlcLocalrepo.Queries, tr
 		SizeBytes:  file.SizeBytes,
 		Mode:       int64(file.Mode),
 		IsBinary:   file.IsBinary,
+		Chunks:     encodeChunkHashes(hashes),
 		SnapshotID: token,
 	})
 }

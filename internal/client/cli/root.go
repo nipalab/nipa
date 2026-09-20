@@ -14,6 +14,7 @@ type usecaseContainer interface {
 	Update() *usecase.Update
 	Merge() *usecase.Merge
 	Revert() *usecase.Revert
+	Diff() *usecase.Diff
 }
 
 type connector interface {
@@ -48,5 +49,6 @@ func (c *Cli) Run() error {
 	rootCmd.AddCommand(c.setupMergeCmd())
 	rootCmd.AddCommand(c.setupRevertCmd())
 	rootCmd.AddCommand(c.setupLogCmd())
+	rootCmd.AddCommand(c.setupDiffCmd())
 	return rootCmd.Execute()
 }

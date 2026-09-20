@@ -136,6 +136,9 @@ func TestPush_Run_Success(t *testing.T) {
 	require.Equal(t, chunks[0].Hash, client.uploadedChunks[0].Hash)
 	require.Equal(t, "hello world", string(client.uploadedChunks[0].Data))
 
+	require.Equal(t, "hello world", string(local.storedChunks[chunks[0].Hash]),
+		"uploaded chunks must be cached locally so nipa diff can rebuild the old side")
+
 	require.NotNil(t, local.tree, "working copy snapshot must be refreshed from the server after push")
 	require.True(t, local.clearedStaged, "staged markers are cleared only after a fully successful push")
 	require.Equal(t, snow.ID(1).Base36(), local.savedCommitID, "the pushed commit id must be pinned locally")

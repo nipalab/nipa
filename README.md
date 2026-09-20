@@ -45,6 +45,7 @@ Run `nipa <command> --help` for full details.
 | `nipa merge <branch>`       | Merge another branch into the current one. Fast-forwards when possible; `--no-ff` forces a merge commit, `--ff-only` refuses, `--abort` cancels a conflicted merge, `-m` sets the message. |
 | `nipa revert <commit>`      | Create new commits that undo the given commit or range (`<from>..<to>`, newest first, up to 16 commits) without rewriting history. `--mainline 1\|2` for merge commits, `--no-commit` stages without committing, `-m` sets the message (single commit only), `--continue` / `--abort` / `--skip` drive a conflicted revert. |
 | `nipa log`                  | Show the commit history of the current branch. Interactive and scrollable when stdout is a terminal; `-n` limits, `--oneline` prints one line per commit, `--no-pager` disables the pager. |
+| `nipa diff`                 | Show changes between the working tree and the last synced snapshot as a unified patch. `--staged` limits to what the next push would upload, `-U` sets the context, `--stat`/`--numstat`/`--shortstat`/`--name-only`/`--name-status`/`--raw` select other formats, `-- <path>` limits paths, `--exit-code`/`--quiet` set the exit status, and `--no-pager`/`--no-color` disable the pager/colors. |
 
 Branch creation (`nipa branch -c <name>`) forks from the exact commit the
 working copy is pinned to (a push records the server's commit id and hash
@@ -58,19 +59,30 @@ inverse, on top of the current branch head. A conflicted revert stops with
 commit a plain `nipa push` also finishes it), skip it with `nipa revert --skip`,
 or discard the whole operation with `nipa revert --abort`.
 
+`nipa diff` compares the working tree against the last synced snapshot, fully
+offline: unchanged files are skipped, tracked files removed from disk are
+deletions, and files staged with `nipa add` that are not in the snapshot are
+additions. Untracked files are only reported by `nipa status`. The snapshot
+records each file's chunk hashes, so the old side of the comparison is
+reassembled from the local object cache.
+
 ## Architecture
 
 - **Server** — `internal/`: `domain` (entities/errors), `usecase` (business
   logic), `repository` (SQLite/Postgres over sqlc), `grpc` (protobuf service +
   handlers), `http` (REST API).
+- **Diff engine** — `internal/diff/` is a pure package (Myers line diff, tree
+  comparison, unified/stat/raw rendering) shared by the client and available to
+  the server for merge-request diffs.
 - **Client** — `internal/client/`: `cli` (cobra commands), `usecase`
-  (clone/branch/push/update/merge/revert orchestration), `grpc` (transport),
+  (clone/branch/push/update/merge/revert/diff orchestration), `grpc` (transport),
   `localrepo` (`.nipa/` local metadata + SQLite), `merge` (three-way tree merge
   + diff3), `securestorage` (keyring-backed token store).
 - Local state lives in `.nipa/` inside the clone target: a JSON `config` with
   the repository URL and current branch, and a SQLite database tracking the tree
-  snapshot, the content chunk cache (never erased, so updates can skip unchanged
-  content) and the staged file list.
+  snapshot (including each file's chunk hashes) and the staged file list, plus a
+  content chunk cache (never erased, so updates can skip unchanged content and
+  diffs can rebuild the old side).
 - Content is stored server-side as FastCDC chunks addressed by BLAKE3 hash;
   the tree is a recursive manifest of directories, files and their chunk lists.
 - **Web UI** (work in progress) — a Vite/React single-page app in `web/`

@@ -23,14 +23,15 @@ ON CONFLICT(path) DO UPDATE SET
     snapshot_id = excluded.snapshot_id;
 
 -- name: FileUpsert :exec
-INSERT INTO files (path, tree_path, hash, size_bytes, mode, is_binary, snapshot_id)
-VALUES (:path, :tree_path, :hash, :size_bytes, :mode, :is_binary, :snapshot_id)
+INSERT INTO files (path, tree_path, hash, size_bytes, mode, is_binary, chunks, snapshot_id)
+VALUES (:path, :tree_path, :hash, :size_bytes, :mode, :is_binary, :chunks, :snapshot_id)
 ON CONFLICT(path) DO UPDATE SET
     tree_path = excluded.tree_path,
     hash = excluded.hash,
     size_bytes = excluded.size_bytes,
     mode = excluded.mode,
     is_binary = excluded.is_binary,
+    chunks = excluded.chunks,
     snapshot_id = excluded.snapshot_id;
 
 -- name: StaleFileDelete :exec
@@ -60,7 +61,7 @@ DELETE FROM staged_files
 WHERE path IS NOT NULL;
 
 -- name: SnapshotFileList :many
-SELECT path, hash, size_bytes, mode, is_binary
+SELECT path, hash, size_bytes, mode, is_binary, chunks
 FROM files
 WHERE snapshot_id = :snapshot_id
 ORDER BY path;

@@ -15,6 +15,7 @@ type File struct {
 	SizeBytes  int64  `json:"size_bytes"`
 	Mode       int64  `json:"mode"`
 	IsBinary   bool   `json:"is_binary"`
+	Chunks     []byte `json:"chunks"`
 	SnapshotID string `json:"snapshot_id"`
 }
 
