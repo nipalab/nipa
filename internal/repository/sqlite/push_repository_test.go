@@ -86,13 +86,25 @@ func TestPushRepositorySQLite_IncrementalPushKeepsOldCommitReadable(t *testing.T
 	require.NoError(t, repo.InsertChunkIfNotExists(ctx, ch1, sz1))
 	require.NoError(t, repo.InsertChunkIfNotExists(ctx, ch2, sz2))
 
+	d1Hash1 := treehash.TreeHash([]treehash.FileEntry{{Name: "a.txt", Mode: 0o644, Hash: fh1}}, nil)
+	d1Hash2 := treehash.TreeHash([]treehash.FileEntry{{Name: "a.txt", Mode: 0o644, Hash: fh2}}, nil)
+	d2Hash := treehash.TreeHash([]treehash.FileEntry{{Name: "keep.txt", Mode: 0o644, Hash: fh1}}, nil)
+	rootHash1 := treehash.TreeHash(nil, []treehash.TreeEntry{
+		{Name: "d1", Hash: d1Hash1},
+		{Name: "d2", Hash: d2Hash},
+	})
+	rootHash2 := treehash.TreeHash(nil, []treehash.TreeEntry{
+		{Name: "d1", Hash: d1Hash2},
+		{Name: "d2", Hash: d2Hash},
+	})
+
 	require.NoError(t, repo.ApplyPush(ctx, usecase.ApplyPushRequest{
 		ProjectID: projectID, BranchID: branchID, CommitID: snow.ID(1), UserID: snow.ID(1), Message: "c1",
-		CommitHash: treehash.CommitHash(treehash.TreeHash(nil, nil), nil, "c1"),
+		CommitHash: treehash.CommitHash(rootHash1, nil, "c1"),
 		Nodes: []usecase.PushNodeRow{
-			{ID: 1, Hash: treehash.TreeHash(nil, nil), Name: "root", Mode: 0o444},
-			{ID: 2, Hash: treehash.TreeHash(nil, nil), Name: "d1", Mode: 0o444, ParentID: ptr(int64(1))},
-			{ID: 3, Hash: domain.Hash{3}, Name: "d2", Mode: 0o444, ParentID: ptr(int64(1))},
+			{ID: 1, Hash: rootHash1, Name: "root", Mode: 0o444},
+			{ID: 2, Hash: d1Hash1, Name: "d1", Mode: 0o444, ParentID: ptr(int64(1))},
+			{ID: 3, Hash: d2Hash, Name: "d2", Mode: 0o444, ParentID: ptr(int64(1))},
 		},
 		Files: []usecase.PushFileRow{
 			{Name: "a.txt", Mode: 0o644, SizeBytes: sz1, Hash: fh1, TreeID: 2, ChunkHashes: []domain.Hash{ch1}},
@@ -102,15 +114,15 @@ func TestPushRepositorySQLite_IncrementalPushKeepsOldCommitReadable(t *testing.T
 
 	require.NoError(t, repo.ApplyPush(ctx, usecase.ApplyPushRequest{
 		ProjectID: projectID, BranchID: branchID, CommitID: snow.ID(2), UserID: snow.ID(1), Message: "c2",
-		CommitHash: treehash.CommitHash(treehash.TreeHash(nil, nil), nil, "c2"),
+		CommitHash: treehash.CommitHash(rootHash2, nil, "c2"),
 		Nodes: []usecase.PushNodeRow{
-			{ID: 1, Hash: treehash.TreeHash(nil, nil), Name: "root", Mode: 0o444},
-			{ID: 2, Hash: treehash.TreeHash(nil, nil), Name: "d1", Mode: 0o444, ParentID: ptr(int64(1))},
-			{ID: 3, Hash: domain.Hash{9}, Name: "d2", Mode: 0o444, ParentID: ptr(int64(1))},
+			{ID: 1, Hash: rootHash2, Name: "root", Mode: 0o444},
+			{ID: 2, Hash: d1Hash2, Name: "d1", Mode: 0o444, ParentID: ptr(int64(1))},
+			// d2 is untouched: only a hash reference, its rows live in commit 1.
+			{ID: 3, Hash: d2Hash, Name: "d2", Mode: 0o444, ParentID: ptr(int64(1))},
 		},
 		Files: []usecase.PushFileRow{
 			{Name: "a.txt", Mode: 0o644, SizeBytes: sz2, Hash: fh2, TreeID: 2, ChunkHashes: []domain.Hash{ch2}},
-			{Name: "keep.txt", Mode: 0o644, SizeBytes: sz1, IsBinary: true, Hash: fh1, TreeID: 3, ChunkHashes: []domain.Hash{ch1}},
 		},
 	}))
 
@@ -145,11 +157,12 @@ func TestPushRepositorySQLite_RemoveAllFiles(t *testing.T) {
 
 	ch, sz, fh := chunkRow(t, "gone")
 	require.NoError(t, repo.InsertChunkIfNotExists(ctx, ch, sz))
+	rootHash1 := treehash.TreeHash([]treehash.FileEntry{{Name: "gone.txt", Mode: 0o644, Hash: fh}}, nil)
 	require.NoError(t, repo.ApplyPush(ctx, usecase.ApplyPushRequest{
 		ProjectID: projectID, BranchID: branchID, CommitID: snow.ID(1), UserID: snow.ID(1), Message: "c1",
-		CommitHash: treehash.CommitHash(treehash.TreeHash(nil, nil), nil, "c1"),
+		CommitHash: treehash.CommitHash(rootHash1, nil, "c1"),
 		Nodes: []usecase.PushNodeRow{
-			{ID: 1, Hash: treehash.TreeHash(nil, nil), Name: "root", Mode: 0o444},
+			{ID: 1, Hash: rootHash1, Name: "root", Mode: 0o444},
 		},
 		Files: []usecase.PushFileRow{{Name: "gone.txt", Mode: 0o644, SizeBytes: sz, Hash: fh, TreeID: 1, ChunkHashes: []domain.Hash{ch}}},
 	}))
@@ -197,19 +210,21 @@ func TestPushRepositorySQLite_MergeCommitWithParent2(t *testing.T) {
 
 	ch, sz, fh := chunkRow(t, "data")
 	require.NoError(t, repo.InsertChunkIfNotExists(ctx, ch, sz))
+	rootHashA := treehash.TreeHash([]treehash.FileEntry{{Name: "a.txt", Mode: 0o644, Hash: fh}}, nil)
+	rootHashB := treehash.TreeHash([]treehash.FileEntry{{Name: "b.txt", Mode: 0o644, Hash: fh}}, nil)
 
 	require.NoError(t, repo.ApplyPush(ctx, usecase.ApplyPushRequest{
 		ProjectID: projectID, BranchID: branchID, CommitID: snow.ID(1), UserID: snow.ID(1), Message: "A",
-		CommitHash: treehash.CommitHash(treehash.TreeHash(nil, nil), nil, "A"),
-		Nodes:      []usecase.PushNodeRow{{ID: 1, Hash: treehash.TreeHash(nil, nil), Name: "root", Mode: 0o444}},
+		CommitHash: treehash.CommitHash(rootHashA, nil, "A"),
+		Nodes:      []usecase.PushNodeRow{{ID: 1, Hash: rootHashA, Name: "root", Mode: 0o444}},
 		Files:      []usecase.PushFileRow{{Name: "a.txt", Mode: 0o644, SizeBytes: sz, Hash: fh, TreeID: 1, ChunkHashes: []domain.Hash{ch}}},
 	}))
 
 	require.NoError(t, repo.ApplyPush(ctx, usecase.ApplyPushRequest{
 		ProjectID: projectID, BranchID: branchID, CommitID: snow.ID(2), UserID: snow.ID(1), Message: "B",
-		CommitHash: treehash.CommitHash(treehash.TreeHash(nil, nil), nil, "B"),
+		CommitHash: treehash.CommitHash(rootHashB, nil, "B"),
 		ParentID:   ptr(snow.ID(1)),
-		Nodes:      []usecase.PushNodeRow{{ID: 1, Hash: treehash.TreeHash(nil, nil), Name: "root", Mode: 0o444}},
+		Nodes:      []usecase.PushNodeRow{{ID: 1, Hash: rootHashB, Name: "root", Mode: 0o444}},
 		Files:      []usecase.PushFileRow{{Name: "b.txt", Mode: 0o644, SizeBytes: sz, Hash: fh, TreeID: 1, ChunkHashes: []domain.Hash{ch}}},
 	}))
 

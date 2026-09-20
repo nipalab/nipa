@@ -50,7 +50,7 @@ func (f *fakeRevertClient) DownloadChunks(_ context.Context, _ domain.ChunkScope
 	return nil
 }
 
-func (f *fakeRevertClient) Push(_ context.Context, _, _, _, baseTreeHash, message string, _ []*serverDomain.PushFile, _ []string, _ string) (*serverDomain.PushResult, error) {
+func (f *fakeRevertClient) Push(_ context.Context, _, _, _, baseTreeHash, message string, _ []*serverDomain.PushFile, _ []string, _, _ string) (*serverDomain.PushResult, error) {
 	f.pushCalled = true
 	f.pushBase = baseTreeHash
 	f.pushMsg = message

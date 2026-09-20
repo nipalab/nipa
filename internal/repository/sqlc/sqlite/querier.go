@@ -32,7 +32,7 @@ type Querier interface {
 	DeleteProject(ctx context.Context, id int64) error
 	FileChunkInsert(ctx context.Context, arg FileChunkInsertParams) error
 	FileInsert(ctx context.Context, arg FileInsertParams) (int64, error)
-	FileListByTree(ctx context.Context, treeID sql.NullInt64) ([]File, error)
+	FileListByTree(ctx context.Context, treeID int64) ([]File, error)
 	FileSetTree(ctx context.Context, arg FileSetTreeParams) error
 	GetOrganization(ctx context.Context, id int64) (Organization, error)
 	GetOrganizationBySlug(ctx context.Context, slug string) (Organization, error)
@@ -60,7 +60,7 @@ type Querier interface {
 	TreeNodeGet(ctx context.Context, id int64) (TreeNode, error)
 	TreeNodeGetChildByName(ctx context.Context, arg TreeNodeGetChildByNameParams) (TreeNode, error)
 	TreeNodeInsert(ctx context.Context, arg TreeNodeInsertParams) (int64, error)
-	TreeNodeListChildren(ctx context.Context, parentTreeID sql.NullInt64) ([]TreeNode, error)
+	TreeNodeListChildren(ctx context.Context, parentTreeID int64) ([]TreeNode, error)
 	TreeNodeSetParent(ctx context.Context, arg TreeNodeSetParentParams) error
 	UserCreate(ctx context.Context, arg UserCreateParams) (int64, error)
 	UserDeleteByID(ctx context.Context, id int64) error

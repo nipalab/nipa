@@ -168,13 +168,21 @@ func (q *Queries) CommitLog(ctx context.Context, arg CommitLogParams) ([]CommitL
 }
 
 const fileListByTree = `-- name: FileListByTree :many
-SELECT id, name, mode, tree_id, hash, size_bytes, is_binary, created_at
-FROM files
-WHERE tree_id = ?1
-ORDER BY name
+SELECT f.id, f.name, f.mode, f.tree_id, f.hash, f.size_bytes, f.is_binary, f.created_at
+FROM files f
+WHERE f.tree_id = (
+        SELECT content.id
+        FROM tree_nodes content
+        JOIN tree_nodes ref ON ref.hash = content.hash
+        WHERE ref.id = ?1
+          AND EXISTS (SELECT 1 FROM files cf WHERE cf.tree_id = content.id)
+        ORDER BY content.id
+        LIMIT 1
+    )
+ORDER BY f.name
 `
 
-func (q *Queries) FileListByTree(ctx context.Context, treeID sql.NullInt64) ([]File, error) {
+func (q *Queries) FileListByTree(ctx context.Context, treeID int64) ([]File, error) {
 	rows, err := q.db.QueryContext(ctx, fileListByTree, treeID)
 	if err != nil {
 		return nil, err
@@ -228,15 +236,27 @@ func (q *Queries) TreeNodeGet(ctx context.Context, id int64) (TreeNode, error) {
 }
 
 const treeNodeGetChildByName = `-- name: TreeNodeGetChildByName :one
-SELECT id, hash, name, mode, parent_tree_id, created_at
-FROM tree_nodes
-WHERE parent_tree_id = ?1 AND name = ?2
+SELECT t.id, t.hash, t.name, t.mode, t.parent_tree_id, t.created_at
+FROM tree_nodes t
+WHERE t.parent_tree_id = (
+        SELECT content.id
+        FROM tree_nodes content
+        JOIN tree_nodes ref ON ref.hash = content.hash
+        WHERE ref.id = ?1
+          AND (
+              EXISTS (SELECT 1 FROM files f WHERE f.tree_id = content.id)
+              OR EXISTS (SELECT 1 FROM tree_nodes c WHERE c.parent_tree_id = content.id)
+          )
+        ORDER BY content.id
+        LIMIT 1
+    )
+    AND t.name = ?2
 LIMIT 1
 `
 
 type TreeNodeGetChildByNameParams struct {
-	ParentTreeID sql.NullInt64 `json:"parent_tree_id"`
-	Name         string        `json:"name"`
+	ParentTreeID int64  `json:"parent_tree_id"`
+	Name         string `json:"name"`
 }
 
 func (q *Queries) TreeNodeGetChildByName(ctx context.Context, arg TreeNodeGetChildByNameParams) (TreeNode, error) {
@@ -254,13 +274,24 @@ func (q *Queries) TreeNodeGetChildByName(ctx context.Context, arg TreeNodeGetChi
 }
 
 const treeNodeListChildren = `-- name: TreeNodeListChildren :many
-SELECT id, hash, name, mode, parent_tree_id, created_at
-FROM tree_nodes
-WHERE parent_tree_id = ?1
-ORDER BY name
+SELECT t.id, t.hash, t.name, t.mode, t.parent_tree_id, t.created_at
+FROM tree_nodes t
+WHERE t.parent_tree_id = (
+        SELECT content.id
+        FROM tree_nodes content
+        JOIN tree_nodes ref ON ref.hash = content.hash
+        WHERE ref.id = ?1
+          AND (
+              EXISTS (SELECT 1 FROM files f WHERE f.tree_id = content.id)
+              OR EXISTS (SELECT 1 FROM tree_nodes c WHERE c.parent_tree_id = content.id)
+          )
+        ORDER BY content.id
+        LIMIT 1
+    )
+ORDER BY t.name
 `
 
-func (q *Queries) TreeNodeListChildren(ctx context.Context, parentTreeID sql.NullInt64) ([]TreeNode, error) {
+func (q *Queries) TreeNodeListChildren(ctx context.Context, parentTreeID int64) ([]TreeNode, error) {
 	rows, err := q.db.QueryContext(ctx, treeNodeListChildren, parentTreeID)
 	if err != nil {
 		return nil, err

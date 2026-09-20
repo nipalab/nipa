@@ -86,6 +86,7 @@ message PushRequest {
     repeated PushFile files = 5;
     repeated string removed_files = 6; // paths removed relative to the base tree
     optional string parent_2_commit_hash = 7; // second parent for merge commits; empty for normal pushes
+    optional string base_commit_id = 8; // base36 snow ID; preferred over base_tree_hash (sparse/filtered clones)
 }
 
 message PushResponse {

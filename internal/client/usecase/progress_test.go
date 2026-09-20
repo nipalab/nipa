@@ -78,7 +78,7 @@ func TestRepo_Clone_ReportsDownloadProgress(t *testing.T) {
 		download:      map[serverDomain.Hash][]byte{chunkHash: []byte(content)},
 	}, &stubLocalRepo{missingChunks: []serverDomain.Hash{chunkHash}})
 
-	require.NoError(t, repo.Clone(context.Background(), "http://example.com/org/project", "example.com", "org", "project", "main", "", t.TempDir(), prog))
+	require.NoError(t, repo.Clone(context.Background(), "http://example.com/org/project", "example.com", "org", "project", "main", nil, t.TempDir(), prog))
 
 	require.Equal(t, []progressStart{{objects: 1, bytes: int64(len(content))}}, prog.starts)
 	require.Equal(t, []progressCount{{objects: 1, bytes: int64(len(content))}}, prog.counts)
@@ -95,7 +95,7 @@ func TestRepo_Clone_NoProgressWhenEverythingIsLocal(t *testing.T) {
 		manifest:      &serverDomain.TreeNode{},
 	}, &stubLocalRepo{})
 
-	require.NoError(t, repo.Clone(context.Background(), "http://example.com/org/project", "example.com", "org", "project", "main", "", t.TempDir(), prog))
+	require.NoError(t, repo.Clone(context.Background(), "http://example.com/org/project", "example.com", "org", "project", "main", nil, t.TempDir(), prog))
 
 	require.Empty(t, prog.starts, "an empty tree must not report any download work")
 	require.False(t, prog.endCalled)

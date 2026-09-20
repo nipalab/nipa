@@ -53,7 +53,7 @@ func NewRepo(auth *Auth, repoInterface repoInterface, localRepo localRepo) *Repo
 	}
 }
 
-func (r *Repo) Clone(ctx context.Context, url, host, org, project, branch, path, target string, progress ...DownloadProgress) error {
+func (r *Repo) Clone(ctx context.Context, url, host, org, project, branch string, sparse []string, target string, progress ...DownloadProgress) error {
 	if err := ensureEmptyTarget(target); err != nil {
 		return err
 	}
@@ -76,9 +76,9 @@ func (r *Repo) Clone(ctx context.Context, url, host, org, project, branch, path,
 		}
 		headCommitID = commitIDString(domainBranch)
 	}
-	var paths []string
-	if path != "" && path != "/" {
-		paths = []string{path}
+	paths, err := normalizeSparsePaths(sparse)
+	if err != nil {
+		return err
 	}
 	root, err := r.repoInterface.GetTreeNodeManifest(ctx, org, project, branch, paths)
 	if err != nil {
@@ -87,24 +87,22 @@ func (r *Repo) Clone(ctx context.Context, url, host, org, project, branch, path,
 	if err := r.localRepo.Init(target); err != nil {
 		return err
 	}
-	if err := r.localRepo.SaveConfig(domain.Config{Url: url, Branch: branch}); err != nil {
+	if err := r.localRepo.SaveConfig(domain.Config{Url: url, Branch: branch, Sparse: paths}); err != nil {
 		return err
 	}
-	if path == "" {
-		scope := domain.ChunkScope{
-			Org:       org,
-			Project:   project,
-			CommitIDs: commitIDs(headCommitID),
-			Paths:     paths,
-		}
-		if err := syncWorkingCopy(ctx, r.repoInterface, r.localRepo, target, root, scope, progress...); err != nil {
-			return err
-		}
+	scope := domain.ChunkScope{
+		Org:       org,
+		Project:   project,
+		CommitIDs: commitIDs(headCommitID),
+		Paths:     paths,
+	}
+	if err := syncWorkingCopy(ctx, r.repoInterface, r.localRepo, target, root, scope, progress...); err != nil {
+		return err
 	}
 	if err := r.localRepo.SaveTree(root); err != nil {
 		return err
 	}
-	if path == "" && headCommitID != "" {
+	if headCommitID != "" {
 		return r.localRepo.SaveCommit(headCommitID, "")
 	}
 	return nil

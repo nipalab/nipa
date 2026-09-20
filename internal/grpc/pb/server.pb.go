@@ -731,6 +731,7 @@ type PushRequest struct {
 	Files              []*PushFile            `protobuf:"bytes,5,rep,name=files,proto3" json:"files,omitempty"`
 	RemovedFiles       []string               `protobuf:"bytes,6,rep,name=removed_files,json=removedFiles,proto3" json:"removed_files,omitempty"`                          // paths removed relative to the base tree
 	Parent_2CommitHash *string                `protobuf:"bytes,7,opt,name=parent_2_commit_hash,json=parent2CommitHash,proto3,oneof" json:"parent_2_commit_hash,omitempty"` // second parent for merge commits; empty for normal pushes
+	BaseCommitId       *string                `protobuf:"bytes,8,opt,name=base_commit_id,json=baseCommitId,proto3,oneof" json:"base_commit_id,omitempty"`                  // base36 snow ID; preferred over base_tree_hash (sparse/filtered clones)
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
 }
@@ -810,6 +811,13 @@ func (x *PushRequest) GetRemovedFiles() []string {
 func (x *PushRequest) GetParent_2CommitHash() string {
 	if x != nil && x.Parent_2CommitHash != nil {
 		return *x.Parent_2CommitHash
+	}
+	return ""
+}
+
+func (x *PushRequest) GetBaseCommitId() string {
+	if x != nil && x.BaseCommitId != nil {
+		return *x.BaseCommitId
 	}
 	return ""
 }
@@ -3829,7 +3837,7 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"\x05paths\x18\x04 \x03(\tR\x05paths\"7\n" +
 	"\rDownloadChunk\x12\x12\n" +
 	"\x04hash\x18\x01 \x01(\tR\x04hash\x12\x12\n" +
-	"\x04data\x18\x02 \x01(\fR\x04data\"\xb1\x02\n" +
+	"\x04data\x18\x02 \x01(\fR\x04data\"\xef\x02\n" +
 	"\vPushRequest\x12/\n" +
 	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12\x16\n" +
 	"\x06branch\x18\x02 \x01(\tR\x06branch\x12$\n" +
@@ -3837,8 +3845,10 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"\amessage\x18\x04 \x01(\tR\amessage\x12%\n" +
 	"\x05files\x18\x05 \x03(\v2\x0f.greet.PushFileR\x05files\x12#\n" +
 	"\rremoved_files\x18\x06 \x03(\tR\fremovedFiles\x124\n" +
-	"\x14parent_2_commit_hash\x18\a \x01(\tH\x00R\x11parent2CommitHash\x88\x01\x01B\x17\n" +
-	"\x15_parent_2_commit_hash\"i\n" +
+	"\x14parent_2_commit_hash\x18\a \x01(\tH\x00R\x11parent2CommitHash\x88\x01\x01\x12)\n" +
+	"\x0ebase_commit_id\x18\b \x01(\tH\x01R\fbaseCommitId\x88\x01\x01B\x17\n" +
+	"\x15_parent_2_commit_hashB\x11\n" +
+	"\x0f_base_commit_id\"i\n" +
 	"\fPushResponse\x12\x1b\n" +
 	"\tcommit_id\x18\x01 \x01(\tR\bcommitId\x12\x1f\n" +
 	"\vcommit_hash\x18\x02 \x01(\tR\n" +

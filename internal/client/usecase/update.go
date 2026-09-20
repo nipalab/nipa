@@ -84,9 +84,6 @@ func (u *Update) Run(ctx context.Context, root string, progress ...DownloadProgr
 	if err != nil {
 		return err
 	}
-	if nu.Path != "" {
-		return clientDomain.NewUserError("update from a subdirectory clone is not supported yet")
-	}
 	if err := u.client.Connect(ctx, nu.Host); err != nil {
 		return err
 	}
@@ -107,7 +104,7 @@ func (u *Update) Run(ctx context.Context, root string, progress ...DownloadProgr
 	if err != nil {
 		return err
 	}
-	tree, err := u.client.GetTreeNodeManifest(ctx, nu.Org, nu.Project, cfg.Branch, nil)
+	tree, err := u.client.GetTreeNodeManifest(ctx, nu.Org, nu.Project, cfg.Branch, cfg.Sparse)
 	if err != nil {
 		return err
 	}
@@ -115,6 +112,7 @@ func (u *Update) Run(ctx context.Context, root string, progress ...DownloadProgr
 		Org:       nu.Org,
 		Project:   nu.Project,
 		CommitIDs: commitIDs(headCommitID),
+		Paths:     cfg.Sparse,
 	}
 	if err := syncWorkingCopy(ctx, u.client, u.localRepo, root, tree, scope, progress...); err != nil {
 		return err
@@ -149,6 +147,47 @@ func commitIDs(ids ...string) []string {
 	return out
 }
 
+// SetSparse persists the sparse path prefixes for the working copy. An empty
+// set means a full checkout.
+func (u *Update) SetSparse(root string, paths []string) error {
+	if err := u.localRepo.Init(root); err != nil {
+		return err
+	}
+	cfg, err := u.localRepo.LoadConfig()
+	if err != nil {
+		return err
+	}
+	normalized, err := normalizeSparsePaths(paths)
+	if err != nil {
+		return err
+	}
+	cfg.Sparse = normalized
+	return u.localRepo.SaveConfig(*cfg)
+}
+
+func normalizeSparsePaths(paths []string) ([]string, error) {
+	if len(paths) == 0 {
+		return nil, nil
+	}
+	seen := make(map[string]struct{}, len(paths))
+	out := make([]string, 0, len(paths))
+	for _, path := range paths {
+		normalized, err := domain.NormalizePathPrefix(path)
+		if err != nil {
+			return nil, clientDomain.NewUserError(err.Error())
+		}
+		if normalized == "" {
+			continue
+		}
+		if _, ok := seen[normalized]; ok {
+			continue
+		}
+		seen[normalized] = struct{}{}
+		out = append(out, normalized)
+	}
+	return out, nil
+}
+
 func (u *Update) Switch(ctx context.Context, root, branch string, progress ...DownloadProgress) error {
 	if err := u.localRepo.Init(root); err != nil {
 		return err
@@ -166,9 +205,6 @@ func (u *Update) Switch(ctx context.Context, root, branch string, progress ...Do
 	nu, err := clientDomain.ParseNipaUrl(cfg.Url)
 	if err != nil {
 		return err
-	}
-	if nu.Path != "" {
-		return clientDomain.NewUserError("switching branches in a subdirectory clone is not supported yet")
 	}
 	staged, err := u.localRepo.ListStaged()
 	if err != nil {
@@ -188,7 +224,7 @@ func (u *Update) Switch(ctx context.Context, root, branch string, progress ...Do
 	if err != nil {
 		return err
 	}
-	tree, err := u.client.GetTreeNodeManifest(ctx, nu.Org, nu.Project, branch, nil)
+	tree, err := u.client.GetTreeNodeManifest(ctx, nu.Org, nu.Project, branch, cfg.Sparse)
 	if err != nil {
 		return err
 	}
@@ -196,6 +232,7 @@ func (u *Update) Switch(ctx context.Context, root, branch string, progress ...Do
 		Org:       nu.Org,
 		Project:   nu.Project,
 		CommitIDs: commitIDs(headCommitID),
+		Paths:     cfg.Sparse,
 	}
 	if err := syncWorkingCopy(ctx, u.client, u.localRepo, root, tree, scope, progress...); err != nil {
 		return err

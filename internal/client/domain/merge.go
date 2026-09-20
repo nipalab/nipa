@@ -38,6 +38,9 @@ type MergeState struct {
 	// is sent as the push's base tree hash instead of the conflicted marker
 	// tree recorded in the local snapshot.
 	TargetTreeHash string `json:"target_tree_hash,omitempty"`
+	// TargetCommitID is the target branch head the merge is based on. Sparse
+	// and permission-filtered clones send it as the push base commit.
+	TargetCommitID string `json:"target_commit_id,omitempty"`
 	// Conflicts is the list of paths that were left with merge markers for the
 	// user to resolve before the merge commit is pushed.
 	Conflicts []string `json:"conflicts,omitempty"`

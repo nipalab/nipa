@@ -101,6 +101,7 @@ func TestClient_Push_Success(t *testing.T) {
 		}},
 		[]string{"old.txt"},
 		"",
+		"",
 	)
 	require.NoError(t, err)
 	require.Equal(t, snow.ID(7), got.CommitID)
@@ -135,7 +136,7 @@ func TestClient_Push_ExecutableMode(t *testing.T) {
 	require.NoError(t, c.Connect(context.Background(), addr))
 
 	_, err := c.Push(context.Background(), "org", "project", "main", "", "m",
-		[]*serverDomain.PushFile{{Path: "run.sh", Mode: 0o755, FileHash: serverDomain.Hash{}, ChunkHashes: []serverDomain.Hash{{0x01}}}}, nil, "")
+		[]*serverDomain.PushFile{{Path: "run.sh", Mode: 0o755, FileHash: serverDomain.Hash{}, ChunkHashes: []serverDomain.Hash{{0x01}}}}, nil, "", "")
 	require.NoError(t, err)
 	require.Equal(t, pb.FileMode_FILE_MODE_EXECUTABLE, fs.lastPushReq.GetFiles()[0].GetMode())
 }
@@ -145,7 +146,7 @@ func TestClient_Push_ServerError(t *testing.T) {
 	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
 	require.NoError(t, c.Connect(context.Background(), addr))
 
-	_, err := c.Push(context.Background(), "org", "project", "main", "stale", "m", nil, nil, "")
+	_, err := c.Push(context.Background(), "org", "project", "main", "stale", "m", nil, nil, "", "")
 	require.Error(t, err)
 
 	var domErr *domain.Error
@@ -157,7 +158,7 @@ func TestClient_Push_ServerError(t *testing.T) {
 func TestClient_Push_NotConnected(t *testing.T) {
 	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
 
-	_, err := c.Push(context.Background(), "org", "project", "main", "", "m", nil, nil, "")
+	_, err := c.Push(context.Background(), "org", "project", "main", "", "m", nil, nil, "", "")
 	require.Error(t, err)
 	require.Equal(t, "not connected to a nipa server", err.Error())
 }

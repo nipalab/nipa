@@ -75,7 +75,7 @@ func (f *fakeMergeClient) MergeFastForward(_ context.Context, _, _, _, _ string)
 	return f.ffBranch, f.ffErr
 }
 
-func (f *fakeMergeClient) Push(_ context.Context, _, _, _, _, _ string, _ []*serverDomain.PushFile, _ []string, _ string) (*serverDomain.PushResult, error) {
+func (f *fakeMergeClient) Push(_ context.Context, _, _, _, _, _ string, _ []*serverDomain.PushFile, _ []string, _, _ string) (*serverDomain.PushResult, error) {
 	f.pushCalled = true
 	if f.pushResult != nil {
 		return f.pushResult, f.pushErr

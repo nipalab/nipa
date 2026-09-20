@@ -243,7 +243,7 @@ func TestEndToEnd_CloneAddPushFetch(t *testing.T) {
 	url := "http://" + host + "/" + e2eOrgSlug + "/" + e2eProjectSlug
 
 	target := filepath.Join(t.TempDir(), "work")
-	require.NoError(t, repo.Clone(ctx, url, host, e2eOrgSlug, e2eProjectSlug, "", "", target))
+	require.NoError(t, repo.Clone(ctx, url, host, e2eOrgSlug, e2eProjectSlug, "", nil, target))
 
 	snap0 := snapshotOf(t, target)
 	require.Empty(t, snap0.TreeHash, "cloning an empty branch must produce an empty tree")
@@ -293,7 +293,7 @@ func TestEndToEnd_CloneAddPushFetch(t *testing.T) {
 	require.Equal(t, contentA, string(blob))
 
 	checkout := filepath.Join(t.TempDir(), "checkout")
-	require.NoError(t, repo.Clone(ctx, url, host, e2eOrgSlug, e2eProjectSlug, "", "", checkout))
+	require.NoError(t, repo.Clone(ctx, url, host, e2eOrgSlug, e2eProjectSlug, "", nil, checkout))
 	snapCheckout := snapshotOf(t, checkout)
 	require.Len(t, snapCheckout.Files, 1)
 	require.Equal(t, "a.txt", snapCheckout.Files[0].Path)
@@ -308,7 +308,7 @@ func TestEndToEnd_CloneAddPushFetch(t *testing.T) {
 	require.NoError(t, pusher.Run(ctx, target, "update a, add b"))
 
 	materialized := filepath.Join(t.TempDir(), "materialized")
-	require.NoError(t, repo.Clone(ctx, url, host, e2eOrgSlug, e2eProjectSlug, "", "", materialized))
+	require.NoError(t, repo.Clone(ctx, url, host, e2eOrgSlug, e2eProjectSlug, "", nil, materialized))
 	updater := clientusecase.NewUpdate(auth, grpcClient, localrepo.NewLocalRepo())
 	require.NoError(t, updater.Run(ctx, materialized), "update must materialize the working copy from the server tree")
 	assertFileContent(t, materialized, "a.txt", contentA+"extra line\n")
@@ -325,7 +325,7 @@ func TestEndToEnd_CloneAddPushFetch(t *testing.T) {
 	assertFileContent(t, materialized, "b.txt", contentB)
 
 	checkoutAfter := filepath.Join(t.TempDir(), "checkout-after")
-	require.NoError(t, repo.Clone(ctx, url, host, e2eOrgSlug, e2eProjectSlug, "", "", checkoutAfter))
+	require.NoError(t, repo.Clone(ctx, url, host, e2eOrgSlug, e2eProjectSlug, "", nil, checkoutAfter))
 	snapAfter := snapshotOf(t, checkoutAfter)
 	require.Len(t, snapAfter.Files, 1)
 	require.Equal(t, "b.txt", snapAfter.Files[0].Path)
@@ -389,7 +389,7 @@ func TestEndToEnd_CreateBranch(t *testing.T) {
 	url := "http://" + host + "/" + e2eOrgSlug + "/" + e2eProjectSlug
 
 	target := filepath.Join(t.TempDir(), "work")
-	require.NoError(t, repo.Clone(ctx, url, host, e2eOrgSlug, e2eProjectSlug, "", "", target))
+	require.NoError(t, repo.Clone(ctx, url, host, e2eOrgSlug, e2eProjectSlug, "", nil, target))
 	writeFile(t, target, "a.txt", "branch base content\n")
 	stagePath(t, target, "a.txt")
 	require.NoError(t, pusher.Run(ctx, target, "seed main"))
@@ -465,7 +465,7 @@ func TestEndToEnd_SwitchBranch(t *testing.T) {
 	url := "http://" + host + "/" + e2eOrgSlug + "/" + e2eProjectSlug
 
 	target := filepath.Join(t.TempDir(), "work")
-	require.NoError(t, repo.Clone(ctx, url, host, e2eOrgSlug, e2eProjectSlug, "", "", target))
+	require.NoError(t, repo.Clone(ctx, url, host, e2eOrgSlug, e2eProjectSlug, "", nil, target))
 	writeFile(t, target, "a.txt", "base content\n")
 	stagePath(t, target, "a.txt")
 	require.NoError(t, pusher.Run(ctx, target, "seed main"))
@@ -479,7 +479,7 @@ func TestEndToEnd_SwitchBranch(t *testing.T) {
 	require.NotNil(t, featureManifest)
 
 	checkout := filepath.Join(t.TempDir(), "checkout")
-	require.NoError(t, repo.Clone(ctx, url, host, e2eOrgSlug, e2eProjectSlug, "", "", checkout))
+	require.NoError(t, repo.Clone(ctx, url, host, e2eOrgSlug, e2eProjectSlug, "", nil, checkout))
 	assertFileContent(t, checkout, "a.txt", "base content\n")
 	require.Equal(t, "main", loadBranchConfig(t, checkout))
 

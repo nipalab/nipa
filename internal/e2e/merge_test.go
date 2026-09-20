@@ -38,7 +38,7 @@ func cloneWorktree(t *testing.T, grpcClient *clientgrpc.Client, auth *clientusec
 	repo := clientusecase.NewRepo(auth, grpcClient, localrepo.NewLocalRepo())
 	url := "http://" + host + "/" + e2eOrgSlug + "/" + e2eProjectSlug
 	target := filepath.Join(t.TempDir(), branch)
-	require.NoError(t, repo.Clone(context.Background(), url, host, e2eOrgSlug, e2eProjectSlug, "", "", target))
+	require.NoError(t, repo.Clone(context.Background(), url, host, e2eOrgSlug, e2eProjectSlug, "", nil, target))
 	if branch != "main" {
 		updater := clientusecase.NewUpdate(auth, grpcClient, localrepo.NewLocalRepo())
 		require.NoError(t, updater.Switch(context.Background(), target, branch))

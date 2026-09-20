@@ -53,5 +53,6 @@ func (c *Cli) Run() error {
 	rootCmd.AddCommand(c.setupDiffCmd())
 	rootCmd.AddCommand(c.setupAclCmd())
 	rootCmd.AddCommand(c.setupGroupCmd())
+	rootCmd.AddCommand(c.setupSparseCheckoutCmd())
 	return rootCmd.Execute()
 }

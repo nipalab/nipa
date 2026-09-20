@@ -83,8 +83,8 @@ func (r *Revert) Run(ctx context.Context, root, target string, opts RevertOption
 	if err != nil {
 		return nil, err
 	}
-	if nipaUrl.Path != "" {
-		return nil, domain.NewUserError("reverting in a subdirectory clone is not supported yet")
+	if nipaUrl.Path != "" || len(cfg.Sparse) > 0 {
+		return nil, domain.NewUserError("reverting in a sparse or subdirectory clone is not supported yet")
 	}
 	if opts.Mainline != 0 && opts.Mainline != 1 && opts.Mainline != 2 {
 		return nil, domain.NewUserError("--mainline must be 1 or 2")
@@ -121,6 +121,10 @@ func (r *Revert) Run(ctx context.Context, root, target string, opts RevertOption
 		return nil, domain.NewUserError("--message can only be used when reverting a single commit")
 	}
 
+	head, err := r.client.GetBranchByName(ctx, nipaUrl.Org, nipaUrl.Project, cfg.Branch)
+	if err != nil {
+		return nil, err
+	}
 	headTree, err := r.client.GetTreeNodeManifest(ctx, nipaUrl.Org, nipaUrl.Project, cfg.Branch, nil)
 	if err != nil {
 		return nil, err
@@ -140,6 +144,7 @@ func (r *Revert) Run(ctx context.Context, root, target string, opts RevertOption
 	state := &domain.RevertState{
 		Targets:          refs,
 		CurrentTreeHash:  headHash,
+		CurrentCommitID:  commitIDString(head),
 		OriginalTreeHash: headHash,
 		Mainline:         opts.Mainline,
 		NoCommit:         opts.NoCommit,
@@ -297,11 +302,12 @@ func (r *Revert) process(ctx context.Context, root string, url *domain.NipaUrl, 
 		if msg == "" {
 			msg = revertMessage(target)
 		}
-		result, err := r.push.pushStaged(ctx, root, url, branch, msg, state.CurrentTreeHash, "", progress...)
+		result, err := r.push.pushStaged(ctx, root, url, branch, msg, state.CurrentTreeHash, state.CurrentCommitID, "", progress...)
 		if err != nil {
 			return nil, err
 		}
 		state.CurrentTreeHash = result.TreeHash.String()
+		state.CurrentCommitID = result.CommitID.Base36()
 		committed = true
 		if err := r.localRepo.SaveRevertState(state); err != nil {
 			return nil, err
@@ -357,11 +363,12 @@ func (r *Revert) resume(ctx context.Context, root string, url *domain.NipaUrl, b
 			if msg == "" {
 				msg = revertMessage(current)
 			}
-			result, err := r.push.pushStaged(ctx, root, url, branch, msg, state.CurrentTreeHash, "", progress...)
+			result, err := r.push.pushStaged(ctx, root, url, branch, msg, state.CurrentTreeHash, state.CurrentCommitID, "", progress...)
 			if err != nil {
 				return nil, err
 			}
 			state.CurrentTreeHash = result.TreeHash.String()
+			state.CurrentCommitID = result.CommitID.Base36()
 			committed = true
 			headTree, err = r.client.GetTreeNodeManifest(ctx, url.Org, url.Project, branch, nil)
 			if err != nil {

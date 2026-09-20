@@ -123,6 +123,74 @@ func TestEndToEnd_PBACAdminSurface(t *testing.T) {
 	require.Error(t, adminClient.DeletePBACRule(ctx, e2eOrgSlug, e2eProjectSlug, rule.ID), "deleting a missing rule fails")
 }
 
+func TestEndToEnd_PBACDefaultDenyFolder(t *testing.T) {
+	ctx := context.Background()
+	dbConn := openTestDB(t)
+	host := startTestServer(t, dbConn)
+
+	adminClient, adminStore := loginE2EClient(t, ctx, host, e2eSuperAdminEmail, e2eSuperAdminPass)
+	adminAuth := clientusecase.NewAuth(adminClient, adminStore, failPrompt{})
+	repo := clientusecase.NewRepo(adminAuth, adminClient, localrepo.NewLocalRepo())
+	url := "http://" + host + "/" + e2eOrgSlug + "/" + e2eProjectSlug
+
+	seed := filepath.Join(t.TempDir(), "seed")
+	require.NoError(t, repo.Clone(ctx, url, host, e2eOrgSlug, e2eProjectSlug, "", nil, seed))
+	writeFile(t, seed, "public/readme.md", "public")
+	writeFile(t, seed, "src/main.go", "package main")
+	writeFile(t, seed, "secret/key.bin", "top secret")
+	stagePath(t, seed, "public/readme.md")
+	stagePath(t, seed, "src/main.go")
+	stagePath(t, seed, "secret/key.bin")
+	require.NoError(t, clientusecase.NewPush(adminAuth, adminClient, localrepo.NewLocalRepo()).Run(ctx, seed, "seed"))
+
+	// Project defaults: everybody reads the whole project except /secret.
+	projectID := snow.ID(1)
+	pbacRepo := sqlite.NewPBACRepository(dbConn)
+	_, err := pbacRepo.UpsertPathPermission(ctx, serverDomain.ProjectPathPermission{
+		ProjectID: projectID, PathPrefix: "", Permission: serverDomain.PermissionRead,
+	})
+	require.NoError(t, err)
+	_, err = pbacRepo.UpsertPathPermission(ctx, serverDomain.ProjectPathPermission{
+		ProjectID: projectID, PathPrefix: "secret", Permission: 0,
+	})
+	require.NoError(t, err)
+
+	passwordHasher := hasher.NewHasher(1)
+	t.Cleanup(passwordHasher.Close)
+	passwordHash, err := passwordHasher.Hash("regular-pass")
+	require.NoError(t, err)
+	_, err = dbConn.ExecContext(ctx,
+		`INSERT INTO users (id, name, email, password, is_admin) VALUES (?, ?, ?, ?, 0)`,
+		47, "Default Reader", "default@example.com", passwordHash,
+	)
+	require.NoError(t, err)
+
+	userClient, userStore := loginE2EClient(t, ctx, host, "default@example.com", "regular-pass")
+	userRepo := clientusecase.NewRepo(
+		clientusecase.NewAuth(userClient, userStore, failPrompt{}),
+		userClient, localrepo.NewLocalRepo(),
+	)
+	work := filepath.Join(t.TempDir(), "work")
+	require.NoError(t, userRepo.Clone(ctx, url, host, e2eOrgSlug, e2eProjectSlug, "", nil, work))
+
+	assertFileContent(t, work, "public/readme.md", "public")
+	assertFileContent(t, work, "src/main.go", "package main")
+	assertNoFile(t, work, "secret/key.bin")
+
+	snap := snapshotOf(t, work)
+	for _, f := range snap.Files {
+		require.NotContains(t, f.Path, "secret")
+	}
+
+	// Explicitly requesting a fallback-denied prefix succeeds with an empty
+	// tree today (the deny row still matches the prefix), not a 404: the root
+	// clone already omits it, and no content is disclosed either way.
+	manifest, err := userClient.GetTreeNodeManifest(ctx, e2eOrgSlug, e2eProjectSlug, "main", []string{"secret"})
+	require.NoError(t, err)
+	require.Empty(t, manifest.FileChildren)
+	require.Empty(t, manifest.TreeChildren)
+}
+
 func TestEndToEnd_PBACWriteEnforcement(t *testing.T) {
 	ctx := context.Background()
 	dbConn := openTestDB(t)
@@ -133,7 +201,7 @@ func TestEndToEnd_PBACWriteEnforcement(t *testing.T) {
 	repo := clientusecase.NewRepo(adminAuth, adminClient, localrepo.NewLocalRepo())
 	url := "http://" + host + "/" + e2eOrgSlug + "/" + e2eProjectSlug
 	target := filepath.Join(t.TempDir(), "seed")
-	require.NoError(t, repo.Clone(ctx, url, host, e2eOrgSlug, e2eProjectSlug, "", "", target))
+	require.NoError(t, repo.Clone(ctx, url, host, e2eOrgSlug, e2eProjectSlug, "", nil, target))
 
 	writeFile(t, target, "assets/logo.png", "logo-v1")
 	writeFile(t, target, "src/main.go", "package main")
@@ -170,7 +238,7 @@ func TestEndToEnd_PBACWriteEnforcement(t *testing.T) {
 	writerAuth := clientusecase.NewAuth(writerClient, writerStore, failPrompt{})
 	writerRepo := clientusecase.NewRepo(writerAuth, writerClient, localrepo.NewLocalRepo())
 	work := filepath.Join(t.TempDir(), "writer")
-	require.NoError(t, writerRepo.Clone(ctx, url, host, e2eOrgSlug, e2eProjectSlug, "", "", work))
+	require.NoError(t, writerRepo.Clone(ctx, url, host, e2eOrgSlug, e2eProjectSlug, "", nil, work))
 
 	writeFile(t, work, "assets/logo.png", "logo-v2")
 	stagePath(t, work, "assets/logo.png")
@@ -195,7 +263,7 @@ func TestEndToEnd_PBACManifestFiltering(t *testing.T) {
 	repo := clientusecase.NewRepo(adminAuth, adminClient, localrepo.NewLocalRepo())
 	url := "http://" + host + "/" + e2eOrgSlug + "/" + e2eProjectSlug
 	target := filepath.Join(t.TempDir(), "work")
-	require.NoError(t, repo.Clone(ctx, url, host, e2eOrgSlug, e2eProjectSlug, "", "", target))
+	require.NoError(t, repo.Clone(ctx, url, host, e2eOrgSlug, e2eProjectSlug, "", nil, target))
 
 	writeFile(t, target, "assets/logo.png", "logo-bytes")
 	writeFile(t, target, "src/main.go", "package main")

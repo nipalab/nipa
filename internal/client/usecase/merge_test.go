@@ -103,7 +103,7 @@ func (s *stubMergeClient) MergeFastForward(_ context.Context, _, _, target, sour
 	return s.ffBranch, s.ffErr
 }
 
-func (s *stubMergeClient) Push(_ context.Context, org, project, branch, baseTreeHash, message string, files []*serverDomain.PushFile, removed []string, parent2CommitHash string) (*serverDomain.PushResult, error) {
+func (s *stubMergeClient) Push(_ context.Context, org, project, branch, baseTreeHash, message string, files []*serverDomain.PushFile, removed []string, parent2CommitHash, baseCommitID string) (*serverDomain.PushResult, error) {
 	s.pushCalled = true
 	s.pushOrg, s.pushProject, s.pushBranch = org, project, branch
 	s.pushBaseTreeHash, s.pushMessage = baseTreeHash, message

@@ -279,7 +279,7 @@ func (c *Client) GetTreeNodeManifest(ctx context.Context, org, project, branch s
 	return toServerTreeNode(res.GetRootTree()), nil
 }
 
-func (c *Client) Push(ctx context.Context, org, project, branch, baseTreeHash, message string, files []*serverDomain.PushFile, removed []string, parent2CommitHash string) (*serverDomain.PushResult, error) {
+func (c *Client) Push(ctx context.Context, org, project, branch, baseTreeHash, message string, files []*serverDomain.PushFile, removed []string, parent2CommitHash, baseCommitID string) (*serverDomain.PushResult, error) {
 	client, err := c.transport.NipaServiceClient()
 	if err != nil {
 		return nil, err
@@ -293,6 +293,9 @@ func (c *Client) Push(ctx context.Context, org, project, branch, baseTreeHash, m
 	}
 	if parent2CommitHash != "" {
 		req.Parent_2CommitHash = &parent2CommitHash
+	}
+	if baseCommitID != "" {
+		req.BaseCommitId = &baseCommitID
 	}
 	for _, f := range files {
 		pf := &pb.PushFile{

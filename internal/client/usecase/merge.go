@@ -81,8 +81,8 @@ func (m *Merge) Run(ctx context.Context, root, sourceBranch string, opts MergeOp
 	if err != nil {
 		return nil, err
 	}
-	if nipaUrl.Path != "" {
-		return nil, domain.NewUserError("merging in a subdirectory clone is not supported yet")
+	if nipaUrl.Path != "" || len(cfg.Sparse) > 0 {
+		return nil, domain.NewUserError("merging in a sparse or subdirectory clone is not supported yet")
 	}
 
 	if opts.Abort {
@@ -208,6 +208,7 @@ func (m *Merge) trueMerge(ctx context.Context, root string, url *domain.NipaUrl,
 		BaseCommitID:     info.MergeBaseCommitID,
 		BaseTreeHash:     baseTreeHash(info),
 		TargetTreeHash:   targetTree.Hash.String(),
+		TargetCommitID:   info.TargetCommitID,
 		Conflicts:        applied.Conflicted,
 	}
 	if len(applied.Conflicted) > 0 {
