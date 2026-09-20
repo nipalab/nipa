@@ -3,8 +3,10 @@ package usecase
 //go:generate go run go.uber.org/mock/mockgen -source=$GOFILE -destination=branch_mock_test.go -package=usecase
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -314,6 +316,73 @@ func joinTreePath(parent, name string) string {
 		return parent
 	}
 	return parent + "/" + name
+}
+
+// EnsureProjectAccess returns a no-permission error unless the caller holds
+// permission on any path of the project.
+func (b *Branch) EnsureProjectAccess(ctx context.Context, projectID snow.ID, permission domain.Permission) error {
+	if !b.permUc.HasProjectAccess(ctx, projectID, permission) {
+		return domain.NewErrorNoPermission()
+	}
+	return nil
+}
+
+// VisibleChunks returns the deduplicated chunk hashes of every readable file
+// across the given commits, narrowed by paths. The result is sorted so callers
+// can binary-search it.
+func (b *Branch) VisibleChunks(ctx context.Context, projectID snow.ID, commitIDs []string, paths []string) ([]domain.Hash, error) {
+	if !b.permUc.HasProjectAccess(ctx, projectID, domain.PermissionRead) {
+		return nil, domain.NewErrorNoPermission()
+	}
+	if len(commitIDs) == 0 {
+		return nil, domain.NewErrorUser("at least one commit id is required")
+	}
+	sparse, err := domain.NewPrefixSet(paths)
+	if err != nil {
+		return nil, domain.NewErrorUser(err.Error())
+	}
+	filter, err := b.permUc.CompileFilter(ctx, projectID, domain.PermissionRead)
+	if err != nil {
+		return nil, err
+	}
+
+	seen := map[domain.Hash]struct{}{}
+	for _, raw := range commitIDs {
+		commitID, err := snow.ParseBase36(raw)
+		if err != nil {
+			return nil, domain.NewErrorUser(fmt.Sprintf("invalid commit id %q", raw))
+		}
+		commit, err := b.commitByIDInProject(ctx, projectID, commitID)
+		if err != nil {
+			return nil, err
+		}
+		root, err := b.branchRepo.GetTreeNode(ctx, commit.TreeID)
+		if err != nil {
+			return nil, err
+		}
+		if err := b.loadTreeManifest(ctx, root, "", true, filter, sparse); err != nil {
+			return nil, err
+		}
+		collectChunkHashes(root, seen)
+	}
+
+	out := make([]domain.Hash, 0, len(seen))
+	for hash := range seen {
+		out = append(out, hash)
+	}
+	sort.Slice(out, func(i, j int) bool { return bytes.Compare(out[i][:], out[j][:]) < 0 })
+	return out, nil
+}
+
+func collectChunkHashes(node *domain.TreeNode, seen map[domain.Hash]struct{}) {
+	for _, file := range node.FileChildren {
+		for _, chunk := range file.Chunks {
+			seen[chunk.Hash] = struct{}{}
+		}
+	}
+	for _, child := range node.TreeChildren {
+		collectChunkHashes(child, seen)
+	}
 }
 
 func rehashTree(node *domain.TreeNode) domain.Hash {

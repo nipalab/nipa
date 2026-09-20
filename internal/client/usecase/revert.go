@@ -19,8 +19,9 @@ type revertClient interface {
 	Connect(ctx context.Context, host string) error
 	GetCommit(ctx context.Context, org, project, commitID string) (*domain.CommitDetail, error)
 	WalkCommits(ctx context.Context, org, project, startCommitID, stopCommitID string, limit int) ([]*domain.CommitWalkEntry, error)
+	GetBranchByName(ctx context.Context, org, project, name string) (*serverDomain.Branch, error)
 	GetTreeNodeManifest(ctx context.Context, org, project, branch string, paths []string) (*serverDomain.TreeNode, error)
-	DownloadChunks(ctx context.Context, hashes []serverDomain.Hash, onChunk func(h serverDomain.Hash, data []byte) error) error
+	DownloadChunks(ctx context.Context, scope domain.ChunkScope, hashes []serverDomain.Hash, onChunk func(h serverDomain.Hash, data []byte) error) error
 }
 
 type revertLocalRepo interface {
@@ -225,6 +226,12 @@ func (r *Revert) resolveTargets(ctx context.Context, url *domain.NipaUrl, target
 }
 
 func (r *Revert) process(ctx context.Context, root string, url *domain.NipaUrl, branch string, state *domain.RevertState, ours map[string]merge.File, progress ...UploadProgress) (*RevertOutcome, error) {
+	head, err := r.client.GetBranchByName(ctx, url.Org, url.Project, branch)
+	if err != nil {
+		return nil, err
+	}
+	headID := commitIDString(head)
+
 	committed := false
 	changed := false
 	for len(state.Targets) > 0 {
@@ -243,7 +250,12 @@ func (r *Revert) process(ctx context.Context, root string, url *domain.NipaUrl, 
 		if err != nil {
 			return nil, err
 		}
-		applied, err := applyThreeWay(ctx, r.client, r.localRepo, root, ours, baseByPath, res)
+		scope := domain.ChunkScope{
+			Org:       url.Org,
+			Project:   url.Project,
+			CommitIDs: commitIDs(detail.ID, parentIDOf(detail, state.Mainline), headID),
+		}
+		applied, err := applyThreeWay(ctx, r.client, r.localRepo, root, ours, baseByPath, res, scope)
 		if err != nil {
 			return nil, err
 		}
@@ -392,11 +404,20 @@ func (r *Revert) abort(ctx context.Context, root string, url *domain.NipaUrl, br
 	if err := r.auth.MakeSureLoggedIn(ctx, url.Host); err != nil {
 		return nil, err
 	}
+	head, err := r.client.GetBranchByName(ctx, url.Org, url.Project, branch)
+	if err != nil {
+		return nil, err
+	}
+	scope := domain.ChunkScope{
+		Org:       url.Org,
+		Project:   url.Project,
+		CommitIDs: commitIDs(commitIDString(head)),
+	}
 	tree, err := r.client.GetTreeNodeManifest(ctx, url.Org, url.Project, branch, nil)
 	if err != nil {
 		return nil, err
 	}
-	if err := syncWorkingCopy(ctx, r.client, r.localRepo, root, tree); err != nil {
+	if err := syncWorkingCopy(ctx, r.client, r.localRepo, root, tree, scope); err != nil {
 		return nil, err
 	}
 	if err := r.localRepo.SaveTree(tree); err != nil {
@@ -431,6 +452,15 @@ func (r *Revert) skip(ctx context.Context, root string, url *domain.NipaUrl, bra
 	if err := r.auth.MakeSureLoggedIn(ctx, url.Host); err != nil {
 		return nil, err
 	}
+	head, err := r.client.GetBranchByName(ctx, url.Org, url.Project, branch)
+	if err != nil {
+		return nil, err
+	}
+	scope := domain.ChunkScope{
+		Org:       url.Org,
+		Project:   url.Project,
+		CommitIDs: commitIDs(commitIDString(head)),
+	}
 	headTree, err := r.client.GetTreeNodeManifest(ctx, url.Org, url.Project, branch, nil)
 	if err != nil {
 		return nil, err
@@ -438,7 +468,7 @@ func (r *Revert) skip(ctx context.Context, root string, url *domain.NipaUrl, bra
 	if headTree == nil {
 		return nil, domain.NewUserError(fmt.Sprintf("branch %q has no commits", branch))
 	}
-	if err := syncWorkingCopy(ctx, r.client, r.localRepo, root, headTree); err != nil {
+	if err := syncWorkingCopy(ctx, r.client, r.localRepo, root, headTree, scope); err != nil {
 		return nil, err
 	}
 	if err := r.localRepo.SaveTree(headTree); err != nil {
@@ -464,22 +494,28 @@ func (r *Revert) skip(ctx context.Context, root string, url *domain.NipaUrl, bra
 }
 
 func (r *Revert) parentTree(ctx context.Context, url *domain.NipaUrl, detail *domain.CommitDetail, mainline int) (map[string]merge.File, error) {
-	var parentID string
-	switch {
-	case detail.Parent1ID == "" && detail.Parent2ID == "":
+	parentID := parentIDOf(detail, mainline)
+	if parentID == "" {
 		return map[string]merge.File{}, nil
-	case detail.Parent2ID == "":
-		parentID = detail.Parent1ID
-	case mainline == 2:
-		parentID = detail.Parent2ID
-	default:
-		parentID = detail.Parent1ID
 	}
 	parent, err := r.client.GetCommit(ctx, url.Org, url.Project, parentID)
 	if err != nil {
 		return nil, err
 	}
 	return merge.Flatten(parent.Tree), nil
+}
+
+func parentIDOf(detail *domain.CommitDetail, mainline int) string {
+	switch {
+	case detail.Parent1ID == "" && detail.Parent2ID == "":
+		return ""
+	case detail.Parent2ID == "":
+		return detail.Parent1ID
+	case mainline == 2:
+		return detail.Parent2ID
+	default:
+		return detail.Parent1ID
+	}
 }
 
 func (r *Revert) snapshotByPath() (map[string]domain.SnapshotFile, error) {

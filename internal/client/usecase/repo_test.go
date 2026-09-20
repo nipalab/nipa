@@ -64,7 +64,7 @@ func (s *stubRepoInterface) CreateBranch(_ context.Context, _, _, name, fromBran
 	return s.createdBranch, s.createErr
 }
 
-func (s *stubRepoInterface) DownloadChunks(_ context.Context, hashes []serverDomain.Hash, onChunk func(h serverDomain.Hash, data []byte) error) error {
+func (s *stubRepoInterface) DownloadChunks(_ context.Context, _ domain.ChunkScope, hashes []serverDomain.Hash, onChunk func(h serverDomain.Hash, data []byte) error) error {
 	s.downloaded = append(s.downloaded, hashes...)
 	if s.downloadErr != nil {
 		return s.downloadErr

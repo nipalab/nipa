@@ -328,7 +328,7 @@ func (c *Client) Push(ctx context.Context, org, project, branch, baseTreeHash, m
 	}, nil
 }
 
-func (c *Client) UploadChunks(ctx context.Context, chunks []*serverDomain.ChunkData, onChunk ...func(ch *serverDomain.ChunkData)) (int, int, error) {
+func (c *Client) UploadChunks(ctx context.Context, scope domain.ChunkScope, chunks []*serverDomain.ChunkData, onChunk ...func(ch *serverDomain.ChunkData)) (int, int, error) {
 	client, err := c.transport.NipaServiceClient()
 	if err != nil {
 		return 0, 0, err
@@ -342,7 +342,11 @@ func (c *Client) UploadChunks(ctx context.Context, chunks []*serverDomain.ChunkD
 		return 0, 0, toDomainError(err)
 	}
 	for _, ch := range chunks {
-		if err := stream.Send(&pb.ChunkUploadRequest{Hash: ch.Hash.String(), Data: ch.Data}); err != nil {
+		if err := stream.Send(&pb.ChunkUploadRequest{
+			Hash:    ch.Hash.String(),
+			Data:    ch.Data,
+			Context: &pb.ProjectContext{Org: scope.Org, Project: scope.Project},
+		}); err != nil {
 			return 0, 0, err
 		}
 		if len(onChunk) > 0 && onChunk[0] != nil {
@@ -359,7 +363,7 @@ func (c *Client) UploadChunks(ctx context.Context, chunks []*serverDomain.ChunkD
 	return int(res.GetUploaded()), int(res.GetSkipped()), nil
 }
 
-func (c *Client) DownloadChunks(ctx context.Context, hashes []serverDomain.Hash, onChunk func(h serverDomain.Hash, data []byte) error) error {
+func (c *Client) DownloadChunks(ctx context.Context, scope domain.ChunkScope, hashes []serverDomain.Hash, onChunk func(h serverDomain.Hash, data []byte) error) error {
 	client, err := c.transport.NipaServiceClient()
 	if err != nil {
 		return err
@@ -378,7 +382,12 @@ func (c *Client) DownloadChunks(ctx context.Context, hashes []serverDomain.Hash,
 	sendErr := make(chan error, 1)
 	go func() {
 		for _, h := range hashes {
-			if err := stream.Send(&pb.DownloadChunksRequest{Hash: h.String()}); err != nil {
+			if err := stream.Send(&pb.DownloadChunksRequest{
+				Hash:      h.String(),
+				Context:   &pb.ProjectContext{Org: scope.Org, Project: scope.Project},
+				CommitIds: scope.CommitIDs,
+				Paths:     scope.Paths,
+			}); err != nil {
 				sendErr <- err
 				return
 			}

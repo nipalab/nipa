@@ -18,7 +18,7 @@ type repoInterface interface {
 	GetTreeNodeManifest(ctx context.Context, org, project, branch string, paths []string) (*serverDomain.TreeNode, error)
 	ListBranches(ctx context.Context, org, project string) ([]*serverDomain.Branch, error)
 	CreateBranch(ctx context.Context, org, project, name, fromBranch, fromCommitID, fromCommitHash string) (*serverDomain.Branch, error)
-	DownloadChunks(ctx context.Context, hashes []serverDomain.Hash, onChunk func(h serverDomain.Hash, data []byte) error) error
+	DownloadChunks(ctx context.Context, scope domain.ChunkScope, hashes []serverDomain.Hash, onChunk func(h serverDomain.Hash, data []byte) error) error
 	GetCommitLog(ctx context.Context, org, project, branch string, startCommitID *snow.ID, limit int) ([]*serverDomain.CommitLogEntry, error)
 }
 
@@ -91,7 +91,13 @@ func (r *Repo) Clone(ctx context.Context, url, host, org, project, branch, path,
 		return err
 	}
 	if path == "" {
-		if err := syncWorkingCopy(ctx, r.repoInterface, r.localRepo, target, root, progress...); err != nil {
+		scope := domain.ChunkScope{
+			Org:       org,
+			Project:   project,
+			CommitIDs: commitIDs(headCommitID),
+			Paths:     paths,
+		}
+		if err := syncWorkingCopy(ctx, r.repoInterface, r.localRepo, target, root, scope, progress...); err != nil {
 			return err
 		}
 	}

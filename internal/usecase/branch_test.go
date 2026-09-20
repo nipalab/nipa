@@ -543,6 +543,48 @@ func TestBranch_GetTreeManifest_RehashesFilteredTree(t *testing.T) {
 	require.NotEqual(t, realRootHash, got.Hash)
 }
 
+func TestBranch_VisibleChunks(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := restrictedPerm(ctrl, []*domain.PBACRule{
+		{PathPrefix: "assets", Permission: domain.PermissionRead},
+	}, nil)
+	repo := NewMockbranchRepository(ctrl)
+
+	commitID := snow.ID(7)
+	visible := domain.Hash{0x01}
+	shared := domain.Hash{0x02}
+	hidden := domain.Hash{0x03}
+
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
+	repo.EXPECT().GetCommit(gomock.Any(), commitID).Return(&domain.Commit{ID: commitID, ProjectID: 1, TreeID: 100}, nil)
+	repo.EXPECT().GetTreeNode(gomock.Any(), int64(100)).Return(&domain.TreeNode{ID: 100, Name: "root"}, nil)
+	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(100)).Return([]*domain.File{
+		{ID: 1, Name: "README.md", TreeID: 100, Chunks: []domain.Chunk{{Hash: hidden}}},
+	}, nil)
+	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(100)).Return([]*domain.TreeNode{{ID: 200, Name: "assets"}}, nil)
+	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(200)).Return([]*domain.File{
+		{ID: 2, Name: "wood.png", TreeID: 200, Chunks: []domain.Chunk{{Hash: visible}, {Hash: shared}}},
+	}, nil)
+	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(200)).Return(nil, nil)
+
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
+	got, err := uc.VisibleChunks(context.Background(), snow.ID(1), []string{commitID.Base36()}, nil)
+	require.NoError(t, err)
+	require.Equal(t, []domain.Hash{visible, shared}, got)
+}
+
+func TestBranch_VisibleChunks_InvalidCommit(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := newAllowAllPerm(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
+
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
+	_, err := uc.VisibleChunks(context.Background(), snow.ID(1), []string{"!!"}, nil)
+	requireUserError(t, err)
+}
+
 func TestBranch_GetTreeManifest_PathNotFound(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	perm := newAllowAllPerm(ctrl)

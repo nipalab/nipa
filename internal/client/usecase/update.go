@@ -17,11 +17,11 @@ type updateClient interface {
 	Connect(ctx context.Context, host string) error
 	GetBranchByName(ctx context.Context, org, project, name string) (*domain.Branch, error)
 	GetTreeNodeManifest(ctx context.Context, org, project, branch string, paths []string) (*domain.TreeNode, error)
-	DownloadChunks(ctx context.Context, hashes []domain.Hash, onChunk func(h domain.Hash, data []byte) error) error
+	DownloadChunks(ctx context.Context, scope clientDomain.ChunkScope, hashes []domain.Hash, onChunk func(h domain.Hash, data []byte) error) error
 }
 
 type chunkDownloader interface {
-	DownloadChunks(ctx context.Context, hashes []domain.Hash, onChunk func(h domain.Hash, data []byte) error) error
+	DownloadChunks(ctx context.Context, scope clientDomain.ChunkScope, hashes []domain.Hash, onChunk func(h domain.Hash, data []byte) error) error
 }
 
 type DownloadProgress interface {
@@ -103,28 +103,50 @@ func (u *Update) Run(ctx context.Context, root string, progress ...DownloadProgr
 		baseByPath[f.Path] = f
 	}
 
+	headCommitID, err := u.branchHead(ctx, nu, cfg.Branch)
+	if err != nil {
+		return err
+	}
 	tree, err := u.client.GetTreeNodeManifest(ctx, nu.Org, nu.Project, cfg.Branch, nil)
 	if err != nil {
 		return err
 	}
-	if err := syncWorkingCopy(ctx, u.client, u.localRepo, root, tree, progress...); err != nil {
+	scope := clientDomain.ChunkScope{
+		Org:       nu.Org,
+		Project:   nu.Project,
+		CommitIDs: commitIDs(headCommitID),
+	}
+	if err := syncWorkingCopy(ctx, u.client, u.localRepo, root, tree, scope, progress...); err != nil {
 		return err
 	}
 	if err := u.localRepo.SaveTree(tree); err != nil {
 		return err
 	}
-	return u.pinHead(ctx, nu, cfg.Branch)
-}
-
-func (u *Update) pinHead(ctx context.Context, nu *clientDomain.NipaUrl, branch string) error {
-	info, err := u.client.GetBranchByName(ctx, nu.Org, nu.Project, branch)
-	if err != nil {
-		return err
-	}
-	if info == nil || info.CommitID == nil {
+	if headCommitID == "" {
 		return nil
 	}
-	return u.localRepo.SaveCommit(info.CommitID.Base36(), "")
+	return u.localRepo.SaveCommit(headCommitID, "")
+}
+
+func (u *Update) branchHead(ctx context.Context, nu *clientDomain.NipaUrl, branch string) (string, error) {
+	info, err := u.client.GetBranchByName(ctx, nu.Org, nu.Project, branch)
+	if err != nil {
+		return "", err
+	}
+	if info == nil || info.CommitID == nil {
+		return "", nil
+	}
+	return info.CommitID.Base36(), nil
+}
+
+func commitIDs(ids ...string) []string {
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if id != "" {
+			out = append(out, id)
+		}
+	}
+	return out
 }
 
 func (u *Update) Switch(ctx context.Context, root, branch string, progress ...DownloadProgress) error {
@@ -162,11 +184,20 @@ func (u *Update) Switch(ctx context.Context, root, branch string, progress ...Do
 		return err
 	}
 
+	headCommitID, err := u.branchHead(ctx, nu, branch)
+	if err != nil {
+		return err
+	}
 	tree, err := u.client.GetTreeNodeManifest(ctx, nu.Org, nu.Project, branch, nil)
 	if err != nil {
 		return err
 	}
-	if err := syncWorkingCopy(ctx, u.client, u.localRepo, root, tree, progress...); err != nil {
+	scope := clientDomain.ChunkScope{
+		Org:       nu.Org,
+		Project:   nu.Project,
+		CommitIDs: commitIDs(headCommitID),
+	}
+	if err := syncWorkingCopy(ctx, u.client, u.localRepo, root, tree, scope, progress...); err != nil {
 		return err
 	}
 	if err := u.localRepo.SaveTree(tree); err != nil {
@@ -175,10 +206,13 @@ func (u *Update) Switch(ctx context.Context, root, branch string, progress ...Do
 	if err := u.localRepo.SaveConfig(clientDomain.Config{Url: cfg.Url, Branch: branch}); err != nil {
 		return err
 	}
-	return u.pinHead(ctx, nu, branch)
+	if headCommitID == "" {
+		return nil
+	}
+	return u.localRepo.SaveCommit(headCommitID, "")
 }
 
-func syncWorkingCopy(ctx context.Context, client chunkDownloader, lr workingCopyLocalRepo, root string, tree *domain.TreeNode, progress ...DownloadProgress) error {
+func syncWorkingCopy(ctx context.Context, client chunkDownloader, lr workingCopyLocalRepo, root string, tree *domain.TreeNode, scope clientDomain.ChunkScope, progress ...DownloadProgress) error {
 	base, err := lr.Snapshot()
 	if err != nil {
 		return err
@@ -201,7 +235,7 @@ func syncWorkingCopy(ctx context.Context, client chunkDownloader, lr workingCopy
 	if err != nil {
 		return err
 	}
-	if err := downloadMissing(ctx, client, lr, missing, estimateBytesToDownload(newFiles, missing), progress...); err != nil {
+	if err := downloadMissing(ctx, client, lr, scope, missing, estimateBytesToDownload(newFiles, missing), progress...); err != nil {
 		return err
 	}
 
@@ -228,7 +262,7 @@ func syncWorkingCopy(ctx context.Context, client chunkDownloader, lr workingCopy
 
 var chunkStoreBatchBytes = 8 << 20
 
-func downloadMissing(ctx context.Context, client chunkDownloader, lr workingCopyLocalRepo, missing []domain.Hash, estimatedBytes int64, progress ...DownloadProgress) error {
+func downloadMissing(ctx context.Context, client chunkDownloader, lr workingCopyLocalRepo, scope clientDomain.ChunkScope, missing []domain.Hash, estimatedBytes int64, progress ...DownloadProgress) error {
 	if len(missing) == 0 {
 		return nil
 	}
@@ -256,7 +290,7 @@ func downloadMissing(ctx context.Context, client chunkDownloader, lr workingCopy
 		return nil
 	}
 
-	err := client.DownloadChunks(ctx, missing, func(h domain.Hash, data []byte) error {
+	err := client.DownloadChunks(ctx, scope, missing, func(h domain.Hash, data []byte) error {
 		if seen[h] {
 			return nil
 		}

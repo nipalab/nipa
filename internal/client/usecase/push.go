@@ -16,7 +16,7 @@ import (
 type pushClient interface {
 	Connect(ctx context.Context, host string) error
 	Push(ctx context.Context, org, project, branch, baseTreeHash, message string, files []*serverDomain.PushFile, removed []string, parent2CommitHash string) (*serverDomain.PushResult, error)
-	UploadChunks(ctx context.Context, chunks []*serverDomain.ChunkData, onChunk ...func(ch *serverDomain.ChunkData)) (int, int, error)
+	UploadChunks(ctx context.Context, scope domain.ChunkScope, chunks []*serverDomain.ChunkData, onChunk ...func(ch *serverDomain.ChunkData)) (int, int, error)
 	GetTreeNodeManifest(ctx context.Context, org, project, branch string, paths []string) (*serverDomain.TreeNode, error)
 }
 
@@ -181,6 +181,7 @@ func (p *Push) pushStaged(ctx context.Context, root string, nipaUrl *domain.Nipa
 		ctx:       ctx,
 		client:    p.pushClient,
 		localRepo: p.localRepo,
+		scope:     domain.ChunkScope{Org: nipaUrl.Org, Project: nipaUrl.Project},
 		seen:      make(map[serverDomain.Hash]bool),
 		onChunk:   onChunk,
 	}
@@ -228,6 +229,7 @@ type chunkBatcher struct {
 	ctx       context.Context
 	client    pushClient
 	localRepo pushLocalRepo
+	scope     domain.ChunkScope
 	seen      map[serverDomain.Hash]bool
 	batch     []*serverDomain.ChunkData
 	bytes     int
@@ -256,7 +258,7 @@ func (b *chunkBatcher) flush() error {
 			return err
 		}
 	}
-	_, _, err := b.client.UploadChunks(b.ctx, b.batch, b.onChunk)
+	_, _, err := b.client.UploadChunks(b.ctx, b.scope, b.batch, b.onChunk)
 	b.batch = nil
 	b.bytes = 0
 	return err

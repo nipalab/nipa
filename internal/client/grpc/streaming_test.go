@@ -174,7 +174,7 @@ func TestClient_UploadChunks_Success(t *testing.T) {
 	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
 	require.NoError(t, c.Connect(context.Background(), addr))
 
-	uploaded, skipped, err := c.UploadChunks(context.Background(), []*serverDomain.ChunkData{
+	uploaded, skipped, err := c.UploadChunks(context.Background(), domain.ChunkScope{Org: "org", Project: "proj"}, []*serverDomain.ChunkData{
 		{Hash: h1, Data: []byte("aaaa")},
 		{Hash: h2, Data: []byte("bbbb")},
 	})
@@ -202,7 +202,7 @@ func TestClient_UploadChunks_ReportsEachChunk(t *testing.T) {
 
 	var gotObject int
 	var gotBytes int64
-	_, _, err := c.UploadChunks(context.Background(), []*serverDomain.ChunkData{
+	_, _, err := c.UploadChunks(context.Background(), domain.ChunkScope{Org: "org", Project: "proj"}, []*serverDomain.ChunkData{
 		{Hash: h1, Data: []byte("aaaa")},
 		{Hash: h2, Data: []byte("bbbb")},
 	}, func(_ *serverDomain.ChunkData) {
@@ -220,7 +220,7 @@ func TestClient_UploadChunks_NoChunks(t *testing.T) {
 	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
 	require.NoError(t, c.Connect(context.Background(), addr))
 
-	uploaded, skipped, err := c.UploadChunks(context.Background(), nil)
+	uploaded, skipped, err := c.UploadChunks(context.Background(), domain.ChunkScope{Org: "org", Project: "proj"}, nil)
 	require.NoError(t, err)
 	require.Equal(t, 0, uploaded)
 	require.Equal(t, 0, skipped)
@@ -236,7 +236,7 @@ func TestClient_UploadChunks_ServerError(t *testing.T) {
 	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
 	require.NoError(t, c.Connect(context.Background(), addr))
 
-	_, _, err := c.UploadChunks(context.Background(), []*serverDomain.ChunkData{
+	_, _, err := c.UploadChunks(context.Background(), domain.ChunkScope{Org: "org", Project: "proj"}, []*serverDomain.ChunkData{
 		{Hash: serverDomain.Hash{0x01}, Data: []byte("x")},
 	})
 	require.Error(t, err)
@@ -249,7 +249,7 @@ func TestClient_UploadChunks_ServerError(t *testing.T) {
 func TestClient_UploadChunks_NotConnected(t *testing.T) {
 	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
 
-	_, _, err := c.UploadChunks(context.Background(), nil)
+	_, _, err := c.UploadChunks(context.Background(), domain.ChunkScope{Org: "org", Project: "proj"}, nil)
 	require.Error(t, err)
 	require.Equal(t, "not connected to a nipa server", err.Error())
 }
@@ -268,7 +268,7 @@ func TestClient_DownloadChunks_Success(t *testing.T) {
 	require.NoError(t, c.Connect(context.Background(), addr))
 
 	got := make(map[serverDomain.Hash][]byte)
-	err := c.DownloadChunks(context.Background(), []serverDomain.Hash{h1, h2}, func(h serverDomain.Hash, data []byte) error {
+	err := c.DownloadChunks(context.Background(), domain.ChunkScope{Org: "org", Project: "proj", CommitIDs: []string{"1"}}, []serverDomain.Hash{h1, h2}, func(h serverDomain.Hash, data []byte) error {
 		got[h] = data
 		return nil
 	})
@@ -296,7 +296,7 @@ func TestClient_DownloadChunks_ManyChunks(t *testing.T) {
 
 	var gotObjects int
 	var gotBytes int64
-	err := c.DownloadChunks(context.Background(), hashes, func(_ serverDomain.Hash, data []byte) error {
+	err := c.DownloadChunks(context.Background(), domain.ChunkScope{Org: "org", Project: "proj", CommitIDs: []string{"1"}}, hashes, func(_ serverDomain.Hash, data []byte) error {
 		gotObjects++
 		gotBytes += int64(len(data))
 		return nil
@@ -315,7 +315,7 @@ func TestClient_DownloadChunks_SinkErrorStops(t *testing.T) {
 	require.NoError(t, c.Connect(context.Background(), addr))
 
 	unexpected := errors.New("sink failed")
-	err := c.DownloadChunks(context.Background(), []serverDomain.Hash{h}, func(serverDomain.Hash, []byte) error {
+	err := c.DownloadChunks(context.Background(), domain.ChunkScope{Org: "org", Project: "proj", CommitIDs: []string{"1"}}, []serverDomain.Hash{h}, func(serverDomain.Hash, []byte) error {
 		return unexpected
 	})
 	require.ErrorIs(t, err, unexpected)
@@ -336,7 +336,7 @@ func TestClient_DownloadChunks_ReportsEachChunk(t *testing.T) {
 
 	var gotObject int
 	var gotBytes int64
-	err := c.DownloadChunks(context.Background(), []serverDomain.Hash{h1, h2}, func(_ serverDomain.Hash, data []byte) error {
+	err := c.DownloadChunks(context.Background(), domain.ChunkScope{Org: "org", Project: "proj", CommitIDs: []string{"1"}}, []serverDomain.Hash{h1, h2}, func(_ serverDomain.Hash, data []byte) error {
 		gotObject++
 		gotBytes += int64(len(data))
 		return nil
@@ -352,7 +352,7 @@ func TestClient_DownloadChunks_ServerError(t *testing.T) {
 	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
 	require.NoError(t, c.Connect(context.Background(), addr))
 
-	err := c.DownloadChunks(context.Background(), []serverDomain.Hash{{0x01}}, func(serverDomain.Hash, []byte) error {
+	err := c.DownloadChunks(context.Background(), domain.ChunkScope{Org: "org", Project: "proj", CommitIDs: []string{"1"}}, []serverDomain.Hash{{0x01}}, func(serverDomain.Hash, []byte) error {
 		return nil
 	})
 	require.Error(t, err)
@@ -365,7 +365,7 @@ func TestClient_DownloadChunks_ServerError(t *testing.T) {
 func TestClient_DownloadChunks_NotConnected(t *testing.T) {
 	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
 
-	err := c.DownloadChunks(context.Background(), []serverDomain.Hash{{0x01}}, func(serverDomain.Hash, []byte) error {
+	err := c.DownloadChunks(context.Background(), domain.ChunkScope{Org: "org", Project: "proj", CommitIDs: []string{"1"}}, []serverDomain.Hash{{0x01}}, func(serverDomain.Hash, []byte) error {
 		return nil
 	})
 	require.Error(t, err)

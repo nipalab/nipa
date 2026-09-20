@@ -261,8 +261,16 @@ func TestEndToEnd_CloneAddPushFetch(t *testing.T) {
 	for _, c := range chunked {
 		hashes = append(hashes, c.Hash)
 	}
+	branchInfo, err := grpcClient.GetBranchByName(ctx, e2eOrgSlug, e2eProjectSlug, "main")
+	require.NoError(t, err)
+	require.NotNil(t, branchInfo.CommitID)
+	scope := domain.ChunkScope{
+		Org:       e2eOrgSlug,
+		Project:   e2eProjectSlug,
+		CommitIDs: []string{branchInfo.CommitID.Base36()},
+	}
 	downloaded := make(map[serverDomain.Hash][]byte, len(hashes))
-	err = grpcClient.DownloadChunks(ctx, hashes, func(h serverDomain.Hash, data []byte) error {
+	err = grpcClient.DownloadChunks(ctx, scope, hashes, func(h serverDomain.Hash, data []byte) error {
 		downloaded[h] = data
 		return nil
 	})

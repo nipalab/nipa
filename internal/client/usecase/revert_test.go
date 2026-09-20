@@ -54,6 +54,10 @@ func (s *stubRevertClient) WalkCommits(_ context.Context, _, _, start, stop stri
 	return s.walkEntries, s.walkErr
 }
 
+func (s *stubRevertClient) GetBranchByName(_ context.Context, _, _, name string) (*serverDomain.Branch, error) {
+	return &serverDomain.Branch{Name: name}, nil
+}
+
 func (s *stubRevertClient) GetTreeNodeManifest(_ context.Context, _, _, _ string, _ []string) (*serverDomain.TreeNode, error) {
 	s.headCalls++
 	if s.headErrOn > 0 && s.headCalls >= s.headErrOn {
@@ -62,7 +66,7 @@ func (s *stubRevertClient) GetTreeNodeManifest(_ context.Context, _, _, _ string
 	return s.headTree, s.headErr
 }
 
-func (s *stubRevertClient) DownloadChunks(_ context.Context, hashes []serverDomain.Hash, onChunk func(h serverDomain.Hash, data []byte) error) error {
+func (s *stubRevertClient) DownloadChunks(_ context.Context, _ domain.ChunkScope, hashes []serverDomain.Hash, onChunk func(h serverDomain.Hash, data []byte) error) error {
 	s.downloaded = append(s.downloaded, hashes...)
 	if s.downloadErr != nil {
 		return s.downloadErr

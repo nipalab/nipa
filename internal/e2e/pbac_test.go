@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/nipalab/nipa/internal/chunker"
 	clientDomain "github.com/nipalab/nipa/internal/client/domain"
 	clientgrpc "github.com/nipalab/nipa/internal/client/grpc"
 	"github.com/nipalab/nipa/internal/client/localrepo"
@@ -100,11 +101,39 @@ func TestEndToEnd_PBACManifestFiltering(t *testing.T) {
 	require.Len(t, manifest.TreeChildren, 1, "src must be pruned")
 	require.Equal(t, "assets", manifest.TreeChildren[0].Name)
 	require.Len(t, manifest.TreeChildren[0].FileChildren, 1)
-	require.Equal(t, "logo.png", manifest.TreeChildren[0].FileChildren[0].Name)
+	logo := manifest.TreeChildren[0].FileChildren[0]
+	require.Equal(t, "logo.png", logo.Name)
 
 	_, err = regularClient.GetTreeNodeManifest(ctx, e2eOrgSlug, e2eProjectSlug, "main", []string{"src"})
 	require.Error(t, err)
 	require.Equal(t, 404, clientErrorCode(t, err), "hidden paths must look missing")
+
+	head, err := regularClient.GetBranchByName(ctx, e2eOrgSlug, e2eProjectSlug, "main")
+	require.NoError(t, err)
+	require.NotNil(t, head.CommitID)
+	scope := clientDomain.ChunkScope{
+		Org:       e2eOrgSlug,
+		Project:   e2eProjectSlug,
+		CommitIDs: []string{head.CommitID.Base36()},
+	}
+
+	require.NotEmpty(t, logo.Chunks)
+	visibleDownloaded := 0
+	err = regularClient.DownloadChunks(ctx, scope, []serverDomain.Hash{logo.Chunks[0].Hash}, func(_ serverDomain.Hash, _ []byte) error {
+		visibleDownloaded++
+		return nil
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, visibleDownloaded)
+
+	hiddenChunks, err := chunker.ChunkAll([]byte("package main"))
+	require.NoError(t, err)
+	require.NotEmpty(t, hiddenChunks)
+	err = regularClient.DownloadChunks(ctx, scope, []serverDomain.Hash{hiddenChunks[0].Hash}, func(_ serverDomain.Hash, _ []byte) error {
+		return nil
+	})
+	require.Error(t, err)
+	require.Equal(t, 404, clientErrorCode(t, err), "chunks outside the visible tree must not leak")
 
 	noRuleClient, _ := loginE2EClient(t, ctx, host, "norule@example.com", "regular-pass")
 	_, err = noRuleClient.GetTreeNodeManifest(ctx, e2eOrgSlug, e2eProjectSlug, "main", nil)

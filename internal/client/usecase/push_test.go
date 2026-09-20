@@ -71,7 +71,7 @@ func (s *stubPushClient) Push(_ context.Context, org, project, branch, baseTreeH
 	return s.pushResult, s.pushErr
 }
 
-func (s *stubPushClient) UploadChunks(_ context.Context, chunks []*serverDomain.ChunkData, onChunk ...func(ch *serverDomain.ChunkData)) (int, int, error) {
+func (s *stubPushClient) UploadChunks(_ context.Context, _ domain.ChunkScope, chunks []*serverDomain.ChunkData, onChunk ...func(ch *serverDomain.ChunkData)) (int, int, error) {
 	s.uploadCalls++
 	s.uploadedChunks = append(s.uploadedChunks, chunks...)
 	for _, ch := range chunks {

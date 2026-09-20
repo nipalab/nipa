@@ -57,7 +57,7 @@ func (s *stubDiffClient) GetMergeBase(_ context.Context, _, _ string, target, so
 	return s.mergeBase, s.mergeBaseErr
 }
 
-func (s *stubDiffClient) DownloadChunks(_ context.Context, hashes []serverDomain.Hash, onChunk func(h serverDomain.Hash, data []byte) error) error {
+func (s *stubDiffClient) DownloadChunks(_ context.Context, _ clientDomain.ChunkScope, hashes []serverDomain.Hash, onChunk func(h serverDomain.Hash, data []byte) error) error {
 	s.downloaded = append(s.downloaded, hashes...)
 	if s.downloadErr != nil {
 		return s.downloadErr

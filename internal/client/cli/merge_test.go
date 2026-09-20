@@ -47,7 +47,11 @@ func (f *fakeMergeClient) GetTreeNodeManifest(_ context.Context, _, _, branch st
 	return &serverDomain.TreeNode{Name: "root"}, nil
 }
 
-func (f *fakeMergeClient) DownloadChunks(_ context.Context, hashes []serverDomain.Hash, onChunk func(h serverDomain.Hash, data []byte) error) error {
+func (f *fakeMergeClient) GetBranchByName(_ context.Context, _, _, name string) (*serverDomain.Branch, error) {
+	return &serverDomain.Branch{Name: name}, nil
+}
+
+func (f *fakeMergeClient) DownloadChunks(_ context.Context, _ domain.ChunkScope, hashes []serverDomain.Hash, onChunk func(h serverDomain.Hash, data []byte) error) error {
 	if f.downloadErr != nil {
 		return f.downloadErr
 	}
@@ -79,7 +83,7 @@ func (f *fakeMergeClient) Push(_ context.Context, _, _, _, _, _ string, _ []*ser
 	return &serverDomain.PushResult{}, f.pushErr
 }
 
-func (f *fakeMergeClient) UploadChunks(_ context.Context, _ []*serverDomain.ChunkData, _ ...func(ch *serverDomain.ChunkData)) (int, int, error) {
+func (f *fakeMergeClient) UploadChunks(_ context.Context, _ domain.ChunkScope, _ []*serverDomain.ChunkData, _ ...func(ch *serverDomain.ChunkData)) (int, int, error) {
 	return 0, 0, nil
 }
 

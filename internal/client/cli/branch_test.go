@@ -46,7 +46,7 @@ func (f fakeListRepoInterface) CreateBranch(_ context.Context, _, _, name, _, _,
 	return &serverDomain.Branch{Name: name}, f.createdBranchErr
 }
 
-func (f fakeListRepoInterface) DownloadChunks(_ context.Context, _ []serverDomain.Hash, _ func(h serverDomain.Hash, data []byte) error) error {
+func (f fakeListRepoInterface) DownloadChunks(_ context.Context, _ domain.ChunkScope, _ []serverDomain.Hash, _ func(h serverDomain.Hash, data []byte) error) error {
 	return nil
 }
 

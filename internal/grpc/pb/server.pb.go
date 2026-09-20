@@ -492,8 +492,9 @@ func (x *PushFile) GetChunkHashes() []string {
 
 type ChunkUploadRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Hash          string                 `protobuf:"bytes,1,opt,name=hash,proto3" json:"hash,omitempty"` // hex-encoded BLAKE3 hash of data
-	Data          []byte                 `protobuf:"bytes,2,opt,name=data,proto3" json:"data,omitempty"`
+	Context       *ProjectContext        `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"` // required on the first message
+	Hash          string                 `protobuf:"bytes,2,opt,name=hash,proto3" json:"hash,omitempty"`       // hex-encoded BLAKE3 hash of data
+	Data          []byte                 `protobuf:"bytes,3,opt,name=data,proto3" json:"data,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -526,6 +527,13 @@ func (x *ChunkUploadRequest) ProtoReflect() protoreflect.Message {
 // Deprecated: Use ChunkUploadRequest.ProtoReflect.Descriptor instead.
 func (*ChunkUploadRequest) Descriptor() ([]byte, []int) {
 	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *ChunkUploadRequest) GetContext() *ProjectContext {
+	if x != nil {
+		return x.Context
+	}
+	return nil
 }
 
 func (x *ChunkUploadRequest) GetHash() string {
@@ -596,7 +604,10 @@ func (x *UploadChunksResponse) GetSkipped() int32 {
 
 type DownloadChunksRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Hash          string                 `protobuf:"bytes,1,opt,name=hash,proto3" json:"hash,omitempty"` // hex-encoded BLAKE3 hash of data
+	Hash          string                 `protobuf:"bytes,1,opt,name=hash,proto3" json:"hash,omitempty"`                            // hex-encoded BLAKE3 hash of data
+	Context       *ProjectContext        `protobuf:"bytes,2,opt,name=context,proto3" json:"context,omitempty"`                      // required on the first message
+	CommitIds     []string               `protobuf:"bytes,3,rep,name=commit_ids,json=commitIds,proto3" json:"commit_ids,omitempty"` // base36 snow IDs; visible chunks are the union of these trees
+	Paths         []string               `protobuf:"bytes,4,rep,name=paths,proto3" json:"paths,omitempty"`                          // optional path prefixes narrowing the visible chunks
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -636,6 +647,27 @@ func (x *DownloadChunksRequest) GetHash() string {
 		return x.Hash
 	}
 	return ""
+}
+
+func (x *DownloadChunksRequest) GetContext() *ProjectContext {
+	if x != nil {
+		return x.Context
+	}
+	return nil
+}
+
+func (x *DownloadChunksRequest) GetCommitIds() []string {
+	if x != nil {
+		return x.CommitIds
+	}
+	return nil
+}
+
+func (x *DownloadChunksRequest) GetPaths() []string {
+	if x != nil {
+		return x.Paths
+	}
+	return nil
 }
 
 type DownloadChunk struct {
@@ -2497,15 +2529,20 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"size_bytes\x18\x03 \x01(\x03R\tsizeBytes\x12\x1b\n" +
 	"\tis_binary\x18\x04 \x01(\bR\bisBinary\x12\x1b\n" +
 	"\tfile_hash\x18\x05 \x01(\tR\bfileHash\x12!\n" +
-	"\fchunk_hashes\x18\x06 \x03(\tR\vchunkHashes\"<\n" +
-	"\x12ChunkUploadRequest\x12\x12\n" +
-	"\x04hash\x18\x01 \x01(\tR\x04hash\x12\x12\n" +
-	"\x04data\x18\x02 \x01(\fR\x04data\"L\n" +
+	"\fchunk_hashes\x18\x06 \x03(\tR\vchunkHashes\"m\n" +
+	"\x12ChunkUploadRequest\x12/\n" +
+	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12\x12\n" +
+	"\x04hash\x18\x02 \x01(\tR\x04hash\x12\x12\n" +
+	"\x04data\x18\x03 \x01(\fR\x04data\"L\n" +
 	"\x14UploadChunksResponse\x12\x1a\n" +
 	"\buploaded\x18\x01 \x01(\x05R\buploaded\x12\x18\n" +
-	"\askipped\x18\x02 \x01(\x05R\askipped\"+\n" +
+	"\askipped\x18\x02 \x01(\x05R\askipped\"\x91\x01\n" +
 	"\x15DownloadChunksRequest\x12\x12\n" +
-	"\x04hash\x18\x01 \x01(\tR\x04hash\"7\n" +
+	"\x04hash\x18\x01 \x01(\tR\x04hash\x12/\n" +
+	"\acontext\x18\x02 \x01(\v2\x15.greet.ProjectContextR\acontext\x12\x1d\n" +
+	"\n" +
+	"commit_ids\x18\x03 \x03(\tR\tcommitIds\x12\x14\n" +
+	"\x05paths\x18\x04 \x03(\tR\x05paths\"7\n" +
 	"\rDownloadChunk\x12\x12\n" +
 	"\x04hash\x18\x01 \x01(\tR\x04hash\x12\x12\n" +
 	"\x04data\x18\x02 \x01(\fR\x04data\"\xb1\x02\n" +
@@ -2747,71 +2784,73 @@ var file_internal_grpc_proto_server_proto_depIdxs = []int32{
 	1,  // 3: greet.GetTreeManifestRequest.context:type_name -> greet.ProjectContext
 	3,  // 4: greet.GetTreeManifestResponse.root_tree:type_name -> greet.TreeManifest
 	0,  // 5: greet.PushFile.mode:type_name -> greet.FileMode
-	1,  // 6: greet.PushRequest.context:type_name -> greet.ProjectContext
-	6,  // 7: greet.PushRequest.files:type_name -> greet.PushFile
-	39, // 8: greet.Branch.created_at:type_name -> google.protobuf.Timestamp
-	39, // 9: greet.Branch.updated_at:type_name -> google.protobuf.Timestamp
-	1,  // 10: greet.GetListBranchRequest.context:type_name -> greet.ProjectContext
-	39, // 11: greet.GetListBranchRequest.last_updated_at:type_name -> google.protobuf.Timestamp
-	13, // 12: greet.GetListBranchResponse.branches:type_name -> greet.Branch
-	1,  // 13: greet.GetBranchRequest.context:type_name -> greet.ProjectContext
-	1,  // 14: greet.GetBranchByNameRequest.context:type_name -> greet.ProjectContext
-	13, // 15: greet.GetBranchByNameResponse.branch:type_name -> greet.Branch
-	1,  // 16: greet.GetDefaultBranchRequest.context:type_name -> greet.ProjectContext
-	13, // 17: greet.GetBranchResponse.branch:type_name -> greet.Branch
-	1,  // 18: greet.CreateBranchRequest.context:type_name -> greet.ProjectContext
-	13, // 19: greet.CreateBranchResponse.branch:type_name -> greet.Branch
-	1,  // 20: greet.GetMergeBaseRequest.context:type_name -> greet.ProjectContext
-	3,  // 21: greet.GetMergeBaseResponse.merge_base_tree:type_name -> greet.TreeManifest
-	1,  // 22: greet.MergeFastForwardRequest.context:type_name -> greet.ProjectContext
-	13, // 23: greet.MergeFastForwardResponse.branch:type_name -> greet.Branch
-	39, // 24: greet.CommitLogEntry.created_at:type_name -> google.protobuf.Timestamp
-	1,  // 25: greet.GetCommitLogRequest.context:type_name -> greet.ProjectContext
-	27, // 26: greet.GetCommitLogResponse.commits:type_name -> greet.CommitLogEntry
-	39, // 27: greet.CommitDetail.created_at:type_name -> google.protobuf.Timestamp
-	1,  // 28: greet.GetCommitRequest.context:type_name -> greet.ProjectContext
-	30, // 29: greet.GetCommitResponse.commit:type_name -> greet.CommitDetail
-	3,  // 30: greet.GetCommitResponse.root_tree:type_name -> greet.TreeManifest
-	39, // 31: greet.CommitWalkEntry.created_at:type_name -> google.protobuf.Timestamp
-	1,  // 32: greet.WalkCommitsRequest.context:type_name -> greet.ProjectContext
-	33, // 33: greet.WalkCommitsResponse.commits:type_name -> greet.CommitWalkEntry
-	36, // 34: greet.NipaService.LoginWithUsernamePassword:input_type -> greet.LoginUsernamePasswordRequest
-	37, // 35: greet.NipaService.LoginWithRefreshToken:input_type -> greet.LoginWithRefreshRequest
-	14, // 36: greet.NipaService.GetListBranch:input_type -> greet.GetListBranchRequest
-	16, // 37: greet.NipaService.GetBranch:input_type -> greet.GetBranchRequest
-	17, // 38: greet.NipaService.GetBranchByName:input_type -> greet.GetBranchByNameRequest
-	19, // 39: greet.NipaService.GetDefaultBranch:input_type -> greet.GetDefaultBranchRequest
-	21, // 40: greet.NipaService.CreateBranch:input_type -> greet.CreateBranchRequest
-	4,  // 41: greet.NipaService.GetTreeManifest:input_type -> greet.GetTreeManifestRequest
-	28, // 42: greet.NipaService.GetCommitLog:input_type -> greet.GetCommitLogRequest
-	31, // 43: greet.NipaService.GetCommit:input_type -> greet.GetCommitRequest
-	34, // 44: greet.NipaService.WalkCommits:input_type -> greet.WalkCommitsRequest
-	23, // 45: greet.NipaService.GetMergeBase:input_type -> greet.GetMergeBaseRequest
-	25, // 46: greet.NipaService.MergeFastForward:input_type -> greet.MergeFastForwardRequest
-	11, // 47: greet.NipaService.Push:input_type -> greet.PushRequest
-	7,  // 48: greet.NipaService.UploadChunks:input_type -> greet.ChunkUploadRequest
-	9,  // 49: greet.NipaService.DownloadChunks:input_type -> greet.DownloadChunksRequest
-	38, // 50: greet.NipaService.LoginWithUsernamePassword:output_type -> greet.LoginResponse
-	38, // 51: greet.NipaService.LoginWithRefreshToken:output_type -> greet.LoginResponse
-	15, // 52: greet.NipaService.GetListBranch:output_type -> greet.GetListBranchResponse
-	20, // 53: greet.NipaService.GetBranch:output_type -> greet.GetBranchResponse
-	18, // 54: greet.NipaService.GetBranchByName:output_type -> greet.GetBranchByNameResponse
-	20, // 55: greet.NipaService.GetDefaultBranch:output_type -> greet.GetBranchResponse
-	22, // 56: greet.NipaService.CreateBranch:output_type -> greet.CreateBranchResponse
-	5,  // 57: greet.NipaService.GetTreeManifest:output_type -> greet.GetTreeManifestResponse
-	29, // 58: greet.NipaService.GetCommitLog:output_type -> greet.GetCommitLogResponse
-	32, // 59: greet.NipaService.GetCommit:output_type -> greet.GetCommitResponse
-	35, // 60: greet.NipaService.WalkCommits:output_type -> greet.WalkCommitsResponse
-	24, // 61: greet.NipaService.GetMergeBase:output_type -> greet.GetMergeBaseResponse
-	26, // 62: greet.NipaService.MergeFastForward:output_type -> greet.MergeFastForwardResponse
-	12, // 63: greet.NipaService.Push:output_type -> greet.PushResponse
-	8,  // 64: greet.NipaService.UploadChunks:output_type -> greet.UploadChunksResponse
-	10, // 65: greet.NipaService.DownloadChunks:output_type -> greet.DownloadChunk
-	50, // [50:66] is the sub-list for method output_type
-	34, // [34:50] is the sub-list for method input_type
-	34, // [34:34] is the sub-list for extension type_name
-	34, // [34:34] is the sub-list for extension extendee
-	0,  // [0:34] is the sub-list for field type_name
+	1,  // 6: greet.ChunkUploadRequest.context:type_name -> greet.ProjectContext
+	1,  // 7: greet.DownloadChunksRequest.context:type_name -> greet.ProjectContext
+	1,  // 8: greet.PushRequest.context:type_name -> greet.ProjectContext
+	6,  // 9: greet.PushRequest.files:type_name -> greet.PushFile
+	39, // 10: greet.Branch.created_at:type_name -> google.protobuf.Timestamp
+	39, // 11: greet.Branch.updated_at:type_name -> google.protobuf.Timestamp
+	1,  // 12: greet.GetListBranchRequest.context:type_name -> greet.ProjectContext
+	39, // 13: greet.GetListBranchRequest.last_updated_at:type_name -> google.protobuf.Timestamp
+	13, // 14: greet.GetListBranchResponse.branches:type_name -> greet.Branch
+	1,  // 15: greet.GetBranchRequest.context:type_name -> greet.ProjectContext
+	1,  // 16: greet.GetBranchByNameRequest.context:type_name -> greet.ProjectContext
+	13, // 17: greet.GetBranchByNameResponse.branch:type_name -> greet.Branch
+	1,  // 18: greet.GetDefaultBranchRequest.context:type_name -> greet.ProjectContext
+	13, // 19: greet.GetBranchResponse.branch:type_name -> greet.Branch
+	1,  // 20: greet.CreateBranchRequest.context:type_name -> greet.ProjectContext
+	13, // 21: greet.CreateBranchResponse.branch:type_name -> greet.Branch
+	1,  // 22: greet.GetMergeBaseRequest.context:type_name -> greet.ProjectContext
+	3,  // 23: greet.GetMergeBaseResponse.merge_base_tree:type_name -> greet.TreeManifest
+	1,  // 24: greet.MergeFastForwardRequest.context:type_name -> greet.ProjectContext
+	13, // 25: greet.MergeFastForwardResponse.branch:type_name -> greet.Branch
+	39, // 26: greet.CommitLogEntry.created_at:type_name -> google.protobuf.Timestamp
+	1,  // 27: greet.GetCommitLogRequest.context:type_name -> greet.ProjectContext
+	27, // 28: greet.GetCommitLogResponse.commits:type_name -> greet.CommitLogEntry
+	39, // 29: greet.CommitDetail.created_at:type_name -> google.protobuf.Timestamp
+	1,  // 30: greet.GetCommitRequest.context:type_name -> greet.ProjectContext
+	30, // 31: greet.GetCommitResponse.commit:type_name -> greet.CommitDetail
+	3,  // 32: greet.GetCommitResponse.root_tree:type_name -> greet.TreeManifest
+	39, // 33: greet.CommitWalkEntry.created_at:type_name -> google.protobuf.Timestamp
+	1,  // 34: greet.WalkCommitsRequest.context:type_name -> greet.ProjectContext
+	33, // 35: greet.WalkCommitsResponse.commits:type_name -> greet.CommitWalkEntry
+	36, // 36: greet.NipaService.LoginWithUsernamePassword:input_type -> greet.LoginUsernamePasswordRequest
+	37, // 37: greet.NipaService.LoginWithRefreshToken:input_type -> greet.LoginWithRefreshRequest
+	14, // 38: greet.NipaService.GetListBranch:input_type -> greet.GetListBranchRequest
+	16, // 39: greet.NipaService.GetBranch:input_type -> greet.GetBranchRequest
+	17, // 40: greet.NipaService.GetBranchByName:input_type -> greet.GetBranchByNameRequest
+	19, // 41: greet.NipaService.GetDefaultBranch:input_type -> greet.GetDefaultBranchRequest
+	21, // 42: greet.NipaService.CreateBranch:input_type -> greet.CreateBranchRequest
+	4,  // 43: greet.NipaService.GetTreeManifest:input_type -> greet.GetTreeManifestRequest
+	28, // 44: greet.NipaService.GetCommitLog:input_type -> greet.GetCommitLogRequest
+	31, // 45: greet.NipaService.GetCommit:input_type -> greet.GetCommitRequest
+	34, // 46: greet.NipaService.WalkCommits:input_type -> greet.WalkCommitsRequest
+	23, // 47: greet.NipaService.GetMergeBase:input_type -> greet.GetMergeBaseRequest
+	25, // 48: greet.NipaService.MergeFastForward:input_type -> greet.MergeFastForwardRequest
+	11, // 49: greet.NipaService.Push:input_type -> greet.PushRequest
+	7,  // 50: greet.NipaService.UploadChunks:input_type -> greet.ChunkUploadRequest
+	9,  // 51: greet.NipaService.DownloadChunks:input_type -> greet.DownloadChunksRequest
+	38, // 52: greet.NipaService.LoginWithUsernamePassword:output_type -> greet.LoginResponse
+	38, // 53: greet.NipaService.LoginWithRefreshToken:output_type -> greet.LoginResponse
+	15, // 54: greet.NipaService.GetListBranch:output_type -> greet.GetListBranchResponse
+	20, // 55: greet.NipaService.GetBranch:output_type -> greet.GetBranchResponse
+	18, // 56: greet.NipaService.GetBranchByName:output_type -> greet.GetBranchByNameResponse
+	20, // 57: greet.NipaService.GetDefaultBranch:output_type -> greet.GetBranchResponse
+	22, // 58: greet.NipaService.CreateBranch:output_type -> greet.CreateBranchResponse
+	5,  // 59: greet.NipaService.GetTreeManifest:output_type -> greet.GetTreeManifestResponse
+	29, // 60: greet.NipaService.GetCommitLog:output_type -> greet.GetCommitLogResponse
+	32, // 61: greet.NipaService.GetCommit:output_type -> greet.GetCommitResponse
+	35, // 62: greet.NipaService.WalkCommits:output_type -> greet.WalkCommitsResponse
+	24, // 63: greet.NipaService.GetMergeBase:output_type -> greet.GetMergeBaseResponse
+	26, // 64: greet.NipaService.MergeFastForward:output_type -> greet.MergeFastForwardResponse
+	12, // 65: greet.NipaService.Push:output_type -> greet.PushResponse
+	8,  // 66: greet.NipaService.UploadChunks:output_type -> greet.UploadChunksResponse
+	10, // 67: greet.NipaService.DownloadChunks:output_type -> greet.DownloadChunk
+	52, // [52:68] is the sub-list for method output_type
+	36, // [36:52] is the sub-list for method input_type
+	36, // [36:36] is the sub-list for extension type_name
+	36, // [36:36] is the sub-list for extension extendee
+	0,  // [0:36] is the sub-list for field type_name
 }
 
 func init() { file_internal_grpc_proto_server_proto_init() }

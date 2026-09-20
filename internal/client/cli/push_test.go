@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/nipalab/nipa/internal/client/domain"
 	"github.com/nipalab/nipa/internal/client/localrepo"
 	"github.com/nipalab/nipa/internal/client/usecase"
 	serverDomain "github.com/nipalab/nipa/internal/domain"
@@ -34,7 +35,7 @@ func (f *fakePushClient) Push(_ context.Context, org, project, branch, baseTreeH
 	return &serverDomain.PushResult{}, nil
 }
 
-func (f *fakePushClient) UploadChunks(_ context.Context, chunks []*serverDomain.ChunkData, onChunk ...func(ch *serverDomain.ChunkData)) (int, int, error) {
+func (f *fakePushClient) UploadChunks(_ context.Context, _ domain.ChunkScope, chunks []*serverDomain.ChunkData, onChunk ...func(ch *serverDomain.ChunkData)) (int, int, error) {
 	f.uploaded = append(f.uploaded, chunks)
 	for _, ch := range chunks {
 		if len(onChunk) > 0 && onChunk[0] != nil {

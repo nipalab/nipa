@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/nipalab/nipa/internal/chunker"
+	"github.com/nipalab/nipa/internal/client/domain"
 	"github.com/nipalab/nipa/internal/client/localrepo"
 	"github.com/nipalab/nipa/internal/client/usecase"
 	serverDomain "github.com/nipalab/nipa/internal/domain"
@@ -47,7 +48,7 @@ func (f *fakeUpdateClient) GetTreeNodeManifest(_ context.Context, org, project, 
 	return f.manifest, nil
 }
 
-func (f *fakeUpdateClient) DownloadChunks(_ context.Context, hashes []serverDomain.Hash, onChunk func(h serverDomain.Hash, data []byte) error) error {
+func (f *fakeUpdateClient) DownloadChunks(_ context.Context, _ domain.ChunkScope, hashes []serverDomain.Hash, onChunk func(h serverDomain.Hash, data []byte) error) error {
 	f.downloaded = append(f.downloaded, hashes...)
 	for _, h := range hashes {
 		data, ok := f.chunkData[h]

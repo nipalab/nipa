@@ -56,8 +56,9 @@ message PushFile {
 }
 
 message ChunkUploadRequest {
-    string hash = 1; // hex-encoded BLAKE3 hash of data
-    bytes data = 2;
+    ProjectContext context = 1; // required on the first message
+    string hash = 2; // hex-encoded BLAKE3 hash of data
+    bytes data = 3;
 }
 
 message UploadChunksResponse {
@@ -67,6 +68,9 @@ message UploadChunksResponse {
 
 message DownloadChunksRequest {
     string hash = 1; // hex-encoded BLAKE3 hash of data
+    ProjectContext context = 2; // required on the first message
+    repeated string commit_ids = 3; // base36 snow IDs; visible chunks are the union of these trees
+    repeated string paths = 4; // optional path prefixes narrowing the visible chunks
 }
 
 message DownloadChunk {
