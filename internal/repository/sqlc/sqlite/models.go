@@ -86,14 +86,14 @@ type Organization struct {
 }
 
 type PbacRule struct {
-	ID          int64          `json:"id"`
-	CreatedAt   sql.NullTime   `json:"created_at"`
-	UserID      sql.NullInt64  `json:"user_id"`
-	GroupID     sql.NullInt64  `json:"group_id"`
-	OrgID       int64          `json:"org_id"`
-	ProjectID   sql.NullInt64  `json:"project_id"`
-	PathPattern sql.NullString `json:"path_pattern"`
-	Permission  int64          `json:"permission"`
+	ID         int64         `json:"id"`
+	CreatedAt  sql.NullTime  `json:"created_at"`
+	UserID     sql.NullInt64 `json:"user_id"`
+	GroupID    sql.NullInt64 `json:"group_id"`
+	OrgID      int64         `json:"org_id"`
+	ProjectID  sql.NullInt64 `json:"project_id"`
+	PathPrefix string        `json:"path_prefix"`
+	Permission int64         `json:"permission"`
 }
 
 type Project struct {
@@ -109,11 +109,11 @@ type Project struct {
 }
 
 type ProjectPathsPermission struct {
-	ID          int64        `json:"id"`
-	ProjectID   int64        `json:"project_id"`
-	PathPattern string       `json:"path_pattern"`
-	IsAllowed   bool         `json:"is_allowed"`
-	CreatedAt   sql.NullTime `json:"created_at"`
+	ID         int64        `json:"id"`
+	ProjectID  int64        `json:"project_id"`
+	PathPrefix string       `json:"path_prefix"`
+	Permission int64        `json:"permission"`
+	CreatedAt  sql.NullTime `json:"created_at"`
 }
 
 type RefreshToken struct {

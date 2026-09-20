@@ -51,6 +51,7 @@ func main() {
 	userRepo := sqlite.NewUserRepository(dbConn)
 	branchRepository := sqlite.NewBranchRepository(dbConn)
 	pushRepository := sqlite.NewPushRepository(dbConn)
+	pbacRepository := sqlite.NewPBACRepository(dbConn)
 
 	passwordHasher := hasher.NewHasher(cfg.HasherWorkers)
 
@@ -59,6 +60,7 @@ func main() {
 		panic(err)
 	}
 	authUsecase := usecase.NewAuth(cfg.JWTKey, passwordHasher, userRepo, authRepo)
+	permissionUsecase := usecase.NewPermission(pbacRepository)
 	chunkStore, err := storage.NewLocalStore(cfg.ChunkStorageDir)
 	if err != nil {
 		panic(fmt.Errorf("create chunk store: %w", err))
@@ -68,8 +70,8 @@ func main() {
 		authUsecase:   authUsecase,
 		userUsecase:   usecase.NewUser(snowUser),
 		commonUsecase: usecase.NewCommon(orgRepo, projectRepo),
-		branchUsecase: usecase.NewBranch(authUsecase, branchRepository, snowUser),
-		pushUsecase:   usecase.NewPush(authUsecase, branchRepository, pushRepository, snowUser),
+		branchUsecase: usecase.NewBranch(permissionUsecase, branchRepository, snowUser),
+		pushUsecase:   usecase.NewPush(permissionUsecase, branchRepository, pushRepository, snowUser),
 		chunkUsecase:  usecase.NewChunk(pushRepository, chunkStore),
 	}
 

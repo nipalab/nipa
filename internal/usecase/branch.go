@@ -14,6 +14,8 @@ import (
 
 type permissionUsecase interface {
 	HasProjectAccess(ctx context.Context, projectID snow.ID, permission domain.Permission) bool
+	HasPathAccess(ctx context.Context, projectID snow.ID, path string, permission domain.Permission) bool
+	FilterTree(ctx context.Context, projectID snow.ID, root *domain.TreeNode, permission domain.Permission) (*domain.TreeNode, error)
 }
 
 type branchRepository interface {

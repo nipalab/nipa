@@ -43,6 +43,35 @@ func (m *MockpermissionUsecase) EXPECT() *MockpermissionUsecaseMockRecorder {
 	return m.recorder
 }
 
+// FilterTree mocks base method.
+func (m *MockpermissionUsecase) FilterTree(ctx context.Context, projectID snow.ID, root *domain.TreeNode, permission domain.Permission) (*domain.TreeNode, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FilterTree", ctx, projectID, root, permission)
+	ret0, _ := ret[0].(*domain.TreeNode)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// FilterTree indicates an expected call of FilterTree.
+func (mr *MockpermissionUsecaseMockRecorder) FilterTree(ctx, projectID, root, permission any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FilterTree", reflect.TypeOf((*MockpermissionUsecase)(nil).FilterTree), ctx, projectID, root, permission)
+}
+
+// HasPathAccess mocks base method.
+func (m *MockpermissionUsecase) HasPathAccess(ctx context.Context, projectID snow.ID, path string, permission domain.Permission) bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "HasPathAccess", ctx, projectID, path, permission)
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// HasPathAccess indicates an expected call of HasPathAccess.
+func (mr *MockpermissionUsecaseMockRecorder) HasPathAccess(ctx, projectID, path, permission any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasPathAccess", reflect.TypeOf((*MockpermissionUsecase)(nil).HasPathAccess), ctx, projectID, path, permission)
+}
+
 // HasProjectAccess mocks base method.
 func (m *MockpermissionUsecase) HasProjectAccess(ctx context.Context, projectID snow.ID, permission domain.Permission) bool {
 	m.ctrl.T.Helper()

@@ -121,6 +121,7 @@ func startTestServer(t *testing.T, dbConn *sql.DB) string {
 	authRepo := sqlite.NewAuthRepository(dbConn)
 	branchRepo := sqlite.NewBranchRepository(dbConn)
 	pushRepo := sqlite.NewPushRepository(dbConn)
+	pbacRepo := sqlite.NewPBACRepository(dbConn)
 
 	passwordHasher := hasher.NewHasher(2)
 	t.Cleanup(passwordHasher.Close)
@@ -129,8 +130,9 @@ func startTestServer(t *testing.T, dbConn *sql.DB) string {
 	require.NoError(t, err)
 
 	authUc := serverusecase.NewAuth(e2eJWTSecret, passwordHasher, userRepo, authRepo)
+	permissionUc := serverusecase.NewPermission(pbacRepo)
 	commonUc := serverusecase.NewCommon(orgRepo, projectRepo)
-	branchUc := serverusecase.NewBranch(authUc, branchRepo, node)
+	branchUc := serverusecase.NewBranch(permissionUc, branchRepo, node)
 	chunkStore, err := storage.NewLocalStore(t.TempDir())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = chunkStore.Close() })
@@ -140,7 +142,7 @@ func startTestServer(t *testing.T, dbConn *sql.DB) string {
 		user:   serverusecase.NewUser(node),
 		branch: branchUc,
 		common: commonUc,
-		push:   serverusecase.NewPush(authUc, branchRepo, pushRepo, node),
+		push:   serverusecase.NewPush(permissionUc, branchRepo, pushRepo, node),
 		chunk:  serverusecase.NewChunk(pushRepo, chunkStore),
 	}
 
