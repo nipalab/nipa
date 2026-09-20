@@ -168,3 +168,20 @@ func TestGroupRepositorySQLite_QueryErrors(t *testing.T) {
 	require.Error(t, repo.AddMember(canceled, snow.ID(7030), userID))
 	require.Error(t, repo.RemoveMember(canceled, snow.ID(7030), userID))
 }
+
+func TestGroupRepositorySQLite_ListMemberIDs(t *testing.T) {
+	ctx := context.Background()
+	db, _ := newSQLiteTestDB(t)
+	repo := NewGroupRepository(db)
+
+	userA := seedPBACUser(t, db, 42)
+	userB := seedPBACUser(t, db, 43)
+	_, err := repo.Create(ctx, domain.Group{ID: snow.ID(7030), OrgID: 1, Name: "artists"})
+	require.NoError(t, err)
+	require.NoError(t, repo.AddMember(ctx, snow.ID(7030), userA))
+	require.NoError(t, repo.AddMember(ctx, snow.ID(7030), userB))
+
+	ids, err := repo.ListMemberIDs(ctx, snow.ID(7030))
+	require.NoError(t, err)
+	require.Equal(t, []snow.ID{userA, userB}, ids)
+}

@@ -16,6 +16,8 @@ type usecaseContainer interface {
 	User() *usecase.User
 	Common() *usecase.Common
 	Permission() *usecase.Permission
+	Org() *usecase.Org
+	Group() *usecase.Group
 }
 
 type API struct {
@@ -52,7 +54,9 @@ func (a *API) SetupRoute() http.Handler {
 		Filter(NewAuthFilter(a.useCase.Auth()).Auth()).
 		Consumes(restful.MIME_JSON).
 		Produces(restful.MIME_JSON)
-	setupMeRouter(apiWs, handler)
+	setupUserRouter(apiWs, handler)
+	setupOrgRouter(apiWs, handler)
+	setupGroupRouter(apiWs, handler)
 	setupPermissionRouter(apiWs, handler)
 	restful.Add(apiWs)
 

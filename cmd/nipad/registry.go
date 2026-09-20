@@ -11,6 +11,7 @@ type Registry struct {
 	chunkUsecase      *usecase.Chunk
 	permissionUsecase *usecase.Permission
 	groupUsecase      *usecase.Group
+	orgUsecase        *usecase.Org
 }
 
 func (r *Registry) Auth() *usecase.Auth {
@@ -43,4 +44,8 @@ func (r *Registry) Permission() *usecase.Permission {
 
 func (r *Registry) Group() *usecase.Group {
 	return r.groupUsecase
+}
+
+func (r *Registry) Org() *usecase.Org {
+	return r.orgUsecase
 }

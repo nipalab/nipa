@@ -137,7 +137,8 @@ func startTestServer(t *testing.T, dbConn *sql.DB) string {
 
 	authUc := serverusecase.NewAuth(e2eJWTSecret, passwordHasher, userRepo, authRepo)
 	groupRepo := sqlite.NewGroupRepository(dbConn)
-	permissionUc := serverusecase.NewPermission(pbacRepo, userRepo, groupRepo)
+	orgUc := serverusecase.NewOrg(orgRepo)
+	permissionUc := serverusecase.NewPermission(pbacRepo, userRepo, groupRepo, orgUc)
 	commonUc := serverusecase.NewCommon(orgRepo, projectRepo)
 	branchUc := serverusecase.NewBranch(permissionUc, branchRepo, node)
 	chunkStore, err := storage.NewLocalStore(t.TempDir())
@@ -146,13 +147,13 @@ func startTestServer(t *testing.T, dbConn *sql.DB) string {
 
 	reg := &testRegistry{
 		auth:       authUc,
-		user:       serverusecase.NewUser(node, userRepo),
+		user:       serverusecase.NewUser(node, userRepo, passwordHasher),
 		branch:     branchUc,
 		common:     commonUc,
 		push:       serverusecase.NewPush(permissionUc, branchRepo, pushRepo, node),
 		chunk:      serverusecase.NewChunk(pushRepo, chunkStore),
 		permission: permissionUc,
-		group:      serverusecase.NewGroup(groupRepo, node, permissionUc),
+		group:      serverusecase.NewGroup(groupRepo, node, permissionUc, orgUc),
 	}
 
 	lis, err := net.Listen("tcp", "127.0.0.1:0")

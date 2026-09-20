@@ -25,12 +25,16 @@ type testRegistry struct {
 	user       *usecase.User
 	common     *usecase.Common
 	permission *usecase.Permission
+	org        *usecase.Org
+	group      *usecase.Group
 }
 
 func (r *testRegistry) Auth() *usecase.Auth             { return r.auth }
 func (r *testRegistry) User() *usecase.User             { return r.user }
 func (r *testRegistry) Common() *usecase.Common         { return r.common }
 func (r *testRegistry) Permission() *usecase.Permission { return r.permission }
+func (r *testRegistry) Org() *usecase.Org               { return r.org }
+func (r *testRegistry) Group() *usecase.Group           { return r.group }
 
 type stubPasswordHasher struct{}
 
@@ -59,25 +63,26 @@ func TestAPIRoutes(t *testing.T) {
 
 	node, _ := snow.NewNode(1)
 	userRepo := sqlite.NewUserRepository(dbConn)
+	groupRepo := sqlite.NewGroupRepository(dbConn)
+	orgUc := usecase.NewOrg(sqlite.NewOrgRepository(dbConn))
+	permissionUc := usecase.NewPermission(sqlite.NewPBACRepository(dbConn), userRepo, groupRepo, orgUc)
 	reg := &testRegistry{
-		auth:   usecase.NewAuth("test-secret", stubPasswordHasher{}, userRepo, sqlite.NewAuthRepository(dbConn)),
-		user:   usecase.NewUser(node, userRepo),
-		common: usecase.NewCommon(sqlite.NewOrgRepository(dbConn), sqlite.NewProjectRepository(dbConn)),
-		permission: usecase.NewPermission(
-			sqlite.NewPBACRepository(dbConn),
-			userRepo,
-			sqlite.NewGroupRepository(dbConn),
-		),
+		auth:       usecase.NewAuth("test-secret", stubPasswordHasher{}, userRepo, sqlite.NewAuthRepository(dbConn)),
+		user:       usecase.NewUser(node, userRepo, stubPasswordHasher{}),
+		common:     usecase.NewCommon(sqlite.NewOrgRepository(dbConn), sqlite.NewProjectRepository(dbConn)),
+		permission: permissionUc,
+		org:        orgUc,
+		group:      usecase.NewGroup(groupRepo, node, permissionUc, orgUc),
 	}
 
 	container := NewAPI(reg).SetupRoute()
 	server := httptest.NewServer(container)
 	t.Cleanup(server.Close)
 
-	login := func(t *testing.T) (model.LoginResponse, *http.Cookie) {
+	loginAs := func(t *testing.T, email string) (model.LoginResponse, *http.Cookie) {
 		t.Helper()
 
-		resp := doJSON(t, server.URL+"/api/v1/auth/login", `{"email":"alice@example.com","password":"whatever"}`, nil, "")
+		resp := doJSON(t, server.URL+"/api/v1/auth/login", `{"email":"`+email+`","password":"whatever"}`, nil, "")
 		defer resp.Body.Close()
 		require.Equal(t, http.StatusOK, resp.StatusCode)
 
@@ -92,6 +97,10 @@ func TestAPIRoutes(t *testing.T) {
 		}
 		require.NotNil(t, refresh)
 		return loginResponse, refresh
+	}
+	login := func(t *testing.T) (model.LoginResponse, *http.Cookie) {
+		t.Helper()
+		return loginAs(t, "alice@example.com")
 	}
 
 	t.Run("login sets an httpOnly refresh cookie", func(t *testing.T) {
@@ -242,7 +251,7 @@ func TestAPIRoutes(t *testing.T) {
 		defer resp.Body.Close()
 		require.Equal(t, http.StatusOK, resp.StatusCode)
 
-		var me model.MeResponse
+		var me model.UserResponse
 		require.NoError(t, json.NewDecoder(resp.Body).Decode(&me))
 		require.Equal(t, snow.ID(userID).Base36(), me.ID)
 		require.Equal(t, "alice", me.Name)
@@ -288,6 +297,169 @@ func TestAPIRoutes(t *testing.T) {
 		require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 	})
 
+	t.Run("organization membership and groups", func(t *testing.T) {
+		aliceLogin, _ := login(t)
+		superLogin, _ := loginAs(t, "supernipa")
+		aliceID := snow.ID(userID).Base36()
+		base := server.URL + "/api/v1/orgs/default"
+
+		orgs := decodeBody[[]model.OrgResponse](t, doGet(t, server.URL+"/api/v1/orgs", aliceLogin.AccessToken))
+		require.Empty(t, orgs, "alice starts outside the organization")
+
+		addAlice := doMethod(t, http.MethodPost, base+"/members",
+			`{"user_id":"`+aliceID+`","role":"owner"}`, superLogin.AccessToken)
+		require.Equal(t, http.StatusOK, addAlice.StatusCode)
+		aliceMembership := decodeBody[model.OrgMemberResponse](t, addAlice)
+		require.Equal(t, "owner", aliceMembership.Role)
+		require.Equal(t, "alice@example.com", aliceMembership.Email)
+		require.NotNil(t, aliceMembership.JoinedAt)
+
+		orgs = decodeBody[[]model.OrgResponse](t, doGet(t, server.URL+"/api/v1/orgs", aliceLogin.AccessToken))
+		require.Len(t, orgs, 1)
+		require.Equal(t, "default", orgs[0].Slug)
+		require.Equal(t, "owner", orgs[0].Role)
+
+		createBob := doMethod(t, http.MethodPost, server.URL+"/api/v1/users",
+			`{"name":"bob","email":"bob@example.com","password":"password123"}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, createBob.StatusCode)
+		bob := decodeBody[model.UserResponse](t, createBob)
+		require.False(t, bob.IsAdmin)
+
+		duplicate := doMethod(t, http.MethodPost, server.URL+"/api/v1/users",
+			`{"name":"bob2","email":"bob@example.com","password":"password123"}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusConflict, duplicate.StatusCode)
+		duplicate.Body.Close()
+
+		addBob := doMethod(t, http.MethodPost, base+"/members",
+			`{"email":"bob@example.com","role":"member"}`, superLogin.AccessToken)
+		require.Equal(t, http.StatusOK, addBob.StatusCode)
+		addBob.Body.Close()
+
+		members := decodeBody[[]model.OrgMemberResponse](t, doGet(t, base+"/members", aliceLogin.AccessToken))
+		require.Len(t, members, 3, "seeded super admin, alice and bob")
+
+		bobLogin, _ := loginAs(t, "bob@example.com")
+		denied := doGet(t, base+"/members", bobLogin.AccessToken)
+		require.Equal(t, http.StatusForbidden, denied.StatusCode)
+		denied.Body.Close()
+		deniedUsers := doGet(t, server.URL+"/api/v1/users", bobLogin.AccessToken)
+		require.Equal(t, http.StatusForbidden, deniedUsers.StatusCode)
+		deniedUsers.Body.Close()
+		bobOrgs := decodeBody[[]model.OrgResponse](t, doGet(t, server.URL+"/api/v1/orgs", bobLogin.AccessToken))
+		require.Len(t, bobOrgs, 1)
+		require.Equal(t, "member", bobOrgs[0].Role)
+
+		promote := doMethod(t, http.MethodPatch, base+"/members/"+bob.ID, `{"role":"owner"}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, promote.StatusCode)
+		promote.Body.Close()
+		ownerView := doGet(t, base+"/members", bobLogin.AccessToken)
+		require.Equal(t, http.StatusOK, ownerView.StatusCode)
+		ownerView.Body.Close()
+		demote := doMethod(t, http.MethodPatch, base+"/members/"+bob.ID, `{"role":"member"}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, demote.StatusCode)
+		demote.Body.Close()
+
+		createGroup := doMethod(t, http.MethodPost, base+"/groups",
+			`{"name":"artists","description":"2d team"}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, createGroup.StatusCode)
+		group := decodeBody[model.GroupResponse](t, createGroup)
+		require.Equal(t, "artists", group.Name)
+
+		groups := decodeBody[[]model.GroupResponse](t, doGet(t, base+"/groups", aliceLogin.AccessToken))
+		require.Len(t, groups, 1)
+
+		deniedGroups := doGet(t, base+"/groups", bobLogin.AccessToken)
+		require.Equal(t, http.StatusForbidden, deniedGroups.StatusCode)
+		deniedGroups.Body.Close()
+
+		addMember := doMethod(t, http.MethodPost, base+"/groups/"+group.ID+"/members",
+			`{"user_id":"`+bob.ID+`"}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, addMember.StatusCode)
+		addMember.Body.Close()
+
+		detail := decodeBody[model.GroupResponse](t, doGet(t, base+"/groups/"+group.ID, aliceLogin.AccessToken))
+		require.Equal(t, []string{bob.ID}, detail.MemberIDs)
+
+		removeMember := doMethod(t, http.MethodDelete, base+"/groups/"+group.ID+"/members/"+bob.ID, "", aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, removeMember.StatusCode)
+		removeMember.Body.Close()
+
+		removeBob := doMethod(t, http.MethodDelete, base+"/members/"+bob.ID, "", aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, removeBob.StatusCode)
+		removeBob.Body.Close()
+		bobOrgs = decodeBody[[]model.OrgResponse](t, doGet(t, server.URL+"/api/v1/orgs", bobLogin.AccessToken))
+		require.Empty(t, bobOrgs)
+	})
+
+	t.Run("user administration", func(t *testing.T) {
+		superLogin, _ := loginAs(t, "supernipa")
+
+		createCarol := doMethod(t, http.MethodPost, server.URL+"/api/v1/users",
+			`{"name":"carol","email":"carol@example.com","password":"password123"}`, superLogin.AccessToken)
+		require.Equal(t, http.StatusOK, createCarol.StatusCode)
+		carol := decodeBody[model.UserResponse](t, createCarol)
+
+		updateEmail := doMethod(t, http.MethodPatch, server.URL+"/api/v1/users/"+carol.ID,
+			`{"email":"carol2@example.com"}`, superLogin.AccessToken)
+		require.Equal(t, http.StatusOK, updateEmail.StatusCode)
+		updated := decodeBody[model.UserResponse](t, updateEmail)
+		require.Equal(t, "carol2@example.com", updated.Email)
+
+		flags := doMethod(t, http.MethodPatch, server.URL+"/api/v1/users/"+carol.ID+"/admin",
+			`{"is_admin":true,"is_super_admin":false}`, superLogin.AccessToken)
+		require.Equal(t, http.StatusOK, flags.StatusCode)
+		flagged := decodeBody[model.UserResponse](t, flags)
+		require.True(t, flagged.IsAdmin)
+
+		reset := doMethod(t, http.MethodPost, server.URL+"/api/v1/users/"+carol.ID+"/password",
+			`{"password":"newpassword123"}`, superLogin.AccessToken)
+		require.Equal(t, http.StatusOK, reset.StatusCode)
+		reset.Body.Close()
+
+		selfDemote := doMethod(t, http.MethodPatch, server.URL+"/api/v1/users/1/admin",
+			`{"is_admin":true,"is_super_admin":false}`, superLogin.AccessToken)
+		require.Equal(t, http.StatusBadRequest, selfDemote.StatusCode)
+		selfDemote.Body.Close()
+
+		selfDelete := doMethod(t, http.MethodDelete, server.URL+"/api/v1/users/1", "", superLogin.AccessToken)
+		require.Equal(t, http.StatusBadRequest, selfDelete.StatusCode)
+		selfDelete.Body.Close()
+
+		deactivate := doMethod(t, http.MethodDelete, server.URL+"/api/v1/users/"+carol.ID, "", superLogin.AccessToken)
+		require.Equal(t, http.StatusOK, deactivate.StatusCode)
+		deactivate.Body.Close()
+
+		users := decodeBody[[]model.UserResponse](t, doGet(t, server.URL+"/api/v1/users", superLogin.AccessToken))
+		for _, user := range users {
+			require.NotEqual(t, carol.ID, user.ID)
+		}
+
+		reactivate := doPostJSON(t, server.URL+"/api/v1/auth/login", `{"email":"alice@example.com","password":"whatever"}`)
+		defer reactivate.Body.Close()
+		require.Equal(t, http.StatusOK, reactivate.StatusCode)
+	})
+
+	t.Run("self profile and password", func(t *testing.T) {
+		aliceLogin, _ := login(t)
+
+		update := doMethod(t, http.MethodPatch, server.URL+"/api/v1/me",
+			`{"name":"Alice Admin","photo_url":"https://example.com/a.png"}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, update.StatusCode)
+		profile := decodeBody[model.UserResponse](t, update)
+		require.Equal(t, "Alice Admin", profile.Name)
+		require.Equal(t, "https://example.com/a.png", profile.PhotoUrl)
+
+		short := doMethod(t, http.MethodPost, server.URL+"/api/v1/me/password",
+			`{"old_password":"whatever","new_password":"short"}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusBadRequest, short.StatusCode)
+		short.Body.Close()
+
+		change := doMethod(t, http.MethodPost, server.URL+"/api/v1/me/password",
+			`{"old_password":"whatever","new_password":"longenough1"}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, change.StatusCode)
+		change.Body.Close()
+	})
+
 	t.Run("openapi doc is served", func(t *testing.T) {
 		resp, err := http.Get(server.URL + "/docs/api.json")
 		require.NoError(t, err)
@@ -316,13 +488,37 @@ func doJSON(t *testing.T, url, body string, cookies []*http.Cookie, origin strin
 
 func doGet(t *testing.T, url, accessToken string) *http.Response {
 	t.Helper()
+	return doMethod(t, http.MethodGet, url, "", accessToken)
+}
 
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+func doMethod(t *testing.T, method, url, body, accessToken string) *http.Response {
+	t.Helper()
+
+	req, err := http.NewRequest(method, url, bytes.NewBufferString(body))
 	require.NoError(t, err)
+	if body != "" {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	if accessToken != "" {
 		req.Header.Set("Authorization", "Bearer "+accessToken)
 	}
 	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	return resp
+}
+
+func decodeBody[T any](t *testing.T, resp *http.Response) T {
+	t.Helper()
+	defer resp.Body.Close()
+	var out T
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&out))
+	return out
+}
+
+func doPostJSON(t *testing.T, url, body string) *http.Response {
+	t.Helper()
+
+	resp, err := http.Post(url, "application/json", bytes.NewBufferString(body))
 	require.NoError(t, err)
 	return resp
 }

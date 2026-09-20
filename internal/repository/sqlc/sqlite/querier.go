@@ -44,9 +44,16 @@ type Querier interface {
 	GroupListByOrg(ctx context.Context, orgID int64) ([]Group, error)
 	GroupListByUser(ctx context.Context, userID int64) ([]Group, error)
 	GroupMemberAdd(ctx context.Context, arg GroupMemberAddParams) error
+	GroupMemberList(ctx context.Context, groupID int64) ([]GroupMemberListRow, error)
 	GroupMemberRemove(ctx context.Context, arg GroupMemberRemoveParams) error
 	ListOrganizations(ctx context.Context) ([]Organization, error)
 	ListProjectsByOrgId(ctx context.Context, orgID int64) ([]Project, error)
+	OrgMemberCountByRole(ctx context.Context, arg OrgMemberCountByRoleParams) (int64, error)
+	OrgMemberDelete(ctx context.Context, arg OrgMemberDeleteParams) error
+	OrgMemberGet(ctx context.Context, arg OrgMemberGetParams) (string, error)
+	OrgMemberList(ctx context.Context, orgID int64) ([]OrgMemberListRow, error)
+	OrgMemberListForUser(ctx context.Context, userID int64) ([]OrgMemberListForUserRow, error)
+	OrgMemberUpsert(ctx context.Context, arg OrgMemberUpsertParams) error
 	PBACRuleCreate(ctx context.Context, arg PBACRuleCreateParams) (PbacRule, error)
 	PBACRuleDelete(ctx context.Context, id int64) error
 	PBACRuleDeleteForProject(ctx context.Context, arg PBACRuleDeleteForProjectParams) (int64, error)
@@ -67,6 +74,9 @@ type Querier interface {
 	UserDeleteByID(ctx context.Context, id int64) error
 	UserGetByEmail(ctx context.Context, email string) (User, error)
 	UserGetById(ctx context.Context, id int64) (User, error)
+	UserList(ctx context.Context) ([]User, error)
+	UserUpdateAdminFlags(ctx context.Context, arg UserUpdateAdminFlagsParams) error
+	UserUpdateEmail(ctx context.Context, arg UserUpdateEmailParams) error
 	UserUpdatePassword(ctx context.Context, arg UserUpdatePasswordParams) error
 	UserUpdateProfile(ctx context.Context, arg UserUpdateProfileParams) error
 }

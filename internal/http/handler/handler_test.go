@@ -26,9 +26,13 @@ type fakeAppContext struct {
 	cookies        map[string]*http.Cookie
 	claims         *domain.Claims
 	pathParameters map[string]string
+	ctx            context.Context
 }
 
 func (f *fakeAppContext) Context() context.Context {
+	if f.ctx != nil {
+		return f.ctx
+	}
 	if f.claims != nil {
 		return domain.ContextWithClaim(context.Background(), *f.claims)
 	}
@@ -81,12 +85,16 @@ type handlerRegistry struct {
 	user       *usecase.User
 	common     *usecase.Common
 	permission *usecase.Permission
+	org        *usecase.Org
+	group      *usecase.Group
 }
 
 func (r *handlerRegistry) Auth() *usecase.Auth             { return r.auth }
 func (r *handlerRegistry) User() *usecase.User             { return r.user }
 func (r *handlerRegistry) Common() *usecase.Common         { return r.common }
 func (r *handlerRegistry) Permission() *usecase.Permission { return r.permission }
+func (r *handlerRegistry) Org() *usecase.Org               { return r.org }
+func (r *handlerRegistry) Group() *usecase.Group           { return r.group }
 
 type stubPasswordHasher struct{}
 
@@ -94,10 +102,14 @@ func (stubPasswordHasher) Hash(_ string) (string, error) { return "hash", nil }
 func (stubPasswordHasher) Compare(_, _ string) bool      { return true }
 
 type handlerTestEnv struct {
-	handler  *Handler
-	authRepo *sqlite.Auth
-	pbacRepo *sqlite.PBAC
-	userID   snow.ID
+	handler   *Handler
+	authRepo  *sqlite.Auth
+	pbacRepo  *sqlite.PBAC
+	userRepo  *sqlite.User
+	orgRepo   *sqlite.OrgRepository
+	groupRepo *sqlite.Group
+	node      snow.Node
+	userID    snow.ID
 }
 
 func newHandlerTestEnv(t *testing.T) *handlerTestEnv {
@@ -121,22 +133,28 @@ func newHandlerTestEnv(t *testing.T) *handlerTestEnv {
 	authRepo := sqlite.NewAuthRepository(dbConn)
 	userRepo := sqlite.NewUserRepository(dbConn)
 	pbacRepo := sqlite.NewPBACRepository(dbConn)
+	groupRepo := sqlite.NewGroupRepository(dbConn)
 	node, _ := snow.NewNode(1)
+	orgRepo := sqlite.NewOrgRepository(dbConn)
+	orgUc := usecase.NewOrg(orgRepo)
+	permissionUc := usecase.NewPermission(pbacRepo, userRepo, groupRepo, orgUc)
 	reg := &handlerRegistry{
-		auth:   usecase.NewAuth("test-secret", stubPasswordHasher{}, userRepo, authRepo),
-		user:   usecase.NewUser(node, userRepo),
-		common: usecase.NewCommon(sqlite.NewOrgRepository(dbConn), sqlite.NewProjectRepository(dbConn)),
-		permission: usecase.NewPermission(
-			pbacRepo,
-			userRepo,
-			sqlite.NewGroupRepository(dbConn),
-		),
+		auth:       usecase.NewAuth("test-secret", stubPasswordHasher{}, userRepo, authRepo),
+		user:       usecase.NewUser(node, userRepo, stubPasswordHasher{}),
+		common:     usecase.NewCommon(orgRepo, sqlite.NewProjectRepository(dbConn)),
+		permission: permissionUc,
+		org:        orgUc,
+		group:      usecase.NewGroup(groupRepo, node, permissionUc, orgUc),
 	}
 	return &handlerTestEnv{
-		handler:  NewHandler(reg),
-		authRepo: authRepo,
-		pbacRepo: pbacRepo,
-		userID:   snow.ID(userID),
+		handler:   NewHandler(reg),
+		authRepo:  authRepo,
+		pbacRepo:  pbacRepo,
+		userRepo:  userRepo,
+		orgRepo:   orgRepo,
+		groupRepo: groupRepo,
+		node:      node,
+		userID:    snow.ID(userID),
 	}
 }
 
@@ -336,7 +354,7 @@ func TestHandler_Me(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, appCtx.statusCode)
 
-	me, ok := appCtx.response.(model.MeResponse)
+	me, ok := appCtx.response.(model.UserResponse)
 	require.True(t, ok)
 	require.Equal(t, userID.Base36(), me.ID)
 	require.Equal(t, "alice", me.Name)

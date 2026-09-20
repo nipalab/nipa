@@ -15,6 +15,7 @@ type groupRepository interface {
 	ListByOrg(ctx context.Context, orgID snow.ID) ([]*domain.Group, error)
 	AddMember(ctx context.Context, groupID, userID snow.ID) error
 	RemoveMember(ctx context.Context, groupID, userID snow.ID) error
+	ListMemberIDs(ctx context.Context, groupID snow.ID) ([]snow.ID, error)
 }
 
 type permissionCacheInvalidator interface {
@@ -25,18 +26,20 @@ type Group struct {
 	repo     groupRepository
 	snowNode snow.Node
 	permUc   permissionCacheInvalidator
+	orgs     orgAuthorizer
 }
 
-func NewGroup(repo groupRepository, snowNode snow.Node, permUc permissionCacheInvalidator) *Group {
+func NewGroup(repo groupRepository, snowNode snow.Node, permUc permissionCacheInvalidator, orgs orgAuthorizer) *Group {
 	return &Group{
 		repo:     repo,
 		snowNode: snowNode,
 		permUc:   permUc,
+		orgs:     orgs,
 	}
 }
 
 func (g *Group) Create(ctx context.Context, orgID snow.ID, name, description string) (*domain.Group, error) {
-	if err := requireGroupAdmin(ctx); err != nil {
+	if err := g.requireGroupAdmin(ctx, orgID); err != nil {
 		return nil, err
 	}
 	name = strings.TrimSpace(name)
@@ -51,15 +54,22 @@ func (g *Group) Create(ctx context.Context, orgID snow.ID, name, description str
 	})
 }
 
+func (g *Group) Get(ctx context.Context, orgID, groupID snow.ID) (*domain.Group, error) {
+	if err := g.requireGroupAdmin(ctx, orgID); err != nil {
+		return nil, err
+	}
+	return g.groupInOrg(ctx, orgID, groupID)
+}
+
 func (g *Group) List(ctx context.Context, orgID snow.ID) ([]*domain.Group, error) {
-	if err := requireGroupAdmin(ctx); err != nil {
+	if err := g.requireGroupAdmin(ctx, orgID); err != nil {
 		return nil, err
 	}
 	return g.repo.ListByOrg(ctx, orgID)
 }
 
 func (g *Group) AddMember(ctx context.Context, orgID, groupID, userID snow.ID) error {
-	if err := requireGroupAdmin(ctx); err != nil {
+	if err := g.requireGroupAdmin(ctx, orgID); err != nil {
 		return err
 	}
 	if _, err := g.groupInOrg(ctx, orgID, groupID); err != nil {
@@ -73,7 +83,7 @@ func (g *Group) AddMember(ctx context.Context, orgID, groupID, userID snow.ID) e
 }
 
 func (g *Group) RemoveMember(ctx context.Context, orgID, groupID, userID snow.ID) error {
-	if err := requireGroupAdmin(ctx); err != nil {
+	if err := g.requireGroupAdmin(ctx, orgID); err != nil {
 		return err
 	}
 	if _, err := g.groupInOrg(ctx, orgID, groupID); err != nil {
@@ -97,7 +107,17 @@ func (g *Group) groupInOrg(ctx context.Context, orgID, groupID snow.ID) (*domain
 	return group, nil
 }
 
-func requireGroupAdmin(ctx context.Context) error {
+func (g *Group) Members(ctx context.Context, orgID, groupID snow.ID) ([]snow.ID, error) {
+	if err := g.requireGroupAdmin(ctx, orgID); err != nil {
+		return nil, err
+	}
+	if _, err := g.groupInOrg(ctx, orgID, groupID); err != nil {
+		return nil, err
+	}
+	return g.repo.ListMemberIDs(ctx, groupID)
+}
+
+func (g *Group) requireGroupAdmin(ctx context.Context, orgID snow.ID) error {
 	claim, ok := domain.ClaimFromContext(ctx)
 	if !ok {
 		return domain.NewErrorNoPermission()
@@ -105,5 +125,12 @@ func requireGroupAdmin(ctx context.Context) error {
 	if claim.IsSuperAdmin || claim.IsAdmin {
 		return nil
 	}
-	return domain.NewErrorNoPermission()
+	owner, err := g.orgs.IsOrgOwner(ctx, orgID)
+	if err != nil {
+		return err
+	}
+	if !owner {
+		return domain.NewErrorNoPermission()
+	}
+	return nil
 }

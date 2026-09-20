@@ -51,17 +51,19 @@ type Permission struct {
 	repo   pbacRepository
 	users  userLookup
 	groups groupLookup
+	orgs   orgAuthorizer
 
 	mu       sync.Mutex
 	cache    map[permissionCacheKey]permissionCacheEntry
 	versions map[snow.ID]uint64
 }
 
-func NewPermission(repo pbacRepository, users userLookup, groups groupLookup) *Permission {
+func NewPermission(repo pbacRepository, users userLookup, groups groupLookup, orgs orgAuthorizer) *Permission {
 	return &Permission{
 		repo:     repo,
 		users:    users,
 		groups:   groups,
+		orgs:     orgs,
 		cache:    map[permissionCacheKey]permissionCacheEntry{},
 		versions: map[snow.ID]uint64{},
 	}
@@ -119,7 +121,7 @@ func (p *Permission) requireAdmin(ctx context.Context, projectID snow.ID) error 
 	return domain.NewErrorNoPermission()
 }
 
-func (p *Permission) requireOrgAdmin(ctx context.Context) error {
+func (p *Permission) requireOrgAdmin(ctx context.Context, orgID snow.ID) error {
 	claim, ok := domain.ClaimFromContext(ctx)
 	if !ok {
 		return domain.NewErrorNoPermission()
@@ -127,7 +129,14 @@ func (p *Permission) requireOrgAdmin(ctx context.Context) error {
 	if claim.IsSuperAdmin || claim.IsAdmin {
 		return nil
 	}
-	return domain.NewErrorNoPermission()
+	owner, err := p.orgs.IsOrgOwner(ctx, orgID)
+	if err != nil {
+		return err
+	}
+	if !owner {
+		return domain.NewErrorNoPermission()
+	}
+	return nil
 }
 
 // CompileFilter resolves the caller's rules once so a manifest walk can prune
@@ -201,7 +210,7 @@ func (p *Permission) CreateRule(ctx context.Context, rule domain.PBACRule) (*dom
 		if err := p.requireAdmin(ctx, *rule.ProjectID); err != nil {
 			return nil, err
 		}
-	} else if err := p.requireOrgAdmin(ctx); err != nil {
+	} else if err := p.requireOrgAdmin(ctx, rule.OrgID); err != nil {
 		return nil, err
 	}
 	if (rule.UserID == nil) == (rule.GroupID == nil) {
@@ -254,7 +263,7 @@ func (p *Permission) DeleteRule(ctx context.Context, projectID snow.ID, ruleID i
 		return err
 	}
 	if rule.ProjectID == nil {
-		if err := p.requireOrgAdmin(ctx); err != nil {
+		if err := p.requireOrgAdmin(ctx, rule.OrgID); err != nil {
 			return err
 		}
 	}

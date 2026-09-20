@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/repository/sqlc/sqlite"
 	"github.com/nipalab/nipa/internal/snow"
 )
@@ -72,4 +73,77 @@ func TestOrgRepositorySQLite_GetBySlug_DeletedOrg(t *testing.T) {
 
 	_, err := repo.GetBySlug(ctx, "acme")
 	requireRecordNotFound(t, err)
+}
+
+func TestOrgRepositorySQLite_Membership(t *testing.T) {
+	ctx := context.Background()
+	db, _ := newSQLiteTestDB(t)
+	repo := NewOrgRepository(db)
+
+	role, err := repo.MemberRole(ctx, 1, 1)
+	require.NoError(t, err)
+	require.Equal(t, domain.OrgRoleOwner, role, "migration seeds the super admin as the default org owner")
+
+	userID := seedPBACUser(t, db, 2)
+	require.NoError(t, repo.UpsertMember(ctx, 1, userID, domain.OrgRoleMember))
+
+	members, err := repo.ListMembers(ctx, 1)
+	require.NoError(t, err)
+	require.Len(t, members, 2)
+	found := false
+	for _, member := range members {
+		if member.User.ID == userID {
+			found = true
+			require.Equal(t, "user2", member.User.Name)
+			require.Equal(t, "user2@example.com", member.User.Email)
+			require.Equal(t, domain.OrgRoleMember, member.Role)
+			require.NotZero(t, member.JoinedAt)
+		}
+	}
+	require.True(t, found)
+
+	memberships, err := repo.ListForUser(ctx, userID)
+	require.NoError(t, err)
+	require.Len(t, memberships, 1)
+	require.Equal(t, snow.ID(1), memberships[0].Org.ID)
+	require.Equal(t, "default", memberships[0].Org.Slug)
+	require.Equal(t, domain.OrgRoleMember, memberships[0].Role)
+
+	require.NoError(t, repo.UpsertMember(ctx, 1, userID, domain.OrgRoleOwner))
+	role, err = repo.MemberRole(ctx, 1, userID)
+	require.NoError(t, err)
+	require.Equal(t, domain.OrgRoleOwner, role)
+
+	count, err := repo.CountMembersByRole(ctx, 1, domain.OrgRoleOwner)
+	require.NoError(t, err)
+	require.Equal(t, 2, count)
+
+	require.NoError(t, repo.RemoveMember(ctx, 1, userID))
+	_, err = repo.MemberRole(ctx, 1, userID)
+	requireRecordNotFound(t, err)
+}
+
+func TestOrgRepositorySQLite_MemberRole_NotAMember(t *testing.T) {
+	ctx := context.Background()
+	db, _ := newSQLiteTestDB(t)
+
+	_, err := NewOrgRepository(db).MemberRole(ctx, 1, 999)
+	requireRecordNotFound(t, err)
+}
+
+func TestOrgRepositorySQLite_ListMembers_ExcludesDeletedUsers(t *testing.T) {
+	ctx := context.Background()
+	db, _ := newSQLiteTestDB(t)
+	repo := NewOrgRepository(db)
+
+	userID := seedPBACUser(t, db, 3)
+	require.NoError(t, repo.UpsertMember(ctx, 1, userID, domain.OrgRoleMember))
+	_, err := db.ExecContext(ctx, `UPDATE users SET deleted = true WHERE id = ?`, userID.Int64())
+	require.NoError(t, err)
+
+	members, err := repo.ListMembers(ctx, 1)
+	require.NoError(t, err)
+	for _, member := range members {
+		require.NotEqual(t, userID, member.User.ID)
+	}
 }

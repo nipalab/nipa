@@ -76,6 +76,18 @@ func (g *Group) RemoveMember(ctx context.Context, groupID, userID snow.ID) error
 	return nil
 }
 
+func (g *Group) ListMemberIDs(ctx context.Context, groupID snow.ID) ([]snow.ID, error) {
+	rows, err := g.queries.GroupMemberList(ctx, groupID.Int64())
+	if err != nil {
+		return nil, domain.NewErrorDatabase(err.Error())
+	}
+	members := make([]snow.ID, 0, len(rows))
+	for _, row := range rows {
+		members = append(members, snow.ID(row.UserID))
+	}
+	return members, nil
+}
+
 func toDomainGroup(row sqlcSqlite.Group) *domain.Group {
 	return &domain.Group{
 		ID:          snow.ID(row.ID),

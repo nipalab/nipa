@@ -101,6 +101,21 @@ func (mr *MockgroupRepositoryMockRecorder) ListByOrg(ctx, orgID any) *gomock.Cal
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListByOrg", reflect.TypeOf((*MockgroupRepository)(nil).ListByOrg), ctx, orgID)
 }
 
+// ListMemberIDs mocks base method.
+func (m *MockgroupRepository) ListMemberIDs(ctx context.Context, groupID snow.ID) ([]snow.ID, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListMemberIDs", ctx, groupID)
+	ret0, _ := ret[0].([]snow.ID)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListMemberIDs indicates an expected call of ListMemberIDs.
+func (mr *MockgroupRepositoryMockRecorder) ListMemberIDs(ctx, groupID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListMemberIDs", reflect.TypeOf((*MockgroupRepository)(nil).ListMemberIDs), ctx, groupID)
+}
+
 // RemoveMember mocks base method.
 func (m *MockgroupRepository) RemoveMember(ctx context.Context, groupID, userID snow.ID) error {
 	m.ctrl.T.Helper()

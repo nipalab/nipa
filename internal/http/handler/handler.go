@@ -9,6 +9,8 @@ type usecaseContainer interface {
 	User() *usecase.User
 	Common() *usecase.Common
 	Permission() *usecase.Permission
+	Org() *usecase.Org
+	Group() *usecase.Group
 }
 
 type Handler struct {
