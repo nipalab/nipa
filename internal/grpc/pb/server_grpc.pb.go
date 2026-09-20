@@ -23,6 +23,7 @@ const (
 	NipaService_LoginWithRefreshToken_FullMethodName     = "/greet.NipaService/LoginWithRefreshToken"
 	NipaService_GetListBranch_FullMethodName             = "/greet.NipaService/GetListBranch"
 	NipaService_GetBranch_FullMethodName                 = "/greet.NipaService/GetBranch"
+	NipaService_GetBranchByName_FullMethodName           = "/greet.NipaService/GetBranchByName"
 	NipaService_GetDefaultBranch_FullMethodName          = "/greet.NipaService/GetDefaultBranch"
 	NipaService_CreateBranch_FullMethodName              = "/greet.NipaService/CreateBranch"
 	NipaService_GetTreeManifest_FullMethodName           = "/greet.NipaService/GetTreeManifest"
@@ -44,6 +45,7 @@ type NipaServiceClient interface {
 	LoginWithRefreshToken(ctx context.Context, in *LoginWithRefreshRequest, opts ...grpc.CallOption) (*LoginResponse, error)
 	GetListBranch(ctx context.Context, in *GetListBranchRequest, opts ...grpc.CallOption) (*GetListBranchResponse, error)
 	GetBranch(ctx context.Context, in *GetBranchRequest, opts ...grpc.CallOption) (*GetBranchResponse, error)
+	GetBranchByName(ctx context.Context, in *GetBranchByNameRequest, opts ...grpc.CallOption) (*GetBranchByNameResponse, error)
 	GetDefaultBranch(ctx context.Context, in *GetDefaultBranchRequest, opts ...grpc.CallOption) (*GetBranchResponse, error)
 	CreateBranch(ctx context.Context, in *CreateBranchRequest, opts ...grpc.CallOption) (*CreateBranchResponse, error)
 	GetTreeManifest(ctx context.Context, in *GetTreeManifestRequest, opts ...grpc.CallOption) (*GetTreeManifestResponse, error)
@@ -99,6 +101,16 @@ func (c *nipaServiceClient) GetBranch(ctx context.Context, in *GetBranchRequest,
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetBranchResponse)
 	err := c.cc.Invoke(ctx, NipaService_GetBranch_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nipaServiceClient) GetBranchByName(ctx context.Context, in *GetBranchByNameRequest, opts ...grpc.CallOption) (*GetBranchByNameResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetBranchByNameResponse)
+	err := c.cc.Invoke(ctx, NipaService_GetBranchByName_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -229,6 +241,7 @@ type NipaServiceServer interface {
 	LoginWithRefreshToken(context.Context, *LoginWithRefreshRequest) (*LoginResponse, error)
 	GetListBranch(context.Context, *GetListBranchRequest) (*GetListBranchResponse, error)
 	GetBranch(context.Context, *GetBranchRequest) (*GetBranchResponse, error)
+	GetBranchByName(context.Context, *GetBranchByNameRequest) (*GetBranchByNameResponse, error)
 	GetDefaultBranch(context.Context, *GetDefaultBranchRequest) (*GetBranchResponse, error)
 	CreateBranch(context.Context, *CreateBranchRequest) (*CreateBranchResponse, error)
 	GetTreeManifest(context.Context, *GetTreeManifestRequest) (*GetTreeManifestResponse, error)
@@ -261,6 +274,9 @@ func (UnimplementedNipaServiceServer) GetListBranch(context.Context, *GetListBra
 }
 func (UnimplementedNipaServiceServer) GetBranch(context.Context, *GetBranchRequest) (*GetBranchResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetBranch not implemented")
+}
+func (UnimplementedNipaServiceServer) GetBranchByName(context.Context, *GetBranchByNameRequest) (*GetBranchByNameResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetBranchByName not implemented")
 }
 func (UnimplementedNipaServiceServer) GetDefaultBranch(context.Context, *GetDefaultBranchRequest) (*GetBranchResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetDefaultBranch not implemented")
@@ -384,6 +400,24 @@ func _NipaService_GetBranch_Handler(srv interface{}, ctx context.Context, dec fu
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(NipaServiceServer).GetBranch(ctx, req.(*GetBranchRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NipaService_GetBranchByName_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetBranchByNameRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaServiceServer).GetBranchByName(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaService_GetBranchByName_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaServiceServer).GetBranchByName(ctx, req.(*GetBranchByNameRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -586,6 +620,10 @@ var NipaService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetBranch",
 			Handler:    _NipaService_GetBranch_Handler,
+		},
+		{
+			MethodName: "GetBranchByName",
+			Handler:    _NipaService_GetBranchByName_Handler,
 		},
 		{
 			MethodName: "GetDefaultBranch",

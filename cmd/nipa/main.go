@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
@@ -25,6 +26,7 @@ func main() {
 	updateUsecase := usecase.NewUpdate(authUsecase, grpcClient, localrepo.NewLocalRepo())
 	mergeUsecase := usecase.NewMerge(authUsecase, grpcClient, localrepo.NewLocalRepo(), pushUsecase)
 	revertUsecase := usecase.NewRevert(authUsecase, grpcClient, localrepo.NewLocalRepo(), pushUsecase)
+	diffUsecase := usecase.NewDiff(authUsecase, grpcClient, localrepo.NewLocalRepo())
 	registry := &Registry{
 		authUsecase:   authUsecase,
 		repoUsecase:   repoUsecase,
@@ -32,10 +34,14 @@ func main() {
 		updateUsecase: updateUsecase,
 		mergeUsecase:  mergeUsecase,
 		revertUsecase: revertUsecase,
+		diffUsecase:   diffUsecase,
 	}
 
 	cliClient := cli.NewCli(registry, grpcClient)
 	if err := cliClient.Run(); err != nil {
+		if errors.Is(err, cli.ErrExitCode) {
+			os.Exit(1)
+		}
 		handleError(err)
 	}
 }

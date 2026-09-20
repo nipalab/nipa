@@ -10,14 +10,15 @@ import (
 )
 
 const fileUpsert = `-- name: FileUpsert :exec
-INSERT INTO files (path, tree_path, hash, size_bytes, mode, is_binary, snapshot_id)
-VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+INSERT INTO files (path, tree_path, hash, size_bytes, mode, is_binary, chunks, snapshot_id)
+VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
 ON CONFLICT(path) DO UPDATE SET
     tree_path = excluded.tree_path,
     hash = excluded.hash,
     size_bytes = excluded.size_bytes,
     mode = excluded.mode,
     is_binary = excluded.is_binary,
+    chunks = excluded.chunks,
     snapshot_id = excluded.snapshot_id
 `
 
@@ -28,6 +29,7 @@ type FileUpsertParams struct {
 	SizeBytes  int64  `json:"size_bytes"`
 	Mode       int64  `json:"mode"`
 	IsBinary   bool   `json:"is_binary"`
+	Chunks     []byte `json:"chunks"`
 	SnapshotID string `json:"snapshot_id"`
 }
 
@@ -39,6 +41,7 @@ func (q *Queries) FileUpsert(ctx context.Context, arg FileUpsertParams) error {
 		arg.SizeBytes,
 		arg.Mode,
 		arg.IsBinary,
+		arg.Chunks,
 		arg.SnapshotID,
 	)
 	return err
@@ -85,7 +88,7 @@ func (q *Queries) MetaSet(ctx context.Context, arg MetaSetParams) error {
 }
 
 const snapshotFileList = `-- name: SnapshotFileList :many
-SELECT path, hash, size_bytes, mode, is_binary
+SELECT path, hash, size_bytes, mode, is_binary, chunks
 FROM files
 WHERE snapshot_id = ?1
 ORDER BY path
@@ -97,6 +100,7 @@ type SnapshotFileListRow struct {
 	SizeBytes int64  `json:"size_bytes"`
 	Mode      int64  `json:"mode"`
 	IsBinary  bool   `json:"is_binary"`
+	Chunks    []byte `json:"chunks"`
 }
 
 func (q *Queries) SnapshotFileList(ctx context.Context, snapshotID string) ([]SnapshotFileListRow, error) {
@@ -114,6 +118,7 @@ func (q *Queries) SnapshotFileList(ctx context.Context, snapshotID string) ([]Sn
 			&i.SizeBytes,
 			&i.Mode,
 			&i.IsBinary,
+			&i.Chunks,
 		); err != nil {
 			return nil, err
 		}

@@ -112,7 +112,16 @@ message GetListBranchResponse {
 
 message GetBranchRequest {
     ProjectContext context = 1;
-    string branch_id = 2;
+    string branch_id = 2; // base36 snow ID
+}
+
+message GetBranchByNameRequest {
+    ProjectContext context = 1;
+    string name = 2;
+}
+
+message GetBranchByNameResponse {
+    Branch branch = 1;
 }
 
 message GetDefaultBranchRequest {
@@ -137,8 +146,10 @@ message CreateBranchResponse {
 
 message GetMergeBaseRequest {
     ProjectContext context = 1;
-    string target_branch = 2;
-    string source_branch = 3;
+    string target_branch = 2; // used when target_commit_id is empty
+    string source_branch = 3; // used when source_commit_id is empty
+    optional string target_commit_id = 4; // base36 snow ID; takes precedence over target_branch
+    optional string source_commit_id = 5; // base36 snow ID; takes precedence over source_branch
 }
 
 message GetMergeBaseResponse {
@@ -247,6 +258,7 @@ service NipaService {
 
     rpc GetListBranch(GetListBranchRequest) returns (GetListBranchResponse);
     rpc GetBranch(GetBranchRequest) returns (GetBranchResponse);
+    rpc GetBranchByName(GetBranchByNameRequest) returns (GetBranchByNameResponse);
     rpc GetDefaultBranch(GetDefaultBranchRequest) returns (GetBranchResponse);
     rpc CreateBranch(CreateBranchRequest) returns (CreateBranchResponse);
     rpc GetTreeManifest(GetTreeManifestRequest) returns (GetTreeManifestResponse);

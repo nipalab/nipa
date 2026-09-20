@@ -16,7 +16,7 @@ type mergeClient interface {
 	Connect(ctx context.Context, host string) error
 	GetTreeNodeManifest(ctx context.Context, org, project, branch, path string) (*serverDomain.TreeNode, error)
 	DownloadChunks(ctx context.Context, hashes []serverDomain.Hash, onChunk func(h serverDomain.Hash, data []byte) error) error
-	GetMergeBase(ctx context.Context, org, project, target, source string) (*domain.MergeBaseInfo, error)
+	GetMergeBase(ctx context.Context, org, project string, target, source domain.MergeRef) (*domain.MergeBaseInfo, error)
 	MergeFastForward(ctx context.Context, org, project, target, source string) (*serverDomain.Branch, error)
 }
 
@@ -117,7 +117,8 @@ func (m *Merge) Run(ctx context.Context, root, sourceBranch string, opts MergeOp
 		return nil, domain.NewUserError("cannot merge with staged changes; push or reset them first")
 	}
 
-	info, err := m.client.GetMergeBase(ctx, nipaUrl.Org, nipaUrl.Project, cfg.Branch, sourceBranch)
+	info, err := m.client.GetMergeBase(ctx, nipaUrl.Org, nipaUrl.Project,
+		domain.MergeRef{Branch: cfg.Branch}, domain.MergeRef{Branch: sourceBranch})
 	if err != nil {
 		return nil, err
 	}

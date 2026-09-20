@@ -28,6 +28,7 @@ type pushLocalRepo interface {
 	ClearStaged() error
 	SaveTree(root *serverDomain.TreeNode) error
 	SaveCommit(commitID, commitHash string) error
+	StoreChunks(chunks []*serverDomain.ChunkData) error
 	LoadMergeState() (*domain.MergeState, error)
 	ClearMergeState() error
 	LoadRevertState() (*domain.RevertState, error)
@@ -177,10 +178,11 @@ func (p *Push) pushStaged(ctx context.Context, root string, nipaUrl *domain.Nipa
 	}
 
 	batcher := &chunkBatcher{
-		ctx:     ctx,
-		client:  p.pushClient,
-		seen:    make(map[serverDomain.Hash]bool),
-		onChunk: onChunk,
+		ctx:       ctx,
+		client:    p.pushClient,
+		localRepo: p.localRepo,
+		seen:      make(map[serverDomain.Hash]bool),
+		onChunk:   onChunk,
 	}
 	for _, sf := range toRead {
 		file, err := scanPushFile(sf.path, sf.info, sf.abs, batcher)
@@ -223,12 +225,13 @@ func (p *Push) pushStaged(ctx context.Context, root string, nipaUrl *domain.Nipa
 var uploadBatchBytes = 8 << 20
 
 type chunkBatcher struct {
-	ctx     context.Context
-	client  pushClient
-	seen    map[serverDomain.Hash]bool
-	batch   []*serverDomain.ChunkData
-	bytes   int
-	onChunk func(ch *serverDomain.ChunkData)
+	ctx       context.Context
+	client    pushClient
+	localRepo pushLocalRepo
+	seen      map[serverDomain.Hash]bool
+	batch     []*serverDomain.ChunkData
+	bytes     int
+	onChunk   func(ch *serverDomain.ChunkData)
 }
 
 func (b *chunkBatcher) add(ch *serverDomain.ChunkData) error {
@@ -247,6 +250,11 @@ func (b *chunkBatcher) add(ch *serverDomain.ChunkData) error {
 func (b *chunkBatcher) flush() error {
 	if len(b.batch) == 0 {
 		return nil
+	}
+	if b.localRepo != nil {
+		if err := b.localRepo.StoreChunks(b.batch); err != nil {
+			return err
+		}
 	}
 	_, _, err := b.client.UploadChunks(b.ctx, b.batch, b.onChunk)
 	b.batch = nil

@@ -10,6 +10,7 @@ type SnapshotFile struct {
 	Mode      int
 	IsBinary  bool
 	SizeBytes int64
+	Chunks    []serverDomain.Hash
 }
 
 type Snapshot struct {

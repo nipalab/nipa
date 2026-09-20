@@ -60,6 +60,20 @@ func (n *nipaServer) GetBranch(ctx context.Context, req *pb.GetBranchRequest) (*
 	}, nil
 }
 
+func (n *nipaServer) GetBranchByName(ctx context.Context, req *pb.GetBranchByNameRequest) (*pb.GetBranchByNameResponse, error) {
+	_, project, err := n.uc.Common().ResolveBySlug(ctx, req.Context.Org, req.Context.Project)
+	if err != nil {
+		return nil, handleError(err)
+	}
+	branch, err := n.uc.Branch().GetBranchByName(ctx, project.ID, req.GetName())
+	if err != nil {
+		return nil, handleError(err)
+	}
+	return &pb.GetBranchByNameResponse{
+		Branch: domainBranchToPB(branch),
+	}, nil
+}
+
 func (n *nipaServer) GetDefaultBranch(ctx context.Context, req *pb.GetDefaultBranchRequest) (*pb.GetBranchResponse, error) {
 	_, project, err := n.uc.Common().ResolveBySlug(ctx, req.Context.Org, req.Context.Project)
 	if err != nil {
@@ -126,7 +140,15 @@ func (n *nipaServer) GetMergeBase(ctx context.Context, req *pb.GetMergeBaseReque
 		return nil, handleError(err)
 	}
 
-	info, err := n.uc.Branch().GetMergeBase(ctx, project.ID, req.TargetBranch, req.SourceBranch)
+	target, err := mergeRef(req.GetTargetCommitId(), req.GetTargetBranch())
+	if err != nil {
+		return nil, handleError(err)
+	}
+	source, err := mergeRef(req.GetSourceCommitId(), req.GetSourceBranch())
+	if err != nil {
+		return nil, handleError(err)
+	}
+	info, err := n.uc.Branch().GetMergeBase(ctx, project.ID, target, source)
 	if err != nil {
 		return nil, handleError(err)
 	}
@@ -183,6 +205,19 @@ func domainBranchToPB(branch *domain.Branch) *pb.Branch {
 		UpdatedAt:   timestamppb.New(branch.UpdatedAt),
 		CreatedAt:   timestamppb.New(branch.CreatedAt),
 	}
+}
+
+func mergeRef(commitID, branchName string) (usecase.MergeRef, error) {
+	ref := usecase.MergeRef{BranchName: branchName}
+	if commitID == "" {
+		return ref, nil
+	}
+	id, err := snow.ParseBase36(commitID)
+	if err != nil {
+		return ref, domain.NewErrorUser("invalid commit id")
+	}
+	ref.CommitID = &id
+	return ref, nil
 }
 
 func snowPtrToStringPtr(ID *snow.ID) *string {

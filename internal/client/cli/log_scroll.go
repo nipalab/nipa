@@ -249,13 +249,16 @@ func heightRows(total int) int {
 }
 
 func runLogPager(out io.Writer, in io.Reader, entries []*serverDomain.CommitLogEntry, oneline bool, getSize func() (int, int), sigs <-chan os.Signal) error {
+	return runViewportPager(out, in, logLines(entries, oneline, true), logFooter, getSize, sigs)
+}
+
+func runViewportPager(out io.Writer, in io.Reader, lines []string, footer func(*logViewport) string, getSize func() (int, int), sigs <-chan os.Signal) error {
 	io.WriteString(out, "\x1b[?1049h\x1b[?25l")
 	defer io.WriteString(out, "\x1b[?25h\x1b[?1049l")
 
-	lines := logLines(entries, oneline, true)
 	_, height := getSize()
 	vp := newLogViewport(lines, heightRows(height))
-	drawLog(out, vp, logFooter(vp))
+	drawLog(out, vp, footer(vp))
 
 	keys := make(chan logKey)
 	go func() {
@@ -278,11 +281,11 @@ func runLogPager(out io.Writer, in io.Reader, entries []*serverDomain.CommitLogE
 			if vp.handleKey(k) {
 				return nil
 			}
-			drawLog(out, vp, logFooter(vp))
+			drawLog(out, vp, footer(vp))
 		case <-sigs:
 			_, height := getSize()
 			vp.setHeight(heightRows(height))
-			drawLog(out, vp, logFooter(vp))
+			drawLog(out, vp, footer(vp))
 		}
 	}
 }

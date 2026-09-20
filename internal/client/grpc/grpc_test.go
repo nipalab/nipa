@@ -40,52 +40,55 @@ func (s *stubSession) Refresh(_ context.Context, _ string) (string, error) {
 
 type fakeServer struct {
 	pb.UnimplementedNipaServiceServer
-	loginErr           error
-	refreshErr         error
-	accessToken        string
-	refreshToken       string
-	expiresIn          int32
-	lastUsername       string
-	lastPassword       string
-	lastRefreshToken   string
-	defaultBranchErr   error
-	defaultBranch      *pb.Branch
-	treeManifestErr    error
-	treeManifest       *pb.TreeManifest
-	lastBranch         string
-	lastRecursive      bool
-	lastPath           string
-	listBranchesErr    error
-	listBranches       []*pb.Branch
-	createBranch       *pb.Branch
-	createBranchErr    error
-	createReq          *pb.CreateBranchRequest
-	lastPushReq        *pb.PushRequest
-	pushErr            error
-	pushResp           *pb.PushResponse
-	uploadedChunks     []*pb.ChunkUploadRequest
-	uploadResp         *pb.UploadChunksResponse
-	uploadErr          error
-	uploadStreamAuth   string
-	downloadRequests   []string
-	downloadData       map[string][]byte
-	downloadErr        error
-	downloadStreamAuth string
-	mergeBaseErr       error
-	mergeBaseResp      *pb.GetMergeBaseResponse
-	lastMergeReq       *pb.GetMergeBaseRequest
-	ffErr              error
-	ffResp             *pb.MergeFastForwardResponse
-	lastFFReq          *pb.MergeFastForwardRequest
-	commitLogErr       error
-	commitLog          []*pb.CommitLogEntry
-	lastCommitLogReq   *pb.GetCommitLogRequest
-	getCommitErr       error
-	getCommitResp      *pb.GetCommitResponse
-	lastGetCommitReq   *pb.GetCommitRequest
-	walkCommitsErr     error
-	walkCommitsResp    *pb.WalkCommitsResponse
-	lastWalkCommitsReq *pb.WalkCommitsRequest
+	loginErr            error
+	refreshErr          error
+	accessToken         string
+	refreshToken        string
+	expiresIn           int32
+	lastUsername        string
+	lastPassword        string
+	lastRefreshToken    string
+	defaultBranchErr    error
+	defaultBranch       *pb.Branch
+	treeManifestErr     error
+	treeManifest        *pb.TreeManifest
+	lastBranch          string
+	lastRecursive       bool
+	lastPath            string
+	listBranchesErr     error
+	listBranches        []*pb.Branch
+	createBranch        *pb.Branch
+	createBranchErr     error
+	createReq           *pb.CreateBranchRequest
+	lastPushReq         *pb.PushRequest
+	pushErr             error
+	pushResp            *pb.PushResponse
+	uploadedChunks      []*pb.ChunkUploadRequest
+	uploadResp          *pb.UploadChunksResponse
+	uploadErr           error
+	uploadStreamAuth    string
+	downloadRequests    []string
+	downloadData        map[string][]byte
+	downloadErr         error
+	downloadStreamAuth  string
+	mergeBaseErr        error
+	mergeBaseResp       *pb.GetMergeBaseResponse
+	lastMergeReq        *pb.GetMergeBaseRequest
+	getBranchResp       *pb.Branch
+	getBranchErr        error
+	lastGetBranchByName *pb.GetBranchByNameRequest
+	ffErr               error
+	ffResp              *pb.MergeFastForwardResponse
+	lastFFReq           *pb.MergeFastForwardRequest
+	commitLogErr        error
+	commitLog           []*pb.CommitLogEntry
+	lastCommitLogReq    *pb.GetCommitLogRequest
+	getCommitErr        error
+	getCommitResp       *pb.GetCommitResponse
+	lastGetCommitReq    *pb.GetCommitRequest
+	walkCommitsErr      error
+	walkCommitsResp     *pb.WalkCommitsResponse
+	lastWalkCommitsReq  *pb.WalkCommitsRequest
 }
 
 func (f *fakeServer) GetDefaultBranch(_ context.Context, _ *pb.GetDefaultBranchRequest) (*pb.GetBranchResponse, error) {
@@ -100,6 +103,14 @@ func (f *fakeServer) GetListBranch(_ context.Context, _ *pb.GetListBranchRequest
 		return nil, f.listBranchesErr
 	}
 	return &pb.GetListBranchResponse{Branches: f.listBranches}, nil
+}
+
+func (f *fakeServer) GetBranchByName(_ context.Context, req *pb.GetBranchByNameRequest) (*pb.GetBranchByNameResponse, error) {
+	f.lastGetBranchByName = req
+	if f.getBranchErr != nil {
+		return nil, f.getBranchErr
+	}
+	return &pb.GetBranchByNameResponse{Branch: f.getBranchResp}, nil
 }
 
 func (f *fakeServer) CreateBranch(_ context.Context, req *pb.CreateBranchRequest) (*pb.CreateBranchResponse, error) {
@@ -736,7 +747,7 @@ func TestClient_GetMergeBase_Success(t *testing.T) {
 	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
 	require.NoError(t, c.Connect(context.Background(), addr))
 
-	got, err := c.GetMergeBase(context.Background(), "default", "sample", "main", "feature")
+	got, err := c.GetMergeBase(context.Background(), "default", "sample", domain.MergeRef{Branch: "main"}, domain.MergeRef{Branch: "feature"})
 	require.NoError(t, err)
 	require.NotNil(t, fs.lastMergeReq)
 	require.Equal(t, "default", fs.lastMergeReq.GetContext().GetOrg())
@@ -766,7 +777,7 @@ func TestClient_GetMergeBase_NilTree(t *testing.T) {
 	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
 	require.NoError(t, c.Connect(context.Background(), addr))
 
-	got, err := c.GetMergeBase(context.Background(), "default", "sample", "main", "feature")
+	got, err := c.GetMergeBase(context.Background(), "default", "sample", domain.MergeRef{Branch: "main"}, domain.MergeRef{Branch: "feature"})
 	require.NoError(t, err)
 	require.Nil(t, got.MergeBaseTree)
 }
@@ -776,7 +787,7 @@ func TestClient_GetMergeBase_Error(t *testing.T) {
 	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
 	require.NoError(t, c.Connect(context.Background(), addr))
 
-	_, err := c.GetMergeBase(context.Background(), "default", "sample", "main", "feature")
+	_, err := c.GetMergeBase(context.Background(), "default", "sample", domain.MergeRef{Branch: "main"}, domain.MergeRef{Branch: "feature"})
 	require.Error(t, err)
 
 	var domErr *domain.Error
@@ -788,9 +799,53 @@ func TestClient_GetMergeBase_Error(t *testing.T) {
 func TestClient_GetMergeBase_NotConnected(t *testing.T) {
 	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
 
-	_, err := c.GetMergeBase(context.Background(), "default", "sample", "main", "feature")
+	_, err := c.GetMergeBase(context.Background(), "default", "sample", domain.MergeRef{Branch: "main"}, domain.MergeRef{Branch: "feature"})
 	require.Error(t, err)
 	require.Equal(t, "not connected to a nipa server", err.Error())
+}
+
+func TestClient_GetBranchByName_Success(t *testing.T) {
+	commitID := snow.ID(7).Base36()
+	fs := &fakeServer{getBranchResp: &pb.Branch{Id: snow.ID(42).Base36(), Name: "develop", CommitId: &commitID}}
+	addr := startTestServer(t, fs)
+	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
+	require.NoError(t, c.Connect(context.Background(), addr))
+
+	got, err := c.GetBranchByName(context.Background(), "default", "sample", "develop")
+	require.NoError(t, err)
+	require.NotNil(t, fs.lastGetBranchByName)
+	require.Equal(t, "develop", fs.lastGetBranchByName.GetName())
+	require.Equal(t, "develop", got.Name)
+	require.NotNil(t, got.CommitID)
+	require.Equal(t, snow.ID(7), *got.CommitID)
+}
+
+func TestClient_GetBranchByName_Error(t *testing.T) {
+	addr := startTestServer(t, &fakeServer{getBranchErr: status.Error(codes.NotFound, `branch "missing" not found`)})
+	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
+	require.NoError(t, c.Connect(context.Background(), addr))
+
+	_, err := c.GetBranchByName(context.Background(), "default", "sample", "missing")
+	require.Error(t, err)
+
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 404, domErr.Code)
+}
+
+func TestClient_GetMergeBase_CommitRefs(t *testing.T) {
+	fs := &fakeServer{mergeBaseResp: &pb.GetMergeBaseResponse{MergeBaseCommitId: snow.ID(3).Base36()}}
+	addr := startTestServer(t, fs)
+	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
+	require.NoError(t, c.Connect(context.Background(), addr))
+
+	_, err := c.GetMergeBase(context.Background(), "default", "sample",
+		domain.MergeRef{CommitID: snow.ID(1).Base36()}, domain.MergeRef{Branch: "feature"})
+	require.NoError(t, err)
+	require.Equal(t, snow.ID(1).Base36(), fs.lastMergeReq.GetTargetCommitId())
+	require.Empty(t, fs.lastMergeReq.GetTargetBranch())
+	require.Empty(t, fs.lastMergeReq.GetSourceCommitId())
+	require.Equal(t, "feature", fs.lastMergeReq.GetSourceBranch())
 }
 
 func TestClient_MergeFastForward_Success(t *testing.T) {

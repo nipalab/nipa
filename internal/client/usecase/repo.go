@@ -14,6 +14,7 @@ import (
 
 type repoInterface interface {
 	GetDefaultBranch(ctx context.Context, org, project string) (*serverDomain.Branch, error)
+	GetBranchByName(ctx context.Context, org, project, name string) (*serverDomain.Branch, error)
 	GetTreeNodeManifest(ctx context.Context, org, project, branch, path string) (*serverDomain.TreeNode, error)
 	ListBranches(ctx context.Context, org, project string) ([]*serverDomain.Branch, error)
 	CreateBranch(ctx context.Context, org, project, name, fromBranch, fromCommitID, fromCommitHash string) (*serverDomain.Branch, error)
@@ -60,12 +61,20 @@ func (r *Repo) Clone(ctx context.Context, url, host, org, project, branch, path,
 	if err != nil {
 		return err
 	}
+	var headCommitID string
 	if branch == "" {
 		domainBranch, err := r.repoInterface.GetDefaultBranch(ctx, org, project)
 		if err != nil {
 			return err
 		}
 		branch = domainBranch.Name
+		headCommitID = commitIDString(domainBranch)
+	} else {
+		domainBranch, err := r.repoInterface.GetBranchByName(ctx, org, project, branch)
+		if err != nil {
+			return err
+		}
+		headCommitID = commitIDString(domainBranch)
 	}
 	root, err := r.repoInterface.GetTreeNodeManifest(ctx, org, project, branch, path)
 	if err != nil {
@@ -82,7 +91,13 @@ func (r *Repo) Clone(ctx context.Context, url, host, org, project, branch, path,
 			return err
 		}
 	}
-	return r.localRepo.SaveTree(root)
+	if err := r.localRepo.SaveTree(root); err != nil {
+		return err
+	}
+	if path == "" && headCommitID != "" {
+		return r.localRepo.SaveCommit(headCommitID, "")
+	}
+	return nil
 }
 
 func (r *Repo) ListBranches(ctx context.Context, host, org, project string) ([]*serverDomain.Branch, error) {

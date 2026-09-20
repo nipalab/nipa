@@ -20,6 +20,9 @@ import (
 type stubRepoInterface struct {
 	defaultBranch   *serverDomain.Branch
 	defaultErr      error
+	branch          *serverDomain.Branch
+	branchErr       error
+	branchName      string
 	manifest        *serverDomain.TreeNode
 	manifestErr     error
 	listBranches    []*serverDomain.Branch
@@ -38,6 +41,11 @@ type stubRepoInterface struct {
 
 func (s *stubRepoInterface) GetDefaultBranch(_ context.Context, _, _ string) (*serverDomain.Branch, error) {
 	return s.defaultBranch, s.defaultErr
+}
+
+func (s *stubRepoInterface) GetBranchByName(_ context.Context, _, _, name string) (*serverDomain.Branch, error) {
+	s.branchName = name
+	return s.branch, s.branchErr
 }
 
 func (s *stubRepoInterface) GetTreeNodeManifest(_ context.Context, _, _, _, _ string) (*serverDomain.TreeNode, error) {
@@ -299,6 +307,24 @@ func TestRepo_Clone_Success(t *testing.T) {
 	require.Equal(t, target, local.initTarget)
 	require.Equal(t, domain.Config{Url: "http://example.com/org/project", Branch: "main"}, local.config)
 	require.NotNil(t, local.tree)
+}
+
+func TestRepo_Clone_PinsHeadCommit(t *testing.T) {
+	token := signTestToken(t, "secret")
+	storage := &stubSecureStorage{loadResult: &domain.LoginResult{AccessToken: token}}
+	auth := NewAuth(nil, storage, nil)
+	local := &stubLocalRepo{}
+	head := snow.ID(7)
+	repo := NewRepo(auth, &stubRepoInterface{
+		branch:   &serverDomain.Branch{Name: "main", CommitID: &head},
+		manifest: &serverDomain.TreeNode{},
+	}, local)
+
+	err := repo.Clone(context.Background(), "http://example.com/org/project", "example.com", "org", "project", "main", "", t.TempDir())
+	require.NoError(t, err)
+	require.Equal(t, "main", local.config.Branch)
+	require.Equal(t, head.Base36(), local.savedCommitID, "clone must pin the branch head commit locally")
+	require.Empty(t, local.savedCommitHash)
 }
 
 func TestRepo_Clone_Success_DefaultBranch(t *testing.T) {

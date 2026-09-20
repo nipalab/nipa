@@ -63,7 +63,7 @@ func (f *fakeMergeClient) DownloadChunks(_ context.Context, hashes []serverDomai
 	return nil
 }
 
-func (f *fakeMergeClient) GetMergeBase(_ context.Context, _, _, _, _ string) (*domain.MergeBaseInfo, error) {
+func (f *fakeMergeClient) GetMergeBase(_ context.Context, _, _ string, _, _ domain.MergeRef) (*domain.MergeBaseInfo, error) {
 	return f.baseInfo, f.mergeBaseErr
 }
 

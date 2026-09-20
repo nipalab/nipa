@@ -14,6 +14,7 @@ import (
 	"github.com/nipalab/nipa/internal/chunker"
 	"github.com/nipalab/nipa/internal/client/domain"
 	serverDomain "github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/snow"
 )
 
 type stubUpdateClient struct {
@@ -21,6 +22,9 @@ type stubUpdateClient struct {
 	connectErr       error
 	org, project     string
 	branch, treePath string
+	branchInfo       *serverDomain.Branch
+	branchErr        error
+	branchLookup     string
 	manifest         *serverDomain.TreeNode
 	manifestErr      error
 	downloadHashes   []serverDomain.Hash
@@ -31,6 +35,11 @@ type stubUpdateClient struct {
 func (s *stubUpdateClient) Connect(_ context.Context, host string) error {
 	s.connectHost = host
 	return s.connectErr
+}
+
+func (s *stubUpdateClient) GetBranchByName(_ context.Context, org, project, name string) (*serverDomain.Branch, error) {
+	s.org, s.project, s.branchLookup = org, project, name
+	return s.branchInfo, s.branchErr
 }
 
 func (s *stubUpdateClient) GetTreeNodeManifest(_ context.Context, org, project, branch, path string) (*serverDomain.TreeNode, error) {
@@ -111,6 +120,24 @@ func TestUpdate_Run_MaterializesChangedFile(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, os.FileMode(0o644), fi.Mode(), "the server mode enum must be mapped back to real file permissions")
 	require.NotNil(t, local.tree, "snapshot must be refreshed from the server tree")
+}
+
+func TestUpdate_Run_PinsBranchHead(t *testing.T) {
+	root := t.TempDir()
+	head := snow.ID(42)
+	local := &stubLocalRepo{
+		loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "main"},
+		snapshot:   &domain.Snapshot{},
+	}
+	client := &stubUpdateClient{
+		manifest:   &serverDomain.TreeNode{Name: "root"},
+		branchInfo: &serverDomain.Branch{Name: "main", CommitID: &head},
+	}
+	updater := newTestUpdate(t, local, client)
+
+	require.NoError(t, updater.Run(context.Background(), root))
+	require.Equal(t, "main", client.branchLookup)
+	require.Equal(t, head.Base36(), local.savedCommitID, "update must pin the branch head locally")
 }
 
 func TestUpdate_Run_NestedDirectory(t *testing.T) {
@@ -553,19 +580,24 @@ func TestSwitch_Error_SubdirClone(t *testing.T) {
 	require.Contains(t, err.Error(), "subdirectory clone")
 }
 
-func TestSwitch_ClearsPinnedCommit(t *testing.T) {
+func TestSwitch_PinsNewHead(t *testing.T) {
 	root := t.TempDir()
+	head := snow.ID(42)
 	local := &stubLocalRepo{
 		loadConfig:   &domain.Config{Url: "http://example.com/org/project", Branch: "main"},
 		loadCommit:   &domain.LocalCommit{CommitID: "abc123", CommitHash: "beef"},
 		snapshot:     &domain.Snapshot{},
 		storedChunks: map[serverDomain.Hash][]byte{},
 	}
-	client := &stubUpdateClient{manifest: &serverDomain.TreeNode{Name: "root"}}
+	client := &stubUpdateClient{
+		manifest:   &serverDomain.TreeNode{Name: "root"},
+		branchInfo: &serverDomain.Branch{Name: "dev", CommitID: &head},
+	}
 	updater := newTestUpdate(t, local, client)
 
 	require.NoError(t, updater.Switch(context.Background(), root, "dev"))
-	require.Empty(t, local.savedCommitID, "a branch switch must drop the stale pinned commit")
+	require.Equal(t, "dev", client.branchLookup)
+	require.Equal(t, head.Base36(), local.savedCommitID, "a branch switch must pin the new branch head")
 	require.Empty(t, local.savedCommitHash)
 }
 

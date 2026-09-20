@@ -180,6 +180,21 @@ func (c *Client) GetDefaultBranch(ctx context.Context, org, project string) (*se
 	return toServerBranch(res.GetBranch()), nil
 }
 
+func (c *Client) GetBranchByName(ctx context.Context, org, project, name string) (*serverDomain.Branch, error) {
+	client, err := c.transport.NipaServiceClient()
+	if err != nil {
+		return nil, err
+	}
+	res, err := client.GetBranchByName(ctx, &pb.GetBranchByNameRequest{
+		Context: &pb.ProjectContext{Org: org, Project: project},
+		Name:    name,
+	})
+	if err != nil {
+		return nil, toDomainError(err)
+	}
+	return toServerBranch(res.GetBranch()), nil
+}
+
 func (c *Client) ListBranches(ctx context.Context, org, project string) ([]*serverDomain.Branch, error) {
 	client, err := c.transport.NipaServiceClient()
 	if err != nil {

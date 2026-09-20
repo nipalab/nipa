@@ -280,6 +280,56 @@ func TestGetBranch_Success(t *testing.T) {
 	require.Equal(t, commitID.Base36(), resp.Branch.GetCommitId())
 }
 
+func TestGetBranchByName_Success(t *testing.T) {
+	branch, perm, repo := newTestBranchUc(t)
+	srv := New(newMockUsecaseContainer(t, branch))
+
+	projectID := snow.ID(42)
+	branchID := snow.ID(99)
+	commitID := snow.ID(7)
+
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), projectID, domain.PermissionRead).
+		Return(true)
+
+	repo.EXPECT().
+		GetBranchByName(gomock.Any(), projectID, "develop").
+		Return(&domain.Branch{
+			ID:        branchID,
+			ProjectID: projectID,
+			Name:      "develop",
+			CommitID:  &commitID,
+		}, nil)
+
+	resp, err := srv.GetBranchByName(context.Background(), &pb.GetBranchByNameRequest{
+		Context: &pb.ProjectContext{Org: "org", Project: "proj"},
+		Name:    "develop",
+	})
+	require.NoError(t, err)
+	require.Equal(t, branchID.Base36(), resp.Branch.Id)
+	require.Equal(t, "develop", resp.Branch.Name)
+	require.Equal(t, commitID.Base36(), resp.Branch.GetCommitId())
+}
+
+func TestGetBranchByName_NotFound(t *testing.T) {
+	branch, perm, repo := newTestBranchUc(t)
+	srv := New(newMockUsecaseContainer(t, branch))
+
+	projectID := snow.ID(42)
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), projectID, domain.PermissionRead).
+		Return(true)
+	repo.EXPECT().
+		GetBranchByName(gomock.Any(), projectID, "missing").
+		Return(nil, domain.NewErrorRecordNotFound())
+
+	_, err := srv.GetBranchByName(context.Background(), &pb.GetBranchByNameRequest{
+		Context: &pb.ProjectContext{Org: "org", Project: "proj"},
+		Name:    "missing",
+	})
+	require.Error(t, err)
+}
+
 func TestGetBranch_NotFound(t *testing.T) {
 	branch, perm, repo := newTestBranchUc(t)
 	srv := New(newMockUsecaseContainer(t, branch))
@@ -905,6 +955,66 @@ func TestGetMergeBase_BranchNotFound(t *testing.T) {
 		SourceBranch: "feature",
 	})
 	require.Error(t, err)
+}
+
+func TestGetMergeBase_CommitIds(t *testing.T) {
+	branch, perm, repo := newTestBranchUc(t)
+	srv := New(newMockUsecaseContainer(t, branch))
+
+	projectID := snow.ID(42)
+	base := snow.ID(10)
+	targetID := snow.ID(11)
+	sourceID := snow.ID(12)
+	targetCommit := &domain.Commit{ID: targetID, ProjectID: projectID, TreeID: 101, Hash: domain.Hash{8}, Parent1ID: &base}
+	sourceCommit := &domain.Commit{ID: sourceID, ProjectID: projectID, TreeID: 102, Hash: domain.Hash{9}, Parent1ID: &base}
+
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), projectID, domain.PermissionRead).
+		Return(true)
+
+	gomock.InOrder(
+		repo.EXPECT().GetCommit(gomock.Any(), targetID).Return(targetCommit, nil),
+		repo.EXPECT().GetCommit(gomock.Any(), sourceID).Return(sourceCommit, nil),
+		repo.EXPECT().GetCommit(gomock.Any(), targetID).Return(targetCommit, nil),
+		repo.EXPECT().GetCommit(gomock.Any(), sourceID).Return(sourceCommit, nil),
+		repo.EXPECT().GetCommit(gomock.Any(), base).Return(&domain.Commit{ID: base, TreeID: 100}, nil),
+		repo.EXPECT().GetTreeNode(gomock.Any(), int64(100)).
+			Return(&domain.TreeNode{ID: 100, Name: "root"}, nil),
+		repo.EXPECT().ListFilesByTree(gomock.Any(), int64(100)).Return(nil, nil),
+		repo.EXPECT().ListTreeChildren(gomock.Any(), int64(100)).Return(nil, nil),
+	)
+
+	targetIDStr := mustBase36(targetID)
+	sourceIDStr := mustBase36(sourceID)
+	resp, err := srv.GetMergeBase(context.Background(), &pb.GetMergeBaseRequest{
+		Context:        &pb.ProjectContext{Org: "org", Project: "proj"},
+		TargetCommitId: &targetIDStr,
+		SourceCommitId: &sourceIDStr,
+		TargetBranch:   "ignored",
+		SourceBranch:   "ignored",
+	})
+	require.NoError(t, err)
+	require.Empty(t, resp.TargetBranch)
+	require.Empty(t, resp.SourceBranch)
+	require.Equal(t, targetID.Base36(), resp.TargetCommitId)
+	require.Equal(t, sourceID.Base36(), resp.SourceCommitId)
+	require.Equal(t, base.Base36(), resp.MergeBaseCommitId)
+	require.NotNil(t, resp.MergeBaseTree)
+	require.Equal(t, domain.Hash{8}.String(), resp.TargetCommitHash)
+}
+
+func TestGetMergeBase_InvalidCommitID(t *testing.T) {
+	branch, _, _ := newTestBranchUc(t)
+	srv := New(newMockUsecaseContainer(t, branch))
+
+	invalid := "!!!not-base36!!!"
+	_, err := srv.GetMergeBase(context.Background(), &pb.GetMergeBaseRequest{
+		Context:        &pb.ProjectContext{Org: "org", Project: "proj"},
+		TargetCommitId: &invalid,
+		SourceBranch:   "feature",
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "invalid commit id")
 }
 
 func TestGetMergeBase_ResolveError(t *testing.T) {
