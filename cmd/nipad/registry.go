@@ -12,6 +12,7 @@ type Registry struct {
 	permissionUsecase *usecase.Permission
 	groupUsecase      *usecase.Group
 	orgUsecase        *usecase.Org
+	projectUsecase    *usecase.Project
 }
 
 func (r *Registry) Auth() *usecase.Auth {
@@ -48,4 +49,8 @@ func (r *Registry) Group() *usecase.Group {
 
 func (r *Registry) Org() *usecase.Org {
 	return r.orgUsecase
+}
+
+func (r *Registry) Project() *usecase.Project {
+	return r.projectUsecase
 }

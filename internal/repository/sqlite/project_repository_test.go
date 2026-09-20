@@ -132,3 +132,24 @@ func TestProjectRepositorySQLite_GetByOrgIDAndSlug_SameSlugDifferentOrg(t *testi
 	require.NoError(t, err)
 	require.Equal(t, org2ID, got2.ID)
 }
+
+func TestProjectRepositorySQLite_Update(t *testing.T) {
+	ctx := context.Background()
+	db, q := newSQLiteTestDB(t)
+	repo := NewProjectRepository(db)
+
+	projectID := seedProject(t, q, 1, "game")
+
+	updated, err := repo.Update(ctx, domain.Project{
+		ID: projectID, Name: "Game 2", Description: "the sequel",
+	})
+	require.NoError(t, err)
+	require.Equal(t, "Game 2", updated.Name)
+	require.Equal(t, "the sequel", updated.Description)
+	require.Equal(t, "game", updated.Slug, "slug is immutable")
+
+	got, err := repo.Get(ctx, projectID)
+	require.NoError(t, err)
+	require.Equal(t, "Game 2", got.Name)
+	require.Equal(t, "the sequel", got.Description)
+}

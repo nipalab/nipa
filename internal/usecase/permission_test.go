@@ -565,3 +565,11 @@ func requireUserError(t *testing.T, err error) {
 	require.ErrorAs(t, err, &domErr)
 	require.Equal(t, 400, domErr.Code)
 }
+
+func TestPermission_AdminHasProject(t *testing.T) {
+	admin := newTestPermission(t, []*domain.PBACRule{{PathPrefix: "", Permission: domain.PermissionAdmin}}, nil)
+	require.True(t, admin.AdminHasProject(permissionCtx(42), snow.ID(1)))
+
+	reader := newTestPermission(t, []*domain.PBACRule{{PathPrefix: "", Permission: domain.PermissionRead}}, nil)
+	require.False(t, reader.AdminHasProject(permissionCtx(42), snow.ID(1)))
+}

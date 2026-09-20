@@ -70,6 +70,7 @@ type Querier interface {
 	TreeNodeInsert(ctx context.Context, arg TreeNodeInsertParams) (int64, error)
 	TreeNodeListChildren(ctx context.Context, parentTreeID int64) ([]TreeNode, error)
 	TreeNodeSetParent(ctx context.Context, arg TreeNodeSetParentParams) error
+	UpdateProject(ctx context.Context, arg UpdateProjectParams) (Project, error)
 	UserCreate(ctx context.Context, arg UserCreateParams) (int64, error)
 	UserDeleteByID(ctx context.Context, id int64) error
 	UserGetByEmail(ctx context.Context, email string) (User, error)

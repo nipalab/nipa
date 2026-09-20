@@ -87,6 +87,7 @@ type handlerRegistry struct {
 	permission *usecase.Permission
 	org        *usecase.Org
 	group      *usecase.Group
+	project    *usecase.Project
 }
 
 func (r *handlerRegistry) Auth() *usecase.Auth             { return r.auth }
@@ -95,6 +96,7 @@ func (r *handlerRegistry) Common() *usecase.Common         { return r.common }
 func (r *handlerRegistry) Permission() *usecase.Permission { return r.permission }
 func (r *handlerRegistry) Org() *usecase.Org               { return r.org }
 func (r *handlerRegistry) Group() *usecase.Group           { return r.group }
+func (r *handlerRegistry) Project() *usecase.Project       { return r.project }
 
 type stubPasswordHasher struct{}
 
@@ -138,6 +140,7 @@ func newHandlerTestEnv(t *testing.T) *handlerTestEnv {
 	orgRepo := sqlite.NewOrgRepository(dbConn)
 	orgUc := usecase.NewOrg(orgRepo)
 	permissionUc := usecase.NewPermission(pbacRepo, userRepo, groupRepo, orgUc)
+	projectUc := usecase.NewProject(sqlite.NewProjectRepository(dbConn), node, permissionUc, orgUc)
 	reg := &handlerRegistry{
 		auth:       usecase.NewAuth("test-secret", stubPasswordHasher{}, userRepo, authRepo),
 		user:       usecase.NewUser(node, userRepo, stubPasswordHasher{}),
@@ -145,6 +148,7 @@ func newHandlerTestEnv(t *testing.T) *handlerTestEnv {
 		permission: permissionUc,
 		org:        orgUc,
 		group:      usecase.NewGroup(groupRepo, node, permissionUc, orgUc),
+		project:    projectUc,
 	}
 	return &handlerTestEnv{
 		handler:   NewHandler(reg),

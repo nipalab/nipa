@@ -316,6 +316,10 @@ func (p *Permission) MyPermissions(ctx context.Context, projectID snow.ID) (doma
 	return mask, set.rules, set.defaults, nil
 }
 
+func (p *Permission) AdminHasProject(ctx context.Context, projectID snow.ID) bool {
+	return p.requireAdmin(ctx, projectID) == nil
+}
+
 // InvalidateAll drops cached rule sets after changes made outside this usecase.
 func (p *Permission) InvalidateAll() {
 	p.invalidateAll()

@@ -63,6 +63,7 @@ func main() {
 	authUsecase := usecase.NewAuth(cfg.JWTKey, passwordHasher, userRepo, authRepo)
 	orgUsecase := usecase.NewOrg(orgRepo)
 	permissionUsecase := usecase.NewPermission(pbacRepository, userRepo, groupRepository, orgUsecase)
+	projectUsecase := usecase.NewProject(projectRepo, snowUser, permissionUsecase, orgUsecase)
 	chunkStore, err := storage.NewLocalStore(cfg.ChunkStorageDir)
 	if err != nil {
 		panic(fmt.Errorf("create chunk store: %w", err))
@@ -78,6 +79,7 @@ func main() {
 		permissionUsecase: permissionUsecase,
 		groupUsecase:      usecase.NewGroup(groupRepository, snowUser, permissionUsecase, orgUsecase),
 		orgUsecase:        orgUsecase,
+		projectUsecase:    projectUsecase,
 	}
 
 	apiApp := api.NewAPI(reg)

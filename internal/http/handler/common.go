@@ -45,6 +45,16 @@ func toOrgMemberResponse(member *domain.OrgMember) model.OrgMemberResponse {
 	}
 }
 
+func toProjectResponse(project *domain.Project) model.ProjectResponse {
+	return model.ProjectResponse{
+		ID:          project.ID.Base36(),
+		OrgID:       project.OrgID.Base36(),
+		Slug:        project.Slug,
+		Name:        project.Name,
+		Description: project.Description,
+	}
+}
+
 func toGroupResponse(group *domain.Group, memberIDs []snow.ID) model.GroupResponse {
 	resp := model.GroupResponse{
 		ID:          group.ID.Base36(),

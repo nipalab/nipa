@@ -11,6 +11,7 @@ type usecaseContainer interface {
 	Permission() *usecase.Permission
 	Org() *usecase.Org
 	Group() *usecase.Group
+	Project() *usecase.Project
 }
 
 type Handler struct {

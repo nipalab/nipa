@@ -70,6 +70,18 @@ func (r *ProjectRepository) ListByOrgID(ctx context.Context, orgID snow.ID) ([]d
 	return projects, nil
 }
 
+func (r *ProjectRepository) Update(ctx context.Context, project domain.Project) (*domain.Project, error) {
+	row, err := r.queries.UpdateProject(ctx, sqlcSqlite.UpdateProjectParams{
+		Name:        project.Name,
+		Description: project.Description,
+		ID:          project.ID.Int64(),
+	})
+	if err != nil {
+		return nil, handleError(err)
+	}
+	return toDomainProject(row), nil
+}
+
 func (r *ProjectRepository) Delete(ctx context.Context, id snow.ID) error {
 	return r.queries.DeleteProject(ctx, id.Int64())
 }

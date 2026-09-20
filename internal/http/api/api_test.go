@@ -27,6 +27,7 @@ type testRegistry struct {
 	permission *usecase.Permission
 	org        *usecase.Org
 	group      *usecase.Group
+	project    *usecase.Project
 }
 
 func (r *testRegistry) Auth() *usecase.Auth             { return r.auth }
@@ -35,6 +36,7 @@ func (r *testRegistry) Common() *usecase.Common         { return r.common }
 func (r *testRegistry) Permission() *usecase.Permission { return r.permission }
 func (r *testRegistry) Org() *usecase.Org               { return r.org }
 func (r *testRegistry) Group() *usecase.Group           { return r.group }
+func (r *testRegistry) Project() *usecase.Project       { return r.project }
 
 type stubPasswordHasher struct{}
 
@@ -66,6 +68,7 @@ func TestAPIRoutes(t *testing.T) {
 	groupRepo := sqlite.NewGroupRepository(dbConn)
 	orgUc := usecase.NewOrg(sqlite.NewOrgRepository(dbConn))
 	permissionUc := usecase.NewPermission(sqlite.NewPBACRepository(dbConn), userRepo, groupRepo, orgUc)
+	projectUc := usecase.NewProject(sqlite.NewProjectRepository(dbConn), node, permissionUc, orgUc)
 	reg := &testRegistry{
 		auth:       usecase.NewAuth("test-secret", stubPasswordHasher{}, userRepo, sqlite.NewAuthRepository(dbConn)),
 		user:       usecase.NewUser(node, userRepo, stubPasswordHasher{}),
@@ -73,6 +76,7 @@ func TestAPIRoutes(t *testing.T) {
 		permission: permissionUc,
 		org:        orgUc,
 		group:      usecase.NewGroup(groupRepo, node, permissionUc, orgUc),
+		project:    projectUc,
 	}
 
 	container := NewAPI(reg).SetupRoute()
@@ -458,6 +462,48 @@ func TestAPIRoutes(t *testing.T) {
 			`{"old_password":"whatever","new_password":"longenough1"}`, aliceLogin.AccessToken)
 		require.Equal(t, http.StatusOK, change.StatusCode)
 		change.Body.Close()
+	})
+
+	t.Run("project lifecycle", func(t *testing.T) {
+		aliceLogin, _ := login(t)
+		bobLogin, _ := loginAs(t, "bob@example.com")
+		base := server.URL + "/api/v1/orgs/default/projects"
+
+		create := doMethod(t, http.MethodPost, base,
+			`{"name":"My Game","description":"fun"}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, create.StatusCode)
+		project := decodeBody[model.ProjectResponse](t, create)
+		require.Equal(t, "my-game", project.Slug)
+		require.Equal(t, "My Game", project.Name)
+
+		projects := decodeBody[[]model.ProjectResponse](t, doGet(t, base, aliceLogin.AccessToken))
+		require.Len(t, projects, 2, "seeded default project plus my-game")
+
+		hidden := doGet(t, base+"/my-game", bobLogin.AccessToken)
+		require.Equal(t, http.StatusNotFound, hidden.StatusCode, "projects without read access look missing")
+		hidden.Body.Close()
+
+		bobProjects := decodeBody[[]model.ProjectResponse](t, doGet(t, base, bobLogin.AccessToken))
+		require.Empty(t, bobProjects)
+
+		update := doMethod(t, http.MethodPatch, base+"/my-game",
+			`{"name":"My Game 2","description":"v2"}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, update.StatusCode)
+		updated := decodeBody[model.ProjectResponse](t, update)
+		require.Equal(t, "My Game 2", updated.Name)
+		require.Equal(t, "my-game", updated.Slug)
+
+		denied := doMethod(t, http.MethodPost, base, `{"name":"Nope"}`, bobLogin.AccessToken)
+		require.Equal(t, http.StatusForbidden, denied.StatusCode)
+		denied.Body.Close()
+
+		remove := doMethod(t, http.MethodDelete, base+"/my-game", "", aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, remove.StatusCode)
+		remove.Body.Close()
+
+		gone := doGet(t, base+"/my-game", aliceLogin.AccessToken)
+		require.Equal(t, http.StatusNotFound, gone.StatusCode)
+		gone.Body.Close()
 	})
 
 	t.Run("openapi doc is served", func(t *testing.T) {
