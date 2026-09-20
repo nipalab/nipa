@@ -10,10 +10,9 @@ import {
 } from '@primer/react'
 import { RepoIcon, SignInIcon } from '@primer/octicons-react'
 import { login } from '../api/client'
-import type { LoginResponse } from '../api/models'
 
 interface Props {
-  onLogin: (tokens: LoginResponse) => void
+  onLogin: () => void
 }
 
 export default function LoginPage({ onLogin }: Props) {
@@ -27,8 +26,8 @@ export default function LoginPage({ onLogin }: Props) {
     setError(null)
     setBusy(true)
     try {
-      const tokens = await login({ email, password })
-      onLogin(tokens)
+      await login({ email, password })
+      onLogin()
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {

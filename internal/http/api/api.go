@@ -36,8 +36,9 @@ func (a *API) SetupRoute() http.Handler {
 	handler := handler.NewHandler(a.useCase)
 
 	authWs := new(restful.WebService).ApiVersion("1.0.0")
-	authWs.Path("/auth").
+	authWs.Path("/api/v1/auth").
 		Filter(cors.Filter).
+		Filter(sameOriginFilter).
 		Consumes(restful.MIME_JSON).
 		Produces(restful.MIME_JSON)
 	setupAuthRouter(authWs, handler)

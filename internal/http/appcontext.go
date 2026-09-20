@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"net/http"
 
 	"github.com/nipalab/nipa/internal/domain"
 )
@@ -11,5 +12,7 @@ type AppContext interface {
 	Claims() *domain.Claims
 	ReadJson(v any) error
 	WriteJson(statusCode int, v any) error
+	SetCookie(cookie *http.Cookie)
+	Cookie(name string) (*http.Cookie, error)
 	HandleError(err error)
 }

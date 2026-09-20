@@ -50,6 +50,14 @@ func (a *appContext) WriteJson(statusCode int, v any) error {
 	return nil
 }
 
+func (a *appContext) SetCookie(cookie *http.Cookie) {
+	http.SetCookie(a.resp, cookie)
+}
+
+func (a *appContext) Cookie(name string) (*http.Cookie, error) {
+	return a.req.Request.Cookie(name)
+}
+
 func (a *appContext) HandleError(err error) {
 	apiErr, ok := err.(*domain.Error)
 	if !ok {

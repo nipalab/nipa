@@ -1,28 +1,42 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { Spinner, Stack } from '@primer/react'
 import HomePage from './pages/HomePage'
 import LoginPage from './pages/LoginPage'
-import {
-  clearSession,
-  isAuthenticated,
-  setSession,
-} from './api/client'
-import type { LoginResponse } from './api/models'
+import { bootstrap, logout } from './api/client'
+
+type Status = 'loading' | 'authenticated' | 'anonymous'
 
 export default function App() {
-  const [authed, setAuthed] = useState(isAuthenticated)
+  const [status, setStatus] = useState<Status>('loading')
 
-  function handleLogin(tokens: LoginResponse) {
-    setSession(tokens)
-    setAuthed(true)
+  useEffect(() => {
+    let active = true
+    bootstrap().then((authenticated) => {
+      if (active) {
+        setStatus(authenticated ? 'authenticated' : 'anonymous')
+      }
+    })
+    return () => {
+      active = false
+    }
+  }, [])
+
+  async function handleLogout() {
+    await logout()
+    setStatus('anonymous')
   }
 
-  function handleLogout() {
-    clearSession()
-    setAuthed(false)
+  if (status === 'loading') {
+    return (
+      <Stack direction="vertical" align="center" style={{ marginTop: 64 }}>
+        <Spinner size="large" />
+      </Stack>
+    )
   }
 
-  if (!authed) {
-    return <LoginPage onLogin={handleLogin} />
+  if (status === 'anonymous') {
+    return <LoginPage onLogin={() => setStatus('authenticated')} />
   }
+
   return <HomePage onLogout={handleLogout} />
 }
