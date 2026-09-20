@@ -80,10 +80,6 @@ func HeaderLine(c Change, opts Options) string {
 // FilePatch renders one change as unified patch lines.
 func FilePatch(f FileDiff, opts Options) []string {
 	lines := []string{HeaderLine(f.Change, opts)}
-	if f.OldUnavailable || f.NewUnavailable {
-		lines = append(lines, contentUnavailable)
-		return opts.applyPrefix(lines)
-	}
 
 	switch f.Change.Status {
 	case Added:
@@ -112,6 +108,9 @@ func FilePatch(f FileDiff, opts Options) []string {
 	}
 	if (f.Change.Old.IsBinary || f.Change.New.IsBinary) && !opts.Text {
 		return opts.applyPrefix(append(lines, fmt.Sprintf("Binary files %s and %s differ", oldPath, newPath)))
+	}
+	if f.OldUnavailable || f.NewUnavailable {
+		return opts.applyPrefix(append(lines, contentUnavailable))
 	}
 
 	lines = append(lines, "--- "+oldPath, "+++ "+newPath)

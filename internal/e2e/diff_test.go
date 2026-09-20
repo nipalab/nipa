@@ -47,8 +47,8 @@ func TestEndToEnd_DiffWorkingTree(t *testing.T) {
 	writeFile(t, target, "new.txt", "brand new\n")
 	stagePath(t, target, "new.txt")
 
-	differ := clientusecase.NewDiff(localrepo.NewLocalRepo())
-	files, err := differ.Run(ctx, target, clientusecase.DiffOptions{})
+	differ := clientusecase.NewDiff(auth, grpcClient, localrepo.NewLocalRepo())
+	files, err := differ.Run(ctx, target, nil, clientusecase.DiffOptions{})
 	require.NoError(t, err)
 	require.Len(t, files, 2)
 	require.Equal(t, diff.Modified, files[0].Change.Status)
@@ -65,10 +65,63 @@ func TestEndToEnd_DiffWorkingTree(t *testing.T) {
 	require.Contains(t, patch, "new file mode 100644")
 
 	require.NoError(t, os.Remove(filepath.Join(target, "a.txt")))
-	files, err = differ.Run(ctx, target, clientusecase.DiffOptions{})
+	files, err = differ.Run(ctx, target, nil, clientusecase.DiffOptions{})
 	require.NoError(t, err)
 	require.Len(t, files, 2)
 	require.Equal(t, diff.Deleted, files[0].Change.Status)
 	require.Equal(t, []byte(original), files[0].Old)
 	require.False(t, files[0].OldUnavailable)
+}
+
+func TestEndToEnd_DiffRevisions(t *testing.T) {
+	ctx := context.Background()
+	host := startTestServer(t, openTestDB(t))
+
+	store := newMemoryStore()
+	transport := clientgrpc.NewTransport()
+	session := clientusecase.NewSession(store, transport, failPrompt{})
+	grpcClient := clientgrpc.NewClient(transport, session)
+	auth := clientusecase.NewAuth(grpcClient, store, failPrompt{})
+	require.NoError(t, grpcClient.Connect(ctx, host))
+	loginResult, err := grpcClient.LoginWithUsernamePassword(ctx, host, e2eSuperAdminEmail, e2eSuperAdminPass)
+	require.NoError(t, err)
+	require.NoError(t, store.SaveToken(loginResult))
+
+	repo := clientusecase.NewRepo(auth, grpcClient, localrepo.NewLocalRepo())
+	url := "http://" + host + "/" + e2eOrgSlug + "/" + e2eProjectSlug
+	target := filepath.Join(t.TempDir(), "work")
+	require.NoError(t, repo.Clone(ctx, url, host, e2eOrgSlug, e2eProjectSlug, "", "", target))
+
+	pusher := clientusecase.NewPush(auth, grpcClient, localrepo.NewLocalRepo())
+
+	const first = "one\n"
+	writeFile(t, target, "a.txt", first)
+	stagePath(t, target, "a.txt")
+	require.NoError(t, pusher.Run(ctx, target, "add a.txt"))
+	commit1, _ := pinnedCommit(t, target)
+	require.NotEmpty(t, commit1)
+
+	const second = "one\ntwo\n"
+	writeFile(t, target, "a.txt", second)
+	stagePath(t, target, "a.txt")
+	require.NoError(t, pusher.Run(ctx, target, "extend a.txt"))
+	commit2, _ := pinnedCommit(t, target)
+	require.NotEmpty(t, commit2)
+	require.NotEqual(t, commit1, commit2)
+
+	differ := clientusecase.NewDiff(auth, grpcClient, localrepo.NewLocalRepo())
+	files, err := differ.Run(ctx, target, []string{commit1, commit2}, clientusecase.DiffOptions{})
+	require.NoError(t, err)
+	require.Len(t, files, 1)
+	require.Equal(t, diff.Modified, files[0].Change.Status)
+	require.Equal(t, []byte(first), files[0].Old)
+	require.Equal(t, []byte(second), files[0].New)
+
+	writeFile(t, target, "a.txt", second+"three\n")
+	files, err = differ.Run(ctx, target, []string{"HEAD"}, clientusecase.DiffOptions{})
+	require.NoError(t, err)
+	require.Len(t, files, 1)
+	require.Equal(t, diff.Modified, files[0].Change.Status)
+	require.Equal(t, []byte(second), files[0].Old)
+	require.Equal(t, []byte(second+"three\n"), files[0].New)
 }

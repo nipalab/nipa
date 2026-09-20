@@ -40,9 +40,9 @@ const (
 
 func (c *Cli) setupDiffCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:           "diff [--] [<path>...]",
-		Short:         "Show working-copy changes",
-		Long:          "Show changes between the working tree and the last synced snapshot as a unified patch. With paths after `--`, only those paths are compared. Untracked files are not shown (see nipa status); staged new files are. Use -U to change the context size, --stat/--numstat/--shortstat, --name-only/--name-status or --raw for other formats, --staged for what the next push would upload, --exit-code to fail when there are differences, and --no-pager/--no-color to disable the pager or colors.",
+		Use:           "diff [<rev1> [<rev2>]] [--] [<path>...]",
+		Short:         "Show working-copy and revision changes",
+		Long:          "Show changes as a unified patch. With no revisions, the working tree is compared against the last synced snapshot, fully offline (staged new files count as additions; untracked files are listed by nipa status). With one revision, the revision's tree is compared against the working tree; with two, the first revision's tree is compared against the second. A revision is a branch name, a base36 commit ID (as printed by nipa log) or HEAD/@ (the locally pinned commit, falling back to the configured branch); <a>..<b> compares the two endpoints and <a>...<b> (or --merge-base a b) compares their merge base against <b>. Use -U to change the context size, --stat/--numstat/--shortstat, --name-only/--name-status or --raw for other formats, --staged for what the next push would upload, --exit-code to fail when there are differences, and --no-pager/--no-color to disable the pager or colors.",
 		Args:          cobra.ArbitraryArgs,
 		SilenceErrors: true,
 		SilenceUsage:  true,
@@ -62,6 +62,7 @@ func (c *Cli) setupDiffCmd() *cobra.Command {
 	cmd.Flags().Bool("summary", false, "Show mode changes")
 	cmd.Flags().Bool("staged", false, "Show only staged changes")
 	cmd.Flags().Bool("cached", false, "Alias for --staged")
+	cmd.Flags().Bool("merge-base", false, "Compare the merge base of two revisions against the second")
 	cmd.Flags().BoolP("reverse", "R", false, "Swap the compared sides")
 	cmd.Flags().BoolP("text", "a", false, "Treat binary files as text")
 	cmd.Flags().String("diff-filter", "", "Limit to statuses (A, M, D)")
@@ -86,7 +87,19 @@ func (c *Cli) runDiff(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	compareOpts, err := diffCompareOptions(cmd, args)
+	mergeBase, _ := cmd.Flags().GetBool("merge-base")
+	revs, paths, err := splitDiffArgs(cmd, args)
+	if err != nil {
+		return err
+	}
+	revs, mergeBase, err = expandRevisionRange(revs, mergeBase)
+	if err != nil {
+		return err
+	}
+	if mergeBase && len(revs) != 2 {
+		return fmt.Errorf("--merge-base requires two revisions")
+	}
+	compareOpts, err := diffCompareOptions(cmd, revs, paths, mergeBase)
 	if err != nil {
 		return err
 	}
@@ -108,7 +121,7 @@ func (c *Cli) runDiff(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	files, err := c.useCase.Diff().Run(cmd.Context(), root, compareOpts)
+	files, err := c.useCase.Diff().Run(cmd.Context(), root, revs, compareOpts)
 	if err != nil {
 		return err
 	}
@@ -176,20 +189,63 @@ func diffOutputMode(cmd *cobra.Command) (diffMode, error) {
 	return mode, nil
 }
 
-func diffCompareOptions(cmd *cobra.Command, args []string) (usecase.DiffOptions, error) {
+func splitDiffArgs(cmd *cobra.Command, args []string) ([]string, []string, error) {
+	dash := cmd.Flags().ArgsLenAtDash()
+	if dash < 0 {
+		if len(args) > 2 {
+			return nil, nil, fmt.Errorf("too many revisions (expected at most two; use -- before paths)")
+		}
+		return args, nil, nil
+	}
+	revs, paths := args[:dash], args[dash:]
+	if len(revs) > 2 {
+		return nil, nil, fmt.Errorf("too many revisions (expected at most two)")
+	}
+	return revs, paths, nil
+}
+
+// expandRevisionRange splits <a>..<b> and <a>...<b> into two revisions. The
+// three-dot form always selects the merge base as the old side.
+func expandRevisionRange(revs []string, mergeBase bool) ([]string, bool, error) {
+	if len(revs) != 1 {
+		return revs, mergeBase, nil
+	}
+	token := revs[0]
+	if a, b, ok := strings.Cut(token, "..."); ok {
+		if a == "" || b == "" {
+			return nil, false, fmt.Errorf("a revision range must be <a>...<b>")
+		}
+		return []string{a, b}, true, nil
+	}
+	if a, b, ok := strings.Cut(token, ".."); ok {
+		if a == "" || b == "" {
+			return nil, false, fmt.Errorf("a revision range must be <a>..<b>")
+		}
+		return []string{a, b}, mergeBase, nil
+	}
+	return revs, mergeBase, nil
+}
+
+func diffCompareOptions(cmd *cobra.Command, revs, paths []string, mergeBase bool) (usecase.DiffOptions, error) {
 	staged, _ := cmd.Flags().GetBool("staged")
 	cached, _ := cmd.Flags().GetBool("cached")
+	if len(revs) > 0 && (staged || cached) {
+		return usecase.DiffOptions{}, fmt.Errorf("--staged cannot be combined with revisions")
+	}
 	reverse, _ := cmd.Flags().GetBool("reverse")
+	text, _ := cmd.Flags().GetBool("text")
 	rawFilter, _ := cmd.Flags().GetString("diff-filter")
 	filter, err := diffStatusFilter(rawFilter)
 	if err != nil {
 		return usecase.DiffOptions{}, err
 	}
 	return usecase.DiffOptions{
-		Staged:  staged || cached,
-		Paths:   args,
-		Filter:  filter,
-		Reverse: reverse,
+		Staged:    staged || cached,
+		Paths:     paths,
+		Filter:    filter,
+		Reverse:   reverse,
+		MergeBase: mergeBase,
+		Text:      text,
 	}, nil
 }
 

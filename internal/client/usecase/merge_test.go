@@ -83,11 +83,11 @@ func (s *stubMergeClient) DownloadChunks(_ context.Context, hashes []serverDomai
 	return nil
 }
 
-func (s *stubMergeClient) GetMergeBase(_ context.Context, _, _, target, source string) (*domain.MergeBaseInfo, error) {
+func (s *stubMergeClient) GetMergeBase(_ context.Context, _, _ string, target, source domain.MergeRef) (*domain.MergeBaseInfo, error) {
 	if s.lastBase == nil {
 		s.lastBase = &struct{ target, source string }{}
 	}
-	s.lastBase.target, s.lastBase.source = target, source
+	s.lastBase.target, s.lastBase.source = target.Branch, source.Branch
 	return s.baseInfo, s.baseErr
 }
 

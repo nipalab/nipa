@@ -30,6 +30,11 @@ func (f *fakeUpdateClient) Connect(_ context.Context, host string) error {
 	return nil
 }
 
+func (f *fakeUpdateClient) GetBranchByName(_ context.Context, org, project, name string) (*serverDomain.Branch, error) {
+	f.org, f.project, f.branch = org, project, name
+	return &serverDomain.Branch{Name: name}, nil
+}
+
 func (f *fakeUpdateClient) GetTreeNodeManifest(_ context.Context, org, project, branch, path string) (*serverDomain.TreeNode, error) {
 	f.org, f.project, f.branch, f.path = org, project, branch, path
 	if f.manifest == nil {

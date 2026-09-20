@@ -15,6 +15,7 @@ import (
 
 type updateClient interface {
 	Connect(ctx context.Context, host string) error
+	GetBranchByName(ctx context.Context, org, project, name string) (*domain.Branch, error)
 	GetTreeNodeManifest(ctx context.Context, org, project, branch, path string) (*domain.TreeNode, error)
 	DownloadChunks(ctx context.Context, hashes []domain.Hash, onChunk func(h domain.Hash, data []byte) error) error
 }
@@ -109,8 +110,21 @@ func (u *Update) Run(ctx context.Context, root string, progress ...DownloadProgr
 	if err := syncWorkingCopy(ctx, u.client, u.localRepo, root, tree, progress...); err != nil {
 		return err
 	}
+	if err := u.localRepo.SaveTree(tree); err != nil {
+		return err
+	}
+	return u.pinHead(ctx, nu, cfg.Branch)
+}
 
-	return u.localRepo.SaveTree(tree)
+func (u *Update) pinHead(ctx context.Context, nu *clientDomain.NipaUrl, branch string) error {
+	info, err := u.client.GetBranchByName(ctx, nu.Org, nu.Project, branch)
+	if err != nil {
+		return err
+	}
+	if info == nil || info.CommitID == nil {
+		return nil
+	}
+	return u.localRepo.SaveCommit(info.CommitID.Base36(), "")
 }
 
 func (u *Update) Switch(ctx context.Context, root, branch string, progress ...DownloadProgress) error {
@@ -161,7 +175,7 @@ func (u *Update) Switch(ctx context.Context, root, branch string, progress ...Do
 	if err := u.localRepo.SaveConfig(clientDomain.Config{Url: cfg.Url, Branch: branch}); err != nil {
 		return err
 	}
-	return u.localRepo.SaveCommit("", "")
+	return u.pinHead(ctx, nu, branch)
 }
 
 func syncWorkingCopy(ctx context.Context, client chunkDownloader, lr workingCopyLocalRepo, root string, tree *domain.TreeNode, progress ...DownloadProgress) error {

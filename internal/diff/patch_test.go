@@ -185,6 +185,23 @@ func TestFilePatch_TextOption(t *testing.T) {
 	}, got)
 }
 
+func TestFilePatch_BinaryUnavailable(t *testing.T) {
+	f := FileDiff{
+		Change: Change{
+			Path:   "img.bin",
+			Status: Modified,
+			Old:    Entry{Path: "img.bin", Mode: 2, IsBinary: true},
+			New:    Entry{Path: "img.bin", Mode: 2, IsBinary: true},
+		},
+		OldUnavailable: true,
+		NewUnavailable: true,
+	}
+	require.Equal(t, []string{
+		"diff --nipa a/img.bin b/img.bin",
+		"Binary files a/img.bin and b/img.bin differ",
+	}, FilePatch(f, Options{Context: 3}))
+}
+
 func TestFilePatch_Unavailable(t *testing.T) {
 	f := modified("a\n", "b\n")
 	f.OldUnavailable = true

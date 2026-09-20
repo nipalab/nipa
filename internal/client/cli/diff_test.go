@@ -19,7 +19,7 @@ import (
 
 func newDiffCmd(t *testing.T) *cobra.Command {
 	t.Helper()
-	cli := NewCli(&fakeUsecaseContainer{diff: usecase.NewDiff(localrepo.NewLocalRepo())}, &fakeConnector{})
+	cli := NewCli(&fakeUsecaseContainer{diff: usecase.NewDiff(nil, nil, localrepo.NewLocalRepo())}, &fakeConnector{})
 	return cli.setupDiffCmd()
 }
 
@@ -324,4 +324,26 @@ func TestDiffCmd_PrefixIndicators(t *testing.T) {
 	require.Contains(t, out, "+++ a.txt")
 	require.Contains(t, out, "<a")
 	require.Contains(t, out, ">b")
+}
+
+func TestDiffCmd_RevisionArgErrors(t *testing.T) {
+	root := setupDiffRepo(t, map[string]string{"a.txt": "a\n"})
+
+	_, err := runCmdInDir(t, root, newDiffCmd(t), "a", "b", "c")
+	require.ErrorContains(t, err, "too many revisions")
+
+	_, err = runCmdInDir(t, root, newDiffCmd(t), "a..")
+	require.ErrorContains(t, err, "must be <a>..<b>")
+
+	_, err = runCmdInDir(t, root, newDiffCmd(t), "a...")
+	require.ErrorContains(t, err, "must be <a>...<b>")
+
+	_, err = runCmdInDir(t, root, newDiffCmd(t), "--merge-base")
+	require.ErrorContains(t, err, "--merge-base requires two revisions")
+
+	_, err = runCmdInDir(t, root, newDiffCmd(t), "--staged", "main")
+	require.ErrorContains(t, err, "--staged cannot be combined with revisions")
+
+	_, err = runCmdInDir(t, root, newDiffCmd(t), "a", "b", "c", "--", "dir")
+	require.ErrorContains(t, err, "too many revisions")
 }

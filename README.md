@@ -45,12 +45,12 @@ Run `nipa <command> --help` for full details.
 | `nipa merge <branch>`       | Merge another branch into the current one. Fast-forwards when possible; `--no-ff` forces a merge commit, `--ff-only` refuses, `--abort` cancels a conflicted merge, `-m` sets the message. |
 | `nipa revert <commit>`      | Create new commits that undo the given commit or range (`<from>..<to>`, newest first, up to 16 commits) without rewriting history. `--mainline 1\|2` for merge commits, `--no-commit` stages without committing, `-m` sets the message (single commit only), `--continue` / `--abort` / `--skip` drive a conflicted revert. |
 | `nipa log`                  | Show the commit history of the current branch. Interactive and scrollable when stdout is a terminal; `-n` limits, `--oneline` prints one line per commit, `--no-pager` disables the pager. |
-| `nipa diff`                 | Show changes between the working tree and the last synced snapshot as a unified patch. `--staged` limits to what the next push would upload, `-U` sets the context, `--stat`/`--numstat`/`--shortstat`/`--name-only`/`--name-status`/`--raw` select other formats, `-- <path>` limits paths, `--exit-code`/`--quiet` set the exit status, and `--no-pager`/`--no-color` disable the pager/colors. |
+| `nipa diff [<rev1> [<rev2>]]` | Show changes as a unified patch. With no revisions: working tree vs the last synced snapshot (offline). One revision: that tree vs the working tree. Two revisions: tree vs tree. A revision is a branch name, a base36 commit ID (as printed by `nipa log`) or `HEAD`/`@`; `<a>..<b>` compares the two endpoints and `<a>...<b>` (or `--merge-base a b`) compares their merge base against `<b>`. `--staged` limits to what the next push would upload, `-U` sets the context, `--stat`/`--numstat`/`--shortstat`/`--name-only`/`--name-status`/`--raw` select other formats, `-- <path>` limits paths, `--exit-code`/`--quiet` set the exit status, and `--no-pager`/`--no-color` disable the pager/colors. |
 
 Branch creation (`nipa branch -c <name>`) forks from the exact commit the
-working copy is pinned to (a push records the server's commit id and hash
-locally), falling back to the current branch head when there is nothing pinned
-yet.
+working copy is pinned to (clone, update, switch and push record the branch head
+commit id locally; push also records its hash), falling back to the current
+branch head when there is nothing pinned yet.
 
 Commit references are the base36 commit IDs printed by `nipa log`. A revert
 moves history forward: each reverted commit produces a new commit applying its
@@ -65,6 +65,13 @@ deletions, and files staged with `nipa add` that are not in the snapshot are
 additions. Untracked files are only reported by `nipa status`. The snapshot
 records each file's chunk hashes, so the old side of the comparison is
 reassembled from the local object cache.
+
+With revisions, each one resolves to a commit first: a branch name is looked up
+on the server, `HEAD`/`@` uses the locally pinned commit (the head recorded by
+clone/update/switch/push) and falls back to the configured branch head. One
+revision is compared against the working tree; two are compared as trees,
+downloading any missing chunks into the local cache. `<a>...<b>` and
+`--merge-base a b` compare the merge base of the two commits against `<b>`.
 
 ## Architecture
 

@@ -17,6 +17,13 @@ type MergeBaseInfo struct {
 	MergeBaseTree     *domain.TreeNode
 }
 
+// MergeRef identifies one side of a merge-base lookup. A commit ID (base36)
+// takes precedence over a branch name.
+type MergeRef struct {
+	Branch   string
+	CommitID string
+}
+
 // MergeState is the persisted pending-merge metadata in localrepo meta. It is
 // written when a merge stops on conflicts and consumed by the follow-up push so
 // the merge commit records the source head as its second parent.

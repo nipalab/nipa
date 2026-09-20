@@ -9,18 +9,26 @@ import (
 	clientDomain "github.com/nipalab/nipa/internal/client/domain"
 )
 
-// GetMergeBase resolves the merge base of two branches and returns the branch
-// head commit IDs/hashes plus the recursive manifest of the base tree.
-func (c *Client) GetMergeBase(ctx context.Context, org, project, targetBranch, sourceBranch string) (*clientDomain.MergeBaseInfo, error) {
+// GetMergeBase resolves the merge base of two branch or commit refs and
+// returns the head commit IDs/hashes plus the recursive manifest of the base
+// tree.
+func (c *Client) GetMergeBase(ctx context.Context, org, project string, target, source clientDomain.MergeRef) (*clientDomain.MergeBaseInfo, error) {
 	client, err := c.transport.NipaServiceClient()
 	if err != nil {
 		return nil, err
 	}
-	res, err := client.GetMergeBase(ctx, &pb.GetMergeBaseRequest{
+	req := &pb.GetMergeBaseRequest{
 		Context:      &pb.ProjectContext{Org: org, Project: project},
-		TargetBranch: targetBranch,
-		SourceBranch: sourceBranch,
-	})
+		TargetBranch: target.Branch,
+		SourceBranch: source.Branch,
+	}
+	if target.CommitID != "" {
+		req.TargetCommitId = &target.CommitID
+	}
+	if source.CommitID != "" {
+		req.SourceCommitId = &source.CommitID
+	}
+	res, err := client.GetMergeBase(ctx, req)
 	if err != nil {
 		return nil, toDomainError(err)
 	}

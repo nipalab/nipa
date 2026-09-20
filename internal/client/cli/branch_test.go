@@ -27,6 +27,10 @@ func (f fakeListRepoInterface) GetDefaultBranch(_ context.Context, _, _ string) 
 	return &serverDomain.Branch{Name: "main"}, nil
 }
 
+func (f fakeListRepoInterface) GetBranchByName(_ context.Context, _, _, name string) (*serverDomain.Branch, error) {
+	return &serverDomain.Branch{Name: name}, nil
+}
+
 func (f fakeListRepoInterface) GetTreeNodeManifest(_ context.Context, _, _, _, _ string) (*serverDomain.TreeNode, error) {
 	return &serverDomain.TreeNode{}, nil
 }

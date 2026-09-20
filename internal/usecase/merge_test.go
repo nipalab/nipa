@@ -215,7 +215,7 @@ func TestBranch_GetMergeBase_NoPermission(t *testing.T) {
 		Return(false)
 
 	uc := NewBranch(perm, repo, newTestBranchNode(t))
-	_, err := uc.GetMergeBase(context.Background(), snow.ID(1), "main", "feature")
+	_, err := uc.GetMergeBase(context.Background(), snow.ID(1), MergeRef{BranchName: "main"}, MergeRef{BranchName: "feature"})
 	require.True(t, domain.IsErrorNoPermission(err))
 }
 
@@ -233,7 +233,7 @@ func TestBranch_GetMergeBase_TargetBranchNotFound(t *testing.T) {
 		Return(nil, domain.NewErrorRecordNotFound())
 
 	uc := NewBranch(perm, repo, newTestBranchNode(t))
-	_, err := uc.GetMergeBase(context.Background(), snow.ID(1), "main", "feature")
+	_, err := uc.GetMergeBase(context.Background(), snow.ID(1), MergeRef{BranchName: "main"}, MergeRef{BranchName: "feature"})
 	require.Error(t, err)
 	require.True(t, domain.IsErrorNotFound(err))
 	require.Equal(t, `branch "main" not found`, err.Error())
@@ -258,7 +258,7 @@ func TestBranch_GetMergeBase_SourceBranchNotFound(t *testing.T) {
 	)
 
 	uc := NewBranch(perm, repo, newTestBranchNode(t))
-	_, err := uc.GetMergeBase(context.Background(), snow.ID(1), "main", "feature")
+	_, err := uc.GetMergeBase(context.Background(), snow.ID(1), MergeRef{BranchName: "main"}, MergeRef{BranchName: "feature"})
 	require.Error(t, err)
 	require.True(t, domain.IsErrorNotFound(err))
 	require.Equal(t, `branch "feature" not found`, err.Error())
@@ -283,7 +283,7 @@ func TestBranch_GetMergeBase_BothHeadsEmpty(t *testing.T) {
 	)
 
 	uc := NewBranch(perm, repo, newTestBranchNode(t))
-	info, err := uc.GetMergeBase(context.Background(), snow.ID(1), "main", "feature")
+	info, err := uc.GetMergeBase(context.Background(), snow.ID(1), MergeRef{BranchName: "main"}, MergeRef{BranchName: "feature"})
 	require.NoError(t, err)
 	require.Equal(t, "main", info.TargetBranch)
 	require.Equal(t, "feature", info.SourceBranch)
@@ -314,7 +314,7 @@ func TestBranch_GetMergeBase_EmptySource(t *testing.T) {
 	)
 
 	uc := NewBranch(perm, repo, newTestBranchNode(t))
-	info, err := uc.GetMergeBase(context.Background(), snow.ID(1), "main", "feature")
+	info, err := uc.GetMergeBase(context.Background(), snow.ID(1), MergeRef{BranchName: "main"}, MergeRef{BranchName: "feature"})
 	require.NoError(t, err)
 	require.Equal(t, &head, info.TargetCommitID)
 	require.Nil(t, info.SourceCommitID)
@@ -355,7 +355,7 @@ func TestBranch_GetMergeBase_SameHead(t *testing.T) {
 	)
 
 	uc := NewBranch(perm, repo, newTestBranchNode(t))
-	info, err := uc.GetMergeBase(context.Background(), snow.ID(1), "main", "feature")
+	info, err := uc.GetMergeBase(context.Background(), snow.ID(1), MergeRef{BranchName: "main"}, MergeRef{BranchName: "feature"})
 	require.NoError(t, err)
 	require.Equal(t, &head, info.TargetCommitID)
 	require.Equal(t, &head, info.SourceCommitID)
@@ -404,7 +404,7 @@ func TestBranch_GetMergeBase_ForkedBranches(t *testing.T) {
 	)
 
 	uc := NewBranch(perm, repo, newTestBranchNode(t))
-	info, err := uc.GetMergeBase(context.Background(), snow.ID(1), "main", "feature")
+	info, err := uc.GetMergeBase(context.Background(), snow.ID(1), MergeRef{BranchName: "main"}, MergeRef{BranchName: "feature"})
 	require.NoError(t, err)
 	require.Equal(t, &targetHead, info.TargetCommitID)
 	require.Equal(t, &sourceHead, info.SourceCommitID)
@@ -438,7 +438,7 @@ func TestBranch_GetMergeBase_WalkError(t *testing.T) {
 	)
 
 	uc := NewBranch(perm, repo, newTestBranchNode(t))
-	_, err := uc.GetMergeBase(context.Background(), snow.ID(1), "main", "feature")
+	_, err := uc.GetMergeBase(context.Background(), snow.ID(1), MergeRef{BranchName: "main"}, MergeRef{BranchName: "feature"})
 	require.Error(t, err)
 	var domErr *domain.Error
 	require.ErrorAs(t, err, &domErr)
@@ -479,9 +479,86 @@ func TestBranch_GetMergeBase_TreeLoadError(t *testing.T) {
 	)
 
 	uc := NewBranch(perm, repo, newTestBranchNode(t))
-	_, err := uc.GetMergeBase(context.Background(), snow.ID(1), "main", "feature")
+	_, err := uc.GetMergeBase(context.Background(), snow.ID(1), MergeRef{BranchName: "main"}, MergeRef{BranchName: "feature"})
 	require.Error(t, err)
 	var domErr *domain.Error
 	require.ErrorAs(t, err, &domErr)
 	require.Equal(t, 500, domErr.Code)
+}
+
+func TestBranch_GetMergeBase_CommitRefs(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := NewMockpermissionUsecase(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+
+	base := snow.ID(10)
+	targetID := snow.ID(11)
+	sourceID := snow.ID(12)
+	targetCommit := &domain.Commit{ID: targetID, ProjectID: 1, TreeID: 101, Hash: domain.Hash{8}, Parent1ID: &base}
+	sourceCommit := &domain.Commit{ID: sourceID, ProjectID: 1, TreeID: 102, Hash: domain.Hash{9}, Parent1ID: &base}
+
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).
+		Return(true)
+
+	gomock.InOrder(
+		repo.EXPECT().GetCommit(gomock.Any(), targetID).Return(targetCommit, nil),
+		repo.EXPECT().GetCommit(gomock.Any(), sourceID).Return(sourceCommit, nil),
+		repo.EXPECT().GetCommit(gomock.Any(), targetID).Return(targetCommit, nil),
+		repo.EXPECT().GetCommit(gomock.Any(), sourceID).Return(sourceCommit, nil),
+		repo.EXPECT().GetCommit(gomock.Any(), base).Return(&domain.Commit{ID: base, TreeID: 100}, nil),
+		repo.EXPECT().GetTreeNode(gomock.Any(), int64(100)).Return(&domain.TreeNode{ID: 100, Name: "root"}, nil),
+		repo.EXPECT().ListFilesByTree(gomock.Any(), int64(100)).Return(nil, nil),
+		repo.EXPECT().ListTreeChildren(gomock.Any(), int64(100)).Return(nil, nil),
+	)
+
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
+	info, err := uc.GetMergeBase(context.Background(), snow.ID(1),
+		MergeRef{CommitID: &targetID}, MergeRef{CommitID: &sourceID})
+	require.NoError(t, err)
+	require.Empty(t, info.TargetBranch)
+	require.Empty(t, info.SourceBranch)
+	require.Equal(t, &targetID, info.TargetCommitID)
+	require.Equal(t, &sourceID, info.SourceCommitID)
+	require.Equal(t, &base, info.MergeBaseCommitID)
+	require.Equal(t, domain.Hash{8}, *info.TargetCommitHash)
+	require.Equal(t, domain.Hash{9}, *info.SourceCommitHash)
+	require.NotNil(t, info.MergeBaseTree)
+}
+
+func TestBranch_GetMergeBase_CommitRefNotFound(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := NewMockpermissionUsecase(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+
+	missing := snow.ID(99)
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).
+		Return(true)
+	repo.EXPECT().
+		GetCommit(gomock.Any(), missing).
+		Return(nil, domain.NewErrorRecordNotFound())
+
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
+	_, err := uc.GetMergeBase(context.Background(), snow.ID(1), MergeRef{CommitID: &missing}, MergeRef{BranchName: "feature"})
+	require.True(t, domain.IsErrorNotFound(err))
+	require.Equal(t, "commit "+missing.Base36()+" not found", err.Error())
+}
+
+func TestBranch_GetMergeBase_CommitRefWrongProject(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := NewMockpermissionUsecase(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+
+	other := snow.ID(99)
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).
+		Return(true)
+	repo.EXPECT().
+		GetCommit(gomock.Any(), other).
+		Return(&domain.Commit{ID: other, ProjectID: 2, TreeID: 100}, nil)
+
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
+	_, err := uc.GetMergeBase(context.Background(), snow.ID(1), MergeRef{CommitID: &other}, MergeRef{BranchName: "feature"})
+	require.True(t, domain.IsErrorNotFound(err))
 }
