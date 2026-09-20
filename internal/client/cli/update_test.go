@@ -9,20 +9,23 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/nipalab/nipa/internal/chunker"
+	"github.com/nipalab/nipa/internal/client/domain"
 	"github.com/nipalab/nipa/internal/client/localrepo"
 	"github.com/nipalab/nipa/internal/client/usecase"
 	serverDomain "github.com/nipalab/nipa/internal/domain"
 )
 
 type fakeUpdateClient struct {
-	host       string
-	org        string
-	project    string
-	branch     string
-	path       string
-	manifest   *serverDomain.TreeNode
-	chunkData  map[serverDomain.Hash][]byte
-	downloaded []serverDomain.Hash
+	host        string
+	org         string
+	project     string
+	branch      string
+	path        string
+	manifest    *serverDomain.TreeNode
+	chunkData   map[serverDomain.Hash][]byte
+	downloaded  []serverDomain.Hash
+	branchErr   error
+	manifestErr error
 }
 
 func (f *fakeUpdateClient) Connect(_ context.Context, host string) error {
@@ -32,18 +35,28 @@ func (f *fakeUpdateClient) Connect(_ context.Context, host string) error {
 
 func (f *fakeUpdateClient) GetBranchByName(_ context.Context, org, project, name string) (*serverDomain.Branch, error) {
 	f.org, f.project, f.branch = org, project, name
+	if f.branchErr != nil {
+		return nil, f.branchErr
+	}
 	return &serverDomain.Branch{Name: name}, nil
 }
 
-func (f *fakeUpdateClient) GetTreeNodeManifest(_ context.Context, org, project, branch, path string) (*serverDomain.TreeNode, error) {
-	f.org, f.project, f.branch, f.path = org, project, branch, path
+func (f *fakeUpdateClient) GetTreeNodeManifest(_ context.Context, org, project, branch string, paths []string) (*serverDomain.TreeNode, error) {
+	f.org, f.project, f.branch = org, project, branch
+	f.path = ""
+	if len(paths) > 0 {
+		f.path = paths[0]
+	}
+	if f.manifestErr != nil {
+		return nil, f.manifestErr
+	}
 	if f.manifest == nil {
 		return &serverDomain.TreeNode{Name: "root"}, nil
 	}
 	return f.manifest, nil
 }
 
-func (f *fakeUpdateClient) DownloadChunks(_ context.Context, hashes []serverDomain.Hash, onChunk func(h serverDomain.Hash, data []byte) error) error {
+func (f *fakeUpdateClient) DownloadChunks(_ context.Context, _ domain.ChunkScope, hashes []serverDomain.Hash, onChunk func(h serverDomain.Hash, data []byte) error) error {
 	f.downloaded = append(f.downloaded, hashes...)
 	for _, h := range hashes {
 		data, ok := f.chunkData[h]

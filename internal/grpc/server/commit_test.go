@@ -13,6 +13,7 @@ import (
 	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/grpc/pb"
 	"github.com/nipalab/nipa/internal/snow"
+	"github.com/nipalab/nipa/internal/treehash"
 )
 
 func TestGetCommit_Success(t *testing.T) {
@@ -49,15 +50,17 @@ func TestGetCommit_Success(t *testing.T) {
 		Context:  &pb.ProjectContext{Org: "org", Project: "proj"},
 		CommitId: commitID.Base36(),
 	})
+	wantRootHash := treehash.TreeHash([]treehash.FileEntry{{Name: "a.txt", Hash: fileHash}}, nil)
+
 	require.NoError(t, err)
 	require.Equal(t, "7", resp.Commit.CommitId)
 	require.Equal(t, commitHash.String(), resp.Commit.CommitHash)
-	require.Equal(t, rootHash.String(), resp.Commit.TreeHash)
+	require.Equal(t, wantRootHash.String(), resp.Commit.TreeHash)
 	require.Equal(t, "3", *resp.Commit.Parent_1Id)
 	require.Nil(t, resp.Commit.Parent_2Id)
 	require.Equal(t, "hello", resp.Commit.Message)
 	require.True(t, now.Equal(resp.Commit.CreatedAt.AsTime()))
-	require.Equal(t, rootHash.String(), resp.RootTree.TreeHash)
+	require.Equal(t, wantRootHash.String(), resp.RootTree.TreeHash)
 	require.Len(t, resp.RootTree.Files, 1)
 	require.Equal(t, "a.txt", resp.RootTree.Files[0].Path)
 }

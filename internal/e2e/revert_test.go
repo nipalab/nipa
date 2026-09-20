@@ -51,7 +51,7 @@ func TestEndToEnd_Revert_HeadCommit(t *testing.T) {
 	assertFileContent(t, dir, "a.txt", "one\n")
 	require.Nil(t, loadRevertState(t, dir), "a clean revert must not leave pending state")
 
-	manifest, err := grpcClient.GetTreeNodeManifest(ctx, e2eOrgSlug, e2eProjectSlug, "main", "")
+	manifest, err := grpcClient.GetTreeNodeManifest(ctx, e2eOrgSlug, e2eProjectSlug, "main", nil)
 	require.NoError(t, err)
 	require.Equal(t, manifest.Hash.String(), snapshotOf(t, dir).TreeHash)
 
@@ -102,7 +102,7 @@ func TestEndToEnd_Revert_Range(t *testing.T) {
 	require.Contains(t, entries[1].Message, `Revert "third"`)
 	require.Equal(t, "third", entries[2].Message)
 
-	manifest, err := grpcClient.GetTreeNodeManifest(ctx, e2eOrgSlug, e2eProjectSlug, "main", "")
+	manifest, err := grpcClient.GetTreeNodeManifest(ctx, e2eOrgSlug, e2eProjectSlug, "main", nil)
 	require.NoError(t, err)
 	require.Equal(t, manifest.Hash.String(), snapshotOf(t, dir).TreeHash)
 }
@@ -144,7 +144,7 @@ func TestEndToEnd_Revert_ConflictContinue(t *testing.T) {
 	require.Nil(t, loadRevertState(t, dir))
 
 	assertFileContent(t, dir, "a.txt", "a\nb\nc\n")
-	manifest, err := grpcClient.GetTreeNodeManifest(ctx, e2eOrgSlug, e2eProjectSlug, "main", "")
+	manifest, err := grpcClient.GetTreeNodeManifest(ctx, e2eOrgSlug, e2eProjectSlug, "main", nil)
 	require.NoError(t, err)
 	require.Equal(t, manifest.Hash.String(), snapshotOf(t, dir).TreeHash)
 }
@@ -181,7 +181,7 @@ func TestEndToEnd_Revert_Abort(t *testing.T) {
 	require.Nil(t, loadRevertState(t, dir))
 
 	assertFileContent(t, dir, "a.txt", "a\nY\nc\n")
-	manifest, err := grpcClient.GetTreeNodeManifest(ctx, e2eOrgSlug, e2eProjectSlug, "main", "")
+	manifest, err := grpcClient.GetTreeNodeManifest(ctx, e2eOrgSlug, e2eProjectSlug, "main", nil)
 	require.NoError(t, err)
 	require.Equal(t, manifest.Hash.String(), snapshotOf(t, dir).TreeHash)
 }
@@ -219,7 +219,7 @@ func TestEndToEnd_Revert_RangeKeepsUntouchedFile(t *testing.T) {
 	assertFileContent(t, dir, "a.txt", "one\n")
 	assertFileContent(t, dir, "b.txt", "keep me\n")
 
-	manifest, err := grpcClient.GetTreeNodeManifest(ctx, e2eOrgSlug, e2eProjectSlug, "main", "")
+	manifest, err := grpcClient.GetTreeNodeManifest(ctx, e2eOrgSlug, e2eProjectSlug, "main", nil)
 	require.NoError(t, err)
 	require.Contains(t, merge.Flatten(manifest), "b.txt", "an untouched file must survive a range revert on the server")
 	require.Equal(t, manifest.Hash.String(), snapshotOf(t, dir).TreeHash)

@@ -34,7 +34,7 @@ func (f *fakeMergeClient) Connect(_ context.Context, _ string) error {
 	return nil
 }
 
-func (f *fakeMergeClient) GetTreeNodeManifest(_ context.Context, _, _, branch, _ string) (*serverDomain.TreeNode, error) {
+func (f *fakeMergeClient) GetTreeNodeManifest(_ context.Context, _, _, branch string, _ []string) (*serverDomain.TreeNode, error) {
 	if f.treeErr != nil {
 		return nil, f.treeErr
 	}
@@ -47,7 +47,11 @@ func (f *fakeMergeClient) GetTreeNodeManifest(_ context.Context, _, _, branch, _
 	return &serverDomain.TreeNode{Name: "root"}, nil
 }
 
-func (f *fakeMergeClient) DownloadChunks(_ context.Context, hashes []serverDomain.Hash, onChunk func(h serverDomain.Hash, data []byte) error) error {
+func (f *fakeMergeClient) GetBranchByName(_ context.Context, _, _, name string) (*serverDomain.Branch, error) {
+	return &serverDomain.Branch{Name: name}, nil
+}
+
+func (f *fakeMergeClient) DownloadChunks(_ context.Context, _ domain.ChunkScope, hashes []serverDomain.Hash, onChunk func(h serverDomain.Hash, data []byte) error) error {
 	if f.downloadErr != nil {
 		return f.downloadErr
 	}
@@ -71,7 +75,7 @@ func (f *fakeMergeClient) MergeFastForward(_ context.Context, _, _, _, _ string)
 	return f.ffBranch, f.ffErr
 }
 
-func (f *fakeMergeClient) Push(_ context.Context, _, _, _, _, _ string, _ []*serverDomain.PushFile, _ []string, _ string) (*serverDomain.PushResult, error) {
+func (f *fakeMergeClient) Push(_ context.Context, _, _, _, _, _ string, _ []*serverDomain.PushFile, _ []string, _, _ string) (*serverDomain.PushResult, error) {
 	f.pushCalled = true
 	if f.pushResult != nil {
 		return f.pushResult, f.pushErr
@@ -79,7 +83,7 @@ func (f *fakeMergeClient) Push(_ context.Context, _, _, _, _, _ string, _ []*ser
 	return &serverDomain.PushResult{}, f.pushErr
 }
 
-func (f *fakeMergeClient) UploadChunks(_ context.Context, _ []*serverDomain.ChunkData, _ ...func(ch *serverDomain.ChunkData)) (int, int, error) {
+func (f *fakeMergeClient) UploadChunks(_ context.Context, _ domain.ChunkScope, _ []*serverDomain.ChunkData, _ ...func(ch *serverDomain.ChunkData)) (int, int, error) {
 	return 0, 0, nil
 }
 

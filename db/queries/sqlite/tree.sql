@@ -33,22 +33,53 @@ WHERE id = :id
 LIMIT 1;
 
 -- name: TreeNodeGetChildByName :one
-SELECT *
-FROM tree_nodes
-WHERE parent_tree_id = :parent_tree_id AND name = :name
+SELECT t.*
+FROM tree_nodes t
+WHERE t.parent_tree_id = (
+        SELECT content.id
+        FROM tree_nodes content
+        JOIN tree_nodes ref ON ref.hash = content.hash
+        WHERE ref.id = :parent_tree_id
+          AND (
+              EXISTS (SELECT 1 FROM files f WHERE f.tree_id = content.id)
+              OR EXISTS (SELECT 1 FROM tree_nodes c WHERE c.parent_tree_id = content.id)
+          )
+        ORDER BY content.id
+        LIMIT 1
+    )
+    AND t.name = :name
 LIMIT 1;
 
 -- name: TreeNodeListChildren :many
-SELECT *
-FROM tree_nodes
-WHERE parent_tree_id = :parent_tree_id
-ORDER BY name;
+SELECT t.*
+FROM tree_nodes t
+WHERE t.parent_tree_id = (
+        SELECT content.id
+        FROM tree_nodes content
+        JOIN tree_nodes ref ON ref.hash = content.hash
+        WHERE ref.id = :parent_tree_id
+          AND (
+              EXISTS (SELECT 1 FROM files f WHERE f.tree_id = content.id)
+              OR EXISTS (SELECT 1 FROM tree_nodes c WHERE c.parent_tree_id = content.id)
+          )
+        ORDER BY content.id
+        LIMIT 1
+    )
+ORDER BY t.name;
 
 -- name: FileListByTree :many
-SELECT *
-FROM files
-WHERE tree_id = :tree_id
-ORDER BY name;
+SELECT f.*
+FROM files f
+WHERE f.tree_id = (
+        SELECT content.id
+        FROM tree_nodes content
+        JOIN tree_nodes ref ON ref.hash = content.hash
+        WHERE ref.id = :tree_id
+          AND EXISTS (SELECT 1 FROM files cf WHERE cf.tree_id = content.id)
+        ORDER BY content.id
+        LIMIT 1
+    )
+ORDER BY f.name;
 
 -- name: ChunkListByFile :many
 SELECT chunks.id, chunks.hash, chunks.size_bytes, chunks.created_at

@@ -19,18 +19,24 @@ func (c *Cli) setupCloneCmd() *cobra.Command {
 			url := args[0]
 			target := args[1]
 			branch, _ := cmd.Flags().GetString("branch")
+			sparse, _ := cmd.Flags().GetStringSlice("sparse")
 			nipaUrl, err := domain.ParseNipaUrl(url)
 			if err != nil {
 				return err
+			}
+			paths := append([]string{}, sparse...)
+			if nipaUrl.Path != "" {
+				paths = append(paths, nipaUrl.Path)
 			}
 			ctx := context.Background()
 			err = c.connector.Connect(ctx, nipaUrl.Host)
 			if err != nil {
 				return err
 			}
-			return c.useCase.Repo().Clone(ctx, nipaUrl.Url, nipaUrl.Host, nipaUrl.Org, nipaUrl.Project, branch, nipaUrl.Path, target, newProgressRenderer(cmd.OutOrStdout()))
+			return c.useCase.Repo().Clone(ctx, nipaUrl.Url, nipaUrl.Host, nipaUrl.Org, nipaUrl.Project, branch, paths, target, newProgressRenderer(cmd.OutOrStdout()))
 		},
 	}
 	cmd.Flags().StringP("branch", "b", "main", "Specify the branch to clone")
+	cmd.Flags().StringSlice("sparse", nil, "Directory prefixes to check out (comma separated, repeatable)")
 	return cmd
 }

@@ -19,22 +19,33 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	NipaService_LoginWithUsernamePassword_FullMethodName = "/greet.NipaService/LoginWithUsernamePassword"
-	NipaService_LoginWithRefreshToken_FullMethodName     = "/greet.NipaService/LoginWithRefreshToken"
-	NipaService_GetListBranch_FullMethodName             = "/greet.NipaService/GetListBranch"
-	NipaService_GetBranch_FullMethodName                 = "/greet.NipaService/GetBranch"
-	NipaService_GetBranchByName_FullMethodName           = "/greet.NipaService/GetBranchByName"
-	NipaService_GetDefaultBranch_FullMethodName          = "/greet.NipaService/GetDefaultBranch"
-	NipaService_CreateBranch_FullMethodName              = "/greet.NipaService/CreateBranch"
-	NipaService_GetTreeManifest_FullMethodName           = "/greet.NipaService/GetTreeManifest"
-	NipaService_GetCommitLog_FullMethodName              = "/greet.NipaService/GetCommitLog"
-	NipaService_GetCommit_FullMethodName                 = "/greet.NipaService/GetCommit"
-	NipaService_WalkCommits_FullMethodName               = "/greet.NipaService/WalkCommits"
-	NipaService_GetMergeBase_FullMethodName              = "/greet.NipaService/GetMergeBase"
-	NipaService_MergeFastForward_FullMethodName          = "/greet.NipaService/MergeFastForward"
-	NipaService_Push_FullMethodName                      = "/greet.NipaService/Push"
-	NipaService_UploadChunks_FullMethodName              = "/greet.NipaService/UploadChunks"
-	NipaService_DownloadChunks_FullMethodName            = "/greet.NipaService/DownloadChunks"
+	NipaService_LoginWithUsernamePassword_FullMethodName   = "/greet.NipaService/LoginWithUsernamePassword"
+	NipaService_LoginWithRefreshToken_FullMethodName       = "/greet.NipaService/LoginWithRefreshToken"
+	NipaService_GetListBranch_FullMethodName               = "/greet.NipaService/GetListBranch"
+	NipaService_GetBranch_FullMethodName                   = "/greet.NipaService/GetBranch"
+	NipaService_GetBranchByName_FullMethodName             = "/greet.NipaService/GetBranchByName"
+	NipaService_GetDefaultBranch_FullMethodName            = "/greet.NipaService/GetDefaultBranch"
+	NipaService_CreateBranch_FullMethodName                = "/greet.NipaService/CreateBranch"
+	NipaService_GetTreeManifest_FullMethodName             = "/greet.NipaService/GetTreeManifest"
+	NipaService_GetCommitLog_FullMethodName                = "/greet.NipaService/GetCommitLog"
+	NipaService_GetCommit_FullMethodName                   = "/greet.NipaService/GetCommit"
+	NipaService_WalkCommits_FullMethodName                 = "/greet.NipaService/WalkCommits"
+	NipaService_GetMergeBase_FullMethodName                = "/greet.NipaService/GetMergeBase"
+	NipaService_MergeFastForward_FullMethodName            = "/greet.NipaService/MergeFastForward"
+	NipaService_Push_FullMethodName                        = "/greet.NipaService/Push"
+	NipaService_UploadChunks_FullMethodName                = "/greet.NipaService/UploadChunks"
+	NipaService_DownloadChunks_FullMethodName              = "/greet.NipaService/DownloadChunks"
+	NipaService_GetMyPermissions_FullMethodName            = "/greet.NipaService/GetMyPermissions"
+	NipaService_CreatePBACRule_FullMethodName              = "/greet.NipaService/CreatePBACRule"
+	NipaService_ListPBACRules_FullMethodName               = "/greet.NipaService/ListPBACRules"
+	NipaService_DeletePBACRule_FullMethodName              = "/greet.NipaService/DeletePBACRule"
+	NipaService_ListProjectPathPermissions_FullMethodName  = "/greet.NipaService/ListProjectPathPermissions"
+	NipaService_SetProjectPathPermission_FullMethodName    = "/greet.NipaService/SetProjectPathPermission"
+	NipaService_DeleteProjectPathPermission_FullMethodName = "/greet.NipaService/DeleteProjectPathPermission"
+	NipaService_CreateGroup_FullMethodName                 = "/greet.NipaService/CreateGroup"
+	NipaService_ListGroups_FullMethodName                  = "/greet.NipaService/ListGroups"
+	NipaService_AddGroupMember_FullMethodName              = "/greet.NipaService/AddGroupMember"
+	NipaService_RemoveGroupMember_FullMethodName           = "/greet.NipaService/RemoveGroupMember"
 )
 
 // NipaServiceClient is the client API for NipaService service.
@@ -57,6 +68,17 @@ type NipaServiceClient interface {
 	Push(ctx context.Context, in *PushRequest, opts ...grpc.CallOption) (*PushResponse, error)
 	UploadChunks(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[ChunkUploadRequest, UploadChunksResponse], error)
 	DownloadChunks(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[DownloadChunksRequest, DownloadChunk], error)
+	GetMyPermissions(ctx context.Context, in *GetMyPermissionsRequest, opts ...grpc.CallOption) (*GetMyPermissionsResponse, error)
+	CreatePBACRule(ctx context.Context, in *CreatePBACRuleRequest, opts ...grpc.CallOption) (*CreatePBACRuleResponse, error)
+	ListPBACRules(ctx context.Context, in *ListPBACRulesRequest, opts ...grpc.CallOption) (*ListPBACRulesResponse, error)
+	DeletePBACRule(ctx context.Context, in *DeletePBACRuleRequest, opts ...grpc.CallOption) (*DeletePBACRuleResponse, error)
+	ListProjectPathPermissions(ctx context.Context, in *ListProjectPathPermissionsRequest, opts ...grpc.CallOption) (*ListProjectPathPermissionsResponse, error)
+	SetProjectPathPermission(ctx context.Context, in *SetProjectPathPermissionRequest, opts ...grpc.CallOption) (*SetProjectPathPermissionResponse, error)
+	DeleteProjectPathPermission(ctx context.Context, in *DeleteProjectPathPermissionRequest, opts ...grpc.CallOption) (*DeleteProjectPathPermissionResponse, error)
+	CreateGroup(ctx context.Context, in *CreateGroupRequest, opts ...grpc.CallOption) (*CreateGroupResponse, error)
+	ListGroups(ctx context.Context, in *ListGroupsRequest, opts ...grpc.CallOption) (*ListGroupsResponse, error)
+	AddGroupMember(ctx context.Context, in *AddGroupMemberRequest, opts ...grpc.CallOption) (*AddGroupMemberResponse, error)
+	RemoveGroupMember(ctx context.Context, in *RemoveGroupMemberRequest, opts ...grpc.CallOption) (*RemoveGroupMemberResponse, error)
 }
 
 type nipaServiceClient struct {
@@ -233,6 +255,116 @@ func (c *nipaServiceClient) DownloadChunks(ctx context.Context, opts ...grpc.Cal
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type NipaService_DownloadChunksClient = grpc.BidiStreamingClient[DownloadChunksRequest, DownloadChunk]
 
+func (c *nipaServiceClient) GetMyPermissions(ctx context.Context, in *GetMyPermissionsRequest, opts ...grpc.CallOption) (*GetMyPermissionsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetMyPermissionsResponse)
+	err := c.cc.Invoke(ctx, NipaService_GetMyPermissions_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nipaServiceClient) CreatePBACRule(ctx context.Context, in *CreatePBACRuleRequest, opts ...grpc.CallOption) (*CreatePBACRuleResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CreatePBACRuleResponse)
+	err := c.cc.Invoke(ctx, NipaService_CreatePBACRule_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nipaServiceClient) ListPBACRules(ctx context.Context, in *ListPBACRulesRequest, opts ...grpc.CallOption) (*ListPBACRulesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListPBACRulesResponse)
+	err := c.cc.Invoke(ctx, NipaService_ListPBACRules_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nipaServiceClient) DeletePBACRule(ctx context.Context, in *DeletePBACRuleRequest, opts ...grpc.CallOption) (*DeletePBACRuleResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DeletePBACRuleResponse)
+	err := c.cc.Invoke(ctx, NipaService_DeletePBACRule_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nipaServiceClient) ListProjectPathPermissions(ctx context.Context, in *ListProjectPathPermissionsRequest, opts ...grpc.CallOption) (*ListProjectPathPermissionsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListProjectPathPermissionsResponse)
+	err := c.cc.Invoke(ctx, NipaService_ListProjectPathPermissions_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nipaServiceClient) SetProjectPathPermission(ctx context.Context, in *SetProjectPathPermissionRequest, opts ...grpc.CallOption) (*SetProjectPathPermissionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SetProjectPathPermissionResponse)
+	err := c.cc.Invoke(ctx, NipaService_SetProjectPathPermission_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nipaServiceClient) DeleteProjectPathPermission(ctx context.Context, in *DeleteProjectPathPermissionRequest, opts ...grpc.CallOption) (*DeleteProjectPathPermissionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DeleteProjectPathPermissionResponse)
+	err := c.cc.Invoke(ctx, NipaService_DeleteProjectPathPermission_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nipaServiceClient) CreateGroup(ctx context.Context, in *CreateGroupRequest, opts ...grpc.CallOption) (*CreateGroupResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CreateGroupResponse)
+	err := c.cc.Invoke(ctx, NipaService_CreateGroup_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nipaServiceClient) ListGroups(ctx context.Context, in *ListGroupsRequest, opts ...grpc.CallOption) (*ListGroupsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListGroupsResponse)
+	err := c.cc.Invoke(ctx, NipaService_ListGroups_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nipaServiceClient) AddGroupMember(ctx context.Context, in *AddGroupMemberRequest, opts ...grpc.CallOption) (*AddGroupMemberResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AddGroupMemberResponse)
+	err := c.cc.Invoke(ctx, NipaService_AddGroupMember_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nipaServiceClient) RemoveGroupMember(ctx context.Context, in *RemoveGroupMemberRequest, opts ...grpc.CallOption) (*RemoveGroupMemberResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RemoveGroupMemberResponse)
+	err := c.cc.Invoke(ctx, NipaService_RemoveGroupMember_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // NipaServiceServer is the server API for NipaService service.
 // All implementations must embed UnimplementedNipaServiceServer
 // for forward compatibility.
@@ -253,6 +385,17 @@ type NipaServiceServer interface {
 	Push(context.Context, *PushRequest) (*PushResponse, error)
 	UploadChunks(grpc.ClientStreamingServer[ChunkUploadRequest, UploadChunksResponse]) error
 	DownloadChunks(grpc.BidiStreamingServer[DownloadChunksRequest, DownloadChunk]) error
+	GetMyPermissions(context.Context, *GetMyPermissionsRequest) (*GetMyPermissionsResponse, error)
+	CreatePBACRule(context.Context, *CreatePBACRuleRequest) (*CreatePBACRuleResponse, error)
+	ListPBACRules(context.Context, *ListPBACRulesRequest) (*ListPBACRulesResponse, error)
+	DeletePBACRule(context.Context, *DeletePBACRuleRequest) (*DeletePBACRuleResponse, error)
+	ListProjectPathPermissions(context.Context, *ListProjectPathPermissionsRequest) (*ListProjectPathPermissionsResponse, error)
+	SetProjectPathPermission(context.Context, *SetProjectPathPermissionRequest) (*SetProjectPathPermissionResponse, error)
+	DeleteProjectPathPermission(context.Context, *DeleteProjectPathPermissionRequest) (*DeleteProjectPathPermissionResponse, error)
+	CreateGroup(context.Context, *CreateGroupRequest) (*CreateGroupResponse, error)
+	ListGroups(context.Context, *ListGroupsRequest) (*ListGroupsResponse, error)
+	AddGroupMember(context.Context, *AddGroupMemberRequest) (*AddGroupMemberResponse, error)
+	RemoveGroupMember(context.Context, *RemoveGroupMemberRequest) (*RemoveGroupMemberResponse, error)
 	mustEmbedUnimplementedNipaServiceServer()
 }
 
@@ -310,6 +453,39 @@ func (UnimplementedNipaServiceServer) UploadChunks(grpc.ClientStreamingServer[Ch
 }
 func (UnimplementedNipaServiceServer) DownloadChunks(grpc.BidiStreamingServer[DownloadChunksRequest, DownloadChunk]) error {
 	return status.Errorf(codes.Unimplemented, "method DownloadChunks not implemented")
+}
+func (UnimplementedNipaServiceServer) GetMyPermissions(context.Context, *GetMyPermissionsRequest) (*GetMyPermissionsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetMyPermissions not implemented")
+}
+func (UnimplementedNipaServiceServer) CreatePBACRule(context.Context, *CreatePBACRuleRequest) (*CreatePBACRuleResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreatePBACRule not implemented")
+}
+func (UnimplementedNipaServiceServer) ListPBACRules(context.Context, *ListPBACRulesRequest) (*ListPBACRulesResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListPBACRules not implemented")
+}
+func (UnimplementedNipaServiceServer) DeletePBACRule(context.Context, *DeletePBACRuleRequest) (*DeletePBACRuleResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DeletePBACRule not implemented")
+}
+func (UnimplementedNipaServiceServer) ListProjectPathPermissions(context.Context, *ListProjectPathPermissionsRequest) (*ListProjectPathPermissionsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListProjectPathPermissions not implemented")
+}
+func (UnimplementedNipaServiceServer) SetProjectPathPermission(context.Context, *SetProjectPathPermissionRequest) (*SetProjectPathPermissionResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SetProjectPathPermission not implemented")
+}
+func (UnimplementedNipaServiceServer) DeleteProjectPathPermission(context.Context, *DeleteProjectPathPermissionRequest) (*DeleteProjectPathPermissionResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DeleteProjectPathPermission not implemented")
+}
+func (UnimplementedNipaServiceServer) CreateGroup(context.Context, *CreateGroupRequest) (*CreateGroupResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreateGroup not implemented")
+}
+func (UnimplementedNipaServiceServer) ListGroups(context.Context, *ListGroupsRequest) (*ListGroupsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListGroups not implemented")
+}
+func (UnimplementedNipaServiceServer) AddGroupMember(context.Context, *AddGroupMemberRequest) (*AddGroupMemberResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method AddGroupMember not implemented")
+}
+func (UnimplementedNipaServiceServer) RemoveGroupMember(context.Context, *RemoveGroupMemberRequest) (*RemoveGroupMemberResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RemoveGroupMember not implemented")
 }
 func (UnimplementedNipaServiceServer) mustEmbedUnimplementedNipaServiceServer() {}
 func (UnimplementedNipaServiceServer) testEmbeddedByValue()                     {}
@@ -598,6 +774,204 @@ func _NipaService_DownloadChunks_Handler(srv interface{}, stream grpc.ServerStre
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type NipaService_DownloadChunksServer = grpc.BidiStreamingServer[DownloadChunksRequest, DownloadChunk]
 
+func _NipaService_GetMyPermissions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetMyPermissionsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaServiceServer).GetMyPermissions(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaService_GetMyPermissions_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaServiceServer).GetMyPermissions(ctx, req.(*GetMyPermissionsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NipaService_CreatePBACRule_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreatePBACRuleRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaServiceServer).CreatePBACRule(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaService_CreatePBACRule_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaServiceServer).CreatePBACRule(ctx, req.(*CreatePBACRuleRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NipaService_ListPBACRules_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListPBACRulesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaServiceServer).ListPBACRules(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaService_ListPBACRules_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaServiceServer).ListPBACRules(ctx, req.(*ListPBACRulesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NipaService_DeletePBACRule_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeletePBACRuleRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaServiceServer).DeletePBACRule(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaService_DeletePBACRule_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaServiceServer).DeletePBACRule(ctx, req.(*DeletePBACRuleRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NipaService_ListProjectPathPermissions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListProjectPathPermissionsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaServiceServer).ListProjectPathPermissions(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaService_ListProjectPathPermissions_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaServiceServer).ListProjectPathPermissions(ctx, req.(*ListProjectPathPermissionsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NipaService_SetProjectPathPermission_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetProjectPathPermissionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaServiceServer).SetProjectPathPermission(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaService_SetProjectPathPermission_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaServiceServer).SetProjectPathPermission(ctx, req.(*SetProjectPathPermissionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NipaService_DeleteProjectPathPermission_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteProjectPathPermissionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaServiceServer).DeleteProjectPathPermission(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaService_DeleteProjectPathPermission_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaServiceServer).DeleteProjectPathPermission(ctx, req.(*DeleteProjectPathPermissionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NipaService_CreateGroup_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateGroupRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaServiceServer).CreateGroup(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaService_CreateGroup_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaServiceServer).CreateGroup(ctx, req.(*CreateGroupRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NipaService_ListGroups_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListGroupsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaServiceServer).ListGroups(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaService_ListGroups_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaServiceServer).ListGroups(ctx, req.(*ListGroupsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NipaService_AddGroupMember_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AddGroupMemberRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaServiceServer).AddGroupMember(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaService_AddGroupMember_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaServiceServer).AddGroupMember(ctx, req.(*AddGroupMemberRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NipaService_RemoveGroupMember_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RemoveGroupMemberRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaServiceServer).RemoveGroupMember(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaService_RemoveGroupMember_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaServiceServer).RemoveGroupMember(ctx, req.(*RemoveGroupMemberRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // NipaService_ServiceDesc is the grpc.ServiceDesc for NipaService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -660,6 +1034,50 @@ var NipaService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Push",
 			Handler:    _NipaService_Push_Handler,
+		},
+		{
+			MethodName: "GetMyPermissions",
+			Handler:    _NipaService_GetMyPermissions_Handler,
+		},
+		{
+			MethodName: "CreatePBACRule",
+			Handler:    _NipaService_CreatePBACRule_Handler,
+		},
+		{
+			MethodName: "ListPBACRules",
+			Handler:    _NipaService_ListPBACRules_Handler,
+		},
+		{
+			MethodName: "DeletePBACRule",
+			Handler:    _NipaService_DeletePBACRule_Handler,
+		},
+		{
+			MethodName: "ListProjectPathPermissions",
+			Handler:    _NipaService_ListProjectPathPermissions_Handler,
+		},
+		{
+			MethodName: "SetProjectPathPermission",
+			Handler:    _NipaService_SetProjectPathPermission_Handler,
+		},
+		{
+			MethodName: "DeleteProjectPathPermission",
+			Handler:    _NipaService_DeleteProjectPathPermission_Handler,
+		},
+		{
+			MethodName: "CreateGroup",
+			Handler:    _NipaService_CreateGroup_Handler,
+		},
+		{
+			MethodName: "ListGroups",
+			Handler:    _NipaService_ListGroups_Handler,
+		},
+		{
+			MethodName: "AddGroupMember",
+			Handler:    _NipaService_AddGroupMember_Handler,
+		},
+		{
+			MethodName: "RemoveGroupMember",
+			Handler:    _NipaService_RemoveGroupMember_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

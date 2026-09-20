@@ -12,8 +12,8 @@ import (
 )
 
 type stubCommonOrgRepo struct {
-	org  *domain.Organization
-	err  error
+	org *domain.Organization
+	err error
 }
 
 func (s *stubCommonOrgRepo) GetBySlug(_ context.Context, _ string) (*domain.Organization, error) {
@@ -79,5 +79,34 @@ func TestResolveBySlug_ProjectRepoError(t *testing.T) {
 	c := NewCommon(&stubCommonOrgRepo{org: org}, &stubCommonProjectRepo{err: wantErr})
 
 	_, _, err := c.ResolveBySlug(context.Background(), "default", "sample")
+	require.ErrorIs(t, err, wantErr)
+}
+
+func TestResolveOrg_Success(t *testing.T) {
+	org := &domain.Organization{ID: snow.ID(1), Slug: "default"}
+	c := NewCommon(&stubCommonOrgRepo{org: org}, &stubCommonProjectRepo{})
+
+	got, err := c.ResolveOrg(context.Background(), "default")
+	require.NoError(t, err)
+	require.Equal(t, org, got)
+}
+
+func TestResolveOrg_NotFound(t *testing.T) {
+	c := NewCommon(&stubCommonOrgRepo{err: domain.NewErrorNotFound("record not found")}, &stubCommonProjectRepo{})
+
+	_, err := c.ResolveOrg(context.Background(), "missing")
+	require.Error(t, err)
+
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 404, domErr.Code)
+	require.Equal(t, `organization "missing" not found`, domErr.Message)
+}
+
+func TestResolveOrg_RepoError(t *testing.T) {
+	wantErr := errors.New("db down")
+	c := NewCommon(&stubCommonOrgRepo{err: wantErr}, &stubCommonProjectRepo{})
+
+	_, err := c.ResolveOrg(context.Background(), "default")
 	require.ErrorIs(t, err, wantErr)
 }

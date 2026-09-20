@@ -34,21 +34,29 @@ CREATE TABLE pbac_rules (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-    group_id INTEGER REFERENCES groups(id) ON DELETE CASCADE,    
+    group_id INTEGER REFERENCES groups(id) ON DELETE CASCADE,
     org_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
     project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
-    path_pattern TEXT, -- NULL means root/all paths    
-    permission INTEGER NOT NULL DEFAULT 0,     
-    CHECK (user_id IS NOT NULL OR group_id IS NOT NULL)
+    path_prefix TEXT NOT NULL DEFAULT '',
+    permission INTEGER NOT NULL DEFAULT 0,
+    CHECK (user_id IS NOT NULL OR group_id IS NOT NULL),
+    CHECK (user_id IS NULL OR group_id IS NULL)
 );
+
+CREATE INDEX idx_pbac_rules_project ON pbac_rules(project_id);
+CREATE INDEX idx_pbac_rules_user ON pbac_rules(user_id);
+CREATE INDEX idx_pbac_rules_group ON pbac_rules(group_id);
 
 CREATE TABLE project_paths_permissions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-    path_pattern TEXT NOT NULL,
-    is_allowed BOOLEAN NOT NULL DEFAULT 1,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    path_prefix TEXT NOT NULL,
+    permission INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (project_id, path_prefix)
 );
+
+CREATE INDEX idx_group_members_user ON group_members(user_id);
 
 CREATE TABLE refresh_tokens (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

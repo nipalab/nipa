@@ -29,6 +29,7 @@ type stubPushClient struct {
 	baseTreeHash   string
 	message        string
 	parent2hash    string
+	baseCommitID   string
 	pushFiles      []*serverDomain.PushFile
 	pushRemoved    []string
 	pushResult     *serverDomain.PushResult
@@ -49,10 +50,11 @@ func (s *stubPushClient) Connect(_ context.Context, host string) error {
 	return s.connectErr
 }
 
-func (s *stubPushClient) Push(_ context.Context, org, project, branch, baseTreeHash, message string, files []*serverDomain.PushFile, removed []string, parent2CommitHash string) (*serverDomain.PushResult, error) {
+func (s *stubPushClient) Push(_ context.Context, org, project, branch, baseTreeHash, message string, files []*serverDomain.PushFile, removed []string, parent2CommitHash, baseCommitID string) (*serverDomain.PushResult, error) {
 	s.org, s.project, s.branch, s.baseTreeHash, s.message = org, project, branch, baseTreeHash, message
 	s.pushFiles, s.pushRemoved = files, removed
 	s.parent2hash = parent2CommitHash
+	s.baseCommitID = baseCommitID
 	s.pushes = append(s.pushes, stubPushCall{
 		baseTreeHash: baseTreeHash,
 		message:      message,
@@ -71,7 +73,7 @@ func (s *stubPushClient) Push(_ context.Context, org, project, branch, baseTreeH
 	return s.pushResult, s.pushErr
 }
 
-func (s *stubPushClient) UploadChunks(_ context.Context, chunks []*serverDomain.ChunkData, onChunk ...func(ch *serverDomain.ChunkData)) (int, int, error) {
+func (s *stubPushClient) UploadChunks(_ context.Context, _ domain.ChunkScope, chunks []*serverDomain.ChunkData, onChunk ...func(ch *serverDomain.ChunkData)) (int, int, error) {
 	s.uploadCalls++
 	s.uploadedChunks = append(s.uploadedChunks, chunks...)
 	for _, ch := range chunks {
@@ -82,7 +84,7 @@ func (s *stubPushClient) UploadChunks(_ context.Context, chunks []*serverDomain.
 	return s.uploaded, s.skipped, s.uploadErr
 }
 
-func (s *stubPushClient) GetTreeNodeManifest(_ context.Context, _, _, _, _ string) (*serverDomain.TreeNode, error) {
+func (s *stubPushClient) GetTreeNodeManifest(_ context.Context, _, _, _ string, _ []string) (*serverDomain.TreeNode, error) {
 	return s.manifest, s.manifestErr
 }
 
@@ -292,16 +294,30 @@ func TestPush_Run_Error_NothingStaged(t *testing.T) {
 	require.Contains(t, err.Error(), "nothing staged")
 }
 
-func TestPush_Run_Error_SubpathClone(t *testing.T) {
-	local := &stubLocalRepo{
-		loadConfig: &domain.Config{Url: "http://example.com/org/project/src", Branch: "main"},
-		staged:     []string{"a.txt"},
-	}
-	pusher := newTestPush(t, local, &stubPushClient{})
+func TestPush_Run_SparseCloneSendsBaseCommitID(t *testing.T) {
+	root := t.TempDir()
+	writeRepoFile(t, root, "src/a.txt", "hello")
+	fileHash, _, err := chunkFile([]byte("hello"))
+	require.NoError(t, err)
 
-	err := pusher.Run(context.Background(), t.TempDir(), "push")
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "subdirectory")
+	local := &stubLocalRepo{
+		loadConfig: &domain.Config{Url: "http://example.com/org/project/src", Branch: "main", Sparse: []string{"src"}},
+		snapshot:   &domain.Snapshot{},
+		staged:     []string{"src/a.txt"},
+		loadCommit: &domain.LocalCommit{CommitID: "abc123"},
+	}
+	client := &stubPushClient{
+		pushResult: &serverDomain.PushResult{
+			CommitID:   snow.ID(1),
+			CommitHash: fileHash,
+			TreeHash:   fileHash,
+		},
+		manifest: &serverDomain.TreeNode{Name: "root"},
+	}
+	pusher := newTestPush(t, local, client)
+
+	require.NoError(t, pusher.Run(context.Background(), root, "push"))
+	require.Equal(t, "abc123", client.baseCommitID, "sparse pushes must send the pinned base commit")
 }
 
 func TestPush_Run_ReportsUploadProgress(t *testing.T) {

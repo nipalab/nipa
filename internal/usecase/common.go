@@ -27,6 +27,17 @@ func NewCommon(orgRepository orgRepository, projectRepository projectRepository)
 	}
 }
 
+func (c *Common) ResolveOrg(ctx context.Context, orgSlug string) (*domain.Organization, error) {
+	org, err := c.orgRepository.GetBySlug(ctx, orgSlug)
+	if err != nil {
+		if domain.IsErrorNotFound(err) {
+			return nil, domain.NewErrorNotFound(fmt.Sprintf("organization %q not found", orgSlug))
+		}
+		return nil, err
+	}
+	return org, nil
+}
+
 func (c *Common) ResolveBySlug(ctx context.Context, orgSlug, projectSlug string) (org *domain.Organization, project *domain.Project, err error) {
 	org, err = c.orgRepository.GetBySlug(ctx, orgSlug)
 	if err != nil {

@@ -23,7 +23,7 @@ type threeWayResult struct {
 	Conflicted []string
 }
 
-func applyThreeWay(ctx context.Context, client chunkDownloader, local threeWayLocalRepo, root string, ours map[string]merge.File, baseByPath map[string]domain.SnapshotFile, res *merge.Result) (*threeWayResult, error) {
+func applyThreeWay(ctx context.Context, client chunkDownloader, local threeWayLocalRepo, root string, ours map[string]merge.File, baseByPath map[string]domain.SnapshotFile, res *merge.Result, scope domain.ChunkScope) (*threeWayResult, error) {
 	var needs []merge.File
 	for _, e := range res.Entries {
 		switch e.Decision {
@@ -41,7 +41,7 @@ func applyThreeWay(ctx context.Context, client chunkDownloader, local threeWayLo
 	if err != nil {
 		return nil, err
 	}
-	if err := downloadMissing(ctx, client, local, missing, estimatedBytes(needs, missing)); err != nil {
+	if err := downloadMissing(ctx, client, local, scope, missing, estimatedBytes(needs, missing)); err != nil {
 		return nil, err
 	}
 

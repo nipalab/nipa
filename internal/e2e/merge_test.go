@@ -38,7 +38,7 @@ func cloneWorktree(t *testing.T, grpcClient *clientgrpc.Client, auth *clientusec
 	repo := clientusecase.NewRepo(auth, grpcClient, localrepo.NewLocalRepo())
 	url := "http://" + host + "/" + e2eOrgSlug + "/" + e2eProjectSlug
 	target := filepath.Join(t.TempDir(), branch)
-	require.NoError(t, repo.Clone(context.Background(), url, host, e2eOrgSlug, e2eProjectSlug, "", "", target))
+	require.NoError(t, repo.Clone(context.Background(), url, host, e2eOrgSlug, e2eProjectSlug, "", nil, target))
 	if branch != "main" {
 		updater := clientusecase.NewUpdate(auth, grpcClient, localrepo.NewLocalRepo())
 		require.NoError(t, updater.Switch(context.Background(), target, branch))
@@ -116,9 +116,9 @@ func TestEndToEnd_Merge_FastForward(t *testing.T) {
 	assertFileContent(t, mainDir, "b.txt", "added on feature\n")
 	require.Equal(t, "main", loadBranchConfig(t, mainDir), "fast-forward must not change the tracked branch")
 
-	mainManifest, err := grpcClient.GetTreeNodeManifest(ctx, e2eOrgSlug, e2eProjectSlug, "main", "")
+	mainManifest, err := grpcClient.GetTreeNodeManifest(ctx, e2eOrgSlug, e2eProjectSlug, "main", nil)
 	require.NoError(t, err)
-	featureManifest, err := grpcClient.GetTreeNodeManifest(ctx, e2eOrgSlug, e2eProjectSlug, "feature", "")
+	featureManifest, err := grpcClient.GetTreeNodeManifest(ctx, e2eOrgSlug, e2eProjectSlug, "feature", nil)
 	require.NoError(t, err)
 	require.Equal(t, featureManifest.Hash, mainManifest.Hash, "fast-forward must move main to the feature head")
 	require.Equal(t, featureManifest.Hash.String(), snapshotOf(t, mainDir).TreeHash)
@@ -184,7 +184,7 @@ func TestEndToEnd_Merge_CleanThreeWay(t *testing.T) {
 
 	after := cloneWorktree(t, grpcClient, auth, host, "main")
 	assertFileContent(t, after, "a.txt", "a\nX\nZ\n")
-	mainManifest, err := grpcClient.GetTreeNodeManifest(ctx, e2eOrgSlug, e2eProjectSlug, "main", "")
+	mainManifest, err := grpcClient.GetTreeNodeManifest(ctx, e2eOrgSlug, e2eProjectSlug, "main", nil)
 	require.NoError(t, err)
 	require.Equal(t, mainManifest.Hash.String(), snapshotOf(t, mainDir).TreeHash)
 }
@@ -285,7 +285,7 @@ func TestEndToEnd_Merge_ConflictAbort(t *testing.T) {
 	assertFileContent(t, mainDir, "a.txt", "a\nY\nc\n")
 	require.Nil(t, loadMergeState(t, mainDir), "abort must clear the pending merge state")
 
-	mainManifest, err := grpcClient.GetTreeNodeManifest(ctx, e2eOrgSlug, e2eProjectSlug, "main", "")
+	mainManifest, err := grpcClient.GetTreeNodeManifest(ctx, e2eOrgSlug, e2eProjectSlug, "main", nil)
 	require.NoError(t, err)
 	require.Equal(t, mainManifest.Hash.String(), snapshotOf(t, mainDir).TreeHash, "abort must restore the snapshot to the branch head")
 

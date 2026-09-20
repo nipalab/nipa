@@ -43,6 +43,35 @@ func (m *MockpermissionUsecase) EXPECT() *MockpermissionUsecaseMockRecorder {
 	return m.recorder
 }
 
+// CompileFilter mocks base method.
+func (m *MockpermissionUsecase) CompileFilter(ctx context.Context, projectID snow.ID, permission domain.Permission) (*PathFilter, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CompileFilter", ctx, projectID, permission)
+	ret0, _ := ret[0].(*PathFilter)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CompileFilter indicates an expected call of CompileFilter.
+func (mr *MockpermissionUsecaseMockRecorder) CompileFilter(ctx, projectID, permission any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CompileFilter", reflect.TypeOf((*MockpermissionUsecase)(nil).CompileFilter), ctx, projectID, permission)
+}
+
+// HasPathAccess mocks base method.
+func (m *MockpermissionUsecase) HasPathAccess(ctx context.Context, projectID snow.ID, path string, permission domain.Permission) bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "HasPathAccess", ctx, projectID, path, permission)
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// HasPathAccess indicates an expected call of HasPathAccess.
+func (mr *MockpermissionUsecaseMockRecorder) HasPathAccess(ctx, projectID, path, permission any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasPathAccess", reflect.TypeOf((*MockpermissionUsecase)(nil).HasPathAccess), ctx, projectID, path, permission)
+}
+
 // HasProjectAccess mocks base method.
 func (m *MockpermissionUsecase) HasProjectAccess(ctx context.Context, projectID snow.ID, permission domain.Permission) bool {
 	m.ctrl.T.Helper()

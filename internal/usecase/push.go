@@ -66,7 +66,7 @@ func NewPush(permUc permissionUsecase, branchRepo branchRepository, pushRepo pus
 	}
 }
 
-func (p *Push) Push(ctx context.Context, projectID snow.ID, branchName, baseTreeHash, message string, files []*domain.PushFile, removed []string, parent2CommitHash string) (*domain.PushResult, error) {
+func (p *Push) Push(ctx context.Context, projectID snow.ID, branchName, baseTreeHash, message string, files []*domain.PushFile, removed []string, parent2CommitHash, baseCommitID string) (*domain.PushResult, error) {
 	if !p.permUc.HasProjectAccess(ctx, projectID, domain.PermissionWrite) {
 		return nil, domain.NewErrorNoPermission()
 	}
@@ -83,6 +83,9 @@ func (p *Push) Push(ctx context.Context, projectID snow.ID, branchName, baseTree
 		if got := treehash.FileHash(f.ChunkHashes); got != f.FileHash {
 			return nil, domain.NewErrorUser(fmt.Sprintf("file hash mismatch for %q", f.Path))
 		}
+	}
+	if err := p.ensurePathWrites(ctx, projectID, files, removed); err != nil {
+		return nil, err
 	}
 
 	branch, err := p.branchRepo.GetBranchByName(ctx, projectID, branchName)
@@ -121,15 +124,29 @@ func (p *Push) Push(ctx context.Context, projectID snow.ID, branchName, baseTree
 		}
 	}
 
-	headTreeHash, err := p.headTreeHash(ctx, headCommit)
-	if err != nil {
-		return nil, err
-	}
-	if baseTreeHash == "" {
-		baseTreeHash = treehash.TreeHash(nil, nil).String()
-	}
-	if !strings.EqualFold(baseTreeHash, headTreeHash.String()) {
-		return nil, domain.NewErrorConflict(fmt.Sprintf("branch %q has moved: expected base tree hash %s, current head is %s", branchName, baseTreeHash, headTreeHash))
+	if baseCommitID != "" {
+		baseID, err := snow.ParseBase36(baseCommitID)
+		if err != nil {
+			return nil, domain.NewErrorUser("invalid base commit id")
+		}
+		if branch.CommitID == nil || *branch.CommitID != baseID {
+			current := ""
+			if branch.CommitID != nil {
+				current = branch.CommitID.Base36()
+			}
+			return nil, domain.NewErrorConflict(fmt.Sprintf("branch %q has moved: expected base commit %s, current head is %s", branchName, baseCommitID, current))
+		}
+	} else {
+		headTreeHash, err := p.headTreeHash(ctx, headCommit)
+		if err != nil {
+			return nil, err
+		}
+		if baseTreeHash == "" {
+			baseTreeHash = treehash.TreeHash(nil, nil).String()
+		}
+		if !strings.EqualFold(baseTreeHash, headTreeHash.String()) {
+			return nil, domain.NewErrorConflict(fmt.Sprintf("branch %q has moved: expected base tree hash %s, current head is %s", branchName, baseTreeHash, headTreeHash))
+		}
 	}
 
 	root, err := buildNewTree(ctx, p.branchRepo, headCommit, files, removed)
@@ -217,9 +234,33 @@ func (p *Push) toApplyRequest(ctx context.Context, projectID snow.ID, branch *do
 				ChunkHashes: f.ChunkHashes,
 			})
 		}
+		for _, kept := range n.KeepDirs {
+			id := n.ID
+			req.Nodes = append(req.Nodes, PushNodeRow{
+				ID:       kept.ID,
+				Hash:     kept.Hash,
+				Name:     kept.Name,
+				Mode:     kept.Mode,
+				ParentID: &id,
+			})
+		}
 		queue = append(queue, n.Children...)
 	}
 	return req
+}
+
+func (p *Push) ensurePathWrites(ctx context.Context, projectID snow.ID, files []*domain.PushFile, removed []string) error {
+	for _, file := range files {
+		if !p.permUc.HasPathAccess(ctx, projectID, file.Path, domain.PermissionWrite) {
+			return domain.NewErrorNoPermission()
+		}
+	}
+	for _, path := range removed {
+		if !p.permUc.HasPathAccess(ctx, projectID, path, domain.PermissionWrite) {
+			return domain.NewErrorNoPermission()
+		}
+	}
+	return nil
 }
 
 func validatePushFiles(files []*domain.PushFile) error {
@@ -284,7 +325,7 @@ type pushTreeNode struct {
 	Mode     int
 	Files    []*pushFile
 	Children []*pushTreeNode
-	KeepDirs []pushTreeEntry
+	KeepDirs []*pushTreeNode
 }
 
 type pushTreeEntry struct {
@@ -359,12 +400,7 @@ type treeBuilder struct {
 }
 
 func (b *treeBuilder) build(ctx context.Context, dirPath string, baseNode *domain.TreeNode) (*pushTreeNode, error) {
-	b.nextID++
-	node := &pushTreeNode{
-		ID:   b.nextID,
-		Name: nodeName(dirPath),
-		Mode: 0o444,
-	}
+	node := b.alloc(nodeName(dirPath))
 
 	var baseFiles []*domain.File
 	var baseChildren []*domain.TreeNode
@@ -437,9 +473,21 @@ func (b *treeBuilder) build(ctx context.Context, dirPath string, baseNode *domai
 		if b.rebuildDirs[sub] {
 			continue
 		}
-		node.KeepDirs = append(node.KeepDirs, pushTreeEntry{Name: c.Name, Hash: c.Hash})
+		kept := b.alloc(c.Name)
+		kept.Hash = c.Hash
+		kept.Parent = node
+		node.KeepDirs = append(node.KeepDirs, kept)
 	}
 	return node, nil
+}
+
+func (b *treeBuilder) alloc(name string) *pushTreeNode {
+	b.nextID++
+	return &pushTreeNode{
+		ID:   b.nextID,
+		Name: name,
+		Mode: 0o444,
+	}
 }
 
 func (b *treeBuilder) finalize(ctx context.Context, node *pushTreeNode) domain.Hash {

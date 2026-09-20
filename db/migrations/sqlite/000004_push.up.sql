@@ -32,3 +32,9 @@ CREATE TABLE files_new (
 INSERT INTO files_new SELECT id, name, mode, tree_id, hash, size_bytes, is_binary, created_at FROM files;
 DROP TABLE files;
 ALTER TABLE files_new RENAME TO files;
+
+-- Manifests resolve directory content through the tree hash (content-addressed
+-- rows may be shared across commits), so both lookups need an index.
+CREATE INDEX idx_tree_nodes_hash ON tree_nodes(hash);
+CREATE INDEX idx_tree_nodes_parent ON tree_nodes(parent_tree_id);
+CREATE INDEX idx_files_tree_id ON files(tree_id);

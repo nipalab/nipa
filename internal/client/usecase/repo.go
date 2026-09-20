@@ -15,10 +15,10 @@ import (
 type repoInterface interface {
 	GetDefaultBranch(ctx context.Context, org, project string) (*serverDomain.Branch, error)
 	GetBranchByName(ctx context.Context, org, project, name string) (*serverDomain.Branch, error)
-	GetTreeNodeManifest(ctx context.Context, org, project, branch, path string) (*serverDomain.TreeNode, error)
+	GetTreeNodeManifest(ctx context.Context, org, project, branch string, paths []string) (*serverDomain.TreeNode, error)
 	ListBranches(ctx context.Context, org, project string) ([]*serverDomain.Branch, error)
 	CreateBranch(ctx context.Context, org, project, name, fromBranch, fromCommitID, fromCommitHash string) (*serverDomain.Branch, error)
-	DownloadChunks(ctx context.Context, hashes []serverDomain.Hash, onChunk func(h serverDomain.Hash, data []byte) error) error
+	DownloadChunks(ctx context.Context, scope domain.ChunkScope, hashes []serverDomain.Hash, onChunk func(h serverDomain.Hash, data []byte) error) error
 	GetCommitLog(ctx context.Context, org, project, branch string, startCommitID *snow.ID, limit int) ([]*serverDomain.CommitLogEntry, error)
 }
 
@@ -53,7 +53,7 @@ func NewRepo(auth *Auth, repoInterface repoInterface, localRepo localRepo) *Repo
 	}
 }
 
-func (r *Repo) Clone(ctx context.Context, url, host, org, project, branch, path, target string, progress ...DownloadProgress) error {
+func (r *Repo) Clone(ctx context.Context, url, host, org, project, branch string, sparse []string, target string, progress ...DownloadProgress) error {
 	if err := ensureEmptyTarget(target); err != nil {
 		return err
 	}
@@ -76,25 +76,33 @@ func (r *Repo) Clone(ctx context.Context, url, host, org, project, branch, path,
 		}
 		headCommitID = commitIDString(domainBranch)
 	}
-	root, err := r.repoInterface.GetTreeNodeManifest(ctx, org, project, branch, path)
+	paths, err := normalizeSparsePaths(sparse)
+	if err != nil {
+		return err
+	}
+	root, err := r.repoInterface.GetTreeNodeManifest(ctx, org, project, branch, paths)
 	if err != nil {
 		return err
 	}
 	if err := r.localRepo.Init(target); err != nil {
 		return err
 	}
-	if err := r.localRepo.SaveConfig(domain.Config{Url: url, Branch: branch}); err != nil {
+	if err := r.localRepo.SaveConfig(domain.Config{Url: url, Branch: branch, Sparse: paths}); err != nil {
 		return err
 	}
-	if path == "" {
-		if err := syncWorkingCopy(ctx, r.repoInterface, r.localRepo, target, root, progress...); err != nil {
-			return err
-		}
+	scope := domain.ChunkScope{
+		Org:       org,
+		Project:   project,
+		CommitIDs: commitIDs(headCommitID),
+		Paths:     paths,
+	}
+	if err := syncWorkingCopy(ctx, r.repoInterface, r.localRepo, target, root, scope, progress...); err != nil {
+		return err
 	}
 	if err := r.localRepo.SaveTree(root); err != nil {
 		return err
 	}
-	if path == "" && headCommitID != "" {
+	if headCommitID != "" {
 		return r.localRepo.SaveCommit(headCommitID, "")
 	}
 	return nil

@@ -127,7 +127,7 @@ func (b *BranchRepository) GetTreeNode(ctx context.Context, id int64) (*domain.T
 
 func (b *BranchRepository) GetTreeChildByName(ctx context.Context, parentID int64, name string) (*domain.TreeNode, error) {
 	row, err := b.queries.TreeNodeGetChildByName(ctx, sqlcSqlite.TreeNodeGetChildByNameParams{
-		ParentTreeID: sql.NullInt64{Int64: parentID, Valid: true},
+		ParentTreeID: parentID,
 		Name:         name,
 	})
 	if err != nil {
@@ -137,7 +137,7 @@ func (b *BranchRepository) GetTreeChildByName(ctx context.Context, parentID int6
 }
 
 func (b *BranchRepository) ListTreeChildren(ctx context.Context, parentID int64) ([]*domain.TreeNode, error) {
-	rows, err := b.queries.TreeNodeListChildren(ctx, sql.NullInt64{Int64: parentID, Valid: true})
+	rows, err := b.queries.TreeNodeListChildren(ctx, parentID)
 	if err != nil {
 		return nil, handleError(err)
 	}
@@ -147,7 +147,7 @@ func (b *BranchRepository) ListTreeChildren(ctx context.Context, parentID int64)
 }
 
 func (b *BranchRepository) ListFilesByTree(ctx context.Context, treeID int64) ([]*domain.File, error) {
-	rows, err := b.queries.FileListByTree(ctx, sql.NullInt64{Int64: treeID, Valid: true})
+	rows, err := b.queries.FileListByTree(ctx, treeID)
 	if err != nil {
 		return nil, handleError(err)
 	}

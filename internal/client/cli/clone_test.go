@@ -74,7 +74,7 @@ func (fakeRepoInterface) GetBranchByName(_ context.Context, _, _, name string) (
 	return &serverDomain.Branch{Name: name}, nil
 }
 
-func (fakeRepoInterface) GetTreeNodeManifest(_ context.Context, _, _, _, _ string) (*serverDomain.TreeNode, error) {
+func (fakeRepoInterface) GetTreeNodeManifest(_ context.Context, _, _, _ string, _ []string) (*serverDomain.TreeNode, error) {
 	return &serverDomain.TreeNode{}, nil
 }
 
@@ -86,7 +86,7 @@ func (fakeRepoInterface) CreateBranch(_ context.Context, _, _, name, _, _, _ str
 	return &serverDomain.Branch{Name: name}, nil
 }
 
-func (fakeRepoInterface) DownloadChunks(_ context.Context, _ []serverDomain.Hash, _ func(h serverDomain.Hash, data []byte) error) error {
+func (fakeRepoInterface) DownloadChunks(_ context.Context, _ domain.ChunkScope, _ []serverDomain.Hash, _ func(h serverDomain.Hash, data []byte) error) error {
 	return nil
 }
 

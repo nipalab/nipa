@@ -38,15 +38,19 @@ func (f *fakeRevertClient) WalkCommits(_ context.Context, _, _, _, _ string, _ i
 	return f.walk, nil
 }
 
-func (f *fakeRevertClient) GetTreeNodeManifest(_ context.Context, _, _, _, _ string) (*serverDomain.TreeNode, error) {
+func (f *fakeRevertClient) GetTreeNodeManifest(_ context.Context, _, _, _ string, _ []string) (*serverDomain.TreeNode, error) {
 	return f.headTree, nil
 }
 
-func (f *fakeRevertClient) DownloadChunks(_ context.Context, _ []serverDomain.Hash, _ func(h serverDomain.Hash, data []byte) error) error {
+func (f *fakeRevertClient) GetBranchByName(_ context.Context, _, _, name string) (*serverDomain.Branch, error) {
+	return &serverDomain.Branch{Name: name}, nil
+}
+
+func (f *fakeRevertClient) DownloadChunks(_ context.Context, _ domain.ChunkScope, _ []serverDomain.Hash, _ func(h serverDomain.Hash, data []byte) error) error {
 	return nil
 }
 
-func (f *fakeRevertClient) Push(_ context.Context, _, _, _, baseTreeHash, message string, _ []*serverDomain.PushFile, _ []string, _ string) (*serverDomain.PushResult, error) {
+func (f *fakeRevertClient) Push(_ context.Context, _, _, _, baseTreeHash, message string, _ []*serverDomain.PushFile, _ []string, _, _ string) (*serverDomain.PushResult, error) {
 	f.pushCalled = true
 	f.pushBase = baseTreeHash
 	f.pushMsg = message
@@ -56,7 +60,7 @@ func (f *fakeRevertClient) Push(_ context.Context, _, _, _, baseTreeHash, messag
 	return &serverDomain.PushResult{}, nil
 }
 
-func (f *fakeRevertClient) UploadChunks(_ context.Context, _ []*serverDomain.ChunkData, _ ...func(ch *serverDomain.ChunkData)) (int, int, error) {
+func (f *fakeRevertClient) UploadChunks(_ context.Context, _ domain.ChunkScope, _ []*serverDomain.ChunkData, _ ...func(ch *serverDomain.ChunkData)) (int, int, error) {
 	return 0, 0, nil
 }
 

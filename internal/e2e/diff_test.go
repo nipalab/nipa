@@ -31,7 +31,7 @@ func TestEndToEnd_DiffWorkingTree(t *testing.T) {
 	repo := clientusecase.NewRepo(auth, grpcClient, localrepo.NewLocalRepo())
 	url := "http://" + host + "/" + e2eOrgSlug + "/" + e2eProjectSlug
 	target := filepath.Join(t.TempDir(), "work")
-	require.NoError(t, repo.Clone(ctx, url, host, e2eOrgSlug, e2eProjectSlug, "", "", target))
+	require.NoError(t, repo.Clone(ctx, url, host, e2eOrgSlug, e2eProjectSlug, "", nil, target))
 
 	const original = "line one\nline two\n"
 	writeFile(t, target, "a.txt", original)
@@ -90,7 +90,7 @@ func TestEndToEnd_DiffRevisions(t *testing.T) {
 	repo := clientusecase.NewRepo(auth, grpcClient, localrepo.NewLocalRepo())
 	url := "http://" + host + "/" + e2eOrgSlug + "/" + e2eProjectSlug
 	target := filepath.Join(t.TempDir(), "work")
-	require.NoError(t, repo.Clone(ctx, url, host, e2eOrgSlug, e2eProjectSlug, "", "", target))
+	require.NoError(t, repo.Clone(ctx, url, host, e2eOrgSlug, e2eProjectSlug, "", nil, target))
 
 	pusher := clientusecase.NewPush(auth, grpcClient, localrepo.NewLocalRepo())
 

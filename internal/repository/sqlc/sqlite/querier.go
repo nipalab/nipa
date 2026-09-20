@@ -32,21 +32,36 @@ type Querier interface {
 	DeleteProject(ctx context.Context, id int64) error
 	FileChunkInsert(ctx context.Context, arg FileChunkInsertParams) error
 	FileInsert(ctx context.Context, arg FileInsertParams) (int64, error)
-	FileListByTree(ctx context.Context, treeID sql.NullInt64) ([]File, error)
+	FileListByTree(ctx context.Context, treeID int64) ([]File, error)
 	FileSetTree(ctx context.Context, arg FileSetTreeParams) error
 	GetOrganization(ctx context.Context, id int64) (Organization, error)
 	GetOrganizationBySlug(ctx context.Context, slug string) (Organization, error)
 	GetProject(ctx context.Context, id int64) (Project, error)
 	GetProjectByOrgIDAndID(ctx context.Context, arg GetProjectByOrgIDAndIDParams) (Project, error)
 	GetProjectByOrgIDAndSlug(ctx context.Context, arg GetProjectByOrgIDAndSlugParams) (Project, error)
+	GroupCreate(ctx context.Context, arg GroupCreateParams) (Group, error)
+	GroupGet(ctx context.Context, id int64) (Group, error)
+	GroupListByOrg(ctx context.Context, orgID int64) ([]Group, error)
+	GroupListByUser(ctx context.Context, userID int64) ([]Group, error)
+	GroupMemberAdd(ctx context.Context, arg GroupMemberAddParams) error
+	GroupMemberRemove(ctx context.Context, arg GroupMemberRemoveParams) error
 	ListOrganizations(ctx context.Context) ([]Organization, error)
 	ListProjectsByOrgId(ctx context.Context, orgID int64) ([]Project, error)
+	PBACRuleCreate(ctx context.Context, arg PBACRuleCreateParams) (PbacRule, error)
+	PBACRuleDelete(ctx context.Context, id int64) error
+	PBACRuleDeleteForProject(ctx context.Context, arg PBACRuleDeleteForProjectParams) (int64, error)
+	PBACRuleGetForProject(ctx context.Context, arg PBACRuleGetForProjectParams) (PbacRule, error)
+	PBACRuleListByProject(ctx context.Context, projectID sql.NullInt64) ([]PbacRule, error)
+	PBACRuleListEffective(ctx context.Context, arg PBACRuleListEffectiveParams) ([]PbacRule, error)
+	ProjectPathPermissionDelete(ctx context.Context, arg ProjectPathPermissionDeleteParams) error
+	ProjectPathPermissionList(ctx context.Context, projectID int64) ([]ProjectPathsPermission, error)
+	ProjectPathPermissionUpsert(ctx context.Context, arg ProjectPathPermissionUpsertParams) (ProjectPathsPermission, error)
 	RefreshTokenCreate(ctx context.Context, arg RefreshTokenCreateParams) (int64, error)
 	RefreshTokenDeleteByToken(ctx context.Context, token string) (RefreshToken, error)
 	TreeNodeGet(ctx context.Context, id int64) (TreeNode, error)
 	TreeNodeGetChildByName(ctx context.Context, arg TreeNodeGetChildByNameParams) (TreeNode, error)
 	TreeNodeInsert(ctx context.Context, arg TreeNodeInsertParams) (int64, error)
-	TreeNodeListChildren(ctx context.Context, parentTreeID sql.NullInt64) ([]TreeNode, error)
+	TreeNodeListChildren(ctx context.Context, parentTreeID int64) ([]TreeNode, error)
 	TreeNodeSetParent(ctx context.Context, arg TreeNodeSetParentParams) error
 	UserCreate(ctx context.Context, arg UserCreateParams) (int64, error)
 	UserDeleteByID(ctx context.Context, id int64) error

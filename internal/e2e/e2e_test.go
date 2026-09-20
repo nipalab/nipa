@@ -41,12 +41,14 @@ const (
 )
 
 type testRegistry struct {
-	auth   *serverusecase.Auth
-	user   *serverusecase.User
-	branch *serverusecase.Branch
-	common *serverusecase.Common
-	push   *serverusecase.Push
-	chunk  *serverusecase.Chunk
+	auth       *serverusecase.Auth
+	user       *serverusecase.User
+	branch     *serverusecase.Branch
+	common     *serverusecase.Common
+	push       *serverusecase.Push
+	chunk      *serverusecase.Chunk
+	permission *serverusecase.Permission
+	group      *serverusecase.Group
 }
 
 func (r *testRegistry) Auth() *serverusecase.Auth     { return r.auth }
@@ -55,6 +57,10 @@ func (r *testRegistry) Branch() *serverusecase.Branch { return r.branch }
 func (r *testRegistry) Common() *serverusecase.Common { return r.common }
 func (r *testRegistry) Push() *serverusecase.Push     { return r.push }
 func (r *testRegistry) Chunk() *serverusecase.Chunk   { return r.chunk }
+func (r *testRegistry) Permission() *serverusecase.Permission {
+	return r.permission
+}
+func (r *testRegistry) Group() *serverusecase.Group { return r.group }
 
 type memoryStore struct {
 	mu   sync.Mutex
@@ -121,6 +127,7 @@ func startTestServer(t *testing.T, dbConn *sql.DB) string {
 	authRepo := sqlite.NewAuthRepository(dbConn)
 	branchRepo := sqlite.NewBranchRepository(dbConn)
 	pushRepo := sqlite.NewPushRepository(dbConn)
+	pbacRepo := sqlite.NewPBACRepository(dbConn)
 
 	passwordHasher := hasher.NewHasher(2)
 	t.Cleanup(passwordHasher.Close)
@@ -129,19 +136,23 @@ func startTestServer(t *testing.T, dbConn *sql.DB) string {
 	require.NoError(t, err)
 
 	authUc := serverusecase.NewAuth(e2eJWTSecret, passwordHasher, userRepo, authRepo)
+	groupRepo := sqlite.NewGroupRepository(dbConn)
+	permissionUc := serverusecase.NewPermission(pbacRepo, userRepo, groupRepo)
 	commonUc := serverusecase.NewCommon(orgRepo, projectRepo)
-	branchUc := serverusecase.NewBranch(authUc, branchRepo, node)
+	branchUc := serverusecase.NewBranch(permissionUc, branchRepo, node)
 	chunkStore, err := storage.NewLocalStore(t.TempDir())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = chunkStore.Close() })
 
 	reg := &testRegistry{
-		auth:   authUc,
-		user:   serverusecase.NewUser(node),
-		branch: branchUc,
-		common: commonUc,
-		push:   serverusecase.NewPush(authUc, branchRepo, pushRepo, node),
-		chunk:  serverusecase.NewChunk(pushRepo, chunkStore),
+		auth:       authUc,
+		user:       serverusecase.NewUser(node),
+		branch:     branchUc,
+		common:     commonUc,
+		push:       serverusecase.NewPush(permissionUc, branchRepo, pushRepo, node),
+		chunk:      serverusecase.NewChunk(pushRepo, chunkStore),
+		permission: permissionUc,
+		group:      serverusecase.NewGroup(groupRepo, node, permissionUc),
 	}
 
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
@@ -232,7 +243,7 @@ func TestEndToEnd_CloneAddPushFetch(t *testing.T) {
 	url := "http://" + host + "/" + e2eOrgSlug + "/" + e2eProjectSlug
 
 	target := filepath.Join(t.TempDir(), "work")
-	require.NoError(t, repo.Clone(ctx, url, host, e2eOrgSlug, e2eProjectSlug, "", "", target))
+	require.NoError(t, repo.Clone(ctx, url, host, e2eOrgSlug, e2eProjectSlug, "", nil, target))
 
 	snap0 := snapshotOf(t, target)
 	require.Empty(t, snap0.TreeHash, "cloning an empty branch must produce an empty tree")
@@ -259,8 +270,16 @@ func TestEndToEnd_CloneAddPushFetch(t *testing.T) {
 	for _, c := range chunked {
 		hashes = append(hashes, c.Hash)
 	}
+	branchInfo, err := grpcClient.GetBranchByName(ctx, e2eOrgSlug, e2eProjectSlug, "main")
+	require.NoError(t, err)
+	require.NotNil(t, branchInfo.CommitID)
+	scope := domain.ChunkScope{
+		Org:       e2eOrgSlug,
+		Project:   e2eProjectSlug,
+		CommitIDs: []string{branchInfo.CommitID.Base36()},
+	}
 	downloaded := make(map[serverDomain.Hash][]byte, len(hashes))
-	err = grpcClient.DownloadChunks(ctx, hashes, func(h serverDomain.Hash, data []byte) error {
+	err = grpcClient.DownloadChunks(ctx, scope, hashes, func(h serverDomain.Hash, data []byte) error {
 		downloaded[h] = data
 		return nil
 	})
@@ -274,7 +293,7 @@ func TestEndToEnd_CloneAddPushFetch(t *testing.T) {
 	require.Equal(t, contentA, string(blob))
 
 	checkout := filepath.Join(t.TempDir(), "checkout")
-	require.NoError(t, repo.Clone(ctx, url, host, e2eOrgSlug, e2eProjectSlug, "", "", checkout))
+	require.NoError(t, repo.Clone(ctx, url, host, e2eOrgSlug, e2eProjectSlug, "", nil, checkout))
 	snapCheckout := snapshotOf(t, checkout)
 	require.Len(t, snapCheckout.Files, 1)
 	require.Equal(t, "a.txt", snapCheckout.Files[0].Path)
@@ -289,7 +308,7 @@ func TestEndToEnd_CloneAddPushFetch(t *testing.T) {
 	require.NoError(t, pusher.Run(ctx, target, "update a, add b"))
 
 	materialized := filepath.Join(t.TempDir(), "materialized")
-	require.NoError(t, repo.Clone(ctx, url, host, e2eOrgSlug, e2eProjectSlug, "", "", materialized))
+	require.NoError(t, repo.Clone(ctx, url, host, e2eOrgSlug, e2eProjectSlug, "", nil, materialized))
 	updater := clientusecase.NewUpdate(auth, grpcClient, localrepo.NewLocalRepo())
 	require.NoError(t, updater.Run(ctx, materialized), "update must materialize the working copy from the server tree")
 	assertFileContent(t, materialized, "a.txt", contentA+"extra line\n")
@@ -306,7 +325,7 @@ func TestEndToEnd_CloneAddPushFetch(t *testing.T) {
 	assertFileContent(t, materialized, "b.txt", contentB)
 
 	checkoutAfter := filepath.Join(t.TempDir(), "checkout-after")
-	require.NoError(t, repo.Clone(ctx, url, host, e2eOrgSlug, e2eProjectSlug, "", "", checkoutAfter))
+	require.NoError(t, repo.Clone(ctx, url, host, e2eOrgSlug, e2eProjectSlug, "", nil, checkoutAfter))
 	snapAfter := snapshotOf(t, checkoutAfter)
 	require.Len(t, snapAfter.Files, 1)
 	require.Equal(t, "b.txt", snapAfter.Files[0].Path)
@@ -370,12 +389,12 @@ func TestEndToEnd_CreateBranch(t *testing.T) {
 	url := "http://" + host + "/" + e2eOrgSlug + "/" + e2eProjectSlug
 
 	target := filepath.Join(t.TempDir(), "work")
-	require.NoError(t, repo.Clone(ctx, url, host, e2eOrgSlug, e2eProjectSlug, "", "", target))
+	require.NoError(t, repo.Clone(ctx, url, host, e2eOrgSlug, e2eProjectSlug, "", nil, target))
 	writeFile(t, target, "a.txt", "branch base content\n")
 	stagePath(t, target, "a.txt")
 	require.NoError(t, pusher.Run(ctx, target, "seed main"))
 
-	mainManifest, err := grpcClient.GetTreeNodeManifest(ctx, e2eOrgSlug, e2eProjectSlug, "main", "")
+	mainManifest, err := grpcClient.GetTreeNodeManifest(ctx, e2eOrgSlug, e2eProjectSlug, "main", nil)
 	require.NoError(t, err)
 	require.NotNil(t, mainManifest)
 
@@ -396,7 +415,7 @@ func TestEndToEnd_CreateBranch(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, pinnedID, *created.CommitID, "a branch created with commit+branch must fork at the exact pinned commit")
 
-	featureManifest, err := grpcClient.GetTreeNodeManifest(ctx, e2eOrgSlug, e2eProjectSlug, "feature", "")
+	featureManifest, err := grpcClient.GetTreeNodeManifest(ctx, e2eOrgSlug, e2eProjectSlug, "feature", nil)
 	require.NoError(t, err)
 	require.NotNil(t, featureManifest)
 	require.Equal(t, mainManifest.Hash, featureManifest.Hash, "a forked branch must expose the same tree as its source")
@@ -446,7 +465,7 @@ func TestEndToEnd_SwitchBranch(t *testing.T) {
 	url := "http://" + host + "/" + e2eOrgSlug + "/" + e2eProjectSlug
 
 	target := filepath.Join(t.TempDir(), "work")
-	require.NoError(t, repo.Clone(ctx, url, host, e2eOrgSlug, e2eProjectSlug, "", "", target))
+	require.NoError(t, repo.Clone(ctx, url, host, e2eOrgSlug, e2eProjectSlug, "", nil, target))
 	writeFile(t, target, "a.txt", "base content\n")
 	stagePath(t, target, "a.txt")
 	require.NoError(t, pusher.Run(ctx, target, "seed main"))
@@ -455,12 +474,12 @@ func TestEndToEnd_SwitchBranch(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "feature", created.Name)
 
-	featureManifest, err := grpcClient.GetTreeNodeManifest(ctx, e2eOrgSlug, e2eProjectSlug, "feature", "")
+	featureManifest, err := grpcClient.GetTreeNodeManifest(ctx, e2eOrgSlug, e2eProjectSlug, "feature", nil)
 	require.NoError(t, err)
 	require.NotNil(t, featureManifest)
 
 	checkout := filepath.Join(t.TempDir(), "checkout")
-	require.NoError(t, repo.Clone(ctx, url, host, e2eOrgSlug, e2eProjectSlug, "", "", checkout))
+	require.NoError(t, repo.Clone(ctx, url, host, e2eOrgSlug, e2eProjectSlug, "", nil, checkout))
 	assertFileContent(t, checkout, "a.txt", "base content\n")
 	require.Equal(t, "main", loadBranchConfig(t, checkout))
 

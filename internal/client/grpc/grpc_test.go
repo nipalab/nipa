@@ -54,7 +54,7 @@ type fakeServer struct {
 	treeManifest        *pb.TreeManifest
 	lastBranch          string
 	lastRecursive       bool
-	lastPath            string
+	lastPaths           []string
 	listBranchesErr     error
 	listBranches        []*pb.Branch
 	createBranch        *pb.Branch
@@ -124,7 +124,7 @@ func (f *fakeServer) CreateBranch(_ context.Context, req *pb.CreateBranchRequest
 func (f *fakeServer) GetTreeManifest(_ context.Context, req *pb.GetTreeManifestRequest) (*pb.GetTreeManifestResponse, error) {
 	f.lastBranch = req.GetBranch()
 	f.lastRecursive = req.GetRecursive()
-	f.lastPath = req.GetPath()
+	f.lastPaths = req.GetPaths()
 	if f.treeManifestErr != nil {
 		return nil, f.treeManifestErr
 	}
@@ -546,11 +546,11 @@ func TestClient_GetTreeNodeManifest_Success(t *testing.T) {
 	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
 	require.NoError(t, c.Connect(context.Background(), addr))
 
-	got, err := c.GetTreeNodeManifest(context.Background(), "default", "sample", "main", "src/sedotan")
+	got, err := c.GetTreeNodeManifest(context.Background(), "default", "sample", "main", []string{"src/sedotan"})
 	require.NoError(t, err)
 	require.Equal(t, "main", fs.lastBranch, "client should send the requested branch")
 	require.True(t, fs.lastRecursive, "client should request a recursive manifest")
-	require.Equal(t, "src/sedotan", fs.lastPath, "client should send the requested path")
+	require.Equal(t, []string{"src/sedotan"}, fs.lastPaths, "client should send the requested paths")
 
 	require.Equal(t, "root", got.Name)
 	require.Len(t, got.FileChildren, 1)
@@ -578,7 +578,7 @@ func TestClient_GetTreeNodeManifest_NotFound(t *testing.T) {
 	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
 	require.NoError(t, c.Connect(context.Background(), addr))
 
-	_, err := c.GetTreeNodeManifest(context.Background(), "default", "sample", "main", "missing")
+	_, err := c.GetTreeNodeManifest(context.Background(), "default", "sample", "main", []string{"missing"})
 	require.Error(t, err)
 
 	var domErr *domain.Error
@@ -590,7 +590,7 @@ func TestClient_GetTreeNodeManifest_NotFound(t *testing.T) {
 func TestClient_GetTreeNodeManifest_NotConnected(t *testing.T) {
 	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
 
-	_, err := c.GetTreeNodeManifest(context.Background(), "default", "sample", "main", "src")
+	_, err := c.GetTreeNodeManifest(context.Background(), "default", "sample", "main", []string{"src"})
 	require.Error(t, err)
 	require.Equal(t, "not connected to a nipa server", err.Error())
 }

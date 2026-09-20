@@ -3,17 +3,22 @@ package usecase
 //go:generate go run go.uber.org/mock/mockgen -source=$GOFILE -destination=branch_mock_test.go -package=usecase
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/snow"
+	"github.com/nipalab/nipa/internal/treehash"
 )
 
 type permissionUsecase interface {
 	HasProjectAccess(ctx context.Context, projectID snow.ID, permission domain.Permission) bool
+	HasPathAccess(ctx context.Context, projectID snow.ID, path string, permission domain.Permission) bool
+	CompileFilter(ctx context.Context, projectID snow.ID, permission domain.Permission) (*PathFilter, error)
 }
 
 type branchRepository interface {
@@ -182,9 +187,13 @@ func validateBranchName(name string) error {
 	return nil
 }
 
-func (b *Branch) GetTreeManifest(ctx context.Context, projectID snow.ID, branchName, path, treeHash string, recursive bool) (*domain.TreeNode, error) {
+func (b *Branch) GetTreeManifest(ctx context.Context, projectID snow.ID, branchName string, paths []string, treeHash string, recursive bool) (*domain.TreeNode, error) {
 	if !b.permUc.HasProjectAccess(ctx, projectID, domain.PermissionRead) {
 		return nil, domain.NewErrorNoPermission()
+	}
+	sparse, err := domain.NewPrefixSet(paths)
+	if err != nil {
+		return nil, domain.NewErrorUser(err.Error())
 	}
 	branch, err := b.branchRepo.GetBranchByName(ctx, projectID, branchName)
 	if domain.IsErrorNotFound(err) {
@@ -194,8 +203,8 @@ func (b *Branch) GetTreeManifest(ctx context.Context, projectID snow.ID, branchN
 		return nil, err
 	}
 	if branch.CommitID == nil {
-		if path != "" && path != "/" {
-			return nil, domain.NewErrorNotFound(fmt.Sprintf("path %q not found in branch %q", path, branchName))
+		if !sparse.Empty() {
+			return nil, domain.NewErrorNotFound(fmt.Sprintf("path %q not found in branch %q", sparse[0], branchName))
 		}
 		return nil, nil
 	}
@@ -207,35 +216,73 @@ func (b *Branch) GetTreeManifest(ctx context.Context, projectID snow.ID, branchN
 	if err != nil {
 		return nil, err
 	}
-	if path != "" && path != "/" {
-		for _, segment := range strings.Split(strings.Trim(path, "/"), "/") {
-			if segment == "" {
-				continue
-			}
-			root, err = b.branchRepo.GetTreeChildByName(ctx, root.ID, segment)
-			if domain.IsErrorNotFound(err) {
-				return nil, domain.NewErrorNotFound(fmt.Sprintf("path %q not found in branch %q", path, branchName))
-			}
-			if err != nil {
-				return nil, err
-			}
-		}
+	filter, err := b.permUc.CompileFilter(ctx, projectID, domain.PermissionRead)
+	if err != nil {
+		return nil, err
 	}
-	if treeHash != "" && strings.EqualFold(treeHash, root.Hash.String()) {
+	if treeHash != "" && sparse.Empty() && filter.All() && strings.EqualFold(treeHash, root.Hash.String()) {
 		return nil, nil
 	}
-	if err := b.loadTreeManifest(ctx, root, recursive); err != nil {
+	if err := b.verifySparsePaths(ctx, root, sparse, filter, branchName); err != nil {
 		return nil, err
+	}
+	if err := b.loadTreeManifest(ctx, root, "", recursive, filter, sparse); err != nil {
+		return nil, err
+	}
+	rehashTree(root)
+	if treeHash != "" && strings.EqualFold(treeHash, root.Hash.String()) {
+		return nil, nil
 	}
 	return root, nil
 }
 
-func (b *Branch) loadTreeManifest(ctx context.Context, node *domain.TreeNode, recursive bool) error {
+func (b *Branch) verifySparsePaths(ctx context.Context, root *domain.TreeNode, sparse domain.PrefixSet, filter *PathFilter, branchName string) error {
+	for _, prefix := range sparse {
+		if prefix == "" {
+			continue
+		}
+		if !filter.CanDescend(prefix) {
+			return domain.NewErrorNotFound(fmt.Sprintf("path %q not found in branch %q", prefix, branchName))
+		}
+		if _, err := b.findTreeNode(ctx, root, prefix); err != nil {
+			if domain.IsErrorNotFound(err) {
+				return domain.NewErrorNotFound(fmt.Sprintf("path %q not found in branch %q", prefix, branchName))
+			}
+			return err
+		}
+	}
+	return nil
+}
+
+func (b *Branch) findTreeNode(ctx context.Context, root *domain.TreeNode, path string) (*domain.TreeNode, error) {
+	node := root
+	for _, segment := range strings.Split(strings.Trim(path, "/"), "/") {
+		if segment == "" {
+			continue
+		}
+		child, err := b.branchRepo.GetTreeChildByName(ctx, node.ID, segment)
+		if err != nil {
+			return nil, err
+		}
+		node = child
+	}
+	return node, nil
+}
+
+func (b *Branch) loadTreeManifest(ctx context.Context, node *domain.TreeNode, path string, recursive bool, filter *PathFilter, sparse domain.PrefixSet) error {
 	files, err := b.branchRepo.ListFilesByTree(ctx, node.ID)
 	if err != nil {
 		return err
 	}
-	node.FileChildren = files
+	node.FileChildren = nil
+	for _, file := range files {
+		filePath := joinTreePath(path, file.Name)
+		if !filter.Allow(filePath) || !sparse.Covers(filePath) {
+			continue
+		}
+		node.FileChildren = append(node.FileChildren, file)
+	}
+
 	node.TreeChildren = nil
 	if !recursive {
 		return nil
@@ -244,13 +291,111 @@ func (b *Branch) loadTreeManifest(ctx context.Context, node *domain.TreeNode, re
 	if err != nil {
 		return err
 	}
-	node.TreeChildren = children
 	for _, child := range children {
-		if err := b.loadTreeManifest(ctx, child, true); err != nil {
+		childPath := joinTreePath(path, child.Name)
+		if !filter.CanDescend(childPath) || !sparse.CanDescend(childPath) {
+			continue
+		}
+		if err := b.loadTreeManifest(ctx, child, childPath, true, filter, sparse); err != nil {
 			return err
 		}
+		if len(child.FileChildren) == 0 && len(child.TreeChildren) == 0 {
+			continue
+		}
+		node.TreeChildren = append(node.TreeChildren, child)
 	}
 	return nil
+}
+
+func joinTreePath(parent, name string) string {
+	name = strings.Trim(name, "/")
+	if parent == "" {
+		return name
+	}
+	if name == "" {
+		return parent
+	}
+	return parent + "/" + name
+}
+
+// EnsureProjectAccess returns a no-permission error unless the caller holds
+// permission on any path of the project.
+func (b *Branch) EnsureProjectAccess(ctx context.Context, projectID snow.ID, permission domain.Permission) error {
+	if !b.permUc.HasProjectAccess(ctx, projectID, permission) {
+		return domain.NewErrorNoPermission()
+	}
+	return nil
+}
+
+// VisibleChunks returns the deduplicated chunk hashes of every readable file
+// across the given commits, narrowed by paths. The result is sorted so callers
+// can binary-search it.
+func (b *Branch) VisibleChunks(ctx context.Context, projectID snow.ID, commitIDs []string, paths []string) ([]domain.Hash, error) {
+	if !b.permUc.HasProjectAccess(ctx, projectID, domain.PermissionRead) {
+		return nil, domain.NewErrorNoPermission()
+	}
+	if len(commitIDs) == 0 {
+		return nil, domain.NewErrorUser("at least one commit id is required")
+	}
+	sparse, err := domain.NewPrefixSet(paths)
+	if err != nil {
+		return nil, domain.NewErrorUser(err.Error())
+	}
+	filter, err := b.permUc.CompileFilter(ctx, projectID, domain.PermissionRead)
+	if err != nil {
+		return nil, err
+	}
+
+	seen := map[domain.Hash]struct{}{}
+	for _, raw := range commitIDs {
+		commitID, err := snow.ParseBase36(raw)
+		if err != nil {
+			return nil, domain.NewErrorUser(fmt.Sprintf("invalid commit id %q", raw))
+		}
+		commit, err := b.commitByIDInProject(ctx, projectID, commitID)
+		if err != nil {
+			return nil, err
+		}
+		root, err := b.branchRepo.GetTreeNode(ctx, commit.TreeID)
+		if err != nil {
+			return nil, err
+		}
+		if err := b.loadTreeManifest(ctx, root, "", true, filter, sparse); err != nil {
+			return nil, err
+		}
+		collectChunkHashes(root, seen)
+	}
+
+	out := make([]domain.Hash, 0, len(seen))
+	for hash := range seen {
+		out = append(out, hash)
+	}
+	sort.Slice(out, func(i, j int) bool { return bytes.Compare(out[i][:], out[j][:]) < 0 })
+	return out, nil
+}
+
+func collectChunkHashes(node *domain.TreeNode, seen map[domain.Hash]struct{}) {
+	for _, file := range node.FileChildren {
+		for _, chunk := range file.Chunks {
+			seen[chunk.Hash] = struct{}{}
+		}
+	}
+	for _, child := range node.TreeChildren {
+		collectChunkHashes(child, seen)
+	}
+}
+
+func rehashTree(node *domain.TreeNode) domain.Hash {
+	files := make([]treehash.FileEntry, 0, len(node.FileChildren))
+	for _, file := range node.FileChildren {
+		files = append(files, treehash.FileEntry{Name: file.Name, Hash: file.Hash, Mode: file.Mode})
+	}
+	trees := make([]treehash.TreeEntry, 0, len(node.TreeChildren))
+	for _, child := range node.TreeChildren {
+		trees = append(trees, treehash.TreeEntry{Name: child.Name, Hash: rehashTree(child)})
+	}
+	node.Hash = treehash.TreeHash(files, trees)
+	return node.Hash
 }
 
 func (b *Branch) GetCommitLog(ctx context.Context, projectID snow.ID, branchName string, startCommitID *snow.ID, limit int) ([]*domain.CommitLogEntry, error) {

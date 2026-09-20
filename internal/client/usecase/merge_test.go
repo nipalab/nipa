@@ -53,7 +53,11 @@ func (s *stubMergeClient) Connect(_ context.Context, host string) error {
 	return s.connectErr
 }
 
-func (s *stubMergeClient) GetTreeNodeManifest(_ context.Context, _, _, branch, _ string) (*serverDomain.TreeNode, error) {
+func (s *stubMergeClient) GetBranchByName(_ context.Context, _, _, name string) (*serverDomain.Branch, error) {
+	return &serverDomain.Branch{Name: name}, nil
+}
+
+func (s *stubMergeClient) GetTreeNodeManifest(_ context.Context, _, _, branch string, _ []string) (*serverDomain.TreeNode, error) {
 	s.manifestFor = append(s.manifestFor, branch)
 	if (s.treeErrOn > 0 && len(s.manifestFor) == s.treeErrOn) || (s.treeErrOn == 0 && s.treeErr != nil) {
 		return nil, s.treeErr
@@ -66,7 +70,7 @@ func (s *stubMergeClient) GetTreeNodeManifest(_ context.Context, _, _, branch, _
 	return &serverDomain.TreeNode{}, nil
 }
 
-func (s *stubMergeClient) DownloadChunks(_ context.Context, hashes []serverDomain.Hash, onChunk func(h serverDomain.Hash, data []byte) error) error {
+func (s *stubMergeClient) DownloadChunks(_ context.Context, _ domain.ChunkScope, hashes []serverDomain.Hash, onChunk func(h serverDomain.Hash, data []byte) error) error {
 	s.downloaded = append(s.downloaded, hashes...)
 	if s.downloadErr != nil {
 		return s.downloadErr
@@ -99,7 +103,7 @@ func (s *stubMergeClient) MergeFastForward(_ context.Context, _, _, target, sour
 	return s.ffBranch, s.ffErr
 }
 
-func (s *stubMergeClient) Push(_ context.Context, org, project, branch, baseTreeHash, message string, files []*serverDomain.PushFile, removed []string, parent2CommitHash string) (*serverDomain.PushResult, error) {
+func (s *stubMergeClient) Push(_ context.Context, org, project, branch, baseTreeHash, message string, files []*serverDomain.PushFile, removed []string, parent2CommitHash, baseCommitID string) (*serverDomain.PushResult, error) {
 	s.pushCalled = true
 	s.pushOrg, s.pushProject, s.pushBranch = org, project, branch
 	s.pushBaseTreeHash, s.pushMessage = baseTreeHash, message
@@ -111,7 +115,7 @@ func (s *stubMergeClient) Push(_ context.Context, org, project, branch, baseTree
 	return s.pushResult, s.pushErr
 }
 
-func (s *stubMergeClient) UploadChunks(_ context.Context, chunks []*serverDomain.ChunkData, _ ...func(ch *serverDomain.ChunkData)) (int, int, error) {
+func (s *stubMergeClient) UploadChunks(_ context.Context, _ domain.ChunkScope, chunks []*serverDomain.ChunkData, _ ...func(ch *serverDomain.ChunkData)) (int, int, error) {
 	s.uploadedChunks = chunks
 	return 0, 0, s.uploadErr
 }

@@ -42,12 +42,16 @@ func (s *stubUpdateClient) GetBranchByName(_ context.Context, org, project, name
 	return s.branchInfo, s.branchErr
 }
 
-func (s *stubUpdateClient) GetTreeNodeManifest(_ context.Context, org, project, branch, path string) (*serverDomain.TreeNode, error) {
-	s.org, s.project, s.branch, s.treePath = org, project, branch, path
+func (s *stubUpdateClient) GetTreeNodeManifest(_ context.Context, org, project, branch string, paths []string) (*serverDomain.TreeNode, error) {
+	s.org, s.project, s.branch = org, project, branch
+	s.treePath = ""
+	if len(paths) > 0 {
+		s.treePath = paths[0]
+	}
 	return s.manifest, s.manifestErr
 }
 
-func (s *stubUpdateClient) DownloadChunks(_ context.Context, hashes []serverDomain.Hash, onChunk func(h serverDomain.Hash, data []byte) error) error {
+func (s *stubUpdateClient) DownloadChunks(_ context.Context, _ domain.ChunkScope, hashes []serverDomain.Hash, onChunk func(h serverDomain.Hash, data []byte) error) error {
 	s.downloadHashes = hashes
 	if s.downloadErr != nil {
 		return s.downloadErr
@@ -321,15 +325,43 @@ func TestUpdate_Run_EmptyRemote(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestUpdate_Run_Error_SubdirClone(t *testing.T) {
+func TestNormalizeSparsePaths(t *testing.T) {
+	got, err := normalizeSparsePaths([]string{"/src/", "src", " assets ", ""})
+	require.NoError(t, err)
+	require.Equal(t, []string{"src", "assets"}, got)
+
+	got, err = normalizeSparsePaths(nil)
+	require.NoError(t, err)
+	require.Nil(t, got)
+
+	_, err = normalizeSparsePaths([]string{"../etc"})
+	require.Error(t, err)
+}
+
+func TestUpdate_SetSparse(t *testing.T) {
 	local := &stubLocalRepo{
-		loadConfig: &domain.Config{Url: "http://example.com/org/project/src", Branch: "main"},
+		loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "main"},
 	}
 	updater := newTestUpdate(t, local, &stubUpdateClient{})
 
-	err := updater.Run(context.Background(), t.TempDir())
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "subdirectory clone")
+	require.NoError(t, updater.SetSparse(t.TempDir(), []string{"/src/", "src", "docs"}))
+	require.Equal(t, []string{"src", "docs"}, local.config.Sparse)
+
+	require.NoError(t, updater.SetSparse(t.TempDir(), nil))
+	require.Nil(t, local.config.Sparse)
+}
+
+func TestUpdate_Run_SparseCloneUsesConfiguredPaths(t *testing.T) {
+	root := t.TempDir()
+	local := &stubLocalRepo{
+		loadConfig: &domain.Config{Url: "http://example.com/org/project/src", Branch: "main", Sparse: []string{"src"}},
+		snapshot:   &domain.Snapshot{},
+	}
+	client := &stubUpdateClient{manifest: &serverDomain.TreeNode{Name: "root"}}
+	updater := newTestUpdate(t, local, client)
+
+	require.NoError(t, updater.Run(context.Background(), root))
+	require.Equal(t, "src", client.treePath, "update must fetch the configured sparse paths")
 }
 
 func TestUpdate_Run_Error_LoadConfigFails(t *testing.T) {
@@ -569,15 +601,17 @@ func TestSwitch_EmptyBranch(t *testing.T) {
 	require.Equal(t, "branch name is required", domErr.Message)
 }
 
-func TestSwitch_Error_SubdirClone(t *testing.T) {
+func TestSwitch_SparseCloneUsesConfiguredPaths(t *testing.T) {
+	root := t.TempDir()
 	local := &stubLocalRepo{
-		loadConfig: &domain.Config{Url: "http://example.com/org/project/src", Branch: "main"},
+		loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "main", Sparse: []string{"src"}},
+		snapshot:   &domain.Snapshot{},
 	}
-	updater := newTestUpdate(t, local, &stubUpdateClient{})
+	client := &stubUpdateClient{manifest: &serverDomain.TreeNode{Name: "root"}}
+	updater := newTestUpdate(t, local, client)
 
-	err := updater.Switch(context.Background(), t.TempDir(), "dev")
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "subdirectory clone")
+	require.NoError(t, updater.Switch(context.Background(), root, "dev"))
+	require.Equal(t, "src", client.treePath, "switch must keep the configured sparse paths")
 }
 
 func TestSwitch_PinsNewHead(t *testing.T) {

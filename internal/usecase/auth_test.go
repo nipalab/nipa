@@ -303,33 +303,6 @@ func signToken(t *testing.T, method jwt.SigningMethod, key interface{}, claims d
 	return signed
 }
 
-func TestAuth_HasProjectAccess_NoClaim(t *testing.T) {
-	ctx := context.Background()
-	auth := NewAuth("secret", nil, nil, nil)
-	require.False(t, auth.HasProjectAccess(ctx, 1, domain.PermissionRead))
-}
-
-func TestAuth_HasProjectAccess_SuperAdmin(t *testing.T) {
-	claims := domain.Claims{IsSuperAdmin: true}
-	ctx := domain.ContextWithClaim(context.Background(), claims)
-	auth := NewAuth("secret", nil, nil, nil)
-	require.True(t, auth.HasProjectAccess(ctx, 1, domain.PermissionRead))
-}
-
-func TestAuth_HasProjectAccess_Admin(t *testing.T) {
-	claims := domain.Claims{IsAdmin: true}
-	ctx := domain.ContextWithClaim(context.Background(), claims)
-	auth := NewAuth("secret", nil, nil, nil)
-	require.True(t, auth.HasProjectAccess(ctx, 1, domain.PermissionWrite))
-}
-
-func TestAuth_HasProjectAccess_RegularUser(t *testing.T) {
-	claims := domain.Claims{UserID: 42}
-	ctx := domain.ContextWithClaim(context.Background(), claims)
-	auth := NewAuth("secret", nil, nil, nil)
-	require.False(t, auth.HasProjectAccess(ctx, 1, domain.PermissionRead))
-}
-
 func assertInvalidTokenError(t *testing.T, err error) {
 	t.Helper()
 

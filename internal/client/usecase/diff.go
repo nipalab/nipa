@@ -21,7 +21,7 @@ type diffClient interface {
 	GetBranchByName(ctx context.Context, org, project, name string) (*serverDomain.Branch, error)
 	GetCommit(ctx context.Context, org, project, commitID string) (*clientDomain.CommitDetail, error)
 	GetMergeBase(ctx context.Context, org, project string, target, source clientDomain.MergeRef) (*clientDomain.MergeBaseInfo, error)
-	DownloadChunks(ctx context.Context, hashes []serverDomain.Hash, onChunk func(h serverDomain.Hash, data []byte) error) error
+	DownloadChunks(ctx context.Context, scope clientDomain.ChunkScope, hashes []serverDomain.Hash, onChunk func(h serverDomain.Hash, data []byte) error) error
 }
 
 type diffLocalRepo interface {
@@ -140,7 +140,8 @@ func (d *Diff) workingVsRevision(ctx context.Context, nu *clientDomain.NipaUrl, 
 		return nil, err
 	}
 	changes := diff.Compare(base.entries, newMap)
-	if err := d.ensureContent(ctx, changes, true, false, opts.Binary); err != nil {
+	scope := clientDomain.ChunkScope{Org: nu.Org, Project: nu.Project, CommitIDs: commitIDs(base.commitID)}
+	if err := d.ensureContent(ctx, changes, true, false, opts.Binary, scope); err != nil {
 		return nil, err
 	}
 	changes = diff.DetectRenames(changes, d.similarityLoader(contents))
@@ -157,14 +158,16 @@ func (d *Diff) revisionDiff(ctx context.Context, nu *clientDomain.NipaUrl, cfg *
 		return nil, err
 	}
 	baseEntries := base.entries
+	baseCommitID := base.commitID
 	if opts.MergeBase {
-		baseEntries, err = d.mergeBaseEntries(ctx, nu, base, head)
+		baseEntries, baseCommitID, err = d.mergeBaseEntries(ctx, nu, base, head)
 		if err != nil {
 			return nil, err
 		}
 	}
 	changes := diff.Compare(baseEntries, head.entries)
-	if err := d.ensureContent(ctx, changes, true, true, opts.Binary); err != nil {
+	scope := clientDomain.ChunkScope{Org: nu.Org, Project: nu.Project, CommitIDs: commitIDs(baseCommitID, head.commitID)}
+	if err := d.ensureContent(ctx, changes, true, true, opts.Binary, scope); err != nil {
 		return nil, err
 	}
 	changes = diff.DetectRenames(changes, d.similarityLoader(nil))
@@ -266,25 +269,25 @@ func (d *Diff) revisionByCommit(ctx context.Context, nu *clientDomain.NipaUrl, c
 	return &revision{token: commitID, commitID: detail.ID, entries: diff.FromTree(detail.Tree)}, nil
 }
 
-func (d *Diff) mergeBaseEntries(ctx context.Context, nu *clientDomain.NipaUrl, base, head *revision) (map[string]diff.Entry, error) {
+func (d *Diff) mergeBaseEntries(ctx context.Context, nu *clientDomain.NipaUrl, base, head *revision) (map[string]diff.Entry, string, error) {
 	if base.commitID == "" || head.commitID == "" {
-		return map[string]diff.Entry{}, nil
+		return map[string]diff.Entry{}, "", nil
 	}
 	info, err := d.client.GetMergeBase(ctx, nu.Org, nu.Project,
 		clientDomain.MergeRef{CommitID: base.commitID},
 		clientDomain.MergeRef{CommitID: head.commitID})
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	if info == nil || info.MergeBaseTree == nil {
-		return map[string]diff.Entry{}, nil
+		return map[string]diff.Entry{}, "", nil
 	}
-	return diff.FromTree(info.MergeBaseTree), nil
+	return diff.FromTree(info.MergeBaseTree), info.MergeBaseCommitID, nil
 }
 
 // ensureContent downloads the chunks needed to render the given changes.
 // Binary content is skipped unless loadBinary is set.
-func (d *Diff) ensureContent(ctx context.Context, changes []diff.Change, needOld, needNew, loadBinary bool) error {
+func (d *Diff) ensureContent(ctx context.Context, changes []diff.Change, needOld, needNew, loadBinary bool, scope clientDomain.ChunkScope) error {
 	set := make(map[serverDomain.Hash]struct{})
 	var estimated int64
 	for _, c := range changes {
@@ -315,7 +318,7 @@ func (d *Diff) ensureContent(ctx context.Context, changes []diff.Change, needOld
 	if err != nil {
 		return err
 	}
-	return downloadMissing(ctx, d.client, d.localRepo, missing, estimated)
+	return downloadMissing(ctx, d.client, d.localRepo, scope, missing, estimated)
 }
 
 func (d *Diff) stagedSet() (map[string]bool, error) {
