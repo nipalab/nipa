@@ -4,8 +4,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-
-	"github.com/nipalab/nipa/internal/chunker"
 )
 
 func TestNameOnlyAndStatus(t *testing.T) {
@@ -14,56 +12,26 @@ func TestNameOnlyAndStatus(t *testing.T) {
 		{Change: Change{Path: "b.txt", Status: Modified}},
 		{Change: Change{Path: "c.txt", Status: Deleted}},
 	}
-	require.Equal(t, []string{"a.txt", "b.txt", "c.txt"}, NameOnly(files, Options{}))
-	require.Equal(t, []string{"A\ta.txt", "M\tb.txt", "D\tc.txt"}, NameStatus(files, Options{}))
+	require.Equal(t, []string{"a.txt", "b.txt", "c.txt"}, NameOnly(files))
+	require.Equal(t, []string{"A\ta.txt", "M\tb.txt", "D\tc.txt"}, NameStatus(files))
 }
 
-func TestNumStat(t *testing.T) {
-	files := []FileDiff{
-		modified("one\ntwo\n", "one\nTWO\n"),
-		{Change: Change{Path: "img.bin", Status: Modified, Old: Entry{IsBinary: true}, New: Entry{IsBinary: true}}},
-	}
-	require.Equal(t, []string{"1\t1\ta.txt", "-\t-\timg.bin"}, NumStat(files, Options{}))
+func TestNameStatus_Renamed(t *testing.T) {
+	f := renamed("old.txt", "new.txt", "same\n", "same\n", 100)
+	require.Equal(t, []string{"R100\told.txt\tnew.txt"}, NameStatus([]FileDiff{f}))
 }
 
 func TestStat(t *testing.T) {
 	files := []FileDiff{modified("one\ntwo\n", "one\nTWO\n")}
-	got := Stat(files, Options{})
+	got := Stat(files)
 	require.Equal(t, []string{
 		" a.txt | 2 +-",
 		" 1 file changed, 1 insertion(+), 1 deletion(-)",
 	}, got)
 }
 
-func TestShortStat(t *testing.T) {
-	files := []FileDiff{
-		modified("one\ntwo\n", "one\nTWO\n"),
-		modified("x\n", "y\n"),
-	}
-	require.Equal(t, []string{" 2 files changed, 2 insertions(+), 2 deletions(-)"}, ShortStat(files, Options{}))
-}
-
-func TestSummary(t *testing.T) {
-	f := modified("same\n", "same\n")
-	f.Change.New.Mode = 3
-	require.Equal(t, []string{" mode change 100644 => 100755 a.txt"}, Summary([]FileDiff{f}, Options{}))
-}
-
-func TestRaw(t *testing.T) {
-	oldHash := chunker.Sum([]byte("old"))
-	newHash := chunker.Sum([]byte("new"))
-	f := FileDiff{Change: Change{
-		Path:   "a.txt",
-		Status: Modified,
-		Old:    Entry{Hash: oldHash, Mode: 2},
-		New:    Entry{Hash: newHash, Mode: 3},
-	}}
-	require.Equal(t, []string{
-		":100644 100755 " + oldHash.String() + " " + newHash.String() + " M\ta.txt",
-	}, Raw([]FileDiff{f}, Options{}))
-
-	added := FileDiff{Change: Change{Path: "n.txt", Status: Added, New: Entry{Hash: newHash, Mode: 2}}}
-	require.Equal(t, []string{
-		":000000 100644 0000000000000000000000000000000000000000000000000000000000000000 " + newHash.String() + " A\tn.txt",
-	}, Raw([]FileDiff{added}, Options{}))
+func TestStat_RenamedUsesArrowPath(t *testing.T) {
+	f := renamed("old.txt", "new.txt", "one\n", "one\ntwo\n", 80)
+	got := Stat([]FileDiff{f})
+	require.Equal(t, " old.txt => new.txt | 1 +", got[0])
 }

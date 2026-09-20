@@ -344,33 +344,6 @@ func TestDiff_BinaryRevision(t *testing.T) {
 	require.Contains(t, patch, "Binary files a/img.bin and b/img.bin differ")
 }
 
-func TestDiff_BinaryRevisionText(t *testing.T) {
-	root := t.TempDir()
-	oldContent := "old\x00data"
-	newContent := "new\x00data"
-	mainID := snow.ID(5).Base36()
-	featureID := snow.ID(6).Base36()
-	repo := newDiffStub()
-	client := &stubDiffClient{
-		branches: map[string]*serverDomain.Branch{
-			"main":    {Name: "main", CommitID: ptrID(snow.ID(5))},
-			"feature": {Name: "feature", CommitID: ptrID(snow.ID(6))},
-		},
-		commits: map[string]*clientDomain.CommitDetail{
-			mainID:    {ID: mainID, Tree: fileTree(t, "img.bin", oldContent)},
-			featureID: {ID: featureID, Tree: fileTree(t, "img.bin", newContent)},
-		},
-		download: contentChunks(t, oldContent, newContent),
-	}
-
-	files, err := NewDiff(diffAuth(t), client, repo).Run(context.Background(), root, []string{"main", "feature"}, DiffOptions{Text: true})
-	require.NoError(t, err)
-	require.Len(t, files, 1)
-	require.Equal(t, []byte(oldContent), files[0].Old)
-	require.Equal(t, []byte(newContent), files[0].New)
-	require.NotEmpty(t, client.downloaded)
-}
-
 func TestDiff_RevisionDownloadError(t *testing.T) {
 	root := t.TempDir()
 	content := "old\n"
@@ -412,4 +385,31 @@ func TestDiff_MergeBaseRequiresTwoRevisions(t *testing.T) {
 	require.ErrorContains(t, err, "--merge-base requires two revisions")
 	_, err = NewDiff(diffAuth(t), client, repo).Run(context.Background(), t.TempDir(), []string{"main"}, DiffOptions{MergeBase: true})
 	require.ErrorContains(t, err, "--merge-base requires two revisions")
+}
+
+func TestDiff_BinaryOptionLoadsContent(t *testing.T) {
+	root := t.TempDir()
+	oldContent := "old\x00data"
+	newContent := "new\x00data"
+	mainID := snow.ID(5).Base36()
+	featureID := snow.ID(6).Base36()
+	repo := newDiffStub()
+	client := &stubDiffClient{
+		branches: map[string]*serverDomain.Branch{
+			"main":    {Name: "main", CommitID: ptrID(snow.ID(5))},
+			"feature": {Name: "feature", CommitID: ptrID(snow.ID(6))},
+		},
+		commits: map[string]*clientDomain.CommitDetail{
+			mainID:    {ID: mainID, Tree: fileTree(t, "img.bin", oldContent)},
+			featureID: {ID: featureID, Tree: fileTree(t, "img.bin", newContent)},
+		},
+		download: contentChunks(t, oldContent, newContent),
+	}
+
+	files, err := NewDiff(diffAuth(t), client, repo).Run(context.Background(), root, []string{"main", "feature"}, DiffOptions{Binary: true})
+	require.NoError(t, err)
+	require.Len(t, files, 1)
+	require.Equal(t, []byte(oldContent), files[0].Old)
+	require.Equal(t, []byte(newContent), files[0].New)
+	require.NotEmpty(t, client.downloaded)
 }

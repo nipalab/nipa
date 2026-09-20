@@ -8,8 +8,22 @@ type Op struct {
 	B    int // index in b for ' ' and '+'; insertion index for '-'
 }
 
+// EqualFunc reports whether two lines are considered equal. It allows
+// comparison modes that ignore whitespace differences.
+type EqualFunc func(a, b string) bool
+
 // Lines computes a forward-ordered Myers edit script for a to b.
 func Lines(a, b []string) []Op {
+	return LinesWith(a, b, nil)
+}
+
+// LinesWith computes the edit script using eq to compare lines. A nil eq uses
+// exact string equality.
+func LinesWith(a, b []string, eq EqualFunc) []Op {
+	equal := eq
+	if equal == nil {
+		equal = func(x, y string) bool { return x == y }
+	}
 	n, m := len(a), len(b)
 	if n == 0 {
 		ops := make([]Op, 0, m)
@@ -39,7 +53,7 @@ func Lines(a, b []string) []Op {
 				x = v[k-1+max] + 1
 			}
 			y := x - k
-			for x < n && y < m && a[x] == b[y] {
+			for x < n && y < m && equal(a[x], b[y]) {
 				x++
 				y++
 			}
@@ -81,7 +95,7 @@ func Lines(a, b []string) []Op {
 			x--
 		}
 	}
-	for x > 0 && y > 0 && a[x-1] == b[y-1] {
+	for x > 0 && y > 0 && equal(a[x-1], b[y-1]) {
 		ops = append(ops, Op{Kind: ' ', Line: a[x-1], A: x - 1, B: y - 1})
 		x--
 		y--

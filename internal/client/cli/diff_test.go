@@ -153,24 +153,6 @@ func TestDiffCmd_Stat(t *testing.T) {
 	}, "\n"), out)
 }
 
-func TestDiffCmd_NumStat(t *testing.T) {
-	root := setupDiffRepo(t, map[string]string{"a.txt": "one\ntwo\n"})
-	writeFile(t, root, "a.txt", "one\nTWO\nthree\n")
-
-	out, err := runCmdInDir(t, root, newDiffCmd(t), "--numstat")
-	require.NoError(t, err)
-	require.Equal(t, "2\t1\ta.txt\n", out)
-}
-
-func TestDiffCmd_ShortStat(t *testing.T) {
-	root := setupDiffRepo(t, map[string]string{"a.txt": "one\ntwo\n"})
-	writeFile(t, root, "a.txt", "one\nTWO\nthree\n")
-
-	out, err := runCmdInDir(t, root, newDiffCmd(t), "--shortstat")
-	require.NoError(t, err)
-	require.Equal(t, " 1 file changed, 2 insertions(+), 1 deletion(-)\n", out)
-}
-
 func TestDiffCmd_NameOnlyAndStatus(t *testing.T) {
 	root := setupDiffRepo(t, map[string]string{"a.txt": "a\n", "b.txt": "b\n"})
 	writeFile(t, root, "a.txt", "A\n")
@@ -184,16 +166,6 @@ func TestDiffCmd_NameOnlyAndStatus(t *testing.T) {
 	out, err = runCmdInDir(t, root, newDiffCmd(t), "--name-status")
 	require.NoError(t, err)
 	require.Equal(t, "M\ta.txt\nA\tnew.txt\n", out)
-}
-
-func TestDiffCmd_Raw(t *testing.T) {
-	root := setupDiffRepo(t, map[string]string{"a.txt": "a\n"})
-	writeFile(t, root, "a.txt", "b\n")
-
-	out, err := runCmdInDir(t, root, newDiffCmd(t), "--raw")
-	require.NoError(t, err)
-	require.True(t, strings.HasPrefix(out, ":100644 100644 "))
-	require.True(t, strings.HasSuffix(out, " M\ta.txt\n"))
 }
 
 func TestDiffCmd_PathFilter(t *testing.T) {
@@ -215,35 +187,6 @@ func TestDiffCmd_Staged(t *testing.T) {
 	out, err := runCmdInDir(t, root, newDiffCmd(t), "--name-only", "--staged")
 	require.NoError(t, err)
 	require.Equal(t, "a.txt\n", out)
-
-	out, err = runCmdInDir(t, root, newDiffCmd(t), "--name-only", "--cached")
-	require.NoError(t, err)
-	require.Equal(t, "a.txt\n", out)
-}
-
-func TestDiffCmd_DiffFilter(t *testing.T) {
-	root := setupDiffRepo(t, map[string]string{"a.txt": "a\n"})
-	writeFile(t, root, "a.txt", "A\n")
-	writeFile(t, root, "new.txt", "n\n")
-	stagePath(t, root, "new.txt")
-
-	out, err := runCmdInDir(t, root, newDiffCmd(t), "--name-status", "--diff-filter=A")
-	require.NoError(t, err)
-	require.Equal(t, "A\tnew.txt\n", out)
-}
-
-func TestDiffCmd_Reverse(t *testing.T) {
-	root := setupDiffRepo(t, map[string]string{"a.txt": "a\n"})
-	writeFile(t, root, "a.txt", "b\n")
-
-	out, err := runCmdInDir(t, root, newDiffCmd(t), "--name-status", "--reverse")
-	require.NoError(t, err)
-	require.Equal(t, "M\ta.txt\n", out)
-
-	out, err = runCmdInDir(t, root, newDiffCmd(t), "--reverse", "-U0")
-	require.NoError(t, err)
-	require.Contains(t, out, "-b")
-	require.Contains(t, out, "+a")
 }
 
 func TestDiffCmd_UnifiedZero(t *testing.T) {
@@ -266,28 +209,12 @@ func TestDiffCmd_ExitCode(t *testing.T) {
 	out, err := runCmdInDir(t, root, newDiffCmd(t), "--exit-code", "--name-only")
 	require.ErrorIs(t, err, ErrExitCode)
 	require.Equal(t, "a.txt\n", out)
-
-	_, err = runCmdInDir(t, root, newDiffCmd(t), "--quiet")
-	require.ErrorIs(t, err, ErrExitCode)
 }
 
 func TestDiffCmd_ExitCodeNoChanges(t *testing.T) {
 	root := setupDiffRepo(t, map[string]string{"a.txt": "same\n"})
-	_, err := runCmdInDir(t, root, newDiffCmd(t), "--quiet")
+	_, err := runCmdInDir(t, root, newDiffCmd(t), "--exit-code")
 	require.NoError(t, err)
-}
-
-func TestDiffCmd_OutputFile(t *testing.T) {
-	root := setupDiffRepo(t, map[string]string{"a.txt": "a\n"})
-	writeFile(t, root, "a.txt", "b\n")
-
-	_, err := runCmdInDir(t, root, newDiffCmd(t), "--output", "patch.diff")
-	require.NoError(t, err)
-
-	content, err := os.ReadFile(filepath.Join(root, "patch.diff"))
-	require.NoError(t, err)
-	require.Contains(t, string(content), "diff --nipa a/a.txt b/a.txt")
-	require.Contains(t, string(content), "+b")
 }
 
 func TestDiffCmd_FlagErrors(t *testing.T) {
@@ -296,34 +223,11 @@ func TestDiffCmd_FlagErrors(t *testing.T) {
 	_, err := runCmdInDir(t, root, newDiffCmd(t), "--stat", "--name-only")
 	require.ErrorContains(t, err, "only one output format")
 
-	_, err = runCmdInDir(t, root, newDiffCmd(t), "--patch", "--stat")
-	require.ErrorContains(t, err, "--patch cannot be combined")
-
-	_, err = runCmdInDir(t, root, newDiffCmd(t), "--color", "sometimes")
-	require.ErrorContains(t, err, "--color must be")
-
-	_, err = runCmdInDir(t, root, newDiffCmd(t), "--diff-filter", "X")
-	require.ErrorContains(t, err, "unsupported --diff-filter")
-
 	_, err = runCmdInDir(t, root, newDiffCmd(t), "--unified=-1")
 	require.ErrorContains(t, err, "--unified must not be negative")
 
-	_, err = runCmdInDir(t, root, newDiffCmd(t), "--output-indicator-new", "ab")
-	require.ErrorContains(t, err, "single character")
-}
-
-func TestDiffCmd_PrefixIndicators(t *testing.T) {
-	root := setupDiffRepo(t, map[string]string{"a.txt": "a\n"})
-	writeFile(t, root, "a.txt", "b\n")
-
-	out, err := runCmdInDir(t, root, newDiffCmd(t),
-		"--no-prefix", "--output-indicator-old", "<", "--output-indicator-new", ">")
-	require.NoError(t, err)
-	require.Contains(t, out, "diff --nipa a.txt a.txt")
-	require.Contains(t, out, "--- a.txt")
-	require.Contains(t, out, "+++ a.txt")
-	require.Contains(t, out, "<a")
-	require.Contains(t, out, ">b")
+	_, err = runCmdInDir(t, root, newDiffCmd(t), "--ext-diff", "--stat")
+	require.ErrorContains(t, err, "--ext-diff cannot be combined")
 }
 
 func TestDiffCmd_RevisionArgErrors(t *testing.T) {
@@ -338,12 +242,78 @@ func TestDiffCmd_RevisionArgErrors(t *testing.T) {
 	_, err = runCmdInDir(t, root, newDiffCmd(t), "a...")
 	require.ErrorContains(t, err, "must be <a>...<b>")
 
-	_, err = runCmdInDir(t, root, newDiffCmd(t), "--merge-base")
-	require.ErrorContains(t, err, "--merge-base requires two revisions")
-
 	_, err = runCmdInDir(t, root, newDiffCmd(t), "--staged", "main")
 	require.ErrorContains(t, err, "--staged cannot be combined with revisions")
 
 	_, err = runCmdInDir(t, root, newDiffCmd(t), "a", "b", "c", "--", "dir")
 	require.ErrorContains(t, err, "too many revisions")
+}
+
+func TestDiffCmd_IgnoreWhitespace(t *testing.T) {
+	root := setupDiffRepo(t, map[string]string{"a.txt": "a b\nc\n"})
+	writeFile(t, root, "a.txt", "a   b\nc\n")
+
+	out, err := runCmdInDir(t, root, newDiffCmd(t), "--no-color", "--no-pager")
+	require.NoError(t, err)
+	require.NotEmpty(t, out)
+
+	for _, flag := range []string{"-w", "-b", "--ignore-all-space", "--ignore-space-change"} {
+		out, err = runCmdInDir(t, root, newDiffCmd(t), "--no-color", "--no-pager", flag)
+		require.NoError(t, err)
+		require.Empty(t, out, flag)
+	}
+}
+
+func TestDiffCmd_RenameDetection(t *testing.T) {
+	root := setupDiffRepo(t, map[string]string{"old.txt": "same content\n"})
+	require.NoError(t, os.Remove(filepath.Join(root, "old.txt")))
+	writeFile(t, root, "new.txt", "same content\n")
+	stagePath(t, root, "new.txt")
+
+	out, err := runCmdInDir(t, root, newDiffCmd(t), "--name-status")
+	require.NoError(t, err)
+	require.Equal(t, "R100\told.txt\tnew.txt\n", out)
+}
+
+func TestDiffCmd_RenamePatch(t *testing.T) {
+	root := setupDiffRepo(t, map[string]string{"old.txt": "one\ntwo\n"})
+	require.NoError(t, os.Remove(filepath.Join(root, "old.txt")))
+	writeFile(t, root, "new.txt", "one\ntwo\nthree\n")
+	stagePath(t, root, "new.txt")
+
+	out, err := runCmdInDir(t, root, newDiffCmd(t), "--no-color", "--no-pager")
+	require.NoError(t, err)
+	require.Contains(t, out, "diff --nipa a/old.txt b/new.txt")
+	require.Contains(t, out, "rename from old.txt")
+	require.Contains(t, out, "rename to new.txt")
+	require.Contains(t, out, "+three")
+}
+
+func TestDiffCmd_ExternalDiff(t *testing.T) {
+	root := setupDiffRepo(t, map[string]string{"a.txt": "a\n"})
+	writeFile(t, root, "a.txt", "b\n")
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	_, err := runCmdInDir(t, root, newDiffCmd(t), "--ext-diff")
+	require.ErrorContains(t, err, "no external diff command configured")
+
+	argsFile := filepath.Join(t.TempDir(), "args.txt")
+	script := filepath.Join(t.TempDir(), "tool.sh")
+	require.NoError(t, os.WriteFile(script, []byte("#!/bin/sh\nprintf '%s\\n' \"$1\" >> \"$ARGS_FILE\"\n"), 0o755))
+	t.Setenv("ARGS_FILE", argsFile)
+	t.Setenv("NIPA_EXTERNAL_DIFF", script)
+
+	out, err := runCmdInDir(t, root, newDiffCmd(t), "--ext-diff")
+	require.NoError(t, err)
+	require.Empty(t, out)
+	raw, err := os.ReadFile(argsFile)
+	require.NoError(t, err)
+	require.Equal(t, "a.txt\n", string(raw))
+
+	require.NoError(t, os.Remove(argsFile))
+	out, err = runCmdInDir(t, root, newDiffCmd(t), "--no-color", "--no-pager")
+	require.NoError(t, err)
+	require.Contains(t, out, "+b")
+	_, err = os.Stat(argsFile)
+	require.True(t, os.IsNotExist(err), "a configured tool only runs with --ext-diff")
 }

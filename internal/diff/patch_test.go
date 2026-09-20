@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/nipalab/nipa/internal/chunker"
 )
 
 func modified(old, new string) FileDiff {
@@ -11,11 +13,25 @@ func modified(old, new string) FileDiff {
 		Change: Change{
 			Path:   "a.txt",
 			Status: Modified,
-			Old:    Entry{Path: "a.txt", Mode: 2},
-			New:    Entry{Path: "a.txt", Mode: 2},
+			Old:    Entry{Path: "a.txt", Mode: 2, Hash: chunker.Sum([]byte(old))},
+			New:    Entry{Path: "a.txt", Mode: 2, Hash: chunker.Sum([]byte(new))},
 		},
 		Old: []byte(old),
 		New: []byte(new),
+	}
+}
+
+func renamed(oldPath, newPath, oldContent, newContent string, score int) FileDiff {
+	return FileDiff{
+		Change: Change{
+			Path:       newPath,
+			Status:     Renamed,
+			Similarity: score,
+			Old:        Entry{Path: oldPath, Mode: 2, Hash: chunker.Sum([]byte(oldContent))},
+			New:        Entry{Path: newPath, Mode: 2, Hash: chunker.Sum([]byte(newContent))},
+		},
+		Old: []byte(oldContent),
+		New: []byte(newContent),
 	}
 }
 
@@ -95,6 +111,23 @@ func TestFilePatch_BinaryAdded(t *testing.T) {
 	}, FilePatch(f, Options{Context: 3}))
 }
 
+func TestFilePatch_BinaryUnavailable(t *testing.T) {
+	f := FileDiff{
+		Change: Change{
+			Path:   "img.bin",
+			Status: Modified,
+			Old:    Entry{Path: "img.bin", Mode: 2, IsBinary: true},
+			New:    Entry{Path: "img.bin", Mode: 2, IsBinary: true},
+		},
+		OldUnavailable: true,
+		NewUnavailable: true,
+	}
+	require.Equal(t, []string{
+		"diff --nipa a/img.bin b/img.bin",
+		"Binary files a/img.bin and b/img.bin differ",
+	}, FilePatch(f, Options{Context: 3}))
+}
+
 func TestFilePatch_ModeOnly(t *testing.T) {
 	f := modified("same\n", "same\n")
 	f.Change.New.Mode = 3
@@ -145,60 +178,40 @@ func TestFilePatch_TwoHunks(t *testing.T) {
 	}, got)
 }
 
-func TestFilePatch_Options(t *testing.T) {
-	got := FilePatch(modified("a\n", "b\n"), Options{
-		Context:      3,
-		NoPrefix:     true,
-		OldIndicator: "!",
-		NewIndicator: ">",
-		LinePrefix:   "| ",
-	})
+func TestFilePatch_Renamed(t *testing.T) {
+	got := FilePatch(renamed("old.txt", "new.txt", "one\n", "one\ntwo\n", 80), Options{Context: 3})
 	require.Equal(t, []string{
-		"| diff --nipa a.txt a.txt",
-		"| --- a.txt",
-		"| +++ a.txt",
-		"| @@ -1,1 +1,1 @@",
-		"| !a",
-		"| >b",
+		"diff --nipa a/old.txt b/new.txt",
+		"similarity index 80%",
+		"rename from old.txt",
+		"rename to new.txt",
+		"--- a/old.txt",
+		"+++ b/new.txt",
+		"@@ -1,1 +1,2 @@",
+		" one",
+		"+two",
 	}, got)
 }
 
-func TestFilePatch_TextOption(t *testing.T) {
-	f := FileDiff{
-		Change: Change{
-			Path:   "img.bin",
-			Status: Modified,
-			Old:    Entry{Path: "img.bin", Mode: 2, IsBinary: true},
-			New:    Entry{Path: "img.bin", Mode: 2, IsBinary: true},
-		},
-		Old: []byte{0x01, '\n'},
-		New: []byte{0x02, '\n'},
-	}
-	got := FilePatch(f, Options{Context: 3, Text: true})
+func TestFilePatch_RenamedPure(t *testing.T) {
+	got := FilePatch(renamed("old.txt", "new.txt", "same\n", "same\n", 100), Options{Context: 3})
 	require.Equal(t, []string{
-		"diff --nipa a/img.bin b/img.bin",
-		"--- a/img.bin",
-		"+++ b/img.bin",
-		"@@ -1,1 +1,1 @@",
-		"-\x01",
-		"+\x02",
+		"diff --nipa a/old.txt b/new.txt",
+		"similarity index 100%",
+		"rename from old.txt",
+		"rename to new.txt",
 	}, got)
 }
 
-func TestFilePatch_BinaryUnavailable(t *testing.T) {
-	f := FileDiff{
-		Change: Change{
-			Path:   "img.bin",
-			Status: Modified,
-			Old:    Entry{Path: "img.bin", Mode: 2, IsBinary: true},
-			New:    Entry{Path: "img.bin", Mode: 2, IsBinary: true},
-		},
-		OldUnavailable: true,
-		NewUnavailable: true,
-	}
+func TestFilePatch_AddedEmpty(t *testing.T) {
+	f := FileDiff{Change: Change{
+		Path:   "empty.txt",
+		Status: Added,
+		New:    Entry{Path: "empty.txt", Mode: 2, Hash: chunker.Sum(nil)},
+	}}
 	require.Equal(t, []string{
-		"diff --nipa a/img.bin b/img.bin",
-		"Binary files a/img.bin and b/img.bin differ",
+		"diff --nipa a/empty.txt b/empty.txt",
+		"new file mode 100644",
 	}, FilePatch(f, Options{Context: 3}))
 }
 
@@ -210,4 +223,24 @@ func TestFilePatch_Unavailable(t *testing.T) {
 		"diff --nipa a/a.txt b/a.txt",
 		contentUnavailable,
 	}, got)
+}
+
+func TestFilterIgnored_WhitespaceOnly(t *testing.T) {
+	f := modified("a b\nc\n", "a   b\nc\n")
+	require.Empty(t, FilterIgnored([]FileDiff{f}, Options{IgnoreAllSpace: true}))
+	require.Len(t, FilterIgnored([]FileDiff{f}, Options{}), 1)
+	require.Empty(t, Patch(FilterIgnored([]FileDiff{f}, Options{IgnoreAllSpace: true}), Options{IgnoreAllSpace: true}))
+}
+
+func TestFilterIgnored_SpaceChangeKeepsRealChanges(t *testing.T) {
+	f := modified("a b\n", "a   b\nc\n")
+	opts := Options{Context: 3, IgnoreSpaceChange: true}
+	got := Patch(FilterIgnored([]FileDiff{f}, opts), opts)
+	require.Contains(t, got, "+c")
+	require.Contains(t, got, " a b")
+}
+
+func TestFilterIgnored_KeepsRenames(t *testing.T) {
+	f := renamed("old.txt", "new.txt", "same\n", "same\n", 100)
+	require.Len(t, FilterIgnored([]FileDiff{f}, Options{IgnoreAllSpace: true}), 1)
 }

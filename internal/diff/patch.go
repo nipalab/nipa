@@ -1,7 +1,6 @@
 package diff
 
 import (
-	"bytes"
 	"fmt"
 	"strings"
 )
@@ -22,99 +21,102 @@ const contentUnavailable = "content not available locally (run 'nipa update' to 
 
 // Options controls rendering of diffs.
 type Options struct {
-	Context          int
-	InterHunkContext int
-	SrcPrefix        string
-	DstPrefix        string
-	NoPrefix         bool
-	NewIndicator     string
-	OldIndicator     string
-	ContextIndicator string
-	LinePrefix       string
-	Text             bool
+	Context int
+	// IgnoreAllSpace ignores all whitespace when comparing lines (-w).
+	IgnoreAllSpace bool
+	// IgnoreSpaceChange treats whitespace runs as equivalent (-b).
+	IgnoreSpaceChange bool
 }
 
-func (o Options) prefixes() (string, string) {
-	if o.NoPrefix {
-		return "", ""
+func (o Options) equalFunc() EqualFunc {
+	if !o.IgnoreAllSpace && !o.IgnoreSpaceChange {
+		return nil
 	}
-	src, dst := o.SrcPrefix, o.DstPrefix
-	if src == "" {
-		src = "a/"
+	return func(a, b string) bool {
+		return normalizeLine(a, o) == normalizeLine(b, o)
 	}
-	if dst == "" {
-		dst = "b/"
-	}
-	return src, dst
 }
 
-func (o Options) indicators() (byte, byte, byte) {
-	old, new, ctx := o.OldIndicator, o.NewIndicator, o.ContextIndicator
-	return indicator(old, '-'), indicator(new, '+'), indicator(ctx, ' ')
-}
-
-func indicator(s string, fallback byte) byte {
-	if s == "" {
-		return fallback
+func normalizeLine(line string, o Options) string {
+	s := strings.TrimSuffix(line, "\n")
+	switch {
+	case o.IgnoreAllSpace:
+		return strings.Join(strings.Fields(s), "")
+	case o.IgnoreSpaceChange:
+		return strings.Join(strings.Fields(s), " ")
 	}
-	return s[0]
-}
-
-func (o Options) applyPrefix(lines []string) []string {
-	if o.LinePrefix == "" {
-		return lines
-	}
-	out := make([]string, len(lines))
-	for i, line := range lines {
-		out[i] = o.LinePrefix + line
-	}
-	return out
+	return s
 }
 
 // HeaderLine returns the "diff --nipa" line for a change.
-func HeaderLine(c Change, opts Options) string {
-	src, dst := opts.prefixes()
-	return fmt.Sprintf("diff --nipa %s%s %s%s", src, c.Path, dst, c.Path)
+func HeaderLine(c Change) string {
+	oldPath, newPath := c.Path, c.Path
+	if c.Status == Renamed {
+		oldPath, newPath = c.Old.Path, c.Path
+	}
+	return fmt.Sprintf("diff --nipa a/%s b/%s", oldPath, newPath)
 }
 
 // FilePatch renders one change as unified patch lines.
 func FilePatch(f FileDiff, opts Options) []string {
-	lines := []string{HeaderLine(f.Change, opts)}
+	c := f.Change
+	lines := []string{HeaderLine(c)}
+	oldPath, newPath := "a/"+c.Path, "b/"+c.Path
 
-	switch f.Change.Status {
+	switch c.Status {
 	case Added:
-		lines = append(lines, "new file mode "+modeString(f.Change.New.Mode))
+		oldPath = "/dev/null"
+		lines = append(lines, "new file mode "+ModeString(c.New.Mode))
 	case Deleted:
-		lines = append(lines, "deleted file mode "+modeString(f.Change.Old.Mode))
-	case Modified:
-		if f.Change.Old.Mode != f.Change.New.Mode {
+		newPath = "/dev/null"
+		lines = append(lines, "deleted file mode "+ModeString(c.Old.Mode))
+	case Renamed:
+		oldPath, newPath = "a/"+c.Old.Path, "b/"+c.Path
+		if c.Old.Mode != c.New.Mode {
 			lines = append(lines,
-				"old mode "+modeString(f.Change.Old.Mode),
-				"new mode "+modeString(f.Change.New.Mode),
+				"old mode "+ModeString(c.Old.Mode),
+				"new mode "+ModeString(c.New.Mode),
 			)
-			if bytes.Equal(f.Old, f.New) {
-				return opts.applyPrefix(lines)
+		}
+		if c.Similarity > 0 {
+			lines = append(lines, fmt.Sprintf("similarity index %d%%", c.Similarity))
+		}
+		lines = append(lines, "rename from "+c.Old.Path, "rename to "+c.Path)
+		if c.Old.Hash == c.New.Hash {
+			return lines
+		}
+	case Modified:
+		if c.Old.Mode != c.New.Mode {
+			lines = append(lines,
+				"old mode "+ModeString(c.Old.Mode),
+				"new mode "+ModeString(c.New.Mode),
+			)
+			if c.Old.Hash == c.New.Hash {
+				return lines
 			}
 		}
 	}
 
-	src, dst := opts.prefixes()
-	oldPath, newPath := src+f.Change.Path, dst+f.Change.Path
-	if f.Change.Status == Added {
-		oldPath = "/dev/null"
-	}
-	if f.Change.Status == Deleted {
-		newPath = "/dev/null"
-	}
-	if (f.Change.Old.IsBinary || f.Change.New.IsBinary) && !opts.Text {
-		return opts.applyPrefix(append(lines, fmt.Sprintf("Binary files %s and %s differ", oldPath, newPath)))
+	if c.Old.IsBinary || c.New.IsBinary {
+		return append(lines, fmt.Sprintf("Binary files %s and %s differ", oldPath, newPath))
 	}
 	if f.OldUnavailable || f.NewUnavailable {
-		return opts.applyPrefix(append(lines, contentUnavailable))
+		return append(lines, contentUnavailable)
 	}
 
-	lines = append(lines, "--- "+oldPath, "+++ "+newPath)
-	return opts.applyPrefix(append(lines, hunks(f.Old, f.New, opts)...))
+	hunkLines := hunks(f.Old, f.New, opts)
+	switch {
+	case len(hunkLines) > 0:
+		lines = append(lines, "--- "+oldPath, "+++ "+newPath)
+		lines = append(lines, hunkLines...)
+	case c.Status == Added || c.Status == Deleted || c.Status == Renamed:
+		// empty added/deleted files and renames without content changes
+		// have no ---/+++ section
+	default:
+		// every difference is ignored by the whitespace options
+		return nil
+	}
+	return lines
 }
 
 // Patch renders a batch of file changes as one patch.
@@ -126,9 +128,36 @@ func Patch(files []FileDiff, opts Options) []string {
 	return out
 }
 
+// FilterIgnored drops Modified changes whose differences are entirely ignored
+// by the whitespace options, so all output formats agree with the patch
+// renderer. Renamed changes are always kept.
+func FilterIgnored(files []FileDiff, opts Options) []FileDiff {
+	if opts.equalFunc() == nil {
+		return files
+	}
+	out := make([]FileDiff, 0, len(files))
+	for _, f := range files {
+		c := f.Change
+		if c.Status != Modified || c.Old.Hash == c.New.Hash || c.Old.Mode != c.New.Mode {
+			out = append(out, f)
+			continue
+		}
+		if f.OldUnavailable || f.NewUnavailable || c.Old.IsBinary || c.New.IsBinary {
+			out = append(out, f)
+			continue
+		}
+		ops := LinesWith(splitLines(f.Old), splitLines(f.New), opts.equalFunc())
+		if len(hunkRanges(ops, 0)) == 0 {
+			continue
+		}
+		out = append(out, f)
+	}
+	return out
+}
+
 func hunks(old, new []byte, opts Options) []string {
-	ops := Lines(splitLines(old), splitLines(new))
-	ranges := hunkRanges(ops, opts.Context, opts.InterHunkContext)
+	ops := LinesWith(splitLines(old), splitLines(new), opts.equalFunc())
+	ranges := hunkRanges(ops, opts.Context)
 	if len(ranges) == 0 {
 		return nil
 	}
@@ -145,19 +174,18 @@ func hunks(old, new []byte, opts Options) []string {
 		}
 	}
 
-	oldIndicator, newIndicator, contextIndicator := opts.indicators()
 	var out []string
 	for _, r := range ranges {
 		aStart, aCount := hunkStartCount(preA, r[0], r[1])
 		bStart, bCount := hunkStartCount(preB, r[0], r[1])
 		out = append(out, fmt.Sprintf("@@ -%d,%d +%d,%d @@", aStart, aCount, bStart, bCount))
 		for _, op := range ops[r[0]:r[1]] {
-			prefix := contextIndicator
+			prefix := byte(' ')
 			switch op.Kind {
 			case '-':
-				prefix = oldIndicator
+				prefix = '-'
 			case '+':
-				prefix = newIndicator
+				prefix = '+'
 			}
 			line, hasNewline := strings.CutSuffix(op.Line, "\n")
 			out = append(out, string(prefix)+line)
@@ -170,9 +198,9 @@ func hunks(old, new []byte, opts Options) []string {
 }
 
 // hunkRanges groups changed ops into hunk index ranges, each padded with
-// context lines. Change groups separated by more than twice the context
-// (plus inter-hunk context) start a new hunk.
-func hunkRanges(ops []Op, context, interHunk int) [][2]int {
+// context lines. Change groups separated by more than twice the context start
+// a new hunk.
+func hunkRanges(ops []Op, context int) [][2]int {
 	var changes []int
 	for i, op := range ops {
 		if op.Kind != ' ' {
@@ -182,7 +210,7 @@ func hunkRanges(ops []Op, context, interHunk int) [][2]int {
 	if len(changes) == 0 {
 		return nil
 	}
-	fuse := 2*context + interHunk
+	fuse := 2 * context
 	var ranges [][2]int
 	start := max(0, changes[0]-context)
 	for i := 1; i < len(changes); i++ {
@@ -215,7 +243,8 @@ func splitLines(data []byte) []string {
 	return lines
 }
 
-func modeString(mode int) string {
+// ModeString renders a Nipa file mode as a git-style octal mode.
+func ModeString(mode int) string {
 	switch mode {
 	case 1:
 		return "100444"

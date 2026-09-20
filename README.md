@@ -45,7 +45,7 @@ Run `nipa <command> --help` for full details.
 | `nipa merge <branch>`       | Merge another branch into the current one. Fast-forwards when possible; `--no-ff` forces a merge commit, `--ff-only` refuses, `--abort` cancels a conflicted merge, `-m` sets the message. |
 | `nipa revert <commit>`      | Create new commits that undo the given commit or range (`<from>..<to>`, newest first, up to 16 commits) without rewriting history. `--mainline 1\|2` for merge commits, `--no-commit` stages without committing, `-m` sets the message (single commit only), `--continue` / `--abort` / `--skip` drive a conflicted revert. |
 | `nipa log`                  | Show the commit history of the current branch. Interactive and scrollable when stdout is a terminal; `-n` limits, `--oneline` prints one line per commit, `--no-pager` disables the pager. |
-| `nipa diff [<rev1> [<rev2>]]` | Show changes as a unified patch. With no revisions: working tree vs the last synced snapshot (offline). One revision: that tree vs the working tree. Two revisions: tree vs tree. A revision is a branch name, a base36 commit ID (as printed by `nipa log`) or `HEAD`/`@`; `<a>..<b>` compares the two endpoints and `<a>...<b>` (or `--merge-base a b`) compares their merge base against `<b>`. `--staged` limits to what the next push would upload, `-U` sets the context, `--stat`/`--numstat`/`--shortstat`/`--name-only`/`--name-status`/`--raw` select other formats, `-- <path>` limits paths, `--exit-code`/`--quiet` set the exit status, and `--no-pager`/`--no-color` disable the pager/colors. |
+| `nipa diff [<rev1> [<rev2>]]` | Show changes as a unified patch. With no revisions: working tree vs the last synced snapshot (offline). One revision: that tree vs the working tree. Two revisions: tree vs tree. A revision is a branch name, a base36 commit ID (as printed by `nipa log`) or `HEAD`/`@`; `<a>..<b>` compares the two endpoints and `<a>...<b>` compares their merge base against `<b>`. Renames are detected automatically. `--staged` limits to what the next push would upload, `-U` sets the context, `--stat`/`--name-only`/`--name-status` select other formats, `-w`/`-b` ignore whitespace, `-- <path>` limits paths, `--exit-code` sets the exit status, `--ext-diff` opens each changed file in the configured external tool (`NIPA_EXTERNAL_DIFF` or `diffExternal` in `~/.config/nipa/config.json`), and `--no-pager`/`--no-color` disable the pager/colors. |
 
 Branch creation (`nipa branch -c <name>`) forks from the exact commit the
 working copy is pinned to (clone, update, switch and push record the branch head
@@ -70,8 +70,16 @@ With revisions, each one resolves to a commit first: a branch name is looked up
 on the server, `HEAD`/`@` uses the locally pinned commit (the head recorded by
 clone/update/switch/push) and falls back to the configured branch head. One
 revision is compared against the working tree; two are compared as trees,
-downloading any missing chunks into the local cache. `<a>...<b>` and
-`--merge-base a b` compare the merge base of the two commits against `<b>`.
+downloading any missing chunks into the local cache. `<a>...<b>` compares the
+merge base of the two commits against `<b>`.
+
+Renames are detected automatically (deleted/added pairs with at least 50%
+similarity) and render git's `rename from`/`rename to` headers and `R<score>`
+statuses. `-w`/`-b` ignore whitespace differences across every output format.
+`--ext-diff` runs an external tool once per file with git's argument contract
+(`<path> <old-file> <old-hash> <old-mode> <new-file> <new-hash> <new-mode>`),
+configured through `NIPA_EXTERNAL_DIFF` or `diffExternal` in
+`~/.config/nipa/config.json`; the tool only runs when `--ext-diff` is given.
 
 ## Architecture
 
@@ -79,8 +87,10 @@ downloading any missing chunks into the local cache. `<a>...<b>` and
   logic), `repository` (SQLite/Postgres over sqlc), `grpc` (protobuf service +
   handlers), `http` (REST API).
 - **Diff engine** — `internal/diff/` is a pure package (Myers line diff, tree
-  comparison, unified/stat/raw rendering) shared by the client and available to
-  the server for merge-request diffs.
+  comparison, rename detection, unified/stat/name rendering) shared by the
+  client and used by the server for merge-request diffs: `TreeDiff` compares two
+  commit trees (merge base vs source head, GitHub-style) and `AttachContents`
+  loads file contents from the chunk store.
 - **Client** — `internal/client/`: `cli` (cobra commands), `usecase`
   (clone/branch/push/update/merge/revert/diff orchestration), `grpc` (transport),
   `localrepo` (`.nipa/` local metadata + SQLite), `merge` (three-way tree merge

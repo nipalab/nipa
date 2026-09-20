@@ -9,6 +9,8 @@ import (
 
 	"github.com/spf13/cobra"
 
+	clientconfig "github.com/nipalab/nipa/internal/client/config"
+	"github.com/nipalab/nipa/internal/client/difftool"
 	"github.com/nipalab/nipa/internal/client/localrepo"
 	"github.com/nipalab/nipa/internal/client/usecase"
 	"github.com/nipalab/nipa/internal/diff"
@@ -23,12 +25,8 @@ type diffMode int
 const (
 	diffModePatch diffMode = iota
 	diffModeStat
-	diffModeNumStat
-	diffModeShortStat
 	diffModeNameOnly
 	diffModeNameStatus
-	diffModeRaw
-	diffModeSummary
 )
 
 const (
@@ -42,7 +40,7 @@ func (c *Cli) setupDiffCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "diff [<rev1> [<rev2>]] [--] [<path>...]",
 		Short:         "Show working-copy and revision changes",
-		Long:          "Show changes as a unified patch. With no revisions, the working tree is compared against the last synced snapshot, fully offline (staged new files count as additions; untracked files are listed by nipa status). With one revision, the revision's tree is compared against the working tree; with two, the first revision's tree is compared against the second. A revision is a branch name, a base36 commit ID (as printed by nipa log) or HEAD/@ (the locally pinned commit, falling back to the configured branch); <a>..<b> compares the two endpoints and <a>...<b> (or --merge-base a b) compares their merge base against <b>. Use -U to change the context size, --stat/--numstat/--shortstat, --name-only/--name-status or --raw for other formats, --staged for what the next push would upload, --exit-code to fail when there are differences, and --no-pager/--no-color to disable the pager or colors.",
+		Long:          "Show changes as a unified patch. With no revisions, the working tree is compared against the last synced snapshot, fully offline (staged new files count as additions; untracked files are listed by nipa status). With one revision, the revision's tree is compared against the working tree; with two, the first revision's tree is compared against the second. A revision is a branch name, a base36 commit ID (as printed by nipa log) or HEAD/@ (the locally pinned commit, falling back to the configured branch); <a>..<b> compares the two endpoints and <a>...<b> compares their merge base against <b>. Renames are detected automatically. Use -U to change the context size, --stat/--name-only/--name-status for other formats, --staged for what the next push would upload, -w/-b to ignore whitespace, --ext-diff to open each changed file in the configured external tool, and --exit-code to fail when there are differences.",
 		Args:          cobra.ArbitraryArgs,
 		SilenceErrors: true,
 		SilenceUsage:  true,
@@ -51,34 +49,16 @@ func (c *Cli) setupDiffCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().IntP("unified", "U", diff.DefaultContext, "Show <n> lines of context")
-	cmd.Flags().Int("inter-hunk-context", 0, "Fuse hunks separated by fewer than <n> lines")
-	cmd.Flags().BoolP("patch", "p", false, "Show patch output (default)")
 	cmd.Flags().Bool("stat", false, "Show a per-file summary instead of patches")
-	cmd.Flags().Bool("numstat", false, "Show numeric per-file changes")
-	cmd.Flags().Bool("shortstat", false, "Show only the summary line")
 	cmd.Flags().Bool("name-only", false, "Show only changed file paths")
-	cmd.Flags().Bool("name-status", false, "Show changed paths with A/M/D status")
-	cmd.Flags().Bool("raw", false, "Show the raw change format")
-	cmd.Flags().Bool("summary", false, "Show mode changes")
+	cmd.Flags().Bool("name-status", false, "Show changed paths with A/M/D/R status")
 	cmd.Flags().Bool("staged", false, "Show only staged changes")
-	cmd.Flags().Bool("cached", false, "Alias for --staged")
-	cmd.Flags().Bool("merge-base", false, "Compare the merge base of two revisions against the second")
-	cmd.Flags().BoolP("reverse", "R", false, "Swap the compared sides")
-	cmd.Flags().BoolP("text", "a", false, "Treat binary files as text")
-	cmd.Flags().String("diff-filter", "", "Limit to statuses (A, M, D)")
-	cmd.Flags().Bool("no-prefix", false, "Do not show a/ and b/ prefixes")
-	cmd.Flags().String("src-prefix", "", "Use <prefix> instead of a/")
-	cmd.Flags().String("dst-prefix", "", "Use <prefix> instead of b/")
-	cmd.Flags().String("line-prefix", "", "Prepend <prefix> to every output line")
-	cmd.Flags().String("output-indicator-old", "", "Indicator for removed lines (default -)")
-	cmd.Flags().String("output-indicator-new", "", "Indicator for added lines (default +)")
-	cmd.Flags().String("output-indicator-context", "", "Indicator for context lines (default space)")
-	cmd.Flags().String("output", "", "Write output to <file>")
-	cmd.Flags().Bool("exit-code", false, "Exit with status 1 when there are differences")
-	cmd.Flags().Bool("quiet", false, "Suppress output and exit with status 1 on differences")
-	cmd.Flags().String("color", "auto", "Color output: always, auto or never")
+	cmd.Flags().BoolP("ignore-all-space", "w", false, "Ignore all whitespace when comparing lines")
+	cmd.Flags().BoolP("ignore-space-change", "b", false, "Ignore changes in the amount of whitespace")
 	cmd.Flags().Bool("no-color", false, "Disable colors")
 	cmd.Flags().Bool("no-pager", false, "Print without the interactive pager")
+	cmd.Flags().Bool("ext-diff", false, "Use the configured external diff command")
+	cmd.Flags().Bool("exit-code", false, "Exit with status 1 when there are differences")
 	return cmd
 }
 
@@ -87,17 +67,16 @@ func (c *Cli) runDiff(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	mergeBase, _ := cmd.Flags().GetBool("merge-base")
 	revs, paths, err := splitDiffArgs(cmd, args)
 	if err != nil {
 		return err
 	}
-	revs, mergeBase, err = expandRevisionRange(revs, mergeBase)
+	revs, mergeBase, err := expandRevisionRange(revs)
 	if err != nil {
 		return err
 	}
 	if mergeBase && len(revs) != 2 {
-		return fmt.Errorf("--merge-base requires two revisions")
+		return fmt.Errorf("a three-dot revision range requires two revisions")
 	}
 	compareOpts, err := diffCompareOptions(cmd, revs, paths, mergeBase)
 	if err != nil {
@@ -107,15 +86,16 @@ func (c *Cli) runDiff(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	colorFlag, _ := cmd.Flags().GetString("color")
-	if colorFlag != "always" && colorFlag != "auto" && colorFlag != "never" {
-		return fmt.Errorf("--color must be always, auto or never")
+	useExternal, externalCommand, err := externalDiffOptions(cmd, mode)
+	if err != nil {
+		return err
 	}
-	quiet, _ := cmd.Flags().GetBool("quiet")
-	outputPath, _ := cmd.Flags().GetString("output")
-	exitCode, _ := cmd.Flags().GetBool("exit-code")
+	if useExternal {
+		compareOpts.Binary = true
+	}
 	noPager, _ := cmd.Flags().GetBool("no-pager")
 	noColor, _ := cmd.Flags().GetBool("no-color")
+	exitCode, _ := cmd.Flags().GetBool("exit-code")
 
 	root, err := localrepo.FindRepoRoot()
 	if err != nil {
@@ -125,19 +105,17 @@ func (c *Cli) runDiff(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	if quiet {
-		return exitCodeResult(files, true)
-	}
-
-	lines := renderDiff(files, mode, renderOpts)
-	out := cmd.OutOrStdout()
-	if outputPath != "" {
-		if err := writeDiffFile(outputPath, lines); err != nil {
+	files = diff.FilterIgnored(files, renderOpts)
+	if useExternal {
+		if err := runExternalDiff(cmd, externalCommand, files); err != nil {
 			return err
 		}
 		return exitCodeResult(files, exitCode)
 	}
-	if diffUseColor(out, noColor, colorFlag) {
+
+	lines := renderDiff(files, mode, renderOpts)
+	out := cmd.OutOrStdout()
+	if diffUseColor(out, noColor) {
 		lines = colorizeDiffLines(lines, mode)
 	}
 	if mode == diffModePatch && !noPager && isTTY(out) {
@@ -165,12 +143,8 @@ func diffOutputMode(cmd *cobra.Command) (diffMode, error) {
 		mode diffMode
 	}{
 		{"stat", diffModeStat},
-		{"numstat", diffModeNumStat},
-		{"shortstat", diffModeShortStat},
 		{"name-only", diffModeNameOnly},
 		{"name-status", diffModeNameStatus},
-		{"raw", diffModeRaw},
-		{"summary", diffModeSummary},
 	}
 	mode := diffModePatch
 	count := 0
@@ -182,9 +156,6 @@ func diffOutputMode(cmd *cobra.Command) (diffMode, error) {
 	}
 	if count > 1 {
 		return mode, fmt.Errorf("only one output format may be given")
-	}
-	if patch, _ := cmd.Flags().GetBool("patch"); patch && count > 0 {
-		return mode, fmt.Errorf("--patch cannot be combined with another output format")
 	}
 	return mode, nil
 }
@@ -205,10 +176,10 @@ func splitDiffArgs(cmd *cobra.Command, args []string) ([]string, []string, error
 }
 
 // expandRevisionRange splits <a>..<b> and <a>...<b> into two revisions. The
-// three-dot form always selects the merge base as the old side.
-func expandRevisionRange(revs []string, mergeBase bool) ([]string, bool, error) {
+// three-dot form selects the merge base as the old side.
+func expandRevisionRange(revs []string) ([]string, bool, error) {
 	if len(revs) != 1 {
-		return revs, mergeBase, nil
+		return revs, false, nil
 	}
 	token := revs[0]
 	if a, b, ok := strings.Cut(token, "..."); ok {
@@ -221,52 +192,21 @@ func expandRevisionRange(revs []string, mergeBase bool) ([]string, bool, error) 
 		if a == "" || b == "" {
 			return nil, false, fmt.Errorf("a revision range must be <a>..<b>")
 		}
-		return []string{a, b}, mergeBase, nil
+		return []string{a, b}, false, nil
 	}
-	return revs, mergeBase, nil
+	return revs, false, nil
 }
 
 func diffCompareOptions(cmd *cobra.Command, revs, paths []string, mergeBase bool) (usecase.DiffOptions, error) {
 	staged, _ := cmd.Flags().GetBool("staged")
-	cached, _ := cmd.Flags().GetBool("cached")
-	if len(revs) > 0 && (staged || cached) {
+	if len(revs) > 0 && staged {
 		return usecase.DiffOptions{}, fmt.Errorf("--staged cannot be combined with revisions")
 	}
-	reverse, _ := cmd.Flags().GetBool("reverse")
-	text, _ := cmd.Flags().GetBool("text")
-	rawFilter, _ := cmd.Flags().GetString("diff-filter")
-	filter, err := diffStatusFilter(rawFilter)
-	if err != nil {
-		return usecase.DiffOptions{}, err
-	}
 	return usecase.DiffOptions{
-		Staged:    staged || cached,
+		Staged:    staged,
 		Paths:     paths,
-		Filter:    filter,
-		Reverse:   reverse,
 		MergeBase: mergeBase,
-		Text:      text,
 	}, nil
-}
-
-func diffStatusFilter(s string) (map[diff.Status]bool, error) {
-	if s == "" {
-		return nil, nil
-	}
-	out := make(map[diff.Status]bool)
-	for _, r := range s {
-		switch r {
-		case 'A':
-			out[diff.Added] = true
-		case 'M':
-			out[diff.Modified] = true
-		case 'D':
-			out[diff.Deleted] = true
-		default:
-			return nil, fmt.Errorf("unsupported --diff-filter status %q (use A, M or D)", string(r))
-		}
-	}
-	return out, nil
 }
 
 func diffRenderOptions(cmd *cobra.Command) (diff.Options, error) {
@@ -274,71 +214,89 @@ func diffRenderOptions(cmd *cobra.Command) (diff.Options, error) {
 	if context < 0 {
 		return diff.Options{}, fmt.Errorf("--unified must not be negative")
 	}
-	interHunk, _ := cmd.Flags().GetInt("inter-hunk-context")
-	if interHunk < 0 {
-		return diff.Options{}, fmt.Errorf("--inter-hunk-context must not be negative")
-	}
-	noPrefix, _ := cmd.Flags().GetBool("no-prefix")
-	srcPrefix, _ := cmd.Flags().GetString("src-prefix")
-	dstPrefix, _ := cmd.Flags().GetString("dst-prefix")
-	linePrefix, _ := cmd.Flags().GetString("line-prefix")
-	text, _ := cmd.Flags().GetBool("text")
-
-	indicators := make([]string, 0, 3)
-	for _, name := range []string{"output-indicator-old", "output-indicator-new", "output-indicator-context"} {
-		value, _ := cmd.Flags().GetString(name)
-		if value != "" && len(value) != 1 {
-			return diff.Options{}, fmt.Errorf("--%s expects a single character", name)
-		}
-		indicators = append(indicators, value)
-	}
+	allSpace, _ := cmd.Flags().GetBool("ignore-all-space")
+	spaceChange, _ := cmd.Flags().GetBool("ignore-space-change")
 	return diff.Options{
-		Context:          context,
-		InterHunkContext: interHunk,
-		NoPrefix:         noPrefix,
-		SrcPrefix:        srcPrefix,
-		DstPrefix:        dstPrefix,
-		LinePrefix:       linePrefix,
-		Text:             text,
-		OldIndicator:     indicators[0],
-		NewIndicator:     indicators[1],
-		ContextIndicator: indicators[2],
+		Context:           context,
+		IgnoreAllSpace:    allSpace,
+		IgnoreSpaceChange: spaceChange,
 	}, nil
+}
+
+func externalDiffOptions(cmd *cobra.Command, mode diffMode) (bool, string, error) {
+	force, _ := cmd.Flags().GetBool("ext-diff")
+	if !force {
+		return false, "", nil
+	}
+	if mode != diffModePatch {
+		return false, "", fmt.Errorf("--ext-diff cannot be combined with another output format")
+	}
+	command, err := clientconfig.ResolveDiffExternal()
+	if err != nil {
+		return false, "", err
+	}
+	if command == "" {
+		path, _ := clientconfig.Path()
+		return false, "", fmt.Errorf("no external diff command configured (set %s or diffExternal in %s)", clientconfig.EnvDiffExternal, path)
+	}
+	return true, command, nil
+}
+
+func runExternalDiff(cmd *cobra.Command, command string, files []diff.FileDiff) error {
+	pairs := make([]difftool.FilePair, 0, len(files))
+	errW := cmd.ErrOrStderr()
+	for _, f := range files {
+		if f.OldUnavailable || f.NewUnavailable {
+			_, _ = fmt.Fprintf(errW, "warning: skipping '%s': content not available locally\n", f.Change.Path)
+			continue
+		}
+		pairs = append(pairs, externalPair(f))
+	}
+	return difftool.Run(cmd.Context(), command, pairs, cmd.OutOrStdout(), errW)
+}
+
+func externalPair(f diff.FileDiff) difftool.FilePair {
+	c := f.Change
+	pair := difftool.FilePair{
+		Path:    c.Path,
+		Old:     f.Old,
+		New:     f.New,
+		OldHash: c.Old.Hash.String(),
+		NewHash: c.New.Hash.String(),
+		OldMode: diff.ModeString(c.Old.Mode),
+		NewMode: diff.ModeString(c.New.Mode),
+	}
+	switch c.Status {
+	case diff.Added:
+		pair.OldMissing = true
+		pair.OldHash = strings.Repeat("0", 64)
+		pair.OldMode = "000000"
+	case diff.Deleted:
+		pair.NewMissing = true
+		pair.NewHash = strings.Repeat("0", 64)
+		pair.NewMode = "000000"
+	}
+	return pair
 }
 
 func renderDiff(files []diff.FileDiff, mode diffMode, opts diff.Options) []string {
 	switch mode {
 	case diffModeStat:
-		return diff.Stat(files, opts)
-	case diffModeNumStat:
-		return diff.NumStat(files, opts)
-	case diffModeShortStat:
-		return diff.ShortStat(files, opts)
+		return diff.Stat(files)
 	case diffModeNameOnly:
-		return diff.NameOnly(files, opts)
+		return diff.NameOnly(files)
 	case diffModeNameStatus:
-		return diff.NameStatus(files, opts)
-	case diffModeRaw:
-		return diff.Raw(files, opts)
-	case diffModeSummary:
-		return diff.Summary(files, opts)
+		return diff.NameStatus(files)
 	default:
 		return diff.Patch(files, opts)
 	}
 }
 
-func diffUseColor(out io.Writer, noColor bool, colorFlag string) bool {
+func diffUseColor(out io.Writer, noColor bool) bool {
 	if noColor || os.Getenv("NO_COLOR") != "" {
 		return false
 	}
-	switch colorFlag {
-	case "always":
-		return true
-	case "never":
-		return false
-	default:
-		return isTTY(out)
-	}
+	return isTTY(out)
 }
 
 func colorizeDiffLines(lines []string, mode diffMode) []string {
@@ -366,6 +324,9 @@ func colorizePatchLine(line string) string {
 		strings.HasPrefix(line, "new mode"),
 		strings.HasPrefix(line, "new file mode"),
 		strings.HasPrefix(line, "deleted file mode"),
+		strings.HasPrefix(line, "similarity index"),
+		strings.HasPrefix(line, "rename from"),
+		strings.HasPrefix(line, "rename to"),
 		strings.HasPrefix(line, "Binary files"):
 		return ansiBold + line + ansiColorReset
 	case strings.HasPrefix(line, "+") && !strings.HasPrefix(line, "+++"):
@@ -413,6 +374,8 @@ func colorizeNameStatusLine(line string) string {
 		return ansiColorYellow + line + ansiColorReset
 	case "D":
 		return ansiRed + line + ansiColorReset
+	case "R":
+		return ansiColorYellow + line + ansiColorReset
 	}
 	return line
 }
@@ -424,15 +387,6 @@ func writeDiffLines(out io.Writer, lines []string) error {
 		}
 	}
 	return nil
-}
-
-func writeDiffFile(path string, lines []string) error {
-	var b strings.Builder
-	for _, line := range lines {
-		b.WriteString(line)
-		b.WriteByte('\n')
-	}
-	return os.WriteFile(path, []byte(b.String()), 0o644)
 }
 
 func diffFooter(files int) func(*logViewport) string {

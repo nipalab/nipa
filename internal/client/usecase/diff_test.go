@@ -242,39 +242,6 @@ func TestDiff_StagedFilter(t *testing.T) {
 	require.Equal(t, "a.txt", files[0].Change.Path)
 }
 
-func TestDiff_StatusFilter(t *testing.T) {
-	root := t.TempDir()
-	stub := newDiffStub()
-	stub.staged = []string{"new.txt"}
-	withSnapshotFile(t, stub, "a.txt", "a\n")
-	writeRepoFile(t, root, "a.txt", "A\n")
-	writeRepoFile(t, root, "new.txt", "n\n")
-
-	onlyAdded := map[diff.Status]bool{diff.Added: true}
-	files, err := NewDiff(nil, nil, stub).Run(context.Background(), root, nil, DiffOptions{Filter: onlyAdded})
-	require.NoError(t, err)
-	require.Len(t, files, 1)
-	require.Equal(t, diff.Added, files[0].Change.Status)
-
-	onlyDeleted := map[diff.Status]bool{diff.Deleted: true}
-	files, err = NewDiff(nil, nil, stub).Run(context.Background(), root, nil, DiffOptions{Filter: onlyDeleted})
-	require.NoError(t, err)
-	require.Empty(t, files)
-}
-
-func TestDiff_Reverse(t *testing.T) {
-	root := t.TempDir()
-	stub := newDiffStub()
-	stub.staged = []string{"new.txt"}
-	writeRepoFile(t, root, "new.txt", "n\n")
-
-	files, err := NewDiff(nil, nil, stub).Run(context.Background(), root, nil, DiffOptions{Reverse: true})
-	require.NoError(t, err)
-	require.Len(t, files, 1)
-	require.Equal(t, diff.Deleted, files[0].Change.Status)
-	require.Equal(t, []byte("n\n"), files[0].Old)
-}
-
 func TestDiff_OldContentUnavailable(t *testing.T) {
 	root := t.TempDir()
 	stub := newDiffStub()

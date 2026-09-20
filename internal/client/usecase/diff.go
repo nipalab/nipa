@@ -42,14 +42,10 @@ type DiffOptions struct {
 	Staged bool
 	// Paths limits the diff to these repo-relative paths (prefix match).
 	Paths []string
-	// Filter limits changes to the given statuses; nil keeps all.
-	Filter map[diff.Status]bool
-	// Reverse swaps the old and new sides.
-	Reverse bool
 	// MergeBase compares the merge base of two revisions against the second.
 	MergeBase bool
-	// Text loads binary content too, for text rendering of binary files.
-	Text bool
+	// Binary loads binary content too (external diff tools).
+	Binary bool
 }
 
 type Diff struct {
@@ -79,6 +75,10 @@ func (d *Diff) Run(ctx context.Context, root string, revs []string, opts DiffOpt
 	if err != nil {
 		return nil, err
 	}
+	return d.dispatch(ctx, root, revs, cfg, opts)
+}
+
+func (d *Diff) dispatch(ctx context.Context, root string, revs []string, cfg *clientDomain.Config, opts DiffOptions) ([]diff.FileDiff, error) {
 	if len(revs) == 0 {
 		if opts.MergeBase {
 			return nil, clientDomain.NewUserError("--merge-base requires two revisions")
@@ -121,8 +121,9 @@ func (d *Diff) workingDiff(root string, opts DiffOptions) ([]diff.FileDiff, erro
 	if err != nil {
 		return nil, err
 	}
-	changes := filterStatus(diff.Compare(oldMap, newMap), opts.Filter)
-	return d.buildFiles(changes, contents, opts), nil
+	changes := diff.Compare(oldMap, newMap)
+	changes = diff.DetectRenames(changes, d.similarityLoader(contents))
+	return diff.AttachContents(changes, d.attachLoader(contents, opts.Binary)), nil
 }
 
 func (d *Diff) workingVsRevision(ctx context.Context, nu *clientDomain.NipaUrl, root string, cfg *clientDomain.Config, token string, opts DiffOptions) ([]diff.FileDiff, error) {
@@ -138,11 +139,12 @@ func (d *Diff) workingVsRevision(ctx context.Context, nu *clientDomain.NipaUrl, 
 	if err != nil {
 		return nil, err
 	}
-	changes := filterStatus(diff.Compare(base.entries, newMap), opts.Filter)
-	if err := d.ensureContent(ctx, changes, true, false, opts.Text); err != nil {
+	changes := diff.Compare(base.entries, newMap)
+	if err := d.ensureContent(ctx, changes, true, false, opts.Binary); err != nil {
 		return nil, err
 	}
-	return d.buildFiles(changes, contents, opts), nil
+	changes = diff.DetectRenames(changes, d.similarityLoader(contents))
+	return diff.AttachContents(changes, d.attachLoader(contents, opts.Binary)), nil
 }
 
 func (d *Diff) revisionDiff(ctx context.Context, nu *clientDomain.NipaUrl, cfg *clientDomain.Config, revA, revB string, opts DiffOptions) ([]diff.FileDiff, error) {
@@ -161,11 +163,55 @@ func (d *Diff) revisionDiff(ctx context.Context, nu *clientDomain.NipaUrl, cfg *
 			return nil, err
 		}
 	}
-	changes := filterStatus(diff.Compare(baseEntries, head.entries), opts.Filter)
-	if err := d.ensureContent(ctx, changes, true, true, opts.Text); err != nil {
+	changes := diff.Compare(baseEntries, head.entries)
+	if err := d.ensureContent(ctx, changes, true, true, opts.Binary); err != nil {
 		return nil, err
 	}
-	return d.buildFiles(changes, nil, opts), nil
+	changes = diff.DetectRenames(changes, d.similarityLoader(nil))
+	return diff.AttachContents(changes, d.attachLoader(nil, opts.Binary)), nil
+}
+
+// similarityLoader loads text content for rename detection, preferring the
+// working-tree contents map over the local object cache. Binary files never
+// load content; similarity falls back to chunk overlap.
+func (d *Diff) similarityLoader(contents map[string][]byte) func(diff.Entry) ([]byte, bool) {
+	return func(e diff.Entry) ([]byte, bool) {
+		if e.IsBinary {
+			return nil, false
+		}
+		if contents != nil {
+			if content, ok := contents[e.Path]; ok {
+				return content, true
+			}
+		}
+		content, err := diff.LoadContent(d.localRepo.LoadChunk, e)
+		if err != nil {
+			return nil, false
+		}
+		return content, true
+	}
+}
+
+// attachLoader loads content for rendering. The working-tree contents map is
+// only used for the new side; the old side always comes from the object cache.
+// Binary content is skipped unless loadBinary is set; skipped binaries stay
+// available as metadata.
+func (d *Diff) attachLoader(contents map[string][]byte, loadBinary bool) func(diff.Entry, bool) ([]byte, bool) {
+	return func(e diff.Entry, isNew bool) ([]byte, bool) {
+		if isNew && contents != nil {
+			if content, ok := contents[e.Path]; ok {
+				return content, true
+			}
+		}
+		if e.IsBinary && !loadBinary {
+			return nil, true
+		}
+		content, err := diff.LoadContent(d.localRepo.LoadChunk, e)
+		if err != nil {
+			return nil, false
+		}
+		return content, true
+	}
 }
 
 // resolveRevision maps a branch name, a base36 commit ID, or HEAD/@ (the
@@ -237,21 +283,21 @@ func (d *Diff) mergeBaseEntries(ctx context.Context, nu *clientDomain.NipaUrl, b
 }
 
 // ensureContent downloads the chunks needed to render the given changes.
-// Binary content is skipped unless text rendering was requested.
-func (d *Diff) ensureContent(ctx context.Context, changes []diff.Change, needOld, needNew, text bool) error {
+// Binary content is skipped unless loadBinary is set.
+func (d *Diff) ensureContent(ctx context.Context, changes []diff.Change, needOld, needNew, loadBinary bool) error {
 	set := make(map[serverDomain.Hash]struct{})
 	var estimated int64
 	for _, c := range changes {
-		if !text && (c.Old.IsBinary || c.New.IsBinary) {
+		if !loadBinary && (c.Old.IsBinary || c.New.IsBinary) {
 			continue
 		}
-		if needOld && (c.Status == diff.Deleted || c.Status == diff.Modified) {
+		if needOld && (c.Status == diff.Deleted || c.Status == diff.Modified || c.Status == diff.Renamed) {
 			for _, h := range c.Old.ChunkHashes {
 				set[h] = struct{}{}
 			}
 			estimated += c.Old.SizeBytes
 		}
-		if needNew && (c.Status == diff.Added || c.Status == diff.Modified) {
+		if needNew && (c.Status == diff.Added || c.Status == diff.Modified || c.Status == diff.Renamed) {
 			for _, h := range c.New.ChunkHashes {
 				set[h] = struct{}{}
 			}
@@ -270,52 +316,6 @@ func (d *Diff) ensureContent(ctx context.Context, changes []diff.Change, needOld
 		return err
 	}
 	return downloadMissing(ctx, d.client, d.localRepo, missing, estimated)
-}
-
-func (d *Diff) buildFiles(changes []diff.Change, contents map[string][]byte, opts DiffOptions) []diff.FileDiff {
-	files := make([]diff.FileDiff, 0, len(changes))
-	for _, c := range changes {
-		f := diff.FileDiff{Change: c}
-		switch c.Status {
-		case diff.Added:
-			f.New, f.NewUnavailable = d.newContent(c.New, contents, opts.Text)
-		case diff.Deleted:
-			f.Old, f.OldUnavailable = d.loadOld(c.Old, opts.Text)
-		case diff.Modified:
-			f.Old, f.OldUnavailable = d.loadOld(c.Old, opts.Text)
-			f.New, f.NewUnavailable = d.newContent(c.New, contents, opts.Text)
-		}
-		files = append(files, f)
-	}
-	if opts.Reverse {
-		reverseFiles(files)
-	}
-	return files
-}
-
-func (d *Diff) newContent(e diff.Entry, contents map[string][]byte, text bool) ([]byte, bool) {
-	if contents != nil {
-		return contents[e.Path], false
-	}
-	if e.IsBinary && !text {
-		return nil, false
-	}
-	content, err := diff.LoadContent(d.localRepo.LoadChunk, e)
-	if err != nil {
-		return nil, true
-	}
-	return content, false
-}
-
-func (d *Diff) loadOld(e diff.Entry, text bool) ([]byte, bool) {
-	if e.IsBinary && !text {
-		return nil, false
-	}
-	content, err := diff.LoadContent(d.localRepo.LoadChunk, e)
-	if err != nil {
-		return nil, true
-	}
-	return content, false
 }
 
 func (d *Diff) stagedSet() (map[string]bool, error) {
@@ -421,34 +421,6 @@ func pathMatches(path string, filters []string) bool {
 		}
 	}
 	return false
-}
-
-func filterStatus(changes []diff.Change, filter map[diff.Status]bool) []diff.Change {
-	if filter == nil {
-		return changes
-	}
-	out := make([]diff.Change, 0, len(changes))
-	for _, c := range changes {
-		if filter[c.Status] {
-			out = append(out, c)
-		}
-	}
-	return out
-}
-
-func reverseFiles(files []diff.FileDiff) {
-	for i := range files {
-		f := &files[i]
-		f.Change.Old, f.Change.New = f.Change.New, f.Change.Old
-		f.Old, f.New = f.New, f.Old
-		f.OldUnavailable, f.NewUnavailable = f.NewUnavailable, f.OldUnavailable
-		switch f.Change.Status {
-		case diff.Added:
-			f.Change.Status = diff.Deleted
-		case diff.Deleted:
-			f.Change.Status = diff.Added
-		}
-	}
 }
 
 func serverModeFromPerm(perm os.FileMode) int {

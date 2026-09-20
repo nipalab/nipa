@@ -16,6 +16,7 @@ const (
 	Added Status = iota + 1
 	Modified
 	Deleted
+	Renamed
 )
 
 func (s Status) String() string {
@@ -26,6 +27,8 @@ func (s Status) String() string {
 		return "M"
 	case Deleted:
 		return "D"
+	case Renamed:
+		return "R"
 	default:
 		return "?"
 	}
@@ -43,11 +46,13 @@ type Entry struct {
 }
 
 // Change is one path that differs between the old and new entry maps.
+// For Renamed changes Path is the new path and Old.Path the source.
 type Change struct {
-	Path   string
-	Status Status
-	Old    Entry
-	New    Entry
+	Path       string
+	Status     Status
+	Old        Entry
+	New        Entry
+	Similarity int
 }
 
 // Compare returns the changed paths, sorted by path. Files are equal when
@@ -124,4 +129,33 @@ func LoadContent(loadChunk func(serverDomain.Hash) ([]byte, error), e Entry) ([]
 		out = append(out, data...)
 	}
 	return out, nil
+}
+
+// AttachContents builds renderable FileDiffs, loading each side through load.
+// isNew reports whether the entry is the new side of the change; a side whose
+// loader returns false is marked unavailable.
+func AttachContents(changes []Change, load func(e Entry, isNew bool) ([]byte, bool)) []FileDiff {
+	files := make([]FileDiff, 0, len(changes))
+	for _, c := range changes {
+		f := FileDiff{Change: c}
+		switch c.Status {
+		case Added:
+			f.New, f.NewUnavailable = attach(load, c.New, true)
+		case Deleted:
+			f.Old, f.OldUnavailable = attach(load, c.Old, false)
+		default:
+			f.Old, f.OldUnavailable = attach(load, c.Old, false)
+			f.New, f.NewUnavailable = attach(load, c.New, true)
+		}
+		files = append(files, f)
+	}
+	return files
+}
+
+func attach(load func(Entry, bool) ([]byte, bool), e Entry, isNew bool) ([]byte, bool) {
+	if load == nil {
+		return nil, true
+	}
+	content, ok := load(e, isNew)
+	return content, !ok
 }
