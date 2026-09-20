@@ -44,6 +44,26 @@ func (q *Queries) GroupCreate(ctx context.Context, arg GroupCreateParams) (Group
 	return i, err
 }
 
+const groupGet = `-- name: GroupGet :one
+SELECT id, org_id, name, description, created_at, updated_at, deleted, deleted_at FROM groups WHERE id = ? AND deleted = false LIMIT 1
+`
+
+func (q *Queries) GroupGet(ctx context.Context, id int64) (Group, error) {
+	row := q.db.QueryRowContext(ctx, groupGet, id)
+	var i Group
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.Name,
+		&i.Description,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Deleted,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
 const groupListByOrg = `-- name: GroupListByOrg :many
 SELECT id, org_id, name, description, created_at, updated_at, deleted, deleted_at FROM groups WHERE org_id = ? AND deleted = false ORDER BY name
 `

@@ -25,6 +25,45 @@ func TestBranch_FastForward_NoPermission(t *testing.T) {
 	require.True(t, domain.IsErrorNoPermission(err))
 }
 
+func TestBranch_FastForward_PathWriteDenied(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := NewMockpermissionUsecase(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+
+	targetHead := snow.ID(11)
+	sourceHead := snow.ID(12)
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
+	perm.EXPECT().HasPathAccess(gomock.Any(), snow.ID(1), "a.txt", domain.PermissionWrite).Return(true)
+	perm.EXPECT().HasPathAccess(gomock.Any(), snow.ID(1), "b.txt", domain.PermissionWrite).Return(false)
+
+	repo.EXPECT().
+		GetBranchByName(gomock.Any(), snow.ID(1), "main").
+		Return(&domain.Branch{ID: 2, ProjectID: 1, Name: "main", CommitID: &targetHead}, nil)
+	repo.EXPECT().
+		GetBranchByName(gomock.Any(), snow.ID(1), "feature").
+		Return(&domain.Branch{ID: 3, ProjectID: 1, Name: "feature", CommitID: &sourceHead}, nil)
+	repo.EXPECT().GetCommit(gomock.Any(), targetHead).
+		Return(&domain.Commit{ID: targetHead, ProjectID: 1, TreeID: 101, Parent1ID: &targetHead}, nil).
+		Times(2)
+	repo.EXPECT().GetCommit(gomock.Any(), sourceHead).
+		Return(&domain.Commit{ID: sourceHead, ProjectID: 1, TreeID: 102, Parent1ID: &targetHead}, nil).
+		Times(2)
+	repo.EXPECT().GetTreeNode(gomock.Any(), int64(101)).
+		Return(&domain.TreeNode{ID: 101, Name: "root"}, nil)
+	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(101)).
+		Return([]*domain.File{{ID: 1, Name: "a.txt", TreeID: 101}}, nil)
+	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(101)).Return(nil, nil)
+	repo.EXPECT().GetTreeNode(gomock.Any(), int64(102)).
+		Return(&domain.TreeNode{ID: 102, Name: "root"}, nil)
+	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(102)).
+		Return([]*domain.File{{ID: 2, Name: "b.txt", TreeID: 102}}, nil)
+	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(102)).Return(nil, nil)
+
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
+	_, err := uc.FastForward(context.Background(), snow.ID(1), "main", "feature")
+	require.True(t, domain.IsErrorNoPermission(err))
+}
+
 func TestBranch_FastForward_TargetNotFound(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	perm := newAllowAllPerm(ctrl)
@@ -154,18 +193,28 @@ func TestBranch_FastForward_Success(t *testing.T) {
 	perm.EXPECT().
 		HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).
 		Return(true)
-	gomock.InOrder(
-		repo.EXPECT().
-			GetBranchByName(gomock.Any(), snow.ID(1), "main").
-			Return(target, nil),
-		repo.EXPECT().
-			GetBranchByName(gomock.Any(), snow.ID(1), "feature").
-			Return(&domain.Branch{ID: 3, ProjectID: 1, Name: "feature", CommitID: &sourceHead}, nil),
-		repo.EXPECT().GetCommit(gomock.Any(), targetHead).
-			Return(&domain.Commit{ID: targetHead, TreeID: 101, Parent1ID: &targetHead}, nil),
-		repo.EXPECT().GetCommit(gomock.Any(), sourceHead).
-			Return(&domain.Commit{ID: sourceHead, TreeID: 102, Parent1ID: &targetHead}, nil),
-	)
+	repo.EXPECT().
+		GetBranchByName(gomock.Any(), snow.ID(1), "main").
+		Return(target, nil)
+	repo.EXPECT().
+		GetBranchByName(gomock.Any(), snow.ID(1), "feature").
+		Return(&domain.Branch{ID: 3, ProjectID: 1, Name: "feature", CommitID: &sourceHead}, nil)
+	repo.EXPECT().GetCommit(gomock.Any(), targetHead).
+		Return(&domain.Commit{ID: targetHead, ProjectID: 1, TreeID: 101, Parent1ID: &targetHead}, nil).
+		Times(2)
+	repo.EXPECT().GetCommit(gomock.Any(), sourceHead).
+		Return(&domain.Commit{ID: sourceHead, ProjectID: 1, TreeID: 102, Parent1ID: &targetHead}, nil).
+		Times(2)
+	repo.EXPECT().GetTreeNode(gomock.Any(), int64(101)).
+		Return(&domain.TreeNode{ID: 101, Name: "root"}, nil)
+	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(101)).
+		Return([]*domain.File{{ID: 1, Name: "a.txt", TreeID: 101}}, nil)
+	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(101)).Return(nil, nil)
+	repo.EXPECT().GetTreeNode(gomock.Any(), int64(102)).
+		Return(&domain.TreeNode{ID: 102, Name: "root"}, nil)
+	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(102)).
+		Return([]*domain.File{{ID: 2, Name: "b.txt", TreeID: 102}}, nil)
+	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(102)).Return(nil, nil)
 	repo.EXPECT().UpdateCommitIf(gomock.Any(), snow.ID(2), &targetHead, &sourceHead).Return(nil)
 	repo.EXPECT().GetByProjectIDAndID(gomock.Any(), snow.ID(1), snow.ID(2)).Return(updated, nil)
 
@@ -185,18 +234,28 @@ func TestBranch_FastForward_UpdateConflict(t *testing.T) {
 	perm.EXPECT().
 		HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).
 		Return(true)
-	gomock.InOrder(
-		repo.EXPECT().
-			GetBranchByName(gomock.Any(), snow.ID(1), "main").
-			Return(&domain.Branch{ID: 2, ProjectID: 1, Name: "main", CommitID: &targetHead}, nil),
-		repo.EXPECT().
-			GetBranchByName(gomock.Any(), snow.ID(1), "feature").
-			Return(&domain.Branch{ID: 3, ProjectID: 1, Name: "feature", CommitID: &sourceHead}, nil),
-		repo.EXPECT().GetCommit(gomock.Any(), targetHead).
-			Return(&domain.Commit{ID: targetHead, TreeID: 101, Parent1ID: &targetHead}, nil),
-		repo.EXPECT().GetCommit(gomock.Any(), sourceHead).
-			Return(&domain.Commit{ID: sourceHead, TreeID: 102, Parent1ID: &targetHead}, nil),
-	)
+	repo.EXPECT().
+		GetBranchByName(gomock.Any(), snow.ID(1), "main").
+		Return(&domain.Branch{ID: 2, ProjectID: 1, Name: "main", CommitID: &targetHead}, nil)
+	repo.EXPECT().
+		GetBranchByName(gomock.Any(), snow.ID(1), "feature").
+		Return(&domain.Branch{ID: 3, ProjectID: 1, Name: "feature", CommitID: &sourceHead}, nil)
+	repo.EXPECT().GetCommit(gomock.Any(), targetHead).
+		Return(&domain.Commit{ID: targetHead, ProjectID: 1, TreeID: 101, Parent1ID: &targetHead}, nil).
+		Times(2)
+	repo.EXPECT().GetCommit(gomock.Any(), sourceHead).
+		Return(&domain.Commit{ID: sourceHead, ProjectID: 1, TreeID: 102, Parent1ID: &targetHead}, nil).
+		Times(2)
+	repo.EXPECT().GetTreeNode(gomock.Any(), int64(101)).
+		Return(&domain.TreeNode{ID: 101, Name: "root"}, nil)
+	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(101)).
+		Return([]*domain.File{{ID: 1, Name: "a.txt", TreeID: 101}}, nil)
+	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(101)).Return(nil, nil)
+	repo.EXPECT().GetTreeNode(gomock.Any(), int64(102)).
+		Return(&domain.TreeNode{ID: 102, Name: "root"}, nil)
+	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(102)).
+		Return([]*domain.File{{ID: 2, Name: "b.txt", TreeID: 102}}, nil)
+	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(102)).Return(nil, nil)
 	repo.EXPECT().UpdateCommitIf(gomock.Any(), snow.ID(2), &targetHead, &sourceHead).
 		Return(domain.NewErrorConflict("branch has moved; refresh and try again"))
 

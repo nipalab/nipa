@@ -22,6 +22,17 @@ RETURNING *;
 -- name: PBACRuleDelete :exec
 DELETE FROM pbac_rules WHERE id = ?;
 
+-- name: PBACRuleDeleteForProject :execrows
+DELETE FROM pbac_rules
+WHERE pbac_rules.id = sqlc.arg(rule_id)
+  AND (
+      project_id = sqlc.arg(project_id)
+      OR (
+          project_id IS NULL
+          AND org_id = (SELECT projects.org_id FROM projects WHERE projects.id = sqlc.arg(project_id))
+      )
+  );
+
 -- name: ProjectPathPermissionList :many
 SELECT * FROM project_paths_permissions WHERE project_id = ? ORDER BY path_prefix;
 

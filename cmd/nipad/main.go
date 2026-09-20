@@ -52,6 +52,7 @@ func main() {
 	branchRepository := sqlite.NewBranchRepository(dbConn)
 	pushRepository := sqlite.NewPushRepository(dbConn)
 	pbacRepository := sqlite.NewPBACRepository(dbConn)
+	groupRepository := sqlite.NewGroupRepository(dbConn)
 
 	passwordHasher := hasher.NewHasher(cfg.HasherWorkers)
 
@@ -67,12 +68,14 @@ func main() {
 	}
 	defer chunkStore.Close()
 	reg := &Registry{
-		authUsecase:   authUsecase,
-		userUsecase:   usecase.NewUser(snowUser),
-		commonUsecase: usecase.NewCommon(orgRepo, projectRepo),
-		branchUsecase: usecase.NewBranch(permissionUsecase, branchRepository, snowUser),
-		pushUsecase:   usecase.NewPush(permissionUsecase, branchRepository, pushRepository, snowUser),
-		chunkUsecase:  usecase.NewChunk(pushRepository, chunkStore),
+		authUsecase:       authUsecase,
+		userUsecase:       usecase.NewUser(snowUser),
+		commonUsecase:     usecase.NewCommon(orgRepo, projectRepo),
+		branchUsecase:     usecase.NewBranch(permissionUsecase, branchRepository, snowUser),
+		pushUsecase:       usecase.NewPush(permissionUsecase, branchRepository, pushRepository, snowUser),
+		chunkUsecase:      usecase.NewChunk(pushRepository, chunkStore),
+		permissionUsecase: permissionUsecase,
+		groupUsecase:      usecase.NewGroup(groupRepository, snowUser, permissionUsecase),
 	}
 
 	apiApp := api.NewAPI(reg)

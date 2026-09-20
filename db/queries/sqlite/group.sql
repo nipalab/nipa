@@ -3,6 +3,9 @@ INSERT INTO groups (id, org_id, name, description)
 VALUES (?, ?, ?, ?)
 RETURNING *;
 
+-- name: GroupGet :one
+SELECT * FROM groups WHERE id = ? AND deleted = false LIMIT 1;
+
 -- name: GroupListByOrg :many
 SELECT * FROM groups WHERE org_id = ? AND deleted = false ORDER BY name;
 

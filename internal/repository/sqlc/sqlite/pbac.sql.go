@@ -57,6 +57,31 @@ func (q *Queries) PBACRuleDelete(ctx context.Context, id int64) error {
 	return err
 }
 
+const pBACRuleDeleteForProject = `-- name: PBACRuleDeleteForProject :execrows
+DELETE FROM pbac_rules
+WHERE pbac_rules.id = ?1
+  AND (
+      project_id = ?2
+      OR (
+          project_id IS NULL
+          AND org_id = (SELECT projects.org_id FROM projects WHERE projects.id = ?2)
+      )
+  )
+`
+
+type PBACRuleDeleteForProjectParams struct {
+	RuleID    int64         `json:"rule_id"`
+	ProjectID sql.NullInt64 `json:"project_id"`
+}
+
+func (q *Queries) PBACRuleDeleteForProject(ctx context.Context, arg PBACRuleDeleteForProjectParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, pBACRuleDeleteForProject, arg.RuleID, arg.ProjectID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const pBACRuleListByProject = `-- name: PBACRuleListByProject :many
 SELECT id, created_at, user_id, group_id, org_id, project_id, path_prefix, permission FROM pbac_rules WHERE project_id = ? ORDER BY id
 `

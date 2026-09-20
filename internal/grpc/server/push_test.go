@@ -25,6 +25,10 @@ func newPushUsecase(t *testing.T) (*usecase.Push, *MockpermissionUsecase, *Mockb
 		CompileFilter(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(usecase.AllowAllFilter(), nil).
 		AnyTimes()
+	perm.EXPECT().
+		HasPathAccess(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(true).
+		AnyTimes()
 	repo := NewMockbranchRepository(ctrl)
 	pushRepo := NewMockpushRepository(ctrl)
 	node, err := snow.NewNode(1)

@@ -71,18 +71,18 @@ func (mr *MockpbacRepositoryMockRecorder) DeletePathPermission(ctx, projectID, p
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeletePathPermission", reflect.TypeOf((*MockpbacRepository)(nil).DeletePathPermission), ctx, projectID, pathPrefix)
 }
 
-// DeleteRule mocks base method.
-func (m *MockpbacRepository) DeleteRule(ctx context.Context, id int64) error {
+// DeleteRuleForProject mocks base method.
+func (m *MockpbacRepository) DeleteRuleForProject(ctx context.Context, projectID snow.ID, ruleID int64) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteRule", ctx, id)
+	ret := m.ctrl.Call(m, "DeleteRuleForProject", ctx, projectID, ruleID)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// DeleteRule indicates an expected call of DeleteRule.
-func (mr *MockpbacRepositoryMockRecorder) DeleteRule(ctx, id any) *gomock.Call {
+// DeleteRuleForProject indicates an expected call of DeleteRuleForProject.
+func (mr *MockpbacRepositoryMockRecorder) DeleteRuleForProject(ctx, projectID, ruleID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteRule", reflect.TypeOf((*MockpbacRepository)(nil).DeleteRule), ctx, id)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteRuleForProject", reflect.TypeOf((*MockpbacRepository)(nil).DeleteRuleForProject), ctx, projectID, ruleID)
 }
 
 // ListEffectiveRules mocks base method.

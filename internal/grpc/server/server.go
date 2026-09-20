@@ -12,6 +12,8 @@ type usecaseContainer interface {
 	Common() *usecase.Common
 	Push() *usecase.Push
 	Chunk() *usecase.Chunk
+	Permission() *usecase.Permission
+	Group() *usecase.Group
 }
 
 type nipaServer struct {

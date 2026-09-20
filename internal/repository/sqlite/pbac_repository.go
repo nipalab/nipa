@@ -51,9 +51,16 @@ func (p *PBAC) CreateRule(ctx context.Context, rule domain.PBACRule) (*domain.PB
 	return toDomainPBACRule(row), nil
 }
 
-func (p *PBAC) DeleteRule(ctx context.Context, id int64) error {
-	if err := p.queries.PBACRuleDelete(ctx, id); err != nil {
+func (p *PBAC) DeleteRuleForProject(ctx context.Context, projectID snow.ID, ruleID int64) error {
+	affected, err := p.queries.PBACRuleDeleteForProject(ctx, sqlcSqlite.PBACRuleDeleteForProjectParams{
+		RuleID:    ruleID,
+		ProjectID: sql.NullInt64{Int64: projectID.Int64(), Valid: true},
+	})
+	if err != nil {
 		return domain.NewErrorDatabase(err.Error())
+	}
+	if affected == 0 {
+		return domain.NewErrorRecordNotFound()
 	}
 	return nil
 }

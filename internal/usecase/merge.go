@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/nipalab/nipa/internal/diff"
 	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/snow"
 )
@@ -142,6 +143,10 @@ func (b *Branch) FastForward(ctx context.Context, projectID snow.ID, targetBranc
 		return nil, domain.NewErrorConflict(fmt.Sprintf("cannot fast-forward branch %q: branches have diverged", targetBranch))
 	}
 
+	if err := b.ensureTreeWrites(ctx, projectID, *target.CommitID, *source.CommitID); err != nil {
+		return nil, err
+	}
+
 	if err := b.branchRepo.UpdateCommitIf(ctx, target.ID, target.CommitID, source.CommitID); err != nil {
 		return nil, err
 	}
@@ -231,4 +236,38 @@ func (b *Branch) commitTreeManifest(ctx context.Context, projectID snow.ID, comm
 	}
 	rehashTree(root)
 	return root, nil
+}
+
+// ensureTreeWrites rejects a tree move that touches paths the caller may not
+// write, regardless of read permission.
+func (b *Branch) ensureTreeWrites(ctx context.Context, projectID snow.ID, fromCommitID, toCommitID snow.ID) error {
+	fromEntries, err := b.treeEntries(ctx, projectID, fromCommitID)
+	if err != nil {
+		return err
+	}
+	toEntries, err := b.treeEntries(ctx, projectID, toCommitID)
+	if err != nil {
+		return err
+	}
+	for _, change := range diff.Compare(fromEntries, toEntries) {
+		if !b.permUc.HasPathAccess(ctx, projectID, change.Path, domain.PermissionWrite) {
+			return domain.NewErrorNoPermission()
+		}
+	}
+	return nil
+}
+
+func (b *Branch) treeEntries(ctx context.Context, projectID snow.ID, commitID snow.ID) (map[string]diff.Entry, error) {
+	commit, err := b.commitByIDInProject(ctx, projectID, commitID)
+	if err != nil {
+		return nil, err
+	}
+	root, err := b.branchRepo.GetTreeNode(ctx, commit.TreeID)
+	if err != nil {
+		return nil, err
+	}
+	if err := b.loadTreeManifest(ctx, root, "", true, AllowAllFilter(), nil); err != nil {
+		return nil, err
+	}
+	return diff.FromTree(root), nil
 }

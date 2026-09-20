@@ -257,6 +257,125 @@ message LoginResponse {
     int32 expires_in = 3;
 }
 
+message PermissionEntry {
+    string path_prefix = 1;
+    uint64 permission = 2; // bitmask: 1=read, 2=write, 4=lock, 65536=admin
+}
+
+message PBACRuleDetail {
+    int64 id = 1;
+    optional string user_id = 2; // base36 snow ID; exactly one of user_id/group_id
+    optional string group_id = 3; // base36 snow ID
+    string org_id = 4; // base36 snow ID
+    optional string project_id = 5; // base36 snow ID; empty = every project in the org
+    string path_prefix = 6;
+    uint64 permission = 7;
+    google.protobuf.Timestamp created_at = 8;
+}
+
+message CreatePBACRuleRequest {
+    ProjectContext context = 1;
+    optional string user_id = 2; // base36 snow ID
+    optional string group_id = 3; // base36 snow ID
+    string path_prefix = 4;
+    uint64 permission = 5;
+}
+
+message CreatePBACRuleResponse {
+    PBACRuleDetail rule = 1;
+}
+
+message ListPBACRulesRequest {
+    ProjectContext context = 1;
+}
+
+message ListPBACRulesResponse {
+    repeated PBACRuleDetail rules = 1;
+}
+
+message DeletePBACRuleRequest {
+    ProjectContext context = 1;
+    int64 rule_id = 2;
+}
+
+message DeletePBACRuleResponse {}
+
+message ListProjectPathPermissionsRequest {
+    ProjectContext context = 1;
+}
+
+message ListProjectPathPermissionsResponse {
+    repeated PermissionEntry permissions = 1;
+}
+
+message SetProjectPathPermissionRequest {
+    ProjectContext context = 1;
+    string path_prefix = 2;
+    uint64 permission = 3;
+}
+
+message SetProjectPathPermissionResponse {
+    PermissionEntry permission = 1;
+}
+
+message DeleteProjectPathPermissionRequest {
+    ProjectContext context = 1;
+    string path_prefix = 2;
+}
+
+message DeleteProjectPathPermissionResponse {}
+
+message GetMyPermissionsRequest {
+    ProjectContext context = 1;
+}
+
+message GetMyPermissionsResponse {
+    uint64 project_permission = 1;
+    repeated PermissionEntry rules = 2; // effective rules for the caller
+    repeated PermissionEntry defaults = 3; // project path defaults
+}
+
+message GroupDetail {
+    string id = 1; // base36 snow ID
+    string org_id = 2; // base36 snow ID
+    string name = 3;
+    string description = 4;
+}
+
+message CreateGroupRequest {
+    string org = 1;
+    string name = 2;
+    string description = 3;
+}
+
+message CreateGroupResponse {
+    GroupDetail group = 1;
+}
+
+message ListGroupsRequest {
+    string org = 1;
+}
+
+message ListGroupsResponse {
+    repeated GroupDetail groups = 1;
+}
+
+message AddGroupMemberRequest {
+    string org = 1;
+    string group_id = 2; // base36 snow ID
+    string user_id = 3; // base36 snow ID
+}
+
+message AddGroupMemberResponse {}
+
+message RemoveGroupMemberRequest {
+    string org = 1;
+    string group_id = 2; // base36 snow ID
+    string user_id = 3; // base36 snow ID
+}
+
+message RemoveGroupMemberResponse {}
+
 service NipaService {
     rpc LoginWithUsernamePassword(LoginUsernamePasswordRequest) returns (LoginResponse);
     rpc LoginWithRefreshToken(LoginWithRefreshRequest) returns (LoginResponse);
@@ -275,4 +394,16 @@ service NipaService {
     rpc Push(PushRequest) returns (PushResponse);
     rpc UploadChunks(stream ChunkUploadRequest) returns (UploadChunksResponse);
     rpc DownloadChunks(stream DownloadChunksRequest) returns (stream DownloadChunk);
+
+    rpc GetMyPermissions(GetMyPermissionsRequest) returns (GetMyPermissionsResponse);
+    rpc CreatePBACRule(CreatePBACRuleRequest) returns (CreatePBACRuleResponse);
+    rpc ListPBACRules(ListPBACRulesRequest) returns (ListPBACRulesResponse);
+    rpc DeletePBACRule(DeletePBACRuleRequest) returns (DeletePBACRuleResponse);
+    rpc ListProjectPathPermissions(ListProjectPathPermissionsRequest) returns (ListProjectPathPermissionsResponse);
+    rpc SetProjectPathPermission(SetProjectPathPermissionRequest) returns (SetProjectPathPermissionResponse);
+    rpc DeleteProjectPathPermission(DeleteProjectPathPermissionRequest) returns (DeleteProjectPathPermissionResponse);
+    rpc CreateGroup(CreateGroupRequest) returns (CreateGroupResponse);
+    rpc ListGroups(ListGroupsRequest) returns (ListGroupsResponse);
+    rpc AddGroupMember(AddGroupMemberRequest) returns (AddGroupMemberResponse);
+    rpc RemoveGroupMember(RemoveGroupMemberRequest) returns (RemoveGroupMemberResponse);
 }

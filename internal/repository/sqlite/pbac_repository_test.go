@@ -172,7 +172,7 @@ func TestPBACRepositorySQLite_DeleteRule(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	require.NoError(t, repo.DeleteRule(ctx, rule.ID))
+	require.NoError(t, repo.DeleteRuleForProject(ctx, projectID, rule.ID))
 
 	rules, err := repo.ListRulesByProject(ctx, projectID)
 	require.NoError(t, err)

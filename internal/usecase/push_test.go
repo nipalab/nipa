@@ -52,6 +52,49 @@ func TestPush_MissingMessage(t *testing.T) {
 	require400(t, err, "commit message is required")
 }
 
+func TestPush_PathWriteDenied(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := NewMockpermissionUsecase(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+	pushRepo := NewMockpushRepository(ctrl)
+
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
+	perm.EXPECT().HasPathAccess(gomock.Any(), snow.ID(1), "assets/logo.png", domain.PermissionWrite).Return(true)
+	perm.EXPECT().HasPathAccess(gomock.Any(), snow.ID(1), "src/main.go", domain.PermissionWrite).Return(false)
+
+	chunkHash, fileHash := chunkAndFileHash(t, "logo")
+	files := []*domain.PushFile{
+		{Path: "assets/logo.png", Mode: 0o644, FileHash: fileHash, ChunkHashes: []domain.Hash{chunkHash}},
+		{Path: "src/main.go", Mode: 0o644, FileHash: fileHash, ChunkHashes: []domain.Hash{chunkHash}},
+	}
+
+	node, err := snow.NewNode(1)
+	require.NoError(t, err)
+	uc := NewPush(perm, repo, pushRepo, node)
+	ctx := domain.ContextWithClaim(context.Background(), domain.Claims{UserID: snow.ID(7)})
+
+	_, err = uc.Push(ctx, snow.ID(1), "main", "", "msg", files, nil, "")
+	require.True(t, domain.IsErrorNoPermission(err))
+}
+
+func TestPush_RemovedPathWriteDenied(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := NewMockpermissionUsecase(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+	pushRepo := NewMockpushRepository(ctrl)
+
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
+	perm.EXPECT().HasPathAccess(gomock.Any(), snow.ID(1), "src/main.go", domain.PermissionWrite).Return(false)
+
+	node, err := snow.NewNode(1)
+	require.NoError(t, err)
+	uc := NewPush(perm, repo, pushRepo, node)
+	ctx := domain.ContextWithClaim(context.Background(), domain.Claims{UserID: snow.ID(7)})
+
+	_, err = uc.Push(ctx, snow.ID(1), "main", "", "msg", nil, []string{"src/main.go"}, "")
+	require.True(t, domain.IsErrorNoPermission(err))
+}
+
 func TestPush_InvalidPath(t *testing.T) {
 	uc, perm, _, _, ctx := newPushFixture(t)
 	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)

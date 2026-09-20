@@ -22,10 +22,12 @@ import (
 )
 
 type mockUsecaseContainer struct {
-	branch *usecase.Branch
-	common *usecase.Common
-	push   *usecase.Push
-	chunk  *usecase.Chunk
+	branch     *usecase.Branch
+	common     *usecase.Common
+	push       *usecase.Push
+	chunk      *usecase.Chunk
+	permission *usecase.Permission
+	group      *usecase.Group
 }
 
 func (m *mockUsecaseContainer) Auth() *usecase.Auth     { return nil }
@@ -34,6 +36,10 @@ func (m *mockUsecaseContainer) Branch() *usecase.Branch { return m.branch }
 func (m *mockUsecaseContainer) Common() *usecase.Common { return m.common }
 func (m *mockUsecaseContainer) Push() *usecase.Push     { return m.push }
 func (m *mockUsecaseContainer) Chunk() *usecase.Chunk   { return m.chunk }
+func (m *mockUsecaseContainer) Permission() *usecase.Permission {
+	return m.permission
+}
+func (m *mockUsecaseContainer) Group() *usecase.Group { return m.group }
 
 func newMockUsecaseContainer(t *testing.T, branch *usecase.Branch) *mockUsecaseContainer {
 	t.Helper()
@@ -103,6 +109,10 @@ func newTestBranchUc(t *testing.T) (*usecase.Branch, *MockpermissionUsecase, *Mo
 	perm.EXPECT().
 		CompileFilter(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(usecase.AllowAllFilter(), nil).
+		AnyTimes()
+	perm.EXPECT().
+		HasPathAccess(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(true).
 		AnyTimes()
 	repo := NewMockbranchRepository(ctrl)
 	node, err := snow.NewNode(1)
@@ -1082,18 +1092,28 @@ func TestMergeFastForward_Success(t *testing.T) {
 	perm.EXPECT().
 		HasProjectAccess(gomock.Any(), projectID, domain.PermissionWrite).
 		Return(true)
-	gomock.InOrder(
-		repo.EXPECT().
-			GetBranchByName(gomock.Any(), projectID, "main").
-			Return(&domain.Branch{ID: 1, ProjectID: projectID, Name: "main", CommitID: ptrSnow(11)}, nil),
-		repo.EXPECT().
-			GetBranchByName(gomock.Any(), projectID, "feature").
-			Return(&domain.Branch{ID: 2, ProjectID: projectID, Name: "feature", CommitID: &head}, nil),
-		repo.EXPECT().GetCommit(gomock.Any(), snow.ID(11)).
-			Return(&domain.Commit{ID: 11, TreeID: 101, Parent1ID: ptrSnow(11)}, nil),
-		repo.EXPECT().GetCommit(gomock.Any(), head).
-			Return(&domain.Commit{ID: head, TreeID: 102, Parent1ID: ptrSnow(11)}, nil),
-	)
+	repo.EXPECT().
+		GetBranchByName(gomock.Any(), projectID, "main").
+		Return(&domain.Branch{ID: 1, ProjectID: projectID, Name: "main", CommitID: ptrSnow(11)}, nil)
+	repo.EXPECT().
+		GetBranchByName(gomock.Any(), projectID, "feature").
+		Return(&domain.Branch{ID: 2, ProjectID: projectID, Name: "feature", CommitID: &head}, nil)
+	repo.EXPECT().GetCommit(gomock.Any(), snow.ID(11)).
+		Return(&domain.Commit{ID: 11, ProjectID: projectID, TreeID: 101, Parent1ID: ptrSnow(11)}, nil).
+		Times(2)
+	repo.EXPECT().GetCommit(gomock.Any(), head).
+		Return(&domain.Commit{ID: head, ProjectID: projectID, TreeID: 102, Parent1ID: ptrSnow(11)}, nil).
+		Times(2)
+	repo.EXPECT().GetTreeNode(gomock.Any(), int64(101)).
+		Return(&domain.TreeNode{ID: 101, Name: "root"}, nil)
+	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(101)).
+		Return([]*domain.File{{ID: 1, Name: "a.txt", TreeID: 101}}, nil)
+	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(101)).Return(nil, nil)
+	repo.EXPECT().GetTreeNode(gomock.Any(), int64(102)).
+		Return(&domain.TreeNode{ID: 102, Name: "root"}, nil)
+	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(102)).
+		Return([]*domain.File{{ID: 2, Name: "b.txt", TreeID: 102}}, nil)
+	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(102)).Return(nil, nil)
 	repo.EXPECT().UpdateCommitIf(gomock.Any(), snow.ID(1), ptrSnow(11), &head).Return(nil)
 	repo.EXPECT().GetByProjectIDAndID(gomock.Any(), projectID, snow.ID(1)).
 		Return(&domain.Branch{ID: 1, ProjectID: projectID, Name: "main", CommitID: &head}, nil)

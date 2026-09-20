@@ -41,12 +41,14 @@ const (
 )
 
 type testRegistry struct {
-	auth   *serverusecase.Auth
-	user   *serverusecase.User
-	branch *serverusecase.Branch
-	common *serverusecase.Common
-	push   *serverusecase.Push
-	chunk  *serverusecase.Chunk
+	auth       *serverusecase.Auth
+	user       *serverusecase.User
+	branch     *serverusecase.Branch
+	common     *serverusecase.Common
+	push       *serverusecase.Push
+	chunk      *serverusecase.Chunk
+	permission *serverusecase.Permission
+	group      *serverusecase.Group
 }
 
 func (r *testRegistry) Auth() *serverusecase.Auth     { return r.auth }
@@ -55,6 +57,10 @@ func (r *testRegistry) Branch() *serverusecase.Branch { return r.branch }
 func (r *testRegistry) Common() *serverusecase.Common { return r.common }
 func (r *testRegistry) Push() *serverusecase.Push     { return r.push }
 func (r *testRegistry) Chunk() *serverusecase.Chunk   { return r.chunk }
+func (r *testRegistry) Permission() *serverusecase.Permission {
+	return r.permission
+}
+func (r *testRegistry) Group() *serverusecase.Group { return r.group }
 
 type memoryStore struct {
 	mu   sync.Mutex
@@ -137,13 +143,16 @@ func startTestServer(t *testing.T, dbConn *sql.DB) string {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = chunkStore.Close() })
 
+	groupRepo := sqlite.NewGroupRepository(dbConn)
 	reg := &testRegistry{
-		auth:   authUc,
-		user:   serverusecase.NewUser(node),
-		branch: branchUc,
-		common: commonUc,
-		push:   serverusecase.NewPush(permissionUc, branchRepo, pushRepo, node),
-		chunk:  serverusecase.NewChunk(pushRepo, chunkStore),
+		auth:       authUc,
+		user:       serverusecase.NewUser(node),
+		branch:     branchUc,
+		common:     commonUc,
+		push:       serverusecase.NewPush(permissionUc, branchRepo, pushRepo, node),
+		chunk:      serverusecase.NewChunk(pushRepo, chunkStore),
+		permission: permissionUc,
+		group:      serverusecase.NewGroup(groupRepo, node, permissionUc),
 	}
 
 	lis, err := net.Listen("tcp", "127.0.0.1:0")

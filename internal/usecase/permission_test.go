@@ -43,6 +43,10 @@ func newAllowAllPerm(ctrl *gomock.Controller) *MockpermissionUsecase {
 		CompileFilter(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(AllowAllFilter(), nil).
 		AnyTimes()
+	perm.EXPECT().
+		HasPathAccess(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(true).
+		AnyTimes()
 	return perm
 }
 
@@ -245,9 +249,92 @@ func TestAllowAllFilter(t *testing.T) {
 	require.True(t, filter.CanDescend("any"))
 }
 
+func TestPermission_AdminGates(t *testing.T) {
+	projectID := snow.ID(1)
+	userID := snow.ID(42)
+
+	perm := newTestPermission(t, nil, nil)
+	_, err := perm.ListRules(permissionCtx(userID), projectID)
+	require.True(t, domain.IsErrorNoPermission(err))
+	require.True(t, domain.IsErrorNoPermission(perm.DeleteRule(permissionCtx(userID), projectID, 7)))
+	_, err = perm.ListPathPermissions(permissionCtx(userID), projectID)
+	require.True(t, domain.IsErrorNoPermission(err))
+	_, err = perm.SetPathPermission(permissionCtx(userID), projectID, "assets", domain.PermissionRead)
+	require.True(t, domain.IsErrorNoPermission(err))
+	require.True(t, domain.IsErrorNoPermission(perm.DeletePathPermission(permissionCtx(userID), projectID, "assets")))
+}
+
+func TestPermission_ProjectAdminRuleAllowsManagement(t *testing.T) {
+	projectID := snow.ID(1)
+	userID := snow.ID(42)
+	adminRule := []*domain.PBACRule{{PathPrefix: "", Permission: domain.PermissionAdmin}}
+
+	ctrl := gomock.NewController(t)
+	repo := NewMockpbacRepository(ctrl)
+	repo.EXPECT().ListEffectiveRules(gomock.Any(), projectID, userID).Return(adminRule, nil)
+	repo.EXPECT().ListPathPermissions(gomock.Any(), projectID).Return(nil, nil)
+	repo.EXPECT().ListRulesByProject(gomock.Any(), projectID).Return(adminRule, nil)
+	repo.EXPECT().DeleteRuleForProject(gomock.Any(), projectID, int64(7)).Return(nil)
+
+	perm := NewPermission(repo)
+	ctx := permissionCtx(userID)
+
+	rules, err := perm.ListRules(ctx, projectID)
+	require.NoError(t, err)
+	require.Len(t, rules, 1)
+	require.NoError(t, perm.DeleteRule(ctx, projectID, 7))
+}
+
+func TestPermission_DeleteRule_ProjectScoped(t *testing.T) {
+	projectID := snow.ID(1)
+
+	ctrl := gomock.NewController(t)
+	repo := NewMockpbacRepository(ctrl)
+	repo.EXPECT().DeleteRuleForProject(gomock.Any(), projectID, int64(7)).Return(domain.NewErrorRecordNotFound())
+
+	perm := NewPermission(repo)
+	err := perm.DeleteRule(permissionCtx(42, withAdmin()), projectID, 7)
+	require.True(t, domain.IsErrorNotFound(err))
+}
+
+func TestPermission_MyPermissions(t *testing.T) {
+	projectID := snow.ID(1)
+	userID := snow.ID(42)
+
+	t.Run("admin", func(t *testing.T) {
+		perm := newTestPermission(t, nil, []*domain.ProjectPathPermission{
+			{PathPrefix: "assets", Permission: domain.PermissionRead},
+		})
+		mask, rules, defaults, err := perm.MyPermissions(permissionCtx(userID, withAdmin()), projectID)
+		require.NoError(t, err)
+		require.Equal(t, domain.PermissionAll, mask)
+		require.Empty(t, rules)
+		require.Len(t, defaults, 1)
+	})
+
+	t.Run("regular user", func(t *testing.T) {
+		perm := newTestPermission(t, []*domain.PBACRule{
+			{PathPrefix: "assets", Permission: domain.PermissionRead | domain.PermissionWrite},
+		}, []*domain.ProjectPathPermission{
+			{PathPrefix: "", Permission: domain.PermissionRead},
+		})
+		mask, rules, defaults, err := perm.MyPermissions(permissionCtx(userID), projectID)
+		require.NoError(t, err)
+		require.Equal(t, domain.PermissionRead|domain.PermissionWrite, mask)
+		require.Len(t, rules, 1)
+		require.Len(t, defaults, 1)
+	})
+
+	t.Run("no claim", func(t *testing.T) {
+		perm := newTestPermission(t, nil, nil)
+		_, _, _, err := perm.MyPermissions(context.Background(), projectID)
+		require.True(t, domain.IsErrorNoPermission(err))
+	})
+}
+
 func TestPermission_CreateRule_Validation(t *testing.T) {
 	perm := newTestPermission(t, nil, nil)
-	ctx := context.Background()
+	ctx := permissionCtx(42, withAdmin())
 	userID := snow.ID(42)
 	groupID := snow.ID(7)
 
@@ -282,7 +369,9 @@ func TestPermission_CreateRule_NormalizesAndInvalidatesCache(t *testing.T) {
 	repo := NewMockpbacRepository(ctrl)
 
 	gomock.InOrder(
-		repo.EXPECT().ListEffectiveRules(gomock.Any(), projectID, userID).Return(nil, nil),
+		repo.EXPECT().ListEffectiveRules(gomock.Any(), projectID, userID).Return([]*domain.PBACRule{
+			{PathPrefix: "", Permission: domain.PermissionAdmin},
+		}, nil),
 		repo.EXPECT().ListPathPermissions(gomock.Any(), projectID).Return(nil, nil),
 	)
 	repo.EXPECT().CreateRule(gomock.Any(), gomock.Any()).DoAndReturn(
@@ -294,6 +383,7 @@ func TestPermission_CreateRule_NormalizesAndInvalidatesCache(t *testing.T) {
 	)
 	gomock.InOrder(
 		repo.EXPECT().ListEffectiveRules(gomock.Any(), projectID, userID).Return([]*domain.PBACRule{
+			{PathPrefix: "", Permission: domain.PermissionAdmin},
 			{PathPrefix: "assets/textures", Permission: domain.PermissionRead},
 		}, nil),
 		repo.EXPECT().ListPathPermissions(gomock.Any(), projectID).Return(nil, nil),
@@ -349,7 +439,7 @@ func TestPermission_PathPermissionCRUD(t *testing.T) {
 	repo.EXPECT().ListPathPermissions(gomock.Any(), projectID).Return(nil, nil)
 
 	perm := NewPermission(repo)
-	ctx := context.Background()
+	ctx := permissionCtx(42, withAdmin())
 
 	_, err := perm.SetPathPermission(ctx, projectID, "/", domain.PermissionRead)
 	require.NoError(t, err)

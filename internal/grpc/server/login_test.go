@@ -49,12 +49,14 @@ type loginMockContainer struct {
 	auth *usecase.Auth
 }
 
-func (m *loginMockContainer) Auth() *usecase.Auth     { return m.auth }
-func (m *loginMockContainer) User() *usecase.User     { return nil }
-func (m *loginMockContainer) Branch() *usecase.Branch { return nil }
-func (m *loginMockContainer) Common() *usecase.Common { return nil }
-func (m *loginMockContainer) Push() *usecase.Push     { return nil }
-func (m *loginMockContainer) Chunk() *usecase.Chunk   { return nil }
+func (m *loginMockContainer) Auth() *usecase.Auth             { return m.auth }
+func (m *loginMockContainer) User() *usecase.User             { return nil }
+func (m *loginMockContainer) Branch() *usecase.Branch         { return nil }
+func (m *loginMockContainer) Common() *usecase.Common         { return nil }
+func (m *loginMockContainer) Push() *usecase.Push             { return nil }
+func (m *loginMockContainer) Chunk() *usecase.Chunk           { return nil }
+func (m *loginMockContainer) Permission() *usecase.Permission { return nil }
+func (m *loginMockContainer) Group() *usecase.Group           { return nil }
 
 func newLoginServer(t *testing.T, userRepo *stubUserRepo, authRepo *stubAuthRepo) *nipaServer {
 	t.Helper()

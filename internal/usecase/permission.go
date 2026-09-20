@@ -16,7 +16,7 @@ type pbacRepository interface {
 	ListEffectiveRules(ctx context.Context, projectID snow.ID, userID snow.ID) ([]*domain.PBACRule, error)
 	ListRulesByProject(ctx context.Context, projectID snow.ID) ([]*domain.PBACRule, error)
 	CreateRule(ctx context.Context, rule domain.PBACRule) (*domain.PBACRule, error)
-	DeleteRule(ctx context.Context, id int64) error
+	DeleteRuleForProject(ctx context.Context, projectID snow.ID, ruleID int64) error
 	ListPathPermissions(ctx context.Context, projectID snow.ID) ([]*domain.ProjectPathPermission, error)
 	UpsertPathPermission(ctx context.Context, perm domain.ProjectPathPermission) (*domain.ProjectPathPermission, error)
 	DeletePathPermission(ctx context.Context, projectID snow.ID, pathPrefix string) error
@@ -92,6 +92,31 @@ func (p *Permission) HasPathAccess(ctx context.Context, projectID snow.ID, path 
 	return p.Effective(ctx, projectID, path).Has(permission)
 }
 
+func (p *Permission) requireAdmin(ctx context.Context, projectID snow.ID) error {
+	claim, ok := domain.ClaimFromContext(ctx)
+	if !ok {
+		return domain.NewErrorNoPermission()
+	}
+	if claim.IsSuperAdmin || claim.IsAdmin {
+		return nil
+	}
+	if p.Effective(ctx, projectID, "").Has(domain.PermissionAdmin) {
+		return nil
+	}
+	return domain.NewErrorNoPermission()
+}
+
+func (p *Permission) requireOrgAdmin(ctx context.Context) error {
+	claim, ok := domain.ClaimFromContext(ctx)
+	if !ok {
+		return domain.NewErrorNoPermission()
+	}
+	if claim.IsSuperAdmin || claim.IsAdmin {
+		return nil
+	}
+	return domain.NewErrorNoPermission()
+}
+
 // CompileFilter resolves the caller's rules once so a manifest walk can prune
 // directories without a repository round-trip per path.
 func (p *Permission) CompileFilter(ctx context.Context, projectID snow.ID, permission domain.Permission) (*PathFilter, error) {
@@ -159,6 +184,13 @@ func (f *PathFilter) CanDescend(dir string) bool {
 }
 
 func (p *Permission) CreateRule(ctx context.Context, rule domain.PBACRule) (*domain.PBACRule, error) {
+	if rule.ProjectID != nil {
+		if err := p.requireAdmin(ctx, *rule.ProjectID); err != nil {
+			return nil, err
+		}
+	} else if err := p.requireOrgAdmin(ctx); err != nil {
+		return nil, err
+	}
 	if (rule.UserID == nil) == (rule.GroupID == nil) {
 		return nil, domain.NewErrorUser("rule must target exactly one user or group")
 	}
@@ -179,8 +211,11 @@ func (p *Permission) CreateRule(ctx context.Context, rule domain.PBACRule) (*dom
 	return created, nil
 }
 
-func (p *Permission) DeleteRule(ctx context.Context, id int64) error {
-	if err := p.repo.DeleteRule(ctx, id); err != nil {
+func (p *Permission) DeleteRule(ctx context.Context, projectID snow.ID, ruleID int64) error {
+	if err := p.requireAdmin(ctx, projectID); err != nil {
+		return err
+	}
+	if err := p.repo.DeleteRuleForProject(ctx, projectID, ruleID); err != nil {
 		return err
 	}
 	p.invalidateAll()
@@ -188,14 +223,56 @@ func (p *Permission) DeleteRule(ctx context.Context, id int64) error {
 }
 
 func (p *Permission) ListRules(ctx context.Context, projectID snow.ID) ([]*domain.PBACRule, error) {
+	if err := p.requireAdmin(ctx, projectID); err != nil {
+		return nil, err
+	}
 	return p.repo.ListRulesByProject(ctx, projectID)
 }
 
 func (p *Permission) ListPathPermissions(ctx context.Context, projectID snow.ID) ([]*domain.ProjectPathPermission, error) {
+	if err := p.requireAdmin(ctx, projectID); err != nil {
+		return nil, err
+	}
 	return p.repo.ListPathPermissions(ctx, projectID)
 }
 
+// MyPermissions returns the caller's effective project mask plus the rules and
+// defaults that produced it.
+func (p *Permission) MyPermissions(ctx context.Context, projectID snow.ID) (domain.Permission, []*domain.PBACRule, []*domain.ProjectPathPermission, error) {
+	claim, ok := domain.ClaimFromContext(ctx)
+	if !ok {
+		return 0, nil, nil, domain.NewErrorNoPermission()
+	}
+	if claim.IsSuperAdmin || claim.IsAdmin {
+		defaults, err := p.repo.ListPathPermissions(ctx, projectID)
+		if err != nil {
+			return 0, nil, nil, err
+		}
+		return domain.PermissionAll, nil, defaults, nil
+	}
+	set, err := p.load(ctx, projectID, claim.UserID)
+	if err != nil {
+		return 0, nil, nil, err
+	}
+	var mask domain.Permission
+	for _, rule := range set.rules {
+		mask |= rule.Permission
+	}
+	for _, def := range set.defaults {
+		mask |= def.Permission
+	}
+	return mask, set.rules, set.defaults, nil
+}
+
+// InvalidateAll drops cached rule sets after changes made outside this usecase.
+func (p *Permission) InvalidateAll() {
+	p.invalidateAll()
+}
+
 func (p *Permission) SetPathPermission(ctx context.Context, projectID snow.ID, pathPrefix string, permission domain.Permission) (*domain.ProjectPathPermission, error) {
+	if err := p.requireAdmin(ctx, projectID); err != nil {
+		return nil, err
+	}
 	prefix, err := domain.NormalizePathPrefix(pathPrefix)
 	if err != nil {
 		return nil, domain.NewErrorUser(err.Error())
@@ -213,6 +290,9 @@ func (p *Permission) SetPathPermission(ctx context.Context, projectID snow.ID, p
 }
 
 func (p *Permission) DeletePathPermission(ctx context.Context, projectID snow.ID, pathPrefix string) error {
+	if err := p.requireAdmin(ctx, projectID); err != nil {
+		return err
+	}
 	prefix, err := domain.NormalizePathPrefix(pathPrefix)
 	if err != nil {
 		return domain.NewErrorUser(err.Error())

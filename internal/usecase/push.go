@@ -84,6 +84,9 @@ func (p *Push) Push(ctx context.Context, projectID snow.ID, branchName, baseTree
 			return nil, domain.NewErrorUser(fmt.Sprintf("file hash mismatch for %q", f.Path))
 		}
 	}
+	if err := p.ensurePathWrites(ctx, projectID, files, removed); err != nil {
+		return nil, err
+	}
 
 	branch, err := p.branchRepo.GetBranchByName(ctx, projectID, branchName)
 	if domain.IsErrorNotFound(err) {
@@ -220,6 +223,20 @@ func (p *Push) toApplyRequest(ctx context.Context, projectID snow.ID, branch *do
 		queue = append(queue, n.Children...)
 	}
 	return req
+}
+
+func (p *Push) ensurePathWrites(ctx context.Context, projectID snow.ID, files []*domain.PushFile, removed []string) error {
+	for _, file := range files {
+		if !p.permUc.HasPathAccess(ctx, projectID, file.Path, domain.PermissionWrite) {
+			return domain.NewErrorNoPermission()
+		}
+	}
+	for _, path := range removed {
+		if !p.permUc.HasPathAccess(ctx, projectID, path, domain.PermissionWrite) {
+			return domain.NewErrorNoPermission()
+		}
+	}
+	return nil
 }
 
 func validatePushFiles(files []*domain.PushFile) error {
