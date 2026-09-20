@@ -277,6 +277,7 @@ type GetTreeManifestRequest struct {
 	Path          string                 `protobuf:"bytes,3,opt,name=path,proto3" json:"path,omitempty"`
 	TreeHash      *string                `protobuf:"bytes,4,opt,name=tree_hash,json=treeHash,proto3,oneof" json:"tree_hash,omitempty"`
 	Recursive     bool                   `protobuf:"varint,5,opt,name=recursive,proto3" json:"recursive,omitempty"`
+	Paths         []string               `protobuf:"bytes,6,rep,name=paths,proto3" json:"paths,omitempty"` // directory prefixes to include; empty = whole tree
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -344,6 +345,13 @@ func (x *GetTreeManifestRequest) GetRecursive() bool {
 		return x.Recursive
 	}
 	return false
+}
+
+func (x *GetTreeManifestRequest) GetPaths() []string {
+	if x != nil {
+		return x.Paths
+	}
+	return nil
 }
 
 type GetTreeManifestResponse struct {
@@ -2469,13 +2477,14 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"\ttree_hash\x18\x01 \x01(\tR\btreeHash\x12\x12\n" +
 	"\x04path\x18\x02 \x01(\tR\x04path\x120\n" +
 	"\tsub_trees\x18\x03 \x03(\v2\x13.greet.TreeManifestR\bsubTrees\x12%\n" +
-	"\x05files\x18\x04 \x03(\v2\x0f.greet.FileNodeR\x05files\"\xc3\x01\n" +
+	"\x05files\x18\x04 \x03(\v2\x0f.greet.FileNodeR\x05files\"\xd9\x01\n" +
 	"\x16GetTreeManifestRequest\x12/\n" +
 	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12\x16\n" +
 	"\x06branch\x18\x02 \x01(\tR\x06branch\x12\x12\n" +
 	"\x04path\x18\x03 \x01(\tR\x04path\x12 \n" +
 	"\ttree_hash\x18\x04 \x01(\tH\x00R\btreeHash\x88\x01\x01\x12\x1c\n" +
-	"\trecursive\x18\x05 \x01(\bR\trecursiveB\f\n" +
+	"\trecursive\x18\x05 \x01(\bR\trecursive\x12\x14\n" +
+	"\x05paths\x18\x06 \x03(\tR\x05pathsB\f\n" +
 	"\n" +
 	"_tree_hash\"c\n" +
 	"\x17GetTreeManifestResponse\x12\x16\n" +

@@ -14,7 +14,7 @@ import (
 
 type mergeClient interface {
 	Connect(ctx context.Context, host string) error
-	GetTreeNodeManifest(ctx context.Context, org, project, branch, path string) (*serverDomain.TreeNode, error)
+	GetTreeNodeManifest(ctx context.Context, org, project, branch string, paths []string) (*serverDomain.TreeNode, error)
 	DownloadChunks(ctx context.Context, hashes []serverDomain.Hash, onChunk func(h serverDomain.Hash, data []byte) error) error
 	GetMergeBase(ctx context.Context, org, project string, target, source domain.MergeRef) (*domain.MergeBaseInfo, error)
 	MergeFastForward(ctx context.Context, org, project, target, source string) (*serverDomain.Branch, error)
@@ -145,7 +145,7 @@ func (m *Merge) fastForward(ctx context.Context, root string, url *domain.NipaUr
 	if err != nil {
 		return nil, err
 	}
-	targetTree, err := m.client.GetTreeNodeManifest(ctx, url.Org, url.Project, targetBranch, "")
+	targetTree, err := m.client.GetTreeNodeManifest(ctx, url.Org, url.Project, targetBranch, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -163,11 +163,11 @@ func (m *Merge) fastForward(ctx context.Context, root string, url *domain.NipaUr
 
 func (m *Merge) trueMerge(ctx context.Context, root string, url *domain.NipaUrl, targetBranch, sourceBranch string, info *domain.MergeBaseInfo, opts MergeOptions) (*Outcome, error) {
 	base := merge.Flatten(info.MergeBaseTree)
-	targetTree, err := m.client.GetTreeNodeManifest(ctx, url.Org, url.Project, targetBranch, "")
+	targetTree, err := m.client.GetTreeNodeManifest(ctx, url.Org, url.Project, targetBranch, nil)
 	if err != nil {
 		return nil, err
 	}
-	sourceTree, err := m.client.GetTreeNodeManifest(ctx, url.Org, url.Project, sourceBranch, "")
+	sourceTree, err := m.client.GetTreeNodeManifest(ctx, url.Org, url.Project, sourceBranch, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -237,7 +237,7 @@ func (m *Merge) abort(ctx context.Context, root string, url *domain.NipaUrl, bra
 	if err := m.auth.MakeSureLoggedIn(ctx, url.Host); err != nil {
 		return nil, err
 	}
-	targetTree, err := m.client.GetTreeNodeManifest(ctx, url.Org, url.Project, branch, "")
+	targetTree, err := m.client.GetTreeNodeManifest(ctx, url.Org, url.Project, branch, nil)
 	if err != nil {
 		return nil, err
 	}

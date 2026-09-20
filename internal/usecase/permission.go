@@ -2,7 +2,6 @@ package usecase
 
 import (
 	"context"
-	"strings"
 	"sync"
 	"time"
 
@@ -93,25 +92,70 @@ func (p *Permission) HasPathAccess(ctx context.Context, projectID snow.ID, path 
 	return p.Effective(ctx, projectID, path).Has(permission)
 }
 
-// FilterTree returns a copy of root containing only the files the caller may
-// access with permission. Directories needed to reach a deeper grant are kept
-// as empty trail nodes; everything else is pruned.
-func (p *Permission) FilterTree(ctx context.Context, projectID snow.ID, root *domain.TreeNode, permission domain.Permission) (*domain.TreeNode, error) {
-	if root == nil {
-		return nil, nil
-	}
+// CompileFilter resolves the caller's rules once so a manifest walk can prune
+// directories without a repository round-trip per path.
+func (p *Permission) CompileFilter(ctx context.Context, projectID snow.ID, permission domain.Permission) (*PathFilter, error) {
 	claim, ok := domain.ClaimFromContext(ctx)
 	if !ok {
 		return nil, domain.NewErrorNoPermission()
 	}
 	if claim.IsSuperAdmin || claim.IsAdmin {
-		return root, nil
+		return AllowAllFilter(), nil
 	}
 	set, err := p.load(ctx, projectID, claim.UserID)
 	if err != nil {
 		return nil, err
 	}
-	return set.filterNode(root, "", permission), nil
+	return &PathFilter{set: set, permission: permission}, nil
+}
+
+// PathFilter answers path visibility questions from a compiled rule set.
+type PathFilter struct {
+	all        bool
+	set        *permissionSet
+	permission domain.Permission
+}
+
+// AllowAllFilter returns a filter that permits every path.
+func AllowAllFilter() *PathFilter {
+	return &PathFilter{all: true}
+}
+
+// All reports whether the filter permits every path.
+func (f *PathFilter) All() bool {
+	return f != nil && f.all
+}
+
+// Allow reports whether path carries every bit of the filter's permission.
+func (f *PathFilter) Allow(path string) bool {
+	if f == nil {
+		return false
+	}
+	if f.all {
+		return true
+	}
+	return f.set.effective(path).Has(f.permission)
+}
+
+// CanDescend reports whether any path below dir could be allowed.
+func (f *PathFilter) CanDescend(dir string) bool {
+	if f == nil {
+		return false
+	}
+	if f.all {
+		return true
+	}
+	for _, rule := range f.set.rules {
+		if domain.PrefixCanDescend(rule.PathPrefix, dir) {
+			return true
+		}
+	}
+	for _, def := range f.set.defaults {
+		if domain.PrefixCanDescend(def.PathPrefix, dir) {
+			return true
+		}
+	}
+	return false
 }
 
 func (p *Permission) CreateRule(ctx context.Context, rule domain.PBACRule) (*domain.PBACRule, error) {
@@ -266,38 +310,4 @@ func (s *permissionSet) effective(path string) domain.Permission {
 		mask |= deepest.Permission
 	}
 	return mask
-}
-
-func (s *permissionSet) filterNode(node *domain.TreeNode, path string, permission domain.Permission) *domain.TreeNode {
-	pruned := *node
-	pruned.FileChildren = nil
-	for _, file := range node.FileChildren {
-		if s.effective(joinTreePath(path, file.Name)).Has(permission) {
-			pruned.FileChildren = append(pruned.FileChildren, file)
-		}
-	}
-
-	pruned.TreeChildren = nil
-	for _, child := range node.TreeChildren {
-		childPath := joinTreePath(path, child.Name)
-		if prunedChild := s.filterNode(child, childPath, permission); prunedChild != nil {
-			pruned.TreeChildren = append(pruned.TreeChildren, prunedChild)
-		}
-	}
-
-	if path != "" && len(pruned.FileChildren) == 0 && len(pruned.TreeChildren) == 0 {
-		return nil
-	}
-	return &pruned
-}
-
-func joinTreePath(parent, name string) string {
-	name = strings.Trim(name, "/")
-	if parent == "" {
-		return name
-	}
-	if name == "" {
-		return parent
-	}
-	return parent + "/" + name
 }

@@ -38,6 +38,7 @@ message GetTreeManifestRequest {
     string path = 3;
     optional string tree_hash = 4;
     bool recursive = 5;
+    repeated string paths = 6; // directory prefixes to include; empty = whole tree
 }
 
 message GetTreeManifestResponse {

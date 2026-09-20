@@ -74,7 +74,7 @@ func (fakeRepoInterface) GetBranchByName(_ context.Context, _, _, name string) (
 	return &serverDomain.Branch{Name: name}, nil
 }
 
-func (fakeRepoInterface) GetTreeNodeManifest(_ context.Context, _, _, _, _ string) (*serverDomain.TreeNode, error) {
+func (fakeRepoInterface) GetTreeNodeManifest(_ context.Context, _, _, _ string, _ []string) (*serverDomain.TreeNode, error) {
 	return &serverDomain.TreeNode{}, nil
 }
 

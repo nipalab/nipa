@@ -123,7 +123,11 @@ func (n *nipaServer) GetTreeManifest(ctx context.Context, req *pb.GetTreeManifes
 		return nil, handleError(err)
 	}
 
-	root, err := n.uc.Branch().GetTreeManifest(ctx, project.ID, req.Branch, req.Path, req.GetTreeHash(), req.Recursive)
+	paths := req.GetPaths()
+	if len(paths) == 0 && req.GetPath() != "" {
+		paths = []string{req.GetPath()}
+	}
+	root, err := n.uc.Branch().GetTreeManifest(ctx, project.ID, req.Branch, paths, req.GetTreeHash(), req.Recursive)
 	if err != nil {
 		return nil, handleError(err)
 	}

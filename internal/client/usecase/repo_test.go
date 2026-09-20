@@ -48,7 +48,7 @@ func (s *stubRepoInterface) GetBranchByName(_ context.Context, _, _, name string
 	return s.branch, s.branchErr
 }
 
-func (s *stubRepoInterface) GetTreeNodeManifest(_ context.Context, _, _, _, _ string) (*serverDomain.TreeNode, error) {
+func (s *stubRepoInterface) GetTreeNodeManifest(_ context.Context, _, _, _ string, _ []string) (*serverDomain.TreeNode, error) {
 	return s.manifest, s.manifestErr
 }
 

@@ -16,7 +16,7 @@ import (
 func newPushFixture(t *testing.T) (*Push, *MockpermissionUsecase, *MockbranchRepository, *MockpushRepository, context.Context) {
 	t.Helper()
 	ctrl := gomock.NewController(t)
-	perm := NewMockpermissionUsecase(ctrl)
+	perm := newAllowAllPerm(ctrl)
 	repo := NewMockbranchRepository(ctrl)
 	pushRepo := NewMockpushRepository(ctrl)
 

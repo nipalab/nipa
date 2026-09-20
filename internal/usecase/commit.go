@@ -22,9 +22,14 @@ func (b *Branch) GetCommit(ctx context.Context, projectID snow.ID, commitID snow
 	if err != nil {
 		return nil, nil, err
 	}
-	if err := b.loadTreeManifest(ctx, root, true); err != nil {
+	filter, err := b.permUc.CompileFilter(ctx, projectID, domain.PermissionRead)
+	if err != nil {
 		return nil, nil, err
 	}
+	if err := b.loadTreeManifest(ctx, root, "", true, filter, nil); err != nil {
+		return nil, nil, err
+	}
+	rehashTree(root)
 	return commit, root, nil
 }
 

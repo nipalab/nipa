@@ -44,7 +44,7 @@ func (f *fakePushClient) UploadChunks(_ context.Context, chunks []*serverDomain.
 	return len(chunks), 0, nil
 }
 
-func (f *fakePushClient) GetTreeNodeManifest(_ context.Context, _, _, _, _ string) (*serverDomain.TreeNode, error) {
+func (f *fakePushClient) GetTreeNodeManifest(_ context.Context, _, _, _ string, _ []string) (*serverDomain.TreeNode, error) {
 	return &serverDomain.TreeNode{Name: "root"}, nil
 }
 

@@ -82,7 +82,7 @@ func (s *stubPushClient) UploadChunks(_ context.Context, chunks []*serverDomain.
 	return s.uploaded, s.skipped, s.uploadErr
 }
 
-func (s *stubPushClient) GetTreeNodeManifest(_ context.Context, _, _, _, _ string) (*serverDomain.TreeNode, error) {
+func (s *stubPushClient) GetTreeNodeManifest(_ context.Context, _, _, _ string, _ []string) (*serverDomain.TreeNode, error) {
 	return s.manifest, s.manifestErr
 }
 

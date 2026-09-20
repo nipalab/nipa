@@ -53,7 +53,7 @@ func (s *stubMergeClient) Connect(_ context.Context, host string) error {
 	return s.connectErr
 }
 
-func (s *stubMergeClient) GetTreeNodeManifest(_ context.Context, _, _, branch, _ string) (*serverDomain.TreeNode, error) {
+func (s *stubMergeClient) GetTreeNodeManifest(_ context.Context, _, _, branch string, _ []string) (*serverDomain.TreeNode, error) {
 	s.manifestFor = append(s.manifestFor, branch)
 	if (s.treeErrOn > 0 && len(s.manifestFor) == s.treeErrOn) || (s.treeErrOn == 0 && s.treeErr != nil) {
 		return nil, s.treeErr

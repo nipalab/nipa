@@ -37,6 +37,27 @@ func newTestPermission(t *testing.T, rules []*domain.PBACRule, defaults []*domai
 	return NewPermission(repo)
 }
 
+func newAllowAllPerm(ctrl *gomock.Controller) *MockpermissionUsecase {
+	perm := NewMockpermissionUsecase(ctrl)
+	perm.EXPECT().
+		CompileFilter(gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(AllowAllFilter(), nil).
+		AnyTimes()
+	return perm
+}
+
+func restrictedPerm(ctrl *gomock.Controller, rules []*domain.PBACRule, defaults []*domain.ProjectPathPermission) *MockpermissionUsecase {
+	perm := NewMockpermissionUsecase(ctrl)
+	perm.EXPECT().
+		CompileFilter(gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(&PathFilter{
+			set:        &permissionSet{rules: rules, defaults: defaults},
+			permission: domain.PermissionRead,
+		}, nil).
+		AnyTimes()
+	return perm
+}
+
 func TestPermission_HasProjectAccess(t *testing.T) {
 	const projectID snow.ID = 1
 	const userID snow.ID = 42
@@ -165,88 +186,63 @@ func TestPermission_Effective_NoClaim(t *testing.T) {
 	require.Equal(t, domain.Permission(0), perm.Effective(context.Background(), 1, "any/path"))
 }
 
-func newTestTree() *domain.TreeNode {
-	return &domain.TreeNode{
-		Name: "root",
-		FileChildren: []*domain.File{
-			{Name: "README.md"},
-		},
-		TreeChildren: []*domain.TreeNode{
-			{
-				Name: "assets",
-				FileChildren: []*domain.File{
-					{Name: "logo.png"},
-				},
-				TreeChildren: []*domain.TreeNode{
-					{
-						Name: "textures",
-						FileChildren: []*domain.File{
-							{Name: "wood.png"},
-						},
-					},
-					{
-						Name: "secret",
-						FileChildren: []*domain.File{
-							{Name: "key.bin"},
-						},
-					},
-				},
-			},
-			{
-				Name: "src",
-				FileChildren: []*domain.File{
-					{Name: "main.go"},
-				},
-			},
-		},
-	}
-}
-
-func TestPermission_FilterTree(t *testing.T) {
+func TestPermission_CompileFilter(t *testing.T) {
 	const projectID snow.ID = 1
 	const userID snow.ID = 42
-	ctx := permissionCtx(userID)
 
 	rules := []*domain.PBACRule{
 		{PathPrefix: "assets/textures", Permission: domain.PermissionRead},
 	}
 	perm := newTestPermission(t, rules, nil)
 
-	pruned, err := perm.FilterTree(ctx, projectID, newTestTree(), domain.PermissionRead)
+	filter, err := perm.CompileFilter(permissionCtx(userID), projectID, domain.PermissionRead)
 	require.NoError(t, err)
-	require.NotNil(t, pruned)
-
-	require.Empty(t, pruned.FileChildren)
-	require.Len(t, pruned.TreeChildren, 1)
-
-	assets := pruned.TreeChildren[0]
-	require.Equal(t, "assets", assets.Name)
-	require.Empty(t, assets.FileChildren, "trail node keeps no files")
-	require.Len(t, assets.TreeChildren, 1)
-
-	textures := assets.TreeChildren[0]
-	require.Equal(t, "textures", textures.Name)
-	require.Len(t, textures.FileChildren, 1)
-	require.Equal(t, "wood.png", textures.FileChildren[0].Name)
-	require.Empty(t, textures.TreeChildren)
+	require.False(t, filter.All())
+	require.True(t, filter.Allow("assets/textures/wood.png"))
+	require.False(t, filter.Allow("assets/logo.png"))
+	require.True(t, filter.CanDescend(""))
+	require.True(t, filter.CanDescend("assets"))
+	require.True(t, filter.CanDescend("assets/textures"))
+	require.False(t, filter.CanDescend("src"))
 }
 
-func TestPermission_FilterTree_AdminKeepsTree(t *testing.T) {
-	perm := newTestPermission(t, nil, nil)
-	root := newTestTree()
+func TestPermission_CompileFilter_Defaults(t *testing.T) {
+	defs := []*domain.ProjectPathPermission{
+		{PathPrefix: "assets", Permission: domain.PermissionRead},
+	}
+	perm := newTestPermission(t, nil, defs)
 
-	pruned, err := perm.FilterTree(permissionCtx(42, withSuperAdmin()), 1, root, domain.PermissionRead)
+	filter, err := perm.CompileFilter(permissionCtx(42), 1, domain.PermissionRead)
 	require.NoError(t, err)
-	require.Same(t, root, pruned)
+	require.True(t, filter.Allow("assets/logo.png"))
+	require.False(t, filter.Allow("src/main.go"))
+	require.True(t, filter.CanDescend("assets"))
+	require.False(t, filter.CanDescend("src"))
 }
 
-func TestPermission_FilterTree_NoClaim(t *testing.T) {
+func TestPermission_CompileFilter_Admin(t *testing.T) {
 	perm := newTestPermission(t, nil, nil)
 
-	pruned, err := perm.FilterTree(context.Background(), 1, newTestTree(), domain.PermissionRead)
-	require.Error(t, err)
+	filter, err := perm.CompileFilter(permissionCtx(42, withAdmin()), 1, domain.PermissionRead)
+	require.NoError(t, err)
+	require.True(t, filter.All())
+	require.True(t, filter.Allow("any/path"))
+	require.True(t, filter.CanDescend("any"))
+}
+
+func TestPermission_CompileFilter_NoClaim(t *testing.T) {
+	perm := newTestPermission(t, nil, nil)
+
+	filter, err := perm.CompileFilter(context.Background(), 1, domain.PermissionRead)
 	require.True(t, domain.IsErrorNoPermission(err))
-	require.Nil(t, pruned)
+	require.Nil(t, filter)
+}
+
+func TestAllowAllFilter(t *testing.T) {
+	filter := AllowAllFilter()
+	require.True(t, filter.All())
+	require.True(t, filter.Allow("any/path"))
+	require.True(t, filter.CanDescend("any"))
 }
 
 func TestPermission_CreateRule_Validation(t *testing.T) {

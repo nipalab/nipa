@@ -15,7 +15,7 @@ import (
 type repoInterface interface {
 	GetDefaultBranch(ctx context.Context, org, project string) (*serverDomain.Branch, error)
 	GetBranchByName(ctx context.Context, org, project, name string) (*serverDomain.Branch, error)
-	GetTreeNodeManifest(ctx context.Context, org, project, branch, path string) (*serverDomain.TreeNode, error)
+	GetTreeNodeManifest(ctx context.Context, org, project, branch string, paths []string) (*serverDomain.TreeNode, error)
 	ListBranches(ctx context.Context, org, project string) ([]*serverDomain.Branch, error)
 	CreateBranch(ctx context.Context, org, project, name, fromBranch, fromCommitID, fromCommitHash string) (*serverDomain.Branch, error)
 	DownloadChunks(ctx context.Context, hashes []serverDomain.Hash, onChunk func(h serverDomain.Hash, data []byte) error) error
@@ -76,7 +76,11 @@ func (r *Repo) Clone(ctx context.Context, url, host, org, project, branch, path,
 		}
 		headCommitID = commitIDString(domainBranch)
 	}
-	root, err := r.repoInterface.GetTreeNodeManifest(ctx, org, project, branch, path)
+	var paths []string
+	if path != "" && path != "/" {
+		paths = []string{path}
+	}
+	root, err := r.repoInterface.GetTreeNodeManifest(ctx, org, project, branch, paths)
 	if err != nil {
 		return err
 	}

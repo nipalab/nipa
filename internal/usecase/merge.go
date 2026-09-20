@@ -99,7 +99,7 @@ func (b *Branch) GetMergeBase(ctx context.Context, projectID snow.ID, target, so
 	if baseCommitID == nil {
 		return info, nil
 	}
-	tree, err := b.commitTreeManifest(ctx, *baseCommitID, true)
+	tree, err := b.commitTreeManifest(ctx, projectID, *baseCommitID, true)
 	if err != nil {
 		return nil, err
 	}
@@ -213,7 +213,7 @@ func commitParents(c *domain.Commit) []snow.ID {
 	return out
 }
 
-func (b *Branch) commitTreeManifest(ctx context.Context, commitID snow.ID, recursive bool) (*domain.TreeNode, error) {
+func (b *Branch) commitTreeManifest(ctx context.Context, projectID snow.ID, commitID snow.ID, recursive bool) (*domain.TreeNode, error) {
 	commit, err := b.branchRepo.GetCommit(ctx, commitID)
 	if err != nil {
 		return nil, err
@@ -222,8 +222,13 @@ func (b *Branch) commitTreeManifest(ctx context.Context, commitID snow.ID, recur
 	if err != nil {
 		return nil, err
 	}
-	if err := b.loadTreeManifest(ctx, root, recursive); err != nil {
+	filter, err := b.permUc.CompileFilter(ctx, projectID, domain.PermissionRead)
+	if err != nil {
 		return nil, err
 	}
+	if err := b.loadTreeManifest(ctx, root, "", recursive, filter, nil); err != nil {
+		return nil, err
+	}
+	rehashTree(root)
 	return root, nil
 }

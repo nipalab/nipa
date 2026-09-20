@@ -19,7 +19,7 @@ type revertClient interface {
 	Connect(ctx context.Context, host string) error
 	GetCommit(ctx context.Context, org, project, commitID string) (*domain.CommitDetail, error)
 	WalkCommits(ctx context.Context, org, project, startCommitID, stopCommitID string, limit int) ([]*domain.CommitWalkEntry, error)
-	GetTreeNodeManifest(ctx context.Context, org, project, branch, path string) (*serverDomain.TreeNode, error)
+	GetTreeNodeManifest(ctx context.Context, org, project, branch string, paths []string) (*serverDomain.TreeNode, error)
 	DownloadChunks(ctx context.Context, hashes []serverDomain.Hash, onChunk func(h serverDomain.Hash, data []byte) error) error
 }
 
@@ -120,7 +120,7 @@ func (r *Revert) Run(ctx context.Context, root, target string, opts RevertOption
 		return nil, domain.NewUserError("--message can only be used when reverting a single commit")
 	}
 
-	headTree, err := r.client.GetTreeNodeManifest(ctx, nipaUrl.Org, nipaUrl.Project, cfg.Branch, "")
+	headTree, err := r.client.GetTreeNodeManifest(ctx, nipaUrl.Org, nipaUrl.Project, cfg.Branch, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -327,7 +327,7 @@ func (r *Revert) resume(ctx context.Context, root string, url *domain.NipaUrl, b
 			return nil, err
 		}
 	} else {
-		headTree, err := r.client.GetTreeNodeManifest(ctx, url.Org, url.Project, branch, "")
+		headTree, err := r.client.GetTreeNodeManifest(ctx, url.Org, url.Project, branch, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -351,7 +351,7 @@ func (r *Revert) resume(ctx context.Context, root string, url *domain.NipaUrl, b
 			}
 			state.CurrentTreeHash = result.TreeHash.String()
 			committed = true
-			headTree, err = r.client.GetTreeNodeManifest(ctx, url.Org, url.Project, branch, "")
+			headTree, err = r.client.GetTreeNodeManifest(ctx, url.Org, url.Project, branch, nil)
 			if err != nil {
 				return nil, err
 			}
@@ -392,7 +392,7 @@ func (r *Revert) abort(ctx context.Context, root string, url *domain.NipaUrl, br
 	if err := r.auth.MakeSureLoggedIn(ctx, url.Host); err != nil {
 		return nil, err
 	}
-	tree, err := r.client.GetTreeNodeManifest(ctx, url.Org, url.Project, branch, "")
+	tree, err := r.client.GetTreeNodeManifest(ctx, url.Org, url.Project, branch, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -431,7 +431,7 @@ func (r *Revert) skip(ctx context.Context, root string, url *domain.NipaUrl, bra
 	if err := r.auth.MakeSureLoggedIn(ctx, url.Host); err != nil {
 		return nil, err
 	}
-	headTree, err := r.client.GetTreeNodeManifest(ctx, url.Org, url.Project, branch, "")
+	headTree, err := r.client.GetTreeNodeManifest(ctx, url.Org, url.Project, branch, nil)
 	if err != nil {
 		return nil, err
 	}

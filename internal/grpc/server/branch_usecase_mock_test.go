@@ -16,6 +16,7 @@ import (
 
 	domain "github.com/nipalab/nipa/internal/domain"
 	snow "github.com/nipalab/nipa/internal/snow"
+	usecase "github.com/nipalab/nipa/internal/usecase"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -43,19 +44,19 @@ func (m *MockpermissionUsecase) EXPECT() *MockpermissionUsecaseMockRecorder {
 	return m.recorder
 }
 
-// FilterTree mocks base method.
-func (m *MockpermissionUsecase) FilterTree(ctx context.Context, projectID snow.ID, root *domain.TreeNode, permission domain.Permission) (*domain.TreeNode, error) {
+// CompileFilter mocks base method.
+func (m *MockpermissionUsecase) CompileFilter(ctx context.Context, projectID snow.ID, permission domain.Permission) (*usecase.PathFilter, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "FilterTree", ctx, projectID, root, permission)
-	ret0, _ := ret[0].(*domain.TreeNode)
+	ret := m.ctrl.Call(m, "CompileFilter", ctx, projectID, permission)
+	ret0, _ := ret[0].(*usecase.PathFilter)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// FilterTree indicates an expected call of FilterTree.
-func (mr *MockpermissionUsecaseMockRecorder) FilterTree(ctx, projectID, root, permission any) *gomock.Call {
+// CompileFilter indicates an expected call of CompileFilter.
+func (mr *MockpermissionUsecaseMockRecorder) CompileFilter(ctx, projectID, permission any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FilterTree", reflect.TypeOf((*MockpermissionUsecase)(nil).FilterTree), ctx, projectID, root, permission)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CompileFilter", reflect.TypeOf((*MockpermissionUsecase)(nil).CompileFilter), ctx, projectID, permission)
 }
 
 // HasPathAccess mocks base method.

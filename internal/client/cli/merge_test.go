@@ -34,7 +34,7 @@ func (f *fakeMergeClient) Connect(_ context.Context, _ string) error {
 	return nil
 }
 
-func (f *fakeMergeClient) GetTreeNodeManifest(_ context.Context, _, _, branch, _ string) (*serverDomain.TreeNode, error) {
+func (f *fakeMergeClient) GetTreeNodeManifest(_ context.Context, _, _, branch string, _ []string) (*serverDomain.TreeNode, error) {
 	if f.treeErr != nil {
 		return nil, f.treeErr
 	}

@@ -54,7 +54,7 @@ func (s *stubRevertClient) WalkCommits(_ context.Context, _, _, start, stop stri
 	return s.walkEntries, s.walkErr
 }
 
-func (s *stubRevertClient) GetTreeNodeManifest(_ context.Context, _, _, _, _ string) (*serverDomain.TreeNode, error) {
+func (s *stubRevertClient) GetTreeNodeManifest(_ context.Context, _, _, _ string, _ []string) (*serverDomain.TreeNode, error) {
 	s.headCalls++
 	if s.headErrOn > 0 && s.headCalls >= s.headErrOn {
 		return nil, s.headErr

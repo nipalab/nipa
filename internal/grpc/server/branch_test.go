@@ -10,11 +10,14 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/grpc/pb"
 	"github.com/nipalab/nipa/internal/snow"
+	"github.com/nipalab/nipa/internal/treehash"
 	"github.com/nipalab/nipa/internal/usecase"
 )
 
@@ -97,6 +100,10 @@ func newTestBranchUc(t *testing.T) (*usecase.Branch, *MockpermissionUsecase, *Mo
 	t.Helper()
 	ctrl := gomock.NewController(t)
 	perm := NewMockpermissionUsecase(ctrl)
+	perm.EXPECT().
+		CompileFilter(gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(usecase.AllowAllFilter(), nil).
+		AnyTimes()
 	repo := NewMockbranchRepository(ctrl)
 	node, err := snow.NewNode(1)
 	require.NoError(t, err)
@@ -517,14 +524,14 @@ func TestGetTreeManifest_Success(t *testing.T) {
 	repo.EXPECT().
 		ListFilesByTree(gomock.Any(), int64(100)).
 		Return([]*domain.File{
-			{ID: 1, Name: "a.txt", Mode: 0o644, SizeBytes: 10, Chunks: []domain.Chunk{{ID: 1, Hash: hash}}},
+			{ID: 1, Name: "a.txt", Mode: 0o644, SizeBytes: 10, Hash: hash, Chunks: []domain.Chunk{{ID: 1, Hash: hash}}},
 		}, nil)
 	repo.EXPECT().
 		ListTreeChildren(gomock.Any(), int64(100)).
 		Return([]*domain.TreeNode{{ID: 200, Name: "assets", Hash: hash}}, nil)
 	repo.EXPECT().
 		ListFilesByTree(gomock.Any(), int64(200)).
-		Return(nil, nil)
+		Return([]*domain.File{{ID: 2, Name: "logo.png", Mode: 0o644, Hash: hash}}, nil)
 	repo.EXPECT().
 		ListTreeChildren(gomock.Any(), int64(200)).
 		Return(nil, nil)
@@ -534,10 +541,16 @@ func TestGetTreeManifest_Success(t *testing.T) {
 		Branch:    "main",
 		Recursive: true,
 	})
+	wantAssetsHash := treehash.TreeHash([]treehash.FileEntry{{Name: "logo.png", Hash: hash, Mode: 0o644}}, nil)
+	wantRootHash := treehash.TreeHash(
+		[]treehash.FileEntry{{Name: "a.txt", Hash: hash, Mode: 0o644}},
+		[]treehash.TreeEntry{{Name: "assets", Hash: wantAssetsHash}},
+	)
+
 	require.NoError(t, err)
 	require.Equal(t, "main", resp.Branch)
 	require.NotNil(t, resp.RootTree)
-	require.Equal(t, hash.String(), resp.RootTree.TreeHash)
+	require.Equal(t, wantRootHash.String(), resp.RootTree.TreeHash)
 	require.Equal(t, "root", resp.RootTree.Path)
 	require.Len(t, resp.RootTree.Files, 1)
 	require.Equal(t, "a.txt", resp.RootTree.Files[0].Path)
@@ -546,7 +559,7 @@ func TestGetTreeManifest_Success(t *testing.T) {
 	require.Equal(t, []string{hash.String()}, resp.RootTree.Files[0].ChunkHashes)
 	require.Len(t, resp.RootTree.SubTrees, 1)
 	require.Equal(t, "assets", resp.RootTree.SubTrees[0].Path)
-	require.Equal(t, hash.String(), resp.RootTree.SubTrees[0].TreeHash)
+	require.Equal(t, wantAssetsHash.String(), resp.RootTree.SubTrees[0].TreeHash)
 }
 
 func TestGetTreeManifest_NotRecursive(t *testing.T) {
@@ -580,6 +593,38 @@ func TestGetTreeManifest_NotRecursive(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, resp.RootTree)
 	require.Empty(t, resp.RootTree.SubTrees)
+}
+
+func TestGetTreeManifest_LegacyPathFallback(t *testing.T) {
+	branch, perm, repo := newTestBranchUc(t)
+	srv := New(newMockUsecaseContainer(t, branch))
+
+	projectID := snow.ID(42)
+	commitID := snow.ID(9)
+
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), projectID, domain.PermissionRead).
+		Return(true)
+
+	repo.EXPECT().
+		GetBranchByName(gomock.Any(), projectID, "main").
+		Return(&domain.Branch{ID: 1, ProjectID: projectID, Name: "main", CommitID: &commitID}, nil)
+	repo.EXPECT().
+		GetCommit(gomock.Any(), commitID).
+		Return(&domain.Commit{ID: commitID, TreeID: 100}, nil)
+	repo.EXPECT().
+		GetTreeNode(gomock.Any(), int64(100)).
+		Return(&domain.TreeNode{ID: 100, Name: "root"}, nil)
+	repo.EXPECT().
+		GetTreeChildByName(gomock.Any(), int64(100), "missing").
+		Return(nil, domain.NewErrorRecordNotFound())
+
+	_, err := srv.GetTreeManifest(context.Background(), &pb.GetTreeManifestRequest{
+		Context: &pb.ProjectContext{Org: "org", Project: "proj"},
+		Branch:  "main",
+		Path:    "missing",
+	})
+	require.Equal(t, codes.NotFound, status.Code(err))
 }
 
 func TestGetTreeManifest_TreeHashMatch(t *testing.T) {

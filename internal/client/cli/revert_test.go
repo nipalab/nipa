@@ -38,7 +38,7 @@ func (f *fakeRevertClient) WalkCommits(_ context.Context, _, _, _, _ string, _ i
 	return f.walk, nil
 }
 
-func (f *fakeRevertClient) GetTreeNodeManifest(_ context.Context, _, _, _, _ string) (*serverDomain.TreeNode, error) {
+func (f *fakeRevertClient) GetTreeNodeManifest(_ context.Context, _, _, _ string, _ []string) (*serverDomain.TreeNode, error) {
 	return f.headTree, nil
 }
 

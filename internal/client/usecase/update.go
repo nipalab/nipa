@@ -16,7 +16,7 @@ import (
 type updateClient interface {
 	Connect(ctx context.Context, host string) error
 	GetBranchByName(ctx context.Context, org, project, name string) (*domain.Branch, error)
-	GetTreeNodeManifest(ctx context.Context, org, project, branch, path string) (*domain.TreeNode, error)
+	GetTreeNodeManifest(ctx context.Context, org, project, branch string, paths []string) (*domain.TreeNode, error)
 	DownloadChunks(ctx context.Context, hashes []domain.Hash, onChunk func(h domain.Hash, data []byte) error) error
 }
 
@@ -103,7 +103,7 @@ func (u *Update) Run(ctx context.Context, root string, progress ...DownloadProgr
 		baseByPath[f.Path] = f
 	}
 
-	tree, err := u.client.GetTreeNodeManifest(ctx, nu.Org, nu.Project, cfg.Branch, "")
+	tree, err := u.client.GetTreeNodeManifest(ctx, nu.Org, nu.Project, cfg.Branch, nil)
 	if err != nil {
 		return err
 	}
@@ -162,7 +162,7 @@ func (u *Update) Switch(ctx context.Context, root, branch string, progress ...Do
 		return err
 	}
 
-	tree, err := u.client.GetTreeNodeManifest(ctx, nu.Org, nu.Project, branch, "")
+	tree, err := u.client.GetTreeNodeManifest(ctx, nu.Org, nu.Project, branch, nil)
 	if err != nil {
 		return err
 	}

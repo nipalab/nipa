@@ -377,7 +377,7 @@ func TestEndToEnd_CreateBranch(t *testing.T) {
 	stagePath(t, target, "a.txt")
 	require.NoError(t, pusher.Run(ctx, target, "seed main"))
 
-	mainManifest, err := grpcClient.GetTreeNodeManifest(ctx, e2eOrgSlug, e2eProjectSlug, "main", "")
+	mainManifest, err := grpcClient.GetTreeNodeManifest(ctx, e2eOrgSlug, e2eProjectSlug, "main", nil)
 	require.NoError(t, err)
 	require.NotNil(t, mainManifest)
 
@@ -398,7 +398,7 @@ func TestEndToEnd_CreateBranch(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, pinnedID, *created.CommitID, "a branch created with commit+branch must fork at the exact pinned commit")
 
-	featureManifest, err := grpcClient.GetTreeNodeManifest(ctx, e2eOrgSlug, e2eProjectSlug, "feature", "")
+	featureManifest, err := grpcClient.GetTreeNodeManifest(ctx, e2eOrgSlug, e2eProjectSlug, "feature", nil)
 	require.NoError(t, err)
 	require.NotNil(t, featureManifest)
 	require.Equal(t, mainManifest.Hash, featureManifest.Hash, "a forked branch must expose the same tree as its source")
@@ -457,7 +457,7 @@ func TestEndToEnd_SwitchBranch(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "feature", created.Name)
 
-	featureManifest, err := grpcClient.GetTreeNodeManifest(ctx, e2eOrgSlug, e2eProjectSlug, "feature", "")
+	featureManifest, err := grpcClient.GetTreeNodeManifest(ctx, e2eOrgSlug, e2eProjectSlug, "feature", nil)
 	require.NoError(t, err)
 	require.NotNil(t, featureManifest)
 

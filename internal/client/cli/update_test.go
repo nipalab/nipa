@@ -35,8 +35,12 @@ func (f *fakeUpdateClient) GetBranchByName(_ context.Context, org, project, name
 	return &serverDomain.Branch{Name: name}, nil
 }
 
-func (f *fakeUpdateClient) GetTreeNodeManifest(_ context.Context, org, project, branch, path string) (*serverDomain.TreeNode, error) {
-	f.org, f.project, f.branch, f.path = org, project, branch, path
+func (f *fakeUpdateClient) GetTreeNodeManifest(_ context.Context, org, project, branch string, paths []string) (*serverDomain.TreeNode, error) {
+	f.org, f.project, f.branch = org, project, branch
+	f.path = ""
+	if len(paths) > 0 {
+		f.path = paths[0]
+	}
 	if f.manifest == nil {
 		return &serverDomain.TreeNode{Name: "root"}, nil
 	}

@@ -9,6 +9,7 @@ import (
 
 	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/snow"
+	"github.com/nipalab/nipa/internal/treehash"
 )
 
 func testCommit(id, projectID snow.ID, parents ...snow.ID) *domain.Commit {
@@ -34,7 +35,7 @@ func walkIDs(commits []*domain.Commit) []snow.ID {
 
 func TestBranch_GetCommit_NoPermission(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	perm := NewMockpermissionUsecase(ctrl)
+	perm := newAllowAllPerm(ctrl)
 	repo := NewMockbranchRepository(ctrl)
 
 	perm.EXPECT().
@@ -48,7 +49,7 @@ func TestBranch_GetCommit_NoPermission(t *testing.T) {
 
 func TestBranch_GetCommit_NotFound(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	perm := NewMockpermissionUsecase(ctrl)
+	perm := newAllowAllPerm(ctrl)
 	repo := NewMockbranchRepository(ctrl)
 
 	perm.EXPECT().
@@ -66,7 +67,7 @@ func TestBranch_GetCommit_NotFound(t *testing.T) {
 
 func TestBranch_GetCommit_WrongProject(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	perm := NewMockpermissionUsecase(ctrl)
+	perm := newAllowAllPerm(ctrl)
 	repo := NewMockbranchRepository(ctrl)
 
 	perm.EXPECT().
@@ -84,7 +85,7 @@ func TestBranch_GetCommit_WrongProject(t *testing.T) {
 
 func TestBranch_GetCommit_Success(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	perm := NewMockpermissionUsecase(ctrl)
+	perm := newAllowAllPerm(ctrl)
 	repo := NewMockbranchRepository(ctrl)
 
 	rootHash := domain.Hash{0xaa}
@@ -129,7 +130,13 @@ func TestBranch_GetCommit_Success(t *testing.T) {
 	gotCommit, gotRoot, err := uc.GetCommit(context.Background(), snow.ID(1), snow.ID(2))
 	require.NoError(t, err)
 	require.Equal(t, commit, gotCommit)
-	require.Equal(t, rootHash, gotRoot.Hash)
+
+	wantDirHash := treehash.TreeHash([]treehash.FileEntry{{Name: "main.go", Hash: fileHash, Mode: 0o644}}, nil)
+	wantRootHash := treehash.TreeHash(
+		[]treehash.FileEntry{{Name: "readme.md", Hash: fileHash}},
+		[]treehash.TreeEntry{{Name: "src", Hash: wantDirHash}},
+	)
+	require.Equal(t, wantRootHash, gotRoot.Hash)
 	require.Len(t, gotRoot.FileChildren, 1)
 	require.Len(t, gotRoot.TreeChildren, 1)
 	require.Equal(t, "src", gotRoot.TreeChildren[0].Name)
@@ -139,7 +146,7 @@ func TestBranch_GetCommit_Success(t *testing.T) {
 
 func TestBranch_WalkCommits_NoPermission(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	perm := NewMockpermissionUsecase(ctrl)
+	perm := newAllowAllPerm(ctrl)
 	repo := NewMockbranchRepository(ctrl)
 
 	perm.EXPECT().
@@ -153,7 +160,7 @@ func TestBranch_WalkCommits_NoPermission(t *testing.T) {
 
 func TestBranch_WalkCommits_NotFound(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	perm := NewMockpermissionUsecase(ctrl)
+	perm := newAllowAllPerm(ctrl)
 	repo := NewMockbranchRepository(ctrl)
 
 	perm.EXPECT().
@@ -170,7 +177,7 @@ func TestBranch_WalkCommits_NotFound(t *testing.T) {
 
 func TestBranch_WalkCommits_WrongProject(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	perm := NewMockpermissionUsecase(ctrl)
+	perm := newAllowAllPerm(ctrl)
 	repo := NewMockbranchRepository(ctrl)
 
 	perm.EXPECT().
@@ -187,7 +194,7 @@ func TestBranch_WalkCommits_WrongProject(t *testing.T) {
 
 func TestBranch_WalkCommits_LinearNewestFirst(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	perm := NewMockpermissionUsecase(ctrl)
+	perm := newAllowAllPerm(ctrl)
 	repo := NewMockbranchRepository(ctrl)
 
 	perm.EXPECT().
@@ -205,7 +212,7 @@ func TestBranch_WalkCommits_LinearNewestFirst(t *testing.T) {
 
 func TestBranch_WalkCommits_StopExclusive(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	perm := NewMockpermissionUsecase(ctrl)
+	perm := newAllowAllPerm(ctrl)
 	repo := NewMockbranchRepository(ctrl)
 
 	stop := snow.ID(2)
@@ -222,7 +229,7 @@ func TestBranch_WalkCommits_StopExclusive(t *testing.T) {
 
 func TestBranch_WalkCommits_StopEqualsStart(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	perm := NewMockpermissionUsecase(ctrl)
+	perm := newAllowAllPerm(ctrl)
 	repo := NewMockbranchRepository(ctrl)
 
 	start := snow.ID(3)
@@ -238,7 +245,7 @@ func TestBranch_WalkCommits_StopEqualsStart(t *testing.T) {
 
 func TestBranch_WalkCommits_MergeBothParents(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	perm := NewMockpermissionUsecase(ctrl)
+	perm := newAllowAllPerm(ctrl)
 	repo := NewMockbranchRepository(ctrl)
 
 	perm.EXPECT().
@@ -257,7 +264,7 @@ func TestBranch_WalkCommits_MergeBothParents(t *testing.T) {
 
 func TestBranch_WalkCommits_Limit(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	perm := NewMockpermissionUsecase(ctrl)
+	perm := newAllowAllPerm(ctrl)
 	repo := NewMockbranchRepository(ctrl)
 
 	perm.EXPECT().
@@ -279,7 +286,7 @@ func TestBranch_WalkCommits_NodeCapExceeded(t *testing.T) {
 	t.Cleanup(func() { maxCommitWalkNodes = oldCap })
 
 	ctrl := gomock.NewController(t)
-	perm := NewMockpermissionUsecase(ctrl)
+	perm := newAllowAllPerm(ctrl)
 	repo := NewMockbranchRepository(ctrl)
 
 	perm.EXPECT().
@@ -300,7 +307,7 @@ func TestBranch_WalkCommits_NodeCapAllowsExactHistory(t *testing.T) {
 	t.Cleanup(func() { maxCommitWalkNodes = oldCap })
 
 	ctrl := gomock.NewController(t)
-	perm := NewMockpermissionUsecase(ctrl)
+	perm := newAllowAllPerm(ctrl)
 	repo := NewMockbranchRepository(ctrl)
 
 	perm.EXPECT().

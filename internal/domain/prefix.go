@@ -5,9 +5,6 @@ import (
 	"strings"
 )
 
-// NormalizePathPrefix canonicalizes a directory prefix: leading/trailing
-// slashes are trimmed, empty and "." segments dropped, ".." rejected.
-// The empty string means the whole project.
 func NormalizePathPrefix(prefix string) (string, error) {
 	p := strings.ReplaceAll(strings.TrimSpace(prefix), "\\", "/")
 	p = strings.Trim(p, "/")
@@ -28,8 +25,6 @@ func NormalizePathPrefix(prefix string) (string, error) {
 	return strings.Join(segments, "/"), nil
 }
 
-// PrefixCovers reports whether path is the prefix itself or lives below it.
-// An empty prefix covers every path in the project.
 func PrefixCovers(prefix, path string) bool {
 	if prefix == "" {
 		return true
@@ -44,8 +39,6 @@ func PrefixCovers(prefix, path string) bool {
 	return strings.HasPrefix(path, prefix+"/")
 }
 
-// PrefixCanDescend reports whether any path below dir can match prefix.
-// It lets a manifest walk prune directories that cannot contain a grant.
 func PrefixCanDescend(prefix, dir string) bool {
 	if prefix == "" {
 		return true
@@ -58,4 +51,49 @@ func PrefixCanDescend(prefix, dir string) bool {
 		return true
 	}
 	return strings.HasPrefix(prefix, dir+"/")
+}
+
+type PrefixSet []string
+
+func NewPrefixSet(prefixes []string) (PrefixSet, error) {
+	if len(prefixes) == 0 {
+		return nil, nil
+	}
+	set := make(PrefixSet, 0, len(prefixes))
+	for _, prefix := range prefixes {
+		normalized, err := NormalizePathPrefix(prefix)
+		if err != nil {
+			return nil, err
+		}
+		set = append(set, normalized)
+	}
+	return set, nil
+}
+
+func (s PrefixSet) Empty() bool {
+	return len(s) == 0
+}
+
+func (s PrefixSet) Covers(path string) bool {
+	if len(s) == 0 {
+		return true
+	}
+	for _, prefix := range s {
+		if PrefixCovers(prefix, path) {
+			return true
+		}
+	}
+	return false
+}
+
+func (s PrefixSet) CanDescend(dir string) bool {
+	if len(s) == 0 {
+		return true
+	}
+	for _, prefix := range s {
+		if PrefixCanDescend(prefix, dir) {
+			return true
+		}
+	}
+	return false
 }

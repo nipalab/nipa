@@ -13,7 +13,7 @@ import (
 
 func TestBranch_FastForward_NoPermission(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	perm := NewMockpermissionUsecase(ctrl)
+	perm := newAllowAllPerm(ctrl)
 	repo := NewMockbranchRepository(ctrl)
 
 	perm.EXPECT().
@@ -27,7 +27,7 @@ func TestBranch_FastForward_NoPermission(t *testing.T) {
 
 func TestBranch_FastForward_TargetNotFound(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	perm := NewMockpermissionUsecase(ctrl)
+	perm := newAllowAllPerm(ctrl)
 	repo := NewMockbranchRepository(ctrl)
 
 	perm.EXPECT().
@@ -44,7 +44,7 @@ func TestBranch_FastForward_TargetNotFound(t *testing.T) {
 
 func TestBranch_FastForward_SourceNotFound(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	perm := NewMockpermissionUsecase(ctrl)
+	perm := newAllowAllPerm(ctrl)
 	repo := NewMockbranchRepository(ctrl)
 
 	perm.EXPECT().
@@ -66,7 +66,7 @@ func TestBranch_FastForward_SourceNotFound(t *testing.T) {
 
 func TestBranch_FastForward_SourceEmpty(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	perm := NewMockpermissionUsecase(ctrl)
+	perm := newAllowAllPerm(ctrl)
 	repo := NewMockbranchRepository(ctrl)
 
 	head := snow.ID(11)
@@ -90,7 +90,7 @@ func TestBranch_FastForward_SourceEmpty(t *testing.T) {
 
 func TestBranch_FastForward_TargetEmpty(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	perm := NewMockpermissionUsecase(ctrl)
+	perm := newAllowAllPerm(ctrl)
 	repo := NewMockbranchRepository(ctrl)
 
 	head := snow.ID(11)
@@ -114,7 +114,7 @@ func TestBranch_FastForward_TargetEmpty(t *testing.T) {
 
 func TestBranch_FastForward_Diverged(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	perm := NewMockpermissionUsecase(ctrl)
+	perm := newAllowAllPerm(ctrl)
 	repo := NewMockbranchRepository(ctrl)
 
 	base := snow.ID(10)
@@ -144,7 +144,7 @@ func TestBranch_FastForward_Diverged(t *testing.T) {
 
 func TestBranch_FastForward_Success(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	perm := NewMockpermissionUsecase(ctrl)
+	perm := newAllowAllPerm(ctrl)
 	repo := NewMockbranchRepository(ctrl)
 
 	targetHead := snow.ID(11)
@@ -177,7 +177,7 @@ func TestBranch_FastForward_Success(t *testing.T) {
 
 func TestBranch_FastForward_UpdateConflict(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	perm := NewMockpermissionUsecase(ctrl)
+	perm := newAllowAllPerm(ctrl)
 	repo := NewMockbranchRepository(ctrl)
 
 	targetHead := snow.ID(11)
@@ -207,7 +207,7 @@ func TestBranch_FastForward_UpdateConflict(t *testing.T) {
 
 func TestBranch_GetMergeBase_NoPermission(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	perm := NewMockpermissionUsecase(ctrl)
+	perm := newAllowAllPerm(ctrl)
 	repo := NewMockbranchRepository(ctrl)
 
 	perm.EXPECT().
@@ -221,7 +221,7 @@ func TestBranch_GetMergeBase_NoPermission(t *testing.T) {
 
 func TestBranch_GetMergeBase_TargetBranchNotFound(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	perm := NewMockpermissionUsecase(ctrl)
+	perm := newAllowAllPerm(ctrl)
 	repo := NewMockbranchRepository(ctrl)
 
 	perm.EXPECT().
@@ -241,7 +241,7 @@ func TestBranch_GetMergeBase_TargetBranchNotFound(t *testing.T) {
 
 func TestBranch_GetMergeBase_SourceBranchNotFound(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	perm := NewMockpermissionUsecase(ctrl)
+	perm := newAllowAllPerm(ctrl)
 	repo := NewMockbranchRepository(ctrl)
 
 	perm.EXPECT().
@@ -266,7 +266,7 @@ func TestBranch_GetMergeBase_SourceBranchNotFound(t *testing.T) {
 
 func TestBranch_GetMergeBase_BothHeadsEmpty(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	perm := NewMockpermissionUsecase(ctrl)
+	perm := newAllowAllPerm(ctrl)
 	repo := NewMockbranchRepository(ctrl)
 
 	perm.EXPECT().
@@ -295,7 +295,7 @@ func TestBranch_GetMergeBase_BothHeadsEmpty(t *testing.T) {
 
 func TestBranch_GetMergeBase_EmptySource(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	perm := NewMockpermissionUsecase(ctrl)
+	perm := newAllowAllPerm(ctrl)
 	repo := NewMockbranchRepository(ctrl)
 
 	head := snow.ID(11)
@@ -327,7 +327,7 @@ func TestBranch_GetMergeBase_EmptySource(t *testing.T) {
 
 func TestBranch_GetMergeBase_SameHead(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	perm := NewMockpermissionUsecase(ctrl)
+	perm := newAllowAllPerm(ctrl)
 	repo := NewMockbranchRepository(ctrl)
 
 	head := snow.ID(11)
@@ -369,7 +369,7 @@ func TestBranch_GetMergeBase_SameHead(t *testing.T) {
 
 func TestBranch_GetMergeBase_ForkedBranches(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	perm := NewMockpermissionUsecase(ctrl)
+	perm := newAllowAllPerm(ctrl)
 	repo := NewMockbranchRepository(ctrl)
 
 	base := snow.ID(10)
@@ -417,7 +417,7 @@ func TestBranch_GetMergeBase_ForkedBranches(t *testing.T) {
 
 func TestBranch_GetMergeBase_WalkError(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	perm := NewMockpermissionUsecase(ctrl)
+	perm := newAllowAllPerm(ctrl)
 	repo := NewMockbranchRepository(ctrl)
 
 	targetHead := snow.ID(11)
@@ -447,7 +447,7 @@ func TestBranch_GetMergeBase_WalkError(t *testing.T) {
 
 func TestBranch_GetMergeBase_TreeLoadError(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	perm := NewMockpermissionUsecase(ctrl)
+	perm := newAllowAllPerm(ctrl)
 	repo := NewMockbranchRepository(ctrl)
 
 	base := snow.ID(10)
@@ -488,7 +488,7 @@ func TestBranch_GetMergeBase_TreeLoadError(t *testing.T) {
 
 func TestBranch_GetMergeBase_CommitRefs(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	perm := NewMockpermissionUsecase(ctrl)
+	perm := newAllowAllPerm(ctrl)
 	repo := NewMockbranchRepository(ctrl)
 
 	base := snow.ID(10)
@@ -528,7 +528,7 @@ func TestBranch_GetMergeBase_CommitRefs(t *testing.T) {
 
 func TestBranch_GetMergeBase_CommitRefNotFound(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	perm := NewMockpermissionUsecase(ctrl)
+	perm := newAllowAllPerm(ctrl)
 	repo := NewMockbranchRepository(ctrl)
 
 	missing := snow.ID(99)
@@ -547,7 +547,7 @@ func TestBranch_GetMergeBase_CommitRefNotFound(t *testing.T) {
 
 func TestBranch_GetMergeBase_CommitRefWrongProject(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	perm := NewMockpermissionUsecase(ctrl)
+	perm := newAllowAllPerm(ctrl)
 	repo := NewMockbranchRepository(ctrl)
 
 	other := snow.ID(99)

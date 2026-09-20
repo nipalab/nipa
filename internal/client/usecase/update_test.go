@@ -42,8 +42,12 @@ func (s *stubUpdateClient) GetBranchByName(_ context.Context, org, project, name
 	return s.branchInfo, s.branchErr
 }
 
-func (s *stubUpdateClient) GetTreeNodeManifest(_ context.Context, org, project, branch, path string) (*serverDomain.TreeNode, error) {
-	s.org, s.project, s.branch, s.treePath = org, project, branch, path
+func (s *stubUpdateClient) GetTreeNodeManifest(_ context.Context, org, project, branch string, paths []string) (*serverDomain.TreeNode, error) {
+	s.org, s.project, s.branch = org, project, branch
+	s.treePath = ""
+	if len(paths) > 0 {
+		s.treePath = paths[0]
+	}
 	return s.manifest, s.manifestErr
 }
 
