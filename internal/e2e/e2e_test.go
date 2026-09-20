@@ -136,14 +136,14 @@ func startTestServer(t *testing.T, dbConn *sql.DB) string {
 	require.NoError(t, err)
 
 	authUc := serverusecase.NewAuth(e2eJWTSecret, passwordHasher, userRepo, authRepo)
-	permissionUc := serverusecase.NewPermission(pbacRepo)
+	groupRepo := sqlite.NewGroupRepository(dbConn)
+	permissionUc := serverusecase.NewPermission(pbacRepo, userRepo, groupRepo)
 	commonUc := serverusecase.NewCommon(orgRepo, projectRepo)
 	branchUc := serverusecase.NewBranch(permissionUc, branchRepo, node)
 	chunkStore, err := storage.NewLocalStore(t.TempDir())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = chunkStore.Close() })
 
-	groupRepo := sqlite.NewGroupRepository(dbConn)
 	reg := &testRegistry{
 		auth:       authUc,
 		user:       serverusecase.NewUser(node),

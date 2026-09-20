@@ -50,6 +50,7 @@ type Querier interface {
 	PBACRuleCreate(ctx context.Context, arg PBACRuleCreateParams) (PbacRule, error)
 	PBACRuleDelete(ctx context.Context, id int64) error
 	PBACRuleDeleteForProject(ctx context.Context, arg PBACRuleDeleteForProjectParams) (int64, error)
+	PBACRuleGetForProject(ctx context.Context, arg PBACRuleGetForProjectParams) (PbacRule, error)
 	PBACRuleListByProject(ctx context.Context, projectID sql.NullInt64) ([]PbacRule, error)
 	PBACRuleListEffective(ctx context.Context, arg PBACRuleListEffectiveParams) ([]PbacRule, error)
 	ProjectPathPermissionDelete(ctx context.Context, arg ProjectPathPermissionDeleteParams) error

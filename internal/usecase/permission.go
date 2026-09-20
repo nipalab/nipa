@@ -16,10 +16,19 @@ type pbacRepository interface {
 	ListEffectiveRules(ctx context.Context, projectID snow.ID, userID snow.ID) ([]*domain.PBACRule, error)
 	ListRulesByProject(ctx context.Context, projectID snow.ID) ([]*domain.PBACRule, error)
 	CreateRule(ctx context.Context, rule domain.PBACRule) (*domain.PBACRule, error)
+	GetRuleForProject(ctx context.Context, projectID snow.ID, ruleID int64) (*domain.PBACRule, error)
 	DeleteRuleForProject(ctx context.Context, projectID snow.ID, ruleID int64) error
 	ListPathPermissions(ctx context.Context, projectID snow.ID) ([]*domain.ProjectPathPermission, error)
 	UpsertPathPermission(ctx context.Context, perm domain.ProjectPathPermission) (*domain.ProjectPathPermission, error)
 	DeletePathPermission(ctx context.Context, projectID snow.ID, pathPrefix string) error
+}
+
+type userLookup interface {
+	GetByID(ctx context.Context, id snow.ID) (*domain.User, error)
+}
+
+type groupLookup interface {
+	GetByID(ctx context.Context, id snow.ID) (*domain.Group, error)
 }
 
 type permissionCacheKey struct {
@@ -39,16 +48,20 @@ type permissionSet struct {
 }
 
 type Permission struct {
-	repo pbacRepository
+	repo   pbacRepository
+	users  userLookup
+	groups groupLookup
 
 	mu       sync.Mutex
 	cache    map[permissionCacheKey]permissionCacheEntry
 	versions map[snow.ID]uint64
 }
 
-func NewPermission(repo pbacRepository) *Permission {
+func NewPermission(repo pbacRepository, users userLookup, groups groupLookup) *Permission {
 	return &Permission{
 		repo:     repo,
+		users:    users,
+		groups:   groups,
 		cache:    map[permissionCacheKey]permissionCacheEntry{},
 		versions: map[snow.ID]uint64{},
 	}
@@ -203,6 +216,27 @@ func (p *Permission) CreateRule(ctx context.Context, rule domain.PBACRule) (*dom
 	}
 	rule.PathPrefix = prefix
 
+	if rule.UserID != nil {
+		if _, err := p.users.GetByID(ctx, *rule.UserID); err != nil {
+			if domain.IsErrorNotFound(err) {
+				return nil, domain.NewErrorUser("user not found")
+			}
+			return nil, err
+		}
+	}
+	if rule.GroupID != nil {
+		group, err := p.groups.GetByID(ctx, *rule.GroupID)
+		if err != nil {
+			if domain.IsErrorNotFound(err) {
+				return nil, domain.NewErrorUser("group not found")
+			}
+			return nil, err
+		}
+		if group.OrgID != rule.OrgID {
+			return nil, domain.NewErrorUser("group not found")
+		}
+	}
+
 	created, err := p.repo.CreateRule(ctx, rule)
 	if err != nil {
 		return nil, err
@@ -214,6 +248,15 @@ func (p *Permission) CreateRule(ctx context.Context, rule domain.PBACRule) (*dom
 func (p *Permission) DeleteRule(ctx context.Context, projectID snow.ID, ruleID int64) error {
 	if err := p.requireAdmin(ctx, projectID); err != nil {
 		return err
+	}
+	rule, err := p.repo.GetRuleForProject(ctx, projectID, ruleID)
+	if err != nil {
+		return err
+	}
+	if rule.ProjectID == nil {
+		if err := p.requireOrgAdmin(ctx); err != nil {
+			return err
+		}
 	}
 	if err := p.repo.DeleteRuleForProject(ctx, projectID, ruleID); err != nil {
 		return err

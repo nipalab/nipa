@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"errors"
 
 	"github.com/nipalab/nipa/internal/domain"
 	sqlcSqlite "github.com/nipalab/nipa/internal/repository/sqlc/sqlite"
@@ -46,6 +47,20 @@ func (p *PBAC) CreateRule(ctx context.Context, rule domain.PBACRule) (*domain.PB
 		Permission: int64(rule.Permission),
 	})
 	if err != nil {
+		return nil, domain.NewErrorDatabase(err.Error())
+	}
+	return toDomainPBACRule(row), nil
+}
+
+func (p *PBAC) GetRuleForProject(ctx context.Context, projectID snow.ID, ruleID int64) (*domain.PBACRule, error) {
+	row, err := p.queries.PBACRuleGetForProject(ctx, sqlcSqlite.PBACRuleGetForProjectParams{
+		RuleID:    ruleID,
+		ProjectID: sql.NullInt64{Int64: projectID.Int64(), Valid: true},
+	})
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, domain.NewErrorRecordNotFound()
+		}
 		return nil, domain.NewErrorDatabase(err.Error())
 	}
 	return toDomainPBACRule(row), nil

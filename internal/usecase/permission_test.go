@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -34,7 +35,11 @@ func newTestPermission(t *testing.T, rules []*domain.PBACRule, defaults []*domai
 	repo := NewMockpbacRepository(ctrl)
 	repo.EXPECT().ListEffectiveRules(gomock.Any(), gomock.Any(), gomock.Any()).Return(rules, nil).AnyTimes()
 	repo.EXPECT().ListPathPermissions(gomock.Any(), gomock.Any()).Return(defaults, nil).AnyTimes()
-	return NewPermission(repo)
+	users := NewMockuserLookup(ctrl)
+	users.EXPECT().GetByID(gomock.Any(), gomock.Any()).Return(&domain.User{}, nil).AnyTimes()
+	groups := NewMockgroupLookup(ctrl)
+	groups.EXPECT().GetByID(gomock.Any(), gomock.Any()).Return(&domain.Group{OrgID: 1}, nil).AnyTimes()
+	return NewPermission(repo, users, groups)
 }
 
 func newAllowAllPerm(ctrl *gomock.Controller) *MockpermissionUsecase {
@@ -274,9 +279,12 @@ func TestPermission_ProjectAdminRuleAllowsManagement(t *testing.T) {
 	repo.EXPECT().ListEffectiveRules(gomock.Any(), projectID, userID).Return(adminRule, nil)
 	repo.EXPECT().ListPathPermissions(gomock.Any(), projectID).Return(nil, nil)
 	repo.EXPECT().ListRulesByProject(gomock.Any(), projectID).Return(adminRule, nil)
+	repo.EXPECT().GetRuleForProject(gomock.Any(), projectID, int64(7)).Return(&domain.PBACRule{
+		ID: 7, OrgID: 1, ProjectID: projectIDPtr(projectID),
+	}, nil)
 	repo.EXPECT().DeleteRuleForProject(gomock.Any(), projectID, int64(7)).Return(nil)
 
-	perm := NewPermission(repo)
+	perm := NewPermission(repo, NewMockuserLookup(ctrl), NewMockgroupLookup(ctrl))
 	ctx := permissionCtx(userID)
 
 	rules, err := perm.ListRules(ctx, projectID)
@@ -290,11 +298,43 @@ func TestPermission_DeleteRule_ProjectScoped(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	repo := NewMockpbacRepository(ctrl)
+	repo.EXPECT().GetRuleForProject(gomock.Any(), projectID, int64(7)).Return(&domain.PBACRule{
+		ID: 7, OrgID: 1, ProjectID: projectIDPtr(projectID),
+	}, nil)
 	repo.EXPECT().DeleteRuleForProject(gomock.Any(), projectID, int64(7)).Return(domain.NewErrorRecordNotFound())
 
-	perm := NewPermission(repo)
+	perm := NewPermission(repo, NewMockuserLookup(ctrl), NewMockgroupLookup(ctrl))
 	err := perm.DeleteRule(permissionCtx(42, withAdmin()), projectID, 7)
 	require.True(t, domain.IsErrorNotFound(err))
+}
+
+func TestPermission_DeleteRule_OrgWideNeedsOrgAdmin(t *testing.T) {
+	projectID := snow.ID(1)
+	userID := snow.ID(42)
+
+	ctrl := gomock.NewController(t)
+	repo := NewMockpbacRepository(ctrl)
+	repo.EXPECT().ListEffectiveRules(gomock.Any(), projectID, userID).Return([]*domain.PBACRule{
+		{PathPrefix: "", Permission: domain.PermissionAdmin},
+	}, nil)
+	repo.EXPECT().ListPathPermissions(gomock.Any(), projectID).Return(nil, nil)
+	repo.EXPECT().GetRuleForProject(gomock.Any(), projectID, int64(7)).Return(&domain.PBACRule{ID: 7, OrgID: 1}, nil)
+
+	perm := NewPermission(repo, NewMockuserLookup(ctrl), NewMockgroupLookup(ctrl))
+	err := perm.DeleteRule(permissionCtx(userID), projectID, 7)
+	require.True(t, domain.IsErrorNoPermission(err))
+}
+
+func TestPermission_DeleteRule_OrgWideByOrgAdmin(t *testing.T) {
+	projectID := snow.ID(1)
+
+	ctrl := gomock.NewController(t)
+	repo := NewMockpbacRepository(ctrl)
+	repo.EXPECT().GetRuleForProject(gomock.Any(), projectID, int64(7)).Return(&domain.PBACRule{ID: 7, OrgID: 1}, nil)
+	repo.EXPECT().DeleteRuleForProject(gomock.Any(), projectID, int64(7)).Return(nil)
+
+	perm := NewPermission(repo, NewMockuserLookup(ctrl), NewMockgroupLookup(ctrl))
+	require.NoError(t, perm.DeleteRule(permissionCtx(42, withAdmin()), projectID, 7))
 }
 
 func TestPermission_MyPermissions(t *testing.T) {
@@ -374,6 +414,8 @@ func TestPermission_CreateRule_NormalizesAndInvalidatesCache(t *testing.T) {
 		}, nil),
 		repo.EXPECT().ListPathPermissions(gomock.Any(), projectID).Return(nil, nil),
 	)
+	users := NewMockuserLookup(ctrl)
+	users.EXPECT().GetByID(gomock.Any(), userID).Return(&domain.User{ID: userID}, nil)
 	repo.EXPECT().CreateRule(gomock.Any(), gomock.Any()).DoAndReturn(
 		func(_ context.Context, rule domain.PBACRule) (*domain.PBACRule, error) {
 			require.Equal(t, "assets/textures", rule.PathPrefix)
@@ -389,7 +431,7 @@ func TestPermission_CreateRule_NormalizesAndInvalidatesCache(t *testing.T) {
 		repo.EXPECT().ListPathPermissions(gomock.Any(), projectID).Return(nil, nil),
 	)
 
-	perm := NewPermission(repo)
+	perm := NewPermission(repo, users, NewMockgroupLookup(ctrl))
 
 	require.False(t, perm.HasPathAccess(ctx, projectID, "assets/textures/wood.png", domain.PermissionRead))
 
@@ -416,7 +458,7 @@ func TestPermission_Cache_ServesRepeatedReads(t *testing.T) {
 	}, nil).Times(1)
 	repo.EXPECT().ListPathPermissions(gomock.Any(), projectID).Return(nil, nil).Times(1)
 
-	perm := NewPermission(repo)
+	perm := NewPermission(repo, NewMockuserLookup(ctrl), NewMockgroupLookup(ctrl))
 	require.True(t, perm.HasPathAccess(ctx, projectID, "a.txt", domain.PermissionRead))
 	require.True(t, perm.HasPathAccess(ctx, projectID, "b.txt", domain.PermissionRead))
 	require.True(t, perm.HasProjectAccess(ctx, projectID, domain.PermissionRead))
@@ -438,7 +480,7 @@ func TestPermission_PathPermissionCRUD(t *testing.T) {
 	repo.EXPECT().DeletePathPermission(gomock.Any(), projectID, "").Return(nil)
 	repo.EXPECT().ListPathPermissions(gomock.Any(), projectID).Return(nil, nil)
 
-	perm := NewPermission(repo)
+	perm := NewPermission(repo, NewMockuserLookup(ctrl), NewMockgroupLookup(ctrl))
 	ctx := permissionCtx(42, withAdmin())
 
 	_, err := perm.SetPathPermission(ctx, projectID, "/", domain.PermissionRead)
@@ -451,6 +493,63 @@ func TestPermission_PathPermissionCRUD(t *testing.T) {
 
 	_, err = perm.ListPathPermissions(ctx, projectID)
 	require.NoError(t, err)
+}
+
+func TestPermission_CreateRule_SubjectValidation(t *testing.T) {
+	projectID := snow.ID(1)
+	userID := snow.ID(42)
+	groupID := snow.ID(7)
+	ctx := permissionCtx(userID, withAdmin())
+	base := domain.PBACRule{OrgID: 1, ProjectID: &projectID, Permission: domain.PermissionRead}
+
+	t.Run("unknown user", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		users := NewMockuserLookup(ctrl)
+		users.EXPECT().GetByID(gomock.Any(), userID).Return(nil, domain.NewErrorRecordNotFound())
+
+		perm := NewPermission(NewMockpbacRepository(ctrl), users, NewMockgroupLookup(ctrl))
+		rule := base
+		rule.UserID = &userID
+		_, err := perm.CreateRule(ctx, rule)
+		requireUserError(t, err)
+	})
+
+	t.Run("unknown group", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		groups := NewMockgroupLookup(ctrl)
+		groups.EXPECT().GetByID(gomock.Any(), groupID).Return(nil, domain.NewErrorRecordNotFound())
+
+		perm := NewPermission(NewMockpbacRepository(ctrl), NewMockuserLookup(ctrl), groups)
+		rule := base
+		rule.GroupID = &groupID
+		_, err := perm.CreateRule(ctx, rule)
+		requireUserError(t, err)
+	})
+
+	t.Run("group from another org", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		groups := NewMockgroupLookup(ctrl)
+		groups.EXPECT().GetByID(gomock.Any(), groupID).Return(&domain.Group{ID: groupID, OrgID: 2}, nil)
+
+		perm := NewPermission(NewMockpbacRepository(ctrl), NewMockuserLookup(ctrl), groups)
+		rule := base
+		rule.GroupID = &groupID
+		_, err := perm.CreateRule(ctx, rule)
+		requireUserError(t, err)
+	})
+
+	t.Run("lookup failure", func(t *testing.T) {
+		wantErr := errors.New("db down")
+		ctrl := gomock.NewController(t)
+		users := NewMockuserLookup(ctrl)
+		users.EXPECT().GetByID(gomock.Any(), userID).Return(nil, wantErr)
+
+		perm := NewPermission(NewMockpbacRepository(ctrl), users, NewMockgroupLookup(ctrl))
+		rule := base
+		rule.UserID = &userID
+		_, err := perm.CreateRule(ctx, rule)
+		require.ErrorIs(t, err, wantErr)
+	})
 }
 
 func projectIDPtr(id snow.ID) *snow.ID {

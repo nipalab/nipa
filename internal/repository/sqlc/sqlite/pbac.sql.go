@@ -82,6 +82,39 @@ func (q *Queries) PBACRuleDeleteForProject(ctx context.Context, arg PBACRuleDele
 	return result.RowsAffected()
 }
 
+const pBACRuleGetForProject = `-- name: PBACRuleGetForProject :one
+SELECT id, created_at, user_id, group_id, org_id, project_id, path_prefix, permission FROM pbac_rules
+WHERE pbac_rules.id = ?1
+  AND (
+      project_id = ?2
+      OR (
+          project_id IS NULL
+          AND org_id = (SELECT projects.org_id FROM projects WHERE projects.id = ?2)
+      )
+  )
+`
+
+type PBACRuleGetForProjectParams struct {
+	RuleID    int64         `json:"rule_id"`
+	ProjectID sql.NullInt64 `json:"project_id"`
+}
+
+func (q *Queries) PBACRuleGetForProject(ctx context.Context, arg PBACRuleGetForProjectParams) (PbacRule, error) {
+	row := q.db.QueryRowContext(ctx, pBACRuleGetForProject, arg.RuleID, arg.ProjectID)
+	var i PbacRule
+	err := row.Scan(
+		&i.ID,
+		&i.CreatedAt,
+		&i.UserID,
+		&i.GroupID,
+		&i.OrgID,
+		&i.ProjectID,
+		&i.PathPrefix,
+		&i.Permission,
+	)
+	return i, err
+}
+
 const pBACRuleListByProject = `-- name: PBACRuleListByProject :many
 SELECT id, created_at, user_id, group_id, org_id, project_id, path_prefix, permission FROM pbac_rules WHERE project_id = ? ORDER BY id
 `
@@ -121,6 +154,7 @@ func (q *Queries) PBACRuleListByProject(ctx context.Context, projectID sql.NullI
 const pBACRuleListEffective = `-- name: PBACRuleListEffective :many
 SELECT r.id, r.created_at, r.user_id, r.group_id, r.org_id, r.project_id, r.path_prefix, r.permission FROM pbac_rules r
 LEFT JOIN group_members gm ON gm.group_id = r.group_id AND gm.user_id = ?1
+LEFT JOIN groups g ON g.id = r.group_id
 WHERE (
         r.project_id = ?2
         OR (
@@ -128,7 +162,10 @@ WHERE (
             AND r.org_id = (SELECT projects.org_id FROM projects WHERE projects.id = ?2)
         )
     )
-    AND (r.user_id = ?1 OR gm.user_id IS NOT NULL)
+    AND (
+        r.user_id = ?1
+        OR (gm.user_id IS NOT NULL AND g.org_id = r.org_id)
+    )
 ORDER BY r.id
 `
 

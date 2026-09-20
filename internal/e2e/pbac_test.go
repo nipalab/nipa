@@ -351,3 +351,78 @@ func TestEndToEnd_PBACManifestFiltering(t *testing.T) {
 	require.Error(t, err)
 	require.Equal(t, 403, clientErrorCode(t, err), "no rules means no access")
 }
+
+func TestEndToEnd_PBACRuleSubjectValidation(t *testing.T) {
+	ctx := context.Background()
+	dbConn := openTestDB(t)
+	host := startTestServer(t, dbConn)
+
+	adminClient, _ := loginE2EClient(t, ctx, host, e2eSuperAdminEmail, e2eSuperAdminPass)
+
+	_, err := adminClient.CreatePBACRule(ctx, e2eOrgSlug, e2eProjectSlug,
+		snow.ID(999999).Base36(), "", "assets", uint64(serverDomain.PermissionRead))
+	require.Error(t, err)
+	require.Equal(t, 400, clientErrorCode(t, err), "unknown users are rejected")
+
+	_, err = adminClient.CreatePBACRule(ctx, e2eOrgSlug, e2eProjectSlug,
+		"", snow.ID(999999).Base36(), "assets", uint64(serverDomain.PermissionRead))
+	require.Error(t, err)
+	require.Equal(t, 400, clientErrorCode(t, err), "unknown groups are rejected")
+
+	_, err = dbConn.ExecContext(ctx, `INSERT INTO organizations (id, slug, name) VALUES (2, 'other', 'Other')`)
+	require.NoError(t, err)
+	foreignGroup, err := adminClient.CreateGroup(ctx, "other", "foreign", "")
+	require.NoError(t, err)
+
+	_, err = adminClient.CreatePBACRule(ctx, e2eOrgSlug, e2eProjectSlug,
+		"", foreignGroup.ID, "assets", uint64(serverDomain.PermissionRead))
+	require.Error(t, err)
+	require.Equal(t, 400, clientErrorCode(t, err), "groups from another org are rejected")
+}
+
+func TestEndToEnd_PBACOrgWideRuleDeletion(t *testing.T) {
+	ctx := context.Background()
+	dbConn := openTestDB(t)
+	host := startTestServer(t, dbConn)
+
+	adminClient, _ := loginE2EClient(t, ctx, host, e2eSuperAdminEmail, e2eSuperAdminPass)
+
+	passwordHasher := hasher.NewHasher(1)
+	t.Cleanup(passwordHasher.Close)
+	passwordHash, err := passwordHasher.Hash("regular-pass")
+	require.NoError(t, err)
+	_, err = dbConn.ExecContext(ctx,
+		`INSERT INTO users (id, name, email, password, is_admin) VALUES (?, ?, ?, ?, 0)`,
+		48, "Project Admin", "projadmin@example.com", passwordHash,
+	)
+	require.NoError(t, err)
+	_, err = dbConn.ExecContext(ctx,
+		`INSERT INTO pbac_rules (user_id, org_id, project_id, path_prefix, permission) VALUES (?, 1, 1, '', ?)`,
+		48, int64(serverDomain.PermissionAdmin))
+	require.NoError(t, err)
+
+	orgWide, err := dbConn.ExecContext(ctx,
+		`INSERT INTO pbac_rules (user_id, org_id, project_id, path_prefix, permission) VALUES (?, 1, NULL, '', ?)`,
+		48, int64(serverDomain.PermissionRead))
+	require.NoError(t, err)
+	orgWideID, err := orgWide.LastInsertId()
+	require.NoError(t, err)
+
+	projectAdmin, _ := loginE2EClient(t, ctx, host, "projadmin@example.com", "regular-pass")
+
+	err = projectAdmin.DeletePBACRule(ctx, e2eOrgSlug, e2eProjectSlug, orgWideID)
+	require.Error(t, err)
+	require.Equal(t, 403, clientErrorCode(t, err), "project admins cannot delete org-wide rules")
+
+	projectRule, err := adminClient.CreatePBACRule(ctx, e2eOrgSlug, e2eProjectSlug,
+		snow.ID(48).Base36(), "", "docs", uint64(serverDomain.PermissionRead))
+	require.NoError(t, err)
+	require.NoError(t, projectAdmin.DeletePBACRule(ctx, e2eOrgSlug, e2eProjectSlug, projectRule.ID),
+		"project admins can delete project rules")
+
+	require.NoError(t, adminClient.DeletePBACRule(ctx, e2eOrgSlug, e2eProjectSlug, orgWideID),
+		"org admins can delete org-wide rules")
+	err = adminClient.DeletePBACRule(ctx, e2eOrgSlug, e2eProjectSlug, orgWideID)
+	require.Error(t, err)
+	require.Equal(t, 404, clientErrorCode(t, err))
+}

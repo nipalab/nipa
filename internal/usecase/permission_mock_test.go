@@ -85,6 +85,21 @@ func (mr *MockpbacRepositoryMockRecorder) DeleteRuleForProject(ctx, projectID, r
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteRuleForProject", reflect.TypeOf((*MockpbacRepository)(nil).DeleteRuleForProject), ctx, projectID, ruleID)
 }
 
+// GetRuleForProject mocks base method.
+func (m *MockpbacRepository) GetRuleForProject(ctx context.Context, projectID snow.ID, ruleID int64) (*domain.PBACRule, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetRuleForProject", ctx, projectID, ruleID)
+	ret0, _ := ret[0].(*domain.PBACRule)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetRuleForProject indicates an expected call of GetRuleForProject.
+func (mr *MockpbacRepositoryMockRecorder) GetRuleForProject(ctx, projectID, ruleID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRuleForProject", reflect.TypeOf((*MockpbacRepository)(nil).GetRuleForProject), ctx, projectID, ruleID)
+}
+
 // ListEffectiveRules mocks base method.
 func (m *MockpbacRepository) ListEffectiveRules(ctx context.Context, projectID, userID snow.ID) ([]*domain.PBACRule, error) {
 	m.ctrl.T.Helper()
@@ -143,4 +158,82 @@ func (m *MockpbacRepository) UpsertPathPermission(ctx context.Context, perm doma
 func (mr *MockpbacRepositoryMockRecorder) UpsertPathPermission(ctx, perm any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertPathPermission", reflect.TypeOf((*MockpbacRepository)(nil).UpsertPathPermission), ctx, perm)
+}
+
+// MockuserLookup is a mock of userLookup interface.
+type MockuserLookup struct {
+	ctrl     *gomock.Controller
+	recorder *MockuserLookupMockRecorder
+	isgomock struct{}
+}
+
+// MockuserLookupMockRecorder is the mock recorder for MockuserLookup.
+type MockuserLookupMockRecorder struct {
+	mock *MockuserLookup
+}
+
+// NewMockuserLookup creates a new mock instance.
+func NewMockuserLookup(ctrl *gomock.Controller) *MockuserLookup {
+	mock := &MockuserLookup{ctrl: ctrl}
+	mock.recorder = &MockuserLookupMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockuserLookup) EXPECT() *MockuserLookupMockRecorder {
+	return m.recorder
+}
+
+// GetByID mocks base method.
+func (m *MockuserLookup) GetByID(ctx context.Context, id snow.ID) (*domain.User, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetByID", ctx, id)
+	ret0, _ := ret[0].(*domain.User)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetByID indicates an expected call of GetByID.
+func (mr *MockuserLookupMockRecorder) GetByID(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByID", reflect.TypeOf((*MockuserLookup)(nil).GetByID), ctx, id)
+}
+
+// MockgroupLookup is a mock of groupLookup interface.
+type MockgroupLookup struct {
+	ctrl     *gomock.Controller
+	recorder *MockgroupLookupMockRecorder
+	isgomock struct{}
+}
+
+// MockgroupLookupMockRecorder is the mock recorder for MockgroupLookup.
+type MockgroupLookupMockRecorder struct {
+	mock *MockgroupLookup
+}
+
+// NewMockgroupLookup creates a new mock instance.
+func NewMockgroupLookup(ctrl *gomock.Controller) *MockgroupLookup {
+	mock := &MockgroupLookup{ctrl: ctrl}
+	mock.recorder = &MockgroupLookupMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockgroupLookup) EXPECT() *MockgroupLookupMockRecorder {
+	return m.recorder
+}
+
+// GetByID mocks base method.
+func (m *MockgroupLookup) GetByID(ctx context.Context, id snow.ID) (*domain.Group, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetByID", ctx, id)
+	ret0, _ := ret[0].(*domain.Group)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetByID indicates an expected call of GetByID.
+func (mr *MockgroupLookupMockRecorder) GetByID(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByID", reflect.TypeOf((*MockgroupLookup)(nil).GetByID), ctx, id)
 }

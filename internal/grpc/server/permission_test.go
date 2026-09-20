@@ -31,9 +31,13 @@ func newTestPermissionHandler(t *testing.T) (*nipaServer, *MockpbacRepository) {
 
 	ctrl := gomock.NewController(t)
 	repo := NewMockpbacRepository(ctrl)
+	users := NewMockuserLookup(ctrl)
+	users.EXPECT().GetByID(gomock.Any(), gomock.Any()).Return(&domain.User{}, nil).AnyTimes()
+	groups := NewMockgroupLookup(ctrl)
+	groups.EXPECT().GetByID(gomock.Any(), gomock.Any()).Return(&domain.Group{OrgID: 1}, nil).AnyTimes()
 	uc := &mockUsecaseContainer{
 		common:     newTestCommon(),
-		permission: usecase.NewPermission(repo),
+		permission: usecase.NewPermission(repo, users, groups),
 	}
 	return New(uc), repo
 }
@@ -225,12 +229,14 @@ func TestNipaServer_ListPBACRules_Error(t *testing.T) {
 
 func TestNipaServer_DeletePBACRule(t *testing.T) {
 	srv, repo := newTestPermissionHandler(t)
+	projectRule := &domain.PBACRule{ID: 5, OrgID: 1, ProjectID: ptrSnow(42)}
+	repo.EXPECT().GetRuleForProject(gomock.Any(), snow.ID(42), int64(5)).Return(projectRule, nil)
 	repo.EXPECT().DeleteRuleForProject(gomock.Any(), snow.ID(42), int64(5)).Return(nil)
 
 	_, err := srv.DeletePBACRule(adminClaimCtx(1), &pb.DeletePBACRuleRequest{Context: projectContext(), RuleId: 5})
 	require.NoError(t, err)
 
-	repo.EXPECT().DeleteRuleForProject(gomock.Any(), snow.ID(42), int64(5)).Return(domain.NewErrorRecordNotFound())
+	repo.EXPECT().GetRuleForProject(gomock.Any(), snow.ID(42), int64(5)).Return(nil, domain.NewErrorRecordNotFound())
 	_, err = srv.DeletePBACRule(adminClaimCtx(1), &pb.DeletePBACRuleRequest{Context: projectContext(), RuleId: 5})
 	require.Equal(t, codes.NotFound, status.Code(err))
 }

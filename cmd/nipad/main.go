@@ -61,7 +61,7 @@ func main() {
 		panic(err)
 	}
 	authUsecase := usecase.NewAuth(cfg.JWTKey, passwordHasher, userRepo, authRepo)
-	permissionUsecase := usecase.NewPermission(pbacRepository)
+	permissionUsecase := usecase.NewPermission(pbacRepository, userRepo, groupRepository)
 	chunkStore, err := storage.NewLocalStore(cfg.ChunkStorageDir)
 	if err != nil {
 		panic(fmt.Errorf("create chunk store: %w", err))

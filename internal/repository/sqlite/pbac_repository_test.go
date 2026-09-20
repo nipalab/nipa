@@ -112,6 +112,28 @@ func TestPBACRepositorySQLite_ListEffectiveRules(t *testing.T) {
 	require.Nil(t, rules[2].ProjectID)
 }
 
+func TestPBACRepositorySQLite_ListEffectiveRules_RejectsForeignGroup(t *testing.T) {
+	ctx := context.Background()
+	db, q := newSQLiteTestDB(t)
+	repo := NewPBACRepository(db)
+
+	projectID := seedProject(t, q, 1, "game")
+	userID := seedPBACUser(t, db, 42)
+	_, err := db.ExecContext(ctx, `INSERT INTO organizations (id, slug, name) VALUES (2, 'other', 'Other')`)
+	require.NoError(t, err)
+	foreignGroupID := seedPBACGroup(t, db, 5003, 2, "foreign", 42)
+
+	_, err = repo.CreateRule(ctx, domain.PBACRule{
+		GroupID: pbacIDPtr(foreignGroupID), OrgID: 1, ProjectID: pbacIDPtr(projectID),
+		PathPrefix: "", Permission: domain.PermissionRead,
+	})
+	require.NoError(t, err)
+
+	rules, err := repo.ListEffectiveRules(ctx, projectID, userID)
+	require.NoError(t, err)
+	require.Empty(t, rules, "a rule must not apply to a group from another org")
+}
+
 func TestPBACRepositorySQLite_ListEffectiveRules_NoRules(t *testing.T) {
 	ctx := context.Background()
 	db, q := newSQLiteTestDB(t)
@@ -177,6 +199,44 @@ func TestPBACRepositorySQLite_DeleteRule(t *testing.T) {
 	rules, err := repo.ListRulesByProject(ctx, projectID)
 	require.NoError(t, err)
 	require.Empty(t, rules)
+}
+
+func TestPBACRepositorySQLite_GetRuleForProject(t *testing.T) {
+	ctx := context.Background()
+	db, q := newSQLiteTestDB(t)
+	repo := NewPBACRepository(db)
+
+	projectID := seedProject(t, q, 1, "game")
+	otherProjectID := seedProject(t, q, 1, "other")
+	userID := seedPBACUser(t, db, 42)
+
+	projectRule, err := repo.CreateRule(ctx, domain.PBACRule{
+		UserID: pbacIDPtr(userID), OrgID: 1, ProjectID: pbacIDPtr(projectID),
+		PathPrefix: "", Permission: domain.PermissionRead,
+	})
+	require.NoError(t, err)
+
+	orgRule, err := repo.CreateRule(ctx, domain.PBACRule{
+		UserID: pbacIDPtr(userID), OrgID: 1,
+		PathPrefix: "", Permission: domain.PermissionRead,
+	})
+	require.NoError(t, err)
+
+	got, err := repo.GetRuleForProject(ctx, projectID, projectRule.ID)
+	require.NoError(t, err)
+	require.Equal(t, projectRule.ID, got.ID)
+	require.NotNil(t, got.ProjectID)
+	require.Equal(t, projectID, *got.ProjectID)
+
+	got, err = repo.GetRuleForProject(ctx, projectID, orgRule.ID)
+	require.NoError(t, err)
+	require.Nil(t, got.ProjectID)
+
+	_, err = repo.GetRuleForProject(ctx, otherProjectID, projectRule.ID)
+	requireRecordNotFound(t, err)
+
+	_, err = repo.GetRuleForProject(ctx, projectID, 999999)
+	requireRecordNotFound(t, err)
 }
 
 func TestPBACRepositorySQLite_PathPermissions(t *testing.T) {

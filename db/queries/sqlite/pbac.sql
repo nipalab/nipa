@@ -1,6 +1,7 @@
 -- name: PBACRuleListEffective :many
 SELECT r.* FROM pbac_rules r
 LEFT JOIN group_members gm ON gm.group_id = r.group_id AND gm.user_id = sqlc.arg(user_id)
+LEFT JOIN groups g ON g.id = r.group_id
 WHERE (
         r.project_id = sqlc.arg(project_id)
         OR (
@@ -8,7 +9,10 @@ WHERE (
             AND r.org_id = (SELECT projects.org_id FROM projects WHERE projects.id = sqlc.arg(project_id))
         )
     )
-    AND (r.user_id = sqlc.arg(user_id) OR gm.user_id IS NOT NULL)
+    AND (
+        r.user_id = sqlc.arg(user_id)
+        OR (gm.user_id IS NOT NULL AND g.org_id = r.org_id)
+    )
 ORDER BY r.id;
 
 -- name: PBACRuleListByProject :many
@@ -21,6 +25,17 @@ RETURNING *;
 
 -- name: PBACRuleDelete :exec
 DELETE FROM pbac_rules WHERE id = ?;
+
+-- name: PBACRuleGetForProject :one
+SELECT * FROM pbac_rules
+WHERE pbac_rules.id = sqlc.arg(rule_id)
+  AND (
+      project_id = sqlc.arg(project_id)
+      OR (
+          project_id IS NULL
+          AND org_id = (SELECT projects.org_id FROM projects WHERE projects.id = sqlc.arg(project_id))
+      )
+  );
 
 -- name: PBACRuleDeleteForProject :execrows
 DELETE FROM pbac_rules
