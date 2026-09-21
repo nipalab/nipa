@@ -1,0 +1,114 @@
+import { useState } from 'react'
+import { Button, FormControl, Link as PrimerLink, Stack, TextInput } from '@primer/react'
+import { Link, useNavigate, useParams } from 'react-router-dom'
+import { createMergeRequest, listBranches, listMergeRequests } from '../api/endpoints'
+import { EmptyState, ErrorBanner, Loading, Page, StatusLabel } from '../components/ui'
+import { useAsync } from '../hooks'
+
+export default function PullsPage() {
+  const { org = '', project = '' } = useParams()
+  const navigate = useNavigate()
+  const [status, setStatus] = useState('open')
+  const { data: requests, error, loading, reload } = useAsync(
+    () => listMergeRequests(org, project, status),
+    [org, project, status],
+  )
+  const { data: branches } = useAsync(() => listBranches(org, project), [org, project])
+  const [title, setTitle] = useState('')
+  const [description, setDescription] = useState('')
+  const [source, setSource] = useState('')
+  const [target, setTarget] = useState('')
+  const [actionError, setActionError] = useState<string | null>(null)
+
+  async function handleCreate(event: React.FormEvent) {
+    event.preventDefault()
+    setActionError(null)
+    try {
+      const request = await createMergeRequest(org, project, title, description, source, target)
+      setTitle('')
+      setDescription('')
+      reload()
+      navigate(`/${org}/${project}/pulls/${request.id}`)
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  return (
+    <Page
+      title="Merge requests"
+      subtitle={`${org}/${project}`}
+      actions={
+        <Stack direction="horizontal" gap="normal">
+          <PrimerLink as={Link} to={`/${org}/${project}`}>back to files</PrimerLink>
+          <select value={status} onChange={(event) => setStatus(event.target.value)} style={{ padding: 4 }}>
+            <option value="open">open</option>
+            <option value="merged">merged</option>
+            <option value="closed">closed</option>
+            <option value="">all</option>
+          </select>
+        </Stack>
+      }
+    >
+      <ErrorBanner error={actionError ?? error} />
+      {loading && <Loading />}
+      {!loading && requests && requests.length === 0 && <EmptyState>No merge requests.</EmptyState>}
+      {requests?.map((request) => (
+        <div
+          key={request.id}
+          style={{ border: '1px solid var(--borderColor-default)', borderRadius: 6, padding: 16 }}
+        >
+          <PrimerLink as={Link} to={`/${org}/${project}/pulls/${request.id}`} style={{ fontWeight: 600 }}>
+            {request.title}
+          </PrimerLink>
+          <div style={{ color: 'var(--fgColor-muted)', fontSize: 13 }}>
+            {request.source_branch} → {request.target_branch} · <StatusLabel status={request.status} />
+          </div>
+        </div>
+      ))}
+
+      <form
+        onSubmit={handleCreate}
+        style={{ border: '1px solid var(--borderColor-default)', borderRadius: 6, padding: 16 }}
+      >
+        <Stack direction="vertical" gap="normal">
+          <strong>New merge request</strong>
+          <FormControl required>
+            <FormControl.Label>Title</FormControl.Label>
+            <TextInput block value={title} onChange={(event) => setTitle(event.target.value)} />
+          </FormControl>
+          <FormControl>
+            <FormControl.Label>Description</FormControl.Label>
+            <TextInput block value={description} onChange={(event) => setDescription(event.target.value)} />
+          </FormControl>
+          <FormControl required>
+            <FormControl.Label>Source branch</FormControl.Label>
+            <select value={source} onChange={(event) => setSource(event.target.value)} style={{ padding: 6 }}>
+              <option value="">select a branch</option>
+              {branches?.map((branch) => (
+                <option key={branch.id} value={branch.name}>
+                  {branch.name}
+                </option>
+              ))}
+            </select>
+          </FormControl>
+          <FormControl required>
+            <FormControl.Label>Target branch</FormControl.Label>
+            <select value={target} onChange={(event) => setTarget(event.target.value)} style={{ padding: 6 }}>
+              <option value="">select a branch</option>
+              {branches?.map((branch) => (
+                <option key={branch.id} value={branch.name}>
+                  {branch.name}
+                  {branch.is_default ? ' (default)' : ''}
+                </option>
+              ))}
+            </select>
+          </FormControl>
+          <Button type="submit" variant="primary" style={{ alignSelf: 'flex-start' }}>
+            Open merge request
+          </Button>
+        </Stack>
+      </form>
+    </Page>
+  )
+}

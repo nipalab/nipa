@@ -63,6 +63,7 @@ func setupBrowserRouter(ws *restful.WebService, h *handler.Handler) {
 	ws.Route(
 		ws.POST("/orgs/{org}/projects/{project}/branches/{name}/default").
 			To(wrap(h.SetProjectBranchDefault)).
+			AllowedMethodsWithoutContentType([]string{"POST"}).
 			Param(ws.PathParameter("org", "organization slug")).
 			Param(ws.PathParameter("project", "project slug")).
 			Param(ws.PathParameter("name", "branch name")).

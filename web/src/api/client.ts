@@ -149,11 +149,35 @@ export async function apiFetch(path: string, init: ApiRequestInit = {}): Promise
   return res
 }
 
+async function errorFromResponse(res: Response): Promise<Error> {
+  const body = await res.text()
+  try {
+    const parsed = JSON.parse(body) as { error?: string; message?: string }
+    const message = parsed.error ?? parsed.message
+    if (message) {
+      return new Error(message)
+    }
+  } catch {
+    // fall through to the raw body
+  }
+  return new Error(`API ${res.status}: ${body}`)
+}
+
+export async function apiJson<T>(path: string, init: ApiRequestInit = {}): Promise<T> {
+  const res = await apiFetch(path, init)
+  if (!res.ok) {
+    throw await errorFromResponse(res)
+  }
+  if (res.status === 204) {
+    return undefined as T
+  }
+  return (await res.json()) as T
+}
+
 async function requestJson<T>(path: string, init: ApiRequestInit): Promise<T> {
   const res = await apiFetch(path, init)
   if (!res.ok) {
-    const body = await res.text()
-    throw new Error(`API ${res.status}: ${body}`)
+    throw await errorFromResponse(res)
   }
   return (await res.json()) as T
 }

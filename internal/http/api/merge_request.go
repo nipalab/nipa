@@ -59,6 +59,7 @@ func setupMergeRequestRouter(ws *restful.WebService, h *handler.Handler) {
 	ws.Route(requestID(
 		ws.POST("/orgs/{org}/projects/{project}/merge-requests/{id}/merge").
 			To(wrap(h.MergeMergeRequest)).
+			AllowedMethodsWithoutContentType([]string{"POST"}).
 			Doc("Merge the request into its target branch (project write; project admin for protected targets)").
 			Returns(http.StatusOK, "merged merge request", model.MergeRequestResponse{}).
 			Operation("mergeMergeRequest").
@@ -67,6 +68,7 @@ func setupMergeRequestRouter(ws *restful.WebService, h *handler.Handler) {
 	ws.Route(requestID(
 		ws.POST("/orgs/{org}/projects/{project}/merge-requests/{id}/close").
 			To(wrap(h.CloseMergeRequest)).
+			AllowedMethodsWithoutContentType([]string{"POST"}).
 			Doc("Close a merge request (author or project admin)").
 			Returns(http.StatusOK, "closed merge request", model.MergeRequestResponse{}).
 			Operation("closeMergeRequest").
@@ -75,6 +77,7 @@ func setupMergeRequestRouter(ws *restful.WebService, h *handler.Handler) {
 	ws.Route(requestID(
 		ws.POST("/orgs/{org}/projects/{project}/merge-requests/{id}/reopen").
 			To(wrap(h.ReopenMergeRequest)).
+			AllowedMethodsWithoutContentType([]string{"POST"}).
 			Doc("Reopen a closed merge request (author or project admin)").
 			Returns(http.StatusOK, "reopened merge request", model.MergeRequestResponse{}).
 			Operation("reopenMergeRequest").

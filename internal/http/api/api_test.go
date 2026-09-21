@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -264,6 +265,26 @@ func TestAPIRoutes(t *testing.T) {
 		okResp := doJSON(t, server.URL+"/api/v1/auth/refresh", `{}`, []*http.Cookie{second}, "")
 		defer okResp.Body.Close()
 		require.Equal(t, http.StatusOK, okResp.StatusCode)
+	})
+
+	t.Run("refresh and logout accept a request without content type", func(t *testing.T) {
+		_, refresh := login(t)
+
+		refreshed := doMethodCookies(t, http.MethodPost, server.URL+"/api/v1/auth/refresh", "", []*http.Cookie{refresh})
+		require.Equal(t, http.StatusOK, refreshed.StatusCode)
+		require.NoError(t, refreshed.Body.Close())
+
+		var rotated *http.Cookie
+		for _, cookie := range refreshed.Cookies() {
+			if cookie.Name == "nipa_refresh" {
+				rotated = cookie
+			}
+		}
+		require.NotNil(t, rotated)
+
+		loggedOut := doMethodCookies(t, http.MethodPost, server.URL+"/api/v1/auth/logout", "", []*http.Cookie{rotated})
+		require.Equal(t, http.StatusOK, loggedOut.StatusCode)
+		require.NoError(t, loggedOut.Body.Close())
 	})
 
 	t.Run("login unknown user", func(t *testing.T) {
@@ -642,7 +663,7 @@ func TestAPIRoutes(t *testing.T) {
 		require.Equal(t, http.StatusForbidden, denied.StatusCode)
 		denied.Body.Close()
 
-		makeDefault := doMethod(t, http.MethodPost, base+"/renamed/default", `{}`, aliceLogin.AccessToken)
+		makeDefault := doMethod(t, http.MethodPost, base+"/renamed/default", "", aliceLogin.AccessToken)
 		require.Equal(t, http.StatusOK, makeDefault.StatusCode)
 		require.True(t, decodeBody[model.BranchResponse](t, makeDefault).IsDefault)
 
@@ -650,7 +671,7 @@ func TestAPIRoutes(t *testing.T) {
 		require.Equal(t, http.StatusConflict, blocked.StatusCode)
 		blocked.Body.Close()
 
-		restore := doMethod(t, http.MethodPost, base+"/main/default", `{}`, aliceLogin.AccessToken)
+		restore := doMethod(t, http.MethodPost, base+"/main/default", "", aliceLogin.AccessToken)
 		require.Equal(t, http.StatusOK, restore.StatusCode)
 		restore.Body.Close()
 
@@ -728,10 +749,10 @@ func TestAPIRoutes(t *testing.T) {
 		blocked.Body.Close()
 
 		closed := decodeBody[model.MergeRequestResponse](t,
-			doMethod(t, http.MethodPost, laggingURL+"/close", `{}`, aliceLogin.AccessToken))
+			doMethod(t, http.MethodPost, laggingURL+"/close", "", aliceLogin.AccessToken))
 		require.Equal(t, domain.MergeRequestClosed, closed.Status)
 		reopened := decodeBody[model.MergeRequestResponse](t,
-			doMethod(t, http.MethodPost, laggingURL+"/reopen", `{}`, aliceLogin.AccessToken))
+			doMethod(t, http.MethodPost, laggingURL+"/reopen", "", aliceLogin.AccessToken))
 		require.Equal(t, "open", reopened.Status)
 
 		list := decodeBody[[]model.MergeRequestResponse](t, doGet(t, base+"/merge-requests?status=merged", aliceLogin.AccessToken))
@@ -760,13 +781,71 @@ func TestAPIRoutes(t *testing.T) {
 		require.Equal(t, http.StatusOK, createMR.StatusCode)
 		fixMR := decodeBody[model.MergeRequestResponse](t, createMR)
 
-		merge = doMethod(t, http.MethodPost, base+"/merge-requests/"+fixMR.ID+"/merge", `{}`, aliceLogin.AccessToken)
+		merge = doMethod(t, http.MethodPost, base+"/merge-requests/"+fixMR.ID+"/merge", "", aliceLogin.AccessToken)
 		require.Equal(t, http.StatusOK, merge.StatusCode)
 		require.Equal(t, domain.MergeRequestMerged, decodeBody[model.MergeRequestResponse](t, merge).Status)
 
 		unprotect := doMethod(t, http.MethodPut, base+"/branches/main/protection", `{"protected":false}`, aliceLogin.AccessToken)
 		require.Equal(t, http.StatusOK, unprotect.StatusCode)
 		unprotect.Body.Close()
+	})
+
+	t.Run("project ACL admin", func(t *testing.T) {
+		aliceLogin, _ := login(t)
+		base := server.URL + "/api/v1/orgs/default/projects/default/permissions"
+
+		createViewer := doMethod(t, http.MethodPost, server.URL+"/api/v1/users",
+			`{"name":"viewer","email":"acl-viewer@example.com","password":"password123"}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, createViewer.StatusCode)
+		viewer := decodeBody[model.UserResponse](t, createViewer)
+		viewerLogin, _ := loginAs(t, "acl-viewer@example.com")
+
+		createUser := doMethod(t, http.MethodPost, server.URL+"/api/v1/users",
+			`{"name":"grantee","email":"grantee@example.com","password":"password123"}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, createUser.StatusCode)
+		grantee := decodeBody[model.UserResponse](t, createUser)
+		_ = viewer
+		t.Logf("grantee id=%q email=%q", grantee.ID, grantee.Email)
+
+		createRule := doMethod(t, http.MethodPost, base+"/rules",
+			`{"user_id":"`+grantee.ID+`","path_prefix":"public","permission":1}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, createRule.StatusCode)
+		rule := decodeBody[model.PBACRuleResponse](t, createRule)
+		require.NotZero(t, rule.ID)
+
+		rules := decodeBody[[]model.PBACRuleResponse](t, doGet(t, base+"/rules", aliceLogin.AccessToken))
+		require.Len(t, rules, 2, "reader rule from the repository browser plus the grantee rule")
+
+		debug := doJSON(t, server.URL+"/api/v1/auth/login", `{"email":"grantee@example.com","password":"whatever"}`, nil, "")
+		debugBody, _ := io.ReadAll(debug.Body)
+		debug.Body.Close()
+		t.Logf("grantee login: %d %s", debug.StatusCode, string(debugBody))
+		granteeLogin, _ := loginAs(t, "grantee@example.com")
+		info := decodeBody[model.ProjectPermissionResponse](t, doGet(t, base+"/me", granteeLogin.AccessToken))
+		require.Equal(t, uint64(1), info.ProjectPermission)
+		require.Len(t, info.Rules, 1)
+
+		denied := doMethod(t, http.MethodPost, base+"/rules", `{"user_id":"1","permission":1}`, viewerLogin.AccessToken)
+		require.Equal(t, http.StatusForbidden, denied.StatusCode)
+		denied.Body.Close()
+
+		setDefault := doMethod(t, http.MethodPut, base+"/defaults", `{"path_prefix":"docs","permission":1}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, setDefault.StatusCode)
+		setDefault.Body.Close()
+
+		defaults := decodeBody[[]model.PermissionEntry](t, doGet(t, base+"/defaults", aliceLogin.AccessToken))
+		require.Len(t, defaults, 1)
+
+		removeDefault := doMethod(t, http.MethodDelete, base+"/defaults?path=docs", "", aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, removeDefault.StatusCode)
+		removeDefault.Body.Close()
+
+		removeRule := doMethod(t, http.MethodDelete, base+"/rules/"+strconv.FormatInt(rule.ID, 10), "", aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, removeRule.StatusCode)
+		removeRule.Body.Close()
+
+		rules = decodeBody[[]model.PBACRuleResponse](t, doGet(t, base+"/rules", aliceLogin.AccessToken))
+		require.Len(t, rules, 1)
 	})
 
 	t.Run("openapi doc is served", func(t *testing.T) {
@@ -810,6 +889,22 @@ func doMethod(t *testing.T, method, url, body, accessToken string) *http.Respons
 	}
 	if accessToken != "" {
 		req.Header.Set("Authorization", "Bearer "+accessToken)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	return resp
+}
+
+func doMethodCookies(t *testing.T, method, url, body string, cookies []*http.Cookie) *http.Response {
+	t.Helper()
+
+	req, err := http.NewRequest(method, url, bytes.NewBufferString(body))
+	require.NoError(t, err)
+	if body != "" {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	for _, cookie := range cookies {
+		req.AddCookie(cookie)
 	}
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
