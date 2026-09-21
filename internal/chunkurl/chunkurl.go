@@ -93,5 +93,5 @@ func Expiry(now time.Time, ttl time.Duration) int64 {
 }
 
 func chunkPath(org, project, hash string) string {
-	return "/api/v1/orgs/" + url.PathEscape(org) + "/projects/" + url.PathEscape(project) + "/chunks/" + url.PathEscape(hash)
+	return "/api/chunks/" + url.PathEscape(org) + "/" + url.PathEscape(project) + "/" + url.PathEscape(hash)
 }

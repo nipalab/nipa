@@ -23,13 +23,10 @@ func parsePath(t *testing.T, path string) (string, string, string, url.Values) {
 	u, err := url.Parse(path)
 	require.NoError(t, err)
 	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
-	require.Len(t, parts, 8)
+	require.Len(t, parts, 5)
 	require.Equal(t, "api", parts[0])
-	require.Equal(t, "v1", parts[1])
-	require.Equal(t, "orgs", parts[2])
-	require.Equal(t, "projects", parts[4])
-	require.Equal(t, "chunks", parts[6])
-	return parts[3], parts[5], parts[7], u.Query()
+	require.Equal(t, "chunks", parts[1])
+	return parts[2], parts[3], parts[4], u.Query()
 }
 
 func TestUploadPathRoundTrip(t *testing.T) {

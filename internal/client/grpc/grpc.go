@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/hex"
 	"errors"
-	"io"
 	"log/slog"
+	"net/http"
 
 	"github.com/nipalab/nipa/internal/chunker"
 	"github.com/nipalab/nipa/internal/client/domain"
@@ -108,12 +108,14 @@ type tokenSession interface {
 type Client struct {
 	transport *Transport
 	session   tokenSession
+	http      *http.Client
 }
 
 func NewClient(transport *Transport, session tokenSession) *Client {
 	return &Client{
 		transport: transport,
 		session:   session,
+		http:      &http.Client{},
 	}
 }
 
@@ -329,98 +331,6 @@ func (c *Client) Push(ctx context.Context, org, project, branch, baseTreeHash, m
 		CommitHash: commitHash,
 		TreeHash:   treeHash,
 	}, nil
-}
-
-func (c *Client) UploadChunks(ctx context.Context, scope domain.ChunkScope, chunks []*serverDomain.ChunkData, onChunk ...func(ch *serverDomain.ChunkData)) (int, int, error) {
-	client, err := c.transport.NipaServiceClient()
-	if err != nil {
-		return 0, 0, err
-	}
-	authedCtx, err := c.authedContext(ctx)
-	if err != nil {
-		return 0, 0, err
-	}
-	stream, err := client.UploadChunks(authedCtx)
-	if err != nil {
-		return 0, 0, toDomainError(err)
-	}
-	for _, ch := range chunks {
-		if err := stream.Send(&pb.ChunkUploadRequest{
-			Hash:    ch.Hash.String(),
-			Data:    ch.Data,
-			Context: &pb.ProjectContext{Org: scope.Org, Project: scope.Project},
-		}); err != nil {
-			return 0, 0, err
-		}
-		if len(onChunk) > 0 && onChunk[0] != nil {
-			onChunk[0](ch)
-		}
-	}
-	if err := stream.CloseSend(); err != nil {
-		return 0, 0, err
-	}
-	res, err := stream.CloseAndRecv()
-	if err != nil {
-		return 0, 0, toDomainError(err)
-	}
-	return int(res.GetUploaded()), int(res.GetSkipped()), nil
-}
-
-func (c *Client) DownloadChunks(ctx context.Context, scope domain.ChunkScope, hashes []serverDomain.Hash, onChunk func(h serverDomain.Hash, data []byte) error) error {
-	client, err := c.transport.NipaServiceClient()
-	if err != nil {
-		return err
-	}
-	authedCtx, err := c.authedContext(ctx)
-	if err != nil {
-		return err
-	}
-	streamCtx, cancel := context.WithCancel(authedCtx)
-	defer cancel()
-	stream, err := client.DownloadChunks(streamCtx)
-	if err != nil {
-		return toDomainError(err)
-	}
-
-	sendErr := make(chan error, 1)
-	go func() {
-		for _, h := range hashes {
-			if err := stream.Send(&pb.DownloadChunksRequest{
-				Hash:      h.String(),
-				Context:   &pb.ProjectContext{Org: scope.Org, Project: scope.Project},
-				CommitIds: scope.CommitIDs,
-				Paths:     scope.Paths,
-			}); err != nil {
-				sendErr <- err
-				return
-			}
-		}
-		sendErr <- stream.CloseSend()
-	}()
-
-	for {
-		recv, err := stream.Recv()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			cancel()
-			<-sendErr
-			return toDomainError(err)
-		}
-		hash, err := decodeHash(recv.GetHash())
-		if err != nil {
-			cancel()
-			<-sendErr
-			return err
-		}
-		if err := onChunk(hash, recv.GetData()); err != nil {
-			cancel()
-			<-sendErr
-			return err
-		}
-	}
-	return <-sendErr
 }
 
 func (c *Client) authedContext(ctx context.Context) (context.Context, error) {

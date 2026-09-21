@@ -20,6 +20,7 @@ type usecaseContainer interface {
 	Group() *usecase.Group
 	Project() *usecase.Project
 	Branch() *usecase.Branch
+	Chunk() *usecase.Chunk
 	MergeRequest() *usecase.MergeRequest
 }
 
@@ -39,7 +40,7 @@ func (a *API) SetupRoute() http.Handler {
 		AllowedHeaders: []string{"Content-Type", "Accept", "Authorization"},
 	}
 
-	handler := handler.NewHandler(a.useCase)
+	h := handler.NewHandler(a.useCase)
 
 	authWs := new(restful.WebService).ApiVersion("1.0.0")
 	authWs.Path("/api/v1/auth").
@@ -47,7 +48,7 @@ func (a *API) SetupRoute() http.Handler {
 		Filter(sameOriginFilter).
 		Consumes(restful.MIME_JSON).
 		Produces(restful.MIME_JSON)
-	setupAuthRouter(authWs, handler)
+	setupAuthRouter(authWs, h)
 	restful.Add(authWs)
 
 	apiWs := new(restful.WebService).ApiVersion("1.0.0")
@@ -57,14 +58,21 @@ func (a *API) SetupRoute() http.Handler {
 		Filter(NewAuthFilter(a.useCase.Auth()).Auth()).
 		Consumes(restful.MIME_JSON).
 		Produces(restful.MIME_JSON)
-	setupUserRouter(apiWs, handler)
-	setupProjectRouter(apiWs, handler)
-	setupBrowserRouter(apiWs, handler)
-	setupMergeRequestRouter(apiWs, handler)
-	setupOrgRouter(apiWs, handler)
-	setupGroupRouter(apiWs, handler)
-	setupPermissionRouter(apiWs, handler)
+	setupUserRouter(apiWs, h)
+	setupProjectRouter(apiWs, h)
+	setupBrowserRouter(apiWs, h)
+	setupMergeRequestRouter(apiWs, h)
+	setupOrgRouter(apiWs, h)
+	setupGroupRouter(apiWs, h)
+	setupPermissionRouter(apiWs, h)
 	restful.Add(apiWs)
+
+	chunkWs := new(restful.WebService).ApiVersion("1.0.0")
+	chunkWs.Path("/api/chunks").
+		Filter(cors.Filter).
+		Filter(sameOriginFilter)
+	setupChunkRouter(chunkWs, handler.NewChunkHandler(a.useCase.Chunk()))
+	restful.Add(chunkWs)
 
 	swagger.SetupSwagger()
 

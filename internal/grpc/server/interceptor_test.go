@@ -24,6 +24,17 @@ func (m *mockTokenValidator) ValidateToken(_ context.Context, _ string) (*domain
 	return m.claims, m.err
 }
 
+type fakeServerStream struct {
+	ctx context.Context
+}
+
+func (s *fakeServerStream) Context() context.Context     { return s.ctx }
+func (s *fakeServerStream) SendMsg(interface{}) error    { return nil }
+func (s *fakeServerStream) RecvMsg(interface{}) error    { return nil }
+func (s *fakeServerStream) SetHeader(metadata.MD) error  { return nil }
+func (s *fakeServerStream) SendHeader(metadata.MD) error { return nil }
+func (s *fakeServerStream) SetTrailer(metadata.MD)       {}
+
 func unaryHandler(t *testing.T) grpc.UnaryHandler {
 	t.Helper()
 	return func(_ context.Context, _ interface{}) (interface{}, error) {

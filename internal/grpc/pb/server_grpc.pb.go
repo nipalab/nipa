@@ -37,8 +37,9 @@ const (
 	NipaService_GetMergeBase_FullMethodName                = "/greet.NipaService/GetMergeBase"
 	NipaService_MergeFastForward_FullMethodName            = "/greet.NipaService/MergeFastForward"
 	NipaService_Push_FullMethodName                        = "/greet.NipaService/Push"
-	NipaService_UploadChunks_FullMethodName                = "/greet.NipaService/UploadChunks"
-	NipaService_DownloadChunks_FullMethodName              = "/greet.NipaService/DownloadChunks"
+	NipaService_GetChunkUploadUrls_FullMethodName          = "/greet.NipaService/GetChunkUploadUrls"
+	NipaService_GetChunkDownloadUrls_FullMethodName        = "/greet.NipaService/GetChunkDownloadUrls"
+	NipaService_ConfirmChunkUploads_FullMethodName         = "/greet.NipaService/ConfirmChunkUploads"
 	NipaService_GetMyPermissions_FullMethodName            = "/greet.NipaService/GetMyPermissions"
 	NipaService_CreatePBACRule_FullMethodName              = "/greet.NipaService/CreatePBACRule"
 	NipaService_ListPBACRules_FullMethodName               = "/greet.NipaService/ListPBACRules"
@@ -74,8 +75,9 @@ type NipaServiceClient interface {
 	GetMergeBase(ctx context.Context, in *GetMergeBaseRequest, opts ...grpc.CallOption) (*GetMergeBaseResponse, error)
 	MergeFastForward(ctx context.Context, in *MergeFastForwardRequest, opts ...grpc.CallOption) (*MergeFastForwardResponse, error)
 	Push(ctx context.Context, in *PushRequest, opts ...grpc.CallOption) (*PushResponse, error)
-	UploadChunks(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[ChunkUploadRequest, UploadChunksResponse], error)
-	DownloadChunks(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[DownloadChunksRequest, DownloadChunk], error)
+	GetChunkUploadUrls(ctx context.Context, in *GetChunkUploadUrlsRequest, opts ...grpc.CallOption) (*GetChunkUploadUrlsResponse, error)
+	GetChunkDownloadUrls(ctx context.Context, in *GetChunkDownloadUrlsRequest, opts ...grpc.CallOption) (*GetChunkDownloadUrlsResponse, error)
+	ConfirmChunkUploads(ctx context.Context, in *ConfirmChunkUploadsRequest, opts ...grpc.CallOption) (*ConfirmChunkUploadsResponse, error)
 	GetMyPermissions(ctx context.Context, in *GetMyPermissionsRequest, opts ...grpc.CallOption) (*GetMyPermissionsResponse, error)
 	CreatePBACRule(ctx context.Context, in *CreatePBACRuleRequest, opts ...grpc.CallOption) (*CreatePBACRuleResponse, error)
 	ListPBACRules(ctx context.Context, in *ListPBACRulesRequest, opts ...grpc.CallOption) (*ListPBACRulesResponse, error)
@@ -277,31 +279,35 @@ func (c *nipaServiceClient) Push(ctx context.Context, in *PushRequest, opts ...g
 	return out, nil
 }
 
-func (c *nipaServiceClient) UploadChunks(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[ChunkUploadRequest, UploadChunksResponse], error) {
+func (c *nipaServiceClient) GetChunkUploadUrls(ctx context.Context, in *GetChunkUploadUrlsRequest, opts ...grpc.CallOption) (*GetChunkUploadUrlsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &NipaService_ServiceDesc.Streams[0], NipaService_UploadChunks_FullMethodName, cOpts...)
+	out := new(GetChunkUploadUrlsResponse)
+	err := c.cc.Invoke(ctx, NipaService_GetChunkUploadUrls_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &grpc.GenericClientStream[ChunkUploadRequest, UploadChunksResponse]{ClientStream: stream}
-	return x, nil
+	return out, nil
 }
 
-// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type NipaService_UploadChunksClient = grpc.ClientStreamingClient[ChunkUploadRequest, UploadChunksResponse]
-
-func (c *nipaServiceClient) DownloadChunks(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[DownloadChunksRequest, DownloadChunk], error) {
+func (c *nipaServiceClient) GetChunkDownloadUrls(ctx context.Context, in *GetChunkDownloadUrlsRequest, opts ...grpc.CallOption) (*GetChunkDownloadUrlsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &NipaService_ServiceDesc.Streams[1], NipaService_DownloadChunks_FullMethodName, cOpts...)
+	out := new(GetChunkDownloadUrlsResponse)
+	err := c.cc.Invoke(ctx, NipaService_GetChunkDownloadUrls_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &grpc.GenericClientStream[DownloadChunksRequest, DownloadChunk]{ClientStream: stream}
-	return x, nil
+	return out, nil
 }
 
-// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type NipaService_DownloadChunksClient = grpc.BidiStreamingClient[DownloadChunksRequest, DownloadChunk]
+func (c *nipaServiceClient) ConfirmChunkUploads(ctx context.Context, in *ConfirmChunkUploadsRequest, opts ...grpc.CallOption) (*ConfirmChunkUploadsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ConfirmChunkUploadsResponse)
+	err := c.cc.Invoke(ctx, NipaService_ConfirmChunkUploads_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
 
 func (c *nipaServiceClient) GetMyPermissions(ctx context.Context, in *GetMyPermissionsRequest, opts ...grpc.CallOption) (*GetMyPermissionsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
@@ -435,8 +441,9 @@ type NipaServiceServer interface {
 	GetMergeBase(context.Context, *GetMergeBaseRequest) (*GetMergeBaseResponse, error)
 	MergeFastForward(context.Context, *MergeFastForwardRequest) (*MergeFastForwardResponse, error)
 	Push(context.Context, *PushRequest) (*PushResponse, error)
-	UploadChunks(grpc.ClientStreamingServer[ChunkUploadRequest, UploadChunksResponse]) error
-	DownloadChunks(grpc.BidiStreamingServer[DownloadChunksRequest, DownloadChunk]) error
+	GetChunkUploadUrls(context.Context, *GetChunkUploadUrlsRequest) (*GetChunkUploadUrlsResponse, error)
+	GetChunkDownloadUrls(context.Context, *GetChunkDownloadUrlsRequest) (*GetChunkDownloadUrlsResponse, error)
+	ConfirmChunkUploads(context.Context, *ConfirmChunkUploadsRequest) (*ConfirmChunkUploadsResponse, error)
 	GetMyPermissions(context.Context, *GetMyPermissionsRequest) (*GetMyPermissionsResponse, error)
 	CreatePBACRule(context.Context, *CreatePBACRuleRequest) (*CreatePBACRuleResponse, error)
 	ListPBACRules(context.Context, *ListPBACRulesRequest) (*ListPBACRulesResponse, error)
@@ -512,11 +519,14 @@ func (UnimplementedNipaServiceServer) MergeFastForward(context.Context, *MergeFa
 func (UnimplementedNipaServiceServer) Push(context.Context, *PushRequest) (*PushResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Push not implemented")
 }
-func (UnimplementedNipaServiceServer) UploadChunks(grpc.ClientStreamingServer[ChunkUploadRequest, UploadChunksResponse]) error {
-	return status.Errorf(codes.Unimplemented, "method UploadChunks not implemented")
+func (UnimplementedNipaServiceServer) GetChunkUploadUrls(context.Context, *GetChunkUploadUrlsRequest) (*GetChunkUploadUrlsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetChunkUploadUrls not implemented")
 }
-func (UnimplementedNipaServiceServer) DownloadChunks(grpc.BidiStreamingServer[DownloadChunksRequest, DownloadChunk]) error {
-	return status.Errorf(codes.Unimplemented, "method DownloadChunks not implemented")
+func (UnimplementedNipaServiceServer) GetChunkDownloadUrls(context.Context, *GetChunkDownloadUrlsRequest) (*GetChunkDownloadUrlsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetChunkDownloadUrls not implemented")
+}
+func (UnimplementedNipaServiceServer) ConfirmChunkUploads(context.Context, *ConfirmChunkUploadsRequest) (*ConfirmChunkUploadsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ConfirmChunkUploads not implemented")
 }
 func (UnimplementedNipaServiceServer) GetMyPermissions(context.Context, *GetMyPermissionsRequest) (*GetMyPermissionsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetMyPermissions not implemented")
@@ -896,19 +906,59 @@ func _NipaService_Push_Handler(srv interface{}, ctx context.Context, dec func(in
 	return interceptor(ctx, in, info, handler)
 }
 
-func _NipaService_UploadChunks_Handler(srv interface{}, stream grpc.ServerStream) error {
-	return srv.(NipaServiceServer).UploadChunks(&grpc.GenericServerStream[ChunkUploadRequest, UploadChunksResponse]{ServerStream: stream})
+func _NipaService_GetChunkUploadUrls_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetChunkUploadUrlsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaServiceServer).GetChunkUploadUrls(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaService_GetChunkUploadUrls_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaServiceServer).GetChunkUploadUrls(ctx, req.(*GetChunkUploadUrlsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
-// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type NipaService_UploadChunksServer = grpc.ClientStreamingServer[ChunkUploadRequest, UploadChunksResponse]
-
-func _NipaService_DownloadChunks_Handler(srv interface{}, stream grpc.ServerStream) error {
-	return srv.(NipaServiceServer).DownloadChunks(&grpc.GenericServerStream[DownloadChunksRequest, DownloadChunk]{ServerStream: stream})
+func _NipaService_GetChunkDownloadUrls_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetChunkDownloadUrlsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaServiceServer).GetChunkDownloadUrls(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaService_GetChunkDownloadUrls_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaServiceServer).GetChunkDownloadUrls(ctx, req.(*GetChunkDownloadUrlsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
-// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type NipaService_DownloadChunksServer = grpc.BidiStreamingServer[DownloadChunksRequest, DownloadChunk]
+func _NipaService_ConfirmChunkUploads_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ConfirmChunkUploadsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaServiceServer).ConfirmChunkUploads(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaService_ConfirmChunkUploads_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaServiceServer).ConfirmChunkUploads(ctx, req.(*ConfirmChunkUploadsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
 
 func _NipaService_GetMyPermissions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetMyPermissionsRequest)
@@ -1188,6 +1238,18 @@ var NipaService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _NipaService_Push_Handler,
 		},
 		{
+			MethodName: "GetChunkUploadUrls",
+			Handler:    _NipaService_GetChunkUploadUrls_Handler,
+		},
+		{
+			MethodName: "GetChunkDownloadUrls",
+			Handler:    _NipaService_GetChunkDownloadUrls_Handler,
+		},
+		{
+			MethodName: "ConfirmChunkUploads",
+			Handler:    _NipaService_ConfirmChunkUploads_Handler,
+		},
+		{
 			MethodName: "GetMyPermissions",
 			Handler:    _NipaService_GetMyPermissions_Handler,
 		},
@@ -1232,18 +1294,6 @@ var NipaService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _NipaService_RemoveGroupMember_Handler,
 		},
 	},
-	Streams: []grpc.StreamDesc{
-		{
-			StreamName:    "UploadChunks",
-			Handler:       _NipaService_UploadChunks_Handler,
-			ClientStreams: true,
-		},
-		{
-			StreamName:    "DownloadChunks",
-			Handler:       _NipaService_DownloadChunks_Handler,
-			ServerStreams: true,
-			ClientStreams: true,
-		},
-	},
+	Streams:  []grpc.StreamDesc{},
 	Metadata: "internal/grpc/proto/server.proto",
 }

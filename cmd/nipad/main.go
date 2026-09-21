@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/nipalab/nipa/db"
 	"github.com/nipalab/nipa/internal/config"
@@ -69,6 +70,9 @@ func main() {
 		panic(fmt.Errorf("create chunk store: %w", err))
 	}
 	defer chunkStore.Close()
+	if cfg.ChunkURLSigningKey == "" {
+		panic("CHUNK_URL_SIGNING_KEY must be set")
+	}
 	branchUsecase := usecase.NewBranchWithChunks(permissionUsecase, branchRepository, snowUser, chunkStore)
 	mergeRequestUsecase := usecase.NewMergeRequest(
 		sqlite.NewMergeRequestRepository(dbConn),
@@ -77,13 +81,18 @@ func main() {
 		branchUsecase,
 		snowUser,
 	)
+	chunkUsecase := usecase.NewChunk(pushRepository, chunkStore, usecase.ChunkTransferConfig{
+		SigningKey:  cfg.ChunkURLSigningKey,
+		PresignTTL:  time.Duration(cfg.ChunkPresignTTLSeconds) * time.Second,
+		MaxPageSize: cfg.ChunkMaxPageSize,
+	})
 	reg := &Registry{
 		authUsecase:         authUsecase,
 		userUsecase:         usecase.NewUser(snowUser, userRepo, passwordHasher),
 		commonUsecase:       usecase.NewCommon(orgRepo, projectRepo),
 		branchUsecase:       branchUsecase,
 		pushUsecase:         usecase.NewPush(permissionUsecase, branchRepository, pushRepository, snowUser),
-		chunkUsecase:        usecase.NewChunk(pushRepository, chunkStore),
+		chunkUsecase:        chunkUsecase,
 		permissionUsecase:   permissionUsecase,
 		groupUsecase:        usecase.NewGroup(groupRepository, snowUser, permissionUsecase, orgUsecase),
 		orgUsecase:          orgUsecase,
