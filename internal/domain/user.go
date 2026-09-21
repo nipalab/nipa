@@ -20,6 +20,26 @@ type User struct {
 	DeletedAt    *time.Time `json:"deleted_at,omitempty"`
 }
 
+const (
+	OrgRoleOwner  = "owner"
+	OrgRoleMember = "member"
+)
+
+func IsValidOrgRole(role string) bool {
+	return role == OrgRoleOwner || role == OrgRoleMember
+}
+
+type OrgMember struct {
+	User     User      `json:"user"`
+	Role     string    `json:"role"`
+	JoinedAt time.Time `json:"joined_at"`
+}
+
+type OrgMembership struct {
+	Org  Organization `json:"org"`
+	Role string       `json:"role"`
+}
+
 type Group struct {
 	ID          snow.ID    `json:"id"`
 	OrgID       snow.ID    `json:"org_id"`

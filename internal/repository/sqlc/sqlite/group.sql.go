@@ -153,6 +153,43 @@ func (q *Queries) GroupMemberAdd(ctx context.Context, arg GroupMemberAddParams) 
 	return err
 }
 
+const groupMemberList = `-- name: GroupMemberList :many
+SELECT gm.user_id, u.name, u.email
+FROM group_members gm
+JOIN users u ON u.id = gm.user_id
+WHERE gm.group_id = ? AND u.deleted = false
+ORDER BY u.name, u.id
+`
+
+type GroupMemberListRow struct {
+	UserID int64  `json:"user_id"`
+	Name   string `json:"name"`
+	Email  string `json:"email"`
+}
+
+func (q *Queries) GroupMemberList(ctx context.Context, groupID int64) ([]GroupMemberListRow, error) {
+	rows, err := q.db.QueryContext(ctx, groupMemberList, groupID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GroupMemberListRow
+	for rows.Next() {
+		var i GroupMemberListRow
+		if err := rows.Scan(&i.UserID, &i.Name, &i.Email); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const groupMemberRemove = `-- name: GroupMemberRemove :exec
 DELETE FROM group_members WHERE group_id = ? AND user_id = ?
 `

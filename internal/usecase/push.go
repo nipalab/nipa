@@ -96,8 +96,7 @@ func (p *Push) Push(ctx context.Context, projectID snow.ID, branchName, baseTree
 		return nil, err
 	}
 	if branch.IsProtected {
-		//TODO: add proper error for client side
-		return nil, domain.NewErrorNoPermission()
+		return nil, domain.NewErrorForbidden(fmt.Sprintf("branch %q is protected; push through a merge request", branchName))
 	}
 
 	var headCommit *domain.Commit

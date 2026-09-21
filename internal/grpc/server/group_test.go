@@ -25,9 +25,11 @@ func newTestGroupHandler(t *testing.T) (*nipaServer, *MockgroupRepository) {
 	require.NoError(t, err)
 	invalidator := NewMockpermissionCacheInvalidator(ctrl)
 	invalidator.EXPECT().InvalidateAll().AnyTimes()
+	orgs := NewMockorgAuthorizer(ctrl)
+	orgs.EXPECT().IsOrgOwner(gomock.Any(), gomock.Any()).Return(false, nil).AnyTimes()
 	uc := &mockUsecaseContainer{
 		common: newTestCommon(),
-		group:  usecase.NewGroup(repo, node, invalidator),
+		group:  usecase.NewGroup(repo, node, invalidator, orgs),
 	}
 	return New(uc), repo
 }

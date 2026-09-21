@@ -75,6 +75,31 @@ type GroupMember struct {
 	UserID  int64 `json:"user_id"`
 }
 
+type MergeRequest struct {
+	ID                int64         `json:"id"`
+	ProjectID         int64         `json:"project_id"`
+	SourceBranchID    int64         `json:"source_branch_id"`
+	TargetBranchID    int64         `json:"target_branch_id"`
+	SourceBranchName  string        `json:"source_branch_name"`
+	TargetBranchName  string        `json:"target_branch_name"`
+	Title             string        `json:"title"`
+	Description       string        `json:"description"`
+	Status            string        `json:"status"`
+	MergeCommitID     sql.NullInt64 `json:"merge_commit_id"`
+	MergeBaseCommitID sql.NullInt64 `json:"merge_base_commit_id"`
+	CreatedBy         int64         `json:"created_by"`
+	CreatedAt         time.Time     `json:"created_at"`
+	UpdatedAt         time.Time     `json:"updated_at"`
+}
+
+type OrgMember struct {
+	OrgID     int64     `json:"org_id"`
+	UserID    int64     `json:"user_id"`
+	Role      string    `json:"role"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
 type Organization struct {
 	ID        int64        `json:"id"`
 	Slug      string       `json:"slug"`

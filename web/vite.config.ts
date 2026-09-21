@@ -17,13 +17,13 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/auth': API_TARGET,
       '/docs': API_TARGET,
       '/api': API_TARGET,
     },
   },
   test: {
     environment: 'jsdom',
+    setupFiles: './src/test/setup.ts',
     server: {
       deps: {
         inline: [/@primer\//, /octicons/],

@@ -61,21 +61,34 @@ func main() {
 		panic(err)
 	}
 	authUsecase := usecase.NewAuth(cfg.JWTKey, passwordHasher, userRepo, authRepo)
-	permissionUsecase := usecase.NewPermission(pbacRepository, userRepo, groupRepository)
+	orgUsecase := usecase.NewOrg(orgRepo)
+	permissionUsecase := usecase.NewPermission(pbacRepository, userRepo, groupRepository, orgUsecase)
+	projectUsecase := usecase.NewProject(projectRepo, snowUser, permissionUsecase, orgUsecase)
 	chunkStore, err := storage.NewLocalStore(cfg.ChunkStorageDir)
 	if err != nil {
 		panic(fmt.Errorf("create chunk store: %w", err))
 	}
 	defer chunkStore.Close()
+	branchUsecase := usecase.NewBranchWithChunks(permissionUsecase, branchRepository, snowUser, chunkStore)
+	mergeRequestUsecase := usecase.NewMergeRequest(
+		sqlite.NewMergeRequestRepository(dbConn),
+		branchRepository,
+		permissionUsecase,
+		branchUsecase,
+		snowUser,
+	)
 	reg := &Registry{
-		authUsecase:       authUsecase,
-		userUsecase:       usecase.NewUser(snowUser),
-		commonUsecase:     usecase.NewCommon(orgRepo, projectRepo),
-		branchUsecase:     usecase.NewBranch(permissionUsecase, branchRepository, snowUser),
-		pushUsecase:       usecase.NewPush(permissionUsecase, branchRepository, pushRepository, snowUser),
-		chunkUsecase:      usecase.NewChunk(pushRepository, chunkStore),
-		permissionUsecase: permissionUsecase,
-		groupUsecase:      usecase.NewGroup(groupRepository, snowUser, permissionUsecase),
+		authUsecase:         authUsecase,
+		userUsecase:         usecase.NewUser(snowUser, userRepo, passwordHasher),
+		commonUsecase:       usecase.NewCommon(orgRepo, projectRepo),
+		branchUsecase:       branchUsecase,
+		pushUsecase:         usecase.NewPush(permissionUsecase, branchRepository, pushRepository, snowUser),
+		chunkUsecase:        usecase.NewChunk(pushRepository, chunkStore),
+		permissionUsecase:   permissionUsecase,
+		groupUsecase:        usecase.NewGroup(groupRepository, snowUser, permissionUsecase, orgUsecase),
+		orgUsecase:          orgUsecase,
+		projectUsecase:      projectUsecase,
+		mergeRequestUsecase: mergeRequestUsecase,
 	}
 
 	apiApp := api.NewAPI(reg)

@@ -20,3 +20,10 @@ INSERT OR IGNORE INTO group_members (group_id, user_id) VALUES (?, ?);
 
 -- name: GroupMemberRemove :exec
 DELETE FROM group_members WHERE group_id = ? AND user_id = ?;
+
+-- name: GroupMemberList :many
+SELECT gm.user_id, u.name, u.email
+FROM group_members gm
+JOIN users u ON u.id = gm.user_id
+WHERE gm.group_id = ? AND u.deleted = false
+ORDER BY u.name, u.id;

@@ -76,10 +76,24 @@ func NewErrorUser(message string) *Error {
 	}
 }
 
+func NewErrorUnauthorized(message string) *Error {
+	return &Error{
+		Code:    401,
+		Message: message,
+	}
+}
+
 func NewErrorNoPermission() *Error {
 	return &Error{
 		Code:    403,
 		Message: "no permission",
+	}
+}
+
+func NewErrorForbidden(message string) *Error {
+	return &Error{
+		Code:    403,
+		Message: message,
 	}
 }
 

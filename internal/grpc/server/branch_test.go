@@ -1167,3 +1167,98 @@ func TestMergeFastForward_ResolveError(t *testing.T) {
 	})
 	require.Error(t, err)
 }
+
+func TestRenameBranch_Success(t *testing.T) {
+	branch, perm, repo := newTestBranchUc(t)
+	srv := New(newMockUsecaseContainer(t, branch))
+	projectID := snow.ID(42)
+
+	perm.EXPECT().HasProjectAccess(gomock.Any(), projectID, domain.PermissionWrite).Return(true)
+	repo.EXPECT().GetBranchByName(gomock.Any(), projectID, "feature").
+		Return(&domain.Branch{ID: 2, ProjectID: projectID, Name: "feature"}, nil)
+	repo.EXPECT().GetBranchByName(gomock.Any(), projectID, "renamed").Return(nil, domain.NewErrorRecordNotFound())
+	repo.EXPECT().RenameBranch(gomock.Any(), projectID, snow.ID(2), "renamed", "renamed").Return(nil)
+	repo.EXPECT().GetByProjectIDAndID(gomock.Any(), projectID, snow.ID(2)).
+		Return(&domain.Branch{ID: 2, ProjectID: projectID, Name: "renamed"}, nil)
+
+	resp, err := srv.RenameBranch(context.Background(), &pb.RenameBranchRequest{
+		Context: &pb.ProjectContext{Org: "org", Project: "proj"},
+		Name:    "feature",
+		NewName: "renamed",
+	})
+	require.NoError(t, err)
+	require.Equal(t, "renamed", resp.GetBranch().GetName())
+}
+
+func TestDeleteBranch_Success(t *testing.T) {
+	branch, perm, repo := newTestBranchUc(t)
+	srv := New(newMockUsecaseContainer(t, branch))
+	projectID := snow.ID(42)
+
+	repo.EXPECT().GetBranchByName(gomock.Any(), projectID, "feature").
+		Return(&domain.Branch{ID: 2, ProjectID: projectID, Name: "feature"}, nil)
+	perm.EXPECT().HasProjectAccess(gomock.Any(), projectID, domain.PermissionWrite).Return(true)
+	repo.EXPECT().DeleteBranch(gomock.Any(), projectID, snow.ID(2)).Return(nil)
+
+	resp, err := srv.DeleteBranch(context.Background(), &pb.DeleteBranchRequest{
+		Context: &pb.ProjectContext{Org: "org", Project: "proj"},
+		Name:    "feature",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+}
+
+func TestSetDefaultBranch_Success(t *testing.T) {
+	branch, perm, repo := newTestBranchUc(t)
+	srv := New(newMockUsecaseContainer(t, branch))
+	projectID := snow.ID(42)
+
+	perm.EXPECT().AdminHasProject(gomock.Any(), projectID).Return(true)
+	repo.EXPECT().GetBranchByName(gomock.Any(), projectID, "release").
+		Return(&domain.Branch{ID: 3, ProjectID: projectID, Name: "release"}, nil)
+	repo.EXPECT().SetDefaultBranch(gomock.Any(), projectID, snow.ID(3)).Return(nil)
+	repo.EXPECT().GetByProjectIDAndID(gomock.Any(), projectID, snow.ID(3)).
+		Return(&domain.Branch{ID: 3, ProjectID: projectID, Name: "release", IsDefault: true}, nil)
+
+	resp, err := srv.SetDefaultBranch(context.Background(), &pb.SetDefaultBranchRequest{
+		Context: &pb.ProjectContext{Org: "org", Project: "proj"},
+		Name:    "release",
+	})
+	require.NoError(t, err)
+	require.True(t, resp.GetBranch().GetIsDefault())
+}
+
+func TestSetBranchProtection_Success(t *testing.T) {
+	branch, perm, repo := newTestBranchUc(t)
+	srv := New(newMockUsecaseContainer(t, branch))
+	projectID := snow.ID(42)
+
+	perm.EXPECT().AdminHasProject(gomock.Any(), projectID).Return(true)
+	repo.EXPECT().GetBranchByName(gomock.Any(), projectID, "release").
+		Return(&domain.Branch{ID: 3, ProjectID: projectID, Name: "release"}, nil)
+	repo.EXPECT().SetBranchProtection(gomock.Any(), projectID, snow.ID(3), true).Return(nil)
+	repo.EXPECT().GetByProjectIDAndID(gomock.Any(), projectID, snow.ID(3)).
+		Return(&domain.Branch{ID: 3, ProjectID: projectID, Name: "release", IsProtected: true}, nil)
+
+	resp, err := srv.SetBranchProtection(context.Background(), &pb.SetBranchProtectionRequest{
+		Context:     &pb.ProjectContext{Org: "org", Project: "proj"},
+		Name:        "release",
+		IsProtected: true,
+	})
+	require.NoError(t, err)
+	require.True(t, resp.GetBranch().GetIsProtected())
+}
+
+func TestBranchManagement_ResolveError(t *testing.T) {
+	srv := New(newMockUsecaseContainer(t, nil))
+	badContext := &pb.ProjectContext{Org: "missing", Project: "proj"}
+
+	_, err := srv.RenameBranch(context.Background(), &pb.RenameBranchRequest{Context: badContext, Name: "a", NewName: "b"})
+	require.Error(t, err)
+	_, err = srv.DeleteBranch(context.Background(), &pb.DeleteBranchRequest{Context: badContext, Name: "a"})
+	require.Error(t, err)
+	_, err = srv.SetDefaultBranch(context.Background(), &pb.SetDefaultBranchRequest{Context: badContext, Name: "a"})
+	require.Error(t, err)
+	_, err = srv.SetBranchProtection(context.Background(), &pb.SetBranchProtectionRequest{Context: badContext, Name: "a"})
+	require.Error(t, err)
+}

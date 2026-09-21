@@ -40,7 +40,7 @@ func (q *Queries) BranchCreate(ctx context.Context, arg BranchCreateParams) erro
 const branchGet = `-- name: BranchGet :one
 SELECT id, project_id, name, "key", is_protected, is_default, commit_id, updated_at, created_at, deleted, deleted_at
 FROM branches
-WHERE project_id = ?1 AND id = ?2
+WHERE project_id = ?1 AND id = ?2 AND deleted = FALSE
 LIMIT 1
 `
 
@@ -71,7 +71,7 @@ func (q *Queries) BranchGet(ctx context.Context, arg BranchGetParams) (Branch, e
 const branchGetByName = `-- name: BranchGetByName :one
 SELECT id, project_id, name, "key", is_protected, is_default, commit_id, updated_at, created_at, deleted, deleted_at
 FROM branches
-WHERE project_id = ?1 AND name = ?2
+WHERE project_id = ?1 AND name = ?2 AND deleted = FALSE
 LIMIT 1
 `
 
@@ -102,7 +102,7 @@ func (q *Queries) BranchGetByName(ctx context.Context, arg BranchGetByNameParams
 const branchGetDefault = `-- name: BranchGetDefault :one
 SELECT id, project_id, name, "key", is_protected, is_default, commit_id, updated_at, created_at, deleted, deleted_at
 FROM branches
-WHERE project_id = ?1 AND is_default = TRUE
+WHERE project_id = ?1 AND is_default = TRUE AND deleted = FALSE
 LIMIT 1
 `
 
@@ -129,6 +129,7 @@ const branchList = `-- name: BranchList :many
 SELECT id, project_id, name, "key", is_protected, is_default, commit_id, updated_at, created_at, deleted, deleted_at
 FROM branches
 WHERE project_id = ?1
+  AND deleted = FALSE
   AND (?2 is null or updated_at < ?2 OR (updated_at = ?2 AND id < ?3))
 ORDER BY updated_at DESC, id DESC
 LIMIT ?4
@@ -181,6 +182,21 @@ func (q *Queries) BranchList(ctx context.Context, arg BranchListParams) ([]Branc
 	return items, nil
 }
 
+const branchMarkDefault = `-- name: BranchMarkDefault :exec
+UPDATE branches SET is_default = TRUE, updated_at = CURRENT_TIMESTAMP
+WHERE project_id = ? AND id = ? AND deleted = FALSE
+`
+
+type BranchMarkDefaultParams struct {
+	ProjectID int64 `json:"project_id"`
+	ID        int64 `json:"id"`
+}
+
+func (q *Queries) BranchMarkDefault(ctx context.Context, arg BranchMarkDefaultParams) error {
+	_, err := q.db.ExecContext(ctx, branchMarkDefault, arg.ProjectID, arg.ID)
+	return err
+}
+
 const branchRemoveDefault = `-- name: BranchRemoveDefault :exec
 UPDATE branches SET is_default = FALSE WHERE project_id = ?1 AND is_default = TRUE
 `
@@ -188,6 +204,62 @@ UPDATE branches SET is_default = FALSE WHERE project_id = ?1 AND is_default = TR
 func (q *Queries) BranchRemoveDefault(ctx context.Context, projectID int64) error {
 	_, err := q.db.ExecContext(ctx, branchRemoveDefault, projectID)
 	return err
+}
+
+const branchSetName = `-- name: BranchSetName :exec
+UPDATE branches SET name = ?, key = ?, updated_at = CURRENT_TIMESTAMP
+WHERE project_id = ? AND id = ? AND deleted = FALSE
+`
+
+type BranchSetNameParams struct {
+	Name      string `json:"name"`
+	Key       string `json:"key"`
+	ProjectID int64  `json:"project_id"`
+	ID        int64  `json:"id"`
+}
+
+func (q *Queries) BranchSetName(ctx context.Context, arg BranchSetNameParams) error {
+	_, err := q.db.ExecContext(ctx, branchSetName,
+		arg.Name,
+		arg.Key,
+		arg.ProjectID,
+		arg.ID,
+	)
+	return err
+}
+
+const branchSetProtection = `-- name: BranchSetProtection :exec
+UPDATE branches SET is_protected = ?, updated_at = CURRENT_TIMESTAMP
+WHERE project_id = ? AND id = ? AND deleted = FALSE
+`
+
+type BranchSetProtectionParams struct {
+	IsProtected bool  `json:"is_protected"`
+	ProjectID   int64 `json:"project_id"`
+	ID          int64 `json:"id"`
+}
+
+func (q *Queries) BranchSetProtection(ctx context.Context, arg BranchSetProtectionParams) error {
+	_, err := q.db.ExecContext(ctx, branchSetProtection, arg.IsProtected, arg.ProjectID, arg.ID)
+	return err
+}
+
+const branchSoftDelete = `-- name: BranchSoftDelete :execrows
+UPDATE branches SET deleted = TRUE, deleted_at = CURRENT_TIMESTAMP
+WHERE project_id = ? AND id = ? AND deleted = FALSE
+`
+
+type BranchSoftDeleteParams struct {
+	ProjectID int64 `json:"project_id"`
+	ID        int64 `json:"id"`
+}
+
+func (q *Queries) BranchSoftDelete(ctx context.Context, arg BranchSoftDeleteParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, branchSoftDelete, arg.ProjectID, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const branchUpdate = `-- name: BranchUpdate :exec

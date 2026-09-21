@@ -1,4 +1,4 @@
-package usecase_test
+package usecase
 
 import (
 	"context"
@@ -6,151 +6,228 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"github.com/nipalab/nipa/internal/domain"
-	"github.com/nipalab/nipa/internal/usecase"
+	"github.com/nipalab/nipa/internal/snow"
 )
 
-// fakeProjectRepository is an in-memory stub implementing usecase.ProjectRepository.
-type fakeProjectRepository struct {
-	createFn func(ctx context.Context, project domain.Project) (domain.Project, error)
-	getFn    func(ctx context.Context, id int64) (domain.Project, error)
-	listFn   func(ctx context.Context) ([]domain.Project, error)
-	deleteFn func(ctx context.Context, id int64) error
-}
+func newTestProject(t *testing.T) (*Project, *MockprojectRepository, *MockprojectAccess, *MockorgAuthorizer) {
+	t.Helper()
 
-func (f *fakeProjectRepository) Create(ctx context.Context, project domain.Project) (domain.Project, error) {
-	return f.createFn(ctx, project)
-}
-
-func (f *fakeProjectRepository) Get(ctx context.Context, id int64) (domain.Project, error) {
-	return f.getFn(ctx, id)
-}
-
-func (f *fakeProjectRepository) List(ctx context.Context) ([]domain.Project, error) {
-	return f.listFn(ctx)
-}
-
-func (f *fakeProjectRepository) Delete(ctx context.Context, id int64) error {
-	return f.deleteFn(ctx, id)
-}
-
-func TestProjectUsecase_Create(t *testing.T) {
-	ctx := context.Background()
-	want := domain.Project{ID: 1, Name: "project-a", Description: "a"}
-
-	repo := &fakeProjectRepository{
-		createFn: func(_ context.Context, project domain.Project) (domain.Project, error) {
-			require.Equal(t, "project-a", project.Name)
-			return want, nil
-		},
-	}
-
-	got, err := usecase.NewProjectUsecase(repo).Create(ctx, domain.Project{Name: "project-a", Description: "a"})
+	ctrl := gomock.NewController(t)
+	repo := NewMockprojectRepository(ctrl)
+	perm := NewMockprojectAccess(ctrl)
+	orgs := NewMockorgAuthorizer(ctrl)
+	node, err := snow.NewNode(1)
 	require.NoError(t, err)
-	require.Equal(t, want, got)
+	return NewProject(repo, node, perm, orgs), repo, perm, orgs
 }
 
-func TestProjectUsecase_Create_Error(t *testing.T) {
-	ctx := context.Background()
-	wantErr := errors.New("create failed")
+func TestProject_List_FiltersHiddenProjects(t *testing.T) {
+	project, repo, perm, _ := newTestProject(t)
+	ctx := permissionCtx(42)
 
-	repo := &fakeProjectRepository{
-		createFn: func(_ context.Context, _ domain.Project) (domain.Project, error) {
-			return domain.Project{}, wantErr
-		},
-	}
+	repo.EXPECT().ListByOrgID(gomock.Any(), snow.ID(1)).Return([]domain.Project{
+		{ID: 10, OrgID: 1, Name: "visible"},
+		{ID: 11, OrgID: 1, Name: "hidden"},
+	}, nil)
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(10), domain.PermissionRead).Return(true)
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(11), domain.PermissionRead).Return(false)
 
-	_, err := usecase.NewProjectUsecase(repo).Create(ctx, domain.Project{})
+	projects, err := project.List(ctx, snow.ID(1))
+	require.NoError(t, err)
+	require.Len(t, projects, 1)
+	require.Equal(t, "visible", projects[0].Name)
+}
+
+func TestProject_List_RepoError(t *testing.T) {
+	wantErr := errors.New("db down")
+	project, repo, _, _ := newTestProject(t)
+
+	repo.EXPECT().ListByOrgID(gomock.Any(), snow.ID(1)).Return(nil, wantErr)
+
+	_, err := project.List(permissionCtx(42), snow.ID(1))
 	require.ErrorIs(t, err, wantErr)
 }
 
-func TestProjectUsecase_Get(t *testing.T) {
-	ctx := context.Background()
-	want := domain.Project{ID: 42, Name: "project-a"}
+func TestProject_Get(t *testing.T) {
+	project, repo, perm, _ := newTestProject(t)
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(10), domain.PermissionRead).Return(true)
+	repo.EXPECT().Get(gomock.Any(), snow.ID(10)).Return(&domain.Project{ID: 10, Name: "game"}, nil)
 
-	repo := &fakeProjectRepository{
-		getFn: func(_ context.Context, id int64) (domain.Project, error) {
-			require.Equal(t, int64(42), id)
-			return want, nil
-		},
-	}
-
-	got, err := usecase.NewProjectUsecase(repo).Get(ctx, 42)
+	got, err := project.Get(permissionCtx(42), snow.ID(10))
 	require.NoError(t, err)
-	require.Equal(t, want, got)
+	require.Equal(t, "game", got.Name)
 }
 
-func TestProjectUsecase_Get_Error(t *testing.T) {
-	ctx := context.Background()
-	wantErr := errors.New("not found")
+func TestProject_Get_HiddenIsNotFound(t *testing.T) {
+	project, _, perm, _ := newTestProject(t)
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(10), domain.PermissionRead).Return(false)
 
-	repo := &fakeProjectRepository{
-		getFn: func(_ context.Context, _ int64) (domain.Project, error) {
-			return domain.Project{}, wantErr
-		},
-	}
-
-	_, err := usecase.NewProjectUsecase(repo).Get(ctx, 42)
-	require.ErrorIs(t, err, wantErr)
+	_, err := project.Get(permissionCtx(42), snow.ID(10))
+	require.True(t, domain.IsErrorNotFound(err))
 }
 
-func TestProjectUsecase_List(t *testing.T) {
-	ctx := context.Background()
-	want := []domain.Project{{ID: 1}, {ID: 2}}
+func TestProject_Create_GlobalAdmin(t *testing.T) {
+	project, repo, _, _ := newTestProject(t)
+	ctx := permissionCtx(42, withAdmin())
 
-	repo := &fakeProjectRepository{
-		listFn: func(_ context.Context) ([]domain.Project, error) {
-			return want, nil
+	repo.EXPECT().GetByOrgIDAndSlug(gomock.Any(), snow.ID(1), "my-game").
+		Return(nil, domain.NewErrorRecordNotFound())
+	repo.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, created domain.Project) (*domain.Project, error) {
+			require.NotZero(t, created.ID)
+			require.Equal(t, snow.ID(1), created.OrgID)
+			require.Equal(t, "My Game", created.Name)
+			require.Equal(t, "my-game", created.Slug)
+			require.Equal(t, "fun", created.Description)
+			return &created, nil
 		},
-	}
+	)
 
-	got, err := usecase.NewProjectUsecase(repo).List(ctx)
+	got, err := project.Create(ctx, snow.ID(1), " My Game ", " fun ", "")
 	require.NoError(t, err)
-	require.Equal(t, want, got)
+	require.Equal(t, "my-game", got.Slug)
 }
 
-func TestProjectUsecase_List_Error(t *testing.T) {
-	ctx := context.Background()
-	wantErr := errors.New("list failed")
+func TestProject_Create_OrgOwner(t *testing.T) {
+	project, repo, _, orgs := newTestProject(t)
+	ctx := permissionCtx(42)
 
-	repo := &fakeProjectRepository{
-		listFn: func(_ context.Context) ([]domain.Project, error) {
-			return nil, wantErr
+	orgs.EXPECT().IsOrgOwner(gomock.Any(), snow.ID(1)).Return(true, nil)
+	repo.EXPECT().GetByOrgIDAndSlug(gomock.Any(), snow.ID(1), "assets").Return(nil, domain.NewErrorRecordNotFound())
+	repo.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, created domain.Project) (*domain.Project, error) {
+			return &created, nil
 		},
-	}
+	)
 
-	_, err := usecase.NewProjectUsecase(repo).List(ctx)
-	require.ErrorIs(t, err, wantErr)
-}
-
-func TestProjectUsecase_Delete(t *testing.T) {
-	ctx := context.Background()
-	called := false
-
-	repo := &fakeProjectRepository{
-		deleteFn: func(_ context.Context, id int64) error {
-			called = true
-			require.Equal(t, int64(7), id)
-			return nil
-		},
-	}
-
-	err := usecase.NewProjectUsecase(repo).Delete(ctx, 7)
+	_, err := project.Create(ctx, snow.ID(1), "Assets", "", "assets")
 	require.NoError(t, err)
-	require.True(t, called)
 }
 
-func TestProjectUsecase_Delete_Error(t *testing.T) {
-	ctx := context.Background()
-	wantErr := errors.New("delete failed")
+func TestProject_Create_NoPermission(t *testing.T) {
+	project, _, _, orgs := newTestProject(t)
 
-	repo := &fakeProjectRepository{
-		deleteFn: func(_ context.Context, _ int64) error {
-			return wantErr
+	orgs.EXPECT().IsOrgOwner(gomock.Any(), snow.ID(1)).Return(false, nil)
+
+	_, err := project.Create(permissionCtx(42), snow.ID(1), "Assets", "", "")
+	require.True(t, domain.IsErrorNoPermission(err))
+}
+
+func TestProject_Create_Validation(t *testing.T) {
+	project, _, _, _ := newTestProject(t)
+	ctx := permissionCtx(42, withAdmin())
+
+	_, err := project.Create(ctx, snow.ID(1), "  ", "", "")
+	requireUserError(t, err)
+
+	_, err = project.Create(ctx, snow.ID(1), "Assets", "", "Bad Slug")
+	requireUserError(t, err)
+
+	_, err = project.Create(ctx, snow.ID(1), "!!!", "", "")
+	requireUserError(t, err)
+}
+
+func TestProject_Create_DuplicateSlug(t *testing.T) {
+	project, repo, _, _ := newTestProject(t)
+
+	repo.EXPECT().GetByOrgIDAndSlug(gomock.Any(), snow.ID(1), "assets").
+		Return(&domain.Project{ID: 9, Slug: "assets"}, nil)
+
+	_, err := project.Create(permissionCtx(42, withAdmin()), snow.ID(1), "Assets", "", "assets")
+	require.True(t, domain.IsErrorConflict(err))
+}
+
+func TestProject_Update_ProjectAdmin(t *testing.T) {
+	project, repo, perm, _ := newTestProject(t)
+	ctx := permissionCtx(42)
+
+	repo.EXPECT().Get(gomock.Any(), snow.ID(10)).Return(&domain.Project{ID: 10, OrgID: 1}, nil)
+	perm.EXPECT().AdminHasProject(gomock.Any(), snow.ID(10)).Return(true)
+	repo.EXPECT().Update(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, updated domain.Project) (*domain.Project, error) {
+			require.Equal(t, "Renamed", updated.Name)
+			require.Equal(t, "new description", updated.Description)
+			return &updated, nil
 		},
-	}
+	)
 
-	err := usecase.NewProjectUsecase(repo).Delete(ctx, 7)
-	require.ErrorIs(t, err, wantErr)
+	got, err := project.Update(ctx, snow.ID(10), " Renamed ", " new description ")
+	require.NoError(t, err)
+	require.Equal(t, "Renamed", got.Name)
+}
+
+func TestProject_Update_OrgOwner(t *testing.T) {
+	project, repo, perm, orgs := newTestProject(t)
+	ctx := permissionCtx(42)
+
+	repo.EXPECT().Get(gomock.Any(), snow.ID(10)).Return(&domain.Project{ID: 10, OrgID: 1}, nil)
+	perm.EXPECT().AdminHasProject(gomock.Any(), snow.ID(10)).Return(false)
+	orgs.EXPECT().IsOrgOwner(gomock.Any(), snow.ID(1)).Return(true, nil)
+	repo.EXPECT().Update(gomock.Any(), gomock.Any()).Return(&domain.Project{ID: 10, Name: "Renamed"}, nil)
+
+	_, err := project.Update(ctx, snow.ID(10), "Renamed", "")
+	require.NoError(t, err)
+}
+
+func TestProject_Update_NoPermission(t *testing.T) {
+	project, repo, perm, orgs := newTestProject(t)
+
+	repo.EXPECT().Get(gomock.Any(), snow.ID(10)).Return(&domain.Project{ID: 10, OrgID: 1}, nil)
+	perm.EXPECT().AdminHasProject(gomock.Any(), snow.ID(10)).Return(false)
+	orgs.EXPECT().IsOrgOwner(gomock.Any(), snow.ID(1)).Return(false, nil)
+
+	_, err := project.Update(permissionCtx(42), snow.ID(10), "Renamed", "")
+	require.True(t, domain.IsErrorNoPermission(err))
+}
+
+func TestProject_Update_EmptyName(t *testing.T) {
+	project, repo, perm, _ := newTestProject(t)
+
+	repo.EXPECT().Get(gomock.Any(), snow.ID(10)).Return(&domain.Project{ID: 10, OrgID: 1}, nil)
+	perm.EXPECT().AdminHasProject(gomock.Any(), snow.ID(10)).Return(true)
+
+	_, err := project.Update(permissionCtx(42), snow.ID(10), "  ", "")
+	requireUserError(t, err)
+}
+
+func TestProject_Update_NotFound(t *testing.T) {
+	project, repo, _, _ := newTestProject(t)
+
+	repo.EXPECT().Get(gomock.Any(), snow.ID(10)).Return(nil, domain.NewErrorRecordNotFound())
+
+	_, err := project.Update(permissionCtx(42), snow.ID(10), "Renamed", "")
+	require.True(t, domain.IsErrorNotFound(err))
+}
+
+func TestProject_Delete_OrgOwner(t *testing.T) {
+	project, repo, _, orgs := newTestProject(t)
+	ctx := permissionCtx(42)
+
+	repo.EXPECT().Get(gomock.Any(), snow.ID(10)).Return(&domain.Project{ID: 10, OrgID: 1}, nil)
+	orgs.EXPECT().IsOrgOwner(gomock.Any(), snow.ID(1)).Return(true, nil)
+	repo.EXPECT().Delete(gomock.Any(), snow.ID(10)).Return(nil)
+
+	require.NoError(t, project.Delete(ctx, snow.ID(10)))
+}
+
+func TestProject_Delete_NoPermission(t *testing.T) {
+	project, repo, _, orgs := newTestProject(t)
+
+	repo.EXPECT().Get(gomock.Any(), snow.ID(10)).Return(&domain.Project{ID: 10, OrgID: 1}, nil)
+	orgs.EXPECT().IsOrgOwner(gomock.Any(), snow.ID(1)).Return(false, nil)
+
+	err := project.Delete(permissionCtx(42), snow.ID(10))
+	require.True(t, domain.IsErrorNoPermission(err))
+}
+
+func TestProject_Delete_NotFound(t *testing.T) {
+	project, repo, _, _ := newTestProject(t)
+
+	repo.EXPECT().Get(gomock.Any(), snow.ID(10)).Return(nil, domain.NewErrorRecordNotFound())
+
+	err := project.Delete(permissionCtx(42), snow.ID(10))
+	require.True(t, domain.IsErrorNotFound(err))
 }

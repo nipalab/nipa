@@ -1051,3 +1051,42 @@ func TestBranchRepositorySQLite_CommitLog_DatabaseError(t *testing.T) {
 	require.ErrorAs(t, err, &domErr)
 	require.Equal(t, 500, domErr.Code)
 }
+
+func TestBranchRepositorySQLite_Lifecycle(t *testing.T) {
+	ctx := context.Background()
+	db, q := newSQLiteTestDB(t)
+	repo := NewBranchRepository(db)
+
+	projectID := seedProject(t, q, 1, "game")
+	branchID := seedBranch(t, db, projectID, "feature", sql.NullInt64{})
+
+	require.NoError(t, repo.RenameBranch(ctx, projectID, branchID, "renamed", "renamed"))
+	renamed, err := repo.GetBranchByName(ctx, projectID, "renamed")
+	require.NoError(t, err)
+	require.Equal(t, "renamed", renamed.Name)
+
+	require.NoError(t, repo.SetBranchProtection(ctx, projectID, branchID, true))
+	protected, err := repo.GetByProjectIDAndID(ctx, projectID, branchID)
+	require.NoError(t, err)
+	require.True(t, protected.IsProtected)
+
+	require.NoError(t, repo.SetDefaultBranch(ctx, projectID, branchID))
+	def, err := repo.GetDefaultBranch(ctx, projectID)
+	require.NoError(t, err)
+	require.Equal(t, branchID, def.ID)
+
+	require.NoError(t, repo.DeleteBranch(ctx, projectID, branchID))
+	_, err = repo.GetBranchByName(ctx, projectID, "renamed")
+	requireRecordNotFound(t, err)
+	_, err = repo.GetByProjectIDAndID(ctx, projectID, branchID)
+	requireRecordNotFound(t, err)
+	_, err = repo.GetDefaultBranch(ctx, projectID)
+	requireRecordNotFound(t, err)
+	requireRecordNotFound(t, repo.DeleteBranch(ctx, projectID, branchID))
+
+	branches, err := repo.ListBranches(ctx, projectID, 100, nil, 0)
+	require.NoError(t, err)
+	for _, branch := range branches {
+		require.NotEqual(t, branchID, branch.ID)
+	}
+}

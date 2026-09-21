@@ -8,19 +8,19 @@ import (
 	"github.com/nipalab/nipa/internal/snow"
 )
 
-type orgRepository interface {
+type orgSlugLookup interface {
 	GetBySlug(ctx context.Context, slug string) (*domain.Organization, error)
 }
-type projectRepository interface {
+type projectSlugLookup interface {
 	GetByOrgIDAndSlug(ctx context.Context, orgID snow.ID, slug string) (*domain.Project, error)
 }
 
 type Common struct {
-	orgRepository     orgRepository
-	projectRepository projectRepository
+	orgRepository     orgSlugLookup
+	projectRepository projectSlugLookup
 }
 
-func NewCommon(orgRepository orgRepository, projectRepository projectRepository) *Common {
+func NewCommon(orgRepository orgSlugLookup, projectRepository projectSlugLookup) *Common {
 	return &Common{
 		orgRepository:     orgRepository,
 		projectRepository: projectRepository,

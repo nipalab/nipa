@@ -150,6 +150,42 @@ message CreateBranchResponse {
     Branch branch = 1;
 }
 
+message RenameBranchRequest {
+    ProjectContext context = 1;
+    string name = 2;
+    string new_name = 3;
+}
+
+message RenameBranchResponse {
+    Branch branch = 1;
+}
+
+message DeleteBranchRequest {
+    ProjectContext context = 1;
+    string name = 2;
+}
+
+message DeleteBranchResponse {}
+
+message SetDefaultBranchRequest {
+    ProjectContext context = 1;
+    string name = 2;
+}
+
+message SetDefaultBranchResponse {
+    Branch branch = 1;
+}
+
+message SetBranchProtectionRequest {
+    ProjectContext context = 1;
+    string name = 2;
+    bool is_protected = 3;
+}
+
+message SetBranchProtectionResponse {
+    Branch branch = 1;
+}
+
 message GetMergeBaseRequest {
     ProjectContext context = 1;
     string target_branch = 2; // used when target_commit_id is empty
@@ -386,6 +422,10 @@ service NipaService {
     rpc GetBranchByName(GetBranchByNameRequest) returns (GetBranchByNameResponse);
     rpc GetDefaultBranch(GetDefaultBranchRequest) returns (GetBranchResponse);
     rpc CreateBranch(CreateBranchRequest) returns (CreateBranchResponse);
+    rpc RenameBranch(RenameBranchRequest) returns (RenameBranchResponse);
+    rpc DeleteBranch(DeleteBranchRequest) returns (DeleteBranchResponse);
+    rpc SetDefaultBranch(SetDefaultBranchRequest) returns (SetDefaultBranchResponse);
+    rpc SetBranchProtection(SetBranchProtectionRequest) returns (SetBranchProtectionResponse);
     rpc GetTreeManifest(GetTreeManifestRequest) returns (GetTreeManifestResponse);
     rpc GetCommitLog(GetCommitLogRequest) returns (GetCommitLogResponse);
     rpc GetCommit(GetCommitRequest) returns (GetCommitResponse);

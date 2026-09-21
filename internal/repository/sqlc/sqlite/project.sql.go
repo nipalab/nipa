@@ -162,3 +162,32 @@ func (q *Queries) ListProjectsByOrgId(ctx context.Context, orgID int64) ([]Proje
 	}
 	return items, nil
 }
+
+const updateProject = `-- name: UpdateProject :one
+UPDATE projects SET name = ?, description = ?, updated_at = CURRENT_TIMESTAMP
+WHERE id = ? AND deleted = false
+RETURNING id, org_id, slug, name, description, created_at, updated_at, deleted, deleted_at
+`
+
+type UpdateProjectParams struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	ID          int64  `json:"id"`
+}
+
+func (q *Queries) UpdateProject(ctx context.Context, arg UpdateProjectParams) (Project, error) {
+	row := q.db.QueryRowContext(ctx, updateProject, arg.Name, arg.Description, arg.ID)
+	var i Project
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.Slug,
+		&i.Name,
+		&i.Description,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Deleted,
+		&i.DeletedAt,
+	)
+	return i, err
+}

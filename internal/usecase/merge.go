@@ -109,6 +109,16 @@ func (b *Branch) GetMergeBase(ctx context.Context, projectID snow.ID, target, so
 }
 
 func (b *Branch) FastForward(ctx context.Context, projectID snow.ID, targetBranch, sourceBranch string) (*domain.Branch, error) {
+	return b.fastForward(ctx, projectID, targetBranch, sourceBranch, false)
+}
+
+// FastForwardForMergeRequest lands a merge request. Unlike FastForward it may
+// move a protected target, but only for project admins.
+func (b *Branch) FastForwardForMergeRequest(ctx context.Context, projectID snow.ID, targetBranch, sourceBranch string) (*domain.Branch, error) {
+	return b.fastForward(ctx, projectID, targetBranch, sourceBranch, true)
+}
+
+func (b *Branch) fastForward(ctx context.Context, projectID snow.ID, targetBranch, sourceBranch string, allowProtected bool) (*domain.Branch, error) {
 	if !b.permUc.HasProjectAccess(ctx, projectID, domain.PermissionWrite) {
 		return nil, domain.NewErrorNoPermission()
 	}
@@ -126,6 +136,14 @@ func (b *Branch) FastForward(ctx context.Context, projectID snow.ID, targetBranc
 	}
 	if err != nil {
 		return nil, err
+	}
+	if target.IsProtected {
+		if !allowProtected {
+			return nil, domain.NewErrorForbidden(fmt.Sprintf("branch %q is protected; land changes through a merge request", targetBranch))
+		}
+		if !b.permUc.AdminHasProject(ctx, projectID) {
+			return nil, domain.NewErrorNoPermission()
+		}
 	}
 
 	if source.CommitID == nil {

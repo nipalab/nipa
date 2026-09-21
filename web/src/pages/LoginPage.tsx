@@ -9,14 +9,15 @@ import {
   TextInput,
 } from '@primer/react'
 import { RepoIcon, SignInIcon } from '@primer/octicons-react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { login } from '../api/client'
-import type { LoginResponse } from '../api/models'
+import { useAuth } from '../auth'
 
-interface Props {
-  onLogin: (tokens: LoginResponse) => void
-}
-
-export default function LoginPage({ onLogin }: Props) {
+export default function LoginPage() {
+  const { signIn } = useAuth()
+  const navigate = useNavigate()
+  const location = useLocation()
+  const from = (location.state as { from?: string } | null)?.from ?? '/'
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -25,10 +26,15 @@ export default function LoginPage({ onLogin }: Props) {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
+    if (!email.trim() || !password) {
+      setError('Enter your username/email and password.')
+      return
+    }
     setBusy(true)
     try {
-      const tokens = await login({ email, password })
-      onLogin(tokens)
+      await login({ email: email.trim(), password })
+      signIn()
+      navigate(from, { replace: true })
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -45,6 +51,7 @@ export default function LoginPage({ onLogin }: Props) {
 
         <form
           onSubmit={handleSubmit}
+          noValidate
           style={{
             width: '100%',
             border: '1px solid var(--borderColor-default)',
@@ -57,7 +64,7 @@ export default function LoginPage({ onLogin }: Props) {
               <FormControl.Label>Username/Email</FormControl.Label>
               <TextInput
                 block
-                type="email"
+                type="text"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 autoComplete="username"

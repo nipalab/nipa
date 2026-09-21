@@ -12,11 +12,12 @@ import (
 )
 
 type BranchRepository struct {
+	db      *sql.DB
 	queries *sqlcSqlite.Queries
 }
 
 func NewBranchRepository(db *sql.DB) *BranchRepository {
-	return &BranchRepository{queries: sqlcSqlite.New(db)}
+	return &BranchRepository{db: db, queries: sqlcSqlite.New(db)}
 }
 
 func (b *BranchRepository) ListBranches(ctx context.Context, projectID snow.ID, limit int, updatedAfter *time.Time, lastID snow.ID) ([]*domain.Branch, error) {
@@ -80,6 +81,59 @@ func (b *BranchRepository) CreateBranch(ctx context.Context, branch domain.Branc
 		return nil, handleError(err)
 	}
 	return b.GetBranchByName(ctx, branch.ProjectID, branch.Name)
+}
+
+func (b *BranchRepository) RenameBranch(ctx context.Context, projectID, branchID snow.ID, name, key string) error {
+	err := b.queries.BranchSetName(ctx, sqlcSqlite.BranchSetNameParams{
+		Name:      name,
+		Key:       key,
+		ProjectID: projectID.Int64(),
+		ID:        branchID.Int64(),
+	})
+	return handleError(err)
+}
+
+func (b *BranchRepository) DeleteBranch(ctx context.Context, projectID, branchID snow.ID) error {
+	affected, err := b.queries.BranchSoftDelete(ctx, sqlcSqlite.BranchSoftDeleteParams{
+		ProjectID: projectID.Int64(),
+		ID:        branchID.Int64(),
+	})
+	if err != nil {
+		return handleError(err)
+	}
+	if affected == 0 {
+		return domain.NewErrorRecordNotFound()
+	}
+	return nil
+}
+
+func (b *BranchRepository) SetBranchProtection(ctx context.Context, projectID, branchID snow.ID, protected bool) error {
+	err := b.queries.BranchSetProtection(ctx, sqlcSqlite.BranchSetProtectionParams{
+		IsProtected: protected,
+		ProjectID:   projectID.Int64(),
+		ID:          branchID.Int64(),
+	})
+	return handleError(err)
+}
+
+func (b *BranchRepository) SetDefaultBranch(ctx context.Context, projectID, branchID snow.ID) error {
+	tx, err := b.db.BeginTx(ctx, nil)
+	if err != nil {
+		return handleError(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	q := sqlcSqlite.New(tx)
+	if err := q.BranchRemoveDefault(ctx, projectID.Int64()); err != nil {
+		return handleError(err)
+	}
+	if err := q.BranchMarkDefault(ctx, sqlcSqlite.BranchMarkDefaultParams{
+		ProjectID: projectID.Int64(),
+		ID:        branchID.Int64(),
+	}); err != nil {
+		return handleError(err)
+	}
+	return handleError(tx.Commit())
 }
 
 func (b *BranchRepository) UpdateCommitIf(ctx context.Context, branchID snow.ID, fromCommitID, toCommitID *snow.ID) error {

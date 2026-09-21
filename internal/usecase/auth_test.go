@@ -20,7 +20,7 @@ type stubPasswordHasher struct {
 }
 
 func (s stubPasswordHasher) Hash(_ string) (string, error) { return "hash", nil }
-func (s stubPasswordHasher) Compare(_, _ string) bool     { return s.match }
+func (s stubPasswordHasher) Compare(_, _ string) bool      { return s.match }
 
 func newTestAuth(secret string, match bool, userRepo userRepository, authRepo authRepository) *Auth {
 	return NewAuth(secret, stubPasswordHasher{match: match}, userRepo, authRepo)
@@ -51,6 +51,7 @@ func TestAuth_LoginWithEmailPassword(t *testing.T) {
 	require.Equal(t, "Bearer", got.TokenType)
 	require.NotEmpty(t, got.RefreshToken)
 	require.NotEmpty(t, got.AccessToken)
+	require.Equal(t, int(refreshTokenExpiration.Seconds()), got.RefreshExpiresIn)
 
 	claims := parseAccessToken(t, got.AccessToken, "secret")
 	require.Equal(t, snow.ID(42).Base36(), claims.Subject)
@@ -126,6 +127,7 @@ func TestAuth_LoginWithRefreshToken(t *testing.T) {
 	require.Equal(t, "Bearer", got.TokenType)
 	require.NotEmpty(t, got.RefreshToken)
 	require.NotEmpty(t, got.AccessToken)
+	require.Equal(t, int(refreshTokenExpiration.Seconds()), got.RefreshExpiresIn)
 
 	claims := parseAccessToken(t, got.AccessToken, "secret")
 	require.Equal(t, strconv.FormatInt(7, 10), claims.Subject)
@@ -190,6 +192,50 @@ func TestAuth_LoginWithRefreshToken_UserNotFound(t *testing.T) {
 
 	_, err := NewAuth("secret", nil, userRepo, authRepo).LoginWithRefreshToken(ctx, "valid-token")
 	require.ErrorIs(t, err, wantErr)
+}
+
+func TestAuth_Logout(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("revokes the token", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		authRepo := NewMockauthRepository(ctrl)
+		authRepo.EXPECT().
+			GetAndDeleteRefreshToken(gomock.Any(), "tok").
+			Return(&domain.RefreshToken{Token: "tok"}, nil)
+
+		auth := NewAuth("secret", nil, NewMockuserRepository(ctrl), authRepo)
+		require.NoError(t, auth.Logout(ctx, "tok"))
+	})
+
+	t.Run("idempotent for unknown token", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		authRepo := NewMockauthRepository(ctrl)
+		authRepo.EXPECT().
+			GetAndDeleteRefreshToken(gomock.Any(), "gone").
+			Return(nil, domain.NewErrorRecordNotFound())
+
+		auth := NewAuth("secret", nil, NewMockuserRepository(ctrl), authRepo)
+		require.NoError(t, auth.Logout(ctx, "gone"))
+	})
+
+	t.Run("empty token is a no-op", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		auth := NewAuth("secret", nil, NewMockuserRepository(ctrl), NewMockauthRepository(ctrl))
+		require.NoError(t, auth.Logout(ctx, ""))
+	})
+
+	t.Run("repository error is returned", func(t *testing.T) {
+		wantErr := errors.New("db down")
+		ctrl := gomock.NewController(t)
+		authRepo := NewMockauthRepository(ctrl)
+		authRepo.EXPECT().
+			GetAndDeleteRefreshToken(gomock.Any(), "boom").
+			Return(nil, wantErr)
+
+		auth := NewAuth("secret", nil, NewMockuserRepository(ctrl), authRepo)
+		require.ErrorIs(t, auth.Logout(ctx, "boom"), wantErr)
+	})
 }
 
 func TestAuth_ValidateToken_Valid(t *testing.T) {

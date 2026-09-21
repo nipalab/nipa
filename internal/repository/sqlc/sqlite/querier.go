@@ -15,7 +15,11 @@ type Querier interface {
 	BranchGetByName(ctx context.Context, arg BranchGetByNameParams) (Branch, error)
 	BranchGetDefault(ctx context.Context, projectID int64) (Branch, error)
 	BranchList(ctx context.Context, arg BranchListParams) ([]Branch, error)
+	BranchMarkDefault(ctx context.Context, arg BranchMarkDefaultParams) error
 	BranchRemoveDefault(ctx context.Context, projectID int64) error
+	BranchSetName(ctx context.Context, arg BranchSetNameParams) error
+	BranchSetProtection(ctx context.Context, arg BranchSetProtectionParams) error
+	BranchSoftDelete(ctx context.Context, arg BranchSoftDeleteParams) (int64, error)
 	BranchUpdate(ctx context.Context, arg BranchUpdateParams) error
 	BranchUpdateCommit(ctx context.Context, arg BranchUpdateCommitParams) error
 	BranchUpdateCommitIf(ctx context.Context, arg BranchUpdateCommitIfParams) (sql.Result, error)
@@ -44,9 +48,21 @@ type Querier interface {
 	GroupListByOrg(ctx context.Context, orgID int64) ([]Group, error)
 	GroupListByUser(ctx context.Context, userID int64) ([]Group, error)
 	GroupMemberAdd(ctx context.Context, arg GroupMemberAddParams) error
+	GroupMemberList(ctx context.Context, groupID int64) ([]GroupMemberListRow, error)
 	GroupMemberRemove(ctx context.Context, arg GroupMemberRemoveParams) error
 	ListOrganizations(ctx context.Context) ([]Organization, error)
 	ListProjectsByOrgId(ctx context.Context, orgID int64) ([]Project, error)
+	MergeRequestCreate(ctx context.Context, arg MergeRequestCreateParams) (MergeRequest, error)
+	MergeRequestGet(ctx context.Context, arg MergeRequestGetParams) (MergeRequest, error)
+	MergeRequestList(ctx context.Context, arg MergeRequestListParams) ([]MergeRequest, error)
+	MergeRequestListByStatus(ctx context.Context, arg MergeRequestListByStatusParams) ([]MergeRequest, error)
+	MergeRequestUpdateStatus(ctx context.Context, arg MergeRequestUpdateStatusParams) error
+	OrgMemberCountByRole(ctx context.Context, arg OrgMemberCountByRoleParams) (int64, error)
+	OrgMemberDelete(ctx context.Context, arg OrgMemberDeleteParams) error
+	OrgMemberGet(ctx context.Context, arg OrgMemberGetParams) (string, error)
+	OrgMemberList(ctx context.Context, orgID int64) ([]OrgMemberListRow, error)
+	OrgMemberListForUser(ctx context.Context, userID int64) ([]OrgMemberListForUserRow, error)
+	OrgMemberUpsert(ctx context.Context, arg OrgMemberUpsertParams) error
 	PBACRuleCreate(ctx context.Context, arg PBACRuleCreateParams) (PbacRule, error)
 	PBACRuleDelete(ctx context.Context, id int64) error
 	PBACRuleDeleteForProject(ctx context.Context, arg PBACRuleDeleteForProjectParams) (int64, error)
@@ -63,10 +79,14 @@ type Querier interface {
 	TreeNodeInsert(ctx context.Context, arg TreeNodeInsertParams) (int64, error)
 	TreeNodeListChildren(ctx context.Context, parentTreeID int64) ([]TreeNode, error)
 	TreeNodeSetParent(ctx context.Context, arg TreeNodeSetParentParams) error
+	UpdateProject(ctx context.Context, arg UpdateProjectParams) (Project, error)
 	UserCreate(ctx context.Context, arg UserCreateParams) (int64, error)
 	UserDeleteByID(ctx context.Context, id int64) error
 	UserGetByEmail(ctx context.Context, email string) (User, error)
 	UserGetById(ctx context.Context, id int64) (User, error)
+	UserList(ctx context.Context) ([]User, error)
+	UserUpdateAdminFlags(ctx context.Context, arg UserUpdateAdminFlagsParams) error
+	UserUpdateEmail(ctx context.Context, arg UserUpdateEmailParams) error
 	UserUpdatePassword(ctx context.Context, arg UserUpdatePasswordParams) error
 	UserUpdateProfile(ctx context.Context, arg UserUpdateProfileParams) error
 }

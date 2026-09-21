@@ -14,6 +14,13 @@ import (
 type usecaseContainer interface {
 	Auth() *usecase.Auth
 	User() *usecase.User
+	Common() *usecase.Common
+	Permission() *usecase.Permission
+	Org() *usecase.Org
+	Group() *usecase.Group
+	Project() *usecase.Project
+	Branch() *usecase.Branch
+	MergeRequest() *usecase.MergeRequest
 }
 
 type API struct {
@@ -27,21 +34,37 @@ func NewAPI(useCase usecaseContainer) *API {
 }
 
 func (a *API) SetupRoute() http.Handler {
-	//authFilter := NewAuthFilter(a.useCase.Auth())
 	cors := restful.CrossOriginResourceSharing{
-		AllowedMethods: []string{"POST", "GET", "PUT", "DELETE"},
-		AllowedHeaders: []string{"Content-Type", "Accept"},
+		AllowedMethods: []string{"POST", "GET", "PUT", "PATCH", "DELETE"},
+		AllowedHeaders: []string{"Content-Type", "Accept", "Authorization"},
 	}
 
 	handler := handler.NewHandler(a.useCase)
 
 	authWs := new(restful.WebService).ApiVersion("1.0.0")
-	authWs.Path("/auth").
+	authWs.Path("/api/v1/auth").
 		Filter(cors.Filter).
+		Filter(sameOriginFilter).
 		Consumes(restful.MIME_JSON).
 		Produces(restful.MIME_JSON)
 	setupAuthRouter(authWs, handler)
 	restful.Add(authWs)
+
+	apiWs := new(restful.WebService).ApiVersion("1.0.0")
+	apiWs.Path("/api/v1").
+		Filter(cors.Filter).
+		Filter(sameOriginFilter).
+		Filter(NewAuthFilter(a.useCase.Auth()).Auth()).
+		Consumes(restful.MIME_JSON).
+		Produces(restful.MIME_JSON)
+	setupUserRouter(apiWs, handler)
+	setupProjectRouter(apiWs, handler)
+	setupBrowserRouter(apiWs, handler)
+	setupMergeRequestRouter(apiWs, handler)
+	setupOrgRouter(apiWs, handler)
+	setupGroupRouter(apiWs, handler)
+	setupPermissionRouter(apiWs, handler)
+	restful.Add(apiWs)
 
 	swagger.SetupSwagger()
 

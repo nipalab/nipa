@@ -126,3 +126,55 @@ func TestUserRepositorySQLite_DeletedUserIsNotReturned(t *testing.T) {
 	_, err = repo.GetByID(ctx, id)
 	requireRecordNotFound(t, err)
 }
+
+func TestUserRepositorySQLite_CRUD(t *testing.T) {
+	ctx := context.Background()
+	db, _ := newSQLiteTestDB(t)
+	repo := NewUserRepository(db)
+
+	node := newTestNode(t)
+	created, err := repo.Create(ctx, domain.User{
+		ID: node.Generate(), Name: "bob", Email: "bob@example.com", Password: "hash",
+	})
+	require.NoError(t, err)
+	require.Equal(t, "bob", created.Name)
+	require.Equal(t, "bob@example.com", created.Email)
+	require.False(t, created.Deleted)
+
+	users, err := repo.List(ctx)
+	require.NoError(t, err)
+	require.Len(t, users, 2, "seeded super admin plus the created user")
+
+	require.NoError(t, repo.UpdateProfile(ctx, created.ID, "bobby", "https://example.com/b.png"))
+	got, err := repo.GetByID(ctx, created.ID)
+	require.NoError(t, err)
+	require.Equal(t, "bobby", got.Name)
+	require.Equal(t, "https://example.com/b.png", got.PhotoUrl)
+
+	require.NoError(t, repo.UpdateEmail(ctx, created.ID, "robert@example.com"))
+	require.NoError(t, repo.UpdatePassword(ctx, created.ID, "new-hash"))
+	require.NoError(t, repo.UpdateAdminFlags(ctx, created.ID, true, false))
+
+	got, err = repo.GetByID(ctx, created.ID)
+	require.NoError(t, err)
+	require.Equal(t, "robert@example.com", got.Email)
+	require.Equal(t, "new-hash", got.Password)
+	require.True(t, got.IsAdmin)
+
+	require.NoError(t, repo.Deactivate(ctx, created.ID))
+	_, err = repo.GetByID(ctx, created.ID)
+	requireRecordNotFound(t, err)
+}
+
+func TestUserRepositorySQLite_Create_DuplicateEmail(t *testing.T) {
+	ctx := context.Background()
+	db, q := newSQLiteTestDB(t)
+	repo := NewUserRepository(db)
+
+	seedUser(t, q, "alice", "alice@example.com", sql.NullString{})
+	node := newTestNode(t)
+	_, err := repo.Create(ctx, domain.User{
+		ID: node.Generate(), Name: "alice2", Email: "alice@example.com", Password: "hash",
+	})
+	require.Error(t, err)
+}

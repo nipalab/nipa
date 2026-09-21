@@ -37,7 +37,7 @@ func newTestPermissionHandler(t *testing.T) (*nipaServer, *MockpbacRepository) {
 	groups.EXPECT().GetByID(gomock.Any(), gomock.Any()).Return(&domain.Group{OrgID: 1}, nil).AnyTimes()
 	uc := &mockUsecaseContainer{
 		common:     newTestCommon(),
-		permission: usecase.NewPermission(repo, users, groups),
+		permission: usecase.NewPermission(repo, users, groups, NewMockorgAuthorizer(ctrl)),
 	}
 	return New(uc), repo
 }

@@ -18,3 +18,12 @@ WHERE id = ? AND deleted = false;
 -- name: UserUpdatePassword :exec
 UPDATE users SET password = ?
 WHERE id = ? AND deleted = false;
+
+-- name: UserList :many
+SELECT * FROM users WHERE deleted = false ORDER BY name, id;
+
+-- name: UserUpdateEmail :exec
+UPDATE users SET email = ? WHERE id = ? AND deleted = false;
+
+-- name: UserUpdateAdminFlags :exec
+UPDATE users SET is_admin = ?, is_super_admin = ? WHERE id = ? AND deleted = false;

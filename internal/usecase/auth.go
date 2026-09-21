@@ -13,6 +13,7 @@ import (
 
 const (
 	tokenExpirationMinutes = 30
+	refreshTokenExpiration = 60 * 24 * time.Hour
 )
 
 //go:generate go run go.uber.org/mock/mockgen -source=$GOFILE -destination=auth_mock_test.go -package=usecase
@@ -80,6 +81,19 @@ func (a *Auth) LoginWithRefreshToken(ctx context.Context, refreshToken string) (
 	return a.generateLoginResult(ctx, user)
 }
 
+func (a *Auth) Logout(ctx context.Context, refreshToken string) error {
+	if refreshToken == "" {
+		return nil
+	}
+	if _, err := a.authRepo.GetAndDeleteRefreshToken(ctx, refreshToken); err != nil {
+		if domain.IsErrorNotFound(err) {
+			return nil
+		}
+		return err
+	}
+	return nil
+}
+
 func (a *Auth) ValidateToken(ctx context.Context, tokenString string) (*domain.Claims, error) {
 	token, err := jwt.ParseWithClaims(tokenString, &domain.Claims{}, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
@@ -118,16 +132,17 @@ func (a *Auth) generateLoginResult(ctx context.Context, user *domain.User) (*dto
 	}
 
 	refreshToken := uuid.New().String()
-	tokenExpiresAt := timeStart.Add(60 * 24 * time.Hour)
+	tokenExpiresAt := timeStart.Add(refreshTokenExpiration)
 	err = a.authRepo.SaveRefreshToken(ctx, user.ID, refreshToken, tokenExpiresAt)
 	if err != nil {
 		return nil, err
 	}
 
 	return &dto.LoginResult{
-		AccessToken:  jwt,
-		RefreshToken: refreshToken,
-		TokenType:    "Bearer",
-		ExpiresIn:    tokenExpirationMinutes * 60,
+		AccessToken:      jwt,
+		RefreshToken:     refreshToken,
+		TokenType:        "Bearer",
+		ExpiresIn:        tokenExpirationMinutes * 60,
+		RefreshExpiresIn: int(refreshTokenExpiration.Seconds()),
 	}, nil
 }

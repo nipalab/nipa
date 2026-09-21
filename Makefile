@@ -45,7 +45,7 @@ web-install:
 web:
 	cd web && npm run build
 
-## Run the Vite dev server: proxies /auth, /docs and /api to a running nipad
+## Run the Vite dev server: proxies /docs and /api to a running nipad
 ## (default http://localhost:6745, override with NIPA_SERVER_URL).
 web-dev:
 	cd web && npm run dev

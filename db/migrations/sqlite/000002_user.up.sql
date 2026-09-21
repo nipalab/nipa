@@ -66,4 +66,17 @@ CREATE TABLE refresh_tokens (
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE org_members (
+    org_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    role TEXT NOT NULL DEFAULT 'member',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (org_id, user_id),
+    CHECK (role IN ('owner', 'member'))
+);
+
+CREATE INDEX idx_org_members_user ON org_members (user_id);
+
 INSERT INTO users (id, name, email, password, is_super_admin) VALUES (1, 'Super Admin', 'supernipa', '$2a$10$kBH8NXuoJIXiUuA7jPEXOe8cybytpUH6eR6M3EO71tZgSU2D9QncW', 1);
+INSERT INTO org_members (org_id, user_id, role) VALUES (1, 1, 'owner');

@@ -117,6 +117,53 @@ func (n *nipaServer) CreateBranch(ctx context.Context, req *pb.CreateBranchReque
 	}, nil
 }
 
+func (n *nipaServer) RenameBranch(ctx context.Context, req *pb.RenameBranchRequest) (*pb.RenameBranchResponse, error) {
+	_, project, err := n.uc.Common().ResolveBySlug(ctx, req.Context.Org, req.Context.Project)
+	if err != nil {
+		return nil, handleError(err)
+	}
+	branch, err := n.uc.Branch().Rename(ctx, project.ID, req.GetName(), req.GetNewName())
+	if err != nil {
+		return nil, handleError(err)
+	}
+	return &pb.RenameBranchResponse{Branch: domainBranchToPB(branch)}, nil
+}
+
+func (n *nipaServer) DeleteBranch(ctx context.Context, req *pb.DeleteBranchRequest) (*pb.DeleteBranchResponse, error) {
+	_, project, err := n.uc.Common().ResolveBySlug(ctx, req.Context.Org, req.Context.Project)
+	if err != nil {
+		return nil, handleError(err)
+	}
+	if err := n.uc.Branch().Delete(ctx, project.ID, req.GetName()); err != nil {
+		return nil, handleError(err)
+	}
+	return &pb.DeleteBranchResponse{}, nil
+}
+
+func (n *nipaServer) SetDefaultBranch(ctx context.Context, req *pb.SetDefaultBranchRequest) (*pb.SetDefaultBranchResponse, error) {
+	_, project, err := n.uc.Common().ResolveBySlug(ctx, req.Context.Org, req.Context.Project)
+	if err != nil {
+		return nil, handleError(err)
+	}
+	branch, err := n.uc.Branch().SetDefault(ctx, project.ID, req.GetName())
+	if err != nil {
+		return nil, handleError(err)
+	}
+	return &pb.SetDefaultBranchResponse{Branch: domainBranchToPB(branch)}, nil
+}
+
+func (n *nipaServer) SetBranchProtection(ctx context.Context, req *pb.SetBranchProtectionRequest) (*pb.SetBranchProtectionResponse, error) {
+	_, project, err := n.uc.Common().ResolveBySlug(ctx, req.Context.Org, req.Context.Project)
+	if err != nil {
+		return nil, handleError(err)
+	}
+	branch, err := n.uc.Branch().SetProtection(ctx, project.ID, req.GetName(), req.GetIsProtected())
+	if err != nil {
+		return nil, handleError(err)
+	}
+	return &pb.SetBranchProtectionResponse{Branch: domainBranchToPB(branch)}, nil
+}
+
 func (n *nipaServer) GetTreeManifest(ctx context.Context, req *pb.GetTreeManifestRequest) (*pb.GetTreeManifestResponse, error) {
 	_, project, err := n.uc.Common().ResolveBySlug(ctx, req.Context.Org, req.Context.Project)
 	if err != nil {

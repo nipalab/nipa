@@ -136,7 +136,7 @@ func TestPush_BranchNotFound(t *testing.T) {
 	require.True(t, domain.IsErrorNotFound(err))
 }
 
-func TestPush_ProtectedBranch(t *testing.T) {
+func TestPush_ProtectedBranch_NoPermission(t *testing.T) {
 	uc, perm, repo, _, ctx := newPushFixture(t)
 	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
 	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").
@@ -145,6 +145,7 @@ func TestPush_ProtectedBranch(t *testing.T) {
 	_, err := uc.Push(ctx, snow.ID(1), "main", "", "msg", nil, nil, "", "")
 	require.Error(t, err)
 	require.True(t, domain.IsErrorNoPermission(err))
+	require.Contains(t, err.Error(), "merge request")
 }
 
 func TestPush_StaleBaseConflict(t *testing.T) {

@@ -93,6 +93,74 @@ func (q *Queries) UserGetById(ctx context.Context, id int64) (User, error) {
 	return i, err
 }
 
+const userList = `-- name: UserList :many
+SELECT id, name, email, password, photo_url, is_super_admin, is_admin, created_at, updated_at, deleted, deleted_at FROM users WHERE deleted = false ORDER BY name, id
+`
+
+func (q *Queries) UserList(ctx context.Context) ([]User, error) {
+	rows, err := q.db.QueryContext(ctx, userList)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []User
+	for rows.Next() {
+		var i User
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Email,
+			&i.Password,
+			&i.PhotoUrl,
+			&i.IsSuperAdmin,
+			&i.IsAdmin,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Deleted,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const userUpdateAdminFlags = `-- name: UserUpdateAdminFlags :exec
+UPDATE users SET is_admin = ?, is_super_admin = ? WHERE id = ? AND deleted = false
+`
+
+type UserUpdateAdminFlagsParams struct {
+	IsAdmin      bool  `json:"is_admin"`
+	IsSuperAdmin bool  `json:"is_super_admin"`
+	ID           int64 `json:"id"`
+}
+
+func (q *Queries) UserUpdateAdminFlags(ctx context.Context, arg UserUpdateAdminFlagsParams) error {
+	_, err := q.db.ExecContext(ctx, userUpdateAdminFlags, arg.IsAdmin, arg.IsSuperAdmin, arg.ID)
+	return err
+}
+
+const userUpdateEmail = `-- name: UserUpdateEmail :exec
+UPDATE users SET email = ? WHERE id = ? AND deleted = false
+`
+
+type UserUpdateEmailParams struct {
+	Email string `json:"email"`
+	ID    int64  `json:"id"`
+}
+
+func (q *Queries) UserUpdateEmail(ctx context.Context, arg UserUpdateEmailParams) error {
+	_, err := q.db.ExecContext(ctx, userUpdateEmail, arg.Email, arg.ID)
+	return err
+}
+
 const userUpdatePassword = `-- name: UserUpdatePassword :exec
 UPDATE users SET password = ?
 WHERE id = ? AND deleted = false
