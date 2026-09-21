@@ -22,6 +22,11 @@ func (p Permission) Has(perm Permission) bool {
 	return p&perm == perm
 }
 
+// IsValid reports whether the mask only contains defined permission bits.
+func (p Permission) IsValid() bool {
+	return p&^PermissionAll == 0
+}
+
 // PBACRule grants permission on a path prefix to a user or a group.
 // projectID is nil for rules that apply to every project in the org.
 type PBACRule struct {

@@ -816,10 +816,6 @@ func TestAPIRoutes(t *testing.T) {
 		rules := decodeBody[[]model.PBACRuleResponse](t, doGet(t, base+"/rules", aliceLogin.AccessToken))
 		require.Len(t, rules, 2, "reader rule from the repository browser plus the grantee rule")
 
-		debug := doJSON(t, server.URL+"/api/v1/auth/login", `{"email":"grantee@example.com","password":"whatever"}`, nil, "")
-		debugBody, _ := io.ReadAll(debug.Body)
-		debug.Body.Close()
-		t.Logf("grantee login: %d %s", debug.StatusCode, string(debugBody))
 		granteeLogin, _ := loginAs(t, "grantee@example.com")
 		info := decodeBody[model.ProjectPermissionResponse](t, doGet(t, base+"/me", granteeLogin.AccessToken))
 		require.Equal(t, uint64(1), info.ProjectPermission)
@@ -828,6 +824,14 @@ func TestAPIRoutes(t *testing.T) {
 		denied := doMethod(t, http.MethodPost, base+"/rules", `{"user_id":"1","permission":1}`, viewerLogin.AccessToken)
 		require.Equal(t, http.StatusForbidden, denied.StatusCode)
 		denied.Body.Close()
+
+		badRule := doMethod(t, http.MethodPost, base+"/rules", `{"user_id":"1","permission":1048576}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusBadRequest, badRule.StatusCode)
+		badRule.Body.Close()
+
+		badDefault := doMethod(t, http.MethodPut, base+"/defaults", `{"path_prefix":"docs","permission":1048576}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusBadRequest, badDefault.StatusCode)
+		badDefault.Body.Close()
 
 		setDefault := doMethod(t, http.MethodPut, base+"/defaults", `{"path_prefix":"docs","permission":1}`, aliceLogin.AccessToken)
 		require.Equal(t, http.StatusOK, setDefault.StatusCode)

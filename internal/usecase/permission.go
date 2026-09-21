@@ -219,6 +219,9 @@ func (p *Permission) CreateRule(ctx context.Context, rule domain.PBACRule) (*dom
 	if rule.Permission == 0 {
 		return nil, domain.NewErrorUser("rule permission must not be empty")
 	}
+	if !rule.Permission.IsValid() {
+		return nil, domain.NewErrorUser("invalid rule permission")
+	}
 	prefix, err := domain.NormalizePathPrefix(rule.PathPrefix)
 	if err != nil {
 		return nil, domain.NewErrorUser(err.Error())
@@ -328,6 +331,9 @@ func (p *Permission) InvalidateAll() {
 func (p *Permission) SetPathPermission(ctx context.Context, projectID snow.ID, pathPrefix string, permission domain.Permission) (*domain.ProjectPathPermission, error) {
 	if err := p.requireAdmin(ctx, projectID); err != nil {
 		return nil, err
+	}
+	if !permission.IsValid() {
+		return nil, domain.NewErrorUser("invalid permission")
 	}
 	prefix, err := domain.NormalizePathPrefix(pathPrefix)
 	if err != nil {

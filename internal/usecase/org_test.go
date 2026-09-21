@@ -79,6 +79,29 @@ func TestOrg_AddMember(t *testing.T) {
 	ctx := permissionCtx(42)
 
 	repo.EXPECT().MemberRole(gomock.Any(), snow.ID(1), snow.ID(42)).Return(domain.OrgRoleOwner, nil)
+	repo.EXPECT().MemberRole(gomock.Any(), snow.ID(1), snow.ID(7)).Return("", domain.NewErrorNotFound("member not found"))
+	repo.EXPECT().UpsertMember(gomock.Any(), snow.ID(1), snow.ID(7), domain.OrgRoleMember).Return(nil)
+
+	require.NoError(t, org.AddMember(ctx, snow.ID(1), snow.ID(7), domain.OrgRoleMember))
+}
+
+func TestOrg_AddMember_DemoteLastOwner(t *testing.T) {
+	org, repo := newTestOrg(t)
+	ctx := permissionCtx(42, withAdmin())
+
+	repo.EXPECT().MemberRole(gomock.Any(), snow.ID(1), snow.ID(7)).Return(domain.OrgRoleOwner, nil)
+	repo.EXPECT().CountMembersByRole(gomock.Any(), snow.ID(1), domain.OrgRoleOwner).Return(1, nil)
+
+	err := org.AddMember(ctx, snow.ID(1), snow.ID(7), domain.OrgRoleMember)
+	require.True(t, domain.IsErrorConflict(err))
+}
+
+func TestOrg_AddMember_DemoteWithAnotherOwner(t *testing.T) {
+	org, repo := newTestOrg(t)
+	ctx := permissionCtx(42, withAdmin())
+
+	repo.EXPECT().MemberRole(gomock.Any(), snow.ID(1), snow.ID(7)).Return(domain.OrgRoleOwner, nil)
+	repo.EXPECT().CountMembersByRole(gomock.Any(), snow.ID(1), domain.OrgRoleOwner).Return(2, nil)
 	repo.EXPECT().UpsertMember(gomock.Any(), snow.ID(1), snow.ID(7), domain.OrgRoleMember).Return(nil)
 
 	require.NoError(t, org.AddMember(ctx, snow.ID(1), snow.ID(7), domain.OrgRoleMember))

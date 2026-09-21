@@ -397,6 +397,11 @@ func TestPermission_CreateRule_Validation(t *testing.T) {
 	requireUserError(t, err)
 
 	_, err = perm.CreateRule(ctx, domain.PBACRule{
+		UserID: &userID, OrgID: 1, PathPrefix: "", Permission: domain.PermissionRead | 1<<20,
+	})
+	requireUserError(t, err)
+
+	_, err = perm.CreateRule(ctx, domain.PBACRule{
 		UserID: &userID, OrgID: 1, PathPrefix: "../etc", Permission: domain.PermissionRead,
 	})
 	requireUserError(t, err)
@@ -489,6 +494,9 @@ func TestPermission_PathPermissionCRUD(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = perm.SetPathPermission(ctx, projectID, "../etc", domain.PermissionRead)
+	requireUserError(t, err)
+
+	_, err = perm.SetPathPermission(ctx, projectID, "assets", domain.PermissionRead|1<<20)
 	requireUserError(t, err)
 
 	require.NoError(t, perm.DeletePathPermission(ctx, projectID, "/"))

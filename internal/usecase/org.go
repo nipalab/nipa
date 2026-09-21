@@ -48,6 +48,11 @@ func (o *Org) AddMember(ctx context.Context, orgID, userID snow.ID, role string)
 	if !domain.IsValidOrgRole(role) {
 		return domain.NewErrorUser("invalid org role")
 	}
+	if role == domain.OrgRoleMember {
+		if err := o.ensureNotLastOwner(ctx, orgID, userID); err != nil {
+			return err
+		}
+	}
 	return o.repo.UpsertMember(ctx, orgID, userID, role)
 }
 
