@@ -94,7 +94,7 @@ message GetChunkDownloadUrlsResponse {
 
 message ConfirmChunkUploadsRequest {
     ProjectContext context = 1;
-    repeated ChunkRef chunks = 2;
+    repeated string hashes = 2; // hex-encoded BLAKE3 hashes
 }
 
 message ConfirmChunkUploadsResponse {

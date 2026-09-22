@@ -60,6 +60,25 @@ func TestLocalStore_Exists(t *testing.T) {
 	require.False(t, ok)
 }
 
+func TestLocalStore_Size(t *testing.T) {
+	ctx := context.Background()
+	store, err := NewLocalStore(t.TempDir())
+	require.NoError(t, err)
+	defer store.Close()
+
+	data := []byte("size me")
+	hash := chunker.Sum(data)
+	require.NoError(t, store.Put(ctx, hash, data))
+
+	size, err := store.Size(ctx, hash)
+	require.NoError(t, err)
+	require.Equal(t, int64(len(data)), size)
+
+	_, err = store.Size(ctx, chunker.Sum([]byte("missing")))
+	require.Error(t, err)
+	require.True(t, domain.IsErrorNotFound(err))
+}
+
 func TestLocalStore_GetMissingReturnsNotFound(t *testing.T) {
 	ctx := context.Background()
 	store, err := NewLocalStore(t.TempDir())

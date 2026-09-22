@@ -21,6 +21,7 @@ type stubChunkStore struct {
 	data      map[domain.Hash][]byte
 	existsErr error
 	putErr    error
+	sizeErr   error
 	puts      int
 }
 
@@ -43,6 +44,17 @@ func (s *stubChunkStore) Get(_ context.Context, hash domain.Hash) ([]byte, error
 		return nil, domain.NewErrorNotFound("chunk not found")
 	}
 	return data, nil
+}
+
+func (s *stubChunkStore) Size(_ context.Context, hash domain.Hash) (int64, error) {
+	if s.sizeErr != nil {
+		return 0, s.sizeErr
+	}
+	data, ok := s.data[hash]
+	if !ok {
+		return 0, domain.NewErrorNotFound("chunk not found")
+	}
+	return int64(len(data)), nil
 }
 
 func (s *stubChunkStore) Exists(_ context.Context, hash domain.Hash) (bool, error) {
@@ -245,20 +257,19 @@ func TestChunk_ConfirmUploads(t *testing.T) {
 	absentHash := chunker.Sum([]byte("absent"))
 	repo.EXPECT().InsertChunkIfNotExists(gomock.Any(), presentHash, int64(len(present))).Return(nil)
 
-	missing, err := uc.ConfirmUploads(ctx, []ChunkRef{
-		{Hash: presentHash, SizeBytes: int64(len(present))},
-		{Hash: absentHash, SizeBytes: int64(len("absent"))},
-	})
+	missing, err := uc.ConfirmUploads(ctx, []domain.Hash{presentHash, absentHash})
 	require.NoError(t, err)
 	require.Equal(t, []domain.Hash{absentHash}, missing)
 }
 
-func TestChunk_ConfirmUploadsInvalidSize(t *testing.T) {
+func TestChunk_ConfirmUploadsSizeError(t *testing.T) {
 	ctx := context.Background()
-	uc, _, _ := newChunkFixture(t)
+	store := &stubChunkStore{data: map[domain.Hash][]byte{}, sizeErr: errors.New("boom")}
+	uc := NewChunk(NewMockchunkRepository(gomock.NewController(t)), store, ChunkTransferConfig{})
 
-	_, err := uc.ConfirmUploads(ctx, []ChunkRef{{Hash: chunker.Sum([]byte("x")), SizeBytes: -1}})
-	require400(t, err, "invalid chunk size")
+	data := []byte("payload")
+	_, err := uc.ConfirmUploads(ctx, []domain.Hash{chunker.Sum(data)})
+	require.Error(t, err)
 }
 
 func TestChunk_UploadStoreErrors(t *testing.T) {
@@ -367,16 +378,6 @@ func TestChunk_PresignDownloadURLsInvalidToken(t *testing.T) {
 	require400(t, err, "invalid page token")
 }
 
-func TestChunk_ConfirmUploadsStoreError(t *testing.T) {
-	ctx := context.Background()
-	store := &stubChunkStore{data: map[domain.Hash][]byte{}, existsErr: errors.New("boom")}
-	uc := NewChunk(NewMockchunkRepository(gomock.NewController(t)), store, ChunkTransferConfig{})
-
-	data := []byte("payload")
-	_, err := uc.ConfirmUploads(ctx, []ChunkRef{{Hash: chunker.Sum(data), SizeBytes: int64(len(data))}})
-	require.Error(t, err)
-}
-
 func TestChunk_ConfirmUploadsMetadataError(t *testing.T) {
 	ctx := context.Background()
 	data := []byte("payload")
@@ -388,7 +389,7 @@ func TestChunk_ConfirmUploadsMetadataError(t *testing.T) {
 	repo.EXPECT().InsertChunkIfNotExists(gomock.Any(), hash, int64(len(data))).Return(errors.New("boom"))
 	uc := NewChunk(repo, store, ChunkTransferConfig{})
 
-	_, err := uc.ConfirmUploads(ctx, []ChunkRef{{Hash: hash, SizeBytes: int64(len(data))}})
+	_, err := uc.ConfirmUploads(ctx, []domain.Hash{hash})
 	require.Error(t, err)
 }
 

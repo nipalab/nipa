@@ -61,7 +61,8 @@ func (n *nipaServer) GetChunkDownloadUrls(ctx context.Context, req *pb.GetChunkD
 }
 
 // ConfirmChunkUploads verifies uploaded content landed in the store and
-// records chunk metadata. Hashes still missing are returned for retry.
+// records chunk metadata. The metadata size is measured server-side from the
+// stored content; hashes still missing are returned for retry.
 func (n *nipaServer) ConfirmChunkUploads(ctx context.Context, req *pb.ConfirmChunkUploadsRequest) (*pb.ConfirmChunkUploadsResponse, error) {
 	_, project, err := n.resolveChunkProject(ctx, req.GetContext())
 	if err != nil {
@@ -70,11 +71,11 @@ func (n *nipaServer) ConfirmChunkUploads(ctx context.Context, req *pb.ConfirmChu
 	if err := n.uc.Branch().EnsureProjectAccess(ctx, project.ID, domain.PermissionWrite); err != nil {
 		return nil, handleError(err)
 	}
-	refs, err := toChunkRefs(req.GetChunks())
+	hashes, err := toChunkHashes(req.GetHashes())
 	if err != nil {
 		return nil, handleError(err)
 	}
-	missing, err := n.uc.Chunk().ConfirmUploads(ctx, refs)
+	missing, err := n.uc.Chunk().ConfirmUploads(ctx, hashes)
 	if err != nil {
 		return nil, handleError(err)
 	}
@@ -106,6 +107,18 @@ func toChunkRefs(chunks []*pb.ChunkRef) ([]usecase.ChunkRef, error) {
 		refs = append(refs, usecase.ChunkRef{Hash: hash, SizeBytes: chunk.GetSizeBytes()})
 	}
 	return refs, nil
+}
+
+func toChunkHashes(raw []string) ([]domain.Hash, error) {
+	hashes := make([]domain.Hash, 0, len(raw))
+	for _, item := range raw {
+		hash, err := domain.ParseHashHex(item)
+		if err != nil {
+			return nil, domain.NewErrorUser("invalid chunk hash")
+		}
+		hashes = append(hashes, hash)
+	}
+	return hashes, nil
 }
 
 func toPBChunkURLs(urls []usecase.ChunkURL) []*pb.PresignedChunkUrl {

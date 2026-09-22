@@ -13,7 +13,6 @@ import (
 	"path"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -45,6 +44,7 @@ type chunkTestServer struct {
 	unknownUpload   bool
 	putStatus       int
 	getStatus       int
+	lastConfirm     *pb.ConfirmChunkUploadsRequest
 }
 
 func newChunkTestServer() *chunkTestServer {
@@ -124,7 +124,8 @@ func (s *chunkTestServer) GetChunkDownloadUrls(ctx context.Context, req *pb.GetC
 	return resp, nil
 }
 
-func (s *chunkTestServer) ConfirmChunkUploads(_ context.Context, _ *pb.ConfirmChunkUploadsRequest) (*pb.ConfirmChunkUploadsResponse, error) {
+func (s *chunkTestServer) ConfirmChunkUploads(_ context.Context, req *pb.ConfirmChunkUploadsRequest) (*pb.ConfirmChunkUploadsResponse, error) {
+	s.lastConfirm = req
 	if s.confirmErr != nil {
 		return nil, s.confirmErr
 	}
@@ -226,6 +227,9 @@ func TestClient_UploadChunks_Success(t *testing.T) {
 	got2, ok := srv.storedChunk(h2.String())
 	require.True(t, ok)
 	require.Equal(t, []byte("bbbb"), got2)
+
+	require.NotNil(t, srv.lastConfirm)
+	require.Equal(t, []string{h1.String(), h2.String()}, srv.lastConfirm.GetHashes(), "confirm must send hashes only")
 }
 
 func TestClient_UploadChunks_SkipsStored(t *testing.T) {
@@ -671,28 +675,15 @@ func TestClient_DownloadChunks_NoHashes(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestClient_GetChunksStopsDeliveryAfterSinkError(t *testing.T) {
-	var served int32
-	bothServed := make(chan struct{})
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte("data"))
-		if atomic.AddInt32(&served, 1) == 2 {
-			close(bothServed)
-		}
-	}))
-	defer srv.Close()
-
-	c := NewClient(NewTransport(), &stubSession{})
+func TestClient_ChunkSinkStopsAfterError(t *testing.T) {
 	sinkErr := errors.New("sink failed")
-	var calls int32
-	err := c.getChunks(context.Background(), []chunkTransfer{
-		{hash: testChunkHash(0x01), url: srv.URL},
-		{hash: testChunkHash(0x02), url: srv.URL},
-	}, func(serverDomain.Hash, []byte) error {
-		<-bothServed
-		atomic.AddInt32(&calls, 1)
+	var calls int
+	sink := &chunkSink{fn: func(serverDomain.Hash, []byte) error {
+		calls++
 		return sinkErr
-	})
-	require.ErrorIs(t, err, sinkErr)
-	require.Equal(t, int32(1), atomic.LoadInt32(&calls), "delivery must stop after the sink fails")
+	}}
+
+	require.ErrorIs(t, sink.deliver(testChunkHash(0x01), []byte("a")), sinkErr)
+	require.ErrorIs(t, sink.deliver(testChunkHash(0x02), []byte("b")), sinkErr)
+	require.Equal(t, 1, calls, "delivery must stop after the sink fails")
 }

@@ -34,9 +34,11 @@ func (c *Client) UploadChunks(ctx context.Context, scope domain.ChunkScope, chun
 	}
 
 	refs := make([]*pb.ChunkRef, 0, len(chunks))
+	rawHashes := make([]string, 0, len(chunks))
 	dataByHash := make(map[serverDomain.Hash][]byte, len(chunks))
 	for _, chunk := range chunks {
 		refs = append(refs, &pb.ChunkRef{Hash: chunk.Hash.String(), SizeBytes: int64(len(chunk.Data))})
+		rawHashes = append(rawHashes, chunk.Hash.String())
 		dataByHash[chunk.Hash] = chunk.Data
 	}
 
@@ -83,7 +85,7 @@ func (c *Client) UploadChunks(ctx context.Context, scope domain.ChunkScope, chun
 
 	confirm, err := client.ConfirmChunkUploads(authedCtx, &pb.ConfirmChunkUploadsRequest{
 		Context: &pb.ProjectContext{Org: scope.Org, Project: scope.Project},
-		Chunks:  refs,
+		Hashes:  rawHashes,
 	})
 	if err != nil {
 		return 0, 0, toDomainError(err)
@@ -183,23 +185,29 @@ func (c *Client) putChunks(ctx context.Context, jobs []chunkTransfer) error {
 	})
 }
 
-func (c *Client) getChunks(ctx context.Context, jobs []chunkTransfer, onChunk func(h serverDomain.Hash, data []byte) error) error {
-	var (
-		mu      sync.Mutex
-		sinkErr error
-	)
-	deliver := func(hash serverDomain.Hash, data []byte) error {
-		mu.Lock()
-		defer mu.Unlock()
-		if sinkErr != nil {
-			return sinkErr
-		}
-		if err := onChunk(hash, data); err != nil {
-			sinkErr = err
-			return err
-		}
-		return nil
+// chunkSink serializes chunk delivery to the caller's callback and remembers
+// the first failure so no further chunks are delivered after it.
+type chunkSink struct {
+	mu  sync.Mutex
+	err error
+	fn  func(h serverDomain.Hash, data []byte) error
+}
+
+func (s *chunkSink) deliver(hash serverDomain.Hash, data []byte) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.err != nil {
+		return s.err
 	}
+	if err := s.fn(hash, data); err != nil {
+		s.err = err
+		return err
+	}
+	return nil
+}
+
+func (c *Client) getChunks(ctx context.Context, jobs []chunkTransfer, onChunk func(h serverDomain.Hash, data []byte) error) error {
+	sink := &chunkSink{fn: onChunk}
 	return forEachChunk(ctx, jobs, func(ctx context.Context, job chunkTransfer) error {
 		request, err := http.NewRequestWithContext(ctx, http.MethodGet, c.httpURL(job.url), nil)
 		if err != nil {
@@ -217,7 +225,7 @@ func (c *Client) getChunks(ctx context.Context, jobs []chunkTransfer, onChunk fu
 		if err != nil {
 			return err
 		}
-		return deliver(job.hash, data)
+		return sink.deliver(job.hash, data)
 	})
 }
 
@@ -269,6 +277,9 @@ func (c *Client) httpURL(path string) string {
 		return path
 	}
 	if !strings.Contains(base, "://") {
+		// NOSONAR: nipad serves gRPC and the signed chunk routes on one
+		// plaintext listener (the gRPC channel is insecure too), so there is
+		// no TLS scheme to derive here.
 		base = "http://" + base
 	}
 	return strings.TrimRight(base, "/") + path

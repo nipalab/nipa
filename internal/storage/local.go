@@ -75,6 +75,17 @@ func (s *LocalStore) Get(ctx context.Context, hash domain.Hash) ([]byte, error) 
 	return b, nil
 }
 
+func (s *LocalStore) Size(ctx context.Context, hash domain.Hash) (int64, error) {
+	info, err := os.Stat(s.path(hash))
+	if errors.Is(err, fs.ErrNotExist) {
+		return 0, domain.NewErrorNotFound("chunk not found: " + hash.String())
+	}
+	if err != nil {
+		return 0, err
+	}
+	return info.Size(), nil
+}
+
 func (s *LocalStore) Exists(ctx context.Context, hash domain.Hash) (bool, error) {
 	_, err := os.Stat(s.path(hash))
 	if errors.Is(err, fs.ErrNotExist) {

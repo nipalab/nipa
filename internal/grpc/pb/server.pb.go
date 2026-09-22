@@ -861,7 +861,7 @@ func (x *GetChunkDownloadUrlsResponse) GetNextPageToken() string {
 type ConfirmChunkUploadsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Context       *ProjectContext        `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
-	Chunks        []*ChunkRef            `protobuf:"bytes,2,rep,name=chunks,proto3" json:"chunks,omitempty"`
+	Hashes        []string               `protobuf:"bytes,2,rep,name=hashes,proto3" json:"hashes,omitempty"` // hex-encoded BLAKE3 hashes
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -903,9 +903,9 @@ func (x *ConfirmChunkUploadsRequest) GetContext() *ProjectContext {
 	return nil
 }
 
-func (x *ConfirmChunkUploadsRequest) GetChunks() []*ChunkRef {
+func (x *ConfirmChunkUploadsRequest) GetHashes() []string {
 	if x != nil {
-		return x.Chunks
+		return x.Hashes
 	}
 	return nil
 }
@@ -4474,10 +4474,10 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"page_token\x18\x06 \x01(\tR\tpageToken\"t\n" +
 	"\x1cGetChunkDownloadUrlsResponse\x12,\n" +
 	"\x04urls\x18\x01 \x03(\v2\x18.greet.PresignedChunkUrlR\x04urls\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"v\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"e\n" +
 	"\x1aConfirmChunkUploadsRequest\x12/\n" +
-	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12'\n" +
-	"\x06chunks\x18\x02 \x03(\v2\x0f.greet.ChunkRefR\x06chunks\"D\n" +
+	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12\x16\n" +
+	"\x06hashes\x18\x02 \x03(\tR\x06hashes\"D\n" +
 	"\x1bConfirmChunkUploadsResponse\x12%\n" +
 	"\x0emissing_hashes\x18\x01 \x03(\tR\rmissingHashes\"\xef\x02\n" +
 	"\vPushRequest\x12/\n" +
@@ -4898,127 +4898,126 @@ var file_internal_grpc_proto_server_proto_depIdxs = []int32{
 	1,  // 9: greet.GetChunkDownloadUrlsRequest.context:type_name -> greet.ProjectContext
 	8,  // 10: greet.GetChunkDownloadUrlsResponse.urls:type_name -> greet.PresignedChunkUrl
 	1,  // 11: greet.ConfirmChunkUploadsRequest.context:type_name -> greet.ProjectContext
-	7,  // 12: greet.ConfirmChunkUploadsRequest.chunks:type_name -> greet.ChunkRef
-	1,  // 13: greet.PushRequest.context:type_name -> greet.ProjectContext
-	6,  // 14: greet.PushRequest.files:type_name -> greet.PushFile
-	76, // 15: greet.Branch.created_at:type_name -> google.protobuf.Timestamp
-	76, // 16: greet.Branch.updated_at:type_name -> google.protobuf.Timestamp
-	1,  // 17: greet.GetListBranchRequest.context:type_name -> greet.ProjectContext
-	76, // 18: greet.GetListBranchRequest.last_updated_at:type_name -> google.protobuf.Timestamp
-	17, // 19: greet.GetListBranchResponse.branches:type_name -> greet.Branch
-	1,  // 20: greet.GetBranchRequest.context:type_name -> greet.ProjectContext
-	1,  // 21: greet.GetBranchByNameRequest.context:type_name -> greet.ProjectContext
-	17, // 22: greet.GetBranchByNameResponse.branch:type_name -> greet.Branch
-	1,  // 23: greet.GetDefaultBranchRequest.context:type_name -> greet.ProjectContext
-	17, // 24: greet.GetBranchResponse.branch:type_name -> greet.Branch
-	1,  // 25: greet.CreateBranchRequest.context:type_name -> greet.ProjectContext
-	17, // 26: greet.CreateBranchResponse.branch:type_name -> greet.Branch
-	1,  // 27: greet.RenameBranchRequest.context:type_name -> greet.ProjectContext
-	17, // 28: greet.RenameBranchResponse.branch:type_name -> greet.Branch
-	1,  // 29: greet.DeleteBranchRequest.context:type_name -> greet.ProjectContext
-	1,  // 30: greet.SetDefaultBranchRequest.context:type_name -> greet.ProjectContext
-	17, // 31: greet.SetDefaultBranchResponse.branch:type_name -> greet.Branch
-	1,  // 32: greet.SetBranchProtectionRequest.context:type_name -> greet.ProjectContext
-	17, // 33: greet.SetBranchProtectionResponse.branch:type_name -> greet.Branch
-	1,  // 34: greet.GetMergeBaseRequest.context:type_name -> greet.ProjectContext
-	3,  // 35: greet.GetMergeBaseResponse.merge_base_tree:type_name -> greet.TreeManifest
-	1,  // 36: greet.MergeFastForwardRequest.context:type_name -> greet.ProjectContext
-	17, // 37: greet.MergeFastForwardResponse.branch:type_name -> greet.Branch
-	76, // 38: greet.CommitLogEntry.created_at:type_name -> google.protobuf.Timestamp
-	1,  // 39: greet.GetCommitLogRequest.context:type_name -> greet.ProjectContext
-	39, // 40: greet.GetCommitLogResponse.commits:type_name -> greet.CommitLogEntry
-	76, // 41: greet.CommitDetail.created_at:type_name -> google.protobuf.Timestamp
-	1,  // 42: greet.GetCommitRequest.context:type_name -> greet.ProjectContext
-	42, // 43: greet.GetCommitResponse.commit:type_name -> greet.CommitDetail
-	3,  // 44: greet.GetCommitResponse.root_tree:type_name -> greet.TreeManifest
-	76, // 45: greet.CommitWalkEntry.created_at:type_name -> google.protobuf.Timestamp
-	1,  // 46: greet.WalkCommitsRequest.context:type_name -> greet.ProjectContext
-	45, // 47: greet.WalkCommitsResponse.commits:type_name -> greet.CommitWalkEntry
-	76, // 48: greet.PBACRuleDetail.created_at:type_name -> google.protobuf.Timestamp
-	1,  // 49: greet.CreatePBACRuleRequest.context:type_name -> greet.ProjectContext
-	52, // 50: greet.CreatePBACRuleResponse.rule:type_name -> greet.PBACRuleDetail
-	1,  // 51: greet.ListPBACRulesRequest.context:type_name -> greet.ProjectContext
-	52, // 52: greet.ListPBACRulesResponse.rules:type_name -> greet.PBACRuleDetail
-	1,  // 53: greet.DeletePBACRuleRequest.context:type_name -> greet.ProjectContext
-	1,  // 54: greet.ListProjectPathPermissionsRequest.context:type_name -> greet.ProjectContext
-	51, // 55: greet.ListProjectPathPermissionsResponse.permissions:type_name -> greet.PermissionEntry
-	1,  // 56: greet.SetProjectPathPermissionRequest.context:type_name -> greet.ProjectContext
-	51, // 57: greet.SetProjectPathPermissionResponse.permission:type_name -> greet.PermissionEntry
-	1,  // 58: greet.DeleteProjectPathPermissionRequest.context:type_name -> greet.ProjectContext
-	1,  // 59: greet.GetMyPermissionsRequest.context:type_name -> greet.ProjectContext
-	51, // 60: greet.GetMyPermissionsResponse.rules:type_name -> greet.PermissionEntry
-	51, // 61: greet.GetMyPermissionsResponse.defaults:type_name -> greet.PermissionEntry
-	67, // 62: greet.CreateGroupResponse.group:type_name -> greet.GroupDetail
-	67, // 63: greet.ListGroupsResponse.groups:type_name -> greet.GroupDetail
-	48, // 64: greet.NipaService.LoginWithUsernamePassword:input_type -> greet.LoginUsernamePasswordRequest
-	49, // 65: greet.NipaService.LoginWithRefreshToken:input_type -> greet.LoginWithRefreshRequest
-	18, // 66: greet.NipaService.GetListBranch:input_type -> greet.GetListBranchRequest
-	20, // 67: greet.NipaService.GetBranch:input_type -> greet.GetBranchRequest
-	21, // 68: greet.NipaService.GetBranchByName:input_type -> greet.GetBranchByNameRequest
-	23, // 69: greet.NipaService.GetDefaultBranch:input_type -> greet.GetDefaultBranchRequest
-	25, // 70: greet.NipaService.CreateBranch:input_type -> greet.CreateBranchRequest
-	27, // 71: greet.NipaService.RenameBranch:input_type -> greet.RenameBranchRequest
-	29, // 72: greet.NipaService.DeleteBranch:input_type -> greet.DeleteBranchRequest
-	31, // 73: greet.NipaService.SetDefaultBranch:input_type -> greet.SetDefaultBranchRequest
-	33, // 74: greet.NipaService.SetBranchProtection:input_type -> greet.SetBranchProtectionRequest
-	4,  // 75: greet.NipaService.GetTreeManifest:input_type -> greet.GetTreeManifestRequest
-	40, // 76: greet.NipaService.GetCommitLog:input_type -> greet.GetCommitLogRequest
-	43, // 77: greet.NipaService.GetCommit:input_type -> greet.GetCommitRequest
-	46, // 78: greet.NipaService.WalkCommits:input_type -> greet.WalkCommitsRequest
-	35, // 79: greet.NipaService.GetMergeBase:input_type -> greet.GetMergeBaseRequest
-	37, // 80: greet.NipaService.MergeFastForward:input_type -> greet.MergeFastForwardRequest
-	15, // 81: greet.NipaService.Push:input_type -> greet.PushRequest
-	9,  // 82: greet.NipaService.GetChunkUploadUrls:input_type -> greet.GetChunkUploadUrlsRequest
-	11, // 83: greet.NipaService.GetChunkDownloadUrls:input_type -> greet.GetChunkDownloadUrlsRequest
-	13, // 84: greet.NipaService.ConfirmChunkUploads:input_type -> greet.ConfirmChunkUploadsRequest
-	65, // 85: greet.NipaService.GetMyPermissions:input_type -> greet.GetMyPermissionsRequest
-	53, // 86: greet.NipaService.CreatePBACRule:input_type -> greet.CreatePBACRuleRequest
-	55, // 87: greet.NipaService.ListPBACRules:input_type -> greet.ListPBACRulesRequest
-	57, // 88: greet.NipaService.DeletePBACRule:input_type -> greet.DeletePBACRuleRequest
-	59, // 89: greet.NipaService.ListProjectPathPermissions:input_type -> greet.ListProjectPathPermissionsRequest
-	61, // 90: greet.NipaService.SetProjectPathPermission:input_type -> greet.SetProjectPathPermissionRequest
-	63, // 91: greet.NipaService.DeleteProjectPathPermission:input_type -> greet.DeleteProjectPathPermissionRequest
-	68, // 92: greet.NipaService.CreateGroup:input_type -> greet.CreateGroupRequest
-	70, // 93: greet.NipaService.ListGroups:input_type -> greet.ListGroupsRequest
-	72, // 94: greet.NipaService.AddGroupMember:input_type -> greet.AddGroupMemberRequest
-	74, // 95: greet.NipaService.RemoveGroupMember:input_type -> greet.RemoveGroupMemberRequest
-	50, // 96: greet.NipaService.LoginWithUsernamePassword:output_type -> greet.LoginResponse
-	50, // 97: greet.NipaService.LoginWithRefreshToken:output_type -> greet.LoginResponse
-	19, // 98: greet.NipaService.GetListBranch:output_type -> greet.GetListBranchResponse
-	24, // 99: greet.NipaService.GetBranch:output_type -> greet.GetBranchResponse
-	22, // 100: greet.NipaService.GetBranchByName:output_type -> greet.GetBranchByNameResponse
-	24, // 101: greet.NipaService.GetDefaultBranch:output_type -> greet.GetBranchResponse
-	26, // 102: greet.NipaService.CreateBranch:output_type -> greet.CreateBranchResponse
-	28, // 103: greet.NipaService.RenameBranch:output_type -> greet.RenameBranchResponse
-	30, // 104: greet.NipaService.DeleteBranch:output_type -> greet.DeleteBranchResponse
-	32, // 105: greet.NipaService.SetDefaultBranch:output_type -> greet.SetDefaultBranchResponse
-	34, // 106: greet.NipaService.SetBranchProtection:output_type -> greet.SetBranchProtectionResponse
-	5,  // 107: greet.NipaService.GetTreeManifest:output_type -> greet.GetTreeManifestResponse
-	41, // 108: greet.NipaService.GetCommitLog:output_type -> greet.GetCommitLogResponse
-	44, // 109: greet.NipaService.GetCommit:output_type -> greet.GetCommitResponse
-	47, // 110: greet.NipaService.WalkCommits:output_type -> greet.WalkCommitsResponse
-	36, // 111: greet.NipaService.GetMergeBase:output_type -> greet.GetMergeBaseResponse
-	38, // 112: greet.NipaService.MergeFastForward:output_type -> greet.MergeFastForwardResponse
-	16, // 113: greet.NipaService.Push:output_type -> greet.PushResponse
-	10, // 114: greet.NipaService.GetChunkUploadUrls:output_type -> greet.GetChunkUploadUrlsResponse
-	12, // 115: greet.NipaService.GetChunkDownloadUrls:output_type -> greet.GetChunkDownloadUrlsResponse
-	14, // 116: greet.NipaService.ConfirmChunkUploads:output_type -> greet.ConfirmChunkUploadsResponse
-	66, // 117: greet.NipaService.GetMyPermissions:output_type -> greet.GetMyPermissionsResponse
-	54, // 118: greet.NipaService.CreatePBACRule:output_type -> greet.CreatePBACRuleResponse
-	56, // 119: greet.NipaService.ListPBACRules:output_type -> greet.ListPBACRulesResponse
-	58, // 120: greet.NipaService.DeletePBACRule:output_type -> greet.DeletePBACRuleResponse
-	60, // 121: greet.NipaService.ListProjectPathPermissions:output_type -> greet.ListProjectPathPermissionsResponse
-	62, // 122: greet.NipaService.SetProjectPathPermission:output_type -> greet.SetProjectPathPermissionResponse
-	64, // 123: greet.NipaService.DeleteProjectPathPermission:output_type -> greet.DeleteProjectPathPermissionResponse
-	69, // 124: greet.NipaService.CreateGroup:output_type -> greet.CreateGroupResponse
-	71, // 125: greet.NipaService.ListGroups:output_type -> greet.ListGroupsResponse
-	73, // 126: greet.NipaService.AddGroupMember:output_type -> greet.AddGroupMemberResponse
-	75, // 127: greet.NipaService.RemoveGroupMember:output_type -> greet.RemoveGroupMemberResponse
-	96, // [96:128] is the sub-list for method output_type
-	64, // [64:96] is the sub-list for method input_type
-	64, // [64:64] is the sub-list for extension type_name
-	64, // [64:64] is the sub-list for extension extendee
-	0,  // [0:64] is the sub-list for field type_name
+	1,  // 12: greet.PushRequest.context:type_name -> greet.ProjectContext
+	6,  // 13: greet.PushRequest.files:type_name -> greet.PushFile
+	76, // 14: greet.Branch.created_at:type_name -> google.protobuf.Timestamp
+	76, // 15: greet.Branch.updated_at:type_name -> google.protobuf.Timestamp
+	1,  // 16: greet.GetListBranchRequest.context:type_name -> greet.ProjectContext
+	76, // 17: greet.GetListBranchRequest.last_updated_at:type_name -> google.protobuf.Timestamp
+	17, // 18: greet.GetListBranchResponse.branches:type_name -> greet.Branch
+	1,  // 19: greet.GetBranchRequest.context:type_name -> greet.ProjectContext
+	1,  // 20: greet.GetBranchByNameRequest.context:type_name -> greet.ProjectContext
+	17, // 21: greet.GetBranchByNameResponse.branch:type_name -> greet.Branch
+	1,  // 22: greet.GetDefaultBranchRequest.context:type_name -> greet.ProjectContext
+	17, // 23: greet.GetBranchResponse.branch:type_name -> greet.Branch
+	1,  // 24: greet.CreateBranchRequest.context:type_name -> greet.ProjectContext
+	17, // 25: greet.CreateBranchResponse.branch:type_name -> greet.Branch
+	1,  // 26: greet.RenameBranchRequest.context:type_name -> greet.ProjectContext
+	17, // 27: greet.RenameBranchResponse.branch:type_name -> greet.Branch
+	1,  // 28: greet.DeleteBranchRequest.context:type_name -> greet.ProjectContext
+	1,  // 29: greet.SetDefaultBranchRequest.context:type_name -> greet.ProjectContext
+	17, // 30: greet.SetDefaultBranchResponse.branch:type_name -> greet.Branch
+	1,  // 31: greet.SetBranchProtectionRequest.context:type_name -> greet.ProjectContext
+	17, // 32: greet.SetBranchProtectionResponse.branch:type_name -> greet.Branch
+	1,  // 33: greet.GetMergeBaseRequest.context:type_name -> greet.ProjectContext
+	3,  // 34: greet.GetMergeBaseResponse.merge_base_tree:type_name -> greet.TreeManifest
+	1,  // 35: greet.MergeFastForwardRequest.context:type_name -> greet.ProjectContext
+	17, // 36: greet.MergeFastForwardResponse.branch:type_name -> greet.Branch
+	76, // 37: greet.CommitLogEntry.created_at:type_name -> google.protobuf.Timestamp
+	1,  // 38: greet.GetCommitLogRequest.context:type_name -> greet.ProjectContext
+	39, // 39: greet.GetCommitLogResponse.commits:type_name -> greet.CommitLogEntry
+	76, // 40: greet.CommitDetail.created_at:type_name -> google.protobuf.Timestamp
+	1,  // 41: greet.GetCommitRequest.context:type_name -> greet.ProjectContext
+	42, // 42: greet.GetCommitResponse.commit:type_name -> greet.CommitDetail
+	3,  // 43: greet.GetCommitResponse.root_tree:type_name -> greet.TreeManifest
+	76, // 44: greet.CommitWalkEntry.created_at:type_name -> google.protobuf.Timestamp
+	1,  // 45: greet.WalkCommitsRequest.context:type_name -> greet.ProjectContext
+	45, // 46: greet.WalkCommitsResponse.commits:type_name -> greet.CommitWalkEntry
+	76, // 47: greet.PBACRuleDetail.created_at:type_name -> google.protobuf.Timestamp
+	1,  // 48: greet.CreatePBACRuleRequest.context:type_name -> greet.ProjectContext
+	52, // 49: greet.CreatePBACRuleResponse.rule:type_name -> greet.PBACRuleDetail
+	1,  // 50: greet.ListPBACRulesRequest.context:type_name -> greet.ProjectContext
+	52, // 51: greet.ListPBACRulesResponse.rules:type_name -> greet.PBACRuleDetail
+	1,  // 52: greet.DeletePBACRuleRequest.context:type_name -> greet.ProjectContext
+	1,  // 53: greet.ListProjectPathPermissionsRequest.context:type_name -> greet.ProjectContext
+	51, // 54: greet.ListProjectPathPermissionsResponse.permissions:type_name -> greet.PermissionEntry
+	1,  // 55: greet.SetProjectPathPermissionRequest.context:type_name -> greet.ProjectContext
+	51, // 56: greet.SetProjectPathPermissionResponse.permission:type_name -> greet.PermissionEntry
+	1,  // 57: greet.DeleteProjectPathPermissionRequest.context:type_name -> greet.ProjectContext
+	1,  // 58: greet.GetMyPermissionsRequest.context:type_name -> greet.ProjectContext
+	51, // 59: greet.GetMyPermissionsResponse.rules:type_name -> greet.PermissionEntry
+	51, // 60: greet.GetMyPermissionsResponse.defaults:type_name -> greet.PermissionEntry
+	67, // 61: greet.CreateGroupResponse.group:type_name -> greet.GroupDetail
+	67, // 62: greet.ListGroupsResponse.groups:type_name -> greet.GroupDetail
+	48, // 63: greet.NipaService.LoginWithUsernamePassword:input_type -> greet.LoginUsernamePasswordRequest
+	49, // 64: greet.NipaService.LoginWithRefreshToken:input_type -> greet.LoginWithRefreshRequest
+	18, // 65: greet.NipaService.GetListBranch:input_type -> greet.GetListBranchRequest
+	20, // 66: greet.NipaService.GetBranch:input_type -> greet.GetBranchRequest
+	21, // 67: greet.NipaService.GetBranchByName:input_type -> greet.GetBranchByNameRequest
+	23, // 68: greet.NipaService.GetDefaultBranch:input_type -> greet.GetDefaultBranchRequest
+	25, // 69: greet.NipaService.CreateBranch:input_type -> greet.CreateBranchRequest
+	27, // 70: greet.NipaService.RenameBranch:input_type -> greet.RenameBranchRequest
+	29, // 71: greet.NipaService.DeleteBranch:input_type -> greet.DeleteBranchRequest
+	31, // 72: greet.NipaService.SetDefaultBranch:input_type -> greet.SetDefaultBranchRequest
+	33, // 73: greet.NipaService.SetBranchProtection:input_type -> greet.SetBranchProtectionRequest
+	4,  // 74: greet.NipaService.GetTreeManifest:input_type -> greet.GetTreeManifestRequest
+	40, // 75: greet.NipaService.GetCommitLog:input_type -> greet.GetCommitLogRequest
+	43, // 76: greet.NipaService.GetCommit:input_type -> greet.GetCommitRequest
+	46, // 77: greet.NipaService.WalkCommits:input_type -> greet.WalkCommitsRequest
+	35, // 78: greet.NipaService.GetMergeBase:input_type -> greet.GetMergeBaseRequest
+	37, // 79: greet.NipaService.MergeFastForward:input_type -> greet.MergeFastForwardRequest
+	15, // 80: greet.NipaService.Push:input_type -> greet.PushRequest
+	9,  // 81: greet.NipaService.GetChunkUploadUrls:input_type -> greet.GetChunkUploadUrlsRequest
+	11, // 82: greet.NipaService.GetChunkDownloadUrls:input_type -> greet.GetChunkDownloadUrlsRequest
+	13, // 83: greet.NipaService.ConfirmChunkUploads:input_type -> greet.ConfirmChunkUploadsRequest
+	65, // 84: greet.NipaService.GetMyPermissions:input_type -> greet.GetMyPermissionsRequest
+	53, // 85: greet.NipaService.CreatePBACRule:input_type -> greet.CreatePBACRuleRequest
+	55, // 86: greet.NipaService.ListPBACRules:input_type -> greet.ListPBACRulesRequest
+	57, // 87: greet.NipaService.DeletePBACRule:input_type -> greet.DeletePBACRuleRequest
+	59, // 88: greet.NipaService.ListProjectPathPermissions:input_type -> greet.ListProjectPathPermissionsRequest
+	61, // 89: greet.NipaService.SetProjectPathPermission:input_type -> greet.SetProjectPathPermissionRequest
+	63, // 90: greet.NipaService.DeleteProjectPathPermission:input_type -> greet.DeleteProjectPathPermissionRequest
+	68, // 91: greet.NipaService.CreateGroup:input_type -> greet.CreateGroupRequest
+	70, // 92: greet.NipaService.ListGroups:input_type -> greet.ListGroupsRequest
+	72, // 93: greet.NipaService.AddGroupMember:input_type -> greet.AddGroupMemberRequest
+	74, // 94: greet.NipaService.RemoveGroupMember:input_type -> greet.RemoveGroupMemberRequest
+	50, // 95: greet.NipaService.LoginWithUsernamePassword:output_type -> greet.LoginResponse
+	50, // 96: greet.NipaService.LoginWithRefreshToken:output_type -> greet.LoginResponse
+	19, // 97: greet.NipaService.GetListBranch:output_type -> greet.GetListBranchResponse
+	24, // 98: greet.NipaService.GetBranch:output_type -> greet.GetBranchResponse
+	22, // 99: greet.NipaService.GetBranchByName:output_type -> greet.GetBranchByNameResponse
+	24, // 100: greet.NipaService.GetDefaultBranch:output_type -> greet.GetBranchResponse
+	26, // 101: greet.NipaService.CreateBranch:output_type -> greet.CreateBranchResponse
+	28, // 102: greet.NipaService.RenameBranch:output_type -> greet.RenameBranchResponse
+	30, // 103: greet.NipaService.DeleteBranch:output_type -> greet.DeleteBranchResponse
+	32, // 104: greet.NipaService.SetDefaultBranch:output_type -> greet.SetDefaultBranchResponse
+	34, // 105: greet.NipaService.SetBranchProtection:output_type -> greet.SetBranchProtectionResponse
+	5,  // 106: greet.NipaService.GetTreeManifest:output_type -> greet.GetTreeManifestResponse
+	41, // 107: greet.NipaService.GetCommitLog:output_type -> greet.GetCommitLogResponse
+	44, // 108: greet.NipaService.GetCommit:output_type -> greet.GetCommitResponse
+	47, // 109: greet.NipaService.WalkCommits:output_type -> greet.WalkCommitsResponse
+	36, // 110: greet.NipaService.GetMergeBase:output_type -> greet.GetMergeBaseResponse
+	38, // 111: greet.NipaService.MergeFastForward:output_type -> greet.MergeFastForwardResponse
+	16, // 112: greet.NipaService.Push:output_type -> greet.PushResponse
+	10, // 113: greet.NipaService.GetChunkUploadUrls:output_type -> greet.GetChunkUploadUrlsResponse
+	12, // 114: greet.NipaService.GetChunkDownloadUrls:output_type -> greet.GetChunkDownloadUrlsResponse
+	14, // 115: greet.NipaService.ConfirmChunkUploads:output_type -> greet.ConfirmChunkUploadsResponse
+	66, // 116: greet.NipaService.GetMyPermissions:output_type -> greet.GetMyPermissionsResponse
+	54, // 117: greet.NipaService.CreatePBACRule:output_type -> greet.CreatePBACRuleResponse
+	56, // 118: greet.NipaService.ListPBACRules:output_type -> greet.ListPBACRulesResponse
+	58, // 119: greet.NipaService.DeletePBACRule:output_type -> greet.DeletePBACRuleResponse
+	60, // 120: greet.NipaService.ListProjectPathPermissions:output_type -> greet.ListProjectPathPermissionsResponse
+	62, // 121: greet.NipaService.SetProjectPathPermission:output_type -> greet.SetProjectPathPermissionResponse
+	64, // 122: greet.NipaService.DeleteProjectPathPermission:output_type -> greet.DeleteProjectPathPermissionResponse
+	69, // 123: greet.NipaService.CreateGroup:output_type -> greet.CreateGroupResponse
+	71, // 124: greet.NipaService.ListGroups:output_type -> greet.ListGroupsResponse
+	73, // 125: greet.NipaService.AddGroupMember:output_type -> greet.AddGroupMemberResponse
+	75, // 126: greet.NipaService.RemoveGroupMember:output_type -> greet.RemoveGroupMemberResponse
+	95, // [95:127] is the sub-list for method output_type
+	63, // [63:95] is the sub-list for method input_type
+	63, // [63:63] is the sub-list for extension type_name
+	63, // [63:63] is the sub-list for extension extendee
+	0,  // [0:63] is the sub-list for field type_name
 }
 
 func init() { file_internal_grpc_proto_server_proto_init() }

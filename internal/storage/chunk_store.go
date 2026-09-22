@@ -21,6 +21,10 @@ type ChunkStore interface {
 	// Get returns the chunk content, or a domain NotFound error when absent.
 	Get(ctx context.Context, hash domain.Hash) ([]byte, error)
 
+	// Size returns the stored content size in bytes, or a domain NotFound
+	// error when absent. It is the authoritative size for chunk metadata.
+	Size(ctx context.Context, hash domain.Hash) (int64, error)
+
 	// Exists reports whether the chunk content is already present.
 	Exists(ctx context.Context, hash domain.Hash) (bool, error)
 

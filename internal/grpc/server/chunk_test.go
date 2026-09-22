@@ -212,13 +212,25 @@ func TestConfirmChunkUploadsHandler(t *testing.T) {
 	absentHash := chunker.Sum([]byte("absent"))
 	res, err := srv.ConfirmChunkUploads(context.Background(), &pb.ConfirmChunkUploadsRequest{
 		Context: testChunkContext(),
-		Chunks: []*pb.ChunkRef{
-			{Hash: presentHash.String(), SizeBytes: int64(len(present))},
-			{Hash: absentHash.String(), SizeBytes: int64(len("absent"))},
-		},
+		Hashes:  []string{presentHash.String(), absentHash.String()},
 	})
 	require.NoError(t, err)
 	require.Equal(t, []string{absentHash.String()}, res.GetMissingHashes())
+}
+
+func TestConfirmChunkUploadsHandler_InvalidHash(t *testing.T) {
+	chunk, _ := newChunkUsecase(t)
+	branch, perm, _ := newTestBranchUc(t)
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), snow.ID(42), domain.PermissionWrite).
+		Return(true)
+	srv := New(&mockUsecaseContainer{branch: branch, common: newTestCommon(), chunk: chunk})
+
+	_, err := srv.ConfirmChunkUploads(context.Background(), &pb.ConfirmChunkUploadsRequest{
+		Context: testChunkContext(),
+		Hashes:  []string{"zz-not-hex"},
+	})
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
 }
 
 func TestConfirmChunkUploadsHandler_NoPermission(t *testing.T) {
@@ -231,7 +243,7 @@ func TestConfirmChunkUploadsHandler_NoPermission(t *testing.T) {
 
 	_, err := srv.ConfirmChunkUploads(context.Background(), &pb.ConfirmChunkUploadsRequest{
 		Context: testChunkContext(),
-		Chunks:  []*pb.ChunkRef{{Hash: chunker.Sum([]byte("x")).String(), SizeBytes: 1}},
+		Hashes:  []string{chunker.Sum([]byte("x")).String()},
 	})
 	require.Equal(t, codes.PermissionDenied, status.Code(err))
 }

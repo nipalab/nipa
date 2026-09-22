@@ -154,23 +154,21 @@ func (c *Chunk) PresignDownloadURLs(org, project string, hashes []domain.Hash, p
 }
 
 // ConfirmUploads verifies that uploaded chunk content landed in the store and
-// records metadata rows for the present chunks. Hashes still missing are
-// returned so the client can retry them.
-func (c *Chunk) ConfirmUploads(ctx context.Context, refs []ChunkRef) ([]domain.Hash, error) {
-	if err := validateChunkRefs(refs); err != nil {
-		return nil, err
-	}
+// records metadata rows for the present chunks. The recorded size is measured
+// from the stored content, never taken from the client. Hashes still missing
+// are returned so the client can retry them.
+func (c *Chunk) ConfirmUploads(ctx context.Context, hashes []domain.Hash) ([]domain.Hash, error) {
 	var missing []domain.Hash
-	for _, ref := range refs {
-		exists, err := c.chunkStore.Exists(ctx, ref.Hash)
+	for _, hash := range hashes {
+		size, err := c.chunkStore.Size(ctx, hash)
 		if err != nil {
-			return nil, domain.NewErrorDatabase(fmt.Sprintf("check chunk %s: %v", ref.Hash, err))
+			if domain.IsErrorNotFound(err) {
+				missing = append(missing, hash)
+				continue
+			}
+			return nil, domain.NewErrorDatabase(fmt.Sprintf("stat chunk %s: %v", hash, err))
 		}
-		if !exists {
-			missing = append(missing, ref.Hash)
-			continue
-		}
-		if err := c.chunkRepo.InsertChunkIfNotExists(ctx, ref.Hash, ref.SizeBytes); err != nil {
+		if err := c.chunkRepo.InsertChunkIfNotExists(ctx, hash, size); err != nil {
 			return nil, err
 		}
 	}
