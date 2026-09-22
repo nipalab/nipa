@@ -4,13 +4,16 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"path"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -27,15 +30,21 @@ import (
 type chunkTestServer struct {
 	pb.UnimplementedNipaServiceServer
 
-	mu             sync.Mutex
-	stored         map[string][]byte
-	uploadErr      error
-	downloadErr    error
-	confirmMissing []string
-	uploadAuth     string
-	downloadAuth   string
-	lastUploadRefs []*pb.ChunkRef
-	lastDownload   *pb.GetChunkDownloadUrlsRequest
+	mu              sync.Mutex
+	stored          map[string][]byte
+	uploadErr       error
+	downloadErr     error
+	confirmErr      error
+	confirmMissing  []string
+	uploadAuth      string
+	downloadAuth    string
+	lastUploadRefs  []*pb.ChunkRef
+	lastDownload    *pb.GetChunkDownloadUrlsRequest
+	uploadBadHash   bool
+	downloadBadHash bool
+	unknownUpload   bool
+	putStatus       int
+	getStatus       int
 }
 
 func newChunkTestServer() *chunkTestServer {
@@ -79,6 +88,12 @@ func (s *chunkTestServer) GetChunkUploadUrls(ctx context.Context, req *pb.GetChu
 			AlreadyStored: exists,
 		})
 	}
+	if s.uploadBadHash {
+		resp.Urls = append(resp.Urls, &pb.PresignedChunkUrl{Hash: "zz-not-hex", Url: "/api/chunks/org/proj/zz?op=put"})
+	}
+	if s.unknownUpload {
+		resp.Urls = append(resp.Urls, &pb.PresignedChunkUrl{Hash: testChunkHash(0xee).String(), Url: "/api/chunks/org/proj/ee?op=put"})
+	}
 	return resp, nil
 }
 
@@ -103,10 +118,16 @@ func (s *chunkTestServer) GetChunkDownloadUrls(ctx context.Context, req *pb.GetC
 				req.GetContext().GetOrg(), req.GetContext().GetProject(), hash),
 		})
 	}
+	if s.downloadBadHash {
+		resp.Urls = append(resp.Urls, &pb.PresignedChunkUrl{Hash: "zz-not-hex", Url: "/api/chunks/org/proj/zz?op=get"})
+	}
 	return resp, nil
 }
 
 func (s *chunkTestServer) ConfirmChunkUploads(_ context.Context, _ *pb.ConfirmChunkUploadsRequest) (*pb.ConfirmChunkUploadsResponse, error) {
+	if s.confirmErr != nil {
+		return nil, s.confirmErr
+	}
 	return &pb.ConfirmChunkUploadsResponse{MissingHashes: s.confirmMissing}, nil
 }
 
@@ -114,6 +135,10 @@ func (s *chunkTestServer) serveChunkHTTP(w http.ResponseWriter, r *http.Request)
 	hash := path.Base(r.URL.Path)
 	switch r.URL.Query().Get("op") {
 	case "put":
+		if s.putStatus != 0 {
+			http.Error(w, "put failed", s.putStatus)
+			return
+		}
 		data, err := io.ReadAll(r.Body)
 		if err != nil {
 			http.Error(w, "unable to read body", http.StatusBadRequest)
@@ -122,6 +147,10 @@ func (s *chunkTestServer) serveChunkHTTP(w http.ResponseWriter, r *http.Request)
 		s.put(hash, data)
 		w.WriteHeader(http.StatusNoContent)
 	case "get":
+		if s.getStatus != 0 {
+			http.Error(w, "get failed", s.getStatus)
+			return
+		}
 		data, ok := s.storedChunk(hash)
 		if !ok {
 			http.NotFound(w, r)
@@ -403,4 +432,267 @@ func TestClient_DownloadChunks_NotConnected(t *testing.T) {
 	})
 	require.Error(t, err)
 	require.Equal(t, "not connected to a nipa server", err.Error())
+}
+
+func TestClient_UploadChunks_HTTPError(t *testing.T) {
+	srv := newChunkTestServer()
+	srv.putStatus = http.StatusInternalServerError
+	addr := startChunkTestServer(t, srv)
+	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
+	require.NoError(t, c.Connect(context.Background(), addr))
+
+	_, _, err := c.UploadChunks(context.Background(), domain.ChunkScope{Org: "org", Project: "proj"}, []*serverDomain.ChunkData{
+		{Hash: testChunkHash(0x01), Data: []byte("aaaa")},
+	})
+	require.Error(t, err)
+
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 400, domErr.Code)
+}
+
+func TestClient_UploadChunks_ConfirmError(t *testing.T) {
+	srv := newChunkTestServer()
+	srv.confirmErr = status.Error(codes.Internal, "confirm failed")
+	addr := startChunkTestServer(t, srv)
+	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
+	require.NoError(t, c.Connect(context.Background(), addr))
+
+	_, _, err := c.UploadChunks(context.Background(), domain.ChunkScope{Org: "org", Project: "proj"}, []*serverDomain.ChunkData{
+		{Hash: testChunkHash(0x01), Data: []byte("aaaa")},
+	})
+	require.Error(t, err)
+	require.Equal(t, codes.Internal, status.Code(err))
+}
+
+func TestClient_UploadChunks_InvalidHashFromServer(t *testing.T) {
+	srv := newChunkTestServer()
+	srv.uploadBadHash = true
+	addr := startChunkTestServer(t, srv)
+	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
+	require.NoError(t, c.Connect(context.Background(), addr))
+
+	_, _, err := c.UploadChunks(context.Background(), domain.ChunkScope{Org: "org", Project: "proj"}, []*serverDomain.ChunkData{
+		{Hash: testChunkHash(0x01), Data: []byte("aaaa")},
+	})
+	require.Error(t, err)
+}
+
+func TestClient_UploadChunks_UnknownChunkFromServer(t *testing.T) {
+	srv := newChunkTestServer()
+	srv.unknownUpload = true
+	addr := startChunkTestServer(t, srv)
+	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
+	require.NoError(t, c.Connect(context.Background(), addr))
+
+	_, _, err := c.UploadChunks(context.Background(), domain.ChunkScope{Org: "org", Project: "proj"}, []*serverDomain.ChunkData{
+		{Hash: testChunkHash(0x01), Data: []byte("aaaa")},
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "unknown chunk")
+}
+
+func TestClient_DownloadChunks_HTTPError(t *testing.T) {
+	h := testChunkHash(0x01)
+
+	srv := newChunkTestServer()
+	srv.put(h.String(), []byte("aaaa"))
+	srv.getStatus = http.StatusInternalServerError
+	addr := startChunkTestServer(t, srv)
+	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
+	require.NoError(t, c.Connect(context.Background(), addr))
+
+	err := c.DownloadChunks(context.Background(), domain.ChunkScope{Org: "org", Project: "proj", CommitIDs: []string{"1"}}, []serverDomain.Hash{h}, func(serverDomain.Hash, []byte) error {
+		return nil
+	})
+	require.Error(t, err)
+
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 400, domErr.Code)
+}
+
+func TestClient_DownloadChunks_NotFoundStatus(t *testing.T) {
+	h := testChunkHash(0x01)
+
+	srv := newChunkTestServer()
+	srv.put(h.String(), []byte("aaaa"))
+	srv.getStatus = http.StatusNotFound
+	addr := startChunkTestServer(t, srv)
+	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
+	require.NoError(t, c.Connect(context.Background(), addr))
+
+	err := c.DownloadChunks(context.Background(), domain.ChunkScope{Org: "org", Project: "proj", CommitIDs: []string{"1"}}, []serverDomain.Hash{h}, func(serverDomain.Hash, []byte) error {
+		return nil
+	})
+	require.Error(t, err)
+
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 404, domErr.Code)
+}
+
+func TestClient_DownloadChunks_InvalidHashFromServer(t *testing.T) {
+	h := testChunkHash(0x01)
+
+	srv := newChunkTestServer()
+	srv.put(h.String(), []byte("aaaa"))
+	srv.downloadBadHash = true
+	addr := startChunkTestServer(t, srv)
+	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
+	require.NoError(t, c.Connect(context.Background(), addr))
+
+	err := c.DownloadChunks(context.Background(), domain.ChunkScope{Org: "org", Project: "proj", CommitIDs: []string{"1"}}, []serverDomain.Hash{h}, func(serverDomain.Hash, []byte) error {
+		return nil
+	})
+	require.Error(t, err)
+}
+
+func TestClient_Chunks_NoToken(t *testing.T) {
+	srv := newChunkTestServer()
+	addr := startChunkTestServer(t, srv)
+	c := NewClient(NewTransport(), &stubSession{getTokenErr: errors.New("no token")})
+	require.NoError(t, c.Connect(context.Background(), addr))
+
+	_, _, err := c.UploadChunks(context.Background(), domain.ChunkScope{Org: "org", Project: "proj"}, []*serverDomain.ChunkData{
+		{Hash: testChunkHash(0x01), Data: []byte("aaaa")},
+	})
+	require.Error(t, err)
+	require.Equal(t, codes.Unauthenticated, status.Code(err))
+
+	err = c.DownloadChunks(context.Background(), domain.ChunkScope{Org: "org", Project: "proj", CommitIDs: []string{"1"}}, []serverDomain.Hash{testChunkHash(0x01)}, func(serverDomain.Hash, []byte) error {
+		return nil
+	})
+	require.Error(t, err)
+	require.Equal(t, codes.Unauthenticated, status.Code(err))
+}
+
+func TestClient_ChunkHTTPError(t *testing.T) {
+	tests := []struct {
+		status int
+		code   int
+	}{
+		{status: http.StatusNotFound, code: 404},
+		{status: http.StatusForbidden, code: 400},
+		{status: http.StatusUnauthorized, code: 400},
+		{status: http.StatusInternalServerError, code: 400},
+	}
+	for _, tt := range tests {
+		t.Run(http.StatusText(tt.status), func(t *testing.T) {
+			res := &http.Response{StatusCode: tt.status, Body: io.NopCloser(strings.NewReader(""))}
+			var domErr *domain.Error
+			require.ErrorAs(t, chunkHTTPError(res), &domErr)
+			require.Equal(t, tt.code, domErr.Code)
+		})
+	}
+}
+
+func TestClient_HTTPURL(t *testing.T) {
+	c := NewClient(NewTransport(), &stubSession{})
+
+	c.transport.url = ""
+	require.Equal(t, "/api/chunks/x", c.httpURL("/api/chunks/x"))
+
+	c.transport.url = "127.0.0.1:6745"
+	require.Equal(t, "http://127.0.0.1:6745/api/chunks/x", c.httpURL("/api/chunks/x"))
+
+	c.transport.url = "http://example.com:1234/"
+	require.Equal(t, "http://example.com:1234/api/chunks/x", c.httpURL("/api/chunks/x"))
+
+	require.Equal(t, "https://s3.example.com/bucket/key", c.httpURL("https://s3.example.com/bucket/key"))
+}
+
+func TestClient_ForEachChunkEmpty(t *testing.T) {
+	c := NewClient(NewTransport(), &stubSession{})
+
+	require.NoError(t, c.putChunks(context.Background(), nil))
+	require.NoError(t, c.getChunks(context.Background(), nil, func(serverDomain.Hash, []byte) error {
+		return nil
+	}))
+}
+
+func TestClient_PutChunksInvalidURL(t *testing.T) {
+	c := NewClient(NewTransport(), &stubSession{})
+
+	err := c.putChunks(context.Background(), []chunkTransfer{{hash: testChunkHash(0x01), url: "\x7f", data: []byte("x")}})
+	require.Error(t, err)
+}
+
+func TestClient_GetChunksInvalidURL(t *testing.T) {
+	c := NewClient(NewTransport(), &stubSession{})
+
+	err := c.getChunks(context.Background(), []chunkTransfer{{hash: testChunkHash(0x01), url: "\x7f"}}, func(serverDomain.Hash, []byte) error {
+		return nil
+	})
+	require.Error(t, err)
+}
+
+func TestClient_PutChunksDoError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	srv.Close()
+
+	c := NewClient(NewTransport(), &stubSession{})
+	err := c.putChunks(context.Background(), []chunkTransfer{{hash: testChunkHash(0x01), url: srv.URL, data: []byte("x")}})
+	require.Error(t, err)
+}
+
+func TestClient_GetChunksDoError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	srv.Close()
+
+	c := NewClient(NewTransport(), &stubSession{})
+	err := c.getChunks(context.Background(), []chunkTransfer{{hash: testChunkHash(0x01), url: srv.URL}}, func(serverDomain.Hash, []byte) error {
+		return nil
+	})
+	require.Error(t, err)
+}
+
+func TestClient_GetChunksReadError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", "100")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("short"))
+	}))
+	defer srv.Close()
+
+	c := NewClient(NewTransport(), &stubSession{})
+	err := c.getChunks(context.Background(), []chunkTransfer{{hash: testChunkHash(0x01), url: srv.URL}}, func(serverDomain.Hash, []byte) error {
+		return nil
+	})
+	require.Error(t, err)
+}
+
+func TestClient_DownloadChunks_NoHashes(t *testing.T) {
+	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
+
+	err := c.DownloadChunks(context.Background(), domain.ChunkScope{Org: "org", Project: "proj"}, nil, func(serverDomain.Hash, []byte) error {
+		return nil
+	})
+	require.NoError(t, err)
+}
+
+func TestClient_GetChunksStopsDeliveryAfterSinkError(t *testing.T) {
+	var served int32
+	bothServed := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("data"))
+		if atomic.AddInt32(&served, 1) == 2 {
+			close(bothServed)
+		}
+	}))
+	defer srv.Close()
+
+	c := NewClient(NewTransport(), &stubSession{})
+	sinkErr := errors.New("sink failed")
+	var calls int32
+	err := c.getChunks(context.Background(), []chunkTransfer{
+		{hash: testChunkHash(0x01), url: srv.URL},
+		{hash: testChunkHash(0x02), url: srv.URL},
+	}, func(serverDomain.Hash, []byte) error {
+		<-bothServed
+		atomic.AddInt32(&calls, 1)
+		return sinkErr
+	})
+	require.ErrorIs(t, err, sinkErr)
+	require.Equal(t, int32(1), atomic.LoadInt32(&calls), "delivery must stop after the sink fails")
 }
