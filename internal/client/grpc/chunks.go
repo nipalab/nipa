@@ -277,9 +277,7 @@ func (c *Client) httpURL(path string) string {
 		return path
 	}
 	if !strings.Contains(base, "://") {
-		// NOSONAR: nipad serves gRPC and the signed chunk routes on one
-		// plaintext listener (the gRPC channel is insecure too), so there is
-		// no TLS scheme to derive here.
+		// TODO: check later, it should be https
 		base = "http://" + base
 	}
 	return strings.TrimRight(base, "/") + path
