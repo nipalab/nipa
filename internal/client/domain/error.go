@@ -22,6 +22,13 @@ func NewUserError(message string) *Error {
 	}
 }
 
+func NewNotFoundError(message string) *Error {
+	return &Error{
+		Code:    404,
+		Message: message,
+	}
+}
+
 func NewTokenError(message string) *Error {
 	return &Error{
 		Code:    401,

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -31,6 +32,22 @@ type fakeAppContext struct {
 	contentType     string
 	raw             []byte
 	queryParameters map[string]string
+	request         *http.Request
+	responseWriter  http.ResponseWriter
+}
+
+func (f *fakeAppContext) Request() *http.Request {
+	if f.request != nil {
+		return f.request
+	}
+	return httptest.NewRequest(http.MethodGet, "/", nil)
+}
+
+func (f *fakeAppContext) ResponseWriter() http.ResponseWriter {
+	if f.responseWriter != nil {
+		return f.responseWriter
+	}
+	return httptest.NewRecorder()
 }
 
 func (f *fakeAppContext) Context() context.Context {
@@ -103,6 +120,7 @@ type handlerRegistry struct {
 	group        *usecase.Group
 	project      *usecase.Project
 	branch       *usecase.Branch
+	chunk        *usecase.Chunk
 	mergeRequest *usecase.MergeRequest
 }
 
@@ -114,6 +132,7 @@ func (r *handlerRegistry) Org() *usecase.Org               { return r.org }
 func (r *handlerRegistry) Group() *usecase.Group           { return r.group }
 func (r *handlerRegistry) Project() *usecase.Project       { return r.project }
 func (r *handlerRegistry) Branch() *usecase.Branch         { return r.branch }
+func (r *handlerRegistry) Chunk() *usecase.Chunk           { return r.chunk }
 func (r *handlerRegistry) MergeRequest() *usecase.MergeRequest {
 	return r.mergeRequest
 }
@@ -172,7 +191,11 @@ func newHandlerTestEnv(t *testing.T) *handlerTestEnv {
 	pushRepo := sqlite.NewPushRepository(dbConn)
 	branchUc := usecase.NewBranchWithChunks(permissionUc, branchRepo, node, chunkStore)
 	pusher := usecase.NewPush(permissionUc, branchRepo, pushRepo, node)
-	chunkUc := usecase.NewChunk(pushRepo, chunkStore)
+	chunkUc := usecase.NewChunk(pushRepo, chunkStore, usecase.ChunkTransferConfig{
+		SigningKey:  "test-chunk-signing-key",
+		PresignTTL:  time.Hour,
+		MaxPageSize: 1000,
+	})
 	mergeRequestUc := usecase.NewMergeRequest(
 		sqlite.NewMergeRequestRepository(dbConn), branchRepo, permissionUc, branchUc, node,
 	)
@@ -185,6 +208,7 @@ func newHandlerTestEnv(t *testing.T) *handlerTestEnv {
 		group:        usecase.NewGroup(groupRepo, node, permissionUc, orgUc),
 		project:      projectUc,
 		branch:       branchUc,
+		chunk:        chunkUc,
 		mergeRequest: mergeRequestUc,
 	}
 	return &handlerTestEnv{

@@ -10,6 +10,8 @@ import (
 type AppContext interface {
 	Context() context.Context
 	Claims() *domain.Claims
+	Request() *http.Request
+	ResponseWriter() http.ResponseWriter
 	ReadJson(v any) error
 	WriteJson(statusCode int, v any) error
 	WriteBytes(statusCode int, contentType string, data []byte)

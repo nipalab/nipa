@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	database "github.com/nipalab/nipa/db"
@@ -34,6 +35,7 @@ type testRegistry struct {
 	group        *usecase.Group
 	project      *usecase.Project
 	branch       *usecase.Branch
+	chunk        *usecase.Chunk
 	mergeRequest *usecase.MergeRequest
 }
 
@@ -45,6 +47,7 @@ func (r *testRegistry) Org() *usecase.Org               { return r.org }
 func (r *testRegistry) Group() *usecase.Group           { return r.group }
 func (r *testRegistry) Project() *usecase.Project       { return r.project }
 func (r *testRegistry) Branch() *usecase.Branch         { return r.branch }
+func (r *testRegistry) Chunk() *usecase.Chunk           { return r.chunk }
 func (r *testRegistry) MergeRequest() *usecase.MergeRequest {
 	return r.mergeRequest
 }
@@ -88,7 +91,11 @@ func TestAPIRoutes(t *testing.T) {
 	t.Cleanup(func() { _ = chunkStore.Close() })
 	branchUc := usecase.NewBranchWithChunks(permissionUc, branchRepo, node, chunkStore)
 	pusher := usecase.NewPush(permissionUc, branchRepo, pushRepo, node)
-	chunkUc := usecase.NewChunk(pushRepo, chunkStore)
+	chunkUc := usecase.NewChunk(pushRepo, chunkStore, usecase.ChunkTransferConfig{
+		SigningKey:  "test-chunk-signing-key",
+		PresignTTL:  time.Hour,
+		MaxPageSize: 1000,
+	})
 	mergeRequestUc := usecase.NewMergeRequest(
 		sqlite.NewMergeRequestRepository(dbConn), branchRepo, permissionUc, branchUc, node,
 	)
@@ -101,6 +108,7 @@ func TestAPIRoutes(t *testing.T) {
 		group:        usecase.NewGroup(groupRepo, node, permissionUc, orgUc),
 		project:      projectUc,
 		branch:       branchUc,
+		chunk:        chunkUc,
 		mergeRequest: mergeRequestUc,
 	}
 

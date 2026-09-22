@@ -2,16 +2,18 @@ package server
 
 import (
 	"context"
-	"io"
+	"net/url"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
 	"github.com/nipalab/nipa/internal/chunker"
+	"github.com/nipalab/nipa/internal/chunkurl"
 	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/grpc/pb"
 	"github.com/nipalab/nipa/internal/snow"
@@ -19,11 +21,18 @@ import (
 	"github.com/nipalab/nipa/internal/usecase"
 )
 
+const testSigningKey = "test-signing-key"
+
 func newChunkUsecase(t *testing.T) (*usecase.Chunk, *storage.LocalStore) {
 	t.Helper()
 	store, err := storage.NewLocalStore(t.TempDir())
 	require.NoError(t, err)
-	return usecase.NewChunk(stubChunkRepo{}, store), store
+	uc := usecase.NewChunk(stubChunkRepo{}, store, usecase.ChunkTransferConfig{
+		SigningKey:  testSigningKey,
+		PresignTTL:  time.Hour,
+		MaxPageSize: 100,
+	})
+	return uc, store
 }
 
 type stubChunkRepo struct{}
@@ -32,68 +41,20 @@ func (stubChunkRepo) InsertChunkIfNotExists(_ context.Context, _ domain.Hash, _ 
 	return nil
 }
 
-type fakeServerStream struct {
-	ctx context.Context
-}
-
-func (s *fakeServerStream) Context() context.Context     { return s.ctx }
-func (s *fakeServerStream) SendMsg(interface{}) error    { return nil }
-func (s *fakeServerStream) RecvMsg(interface{}) error    { return nil }
-func (s *fakeServerStream) SetHeader(metadata.MD) error  { return nil }
-func (s *fakeServerStream) SendHeader(metadata.MD) error { return nil }
-func (s *fakeServerStream) SetTrailer(metadata.MD)       {}
-
-type uploadChunksServer struct {
-	fakeServerStream
-	reqs []*pb.ChunkUploadRequest
-	idx  int
-	resp *pb.UploadChunksResponse
-}
-
-func (s *uploadChunksServer) Recv() (*pb.ChunkUploadRequest, error) {
-	if s.idx >= len(s.reqs) {
-		return nil, io.EOF
-	}
-	r := s.reqs[s.idx]
-	s.idx++
-	return r, nil
-}
-
-func (s *uploadChunksServer) SendAndClose(resp *pb.UploadChunksResponse) error {
-	s.resp = resp
-	return nil
-}
-
-type downloadChunksServer struct {
-	fakeServerStream
-	reqs  []*pb.DownloadChunksRequest
-	idx   int
-	resps []*pb.DownloadChunk
-}
-
-func (s *downloadChunksServer) Recv() (*pb.DownloadChunksRequest, error) {
-	if s.idx >= len(s.reqs) {
-		return nil, io.EOF
-	}
-	r := s.reqs[s.idx]
-	s.idx++
-	return r, nil
-}
-
-func (s *downloadChunksServer) Send(resp *pb.DownloadChunk) error {
-	s.resps = append(s.resps, resp)
-	return nil
-}
-
 func testChunkContext() *pb.ProjectContext {
 	return &pb.ProjectContext{Org: "org", Project: "proj"}
 }
 
-func newUploadServer(reqs ...*pb.ChunkUploadRequest) *uploadChunksServer {
-	return &uploadChunksServer{
-		fakeServerStream: fakeServerStream{ctx: context.Background()},
-		reqs:             reqs,
-	}
+func verifySignedURL(t *testing.T, raw, org, project, op string, size int64) {
+	t.Helper()
+	u, err := url.Parse(raw)
+	require.NoError(t, err)
+	params, err := chunkurl.ParseParams(u.Query())
+	require.NoError(t, err)
+	require.Equal(t, op, params.Op)
+	require.Equal(t, size, params.Size)
+	hash := u.Path[strings.LastIndex(u.Path, "/")+1:]
+	require.NoError(t, chunkurl.Verify(testSigningKey, org, project, hash, params, time.Now()))
 }
 
 func newVisibleChunkBranch(t *testing.T, visible domain.Hash) *usecase.Branch {
@@ -123,26 +84,39 @@ func newVisibleChunkBranch(t *testing.T, visible domain.Hash) *usecase.Branch {
 	return branch
 }
 
-func TestUploadChunksHandler(t *testing.T) {
-	chunk, _ := newChunkUsecase(t)
+func TestGetChunkUploadUrlsHandler(t *testing.T) {
+	chunk, store := newChunkUsecase(t)
 	branch, perm, _ := newTestBranchUc(t)
 	perm.EXPECT().
 		HasProjectAccess(gomock.Any(), snow.ID(42), domain.PermissionWrite).
 		Return(true)
 	srv := New(&mockUsecaseContainer{branch: branch, common: newTestCommon(), chunk: chunk})
 
-	data := []byte("stream me up")
-	stream := newUploadServer(&pb.ChunkUploadRequest{
-		Hash:    chunker.Sum(data).String(),
-		Data:    data,
+	stored := []byte("stored chunk")
+	storedHash := chunker.Sum(stored)
+	require.NoError(t, store.Put(context.Background(), storedHash, stored))
+
+	fresh := []byte("fresh chunk")
+	freshHash := chunker.Sum(fresh)
+
+	res, err := srv.GetChunkUploadUrls(context.Background(), &pb.GetChunkUploadUrlsRequest{
 		Context: testChunkContext(),
+		Chunks: []*pb.ChunkRef{
+			{Hash: storedHash.String(), SizeBytes: int64(len(stored))},
+			{Hash: freshHash.String(), SizeBytes: int64(len(fresh))},
+		},
 	})
-	require.NoError(t, srv.UploadChunks(stream))
-	require.Equal(t, int32(1), stream.resp.Uploaded)
-	require.Equal(t, int32(0), stream.resp.Skipped)
+	require.NoError(t, err)
+	require.Len(t, res.GetUrls(), 2)
+
+	require.True(t, res.GetUrls()[0].GetAlreadyStored())
+	require.Empty(t, res.GetUrls()[0].GetUrl())
+
+	require.False(t, res.GetUrls()[1].GetAlreadyStored())
+	verifySignedURL(t, res.GetUrls()[1].GetUrl(), "org", "proj", chunkurl.OpUpload, int64(len(fresh)))
 }
 
-func TestUploadChunksHandler_NoPermission(t *testing.T) {
+func TestGetChunkUploadUrlsHandler_NoPermission(t *testing.T) {
 	chunk, _ := newChunkUsecase(t)
 	branch, perm, _ := newTestBranchUc(t)
 	perm.EXPECT().
@@ -150,147 +124,126 @@ func TestUploadChunksHandler_NoPermission(t *testing.T) {
 		Return(false)
 	srv := New(&mockUsecaseContainer{branch: branch, common: newTestCommon(), chunk: chunk})
 
-	stream := newUploadServer(&pb.ChunkUploadRequest{
-		Hash:    chunker.Sum([]byte("x")).String(),
-		Data:    []byte("x"),
+	_, err := srv.GetChunkUploadUrls(context.Background(), &pb.GetChunkUploadUrlsRequest{
 		Context: testChunkContext(),
+		Chunks:  []*pb.ChunkRef{{Hash: chunker.Sum([]byte("x")).String(), SizeBytes: 1}},
 	})
-	err := srv.UploadChunks(stream)
 	require.Equal(t, codes.PermissionDenied, status.Code(err))
 }
 
-func TestUploadChunksHandler_MissingContext(t *testing.T) {
+func TestGetChunkUploadUrlsHandler_MissingContext(t *testing.T) {
 	chunk, _ := newChunkUsecase(t)
 	branch, _, _ := newTestBranchUc(t)
 	srv := New(&mockUsecaseContainer{branch: branch, common: newTestCommon(), chunk: chunk})
 
-	stream := newUploadServer(&pb.ChunkUploadRequest{
-		Hash: chunker.Sum([]byte("x")).String(),
-		Data: []byte("x"),
+	_, err := srv.GetChunkUploadUrls(context.Background(), &pb.GetChunkUploadUrlsRequest{
+		Chunks: []*pb.ChunkRef{{Hash: chunker.Sum([]byte("x")).String(), SizeBytes: 1}},
 	})
-	err := srv.UploadChunks(stream)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 }
 
-func TestUploadChunksHandler_Dedupes(t *testing.T) {
-	chunk, store := newChunkUsecase(t)
-	branch, perm, _ := newTestBranchUc(t)
-	perm.EXPECT().
-		HasProjectAccess(gomock.Any(), snow.ID(42), domain.PermissionWrite).
-		Return(true)
-	srv := New(&mockUsecaseContainer{branch: branch, common: newTestCommon(), chunk: chunk})
-
-	data := []byte("same chunk")
-	hash := chunker.Sum(data)
-	require.NoError(t, store.Put(context.Background(), hash, data))
-
-	stream := newUploadServer(&pb.ChunkUploadRequest{
-		Hash:    hash.String(),
-		Data:    data,
-		Context: testChunkContext(),
-	})
-	require.NoError(t, srv.UploadChunks(stream))
-	require.Equal(t, int32(0), stream.resp.Uploaded)
-	require.Equal(t, int32(1), stream.resp.Skipped)
-}
-
-func TestUploadChunksHandler_InvalidHash(t *testing.T) {
+func TestGetChunkUploadUrlsHandler_InvalidRef(t *testing.T) {
 	chunk, _ := newChunkUsecase(t)
 	branch, perm, _ := newTestBranchUc(t)
 	perm.EXPECT().
 		HasProjectAccess(gomock.Any(), snow.ID(42), domain.PermissionWrite).
-		Return(true)
+		Return(true).
+		Times(2)
 	srv := New(&mockUsecaseContainer{branch: branch, common: newTestCommon(), chunk: chunk})
 
-	stream := newUploadServer(&pb.ChunkUploadRequest{
-		Hash:    "zz-not-hex",
-		Data:    []byte("x"),
+	_, err := srv.GetChunkUploadUrls(context.Background(), &pb.GetChunkUploadUrlsRequest{
 		Context: testChunkContext(),
+		Chunks:  []*pb.ChunkRef{{Hash: "zz-not-hex", SizeBytes: 1}},
 	})
-	err := srv.UploadChunks(stream)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+
+	_, err = srv.GetChunkUploadUrls(context.Background(), &pb.GetChunkUploadUrlsRequest{
+		Context: testChunkContext(),
+		Chunks:  []*pb.ChunkRef{{Hash: chunker.Sum([]byte("x")).String(), SizeBytes: 0}},
+	})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 }
 
-func newDownloadServer(reqs ...*pb.DownloadChunksRequest) *downloadChunksServer {
-	return &downloadChunksServer{
-		fakeServerStream: fakeServerStream{ctx: context.Background()},
-		reqs:             reqs,
-	}
-}
-
-func TestDownloadChunksHandler(t *testing.T) {
-	chunk, store := newChunkUsecase(t)
-	data := []byte("stream me down")
-	hash := chunker.Sum(data)
-	require.NoError(t, store.Put(context.Background(), hash, data))
-
-	srv := New(&mockUsecaseContainer{
-		branch: newVisibleChunkBranch(t, hash),
-		common: newTestCommon(),
-		chunk:  chunk,
-	})
-	stream := newDownloadServer(&pb.DownloadChunksRequest{
-		Hash:      hash.String(),
-		Context:   testChunkContext(),
-		CommitIds: []string{snow.ID(7).Base36()},
-	})
-	require.NoError(t, srv.DownloadChunks(stream))
-	require.Len(t, stream.resps, 1)
-	require.Equal(t, hash.String(), stream.resps[0].Hash)
-	require.Equal(t, data, stream.resps[0].Data)
-}
-
-func TestDownloadChunksHandler_HiddenChunk(t *testing.T) {
-	chunk, store := newChunkUsecase(t)
-
-	hidden := []byte("secret bytes")
-	hiddenHash := chunker.Sum(hidden)
-	require.NoError(t, store.Put(context.Background(), hiddenHash, hidden))
-
+func TestGetChunkDownloadUrlsHandler(t *testing.T) {
+	chunk, _ := newChunkUsecase(t)
 	visible := []byte("public bytes")
 	visibleHash := chunker.Sum(visible)
-	require.NoError(t, store.Put(context.Background(), visibleHash, visible))
+	hiddenHash := chunker.Sum([]byte("secret bytes"))
 
 	srv := New(&mockUsecaseContainer{
 		branch: newVisibleChunkBranch(t, visibleHash),
 		common: newTestCommon(),
 		chunk:  chunk,
 	})
-	stream := newDownloadServer(&pb.DownloadChunksRequest{
-		Hash:      hiddenHash.String(),
+	res, err := srv.GetChunkDownloadUrls(context.Background(), &pb.GetChunkDownloadUrlsRequest{
 		Context:   testChunkContext(),
 		CommitIds: []string{snow.ID(7).Base36()},
+		Hashes:    []string{visibleHash.String(), hiddenHash.String()},
 	})
-	err := srv.DownloadChunks(stream)
-	require.Equal(t, codes.NotFound, status.Code(err), "chunks outside the visible tree must not leak")
+	require.NoError(t, err)
+	require.Len(t, res.GetUrls(), 1, "chunks outside the visible tree must not leak")
+	require.Equal(t, visibleHash.String(), res.GetUrls()[0].GetHash())
+	verifySignedURL(t, res.GetUrls()[0].GetUrl(), "org", "proj", chunkurl.OpDownload, 0)
 }
 
-func TestDownloadChunksHandler_MissingContext(t *testing.T) {
+func TestGetChunkDownloadUrlsHandler_MissingContext(t *testing.T) {
 	chunk, _ := newChunkUsecase(t)
 	branch, _, _ := newTestBranchUc(t)
 	srv := New(&mockUsecaseContainer{branch: branch, common: newTestCommon(), chunk: chunk})
 
-	stream := newDownloadServer(&pb.DownloadChunksRequest{
-		Hash: chunker.Sum([]byte("absent")).String(),
+	_, err := srv.GetChunkDownloadUrls(context.Background(), &pb.GetChunkDownloadUrlsRequest{
+		Hashes: []string{chunker.Sum([]byte("x")).String()},
 	})
-	err := srv.DownloadChunks(stream)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 }
 
-func TestDownloadChunksHandler_Missing(t *testing.T) {
-	chunk, _ := newChunkUsecase(t)
-	hash := chunker.Sum([]byte("absent"))
+func TestConfirmChunkUploadsHandler(t *testing.T) {
+	chunk, store := newChunkUsecase(t)
+	branch, perm, _ := newTestBranchUc(t)
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), snow.ID(42), domain.PermissionWrite).
+		Return(true)
+	srv := New(&mockUsecaseContainer{branch: branch, common: newTestCommon(), chunk: chunk})
 
-	srv := New(&mockUsecaseContainer{
-		branch: newVisibleChunkBranch(t, hash),
-		common: newTestCommon(),
-		chunk:  chunk,
+	present := []byte("present")
+	presentHash := chunker.Sum(present)
+	require.NoError(t, store.Put(context.Background(), presentHash, present))
+
+	absentHash := chunker.Sum([]byte("absent"))
+	res, err := srv.ConfirmChunkUploads(context.Background(), &pb.ConfirmChunkUploadsRequest{
+		Context: testChunkContext(),
+		Hashes:  []string{presentHash.String(), absentHash.String()},
 	})
-	stream := newDownloadServer(&pb.DownloadChunksRequest{
-		Hash:      hash.String(),
-		Context:   testChunkContext(),
-		CommitIds: []string{snow.ID(7).Base36()},
+	require.NoError(t, err)
+	require.Equal(t, []string{absentHash.String()}, res.GetMissingHashes())
+}
+
+func TestConfirmChunkUploadsHandler_InvalidHash(t *testing.T) {
+	chunk, _ := newChunkUsecase(t)
+	branch, perm, _ := newTestBranchUc(t)
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), snow.ID(42), domain.PermissionWrite).
+		Return(true)
+	srv := New(&mockUsecaseContainer{branch: branch, common: newTestCommon(), chunk: chunk})
+
+	_, err := srv.ConfirmChunkUploads(context.Background(), &pb.ConfirmChunkUploadsRequest{
+		Context: testChunkContext(),
+		Hashes:  []string{"zz-not-hex"},
 	})
-	err := srv.DownloadChunks(stream)
-	require.Equal(t, codes.NotFound, status.Code(err))
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+}
+
+func TestConfirmChunkUploadsHandler_NoPermission(t *testing.T) {
+	chunk, _ := newChunkUsecase(t)
+	branch, perm, _ := newTestBranchUc(t)
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), snow.ID(42), domain.PermissionWrite).
+		Return(false)
+	srv := New(&mockUsecaseContainer{branch: branch, common: newTestCommon(), chunk: chunk})
+
+	_, err := srv.ConfirmChunkUploads(context.Background(), &pb.ConfirmChunkUploadsRequest{
+		Context: testChunkContext(),
+		Hashes:  []string{chunker.Sum([]byte("x")).String()},
+	})
+	require.Equal(t, codes.PermissionDenied, status.Code(err))
 }

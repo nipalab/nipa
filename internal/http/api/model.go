@@ -38,6 +38,14 @@ func (a *appContext) Claims() *domain.Claims {
 	return a.claims
 }
 
+func (a *appContext) Request() *http.Request {
+	return a.req.Request
+}
+
+func (a *appContext) ResponseWriter() http.ResponseWriter {
+	return a.resp
+}
+
 func (a *appContext) ReadJson(v any) error {
 	return a.req.ReadEntity(v)
 }

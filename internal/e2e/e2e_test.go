@@ -5,8 +5,10 @@ import (
 	"database/sql"
 	"errors"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -26,6 +28,7 @@ import (
 	"github.com/nipalab/nipa/internal/grpc/pb"
 	servergrpc "github.com/nipalab/nipa/internal/grpc/server"
 	"github.com/nipalab/nipa/internal/hasher"
+	"github.com/nipalab/nipa/internal/http/api"
 	"github.com/nipalab/nipa/internal/repository/sqlite"
 	"github.com/nipalab/nipa/internal/snow"
 	"github.com/nipalab/nipa/internal/storage"
@@ -145,13 +148,18 @@ func startTestServer(t *testing.T, dbConn *sql.DB) string {
 	t.Cleanup(func() { _ = chunkStore.Close() })
 	branchUc := serverusecase.NewBranchWithChunks(permissionUc, branchRepo, node, chunkStore)
 
+	chunkUc := serverusecase.NewChunk(pushRepo, chunkStore, serverusecase.ChunkTransferConfig{
+		SigningKey:  "e2e-chunk-signing-key",
+		PresignTTL:  time.Hour,
+		MaxPageSize: 1000,
+	})
 	reg := &testRegistry{
 		auth:       authUc,
 		user:       serverusecase.NewUser(node, userRepo, passwordHasher),
 		branch:     branchUc,
 		common:     commonUc,
 		push:       serverusecase.NewPush(permissionUc, branchRepo, pushRepo, node),
-		chunk:      serverusecase.NewChunk(pushRepo, chunkStore),
+		chunk:      chunkUc,
 		permission: permissionUc,
 		group:      serverusecase.NewGroup(groupRepo, node, permissionUc, orgUc),
 	}
@@ -165,8 +173,26 @@ func startTestServer(t *testing.T, dbConn *sql.DB) string {
 		grpc.StreamInterceptor(interceptor.JWTStream()),
 	)
 	pb.RegisterNipaServiceServer(grpcServer, servergrpc.New(reg))
-	go func() { _ = grpcServer.Serve(lis) }()
-	t.Cleanup(grpcServer.Stop)
+
+	chunkHandler := api.NewChunkTransferHandler(chunkUc)
+	protocols := new(http.Protocols)
+	protocols.SetHTTP1(true)
+	protocols.SetUnencryptedHTTP2(true)
+	httpServer := &http.Server{
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.ProtoMajor == 2 && strings.HasPrefix(r.Header.Get("Content-Type"), "application/grpc") {
+				grpcServer.ServeHTTP(w, r)
+				return
+			}
+			chunkHandler.ServeHTTP(w, r)
+		}),
+		Protocols: protocols,
+	}
+	go func() { _ = httpServer.Serve(lis) }()
+	t.Cleanup(func() {
+		_ = httpServer.Close()
+		grpcServer.Stop()
+	})
 
 	return lis.Addr().String()
 }

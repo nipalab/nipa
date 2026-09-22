@@ -63,14 +63,6 @@ type fakeServer struct {
 	lastPushReq         *pb.PushRequest
 	pushErr             error
 	pushResp            *pb.PushResponse
-	uploadedChunks      []*pb.ChunkUploadRequest
-	uploadResp          *pb.UploadChunksResponse
-	uploadErr           error
-	uploadStreamAuth    string
-	downloadRequests    []string
-	downloadData        map[string][]byte
-	downloadErr         error
-	downloadStreamAuth  string
 	mergeBaseErr        error
 	mergeBaseResp       *pb.GetMergeBaseResponse
 	lastMergeReq        *pb.GetMergeBaseRequest

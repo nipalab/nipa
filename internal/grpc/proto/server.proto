@@ -55,27 +55,50 @@ message PushFile {
     repeated string chunk_hashes = 6;
 }
 
-message ChunkUploadRequest {
-    ProjectContext context = 1; // required on the first message
-    string hash = 2; // hex-encoded BLAKE3 hash of data
-    bytes data = 3;
-}
-
-message UploadChunksResponse {
-    int32 uploaded = 1;
-    int32 skipped = 2;
-}
-
-message DownloadChunksRequest {
+message ChunkRef {
     string hash = 1; // hex-encoded BLAKE3 hash of data
-    ProjectContext context = 2; // required on the first message
-    repeated string commit_ids = 3; // base36 snow IDs; visible chunks are the union of these trees
-    repeated string paths = 4; // optional path prefixes narrowing the visible chunks
+    int64 size_bytes = 2; // exact size the signed upload URL accepts
 }
 
-message DownloadChunk {
+message PresignedChunkUrl {
     string hash = 1; // hex-encoded BLAKE3 hash of data
-    bytes data = 2;
+    string url = 2; // signed path relative to the server base URL
+    bool already_stored = 3; // content is already stored; skip the transfer
+}
+
+message GetChunkUploadUrlsRequest {
+    ProjectContext context = 1;
+    repeated ChunkRef chunks = 2;
+    int32 page_size = 3;
+    string page_token = 4;
+}
+
+message GetChunkUploadUrlsResponse {
+    repeated PresignedChunkUrl urls = 1;
+    string next_page_token = 2;
+}
+
+message GetChunkDownloadUrlsRequest {
+    ProjectContext context = 1;
+    repeated string commit_ids = 2; // base36 snow IDs; visible chunks are the union of these trees
+    repeated string paths = 3; // optional path prefixes narrowing the visible chunks
+    repeated string hashes = 4; // hex-encoded BLAKE3 hashes
+    int32 page_size = 5;
+    string page_token = 6;
+}
+
+message GetChunkDownloadUrlsResponse {
+    repeated PresignedChunkUrl urls = 1;
+    string next_page_token = 2;
+}
+
+message ConfirmChunkUploadsRequest {
+    ProjectContext context = 1;
+    repeated string hashes = 2; // hex-encoded BLAKE3 hashes
+}
+
+message ConfirmChunkUploadsResponse {
+    repeated string missing_hashes = 1;
 }
 
 message PushRequest {
@@ -433,8 +456,9 @@ service NipaService {
     rpc GetMergeBase(GetMergeBaseRequest) returns (GetMergeBaseResponse);
     rpc MergeFastForward(MergeFastForwardRequest) returns (MergeFastForwardResponse);
     rpc Push(PushRequest) returns (PushResponse);
-    rpc UploadChunks(stream ChunkUploadRequest) returns (UploadChunksResponse);
-    rpc DownloadChunks(stream DownloadChunksRequest) returns (stream DownloadChunk);
+    rpc GetChunkUploadUrls(GetChunkUploadUrlsRequest) returns (GetChunkUploadUrlsResponse);
+    rpc GetChunkDownloadUrls(GetChunkDownloadUrlsRequest) returns (GetChunkDownloadUrlsResponse);
+    rpc ConfirmChunkUploads(ConfirmChunkUploadsRequest) returns (ConfirmChunkUploadsResponse);
 
     rpc GetMyPermissions(GetMyPermissionsRequest) returns (GetMyPermissionsResponse);
     rpc CreatePBACRule(CreatePBACRuleRequest) returns (CreatePBACRuleResponse);
