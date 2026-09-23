@@ -92,6 +92,39 @@ type MergeRequest struct {
 	UpdatedAt         time.Time     `json:"updated_at"`
 }
 
+type MergeRequestApproval struct {
+	ID             int64     `json:"id"`
+	MergeRequestID int64     `json:"merge_request_id"`
+	UserID         int64     `json:"user_id"`
+	CreatedAt      time.Time `json:"created_at"`
+}
+
+type MergeRequestComment struct {
+	ID        int64     `json:"id"`
+	ThreadID  int64     `json:"thread_id"`
+	UserID    int64     `json:"user_id"`
+	Body      string    `json:"body"`
+	System    bool      `json:"system"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type MergeRequestThread struct {
+	ID             int64          `json:"id"`
+	MergeRequestID int64          `json:"merge_request_id"`
+	FilePath       sql.NullString `json:"file_path"`
+	OldLine        sql.NullInt64  `json:"old_line"`
+	NewLine        sql.NullInt64  `json:"new_line"`
+	BaseCommitID   sql.NullInt64  `json:"base_commit_id"`
+	HeadCommitID   sql.NullInt64  `json:"head_commit_id"`
+	Resolved       bool           `json:"resolved"`
+	ResolvedBy     sql.NullInt64  `json:"resolved_by"`
+	ResolvedAt     sql.NullTime   `json:"resolved_at"`
+	CreatedBy      int64          `json:"created_by"`
+	CreatedAt      time.Time      `json:"created_at"`
+	UpdatedAt      time.Time      `json:"updated_at"`
+}
+
 type OrgMember struct {
 	OrgID     int64     `json:"org_id"`
 	UserID    int64     `json:"user_id"`

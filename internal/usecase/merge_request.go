@@ -15,6 +15,7 @@ type mergeRequestRepository interface {
 	Create(ctx context.Context, mr domain.MergeRequest) (*domain.MergeRequest, error)
 	Get(ctx context.Context, projectID snow.ID, id int64) (*domain.MergeRequest, error)
 	List(ctx context.Context, projectID snow.ID, status string, limit int) ([]*domain.MergeRequest, error)
+	Update(ctx context.Context, projectID snow.ID, id int64, title, description string) (*domain.MergeRequest, error)
 	UpdateStatus(ctx context.Context, projectID snow.ID, id int64, status string, mergeCommitID *snow.ID) error
 }
 
@@ -121,6 +122,35 @@ func (m *MergeRequest) List(ctx context.Context, projectID snow.ID, status strin
 
 func (m *MergeRequest) Get(ctx context.Context, projectID snow.ID, id int64) (*domain.MergeRequest, error) {
 	return m.load(ctx, projectID, id)
+}
+
+func (m *MergeRequest) Update(ctx context.Context, projectID snow.ID, id int64, title, description string) (*domain.MergeRequest, error) {
+	mr, err := m.load(ctx, projectID, id)
+	if err != nil {
+		return nil, err
+	}
+	claim, ok := domain.ClaimFromContext(ctx)
+	if !ok {
+		return nil, domain.NewErrorNoPermission()
+	}
+	if claim.UserID != mr.CreatedBy && !m.perm.AdminHasProject(ctx, projectID) {
+		return nil, domain.NewErrorNoPermission()
+	}
+	if mr.Status != domain.MergeRequestOpen {
+		return nil, domain.NewErrorConflict(fmt.Sprintf("merge request is %s", mr.Status))
+	}
+	title = strings.TrimSpace(title)
+	description = strings.TrimSpace(description)
+	if title == "" && description == "" {
+		return nil, domain.NewErrorUser("title or description is required")
+	}
+	if title == "" {
+		title = mr.Title
+	}
+	if description == "" {
+		description = mr.Description
+	}
+	return m.repo.Update(ctx, projectID, id, title, description)
 }
 
 func (m *MergeRequest) Check(ctx context.Context, projectID snow.ID, id int64) (*domain.Mergeability, error) {

@@ -44,14 +44,15 @@ const (
 )
 
 type testRegistry struct {
-	auth       *serverusecase.Auth
-	user       *serverusecase.User
-	branch     *serverusecase.Branch
-	common     *serverusecase.Common
-	push       *serverusecase.Push
-	chunk      *serverusecase.Chunk
-	permission *serverusecase.Permission
-	group      *serverusecase.Group
+	auth         *serverusecase.Auth
+	user         *serverusecase.User
+	branch       *serverusecase.Branch
+	common       *serverusecase.Common
+	push         *serverusecase.Push
+	chunk        *serverusecase.Chunk
+	permission   *serverusecase.Permission
+	group        *serverusecase.Group
+	mergeRequest *serverusecase.MergeRequest
 }
 
 func (r *testRegistry) Auth() *serverusecase.Auth     { return r.auth }
@@ -64,6 +65,9 @@ func (r *testRegistry) Permission() *serverusecase.Permission {
 	return r.permission
 }
 func (r *testRegistry) Group() *serverusecase.Group { return r.group }
+func (r *testRegistry) MergeRequest() *serverusecase.MergeRequest {
+	return r.mergeRequest
+}
 
 type memoryStore struct {
 	mu   sync.Mutex
@@ -162,6 +166,9 @@ func startTestServer(t *testing.T, dbConn *sql.DB) string {
 		chunk:      chunkUc,
 		permission: permissionUc,
 		group:      serverusecase.NewGroup(groupRepo, node, permissionUc, orgUc),
+		mergeRequest: serverusecase.NewMergeRequest(
+			sqlite.NewMergeRequestRepository(dbConn), branchRepo, permissionUc, branchUc, node,
+		),
 	}
 
 	lis, err := net.Listen("tcp", "127.0.0.1:0")

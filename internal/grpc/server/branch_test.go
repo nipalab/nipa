@@ -22,12 +22,13 @@ import (
 )
 
 type mockUsecaseContainer struct {
-	branch     *usecase.Branch
-	common     *usecase.Common
-	push       *usecase.Push
-	chunk      *usecase.Chunk
-	permission *usecase.Permission
-	group      *usecase.Group
+	branch       *usecase.Branch
+	common       *usecase.Common
+	push         *usecase.Push
+	chunk        *usecase.Chunk
+	permission   *usecase.Permission
+	group        *usecase.Group
+	mergeRequest *usecase.MergeRequest
 }
 
 func (m *mockUsecaseContainer) Auth() *usecase.Auth     { return nil }
@@ -40,6 +41,9 @@ func (m *mockUsecaseContainer) Permission() *usecase.Permission {
 	return m.permission
 }
 func (m *mockUsecaseContainer) Group() *usecase.Group { return m.group }
+func (m *mockUsecaseContainer) MergeRequest() *usecase.MergeRequest {
+	return m.mergeRequest
+}
 
 func newMockUsecaseContainer(t *testing.T, branch *usecase.Branch) *mockUsecaseContainer {
 	t.Helper()

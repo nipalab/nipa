@@ -88,6 +88,21 @@ func (mr *MockmergeRequestRepositoryMockRecorder) List(ctx, projectID, status, l
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "List", reflect.TypeOf((*MockmergeRequestRepository)(nil).List), ctx, projectID, status, limit)
 }
 
+// Update mocks base method.
+func (m *MockmergeRequestRepository) Update(ctx context.Context, projectID snow.ID, id int64, title, description string) (*domain.MergeRequest, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Update", ctx, projectID, id, title, description)
+	ret0, _ := ret[0].(*domain.MergeRequest)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Update indicates an expected call of Update.
+func (mr *MockmergeRequestRepositoryMockRecorder) Update(ctx, projectID, id, title, description any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Update", reflect.TypeOf((*MockmergeRequestRepository)(nil).Update), ctx, projectID, id, title, description)
+}
+
 // UpdateStatus mocks base method.
 func (m *MockmergeRequestRepository) UpdateStatus(ctx context.Context, projectID snow.ID, id int64, status string, mergeCommitID *snow.ID) error {
 	m.ctrl.T.Helper()

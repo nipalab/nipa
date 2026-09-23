@@ -50,6 +50,14 @@ func TestMergeRequestRepositorySQLite_CRUD(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, list)
 
+	updated, err := repo.Update(ctx, projectID, 5001, "New title", "new body")
+	require.NoError(t, err)
+	require.Equal(t, "New title", updated.Title)
+	require.Equal(t, "new body", updated.Description)
+
+	_, err = repo.Update(ctx, projectID, 9999, "t", "d")
+	requireRecordNotFound(t, err)
+
 	require.NoError(t, repo.UpdateStatus(ctx, projectID, 5001, domain.MergeRequestMerged, nil))
 	got, err = repo.Get(ctx, projectID, 5001)
 	require.NoError(t, err)

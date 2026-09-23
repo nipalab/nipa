@@ -56,6 +56,7 @@ type Querier interface {
 	MergeRequestGet(ctx context.Context, arg MergeRequestGetParams) (MergeRequest, error)
 	MergeRequestList(ctx context.Context, arg MergeRequestListParams) ([]MergeRequest, error)
 	MergeRequestListByStatus(ctx context.Context, arg MergeRequestListByStatusParams) ([]MergeRequest, error)
+	MergeRequestUpdate(ctx context.Context, arg MergeRequestUpdateParams) (MergeRequest, error)
 	MergeRequestUpdateStatus(ctx context.Context, arg MergeRequestUpdateStatusParams) error
 	OrgMemberCountByRole(ctx context.Context, arg OrgMemberCountByRoleParams) (int64, error)
 	OrgMemberDelete(ctx context.Context, arg OrgMemberDeleteParams) error

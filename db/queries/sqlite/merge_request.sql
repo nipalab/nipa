@@ -25,3 +25,8 @@ LIMIT ?;
 -- name: MergeRequestUpdateStatus :exec
 UPDATE merge_requests SET status = ?, merge_commit_id = ?, updated_at = CURRENT_TIMESTAMP
 WHERE project_id = ? AND id = ?;
+
+-- name: MergeRequestUpdate :one
+UPDATE merge_requests SET title = ?, description = ?, updated_at = CURRENT_TIMESTAMP
+WHERE project_id = ? AND id = ?
+RETURNING *;

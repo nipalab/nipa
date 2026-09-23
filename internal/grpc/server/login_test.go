@@ -57,6 +57,9 @@ func (m *loginMockContainer) Push() *usecase.Push             { return nil }
 func (m *loginMockContainer) Chunk() *usecase.Chunk           { return nil }
 func (m *loginMockContainer) Permission() *usecase.Permission { return nil }
 func (m *loginMockContainer) Group() *usecase.Group           { return nil }
+func (m *loginMockContainer) MergeRequest() *usecase.MergeRequest {
+	return nil
+}
 
 func newLoginServer(t *testing.T, userRepo *stubUserRepo, authRepo *stubAuthRepo) *nipaServer {
 	t.Helper()

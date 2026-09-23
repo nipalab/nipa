@@ -43,6 +43,17 @@ func TestHandler_MergeRequestFlow(t *testing.T) {
 	require.Equal(t, "feature", created.SourceBranch)
 
 	mrParams := map[string]string{"org": "default", "project": "default", "id": created.ID}
+	appCtx = &fakeAppContext{claims: claims, pathParameters: mrParams, body: []byte(`{"title":"Add b v2","description":"updated"}`)}
+	env.handler.UpdateMergeRequest(appCtx)
+	require.Equal(t, http.StatusOK, appCtx.statusCode)
+	updated := appCtx.response.(model.MergeRequestResponse)
+	require.Equal(t, "Add b v2", updated.Title)
+	require.Equal(t, "updated", updated.Description)
+
+	appCtx = &fakeAppContext{claims: claims, pathParameters: mrParams, body: []byte(`{}`)}
+	env.handler.UpdateMergeRequest(appCtx)
+	require.Equal(t, http.StatusBadRequest, appCtx.statusCode)
+
 	appCtx = &fakeAppContext{claims: claims, pathParameters: mrParams}
 	env.handler.GetMergeRequest(appCtx)
 	require.Equal(t, http.StatusOK, appCtx.statusCode)
@@ -185,6 +196,7 @@ func TestHandler_MergeRequestContextError(t *testing.T) {
 		{name: "list", run: env.handler.ListMergeRequests},
 		{name: "create", body: `{"title":"t"}`, run: env.handler.CreateMergeRequest},
 		{name: "get", run: env.handler.GetMergeRequest},
+		{name: "update", body: `{"title":"t"}`, run: env.handler.UpdateMergeRequest},
 		{name: "check", run: env.handler.CheckMergeRequest},
 		{name: "merge", run: env.handler.MergeMergeRequest},
 		{name: "close", run: env.handler.CloseMergeRequest},

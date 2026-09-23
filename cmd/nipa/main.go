@@ -28,6 +28,7 @@ func main() {
 	revertUsecase := usecase.NewRevert(authUsecase, grpcClient, localrepo.NewLocalRepo(), pushUsecase)
 	diffUsecase := usecase.NewDiff(authUsecase, grpcClient, localrepo.NewLocalRepo())
 	permissionUsecase := usecase.NewPermission(authUsecase, grpcClient)
+	mrUsecase := usecase.NewMergeRequest(authUsecase, grpcClient, localrepo.NewLocalRepo())
 	registry := &Registry{
 		authUsecase:       authUsecase,
 		repoUsecase:       repoUsecase,
@@ -37,6 +38,7 @@ func main() {
 		revertUsecase:     revertUsecase,
 		diffUsecase:       diffUsecase,
 		permissionUsecase: permissionUsecase,
+		mrUsecase:         mrUsecase,
 	}
 
 	cliClient := cli.NewCli(registry, grpcClient)

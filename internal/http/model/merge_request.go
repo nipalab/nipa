@@ -32,6 +32,11 @@ type CreateMergeRequestRequest struct {
 	TargetBranch string `json:"target_branch"`
 }
 
+type UpdateMergeRequestRequest struct {
+	Title       string `json:"title"`
+	Description string `json:"description"`
+}
+
 type MergeRequestDiffResponse struct {
 	BaseID string             `json:"base_id,omitempty"`
 	Files  []DiffFileResponse `json:"files"`
