@@ -50,8 +50,8 @@ type File struct {
 	Hash      []byte        `json:"hash"`
 	SizeBytes int64         `json:"size_bytes"`
 	IsBinary  bool          `json:"is_binary"`
-	CreatedAt sql.NullTime  `json:"created_at"`
 	Encoding  string        `json:"encoding"`
+	CreatedAt sql.NullTime  `json:"created_at"`
 }
 
 type FileChunk struct {
