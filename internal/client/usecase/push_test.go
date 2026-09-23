@@ -3,7 +3,9 @@ package usecase
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -41,6 +43,10 @@ type stubPushClient struct {
 	uploaded       int
 	skipped        int
 	uploadErr      error
+	uploadMu       sync.Mutex
+	uploadActive   int
+	uploadMax      int
+	uploadDelay    time.Duration
 	manifest       *serverDomain.TreeNode
 	manifestErr    error
 }
@@ -74,13 +80,27 @@ func (s *stubPushClient) Push(_ context.Context, org, project, branch, baseTreeH
 }
 
 func (s *stubPushClient) UploadChunks(_ context.Context, _ domain.ChunkScope, chunks []*serverDomain.ChunkData, onChunk ...func(ch *serverDomain.ChunkData)) (int, int, error) {
+	s.uploadMu.Lock()
 	s.uploadCalls++
+	s.uploadActive++
+	if s.uploadActive > s.uploadMax {
+		s.uploadMax = s.uploadActive
+	}
 	s.uploadedChunks = append(s.uploadedChunks, chunks...)
+	s.uploadMu.Unlock()
+
+	if s.uploadDelay > 0 {
+		time.Sleep(s.uploadDelay)
+	}
 	for _, ch := range chunks {
 		if len(onChunk) > 0 && onChunk[0] != nil {
 			onChunk[0](ch)
 		}
 	}
+
+	s.uploadMu.Lock()
+	s.uploadActive--
+	s.uploadMu.Unlock()
 	return s.uploaded, s.skipped, s.uploadErr
 }
 
@@ -186,10 +206,10 @@ func TestPush_Run_UploadsEveryChunkForIdempotentStore(t *testing.T) {
 	require.Len(t, client.uploadedChunks, 1, "the client offers every staged chunk; the server dedupes by hash")
 }
 
-func TestPush_Run_StreamsChunksInBatches(t *testing.T) {
-	oldBatch := uploadBatchBytes
-	uploadBatchBytes = 1024
-	t.Cleanup(func() { uploadBatchBytes = oldBatch })
+func TestPush_Run_StreamsChunksInWindows(t *testing.T) {
+	oldWindow := uploadWindowBytes
+	uploadWindowBytes = 1024
+	t.Cleanup(func() { uploadWindowBytes = oldWindow })
 
 	root := t.TempDir()
 	content := make([]byte, 1<<20)
@@ -221,9 +241,41 @@ func TestPush_Run_StreamsChunksInBatches(t *testing.T) {
 		hashes[i] = ch.Hash
 		total += len(ch.Data)
 	}
-	require.Equal(t, client.pushFiles[0].ChunkHashes, hashes)
+	require.ElementsMatch(t, client.pushFiles[0].ChunkHashes, hashes)
 	require.Equal(t, len(content), total)
 	require.Equal(t, int64(len(content)), client.pushFiles[0].SizeBytes)
+}
+
+func TestPush_Run_UploadsWindowsConcurrently(t *testing.T) {
+	oldWindow := uploadWindowBytes
+	uploadWindowBytes = 1024
+	t.Cleanup(func() { uploadWindowBytes = oldWindow })
+
+	root := t.TempDir()
+	content := make([]byte, 1<<20)
+	x := uint32(999)
+	for i := range content {
+		x = x*1664525 + 1013904223
+		content[i] = byte(x >> 24)
+	}
+	writeRepoFile(t, root, "big.bin", string(content))
+
+	local := &stubLocalRepo{
+		loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "main"},
+		snapshot:   &domain.Snapshot{},
+		staged:     []string{"big.bin"},
+	}
+	client := &stubPushClient{
+		manifest:    &serverDomain.TreeNode{Name: "root"},
+		uploadDelay: 2 * time.Millisecond,
+	}
+	pusher := newTestPush(t, local, client)
+
+	require.NoError(t, pusher.Run(context.Background(), root, "add big"))
+
+	require.Greater(t, client.uploadCalls, 1)
+	require.GreaterOrEqual(t, client.uploadMax, 2, "windows should upload concurrently")
+	require.LessOrEqual(t, client.uploadMax, uploadWindowWorkers)
 }
 
 func TestPush_Run_UsesBaseTreeHash(t *testing.T) {

@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -140,6 +141,7 @@ type stubLocalRepo struct {
 	storeCalls    int
 	storeChunkErr error
 	loadChunkErr  error
+	storeMu       sync.Mutex
 }
 
 func (s *stubLocalRepo) Init(target string) error {
@@ -252,6 +254,8 @@ func (s *stubLocalRepo) LoadCommit() (*domain.LocalCommit, error) {
 }
 
 func (s *stubLocalRepo) StoreChunks(chunks []*serverDomain.ChunkData) error {
+	s.storeMu.Lock()
+	defer s.storeMu.Unlock()
 	s.storeCalls++
 	if s.storeChunkErr != nil {
 		return s.storeChunkErr
@@ -269,7 +273,9 @@ func (s *stubLocalRepo) OpenChunk(hash serverDomain.Hash) (io.ReadCloser, error)
 	if s.loadChunkErr != nil {
 		return nil, s.loadChunkErr
 	}
+	s.storeMu.Lock()
 	data, ok := s.storedChunks[hash]
+	s.storeMu.Unlock()
 	if !ok {
 		return nil, errors.New("chunk not found in cache")
 	}
@@ -280,7 +286,9 @@ func (s *stubLocalRepo) LoadChunk(hash serverDomain.Hash) ([]byte, error) {
 	if s.loadChunkErr != nil {
 		return nil, s.loadChunkErr
 	}
+	s.storeMu.Lock()
 	data, ok := s.storedChunks[hash]
+	s.storeMu.Unlock()
 	if !ok {
 		return nil, errors.New("chunk not found")
 	}

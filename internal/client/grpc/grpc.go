@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/nipalab/nipa/internal/chunker"
@@ -135,6 +136,7 @@ type Client struct {
 	limiter       *transferLimiter
 	tuner         *concurrencyTuner
 	uploadWorkers int
+	confirmMu     sync.Mutex
 }
 
 func NewClient(transport *Transport, session tokenSession, opts ...ClientOption) *Client {

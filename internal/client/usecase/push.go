@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/nipalab/nipa/internal/chunker"
 	"github.com/nipalab/nipa/internal/client/domain"
@@ -164,6 +165,7 @@ func (p *Push) pushStaged(ctx context.Context, root string, nipaUrl *domain.Nipa
 		prog = progress[0]
 	}
 	doneObjects, doneBytes := 0, int64(0)
+	var progressMu sync.Mutex
 	var onChunk func(ch *serverDomain.ChunkData)
 	if prog != nil {
 		estObjects := 0
@@ -175,28 +177,25 @@ func (p *Push) pushStaged(ctx context.Context, root string, nipaUrl *domain.Nipa
 		}
 		prog.UploadStart(estObjects, estBytes)
 		onChunk = func(ch *serverDomain.ChunkData) {
+			progressMu.Lock()
+			defer progressMu.Unlock()
 			doneObjects++
 			doneBytes += int64(len(ch.Data))
 			prog.UploadProgress(doneObjects, doneBytes)
 		}
 	}
 
-	batcher := &chunkBatcher{
-		ctx:       ctx,
-		client:    p.pushClient,
-		localRepo: p.localRepo,
-		scope:     domain.ChunkScope{Org: nipaUrl.Org, Project: nipaUrl.Project},
-		seen:      make(map[serverDomain.Hash]bool),
-		onChunk:   onChunk,
-	}
+	uploader := newChunkUploader(ctx, p.pushClient, p.localRepo,
+		domain.ChunkScope{Org: nipaUrl.Org, Project: nipaUrl.Project}, onChunk)
 	for _, sf := range toRead {
-		file, err := scanPushFile(sf.path, sf.info, sf.abs, batcher)
+		file, err := scanPushFile(sf.path, sf.info, sf.abs, uploader)
 		if err != nil {
+			uploader.abort()
 			return nil, err
 		}
 		files = append(files, file)
 	}
-	if err := batcher.flush(); err != nil {
+	if err := uploader.close(); err != nil {
 		return nil, err
 	}
 	if prog != nil {
@@ -231,48 +230,143 @@ func (p *Push) pushStaged(ctx context.Context, root string, nipaUrl *domain.Nipa
 	return result, nil
 }
 
-var uploadBatchBytes = 8 << 20
+// uploadWindowBytes is the chunk data buffered before a window is handed to
+// the uploaders. The scanner keeps chunking while earlier windows transfer, so
+// local hashing overlaps with network I/O.
+var uploadWindowBytes = 16 << 20
 
-type chunkBatcher struct {
+const (
+	uploadWindowWorkers = 2
+	uploadWindowQueue   = 2
+)
+
+type chunkUploader struct {
 	ctx       context.Context
+	cancel    context.CancelFunc
 	client    pushClient
 	localRepo pushLocalRepo
 	scope     domain.ChunkScope
-	seen      map[serverDomain.Hash]bool
-	batch     []*serverDomain.ChunkData
-	bytes     int
 	onChunk   func(ch *serverDomain.ChunkData)
+
+	seen  map[serverDomain.Hash]bool
+	batch []*serverDomain.ChunkData
+	bytes int
+
+	windows chan []*serverDomain.ChunkData
+	wg      sync.WaitGroup
+
+	mu  sync.Mutex
+	err error
 }
 
-func (b *chunkBatcher) add(ch *serverDomain.ChunkData) error {
-	if b.seen[ch.Hash] {
-		return nil
+func newChunkUploader(ctx context.Context, client pushClient, localRepo pushLocalRepo, scope domain.ChunkScope, onChunk func(*serverDomain.ChunkData)) *chunkUploader {
+	uploadCtx, cancel := context.WithCancel(ctx)
+	u := &chunkUploader{
+		ctx:       uploadCtx,
+		cancel:    cancel,
+		client:    client,
+		localRepo: localRepo,
+		scope:     scope,
+		onChunk:   onChunk,
+		seen:      make(map[serverDomain.Hash]bool),
+		windows:   make(chan []*serverDomain.ChunkData, uploadWindowQueue),
 	}
-	b.seen[ch.Hash] = true
-	b.batch = append(b.batch, ch)
-	b.bytes += len(ch.Data)
-	if b.bytes < uploadBatchBytes {
-		return nil
+	for i := 0; i < uploadWindowWorkers; i++ {
+		u.wg.Add(1)
+		go u.run()
 	}
-	return b.flush()
+	return u
 }
 
-func (b *chunkBatcher) flush() error {
-	if len(b.batch) == 0 {
-		return nil
+func (u *chunkUploader) run() {
+	defer u.wg.Done()
+	for window := range u.windows {
+		if err := u.upload(window); err != nil {
+			u.fail(err)
+			return
+		}
 	}
-	if b.localRepo != nil {
-		if err := b.localRepo.StoreChunks(b.batch); err != nil {
+}
+
+func (u *chunkUploader) upload(window []*serverDomain.ChunkData) error {
+	if u.localRepo != nil {
+		if err := u.localRepo.StoreChunks(window); err != nil {
 			return err
 		}
 	}
-	_, _, err := b.client.UploadChunks(b.ctx, b.scope, b.batch, b.onChunk)
-	b.batch = nil
-	b.bytes = 0
+	_, _, err := u.client.UploadChunks(u.ctx, u.scope, window, u.onChunk)
 	return err
 }
 
-func scanPushFile(path string, info fs.FileInfo, abs string, batcher *chunkBatcher) (*serverDomain.PushFile, error) {
+func (u *chunkUploader) add(ch *serverDomain.ChunkData) error {
+	if u.ctx.Err() != nil {
+		return u.failure()
+	}
+	if u.seen[ch.Hash] {
+		return nil
+	}
+	u.seen[ch.Hash] = true
+	u.batch = append(u.batch, ch)
+	u.bytes += len(ch.Data)
+	if u.bytes < uploadWindowBytes {
+		return nil
+	}
+	return u.flush()
+}
+
+func (u *chunkUploader) flush() error {
+	if len(u.batch) == 0 {
+		return nil
+	}
+	window := u.batch
+	u.batch = nil
+	u.bytes = 0
+	select {
+	case u.windows <- window:
+		return nil
+	case <-u.ctx.Done():
+		return u.failure()
+	}
+}
+
+func (u *chunkUploader) close() error {
+	err := u.flush()
+	close(u.windows)
+	u.wg.Wait()
+	failure := u.failure()
+	u.cancel()
+	if err != nil {
+		return err
+	}
+	return failure
+}
+
+func (u *chunkUploader) abort() {
+	u.cancel()
+	close(u.windows)
+	u.wg.Wait()
+}
+
+func (u *chunkUploader) fail(err error) {
+	u.mu.Lock()
+	if u.err == nil {
+		u.err = err
+	}
+	u.mu.Unlock()
+	u.cancel()
+}
+
+func (u *chunkUploader) failure() error {
+	u.mu.Lock()
+	err := u.err
+	u.mu.Unlock()
+	if err != nil {
+		return err
+	}
+	return u.ctx.Err()
+}
+
+func scanPushFile(path string, info fs.FileInfo, abs string, uploader *chunkUploader) (*serverDomain.PushFile, error) {
 	f, err := os.Open(abs)
 	if err != nil {
 		return nil, err
@@ -285,7 +379,7 @@ func scanPushFile(path string, info fs.FileInfo, abs string, batcher *chunkBatch
 		if len(hashes) == 1 {
 			isBinary = chunker.IsBinary(c.Data)
 		}
-		return batcher.add(&serverDomain.ChunkData{Hash: c.Hash, Data: c.Data})
+		return uploader.add(&serverDomain.ChunkData{Hash: c.Hash, Data: c.Data})
 	})
 	if err != nil {
 		return nil, err

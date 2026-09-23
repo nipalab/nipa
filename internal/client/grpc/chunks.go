@@ -80,10 +80,12 @@ func (c *Client) UploadChunks(ctx context.Context, scope domain.ChunkScope, chun
 		}
 	}
 
+	c.confirmMu.Lock()
 	confirm, err := client.ConfirmChunkUploads(authedCtx, &pb.ConfirmChunkUploadsRequest{
 		Context: &pb.ProjectContext{Org: scope.Org, Project: scope.Project},
 		Hashes:  rawHashes,
 	})
+	c.confirmMu.Unlock()
 	if err != nil {
 		return 0, 0, toDomainError(err)
 	}
