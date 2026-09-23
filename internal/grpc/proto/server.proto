@@ -436,6 +436,80 @@ message RemoveGroupMemberRequest {
 
 message RemoveGroupMemberResponse {}
 
+message MergeabilityDetail {
+    string status = 1; // mergeable, behind_target, up_to_date, invalid, or the request status once terminal
+    optional string source_commit_id = 2; // base36 snow ID
+    optional string target_commit_id = 3; // base36 snow ID
+    optional string merge_base_commit_id = 4; // base36 snow ID
+}
+
+message MergeRequestDetail {
+    string id = 1; // base36 snow ID
+    string project_id = 2; // base36 snow ID
+    string source_branch = 3;
+    string target_branch = 4;
+    string title = 5;
+    string description = 6;
+    string status = 7; // open, merged, closed
+    optional string merge_commit_id = 8; // base36 snow ID
+    optional string merge_base_commit_id = 9; // base36 snow ID
+    string created_by = 10; // base36 snow ID
+    google.protobuf.Timestamp created_at = 11;
+    google.protobuf.Timestamp updated_at = 12;
+}
+
+message CreateMergeRequestRequest {
+    ProjectContext context = 1;
+    string title = 2;
+    string description = 3;
+    string source_branch = 4;
+    string target_branch = 5;
+}
+
+message CreateMergeRequestResponse {
+    MergeRequestDetail merge_request = 1;
+}
+
+message UpdateMergeRequestRequest {
+    ProjectContext context = 1;
+    string id = 2; // base36 snow ID
+    string title = 3; // empty keeps the current title
+    string description = 4; // empty keeps the current description
+}
+
+message UpdateMergeRequestResponse {
+    MergeRequestDetail merge_request = 1;
+}
+
+message ListMergeRequestsRequest {
+    ProjectContext context = 1;
+    string status = 2; // optional filter: open, merged, closed
+    int32 limit = 3;
+}
+
+message ListMergeRequestsResponse {
+    repeated MergeRequestDetail merge_requests = 1;
+}
+
+message MergeMergeRequestRequest {
+    ProjectContext context = 1;
+    string id = 2; // base36 snow ID
+}
+
+message MergeMergeRequestResponse {
+    MergeRequestDetail merge_request = 1;
+    MergeabilityDetail mergeability = 2;
+}
+
+message CloseMergeRequestRequest {
+    ProjectContext context = 1;
+    string id = 2; // base36 snow ID
+}
+
+message CloseMergeRequestResponse {
+    MergeRequestDetail merge_request = 1;
+}
+
 service NipaService {
     rpc LoginWithUsernamePassword(LoginUsernamePasswordRequest) returns (LoginResponse);
     rpc LoginWithRefreshToken(LoginWithRefreshRequest) returns (LoginResponse);
@@ -455,6 +529,11 @@ service NipaService {
     rpc WalkCommits(WalkCommitsRequest) returns (WalkCommitsResponse);
     rpc GetMergeBase(GetMergeBaseRequest) returns (GetMergeBaseResponse);
     rpc MergeFastForward(MergeFastForwardRequest) returns (MergeFastForwardResponse);
+    rpc CreateMergeRequest(CreateMergeRequestRequest) returns (CreateMergeRequestResponse);
+    rpc UpdateMergeRequest(UpdateMergeRequestRequest) returns (UpdateMergeRequestResponse);
+    rpc ListMergeRequests(ListMergeRequestsRequest) returns (ListMergeRequestsResponse);
+    rpc MergeMergeRequest(MergeMergeRequestRequest) returns (MergeMergeRequestResponse);
+    rpc CloseMergeRequest(CloseMergeRequestRequest) returns (CloseMergeRequestResponse);
     rpc Push(PushRequest) returns (PushResponse);
     rpc GetChunkUploadUrls(GetChunkUploadUrlsRequest) returns (GetChunkUploadUrlsResponse);
     rpc GetChunkDownloadUrls(GetChunkDownloadUrlsRequest) returns (GetChunkDownloadUrlsResponse);

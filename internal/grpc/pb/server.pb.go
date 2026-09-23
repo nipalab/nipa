@@ -4406,6 +4406,742 @@ func (*RemoveGroupMemberResponse) Descriptor() ([]byte, []int) {
 	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{74}
 }
 
+type MergeabilityDetail struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	Status            string                 `protobuf:"bytes,1,opt,name=status,proto3" json:"status,omitempty"`                                                          // mergeable, behind_target, up_to_date, invalid, or the request status once terminal
+	SourceCommitId    *string                `protobuf:"bytes,2,opt,name=source_commit_id,json=sourceCommitId,proto3,oneof" json:"source_commit_id,omitempty"`            // base36 snow ID
+	TargetCommitId    *string                `protobuf:"bytes,3,opt,name=target_commit_id,json=targetCommitId,proto3,oneof" json:"target_commit_id,omitempty"`            // base36 snow ID
+	MergeBaseCommitId *string                `protobuf:"bytes,4,opt,name=merge_base_commit_id,json=mergeBaseCommitId,proto3,oneof" json:"merge_base_commit_id,omitempty"` // base36 snow ID
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *MergeabilityDetail) Reset() {
+	*x = MergeabilityDetail{}
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[75]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MergeabilityDetail) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MergeabilityDetail) ProtoMessage() {}
+
+func (x *MergeabilityDetail) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[75]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MergeabilityDetail.ProtoReflect.Descriptor instead.
+func (*MergeabilityDetail) Descriptor() ([]byte, []int) {
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{75}
+}
+
+func (x *MergeabilityDetail) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *MergeabilityDetail) GetSourceCommitId() string {
+	if x != nil && x.SourceCommitId != nil {
+		return *x.SourceCommitId
+	}
+	return ""
+}
+
+func (x *MergeabilityDetail) GetTargetCommitId() string {
+	if x != nil && x.TargetCommitId != nil {
+		return *x.TargetCommitId
+	}
+	return ""
+}
+
+func (x *MergeabilityDetail) GetMergeBaseCommitId() string {
+	if x != nil && x.MergeBaseCommitId != nil {
+		return *x.MergeBaseCommitId
+	}
+	return ""
+}
+
+type MergeRequestDetail struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	Id                string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`                                // base36 snow ID
+	ProjectId         string                 `protobuf:"bytes,2,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"` // base36 snow ID
+	SourceBranch      string                 `protobuf:"bytes,3,opt,name=source_branch,json=sourceBranch,proto3" json:"source_branch,omitempty"`
+	TargetBranch      string                 `protobuf:"bytes,4,opt,name=target_branch,json=targetBranch,proto3" json:"target_branch,omitempty"`
+	Title             string                 `protobuf:"bytes,5,opt,name=title,proto3" json:"title,omitempty"`
+	Description       string                 `protobuf:"bytes,6,opt,name=description,proto3" json:"description,omitempty"`
+	Status            string                 `protobuf:"bytes,7,opt,name=status,proto3" json:"status,omitempty"`                                                          // open, merged, closed
+	MergeCommitId     *string                `protobuf:"bytes,8,opt,name=merge_commit_id,json=mergeCommitId,proto3,oneof" json:"merge_commit_id,omitempty"`               // base36 snow ID
+	MergeBaseCommitId *string                `protobuf:"bytes,9,opt,name=merge_base_commit_id,json=mergeBaseCommitId,proto3,oneof" json:"merge_base_commit_id,omitempty"` // base36 snow ID
+	CreatedBy         string                 `protobuf:"bytes,10,opt,name=created_by,json=createdBy,proto3" json:"created_by,omitempty"`                                  // base36 snow ID
+	CreatedAt         *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	UpdatedAt         *timestamppb.Timestamp `protobuf:"bytes,12,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *MergeRequestDetail) Reset() {
+	*x = MergeRequestDetail{}
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[76]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MergeRequestDetail) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MergeRequestDetail) ProtoMessage() {}
+
+func (x *MergeRequestDetail) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[76]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MergeRequestDetail.ProtoReflect.Descriptor instead.
+func (*MergeRequestDetail) Descriptor() ([]byte, []int) {
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{76}
+}
+
+func (x *MergeRequestDetail) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *MergeRequestDetail) GetProjectId() string {
+	if x != nil {
+		return x.ProjectId
+	}
+	return ""
+}
+
+func (x *MergeRequestDetail) GetSourceBranch() string {
+	if x != nil {
+		return x.SourceBranch
+	}
+	return ""
+}
+
+func (x *MergeRequestDetail) GetTargetBranch() string {
+	if x != nil {
+		return x.TargetBranch
+	}
+	return ""
+}
+
+func (x *MergeRequestDetail) GetTitle() string {
+	if x != nil {
+		return x.Title
+	}
+	return ""
+}
+
+func (x *MergeRequestDetail) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
+func (x *MergeRequestDetail) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *MergeRequestDetail) GetMergeCommitId() string {
+	if x != nil && x.MergeCommitId != nil {
+		return *x.MergeCommitId
+	}
+	return ""
+}
+
+func (x *MergeRequestDetail) GetMergeBaseCommitId() string {
+	if x != nil && x.MergeBaseCommitId != nil {
+		return *x.MergeBaseCommitId
+	}
+	return ""
+}
+
+func (x *MergeRequestDetail) GetCreatedBy() string {
+	if x != nil {
+		return x.CreatedBy
+	}
+	return ""
+}
+
+func (x *MergeRequestDetail) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
+func (x *MergeRequestDetail) GetUpdatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.UpdatedAt
+	}
+	return nil
+}
+
+type CreateMergeRequestRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Context       *ProjectContext        `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
+	Title         string                 `protobuf:"bytes,2,opt,name=title,proto3" json:"title,omitempty"`
+	Description   string                 `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
+	SourceBranch  string                 `protobuf:"bytes,4,opt,name=source_branch,json=sourceBranch,proto3" json:"source_branch,omitempty"`
+	TargetBranch  string                 `protobuf:"bytes,5,opt,name=target_branch,json=targetBranch,proto3" json:"target_branch,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateMergeRequestRequest) Reset() {
+	*x = CreateMergeRequestRequest{}
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[77]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateMergeRequestRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateMergeRequestRequest) ProtoMessage() {}
+
+func (x *CreateMergeRequestRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[77]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateMergeRequestRequest.ProtoReflect.Descriptor instead.
+func (*CreateMergeRequestRequest) Descriptor() ([]byte, []int) {
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{77}
+}
+
+func (x *CreateMergeRequestRequest) GetContext() *ProjectContext {
+	if x != nil {
+		return x.Context
+	}
+	return nil
+}
+
+func (x *CreateMergeRequestRequest) GetTitle() string {
+	if x != nil {
+		return x.Title
+	}
+	return ""
+}
+
+func (x *CreateMergeRequestRequest) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
+func (x *CreateMergeRequestRequest) GetSourceBranch() string {
+	if x != nil {
+		return x.SourceBranch
+	}
+	return ""
+}
+
+func (x *CreateMergeRequestRequest) GetTargetBranch() string {
+	if x != nil {
+		return x.TargetBranch
+	}
+	return ""
+}
+
+type CreateMergeRequestResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	MergeRequest  *MergeRequestDetail    `protobuf:"bytes,1,opt,name=merge_request,json=mergeRequest,proto3" json:"merge_request,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateMergeRequestResponse) Reset() {
+	*x = CreateMergeRequestResponse{}
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[78]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateMergeRequestResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateMergeRequestResponse) ProtoMessage() {}
+
+func (x *CreateMergeRequestResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[78]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateMergeRequestResponse.ProtoReflect.Descriptor instead.
+func (*CreateMergeRequestResponse) Descriptor() ([]byte, []int) {
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{78}
+}
+
+func (x *CreateMergeRequestResponse) GetMergeRequest() *MergeRequestDetail {
+	if x != nil {
+		return x.MergeRequest
+	}
+	return nil
+}
+
+type UpdateMergeRequestRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Context       *ProjectContext        `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
+	Id            string                 `protobuf:"bytes,2,opt,name=id,proto3" json:"id,omitempty"`                   // base36 snow ID
+	Title         string                 `protobuf:"bytes,3,opt,name=title,proto3" json:"title,omitempty"`             // empty keeps the current title
+	Description   string                 `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"` // empty keeps the current description
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateMergeRequestRequest) Reset() {
+	*x = UpdateMergeRequestRequest{}
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[79]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateMergeRequestRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateMergeRequestRequest) ProtoMessage() {}
+
+func (x *UpdateMergeRequestRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[79]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateMergeRequestRequest.ProtoReflect.Descriptor instead.
+func (*UpdateMergeRequestRequest) Descriptor() ([]byte, []int) {
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{79}
+}
+
+func (x *UpdateMergeRequestRequest) GetContext() *ProjectContext {
+	if x != nil {
+		return x.Context
+	}
+	return nil
+}
+
+func (x *UpdateMergeRequestRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *UpdateMergeRequestRequest) GetTitle() string {
+	if x != nil {
+		return x.Title
+	}
+	return ""
+}
+
+func (x *UpdateMergeRequestRequest) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
+type UpdateMergeRequestResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	MergeRequest  *MergeRequestDetail    `protobuf:"bytes,1,opt,name=merge_request,json=mergeRequest,proto3" json:"merge_request,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateMergeRequestResponse) Reset() {
+	*x = UpdateMergeRequestResponse{}
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[80]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateMergeRequestResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateMergeRequestResponse) ProtoMessage() {}
+
+func (x *UpdateMergeRequestResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[80]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateMergeRequestResponse.ProtoReflect.Descriptor instead.
+func (*UpdateMergeRequestResponse) Descriptor() ([]byte, []int) {
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{80}
+}
+
+func (x *UpdateMergeRequestResponse) GetMergeRequest() *MergeRequestDetail {
+	if x != nil {
+		return x.MergeRequest
+	}
+	return nil
+}
+
+type ListMergeRequestsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Context       *ProjectContext        `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
+	Status        string                 `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"` // optional filter: open, merged, closed
+	Limit         int32                  `protobuf:"varint,3,opt,name=limit,proto3" json:"limit,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListMergeRequestsRequest) Reset() {
+	*x = ListMergeRequestsRequest{}
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[81]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListMergeRequestsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListMergeRequestsRequest) ProtoMessage() {}
+
+func (x *ListMergeRequestsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[81]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListMergeRequestsRequest.ProtoReflect.Descriptor instead.
+func (*ListMergeRequestsRequest) Descriptor() ([]byte, []int) {
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{81}
+}
+
+func (x *ListMergeRequestsRequest) GetContext() *ProjectContext {
+	if x != nil {
+		return x.Context
+	}
+	return nil
+}
+
+func (x *ListMergeRequestsRequest) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *ListMergeRequestsRequest) GetLimit() int32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+type ListMergeRequestsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	MergeRequests []*MergeRequestDetail  `protobuf:"bytes,1,rep,name=merge_requests,json=mergeRequests,proto3" json:"merge_requests,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListMergeRequestsResponse) Reset() {
+	*x = ListMergeRequestsResponse{}
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[82]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListMergeRequestsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListMergeRequestsResponse) ProtoMessage() {}
+
+func (x *ListMergeRequestsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[82]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListMergeRequestsResponse.ProtoReflect.Descriptor instead.
+func (*ListMergeRequestsResponse) Descriptor() ([]byte, []int) {
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{82}
+}
+
+func (x *ListMergeRequestsResponse) GetMergeRequests() []*MergeRequestDetail {
+	if x != nil {
+		return x.MergeRequests
+	}
+	return nil
+}
+
+type MergeMergeRequestRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Context       *ProjectContext        `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
+	Id            string                 `protobuf:"bytes,2,opt,name=id,proto3" json:"id,omitempty"` // base36 snow ID
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MergeMergeRequestRequest) Reset() {
+	*x = MergeMergeRequestRequest{}
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[83]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MergeMergeRequestRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MergeMergeRequestRequest) ProtoMessage() {}
+
+func (x *MergeMergeRequestRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[83]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MergeMergeRequestRequest.ProtoReflect.Descriptor instead.
+func (*MergeMergeRequestRequest) Descriptor() ([]byte, []int) {
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{83}
+}
+
+func (x *MergeMergeRequestRequest) GetContext() *ProjectContext {
+	if x != nil {
+		return x.Context
+	}
+	return nil
+}
+
+func (x *MergeMergeRequestRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+type MergeMergeRequestResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	MergeRequest  *MergeRequestDetail    `protobuf:"bytes,1,opt,name=merge_request,json=mergeRequest,proto3" json:"merge_request,omitempty"`
+	Mergeability  *MergeabilityDetail    `protobuf:"bytes,2,opt,name=mergeability,proto3" json:"mergeability,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MergeMergeRequestResponse) Reset() {
+	*x = MergeMergeRequestResponse{}
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[84]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MergeMergeRequestResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MergeMergeRequestResponse) ProtoMessage() {}
+
+func (x *MergeMergeRequestResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[84]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MergeMergeRequestResponse.ProtoReflect.Descriptor instead.
+func (*MergeMergeRequestResponse) Descriptor() ([]byte, []int) {
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{84}
+}
+
+func (x *MergeMergeRequestResponse) GetMergeRequest() *MergeRequestDetail {
+	if x != nil {
+		return x.MergeRequest
+	}
+	return nil
+}
+
+func (x *MergeMergeRequestResponse) GetMergeability() *MergeabilityDetail {
+	if x != nil {
+		return x.Mergeability
+	}
+	return nil
+}
+
+type CloseMergeRequestRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Context       *ProjectContext        `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
+	Id            string                 `protobuf:"bytes,2,opt,name=id,proto3" json:"id,omitempty"` // base36 snow ID
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CloseMergeRequestRequest) Reset() {
+	*x = CloseMergeRequestRequest{}
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[85]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CloseMergeRequestRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CloseMergeRequestRequest) ProtoMessage() {}
+
+func (x *CloseMergeRequestRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[85]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CloseMergeRequestRequest.ProtoReflect.Descriptor instead.
+func (*CloseMergeRequestRequest) Descriptor() ([]byte, []int) {
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{85}
+}
+
+func (x *CloseMergeRequestRequest) GetContext() *ProjectContext {
+	if x != nil {
+		return x.Context
+	}
+	return nil
+}
+
+func (x *CloseMergeRequestRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+type CloseMergeRequestResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	MergeRequest  *MergeRequestDetail    `protobuf:"bytes,1,opt,name=merge_request,json=mergeRequest,proto3" json:"merge_request,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CloseMergeRequestResponse) Reset() {
+	*x = CloseMergeRequestResponse{}
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[86]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CloseMergeRequestResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CloseMergeRequestResponse) ProtoMessage() {}
+
+func (x *CloseMergeRequestResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[86]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CloseMergeRequestResponse.ProtoReflect.Descriptor instead.
+func (*CloseMergeRequestResponse) Descriptor() ([]byte, []int) {
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{86}
+}
+
+func (x *CloseMergeRequestResponse) GetMergeRequest() *MergeRequestDetail {
+	if x != nil {
+		return x.MergeRequest
+	}
+	return nil
+}
+
 var File_internal_grpc_proto_server_proto protoreflect.FileDescriptor
 
 const file_internal_grpc_proto_server_proto_rawDesc = "" +
@@ -4751,12 +5487,72 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"\x03org\x18\x01 \x01(\tR\x03org\x12\x19\n" +
 	"\bgroup_id\x18\x02 \x01(\tR\agroupId\x12\x17\n" +
 	"\auser_id\x18\x03 \x01(\tR\x06userId\"\x1b\n" +
-	"\x19RemoveGroupMemberResponse*r\n" +
+	"\x19RemoveGroupMemberResponse\"\x83\x02\n" +
+	"\x12MergeabilityDetail\x12\x16\n" +
+	"\x06status\x18\x01 \x01(\tR\x06status\x12-\n" +
+	"\x10source_commit_id\x18\x02 \x01(\tH\x00R\x0esourceCommitId\x88\x01\x01\x12-\n" +
+	"\x10target_commit_id\x18\x03 \x01(\tH\x01R\x0etargetCommitId\x88\x01\x01\x124\n" +
+	"\x14merge_base_commit_id\x18\x04 \x01(\tH\x02R\x11mergeBaseCommitId\x88\x01\x01B\x13\n" +
+	"\x11_source_commit_idB\x13\n" +
+	"\x11_target_commit_idB\x17\n" +
+	"\x15_merge_base_commit_id\"\x82\x04\n" +
+	"\x12MergeRequestDetail\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
+	"\n" +
+	"project_id\x18\x02 \x01(\tR\tprojectId\x12#\n" +
+	"\rsource_branch\x18\x03 \x01(\tR\fsourceBranch\x12#\n" +
+	"\rtarget_branch\x18\x04 \x01(\tR\ftargetBranch\x12\x14\n" +
+	"\x05title\x18\x05 \x01(\tR\x05title\x12 \n" +
+	"\vdescription\x18\x06 \x01(\tR\vdescription\x12\x16\n" +
+	"\x06status\x18\a \x01(\tR\x06status\x12+\n" +
+	"\x0fmerge_commit_id\x18\b \x01(\tH\x00R\rmergeCommitId\x88\x01\x01\x124\n" +
+	"\x14merge_base_commit_id\x18\t \x01(\tH\x01R\x11mergeBaseCommitId\x88\x01\x01\x12\x1d\n" +
+	"\n" +
+	"created_by\x18\n" +
+	" \x01(\tR\tcreatedBy\x129\n" +
+	"\n" +
+	"created_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
+	"\n" +
+	"updated_at\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAtB\x12\n" +
+	"\x10_merge_commit_idB\x17\n" +
+	"\x15_merge_base_commit_id\"\xce\x01\n" +
+	"\x19CreateMergeRequestRequest\x12/\n" +
+	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12\x14\n" +
+	"\x05title\x18\x02 \x01(\tR\x05title\x12 \n" +
+	"\vdescription\x18\x03 \x01(\tR\vdescription\x12#\n" +
+	"\rsource_branch\x18\x04 \x01(\tR\fsourceBranch\x12#\n" +
+	"\rtarget_branch\x18\x05 \x01(\tR\ftargetBranch\"\\\n" +
+	"\x1aCreateMergeRequestResponse\x12>\n" +
+	"\rmerge_request\x18\x01 \x01(\v2\x19.greet.MergeRequestDetailR\fmergeRequest\"\x94\x01\n" +
+	"\x19UpdateMergeRequestRequest\x12/\n" +
+	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12\x0e\n" +
+	"\x02id\x18\x02 \x01(\tR\x02id\x12\x14\n" +
+	"\x05title\x18\x03 \x01(\tR\x05title\x12 \n" +
+	"\vdescription\x18\x04 \x01(\tR\vdescription\"\\\n" +
+	"\x1aUpdateMergeRequestResponse\x12>\n" +
+	"\rmerge_request\x18\x01 \x01(\v2\x19.greet.MergeRequestDetailR\fmergeRequest\"y\n" +
+	"\x18ListMergeRequestsRequest\x12/\n" +
+	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12\x16\n" +
+	"\x06status\x18\x02 \x01(\tR\x06status\x12\x14\n" +
+	"\x05limit\x18\x03 \x01(\x05R\x05limit\"]\n" +
+	"\x19ListMergeRequestsResponse\x12@\n" +
+	"\x0emerge_requests\x18\x01 \x03(\v2\x19.greet.MergeRequestDetailR\rmergeRequests\"[\n" +
+	"\x18MergeMergeRequestRequest\x12/\n" +
+	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12\x0e\n" +
+	"\x02id\x18\x02 \x01(\tR\x02id\"\x9a\x01\n" +
+	"\x19MergeMergeRequestResponse\x12>\n" +
+	"\rmerge_request\x18\x01 \x01(\v2\x19.greet.MergeRequestDetailR\fmergeRequest\x12=\n" +
+	"\fmergeability\x18\x02 \x01(\v2\x19.greet.MergeabilityDetailR\fmergeability\"[\n" +
+	"\x18CloseMergeRequestRequest\x12/\n" +
+	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12\x0e\n" +
+	"\x02id\x18\x02 \x01(\tR\x02id\"[\n" +
+	"\x19CloseMergeRequestResponse\x12>\n" +
+	"\rmerge_request\x18\x01 \x01(\v2\x19.greet.MergeRequestDetailR\fmergeRequest*r\n" +
 	"\bFileMode\x12\x19\n" +
 	"\x15FILE_MODE_UNSPECIFIED\x10\x00\x12\x17\n" +
 	"\x13FILE_MODE_READ_ONLY\x10\x01\x12\x18\n" +
 	"\x14FILE_MODE_READ_WRITE\x10\x02\x12\x18\n" +
-	"\x14FILE_MODE_EXECUTABLE\x10\x032\xbd\x14\n" +
+	"\x14FILE_MODE_EXECUTABLE\x10\x032\xfb\x17\n" +
 	"\vNipaService\x12V\n" +
 	"\x19LoginWithUsernamePassword\x12#.greet.LoginUsernamePasswordRequest\x1a\x14.greet.LoginResponse\x12M\n" +
 	"\x15LoginWithRefreshToken\x12\x1e.greet.LoginWithRefreshRequest\x1a\x14.greet.LoginResponse\x12J\n" +
@@ -4774,7 +5570,12 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"\tGetCommit\x12\x17.greet.GetCommitRequest\x1a\x18.greet.GetCommitResponse\x12D\n" +
 	"\vWalkCommits\x12\x19.greet.WalkCommitsRequest\x1a\x1a.greet.WalkCommitsResponse\x12G\n" +
 	"\fGetMergeBase\x12\x1a.greet.GetMergeBaseRequest\x1a\x1b.greet.GetMergeBaseResponse\x12S\n" +
-	"\x10MergeFastForward\x12\x1e.greet.MergeFastForwardRequest\x1a\x1f.greet.MergeFastForwardResponse\x12/\n" +
+	"\x10MergeFastForward\x12\x1e.greet.MergeFastForwardRequest\x1a\x1f.greet.MergeFastForwardResponse\x12Y\n" +
+	"\x12CreateMergeRequest\x12 .greet.CreateMergeRequestRequest\x1a!.greet.CreateMergeRequestResponse\x12Y\n" +
+	"\x12UpdateMergeRequest\x12 .greet.UpdateMergeRequestRequest\x1a!.greet.UpdateMergeRequestResponse\x12V\n" +
+	"\x11ListMergeRequests\x12\x1f.greet.ListMergeRequestsRequest\x1a .greet.ListMergeRequestsResponse\x12V\n" +
+	"\x11MergeMergeRequest\x12\x1f.greet.MergeMergeRequestRequest\x1a .greet.MergeMergeRequestResponse\x12V\n" +
+	"\x11CloseMergeRequest\x12\x1f.greet.CloseMergeRequestRequest\x1a .greet.CloseMergeRequestResponse\x12/\n" +
 	"\x04Push\x12\x12.greet.PushRequest\x1a\x13.greet.PushResponse\x12Y\n" +
 	"\x12GetChunkUploadUrls\x12 .greet.GetChunkUploadUrlsRequest\x1a!.greet.GetChunkUploadUrlsResponse\x12_\n" +
 	"\x14GetChunkDownloadUrls\x12\".greet.GetChunkDownloadUrlsRequest\x1a#.greet.GetChunkDownloadUrlsResponse\x12\\\n" +
@@ -4805,7 +5606,7 @@ func file_internal_grpc_proto_server_proto_rawDescGZIP() []byte {
 }
 
 var file_internal_grpc_proto_server_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_internal_grpc_proto_server_proto_msgTypes = make([]protoimpl.MessageInfo, 75)
+var file_internal_grpc_proto_server_proto_msgTypes = make([]protoimpl.MessageInfo, 87)
 var file_internal_grpc_proto_server_proto_goTypes = []any{
 	(FileMode)(0),                               // 0: greet.FileMode
 	(*ProjectContext)(nil),                      // 1: greet.ProjectContext
@@ -4883,141 +5684,176 @@ var file_internal_grpc_proto_server_proto_goTypes = []any{
 	(*AddGroupMemberResponse)(nil),              // 73: greet.AddGroupMemberResponse
 	(*RemoveGroupMemberRequest)(nil),            // 74: greet.RemoveGroupMemberRequest
 	(*RemoveGroupMemberResponse)(nil),           // 75: greet.RemoveGroupMemberResponse
-	(*timestamppb.Timestamp)(nil),               // 76: google.protobuf.Timestamp
+	(*MergeabilityDetail)(nil),                  // 76: greet.MergeabilityDetail
+	(*MergeRequestDetail)(nil),                  // 77: greet.MergeRequestDetail
+	(*CreateMergeRequestRequest)(nil),           // 78: greet.CreateMergeRequestRequest
+	(*CreateMergeRequestResponse)(nil),          // 79: greet.CreateMergeRequestResponse
+	(*UpdateMergeRequestRequest)(nil),           // 80: greet.UpdateMergeRequestRequest
+	(*UpdateMergeRequestResponse)(nil),          // 81: greet.UpdateMergeRequestResponse
+	(*ListMergeRequestsRequest)(nil),            // 82: greet.ListMergeRequestsRequest
+	(*ListMergeRequestsResponse)(nil),           // 83: greet.ListMergeRequestsResponse
+	(*MergeMergeRequestRequest)(nil),            // 84: greet.MergeMergeRequestRequest
+	(*MergeMergeRequestResponse)(nil),           // 85: greet.MergeMergeRequestResponse
+	(*CloseMergeRequestRequest)(nil),            // 86: greet.CloseMergeRequestRequest
+	(*CloseMergeRequestResponse)(nil),           // 87: greet.CloseMergeRequestResponse
+	(*timestamppb.Timestamp)(nil),               // 88: google.protobuf.Timestamp
 }
 var file_internal_grpc_proto_server_proto_depIdxs = []int32{
-	0,  // 0: greet.FileNode.mode:type_name -> greet.FileMode
-	3,  // 1: greet.TreeManifest.sub_trees:type_name -> greet.TreeManifest
-	2,  // 2: greet.TreeManifest.files:type_name -> greet.FileNode
-	1,  // 3: greet.GetTreeManifestRequest.context:type_name -> greet.ProjectContext
-	3,  // 4: greet.GetTreeManifestResponse.root_tree:type_name -> greet.TreeManifest
-	0,  // 5: greet.PushFile.mode:type_name -> greet.FileMode
-	1,  // 6: greet.GetChunkUploadUrlsRequest.context:type_name -> greet.ProjectContext
-	7,  // 7: greet.GetChunkUploadUrlsRequest.chunks:type_name -> greet.ChunkRef
-	8,  // 8: greet.GetChunkUploadUrlsResponse.urls:type_name -> greet.PresignedChunkUrl
-	1,  // 9: greet.GetChunkDownloadUrlsRequest.context:type_name -> greet.ProjectContext
-	8,  // 10: greet.GetChunkDownloadUrlsResponse.urls:type_name -> greet.PresignedChunkUrl
-	1,  // 11: greet.ConfirmChunkUploadsRequest.context:type_name -> greet.ProjectContext
-	1,  // 12: greet.PushRequest.context:type_name -> greet.ProjectContext
-	6,  // 13: greet.PushRequest.files:type_name -> greet.PushFile
-	76, // 14: greet.Branch.created_at:type_name -> google.protobuf.Timestamp
-	76, // 15: greet.Branch.updated_at:type_name -> google.protobuf.Timestamp
-	1,  // 16: greet.GetListBranchRequest.context:type_name -> greet.ProjectContext
-	76, // 17: greet.GetListBranchRequest.last_updated_at:type_name -> google.protobuf.Timestamp
-	17, // 18: greet.GetListBranchResponse.branches:type_name -> greet.Branch
-	1,  // 19: greet.GetBranchRequest.context:type_name -> greet.ProjectContext
-	1,  // 20: greet.GetBranchByNameRequest.context:type_name -> greet.ProjectContext
-	17, // 21: greet.GetBranchByNameResponse.branch:type_name -> greet.Branch
-	1,  // 22: greet.GetDefaultBranchRequest.context:type_name -> greet.ProjectContext
-	17, // 23: greet.GetBranchResponse.branch:type_name -> greet.Branch
-	1,  // 24: greet.CreateBranchRequest.context:type_name -> greet.ProjectContext
-	17, // 25: greet.CreateBranchResponse.branch:type_name -> greet.Branch
-	1,  // 26: greet.RenameBranchRequest.context:type_name -> greet.ProjectContext
-	17, // 27: greet.RenameBranchResponse.branch:type_name -> greet.Branch
-	1,  // 28: greet.DeleteBranchRequest.context:type_name -> greet.ProjectContext
-	1,  // 29: greet.SetDefaultBranchRequest.context:type_name -> greet.ProjectContext
-	17, // 30: greet.SetDefaultBranchResponse.branch:type_name -> greet.Branch
-	1,  // 31: greet.SetBranchProtectionRequest.context:type_name -> greet.ProjectContext
-	17, // 32: greet.SetBranchProtectionResponse.branch:type_name -> greet.Branch
-	1,  // 33: greet.GetMergeBaseRequest.context:type_name -> greet.ProjectContext
-	3,  // 34: greet.GetMergeBaseResponse.merge_base_tree:type_name -> greet.TreeManifest
-	1,  // 35: greet.MergeFastForwardRequest.context:type_name -> greet.ProjectContext
-	17, // 36: greet.MergeFastForwardResponse.branch:type_name -> greet.Branch
-	76, // 37: greet.CommitLogEntry.created_at:type_name -> google.protobuf.Timestamp
-	1,  // 38: greet.GetCommitLogRequest.context:type_name -> greet.ProjectContext
-	39, // 39: greet.GetCommitLogResponse.commits:type_name -> greet.CommitLogEntry
-	76, // 40: greet.CommitDetail.created_at:type_name -> google.protobuf.Timestamp
-	1,  // 41: greet.GetCommitRequest.context:type_name -> greet.ProjectContext
-	42, // 42: greet.GetCommitResponse.commit:type_name -> greet.CommitDetail
-	3,  // 43: greet.GetCommitResponse.root_tree:type_name -> greet.TreeManifest
-	76, // 44: greet.CommitWalkEntry.created_at:type_name -> google.protobuf.Timestamp
-	1,  // 45: greet.WalkCommitsRequest.context:type_name -> greet.ProjectContext
-	45, // 46: greet.WalkCommitsResponse.commits:type_name -> greet.CommitWalkEntry
-	76, // 47: greet.PBACRuleDetail.created_at:type_name -> google.protobuf.Timestamp
-	1,  // 48: greet.CreatePBACRuleRequest.context:type_name -> greet.ProjectContext
-	52, // 49: greet.CreatePBACRuleResponse.rule:type_name -> greet.PBACRuleDetail
-	1,  // 50: greet.ListPBACRulesRequest.context:type_name -> greet.ProjectContext
-	52, // 51: greet.ListPBACRulesResponse.rules:type_name -> greet.PBACRuleDetail
-	1,  // 52: greet.DeletePBACRuleRequest.context:type_name -> greet.ProjectContext
-	1,  // 53: greet.ListProjectPathPermissionsRequest.context:type_name -> greet.ProjectContext
-	51, // 54: greet.ListProjectPathPermissionsResponse.permissions:type_name -> greet.PermissionEntry
-	1,  // 55: greet.SetProjectPathPermissionRequest.context:type_name -> greet.ProjectContext
-	51, // 56: greet.SetProjectPathPermissionResponse.permission:type_name -> greet.PermissionEntry
-	1,  // 57: greet.DeleteProjectPathPermissionRequest.context:type_name -> greet.ProjectContext
-	1,  // 58: greet.GetMyPermissionsRequest.context:type_name -> greet.ProjectContext
-	51, // 59: greet.GetMyPermissionsResponse.rules:type_name -> greet.PermissionEntry
-	51, // 60: greet.GetMyPermissionsResponse.defaults:type_name -> greet.PermissionEntry
-	67, // 61: greet.CreateGroupResponse.group:type_name -> greet.GroupDetail
-	67, // 62: greet.ListGroupsResponse.groups:type_name -> greet.GroupDetail
-	48, // 63: greet.NipaService.LoginWithUsernamePassword:input_type -> greet.LoginUsernamePasswordRequest
-	49, // 64: greet.NipaService.LoginWithRefreshToken:input_type -> greet.LoginWithRefreshRequest
-	18, // 65: greet.NipaService.GetListBranch:input_type -> greet.GetListBranchRequest
-	20, // 66: greet.NipaService.GetBranch:input_type -> greet.GetBranchRequest
-	21, // 67: greet.NipaService.GetBranchByName:input_type -> greet.GetBranchByNameRequest
-	23, // 68: greet.NipaService.GetDefaultBranch:input_type -> greet.GetDefaultBranchRequest
-	25, // 69: greet.NipaService.CreateBranch:input_type -> greet.CreateBranchRequest
-	27, // 70: greet.NipaService.RenameBranch:input_type -> greet.RenameBranchRequest
-	29, // 71: greet.NipaService.DeleteBranch:input_type -> greet.DeleteBranchRequest
-	31, // 72: greet.NipaService.SetDefaultBranch:input_type -> greet.SetDefaultBranchRequest
-	33, // 73: greet.NipaService.SetBranchProtection:input_type -> greet.SetBranchProtectionRequest
-	4,  // 74: greet.NipaService.GetTreeManifest:input_type -> greet.GetTreeManifestRequest
-	40, // 75: greet.NipaService.GetCommitLog:input_type -> greet.GetCommitLogRequest
-	43, // 76: greet.NipaService.GetCommit:input_type -> greet.GetCommitRequest
-	46, // 77: greet.NipaService.WalkCommits:input_type -> greet.WalkCommitsRequest
-	35, // 78: greet.NipaService.GetMergeBase:input_type -> greet.GetMergeBaseRequest
-	37, // 79: greet.NipaService.MergeFastForward:input_type -> greet.MergeFastForwardRequest
-	15, // 80: greet.NipaService.Push:input_type -> greet.PushRequest
-	9,  // 81: greet.NipaService.GetChunkUploadUrls:input_type -> greet.GetChunkUploadUrlsRequest
-	11, // 82: greet.NipaService.GetChunkDownloadUrls:input_type -> greet.GetChunkDownloadUrlsRequest
-	13, // 83: greet.NipaService.ConfirmChunkUploads:input_type -> greet.ConfirmChunkUploadsRequest
-	65, // 84: greet.NipaService.GetMyPermissions:input_type -> greet.GetMyPermissionsRequest
-	53, // 85: greet.NipaService.CreatePBACRule:input_type -> greet.CreatePBACRuleRequest
-	55, // 86: greet.NipaService.ListPBACRules:input_type -> greet.ListPBACRulesRequest
-	57, // 87: greet.NipaService.DeletePBACRule:input_type -> greet.DeletePBACRuleRequest
-	59, // 88: greet.NipaService.ListProjectPathPermissions:input_type -> greet.ListProjectPathPermissionsRequest
-	61, // 89: greet.NipaService.SetProjectPathPermission:input_type -> greet.SetProjectPathPermissionRequest
-	63, // 90: greet.NipaService.DeleteProjectPathPermission:input_type -> greet.DeleteProjectPathPermissionRequest
-	68, // 91: greet.NipaService.CreateGroup:input_type -> greet.CreateGroupRequest
-	70, // 92: greet.NipaService.ListGroups:input_type -> greet.ListGroupsRequest
-	72, // 93: greet.NipaService.AddGroupMember:input_type -> greet.AddGroupMemberRequest
-	74, // 94: greet.NipaService.RemoveGroupMember:input_type -> greet.RemoveGroupMemberRequest
-	50, // 95: greet.NipaService.LoginWithUsernamePassword:output_type -> greet.LoginResponse
-	50, // 96: greet.NipaService.LoginWithRefreshToken:output_type -> greet.LoginResponse
-	19, // 97: greet.NipaService.GetListBranch:output_type -> greet.GetListBranchResponse
-	24, // 98: greet.NipaService.GetBranch:output_type -> greet.GetBranchResponse
-	22, // 99: greet.NipaService.GetBranchByName:output_type -> greet.GetBranchByNameResponse
-	24, // 100: greet.NipaService.GetDefaultBranch:output_type -> greet.GetBranchResponse
-	26, // 101: greet.NipaService.CreateBranch:output_type -> greet.CreateBranchResponse
-	28, // 102: greet.NipaService.RenameBranch:output_type -> greet.RenameBranchResponse
-	30, // 103: greet.NipaService.DeleteBranch:output_type -> greet.DeleteBranchResponse
-	32, // 104: greet.NipaService.SetDefaultBranch:output_type -> greet.SetDefaultBranchResponse
-	34, // 105: greet.NipaService.SetBranchProtection:output_type -> greet.SetBranchProtectionResponse
-	5,  // 106: greet.NipaService.GetTreeManifest:output_type -> greet.GetTreeManifestResponse
-	41, // 107: greet.NipaService.GetCommitLog:output_type -> greet.GetCommitLogResponse
-	44, // 108: greet.NipaService.GetCommit:output_type -> greet.GetCommitResponse
-	47, // 109: greet.NipaService.WalkCommits:output_type -> greet.WalkCommitsResponse
-	36, // 110: greet.NipaService.GetMergeBase:output_type -> greet.GetMergeBaseResponse
-	38, // 111: greet.NipaService.MergeFastForward:output_type -> greet.MergeFastForwardResponse
-	16, // 112: greet.NipaService.Push:output_type -> greet.PushResponse
-	10, // 113: greet.NipaService.GetChunkUploadUrls:output_type -> greet.GetChunkUploadUrlsResponse
-	12, // 114: greet.NipaService.GetChunkDownloadUrls:output_type -> greet.GetChunkDownloadUrlsResponse
-	14, // 115: greet.NipaService.ConfirmChunkUploads:output_type -> greet.ConfirmChunkUploadsResponse
-	66, // 116: greet.NipaService.GetMyPermissions:output_type -> greet.GetMyPermissionsResponse
-	54, // 117: greet.NipaService.CreatePBACRule:output_type -> greet.CreatePBACRuleResponse
-	56, // 118: greet.NipaService.ListPBACRules:output_type -> greet.ListPBACRulesResponse
-	58, // 119: greet.NipaService.DeletePBACRule:output_type -> greet.DeletePBACRuleResponse
-	60, // 120: greet.NipaService.ListProjectPathPermissions:output_type -> greet.ListProjectPathPermissionsResponse
-	62, // 121: greet.NipaService.SetProjectPathPermission:output_type -> greet.SetProjectPathPermissionResponse
-	64, // 122: greet.NipaService.DeleteProjectPathPermission:output_type -> greet.DeleteProjectPathPermissionResponse
-	69, // 123: greet.NipaService.CreateGroup:output_type -> greet.CreateGroupResponse
-	71, // 124: greet.NipaService.ListGroups:output_type -> greet.ListGroupsResponse
-	73, // 125: greet.NipaService.AddGroupMember:output_type -> greet.AddGroupMemberResponse
-	75, // 126: greet.NipaService.RemoveGroupMember:output_type -> greet.RemoveGroupMemberResponse
-	95, // [95:127] is the sub-list for method output_type
-	63, // [63:95] is the sub-list for method input_type
-	63, // [63:63] is the sub-list for extension type_name
-	63, // [63:63] is the sub-list for extension extendee
-	0,  // [0:63] is the sub-list for field type_name
+	0,   // 0: greet.FileNode.mode:type_name -> greet.FileMode
+	3,   // 1: greet.TreeManifest.sub_trees:type_name -> greet.TreeManifest
+	2,   // 2: greet.TreeManifest.files:type_name -> greet.FileNode
+	1,   // 3: greet.GetTreeManifestRequest.context:type_name -> greet.ProjectContext
+	3,   // 4: greet.GetTreeManifestResponse.root_tree:type_name -> greet.TreeManifest
+	0,   // 5: greet.PushFile.mode:type_name -> greet.FileMode
+	1,   // 6: greet.GetChunkUploadUrlsRequest.context:type_name -> greet.ProjectContext
+	7,   // 7: greet.GetChunkUploadUrlsRequest.chunks:type_name -> greet.ChunkRef
+	8,   // 8: greet.GetChunkUploadUrlsResponse.urls:type_name -> greet.PresignedChunkUrl
+	1,   // 9: greet.GetChunkDownloadUrlsRequest.context:type_name -> greet.ProjectContext
+	8,   // 10: greet.GetChunkDownloadUrlsResponse.urls:type_name -> greet.PresignedChunkUrl
+	1,   // 11: greet.ConfirmChunkUploadsRequest.context:type_name -> greet.ProjectContext
+	1,   // 12: greet.PushRequest.context:type_name -> greet.ProjectContext
+	6,   // 13: greet.PushRequest.files:type_name -> greet.PushFile
+	88,  // 14: greet.Branch.created_at:type_name -> google.protobuf.Timestamp
+	88,  // 15: greet.Branch.updated_at:type_name -> google.protobuf.Timestamp
+	1,   // 16: greet.GetListBranchRequest.context:type_name -> greet.ProjectContext
+	88,  // 17: greet.GetListBranchRequest.last_updated_at:type_name -> google.protobuf.Timestamp
+	17,  // 18: greet.GetListBranchResponse.branches:type_name -> greet.Branch
+	1,   // 19: greet.GetBranchRequest.context:type_name -> greet.ProjectContext
+	1,   // 20: greet.GetBranchByNameRequest.context:type_name -> greet.ProjectContext
+	17,  // 21: greet.GetBranchByNameResponse.branch:type_name -> greet.Branch
+	1,   // 22: greet.GetDefaultBranchRequest.context:type_name -> greet.ProjectContext
+	17,  // 23: greet.GetBranchResponse.branch:type_name -> greet.Branch
+	1,   // 24: greet.CreateBranchRequest.context:type_name -> greet.ProjectContext
+	17,  // 25: greet.CreateBranchResponse.branch:type_name -> greet.Branch
+	1,   // 26: greet.RenameBranchRequest.context:type_name -> greet.ProjectContext
+	17,  // 27: greet.RenameBranchResponse.branch:type_name -> greet.Branch
+	1,   // 28: greet.DeleteBranchRequest.context:type_name -> greet.ProjectContext
+	1,   // 29: greet.SetDefaultBranchRequest.context:type_name -> greet.ProjectContext
+	17,  // 30: greet.SetDefaultBranchResponse.branch:type_name -> greet.Branch
+	1,   // 31: greet.SetBranchProtectionRequest.context:type_name -> greet.ProjectContext
+	17,  // 32: greet.SetBranchProtectionResponse.branch:type_name -> greet.Branch
+	1,   // 33: greet.GetMergeBaseRequest.context:type_name -> greet.ProjectContext
+	3,   // 34: greet.GetMergeBaseResponse.merge_base_tree:type_name -> greet.TreeManifest
+	1,   // 35: greet.MergeFastForwardRequest.context:type_name -> greet.ProjectContext
+	17,  // 36: greet.MergeFastForwardResponse.branch:type_name -> greet.Branch
+	88,  // 37: greet.CommitLogEntry.created_at:type_name -> google.protobuf.Timestamp
+	1,   // 38: greet.GetCommitLogRequest.context:type_name -> greet.ProjectContext
+	39,  // 39: greet.GetCommitLogResponse.commits:type_name -> greet.CommitLogEntry
+	88,  // 40: greet.CommitDetail.created_at:type_name -> google.protobuf.Timestamp
+	1,   // 41: greet.GetCommitRequest.context:type_name -> greet.ProjectContext
+	42,  // 42: greet.GetCommitResponse.commit:type_name -> greet.CommitDetail
+	3,   // 43: greet.GetCommitResponse.root_tree:type_name -> greet.TreeManifest
+	88,  // 44: greet.CommitWalkEntry.created_at:type_name -> google.protobuf.Timestamp
+	1,   // 45: greet.WalkCommitsRequest.context:type_name -> greet.ProjectContext
+	45,  // 46: greet.WalkCommitsResponse.commits:type_name -> greet.CommitWalkEntry
+	88,  // 47: greet.PBACRuleDetail.created_at:type_name -> google.protobuf.Timestamp
+	1,   // 48: greet.CreatePBACRuleRequest.context:type_name -> greet.ProjectContext
+	52,  // 49: greet.CreatePBACRuleResponse.rule:type_name -> greet.PBACRuleDetail
+	1,   // 50: greet.ListPBACRulesRequest.context:type_name -> greet.ProjectContext
+	52,  // 51: greet.ListPBACRulesResponse.rules:type_name -> greet.PBACRuleDetail
+	1,   // 52: greet.DeletePBACRuleRequest.context:type_name -> greet.ProjectContext
+	1,   // 53: greet.ListProjectPathPermissionsRequest.context:type_name -> greet.ProjectContext
+	51,  // 54: greet.ListProjectPathPermissionsResponse.permissions:type_name -> greet.PermissionEntry
+	1,   // 55: greet.SetProjectPathPermissionRequest.context:type_name -> greet.ProjectContext
+	51,  // 56: greet.SetProjectPathPermissionResponse.permission:type_name -> greet.PermissionEntry
+	1,   // 57: greet.DeleteProjectPathPermissionRequest.context:type_name -> greet.ProjectContext
+	1,   // 58: greet.GetMyPermissionsRequest.context:type_name -> greet.ProjectContext
+	51,  // 59: greet.GetMyPermissionsResponse.rules:type_name -> greet.PermissionEntry
+	51,  // 60: greet.GetMyPermissionsResponse.defaults:type_name -> greet.PermissionEntry
+	67,  // 61: greet.CreateGroupResponse.group:type_name -> greet.GroupDetail
+	67,  // 62: greet.ListGroupsResponse.groups:type_name -> greet.GroupDetail
+	88,  // 63: greet.MergeRequestDetail.created_at:type_name -> google.protobuf.Timestamp
+	88,  // 64: greet.MergeRequestDetail.updated_at:type_name -> google.protobuf.Timestamp
+	1,   // 65: greet.CreateMergeRequestRequest.context:type_name -> greet.ProjectContext
+	77,  // 66: greet.CreateMergeRequestResponse.merge_request:type_name -> greet.MergeRequestDetail
+	1,   // 67: greet.UpdateMergeRequestRequest.context:type_name -> greet.ProjectContext
+	77,  // 68: greet.UpdateMergeRequestResponse.merge_request:type_name -> greet.MergeRequestDetail
+	1,   // 69: greet.ListMergeRequestsRequest.context:type_name -> greet.ProjectContext
+	77,  // 70: greet.ListMergeRequestsResponse.merge_requests:type_name -> greet.MergeRequestDetail
+	1,   // 71: greet.MergeMergeRequestRequest.context:type_name -> greet.ProjectContext
+	77,  // 72: greet.MergeMergeRequestResponse.merge_request:type_name -> greet.MergeRequestDetail
+	76,  // 73: greet.MergeMergeRequestResponse.mergeability:type_name -> greet.MergeabilityDetail
+	1,   // 74: greet.CloseMergeRequestRequest.context:type_name -> greet.ProjectContext
+	77,  // 75: greet.CloseMergeRequestResponse.merge_request:type_name -> greet.MergeRequestDetail
+	48,  // 76: greet.NipaService.LoginWithUsernamePassword:input_type -> greet.LoginUsernamePasswordRequest
+	49,  // 77: greet.NipaService.LoginWithRefreshToken:input_type -> greet.LoginWithRefreshRequest
+	18,  // 78: greet.NipaService.GetListBranch:input_type -> greet.GetListBranchRequest
+	20,  // 79: greet.NipaService.GetBranch:input_type -> greet.GetBranchRequest
+	21,  // 80: greet.NipaService.GetBranchByName:input_type -> greet.GetBranchByNameRequest
+	23,  // 81: greet.NipaService.GetDefaultBranch:input_type -> greet.GetDefaultBranchRequest
+	25,  // 82: greet.NipaService.CreateBranch:input_type -> greet.CreateBranchRequest
+	27,  // 83: greet.NipaService.RenameBranch:input_type -> greet.RenameBranchRequest
+	29,  // 84: greet.NipaService.DeleteBranch:input_type -> greet.DeleteBranchRequest
+	31,  // 85: greet.NipaService.SetDefaultBranch:input_type -> greet.SetDefaultBranchRequest
+	33,  // 86: greet.NipaService.SetBranchProtection:input_type -> greet.SetBranchProtectionRequest
+	4,   // 87: greet.NipaService.GetTreeManifest:input_type -> greet.GetTreeManifestRequest
+	40,  // 88: greet.NipaService.GetCommitLog:input_type -> greet.GetCommitLogRequest
+	43,  // 89: greet.NipaService.GetCommit:input_type -> greet.GetCommitRequest
+	46,  // 90: greet.NipaService.WalkCommits:input_type -> greet.WalkCommitsRequest
+	35,  // 91: greet.NipaService.GetMergeBase:input_type -> greet.GetMergeBaseRequest
+	37,  // 92: greet.NipaService.MergeFastForward:input_type -> greet.MergeFastForwardRequest
+	78,  // 93: greet.NipaService.CreateMergeRequest:input_type -> greet.CreateMergeRequestRequest
+	80,  // 94: greet.NipaService.UpdateMergeRequest:input_type -> greet.UpdateMergeRequestRequest
+	82,  // 95: greet.NipaService.ListMergeRequests:input_type -> greet.ListMergeRequestsRequest
+	84,  // 96: greet.NipaService.MergeMergeRequest:input_type -> greet.MergeMergeRequestRequest
+	86,  // 97: greet.NipaService.CloseMergeRequest:input_type -> greet.CloseMergeRequestRequest
+	15,  // 98: greet.NipaService.Push:input_type -> greet.PushRequest
+	9,   // 99: greet.NipaService.GetChunkUploadUrls:input_type -> greet.GetChunkUploadUrlsRequest
+	11,  // 100: greet.NipaService.GetChunkDownloadUrls:input_type -> greet.GetChunkDownloadUrlsRequest
+	13,  // 101: greet.NipaService.ConfirmChunkUploads:input_type -> greet.ConfirmChunkUploadsRequest
+	65,  // 102: greet.NipaService.GetMyPermissions:input_type -> greet.GetMyPermissionsRequest
+	53,  // 103: greet.NipaService.CreatePBACRule:input_type -> greet.CreatePBACRuleRequest
+	55,  // 104: greet.NipaService.ListPBACRules:input_type -> greet.ListPBACRulesRequest
+	57,  // 105: greet.NipaService.DeletePBACRule:input_type -> greet.DeletePBACRuleRequest
+	59,  // 106: greet.NipaService.ListProjectPathPermissions:input_type -> greet.ListProjectPathPermissionsRequest
+	61,  // 107: greet.NipaService.SetProjectPathPermission:input_type -> greet.SetProjectPathPermissionRequest
+	63,  // 108: greet.NipaService.DeleteProjectPathPermission:input_type -> greet.DeleteProjectPathPermissionRequest
+	68,  // 109: greet.NipaService.CreateGroup:input_type -> greet.CreateGroupRequest
+	70,  // 110: greet.NipaService.ListGroups:input_type -> greet.ListGroupsRequest
+	72,  // 111: greet.NipaService.AddGroupMember:input_type -> greet.AddGroupMemberRequest
+	74,  // 112: greet.NipaService.RemoveGroupMember:input_type -> greet.RemoveGroupMemberRequest
+	50,  // 113: greet.NipaService.LoginWithUsernamePassword:output_type -> greet.LoginResponse
+	50,  // 114: greet.NipaService.LoginWithRefreshToken:output_type -> greet.LoginResponse
+	19,  // 115: greet.NipaService.GetListBranch:output_type -> greet.GetListBranchResponse
+	24,  // 116: greet.NipaService.GetBranch:output_type -> greet.GetBranchResponse
+	22,  // 117: greet.NipaService.GetBranchByName:output_type -> greet.GetBranchByNameResponse
+	24,  // 118: greet.NipaService.GetDefaultBranch:output_type -> greet.GetBranchResponse
+	26,  // 119: greet.NipaService.CreateBranch:output_type -> greet.CreateBranchResponse
+	28,  // 120: greet.NipaService.RenameBranch:output_type -> greet.RenameBranchResponse
+	30,  // 121: greet.NipaService.DeleteBranch:output_type -> greet.DeleteBranchResponse
+	32,  // 122: greet.NipaService.SetDefaultBranch:output_type -> greet.SetDefaultBranchResponse
+	34,  // 123: greet.NipaService.SetBranchProtection:output_type -> greet.SetBranchProtectionResponse
+	5,   // 124: greet.NipaService.GetTreeManifest:output_type -> greet.GetTreeManifestResponse
+	41,  // 125: greet.NipaService.GetCommitLog:output_type -> greet.GetCommitLogResponse
+	44,  // 126: greet.NipaService.GetCommit:output_type -> greet.GetCommitResponse
+	47,  // 127: greet.NipaService.WalkCommits:output_type -> greet.WalkCommitsResponse
+	36,  // 128: greet.NipaService.GetMergeBase:output_type -> greet.GetMergeBaseResponse
+	38,  // 129: greet.NipaService.MergeFastForward:output_type -> greet.MergeFastForwardResponse
+	79,  // 130: greet.NipaService.CreateMergeRequest:output_type -> greet.CreateMergeRequestResponse
+	81,  // 131: greet.NipaService.UpdateMergeRequest:output_type -> greet.UpdateMergeRequestResponse
+	83,  // 132: greet.NipaService.ListMergeRequests:output_type -> greet.ListMergeRequestsResponse
+	85,  // 133: greet.NipaService.MergeMergeRequest:output_type -> greet.MergeMergeRequestResponse
+	87,  // 134: greet.NipaService.CloseMergeRequest:output_type -> greet.CloseMergeRequestResponse
+	16,  // 135: greet.NipaService.Push:output_type -> greet.PushResponse
+	10,  // 136: greet.NipaService.GetChunkUploadUrls:output_type -> greet.GetChunkUploadUrlsResponse
+	12,  // 137: greet.NipaService.GetChunkDownloadUrls:output_type -> greet.GetChunkDownloadUrlsResponse
+	14,  // 138: greet.NipaService.ConfirmChunkUploads:output_type -> greet.ConfirmChunkUploadsResponse
+	66,  // 139: greet.NipaService.GetMyPermissions:output_type -> greet.GetMyPermissionsResponse
+	54,  // 140: greet.NipaService.CreatePBACRule:output_type -> greet.CreatePBACRuleResponse
+	56,  // 141: greet.NipaService.ListPBACRules:output_type -> greet.ListPBACRulesResponse
+	58,  // 142: greet.NipaService.DeletePBACRule:output_type -> greet.DeletePBACRuleResponse
+	60,  // 143: greet.NipaService.ListProjectPathPermissions:output_type -> greet.ListProjectPathPermissionsResponse
+	62,  // 144: greet.NipaService.SetProjectPathPermission:output_type -> greet.SetProjectPathPermissionResponse
+	64,  // 145: greet.NipaService.DeleteProjectPathPermission:output_type -> greet.DeleteProjectPathPermissionResponse
+	69,  // 146: greet.NipaService.CreateGroup:output_type -> greet.CreateGroupResponse
+	71,  // 147: greet.NipaService.ListGroups:output_type -> greet.ListGroupsResponse
+	73,  // 148: greet.NipaService.AddGroupMember:output_type -> greet.AddGroupMemberResponse
+	75,  // 149: greet.NipaService.RemoveGroupMember:output_type -> greet.RemoveGroupMemberResponse
+	113, // [113:150] is the sub-list for method output_type
+	76,  // [76:113] is the sub-list for method input_type
+	76,  // [76:76] is the sub-list for extension type_name
+	76,  // [76:76] is the sub-list for extension extendee
+	0,   // [0:76] is the sub-list for field type_name
 }
 
 func init() { file_internal_grpc_proto_server_proto_init() }
@@ -5037,13 +5873,15 @@ func file_internal_grpc_proto_server_proto_init() {
 	file_internal_grpc_proto_server_proto_msgTypes[45].OneofWrappers = []any{}
 	file_internal_grpc_proto_server_proto_msgTypes[51].OneofWrappers = []any{}
 	file_internal_grpc_proto_server_proto_msgTypes[52].OneofWrappers = []any{}
+	file_internal_grpc_proto_server_proto_msgTypes[75].OneofWrappers = []any{}
+	file_internal_grpc_proto_server_proto_msgTypes[76].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_internal_grpc_proto_server_proto_rawDesc), len(file_internal_grpc_proto_server_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   75,
+			NumMessages:   87,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

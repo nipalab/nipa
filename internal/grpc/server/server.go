@@ -14,6 +14,7 @@ type usecaseContainer interface {
 	Chunk() *usecase.Chunk
 	Permission() *usecase.Permission
 	Group() *usecase.Group
+	MergeRequest() *usecase.MergeRequest
 }
 
 type nipaServer struct {
