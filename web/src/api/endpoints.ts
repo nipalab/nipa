@@ -157,6 +157,19 @@ export function getMergeRequest(org: string, project: string, id: string): Promi
   return apiJson(`${projectBase(org, project)}/merge-requests/${encodeURIComponent(id)}`)
 }
 
+export function updateMergeRequest(
+  org: string,
+  project: string,
+  id: string,
+  title: string,
+  description: string,
+): Promise<MergeRequestResponse> {
+  return apiJson(`${projectBase(org, project)}/merge-requests/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ title, description }),
+  })
+}
+
 export function mergeMergeRequest(org: string, project: string, id: string): Promise<MergeRequestResponse> {
   return apiJson(`${projectBase(org, project)}/merge-requests/${encodeURIComponent(id)}/merge`, {
     method: 'POST',

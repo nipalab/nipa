@@ -198,6 +198,46 @@ func (q *Queries) MergeRequestListByStatus(ctx context.Context, arg MergeRequest
 	return items, nil
 }
 
+const mergeRequestUpdate = `-- name: MergeRequestUpdate :one
+UPDATE merge_requests SET title = ?, description = ?, updated_at = CURRENT_TIMESTAMP
+WHERE project_id = ? AND id = ?
+RETURNING id, project_id, source_branch_id, target_branch_id, source_branch_name, target_branch_name, title, description, status, merge_commit_id, merge_base_commit_id, created_by, created_at, updated_at
+`
+
+type MergeRequestUpdateParams struct {
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	ProjectID   int64  `json:"project_id"`
+	ID          int64  `json:"id"`
+}
+
+func (q *Queries) MergeRequestUpdate(ctx context.Context, arg MergeRequestUpdateParams) (MergeRequest, error) {
+	row := q.db.QueryRowContext(ctx, mergeRequestUpdate,
+		arg.Title,
+		arg.Description,
+		arg.ProjectID,
+		arg.ID,
+	)
+	var i MergeRequest
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.SourceBranchID,
+		&i.TargetBranchID,
+		&i.SourceBranchName,
+		&i.TargetBranchName,
+		&i.Title,
+		&i.Description,
+		&i.Status,
+		&i.MergeCommitID,
+		&i.MergeBaseCommitID,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const mergeRequestUpdateStatus = `-- name: MergeRequestUpdateStatus :exec
 UPDATE merge_requests SET status = ?, merge_commit_id = ?, updated_at = CURRENT_TIMESTAMP
 WHERE project_id = ? AND id = ?

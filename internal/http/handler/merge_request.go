@@ -51,6 +51,32 @@ func (h *Handler) CreateMergeRequest(appCtx http.AppContext) {
 	appCtx.WriteJson(nethttp.StatusOK, toMergeRequestResponse(request, nil))
 }
 
+func (h *Handler) UpdateMergeRequest(appCtx http.AppContext) {
+	_, project, err := h.resolveProject(appCtx)
+	if err != nil {
+		appCtx.HandleError(err)
+		return
+	}
+	id, err := parseMergeRequestID(appCtx)
+	if err != nil {
+		appCtx.HandleError(err)
+		return
+	}
+	body := &model.UpdateMergeRequestRequest{}
+	if err := appCtx.ReadJson(body); err != nil {
+		appCtx.HandleError(err)
+		return
+	}
+	request, err := h.useCase.MergeRequest().Update(
+		appCtx.Context(), project.ID, id, body.Title, body.Description,
+	)
+	if err != nil {
+		appCtx.HandleError(err)
+		return
+	}
+	appCtx.WriteJson(nethttp.StatusOK, toMergeRequestResponse(request, nil))
+}
+
 func (h *Handler) GetMergeRequest(appCtx http.AppContext) {
 	_, project, err := h.resolveProject(appCtx)
 	if err != nil {

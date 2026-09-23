@@ -74,6 +74,19 @@ func (r *MergeRequestRepository) List(ctx context.Context, projectID snow.ID, st
 	return requests, nil
 }
 
+func (r *MergeRequestRepository) Update(ctx context.Context, projectID snow.ID, id int64, title, description string) (*domain.MergeRequest, error) {
+	row, err := r.queries.MergeRequestUpdate(ctx, sqlcSqlite.MergeRequestUpdateParams{
+		Title:       title,
+		Description: description,
+		ProjectID:   projectID.Int64(),
+		ID:          id,
+	})
+	if err != nil {
+		return nil, handleError(err)
+	}
+	return mergeRequestToDomain(row), nil
+}
+
 func (r *MergeRequestRepository) UpdateStatus(ctx context.Context, projectID snow.ID, id int64, status string, mergeCommitID *snow.ID) error {
 	err := r.queries.MergeRequestUpdateStatus(ctx, sqlcSqlite.MergeRequestUpdateStatusParams{
 		Status:        status,

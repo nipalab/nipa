@@ -291,6 +291,91 @@ func TestMergeRequest_CloseAndReopen(t *testing.T) {
 	})
 }
 
+func TestMergeRequest_Update(t *testing.T) {
+	t.Run("author can update title and description", func(t *testing.T) {
+		mr, repo, _, perm, _ := newTestMergeRequest(t)
+		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
+		repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(openMergeRequest(), nil)
+		repo.EXPECT().Update(gomock.Any(), snow.ID(1), int64(5), "New title", "New body").DoAndReturn(
+			func(_ context.Context, _ snow.ID, _ int64, title, description string) (*domain.MergeRequest, error) {
+				updated := openMergeRequest()
+				updated.Title = title
+				updated.Description = description
+				return updated, nil
+			},
+		)
+
+		got, err := mr.Update(permissionCtx(7), snow.ID(1), 5, " New title ", " New body ")
+		require.NoError(t, err)
+		require.Equal(t, "New title", got.Title)
+		require.Equal(t, "New body", got.Description)
+	})
+
+	t.Run("description only keeps the existing title", func(t *testing.T) {
+		mr, repo, _, perm, _ := newTestMergeRequest(t)
+		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
+		existing := openMergeRequest()
+		existing.Title = "Original"
+		repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(existing, nil)
+		repo.EXPECT().Update(gomock.Any(), snow.ID(1), int64(5), "Original", "Body").Return(existing, nil)
+
+		_, err := mr.Update(permissionCtx(7), snow.ID(1), 5, "", "Body")
+		require.NoError(t, err)
+	})
+
+	t.Run("project admin can update", func(t *testing.T) {
+		mr, repo, _, perm, _ := newTestMergeRequest(t)
+		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
+		perm.EXPECT().AdminHasProject(gomock.Any(), snow.ID(1)).Return(true)
+		repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(openMergeRequest(), nil)
+		repo.EXPECT().Update(gomock.Any(), snow.ID(1), int64(5), "T", "D").Return(openMergeRequest(), nil)
+
+		_, err := mr.Update(permissionCtx(99), snow.ID(1), 5, "T", "D")
+		require.NoError(t, err)
+	})
+
+	t.Run("other users are denied", func(t *testing.T) {
+		mr, repo, _, perm, _ := newTestMergeRequest(t)
+		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
+		perm.EXPECT().AdminHasProject(gomock.Any(), snow.ID(1)).Return(false)
+		repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(openMergeRequest(), nil)
+
+		_, err := mr.Update(permissionCtx(99), snow.ID(1), 5, "T", "")
+		require.True(t, domain.IsErrorNoPermission(err))
+	})
+
+	t.Run("closed request is a conflict", func(t *testing.T) {
+		mr, repo, _, perm, _ := newTestMergeRequest(t)
+		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
+		closed := openMergeRequest()
+		closed.Status = domain.MergeRequestClosed
+		repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(closed, nil)
+
+		_, err := mr.Update(permissionCtx(7), snow.ID(1), 5, "T", "")
+		require.True(t, domain.IsErrorConflict(err))
+	})
+
+	t.Run("nothing to update", func(t *testing.T) {
+		mr, repo, _, perm, _ := newTestMergeRequest(t)
+		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
+		repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(openMergeRequest(), nil)
+
+		_, err := mr.Update(permissionCtx(7), snow.ID(1), 5, "  ", "")
+		requireUserError(t, err)
+	})
+
+	t.Run("repository error propagates", func(t *testing.T) {
+		wantErr := errors.New("db down")
+		mr, repo, _, perm, _ := newTestMergeRequest(t)
+		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
+		repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(openMergeRequest(), nil)
+		repo.EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, wantErr)
+
+		_, err := mr.Update(permissionCtx(7), snow.ID(1), 5, "T", "")
+		require.ErrorIs(t, err, wantErr)
+	})
+}
+
 func TestMergeRequest_Diff(t *testing.T) {
 	mr, repo, branchRepo, perm, merger := newTestMergeRequest(t)
 	sourceHead := snow.ID(11)

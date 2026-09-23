@@ -49,6 +49,15 @@ func setupMergeRequestRouter(ws *restful.WebService, h *handler.Handler) {
 			Metadata(restfulspec.KeyOpenAPITags, tags)))
 
 	ws.Route(requestID(
+		ws.PATCH("/orgs/{org}/projects/{project}/merge-requests/{id}").
+			To(wrap(h.UpdateMergeRequest)).
+			Reads(model.UpdateMergeRequestRequest{}).
+			Doc("Update a merge request's title or description (author or project admin)").
+			Returns(http.StatusOK, "updated merge request", model.MergeRequestResponse{}).
+			Operation("updateMergeRequest").
+			Metadata(restfulspec.KeyOpenAPITags, tags)))
+
+	ws.Route(requestID(
 		ws.GET("/orgs/{org}/projects/{project}/merge-requests/{id}/check").
 			To(wrap(h.CheckMergeRequest)).
 			Doc("Recompute a merge request's mergeability").

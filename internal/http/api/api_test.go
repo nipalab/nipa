@@ -722,6 +722,11 @@ func TestAPIRoutes(t *testing.T) {
 		require.NotNil(t, detail.Mergeability)
 		require.Equal(t, domain.MergeabilityMergeable, detail.Mergeability.Status)
 
+		updated := decodeBody[model.MergeRequestResponse](t,
+			doMethod(t, http.MethodPatch, mrURL, `{"title":"Add feature v2","description":"updated"}`, aliceLogin.AccessToken))
+		require.Equal(t, "Add feature v2", updated.Title)
+		require.Equal(t, "updated", updated.Description)
+
 		diff := decodeBody[model.MergeRequestDiffResponse](t, doGet(t, mrURL+"/diff", aliceLogin.AccessToken))
 		require.Len(t, diff.Files, 1)
 		require.Equal(t, "feature.txt", diff.Files[0].Path)
