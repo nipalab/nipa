@@ -96,6 +96,9 @@ func writeBenchFile(t *testing.T, root, path string, size int, text bool) {
 	} else {
 		buf := make([]byte, 1<<20)
 		x := uint32(12345)
+		for _, b := range []byte(path) {
+			x = x*31 + uint32(b)
+		}
 		for remaining > 0 {
 			for i := range buf {
 				x = x*1664525 + 1013904223
@@ -153,6 +156,7 @@ func TestEndToEnd_UploadThroughput(t *testing.T) {
 	}{
 		{name: "text", path: "bench.txt", text: true},
 		{name: "binary", path: "bench.bin", text: false},
+		{name: "packed", path: "bench.png", text: false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

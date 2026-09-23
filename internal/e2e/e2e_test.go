@@ -206,7 +206,7 @@ func startTestServer(t *testing.T, dbConn *sql.DB) string {
 
 func openTestDB(t *testing.T) *sql.DB {
 	t.Helper()
-	database, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "nipa.db"))
+	database, err := db.OpenSQLite(filepath.Join(t.TempDir(), "nipa.db"))
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = database.Close() })
 	require.NoError(t, db.MigrateUp(database, "sqlite3"))
