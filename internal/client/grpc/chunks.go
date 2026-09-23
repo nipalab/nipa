@@ -14,9 +14,6 @@ import (
 	pb "github.com/nipalab/nipa/internal/grpc/pb"
 )
 
-// worker count for direct chunk transfers against the signed HTTP endpoints.
-const chunkTransferWorkers = 4
-
 // UploadChunks sends chunk content to the signed upload URLs returned by the
 // server. Chunks the server already stores are reported as skipped. After the
 // transfer the uploads are confirmed so the server records chunk metadata.
@@ -167,21 +164,21 @@ type chunkTransfer struct {
 }
 
 func (c *Client) putChunks(ctx context.Context, jobs []chunkTransfer) error {
-	return forEachChunk(ctx, jobs, func(ctx context.Context, job chunkTransfer) error {
+	return c.forEachChunk(ctx, jobs, func(ctx context.Context, job chunkTransfer) (int64, error) {
 		request, err := http.NewRequestWithContext(ctx, http.MethodPut, c.httpURL(job.url), bytes.NewReader(job.data))
 		if err != nil {
-			return err
+			return 0, err
 		}
 		request.Header.Set("Content-Type", "application/octet-stream")
 		res, err := c.http.Do(request)
 		if err != nil {
-			return err
+			return 0, err
 		}
 		defer func() { _ = res.Body.Close() }()
 		if res.StatusCode == http.StatusNoContent || res.StatusCode == http.StatusOK {
-			return nil
+			return int64(len(job.data)), nil
 		}
-		return chunkHTTPError(res)
+		return int64(len(job.data)), chunkHTTPError(res)
 	})
 }
 
@@ -208,28 +205,33 @@ func (s *chunkSink) deliver(hash serverDomain.Hash, data []byte) error {
 
 func (c *Client) getChunks(ctx context.Context, jobs []chunkTransfer, onChunk func(h serverDomain.Hash, data []byte) error) error {
 	sink := &chunkSink{fn: onChunk}
-	return forEachChunk(ctx, jobs, func(ctx context.Context, job chunkTransfer) error {
+	return c.forEachChunk(ctx, jobs, func(ctx context.Context, job chunkTransfer) (int64, error) {
 		request, err := http.NewRequestWithContext(ctx, http.MethodGet, c.httpURL(job.url), nil)
 		if err != nil {
-			return err
+			return 0, err
 		}
 		res, err := c.http.Do(request)
 		if err != nil {
-			return err
+			return 0, err
 		}
 		defer func() { _ = res.Body.Close() }()
 		if res.StatusCode != http.StatusOK {
-			return chunkHTTPError(res)
+			return 0, chunkHTTPError(res)
 		}
 		data, err := io.ReadAll(res.Body)
 		if err != nil {
-			return err
+			return 0, err
 		}
-		return sink.deliver(job.hash, data)
+		if err := sink.deliver(job.hash, data); err != nil {
+			return int64(len(data)), err
+		}
+		return int64(len(data)), nil
 	})
 }
 
-func forEachChunk(ctx context.Context, jobs []chunkTransfer, fn func(ctx context.Context, job chunkTransfer) error) error {
+// forEachChunk runs fn for every job with the client's adaptive transfer limit
+// and feeds the observed throughput back into the concurrency tuner.
+func (c *Client) forEachChunk(ctx context.Context, jobs []chunkTransfer, fn func(ctx context.Context, job chunkTransfer) (int64, error)) error {
 	if len(jobs) == 0 {
 		return nil
 	}
@@ -242,12 +244,22 @@ func forEachChunk(ctx context.Context, jobs []chunkTransfer, fn func(ctx context
 		once     sync.Once
 		firstErr error
 	)
-	for i := 0; i < chunkTransferWorkers; i++ {
+	for i := 0; i < maxUploadWorkers; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for job := range work {
-				if err := fn(workCtx, job); err != nil {
+				if err := c.limiter.acquire(workCtx); err != nil {
+					once.Do(func() {
+						firstErr = err
+						cancel()
+					})
+					return
+				}
+				bytes, err := fn(workCtx, job)
+				c.limiter.release()
+				c.recordTransfer(bytes, err)
+				if err != nil {
 					once.Do(func() {
 						firstErr = err
 						cancel()

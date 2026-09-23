@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/nipalab/nipa/internal/client/cli"
+	"github.com/nipalab/nipa/internal/client/config"
 	"github.com/nipalab/nipa/internal/client/grpc"
 	"github.com/nipalab/nipa/internal/client/localrepo"
 	"github.com/nipalab/nipa/internal/client/securestorage"
@@ -18,7 +19,13 @@ func main() {
 
 	transport := grpc.NewTransport()
 	session := usecase.NewSession(secureStorage, transport, prompter)
-	grpcClient := grpc.NewClient(transport, session)
+	var clientOpts []grpc.ClientOption
+	if workers, pinned, err := config.ResolveUploadWorkers(); err != nil {
+		handleError(err)
+	} else if pinned {
+		clientOpts = append(clientOpts, grpc.WithUploadWorkers(workers))
+	}
+	grpcClient := grpc.NewClient(transport, session, clientOpts...)
 
 	authUsecase := usecase.NewAuth(grpcClient, secureStorage, prompter)
 	repoUsecase := usecase.NewRepo(authUsecase, grpcClient, localrepo.NewLocalRepo())
