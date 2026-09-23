@@ -16,6 +16,7 @@ type usecaseContainer interface {
 	Revert() *usecase.Revert
 	Diff() *usecase.Diff
 	Permission() *usecase.Permission
+	MR() *usecase.MergeRequest
 }
 
 type connector interface {
@@ -54,5 +55,6 @@ func (c *Cli) Run() error {
 	rootCmd.AddCommand(c.setupAclCmd())
 	rootCmd.AddCommand(c.setupGroupCmd())
 	rootCmd.AddCommand(c.setupSparseCheckoutCmd())
+	rootCmd.AddCommand(c.setupMrCmd())
 	return rootCmd.Execute()
 }

@@ -18,6 +18,7 @@ type fakeUsecaseContainer struct {
 	revert     *usecase.Revert
 	diff       *usecase.Diff
 	permission *usecase.Permission
+	mr         *usecase.MergeRequest
 }
 
 func (f *fakeUsecaseContainer) Auth() *usecase.Auth     { return f.auth }
@@ -30,6 +31,7 @@ func (f *fakeUsecaseContainer) Diff() *usecase.Diff     { return f.diff }
 func (f *fakeUsecaseContainer) Permission() *usecase.Permission {
 	return f.permission
 }
+func (f *fakeUsecaseContainer) MR() *usecase.MergeRequest { return f.mr }
 
 func TestNewCli(t *testing.T) {
 	c := NewCli(&fakeUsecaseContainer{}, &fakeConnector{})
