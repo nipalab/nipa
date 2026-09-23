@@ -302,6 +302,7 @@ func domainFileToPB(file *domain.File) *pb.FileNode {
 		Mode:      domainFileModeToPB(file.Mode),
 		SizeBytes: file.SizeBytes,
 		IsBinary:  file.IsBinary,
+		Encoding:  file.Encoding,
 	}
 	for _, chunk := range file.Chunks {
 		node.ChunkHashes = append(node.ChunkHashes, chunk.Hash.String())

@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/nipalab/nipa/internal/chunker"
 	"github.com/nipalab/nipa/internal/client/domain"
 	"github.com/nipalab/nipa/internal/client/merge"
 	serverDomain "github.com/nipalab/nipa/internal/domain"
@@ -347,6 +348,7 @@ func treeFromFiles(files map[string]merge.File) *serverDomain.TreeNode {
 			Mode:      f.Mode,
 			SizeBytes: f.SizeBytes,
 			IsBinary:  f.IsBinary,
+			Encoding:  f.Encoding,
 			Chunks:    chunksOf(f),
 		})
 	}
@@ -376,7 +378,11 @@ func loadFileContent(loadChunk func(serverDomain.Hash) ([]byte, error), f merge.
 		if err != nil {
 			return nil, fmt.Errorf("load chunk %s: %w", h, err)
 		}
-		out = append(out, data...)
+		decoded, err := chunker.Decode(f.Encoding, data)
+		if err != nil {
+			return nil, fmt.Errorf("decode chunk %s: %w", h, err)
+		}
+		out = append(out, decoded...)
 	}
 	return out, nil
 }
@@ -386,8 +392,10 @@ func toMaterialized(f merge.File) materializedFile {
 		Path:        f.Path,
 		Mode:        f.Mode,
 		SizeBytes:   f.SizeBytes,
+		Encoding:    f.Encoding,
 		FileHash:    f.Hash,
 		ChunkHashes: f.ChunkHashes,
+		ChunkSizes:  f.ChunkSizes,
 	}
 }
 

@@ -323,6 +323,7 @@ func fileToDomain(f sqlcSqlite.File) *domain.File {
 		TreeID:    f.TreeID.Int64,
 		SizeBytes: f.SizeBytes,
 		IsBinary:  f.IsBinary,
+		Encoding:  f.Encoding,
 		CreatedAt: f.CreatedAt.Time,
 	}
 }

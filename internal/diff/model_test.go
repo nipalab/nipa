@@ -91,6 +91,25 @@ func TestLoadContent(t *testing.T) {
 	require.Equal(t, "aabb", string(content))
 }
 
+func TestLoadContent_DecodesZstd(t *testing.T) {
+	data := []byte("compressed text payload")
+	encoding, chunks, err := chunker.EncodeBytes(data, "a.txt", false, "")
+	require.NoError(t, err)
+	require.Equal(t, chunker.EncodingZstd, encoding)
+
+	load := func(h serverDomain.Hash) ([]byte, error) {
+		for _, c := range chunks {
+			if c.Hash == h {
+				return c.Data, nil
+			}
+		}
+		return nil, assertErr{}
+	}
+	content, err := LoadContent(load, Entry{Path: "a.txt", Encoding: encoding, ChunkHashes: []serverDomain.Hash{chunks[0].Hash}})
+	require.NoError(t, err)
+	require.Equal(t, data, content)
+}
+
 func TestLoadContent_MissingChunk(t *testing.T) {
 	load := func(serverDomain.Hash) ([]byte, error) {
 		return nil, assertErr{}

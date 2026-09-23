@@ -13,6 +13,7 @@ type File struct {
 	Mode        int
 	SizeBytes   int64
 	IsBinary    bool
+	Encoding    string
 	Hash        domain.Hash
 	ChunkHashes []domain.Hash
 	ChunkSizes  []int64
@@ -41,6 +42,7 @@ func flatten(node *domain.TreeNode, prefix string, out map[string]File) {
 			Mode:        f.Mode,
 			SizeBytes:   f.SizeBytes,
 			IsBinary:    f.IsBinary,
+			Encoding:    f.Encoding,
 			Hash:        chunker.FileHash(hashes),
 			ChunkHashes: hashes,
 			ChunkSizes:  sizes,

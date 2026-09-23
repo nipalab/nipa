@@ -146,7 +146,7 @@ func (w *WorkingCopy) Status(ctx context.Context) (*domain.Status, error) {
 			st.Untracked = append(st.Untracked, path)
 			continue
 		}
-		got, err := w.workingFileHash(path)
+		got, err := w.workingFileHash(path, base.Encoding)
 		if err != nil {
 			continue
 		}
@@ -268,7 +268,7 @@ func (w *WorkingCopy) expandAddTargets(targets []string) ([]string, error) {
 	return out, nil
 }
 
-func (w *WorkingCopy) workingFileHash(path string) (serverDomain.Hash, error) {
+func (w *WorkingCopy) workingFileHash(path, encoding string) (serverDomain.Hash, error) {
 	f, err := os.Open(filepath.Join(w.root, filepath.FromSlash(path)))
 	if err != nil {
 		return serverDomain.Hash{}, err
@@ -278,26 +278,35 @@ func (w *WorkingCopy) workingFileHash(path string) (serverDomain.Hash, error) {
 	if err != nil {
 		return serverDomain.Hash{}, err
 	}
-	hash, _, err := chunkReader(f, chunker.ConfigForFile(path, isBinary))
+	hash, _, _, err := chunkReader(f, path, isBinary, storedEncoding(encoding))
 	return hash, err
 }
 
-func chunkFile(path string, data []byte) (serverDomain.Hash, []serverDomain.Chunk, error) {
-	return chunkReader(bytes.NewReader(data), chunker.ConfigForFile(path, chunker.IsBinary(data)))
+// storedEncoding maps a missing stored encoding to raw so files tracked before
+// text compression keep the hashes they were pushed with.
+func storedEncoding(encoding string) string {
+	if encoding == "" {
+		return chunker.EncodingRaw
+	}
+	return encoding
 }
 
-func chunkReader(r io.Reader, cfg chunker.Config) (serverDomain.Hash, []serverDomain.Chunk, error) {
+func chunkFile(path string, data []byte, encoding string) (serverDomain.Hash, []serverDomain.Chunk, string, error) {
+	return chunkReader(bytes.NewReader(data), path, chunker.IsBinary(data), encoding)
+}
+
+func chunkReader(r io.ReadSeeker, path string, isBinary bool, encoding string) (serverDomain.Hash, []serverDomain.Chunk, string, error) {
 	var hashes []serverDomain.Hash
 	var wrapped []serverDomain.Chunk
-	err := chunker.Scan(r, func(c chunker.Chunk) error {
+	encoding, err := chunker.Encode(r, path, isBinary, encoding, func(c chunker.EncodedChunk) error {
 		hashes = append(hashes, c.Hash)
-		wrapped = append(wrapped, serverDomain.Chunk{Hash: c.Hash, SizeBytes: int64(len(c.Data))})
+		wrapped = append(wrapped, serverDomain.Chunk{Hash: c.Hash, SizeBytes: c.SizeBytes})
 		return nil
-	}, cfg)
+	})
 	if err != nil {
-		return serverDomain.Hash{}, nil, err
+		return serverDomain.Hash{}, nil, "", err
 	}
-	return chunker.FileHash(hashes), wrapped, nil
+	return chunker.FileHash(hashes), wrapped, encoding, nil
 }
 
 func validateRelPath(t string) error {

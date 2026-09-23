@@ -168,7 +168,7 @@ func (q *Queries) CommitLog(ctx context.Context, arg CommitLogParams) ([]CommitL
 }
 
 const fileListByTree = `-- name: FileListByTree :many
-SELECT f.id, f.name, f.mode, f.tree_id, f.hash, f.size_bytes, f.is_binary, f.created_at
+SELECT f.id, f.name, f.mode, f.tree_id, f.hash, f.size_bytes, f.is_binary, f.created_at, f.encoding
 FROM files f
 WHERE f.tree_id = (
         SELECT content.id
@@ -200,6 +200,7 @@ func (q *Queries) FileListByTree(ctx context.Context, treeID int64) ([]File, err
 			&i.SizeBytes,
 			&i.IsBinary,
 			&i.CreatedAt,
+			&i.Encoding,
 		); err != nil {
 			return nil, err
 		}

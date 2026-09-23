@@ -85,7 +85,7 @@ func TestWorkingFileHash_MatchesPushedHash(t *testing.T) {
 	require.NoError(t, pusher.Run(context.Background(), root, "add asset"))
 
 	wc := newWorkingCopy(t, local, root)
-	workingHash, err := wc.workingFileHash("asset.png")
+	workingHash, err := wc.workingFileHash("asset.png", "")
 	require.NoError(t, err)
 	require.Equal(t, client.pushFiles[0].FileHash, workingHash,
 		"status/diff hashing must agree with the pushed file hash")

@@ -105,7 +105,7 @@ func (q *Queries) FileChunkInsert(ctx context.Context, arg FileChunkInsertParams
 }
 
 const fileInsert = `-- name: FileInsert :one
-INSERT INTO files (name, mode, tree_id, hash, size_bytes, is_binary) VALUES (?, ?, ?, ?, ?, ?)
+INSERT INTO files (name, mode, tree_id, hash, size_bytes, is_binary, encoding) VALUES (?, ?, ?, ?, ?, ?, ?)
 RETURNING id
 `
 
@@ -116,6 +116,7 @@ type FileInsertParams struct {
 	Hash      []byte        `json:"hash"`
 	SizeBytes int64         `json:"size_bytes"`
 	IsBinary  bool          `json:"is_binary"`
+	Encoding  string        `json:"encoding"`
 }
 
 func (q *Queries) FileInsert(ctx context.Context, arg FileInsertParams) (int64, error) {
@@ -126,6 +127,7 @@ func (q *Queries) FileInsert(ctx context.Context, arg FileInsertParams) (int64, 
 		arg.Hash,
 		arg.SizeBytes,
 		arg.IsBinary,
+		arg.Encoding,
 	)
 	var id int64
 	err := row.Scan(&id)

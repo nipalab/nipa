@@ -359,6 +359,7 @@ func (c *Client) Push(ctx context.Context, org, project, branch, baseTreeHash, m
 			Mode:      intToPBFileMode(f.Mode),
 			SizeBytes: f.SizeBytes,
 			IsBinary:  f.IsBinary,
+			Encoding:  f.Encoding,
 			FileHash:  f.FileHash.String(),
 		}
 		for _, h := range f.ChunkHashes {
@@ -483,6 +484,7 @@ func toServerFile(node *pb.FileNode) *serverDomain.File {
 		Mode:      int(node.GetMode()),
 		SizeBytes: node.GetSizeBytes(),
 		IsBinary:  node.GetIsBinary(),
+		Encoding:  node.GetEncoding(),
 	}
 	var hashes []serverDomain.Hash
 	for _, h := range node.GetChunkHashes() {

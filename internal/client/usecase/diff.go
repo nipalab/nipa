@@ -370,7 +370,11 @@ func (d *Diff) scanWorking(root string, oldMap map[string]diff.Entry, staged map
 			}
 			return nil, nil, fmt.Errorf("stat %s: %w", p, err)
 		}
-		hash, chunks, err := chunkFile(p, data)
+		encoding := ""
+		if old, tracked := oldMap[p]; tracked {
+			encoding = storedEncoding(old.Encoding)
+		}
+		hash, chunks, encoding, err := chunkFile(p, data, encoding)
 		if err != nil {
 			return nil, nil, fmt.Errorf("chunk %s: %w", p, err)
 		}
@@ -385,6 +389,7 @@ func (d *Diff) scanWorking(root string, oldMap map[string]diff.Entry, staged map
 			Mode:        serverModeFromPerm(info.Mode()),
 			SizeBytes:   int64(len(data)),
 			IsBinary:    chunker.IsBinary(data),
+			Encoding:    encoding,
 			Hash:        hash,
 			ChunkHashes: hashes,
 			ChunkSizes:  sizes,
@@ -412,6 +417,7 @@ func snapshotEntries(snapshot *clientDomain.Snapshot, opts DiffOptions, staged m
 			Mode:        mode,
 			SizeBytes:   f.SizeBytes,
 			IsBinary:    f.IsBinary,
+			Encoding:    f.Encoding,
 			Hash:        f.Hash,
 			ChunkHashes: f.Chunks,
 		}

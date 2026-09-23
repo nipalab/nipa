@@ -51,6 +51,7 @@ type File struct {
 	SizeBytes int64         `json:"size_bytes"`
 	IsBinary  bool          `json:"is_binary"`
 	CreatedAt sql.NullTime  `json:"created_at"`
+	Encoding  string        `json:"encoding"`
 }
 
 type FileChunk struct {

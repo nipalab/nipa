@@ -87,6 +87,7 @@ func (p *PushRepository) ApplyPush(ctx context.Context, req usecase.ApplyPushReq
 			Hash:      f.Hash.Bytes(),
 			SizeBytes: f.SizeBytes,
 			IsBinary:  f.IsBinary,
+			Encoding:  f.Encoding,
 		})
 		if err != nil {
 			return handleError(err)

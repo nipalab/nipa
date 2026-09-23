@@ -123,6 +123,7 @@ func (l *LocalRepo) Snapshot() (*domain.Snapshot, error) {
 			Hash:      hashFromBytes(r.Hash),
 			Mode:      int(r.Mode),
 			IsBinary:  r.IsBinary,
+			Encoding:  r.Encoding,
 			SizeBytes: r.SizeBytes,
 			Chunks:    chunks,
 		})

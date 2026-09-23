@@ -1,7 +1,6 @@
 package usecase
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 
@@ -128,17 +127,18 @@ func applyThreeWay(ctx context.Context, client chunkDownloader, local threeWayLo
 }
 
 func storeMergedFile(local threeWayLocalRepo, path string, data []byte, mode int, isBinary bool) (merge.File, error) {
-	var hashes []serverDomain.Hash
-	var sizes []int64
-	batch := make([]*serverDomain.ChunkData, 0, 16)
-	err := chunker.Scan(bytes.NewReader(data), func(c chunker.Chunk) error {
-		hashes = append(hashes, c.Hash)
-		sizes = append(sizes, int64(len(c.Data)))
-		batch = append(batch, &serverDomain.ChunkData{Hash: c.Hash, Data: c.Data})
-		return nil
-	}, chunker.ConfigForFile(path, chunker.IsBinary(data)))
+	probeBinary := chunker.IsBinary(data)
+	encoding, chunks, err := chunker.EncodeBytes(data, path, probeBinary, "")
 	if err != nil {
 		return merge.File{}, err
+	}
+	var hashes []serverDomain.Hash
+	var sizes []int64
+	batch := make([]*serverDomain.ChunkData, 0, len(chunks))
+	for _, c := range chunks {
+		hashes = append(hashes, c.Hash)
+		sizes = append(sizes, c.SizeBytes)
+		batch = append(batch, &serverDomain.ChunkData{Hash: c.Hash, Data: c.Data})
 	}
 	if err := local.StoreChunks(batch); err != nil {
 		return merge.File{}, err
@@ -147,7 +147,8 @@ func storeMergedFile(local threeWayLocalRepo, path string, data []byte, mode int
 		Path:        path,
 		Mode:        mode,
 		SizeBytes:   int64(len(data)),
-		IsBinary:    isBinary || chunker.IsBinary(data),
+		IsBinary:    isBinary || probeBinary,
+		Encoding:    encoding,
 		Hash:        chunker.FileHash(hashes),
 		ChunkHashes: hashes,
 		ChunkSizes:  sizes,

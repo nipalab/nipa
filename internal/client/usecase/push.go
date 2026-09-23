@@ -170,7 +170,7 @@ func (p *Push) pushStaged(ctx context.Context, root string, nipaUrl *domain.Nipa
 			progressMu.Lock()
 			defer progressMu.Unlock()
 			doneObjects++
-			doneBytes += int64(len(ch.Data))
+			doneBytes += chunkRawSize(ch)
 			prog.UploadProgress(doneObjects, doneBytes)
 		}
 	}
@@ -377,6 +377,13 @@ func profileForFile(path, abs string) (chunker.Config, bool) {
 	return chunker.ConfigForFile(path, isBinary), isBinary
 }
 
+func chunkRawSize(ch *serverDomain.ChunkData) int64 {
+	if ch.RawSize > 0 {
+		return ch.RawSize
+	}
+	return int64(len(ch.Data))
+}
+
 func estimateObjects(size int64, cfg chunker.Config) int {
 	if size <= 0 {
 		return 0
@@ -395,10 +402,10 @@ func scanPushFile(sf stagedFile, uploader *chunkUploader) (*serverDomain.PushFil
 	}
 	defer func() { _ = f.Close() }()
 	var hashes []serverDomain.Hash
-	err = chunker.Scan(f, func(c chunker.Chunk) error {
+	encoding, err := chunker.Encode(f, sf.path, sf.isBinary, "", func(c chunker.EncodedChunk) error {
 		hashes = append(hashes, c.Hash)
-		return uploader.add(&serverDomain.ChunkData{Hash: c.Hash, Data: c.Data})
-	}, sf.cfg)
+		return uploader.add(&serverDomain.ChunkData{Hash: c.Hash, Data: c.Data, RawSize: c.RawSize})
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -407,6 +414,7 @@ func scanPushFile(sf stagedFile, uploader *chunkUploader) (*serverDomain.PushFil
 		Mode:        int(sf.info.Mode().Perm()),
 		SizeBytes:   sf.info.Size(),
 		IsBinary:    sf.isBinary,
+		Encoding:    encoding,
 		FileHash:    chunker.FileHash(hashes),
 		ChunkHashes: hashes,
 	}, nil

@@ -148,6 +148,7 @@ func (l *LocalRepo) insertFile(ctx context.Context, q *sqlcLocalrepo.Queries, tr
 		SizeBytes:  file.SizeBytes,
 		Mode:       int64(file.Mode),
 		IsBinary:   file.IsBinary,
+		Encoding:   file.Encoding,
 		Chunks:     encodeChunkHashes(hashes),
 		SnapshotID: token,
 	})

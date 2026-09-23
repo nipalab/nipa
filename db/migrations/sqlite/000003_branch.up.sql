@@ -22,6 +22,7 @@ CREATE TABLE files (
     hash BLOB UNIQUE NOT NULL,
     size_bytes INTEGER NOT NULL,
     is_binary BOOLEAN NOT NULL DEFAULT FALSE,
+    encoding TEXT NOT NULL DEFAULT 'raw',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
