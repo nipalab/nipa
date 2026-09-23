@@ -3,8 +3,9 @@ MIGRATE_CMD := go run ./cmd/migrate
 DRIVER     ?= sqlite3
 DSN        ?= nipa.db
 MIGRATIONS_DIR := db/migrations
+mb         ?= 256
 
-.PHONY: sqlc mock migrate-up migrate-down migrate-create build build-all test lint web web-dev web-install
+.PHONY: sqlc mock migrate-up migrate-down migrate-create build build-all test lint web web-dev web-install bench-upload
 
 GOLANGCI_LINT_IMAGE ?= docker.io/golangci/golangci-lint:latest
 
@@ -59,6 +60,10 @@ proto:
 ## Run all tests (requires Docker for testcontainers-backed repository tests).
 test:
 	go test ./... -v
+
+## Measure upload throughput with NIPA_BENCH_MB MiB files (e.g. make bench-upload mb=512).
+bench-upload:
+	NIPA_BENCH_MB=$(mb) go test ./internal/e2e -run TestEndToEnd_UploadThroughput -v -count=1
 
 ## Lint the code via golangci-lint's Docker image.
 lint:
