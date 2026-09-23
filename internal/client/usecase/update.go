@@ -487,11 +487,15 @@ func guardedRemove(root string, base clientDomain.SnapshotFile) (bool, error) {
 		return false, err
 	}
 	defer func() { _ = f.Close() }()
+	isBinary, err := chunker.ProbeBinary(f)
+	if err != nil {
+		return false, err
+	}
 	var hashes []domain.Hash
 	if err := chunker.Scan(f, func(c chunker.Chunk) error {
 		hashes = append(hashes, c.Hash)
 		return nil
-	}); err != nil {
+	}, chunker.ConfigForFile(base.Path, isBinary)); err != nil {
 		return false, err
 	}
 	if chunker.FileHash(hashes) == base.Hash {

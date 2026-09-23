@@ -83,7 +83,7 @@ func readRepoFile(t *testing.T, root, path string) []byte {
 
 func TestUpdate_Run_MaterializesChangedFile(t *testing.T) {
 	root := t.TempDir()
-	fileHash, chunks, err := chunkFile([]byte("new content"))
+	fileHash, chunks, err := chunkFile("file.txt", []byte("new content"))
 	require.NoError(t, err)
 
 	local := &stubLocalRepo{
@@ -146,7 +146,7 @@ func TestUpdate_Run_PinsBranchHead(t *testing.T) {
 
 func TestUpdate_Run_NestedDirectory(t *testing.T) {
 	root := t.TempDir()
-	_, chunks, err := chunkFile([]byte("nested"))
+	_, chunks, err := chunkFile("file.txt", []byte("nested"))
 	require.NoError(t, err)
 
 	local := &stubLocalRepo{
@@ -177,7 +177,7 @@ func TestUpdate_Run_NestedDirectory(t *testing.T) {
 
 func TestUpdate_Run_SkipsUnchangedFiles(t *testing.T) {
 	root := t.TempDir()
-	fileHash, chunks, err := chunkFile([]byte("same"))
+	fileHash, chunks, err := chunkFile("file.txt", []byte("same"))
 	require.NoError(t, err)
 	writeRepoFile(t, root, "a.txt", "same")
 
@@ -211,7 +211,7 @@ func TestUpdate_Run_SkipsUnchangedFiles(t *testing.T) {
 
 func TestUpdate_Run_RestoresMissingWorkingFile(t *testing.T) {
 	root := t.TempDir()
-	fileHash, chunks, err := chunkFile([]byte("same"))
+	fileHash, chunks, err := chunkFile("file.txt", []byte("same"))
 	require.NoError(t, err)
 
 	local := &stubLocalRepo{
@@ -240,7 +240,7 @@ func TestUpdate_Run_RestoresMissingWorkingFile(t *testing.T) {
 
 func TestUpdate_Run_RemovesDeletedFile(t *testing.T) {
 	root := t.TempDir()
-	fileHash, _, err := chunkFile([]byte("stale"))
+	fileHash, _, err := chunkFile("file.txt", []byte("stale"))
 	require.NoError(t, err)
 	writeRepoFile(t, root, "stale.txt", "stale")
 
@@ -263,7 +263,7 @@ func TestUpdate_Run_RemovesDeletedFile(t *testing.T) {
 
 func TestUpdate_Run_KeepsLocallyModifiedFile(t *testing.T) {
 	root := t.TempDir()
-	fileHash, _, err := chunkFile([]byte("committed"))
+	fileHash, _, err := chunkFile("file.txt", []byte("committed"))
 	require.NoError(t, err)
 	writeRepoFile(t, root, "stale.txt", "local edits")
 
@@ -285,7 +285,7 @@ func TestUpdate_Run_KeepsLocallyModifiedFile(t *testing.T) {
 
 func TestUpdate_Run_RemovesMissingBaseFile(t *testing.T) {
 	root := t.TempDir()
-	fileHash, _, err := chunkFile([]byte("committed"))
+	fileHash, _, err := chunkFile("file.txt", []byte("committed"))
 	require.NoError(t, err)
 
 	local := &stubLocalRepo{
@@ -304,7 +304,7 @@ func TestUpdate_Run_RemovesMissingBaseFile(t *testing.T) {
 
 func TestUpdate_Run_EmptyRemote(t *testing.T) {
 	root := t.TempDir()
-	fileHash, _, err := chunkFile([]byte("stale"))
+	fileHash, _, err := chunkFile("file.txt", []byte("stale"))
 	require.NoError(t, err)
 	writeRepoFile(t, root, "stale.txt", "stale")
 
@@ -387,7 +387,7 @@ func TestUpdate_Run_Error_ManifestFails(t *testing.T) {
 
 func TestUpdate_Run_Error_DownloadFails(t *testing.T) {
 	wantErr := errors.New("download failed")
-	_, chunks, err := chunkFile([]byte("data"))
+	_, chunks, err := chunkFile("file.txt", []byte("data"))
 	require.NoError(t, err)
 	fileHash := chunker.FileHash([]serverDomain.Hash{chunks[0].Hash})
 
@@ -416,7 +416,7 @@ func TestUpdate_Run_Error_DownloadFails(t *testing.T) {
 }
 
 func TestUpdate_Run_Error_ChunkMissingFromResponse(t *testing.T) {
-	_, chunks, err := chunkFile([]byte("data"))
+	_, chunks, err := chunkFile("file.txt", []byte("data"))
 	require.NoError(t, err)
 	fileHash := chunker.FileHash([]serverDomain.Hash{chunks[0].Hash})
 
@@ -446,7 +446,7 @@ func TestUpdate_Run_Error_ChunkMissingFromResponse(t *testing.T) {
 }
 
 func TestUpdate_Run_Error_ChunkHashMismatch(t *testing.T) {
-	_, chunks, err := chunkFile([]byte("data"))
+	_, chunks, err := chunkFile("file.txt", []byte("data"))
 	require.NoError(t, err)
 	fileHash := chunker.FileHash([]serverDomain.Hash{chunks[0].Hash})
 
@@ -506,7 +506,7 @@ func TestUpdate_Run_Error_LoginRequired(t *testing.T) {
 
 func TestSwitch_Success(t *testing.T) {
 	root := t.TempDir()
-	fileHash, chunks, err := chunkFile([]byte("dev content"))
+	fileHash, chunks, err := chunkFile("file.txt", []byte("dev content"))
 	require.NoError(t, err)
 
 	local := &stubLocalRepo{
@@ -767,7 +767,7 @@ func TestUpdate_Run_Error_MissingChunksFails(t *testing.T) {
 
 func TestUpdate_Run_Error_StoreChunkFails(t *testing.T) {
 	wantErr := errors.New("store chunk failed")
-	_, chunks, err := chunkFile([]byte("data"))
+	_, chunks, err := chunkFile("file.txt", []byte("data"))
 	require.NoError(t, err)
 	fileHash := chunker.FileHash([]serverDomain.Hash{chunks[0].Hash})
 
@@ -798,7 +798,7 @@ func TestUpdate_Run_Error_StoreChunkFails(t *testing.T) {
 
 func TestUpdate_Run_Error_LoadChunkFails(t *testing.T) {
 	wantErr := errors.New("chunk store unreadable")
-	_, chunks, err := chunkFile([]byte("data"))
+	_, chunks, err := chunkFile("file.txt", []byte("data"))
 	require.NoError(t, err)
 	fileHash := chunker.FileHash([]serverDomain.Hash{chunks[0].Hash})
 
@@ -826,7 +826,7 @@ func TestUpdate_Run_Error_LoadChunkFails(t *testing.T) {
 }
 
 func TestUpdate_Run_Error_ContentLengthMismatch(t *testing.T) {
-	_, chunks, err := chunkFile([]byte("data"))
+	_, chunks, err := chunkFile("file.txt", []byte("data"))
 	require.NoError(t, err)
 	fileHash := chunker.FileHash([]serverDomain.Hash{chunks[0].Hash})
 
@@ -961,7 +961,7 @@ func TestMaterializeFile_AppliesMode(t *testing.T) {
 
 func TestUpdate_Run_Error_MkdirFails(t *testing.T) {
 	root := t.TempDir()
-	_, chunks, err := chunkFile([]byte("ok"))
+	_, chunks, err := chunkFile("file.txt", []byte("ok"))
 	require.NoError(t, err)
 	fileHash := chunker.FileHash([]serverDomain.Hash{chunks[0].Hash})
 	require.NoError(t, os.WriteFile(filepath.Join(root, "blocked"), []byte("blocked"), 0o600))
@@ -994,7 +994,7 @@ func TestUpdate_Run_Error_MkdirFails(t *testing.T) {
 
 func TestUpdate_Run_MaterializesExecutableFile(t *testing.T) {
 	root := t.TempDir()
-	fileHash, chunks, err := chunkFile([]byte("run me"))
+	fileHash, chunks, err := chunkFile("file.txt", []byte("run me"))
 	require.NoError(t, err)
 
 	local := &stubLocalRepo{
@@ -1024,7 +1024,7 @@ func TestUpdate_Run_MaterializesExecutableFile(t *testing.T) {
 
 func TestUpdate_Run_MaterializesReadOnlyFile(t *testing.T) {
 	root := t.TempDir()
-	fileHash, chunks, err := chunkFile([]byte("locked"))
+	fileHash, chunks, err := chunkFile("file.txt", []byte("locked"))
 	require.NoError(t, err)
 
 	local := &stubLocalRepo{
@@ -1075,7 +1075,7 @@ func TestUpdate_Run_Error_RemoveReadError(t *testing.T) {
 func TestUpdate_Run_ReportsProgress(t *testing.T) {
 	root := t.TempDir()
 	content := "progress content"
-	fileHash, chunks, err := chunkFile([]byte(content))
+	fileHash, chunks, err := chunkFile("file.txt", []byte(content))
 	require.NoError(t, err)
 
 	local := &stubLocalRepo{
@@ -1160,7 +1160,7 @@ func TestSwitch_Error_LoginRequired(t *testing.T) {
 
 func TestSwitch_Error_SyncingFails(t *testing.T) {
 	root := t.TempDir()
-	_, chunks, err := chunkFile([]byte("data"))
+	_, chunks, err := chunkFile("file.txt", []byte("data"))
 	require.NoError(t, err)
 	fileHash := chunker.FileHash([]serverDomain.Hash{chunks[0].Hash})
 

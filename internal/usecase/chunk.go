@@ -183,7 +183,7 @@ func (c *Chunk) VerifyTransferURL(org, project, hash string, params chunkurl.Par
 
 func validateChunkRefs(refs []ChunkRef) error {
 	for _, ref := range refs {
-		if ref.SizeBytes <= 0 || ref.SizeBytes > chunker.DefaultConfig.Max {
+		if ref.SizeBytes <= 0 || ref.SizeBytes > chunker.MaxChunkSize() {
 			return domain.NewErrorUser("invalid chunk size")
 		}
 	}

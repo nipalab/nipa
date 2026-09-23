@@ -551,7 +551,7 @@ func (r *Revert) workingTreeFiles(root string) (map[string]merge.File, error) {
 		if err != nil {
 			return nil, err
 		}
-		hash, chunks, err := chunkFile(data)
+		hash, chunks, err := chunkFile(f.Path, data)
 		if err != nil {
 			return nil, err
 		}

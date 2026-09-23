@@ -119,7 +119,7 @@ func newTestPush(t *testing.T, local pushLocalRepo, client pushClient) *Push {
 func TestPush_Run_Success(t *testing.T) {
 	root := t.TempDir()
 	writeRepoFile(t, root, "a.txt", "hello world")
-	fileHash, chunks, err := chunkFile([]byte("hello world"))
+	fileHash, chunks, err := chunkFile("file.txt", []byte("hello world"))
 	require.NoError(t, err)
 
 	local := &stubLocalRepo{
@@ -189,7 +189,7 @@ func TestPush_Run_DeduplicatesNewChunks(t *testing.T) {
 func TestPush_Run_UploadsEveryChunkForIdempotentStore(t *testing.T) {
 	root := t.TempDir()
 	writeRepoFile(t, root, "a.txt", "hello world")
-	_, chunks, err := chunkFile([]byte("hello world"))
+	_, chunks, err := chunkFile("file.txt", []byte("hello world"))
 	require.NoError(t, err)
 
 	local := &stubLocalRepo{
@@ -218,12 +218,12 @@ func TestPush_Run_StreamsChunksInWindows(t *testing.T) {
 		x = x*1664525 + 1013904223
 		content[i] = byte(x >> 24)
 	}
-	writeRepoFile(t, root, "big.bin", string(content))
+	writeRepoFile(t, root, "big.blend", string(content))
 
 	local := &stubLocalRepo{
 		loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "main"},
 		snapshot:   &domain.Snapshot{},
-		staged:     []string{"big.bin"},
+		staged:     []string{"big.blend"},
 	}
 	client := &stubPushClient{manifest: &serverDomain.TreeNode{Name: "root"}}
 	pusher := newTestPush(t, local, client)
@@ -258,12 +258,12 @@ func TestPush_Run_UploadsWindowsConcurrently(t *testing.T) {
 		x = x*1664525 + 1013904223
 		content[i] = byte(x >> 24)
 	}
-	writeRepoFile(t, root, "big.bin", string(content))
+	writeRepoFile(t, root, "big.blend", string(content))
 
 	local := &stubLocalRepo{
 		loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "main"},
 		snapshot:   &domain.Snapshot{},
-		staged:     []string{"big.bin"},
+		staged:     []string{"big.blend"},
 	}
 	client := &stubPushClient{
 		manifest:    &serverDomain.TreeNode{Name: "root"},
@@ -349,7 +349,7 @@ func TestPush_Run_Error_NothingStaged(t *testing.T) {
 func TestPush_Run_SparseCloneSendsBaseCommitID(t *testing.T) {
 	root := t.TempDir()
 	writeRepoFile(t, root, "src/a.txt", "hello")
-	fileHash, _, err := chunkFile([]byte("hello"))
+	fileHash, _, err := chunkFile("file.txt", []byte("hello"))
 	require.NoError(t, err)
 
 	local := &stubLocalRepo{

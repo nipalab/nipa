@@ -136,7 +136,7 @@ func storeMergedFile(local threeWayLocalRepo, path string, data []byte, mode int
 		sizes = append(sizes, int64(len(c.Data)))
 		batch = append(batch, &serverDomain.ChunkData{Hash: c.Hash, Data: c.Data})
 		return nil
-	})
+	}, chunker.ConfigForFile(path, chunker.IsBinary(data)))
 	if err != nil {
 		return merge.File{}, err
 	}

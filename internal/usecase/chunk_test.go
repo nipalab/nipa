@@ -223,8 +223,12 @@ func TestChunk_PresignUploadURLsInvalid(t *testing.T) {
 	_, _, err := uc.PresignUploadURLs(ctx, "acme", "game", []ChunkRef{{Hash: hash, SizeBytes: 0}}, 10, "")
 	require400(t, err, "invalid chunk size")
 
-	_, _, err = uc.PresignUploadURLs(ctx, "acme", "game", []ChunkRef{{Hash: hash, SizeBytes: chunker.DefaultConfig.Max + 1}}, 10, "")
+	_, _, err = uc.PresignUploadURLs(ctx, "acme", "game", []ChunkRef{{Hash: hash, SizeBytes: chunker.MaxChunkSize() + 1}}, 10, "")
 	require400(t, err, "invalid chunk size")
+
+	urls, _, err := uc.PresignUploadURLs(ctx, "acme", "game", []ChunkRef{{Hash: hash, SizeBytes: chunker.PackedAssetConfig.Max}}, 10, "")
+	require.NoError(t, err)
+	require.Len(t, urls, 1)
 
 	_, _, err = uc.PresignUploadURLs(ctx, "acme", "game", []ChunkRef{{Hash: hash, SizeBytes: 10}}, 10, "-1")
 	require400(t, err, "invalid page token")

@@ -274,22 +274,26 @@ func (w *WorkingCopy) workingFileHash(path string) (serverDomain.Hash, error) {
 		return serverDomain.Hash{}, err
 	}
 	defer func() { _ = f.Close() }()
-	hash, _, err := chunkReader(f)
+	isBinary, err := chunker.ProbeBinary(f)
+	if err != nil {
+		return serverDomain.Hash{}, err
+	}
+	hash, _, err := chunkReader(f, chunker.ConfigForFile(path, isBinary))
 	return hash, err
 }
 
-func chunkFile(data []byte) (serverDomain.Hash, []serverDomain.Chunk, error) {
-	return chunkReader(bytes.NewReader(data))
+func chunkFile(path string, data []byte) (serverDomain.Hash, []serverDomain.Chunk, error) {
+	return chunkReader(bytes.NewReader(data), chunker.ConfigForFile(path, chunker.IsBinary(data)))
 }
 
-func chunkReader(r io.Reader) (serverDomain.Hash, []serverDomain.Chunk, error) {
+func chunkReader(r io.Reader, cfg chunker.Config) (serverDomain.Hash, []serverDomain.Chunk, error) {
 	var hashes []serverDomain.Hash
 	var wrapped []serverDomain.Chunk
 	err := chunker.Scan(r, func(c chunker.Chunk) error {
 		hashes = append(hashes, c.Hash)
 		wrapped = append(wrapped, serverDomain.Chunk{Hash: c.Hash, SizeBytes: int64(len(c.Data))})
 		return nil
-	})
+	}, cfg)
 	if err != nil {
 		return serverDomain.Hash{}, nil, err
 	}

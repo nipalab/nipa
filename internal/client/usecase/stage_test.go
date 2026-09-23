@@ -169,7 +169,7 @@ func TestWorkingCopy_Status_ReportsRevertConflicts(t *testing.T) {
 
 func contentHash(t *testing.T, content string) serverDomain.Hash {
 	t.Helper()
-	h, _, err := chunkFile([]byte(content))
+	h, _, err := chunkFile("file.txt", []byte(content))
 	require.NoError(t, err)
 	return h
 }

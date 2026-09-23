@@ -370,7 +370,7 @@ func (d *Diff) scanWorking(root string, oldMap map[string]diff.Entry, staged map
 			}
 			return nil, nil, fmt.Errorf("stat %s: %w", p, err)
 		}
-		hash, chunks, err := chunkFile(data)
+		hash, chunks, err := chunkFile(p, data)
 		if err != nil {
 			return nil, nil, fmt.Errorf("chunk %s: %w", p, err)
 		}

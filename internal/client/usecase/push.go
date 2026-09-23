@@ -127,16 +127,11 @@ func (p *Push) pushStaged(ctx context.Context, root string, nipaUrl *domain.Nipa
 		baseByPath[f.Path] = f
 	}
 
-	type stagedFile struct {
-		path string
-		info fs.FileInfo
-		abs  string
-	}
-
 	var files []*serverDomain.PushFile
 	var removed []string
 	var toRead []stagedFile
 	var estBytes int64
+	var estObjects int
 	for _, path := range staged {
 		if isNipaPath(path) {
 			return nil, domain.NewUserError(fmt.Sprintf("cannot push path inside %q: %s", nipaDir, path))
@@ -148,8 +143,10 @@ func (p *Push) pushStaged(ctx context.Context, root string, nipaUrl *domain.Nipa
 			if !info.Mode().IsRegular() {
 				return nil, domain.NewUserError(fmt.Sprintf("%q is not a regular file", path))
 			}
-			toRead = append(toRead, stagedFile{path: path, info: info, abs: abs})
+			cfg, isBinary := profileForFile(path, abs)
+			toRead = append(toRead, stagedFile{path: path, info: info, abs: abs, cfg: cfg, isBinary: isBinary})
 			estBytes += info.Size()
+			estObjects += estimateObjects(info.Size(), cfg)
 		case os.IsNotExist(err):
 			if _, inBase := baseByPath[path]; !inBase {
 				return nil, domain.NewUserError(fmt.Sprintf("staged file %q does not exist", path))
@@ -168,13 +165,6 @@ func (p *Push) pushStaged(ctx context.Context, root string, nipaUrl *domain.Nipa
 	var progressMu sync.Mutex
 	var onChunk func(ch *serverDomain.ChunkData)
 	if prog != nil {
-		estObjects := 0
-		if estBytes > 0 {
-			estObjects = int(estBytes / chunker.DefaultConfig.Avg)
-			if estObjects < 1 {
-				estObjects = 1
-			}
-		}
 		prog.UploadStart(estObjects, estBytes)
 		onChunk = func(ch *serverDomain.ChunkData) {
 			progressMu.Lock()
@@ -188,7 +178,7 @@ func (p *Push) pushStaged(ctx context.Context, root string, nipaUrl *domain.Nipa
 	uploader := newChunkUploader(ctx, p.pushClient, p.localRepo,
 		domain.ChunkScope{Org: nipaUrl.Org, Project: nipaUrl.Project}, onChunk)
 	for _, sf := range toRead {
-		file, err := scanPushFile(sf.path, sf.info, sf.abs, uploader)
+		file, err := scanPushFile(sf, uploader)
 		if err != nil {
 			uploader.abort()
 			return nil, err
@@ -366,29 +356,57 @@ func (u *chunkUploader) failure() error {
 	return u.ctx.Err()
 }
 
-func scanPushFile(path string, info fs.FileInfo, abs string, uploader *chunkUploader) (*serverDomain.PushFile, error) {
+type stagedFile struct {
+	path     string
+	info     fs.FileInfo
+	abs      string
+	cfg      chunker.Config
+	isBinary bool
+}
+
+func profileForFile(path, abs string) (chunker.Config, bool) {
 	f, err := os.Open(abs)
+	if err != nil {
+		return chunker.DefaultConfig, false
+	}
+	defer func() { _ = f.Close() }()
+	isBinary, err := chunker.ProbeBinary(f)
+	if err != nil {
+		return chunker.DefaultConfig, false
+	}
+	return chunker.ConfigForFile(path, isBinary), isBinary
+}
+
+func estimateObjects(size int64, cfg chunker.Config) int {
+	if size <= 0 {
+		return 0
+	}
+	n := int(size / cfg.Avg)
+	if n < 1 {
+		n = 1
+	}
+	return n
+}
+
+func scanPushFile(sf stagedFile, uploader *chunkUploader) (*serverDomain.PushFile, error) {
+	f, err := os.Open(sf.abs)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = f.Close() }()
 	var hashes []serverDomain.Hash
-	isBinary := false
 	err = chunker.Scan(f, func(c chunker.Chunk) error {
 		hashes = append(hashes, c.Hash)
-		if len(hashes) == 1 {
-			isBinary = chunker.IsBinary(c.Data)
-		}
 		return uploader.add(&serverDomain.ChunkData{Hash: c.Hash, Data: c.Data})
-	})
+	}, sf.cfg)
 	if err != nil {
 		return nil, err
 	}
 	return &serverDomain.PushFile{
-		Path:        path,
-		Mode:        int(info.Mode().Perm()),
-		SizeBytes:   info.Size(),
-		IsBinary:    isBinary,
+		Path:        sf.path,
+		Mode:        int(sf.info.Mode().Perm()),
+		SizeBytes:   sf.info.Size(),
+		IsBinary:    sf.isBinary,
 		FileHash:    chunker.FileHash(hashes),
 		ChunkHashes: hashes,
 	}, nil

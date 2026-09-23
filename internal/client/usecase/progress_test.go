@@ -103,7 +103,7 @@ func TestRepo_Clone_NoProgressWhenEverythingIsLocal(t *testing.T) {
 
 func TestUpdate_Run_ReportsDownloadProgress(t *testing.T) {
 	content := "update bytes"
-	fileHash, chunks, err := chunkFile([]byte(content))
+	fileHash, chunks, err := chunkFile("file.txt", []byte(content))
 	require.NoError(t, err)
 
 	prog := &stubProgress{}
