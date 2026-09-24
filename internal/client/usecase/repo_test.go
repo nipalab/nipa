@@ -142,6 +142,11 @@ type stubLocalRepo struct {
 	storeChunkErr error
 	loadChunkErr  error
 	storeMu       sync.Mutex
+
+	statCache    map[string]domain.StatEntry
+	statCacheErr error
+	savedStats   map[string]domain.StatEntry
+	saveStatsErr error
 }
 
 func (s *stubLocalRepo) Init(target string) error {
@@ -205,6 +210,33 @@ func (s *stubLocalRepo) MissingChunks(hashes []serverDomain.Hash) ([]serverDomai
 func (s *stubLocalRepo) ClearStaged() error {
 	s.clearedStaged = true
 	return s.clearStagedErr
+}
+
+func (s *stubLocalRepo) LoadStatCache() (map[string]domain.StatEntry, error) {
+	if s.statCacheErr != nil {
+		return nil, s.statCacheErr
+	}
+	if s.statCache == nil {
+		return map[string]domain.StatEntry{}, nil
+	}
+	return s.statCache, nil
+}
+
+func (s *stubLocalRepo) SaveStatEntries(entries map[string]domain.StatEntry) error {
+	if s.saveStatsErr != nil {
+		return s.saveStatsErr
+	}
+	if s.savedStats == nil {
+		s.savedStats = make(map[string]domain.StatEntry)
+	}
+	if s.statCache == nil {
+		s.statCache = make(map[string]domain.StatEntry)
+	}
+	for path, entry := range entries {
+		s.savedStats[path] = entry
+		s.statCache[path] = entry
+	}
+	return nil
 }
 
 func (s *stubLocalRepo) LoadMergeState() (*domain.MergeState, error) {

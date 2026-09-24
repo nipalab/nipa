@@ -3,13 +3,17 @@ package usecase
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/nipalab/nipa/internal/chunker"
 	"github.com/nipalab/nipa/internal/client/domain"
@@ -24,6 +28,8 @@ type WorkingCopyRepo interface {
 	ListStaged() ([]string, error)
 	LoadMergeState() (*domain.MergeState, error)
 	LoadRevertState() (*domain.RevertState, error)
+	LoadStatCache() (map[string]domain.StatEntry, error)
+	SaveStatEntries(entries map[string]domain.StatEntry) error
 	StageAdd(path string) error
 	StageRemove(paths []string) error
 }
@@ -31,13 +37,16 @@ type WorkingCopyRepo interface {
 type WorkingCopy struct {
 	localRepo WorkingCopyRepo
 	root      string
+	hashFile  func(path, encoding string) (serverDomain.Hash, error)
 }
 
 func NewWorkingCopy(localRepo WorkingCopyRepo, root string) (*WorkingCopy, error) {
 	if err := localRepo.Init(root); err != nil {
 		return nil, err
 	}
-	return &WorkingCopy{localRepo: localRepo, root: root}, nil
+	w := &WorkingCopy{localRepo: localRepo, root: root}
+	w.hashFile = w.workingFileHash
+	return w, nil
 }
 
 func (w *WorkingCopy) Add(ctx context.Context, targets []string) error {
@@ -104,6 +113,10 @@ func (w *WorkingCopy) Status(ctx context.Context) (*domain.Status, error) {
 	if err != nil {
 		return nil, err
 	}
+	statCache, err := w.localRepo.LoadStatCache()
+	if err != nil {
+		return nil, err
+	}
 	baseByPath := make(map[string]domain.SnapshotFile, len(snapshot.Files))
 	for _, f := range snapshot.Files {
 		baseByPath[f.Path] = f
@@ -137,6 +150,9 @@ func (w *WorkingCopy) Status(ctx context.Context) (*domain.Status, error) {
 	if revertState != nil {
 		st.Conflicts = append(st.Conflicts, revertState.Conflicts...)
 	}
+
+	observedAt := time.Now().UnixNano()
+	var jobs []statusHashJob
 	for _, path := range working {
 		if stagedByPath[path] {
 			continue
@@ -146,20 +162,137 @@ func (w *WorkingCopy) Status(ctx context.Context) (*domain.Status, error) {
 			st.Untracked = append(st.Untracked, path)
 			continue
 		}
-		got, err := w.workingFileHash(path, base.Encoding)
+		info, err := os.Stat(filepath.Join(w.root, filepath.FromSlash(path)))
 		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				delete(workingSet, path)
+				continue
+			}
+			return nil, err
+		}
+		entry, cached := statCache[path]
+		if !cached || !statMatches(entry, info) {
+			jobs = append(jobs, statusHashJob{path: path, encoding: base.Encoding, info: info})
 			continue
 		}
-		if got != base.Hash {
+		if entry.Hash != base.Hash || serverModeFromPerm(info.Mode()) != normalizedMode(base.Mode) {
 			st.Modified = append(st.Modified, path)
 		}
 	}
+
+	updates := make(map[string]domain.StatEntry, len(jobs))
+	for i, result := range w.rehash(jobs) {
+		job := jobs[i]
+		if result.err != nil {
+			if errors.Is(result.err, fs.ErrNotExist) {
+				delete(workingSet, job.path)
+				continue
+			}
+			return nil, fmt.Errorf("hash %q: %w", job.path, result.err)
+		}
+		mode := serverModeFromPerm(job.info.Mode())
+		updates[job.path] = domain.StatEntry{
+			SizeBytes: job.info.Size(),
+			MtimeNS:   job.info.ModTime().UnixNano(),
+			Mode:      mode,
+			Hash:      result.hash,
+			CachedAt:  observedAt,
+		}
+		base := baseByPath[job.path]
+		if result.hash != base.Hash || mode != normalizedMode(base.Mode) {
+			st.Modified = append(st.Modified, job.path)
+		}
+	}
+	if len(updates) > 0 {
+		if err := w.localRepo.SaveStatEntries(updates); err != nil {
+			return nil, err
+		}
+	}
+
 	for _, f := range snapshot.Files {
 		if !workingSet[f.Path] {
 			st.Missing = append(st.Missing, f.Path)
 		}
 	}
+	sort.Strings(st.Modified)
 	return st, nil
+}
+
+// statMatches reports whether a cached fingerprint still describes the file.
+// The mtime/cached_at comparison guards files written within the same clock
+// tick as the hash: those are rehashed once, then cached with a later stamp.
+func statMatches(entry domain.StatEntry, info fs.FileInfo) bool {
+	mtimeNS := info.ModTime().UnixNano()
+	return entry.SizeBytes == info.Size() && entry.MtimeNS == mtimeNS && mtimeNS < entry.CachedAt
+}
+
+// normalizedMode treats the proto's unspecified mode as read-write, matching
+// how materialization and pushes fall back to 0644.
+func normalizedMode(mode int) int {
+	if mode == 0 {
+		return 2
+	}
+	return mode
+}
+
+type statusHashJob struct {
+	path     string
+	encoding string
+	info     fs.FileInfo
+}
+
+type statusHashResult struct {
+	hash serverDomain.Hash
+	err  error
+}
+
+const maxStatusHashWorkers = 8
+
+func statusHashWorkers() int {
+	workers := runtime.GOMAXPROCS(0)
+	if workers > maxStatusHashWorkers {
+		workers = maxStatusHashWorkers
+	}
+	if workers < 1 {
+		workers = 1
+	}
+	return workers
+}
+
+// rehash hashes the files whose stat no longer matches the cache, with bounded
+// parallelism. Results are indexed so callers can walk them in path order.
+func (w *WorkingCopy) rehash(jobs []statusHashJob) []statusHashResult {
+	results := make([]statusHashResult, len(jobs))
+	if len(jobs) == 0 {
+		return results
+	}
+	hashFile := w.hashFile
+	if hashFile == nil {
+		hashFile = w.workingFileHash
+	}
+	workers := statusHashWorkers()
+	if workers > len(jobs) {
+		workers = len(jobs)
+	}
+	indices := make(chan int)
+	var wg sync.WaitGroup
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for idx := range indices {
+				job := jobs[idx]
+				hash, err := hashFile(job.path, job.encoding)
+				results[idx] = statusHashResult{hash: hash, err: err}
+			}
+		}()
+	}
+	for i := range jobs {
+		indices <- i
+	}
+	close(indices)
+	wg.Wait()
+	return results
 }
 
 // walkWorkingFiles returns the repo-relative slash paths of regular files in
