@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 	"testing"
 
@@ -8,6 +9,7 @@ import (
 
 	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/http/model"
+	"github.com/nipalab/nipa/internal/snow"
 )
 
 func TestHandler_BrowserTreeHistory(t *testing.T) {
@@ -65,6 +67,37 @@ func TestHandler_BrowserTreeHistorySubdirectory(t *testing.T) {
 	require.Equal(t, second.CommitID.Base36(), tree.Entries[0].LastCommit.ID)
 	require.NotNil(t, tree.LatestCommit)
 	require.Equal(t, second.CommitID.Base36(), tree.LatestCommit.ID)
+}
+
+func TestHandler_BrowserTreeErrorPaths(t *testing.T) {
+	env := newHandlerTestEnv(t)
+	env.seedFiles(t, map[string]string{
+		"public/a.txt":   "hello",
+		"secret/key.bin": "top secret",
+	})
+
+	claims := &domain.Claims{UserID: env.userID, IsAdmin: true}
+	projectParams := map[string]string{"org": "default", "project": "default"}
+
+	appCtx := browserAppCtx(claims, projectParams, map[string]string{"rev": "!!!", "recursive": "1"})
+	env.handler.GetTree(appCtx)
+	require.Equal(t, http.StatusNotFound, appCtx.statusCode)
+
+	appCtx = browserAppCtx(claims, projectParams, map[string]string{"rev": "!!!", "history": "1"})
+	env.handler.GetTree(appCtx)
+	require.Equal(t, http.StatusNotFound, appCtx.statusCode)
+
+	reader := env.createUser(t, "reader2", "reader2@example.com")
+	projectID := snow.ID(1)
+	_, err := env.pbacRepo.CreateRule(context.Background(), domain.PBACRule{
+		UserID: &reader.ID, OrgID: 1, ProjectID: &projectID,
+		PathPrefix: "public", Permission: domain.PermissionRead,
+	})
+	require.NoError(t, err)
+
+	appCtx = browserAppCtx(&domain.Claims{UserID: reader.ID}, projectParams, map[string]string{"branch": "main", "path": "secret"})
+	env.handler.ListCommits(appCtx)
+	require.Equal(t, http.StatusNotFound, appCtx.statusCode)
 }
 
 func TestHandler_BrowserTreeRecursive(t *testing.T) {
