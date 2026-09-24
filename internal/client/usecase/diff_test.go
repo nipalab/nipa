@@ -24,6 +24,7 @@ type stubDiffRepo struct {
 	config      *domain.Config
 	commit      *domain.LocalCommit
 	missing     []serverDomain.Hash
+	statCache   map[string]domain.StatEntry
 	initErr     error
 	configErr   error
 	snapshotErr error
@@ -32,6 +33,7 @@ type stubDiffRepo struct {
 	commitErr   error
 	missingErr  error
 	storeErr    error
+	statErr     error
 	initTarget  string
 }
 
@@ -104,6 +106,16 @@ func (s *stubDiffRepo) OpenChunk(hash serverDomain.Hash) (io.ReadCloser, error) 
 		return nil, errors.New("chunk not found in cache")
 	}
 	return io.NopCloser(bytes.NewReader(data)), nil
+}
+
+func (s *stubDiffRepo) LoadStatCache() (map[string]domain.StatEntry, error) {
+	if s.statErr != nil {
+		return nil, s.statErr
+	}
+	if s.statCache == nil {
+		return map[string]domain.StatEntry{}, nil
+	}
+	return s.statCache, nil
 }
 
 func (s *stubDiffRepo) LoadChunk(hash serverDomain.Hash) ([]byte, error) {

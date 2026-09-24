@@ -30,6 +30,15 @@ type StagedFile struct {
 	StagedAt sql.NullTime `json:"staged_at"`
 }
 
+type StatCache struct {
+	Path      string `json:"path"`
+	SizeBytes int64  `json:"size_bytes"`
+	MtimeNs   int64  `json:"mtime_ns"`
+	Mode      int64  `json:"mode"`
+	Hash      []byte `json:"hash"`
+	CachedAt  int64  `json:"cached_at"`
+}
+
 type TreeNode struct {
 	Path       string `json:"path"`
 	ParentPath string `json:"parent_path"`

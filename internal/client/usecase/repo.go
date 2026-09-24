@@ -35,6 +35,7 @@ type localRepo interface {
 	StoreChunks(chunks []*serverDomain.ChunkData) error
 	OpenChunk(hash serverDomain.Hash) (io.ReadCloser, error)
 	LoadChunk(hash serverDomain.Hash) ([]byte, error)
+	SaveStatEntries(entries map[string]domain.StatEntry) error
 	SaveCommit(commitID, commitHash string) error
 	LoadCommit() (*domain.LocalCommit, error)
 }

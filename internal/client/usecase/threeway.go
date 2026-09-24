@@ -48,6 +48,7 @@ func applyThreeWay(ctx context.Context, client chunkDownloader, local threeWayLo
 	for p, f := range ours {
 		out.Files[p] = f
 	}
+	statEntries := make(map[string]domain.StatEntry)
 
 	for _, p := range sortedEntryPaths(res.Entries) {
 		e := res.Entries[p]
@@ -58,6 +59,9 @@ func applyThreeWay(ctx context.Context, client chunkDownloader, local threeWayLo
 		case merge.KeepTheirs:
 			if err := materializeFile(root, toMaterialized(e.Theirs), local.OpenChunk); err != nil {
 				return nil, err
+			}
+			if entry, err := statEntryFor(root, p, e.Theirs.Hash); err == nil {
+				statEntries[p] = entry
 			}
 			out.Files[p] = e.Theirs
 			out.Staged = append(out.Staged, p)
@@ -82,6 +86,9 @@ func applyThreeWay(ctx context.Context, client chunkDownloader, local threeWayLo
 			}
 			if err := materializeFile(root, toMaterialized(mf), local.OpenChunk); err != nil {
 				return nil, err
+			}
+			if entry, err := statEntryFor(root, p, mf.Hash); err == nil {
+				statEntries[p] = entry
 			}
 			out.Files[p] = mf
 			out.Staged = append(out.Staged, p)
@@ -120,6 +127,11 @@ func applyThreeWay(ctx context.Context, client chunkDownloader, local threeWayLo
 
 	for _, p := range out.Staged {
 		if err := local.StageAdd(p); err != nil {
+			return nil, err
+		}
+	}
+	if len(statEntries) > 0 {
+		if err := local.SaveStatEntries(statEntries); err != nil {
 			return nil, err
 		}
 	}

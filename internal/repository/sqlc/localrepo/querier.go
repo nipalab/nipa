@@ -20,6 +20,9 @@ type Querier interface {
 	StagedFileList(ctx context.Context) ([]string, error)
 	StaleFileDelete(ctx context.Context, snapshotID string) error
 	StaleTreeNodeDelete(ctx context.Context, snapshotID string) error
+	StatCacheList(ctx context.Context) ([]StatCache, error)
+	StatCacheSweep(ctx context.Context) error
+	StatCacheUpsert(ctx context.Context, arg StatCacheUpsertParams) error
 	TreeNodeUpsert(ctx context.Context, arg TreeNodeUpsertParams) error
 }
 

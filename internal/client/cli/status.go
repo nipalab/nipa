@@ -2,10 +2,12 @@ package cli
 
 import (
 	"github.com/nipalab/nipa/internal/client/domain"
+	"github.com/nipalab/nipa/internal/client/usecase"
 	"github.com/spf13/cobra"
 )
 
 func (c *Cli) setupStatusCmd() *cobra.Command {
+	var noCache bool
 	cmd := &cobra.Command{
 		Use:           "status",
 		Short:         "Show the working copy status",
@@ -19,7 +21,7 @@ func (c *Cli) setupStatusCmd() *cobra.Command {
 				return err
 			}
 			defer cleanup()
-			st, err := wc.Status(cmd.Context())
+			st, err := wc.Status(cmd.Context(), usecase.StatusOptions{NoCache: noCache})
 			if err != nil {
 				return err
 			}
@@ -27,6 +29,7 @@ func (c *Cli) setupStatusCmd() *cobra.Command {
 			return nil
 		},
 	}
+	cmd.Flags().BoolVar(&noCache, "no-cache", false, "Rehash every tracked file instead of trusting the stat cache")
 	return cmd
 }
 

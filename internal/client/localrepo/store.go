@@ -107,6 +107,11 @@ func (l *LocalRepo) SaveTree(root *domain.TreeNode) error {
 	if err := q.StaleTreeNodeDelete(ctx, token); err != nil {
 		return err
 	}
+	// Stat rows follow the tracked set: paths gone from the snapshot are no
+	// longer consulted by status, so drop them in the same transaction.
+	if err := q.StatCacheSweep(ctx); err != nil {
+		return err
+	}
 	return tx.Commit()
 }
 

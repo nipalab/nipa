@@ -66,3 +66,22 @@ SELECT path, hash, size_bytes, mode, is_binary, encoding, chunks
 FROM files
 WHERE snapshot_id = :snapshot_id
 ORDER BY path;
+
+-- name: StatCacheList :many
+SELECT path, size_bytes, mtime_ns, mode, hash, cached_at
+FROM stat_cache
+ORDER BY path;
+
+-- name: StatCacheUpsert :exec
+INSERT INTO stat_cache (path, size_bytes, mtime_ns, mode, hash, cached_at)
+VALUES (:path, :size_bytes, :mtime_ns, :mode, :hash, :cached_at)
+ON CONFLICT(path) DO UPDATE SET
+    size_bytes = excluded.size_bytes,
+    mtime_ns = excluded.mtime_ns,
+    mode = excluded.mode,
+    hash = excluded.hash,
+    cached_at = excluded.cached_at;
+
+-- name: StatCacheSweep :exec
+DELETE FROM stat_cache
+WHERE path NOT IN (SELECT ltrim(path, '/') FROM files);
