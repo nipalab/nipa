@@ -41,6 +41,32 @@ func TestHandler_BrowserTreeHistory(t *testing.T) {
 	require.Equal(t, second.CommitID.Base36(), tree.Entries[1].LastCommit.ID)
 }
 
+func TestHandler_BrowserTreeHistorySubdirectory(t *testing.T) {
+	env := newHandlerTestEnv(t)
+	first := env.seedFiles(t, map[string]string{
+		"public/a.txt": "hello",
+		"top.txt":      "one",
+	})
+	second := env.seedPushTo(t, "main", first.CommitID.Base36(), map[string]string{
+		"public/a.txt": "hello world",
+	})
+
+	claims := &domain.Claims{UserID: env.userID, IsAdmin: true}
+	projectParams := map[string]string{"org": "default", "project": "default"}
+
+	appCtx := browserAppCtx(claims, projectParams, map[string]string{"rev": "main", "path": "public", "history": "1"})
+	env.handler.GetTree(appCtx)
+	require.Equal(t, http.StatusOK, appCtx.statusCode)
+	tree, ok := appCtx.response.(model.TreeResponse)
+	require.True(t, ok)
+	require.Len(t, tree.Entries, 1)
+	require.Equal(t, "public/a.txt", tree.Entries[0].Path)
+	require.NotNil(t, tree.Entries[0].LastCommit)
+	require.Equal(t, second.CommitID.Base36(), tree.Entries[0].LastCommit.ID)
+	require.NotNil(t, tree.LatestCommit)
+	require.Equal(t, second.CommitID.Base36(), tree.LatestCommit.ID)
+}
+
 func TestHandler_BrowserTreeRecursive(t *testing.T) {
 	env := newHandlerTestEnv(t)
 	env.seedFiles(t, map[string]string{

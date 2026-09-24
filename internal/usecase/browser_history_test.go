@@ -23,6 +23,15 @@ func expectTreeManifest(repo *MockbranchRepository, spec *testTreeSpec) {
 		DoAndReturn(func(context.Context, int64) (*domain.TreeNode, error) {
 			return &domain.TreeNode{ID: spec.id, Name: spec.name}, nil
 		}).AnyTimes()
+	repo.EXPECT().GetTreeChildByName(gomock.Any(), spec.id, gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ int64, name string) (*domain.TreeNode, error) {
+			for _, child := range spec.children {
+				if child.name == name {
+					return &domain.TreeNode{ID: child.id, Name: child.name}, nil
+				}
+			}
+			return nil, domain.NewErrorRecordNotFound()
+		}).AnyTimes()
 	files := make([]*domain.File, 0, len(spec.files))
 	for name, hash := range spec.files {
 		files = append(files, &domain.File{ID: spec.id, Name: name, Hash: hash})
@@ -122,6 +131,38 @@ func TestBranch_TreeAtWithHistory_EmptyRepo(t *testing.T) {
 	require.Empty(t, node.FileChildren)
 	require.Nil(t, history.Latest)
 	require.Empty(t, history.ByPath)
+}
+
+func TestBranch_TreeAtWithHistory_Subdirectory(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := NewMockpermissionUsecase(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+	uc := NewBranchWithChunks(perm, repo, newTestBranchNode(t), &stubChunkReader{})
+
+	headID, midID, rootID := snow.ID(30), snow.ID(20), snow.ID(10)
+	head := &testTreeSpec{id: 103, files: map[string]domain.Hash{"top.txt": {2}},
+		children: []*testTreeSpec{{id: 203, name: "public", files: map[string]domain.Hash{"x.txt": {2}}}}}
+	mid := &testTreeSpec{id: 102, files: map[string]domain.Hash{"top.txt": {2}},
+		children: []*testTreeSpec{{id: 202, name: "public", files: map[string]domain.Hash{"x.txt": {1}}}}}
+	root := &testTreeSpec{id: 101, files: map[string]domain.Hash{"top.txt": {1}},
+		children: []*testTreeSpec{{id: 201, name: "public", files: map[string]domain.Hash{"x.txt": {1}}}}}
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
+	perm.EXPECT().CompileFilter(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(AllowAllFilter(), nil).AnyTimes()
+	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").
+		Return(&domain.Branch{Name: "main", CommitID: &headID}, nil)
+	expectCommitManifest(repo, headID, &midID, head)
+	expectCommitManifest(repo, midID, &rootID, mid)
+	expectCommitManifest(repo, rootID, nil, root)
+	expectFlatLog(repo, headID, midID, rootID)
+
+	node, history, err := uc.TreeAtWithHistory(context.Background(), snow.ID(1), "main", "public")
+	require.NoError(t, err)
+	require.Equal(t, "public", node.Name)
+	require.Len(t, node.FileChildren, 1)
+	require.Equal(t, headID, history.Latest.ID)
+	require.Equal(t, headID, history.ByPath["public/x.txt"].ID)
+	_, ok := history.ByPath["x.txt"]
+	require.False(t, ok, "history must be keyed by repo-relative path")
 }
 
 func TestBranch_TreeAtWithHistory_NoPermission(t *testing.T) {

@@ -15,7 +15,8 @@ const (
 )
 
 // TreeHistory carries the newest commit that touched a directory and the
-// newest commit that touched each of its direct entries.
+// newest commit that touched each of its direct entries. ByPath is keyed by
+// repo-relative path.
 type TreeHistory struct {
 	Latest *domain.CommitLogEntry
 	ByPath map[string]*domain.CommitLogEntry
@@ -32,11 +33,11 @@ func (b *Branch) treeHistory(ctx context.Context, projectID snow.ID, headID snow
 		return nil, err
 	}
 	remaining := len(headDir.FileChildren) + len(headDir.TreeChildren)
-	newerRoot := headRoot
+	newerDir := headDir
 	for i, commit := range commits {
-		var olderRoot *domain.TreeNode
+		var olderDir *domain.TreeNode
 		if i+1 < len(commits) {
-			olderRoot, err = b.commitTreeManifest(ctx, projectID, commits[i+1].ID, true)
+			olderDir, err = b.dirManifestAt(ctx, projectID, commits[i+1].ID, path)
 			if err != nil {
 				return nil, err
 			}
@@ -44,18 +45,16 @@ func (b *Branch) treeHistory(ctx context.Context, projectID snow.ID, headID snow
 			break
 		}
 
-		newerDir := findLoadedTreeNode(newerRoot, path)
-		olderDir := findLoadedTreeNode(olderRoot, path)
 		if history.Latest == nil && !sameTreeHash(newerDir, olderDir) {
 			history.Latest = commit
 		}
 		if remaining > 0 {
-			resolveEntryCommits(newerDir, olderDir, commit, history.ByPath, &remaining)
+			resolveEntryCommits(newerDir, olderDir, commit, path, history.ByPath, &remaining)
 		}
 		if history.Latest != nil && remaining == 0 {
 			break
 		}
-		newerRoot = olderRoot
+		newerDir = olderDir
 	}
 	return history, nil
 }
@@ -96,19 +95,20 @@ func (b *Branch) PathCommitLog(ctx context.Context, projectID snow.ID, rev, path
 		return nil, err
 	}
 	out := make([]*domain.CommitLogEntry, 0, limit)
-	var newerRoot *domain.TreeNode
+	var curHash domain.Hash
+	var curOK bool
 	for i, commit := range commits {
-		curRoot := newerRoot
-		if curRoot == nil {
-			curRoot, err = b.commitTreeManifest(ctx, projectID, commit.ID, true)
+		if i == 0 {
+			curHash, curOK, err = b.pathHashAtCommit(ctx, projectID, commit.ID, path)
 			if err != nil {
 				return nil, err
 			}
 		}
-		var olderRoot *domain.TreeNode
+		var olderHash domain.Hash
+		olderOK := false
 		hasOlder := false
 		if i+1 < len(commits) {
-			olderRoot, err = b.commitTreeManifest(ctx, projectID, commits[i+1].ID, true)
+			olderHash, olderOK, err = b.pathHashAtCommit(ctx, projectID, commits[i+1].ID, path)
 			if err != nil {
 				return nil, err
 			}
@@ -117,30 +117,117 @@ func (b *Branch) PathCommitLog(ctx context.Context, projectID snow.ID, rev, path
 			break
 		}
 
-		if !hasOlder || pathChanged(curRoot, olderRoot, path) {
+		if !hasOlder || hashChanged(curHash, curOK, olderHash, olderOK) {
 			out = append(out, commit)
 			if len(out) >= limit {
 				break
 			}
 		}
-		newerRoot = olderRoot
+		curHash, curOK = olderHash, olderOK
 	}
 	return out, nil
 }
 
-func resolveEntryCommits(newer, older *domain.TreeNode, commit *domain.CommitLogEntry, byPath map[string]*domain.CommitLogEntry, remaining *int) {
+// dirManifestAt loads only the subtree at path for one commit instead of the
+// whole repository manifest.
+func (b *Branch) dirManifestAt(ctx context.Context, projectID snow.ID, commitID snow.ID, path string) (*domain.TreeNode, error) {
+	node, err := b.treeNodeAtCommit(ctx, commitID, path)
+	if err != nil || node == nil {
+		return nil, err
+	}
+	filter, err := b.permUc.CompileFilter(ctx, projectID, domain.PermissionRead)
+	if err != nil {
+		return nil, err
+	}
+	if err := b.loadTreeManifest(ctx, node, path, true, filter, nil); err != nil {
+		return nil, err
+	}
+	rehashTree(node)
+	return node, nil
+}
+
+// pathHashAtCommit returns the content hash of one file or directory at a
+// commit, loading only the nodes along path. The bool reports whether the
+// path exists at that commit.
+func (b *Branch) pathHashAtCommit(ctx context.Context, projectID snow.ID, commitID snow.ID, path string) (domain.Hash, bool, error) {
+	segments := splitPath(path)
+	parentPath := ""
+	if len(segments) > 1 {
+		parentPath = strings.Join(segments[:len(segments)-1], "/")
+	}
+	node, err := b.treeNodeAtCommit(ctx, commitID, parentPath)
+	if err != nil || node == nil {
+		return domain.Hash{}, false, err
+	}
+	if len(segments) > 0 {
+		last := segments[len(segments)-1]
+		files, err := b.branchRepo.ListFilesByTree(ctx, node.ID)
+		if err != nil {
+			return domain.Hash{}, false, err
+		}
+		for _, file := range files {
+			if file.Name == last {
+				return file.Hash, true, nil
+			}
+		}
+		child, err := b.branchRepo.GetTreeChildByName(ctx, node.ID, last)
+		if err != nil {
+			if domain.IsErrorNotFound(err) {
+				return domain.Hash{}, false, nil
+			}
+			return domain.Hash{}, false, err
+		}
+		node = child
+	}
+	filter, err := b.permUc.CompileFilter(ctx, projectID, domain.PermissionRead)
+	if err != nil {
+		return domain.Hash{}, false, err
+	}
+	if err := b.loadTreeManifest(ctx, node, path, true, filter, nil); err != nil {
+		return domain.Hash{}, false, err
+	}
+	rehashTree(node)
+	return node.Hash, true, nil
+}
+
+// treeNodeAtCommit descends from the commit root to path without loading any
+// subtree content. A missing node returns (nil, nil).
+func (b *Branch) treeNodeAtCommit(ctx context.Context, commitID snow.ID, path string) (*domain.TreeNode, error) {
+	commit, err := b.branchRepo.GetCommit(ctx, commitID)
+	if err != nil {
+		return nil, err
+	}
+	node, err := b.branchRepo.GetTreeNode(ctx, commit.TreeID)
+	if err != nil {
+		return nil, err
+	}
+	for _, segment := range splitPath(path) {
+		child, err := b.branchRepo.GetTreeChildByName(ctx, node.ID, segment)
+		if err != nil {
+			if domain.IsErrorNotFound(err) {
+				return nil, nil
+			}
+			return nil, err
+		}
+		node = child
+	}
+	return node, nil
+}
+
+func resolveEntryCommits(newer, older *domain.TreeNode, commit *domain.CommitLogEntry, basePath string, byPath map[string]*domain.CommitLogEntry, remaining *int) {
 	if newer == nil {
 		return
 	}
 	resolve := func(name string, newerHash domain.Hash) {
-		if _, done := byPath[name]; done {
+		key := joinTreePath(basePath, name)
+		if _, done := byPath[key]; done {
 			return
 		}
 		olderHash, ok := childEntryHash(older, name)
 		if ok && olderHash == newerHash {
 			return
 		}
-		byPath[name] = commit
+		byPath[key] = commit
 		*remaining--
 	}
 	for _, file := range newer.FileChildren {
@@ -172,9 +259,7 @@ func sameTreeHash(a, b *domain.TreeNode) bool {
 	return a != nil && b != nil && a.Hash == b.Hash
 }
 
-func pathChanged(newerRoot, olderRoot *domain.TreeNode, path string) bool {
-	newHash, newOK := pathEntryHash(newerRoot, path)
-	oldHash, oldOK := pathEntryHash(olderRoot, path)
+func hashChanged(newHash domain.Hash, newOK bool, oldHash domain.Hash, oldOK bool) bool {
 	if !newOK && !oldOK {
 		return false
 	}
@@ -184,34 +269,12 @@ func pathChanged(newerRoot, olderRoot *domain.TreeNode, path string) bool {
 	return newHash != oldHash
 }
 
-func pathEntryHash(root *domain.TreeNode, path string) (domain.Hash, bool) {
-	if root == nil {
-		return domain.Hash{}, false
+func splitPath(path string) []string {
+	var out []string
+	for _, segment := range strings.Split(path, "/") {
+		if segment != "" {
+			out = append(out, segment)
+		}
 	}
-	segments := strings.Split(strings.Trim(path, "/"), "/")
-	node := root
-	for i, segment := range segments {
-		if segment == "" {
-			continue
-		}
-		if i == len(segments)-1 {
-			for _, file := range node.FileChildren {
-				if file.Name == segment {
-					return file.Hash, true
-				}
-			}
-		}
-		var next *domain.TreeNode
-		for _, child := range node.TreeChildren {
-			if child.Name == segment {
-				next = child
-				break
-			}
-		}
-		if next == nil {
-			return domain.Hash{}, false
-		}
-		node = next
-	}
-	return node.Hash, true
+	return out
 }
