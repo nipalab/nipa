@@ -79,6 +79,19 @@ func EncodeBytes(data []byte, path string, isBinary bool, encoding string) (stri
 	return encoding, chunks, nil
 }
 
+// NormalizeEncoding maps an empty encoding to raw and reports whether the
+// value is a known encoding.
+func NormalizeEncoding(encoding string) (string, bool) {
+	switch encoding {
+	case "":
+		return EncodingRaw, true
+	case EncodingRaw, EncodingZstd:
+		return encoding, true
+	default:
+		return "", false
+	}
+}
+
 // Decode returns the plaintext bytes of a stored chunk.
 func Decode(encoding string, data []byte) ([]byte, error) {
 	if encoding != EncodingZstd {

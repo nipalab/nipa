@@ -86,6 +86,23 @@ func TestEncode_EmptyTextHasNoChunks(t *testing.T) {
 	require.Empty(t, chunks)
 }
 
+func TestNormalizeEncoding(t *testing.T) {
+	encoding, ok := NormalizeEncoding("")
+	require.True(t, ok)
+	require.Equal(t, EncodingRaw, encoding)
+
+	encoding, ok = NormalizeEncoding(EncodingRaw)
+	require.True(t, ok)
+	require.Equal(t, EncodingRaw, encoding)
+
+	encoding, ok = NormalizeEncoding(EncodingZstd)
+	require.True(t, ok)
+	require.Equal(t, EncodingZstd, encoding)
+
+	_, ok = NormalizeEncoding("bogus")
+	require.False(t, ok)
+}
+
 func TestDecode_RawPassthrough(t *testing.T) {
 	data := []byte("plain")
 	decoded, err := Decode(EncodingRaw, data)

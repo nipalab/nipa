@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/nipalab/nipa/internal/chunker"
 	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/snow"
 	"github.com/nipalab/nipa/internal/treehash"
@@ -277,6 +278,11 @@ func validatePushFiles(files []*domain.PushFile) error {
 		if len(f.ChunkHashes) == 0 {
 			return domain.NewErrorUser(fmt.Sprintf("file %q has no chunks", f.Path))
 		}
+		encoding, ok := chunker.NormalizeEncoding(f.Encoding)
+		if !ok {
+			return domain.NewErrorUser(fmt.Sprintf("invalid encoding %q for %q", f.Encoding, f.Path))
+		}
+		f.Encoding = encoding
 	}
 	return nil
 }

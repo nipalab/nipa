@@ -56,6 +56,29 @@ func TestPushHandler_InvalidHash(t *testing.T) {
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 }
 
+func TestPushHandler_InvalidEncoding(t *testing.T) {
+	push, perm, _, _ := newPushUsecase(t)
+	pushCtx := domain.ContextWithClaim(context.Background(), domain.Claims{UserID: snow.ID(7)})
+	srv := New(&mockUsecaseContainer{common: newTestCommon(), push: push})
+
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(42), domain.PermissionWrite).Return(true)
+
+	var chunk domain.Hash
+	fileHash := treehash.FileHash([]domain.Hash{chunk})
+	_, err := srv.Push(pushCtx, &pb.PushRequest{
+		Context: &pb.ProjectContext{Org: "org", Project: "proj"},
+		Message: "msg",
+		Files: []*pb.PushFile{{
+			Path:        "a.txt",
+			FileHash:    fileHash.String(),
+			ChunkHashes: []string{chunk.String()},
+			Encoding:    "bogus",
+		}},
+	})
+	require.Error(t, err)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+}
+
 func TestPushHandler_ConflictIsFailedPrecondition(t *testing.T) {
 	push, perm, repo, _ := newPushUsecase(t)
 	pushCtx := domain.ContextWithClaim(context.Background(), domain.Claims{UserID: snow.ID(7)})
