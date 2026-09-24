@@ -40,7 +40,7 @@ func (c *Cli) setupDiffCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "diff [<rev1> [<rev2>]] [--] [<path>...]",
 		Short:         "Show working-copy and revision changes",
-		Long:          "Show changes as a unified patch. With no revisions, the working tree is compared against the last synced snapshot, fully offline (staged new files count as additions; untracked files are listed by nipa status). With one revision, the revision's tree is compared against the working tree; with two, the first revision's tree is compared against the second. A revision is a branch name, a base36 commit ID (as printed by nipa log) or HEAD/@ (the locally pinned commit, falling back to the configured branch); <a>..<b> compares the two endpoints and <a>...<b> compares their merge base against <b>. Renames are detected automatically. Use -U to change the context size, --stat/--name-only/--name-status for other formats, --staged for what the next push would upload, -w/-b to ignore whitespace, --ext-diff to open each changed file in the configured external tool, and --exit-code to fail when there are differences.",
+		Long:          "Show changes as a unified patch. With no revisions, the working tree is compared against the last synced snapshot, fully offline (staged new files count as additions; untracked files are listed by nipa status). With one revision, the revision's tree is compared against the working tree; with two, the first revision's tree is compared against the second. A revision is a branch name, a base36 commit ID (as printed by nipa log) or HEAD/@ (the locally pinned commit, falling back to the configured branch); <a>..<b> compares the two endpoints and <a>...<b> compares their merge base against <b>. Renames are detected automatically. Use -U to change the context size, --stat/--name-only/--name-status for other formats, --staged for what the next push would upload, -w/-b to ignore whitespace, --ext-diff to open each changed file in the configured external tool, --exit-code to fail when there are differences, and --no-cache to re-read every working file instead of trusting the stat cache.",
 		Args:          cobra.ArbitraryArgs,
 		SilenceErrors: true,
 		SilenceUsage:  true,
@@ -59,6 +59,7 @@ func (c *Cli) setupDiffCmd() *cobra.Command {
 	cmd.Flags().Bool("no-pager", false, "Print without the interactive pager")
 	cmd.Flags().Bool("ext-diff", false, "Use the configured external diff command")
 	cmd.Flags().Bool("exit-code", false, "Exit with status 1 when there are differences")
+	cmd.Flags().Bool("no-cache", false, "Read every working file instead of trusting the stat cache")
 	return cmd
 }
 
@@ -202,10 +203,12 @@ func diffCompareOptions(cmd *cobra.Command, revs, paths []string, mergeBase bool
 	if len(revs) > 0 && staged {
 		return usecase.DiffOptions{}, fmt.Errorf("--staged cannot be combined with revisions")
 	}
+	noCache, _ := cmd.Flags().GetBool("no-cache")
 	return usecase.DiffOptions{
 		Staged:    staged,
 		Paths:     paths,
 		MergeBase: mergeBase,
+		NoCache:   noCache,
 	}, nil
 }
 

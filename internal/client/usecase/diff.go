@@ -34,6 +34,7 @@ type diffLocalRepo interface {
 	StoreChunks(chunks []*serverDomain.ChunkData) error
 	OpenChunk(hash serverDomain.Hash) (io.ReadCloser, error)
 	LoadChunk(hash serverDomain.Hash) ([]byte, error)
+	LoadStatCache() (map[string]clientDomain.StatEntry, error)
 }
 
 // DiffOptions controls which paths and states are compared.
@@ -46,6 +47,8 @@ type DiffOptions struct {
 	MergeBase bool
 	// Binary loads binary content too (external diff tools).
 	Binary bool
+	// NoCache reads every working file instead of trusting fingerprints.
+	NoCache bool
 }
 
 type Diff struct {
@@ -343,6 +346,13 @@ func (d *Diff) scanWorking(root string, oldMap map[string]diff.Entry, staged map
 	if err != nil {
 		return nil, nil, err
 	}
+	var statCache map[string]clientDomain.StatEntry
+	if !opts.NoCache {
+		statCache, err = d.localRepo.LoadStatCache()
+		if err != nil {
+			return nil, nil, err
+		}
+	}
 	newMap := make(map[string]diff.Entry, len(paths))
 	contents := make(map[string][]byte, len(paths))
 	for _, p := range paths {
@@ -352,17 +362,11 @@ func (d *Diff) scanWorking(root string, oldMap map[string]diff.Entry, staged map
 		if opts.Staged && !staged[p] {
 			continue
 		}
-		if _, tracked := oldMap[p]; !tracked && !staged[p] {
+		old, tracked := oldMap[p]
+		if !tracked && !staged[p] {
 			continue
 		}
 		fp := filepath.Join(root, filepath.FromSlash(p))
-		data, err := os.ReadFile(fp)
-		if err != nil {
-			if errors.Is(err, os.ErrNotExist) {
-				continue
-			}
-			return nil, nil, fmt.Errorf("read %s: %w", p, err)
-		}
 		info, err := os.Stat(fp)
 		if err != nil {
 			if errors.Is(err, os.ErrNotExist) {
@@ -370,8 +374,24 @@ func (d *Diff) scanWorking(root string, oldMap map[string]diff.Entry, staged map
 			}
 			return nil, nil, fmt.Errorf("stat %s: %w", p, err)
 		}
+		// A fresh fingerprint matching the old side means the file is
+		// unchanged: reuse its metadata and skip reading the content.
+		if tracked {
+			if entry, cached := statCache[p]; cached && statMatches(entry, info) && entry.Hash == old.Hash {
+				old.Mode = serverModeFromPerm(info.Mode())
+				newMap[p] = old
+				continue
+			}
+		}
+		data, err := os.ReadFile(fp)
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			return nil, nil, fmt.Errorf("read %s: %w", p, err)
+		}
 		encoding := ""
-		if old, tracked := oldMap[p]; tracked {
+		if tracked {
 			encoding = storedEncoding(old.Encoding)
 		}
 		hash, chunks, encoding, err := chunkFile(p, data, encoding)

@@ -104,7 +104,15 @@ func (w *WorkingCopy) Remove(ctx context.Context, targets []string) error {
 	return w.localRepo.StageRemove(paths)
 }
 
-func (w *WorkingCopy) Status(ctx context.Context) (*domain.Status, error) {
+// StatusOptions controls how status verifies working files.
+type StatusOptions struct {
+	// NoCache rehashes every tracked file instead of trusting fingerprints.
+	NoCache bool
+}
+
+func (w *WorkingCopy) Status(ctx context.Context, opts ...StatusOptions) (*domain.Status, error) {
+	noCache := len(opts) > 0 && opts[0].NoCache
+
 	snapshot, err := w.localRepo.Snapshot()
 	if err != nil {
 		return nil, err
@@ -113,9 +121,12 @@ func (w *WorkingCopy) Status(ctx context.Context) (*domain.Status, error) {
 	if err != nil {
 		return nil, err
 	}
-	statCache, err := w.localRepo.LoadStatCache()
-	if err != nil {
-		return nil, err
+	statCache := map[string]domain.StatEntry{}
+	if !noCache {
+		statCache, err = w.localRepo.LoadStatCache()
+		if err != nil {
+			return nil, err
+		}
 	}
 	baseByPath := make(map[string]domain.SnapshotFile, len(snapshot.Files))
 	for _, f := range snapshot.Files {

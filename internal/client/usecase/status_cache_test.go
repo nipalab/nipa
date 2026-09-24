@@ -218,6 +218,33 @@ func TestWorkingCopy_Status_MultipleFilesStaySortedAcrossWorkers(t *testing.T) {
 	require.Equal(t, 3, calls.Load(), "both modified files are served from the cache")
 }
 
+func TestWorkingCopy_Status_NoCacheRehashesEverything(t *testing.T) {
+	root := t.TempDir()
+	writeRepoFile(t, root, "a.txt", "aaa")
+	writeRepoFile(t, root, "b.txt", "bbb")
+	local := &stubLocalRepo{snapshot: &domain.Snapshot{Files: []domain.SnapshotFile{
+		{Path: "a.txt", Hash: contentHash(t, "aaa"), Mode: 2, SizeBytes: 3},
+		{Path: "b.txt", Hash: contentHash(t, "bbb"), Mode: 2, SizeBytes: 3},
+	}}}
+	wc := newWorkingCopy(t, local, root)
+	calls := countHashes(wc)
+
+	st, err := wc.Status(context.Background())
+	require.NoError(t, err)
+	require.Empty(t, st.Modified)
+	require.Equal(t, 2, calls.Load(), "cold status hashes both files")
+
+	_, err = wc.Status(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, 2, calls.Load(), "warm status trusts the fingerprints")
+
+	st, err = wc.Status(context.Background(), StatusOptions{NoCache: true})
+	require.NoError(t, err)
+	require.Empty(t, st.Modified)
+	require.Equal(t, 4, calls.Load(), "--no-cache rehashes every tracked file")
+	require.Contains(t, local.savedStats, "a.txt", "the forced rehash refreshes the cache")
+}
+
 func TestWorkingCopy_Status_StatCacheErrors(t *testing.T) {
 	root := t.TempDir()
 	writeRepoFile(t, root, "a.txt", "hello")
