@@ -346,6 +346,30 @@ func TestClient_RefreshAndRetry(t *testing.T) {
 	require.Equal(t, "Bearer new-token", gotAuth)
 }
 
+func TestClient_RefreshAndRetryReplacesStaleAuthorization(t *testing.T) {
+	session := &stubSession{accessToken: "old-token", refreshToken: "new-token"}
+	c := NewClient(NewTransport(), session)
+	interceptor := c.unaryAuthInterceptor()
+
+	ctx := metadata.AppendToOutgoingContext(context.Background(), "authorization", "Bearer stale-token")
+	firstCall := true
+	var gotAuth []string
+	invoker := func(ctx context.Context, _ string, _, _ any, _ *grpc.ClientConn, _ ...grpc.CallOption) error {
+		md, _ := metadata.FromOutgoingContext(ctx)
+		if firstCall {
+			firstCall = false
+			return status.Error(codes.Unauthenticated, "invalid token")
+		}
+		gotAuth = md.Get("authorization")
+		return nil
+	}
+
+	err := interceptor(ctx, "/greet.NipaService/GetBranch", nil, nil, nil, invoker)
+	require.NoError(t, err)
+	require.Equal(t, 1, session.refreshCalls)
+	require.Equal(t, []string{"Bearer new-token"}, gotAuth, "the stale authorization header must not precede the refreshed one")
+}
+
 func TestClient_RefreshFails(t *testing.T) {
 	c := NewClient(NewTransport(), &stubSession{
 		accessToken: "old-token",
