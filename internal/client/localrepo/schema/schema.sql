@@ -23,6 +23,15 @@ CREATE TABLE IF NOT EXISTS meta (
     value TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS stat_cache (
+    path TEXT PRIMARY KEY,
+    size_bytes INTEGER NOT NULL,
+    mtime_ns INTEGER NOT NULL,
+    mode INTEGER NOT NULL,
+    hash BLOB NOT NULL,
+    cached_at INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS staged_files (
     path TEXT PRIMARY KEY,
     staged_at DATETIME DEFAULT CURRENT_TIMESTAMP

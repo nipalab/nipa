@@ -19,6 +19,16 @@ type Snapshot struct {
 	Files    []SnapshotFile
 }
 
+// StatEntry is a validated working-copy fingerprint: the stat values observed
+// when Hash was computed. A later stat match means the file still has Hash.
+type StatEntry struct {
+	SizeBytes int64
+	MtimeNS   int64
+	Mode      int
+	Hash      serverDomain.Hash
+	CachedAt  int64
+}
+
 type Status struct {
 	Staged    []string
 	Modified  []string

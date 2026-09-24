@@ -218,6 +218,84 @@ func (q *Queries) StaleTreeNodeDelete(ctx context.Context, snapshotID string) er
 	return err
 }
 
+const statCacheList = `-- name: StatCacheList :many
+SELECT path, size_bytes, mtime_ns, mode, hash, cached_at
+FROM stat_cache
+ORDER BY path
+`
+
+func (q *Queries) StatCacheList(ctx context.Context) ([]StatCache, error) {
+	rows, err := q.db.QueryContext(ctx, statCacheList)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []StatCache
+	for rows.Next() {
+		var i StatCache
+		if err := rows.Scan(
+			&i.Path,
+			&i.SizeBytes,
+			&i.MtimeNs,
+			&i.Mode,
+			&i.Hash,
+			&i.CachedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const statCacheSweep = `-- name: StatCacheSweep :exec
+DELETE FROM stat_cache
+WHERE path NOT IN (SELECT ltrim(path, '/') FROM files)
+`
+
+func (q *Queries) StatCacheSweep(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, statCacheSweep)
+	return err
+}
+
+const statCacheUpsert = `-- name: StatCacheUpsert :exec
+INSERT INTO stat_cache (path, size_bytes, mtime_ns, mode, hash, cached_at)
+VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+ON CONFLICT(path) DO UPDATE SET
+    size_bytes = excluded.size_bytes,
+    mtime_ns = excluded.mtime_ns,
+    mode = excluded.mode,
+    hash = excluded.hash,
+    cached_at = excluded.cached_at
+`
+
+type StatCacheUpsertParams struct {
+	Path      string `json:"path"`
+	SizeBytes int64  `json:"size_bytes"`
+	MtimeNs   int64  `json:"mtime_ns"`
+	Mode      int64  `json:"mode"`
+	Hash      []byte `json:"hash"`
+	CachedAt  int64  `json:"cached_at"`
+}
+
+func (q *Queries) StatCacheUpsert(ctx context.Context, arg StatCacheUpsertParams) error {
+	_, err := q.db.ExecContext(ctx, statCacheUpsert,
+		arg.Path,
+		arg.SizeBytes,
+		arg.MtimeNs,
+		arg.Mode,
+		arg.Hash,
+		arg.CachedAt,
+	)
+	return err
+}
+
 const treeNodeUpsert = `-- name: TreeNodeUpsert :exec
 INSERT INTO tree_nodes (path, parent_path, hash, mode, snapshot_id)
 VALUES (?1, ?2, ?3, ?4, ?5)
