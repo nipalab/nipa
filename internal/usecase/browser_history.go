@@ -49,7 +49,7 @@ func (b *Branch) treeHistory(ctx context.Context, projectID snow.ID, headID snow
 			history.Latest = commit
 		}
 		if remaining > 0 {
-			resolveEntryCommits(newerDir, olderDir, commit, path, history.ByPath, &remaining)
+			resolveEntryCommits(newerDir, olderDir, headDir, commit, path, history.ByPath, &remaining)
 		}
 		if history.Latest != nil && remaining == 0 {
 			break
@@ -214,13 +214,21 @@ func (b *Branch) treeNodeAtCommit(ctx context.Context, commitID snow.ID, path st
 	return node, nil
 }
 
-func resolveEntryCommits(newer, older *domain.TreeNode, commit *domain.CommitLogEntry, basePath string, byPath map[string]*domain.CommitLogEntry, remaining *int) {
-	if newer == nil {
+// resolveEntryCommits attributes the head directory's entries to commit when
+// their content changed between newer and older. Only head entries are
+// considered, so entries deleted before head never consume the remaining
+// budget or enter ByPath.
+func resolveEntryCommits(newer, older, head *domain.TreeNode, commit *domain.CommitLogEntry, basePath string, byPath map[string]*domain.CommitLogEntry, remaining *int) {
+	if head == nil {
 		return
 	}
-	resolve := func(name string, newerHash domain.Hash) {
+	resolve := func(name string) {
 		key := joinTreePath(basePath, name)
 		if _, done := byPath[key]; done {
+			return
+		}
+		newerHash, ok := childEntryHash(newer, name)
+		if !ok {
 			return
 		}
 		olderHash, ok := childEntryHash(older, name)
@@ -230,11 +238,11 @@ func resolveEntryCommits(newer, older *domain.TreeNode, commit *domain.CommitLog
 		byPath[key] = commit
 		*remaining--
 	}
-	for _, file := range newer.FileChildren {
-		resolve(file.Name, file.Hash)
+	for _, file := range head.FileChildren {
+		resolve(file.Name)
 	}
-	for _, child := range newer.TreeChildren {
-		resolve(child.Name, child.Hash)
+	for _, child := range head.TreeChildren {
+		resolve(child.Name)
 	}
 }
 

@@ -53,15 +53,26 @@ func TestChildEntryHash(t *testing.T) {
 }
 
 func TestResolveEntryCommits(t *testing.T) {
-	t.Run("nil newer", func(t *testing.T) {
+	t.Run("no head entries", func(t *testing.T) {
 		remaining := 1
-		resolveEntryCommits(nil, nil, &domain.CommitLogEntry{}, "", map[string]*domain.CommitLogEntry{}, &remaining)
+		resolveEntryCommits(nil, nil, nil, &domain.CommitLogEntry{}, "", map[string]*domain.CommitLogEntry{}, &remaining)
+		require.Equal(t, 1, remaining)
+	})
+
+	t.Run("missing newer", func(t *testing.T) {
+		remaining := 1
+		head := &domain.TreeNode{FileChildren: []*domain.File{{Name: "a.txt", Hash: domain.Hash{1}}}}
+		resolveEntryCommits(nil, nil, head, &domain.CommitLogEntry{}, "", map[string]*domain.CommitLogEntry{}, &remaining)
 		require.Equal(t, 1, remaining)
 	})
 
 	t.Run("tree child and already resolved", func(t *testing.T) {
 		remaining := 2
 		byPath := map[string]*domain.CommitLogEntry{"base/a.txt": {Commit: domain.Commit{ID: snow.ID(1)}}}
+		head := &domain.TreeNode{
+			FileChildren: []*domain.File{{Name: "a.txt", Hash: domain.Hash{1}}},
+			TreeChildren: []*domain.TreeNode{{Name: "sub", Hash: domain.Hash{5}}},
+		}
 		newer := &domain.TreeNode{
 			FileChildren: []*domain.File{{Name: "a.txt", Hash: domain.Hash{1}}},
 			TreeChildren: []*domain.TreeNode{{Name: "sub", Hash: domain.Hash{5}}},
@@ -70,10 +81,31 @@ func TestResolveEntryCommits(t *testing.T) {
 			FileChildren: []*domain.File{{Name: "a.txt", Hash: domain.Hash{1}}},
 			TreeChildren: []*domain.TreeNode{{Name: "sub", Hash: domain.Hash{4}}},
 		}
-		resolveEntryCommits(newer, older, &domain.CommitLogEntry{Commit: domain.Commit{ID: snow.ID(7)}}, "base", byPath, &remaining)
+		resolveEntryCommits(newer, older, head, &domain.CommitLogEntry{Commit: domain.Commit{ID: snow.ID(7)}}, "base", byPath, &remaining)
 		require.Equal(t, snow.ID(1), byPath["base/a.txt"].ID)
 		require.Equal(t, snow.ID(7), byPath["base/sub"].ID)
 		require.Equal(t, 1, remaining)
+	})
+
+	t.Run("non-head entries are ignored", func(t *testing.T) {
+		remaining := 1
+		byPath := map[string]*domain.CommitLogEntry{}
+		head := &domain.TreeNode{FileChildren: []*domain.File{{Name: "a.txt", Hash: domain.Hash{1}}}}
+		newer := &domain.TreeNode{
+			FileChildren: []*domain.File{
+				{Name: "a.txt", Hash: domain.Hash{1}},
+				{Name: "deleted.txt", Hash: domain.Hash{5}},
+			},
+		}
+		older := &domain.TreeNode{
+			FileChildren: []*domain.File{
+				{Name: "a.txt", Hash: domain.Hash{1}},
+				{Name: "deleted.txt", Hash: domain.Hash{4}},
+			},
+		}
+		resolveEntryCommits(newer, older, head, &domain.CommitLogEntry{Commit: domain.Commit{ID: snow.ID(7)}}, "", byPath, &remaining)
+		require.Equal(t, 1, remaining)
+		require.Empty(t, byPath)
 	})
 }
 

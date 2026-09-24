@@ -165,6 +165,40 @@ func TestBranch_TreeAtWithHistory_Subdirectory(t *testing.T) {
 	require.False(t, ok, "history must be keyed by repo-relative path")
 }
 
+func TestBranch_TreeAtWithHistory_DeletedEntryDoesNotStopWalk(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := NewMockpermissionUsecase(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+	uc := NewBranchWithChunks(perm, repo, newTestBranchNode(t), &stubChunkReader{})
+
+	headID, midID, olderID, rootID := snow.ID(40), snow.ID(30), snow.ID(20), snow.ID(10)
+	head := &testTreeSpec{id: 104, files: map[string]domain.Hash{"note.txt": {2}, "y.txt": {1}}}
+	mid := &testTreeSpec{id: 103, files: map[string]domain.Hash{"note.txt": {1}, "y.txt": {1}, "X.txt": {5}}}
+	older := &testTreeSpec{id: 102, files: map[string]domain.Hash{"note.txt": {1}, "y.txt": {1}, "X.txt": {4}}}
+	root := &testTreeSpec{id: 101, files: map[string]domain.Hash{"note.txt": {1}, "X.txt": {4}}}
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
+	perm.EXPECT().CompileFilter(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(AllowAllFilter(), nil).AnyTimes()
+	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(branchAt(headID), nil)
+	expectCommitManifest(repo, headID, &midID, head)
+	expectCommitManifest(repo, midID, &olderID, mid)
+	expectCommitManifest(repo, olderID, &rootID, older)
+	expectCommitManifest(repo, rootID, nil, root)
+	repo.EXPECT().CommitLog(gomock.Any(), snow.ID(1), gomock.Any(), gomock.Any()).Return([]*domain.CommitLogEntry{
+		{Commit: domain.Commit{ID: headID, TreeID: 104, Parent1ID: &midID}},
+		{Commit: domain.Commit{ID: midID, TreeID: 103, Parent1ID: &olderID}},
+		{Commit: domain.Commit{ID: olderID, TreeID: 102, Parent1ID: &rootID}},
+		{Commit: domain.Commit{ID: rootID, TreeID: 101}},
+	}, nil).AnyTimes()
+
+	_, history, err := uc.TreeAtWithHistory(context.Background(), snow.ID(1), "main", "")
+	require.NoError(t, err)
+	require.Equal(t, headID, history.Latest.ID)
+	require.Equal(t, headID, history.ByPath["note.txt"].ID)
+	require.Equal(t, olderID, history.ByPath["y.txt"].ID)
+	_, ok := history.ByPath["X.txt"]
+	require.False(t, ok, "entries deleted before head must not appear in history")
+}
+
 func TestBranch_TreeAtWithHistory_NoPermission(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	perm := NewMockpermissionUsecase(ctrl)
