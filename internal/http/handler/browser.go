@@ -82,7 +82,13 @@ func (h *Handler) ListCommits(appCtx http.AppContext) {
 		start = &id
 	}
 	limit := queryInt(appCtx.QueryParameter("limit"), defaultCommitLimit)
-	entries, err := h.useCase.Branch().GetCommitLog(appCtx.Context(), project.ID, branchName, start, limit)
+	path := strings.Trim(appCtx.QueryParameter("path"), "/")
+	var entries []*domain.CommitLogEntry
+	if path != "" {
+		entries, err = h.useCase.Branch().PathCommitLog(appCtx.Context(), project.ID, branchName, path, start, limit)
+	} else {
+		entries, err = h.useCase.Branch().GetCommitLog(appCtx.Context(), project.ID, branchName, start, limit)
+	}
 	if err != nil {
 		appCtx.HandleError(err)
 		return
@@ -139,7 +145,55 @@ func (h *Handler) GetTree(appCtx http.AppContext) {
 		return
 	}
 	path := strings.Trim(appCtx.QueryParameter("path"), "/")
-	node, err := h.useCase.Branch().TreeAt(appCtx.Context(), project.ID, appCtx.QueryParameter("rev"), path)
+	rev := appCtx.QueryParameter("rev")
+	if appCtx.QueryParameter("recursive") == "1" {
+		files, err := h.useCase.Branch().TreeFilesAt(appCtx.Context(), project.ID, rev, path)
+		if err != nil {
+			appCtx.HandleError(err)
+			return
+		}
+		resp := model.TreeResponse{Path: path, Entries: make([]model.TreeEntryResponse, 0, len(files))}
+		for _, file := range files {
+			name := file.Path
+			if idx := strings.LastIndex(name, "/"); idx >= 0 {
+				name = name[idx+1:]
+			}
+			resp.Entries = append(resp.Entries, model.TreeEntryResponse{
+				Name:      name,
+				Path:      file.Path,
+				Type:      "file",
+				Mode:      file.Mode,
+				SizeBytes: file.SizeBytes,
+				IsBinary:  file.IsBinary,
+				Hash:      file.Hash.String(),
+			})
+		}
+		appCtx.WriteJson(nethttp.StatusOK, resp)
+		return
+	}
+	if appCtx.QueryParameter("history") == "1" {
+		node, history, err := h.useCase.Branch().TreeAtWithHistory(appCtx.Context(), project.ID, rev, path)
+		if err != nil {
+			appCtx.HandleError(err)
+			return
+		}
+		resp := toTreeResponse(path, node)
+		if history != nil {
+			if history.Latest != nil {
+				latest := toCommitResponse(history.Latest)
+				resp.LatestCommit = &latest
+			}
+			for i := range resp.Entries {
+				if commit, ok := history.ByPath[resp.Entries[i].Path]; ok {
+					summary := toCommitResponse(commit)
+					resp.Entries[i].LastCommit = &summary
+				}
+			}
+		}
+		appCtx.WriteJson(nethttp.StatusOK, resp)
+		return
+	}
+	node, err := h.useCase.Branch().TreeAt(appCtx.Context(), project.ID, rev, path)
 	if err != nil {
 		appCtx.HandleError(err)
 		return

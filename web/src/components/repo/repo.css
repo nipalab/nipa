@@ -1,0 +1,128 @@
+.nipa-markdown {
+  color: var(--fgColor-default);
+  font-size: 15px;
+  line-height: 1.6;
+  word-wrap: break-word;
+}
+
+.nipa-markdown > *:first-child {
+  margin-top: 0 !important;
+}
+
+.nipa-markdown > *:last-child {
+  margin-bottom: 0 !important;
+}
+
+.nipa-markdown h1,
+.nipa-markdown h2 {
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid var(--borderColor-muted);
+}
+
+.nipa-markdown h1 {
+  font-size: 1.6em;
+  margin: 0.67em 0;
+}
+
+.nipa-markdown h2 {
+  font-size: 1.35em;
+  margin: 1.4em 0 0.8em;
+}
+
+.nipa-markdown h3 {
+  font-size: 1.15em;
+  margin: 1.2em 0 0.6em;
+}
+
+.nipa-markdown h4,
+.nipa-markdown h5,
+.nipa-markdown h6 {
+  margin: 1em 0 0.5em;
+}
+
+.nipa-markdown p,
+.nipa-markdown ul,
+.nipa-markdown ol,
+.nipa-markdown blockquote,
+.nipa-markdown table,
+.nipa-markdown pre {
+  margin: 0 0 16px;
+}
+
+.nipa-markdown ul,
+.nipa-markdown ol {
+  padding-left: 2em;
+}
+
+.nipa-markdown li + li {
+  margin-top: 0.25em;
+}
+
+.nipa-markdown a {
+  color: var(--fgColor-accent);
+  text-decoration: none;
+}
+
+.nipa-markdown a:hover {
+  text-decoration: underline;
+}
+
+.nipa-markdown code {
+  background: var(--bgColor-neutral-muted);
+  border-radius: 6px;
+  padding: 0.2em 0.4em;
+  font-size: 85%;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.nipa-markdown pre {
+  background: var(--bgColor-muted);
+  border-radius: 6px;
+  padding: 16px;
+  overflow: auto;
+}
+
+.nipa-markdown pre code {
+  background: transparent;
+  padding: 0;
+  font-size: 100%;
+}
+
+.nipa-markdown blockquote {
+  padding: 0 1em;
+  color: var(--fgColor-muted);
+  border-left: 0.25em solid var(--borderColor-default);
+}
+
+.nipa-markdown table {
+  border-collapse: collapse;
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  overflow: auto;
+}
+
+.nipa-markdown th,
+.nipa-markdown td {
+  padding: 6px 13px;
+  border: 1px solid var(--borderColor-default);
+}
+
+.nipa-markdown tr:nth-child(2n) {
+  background: var(--bgColor-muted);
+}
+
+.nipa-markdown img {
+  max-width: 100%;
+}
+
+.nipa-markdown hr {
+  height: 1px;
+  background: var(--borderColor-default);
+  border: 0;
+  margin: 24px 0;
+}
+
+.nipa-code-line:hover {
+  background: var(--bgColor-muted);
+}

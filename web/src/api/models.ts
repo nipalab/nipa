@@ -53,11 +53,20 @@ export interface TreeEntryResponse {
   size_bytes?: number
   is_binary?: boolean
   hash?: string
+  last_commit?: CommitResponse
 }
 
 export interface TreeResponse {
   path: string
   entries: TreeEntryResponse[]
+  latest_commit?: CommitResponse
+}
+
+export interface BlobResponse {
+  blob: Blob
+  contentType: string
+  size: number
+  isBinary: boolean
 }
 
 export interface BranchResponse {

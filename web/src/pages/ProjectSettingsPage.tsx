@@ -1,29 +1,30 @@
 import { useState } from 'react'
-import { Button, FormControl, Link as PrimerLink, Stack, Text, TextInput } from '@primer/react'
-import { Link, useParams } from 'react-router-dom'
+import { Button, FormControl, Stack, Text, TextInput } from '@primer/react'
+import { useParams } from 'react-router-dom'
 import {
   createProjectRule,
   deleteProjectDefault,
   deleteProjectRule,
-  getMyProjectPermissions,
-  listBranches,
   listProjectDefaults,
   listProjectRules,
   setBranchProtection,
   setProjectDefault,
 } from '../api/endpoints'
-import { useAuth } from '../auth'
-import { EmptyState, ErrorBanner, Loading, Mono, Page } from '../components/ui'
+import { RepoPageShell } from '../components/repo/RepoPageShell'
+import { useRepoChrome } from '../components/repo/useRepoChrome'
+import { EmptyState, ErrorBanner, Loading, Mono } from '../components/ui'
 import { useAsync } from '../hooks'
-import { PERMISSION_ADMIN, formatPermission, parsePermission } from '../api/permissions'
+import { formatPermission, parsePermission } from '../api/permissions'
 
 export default function ProjectSettingsPage() {
   const { org = '', project = '' } = useParams()
-  const { me } = useAuth()
-  const { data: permissions } = useAsync(() => getMyProjectPermissions(org, project), [org, project])
-  const canAdmin = Boolean(
-    me?.is_admin || me?.is_super_admin || ((permissions?.project_permission ?? 0) & PERMISSION_ADMIN) !== 0,
-  )
+  const {
+    branches,
+    reloadBranches,
+    canWrite,
+    canAdmin,
+    defaultBranch,
+  } = useRepoChrome(org, project)
 
   const { data: rules, error: rulesError, loading: rulesLoading, reload: reloadRules } = useAsync(
     () => listProjectRules(org, project),
@@ -33,7 +34,6 @@ export default function ProjectSettingsPage() {
     () => listProjectDefaults(org, project),
     [org, project],
   )
-  const { data: branches, reload: reloadBranches } = useAsync(() => listBranches(org, project), [org, project])
 
   const [subject, setSubject] = useState('')
   const [prefix, setPrefix] = useState('')
@@ -53,19 +53,30 @@ export default function ProjectSettingsPage() {
 
   if (!canAdmin) {
     return (
-      <Page title="Settings" subtitle={`${org}/${project}`}>
+      <RepoPageShell
+        org={org}
+        project={project}
+        active="settings"
+        rev={defaultBranch}
+        canAdmin={canAdmin}
+        canWrite={canWrite}
+        heading="Settings"
+      >
         <ErrorBanner error={rulesError} />
         <Text>You need project admin permission to manage this repository.</Text>
-        <PrimerLink as={Link} to={`/${org}/${project}`}>back to files</PrimerLink>
-      </Page>
+      </RepoPageShell>
     )
   }
 
   return (
-    <Page
-      title="Settings"
-      subtitle={`${org}/${project}`}
-      actions={<PrimerLink as={Link} to={`/${org}/${project}`}>back to files</PrimerLink>}
+    <RepoPageShell
+      org={org}
+      project={project}
+      active="settings"
+      rev={defaultBranch}
+      canAdmin={canAdmin}
+      canWrite={canWrite}
+      heading="Settings"
     >
       <ErrorBanner error={actionError ?? rulesError} />
 
@@ -219,6 +230,6 @@ export default function ProjectSettingsPage() {
           </Button>
         </Stack>
       </form>
-    </Page>
+    </RepoPageShell>
   )
 }

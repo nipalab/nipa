@@ -4,38 +4,35 @@ import { Link, useParams } from 'react-router-dom'
 import {
   createBranch,
   deleteBranch,
-  getMyProjectPermissions,
-  listBranches,
   renameBranch,
   setBranchProtection,
   setDefaultBranch,
 } from '../api/endpoints'
-import { useAuth } from '../auth'
-import { EmptyState, ErrorBanner, Loading, Mono, Page } from '../components/ui'
-import { useAsync } from '../hooks'
-import { PERMISSION_ADMIN, PERMISSION_WRITE } from '../api/models'
+import { RepoPageShell } from '../components/repo/RepoPageShell'
+import { treeUrl } from '../components/repo/repoPaths'
+import { useRepoChrome } from '../components/repo/useRepoChrome'
+import { EmptyState, ErrorBanner, Loading, Mono } from '../components/ui'
 
 export default function BranchesPage() {
   const { org = '', project = '' } = useParams()
-  const { me } = useAuth()
-  const { data: branches, error, loading, reload } = useAsync(() => listBranches(org, project), [org, project])
-  const { data: permissions } = useAsync(() => getMyProjectPermissions(org, project), [org, project])
+  const {
+    branches,
+    branchesError,
+    branchesLoading,
+    reloadBranches,
+    canWrite,
+    canAdmin,
+    defaultBranch,
+  } = useRepoChrome(org, project)
   const [name, setName] = useState('')
   const [from, setFrom] = useState('')
   const [actionError, setActionError] = useState<string | null>(null)
-
-  const canWrite = Boolean(
-    me?.is_admin || me?.is_super_admin || ((permissions?.project_permission ?? 0) & PERMISSION_WRITE) !== 0,
-  )
-  const canAdmin = Boolean(
-    me?.is_admin || me?.is_super_admin || ((permissions?.project_permission ?? 0) & PERMISSION_ADMIN) !== 0,
-  )
 
   async function run(action: () => Promise<unknown>) {
     setActionError(null)
     try {
       await action()
-      reload()
+      reloadBranches()
     } catch (err) {
       setActionError(err instanceof Error ? err.message : String(err))
     }
@@ -51,21 +48,25 @@ export default function BranchesPage() {
   }
 
   return (
-    <Page
-      title="Branches"
-      subtitle={`${org}/${project}`}
-      actions={<PrimerLink as={Link} to={`/${org}/${project}`}>back to files</PrimerLink>}
+    <RepoPageShell
+      org={org}
+      project={project}
+      active="branches"
+      rev={defaultBranch}
+      canAdmin={canAdmin}
+      canWrite={canWrite}
+      heading="Branches"
     >
-      <ErrorBanner error={actionError ?? error} />
-      {loading && <Loading />}
-      {!loading && branches && branches.length === 0 && <EmptyState>No branches.</EmptyState>}
+      <ErrorBanner error={actionError ?? branchesError} />
+      {branchesLoading && <Loading />}
+      {!branchesLoading && branches && branches.length === 0 && <EmptyState>No branches.</EmptyState>}
       {branches && branches.length > 0 && (
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <tbody>
             {branches.map((branch) => (
               <tr key={branch.id} style={{ borderBottom: '1px solid var(--borderColor-muted)' }}>
                 <td style={{ padding: '6px 4px' }}>
-                  <PrimerLink as={Link} to={`/${org}/${project}?rev=${encodeURIComponent(branch.name)}`}>
+                  <PrimerLink as={Link} to={treeUrl(org, project, branch.name)}>
                     {branch.name}
                   </PrimerLink>
                   {branch.is_default && <span style={{ color: 'var(--fgColor-accent)' }}> · default</span>}
@@ -144,6 +145,6 @@ export default function BranchesPage() {
           </Stack>
         </form>
       )}
-    </Page>
+    </RepoPageShell>
   )
 }

@@ -1,5 +1,6 @@
-import { apiFetch, apiJson } from './client'
+import { apiFetch, apiJson, errorFromResponse } from './client'
 import type {
+  BlobResponse,
   BranchResponse,
   CommitDiffResponse,
   CommitResponse,
@@ -62,22 +63,42 @@ export function deleteProject(org: string, project: string): Promise<MessageResp
   return apiJson(projectBase(org, project), { method: 'DELETE' })
 }
 
-export function getTree(org: string, project: string, rev: string, path: string): Promise<TreeResponse> {
+export function getTree(
+  org: string,
+  project: string,
+  rev: string,
+  path: string,
+  options: { history?: boolean; recursive?: boolean } = {},
+): Promise<TreeResponse> {
   const params = new URLSearchParams()
   if (rev) params.set('rev', rev)
   if (path) params.set('path', path)
+  if (options.history) params.set('history', '1')
+  if (options.recursive) params.set('recursive', '1')
   const query = params.toString()
   return apiJson(`${projectBase(org, project)}/tree${query ? `?${query}` : ''}`)
 }
 
-export async function getBlob(org: string, project: string, rev: string, path: string): Promise<string> {
+export async function fetchBlob(
+  org: string,
+  project: string,
+  rev: string,
+  path: string,
+): Promise<BlobResponse> {
   const params = new URLSearchParams({ path })
   if (rev) params.set('rev', rev)
   const res = await apiFetch(`${projectBase(org, project)}/blob?${params.toString()}`)
   if (!res.ok) {
-    throw new Error(`API ${res.status}: ${await res.text()}`)
+    throw await errorFromResponse(res)
   }
-  return res.text()
+  const blob = await res.blob()
+  const contentType = res.headers.get('Content-Type') ?? 'application/octet-stream'
+  return {
+    blob,
+    contentType,
+    size: blob.size,
+    isBinary: !contentType.startsWith('text/') && !contentType.includes('json'),
+  }
 }
 
 export function listBranches(org: string, project: string): Promise<BranchResponse[]> {
@@ -121,9 +142,10 @@ export function setBranchProtection(
   })
 }
 
-export function listCommits(org: string, project: string, branch: string): Promise<CommitResponse[]> {
+export function listCommits(org: string, project: string, branch: string, path = ''): Promise<CommitResponse[]> {
   const params = new URLSearchParams()
   if (branch) params.set('branch', branch)
+  if (path) params.set('path', path)
   const query = params.toString()
   return apiJson(`${projectBase(org, project)}/commits${query ? `?${query}` : ''}`)
 }

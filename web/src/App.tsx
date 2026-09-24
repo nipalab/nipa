@@ -29,7 +29,10 @@ export default function App() {
               <Route path="/:org" element={<OrgProjectsPage />} />
               <Route path="/:org/settings" element={<OrgSettingsPage />} />
               <Route path="/:org/:project" element={<RepoPage />} />
+              <Route path="/:org/:project/tree" element={<RepoPage />} />
+              <Route path="/:org/:project/tree/:rev/*" element={<RepoPage />} />
               <Route path="/:org/:project/blob" element={<BlobPage />} />
+              <Route path="/:org/:project/blob/:rev/*" element={<BlobPage />} />
               <Route path="/:org/:project/commits" element={<CommitsPage />} />
               <Route path="/:org/:project/commits/:commit" element={<CommitsPage />} />
               <Route path="/:org/:project/branches" element={<BranchesPage />} />

@@ -1,19 +1,21 @@
 import { useState } from 'react'
 import { Button, FormControl, Link as PrimerLink, Stack, TextInput } from '@primer/react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { createMergeRequest, listBranches, listMergeRequests } from '../api/endpoints'
-import { EmptyState, ErrorBanner, Loading, Page, StatusLabel } from '../components/ui'
+import { createMergeRequest, listMergeRequests } from '../api/endpoints'
+import { RepoPageShell } from '../components/repo/RepoPageShell'
+import { useRepoChrome } from '../components/repo/useRepoChrome'
+import { EmptyState, ErrorBanner, Loading, StatusLabel } from '../components/ui'
 import { useAsync } from '../hooks'
 
 export default function PullsPage() {
   const { org = '', project = '' } = useParams()
   const navigate = useNavigate()
   const [status, setStatus] = useState('open')
+  const { branches, canWrite, canAdmin, defaultBranch } = useRepoChrome(org, project)
   const { data: requests, error, loading, reload } = useAsync(
     () => listMergeRequests(org, project, status),
     [org, project, status],
   )
-  const { data: branches } = useAsync(() => listBranches(org, project), [org, project])
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [source, setSource] = useState('')
@@ -35,21 +37,23 @@ export default function PullsPage() {
   }
 
   return (
-    <Page
-      title="Merge requests"
-      subtitle={`${org}/${project}`}
-      actions={
-        <Stack direction="horizontal" gap="normal">
-          <PrimerLink as={Link} to={`/${org}/${project}`}>back to files</PrimerLink>
-          <select value={status} onChange={(event) => setStatus(event.target.value)} style={{ padding: 4 }}>
-            <option value="open">open</option>
-            <option value="merged">merged</option>
-            <option value="closed">closed</option>
-            <option value="">all</option>
-          </select>
-        </Stack>
-      }
+    <RepoPageShell
+      org={org}
+      project={project}
+      active="pulls"
+      rev={defaultBranch}
+      canAdmin={canAdmin}
+      canWrite={canWrite}
+      heading="Merge requests"
     >
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <select value={status} onChange={(event) => setStatus(event.target.value)} style={{ padding: 4 }}>
+          <option value="open">open</option>
+          <option value="merged">merged</option>
+          <option value="closed">closed</option>
+          <option value="">all</option>
+        </select>
+      </div>
       <ErrorBanner error={actionError ?? error} />
       {loading && <Loading />}
       {!loading && requests && requests.length === 0 && <EmptyState>No merge requests.</EmptyState>}
@@ -109,6 +113,6 @@ export default function PullsPage() {
           </Button>
         </Stack>
       </form>
-    </Page>
+    </RepoPageShell>
   )
 }

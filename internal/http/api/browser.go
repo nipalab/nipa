@@ -92,7 +92,8 @@ func setupBrowserRouter(ws *restful.WebService, h *handler.Handler) {
 			Param(ws.QueryParameter("branch", "branch name (defaults to the default branch)")).
 			Param(ws.QueryParameter("start", "start commit id (base36, inclusive)")).
 			Param(ws.QueryParameter("limit", "maximum number of commits")).
-			Doc("List commits on a branch").
+			Param(ws.QueryParameter("path", "only commits that touched this file or directory")).
+			Doc("List commits on a branch, optionally filtered by path").
 			Returns(http.StatusOK, "commits", []model.CommitResponse{}).
 			Operation("listCommits").
 			Metadata(restfulspec.KeyOpenAPITags, tags))
@@ -116,6 +117,8 @@ func setupBrowserRouter(ws *restful.WebService, h *handler.Handler) {
 			Param(ws.PathParameter("project", "project slug")).
 			Param(ws.QueryParameter("rev", "branch name or commit id (defaults to the default branch)")).
 			Param(ws.QueryParameter("path", "directory path inside the repository")).
+			Param(ws.QueryParameter("history", "include the latest commit per entry (1)")).
+			Param(ws.QueryParameter("recursive", "flatten every file under path (1)")).
 			Doc("List one directory of the readable tree").
 			Returns(http.StatusOK, "tree", model.TreeResponse{}).
 			Operation("getTree").
