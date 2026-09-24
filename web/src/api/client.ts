@@ -149,7 +149,7 @@ export async function apiFetch(path: string, init: ApiRequestInit = {}): Promise
   return res
 }
 
-async function errorFromResponse(res: Response): Promise<Error> {
+export async function errorFromResponse(res: Response): Promise<Error> {
   const body = await res.text()
   try {
     const parsed = JSON.parse(body) as { error?: string; message?: string }
