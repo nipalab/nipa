@@ -3,18 +3,20 @@ package model
 import "time"
 
 type TreeEntryResponse struct {
-	Name      string `json:"name"`
-	Path      string `json:"path"`
-	Type      string `json:"type"`
-	Mode      int    `json:"mode,omitempty"`
-	SizeBytes int64  `json:"size_bytes,omitempty"`
-	IsBinary  bool   `json:"is_binary,omitempty"`
-	Hash      string `json:"hash,omitempty"`
+	Name       string          `json:"name"`
+	Path       string          `json:"path"`
+	Type       string          `json:"type"`
+	Mode       int             `json:"mode,omitempty"`
+	SizeBytes  int64           `json:"size_bytes,omitempty"`
+	IsBinary   bool            `json:"is_binary,omitempty"`
+	Hash       string          `json:"hash,omitempty"`
+	LastCommit *CommitResponse `json:"last_commit,omitempty"`
 }
 
 type TreeResponse struct {
-	Path    string              `json:"path"`
-	Entries []TreeEntryResponse `json:"entries"`
+	Path         string              `json:"path"`
+	Entries      []TreeEntryResponse `json:"entries"`
+	LatestCommit *CommitResponse     `json:"latest_commit,omitempty"`
 }
 
 type BranchResponse struct {

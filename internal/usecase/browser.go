@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/nipalab/nipa/internal/diff"
@@ -26,6 +27,61 @@ func NewBranchWithChunks(permUc permissionUsecase, branchRepo branchRepository, 
 // TreeAt returns the readable subtree at path for a branch name, commit id or
 // the default branch when rev is empty. Hidden paths return not found.
 func (b *Branch) TreeAt(ctx context.Context, projectID snow.ID, rev, path string) (*domain.TreeNode, error) {
+	node, _, err := b.treeAt(ctx, projectID, rev, path, false)
+	return node, err
+}
+
+// TreeAtWithHistory returns the readable subtree at path together with the
+// latest commit that touched the directory and each of its entries.
+func (b *Branch) TreeAtWithHistory(ctx context.Context, projectID snow.ID, rev, path string) (*domain.TreeNode, *TreeHistory, error) {
+	return b.treeAt(ctx, projectID, rev, path, true)
+}
+
+func (b *Branch) treeAt(ctx context.Context, projectID snow.ID, rev, path string, withHistory bool) (*domain.TreeNode, *TreeHistory, error) {
+	if !b.permUc.HasProjectAccess(ctx, projectID, domain.PermissionRead) {
+		return nil, nil, domain.NewErrorNoPermission()
+	}
+	commitID, err := b.resolveRevision(ctx, projectID, rev)
+	if err != nil {
+		return nil, nil, err
+	}
+	path = strings.Trim(path, "/")
+	if commitID == nil {
+		if path != "" {
+			return nil, nil, domain.NewErrorNotFound(fmt.Sprintf("path %q not found", path))
+		}
+		return &domain.TreeNode{}, &TreeHistory{ByPath: map[string]*domain.CommitLogEntry{}}, nil
+	}
+	root, err := b.commitTreeManifest(ctx, projectID, *commitID, true)
+	if err != nil {
+		return nil, nil, err
+	}
+	node := root
+	if path != "" {
+		filter, err := b.permUc.CompileFilter(ctx, projectID, domain.PermissionRead)
+		if err != nil {
+			return nil, nil, err
+		}
+		if !filter.CanDescend(path) {
+			return nil, nil, domain.NewErrorNotFound(fmt.Sprintf("path %q not found", path))
+		}
+		node = findLoadedTreeNode(root, path)
+		if node == nil {
+			return nil, nil, domain.NewErrorNotFound(fmt.Sprintf("path %q not found", path))
+		}
+	}
+	if !withHistory {
+		return node, nil, nil
+	}
+	history, err := b.treeHistory(ctx, projectID, *commitID, path, root)
+	if err != nil {
+		return nil, nil, err
+	}
+	return node, history, nil
+}
+
+// TreeFilesAt flattens every readable file under path with repo-relative paths.
+func (b *Branch) TreeFilesAt(ctx context.Context, projectID snow.ID, rev, path string) ([]diff.Entry, error) {
 	if !b.permUc.HasProjectAccess(ctx, projectID, domain.PermissionRead) {
 		return nil, domain.NewErrorNoPermission()
 	}
@@ -35,30 +91,36 @@ func (b *Branch) TreeAt(ctx context.Context, projectID snow.ID, rev, path string
 	}
 	path = strings.Trim(path, "/")
 	if commitID == nil {
-		if path != "" {
+		return []diff.Entry{}, nil
+	}
+	if path != "" {
+		filter, err := b.permUc.CompileFilter(ctx, projectID, domain.PermissionRead)
+		if err != nil {
+			return nil, err
+		}
+		if !filter.CanDescend(path) {
 			return nil, domain.NewErrorNotFound(fmt.Sprintf("path %q not found", path))
 		}
-		return &domain.TreeNode{}, nil
 	}
 	root, err := b.commitTreeManifest(ctx, projectID, *commitID, true)
 	if err != nil {
 		return nil, err
 	}
-	if path == "" {
-		return root, nil
-	}
-	filter, err := b.permUc.CompileFilter(ctx, projectID, domain.PermissionRead)
-	if err != nil {
-		return nil, err
-	}
-	if !filter.CanDescend(path) {
+	if path != "" && findLoadedTreeNode(root, path) == nil {
 		return nil, domain.NewErrorNotFound(fmt.Sprintf("path %q not found", path))
 	}
-	node := findLoadedTreeNode(root, path)
-	if node == nil {
-		return nil, domain.NewErrorNotFound(fmt.Sprintf("path %q not found", path))
+	prefix := path
+	if prefix != "" {
+		prefix += "/"
 	}
-	return node, nil
+	files := make([]diff.Entry, 0)
+	for filePath, entry := range diff.FromTree(root) {
+		if prefix == "" || strings.HasPrefix(filePath, prefix) {
+			files = append(files, entry)
+		}
+	}
+	sort.Slice(files, func(i, j int) bool { return files[i].Path < files[j].Path })
+	return files, nil
 }
 
 // FileContent reassembles one readable file at the given revision.
@@ -161,6 +223,9 @@ func (b *Branch) loadChunk(ctx context.Context) func(domain.Hash) ([]byte, error
 }
 
 func findLoadedTreeNode(root *domain.TreeNode, path string) *domain.TreeNode {
+	if root == nil {
+		return nil
+	}
 	node := root
 	for _, segment := range strings.Split(strings.Trim(path, "/"), "/") {
 		if segment == "" {
