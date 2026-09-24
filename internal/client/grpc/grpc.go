@@ -206,7 +206,7 @@ func (c *Client) unaryAuthInterceptor() grpc.UnaryClientInterceptor {
 		if err != nil {
 			return status.Error(codes.Unauthenticated, "unable to get access token")
 		}
-		authCtx := metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+accToken)
+		authCtx := withBearerToken(ctx, accToken)
 
 		err = invoker(authCtx, method, req, reply, cc, opts...)
 		if status.Code(err) != codes.Unauthenticated {
@@ -217,7 +217,7 @@ func (c *Client) unaryAuthInterceptor() grpc.UnaryClientInterceptor {
 		if err != nil {
 			return err
 		}
-		retryCtx := metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+accToken)
+		retryCtx := withBearerToken(ctx, accToken)
 		return invoker(retryCtx, method, req, reply, cc, opts...)
 	}
 }
@@ -393,7 +393,20 @@ func (c *Client) authedContext(ctx context.Context) (context.Context, error) {
 	if err != nil {
 		return nil, status.Error(codes.Unauthenticated, "unable to get access token")
 	}
-	return metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+accToken), nil
+	return withBearerToken(ctx, accToken), nil
+}
+
+// withBearerToken replaces any authorization metadata on ctx so a stale token
+// can never precede the fresh one (the server authenticates with the first
+// authorization header it receives).
+func withBearerToken(ctx context.Context, token string) context.Context {
+	outgoing, _ := metadata.FromOutgoingContext(ctx)
+	if outgoing == nil {
+		outgoing = metadata.MD{}
+	}
+	outgoing = outgoing.Copy()
+	outgoing.Set("authorization", "Bearer "+token)
+	return metadata.NewOutgoingContext(ctx, outgoing)
 }
 
 func intToPBFileMode(mode int) pb.FileMode {
