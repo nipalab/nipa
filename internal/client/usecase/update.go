@@ -281,9 +281,9 @@ func syncWorkingCopy(ctx context.Context, client chunkDownloader, lr workingCopy
 	statEntries := make(map[string]clientDomain.StatEntry)
 	for _, f := range newFiles {
 		if base, ok := baseByPath[f.Path]; ok && base.Hash == f.FileHash && base.Mode == f.Mode && fileExists(root, f.Path) {
-			if entry, err := statEntryFor(root, f.Path, f.FileHash); err == nil {
-				statEntries[f.Path] = entry
-			}
+			// The file was not rewritten and its content was not verified, so
+			// leave any existing fingerprint untouched and let status hash-verify
+			// it once if it has none.
 			continue
 		}
 		if err := materializeFile(root, f, lr.OpenChunk); err != nil {

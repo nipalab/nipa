@@ -88,17 +88,17 @@ func TestUpdate_Run_FingerprintMakesStatusStatOnly(t *testing.T) {
 	require.Equal(t, 0, calls.Load(), "a file materialized by update must not be rehashed by the next status")
 }
 
-func TestUpdate_Run_FingerprintsSkippedFiles(t *testing.T) {
+func TestUpdate_Run_DoesNotFingerprintUnverifiedFiles(t *testing.T) {
 	root := t.TempDir()
-	writeRepoFile(t, root, "a.txt", "unchanged")
-	fileHash, chunks, _, fileEncoding := testEncodedFile(t, "a.txt", "unchanged")
+	writeRepoFile(t, root, "a.txt", "dirty local edit")
+	fileHash, chunks, _, fileEncoding := testEncodedFile(t, "a.txt", "base content")
 	local := &stubLocalRepo{
 		loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "main"},
 		snapshot: &domain.Snapshot{Files: []domain.SnapshotFile{{
 			Path:      "a.txt",
 			Hash:      fileHash,
 			Mode:      2,
-			SizeBytes: int64(len("unchanged")),
+			SizeBytes: int64(len("base content")),
 			Encoding:  fileEncoding,
 		}}},
 	}
@@ -108,7 +108,7 @@ func TestUpdate_Run_FingerprintsSkippedFiles(t *testing.T) {
 			FileChildren: []*serverDomain.File{{
 				Name:      "a.txt",
 				Mode:      2,
-				SizeBytes: int64(len("unchanged")),
+				SizeBytes: int64(len("base content")),
 				Encoding:  fileEncoding,
 				Hash:      fileHash,
 				Chunks:    chunks,
@@ -118,9 +118,13 @@ func TestUpdate_Run_FingerprintsSkippedFiles(t *testing.T) {
 
 	require.NoError(t, newTestUpdate(t, local, client).Run(context.Background(), root))
 
-	entry, ok := local.savedStats["a.txt"]
-	require.True(t, ok, "files that were already up to date must be fingerprinted without rewriting")
-	require.Equal(t, fileHash, entry.Hash)
+	require.NotContains(t, local.savedStats, "a.txt",
+		"a skipped file's content is not verified, so it must not be fingerprinted")
+
+	wc := newWorkingCopy(t, local, root)
+	st, err := wc.Status(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, []string{"a.txt"}, st.Modified, "the dirty file must be detected by hashing")
 }
 
 func TestPush_Run_RecordsStatFingerprint(t *testing.T) {
