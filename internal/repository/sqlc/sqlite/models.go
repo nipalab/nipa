@@ -50,6 +50,7 @@ type File struct {
 	Hash      []byte        `json:"hash"`
 	SizeBytes int64         `json:"size_bytes"`
 	IsBinary  bool          `json:"is_binary"`
+	Encoding  string        `json:"encoding"`
 	CreatedAt sql.NullTime  `json:"created_at"`
 }
 

@@ -7,13 +7,15 @@ type PushFile struct {
 	Mode        int
 	SizeBytes   int64
 	IsBinary    bool
+	Encoding    string
 	FileHash    Hash
 	ChunkHashes []Hash
 }
 
 type ChunkData struct {
-	Hash Hash
-	Data []byte
+	Hash    Hash
+	Data    []byte
+	RawSize int64
 }
 
 type PushResult struct {

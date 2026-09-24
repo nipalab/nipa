@@ -35,6 +35,7 @@ func (n *nipaServer) Push(ctx context.Context, req *pb.PushRequest) (*pb.PushRes
 			Mode:        pbFileModeToInt(pf.Mode),
 			SizeBytes:   pf.SizeBytes,
 			IsBinary:    pf.IsBinary,
+			Encoding:    pf.GetEncoding(),
 			FileHash:    fileHash,
 			ChunkHashes: chunkHashes,
 		})

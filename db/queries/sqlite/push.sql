@@ -17,7 +17,7 @@ SET parent_tree_id = :parent_tree_id
 WHERE id = :id;
 
 -- name: FileInsert :one
-INSERT INTO files (name, mode, tree_id, hash, size_bytes, is_binary) VALUES (?, ?, ?, ?, ?, ?)
+INSERT INTO files (name, mode, tree_id, hash, size_bytes, is_binary, encoding) VALUES (?, ?, ?, ?, ?, ?, ?)
 RETURNING id;
 
 -- name: FileSetTree :exec

@@ -19,10 +19,12 @@ CREATE TABLE files (
     name TEXT NOT NULL,
     mode INTEGER NOT NULL DEFAULT 444, -- OS file mode (0444, 0644, 0755)
     tree_id INTEGER REFERENCES tree_nodes(id) ON DELETE CASCADE,
-    hash BLOB UNIQUE NOT NULL,
+    hash BLOB NOT NULL,
     size_bytes INTEGER NOT NULL,
     is_binary BOOLEAN NOT NULL DEFAULT FALSE,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    encoding TEXT NOT NULL DEFAULT 'raw',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(tree_id, name)
 );
 
 CREATE TABLE file_chunks (

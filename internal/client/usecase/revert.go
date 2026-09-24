@@ -551,7 +551,7 @@ func (r *Revert) workingTreeFiles(root string) (map[string]merge.File, error) {
 		if err != nil {
 			return nil, err
 		}
-		hash, chunks, err := chunkFile(data)
+		hash, chunks, encoding, err := chunkFile(f.Path, data, storedEncoding(f.Encoding))
 		if err != nil {
 			return nil, err
 		}
@@ -566,6 +566,7 @@ func (r *Revert) workingTreeFiles(root string) (map[string]merge.File, error) {
 			Mode:        f.Mode,
 			SizeBytes:   int64(len(data)),
 			IsBinary:    chunker.IsBinary(data),
+			Encoding:    encoding,
 			Hash:        hash,
 			ChunkHashes: hashes,
 			ChunkSizes:  sizes,

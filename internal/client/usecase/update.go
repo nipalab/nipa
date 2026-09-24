@@ -368,8 +368,10 @@ type materializedFile struct {
 	Path        string
 	Mode        int
 	SizeBytes   int64
+	Encoding    string
 	FileHash    domain.Hash
 	ChunkHashes []domain.Hash
+	ChunkSizes  []int64
 }
 
 func flattenTree(node *domain.TreeNode, prefix string) []materializedFile {
@@ -379,16 +381,20 @@ func flattenTree(node *domain.TreeNode, prefix string) []materializedFile {
 	var files []materializedFile
 	for _, f := range node.FileChildren {
 		hashes := make([]domain.Hash, 0, len(f.Chunks))
+		sizes := make([]int64, 0, len(f.Chunks))
 		for _, c := range f.Chunks {
 			hashes = append(hashes, c.Hash)
+			sizes = append(sizes, c.SizeBytes)
 		}
 		path := strings.TrimPrefix(prefix+"/"+f.Name, "/")
 		files = append(files, materializedFile{
 			Path:        path,
 			Mode:        f.Mode,
 			SizeBytes:   f.SizeBytes,
+			Encoding:    f.Encoding,
 			FileHash:    chunker.FileHash(hashes),
 			ChunkHashes: hashes,
+			ChunkSizes:  sizes,
 		})
 	}
 	for _, child := range node.TreeChildren {
@@ -404,10 +410,13 @@ func estimateBytesToDownload(files []materializedFile, missing []domain.Hash) in
 	}
 	var total int64
 	for _, f := range files {
-		for _, h := range f.ChunkHashes {
-			if _, ok := missingSet[h]; ok {
-				total += f.SizeBytes
-				break
+		for i, h := range f.ChunkHashes {
+			if _, ok := missingSet[h]; !ok {
+				continue
+			}
+			delete(missingSet, h)
+			if i < len(f.ChunkSizes) {
+				total += f.ChunkSizes[i]
 			}
 		}
 	}
@@ -440,13 +449,22 @@ func materializeFile(root string, f materializedFile, openChunk func(domain.Hash
 			_ = tmp.Close()
 			return fmt.Errorf("load chunk %s: %w", h, err)
 		}
-		n, err := io.Copy(tmp, io.LimitReader(rc, f.SizeBytes-written+1))
+		stored, err := io.ReadAll(rc)
 		_ = rc.Close()
 		if err != nil {
 			_ = tmp.Close()
 			return err
 		}
-		written += n
+		data, err := chunker.Decode(f.Encoding, stored)
+		if err != nil {
+			_ = tmp.Close()
+			return fmt.Errorf("decode chunk %s for %s: %w", h, f.Path, err)
+		}
+		if _, err := tmp.Write(data); err != nil {
+			_ = tmp.Close()
+			return err
+		}
+		written += int64(len(data))
 		if written > f.SizeBytes {
 			_ = tmp.Close()
 			return fmt.Errorf("content length mismatch for %s: got %d want %d", f.Path, written, f.SizeBytes)
@@ -487,8 +505,12 @@ func guardedRemove(root string, base clientDomain.SnapshotFile) (bool, error) {
 		return false, err
 	}
 	defer func() { _ = f.Close() }()
+	isBinary, err := chunker.ProbeBinary(f)
+	if err != nil {
+		return false, err
+	}
 	var hashes []domain.Hash
-	if err := chunker.Scan(f, func(c chunker.Chunk) error {
+	if _, err := chunker.Encode(f, base.Path, isBinary, storedEncoding(base.Encoding), func(c chunker.EncodedChunk) error {
 		hashes = append(hashes, c.Hash)
 		return nil
 	}); err != nil {

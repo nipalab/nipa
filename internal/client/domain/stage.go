@@ -9,6 +9,7 @@ type SnapshotFile struct {
 	Hash      serverDomain.Hash
 	Mode      int
 	IsBinary  bool
+	Encoding  string
 	SizeBytes int64
 	Chunks    []serverDomain.Hash
 }

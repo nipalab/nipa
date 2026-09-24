@@ -6,6 +6,8 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"sync"
+	"time"
 
 	"github.com/nipalab/nipa/internal/chunker"
 	"github.com/nipalab/nipa/internal/client/domain"
@@ -105,17 +107,69 @@ type tokenSession interface {
 	Refresh(ctx context.Context, host string) (string, error)
 }
 
-type Client struct {
-	transport *Transport
-	session   tokenSession
-	http      *http.Client
+// ClientOption customizes a Client at construction time.
+type ClientOption func(*Client)
+
+// WithUploadWorkers pins the number of concurrent chunk uploads, disabling
+// automatic tuning.
+func WithUploadWorkers(workers int) ClientOption {
+	return func(c *Client) {
+		c.uploadWorkers = clampUploadWorkers(workers)
+		c.tuner = nil
+		c.limiter.setLimit(c.uploadWorkers)
+	}
 }
 
-func NewClient(transport *Transport, session tokenSession) *Client {
-	return &Client{
-		transport: transport,
-		session:   session,
-		http:      &http.Client{},
+// WithHTTPClient replaces the HTTP client used for signed chunk transfers.
+func WithHTTPClient(httpClient *http.Client) ClientOption {
+	return func(c *Client) {
+		if httpClient != nil {
+			c.http = httpClient
+		}
+	}
+}
+
+type Client struct {
+	transport     *Transport
+	session       tokenSession
+	http          *http.Client
+	limiter       *transferLimiter
+	tuner         *concurrencyTuner
+	uploadWorkers int
+	confirmMu     sync.Mutex
+}
+
+func NewClient(transport *Transport, session tokenSession, opts ...ClientOption) *Client {
+	c := &Client{
+		transport:     transport,
+		session:       session,
+		http:          defaultHTTPClient(),
+		limiter:       newTransferLimiter(defaultUploadWorkers),
+		tuner:         newConcurrencyTuner(minUploadWorkers, maxUploadWorkers, defaultUploadWorkers),
+		uploadWorkers: defaultUploadWorkers,
+	}
+	for _, opt := range opts {
+		opt(c)
+	}
+	return c
+}
+
+// SetUploadWorkers adjusts the concurrent chunk transfer limit at runtime and
+// disables automatic tuning.
+func (c *Client) SetUploadWorkers(workers int) {
+	c.uploadWorkers = clampUploadWorkers(workers)
+	c.tuner = nil
+	c.limiter.setLimit(c.uploadWorkers)
+}
+
+func (c *Client) recordTransfer(bytes int64, transferErr error) {
+	if c.tuner == nil {
+		return
+	}
+	limit := c.limiter.currentLimit()
+	next := c.tuner.observe(limit, bytes, time.Now(), transferErr)
+	if next != limit {
+		c.limiter.setLimit(next)
 	}
 }
 
@@ -305,6 +359,7 @@ func (c *Client) Push(ctx context.Context, org, project, branch, baseTreeHash, m
 			Mode:      intToPBFileMode(f.Mode),
 			SizeBytes: f.SizeBytes,
 			IsBinary:  f.IsBinary,
+			Encoding:  f.Encoding,
 			FileHash:  f.FileHash.String(),
 		}
 		for _, h := range f.ChunkHashes {
@@ -429,6 +484,7 @@ func toServerFile(node *pb.FileNode) *serverDomain.File {
 		Mode:      int(node.GetMode()),
 		SizeBytes: node.GetSizeBytes(),
 		IsBinary:  node.GetIsBinary(),
+		Encoding:  node.GetEncoding(),
 	}
 	var hashes []serverDomain.Hash
 	for _, h := range node.GetChunkHashes() {

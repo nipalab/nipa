@@ -40,6 +40,7 @@ type Entry struct {
 	Mode        int
 	SizeBytes   int64
 	IsBinary    bool
+	Encoding    string
 	Hash        serverDomain.Hash
 	ChunkHashes []serverDomain.Hash
 	ChunkSizes  []int64
@@ -105,6 +106,7 @@ func flattenTree(node *serverDomain.TreeNode, prefix string, out map[string]Entr
 			Mode:        f.Mode,
 			SizeBytes:   f.SizeBytes,
 			IsBinary:    f.IsBinary,
+			Encoding:    f.Encoding,
 			Hash:        chunker.FileHash(hashes),
 			ChunkHashes: hashes,
 			ChunkSizes:  sizes,
@@ -118,7 +120,8 @@ func flattenTree(node *serverDomain.TreeNode, prefix string, out map[string]Entr
 	}
 }
 
-// LoadContent reassembles a file from its cached chunks.
+// LoadContent reassembles a file from its cached chunks, decoding the stored
+// encoding when the file was compressed.
 func LoadContent(loadChunk func(serverDomain.Hash) ([]byte, error), e Entry) ([]byte, error) {
 	var out []byte
 	for _, h := range e.ChunkHashes {
@@ -126,7 +129,11 @@ func LoadContent(loadChunk func(serverDomain.Hash) ([]byte, error), e Entry) ([]
 		if err != nil {
 			return nil, fmt.Errorf("load chunk %s for %s: %w", h, e.Path, err)
 		}
-		out = append(out, data...)
+		decoded, err := chunker.Decode(e.Encoding, data)
+		if err != nil {
+			return nil, fmt.Errorf("decode chunk %s for %s: %w", h, e.Path, err)
+		}
+		out = append(out, decoded...)
 	}
 	return out, nil
 }

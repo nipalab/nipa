@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS files (
     size_bytes INTEGER NOT NULL,
     mode INTEGER NOT NULL DEFAULT 444,
     is_binary BOOLEAN NOT NULL DEFAULT FALSE,
+    encoding TEXT NOT NULL DEFAULT 'raw',
     chunks BLOB NOT NULL DEFAULT X'',
     snapshot_id TEXT NOT NULL
 );

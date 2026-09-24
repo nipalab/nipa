@@ -3,10 +3,13 @@ package usecase
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/nipalab/nipa/internal/chunker"
 	"github.com/nipalab/nipa/internal/client/domain"
 	serverDomain "github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/snow"
@@ -41,6 +44,10 @@ type stubPushClient struct {
 	uploaded       int
 	skipped        int
 	uploadErr      error
+	uploadMu       sync.Mutex
+	uploadActive   int
+	uploadMax      int
+	uploadDelay    time.Duration
 	manifest       *serverDomain.TreeNode
 	manifestErr    error
 }
@@ -74,13 +81,27 @@ func (s *stubPushClient) Push(_ context.Context, org, project, branch, baseTreeH
 }
 
 func (s *stubPushClient) UploadChunks(_ context.Context, _ domain.ChunkScope, chunks []*serverDomain.ChunkData, onChunk ...func(ch *serverDomain.ChunkData)) (int, int, error) {
+	s.uploadMu.Lock()
 	s.uploadCalls++
+	s.uploadActive++
+	if s.uploadActive > s.uploadMax {
+		s.uploadMax = s.uploadActive
+	}
 	s.uploadedChunks = append(s.uploadedChunks, chunks...)
+	s.uploadMu.Unlock()
+
+	if s.uploadDelay > 0 {
+		time.Sleep(s.uploadDelay)
+	}
 	for _, ch := range chunks {
 		if len(onChunk) > 0 && onChunk[0] != nil {
 			onChunk[0](ch)
 		}
 	}
+
+	s.uploadMu.Lock()
+	s.uploadActive--
+	s.uploadMu.Unlock()
 	return s.uploaded, s.skipped, s.uploadErr
 }
 
@@ -99,7 +120,7 @@ func newTestPush(t *testing.T, local pushLocalRepo, client pushClient) *Push {
 func TestPush_Run_Success(t *testing.T) {
 	root := t.TempDir()
 	writeRepoFile(t, root, "a.txt", "hello world")
-	fileHash, chunks, err := chunkFile([]byte("hello world"))
+	fileHash, chunks, _, err := chunkFile("file.txt", []byte("hello world"), "")
 	require.NoError(t, err)
 
 	local := &stubLocalRepo{
@@ -132,13 +153,16 @@ func TestPush_Run_Success(t *testing.T) {
 	require.Equal(t, "a.txt", client.pushFiles[0].Path)
 	require.Equal(t, fileHash, client.pushFiles[0].FileHash)
 	require.Equal(t, int64(len("hello world")), client.pushFiles[0].SizeBytes)
+	require.Equal(t, chunker.EncodingZstd, client.pushFiles[0].Encoding)
 	require.Equal(t, chunks[0].Hash, client.pushFiles[0].ChunkHashes[0])
 
 	require.Len(t, client.uploadedChunks, 1)
 	require.Equal(t, chunks[0].Hash, client.uploadedChunks[0].Hash)
-	require.Equal(t, "hello world", string(client.uploadedChunks[0].Data))
+	decoded, err := chunker.Decode(client.pushFiles[0].Encoding, client.uploadedChunks[0].Data)
+	require.NoError(t, err)
+	require.Equal(t, "hello world", string(decoded))
 
-	require.Equal(t, "hello world", string(local.storedChunks[chunks[0].Hash]),
+	require.Equal(t, client.uploadedChunks[0].Data, local.storedChunks[chunks[0].Hash],
 		"uploaded chunks must be cached locally so nipa diff can rebuild the old side")
 
 	require.NotNil(t, local.tree, "working copy snapshot must be refreshed from the server after push")
@@ -169,7 +193,7 @@ func TestPush_Run_DeduplicatesNewChunks(t *testing.T) {
 func TestPush_Run_UploadsEveryChunkForIdempotentStore(t *testing.T) {
 	root := t.TempDir()
 	writeRepoFile(t, root, "a.txt", "hello world")
-	_, chunks, err := chunkFile([]byte("hello world"))
+	_, chunks, _, err := chunkFile("file.txt", []byte("hello world"), "")
 	require.NoError(t, err)
 
 	local := &stubLocalRepo{
@@ -186,10 +210,10 @@ func TestPush_Run_UploadsEveryChunkForIdempotentStore(t *testing.T) {
 	require.Len(t, client.uploadedChunks, 1, "the client offers every staged chunk; the server dedupes by hash")
 }
 
-func TestPush_Run_StreamsChunksInBatches(t *testing.T) {
-	oldBatch := uploadBatchBytes
-	uploadBatchBytes = 1024
-	t.Cleanup(func() { uploadBatchBytes = oldBatch })
+func TestPush_Run_StreamsChunksInWindows(t *testing.T) {
+	oldWindow := uploadWindowBytes
+	uploadWindowBytes = 1024
+	t.Cleanup(func() { uploadWindowBytes = oldWindow })
 
 	root := t.TempDir()
 	content := make([]byte, 1<<20)
@@ -198,12 +222,12 @@ func TestPush_Run_StreamsChunksInBatches(t *testing.T) {
 		x = x*1664525 + 1013904223
 		content[i] = byte(x >> 24)
 	}
-	writeRepoFile(t, root, "big.bin", string(content))
+	writeRepoFile(t, root, "big.blend", string(content))
 
 	local := &stubLocalRepo{
 		loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "main"},
 		snapshot:   &domain.Snapshot{},
-		staged:     []string{"big.bin"},
+		staged:     []string{"big.blend"},
 	}
 	client := &stubPushClient{manifest: &serverDomain.TreeNode{Name: "root"}}
 	pusher := newTestPush(t, local, client)
@@ -221,9 +245,41 @@ func TestPush_Run_StreamsChunksInBatches(t *testing.T) {
 		hashes[i] = ch.Hash
 		total += len(ch.Data)
 	}
-	require.Equal(t, client.pushFiles[0].ChunkHashes, hashes)
+	require.ElementsMatch(t, client.pushFiles[0].ChunkHashes, hashes)
 	require.Equal(t, len(content), total)
 	require.Equal(t, int64(len(content)), client.pushFiles[0].SizeBytes)
+}
+
+func TestPush_Run_UploadsWindowsConcurrently(t *testing.T) {
+	oldWindow := uploadWindowBytes
+	uploadWindowBytes = 1024
+	t.Cleanup(func() { uploadWindowBytes = oldWindow })
+
+	root := t.TempDir()
+	content := make([]byte, 1<<20)
+	x := uint32(999)
+	for i := range content {
+		x = x*1664525 + 1013904223
+		content[i] = byte(x >> 24)
+	}
+	writeRepoFile(t, root, "big.blend", string(content))
+
+	local := &stubLocalRepo{
+		loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "main"},
+		snapshot:   &domain.Snapshot{},
+		staged:     []string{"big.blend"},
+	}
+	client := &stubPushClient{
+		manifest:    &serverDomain.TreeNode{Name: "root"},
+		uploadDelay: 2 * time.Millisecond,
+	}
+	pusher := newTestPush(t, local, client)
+
+	require.NoError(t, pusher.Run(context.Background(), root, "add big"))
+
+	require.Greater(t, client.uploadCalls, 1)
+	require.GreaterOrEqual(t, client.uploadMax, 2, "windows should upload concurrently")
+	require.LessOrEqual(t, client.uploadMax, uploadWindowWorkers)
 }
 
 func TestPush_Run_UsesBaseTreeHash(t *testing.T) {
@@ -297,7 +353,7 @@ func TestPush_Run_Error_NothingStaged(t *testing.T) {
 func TestPush_Run_SparseCloneSendsBaseCommitID(t *testing.T) {
 	root := t.TempDir()
 	writeRepoFile(t, root, "src/a.txt", "hello")
-	fileHash, _, err := chunkFile([]byte("hello"))
+	fileHash, _, _, err := chunkFile("file.txt", []byte("hello"), "")
 	require.NoError(t, err)
 
 	local := &stubLocalRepo{

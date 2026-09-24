@@ -62,3 +62,53 @@ func TestResolveDiffExternal_FromConfig(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "meld", got)
 }
+
+func TestResolveUploadWorkers_Auto(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv(EnvUploadWorkers, "")
+
+	workers, pinned, err := ResolveUploadWorkers()
+	require.NoError(t, err)
+	require.False(t, pinned)
+	require.Zero(t, workers)
+}
+
+func TestResolveUploadWorkers_FromConfig(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	t.Setenv(EnvUploadWorkers, "")
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "nipa"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "nipa", "config.json"),
+		[]byte(`{"uploadWorkers":12}`), 0o644))
+
+	workers, pinned, err := ResolveUploadWorkers()
+	require.NoError(t, err)
+	require.True(t, pinned)
+	require.Equal(t, 12, workers)
+}
+
+func TestResolveUploadWorkers_EnvWins(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "nipa"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "nipa", "config.json"),
+		[]byte(`{"uploadWorkers":12}`), 0o644))
+	t.Setenv(EnvUploadWorkers, " 20 ")
+
+	workers, pinned, err := ResolveUploadWorkers()
+	require.NoError(t, err)
+	require.True(t, pinned)
+	require.Equal(t, 20, workers)
+}
+
+func TestResolveUploadWorkers_InvalidEnv(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv(EnvUploadWorkers, "many")
+
+	_, _, err := ResolveUploadWorkers()
+	require.ErrorContains(t, err, EnvUploadWorkers)
+
+	t.Setenv(EnvUploadWorkers, "0")
+	_, _, err = ResolveUploadWorkers()
+	require.ErrorContains(t, err, EnvUploadWorkers)
+}

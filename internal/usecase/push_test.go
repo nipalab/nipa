@@ -105,6 +105,23 @@ func TestPush_InvalidPath(t *testing.T) {
 	require400(t, err, "invalid file path")
 }
 
+func TestPush_InvalidEncoding(t *testing.T) {
+	uc, perm, _, _, ctx := newPushFixture(t)
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
+
+	ch, fh := chunkAndFileHash(t, "x")
+	file := &domain.PushFile{Path: "a.txt", Mode: 0o644, Encoding: "bogus", FileHash: fh, ChunkHashes: []domain.Hash{ch}}
+	_, err := uc.Push(ctx, snow.ID(1), "main", "", "msg", []*domain.PushFile{file}, nil, "", "")
+	require400(t, err, "invalid encoding")
+}
+
+func TestPush_MissingEncodingIsRaw(t *testing.T) {
+	ch, fh := chunkAndFileHash(t, "x")
+	file := &domain.PushFile{Path: "a.txt", Mode: 0o644, FileHash: fh, ChunkHashes: []domain.Hash{ch}}
+	require.NoError(t, validatePushFiles([]*domain.PushFile{file}))
+	require.Equal(t, chunker.EncodingRaw, file.Encoding)
+}
+
 func TestPush_FileHashMismatch(t *testing.T) {
 	uc, perm, _, _, ctx := newPushFixture(t)
 	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)

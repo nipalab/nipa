@@ -23,6 +23,7 @@ message FileNode {
     int64 size_bytes = 3;
     bool is_binary = 4;
     repeated string chunk_hashes = 5;
+    string encoding = 6; // raw or zstd; hashes refer to the stored bytes
 }
 
 message TreeManifest {
@@ -53,6 +54,7 @@ message PushFile {
     bool is_binary = 4;
     string file_hash = 5;
     repeated string chunk_hashes = 6;
+    string encoding = 7; // raw or zstd; hashes refer to the stored bytes
 }
 
 message ChunkRef {

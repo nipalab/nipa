@@ -2,6 +2,7 @@ package server
 
 import (
 	"errors"
+	"log/slog"
 
 	"github.com/nipalab/nipa/internal/domain"
 	"google.golang.org/grpc/codes"
@@ -16,6 +17,9 @@ func handleError(err error) error {
 	var e *domain.Error
 	if !errors.As(err, &e) {
 		return status.Error(codes.Internal, err.Error())
+	}
+	if e.Code >= 500 {
+		slog.Error("request failed", "code", e.Code, "message", e.Message, "internal", e.InternalMessage)
 	}
 
 	switch e.Code {

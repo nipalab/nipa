@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/nipalab/nipa/internal/chunker"
 	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/snow"
 	"github.com/nipalab/nipa/internal/treehash"
@@ -45,6 +46,7 @@ type PushFileRow struct {
 	Mode        int
 	SizeBytes   int64
 	IsBinary    bool
+	Encoding    string
 	Hash        domain.Hash
 	TreeID      int64
 	ChunkHashes []domain.Hash
@@ -228,6 +230,7 @@ func (p *Push) toApplyRequest(ctx context.Context, projectID snow.ID, branch *do
 				Mode:        f.Mode,
 				SizeBytes:   f.SizeBytes,
 				IsBinary:    f.IsBinary,
+				Encoding:    f.Encoding,
 				Hash:        f.Hash,
 				TreeID:      n.ID,
 				ChunkHashes: f.ChunkHashes,
@@ -275,6 +278,11 @@ func validatePushFiles(files []*domain.PushFile) error {
 		if len(f.ChunkHashes) == 0 {
 			return domain.NewErrorUser(fmt.Sprintf("file %q has no chunks", f.Path))
 		}
+		encoding, ok := chunker.NormalizeEncoding(f.Encoding)
+		if !ok {
+			return domain.NewErrorUser(fmt.Sprintf("invalid encoding %q for %q", f.Encoding, f.Path))
+		}
+		f.Encoding = encoding
 	}
 	return nil
 }
@@ -337,6 +345,7 @@ type pushFile struct {
 	Mode        int
 	SizeBytes   int64
 	IsBinary    bool
+	Encoding    string
 	Hash        domain.Hash
 	ChunkHashes []domain.Hash
 }
@@ -421,6 +430,7 @@ func (b *treeBuilder) build(ctx context.Context, dirPath string, baseNode *domai
 			Mode:        pf.Mode,
 			SizeBytes:   pf.SizeBytes,
 			IsBinary:    pf.IsBinary,
+			Encoding:    pf.Encoding,
 			Hash:        pf.FileHash,
 			ChunkHashes: pf.ChunkHashes,
 		}
@@ -442,6 +452,7 @@ func (b *treeBuilder) build(ctx context.Context, dirPath string, baseNode *domai
 			Mode:        bf.Mode,
 			SizeBytes:   bf.SizeBytes,
 			IsBinary:    bf.IsBinary,
+			Encoding:    bf.Encoding,
 			Hash:        bf.Hash,
 			ChunkHashes: chunks,
 		}

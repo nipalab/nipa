@@ -103,8 +103,7 @@ func TestRepo_Clone_NoProgressWhenEverythingIsLocal(t *testing.T) {
 
 func TestUpdate_Run_ReportsDownloadProgress(t *testing.T) {
 	content := "update bytes"
-	fileHash, chunks, err := chunkFile([]byte(content))
-	require.NoError(t, err)
+	fileHash, chunks, stored, fileEncoding := testEncodedFile(t, "a.txt", content)
 
 	prog := &stubProgress{}
 	local := &stubLocalRepo{
@@ -119,17 +118,19 @@ func TestUpdate_Run_ReportsDownloadProgress(t *testing.T) {
 				Name:      "a.txt",
 				Mode:      2,
 				SizeBytes: int64(len(content)),
+				Encoding:  fileEncoding,
 				Hash:      fileHash,
 				Chunks:    chunks,
 			}},
 		},
-		downloadData: map[serverDomain.Hash][]byte{chunks[0].Hash: []byte(content)},
+		downloadData: stored,
 	}
 	updater := newTestUpdate(t, local, client)
 
+	storedSize := int64(len(stored[chunks[0].Hash]))
 	require.NoError(t, updater.Run(context.Background(), t.TempDir(), prog))
 
-	require.Equal(t, []progressStart{{objects: 1, bytes: int64(len(content))}}, prog.starts)
-	require.Equal(t, []progressCount{{objects: 1, bytes: int64(len(content))}}, prog.counts)
+	require.Equal(t, []progressStart{{objects: 1, bytes: storedSize}}, prog.starts)
+	require.Equal(t, []progressCount{{objects: 1, bytes: storedSize}}, prog.counts)
 	require.True(t, prog.endCalled)
 }

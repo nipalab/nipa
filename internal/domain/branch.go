@@ -56,6 +56,7 @@ type File struct {
 	TreeID    int64     `json:"tree_id"`
 	SizeBytes int64     `json:"size_bytes"`
 	IsBinary  bool      `json:"is_binary"`
+	Encoding  string    `json:"encoding"`
 	CreatedAt time.Time `json:"created_at"`
 	Chunks    []Chunk   `json:"chunks"`
 }

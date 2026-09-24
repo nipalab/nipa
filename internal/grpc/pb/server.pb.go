@@ -133,6 +133,7 @@ type FileNode struct {
 	SizeBytes     int64                  `protobuf:"varint,3,opt,name=size_bytes,json=sizeBytes,proto3" json:"size_bytes,omitempty"`
 	IsBinary      bool                   `protobuf:"varint,4,opt,name=is_binary,json=isBinary,proto3" json:"is_binary,omitempty"`
 	ChunkHashes   []string               `protobuf:"bytes,5,rep,name=chunk_hashes,json=chunkHashes,proto3" json:"chunk_hashes,omitempty"`
+	Encoding      string                 `protobuf:"bytes,6,opt,name=encoding,proto3" json:"encoding,omitempty"` // raw or zstd; hashes refer to the stored bytes
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -200,6 +201,13 @@ func (x *FileNode) GetChunkHashes() []string {
 		return x.ChunkHashes
 	}
 	return nil
+}
+
+func (x *FileNode) GetEncoding() string {
+	if x != nil {
+		return x.Encoding
+	}
+	return ""
 }
 
 type TreeManifest struct {
@@ -414,6 +422,7 @@ type PushFile struct {
 	IsBinary      bool                   `protobuf:"varint,4,opt,name=is_binary,json=isBinary,proto3" json:"is_binary,omitempty"`
 	FileHash      string                 `protobuf:"bytes,5,opt,name=file_hash,json=fileHash,proto3" json:"file_hash,omitempty"`
 	ChunkHashes   []string               `protobuf:"bytes,6,rep,name=chunk_hashes,json=chunkHashes,proto3" json:"chunk_hashes,omitempty"`
+	Encoding      string                 `protobuf:"bytes,7,opt,name=encoding,proto3" json:"encoding,omitempty"` // raw or zstd; hashes refer to the stored bytes
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -488,6 +497,13 @@ func (x *PushFile) GetChunkHashes() []string {
 		return x.ChunkHashes
 	}
 	return nil
+}
+
+func (x *PushFile) GetEncoding() string {
+	if x != nil {
+		return x.Encoding
+	}
+	return ""
 }
 
 type ChunkRef struct {
@@ -5149,14 +5165,15 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	" internal/grpc/proto/server.proto\x12\x05greet\x1a\x1fgoogle/protobuf/timestamp.proto\"<\n" +
 	"\x0eProjectContext\x12\x10\n" +
 	"\x03org\x18\x01 \x01(\tR\x03org\x12\x18\n" +
-	"\aproject\x18\x02 \x01(\tR\aproject\"\xa2\x01\n" +
+	"\aproject\x18\x02 \x01(\tR\aproject\"\xbe\x01\n" +
 	"\bFileNode\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12#\n" +
 	"\x04mode\x18\x02 \x01(\x0e2\x0f.greet.FileModeR\x04mode\x12\x1d\n" +
 	"\n" +
 	"size_bytes\x18\x03 \x01(\x03R\tsizeBytes\x12\x1b\n" +
 	"\tis_binary\x18\x04 \x01(\bR\bisBinary\x12!\n" +
-	"\fchunk_hashes\x18\x05 \x03(\tR\vchunkHashes\"\x98\x01\n" +
+	"\fchunk_hashes\x18\x05 \x03(\tR\vchunkHashes\x12\x1a\n" +
+	"\bencoding\x18\x06 \x01(\tR\bencoding\"\x98\x01\n" +
 	"\fTreeManifest\x12\x1b\n" +
 	"\ttree_hash\x18\x01 \x01(\tR\btreeHash\x12\x12\n" +
 	"\x04path\x18\x02 \x01(\tR\x04path\x120\n" +
@@ -5173,7 +5190,7 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"_tree_hash\"c\n" +
 	"\x17GetTreeManifestResponse\x12\x16\n" +
 	"\x06branch\x18\x01 \x01(\tR\x06branch\x120\n" +
-	"\troot_tree\x18\x02 \x01(\v2\x13.greet.TreeManifestR\brootTree\"\xbf\x01\n" +
+	"\troot_tree\x18\x02 \x01(\v2\x13.greet.TreeManifestR\brootTree\"\xdb\x01\n" +
 	"\bPushFile\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12#\n" +
 	"\x04mode\x18\x02 \x01(\x0e2\x0f.greet.FileModeR\x04mode\x12\x1d\n" +
@@ -5181,7 +5198,8 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"size_bytes\x18\x03 \x01(\x03R\tsizeBytes\x12\x1b\n" +
 	"\tis_binary\x18\x04 \x01(\bR\bisBinary\x12\x1b\n" +
 	"\tfile_hash\x18\x05 \x01(\tR\bfileHash\x12!\n" +
-	"\fchunk_hashes\x18\x06 \x03(\tR\vchunkHashes\"=\n" +
+	"\fchunk_hashes\x18\x06 \x03(\tR\vchunkHashes\x12\x1a\n" +
+	"\bencoding\x18\a \x01(\tR\bencoding\"=\n" +
 	"\bChunkRef\x12\x12\n" +
 	"\x04hash\x18\x01 \x01(\tR\x04hash\x12\x1d\n" +
 	"\n" +

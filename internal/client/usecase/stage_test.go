@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/nipalab/nipa/internal/chunker"
 	"github.com/nipalab/nipa/internal/client/domain"
 	serverDomain "github.com/nipalab/nipa/internal/domain"
 )
@@ -169,7 +170,7 @@ func TestWorkingCopy_Status_ReportsRevertConflicts(t *testing.T) {
 
 func contentHash(t *testing.T, content string) serverDomain.Hash {
 	t.Helper()
-	h, _, err := chunkFile([]byte(content))
+	h, _, _, err := chunkFile("file.txt", []byte(content), chunker.EncodingRaw)
 	require.NoError(t, err)
 	return h
 }
