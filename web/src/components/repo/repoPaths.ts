@@ -39,6 +39,13 @@ export function commitsUrl(org: string, project: string, rev = '', path = ''): s
   return `${repoUrl(org, project)}/commits${query ? `?${query}` : ''}`
 }
 
+export function commitUrl(org: string, project: string, id: string, rev = ''): string {
+  const params = new URLSearchParams()
+  if (rev) params.set('branch', rev)
+  const query = params.toString()
+  return `${repoUrl(org, project)}/commits/${encodeSegment(id)}${query ? `?${query}` : ''}`
+}
+
 export function parentPath(path: string): string {
   const segments = path.split('/').filter(Boolean)
   segments.pop()

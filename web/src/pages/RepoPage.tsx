@@ -1,138 +1,107 @@
-import { Link as PrimerLink, Stack, Text } from '@primer/react'
-import { Link, useParams, useSearchParams } from 'react-router-dom'
-import { getMyProjectPermissions, getTree, listBranches } from '../api/endpoints'
-import { useAuth } from '../auth'
-import { EmptyState, ErrorBanner, Loading, Mono, Page } from '../components/ui'
+import { Button, Stack } from '@primer/react'
+import { SearchIcon } from '@primer/octicons-react'
+import { useMemo, useState } from 'react'
+import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { getTree } from '../api/endpoints'
+import type { TreeEntryResponse } from '../api/models'
+import { BranchSelector } from '../components/repo/BranchSelector'
+import { CommitBar } from '../components/repo/CommitBar'
+import { GoToFileDialog } from '../components/repo/GoToFileDialog'
+import { Readme } from '../components/repo/Readme'
+import { RepoBreadcrumb } from '../components/repo/RepoBreadcrumb'
+import { RepoPageShell } from '../components/repo/RepoPageShell'
+import { RepoTree } from '../components/repo/RepoTree'
+import { treeUrl } from '../components/repo/repoPaths'
+import { useRepoChrome } from '../components/repo/useRepoChrome'
+import { EmptyState, ErrorBanner, Loading } from '../components/ui'
 import { useAsync } from '../hooks'
-import { PERMISSION_ADMIN, PERMISSION_WRITE, type TreeEntryResponse } from '../api/models'
 
-function parentPath(path: string): string {
-  const parts = path.split('/').filter(Boolean)
-  parts.pop()
-  return parts.join('/')
+function findReadme(entries: TreeEntryResponse[]): TreeEntryResponse | undefined {
+  const candidates = entries.filter(
+    (entry) => entry.type === 'file' && /^readme(\.[a-z]+)?$/i.test(entry.name),
+  )
+  if (candidates.length === 0) return undefined
+  return (
+    candidates.find((entry) => entry.name.toLowerCase() === 'readme.md') ??
+    candidates.find((entry) => /\.(md|markdown)$/i.test(entry.name)) ??
+    candidates[0]
+  )
 }
 
 export default function RepoPage() {
   const { org = '', project = '' } = useParams()
-  const { me } = useAuth()
-  const [params, setParams] = useSearchParams()
-  const rev = params.get('rev') ?? ''
-  const path = params.get('path') ?? ''
+  const params = useParams()
+  const routeRev = params.rev ?? ''
+  const splat = params['*'] ?? ''
+  const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
+  const [findOpen, setFindOpen] = useState(false)
+  const { branches, canWrite, canAdmin, defaultBranch } = useRepoChrome(org, project)
 
-  const { data: branches } = useAsync(() => listBranches(org, project), [org, project])
-  const { data: permissions } = useAsync(() => getMyProjectPermissions(org, project), [org, project])
-  const { data: tree, error, loading } = useAsync(() => getTree(org, project, rev, path), [org, project, rev, path])
+  const legacyRev = searchParams.get('rev') ?? ''
+  const path = splat || searchParams.get('path') || ''
+  const rev = routeRev || legacyRev
 
-  const canWrite = Boolean(
-    me?.is_admin || me?.is_super_admin || ((permissions?.project_permission ?? 0) & PERMISSION_WRITE) !== 0,
+  const { data: tree, error, loading } = useAsync(
+    () => getTree(org, project, rev, path, { history: true }),
+    [org, project, rev, path],
   )
-  const canAdmin = Boolean(
-    me?.is_admin || me?.is_super_admin || ((permissions?.project_permission ?? 0) & PERMISSION_ADMIN) !== 0,
-  )
 
-  const segments = path.split('/').filter(Boolean)
-  const treeQuery = (nextPath: string) => {
-    const next = new URLSearchParams()
-    if (rev) next.set('rev', rev)
-    if (nextPath) next.set('path', nextPath)
-    const query = next.toString()
-    return query ? `?${query}` : ''
+  const readme = useMemo(() => (tree ? findReadme(tree.entries) : undefined), [tree])
+  const linkRev = rev || defaultBranch
+  const currentBranch = branches?.find((branch) => (rev ? branch.name === rev : branch.is_default))
+  const emptyRepo = Boolean(currentBranch && !currentBranch.commit_id)
+
+  if (legacyRev) {
+    return <Navigate replace to={treeUrl(org, project, legacyRev, path)} />
   }
 
   return (
-    <Page
-      title={`${org}/${project}`}
-      subtitle="Repository browser"
-      actions={
-        <Stack direction="horizontal" gap="normal">
-          <PrimerLink as={Link} to={`/${org}/${project}/commits${rev ? `?branch=${rev}` : ''}`}>
-            Commits
-          </PrimerLink>
-          <PrimerLink as={Link} to={`/${org}/${project}/branches`}>Branches</PrimerLink>
-          <PrimerLink as={Link} to={`/${org}/${project}/pulls`}>Merge requests</PrimerLink>
-          {canAdmin && <PrimerLink as={Link} to={`/${org}/${project}/settings`}>Settings</PrimerLink>}
-        </Stack>
-      }
+    <RepoPageShell
+      org={org}
+      project={project}
+      active="code"
+      rev={linkRev}
+      canAdmin={canAdmin}
+      canWrite={canWrite}
     >
-      <Stack direction="horizontal" gap="normal" align="center">
-        <Text style={{ color: 'var(--fgColor-muted)' }}>Revision</Text>
-        <select
-          value={rev}
-          onChange={(event) => {
-            const next = new URLSearchParams()
-            if (event.target.value) next.set('rev', event.target.value)
-            if (path) next.set('path', path)
-            setParams(next)
-          }}
-          style={{ padding: 4 }}
-        >
-          <option value="">default branch</option>
-          {branches?.map((branch) => (
-            <option key={branch.id} value={branch.name}>
-              {branch.name}
-              {branch.is_default ? ' (default)' : ''}
-            </option>
-          ))}
-        </select>
-        <Text style={{ color: 'var(--fgColor-muted)' }}>
-          {canWrite ? 'write access' : 'read-only'}
-        </Text>
+      <Stack direction="horizontal" gap="normal" align="center" justify="space-between">
+        <Stack direction="horizontal" gap="normal" align="center" style={{ minWidth: 0 }}>
+          <BranchSelector
+            branches={branches}
+            rev={linkRev}
+            onSelect={(nextRev) => navigate(treeUrl(org, project, nextRev, path))}
+          />
+          {path && <RepoBreadcrumb org={org} project={project} rev={linkRev} path={path} />}
+        </Stack>
+        <Button leadingVisual={SearchIcon} onClick={() => setFindOpen(true)}>
+          Go to file
+        </Button>
       </Stack>
-
-      <div style={{ fontSize: 14 }}>
-        <PrimerLink as={Link} to={`/${org}/${project}${treeQuery('')}`}>
-          root
-        </PrimerLink>
-        {segments.map((segment, index) => {
-          const nextPath = segments.slice(0, index + 1).join('/')
-          return (
-            <span key={nextPath}>
-              {' / '}
-              <PrimerLink as={Link} to={`/${org}/${project}${treeQuery(nextPath)}`}>
-                {segment}
-              </PrimerLink>
-            </span>
-          )
-        })}
-        {path && (
-          <>
-            {' · '}
-            <PrimerLink as={Link} to={`/${org}/${project}${treeQuery(parentPath(path))}`}>up</PrimerLink>
-          </>
-        )}
-      </div>
 
       <ErrorBanner error={error} />
       {loading && <Loading />}
-      {!loading && tree && tree.entries.length === 0 && <EmptyState>This directory is empty.</EmptyState>}
-      {tree && tree.entries.length > 0 && (
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <tbody>
-            {tree.entries.map((entry: TreeEntryResponse) => (
-              <tr key={entry.path} style={{ borderBottom: '1px solid var(--borderColor-muted)' }}>
-                <td style={{ padding: '6px 4px' }}>
-                  <PrimerLink
-                    as={Link}
-                    to={
-                      entry.type === 'tree'
-                        ? `/${org}/${project}${treeQuery(entry.path)}`
-                        : `/${org}/${project}/blob${treeQuery(entry.path)}`
-                    }
-                  >
-                    {entry.type === 'tree' ? `${entry.name}/` : entry.name}
-                  </PrimerLink>
-                </td>
-                <td style={{ padding: '6px 4px', textAlign: 'right', color: 'var(--fgColor-muted)' }}>
-                  {entry.type === 'file' ? `${entry.size_bytes ?? 0} B` : ''}
-                </td>
-                <td style={{ padding: '6px 4px', textAlign: 'right' }}>
-                  {entry.hash ? <Mono>{entry.hash.slice(0, 8)}</Mono> : null}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      {!loading && tree && tree.entries.length === 0 && (
+        <EmptyState>{emptyRepo ? 'This branch has no commits yet.' : 'This directory is empty.'}</EmptyState>
       )}
-    </Page>
+      {!loading && tree && tree.entries.length > 0 && (
+        <div style={{ border: '1px solid var(--borderColor-default)', borderRadius: 6, overflow: 'hidden' }}>
+          {tree.latest_commit && (
+            <CommitBar org={org} project={project} rev={linkRev} path={path} commit={tree.latest_commit} />
+          )}
+          <RepoTree org={org} project={project} rev={linkRev} entries={tree.entries} />
+        </div>
+      )}
+      {readme && <Readme org={org} project={project} rev={linkRev} entry={readme} />}
+
+      <GoToFileDialog
+        org={org}
+        project={project}
+        rev={linkRev}
+        path={path}
+        open={findOpen}
+        onClose={() => setFindOpen(false)}
+      />
+    </RepoPageShell>
   )
 }

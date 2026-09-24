@@ -101,16 +101,6 @@ export async function fetchBlob(
   }
 }
 
-export async function getBlob(org: string, project: string, rev: string, path: string): Promise<string> {
-  const params = new URLSearchParams({ path })
-  if (rev) params.set('rev', rev)
-  const res = await apiFetch(`${projectBase(org, project)}/blob?${params.toString()}`)
-  if (!res.ok) {
-    throw await errorFromResponse(res)
-  }
-  return res.text()
-}
-
 export function listBranches(org: string, project: string): Promise<BranchResponse[]> {
   return apiJson(`${projectBase(org, project)}/branches`)
 }

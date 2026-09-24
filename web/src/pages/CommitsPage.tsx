@@ -1,28 +1,49 @@
 import { Link as PrimerLink, Stack, Text } from '@primer/react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { getCommitDiff, listCommits } from '../api/endpoints'
-import { EmptyState, ErrorBanner, Loading, Mono, Page, StatusLabel } from '../components/ui'
+import { parentPath, treeUrl } from '../components/repo/repoPaths'
+import { RepoPageShell } from '../components/repo/RepoPageShell'
+import { useRepoChrome } from '../components/repo/useRepoChrome'
+import { EmptyState, ErrorBanner, Loading, Mono, StatusLabel } from '../components/ui'
 import { useAsync } from '../hooks'
 
 export default function CommitsPage() {
   const { org = '', project = '', commit } = useParams()
   const [params] = useSearchParams()
   const branch = params.get('branch') ?? ''
+  const path = params.get('path') ?? ''
+  const { canWrite, canAdmin, defaultBranch } = useRepoChrome(org, project)
   const { data: commits, error, loading } = useAsync(
-    () => listCommits(org, project, branch),
-    [org, project, branch],
+    () => listCommits(org, project, branch, path),
+    [org, project, branch, path],
   )
   const { data: diff, error: diffError, loading: diffLoading } = useAsync(
     () => (commit ? getCommitDiff(org, project, commit) : Promise.resolve(null)),
     [org, project, commit],
   )
 
+  const rev = branch || defaultBranch
+  const backTarget = treeUrl(org, project, rev, path ? parentPath(path) : '')
+  const commitQuery = new URLSearchParams()
+  if (branch) commitQuery.set('branch', branch)
+  if (path) commitQuery.set('path', path)
+  const commitQueryString = commitQuery.toString()
+
   return (
-    <Page
-      title="Commits"
-      subtitle={`${org}/${project}${branch ? ` · ${branch}` : ''}`}
-      actions={<PrimerLink as={Link} to={`/${org}/${project}`}>back to files</PrimerLink>}
+    <RepoPageShell
+      org={org}
+      project={project}
+      active="commits"
+      rev={rev}
+      canAdmin={canAdmin}
+      canWrite={canWrite}
+      heading={`Commits${branch ? ` · ${branch}` : ''}${path ? ` · ${path}` : ''}`}
     >
+      {path && (
+        <PrimerLink as={Link} to={backTarget}>
+          back to files
+        </PrimerLink>
+      )}
       <ErrorBanner error={error} />
       {loading && <Loading />}
       {!loading && commits && commits.length === 0 && <EmptyState>No commits yet.</EmptyState>}
@@ -32,7 +53,10 @@ export default function CommitsPage() {
             {commits.map((entry) => (
               <tr key={entry.id} style={{ borderBottom: '1px solid var(--borderColor-muted)' }}>
                 <td style={{ padding: '6px 4px' }}>
-                  <PrimerLink as={Link} to={`/${org}/${project}/commits/${entry.id}${branch ? `?branch=${branch}` : ''}`}>
+                  <PrimerLink
+                    as={Link}
+                    to={`/${org}/${project}/commits/${entry.id}${commitQueryString ? `?${commitQueryString}` : ''}`}
+                  >
                     {entry.message}
                   </PrimerLink>
                 </td>
@@ -53,7 +77,9 @@ export default function CommitsPage() {
 
       {commit && (
         <Stack direction="vertical" gap="normal">
-          <Text as="h3">Diff of <Mono>{commit}</Mono></Text>
+          <Text as="h4">
+            Diff of <Mono>{commit}</Mono>
+          </Text>
           <ErrorBanner error={diffError} />
           {diffLoading && <Loading />}
           {diff?.files.map((file) => (
@@ -73,6 +99,6 @@ export default function CommitsPage() {
           ))}
         </Stack>
       )}
-    </Page>
+    </RepoPageShell>
   )
 }

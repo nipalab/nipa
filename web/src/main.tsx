@@ -2,6 +2,7 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { BaseStyles, ThemeProvider } from '@primer/react'
 import '@primer/primitives/dist/css/functional/themes/dark.css'
+import './components/repo/repo.css'
 import App from './App'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(

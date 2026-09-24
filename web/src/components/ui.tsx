@@ -7,8 +7,8 @@ export function Page({
   actions,
   children,
 }: {
-  title?: string
-  subtitle?: string
+  title?: ReactNode
+  subtitle?: ReactNode
   actions?: ReactNode
   children: ReactNode
 }) {

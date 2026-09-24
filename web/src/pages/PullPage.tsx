@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { Button, Link as PrimerLink, Stack, Text } from '@primer/react'
-import { Link, useParams } from 'react-router-dom'
+import { Button, Stack, Text } from '@primer/react'
+import { useParams } from 'react-router-dom'
 import {
   closeMergeRequest,
   getMergeRequest,
@@ -8,11 +8,14 @@ import {
   mergeMergeRequest,
   reopenMergeRequest,
 } from '../api/endpoints'
-import { ErrorBanner, Loading, Mono, Page, StatusLabel } from '../components/ui'
+import { RepoPageShell } from '../components/repo/RepoPageShell'
+import { useRepoChrome } from '../components/repo/useRepoChrome'
+import { ErrorBanner, Loading, Mono, StatusLabel } from '../components/ui'
 import { useAsync } from '../hooks'
 
 export default function PullPage() {
   const { org = '', project = '', id = '' } = useParams()
+  const { canWrite, canAdmin, defaultBranch } = useRepoChrome(org, project)
   const { data: request, error, loading, reload } = useAsync(
     () => getMergeRequest(org, project, id),
     [org, project, id],
@@ -37,15 +40,18 @@ export default function PullPage() {
   const canToggle = request?.status === 'open' || request?.status === 'closed'
 
   return (
-    <Page
-      title={request?.title ?? 'Merge request'}
-      subtitle={`${org}/${project} · ${request?.source_branch ?? ''} → ${request?.target_branch ?? ''}`}
-      actions={
-        <Stack direction="horizontal" gap="normal">
-          <PrimerLink as={Link} to={`/${org}/${project}/pulls`}>all merge requests</PrimerLink>
-        </Stack>
-      }
+    <RepoPageShell
+      org={org}
+      project={project}
+      active="pulls"
+      rev={defaultBranch}
+      canAdmin={canAdmin}
+      canWrite={canWrite}
+      heading={request?.title ?? 'Merge request'}
     >
+      <Text style={{ color: 'var(--fgColor-muted)' }}>
+        {request?.source_branch ?? ''} → {request?.target_branch ?? ''}
+      </Text>
       <ErrorBanner error={actionError ?? error ?? diffError} />
       {loading && <Loading />}
       {request && (
@@ -107,6 +113,6 @@ export default function PullPage() {
           )}
         </div>
       ))}
-    </Page>
+    </RepoPageShell>
   )
 }
