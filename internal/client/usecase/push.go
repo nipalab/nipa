@@ -35,6 +35,7 @@ type pushLocalRepo interface {
 	LoadRevertState() (*domain.RevertState, error)
 	ClearRevertState() error
 	LoadCommit() (*domain.LocalCommit, error)
+	SaveStatEntries(entries map[string]domain.StatEntry) error
 }
 
 type Push struct {
@@ -177,6 +178,7 @@ func (p *Push) pushStaged(ctx context.Context, root string, nipaUrl *domain.Nipa
 
 	uploader := newChunkUploader(ctx, p.pushClient, p.localRepo,
 		domain.ChunkScope{Org: nipaUrl.Org, Project: nipaUrl.Project}, onChunk)
+	statEntries := make(map[string]domain.StatEntry, len(toRead))
 	for _, sf := range toRead {
 		file, err := scanPushFile(sf, uploader)
 		if err != nil {
@@ -184,12 +186,18 @@ func (p *Push) pushStaged(ctx context.Context, root string, nipaUrl *domain.Nipa
 			return nil, err
 		}
 		files = append(files, file)
+		statEntries[sf.path] = statEntryFromInfo(sf.info, file.FileHash)
 	}
 	if err := uploader.close(); err != nil {
 		return nil, err
 	}
 	if prog != nil {
 		prog.UploadEnd()
+	}
+	if len(statEntries) > 0 {
+		if err := p.localRepo.SaveStatEntries(statEntries); err != nil {
+			return nil, err
+		}
 	}
 
 	if baseTreeHash == "" {

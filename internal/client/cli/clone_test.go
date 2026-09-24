@@ -114,8 +114,11 @@ func (fakeLocalRepo) OpenChunk(_ serverDomain.Hash) (io.ReadCloser, error) {
 	return nil, nil
 }
 func (fakeLocalRepo) LoadChunk(_ serverDomain.Hash) ([]byte, error) { return nil, nil }
-func (fakeLocalRepo) SaveCommit(_, _ string) error                  { return nil }
-func (fakeLocalRepo) LoadCommit() (*domain.LocalCommit, error)      { return &domain.LocalCommit{}, nil }
+func (fakeLocalRepo) SaveStatEntries(_ map[string]domain.StatEntry) error {
+	return nil
+}
+func (fakeLocalRepo) SaveCommit(_, _ string) error             { return nil }
+func (fakeLocalRepo) LoadCommit() (*domain.LocalCommit, error) { return &domain.LocalCommit{}, nil }
 
 func helperAuth(t *testing.T) (*usecase.Repo, *fakeStorage) {
 	t.Helper()

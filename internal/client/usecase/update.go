@@ -42,6 +42,7 @@ type workingCopyLocalRepo interface {
 	StoreChunks(chunks []*domain.ChunkData) error
 	OpenChunk(hash domain.Hash) (io.ReadCloser, error)
 	LoadChunk(hash domain.Hash) ([]byte, error)
+	SaveStatEntries(entries map[string]clientDomain.StatEntry) error
 }
 
 type updateLocalRepo interface {
@@ -55,6 +56,7 @@ type updateLocalRepo interface {
 	StoreChunks(chunks []*domain.ChunkData) error
 	OpenChunk(hash domain.Hash) (io.ReadCloser, error)
 	LoadChunk(hash domain.Hash) ([]byte, error)
+	SaveStatEntries(entries map[string]clientDomain.StatEntry) error
 	SaveTree(root *domain.TreeNode) error
 }
 
@@ -276,12 +278,19 @@ func syncWorkingCopy(ctx context.Context, client chunkDownloader, lr workingCopy
 		return err
 	}
 
+	statEntries := make(map[string]clientDomain.StatEntry)
 	for _, f := range newFiles {
 		if base, ok := baseByPath[f.Path]; ok && base.Hash == f.FileHash && base.Mode == f.Mode && fileExists(root, f.Path) {
+			if entry, err := statEntryFor(root, f.Path, f.FileHash); err == nil {
+				statEntries[f.Path] = entry
+			}
 			continue
 		}
 		if err := materializeFile(root, f, lr.OpenChunk); err != nil {
 			return err
+		}
+		if entry, err := statEntryFor(root, f.Path, f.FileHash); err == nil {
+			statEntries[f.Path] = entry
 		}
 	}
 
@@ -294,12 +303,21 @@ func syncWorkingCopy(ctx context.Context, client chunkDownloader, lr workingCopy
 		}
 	}
 
+	if len(statEntries) > 0 {
+		if err := lr.SaveStatEntries(statEntries); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
 var chunkStoreBatchBytes = 8 << 20
 
-func downloadMissing(ctx context.Context, client chunkDownloader, lr workingCopyLocalRepo, scope clientDomain.ChunkScope, missing []domain.Hash, estimatedBytes int64, progress ...DownloadProgress) error {
+type chunkStoreLocalRepo interface {
+	StoreChunks(chunks []*domain.ChunkData) error
+}
+
+func downloadMissing(ctx context.Context, client chunkDownloader, lr chunkStoreLocalRepo, scope clientDomain.ChunkScope, missing []domain.Hash, estimatedBytes int64, progress ...DownloadProgress) error {
 	if len(missing) == 0 {
 		return nil
 	}
