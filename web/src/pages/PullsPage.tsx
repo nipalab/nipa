@@ -30,7 +30,7 @@ export default function PullsPage() {
       setTitle('')
       setDescription('')
       reload()
-      navigate(`/${org}/${project}/pulls/${request.id}`)
+      navigate(`/${org}/${project}/pulls/${request.number}`)
     } catch (err) {
       setActionError(err instanceof Error ? err.message : String(err))
     }
@@ -62,8 +62,8 @@ export default function PullsPage() {
           key={request.id}
           style={{ border: '1px solid var(--borderColor-default)', borderRadius: 6, padding: 16 }}
         >
-          <PrimerLink as={Link} to={`/${org}/${project}/pulls/${request.id}`} style={{ fontWeight: 600 }}>
-            {request.title}
+          <PrimerLink as={Link} to={`/${org}/${project}/pulls/${request.number}`} style={{ fontWeight: 600 }}>
+            #{request.number} {request.title}
           </PrimerLink>
           <div style={{ color: 'var(--fgColor-muted)', fontSize: 13 }}>
             {request.source_branch} → {request.target_branch} · <StatusLabel status={request.status} />

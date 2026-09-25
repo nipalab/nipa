@@ -4493,17 +4493,18 @@ func (x *MergeabilityDetail) GetMergeBaseCommitId() string {
 type MergeRequestDetail struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
 	Id                string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`                                // base36 snow ID
-	ProjectId         string                 `protobuf:"bytes,2,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"` // base36 snow ID
-	SourceBranch      string                 `protobuf:"bytes,3,opt,name=source_branch,json=sourceBranch,proto3" json:"source_branch,omitempty"`
-	TargetBranch      string                 `protobuf:"bytes,4,opt,name=target_branch,json=targetBranch,proto3" json:"target_branch,omitempty"`
-	Title             string                 `protobuf:"bytes,5,opt,name=title,proto3" json:"title,omitempty"`
-	Description       string                 `protobuf:"bytes,6,opt,name=description,proto3" json:"description,omitempty"`
-	Status            string                 `protobuf:"bytes,7,opt,name=status,proto3" json:"status,omitempty"`                                                          // open, merged, closed
-	MergeCommitId     *string                `protobuf:"bytes,8,opt,name=merge_commit_id,json=mergeCommitId,proto3,oneof" json:"merge_commit_id,omitempty"`               // base36 snow ID
-	MergeBaseCommitId *string                `protobuf:"bytes,9,opt,name=merge_base_commit_id,json=mergeBaseCommitId,proto3,oneof" json:"merge_base_commit_id,omitempty"` // base36 snow ID
-	CreatedBy         string                 `protobuf:"bytes,10,opt,name=created_by,json=createdBy,proto3" json:"created_by,omitempty"`                                  // base36 snow ID
-	CreatedAt         *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	UpdatedAt         *timestamppb.Timestamp `protobuf:"bytes,12,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	Number            int64                  `protobuf:"varint,2,opt,name=number,proto3" json:"number,omitempty"`                       // sequential per-project number
+	ProjectId         string                 `protobuf:"bytes,3,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"` // base36 snow ID
+	SourceBranch      string                 `protobuf:"bytes,4,opt,name=source_branch,json=sourceBranch,proto3" json:"source_branch,omitempty"`
+	TargetBranch      string                 `protobuf:"bytes,5,opt,name=target_branch,json=targetBranch,proto3" json:"target_branch,omitempty"`
+	Title             string                 `protobuf:"bytes,6,opt,name=title,proto3" json:"title,omitempty"`
+	Description       string                 `protobuf:"bytes,7,opt,name=description,proto3" json:"description,omitempty"`
+	Status            string                 `protobuf:"bytes,8,opt,name=status,proto3" json:"status,omitempty"`                                                           // open, merged, closed
+	MergeCommitId     *string                `protobuf:"bytes,9,opt,name=merge_commit_id,json=mergeCommitId,proto3,oneof" json:"merge_commit_id,omitempty"`                // base36 snow ID
+	MergeBaseCommitId *string                `protobuf:"bytes,10,opt,name=merge_base_commit_id,json=mergeBaseCommitId,proto3,oneof" json:"merge_base_commit_id,omitempty"` // base36 snow ID
+	CreatedBy         string                 `protobuf:"bytes,11,opt,name=created_by,json=createdBy,proto3" json:"created_by,omitempty"`                                   // base36 snow ID
+	CreatedAt         *timestamppb.Timestamp `protobuf:"bytes,12,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	UpdatedAt         *timestamppb.Timestamp `protobuf:"bytes,13,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -4543,6 +4544,13 @@ func (x *MergeRequestDetail) GetId() string {
 		return x.Id
 	}
 	return ""
+}
+
+func (x *MergeRequestDetail) GetNumber() int64 {
+	if x != nil {
+		return x.Number
+	}
+	return 0
 }
 
 func (x *MergeRequestDetail) GetProjectId() string {
@@ -4745,7 +4753,7 @@ func (x *CreateMergeRequestResponse) GetMergeRequest() *MergeRequestDetail {
 type UpdateMergeRequestRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Context       *ProjectContext        `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
-	Id            string                 `protobuf:"bytes,2,opt,name=id,proto3" json:"id,omitempty"`                   // base36 snow ID
+	Number        int64                  `protobuf:"varint,2,opt,name=number,proto3" json:"number,omitempty"`          // sequential per-project number
 	Title         string                 `protobuf:"bytes,3,opt,name=title,proto3" json:"title,omitempty"`             // empty keeps the current title
 	Description   string                 `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"` // empty keeps the current description
 	unknownFields protoimpl.UnknownFields
@@ -4789,11 +4797,11 @@ func (x *UpdateMergeRequestRequest) GetContext() *ProjectContext {
 	return nil
 }
 
-func (x *UpdateMergeRequestRequest) GetId() string {
+func (x *UpdateMergeRequestRequest) GetNumber() int64 {
 	if x != nil {
-		return x.Id
+		return x.Number
 	}
-	return ""
+	return 0
 }
 
 func (x *UpdateMergeRequestRequest) GetTitle() string {
@@ -4961,7 +4969,7 @@ func (x *ListMergeRequestsResponse) GetMergeRequests() []*MergeRequestDetail {
 type MergeMergeRequestRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Context       *ProjectContext        `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
-	Id            string                 `protobuf:"bytes,2,opt,name=id,proto3" json:"id,omitempty"` // base36 snow ID
+	Number        int64                  `protobuf:"varint,2,opt,name=number,proto3" json:"number,omitempty"` // sequential per-project number
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -5003,11 +5011,11 @@ func (x *MergeMergeRequestRequest) GetContext() *ProjectContext {
 	return nil
 }
 
-func (x *MergeMergeRequestRequest) GetId() string {
+func (x *MergeMergeRequestRequest) GetNumber() int64 {
 	if x != nil {
-		return x.Id
+		return x.Number
 	}
-	return ""
+	return 0
 }
 
 type MergeMergeRequestResponse struct {
@@ -5065,7 +5073,7 @@ func (x *MergeMergeRequestResponse) GetMergeability() *MergeabilityDetail {
 type CloseMergeRequestRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Context       *ProjectContext        `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
-	Id            string                 `protobuf:"bytes,2,opt,name=id,proto3" json:"id,omitempty"` // base36 snow ID
+	Number        int64                  `protobuf:"varint,2,opt,name=number,proto3" json:"number,omitempty"` // sequential per-project number
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -5107,11 +5115,11 @@ func (x *CloseMergeRequestRequest) GetContext() *ProjectContext {
 	return nil
 }
 
-func (x *CloseMergeRequestRequest) GetId() string {
+func (x *CloseMergeRequestRequest) GetNumber() int64 {
 	if x != nil {
-		return x.Id
+		return x.Number
 	}
-	return ""
+	return 0
 }
 
 type CloseMergeRequestResponse struct {
@@ -5513,25 +5521,26 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"\x14merge_base_commit_id\x18\x04 \x01(\tH\x02R\x11mergeBaseCommitId\x88\x01\x01B\x13\n" +
 	"\x11_source_commit_idB\x13\n" +
 	"\x11_target_commit_idB\x17\n" +
-	"\x15_merge_base_commit_id\"\x82\x04\n" +
+	"\x15_merge_base_commit_id\"\x9a\x04\n" +
 	"\x12MergeRequestDetail\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x16\n" +
+	"\x06number\x18\x02 \x01(\x03R\x06number\x12\x1d\n" +
 	"\n" +
-	"project_id\x18\x02 \x01(\tR\tprojectId\x12#\n" +
-	"\rsource_branch\x18\x03 \x01(\tR\fsourceBranch\x12#\n" +
-	"\rtarget_branch\x18\x04 \x01(\tR\ftargetBranch\x12\x14\n" +
-	"\x05title\x18\x05 \x01(\tR\x05title\x12 \n" +
-	"\vdescription\x18\x06 \x01(\tR\vdescription\x12\x16\n" +
-	"\x06status\x18\a \x01(\tR\x06status\x12+\n" +
-	"\x0fmerge_commit_id\x18\b \x01(\tH\x00R\rmergeCommitId\x88\x01\x01\x124\n" +
-	"\x14merge_base_commit_id\x18\t \x01(\tH\x01R\x11mergeBaseCommitId\x88\x01\x01\x12\x1d\n" +
+	"project_id\x18\x03 \x01(\tR\tprojectId\x12#\n" +
+	"\rsource_branch\x18\x04 \x01(\tR\fsourceBranch\x12#\n" +
+	"\rtarget_branch\x18\x05 \x01(\tR\ftargetBranch\x12\x14\n" +
+	"\x05title\x18\x06 \x01(\tR\x05title\x12 \n" +
+	"\vdescription\x18\a \x01(\tR\vdescription\x12\x16\n" +
+	"\x06status\x18\b \x01(\tR\x06status\x12+\n" +
+	"\x0fmerge_commit_id\x18\t \x01(\tH\x00R\rmergeCommitId\x88\x01\x01\x124\n" +
+	"\x14merge_base_commit_id\x18\n" +
+	" \x01(\tH\x01R\x11mergeBaseCommitId\x88\x01\x01\x12\x1d\n" +
 	"\n" +
-	"created_by\x18\n" +
-	" \x01(\tR\tcreatedBy\x129\n" +
+	"created_by\x18\v \x01(\tR\tcreatedBy\x129\n" +
 	"\n" +
-	"created_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
+	"created_at\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
-	"updated_at\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAtB\x12\n" +
+	"updated_at\x18\r \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAtB\x12\n" +
 	"\x10_merge_commit_idB\x17\n" +
 	"\x15_merge_base_commit_id\"\xce\x01\n" +
 	"\x19CreateMergeRequestRequest\x12/\n" +
@@ -5541,10 +5550,10 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"\rsource_branch\x18\x04 \x01(\tR\fsourceBranch\x12#\n" +
 	"\rtarget_branch\x18\x05 \x01(\tR\ftargetBranch\"\\\n" +
 	"\x1aCreateMergeRequestResponse\x12>\n" +
-	"\rmerge_request\x18\x01 \x01(\v2\x19.greet.MergeRequestDetailR\fmergeRequest\"\x94\x01\n" +
+	"\rmerge_request\x18\x01 \x01(\v2\x19.greet.MergeRequestDetailR\fmergeRequest\"\x9c\x01\n" +
 	"\x19UpdateMergeRequestRequest\x12/\n" +
-	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12\x0e\n" +
-	"\x02id\x18\x02 \x01(\tR\x02id\x12\x14\n" +
+	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12\x16\n" +
+	"\x06number\x18\x02 \x01(\x03R\x06number\x12\x14\n" +
 	"\x05title\x18\x03 \x01(\tR\x05title\x12 \n" +
 	"\vdescription\x18\x04 \x01(\tR\vdescription\"\\\n" +
 	"\x1aUpdateMergeRequestResponse\x12>\n" +
@@ -5554,16 +5563,16 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"\x06status\x18\x02 \x01(\tR\x06status\x12\x14\n" +
 	"\x05limit\x18\x03 \x01(\x05R\x05limit\"]\n" +
 	"\x19ListMergeRequestsResponse\x12@\n" +
-	"\x0emerge_requests\x18\x01 \x03(\v2\x19.greet.MergeRequestDetailR\rmergeRequests\"[\n" +
+	"\x0emerge_requests\x18\x01 \x03(\v2\x19.greet.MergeRequestDetailR\rmergeRequests\"c\n" +
 	"\x18MergeMergeRequestRequest\x12/\n" +
-	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12\x0e\n" +
-	"\x02id\x18\x02 \x01(\tR\x02id\"\x9a\x01\n" +
+	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12\x16\n" +
+	"\x06number\x18\x02 \x01(\x03R\x06number\"\x9a\x01\n" +
 	"\x19MergeMergeRequestResponse\x12>\n" +
 	"\rmerge_request\x18\x01 \x01(\v2\x19.greet.MergeRequestDetailR\fmergeRequest\x12=\n" +
-	"\fmergeability\x18\x02 \x01(\v2\x19.greet.MergeabilityDetailR\fmergeability\"[\n" +
+	"\fmergeability\x18\x02 \x01(\v2\x19.greet.MergeabilityDetailR\fmergeability\"c\n" +
 	"\x18CloseMergeRequestRequest\x12/\n" +
-	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12\x0e\n" +
-	"\x02id\x18\x02 \x01(\tR\x02id\"[\n" +
+	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12\x16\n" +
+	"\x06number\x18\x02 \x01(\x03R\x06number\"[\n" +
 	"\x19CloseMergeRequestResponse\x12>\n" +
 	"\rmerge_request\x18\x01 \x01(\v2\x19.greet.MergeRequestDetailR\fmergeRequest*r\n" +
 	"\bFileMode\x12\x19\n" +

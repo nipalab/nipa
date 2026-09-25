@@ -47,7 +47,7 @@ export default function PullPage() {
       rev={defaultBranch}
       canAdmin={canAdmin}
       canWrite={canWrite}
-      heading={request?.title ?? 'Merge request'}
+      heading={request ? `#${request.number} ${request.title}` : 'Merge request'}
     >
       <Text style={{ color: 'var(--fgColor-muted)' }}>
         {request?.source_branch ?? ''} → {request?.target_branch ?? ''}
@@ -65,7 +65,7 @@ export default function PullPage() {
             )}
           </Text>
           {request.description && <Text>{request.description}</Text>}
-          <Mono>{request.id}</Mono>
+          <Mono>#{request.number}</Mono>
           <Stack direction="horizontal" gap="normal">
             {request.status === 'open' && (
               <Button

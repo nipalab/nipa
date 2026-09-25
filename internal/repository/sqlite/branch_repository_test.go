@@ -1155,9 +1155,9 @@ func TestBranchRepositorySQLite_HasOpenMergeRequests(t *testing.T) {
 
 	insertMR := func(id int64, source, target snow.ID, status string) {
 		_, err := db.ExecContext(ctx,
-			`INSERT INTO merge_requests (id, project_id, source_branch_id, target_branch_id, source_branch_name, target_branch_name, title, status, created_by)
-			 VALUES (?, ?, ?, ?, 'feature', 'main', 'mr', ?, ?)`,
-			id, projectID.Int64(), source.Int64(), target.Int64(), status, userID.Int64(),
+			`INSERT INTO merge_requests (id, number, project_id, source_branch_id, target_branch_id, source_branch_name, target_branch_name, title, status, created_by)
+			 VALUES (?, ?, ?, ?, ?, 'feature', 'main', 'mr', ?, ?)`,
+			id, id, projectID.Int64(), source.Int64(), target.Int64(), status, userID.Int64(),
 		)
 		require.NoError(t, err)
 	}

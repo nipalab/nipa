@@ -18,7 +18,7 @@ func setupMergeRequestRouter(ws *restful.WebService, h *handler.Handler) {
 			Param(ws.PathParameter("project", "project slug"))
 	}
 	requestID := func(b *restful.RouteBuilder) *restful.RouteBuilder {
-		return project(b).Param(ws.PathParameter("id", "merge request id (base36)"))
+		return project(b).Param(ws.PathParameter("id", "merge request number"))
 	}
 
 	ws.Route(project(
