@@ -1189,3 +1189,22 @@ func TestBranchRepositorySQLite_HasOpenMergeRequests(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, open, "merge requests must be scoped to the project")
 }
+
+func TestBranchRepositorySQLite_HasOpenMergeRequests_DatabaseError(t *testing.T) {
+	ctx := context.Background()
+	db, q := newSQLiteTestDB(t)
+	repo := NewBranchRepository(db)
+
+	projectID := seedProject(t, q, 1, "game")
+	branchID := seedBranch(t, db, projectID, "feature", sql.NullInt64{})
+
+	_, err := db.ExecContext(ctx, `DROP TABLE merge_requests`)
+	require.NoError(t, err)
+
+	_, err = repo.HasOpenMergeRequests(ctx, projectID, branchID)
+	require.Error(t, err)
+
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 500, domErr.Code)
+}
