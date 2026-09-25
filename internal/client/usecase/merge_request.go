@@ -3,20 +3,20 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/nipalab/nipa/internal/client/domain"
 	serverDomain "github.com/nipalab/nipa/internal/domain"
-	"github.com/nipalab/nipa/internal/snow"
 )
 
 type mrClient interface {
 	Connect(ctx context.Context, host string) error
 	CreateMergeRequest(ctx context.Context, org, project, title, description, sourceBranch, targetBranch string) (*domain.MergeRequest, error)
-	UpdateMergeRequest(ctx context.Context, org, project, id, title, description string) (*domain.MergeRequest, error)
+	UpdateMergeRequest(ctx context.Context, org, project string, number int64, title, description string) (*domain.MergeRequest, error)
 	ListMergeRequests(ctx context.Context, org, project, status string, limit int) ([]*domain.MergeRequest, error)
-	MergeMergeRequest(ctx context.Context, org, project, id string) (*domain.MergeRequest, *domain.Mergeability, error)
-	CloseMergeRequest(ctx context.Context, org, project, id string) (*domain.MergeRequest, error)
+	MergeMergeRequest(ctx context.Context, org, project string, number int64) (*domain.MergeRequest, *domain.Mergeability, error)
+	CloseMergeRequest(ctx context.Context, org, project string, number int64) (*domain.MergeRequest, error)
 	GetDefaultBranch(ctx context.Context, org, project string) (*serverDomain.Branch, error)
 }
 
@@ -74,7 +74,7 @@ func (m *MergeRequest) Create(ctx context.Context, root string, opts CreateMerge
 }
 
 func (m *MergeRequest) Update(ctx context.Context, root, id, title, description string) (*domain.MergeRequest, error) {
-	id, err := mergeRequestID(id)
+	number, err := mergeRequestNumber(id)
 	if err != nil {
 		return nil, err
 	}
@@ -85,7 +85,7 @@ func (m *MergeRequest) Update(ctx context.Context, root, id, title, description 
 	if err != nil {
 		return nil, err
 	}
-	return m.client.UpdateMergeRequest(ctx, url.Org, url.Project, id, title, description)
+	return m.client.UpdateMergeRequest(ctx, url.Org, url.Project, number, title, description)
 }
 
 func (m *MergeRequest) List(ctx context.Context, root, status string, limit int) ([]*domain.MergeRequest, error) {
@@ -104,7 +104,7 @@ func (m *MergeRequest) List(ctx context.Context, root, status string, limit int)
 }
 
 func (m *MergeRequest) Close(ctx context.Context, root, id string) (*domain.MergeRequest, error) {
-	id, err := mergeRequestID(id)
+	number, err := mergeRequestNumber(id)
 	if err != nil {
 		return nil, err
 	}
@@ -112,11 +112,11 @@ func (m *MergeRequest) Close(ctx context.Context, root, id string) (*domain.Merg
 	if err != nil {
 		return nil, err
 	}
-	return m.client.CloseMergeRequest(ctx, url.Org, url.Project, id)
+	return m.client.CloseMergeRequest(ctx, url.Org, url.Project, number)
 }
 
 func (m *MergeRequest) Merge(ctx context.Context, root, id string) (*domain.MergeRequest, *domain.Mergeability, error) {
-	id, err := mergeRequestID(id)
+	number, err := mergeRequestNumber(id)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -124,7 +124,7 @@ func (m *MergeRequest) Merge(ctx context.Context, root, id string) (*domain.Merg
 	if err != nil {
 		return nil, nil, err
 	}
-	return m.client.MergeMergeRequest(ctx, url.Org, url.Project, id)
+	return m.client.MergeMergeRequest(ctx, url.Org, url.Project, number)
 }
 
 func (m *MergeRequest) connect(ctx context.Context, root string) (*domain.NipaUrl, *domain.Config, error) {
@@ -148,13 +148,14 @@ func (m *MergeRequest) connect(ctx context.Context, root string) (*domain.NipaUr
 	return url, cfg, nil
 }
 
-func mergeRequestID(id string) (string, error) {
-	id = strings.TrimSpace(id)
-	if id == "" {
-		return "", domain.NewUserError("a merge request id is required")
+func mergeRequestNumber(raw string) (int64, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0, domain.NewUserError("a merge request number is required")
 	}
-	if _, err := snow.ParseBase36(id); err != nil {
-		return "", domain.NewUserError(fmt.Sprintf("invalid merge request id %q", id))
+	number, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || number <= 0 {
+		return 0, domain.NewUserError(fmt.Sprintf("invalid merge request number %q", raw))
 	}
-	return id, nil
+	return number, nil
 }

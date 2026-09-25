@@ -32,12 +32,19 @@ func (q *Queries) MergeRequestCountOpenByBranch(ctx context.Context, arg MergeRe
 
 const mergeRequestCreate = `-- name: MergeRequestCreate :one
 INSERT INTO merge_requests (
-    id, project_id, source_branch_id, target_branch_id,
+    id, number, project_id, source_branch_id, target_branch_id,
     source_branch_name, target_branch_name, title, description,
     merge_base_commit_id, created_by
 )
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING id, project_id, source_branch_id, target_branch_id, source_branch_name, target_branch_name, title, description, status, merge_commit_id, merge_base_commit_id, created_by, created_at, updated_at
+SELECT
+    ?1, COALESCE(MAX(number), 0) + 1, ?2,
+    ?3, ?4,
+    ?5, ?6,
+    ?7, ?8,
+    ?9, ?10
+FROM merge_requests
+WHERE project_id = ?2
+RETURNING id, number, project_id, source_branch_id, target_branch_id, source_branch_name, target_branch_name, title, description, status, merge_commit_id, merge_base_commit_id, created_by, created_at, updated_at
 `
 
 type MergeRequestCreateParams struct {
@@ -69,6 +76,7 @@ func (q *Queries) MergeRequestCreate(ctx context.Context, arg MergeRequestCreate
 	var i MergeRequest
 	err := row.Scan(
 		&i.ID,
+		&i.Number,
 		&i.ProjectID,
 		&i.SourceBranchID,
 		&i.TargetBranchID,
@@ -87,19 +95,20 @@ func (q *Queries) MergeRequestCreate(ctx context.Context, arg MergeRequestCreate
 }
 
 const mergeRequestGet = `-- name: MergeRequestGet :one
-SELECT id, project_id, source_branch_id, target_branch_id, source_branch_name, target_branch_name, title, description, status, merge_commit_id, merge_base_commit_id, created_by, created_at, updated_at FROM merge_requests WHERE project_id = ? AND id = ?
+SELECT id, number, project_id, source_branch_id, target_branch_id, source_branch_name, target_branch_name, title, description, status, merge_commit_id, merge_base_commit_id, created_by, created_at, updated_at FROM merge_requests WHERE project_id = ? AND number = ?
 `
 
 type MergeRequestGetParams struct {
 	ProjectID int64 `json:"project_id"`
-	ID        int64 `json:"id"`
+	Number    int64 `json:"number"`
 }
 
 func (q *Queries) MergeRequestGet(ctx context.Context, arg MergeRequestGetParams) (MergeRequest, error) {
-	row := q.db.QueryRowContext(ctx, mergeRequestGet, arg.ProjectID, arg.ID)
+	row := q.db.QueryRowContext(ctx, mergeRequestGet, arg.ProjectID, arg.Number)
 	var i MergeRequest
 	err := row.Scan(
 		&i.ID,
+		&i.Number,
 		&i.ProjectID,
 		&i.SourceBranchID,
 		&i.TargetBranchID,
@@ -118,9 +127,9 @@ func (q *Queries) MergeRequestGet(ctx context.Context, arg MergeRequestGetParams
 }
 
 const mergeRequestList = `-- name: MergeRequestList :many
-SELECT id, project_id, source_branch_id, target_branch_id, source_branch_name, target_branch_name, title, description, status, merge_commit_id, merge_base_commit_id, created_by, created_at, updated_at FROM merge_requests
+SELECT id, number, project_id, source_branch_id, target_branch_id, source_branch_name, target_branch_name, title, description, status, merge_commit_id, merge_base_commit_id, created_by, created_at, updated_at FROM merge_requests
 WHERE project_id = ?
-ORDER BY id DESC
+ORDER BY number DESC
 LIMIT ?
 `
 
@@ -140,6 +149,7 @@ func (q *Queries) MergeRequestList(ctx context.Context, arg MergeRequestListPara
 		var i MergeRequest
 		if err := rows.Scan(
 			&i.ID,
+			&i.Number,
 			&i.ProjectID,
 			&i.SourceBranchID,
 			&i.TargetBranchID,
@@ -168,9 +178,9 @@ func (q *Queries) MergeRequestList(ctx context.Context, arg MergeRequestListPara
 }
 
 const mergeRequestListByStatus = `-- name: MergeRequestListByStatus :many
-SELECT id, project_id, source_branch_id, target_branch_id, source_branch_name, target_branch_name, title, description, status, merge_commit_id, merge_base_commit_id, created_by, created_at, updated_at FROM merge_requests
+SELECT id, number, project_id, source_branch_id, target_branch_id, source_branch_name, target_branch_name, title, description, status, merge_commit_id, merge_base_commit_id, created_by, created_at, updated_at FROM merge_requests
 WHERE project_id = ? AND status = ?
-ORDER BY id DESC
+ORDER BY number DESC
 LIMIT ?
 `
 
@@ -191,6 +201,7 @@ func (q *Queries) MergeRequestListByStatus(ctx context.Context, arg MergeRequest
 		var i MergeRequest
 		if err := rows.Scan(
 			&i.ID,
+			&i.Number,
 			&i.ProjectID,
 			&i.SourceBranchID,
 			&i.TargetBranchID,
@@ -220,15 +231,15 @@ func (q *Queries) MergeRequestListByStatus(ctx context.Context, arg MergeRequest
 
 const mergeRequestUpdate = `-- name: MergeRequestUpdate :one
 UPDATE merge_requests SET title = ?, description = ?, updated_at = CURRENT_TIMESTAMP
-WHERE project_id = ? AND id = ?
-RETURNING id, project_id, source_branch_id, target_branch_id, source_branch_name, target_branch_name, title, description, status, merge_commit_id, merge_base_commit_id, created_by, created_at, updated_at
+WHERE project_id = ? AND number = ?
+RETURNING id, number, project_id, source_branch_id, target_branch_id, source_branch_name, target_branch_name, title, description, status, merge_commit_id, merge_base_commit_id, created_by, created_at, updated_at
 `
 
 type MergeRequestUpdateParams struct {
 	Title       string `json:"title"`
 	Description string `json:"description"`
 	ProjectID   int64  `json:"project_id"`
-	ID          int64  `json:"id"`
+	Number      int64  `json:"number"`
 }
 
 func (q *Queries) MergeRequestUpdate(ctx context.Context, arg MergeRequestUpdateParams) (MergeRequest, error) {
@@ -236,11 +247,12 @@ func (q *Queries) MergeRequestUpdate(ctx context.Context, arg MergeRequestUpdate
 		arg.Title,
 		arg.Description,
 		arg.ProjectID,
-		arg.ID,
+		arg.Number,
 	)
 	var i MergeRequest
 	err := row.Scan(
 		&i.ID,
+		&i.Number,
 		&i.ProjectID,
 		&i.SourceBranchID,
 		&i.TargetBranchID,
@@ -260,14 +272,14 @@ func (q *Queries) MergeRequestUpdate(ctx context.Context, arg MergeRequestUpdate
 
 const mergeRequestUpdateStatus = `-- name: MergeRequestUpdateStatus :exec
 UPDATE merge_requests SET status = ?, merge_commit_id = ?, updated_at = CURRENT_TIMESTAMP
-WHERE project_id = ? AND id = ?
+WHERE project_id = ? AND number = ?
 `
 
 type MergeRequestUpdateStatusParams struct {
 	Status        string        `json:"status"`
 	MergeCommitID sql.NullInt64 `json:"merge_commit_id"`
 	ProjectID     int64         `json:"project_id"`
-	ID            int64         `json:"id"`
+	Number        int64         `json:"number"`
 }
 
 func (q *Queries) MergeRequestUpdateStatus(ctx context.Context, arg MergeRequestUpdateStatusParams) error {
@@ -275,7 +287,7 @@ func (q *Queries) MergeRequestUpdateStatus(ctx context.Context, arg MergeRequest
 		arg.Status,
 		arg.MergeCommitID,
 		arg.ProjectID,
-		arg.ID,
+		arg.Number,
 	)
 	return err
 }

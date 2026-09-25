@@ -13,10 +13,10 @@ import (
 //go:generate go run go.uber.org/mock/mockgen -source=$GOFILE -destination=merge_request_mock_test.go -package=usecase
 type mergeRequestRepository interface {
 	Create(ctx context.Context, mr domain.MergeRequest) (*domain.MergeRequest, error)
-	Get(ctx context.Context, projectID snow.ID, id int64) (*domain.MergeRequest, error)
+	Get(ctx context.Context, projectID snow.ID, number int64) (*domain.MergeRequest, error)
 	List(ctx context.Context, projectID snow.ID, status string, limit int) ([]*domain.MergeRequest, error)
-	Update(ctx context.Context, projectID snow.ID, id int64, title, description string) (*domain.MergeRequest, error)
-	UpdateStatus(ctx context.Context, projectID snow.ID, id int64, status string, mergeCommitID *snow.ID) error
+	Update(ctx context.Context, projectID snow.ID, number int64, title, description string) (*domain.MergeRequest, error)
+	UpdateStatus(ctx context.Context, projectID snow.ID, number int64, status string, mergeCommitID *snow.ID) error
 }
 
 type branchMerger interface {
@@ -120,12 +120,12 @@ func (m *MergeRequest) List(ctx context.Context, projectID snow.ID, status strin
 	return m.repo.List(ctx, projectID, status, limit)
 }
 
-func (m *MergeRequest) Get(ctx context.Context, projectID snow.ID, id int64) (*domain.MergeRequest, error) {
-	return m.load(ctx, projectID, id)
+func (m *MergeRequest) Get(ctx context.Context, projectID snow.ID, number int64) (*domain.MergeRequest, error) {
+	return m.load(ctx, projectID, number)
 }
 
-func (m *MergeRequest) Update(ctx context.Context, projectID snow.ID, id int64, title, description string) (*domain.MergeRequest, error) {
-	mr, err := m.load(ctx, projectID, id)
+func (m *MergeRequest) Update(ctx context.Context, projectID snow.ID, number int64, title, description string) (*domain.MergeRequest, error) {
+	mr, err := m.load(ctx, projectID, number)
 	if err != nil {
 		return nil, err
 	}
@@ -150,19 +150,19 @@ func (m *MergeRequest) Update(ctx context.Context, projectID snow.ID, id int64, 
 	if description == "" {
 		description = mr.Description
 	}
-	return m.repo.Update(ctx, projectID, id, title, description)
+	return m.repo.Update(ctx, projectID, number, title, description)
 }
 
-func (m *MergeRequest) Check(ctx context.Context, projectID snow.ID, id int64) (*domain.Mergeability, error) {
-	mr, err := m.load(ctx, projectID, id)
+func (m *MergeRequest) Check(ctx context.Context, projectID snow.ID, number int64) (*domain.Mergeability, error) {
+	mr, err := m.load(ctx, projectID, number)
 	if err != nil {
 		return nil, err
 	}
 	return m.check(ctx, projectID, mr)
 }
 
-func (m *MergeRequest) Merge(ctx context.Context, projectID snow.ID, id int64) (*domain.MergeRequest, *domain.Mergeability, error) {
-	mr, err := m.load(ctx, projectID, id)
+func (m *MergeRequest) Merge(ctx context.Context, projectID snow.ID, number int64) (*domain.MergeRequest, *domain.Mergeability, error) {
+	mr, err := m.load(ctx, projectID, number)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -184,26 +184,26 @@ func (m *MergeRequest) Merge(ctx context.Context, projectID snow.ID, id int64) (
 	if err != nil {
 		return nil, info, err
 	}
-	if err := m.repo.UpdateStatus(ctx, projectID, mr.ID, domain.MergeRequestMerged, updated.CommitID); err != nil {
+	if err := m.repo.UpdateStatus(ctx, projectID, mr.Number, domain.MergeRequestMerged, updated.CommitID); err != nil {
 		return nil, info, err
 	}
-	merged, err := m.repo.Get(ctx, projectID, id)
+	merged, err := m.repo.Get(ctx, projectID, number)
 	if err != nil {
 		return nil, info, err
 	}
 	return merged, info, nil
 }
 
-func (m *MergeRequest) Close(ctx context.Context, projectID snow.ID, id int64) (*domain.MergeRequest, error) {
-	return m.setStatus(ctx, projectID, id, domain.MergeRequestOpen, domain.MergeRequestClosed)
+func (m *MergeRequest) Close(ctx context.Context, projectID snow.ID, number int64) (*domain.MergeRequest, error) {
+	return m.setStatus(ctx, projectID, number, domain.MergeRequestOpen, domain.MergeRequestClosed)
 }
 
-func (m *MergeRequest) Reopen(ctx context.Context, projectID snow.ID, id int64) (*domain.MergeRequest, error) {
-	return m.setStatus(ctx, projectID, id, domain.MergeRequestClosed, domain.MergeRequestOpen)
+func (m *MergeRequest) Reopen(ctx context.Context, projectID snow.ID, number int64) (*domain.MergeRequest, error) {
+	return m.setStatus(ctx, projectID, number, domain.MergeRequestClosed, domain.MergeRequestOpen)
 }
 
-func (m *MergeRequest) Diff(ctx context.Context, projectID snow.ID, id int64) ([]diff.FileDiff, error) {
-	mr, err := m.load(ctx, projectID, id)
+func (m *MergeRequest) Diff(ctx context.Context, projectID snow.ID, number int64) ([]diff.FileDiff, error) {
+	mr, err := m.load(ctx, projectID, number)
 	if err != nil {
 		return nil, err
 	}
@@ -233,13 +233,16 @@ func (m *MergeRequest) Diff(ctx context.Context, projectID snow.ID, id int64) ([
 	return m.merger.TreeDiffBetween(ctx, projectID, baseID, *source.CommitID)
 }
 
-func (m *MergeRequest) load(ctx context.Context, projectID snow.ID, id int64) (*domain.MergeRequest, error) {
+func (m *MergeRequest) load(ctx context.Context, projectID snow.ID, number int64) (*domain.MergeRequest, error) {
+	if number <= 0 {
+		return nil, domain.NewErrorUser("invalid merge request number")
+	}
 	if !m.perm.HasProjectAccess(ctx, projectID, domain.PermissionRead) {
 		return nil, domain.NewErrorNoPermission()
 	}
-	mr, err := m.repo.Get(ctx, projectID, id)
+	mr, err := m.repo.Get(ctx, projectID, number)
 	if domain.IsErrorNotFound(err) {
-		return nil, domain.NewErrorNotFound(fmt.Sprintf("merge request %d not found", id))
+		return nil, domain.NewErrorNotFound(fmt.Sprintf("merge request #%d not found", number))
 	}
 	if err != nil {
 		return nil, err
@@ -299,8 +302,8 @@ func (m *MergeRequest) check(ctx context.Context, projectID snow.ID, mr *domain.
 	return info, nil
 }
 
-func (m *MergeRequest) setStatus(ctx context.Context, projectID snow.ID, id int64, from, to string) (*domain.MergeRequest, error) {
-	mr, err := m.load(ctx, projectID, id)
+func (m *MergeRequest) setStatus(ctx context.Context, projectID snow.ID, number int64, from, to string) (*domain.MergeRequest, error) {
+	mr, err := m.load(ctx, projectID, number)
 	if err != nil {
 		return nil, err
 	}
@@ -318,8 +321,8 @@ func (m *MergeRequest) setStatus(ctx context.Context, projectID snow.ID, id int6
 	if to == domain.MergeRequestMerged {
 		mergeCommitID = mr.MergeCommitID
 	}
-	if err := m.repo.UpdateStatus(ctx, projectID, id, to, mergeCommitID); err != nil {
+	if err := m.repo.UpdateStatus(ctx, projectID, number, to, mergeCommitID); err != nil {
 		return nil, err
 	}
-	return m.repo.Get(ctx, projectID, id)
+	return m.repo.Get(ctx, projectID, number)
 }

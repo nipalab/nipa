@@ -28,11 +28,7 @@ func (n *nipaServer) UpdateMergeRequest(ctx context.Context, req *pb.UpdateMerge
 	if err != nil {
 		return nil, handleError(err)
 	}
-	id, err := mergeRequestID(req.GetId())
-	if err != nil {
-		return nil, handleError(err)
-	}
-	request, err := n.uc.MergeRequest().Update(ctx, project.ID, id, req.GetTitle(), req.GetDescription())
+	request, err := n.uc.MergeRequest().Update(ctx, project.ID, req.GetNumber(), req.GetTitle(), req.GetDescription())
 	if err != nil {
 		return nil, handleError(err)
 	}
@@ -60,11 +56,7 @@ func (n *nipaServer) MergeMergeRequest(ctx context.Context, req *pb.MergeMergeRe
 	if err != nil {
 		return nil, handleError(err)
 	}
-	id, err := mergeRequestID(req.GetId())
-	if err != nil {
-		return nil, handleError(err)
-	}
-	request, info, err := n.uc.MergeRequest().Merge(ctx, project.ID, id)
+	request, info, err := n.uc.MergeRequest().Merge(ctx, project.ID, req.GetNumber())
 	if err != nil {
 		return nil, handleError(err)
 	}
@@ -79,28 +71,17 @@ func (n *nipaServer) CloseMergeRequest(ctx context.Context, req *pb.CloseMergeRe
 	if err != nil {
 		return nil, handleError(err)
 	}
-	id, err := mergeRequestID(req.GetId())
-	if err != nil {
-		return nil, handleError(err)
-	}
-	request, err := n.uc.MergeRequest().Close(ctx, project.ID, id)
+	request, err := n.uc.MergeRequest().Close(ctx, project.ID, req.GetNumber())
 	if err != nil {
 		return nil, handleError(err)
 	}
 	return &pb.CloseMergeRequestResponse{MergeRequest: domainMergeRequestToPB(request)}, nil
 }
 
-func mergeRequestID(raw string) (int64, error) {
-	id, err := snow.ParseBase36(raw)
-	if err != nil {
-		return 0, domain.NewErrorUser("invalid merge request id")
-	}
-	return id.Int64(), nil
-}
-
 func domainMergeRequestToPB(request *domain.MergeRequest) *pb.MergeRequestDetail {
 	return &pb.MergeRequestDetail{
 		Id:                snow.ID(request.ID).Base36(),
+		Number:            request.Number,
 		ProjectId:         request.ProjectID.Base36(),
 		SourceBranch:      request.SourceBranch,
 		TargetBranch:      request.TargetBranch,

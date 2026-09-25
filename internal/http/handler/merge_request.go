@@ -2,6 +2,7 @@ package handler
 
 import (
 	nethttp "net/http"
+	"strconv"
 
 	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/http"
@@ -57,7 +58,7 @@ func (h *Handler) UpdateMergeRequest(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	id, err := parseMergeRequestID(appCtx)
+	number, err := parseMergeRequestNumber(appCtx)
 	if err != nil {
 		appCtx.HandleError(err)
 		return
@@ -68,7 +69,7 @@ func (h *Handler) UpdateMergeRequest(appCtx http.AppContext) {
 		return
 	}
 	request, err := h.useCase.MergeRequest().Update(
-		appCtx.Context(), project.ID, id, body.Title, body.Description,
+		appCtx.Context(), project.ID, number, body.Title, body.Description,
 	)
 	if err != nil {
 		appCtx.HandleError(err)
@@ -83,17 +84,17 @@ func (h *Handler) GetMergeRequest(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	id, err := parseMergeRequestID(appCtx)
+	number, err := parseMergeRequestNumber(appCtx)
 	if err != nil {
 		appCtx.HandleError(err)
 		return
 	}
-	request, err := h.useCase.MergeRequest().Get(appCtx.Context(), project.ID, id)
+	request, err := h.useCase.MergeRequest().Get(appCtx.Context(), project.ID, number)
 	if err != nil {
 		appCtx.HandleError(err)
 		return
 	}
-	info, err := h.useCase.MergeRequest().Check(appCtx.Context(), project.ID, id)
+	info, err := h.useCase.MergeRequest().Check(appCtx.Context(), project.ID, number)
 	if err != nil {
 		appCtx.HandleError(err)
 		return
@@ -107,12 +108,12 @@ func (h *Handler) CheckMergeRequest(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	id, err := parseMergeRequestID(appCtx)
+	number, err := parseMergeRequestNumber(appCtx)
 	if err != nil {
 		appCtx.HandleError(err)
 		return
 	}
-	info, err := h.useCase.MergeRequest().Check(appCtx.Context(), project.ID, id)
+	info, err := h.useCase.MergeRequest().Check(appCtx.Context(), project.ID, number)
 	if err != nil {
 		appCtx.HandleError(err)
 		return
@@ -126,12 +127,12 @@ func (h *Handler) MergeMergeRequest(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	id, err := parseMergeRequestID(appCtx)
+	number, err := parseMergeRequestNumber(appCtx)
 	if err != nil {
 		appCtx.HandleError(err)
 		return
 	}
-	request, info, err := h.useCase.MergeRequest().Merge(appCtx.Context(), project.ID, id)
+	request, info, err := h.useCase.MergeRequest().Merge(appCtx.Context(), project.ID, number)
 	if err != nil {
 		appCtx.HandleError(err)
 		return
@@ -140,22 +141,22 @@ func (h *Handler) MergeMergeRequest(appCtx http.AppContext) {
 }
 
 func (h *Handler) CloseMergeRequest(appCtx http.AppContext) {
-	h.setMergeRequestStatus(appCtx, func(id int64) (*domain.MergeRequest, error) {
+	h.setMergeRequestStatus(appCtx, func(number int64) (*domain.MergeRequest, error) {
 		_, project, err := h.resolveProject(appCtx)
 		if err != nil {
 			return nil, err
 		}
-		return h.useCase.MergeRequest().Close(appCtx.Context(), project.ID, id)
+		return h.useCase.MergeRequest().Close(appCtx.Context(), project.ID, number)
 	})
 }
 
 func (h *Handler) ReopenMergeRequest(appCtx http.AppContext) {
-	h.setMergeRequestStatus(appCtx, func(id int64) (*domain.MergeRequest, error) {
+	h.setMergeRequestStatus(appCtx, func(number int64) (*domain.MergeRequest, error) {
 		_, project, err := h.resolveProject(appCtx)
 		if err != nil {
 			return nil, err
 		}
-		return h.useCase.MergeRequest().Reopen(appCtx.Context(), project.ID, id)
+		return h.useCase.MergeRequest().Reopen(appCtx.Context(), project.ID, number)
 	})
 }
 
@@ -165,12 +166,12 @@ func (h *Handler) MergeRequestDiff(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	id, err := parseMergeRequestID(appCtx)
+	number, err := parseMergeRequestNumber(appCtx)
 	if err != nil {
 		appCtx.HandleError(err)
 		return
 	}
-	files, err := h.useCase.MergeRequest().Diff(appCtx.Context(), project.ID, id)
+	files, err := h.useCase.MergeRequest().Diff(appCtx.Context(), project.ID, number)
 	if err != nil {
 		appCtx.HandleError(err)
 		return
@@ -182,17 +183,17 @@ func (h *Handler) MergeRequestDiff(appCtx http.AppContext) {
 	appCtx.WriteJson(nethttp.StatusOK, resp)
 }
 
-func (h *Handler) setMergeRequestStatus(appCtx http.AppContext, set func(id int64) (*domain.MergeRequest, error)) {
+func (h *Handler) setMergeRequestStatus(appCtx http.AppContext, set func(number int64) (*domain.MergeRequest, error)) {
 	if _, _, err := h.resolveProject(appCtx); err != nil {
 		appCtx.HandleError(err)
 		return
 	}
-	id, err := parseMergeRequestID(appCtx)
+	number, err := parseMergeRequestNumber(appCtx)
 	if err != nil {
 		appCtx.HandleError(err)
 		return
 	}
-	request, err := set(id)
+	request, err := set(number)
 	if err != nil {
 		appCtx.HandleError(err)
 		return
@@ -200,17 +201,18 @@ func (h *Handler) setMergeRequestStatus(appCtx http.AppContext, set func(id int6
 	appCtx.WriteJson(nethttp.StatusOK, toMergeRequestResponse(request, nil))
 }
 
-func parseMergeRequestID(appCtx http.AppContext) (int64, error) {
-	id, err := snow.ParseBase36(appCtx.PathParameter("id"))
-	if err != nil {
-		return 0, domain.NewErrorUser("invalid merge request id")
+func parseMergeRequestNumber(appCtx http.AppContext) (int64, error) {
+	number, err := strconv.ParseInt(appCtx.PathParameter("id"), 10, 64)
+	if err != nil || number <= 0 {
+		return 0, domain.NewErrorUser("invalid merge request number")
 	}
-	return id.Int64(), nil
+	return number, nil
 }
 
 func toMergeRequestResponse(request *domain.MergeRequest, info *domain.Mergeability) model.MergeRequestResponse {
 	resp := model.MergeRequestResponse{
 		ID:           snow.ID(request.ID).Base36(),
+		Number:       request.Number,
 		ProjectID:    request.ProjectID.Base36(),
 		SourceBranch: request.SourceBranch,
 		TargetBranch: request.TargetBranch,

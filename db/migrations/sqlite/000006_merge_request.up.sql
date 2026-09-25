@@ -1,5 +1,6 @@
 CREATE TABLE merge_requests (
     id INTEGER PRIMARY KEY,
+    number INTEGER NOT NULL,
     project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     source_branch_id INTEGER NOT NULL REFERENCES branches(id),
     target_branch_id INTEGER NOT NULL REFERENCES branches(id),
@@ -17,3 +18,5 @@ CREATE TABLE merge_requests (
 );
 
 CREATE INDEX idx_merge_requests_project ON merge_requests (project_id, id DESC);
+
+CREATE UNIQUE INDEX idx_merge_requests_project_number ON merge_requests (project_id, number);

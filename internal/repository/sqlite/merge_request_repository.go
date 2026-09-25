@@ -36,10 +36,10 @@ func (r *MergeRequestRepository) Create(ctx context.Context, mr domain.MergeRequ
 	return mergeRequestToDomain(row), nil
 }
 
-func (r *MergeRequestRepository) Get(ctx context.Context, projectID snow.ID, id int64) (*domain.MergeRequest, error) {
+func (r *MergeRequestRepository) Get(ctx context.Context, projectID snow.ID, number int64) (*domain.MergeRequest, error) {
 	row, err := r.queries.MergeRequestGet(ctx, sqlcSqlite.MergeRequestGetParams{
 		ProjectID: projectID.Int64(),
-		ID:        id,
+		Number:    number,
 	})
 	if err != nil {
 		return nil, handleError(err)
@@ -74,12 +74,12 @@ func (r *MergeRequestRepository) List(ctx context.Context, projectID snow.ID, st
 	return requests, nil
 }
 
-func (r *MergeRequestRepository) Update(ctx context.Context, projectID snow.ID, id int64, title, description string) (*domain.MergeRequest, error) {
+func (r *MergeRequestRepository) Update(ctx context.Context, projectID snow.ID, number int64, title, description string) (*domain.MergeRequest, error) {
 	row, err := r.queries.MergeRequestUpdate(ctx, sqlcSqlite.MergeRequestUpdateParams{
 		Title:       title,
 		Description: description,
 		ProjectID:   projectID.Int64(),
-		ID:          id,
+		Number:      number,
 	})
 	if err != nil {
 		return nil, handleError(err)
@@ -87,12 +87,12 @@ func (r *MergeRequestRepository) Update(ctx context.Context, projectID snow.ID, 
 	return mergeRequestToDomain(row), nil
 }
 
-func (r *MergeRequestRepository) UpdateStatus(ctx context.Context, projectID snow.ID, id int64, status string, mergeCommitID *snow.ID) error {
+func (r *MergeRequestRepository) UpdateStatus(ctx context.Context, projectID snow.ID, number int64, status string, mergeCommitID *snow.ID) error {
 	err := r.queries.MergeRequestUpdateStatus(ctx, sqlcSqlite.MergeRequestUpdateStatusParams{
 		Status:        status,
 		MergeCommitID: nullSnowID(mergeCommitID),
 		ProjectID:     projectID.Int64(),
-		ID:            id,
+		Number:        number,
 	})
 	return handleError(err)
 }
@@ -100,6 +100,7 @@ func (r *MergeRequestRepository) UpdateStatus(ctx context.Context, projectID sno
 func mergeRequestToDomain(row sqlcSqlite.MergeRequest) *domain.MergeRequest {
 	return &domain.MergeRequest{
 		ID:                row.ID,
+		Number:            row.Number,
 		ProjectID:         snow.ID(row.ProjectID),
 		SourceBranchID:    snow.ID(row.SourceBranchID),
 		TargetBranchID:    snow.ID(row.TargetBranchID),
