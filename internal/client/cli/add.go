@@ -8,7 +8,7 @@ func (c *Cli) setupAddCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "add <path> [...]",
 		Short:         "Mark files to be pushed",
-		Long:          "Mark the given files (or everything inside directories) for the next push. Paths are relative to the repository root.",
+		Long:          "Mark the given files (or everything inside directories) for the next push. Missing paths that are still tracked are marked as deletions. Paths are relative to the repository root.",
 		Args:          cobra.MinimumNArgs(1),
 		SilenceErrors: true,
 		SilenceUsage:  true,

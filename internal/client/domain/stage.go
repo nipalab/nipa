@@ -31,6 +31,7 @@ type StatEntry struct {
 
 type Status struct {
 	Staged    []string
+	Deleted   []string
 	Modified  []string
 	Untracked []string
 	Missing   []string
