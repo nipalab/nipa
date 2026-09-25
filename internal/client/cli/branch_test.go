@@ -21,6 +21,8 @@ type fakeListRepoInterface struct {
 	branches         []*serverDomain.Branch
 	createdBranch    *serverDomain.Branch
 	createdBranchErr error
+	deletedBranch    string
+	deleteErr        error
 }
 
 func (f fakeListRepoInterface) GetDefaultBranch(_ context.Context, _, _ string) (*serverDomain.Branch, error) {
@@ -46,6 +48,11 @@ func (f fakeListRepoInterface) CreateBranch(_ context.Context, _, _, name, _, _,
 	return &serverDomain.Branch{Name: name}, f.createdBranchErr
 }
 
+func (f *fakeListRepoInterface) DeleteBranch(_ context.Context, _, _, name string) error {
+	f.deletedBranch = name
+	return f.deleteErr
+}
+
 func (f fakeListRepoInterface) DownloadChunks(_ context.Context, _ domain.ChunkScope, _ []serverDomain.Hash, _ func(h serverDomain.Hash, data []byte) error) error {
 	return nil
 }
@@ -55,18 +62,26 @@ func (f fakeListRepoInterface) GetCommitLog(_ context.Context, _, _, _ string, _
 }
 
 func newBranchCli(branches ...*serverDomain.Branch) *Cli {
+	return newBranchCliWithRepo(&fakeListRepoInterface{branches: branches})
+}
+
+func newBranchCliWithRepo(fake *fakeListRepoInterface) *Cli {
 	auth := usecase.NewAuth(fakeExecutor{}, &fakeStorage{}, &fakeInput{})
-	repo := usecase.NewRepo(auth, fakeListRepoInterface{branches: branches}, fakeLocalRepo{})
+	repo := usecase.NewRepo(auth, fake, fakeLocalRepo{})
 	return NewCli(&fakeUsecaseContainer{auth: auth, repo: repo}, &fakeConnector{})
 }
 
 func setupRepo(t *testing.T, branch string) string {
+	return setupRepoURL(t, branch, "http://example.com/org/project")
+}
+
+func setupRepoURL(t *testing.T, branch, rawURL string) string {
 	t.Helper()
 	target := t.TempDir()
 	lr := localrepo.NewLocalRepo()
 	require.NoError(t, lr.Init(target))
 	defer lr.Close()
-	require.NoError(t, lr.SaveConfig(domain.Config{Url: "http://example.com/org/project", Branch: branch}))
+	require.NoError(t, lr.SaveConfig(domain.Config{Url: rawURL, Branch: branch}))
 	return target
 }
 
@@ -183,11 +198,82 @@ func TestSetupBranchCmd_Create_ServerError(t *testing.T) {
 		auth: usecase.NewAuth(fakeExecutor{}, &fakeStorage{}, &fakeInput{}),
 		repo: usecase.NewRepo(
 			usecase.NewAuth(fakeExecutor{}, &fakeStorage{}, &fakeInput{}),
-			fakeListRepoInterface{createdBranchErr: wantErr},
+			&fakeListRepoInterface{createdBranchErr: wantErr},
 			fakeLocalRepo{},
 		),
 	}, &fakeConnector{})
 
 	_, err := runBranchCmd(t, cli, root, "-c", "feature")
 	require.ErrorIs(t, err, wantErr)
+}
+
+func TestSetupBranchCmd_Delete(t *testing.T) {
+	root := setupRepo(t, "main")
+	fake := &fakeListRepoInterface{}
+	cli := newBranchCliWithRepo(fake)
+
+	out, err := runBranchCmd(t, cli, root, "-d", "feature")
+	require.NoError(t, err)
+	require.Equal(t, "Deleted branch \"feature\"\n", out)
+	require.Equal(t, "feature", fake.deletedBranch)
+}
+
+func TestSetupBranchCmd_Delete_LongFlag(t *testing.T) {
+	root := setupRepo(t, "main")
+	fake := &fakeListRepoInterface{}
+	cli := newBranchCliWithRepo(fake)
+
+	out, err := runBranchCmd(t, cli, root, "--delete", "feature")
+	require.NoError(t, err)
+	require.Equal(t, "Deleted branch \"feature\"\n", out)
+	require.Equal(t, "feature", fake.deletedBranch)
+}
+
+func TestSetupBranchCmd_Delete_CurrentBranch(t *testing.T) {
+	root := setupRepo(t, "main")
+	fake := &fakeListRepoInterface{}
+	cli := newBranchCliWithRepo(fake)
+
+	_, err := runBranchCmd(t, cli, root, "-d", "main")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "current branch")
+	require.Empty(t, fake.deletedBranch)
+}
+
+func TestSetupBranchCmd_Delete_ServerError(t *testing.T) {
+	root := setupRepo(t, "main")
+	wantErr := errors.New("protected branch")
+	cli := newBranchCliWithRepo(&fakeListRepoInterface{deleteErr: wantErr})
+
+	_, err := runBranchCmd(t, cli, root, "-d", "feature")
+	require.ErrorIs(t, err, wantErr)
+}
+
+func TestSetupBranchCmd_Delete_InvalidURL(t *testing.T) {
+	root := setupRepoURL(t, "main", "ftp://example.com/org/project")
+	cli := newBranchCli()
+
+	_, err := runBranchCmd(t, cli, root, "-d", "feature")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "invalid URL scheme")
+}
+
+func TestSetupBranchCmd_Delete_ConnectError(t *testing.T) {
+	root := setupRepo(t, "main")
+	wantErr := errors.New("connect refused")
+	auth := usecase.NewAuth(fakeExecutor{}, &fakeStorage{}, &fakeInput{})
+	repo := usecase.NewRepo(auth, &fakeListRepoInterface{}, fakeLocalRepo{})
+	cli := NewCli(&fakeUsecaseContainer{auth: auth, repo: repo}, &fakeConnector{err: wantErr})
+
+	_, err := runBranchCmd(t, cli, root, "-d", "feature")
+	require.ErrorIs(t, err, wantErr)
+}
+
+func TestSetupBranchCmd_FlagsMutuallyExclusive(t *testing.T) {
+	root := setupRepo(t, "main")
+	cli := newBranchCli()
+
+	_, err := runBranchCmd(t, cli, root, "-a", "-d", "feature")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "mutually exclusive")
 }

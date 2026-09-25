@@ -30,6 +30,7 @@ type branchRepository interface {
 	CreateBranch(ctx context.Context, branch domain.Branch) (*domain.Branch, error)
 	RenameBranch(ctx context.Context, projectID, branchID snow.ID, name, key string) error
 	DeleteBranch(ctx context.Context, projectID, branchID snow.ID) error
+	HasOpenMergeRequests(ctx context.Context, projectID, branchID snow.ID) (bool, error)
 	SetBranchProtection(ctx context.Context, projectID, branchID snow.ID, protected bool) error
 	SetDefaultBranch(ctx context.Context, projectID, branchID snow.ID) error
 	UpdateCommitIf(ctx context.Context, branchID snow.ID, fromCommitID, toCommitID *snow.ID) error
@@ -159,6 +160,13 @@ func (b *Branch) Delete(ctx context.Context, projectID snow.ID, name string) err
 	}
 	if branch.IsDefault {
 		return domain.NewErrorConflict(fmt.Sprintf("cannot delete the default branch %q", name))
+	}
+	hasOpen, err := b.branchRepo.HasOpenMergeRequests(ctx, projectID, branch.ID)
+	if err != nil {
+		return err
+	}
+	if hasOpen {
+		return domain.NewErrorConflict(fmt.Sprintf("branch %q has open merge requests", name))
 	}
 	return b.branchRepo.DeleteBranch(ctx, projectID, branch.ID)
 }

@@ -1090,3 +1090,121 @@ func TestBranchRepositorySQLite_Lifecycle(t *testing.T) {
 		require.NotEqual(t, branchID, branch.ID)
 	}
 }
+
+func TestBranchRepositorySQLite_CreateAfterDelete(t *testing.T) {
+	ctx := context.Background()
+	db, q := newSQLiteTestDB(t)
+	repo := NewBranchRepository(db)
+
+	projectID := seedProject(t, q, 1, "game")
+	oldID := seedBranch(t, db, projectID, "feature", sql.NullInt64{})
+	require.NoError(t, repo.DeleteBranch(ctx, projectID, oldID))
+
+	recreated, err := repo.CreateBranch(ctx, domain.Branch{
+		ID:        newTestNode(t).Generate(),
+		ProjectID: projectID,
+		Name:      "feature",
+	})
+	require.NoError(t, err, "a deleted branch name must be reusable")
+	require.NotEqual(t, oldID, recreated.ID)
+	require.Equal(t, "feature", recreated.Name)
+
+	got, err := repo.GetBranchByName(ctx, projectID, "feature")
+	require.NoError(t, err)
+	require.Equal(t, recreated.ID, got.ID)
+	_, err = repo.GetByProjectIDAndID(ctx, projectID, oldID)
+	requireRecordNotFound(t, err)
+
+	branches, err := repo.ListBranches(ctx, projectID, 100, nil, 0)
+	require.NoError(t, err)
+	count := 0
+	for _, branch := range branches {
+		if branch.Name == "feature" {
+			count++
+		}
+	}
+	require.Equal(t, 1, count)
+}
+
+func TestBranchRepositorySQLite_RenameToDeletedName(t *testing.T) {
+	ctx := context.Background()
+	db, q := newSQLiteTestDB(t)
+	repo := NewBranchRepository(db)
+
+	projectID := seedProject(t, q, 1, "game")
+	oldID := seedBranch(t, db, projectID, "feature", sql.NullInt64{})
+	require.NoError(t, repo.DeleteBranch(ctx, projectID, oldID))
+	liveID := seedBranch(t, db, projectID, "trunk", sql.NullInt64{})
+
+	require.NoError(t, repo.RenameBranch(ctx, projectID, liveID, "feature", "feature"))
+	renamed, err := repo.GetBranchByName(ctx, projectID, "feature")
+	require.NoError(t, err)
+	require.Equal(t, liveID, renamed.ID)
+}
+
+func TestBranchRepositorySQLite_HasOpenMergeRequests(t *testing.T) {
+	ctx := context.Background()
+	db, q := newSQLiteTestDB(t)
+	repo := NewBranchRepository(db)
+
+	projectID := seedProject(t, q, 1, "game")
+	userID := seedPBACUser(t, db, 42)
+	featureID := seedBranch(t, db, projectID, "feature", sql.NullInt64{})
+	mainID := seedBranch(t, db, projectID, "main", sql.NullInt64{})
+	otherID := seedBranch(t, db, projectID, "other", sql.NullInt64{})
+
+	insertMR := func(id int64, source, target snow.ID, status string) {
+		_, err := db.ExecContext(ctx,
+			`INSERT INTO merge_requests (id, project_id, source_branch_id, target_branch_id, source_branch_name, target_branch_name, title, status, created_by)
+			 VALUES (?, ?, ?, ?, 'feature', 'main', 'mr', ?, ?)`,
+			id, projectID.Int64(), source.Int64(), target.Int64(), status, userID.Int64(),
+		)
+		require.NoError(t, err)
+	}
+
+	open, err := repo.HasOpenMergeRequests(ctx, projectID, featureID)
+	require.NoError(t, err)
+	require.False(t, open)
+
+	insertMR(1, featureID, mainID, domain.MergeRequestClosed)
+	open, err = repo.HasOpenMergeRequests(ctx, projectID, featureID)
+	require.NoError(t, err)
+	require.False(t, open, "closed merge requests must not block deletion")
+
+	insertMR(2, featureID, mainID, domain.MergeRequestOpen)
+	open, err = repo.HasOpenMergeRequests(ctx, projectID, featureID)
+	require.NoError(t, err)
+	require.True(t, open, "an open merge request with the branch as source must block deletion")
+
+	open, err = repo.HasOpenMergeRequests(ctx, projectID, mainID)
+	require.NoError(t, err)
+	require.True(t, open, "an open merge request with the branch as target must block deletion")
+
+	open, err = repo.HasOpenMergeRequests(ctx, projectID, otherID)
+	require.NoError(t, err)
+	require.False(t, open, "unrelated branches must not be blocked")
+
+	otherProject := seedProject(t, q, 1, "other-project")
+	open, err = repo.HasOpenMergeRequests(ctx, otherProject, featureID)
+	require.NoError(t, err)
+	require.False(t, open, "merge requests must be scoped to the project")
+}
+
+func TestBranchRepositorySQLite_HasOpenMergeRequests_DatabaseError(t *testing.T) {
+	ctx := context.Background()
+	db, q := newSQLiteTestDB(t)
+	repo := NewBranchRepository(db)
+
+	projectID := seedProject(t, q, 1, "game")
+	branchID := seedBranch(t, db, projectID, "feature", sql.NullInt64{})
+
+	_, err := db.ExecContext(ctx, `DROP TABLE merge_requests`)
+	require.NoError(t, err)
+
+	_, err = repo.HasOpenMergeRequests(ctx, projectID, branchID)
+	require.Error(t, err)
+
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 500, domErr.Code)
+}

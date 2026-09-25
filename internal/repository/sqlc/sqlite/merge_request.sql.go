@@ -10,6 +10,26 @@ import (
 	"database/sql"
 )
 
+const mergeRequestCountOpenByBranch = `-- name: MergeRequestCountOpenByBranch :one
+SELECT COUNT(*) FROM merge_requests
+WHERE project_id = ?1
+  AND status = ?2
+  AND (source_branch_id = ?3 OR target_branch_id = ?3)
+`
+
+type MergeRequestCountOpenByBranchParams struct {
+	ProjectID int64  `json:"project_id"`
+	Status    string `json:"status"`
+	BranchID  int64  `json:"branch_id"`
+}
+
+func (q *Queries) MergeRequestCountOpenByBranch(ctx context.Context, arg MergeRequestCountOpenByBranchParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, mergeRequestCountOpenByBranch, arg.ProjectID, arg.Status, arg.BranchID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const mergeRequestCreate = `-- name: MergeRequestCreate :one
 INSERT INTO merge_requests (
     id, project_id, source_branch_id, target_branch_id,

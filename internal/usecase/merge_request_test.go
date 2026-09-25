@@ -27,7 +27,8 @@ func newTestMergeRequest(t *testing.T) (*MergeRequest, *MockmergeRequestReposito
 
 func openMergeRequest() *domain.MergeRequest {
 	return &domain.MergeRequest{
-		ID: 5, ProjectID: 1, SourceBranch: "feature", TargetBranch: "main", Status: domain.MergeRequestOpen, CreatedBy: 7,
+		ID: 5, ProjectID: 1, SourceBranchID: 3, TargetBranchID: 2,
+		SourceBranch: "feature", TargetBranch: "main", Status: domain.MergeRequestOpen, CreatedBy: 7,
 	}
 }
 
@@ -193,6 +194,20 @@ func TestMergeRequest_Check_States(t *testing.T) {
 		require.Equal(t, domain.MergeabilityInvalid, info.Status)
 	})
 
+	t.Run("recreated branch is invalid", func(t *testing.T) {
+		mr, repo, branchRepo, perm, _ := newTestMergeRequest(t)
+		sourceHead := snow.ID(11)
+		targetHead := snow.ID(12)
+		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
+		repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(openMergeRequest(), nil)
+		branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").Return(branchWithHead(30, sourceHead), nil)
+		branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(branchWithHead(2, targetHead), nil)
+
+		info, err := mr.Check(permissionCtx(7), snow.ID(1), 5)
+		require.NoError(t, err)
+		require.Equal(t, domain.MergeabilityInvalid, info.Status, "a branch recreated under the same name has a new id and must not be mergeable")
+	})
+
 	t.Run("terminal stays terminal", func(t *testing.T) {
 		mr, repo, _, perm, _ := newTestMergeRequest(t)
 		merged := openMergeRequest()
@@ -242,6 +257,21 @@ func TestMergeRequest_Merge_BehindTarget(t *testing.T) {
 	_, info, err := mr.Merge(permissionCtx(7), snow.ID(1), 5)
 	require.True(t, domain.IsErrorConflict(err))
 	require.Equal(t, domain.MergeabilityBehind, info.Status)
+}
+
+func TestMergeRequest_Merge_RecreatedSourceBranchRefused(t *testing.T) {
+	mr, repo, branchRepo, perm, _ := newTestMergeRequest(t)
+	sourceHead := snow.ID(11)
+	targetHead := snow.ID(12)
+
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
+	repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(openMergeRequest(), nil)
+	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").Return(branchWithHead(30, sourceHead), nil)
+	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(branchWithHead(2, targetHead), nil)
+
+	_, info, err := mr.Merge(permissionCtx(7), snow.ID(1), 5)
+	require.True(t, domain.IsErrorConflict(err))
+	require.Equal(t, domain.MergeabilityInvalid, info.Status)
 }
 
 func TestMergeRequest_CloseAndReopen(t *testing.T) {

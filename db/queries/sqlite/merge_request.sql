@@ -22,6 +22,12 @@ WHERE project_id = ? AND status = ?
 ORDER BY id DESC
 LIMIT ?;
 
+-- name: MergeRequestCountOpenByBranch :one
+SELECT COUNT(*) FROM merge_requests
+WHERE project_id = :project_id
+  AND status = :status
+  AND (source_branch_id = :branch_id OR target_branch_id = :branch_id);
+
 -- name: MergeRequestUpdateStatus :exec
 UPDATE merge_requests SET status = ?, merge_commit_id = ?, updated_at = CURRENT_TIMESTAMP
 WHERE project_id = ? AND id = ?;

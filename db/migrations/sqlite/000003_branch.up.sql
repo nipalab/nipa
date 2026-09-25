@@ -57,9 +57,12 @@ CREATE TABLE branches (
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     deleted BOOLEAN NOT NULL DEFAULT FALSE,
-    deleted_at DATETIME,
-    UNIQUE(project_id, key)
+    deleted_at DATETIME
 );
+
+CREATE UNIQUE INDEX idx_branches_project_key
+    ON branches (project_id, key)
+    WHERE deleted = FALSE;
 
 CREATE INDEX idx_branches_project_updated_id 
     ON branches (project_id, updated_at DESC, id DESC);

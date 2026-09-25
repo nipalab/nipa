@@ -52,11 +52,20 @@ func TestEndToEnd_MergeRequestLifecycle(t *testing.T) {
 	require.Equal(t, "Add b v2", updated.Title)
 	require.Equal(t, "body", updated.Description)
 
+	err = grpcClient.DeleteBranch(ctx, e2eOrgSlug, e2eProjectSlug, "feature")
+	require.Error(t, err, "a branch with an open merge request must not be deletable")
+	var guardErr *domain.Error
+	require.ErrorAs(t, err, &guardErr)
+	require.Equal(t, 409, guardErr.Code)
+	require.Contains(t, guardErr.Message, "open merge requests")
+
 	merged, info, err := requests.Merge(ctx, mainDir, created.ID)
 	require.NoError(t, err)
 	require.Equal(t, domain.MergeRequestMerged, merged.Status)
 	require.NotEmpty(t, merged.MergeCommitID)
 	require.Equal(t, "mergeable", info.Status)
+
+	require.NoError(t, grpcClient.DeleteBranch(ctx, e2eOrgSlug, e2eProjectSlug, "feature"), "a merged merge request must not block branch deletion")
 
 	mainManifest, err := grpcClient.GetTreeNodeManifest(ctx, e2eOrgSlug, e2eProjectSlug, "main", nil)
 	require.NoError(t, err)
@@ -80,6 +89,7 @@ func TestEndToEnd_MergeRequestLifecycle(t *testing.T) {
 	closed, err := requests.Close(ctx, mainDir, second.ID)
 	require.NoError(t, err)
 	require.Equal(t, domain.MergeRequestClosed, closed.Status)
+	require.NoError(t, grpcClient.DeleteBranch(ctx, e2eOrgSlug, e2eProjectSlug, "feature-2"), "a closed merge request must not block branch deletion")
 
 	_, _, err = requests.Merge(ctx, mainDir, second.ID)
 	require.Error(t, err)
