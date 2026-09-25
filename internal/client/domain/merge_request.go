@@ -2,9 +2,11 @@ package domain
 
 import "time"
 
-// MergeRequest mirrors the server merge-request record. IDs are base36 strings.
+// MergeRequest mirrors the server merge-request record. ID is a base36 snow ID;
+// Number is the sequential per-project reference used to address the request.
 type MergeRequest struct {
 	ID                string
+	Number            int64
 	ProjectID         string
 	SourceBranch      string
 	TargetBranch      string

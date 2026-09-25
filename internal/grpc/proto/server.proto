@@ -447,17 +447,18 @@ message MergeabilityDetail {
 
 message MergeRequestDetail {
     string id = 1; // base36 snow ID
-    string project_id = 2; // base36 snow ID
-    string source_branch = 3;
-    string target_branch = 4;
-    string title = 5;
-    string description = 6;
-    string status = 7; // open, merged, closed
-    optional string merge_commit_id = 8; // base36 snow ID
-    optional string merge_base_commit_id = 9; // base36 snow ID
-    string created_by = 10; // base36 snow ID
-    google.protobuf.Timestamp created_at = 11;
-    google.protobuf.Timestamp updated_at = 12;
+    int64 number = 2; // sequential per-project number
+    string project_id = 3; // base36 snow ID
+    string source_branch = 4;
+    string target_branch = 5;
+    string title = 6;
+    string description = 7;
+    string status = 8; // open, merged, closed
+    optional string merge_commit_id = 9; // base36 snow ID
+    optional string merge_base_commit_id = 10; // base36 snow ID
+    string created_by = 11; // base36 snow ID
+    google.protobuf.Timestamp created_at = 12;
+    google.protobuf.Timestamp updated_at = 13;
 }
 
 message CreateMergeRequestRequest {
@@ -474,7 +475,7 @@ message CreateMergeRequestResponse {
 
 message UpdateMergeRequestRequest {
     ProjectContext context = 1;
-    string id = 2; // base36 snow ID
+    int64 number = 2; // sequential per-project number
     string title = 3; // empty keeps the current title
     string description = 4; // empty keeps the current description
 }
@@ -495,7 +496,7 @@ message ListMergeRequestsResponse {
 
 message MergeMergeRequestRequest {
     ProjectContext context = 1;
-    string id = 2; // base36 snow ID
+    int64 number = 2; // sequential per-project number
 }
 
 message MergeMergeRequestResponse {
@@ -505,7 +506,7 @@ message MergeMergeRequestResponse {
 
 message CloseMergeRequestRequest {
     ProjectContext context = 1;
-    string id = 2; // base36 snow ID
+    int64 number = 2; // sequential per-project number
 }
 
 message CloseMergeRequestResponse {
