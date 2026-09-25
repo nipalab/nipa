@@ -11,7 +11,7 @@ func (c *Cli) setupStatusCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "status",
 		Short:         "Show the working copy status",
-		Long:          "Show files marked for the next push (A), modified but not marked (M), untracked (?) and missing (!).",
+		Long:          "Show files marked for the next push (A), marked as deleted (D), modified but not marked (M), untracked (?) and missing (!).",
 		Args:          cobra.NoArgs,
 		SilenceErrors: true,
 		SilenceUsage:  true,
@@ -36,6 +36,9 @@ func (c *Cli) setupStatusCmd() *cobra.Command {
 func writeStatus(cmd *cobra.Command, st *domain.Status) {
 	for _, p := range st.Staged {
 		cmd.Printf("A  %s\n", p)
+	}
+	for _, p := range st.Deleted {
+		cmd.Printf("D  %s\n", p)
 	}
 	for _, p := range st.Modified {
 		cmd.Printf("M  %s\n", p)

@@ -71,6 +71,43 @@ func TestWorkingCopy_Add_MissingPath(t *testing.T) {
 	require.Contains(t, err.Error(), "does not exist")
 }
 
+func TestWorkingCopy_Add_StagesDeletedTrackedFile(t *testing.T) {
+	local := &stubLocalRepo{snapshot: &domain.Snapshot{Files: []domain.SnapshotFile{{
+		Path: "gone.txt", Hash: contentHash(t, "deleted"),
+	}}}}
+	wc := newWorkingCopy(t, local, t.TempDir())
+
+	require.NoError(t, wc.Add(context.Background(), []string{"gone.txt"}))
+	require.Equal(t, []string{"gone.txt"}, local.stageAdd)
+}
+
+func TestWorkingCopy_Add_StagesDeletedTrackedDirectory(t *testing.T) {
+	root := t.TempDir()
+	writeRepoFile(t, root, "keep.txt", "keep")
+	local := &stubLocalRepo{snapshot: &domain.Snapshot{Files: []domain.SnapshotFile{
+		{Path: "docs/a.txt", Hash: contentHash(t, "a")},
+		{Path: "docs/sub/b.txt", Hash: contentHash(t, "b")},
+		{Path: "keep.txt", Hash: contentHash(t, "keep")},
+	}}}
+	wc := newWorkingCopy(t, local, root)
+
+	require.NoError(t, wc.Add(context.Background(), []string{"docs"}))
+	require.Equal(t, []string{"docs/a.txt", "docs/sub/b.txt"}, local.stageAdd)
+}
+
+func TestWorkingCopy_Add_DirectoryStagesInnerDeletions(t *testing.T) {
+	root := t.TempDir()
+	writeRepoFile(t, root, "docs/keep.txt", "keep")
+	local := &stubLocalRepo{snapshot: &domain.Snapshot{Files: []domain.SnapshotFile{
+		{Path: "docs/keep.txt", Hash: contentHash(t, "keep")},
+		{Path: "docs/gone.txt", Hash: contentHash(t, "gone")},
+	}}}
+	wc := newWorkingCopy(t, local, root)
+
+	require.NoError(t, wc.Add(context.Background(), []string{"docs"}))
+	require.Equal(t, []string{"docs/gone.txt", "docs/keep.txt"}, local.stageAdd)
+}
+
 func TestWorkingCopy_Add_PathInsideNipa(t *testing.T) {
 	root := t.TempDir()
 	writeRepoFile(t, root, ".nipa/config", "{}")
@@ -152,6 +189,23 @@ func TestWorkingCopy_Status_StagedFileIsNotListedTwice(t *testing.T) {
 	require.Equal(t, []string{"staged.txt"}, st.Staged)
 	require.Empty(t, st.Modified)
 	require.Empty(t, st.Untracked)
+	require.Empty(t, st.Missing)
+}
+
+func TestWorkingCopy_Status_StagedDeletion(t *testing.T) {
+	root := t.TempDir()
+	local := &stubLocalRepo{
+		snapshot: &domain.Snapshot{Files: []domain.SnapshotFile{{
+			Path: "gone.txt", Hash: contentHash(t, "gone"),
+		}}},
+		staged: []string{"gone.txt"},
+	}
+	wc := newWorkingCopy(t, local, root)
+
+	st, err := wc.Status(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, []string{"gone.txt"}, st.Deleted)
+	require.Empty(t, st.Staged)
 	require.Empty(t, st.Missing)
 }
 

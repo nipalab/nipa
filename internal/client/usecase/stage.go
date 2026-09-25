@@ -146,7 +146,18 @@ func (w *WorkingCopy) Status(ctx context.Context, opts ...StatusOptions) (*domai
 		workingSet[p] = true
 	}
 
-	st := &domain.Status{Staged: staged}
+	st := &domain.Status{}
+	for _, p := range staged {
+		_, err := os.Stat(filepath.Join(w.root, filepath.FromSlash(p)))
+		switch {
+		case err == nil:
+			st.Staged = append(st.Staged, p)
+		case errors.Is(err, fs.ErrNotExist):
+			st.Deleted = append(st.Deleted, p)
+		default:
+			return nil, err
+		}
+	}
 	mergeState, err := w.localRepo.LoadMergeState()
 	if err != nil {
 		return nil, err
@@ -221,7 +232,7 @@ func (w *WorkingCopy) Status(ctx context.Context, opts ...StatusOptions) (*domai
 	}
 
 	for _, f := range snapshot.Files {
-		if !workingSet[f.Path] {
+		if !workingSet[f.Path] && !stagedByPath[f.Path] {
 			st.Missing = append(st.Missing, f.Path)
 		}
 	}
@@ -353,8 +364,19 @@ func (w *WorkingCopy) listStagedSet() (map[string]bool, error) {
 }
 
 func (w *WorkingCopy) expandAddTargets(targets []string) ([]string, error) {
+	snapshot, err := w.localRepo.Snapshot()
+	if err != nil {
+		return nil, err
+	}
+
 	var out []string
 	seen := make(map[string]bool)
+	add := func(p string) {
+		if !seen[p] {
+			out = append(out, p)
+			seen[p] = true
+		}
+	}
 	for _, t := range targets {
 		if err := validateRelPath(t); err != nil {
 			return nil, err
@@ -368,13 +390,16 @@ func (w *WorkingCopy) expandAddTargets(targets []string) ([]string, error) {
 		}
 		info, err := os.Stat(abs)
 		if err != nil {
-			return nil, fmt.Errorf("path %q does not exist", t)
+			if !errors.Is(err, fs.ErrNotExist) {
+				return nil, err
+			}
+			if !stageTrackedTarget(snapshot, t, add) {
+				return nil, fmt.Errorf("path %q does not exist", t)
+			}
+			continue
 		}
 		if !info.IsDir() {
-			if !seen[t] {
-				out = append(out, t)
-				seen[t] = true
-			}
+			add(t)
 			continue
 		}
 		err = filepath.WalkDir(abs, func(p string, d fs.DirEntry, walkErr error) error {
@@ -398,18 +423,38 @@ func (w *WorkingCopy) expandAddTargets(targets []string) ([]string, error) {
 			if !d.Type().IsRegular() {
 				return nil
 			}
-			if !seen[relSlash] {
-				out = append(out, relSlash)
-				seen[relSlash] = true
-			}
+			add(relSlash)
 			return nil
 		})
 		if err != nil {
 			return nil, err
 		}
+		prefix := ""
+		if t != "" {
+			prefix = t + "/"
+		}
+		for _, f := range snapshot.Files {
+			if strings.HasPrefix(f.Path, prefix) {
+				add(f.Path)
+			}
+		}
 	}
 	sort.Strings(out)
 	return out, nil
+}
+
+// stageTrackedTarget marks a missing add target as a deletion: the exact path
+// when it was a tracked file, otherwise every tracked file under it. It
+// reports whether the snapshot still tracks anything at the target.
+func stageTrackedTarget(snapshot *domain.Snapshot, target string, add func(string)) bool {
+	staged := false
+	for _, f := range snapshot.Files {
+		if f.Path == target || strings.HasPrefix(f.Path, target+"/") {
+			add(f.Path)
+			staged = true
+		}
+	}
+	return staged
 }
 
 func (w *WorkingCopy) workingFileHash(path, encoding string) (serverDomain.Hash, error) {
