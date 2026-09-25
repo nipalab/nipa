@@ -107,6 +107,18 @@ func (b *BranchRepository) DeleteBranch(ctx context.Context, projectID, branchID
 	return nil
 }
 
+func (b *BranchRepository) HasOpenMergeRequests(ctx context.Context, projectID, branchID snow.ID) (bool, error) {
+	count, err := b.queries.MergeRequestCountOpenByBranch(ctx, sqlcSqlite.MergeRequestCountOpenByBranchParams{
+		ProjectID: projectID.Int64(),
+		Status:    domain.MergeRequestOpen,
+		BranchID:  branchID.Int64(),
+	})
+	if err != nil {
+		return false, handleError(err)
+	}
+	return count > 0, nil
+}
+
 func (b *BranchRepository) SetBranchProtection(ctx context.Context, projectID, branchID snow.ID, protected bool) error {
 	err := b.queries.BranchSetProtection(ctx, sqlcSqlite.BranchSetProtectionParams{
 		IsProtected: protected,

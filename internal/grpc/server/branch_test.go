@@ -1202,6 +1202,7 @@ func TestDeleteBranch_Success(t *testing.T) {
 	repo.EXPECT().GetBranchByName(gomock.Any(), projectID, "feature").
 		Return(&domain.Branch{ID: 2, ProjectID: projectID, Name: "feature"}, nil)
 	perm.EXPECT().HasProjectAccess(gomock.Any(), projectID, domain.PermissionWrite).Return(true)
+	repo.EXPECT().HasOpenMergeRequests(gomock.Any(), projectID, snow.ID(2)).Return(false, nil)
 	repo.EXPECT().DeleteBranch(gomock.Any(), projectID, snow.ID(2)).Return(nil)
 
 	resp, err := srv.DeleteBranch(context.Background(), &pb.DeleteBranchRequest{

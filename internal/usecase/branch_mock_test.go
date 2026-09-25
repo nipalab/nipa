@@ -273,6 +273,21 @@ func (mr *MockbranchRepositoryMockRecorder) GetTreeNode(ctx, id any) *gomock.Cal
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTreeNode", reflect.TypeOf((*MockbranchRepository)(nil).GetTreeNode), ctx, id)
 }
 
+// HasOpenMergeRequests mocks base method.
+func (m *MockbranchRepository) HasOpenMergeRequests(ctx context.Context, projectID, branchID snow.ID) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "HasOpenMergeRequests", ctx, projectID, branchID)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// HasOpenMergeRequests indicates an expected call of HasOpenMergeRequests.
+func (mr *MockbranchRepositoryMockRecorder) HasOpenMergeRequests(ctx, projectID, branchID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasOpenMergeRequests", reflect.TypeOf((*MockbranchRepository)(nil).HasOpenMergeRequests), ctx, projectID, branchID)
+}
+
 // ListBranches mocks base method.
 func (m *MockbranchRepository) ListBranches(ctx context.Context, projectID snow.ID, limit int, updatedAfter *time.Time, lastID snow.ID) ([]*domain.Branch, error) {
 	m.ctrl.T.Helper()

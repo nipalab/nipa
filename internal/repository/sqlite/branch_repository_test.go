@@ -1141,3 +1141,51 @@ func TestBranchRepositorySQLite_RenameToDeletedName(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, liveID, renamed.ID)
 }
+
+func TestBranchRepositorySQLite_HasOpenMergeRequests(t *testing.T) {
+	ctx := context.Background()
+	db, q := newSQLiteTestDB(t)
+	repo := NewBranchRepository(db)
+
+	projectID := seedProject(t, q, 1, "game")
+	userID := seedPBACUser(t, db, 42)
+	featureID := seedBranch(t, db, projectID, "feature", sql.NullInt64{})
+	mainID := seedBranch(t, db, projectID, "main", sql.NullInt64{})
+	otherID := seedBranch(t, db, projectID, "other", sql.NullInt64{})
+
+	insertMR := func(id int64, source, target snow.ID, status string) {
+		_, err := db.ExecContext(ctx,
+			`INSERT INTO merge_requests (id, project_id, source_branch_id, target_branch_id, source_branch_name, target_branch_name, title, status, created_by)
+			 VALUES (?, ?, ?, ?, 'feature', 'main', 'mr', ?, ?)`,
+			id, projectID.Int64(), source.Int64(), target.Int64(), status, userID.Int64(),
+		)
+		require.NoError(t, err)
+	}
+
+	open, err := repo.HasOpenMergeRequests(ctx, projectID, featureID)
+	require.NoError(t, err)
+	require.False(t, open)
+
+	insertMR(1, featureID, mainID, domain.MergeRequestClosed)
+	open, err = repo.HasOpenMergeRequests(ctx, projectID, featureID)
+	require.NoError(t, err)
+	require.False(t, open, "closed merge requests must not block deletion")
+
+	insertMR(2, featureID, mainID, domain.MergeRequestOpen)
+	open, err = repo.HasOpenMergeRequests(ctx, projectID, featureID)
+	require.NoError(t, err)
+	require.True(t, open, "an open merge request with the branch as source must block deletion")
+
+	open, err = repo.HasOpenMergeRequests(ctx, projectID, mainID)
+	require.NoError(t, err)
+	require.True(t, open, "an open merge request with the branch as target must block deletion")
+
+	open, err = repo.HasOpenMergeRequests(ctx, projectID, otherID)
+	require.NoError(t, err)
+	require.False(t, open, "unrelated branches must not be blocked")
+
+	otherProject := seedProject(t, q, 1, "other-project")
+	open, err = repo.HasOpenMergeRequests(ctx, otherProject, featureID)
+	require.NoError(t, err)
+	require.False(t, open, "merge requests must be scoped to the project")
+}

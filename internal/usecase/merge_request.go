@@ -270,6 +270,10 @@ func (m *MergeRequest) check(ctx context.Context, projectID snow.ID, mr *domain.
 	if err != nil {
 		return nil, err
 	}
+	if source.ID != mr.SourceBranchID || target.ID != mr.TargetBranchID {
+		info.Status = domain.MergeabilityInvalid
+		return info, nil
+	}
 	info.SourceCommitID = source.CommitID
 	info.TargetCommitID = target.CommitID
 	if source.CommitID == nil || target.CommitID == nil {

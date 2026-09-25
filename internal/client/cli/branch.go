@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/nipalab/nipa/internal/client/domain"
 	"github.com/nipalab/nipa/internal/client/localrepo"
@@ -28,7 +27,7 @@ func (c *Cli) setupBranchCmd() *cobra.Command {
 				}
 			}
 			if selected > 1 {
-				return fmt.Errorf("--all, --create and --delete are mutually exclusive")
+				return domain.NewUserError("--all, --create and --delete are mutually exclusive")
 			}
 			cfg, err := c.loadConfig()
 			if err != nil {

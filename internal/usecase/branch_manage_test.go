@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -112,6 +113,7 @@ func TestBranch_Delete_Success(t *testing.T) {
 	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").
 		Return(&domain.Branch{ID: 7, ProjectID: 1, Name: "feature"}, nil)
 	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
+	repo.EXPECT().HasOpenMergeRequests(gomock.Any(), snow.ID(1), snow.ID(7)).Return(false, nil)
 	repo.EXPECT().DeleteBranch(gomock.Any(), snow.ID(1), snow.ID(7)).Return(nil)
 
 	require.NoError(t, uc.Delete(permissionCtx(42), snow.ID(1), "feature"))
@@ -145,9 +147,36 @@ func TestBranch_Delete_ProtectedByAdmin(t *testing.T) {
 	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "release").
 		Return(&domain.Branch{ID: 3, ProjectID: 1, Name: "release", IsProtected: true}, nil)
 	perm.EXPECT().AdminHasProject(gomock.Any(), snow.ID(1)).Return(true)
+	repo.EXPECT().HasOpenMergeRequests(gomock.Any(), snow.ID(1), snow.ID(3)).Return(false, nil)
 	repo.EXPECT().DeleteBranch(gomock.Any(), snow.ID(1), snow.ID(3)).Return(nil)
 
 	require.NoError(t, uc.Delete(permissionCtx(42), snow.ID(1), "release"))
+}
+
+func TestBranch_Delete_OpenMergeRequestsRefused(t *testing.T) {
+	uc, perm, repo := newManageBranchFixture(t)
+
+	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").
+		Return(&domain.Branch{ID: 7, ProjectID: 1, Name: "feature"}, nil)
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
+	repo.EXPECT().HasOpenMergeRequests(gomock.Any(), snow.ID(1), snow.ID(7)).Return(true, nil)
+
+	err := uc.Delete(permissionCtx(42), snow.ID(1), "feature")
+	require.True(t, domain.IsErrorConflict(err))
+	require.Contains(t, err.Error(), "open merge requests")
+}
+
+func TestBranch_Delete_MergeRequestCheckError(t *testing.T) {
+	wantErr := errors.New("db down")
+	uc, perm, repo := newManageBranchFixture(t)
+
+	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").
+		Return(&domain.Branch{ID: 7, ProjectID: 1, Name: "feature"}, nil)
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
+	repo.EXPECT().HasOpenMergeRequests(gomock.Any(), snow.ID(1), snow.ID(7)).Return(false, wantErr)
+
+	err := uc.Delete(permissionCtx(42), snow.ID(1), "feature")
+	require.ErrorIs(t, err, wantErr)
 }
 
 func TestBranch_Delete_NotFound(t *testing.T) {
@@ -166,6 +195,7 @@ func TestBranch_DeleteThenRecreate(t *testing.T) {
 	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true).Times(2)
 	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").
 		Return(&domain.Branch{ID: 7, ProjectID: 1, Name: "feature"}, nil)
+	repo.EXPECT().HasOpenMergeRequests(gomock.Any(), snow.ID(1), snow.ID(7)).Return(false, nil)
 	repo.EXPECT().DeleteBranch(gomock.Any(), snow.ID(1), snow.ID(7)).Return(nil)
 	require.NoError(t, uc.Delete(ctx, snow.ID(1), "feature"))
 
