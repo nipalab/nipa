@@ -3,7 +3,6 @@ package handler
 import (
 	"context"
 	"net/http"
-	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -43,7 +42,7 @@ func TestHandler_MergeRequestFlow(t *testing.T) {
 	require.Equal(t, "open", created.Status)
 	require.Equal(t, "feature", created.SourceBranch)
 
-	mrParams := map[string]string{"org": "default", "project": "default", "id": strconv.FormatInt(created.Number, 10)}
+	mrParams := map[string]string{"org": "default", "project": "default", "id": created.ID}
 	appCtx = &fakeAppContext{claims: claims, pathParameters: mrParams, body: []byte(`{"title":"Add b v2","description":"updated"}`)}
 	env.handler.UpdateMergeRequest(appCtx)
 	require.Equal(t, http.StatusOK, appCtx.statusCode)
@@ -105,7 +104,7 @@ func TestHandler_MergeRequestBehindTarget(t *testing.T) {
 	require.Equal(t, http.StatusOK, appCtx.statusCode)
 	created := appCtx.response.(model.MergeRequestResponse)
 
-	mrParams := map[string]string{"org": "default", "project": "default", "id": strconv.FormatInt(created.Number, 10)}
+	mrParams := map[string]string{"org": "default", "project": "default", "id": created.ID}
 	appCtx = &fakeAppContext{claims: claims, pathParameters: mrParams}
 	env.handler.CheckMergeRequest(appCtx)
 	require.Equal(t, http.StatusOK, appCtx.statusCode)
@@ -131,7 +130,7 @@ func TestHandler_MergeRequestCloseReopen(t *testing.T) {
 	env.handler.CreateMergeRequest(appCtx)
 	created := appCtx.response.(model.MergeRequestResponse)
 
-	mrParams := map[string]string{"org": "default", "project": "default", "id": strconv.FormatInt(created.Number, 10)}
+	mrParams := map[string]string{"org": "default", "project": "default", "id": created.ID}
 	appCtx = &fakeAppContext{claims: claims, pathParameters: mrParams}
 	env.handler.CloseMergeRequest(appCtx)
 	require.Equal(t, http.StatusOK, appCtx.statusCode)
@@ -166,7 +165,7 @@ func TestHandler_MergeRequestValidation(t *testing.T) {
 	env.handler.CreateMergeRequest(appCtx)
 	require.Equal(t, http.StatusNotFound, appCtx.statusCode)
 
-	missing := map[string]string{"org": "default", "project": "default", "id": "999999"}
+	missing := map[string]string{"org": "default", "project": "default", "id": snow.ID(999999).Base36()}
 	appCtx = &fakeAppContext{claims: claims, pathParameters: missing}
 	env.handler.GetMergeRequest(appCtx)
 	require.Equal(t, http.StatusNotFound, appCtx.statusCode)

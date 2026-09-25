@@ -346,8 +346,7 @@ Merge requests are live over the REST API with the recommended policy:
 
 - `GET/POST /orgs/{org}/projects/{p}/merge-requests`, `GET .../{id}`,
   `GET .../{id}/check`, `GET .../{id}/diff` (three-dot vs merge base),
-  `POST .../{id}/merge|close|reopen`. `{id}` is the per-project sequential
-  number (`#1`, `#2`, ...), assigned at creation and unique per project.
+  `POST .../{id}/merge|close|reopen`.
 - Policy: **require up to date** (GitLab-style). `Check` reports
   `mergeable`, `behind_target`, `up_to_date`, `invalid`, or the terminal
   `merged`/`closed` status. A request is only landable when the target head is

@@ -717,7 +717,7 @@ func TestAPIRoutes(t *testing.T) {
 		mr := decodeBody[model.MergeRequestResponse](t, createMR)
 		require.Equal(t, "open", mr.Status)
 
-		mrURL := base + "/merge-requests/" + strconv.FormatInt(mr.Number, 10)
+		mrURL := base + "/merge-requests/" + mr.ID
 		detail := decodeBody[model.MergeRequestResponse](t, doGet(t, mrURL, aliceLogin.AccessToken))
 		require.NotNil(t, detail.Mergeability)
 		require.Equal(t, domain.MergeabilityMergeable, detail.Mergeability.Status)
@@ -753,7 +753,7 @@ func TestAPIRoutes(t *testing.T) {
 		require.Equal(t, http.StatusOK, createMR.StatusCode)
 		lagging := decodeBody[model.MergeRequestResponse](t, createMR)
 
-		laggingURL := base + "/merge-requests/" + strconv.FormatInt(lagging.Number, 10)
+		laggingURL := base + "/merge-requests/" + lagging.ID
 		check := decodeBody[*model.MergeabilityResponse](t, doGet(t, laggingURL+"/check", aliceLogin.AccessToken))
 		require.Equal(t, domain.MergeabilityBehind, check.Status)
 
@@ -794,7 +794,7 @@ func TestAPIRoutes(t *testing.T) {
 		require.Equal(t, http.StatusOK, createMR.StatusCode)
 		fixMR := decodeBody[model.MergeRequestResponse](t, createMR)
 
-		merge = doMethod(t, http.MethodPost, base+"/merge-requests/"+strconv.FormatInt(fixMR.Number, 10)+"/merge", "", aliceLogin.AccessToken)
+		merge = doMethod(t, http.MethodPost, base+"/merge-requests/"+fixMR.ID+"/merge", "", aliceLogin.AccessToken)
 		require.Equal(t, http.StatusOK, merge.StatusCode)
 		require.Equal(t, domain.MergeRequestMerged, decodeBody[model.MergeRequestResponse](t, merge).Status)
 

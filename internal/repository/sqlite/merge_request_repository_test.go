@@ -32,40 +32,25 @@ func TestMergeRequestRepositorySQLite_CRUD(t *testing.T) {
 		CreatedBy:      userID,
 	})
 	require.NoError(t, err)
-	require.Equal(t, int64(1), created.Number)
 	require.Equal(t, domain.MergeRequestOpen, created.Status)
 	require.Equal(t, "feature", created.SourceBranch)
 	require.Equal(t, "main", created.TargetBranch)
 	require.Equal(t, userID, created.CreatedBy)
 
-	second, err := repo.Create(ctx, domain.MergeRequest{
-		ID:             5002,
-		ProjectID:      projectID,
-		SourceBranchID: sourceID,
-		TargetBranchID: targetID,
-		SourceBranch:   "feature",
-		TargetBranch:   "main",
-		Title:          "Second",
-		CreatedBy:      userID,
-	})
-	require.NoError(t, err)
-	require.Equal(t, int64(2), second.Number)
-
-	got, err := repo.Get(ctx, projectID, 1)
+	got, err := repo.Get(ctx, projectID, 5001)
 	require.NoError(t, err)
 	require.Equal(t, "Add feature", got.Title)
 	require.Nil(t, got.MergeBaseCommitID)
 
 	list, err := repo.List(ctx, projectID, "", 10)
 	require.NoError(t, err)
-	require.Len(t, list, 2)
-	require.Equal(t, int64(2), list[0].Number)
+	require.Len(t, list, 1)
 
 	list, err = repo.List(ctx, projectID, domain.MergeRequestClosed, 10)
 	require.NoError(t, err)
 	require.Empty(t, list)
 
-	updated, err := repo.Update(ctx, projectID, 1, "New title", "new body")
+	updated, err := repo.Update(ctx, projectID, 5001, "New title", "new body")
 	require.NoError(t, err)
 	require.Equal(t, "New title", updated.Title)
 	require.Equal(t, "new body", updated.Description)
@@ -73,8 +58,8 @@ func TestMergeRequestRepositorySQLite_CRUD(t *testing.T) {
 	_, err = repo.Update(ctx, projectID, 9999, "t", "d")
 	requireRecordNotFound(t, err)
 
-	require.NoError(t, repo.UpdateStatus(ctx, projectID, 1, domain.MergeRequestMerged, nil))
-	got, err = repo.Get(ctx, projectID, 1)
+	require.NoError(t, repo.UpdateStatus(ctx, projectID, 5001, domain.MergeRequestMerged, nil))
+	got, err = repo.Get(ctx, projectID, 5001)
 	require.NoError(t, err)
 	require.Equal(t, domain.MergeRequestMerged, got.Status)
 

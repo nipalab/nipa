@@ -25,14 +25,14 @@ func (c *Client) CreateMergeRequest(ctx context.Context, org, project, title, de
 	return toClientMergeRequest(res.GetMergeRequest()), nil
 }
 
-func (c *Client) UpdateMergeRequest(ctx context.Context, org, project string, number int64, title, description string) (*clientDomain.MergeRequest, error) {
+func (c *Client) UpdateMergeRequest(ctx context.Context, org, project, id, title, description string) (*clientDomain.MergeRequest, error) {
 	client, err := c.transport.NipaServiceClient()
 	if err != nil {
 		return nil, err
 	}
 	res, err := client.UpdateMergeRequest(ctx, &pb.UpdateMergeRequestRequest{
 		Context:     &pb.ProjectContext{Org: org, Project: project},
-		Number:      number,
+		Id:          id,
 		Title:       title,
 		Description: description,
 	})
@@ -64,14 +64,14 @@ func (c *Client) ListMergeRequests(ctx context.Context, org, project, status str
 	return requests, nil
 }
 
-func (c *Client) MergeMergeRequest(ctx context.Context, org, project string, number int64) (*clientDomain.MergeRequest, *clientDomain.Mergeability, error) {
+func (c *Client) MergeMergeRequest(ctx context.Context, org, project, id string) (*clientDomain.MergeRequest, *clientDomain.Mergeability, error) {
 	client, err := c.transport.NipaServiceClient()
 	if err != nil {
 		return nil, nil, err
 	}
 	res, err := client.MergeMergeRequest(ctx, &pb.MergeMergeRequestRequest{
 		Context: &pb.ProjectContext{Org: org, Project: project},
-		Number:  number,
+		Id:      id,
 	})
 	if err != nil {
 		return nil, nil, toDomainError(err)
@@ -79,14 +79,14 @@ func (c *Client) MergeMergeRequest(ctx context.Context, org, project string, num
 	return toClientMergeRequest(res.GetMergeRequest()), toClientMergeability(res.GetMergeability()), nil
 }
 
-func (c *Client) CloseMergeRequest(ctx context.Context, org, project string, number int64) (*clientDomain.MergeRequest, error) {
+func (c *Client) CloseMergeRequest(ctx context.Context, org, project, id string) (*clientDomain.MergeRequest, error) {
 	client, err := c.transport.NipaServiceClient()
 	if err != nil {
 		return nil, err
 	}
 	res, err := client.CloseMergeRequest(ctx, &pb.CloseMergeRequestRequest{
 		Context: &pb.ProjectContext{Org: org, Project: project},
-		Number:  number,
+		Id:      id,
 	})
 	if err != nil {
 		return nil, toDomainError(err)
@@ -100,7 +100,6 @@ func toClientMergeRequest(mr *pb.MergeRequestDetail) *clientDomain.MergeRequest 
 	}
 	return &clientDomain.MergeRequest{
 		ID:                mr.GetId(),
-		Number:            mr.GetNumber(),
 		ProjectID:         mr.GetProjectId(),
 		SourceBranch:      mr.GetSourceBranch(),
 		TargetBranch:      mr.GetTargetBranch(),

@@ -2,7 +2,6 @@ package e2e
 
 import (
 	"context"
-	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -39,7 +38,6 @@ func TestEndToEnd_MergeRequestLifecycle(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, domain.MergeRequestOpen, created.Status)
-	require.Equal(t, int64(1), created.Number)
 	require.Equal(t, "Add b", created.Title)
 	require.Equal(t, "feature", created.SourceBranch)
 	require.Equal(t, "main", created.TargetBranch)
@@ -49,7 +47,7 @@ func TestEndToEnd_MergeRequestLifecycle(t *testing.T) {
 	require.Len(t, list, 1)
 	require.Equal(t, created.ID, list[0].ID)
 
-	updated, err := requests.Update(ctx, mainDir, strconv.FormatInt(created.Number, 10), "Add b v2", "")
+	updated, err := requests.Update(ctx, mainDir, created.ID, "Add b v2", "")
 	require.NoError(t, err)
 	require.Equal(t, "Add b v2", updated.Title)
 	require.Equal(t, "body", updated.Description)
@@ -61,7 +59,7 @@ func TestEndToEnd_MergeRequestLifecycle(t *testing.T) {
 	require.Equal(t, 409, guardErr.Code)
 	require.Contains(t, guardErr.Message, "open merge requests")
 
-	merged, info, err := requests.Merge(ctx, mainDir, strconv.FormatInt(created.Number, 10))
+	merged, info, err := requests.Merge(ctx, mainDir, created.ID)
 	require.NoError(t, err)
 	require.Equal(t, domain.MergeRequestMerged, merged.Status)
 	require.NotEmpty(t, merged.MergeCommitID)
@@ -73,7 +71,7 @@ func TestEndToEnd_MergeRequestLifecycle(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, mainManifest.FileChildren, 2)
 
-	_, _, err = requests.Merge(ctx, mainDir, strconv.FormatInt(created.Number, 10))
+	_, _, err = requests.Merge(ctx, mainDir, created.ID)
 	require.Error(t, err)
 	var domErr *domain.Error
 	require.ErrorAs(t, err, &domErr)
@@ -88,13 +86,12 @@ func TestEndToEnd_MergeRequestLifecycle(t *testing.T) {
 
 	second, err := requests.Create(ctx, feat2Dir, clientusecase.CreateMergeRequestOptions{Title: "Add c"})
 	require.NoError(t, err)
-	require.Equal(t, int64(2), second.Number)
-	closed, err := requests.Close(ctx, mainDir, strconv.FormatInt(second.Number, 10))
+	closed, err := requests.Close(ctx, mainDir, second.ID)
 	require.NoError(t, err)
 	require.Equal(t, domain.MergeRequestClosed, closed.Status)
 	require.NoError(t, grpcClient.DeleteBranch(ctx, e2eOrgSlug, e2eProjectSlug, "feature-2"), "a closed merge request must not block branch deletion")
 
-	_, _, err = requests.Merge(ctx, mainDir, strconv.FormatInt(second.Number, 10))
+	_, _, err = requests.Merge(ctx, mainDir, second.ID)
 	require.Error(t, err)
 	require.ErrorAs(t, err, &domErr)
 	require.Equal(t, 409, domErr.Code)

@@ -47,7 +47,7 @@ func (c *Cli) setupMrCreateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			cmd.Printf("Merge request #%d opened: %s -> %s (%s)\n", mr.Number, mr.SourceBranch, mr.TargetBranch, mr.Title)
+			cmd.Printf("Merge request %s opened: %s -> %s (%s)\n", mr.ID, mr.SourceBranch, mr.TargetBranch, mr.Title)
 			return nil
 		},
 	}
@@ -60,7 +60,7 @@ func (c *Cli) setupMrCreateCmd() *cobra.Command {
 
 func (c *Cli) setupMrUpdateCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:           "update <number>",
+		Use:           "update <id>",
 		Short:         "Update a merge request's title or description",
 		Args:          cobra.ExactArgs(1),
 		SilenceErrors: true,
@@ -76,7 +76,7 @@ func (c *Cli) setupMrUpdateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			cmd.Printf("Merge request #%d updated: %s\n", mr.Number, mr.Title)
+			cmd.Printf("Merge request %s updated: %s\n", mr.ID, mr.Title)
 			return nil
 		},
 	}
@@ -107,10 +107,10 @@ func (c *Cli) setupMrListCmd() *cobra.Command {
 				cmd.Println("no merge requests")
 				return nil
 			}
-			cmd.Printf("%-8s  %-7s  %-36s  %s\n", "#", "STATUS", "BRANCHES", "TITLE")
+			cmd.Printf("%-8s  %-7s  %-36s  %s\n", "ID", "STATUS", "BRANCHES", "TITLE")
 			for _, mr := range requests {
 				branches := mr.SourceBranch + " -> " + mr.TargetBranch
-				cmd.Printf("%-8d  %-7s  %-36s  %s\n", mr.Number, mr.Status, branches, mr.Title)
+				cmd.Printf("%-8s  %-7s  %-36s  %s\n", mr.ID, mr.Status, branches, mr.Title)
 			}
 			return nil
 		},
@@ -122,7 +122,7 @@ func (c *Cli) setupMrListCmd() *cobra.Command {
 
 func (c *Cli) setupMrCloseCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:           "close <number>",
+		Use:           "close <id>",
 		Short:         "Close a merge request",
 		Args:          cobra.ExactArgs(1),
 		SilenceErrors: true,
@@ -136,7 +136,7 @@ func (c *Cli) setupMrCloseCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			cmd.Printf("Merge request #%d closed.\n", mr.Number)
+			cmd.Printf("Merge request %s closed.\n", mr.ID)
 			return nil
 		},
 	}
@@ -144,7 +144,7 @@ func (c *Cli) setupMrCloseCmd() *cobra.Command {
 
 func (c *Cli) setupMrMergeCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:           "merge <number>",
+		Use:           "merge <id>",
 		Short:         "Merge a merge request",
 		Args:          cobra.ExactArgs(1),
 		SilenceErrors: true,
@@ -158,7 +158,7 @@ func (c *Cli) setupMrMergeCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			cmd.Printf("Merge request #%d merged: %s -> %s", mr.Number, mr.SourceBranch, mr.TargetBranch)
+			cmd.Printf("Merge request %s merged: %s -> %s", mr.ID, mr.SourceBranch, mr.TargetBranch)
 			if info != nil && info.Status != "" {
 				cmd.Printf(" (%s)", info.Status)
 			}

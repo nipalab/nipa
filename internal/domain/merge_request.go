@@ -26,7 +26,6 @@ type Mergeability struct {
 
 type MergeRequest struct {
 	ID                int64     `json:"id"`
-	Number            int64     `json:"number"`
 	ProjectID         snow.ID   `json:"project_id"`
 	SourceBranchID    snow.ID   `json:"source_branch_id"`
 	TargetBranchID    snow.ID   `json:"target_branch_id"`

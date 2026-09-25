@@ -27,7 +27,7 @@ func newTestMergeRequest(t *testing.T) (*MergeRequest, *MockmergeRequestReposito
 
 func openMergeRequest() *domain.MergeRequest {
 	return &domain.MergeRequest{
-		ID: 5, Number: 5, ProjectID: 1, SourceBranchID: 3, TargetBranchID: 2,
+		ID: 5, ProjectID: 1, SourceBranchID: 3, TargetBranchID: 2,
 		SourceBranch: "feature", TargetBranch: "main", Status: domain.MergeRequestOpen, CreatedBy: 7,
 	}
 }
@@ -128,7 +128,7 @@ func TestMergeRequest_Get_NotFound(t *testing.T) {
 
 	_, err := mr.Get(permissionCtx(7), snow.ID(1), 5)
 	require.True(t, domain.IsErrorNotFound(err))
-	require.Contains(t, err.Error(), "merge request #5 not found")
+	require.Contains(t, err.Error(), "merge request 5 not found")
 }
 
 func TestMergeRequest_Check_Mergeable(t *testing.T) {
@@ -539,12 +539,6 @@ func TestMergeRequest_MoreErrorPaths(t *testing.T) {
 		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(false)
 		_, err := mr.Get(permissionCtx(7), snow.ID(1), 5)
 		require.True(t, domain.IsErrorNoPermission(err))
-	})
-
-	t.Run("invalid number", func(t *testing.T) {
-		mr, _, _, _, _ := newTestMergeRequest(t)
-		_, err := mr.Get(permissionCtx(7), snow.ID(1), 0)
-		requireUserError(t, err)
 	})
 
 	t.Run("create source repository error", func(t *testing.T) {

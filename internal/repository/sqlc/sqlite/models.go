@@ -78,7 +78,6 @@ type GroupMember struct {
 
 type MergeRequest struct {
 	ID                int64         `json:"id"`
-	Number            int64         `json:"number"`
 	ProjectID         int64         `json:"project_id"`
 	SourceBranchID    int64         `json:"source_branch_id"`
 	TargetBranchID    int64         `json:"target_branch_id"`

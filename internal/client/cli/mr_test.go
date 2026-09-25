@@ -21,22 +21,21 @@ type fakeMRClient struct {
 	createResult                                                                         *domain.MergeRequest
 	createErr                                                                            error
 
-	updateOrg, updateProject, updateTitle, updateDescription string
-	updateNumber                                             int64
-	updateResult                                             *domain.MergeRequest
-	updateErr                                                error
+	updateOrg, updateProject, updateID, updateTitle, updateDescription string
+	updateResult                                                       *domain.MergeRequest
+	updateErr                                                          error
 
 	listOrg, listProject, listStatus string
 	listLimit                        int
 	listResult                       []*domain.MergeRequest
 	listErr                          error
 
-	mergeNumber  int64
+	mergeID      string
 	mergeResult  *domain.MergeRequest
 	mergeability *domain.Mergeability
 	mergeErr     error
 
-	closeNumber int64
+	closeID     string
 	closeResult *domain.MergeRequest
 	closeErr    error
 
@@ -58,9 +57,9 @@ func (f *fakeMRClient) CreateMergeRequest(_ context.Context, org, project, title
 	return f.createResult, f.createErr
 }
 
-func (f *fakeMRClient) UpdateMergeRequest(_ context.Context, org, project string, number int64, title, description string) (*domain.MergeRequest, error) {
+func (f *fakeMRClient) UpdateMergeRequest(_ context.Context, org, project, id, title, description string) (*domain.MergeRequest, error) {
 	f.updateOrg, f.updateProject = org, project
-	f.updateNumber, f.updateTitle, f.updateDescription = number, title, description
+	f.updateID, f.updateTitle, f.updateDescription = id, title, description
 	return f.updateResult, f.updateErr
 }
 
@@ -70,13 +69,13 @@ func (f *fakeMRClient) ListMergeRequests(_ context.Context, org, project, status
 	return f.listResult, f.listErr
 }
 
-func (f *fakeMRClient) MergeMergeRequest(_ context.Context, _, _ string, number int64) (*domain.MergeRequest, *domain.Mergeability, error) {
-	f.mergeNumber = number
+func (f *fakeMRClient) MergeMergeRequest(_ context.Context, _, _, id string) (*domain.MergeRequest, *domain.Mergeability, error) {
+	f.mergeID = id
 	return f.mergeResult, f.mergeability, f.mergeErr
 }
 
-func (f *fakeMRClient) CloseMergeRequest(_ context.Context, _, _ string, number int64) (*domain.MergeRequest, error) {
-	f.closeNumber = number
+func (f *fakeMRClient) CloseMergeRequest(_ context.Context, _, _, id string) (*domain.MergeRequest, error) {
+	f.closeID = id
 	return f.closeResult, f.closeErr
 }
 
@@ -95,13 +94,13 @@ func TestSetupMrCreateCmd_Success(t *testing.T) {
 	root := setupRepo(t, "feature")
 	client := &fakeMRClient{
 		defaultBranch: &serverDomain.Branch{Name: "main"},
-		createResult:  &domain.MergeRequest{Number: 1, SourceBranch: "feature", TargetBranch: "main", Title: "Add b"},
+		createResult:  &domain.MergeRequest{ID: "abc", SourceBranch: "feature", TargetBranch: "main", Title: "Add b"},
 	}
 	cli := newMRCli(t, client)
 
 	out, err := runCmdInDir(t, root, cli.setupMrCmd(), "create", "--title", "Add b", "-d", "body")
 	require.NoError(t, err)
-	require.Contains(t, out, "Merge request #1 opened: feature -> main (Add b)")
+	require.Contains(t, out, "Merge request abc opened: feature -> main (Add b)")
 	require.Equal(t, "org", client.createOrg)
 	require.Equal(t, "project", client.createProject)
 	require.Equal(t, "Add b", client.createTitle)
@@ -112,7 +111,7 @@ func TestSetupMrCreateCmd_Success(t *testing.T) {
 
 func TestSetupMrCreateCmd_ExplicitTarget(t *testing.T) {
 	root := setupRepo(t, "feature")
-	client := &fakeMRClient{createResult: &domain.MergeRequest{Number: 1}}
+	client := &fakeMRClient{createResult: &domain.MergeRequest{ID: "abc"}}
 	cli := newMRCli(t, client)
 
 	_, err := runCmdInDir(t, root, cli.setupMrCmd(), "create", "--title", "Add b", "--source", "feature", "--target", "release")
@@ -143,13 +142,13 @@ func TestSetupMrCreateCmd_Error(t *testing.T) {
 
 func TestSetupMrUpdateCmd_Success(t *testing.T) {
 	root := setupRepo(t, "feature")
-	client := &fakeMRClient{updateResult: &domain.MergeRequest{Number: 1, Title: "Renamed"}}
+	client := &fakeMRClient{updateResult: &domain.MergeRequest{ID: "abc", Title: "Renamed"}}
 	cli := newMRCli(t, client)
 
-	out, err := runCmdInDir(t, root, cli.setupMrCmd(), "update", "1", "--title", "Renamed")
+	out, err := runCmdInDir(t, root, cli.setupMrCmd(), "update", "abc", "--title", "Renamed")
 	require.NoError(t, err)
-	require.Contains(t, out, "Merge request #1 updated: Renamed")
-	require.Equal(t, int64(1), client.updateNumber)
+	require.Contains(t, out, "Merge request abc updated: Renamed")
+	require.Equal(t, "abc", client.updateID)
 	require.Equal(t, "Renamed", client.updateTitle)
 }
 
@@ -157,7 +156,7 @@ func TestSetupMrUpdateCmd_MissingFields(t *testing.T) {
 	root := setupRepo(t, "feature")
 	cli := newMRCli(t, &fakeMRClient{})
 
-	_, err := runCmdInDir(t, root, cli.setupMrCmd(), "update", "1")
+	_, err := runCmdInDir(t, root, cli.setupMrCmd(), "update", "abc")
 	require.Contains(t, err.Error(), "pass --title or --description")
 }
 
@@ -173,14 +172,14 @@ func TestSetupMrListCmd_Empty(t *testing.T) {
 func TestSetupMrListCmd_Rows(t *testing.T) {
 	root := setupRepo(t, "feature")
 	client := &fakeMRClient{listResult: []*domain.MergeRequest{
-		{Number: 1, Status: domain.MergeRequestOpen, SourceBranch: "feature", TargetBranch: "main", Title: "Add b"},
-		{Number: 2, Status: domain.MergeRequestClosed, SourceBranch: "fix", TargetBranch: "main", Title: "Fix a"},
+		{ID: "abc", Status: domain.MergeRequestOpen, SourceBranch: "feature", TargetBranch: "main", Title: "Add b"},
+		{ID: "def", Status: domain.MergeRequestClosed, SourceBranch: "fix", TargetBranch: "main", Title: "Fix a"},
 	}}
 	cli := newMRCli(t, client)
 
 	out, err := runCmdInDir(t, root, cli.setupMrCmd(), "list", "--status", "open", "--limit", "5")
 	require.NoError(t, err)
-	require.Contains(t, out, "#")
+	require.Contains(t, out, "ID")
 	require.Contains(t, out, "feature -> main")
 	require.Contains(t, out, "Add b")
 	require.Contains(t, out, "Fix a")
@@ -199,13 +198,13 @@ func TestSetupMrListCmd_Error(t *testing.T) {
 
 func TestSetupMrCloseCmd_Success(t *testing.T) {
 	root := setupRepo(t, "feature")
-	client := &fakeMRClient{closeResult: &domain.MergeRequest{Number: 1, Status: domain.MergeRequestClosed}}
+	client := &fakeMRClient{closeResult: &domain.MergeRequest{ID: "abc", Status: domain.MergeRequestClosed}}
 	cli := newMRCli(t, client)
 
-	out, err := runCmdInDir(t, root, cli.setupMrCmd(), "close", "1")
+	out, err := runCmdInDir(t, root, cli.setupMrCmd(), "close", "abc")
 	require.NoError(t, err)
-	require.Contains(t, out, "Merge request #1 closed.")
-	require.Equal(t, int64(1), client.closeNumber)
+	require.Contains(t, out, "Merge request abc closed.")
+	require.Equal(t, "abc", client.closeID)
 }
 
 func TestSetupMrCloseCmd_Error(t *testing.T) {
@@ -213,22 +212,22 @@ func TestSetupMrCloseCmd_Error(t *testing.T) {
 	root := setupRepo(t, "feature")
 	cli := newMRCli(t, &fakeMRClient{closeErr: wantErr})
 
-	_, err := runCmdInDir(t, root, cli.setupMrCmd(), "close", "1")
+	_, err := runCmdInDir(t, root, cli.setupMrCmd(), "close", "abc")
 	require.ErrorIs(t, err, wantErr)
 }
 
 func TestSetupMrMergeCmd_Success(t *testing.T) {
 	root := setupRepo(t, "feature")
 	client := &fakeMRClient{
-		mergeResult:  &domain.MergeRequest{Number: 1, SourceBranch: "feature", TargetBranch: "main", Status: domain.MergeRequestMerged},
+		mergeResult:  &domain.MergeRequest{ID: "abc", SourceBranch: "feature", TargetBranch: "main", Status: domain.MergeRequestMerged},
 		mergeability: &domain.Mergeability{Status: "mergeable"},
 	}
 	cli := newMRCli(t, client)
 
-	out, err := runCmdInDir(t, root, cli.setupMrCmd(), "merge", "1")
+	out, err := runCmdInDir(t, root, cli.setupMrCmd(), "merge", "abc")
 	require.NoError(t, err)
-	require.Contains(t, out, "Merge request #1 merged: feature -> main (mergeable)")
-	require.Equal(t, int64(1), client.mergeNumber)
+	require.Contains(t, out, "Merge request abc merged: feature -> main (mergeable)")
+	require.Equal(t, "abc", client.mergeID)
 }
 
 func TestSetupMrMergeCmd_Error(t *testing.T) {
@@ -236,7 +235,7 @@ func TestSetupMrMergeCmd_Error(t *testing.T) {
 	root := setupRepo(t, "feature")
 	cli := newMRCli(t, &fakeMRClient{mergeErr: wantErr})
 
-	_, err := runCmdInDir(t, root, cli.setupMrCmd(), "merge", "1")
+	_, err := runCmdInDir(t, root, cli.setupMrCmd(), "merge", "abc")
 	require.ErrorIs(t, err, wantErr)
 }
 

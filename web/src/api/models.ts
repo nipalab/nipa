@@ -113,7 +113,6 @@ export interface MergeabilityResponse {
 
 export interface MergeRequestResponse {
   id: string
-  number: number
   project_id: string
   source_branch: string
   target_branch: string

@@ -11,7 +11,6 @@ type MergeabilityResponse struct {
 
 type MergeRequestResponse struct {
 	ID                string                `json:"id"`
-	Number            int64                 `json:"number"`
 	ProjectID         string                `json:"project_id"`
 	SourceBranch      string                `json:"source_branch"`
 	TargetBranch      string                `json:"target_branch"`

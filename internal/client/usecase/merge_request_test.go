@@ -23,7 +23,7 @@ type stubMRClient struct {
 	createResult *domain.MergeRequest
 	createErr    error
 
-	updateNumber      int64
+	updateID          string
 	updateTitle       string
 	updateDescription string
 	updateResult      *domain.MergeRequest
@@ -34,11 +34,11 @@ type stubMRClient struct {
 	listResult []*domain.MergeRequest
 	listErr    error
 
-	closeNumber int64
+	closeID     string
 	closeResult *domain.MergeRequest
 	closeErr    error
 
-	mergeNumber  int64
+	mergeID      string
 	mergeResult  *domain.MergeRequest
 	mergeability *domain.Mergeability
 	mergeErr     error
@@ -60,8 +60,8 @@ func (s *stubMRClient) CreateMergeRequest(_ context.Context, org, project, title
 	return s.createResult, s.createErr
 }
 
-func (s *stubMRClient) UpdateMergeRequest(_ context.Context, _, _ string, number int64, title, description string) (*domain.MergeRequest, error) {
-	s.updateNumber, s.updateTitle, s.updateDescription = number, title, description
+func (s *stubMRClient) UpdateMergeRequest(_ context.Context, _, _, id, title, description string) (*domain.MergeRequest, error) {
+	s.updateID, s.updateTitle, s.updateDescription = id, title, description
 	return s.updateResult, s.updateErr
 }
 
@@ -70,13 +70,13 @@ func (s *stubMRClient) ListMergeRequests(_ context.Context, _, _, status string,
 	return s.listResult, s.listErr
 }
 
-func (s *stubMRClient) MergeMergeRequest(_ context.Context, _, _ string, number int64) (*domain.MergeRequest, *domain.Mergeability, error) {
-	s.mergeNumber = number
+func (s *stubMRClient) MergeMergeRequest(_ context.Context, _, _, id string) (*domain.MergeRequest, *domain.Mergeability, error) {
+	s.mergeID = id
 	return s.mergeResult, s.mergeability, s.mergeErr
 }
 
-func (s *stubMRClient) CloseMergeRequest(_ context.Context, _, _ string, number int64) (*domain.MergeRequest, error) {
-	s.closeNumber = number
+func (s *stubMRClient) CloseMergeRequest(_ context.Context, _, _, id string) (*domain.MergeRequest, error) {
+	s.closeID = id
 	return s.closeResult, s.closeErr
 }
 
@@ -99,13 +99,13 @@ func TestMergeRequest_Create_Defaults(t *testing.T) {
 	}
 	client := &stubMRClient{
 		defaultBranch: &serverDomain.Branch{Name: "main"},
-		createResult:  &domain.MergeRequest{Number: 1, SourceBranch: "feature", TargetBranch: "main", Title: "T"},
+		createResult:  &domain.MergeRequest{ID: "abc", SourceBranch: "feature", TargetBranch: "main", Title: "T"},
 	}
 	mr, err := newTestMergeRequest(t, local, client).Create(context.Background(), root, CreateMergeRequestOptions{
 		Title: " T ",
 	})
 	require.NoError(t, err)
-	require.Equal(t, int64(1), mr.Number)
+	require.Equal(t, "abc", mr.ID)
 	require.Equal(t, root, local.initTarget)
 	require.Equal(t, "example.com", client.connectHost)
 	require.Len(t, client.createCalls, 1)
@@ -121,7 +121,7 @@ func TestMergeRequest_Create_ExplicitTarget(t *testing.T) {
 	local := &stubLocalRepo{
 		loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "feature"},
 	}
-	client := &stubMRClient{createResult: &domain.MergeRequest{Number: 1}}
+	client := &stubMRClient{createResult: &domain.MergeRequest{ID: "abc"}}
 	_, err := newTestMergeRequest(t, local, client).Create(context.Background(), t.TempDir(), CreateMergeRequestOptions{
 		Title:  "T",
 		Source: "feature",
@@ -176,19 +176,19 @@ func TestMergeRequest_Update(t *testing.T) {
 	local := &stubLocalRepo{
 		loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "feature"},
 	}
-	client := &stubMRClient{updateResult: &domain.MergeRequest{Number: 1, Title: "New"}}
+	client := &stubMRClient{updateResult: &domain.MergeRequest{ID: "abc", Title: "New"}}
 	mr := newTestMergeRequest(t, local, client)
 
 	_, err := mr.Update(context.Background(), t.TempDir(), "!!!", "New", "")
-	require.Contains(t, err.Error(), "invalid merge request number")
+	require.Contains(t, err.Error(), "invalid merge request id")
 
-	_, err = mr.Update(context.Background(), t.TempDir(), "1", "  ", "")
+	_, err = mr.Update(context.Background(), t.TempDir(), "abc", "  ", "")
 	require.Contains(t, err.Error(), "pass --title or --description")
 
-	updated, err := mr.Update(context.Background(), t.TempDir(), "1", " New ", "")
+	updated, err := mr.Update(context.Background(), t.TempDir(), "abc", " New ", "")
 	require.NoError(t, err)
 	require.Equal(t, "New", updated.Title)
-	require.Equal(t, int64(1), client.updateNumber)
+	require.Equal(t, "abc", client.updateID)
 	require.Equal(t, " New ", client.updateTitle)
 }
 
@@ -196,7 +196,7 @@ func TestMergeRequest_List(t *testing.T) {
 	local := &stubLocalRepo{
 		loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "feature"},
 	}
-	client := &stubMRClient{listResult: []*domain.MergeRequest{{Number: 1}}}
+	client := &stubMRClient{listResult: []*domain.MergeRequest{{ID: "abc"}}}
 	mr := newTestMergeRequest(t, local, client)
 
 	_, err := mr.List(context.Background(), t.TempDir(), "bogus", 0)
@@ -217,16 +217,16 @@ func TestMergeRequest_Close(t *testing.T) {
 	local := &stubLocalRepo{
 		loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "feature"},
 	}
-	client := &stubMRClient{closeResult: &domain.MergeRequest{Number: 1, Status: domain.MergeRequestClosed}}
+	client := &stubMRClient{closeResult: &domain.MergeRequest{ID: "abc", Status: domain.MergeRequestClosed}}
 	mr := newTestMergeRequest(t, local, client)
 
 	_, err := mr.Close(context.Background(), t.TempDir(), "")
-	require.Contains(t, err.Error(), "a merge request number is required")
+	require.Contains(t, err.Error(), "a merge request id is required")
 
-	closed, err := mr.Close(context.Background(), t.TempDir(), "1")
+	closed, err := mr.Close(context.Background(), t.TempDir(), "abc")
 	require.NoError(t, err)
 	require.Equal(t, domain.MergeRequestClosed, closed.Status)
-	require.Equal(t, int64(1), client.closeNumber)
+	require.Equal(t, "abc", client.closeID)
 }
 
 func TestMergeRequest_Merge(t *testing.T) {
@@ -234,19 +234,19 @@ func TestMergeRequest_Merge(t *testing.T) {
 		loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "feature"},
 	}
 	client := &stubMRClient{
-		mergeResult:  &domain.MergeRequest{Number: 1, Status: domain.MergeRequestMerged},
+		mergeResult:  &domain.MergeRequest{ID: "abc", Status: domain.MergeRequestMerged},
 		mergeability: &domain.Mergeability{Status: "mergeable"},
 	}
 	mr := newTestMergeRequest(t, local, client)
 
 	_, _, err := mr.Merge(context.Background(), t.TempDir(), "nope!")
-	require.Contains(t, err.Error(), "invalid merge request number")
+	require.Contains(t, err.Error(), "invalid merge request id")
 
-	merged, info, err := mr.Merge(context.Background(), t.TempDir(), "1")
+	merged, info, err := mr.Merge(context.Background(), t.TempDir(), "abc")
 	require.NoError(t, err)
 	require.Equal(t, domain.MergeRequestMerged, merged.Status)
 	require.Equal(t, "mergeable", info.Status)
-	require.Equal(t, int64(1), client.mergeNumber)
+	require.Equal(t, "abc", client.mergeID)
 }
 
 func TestMergeRequest_ConnectError(t *testing.T) {

@@ -94,7 +94,6 @@ func (s *stubBranchMerger) TreeDiffBetween(_ context.Context, _ snow.ID, _ *snow
 func testMergeRequest(id int64, status string) *domain.MergeRequest {
 	return &domain.MergeRequest{
 		ID:             id,
-		Number:         id,
 		ProjectID:      42,
 		SourceBranchID: 3,
 		TargetBranchID: 2,
@@ -186,7 +185,7 @@ func TestMergeRequestHandler_Update(t *testing.T) {
 
 	resp, err := srv.UpdateMergeRequest(ctx, &pb.UpdateMergeRequestRequest{
 		Context: &pb.ProjectContext{Org: "org", Project: "proj"},
-		Number:  5,
+		Id:      snow.ID(5).Base36(),
 		Title:   " Renamed ",
 	})
 	require.NoError(t, err)
@@ -195,13 +194,13 @@ func TestMergeRequestHandler_Update(t *testing.T) {
 
 	_, err = srv.UpdateMergeRequest(ctx, &pb.UpdateMergeRequestRequest{
 		Context: &pb.ProjectContext{Org: "org", Project: "proj"},
-		Number:  5,
+		Id:      snow.ID(5).Base36(),
 	})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 
 	_, err = srv.UpdateMergeRequest(ctx, &pb.UpdateMergeRequestRequest{
 		Context: &pb.ProjectContext{Org: "org", Project: "proj"},
-		Number:  0,
+		Id:      "!!!",
 		Title:   "x",
 	})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
@@ -214,7 +213,7 @@ func TestMergeRequestHandler_UpdateNotFound(t *testing.T) {
 
 	_, err := srv.UpdateMergeRequest(ctx, &pb.UpdateMergeRequestRequest{
 		Context: &pb.ProjectContext{Org: "org", Project: "proj"},
-		Number:  404,
+		Id:      snow.ID(404).Base36(),
 		Title:   "x",
 	})
 	require.Equal(t, codes.NotFound, status.Code(err))
@@ -265,7 +264,7 @@ func TestMergeRequestHandler_Merge(t *testing.T) {
 
 	resp, err := srv.MergeMergeRequest(context.Background(), &pb.MergeMergeRequestRequest{
 		Context: &pb.ProjectContext{Org: "org", Project: "proj"},
-		Number:  5,
+		Id:      snow.ID(5).Base36(),
 	})
 	require.NoError(t, err)
 	require.Equal(t, domain.MergeRequestMerged, resp.MergeRequest.Status)
@@ -292,7 +291,7 @@ func TestMergeRequestHandler_MergeBehind(t *testing.T) {
 
 	_, err := srv.MergeMergeRequest(context.Background(), &pb.MergeMergeRequestRequest{
 		Context: &pb.ProjectContext{Org: "org", Project: "proj"},
-		Number:  5,
+		Id:      snow.ID(5).Base36(),
 	})
 	require.Equal(t, codes.FailedPrecondition, status.Code(err))
 }
@@ -313,7 +312,7 @@ func TestMergeRequestHandler_Close(t *testing.T) {
 
 	resp, err := srv.CloseMergeRequest(ctx, &pb.CloseMergeRequestRequest{
 		Context: &pb.ProjectContext{Org: "org", Project: "proj"},
-		Number:  5,
+		Id:      snow.ID(5).Base36(),
 	})
 	require.NoError(t, err)
 	require.Equal(t, domain.MergeRequestClosed, resp.MergeRequest.Status)
@@ -333,7 +332,7 @@ func TestMergeRequestHandler_CloseDenied(t *testing.T) {
 
 	_, err := srv.CloseMergeRequest(ctx, &pb.CloseMergeRequestRequest{
 		Context: &pb.ProjectContext{Org: "org", Project: "proj"},
-		Number:  5,
+		Id:      snow.ID(5).Base36(),
 	})
 	require.Equal(t, codes.PermissionDenied, status.Code(err))
 }

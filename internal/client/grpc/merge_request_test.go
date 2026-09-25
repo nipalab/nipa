@@ -85,7 +85,6 @@ func mergeRequestDetail() *pb.MergeRequestDetail {
 	mergeBaseID := snow.ID(3).Base36()
 	return &pb.MergeRequestDetail{
 		Id:                snow.ID(5).Base36(),
-		Number:            5,
 		ProjectId:         snow.ID(42).Base36(),
 		SourceBranch:      "feature",
 		TargetBranch:      "main",
@@ -123,7 +122,6 @@ func TestClient_CreateMergeRequest_Success(t *testing.T) {
 	require.Equal(t, "main", fs.createReq.GetTargetBranch())
 
 	require.Equal(t, snow.ID(5).Base36(), got.ID)
-	require.Equal(t, int64(5), got.Number)
 	require.Equal(t, snow.ID(42).Base36(), got.ProjectID)
 	require.Equal(t, "feature", got.SourceBranch)
 	require.Equal(t, "main", got.TargetBranch)
@@ -162,12 +160,12 @@ func TestClient_UpdateMergeRequest_Success(t *testing.T) {
 	fs := &fakeMergeRequestServer{updateResp: &pb.UpdateMergeRequestResponse{MergeRequest: mergeRequestDetail()}}
 	c := newMergeRequestTestClient(t, fs)
 
-	got, err := c.UpdateMergeRequest(context.Background(), "default", "sample", 5, "Renamed", "new body")
+	got, err := c.UpdateMergeRequest(context.Background(), "default", "sample", snow.ID(5).Base36(), "Renamed", "new body")
 	require.NoError(t, err)
 	require.NotNil(t, fs.updateReq)
 	require.Equal(t, "default", fs.updateReq.GetContext().GetOrg())
 	require.Equal(t, "sample", fs.updateReq.GetContext().GetProject())
-	require.Equal(t, int64(5), fs.updateReq.GetNumber())
+	require.Equal(t, snow.ID(5).Base36(), fs.updateReq.GetId())
 	require.Equal(t, "Renamed", fs.updateReq.GetTitle())
 	require.Equal(t, "new body", fs.updateReq.GetDescription())
 	require.Equal(t, snow.ID(5).Base36(), got.ID)
@@ -178,7 +176,7 @@ func TestClient_UpdateMergeRequest_Error(t *testing.T) {
 	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
 	require.NoError(t, c.Connect(context.Background(), addr))
 
-	_, err := c.UpdateMergeRequest(context.Background(), "default", "sample", 5, "Renamed", "")
+	_, err := c.UpdateMergeRequest(context.Background(), "default", "sample", snow.ID(5).Base36(), "Renamed", "")
 	require.Error(t, err)
 
 	var domErr *clientDomain.Error
@@ -189,7 +187,7 @@ func TestClient_UpdateMergeRequest_Error(t *testing.T) {
 func TestClient_UpdateMergeRequest_NotConnected(t *testing.T) {
 	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
 
-	_, err := c.UpdateMergeRequest(context.Background(), "default", "sample", 5, "t", "")
+	_, err := c.UpdateMergeRequest(context.Background(), "default", "sample", "5", "t", "")
 	require.EqualError(t, err, "not connected to a nipa server")
 }
 
@@ -209,7 +207,6 @@ func TestClient_ListMergeRequests_Success(t *testing.T) {
 
 	require.Len(t, got, 1)
 	require.Equal(t, snow.ID(5).Base36(), got[0].ID)
-	require.Equal(t, int64(5), got[0].Number)
 }
 
 func TestClient_ListMergeRequests_Error(t *testing.T) {
@@ -249,12 +246,12 @@ func TestClient_MergeMergeRequest_Success(t *testing.T) {
 	}}
 	c := newMergeRequestTestClient(t, fs)
 
-	got, info, err := c.MergeMergeRequest(context.Background(), "default", "sample", 5)
+	got, info, err := c.MergeMergeRequest(context.Background(), "default", "sample", snow.ID(5).Base36())
 	require.NoError(t, err)
 	require.NotNil(t, fs.mergeReq)
 	require.Equal(t, "default", fs.mergeReq.GetContext().GetOrg())
 	require.Equal(t, "sample", fs.mergeReq.GetContext().GetProject())
-	require.Equal(t, int64(5), fs.mergeReq.GetNumber())
+	require.Equal(t, snow.ID(5).Base36(), fs.mergeReq.GetId())
 
 	require.Equal(t, clientDomain.MergeRequestMerged, got.Status)
 	require.Equal(t, sourceCommitID, info.SourceCommitID)
@@ -267,7 +264,7 @@ func TestClient_MergeMergeRequest_Error(t *testing.T) {
 	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
 	require.NoError(t, c.Connect(context.Background(), addr))
 
-	_, _, err := c.MergeMergeRequest(context.Background(), "default", "sample", 5)
+	_, _, err := c.MergeMergeRequest(context.Background(), "default", "sample", snow.ID(5).Base36())
 	require.Error(t, err)
 
 	var domErr *clientDomain.Error
@@ -279,7 +276,7 @@ func TestClient_MergeMergeRequest_Error(t *testing.T) {
 func TestClient_MergeMergeRequest_NotConnected(t *testing.T) {
 	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
 
-	_, _, err := c.MergeMergeRequest(context.Background(), "default", "sample", 5)
+	_, _, err := c.MergeMergeRequest(context.Background(), "default", "sample", "5")
 	require.EqualError(t, err, "not connected to a nipa server")
 }
 
@@ -289,12 +286,12 @@ func TestClient_CloseMergeRequest_Success(t *testing.T) {
 	fs := &fakeMergeRequestServer{closeResp: &pb.CloseMergeRequestResponse{MergeRequest: detail}}
 	c := newMergeRequestTestClient(t, fs)
 
-	got, err := c.CloseMergeRequest(context.Background(), "default", "sample", 5)
+	got, err := c.CloseMergeRequest(context.Background(), "default", "sample", snow.ID(5).Base36())
 	require.NoError(t, err)
 	require.NotNil(t, fs.closeReq)
 	require.Equal(t, "default", fs.closeReq.GetContext().GetOrg())
 	require.Equal(t, "sample", fs.closeReq.GetContext().GetProject())
-	require.Equal(t, int64(5), fs.closeReq.GetNumber())
+	require.Equal(t, snow.ID(5).Base36(), fs.closeReq.GetId())
 	require.Equal(t, clientDomain.MergeRequestClosed, got.Status)
 }
 
@@ -303,7 +300,7 @@ func TestClient_CloseMergeRequest_Error(t *testing.T) {
 	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
 	require.NoError(t, c.Connect(context.Background(), addr))
 
-	_, err := c.CloseMergeRequest(context.Background(), "default", "sample", 5)
+	_, err := c.CloseMergeRequest(context.Background(), "default", "sample", snow.ID(5).Base36())
 	require.Error(t, err)
 
 	var domErr *clientDomain.Error
@@ -314,7 +311,7 @@ func TestClient_CloseMergeRequest_Error(t *testing.T) {
 func TestClient_CloseMergeRequest_NotConnected(t *testing.T) {
 	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
 
-	_, err := c.CloseMergeRequest(context.Background(), "default", "sample", 5)
+	_, err := c.CloseMergeRequest(context.Background(), "default", "sample", "5")
 	require.EqualError(t, err, "not connected to a nipa server")
 }
 
