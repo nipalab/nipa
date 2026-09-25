@@ -18,6 +18,7 @@ type repoInterface interface {
 	GetTreeNodeManifest(ctx context.Context, org, project, branch string, paths []string) (*serverDomain.TreeNode, error)
 	ListBranches(ctx context.Context, org, project string) ([]*serverDomain.Branch, error)
 	CreateBranch(ctx context.Context, org, project, name, fromBranch, fromCommitID, fromCommitHash string) (*serverDomain.Branch, error)
+	DeleteBranch(ctx context.Context, org, project, name string) error
 	DownloadChunks(ctx context.Context, scope domain.ChunkScope, hashes []serverDomain.Hash, onChunk func(h serverDomain.Hash, data []byte) error) error
 	GetCommitLog(ctx context.Context, org, project, branch string, startCommitID *snow.ID, limit int) ([]*serverDomain.CommitLogEntry, error)
 }
@@ -143,6 +144,27 @@ func (r *Repo) CreateBranch(ctx context.Context, root, host, org, project, name 
 		return nil, err
 	}
 	return created, nil
+}
+
+func (r *Repo) DeleteBranch(ctx context.Context, root, host, org, project, name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return domain.NewUserError("branch name is required")
+	}
+	if err := r.auth.MakeSureLoggedIn(ctx, host); err != nil {
+		return err
+	}
+	if err := r.localRepo.Init(root); err != nil {
+		return err
+	}
+	cfg, err := r.localRepo.LoadConfig()
+	if err != nil {
+		return err
+	}
+	if cfg.Branch == name {
+		return domain.NewUserError(fmt.Sprintf("cannot delete the current branch %q; switch to another branch first", name))
+	}
+	return r.repoInterface.DeleteBranch(ctx, org, project, name)
 }
 
 func ensureEmptyTarget(target string) error {

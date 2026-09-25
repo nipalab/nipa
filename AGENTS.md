@@ -40,7 +40,7 @@ everything under `ee/` is enterprise).
   `//go:embed all:dist` in `web/server/webui.go` (package `webui`) and served
   for non-API paths in `cmd/nipad/main.go` (`isAPIPath`).
 - **Client** (`internal/client/`): `cli` (cobra commands: clone, branch
-  (`-a` list, `-c` create+switch), add, remove, status, push, update, switch,
+  (`-a` list, `-c` create+switch, `-d` delete), add, remove, status, push, update, switch,
   merge, revert, log, diff, acl, group, sparse-checkout, mr), `usecase`
   (clone/login, push, update/switch (incl. sparse), merge, revert, diff, log,
   permission, merge-request orchestration over small interfaces; `threeway.go`

@@ -159,6 +159,28 @@ func TestBranch_Delete_NotFound(t *testing.T) {
 	require.True(t, domain.IsErrorNotFound(err))
 }
 
+func TestBranch_DeleteThenRecreate(t *testing.T) {
+	uc, perm, repo := newManageBranchFixture(t)
+	ctx := permissionCtx(42)
+
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true).Times(2)
+	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").
+		Return(&domain.Branch{ID: 7, ProjectID: 1, Name: "feature"}, nil)
+	repo.EXPECT().DeleteBranch(gomock.Any(), snow.ID(1), snow.ID(7)).Return(nil)
+	require.NoError(t, uc.Delete(ctx, snow.ID(1), "feature"))
+
+	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").Return(nil, domain.NewErrorRecordNotFound())
+	repo.EXPECT().GetDefaultBranch(gomock.Any(), snow.ID(1)).
+		Return(&domain.Branch{ID: 1, ProjectID: 1, Name: "main"}, nil)
+	repo.EXPECT().CreateBranch(gomock.Any(), gomock.Any()).
+		Return(&domain.Branch{ID: 8, ProjectID: 1, Name: "feature"}, nil)
+
+	created, err := uc.CreateBranch(ctx, snow.ID(1), "feature", BranchForkPoint{})
+	require.NoError(t, err)
+	require.Equal(t, "feature", created.Name)
+	require.NotEqual(t, snow.ID(7), created.ID)
+}
+
 func TestBranch_SetDefault(t *testing.T) {
 	uc, perm, repo := newManageBranchFixture(t)
 

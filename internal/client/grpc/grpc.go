@@ -318,6 +318,18 @@ func (c *Client) CreateBranch(ctx context.Context, org, project, name, fromBranc
 	return toServerBranch(res.GetBranch()), nil
 }
 
+func (c *Client) DeleteBranch(ctx context.Context, org, project, name string) error {
+	client, err := c.transport.NipaServiceClient()
+	if err != nil {
+		return err
+	}
+	_, err = client.DeleteBranch(ctx, &pb.DeleteBranchRequest{
+		Context: &pb.ProjectContext{Org: org, Project: project},
+		Name:    name,
+	})
+	return toDomainError(err)
+}
+
 func (c *Client) GetTreeNodeManifest(ctx context.Context, org, project, branch string, paths []string) (*serverDomain.TreeNode, error) {
 	client, err := c.transport.NipaServiceClient()
 	if err != nil {

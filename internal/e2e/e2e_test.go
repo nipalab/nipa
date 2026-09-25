@@ -473,6 +473,15 @@ func TestEndToEnd_CreateBranch(t *testing.T) {
 	require.Equal(t, 409, domErr.Code)
 	require.Equal(t, `branch "feature" already exists`, domErr.Message)
 
+	require.NoError(t, grpcClient.DeleteBranch(ctx, e2eOrgSlug, e2eProjectSlug, "feature"))
+	_, err = grpcClient.GetBranchByName(ctx, e2eOrgSlug, e2eProjectSlug, "feature")
+	require.Error(t, err)
+
+	recreated, err := grpcClient.CreateBranch(ctx, e2eOrgSlug, e2eProjectSlug, "feature", "main", "", "")
+	require.NoError(t, err, "a deleted branch name must be reusable")
+	require.Equal(t, "feature", recreated.Name)
+	require.NotEqual(t, created.ID, recreated.ID)
+
 	empty, err := grpcClient.CreateBranch(ctx, e2eOrgSlug, e2eProjectSlug, "empty", "does-not-exist", "", "")
 	require.Error(t, err)
 	require.Nil(t, empty)

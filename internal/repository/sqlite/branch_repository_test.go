@@ -1090,3 +1090,54 @@ func TestBranchRepositorySQLite_Lifecycle(t *testing.T) {
 		require.NotEqual(t, branchID, branch.ID)
 	}
 }
+
+func TestBranchRepositorySQLite_CreateAfterDelete(t *testing.T) {
+	ctx := context.Background()
+	db, q := newSQLiteTestDB(t)
+	repo := NewBranchRepository(db)
+
+	projectID := seedProject(t, q, 1, "game")
+	oldID := seedBranch(t, db, projectID, "feature", sql.NullInt64{})
+	require.NoError(t, repo.DeleteBranch(ctx, projectID, oldID))
+
+	recreated, err := repo.CreateBranch(ctx, domain.Branch{
+		ID:        newTestNode(t).Generate(),
+		ProjectID: projectID,
+		Name:      "feature",
+	})
+	require.NoError(t, err, "a deleted branch name must be reusable")
+	require.NotEqual(t, oldID, recreated.ID)
+	require.Equal(t, "feature", recreated.Name)
+
+	got, err := repo.GetBranchByName(ctx, projectID, "feature")
+	require.NoError(t, err)
+	require.Equal(t, recreated.ID, got.ID)
+	_, err = repo.GetByProjectIDAndID(ctx, projectID, oldID)
+	requireRecordNotFound(t, err)
+
+	branches, err := repo.ListBranches(ctx, projectID, 100, nil, 0)
+	require.NoError(t, err)
+	count := 0
+	for _, branch := range branches {
+		if branch.Name == "feature" {
+			count++
+		}
+	}
+	require.Equal(t, 1, count)
+}
+
+func TestBranchRepositorySQLite_RenameToDeletedName(t *testing.T) {
+	ctx := context.Background()
+	db, q := newSQLiteTestDB(t)
+	repo := NewBranchRepository(db)
+
+	projectID := seedProject(t, q, 1, "game")
+	oldID := seedBranch(t, db, projectID, "feature", sql.NullInt64{})
+	require.NoError(t, repo.DeleteBranch(ctx, projectID, oldID))
+	liveID := seedBranch(t, db, projectID, "trunk", sql.NullInt64{})
+
+	require.NoError(t, repo.RenameBranch(ctx, projectID, liveID, "feature", "feature"))
+	renamed, err := repo.GetBranchByName(ctx, projectID, "feature")
+	require.NoError(t, err)
+	require.Equal(t, liveID, renamed.ID)
+}

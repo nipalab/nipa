@@ -35,6 +35,8 @@ type stubRepoInterface struct {
 	createdFrom     string
 	createdFromID   string
 	createdFromHash string
+	deletedBranch   string
+	deleteErr       error
 	download        map[serverDomain.Hash][]byte
 	downloadErr     error
 	downloaded      []serverDomain.Hash
@@ -65,6 +67,11 @@ func (s *stubRepoInterface) CreateBranch(_ context.Context, _, _, name, fromBran
 	s.createdFromID = fromCommitID
 	s.createdFromHash = fromCommitHash
 	return s.createdBranch, s.createErr
+}
+
+func (s *stubRepoInterface) DeleteBranch(_ context.Context, _, _, name string) error {
+	s.deletedBranch = name
+	return s.deleteErr
 }
 
 func (s *stubRepoInterface) DownloadChunks(_ context.Context, _ domain.ChunkScope, hashes []serverDomain.Hash, onChunk func(h serverDomain.Hash, data []byte) error) error {
@@ -892,6 +899,67 @@ func TestRepo_CreateBranch_SaveConfigFailed(t *testing.T) {
 	_, err := repo.CreateBranch(context.Background(), t.TempDir(), "example.com", "org", "project", "feature")
 	require.ErrorIs(t, err, wantErr)
 	require.Equal(t, "feature", stub.created, "server creation must have happened before the local switch")
+}
+
+func TestRepo_DeleteBranch_Success(t *testing.T) {
+	token := signTestToken(t, "secret")
+	storage := &stubSecureStorage{loadResult: &domain.LoginResult{AccessToken: token}}
+	auth := NewAuth(nil, storage, nil)
+	local := &stubLocalRepo{loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "main"}}
+	stub := &stubRepoInterface{}
+	repo := NewRepo(auth, stub, local)
+	root := t.TempDir()
+
+	require.NoError(t, repo.DeleteBranch(context.Background(), root, "example.com", "org", "project", "feature"))
+	require.Equal(t, "feature", stub.deletedBranch)
+	require.Equal(t, root, local.initTarget)
+}
+
+func TestRepo_DeleteBranch_CurrentBranch(t *testing.T) {
+	token := signTestToken(t, "secret")
+	storage := &stubSecureStorage{loadResult: &domain.LoginResult{AccessToken: token}}
+	auth := NewAuth(nil, storage, nil)
+	local := &stubLocalRepo{loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "main"}}
+	stub := &stubRepoInterface{}
+	repo := NewRepo(auth, stub, local)
+
+	err := repo.DeleteBranch(context.Background(), t.TempDir(), "example.com", "org", "project", "main")
+	require.Error(t, err)
+
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 400, domErr.Code)
+	require.Contains(t, domErr.Message, "current branch")
+	require.Empty(t, stub.deletedBranch, "the server must not be asked to delete the checked-out branch")
+}
+
+func TestRepo_DeleteBranch_EmptyName(t *testing.T) {
+	token := signTestToken(t, "secret")
+	storage := &stubSecureStorage{loadResult: &domain.LoginResult{AccessToken: token}}
+	auth := NewAuth(nil, storage, nil)
+	repo := NewRepo(auth, &stubRepoInterface{}, &stubLocalRepo{})
+
+	err := repo.DeleteBranch(context.Background(), t.TempDir(), "example.com", "org", "project", "  ")
+	require.Error(t, err)
+
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 400, domErr.Code)
+	require.Equal(t, "branch name is required", domErr.Message)
+}
+
+func TestRepo_DeleteBranch_ServerError(t *testing.T) {
+	wantErr := domain.NewUserError("protected branch")
+	token := signTestToken(t, "secret")
+	storage := &stubSecureStorage{loadResult: &domain.LoginResult{AccessToken: token}}
+	auth := NewAuth(nil, storage, nil)
+	local := &stubLocalRepo{loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "main"}}
+	stub := &stubRepoInterface{deleteErr: wantErr}
+	repo := NewRepo(auth, stub, local)
+
+	err := repo.DeleteBranch(context.Background(), t.TempDir(), "example.com", "org", "project", "feature")
+	require.ErrorIs(t, err, wantErr)
+	require.Equal(t, "feature", stub.deletedBranch)
 }
 
 func commitLogStub(entries []*serverDomain.CommitLogEntry) *stubRepoInterface {
