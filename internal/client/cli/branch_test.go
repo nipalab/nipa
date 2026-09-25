@@ -72,12 +72,16 @@ func newBranchCliWithRepo(fake *fakeListRepoInterface) *Cli {
 }
 
 func setupRepo(t *testing.T, branch string) string {
+	return setupRepoURL(t, branch, "http://example.com/org/project")
+}
+
+func setupRepoURL(t *testing.T, branch, rawURL string) string {
 	t.Helper()
 	target := t.TempDir()
 	lr := localrepo.NewLocalRepo()
 	require.NoError(t, lr.Init(target))
 	defer lr.Close()
-	require.NoError(t, lr.SaveConfig(domain.Config{Url: "http://example.com/org/project", Branch: branch}))
+	require.NoError(t, lr.SaveConfig(domain.Config{Url: rawURL, Branch: branch}))
 	return target
 }
 
@@ -240,6 +244,26 @@ func TestSetupBranchCmd_Delete_ServerError(t *testing.T) {
 	root := setupRepo(t, "main")
 	wantErr := errors.New("protected branch")
 	cli := newBranchCliWithRepo(&fakeListRepoInterface{deleteErr: wantErr})
+
+	_, err := runBranchCmd(t, cli, root, "-d", "feature")
+	require.ErrorIs(t, err, wantErr)
+}
+
+func TestSetupBranchCmd_Delete_InvalidURL(t *testing.T) {
+	root := setupRepoURL(t, "main", "ftp://example.com/org/project")
+	cli := newBranchCli()
+
+	_, err := runBranchCmd(t, cli, root, "-d", "feature")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "invalid URL scheme")
+}
+
+func TestSetupBranchCmd_Delete_ConnectError(t *testing.T) {
+	root := setupRepo(t, "main")
+	wantErr := errors.New("connect refused")
+	auth := usecase.NewAuth(fakeExecutor{}, &fakeStorage{}, &fakeInput{})
+	repo := usecase.NewRepo(auth, &fakeListRepoInterface{}, fakeLocalRepo{})
+	cli := NewCli(&fakeUsecaseContainer{auth: auth, repo: repo}, &fakeConnector{err: wantErr})
 
 	_, err := runBranchCmd(t, cli, root, "-d", "feature")
 	require.ErrorIs(t, err, wantErr)

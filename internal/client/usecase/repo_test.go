@@ -962,6 +962,42 @@ func TestRepo_DeleteBranch_ServerError(t *testing.T) {
 	require.Equal(t, "feature", stub.deletedBranch)
 }
 
+func TestRepo_DeleteBranch_LoginFailed(t *testing.T) {
+	wantErr := errors.New("login failed")
+	storage := &stubSecureStorage{loadErr: errors.New("not found")}
+	input := &stubUserInput{username: "apin", password: "secret"}
+	executor := &stubLoginExecutor{usernameErr: wantErr}
+	auth := NewAuth(executor, storage, input)
+	repo := NewRepo(auth, &stubRepoInterface{}, &stubLocalRepo{})
+
+	err := repo.DeleteBranch(context.Background(), t.TempDir(), "example.com", "org", "project", "feature")
+	require.ErrorIs(t, err, wantErr)
+}
+
+func TestRepo_DeleteBranch_InitFailed(t *testing.T) {
+	wantErr := errors.New("init failed")
+	token := signTestToken(t, "secret")
+	storage := &stubSecureStorage{loadResult: &domain.LoginResult{AccessToken: token}}
+	auth := NewAuth(nil, storage, nil)
+	repo := NewRepo(auth, &stubRepoInterface{}, &stubLocalRepo{initErr: wantErr})
+
+	err := repo.DeleteBranch(context.Background(), t.TempDir(), "example.com", "org", "project", "feature")
+	require.ErrorIs(t, err, wantErr)
+}
+
+func TestRepo_DeleteBranch_LoadConfigFailed(t *testing.T) {
+	wantErr := errors.New("config missing")
+	token := signTestToken(t, "secret")
+	storage := &stubSecureStorage{loadResult: &domain.LoginResult{AccessToken: token}}
+	auth := NewAuth(nil, storage, nil)
+	stub := &stubRepoInterface{}
+	repo := NewRepo(auth, stub, &stubLocalRepo{configLoadErr: wantErr})
+
+	err := repo.DeleteBranch(context.Background(), t.TempDir(), "example.com", "org", "project", "feature")
+	require.ErrorIs(t, err, wantErr)
+	require.Empty(t, stub.deletedBranch, "delete must not be called when config can't be loaded")
+}
+
 func commitLogStub(entries []*serverDomain.CommitLogEntry) *stubRepoInterface {
 	return &stubRepoInterface{
 		commitLogFn: func(_ context.Context, _, _, _ string, _ *snow.ID, _ int) ([]*serverDomain.CommitLogEntry, error) {

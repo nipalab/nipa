@@ -69,6 +69,8 @@ type fakeServer struct {
 	getBranchResp       *pb.Branch
 	getBranchErr        error
 	lastGetBranchByName *pb.GetBranchByNameRequest
+	deleteBranchErr     error
+	lastDeleteBranchReq *pb.DeleteBranchRequest
 	ffErr               error
 	ffResp              *pb.MergeFastForwardResponse
 	lastFFReq           *pb.MergeFastForwardRequest
@@ -111,6 +113,14 @@ func (f *fakeServer) CreateBranch(_ context.Context, req *pb.CreateBranchRequest
 		return nil, f.createBranchErr
 	}
 	return &pb.CreateBranchResponse{Branch: f.createBranch}, nil
+}
+
+func (f *fakeServer) DeleteBranch(_ context.Context, req *pb.DeleteBranchRequest) (*pb.DeleteBranchResponse, error) {
+	f.lastDeleteBranchReq = req
+	if f.deleteBranchErr != nil {
+		return nil, f.deleteBranchErr
+	}
+	return &pb.DeleteBranchResponse{}, nil
 }
 
 func (f *fakeServer) GetTreeManifest(_ context.Context, req *pb.GetTreeManifestRequest) (*pb.GetTreeManifestResponse, error) {
@@ -744,6 +754,41 @@ func TestClient_CreateBranch_NotConnected(t *testing.T) {
 	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
 
 	_, err := c.CreateBranch(context.Background(), "default", "sample", "feature", "main", "abc123", "beefcafe")
+	require.Error(t, err)
+	require.Equal(t, "not connected to a nipa server", err.Error())
+}
+
+func TestClient_DeleteBranch_Success(t *testing.T) {
+	fs := &fakeServer{}
+	addr := startTestServer(t, fs)
+	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
+	require.NoError(t, c.Connect(context.Background(), addr))
+
+	require.NoError(t, c.DeleteBranch(context.Background(), "default", "sample", "feature"))
+	require.NotNil(t, fs.lastDeleteBranchReq)
+	require.Equal(t, "feature", fs.lastDeleteBranchReq.GetName())
+	require.Equal(t, "default", fs.lastDeleteBranchReq.GetContext().GetOrg())
+	require.Equal(t, "sample", fs.lastDeleteBranchReq.GetContext().GetProject())
+}
+
+func TestClient_DeleteBranch_Error(t *testing.T) {
+	addr := startTestServer(t, &fakeServer{deleteBranchErr: status.Error(codes.NotFound, `branch "feature" not found`)})
+	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
+	require.NoError(t, c.Connect(context.Background(), addr))
+
+	err := c.DeleteBranch(context.Background(), "default", "sample", "feature")
+	require.Error(t, err)
+
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 404, domErr.Code)
+	require.Equal(t, `branch "feature" not found`, domErr.Message)
+}
+
+func TestClient_DeleteBranch_NotConnected(t *testing.T) {
+	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
+
+	err := c.DeleteBranch(context.Background(), "default", "sample", "feature")
 	require.Error(t, err)
 	require.Equal(t, "not connected to a nipa server", err.Error())
 }
