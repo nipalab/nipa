@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/nipalab/nipa/internal/domain"
@@ -35,6 +36,12 @@ type FileLock struct {
 	branchRepo branchRepository
 	perm       permissionUsecase
 	snowNode   snow.Node
+
+	// acquireMu serializes overlap check + insert. The unique indexes only
+	// catch identical (project, branch, path) rows, so distinct-but-overlapping
+	// prefixes need an application-level gate. nipad runs a single node over
+	// SQLite, so a process mutex is sufficient.
+	acquireMu sync.Mutex
 }
 
 func NewFileLock(repo fileLockRepository, branchRepo branchRepository, perm permissionUsecase, snowNode snow.Node) *FileLock {
@@ -64,6 +71,10 @@ func (f *FileLock) Acquire(ctx context.Context, projectID snow.ID, branchName, p
 	if err != nil {
 		return nil, err
 	}
+
+	f.acquireMu.Lock()
+	defer f.acquireMu.Unlock()
+
 	locks, err := f.repo.ListProject(ctx, projectID)
 	if err != nil {
 		return nil, err
@@ -72,8 +83,13 @@ func (f *FileLock) Acquire(ctx context.Context, projectID snow.ID, branchName, p
 		if !sameLockScope(lock.BranchID, scope.branchID) || !lockPathsOverlap(lock.Path, norm) {
 			continue
 		}
+		// The same holder still needs the wider lock when their existing lock
+		// only overlaps without covering the request (file held, dir wanted).
 		if lock.HeldBy == claim.UserID {
-			return lock, nil
+			if domain.PrefixCovers(lock.Path, norm) {
+				return lock, nil
+			}
+			continue
 		}
 		return nil, lockConflictError(lock, norm)
 	}
@@ -198,6 +214,10 @@ func (f *FileLock) EnsureMergeRequestLocks(ctx context.Context, projectID snow.I
 	if len(paths) == 0 {
 		return nil
 	}
+
+	f.acquireMu.Lock()
+	defer f.acquireMu.Unlock()
+
 	locks, err := f.repo.ListProject(ctx, projectID)
 	if err != nil {
 		return err
@@ -322,12 +342,19 @@ func lockConflictError(lock *domain.FileLock, path string) error {
 	if holder == "" {
 		holder = lock.HeldBy.Base36()
 	}
+	scope := "mainline"
+	if lock.BranchID != nil {
+		scope = "branch"
+		if lock.Branch != "" {
+			scope = fmt.Sprintf("branch %q", lock.Branch)
+		}
+	}
 	via := ""
 	if lock.MergeRequestNumber != nil {
 		via = fmt.Sprintf(" via merge request #%d", *lock.MergeRequestNumber)
 	}
 	return domain.NewErrorConflict(fmt.Sprintf(
-		"%q is locked by %s%s since %s",
-		path, holder, via, lock.AcquiredAt.UTC().Format(time.RFC3339),
+		"%q is locked by %s on %s%s since %s",
+		path, holder, scope, via, lock.AcquiredAt.UTC().Format(time.RFC3339),
 	))
 }
