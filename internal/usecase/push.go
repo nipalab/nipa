@@ -57,6 +57,7 @@ type Push struct {
 	branchRepo branchRepository
 	pushRepo   pushRepository
 	snowNode   snow.Node
+	fileLocks  fileLockGate
 }
 
 func NewPush(permUc permissionUsecase, branchRepo branchRepository, pushRepo pushRepository, snowNode snow.Node) *Push {
@@ -66,6 +67,12 @@ func NewPush(permUc permissionUsecase, branchRepo branchRepository, pushRepo pus
 		pushRepo:   pushRepo,
 		snowNode:   snowNode,
 	}
+}
+
+// WithFileLocks enables the mandatory binary lock gate on this usecase.
+func (p *Push) WithFileLocks(locks fileLockGate) *Push {
+	p.fileLocks = locks
+	return p
 }
 
 func (p *Push) Push(ctx context.Context, projectID snow.ID, branchName, baseTreeHash, message string, files []*domain.PushFile, removed []string, parent2CommitHash, baseCommitID string) (*domain.PushResult, error) {
@@ -101,9 +108,26 @@ func (p *Push) Push(ctx context.Context, projectID snow.ID, branchName, baseTree
 		return nil, domain.NewErrorForbidden(fmt.Sprintf("branch %q is protected; push through a merge request", branchName))
 	}
 
+	claim, ok := domain.ClaimFromContext(ctx)
+	if !ok {
+		return nil, domain.NewErrorNoPermission()
+	}
+
 	var headCommit *domain.Commit
 	if branch.CommitID != nil {
 		if headCommit, err = p.branchRepo.GetCommit(ctx, *branch.CommitID); err != nil {
+			return nil, err
+		}
+	}
+
+	lockablePaths := lockablePushPaths(files, removed, nil)
+	if p.fileLocks != nil {
+		headBinary, err := p.headBinaryPaths(ctx, headCommit, touchedPushPaths(files, removed))
+		if err != nil {
+			return nil, err
+		}
+		lockablePaths = lockablePushPaths(files, removed, headBinary)
+		if err := p.fileLocks.EnsureLocks(ctx, projectID, branch, lockablePaths, claim.UserID); err != nil {
 			return nil, err
 		}
 	}
@@ -155,21 +179,125 @@ func (p *Push) Push(ctx context.Context, projectID snow.ID, branchName, baseTree
 		return nil, err
 	}
 	req := p.toApplyRequest(ctx, projectID, branch, headCommit, parent2Commit, message, root)
-
-	claim, ok := domain.ClaimFromContext(ctx)
-	if !ok {
-		return nil, domain.NewErrorNoPermission()
-	}
 	req.UserID = claim.UserID
 
 	if err := p.pushRepo.ApplyPush(ctx, req); err != nil {
 		return nil, err
+	}
+	if p.fileLocks != nil {
+		if err := p.fileLocks.ReleaseLanded(ctx, projectID, branch, lockablePaths, claim.UserID); err != nil {
+			return nil, err
+		}
 	}
 	return &domain.PushResult{
 		CommitID:   req.CommitID,
 		CommitHash: req.CommitHash,
 		TreeHash:   root.Hash,
 	}, nil
+}
+
+func touchedPushPaths(files []*domain.PushFile, removed []string) []string {
+	seen := map[string]struct{}{}
+	paths := make([]string, 0, len(files)+len(removed))
+	for _, file := range files {
+		if _, ok := seen[file.Path]; ok {
+			continue
+		}
+		seen[file.Path] = struct{}{}
+		paths = append(paths, file.Path)
+	}
+	for _, path := range removed {
+		if _, ok := seen[path]; ok {
+			continue
+		}
+		seen[path] = struct{}{}
+		paths = append(paths, path)
+	}
+	return paths
+}
+
+func lockablePushPaths(files []*domain.PushFile, removed []string, headBinary map[string]bool) []string {
+	seen := map[string]struct{}{}
+	var paths []string
+	add := func(path string) {
+		if _, ok := seen[path]; ok {
+			return
+		}
+		seen[path] = struct{}{}
+		paths = append(paths, path)
+	}
+	for _, file := range files {
+		if file.IsBinary || headBinary[file.Path] {
+			add(file.Path)
+		}
+	}
+	for _, path := range removed {
+		if headBinary[path] || chunker.IsLockablePath(path) {
+			add(path)
+		}
+	}
+	return paths
+}
+
+// headBinaryPaths reports the head-tree binary flag of the touched paths that
+// are tracked there, so a tracked binary overwritten with text content (or a
+// removed binary with an unknown extension) still requires a lock.
+func (p *Push) headBinaryPaths(ctx context.Context, headCommit *domain.Commit, paths []string) (map[string]bool, error) {
+	result := map[string]bool{}
+	if headCommit == nil || len(paths) == 0 {
+		return result, nil
+	}
+	root, err := p.branchRepo.GetTreeNode(ctx, headCommit.TreeID)
+	if err != nil {
+		return nil, err
+	}
+	pending := map[string]map[string]struct{}{}
+	dirs := map[string]bool{"": true}
+	for _, path := range paths {
+		dir := dirOf(path)
+		if pending[dir] == nil {
+			pending[dir] = map[string]struct{}{}
+		}
+		pending[dir][baseOf(path)] = struct{}{}
+		for d := dir; ; {
+			dirs[d] = true
+			i := strings.LastIndex(d, "/")
+			if i < 0 {
+				break
+			}
+			d = d[:i]
+		}
+	}
+	type treeNodeRef struct {
+		dir  string
+		tree *domain.TreeNode
+	}
+	queue := []treeNodeRef{{dir: "", tree: root}}
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+		files, err := p.branchRepo.ListFilesByTree(ctx, current.tree.ID)
+		if err != nil {
+			return nil, err
+		}
+		names := pending[current.dir]
+		for _, file := range files {
+			if _, ok := names[file.Name]; ok {
+				result[joinPath(current.dir, file.Name)] = file.IsBinary
+			}
+		}
+		for _, sub := range immediateSubdirs(dirs, current.dir) {
+			child, err := p.branchRepo.GetTreeChildByName(ctx, current.tree.ID, sub)
+			if domain.IsErrorNotFound(err) {
+				continue
+			}
+			if err != nil {
+				return nil, err
+			}
+			queue = append(queue, treeNodeRef{dir: joinPath(current.dir, sub), tree: child})
+		}
+	}
+	return result, nil
 }
 
 func (p *Push) headTreeHash(ctx context.Context, headCommit *domain.Commit) (domain.Hash, error) {

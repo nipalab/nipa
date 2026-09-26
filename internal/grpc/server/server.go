@@ -15,6 +15,7 @@ type usecaseContainer interface {
 	Permission() *usecase.Permission
 	Group() *usecase.Group
 	MergeRequest() *usecase.MergeRequest
+	FileLock() *usecase.FileLock
 }
 
 type nipaServer struct {

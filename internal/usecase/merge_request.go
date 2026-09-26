@@ -23,6 +23,7 @@ type branchMerger interface {
 	GetMergeBase(ctx context.Context, projectID snow.ID, target, source MergeRef) (*MergeBaseInfo, error)
 	FastForwardForMergeRequest(ctx context.Context, projectID snow.ID, targetBranch, sourceBranch string) (*domain.Branch, error)
 	TreeDiffBetween(ctx context.Context, projectID snow.ID, baseID *snow.ID, headID snow.ID) ([]diff.FileDiff, error)
+	BinaryChangesBetween(ctx context.Context, projectID snow.ID, fromCommitID, toCommitID *snow.ID) ([]string, error)
 }
 
 type MergeRequest struct {
@@ -31,6 +32,7 @@ type MergeRequest struct {
 	perm       permissionUsecase
 	merger     branchMerger
 	snowNode   snow.Node
+	fileLocks  fileLockGate
 }
 
 func NewMergeRequest(repo mergeRequestRepository, branchRepo branchRepository, perm permissionUsecase, merger branchMerger, snowNode snow.Node) *MergeRequest {
@@ -41,6 +43,12 @@ func NewMergeRequest(repo mergeRequestRepository, branchRepo branchRepository, p
 		merger:     merger,
 		snowNode:   snowNode,
 	}
+}
+
+// WithFileLocks enables binary lock checks on merge-request transitions.
+func (m *MergeRequest) WithFileLocks(locks fileLockGate) *MergeRequest {
+	m.fileLocks = locks
+	return m
 }
 
 func (m *MergeRequest) Create(ctx context.Context, projectID snow.ID, title, description, sourceBranch, targetBranch string) (*domain.MergeRequest, error) {
@@ -91,8 +99,20 @@ func (m *MergeRequest) Create(ctx context.Context, projectID snow.ID, title, des
 		return nil, err
 	}
 
-	return m.repo.Create(ctx, domain.MergeRequest{
-		ID:                m.snowNode.Generate().Int64(),
+	mrID := m.snowNode.Generate()
+	if m.fileLocks != nil {
+		paths, err := m.merger.BinaryChangesBetween(ctx, projectID, info.MergeBaseCommitID, source.CommitID)
+		if err != nil {
+			return nil, err
+		}
+		if err := m.fileLocks.EnsureMergeRequestLocks(ctx, projectID, mrID, target, paths, claim.UserID, claim.UserID); err != nil {
+			_ = m.fileLocks.ReleaseForMergeRequest(ctx, projectID, mrID)
+			return nil, err
+		}
+	}
+
+	created, err := m.repo.Create(ctx, domain.MergeRequest{
+		ID:                mrID.Int64(),
 		ProjectID:         projectID,
 		SourceBranchID:    source.ID,
 		TargetBranchID:    target.ID,
@@ -104,6 +124,13 @@ func (m *MergeRequest) Create(ctx context.Context, projectID snow.ID, title, des
 		MergeBaseCommitID: info.MergeBaseCommitID,
 		CreatedBy:         claim.UserID,
 	})
+	if err != nil {
+		if m.fileLocks != nil {
+			_ = m.fileLocks.ReleaseForMergeRequest(ctx, projectID, mrID)
+		}
+		return nil, err
+	}
+	return created, nil
 }
 
 func (m *MergeRequest) List(ctx context.Context, projectID snow.ID, status string, limit int) ([]*domain.MergeRequest, error) {
@@ -180,12 +207,35 @@ func (m *MergeRequest) Merge(ctx context.Context, projectID snow.ID, number int6
 		return nil, info, domain.NewErrorConflict(fmt.Sprintf("merge request is %s", info.Status))
 	}
 
+	if m.fileLocks != nil {
+		target, err := m.branchRepo.GetBranchByName(ctx, projectID, mr.TargetBranch)
+		if err != nil {
+			return nil, info, err
+		}
+		paths, err := m.merger.BinaryChangesBetween(ctx, projectID, info.MergeBaseCommitID, info.SourceCommitID)
+		if err != nil {
+			return nil, info, err
+		}
+		claim, ok := domain.ClaimFromContext(ctx)
+		if !ok {
+			return nil, info, domain.NewErrorNoPermission()
+		}
+		if err := m.fileLocks.EnsureMergeRequestLocks(ctx, projectID, snow.ID(mr.ID), target, paths, claim.UserID, mr.CreatedBy); err != nil {
+			return nil, info, err
+		}
+	}
+
 	updated, err := m.merger.FastForwardForMergeRequest(ctx, projectID, mr.TargetBranch, mr.SourceBranch)
 	if err != nil {
 		return nil, info, err
 	}
 	if err := m.repo.UpdateStatus(ctx, projectID, mr.Number, domain.MergeRequestMerged, updated.CommitID); err != nil {
 		return nil, info, err
+	}
+	if m.fileLocks != nil {
+		if err := m.fileLocks.ReleaseForMergeRequest(ctx, projectID, snow.ID(mr.ID)); err != nil {
+			return nil, info, err
+		}
 	}
 	merged, err := m.repo.Get(ctx, projectID, number)
 	if err != nil {
@@ -195,11 +245,56 @@ func (m *MergeRequest) Merge(ctx context.Context, projectID snow.ID, number int6
 }
 
 func (m *MergeRequest) Close(ctx context.Context, projectID snow.ID, number int64) (*domain.MergeRequest, error) {
-	return m.setStatus(ctx, projectID, number, domain.MergeRequestOpen, domain.MergeRequestClosed)
+	mr, err := m.setStatus(ctx, projectID, number, domain.MergeRequestOpen, domain.MergeRequestClosed)
+	if err != nil {
+		return nil, err
+	}
+	if m.fileLocks != nil {
+		if err := m.fileLocks.ReleaseForMergeRequest(ctx, projectID, snow.ID(mr.ID)); err != nil {
+			return nil, err
+		}
+	}
+	return mr, nil
 }
 
 func (m *MergeRequest) Reopen(ctx context.Context, projectID snow.ID, number int64) (*domain.MergeRequest, error) {
-	return m.setStatus(ctx, projectID, number, domain.MergeRequestClosed, domain.MergeRequestOpen)
+	mr, err := m.setStatus(ctx, projectID, number, domain.MergeRequestClosed, domain.MergeRequestOpen)
+	if err != nil {
+		return nil, err
+	}
+	if claim, ok := domain.ClaimFromContext(ctx); ok {
+		if err := m.ensureLocksForRequest(ctx, projectID, mr, claim.UserID); err != nil {
+			return nil, err
+		}
+	}
+	return mr, nil
+}
+
+func (m *MergeRequest) ensureLocksForRequest(ctx context.Context, projectID snow.ID, mr *domain.MergeRequest, holder snow.ID) error {
+	if m.fileLocks == nil {
+		return nil
+	}
+	target, err := m.branchRepo.GetBranchByName(ctx, projectID, mr.TargetBranch)
+	if err != nil {
+		return err
+	}
+	source, err := m.branchRepo.GetBranchByName(ctx, projectID, mr.SourceBranch)
+	if err != nil {
+		return err
+	}
+	var baseID *snow.ID
+	if target.CommitID != nil && source.CommitID != nil {
+		info, err := m.merger.GetMergeBase(ctx, projectID, MergeRef{CommitID: target.CommitID}, MergeRef{CommitID: source.CommitID})
+		if err != nil {
+			return err
+		}
+		baseID = info.MergeBaseCommitID
+	}
+	paths, err := m.merger.BinaryChangesBetween(ctx, projectID, baseID, source.CommitID)
+	if err != nil {
+		return err
+	}
+	return m.fileLocks.EnsureMergeRequestLocks(ctx, projectID, snow.ID(mr.ID), target, paths, holder, mr.CreatedBy)
 }
 
 func (m *MergeRequest) Diff(ctx context.Context, projectID snow.ID, number int64) ([]diff.FileDiff, error) {

@@ -53,6 +53,7 @@ type testRegistry struct {
 	permission   *serverusecase.Permission
 	group        *serverusecase.Group
 	mergeRequest *serverusecase.MergeRequest
+	fileLock     *serverusecase.FileLock
 }
 
 func (r *testRegistry) Auth() *serverusecase.Auth     { return r.auth }
@@ -68,6 +69,7 @@ func (r *testRegistry) Group() *serverusecase.Group { return r.group }
 func (r *testRegistry) MergeRequest() *serverusecase.MergeRequest {
 	return r.mergeRequest
 }
+func (r *testRegistry) FileLock() *serverusecase.FileLock { return r.fileLock }
 
 type memoryStore struct {
 	mu   sync.Mutex
@@ -151,6 +153,8 @@ func startTestServer(t *testing.T, dbConn *sql.DB) string {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = chunkStore.Close() })
 	branchUc := serverusecase.NewBranchWithChunks(permissionUc, branchRepo, node, chunkStore)
+	fileLockUc := serverusecase.NewFileLock(sqlite.NewFileLockRepository(dbConn), branchRepo, permissionUc, node)
+	branchUc = branchUc.WithFileLocks(fileLockUc)
 
 	chunkUc := serverusecase.NewChunk(pushRepo, chunkStore, serverusecase.ChunkTransferConfig{
 		SigningKey:  "e2e-chunk-signing-key",
@@ -162,13 +166,14 @@ func startTestServer(t *testing.T, dbConn *sql.DB) string {
 		user:       serverusecase.NewUser(node, userRepo, passwordHasher),
 		branch:     branchUc,
 		common:     commonUc,
-		push:       serverusecase.NewPush(permissionUc, branchRepo, pushRepo, node),
+		push:       serverusecase.NewPush(permissionUc, branchRepo, pushRepo, node).WithFileLocks(fileLockUc),
 		chunk:      chunkUc,
 		permission: permissionUc,
 		group:      serverusecase.NewGroup(groupRepo, node, permissionUc, orgUc),
 		mergeRequest: serverusecase.NewMergeRequest(
 			sqlite.NewMergeRequestRepository(dbConn), branchRepo, permissionUc, branchUc, node,
-		),
+		).WithFileLocks(fileLockUc),
+		fileLock: fileLockUc,
 	}
 
 	lis, err := net.Listen("tcp", "127.0.0.1:0")

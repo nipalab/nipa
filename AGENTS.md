@@ -41,9 +41,9 @@ everything under `ee/` is enterprise).
   for non-API paths in `cmd/nipad/main.go` (`isAPIPath`).
 - **Client** (`internal/client/`): `cli` (cobra commands: clone, branch
   (`-a` list, `-c` create+switch, `-d` delete), add, remove, status, push, update, switch,
-  merge, revert, log, diff, acl, group, sparse-checkout, mr), `usecase`
+  merge, revert, log, diff, acl, group, sparse-checkout, mr, lock, unlock), `usecase`
   (clone/login, push, update/switch (incl. sparse), merge, revert, diff, log,
-  permission, merge-request orchestration over small interfaces; `threeway.go`
+  permission, merge-request orchestration, file locks over small interfaces; `threeway.go`
   holds the shared materialize/stage/delete core), `grpc` (gRPC transport,
   converts pb→server domain types), `merge` (three-way tree decisions + diff3
   text merge), `securestorage` (keyring-backed token store), `config`
@@ -84,6 +84,26 @@ permission-filtered) clone sends the pinned head commit as
 `base_commit_id` (preferred over `base_tree_hash`) so the server applies the
 delta to the full base tree. Merge and revert still require a full checkout;
 `Push.Run` refuses to run mid multi-target revert sequence.
+
+Flow for binary file locks (`nipa lock <path> [--branch]`, `nipa unlock <path>`,
+`nipa lock list`): binary changes are mandatory-lock gated. `FileLock.Acquire`
+resolves the scope from the branch — the default branch is a project-global lock
+(`file_locks.branch_id NULL`), any other branch a lock of that branch — and
+rejects a path already covered (exact or directory prefix, `domain.PrefixCovers`)
+by another holder; the same holder is idempotent. `Push.Push` computes the
+lockable set (`PushFile.IsBinary` plus `chunker.IsLockablePath` for removals),
+requires a covering lock for the pusher in the target scope (`EnsureLocks`,
+409 `binary file %q requires a lock` / `%q is locked by <holder>`), and after
+`ApplyPush` releases the pusher's own exact-path, non-request locks
+(`ReleaseLanded`); directory locks span the editing pass and stay. Merge
+requests acquire locks for their changed binary paths at creation (re-checked
+and topped up at merge — `branchMerger.BinaryChangesBetween` is the
+permission-filter-free three-dot enumeration), release them on merge/close,
+re-acquire on reopen, and clean up partial acquisitions when creation fails.
+Plain `FastForward` enforces/releases the same way; `Branch.Delete` releases the
+branch's scoped locks (soft delete ⇒ no FK cascade). The `/locks` REST routes,
+`LockFile`/`UnlockFile`/`ListFileLocks` RPCs and the web Locks page expose
+acquire/release/list.
 
 Flow for `nipa revert <commit>` / `<from>..<to>`: resolve targets via gRPC
 `GetCommit` / `WalkCommits` (range walks newest-first, exclusive stop; ranges are
@@ -283,7 +303,8 @@ Direct: `go build ./...`, `go vet ./...`, `go test ./...`.
   `GetCommit`, `WalkCommits`, `GetMergeBase`, `MergeFastForward`; merge-request
   RPCs `CreateMergeRequest`, `UpdateMergeRequest`, `ListMergeRequests`,
   `MergeMergeRequest`, `CloseMergeRequest`; transfer RPCs `Push`,
-  `GetChunkUploadUrls`, `GetChunkDownloadUrls`, `ConfirmChunkUploads`; PBAC
+  `GetChunkUploadUrls`, `GetChunkDownloadUrls`, `ConfirmChunkUploads`; file-lock
+  RPCs `LockFile`, `UnlockFile`, `ListFileLocks`; PBAC
   RPCs `GetMyPermissions`, `CreatePBACRule`, `ListPBACRules`, `DeletePBACRule`,
   `ListProjectPathPermissions`, `SetProjectPathPermission`,
   `DeleteProjectPathPermission`; group RPCs `CreateGroup`, `ListGroups`,
@@ -378,7 +399,8 @@ Direct: `go build ./...`, `go vet ./...`, `go test ./...`.
   from `/permissions/me` to hide admin controls (server remains authoritative).
   Pages cover repository/org lists, tree browser, blob viewer, commit history
   + diffs, branch management, merge requests (list/create/detail/merge),
-  project/org settings (protection + ACL, members/groups), user administration
+  file locks (list/lock/unlock), project/org settings (protection + ACL,
+  members/groups), user administration
   and profile; the browse endpoints are served by `internal/usecase/browser.go`
   (+ `browser_history.go` for per-file/per-dir last-commit info) under
   `internal/http/api/`.

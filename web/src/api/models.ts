@@ -133,6 +133,17 @@ export interface MergeRequestDiffResponse {
   files: DiffFileResponse[]
 }
 
+export interface FileLockResponse {
+  id: string
+  path: string
+  branch?: string
+  global: boolean
+  held_by: string
+  held_by_name: string
+  merge_request_number?: number
+  acquired_at: string
+}
+
 export interface GroupResponse {
   id: string
   org_id: string

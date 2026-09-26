@@ -165,10 +165,66 @@ func (b *Branch) fastForward(ctx context.Context, projectID snow.ID, targetBranc
 		return nil, err
 	}
 
+	var lockablePaths []string
+	var actor snow.ID
+	if !allowProtected && b.fileLocks != nil {
+		claim, ok := domain.ClaimFromContext(ctx)
+		if !ok {
+			return nil, domain.NewErrorNoPermission()
+		}
+		actor = claim.UserID
+		lockablePaths, err = b.BinaryChangesBetween(ctx, projectID, target.CommitID, source.CommitID)
+		if err != nil {
+			return nil, err
+		}
+		if err := b.fileLocks.EnsureLocks(ctx, projectID, target, lockablePaths, actor); err != nil {
+			return nil, err
+		}
+	}
+
 	if err := b.branchRepo.UpdateCommitIf(ctx, target.ID, target.CommitID, source.CommitID); err != nil {
 		return nil, err
 	}
+	if b.fileLocks != nil {
+		if err := b.fileLocks.ReleaseLanded(ctx, projectID, target, lockablePaths, actor); err != nil {
+			return nil, err
+		}
+	}
 	return b.branchRepo.GetByProjectIDAndID(ctx, projectID, target.ID)
+}
+
+// BinaryChangesBetween returns the paths whose binary flag differs between two
+// commits. Callers pass a merge base as from to get the three-dot changes.
+func (b *Branch) BinaryChangesBetween(ctx context.Context, projectID snow.ID, fromCommitID, toCommitID *snow.ID) ([]string, error) {
+	fromEntries := map[string]diff.Entry{}
+	if fromCommitID != nil {
+		entries, err := b.treeEntries(ctx, projectID, *fromCommitID)
+		if err != nil {
+			return nil, err
+		}
+		fromEntries = entries
+	}
+	toEntries := map[string]diff.Entry{}
+	if toCommitID != nil {
+		entries, err := b.treeEntries(ctx, projectID, *toCommitID)
+		if err != nil {
+			return nil, err
+		}
+		toEntries = entries
+	}
+	seen := map[string]struct{}{}
+	var paths []string
+	for _, change := range diff.Compare(fromEntries, toEntries) {
+		if !change.Old.IsBinary && !change.New.IsBinary {
+			continue
+		}
+		if _, ok := seen[change.Path]; ok {
+			continue
+		}
+		seen[change.Path] = struct{}{}
+		paths = append(paths, change.Path)
+	}
+	return paths, nil
 }
 
 func (b *Branch) findMergeBase(ctx context.Context, a, c *snow.ID) (*snow.ID, error) {

@@ -91,6 +91,10 @@ func (s *stubBranchMerger) TreeDiffBetween(_ context.Context, _ snow.ID, _ *snow
 	return nil, nil
 }
 
+func (s *stubBranchMerger) BinaryChangesBetween(_ context.Context, _ snow.ID, _, _ *snow.ID) ([]string, error) {
+	return nil, nil
+}
+
 func testMergeRequest(id int64, status string) *domain.MergeRequest {
 	return &domain.MergeRequest{
 		ID:             id,

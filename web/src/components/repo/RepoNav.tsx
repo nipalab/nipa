@@ -1,9 +1,16 @@
 import { UnderlineNav } from '@primer/react'
-import { CodeIcon, GearIcon, GitBranchIcon, GitPullRequestIcon, HistoryIcon } from '@primer/octicons-react'
+import {
+  CodeIcon,
+  GearIcon,
+  GitBranchIcon,
+  GitPullRequestIcon,
+  HistoryIcon,
+  LockIcon,
+} from '@primer/octicons-react'
 import { Link } from 'react-router-dom'
 import { commitsUrl, repoUrl, treeUrl } from './repoPaths'
 
-export type RepoTab = 'code' | 'commits' | 'branches' | 'pulls' | 'settings'
+export type RepoTab = 'code' | 'commits' | 'branches' | 'pulls' | 'locks' | 'settings'
 
 function itemProps(to: string, current: boolean) {
   return { as: Link, to, 'aria-current': current ? ('page' as const) : undefined }
@@ -47,6 +54,12 @@ export function RepoNav({
         leadingVisual={<GitPullRequestIcon />}
       >
         Merge requests
+      </UnderlineNav.Item>
+      <UnderlineNav.Item
+        {...itemProps(`${repoUrl(org, project)}/locks`, active === 'locks')}
+        leadingVisual={<LockIcon />}
+      >
+        Locks
       </UnderlineNav.Item>
       {canAdmin && (
         <UnderlineNav.Item

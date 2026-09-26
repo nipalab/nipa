@@ -54,6 +54,7 @@ type Branch struct {
 	branchRepo branchRepository
 	snowNode   snow.Node
 	chunks     chunkReader
+	fileLocks  fileLockGate
 }
 
 func NewBranch(permUc permissionUsecase, branchRepo branchRepository, snowNode snow.Node) *Branch {
@@ -62,6 +63,12 @@ func NewBranch(permUc permissionUsecase, branchRepo branchRepository, snowNode s
 		branchRepo: branchRepo,
 		snowNode:   snowNode,
 	}
+}
+
+// WithFileLocks enables the binary lock gate on this usecase.
+func (b *Branch) WithFileLocks(locks fileLockGate) *Branch {
+	b.fileLocks = locks
+	return b
 }
 
 func (b *Branch) ListBranches(ctx context.Context, projectID snow.ID, limit int, updatedAfter *time.Time, lastID snow.ID) ([]*domain.Branch, error) {
@@ -168,7 +175,15 @@ func (b *Branch) Delete(ctx context.Context, projectID snow.ID, name string) err
 	if hasOpen {
 		return domain.NewErrorConflict(fmt.Sprintf("branch %q has open merge requests", name))
 	}
-	return b.branchRepo.DeleteBranch(ctx, projectID, branch.ID)
+	if err := b.branchRepo.DeleteBranch(ctx, projectID, branch.ID); err != nil {
+		return err
+	}
+	if b.fileLocks != nil {
+		if err := b.fileLocks.ReleaseBranch(ctx, projectID, branch.ID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (b *Branch) SetDefault(ctx context.Context, projectID snow.ID, name string) (*domain.Branch, error) {

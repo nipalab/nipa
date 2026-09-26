@@ -22,6 +22,7 @@ type usecaseContainer interface {
 	Branch() *usecase.Branch
 	Chunk() *usecase.Chunk
 	MergeRequest() *usecase.MergeRequest
+	FileLock() *usecase.FileLock
 }
 
 type API struct {
@@ -62,6 +63,7 @@ func (a *API) SetupRoute() http.Handler {
 	setupProjectRouter(apiWs, h)
 	setupBrowserRouter(apiWs, h)
 	setupMergeRequestRouter(apiWs, h)
+	setupFileLockRouter(apiWs, h)
 	setupOrgRouter(apiWs, h)
 	setupGroupRouter(apiWs, h)
 	setupPermissionRouter(apiWs, h)

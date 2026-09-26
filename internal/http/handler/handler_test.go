@@ -122,6 +122,7 @@ type handlerRegistry struct {
 	branch       *usecase.Branch
 	chunk        *usecase.Chunk
 	mergeRequest *usecase.MergeRequest
+	fileLock     *usecase.FileLock
 }
 
 func (r *handlerRegistry) Auth() *usecase.Auth             { return r.auth }
@@ -136,6 +137,7 @@ func (r *handlerRegistry) Chunk() *usecase.Chunk           { return r.chunk }
 func (r *handlerRegistry) MergeRequest() *usecase.MergeRequest {
 	return r.mergeRequest
 }
+func (r *handlerRegistry) FileLock() *usecase.FileLock { return r.fileLock }
 
 type stubPasswordHasher struct{}
 
@@ -199,6 +201,7 @@ func newHandlerTestEnv(t *testing.T) *handlerTestEnv {
 	mergeRequestUc := usecase.NewMergeRequest(
 		sqlite.NewMergeRequestRepository(dbConn), branchRepo, permissionUc, branchUc, node,
 	)
+	fileLockUc := usecase.NewFileLock(sqlite.NewFileLockRepository(dbConn), branchRepo, permissionUc, node)
 	reg := &handlerRegistry{
 		auth:         usecase.NewAuth("test-secret", stubPasswordHasher{}, userRepo, authRepo),
 		user:         usecase.NewUser(node, userRepo, stubPasswordHasher{}),
@@ -210,6 +213,7 @@ func newHandlerTestEnv(t *testing.T) *handlerTestEnv {
 		branch:       branchUc,
 		chunk:        chunkUc,
 		mergeRequest: mergeRequestUc,
+		fileLock:     fileLockUc,
 	}
 	return &handlerTestEnv{
 		handler:    NewHandler(reg),

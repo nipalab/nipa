@@ -74,13 +74,16 @@ func main() {
 		panic("CHUNK_URL_SIGNING_KEY must be set")
 	}
 	branchUsecase := usecase.NewBranchWithChunks(permissionUsecase, branchRepository, snowUser, chunkStore)
+	fileLockUsecase := usecase.NewFileLock(sqlite.NewFileLockRepository(dbConn), branchRepository, permissionUsecase, snowUser)
+	branchUsecase = branchUsecase.WithFileLocks(fileLockUsecase)
 	mergeRequestUsecase := usecase.NewMergeRequest(
 		sqlite.NewMergeRequestRepository(dbConn),
 		branchRepository,
 		permissionUsecase,
 		branchUsecase,
 		snowUser,
-	)
+	).WithFileLocks(fileLockUsecase)
+	pushUsecase := usecase.NewPush(permissionUsecase, branchRepository, pushRepository, snowUser).WithFileLocks(fileLockUsecase)
 	chunkUsecase := usecase.NewChunk(pushRepository, chunkStore, usecase.ChunkTransferConfig{
 		SigningKey:  cfg.ChunkURLSigningKey,
 		PresignTTL:  time.Duration(cfg.ChunkPresignTTLSeconds) * time.Second,
@@ -91,13 +94,14 @@ func main() {
 		userUsecase:         usecase.NewUser(snowUser, userRepo, passwordHasher),
 		commonUsecase:       usecase.NewCommon(orgRepo, projectRepo),
 		branchUsecase:       branchUsecase,
-		pushUsecase:         usecase.NewPush(permissionUsecase, branchRepository, pushRepository, snowUser),
+		pushUsecase:         pushUsecase,
 		chunkUsecase:        chunkUsecase,
 		permissionUsecase:   permissionUsecase,
 		groupUsecase:        usecase.NewGroup(groupRepository, snowUser, permissionUsecase, orgUsecase),
 		orgUsecase:          orgUsecase,
 		projectUsecase:      projectUsecase,
 		mergeRequestUsecase: mergeRequestUsecase,
+		fileLockUsecase:     fileLockUsecase,
 	}
 
 	apiApp := api.NewAPI(reg)

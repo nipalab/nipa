@@ -12,6 +12,7 @@ type Registry struct {
 	diffUsecase       *usecase.Diff
 	permissionUsecase *usecase.Permission
 	mrUsecase         *usecase.MergeRequest
+	lockUsecase       *usecase.FileLock
 }
 
 func (r *Registry) Auth() *usecase.Auth {
@@ -48,4 +49,8 @@ func (r *Registry) Permission() *usecase.Permission {
 
 func (r *Registry) MR() *usecase.MergeRequest {
 	return r.mrUsecase
+}
+
+func (r *Registry) Lock() *usecase.FileLock {
+	return r.lockUsecase
 }
