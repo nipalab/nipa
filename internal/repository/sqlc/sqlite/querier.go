@@ -30,6 +30,11 @@ type Querier interface {
 	CommitGetByHash(ctx context.Context, hash []byte) (Commit, error)
 	CommitInsert(ctx context.Context, arg CommitInsertParams) error
 	CommitLog(ctx context.Context, arg CommitLogParams) ([]CommitLogRow, error)
+	// CommitLogUntil walks the first-parent chain from start_commit_id and stops
+	// before stop_commit_id, which a merge request passes as its merge base. Zero
+	// means "no stop". It is a separate query from CommitLog so the recursive stop
+	// stays out of the plain branch history.
+	CommitLogUntil(ctx context.Context, arg CommitLogUntilParams) ([]CommitLogUntilRow, error)
 	CreateOrganization(ctx context.Context, arg CreateOrganizationParams) (Organization, error)
 	CreateProject(ctx context.Context, arg CreateProjectParams) (Project, error)
 	DeleteOrganization(ctx context.Context, id int64) error

@@ -167,6 +167,88 @@ func (q *Queries) CommitLog(ctx context.Context, arg CommitLogParams) ([]CommitL
 	return items, nil
 }
 
+const commitLogUntil = `-- name: CommitLogUntil :many
+WITH RECURSIVE commit_chain(id, depth) AS (
+    SELECT ?4 AS id, 0 AS depth
+    UNION ALL
+    SELECT c.parent_1_id, cc.depth + 1 FROM commits c JOIN commit_chain cc ON c.id = cc.id
+    WHERE c.parent_1_id IS NOT NULL AND c.id <> ?2
+)
+SELECT c.id, c.hash, c.project_id, c.tree_id, c.parent_1_id, c.parent_2_id, c.user_id, c.message, c.created_at,
+       u.name AS author_name, u.email AS author_email
+FROM commits c
+JOIN users u ON c.user_id = u.id
+JOIN commit_chain cc ON c.id = cc.id
+WHERE c.project_id = ?1 AND c.id <> ?2
+ORDER BY cc.depth ASC, c.id DESC
+LIMIT ?3
+`
+
+type CommitLogUntilParams struct {
+	ProjectID     int64 `json:"project_id"`
+	StopCommitID  int64 `json:"stop_commit_id"`
+	Limit         int64 `json:"limit"`
+	StartCommitID int64 `json:"start_commit_id"`
+}
+
+type CommitLogUntilRow struct {
+	ID          int64         `json:"id"`
+	Hash        []byte        `json:"hash"`
+	ProjectID   int64         `json:"project_id"`
+	TreeID      int64         `json:"tree_id"`
+	Parent1ID   sql.NullInt64 `json:"parent_1_id"`
+	Parent2ID   sql.NullInt64 `json:"parent_2_id"`
+	UserID      int64         `json:"user_id"`
+	Message     string        `json:"message"`
+	CreatedAt   time.Time     `json:"created_at"`
+	AuthorName  string        `json:"author_name"`
+	AuthorEmail string        `json:"author_email"`
+}
+
+// CommitLogUntil walks the first-parent chain from start_commit_id and stops
+// before stop_commit_id, which a merge request passes as its merge base. Zero
+// means "no stop". It is a separate query from CommitLog so the recursive stop
+// stays out of the plain branch history.
+func (q *Queries) CommitLogUntil(ctx context.Context, arg CommitLogUntilParams) ([]CommitLogUntilRow, error) {
+	rows, err := q.db.QueryContext(ctx, commitLogUntil,
+		arg.ProjectID,
+		arg.StopCommitID,
+		arg.Limit,
+		arg.StartCommitID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CommitLogUntilRow
+	for rows.Next() {
+		var i CommitLogUntilRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Hash,
+			&i.ProjectID,
+			&i.TreeID,
+			&i.Parent1ID,
+			&i.Parent2ID,
+			&i.UserID,
+			&i.Message,
+			&i.CreatedAt,
+			&i.AuthorName,
+			&i.AuthorEmail,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const fileListByTree = `-- name: FileListByTree :many
 SELECT f.id, f.name, f.mode, f.tree_id, f.hash, f.size_bytes, f.is_binary, f.encoding, f.created_at
 FROM files f

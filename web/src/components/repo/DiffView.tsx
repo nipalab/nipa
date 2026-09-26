@@ -310,7 +310,10 @@ function DiffFile({
 
   if (file.binary) {
     return (
-      <div style={{ border: '1px solid var(--borderColor-default)', borderRadius: 6, overflow: 'hidden' }}>
+      <div
+        id={`file-${file.path}`}
+        style={{ border: '1px solid var(--borderColor-default)', borderRadius: 6, overflow: 'hidden', scrollMarginTop: 16 }}
+      >
         {header}
         <Text as="p" style={{ padding: 12, color: 'var(--fgColor-muted)' }}>
           Binary file, no diff shown.
@@ -504,7 +507,10 @@ function DiffFile({
   }
 
   return (
-    <div style={{ border: '1px solid var(--borderColor-default)', borderRadius: 6, overflow: 'hidden' }}>
+    <div
+      id={`file-${file.path}`}
+      style={{ border: '1px solid var(--borderColor-default)', borderRadius: 6, overflow: 'hidden', scrollMarginTop: 16 }}
+    >
       {header}
       {rows.length === 0 ? (
         <Text as="p" style={{ padding: 12, color: 'var(--fgColor-muted)' }}>

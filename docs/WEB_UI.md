@@ -24,7 +24,7 @@ proxies `/api` and `/docs` to `NIPA_SERVER_URL`).
 | `/:org/:project/blob/:rev/*` | file viewer | line numbers + syntax highlighting, image preview, raw/copy/download |
 | `/:org/:project/commits[/:commit]` | history + diff | commit diff against its parent; `?path=` filters by file/dir |
 | `/:org/:project/branches` | branches | create; default/protect/rename/delete for project admins |
-| `/:org/:project/pulls[/:id]` | merge requests | list/create, detail + diff, merge/close/reopen, reviews (panel, inline threads, timeline) |
+| `/:org/:project/pulls[/:id]` | merge requests | list/create; detail is tabbed (Overview / Commits / File changes) with merge/close/reopen, reviews (panel, inline threads, timeline) and a split diff |
 | `/:org/:project/locks` | file locks | list binary asset locks, lock/unlock |
 | `/:org/:project/settings` | project settings | branch protection + ACL rules/defaults |
 | `/:org/settings` | organization settings | members and groups (org owner or global admin) |
@@ -45,21 +45,22 @@ endpoints.
 
 ## Merge request reviews
 
-The merge request detail page pairs the review panel
-(`web/src/components/repo/ReviewPanel.tsx`) with the structured diff
-(`web/src/components/repo/MergeRequestDiff.tsx`):
+The merge request detail page is tabbed like GitHub, driven by `?tab=`:
+**Overview** (status, merge actions, review summary, reviewer requests, review
+decision box, review history, activity timeline, conversation threads),
+**Commits** (the source-branch commits the request adds, linking to each
+commit page), and **File changes** (changed-file jump list + diff).
 
-- The panel shows the live summary (approvals / changes requested / dismissed),
-  asks a project member to review, lists pending requests, lets a reviewer
-  approve, request changes or comment (a review on your own request is
-  rejected server-side), and shows the review history with stale/dismissed
-  badges plus the activity timeline.
-- Every diff line offers an inline `comment` action; the composer creates a
-  thread on that line immediately. Threads can be replied to, resolved and
-  reopened, and the diff can filter to the lines that carry open threads.
-- Comment threads anchored to a line the source head no longer shows are marked
-  outdated; a new push starts a new review round and dismisses previous
-  decisions (`dismissed_reason = new_commits`), keeping the history.
+The diff renderer (`web/src/components/repo/DiffView.tsx`) renders hunks
+**side by side by default** with a Unified/Split toggle, and is shared with
+the commit detail page. Review comments float directly under their anchored
+line: each thread card (`web/src/components/repo/ThreadCard.tsx`) supports
+inline reply, resolve/reopen and edit/delete of your own comments, and a new
+comment opens a composer in place. Files can be filtered to the lines that
+carry open threads. Comment threads anchored to a line the source head no
+longer shows are marked outdated; a new push starts a new review round and
+dismisses previous decisions (`dismissed_reason = new_commits`), keeping the
+history.
 
 The REST endpoints behind it: `GET/POST .../reviews`,
 `GET .../review-state`, `DELETE .../reviews/{reviewId}`,
@@ -67,8 +68,9 @@ The REST endpoints behind it: `GET/POST .../reviews`,
 `POST .../threads/{threadId}/comments`,
 `PATCH/DELETE .../comments/{commentId}`,
 `POST .../threads/{threadId}/resolve`, `DELETE .../threads/{threadId}`,
-`GET/POST/DELETE .../review-requests`, and `GET .../timeline`
-(see `internal/http/api/merge_request_review.go`).
+`GET/POST/DELETE .../review-requests`, `GET .../commits`, and `GET .../timeline`
+(see `internal/http/api/merge_request_review.go` and
+`internal/http/api/merge_request.go`).
 
 ## Permission gating
 

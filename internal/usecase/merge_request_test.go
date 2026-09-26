@@ -438,15 +438,17 @@ func TestMergeRequest_Commits(t *testing.T) {
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(branchWithHead(2, targetHead), nil)
 	merger.EXPECT().GetMergeBase(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
 		Return(&MergeBaseInfo{MergeBaseCommitID: &base}, nil)
-	branchRepo.EXPECT().GetCommit(gomock.Any(), sourceHead).
-		Return(&domain.Commit{ID: sourceHead, ProjectID: 1, Parent1ID: &mid, Message: "second"}, nil)
-	branchRepo.EXPECT().GetCommit(gomock.Any(), mid).
-		Return(&domain.Commit{ID: mid, ProjectID: 1, Parent1ID: &base, Message: "first"}, nil)
+	branchRepo.EXPECT().CommitLogUntil(gomock.Any(), snow.ID(1), sourceHead, base, mergeRequestCommitLimit).
+		Return([]*domain.CommitLogEntry{
+			{Commit: domain.Commit{ID: sourceHead, Message: "second"}, AuthorName: "Alice"},
+			{Commit: domain.Commit{ID: mid, Message: "first"}, AuthorName: "Bob"},
+		}, nil)
 
 	commits, err := mr.Commits(permissionCtx(7), snow.ID(1), 5)
 	require.NoError(t, err)
 	require.Len(t, commits, 2, "the merge base commit is not part of the request")
 	require.Equal(t, sourceHead, commits[0].ID, "newest first")
+	require.Equal(t, "Alice", commits[0].AuthorName)
 	require.Equal(t, mid, commits[1].ID)
 }
 

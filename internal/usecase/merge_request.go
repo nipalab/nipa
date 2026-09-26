@@ -332,9 +332,9 @@ func (m *MergeRequest) Diff(ctx context.Context, projectID snow.ID, number int64
 }
 
 // Commits lists the source-branch commits the merge request adds on top of the
-// merge base with its target, newest first. Commits already on the target are
-// not part of the request, so the walk stops at the merge base.
-func (m *MergeRequest) Commits(ctx context.Context, projectID snow.ID, number int64) ([]*domain.Commit, error) {
+// merge base with its target, newest first, with their authors. Commits already
+// on the target are not part of the request, so the log stops at the merge base.
+func (m *MergeRequest) Commits(ctx context.Context, projectID snow.ID, number int64) ([]*domain.CommitLogEntry, error) {
 	mr, err := m.load(ctx, projectID, number)
 	if err != nil {
 		return nil, err
@@ -347,10 +347,10 @@ func (m *MergeRequest) Commits(ctx context.Context, projectID snow.ID, number in
 		return nil, err
 	}
 	if source.CommitID == nil {
-		return []*domain.Commit{}, nil
+		return []*domain.CommitLogEntry{}, nil
 	}
 
-	var baseID *snow.ID
+	var stop snow.ID
 	target, err := m.branchRepo.GetBranchByName(ctx, projectID, mr.TargetBranch)
 	if err == nil && target.CommitID != nil {
 		info, err := m.merger.GetMergeBase(ctx, projectID,
@@ -358,11 +358,13 @@ func (m *MergeRequest) Commits(ctx context.Context, projectID snow.ID, number in
 		if err != nil {
 			return nil, err
 		}
-		baseID = info.MergeBaseCommitID
+		if info.MergeBaseCommitID != nil {
+			stop = *info.MergeBaseCommitID
+		}
 	} else if err != nil && !domain.IsErrorNotFound(err) {
 		return nil, err
 	}
-	return walkCommitsRange(ctx, m.branchRepo, projectID, *source.CommitID, baseID, mergeRequestCommitLimit)
+	return m.branchRepo.CommitLogUntil(ctx, projectID, *source.CommitID, stop, mergeRequestCommitLimit)
 }
 
 func (m *MergeRequest) load(ctx context.Context, projectID snow.ID, number int64) (*domain.MergeRequest, error) {

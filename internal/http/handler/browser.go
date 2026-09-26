@@ -280,23 +280,18 @@ func toBranchResponse(branch *domain.Branch) model.BranchResponse {
 }
 
 func toCommitResponse(entry *domain.CommitLogEntry) model.CommitResponse {
-	resp := commitToResponse(&entry.Commit)
-	resp.AuthorName = entry.AuthorName
-	resp.AuthorEmail = entry.AuthorEmail
-	return resp
-}
-
-func commitToResponse(commit *domain.Commit) model.CommitResponse {
 	resp := model.CommitResponse{
-		ID:        commit.ID.Base36(),
-		Message:   commit.Message,
-		CreatedAt: commit.CreatedAt,
+		ID:          entry.ID.Base36(),
+		Message:     entry.Message,
+		AuthorName:  entry.AuthorName,
+		AuthorEmail: entry.AuthorEmail,
+		CreatedAt:   entry.CreatedAt,
 	}
-	if commit.Parent1ID != nil {
-		resp.Parent1ID = commit.Parent1ID.Base36()
+	if entry.Parent1ID != nil {
+		resp.Parent1ID = entry.Parent1ID.Base36()
 	}
-	if commit.Parent2ID != nil {
-		resp.Parent2ID = commit.Parent2ID.Base36()
+	if entry.Parent2ID != nil {
+		resp.Parent2ID = entry.Parent2ID.Base36()
 	}
 	return resp
 }

@@ -204,7 +204,7 @@ func (h *Handler) ListMergeRequestCommits(appCtx http.AppContext) {
 	}
 	resp := make([]model.CommitResponse, 0, len(commits))
 	for _, commit := range commits {
-		resp = append(resp, commitToResponse(commit))
+		resp = append(resp, toCommitResponse(commit))
 	}
 	appCtx.WriteJson(nethttp.StatusOK, resp)
 }

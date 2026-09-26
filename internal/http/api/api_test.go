@@ -750,6 +750,7 @@ func TestAPIRoutes(t *testing.T) {
 		require.Len(t, commits, 1, "only the source-side commit belongs to the request")
 		require.Equal(t, featurePush.CommitID.Base36(), commits[0].ID)
 		require.Equal(t, "seed", commits[0].Message)
+		require.Equal(t, "Alice Admin", commits[0].AuthorName)
 
 		merge := doMethod(t, http.MethodPost, mrURL+"/merge", `{}`, aliceLogin.AccessToken)
 		require.Equal(t, http.StatusOK, merge.StatusCode)

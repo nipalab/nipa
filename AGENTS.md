@@ -128,9 +128,14 @@ after the apply succeeded and only logs bookkeeping failures. The timeline
 events carry a `subject` actor (e.g. the requested reviewer). REST routes live
 in `internal/http/api/merge_request_review.go`, the matching RPCs in
 `internal/grpc/server/merge_request_review.go`; MR list/detail responses carry
-the live `review` summary and the SPA renders the panel + inline-thread diff
-(`web/src/components/repo/ReviewPanel.tsx` /
-`MergeRequestDiff.tsx`).
+the live `review` summary and the SPA renders a tabbed MR page (Overview /
+Commits / File changes, `?tab=`). The Commits tab is served by
+`MergeRequest.Commits`, a first-parent `CommitLogUntil` walk (stop = live merge
+base, authors joined) exposed at `GET .../merge-requests/{id}/commits`. The
+diff is side-by-side by default with a Unified/Split toggle and floating inline
+thread cards
+(`web/src/components/repo/DiffView.tsx` + `ThreadCard.tsx`, reused by the
+commit page).
 
 Flow for `nipa revert <commit>` / `<from>..<to>`: resolve targets via gRPC
 `GetCommit` / `WalkCommits` (range walks newest-first, exclusive stop; ranges are
@@ -433,8 +438,9 @@ Direct: `go build ./...`, `go vet ./...`, `go test ./...`.
   memory-only access token + `HttpOnly` refresh cookie, and a capability mask
   from `/permissions/me` to hide admin controls (server remains authoritative).
   Pages cover repository/org lists, tree browser, blob viewer, commit history
-  + diffs, branch management, merge requests (list/create/detail/merge with
-  reviews: decisions, inline threads, reviewer requests, activity timeline),
+  + diffs, branch management, merge requests (list/create; detail tabs for
+  overview, commits and file changes; merge/reviews with decisions, inline
+  floating threads, reviewer requests, activity timeline),
   file locks (list/lock/unlock), project/org settings (protection + ACL,
   members/groups), user administration
   and profile; the browse endpoints are served by `internal/usecase/browser.go`
