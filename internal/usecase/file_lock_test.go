@@ -218,7 +218,7 @@ func TestFileLock_List(t *testing.T) {
 }
 
 func TestFileLock_EnsureLocks(t *testing.T) {
-	t.Run("held by caller passes", func(t *testing.T) {
+	t.Run("required paths held by caller pass", func(t *testing.T) {
 		uc, repo, _, _ := newTestFileLock(t)
 		locks := []*domain.FileLock{
 			{ID: 1, Path: "assets", HeldBy: 7},
@@ -226,25 +226,26 @@ func TestFileLock_EnsureLocks(t *testing.T) {
 		}
 		repo.EXPECT().ListProject(gomock.Any(), snow.ID(1)).Return(locks, nil)
 
-		err := uc.EnsureLocks(permissionCtx(7), snow.ID(1), defaultBranchFixture(), []string{"assets/orc.png", "sound/loop.wav"}, 7)
+		err := uc.EnsureLocks(permissionCtx(7), snow.ID(1), defaultBranchFixture(),
+			[]string{"assets/orc.png", "sound/loop.wav"}, nil, 7)
 		require.NoError(t, err)
 	})
 
-	t.Run("missing lock is a conflict", func(t *testing.T) {
+	t.Run("required path without a lock is a conflict", func(t *testing.T) {
 		uc, repo, _, _ := newTestFileLock(t)
 		repo.EXPECT().ListProject(gomock.Any(), snow.ID(1)).Return(nil, nil)
 
-		err := uc.EnsureLocks(permissionCtx(7), snow.ID(1), defaultBranchFixture(), []string{"a.png"}, 7)
+		err := uc.EnsureLocks(permissionCtx(7), snow.ID(1), defaultBranchFixture(), []string{"a.png"}, nil, 7)
 		require.True(t, domain.IsErrorConflict(err))
 		require.Contains(t, err.Error(), "requires a lock")
 	})
 
-	t.Run("other holder is a conflict", func(t *testing.T) {
+	t.Run("required path held by another user is a conflict", func(t *testing.T) {
 		uc, repo, _, _ := newTestFileLock(t)
 		held := &domain.FileLock{ID: 1, Path: "a.png", HeldBy: 8, HeldByName: "bob", MergeRequestNumber: int64Ptr(4)}
 		repo.EXPECT().ListProject(gomock.Any(), snow.ID(1)).Return([]*domain.FileLock{held}, nil)
 
-		err := uc.EnsureLocks(permissionCtx(7), snow.ID(1), defaultBranchFixture(), []string{"a.png"}, 7)
+		err := uc.EnsureLocks(permissionCtx(7), snow.ID(1), defaultBranchFixture(), []string{"a.png"}, nil, 7)
 		require.True(t, domain.IsErrorConflict(err))
 		require.Contains(t, err.Error(), "bob")
 		require.Contains(t, err.Error(), "#4")
@@ -257,13 +258,42 @@ func TestFileLock_EnsureLocks(t *testing.T) {
 			{ID: 1, Path: "a.png", BranchID: &branchID, HeldBy: 7},
 		}, nil)
 
-		err := uc.EnsureLocks(permissionCtx(7), snow.ID(1), defaultBranchFixture(), []string{"a.png"}, 7)
+		err := uc.EnsureLocks(permissionCtx(7), snow.ID(1), defaultBranchFixture(), []string{"a.png"}, nil, 7)
 		require.True(t, domain.IsErrorConflict(err))
+	})
+
+	t.Run("checked paths pass without a lock", func(t *testing.T) {
+		uc, repo, _, _ := newTestFileLock(t)
+		repo.EXPECT().ListProject(gomock.Any(), snow.ID(1)).Return(nil, nil)
+
+		err := uc.EnsureLocks(permissionCtx(7), snow.ID(1), defaultBranchFixture(), nil, []string{"new.png"}, 7)
+		require.NoError(t, err)
+	})
+
+	t.Run("checked paths pass under the caller's own lock", func(t *testing.T) {
+		uc, repo, _, _ := newTestFileLock(t)
+		repo.EXPECT().ListProject(gomock.Any(), snow.ID(1)).Return([]*domain.FileLock{
+			{ID: 1, Path: "assets", HeldBy: 7},
+		}, nil)
+
+		err := uc.EnsureLocks(permissionCtx(7), snow.ID(1), defaultBranchFixture(), nil, []string{"assets/new.png"}, 7)
+		require.NoError(t, err)
+	})
+
+	t.Run("checked paths conflict under another user's covering lock", func(t *testing.T) {
+		uc, repo, _, _ := newTestFileLock(t)
+		repo.EXPECT().ListProject(gomock.Any(), snow.ID(1)).Return([]*domain.FileLock{
+			{ID: 1, Path: "assets", HeldBy: 8, HeldByName: "bob"},
+		}, nil)
+
+		err := uc.EnsureLocks(permissionCtx(7), snow.ID(1), defaultBranchFixture(), nil, []string{"assets/new.png"}, 7)
+		require.True(t, domain.IsErrorConflict(err))
+		require.Contains(t, err.Error(), "bob")
 	})
 
 	t.Run("no paths is a no-op", func(t *testing.T) {
 		uc, _, _, _ := newTestFileLock(t)
-		require.NoError(t, uc.EnsureLocks(permissionCtx(7), snow.ID(1), defaultBranchFixture(), nil, 7))
+		require.NoError(t, uc.EnsureLocks(permissionCtx(7), snow.ID(1), defaultBranchFixture(), nil, nil, 7))
 	})
 }
 
@@ -488,7 +518,7 @@ func TestFileLock_EnsureLocksRepositoryError(t *testing.T) {
 	wantErr := errors.New("db down")
 	repo.EXPECT().ListProject(gomock.Any(), snow.ID(1)).Return(nil, wantErr)
 
-	err := uc.EnsureLocks(permissionCtx(7), snow.ID(1), defaultBranchFixture(), []string{"a.png"}, 7)
+	err := uc.EnsureLocks(permissionCtx(7), snow.ID(1), defaultBranchFixture(), []string{"a.png"}, nil, 7)
 	require.ErrorIs(t, err, wantErr)
 }
 

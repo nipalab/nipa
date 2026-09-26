@@ -22,9 +22,14 @@ import (
 
 func writeBinaryFile(t *testing.T, target, path string) {
 	t.Helper()
+	writeBinaryContent(t, target, path, []byte{0x89, 'P', 'N', 'G', 0x00, 0x01, 0x02, 0x03})
+}
+
+func writeBinaryContent(t *testing.T, target, path string, content []byte) {
+	t.Helper()
 	full := filepath.Join(target, filepath.FromSlash(path))
 	require.NoError(t, os.MkdirAll(filepath.Dir(full), 0o755))
-	require.NoError(t, os.WriteFile(full, []byte{0x89, 'P', 'N', 'G', 0x00, 0x01, 0x02, 0x03}, 0o644))
+	require.NoError(t, os.WriteFile(full, content, 0o644))
 }
 
 func projectIDFromDB(t *testing.T, dbConn *sql.DB) snow.ID {
@@ -60,8 +65,14 @@ func TestEndToEnd_FileLockPushLifecycle(t *testing.T) {
 	writeBinaryFile(t, dir, "art/tex.png")
 	stagePath(t, dir, "art/tex.png")
 
-	err := pusher.Run(ctx, dir, "unlocked binary")
-	require.Error(t, err, "a binary push without a lock must be rejected")
+	require.NoError(t, pusher.Run(ctx, dir, "new binary needs no lock"),
+		"adding a brand-new binary file must not require a lock")
+
+	writeBinaryContent(t, dir, "art/tex.png", []byte{0x89, 'P', 'N', 'G', 0x00, 0x09, 0x08, 0x07})
+	stagePath(t, dir, "art/tex.png")
+
+	err := pusher.Run(ctx, dir, "unlocked edit")
+	require.Error(t, err, "editing a tracked binary without a lock must be rejected")
 	var domErr *domain.Error
 	require.ErrorAs(t, err, &domErr)
 	require.Equal(t, 409, domErr.Code)

@@ -24,7 +24,7 @@ type fileLockRepository interface {
 // fileLockGate is the subset of the lock usecase used by the push, branch and
 // merge-request flows.
 type fileLockGate interface {
-	EnsureLocks(ctx context.Context, projectID snow.ID, branch *domain.Branch, paths []string, holder snow.ID) error
+	EnsureLocks(ctx context.Context, projectID snow.ID, branch *domain.Branch, required, checked []string, holder snow.ID) error
 	ReleaseLanded(ctx context.Context, projectID snow.ID, branch *domain.Branch, paths []string, holder snow.ID) error
 	EnsureMergeRequestLocks(ctx context.Context, projectID snow.ID, mergeRequestID snow.ID, target *domain.Branch, paths []string, holder, author snow.ID) error
 	ReleaseForMergeRequest(ctx context.Context, projectID snow.ID, mergeRequestID snow.ID) error
@@ -157,10 +157,13 @@ func (f *FileLock) List(ctx context.Context, projectID snow.ID) ([]*domain.FileL
 	return locks, nil
 }
 
-// EnsureLocks requires that every binary path is already covered by a lock
-// held by the caller. It is the mandatory gate for pushes and fast-forwards.
-func (f *FileLock) EnsureLocks(ctx context.Context, projectID snow.ID, branch *domain.Branch, paths []string, holder snow.ID) error {
-	if len(paths) == 0 {
+// EnsureLocks is the mandatory gate for pushes and fast-forwards. Required
+// paths (tracked binaries being modified or removed) must be covered by a lock
+// held by the caller. Checked paths (newly added binaries) are only blocked
+// when someone else's lock covers them, so adding a new asset needs no lock
+// unless a directory or pre-emptive lock guards it.
+func (f *FileLock) EnsureLocks(ctx context.Context, projectID snow.ID, branch *domain.Branch, required, checked []string, holder snow.ID) error {
+	if len(required) == 0 && len(checked) == 0 {
 		return nil
 	}
 	locks, err := f.repo.ListProject(ctx, projectID)
@@ -168,12 +171,18 @@ func (f *FileLock) EnsureLocks(ctx context.Context, projectID snow.ID, branch *d
 		return err
 	}
 	scopeID := branchScopeID(branch)
-	for _, path := range paths {
+	for _, path := range required {
 		lock := findCoveringLock(locks, scopeID, path)
 		if lock == nil {
 			return domain.NewErrorConflict(fmt.Sprintf("binary file %q requires a lock; run `nipa lock %s` first", path, path))
 		}
 		if lock.HeldBy != holder {
+			return lockConflictError(lock, path)
+		}
+	}
+	for _, path := range checked {
+		lock := findCoveringLock(locks, scopeID, path)
+		if lock != nil && lock.HeldBy != holder {
 			return lockConflictError(lock, path)
 		}
 	}

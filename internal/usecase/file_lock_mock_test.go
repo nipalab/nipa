@@ -154,17 +154,17 @@ func (m *MockfileLockGate) EXPECT() *MockfileLockGateMockRecorder {
 }
 
 // EnsureLocks mocks base method.
-func (m *MockfileLockGate) EnsureLocks(ctx context.Context, projectID snow.ID, branch *domain.Branch, paths []string, holder snow.ID) error {
+func (m *MockfileLockGate) EnsureLocks(ctx context.Context, projectID snow.ID, branch *domain.Branch, required, checked []string, holder snow.ID) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "EnsureLocks", ctx, projectID, branch, paths, holder)
+	ret := m.ctrl.Call(m, "EnsureLocks", ctx, projectID, branch, required, checked, holder)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // EnsureLocks indicates an expected call of EnsureLocks.
-func (mr *MockfileLockGateMockRecorder) EnsureLocks(ctx, projectID, branch, paths, holder any) *gomock.Call {
+func (mr *MockfileLockGateMockRecorder) EnsureLocks(ctx, projectID, branch, required, checked, holder any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EnsureLocks", reflect.TypeOf((*MockfileLockGate)(nil).EnsureLocks), ctx, projectID, branch, paths, holder)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EnsureLocks", reflect.TypeOf((*MockfileLockGate)(nil).EnsureLocks), ctx, projectID, branch, required, checked, holder)
 }
 
 // EnsureMergeRequestLocks mocks base method.

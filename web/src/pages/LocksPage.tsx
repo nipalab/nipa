@@ -50,7 +50,7 @@ export default function LocksPage() {
       {loading && <Loading />}
       {!loading && locks && locks.length === 0 && (
         <EmptyState>
-          No locks. Binary files can only be changed while you hold a lock on them.
+          No locks. Tracked binary files can only change while you hold a lock on them.
         </EmptyState>
       )}
       {locks && locks.length > 0 && (

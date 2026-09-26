@@ -120,14 +120,14 @@ func (p *Push) Push(ctx context.Context, projectID snow.ID, branchName, baseTree
 		}
 	}
 
-	lockablePaths := lockablePushPaths(files, removed, nil)
+	var lockPlan pushLockPlan
 	if p.fileLocks != nil {
 		headBinary, err := p.headBinaryPaths(ctx, headCommit, touchedPushPaths(files, removed))
 		if err != nil {
 			return nil, err
 		}
-		lockablePaths = lockablePushPaths(files, removed, headBinary)
-		if err := p.fileLocks.EnsureLocks(ctx, projectID, branch, lockablePaths, claim.UserID); err != nil {
+		lockPlan = planPushLocks(files, removed, headBinary)
+		if err := p.fileLocks.EnsureLocks(ctx, projectID, branch, lockPlan.required, lockPlan.checked, claim.UserID); err != nil {
 			return nil, err
 		}
 	}
@@ -185,7 +185,7 @@ func (p *Push) Push(ctx context.Context, projectID snow.ID, branchName, baseTree
 		return nil, err
 	}
 	if p.fileLocks != nil {
-		if err := p.fileLocks.ReleaseLanded(ctx, projectID, branch, lockablePaths, claim.UserID); err != nil {
+		if err := p.fileLocks.ReleaseLanded(ctx, projectID, branch, lockPlan.landed(), claim.UserID); err != nil {
 			return nil, err
 		}
 	}
@@ -216,27 +216,56 @@ func touchedPushPaths(files []*domain.PushFile, removed []string) []string {
 	return paths
 }
 
-func lockablePushPaths(files []*domain.PushFile, removed []string, headBinary map[string]bool) []string {
-	seen := map[string]struct{}{}
-	var paths []string
-	add := func(path string) {
-		if _, ok := seen[path]; ok {
+// pushLockPlan splits the touched binary paths into paths that must be covered
+// by the pusher's lock (tracked binaries being changed) and paths that only
+// conflict with someone else's lock (new binary files).
+type pushLockPlan struct {
+	required []string
+	checked  []string
+}
+
+func (p pushLockPlan) landed() []string {
+	paths := make([]string, 0, len(p.required)+len(p.checked))
+	paths = append(paths, p.required...)
+	paths = append(paths, p.checked...)
+	return paths
+}
+
+func planPushLocks(files []*domain.PushFile, removed []string, headBinary map[string]bool) pushLockPlan {
+	var plan pushLockPlan
+	seenRequired := map[string]struct{}{}
+	seenChecked := map[string]struct{}{}
+	addRequired := func(path string) {
+		if _, ok := seenRequired[path]; ok {
 			return
 		}
-		seen[path] = struct{}{}
-		paths = append(paths, path)
+		seenRequired[path] = struct{}{}
+		plan.required = append(plan.required, path)
+	}
+	addChecked := func(path string) {
+		if _, ok := seenChecked[path]; ok {
+			return
+		}
+		seenChecked[path] = struct{}{}
+		plan.checked = append(plan.checked, path)
 	}
 	for _, file := range files {
-		if file.IsBinary || headBinary[file.Path] {
-			add(file.Path)
+		oldBinary, tracked := headBinary[file.Path]
+		switch {
+		case !tracked:
+			if file.IsBinary {
+				addChecked(file.Path)
+			}
+		case oldBinary || file.IsBinary:
+			addRequired(file.Path)
 		}
 	}
 	for _, path := range removed {
-		if headBinary[path] || chunker.IsLockablePath(path) {
-			add(path)
+		if oldBinary, tracked := headBinary[path]; tracked && oldBinary {
+			addRequired(path)
 		}
 	}
-	return paths
+	return plan
 }
 
 // headBinaryPaths reports the head-tree binary flag of the touched paths that

@@ -43,7 +43,7 @@ func TestBranch_FastForward_FileLocks(t *testing.T) {
 	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(102)).Return(nil, nil).AnyTimes()
 
 	gomock.InOrder(
-		gate.EXPECT().EnsureLocks(gomock.Any(), snow.ID(1), target, []string{"tex.png"}, snow.ID(7)).Return(nil),
+		gate.EXPECT().EnsureLocks(gomock.Any(), snow.ID(1), target, nil, []string{"tex.png"}, snow.ID(7)).Return(nil),
 		repo.EXPECT().UpdateCommitIf(gomock.Any(), snow.ID(2), &targetHead, &sourceHead).Return(nil),
 		gate.EXPECT().ReleaseLanded(gomock.Any(), snow.ID(1), target, []string{"tex.png"}, snow.ID(7)).Return(nil),
 		repo.EXPECT().GetByProjectIDAndID(gomock.Any(), snow.ID(1), snow.ID(2)).Return(updated, nil),
@@ -84,7 +84,7 @@ func TestBranch_FastForward_FileLocksReject(t *testing.T) {
 	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(102)).Return(nil, nil).AnyTimes()
 
 	wantErr := domain.NewErrorConflict("binary file \"tex.png\" requires a lock")
-	gate.EXPECT().EnsureLocks(gomock.Any(), snow.ID(1), target, []string{"tex.png"}, snow.ID(7)).Return(wantErr)
+	gate.EXPECT().EnsureLocks(gomock.Any(), snow.ID(1), target, nil, []string{"tex.png"}, snow.ID(7)).Return(wantErr)
 
 	uc := NewBranch(perm, repo, newTestBranchNode(t)).WithFileLocks(gate)
 	_, err := uc.FastForward(permissionCtx(7), snow.ID(1), "main", "feature")
@@ -492,7 +492,7 @@ func TestBranch_FastForward_FileLocksReleaseError(t *testing.T) {
 		Return([]*domain.File{{ID: 2, Name: "tex.png", TreeID: 102, IsBinary: true}}, nil).AnyTimes()
 	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(102)).Return(nil, nil).AnyTimes()
 
-	gate.EXPECT().EnsureLocks(gomock.Any(), snow.ID(1), target, []string{"tex.png"}, snow.ID(7)).Return(nil)
+	gate.EXPECT().EnsureLocks(gomock.Any(), snow.ID(1), target, nil, []string{"tex.png"}, snow.ID(7)).Return(nil)
 	repo.EXPECT().UpdateCommitIf(gomock.Any(), snow.ID(2), &targetHead, &sourceHead).Return(nil)
 	wantErr := errors.New("db down")
 	gate.EXPECT().ReleaseLanded(gomock.Any(), snow.ID(1), target, []string{"tex.png"}, snow.ID(7)).Return(wantErr)
