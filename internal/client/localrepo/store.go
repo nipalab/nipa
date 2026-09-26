@@ -32,6 +32,10 @@ func NewLocalRepoWithTarget(target string) *LocalRepo {
 }
 
 func (l *LocalRepo) Init(target string) error {
+	if l.db != nil {
+		_ = l.db.Close()
+		l.db = nil
+	}
 	dir := filepath.Join(target, ConfigDir)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err

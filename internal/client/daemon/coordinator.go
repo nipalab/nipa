@@ -86,6 +86,15 @@ func (c *coordinator) queuedLen() int {
 	return len(c.waiters)
 }
 
+// pending reports whether an operation would have to wait and how many
+// exclusive operations are active or queued.
+func (c *coordinator) pending() (bool, int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	busy := c.exclusive || c.shared > 0 || len(c.waiters) > 0
+	return busy, c.exclusiveAheadLocked()
+}
+
 func (c *coordinator) exclusiveAheadLocked() int {
 	ahead := 0
 	if c.exclusive {

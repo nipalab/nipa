@@ -27,6 +27,7 @@ type Options struct {
 	Port         int    // loopback port; 0 uses NIPA_DAEMON_PORT or a free port
 	Version      string // defaults to Version
 	Login        LoginFunc
+	Runners      Runners // per-root long-operation usecase factories
 }
 
 // Server hosts the loopback gRPC API for GUI clients. It owns no working-copy
@@ -92,7 +93,7 @@ func NewServer(opts Options) (*Server, error) {
 		pid:          os.Getpid(),
 		login:        opts.Login,
 		listener:     listener,
-		repos:        newRegistry(),
+		repos:        newRegistry(opts.Runners),
 		ready:        make(chan struct{}),
 		stop:         make(chan struct{}),
 	}

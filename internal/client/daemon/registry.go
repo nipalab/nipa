@@ -14,8 +14,9 @@ import (
 	"github.com/nipalab/nipa/internal/client/usecase"
 )
 
-// repo is one watched clone: a cached localrepo handle, its config and the
-// per-root operation coordinator.
+// repo is one watched clone: a cached localrepo handle, its config, the
+// per-root operation coordinator and the long-operation usecases (each with
+// its own localrepo handle, like the CLI builds them per process).
 type repo struct {
 	root      string
 	cfg       clientDomain.Config
@@ -23,11 +24,24 @@ type repo struct {
 	wc        *usecase.WorkingCopy
 	coord     *coordinator
 
+	update UpdateRunner
+	push   PushRunner
+	merge  MergeRunner
+	revert RevertRunner
+
 	refs int
 }
 
 func (r *repo) close() error {
 	return r.localRepo.Close()
+}
+
+func (r *repo) headCommitID() string {
+	commit, err := r.localRepo.LoadCommit()
+	if err != nil {
+		return ""
+	}
+	return commit.CommitID
 }
 
 func (r *repo) info() *daemonpb.RepoInfo {
@@ -43,13 +57,14 @@ func (r *repo) info() *daemonpb.RepoInfo {
 // unwatch can wait for in-flight operations before closing a handle; no new
 // ref can be handed out once the root is removed from the map.
 type registry struct {
-	mu    sync.Mutex
-	cond  *sync.Cond
-	repos map[string]*repo
+	mu      sync.Mutex
+	cond    *sync.Cond
+	repos   map[string]*repo
+	runners Runners
 }
 
-func newRegistry() *registry {
-	r := &registry{repos: map[string]*repo{}}
+func newRegistry(runners Runners) *registry {
+	r := &registry{repos: map[string]*repo{}, runners: runners}
 	r.cond = sync.NewCond(&r.mu)
 	return r
 }
@@ -77,7 +92,7 @@ func resolveRoot(path string) (string, error) {
 	return "", clientDomain.NewUserError(fmt.Sprintf("%q is not a nipa working copy", path))
 }
 
-func openRepo(root string) (*repo, error) {
+func openRepo(root string, runners Runners) (*repo, error) {
 	lr := localrepo.NewLocalRepoWithTarget(root)
 	cfg, err := lr.LoadConfig()
 	if err != nil {
@@ -88,13 +103,26 @@ func openRepo(root string) (*repo, error) {
 		_ = lr.Close()
 		return nil, err
 	}
-	return &repo{
+	rp := &repo{
 		root:      root,
 		cfg:       *cfg,
 		localRepo: lr,
 		wc:        wc,
 		coord:     newCoordinator(),
-	}, nil
+	}
+	if runners.Update != nil {
+		rp.update = runners.Update()
+	}
+	if runners.Push != nil {
+		rp.push = runners.Push()
+	}
+	if runners.Merge != nil {
+		rp.merge = runners.Merge()
+	}
+	if runners.Revert != nil {
+		rp.revert = runners.Revert()
+	}
+	return rp, nil
 }
 
 // watch registers a clone (idempotently) and returns its cached handle.
@@ -108,7 +136,7 @@ func (r *registry) watch(path string) (*repo, error) {
 	if existing, ok := r.repos[root]; ok {
 		return existing, nil
 	}
-	opened, err := openRepo(root)
+	opened, err := openRepo(root, r.runners)
 	if err != nil {
 		return nil, err
 	}

@@ -40,7 +40,7 @@ func newTestClone(t *testing.T) string {
 }
 
 func TestRegistry_WatchResolvesSubdirectory(t *testing.T) {
-	reg := newRegistry()
+	reg := newRegistry(Runners{})
 	defer reg.closeAll()
 	root := newTestClone(t)
 	sub := filepath.Join(root, "assets", "textures")
@@ -53,7 +53,7 @@ func TestRegistry_WatchResolvesSubdirectory(t *testing.T) {
 }
 
 func TestRegistry_WatchIsIdempotent(t *testing.T) {
-	reg := newRegistry()
+	reg := newRegistry(Runners{})
 	defer reg.closeAll()
 	root := newTestClone(t)
 
@@ -65,7 +65,7 @@ func TestRegistry_WatchIsIdempotent(t *testing.T) {
 }
 
 func TestRegistry_WatchRejectsNonRepo(t *testing.T) {
-	reg := newRegistry()
+	reg := newRegistry(Runners{})
 	defer reg.closeAll()
 
 	_, err := reg.watch(t.TempDir())
@@ -76,7 +76,7 @@ func TestRegistry_WatchRejectsNonRepo(t *testing.T) {
 }
 
 func TestRegistry_RefRequiresWatch(t *testing.T) {
-	reg := newRegistry()
+	reg := newRegistry(Runners{})
 	defer reg.closeAll()
 
 	_, _, err := reg.ref(newTestClone(t))
@@ -84,7 +84,7 @@ func TestRegistry_RefRequiresWatch(t *testing.T) {
 }
 
 func TestRegistry_UnwatchWaitsForRefs(t *testing.T) {
-	reg := newRegistry()
+	reg := newRegistry(Runners{})
 	defer reg.closeAll()
 	root := newTestClone(t)
 	_, err := reg.watch(root)
@@ -115,13 +115,13 @@ func TestRegistry_UnwatchWaitsForRefs(t *testing.T) {
 }
 
 func TestRegistry_UnwatchUnknownIsNoOp(t *testing.T) {
-	reg := newRegistry()
+	reg := newRegistry(Runners{})
 	defer reg.closeAll()
 	require.NoError(t, reg.unwatch(newTestClone(t)))
 }
 
 func TestRegistry_ListSorted(t *testing.T) {
-	reg := newRegistry()
+	reg := newRegistry(Runners{})
 	defer reg.closeAll()
 	rootA := newTestClone(t)
 	rootB := newTestClone(t)

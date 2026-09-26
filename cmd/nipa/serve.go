@@ -8,10 +8,12 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/nipalab/nipa/internal/client/daemon"
+	clientgrpc "github.com/nipalab/nipa/internal/client/grpc"
+	"github.com/nipalab/nipa/internal/client/localrepo"
 	"github.com/nipalab/nipa/internal/client/usecase"
 )
 
-func newServeCommand(auth *usecase.Auth) *cobra.Command {
+func newServeCommand(auth *usecase.Auth, client *clientgrpc.Client) *cobra.Command {
 	var port int
 	var endpoint string
 	cmd := &cobra.Command{
@@ -28,6 +30,7 @@ func newServeCommand(auth *usecase.Auth) *cobra.Command {
 				EndpointPath: endpoint,
 				Port:         port,
 				Login:        auth.LoginWithUsernamePassword,
+				Runners:      serveRunners(auth, client),
 			})
 			if err != nil {
 				return err
@@ -43,4 +46,25 @@ func newServeCommand(auth *usecase.Auth) *cobra.Command {
 	cmd.Flags().IntVar(&port, "port", 0, "loopback port to bind (0 picks a free port)")
 	cmd.Flags().StringVar(&endpoint, "endpoint", "", "discovery file path (default ~/.config/nipa/daemon.json)")
 	return cmd
+}
+
+// serveRunners builds the per-root usecase graph for the daemon, mirroring how
+// the CLI wires one per process.
+func serveRunners(auth *usecase.Auth, client *clientgrpc.Client) daemon.Runners {
+	return daemon.Runners{
+		Update: func() daemon.UpdateRunner {
+			return usecase.NewUpdate(auth, client, localrepo.NewLocalRepo())
+		},
+		Push: func() daemon.PushRunner {
+			return usecase.NewPush(auth, client, localrepo.NewLocalRepo())
+		},
+		Merge: func() daemon.MergeRunner {
+			push := usecase.NewPush(auth, client, localrepo.NewLocalRepo())
+			return usecase.NewMerge(auth, client, localrepo.NewLocalRepo(), push)
+		},
+		Revert: func() daemon.RevertRunner {
+			push := usecase.NewPush(auth, client, localrepo.NewLocalRepo())
+			return usecase.NewRevert(auth, client, localrepo.NewLocalRepo(), push)
+		},
+	}
 }
