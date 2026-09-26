@@ -513,6 +513,251 @@ message CloseMergeRequestResponse {
     MergeRequestDetail merge_request = 1;
 }
 
+message ReviewActor {
+    string user_id = 1; // base36 snow ID
+    string name = 2;
+    string photo_url = 3;
+}
+
+message ReviewCommentDetail {
+    string id = 1; // base36 snow ID
+    string thread_id = 2; // base36 snow ID
+    ReviewActor user = 3;
+    string body = 4;
+    bool system = 5; // generated, e.g. the "resolved this thread" marker
+    google.protobuf.Timestamp created_at = 6;
+    google.protobuf.Timestamp updated_at = 7;
+    bool edited = 8; // updated_at differs from created_at
+}
+
+message MergeRequestThreadDetail {
+    string id = 1; // base36 snow ID
+    int64 merge_request_id = 2;
+    string review_id = 3; // base36 snow ID of the submitting review
+    string file_path = 4; // empty for a top-level conversation thread
+    optional int64 old_line = 5;
+    optional int64 new_line = 6;
+    string side = 7; // left, right, or empty for a top-level thread
+    bool outdated = 8; // the thread comments on a line the new head no longer shows
+    bool resolved = 9;
+    ReviewActor resolved_by = 10;
+    google.protobuf.Timestamp resolved_at = 11;
+    ReviewActor created_by = 12;
+    google.protobuf.Timestamp created_at = 13;
+    repeated ReviewCommentDetail comments = 14;
+}
+
+message MergeRequestReviewDetail {
+    string id = 1; // base36 snow ID
+    int64 merge_request_id = 2; // the merge request row ID
+    ReviewActor reviewer = 3;
+    string state = 4; // approved, changes_requested, or commented
+    string body = 5;
+    string head_commit_id = 6; // base36 snow ID the review was given for
+    bool stale = 7; // the source branch moved on, so the decision no longer counts
+    google.protobuf.Timestamp dismissed_at = 8;
+    string dismissed_reason = 9; // new_commits or manual
+    ReviewActor dismissed_by = 10;
+    google.protobuf.Timestamp created_at = 11;
+    google.protobuf.Timestamp updated_at = 12;
+}
+
+message MergeRequestReviewState {
+    int32 approvals = 1;
+    int32 changes_requested = 2;
+    int32 dismissed_approvals = 3;
+    repeated string outstanding_reviewers = 4; // base36 snow IDs
+    string head_commit_id = 5; // base36 snow ID of the source head
+}
+
+message ReviewRequestDetail {
+    string id = 1; // base36 snow ID
+    int64 merge_request_id = 2;
+    ReviewActor reviewer = 3;
+    ReviewActor requested_by = 4;
+    google.protobuf.Timestamp created_at = 5;
+}
+
+message MergeRequestTimelineItem {
+    string id = 1; // base36 snow ID
+    string kind = 2; // pushed, review_submitted, review_dismissed, review_requested, or review_request_removed
+    ReviewActor actor = 3;
+    ReviewActor subject = 4; // the user an event is about, e.g. a requested reviewer
+    string body = 5;
+    string commit_id = 6; // base36 snow ID the event refers to
+    string commit_hash = 7;
+    google.protobuf.Timestamp created_at = 8;
+}
+
+message ReviewCommentInput {
+    string file_path = 1; // empty starts a top-level conversation thread
+    optional int64 old_line = 2;
+    optional int64 new_line = 3;
+    string body = 4;
+}
+
+message SubmitMergeRequestReviewRequest {
+    ProjectContext context = 1;
+    int64 number = 2; // sequential per-project number
+    string state = 3; // approved, changes_requested, or commented
+    string body = 4; // optional overall comment
+    repeated ReviewCommentInput comments = 5;
+}
+
+message SubmitMergeRequestReviewResponse {
+    MergeRequestReviewDetail review = 1;
+}
+
+message ListMergeRequestReviewsRequest {
+    ProjectContext context = 1;
+    int64 number = 2;
+}
+
+message ListMergeRequestReviewsResponse {
+    repeated MergeRequestReviewDetail reviews = 1;
+}
+
+message GetMergeRequestReviewStateRequest {
+    ProjectContext context = 1;
+    int64 number = 2;
+}
+
+message GetMergeRequestReviewStateResponse {
+    MergeRequestReviewState state = 1;
+}
+
+message WithdrawMergeRequestReviewRequest {
+    ProjectContext context = 1;
+    int64 number = 2;
+    string review_id = 3; // base36 snow ID
+}
+
+message WithdrawMergeRequestReviewResponse {
+}
+
+message DismissMergeRequestReviewRequest {
+    ProjectContext context = 1;
+    int64 number = 2;
+    string review_id = 3; // base36 snow ID
+}
+
+message DismissMergeRequestReviewResponse {
+    MergeRequestReviewDetail review = 1;
+}
+
+message ListMergeRequestThreadsRequest {
+    ProjectContext context = 1;
+    int64 number = 2;
+    optional bool resolved = 3; // omit for every thread
+}
+
+message ListMergeRequestThreadsResponse {
+    repeated MergeRequestThreadDetail threads = 1;
+}
+
+message AddMergeRequestCommentRequest {
+    ProjectContext context = 1;
+    int64 number = 2;
+    string file_path = 3; // empty starts a top-level conversation thread
+    optional int64 old_line = 4;
+    optional int64 new_line = 5;
+    string body = 6;
+}
+
+message AddMergeRequestCommentResponse {
+    MergeRequestThreadDetail thread = 1;
+}
+
+message ReplyMergeRequestThreadRequest {
+    ProjectContext context = 1;
+    int64 number = 2;
+    string thread_id = 3; // base36 snow ID
+    string body = 4;
+}
+
+message ReplyMergeRequestThreadResponse {
+    ReviewCommentDetail comment = 1;
+}
+
+message UpdateMergeRequestCommentRequest {
+    ProjectContext context = 1;
+    int64 number = 2;
+    string thread_id = 3; // base36 snow ID
+    string comment_id = 4; // base36 snow ID
+    string body = 5;
+}
+
+message UpdateMergeRequestCommentResponse {
+    ReviewCommentDetail comment = 1;
+}
+
+message DeleteMergeRequestCommentRequest {
+    ProjectContext context = 1;
+    int64 number = 2;
+    string thread_id = 3; // base36 snow ID
+    string comment_id = 4; // base36 snow ID
+}
+
+message DeleteMergeRequestCommentResponse {
+}
+
+message ResolveMergeRequestThreadRequest {
+    ProjectContext context = 1;
+    int64 number = 2;
+    string thread_id = 3; // base36 snow ID
+    bool resolved = 4;
+}
+
+message ResolveMergeRequestThreadResponse {
+    MergeRequestThreadDetail thread = 1;
+}
+
+message DeleteMergeRequestThreadRequest {
+    ProjectContext context = 1;
+    int64 number = 2;
+    string thread_id = 3; // base36 snow ID
+}
+
+message DeleteMergeRequestThreadResponse {
+}
+
+message ListMergeRequestReviewRequestsRequest {
+    ProjectContext context = 1;
+    int64 number = 2;
+}
+
+message ListMergeRequestReviewRequestsResponse {
+    repeated ReviewRequestDetail review_requests = 1;
+}
+
+message RequestMergeRequestReviewRequest {
+    ProjectContext context = 1;
+    int64 number = 2;
+    string user_id = 3; // base36 snow ID
+}
+
+message RequestMergeRequestReviewResponse {
+    ReviewRequestDetail review_request = 1;
+}
+
+message RemoveMergeRequestReviewRequestRequest {
+    ProjectContext context = 1;
+    int64 number = 2;
+    string user_id = 3; // base36 snow ID
+}
+
+message RemoveMergeRequestReviewRequestResponse {
+}
+
+message ListMergeRequestTimelineRequest {
+    ProjectContext context = 1;
+    int64 number = 2;
+}
+
+message ListMergeRequestTimelineResponse {
+    repeated MergeRequestTimelineItem items = 1;
+}
+
 message FileLockDetail {
     string id = 1; // base36 snow ID
     string path = 2; // file path or directory prefix
@@ -575,6 +820,26 @@ service NipaService {
     rpc ListMergeRequests(ListMergeRequestsRequest) returns (ListMergeRequestsResponse);
     rpc MergeMergeRequest(MergeMergeRequestRequest) returns (MergeMergeRequestResponse);
     rpc CloseMergeRequest(CloseMergeRequestRequest) returns (CloseMergeRequestResponse);
+
+    rpc SubmitMergeRequestReview(SubmitMergeRequestReviewRequest) returns (SubmitMergeRequestReviewResponse);
+    rpc ListMergeRequestReviews(ListMergeRequestReviewsRequest) returns (ListMergeRequestReviewsResponse);
+    rpc GetMergeRequestReviewState(GetMergeRequestReviewStateRequest) returns (GetMergeRequestReviewStateResponse);
+    rpc WithdrawMergeRequestReview(WithdrawMergeRequestReviewRequest) returns (WithdrawMergeRequestReviewResponse);
+    rpc DismissMergeRequestReview(DismissMergeRequestReviewRequest) returns (DismissMergeRequestReviewResponse);
+
+    rpc ListMergeRequestThreads(ListMergeRequestThreadsRequest) returns (ListMergeRequestThreadsResponse);
+    rpc AddMergeRequestComment(AddMergeRequestCommentRequest) returns (AddMergeRequestCommentResponse);
+    rpc ReplyMergeRequestThread(ReplyMergeRequestThreadRequest) returns (ReplyMergeRequestThreadResponse);
+    rpc UpdateMergeRequestComment(UpdateMergeRequestCommentRequest) returns (UpdateMergeRequestCommentResponse);
+    rpc DeleteMergeRequestComment(DeleteMergeRequestCommentRequest) returns (DeleteMergeRequestCommentResponse);
+    rpc ResolveMergeRequestThread(ResolveMergeRequestThreadRequest) returns (ResolveMergeRequestThreadResponse);
+    rpc DeleteMergeRequestThread(DeleteMergeRequestThreadRequest) returns (DeleteMergeRequestThreadResponse);
+
+    rpc ListMergeRequestReviewRequests(ListMergeRequestReviewRequestsRequest) returns (ListMergeRequestReviewRequestsResponse);
+    rpc RequestMergeRequestReview(RequestMergeRequestReviewRequest) returns (RequestMergeRequestReviewResponse);
+    rpc RemoveMergeRequestReviewRequest(RemoveMergeRequestReviewRequestRequest) returns (RemoveMergeRequestReviewRequestResponse);
+
+    rpc ListMergeRequestTimeline(ListMergeRequestTimelineRequest) returns (ListMergeRequestTimelineResponse);
     rpc Push(PushRequest) returns (PushResponse);
     rpc GetChunkUploadUrls(GetChunkUploadUrlsRequest) returns (GetChunkUploadUrlsResponse);
     rpc GetChunkDownloadUrls(GetChunkDownloadUrlsRequest) returns (GetChunkDownloadUrlsResponse);

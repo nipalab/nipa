@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sort"
 	"strings"
 
@@ -58,6 +59,13 @@ type Push struct {
 	pushRepo   pushRepository
 	snowNode   snow.Node
 	fileLocks  fileLockGate
+	reviews    reviewPushGate
+}
+
+// reviewPushGate is the subset of the review usecase used by the push flow to
+// mark reviews stale and log the push on the merge request timeline.
+type reviewPushGate interface {
+	NoteBranchPush(ctx context.Context, projectID, branchID, newHead, actor snow.ID, commitHash string) error
 }
 
 func NewPush(permUc permissionUsecase, branchRepo branchRepository, pushRepo pushRepository, snowNode snow.Node) *Push {
@@ -72,6 +80,12 @@ func NewPush(permUc permissionUsecase, branchRepo branchRepository, pushRepo pus
 // WithFileLocks enables the mandatory binary lock gate on this usecase.
 func (p *Push) WithFileLocks(locks fileLockGate) *Push {
 	p.fileLocks = locks
+	return p
+}
+
+// WithReviews enables the review staleness gate on this usecase.
+func (p *Push) WithReviews(reviews reviewPushGate) *Push {
+	p.reviews = reviews
 	return p
 }
 
@@ -187,6 +201,13 @@ func (p *Push) Push(ctx context.Context, projectID snow.ID, branchName, baseTree
 	if p.fileLocks != nil {
 		if err := p.fileLocks.ReleaseLanded(ctx, projectID, branch, lockPlan.landed(), claim.UserID); err != nil {
 			return nil, err
+		}
+	}
+	if p.reviews != nil {
+		// The commit is already stored, so a bookkeeping failure must not be
+		// reported to the client as a failed push.
+		if err := p.reviews.NoteBranchPush(ctx, projectID, branch.ID, req.CommitID, claim.UserID, req.CommitHash.String()); err != nil {
+			slog.Warn("recording merge request push failed", "project", projectID, "branch", branchName, "error", err)
 		}
 	}
 	return &domain.PushResult{

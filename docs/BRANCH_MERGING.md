@@ -361,4 +361,70 @@ Merge requests are live over the REST API with the recommended policy:
   409 and the author updates the branch (`nipa mr update`) before retrying.
 
 Not in v1 (tracked for later): `allow_behind` policy, server-side merge commits
-(3-way tree build), review comments/approvals, and `nipa mr` CLI commands.
+(3-way tree build), and `nipa mr` CLI commands.
+
+---
+
+## Merge request reviews (v2)
+
+Reviews are advisory: they are recorded, shown and counted, but they do not gate
+merging (which stays fast-forward-only).
+
+### Model
+
+- A **review** is one decision per reviewer per review round, where a round is
+  the source head commit it was given for. States: `approved`,
+  `changes_requested`, `commented`. A review for an older head is **stale** and
+  stops counting; the latest review per reviewer and head wins.
+- On every push to the source branch, prior decisions are **dismissed**
+  (`dismissed_reason = new_commits`) and the dismissal is written to the
+  timeline. Comment-only reviews are not dismissed.
+- A reviewer cannot approve or request changes on their own merge request, but
+  may comment. A project writer may **dismiss** a review (history is kept); a
+  reviewer may **withdraw** their own review (the row is deleted, comment
+  threads are unlinked via `ON DELETE SET NULL`).
+- **Threads** are top-level conversations (`file_path` empty) or inline comments
+  anchored to `old_line`/`new_line` of a line the current diff shows. A thread
+  whose anchored line is no longer shown by the new head is **outdated**;
+  top-level threads are never outdated. Threads resolve/reopen and their
+  comments can be edited/deleted by their author.
+- **Review requests** name a user to review; submitting any review by that user
+  answers the request, and re-requesting the same reviewer keeps the original
+  requester.
+- The **timeline** records `pushed`, `review_requested`, `review_request_removed`,
+  `review_submitted` and `review_dismissed`, with a `subject` actor for events
+  about another user (e.g. the requested reviewer).
+
+### Server surface
+
+- REST (all project read unless noted; mutations need project write):
+  `GET .../{id}/reviews`, `GET .../{id}/review-state`,
+  `POST .../{id}/reviews` (with inline comment inputs), `DELETE
+  .../{id}/reviews/{reviewId}`, `POST .../{id}/reviews/{reviewId}/dismiss`,
+  `GET/POST .../{id}/threads`, `POST .../{id}/threads/{threadId}/comments`,
+  `PATCH/DELETE .../comments/{commentId}`, `POST .../{id}/threads/{threadId}/resolve`,
+  `DELETE .../{id}/threads/{threadId}`, `GET/POST/DELETE
+  .../{id}/review-requests`, `GET .../{id}/timeline`.
+- Merge request list/detail responses carry a `review` summary
+  (`approvals`, `changes_requested`, `dismissed_approvals`,
+  `outstanding_reviewers`); only merge requests with a live decision have it.
+- gRPC: `SubmitMergeRequestReview`, `ListMergeRequestReviews`,
+  `GetMergeRequestReviewState`, `WithdrawMergeRequestReview`,
+  `DismissMergeRequestReview`, `ListMergeRequestThreads`,
+  `AddMergeRequestComment`, `ReplyMergeRequestThread`, `UpdateMergeRequestComment`,
+  `DeleteMergeRequestComment`, `ResolveMergeRequestThread`,
+  `DeleteMergeRequestThread`, `ListMergeRequestReviewRequests`,
+  `RequestMergeRequestReview`, `RemoveMergeRequestReviewRequest`,
+  `ListMergeRequestTimeline`.
+- `Push` notifies the review usecase after a successful apply
+  (`usecase.Push.WithReviews`), dismissing stale decisions and appending the
+  push event. Bookkeeping failures are logged and never fail the push.
+
+### Web UI
+
+The merge request page (`web/src/pages/PullPage.tsx`) renders a review panel
+(summary, review form, reviewer picker, requests, history, timeline) next to
+the structured diff (`web/src/components/repo/MergeRequestDiff.tsx`), which
+supports line-level comments and filtering to lines with open threads. The
+merge request list shows the live approval/changes-requested counts.
+

@@ -30,6 +30,11 @@ type Querier interface {
 	CommitGetByHash(ctx context.Context, hash []byte) (Commit, error)
 	CommitInsert(ctx context.Context, arg CommitInsertParams) error
 	CommitLog(ctx context.Context, arg CommitLogParams) ([]CommitLogRow, error)
+	// CommitLogUntil walks the first-parent chain from start_commit_id and stops
+	// before stop_commit_id, which a merge request passes as its merge base. Zero
+	// means "no stop". It is a separate query from CommitLog so the recursive stop
+	// stays out of the plain branch history.
+	CommitLogUntil(ctx context.Context, arg CommitLogUntilParams) ([]CommitLogUntilRow, error)
 	CreateOrganization(ctx context.Context, arg CreateOrganizationParams) (Organization, error)
 	CreateProject(ctx context.Context, arg CreateProjectParams) (Project, error)
 	DeleteOrganization(ctx context.Context, id int64) error
@@ -58,11 +63,45 @@ type Querier interface {
 	GroupMemberRemove(ctx context.Context, arg GroupMemberRemoveParams) error
 	ListOrganizations(ctx context.Context) ([]Organization, error)
 	ListProjectsByOrgId(ctx context.Context, orgID int64) ([]Project, error)
+	MergeRequestCommentCreate(ctx context.Context, arg MergeRequestCommentCreateParams) (MergeRequestComment, error)
+	MergeRequestCommentDelete(ctx context.Context, arg MergeRequestCommentDeleteParams) (int64, error)
+	MergeRequestCommentGet(ctx context.Context, arg MergeRequestCommentGetParams) (MergeRequestComment, error)
+	MergeRequestCommentListByThread(ctx context.Context, mergeRequestID int64) ([]MergeRequestCommentListByThreadRow, error)
+	MergeRequestCommentUpdate(ctx context.Context, arg MergeRequestCommentUpdateParams) (MergeRequestComment, error)
 	MergeRequestCountOpenByBranch(ctx context.Context, arg MergeRequestCountOpenByBranchParams) (int64, error)
 	MergeRequestCreate(ctx context.Context, arg MergeRequestCreateParams) (MergeRequest, error)
+	MergeRequestEventCreate(ctx context.Context, arg MergeRequestEventCreateParams) (MergeRequestEvent, error)
+	MergeRequestEventList(ctx context.Context, mergeRequestID int64) ([]MergeRequestEventListRow, error)
 	MergeRequestGet(ctx context.Context, arg MergeRequestGetParams) (MergeRequest, error)
 	MergeRequestList(ctx context.Context, arg MergeRequestListParams) ([]MergeRequest, error)
 	MergeRequestListByStatus(ctx context.Context, arg MergeRequestListByStatusParams) ([]MergeRequest, error)
+	MergeRequestListOpenBySourceBranch(ctx context.Context, arg MergeRequestListOpenBySourceBranchParams) ([]MergeRequest, error)
+	MergeRequestReviewDelete(ctx context.Context, arg MergeRequestReviewDeleteParams) (int64, error)
+	MergeRequestReviewDismiss(ctx context.Context, arg MergeRequestReviewDismissParams) error
+	MergeRequestReviewDismissStale(ctx context.Context, arg MergeRequestReviewDismissStaleParams) error
+	MergeRequestReviewGet(ctx context.Context, arg MergeRequestReviewGetParams) (MergeRequestReview, error)
+	MergeRequestReviewList(ctx context.Context, mergeRequestID int64) ([]MergeRequestReviewListRow, error)
+	// Re-requesting the same reviewer keeps the original request: the self-update
+	// makes the conflict branch return the existing row, which DO NOTHING cannot do
+	// together with RETURNING.
+	MergeRequestReviewRequestCreate(ctx context.Context, arg MergeRequestReviewRequestCreateParams) (MergeRequestReviewRequest, error)
+	MergeRequestReviewRequestDelete(ctx context.Context, arg MergeRequestReviewRequestDeleteParams) (int64, error)
+	MergeRequestReviewRequestList(ctx context.Context, mergeRequestID int64) ([]MergeRequestReviewRequestListRow, error)
+	MergeRequestReviewStaleList(ctx context.Context, arg MergeRequestReviewStaleListParams) ([]MergeRequestReview, error)
+	// Aggregates the live review decisions per merge request for the list view.
+	// The head comparison mirrors the read-time staleness rule the usecase applies
+	// to individual reviews: a decision given for a head other than the current
+	// source branch head no longer counts.
+	MergeRequestReviewSummary(ctx context.Context, projectID int64) ([]MergeRequestReviewSummaryRow, error)
+	// sqlc only numbers the parameters of the VALUES clause, so the conflict branch
+	// reads the pending row through excluded instead of repeating named parameters.
+	MergeRequestReviewUpsert(ctx context.Context, arg MergeRequestReviewUpsertParams) (MergeRequestReview, error)
+	MergeRequestThreadCreate(ctx context.Context, arg MergeRequestThreadCreateParams) (MergeRequestThread, error)
+	MergeRequestThreadDelete(ctx context.Context, arg MergeRequestThreadDeleteParams) (int64, error)
+	MergeRequestThreadGet(ctx context.Context, arg MergeRequestThreadGetParams) (MergeRequestThread, error)
+	MergeRequestThreadList(ctx context.Context, arg MergeRequestThreadListParams) ([]MergeRequestThreadListRow, error)
+	MergeRequestThreadSetResolved(ctx context.Context, arg MergeRequestThreadSetResolvedParams) (MergeRequestThread, error)
+	MergeRequestThreadSetReview(ctx context.Context, arg MergeRequestThreadSetReviewParams) error
 	MergeRequestUpdate(ctx context.Context, arg MergeRequestUpdateParams) (MergeRequest, error)
 	MergeRequestUpdateStatus(ctx context.Context, arg MergeRequestUpdateStatusParams) error
 	OrgMemberCountByRole(ctx context.Context, arg OrgMemberCountByRoleParams) (int64, error)

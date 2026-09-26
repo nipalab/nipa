@@ -24,6 +24,10 @@ func (h *Handler) ListMergeRequests(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
+	if err := h.useCase.MergeRequestReview().AttachSummaries(appCtx.Context(), project.ID, requests); err != nil {
+		appCtx.HandleError(err)
+		return
+	}
 	resp := make([]model.MergeRequestResponse, 0, len(requests))
 	for _, request := range requests {
 		resp = append(resp, toMergeRequestResponse(request, nil))
@@ -96,6 +100,11 @@ func (h *Handler) GetMergeRequest(appCtx http.AppContext) {
 	}
 	info, err := h.useCase.MergeRequest().Check(appCtx.Context(), project.ID, number)
 	if err != nil {
+		appCtx.HandleError(err)
+		return
+	}
+	if err := h.useCase.MergeRequestReview().AttachSummaries(appCtx.Context(), project.ID,
+		[]*domain.MergeRequest{request}); err != nil {
 		appCtx.HandleError(err)
 		return
 	}
@@ -183,6 +192,23 @@ func (h *Handler) MergeRequestDiff(appCtx http.AppContext) {
 	appCtx.WriteJson(nethttp.StatusOK, resp)
 }
 
+func (h *Handler) ListMergeRequestCommits(appCtx http.AppContext) {
+	project, number, ok := h.resolveMergeRequest(appCtx)
+	if !ok {
+		return
+	}
+	commits, err := h.useCase.MergeRequest().Commits(appCtx.Context(), project.ID, number)
+	if err != nil {
+		appCtx.HandleError(err)
+		return
+	}
+	resp := make([]model.CommitResponse, 0, len(commits))
+	for _, commit := range commits {
+		resp = append(resp, toCommitResponse(commit))
+	}
+	appCtx.WriteJson(nethttp.StatusOK, resp)
+}
+
 func (h *Handler) setMergeRequestStatus(appCtx http.AppContext, set func(number int64) (*domain.MergeRequest, error)) {
 	if _, _, err := h.resolveProject(appCtx); err != nil {
 		appCtx.HandleError(err)
@@ -231,6 +257,10 @@ func toMergeRequestResponse(request *domain.MergeRequest, info *domain.Mergeabil
 	}
 	if info != nil {
 		resp.Mergeability = toMergeabilityResponse(info)
+	}
+	if request.Review != nil {
+		review := toReviewStateResponse(request.Review)
+		resp.Review = &review
 	}
 	return resp
 }

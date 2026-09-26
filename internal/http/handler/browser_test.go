@@ -57,6 +57,34 @@ func browserAppCtx(claims *domain.Claims, pathParams, queryParams map[string]str
 	}
 }
 
+func TestHandler_CommitDiff_ServesContextLines(t *testing.T) {
+	env := newHandlerTestEnv(t)
+	first := env.seedFiles(t, map[string]string{"public/a.txt": "one\ntwo\nthree\nfour\nfive\n"})
+	second := env.seedPushTo(t, "main", first.CommitID.Base36(), map[string]string{
+		"public/a.txt": "one\ntwo\nTHREE\nfour\nfive\n",
+	})
+
+	claims := &domain.Claims{UserID: env.userID, IsAdmin: true}
+	appCtx := browserAppCtx(claims, map[string]string{
+		"org": "default", "project": "default", "commit": second.CommitID.Base36(),
+	}, nil)
+	env.handler.GetCommitDiff(appCtx)
+	require.Equal(t, http.StatusOK, appCtx.statusCode)
+	resp, ok := appCtx.response.(model.CommitDiffResponse)
+	require.True(t, ok)
+	require.Len(t, resp.Files, 1)
+	require.Len(t, resp.Files[0].Hunks, 1)
+
+	kinds := make([]string, 0, len(resp.Files[0].Hunks[0].Lines))
+	for _, line := range resp.Files[0].Hunks[0].Lines {
+		kinds = append(kinds, line.Kind)
+	}
+	require.Contains(t, kinds, "add")
+	require.Contains(t, kinds, "remove")
+	require.Contains(t, kinds, "context", "review anchoring validates against the same context")
+	require.Equal(t, "context", resp.Files[0].Hunks[0].Lines[0].Kind)
+}
+
 func TestHandler_BrowserFlow(t *testing.T) {
 	env := newHandlerTestEnv(t)
 	result := env.seedFiles(t, map[string]string{

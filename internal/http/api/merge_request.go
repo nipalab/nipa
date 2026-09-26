@@ -99,4 +99,12 @@ func setupMergeRequestRouter(ws *restful.WebService, h *handler.Handler) {
 			Returns(http.StatusOK, "merge request diff", model.MergeRequestDiffResponse{}).
 			Operation("mergeRequestDiff").
 			Metadata(restfulspec.KeyOpenAPITags, tags)))
+
+	ws.Route(requestID(
+		ws.GET("/orgs/{org}/projects/{project}/merge-requests/{id}/commits").
+			To(wrap(h.ListMergeRequestCommits)).
+			Doc("Commits the source branch adds on top of the merge base, newest first (project read)").
+			Returns(http.StatusOK, "merge request commits", []model.CommitResponse{}).
+			Operation("listMergeRequestCommits").
+			Metadata(restfulspec.KeyOpenAPITags, tags)))
 }

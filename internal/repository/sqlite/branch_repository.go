@@ -264,6 +264,39 @@ func commitLogEntryToDomain(row sqlcSqlite.CommitLogRow) *domain.CommitLogEntry 
 	}
 }
 
+func (b *BranchRepository) CommitLogUntil(ctx context.Context, projectID snow.ID, startCommitID, stopCommitID snow.ID, limit int) ([]*domain.CommitLogEntry, error) {
+	rows, err := b.queries.CommitLogUntil(ctx, sqlcSqlite.CommitLogUntilParams{
+		ProjectID:     projectID.Int64(),
+		StartCommitID: startCommitID.Int64(),
+		StopCommitID:  stopCommitID.Int64(),
+		Limit:         int64(limit),
+	})
+	if err != nil {
+		return nil, handleError(err)
+	}
+	return slices.Map(rows, func(row sqlcSqlite.CommitLogUntilRow) *domain.CommitLogEntry {
+		return commitLogUntilEntryToDomain(row)
+	}), nil
+}
+
+func commitLogUntilEntryToDomain(row sqlcSqlite.CommitLogUntilRow) *domain.CommitLogEntry {
+	return &domain.CommitLogEntry{
+		Commit: domain.Commit{
+			ID:        snow.ID(row.ID),
+			Hash:      bytesToHash(row.Hash),
+			ProjectID: snow.ID(row.ProjectID),
+			TreeID:    row.TreeID,
+			Parent1ID: nullInt64SnowIDPtr(row.Parent1ID),
+			Parent2ID: nullInt64SnowIDPtr(row.Parent2ID),
+			UserID:    snow.ID(row.UserID),
+			Message:   row.Message,
+			CreatedAt: row.CreatedAt,
+		},
+		AuthorName:  row.AuthorName,
+		AuthorEmail: row.AuthorEmail,
+	}
+}
+
 func nullInt64SnowIDPtr(i sql.NullInt64) *snow.ID {
 	if !i.Valid {
 		return nil

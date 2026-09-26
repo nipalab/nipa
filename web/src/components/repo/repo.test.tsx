@@ -5,6 +5,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { BookIcon, FileBinaryIcon, FileCodeIcon, FileDirectoryFillIcon, FileIcon, FileMediaIcon } from '@primer/octicons-react'
 import { BranchSelector } from './BranchSelector'
+import { Tabs } from './Tabs'
 import { RepoBreadcrumb } from './RepoBreadcrumb'
 import { RepoNav } from './RepoNav'
 import { fileIcon } from './fileIcon'
@@ -107,6 +108,34 @@ describe('RepoNav', () => {
   it('hides settings for non-admins', async () => {
     const { container, root } = await render(<RepoNav org="acme" project="game" active="commits" />)
     expect(container.textContent).not.toContain('Settings')
+    act(() => root.unmount())
+  })
+})
+
+describe('Tabs', () => {
+  it('renders counts and reports the selected tab', async () => {
+    const selected: string[] = []
+    const { container, root } = await render(
+      <Tabs
+        tabs={[
+          { id: 'overview', label: 'Overview' },
+          { id: 'commits', label: 'Commits', count: 3 },
+          { id: 'files', label: 'File changes', count: 5 },
+        ]}
+        active="overview"
+        onChange={(id) => selected.push(id)}
+      />,
+    )
+    expect(container.textContent).toContain('Overview')
+    expect(container.textContent).toContain('Commits3')
+    expect(container.textContent).toContain('File changes5')
+    const commits = [...container.querySelectorAll('button')].find((button) =>
+      (button.textContent ?? '').startsWith('Commits'),
+    )
+    act(() => {
+      ;(commits as HTMLElement).dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+    expect(selected).toEqual(['commits'])
     act(() => root.unmount())
   })
 })

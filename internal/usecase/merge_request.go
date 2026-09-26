@@ -35,6 +35,9 @@ type MergeRequest struct {
 	fileLocks  fileLockGate
 }
 
+// mergeRequestCommitLimit caps how many commits a merge request lists.
+const mergeRequestCommitLimit = 250
+
 func NewMergeRequest(repo mergeRequestRepository, branchRepo branchRepository, perm permissionUsecase, merger branchMerger, snowNode snow.Node) *MergeRequest {
 	return &MergeRequest{
 		repo:       repo,
@@ -326,6 +329,42 @@ func (m *MergeRequest) Diff(ctx context.Context, projectID snow.ID, number int64
 		return nil, err
 	}
 	return m.merger.TreeDiffBetween(ctx, projectID, baseID, *source.CommitID)
+}
+
+// Commits lists the source-branch commits the merge request adds on top of the
+// merge base with its target, newest first, with their authors. Commits already
+// on the target are not part of the request, so the log stops at the merge base.
+func (m *MergeRequest) Commits(ctx context.Context, projectID snow.ID, number int64) ([]*domain.CommitLogEntry, error) {
+	mr, err := m.load(ctx, projectID, number)
+	if err != nil {
+		return nil, err
+	}
+	source, err := m.branchRepo.GetBranchByName(ctx, projectID, mr.SourceBranch)
+	if domain.IsErrorNotFound(err) {
+		return nil, domain.NewErrorNotFound(fmt.Sprintf("branch %q not found", mr.SourceBranch))
+	}
+	if err != nil {
+		return nil, err
+	}
+	if source.CommitID == nil {
+		return []*domain.CommitLogEntry{}, nil
+	}
+
+	var stop snow.ID
+	target, err := m.branchRepo.GetBranchByName(ctx, projectID, mr.TargetBranch)
+	if err == nil && target.CommitID != nil {
+		info, err := m.merger.GetMergeBase(ctx, projectID,
+			MergeRef{CommitID: target.CommitID}, MergeRef{CommitID: source.CommitID})
+		if err != nil {
+			return nil, err
+		}
+		if info.MergeBaseCommitID != nil {
+			stop = *info.MergeBaseCommitID
+		}
+	} else if err != nil && !domain.IsErrorNotFound(err) {
+		return nil, err
+	}
+	return m.branchRepo.CommitLogUntil(ctx, projectID, *source.CommitID, stop, mergeRequestCommitLimit)
 }
 
 func (m *MergeRequest) load(ctx context.Context, projectID snow.ID, number int64) (*domain.MergeRequest, error) {

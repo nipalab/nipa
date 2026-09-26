@@ -919,6 +919,55 @@ func TestBranchRepositorySQLite_CommitLog_Chain(t *testing.T) {
 	}
 }
 
+func TestBranchRepositorySQLite_CommitLogUntil_StopsAtBase(t *testing.T) {
+	ctx := context.Background()
+	db, q := newSQLiteTestDB(t)
+	repo := NewBranchRepository(db)
+
+	projectID := seedProject(t, q, 1, "test-project")
+	treeID := newTestNode(t).Generate().Int64()
+	node := newTestNode(t)
+
+	// build a chain: base <- first <- second
+	baseID := node.Generate()
+	firstID := node.Generate()
+	secondID := node.Generate()
+
+	for _, c := range []struct {
+		id       int64
+		hash     domain.Hash
+		parentID sql.NullInt64
+		msg      string
+	}{
+		{baseID.Int64(), domain.Hash{1}, sql.NullInt64{}, "base commit"},
+		{firstID.Int64(), domain.Hash{2}, sql.NullInt64{Int64: baseID.Int64(), Valid: true}, "first commit"},
+		{secondID.Int64(), domain.Hash{3}, sql.NullInt64{Int64: firstID.Int64(), Valid: true}, "second commit"},
+	} {
+		_, err := db.ExecContext(ctx,
+			`INSERT INTO commits (id, hash, project_id, tree_id, parent_1_id, user_id, message) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			c.id, c.hash.Bytes(), projectID.Int64(), treeID, c.parentID, 1, c.msg,
+		)
+		require.NoError(t, err)
+	}
+
+	got, err := repo.CommitLogUntil(ctx, projectID, secondID, baseID, 10)
+	require.NoError(t, err)
+	require.Len(t, got, 2, "the merge base commit is excluded")
+	require.Equal(t, secondID, got[0].ID)
+	require.Equal(t, firstID, got[1].ID)
+	require.Equal(t, "second commit", got[0].Message)
+	require.NotEmpty(t, got[0].AuthorName, "authors are joined from users")
+	require.NotEmpty(t, got[0].AuthorEmail)
+
+	all, err := repo.CommitLogUntil(ctx, projectID, secondID, 0, 10)
+	require.NoError(t, err)
+	require.Len(t, all, 3, "a zero stop logs the whole chain")
+
+	empty, err := repo.CommitLogUntil(ctx, projectID, baseID, baseID, 10)
+	require.NoError(t, err)
+	require.Empty(t, empty)
+}
+
 func TestBranchRepositorySQLite_CommitLog_Limit(t *testing.T) {
 	ctx := context.Background()
 	db, q := newSQLiteTestDB(t)

@@ -14,6 +14,7 @@ type usecaseContainer interface {
 	Project() *usecase.Project
 	Branch() *usecase.Branch
 	MergeRequest() *usecase.MergeRequest
+	MergeRequestReview() *usecase.MergeRequestReview
 	FileLock() *usecase.FileLock
 }
 

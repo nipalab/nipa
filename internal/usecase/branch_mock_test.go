@@ -139,6 +139,21 @@ func (mr *MockbranchRepositoryMockRecorder) CommitLog(ctx, projectID, startCommi
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CommitLog", reflect.TypeOf((*MockbranchRepository)(nil).CommitLog), ctx, projectID, startCommitID, limit)
 }
 
+// CommitLogUntil mocks base method.
+func (m *MockbranchRepository) CommitLogUntil(ctx context.Context, projectID, startCommitID, stopCommitID snow.ID, limit int) ([]*domain.CommitLogEntry, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CommitLogUntil", ctx, projectID, startCommitID, stopCommitID, limit)
+	ret0, _ := ret[0].([]*domain.CommitLogEntry)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CommitLogUntil indicates an expected call of CommitLogUntil.
+func (mr *MockbranchRepositoryMockRecorder) CommitLogUntil(ctx, projectID, startCommitID, stopCommitID, limit any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CommitLogUntil", reflect.TypeOf((*MockbranchRepository)(nil).CommitLogUntil), ctx, projectID, startCommitID, stopCommitID, limit)
+}
+
 // CreateBranch mocks base method.
 func (m *MockbranchRepository) CreateBranch(ctx context.Context, branch domain.Branch) (*domain.Branch, error) {
 	m.ctrl.T.Helper()

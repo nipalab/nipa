@@ -84,24 +84,35 @@ func main() {
 		snowUser,
 	).WithFileLocks(fileLockUsecase)
 	pushUsecase := usecase.NewPush(permissionUsecase, branchRepository, pushRepository, snowUser).WithFileLocks(fileLockUsecase)
+	mergeRequestReviewUsecase := usecase.NewMergeRequestReview(
+		sqlite.NewMergeRequestReviewRepository(dbConn),
+		sqlite.NewMergeRequestRepository(dbConn),
+		branchRepository,
+		branchUsecase,
+		permissionUsecase,
+		userRepo,
+		snowUser,
+	)
+	pushUsecase = pushUsecase.WithReviews(mergeRequestReviewUsecase)
 	chunkUsecase := usecase.NewChunk(pushRepository, chunkStore, usecase.ChunkTransferConfig{
 		SigningKey:  cfg.ChunkURLSigningKey,
 		PresignTTL:  time.Duration(cfg.ChunkPresignTTLSeconds) * time.Second,
 		MaxPageSize: cfg.ChunkMaxPageSize,
 	})
 	reg := &Registry{
-		authUsecase:         authUsecase,
-		userUsecase:         usecase.NewUser(snowUser, userRepo, passwordHasher),
-		commonUsecase:       usecase.NewCommon(orgRepo, projectRepo),
-		branchUsecase:       branchUsecase,
-		pushUsecase:         pushUsecase,
-		chunkUsecase:        chunkUsecase,
-		permissionUsecase:   permissionUsecase,
-		groupUsecase:        usecase.NewGroup(groupRepository, snowUser, permissionUsecase, orgUsecase),
-		orgUsecase:          orgUsecase,
-		projectUsecase:      projectUsecase,
-		mergeRequestUsecase: mergeRequestUsecase,
-		fileLockUsecase:     fileLockUsecase,
+		authUsecase:               authUsecase,
+		userUsecase:               usecase.NewUser(snowUser, userRepo, passwordHasher),
+		commonUsecase:             usecase.NewCommon(orgRepo, projectRepo),
+		branchUsecase:             branchUsecase,
+		pushUsecase:               pushUsecase,
+		chunkUsecase:              chunkUsecase,
+		permissionUsecase:         permissionUsecase,
+		groupUsecase:              usecase.NewGroup(groupRepository, snowUser, permissionUsecase, orgUsecase),
+		orgUsecase:                orgUsecase,
+		projectUsecase:            projectUsecase,
+		mergeRequestUsecase:       mergeRequestUsecase,
+		mergeRequestReviewUsecase: mergeRequestReviewUsecase,
+		fileLockUsecase:           fileLockUsecase,
 	}
 
 	apiApp := api.NewAPI(reg)

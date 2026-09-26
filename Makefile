@@ -32,7 +32,7 @@ migrate-create:
 	touch "$(MIGRATIONS_DIR)/$${ts}_$(name).up.sql" "$(MIGRATIONS_DIR)/$${ts}_$(name).down.sql"; \
 	echo "created $(MIGRATIONS_DIR)/$${ts}_$(name).up.sql and .down.sql"
 
-build:
+build-server:
 	go build -o bin/nipad ./cmd/nipad
 
 build-client:
@@ -52,7 +52,7 @@ web-dev:
 	cd web && npm run dev
 
 ## Build the server including the web UI.
-build-all: web build build-client
+build: web build-server build-client
 
 proto:
 	protoc --go_out=internal/grpc --go-grpc_out=internal/grpc internal/grpc/proto/server.proto

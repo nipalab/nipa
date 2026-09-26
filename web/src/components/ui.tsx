@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import { Banner, Heading, Spinner, Stack, Text } from '@primer/react'
 
 export function Page({
@@ -59,8 +59,10 @@ export function EmptyState({ children }: { children: ReactNode }) {
   )
 }
 
-export function Mono({ children }: { children: ReactNode }) {
-  return <span style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>{children}</span>
+export function Mono({ children, style }: { children: ReactNode; style?: CSSProperties }) {
+  return (
+    <span style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', ...style }}>{children}</span>
+  )
 }
 
 export function StatusLabel({ status }: { status: string }) {

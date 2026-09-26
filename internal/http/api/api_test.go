@@ -37,6 +37,7 @@ type testRegistry struct {
 	branch       *usecase.Branch
 	chunk        *usecase.Chunk
 	mergeRequest *usecase.MergeRequest
+	review       *usecase.MergeRequestReview
 	fileLock     *usecase.FileLock
 }
 
@@ -52,6 +53,10 @@ func (r *testRegistry) Chunk() *usecase.Chunk           { return r.chunk }
 func (r *testRegistry) MergeRequest() *usecase.MergeRequest {
 	return r.mergeRequest
 }
+func (r *testRegistry) MergeRequestReview() *usecase.MergeRequestReview {
+	return r.review
+}
+
 func (r *testRegistry) FileLock() *usecase.FileLock { return r.fileLock }
 
 type stubPasswordHasher struct{}
@@ -92,7 +97,12 @@ func TestAPIRoutes(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = chunkStore.Close() })
 	branchUc := usecase.NewBranchWithChunks(permissionUc, branchRepo, node, chunkStore)
-	pusher := usecase.NewPush(permissionUc, branchRepo, pushRepo, node)
+	reviewUc := usecase.NewMergeRequestReview(
+		sqlite.NewMergeRequestReviewRepository(dbConn),
+		sqlite.NewMergeRequestRepository(dbConn),
+		branchRepo, branchUc, permissionUc, userRepo, node,
+	)
+	pusher := usecase.NewPush(permissionUc, branchRepo, pushRepo, node).WithReviews(reviewUc)
 	chunkUc := usecase.NewChunk(pushRepo, chunkStore, usecase.ChunkTransferConfig{
 		SigningKey:  "test-chunk-signing-key",
 		PresignTTL:  time.Hour,
@@ -113,6 +123,7 @@ func TestAPIRoutes(t *testing.T) {
 		branch:       branchUc,
 		chunk:        chunkUc,
 		mergeRequest: mergeRequestUc,
+		review:       reviewUc,
 		fileLock:     fileLockUc,
 	}
 
@@ -735,6 +746,12 @@ func TestAPIRoutes(t *testing.T) {
 		require.Len(t, diff.Files, 1)
 		require.Equal(t, "feature.txt", diff.Files[0].Path)
 
+		commits := decodeBody[[]model.CommitResponse](t, doGet(t, mrURL+"/commits", aliceLogin.AccessToken))
+		require.Len(t, commits, 1, "only the source-side commit belongs to the request")
+		require.Equal(t, featurePush.CommitID.Base36(), commits[0].ID)
+		require.Equal(t, "seed", commits[0].Message)
+		require.Equal(t, "Alice Admin", commits[0].AuthorName)
+
 		merge := doMethod(t, http.MethodPost, mrURL+"/merge", `{}`, aliceLogin.AccessToken)
 		require.Equal(t, http.StatusOK, merge.StatusCode)
 		merged := decodeBody[model.MergeRequestResponse](t, merge)
@@ -867,6 +884,248 @@ func TestAPIRoutes(t *testing.T) {
 
 		rules = decodeBody[[]model.PBACRuleResponse](t, doGet(t, base+"/rules", aliceLogin.AccessToken))
 		require.Len(t, rules, 1)
+	})
+
+	t.Run("merge request reviews", func(t *testing.T) {
+		aliceLogin, _ := login(t)
+		base := server.URL + "/api/v1/orgs/default/projects/default"
+
+		// a second user with project write access, so someone else can review
+		createReviewer := doMethod(t, http.MethodPost, server.URL+"/api/v1/users",
+			`{"name":"rev","email":"mr-reviewer@example.com","password":"password123"}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, createReviewer.StatusCode)
+		reviewer := decodeBody[model.UserResponse](t, createReviewer)
+		reviewerLogin, _ := loginAs(t, "mr-reviewer@example.com")
+		grant := doMethod(t, http.MethodPost, base+"/permissions/rules",
+			`{"user_id":"`+reviewer.ID+`","path_prefix":"","permission":`+
+				strconv.FormatUint(uint64(domain.PermissionRead|domain.PermissionWrite), 10)+`}`,
+			aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, grant.StatusCode)
+		grant.Body.Close()
+
+		branches := decodeBody[[]model.BranchResponse](t, doGet(t, base+"/branches", aliceLogin.AccessToken))
+		var mainHead string
+		for _, branch := range branches {
+			if branch.Name == "main" {
+				mainHead = branch.CommitID
+			}
+		}
+		createBranch := doMethod(t, http.MethodPost, base+"/branches", `{"name":"reviewed","from":"main"}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, createBranch.StatusCode)
+		createBranch.Body.Close()
+		head := seedPushTo(t, "reviewed", mainHead, map[string]string{"code.txt": "one\ntwo\nthree\n"})
+
+		createMR := doMethod(t, http.MethodPost, base+"/merge-requests",
+			`{"title":"Reviewed change","source_branch":"reviewed","target_branch":"main"}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, createMR.StatusCode)
+		mr := decodeBody[model.MergeRequestResponse](t, createMR)
+		mrURL := base + "/merge-requests/" + strconv.FormatInt(mr.Number, 10)
+		require.Nil(t, mr.Review, "a fresh merge request has no live review decision")
+
+		// requesting a review
+		requestReview := doMethod(t, http.MethodPost, mrURL+"/review-requests",
+			`{"user_id":"`+reviewer.ID+`"}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, requestReview.StatusCode)
+		pending := decodeBody[model.ReviewRequestResponse](t, requestReview)
+		require.Equal(t, reviewer.ID, pending.Reviewer.UserID)
+
+		state := decodeBody[model.ReviewStateResponse](t, doGet(t, mrURL+"/review-state", aliceLogin.AccessToken))
+		require.Equal(t, []string{reviewer.ID}, state.OutstandingReviewers)
+		require.Zero(t, state.Approvals)
+
+		// the author cannot approve their own change
+		selfApprove := doMethod(t, http.MethodPost, mrURL+"/reviews", `{"state":"approved","body":"self"}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusBadRequest, selfApprove.StatusCode)
+		selfApprove.Body.Close()
+
+		// a decision with an inline comment and a top-level comment
+		submit := doMethod(t, http.MethodPost, mrURL+"/reviews",
+			`{"state":"changes_requested","body":"please fix","comments":[`+
+				`{"file_path":"code.txt","new_line":2,"body":"rename this"},`+
+				`{"body":"overall"}]}`, reviewerLogin.AccessToken)
+		require.Equal(t, http.StatusOK, submit.StatusCode)
+		review := decodeBody[model.ReviewResponse](t, submit)
+		require.Equal(t, "changes_requested", review.State)
+		require.False(t, review.Stale)
+		require.Equal(t, head.CommitID.Base36(), review.HeadCommitID)
+
+		state = decodeBody[model.ReviewStateResponse](t, doGet(t, mrURL+"/review-state", aliceLogin.AccessToken))
+		require.Equal(t, 1, state.ChangesRequested)
+		require.Empty(t, state.OutstandingReviewers, "reviewing answers the request")
+		require.Empty(t, decodeBody[[]model.ReviewRequestResponse](t, doGet(t, mrURL+"/review-requests", aliceLogin.AccessToken)))
+
+		threads := decodeBody[[]model.ThreadResponse](t, doGet(t, mrURL+"/threads", aliceLogin.AccessToken))
+		require.Len(t, threads, 2)
+		byPath := map[string]model.ThreadResponse{}
+		for _, thread := range threads {
+			byPath[thread.FilePath] = thread
+			require.Len(t, thread.Comments, 1)
+			require.Equal(t, "right", thread.Side)
+			require.False(t, thread.Outdated)
+		}
+		inline := byPath["code.txt"]
+		require.Equal(t, 2, *inline.NewLine)
+		require.Equal(t, "rename this", inline.Comments[0].Body)
+		require.Equal(t, reviewer.ID, inline.Comments[0].User.UserID)
+		require.NotEmpty(t, byPath[""].CreatedBy.UserID)
+
+		// replying, resolving and reopening a thread
+		reply := doMethod(t, http.MethodPost, mrURL+"/threads/"+inline.ID+"/comments",
+			`{"body":"done, renamed"}`, reviewerLogin.AccessToken)
+		require.Equal(t, http.StatusOK, reply.StatusCode)
+		require.Equal(t, "done, renamed", decodeBody[model.CommentResponse](t, reply).Body)
+
+		resolve := doMethod(t, http.MethodPost, mrURL+"/threads/"+inline.ID+"/resolve",
+			`{"resolved":true}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, resolve.StatusCode)
+		require.True(t, decodeBody[model.ThreadResponse](t, resolve).Resolved)
+
+		unresolved := decodeBody[[]model.ThreadResponse](t, doGet(t, mrURL+"/threads?resolved=false", aliceLogin.AccessToken))
+		require.Len(t, unresolved, 1)
+		require.Equal(t, byPath[""].ID, unresolved[0].ID)
+
+		// a comment anchored to a line the diff does not show is rejected
+		badAnchor := doMethod(t, http.MethodPost, mrURL+"/threads",
+			`{"file_path":"code.txt","new_line":99,"body":"nowhere"}`, reviewerLogin.AccessToken)
+		require.Equal(t, http.StatusBadRequest, badAnchor.StatusCode)
+		badAnchor.Body.Close()
+
+		// a new push to the source branch makes the decision stale
+		seedPushTo(t, "reviewed", head.CommitID.Base36(), map[string]string{"code.txt": "one\nTWO\nthree\n"})
+
+		reviews := decodeBody[[]model.ReviewResponse](t, doGet(t, mrURL+"/reviews", aliceLogin.AccessToken))
+		require.Len(t, reviews, 1)
+		require.True(t, reviews[0].Stale)
+		require.NotNil(t, reviews[0].DismissedAt)
+		require.Equal(t, domain.MergeRequestDismissedNewCommits, reviews[0].DismissedReason)
+
+		state = decodeBody[model.ReviewStateResponse](t, doGet(t, mrURL+"/review-state", aliceLogin.AccessToken))
+		require.Zero(t, state.ChangesRequested, "a dismissed decision stops counting")
+		require.Zero(t, state.DismissedApprovals, "only dismissed approvals are reported")
+
+		// the outdated comment thread is flagged but kept
+		threads = decodeBody[[]model.ThreadResponse](t, doGet(t, mrURL+"/threads", aliceLogin.AccessToken))
+		require.Len(t, threads, 2)
+		require.True(t, byPath["code.txt"].ID == threads[0].ID || byPath["code.txt"].ID == threads[1].ID)
+		outdated := 0
+		for _, thread := range threads {
+			if thread.Outdated {
+				outdated++
+			}
+		}
+		require.Equal(t, 1, outdated)
+
+		// the timeline records the request, the review and the pushes
+		timeline := decodeBody[[]model.TimelineItemResponse](t, doGet(t, mrURL+"/timeline", aliceLogin.AccessToken))
+		kinds := make([]string, 0, len(timeline))
+		for _, item := range timeline {
+			kinds = append(kinds, item.Kind)
+			if item.Kind == domain.MergeRequestEventReviewRequested {
+				require.NotNil(t, item.Subject)
+				require.Equal(t, reviewer.ID, item.Subject.UserID)
+			}
+		}
+		require.Equal(t, []string{
+			domain.MergeRequestEventReviewRequested,
+			domain.MergeRequestEventReviewSubmitted,
+			domain.MergeRequestEventPushed,
+		}, kinds)
+
+		// re-reviewing for the new head re-approves, the reviewer may withdraw
+		reReview := doMethod(t, http.MethodPost, mrURL+"/reviews",
+			`{"state":"approved","body":"looks good now"}`, reviewerLogin.AccessToken)
+		require.Equal(t, http.StatusOK, reReview.StatusCode)
+		approval := decodeBody[model.ReviewResponse](t, reReview)
+		require.Equal(t, "approved", approval.State)
+		require.False(t, approval.Stale)
+
+		state = decodeBody[model.ReviewStateResponse](t, doGet(t, mrURL+"/review-state", aliceLogin.AccessToken))
+		require.Equal(t, 1, state.Approvals)
+
+		// the merge request list carries the review summary of every request
+		// that still has a live decision
+		list := decodeBody[[]model.MergeRequestResponse](t, doGet(t, base+"/merge-requests", aliceLogin.AccessToken))
+		var listed *model.MergeRequestResponse
+		for i := range list {
+			if list[i].Number == mr.Number {
+				listed = &list[i]
+			}
+		}
+		require.NotNil(t, listed)
+		require.NotNil(t, listed.Review)
+		require.Equal(t, 1, listed.Review.Approvals)
+
+		// write access is not enough to withdraw somebody else's review
+		createPeer := doMethod(t, http.MethodPost, server.URL+"/api/v1/users",
+			`{"name":"peer","email":"mr-peer@example.com","password":"password123"}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, createPeer.StatusCode)
+		peer := decodeBody[model.UserResponse](t, createPeer)
+		peerLogin, _ := loginAs(t, "mr-peer@example.com")
+		peerGrant := doMethod(t, http.MethodPost, base+"/permissions/rules",
+			`{"user_id":"`+peer.ID+`","path_prefix":"","permission":`+
+				strconv.FormatUint(uint64(domain.PermissionRead|domain.PermissionWrite), 10)+`}`,
+			aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, peerGrant.StatusCode)
+		peerGrant.Body.Close()
+
+		notYours := doMethod(t, http.MethodDelete, mrURL+"/reviews/"+approval.ID, "", peerLogin.AccessToken)
+		require.Equal(t, http.StatusForbidden, notYours.StatusCode)
+		notYours.Body.Close()
+
+		withdraw := doMethod(t, http.MethodDelete, mrURL+"/reviews/"+approval.ID, "", reviewerLogin.AccessToken)
+		require.Equal(t, http.StatusOK, withdraw.StatusCode)
+		withdraw.Body.Close()
+		state = decodeBody[model.ReviewStateResponse](t, doGet(t, mrURL+"/review-state", aliceLogin.AccessToken))
+		require.Zero(t, state.Approvals)
+
+		// the merge request author can dismiss a review instead of deleting it,
+		// which keeps it in the history
+		again := doMethod(t, http.MethodPost, mrURL+"/reviews",
+			`{"state":"approved","body":"still fine"}`, reviewerLogin.AccessToken)
+		require.Equal(t, http.StatusOK, again.StatusCode)
+		last := decodeBody[model.ReviewResponse](t, again)
+
+		dismiss := doMethod(t, http.MethodPost, mrURL+"/reviews/"+last.ID+"/dismiss", `{}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, dismiss.StatusCode)
+		require.Equal(t, "manual", decodeBody[model.ReviewResponse](t, dismiss).DismissedReason)
+		state = decodeBody[model.ReviewStateResponse](t, doGet(t, mrURL+"/review-state", aliceLogin.AccessToken))
+		require.Zero(t, state.Approvals)
+		require.Equal(t, 1, state.DismissedApprovals)
+
+		// handler error paths: unknown merge request, unparsable ids
+		missing := base + "/merge-requests/424242"
+		for _, tc := range []struct {
+			method string
+			url    string
+			body   string
+			want   int
+		}{
+			{http.MethodGet, missing + "/reviews", "", http.StatusNotFound},
+			{http.MethodPost, missing + "/reviews", `{"state":"commented","body":"x"}`, http.StatusNotFound},
+			{http.MethodGet, missing + "/review-state", "", http.StatusNotFound},
+			{http.MethodGet, missing + "/threads", "", http.StatusNotFound},
+			{http.MethodPost, missing + "/threads", `{"body":"x"}`, http.StatusNotFound},
+			{http.MethodGet, missing + "/review-requests", "", http.StatusNotFound},
+			{http.MethodPost, missing + "/review-requests", `{"user_id":"1"}`, http.StatusNotFound},
+			{http.MethodDelete, missing + "/review-requests", `{"user_id":"1"}`, http.StatusNotFound},
+			{http.MethodGet, missing + "/timeline", "", http.StatusNotFound},
+			{http.MethodGet, missing + "/commits", "", http.StatusNotFound},
+			{http.MethodDelete, mrURL + "/reviews/not-base36", "", http.StatusBadRequest},
+			{http.MethodPost, mrURL + "/reviews/not-base36/dismiss", "", http.StatusBadRequest},
+			{http.MethodPost, mrURL + "/threads/not-base36/comments", `{"body":"x"}`, http.StatusBadRequest},
+			{http.MethodPatch, mrURL + "/threads/not-base36/comments/not-base36", `{"body":"x"}`, http.StatusBadRequest},
+			{http.MethodDelete, mrURL + "/threads/not-base36/comments/not-base36", "", http.StatusBadRequest},
+			{http.MethodPost, mrURL + "/threads/not-base36/resolve", `{"resolved":true}`, http.StatusBadRequest},
+			{http.MethodDelete, mrURL + "/threads/not-base36", "", http.StatusBadRequest},
+		} {
+			resp := doMethod(t, tc.method, tc.url, tc.body, aliceLogin.AccessToken)
+			require.Equal(t, tc.want, resp.StatusCode, "%s %s", tc.method, tc.url)
+			resp.Body.Close()
+		}
+
+		unauthenticated := doMethod(t, http.MethodGet, mrURL+"/reviews", "", "")
+		require.Equal(t, http.StatusUnauthorized, unauthenticated.StatusCode)
+		unauthenticated.Body.Close()
 	})
 
 	t.Run("openapi doc is served", func(t *testing.T) {

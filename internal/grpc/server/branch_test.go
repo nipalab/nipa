@@ -29,6 +29,7 @@ type mockUsecaseContainer struct {
 	permission   *usecase.Permission
 	group        *usecase.Group
 	mergeRequest *usecase.MergeRequest
+	review       *usecase.MergeRequestReview
 	fileLock     *usecase.FileLock
 }
 
@@ -45,6 +46,10 @@ func (m *mockUsecaseContainer) Group() *usecase.Group { return m.group }
 func (m *mockUsecaseContainer) MergeRequest() *usecase.MergeRequest {
 	return m.mergeRequest
 }
+func (m *mockUsecaseContainer) MergeRequestReview() *usecase.MergeRequestReview {
+	return m.review
+}
+
 func (m *mockUsecaseContainer) FileLock() *usecase.FileLock { return m.fileLock }
 
 func newMockUsecaseContainer(t *testing.T, branch *usecase.Branch) *mockUsecaseContainer {

@@ -8,6 +8,9 @@ import type {
   GroupResponse,
   MergeRequestDiffResponse,
   MergeRequestResponse,
+  ReviewRequestResponse,
+  ReviewResponse,
+  ReviewStateResponse,
   MessageResponse,
   OrgMemberResponse,
   OrgResponse,
@@ -15,6 +18,11 @@ import type {
   PermissionEntry,
   ProjectPermissionResponse,
   ProjectResponse,
+  SubmitReviewRequest,
+  ThreadCommentInput,
+  ThreadResponse,
+  CommentResponse,
+  TimelineItemResponse,
   TreeResponse,
   UserResponse,
 } from './models'
@@ -216,6 +224,181 @@ export function reopenMergeRequest(org: string, project: string, id: string): Pr
 
 export function getMergeRequestDiff(org: string, project: string, id: string): Promise<MergeRequestDiffResponse> {
   return apiJson(`${projectBase(org, project)}/merge-requests/${encodeURIComponent(id)}/diff`)
+}
+
+function mergeRequestBase(org: string, project: string, id: string): string {
+  return `${projectBase(org, project)}/merge-requests/${encodeURIComponent(id)}`
+}
+
+export function listMergeRequestCommits(org: string, project: string, id: string): Promise<CommitResponse[]> {
+  return apiJson(`${mergeRequestBase(org, project, id)}/commits`)
+}
+
+export function listMergeRequestReviews(org: string, project: string, id: string): Promise<ReviewResponse[]> {
+  return apiJson(`${mergeRequestBase(org, project, id)}/reviews`)
+}
+
+export function getMergeRequestReviewState(org: string, project: string, id: string): Promise<ReviewStateResponse> {
+  return apiJson(`${mergeRequestBase(org, project, id)}/review-state`)
+}
+
+export function submitMergeRequestReview(
+  org: string,
+  project: string,
+  id: string,
+  payload: SubmitReviewRequest,
+): Promise<ReviewResponse> {
+  return apiJson(`${mergeRequestBase(org, project, id)}/reviews`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function withdrawMergeRequestReview(
+  org: string,
+  project: string,
+  id: string,
+  reviewId: string,
+): Promise<MessageResponse> {
+  return apiJson(`${mergeRequestBase(org, project, id)}/reviews/${encodeURIComponent(reviewId)}`, { method: 'DELETE' })
+}
+
+export function dismissMergeRequestReview(
+  org: string,
+  project: string,
+  id: string,
+  reviewId: string,
+): Promise<ReviewResponse> {
+  return apiJson(`${mergeRequestBase(org, project, id)}/reviews/${encodeURIComponent(reviewId)}/dismiss`, {
+    method: 'POST',
+    body: '{}',
+  })
+}
+
+export function listMergeRequestThreads(
+  org: string,
+  project: string,
+  id: string,
+  resolved?: boolean,
+): Promise<ThreadResponse[]> {
+  const query = resolved === undefined ? '' : `?resolved=${resolved ? 'true' : 'false'}`
+  return apiJson(`${mergeRequestBase(org, project, id)}/threads${query}`)
+}
+
+export function addMergeRequestComment(
+  org: string,
+  project: string,
+  id: string,
+  input: ThreadCommentInput,
+): Promise<ThreadResponse> {
+  return apiJson(`${mergeRequestBase(org, project, id)}/threads`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
+}
+
+export function replyMergeRequestThread(
+  org: string,
+  project: string,
+  id: string,
+  threadId: string,
+  body: string,
+): Promise<CommentResponse> {
+  return apiJson(
+    `${mergeRequestBase(org, project, id)}/threads/${encodeURIComponent(threadId)}/comments`,
+    { method: 'POST', body: JSON.stringify({ body }) },
+  )
+}
+
+export function updateMergeRequestComment(
+  org: string,
+  project: string,
+  id: string,
+  threadId: string,
+  commentId: string,
+  body: string,
+): Promise<CommentResponse> {
+  return apiJson(
+    `${mergeRequestBase(org, project, id)}/threads/${encodeURIComponent(threadId)}/comments/${encodeURIComponent(commentId)}`,
+    { method: 'PATCH', body: JSON.stringify({ body }) },
+  )
+}
+
+export function deleteMergeRequestComment(
+  org: string,
+  project: string,
+  id: string,
+  threadId: string,
+  commentId: string,
+): Promise<MessageResponse> {
+  return apiJson(
+    `${mergeRequestBase(org, project, id)}/threads/${encodeURIComponent(threadId)}/comments/${encodeURIComponent(commentId)}`,
+    { method: 'DELETE' },
+  )
+}
+
+export function resolveMergeRequestThread(
+  org: string,
+  project: string,
+  id: string,
+  threadId: string,
+  resolved: boolean,
+): Promise<ThreadResponse> {
+  return apiJson(`${mergeRequestBase(org, project, id)}/threads/${encodeURIComponent(threadId)}/resolve`, {
+    method: 'POST',
+    body: JSON.stringify({ resolved }),
+  })
+}
+
+export function deleteMergeRequestThread(
+  org: string,
+  project: string,
+  id: string,
+  threadId: string,
+): Promise<MessageResponse> {
+  return apiJson(`${mergeRequestBase(org, project, id)}/threads/${encodeURIComponent(threadId)}`, {
+    method: 'DELETE',
+  })
+}
+
+export function listMergeRequestReviewRequests(
+  org: string,
+  project: string,
+  id: string,
+): Promise<ReviewRequestResponse[]> {
+  return apiJson(`${mergeRequestBase(org, project, id)}/review-requests`)
+}
+
+export function requestMergeRequestReview(
+  org: string,
+  project: string,
+  id: string,
+  userId: string,
+): Promise<ReviewRequestResponse> {
+  return apiJson(`${mergeRequestBase(org, project, id)}/review-requests`, {
+    method: 'POST',
+    body: JSON.stringify({ user_id: userId }),
+  })
+}
+
+export function removeMergeRequestReviewRequest(
+  org: string,
+  project: string,
+  id: string,
+  userId: string,
+): Promise<MessageResponse> {
+  return apiJson(`${mergeRequestBase(org, project, id)}/review-requests`, {
+    method: 'DELETE',
+    body: JSON.stringify({ user_id: userId }),
+  })
+}
+
+export function getMergeRequestTimeline(
+  org: string,
+  project: string,
+  id: string,
+): Promise<TimelineItemResponse[]> {
+  return apiJson(`${mergeRequestBase(org, project, id)}/timeline`)
 }
 
 export function listFileLocks(org: string, project: string): Promise<FileLockResponse[]> {

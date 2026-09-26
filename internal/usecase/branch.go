@@ -41,6 +41,7 @@ type branchRepository interface {
 	ListTreeChildren(ctx context.Context, parentID int64) ([]*domain.TreeNode, error)
 	ListFilesByTree(ctx context.Context, treeID int64) ([]*domain.File, error)
 	CommitLog(ctx context.Context, projectID snow.ID, startCommitID snow.ID, limit int) ([]*domain.CommitLogEntry, error)
+	CommitLogUntil(ctx context.Context, projectID snow.ID, startCommitID, stopCommitID snow.ID, limit int) ([]*domain.CommitLogEntry, error)
 }
 
 type BranchForkPoint struct {

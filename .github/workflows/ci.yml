@@ -26,7 +26,7 @@ jobs:
         run: go vet ./...
       
       - name: Run Tests & Generate Reports
-        run: go test -race -coverprofile=coverage.out -covermode=atomic ./... > report.json
+        run: go test -race -coverprofile=coverage.out -covermode=atomic -coverpkg=./... ./... > report.json
 
       - name: Upload Test and Coverage Reports
         uses: actions/upload-artifact@v4

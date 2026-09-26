@@ -67,6 +67,18 @@ export default function PullsPage() {
           </PrimerLink>
           <div style={{ color: 'var(--fgColor-muted)', fontSize: 13 }}>
             {request.source_branch} → {request.target_branch} · <StatusLabel status={request.status} />
+            {request.review && (
+              <>
+                {' · '}
+                <span style={{ color: 'var(--fgColor-success)' }}>{request.review.approvals} approved</span>
+                {request.review.changes_requested > 0 && (
+                  <span style={{ color: 'var(--fgColor-danger)' }}>
+                    {' '}
+                    · {request.review.changes_requested} changes requested
+                  </span>
+                )}
+              </>
+            )}
           </div>
         </div>
       ))}

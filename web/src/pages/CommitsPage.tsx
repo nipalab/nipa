@@ -1,10 +1,11 @@
 import { Link as PrimerLink, Stack, Text } from '@primer/react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { getCommitDiff, listCommits } from '../api/endpoints'
+import { DiffView } from '../components/repo/DiffView'
 import { parentPath, treeUrl } from '../components/repo/repoPaths'
 import { RepoPageShell } from '../components/repo/RepoPageShell'
 import { useRepoChrome } from '../components/repo/useRepoChrome'
-import { EmptyState, ErrorBanner, Loading, Mono, StatusLabel } from '../components/ui'
+import { EmptyState, ErrorBanner, Loading, Mono } from '../components/ui'
 import { useAsync } from '../hooks'
 
 export default function CommitsPage() {
@@ -82,21 +83,7 @@ export default function CommitsPage() {
           </Text>
           <ErrorBanner error={diffError} />
           {diffLoading && <Loading />}
-          {diff?.files.map((file) => (
-            <div key={file.path} style={{ border: '1px solid var(--borderColor-default)', borderRadius: 6 }}>
-              <div style={{ padding: '6px 12px', borderBottom: '1px solid var(--borderColor-muted)' }}>
-                <Mono>{file.path}</Mono> <StatusLabel status={file.status} />{' '}
-                <Text style={{ color: 'var(--fgColor-success)' }}>+{file.additions}</Text>{' '}
-                <Text style={{ color: 'var(--fgColor-danger)' }}>-{file.deletions}</Text>
-                {file.binary && <Text style={{ color: 'var(--fgColor-muted)' }}> binary</Text>}
-              </div>
-              {!file.binary && file.patch && (
-                <pre style={{ margin: 0, padding: 12, overflowX: 'auto', fontSize: 12, lineHeight: 1.4 }}>
-                  {file.patch.join('\n')}
-                </pre>
-              )}
-            </div>
-          ))}
+          {diff && <DiffView files={diff.files} />}
         </Stack>
       )}
     </RepoPageShell>

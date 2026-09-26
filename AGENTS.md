@@ -19,7 +19,8 @@ everything under `ee/` is enterprise).
 - **Server** (`internal/`): `domain` (entities/errors), `usecase` (business
   logic, gomock-tested, depends only on repository interfaces; `browser.go` /
   `browser_history.go` power the web UI tree/commit browsing and
-  `merge_request.go` the MR lifecycle), `repository`
+  `merge_request.go` the MR lifecycle and `merge_request_review.go` reviews),
+  `repository`
   (`sqlite`/`postgres` implementations over sqlc-generated `internal/repository/sqlc/*`),
   `grpc` (proto + `pb` generated + `server` handlers), `http` (REST API).
 - **Web UI** (`web/`): Vite/React/TypeScript SPA in `web/`, built with Primer
@@ -108,6 +109,33 @@ via `BinaryLockPlan` (required vs checked paths); `Branch.Delete` releases the
 branch's scoped locks (soft delete ⇒ no FK cascade). The `/locks` REST routes,
 `LockFile`/`UnlockFile`/`ListFileLocks` RPCs and the web Locks page expose
 acquire/release/list.
+
+Flow for merge request reviews: a review is one decision per reviewer per source
+head round (`approved`/`changes_requested`/`commented`); a review for an older
+head is stale and stops counting, and the latest per reviewer+head wins.
+Submitting a review can carry inline comments that become anchored threads
+(`file_path` empty = top-level conversation; otherwise `old_line`/`new_line`
+must be a line the current diff shows). `POST .../reviews` on your own request
+is rejected; a project writer can `POST .../reviews/{id}/dismiss` (kept in
+history, `dismissed_reason=new_commits|manual`) while a reviewer can `DELETE`
+their own; dismissing leaves comment threads intact (`review_id` FK is
+`ON DELETE SET NULL`). A thread anchored to a line the new head no longer shows
+is outdated (top-level threads never are). Review requests are answered by that
+reviewer's next review and re-requesting keeps the original requester. Every
+push to the source branch dismisses decisions for the old head and appends a
+`pushed` timeline event: `Push` calls `usecase.Push.WithReviews`, which runs
+after the apply succeeded and only logs bookkeeping failures. The timeline
+events carry a `subject` actor (e.g. the requested reviewer). REST routes live
+in `internal/http/api/merge_request_review.go`, the matching RPCs in
+`internal/grpc/server/merge_request_review.go`; MR list/detail responses carry
+the live `review` summary and the SPA renders a tabbed MR page (Overview /
+Commits / File changes, `?tab=`). The Commits tab is served by
+`MergeRequest.Commits`, a first-parent `CommitLogUntil` walk (stop = live merge
+base, authors joined) exposed at `GET .../merge-requests/{id}/commits`. The
+diff is side-by-side by default with a Unified/Split toggle and floating inline
+thread cards
+(`web/src/components/repo/DiffView.tsx` + `ThreadCard.tsx`, reused by the
+commit page).
 
 Flow for `nipa revert <commit>` / `<from>..<to>`: resolve targets via gRPC
 `GetCommit` / `WalkCommits` (range walks newest-first, exclusive stop; ranges are
@@ -306,7 +334,15 @@ Direct: `go build ./...`, `go vet ./...`, `go test ./...`.
   `SetBranchProtection`; history/tree RPCs `GetTreeManifest`, `GetCommitLog`,
   `GetCommit`, `WalkCommits`, `GetMergeBase`, `MergeFastForward`; merge-request
   RPCs `CreateMergeRequest`, `UpdateMergeRequest`, `ListMergeRequests`,
-  `MergeMergeRequest`, `CloseMergeRequest`; transfer RPCs `Push`,
+  `MergeMergeRequest`, `CloseMergeRequest`; review RPCs
+  `SubmitMergeRequestReview`, `ListMergeRequestReviews`,
+  `GetMergeRequestReviewState`, `WithdrawMergeRequestReview`,
+  `DismissMergeRequestReview`, `ListMergeRequestThreads`,
+  `AddMergeRequestComment`, `ReplyMergeRequestThread`,
+  `UpdateMergeRequestComment`, `DeleteMergeRequestComment`,
+  `ResolveMergeRequestThread`, `DeleteMergeRequestThread`,
+  `ListMergeRequestReviewRequests`, `RequestMergeRequestReview`,
+  `RemoveMergeRequestReviewRequest`, `ListMergeRequestTimeline`; transfer RPCs `Push`,
   `GetChunkUploadUrls`, `GetChunkDownloadUrls`, `ConfirmChunkUploads`; file-lock
   RPCs `LockFile`, `UnlockFile`, `ListFileLocks`; PBAC
   RPCs `GetMyPermissions`, `CreatePBACRule`, `ListPBACRules`, `DeletePBACRule`,
@@ -390,7 +426,9 @@ Direct: `go build ./...`, `go vet ./...`, `go test ./...`.
 
 ## SonarQube / CI
 
-- CI runs `go build ./...`, `go vet ./...`, `go test -race -coverprofile=...`.
+- CI runs `go build ./...`, `go vet ./...`, `go test -race -coverprofile=...
+  -coverpkg=./...` (cross-package coverage, so the REST/e2e integration tests
+  count towards the handler/usecase packages they exercise).
 - `sonar-project.properties` excludes generated code (`internal/repository/sqlc/**`),
   swagger, and cmd mains from analysis; coverage expects `coverage.out`.
 - Avoid introducing SonarQube issues: no DELETE without WHERE, keep coverage in new
@@ -402,7 +440,9 @@ Direct: `go build ./...`, `go vet ./...`, `go test ./...`.
   memory-only access token + `HttpOnly` refresh cookie, and a capability mask
   from `/permissions/me` to hide admin controls (server remains authoritative).
   Pages cover repository/org lists, tree browser, blob viewer, commit history
-  + diffs, branch management, merge requests (list/create/detail/merge),
+  + diffs, branch management, merge requests (list/create; detail tabs for
+  overview, commits and file changes; merge/reviews with decisions, inline
+  floating threads, reviewer requests, activity timeline),
   file locks (list/lock/unlock), project/org settings (protection + ACL,
   members/groups), user administration
   and profile; the browse endpoints are served by `internal/usecase/browser.go`
