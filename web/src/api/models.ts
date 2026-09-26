@@ -88,6 +88,24 @@ export interface CommitResponse {
   created_at: string
 }
 
+export type DiffLineKind = 'context' | 'add' | 'remove'
+
+export interface DiffLineResponse {
+  kind: DiffLineKind
+  old_line?: number
+  new_line?: number
+  text: string
+  no_newline?: boolean
+}
+
+export interface DiffHunkResponse {
+  old_start: number
+  old_lines: number
+  new_start: number
+  new_lines: number
+  lines: DiffLineResponse[]
+}
+
 export interface DiffFileResponse {
   path: string
   old_path?: string
@@ -96,6 +114,7 @@ export interface DiffFileResponse {
   additions: number
   deletions: number
   patch?: string[]
+  hunks?: DiffHunkResponse[]
 }
 
 export interface CommitDiffResponse {
@@ -126,11 +145,103 @@ export interface MergeRequestResponse {
   created_at: string
   updated_at: string
   mergeability?: MergeabilityResponse
+  review?: ReviewStateResponse
 }
 
 export interface MergeRequestDiffResponse {
   base_id?: string
   files: DiffFileResponse[]
+}
+
+export type ReviewState = 'commented' | 'approved' | 'changes_requested'
+
+export interface ReviewActorResponse {
+  user_id: string
+  name: string
+  photo_url?: string
+}
+
+export interface ReviewStateResponse {
+  head_commit_id?: string
+  approvals: number
+  changes_requested: number
+  dismissed_approvals: number
+  outstanding_reviewers: string[]
+}
+
+export interface ReviewResponse {
+  id: string
+  merge_request_id: number
+  reviewer: ReviewActorResponse
+  state: ReviewState
+  body: string
+  head_commit_id: string
+  stale: boolean
+  dismissed_at?: string
+  dismissed_by?: ReviewActorResponse
+  dismissed_reason?: string
+  created_at: string
+  updated_at: string
+}
+
+export interface ThreadCommentInput {
+  file_path: string
+  old_line?: number
+  new_line?: number
+  body: string
+}
+
+export interface SubmitReviewRequest {
+  state: ReviewState
+  body: string
+  comments: ThreadCommentInput[]
+}
+
+export interface CommentResponse {
+  id: string
+  thread_id: string
+  user: ReviewActorResponse
+  body: string
+  system: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface ThreadResponse {
+  id: string
+  merge_request_id: number
+  review_id?: string
+  file_path?: string
+  old_line?: number
+  new_line?: number
+  side: string
+  outdated: boolean
+  resolved: boolean
+  resolved_by?: ReviewActorResponse
+  resolved_at?: string
+  created_by: ReviewActorResponse
+  created_at: string
+  updated_at: string
+  comments: CommentResponse[]
+}
+
+export interface ReviewRequestResponse {
+  id: string
+  merge_request_id: number
+  reviewer: ReviewActorResponse
+  requested_by: ReviewActorResponse
+  created_at: string
+}
+
+export interface TimelineItemResponse {
+  id: string
+  kind: string
+  actor: ReviewActorResponse
+  subject?: ReviewActorResponse
+  body?: string
+  commit_id?: string
+  commit_hash?: string
+  created_at: string
 }
 
 export interface FileLockResponse {

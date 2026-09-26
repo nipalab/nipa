@@ -13,6 +13,7 @@ import (
 	context "context"
 	reflect "reflect"
 
+	snow "github.com/nipalab/nipa/internal/snow"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -52,4 +53,42 @@ func (m *MockpushRepository) ApplyPush(ctx context.Context, req ApplyPushRequest
 func (mr *MockpushRepositoryMockRecorder) ApplyPush(ctx, req any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ApplyPush", reflect.TypeOf((*MockpushRepository)(nil).ApplyPush), ctx, req)
+}
+
+// MockreviewPushGate is a mock of reviewPushGate interface.
+type MockreviewPushGate struct {
+	ctrl     *gomock.Controller
+	recorder *MockreviewPushGateMockRecorder
+	isgomock struct{}
+}
+
+// MockreviewPushGateMockRecorder is the mock recorder for MockreviewPushGate.
+type MockreviewPushGateMockRecorder struct {
+	mock *MockreviewPushGate
+}
+
+// NewMockreviewPushGate creates a new mock instance.
+func NewMockreviewPushGate(ctrl *gomock.Controller) *MockreviewPushGate {
+	mock := &MockreviewPushGate{ctrl: ctrl}
+	mock.recorder = &MockreviewPushGateMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockreviewPushGate) EXPECT() *MockreviewPushGateMockRecorder {
+	return m.recorder
+}
+
+// NoteBranchPush mocks base method.
+func (m *MockreviewPushGate) NoteBranchPush(ctx context.Context, projectID, branchID, newHead, actor snow.ID, commitHash string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "NoteBranchPush", ctx, projectID, branchID, newHead, actor, commitHash)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// NoteBranchPush indicates an expected call of NoteBranchPush.
+func (mr *MockreviewPushGateMockRecorder) NoteBranchPush(ctx, projectID, branchID, newHead, actor, commitHash any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NoteBranchPush", reflect.TypeOf((*MockreviewPushGate)(nil).NoteBranchPush), ctx, projectID, branchID, newHead, actor, commitHash)
 }

@@ -306,10 +306,52 @@ func toDiffFileResponse(file diff.FileDiff) model.DiffFileResponse {
 		resp.OldPath = file.Change.Old.Path
 	}
 	if !resp.Binary {
-		resp.Patch = append([]string{diff.HeaderLine(file.Change)}, diff.FilePatch(file, diff.Options{})...)
+		resp.Patch = diff.FilePatch(file, diff.Options{})
+		resp.Hunks = toDiffHunkResponses(diff.FileHunks(file, diff.Options{}))
 		resp.Additions, resp.Deletions = diff.CountLines(file.Old, file.New)
 	}
 	return resp
+}
+
+// toDiffHunkResponses renders hunks with resolved line numbers, which is what a
+// review thread anchors a comment to.
+func toDiffHunkResponses(hunks []diff.Hunk) []model.DiffHunkResponse {
+	if len(hunks) == 0 {
+		return nil
+	}
+	out := make([]model.DiffHunkResponse, 0, len(hunks))
+	for _, hunk := range hunks {
+		lines := make([]model.DiffLineResponse, 0, len(hunk.Lines))
+		for _, line := range hunk.Lines {
+			text, _ := strings.CutSuffix(line.Text, "\n")
+			lines = append(lines, model.DiffLineResponse{
+				Kind:      diffLineKind(line.Kind),
+				Old:       line.Old,
+				New:       line.New,
+				Text:      text,
+				NoNewline: line.NoNewline,
+			})
+		}
+		out = append(out, model.DiffHunkResponse{
+			OldStart: hunk.OldStart,
+			OldLines: hunk.OldLines,
+			NewStart: hunk.NewStart,
+			NewLines: hunk.NewLines,
+			Lines:    lines,
+		})
+	}
+	return out
+}
+
+func diffLineKind(kind byte) string {
+	switch kind {
+	case '+':
+		return "add"
+	case '-':
+		return "remove"
+	default:
+		return "context"
+	}
 }
 
 func joinPath(parent, name string) string {

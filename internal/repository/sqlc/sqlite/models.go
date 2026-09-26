@@ -104,13 +104,6 @@ type MergeRequest struct {
 	UpdatedAt         time.Time     `json:"updated_at"`
 }
 
-type MergeRequestApproval struct {
-	ID             int64     `json:"id"`
-	MergeRequestID int64     `json:"merge_request_id"`
-	UserID         int64     `json:"user_id"`
-	CreatedAt      time.Time `json:"created_at"`
-}
-
 type MergeRequestComment struct {
 	ID        int64     `json:"id"`
 	ThreadID  int64     `json:"thread_id"`
@@ -119,6 +112,40 @@ type MergeRequestComment struct {
 	System    bool      `json:"system"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type MergeRequestEvent struct {
+	ID             int64          `json:"id"`
+	MergeRequestID int64          `json:"merge_request_id"`
+	ActorID        int64          `json:"actor_id"`
+	SubjectUserID  sql.NullInt64  `json:"subject_user_id"`
+	Kind           string         `json:"kind"`
+	Body           string         `json:"body"`
+	CommitID       sql.NullInt64  `json:"commit_id"`
+	CommitHash     sql.NullString `json:"commit_hash"`
+	CreatedAt      time.Time      `json:"created_at"`
+}
+
+type MergeRequestReview struct {
+	ID              int64          `json:"id"`
+	MergeRequestID  int64          `json:"merge_request_id"`
+	ReviewerID      int64          `json:"reviewer_id"`
+	State           string         `json:"state"`
+	Body            string         `json:"body"`
+	HeadCommitID    int64          `json:"head_commit_id"`
+	CreatedAt       time.Time      `json:"created_at"`
+	UpdatedAt       time.Time      `json:"updated_at"`
+	DismissedAt     sql.NullTime   `json:"dismissed_at"`
+	DismissedBy     sql.NullInt64  `json:"dismissed_by"`
+	DismissedReason sql.NullString `json:"dismissed_reason"`
+}
+
+type MergeRequestReviewRequest struct {
+	ID             int64     `json:"id"`
+	MergeRequestID int64     `json:"merge_request_id"`
+	ReviewerID     int64     `json:"reviewer_id"`
+	RequestedBy    int64     `json:"requested_by"`
+	CreatedAt      time.Time `json:"created_at"`
 }
 
 type MergeRequestThread struct {
@@ -135,6 +162,7 @@ type MergeRequestThread struct {
 	CreatedBy      int64          `json:"created_by"`
 	CreatedAt      time.Time      `json:"created_at"`
 	UpdatedAt      time.Time      `json:"updated_at"`
+	ReviewID       sql.NullInt64  `json:"review_id"`
 }
 
 type OrgMember struct {

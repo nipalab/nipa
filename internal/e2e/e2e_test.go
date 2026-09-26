@@ -53,6 +53,7 @@ type testRegistry struct {
 	permission   *serverusecase.Permission
 	group        *serverusecase.Group
 	mergeRequest *serverusecase.MergeRequest
+	review       *serverusecase.MergeRequestReview
 	fileLock     *serverusecase.FileLock
 }
 
@@ -69,6 +70,10 @@ func (r *testRegistry) Group() *serverusecase.Group { return r.group }
 func (r *testRegistry) MergeRequest() *serverusecase.MergeRequest {
 	return r.mergeRequest
 }
+func (r *testRegistry) MergeRequestReview() *serverusecase.MergeRequestReview {
+	return r.review
+}
+
 func (r *testRegistry) FileLock() *serverusecase.FileLock { return r.fileLock }
 
 type memoryStore struct {
@@ -161,18 +166,23 @@ func startTestServer(t *testing.T, dbConn *sql.DB) string {
 		PresignTTL:  time.Hour,
 		MaxPageSize: 1000,
 	})
+	mrRepo := sqlite.NewMergeRequestRepository(dbConn)
+	reviewUc := serverusecase.NewMergeRequestReview(
+		sqlite.NewMergeRequestReviewRepository(dbConn), mrRepo, branchRepo, branchUc, permissionUc, node,
+	)
 	reg := &testRegistry{
 		auth:       authUc,
 		user:       serverusecase.NewUser(node, userRepo, passwordHasher),
 		branch:     branchUc,
 		common:     commonUc,
-		push:       serverusecase.NewPush(permissionUc, branchRepo, pushRepo, node).WithFileLocks(fileLockUc),
+		push:       serverusecase.NewPush(permissionUc, branchRepo, pushRepo, node).WithFileLocks(fileLockUc).WithReviews(reviewUc),
 		chunk:      chunkUc,
 		permission: permissionUc,
 		group:      serverusecase.NewGroup(groupRepo, node, permissionUc, orgUc),
 		mergeRequest: serverusecase.NewMergeRequest(
-			sqlite.NewMergeRequestRepository(dbConn), branchRepo, permissionUc, branchUc, node,
+			mrRepo, branchRepo, permissionUc, branchUc, node,
 		).WithFileLocks(fileLockUc),
+		review:   reviewUc,
 		fileLock: fileLockUc,
 	}
 

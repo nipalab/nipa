@@ -5166,6 +5166,2446 @@ func (x *CloseMergeRequestResponse) GetMergeRequest() *MergeRequestDetail {
 	return nil
 }
 
+type ReviewActor struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	UserId        string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"` // base36 snow ID
+	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	PhotoUrl      string                 `protobuf:"bytes,3,opt,name=photo_url,json=photoUrl,proto3" json:"photo_url,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReviewActor) Reset() {
+	*x = ReviewActor{}
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[87]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReviewActor) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReviewActor) ProtoMessage() {}
+
+func (x *ReviewActor) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[87]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReviewActor.ProtoReflect.Descriptor instead.
+func (*ReviewActor) Descriptor() ([]byte, []int) {
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{87}
+}
+
+func (x *ReviewActor) GetUserId() string {
+	if x != nil {
+		return x.UserId
+	}
+	return ""
+}
+
+func (x *ReviewActor) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *ReviewActor) GetPhotoUrl() string {
+	if x != nil {
+		return x.PhotoUrl
+	}
+	return ""
+}
+
+type ReviewCommentDetail struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`                             // base36 snow ID
+	ThreadId      string                 `protobuf:"bytes,2,opt,name=thread_id,json=threadId,proto3" json:"thread_id,omitempty"` // base36 snow ID
+	User          *ReviewActor           `protobuf:"bytes,3,opt,name=user,proto3" json:"user,omitempty"`
+	Body          string                 `protobuf:"bytes,4,opt,name=body,proto3" json:"body,omitempty"`
+	System        bool                   `protobuf:"varint,5,opt,name=system,proto3" json:"system,omitempty"` // generated, e.g. the "resolved this thread" marker
+	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	Edited        bool                   `protobuf:"varint,8,opt,name=edited,proto3" json:"edited,omitempty"` // updated_at differs from created_at
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReviewCommentDetail) Reset() {
+	*x = ReviewCommentDetail{}
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[88]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReviewCommentDetail) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReviewCommentDetail) ProtoMessage() {}
+
+func (x *ReviewCommentDetail) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[88]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReviewCommentDetail.ProtoReflect.Descriptor instead.
+func (*ReviewCommentDetail) Descriptor() ([]byte, []int) {
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{88}
+}
+
+func (x *ReviewCommentDetail) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *ReviewCommentDetail) GetThreadId() string {
+	if x != nil {
+		return x.ThreadId
+	}
+	return ""
+}
+
+func (x *ReviewCommentDetail) GetUser() *ReviewActor {
+	if x != nil {
+		return x.User
+	}
+	return nil
+}
+
+func (x *ReviewCommentDetail) GetBody() string {
+	if x != nil {
+		return x.Body
+	}
+	return ""
+}
+
+func (x *ReviewCommentDetail) GetSystem() bool {
+	if x != nil {
+		return x.System
+	}
+	return false
+}
+
+func (x *ReviewCommentDetail) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
+func (x *ReviewCommentDetail) GetUpdatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.UpdatedAt
+	}
+	return nil
+}
+
+func (x *ReviewCommentDetail) GetEdited() bool {
+	if x != nil {
+		return x.Edited
+	}
+	return false
+}
+
+type MergeRequestThreadDetail struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Id             string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"` // base36 snow ID
+	MergeRequestId int64                  `protobuf:"varint,2,opt,name=merge_request_id,json=mergeRequestId,proto3" json:"merge_request_id,omitempty"`
+	ReviewId       string                 `protobuf:"bytes,3,opt,name=review_id,json=reviewId,proto3" json:"review_id,omitempty"` // base36 snow ID of the submitting review
+	FilePath       string                 `protobuf:"bytes,4,opt,name=file_path,json=filePath,proto3" json:"file_path,omitempty"` // empty for a top-level conversation thread
+	OldLine        *int64                 `protobuf:"varint,5,opt,name=old_line,json=oldLine,proto3,oneof" json:"old_line,omitempty"`
+	NewLine        *int64                 `protobuf:"varint,6,opt,name=new_line,json=newLine,proto3,oneof" json:"new_line,omitempty"`
+	Side           string                 `protobuf:"bytes,7,opt,name=side,proto3" json:"side,omitempty"`          // left, right, or empty for a top-level thread
+	Outdated       bool                   `protobuf:"varint,8,opt,name=outdated,proto3" json:"outdated,omitempty"` // the thread comments on a line the new head no longer shows
+	Resolved       bool                   `protobuf:"varint,9,opt,name=resolved,proto3" json:"resolved,omitempty"`
+	ResolvedBy     *ReviewActor           `protobuf:"bytes,10,opt,name=resolved_by,json=resolvedBy,proto3" json:"resolved_by,omitempty"`
+	ResolvedAt     *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=resolved_at,json=resolvedAt,proto3" json:"resolved_at,omitempty"`
+	CreatedBy      *ReviewActor           `protobuf:"bytes,12,opt,name=created_by,json=createdBy,proto3" json:"created_by,omitempty"`
+	CreatedAt      *timestamppb.Timestamp `protobuf:"bytes,13,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	Comments       []*ReviewCommentDetail `protobuf:"bytes,14,rep,name=comments,proto3" json:"comments,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *MergeRequestThreadDetail) Reset() {
+	*x = MergeRequestThreadDetail{}
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[89]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MergeRequestThreadDetail) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MergeRequestThreadDetail) ProtoMessage() {}
+
+func (x *MergeRequestThreadDetail) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[89]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MergeRequestThreadDetail.ProtoReflect.Descriptor instead.
+func (*MergeRequestThreadDetail) Descriptor() ([]byte, []int) {
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{89}
+}
+
+func (x *MergeRequestThreadDetail) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *MergeRequestThreadDetail) GetMergeRequestId() int64 {
+	if x != nil {
+		return x.MergeRequestId
+	}
+	return 0
+}
+
+func (x *MergeRequestThreadDetail) GetReviewId() string {
+	if x != nil {
+		return x.ReviewId
+	}
+	return ""
+}
+
+func (x *MergeRequestThreadDetail) GetFilePath() string {
+	if x != nil {
+		return x.FilePath
+	}
+	return ""
+}
+
+func (x *MergeRequestThreadDetail) GetOldLine() int64 {
+	if x != nil && x.OldLine != nil {
+		return *x.OldLine
+	}
+	return 0
+}
+
+func (x *MergeRequestThreadDetail) GetNewLine() int64 {
+	if x != nil && x.NewLine != nil {
+		return *x.NewLine
+	}
+	return 0
+}
+
+func (x *MergeRequestThreadDetail) GetSide() string {
+	if x != nil {
+		return x.Side
+	}
+	return ""
+}
+
+func (x *MergeRequestThreadDetail) GetOutdated() bool {
+	if x != nil {
+		return x.Outdated
+	}
+	return false
+}
+
+func (x *MergeRequestThreadDetail) GetResolved() bool {
+	if x != nil {
+		return x.Resolved
+	}
+	return false
+}
+
+func (x *MergeRequestThreadDetail) GetResolvedBy() *ReviewActor {
+	if x != nil {
+		return x.ResolvedBy
+	}
+	return nil
+}
+
+func (x *MergeRequestThreadDetail) GetResolvedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ResolvedAt
+	}
+	return nil
+}
+
+func (x *MergeRequestThreadDetail) GetCreatedBy() *ReviewActor {
+	if x != nil {
+		return x.CreatedBy
+	}
+	return nil
+}
+
+func (x *MergeRequestThreadDetail) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
+func (x *MergeRequestThreadDetail) GetComments() []*ReviewCommentDetail {
+	if x != nil {
+		return x.Comments
+	}
+	return nil
+}
+
+type MergeRequestReviewDetail struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Id              string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`                                                  // base36 snow ID
+	MergeRequestId  int64                  `protobuf:"varint,2,opt,name=merge_request_id,json=mergeRequestId,proto3" json:"merge_request_id,omitempty"` // the merge request row ID
+	Reviewer        *ReviewActor           `protobuf:"bytes,3,opt,name=reviewer,proto3" json:"reviewer,omitempty"`
+	State           string                 `protobuf:"bytes,4,opt,name=state,proto3" json:"state,omitempty"` // approved, changes_requested, or commented
+	Body            string                 `protobuf:"bytes,5,opt,name=body,proto3" json:"body,omitempty"`
+	HeadCommitId    string                 `protobuf:"bytes,6,opt,name=head_commit_id,json=headCommitId,proto3" json:"head_commit_id,omitempty"` // base36 snow ID the review was given for
+	Stale           bool                   `protobuf:"varint,7,opt,name=stale,proto3" json:"stale,omitempty"`                                    // the source branch moved on, so the decision no longer counts
+	DismissedAt     *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=dismissed_at,json=dismissedAt,proto3" json:"dismissed_at,omitempty"`
+	DismissedReason string                 `protobuf:"bytes,9,opt,name=dismissed_reason,json=dismissedReason,proto3" json:"dismissed_reason,omitempty"` // new_commits or manual
+	DismissedBy     *ReviewActor           `protobuf:"bytes,10,opt,name=dismissed_by,json=dismissedBy,proto3" json:"dismissed_by,omitempty"`
+	CreatedAt       *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	UpdatedAt       *timestamppb.Timestamp `protobuf:"bytes,12,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *MergeRequestReviewDetail) Reset() {
+	*x = MergeRequestReviewDetail{}
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[90]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MergeRequestReviewDetail) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MergeRequestReviewDetail) ProtoMessage() {}
+
+func (x *MergeRequestReviewDetail) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[90]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MergeRequestReviewDetail.ProtoReflect.Descriptor instead.
+func (*MergeRequestReviewDetail) Descriptor() ([]byte, []int) {
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{90}
+}
+
+func (x *MergeRequestReviewDetail) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *MergeRequestReviewDetail) GetMergeRequestId() int64 {
+	if x != nil {
+		return x.MergeRequestId
+	}
+	return 0
+}
+
+func (x *MergeRequestReviewDetail) GetReviewer() *ReviewActor {
+	if x != nil {
+		return x.Reviewer
+	}
+	return nil
+}
+
+func (x *MergeRequestReviewDetail) GetState() string {
+	if x != nil {
+		return x.State
+	}
+	return ""
+}
+
+func (x *MergeRequestReviewDetail) GetBody() string {
+	if x != nil {
+		return x.Body
+	}
+	return ""
+}
+
+func (x *MergeRequestReviewDetail) GetHeadCommitId() string {
+	if x != nil {
+		return x.HeadCommitId
+	}
+	return ""
+}
+
+func (x *MergeRequestReviewDetail) GetStale() bool {
+	if x != nil {
+		return x.Stale
+	}
+	return false
+}
+
+func (x *MergeRequestReviewDetail) GetDismissedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.DismissedAt
+	}
+	return nil
+}
+
+func (x *MergeRequestReviewDetail) GetDismissedReason() string {
+	if x != nil {
+		return x.DismissedReason
+	}
+	return ""
+}
+
+func (x *MergeRequestReviewDetail) GetDismissedBy() *ReviewActor {
+	if x != nil {
+		return x.DismissedBy
+	}
+	return nil
+}
+
+func (x *MergeRequestReviewDetail) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
+func (x *MergeRequestReviewDetail) GetUpdatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.UpdatedAt
+	}
+	return nil
+}
+
+type MergeRequestReviewState struct {
+	state                protoimpl.MessageState `protogen:"open.v1"`
+	Approvals            int32                  `protobuf:"varint,1,opt,name=approvals,proto3" json:"approvals,omitempty"`
+	ChangesRequested     int32                  `protobuf:"varint,2,opt,name=changes_requested,json=changesRequested,proto3" json:"changes_requested,omitempty"`
+	DismissedApprovals   int32                  `protobuf:"varint,3,opt,name=dismissed_approvals,json=dismissedApprovals,proto3" json:"dismissed_approvals,omitempty"`
+	OutstandingReviewers []string               `protobuf:"bytes,4,rep,name=outstanding_reviewers,json=outstandingReviewers,proto3" json:"outstanding_reviewers,omitempty"` // base36 snow IDs
+	HeadCommitId         string                 `protobuf:"bytes,5,opt,name=head_commit_id,json=headCommitId,proto3" json:"head_commit_id,omitempty"`                       // base36 snow ID of the source head
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
+}
+
+func (x *MergeRequestReviewState) Reset() {
+	*x = MergeRequestReviewState{}
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[91]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MergeRequestReviewState) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MergeRequestReviewState) ProtoMessage() {}
+
+func (x *MergeRequestReviewState) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[91]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MergeRequestReviewState.ProtoReflect.Descriptor instead.
+func (*MergeRequestReviewState) Descriptor() ([]byte, []int) {
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{91}
+}
+
+func (x *MergeRequestReviewState) GetApprovals() int32 {
+	if x != nil {
+		return x.Approvals
+	}
+	return 0
+}
+
+func (x *MergeRequestReviewState) GetChangesRequested() int32 {
+	if x != nil {
+		return x.ChangesRequested
+	}
+	return 0
+}
+
+func (x *MergeRequestReviewState) GetDismissedApprovals() int32 {
+	if x != nil {
+		return x.DismissedApprovals
+	}
+	return 0
+}
+
+func (x *MergeRequestReviewState) GetOutstandingReviewers() []string {
+	if x != nil {
+		return x.OutstandingReviewers
+	}
+	return nil
+}
+
+func (x *MergeRequestReviewState) GetHeadCommitId() string {
+	if x != nil {
+		return x.HeadCommitId
+	}
+	return ""
+}
+
+type ReviewRequestDetail struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Id             string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"` // base36 snow ID
+	MergeRequestId int64                  `protobuf:"varint,2,opt,name=merge_request_id,json=mergeRequestId,proto3" json:"merge_request_id,omitempty"`
+	Reviewer       *ReviewActor           `protobuf:"bytes,3,opt,name=reviewer,proto3" json:"reviewer,omitempty"`
+	RequestedBy    *ReviewActor           `protobuf:"bytes,4,opt,name=requested_by,json=requestedBy,proto3" json:"requested_by,omitempty"`
+	CreatedAt      *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *ReviewRequestDetail) Reset() {
+	*x = ReviewRequestDetail{}
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[92]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReviewRequestDetail) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReviewRequestDetail) ProtoMessage() {}
+
+func (x *ReviewRequestDetail) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[92]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReviewRequestDetail.ProtoReflect.Descriptor instead.
+func (*ReviewRequestDetail) Descriptor() ([]byte, []int) {
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{92}
+}
+
+func (x *ReviewRequestDetail) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *ReviewRequestDetail) GetMergeRequestId() int64 {
+	if x != nil {
+		return x.MergeRequestId
+	}
+	return 0
+}
+
+func (x *ReviewRequestDetail) GetReviewer() *ReviewActor {
+	if x != nil {
+		return x.Reviewer
+	}
+	return nil
+}
+
+func (x *ReviewRequestDetail) GetRequestedBy() *ReviewActor {
+	if x != nil {
+		return x.RequestedBy
+	}
+	return nil
+}
+
+func (x *ReviewRequestDetail) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
+type MergeRequestTimelineItem struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`     // base36 snow ID
+	Kind          string                 `protobuf:"bytes,2,opt,name=kind,proto3" json:"kind,omitempty"` // pushed, review_submitted, review_dismissed, review_requested, or review_request_removed
+	Actor         *ReviewActor           `protobuf:"bytes,3,opt,name=actor,proto3" json:"actor,omitempty"`
+	Subject       *ReviewActor           `protobuf:"bytes,4,opt,name=subject,proto3" json:"subject,omitempty"` // the user an event is about, e.g. a requested reviewer
+	Body          string                 `protobuf:"bytes,5,opt,name=body,proto3" json:"body,omitempty"`
+	CommitId      string                 `protobuf:"bytes,6,opt,name=commit_id,json=commitId,proto3" json:"commit_id,omitempty"` // base36 snow ID the event refers to
+	CommitHash    string                 `protobuf:"bytes,7,opt,name=commit_hash,json=commitHash,proto3" json:"commit_hash,omitempty"`
+	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MergeRequestTimelineItem) Reset() {
+	*x = MergeRequestTimelineItem{}
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[93]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MergeRequestTimelineItem) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MergeRequestTimelineItem) ProtoMessage() {}
+
+func (x *MergeRequestTimelineItem) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[93]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MergeRequestTimelineItem.ProtoReflect.Descriptor instead.
+func (*MergeRequestTimelineItem) Descriptor() ([]byte, []int) {
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{93}
+}
+
+func (x *MergeRequestTimelineItem) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *MergeRequestTimelineItem) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
+func (x *MergeRequestTimelineItem) GetActor() *ReviewActor {
+	if x != nil {
+		return x.Actor
+	}
+	return nil
+}
+
+func (x *MergeRequestTimelineItem) GetSubject() *ReviewActor {
+	if x != nil {
+		return x.Subject
+	}
+	return nil
+}
+
+func (x *MergeRequestTimelineItem) GetBody() string {
+	if x != nil {
+		return x.Body
+	}
+	return ""
+}
+
+func (x *MergeRequestTimelineItem) GetCommitId() string {
+	if x != nil {
+		return x.CommitId
+	}
+	return ""
+}
+
+func (x *MergeRequestTimelineItem) GetCommitHash() string {
+	if x != nil {
+		return x.CommitHash
+	}
+	return ""
+}
+
+func (x *MergeRequestTimelineItem) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
+type ReviewCommentInput struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	FilePath      string                 `protobuf:"bytes,1,opt,name=file_path,json=filePath,proto3" json:"file_path,omitempty"` // empty starts a top-level conversation thread
+	OldLine       *int64                 `protobuf:"varint,2,opt,name=old_line,json=oldLine,proto3,oneof" json:"old_line,omitempty"`
+	NewLine       *int64                 `protobuf:"varint,3,opt,name=new_line,json=newLine,proto3,oneof" json:"new_line,omitempty"`
+	Body          string                 `protobuf:"bytes,4,opt,name=body,proto3" json:"body,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReviewCommentInput) Reset() {
+	*x = ReviewCommentInput{}
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[94]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReviewCommentInput) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReviewCommentInput) ProtoMessage() {}
+
+func (x *ReviewCommentInput) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[94]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReviewCommentInput.ProtoReflect.Descriptor instead.
+func (*ReviewCommentInput) Descriptor() ([]byte, []int) {
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{94}
+}
+
+func (x *ReviewCommentInput) GetFilePath() string {
+	if x != nil {
+		return x.FilePath
+	}
+	return ""
+}
+
+func (x *ReviewCommentInput) GetOldLine() int64 {
+	if x != nil && x.OldLine != nil {
+		return *x.OldLine
+	}
+	return 0
+}
+
+func (x *ReviewCommentInput) GetNewLine() int64 {
+	if x != nil && x.NewLine != nil {
+		return *x.NewLine
+	}
+	return 0
+}
+
+func (x *ReviewCommentInput) GetBody() string {
+	if x != nil {
+		return x.Body
+	}
+	return ""
+}
+
+type SubmitMergeRequestReviewRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Context       *ProjectContext        `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
+	Number        int64                  `protobuf:"varint,2,opt,name=number,proto3" json:"number,omitempty"` // sequential per-project number
+	State         string                 `protobuf:"bytes,3,opt,name=state,proto3" json:"state,omitempty"`    // approved, changes_requested, or commented
+	Body          string                 `protobuf:"bytes,4,opt,name=body,proto3" json:"body,omitempty"`      // optional overall comment
+	Comments      []*ReviewCommentInput  `protobuf:"bytes,5,rep,name=comments,proto3" json:"comments,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SubmitMergeRequestReviewRequest) Reset() {
+	*x = SubmitMergeRequestReviewRequest{}
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[95]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SubmitMergeRequestReviewRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SubmitMergeRequestReviewRequest) ProtoMessage() {}
+
+func (x *SubmitMergeRequestReviewRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[95]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SubmitMergeRequestReviewRequest.ProtoReflect.Descriptor instead.
+func (*SubmitMergeRequestReviewRequest) Descriptor() ([]byte, []int) {
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{95}
+}
+
+func (x *SubmitMergeRequestReviewRequest) GetContext() *ProjectContext {
+	if x != nil {
+		return x.Context
+	}
+	return nil
+}
+
+func (x *SubmitMergeRequestReviewRequest) GetNumber() int64 {
+	if x != nil {
+		return x.Number
+	}
+	return 0
+}
+
+func (x *SubmitMergeRequestReviewRequest) GetState() string {
+	if x != nil {
+		return x.State
+	}
+	return ""
+}
+
+func (x *SubmitMergeRequestReviewRequest) GetBody() string {
+	if x != nil {
+		return x.Body
+	}
+	return ""
+}
+
+func (x *SubmitMergeRequestReviewRequest) GetComments() []*ReviewCommentInput {
+	if x != nil {
+		return x.Comments
+	}
+	return nil
+}
+
+type SubmitMergeRequestReviewResponse struct {
+	state         protoimpl.MessageState    `protogen:"open.v1"`
+	Review        *MergeRequestReviewDetail `protobuf:"bytes,1,opt,name=review,proto3" json:"review,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SubmitMergeRequestReviewResponse) Reset() {
+	*x = SubmitMergeRequestReviewResponse{}
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[96]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SubmitMergeRequestReviewResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SubmitMergeRequestReviewResponse) ProtoMessage() {}
+
+func (x *SubmitMergeRequestReviewResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[96]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SubmitMergeRequestReviewResponse.ProtoReflect.Descriptor instead.
+func (*SubmitMergeRequestReviewResponse) Descriptor() ([]byte, []int) {
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{96}
+}
+
+func (x *SubmitMergeRequestReviewResponse) GetReview() *MergeRequestReviewDetail {
+	if x != nil {
+		return x.Review
+	}
+	return nil
+}
+
+type ListMergeRequestReviewsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Context       *ProjectContext        `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
+	Number        int64                  `protobuf:"varint,2,opt,name=number,proto3" json:"number,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListMergeRequestReviewsRequest) Reset() {
+	*x = ListMergeRequestReviewsRequest{}
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[97]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListMergeRequestReviewsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListMergeRequestReviewsRequest) ProtoMessage() {}
+
+func (x *ListMergeRequestReviewsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[97]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListMergeRequestReviewsRequest.ProtoReflect.Descriptor instead.
+func (*ListMergeRequestReviewsRequest) Descriptor() ([]byte, []int) {
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{97}
+}
+
+func (x *ListMergeRequestReviewsRequest) GetContext() *ProjectContext {
+	if x != nil {
+		return x.Context
+	}
+	return nil
+}
+
+func (x *ListMergeRequestReviewsRequest) GetNumber() int64 {
+	if x != nil {
+		return x.Number
+	}
+	return 0
+}
+
+type ListMergeRequestReviewsResponse struct {
+	state         protoimpl.MessageState      `protogen:"open.v1"`
+	Reviews       []*MergeRequestReviewDetail `protobuf:"bytes,1,rep,name=reviews,proto3" json:"reviews,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListMergeRequestReviewsResponse) Reset() {
+	*x = ListMergeRequestReviewsResponse{}
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[98]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListMergeRequestReviewsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListMergeRequestReviewsResponse) ProtoMessage() {}
+
+func (x *ListMergeRequestReviewsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[98]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListMergeRequestReviewsResponse.ProtoReflect.Descriptor instead.
+func (*ListMergeRequestReviewsResponse) Descriptor() ([]byte, []int) {
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{98}
+}
+
+func (x *ListMergeRequestReviewsResponse) GetReviews() []*MergeRequestReviewDetail {
+	if x != nil {
+		return x.Reviews
+	}
+	return nil
+}
+
+type GetMergeRequestReviewStateRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Context       *ProjectContext        `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
+	Number        int64                  `protobuf:"varint,2,opt,name=number,proto3" json:"number,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetMergeRequestReviewStateRequest) Reset() {
+	*x = GetMergeRequestReviewStateRequest{}
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[99]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetMergeRequestReviewStateRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetMergeRequestReviewStateRequest) ProtoMessage() {}
+
+func (x *GetMergeRequestReviewStateRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[99]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetMergeRequestReviewStateRequest.ProtoReflect.Descriptor instead.
+func (*GetMergeRequestReviewStateRequest) Descriptor() ([]byte, []int) {
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{99}
+}
+
+func (x *GetMergeRequestReviewStateRequest) GetContext() *ProjectContext {
+	if x != nil {
+		return x.Context
+	}
+	return nil
+}
+
+func (x *GetMergeRequestReviewStateRequest) GetNumber() int64 {
+	if x != nil {
+		return x.Number
+	}
+	return 0
+}
+
+type GetMergeRequestReviewStateResponse struct {
+	state         protoimpl.MessageState   `protogen:"open.v1"`
+	State         *MergeRequestReviewState `protobuf:"bytes,1,opt,name=state,proto3" json:"state,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetMergeRequestReviewStateResponse) Reset() {
+	*x = GetMergeRequestReviewStateResponse{}
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[100]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetMergeRequestReviewStateResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetMergeRequestReviewStateResponse) ProtoMessage() {}
+
+func (x *GetMergeRequestReviewStateResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[100]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetMergeRequestReviewStateResponse.ProtoReflect.Descriptor instead.
+func (*GetMergeRequestReviewStateResponse) Descriptor() ([]byte, []int) {
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{100}
+}
+
+func (x *GetMergeRequestReviewStateResponse) GetState() *MergeRequestReviewState {
+	if x != nil {
+		return x.State
+	}
+	return nil
+}
+
+type WithdrawMergeRequestReviewRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Context       *ProjectContext        `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
+	Number        int64                  `protobuf:"varint,2,opt,name=number,proto3" json:"number,omitempty"`
+	ReviewId      string                 `protobuf:"bytes,3,opt,name=review_id,json=reviewId,proto3" json:"review_id,omitempty"` // base36 snow ID
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WithdrawMergeRequestReviewRequest) Reset() {
+	*x = WithdrawMergeRequestReviewRequest{}
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[101]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WithdrawMergeRequestReviewRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WithdrawMergeRequestReviewRequest) ProtoMessage() {}
+
+func (x *WithdrawMergeRequestReviewRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[101]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WithdrawMergeRequestReviewRequest.ProtoReflect.Descriptor instead.
+func (*WithdrawMergeRequestReviewRequest) Descriptor() ([]byte, []int) {
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{101}
+}
+
+func (x *WithdrawMergeRequestReviewRequest) GetContext() *ProjectContext {
+	if x != nil {
+		return x.Context
+	}
+	return nil
+}
+
+func (x *WithdrawMergeRequestReviewRequest) GetNumber() int64 {
+	if x != nil {
+		return x.Number
+	}
+	return 0
+}
+
+func (x *WithdrawMergeRequestReviewRequest) GetReviewId() string {
+	if x != nil {
+		return x.ReviewId
+	}
+	return ""
+}
+
+type WithdrawMergeRequestReviewResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WithdrawMergeRequestReviewResponse) Reset() {
+	*x = WithdrawMergeRequestReviewResponse{}
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[102]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WithdrawMergeRequestReviewResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WithdrawMergeRequestReviewResponse) ProtoMessage() {}
+
+func (x *WithdrawMergeRequestReviewResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[102]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WithdrawMergeRequestReviewResponse.ProtoReflect.Descriptor instead.
+func (*WithdrawMergeRequestReviewResponse) Descriptor() ([]byte, []int) {
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{102}
+}
+
+type DismissMergeRequestReviewRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Context       *ProjectContext        `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
+	Number        int64                  `protobuf:"varint,2,opt,name=number,proto3" json:"number,omitempty"`
+	ReviewId      string                 `protobuf:"bytes,3,opt,name=review_id,json=reviewId,proto3" json:"review_id,omitempty"` // base36 snow ID
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DismissMergeRequestReviewRequest) Reset() {
+	*x = DismissMergeRequestReviewRequest{}
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[103]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DismissMergeRequestReviewRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DismissMergeRequestReviewRequest) ProtoMessage() {}
+
+func (x *DismissMergeRequestReviewRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[103]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DismissMergeRequestReviewRequest.ProtoReflect.Descriptor instead.
+func (*DismissMergeRequestReviewRequest) Descriptor() ([]byte, []int) {
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{103}
+}
+
+func (x *DismissMergeRequestReviewRequest) GetContext() *ProjectContext {
+	if x != nil {
+		return x.Context
+	}
+	return nil
+}
+
+func (x *DismissMergeRequestReviewRequest) GetNumber() int64 {
+	if x != nil {
+		return x.Number
+	}
+	return 0
+}
+
+func (x *DismissMergeRequestReviewRequest) GetReviewId() string {
+	if x != nil {
+		return x.ReviewId
+	}
+	return ""
+}
+
+type DismissMergeRequestReviewResponse struct {
+	state         protoimpl.MessageState    `protogen:"open.v1"`
+	Review        *MergeRequestReviewDetail `protobuf:"bytes,1,opt,name=review,proto3" json:"review,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DismissMergeRequestReviewResponse) Reset() {
+	*x = DismissMergeRequestReviewResponse{}
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[104]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DismissMergeRequestReviewResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DismissMergeRequestReviewResponse) ProtoMessage() {}
+
+func (x *DismissMergeRequestReviewResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[104]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DismissMergeRequestReviewResponse.ProtoReflect.Descriptor instead.
+func (*DismissMergeRequestReviewResponse) Descriptor() ([]byte, []int) {
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{104}
+}
+
+func (x *DismissMergeRequestReviewResponse) GetReview() *MergeRequestReviewDetail {
+	if x != nil {
+		return x.Review
+	}
+	return nil
+}
+
+type ListMergeRequestThreadsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Context       *ProjectContext        `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
+	Number        int64                  `protobuf:"varint,2,opt,name=number,proto3" json:"number,omitempty"`
+	Resolved      *bool                  `protobuf:"varint,3,opt,name=resolved,proto3,oneof" json:"resolved,omitempty"` // omit for every thread
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListMergeRequestThreadsRequest) Reset() {
+	*x = ListMergeRequestThreadsRequest{}
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[105]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListMergeRequestThreadsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListMergeRequestThreadsRequest) ProtoMessage() {}
+
+func (x *ListMergeRequestThreadsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[105]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListMergeRequestThreadsRequest.ProtoReflect.Descriptor instead.
+func (*ListMergeRequestThreadsRequest) Descriptor() ([]byte, []int) {
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{105}
+}
+
+func (x *ListMergeRequestThreadsRequest) GetContext() *ProjectContext {
+	if x != nil {
+		return x.Context
+	}
+	return nil
+}
+
+func (x *ListMergeRequestThreadsRequest) GetNumber() int64 {
+	if x != nil {
+		return x.Number
+	}
+	return 0
+}
+
+func (x *ListMergeRequestThreadsRequest) GetResolved() bool {
+	if x != nil && x.Resolved != nil {
+		return *x.Resolved
+	}
+	return false
+}
+
+type ListMergeRequestThreadsResponse struct {
+	state         protoimpl.MessageState      `protogen:"open.v1"`
+	Threads       []*MergeRequestThreadDetail `protobuf:"bytes,1,rep,name=threads,proto3" json:"threads,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListMergeRequestThreadsResponse) Reset() {
+	*x = ListMergeRequestThreadsResponse{}
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[106]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListMergeRequestThreadsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListMergeRequestThreadsResponse) ProtoMessage() {}
+
+func (x *ListMergeRequestThreadsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[106]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListMergeRequestThreadsResponse.ProtoReflect.Descriptor instead.
+func (*ListMergeRequestThreadsResponse) Descriptor() ([]byte, []int) {
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{106}
+}
+
+func (x *ListMergeRequestThreadsResponse) GetThreads() []*MergeRequestThreadDetail {
+	if x != nil {
+		return x.Threads
+	}
+	return nil
+}
+
+type AddMergeRequestCommentRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Context       *ProjectContext        `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
+	Number        int64                  `protobuf:"varint,2,opt,name=number,proto3" json:"number,omitempty"`
+	FilePath      string                 `protobuf:"bytes,3,opt,name=file_path,json=filePath,proto3" json:"file_path,omitempty"` // empty starts a top-level conversation thread
+	OldLine       *int64                 `protobuf:"varint,4,opt,name=old_line,json=oldLine,proto3,oneof" json:"old_line,omitempty"`
+	NewLine       *int64                 `protobuf:"varint,5,opt,name=new_line,json=newLine,proto3,oneof" json:"new_line,omitempty"`
+	Body          string                 `protobuf:"bytes,6,opt,name=body,proto3" json:"body,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AddMergeRequestCommentRequest) Reset() {
+	*x = AddMergeRequestCommentRequest{}
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[107]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AddMergeRequestCommentRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AddMergeRequestCommentRequest) ProtoMessage() {}
+
+func (x *AddMergeRequestCommentRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[107]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AddMergeRequestCommentRequest.ProtoReflect.Descriptor instead.
+func (*AddMergeRequestCommentRequest) Descriptor() ([]byte, []int) {
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{107}
+}
+
+func (x *AddMergeRequestCommentRequest) GetContext() *ProjectContext {
+	if x != nil {
+		return x.Context
+	}
+	return nil
+}
+
+func (x *AddMergeRequestCommentRequest) GetNumber() int64 {
+	if x != nil {
+		return x.Number
+	}
+	return 0
+}
+
+func (x *AddMergeRequestCommentRequest) GetFilePath() string {
+	if x != nil {
+		return x.FilePath
+	}
+	return ""
+}
+
+func (x *AddMergeRequestCommentRequest) GetOldLine() int64 {
+	if x != nil && x.OldLine != nil {
+		return *x.OldLine
+	}
+	return 0
+}
+
+func (x *AddMergeRequestCommentRequest) GetNewLine() int64 {
+	if x != nil && x.NewLine != nil {
+		return *x.NewLine
+	}
+	return 0
+}
+
+func (x *AddMergeRequestCommentRequest) GetBody() string {
+	if x != nil {
+		return x.Body
+	}
+	return ""
+}
+
+type AddMergeRequestCommentResponse struct {
+	state         protoimpl.MessageState    `protogen:"open.v1"`
+	Thread        *MergeRequestThreadDetail `protobuf:"bytes,1,opt,name=thread,proto3" json:"thread,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AddMergeRequestCommentResponse) Reset() {
+	*x = AddMergeRequestCommentResponse{}
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[108]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AddMergeRequestCommentResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AddMergeRequestCommentResponse) ProtoMessage() {}
+
+func (x *AddMergeRequestCommentResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[108]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AddMergeRequestCommentResponse.ProtoReflect.Descriptor instead.
+func (*AddMergeRequestCommentResponse) Descriptor() ([]byte, []int) {
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{108}
+}
+
+func (x *AddMergeRequestCommentResponse) GetThread() *MergeRequestThreadDetail {
+	if x != nil {
+		return x.Thread
+	}
+	return nil
+}
+
+type ReplyMergeRequestThreadRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Context       *ProjectContext        `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
+	Number        int64                  `protobuf:"varint,2,opt,name=number,proto3" json:"number,omitempty"`
+	ThreadId      string                 `protobuf:"bytes,3,opt,name=thread_id,json=threadId,proto3" json:"thread_id,omitempty"` // base36 snow ID
+	Body          string                 `protobuf:"bytes,4,opt,name=body,proto3" json:"body,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReplyMergeRequestThreadRequest) Reset() {
+	*x = ReplyMergeRequestThreadRequest{}
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[109]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReplyMergeRequestThreadRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReplyMergeRequestThreadRequest) ProtoMessage() {}
+
+func (x *ReplyMergeRequestThreadRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[109]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReplyMergeRequestThreadRequest.ProtoReflect.Descriptor instead.
+func (*ReplyMergeRequestThreadRequest) Descriptor() ([]byte, []int) {
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{109}
+}
+
+func (x *ReplyMergeRequestThreadRequest) GetContext() *ProjectContext {
+	if x != nil {
+		return x.Context
+	}
+	return nil
+}
+
+func (x *ReplyMergeRequestThreadRequest) GetNumber() int64 {
+	if x != nil {
+		return x.Number
+	}
+	return 0
+}
+
+func (x *ReplyMergeRequestThreadRequest) GetThreadId() string {
+	if x != nil {
+		return x.ThreadId
+	}
+	return ""
+}
+
+func (x *ReplyMergeRequestThreadRequest) GetBody() string {
+	if x != nil {
+		return x.Body
+	}
+	return ""
+}
+
+type ReplyMergeRequestThreadResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Comment       *ReviewCommentDetail   `protobuf:"bytes,1,opt,name=comment,proto3" json:"comment,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReplyMergeRequestThreadResponse) Reset() {
+	*x = ReplyMergeRequestThreadResponse{}
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[110]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReplyMergeRequestThreadResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReplyMergeRequestThreadResponse) ProtoMessage() {}
+
+func (x *ReplyMergeRequestThreadResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[110]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReplyMergeRequestThreadResponse.ProtoReflect.Descriptor instead.
+func (*ReplyMergeRequestThreadResponse) Descriptor() ([]byte, []int) {
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{110}
+}
+
+func (x *ReplyMergeRequestThreadResponse) GetComment() *ReviewCommentDetail {
+	if x != nil {
+		return x.Comment
+	}
+	return nil
+}
+
+type UpdateMergeRequestCommentRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Context       *ProjectContext        `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
+	Number        int64                  `protobuf:"varint,2,opt,name=number,proto3" json:"number,omitempty"`
+	ThreadId      string                 `protobuf:"bytes,3,opt,name=thread_id,json=threadId,proto3" json:"thread_id,omitempty"`    // base36 snow ID
+	CommentId     string                 `protobuf:"bytes,4,opt,name=comment_id,json=commentId,proto3" json:"comment_id,omitempty"` // base36 snow ID
+	Body          string                 `protobuf:"bytes,5,opt,name=body,proto3" json:"body,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateMergeRequestCommentRequest) Reset() {
+	*x = UpdateMergeRequestCommentRequest{}
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[111]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateMergeRequestCommentRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateMergeRequestCommentRequest) ProtoMessage() {}
+
+func (x *UpdateMergeRequestCommentRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[111]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateMergeRequestCommentRequest.ProtoReflect.Descriptor instead.
+func (*UpdateMergeRequestCommentRequest) Descriptor() ([]byte, []int) {
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{111}
+}
+
+func (x *UpdateMergeRequestCommentRequest) GetContext() *ProjectContext {
+	if x != nil {
+		return x.Context
+	}
+	return nil
+}
+
+func (x *UpdateMergeRequestCommentRequest) GetNumber() int64 {
+	if x != nil {
+		return x.Number
+	}
+	return 0
+}
+
+func (x *UpdateMergeRequestCommentRequest) GetThreadId() string {
+	if x != nil {
+		return x.ThreadId
+	}
+	return ""
+}
+
+func (x *UpdateMergeRequestCommentRequest) GetCommentId() string {
+	if x != nil {
+		return x.CommentId
+	}
+	return ""
+}
+
+func (x *UpdateMergeRequestCommentRequest) GetBody() string {
+	if x != nil {
+		return x.Body
+	}
+	return ""
+}
+
+type UpdateMergeRequestCommentResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Comment       *ReviewCommentDetail   `protobuf:"bytes,1,opt,name=comment,proto3" json:"comment,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateMergeRequestCommentResponse) Reset() {
+	*x = UpdateMergeRequestCommentResponse{}
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[112]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateMergeRequestCommentResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateMergeRequestCommentResponse) ProtoMessage() {}
+
+func (x *UpdateMergeRequestCommentResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[112]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateMergeRequestCommentResponse.ProtoReflect.Descriptor instead.
+func (*UpdateMergeRequestCommentResponse) Descriptor() ([]byte, []int) {
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{112}
+}
+
+func (x *UpdateMergeRequestCommentResponse) GetComment() *ReviewCommentDetail {
+	if x != nil {
+		return x.Comment
+	}
+	return nil
+}
+
+type DeleteMergeRequestCommentRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Context       *ProjectContext        `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
+	Number        int64                  `protobuf:"varint,2,opt,name=number,proto3" json:"number,omitempty"`
+	ThreadId      string                 `protobuf:"bytes,3,opt,name=thread_id,json=threadId,proto3" json:"thread_id,omitempty"`    // base36 snow ID
+	CommentId     string                 `protobuf:"bytes,4,opt,name=comment_id,json=commentId,proto3" json:"comment_id,omitempty"` // base36 snow ID
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteMergeRequestCommentRequest) Reset() {
+	*x = DeleteMergeRequestCommentRequest{}
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[113]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteMergeRequestCommentRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteMergeRequestCommentRequest) ProtoMessage() {}
+
+func (x *DeleteMergeRequestCommentRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[113]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteMergeRequestCommentRequest.ProtoReflect.Descriptor instead.
+func (*DeleteMergeRequestCommentRequest) Descriptor() ([]byte, []int) {
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{113}
+}
+
+func (x *DeleteMergeRequestCommentRequest) GetContext() *ProjectContext {
+	if x != nil {
+		return x.Context
+	}
+	return nil
+}
+
+func (x *DeleteMergeRequestCommentRequest) GetNumber() int64 {
+	if x != nil {
+		return x.Number
+	}
+	return 0
+}
+
+func (x *DeleteMergeRequestCommentRequest) GetThreadId() string {
+	if x != nil {
+		return x.ThreadId
+	}
+	return ""
+}
+
+func (x *DeleteMergeRequestCommentRequest) GetCommentId() string {
+	if x != nil {
+		return x.CommentId
+	}
+	return ""
+}
+
+type DeleteMergeRequestCommentResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteMergeRequestCommentResponse) Reset() {
+	*x = DeleteMergeRequestCommentResponse{}
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[114]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteMergeRequestCommentResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteMergeRequestCommentResponse) ProtoMessage() {}
+
+func (x *DeleteMergeRequestCommentResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[114]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteMergeRequestCommentResponse.ProtoReflect.Descriptor instead.
+func (*DeleteMergeRequestCommentResponse) Descriptor() ([]byte, []int) {
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{114}
+}
+
+type ResolveMergeRequestThreadRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Context       *ProjectContext        `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
+	Number        int64                  `protobuf:"varint,2,opt,name=number,proto3" json:"number,omitempty"`
+	ThreadId      string                 `protobuf:"bytes,3,opt,name=thread_id,json=threadId,proto3" json:"thread_id,omitempty"` // base36 snow ID
+	Resolved      bool                   `protobuf:"varint,4,opt,name=resolved,proto3" json:"resolved,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ResolveMergeRequestThreadRequest) Reset() {
+	*x = ResolveMergeRequestThreadRequest{}
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[115]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResolveMergeRequestThreadRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResolveMergeRequestThreadRequest) ProtoMessage() {}
+
+func (x *ResolveMergeRequestThreadRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[115]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResolveMergeRequestThreadRequest.ProtoReflect.Descriptor instead.
+func (*ResolveMergeRequestThreadRequest) Descriptor() ([]byte, []int) {
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{115}
+}
+
+func (x *ResolveMergeRequestThreadRequest) GetContext() *ProjectContext {
+	if x != nil {
+		return x.Context
+	}
+	return nil
+}
+
+func (x *ResolveMergeRequestThreadRequest) GetNumber() int64 {
+	if x != nil {
+		return x.Number
+	}
+	return 0
+}
+
+func (x *ResolveMergeRequestThreadRequest) GetThreadId() string {
+	if x != nil {
+		return x.ThreadId
+	}
+	return ""
+}
+
+func (x *ResolveMergeRequestThreadRequest) GetResolved() bool {
+	if x != nil {
+		return x.Resolved
+	}
+	return false
+}
+
+type ResolveMergeRequestThreadResponse struct {
+	state         protoimpl.MessageState    `protogen:"open.v1"`
+	Thread        *MergeRequestThreadDetail `protobuf:"bytes,1,opt,name=thread,proto3" json:"thread,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ResolveMergeRequestThreadResponse) Reset() {
+	*x = ResolveMergeRequestThreadResponse{}
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[116]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResolveMergeRequestThreadResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResolveMergeRequestThreadResponse) ProtoMessage() {}
+
+func (x *ResolveMergeRequestThreadResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[116]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResolveMergeRequestThreadResponse.ProtoReflect.Descriptor instead.
+func (*ResolveMergeRequestThreadResponse) Descriptor() ([]byte, []int) {
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{116}
+}
+
+func (x *ResolveMergeRequestThreadResponse) GetThread() *MergeRequestThreadDetail {
+	if x != nil {
+		return x.Thread
+	}
+	return nil
+}
+
+type DeleteMergeRequestThreadRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Context       *ProjectContext        `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
+	Number        int64                  `protobuf:"varint,2,opt,name=number,proto3" json:"number,omitempty"`
+	ThreadId      string                 `protobuf:"bytes,3,opt,name=thread_id,json=threadId,proto3" json:"thread_id,omitempty"` // base36 snow ID
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteMergeRequestThreadRequest) Reset() {
+	*x = DeleteMergeRequestThreadRequest{}
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[117]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteMergeRequestThreadRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteMergeRequestThreadRequest) ProtoMessage() {}
+
+func (x *DeleteMergeRequestThreadRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[117]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteMergeRequestThreadRequest.ProtoReflect.Descriptor instead.
+func (*DeleteMergeRequestThreadRequest) Descriptor() ([]byte, []int) {
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{117}
+}
+
+func (x *DeleteMergeRequestThreadRequest) GetContext() *ProjectContext {
+	if x != nil {
+		return x.Context
+	}
+	return nil
+}
+
+func (x *DeleteMergeRequestThreadRequest) GetNumber() int64 {
+	if x != nil {
+		return x.Number
+	}
+	return 0
+}
+
+func (x *DeleteMergeRequestThreadRequest) GetThreadId() string {
+	if x != nil {
+		return x.ThreadId
+	}
+	return ""
+}
+
+type DeleteMergeRequestThreadResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteMergeRequestThreadResponse) Reset() {
+	*x = DeleteMergeRequestThreadResponse{}
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[118]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteMergeRequestThreadResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteMergeRequestThreadResponse) ProtoMessage() {}
+
+func (x *DeleteMergeRequestThreadResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[118]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteMergeRequestThreadResponse.ProtoReflect.Descriptor instead.
+func (*DeleteMergeRequestThreadResponse) Descriptor() ([]byte, []int) {
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{118}
+}
+
+type ListMergeRequestReviewRequestsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Context       *ProjectContext        `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
+	Number        int64                  `protobuf:"varint,2,opt,name=number,proto3" json:"number,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListMergeRequestReviewRequestsRequest) Reset() {
+	*x = ListMergeRequestReviewRequestsRequest{}
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[119]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListMergeRequestReviewRequestsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListMergeRequestReviewRequestsRequest) ProtoMessage() {}
+
+func (x *ListMergeRequestReviewRequestsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[119]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListMergeRequestReviewRequestsRequest.ProtoReflect.Descriptor instead.
+func (*ListMergeRequestReviewRequestsRequest) Descriptor() ([]byte, []int) {
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{119}
+}
+
+func (x *ListMergeRequestReviewRequestsRequest) GetContext() *ProjectContext {
+	if x != nil {
+		return x.Context
+	}
+	return nil
+}
+
+func (x *ListMergeRequestReviewRequestsRequest) GetNumber() int64 {
+	if x != nil {
+		return x.Number
+	}
+	return 0
+}
+
+type ListMergeRequestReviewRequestsResponse struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	ReviewRequests []*ReviewRequestDetail `protobuf:"bytes,1,rep,name=review_requests,json=reviewRequests,proto3" json:"review_requests,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *ListMergeRequestReviewRequestsResponse) Reset() {
+	*x = ListMergeRequestReviewRequestsResponse{}
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[120]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListMergeRequestReviewRequestsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListMergeRequestReviewRequestsResponse) ProtoMessage() {}
+
+func (x *ListMergeRequestReviewRequestsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[120]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListMergeRequestReviewRequestsResponse.ProtoReflect.Descriptor instead.
+func (*ListMergeRequestReviewRequestsResponse) Descriptor() ([]byte, []int) {
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{120}
+}
+
+func (x *ListMergeRequestReviewRequestsResponse) GetReviewRequests() []*ReviewRequestDetail {
+	if x != nil {
+		return x.ReviewRequests
+	}
+	return nil
+}
+
+type RequestMergeRequestReviewRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Context       *ProjectContext        `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
+	Number        int64                  `protobuf:"varint,2,opt,name=number,proto3" json:"number,omitempty"`
+	UserId        string                 `protobuf:"bytes,3,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"` // base36 snow ID
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RequestMergeRequestReviewRequest) Reset() {
+	*x = RequestMergeRequestReviewRequest{}
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[121]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RequestMergeRequestReviewRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RequestMergeRequestReviewRequest) ProtoMessage() {}
+
+func (x *RequestMergeRequestReviewRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[121]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RequestMergeRequestReviewRequest.ProtoReflect.Descriptor instead.
+func (*RequestMergeRequestReviewRequest) Descriptor() ([]byte, []int) {
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{121}
+}
+
+func (x *RequestMergeRequestReviewRequest) GetContext() *ProjectContext {
+	if x != nil {
+		return x.Context
+	}
+	return nil
+}
+
+func (x *RequestMergeRequestReviewRequest) GetNumber() int64 {
+	if x != nil {
+		return x.Number
+	}
+	return 0
+}
+
+func (x *RequestMergeRequestReviewRequest) GetUserId() string {
+	if x != nil {
+		return x.UserId
+	}
+	return ""
+}
+
+type RequestMergeRequestReviewResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ReviewRequest *ReviewRequestDetail   `protobuf:"bytes,1,opt,name=review_request,json=reviewRequest,proto3" json:"review_request,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RequestMergeRequestReviewResponse) Reset() {
+	*x = RequestMergeRequestReviewResponse{}
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[122]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RequestMergeRequestReviewResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RequestMergeRequestReviewResponse) ProtoMessage() {}
+
+func (x *RequestMergeRequestReviewResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[122]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RequestMergeRequestReviewResponse.ProtoReflect.Descriptor instead.
+func (*RequestMergeRequestReviewResponse) Descriptor() ([]byte, []int) {
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{122}
+}
+
+func (x *RequestMergeRequestReviewResponse) GetReviewRequest() *ReviewRequestDetail {
+	if x != nil {
+		return x.ReviewRequest
+	}
+	return nil
+}
+
+type RemoveMergeRequestReviewRequestRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Context       *ProjectContext        `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
+	Number        int64                  `protobuf:"varint,2,opt,name=number,proto3" json:"number,omitempty"`
+	UserId        string                 `protobuf:"bytes,3,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"` // base36 snow ID
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RemoveMergeRequestReviewRequestRequest) Reset() {
+	*x = RemoveMergeRequestReviewRequestRequest{}
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[123]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RemoveMergeRequestReviewRequestRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RemoveMergeRequestReviewRequestRequest) ProtoMessage() {}
+
+func (x *RemoveMergeRequestReviewRequestRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[123]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RemoveMergeRequestReviewRequestRequest.ProtoReflect.Descriptor instead.
+func (*RemoveMergeRequestReviewRequestRequest) Descriptor() ([]byte, []int) {
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{123}
+}
+
+func (x *RemoveMergeRequestReviewRequestRequest) GetContext() *ProjectContext {
+	if x != nil {
+		return x.Context
+	}
+	return nil
+}
+
+func (x *RemoveMergeRequestReviewRequestRequest) GetNumber() int64 {
+	if x != nil {
+		return x.Number
+	}
+	return 0
+}
+
+func (x *RemoveMergeRequestReviewRequestRequest) GetUserId() string {
+	if x != nil {
+		return x.UserId
+	}
+	return ""
+}
+
+type RemoveMergeRequestReviewRequestResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RemoveMergeRequestReviewRequestResponse) Reset() {
+	*x = RemoveMergeRequestReviewRequestResponse{}
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[124]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RemoveMergeRequestReviewRequestResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RemoveMergeRequestReviewRequestResponse) ProtoMessage() {}
+
+func (x *RemoveMergeRequestReviewRequestResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[124]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RemoveMergeRequestReviewRequestResponse.ProtoReflect.Descriptor instead.
+func (*RemoveMergeRequestReviewRequestResponse) Descriptor() ([]byte, []int) {
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{124}
+}
+
+type ListMergeRequestTimelineRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Context       *ProjectContext        `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
+	Number        int64                  `protobuf:"varint,2,opt,name=number,proto3" json:"number,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListMergeRequestTimelineRequest) Reset() {
+	*x = ListMergeRequestTimelineRequest{}
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[125]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListMergeRequestTimelineRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListMergeRequestTimelineRequest) ProtoMessage() {}
+
+func (x *ListMergeRequestTimelineRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[125]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListMergeRequestTimelineRequest.ProtoReflect.Descriptor instead.
+func (*ListMergeRequestTimelineRequest) Descriptor() ([]byte, []int) {
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{125}
+}
+
+func (x *ListMergeRequestTimelineRequest) GetContext() *ProjectContext {
+	if x != nil {
+		return x.Context
+	}
+	return nil
+}
+
+func (x *ListMergeRequestTimelineRequest) GetNumber() int64 {
+	if x != nil {
+		return x.Number
+	}
+	return 0
+}
+
+type ListMergeRequestTimelineResponse struct {
+	state         protoimpl.MessageState      `protogen:"open.v1"`
+	Items         []*MergeRequestTimelineItem `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListMergeRequestTimelineResponse) Reset() {
+	*x = ListMergeRequestTimelineResponse{}
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[126]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListMergeRequestTimelineResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListMergeRequestTimelineResponse) ProtoMessage() {}
+
+func (x *ListMergeRequestTimelineResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[126]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListMergeRequestTimelineResponse.ProtoReflect.Descriptor instead.
+func (*ListMergeRequestTimelineResponse) Descriptor() ([]byte, []int) {
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{126}
+}
+
+func (x *ListMergeRequestTimelineResponse) GetItems() []*MergeRequestTimelineItem {
+	if x != nil {
+		return x.Items
+	}
+	return nil
+}
+
 type FileLockDetail struct {
 	state              protoimpl.MessageState `protogen:"open.v1"`
 	Id                 string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`                       // base36 snow ID
@@ -5182,7 +7622,7 @@ type FileLockDetail struct {
 
 func (x *FileLockDetail) Reset() {
 	*x = FileLockDetail{}
-	mi := &file_internal_grpc_proto_server_proto_msgTypes[87]
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[127]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5194,7 +7634,7 @@ func (x *FileLockDetail) String() string {
 func (*FileLockDetail) ProtoMessage() {}
 
 func (x *FileLockDetail) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_grpc_proto_server_proto_msgTypes[87]
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[127]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5207,7 +7647,7 @@ func (x *FileLockDetail) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FileLockDetail.ProtoReflect.Descriptor instead.
 func (*FileLockDetail) Descriptor() ([]byte, []int) {
-	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{87}
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{127}
 }
 
 func (x *FileLockDetail) GetId() string {
@@ -5277,7 +7717,7 @@ type LockFileRequest struct {
 
 func (x *LockFileRequest) Reset() {
 	*x = LockFileRequest{}
-	mi := &file_internal_grpc_proto_server_proto_msgTypes[88]
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[128]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5289,7 +7729,7 @@ func (x *LockFileRequest) String() string {
 func (*LockFileRequest) ProtoMessage() {}
 
 func (x *LockFileRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_grpc_proto_server_proto_msgTypes[88]
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[128]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5302,7 +7742,7 @@ func (x *LockFileRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LockFileRequest.ProtoReflect.Descriptor instead.
 func (*LockFileRequest) Descriptor() ([]byte, []int) {
-	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{88}
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{128}
 }
 
 func (x *LockFileRequest) GetContext() *ProjectContext {
@@ -5335,7 +7775,7 @@ type LockFileResponse struct {
 
 func (x *LockFileResponse) Reset() {
 	*x = LockFileResponse{}
-	mi := &file_internal_grpc_proto_server_proto_msgTypes[89]
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[129]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5347,7 +7787,7 @@ func (x *LockFileResponse) String() string {
 func (*LockFileResponse) ProtoMessage() {}
 
 func (x *LockFileResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_grpc_proto_server_proto_msgTypes[89]
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[129]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5360,7 +7800,7 @@ func (x *LockFileResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LockFileResponse.ProtoReflect.Descriptor instead.
 func (*LockFileResponse) Descriptor() ([]byte, []int) {
-	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{89}
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{129}
 }
 
 func (x *LockFileResponse) GetLock() *FileLockDetail {
@@ -5381,7 +7821,7 @@ type UnlockFileRequest struct {
 
 func (x *UnlockFileRequest) Reset() {
 	*x = UnlockFileRequest{}
-	mi := &file_internal_grpc_proto_server_proto_msgTypes[90]
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[130]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5393,7 +7833,7 @@ func (x *UnlockFileRequest) String() string {
 func (*UnlockFileRequest) ProtoMessage() {}
 
 func (x *UnlockFileRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_grpc_proto_server_proto_msgTypes[90]
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[130]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5406,7 +7846,7 @@ func (x *UnlockFileRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UnlockFileRequest.ProtoReflect.Descriptor instead.
 func (*UnlockFileRequest) Descriptor() ([]byte, []int) {
-	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{90}
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{130}
 }
 
 func (x *UnlockFileRequest) GetContext() *ProjectContext {
@@ -5438,7 +7878,7 @@ type UnlockFileResponse struct {
 
 func (x *UnlockFileResponse) Reset() {
 	*x = UnlockFileResponse{}
-	mi := &file_internal_grpc_proto_server_proto_msgTypes[91]
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[131]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5450,7 +7890,7 @@ func (x *UnlockFileResponse) String() string {
 func (*UnlockFileResponse) ProtoMessage() {}
 
 func (x *UnlockFileResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_grpc_proto_server_proto_msgTypes[91]
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[131]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5463,7 +7903,7 @@ func (x *UnlockFileResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UnlockFileResponse.ProtoReflect.Descriptor instead.
 func (*UnlockFileResponse) Descriptor() ([]byte, []int) {
-	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{91}
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{131}
 }
 
 type ListFileLocksRequest struct {
@@ -5475,7 +7915,7 @@ type ListFileLocksRequest struct {
 
 func (x *ListFileLocksRequest) Reset() {
 	*x = ListFileLocksRequest{}
-	mi := &file_internal_grpc_proto_server_proto_msgTypes[92]
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[132]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5487,7 +7927,7 @@ func (x *ListFileLocksRequest) String() string {
 func (*ListFileLocksRequest) ProtoMessage() {}
 
 func (x *ListFileLocksRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_grpc_proto_server_proto_msgTypes[92]
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[132]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5500,7 +7940,7 @@ func (x *ListFileLocksRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListFileLocksRequest.ProtoReflect.Descriptor instead.
 func (*ListFileLocksRequest) Descriptor() ([]byte, []int) {
-	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{92}
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{132}
 }
 
 func (x *ListFileLocksRequest) GetContext() *ProjectContext {
@@ -5519,7 +7959,7 @@ type ListFileLocksResponse struct {
 
 func (x *ListFileLocksResponse) Reset() {
 	*x = ListFileLocksResponse{}
-	mi := &file_internal_grpc_proto_server_proto_msgTypes[93]
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[133]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5531,7 +7971,7 @@ func (x *ListFileLocksResponse) String() string {
 func (*ListFileLocksResponse) ProtoMessage() {}
 
 func (x *ListFileLocksResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_grpc_proto_server_proto_msgTypes[93]
+	mi := &file_internal_grpc_proto_server_proto_msgTypes[133]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5544,7 +7984,7 @@ func (x *ListFileLocksResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListFileLocksResponse.ProtoReflect.Descriptor instead.
 func (*ListFileLocksResponse) Descriptor() ([]byte, []int) {
-	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{93}
+	return file_internal_grpc_proto_server_proto_rawDescGZIP(), []int{133}
 }
 
 func (x *ListFileLocksResponse) GetLocks() []*FileLockDetail {
@@ -5962,7 +8402,194 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12\x16\n" +
 	"\x06number\x18\x02 \x01(\x03R\x06number\"[\n" +
 	"\x19CloseMergeRequestResponse\x12>\n" +
-	"\rmerge_request\x18\x01 \x01(\v2\x19.greet.MergeRequestDetailR\fmergeRequest\"\xac\x02\n" +
+	"\rmerge_request\x18\x01 \x01(\v2\x19.greet.MergeRequestDetailR\fmergeRequest\"W\n" +
+	"\vReviewActor\x12\x17\n" +
+	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1b\n" +
+	"\tphoto_url\x18\x03 \x01(\tR\bphotoUrl\"\xa4\x02\n" +
+	"\x13ReviewCommentDetail\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1b\n" +
+	"\tthread_id\x18\x02 \x01(\tR\bthreadId\x12&\n" +
+	"\x04user\x18\x03 \x01(\v2\x12.greet.ReviewActorR\x04user\x12\x12\n" +
+	"\x04body\x18\x04 \x01(\tR\x04body\x12\x16\n" +
+	"\x06system\x18\x05 \x01(\bR\x06system\x129\n" +
+	"\n" +
+	"created_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
+	"\n" +
+	"updated_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12\x16\n" +
+	"\x06edited\x18\b \x01(\bR\x06edited\"\xcc\x04\n" +
+	"\x18MergeRequestThreadDetail\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12(\n" +
+	"\x10merge_request_id\x18\x02 \x01(\x03R\x0emergeRequestId\x12\x1b\n" +
+	"\treview_id\x18\x03 \x01(\tR\breviewId\x12\x1b\n" +
+	"\tfile_path\x18\x04 \x01(\tR\bfilePath\x12\x1e\n" +
+	"\bold_line\x18\x05 \x01(\x03H\x00R\aoldLine\x88\x01\x01\x12\x1e\n" +
+	"\bnew_line\x18\x06 \x01(\x03H\x01R\anewLine\x88\x01\x01\x12\x12\n" +
+	"\x04side\x18\a \x01(\tR\x04side\x12\x1a\n" +
+	"\boutdated\x18\b \x01(\bR\boutdated\x12\x1a\n" +
+	"\bresolved\x18\t \x01(\bR\bresolved\x123\n" +
+	"\vresolved_by\x18\n" +
+	" \x01(\v2\x12.greet.ReviewActorR\n" +
+	"resolvedBy\x12;\n" +
+	"\vresolved_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"resolvedAt\x121\n" +
+	"\n" +
+	"created_by\x18\f \x01(\v2\x12.greet.ReviewActorR\tcreatedBy\x129\n" +
+	"\n" +
+	"created_at\x18\r \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x126\n" +
+	"\bcomments\x18\x0e \x03(\v2\x1a.greet.ReviewCommentDetailR\bcommentsB\v\n" +
+	"\t_old_lineB\v\n" +
+	"\t_new_line\"\x81\x04\n" +
+	"\x18MergeRequestReviewDetail\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12(\n" +
+	"\x10merge_request_id\x18\x02 \x01(\x03R\x0emergeRequestId\x12.\n" +
+	"\breviewer\x18\x03 \x01(\v2\x12.greet.ReviewActorR\breviewer\x12\x14\n" +
+	"\x05state\x18\x04 \x01(\tR\x05state\x12\x12\n" +
+	"\x04body\x18\x05 \x01(\tR\x04body\x12$\n" +
+	"\x0ehead_commit_id\x18\x06 \x01(\tR\fheadCommitId\x12\x14\n" +
+	"\x05stale\x18\a \x01(\bR\x05stale\x12=\n" +
+	"\fdismissed_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\vdismissedAt\x12)\n" +
+	"\x10dismissed_reason\x18\t \x01(\tR\x0fdismissedReason\x125\n" +
+	"\fdismissed_by\x18\n" +
+	" \x01(\v2\x12.greet.ReviewActorR\vdismissedBy\x129\n" +
+	"\n" +
+	"created_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
+	"\n" +
+	"updated_at\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\xf0\x01\n" +
+	"\x17MergeRequestReviewState\x12\x1c\n" +
+	"\tapprovals\x18\x01 \x01(\x05R\tapprovals\x12+\n" +
+	"\x11changes_requested\x18\x02 \x01(\x05R\x10changesRequested\x12/\n" +
+	"\x13dismissed_approvals\x18\x03 \x01(\x05R\x12dismissedApprovals\x123\n" +
+	"\x15outstanding_reviewers\x18\x04 \x03(\tR\x14outstandingReviewers\x12$\n" +
+	"\x0ehead_commit_id\x18\x05 \x01(\tR\fheadCommitId\"\xf1\x01\n" +
+	"\x13ReviewRequestDetail\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12(\n" +
+	"\x10merge_request_id\x18\x02 \x01(\x03R\x0emergeRequestId\x12.\n" +
+	"\breviewer\x18\x03 \x01(\v2\x12.greet.ReviewActorR\breviewer\x125\n" +
+	"\frequested_by\x18\x04 \x01(\v2\x12.greet.ReviewActorR\vrequestedBy\x129\n" +
+	"\n" +
+	"created_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"\xa3\x02\n" +
+	"\x18MergeRequestTimelineItem\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
+	"\x04kind\x18\x02 \x01(\tR\x04kind\x12(\n" +
+	"\x05actor\x18\x03 \x01(\v2\x12.greet.ReviewActorR\x05actor\x12,\n" +
+	"\asubject\x18\x04 \x01(\v2\x12.greet.ReviewActorR\asubject\x12\x12\n" +
+	"\x04body\x18\x05 \x01(\tR\x04body\x12\x1b\n" +
+	"\tcommit_id\x18\x06 \x01(\tR\bcommitId\x12\x1f\n" +
+	"\vcommit_hash\x18\a \x01(\tR\n" +
+	"commitHash\x129\n" +
+	"\n" +
+	"created_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"\x9f\x01\n" +
+	"\x12ReviewCommentInput\x12\x1b\n" +
+	"\tfile_path\x18\x01 \x01(\tR\bfilePath\x12\x1e\n" +
+	"\bold_line\x18\x02 \x01(\x03H\x00R\aoldLine\x88\x01\x01\x12\x1e\n" +
+	"\bnew_line\x18\x03 \x01(\x03H\x01R\anewLine\x88\x01\x01\x12\x12\n" +
+	"\x04body\x18\x04 \x01(\tR\x04bodyB\v\n" +
+	"\t_old_lineB\v\n" +
+	"\t_new_line\"\xcb\x01\n" +
+	"\x1fSubmitMergeRequestReviewRequest\x12/\n" +
+	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12\x16\n" +
+	"\x06number\x18\x02 \x01(\x03R\x06number\x12\x14\n" +
+	"\x05state\x18\x03 \x01(\tR\x05state\x12\x12\n" +
+	"\x04body\x18\x04 \x01(\tR\x04body\x125\n" +
+	"\bcomments\x18\x05 \x03(\v2\x19.greet.ReviewCommentInputR\bcomments\"[\n" +
+	" SubmitMergeRequestReviewResponse\x127\n" +
+	"\x06review\x18\x01 \x01(\v2\x1f.greet.MergeRequestReviewDetailR\x06review\"i\n" +
+	"\x1eListMergeRequestReviewsRequest\x12/\n" +
+	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12\x16\n" +
+	"\x06number\x18\x02 \x01(\x03R\x06number\"\\\n" +
+	"\x1fListMergeRequestReviewsResponse\x129\n" +
+	"\areviews\x18\x01 \x03(\v2\x1f.greet.MergeRequestReviewDetailR\areviews\"l\n" +
+	"!GetMergeRequestReviewStateRequest\x12/\n" +
+	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12\x16\n" +
+	"\x06number\x18\x02 \x01(\x03R\x06number\"Z\n" +
+	"\"GetMergeRequestReviewStateResponse\x124\n" +
+	"\x05state\x18\x01 \x01(\v2\x1e.greet.MergeRequestReviewStateR\x05state\"\x89\x01\n" +
+	"!WithdrawMergeRequestReviewRequest\x12/\n" +
+	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12\x16\n" +
+	"\x06number\x18\x02 \x01(\x03R\x06number\x12\x1b\n" +
+	"\treview_id\x18\x03 \x01(\tR\breviewId\"$\n" +
+	"\"WithdrawMergeRequestReviewResponse\"\x88\x01\n" +
+	" DismissMergeRequestReviewRequest\x12/\n" +
+	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12\x16\n" +
+	"\x06number\x18\x02 \x01(\x03R\x06number\x12\x1b\n" +
+	"\treview_id\x18\x03 \x01(\tR\breviewId\"\\\n" +
+	"!DismissMergeRequestReviewResponse\x127\n" +
+	"\x06review\x18\x01 \x01(\v2\x1f.greet.MergeRequestReviewDetailR\x06review\"\x97\x01\n" +
+	"\x1eListMergeRequestThreadsRequest\x12/\n" +
+	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12\x16\n" +
+	"\x06number\x18\x02 \x01(\x03R\x06number\x12\x1f\n" +
+	"\bresolved\x18\x03 \x01(\bH\x00R\bresolved\x88\x01\x01B\v\n" +
+	"\t_resolved\"\\\n" +
+	"\x1fListMergeRequestThreadsResponse\x129\n" +
+	"\athreads\x18\x01 \x03(\v2\x1f.greet.MergeRequestThreadDetailR\athreads\"\xf3\x01\n" +
+	"\x1dAddMergeRequestCommentRequest\x12/\n" +
+	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12\x16\n" +
+	"\x06number\x18\x02 \x01(\x03R\x06number\x12\x1b\n" +
+	"\tfile_path\x18\x03 \x01(\tR\bfilePath\x12\x1e\n" +
+	"\bold_line\x18\x04 \x01(\x03H\x00R\aoldLine\x88\x01\x01\x12\x1e\n" +
+	"\bnew_line\x18\x05 \x01(\x03H\x01R\anewLine\x88\x01\x01\x12\x12\n" +
+	"\x04body\x18\x06 \x01(\tR\x04bodyB\v\n" +
+	"\t_old_lineB\v\n" +
+	"\t_new_line\"Y\n" +
+	"\x1eAddMergeRequestCommentResponse\x127\n" +
+	"\x06thread\x18\x01 \x01(\v2\x1f.greet.MergeRequestThreadDetailR\x06thread\"\x9a\x01\n" +
+	"\x1eReplyMergeRequestThreadRequest\x12/\n" +
+	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12\x16\n" +
+	"\x06number\x18\x02 \x01(\x03R\x06number\x12\x1b\n" +
+	"\tthread_id\x18\x03 \x01(\tR\bthreadId\x12\x12\n" +
+	"\x04body\x18\x04 \x01(\tR\x04body\"W\n" +
+	"\x1fReplyMergeRequestThreadResponse\x124\n" +
+	"\acomment\x18\x01 \x01(\v2\x1a.greet.ReviewCommentDetailR\acomment\"\xbb\x01\n" +
+	" UpdateMergeRequestCommentRequest\x12/\n" +
+	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12\x16\n" +
+	"\x06number\x18\x02 \x01(\x03R\x06number\x12\x1b\n" +
+	"\tthread_id\x18\x03 \x01(\tR\bthreadId\x12\x1d\n" +
+	"\n" +
+	"comment_id\x18\x04 \x01(\tR\tcommentId\x12\x12\n" +
+	"\x04body\x18\x05 \x01(\tR\x04body\"Y\n" +
+	"!UpdateMergeRequestCommentResponse\x124\n" +
+	"\acomment\x18\x01 \x01(\v2\x1a.greet.ReviewCommentDetailR\acomment\"\xa7\x01\n" +
+	" DeleteMergeRequestCommentRequest\x12/\n" +
+	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12\x16\n" +
+	"\x06number\x18\x02 \x01(\x03R\x06number\x12\x1b\n" +
+	"\tthread_id\x18\x03 \x01(\tR\bthreadId\x12\x1d\n" +
+	"\n" +
+	"comment_id\x18\x04 \x01(\tR\tcommentId\"#\n" +
+	"!DeleteMergeRequestCommentResponse\"\xa4\x01\n" +
+	" ResolveMergeRequestThreadRequest\x12/\n" +
+	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12\x16\n" +
+	"\x06number\x18\x02 \x01(\x03R\x06number\x12\x1b\n" +
+	"\tthread_id\x18\x03 \x01(\tR\bthreadId\x12\x1a\n" +
+	"\bresolved\x18\x04 \x01(\bR\bresolved\"\\\n" +
+	"!ResolveMergeRequestThreadResponse\x127\n" +
+	"\x06thread\x18\x01 \x01(\v2\x1f.greet.MergeRequestThreadDetailR\x06thread\"\x87\x01\n" +
+	"\x1fDeleteMergeRequestThreadRequest\x12/\n" +
+	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12\x16\n" +
+	"\x06number\x18\x02 \x01(\x03R\x06number\x12\x1b\n" +
+	"\tthread_id\x18\x03 \x01(\tR\bthreadId\"\"\n" +
+	" DeleteMergeRequestThreadResponse\"p\n" +
+	"%ListMergeRequestReviewRequestsRequest\x12/\n" +
+	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12\x16\n" +
+	"\x06number\x18\x02 \x01(\x03R\x06number\"m\n" +
+	"&ListMergeRequestReviewRequestsResponse\x12C\n" +
+	"\x0freview_requests\x18\x01 \x03(\v2\x1a.greet.ReviewRequestDetailR\x0ereviewRequests\"\x84\x01\n" +
+	" RequestMergeRequestReviewRequest\x12/\n" +
+	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12\x16\n" +
+	"\x06number\x18\x02 \x01(\x03R\x06number\x12\x17\n" +
+	"\auser_id\x18\x03 \x01(\tR\x06userId\"f\n" +
+	"!RequestMergeRequestReviewResponse\x12A\n" +
+	"\x0ereview_request\x18\x01 \x01(\v2\x1a.greet.ReviewRequestDetailR\rreviewRequest\"\x8a\x01\n" +
+	"&RemoveMergeRequestReviewRequestRequest\x12/\n" +
+	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12\x16\n" +
+	"\x06number\x18\x02 \x01(\x03R\x06number\x12\x17\n" +
+	"\auser_id\x18\x03 \x01(\tR\x06userId\")\n" +
+	"'RemoveMergeRequestReviewRequestResponse\"j\n" +
+	"\x1fListMergeRequestTimelineRequest\x12/\n" +
+	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12\x16\n" +
+	"\x06number\x18\x02 \x01(\x03R\x06number\"Y\n" +
+	" ListMergeRequestTimelineResponse\x125\n" +
+	"\x05items\x18\x01 \x03(\v2\x1f.greet.MergeRequestTimelineItemR\x05items\"\xac\x02\n" +
 	"\x0eFileLockDetail\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04path\x18\x02 \x01(\tR\x04path\x12\x16\n" +
@@ -5994,7 +8621,7 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"\x15FILE_MODE_UNSPECIFIED\x10\x00\x12\x17\n" +
 	"\x13FILE_MODE_READ_ONLY\x10\x01\x12\x18\n" +
 	"\x14FILE_MODE_READ_WRITE\x10\x02\x12\x18\n" +
-	"\x14FILE_MODE_EXECUTABLE\x10\x032\xc7\x19\n" +
+	"\x14FILE_MODE_EXECUTABLE\x10\x032\xcb'\n" +
 	"\vNipaService\x12V\n" +
 	"\x19LoginWithUsernamePassword\x12#.greet.LoginUsernamePasswordRequest\x1a\x14.greet.LoginResponse\x12M\n" +
 	"\x15LoginWithRefreshToken\x12\x1e.greet.LoginWithRefreshRequest\x1a\x14.greet.LoginResponse\x12J\n" +
@@ -6017,7 +8644,23 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"\x12UpdateMergeRequest\x12 .greet.UpdateMergeRequestRequest\x1a!.greet.UpdateMergeRequestResponse\x12V\n" +
 	"\x11ListMergeRequests\x12\x1f.greet.ListMergeRequestsRequest\x1a .greet.ListMergeRequestsResponse\x12V\n" +
 	"\x11MergeMergeRequest\x12\x1f.greet.MergeMergeRequestRequest\x1a .greet.MergeMergeRequestResponse\x12V\n" +
-	"\x11CloseMergeRequest\x12\x1f.greet.CloseMergeRequestRequest\x1a .greet.CloseMergeRequestResponse\x12/\n" +
+	"\x11CloseMergeRequest\x12\x1f.greet.CloseMergeRequestRequest\x1a .greet.CloseMergeRequestResponse\x12k\n" +
+	"\x18SubmitMergeRequestReview\x12&.greet.SubmitMergeRequestReviewRequest\x1a'.greet.SubmitMergeRequestReviewResponse\x12h\n" +
+	"\x17ListMergeRequestReviews\x12%.greet.ListMergeRequestReviewsRequest\x1a&.greet.ListMergeRequestReviewsResponse\x12q\n" +
+	"\x1aGetMergeRequestReviewState\x12(.greet.GetMergeRequestReviewStateRequest\x1a).greet.GetMergeRequestReviewStateResponse\x12q\n" +
+	"\x1aWithdrawMergeRequestReview\x12(.greet.WithdrawMergeRequestReviewRequest\x1a).greet.WithdrawMergeRequestReviewResponse\x12n\n" +
+	"\x19DismissMergeRequestReview\x12'.greet.DismissMergeRequestReviewRequest\x1a(.greet.DismissMergeRequestReviewResponse\x12h\n" +
+	"\x17ListMergeRequestThreads\x12%.greet.ListMergeRequestThreadsRequest\x1a&.greet.ListMergeRequestThreadsResponse\x12e\n" +
+	"\x16AddMergeRequestComment\x12$.greet.AddMergeRequestCommentRequest\x1a%.greet.AddMergeRequestCommentResponse\x12h\n" +
+	"\x17ReplyMergeRequestThread\x12%.greet.ReplyMergeRequestThreadRequest\x1a&.greet.ReplyMergeRequestThreadResponse\x12n\n" +
+	"\x19UpdateMergeRequestComment\x12'.greet.UpdateMergeRequestCommentRequest\x1a(.greet.UpdateMergeRequestCommentResponse\x12n\n" +
+	"\x19DeleteMergeRequestComment\x12'.greet.DeleteMergeRequestCommentRequest\x1a(.greet.DeleteMergeRequestCommentResponse\x12n\n" +
+	"\x19ResolveMergeRequestThread\x12'.greet.ResolveMergeRequestThreadRequest\x1a(.greet.ResolveMergeRequestThreadResponse\x12k\n" +
+	"\x18DeleteMergeRequestThread\x12&.greet.DeleteMergeRequestThreadRequest\x1a'.greet.DeleteMergeRequestThreadResponse\x12}\n" +
+	"\x1eListMergeRequestReviewRequests\x12,.greet.ListMergeRequestReviewRequestsRequest\x1a-.greet.ListMergeRequestReviewRequestsResponse\x12n\n" +
+	"\x19RequestMergeRequestReview\x12'.greet.RequestMergeRequestReviewRequest\x1a(.greet.RequestMergeRequestReviewResponse\x12\x80\x01\n" +
+	"\x1fRemoveMergeRequestReviewRequest\x12-.greet.RemoveMergeRequestReviewRequestRequest\x1a..greet.RemoveMergeRequestReviewRequestResponse\x12k\n" +
+	"\x18ListMergeRequestTimeline\x12&.greet.ListMergeRequestTimelineRequest\x1a'.greet.ListMergeRequestTimelineResponse\x12/\n" +
 	"\x04Push\x12\x12.greet.PushRequest\x1a\x13.greet.PushResponse\x12Y\n" +
 	"\x12GetChunkUploadUrls\x12 .greet.GetChunkUploadUrlsRequest\x1a!.greet.GetChunkUploadUrlsResponse\x12_\n" +
 	"\x14GetChunkDownloadUrls\x12\".greet.GetChunkDownloadUrlsRequest\x1a#.greet.GetChunkDownloadUrlsResponse\x12\\\n" +
@@ -6052,104 +8695,144 @@ func file_internal_grpc_proto_server_proto_rawDescGZIP() []byte {
 }
 
 var file_internal_grpc_proto_server_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_internal_grpc_proto_server_proto_msgTypes = make([]protoimpl.MessageInfo, 94)
+var file_internal_grpc_proto_server_proto_msgTypes = make([]protoimpl.MessageInfo, 134)
 var file_internal_grpc_proto_server_proto_goTypes = []any{
-	(FileMode)(0),                               // 0: greet.FileMode
-	(*ProjectContext)(nil),                      // 1: greet.ProjectContext
-	(*FileNode)(nil),                            // 2: greet.FileNode
-	(*TreeManifest)(nil),                        // 3: greet.TreeManifest
-	(*GetTreeManifestRequest)(nil),              // 4: greet.GetTreeManifestRequest
-	(*GetTreeManifestResponse)(nil),             // 5: greet.GetTreeManifestResponse
-	(*PushFile)(nil),                            // 6: greet.PushFile
-	(*ChunkRef)(nil),                            // 7: greet.ChunkRef
-	(*PresignedChunkUrl)(nil),                   // 8: greet.PresignedChunkUrl
-	(*GetChunkUploadUrlsRequest)(nil),           // 9: greet.GetChunkUploadUrlsRequest
-	(*GetChunkUploadUrlsResponse)(nil),          // 10: greet.GetChunkUploadUrlsResponse
-	(*GetChunkDownloadUrlsRequest)(nil),         // 11: greet.GetChunkDownloadUrlsRequest
-	(*GetChunkDownloadUrlsResponse)(nil),        // 12: greet.GetChunkDownloadUrlsResponse
-	(*ConfirmChunkUploadsRequest)(nil),          // 13: greet.ConfirmChunkUploadsRequest
-	(*ConfirmChunkUploadsResponse)(nil),         // 14: greet.ConfirmChunkUploadsResponse
-	(*PushRequest)(nil),                         // 15: greet.PushRequest
-	(*PushResponse)(nil),                        // 16: greet.PushResponse
-	(*Branch)(nil),                              // 17: greet.Branch
-	(*GetListBranchRequest)(nil),                // 18: greet.GetListBranchRequest
-	(*GetListBranchResponse)(nil),               // 19: greet.GetListBranchResponse
-	(*GetBranchRequest)(nil),                    // 20: greet.GetBranchRequest
-	(*GetBranchByNameRequest)(nil),              // 21: greet.GetBranchByNameRequest
-	(*GetBranchByNameResponse)(nil),             // 22: greet.GetBranchByNameResponse
-	(*GetDefaultBranchRequest)(nil),             // 23: greet.GetDefaultBranchRequest
-	(*GetBranchResponse)(nil),                   // 24: greet.GetBranchResponse
-	(*CreateBranchRequest)(nil),                 // 25: greet.CreateBranchRequest
-	(*CreateBranchResponse)(nil),                // 26: greet.CreateBranchResponse
-	(*RenameBranchRequest)(nil),                 // 27: greet.RenameBranchRequest
-	(*RenameBranchResponse)(nil),                // 28: greet.RenameBranchResponse
-	(*DeleteBranchRequest)(nil),                 // 29: greet.DeleteBranchRequest
-	(*DeleteBranchResponse)(nil),                // 30: greet.DeleteBranchResponse
-	(*SetDefaultBranchRequest)(nil),             // 31: greet.SetDefaultBranchRequest
-	(*SetDefaultBranchResponse)(nil),            // 32: greet.SetDefaultBranchResponse
-	(*SetBranchProtectionRequest)(nil),          // 33: greet.SetBranchProtectionRequest
-	(*SetBranchProtectionResponse)(nil),         // 34: greet.SetBranchProtectionResponse
-	(*GetMergeBaseRequest)(nil),                 // 35: greet.GetMergeBaseRequest
-	(*GetMergeBaseResponse)(nil),                // 36: greet.GetMergeBaseResponse
-	(*MergeFastForwardRequest)(nil),             // 37: greet.MergeFastForwardRequest
-	(*MergeFastForwardResponse)(nil),            // 38: greet.MergeFastForwardResponse
-	(*CommitLogEntry)(nil),                      // 39: greet.CommitLogEntry
-	(*GetCommitLogRequest)(nil),                 // 40: greet.GetCommitLogRequest
-	(*GetCommitLogResponse)(nil),                // 41: greet.GetCommitLogResponse
-	(*CommitDetail)(nil),                        // 42: greet.CommitDetail
-	(*GetCommitRequest)(nil),                    // 43: greet.GetCommitRequest
-	(*GetCommitResponse)(nil),                   // 44: greet.GetCommitResponse
-	(*CommitWalkEntry)(nil),                     // 45: greet.CommitWalkEntry
-	(*WalkCommitsRequest)(nil),                  // 46: greet.WalkCommitsRequest
-	(*WalkCommitsResponse)(nil),                 // 47: greet.WalkCommitsResponse
-	(*LoginUsernamePasswordRequest)(nil),        // 48: greet.LoginUsernamePasswordRequest
-	(*LoginWithRefreshRequest)(nil),             // 49: greet.LoginWithRefreshRequest
-	(*LoginResponse)(nil),                       // 50: greet.LoginResponse
-	(*PermissionEntry)(nil),                     // 51: greet.PermissionEntry
-	(*PBACRuleDetail)(nil),                      // 52: greet.PBACRuleDetail
-	(*CreatePBACRuleRequest)(nil),               // 53: greet.CreatePBACRuleRequest
-	(*CreatePBACRuleResponse)(nil),              // 54: greet.CreatePBACRuleResponse
-	(*ListPBACRulesRequest)(nil),                // 55: greet.ListPBACRulesRequest
-	(*ListPBACRulesResponse)(nil),               // 56: greet.ListPBACRulesResponse
-	(*DeletePBACRuleRequest)(nil),               // 57: greet.DeletePBACRuleRequest
-	(*DeletePBACRuleResponse)(nil),              // 58: greet.DeletePBACRuleResponse
-	(*ListProjectPathPermissionsRequest)(nil),   // 59: greet.ListProjectPathPermissionsRequest
-	(*ListProjectPathPermissionsResponse)(nil),  // 60: greet.ListProjectPathPermissionsResponse
-	(*SetProjectPathPermissionRequest)(nil),     // 61: greet.SetProjectPathPermissionRequest
-	(*SetProjectPathPermissionResponse)(nil),    // 62: greet.SetProjectPathPermissionResponse
-	(*DeleteProjectPathPermissionRequest)(nil),  // 63: greet.DeleteProjectPathPermissionRequest
-	(*DeleteProjectPathPermissionResponse)(nil), // 64: greet.DeleteProjectPathPermissionResponse
-	(*GetMyPermissionsRequest)(nil),             // 65: greet.GetMyPermissionsRequest
-	(*GetMyPermissionsResponse)(nil),            // 66: greet.GetMyPermissionsResponse
-	(*GroupDetail)(nil),                         // 67: greet.GroupDetail
-	(*CreateGroupRequest)(nil),                  // 68: greet.CreateGroupRequest
-	(*CreateGroupResponse)(nil),                 // 69: greet.CreateGroupResponse
-	(*ListGroupsRequest)(nil),                   // 70: greet.ListGroupsRequest
-	(*ListGroupsResponse)(nil),                  // 71: greet.ListGroupsResponse
-	(*AddGroupMemberRequest)(nil),               // 72: greet.AddGroupMemberRequest
-	(*AddGroupMemberResponse)(nil),              // 73: greet.AddGroupMemberResponse
-	(*RemoveGroupMemberRequest)(nil),            // 74: greet.RemoveGroupMemberRequest
-	(*RemoveGroupMemberResponse)(nil),           // 75: greet.RemoveGroupMemberResponse
-	(*MergeabilityDetail)(nil),                  // 76: greet.MergeabilityDetail
-	(*MergeRequestDetail)(nil),                  // 77: greet.MergeRequestDetail
-	(*CreateMergeRequestRequest)(nil),           // 78: greet.CreateMergeRequestRequest
-	(*CreateMergeRequestResponse)(nil),          // 79: greet.CreateMergeRequestResponse
-	(*UpdateMergeRequestRequest)(nil),           // 80: greet.UpdateMergeRequestRequest
-	(*UpdateMergeRequestResponse)(nil),          // 81: greet.UpdateMergeRequestResponse
-	(*ListMergeRequestsRequest)(nil),            // 82: greet.ListMergeRequestsRequest
-	(*ListMergeRequestsResponse)(nil),           // 83: greet.ListMergeRequestsResponse
-	(*MergeMergeRequestRequest)(nil),            // 84: greet.MergeMergeRequestRequest
-	(*MergeMergeRequestResponse)(nil),           // 85: greet.MergeMergeRequestResponse
-	(*CloseMergeRequestRequest)(nil),            // 86: greet.CloseMergeRequestRequest
-	(*CloseMergeRequestResponse)(nil),           // 87: greet.CloseMergeRequestResponse
-	(*FileLockDetail)(nil),                      // 88: greet.FileLockDetail
-	(*LockFileRequest)(nil),                     // 89: greet.LockFileRequest
-	(*LockFileResponse)(nil),                    // 90: greet.LockFileResponse
-	(*UnlockFileRequest)(nil),                   // 91: greet.UnlockFileRequest
-	(*UnlockFileResponse)(nil),                  // 92: greet.UnlockFileResponse
-	(*ListFileLocksRequest)(nil),                // 93: greet.ListFileLocksRequest
-	(*ListFileLocksResponse)(nil),               // 94: greet.ListFileLocksResponse
-	(*timestamppb.Timestamp)(nil),               // 95: google.protobuf.Timestamp
+	(FileMode)(0),                                   // 0: greet.FileMode
+	(*ProjectContext)(nil),                          // 1: greet.ProjectContext
+	(*FileNode)(nil),                                // 2: greet.FileNode
+	(*TreeManifest)(nil),                            // 3: greet.TreeManifest
+	(*GetTreeManifestRequest)(nil),                  // 4: greet.GetTreeManifestRequest
+	(*GetTreeManifestResponse)(nil),                 // 5: greet.GetTreeManifestResponse
+	(*PushFile)(nil),                                // 6: greet.PushFile
+	(*ChunkRef)(nil),                                // 7: greet.ChunkRef
+	(*PresignedChunkUrl)(nil),                       // 8: greet.PresignedChunkUrl
+	(*GetChunkUploadUrlsRequest)(nil),               // 9: greet.GetChunkUploadUrlsRequest
+	(*GetChunkUploadUrlsResponse)(nil),              // 10: greet.GetChunkUploadUrlsResponse
+	(*GetChunkDownloadUrlsRequest)(nil),             // 11: greet.GetChunkDownloadUrlsRequest
+	(*GetChunkDownloadUrlsResponse)(nil),            // 12: greet.GetChunkDownloadUrlsResponse
+	(*ConfirmChunkUploadsRequest)(nil),              // 13: greet.ConfirmChunkUploadsRequest
+	(*ConfirmChunkUploadsResponse)(nil),             // 14: greet.ConfirmChunkUploadsResponse
+	(*PushRequest)(nil),                             // 15: greet.PushRequest
+	(*PushResponse)(nil),                            // 16: greet.PushResponse
+	(*Branch)(nil),                                  // 17: greet.Branch
+	(*GetListBranchRequest)(nil),                    // 18: greet.GetListBranchRequest
+	(*GetListBranchResponse)(nil),                   // 19: greet.GetListBranchResponse
+	(*GetBranchRequest)(nil),                        // 20: greet.GetBranchRequest
+	(*GetBranchByNameRequest)(nil),                  // 21: greet.GetBranchByNameRequest
+	(*GetBranchByNameResponse)(nil),                 // 22: greet.GetBranchByNameResponse
+	(*GetDefaultBranchRequest)(nil),                 // 23: greet.GetDefaultBranchRequest
+	(*GetBranchResponse)(nil),                       // 24: greet.GetBranchResponse
+	(*CreateBranchRequest)(nil),                     // 25: greet.CreateBranchRequest
+	(*CreateBranchResponse)(nil),                    // 26: greet.CreateBranchResponse
+	(*RenameBranchRequest)(nil),                     // 27: greet.RenameBranchRequest
+	(*RenameBranchResponse)(nil),                    // 28: greet.RenameBranchResponse
+	(*DeleteBranchRequest)(nil),                     // 29: greet.DeleteBranchRequest
+	(*DeleteBranchResponse)(nil),                    // 30: greet.DeleteBranchResponse
+	(*SetDefaultBranchRequest)(nil),                 // 31: greet.SetDefaultBranchRequest
+	(*SetDefaultBranchResponse)(nil),                // 32: greet.SetDefaultBranchResponse
+	(*SetBranchProtectionRequest)(nil),              // 33: greet.SetBranchProtectionRequest
+	(*SetBranchProtectionResponse)(nil),             // 34: greet.SetBranchProtectionResponse
+	(*GetMergeBaseRequest)(nil),                     // 35: greet.GetMergeBaseRequest
+	(*GetMergeBaseResponse)(nil),                    // 36: greet.GetMergeBaseResponse
+	(*MergeFastForwardRequest)(nil),                 // 37: greet.MergeFastForwardRequest
+	(*MergeFastForwardResponse)(nil),                // 38: greet.MergeFastForwardResponse
+	(*CommitLogEntry)(nil),                          // 39: greet.CommitLogEntry
+	(*GetCommitLogRequest)(nil),                     // 40: greet.GetCommitLogRequest
+	(*GetCommitLogResponse)(nil),                    // 41: greet.GetCommitLogResponse
+	(*CommitDetail)(nil),                            // 42: greet.CommitDetail
+	(*GetCommitRequest)(nil),                        // 43: greet.GetCommitRequest
+	(*GetCommitResponse)(nil),                       // 44: greet.GetCommitResponse
+	(*CommitWalkEntry)(nil),                         // 45: greet.CommitWalkEntry
+	(*WalkCommitsRequest)(nil),                      // 46: greet.WalkCommitsRequest
+	(*WalkCommitsResponse)(nil),                     // 47: greet.WalkCommitsResponse
+	(*LoginUsernamePasswordRequest)(nil),            // 48: greet.LoginUsernamePasswordRequest
+	(*LoginWithRefreshRequest)(nil),                 // 49: greet.LoginWithRefreshRequest
+	(*LoginResponse)(nil),                           // 50: greet.LoginResponse
+	(*PermissionEntry)(nil),                         // 51: greet.PermissionEntry
+	(*PBACRuleDetail)(nil),                          // 52: greet.PBACRuleDetail
+	(*CreatePBACRuleRequest)(nil),                   // 53: greet.CreatePBACRuleRequest
+	(*CreatePBACRuleResponse)(nil),                  // 54: greet.CreatePBACRuleResponse
+	(*ListPBACRulesRequest)(nil),                    // 55: greet.ListPBACRulesRequest
+	(*ListPBACRulesResponse)(nil),                   // 56: greet.ListPBACRulesResponse
+	(*DeletePBACRuleRequest)(nil),                   // 57: greet.DeletePBACRuleRequest
+	(*DeletePBACRuleResponse)(nil),                  // 58: greet.DeletePBACRuleResponse
+	(*ListProjectPathPermissionsRequest)(nil),       // 59: greet.ListProjectPathPermissionsRequest
+	(*ListProjectPathPermissionsResponse)(nil),      // 60: greet.ListProjectPathPermissionsResponse
+	(*SetProjectPathPermissionRequest)(nil),         // 61: greet.SetProjectPathPermissionRequest
+	(*SetProjectPathPermissionResponse)(nil),        // 62: greet.SetProjectPathPermissionResponse
+	(*DeleteProjectPathPermissionRequest)(nil),      // 63: greet.DeleteProjectPathPermissionRequest
+	(*DeleteProjectPathPermissionResponse)(nil),     // 64: greet.DeleteProjectPathPermissionResponse
+	(*GetMyPermissionsRequest)(nil),                 // 65: greet.GetMyPermissionsRequest
+	(*GetMyPermissionsResponse)(nil),                // 66: greet.GetMyPermissionsResponse
+	(*GroupDetail)(nil),                             // 67: greet.GroupDetail
+	(*CreateGroupRequest)(nil),                      // 68: greet.CreateGroupRequest
+	(*CreateGroupResponse)(nil),                     // 69: greet.CreateGroupResponse
+	(*ListGroupsRequest)(nil),                       // 70: greet.ListGroupsRequest
+	(*ListGroupsResponse)(nil),                      // 71: greet.ListGroupsResponse
+	(*AddGroupMemberRequest)(nil),                   // 72: greet.AddGroupMemberRequest
+	(*AddGroupMemberResponse)(nil),                  // 73: greet.AddGroupMemberResponse
+	(*RemoveGroupMemberRequest)(nil),                // 74: greet.RemoveGroupMemberRequest
+	(*RemoveGroupMemberResponse)(nil),               // 75: greet.RemoveGroupMemberResponse
+	(*MergeabilityDetail)(nil),                      // 76: greet.MergeabilityDetail
+	(*MergeRequestDetail)(nil),                      // 77: greet.MergeRequestDetail
+	(*CreateMergeRequestRequest)(nil),               // 78: greet.CreateMergeRequestRequest
+	(*CreateMergeRequestResponse)(nil),              // 79: greet.CreateMergeRequestResponse
+	(*UpdateMergeRequestRequest)(nil),               // 80: greet.UpdateMergeRequestRequest
+	(*UpdateMergeRequestResponse)(nil),              // 81: greet.UpdateMergeRequestResponse
+	(*ListMergeRequestsRequest)(nil),                // 82: greet.ListMergeRequestsRequest
+	(*ListMergeRequestsResponse)(nil),               // 83: greet.ListMergeRequestsResponse
+	(*MergeMergeRequestRequest)(nil),                // 84: greet.MergeMergeRequestRequest
+	(*MergeMergeRequestResponse)(nil),               // 85: greet.MergeMergeRequestResponse
+	(*CloseMergeRequestRequest)(nil),                // 86: greet.CloseMergeRequestRequest
+	(*CloseMergeRequestResponse)(nil),               // 87: greet.CloseMergeRequestResponse
+	(*ReviewActor)(nil),                             // 88: greet.ReviewActor
+	(*ReviewCommentDetail)(nil),                     // 89: greet.ReviewCommentDetail
+	(*MergeRequestThreadDetail)(nil),                // 90: greet.MergeRequestThreadDetail
+	(*MergeRequestReviewDetail)(nil),                // 91: greet.MergeRequestReviewDetail
+	(*MergeRequestReviewState)(nil),                 // 92: greet.MergeRequestReviewState
+	(*ReviewRequestDetail)(nil),                     // 93: greet.ReviewRequestDetail
+	(*MergeRequestTimelineItem)(nil),                // 94: greet.MergeRequestTimelineItem
+	(*ReviewCommentInput)(nil),                      // 95: greet.ReviewCommentInput
+	(*SubmitMergeRequestReviewRequest)(nil),         // 96: greet.SubmitMergeRequestReviewRequest
+	(*SubmitMergeRequestReviewResponse)(nil),        // 97: greet.SubmitMergeRequestReviewResponse
+	(*ListMergeRequestReviewsRequest)(nil),          // 98: greet.ListMergeRequestReviewsRequest
+	(*ListMergeRequestReviewsResponse)(nil),         // 99: greet.ListMergeRequestReviewsResponse
+	(*GetMergeRequestReviewStateRequest)(nil),       // 100: greet.GetMergeRequestReviewStateRequest
+	(*GetMergeRequestReviewStateResponse)(nil),      // 101: greet.GetMergeRequestReviewStateResponse
+	(*WithdrawMergeRequestReviewRequest)(nil),       // 102: greet.WithdrawMergeRequestReviewRequest
+	(*WithdrawMergeRequestReviewResponse)(nil),      // 103: greet.WithdrawMergeRequestReviewResponse
+	(*DismissMergeRequestReviewRequest)(nil),        // 104: greet.DismissMergeRequestReviewRequest
+	(*DismissMergeRequestReviewResponse)(nil),       // 105: greet.DismissMergeRequestReviewResponse
+	(*ListMergeRequestThreadsRequest)(nil),          // 106: greet.ListMergeRequestThreadsRequest
+	(*ListMergeRequestThreadsResponse)(nil),         // 107: greet.ListMergeRequestThreadsResponse
+	(*AddMergeRequestCommentRequest)(nil),           // 108: greet.AddMergeRequestCommentRequest
+	(*AddMergeRequestCommentResponse)(nil),          // 109: greet.AddMergeRequestCommentResponse
+	(*ReplyMergeRequestThreadRequest)(nil),          // 110: greet.ReplyMergeRequestThreadRequest
+	(*ReplyMergeRequestThreadResponse)(nil),         // 111: greet.ReplyMergeRequestThreadResponse
+	(*UpdateMergeRequestCommentRequest)(nil),        // 112: greet.UpdateMergeRequestCommentRequest
+	(*UpdateMergeRequestCommentResponse)(nil),       // 113: greet.UpdateMergeRequestCommentResponse
+	(*DeleteMergeRequestCommentRequest)(nil),        // 114: greet.DeleteMergeRequestCommentRequest
+	(*DeleteMergeRequestCommentResponse)(nil),       // 115: greet.DeleteMergeRequestCommentResponse
+	(*ResolveMergeRequestThreadRequest)(nil),        // 116: greet.ResolveMergeRequestThreadRequest
+	(*ResolveMergeRequestThreadResponse)(nil),       // 117: greet.ResolveMergeRequestThreadResponse
+	(*DeleteMergeRequestThreadRequest)(nil),         // 118: greet.DeleteMergeRequestThreadRequest
+	(*DeleteMergeRequestThreadResponse)(nil),        // 119: greet.DeleteMergeRequestThreadResponse
+	(*ListMergeRequestReviewRequestsRequest)(nil),   // 120: greet.ListMergeRequestReviewRequestsRequest
+	(*ListMergeRequestReviewRequestsResponse)(nil),  // 121: greet.ListMergeRequestReviewRequestsResponse
+	(*RequestMergeRequestReviewRequest)(nil),        // 122: greet.RequestMergeRequestReviewRequest
+	(*RequestMergeRequestReviewResponse)(nil),       // 123: greet.RequestMergeRequestReviewResponse
+	(*RemoveMergeRequestReviewRequestRequest)(nil),  // 124: greet.RemoveMergeRequestReviewRequestRequest
+	(*RemoveMergeRequestReviewRequestResponse)(nil), // 125: greet.RemoveMergeRequestReviewRequestResponse
+	(*ListMergeRequestTimelineRequest)(nil),         // 126: greet.ListMergeRequestTimelineRequest
+	(*ListMergeRequestTimelineResponse)(nil),        // 127: greet.ListMergeRequestTimelineResponse
+	(*FileLockDetail)(nil),                          // 128: greet.FileLockDetail
+	(*LockFileRequest)(nil),                         // 129: greet.LockFileRequest
+	(*LockFileResponse)(nil),                        // 130: greet.LockFileResponse
+	(*UnlockFileRequest)(nil),                       // 131: greet.UnlockFileRequest
+	(*UnlockFileResponse)(nil),                      // 132: greet.UnlockFileResponse
+	(*ListFileLocksRequest)(nil),                    // 133: greet.ListFileLocksRequest
+	(*ListFileLocksResponse)(nil),                   // 134: greet.ListFileLocksResponse
+	(*timestamppb.Timestamp)(nil),                   // 135: google.protobuf.Timestamp
 }
 var file_internal_grpc_proto_server_proto_depIdxs = []int32{
 	0,   // 0: greet.FileNode.mode:type_name -> greet.FileMode
@@ -6166,10 +8849,10 @@ var file_internal_grpc_proto_server_proto_depIdxs = []int32{
 	1,   // 11: greet.ConfirmChunkUploadsRequest.context:type_name -> greet.ProjectContext
 	1,   // 12: greet.PushRequest.context:type_name -> greet.ProjectContext
 	6,   // 13: greet.PushRequest.files:type_name -> greet.PushFile
-	95,  // 14: greet.Branch.created_at:type_name -> google.protobuf.Timestamp
-	95,  // 15: greet.Branch.updated_at:type_name -> google.protobuf.Timestamp
+	135, // 14: greet.Branch.created_at:type_name -> google.protobuf.Timestamp
+	135, // 15: greet.Branch.updated_at:type_name -> google.protobuf.Timestamp
 	1,   // 16: greet.GetListBranchRequest.context:type_name -> greet.ProjectContext
-	95,  // 17: greet.GetListBranchRequest.last_updated_at:type_name -> google.protobuf.Timestamp
+	135, // 17: greet.GetListBranchRequest.last_updated_at:type_name -> google.protobuf.Timestamp
 	17,  // 18: greet.GetListBranchResponse.branches:type_name -> greet.Branch
 	1,   // 19: greet.GetBranchRequest.context:type_name -> greet.ProjectContext
 	1,   // 20: greet.GetBranchByNameRequest.context:type_name -> greet.ProjectContext
@@ -6189,17 +8872,17 @@ var file_internal_grpc_proto_server_proto_depIdxs = []int32{
 	3,   // 34: greet.GetMergeBaseResponse.merge_base_tree:type_name -> greet.TreeManifest
 	1,   // 35: greet.MergeFastForwardRequest.context:type_name -> greet.ProjectContext
 	17,  // 36: greet.MergeFastForwardResponse.branch:type_name -> greet.Branch
-	95,  // 37: greet.CommitLogEntry.created_at:type_name -> google.protobuf.Timestamp
+	135, // 37: greet.CommitLogEntry.created_at:type_name -> google.protobuf.Timestamp
 	1,   // 38: greet.GetCommitLogRequest.context:type_name -> greet.ProjectContext
 	39,  // 39: greet.GetCommitLogResponse.commits:type_name -> greet.CommitLogEntry
-	95,  // 40: greet.CommitDetail.created_at:type_name -> google.protobuf.Timestamp
+	135, // 40: greet.CommitDetail.created_at:type_name -> google.protobuf.Timestamp
 	1,   // 41: greet.GetCommitRequest.context:type_name -> greet.ProjectContext
 	42,  // 42: greet.GetCommitResponse.commit:type_name -> greet.CommitDetail
 	3,   // 43: greet.GetCommitResponse.root_tree:type_name -> greet.TreeManifest
-	95,  // 44: greet.CommitWalkEntry.created_at:type_name -> google.protobuf.Timestamp
+	135, // 44: greet.CommitWalkEntry.created_at:type_name -> google.protobuf.Timestamp
 	1,   // 45: greet.WalkCommitsRequest.context:type_name -> greet.ProjectContext
 	45,  // 46: greet.WalkCommitsResponse.commits:type_name -> greet.CommitWalkEntry
-	95,  // 47: greet.PBACRuleDetail.created_at:type_name -> google.protobuf.Timestamp
+	135, // 47: greet.PBACRuleDetail.created_at:type_name -> google.protobuf.Timestamp
 	1,   // 48: greet.CreatePBACRuleRequest.context:type_name -> greet.ProjectContext
 	52,  // 49: greet.CreatePBACRuleResponse.rule:type_name -> greet.PBACRuleDetail
 	1,   // 50: greet.ListPBACRulesRequest.context:type_name -> greet.ProjectContext
@@ -6215,8 +8898,8 @@ var file_internal_grpc_proto_server_proto_depIdxs = []int32{
 	51,  // 60: greet.GetMyPermissionsResponse.defaults:type_name -> greet.PermissionEntry
 	67,  // 61: greet.CreateGroupResponse.group:type_name -> greet.GroupDetail
 	67,  // 62: greet.ListGroupsResponse.groups:type_name -> greet.GroupDetail
-	95,  // 63: greet.MergeRequestDetail.created_at:type_name -> google.protobuf.Timestamp
-	95,  // 64: greet.MergeRequestDetail.updated_at:type_name -> google.protobuf.Timestamp
+	135, // 63: greet.MergeRequestDetail.created_at:type_name -> google.protobuf.Timestamp
+	135, // 64: greet.MergeRequestDetail.updated_at:type_name -> google.protobuf.Timestamp
 	1,   // 65: greet.CreateMergeRequestRequest.context:type_name -> greet.ProjectContext
 	77,  // 66: greet.CreateMergeRequestResponse.merge_request:type_name -> greet.MergeRequestDetail
 	1,   // 67: greet.UpdateMergeRequestRequest.context:type_name -> greet.ProjectContext
@@ -6228,97 +8911,177 @@ var file_internal_grpc_proto_server_proto_depIdxs = []int32{
 	76,  // 73: greet.MergeMergeRequestResponse.mergeability:type_name -> greet.MergeabilityDetail
 	1,   // 74: greet.CloseMergeRequestRequest.context:type_name -> greet.ProjectContext
 	77,  // 75: greet.CloseMergeRequestResponse.merge_request:type_name -> greet.MergeRequestDetail
-	95,  // 76: greet.FileLockDetail.acquired_at:type_name -> google.protobuf.Timestamp
-	1,   // 77: greet.LockFileRequest.context:type_name -> greet.ProjectContext
-	88,  // 78: greet.LockFileResponse.lock:type_name -> greet.FileLockDetail
-	1,   // 79: greet.UnlockFileRequest.context:type_name -> greet.ProjectContext
-	1,   // 80: greet.ListFileLocksRequest.context:type_name -> greet.ProjectContext
-	88,  // 81: greet.ListFileLocksResponse.locks:type_name -> greet.FileLockDetail
-	48,  // 82: greet.NipaService.LoginWithUsernamePassword:input_type -> greet.LoginUsernamePasswordRequest
-	49,  // 83: greet.NipaService.LoginWithRefreshToken:input_type -> greet.LoginWithRefreshRequest
-	18,  // 84: greet.NipaService.GetListBranch:input_type -> greet.GetListBranchRequest
-	20,  // 85: greet.NipaService.GetBranch:input_type -> greet.GetBranchRequest
-	21,  // 86: greet.NipaService.GetBranchByName:input_type -> greet.GetBranchByNameRequest
-	23,  // 87: greet.NipaService.GetDefaultBranch:input_type -> greet.GetDefaultBranchRequest
-	25,  // 88: greet.NipaService.CreateBranch:input_type -> greet.CreateBranchRequest
-	27,  // 89: greet.NipaService.RenameBranch:input_type -> greet.RenameBranchRequest
-	29,  // 90: greet.NipaService.DeleteBranch:input_type -> greet.DeleteBranchRequest
-	31,  // 91: greet.NipaService.SetDefaultBranch:input_type -> greet.SetDefaultBranchRequest
-	33,  // 92: greet.NipaService.SetBranchProtection:input_type -> greet.SetBranchProtectionRequest
-	4,   // 93: greet.NipaService.GetTreeManifest:input_type -> greet.GetTreeManifestRequest
-	40,  // 94: greet.NipaService.GetCommitLog:input_type -> greet.GetCommitLogRequest
-	43,  // 95: greet.NipaService.GetCommit:input_type -> greet.GetCommitRequest
-	46,  // 96: greet.NipaService.WalkCommits:input_type -> greet.WalkCommitsRequest
-	35,  // 97: greet.NipaService.GetMergeBase:input_type -> greet.GetMergeBaseRequest
-	37,  // 98: greet.NipaService.MergeFastForward:input_type -> greet.MergeFastForwardRequest
-	78,  // 99: greet.NipaService.CreateMergeRequest:input_type -> greet.CreateMergeRequestRequest
-	80,  // 100: greet.NipaService.UpdateMergeRequest:input_type -> greet.UpdateMergeRequestRequest
-	82,  // 101: greet.NipaService.ListMergeRequests:input_type -> greet.ListMergeRequestsRequest
-	84,  // 102: greet.NipaService.MergeMergeRequest:input_type -> greet.MergeMergeRequestRequest
-	86,  // 103: greet.NipaService.CloseMergeRequest:input_type -> greet.CloseMergeRequestRequest
-	15,  // 104: greet.NipaService.Push:input_type -> greet.PushRequest
-	9,   // 105: greet.NipaService.GetChunkUploadUrls:input_type -> greet.GetChunkUploadUrlsRequest
-	11,  // 106: greet.NipaService.GetChunkDownloadUrls:input_type -> greet.GetChunkDownloadUrlsRequest
-	13,  // 107: greet.NipaService.ConfirmChunkUploads:input_type -> greet.ConfirmChunkUploadsRequest
-	89,  // 108: greet.NipaService.LockFile:input_type -> greet.LockFileRequest
-	91,  // 109: greet.NipaService.UnlockFile:input_type -> greet.UnlockFileRequest
-	93,  // 110: greet.NipaService.ListFileLocks:input_type -> greet.ListFileLocksRequest
-	65,  // 111: greet.NipaService.GetMyPermissions:input_type -> greet.GetMyPermissionsRequest
-	53,  // 112: greet.NipaService.CreatePBACRule:input_type -> greet.CreatePBACRuleRequest
-	55,  // 113: greet.NipaService.ListPBACRules:input_type -> greet.ListPBACRulesRequest
-	57,  // 114: greet.NipaService.DeletePBACRule:input_type -> greet.DeletePBACRuleRequest
-	59,  // 115: greet.NipaService.ListProjectPathPermissions:input_type -> greet.ListProjectPathPermissionsRequest
-	61,  // 116: greet.NipaService.SetProjectPathPermission:input_type -> greet.SetProjectPathPermissionRequest
-	63,  // 117: greet.NipaService.DeleteProjectPathPermission:input_type -> greet.DeleteProjectPathPermissionRequest
-	68,  // 118: greet.NipaService.CreateGroup:input_type -> greet.CreateGroupRequest
-	70,  // 119: greet.NipaService.ListGroups:input_type -> greet.ListGroupsRequest
-	72,  // 120: greet.NipaService.AddGroupMember:input_type -> greet.AddGroupMemberRequest
-	74,  // 121: greet.NipaService.RemoveGroupMember:input_type -> greet.RemoveGroupMemberRequest
-	50,  // 122: greet.NipaService.LoginWithUsernamePassword:output_type -> greet.LoginResponse
-	50,  // 123: greet.NipaService.LoginWithRefreshToken:output_type -> greet.LoginResponse
-	19,  // 124: greet.NipaService.GetListBranch:output_type -> greet.GetListBranchResponse
-	24,  // 125: greet.NipaService.GetBranch:output_type -> greet.GetBranchResponse
-	22,  // 126: greet.NipaService.GetBranchByName:output_type -> greet.GetBranchByNameResponse
-	24,  // 127: greet.NipaService.GetDefaultBranch:output_type -> greet.GetBranchResponse
-	26,  // 128: greet.NipaService.CreateBranch:output_type -> greet.CreateBranchResponse
-	28,  // 129: greet.NipaService.RenameBranch:output_type -> greet.RenameBranchResponse
-	30,  // 130: greet.NipaService.DeleteBranch:output_type -> greet.DeleteBranchResponse
-	32,  // 131: greet.NipaService.SetDefaultBranch:output_type -> greet.SetDefaultBranchResponse
-	34,  // 132: greet.NipaService.SetBranchProtection:output_type -> greet.SetBranchProtectionResponse
-	5,   // 133: greet.NipaService.GetTreeManifest:output_type -> greet.GetTreeManifestResponse
-	41,  // 134: greet.NipaService.GetCommitLog:output_type -> greet.GetCommitLogResponse
-	44,  // 135: greet.NipaService.GetCommit:output_type -> greet.GetCommitResponse
-	47,  // 136: greet.NipaService.WalkCommits:output_type -> greet.WalkCommitsResponse
-	36,  // 137: greet.NipaService.GetMergeBase:output_type -> greet.GetMergeBaseResponse
-	38,  // 138: greet.NipaService.MergeFastForward:output_type -> greet.MergeFastForwardResponse
-	79,  // 139: greet.NipaService.CreateMergeRequest:output_type -> greet.CreateMergeRequestResponse
-	81,  // 140: greet.NipaService.UpdateMergeRequest:output_type -> greet.UpdateMergeRequestResponse
-	83,  // 141: greet.NipaService.ListMergeRequests:output_type -> greet.ListMergeRequestsResponse
-	85,  // 142: greet.NipaService.MergeMergeRequest:output_type -> greet.MergeMergeRequestResponse
-	87,  // 143: greet.NipaService.CloseMergeRequest:output_type -> greet.CloseMergeRequestResponse
-	16,  // 144: greet.NipaService.Push:output_type -> greet.PushResponse
-	10,  // 145: greet.NipaService.GetChunkUploadUrls:output_type -> greet.GetChunkUploadUrlsResponse
-	12,  // 146: greet.NipaService.GetChunkDownloadUrls:output_type -> greet.GetChunkDownloadUrlsResponse
-	14,  // 147: greet.NipaService.ConfirmChunkUploads:output_type -> greet.ConfirmChunkUploadsResponse
-	90,  // 148: greet.NipaService.LockFile:output_type -> greet.LockFileResponse
-	92,  // 149: greet.NipaService.UnlockFile:output_type -> greet.UnlockFileResponse
-	94,  // 150: greet.NipaService.ListFileLocks:output_type -> greet.ListFileLocksResponse
-	66,  // 151: greet.NipaService.GetMyPermissions:output_type -> greet.GetMyPermissionsResponse
-	54,  // 152: greet.NipaService.CreatePBACRule:output_type -> greet.CreatePBACRuleResponse
-	56,  // 153: greet.NipaService.ListPBACRules:output_type -> greet.ListPBACRulesResponse
-	58,  // 154: greet.NipaService.DeletePBACRule:output_type -> greet.DeletePBACRuleResponse
-	60,  // 155: greet.NipaService.ListProjectPathPermissions:output_type -> greet.ListProjectPathPermissionsResponse
-	62,  // 156: greet.NipaService.SetProjectPathPermission:output_type -> greet.SetProjectPathPermissionResponse
-	64,  // 157: greet.NipaService.DeleteProjectPathPermission:output_type -> greet.DeleteProjectPathPermissionResponse
-	69,  // 158: greet.NipaService.CreateGroup:output_type -> greet.CreateGroupResponse
-	71,  // 159: greet.NipaService.ListGroups:output_type -> greet.ListGroupsResponse
-	73,  // 160: greet.NipaService.AddGroupMember:output_type -> greet.AddGroupMemberResponse
-	75,  // 161: greet.NipaService.RemoveGroupMember:output_type -> greet.RemoveGroupMemberResponse
-	122, // [122:162] is the sub-list for method output_type
-	82,  // [82:122] is the sub-list for method input_type
-	82,  // [82:82] is the sub-list for extension type_name
-	82,  // [82:82] is the sub-list for extension extendee
-	0,   // [0:82] is the sub-list for field type_name
+	88,  // 76: greet.ReviewCommentDetail.user:type_name -> greet.ReviewActor
+	135, // 77: greet.ReviewCommentDetail.created_at:type_name -> google.protobuf.Timestamp
+	135, // 78: greet.ReviewCommentDetail.updated_at:type_name -> google.protobuf.Timestamp
+	88,  // 79: greet.MergeRequestThreadDetail.resolved_by:type_name -> greet.ReviewActor
+	135, // 80: greet.MergeRequestThreadDetail.resolved_at:type_name -> google.protobuf.Timestamp
+	88,  // 81: greet.MergeRequestThreadDetail.created_by:type_name -> greet.ReviewActor
+	135, // 82: greet.MergeRequestThreadDetail.created_at:type_name -> google.protobuf.Timestamp
+	89,  // 83: greet.MergeRequestThreadDetail.comments:type_name -> greet.ReviewCommentDetail
+	88,  // 84: greet.MergeRequestReviewDetail.reviewer:type_name -> greet.ReviewActor
+	135, // 85: greet.MergeRequestReviewDetail.dismissed_at:type_name -> google.protobuf.Timestamp
+	88,  // 86: greet.MergeRequestReviewDetail.dismissed_by:type_name -> greet.ReviewActor
+	135, // 87: greet.MergeRequestReviewDetail.created_at:type_name -> google.protobuf.Timestamp
+	135, // 88: greet.MergeRequestReviewDetail.updated_at:type_name -> google.protobuf.Timestamp
+	88,  // 89: greet.ReviewRequestDetail.reviewer:type_name -> greet.ReviewActor
+	88,  // 90: greet.ReviewRequestDetail.requested_by:type_name -> greet.ReviewActor
+	135, // 91: greet.ReviewRequestDetail.created_at:type_name -> google.protobuf.Timestamp
+	88,  // 92: greet.MergeRequestTimelineItem.actor:type_name -> greet.ReviewActor
+	88,  // 93: greet.MergeRequestTimelineItem.subject:type_name -> greet.ReviewActor
+	135, // 94: greet.MergeRequestTimelineItem.created_at:type_name -> google.protobuf.Timestamp
+	1,   // 95: greet.SubmitMergeRequestReviewRequest.context:type_name -> greet.ProjectContext
+	95,  // 96: greet.SubmitMergeRequestReviewRequest.comments:type_name -> greet.ReviewCommentInput
+	91,  // 97: greet.SubmitMergeRequestReviewResponse.review:type_name -> greet.MergeRequestReviewDetail
+	1,   // 98: greet.ListMergeRequestReviewsRequest.context:type_name -> greet.ProjectContext
+	91,  // 99: greet.ListMergeRequestReviewsResponse.reviews:type_name -> greet.MergeRequestReviewDetail
+	1,   // 100: greet.GetMergeRequestReviewStateRequest.context:type_name -> greet.ProjectContext
+	92,  // 101: greet.GetMergeRequestReviewStateResponse.state:type_name -> greet.MergeRequestReviewState
+	1,   // 102: greet.WithdrawMergeRequestReviewRequest.context:type_name -> greet.ProjectContext
+	1,   // 103: greet.DismissMergeRequestReviewRequest.context:type_name -> greet.ProjectContext
+	91,  // 104: greet.DismissMergeRequestReviewResponse.review:type_name -> greet.MergeRequestReviewDetail
+	1,   // 105: greet.ListMergeRequestThreadsRequest.context:type_name -> greet.ProjectContext
+	90,  // 106: greet.ListMergeRequestThreadsResponse.threads:type_name -> greet.MergeRequestThreadDetail
+	1,   // 107: greet.AddMergeRequestCommentRequest.context:type_name -> greet.ProjectContext
+	90,  // 108: greet.AddMergeRequestCommentResponse.thread:type_name -> greet.MergeRequestThreadDetail
+	1,   // 109: greet.ReplyMergeRequestThreadRequest.context:type_name -> greet.ProjectContext
+	89,  // 110: greet.ReplyMergeRequestThreadResponse.comment:type_name -> greet.ReviewCommentDetail
+	1,   // 111: greet.UpdateMergeRequestCommentRequest.context:type_name -> greet.ProjectContext
+	89,  // 112: greet.UpdateMergeRequestCommentResponse.comment:type_name -> greet.ReviewCommentDetail
+	1,   // 113: greet.DeleteMergeRequestCommentRequest.context:type_name -> greet.ProjectContext
+	1,   // 114: greet.ResolveMergeRequestThreadRequest.context:type_name -> greet.ProjectContext
+	90,  // 115: greet.ResolveMergeRequestThreadResponse.thread:type_name -> greet.MergeRequestThreadDetail
+	1,   // 116: greet.DeleteMergeRequestThreadRequest.context:type_name -> greet.ProjectContext
+	1,   // 117: greet.ListMergeRequestReviewRequestsRequest.context:type_name -> greet.ProjectContext
+	93,  // 118: greet.ListMergeRequestReviewRequestsResponse.review_requests:type_name -> greet.ReviewRequestDetail
+	1,   // 119: greet.RequestMergeRequestReviewRequest.context:type_name -> greet.ProjectContext
+	93,  // 120: greet.RequestMergeRequestReviewResponse.review_request:type_name -> greet.ReviewRequestDetail
+	1,   // 121: greet.RemoveMergeRequestReviewRequestRequest.context:type_name -> greet.ProjectContext
+	1,   // 122: greet.ListMergeRequestTimelineRequest.context:type_name -> greet.ProjectContext
+	94,  // 123: greet.ListMergeRequestTimelineResponse.items:type_name -> greet.MergeRequestTimelineItem
+	135, // 124: greet.FileLockDetail.acquired_at:type_name -> google.protobuf.Timestamp
+	1,   // 125: greet.LockFileRequest.context:type_name -> greet.ProjectContext
+	128, // 126: greet.LockFileResponse.lock:type_name -> greet.FileLockDetail
+	1,   // 127: greet.UnlockFileRequest.context:type_name -> greet.ProjectContext
+	1,   // 128: greet.ListFileLocksRequest.context:type_name -> greet.ProjectContext
+	128, // 129: greet.ListFileLocksResponse.locks:type_name -> greet.FileLockDetail
+	48,  // 130: greet.NipaService.LoginWithUsernamePassword:input_type -> greet.LoginUsernamePasswordRequest
+	49,  // 131: greet.NipaService.LoginWithRefreshToken:input_type -> greet.LoginWithRefreshRequest
+	18,  // 132: greet.NipaService.GetListBranch:input_type -> greet.GetListBranchRequest
+	20,  // 133: greet.NipaService.GetBranch:input_type -> greet.GetBranchRequest
+	21,  // 134: greet.NipaService.GetBranchByName:input_type -> greet.GetBranchByNameRequest
+	23,  // 135: greet.NipaService.GetDefaultBranch:input_type -> greet.GetDefaultBranchRequest
+	25,  // 136: greet.NipaService.CreateBranch:input_type -> greet.CreateBranchRequest
+	27,  // 137: greet.NipaService.RenameBranch:input_type -> greet.RenameBranchRequest
+	29,  // 138: greet.NipaService.DeleteBranch:input_type -> greet.DeleteBranchRequest
+	31,  // 139: greet.NipaService.SetDefaultBranch:input_type -> greet.SetDefaultBranchRequest
+	33,  // 140: greet.NipaService.SetBranchProtection:input_type -> greet.SetBranchProtectionRequest
+	4,   // 141: greet.NipaService.GetTreeManifest:input_type -> greet.GetTreeManifestRequest
+	40,  // 142: greet.NipaService.GetCommitLog:input_type -> greet.GetCommitLogRequest
+	43,  // 143: greet.NipaService.GetCommit:input_type -> greet.GetCommitRequest
+	46,  // 144: greet.NipaService.WalkCommits:input_type -> greet.WalkCommitsRequest
+	35,  // 145: greet.NipaService.GetMergeBase:input_type -> greet.GetMergeBaseRequest
+	37,  // 146: greet.NipaService.MergeFastForward:input_type -> greet.MergeFastForwardRequest
+	78,  // 147: greet.NipaService.CreateMergeRequest:input_type -> greet.CreateMergeRequestRequest
+	80,  // 148: greet.NipaService.UpdateMergeRequest:input_type -> greet.UpdateMergeRequestRequest
+	82,  // 149: greet.NipaService.ListMergeRequests:input_type -> greet.ListMergeRequestsRequest
+	84,  // 150: greet.NipaService.MergeMergeRequest:input_type -> greet.MergeMergeRequestRequest
+	86,  // 151: greet.NipaService.CloseMergeRequest:input_type -> greet.CloseMergeRequestRequest
+	96,  // 152: greet.NipaService.SubmitMergeRequestReview:input_type -> greet.SubmitMergeRequestReviewRequest
+	98,  // 153: greet.NipaService.ListMergeRequestReviews:input_type -> greet.ListMergeRequestReviewsRequest
+	100, // 154: greet.NipaService.GetMergeRequestReviewState:input_type -> greet.GetMergeRequestReviewStateRequest
+	102, // 155: greet.NipaService.WithdrawMergeRequestReview:input_type -> greet.WithdrawMergeRequestReviewRequest
+	104, // 156: greet.NipaService.DismissMergeRequestReview:input_type -> greet.DismissMergeRequestReviewRequest
+	106, // 157: greet.NipaService.ListMergeRequestThreads:input_type -> greet.ListMergeRequestThreadsRequest
+	108, // 158: greet.NipaService.AddMergeRequestComment:input_type -> greet.AddMergeRequestCommentRequest
+	110, // 159: greet.NipaService.ReplyMergeRequestThread:input_type -> greet.ReplyMergeRequestThreadRequest
+	112, // 160: greet.NipaService.UpdateMergeRequestComment:input_type -> greet.UpdateMergeRequestCommentRequest
+	114, // 161: greet.NipaService.DeleteMergeRequestComment:input_type -> greet.DeleteMergeRequestCommentRequest
+	116, // 162: greet.NipaService.ResolveMergeRequestThread:input_type -> greet.ResolveMergeRequestThreadRequest
+	118, // 163: greet.NipaService.DeleteMergeRequestThread:input_type -> greet.DeleteMergeRequestThreadRequest
+	120, // 164: greet.NipaService.ListMergeRequestReviewRequests:input_type -> greet.ListMergeRequestReviewRequestsRequest
+	122, // 165: greet.NipaService.RequestMergeRequestReview:input_type -> greet.RequestMergeRequestReviewRequest
+	124, // 166: greet.NipaService.RemoveMergeRequestReviewRequest:input_type -> greet.RemoveMergeRequestReviewRequestRequest
+	126, // 167: greet.NipaService.ListMergeRequestTimeline:input_type -> greet.ListMergeRequestTimelineRequest
+	15,  // 168: greet.NipaService.Push:input_type -> greet.PushRequest
+	9,   // 169: greet.NipaService.GetChunkUploadUrls:input_type -> greet.GetChunkUploadUrlsRequest
+	11,  // 170: greet.NipaService.GetChunkDownloadUrls:input_type -> greet.GetChunkDownloadUrlsRequest
+	13,  // 171: greet.NipaService.ConfirmChunkUploads:input_type -> greet.ConfirmChunkUploadsRequest
+	129, // 172: greet.NipaService.LockFile:input_type -> greet.LockFileRequest
+	131, // 173: greet.NipaService.UnlockFile:input_type -> greet.UnlockFileRequest
+	133, // 174: greet.NipaService.ListFileLocks:input_type -> greet.ListFileLocksRequest
+	65,  // 175: greet.NipaService.GetMyPermissions:input_type -> greet.GetMyPermissionsRequest
+	53,  // 176: greet.NipaService.CreatePBACRule:input_type -> greet.CreatePBACRuleRequest
+	55,  // 177: greet.NipaService.ListPBACRules:input_type -> greet.ListPBACRulesRequest
+	57,  // 178: greet.NipaService.DeletePBACRule:input_type -> greet.DeletePBACRuleRequest
+	59,  // 179: greet.NipaService.ListProjectPathPermissions:input_type -> greet.ListProjectPathPermissionsRequest
+	61,  // 180: greet.NipaService.SetProjectPathPermission:input_type -> greet.SetProjectPathPermissionRequest
+	63,  // 181: greet.NipaService.DeleteProjectPathPermission:input_type -> greet.DeleteProjectPathPermissionRequest
+	68,  // 182: greet.NipaService.CreateGroup:input_type -> greet.CreateGroupRequest
+	70,  // 183: greet.NipaService.ListGroups:input_type -> greet.ListGroupsRequest
+	72,  // 184: greet.NipaService.AddGroupMember:input_type -> greet.AddGroupMemberRequest
+	74,  // 185: greet.NipaService.RemoveGroupMember:input_type -> greet.RemoveGroupMemberRequest
+	50,  // 186: greet.NipaService.LoginWithUsernamePassword:output_type -> greet.LoginResponse
+	50,  // 187: greet.NipaService.LoginWithRefreshToken:output_type -> greet.LoginResponse
+	19,  // 188: greet.NipaService.GetListBranch:output_type -> greet.GetListBranchResponse
+	24,  // 189: greet.NipaService.GetBranch:output_type -> greet.GetBranchResponse
+	22,  // 190: greet.NipaService.GetBranchByName:output_type -> greet.GetBranchByNameResponse
+	24,  // 191: greet.NipaService.GetDefaultBranch:output_type -> greet.GetBranchResponse
+	26,  // 192: greet.NipaService.CreateBranch:output_type -> greet.CreateBranchResponse
+	28,  // 193: greet.NipaService.RenameBranch:output_type -> greet.RenameBranchResponse
+	30,  // 194: greet.NipaService.DeleteBranch:output_type -> greet.DeleteBranchResponse
+	32,  // 195: greet.NipaService.SetDefaultBranch:output_type -> greet.SetDefaultBranchResponse
+	34,  // 196: greet.NipaService.SetBranchProtection:output_type -> greet.SetBranchProtectionResponse
+	5,   // 197: greet.NipaService.GetTreeManifest:output_type -> greet.GetTreeManifestResponse
+	41,  // 198: greet.NipaService.GetCommitLog:output_type -> greet.GetCommitLogResponse
+	44,  // 199: greet.NipaService.GetCommit:output_type -> greet.GetCommitResponse
+	47,  // 200: greet.NipaService.WalkCommits:output_type -> greet.WalkCommitsResponse
+	36,  // 201: greet.NipaService.GetMergeBase:output_type -> greet.GetMergeBaseResponse
+	38,  // 202: greet.NipaService.MergeFastForward:output_type -> greet.MergeFastForwardResponse
+	79,  // 203: greet.NipaService.CreateMergeRequest:output_type -> greet.CreateMergeRequestResponse
+	81,  // 204: greet.NipaService.UpdateMergeRequest:output_type -> greet.UpdateMergeRequestResponse
+	83,  // 205: greet.NipaService.ListMergeRequests:output_type -> greet.ListMergeRequestsResponse
+	85,  // 206: greet.NipaService.MergeMergeRequest:output_type -> greet.MergeMergeRequestResponse
+	87,  // 207: greet.NipaService.CloseMergeRequest:output_type -> greet.CloseMergeRequestResponse
+	97,  // 208: greet.NipaService.SubmitMergeRequestReview:output_type -> greet.SubmitMergeRequestReviewResponse
+	99,  // 209: greet.NipaService.ListMergeRequestReviews:output_type -> greet.ListMergeRequestReviewsResponse
+	101, // 210: greet.NipaService.GetMergeRequestReviewState:output_type -> greet.GetMergeRequestReviewStateResponse
+	103, // 211: greet.NipaService.WithdrawMergeRequestReview:output_type -> greet.WithdrawMergeRequestReviewResponse
+	105, // 212: greet.NipaService.DismissMergeRequestReview:output_type -> greet.DismissMergeRequestReviewResponse
+	107, // 213: greet.NipaService.ListMergeRequestThreads:output_type -> greet.ListMergeRequestThreadsResponse
+	109, // 214: greet.NipaService.AddMergeRequestComment:output_type -> greet.AddMergeRequestCommentResponse
+	111, // 215: greet.NipaService.ReplyMergeRequestThread:output_type -> greet.ReplyMergeRequestThreadResponse
+	113, // 216: greet.NipaService.UpdateMergeRequestComment:output_type -> greet.UpdateMergeRequestCommentResponse
+	115, // 217: greet.NipaService.DeleteMergeRequestComment:output_type -> greet.DeleteMergeRequestCommentResponse
+	117, // 218: greet.NipaService.ResolveMergeRequestThread:output_type -> greet.ResolveMergeRequestThreadResponse
+	119, // 219: greet.NipaService.DeleteMergeRequestThread:output_type -> greet.DeleteMergeRequestThreadResponse
+	121, // 220: greet.NipaService.ListMergeRequestReviewRequests:output_type -> greet.ListMergeRequestReviewRequestsResponse
+	123, // 221: greet.NipaService.RequestMergeRequestReview:output_type -> greet.RequestMergeRequestReviewResponse
+	125, // 222: greet.NipaService.RemoveMergeRequestReviewRequest:output_type -> greet.RemoveMergeRequestReviewRequestResponse
+	127, // 223: greet.NipaService.ListMergeRequestTimeline:output_type -> greet.ListMergeRequestTimelineResponse
+	16,  // 224: greet.NipaService.Push:output_type -> greet.PushResponse
+	10,  // 225: greet.NipaService.GetChunkUploadUrls:output_type -> greet.GetChunkUploadUrlsResponse
+	12,  // 226: greet.NipaService.GetChunkDownloadUrls:output_type -> greet.GetChunkDownloadUrlsResponse
+	14,  // 227: greet.NipaService.ConfirmChunkUploads:output_type -> greet.ConfirmChunkUploadsResponse
+	130, // 228: greet.NipaService.LockFile:output_type -> greet.LockFileResponse
+	132, // 229: greet.NipaService.UnlockFile:output_type -> greet.UnlockFileResponse
+	134, // 230: greet.NipaService.ListFileLocks:output_type -> greet.ListFileLocksResponse
+	66,  // 231: greet.NipaService.GetMyPermissions:output_type -> greet.GetMyPermissionsResponse
+	54,  // 232: greet.NipaService.CreatePBACRule:output_type -> greet.CreatePBACRuleResponse
+	56,  // 233: greet.NipaService.ListPBACRules:output_type -> greet.ListPBACRulesResponse
+	58,  // 234: greet.NipaService.DeletePBACRule:output_type -> greet.DeletePBACRuleResponse
+	60,  // 235: greet.NipaService.ListProjectPathPermissions:output_type -> greet.ListProjectPathPermissionsResponse
+	62,  // 236: greet.NipaService.SetProjectPathPermission:output_type -> greet.SetProjectPathPermissionResponse
+	64,  // 237: greet.NipaService.DeleteProjectPathPermission:output_type -> greet.DeleteProjectPathPermissionResponse
+	69,  // 238: greet.NipaService.CreateGroup:output_type -> greet.CreateGroupResponse
+	71,  // 239: greet.NipaService.ListGroups:output_type -> greet.ListGroupsResponse
+	73,  // 240: greet.NipaService.AddGroupMember:output_type -> greet.AddGroupMemberResponse
+	75,  // 241: greet.NipaService.RemoveGroupMember:output_type -> greet.RemoveGroupMemberResponse
+	186, // [186:242] is the sub-list for method output_type
+	130, // [130:186] is the sub-list for method input_type
+	130, // [130:130] is the sub-list for extension type_name
+	130, // [130:130] is the sub-list for extension extendee
+	0,   // [0:130] is the sub-list for field type_name
 }
 
 func init() { file_internal_grpc_proto_server_proto_init() }
@@ -6340,14 +9103,18 @@ func file_internal_grpc_proto_server_proto_init() {
 	file_internal_grpc_proto_server_proto_msgTypes[52].OneofWrappers = []any{}
 	file_internal_grpc_proto_server_proto_msgTypes[75].OneofWrappers = []any{}
 	file_internal_grpc_proto_server_proto_msgTypes[76].OneofWrappers = []any{}
-	file_internal_grpc_proto_server_proto_msgTypes[87].OneofWrappers = []any{}
+	file_internal_grpc_proto_server_proto_msgTypes[89].OneofWrappers = []any{}
+	file_internal_grpc_proto_server_proto_msgTypes[94].OneofWrappers = []any{}
+	file_internal_grpc_proto_server_proto_msgTypes[105].OneofWrappers = []any{}
+	file_internal_grpc_proto_server_proto_msgTypes[107].OneofWrappers = []any{}
+	file_internal_grpc_proto_server_proto_msgTypes[127].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_internal_grpc_proto_server_proto_rawDesc), len(file_internal_grpc_proto_server_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   94,
+			NumMessages:   134,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

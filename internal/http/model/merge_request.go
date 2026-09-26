@@ -24,6 +24,7 @@ type MergeRequestResponse struct {
 	CreatedAt         time.Time             `json:"created_at"`
 	UpdatedAt         time.Time             `json:"updated_at"`
 	Mergeability      *MergeabilityResponse `json:"mergeability,omitempty"`
+	Review            *ReviewStateResponse  `json:"review,omitempty"`
 }
 
 type CreateMergeRequestRequest struct {

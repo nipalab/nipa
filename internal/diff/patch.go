@@ -104,7 +104,7 @@ func FilePatch(f FileDiff, opts Options) []string {
 		return append(lines, contentUnavailable)
 	}
 
-	hunkLines := hunks(f.Old, f.New, opts)
+	hunkLines := renderHunks(Hunks(f.Old, f.New, opts))
 	switch {
 	case len(hunkLines) > 0:
 		lines = append(lines, "--- "+oldPath, "+++ "+newPath)
@@ -155,44 +155,10 @@ func FilterIgnored(files []FileDiff, opts Options) []FileDiff {
 	return out
 }
 
-func hunks(old, new []byte, opts Options) []string {
-	ops := LinesWith(splitLines(old), splitLines(new), opts.equalFunc())
-	ranges := hunkRanges(ops, opts.Context)
-	if len(ranges) == 0 {
-		return nil
-	}
-
-	preA := make([]int, len(ops)+1)
-	preB := make([]int, len(ops)+1)
-	for i, op := range ops {
-		preA[i+1], preB[i+1] = preA[i], preB[i]
-		if op.Kind != '+' {
-			preA[i+1]++
-		}
-		if op.Kind != '-' {
-			preB[i+1]++
-		}
-	}
-
+func renderHunks(hunks []Hunk) []string {
 	var out []string
-	for _, r := range ranges {
-		aStart, aCount := hunkStartCount(preA, r[0], r[1])
-		bStart, bCount := hunkStartCount(preB, r[0], r[1])
-		out = append(out, fmt.Sprintf("@@ -%d,%d +%d,%d @@", aStart, aCount, bStart, bCount))
-		for _, op := range ops[r[0]:r[1]] {
-			prefix := byte(' ')
-			switch op.Kind {
-			case '-':
-				prefix = '-'
-			case '+':
-				prefix = '+'
-			}
-			line, hasNewline := strings.CutSuffix(op.Line, "\n")
-			out = append(out, string(prefix)+line)
-			if !hasNewline && op.Kind != ' ' {
-				out = append(out, `\ No newline at end of file`)
-			}
-		}
+	for _, hunk := range hunks {
+		out = append(out, hunk.Render()...)
 	}
 	return out
 }

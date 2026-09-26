@@ -38,14 +38,32 @@ type CommitResponse struct {
 	CreatedAt   time.Time `json:"created_at"`
 }
 
+type DiffLineResponse struct {
+	Kind string `json:"kind"`
+	Old  int    `json:"old_line,omitempty"`
+	New  int    `json:"new_line,omitempty"`
+	Text string `json:"text"`
+	// NoNewline marks the last line of a file that has no trailing newline.
+	NoNewline bool `json:"no_newline,omitempty"`
+}
+
+type DiffHunkResponse struct {
+	OldStart int                `json:"old_start"`
+	OldLines int                `json:"old_lines"`
+	NewStart int                `json:"new_start"`
+	NewLines int                `json:"new_lines"`
+	Lines    []DiffLineResponse `json:"lines"`
+}
+
 type DiffFileResponse struct {
-	Path      string   `json:"path"`
-	OldPath   string   `json:"old_path,omitempty"`
-	Status    string   `json:"status"`
-	Binary    bool     `json:"binary"`
-	Additions int      `json:"additions"`
-	Deletions int      `json:"deletions"`
-	Patch     []string `json:"patch,omitempty"`
+	Path      string             `json:"path"`
+	OldPath   string             `json:"old_path,omitempty"`
+	Status    string             `json:"status"`
+	Binary    bool               `json:"binary"`
+	Additions int                `json:"additions"`
+	Deletions int                `json:"deletions"`
+	Patch     []string           `json:"patch,omitempty"`
+	Hunks     []DiffHunkResponse `json:"hunks,omitempty"`
 }
 
 type CommitDiffResponse struct {

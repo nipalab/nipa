@@ -40,6 +40,9 @@ type MergeRequest struct {
 	CreatedBy         snow.ID   `json:"created_by"`
 	CreatedAt         time.Time `json:"created_at"`
 	UpdatedAt         time.Time `json:"updated_at"`
+	// Review is resolved per request, not stored: it counts only the reviews
+	// given for the current source head.
+	Review *MergeRequestReviewState `json:"review,omitempty"`
 }
 
 const (

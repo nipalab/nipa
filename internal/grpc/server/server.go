@@ -15,6 +15,7 @@ type usecaseContainer interface {
 	Permission() *usecase.Permission
 	Group() *usecase.Group
 	MergeRequest() *usecase.MergeRequest
+	MergeRequestReview() *usecase.MergeRequestReview
 	FileLock() *usecase.FileLock
 }
 

@@ -5,9 +5,17 @@ import {
   closeMergeRequest,
   getMergeRequest,
   getMergeRequestDiff,
+  getMergeRequestReviewState,
+  getMergeRequestTimeline,
+  listMergeRequestReviewRequests,
+  listMergeRequestReviews,
+  listMergeRequestThreads,
   mergeMergeRequest,
   reopenMergeRequest,
 } from '../api/endpoints'
+import { useAuth } from '../auth'
+import { MergeRequestDiff } from '../components/repo/MergeRequestDiff'
+import { DiffAnchor, ReviewPanel } from '../components/repo/ReviewPanel'
 import { RepoPageShell } from '../components/repo/RepoPageShell'
 import { useRepoChrome } from '../components/repo/useRepoChrome'
 import { ErrorBanner, Loading, Mono, StatusLabel } from '../components/ui'
@@ -15,6 +23,7 @@ import { useAsync } from '../hooks'
 
 export default function PullPage() {
   const { org = '', project = '', id = '' } = useParams()
+  const { me } = useAuth()
   const { canWrite, canAdmin, defaultBranch } = useRepoChrome(org, project)
   const { data: request, error, loading, reload } = useAsync(
     () => getMergeRequest(org, project, id),
@@ -24,13 +33,44 @@ export default function PullPage() {
     () => getMergeRequestDiff(org, project, id),
     [org, project, id],
   )
+  const { data: state, reload: reloadState } = useAsync(
+    () => getMergeRequestReviewState(org, project, id),
+    [org, project, id],
+  )
+  const { data: reviews, reload: reloadReviewList } = useAsync(
+    () => listMergeRequestReviews(org, project, id),
+    [org, project, id],
+  )
+  const { data: threads, reload: reloadThreads } = useAsync(
+    () => listMergeRequestThreads(org, project, id),
+    [org, project, id],
+  )
+  const { data: reviewRequests, reload: reloadReviewRequests } = useAsync(
+    () => listMergeRequestReviewRequests(org, project, id),
+    [org, project, id],
+  )
+  const { data: timeline, reload: reloadTimeline } = useAsync(
+    () => getMergeRequestTimeline(org, project, id),
+    [org, project, id],
+  )
   const [actionError, setActionError] = useState<string | null>(null)
+  const [draftAnchor, setDraftAnchor] = useState<DiffAnchor | null>(null)
+  const [activeThreadId, setActiveThreadId] = useState<string | null>(null)
+
+  function reloadAll() {
+    reload()
+    reloadState()
+    reloadReviewList()
+    reloadThreads()
+    reloadReviewRequests()
+    reloadTimeline()
+  }
 
   async function run(action: () => Promise<unknown>) {
     setActionError(null)
     try {
       await action()
-      reload()
+      reloadAll()
     } catch (err) {
       setActionError(err instanceof Error ? err.message : String(err))
     }
@@ -98,21 +138,39 @@ export default function PullPage() {
         </Stack>
       )}
 
+      <Stack direction="vertical" gap="normal">
+        <Text style={{ fontWeight: 600 }}>Reviews</Text>
+        <ReviewPanel
+          org={org}
+          project={project}
+          id={id}
+          me={me?.id}
+          request={request ?? undefined}
+          state={state}
+          reviews={reviews ?? []}
+          threads={threads ?? []}
+          reviewRequests={reviewRequests ?? []}
+          timeline={timeline ?? []}
+          draftAnchor={draftAnchor}
+          activeThreadId={activeThreadId}
+          canWrite={canWrite && request?.status === 'open'}
+          onChanged={reloadAll}
+          onCancelDraft={() => setDraftAnchor(null)}
+          onOpenThread={setActiveThreadId}
+        />
+      </Stack>
+
       {diffLoading && <Loading />}
-      {diff?.files.map((file) => (
-        <div key={file.path} style={{ border: '1px solid var(--borderColor-default)', borderRadius: 6 }}>
-          <div style={{ padding: '6px 12px', borderBottom: '1px solid var(--borderColor-muted)' }}>
-            <Mono>{file.path}</Mono> <StatusLabel status={file.status} />{' '}
-            <Text style={{ color: 'var(--fgColor-success)' }}>+{file.additions}</Text>{' '}
-            <Text style={{ color: 'var(--fgColor-danger)' }}>-{file.deletions}</Text>
-          </div>
-          {!file.binary && file.patch && (
-            <pre style={{ margin: 0, padding: 12, overflowX: 'auto', fontSize: 12, lineHeight: 1.4 }}>
-              {file.patch.join('\n')}
-            </pre>
-          )}
-        </div>
-      ))}
+      <MergeRequestDiff
+        files={diff?.files ?? []}
+        threads={threads ?? []}
+        canComment={canWrite && request?.status === 'open'}
+        onStartThread={(filePath, oldLine, newLine) => {
+          setActiveThreadId(null)
+          setDraftAnchor({ filePath, oldLine, newLine })
+        }}
+        onOpenThread={setActiveThreadId}
+      />
     </RepoPageShell>
   )
 }

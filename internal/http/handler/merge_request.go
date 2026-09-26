@@ -24,6 +24,10 @@ func (h *Handler) ListMergeRequests(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
+	if err := h.useCase.MergeRequestReview().AttachSummaries(appCtx.Context(), project.ID, requests); err != nil {
+		appCtx.HandleError(err)
+		return
+	}
 	resp := make([]model.MergeRequestResponse, 0, len(requests))
 	for _, request := range requests {
 		resp = append(resp, toMergeRequestResponse(request, nil))
@@ -96,6 +100,11 @@ func (h *Handler) GetMergeRequest(appCtx http.AppContext) {
 	}
 	info, err := h.useCase.MergeRequest().Check(appCtx.Context(), project.ID, number)
 	if err != nil {
+		appCtx.HandleError(err)
+		return
+	}
+	if err := h.useCase.MergeRequestReview().AttachSummaries(appCtx.Context(), project.ID,
+		[]*domain.MergeRequest{request}); err != nil {
 		appCtx.HandleError(err)
 		return
 	}
@@ -231,6 +240,10 @@ func toMergeRequestResponse(request *domain.MergeRequest, info *domain.Mergeabil
 	}
 	if info != nil {
 		resp.Mergeability = toMergeabilityResponse(info)
+	}
+	if request.Review != nil {
+		review := toReviewStateResponse(request.Review)
+		resp.Review = &review
 	}
 	return resp
 }
