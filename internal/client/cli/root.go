@@ -36,7 +36,7 @@ func NewCli(useCase usecaseContainer, connector connector) *Cli {
 	}
 }
 
-func (c *Cli) Run() error {
+func (c *Cli) Run(extra ...*cobra.Command) error {
 	var rootCmd = &cobra.Command{
 		Use:   "nipa",
 		Short: "nipa is centralized version control system for your project",
@@ -59,5 +59,6 @@ func (c *Cli) Run() error {
 	rootCmd.AddCommand(c.setupMrCmd())
 	rootCmd.AddCommand(c.setupLockCmd())
 	rootCmd.AddCommand(c.setupUnlockCmd())
+	rootCmd.AddCommand(extra...)
 	return rootCmd.Execute()
 }
