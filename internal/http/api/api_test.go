@@ -37,6 +37,7 @@ type testRegistry struct {
 	branch       *usecase.Branch
 	chunk        *usecase.Chunk
 	mergeRequest *usecase.MergeRequest
+	fileLock     *usecase.FileLock
 }
 
 func (r *testRegistry) Auth() *usecase.Auth             { return r.auth }
@@ -51,6 +52,7 @@ func (r *testRegistry) Chunk() *usecase.Chunk           { return r.chunk }
 func (r *testRegistry) MergeRequest() *usecase.MergeRequest {
 	return r.mergeRequest
 }
+func (r *testRegistry) FileLock() *usecase.FileLock { return r.fileLock }
 
 type stubPasswordHasher struct{}
 
@@ -99,6 +101,7 @@ func TestAPIRoutes(t *testing.T) {
 	mergeRequestUc := usecase.NewMergeRequest(
 		sqlite.NewMergeRequestRepository(dbConn), branchRepo, permissionUc, branchUc, node,
 	)
+	fileLockUc := usecase.NewFileLock(sqlite.NewFileLockRepository(dbConn), branchRepo, permissionUc, node)
 	reg := &testRegistry{
 		auth:         usecase.NewAuth("test-secret", stubPasswordHasher{}, userRepo, sqlite.NewAuthRepository(dbConn)),
 		user:         usecase.NewUser(node, userRepo, stubPasswordHasher{}),
@@ -110,6 +113,7 @@ func TestAPIRoutes(t *testing.T) {
 		branch:       branchUc,
 		chunk:        chunkUc,
 		mergeRequest: mergeRequestUc,
+		fileLock:     fileLockUc,
 	}
 
 	seedPushTo := func(t *testing.T, branch, baseCommitID string, files map[string]string) *domain.PushResult {

@@ -10,6 +10,7 @@ import CommitsPage from './pages/CommitsPage'
 import BranchesPage from './pages/BranchesPage'
 import PullsPage from './pages/PullsPage'
 import PullPage from './pages/PullPage'
+import LocksPage from './pages/LocksPage'
 import ProjectSettingsPage from './pages/ProjectSettingsPage'
 import OrgSettingsPage from './pages/OrgSettingsPage'
 import AdminUsersPage from './pages/AdminUsersPage'
@@ -38,6 +39,7 @@ export default function App() {
               <Route path="/:org/:project/branches" element={<BranchesPage />} />
               <Route path="/:org/:project/pulls" element={<PullsPage />} />
               <Route path="/:org/:project/pulls/:id" element={<PullPage />} />
+              <Route path="/:org/:project/locks" element={<LocksPage />} />
               <Route path="/:org/:project/settings" element={<ProjectSettingsPage />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Route>

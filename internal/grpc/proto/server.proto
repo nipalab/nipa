@@ -513,6 +513,44 @@ message CloseMergeRequestResponse {
     MergeRequestDetail merge_request = 1;
 }
 
+message FileLockDetail {
+    string id = 1; // base36 snow ID
+    string path = 2; // file path or directory prefix
+    string branch = 3; // branch name; empty for mainline (project-global) locks
+    bool global = 4; // true when the lock applies to the default branch
+    string held_by = 5; // base36 snow ID
+    string held_by_name = 6;
+    optional int64 merge_request_number = 7;
+    google.protobuf.Timestamp acquired_at = 8;
+}
+
+message LockFileRequest {
+    ProjectContext context = 1;
+    string path = 2;
+    string branch = 3; // empty locks the default branch (mainline)
+}
+
+message LockFileResponse {
+    FileLockDetail lock = 1;
+}
+
+message UnlockFileRequest {
+    ProjectContext context = 1;
+    string path = 2;
+    string branch = 3;
+}
+
+message UnlockFileResponse {
+}
+
+message ListFileLocksRequest {
+    ProjectContext context = 1;
+}
+
+message ListFileLocksResponse {
+    repeated FileLockDetail locks = 1;
+}
+
 service NipaService {
     rpc LoginWithUsernamePassword(LoginUsernamePasswordRequest) returns (LoginResponse);
     rpc LoginWithRefreshToken(LoginWithRefreshRequest) returns (LoginResponse);
@@ -541,6 +579,10 @@ service NipaService {
     rpc GetChunkUploadUrls(GetChunkUploadUrlsRequest) returns (GetChunkUploadUrlsResponse);
     rpc GetChunkDownloadUrls(GetChunkDownloadUrlsRequest) returns (GetChunkDownloadUrlsResponse);
     rpc ConfirmChunkUploads(ConfirmChunkUploadsRequest) returns (ConfirmChunkUploadsResponse);
+
+    rpc LockFile(LockFileRequest) returns (LockFileResponse);
+    rpc UnlockFile(UnlockFileRequest) returns (UnlockFileResponse);
+    rpc ListFileLocks(ListFileLocksRequest) returns (ListFileLocksResponse);
 
     rpc GetMyPermissions(GetMyPermissionsRequest) returns (GetMyPermissionsResponse);
     rpc CreatePBACRule(CreatePBACRuleRequest) returns (CreatePBACRuleResponse);

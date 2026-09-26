@@ -14,6 +14,7 @@ type Registry struct {
 	orgUsecase          *usecase.Org
 	projectUsecase      *usecase.Project
 	mergeRequestUsecase *usecase.MergeRequest
+	fileLockUsecase     *usecase.FileLock
 }
 
 func (r *Registry) Auth() *usecase.Auth {
@@ -58,4 +59,8 @@ func (r *Registry) Project() *usecase.Project {
 
 func (r *Registry) MergeRequest() *usecase.MergeRequest {
 	return r.mergeRequestUsecase
+}
+
+func (r *Registry) FileLock() *usecase.FileLock {
+	return r.fileLockUsecase
 }

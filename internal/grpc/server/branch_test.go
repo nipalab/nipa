@@ -44,6 +44,7 @@ func (m *mockUsecaseContainer) Group() *usecase.Group { return m.group }
 func (m *mockUsecaseContainer) MergeRequest() *usecase.MergeRequest {
 	return m.mergeRequest
 }
+func (m *mockUsecaseContainer) FileLock() *usecase.FileLock { return nil }
 
 func newMockUsecaseContainer(t *testing.T, branch *usecase.Branch) *mockUsecaseContainer {
 	t.Helper()

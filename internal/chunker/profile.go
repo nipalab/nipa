@@ -51,6 +51,18 @@ func ConfigForFile(path string, isBinary bool) Config {
 	return DefaultBinaryConfig
 }
 
+// IsLockablePath reports whether a path looks like a binary asset that needs
+// an exclusive lock before it can change. It matches by extension only; files
+// already tracked in a manifest should use their stored is_binary flag instead.
+func IsLockablePath(path string) bool {
+	ext := strings.ToLower(filepath.Ext(path))
+	if _, ok := editableBinaryExtensions[ext]; ok {
+		return true
+	}
+	_, ok := packedAssetExtensions[ext]
+	return ok
+}
+
 // MaxChunkSize is the largest chunk size any profile can produce.
 func MaxChunkSize() int64 {
 	max := DefaultConfig.Max

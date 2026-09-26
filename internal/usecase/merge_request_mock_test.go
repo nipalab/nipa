@@ -59,18 +59,18 @@ func (mr_2 *MockmergeRequestRepositoryMockRecorder) Create(ctx, mr any) *gomock.
 }
 
 // Get mocks base method.
-func (m *MockmergeRequestRepository) Get(ctx context.Context, projectID snow.ID, id int64) (*domain.MergeRequest, error) {
+func (m *MockmergeRequestRepository) Get(ctx context.Context, projectID snow.ID, number int64) (*domain.MergeRequest, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Get", ctx, projectID, id)
+	ret := m.ctrl.Call(m, "Get", ctx, projectID, number)
 	ret0, _ := ret[0].(*domain.MergeRequest)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Get indicates an expected call of Get.
-func (mr *MockmergeRequestRepositoryMockRecorder) Get(ctx, projectID, id any) *gomock.Call {
+func (mr *MockmergeRequestRepositoryMockRecorder) Get(ctx, projectID, number any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockmergeRequestRepository)(nil).Get), ctx, projectID, id)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockmergeRequestRepository)(nil).Get), ctx, projectID, number)
 }
 
 // List mocks base method.
@@ -89,32 +89,32 @@ func (mr *MockmergeRequestRepositoryMockRecorder) List(ctx, projectID, status, l
 }
 
 // Update mocks base method.
-func (m *MockmergeRequestRepository) Update(ctx context.Context, projectID snow.ID, id int64, title, description string) (*domain.MergeRequest, error) {
+func (m *MockmergeRequestRepository) Update(ctx context.Context, projectID snow.ID, number int64, title, description string) (*domain.MergeRequest, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Update", ctx, projectID, id, title, description)
+	ret := m.ctrl.Call(m, "Update", ctx, projectID, number, title, description)
 	ret0, _ := ret[0].(*domain.MergeRequest)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Update indicates an expected call of Update.
-func (mr *MockmergeRequestRepositoryMockRecorder) Update(ctx, projectID, id, title, description any) *gomock.Call {
+func (mr *MockmergeRequestRepositoryMockRecorder) Update(ctx, projectID, number, title, description any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Update", reflect.TypeOf((*MockmergeRequestRepository)(nil).Update), ctx, projectID, id, title, description)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Update", reflect.TypeOf((*MockmergeRequestRepository)(nil).Update), ctx, projectID, number, title, description)
 }
 
 // UpdateStatus mocks base method.
-func (m *MockmergeRequestRepository) UpdateStatus(ctx context.Context, projectID snow.ID, id int64, status string, mergeCommitID *snow.ID) error {
+func (m *MockmergeRequestRepository) UpdateStatus(ctx context.Context, projectID snow.ID, number int64, status string, mergeCommitID *snow.ID) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateStatus", ctx, projectID, id, status, mergeCommitID)
+	ret := m.ctrl.Call(m, "UpdateStatus", ctx, projectID, number, status, mergeCommitID)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // UpdateStatus indicates an expected call of UpdateStatus.
-func (mr *MockmergeRequestRepositoryMockRecorder) UpdateStatus(ctx, projectID, id, status, mergeCommitID any) *gomock.Call {
+func (mr *MockmergeRequestRepositoryMockRecorder) UpdateStatus(ctx, projectID, number, status, mergeCommitID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateStatus", reflect.TypeOf((*MockmergeRequestRepository)(nil).UpdateStatus), ctx, projectID, id, status, mergeCommitID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateStatus", reflect.TypeOf((*MockmergeRequestRepository)(nil).UpdateStatus), ctx, projectID, number, status, mergeCommitID)
 }
 
 // MockbranchMerger is a mock of branchMerger interface.
@@ -139,6 +139,21 @@ func NewMockbranchMerger(ctrl *gomock.Controller) *MockbranchMerger {
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockbranchMerger) EXPECT() *MockbranchMergerMockRecorder {
 	return m.recorder
+}
+
+// BinaryChangesBetween mocks base method.
+func (m *MockbranchMerger) BinaryChangesBetween(ctx context.Context, projectID snow.ID, fromCommitID, toCommitID *snow.ID) ([]string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "BinaryChangesBetween", ctx, projectID, fromCommitID, toCommitID)
+	ret0, _ := ret[0].([]string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// BinaryChangesBetween indicates an expected call of BinaryChangesBetween.
+func (mr *MockbranchMergerMockRecorder) BinaryChangesBetween(ctx, projectID, fromCommitID, toCommitID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BinaryChangesBetween", reflect.TypeOf((*MockbranchMerger)(nil).BinaryChangesBetween), ctx, projectID, fromCommitID, toCommitID)
 }
 
 // FastForwardForMergeRequest mocks base method.

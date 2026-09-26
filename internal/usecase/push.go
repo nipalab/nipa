@@ -57,6 +57,7 @@ type Push struct {
 	branchRepo branchRepository
 	pushRepo   pushRepository
 	snowNode   snow.Node
+	fileLocks  fileLockGate
 }
 
 func NewPush(permUc permissionUsecase, branchRepo branchRepository, pushRepo pushRepository, snowNode snow.Node) *Push {
@@ -66,6 +67,12 @@ func NewPush(permUc permissionUsecase, branchRepo branchRepository, pushRepo pus
 		pushRepo:   pushRepo,
 		snowNode:   snowNode,
 	}
+}
+
+// WithFileLocks enables the mandatory binary lock gate on this usecase.
+func (p *Push) WithFileLocks(locks fileLockGate) *Push {
+	p.fileLocks = locks
+	return p
 }
 
 func (p *Push) Push(ctx context.Context, projectID snow.ID, branchName, baseTreeHash, message string, files []*domain.PushFile, removed []string, parent2CommitHash, baseCommitID string) (*domain.PushResult, error) {
@@ -99,6 +106,17 @@ func (p *Push) Push(ctx context.Context, projectID snow.ID, branchName, baseTree
 	}
 	if branch.IsProtected {
 		return nil, domain.NewErrorForbidden(fmt.Sprintf("branch %q is protected; push through a merge request", branchName))
+	}
+
+	claim, ok := domain.ClaimFromContext(ctx)
+	if !ok {
+		return nil, domain.NewErrorNoPermission()
+	}
+	lockablePaths := lockablePushPaths(files, removed)
+	if p.fileLocks != nil {
+		if err := p.fileLocks.EnsureLocks(ctx, projectID, branch, lockablePaths, claim.UserID); err != nil {
+			return nil, err
+		}
 	}
 
 	var headCommit *domain.Commit
@@ -155,21 +173,44 @@ func (p *Push) Push(ctx context.Context, projectID snow.ID, branchName, baseTree
 		return nil, err
 	}
 	req := p.toApplyRequest(ctx, projectID, branch, headCommit, parent2Commit, message, root)
-
-	claim, ok := domain.ClaimFromContext(ctx)
-	if !ok {
-		return nil, domain.NewErrorNoPermission()
-	}
 	req.UserID = claim.UserID
 
 	if err := p.pushRepo.ApplyPush(ctx, req); err != nil {
 		return nil, err
+	}
+	if p.fileLocks != nil {
+		if err := p.fileLocks.ReleaseLanded(ctx, projectID, branch, lockablePaths, claim.UserID); err != nil {
+			return nil, err
+		}
 	}
 	return &domain.PushResult{
 		CommitID:   req.CommitID,
 		CommitHash: req.CommitHash,
 		TreeHash:   root.Hash,
 	}, nil
+}
+
+func lockablePushPaths(files []*domain.PushFile, removed []string) []string {
+	seen := map[string]struct{}{}
+	var paths []string
+	add := func(path string) {
+		if _, ok := seen[path]; ok {
+			return
+		}
+		seen[path] = struct{}{}
+		paths = append(paths, path)
+	}
+	for _, file := range files {
+		if file.IsBinary {
+			add(file.Path)
+		}
+	}
+	for _, path := range removed {
+		if chunker.IsLockablePath(path) {
+			add(path)
+		}
+	}
+	return paths
 }
 
 func (p *Push) headTreeHash(ctx context.Context, headCommit *domain.Commit) (domain.Hash, error) {

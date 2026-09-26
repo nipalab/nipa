@@ -146,6 +146,7 @@ func TestEndToEnd_UploadThroughput(t *testing.T) {
 	host := startTestServer(t, openTestDB(t))
 	grpcClient, auth, counter := newBenchClient(t, host)
 	pusher := clientusecase.NewPush(auth, grpcClient, localrepo.NewLocalRepo())
+	locks := clientusecase.NewFileLock(auth, grpcClient, localrepo.NewLocalRepo())
 
 	dir := cloneWorktree(t, grpcClient, auth, host, "main")
 
@@ -162,6 +163,10 @@ func TestEndToEnd_UploadThroughput(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			writeBenchFile(t, dir, tc.path, size, tc.text)
 			stagePath(t, dir, tc.path)
+			if !tc.text {
+				_, err := locks.Lock(ctx, dir, tc.path, "")
+				require.NoError(t, err, "binary benchmark pushes must hold a lock")
+			}
 
 			beforePuts, beforeBytes := counter.snapshot()
 			start := time.Now()

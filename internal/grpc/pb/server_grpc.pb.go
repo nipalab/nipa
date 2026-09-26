@@ -45,6 +45,9 @@ const (
 	NipaService_GetChunkUploadUrls_FullMethodName          = "/greet.NipaService/GetChunkUploadUrls"
 	NipaService_GetChunkDownloadUrls_FullMethodName        = "/greet.NipaService/GetChunkDownloadUrls"
 	NipaService_ConfirmChunkUploads_FullMethodName         = "/greet.NipaService/ConfirmChunkUploads"
+	NipaService_LockFile_FullMethodName                    = "/greet.NipaService/LockFile"
+	NipaService_UnlockFile_FullMethodName                  = "/greet.NipaService/UnlockFile"
+	NipaService_ListFileLocks_FullMethodName               = "/greet.NipaService/ListFileLocks"
 	NipaService_GetMyPermissions_FullMethodName            = "/greet.NipaService/GetMyPermissions"
 	NipaService_CreatePBACRule_FullMethodName              = "/greet.NipaService/CreatePBACRule"
 	NipaService_ListPBACRules_FullMethodName               = "/greet.NipaService/ListPBACRules"
@@ -88,6 +91,9 @@ type NipaServiceClient interface {
 	GetChunkUploadUrls(ctx context.Context, in *GetChunkUploadUrlsRequest, opts ...grpc.CallOption) (*GetChunkUploadUrlsResponse, error)
 	GetChunkDownloadUrls(ctx context.Context, in *GetChunkDownloadUrlsRequest, opts ...grpc.CallOption) (*GetChunkDownloadUrlsResponse, error)
 	ConfirmChunkUploads(ctx context.Context, in *ConfirmChunkUploadsRequest, opts ...grpc.CallOption) (*ConfirmChunkUploadsResponse, error)
+	LockFile(ctx context.Context, in *LockFileRequest, opts ...grpc.CallOption) (*LockFileResponse, error)
+	UnlockFile(ctx context.Context, in *UnlockFileRequest, opts ...grpc.CallOption) (*UnlockFileResponse, error)
+	ListFileLocks(ctx context.Context, in *ListFileLocksRequest, opts ...grpc.CallOption) (*ListFileLocksResponse, error)
 	GetMyPermissions(ctx context.Context, in *GetMyPermissionsRequest, opts ...grpc.CallOption) (*GetMyPermissionsResponse, error)
 	CreatePBACRule(ctx context.Context, in *CreatePBACRuleRequest, opts ...grpc.CallOption) (*CreatePBACRuleResponse, error)
 	ListPBACRules(ctx context.Context, in *ListPBACRulesRequest, opts ...grpc.CallOption) (*ListPBACRulesResponse, error)
@@ -369,6 +375,36 @@ func (c *nipaServiceClient) ConfirmChunkUploads(ctx context.Context, in *Confirm
 	return out, nil
 }
 
+func (c *nipaServiceClient) LockFile(ctx context.Context, in *LockFileRequest, opts ...grpc.CallOption) (*LockFileResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(LockFileResponse)
+	err := c.cc.Invoke(ctx, NipaService_LockFile_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nipaServiceClient) UnlockFile(ctx context.Context, in *UnlockFileRequest, opts ...grpc.CallOption) (*UnlockFileResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(UnlockFileResponse)
+	err := c.cc.Invoke(ctx, NipaService_UnlockFile_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nipaServiceClient) ListFileLocks(ctx context.Context, in *ListFileLocksRequest, opts ...grpc.CallOption) (*ListFileLocksResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListFileLocksResponse)
+	err := c.cc.Invoke(ctx, NipaService_ListFileLocks_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *nipaServiceClient) GetMyPermissions(ctx context.Context, in *GetMyPermissionsRequest, opts ...grpc.CallOption) (*GetMyPermissionsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetMyPermissionsResponse)
@@ -509,6 +545,9 @@ type NipaServiceServer interface {
 	GetChunkUploadUrls(context.Context, *GetChunkUploadUrlsRequest) (*GetChunkUploadUrlsResponse, error)
 	GetChunkDownloadUrls(context.Context, *GetChunkDownloadUrlsRequest) (*GetChunkDownloadUrlsResponse, error)
 	ConfirmChunkUploads(context.Context, *ConfirmChunkUploadsRequest) (*ConfirmChunkUploadsResponse, error)
+	LockFile(context.Context, *LockFileRequest) (*LockFileResponse, error)
+	UnlockFile(context.Context, *UnlockFileRequest) (*UnlockFileResponse, error)
+	ListFileLocks(context.Context, *ListFileLocksRequest) (*ListFileLocksResponse, error)
 	GetMyPermissions(context.Context, *GetMyPermissionsRequest) (*GetMyPermissionsResponse, error)
 	CreatePBACRule(context.Context, *CreatePBACRuleRequest) (*CreatePBACRuleResponse, error)
 	ListPBACRules(context.Context, *ListPBACRulesRequest) (*ListPBACRulesResponse, error)
@@ -607,6 +646,15 @@ func (UnimplementedNipaServiceServer) GetChunkDownloadUrls(context.Context, *Get
 }
 func (UnimplementedNipaServiceServer) ConfirmChunkUploads(context.Context, *ConfirmChunkUploadsRequest) (*ConfirmChunkUploadsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ConfirmChunkUploads not implemented")
+}
+func (UnimplementedNipaServiceServer) LockFile(context.Context, *LockFileRequest) (*LockFileResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method LockFile not implemented")
+}
+func (UnimplementedNipaServiceServer) UnlockFile(context.Context, *UnlockFileRequest) (*UnlockFileResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method UnlockFile not implemented")
+}
+func (UnimplementedNipaServiceServer) ListFileLocks(context.Context, *ListFileLocksRequest) (*ListFileLocksResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListFileLocks not implemented")
 }
 func (UnimplementedNipaServiceServer) GetMyPermissions(context.Context, *GetMyPermissionsRequest) (*GetMyPermissionsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetMyPermissions not implemented")
@@ -1130,6 +1178,60 @@ func _NipaService_ConfirmChunkUploads_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _NipaService_LockFile_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(LockFileRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaServiceServer).LockFile(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaService_LockFile_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaServiceServer).LockFile(ctx, req.(*LockFileRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NipaService_UnlockFile_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UnlockFileRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaServiceServer).UnlockFile(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaService_UnlockFile_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaServiceServer).UnlockFile(ctx, req.(*UnlockFileRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NipaService_ListFileLocks_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListFileLocksRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaServiceServer).ListFileLocks(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaService_ListFileLocks_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaServiceServer).ListFileLocks(ctx, req.(*ListFileLocksRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _NipaService_GetMyPermissions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetMyPermissionsRequest)
 	if err := dec(in); err != nil {
@@ -1438,6 +1540,18 @@ var NipaService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ConfirmChunkUploads",
 			Handler:    _NipaService_ConfirmChunkUploads_Handler,
+		},
+		{
+			MethodName: "LockFile",
+			Handler:    _NipaService_LockFile_Handler,
+		},
+		{
+			MethodName: "UnlockFile",
+			Handler:    _NipaService_UnlockFile_Handler,
+		},
+		{
+			MethodName: "ListFileLocks",
+			Handler:    _NipaService_ListFileLocks_Handler,
 		},
 		{
 			MethodName: "GetMyPermissions",

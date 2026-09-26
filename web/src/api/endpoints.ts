@@ -4,6 +4,7 @@ import type {
   BranchResponse,
   CommitDiffResponse,
   CommitResponse,
+  FileLockResponse,
   GroupResponse,
   MergeRequestDiffResponse,
   MergeRequestResponse,
@@ -215,6 +216,24 @@ export function reopenMergeRequest(org: string, project: string, id: string): Pr
 
 export function getMergeRequestDiff(org: string, project: string, id: string): Promise<MergeRequestDiffResponse> {
   return apiJson(`${projectBase(org, project)}/merge-requests/${encodeURIComponent(id)}/diff`)
+}
+
+export function listFileLocks(org: string, project: string): Promise<FileLockResponse[]> {
+  return apiJson(`${projectBase(org, project)}/locks`)
+}
+
+export function lockFile(org: string, project: string, path: string, branch: string): Promise<FileLockResponse> {
+  return apiJson(`${projectBase(org, project)}/locks`, {
+    method: 'POST',
+    body: JSON.stringify({ path, branch }),
+  })
+}
+
+export function unlockFile(org: string, project: string, path: string, branch: string): Promise<unknown> {
+  return apiJson(`${projectBase(org, project)}/locks/release`, {
+    method: 'POST',
+    body: JSON.stringify({ path, branch }),
+  })
 }
 
 export function getMyProjectPermissions(org: string, project: string): Promise<ProjectPermissionResponse> {

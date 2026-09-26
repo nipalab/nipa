@@ -17,6 +17,7 @@ type usecaseContainer interface {
 	Diff() *usecase.Diff
 	Permission() *usecase.Permission
 	MR() *usecase.MergeRequest
+	Lock() *usecase.FileLock
 }
 
 type connector interface {
@@ -56,5 +57,7 @@ func (c *Cli) Run() error {
 	rootCmd.AddCommand(c.setupGroupCmd())
 	rootCmd.AddCommand(c.setupSparseCheckoutCmd())
 	rootCmd.AddCommand(c.setupMrCmd())
+	rootCmd.AddCommand(c.setupLockCmd())
+	rootCmd.AddCommand(c.setupUnlockCmd())
 	return rootCmd.Execute()
 }

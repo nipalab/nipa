@@ -60,6 +60,16 @@ type FileChunk struct {
 	ChunkIndex int64 `json:"chunk_index"`
 }
 
+type FileLock struct {
+	ID             int64         `json:"id"`
+	ProjectID      int64         `json:"project_id"`
+	BranchID       sql.NullInt64 `json:"branch_id"`
+	Path           string        `json:"path"`
+	HeldBy         int64         `json:"held_by"`
+	MergeRequestID sql.NullInt64 `json:"merge_request_id"`
+	AcquiredAt     time.Time     `json:"acquired_at"`
+}
+
 type Group struct {
 	ID          int64          `json:"id"`
 	OrgID       int64          `json:"org_id"`
