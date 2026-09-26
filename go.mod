@@ -6,6 +6,7 @@ require (
 	github.com/creack/pty v1.1.24
 	github.com/emicklei/go-restful-openapi/v2 v2.12.1
 	github.com/emicklei/go-restful/v3 v3.13.0
+	github.com/fsnotify/fsnotify v1.9.0
 	github.com/go-openapi/spec v0.22.2
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/golang-migrate/migrate/v4 v4.19.1
@@ -34,7 +35,6 @@ require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/erraggy/oastools v1.36.1 // indirect
 	github.com/felixge/httpsnoop v1.1.0 // indirect
-	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-openapi/jsonpointer v0.22.4 // indirect
 	github.com/go-openapi/jsonreference v0.21.4 // indirect

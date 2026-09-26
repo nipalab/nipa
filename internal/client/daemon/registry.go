@@ -3,10 +3,12 @@ package daemon
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
 	"sync"
+	"time"
 
 	clientDomain "github.com/nipalab/nipa/internal/client/domain"
 	"github.com/nipalab/nipa/internal/client/grpc/daemonpb"
@@ -29,11 +31,36 @@ type repo struct {
 	merge  MergeRunner
 	revert RevertRunner
 
+	watcher    *watcher
+	reconciler *reconciler
+
 	refs int
 }
 
 func (r *repo) close() error {
+	if r.reconciler != nil {
+		r.reconciler.stop()
+	}
+	if r.watcher != nil {
+		_ = r.watcher.Close()
+	}
 	return r.localRepo.Close()
+}
+
+// startWatching starts the fsnotify accelerator. A failure only disables the
+// accelerator: read-through status stays correct without it.
+func (r *repo) startWatching() {
+	src, err := newFsnotifySource(r.root)
+	if err != nil {
+		slog.Warn("daemon file watcher disabled", "root", r.root, "error", err)
+		return
+	}
+	r.startWatchingWith(src, defaultWatchWindow)
+}
+
+func (r *repo) startWatchingWith(src eventSource, window time.Duration) {
+	r.watcher = newWatcher(src, window)
+	r.reconciler = startReconciler(r, r.watcher)
 }
 
 func (r *repo) headCommitID() string {
@@ -140,6 +167,7 @@ func (r *registry) watch(path string) (*repo, error) {
 	if err != nil {
 		return nil, err
 	}
+	opened.startWatching()
 	r.repos[root] = opened
 	return opened, nil
 }
