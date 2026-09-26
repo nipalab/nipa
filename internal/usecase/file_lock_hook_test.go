@@ -527,3 +527,86 @@ func TestMergeRequest_Merge_AdminMergesAuthorRequest(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, openMergeRequest().ID, merged.ID)
 }
+
+func binaryTreeFixture(t *testing.T, repo *MockbranchRepository, fromHead, toHead snow.ID) {
+	t.Helper()
+	repo.EXPECT().GetCommit(gomock.Any(), fromHead).
+		Return(&domain.Commit{ID: fromHead, ProjectID: 1, TreeID: 101}, nil).AnyTimes()
+	repo.EXPECT().GetCommit(gomock.Any(), toHead).
+		Return(&domain.Commit{ID: toHead, ProjectID: 1, TreeID: 102}, nil).AnyTimes()
+	repo.EXPECT().GetTreeNode(gomock.Any(), int64(101)).
+		Return(&domain.TreeNode{ID: 101, Name: "root"}, nil).AnyTimes()
+	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(101)).Return([]*domain.File{
+		{ID: 1, Name: "a.txt", TreeID: 101, Mode: 0o644, Chunks: []domain.Chunk{{Hash: domain.Hash{1}}}},
+		{ID: 2, Name: "conv.txt", TreeID: 101, Mode: 0o644, Chunks: []domain.Chunk{{Hash: domain.Hash{4}}}},
+		{ID: 3, Name: "gone.bin", TreeID: 101, Mode: 0o644, IsBinary: true, Chunks: []domain.Chunk{{Hash: domain.Hash{3}}}},
+		{ID: 4, Name: "old.png", TreeID: 101, Mode: 0o644, IsBinary: true, Chunks: []domain.Chunk{{Hash: domain.Hash{2}}}},
+	}, nil).AnyTimes()
+	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(101)).Return(nil, nil).AnyTimes()
+	repo.EXPECT().GetTreeNode(gomock.Any(), int64(102)).
+		Return(&domain.TreeNode{ID: 102, Name: "root"}, nil).AnyTimes()
+	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(102)).Return([]*domain.File{
+		{ID: 5, Name: "a.txt", TreeID: 102, Mode: 0o644, Chunks: []domain.Chunk{{Hash: domain.Hash{1}}}},
+		{ID: 6, Name: "conv.txt", TreeID: 102, Mode: 0o644, IsBinary: true, Chunks: []domain.Chunk{{Hash: domain.Hash{7}}}},
+		{ID: 7, Name: "new.png", TreeID: 102, Mode: 0o644, IsBinary: true, Chunks: []domain.Chunk{{Hash: domain.Hash{6}}}},
+		{ID: 8, Name: "old.png", TreeID: 102, Mode: 0o644, IsBinary: true, Chunks: []domain.Chunk{{Hash: domain.Hash{5}}}},
+	}, nil).AnyTimes()
+	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(102)).Return(nil, nil).AnyTimes()
+}
+
+func TestBranch_BinaryChangesBetween(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := newAllowAllPerm(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+	fromHead, toHead := snow.ID(11), snow.ID(12)
+	binaryTreeFixture(t, repo, fromHead, toHead)
+
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
+
+	paths, err := uc.BinaryChangesBetween(permissionCtx(7), snow.ID(1), &fromHead, &toHead)
+	require.NoError(t, err)
+	require.ElementsMatch(t, []string{"conv.txt", "gone.bin", "new.png", "old.png"}, paths)
+
+	added, err := uc.BinaryChangesBetween(permissionCtx(7), snow.ID(1), nil, &toHead)
+	require.NoError(t, err)
+	require.ElementsMatch(t, []string{"conv.txt", "new.png", "old.png"}, added)
+}
+
+func TestBranch_BinaryLockPlan(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := newAllowAllPerm(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+	fromHead, toHead := snow.ID(11), snow.ID(12)
+	binaryTreeFixture(t, repo, fromHead, toHead)
+
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
+
+	required, checked, err := uc.BinaryLockPlan(permissionCtx(7), snow.ID(1), &fromHead, &toHead)
+	require.NoError(t, err)
+	require.ElementsMatch(t, []string{"conv.txt", "gone.bin", "old.png"}, required)
+	require.ElementsMatch(t, []string{"new.png"}, checked)
+
+	required, checked, err = uc.BinaryLockPlan(permissionCtx(7), snow.ID(1), nil, &toHead)
+	require.NoError(t, err)
+	require.Empty(t, required)
+	require.ElementsMatch(t, []string{"conv.txt", "new.png", "old.png"}, checked)
+}
+
+func TestBranch_BinaryChanges_Error(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := newAllowAllPerm(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+	fromHead, toHead := snow.ID(11), snow.ID(12)
+
+	repo.EXPECT().GetCommit(gomock.Any(), fromHead).
+		Return(&domain.Commit{ID: fromHead, ProjectID: 1, TreeID: 101}, nil).AnyTimes()
+	wantErr := errors.New("db down")
+	repo.EXPECT().GetTreeNode(gomock.Any(), int64(101)).Return(nil, wantErr).AnyTimes()
+
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
+	_, err := uc.BinaryChangesBetween(permissionCtx(7), snow.ID(1), &fromHead, &toHead)
+	require.ErrorIs(t, err, wantErr)
+
+	_, _, err = uc.BinaryLockPlan(permissionCtx(7), snow.ID(1), &fromHead, &toHead)
+	require.ErrorIs(t, err, wantErr)
+}

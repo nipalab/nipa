@@ -196,12 +196,14 @@ func TestPush_FileLocks_HeadTreeError(t *testing.T) {
 func TestPlanPushLocks(t *testing.T) {
 	files := []*domain.PushFile{
 		{Path: "tracked.png", IsBinary: true},
+		{Path: "tracked.png", IsBinary: true},
 		{Path: "tracked.txt", IsBinary: false},
 		{Path: "converted.txt", IsBinary: true},
 		{Path: "new.png", IsBinary: true},
+		{Path: "new.png", IsBinary: true},
 		{Path: "new.txt", IsBinary: false},
 	}
-	removed := []string{"old.png", "old.txt", "ghost.bin"}
+	removed := []string{"old.png", "old.txt", "ghost.bin", "old.png"}
 	headBinary := map[string]bool{
 		"tracked.png":   true,
 		"tracked.txt":   false,
