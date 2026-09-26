@@ -295,7 +295,10 @@ export default function PullPage() {
             >
               {files.map((file) => {
                 const open = (threads ?? []).filter(
-                  (thread) => thread.file_path === file.path && !thread.resolved,
+                  (thread) =>
+                    (thread.file_path === file.path ||
+                      (Boolean(file.old_path) && thread.file_path === file.old_path)) &&
+                    !thread.resolved,
                 ).length
                 return (
                   <a

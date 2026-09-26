@@ -84,15 +84,23 @@ function threadOnRight(thread: ThreadResponse, line: DiffLineResponse | undefine
   return Boolean(line) && thread.side !== 'left' && thread.new_line === line?.new_line
 }
 
-function threadsOnRow(threads: ThreadResponse[], filePath: string, row: LineRow): ThreadResponse[] {
+// A renamed file keeps comments on its removed lines under the old path, so a
+// thread belongs to the file when it names either path.
+function threadMatchesFile(thread: ThreadResponse, file: DiffFileResponse): boolean {
+  if (thread.file_path === file.path) return true
+  return Boolean(file.old_path) && thread.file_path === file.old_path
+}
+
+function threadsOnRow(threads: ThreadResponse[], file: DiffFileResponse, row: LineRow): ThreadResponse[] {
   return threads.filter(
     (thread) =>
-      thread.file_path === filePath && (threadOnLeft(thread, row.left) || threadOnRight(thread, row.right)),
+      threadMatchesFile(thread, file) && (threadOnLeft(thread, row.left) || threadOnRight(thread, row.right)),
   )
 }
 
-function rowHasDraft(anchor: DiffAnchor | null | undefined, filePath: string, row: LineRow): boolean {
-  if (!anchor || anchor.filePath !== filePath) return false
+function rowHasDraft(anchor: DiffAnchor | null | undefined, file: DiffFileResponse, row: LineRow): boolean {
+  if (!anchor) return false
+  if (anchor.filePath !== file.path && !(file.old_path && anchor.filePath === file.old_path)) return false
   if (anchor.newLine !== undefined) return row.right?.new_line === anchor.newLine
   if (anchor.oldLine !== undefined) return row.left?.old_line === anchor.oldLine
   return false
@@ -259,13 +267,13 @@ function DiffFile({
   onDeleteComment?: (threadId: string, commentId: string) => void
 }) {
   const [onlyOpenThreads, setOnlyOpenThreads] = useState(false)
-  const fileThreads = threads.filter((thread) => thread.file_path === file.path)
+  const fileThreads = threads.filter((thread) => threadMatchesFile(thread, file))
   const openCount = fileThreads.filter((thread) => !thread.resolved).length
 
   let rows = buildRows(file.hunks ?? [])
   if (onlyOpenThreads) {
     rows = rows.filter(
-      (row) => row.kind === 'line' && threadsOnRow(threads, file.path, row).some((thread) => !thread.resolved),
+      (row) => row.kind === 'line' && threadsOnRow(threads, file, row).some((thread) => !thread.resolved),
     )
   }
 
@@ -323,8 +331,8 @@ function DiffFile({
   }
 
   const threadRows = (row: LineRow) => {
-    const anchored = threadsOnRow(threads, file.path, row)
-    const draft = draftAnchor && rowHasDraft(draftAnchor, file.path, row) ? draftAnchor : null
+    const anchored = threadsOnRow(threads, file, row)
+    const draft = draftAnchor && rowHasDraft(draftAnchor, file, row) ? draftAnchor : null
     if (anchored.length === 0 && !draft) return null
     return (
       <div style={{ padding: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>

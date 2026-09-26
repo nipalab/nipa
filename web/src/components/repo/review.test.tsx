@@ -194,6 +194,36 @@ describe('DiffView', () => {
     expect(text).not.toContain('five')
   })
 
+  it('matches comments on a renamed file by its old path too', async () => {
+    const renamed: DiffFileResponse = {
+      ...file,
+      path: 'new.txt',
+      old_path: 'old.txt',
+      status: 'renamed',
+    }
+    const oldSide: ThreadResponse = {
+      ...thread,
+      id: 't-old',
+      file_path: 'old.txt',
+      side: 'left',
+      new_line: undefined,
+      old_line: 2,
+      comments: [
+        {
+          ...thread.comments[0],
+          thread_id: 't-old',
+          body: 'this removed line matters',
+        },
+      ],
+    }
+    const { container } = await render(<DiffView files={[renamed]} threads={[oldSide]} canComment />)
+    expect(container.textContent).toContain('this removed line matters')
+    expect(container.textContent).toContain('1 open thread')
+
+    click([...container.querySelectorAll('button')].find((button) => button.textContent === 'Only open threads'))
+    expect(container.textContent).toContain('two-old')
+  })
+
   it('does not treat a resolved thread as an open conversation', async () => {
     const resolved: ThreadResponse = { ...thread, resolved: true }
     const { container } = await render(<DiffView files={[file]} threads={[resolved]} canComment />)
