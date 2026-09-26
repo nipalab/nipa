@@ -62,18 +62,21 @@ type MergeRequestReview struct {
 	branchRepo branchRepository
 	merger     branchMerger
 	perm       permissionUsecase
+	users      userLookup
 	snowNode   snow.Node
 	now        func() time.Time
 }
 
 func NewMergeRequestReview(repo mergeRequestReviewRepository, mrRepo mergeRequestRepository,
-	branchRepo branchRepository, merger branchMerger, perm permissionUsecase, snowNode snow.Node) *MergeRequestReview {
+	branchRepo branchRepository, merger branchMerger, perm permissionUsecase,
+	users userLookup, snowNode snow.Node) *MergeRequestReview {
 	return &MergeRequestReview{
 		repo:       repo,
 		mrRepo:     mrRepo,
 		branchRepo: branchRepo,
 		merger:     merger,
 		perm:       perm,
+		users:      users,
 		snowNode:   snowNode,
 		now:        time.Now,
 	}
@@ -221,6 +224,13 @@ func (r *MergeRequestReview) DismissReview(ctx context.Context, projectID snow.I
 	if err := r.repo.DismissReview(ctx, mr.ID, reviewID, claim.UserID, "manual", now); err != nil {
 		return nil, err
 	}
+	if err := r.addEvent(ctx, mr, domain.MergeRequestTimelineItem{
+		Kind:    domain.MergeRequestEventReviewDismissed,
+		Actor:   domain.ReviewActor{UserID: claim.UserID},
+		Subject: &domain.ReviewActor{UserID: review.Reviewer.UserID},
+	}); err != nil {
+		return nil, err
+	}
 	review.DismissedAt = &now
 	review.DismissedReason = "manual"
 	review.DismissedBy = &domain.ReviewActor{UserID: claim.UserID}
@@ -243,17 +253,11 @@ func (r *MergeRequestReview) AddComment(ctx context.Context, projectID snow.ID, 
 	if !r.perm.HasProjectAccess(ctx, projectID, domain.PermissionWrite) {
 		return nil, domain.NewErrorNoPermission()
 	}
-	thread, err := r.createThread(ctx, projectID, mr, nil, claim.UserID, comment)
+	thread, created, err := r.createThread(ctx, projectID, mr, nil, claim.UserID, comment)
 	if err != nil {
 		return nil, err
 	}
-	thread.Comments = []*domain.MergeRequestComment{{
-		ID:        r.snowNode.Generate(),
-		ThreadID:  thread.ID,
-		User:      domain.ReviewActor{UserID: claim.UserID},
-		Body:      strings.TrimSpace(comment.Body),
-		CreatedAt: thread.CreatedAt,
-	}}
+	thread.Comments = []*domain.MergeRequestComment{created}
 	return thread, nil
 }
 
@@ -416,6 +420,12 @@ func (r *MergeRequestReview) RequestReview(ctx context.Context, projectID snow.I
 	if mr.Status != domain.MergeRequestOpen {
 		return nil, domain.NewErrorConflict(fmt.Sprintf("merge request is %s", mr.Status))
 	}
+	if _, err := r.users.GetByID(ctx, reviewerID); err != nil {
+		if domain.IsErrorNotFound(err) {
+			return nil, domain.NewErrorUser("reviewer not found")
+		}
+		return nil, err
+	}
 	request, err := r.repo.CreateReviewRequest(ctx, domain.MergeRequestReviewRequest{
 		ID:             r.snowNode.Generate(),
 		MergeRequestID: mr.ID,
@@ -567,33 +577,33 @@ func (r *MergeRequestReview) state(ctx context.Context, mr *domain.MergeRequest)
 // review itself in place, so the timeline still shows what was decided.
 func (r *MergeRequestReview) attachThreads(ctx context.Context, projectID snow.ID, mr *domain.MergeRequest, reviewID snow.ID, head *snow.ID, author snow.ID, comments []ThreadComment) error {
 	for _, comment := range comments {
-		if _, err := r.createThread(ctx, projectID, mr, &reviewID, author, comment); err != nil {
+		if _, _, err := r.createThread(ctx, projectID, mr, &reviewID, author, comment); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (r *MergeRequestReview) createThread(ctx context.Context, projectID snow.ID, mr *domain.MergeRequest, reviewID *snow.ID, author snow.ID, comment ThreadComment) (*domain.MergeRequestThread, error) {
+func (r *MergeRequestReview) createThread(ctx context.Context, projectID snow.ID, mr *domain.MergeRequest, reviewID *snow.ID, author snow.ID, comment ThreadComment) (*domain.MergeRequestThread, *domain.MergeRequestComment, error) {
 	body := strings.TrimSpace(comment.Body)
 	if body == "" {
-		return nil, domain.NewErrorUser("comment body is required")
+		return nil, nil, domain.NewErrorUser("comment body is required")
 	}
 	filePath := strings.TrimSpace(comment.FilePath)
 	var oldLine, newLine *int
 	if filePath != "" {
 		normalized, o, n, err := r.anchor(ctx, projectID, mr, filePath, comment.OldLine, comment.NewLine)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		filePath, oldLine, newLine = normalized, o, n
 	} else if comment.OldLine != nil || comment.NewLine != nil {
-		return nil, domain.NewErrorUser("a line comment needs a file path")
+		return nil, nil, domain.NewErrorUser("a line comment needs a file path")
 	}
 
 	head, err := r.sourceHead(ctx, projectID, mr)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	thread, err := r.repo.CreateThread(ctx, domain.MergeRequestThread{
 		ID:             r.snowNode.Generate(),
@@ -606,17 +616,18 @@ func (r *MergeRequestReview) createThread(ctx context.Context, projectID snow.ID
 		CreatedBy:      domain.ReviewActor{UserID: author},
 	})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	if _, err := r.repo.CreateComment(ctx, domain.MergeRequestComment{
+	created, err := r.repo.CreateComment(ctx, domain.MergeRequestComment{
 		ID:       r.snowNode.Generate(),
 		ThreadID: thread.ID,
 		User:     domain.ReviewActor{UserID: author},
 		Body:     body,
-	}); err != nil {
-		return nil, err
+	})
+	if err != nil {
+		return nil, nil, err
 	}
-	return thread, nil
+	return thread, created, nil
 }
 
 // anchor resolves a comment position against the current diff: a line comment

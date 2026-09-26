@@ -168,7 +168,7 @@ func startTestServer(t *testing.T, dbConn *sql.DB) string {
 	})
 	mrRepo := sqlite.NewMergeRequestRepository(dbConn)
 	reviewUc := serverusecase.NewMergeRequestReview(
-		sqlite.NewMergeRequestReviewRepository(dbConn), mrRepo, branchRepo, branchUc, permissionUc, node,
+		sqlite.NewMergeRequestReviewRepository(dbConn), mrRepo, branchRepo, branchUc, permissionUc, userRepo, node,
 	)
 	reg := &testRegistry{
 		auth:       authUc,

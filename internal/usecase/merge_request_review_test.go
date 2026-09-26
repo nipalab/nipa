@@ -13,7 +13,7 @@ import (
 	"github.com/nipalab/nipa/internal/snow"
 )
 
-func newTestMergeRequestReview(t *testing.T) (*MergeRequestReview, *MockmergeRequestReviewRepository, *MockmergeRequestRepository, *MockbranchRepository, *MockpermissionUsecase, *MockbranchMerger) {
+func newTestMergeRequestReview(t *testing.T) (*MergeRequestReview, *MockmergeRequestReviewRepository, *MockmergeRequestRepository, *MockbranchRepository, *MockpermissionUsecase, *MockbranchMerger, *MockuserLookup) {
 	t.Helper()
 
 	ctrl := gomock.NewController(t)
@@ -22,7 +22,8 @@ func newTestMergeRequestReview(t *testing.T) (*MergeRequestReview, *MockmergeReq
 	branchRepo := NewMockbranchRepository(ctrl)
 	perm := NewMockpermissionUsecase(ctrl)
 	merger := NewMockbranchMerger(ctrl)
-	return NewMergeRequestReview(repo, mrRepo, branchRepo, merger, perm, newTestBranchNode(t)), repo, mrRepo, branchRepo, perm, merger
+	users := NewMockuserLookup(ctrl)
+	return NewMergeRequestReview(repo, mrRepo, branchRepo, merger, perm, users, newTestBranchNode(t)), repo, mrRepo, branchRepo, perm, merger, users
 }
 
 // expectLoad wires a read-permission check and the merge request lookup every
@@ -53,7 +54,7 @@ func expectDiff(branchRepo *MockbranchRepository, merger *MockbranchMerger, file
 }
 
 func TestMergeRequestReview_SubmitReview(t *testing.T) {
-	review, repo, mrRepo, branchRepo, perm, _ := newTestMergeRequestReview(t)
+	review, repo, mrRepo, branchRepo, perm, _, _ := newTestMergeRequestReview(t)
 	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
 	expectLoad(perm, mrRepo)
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").
@@ -85,7 +86,7 @@ func TestMergeRequestReview_SubmitReview(t *testing.T) {
 
 func TestMergeRequestReview_SubmitReview_Rejections(t *testing.T) {
 	t.Run("self review", func(t *testing.T) {
-		review, _, mrRepo, _, perm, _ := newTestMergeRequestReview(t)
+		review, _, mrRepo, _, perm, _, _ := newTestMergeRequestReview(t)
 		expectLoad(perm, mrRepo)
 		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
 
@@ -94,7 +95,7 @@ func TestMergeRequestReview_SubmitReview_Rejections(t *testing.T) {
 	})
 
 	t.Run("self comment is allowed through validation", func(t *testing.T) {
-		review, repo, mrRepo, branchRepo, perm, _ := newTestMergeRequestReview(t)
+		review, repo, mrRepo, branchRepo, perm, _, _ := newTestMergeRequestReview(t)
 		expectLoad(perm, mrRepo)
 		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
 		branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").
@@ -115,13 +116,13 @@ func TestMergeRequestReview_SubmitReview_Rejections(t *testing.T) {
 	})
 
 	t.Run("invalid state", func(t *testing.T) {
-		review, _, _, _, _, _ := newTestMergeRequestReview(t)
+		review, _, _, _, _, _, _ := newTestMergeRequestReview(t)
 		_, err := review.SubmitReview(permissionCtx(9), snow.ID(1), 5, "yolo", "body", nil)
 		requireUserError(t, err)
 	})
 
 	t.Run("empty review", func(t *testing.T) {
-		review, _, mrRepo, _, perm, _ := newTestMergeRequestReview(t)
+		review, _, mrRepo, _, perm, _, _ := newTestMergeRequestReview(t)
 		expectLoad(perm, mrRepo)
 		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
 
@@ -130,7 +131,7 @@ func TestMergeRequestReview_SubmitReview_Rejections(t *testing.T) {
 	})
 
 	t.Run("closed merge request", func(t *testing.T) {
-		review, _, mrRepo, _, perm, _ := newTestMergeRequestReview(t)
+		review, _, mrRepo, _, perm, _, _ := newTestMergeRequestReview(t)
 		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
 		closed := openMergeRequest()
 		closed.Status = domain.MergeRequestMerged
@@ -144,7 +145,7 @@ func TestMergeRequestReview_SubmitReview_Rejections(t *testing.T) {
 	})
 
 	t.Run("no permission", func(t *testing.T) {
-		review, _, mrRepo, _, perm, _ := newTestMergeRequestReview(t)
+		review, _, mrRepo, _, perm, _, _ := newTestMergeRequestReview(t)
 		expectLoad(perm, mrRepo)
 		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(false)
 
@@ -153,7 +154,7 @@ func TestMergeRequestReview_SubmitReview_Rejections(t *testing.T) {
 	})
 
 	t.Run("empty source branch", func(t *testing.T) {
-		review, _, mrRepo, branchRepo, perm, _ := newTestMergeRequestReview(t)
+		review, _, mrRepo, branchRepo, perm, _, _ := newTestMergeRequestReview(t)
 		expectLoad(perm, mrRepo)
 		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
 		branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").
@@ -165,7 +166,7 @@ func TestMergeRequestReview_SubmitReview_Rejections(t *testing.T) {
 }
 
 func TestMergeRequestReview_SubmitReview_WithComments(t *testing.T) {
-	review, repo, mrRepo, branchRepo, perm, merger := newTestMergeRequestReview(t)
+	review, repo, mrRepo, branchRepo, perm, merger, _ := newTestMergeRequestReview(t)
 	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
 	expectLoad(perm, mrRepo)
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").
@@ -221,7 +222,7 @@ func TestMergeRequestReview_Anchor(t *testing.T) {
 	inline := 2
 
 	t.Run("rejects a line the diff does not show", func(t *testing.T) {
-		review, repo, mrRepo, branchRepo, perm, merger := newTestMergeRequestReview(t)
+		review, repo, mrRepo, branchRepo, perm, merger, _ := newTestMergeRequestReview(t)
 		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
 		expectLoad(perm, mrRepo)
 		repo.EXPECT().UpsertReview(gomock.Any(), gomock.Any()).DoAndReturn(
@@ -240,7 +241,7 @@ func TestMergeRequestReview_Anchor(t *testing.T) {
 	})
 
 	t.Run("rejects a file outside the diff", func(t *testing.T) {
-		review, repo, mrRepo, branchRepo, perm, merger := newTestMergeRequestReview(t)
+		review, repo, mrRepo, branchRepo, perm, merger, _ := newTestMergeRequestReview(t)
 		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
 		expectLoad(perm, mrRepo)
 		repo.EXPECT().UpsertReview(gomock.Any(), gomock.Any()).DoAndReturn(
@@ -259,7 +260,7 @@ func TestMergeRequestReview_Anchor(t *testing.T) {
 	})
 
 	t.Run("a removed line anchors on the old side", func(t *testing.T) {
-		review, repo, mrRepo, branchRepo, perm, merger := newTestMergeRequestReview(t)
+		review, repo, mrRepo, branchRepo, perm, merger, _ := newTestMergeRequestReview(t)
 		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
 		expectLoad(perm, mrRepo)
 		branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").
@@ -292,7 +293,7 @@ func TestMergeRequestReview_Anchor(t *testing.T) {
 	})
 
 	t.Run("a line comment without a file is rejected", func(t *testing.T) {
-		review, _, mrRepo, _, perm, _ := newTestMergeRequestReview(t)
+		review, _, mrRepo, _, perm, _, _ := newTestMergeRequestReview(t)
 		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
 		expectLoad(perm, mrRepo)
 
@@ -301,7 +302,7 @@ func TestMergeRequestReview_Anchor(t *testing.T) {
 	})
 
 	t.Run("a non-positive line is rejected", func(t *testing.T) {
-		review, _, mrRepo, _, perm, _ := newTestMergeRequestReview(t)
+		review, _, mrRepo, _, perm, _, _ := newTestMergeRequestReview(t)
 		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
 		expectLoad(perm, mrRepo)
 		zero := 0
@@ -311,7 +312,7 @@ func TestMergeRequestReview_Anchor(t *testing.T) {
 	})
 
 	t.Run("an old-only comment on a renamed file keeps the old path", func(t *testing.T) {
-		review, repo, mrRepo, branchRepo, perm, merger := newTestMergeRequestReview(t)
+		review, repo, mrRepo, branchRepo, perm, merger, _ := newTestMergeRequestReview(t)
 		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
 		expectLoad(perm, mrRepo)
 		branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").
@@ -340,7 +341,7 @@ func TestMergeRequestReview_Anchor(t *testing.T) {
 }
 
 func TestMergeRequestReview_Reviews_Stale(t *testing.T) {
-	review, repo, mrRepo, branchRepo, perm, _ := newTestMergeRequestReview(t)
+	review, repo, mrRepo, branchRepo, perm, _, _ := newTestMergeRequestReview(t)
 	expectLoad(perm, mrRepo)
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").
 		Return(&domain.Branch{ID: 3, ProjectID: 1, CommitID: snowPtr(11)}, nil)
@@ -365,7 +366,7 @@ func TestMergeRequestReview_ReviewState(t *testing.T) {
 	}
 
 	t.Run("counts live decisions and outstanding reviewers", func(t *testing.T) {
-		review, repo, mrRepo, branchRepo, perm, _ := newTestMergeRequestReview(t)
+		review, repo, mrRepo, branchRepo, perm, _, _ := newTestMergeRequestReview(t)
 		expectLoad(perm, mrRepo)
 		branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").
 			Return(&domain.Branch{ID: 3, ProjectID: 1, CommitID: snowPtr(11)}, nil).AnyTimes()
@@ -388,7 +389,7 @@ func TestMergeRequestReview_ReviewState(t *testing.T) {
 	})
 
 	t.Run("reports dismissed and stale approvals", func(t *testing.T) {
-		review, repo, mrRepo, branchRepo, perm, _ := newTestMergeRequestReview(t)
+		review, repo, mrRepo, branchRepo, perm, _, _ := newTestMergeRequestReview(t)
 		expectLoad(perm, mrRepo)
 		branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").
 			Return(&domain.Branch{ID: 3, ProjectID: 1, CommitID: snowPtr(11)}, nil).AnyTimes()
@@ -411,7 +412,7 @@ func TestMergeRequestReview_ReviewState(t *testing.T) {
 }
 
 func TestMergeRequestReview_AttachSummaries(t *testing.T) {
-	review, repo, _, _, _, _ := newTestMergeRequestReview(t)
+	review, repo, _, _, _, _, _ := newTestMergeRequestReview(t)
 	repo.EXPECT().ReviewSummaries(gomock.Any(), snow.ID(1)).Return(map[int64]*domain.MergeRequestReviewState{
 		5: {Approvals: 2, HeadCommitID: 11},
 	}, nil)
@@ -425,7 +426,7 @@ func TestMergeRequestReview_AttachSummaries(t *testing.T) {
 }
 
 func TestMergeRequestReview_WithdrawReview(t *testing.T) {
-	review, repo, mrRepo, _, perm, _ := newTestMergeRequestReview(t)
+	review, repo, mrRepo, _, perm, _, _ := newTestMergeRequestReview(t)
 	expectLoad(perm, mrRepo)
 	repo.EXPECT().GetReview(gomock.Any(), int64(5), snow.ID(1)).
 		Return(&domain.MergeRequestReview{ID: 1, Reviewer: domain.ReviewActor{UserID: 9}}, nil)
@@ -435,7 +436,7 @@ func TestMergeRequestReview_WithdrawReview(t *testing.T) {
 }
 
 func TestMergeRequestReview_WithdrawReview_OtherReviewer(t *testing.T) {
-	review, repo, mrRepo, _, perm, _ := newTestMergeRequestReview(t)
+	review, repo, mrRepo, _, perm, _, _ := newTestMergeRequestReview(t)
 	expectLoad(perm, mrRepo)
 	repo.EXPECT().GetReview(gomock.Any(), int64(5), snow.ID(1)).
 		Return(&domain.MergeRequestReview{ID: 1, Reviewer: domain.ReviewActor{UserID: 8}}, nil)
@@ -445,14 +446,21 @@ func TestMergeRequestReview_WithdrawReview_OtherReviewer(t *testing.T) {
 }
 
 func TestMergeRequestReview_DismissReview(t *testing.T) {
-	review, repo, mrRepo, _, perm, _ := newTestMergeRequestReview(t)
+	review, repo, mrRepo, _, perm, _, _ := newTestMergeRequestReview(t)
 	expectLoad(perm, mrRepo)
 	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
 	repo.EXPECT().GetReview(gomock.Any(), int64(5), snow.ID(1)).
-		Return(&domain.MergeRequestReview{ID: 1}, nil)
+		Return(&domain.MergeRequestReview{ID: 1, Reviewer: domain.ReviewActor{UserID: 8}}, nil)
 	repo.EXPECT().DismissReview(gomock.Any(), int64(5), snow.ID(1), snow.ID(9), "manual", gomock.Any()).
 		DoAndReturn(func(_ context.Context, _ int64, _ snow.ID, _ snow.ID, _ string, _ time.Time) error {
 			return nil
+		})
+	repo.EXPECT().CreateEvent(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, event domain.MergeRequestTimelineItem) (*domain.MergeRequestTimelineItem, error) {
+			require.Equal(t, domain.MergeRequestEventReviewDismissed, event.Kind)
+			require.NotNil(t, event.Subject)
+			require.Equal(t, snow.ID(8), event.Subject.UserID)
+			return &event, nil
 		})
 
 	dismissed, err := review.DismissReview(permissionCtx(9), snow.ID(1), 5, snow.ID(1))
@@ -465,7 +473,7 @@ func TestMergeRequestReview_DismissReview(t *testing.T) {
 }
 
 func TestMergeRequestReview_AddComment_AndReply(t *testing.T) {
-	review, repo, mrRepo, branchRepo, perm, _ := newTestMergeRequestReview(t)
+	review, repo, mrRepo, branchRepo, perm, _, _ := newTestMergeRequestReview(t)
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").
 		Return(&domain.Branch{ID: 3, ProjectID: 1, CommitID: snowPtr(11)}, nil).AnyTimes()
 	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true).Times(2)
@@ -475,8 +483,10 @@ func TestMergeRequestReview_AddComment_AndReply(t *testing.T) {
 		func(_ context.Context, thread domain.MergeRequestThread) (*domain.MergeRequestThread, error) {
 			return &thread, nil
 		})
+	var persistedCommentID snow.ID
 	repo.EXPECT().CreateComment(gomock.Any(), gomock.Any()).DoAndReturn(
 		func(_ context.Context, c domain.MergeRequestComment) (*domain.MergeRequestComment, error) {
+			persistedCommentID = c.ID
 			return &c, nil
 		})
 
@@ -485,6 +495,7 @@ func TestMergeRequestReview_AddComment_AndReply(t *testing.T) {
 	require.Len(t, thread.Comments, 1)
 	require.Equal(t, "first", thread.Comments[0].Body)
 	require.Equal(t, snow.ID(9), thread.Comments[0].User.UserID)
+	require.Equal(t, persistedCommentID, thread.Comments[0].ID, "the returned comment must be the persisted one")
 
 	repo.EXPECT().GetThread(gomock.Any(), int64(5), thread.ID).Return(thread, nil)
 	repo.EXPECT().CreateComment(gomock.Any(), gomock.Any()).DoAndReturn(
@@ -499,7 +510,7 @@ func TestMergeRequestReview_AddComment_AndReply(t *testing.T) {
 }
 
 func TestMergeRequestReview_Reply_Validation(t *testing.T) {
-	review, _, mrRepo, _, perm, _ := newTestMergeRequestReview(t)
+	review, _, mrRepo, _, perm, _, _ := newTestMergeRequestReview(t)
 	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
 	expectLoad(perm, mrRepo)
 
@@ -508,7 +519,7 @@ func TestMergeRequestReview_Reply_Validation(t *testing.T) {
 }
 
 func TestMergeRequestReview_UpdateComment_AuthorOnly(t *testing.T) {
-	review, repo, mrRepo, _, permUC, _ := newTestMergeRequestReview(t)
+	review, repo, mrRepo, _, permUC, _, _ := newTestMergeRequestReview(t)
 	expectLoad(permUC, mrRepo)
 	repo.EXPECT().GetThread(gomock.Any(), int64(5), snow.ID(1)).Return(&domain.MergeRequestThread{ID: 1}, nil)
 	repo.EXPECT().GetComment(gomock.Any(), snow.ID(1), snow.ID(2)).
@@ -519,7 +530,7 @@ func TestMergeRequestReview_UpdateComment_AuthorOnly(t *testing.T) {
 }
 
 func TestMergeRequestReview_UpdateComment(t *testing.T) {
-	review, repo, mrRepo, _, permUC, _ := newTestMergeRequestReview(t)
+	review, repo, mrRepo, _, permUC, _, _ := newTestMergeRequestReview(t)
 	expectLoad(permUC, mrRepo)
 	repo.EXPECT().GetThread(gomock.Any(), int64(5), snow.ID(1)).Return(&domain.MergeRequestThread{ID: 1}, nil)
 	repo.EXPECT().GetComment(gomock.Any(), snow.ID(1), snow.ID(2)).
@@ -533,7 +544,7 @@ func TestMergeRequestReview_UpdateComment(t *testing.T) {
 }
 
 func TestMergeRequestReview_DeleteComment_AdminOverride(t *testing.T) {
-	review, repo, mrRepo, _, perm, _ := newTestMergeRequestReview(t)
+	review, repo, mrRepo, _, perm, _, _ := newTestMergeRequestReview(t)
 	expectLoad(perm, mrRepo)
 	repo.EXPECT().GetThread(gomock.Any(), int64(5), snow.ID(1)).Return(&domain.MergeRequestThread{ID: 1}, nil)
 	repo.EXPECT().GetComment(gomock.Any(), snow.ID(1), snow.ID(2)).
@@ -545,7 +556,7 @@ func TestMergeRequestReview_DeleteComment_AdminOverride(t *testing.T) {
 }
 
 func TestMergeRequestReview_Threads_Outdated(t *testing.T) {
-	review, repo, mrRepo, branchRepo, permUC, _ := newTestMergeRequestReview(t)
+	review, repo, mrRepo, branchRepo, permUC, _, _ := newTestMergeRequestReview(t)
 	expectLoad(permUC, mrRepo)
 	repo.EXPECT().ListThreads(gomock.Any(), int64(5), nil).Return([]*domain.MergeRequestThread{
 		{ID: 1, FilePath: "main.go", HeadCommitID: snowPtr(11)},
@@ -565,7 +576,7 @@ func TestMergeRequestReview_Threads_Outdated(t *testing.T) {
 }
 
 func TestMergeRequestReview_SetThreadResolved(t *testing.T) {
-	review, repo, mrRepo, _, perm, _ := newTestMergeRequestReview(t)
+	review, repo, mrRepo, _, perm, _, _ := newTestMergeRequestReview(t)
 	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true).Times(2)
 	expectLoad(perm, mrRepo)
 	expectLoad(perm, mrRepo)
@@ -586,7 +597,7 @@ func TestMergeRequestReview_SetThreadResolved(t *testing.T) {
 
 func TestMergeRequestReview_DeleteThread_AuthorOrAdmin(t *testing.T) {
 	t.Run("author", func(t *testing.T) {
-		review, repo, mrRepo, _, permUC, _ := newTestMergeRequestReview(t)
+		review, repo, mrRepo, _, permUC, _, _ := newTestMergeRequestReview(t)
 		expectLoad(permUC, mrRepo)
 		repo.EXPECT().GetThread(gomock.Any(), int64(5), snow.ID(1)).
 			Return(&domain.MergeRequestThread{ID: 1, CreatedBy: domain.ReviewActor{UserID: 9}}, nil)
@@ -596,7 +607,7 @@ func TestMergeRequestReview_DeleteThread_AuthorOrAdmin(t *testing.T) {
 	})
 
 	t.Run("someone else", func(t *testing.T) {
-		review, repo, mrRepo, _, permUC, _ := newTestMergeRequestReview(t)
+		review, repo, mrRepo, _, permUC, _, _ := newTestMergeRequestReview(t)
 		expectLoad(permUC, mrRepo)
 		repo.EXPECT().GetThread(gomock.Any(), int64(5), snow.ID(1)).
 			Return(&domain.MergeRequestThread{ID: 1, CreatedBy: domain.ReviewActor{UserID: 8}}, nil)
@@ -607,9 +618,10 @@ func TestMergeRequestReview_DeleteThread_AuthorOrAdmin(t *testing.T) {
 }
 
 func TestMergeRequestReview_RequestReview(t *testing.T) {
-	review, repo, mrRepo, _, perm, _ := newTestMergeRequestReview(t)
+	review, repo, mrRepo, _, perm, _, users := newTestMergeRequestReview(t)
 	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
 	expectLoad(perm, mrRepo)
+	users.EXPECT().GetByID(gomock.Any(), snow.ID(8)).Return(&domain.User{ID: 8, Name: "Rev"}, nil)
 	repo.EXPECT().CreateReviewRequest(gomock.Any(), gomock.Any()).DoAndReturn(
 		func(_ context.Context, req domain.MergeRequestReviewRequest) (*domain.MergeRequestReviewRequest, error) {
 			require.Equal(t, int64(5), req.MergeRequestID)
@@ -631,7 +643,7 @@ func TestMergeRequestReview_RequestReview(t *testing.T) {
 }
 
 func TestMergeRequestReview_RequestReview_SelfRequestRejected(t *testing.T) {
-	review, _, mrRepo, _, perm, _ := newTestMergeRequestReview(t)
+	review, _, mrRepo, _, perm, _, _ := newTestMergeRequestReview(t)
 	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
 	expectLoad(perm, mrRepo)
 
@@ -639,9 +651,19 @@ func TestMergeRequestReview_RequestReview_SelfRequestRejected(t *testing.T) {
 	requireUserError(t, err)
 }
 
+func TestMergeRequestReview_RequestReview_UnknownReviewerRejected(t *testing.T) {
+	review, _, mrRepo, _, perm, _, users := newTestMergeRequestReview(t)
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
+	expectLoad(perm, mrRepo)
+	users.EXPECT().GetByID(gomock.Any(), snow.ID(8)).Return(nil, domain.NewErrorRecordNotFound())
+
+	_, err := review.RequestReview(permissionCtx(9), snow.ID(1), 5, snow.ID(8))
+	requireUserError(t, err)
+}
+
 func TestMergeRequestReview_RemoveReviewRequest(t *testing.T) {
 	t.Run("reviewer may withdraw their own", func(t *testing.T) {
-		review, repo, mrRepo, _, permUC, _ := newTestMergeRequestReview(t)
+		review, repo, mrRepo, _, permUC, _, _ := newTestMergeRequestReview(t)
 		expectLoad(permUC, mrRepo)
 		repo.EXPECT().DeleteReviewRequest(gomock.Any(), int64(5), snow.ID(8)).Return(nil)
 		repo.EXPECT().CreateEvent(gomock.Any(), gomock.Any()).DoAndReturn(
@@ -655,7 +677,7 @@ func TestMergeRequestReview_RemoveReviewRequest(t *testing.T) {
 	})
 
 	t.Run("a third party may not", func(t *testing.T) {
-		review, _, mrRepo, _, perm, _ := newTestMergeRequestReview(t)
+		review, _, mrRepo, _, perm, _, _ := newTestMergeRequestReview(t)
 		expectLoad(perm, mrRepo)
 		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(false)
 
@@ -664,7 +686,7 @@ func TestMergeRequestReview_RemoveReviewRequest(t *testing.T) {
 }
 
 func TestMergeRequestReview_NoteBranchPush(t *testing.T) {
-	review, repo, _, _, _, _ := newTestMergeRequestReview(t)
+	review, repo, _, _, _, _, _ := newTestMergeRequestReview(t)
 	repo.EXPECT().ListOpenBySourceBranch(gomock.Any(), snow.ID(1), snow.ID(3)).
 		Return([]*domain.MergeRequest{{ID: 5, Number: 5}, {ID: 6, Number: 6}}, nil)
 	repo.EXPECT().DismissStaleReviews(gomock.Any(), gomock.Any(), snow.ID(11), snow.ID(9),
@@ -681,7 +703,7 @@ func TestMergeRequestReview_NoteBranchPush(t *testing.T) {
 }
 
 func TestMergeRequestReview_NoteBranchPush_NoOpenRequests(t *testing.T) {
-	review, repo, _, _, _, _ := newTestMergeRequestReview(t)
+	review, repo, _, _, _, _, _ := newTestMergeRequestReview(t)
 	repo.EXPECT().ListOpenBySourceBranch(gomock.Any(), snow.ID(1), snow.ID(3)).Return(nil, nil)
 
 	require.NoError(t, review.NoteBranchPush(context.Background(), snow.ID(1), snow.ID(3), snow.ID(11), snow.ID(9), "cafe"))
@@ -689,13 +711,13 @@ func TestMergeRequestReview_NoteBranchPush_NoOpenRequests(t *testing.T) {
 
 func TestMergeRequestReview_Load_Rejections(t *testing.T) {
 	t.Run("invalid number", func(t *testing.T) {
-		review, _, _, _, _, _ := newTestMergeRequestReview(t)
+		review, _, _, _, _, _, _ := newTestMergeRequestReview(t)
 		_, err := review.Reviews(permissionCtx(9), snow.ID(1), 0)
 		requireUserError(t, err)
 	})
 
 	t.Run("no read permission", func(t *testing.T) {
-		review, _, _, _, perm, _ := newTestMergeRequestReview(t)
+		review, _, _, _, perm, _, _ := newTestMergeRequestReview(t)
 		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(false)
 
 		_, err := review.Reviews(permissionCtx(9), snow.ID(1), 5)
@@ -703,7 +725,7 @@ func TestMergeRequestReview_Load_Rejections(t *testing.T) {
 	})
 
 	t.Run("unknown merge request", func(t *testing.T) {
-		review, _, mrRepo, _, perm, _ := newTestMergeRequestReview(t)
+		review, _, mrRepo, _, perm, _, _ := newTestMergeRequestReview(t)
 		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
 		mrRepo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).
 			Return(nil, domain.NewErrorNotFound("merge request not found"))
@@ -713,7 +735,7 @@ func TestMergeRequestReview_Load_Rejections(t *testing.T) {
 	})
 
 	t.Run("missing thread", func(t *testing.T) {
-		review, repo, mrRepo, _, perm, _ := newTestMergeRequestReview(t)
+		review, repo, mrRepo, _, perm, _, _ := newTestMergeRequestReview(t)
 		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
 		expectLoad(perm, mrRepo)
 		repo.EXPECT().GetThread(gomock.Any(), int64(5), snow.ID(1)).

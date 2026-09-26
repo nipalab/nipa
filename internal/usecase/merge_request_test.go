@@ -452,6 +452,50 @@ func TestMergeRequest_Commits(t *testing.T) {
 	require.Equal(t, mid, commits[1].ID)
 }
 
+func TestMergeRequest_Commits_WithoutTarget(t *testing.T) {
+	mr, repo, branchRepo, perm, _ := newTestMergeRequest(t)
+	sourceHead := snow.ID(11)
+
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
+	repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(openMergeRequest(), nil)
+	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").Return(branchWithHead(3, sourceHead), nil)
+	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(nil, domain.NewErrorRecordNotFound())
+	branchRepo.EXPECT().CommitLogUntil(gomock.Any(), snow.ID(1), sourceHead, snow.ID(0), mergeRequestCommitLimit).
+		Return([]*domain.CommitLogEntry{{Commit: domain.Commit{ID: sourceHead, Message: "only"}}}, nil)
+
+	commits, err := mr.Commits(permissionCtx(7), snow.ID(1), 5)
+	require.NoError(t, err)
+	require.Len(t, commits, 1, "a target that no longer exists logs the whole source branch")
+	require.Equal(t, sourceHead, commits[0].ID)
+}
+
+func TestMergeRequest_Commits_MergeBaseError(t *testing.T) {
+	mr, repo, branchRepo, perm, merger := newTestMergeRequest(t)
+	sourceHead := snow.ID(11)
+	targetHead := snow.ID(12)
+
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
+	repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(openMergeRequest(), nil)
+	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").Return(branchWithHead(3, sourceHead), nil)
+	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(branchWithHead(2, targetHead), nil)
+	merger.EXPECT().GetMergeBase(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
+		Return(nil, errors.New("boom"))
+
+	_, err := mr.Commits(permissionCtx(7), snow.ID(1), 5)
+	require.Error(t, err)
+}
+
+func TestMergeRequest_Commits_SourceBranchMissing(t *testing.T) {
+	mr, repo, branchRepo, perm, _ := newTestMergeRequest(t)
+
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
+	repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(openMergeRequest(), nil)
+	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").Return(nil, domain.NewErrorRecordNotFound())
+
+	_, err := mr.Commits(permissionCtx(7), snow.ID(1), 5)
+	require.True(t, domain.IsErrorNotFound(err))
+}
+
 func TestMergeRequest_Commits_EmptySource(t *testing.T) {
 	mr, repo, branchRepo, perm, _ := newTestMergeRequest(t)
 

@@ -90,6 +90,7 @@ func main() {
 		branchRepository,
 		branchUsecase,
 		permissionUsecase,
+		userRepo,
 		snowUser,
 	)
 	pushUsecase = pushUsecase.WithReviews(mergeRequestReviewUsecase)

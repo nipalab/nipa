@@ -306,8 +306,9 @@ func toDiffFileResponse(file diff.FileDiff) model.DiffFileResponse {
 		resp.OldPath = file.Change.Old.Path
 	}
 	if !resp.Binary {
-		resp.Patch = diff.FilePatch(file, diff.Options{})
-		resp.Hunks = toDiffHunkResponses(diff.FileHunks(file, diff.Options{}))
+		options := diff.Options{Context: diff.DefaultContext}
+		resp.Patch = diff.FilePatch(file, options)
+		resp.Hunks = toDiffHunkResponses(diff.FileHunks(file, options))
 		resp.Additions, resp.Deletions = diff.CountLines(file.Old, file.New)
 	}
 	return resp

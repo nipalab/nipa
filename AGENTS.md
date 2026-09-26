@@ -426,7 +426,9 @@ Direct: `go build ./...`, `go vet ./...`, `go test ./...`.
 
 ## SonarQube / CI
 
-- CI runs `go build ./...`, `go vet ./...`, `go test -race -coverprofile=...`.
+- CI runs `go build ./...`, `go vet ./...`, `go test -race -coverprofile=...
+  -coverpkg=./...` (cross-package coverage, so the REST/e2e integration tests
+  count towards the handler/usecase packages they exercise).
 - `sonar-project.properties` excludes generated code (`internal/repository/sqlc/**`),
   swagger, and cmd mains from analysis; coverage expects `coverage.out`.
 - Avoid introducing SonarQube issues: no DELETE without WHERE, keep coverage in new

@@ -100,7 +100,7 @@ func TestAPIRoutes(t *testing.T) {
 	reviewUc := usecase.NewMergeRequestReview(
 		sqlite.NewMergeRequestReviewRepository(dbConn),
 		sqlite.NewMergeRequestRepository(dbConn),
-		branchRepo, branchUc, permissionUc, node,
+		branchRepo, branchUc, permissionUc, userRepo, node,
 	)
 	pusher := usecase.NewPush(permissionUc, branchRepo, pushRepo, node).WithReviews(reviewUc)
 	chunkUc := usecase.NewChunk(pushRepo, chunkStore, usecase.ChunkTransferConfig{
@@ -1091,6 +1091,41 @@ func TestAPIRoutes(t *testing.T) {
 		state = decodeBody[model.ReviewStateResponse](t, doGet(t, mrURL+"/review-state", aliceLogin.AccessToken))
 		require.Zero(t, state.Approvals)
 		require.Equal(t, 1, state.DismissedApprovals)
+
+		// handler error paths: unknown merge request, unparsable ids
+		missing := base + "/merge-requests/424242"
+		for _, tc := range []struct {
+			method string
+			url    string
+			body   string
+			want   int
+		}{
+			{http.MethodGet, missing + "/reviews", "", http.StatusNotFound},
+			{http.MethodPost, missing + "/reviews", `{"state":"commented","body":"x"}`, http.StatusNotFound},
+			{http.MethodGet, missing + "/review-state", "", http.StatusNotFound},
+			{http.MethodGet, missing + "/threads", "", http.StatusNotFound},
+			{http.MethodPost, missing + "/threads", `{"body":"x"}`, http.StatusNotFound},
+			{http.MethodGet, missing + "/review-requests", "", http.StatusNotFound},
+			{http.MethodPost, missing + "/review-requests", `{"user_id":"1"}`, http.StatusNotFound},
+			{http.MethodDelete, missing + "/review-requests", `{"user_id":"1"}`, http.StatusNotFound},
+			{http.MethodGet, missing + "/timeline", "", http.StatusNotFound},
+			{http.MethodGet, missing + "/commits", "", http.StatusNotFound},
+			{http.MethodDelete, mrURL + "/reviews/not-base36", "", http.StatusBadRequest},
+			{http.MethodPost, mrURL + "/reviews/not-base36/dismiss", "", http.StatusBadRequest},
+			{http.MethodPost, mrURL + "/threads/not-base36/comments", `{"body":"x"}`, http.StatusBadRequest},
+			{http.MethodPatch, mrURL + "/threads/not-base36/comments/not-base36", `{"body":"x"}`, http.StatusBadRequest},
+			{http.MethodDelete, mrURL + "/threads/not-base36/comments/not-base36", "", http.StatusBadRequest},
+			{http.MethodPost, mrURL + "/threads/not-base36/resolve", `{"resolved":true}`, http.StatusBadRequest},
+			{http.MethodDelete, mrURL + "/threads/not-base36", "", http.StatusBadRequest},
+		} {
+			resp := doMethod(t, tc.method, tc.url, tc.body, aliceLogin.AccessToken)
+			require.Equal(t, tc.want, resp.StatusCode, "%s %s", tc.method, tc.url)
+			resp.Body.Close()
+		}
+
+		unauthenticated := doMethod(t, http.MethodGet, mrURL+"/reviews", "", "")
+		require.Equal(t, http.StatusUnauthorized, unauthenticated.StatusCode)
+		unauthenticated.Body.Close()
 	})
 
 	t.Run("openapi doc is served", func(t *testing.T) {
