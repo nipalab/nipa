@@ -165,7 +165,7 @@ func (b *Branch) fastForward(ctx context.Context, projectID snow.ID, targetBranc
 		return nil, err
 	}
 
-	var lockablePaths []string
+	var required, checked []string
 	var actor snow.ID
 	if !allowProtected && b.fileLocks != nil {
 		claim, ok := domain.ClaimFromContext(ctx)
@@ -173,11 +173,11 @@ func (b *Branch) fastForward(ctx context.Context, projectID snow.ID, targetBranc
 			return nil, domain.NewErrorNoPermission()
 		}
 		actor = claim.UserID
-		lockablePaths, err = b.BinaryChangesBetween(ctx, projectID, target.CommitID, source.CommitID)
+		required, checked, err = b.BinaryLockPlan(ctx, projectID, target.CommitID, source.CommitID)
 		if err != nil {
 			return nil, err
 		}
-		if err := b.fileLocks.EnsureLocks(ctx, projectID, target, lockablePaths, actor); err != nil {
+		if err := b.fileLocks.EnsureLocks(ctx, projectID, target, required, checked, actor); err != nil {
 			return nil, err
 		}
 	}
@@ -186,7 +186,10 @@ func (b *Branch) fastForward(ctx context.Context, projectID snow.ID, targetBranc
 		return nil, err
 	}
 	if b.fileLocks != nil {
-		if err := b.fileLocks.ReleaseLanded(ctx, projectID, target, lockablePaths, actor); err != nil {
+		landed := make([]string, 0, len(required)+len(checked))
+		landed = append(landed, required...)
+		landed = append(landed, checked...)
+		if err := b.fileLocks.ReleaseLanded(ctx, projectID, target, landed, actor); err != nil {
 			return nil, err
 		}
 	}
@@ -196,6 +199,37 @@ func (b *Branch) fastForward(ctx context.Context, projectID snow.ID, targetBranc
 // BinaryChangesBetween returns the paths whose binary flag differs between two
 // commits. Callers pass a merge base as from to get the three-dot changes.
 func (b *Branch) BinaryChangesBetween(ctx context.Context, projectID snow.ID, fromCommitID, toCommitID *snow.ID) ([]string, error) {
+	changes, err := b.binaryChanges(ctx, projectID, fromCommitID, toCommitID)
+	if err != nil {
+		return nil, err
+	}
+	paths := make([]string, 0, len(changes))
+	for _, change := range changes {
+		paths = append(paths, change.Path)
+	}
+	return paths, nil
+}
+
+// BinaryLockPlan classifies binary changes for the mandatory lock gate:
+// existing binaries that are modified or removed must be covered by the
+// caller's lock, while newly added binaries only conflict with someone else's
+// covering lock.
+func (b *Branch) BinaryLockPlan(ctx context.Context, projectID snow.ID, fromCommitID, toCommitID *snow.ID) (required, checked []string, err error) {
+	changes, err := b.binaryChanges(ctx, projectID, fromCommitID, toCommitID)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, change := range changes {
+		if change.Status == diff.Added {
+			checked = append(checked, change.Path)
+			continue
+		}
+		required = append(required, change.Path)
+	}
+	return required, checked, nil
+}
+
+func (b *Branch) binaryChanges(ctx context.Context, projectID snow.ID, fromCommitID, toCommitID *snow.ID) ([]diff.Change, error) {
 	fromEntries := map[string]diff.Entry{}
 	if fromCommitID != nil {
 		entries, err := b.treeEntries(ctx, projectID, *fromCommitID)
@@ -212,19 +246,14 @@ func (b *Branch) BinaryChangesBetween(ctx context.Context, projectID snow.ID, fr
 		}
 		toEntries = entries
 	}
-	seen := map[string]struct{}{}
-	var paths []string
+	var changes []diff.Change
 	for _, change := range diff.Compare(fromEntries, toEntries) {
 		if !change.Old.IsBinary && !change.New.IsBinary {
 			continue
 		}
-		if _, ok := seen[change.Path]; ok {
-			continue
-		}
-		seen[change.Path] = struct{}{}
-		paths = append(paths, change.Path)
+		changes = append(changes, change)
 	}
-	return paths, nil
+	return changes, nil
 }
 
 func (b *Branch) findMergeBase(ctx context.Context, a, c *snow.ID) (*snow.ID, error) {

@@ -90,17 +90,21 @@ Flow for binary file locks (`nipa lock <path> [--branch]`, `nipa unlock <path>`,
 resolves the scope from the branch — the default branch is a project-global lock
 (`file_locks.branch_id NULL`), any other branch a lock of that branch — and
 rejects a path already covered (exact or directory prefix, `domain.PrefixCovers`)
-by another holder; the same holder is idempotent. `Push.Push` computes the
-lockable set (`PushFile.IsBinary` plus `chunker.IsLockablePath` for removals),
-requires a covering lock for the pusher in the target scope (`EnsureLocks`,
-409 `binary file %q requires a lock` / `%q is locked by <holder>`), and after
-`ApplyPush` releases the pusher's own exact-path, non-request locks
-(`ReleaseLanded`); directory locks span the editing pass and stay. Merge
-requests acquire locks for their changed binary paths at creation (re-checked
-and topped up at merge — `branchMerger.BinaryChangesBetween` is the
-permission-filter-free three-dot enumeration), release them on merge/close,
-re-acquire on reopen, and clean up partial acquisitions when creation fails.
-Plain `FastForward` enforces/releases the same way; `Branch.Delete` releases the
+by another holder; the same holder is idempotent. `Push.Push` classifies the
+touched binaries against the head tree (`headBinaryPaths`): tracked binaries
+being modified or removed must be covered by the pusher's lock (409 `binary file
+%q requires a lock`), while new binary files only conflict with someone else's
+covering lock (409 `%q is locked by <holder>`) — adding a brand-new asset needs
+no lock unless a directory or pre-emptive lock guards it. `EnsureLocks` enforces
+both lists in the target scope; after `ApplyPush`, `ReleaseLanded` drops the
+pusher's own exact-path, non-request locks while directory locks span the
+editing pass and stay. Merge requests acquire locks for their changed binary
+paths at creation (re-checked and topped up at merge — `branchMerger.
+BinaryChangesBetween` is the permission-filter-free three-dot enumeration —
+accepting locks held by the request owner so an admin can merge on their
+behalf), release them on merge/close, re-acquire on reopen, and clean up
+partial acquisitions when creation fails. Plain `FastForward` enforces/releases
+via `BinaryLockPlan` (required vs checked paths); `Branch.Delete` releases the
 branch's scoped locks (soft delete ⇒ no FK cascade). The `/locks` REST routes,
 `LockFile`/`UnlockFile`/`ListFileLocks` RPCs and the web Locks page expose
 acquire/release/list.

@@ -13,7 +13,7 @@ func (c *Cli) setupLockCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "lock <path>",
 		Short:         "Lock a binary file or directory so only you can change it",
-		Long:          "Binary files can only land when the pusher holds a lock on them. Lock a file before editing it, or a directory prefix to cover a whole editing pass. Locks on the default branch are project-global; locks on other branches are scoped to that branch.",
+		Long:          "Tracked binary files can only land when the pusher holds a lock on them. Lock a file before editing it, or a directory prefix to cover a whole editing pass. Adding a brand-new file needs no lock unless a directory or pre-emptive lock guards it. Locks on the default branch are project-global; locks on other branches are scoped to that branch.",
 		Args:          cobra.ExactArgs(1),
 		SilenceErrors: true,
 		SilenceUsage:  true,
