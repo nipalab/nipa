@@ -79,3 +79,25 @@ func TestProbeBinary(t *testing.T) {
 		require.False(t, got)
 	})
 }
+
+func TestIsLockablePath(t *testing.T) {
+	tests := []struct {
+		path string
+		want bool
+	}{
+		{"assets/orc.png", true},
+		{"art/hero.PSD", true},
+		{"scene.blend", true},
+		{"audio/loop.wav", true},
+		{"models/rig.fbx", true},
+		{"src/main.go", false},
+		{"data/values.json", false},
+		{"README.md", false},
+		{"noext", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			require.Equal(t, tt.want, IsLockablePath(tt.path))
+		})
+	}
+}

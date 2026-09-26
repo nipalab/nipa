@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/nipalab/nipa/internal/domain"
+	httpApp "github.com/nipalab/nipa/internal/http"
 	"github.com/nipalab/nipa/internal/http/model"
 )
 
@@ -69,4 +70,40 @@ func TestHandler_FileLockErrors(t *testing.T) {
 	appCtx = &fakeAppContext{claims: claims, pathParameters: projectParams, body: []byte(`{"path":"missing.png"}`)}
 	env.handler.UnlockFile(appCtx)
 	require.Equal(t, http.StatusNotFound, appCtx.statusCode)
+}
+
+func TestHandler_FileLockInvalidBody(t *testing.T) {
+	env := newHandlerTestEnv(t)
+	claims := &domain.Claims{UserID: env.userID, IsAdmin: true}
+	projectParams := map[string]string{"org": "default", "project": "default"}
+
+	appCtx := &fakeAppContext{claims: claims, pathParameters: projectParams, body: []byte("{")}
+	env.handler.LockFile(appCtx)
+	require.Equal(t, http.StatusInternalServerError, appCtx.statusCode)
+
+	appCtx = &fakeAppContext{claims: claims, pathParameters: projectParams, body: []byte("{")}
+	env.handler.UnlockFile(appCtx)
+	require.Equal(t, http.StatusInternalServerError, appCtx.statusCode)
+}
+
+func TestHandler_FileLockContextError(t *testing.T) {
+	env := newHandlerTestEnv(t)
+	params := map[string]string{"org": "default", "project": "default"}
+
+	tests := []struct {
+		name string
+		body string
+		run  func(appCtx httpApp.AppContext)
+	}{
+		{name: "list", run: env.handler.ListFileLocks},
+		{name: "lock", body: `{"path":"a.png"}`, run: env.handler.LockFile},
+		{name: "unlock", body: `{"path":"a.png"}`, run: env.handler.UnlockFile},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			appCtx := canceledAppCtx(env.userID, params, tt.body)
+			tt.run(appCtx)
+			require.Equal(t, http.StatusInternalServerError, appCtx.statusCode)
+		})
+	}
 }

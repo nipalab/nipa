@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -327,4 +328,260 @@ func TestFileLock_ReleaseDelegates(t *testing.T) {
 
 	require.NoError(t, uc.ReleaseForMergeRequest(permissionCtx(7), snow.ID(1), 5))
 	require.NoError(t, uc.ReleaseBranch(permissionCtx(7), snow.ID(1), 3))
+}
+
+func TestFileLock_Acquire_OwnNarrowerLockDoesNotBlockWiderRequest(t *testing.T) {
+	uc, repo, branchRepo, perm := newTestFileLock(t)
+	ctx := permissionCtx(7)
+
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
+	branchRepo.EXPECT().GetDefaultBranch(gomock.Any(), snow.ID(1)).Return(defaultBranchFixture(), nil)
+	held := &domain.FileLock{ID: 9, Path: "art/hero.png", HeldBy: 7}
+	repo.EXPECT().ListProject(gomock.Any(), snow.ID(1)).Return([]*domain.FileLock{held}, nil)
+	repo.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, lock domain.FileLock) (*domain.FileLock, error) {
+			require.Equal(t, "art", lock.Path)
+			return &lock, nil
+		},
+	)
+
+	lock, err := uc.Acquire(ctx, snow.ID(1), "", "art")
+	require.NoError(t, err)
+	require.Equal(t, "art", lock.Path)
+}
+
+func TestFileLock_Acquire_OwnDirectoryLockCoversRequest(t *testing.T) {
+	uc, repo, branchRepo, perm := newTestFileLock(t)
+	ctx := permissionCtx(7)
+
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
+	branchRepo.EXPECT().GetDefaultBranch(gomock.Any(), snow.ID(1)).Return(defaultBranchFixture(), nil)
+	held := &domain.FileLock{ID: 9, Path: "art", HeldBy: 7}
+	repo.EXPECT().ListProject(gomock.Any(), snow.ID(1)).Return([]*domain.FileLock{held}, nil)
+
+	lock, err := uc.Acquire(ctx, snow.ID(1), "", "art/hero.png")
+	require.NoError(t, err)
+	require.Equal(t, snow.ID(9), lock.ID)
+}
+
+func TestFileLock_Acquire_DefaultBranchMissing(t *testing.T) {
+	uc, _, branchRepo, perm := newTestFileLock(t)
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
+	branchRepo.EXPECT().GetDefaultBranch(gomock.Any(), snow.ID(1)).Return(nil, domain.NewErrorRecordNotFound())
+
+	_, err := uc.Acquire(permissionCtx(7), snow.ID(1), "", "a.png")
+	require.True(t, domain.IsErrorNotFound(err))
+}
+
+func TestFileLock_Acquire_BranchRepoError(t *testing.T) {
+	uc, _, branchRepo, perm := newTestFileLock(t)
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
+	wantErr := errors.New("db down")
+	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").Return(nil, wantErr)
+
+	_, err := uc.Acquire(permissionCtx(7), snow.ID(1), "feature", "a.png")
+	require.ErrorIs(t, err, wantErr)
+}
+
+func TestFileLock_Acquire_InvalidPath(t *testing.T) {
+	uc, _, _, perm := newTestFileLock(t)
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
+
+	_, err := uc.Acquire(permissionCtx(7), snow.ID(1), "", "../../etc/passwd")
+	requireUserError(t, err)
+}
+
+func TestFileLock_Acquire_CreateRaces(t *testing.T) {
+	t.Run("identical path taken by another user", func(t *testing.T) {
+		uc, repo, branchRepo, perm := newTestFileLock(t)
+		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
+		branchRepo.EXPECT().GetDefaultBranch(gomock.Any(), snow.ID(1)).Return(defaultBranchFixture(), nil)
+		repo.EXPECT().ListProject(gomock.Any(), snow.ID(1)).Return(nil, nil)
+		repo.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil, errors.New("unique constraint"))
+		repo.EXPECT().Get(gomock.Any(), snow.ID(1), "a.png", nil).
+			Return(&domain.FileLock{ID: 9, Path: "a.png", HeldBy: 8, HeldByName: "bob"}, nil)
+
+		_, err := uc.Acquire(permissionCtx(7), snow.ID(1), "", "a.png")
+		require.True(t, domain.IsErrorConflict(err))
+		require.Contains(t, err.Error(), "bob")
+	})
+
+	t.Run("identical path already held by the caller", func(t *testing.T) {
+		uc, repo, branchRepo, perm := newTestFileLock(t)
+		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
+		branchRepo.EXPECT().GetDefaultBranch(gomock.Any(), snow.ID(1)).Return(defaultBranchFixture(), nil)
+		repo.EXPECT().ListProject(gomock.Any(), snow.ID(1)).Return(nil, nil)
+		repo.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil, errors.New("unique constraint"))
+		repo.EXPECT().Get(gomock.Any(), snow.ID(1), "a.png", nil).
+			Return(&domain.FileLock{ID: 9, Path: "a.png", HeldBy: 7}, nil)
+
+		lock, err := uc.Acquire(permissionCtx(7), snow.ID(1), "", "a.png")
+		require.NoError(t, err)
+		require.Equal(t, snow.ID(9), lock.ID)
+	})
+
+	t.Run("create fails and lookup finds nothing", func(t *testing.T) {
+		uc, repo, branchRepo, perm := newTestFileLock(t)
+		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
+		branchRepo.EXPECT().GetDefaultBranch(gomock.Any(), snow.ID(1)).Return(defaultBranchFixture(), nil)
+		repo.EXPECT().ListProject(gomock.Any(), snow.ID(1)).Return(nil, nil)
+		wantErr := errors.New("db down")
+		repo.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil, wantErr)
+		repo.EXPECT().Get(gomock.Any(), snow.ID(1), "a.png", nil).Return(nil, domain.NewErrorRecordNotFound())
+
+		_, err := uc.Acquire(permissionCtx(7), snow.ID(1), "", "a.png")
+		require.ErrorIs(t, err, wantErr)
+	})
+}
+
+func TestFileLock_Release_ErrorPaths(t *testing.T) {
+	t.Run("needs a claim", func(t *testing.T) {
+		uc, _, _, _ := newTestFileLock(t)
+		err := uc.Release(context.Background(), snow.ID(1), "", "a.png")
+		require.True(t, domain.IsErrorNoPermission(err))
+	})
+
+	t.Run("needs write access", func(t *testing.T) {
+		uc, _, _, perm := newTestFileLock(t)
+		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(false)
+		err := uc.Release(permissionCtx(7), snow.ID(1), "", "a.png")
+		require.True(t, domain.IsErrorNoPermission(err))
+	})
+
+	t.Run("invalid path", func(t *testing.T) {
+		uc, _, _, perm := newTestFileLock(t)
+		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
+		err := uc.Release(permissionCtx(7), snow.ID(1), "", "..")
+		requireUserError(t, err)
+	})
+
+	t.Run("branch repo error", func(t *testing.T) {
+		uc, _, branchRepo, perm := newTestFileLock(t)
+		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
+		wantErr := errors.New("db down")
+		branchRepo.EXPECT().GetDefaultBranch(gomock.Any(), snow.ID(1)).Return(nil, wantErr)
+		require.ErrorIs(t, uc.Release(permissionCtx(7), snow.ID(1), "", "a.png"), wantErr)
+	})
+
+	t.Run("repository error", func(t *testing.T) {
+		uc, repo, branchRepo, perm := newTestFileLock(t)
+		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
+		branchRepo.EXPECT().GetDefaultBranch(gomock.Any(), snow.ID(1)).Return(defaultBranchFixture(), nil)
+		wantErr := errors.New("db down")
+		repo.EXPECT().Get(gomock.Any(), snow.ID(1), "a.png", nil).Return(nil, wantErr)
+		require.ErrorIs(t, uc.Release(permissionCtx(7), snow.ID(1), "", "a.png"), wantErr)
+	})
+}
+
+func TestFileLock_ListRepositoryError(t *testing.T) {
+	uc, repo, _, perm := newTestFileLock(t)
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
+	wantErr := errors.New("db down")
+	repo.EXPECT().ListProject(gomock.Any(), snow.ID(1)).Return(nil, wantErr)
+
+	_, err := uc.List(permissionCtx(7), snow.ID(1))
+	require.ErrorIs(t, err, wantErr)
+}
+
+func TestFileLock_EnsureLocksRepositoryError(t *testing.T) {
+	uc, repo, _, _ := newTestFileLock(t)
+	wantErr := errors.New("db down")
+	repo.EXPECT().ListProject(gomock.Any(), snow.ID(1)).Return(nil, wantErr)
+
+	err := uc.EnsureLocks(permissionCtx(7), snow.ID(1), defaultBranchFixture(), []string{"a.png"}, 7)
+	require.ErrorIs(t, err, wantErr)
+}
+
+func TestFileLock_ConflictMessageVariants(t *testing.T) {
+	uc, repo, branchRepo, perm := newTestFileLock(t)
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
+	branch := devBranchFixture()
+	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").Return(branch, nil)
+	branchID := devBranchFixture().ID
+	held := &domain.FileLock{ID: 9, BranchID: &branchID, Branch: "feature", Path: "a.png", HeldBy: 8}
+	repo.EXPECT().ListProject(gomock.Any(), snow.ID(1)).Return([]*domain.FileLock{held}, nil)
+
+	_, err := uc.Acquire(permissionCtx(7), snow.ID(1), "feature", "a.png")
+	require.True(t, domain.IsErrorConflict(err))
+	require.Contains(t, err.Error(), `branch "feature"`)
+	require.Contains(t, err.Error(), "8")
+}
+
+func TestFileLock_EnsureMergeRequestLocks_ErrorPaths(t *testing.T) {
+	t.Run("repository list error", func(t *testing.T) {
+		uc, repo, _, _ := newTestFileLock(t)
+		wantErr := errors.New("db down")
+		repo.EXPECT().ListProject(gomock.Any(), snow.ID(1)).Return(nil, wantErr)
+		require.ErrorIs(t, uc.EnsureMergeRequestLocks(permissionCtx(7), snow.ID(1), 5, defaultBranchFixture(), []string{"a.png"}, 7), wantErr)
+	})
+
+	t.Run("create race with another holder", func(t *testing.T) {
+		uc, repo, _, _ := newTestFileLock(t)
+		repo.EXPECT().ListProject(gomock.Any(), snow.ID(1)).Return(nil, nil)
+		repo.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil, errors.New("unique constraint"))
+		repo.EXPECT().Get(gomock.Any(), snow.ID(1), "a.png", nil).
+			Return(&domain.FileLock{ID: 9, Path: "a.png", HeldBy: 8, HeldByName: "bob"}, nil)
+
+		err := uc.EnsureMergeRequestLocks(permissionCtx(7), snow.ID(1), 5, defaultBranchFixture(), []string{"a.png"}, 7)
+		require.True(t, domain.IsErrorConflict(err))
+	})
+
+	t.Run("create race with the same holder is fine", func(t *testing.T) {
+		uc, repo, _, _ := newTestFileLock(t)
+		repo.EXPECT().ListProject(gomock.Any(), snow.ID(1)).Return(nil, nil)
+		repo.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil, errors.New("unique constraint"))
+		repo.EXPECT().Get(gomock.Any(), snow.ID(1), "a.png", nil).
+			Return(&domain.FileLock{ID: 9, Path: "a.png", HeldBy: 7}, nil)
+
+		require.NoError(t, uc.EnsureMergeRequestLocks(permissionCtx(7), snow.ID(1), 5, defaultBranchFixture(), []string{"a.png"}, 7))
+	})
+
+	t.Run("create fails and lookup finds nothing", func(t *testing.T) {
+		uc, repo, _, _ := newTestFileLock(t)
+		repo.EXPECT().ListProject(gomock.Any(), snow.ID(1)).Return(nil, nil)
+		wantErr := errors.New("db down")
+		repo.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil, wantErr)
+		repo.EXPECT().Get(gomock.Any(), snow.ID(1), "a.png", nil).Return(nil, domain.NewErrorRecordNotFound())
+
+		require.ErrorIs(t, uc.EnsureMergeRequestLocks(permissionCtx(7), snow.ID(1), 5, defaultBranchFixture(), []string{"a.png"}, 7), wantErr)
+	})
+
+	t.Run("no paths is a no-op", func(t *testing.T) {
+		uc, _, _, _ := newTestFileLock(t)
+		require.NoError(t, uc.EnsureMergeRequestLocks(permissionCtx(7), snow.ID(1), 5, defaultBranchFixture(), nil, 7))
+	})
+}
+
+func TestFileLock_ReleaseLanded_ErrorAndScopePaths(t *testing.T) {
+	t.Run("repository error", func(t *testing.T) {
+		uc, repo, _, _ := newTestFileLock(t)
+		wantErr := errors.New("db down")
+		repo.EXPECT().ListProject(gomock.Any(), snow.ID(1)).Return(nil, wantErr)
+		require.ErrorIs(t, uc.ReleaseLanded(permissionCtx(7), snow.ID(1), defaultBranchFixture(), []string{"a.png"}, 7), wantErr)
+	})
+
+	t.Run("other scope and holders are untouched", func(t *testing.T) {
+		uc, repo, _, _ := newTestFileLock(t)
+		branchID := devBranchFixture().ID
+		repo.EXPECT().ListProject(gomock.Any(), snow.ID(1)).Return([]*domain.FileLock{
+			{ID: 1, BranchID: &branchID, Path: "a.png", HeldBy: 7},
+			{ID: 2, Path: "b.png", HeldBy: 8},
+		}, nil)
+		require.NoError(t, uc.ReleaseLanded(permissionCtx(7), snow.ID(1), defaultBranchFixture(), []string{"a.png", "b.png"}, 7))
+	})
+
+	t.Run("no paths is a no-op", func(t *testing.T) {
+		uc, _, _, _ := newTestFileLock(t)
+		require.NoError(t, uc.ReleaseLanded(permissionCtx(7), snow.ID(1), defaultBranchFixture(), nil, 7))
+	})
+}
+
+func TestFileLock_ReleaseDelegates_Errors(t *testing.T) {
+	uc, repo, _, _ := newTestFileLock(t)
+	wantErr := errors.New("db down")
+	repo.EXPECT().DeleteByMergeRequest(gomock.Any(), snow.ID(1), snow.ID(5)).Return(wantErr)
+	repo.EXPECT().DeleteByBranch(gomock.Any(), snow.ID(1), snow.ID(3)).Return(wantErr)
+
+	require.ErrorIs(t, uc.ReleaseForMergeRequest(permissionCtx(7), snow.ID(1), 5), wantErr)
+	require.ErrorIs(t, uc.ReleaseBranch(permissionCtx(7), snow.ID(1), 3), wantErr)
 }
