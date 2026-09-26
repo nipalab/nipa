@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"context"
 	"errors"
 
 	clientDomain "github.com/nipalab/nipa/internal/client/domain"
@@ -13,6 +14,12 @@ import (
 func toStatusError(err error) error {
 	if err == nil {
 		return nil
+	}
+	switch {
+	case errors.Is(err, context.Canceled):
+		return status.Error(codes.Canceled, err.Error())
+	case errors.Is(err, context.DeadlineExceeded):
+		return status.Error(codes.DeadlineExceeded, err.Error())
 	}
 	var domErr *clientDomain.Error
 	if errors.As(err, &domErr) {

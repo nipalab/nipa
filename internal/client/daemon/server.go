@@ -42,6 +42,7 @@ type Server struct {
 
 	listener net.Listener
 	grpc     *grpc.Server
+	repos    *registry
 	ready    chan struct{}
 	stop     chan struct{}
 	stopOnce sync.Once
@@ -91,6 +92,7 @@ func NewServer(opts Options) (*Server, error) {
 		pid:          os.Getpid(),
 		login:        opts.Login,
 		listener:     listener,
+		repos:        newRegistry(),
 		ready:        make(chan struct{}),
 		stop:         make(chan struct{}),
 	}
@@ -138,11 +140,13 @@ func (s *Server) Serve(ctx context.Context) error {
 	case <-s.stop:
 	case err := <-serveErr:
 		_ = RemoveEndpoint(s.endpointPath, s.token)
+		s.repos.closeAll()
 		return err
 	}
 
 	s.grpc.GracefulStop()
 	<-serveErr
+	s.repos.closeAll()
 	return RemoveEndpoint(s.endpointPath, s.token)
 }
 
