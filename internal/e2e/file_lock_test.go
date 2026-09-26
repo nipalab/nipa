@@ -11,8 +11,11 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/nipalab/nipa/internal/client/domain"
+	clientgrpc "github.com/nipalab/nipa/internal/client/grpc"
 	"github.com/nipalab/nipa/internal/client/localrepo"
 	clientusecase "github.com/nipalab/nipa/internal/client/usecase"
+	serverDomain "github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/hasher"
 	"github.com/nipalab/nipa/internal/repository/sqlite"
 	"github.com/nipalab/nipa/internal/snow"
 )
@@ -205,4 +208,80 @@ func TestEndToEnd_FileLockMergeRequest(t *testing.T) {
 	list, err = locks.List(ctx, mainDir)
 	require.NoError(t, err)
 	require.Empty(t, list, "merging the request releases its locks")
+}
+
+func seedUserWithPassword(t *testing.T, dbConn *sql.DB, id int64, name, email, password string) {
+	t.Helper()
+	h := hasher.NewHasher(1)
+	defer h.Close()
+	hash, err := h.Hash(password)
+	require.NoError(t, err)
+	_, err = dbConn.ExecContext(context.Background(),
+		`INSERT INTO users (id, name, email, password) VALUES (?, ?, ?, ?)`, id, name, email, hash)
+	require.NoError(t, err)
+}
+
+func newClientWithPassword(t *testing.T, host, email, password string) (*clientgrpc.Client, *clientusecase.Auth) {
+	t.Helper()
+	store := newMemoryStore()
+	transport := clientgrpc.NewTransport()
+	session := clientusecase.NewSession(store, transport, failPrompt{})
+	grpcClient := clientgrpc.NewClient(transport, session)
+	require.NoError(t, grpcClient.Connect(context.Background(), host))
+
+	loginResult, err := grpcClient.LoginWithUsernamePassword(context.Background(), host, email, password)
+	require.NoError(t, err)
+	require.NoError(t, store.SaveToken(loginResult))
+	return grpcClient, clientusecase.NewAuth(grpcClient, store, failPrompt{})
+}
+
+func TestEndToEnd_FileLockAdminMergesAuthorRequest(t *testing.T) {
+	ctx := context.Background()
+	dbConn := openTestDB(t)
+	host := startTestServer(t, dbConn)
+	adminClient, adminAuth := newLoggedInClient(t, host)
+
+	seedUserWithPassword(t, dbConn, 9100, "author", "author@example.com", "password123")
+	_, err := adminClient.CreatePBACRule(ctx, e2eOrgSlug, e2eProjectSlug,
+		snow.ID(9100).Base36(), "", "", uint64(serverDomain.PermissionRead|serverDomain.PermissionWrite))
+	require.NoError(t, err)
+
+	adminPusher := clientusecase.NewPush(adminAuth, adminClient, localrepo.NewLocalRepo())
+	mainDir := cloneWorktree(t, adminClient, adminAuth, host, "main")
+	writeFile(t, mainDir, "a.txt", "base\n")
+	stagePath(t, mainDir, "a.txt")
+	require.NoError(t, adminPusher.Run(ctx, mainDir, "seed main"))
+
+	_, err = adminClient.CreateBranch(ctx, e2eOrgSlug, e2eProjectSlug, "author-art", "main", "", "")
+	require.NoError(t, err)
+
+	authorClient, authorAuth := newClientWithPassword(t, host, "author@example.com", "password123")
+	authorDir := cloneWorktree(t, authorClient, authorAuth, host, "author-art")
+	authorPusher := clientusecase.NewPush(authorAuth, authorClient, localrepo.NewLocalRepo())
+	authorLocks := clientusecase.NewFileLock(authorAuth, authorClient, localrepo.NewLocalRepo())
+
+	writeBinaryFile(t, authorDir, "hero.png")
+	stagePath(t, authorDir, "hero.png")
+	_, err = authorLocks.Lock(ctx, authorDir, "hero.png", "")
+	require.NoError(t, err)
+	require.NoError(t, authorPusher.Run(ctx, authorDir, "author art"))
+
+	authorRequests := clientusecase.NewMergeRequest(authorAuth, authorClient, localrepo.NewLocalRepo())
+	mr, err := authorRequests.Create(ctx, authorDir, clientusecase.CreateMergeRequestOptions{Title: "Hero art"})
+	require.NoError(t, err)
+
+	list, err := authorLocks.List(ctx, authorDir)
+	require.NoError(t, err)
+	require.Len(t, list, 1)
+	require.Equal(t, snow.ID(9100).Base36(), list[0].HeldBy)
+
+	adminRequests := clientusecase.NewMergeRequest(adminAuth, adminClient, localrepo.NewLocalRepo())
+	merged, info, err := adminRequests.Merge(ctx, mainDir, strconv.FormatInt(mr.Number, 10))
+	require.NoError(t, err, "an admin must be able to merge an author's request while the author holds its locks")
+	require.Equal(t, domain.MergeRequestMerged, merged.Status)
+	require.Equal(t, "mergeable", info.Status)
+
+	list, err = authorLocks.List(ctx, authorDir)
+	require.NoError(t, err)
+	require.Empty(t, list)
 }

@@ -26,7 +26,7 @@ type fileLockRepository interface {
 type fileLockGate interface {
 	EnsureLocks(ctx context.Context, projectID snow.ID, branch *domain.Branch, paths []string, holder snow.ID) error
 	ReleaseLanded(ctx context.Context, projectID snow.ID, branch *domain.Branch, paths []string, holder snow.ID) error
-	EnsureMergeRequestLocks(ctx context.Context, projectID snow.ID, mergeRequestID snow.ID, target *domain.Branch, paths []string, holder snow.ID) error
+	EnsureMergeRequestLocks(ctx context.Context, projectID snow.ID, mergeRequestID snow.ID, target *domain.Branch, paths []string, holder, author snow.ID) error
 	ReleaseForMergeRequest(ctx context.Context, projectID snow.ID, mergeRequestID snow.ID) error
 	ReleaseBranch(ctx context.Context, projectID, branchID snow.ID) error
 }
@@ -208,9 +208,11 @@ func (f *FileLock) ReleaseLanded(ctx context.Context, projectID snow.ID, branch 
 }
 
 // EnsureMergeRequestLocks checks the binary paths of a merge request: paths
-// covered by the author's locks pass, free paths gain request-linked locks and
-// paths locked by another user abort the operation.
-func (f *FileLock) EnsureMergeRequestLocks(ctx context.Context, projectID snow.ID, mergeRequestID snow.ID, target *domain.Branch, paths []string, holder snow.ID) error {
+// covered by this request's own locks, the author's locks or the caller's locks
+// pass, free paths gain request-linked locks and paths locked by anyone else
+// abort the operation. author is the request owner so an admin merging on the
+// author's behalf accepts the locks acquired when the request was opened.
+func (f *FileLock) EnsureMergeRequestLocks(ctx context.Context, projectID snow.ID, mergeRequestID snow.ID, target *domain.Branch, paths []string, holder, author snow.ID) error {
 	if len(paths) == 0 {
 		return nil
 	}
@@ -226,7 +228,7 @@ func (f *FileLock) EnsureMergeRequestLocks(ctx context.Context, projectID snow.I
 	for _, path := range paths {
 		lock := findCoveringLock(locks, scopeID, path)
 		if lock != nil {
-			if lock.HeldBy != holder {
+			if !mergeRequestLockAccepted(lock, mergeRequestID, holder, author) {
 				return lockConflictError(lock, path)
 			}
 			continue
@@ -242,7 +244,7 @@ func (f *FileLock) EnsureMergeRequestLocks(ctx context.Context, projectID snow.I
 		})
 		if err != nil {
 			if existing, getErr := f.repo.Get(ctx, projectID, path, scopeID); getErr == nil {
-				if existing.HeldBy != holder {
+				if !mergeRequestLockAccepted(existing, mergeRequestID, holder, author) {
 					return lockConflictError(existing, path)
 				}
 				continue
@@ -252,6 +254,13 @@ func (f *FileLock) EnsureMergeRequestLocks(ctx context.Context, projectID snow.I
 		locks = append(locks, created)
 	}
 	return nil
+}
+
+func mergeRequestLockAccepted(lock *domain.FileLock, mergeRequestID, holder, author snow.ID) bool {
+	if lock.MergeRequestID != nil && *lock.MergeRequestID == mergeRequestID {
+		return true
+	}
+	return lock.HeldBy == holder || lock.HeldBy == author
 }
 
 func (f *FileLock) ReleaseForMergeRequest(ctx context.Context, projectID snow.ID, mergeRequestID snow.ID) error {

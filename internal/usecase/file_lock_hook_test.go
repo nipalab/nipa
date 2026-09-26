@@ -125,7 +125,7 @@ func TestMergeRequest_Create_FileLocks(t *testing.T) {
 		Return(&MergeBaseInfo{MergeBaseCommitID: &targetHead}, nil)
 	merger.EXPECT().BinaryChangesBetween(gomock.Any(), snow.ID(1), &targetHead, &sourceHead).
 		Return([]string{"tex.png"}, nil)
-	gate.EXPECT().EnsureMergeRequestLocks(gomock.Any(), snow.ID(1), gomock.Any(), gomock.Any(), []string{"tex.png"}, snow.ID(7)).
+	gate.EXPECT().EnsureMergeRequestLocks(gomock.Any(), snow.ID(1), gomock.Any(), gomock.Any(), []string{"tex.png"}, snow.ID(7), snow.ID(7)).
 		Return(nil)
 	repo.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(
 		func(_ context.Context, created domain.MergeRequest) (*domain.MergeRequest, error) {
@@ -154,7 +154,7 @@ func TestMergeRequest_Create_FileLockConflictReleasesPartial(t *testing.T) {
 		Return(&MergeBaseInfo{MergeBaseCommitID: &targetHead}, nil)
 	merger.EXPECT().BinaryChangesBetween(gomock.Any(), snow.ID(1), &targetHead, &sourceHead).
 		Return([]string{"tex.png"}, nil)
-	gate.EXPECT().EnsureMergeRequestLocks(gomock.Any(), snow.ID(1), gomock.Any(), gomock.Any(), []string{"tex.png"}, snow.ID(7)).
+	gate.EXPECT().EnsureMergeRequestLocks(gomock.Any(), snow.ID(1), gomock.Any(), gomock.Any(), []string{"tex.png"}, snow.ID(7), snow.ID(7)).
 		Return(domain.NewErrorConflict("locked by bob"))
 	gate.EXPECT().ReleaseForMergeRequest(gomock.Any(), snow.ID(1), gomock.Any()).Return(nil)
 
@@ -175,7 +175,7 @@ func TestMergeRequest_Merge_FileLocks(t *testing.T) {
 		Return(&MergeBaseInfo{MergeBaseCommitID: &targetHead}, nil)
 	merger.EXPECT().BinaryChangesBetween(gomock.Any(), snow.ID(1), &targetHead, &sourceHead).
 		Return([]string{"tex.png"}, nil)
-	gate.EXPECT().EnsureMergeRequestLocks(gomock.Any(), snow.ID(1), snow.ID(5), gomock.Any(), []string{"tex.png"}, snow.ID(7)).
+	gate.EXPECT().EnsureMergeRequestLocks(gomock.Any(), snow.ID(1), snow.ID(5), gomock.Any(), []string{"tex.png"}, snow.ID(7), snow.ID(7)).
 		Return(nil)
 	merger.EXPECT().FastForwardForMergeRequest(gomock.Any(), snow.ID(1), "main", "feature").
 		Return(&domain.Branch{ID: 2, ProjectID: 1, Name: "main", CommitID: &sourceHead}, nil)
@@ -239,7 +239,7 @@ func TestMergeRequest_Create_RepoErrorReleasesLocks(t *testing.T) {
 		Return(&MergeBaseInfo{MergeBaseCommitID: &targetHead}, nil)
 	merger.EXPECT().BinaryChangesBetween(gomock.Any(), snow.ID(1), &targetHead, &sourceHead).
 		Return([]string{"tex.png"}, nil)
-	gate.EXPECT().EnsureMergeRequestLocks(gomock.Any(), snow.ID(1), gomock.Any(), gomock.Any(), []string{"tex.png"}, snow.ID(7)).
+	gate.EXPECT().EnsureMergeRequestLocks(gomock.Any(), snow.ID(1), gomock.Any(), gomock.Any(), []string{"tex.png"}, snow.ID(7), snow.ID(7)).
 		Return(nil)
 	wantErr := errors.New("db down")
 	repo.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil, wantErr)
@@ -282,7 +282,7 @@ func TestMergeRequest_Merge_FileLocksReject(t *testing.T) {
 	merger.EXPECT().BinaryChangesBetween(gomock.Any(), snow.ID(1), &targetHead, &sourceHead).
 		Return([]string{"tex.png"}, nil)
 	wantErr := domain.NewErrorConflict("locked by bob")
-	gate.EXPECT().EnsureMergeRequestLocks(gomock.Any(), snow.ID(1), snow.ID(5), gomock.Any(), []string{"tex.png"}, snow.ID(7)).
+	gate.EXPECT().EnsureMergeRequestLocks(gomock.Any(), snow.ID(1), snow.ID(5), gomock.Any(), []string{"tex.png"}, snow.ID(7), snow.ID(7)).
 		Return(wantErr)
 
 	_, _, err := mr.WithFileLocks(gate).Merge(permissionCtx(7), snow.ID(1), 5)
@@ -302,7 +302,7 @@ func TestMergeRequest_Merge_FileLocksReleaseError(t *testing.T) {
 		Return(&MergeBaseInfo{MergeBaseCommitID: &targetHead}, nil)
 	merger.EXPECT().BinaryChangesBetween(gomock.Any(), snow.ID(1), &targetHead, &sourceHead).
 		Return([]string{"tex.png"}, nil)
-	gate.EXPECT().EnsureMergeRequestLocks(gomock.Any(), snow.ID(1), snow.ID(5), gomock.Any(), []string{"tex.png"}, snow.ID(7)).
+	gate.EXPECT().EnsureMergeRequestLocks(gomock.Any(), snow.ID(1), snow.ID(5), gomock.Any(), []string{"tex.png"}, snow.ID(7), snow.ID(7)).
 		Return(nil)
 	merger.EXPECT().FastForwardForMergeRequest(gomock.Any(), snow.ID(1), "main", "feature").
 		Return(&domain.Branch{ID: 2, ProjectID: 1, Name: "main", CommitID: &sourceHead}, nil)
@@ -349,7 +349,7 @@ func TestMergeRequest_Reopen_ReacquiresLocks(t *testing.T) {
 		Return(&MergeBaseInfo{MergeBaseCommitID: &targetHead}, nil)
 	merger.EXPECT().BinaryChangesBetween(gomock.Any(), snow.ID(1), &targetHead, &sourceHead).
 		Return([]string{"tex.png"}, nil)
-	gate.EXPECT().EnsureMergeRequestLocks(gomock.Any(), snow.ID(1), snow.ID(5), gomock.Any(), []string{"tex.png"}, snow.ID(7)).
+	gate.EXPECT().EnsureMergeRequestLocks(gomock.Any(), snow.ID(1), snow.ID(5), gomock.Any(), []string{"tex.png"}, snow.ID(7), snow.ID(7)).
 		Return(nil)
 
 	got, err := mr.WithFileLocks(gate).Reopen(permissionCtx(7), snow.ID(1), 5)
@@ -376,7 +376,7 @@ func TestMergeRequest_Reopen_LockConflict(t *testing.T) {
 	merger.EXPECT().BinaryChangesBetween(gomock.Any(), snow.ID(1), &targetHead, &sourceHead).
 		Return([]string{"tex.png"}, nil)
 	wantErr := domain.NewErrorConflict("locked by bob")
-	gate.EXPECT().EnsureMergeRequestLocks(gomock.Any(), snow.ID(1), snow.ID(5), gomock.Any(), []string{"tex.png"}, snow.ID(7)).
+	gate.EXPECT().EnsureMergeRequestLocks(gomock.Any(), snow.ID(1), snow.ID(5), gomock.Any(), []string{"tex.png"}, snow.ID(7), snow.ID(7)).
 		Return(wantErr)
 
 	_, err := mr.WithFileLocks(gate).Reopen(permissionCtx(7), snow.ID(1), 5)
@@ -397,7 +397,7 @@ func TestMergeRequest_Reopen_EmptySourceBranch(t *testing.T) {
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(&domain.Branch{ID: 2, ProjectID: 1, Name: "main"}, nil)
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").Return(&domain.Branch{ID: 3, ProjectID: 1, Name: "feature"}, nil)
 	merger.EXPECT().BinaryChangesBetween(gomock.Any(), snow.ID(1), nil, nil).Return(nil, nil)
-	gate.EXPECT().EnsureMergeRequestLocks(gomock.Any(), snow.ID(1), snow.ID(5), gomock.Any(), nil, snow.ID(7)).Return(nil)
+	gate.EXPECT().EnsureMergeRequestLocks(gomock.Any(), snow.ID(1), snow.ID(5), gomock.Any(), nil, snow.ID(7), snow.ID(7)).Return(nil)
 
 	got, err := mr.WithFileLocks(gate).Reopen(permissionCtx(7), snow.ID(1), 5)
 	require.NoError(t, err)
@@ -500,4 +500,30 @@ func TestBranch_FastForward_FileLocksReleaseError(t *testing.T) {
 	uc := NewBranch(perm, repo, newTestBranchNode(t)).WithFileLocks(gate)
 	_, err := uc.FastForward(permissionCtx(7), snow.ID(1), "main", "feature")
 	require.ErrorIs(t, err, wantErr)
+}
+
+func TestMergeRequest_Merge_AdminMergesAuthorRequest(t *testing.T) {
+	mr, repo, branchRepo, perm, merger := newTestMergeRequest(t)
+	gate := NewMockfileLockGate(gomock.NewController(t))
+	sourceHead, targetHead := snow.ID(11), snow.ID(12)
+
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true).AnyTimes()
+	repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(openMergeRequest(), nil).Times(2)
+	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").Return(branchWithHead(3, sourceHead), nil).AnyTimes()
+	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(branchWithHead(2, targetHead), nil).AnyTimes()
+	merger.EXPECT().GetMergeBase(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
+		Return(&MergeBaseInfo{MergeBaseCommitID: &targetHead}, nil)
+	merger.EXPECT().BinaryChangesBetween(gomock.Any(), snow.ID(1), &targetHead, &sourceHead).
+		Return([]string{"tex.png"}, nil)
+	merger.EXPECT().FastForwardForMergeRequest(gomock.Any(), snow.ID(1), "main", "feature").
+		Return(&domain.Branch{ID: 2, ProjectID: 1, Name: "main", CommitID: &sourceHead}, nil)
+	gomock.InOrder(
+		gate.EXPECT().EnsureMergeRequestLocks(gomock.Any(), snow.ID(1), snow.ID(5), gomock.Any(), []string{"tex.png"}, snow.ID(99), snow.ID(7)).Return(nil),
+		repo.EXPECT().UpdateStatus(gomock.Any(), snow.ID(1), int64(5), domain.MergeRequestMerged, &sourceHead).Return(nil),
+		gate.EXPECT().ReleaseForMergeRequest(gomock.Any(), snow.ID(1), snow.ID(5)).Return(nil),
+	)
+
+	merged, _, err := mr.WithFileLocks(gate).Merge(permissionCtx(99), snow.ID(1), 5)
+	require.NoError(t, err)
+	require.Equal(t, openMergeRequest().ID, merged.ID)
 }

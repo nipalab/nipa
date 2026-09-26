@@ -296,7 +296,7 @@ func TestFileLock_EnsureMergeRequestLocks(t *testing.T) {
 			},
 		)
 
-		err := uc.EnsureMergeRequestLocks(permissionCtx(7), snow.ID(1), 5, defaultBranchFixture(), []string{"a.png"}, 7)
+		err := uc.EnsureMergeRequestLocks(permissionCtx(7), snow.ID(1), 5, defaultBranchFixture(), []string{"a.png"}, 7, 7)
 		require.NoError(t, err)
 	})
 
@@ -306,7 +306,7 @@ func TestFileLock_EnsureMergeRequestLocks(t *testing.T) {
 			{ID: 1, Path: "assets", HeldBy: 7},
 		}, nil)
 
-		err := uc.EnsureMergeRequestLocks(permissionCtx(7), snow.ID(1), 5, defaultBranchFixture(), []string{"assets/orc.png"}, 7)
+		err := uc.EnsureMergeRequestLocks(permissionCtx(7), snow.ID(1), 5, defaultBranchFixture(), []string{"assets/orc.png"}, 7, 7)
 		require.NoError(t, err)
 	})
 
@@ -316,7 +316,7 @@ func TestFileLock_EnsureMergeRequestLocks(t *testing.T) {
 			{ID: 1, Path: "a.png", HeldBy: 8, HeldByName: "bob"},
 		}, nil)
 
-		err := uc.EnsureMergeRequestLocks(permissionCtx(7), snow.ID(1), 5, defaultBranchFixture(), []string{"a.png"}, 7)
+		err := uc.EnsureMergeRequestLocks(permissionCtx(7), snow.ID(1), 5, defaultBranchFixture(), []string{"a.png"}, 7, 7)
 		require.True(t, domain.IsErrorConflict(err))
 	})
 }
@@ -512,7 +512,7 @@ func TestFileLock_EnsureMergeRequestLocks_ErrorPaths(t *testing.T) {
 		uc, repo, _, _ := newTestFileLock(t)
 		wantErr := errors.New("db down")
 		repo.EXPECT().ListProject(gomock.Any(), snow.ID(1)).Return(nil, wantErr)
-		require.ErrorIs(t, uc.EnsureMergeRequestLocks(permissionCtx(7), snow.ID(1), 5, defaultBranchFixture(), []string{"a.png"}, 7), wantErr)
+		require.ErrorIs(t, uc.EnsureMergeRequestLocks(permissionCtx(7), snow.ID(1), 5, defaultBranchFixture(), []string{"a.png"}, 7, 7), wantErr)
 	})
 
 	t.Run("create race with another holder", func(t *testing.T) {
@@ -522,7 +522,7 @@ func TestFileLock_EnsureMergeRequestLocks_ErrorPaths(t *testing.T) {
 		repo.EXPECT().Get(gomock.Any(), snow.ID(1), "a.png", nil).
 			Return(&domain.FileLock{ID: 9, Path: "a.png", HeldBy: 8, HeldByName: "bob"}, nil)
 
-		err := uc.EnsureMergeRequestLocks(permissionCtx(7), snow.ID(1), 5, defaultBranchFixture(), []string{"a.png"}, 7)
+		err := uc.EnsureMergeRequestLocks(permissionCtx(7), snow.ID(1), 5, defaultBranchFixture(), []string{"a.png"}, 7, 7)
 		require.True(t, domain.IsErrorConflict(err))
 	})
 
@@ -533,7 +533,7 @@ func TestFileLock_EnsureMergeRequestLocks_ErrorPaths(t *testing.T) {
 		repo.EXPECT().Get(gomock.Any(), snow.ID(1), "a.png", nil).
 			Return(&domain.FileLock{ID: 9, Path: "a.png", HeldBy: 7}, nil)
 
-		require.NoError(t, uc.EnsureMergeRequestLocks(permissionCtx(7), snow.ID(1), 5, defaultBranchFixture(), []string{"a.png"}, 7))
+		require.NoError(t, uc.EnsureMergeRequestLocks(permissionCtx(7), snow.ID(1), 5, defaultBranchFixture(), []string{"a.png"}, 7, 7))
 	})
 
 	t.Run("create fails and lookup finds nothing", func(t *testing.T) {
@@ -543,12 +543,12 @@ func TestFileLock_EnsureMergeRequestLocks_ErrorPaths(t *testing.T) {
 		repo.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil, wantErr)
 		repo.EXPECT().Get(gomock.Any(), snow.ID(1), "a.png", nil).Return(nil, domain.NewErrorRecordNotFound())
 
-		require.ErrorIs(t, uc.EnsureMergeRequestLocks(permissionCtx(7), snow.ID(1), 5, defaultBranchFixture(), []string{"a.png"}, 7), wantErr)
+		require.ErrorIs(t, uc.EnsureMergeRequestLocks(permissionCtx(7), snow.ID(1), 5, defaultBranchFixture(), []string{"a.png"}, 7, 7), wantErr)
 	})
 
 	t.Run("no paths is a no-op", func(t *testing.T) {
 		uc, _, _, _ := newTestFileLock(t)
-		require.NoError(t, uc.EnsureMergeRequestLocks(permissionCtx(7), snow.ID(1), 5, defaultBranchFixture(), nil, 7))
+		require.NoError(t, uc.EnsureMergeRequestLocks(permissionCtx(7), snow.ID(1), 5, defaultBranchFixture(), nil, 7, 7))
 	})
 }
 
@@ -584,4 +584,42 @@ func TestFileLock_ReleaseDelegates_Errors(t *testing.T) {
 
 	require.ErrorIs(t, uc.ReleaseForMergeRequest(permissionCtx(7), snow.ID(1), 5), wantErr)
 	require.ErrorIs(t, uc.ReleaseBranch(permissionCtx(7), snow.ID(1), 3), wantErr)
+}
+
+func TestFileLock_EnsureMergeRequestLocks_AuthorAndMRToken(t *testing.T) {
+	t.Run("admin merge accepts author-held and request-linked locks", func(t *testing.T) {
+		uc, repo, _, _ := newTestFileLock(t)
+		mrID := snow.ID(5)
+		repo.EXPECT().ListProject(gomock.Any(), snow.ID(1)).Return([]*domain.FileLock{
+			{ID: 1, Path: "a.png", HeldBy: 7, MergeRequestID: &mrID},
+			{ID: 2, Path: "assets", HeldBy: 7},
+		}, nil)
+
+		err := uc.EnsureMergeRequestLocks(permissionCtx(99), snow.ID(1), 5, defaultBranchFixture(),
+			[]string{"a.png", "assets/orc.png"}, 99, 7)
+		require.NoError(t, err)
+	})
+
+	t.Run("request-linked lock of this request is accepted regardless of holder", func(t *testing.T) {
+		uc, repo, _, _ := newTestFileLock(t)
+		mrID := snow.ID(5)
+		repo.EXPECT().ListProject(gomock.Any(), snow.ID(1)).Return([]*domain.FileLock{
+			{ID: 1, Path: "a.png", HeldBy: 7, MergeRequestID: &mrID},
+		}, nil)
+
+		err := uc.EnsureMergeRequestLocks(permissionCtx(99), snow.ID(1), 5, defaultBranchFixture(),
+			[]string{"a.png"}, 99, 7)
+		require.NoError(t, err)
+	})
+
+	t.Run("third-party lock still conflicts for the author", func(t *testing.T) {
+		uc, repo, _, _ := newTestFileLock(t)
+		repo.EXPECT().ListProject(gomock.Any(), snow.ID(1)).Return([]*domain.FileLock{
+			{ID: 1, Path: "a.png", HeldBy: 8, HeldByName: "bob"},
+		}, nil)
+
+		err := uc.EnsureMergeRequestLocks(permissionCtx(7), snow.ID(1), 5, defaultBranchFixture(),
+			[]string{"a.png"}, 7, 7)
+		require.True(t, domain.IsErrorConflict(err))
+	})
 }

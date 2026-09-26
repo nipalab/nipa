@@ -105,7 +105,7 @@ func (m *MergeRequest) Create(ctx context.Context, projectID snow.ID, title, des
 		if err != nil {
 			return nil, err
 		}
-		if err := m.fileLocks.EnsureMergeRequestLocks(ctx, projectID, mrID, target, paths, claim.UserID); err != nil {
+		if err := m.fileLocks.EnsureMergeRequestLocks(ctx, projectID, mrID, target, paths, claim.UserID, claim.UserID); err != nil {
 			_ = m.fileLocks.ReleaseForMergeRequest(ctx, projectID, mrID)
 			return nil, err
 		}
@@ -220,7 +220,7 @@ func (m *MergeRequest) Merge(ctx context.Context, projectID snow.ID, number int6
 		if !ok {
 			return nil, info, domain.NewErrorNoPermission()
 		}
-		if err := m.fileLocks.EnsureMergeRequestLocks(ctx, projectID, snow.ID(mr.ID), target, paths, claim.UserID); err != nil {
+		if err := m.fileLocks.EnsureMergeRequestLocks(ctx, projectID, snow.ID(mr.ID), target, paths, claim.UserID, mr.CreatedBy); err != nil {
 			return nil, info, err
 		}
 	}
@@ -294,7 +294,7 @@ func (m *MergeRequest) ensureLocksForRequest(ctx context.Context, projectID snow
 	if err != nil {
 		return err
 	}
-	return m.fileLocks.EnsureMergeRequestLocks(ctx, projectID, snow.ID(mr.ID), target, paths, holder)
+	return m.fileLocks.EnsureMergeRequestLocks(ctx, projectID, snow.ID(mr.ID), target, paths, holder, mr.CreatedBy)
 }
 
 func (m *MergeRequest) Diff(ctx context.Context, projectID snow.ID, number int64) ([]diff.FileDiff, error) {
