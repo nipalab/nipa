@@ -230,6 +230,10 @@ function mergeRequestBase(org: string, project: string, id: string): string {
   return `${projectBase(org, project)}/merge-requests/${encodeURIComponent(id)}`
 }
 
+export function listMergeRequestCommits(org: string, project: string, id: string): Promise<CommitResponse[]> {
+  return apiJson(`${mergeRequestBase(org, project, id)}/commits`)
+}
+
 export function listMergeRequestReviews(org: string, project: string, id: string): Promise<ReviewResponse[]> {
   return apiJson(`${mergeRequestBase(org, project, id)}/reviews`)
 }

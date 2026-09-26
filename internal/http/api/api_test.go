@@ -746,6 +746,11 @@ func TestAPIRoutes(t *testing.T) {
 		require.Len(t, diff.Files, 1)
 		require.Equal(t, "feature.txt", diff.Files[0].Path)
 
+		commits := decodeBody[[]model.CommitResponse](t, doGet(t, mrURL+"/commits", aliceLogin.AccessToken))
+		require.Len(t, commits, 1, "only the source-side commit belongs to the request")
+		require.Equal(t, featurePush.CommitID.Base36(), commits[0].ID)
+		require.Equal(t, "seed", commits[0].Message)
+
 		merge := doMethod(t, http.MethodPost, mrURL+"/merge", `{}`, aliceLogin.AccessToken)
 		require.Equal(t, http.StatusOK, merge.StatusCode)
 		merged := decodeBody[model.MergeRequestResponse](t, merge)

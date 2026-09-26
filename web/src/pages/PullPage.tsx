@@ -2,7 +2,9 @@ import { useState } from 'react'
 import { Button, Stack, Text } from '@primer/react'
 import { useParams } from 'react-router-dom'
 import {
+  addMergeRequestComment,
   closeMergeRequest,
+  deleteMergeRequestComment,
   getMergeRequest,
   getMergeRequestDiff,
   getMergeRequestReviewState,
@@ -12,10 +14,13 @@ import {
   listMergeRequestThreads,
   mergeMergeRequest,
   reopenMergeRequest,
+  replyMergeRequestThread,
+  resolveMergeRequestThread,
+  updateMergeRequestComment,
 } from '../api/endpoints'
 import { useAuth } from '../auth'
-import { MergeRequestDiff } from '../components/repo/MergeRequestDiff'
-import { DiffAnchor, ReviewPanel } from '../components/repo/ReviewPanel'
+import { DiffAnchor, DiffView } from '../components/repo/DiffView'
+import { ReviewPanel } from '../components/repo/ReviewPanel'
 import { RepoPageShell } from '../components/repo/RepoPageShell'
 import { useRepoChrome } from '../components/repo/useRepoChrome'
 import { ErrorBanner, Loading, Mono, StatusLabel } from '../components/ui'
@@ -54,8 +59,11 @@ export default function PullPage() {
     [org, project, id],
   )
   const [actionError, setActionError] = useState<string | null>(null)
+  const [commentBusy, setCommentBusy] = useState(false)
+  const [commentError, setCommentError] = useState<string | null>(null)
   const [draftAnchor, setDraftAnchor] = useState<DiffAnchor | null>(null)
-  const [activeThreadId, setActiveThreadId] = useState<string | null>(null)
+
+  const canComment = canWrite && request?.status === 'open'
 
   function reloadAll() {
     reload()
@@ -74,6 +82,40 @@ export default function PullPage() {
     } catch (err) {
       setActionError(err instanceof Error ? err.message : String(err))
     }
+  }
+
+  async function runComment(action: () => Promise<unknown>, inline = false) {
+    setCommentBusy(true)
+    setCommentError(null)
+    try {
+      await action()
+      reloadThreads()
+      return true
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      if (inline) {
+        setCommentError(message)
+      } else {
+        setActionError(message)
+      }
+      return false
+    } finally {
+      setCommentBusy(false)
+    }
+  }
+
+  async function submitDraft(anchor: DiffAnchor, body: string) {
+    const ok = await runComment(
+      () =>
+        addMergeRequestComment(org, project, id, {
+          file_path: anchor.filePath,
+          old_line: anchor.oldLine,
+          new_line: anchor.newLine,
+          body,
+        }),
+      true,
+    )
+    if (ok) setDraftAnchor(null)
   }
 
   const mergeable = request?.mergeability?.status === 'mergeable'
@@ -138,38 +180,61 @@ export default function PullPage() {
         </Stack>
       )}
 
-      <Stack direction="vertical" gap="normal">
-        <Text style={{ fontWeight: 600 }}>Reviews</Text>
-        <ReviewPanel
-          org={org}
-          project={project}
-          id={id}
-          me={me?.id}
-          request={request ?? undefined}
-          state={state}
-          reviews={reviews ?? []}
-          threads={threads ?? []}
-          reviewRequests={reviewRequests ?? []}
-          timeline={timeline ?? []}
-          draftAnchor={draftAnchor}
-          activeThreadId={activeThreadId}
-          canWrite={canWrite && request?.status === 'open'}
-          onChanged={reloadAll}
-          onCancelDraft={() => setDraftAnchor(null)}
-          onOpenThread={setActiveThreadId}
-        />
-      </Stack>
+      <ReviewPanel
+        org={org}
+        project={project}
+        id={id}
+        me={me?.id}
+        request={request ?? undefined}
+        state={state}
+        reviews={reviews ?? []}
+        threads={threads ?? []}
+        reviewRequests={reviewRequests ?? []}
+        timeline={timeline ?? []}
+        canWrite={canComment}
+        busy={commentBusy}
+        onChanged={reloadAll}
+        onReplyThread={(threadId, body) => runComment(() => replyMergeRequestThread(org, project, id, threadId, body))}
+        onResolveThread={(threadId, resolved) =>
+          runComment(() => resolveMergeRequestThread(org, project, id, threadId, resolved))
+        }
+        onEditComment={(threadId, commentId, body) =>
+          runComment(() => updateMergeRequestComment(org, project, id, threadId, commentId, body))
+        }
+        onDeleteComment={(threadId, commentId) =>
+          runComment(() => deleteMergeRequestComment(org, project, id, threadId, commentId))
+        }
+      />
 
       {diffLoading && <Loading />}
-      <MergeRequestDiff
+      <DiffView
         files={diff?.files ?? []}
         threads={threads ?? []}
-        canComment={canWrite && request?.status === 'open'}
-        onStartThread={(filePath, oldLine, newLine) => {
-          setActiveThreadId(null)
-          setDraftAnchor({ filePath, oldLine, newLine })
+        canComment={canComment}
+        me={me?.id}
+        busy={commentBusy}
+        draftAnchor={draftAnchor}
+        draftBusy={commentBusy}
+        draftError={commentError}
+        onStartThread={(anchor) => {
+          setCommentError(null)
+          setDraftAnchor(anchor)
         }}
-        onOpenThread={setActiveThreadId}
+        onCancelDraft={() => {
+          setDraftAnchor(null)
+          setCommentError(null)
+        }}
+        onSubmitDraft={submitDraft}
+        onReplyThread={(threadId, body) => runComment(() => replyMergeRequestThread(org, project, id, threadId, body))}
+        onResolveThread={(threadId, resolved) =>
+          runComment(() => resolveMergeRequestThread(org, project, id, threadId, resolved))
+        }
+        onEditComment={(threadId, commentId, body) =>
+          runComment(() => updateMergeRequestComment(org, project, id, threadId, commentId, body))
+        }
+        onDeleteComment={(threadId, commentId) =>
+          runComment(() => deleteMergeRequestComment(org, project, id, threadId, commentId))
+        }
       />
     </RepoPageShell>
   )

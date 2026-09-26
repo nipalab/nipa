@@ -192,6 +192,23 @@ func (h *Handler) MergeRequestDiff(appCtx http.AppContext) {
 	appCtx.WriteJson(nethttp.StatusOK, resp)
 }
 
+func (h *Handler) ListMergeRequestCommits(appCtx http.AppContext) {
+	project, number, ok := h.resolveMergeRequest(appCtx)
+	if !ok {
+		return
+	}
+	commits, err := h.useCase.MergeRequest().Commits(appCtx.Context(), project.ID, number)
+	if err != nil {
+		appCtx.HandleError(err)
+		return
+	}
+	resp := make([]model.CommitResponse, 0, len(commits))
+	for _, commit := range commits {
+		resp = append(resp, commitToResponse(commit))
+	}
+	appCtx.WriteJson(nethttp.StatusOK, resp)
+}
+
 func (h *Handler) setMergeRequestStatus(appCtx http.AppContext, set func(number int64) (*domain.MergeRequest, error)) {
 	if _, _, err := h.resolveProject(appCtx); err != nil {
 		appCtx.HandleError(err)

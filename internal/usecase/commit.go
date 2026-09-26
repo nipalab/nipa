@@ -37,6 +37,13 @@ func (b *Branch) WalkCommits(ctx context.Context, projectID snow.ID, startCommit
 	if !b.permUc.HasProjectAccess(ctx, projectID, domain.PermissionRead) {
 		return nil, domain.NewErrorNoPermission()
 	}
+	return walkCommitsRange(ctx, b.branchRepo, projectID, startCommitID, stopCommitID, limit)
+}
+
+// walkCommitsRange lists commits reachable from start (newest first, both
+// parents) and stops before stopCommitID when it is given. It is the shared
+// core of Branch.WalkCommits and the commit list of a merge request.
+func walkCommitsRange(ctx context.Context, repo branchRepository, projectID snow.ID, startCommitID snow.ID, stopCommitID *snow.ID, limit int) ([]*domain.Commit, error) {
 	if limit <= 0 {
 		limit = 50
 	}
@@ -63,7 +70,7 @@ func (b *Branch) WalkCommits(ctx context.Context, projectID snow.ID, startCommit
 		if stopCommitID != nil && f.id == *stopCommitID {
 			continue
 		}
-		commit, err := b.commitByIDInProject(ctx, projectID, f.id)
+		commit, err := commitByIDInProject(ctx, repo, projectID, f.id)
 		if err != nil {
 			return nil, err
 		}
@@ -91,7 +98,11 @@ func (b *Branch) WalkCommits(ctx context.Context, projectID snow.ID, startCommit
 }
 
 func (b *Branch) commitByIDInProject(ctx context.Context, projectID snow.ID, commitID snow.ID) (*domain.Commit, error) {
-	commit, err := b.branchRepo.GetCommit(ctx, commitID)
+	return commitByIDInProject(ctx, b.branchRepo, projectID, commitID)
+}
+
+func commitByIDInProject(ctx context.Context, repo branchRepository, projectID snow.ID, commitID snow.ID) (*domain.Commit, error) {
+	commit, err := repo.GetCommit(ctx, commitID)
 	if domain.IsErrorNotFound(err) {
 		return nil, domain.NewErrorNotFound(fmt.Sprintf("commit %s not found", commitID.Base36()))
 	}

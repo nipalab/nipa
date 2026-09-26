@@ -5,9 +5,7 @@ import {
   dismissMergeRequestReview,
   listOrgMembers,
   removeMergeRequestReviewRequest,
-  replyMergeRequestThread,
   requestMergeRequestReview,
-  resolveMergeRequestThread,
   submitMergeRequestReview,
   withdrawMergeRequestReview,
 } from '../../api/endpoints'
@@ -23,12 +21,7 @@ import type {
 } from '../../api/models'
 import { useAsync } from '../../hooks'
 import { EmptyState, ErrorBanner, Mono } from '../ui'
-
-export interface DiffAnchor {
-  filePath: string
-  oldLine?: number
-  newLine?: number
-}
+import { ThreadCard } from './ThreadCard'
 
 const STATE_LABELS: Record<ReviewState, string> = {
   approved: 'Approve',
@@ -67,12 +60,13 @@ export function ReviewPanel({
   threads,
   reviewRequests,
   timeline,
-  draftAnchor,
-  activeThreadId,
   canWrite,
+  busy,
   onChanged,
-  onCancelDraft,
-  onOpenThread,
+  onReplyThread,
+  onResolveThread,
+  onEditComment,
+  onDeleteComment,
 }: {
   org: string
   project: string
@@ -84,65 +78,58 @@ export function ReviewPanel({
   threads: ThreadResponse[]
   reviewRequests: ReviewRequestResponse[]
   timeline: TimelineItemResponse[]
-  draftAnchor: DiffAnchor | null
-  activeThreadId: string | null
   canWrite: boolean
+  busy: boolean
   onChanged: () => void
-  onCancelDraft: () => void
-  onOpenThread: (id: string | null) => void
+  onReplyThread: (threadId: string, body: string) => void
+  onResolveThread: (threadId: string, resolved: boolean) => void
+  onEditComment: (threadId: string, commentId: string, body: string) => void
+  onDeleteComment: (threadId: string, commentId: string) => void
 }) {
   const { data: members } = useAsync(() => listOrgMembers(org), [org])
   const [reviewState, setReviewState] = useState<ReviewState>('commented')
   const [body, setBody] = useState('')
   const [reviewer, setReviewer] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
+  const [sending, setSending] = useState(false)
 
   const isAuthor = Boolean(me && request && request.created_by === me)
   const canDecide = canWrite && request?.status === 'open' && !isAuthor
-  const activeThread = threads.find((thread) => thread.id === activeThreadId) ?? null
+  const conversation = threads.filter((thread) => !thread.file_path)
   const candidates = (members ?? []).filter(
-    (member) => member.user_id !== request?.created_by && !reviewRequests.some((entry) => entry.reviewer.user_id === member.user_id),
+    (member) =>
+      member.user_id !== request?.created_by &&
+      !reviewRequests.some((entry) => entry.reviewer.user_id === member.user_id),
   )
 
   async function run(action: () => Promise<unknown>) {
     setError(null)
-    setBusy(true)
+    setSending(true)
     try {
       await action()
       onChanged()
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
-      setBusy(false)
+      setSending(false)
     }
   }
 
-  async function submit() {
+  async function submitDecision() {
     await run(async () => {
       await submitMergeRequestReview(org, project, id, { state: reviewState, body: body.trim(), comments: [] })
       setBody('')
     })
   }
 
-  async function postDraft() {
-    if (!body.trim()) return
+  async function postConversation() {
     await run(async () => {
-      if (activeThread) {
-        await replyMergeRequestThread(org, project, id, activeThread.id, body.trim())
-      } else if (draftAnchor) {
-        await addMergeRequestComment(org, project, id, {
-          file_path: draftAnchor.filePath,
-          old_line: draftAnchor.oldLine,
-          new_line: draftAnchor.newLine,
-          body: body.trim(),
-        })
-      }
+      await addMergeRequestComment(org, project, id, { file_path: '', body: body.trim() })
       setBody('')
-      onCancelDraft()
-      onOpenThread(null)
     })
   }
+
+  const pending = busy || sending
 
   return (
     <Stack direction="vertical" gap="normal">
@@ -178,10 +165,8 @@ export function ReviewPanel({
                 <Button
                   size="small"
                   variant="invisible"
-                  disabled={busy}
-                  onClick={() =>
-                    run(() => removeMergeRequestReviewRequest(org, project, id, entry.reviewer.user_id))
-                  }
+                  disabled={pending}
+                  onClick={() => run(() => removeMergeRequestReviewRequest(org, project, id, entry.reviewer.user_id))}
                 >
                   cancel
                 </Button>
@@ -205,61 +190,45 @@ export function ReviewPanel({
           </FormControl>
           <Button
             size="small"
-            disabled={busy || !reviewer}
-            onClick={() => run(async () => {
-              await requestMergeRequestReview(org, project, id, reviewer)
-              setReviewer('')
-            })}
+            disabled={pending || !reviewer}
+            onClick={() =>
+              run(async () => {
+                await requestMergeRequestReview(org, project, id, reviewer)
+                setReviewer('')
+              })
+            }
           >
             Request review
           </Button>
         </Stack>
       )}
 
+      {conversation.length > 0 && (
+        <Stack direction="vertical" gap="condensed">
+          <Text style={{ fontWeight: 600 }}>Conversation</Text>
+          {conversation.map((thread) => (
+            <ThreadCard
+              key={thread.id}
+              thread={thread}
+              me={me}
+              canWrite={canWrite}
+              busy={pending}
+              onReply={onReplyThread}
+              onResolve={onResolveThread}
+              onEditComment={onEditComment}
+              onDeleteComment={onDeleteComment}
+            />
+          ))}
+        </Stack>
+      )}
+
       {canWrite && request?.status === 'open' && (
         <Stack direction="vertical" gap="condensed">
-          {(activeThread || draftAnchor) && (
-            <Stack direction="vertical" gap="condensed">
-              <Text as="p" style={{ color: 'var(--fgColor-muted)' }}>
-                {activeThread
-                  ? `Replying to ${actorName(activeThread.created_by)}`
-                  : `New comment on ${draftAnchor?.filePath}:${draftAnchor?.newLine ?? draftAnchor?.oldLine}`}
-              </Text>
-              {activeThread?.comments.map((comment) => (
-                <Text key={comment.id} as="p">
-                  <strong>{actorName(comment.user)}</strong>: {comment.body}
-                </Text>
-              ))}
-              <Textarea
-                value={body}
-                placeholder="Comment"
-                onChange={(event) => setBody(event.target.value)}
-              />
-              <Stack direction="horizontal" gap="condensed">
-                <Button size="small" disabled={busy || !body.trim()} onClick={postDraft}>
-                  {activeThread ? 'Reply' : 'Comment'}
-                </Button>
-                <Button
-                  size="small"
-                  variant="invisible"
-                  onClick={() => {
-                    setBody('')
-                    onCancelDraft()
-                    onOpenThread(null)
-                  }}
-                >
-                  Cancel
-                </Button>
-              </Stack>
-            </Stack>
-          )}
-          {!activeThread && !draftAnchor && (
-            <Textarea
-              value={body}
-              placeholder="Leave a review comment"
-              onChange={(event) => setBody(event.target.value)}
-            />
-          )}
+          <Textarea
+            value={body}
+            placeholder="Leave a comment"
+            onChange={(event) => setBody(event.target.value)}
+          />
           {canDecide ? (
             <Stack direction="horizontal" gap="condensed" style={{ alignItems: 'center' }}>
               <FormControl>
@@ -269,73 +238,20 @@ export function ReviewPanel({
                   <option value="changes_requested">Request changes</option>
                 </Select>
               </FormControl>
-              <Button size="small" disabled={busy || !body.trim()} onClick={submit}>
+              <Button size="small" disabled={pending || !body.trim()} onClick={submitDecision}>
                 Submit review
               </Button>
             </Stack>
           ) : (
-            !activeThread &&
-            !draftAnchor && (
-              <Button
-                size="small"
-                disabled={busy || !body.trim()}
-                onClick={() =>
-                  run(() =>
-                    addMergeRequestComment(org, project, id, { file_path: '', body: body.trim() }),
-                  ).then(() => setBody(''))
-                }
-              >
-                Comment
-              </Button>
-            )
+            <Button
+              size="small"
+              style={{ alignSelf: 'flex-start' }}
+              disabled={pending || !body.trim()}
+              onClick={postConversation}
+            >
+              Comment
+            </Button>
           )}
-        </Stack>
-      )}
-
-      {threads.filter((thread) => !thread.file_path).length > 0 && (
-        <Stack direction="vertical" gap="normal">
-          <Text style={{ fontWeight: 600 }}>Conversation</Text>
-          {threads
-            .filter((thread) => !thread.file_path)
-            .map((thread) => (
-              <div
-                key={thread.id}
-                style={{
-                  border: '1px solid var(--borderColor-muted)',
-                  borderRadius: 6,
-                  padding: 8,
-                  opacity: thread.resolved ? 0.65 : 1,
-                }}
-              >
-                {thread.comments.map((comment) => (
-                  <Text key={comment.id} as="p">
-                    <strong>{actorName(comment.user)}</strong>{' '}
-                    <span style={{ color: 'var(--fgColor-muted)', fontSize: 11 }}>
-                      {new Date(comment.created_at).toLocaleString()}
-                    </span>
-                    <br />
-                    {comment.body}
-                  </Text>
-                ))}
-                {canWrite && (
-                  <Stack direction="horizontal" gap="condensed">
-                    <Button size="small" variant="invisible" onClick={() => onOpenThread(thread.id)}>
-                      Reply
-                    </Button>
-                    <Button
-                      size="small"
-                      variant="invisible"
-                      disabled={busy}
-                      onClick={() =>
-                        run(() => resolveMergeRequestThread(org, project, id, thread.id, !thread.resolved))
-                      }
-                    >
-                      {thread.resolved ? 'Reopen' : 'Resolve'}
-                    </Button>
-                  </Stack>
-                )}
-              </div>
-            ))}
         </Stack>
       )}
 
@@ -371,7 +287,7 @@ export function ReviewPanel({
                     <Button
                       size="small"
                       variant="invisible"
-                      disabled={busy}
+                      disabled={pending}
                       onClick={() => run(() => withdrawMergeRequestReview(org, project, id, review.id))}
                     >
                       Withdraw
@@ -381,7 +297,7 @@ export function ReviewPanel({
                     <Button
                       size="small"
                       variant="invisible"
-                      disabled={busy}
+                      disabled={pending}
                       onClick={() => run(() => dismissMergeRequestReview(org, project, id, review.id))}
                     >
                       Dismiss

@@ -425,6 +425,43 @@ func TestMergeRequest_Diff(t *testing.T) {
 	require.Empty(t, files)
 }
 
+func TestMergeRequest_Commits(t *testing.T) {
+	mr, repo, branchRepo, perm, merger := newTestMergeRequest(t)
+	sourceHead := snow.ID(11)
+	mid := snow.ID(10)
+	base := snow.ID(9)
+	targetHead := snow.ID(12)
+
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
+	repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(openMergeRequest(), nil)
+	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").Return(branchWithHead(3, sourceHead), nil)
+	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(branchWithHead(2, targetHead), nil)
+	merger.EXPECT().GetMergeBase(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
+		Return(&MergeBaseInfo{MergeBaseCommitID: &base}, nil)
+	branchRepo.EXPECT().GetCommit(gomock.Any(), sourceHead).
+		Return(&domain.Commit{ID: sourceHead, ProjectID: 1, Parent1ID: &mid, Message: "second"}, nil)
+	branchRepo.EXPECT().GetCommit(gomock.Any(), mid).
+		Return(&domain.Commit{ID: mid, ProjectID: 1, Parent1ID: &base, Message: "first"}, nil)
+
+	commits, err := mr.Commits(permissionCtx(7), snow.ID(1), 5)
+	require.NoError(t, err)
+	require.Len(t, commits, 2, "the merge base commit is not part of the request")
+	require.Equal(t, sourceHead, commits[0].ID, "newest first")
+	require.Equal(t, mid, commits[1].ID)
+}
+
+func TestMergeRequest_Commits_EmptySource(t *testing.T) {
+	mr, repo, branchRepo, perm, _ := newTestMergeRequest(t)
+
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
+	repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(openMergeRequest(), nil)
+	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").Return(&domain.Branch{ID: 3, ProjectID: 1}, nil)
+
+	commits, err := mr.Commits(permissionCtx(7), snow.ID(1), 5)
+	require.NoError(t, err)
+	require.Empty(t, commits)
+}
+
 func TestMergeRequest_ErrorPaths(t *testing.T) {
 	t.Run("create needs a claim and read access", func(t *testing.T) {
 		mr, _, _, perm, _ := newTestMergeRequest(t)
