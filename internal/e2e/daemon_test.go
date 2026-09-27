@@ -36,7 +36,7 @@ func startDaemon(t *testing.T, auth *clientusecase.Auth, client *clientgrpc.Clie
 				Push:   push,
 				Merge:  clientusecase.NewMerge(auth, client, localrepo.NewLocalRepo(), push),
 				Revert: clientusecase.NewRevert(auth, client, localrepo.NewLocalRepo(), push),
-				Diff:   clientusecase.NewDiff(auth, client, localrepo.NewLocalRepo()),
+				Diff:   daemon.SerialDiff(clientusecase.NewDiff(auth, client, localrepo.NewLocalRepo())),
 				Proxy:  client,
 			}
 		}},

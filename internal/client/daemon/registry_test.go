@@ -189,3 +189,21 @@ func TestRepo_HeadCommitIDWithoutHandle(t *testing.T) {
 	require.NoError(t, rp.localRepo.Close())
 	require.Equal(t, "", rp.headCommitID())
 }
+
+func TestRepo_InfoReloadsConfig(t *testing.T) {
+	root := newTestClone(t)
+	rp, err := openRepo(root, Runners{})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = rp.close() })
+
+	require.Equal(t, "main", rp.info().GetBranch())
+	require.NoError(t, rp.localRepo.SaveConfig(clientDomain.Config{
+		Url:    "https://nipa.example.com/default/default",
+		Branch: "feature",
+		Sparse: []string{"assets"},
+	}))
+
+	info := rp.info()
+	require.Equal(t, "feature", info.GetBranch(), "info must reflect a config rewritten after WatchRepo")
+	require.Equal(t, []string{"assets"}, info.GetSparse())
+}

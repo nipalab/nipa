@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"strings"
+	"sync"
 
 	clientDomain "github.com/nipalab/nipa/internal/client/domain"
 	"github.com/nipalab/nipa/internal/client/grpc/daemonpb"
@@ -15,6 +16,27 @@ import (
 // DiffRunner compares working-copy and revision states.
 type DiffRunner interface {
 	Run(ctx context.Context, root string, revs []string, opts usecase.DiffOptions) ([]diff.FileDiff, error)
+}
+
+// serialDiff serializes calls into one DiffRunner. The daemon admits diffs
+// concurrently through the shared coordinator slot, but a single
+// usecase.Diff shares one localrepo handle whose Init rebinds the SQLite
+// connection on every run, so overlapping runs would race and close each
+// other's handle.
+type serialDiff struct {
+	mu     sync.Mutex
+	runner DiffRunner
+}
+
+// SerialDiff makes a DiffRunner safe for concurrent admission.
+func SerialDiff(runner DiffRunner) DiffRunner {
+	return &serialDiff{runner: runner}
+}
+
+func (s *serialDiff) Run(ctx context.Context, root string, revs []string, opts usecase.DiffOptions) ([]diff.FileDiff, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.runner.Run(ctx, root, revs, opts)
 }
 
 const (

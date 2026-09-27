@@ -76,12 +76,24 @@ func (r *repo) headCommitID() string {
 	return commit.CommitID
 }
 
+// config re-reads .nipa/config, falling back to the cached copy. Update,
+// Switch and the sparse editor rewrite the file after WatchRepo pinned it, so
+// the cached value goes stale.
+func (r *repo) config() clientDomain.Config {
+	cfg, err := r.localRepo.LoadConfig()
+	if err != nil || cfg == nil {
+		return r.cfg
+	}
+	return *cfg
+}
+
 func (r *repo) info() *daemonpb.RepoInfo {
+	cfg := r.config()
 	return &daemonpb.RepoInfo{
 		Root:   r.root,
-		Url:    r.cfg.Url,
-		Branch: r.cfg.Branch,
-		Sparse: r.cfg.Sparse,
+		Url:    cfg.Url,
+		Branch: cfg.Branch,
+		Sparse: cfg.Sparse,
 	}
 }
 

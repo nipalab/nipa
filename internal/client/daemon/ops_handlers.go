@@ -17,7 +17,7 @@ func (s *Server) Update(req *daemonpb.UpdateRequest, stream daemonpb.NipaDaemon_
 		if err := rp.update.Run(ctx, rp.root, progress); err != nil {
 			return nil, err
 		}
-		return syncResultEvent(rp.cfg.Branch, rp.headCommitID()), nil
+		return syncResultEvent(rp.config().Branch, rp.headCommitID()), nil
 	})
 }
 

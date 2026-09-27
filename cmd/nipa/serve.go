@@ -59,7 +59,7 @@ func serveRepoOps(auth *usecase.Auth, client *clientgrpc.Client) daemon.RepoOps 
 		Push:   push,
 		Merge:  usecase.NewMerge(auth, client, localrepo.NewLocalRepo(), push),
 		Revert: usecase.NewRevert(auth, client, localrepo.NewLocalRepo(), push),
-		Diff:   usecase.NewDiff(auth, client, localrepo.NewLocalRepo()),
+		Diff:   daemon.SerialDiff(usecase.NewDiff(auth, client, localrepo.NewLocalRepo())),
 		Proxy:  client,
 	}
 }

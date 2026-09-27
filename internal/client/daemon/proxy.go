@@ -31,7 +31,7 @@ func (s *Server) withProxy(ctx context.Context, root string, fn func(pb.NipaServ
 	if rp.proxy == nil {
 		return status.Error(codes.FailedPrecondition, "proxy is not configured")
 	}
-	nu, err := clientDomain.ParseNipaUrl(rp.cfg.Url)
+	nu, err := clientDomain.ParseNipaUrl(rp.config().Url)
 	if err != nil {
 		return err
 	}

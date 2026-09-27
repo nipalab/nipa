@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -327,4 +328,34 @@ func TestServer_DiffRangeValidation(t *testing.T) {
 		require.NotNil(t, stream.failure(), token)
 		require.EqualValues(t, 400, stream.failure().GetCode(), token)
 	}
+}
+
+func TestSerialDiff_SerializesRuns(t *testing.T) {
+	var mu sync.Mutex
+	active, maxActive := 0, 0
+	runner := &stubDiffRunner{run: func(context.Context, string, []string, usecase.DiffOptions) ([]diff.FileDiff, error) {
+		mu.Lock()
+		active++
+		if active > maxActive {
+			maxActive = active
+		}
+		mu.Unlock()
+		time.Sleep(10 * time.Millisecond)
+		mu.Lock()
+		active--
+		mu.Unlock()
+		return nil, nil
+	}}
+	serial := SerialDiff(runner)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 4; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, _ = serial.Run(context.Background(), "root", nil, usecase.DiffOptions{})
+		}()
+	}
+	wg.Wait()
+	require.Equal(t, 1, maxActive, "only one diff may run at a time")
 }

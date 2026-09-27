@@ -88,11 +88,17 @@ func (s *Server) runOp(ctx context.Context, root, phase string, send func(*daemo
 		select {
 		case <-ctx.Done():
 			// The stream is gone; still emit the terminal failure so the
-			// contract holds. The send may fail and that is fine.
+			// contract holds. The send may fail and that is fine. Do not
+			// release the exclusive slot before the operation stops: the
+			// usecases only observe ctx at network boundaries (hash loops do
+			// not at all), so releasing early would let the next operation
+			// race an abandoned one on the same working copy.
 			_ = send(opFailureEvent(ctx.Err()))
+			<-done
 			return nil
 		case ev := <-progress.events():
 			if err := send(ev); err != nil {
+				<-done // the stream is gone, but the operation is still running
 				return err
 			}
 		case terminal := <-done:

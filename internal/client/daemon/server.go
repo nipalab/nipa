@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"sync"
 
+	clientDomain "github.com/nipalab/nipa/internal/client/domain"
 	"github.com/nipalab/nipa/internal/client/grpc/daemonpb"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -68,7 +69,7 @@ func NewServer(opts Options) (*Server, error) {
 		if raw := os.Getenv(EnvPort); raw != "" {
 			parsed, err := strconv.Atoi(raw)
 			if err != nil || parsed < 0 || parsed > 65535 {
-				return nil, fmt.Errorf("invalid %s %q", EnvPort, raw)
+				return nil, clientDomain.NewUserError(fmt.Sprintf("invalid %s %q", EnvPort, raw))
 			}
 			port = parsed
 		}
@@ -125,7 +126,7 @@ func (s *Server) Ready() <-chan struct{} {
 func (s *Server) Serve(ctx context.Context) error {
 	if existing, err := ReadEndpoint(s.endpointPath); err == nil {
 		if existing.PID != s.pid && ProcessAlive(existing.PID) {
-			return fmt.Errorf("nipa daemon already running (pid %d, port %d)", existing.PID, existing.Port)
+			return clientDomain.NewUserError(fmt.Sprintf("nipa daemon already running (pid %d, port %d)", existing.PID, existing.Port))
 		}
 	}
 	if err := WriteEndpoint(s.endpointPath, s.Endpoint()); err != nil {

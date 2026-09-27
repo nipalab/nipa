@@ -561,9 +561,12 @@ func TestServer_OpSendFailures(t *testing.T) {
 			return nil
 		})
 		stream := &opTestStream{ctx: context.Background(), failAt: 2}
-		err := srv.Push(&daemonpb.PushRequest{Root: rootOf(srv)}, stream)
+		done := make(chan error, 1)
+		go func() { done <- srv.Push(&daemonpb.PushRequest{Root: rootOf(srv)}, stream) }()
+		require.Eventually(t, func() bool { return len(stream.events()) == 1 }, 2*time.Second, time.Millisecond,
+			"the handler must reach the failing progress send while the operation runs")
 		close(release)
-		require.Error(t, err)
+		require.Error(t, <-done)
 	})
 
 	t.Run("terminal", func(t *testing.T) {
@@ -571,6 +574,60 @@ func TestServer_OpSendFailures(t *testing.T) {
 		stream := &opTestStream{ctx: context.Background(), failAt: 2}
 		require.Error(t, srv.Push(&daemonpb.PushRequest{Root: rootOf(srv)}, stream))
 	})
+}
+
+func TestServer_CancelKeepsSlotUntilOpStops(t *testing.T) {
+	root := newTestClone(t)
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	srv := newOpServer(t, RepoOps{Push: &stubPushRunner{run: func(ctx context.Context, _, _ string, _ ...usecase.UploadProgress) error {
+		close(entered)
+		<-release
+		return ctx.Err()
+	}}})
+	rp, err := srv.repos.watch(root)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	stream := &opTestStream{ctx: ctx}
+	done := make(chan error, 1)
+	go func() { done <- srv.Push(&daemonpb.PushRequest{Root: root}, stream) }()
+	select {
+	case <-entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the push did not start")
+	}
+
+	cancel()
+	select {
+	case <-done:
+		t.Fatal("the handler released the slot while the operation was still running")
+	case <-time.After(50 * time.Millisecond):
+	}
+	busy, _ := rp.coord.pending()
+	require.True(t, busy, "the abandoned operation still holds the exclusive slot")
+
+	close(release)
+	require.NoError(t, <-done)
+}
+
+func TestServer_UpdateReportsReloadedBranch(t *testing.T) {
+	root := newTestClone(t)
+	srv := newOpServer(t, RepoOps{Update: &stubUpdateRunner{run: func(_ context.Context, _ string, _ ...usecase.DownloadProgress) error {
+		lr := localrepo.NewLocalRepoWithTarget(root)
+		return lr.SaveConfig(clientDomain.Config{
+			Url:    "https://nipa.example.com/default/default",
+			Branch: "feature",
+		})
+	}}})
+	_, err := srv.repos.watch(root)
+	require.NoError(t, err)
+	seedCommit(t, root, "commit1", "hash1")
+
+	stream := &opTestStream{ctx: context.Background()}
+	require.NoError(t, srv.Update(&daemonpb.UpdateRequest{Root: root}, stream))
+	sync := terminalEvent(t, stream.events()).GetResult().GetSync()
+	require.Equal(t, "feature", sync.GetBranch(), "the result reflects the config rewritten by the operation")
 }
 
 func TestFailureCode(t *testing.T) {

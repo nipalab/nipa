@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -470,6 +471,47 @@ func TestTransport_Connect_Reconnect(t *testing.T) {
 	require.NoError(t, tr.Connect(addr2))
 	require.Equal(t, addr2, tr.url)
 	require.NotSame(t, conn1, tr.clientConn, "connecting to a different url should replace the connection")
+}
+
+func TestTransport_Connect_SameURLReusesConnection(t *testing.T) {
+	addr := startTestServer(t, &fakeServer{accessToken: "tok"})
+
+	tr := NewTransport()
+	require.NoError(t, tr.Connect(addr))
+	conn := tr.clientConn
+
+	require.NoError(t, tr.Connect(addr))
+	require.Same(t, conn, tr.clientConn, "reconnecting to the same host must reuse the connection")
+	require.Equal(t, addr, tr.URL())
+	require.NoError(t, tr.Close())
+}
+
+func TestTransport_Connect_ConcurrentSafe(t *testing.T) {
+	tr := NewTransport()
+	addr := "127.0.0.1:1" // grpc.NewClient dials lazily, so no server is needed
+
+	errs := make(chan error, 16)
+	var wg sync.WaitGroup
+	for i := 0; i < 16; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := tr.Connect(addr); err != nil {
+				errs <- err
+				return
+			}
+			if _, err := tr.NipaServiceClient(); err != nil {
+				errs <- err
+			}
+			_ = tr.URL()
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		require.NoError(t, err)
+	}
+	require.NoError(t, tr.Close())
 }
 
 func TestClient_GetDefaultBranch_Success(t *testing.T) {
