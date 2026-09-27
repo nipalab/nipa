@@ -5,12 +5,12 @@ A next-generation centralized Version Control System engineered for binary-heavy
 `nipa` combines the strengths of Git (lightweight branching, Merge Requests, client 3-way text merges), Perforce (exclusive file locking, high-throughput binary streaming), and SVN (fine-grained path-based access control, centralized single source of truth) to provide scalable asset tracking with developer autonomy.
 
 - **Language/Tech Stack:** Go (Golang), gRPC, Protobuf, SQLite (`modernc.org/sqlite`), FastCDC, BLAKE3
-- **Architecture Model:** Client-Server Monorepo (`nipa` / `nipad`)
+- **Architecture Model:** Client-Server Monorepo (`nipa` / `nipad`) with a local client daemon (`nipa serve`) for GUI integrations
 
 ## Quick Start
 
 ```sh
-go build ./...
+make build-server build-client   # bin/nipad + bin/nipa
 # run the server (see config.yaml.sample for settings)
 ./bin/nipad
 
@@ -28,6 +28,13 @@ The working copy tracks the branch configured at clone time. Files are split
 into content-addressed chunks (FastCDC) and rehydrated from a local chunk cache,
 so updates and branch switches only transfer what actually changed.
 
+GUI clients (the desktop client, a Windows Explorer extension, game-engine
+plugins) connect to a local daemon instead of spawning the CLI per event:
+
+```sh
+nipa serve   # foreground; publishes its loopback endpoint in ~/.config/nipa/daemon.json
+```
+
 ## Commands
 
 Run `nipa <command> --help` for full details.
@@ -40,12 +47,16 @@ Run `nipa <command> --help` for full details.
 | `nipa add <path> [...]`     | Mark files (or everything inside directories) for the next push.            |
 | `nipa remove <path> [...]`  | Unmark files for the next push. `-a` unmarks everything.                    |
 | `nipa status`               | Show the working copy status: `A` staged, `M` modified, `?` untracked, `!` missing, `C` conflicts. |
+| `nipa lock <path> [--branch]` | Lock a tracked binary file, or a directory prefix covering a whole editing pass, so only you can land it. Locks on the default branch are project-global; `--branch` scopes the lock elsewhere. |
+| `nipa lock list`            | List active binary file locks: path, scope, holder, acquisition time, and the merge request when one holds it. |
+| `nipa unlock <path> [--branch]` | Release a binary file lock you hold. |
 | `nipa push -m "<message>"`  | Upload staged changes to the server and commit them on the configured branch. |
 | `nipa update`               | Fetch and apply the latest changes of the configured branch.                |
 | `nipa merge <branch>`       | Merge another branch into the current one. Fast-forwards when possible; `--no-ff` forces a merge commit, `--ff-only` refuses, `--abort` cancels a conflicted merge, `-m` sets the message. |
 | `nipa revert <commit>`      | Create new commits that undo the given commit or range (`<from>..<to>`, newest first, up to 16 commits) without rewriting history. `--mainline 1\|2` for merge commits, `--no-commit` stages without committing, `-m` sets the message (single commit only), `--continue` / `--abort` / `--skip` drive a conflicted revert. |
 | `nipa log`                  | Show the commit history of the current branch. Interactive and scrollable when stdout is a terminal; `-n` limits, `--oneline` prints one line per commit, `--no-pager` disables the pager. |
 | `nipa diff [<rev1> [<rev2>]]` | Show changes as a unified patch. With no revisions: working tree vs the last synced snapshot (offline). One revision: that tree vs the working tree. Two revisions: tree vs tree. A revision is a branch name, a base36 commit ID (as printed by `nipa log`) or `HEAD`/`@`; `<a>..<b>` compares the two endpoints and `<a>...<b>` compares their merge base against `<b>`. Renames are detected automatically. `--staged` limits to what the next push would upload, `-U` sets the context, `--stat`/`--name-only`/`--name-status` select other formats, `-w`/`-b` ignore whitespace, `-- <path>` limits paths, `--exit-code` sets the exit status, `--ext-diff` opens each changed file in the configured external tool (`NIPA_EXTERNAL_DIFF` or `diffExternal` in `~/.config/nipa/config.json`), and `--no-pager`/`--no-color` disable the pager/colors. |
+| `nipa serve`                | Run the local daemon that GUI clients connect to: loopback gRPC with a capability token, a per-clone status cache fed by a file watcher, streaming progress for long operations and a pass-through proxy for the server APIs. Publishes its port and token in `~/.config/nipa/daemon.json` (0600) and stops on SIGINT/SIGTERM, draining in-flight operations. |
 
 Branch creation (`nipa branch -c <name>`) forks from the exact commit the
 working copy is pinned to (clone, update, switch and push record the branch head
@@ -81,6 +92,16 @@ statuses. `-w`/`-b` ignore whitespace differences across every output format.
 configured through `NIPA_EXTERNAL_DIFF` or `diffExternal` in
 `~/.config/nipa/config.json`; the tool only runs when `--ext-diff` is given.
 
+Tracked binary files are mandatory-lock gated: `nipa push` refuses to land a
+modified or removed binary unless you hold a lock covering it, while brand-new
+files only conflict with someone else's covering lock (adding a fresh asset
+needs no lock unless a directory or pre-emptive lock guards it). Locks on the
+default branch are project-global; locks on any other branch are scoped to that
+branch, and a merge request holds locks for its changed binaries until it is
+merged or closed. `nipa lock` also accepts a directory prefix to cover a whole
+editing pass — your exact-path lock is released once the push it guarded lands,
+while directory locks stay until you `nipa unlock` them.
+
 ## Architecture
 
 - **Server** — `internal/`: `domain` (entities/errors), `usecase` (business
@@ -95,6 +116,19 @@ configured through `NIPA_EXTERNAL_DIFF` or `diffExternal` in
   (clone/branch/push/update/merge/revert/diff orchestration), `grpc` (transport),
   `localrepo` (`.nipa/` local metadata + SQLite), `merge` (three-way tree merge
   + diff3), `securestorage` (keyring-backed token store).
+- **Client daemon** — `internal/client/daemon/` (`nipa serve`): a loopback gRPC
+  service (proto `internal/client/grpc/proto/daemon.proto`) with token
+  discovery, a per-clone operation coordinator (status/stage/diff share the
+  repo, mutations are exclusive), server-streamed progress for
+  update/switch/push/merge/revert, a streaming `diff`, an fsnotify watcher
+  feeding a background stat-cache reconciler, and a proxy for the server APIs
+  (branches, trees/commits, merge requests, file locks).
+- **Client integrations** — GUI surfaces (the P4V-style desktop client, Windows
+  Explorer integration, Unity/Unreal/Godot plugins) contain no VCS logic: they
+  connect to the local `nipa serve` daemon and consume the same API the CLI
+  does. Design notes live in
+  [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md) and
+  [`docs/DAEMON.md`](docs/DAEMON.md).
 - Local state lives in `.nipa/` inside the clone target: a JSON `config` with
   the repository URL and current branch, and a SQLite database tracking the tree
   snapshot (including each file's chunk hashes) and the staged file list, plus a

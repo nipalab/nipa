@@ -229,6 +229,43 @@ polling RPC is correct and fast without it.
 6. Proxy RPCs (branches, tree, log/commits, MRs, locks).
 7. e2e integration tests.
 
+## Implementation status
+
+Implemented (phases 1–7): `nipa serve` with token discovery, lifecycle and
+drain; the repo registry, per-root coordinator and `Status`/`Stage`; streaming
+`Update`/`Switch`/`Push`/`Merge`/`Revert`; streaming `Diff`; the fsnotify
+watcher + background reconciler; and the Phase A proxy surface (branches, tree,
+commits, merge base, MR reads/lifecycle, file locks). The client daemon lives
+in `internal/client/daemon`, the proto in
+`internal/client/grpc/proto/daemon.proto`, generated code in
+`internal/client/grpc/daemonpb`.
+
+Notes where the implementation settled details the design left open:
+
+- **Per-repo client, not one warm transport.** Every watched root gets its own
+  `RepoOps` graph and gRPC client (`serveRepoOps`): the client transport binds
+  one host at a time, so sharing it across roots could cross-wire concurrent
+  calls. The session/keyring is still shared.
+- **Shutdown of a queued/running operation** cancels it and ends its stream
+  with a terminal failure event (code 499); `GracefulStop` then waits for the
+  handler to return.
+- **The reconciler skips paths whose fingerprint `Status` would already
+  trust**, so the accelerator follows Status's trust model exactly instead of
+  being stricter (an update/push does not trigger redundant rehashing).
+- **`Diff` gained a `context` field** (hunk context, 0 = default) and accepts
+  `<a>..<b>` / `<a>...<b>` ranges daemon-side, matching the CLI.
+- **Proxy requests are forwarded as-is** (e.g. `limit` is the caller's), with
+  only the clone's org/project context filled in and the caller's context
+  overwritten.
+- **`WorkingCopy.RefreshStatEntries`** (`internal/client/usecase`) is the one
+  addition outside `internal/client/daemon`; `localrepo.Init` now closes a
+  previous handle and the DSN sets `busy_timeout`, since status and the
+  reconciler share a handle.
+
+Not yet implemented: Phase B proxies (PBAC/path permissions, groups, review
+submission/thread writes, branch protection/default changes), idle-exit,
+`StatusStream`, CLI passthrough via the daemon, and socket/named-pipe transport.
+
 ## Later
 
 - Idle-exit timer for auto-spawned daemons.

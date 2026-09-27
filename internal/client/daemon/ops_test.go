@@ -2,6 +2,9 @@ package daemon
 
 import (
 	"context"
+	"errors"
+	"io"
+	"os"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -341,6 +344,55 @@ func TestServer_UnwatchedRootIsFailureEvent(t *testing.T) {
 	last := stream.events()[len(stream.events())-1]
 	require.EqualValues(t, 400, last.GetFailure().GetCode())
 	require.Contains(t, last.GetFailure().GetMessage(), "not watched")
+}
+
+func TestServer_ShutdownDrainsRunningOperation(t *testing.T) {
+	root := newTestClone(t)
+	entered := make(chan struct{})
+	released := make(chan struct{})
+	srv := startTestServer(t, Options{
+		Runners: Runners{New: func(string) RepoOps {
+			return RepoOps{Push: &stubPushRunner{run: func(context.Context, string, string, ...usecase.UploadProgress) error {
+				close(entered)
+				<-released
+				return nil
+			}}}
+		}},
+	})
+	dctx := authed(context.Background(), srv.Endpoint().Token)
+
+	_, err := srv.client.WatchRepo(dctx, &daemonpb.WatchRepoRequest{Root: root})
+	require.NoError(t, err)
+
+	stream, err := srv.client.Push(dctx, &daemonpb.PushRequest{Root: root, Message: "m"})
+	require.NoError(t, err)
+	select {
+	case <-entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the push did not start")
+	}
+
+	_, err = srv.client.Shutdown(dctx, &daemonpb.ShutdownRequest{})
+	require.NoError(t, err)
+
+	// The running operation must still complete; the daemon exits afterwards.
+	close(released)
+	var events []*daemonpb.OpEvent
+	for {
+		ev, err := stream.Recv()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		require.NoError(t, err)
+		events = append(events, ev)
+	}
+	require.NotEmpty(t, events)
+	require.NotNil(t, events[len(events)-1].GetResult(), "the drained operation must deliver its result")
+
+	require.Eventually(t, func() bool {
+		_, err := ReadEndpoint(srv.endpointPath)
+		return errors.Is(err, os.ErrNotExist)
+	}, 5*time.Second, 10*time.Millisecond, "the endpoint is removed only after the drain completes")
 }
 
 func seedCommit(t *testing.T, root, commitID, commitHash string) {
