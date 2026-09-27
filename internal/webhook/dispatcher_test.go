@@ -201,7 +201,7 @@ func TestDispatcher_EnqueueDelivers(t *testing.T) {
 	hook := domain.Webhook{ID: 1001, URL: server.URL, Secret: "test-secret", IsActive: true}
 	store.addHook(hook)
 
-	dispatcher := NewDispatcher(store, NewClient(ClientConfig{}), testNode(t), testDispatcherConfig())
+	dispatcher := NewDispatcher(store, loopbackClient(), testNode(t), testDispatcherConfig())
 	dispatcher.Start()
 	t.Cleanup(func() { stopDispatcher(t, dispatcher) })
 
@@ -249,7 +249,7 @@ func TestDispatcher_RetriesUntilSuccess(t *testing.T) {
 	hook := domain.Webhook{ID: 1001, URL: server.URL, Secret: "s", IsActive: true}
 	store.addHook(hook)
 
-	dispatcher := NewDispatcher(store, NewClient(ClientConfig{}), testNode(t), testDispatcherConfig())
+	dispatcher := NewDispatcher(store, loopbackClient(), testNode(t), testDispatcherConfig())
 	dispatcher.Start()
 	t.Cleanup(func() { stopDispatcher(t, dispatcher) })
 
@@ -282,7 +282,7 @@ func TestDispatcher_MaxAttemptsMarksFailed(t *testing.T) {
 	cfg := testDispatcherConfig()
 	cfg.MaxAttempts = 3
 	cfg.Workers = 1
-	dispatcher := NewDispatcher(store, NewClient(ClientConfig{}), testNode(t), cfg)
+	dispatcher := NewDispatcher(store, loopbackClient(), testNode(t), cfg)
 	dispatcher.Start()
 	t.Cleanup(func() { stopDispatcher(t, dispatcher) })
 
@@ -343,7 +343,7 @@ func TestDispatcher_SweepResumesPendingAfterRestart(t *testing.T) {
 	store.addHook(domain.Webhook{ID: 1001, URL: server.URL, Secret: "s", IsActive: true})
 	store.addPending(snow.ID(5001), snow.ID(1001), 2, time.Now().Add(-time.Minute))
 
-	dispatcher := NewDispatcher(store, NewClient(ClientConfig{}), testNode(t), testDispatcherConfig())
+	dispatcher := NewDispatcher(store, loopbackClient(), testNode(t), testDispatcherConfig())
 	dispatcher.Start()
 	t.Cleanup(func() { stopDispatcher(t, dispatcher) })
 
@@ -360,7 +360,7 @@ func TestDispatcher_SweepFailsDeliveryOfMissingHook(t *testing.T) {
 	store := newFakeStore()
 	store.addPending(snow.ID(5001), snow.ID(9999), 1, time.Now().Add(-time.Minute))
 
-	dispatcher := NewDispatcher(store, NewClient(ClientConfig{}), testNode(t), testDispatcherConfig())
+	dispatcher := NewDispatcher(store, loopbackClient(), testNode(t), testDispatcherConfig())
 	dispatcher.Start()
 	t.Cleanup(func() { stopDispatcher(t, dispatcher) })
 
@@ -375,7 +375,7 @@ func TestDispatcher_SweepFailsDeliveryOfMissingHook(t *testing.T) {
 func TestDispatcher_EnqueuePropagatesStoreError(t *testing.T) {
 	store := newFakeStore()
 	store.createErr = domain.NewErrorDatabase("boom")
-	dispatcher := NewDispatcher(store, NewClient(ClientConfig{}), testNode(t), testDispatcherConfig())
+	dispatcher := NewDispatcher(store, loopbackClient(), testNode(t), testDispatcherConfig())
 
 	_, err := dispatcher.Enqueue(context.Background(), domain.Webhook{ID: 1001}, domain.WebhookEventPush, []byte(`{}`))
 	require.Error(t, err)
@@ -392,7 +392,7 @@ func TestDispatcher_EnqueueWhileStoppedStaysPending(t *testing.T) {
 	hook := domain.Webhook{ID: 1001, URL: server.URL, Secret: "s", IsActive: true}
 	store.addHook(hook)
 
-	dispatcher := NewDispatcher(store, NewClient(ClientConfig{}), testNode(t), testDispatcherConfig())
+	dispatcher := NewDispatcher(store, loopbackClient(), testNode(t), testDispatcherConfig())
 	created, err := dispatcher.Enqueue(context.Background(), hook, domain.WebhookEventPush, []byte(`{}`))
 	require.NoError(t, err)
 
@@ -418,7 +418,7 @@ func TestDispatcher_StopBlocksNewAttempts(t *testing.T) {
 	hook := domain.Webhook{ID: 1001, URL: server.URL, Secret: "s", IsActive: true}
 	store.addHook(hook)
 
-	dispatcher := NewDispatcher(store, NewClient(ClientConfig{}), testNode(t), testDispatcherConfig())
+	dispatcher := NewDispatcher(store, loopbackClient(), testNode(t), testDispatcherConfig())
 	dispatcher.Start()
 	stopDispatcher(t, dispatcher)
 	stopDispatcher(t, dispatcher)
