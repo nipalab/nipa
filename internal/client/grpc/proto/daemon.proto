@@ -1,0 +1,401 @@
+syntax = "proto3";
+
+package nipadaemon;
+option go_package = "./daemonpb";
+
+// Loopback daemon API consumed by GUI clients (desktop, Explorer, engine
+// plugins). Every working-copy operation is scoped by an absolute `root`
+// (a clone with a .nipa/config); remote operations are proxied through the
+// daemon's warm, authenticated transport. Proxy request/response pairs reuse
+// the server proto messages verbatim, with the daemon filling `context` from
+// the clone config (clients may leave it unset).
+
+import "internal/grpc/proto/server.proto";
+
+message PingRequest {}
+
+message PingResponse {
+    string version = 1;
+    int32 pid = 2;
+}
+
+message ShutdownRequest {}
+
+message ShutdownResponse {}
+
+message LoginRequest {
+    string host = 1;
+    string username = 2;
+    string password = 3;
+}
+
+message LoginResponse {}
+
+message RepoInfo {
+    string root = 1;
+    string url = 2;
+    string branch = 3;
+    repeated string sparse = 4;
+}
+
+message WatchRepoRequest {
+    string root = 1;
+}
+
+message WatchRepoResponse {
+    RepoInfo repo = 1;
+}
+
+message UnwatchRepoRequest {
+    string root = 1;
+}
+
+message UnwatchRepoResponse {}
+
+message ListReposRequest {}
+
+message ListReposResponse {
+    repeated RepoInfo repos = 1;
+}
+
+message StatusRequest {
+    string root = 1;
+    bool no_cache = 2;
+}
+
+message StatusResponse {
+    repeated string staged = 1;
+    repeated string deleted = 2;
+    repeated string modified = 3;
+    repeated string untracked = 4;
+    repeated string missing = 5;
+    repeated string conflicts = 6;
+}
+
+message StageRequest {
+    string root = 1;
+    repeated string add = 2; // paths/directories to stage, including tracked deletions
+    repeated string unstage = 3; // staged paths to drop from the staged set
+}
+
+message UpdateRequest {
+    string root = 1;
+}
+
+message SwitchRequest {
+    string root = 1;
+    string branch = 2;
+}
+
+message PushRequest {
+    string root = 1;
+    string message = 2;
+}
+
+message MergeOpRequest {
+    string root = 1;
+    string source_branch = 2;
+    bool abort = 3;
+    bool ff_only = 4;
+    bool no_ff = 5;
+    string message = 6;
+}
+
+message RevertOpRequest {
+    string root = 1;
+    string target = 2; // commit ID, hash, or <from>..<to> range
+    bool abort = 3;
+    bool continue = 4;
+    bool skip = 5;
+    bool no_commit = 6;
+    int32 mainline = 7;
+    string message = 8;
+}
+
+message DiffRequest {
+    string root = 1;
+    repeated string revisions = 2; // 0-2 revisions; <a>..<b> shapes are expanded client-side
+    repeated string paths = 3;
+    bool staged = 4;
+    bool no_cache = 5;
+    bool merge_base = 6; // three-dot <a>...<b> diff against the merge base
+    string format = 7; // patch, stat, name_only, name_status
+    bool ignore_all_space = 8; // -w
+    bool ignore_space_change = 9; // -b
+    int32 context = 10; // context lines for the patch format; 0 uses the default
+}
+
+message DiffEvent {
+    oneof event {
+        bytes data = 1; // rendered output chunk
+        OpFailure failure = 2;
+    }
+}
+
+message OpQueued {
+    int32 ahead = 1; // exclusive operations ahead of this one
+}
+
+message OpStarted {
+    string phase = 1;
+}
+
+message OpProgress {
+    string phase = 1; // e.g. download, upload, apply
+    int64 objects_done = 2;
+    int64 objects_total = 3;
+    int64 bytes_done = 4;
+    int64 bytes_total = 5;
+}
+
+message OpFailure {
+    int32 code = 1; // HTTP-style code: 400, 401, 403, 404, 409, 500
+    string message = 2;
+}
+
+message SyncResult {
+    string branch = 1;
+    string commit_id = 2; // base36 snow ID of the new head
+}
+
+message PushResult {
+    string commit_id = 1; // base36 snow ID
+    string commit_hash = 2; // hex-encoded BLAKE3 hash
+    string tree_hash = 3; // hex-encoded root tree hash
+}
+
+message MergeResult {
+    bool up_to_date = 1;
+    bool fast_forwarded = 2;
+    bool merge_committed = 3;
+    bool aborted = 4;
+    repeated string conflicts = 5;
+}
+
+message RevertResult {
+    bool committed = 1;
+    bool no_change = 2;
+    bool skipped = 3;
+    bool aborted = 4;
+    repeated string conflicts = 5;
+}
+
+message OpResult {
+    oneof outcome {
+        SyncResult sync = 1; // update and switch
+        PushResult push = 2;
+        MergeResult merge = 3;
+        RevertResult revert = 4;
+    }
+}
+
+message OpEvent {
+    oneof event {
+        OpQueued queued = 1;
+        OpStarted started = 2;
+        OpProgress progress = 3;
+        OpResult result = 4;
+        OpFailure failure = 5;
+    }
+}
+
+message ProxyBranchListRequest {
+    string root = 1;
+    greet.GetListBranchRequest request = 2;
+}
+
+message ProxyBranchListResponse {
+    greet.GetListBranchResponse response = 1;
+}
+
+message ProxyBranchCreateRequest {
+    string root = 1;
+    greet.CreateBranchRequest request = 2;
+}
+
+message ProxyBranchCreateResponse {
+    greet.CreateBranchResponse response = 1;
+}
+
+message ProxyBranchDeleteRequest {
+    string root = 1;
+    greet.DeleteBranchRequest request = 2;
+}
+
+message ProxyBranchDeleteResponse {
+    greet.DeleteBranchResponse response = 1;
+}
+
+message ProxyTreeManifestRequest {
+    string root = 1;
+    greet.GetTreeManifestRequest request = 2;
+}
+
+message ProxyTreeManifestResponse {
+    greet.GetTreeManifestResponse response = 1;
+}
+
+message ProxyCommitLogRequest {
+    string root = 1;
+    greet.GetCommitLogRequest request = 2;
+}
+
+message ProxyCommitLogResponse {
+    greet.GetCommitLogResponse response = 1;
+}
+
+message ProxyCommitGetRequest {
+    string root = 1;
+    greet.GetCommitRequest request = 2;
+}
+
+message ProxyCommitGetResponse {
+    greet.GetCommitResponse response = 1;
+}
+
+message ProxyCommitWalkRequest {
+    string root = 1;
+    greet.WalkCommitsRequest request = 2;
+}
+
+message ProxyCommitWalkResponse {
+    greet.WalkCommitsResponse response = 1;
+}
+
+message ProxyMergeBaseRequest {
+    string root = 1;
+    greet.GetMergeBaseRequest request = 2;
+}
+
+message ProxyMergeBaseResponse {
+    greet.GetMergeBaseResponse response = 1;
+}
+
+message ProxyMergeRequestListRequest {
+    string root = 1;
+    greet.ListMergeRequestsRequest request = 2;
+}
+
+message ProxyMergeRequestListResponse {
+    greet.ListMergeRequestsResponse response = 1;
+}
+
+message ProxyMergeRequestCreateRequest {
+    string root = 1;
+    greet.CreateMergeRequestRequest request = 2;
+}
+
+message ProxyMergeRequestCreateResponse {
+    greet.CreateMergeRequestResponse response = 1;
+}
+
+message ProxyMergeRequestMergeRequest {
+    string root = 1;
+    greet.MergeMergeRequestRequest request = 2;
+}
+
+message ProxyMergeRequestMergeResponse {
+    greet.MergeMergeRequestResponse response = 1;
+}
+
+message ProxyMergeRequestCloseRequest {
+    string root = 1;
+    greet.CloseMergeRequestRequest request = 2;
+}
+
+message ProxyMergeRequestCloseResponse {
+    greet.CloseMergeRequestResponse response = 1;
+}
+
+message ProxyMergeRequestReviewsRequest {
+    string root = 1;
+    greet.ListMergeRequestReviewsRequest request = 2;
+}
+
+message ProxyMergeRequestReviewsResponse {
+    greet.ListMergeRequestReviewsResponse response = 1;
+}
+
+message ProxyMergeRequestReviewStateRequest {
+    string root = 1;
+    greet.GetMergeRequestReviewStateRequest request = 2;
+}
+
+message ProxyMergeRequestReviewStateResponse {
+    greet.GetMergeRequestReviewStateResponse response = 1;
+}
+
+message ProxyMergeRequestThreadsRequest {
+    string root = 1;
+    greet.ListMergeRequestThreadsRequest request = 2;
+}
+
+message ProxyMergeRequestThreadsResponse {
+    greet.ListMergeRequestThreadsResponse response = 1;
+}
+
+message ProxyLockFileRequest {
+    string root = 1;
+    greet.LockFileRequest request = 2;
+}
+
+message ProxyLockFileResponse {
+    greet.LockFileResponse response = 1;
+}
+
+message ProxyUnlockFileRequest {
+    string root = 1;
+    greet.UnlockFileRequest request = 2;
+}
+
+message ProxyUnlockFileResponse {
+    greet.UnlockFileResponse response = 1;
+}
+
+message ProxyListFileLocksRequest {
+    string root = 1;
+    greet.ListFileLocksRequest request = 2;
+}
+
+message ProxyListFileLocksResponse {
+    greet.ListFileLocksResponse response = 1;
+}
+
+service NipaDaemon {
+    rpc Ping(PingRequest) returns (PingResponse);
+    rpc Shutdown(ShutdownRequest) returns (ShutdownResponse);
+    rpc Login(LoginRequest) returns (LoginResponse);
+
+    rpc WatchRepo(WatchRepoRequest) returns (WatchRepoResponse);
+    rpc UnwatchRepo(UnwatchRepoRequest) returns (UnwatchRepoResponse);
+    rpc ListRepos(ListReposRequest) returns (ListReposResponse);
+
+    rpc Status(StatusRequest) returns (StatusResponse);
+    rpc Stage(StageRequest) returns (StatusResponse);
+
+    rpc Update(UpdateRequest) returns (stream OpEvent);
+    rpc Switch(SwitchRequest) returns (stream OpEvent);
+    rpc Push(PushRequest) returns (stream OpEvent);
+    rpc Merge(MergeOpRequest) returns (stream OpEvent);
+    rpc Revert(RevertOpRequest) returns (stream OpEvent);
+    rpc Diff(DiffRequest) returns (stream DiffEvent);
+
+    rpc ProxyBranchList(ProxyBranchListRequest) returns (ProxyBranchListResponse);
+    rpc ProxyBranchCreate(ProxyBranchCreateRequest) returns (ProxyBranchCreateResponse);
+    rpc ProxyBranchDelete(ProxyBranchDeleteRequest) returns (ProxyBranchDeleteResponse);
+    rpc ProxyTreeManifest(ProxyTreeManifestRequest) returns (ProxyTreeManifestResponse);
+    rpc ProxyCommitLog(ProxyCommitLogRequest) returns (ProxyCommitLogResponse);
+    rpc ProxyCommitGet(ProxyCommitGetRequest) returns (ProxyCommitGetResponse);
+    rpc ProxyCommitWalk(ProxyCommitWalkRequest) returns (ProxyCommitWalkResponse);
+    rpc ProxyMergeBase(ProxyMergeBaseRequest) returns (ProxyMergeBaseResponse);
+    rpc ProxyMergeRequestList(ProxyMergeRequestListRequest) returns (ProxyMergeRequestListResponse);
+    rpc ProxyMergeRequestCreate(ProxyMergeRequestCreateRequest) returns (ProxyMergeRequestCreateResponse);
+    rpc ProxyMergeRequestMerge(ProxyMergeRequestMergeRequest) returns (ProxyMergeRequestMergeResponse);
+    rpc ProxyMergeRequestClose(ProxyMergeRequestCloseRequest) returns (ProxyMergeRequestCloseResponse);
+    rpc ProxyMergeRequestReviews(ProxyMergeRequestReviewsRequest) returns (ProxyMergeRequestReviewsResponse);
+    rpc ProxyMergeRequestReviewState(ProxyMergeRequestReviewStateRequest) returns (ProxyMergeRequestReviewStateResponse);
+    rpc ProxyMergeRequestThreads(ProxyMergeRequestThreadsRequest) returns (ProxyMergeRequestThreadsResponse);
+    rpc ProxyLockFile(ProxyLockFileRequest) returns (ProxyLockFileResponse);
+    rpc ProxyUnlockFile(ProxyUnlockFileRequest) returns (ProxyUnlockFileResponse);
+    rpc ProxyListFileLocks(ProxyListFileLocksRequest) returns (ProxyListFileLocksResponse);
+}

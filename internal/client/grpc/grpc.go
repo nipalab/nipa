@@ -22,6 +22,7 @@ import (
 )
 
 type Transport struct {
+	mu         sync.Mutex
 	url        string
 	clientConn *grpc.ClientConn
 }
@@ -30,11 +31,19 @@ func NewTransport() *Transport {
 	return &Transport{}
 }
 
+// Connect binds the transport to host. Reconnecting to the same host is a
+// no-op, so concurrent callers (the daemon proxies every request) reuse one
+// connection instead of leaking one per call.
 func (t *Transport) Connect(url string, opts ...grpc.DialOption) error {
-	if t.clientConn != nil && url != t.url {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.clientConn != nil && url == t.url {
+		return nil
+	}
+	if t.clientConn != nil {
 		err := t.clientConn.Close()
 		if err != nil {
-			slog.Error("unable to close grpc connection", "url", url, "error", err)
+			slog.Error("unable to close grpc connection", "url", t.url, "error", err)
 		}
 		t.clientConn = nil
 		t.url = ""
@@ -49,14 +58,28 @@ func (t *Transport) Connect(url string, opts ...grpc.DialOption) error {
 	return nil
 }
 
+// URL reports the host the transport is currently bound to.
+func (t *Transport) URL() string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.url
+}
+
 func (t *Transport) Close() error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	if t.clientConn != nil {
-		return t.clientConn.Close()
+		err := t.clientConn.Close()
+		t.clientConn = nil
+		t.url = ""
+		return err
 	}
 	return nil
 }
 
 func (t *Transport) NipaServiceClient() (pb.NipaServiceClient, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	if t.clientConn == nil {
 		return nil, errors.New("not connected to a nipa server")
 	}
@@ -181,6 +204,12 @@ func (c *Client) Close() error {
 	return c.transport.Close()
 }
 
+// ServiceClient returns the typed gRPC client over the transport's
+// authenticated connection. Connect must have been called first.
+func (c *Client) ServiceClient() (pb.NipaServiceClient, error) {
+	return c.transport.NipaServiceClient()
+}
+
 func (c *Client) LoginWithUsernamePassword(ctx context.Context, host, username, password string) (*domain.LoginResult, error) {
 	return c.transport.LoginWithUsernamePassword(ctx, host, username, password)
 }
@@ -202,7 +231,7 @@ func (c *Client) unaryAuthInterceptor() grpc.UnaryClientInterceptor {
 			return invoker(ctx, method, req, reply, cc, opts...)
 		}
 
-		accToken, err := c.session.AccessToken(ctx, c.transport.url)
+		accToken, err := c.session.AccessToken(ctx, c.transport.URL())
 		if err != nil {
 			return status.Error(codes.Unauthenticated, "unable to get access token")
 		}
@@ -213,7 +242,7 @@ func (c *Client) unaryAuthInterceptor() grpc.UnaryClientInterceptor {
 			return err
 		}
 
-		accToken, err = c.session.Refresh(ctx, c.transport.url)
+		accToken, err = c.session.Refresh(ctx, c.transport.URL())
 		if err != nil {
 			return err
 		}
@@ -401,7 +430,7 @@ func (c *Client) Push(ctx context.Context, org, project, branch, baseTreeHash, m
 }
 
 func (c *Client) authedContext(ctx context.Context) (context.Context, error) {
-	accToken, err := c.session.AccessToken(ctx, c.transport.url)
+	accToken, err := c.session.AccessToken(ctx, c.transport.URL())
 	if err != nil {
 		return nil, status.Error(codes.Unauthenticated, "unable to get access token")
 	}

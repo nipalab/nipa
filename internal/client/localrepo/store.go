@@ -32,6 +32,10 @@ func NewLocalRepoWithTarget(target string) *LocalRepo {
 }
 
 func (l *LocalRepo) Init(target string) error {
+	if l.db != nil {
+		_ = l.db.Close()
+		l.db = nil
+	}
 	dir := filepath.Join(target, ConfigDir)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
@@ -39,7 +43,7 @@ func (l *LocalRepo) Init(target string) error {
 	if err := os.MkdirAll(filepath.Join(dir, ObjectsDir), 0o755); err != nil {
 		return err
 	}
-	db, err := sql.Open("sqlite", filepath.Join(dir, DBFile)+"?_pragma=foreign_keys(ON)")
+	db, err := sql.Open("sqlite", filepath.Join(dir, DBFile)+"?_pragma=foreign_keys(ON)&_pragma=busy_timeout(10000)")
 	if err != nil {
 		return err
 	}

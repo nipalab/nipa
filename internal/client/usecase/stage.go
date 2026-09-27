@@ -240,6 +240,77 @@ func (w *WorkingCopy) Status(ctx context.Context, opts ...StatusOptions) (*domai
 	return st, nil
 }
 
+// RefreshStatEntries rehashes the given working files and refreshes their stat
+// cache fingerprints, so a later Status can trust them without reading. It is
+// the daemon watcher's accelerator: paths that left the snapshot or the disk,
+// and files whose fingerprint Status would already trust, are skipped — the
+// trust model stays exactly Status's, so the accelerator never changes an
+// answer.
+func (w *WorkingCopy) RefreshStatEntries(paths []string) error {
+	if len(paths) == 0 {
+		return nil
+	}
+	snapshot, err := w.localRepo.Snapshot()
+	if err != nil {
+		return err
+	}
+	statCache, err := w.localRepo.LoadStatCache()
+	if err != nil {
+		return err
+	}
+	baseByPath := make(map[string]domain.SnapshotFile, len(snapshot.Files))
+	for _, f := range snapshot.Files {
+		baseByPath[f.Path] = f
+	}
+
+	observedAt := time.Now().UnixNano()
+	var jobs []statusHashJob
+	seen := make(map[string]bool, len(paths))
+	for _, path := range paths {
+		if seen[path] {
+			continue
+		}
+		seen[path] = true
+		base, tracked := baseByPath[path]
+		if !tracked {
+			continue
+		}
+		info, err := os.Stat(filepath.Join(w.root, filepath.FromSlash(path)))
+		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				continue
+			}
+			return err
+		}
+		if entry, cached := statCache[path]; cached && statMatches(entry, info) {
+			continue
+		}
+		jobs = append(jobs, statusHashJob{path: path, encoding: base.Encoding, info: info})
+	}
+
+	updates := make(map[string]domain.StatEntry, len(jobs))
+	for i, result := range w.rehash(jobs) {
+		job := jobs[i]
+		if result.err != nil {
+			if errors.Is(result.err, fs.ErrNotExist) {
+				continue
+			}
+			return fmt.Errorf("hash %q: %w", job.path, result.err)
+		}
+		updates[job.path] = domain.StatEntry{
+			SizeBytes: job.info.Size(),
+			MtimeNS:   job.info.ModTime().UnixNano(),
+			Mode:      serverModeFromPerm(job.info.Mode()),
+			Hash:      result.hash,
+			CachedAt:  observedAt,
+		}
+	}
+	if len(updates) == 0 {
+		return nil
+	}
+	return w.localRepo.SaveStatEntries(updates)
+}
+
 // statMatches reports whether a cached fingerprint still describes the file.
 // The mtime/cached_at comparison guards files written within the same clock
 // tick as the hash: those are rehashed once, then cached with a later stamp.

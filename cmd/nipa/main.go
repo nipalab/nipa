@@ -50,8 +50,14 @@ func main() {
 		lockUsecase:       lockUsecase,
 	}
 
+	newClient := func() *grpc.Client {
+		transport := grpc.NewTransport()
+		session := usecase.NewSession(secureStorage, transport)
+		return grpc.NewClient(transport, session, clientOpts...)
+	}
+
 	cliClient := cli.NewCli(registry, grpcClient)
-	if err := cliClient.Run(); err != nil {
+	if err := cliClient.Run(newServeCommand(authUsecase, newClient)); err != nil {
 		if errors.Is(err, cli.ErrExitCode) {
 			os.Exit(1)
 		}

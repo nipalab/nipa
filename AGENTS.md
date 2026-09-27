@@ -42,15 +42,18 @@ everything under `ee/` is enterprise).
   for non-API paths in `cmd/nipad/main.go` (`isAPIPath`).
 - **Client** (`internal/client/`): `cli` (cobra commands: clone, branch
   (`-a` list, `-c` create+switch, `-d` delete), add, remove, status, push, update, switch,
-  merge, revert, log, diff, acl, group, sparse-checkout, mr, lock, unlock), `usecase`
+  merge, revert, log, diff, acl, group, sparse-checkout, mr, lock, unlock, serve), `usecase`
   (clone/login, push, update/switch (incl. sparse), merge, revert, diff, log,
   permission, merge-request orchestration, file locks over small interfaces; `threeway.go`
   holds the shared materialize/stage/delete core), `grpc` (gRPC transport,
-  converts pb→server domain types), `merge` (three-way tree decisions + diff3
+  converts pb→server domain types; `Client.ServiceClient()` exposes the typed
+  pb client for the daemon proxy), `merge` (three-way tree decisions + diff3
   text merge), `securestorage` (keyring-backed token store), `config`
   (`~/.config/nipa/config.json`: `diffExternal`, `uploadWorkers`), `difftool`
   (external diff runner), `domain` (client config/url/errors/commit/pending
-  state), `localrepo` (`.nipa/` local metadata + SQLite). `localrepo.FindRepoRoot`
+  state), `localrepo` (`.nipa/` local metadata + SQLite),
+  `daemon` (the loopback gRPC service behind `nipa serve`, see the flow below).
+  `localrepo.FindRepoRoot`
   searches up to 32 parent directories for a `.nipa/config` so every in-repo
   command works from subdirectories.
 - **Diff engine** (`internal/diff/`): pure package shared by client and server
@@ -176,6 +179,31 @@ drops files whose differences are fully ignored. `--ext-diff` runs
 narrow the result; rendering (patch, stat, name-only, name-status), colors and
 the pager live in `cli/diff.go` + `internal/diff`.
 
+Flow for `nipa serve` (client daemon, design in `docs/DAEMON.md`):
+`cmd/nipa/serve.go` builds `daemon.NewServer` (proto
+`internal/client/grpc/proto/daemon.proto`, generated
+`internal/client/grpc/daemonpb`) and publishes `~/.config/nipa/daemon.json`
+(`{pid, port, token, version}`, 0600, atomic write); every RPC must carry the
+`x-nipa-daemon-token` metadata (constant-time compare), and `Shutdown`/SIGTERM
+drain in-flight operations before removing the file. `WatchRepo(root)` resolves
+any path inside a clone to its root (up to 32 parents), validates
+`.nipa/config` and pins a per-root entry: cached `localrepo` handle +
+`usecase.WorkingCopy`, watcher/reconciler, coordinator and a `RepoOps` graph
+(`serveRepoOps` builds one usecase set and one gRPC client per root, since the
+client transport binds one host at a time). `Status`/`Stage` are read-through
+`WorkingCopy` calls under the shared coordinator slot; `Update`/`Switch`/
+`Push`/`Merge`/`Revert` take the exclusive slot (FIFO, queued exclusive blocks
+later shared waits) and stream `OpEvent`s (queued/started/progress/result/
+failure; cancelling the stream always terminates it with a failure event).
+`Diff` streams rendered patch/stat/name output (64 KiB chunks, file-by-file for
+patches) under the shared slot. An fsnotify watcher debounces events into
+dirty batches and a background reconciler refreshes `stat_cache` through
+`WorkingCopy.RefreshStatEntries`; watcher failure or event loss is harmless
+(read-through status still stat-detects). `Proxy*` RPCs forward `greet.*`
+messages verbatim over `Client.ServiceClient()`, filling the clone's
+org/project context from `.nipa/config`; `UnwatchRepo` waits for in-flight refs
+before closing handles.
+
 Server merge-request diffs reuse the same engine: `usecase.MergeRequest.Diff`
 resolves the source and target heads, `GetMergeBase`, and calls
 `Branch.TreeDiffBetween` (`internal/usecase/browser.go`), which loads both
@@ -206,7 +234,10 @@ From `Makefile`:
 - `make web` / `web-dev` / `web-install` — build the SPA into
   `web/server/dist` / run the Vite dev server (proxies `/api`, `/docs` to
   `NIPA_SERVER_URL`) / `npm install`.
-- `make proto` — regenerates pb from `internal/grpc/proto/server.proto`.
+- `make proto` — regenerates pb from `internal/grpc/proto/server.proto` into
+  `internal/grpc/pb` and from `internal/client/grpc/proto/daemon.proto` into
+  `internal/client/grpc/daemonpb` (the daemon proto imports the server one;
+  the target `M`-maps that import onto `internal/grpc/pb`).
 - `make lint` — golangci-lint via Docker image (`.golangci.yml` enables
   errcheck/govet/ineffassign/staticcheck/unused/misspell/unconvert; formatters
   gofmt/goimports).

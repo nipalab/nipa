@@ -56,6 +56,10 @@ build: web build-server build-client
 
 proto:
 	protoc --go_out=internal/grpc --go-grpc_out=internal/grpc internal/grpc/proto/server.proto
+	protoc -I . --go_out=internal/client/grpc --go-grpc_out=internal/client/grpc \
+		--go_opt=Minternal/grpc/proto/server.proto=github.com/nipalab/nipa/internal/grpc/pb \
+		--go-grpc_opt=Minternal/grpc/proto/server.proto=github.com/nipalab/nipa/internal/grpc/pb \
+		internal/client/grpc/proto/daemon.proto
 
 ## Run all tests (requires Docker for testcontainers-backed repository tests).
 test:
