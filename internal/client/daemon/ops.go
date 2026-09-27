@@ -18,6 +18,7 @@ type Runners struct {
 	Push   func() PushRunner
 	Merge  func() MergeRunner
 	Revert func() RevertRunner
+	Diff   func() DiffRunner
 }
 
 type UpdateRunner interface {

@@ -1133,6 +1133,7 @@ type DiffRequest struct {
 	Format            string                 `protobuf:"bytes,7,opt,name=format,proto3" json:"format,omitempty"`                                                   // patch, stat, name_only, name_status
 	IgnoreAllSpace    bool                   `protobuf:"varint,8,opt,name=ignore_all_space,json=ignoreAllSpace,proto3" json:"ignore_all_space,omitempty"`          // -w
 	IgnoreSpaceChange bool                   `protobuf:"varint,9,opt,name=ignore_space_change,json=ignoreSpaceChange,proto3" json:"ignore_space_change,omitempty"` // -b
+	Context           int32                  `protobuf:"varint,10,opt,name=context,proto3" json:"context,omitempty"`                                               // context lines for the patch format; 0 uses the default
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -1228,6 +1229,13 @@ func (x *DiffRequest) GetIgnoreSpaceChange() bool {
 		return x.IgnoreSpaceChange
 	}
 	return false
+}
+
+func (x *DiffRequest) GetContext() int32 {
+	if x != nil {
+		return x.Context
+	}
+	return 0
 }
 
 type DiffEvent struct {
@@ -3833,7 +3841,7 @@ const file_internal_client_grpc_proto_daemon_proto_rawDesc = "" +
 	"\x04skip\x18\x05 \x01(\bR\x04skip\x12\x1b\n" +
 	"\tno_commit\x18\x06 \x01(\bR\bnoCommit\x12\x1a\n" +
 	"\bmainline\x18\a \x01(\x05R\bmainline\x12\x18\n" +
-	"\amessage\x18\b \x01(\tR\amessage\"\x99\x02\n" +
+	"\amessage\x18\b \x01(\tR\amessage\"\xb3\x02\n" +
 	"\vDiffRequest\x12\x12\n" +
 	"\x04root\x18\x01 \x01(\tR\x04root\x12\x1c\n" +
 	"\trevisions\x18\x02 \x03(\tR\trevisions\x12\x14\n" +
@@ -3844,7 +3852,9 @@ const file_internal_client_grpc_proto_daemon_proto_rawDesc = "" +
 	"merge_base\x18\x06 \x01(\bR\tmergeBase\x12\x16\n" +
 	"\x06format\x18\a \x01(\tR\x06format\x12(\n" +
 	"\x10ignore_all_space\x18\b \x01(\bR\x0eignoreAllSpace\x12.\n" +
-	"\x13ignore_space_change\x18\t \x01(\bR\x11ignoreSpaceChange\"]\n" +
+	"\x13ignore_space_change\x18\t \x01(\bR\x11ignoreSpaceChange\x12\x18\n" +
+	"\acontext\x18\n" +
+	" \x01(\x05R\acontext\"]\n" +
 	"\tDiffEvent\x12\x14\n" +
 	"\x04data\x18\x01 \x01(\fH\x00R\x04data\x121\n" +
 	"\afailure\x18\x02 \x01(\v2\x15.nipadaemon.OpFailureH\x00R\afailureB\a\n" +

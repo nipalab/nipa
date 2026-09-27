@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -42,6 +43,9 @@ func startDaemon(t *testing.T, auth *clientusecase.Auth, client *clientgrpc.Clie
 			Revert: func() daemon.RevertRunner {
 				push := clientusecase.NewPush(auth, client, localrepo.NewLocalRepo())
 				return clientusecase.NewRevert(auth, client, localrepo.NewLocalRepo(), push)
+			},
+			Diff: func() daemon.DiffRunner {
+				return clientusecase.NewDiff(auth, client, localrepo.NewLocalRepo())
 			},
 		},
 	})
@@ -122,6 +126,21 @@ func progressPhases(events []*daemonpb.OpEvent, phase string) (objects, bytes in
 		}
 	}
 	return objects, bytes
+}
+
+func collectDiffData(t *testing.T, stream daemonpb.NipaDaemon_DiffClient) string {
+	t.Helper()
+	var b strings.Builder
+	for {
+		ev, err := stream.Recv()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		require.NoError(t, err)
+		require.Nil(t, ev.GetFailure(), "unexpected diff failure: %v", ev.GetFailure())
+		b.Write(ev.GetData())
+	}
+	return b.String()
 }
 
 func TestEndToEnd_DaemonUpdateStagePush(t *testing.T) {
@@ -206,6 +225,35 @@ func TestEndToEnd_DaemonUpdateStagePush(t *testing.T) {
 	updateEvents = collectOpEvents(t, updateStream)
 	require.NotNil(t, terminalResult(t, updateEvents).GetSync().GetCommitId())
 	assertFileContent(t, target, "c.txt", "third\n")
+
+	// Diff through the daemon: patch of the working tree against the snapshot.
+	writeFile(t, target, "a.txt", "edited after push\n")
+	diffStream, err := client.Diff(dctx, &daemonpb.DiffRequest{Root: target})
+	require.NoError(t, err)
+	patch := collectDiffData(t, diffStream)
+	require.Contains(t, patch, "diff --nipa a/a.txt b/a.txt")
+	require.Contains(t, patch, "+edited after push")
+
+	// Staged diff in the name_status format.
+	writeFile(t, target, "d.txt", "staged file\n")
+	_, err = client.Stage(dctx, &daemonpb.StageRequest{Root: target, Add: []string{"a.txt", "d.txt"}})
+	require.NoError(t, err)
+	diffStream, err = client.Diff(dctx, &daemonpb.DiffRequest{Root: target, Staged: true, Format: "name_status"})
+	require.NoError(t, err)
+	staged := collectDiffData(t, diffStream)
+	require.Contains(t, staged, "M\ta.txt")
+	require.Contains(t, staged, "A\td.txt")
+
+	// Two identical revisions produce an empty diff.
+	headAfter, err := grpcClient.GetBranchByName(ctx, e2eOrgSlug, e2eProjectSlug, "main")
+	require.NoError(t, err)
+	require.NotNil(t, headAfter.CommitID)
+	diffStream, err = client.Diff(dctx, &daemonpb.DiffRequest{
+		Root:      target,
+		Revisions: []string{headAfter.CommitID.Base36(), headAfter.CommitID.Base36()},
+	})
+	require.NoError(t, err)
+	require.Empty(t, collectDiffData(t, diffStream))
 
 	// Unwatching drops the root from the daemon registry.
 	_, err = client.UnwatchRepo(dctx, &daemonpb.UnwatchRepoRequest{Root: target})

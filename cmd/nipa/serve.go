@@ -66,5 +66,8 @@ func serveRunners(auth *usecase.Auth, client *clientgrpc.Client) daemon.Runners 
 			push := usecase.NewPush(auth, client, localrepo.NewLocalRepo())
 			return usecase.NewRevert(auth, client, localrepo.NewLocalRepo(), push)
 		},
+		Diff: func() daemon.DiffRunner {
+			return usecase.NewDiff(auth, client, localrepo.NewLocalRepo())
+		},
 	}
 }

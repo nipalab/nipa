@@ -30,6 +30,7 @@ type repo struct {
 	push   PushRunner
 	merge  MergeRunner
 	revert RevertRunner
+	diff   DiffRunner
 
 	watcher    *watcher
 	reconciler *reconciler
@@ -148,6 +149,9 @@ func openRepo(root string, runners Runners) (*repo, error) {
 	}
 	if runners.Revert != nil {
 		rp.revert = runners.Revert()
+	}
+	if runners.Diff != nil {
+		rp.diff = runners.Diff()
 	}
 	return rp, nil
 }

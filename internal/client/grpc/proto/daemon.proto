@@ -122,6 +122,7 @@ message DiffRequest {
     string format = 7; // patch, stat, name_only, name_status
     bool ignore_all_space = 8; // -w
     bool ignore_space_change = 9; // -b
+    int32 context = 10; // context lines for the patch format; 0 uses the default
 }
 
 message DiffEvent {
