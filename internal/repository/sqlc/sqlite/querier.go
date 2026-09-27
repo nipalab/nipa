@@ -136,6 +136,23 @@ type Querier interface {
 	UserUpdateEmail(ctx context.Context, arg UserUpdateEmailParams) error
 	UserUpdatePassword(ctx context.Context, arg UserUpdatePasswordParams) error
 	UserUpdateProfile(ctx context.Context, arg UserUpdateProfileParams) error
+	WebhookCreate(ctx context.Context, arg WebhookCreateParams) (Webhook, error)
+	WebhookDelete(ctx context.Context, arg WebhookDeleteParams) (int64, error)
+	WebhookDeliveryCreate(ctx context.Context, arg WebhookDeliveryCreateParams) (WebhookDelivery, error)
+	WebhookDeliveryDeleteByWebhook(ctx context.Context, webhookID int64) (int64, error)
+	WebhookDeliveryDeleteOld(ctx context.Context, arg WebhookDeliveryDeleteOldParams) (int64, error)
+	WebhookDeliveryGet(ctx context.Context, arg WebhookDeliveryGetParams) (WebhookDelivery, error)
+	WebhookDeliveryList(ctx context.Context, arg WebhookDeliveryListParams) ([]WebhookDelivery, error)
+	WebhookDeliveryListPendingRetry(ctx context.Context, arg WebhookDeliveryListPendingRetryParams) ([]WebhookDelivery, error)
+	WebhookDeliveryMarkDelivered(ctx context.Context, arg WebhookDeliveryMarkDeliveredParams) (WebhookDelivery, error)
+	WebhookDeliveryMarkFailed(ctx context.Context, arg WebhookDeliveryMarkFailedParams) (WebhookDelivery, error)
+	WebhookDeliveryRequeue(ctx context.Context, arg WebhookDeliveryRequeueParams) (WebhookDelivery, error)
+	WebhookDeliveryReschedule(ctx context.Context, arg WebhookDeliveryRescheduleParams) (WebhookDelivery, error)
+	WebhookGet(ctx context.Context, arg WebhookGetParams) (Webhook, error)
+	WebhookListActiveByProject(ctx context.Context, projectID int64) ([]Webhook, error)
+	WebhookListByProject(ctx context.Context, projectID int64) ([]Webhook, error)
+	WebhookRotateSecret(ctx context.Context, arg WebhookRotateSecretParams) (Webhook, error)
+	WebhookUpdate(ctx context.Context, arg WebhookUpdateParams) (Webhook, error)
 }
 
 var _ Querier = (*Queries)(nil)
