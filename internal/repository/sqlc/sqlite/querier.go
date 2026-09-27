@@ -149,6 +149,7 @@ type Querier interface {
 	WebhookDeliveryRequeue(ctx context.Context, arg WebhookDeliveryRequeueParams) (WebhookDelivery, error)
 	WebhookDeliveryReschedule(ctx context.Context, arg WebhookDeliveryRescheduleParams) (WebhookDelivery, error)
 	WebhookGet(ctx context.Context, arg WebhookGetParams) (Webhook, error)
+	WebhookGetByID(ctx context.Context, id int64) (Webhook, error)
 	WebhookListActiveByProject(ctx context.Context, projectID int64) ([]Webhook, error)
 	WebhookListByProject(ctx context.Context, projectID int64) ([]Webhook, error)
 	WebhookRotateSecret(ctx context.Context, arg WebhookRotateSecretParams) (Webhook, error)

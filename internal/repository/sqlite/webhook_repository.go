@@ -52,6 +52,16 @@ func (r *WebhookRepository) Get(ctx context.Context, projectID, id snow.ID) (*do
 	return webhookToDomain(row), nil
 }
 
+// GetByID loads a webhook without project scoping; the dispatcher only knows
+// the webhook id from a delivery row when it resumes retries.
+func (r *WebhookRepository) GetByID(ctx context.Context, id snow.ID) (*domain.Webhook, error) {
+	row, err := r.queries.WebhookGetByID(ctx, id.Int64())
+	if err != nil {
+		return nil, handleError(err)
+	}
+	return webhookToDomain(row), nil
+}
+
 func (r *WebhookRepository) ListByProject(ctx context.Context, projectID snow.ID) ([]*domain.Webhook, error) {
 	rows, err := r.queries.WebhookListByProject(ctx, projectID.Int64())
 	if err != nil {

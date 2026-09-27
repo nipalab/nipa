@@ -2,6 +2,7 @@ package handler
 
 import (
 	nethttp "net/http"
+	"strconv"
 
 	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/http"
@@ -144,6 +145,94 @@ func (h *Handler) RotateWebhookSecret(appCtx http.AppContext) {
 	appCtx.WriteJson(nethttp.StatusOK, toWebhookResponse(rotated, true))
 }
 
+func (h *Handler) TestWebhook(appCtx http.AppContext) {
+	org, project, err := h.resolveProject(appCtx)
+	if err != nil {
+		appCtx.HandleError(err)
+		return
+	}
+	id, err := parseID(appCtx.PathParameter("id"), "webhook")
+	if err != nil {
+		appCtx.HandleError(err)
+		return
+	}
+	delivery, err := h.useCase.Webhook().Test(appCtx.Context(), org, project, id)
+	if err != nil {
+		appCtx.HandleError(err)
+		return
+	}
+	appCtx.WriteJson(nethttp.StatusOK, toWebhookDeliveryResponse(delivery))
+}
+
+func (h *Handler) ListWebhookDeliveries(appCtx http.AppContext) {
+	_, project, err := h.resolveProject(appCtx)
+	if err != nil {
+		appCtx.HandleError(err)
+		return
+	}
+	id, err := parseID(appCtx.PathParameter("id"), "webhook")
+	if err != nil {
+		appCtx.HandleError(err)
+		return
+	}
+	limit, err := webhookPageParam(appCtx, "limit", 0)
+	if err != nil {
+		appCtx.HandleError(err)
+		return
+	}
+	offset, err := webhookPageParam(appCtx, "offset", 0)
+	if err != nil {
+		appCtx.HandleError(err)
+		return
+	}
+	deliveries, err := h.useCase.Webhook().Deliveries(appCtx.Context(), project.ID, id, limit, offset)
+	if err != nil {
+		appCtx.HandleError(err)
+		return
+	}
+	resp := make([]model.WebhookDeliveryResponse, 0, len(deliveries))
+	for _, delivery := range deliveries {
+		resp = append(resp, toWebhookDeliveryResponse(delivery))
+	}
+	appCtx.WriteJson(nethttp.StatusOK, resp)
+}
+
+func (h *Handler) RedeliverWebhookDelivery(appCtx http.AppContext) {
+	_, project, err := h.resolveProject(appCtx)
+	if err != nil {
+		appCtx.HandleError(err)
+		return
+	}
+	id, err := parseID(appCtx.PathParameter("id"), "webhook")
+	if err != nil {
+		appCtx.HandleError(err)
+		return
+	}
+	deliveryID, err := parseID(appCtx.PathParameter("deliveryId"), "delivery")
+	if err != nil {
+		appCtx.HandleError(err)
+		return
+	}
+	delivery, err := h.useCase.Webhook().Redeliver(appCtx.Context(), project.ID, id, deliveryID)
+	if err != nil {
+		appCtx.HandleError(err)
+		return
+	}
+	appCtx.WriteJson(nethttp.StatusOK, toWebhookDeliveryResponse(delivery))
+}
+
+func webhookPageParam(appCtx http.AppContext, name string, fallback int64) (int64, error) {
+	raw := appCtx.QueryParameter(name)
+	if raw == "" {
+		return fallback, nil
+	}
+	value, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || value < 0 {
+		return 0, domain.NewErrorUser("invalid " + name)
+	}
+	return value, nil
+}
+
 func toWebhookResponse(webhook *domain.Webhook, includeSecret bool) model.WebhookResponse {
 	resp := model.WebhookResponse{
 		ID:          webhook.ID.Base36(),
@@ -164,4 +253,19 @@ func toWebhookResponse(webhook *domain.Webhook, includeSecret bool) model.Webhoo
 		resp.Secret = webhook.Secret
 	}
 	return resp
+}
+
+func toWebhookDeliveryResponse(delivery *domain.WebhookDelivery) model.WebhookDeliveryResponse {
+	return model.WebhookDeliveryResponse{
+		ID:             delivery.ID.Base36(),
+		WebhookID:      delivery.WebhookID.Base36(),
+		EventType:      delivery.EventType,
+		State:          delivery.State,
+		Attempt:        delivery.Attempt,
+		ResponseStatus: delivery.ResponseStatus,
+		LastError:      delivery.LastError,
+		NextRetryAt:    delivery.NextRetryAt,
+		DeliveredAt:    delivery.DeliveredAt,
+		CreatedAt:      delivery.CreatedAt,
+	}
 }

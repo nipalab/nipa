@@ -468,6 +468,30 @@ func (q *Queries) WebhookGet(ctx context.Context, arg WebhookGetParams) (Webhook
 	return i, err
 }
 
+const webhookGetByID = `-- name: WebhookGetByID :one
+SELECT id, project_id, name, url, secret, events, path_prefix, is_active, insecure_tls, created_at, updated_at FROM webhooks
+WHERE id = ?1
+`
+
+func (q *Queries) WebhookGetByID(ctx context.Context, id int64) (Webhook, error) {
+	row := q.db.QueryRowContext(ctx, webhookGetByID, id)
+	var i Webhook
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.Name,
+		&i.Url,
+		&i.Secret,
+		&i.Events,
+		&i.PathPrefix,
+		&i.IsActive,
+		&i.InsecureTls,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const webhookListActiveByProject = `-- name: WebhookListActiveByProject :many
 SELECT id, project_id, name, url, secret, events, path_prefix, is_active, insecure_tls, created_at, updated_at FROM webhooks
 WHERE project_id = ?1 AND is_active = TRUE

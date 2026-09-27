@@ -23,6 +23,7 @@ import (
 	"github.com/nipalab/nipa/internal/snow"
 	"github.com/nipalab/nipa/internal/storage"
 	"github.com/nipalab/nipa/internal/usecase"
+	"github.com/nipalab/nipa/internal/webhook"
 	webui "github.com/nipalab/nipa/web/server"
 	"google.golang.org/grpc"
 	_ "modernc.org/sqlite"
@@ -99,7 +100,12 @@ func main() {
 		PresignTTL:  time.Duration(cfg.ChunkPresignTTLSeconds) * time.Second,
 		MaxPageSize: cfg.ChunkMaxPageSize,
 	})
-	webhookUsecase := usecase.NewWebhook(sqlite.NewWebhookRepository(dbConn), permissionUsecase, snowUser)
+	webhookRepository := sqlite.NewWebhookRepository(dbConn)
+	webhookDispatcher := webhook.NewDispatcher(webhookRepository, webhook.NewClient(webhook.ClientConfig{
+		Timeout:         time.Duration(cfg.WebhookTimeoutSeconds) * time.Second,
+		EgressAllowlist: splitAllowlist(cfg.WebhookEgressAllowlist),
+	}), snowUser, webhook.Config{})
+	webhookUsecase := usecase.NewWebhook(webhookRepository, permissionUsecase, userRepo, webhookDispatcher, snowUser)
 	reg := &Registry{
 		authUsecase:               authUsecase,
 		userUsecase:               usecase.NewUser(snowUser, userRepo, passwordHasher),
@@ -119,6 +125,7 @@ func main() {
 
 	apiApp := api.NewAPI(reg)
 	container := apiApp.SetupRoute()
+	webhookDispatcher.Start()
 
 	address := fmt.Sprintf("%s:%d", cfg.ServerAddress, cfg.ServerPort)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -166,6 +173,11 @@ func main() {
 		if err := httpServer.Shutdown(ctx); err != nil {
 			slog.Error("error shutting down server", "error", err)
 		}
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := webhookDispatcher.Stop(shutdownCtx); err != nil {
+			slog.Warn("webhook dispatcher shutdown incomplete", "error", err)
+		}
 		os.Exit(0)
 	}()
 
@@ -177,6 +189,15 @@ func main() {
 
 func createDatabaseConnection(dsn string) (*sql.DB, error) {
 	return db.OpenSQLite(dsn)
+}
+
+// splitAllowlist turns the comma-separated WEBHOOK_EGRESS_ALLOWLIST into
+// entries. Empty means no egress restriction.
+func splitAllowlist(raw string) []string {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	return strings.Split(raw, ",")
 }
 
 func isAPIPath(p string) bool {
