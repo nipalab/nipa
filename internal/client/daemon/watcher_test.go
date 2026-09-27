@@ -57,6 +57,18 @@ func (f *fakeSource) Close() error {
 	return nil
 }
 
+func (f *fakeSource) closeEvents() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	close(f.eventsC)
+}
+
+func (f *fakeSource) closeErrors() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	close(f.errsC)
+}
+
 func recvBatch(t *testing.T, ch <-chan []string) []string {
 	t.Helper()
 	select {
@@ -125,6 +137,80 @@ func TestWatcher_CloseIsIdempotent(t *testing.T) {
 	src.emit("a.txt")
 	require.NoError(t, w.Close())
 	require.NoError(t, w.Close())
+}
+
+func TestWatcher_StopsWhenSourceEventsClose(t *testing.T) {
+	src := newFakeSource()
+	w := newWatcher(src, 20*time.Millisecond)
+	src.closeEvents()
+	require.NoError(t, w.Close())
+}
+
+func TestWatcher_StopsWhenSourceErrorsClose(t *testing.T) {
+	src := newFakeSource()
+	w := newWatcher(src, 20*time.Millisecond)
+	src.closeErrors()
+	require.NoError(t, w.Close())
+}
+
+func TestFsnotifySource_RenamePrunesAndRemoveEmits(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "old", "deep"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "old", "deep", "f.txt"), []byte("x"), 0o644))
+
+	src, err := newFsnotifySource(root)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = src.Close() })
+
+	oldDeep := filepath.Join(root, "old", "deep")
+	require.Eventually(t, func() bool {
+		src.mu.Lock()
+		defer src.mu.Unlock()
+		return src.watched[oldDeep]
+	}, 2*time.Second, 10*time.Millisecond)
+
+	require.NoError(t, os.Rename(filepath.Join(root, "old"), filepath.Join(root, "new")))
+	require.Eventually(t, func() bool {
+		src.mu.Lock()
+		defer src.mu.Unlock()
+		return !src.watched[filepath.Join(root, "old")] && !src.watched[oldDeep]
+	}, 2*time.Second, 10*time.Millisecond, "renaming a watched directory prunes its watches")
+
+	// Removing a file emits an event even though no watch is attached to it.
+	remove := filepath.Join(root, "gone.txt")
+	require.NoError(t, os.WriteFile(remove, []byte("x"), 0o644))
+	for {
+		if event := recvEvent(t, src.events()); event == "gone.txt" {
+			break
+		}
+	}
+	require.NoError(t, os.Remove(remove))
+	for {
+		if event := recvEvent(t, src.events()); event == "gone.txt" {
+			break
+		}
+	}
+}
+
+func TestFsnotifySource_AddMissingIsNoop(t *testing.T) {
+	src, err := newFsnotifySource(t.TempDir())
+	require.NoError(t, err)
+	defer func() { _ = src.Close() }()
+
+	require.NoError(t, src.add(filepath.Join(t.TempDir(), "missing")))
+}
+
+func TestFsnotifySource_StopsWhenBackendCloses(t *testing.T) {
+	src, err := newFsnotifySource(t.TempDir())
+	require.NoError(t, err)
+
+	require.NoError(t, src.watcher.Close())
+	select {
+	case <-src.done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the source did not stop when its backend closed")
+	}
+	_ = src.Close()
 }
 
 func TestFsnotifySource_WatchesRecursivelySkipsNipa(t *testing.T) {

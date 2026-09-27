@@ -95,6 +95,190 @@ func (f *fakeService) LockFile(ctx context.Context, req *pb.LockFileRequest, _ .
 	return &pb.LockFileResponse{}, nil
 }
 
+// emptyService implements every proxied server method with an empty response,
+// for exercising handler plumbing.
+type emptyService struct {
+	pb.NipaServiceClient
+}
+
+func (emptyService) GetListBranch(context.Context, *pb.GetListBranchRequest, ...grpc.CallOption) (*pb.GetListBranchResponse, error) {
+	return &pb.GetListBranchResponse{}, nil
+}
+
+func (emptyService) CreateBranch(context.Context, *pb.CreateBranchRequest, ...grpc.CallOption) (*pb.CreateBranchResponse, error) {
+	return &pb.CreateBranchResponse{}, nil
+}
+
+func (emptyService) DeleteBranch(context.Context, *pb.DeleteBranchRequest, ...grpc.CallOption) (*pb.DeleteBranchResponse, error) {
+	return &pb.DeleteBranchResponse{}, nil
+}
+
+func (emptyService) GetTreeManifest(context.Context, *pb.GetTreeManifestRequest, ...grpc.CallOption) (*pb.GetTreeManifestResponse, error) {
+	return &pb.GetTreeManifestResponse{}, nil
+}
+
+func (emptyService) GetCommitLog(context.Context, *pb.GetCommitLogRequest, ...grpc.CallOption) (*pb.GetCommitLogResponse, error) {
+	return &pb.GetCommitLogResponse{}, nil
+}
+
+func (emptyService) GetCommit(context.Context, *pb.GetCommitRequest, ...grpc.CallOption) (*pb.GetCommitResponse, error) {
+	return &pb.GetCommitResponse{}, nil
+}
+
+func (emptyService) WalkCommits(context.Context, *pb.WalkCommitsRequest, ...grpc.CallOption) (*pb.WalkCommitsResponse, error) {
+	return &pb.WalkCommitsResponse{}, nil
+}
+
+func (emptyService) GetMergeBase(context.Context, *pb.GetMergeBaseRequest, ...grpc.CallOption) (*pb.GetMergeBaseResponse, error) {
+	return &pb.GetMergeBaseResponse{}, nil
+}
+
+func (emptyService) ListMergeRequests(context.Context, *pb.ListMergeRequestsRequest, ...grpc.CallOption) (*pb.ListMergeRequestsResponse, error) {
+	return &pb.ListMergeRequestsResponse{}, nil
+}
+
+func (emptyService) CreateMergeRequest(context.Context, *pb.CreateMergeRequestRequest, ...grpc.CallOption) (*pb.CreateMergeRequestResponse, error) {
+	return &pb.CreateMergeRequestResponse{}, nil
+}
+
+func (emptyService) MergeMergeRequest(context.Context, *pb.MergeMergeRequestRequest, ...grpc.CallOption) (*pb.MergeMergeRequestResponse, error) {
+	return &pb.MergeMergeRequestResponse{}, nil
+}
+
+func (emptyService) CloseMergeRequest(context.Context, *pb.CloseMergeRequestRequest, ...grpc.CallOption) (*pb.CloseMergeRequestResponse, error) {
+	return &pb.CloseMergeRequestResponse{}, nil
+}
+
+func (emptyService) ListMergeRequestReviews(context.Context, *pb.ListMergeRequestReviewsRequest, ...grpc.CallOption) (*pb.ListMergeRequestReviewsResponse, error) {
+	return &pb.ListMergeRequestReviewsResponse{}, nil
+}
+
+func (emptyService) GetMergeRequestReviewState(context.Context, *pb.GetMergeRequestReviewStateRequest, ...grpc.CallOption) (*pb.GetMergeRequestReviewStateResponse, error) {
+	return &pb.GetMergeRequestReviewStateResponse{}, nil
+}
+
+func (emptyService) ListMergeRequestThreads(context.Context, *pb.ListMergeRequestThreadsRequest, ...grpc.CallOption) (*pb.ListMergeRequestThreadsResponse, error) {
+	return &pb.ListMergeRequestThreadsResponse{}, nil
+}
+
+func (emptyService) LockFile(context.Context, *pb.LockFileRequest, ...grpc.CallOption) (*pb.LockFileResponse, error) {
+	return &pb.LockFileResponse{}, nil
+}
+
+func (emptyService) UnlockFile(context.Context, *pb.UnlockFileRequest, ...grpc.CallOption) (*pb.UnlockFileResponse, error) {
+	return &pb.UnlockFileResponse{}, nil
+}
+
+func (emptyService) ListFileLocks(context.Context, *pb.ListFileLocksRequest, ...grpc.CallOption) (*pb.ListFileLocksResponse, error) {
+	return &pb.ListFileLocksResponse{}, nil
+}
+
+// proxyCalls exercises every proxy handler with a nil wrapped request.
+func proxyCalls(srv *Server, ctx context.Context, root string) []struct {
+	name string
+	call func() error
+} {
+	return []struct {
+		name string
+		call func() error
+	}{
+		{"BranchList", func() error {
+			_, err := srv.ProxyBranchList(ctx, &daemonpb.ProxyBranchListRequest{Root: root})
+			return err
+		}},
+		{"BranchCreate", func() error {
+			_, err := srv.ProxyBranchCreate(ctx, &daemonpb.ProxyBranchCreateRequest{Root: root})
+			return err
+		}},
+		{"BranchDelete", func() error {
+			_, err := srv.ProxyBranchDelete(ctx, &daemonpb.ProxyBranchDeleteRequest{Root: root})
+			return err
+		}},
+		{"TreeManifest", func() error {
+			_, err := srv.ProxyTreeManifest(ctx, &daemonpb.ProxyTreeManifestRequest{Root: root})
+			return err
+		}},
+		{"CommitLog", func() error {
+			_, err := srv.ProxyCommitLog(ctx, &daemonpb.ProxyCommitLogRequest{Root: root})
+			return err
+		}},
+		{"CommitGet", func() error {
+			_, err := srv.ProxyCommitGet(ctx, &daemonpb.ProxyCommitGetRequest{Root: root})
+			return err
+		}},
+		{"CommitWalk", func() error {
+			_, err := srv.ProxyCommitWalk(ctx, &daemonpb.ProxyCommitWalkRequest{Root: root})
+			return err
+		}},
+		{"MergeBase", func() error {
+			_, err := srv.ProxyMergeBase(ctx, &daemonpb.ProxyMergeBaseRequest{Root: root})
+			return err
+		}},
+		{"MergeRequestList", func() error {
+			_, err := srv.ProxyMergeRequestList(ctx, &daemonpb.ProxyMergeRequestListRequest{Root: root})
+			return err
+		}},
+		{"MergeRequestCreate", func() error {
+			_, err := srv.ProxyMergeRequestCreate(ctx, &daemonpb.ProxyMergeRequestCreateRequest{Root: root})
+			return err
+		}},
+		{"MergeRequestMerge", func() error {
+			_, err := srv.ProxyMergeRequestMerge(ctx, &daemonpb.ProxyMergeRequestMergeRequest{Root: root})
+			return err
+		}},
+		{"MergeRequestClose", func() error {
+			_, err := srv.ProxyMergeRequestClose(ctx, &daemonpb.ProxyMergeRequestCloseRequest{Root: root})
+			return err
+		}},
+		{"MergeRequestReviews", func() error {
+			_, err := srv.ProxyMergeRequestReviews(ctx, &daemonpb.ProxyMergeRequestReviewsRequest{Root: root})
+			return err
+		}},
+		{"MergeRequestReviewState", func() error {
+			_, err := srv.ProxyMergeRequestReviewState(ctx, &daemonpb.ProxyMergeRequestReviewStateRequest{Root: root})
+			return err
+		}},
+		{"MergeRequestThreads", func() error {
+			_, err := srv.ProxyMergeRequestThreads(ctx, &daemonpb.ProxyMergeRequestThreadsRequest{Root: root})
+			return err
+		}},
+		{"LockFile", func() error {
+			_, err := srv.ProxyLockFile(ctx, &daemonpb.ProxyLockFileRequest{Root: root})
+			return err
+		}},
+		{"UnlockFile", func() error {
+			_, err := srv.ProxyUnlockFile(ctx, &daemonpb.ProxyUnlockFileRequest{Root: root})
+			return err
+		}},
+		{"ListFileLocks", func() error {
+			_, err := srv.ProxyListFileLocks(ctx, &daemonpb.ProxyListFileLocksRequest{Root: root})
+			return err
+		}},
+	}
+}
+
+func TestServer_ProxyNilRequestsForEveryHandler(t *testing.T) {
+	srv, root := watchedProxyServer(t, &fakeProxyConn{client: emptyService{}})
+
+	for _, tt := range proxyCalls(srv, context.Background(), root) {
+		t.Run(tt.name, func(t *testing.T) {
+			require.NoError(t, tt.call(), "a nil wrapped request must be defaulted")
+		})
+	}
+}
+
+func TestServer_ProxyEveryHandlerMapsErrors(t *testing.T) {
+	srv, root := watchedProxyServer(t, &fakeProxyConn{err: errors.New("no route to host")})
+
+	for _, tt := range proxyCalls(srv, context.Background(), root) {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.call()
+			require.Equal(t, codes.Unknown, status.Code(err))
+			require.Contains(t, status.Convert(err).Message(), "no route to host")
+		})
+	}
+}
+
 func watchedProxyServer(t *testing.T, conn ProxyConn) (*Server, string) {
 	t.Helper()
 	root := newTestClone(t)

@@ -12,6 +12,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	clientDomain "github.com/nipalab/nipa/internal/client/domain"
 	"github.com/nipalab/nipa/internal/client/grpc/daemonpb"
@@ -71,10 +73,12 @@ func (s *stubRevertRunner) Run(ctx context.Context, root, target string, opts us
 	return &usecase.RevertOutcome{}, nil
 }
 
-// opTestStream records the events a streaming handler sends.
+// opTestStream records the events a streaming handler sends. failAt, when
+// positive, makes that 1-based send fail.
 type opTestStream struct {
 	grpc.ServerStream
-	ctx context.Context
+	ctx    context.Context
+	failAt int
 
 	mu   sync.Mutex
 	sent []*daemonpb.OpEvent
@@ -87,6 +91,9 @@ func (s *opTestStream) Context() context.Context {
 func (s *opTestStream) Send(ev *daemonpb.OpEvent) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.failAt > 0 && len(s.sent)+1 == s.failAt {
+		return errors.New("stream closed")
+	}
 	s.sent = append(s.sent, ev)
 	return nil
 }
@@ -106,6 +113,7 @@ func newOpServer(t *testing.T, ops RepoOps) *Server {
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		srv.Stop()
+		srv.repos.closeAll()
 		_ = srv.listener.Close()
 	})
 	return srv
@@ -393,6 +401,201 @@ func TestServer_ShutdownDrainsRunningOperation(t *testing.T) {
 		_, err := ReadEndpoint(srv.endpointPath)
 		return errors.Is(err, os.ErrNotExist)
 	}, 5*time.Second, 10*time.Millisecond, "the endpoint is removed only after the drain completes")
+}
+
+func TestServer_SwitchStreamsResult(t *testing.T) {
+	root := newTestClone(t)
+	var gotBranch string
+	srv := newOpServer(t, RepoOps{Update: &stubUpdateRunner{
+		switchFn: func(_ context.Context, _, branch string, _ ...usecase.DownloadProgress) error {
+			gotBranch = branch
+			return nil
+		},
+	}})
+	_, err := srv.repos.watch(root)
+	require.NoError(t, err)
+	seedCommit(t, root, "switched1", "hash1")
+
+	stream := &opTestStream{ctx: context.Background()}
+	require.NoError(t, srv.Switch(&daemonpb.SwitchRequest{Root: root, Branch: "feature"}, stream))
+	require.Equal(t, "feature", gotBranch)
+
+	sync := terminalEvent(t, stream.events()).GetResult().GetSync()
+	require.Equal(t, "feature", sync.GetBranch())
+	require.Equal(t, "switched1", sync.GetCommitId())
+}
+
+func TestServer_SwitchFailures(t *testing.T) {
+	root := newTestClone(t)
+	srv := newOpServer(t, RepoOps{})
+	_, err := srv.repos.watch(root)
+	require.NoError(t, err)
+
+	stream := &opTestStream{ctx: context.Background()}
+	require.NoError(t, srv.Switch(&daemonpb.SwitchRequest{Root: root, Branch: "feature"}, stream))
+	last := stream.events()[len(stream.events())-1]
+	require.EqualValues(t, 409, last.GetFailure().GetCode())
+	require.Contains(t, last.GetFailure().GetMessage(), "switch is not configured")
+
+	failingRoot := newTestClone(t)
+	failing := newOpServer(t, RepoOps{Update: &stubUpdateRunner{
+		switchFn: func(context.Context, string, string, ...usecase.DownloadProgress) error {
+			return clientDomain.NewTokenError("nope")
+		},
+	}})
+	_, err = failing.repos.watch(failingRoot)
+	require.NoError(t, err)
+	stream = &opTestStream{ctx: context.Background()}
+	require.NoError(t, failing.Switch(&daemonpb.SwitchRequest{Root: failingRoot, Branch: "feature"}, stream))
+	last = stream.events()[len(stream.events())-1]
+	require.EqualValues(t, 401, last.GetFailure().GetCode())
+}
+
+func TestServer_OpRunnerFailures(t *testing.T) {
+	root := newTestClone(t)
+	boom := clientDomain.NewUserError("runner exploded")
+	srv := newOpServer(t, RepoOps{
+		Update: &stubUpdateRunner{run: func(context.Context, string, ...usecase.DownloadProgress) error { return boom }},
+		Push: &stubPushRunner{run: func(context.Context, string, string, ...usecase.UploadProgress) error {
+			return boom
+		}},
+		Merge: &stubMergeRunner{run: func(context.Context, string, string, usecase.MergeOptions) (*usecase.Outcome, error) {
+			return nil, boom
+		}},
+		Revert: &stubRevertRunner{run: func(context.Context, string, string, usecase.RevertOptions, ...usecase.UploadProgress) (*usecase.RevertOutcome, error) {
+			return nil, boom
+		}},
+	})
+	_, err := srv.repos.watch(root)
+	require.NoError(t, err)
+
+	tests := []struct {
+		name string
+		call func(*opTestStream) error
+	}{
+		{"update", func(s *opTestStream) error { return srv.Update(&daemonpb.UpdateRequest{Root: root}, s) }},
+		{"push", func(s *opTestStream) error { return srv.Push(&daemonpb.PushRequest{Root: root}, s) }},
+		{"merge", func(s *opTestStream) error {
+			return srv.Merge(&daemonpb.MergeOpRequest{Root: root, SourceBranch: "feature"}, s)
+		}},
+		{"revert", func(s *opTestStream) error {
+			return srv.Revert(&daemonpb.RevertOpRequest{Root: root, Target: "abc123"}, s)
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			stream := &opTestStream{ctx: context.Background()}
+			require.NoError(t, tt.call(stream))
+			last := stream.events()[len(stream.events())-1]
+			require.EqualValues(t, 400, last.GetFailure().GetCode())
+			require.Equal(t, "runner exploded", last.GetFailure().GetMessage())
+		})
+	}
+}
+
+func TestServer_OpWithoutRunnerFails(t *testing.T) {
+	root := newTestClone(t)
+	srv := newOpServer(t, RepoOps{})
+	_, err := srv.repos.watch(root)
+	require.NoError(t, err)
+
+	tests := []struct {
+		name string
+		call func(*opTestStream) error
+	}{
+		{"update", func(s *opTestStream) error { return srv.Update(&daemonpb.UpdateRequest{Root: root}, s) }},
+		{"push", func(s *opTestStream) error { return srv.Push(&daemonpb.PushRequest{Root: root}, s) }},
+		{"merge", func(s *opTestStream) error { return srv.Merge(&daemonpb.MergeOpRequest{Root: root}, s) }},
+		{"revert", func(s *opTestStream) error { return srv.Revert(&daemonpb.RevertOpRequest{Root: root}, s) }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			stream := &opTestStream{ctx: context.Background()}
+			require.NoError(t, tt.call(stream))
+			last := stream.events()[len(stream.events())-1]
+			require.EqualValues(t, 409, last.GetFailure().GetCode())
+			require.Contains(t, last.GetFailure().GetMessage(), "not configured")
+		})
+	}
+}
+
+func TestServer_OpSendFailures(t *testing.T) {
+	newPushServer := func(t *testing.T, run func(context.Context, string, string, ...usecase.UploadProgress) error) *Server {
+		t.Helper()
+		root := newTestClone(t)
+		srv := newOpServer(t, RepoOps{Push: &stubPushRunner{run: run}})
+		_, err := srv.repos.watch(root)
+		require.NoError(t, err)
+		return srv
+	}
+	rootOf := func(srv *Server) string {
+		repos := srv.repos.list()
+		require.Len(t, repos, 1)
+		return repos[0].root
+	}
+
+	t.Run("started", func(t *testing.T) {
+		srv := newPushServer(t, nil)
+		stream := &opTestStream{ctx: context.Background(), failAt: 1}
+		require.Error(t, srv.Push(&daemonpb.PushRequest{Root: rootOf(srv)}, stream))
+	})
+
+	t.Run("queued", func(t *testing.T) {
+		srv := newPushServer(t, nil)
+		root := rootOf(srv)
+		rp, err := srv.repos.watch(root)
+		require.NoError(t, err)
+		holder, _, err := rp.coord.Acquire(context.Background(), true)
+		require.NoError(t, err)
+		defer holder()
+
+		stream := &opTestStream{ctx: context.Background(), failAt: 1}
+		require.Error(t, srv.Push(&daemonpb.PushRequest{Root: root}, stream))
+	})
+
+	t.Run("progress", func(t *testing.T) {
+		release := make(chan struct{})
+		srv := newPushServer(t, func(_ context.Context, _, _ string, progress ...usecase.UploadProgress) error {
+			progress[0].UploadStart(1, 10)
+			<-release
+			return nil
+		})
+		stream := &opTestStream{ctx: context.Background(), failAt: 2}
+		err := srv.Push(&daemonpb.PushRequest{Root: rootOf(srv)}, stream)
+		close(release)
+		require.Error(t, err)
+	})
+
+	t.Run("terminal", func(t *testing.T) {
+		srv := newPushServer(t, nil)
+		stream := &opTestStream{ctx: context.Background(), failAt: 2}
+		require.Error(t, srv.Push(&daemonpb.PushRequest{Root: rootOf(srv)}, stream))
+	})
+}
+
+func TestFailureCode(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want int32
+	}{
+		{"domain", clientDomain.NewUserError("x"), 400},
+		{"token", clientDomain.NewTokenError("x"), 401},
+		{"canceled", context.Canceled, 499},
+		{"deadline", context.DeadlineExceeded, 504},
+		{"invalid argument", status.Error(codes.InvalidArgument, "x"), 400},
+		{"unauthenticated", status.Error(codes.Unauthenticated, "x"), 401},
+		{"permission denied", status.Error(codes.PermissionDenied, "x"), 403},
+		{"not found", status.Error(codes.NotFound, "x"), 404},
+		{"failed precondition", status.Error(codes.FailedPrecondition, "x"), 409},
+		{"unimplemented", status.Error(codes.Unimplemented, "x"), 501},
+		{"unknown", errors.New("x"), 500},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, failureCode(tt.err))
+		})
+	}
 }
 
 func seedCommit(t *testing.T, root, commitID, commitHash string) {

@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync"
 	"testing"
@@ -26,10 +27,12 @@ func (s *stubDiffRunner) Run(ctx context.Context, root string, revs []string, op
 	return nil, nil
 }
 
-// diffTestStream records the events a Diff handler sends.
+// diffTestStream records the events a Diff handler sends. failAt, when
+// positive, makes that 1-based send fail.
 type diffTestStream struct {
 	grpc.ServerStream
-	ctx context.Context
+	ctx    context.Context
+	failAt int
 
 	mu     sync.Mutex
 	events []*daemonpb.DiffEvent
@@ -42,6 +45,9 @@ func (s *diffTestStream) Context() context.Context {
 func (s *diffTestStream) Send(ev *daemonpb.DiffEvent) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.failAt > 0 && len(s.events)+1 == s.failAt {
+		return errors.New("stream closed")
+	}
 	s.events = append(s.events, ev)
 	return nil
 }
@@ -240,4 +246,85 @@ func TestSendDiffLinesChunks(t *testing.T) {
 	out := stream.output()
 	require.Len(t, out, len(lines)*(len(line)+1))
 	require.Equal(t, strings.Repeat(line+"\n", len(lines)), out)
+}
+
+func TestSendDiffLinesEmpty(t *testing.T) {
+	stream := &diffTestStream{ctx: context.Background()}
+	require.NoError(t, sendDiffLines(stream, nil))
+	require.Zero(t, stream.eventCount())
+}
+
+func TestSendDiffLinesChunkSendFailure(t *testing.T) {
+	stream := &diffTestStream{ctx: context.Background(), failAt: 1}
+	line := strings.Repeat("x", 4096)
+	lines := make([]string, 20)
+	for i := range lines {
+		lines[i] = line
+	}
+	require.Error(t, sendDiffLines(stream, lines))
+}
+
+func TestServer_DiffSendFailure(t *testing.T) {
+	root := newTestClone(t)
+	srv := newOpServer(t, RepoOps{Diff: &stubDiffRunner{run: func(context.Context, string, []string, usecase.DiffOptions) ([]diff.FileDiff, error) {
+		return []diff.FileDiff{addedFileDiff("a.txt", "hello\n")}, nil
+	}}})
+	_, err := srv.repos.watch(root)
+	require.NoError(t, err)
+
+	stream := &diffTestStream{ctx: context.Background(), failAt: 1}
+	require.Error(t, srv.Diff(&daemonpb.DiffRequest{Root: root}, stream))
+}
+
+func TestServer_DiffEmptyResult(t *testing.T) {
+	root := newTestClone(t)
+	srv := newOpServer(t, RepoOps{Diff: &stubDiffRunner{}})
+	_, err := srv.repos.watch(root)
+	require.NoError(t, err)
+
+	stream := runDiff(t, srv, &daemonpb.DiffRequest{Root: root})
+	require.Zero(t, stream.eventCount())
+	require.Nil(t, stream.failure())
+}
+
+func TestServer_DiffCancelledWhileRunning(t *testing.T) {
+	root := newTestClone(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	srv := newOpServer(t, RepoOps{Diff: &stubDiffRunner{run: func(context.Context, string, []string, usecase.DiffOptions) ([]diff.FileDiff, error) {
+		cancel() // the client goes away while the runner works
+		return []diff.FileDiff{addedFileDiff("a.txt", "hello\n")}, nil
+	}}})
+	_, err := srv.repos.watch(root)
+	require.NoError(t, err)
+
+	stream := &diffTestStream{ctx: ctx}
+	require.ErrorIs(t, srv.Diff(&daemonpb.DiffRequest{Root: root}, stream), context.Canceled)
+}
+
+func TestServer_DiffAcquireCancel(t *testing.T) {
+	root := newTestClone(t)
+	srv := newOpServer(t, RepoOps{Diff: &stubDiffRunner{}})
+	_, err := srv.repos.watch(root)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	stream := &diffTestStream{ctx: ctx}
+	require.NoError(t, srv.Diff(&daemonpb.DiffRequest{Root: root}, stream))
+	require.NotNil(t, stream.failure())
+	require.EqualValues(t, 499, stream.failure().GetCode())
+}
+
+func TestServer_DiffRangeValidation(t *testing.T) {
+	root := newTestClone(t)
+	srv := newOpServer(t, RepoOps{Diff: &stubDiffRunner{}})
+	_, err := srv.repos.watch(root)
+	require.NoError(t, err)
+
+	for _, token := range []string{"a...", "...b", "..b"} {
+		stream := runDiff(t, srv, &daemonpb.DiffRequest{Root: root, Revisions: []string{token}})
+		require.NotNil(t, stream.failure(), token)
+		require.EqualValues(t, 400, stream.failure().GetCode(), token)
+	}
 }

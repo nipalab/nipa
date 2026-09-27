@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -159,6 +160,60 @@ func TestNewServer_PortFromEnv(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = srv.listener.Close() }()
 	require.NotZero(t, srv.Endpoint().Port)
+}
+
+func TestNewServer_DefaultEndpointPath(t *testing.T) {
+	srv, err := NewServer(Options{})
+	require.NoError(t, err)
+	defer func() { _ = srv.listener.Close() }()
+
+	want, err := EndpointPath()
+	require.NoError(t, err)
+	require.Equal(t, want, srv.endpointPath)
+}
+
+func TestNewServer_PortInUse(t *testing.T) {
+	busy, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer func() { _ = busy.Close() }()
+	port := busy.Addr().(*net.TCPAddr).Port
+
+	_, err = NewServer(Options{Port: port})
+	require.Error(t, err)
+}
+
+func TestServer_ServeFailsOnUnwritableEndpoint(t *testing.T) {
+	blocked := filepath.Join(t.TempDir(), "daemon.json")
+	require.NoError(t, os.Mkdir(blocked, 0o700))
+
+	srv, err := NewServer(Options{EndpointPath: blocked})
+	require.NoError(t, err)
+	defer func() {
+		srv.Stop()
+		_ = srv.listener.Close()
+	}()
+
+	require.Error(t, srv.Serve(context.Background()), "publishing the endpoint must fail cleanly")
+}
+
+func TestServer_GRPCStopExitsServe(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "daemon.json")
+	srv, err := NewServer(Options{EndpointPath: path})
+	require.NoError(t, err)
+
+	srv.grpc.Stop()
+	require.Error(t, srv.Serve(context.Background()))
+	_, statErr := ReadEndpoint(path)
+	require.ErrorIs(t, statErr, os.ErrNotExist, "the endpoint is cleaned up when gRPC stops")
+}
+
+func TestServer_StreamRequiresToken(t *testing.T) {
+	srv := startTestServer(t, Options{})
+
+	stream, err := srv.client.Update(context.Background(), &daemonpb.UpdateRequest{Root: "/nope"})
+	require.NoError(t, err)
+	_, err = stream.Recv()
+	require.Equal(t, codes.Unauthenticated, status.Code(err))
 }
 
 func TestNewServer_InvalidEnvPort(t *testing.T) {

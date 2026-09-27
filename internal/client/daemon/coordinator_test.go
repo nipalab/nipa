@@ -133,6 +133,41 @@ func TestCoordinator_ContextCancel(t *testing.T) {
 	release()
 }
 
+func TestCoordinator_CancelledBeforeAcquire(t *testing.T) {
+	c := newCoordinator()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, _, err := c.Acquire(ctx, false)
+	require.ErrorIs(t, err, context.Canceled, "an already-cancelled context is rejected at dispatch")
+	require.Zero(t, c.queuedLen())
+}
+
+func TestCoordinator_CancelMiddleWaiter(t *testing.T) {
+	c := newCoordinator()
+	holder, _, err := c.Acquire(context.Background(), true)
+	require.NoError(t, err)
+
+	first := acquireAsync(c, context.Background(), true)
+	require.Eventually(t, func() bool { return c.queuedLen() == 1 }, time.Second, time.Millisecond)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	second := acquireAsync(c, ctx, true)
+	require.Eventually(t, func() bool { return c.queuedLen() == 2 }, time.Second, time.Millisecond)
+
+	cancel()
+	select {
+	case res := <-second:
+		require.ErrorIs(t, res.err, context.Canceled)
+	case <-time.After(2 * time.Second):
+		t.Fatal("cancelled waiter behind the head did not return")
+	}
+	require.Equal(t, 1, c.queuedLen(), "only the cancelled ticket is removed")
+
+	holder()
+	requireGranted(t, first).release()
+}
+
 func TestCoordinator_AheadReportsQueuedExclusive(t *testing.T) {
 	c := newCoordinator()
 	first, ahead, err := c.Acquire(context.Background(), true)

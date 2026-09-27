@@ -50,8 +50,12 @@ func TestWorkingCopy_RefreshStatEntries_Errors(t *testing.T) {
 	root := t.TempDir()
 	writeRepoFile(t, root, "a.txt", "hello")
 
+	snapErr := errors.New("snapshot unreadable")
+	wc := newWorkingCopy(t, &stubLocalRepo{snapshotErr: snapErr}, root)
+	require.ErrorIs(t, wc.RefreshStatEntries([]string{"a.txt"}), snapErr)
+
 	loadErr := errors.New("cache unreadable")
-	wc := newWorkingCopy(t, &stubLocalRepo{
+	wc = newWorkingCopy(t, &stubLocalRepo{
 		snapshot:     trackedSnapshot(t, "a.txt", "hello"),
 		statCacheErr: loadErr,
 	}, root)

@@ -3,6 +3,8 @@ package daemon
 import (
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -53,4 +55,39 @@ func TestProcessAlive(t *testing.T) {
 	require.False(t, ProcessAlive(-1))
 	require.False(t, ProcessAlive(0))
 	require.False(t, ProcessAlive(999999999))
+}
+
+func TestEndpointPath(t *testing.T) {
+	path, err := EndpointPath()
+	require.NoError(t, err)
+	require.True(t, strings.HasSuffix(path, filepath.Join("nipa", "daemon.json")), path)
+}
+
+func TestReadEndpointInvalidJSON(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "daemon.json")
+	require.NoError(t, os.WriteFile(path, []byte("{not json"), 0o600))
+
+	_, err := ReadEndpoint(path)
+	require.ErrorContains(t, err, "parse")
+}
+
+func TestRemoveEndpointUnreadable(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "daemon.json")
+	require.NoError(t, os.Mkdir(dir, 0o700))
+
+	require.Error(t, RemoveEndpoint(dir, "token"), "an unreadable record surfaces the read error")
+}
+
+func TestWriteEndpointMkdirError(t *testing.T) {
+	blocker := filepath.Join(t.TempDir(), "blocker")
+	require.NoError(t, os.WriteFile(blocker, []byte("x"), 0o600))
+
+	require.Error(t, WriteEndpoint(filepath.Join(blocker, "daemon.json"), Endpoint{}))
+}
+
+func TestWriteEndpointCreateTempError(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("needs a parent directory where regular files cannot be created")
+	}
+	require.Error(t, WriteEndpoint("/proc/nipa-daemon-test.json", Endpoint{}))
 }

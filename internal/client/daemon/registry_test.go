@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -133,4 +134,58 @@ func TestRegistry_ListSorted(t *testing.T) {
 	repos := reg.list()
 	require.Len(t, repos, 2)
 	require.Less(t, repos[0].root, repos[1].root)
+}
+
+func TestRegistry_WatchFailsOnUnreadableConfig(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, localrepo.ConfigDir, localrepo.ConfigFile), 0o755))
+
+	reg := newRegistry(Runners{})
+	defer reg.closeAll()
+	_, err := reg.watch(root)
+	require.ErrorContains(t, err, "read config")
+}
+
+func TestRegistry_WatchFailsOnBrokenDatabase(t *testing.T) {
+	root := t.TempDir()
+	nipaDir := filepath.Join(root, localrepo.ConfigDir)
+	require.NoError(t, os.MkdirAll(nipaDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(nipaDir, localrepo.ConfigFile),
+		[]byte(`{"url":"https://nipa.example.com/default/default","branch":"main"}`), 0o644))
+	require.NoError(t, os.Mkdir(filepath.Join(nipaDir, localrepo.DBFile), 0o755))
+
+	reg := newRegistry(Runners{})
+	defer reg.closeAll()
+	_, err := reg.watch(root)
+	require.Error(t, err, "a database that cannot be opened must not register the clone")
+	require.Empty(t, reg.list())
+}
+
+func TestRegistry_RefAndUnwatchRejectMissingRoot(t *testing.T) {
+	reg := newRegistry(Runners{})
+	defer reg.closeAll()
+
+	_, _, err := reg.ref("")
+	require.ErrorContains(t, err, "required")
+	require.ErrorContains(t, reg.unwatch(""), "required")
+}
+
+func TestRegistry_WithRepoCancelledContext(t *testing.T) {
+	reg := newRegistry(Runners{})
+	defer reg.closeAll()
+	root := newTestClone(t)
+	_, err := reg.watch(root)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	err = reg.withRepo(ctx, root, false, func(*repo) error { return nil })
+	require.ErrorIs(t, err, context.Canceled)
+}
+
+func TestRepo_HeadCommitIDWithoutHandle(t *testing.T) {
+	rp, err := openRepo(newTestClone(t), Runners{})
+	require.NoError(t, err)
+	require.NoError(t, rp.localRepo.Close())
+	require.Equal(t, "", rp.headCommitID())
 }
