@@ -13,7 +13,7 @@ import (
 	"github.com/nipalab/nipa/internal/client/usecase"
 )
 
-func newServeCommand(auth *usecase.Auth, client *clientgrpc.Client) *cobra.Command {
+func newServeCommand(auth *usecase.Auth, newClient func() *clientgrpc.Client) *cobra.Command {
 	var port int
 	var endpoint string
 	cmd := &cobra.Command{
@@ -30,7 +30,9 @@ func newServeCommand(auth *usecase.Auth, client *clientgrpc.Client) *cobra.Comma
 				EndpointPath: endpoint,
 				Port:         port,
 				Login:        auth.LoginWithUsernamePassword,
-				Runners:      serveRunners(auth, client),
+				Runners: daemon.Runners{New: func(string) daemon.RepoOps {
+					return serveRepoOps(auth, newClient())
+				}},
 			})
 			if err != nil {
 				return err
@@ -48,26 +50,16 @@ func newServeCommand(auth *usecase.Auth, client *clientgrpc.Client) *cobra.Comma
 	return cmd
 }
 
-// serveRunners builds the per-root usecase graph for the daemon, mirroring how
-// the CLI wires one per process.
-func serveRunners(auth *usecase.Auth, client *clientgrpc.Client) daemon.Runners {
-	return daemon.Runners{
-		Update: func() daemon.UpdateRunner {
-			return usecase.NewUpdate(auth, client, localrepo.NewLocalRepo())
-		},
-		Push: func() daemon.PushRunner {
-			return usecase.NewPush(auth, client, localrepo.NewLocalRepo())
-		},
-		Merge: func() daemon.MergeRunner {
-			push := usecase.NewPush(auth, client, localrepo.NewLocalRepo())
-			return usecase.NewMerge(auth, client, localrepo.NewLocalRepo(), push)
-		},
-		Revert: func() daemon.RevertRunner {
-			push := usecase.NewPush(auth, client, localrepo.NewLocalRepo())
-			return usecase.NewRevert(auth, client, localrepo.NewLocalRepo(), push)
-		},
-		Diff: func() daemon.DiffRunner {
-			return usecase.NewDiff(auth, client, localrepo.NewLocalRepo())
-		},
+// serveRepoOps builds the operation graph of one watched root over a dedicated
+// client, mirroring how the CLI wires its usecases per process.
+func serveRepoOps(auth *usecase.Auth, client *clientgrpc.Client) daemon.RepoOps {
+	push := usecase.NewPush(auth, client, localrepo.NewLocalRepo())
+	return daemon.RepoOps{
+		Update: usecase.NewUpdate(auth, client, localrepo.NewLocalRepo()),
+		Push:   push,
+		Merge:  usecase.NewMerge(auth, client, localrepo.NewLocalRepo(), push),
+		Revert: usecase.NewRevert(auth, client, localrepo.NewLocalRepo(), push),
+		Diff:   usecase.NewDiff(auth, client, localrepo.NewLocalRepo()),
+		Proxy:  client,
 	}
 }

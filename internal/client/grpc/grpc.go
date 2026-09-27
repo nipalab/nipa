@@ -181,6 +181,12 @@ func (c *Client) Close() error {
 	return c.transport.Close()
 }
 
+// ServiceClient returns the typed gRPC client over the transport's
+// authenticated connection. Connect must have been called first.
+func (c *Client) ServiceClient() (pb.NipaServiceClient, error) {
+	return c.transport.NipaServiceClient()
+}
+
 func (c *Client) LoginWithUsernamePassword(ctx context.Context, host, username, password string) (*domain.LoginResult, error) {
 	return c.transport.LoginWithUsernamePassword(ctx, host, username, password)
 }

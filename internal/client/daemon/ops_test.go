@@ -94,11 +94,11 @@ func (s *opTestStream) events() []*daemonpb.OpEvent {
 	return append([]*daemonpb.OpEvent(nil), s.sent...)
 }
 
-func newOpServer(t *testing.T, runners Runners) *Server {
+func newOpServer(t *testing.T, ops RepoOps) *Server {
 	t.Helper()
 	srv, err := NewServer(Options{
 		EndpointPath: filepath.Join(t.TempDir(), "daemon.json"),
-		Runners:      runners,
+		Runners:      Runners{New: func(string) RepoOps { return ops }},
 	})
 	require.NoError(t, err)
 	t.Cleanup(func() {
@@ -128,14 +128,12 @@ func terminalEvent(t *testing.T, events []*daemonpb.OpEvent) *daemonpb.OpEvent {
 
 func TestServer_UpdateStreamsProgressAndResult(t *testing.T) {
 	root := newTestClone(t)
-	srv := newOpServer(t, Runners{Update: func() UpdateRunner {
-		return &stubUpdateRunner{run: func(_ context.Context, _ string, progress ...usecase.DownloadProgress) error {
-			progress[0].DownloadStart(2, 100)
-			progress[0].DownloadProgress(1, 40)
-			progress[0].DownloadEnd()
-			return nil
-		}}
-	}})
+	srv := newOpServer(t, RepoOps{Update: &stubUpdateRunner{run: func(_ context.Context, _ string, progress ...usecase.DownloadProgress) error {
+		progress[0].DownloadStart(2, 100)
+		progress[0].DownloadProgress(1, 40)
+		progress[0].DownloadEnd()
+		return nil
+	}}})
 	_, err := srv.repos.watch(root)
 	require.NoError(t, err)
 	seedCommit(t, root, "commit123", "hash123")
@@ -161,7 +159,7 @@ func TestServer_UpdateStreamsProgressAndResult(t *testing.T) {
 
 func TestServer_UpdateWithoutRunnerFails(t *testing.T) {
 	root := newTestClone(t)
-	srv := newOpServer(t, Runners{})
+	srv := newOpServer(t, RepoOps{})
 	_, err := srv.repos.watch(root)
 	require.NoError(t, err)
 
@@ -175,9 +173,7 @@ func TestServer_UpdateWithoutRunnerFails(t *testing.T) {
 
 func TestServer_PushReportsCommitAndTree(t *testing.T) {
 	root := newTestClone(t)
-	srv := newOpServer(t, Runners{Push: func() PushRunner {
-		return &stubPushRunner{}
-	}})
+	srv := newOpServer(t, RepoOps{Push: &stubPushRunner{}})
 	_, err := srv.repos.watch(root)
 	require.NoError(t, err)
 	seedCommit(t, root, "pushed1", "hash1")
@@ -193,11 +189,9 @@ func TestServer_PushReportsCommitAndTree(t *testing.T) {
 
 func TestServer_PushFailureIsMapped(t *testing.T) {
 	root := newTestClone(t)
-	srv := newOpServer(t, Runners{Push: func() PushRunner {
-		return &stubPushRunner{run: func(context.Context, string, string, ...usecase.UploadProgress) error {
-			return clientDomain.NewTokenError("bad credentials")
-		}}
-	}})
+	srv := newOpServer(t, RepoOps{Push: &stubPushRunner{run: func(context.Context, string, string, ...usecase.UploadProgress) error {
+		return clientDomain.NewTokenError("bad credentials")
+	}}})
 	_, err := srv.repos.watch(root)
 	require.NoError(t, err)
 
@@ -211,12 +205,10 @@ func TestServer_PushFailureIsMapped(t *testing.T) {
 
 func TestServer_MergeConflictsAreAResult(t *testing.T) {
 	root := newTestClone(t)
-	srv := newOpServer(t, Runners{Merge: func() MergeRunner {
-		return &stubMergeRunner{run: func(_ context.Context, _ string, sourceBranch string, _ usecase.MergeOptions) (*usecase.Outcome, error) {
-			require.Equal(t, "feature", sourceBranch)
-			return &usecase.Outcome{Conflicts: []string{"a.txt"}}, nil
-		}}
-	}})
+	srv := newOpServer(t, RepoOps{Merge: &stubMergeRunner{run: func(_ context.Context, _ string, sourceBranch string, _ usecase.MergeOptions) (*usecase.Outcome, error) {
+		require.Equal(t, "feature", sourceBranch)
+		return &usecase.Outcome{Conflicts: []string{"a.txt"}}, nil
+	}}})
 	_, err := srv.repos.watch(root)
 	require.NoError(t, err)
 
@@ -230,7 +222,7 @@ func TestServer_MergeConflictsAreAResult(t *testing.T) {
 
 func TestServer_MergeAbortIsMarked(t *testing.T) {
 	root := newTestClone(t)
-	srv := newOpServer(t, Runners{Merge: func() MergeRunner { return &stubMergeRunner{} }})
+	srv := newOpServer(t, RepoOps{Merge: &stubMergeRunner{}})
 	_, err := srv.repos.watch(root)
 	require.NoError(t, err)
 
@@ -243,13 +235,11 @@ func TestServer_MergeAbortIsMarked(t *testing.T) {
 
 func TestServer_RevertReportsOutcome(t *testing.T) {
 	root := newTestClone(t)
-	srv := newOpServer(t, Runners{Revert: func() RevertRunner {
-		return &stubRevertRunner{run: func(_ context.Context, _ string, target string, opts usecase.RevertOptions, _ ...usecase.UploadProgress) (*usecase.RevertOutcome, error) {
-			require.Equal(t, "abc123", target)
-			require.True(t, opts.NoCommit)
-			return &usecase.RevertOutcome{Committed: true}, nil
-		}}
-	}})
+	srv := newOpServer(t, RepoOps{Revert: &stubRevertRunner{run: func(_ context.Context, _ string, target string, opts usecase.RevertOptions, _ ...usecase.UploadProgress) (*usecase.RevertOutcome, error) {
+		require.Equal(t, "abc123", target)
+		require.True(t, opts.NoCommit)
+		return &usecase.RevertOutcome{Committed: true}, nil
+	}}})
 	_, err := srv.repos.watch(root)
 	require.NoError(t, err)
 
@@ -263,12 +253,10 @@ func TestServer_RevertReportsOutcome(t *testing.T) {
 func TestServer_QueuedEventWhileSlotBusy(t *testing.T) {
 	root := newTestClone(t)
 	released := make(chan struct{})
-	srv := newOpServer(t, Runners{Push: func() PushRunner {
-		return &stubPushRunner{run: func(context.Context, string, string, ...usecase.UploadProgress) error {
-			<-released
-			return nil
-		}}
-	}})
+	srv := newOpServer(t, RepoOps{Push: &stubPushRunner{run: func(context.Context, string, string, ...usecase.UploadProgress) error {
+		<-released
+		return nil
+	}}})
 	rp, err := srv.repos.watch(root)
 	require.NoError(t, err)
 
@@ -298,7 +286,7 @@ func TestServer_QueuedEventWhileSlotBusy(t *testing.T) {
 
 func TestServer_QueuedOperationCancel(t *testing.T) {
 	root := newTestClone(t)
-	srv := newOpServer(t, Runners{Push: func() PushRunner { return &stubPushRunner{} }})
+	srv := newOpServer(t, RepoOps{Push: &stubPushRunner{}})
 	rp, err := srv.repos.watch(root)
 	require.NoError(t, err)
 
@@ -327,12 +315,10 @@ func TestServer_QueuedOperationCancel(t *testing.T) {
 func TestServer_CancelWhileRunning(t *testing.T) {
 	root := newTestClone(t)
 	ctx, cancel := context.WithCancel(context.Background())
-	srv := newOpServer(t, Runners{Push: func() PushRunner {
-		return &stubPushRunner{run: func(ctx context.Context, _, _ string, _ ...usecase.UploadProgress) error {
-			<-ctx.Done()
-			return ctx.Err()
-		}}
-	}})
+	srv := newOpServer(t, RepoOps{Push: &stubPushRunner{run: func(ctx context.Context, _, _ string, _ ...usecase.UploadProgress) error {
+		<-ctx.Done()
+		return ctx.Err()
+	}}})
 	_, err := srv.repos.watch(root)
 	require.NoError(t, err)
 
@@ -348,7 +334,7 @@ func TestServer_CancelWhileRunning(t *testing.T) {
 }
 
 func TestServer_UnwatchedRootIsFailureEvent(t *testing.T) {
-	srv := newOpServer(t, Runners{})
+	srv := newOpServer(t, RepoOps{})
 	stream := &opTestStream{ctx: context.Background()}
 	require.NoError(t, srv.Update(&daemonpb.UpdateRequest{Root: newTestClone(t)}, stream))
 

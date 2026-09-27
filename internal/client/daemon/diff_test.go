@@ -93,12 +93,10 @@ func TestServer_DiffPatchStreamsAPatch(t *testing.T) {
 	root := newTestClone(t)
 	var gotRevs []string
 	var gotOpts usecase.DiffOptions
-	srv := newOpServer(t, Runners{Diff: func() DiffRunner {
-		return &stubDiffRunner{run: func(_ context.Context, _ string, revs []string, opts usecase.DiffOptions) ([]diff.FileDiff, error) {
-			gotRevs, gotOpts = revs, opts
-			return []diff.FileDiff{addedFileDiff("a.txt", "hello\n")}, nil
-		}}
-	}})
+	srv := newOpServer(t, RepoOps{Diff: &stubDiffRunner{run: func(_ context.Context, _ string, revs []string, opts usecase.DiffOptions) ([]diff.FileDiff, error) {
+		gotRevs, gotOpts = revs, opts
+		return []diff.FileDiff{addedFileDiff("a.txt", "hello\n")}, nil
+	}}})
 	_, err := srv.repos.watch(root)
 	require.NoError(t, err)
 
@@ -122,11 +120,9 @@ func TestServer_DiffPatchStreamsAPatch(t *testing.T) {
 
 func TestServer_DiffFormats(t *testing.T) {
 	root := newTestClone(t)
-	srv := newOpServer(t, Runners{Diff: func() DiffRunner {
-		return &stubDiffRunner{run: func(context.Context, string, []string, usecase.DiffOptions) ([]diff.FileDiff, error) {
-			return []diff.FileDiff{addedFileDiff("a.txt", "hello\n")}, nil
-		}}
-	}})
+	srv := newOpServer(t, RepoOps{Diff: &stubDiffRunner{run: func(context.Context, string, []string, usecase.DiffOptions) ([]diff.FileDiff, error) {
+		return []diff.FileDiff{addedFileDiff("a.txt", "hello\n")}, nil
+	}}})
 	_, err := srv.repos.watch(root)
 	require.NoError(t, err)
 
@@ -151,12 +147,10 @@ func TestServer_DiffExpandsRevisionRanges(t *testing.T) {
 	root := newTestClone(t)
 	var gotRevs []string
 	var gotMergeBase bool
-	srv := newOpServer(t, Runners{Diff: func() DiffRunner {
-		return &stubDiffRunner{run: func(_ context.Context, _ string, revs []string, opts usecase.DiffOptions) ([]diff.FileDiff, error) {
-			gotRevs, gotMergeBase = revs, opts.MergeBase
-			return nil, nil
-		}}
-	}})
+	srv := newOpServer(t, RepoOps{Diff: &stubDiffRunner{run: func(_ context.Context, _ string, revs []string, opts usecase.DiffOptions) ([]diff.FileDiff, error) {
+		gotRevs, gotMergeBase = revs, opts.MergeBase
+		return nil, nil
+	}}})
 	_, err := srv.repos.watch(root)
 	require.NoError(t, err)
 
@@ -175,7 +169,7 @@ func TestServer_DiffExpandsRevisionRanges(t *testing.T) {
 
 func TestServer_DiffValidation(t *testing.T) {
 	root := newTestClone(t)
-	srv := newOpServer(t, Runners{Diff: func() DiffRunner { return &stubDiffRunner{} }})
+	srv := newOpServer(t, RepoOps{Diff: &stubDiffRunner{}})
 	_, err := srv.repos.watch(root)
 	require.NoError(t, err)
 
@@ -200,7 +194,7 @@ func TestServer_DiffValidation(t *testing.T) {
 }
 
 func TestServer_DiffUnwatchedRoot(t *testing.T) {
-	srv := newOpServer(t, Runners{})
+	srv := newOpServer(t, RepoOps{})
 	stream := runDiff(t, srv, &daemonpb.DiffRequest{Root: newTestClone(t)})
 	require.NotNil(t, stream.failure())
 	require.EqualValues(t, 400, stream.failure().GetCode())
@@ -209,7 +203,7 @@ func TestServer_DiffUnwatchedRoot(t *testing.T) {
 
 func TestServer_DiffWithoutRunner(t *testing.T) {
 	root := newTestClone(t)
-	srv := newOpServer(t, Runners{})
+	srv := newOpServer(t, RepoOps{})
 	_, err := srv.repos.watch(root)
 	require.NoError(t, err)
 
@@ -221,11 +215,9 @@ func TestServer_DiffWithoutRunner(t *testing.T) {
 
 func TestServer_DiffRunnerFailureIsMapped(t *testing.T) {
 	root := newTestClone(t)
-	srv := newOpServer(t, Runners{Diff: func() DiffRunner {
-		return &stubDiffRunner{run: func(context.Context, string, []string, usecase.DiffOptions) ([]diff.FileDiff, error) {
-			return nil, clientDomain.NewTokenError("bad credentials")
-		}}
-	}})
+	srv := newOpServer(t, RepoOps{Diff: &stubDiffRunner{run: func(context.Context, string, []string, usecase.DiffOptions) ([]diff.FileDiff, error) {
+		return nil, clientDomain.NewTokenError("bad credentials")
+	}}})
 	_, err := srv.repos.watch(root)
 	require.NoError(t, err)
 

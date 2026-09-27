@@ -29,25 +29,17 @@ func startDaemon(t *testing.T, auth *clientusecase.Auth, client *clientgrpc.Clie
 	srv, err := daemon.NewServer(daemon.Options{
 		EndpointPath: filepath.Join(t.TempDir(), "daemon.json"),
 		Login:        auth.LoginWithUsernamePassword,
-		Runners: daemon.Runners{
-			Update: func() daemon.UpdateRunner {
-				return clientusecase.NewUpdate(auth, client, localrepo.NewLocalRepo())
-			},
-			Push: func() daemon.PushRunner {
-				return clientusecase.NewPush(auth, client, localrepo.NewLocalRepo())
-			},
-			Merge: func() daemon.MergeRunner {
-				push := clientusecase.NewPush(auth, client, localrepo.NewLocalRepo())
-				return clientusecase.NewMerge(auth, client, localrepo.NewLocalRepo(), push)
-			},
-			Revert: func() daemon.RevertRunner {
-				push := clientusecase.NewPush(auth, client, localrepo.NewLocalRepo())
-				return clientusecase.NewRevert(auth, client, localrepo.NewLocalRepo(), push)
-			},
-			Diff: func() daemon.DiffRunner {
-				return clientusecase.NewDiff(auth, client, localrepo.NewLocalRepo())
-			},
-		},
+		Runners: daemon.Runners{New: func(string) daemon.RepoOps {
+			push := clientusecase.NewPush(auth, client, localrepo.NewLocalRepo())
+			return daemon.RepoOps{
+				Update: clientusecase.NewUpdate(auth, client, localrepo.NewLocalRepo()),
+				Push:   push,
+				Merge:  clientusecase.NewMerge(auth, client, localrepo.NewLocalRepo(), push),
+				Revert: clientusecase.NewRevert(auth, client, localrepo.NewLocalRepo(), push),
+				Diff:   clientusecase.NewDiff(auth, client, localrepo.NewLocalRepo()),
+				Proxy:  client,
+			}
+		}},
 	})
 	require.NoError(t, err)
 

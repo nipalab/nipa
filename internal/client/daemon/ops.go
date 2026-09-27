@@ -11,14 +11,21 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// Runners build the per-root long-operation usecases. Usecases carry their own
-// localrepo handle, so every watched root gets its own instances.
+// Runners builds the operation graph for a watched root. The daemon calls New
+// once per repo: the usecases and the proxy connection hold per-repo state
+// (localrepo handles, the server host binding), so roots never share them.
 type Runners struct {
-	Update func() UpdateRunner
-	Push   func() PushRunner
-	Merge  func() MergeRunner
-	Revert func() RevertRunner
-	Diff   func() DiffRunner
+	New func(root string) RepoOps
+}
+
+// RepoOps is the long-operation and proxy surface of one watched repo.
+type RepoOps struct {
+	Update UpdateRunner
+	Push   PushRunner
+	Merge  MergeRunner
+	Revert RevertRunner
+	Diff   DiffRunner
+	Proxy  ProxyConn
 }
 
 type UpdateRunner interface {

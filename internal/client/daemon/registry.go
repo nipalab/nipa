@@ -31,6 +31,7 @@ type repo struct {
 	merge  MergeRunner
 	revert RevertRunner
 	diff   DiffRunner
+	proxy  ProxyConn
 
 	watcher    *watcher
 	reconciler *reconciler
@@ -44,6 +45,9 @@ func (r *repo) close() error {
 	}
 	if r.watcher != nil {
 		_ = r.watcher.Close()
+	}
+	if r.proxy != nil {
+		_ = r.proxy.Close()
 	}
 	return r.localRepo.Close()
 }
@@ -138,20 +142,14 @@ func openRepo(root string, runners Runners) (*repo, error) {
 		wc:        wc,
 		coord:     newCoordinator(),
 	}
-	if runners.Update != nil {
-		rp.update = runners.Update()
-	}
-	if runners.Push != nil {
-		rp.push = runners.Push()
-	}
-	if runners.Merge != nil {
-		rp.merge = runners.Merge()
-	}
-	if runners.Revert != nil {
-		rp.revert = runners.Revert()
-	}
-	if runners.Diff != nil {
-		rp.diff = runners.Diff()
+	if runners.New != nil {
+		ops := runners.New(root)
+		rp.update = ops.Update
+		rp.push = ops.Push
+		rp.merge = ops.Merge
+		rp.revert = ops.Revert
+		rp.diff = ops.Diff
+		rp.proxy = ops.Proxy
 	}
 	return rp, nil
 }

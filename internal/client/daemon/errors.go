@@ -21,6 +21,9 @@ func toStatusError(err error) error {
 	case errors.Is(err, context.DeadlineExceeded):
 		return status.Error(codes.DeadlineExceeded, err.Error())
 	}
+	if _, ok := status.FromError(err); ok {
+		return err // already a gRPC status, e.g. from a proxied server call
+	}
 	var domErr *clientDomain.Error
 	if errors.As(err, &domErr) {
 		switch domErr.Code {
