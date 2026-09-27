@@ -4,10 +4,15 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
 
+concurrency:
+  group: opencode-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   review:
     if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       id-token: write
       contents: read
@@ -17,7 +22,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Run opencode
@@ -36,10 +41,22 @@ jobs:
             in ${{ github.repository }} (head ${{ github.event.pull_request.head.sha }}).
 
             This is an ITERATIVE review: earlier automated review runs may have
-            left inline comments on this PR. First gather state, then re-verify
-            every existing finding against the CURRENT code, then review the
-            changes for NEW findings. Never post a comment for an issue that is
-            already tracked.
+            left inline comments on this PR. Gather state, cheaply re-verify
+            existing findings, then review the changes for NEW findings. Never
+            post a comment for an issue that is already tracked.
+
+            HARD TIME BUDGET
+            - This run must finish well under 20 minutes of wall clock.
+            - Work in batches: issue several independent tool calls in ONE
+              message instead of one call per turn.
+            - At most ~20 tool calls total. If you reach the cap, stop
+              exploring and post what you have (sections 4 and 6).
+            - Only read files changed in this PR, tightly scoped around each
+              diff hunk (+-60 lines) plus minimal surrounding context.
+            - Do all work inline; never spawn subagents (no `task` tool).
+            - Do NOT run go build, go vet, gofmt, go test or golangci-lint —
+              CI runs them on the same push. Judge code statically; only
+              report what you can see in the code.
 
             Use these values:
               PR_REPO="${{ github.repository }}"
@@ -47,67 +64,82 @@ jobs:
               PR_HEAD_SHA="${{ github.event.pull_request.head.sha }}"
 
             ============================================================
-            1. GATHER STATE
+            1. GATHER STATE (one batch)
             ============================================================
 
-            Read the full diff:
+            In one message, run all of:
 
-              gh pr diff "$PR_NUMBER"
+              gh pr diff "$PR_NUMBER" > /tmp/pr_diff.txt
+              gh pr diff "$PR_NUMBER" --name-only > /tmp/pr_files.txt
+              gh api --paginate "repos/$PR_REPO/pulls/$PR_NUMBER/comments" > /tmp/pr_comments.json
+              jq -r '.[] | [.id, .in_reply_to_id, .path, .line, .original_line, .commit_id, ((.body // "") | gsub("\n"; " ") | .[0:150])] | @tsv' /tmp/pr_comments.json
 
-            Read every existing inline review comment:
-
-              gh api --paginate "repos/$PR_REPO/pulls/$PR_NUMBER/comments"
-
-            For each comment note its id, body, path, line, commit_id and
-            created_at. A comment whose line no longer matches the latest diff
-            is outdated — its finding still must be re-verified against the
-            current code.
-
-            Read the actual source files around every changed hunk. The diff
-            alone is not enough to judge correctness; the CURRENT code is
-            authoritative.
+            For each existing comment note id, in_reply_to_id, path, line,
+            commit_id and body snippet. A comment whose line no longer
+            matches the latest diff is outdated — its finding still must be
+            re-verified against the current code.
 
             ============================================================
-            2. RE-VERIFY EXISTING FINDINGS
+            2. CHEAPLY RE-VERIFY EXISTING FINDINGS
             ============================================================
 
-            For every existing review comment from a previous run, inspect the
-            current code and pick exactly one verdict:
+            Apply a mechanical staleness check FIRST, for every top-level
+            comment (in_reply_to_id is empty), batched into a SINGLE bash
+            call:
 
-            FIXED — the current code actually resolves the issue. Reply to the
-            original comment:
+              while IFS=$'\t' read -r cid path; do
+                if git diff --quiet "$cid" "$PR_HEAD_SHA" -- "$path"; then
+                  echo "UNCHANGED $path ($cid)"
+                else
+                  echo "CHANGED $path ($cid)"
+                fi
+              done <<'EOF'
+              <commit_id>	<path>
+              EOF
+
+            - UNCHANGED -> verdict is STILL PRESENT immediately; do not read
+              any code for it.
+            - CHANGED -> read that file's hunk region and pick exactly one
+              verdict below.
+            - If a git comparison fails (missing commit), fall back to a
+              full re-verification for that one file.
+
+            Verdicts and actions:
+
+            FIXED — the current code actually resolves the issue. Reply to
+            the original comment:
 
               gh api --method POST \
                 "repos/$PR_REPO/pulls/$PR_NUMBER/comments/$COMMENT_ID/replies" \
                 -f body="Verified against the current code: this issue has been fixed."
 
-            NO LONGER APPLICABLE — the code the finding referred to was removed
-            or rewritten so the finding no longer applies. Reply with:
+            NO LONGER APPLICABLE — the code the finding referred to was
+            removed or rewritten so the finding no longer applies. Reply
+            with:
             "Verified against the current code: this finding is no longer applicable."
 
-            STILL PRESENT — the issue persists. Do NOT reply and do NOT open a
-            new comment; the existing comment already tracks the issue.
+            STILL PRESENT — the issue persists. Do NOT reply and do NOT open
+            a new comment; the existing comment already tracks the issue.
 
             Verification rules:
-            - Judge the current code, not the comment text: a changed line is
-              not proof of a fix, and an untouched line is not proof the issue
-              persists.
-            - If a partial fix introduced a NEW distinct problem, report that
-              as a new finding (section 4).
-            - If a previously fixed issue was reintroduced elsewhere, report it
-              as a new finding.
-            - Example: comment says "foo() can return nil and panics". If the
-              nil case is now handled, reply FIXED. If not, stay silent. Do not
-              repost the same finding.
+            - Judge the current code, not the comment text: a changed line
+              is not proof of a fix, and an untouched line is not proof the
+              issue persists.
+            - If a partial fix introduced a NEW distinct problem, report
+              that as a new finding (section 3).
+            - If a previously fixed issue was reintroduced elsewhere, report
+              it as a new finding.
 
             Never resolve or unresolve review threads — reply only. Never
-            mention thread resolution, API permissions, or API errors anywhere.
+            mention thread resolution, API permissions, or API errors
+            anywhere.
 
             ============================================================
             3. REVIEW THE CHANGES FOR NEW FINDINGS
             ============================================================
 
-            Report only concrete, actionable problems with a failure scenario:
+            Review ONLY files listed in /tmp/pr_files.txt. Report only
+            concrete, actionable problems with a failure scenario:
 
             - Correctness: logic errors, nil/zero-value handling, off-by-one,
               broken invariants, wrong error handling or wrapping.
@@ -138,10 +170,6 @@ jobs:
             - Changed behavior must keep tests passing; new logic should have
               tests (testify + gomock).
 
-            If a Go toolchain is available, run `go build ./...` and
-            `go vet ./...` and report verified failures as findings. If the
-            toolchain is unavailable, skip silently.
-
             Do NOT report: stylistic preferences, minor refactor suggestions,
             subjective architecture opinions, speculative issues without a
             concrete failure scenario, or anything already covered by an
@@ -165,17 +193,19 @@ jobs:
             - Only lines inside the PR diff are commentable; GitHub rejects
               anything else with HTTP 422.
             - One focused finding per comment, with a suggested fix.
-            - If there are no new findings, post no inline comments and say so
-              in the summary instead of inventing findings.
+            - Post findings as soon as you know them; do not hold them until
+              the end.
+            - If there are no new findings, post no inline comments and say
+              so in the summary instead of inventing findings.
 
             ============================================================
             5. SCOPE
             ============================================================
 
-            This run is comment-only: do not edit, create or delete files, do
-            not commit or push, do not modify the PR branch, do not resolve
-            threads. You may only read the repo/PR and create or reply to
-            review comments.
+            This run is comment-only: do not edit, create or delete files,
+            do not commit or push, do not modify the PR branch, do not
+            resolve threads, do not spawn subagents. You may only read the
+            repo/PR and create or reply to review comments.
 
             ============================================================
             6. FINAL SUMMARY
