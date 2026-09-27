@@ -39,6 +39,7 @@ type testRegistry struct {
 	mergeRequest *usecase.MergeRequest
 	review       *usecase.MergeRequestReview
 	fileLock     *usecase.FileLock
+	webhook      *usecase.Webhook
 }
 
 func (r *testRegistry) Auth() *usecase.Auth             { return r.auth }
@@ -58,6 +59,8 @@ func (r *testRegistry) MergeRequestReview() *usecase.MergeRequestReview {
 }
 
 func (r *testRegistry) FileLock() *usecase.FileLock { return r.fileLock }
+
+func (r *testRegistry) Webhook() *usecase.Webhook { return r.webhook }
 
 type stubPasswordHasher struct{}
 
@@ -125,6 +128,7 @@ func TestAPIRoutes(t *testing.T) {
 		mergeRequest: mergeRequestUc,
 		review:       reviewUc,
 		fileLock:     fileLockUc,
+		webhook:      usecase.NewWebhook(sqlite.NewWebhookRepository(dbConn), permissionUc, node),
 	}
 
 	seedPushTo := func(t *testing.T, branch, baseCommitID string, files map[string]string) *domain.PushResult {
@@ -884,6 +888,51 @@ func TestAPIRoutes(t *testing.T) {
 
 		rules = decodeBody[[]model.PBACRuleResponse](t, doGet(t, base+"/rules", aliceLogin.AccessToken))
 		require.Len(t, rules, 1)
+	})
+
+	t.Run("webhooks admin", func(t *testing.T) {
+		aliceLogin, _ := login(t)
+		base := server.URL + "/api/v1/orgs/default/projects/default/webhooks"
+
+		created := doMethod(t, http.MethodPost, base,
+			`{"name":"ci","url":"https://example.com/hook","events":["push","mr.merged"],"path_prefix":"assets"}`,
+			aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, created.StatusCode)
+		webhook := decodeBody[model.WebhookResponse](t, created)
+		require.NotEmpty(t, webhook.ID)
+		require.Equal(t, "ci", webhook.Name)
+		require.Equal(t, []string{domain.WebhookEventMRMerged, domain.WebhookEventPush}, webhook.Events)
+		require.Equal(t, "assets", webhook.PathPrefix)
+		require.True(t, webhook.IsActive)
+		require.Len(t, webhook.Secret, 64)
+
+		list := decodeBody[[]model.WebhookResponse](t, doGet(t, base, aliceLogin.AccessToken))
+		require.Len(t, list, 1)
+		require.Empty(t, list[0].Secret, "list never exposes the secret")
+
+		updated := doMethod(t, http.MethodPatch, base+"/"+webhook.ID, `{"is_active":false}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, updated.StatusCode)
+		updatedWebhook := decodeBody[model.WebhookResponse](t, updated)
+		require.False(t, updatedWebhook.IsActive)
+		require.Equal(t, webhook.URL, updatedWebhook.URL)
+
+		rotated := doMethod(t, http.MethodPost, base+"/"+webhook.ID+"/rotate-secret", `{}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, rotated.StatusCode)
+		rotatedWebhook := decodeBody[model.WebhookResponse](t, rotated)
+		require.Len(t, rotatedWebhook.Secret, 64)
+		require.NotEqual(t, webhook.Secret, rotatedWebhook.Secret)
+
+		badURL := doMethod(t, http.MethodPost, base, `{"url":"not-a-url","events":["push"]}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusBadRequest, badURL.StatusCode)
+		badURL.Body.Close()
+
+		deleted := doMethod(t, http.MethodDelete, base+"/"+webhook.ID, "", aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, deleted.StatusCode)
+		deleted.Body.Close()
+
+		missing := doMethod(t, http.MethodGet, base+"/"+webhook.ID, "", aliceLogin.AccessToken)
+		require.Equal(t, http.StatusNotFound, missing.StatusCode)
+		missing.Body.Close()
 	})
 
 	t.Run("merge request reviews", func(t *testing.T) {

@@ -12,7 +12,7 @@ jobs:
   review:
     if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     permissions:
       id-token: write
       contents: read
@@ -27,7 +27,7 @@ jobs:
 
       - name: Run opencode
         uses: anomalyco/opencode/github@b4a641921559031b53ac9dd782652e3def036d42
-        timeout-minutes: 14
+        timeout-minutes: 29
         env:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -47,7 +47,7 @@ jobs:
             post a comment for an issue that is already tracked.
 
             HARD TIME BUDGET
-            - This run must finish well under 12 minutes of wall clock.
+            - This run must finish well under 25 minutes of wall clock.
             - Work in batches: issue several independent tool calls in ONE
               message instead of one call per turn.
             - At most ~20 tool calls total. If you reach the cap, stop
