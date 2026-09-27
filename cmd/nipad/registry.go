@@ -16,6 +16,7 @@ type Registry struct {
 	mergeRequestUsecase       *usecase.MergeRequest
 	mergeRequestReviewUsecase *usecase.MergeRequestReview
 	fileLockUsecase           *usecase.FileLock
+	webhookUsecase            *usecase.Webhook
 }
 
 func (r *Registry) Auth() *usecase.Auth {
@@ -68,4 +69,8 @@ func (r *Registry) MergeRequestReview() *usecase.MergeRequestReview {
 
 func (r *Registry) FileLock() *usecase.FileLock {
 	return r.fileLockUsecase
+}
+
+func (r *Registry) Webhook() *usecase.Webhook {
+	return r.webhookUsecase
 }

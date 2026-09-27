@@ -16,6 +16,7 @@ type usecaseContainer interface {
 	MergeRequest() *usecase.MergeRequest
 	MergeRequestReview() *usecase.MergeRequestReview
 	FileLock() *usecase.FileLock
+	Webhook() *usecase.Webhook
 }
 
 type Handler struct {

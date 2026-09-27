@@ -99,6 +99,7 @@ func main() {
 		PresignTTL:  time.Duration(cfg.ChunkPresignTTLSeconds) * time.Second,
 		MaxPageSize: cfg.ChunkMaxPageSize,
 	})
+	webhookUsecase := usecase.NewWebhook(sqlite.NewWebhookRepository(dbConn), permissionUsecase, snowUser)
 	reg := &Registry{
 		authUsecase:               authUsecase,
 		userUsecase:               usecase.NewUser(snowUser, userRepo, passwordHasher),
@@ -113,6 +114,7 @@ func main() {
 		mergeRequestUsecase:       mergeRequestUsecase,
 		mergeRequestReviewUsecase: mergeRequestReviewUsecase,
 		fileLockUsecase:           fileLockUsecase,
+		webhookUsecase:            webhookUsecase,
 	}
 
 	apiApp := api.NewAPI(reg)
