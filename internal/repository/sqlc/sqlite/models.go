@@ -244,3 +244,31 @@ type User struct {
 	Deleted      bool           `json:"deleted"`
 	DeletedAt    sql.NullTime   `json:"deleted_at"`
 }
+
+type Webhook struct {
+	ID          int64     `json:"id"`
+	ProjectID   int64     `json:"project_id"`
+	Name        string    `json:"name"`
+	Url         string    `json:"url"`
+	Secret      string    `json:"secret"`
+	Events      string    `json:"events"`
+	PathPrefix  string    `json:"path_prefix"`
+	IsActive    bool      `json:"is_active"`
+	InsecureTls bool      `json:"insecure_tls"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+type WebhookDelivery struct {
+	ID             int64         `json:"id"`
+	WebhookID      int64         `json:"webhook_id"`
+	EventType      string        `json:"event_type"`
+	Payload        []byte        `json:"payload"`
+	State          string        `json:"state"`
+	Attempt        int64         `json:"attempt"`
+	ResponseStatus sql.NullInt64 `json:"response_status"`
+	LastError      string        `json:"last_error"`
+	NextRetryAt    sql.NullTime  `json:"next_retry_at"`
+	DeliveredAt    sql.NullTime  `json:"delivered_at"`
+	CreatedAt      time.Time     `json:"created_at"`
+}
