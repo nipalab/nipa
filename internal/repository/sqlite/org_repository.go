@@ -19,6 +19,14 @@ func NewOrgRepository(db *sql.DB) *OrgRepository {
 	}
 }
 
+func (r *OrgRepository) GetByID(ctx context.Context, id snow.ID) (*domain.Organization, error) {
+	org, err := r.queries.GetOrganization(ctx, id.Int64())
+	if err != nil {
+		return nil, handleError(err)
+	}
+	return toDomainOrganization(org), nil
+}
+
 func (r *OrgRepository) GetBySlug(ctx context.Context, slug string) (*domain.Organization, error) {
 	org, err := r.queries.GetOrganizationBySlug(ctx, slug)
 	if err != nil {

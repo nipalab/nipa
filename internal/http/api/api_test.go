@@ -117,6 +117,26 @@ func TestAPIRoutes(t *testing.T) {
 	)
 	fileLockUc := usecase.NewFileLock(sqlite.NewFileLockRepository(dbConn), branchRepo, permissionUc, node)
 	webhookRepo := sqlite.NewWebhookRepository(dbConn)
+	webhookDispatcher := webhook.NewDispatcher(webhookRepo, webhook.NewClient(webhook.ClientConfig{
+		EgressAllowlist: []string{"127.0.0.1"},
+	}), node, webhook.Config{
+		MaxAttempts:    3,
+		InitialBackoff: 5 * time.Millisecond,
+		BackoffFactor:  2,
+		SweepInterval:  10 * time.Millisecond,
+		RetryBatch:     100,
+		Workers:        2,
+	})
+	webhookDispatcher.Start()
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = webhookDispatcher.Stop(ctx)
+	})
+	hookEmitter := usecase.NewHookEmitter(webhookRepo, sqlite.NewProjectRepository(dbConn), sqlite.NewOrgRepository(dbConn), branchRepo, userRepo, webhookDispatcher)
+	branchUc = branchUc.WithHooks(hookEmitter)
+	mergeRequestUc = mergeRequestUc.WithHooks(hookEmitter)
+	pusher = pusher.WithHooks(hookEmitter)
 	reg := &testRegistry{
 		auth:         usecase.NewAuth("test-secret", stubPasswordHasher{}, userRepo, sqlite.NewAuthRepository(dbConn)),
 		user:         usecase.NewUser(node, userRepo, stubPasswordHasher{}),
@@ -130,8 +150,7 @@ func TestAPIRoutes(t *testing.T) {
 		mergeRequest: mergeRequestUc,
 		review:       reviewUc,
 		fileLock:     fileLockUc,
-		webhook: usecase.NewWebhook(webhookRepo, permissionUc, userRepo,
-			webhook.NewDispatcher(webhookRepo, webhook.NewClient(webhook.ClientConfig{}), node, webhook.Config{}), node),
+		webhook:      usecase.NewWebhook(webhookRepo, permissionUc, userRepo, webhookDispatcher, node),
 	}
 
 	seedPushTo := func(t *testing.T, branch, baseCommitID string, files map[string]string) *domain.PushResult {
@@ -955,6 +974,86 @@ func TestAPIRoutes(t *testing.T) {
 		missing := doMethod(t, http.MethodGet, base+"/"+webhook.ID, "", aliceLogin.AccessToken)
 		require.Equal(t, http.StatusNotFound, missing.StatusCode)
 		missing.Body.Close()
+	})
+
+	t.Run("webhook delivery", func(t *testing.T) {
+		aliceLogin, _ := login(t)
+		base := server.URL + "/api/v1/orgs/default/projects/default"
+
+		type received struct {
+			event     string
+			body      []byte
+			signature string
+		}
+		requests := make(chan received, 10)
+		receiver := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			body, _ := io.ReadAll(r.Body)
+			requests <- received{
+				event:     r.Header.Get(webhook.EventHeader),
+				body:      body,
+				signature: r.Header.Get(webhook.SignatureHeader),
+			}
+			w.WriteHeader(http.StatusOK)
+		}))
+		t.Cleanup(receiver.Close)
+
+		created := doMethod(t, http.MethodPost, base+"/webhooks",
+			`{"name":"ci","url":"`+receiver.URL+`","events":["push","branch.created"]}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, created.StatusCode)
+		hook := decodeBody[model.WebhookResponse](t, created)
+		t.Cleanup(func() {
+			resp := doMethod(t, http.MethodDelete, base+"/webhooks/"+hook.ID, "", aliceLogin.AccessToken)
+			resp.Body.Close()
+		})
+
+		branches := decodeBody[[]model.BranchResponse](t, doGet(t, base+"/branches", aliceLogin.AccessToken))
+		var mainHead string
+		for _, branch := range branches {
+			if branch.Name == "main" {
+				mainHead = branch.CommitID
+			}
+		}
+		require.NotEmpty(t, mainHead)
+		seedPushTo(t, "main", mainHead, map[string]string{"hook/note.txt": "hello"})
+
+		createBranch := doMethod(t, http.MethodPost, base+"/branches", `{"name":"hook-branch","from":"main"}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, createBranch.StatusCode)
+		createBranch.Body.Close()
+
+		deliveries := map[string]received{}
+		timeout := time.After(5 * time.Second)
+		for len(deliveries) < 2 {
+			select {
+			case delivery := <-requests:
+				deliveries[delivery.event] = delivery
+			case <-timeout:
+				t.Fatalf("timed out waiting for deliveries, got %v", deliveries)
+			}
+		}
+
+		pushDelivery := deliveries[domain.WebhookEventPush]
+		require.True(t, webhook.Verify(hook.Secret, pushDelivery.body, pushDelivery.signature))
+		var pushPayload webhook.PushPayload
+		require.NoError(t, json.Unmarshal(pushDelivery.body, &pushPayload))
+		require.Equal(t, hook.ID, pushPayload.WebhookID)
+		require.Equal(t, "default", pushPayload.Organization.Slug)
+		require.Equal(t, "default", pushPayload.Project.Slug)
+		require.Len(t, pushPayload.Changes, 1)
+		require.Equal(t, "main", pushPayload.Changes[0].Branch)
+		require.NotEmpty(t, pushPayload.Changes[0].After)
+		require.Contains(t, pushPayload.Changes[0].Files, webhook.PushFile{
+			Path: "hook/note.txt", Operation: webhook.PushFileAdded, SizeBytes: 5,
+		})
+
+		branchDelivery := deliveries[domain.WebhookEventBranchCreated]
+		require.True(t, webhook.Verify(hook.Secret, branchDelivery.body, branchDelivery.signature))
+		var branchPayload webhook.BranchPayload
+		require.NoError(t, json.Unmarshal(branchDelivery.body, &branchPayload))
+		require.Equal(t, "hook-branch", branchPayload.Branch.Name)
+		require.NotEmpty(t, branchPayload.Branch.CommitID)
+
+		listed := decodeBody[[]model.WebhookDeliveryResponse](t, doGet(t, base+"/webhooks/"+hook.ID+"/deliveries", aliceLogin.AccessToken))
+		require.Len(t, listed, 2)
 	})
 
 	t.Run("merge request reviews", func(t *testing.T) {

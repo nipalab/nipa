@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"log/slog"
 	"sort"
 	"strings"
 	"time"
@@ -56,6 +57,13 @@ type Branch struct {
 	snowNode   snow.Node
 	chunks     chunkReader
 	fileLocks  fileLockGate
+	hooks      hookBranchGate
+}
+
+// hookBranchGate is the subset of the webhook emitter used by branch
+// management.
+type hookBranchGate interface {
+	EmitBranch(ctx context.Context, event string, projectID snow.ID, branch *domain.Branch, actor snow.ID) error
 }
 
 func NewBranch(permUc permissionUsecase, branchRepo branchRepository, snowNode snow.Node) *Branch {
@@ -69,6 +77,12 @@ func NewBranch(permUc permissionUsecase, branchRepo branchRepository, snowNode s
 // WithFileLocks enables the binary lock gate on this usecase.
 func (b *Branch) WithFileLocks(locks fileLockGate) *Branch {
 	b.fileLocks = locks
+	return b
+}
+
+// WithHooks enables webhook events on this usecase.
+func (b *Branch) WithHooks(hooks hookBranchGate) *Branch {
+	b.hooks = hooks
 	return b
 }
 
@@ -124,12 +138,17 @@ func (b *Branch) CreateBranch(ctx context.Context, projectID snow.ID, name strin
 		return nil, err
 	}
 
-	return b.branchRepo.CreateBranch(ctx, domain.Branch{
+	created, err := b.branchRepo.CreateBranch(ctx, domain.Branch{
 		ID:        b.snowNode.Generate(),
 		ProjectID: projectID,
 		Name:      name,
 		CommitID:  fromCommitID,
 	})
+	if err != nil {
+		return nil, err
+	}
+	b.emitHook(ctx, domain.WebhookEventBranchCreated, projectID, created)
+	return created, nil
 }
 
 func (b *Branch) Rename(ctx context.Context, projectID snow.ID, name, newName string) (*domain.Branch, error) {
@@ -184,6 +203,7 @@ func (b *Branch) Delete(ctx context.Context, projectID snow.ID, name string) err
 			return err
 		}
 	}
+	b.emitHook(ctx, domain.WebhookEventBranchDeleted, projectID, branch)
 	return nil
 }
 
@@ -219,6 +239,21 @@ func (b *Branch) SetProtection(ctx context.Context, projectID snow.ID, name stri
 		return nil, err
 	}
 	return b.branchRepo.GetByProjectIDAndID(ctx, projectID, branch.ID)
+}
+
+// emitHook publishes a branch event. The change is already stored, so a
+// delivery failure must not fail the operation.
+func (b *Branch) emitHook(ctx context.Context, event string, projectID snow.ID, branch *domain.Branch) {
+	if b.hooks == nil {
+		return
+	}
+	claim, ok := domain.ClaimFromContext(ctx)
+	if !ok {
+		return
+	}
+	if err := b.hooks.EmitBranch(ctx, event, projectID, branch, claim.UserID); err != nil {
+		slog.Warn("emitting webhook branch event failed", "event", event, "project", projectID, "error", err)
+	}
 }
 
 func (b *Branch) branchByName(ctx context.Context, projectID snow.ID, name string) (*domain.Branch, error) {

@@ -42,6 +42,22 @@ func TestOrgRepositorySQLite_GetBySlug_Success(t *testing.T) {
 	require.False(t, got.UpdatedAt.IsZero())
 }
 
+func TestOrgRepositorySQLite_GetByID(t *testing.T) {
+	ctx := context.Background()
+	db, q := newSQLiteTestDB(t)
+	repo := NewOrgRepository(db)
+
+	orgID := seedOrg(t, q, "Acme Corp", "acme")
+
+	got, err := repo.GetByID(ctx, orgID)
+	require.NoError(t, err)
+	require.Equal(t, orgID, got.ID)
+	require.Equal(t, "acme", got.Slug)
+
+	_, err = repo.GetByID(ctx, snow.ID(9999))
+	requireRecordNotFound(t, err)
+}
+
 func TestOrgRepositorySQLite_GetBySlug_SeededDefault(t *testing.T) {
 	ctx := context.Background()
 	db, _ := newSQLiteTestDB(t)
