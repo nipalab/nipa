@@ -4,6 +4,7 @@ import type {
   BranchResponse,
   CommitDiffResponse,
   CommitResponse,
+  CreateWebhookInput,
   FileLockResponse,
   GroupResponse,
   MergeRequestDiffResponse,
@@ -24,7 +25,10 @@ import type {
   CommentResponse,
   TimelineItemResponse,
   TreeResponse,
+  UpdateWebhookInput,
   UserResponse,
+  WebhookDeliveryResponse,
+  WebhookResponse,
 } from './models'
 
 function projectBase(org: string, project: string): string {
@@ -559,4 +563,76 @@ export function updateUserFlags(
     method: 'PATCH',
     body: JSON.stringify({ is_admin: isAdmin, is_super_admin: isSuperAdmin }),
   })
+}
+
+function webhookBase(org: string, project: string, id: string): string {
+  return `${projectBase(org, project)}/webhooks/${encodeURIComponent(id)}`
+}
+
+export function listWebhooks(org: string, project: string): Promise<WebhookResponse[]> {
+  return apiJson(`${projectBase(org, project)}/webhooks`)
+}
+
+export function createWebhook(
+  org: string,
+  project: string,
+  input: CreateWebhookInput,
+): Promise<WebhookResponse> {
+  return apiJson(`${projectBase(org, project)}/webhooks`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
+}
+
+export function updateWebhook(
+  org: string,
+  project: string,
+  id: string,
+  input: UpdateWebhookInput,
+): Promise<WebhookResponse> {
+  return apiJson(webhookBase(org, project, id), {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  })
+}
+
+export function deleteWebhook(org: string, project: string, id: string): Promise<MessageResponse> {
+  return apiJson(webhookBase(org, project, id), { method: 'DELETE' })
+}
+
+export function rotateWebhookSecret(org: string, project: string, id: string): Promise<WebhookResponse> {
+  return apiJson(`${webhookBase(org, project, id)}/rotate-secret`, {
+    method: 'POST',
+    body: JSON.stringify({}),
+  })
+}
+
+export function testWebhook(org: string, project: string, id: string): Promise<WebhookDeliveryResponse> {
+  return apiJson(`${webhookBase(org, project, id)}/test`, {
+    method: 'POST',
+    body: JSON.stringify({}),
+  })
+}
+
+export function listWebhookDeliveries(
+  org: string,
+  project: string,
+  id: string,
+  limit = 50,
+  offset = 0,
+): Promise<WebhookDeliveryResponse[]> {
+  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) })
+  return apiJson(`${webhookBase(org, project, id)}/deliveries?${params.toString()}`)
+}
+
+export function redeliverWebhookDelivery(
+  org: string,
+  project: string,
+  id: string,
+  deliveryID: string,
+): Promise<WebhookDeliveryResponse> {
+  return apiJson(
+    `${webhookBase(org, project, id)}/deliveries/${encodeURIComponent(deliveryID)}/redeliver`,
+    { method: 'POST', body: JSON.stringify({}) },
+  )
 }

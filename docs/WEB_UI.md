@@ -26,7 +26,7 @@ proxies `/api` and `/docs` to `NIPA_SERVER_URL`).
 | `/:org/:project/branches` | branches | create; default/protect/rename/delete for project admins |
 | `/:org/:project/pulls[/:id]` | merge requests | list/create; detail is tabbed (Overview / Commits / File changes) with merge/close/reopen, reviews (panel, inline threads, timeline) and a split diff |
 | `/:org/:project/locks` | file locks | list binary asset locks, lock/unlock |
-| `/:org/:project/settings` | project settings | branch protection + ACL rules/defaults |
+| `/:org/:project/settings` | project settings | branch protection + ACL rules/defaults + webhooks |
 | `/:org/settings` | organization settings | members and groups (org owner or global admin) |
 | `/admin/users` | user administration | global admin CRUD, superadmin flags |
 | `/settings/profile` | profile | name/photo and password |

@@ -12,6 +12,7 @@ import {
 } from '../api/endpoints'
 import { RepoPageShell } from '../components/repo/RepoPageShell'
 import { useRepoChrome } from '../components/repo/useRepoChrome'
+import { WebhookSettings } from '../components/repo/WebhookSettings'
 import { EmptyState, ErrorBanner, Loading, Mono } from '../components/ui'
 import { useAsync } from '../hooks'
 import { formatPermission, parsePermission } from '../api/permissions'
@@ -230,6 +231,8 @@ export default function ProjectSettingsPage() {
           </Button>
         </Stack>
       </form>
+
+      <WebhookSettings org={org} project={project} />
     </RepoPageShell>
   )
 }

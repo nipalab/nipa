@@ -286,6 +286,51 @@ export interface MessageResponse {
   message: string
 }
 
+export interface WebhookResponse {
+  id: string
+  project_id: string
+  name: string
+  url: string
+  events: string[]
+  path_prefix: string
+  is_active: boolean
+  insecure_tls: boolean
+  secret?: string
+  created_at: string
+  updated_at: string
+}
+
+export interface CreateWebhookInput {
+  name: string
+  url: string
+  events: string[]
+  path_prefix: string
+  is_active: boolean
+  insecure_tls: boolean
+}
+
+export interface UpdateWebhookInput {
+  name?: string
+  url?: string
+  events?: string[]
+  path_prefix?: string
+  is_active?: boolean
+  insecure_tls?: boolean
+}
+
+export interface WebhookDeliveryResponse {
+  id: string
+  webhook_id: string
+  event_type: string
+  state: string
+  attempt: number
+  response_status?: number
+  last_error?: string
+  next_retry_at?: string
+  delivered_at?: string
+  created_at: string
+}
+
 export const PERMISSION_READ = 1
 export const PERMISSION_WRITE = 2
 export const PERMISSION_LOCK = 4
