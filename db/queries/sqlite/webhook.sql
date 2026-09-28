@@ -7,6 +7,10 @@ RETURNING *;
 SELECT * FROM webhooks
 WHERE project_id = :project_id AND id = :id;
 
+-- name: WebhookGetByID :one
+SELECT * FROM webhooks
+WHERE id = :id;
+
 -- name: WebhookListByProject :many
 SELECT * FROM webhooks
 WHERE project_id = :project_id

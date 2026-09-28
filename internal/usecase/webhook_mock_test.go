@@ -12,6 +12,7 @@ package usecase
 import (
 	context "context"
 	reflect "reflect"
+	time "time"
 
 	domain "github.com/nipalab/nipa/internal/domain"
 	snow "github.com/nipalab/nipa/internal/snow"
@@ -86,6 +87,21 @@ func (mr *MockwebhookRepositoryMockRecorder) Get(ctx, projectID, id any) *gomock
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockwebhookRepository)(nil).Get), ctx, projectID, id)
 }
 
+// GetDelivery mocks base method.
+func (m *MockwebhookRepository) GetDelivery(ctx context.Context, webhookID, id snow.ID) (*domain.WebhookDelivery, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetDelivery", ctx, webhookID, id)
+	ret0, _ := ret[0].(*domain.WebhookDelivery)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetDelivery indicates an expected call of GetDelivery.
+func (mr *MockwebhookRepositoryMockRecorder) GetDelivery(ctx, webhookID, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDelivery", reflect.TypeOf((*MockwebhookRepository)(nil).GetDelivery), ctx, webhookID, id)
+}
+
 // ListByProject mocks base method.
 func (m *MockwebhookRepository) ListByProject(ctx context.Context, projectID snow.ID) ([]*domain.Webhook, error) {
 	m.ctrl.T.Helper()
@@ -99,6 +115,36 @@ func (m *MockwebhookRepository) ListByProject(ctx context.Context, projectID sno
 func (mr *MockwebhookRepositoryMockRecorder) ListByProject(ctx, projectID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListByProject", reflect.TypeOf((*MockwebhookRepository)(nil).ListByProject), ctx, projectID)
+}
+
+// ListDeliveries mocks base method.
+func (m *MockwebhookRepository) ListDeliveries(ctx context.Context, webhookID snow.ID, limit, offset int64) ([]*domain.WebhookDelivery, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListDeliveries", ctx, webhookID, limit, offset)
+	ret0, _ := ret[0].([]*domain.WebhookDelivery)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListDeliveries indicates an expected call of ListDeliveries.
+func (mr *MockwebhookRepositoryMockRecorder) ListDeliveries(ctx, webhookID, limit, offset any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListDeliveries", reflect.TypeOf((*MockwebhookRepository)(nil).ListDeliveries), ctx, webhookID, limit, offset)
+}
+
+// Requeue mocks base method.
+func (m *MockwebhookRepository) Requeue(ctx context.Context, webhookID, id snow.ID, at time.Time) (*domain.WebhookDelivery, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Requeue", ctx, webhookID, id, at)
+	ret0, _ := ret[0].(*domain.WebhookDelivery)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Requeue indicates an expected call of Requeue.
+func (mr *MockwebhookRepositoryMockRecorder) Requeue(ctx, webhookID, id, at any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Requeue", reflect.TypeOf((*MockwebhookRepository)(nil).Requeue), ctx, webhookID, id, at)
 }
 
 // RotateSecret mocks base method.
@@ -129,4 +175,55 @@ func (m *MockwebhookRepository) Update(ctx context.Context, webhook domain.Webho
 func (mr *MockwebhookRepositoryMockRecorder) Update(ctx, webhook any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Update", reflect.TypeOf((*MockwebhookRepository)(nil).Update), ctx, webhook)
+}
+
+// MockwebhookDispatcher is a mock of webhookDispatcher interface.
+type MockwebhookDispatcher struct {
+	ctrl     *gomock.Controller
+	recorder *MockwebhookDispatcherMockRecorder
+	isgomock struct{}
+}
+
+// MockwebhookDispatcherMockRecorder is the mock recorder for MockwebhookDispatcher.
+type MockwebhookDispatcherMockRecorder struct {
+	mock *MockwebhookDispatcher
+}
+
+// NewMockwebhookDispatcher creates a new mock instance.
+func NewMockwebhookDispatcher(ctrl *gomock.Controller) *MockwebhookDispatcher {
+	mock := &MockwebhookDispatcher{ctrl: ctrl}
+	mock.recorder = &MockwebhookDispatcherMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockwebhookDispatcher) EXPECT() *MockwebhookDispatcherMockRecorder {
+	return m.recorder
+}
+
+// Enqueue mocks base method.
+func (m *MockwebhookDispatcher) Enqueue(ctx context.Context, hook domain.Webhook, event string, payload []byte) (*domain.WebhookDelivery, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Enqueue", ctx, hook, event, payload)
+	ret0, _ := ret[0].(*domain.WebhookDelivery)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Enqueue indicates an expected call of Enqueue.
+func (mr *MockwebhookDispatcherMockRecorder) Enqueue(ctx, hook, event, payload any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Enqueue", reflect.TypeOf((*MockwebhookDispatcher)(nil).Enqueue), ctx, hook, event, payload)
+}
+
+// Schedule mocks base method.
+func (m *MockwebhookDispatcher) Schedule(hook domain.Webhook, delivery domain.WebhookDelivery) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "Schedule", hook, delivery)
+}
+
+// Schedule indicates an expected call of Schedule.
+func (mr *MockwebhookDispatcherMockRecorder) Schedule(hook, delivery any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Schedule", reflect.TypeOf((*MockwebhookDispatcher)(nil).Schedule), hook, delivery)
 }

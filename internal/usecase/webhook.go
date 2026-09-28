@@ -4,19 +4,25 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/snow"
+	"github.com/nipalab/nipa/internal/webhook"
 )
 
 const (
 	webhookSecretBytes = 32
 	webhookMaxURLLen   = 2048
 	webhookMaxNameLen  = 100
+
+	defaultDeliveryPageSize = 50
+	maxDeliveryPageSize     = 200
 )
 
 //go:generate go run go.uber.org/mock/mockgen -source=$GOFILE -destination=webhook_mock_test.go -package=usecase
@@ -27,6 +33,15 @@ type webhookRepository interface {
 	Update(ctx context.Context, webhook domain.Webhook) (*domain.Webhook, error)
 	RotateSecret(ctx context.Context, projectID, id snow.ID, secret string) (*domain.Webhook, error)
 	Delete(ctx context.Context, projectID, id snow.ID) error
+	GetDelivery(ctx context.Context, webhookID, id snow.ID) (*domain.WebhookDelivery, error)
+	ListDeliveries(ctx context.Context, webhookID snow.ID, limit, offset int64) ([]*domain.WebhookDelivery, error)
+	Requeue(ctx context.Context, webhookID, id snow.ID, at time.Time) (*domain.WebhookDelivery, error)
+}
+
+// webhookDispatcher is the slice of the delivery dispatcher the usecase drives.
+type webhookDispatcher interface {
+	Enqueue(ctx context.Context, hook domain.Webhook, event string, payload []byte) (*domain.WebhookDelivery, error)
+	Schedule(hook domain.Webhook, delivery domain.WebhookDelivery)
 }
 
 var webhookEventTypes = map[string]struct{}{
@@ -63,13 +78,21 @@ type WebhookUpdate struct {
 // Webhook manages project-scoped webhook endpoints. Managing them requires
 // project admin rights; delivery is handled by the webhook dispatcher.
 type Webhook struct {
-	repo     webhookRepository
-	perm     permissionUsecase
-	snowNode snow.Node
+	repo       webhookRepository
+	perm       permissionUsecase
+	users      userLookup
+	dispatcher webhookDispatcher
+	snowNode   snow.Node
 }
 
-func NewWebhook(repo webhookRepository, perm permissionUsecase, snowNode snow.Node) *Webhook {
-	return &Webhook{repo: repo, perm: perm, snowNode: snowNode}
+func NewWebhook(repo webhookRepository, perm permissionUsecase, users userLookup, dispatcher webhookDispatcher, snowNode snow.Node) *Webhook {
+	return &Webhook{
+		repo:       repo,
+		perm:       perm,
+		users:      users,
+		dispatcher: dispatcher,
+		snowNode:   snowNode,
+	}
 }
 
 func (w *Webhook) Create(ctx context.Context, projectID snow.ID, input WebhookInput) (*domain.Webhook, error) {
@@ -204,6 +227,85 @@ func (w *Webhook) requireAdmin(ctx context.Context, projectID snow.ID) error {
 		return domain.NewErrorNoPermission()
 	}
 	return nil
+}
+
+// Test sends a ping delivery to the hook so an admin can verify the endpoint
+// and its signature handling. The hook is exercised even when inactive.
+func (w *Webhook) Test(ctx context.Context, org *domain.Organization, project *domain.Project, id snow.ID) (*domain.WebhookDelivery, error) {
+	if err := w.requireAdmin(ctx, project.ID); err != nil {
+		return nil, err
+	}
+	hook, err := w.repo.Get(ctx, project.ID, id)
+	if err != nil {
+		return nil, err
+	}
+	claim, ok := domain.ClaimFromContext(ctx)
+	if !ok {
+		return nil, domain.NewErrorNoPermission()
+	}
+	actor := webhook.Actor{ID: claim.UserID.Base36()}
+	if user, err := w.users.GetByID(ctx, claim.UserID); err == nil {
+		actor.Username = user.Name
+	}
+	payload, err := json.Marshal(webhook.Envelope{
+		Event:        domain.WebhookEventPing,
+		Timestamp:    time.Now().UTC(),
+		Actor:        actor,
+		Organization: webhook.Organization{Slug: org.Slug},
+		Project:      webhook.Project{Slug: project.Slug},
+		WebhookID:    hook.ID.Base36(),
+	})
+	if err != nil {
+		return nil, domain.NewErrorInternalServer("encode webhook payload: " + err.Error())
+	}
+	return w.dispatcher.Enqueue(ctx, *hook, domain.WebhookEventPing, payload)
+}
+
+// Deliveries lists recent delivery attempts, newest first.
+func (w *Webhook) Deliveries(ctx context.Context, projectID, id snow.ID, limit, offset int64) ([]*domain.WebhookDelivery, error) {
+	if err := w.requireAdmin(ctx, projectID); err != nil {
+		return nil, err
+	}
+	if _, err := w.repo.Get(ctx, projectID, id); err != nil {
+		return nil, err
+	}
+	if limit <= 0 {
+		limit = defaultDeliveryPageSize
+	}
+	if limit > maxDeliveryPageSize {
+		limit = maxDeliveryPageSize
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	deliveries, err := w.repo.ListDeliveries(ctx, id, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	if deliveries == nil {
+		deliveries = []*domain.WebhookDelivery{}
+	}
+	return deliveries, nil
+}
+
+// Redeliver re-queues a stored delivery, keeping its attempt history.
+func (w *Webhook) Redeliver(ctx context.Context, projectID, id, deliveryID snow.ID) (*domain.WebhookDelivery, error) {
+	if err := w.requireAdmin(ctx, projectID); err != nil {
+		return nil, err
+	}
+	hook, err := w.repo.Get(ctx, projectID, id)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := w.repo.GetDelivery(ctx, hook.ID, deliveryID); err != nil {
+		return nil, err
+	}
+	requeued, err := w.repo.Requeue(ctx, hook.ID, deliveryID, time.Now())
+	if err != nil {
+		return nil, err
+	}
+	w.dispatcher.Schedule(*hook, *requeued)
+	return requeued, nil
 }
 
 func normalizeWebhookURL(raw string) (string, error) {

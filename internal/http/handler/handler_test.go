@@ -18,6 +18,7 @@ import (
 	"github.com/nipalab/nipa/internal/snow"
 	"github.com/nipalab/nipa/internal/storage"
 	"github.com/nipalab/nipa/internal/usecase"
+	"github.com/nipalab/nipa/internal/webhook"
 	"github.com/stretchr/testify/require"
 )
 
@@ -211,7 +212,9 @@ func newHandlerTestEnv(t *testing.T) *handlerTestEnv {
 		sqlite.NewMergeRequestRepository(dbConn), branchRepo, permissionUc, branchUc, node,
 	)
 	fileLockUc := usecase.NewFileLock(sqlite.NewFileLockRepository(dbConn), branchRepo, permissionUc, node)
-	webhookUc := usecase.NewWebhook(sqlite.NewWebhookRepository(dbConn), permissionUc, node)
+	webhookRepo := sqlite.NewWebhookRepository(dbConn)
+	webhookUc := usecase.NewWebhook(webhookRepo, permissionUc, userRepo,
+		webhook.NewDispatcher(webhookRepo, webhook.NewClient(webhook.ClientConfig{}), node, webhook.Config{}), node)
 	reviewUc := usecase.NewMergeRequestReview(
 		sqlite.NewMergeRequestReviewRepository(dbConn),
 		sqlite.NewMergeRequestRepository(dbConn),

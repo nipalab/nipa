@@ -23,6 +23,7 @@ import (
 	"github.com/nipalab/nipa/internal/storage"
 	"github.com/nipalab/nipa/internal/treehash"
 	"github.com/nipalab/nipa/internal/usecase"
+	"github.com/nipalab/nipa/internal/webhook"
 	"github.com/stretchr/testify/require"
 )
 
@@ -115,6 +116,7 @@ func TestAPIRoutes(t *testing.T) {
 		sqlite.NewMergeRequestRepository(dbConn), branchRepo, permissionUc, branchUc, node,
 	)
 	fileLockUc := usecase.NewFileLock(sqlite.NewFileLockRepository(dbConn), branchRepo, permissionUc, node)
+	webhookRepo := sqlite.NewWebhookRepository(dbConn)
 	reg := &testRegistry{
 		auth:         usecase.NewAuth("test-secret", stubPasswordHasher{}, userRepo, sqlite.NewAuthRepository(dbConn)),
 		user:         usecase.NewUser(node, userRepo, stubPasswordHasher{}),
@@ -128,7 +130,8 @@ func TestAPIRoutes(t *testing.T) {
 		mergeRequest: mergeRequestUc,
 		review:       reviewUc,
 		fileLock:     fileLockUc,
-		webhook:      usecase.NewWebhook(sqlite.NewWebhookRepository(dbConn), permissionUc, node),
+		webhook: usecase.NewWebhook(webhookRepo, permissionUc, userRepo,
+			webhook.NewDispatcher(webhookRepo, webhook.NewClient(webhook.ClientConfig{}), node, webhook.Config{}), node),
 	}
 
 	seedPushTo := func(t *testing.T, branch, baseCommitID string, files map[string]string) *domain.PushResult {
@@ -925,6 +928,25 @@ func TestAPIRoutes(t *testing.T) {
 		badURL := doMethod(t, http.MethodPost, base, `{"url":"not-a-url","events":["push"]}`, aliceLogin.AccessToken)
 		require.Equal(t, http.StatusBadRequest, badURL.StatusCode)
 		badURL.Body.Close()
+
+		testDelivery := doMethod(t, http.MethodPost, base+"/"+webhook.ID+"/test", `{}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, testDelivery.StatusCode)
+		delivery := decodeBody[model.WebhookDeliveryResponse](t, testDelivery)
+		require.NotEmpty(t, delivery.ID)
+		require.Equal(t, domain.WebhookEventPing, delivery.EventType)
+		require.Equal(t, domain.WebhookDeliveryPending, delivery.State)
+
+		deliveries := decodeBody[[]model.WebhookDeliveryResponse](t, doGet(t, base+"/"+webhook.ID+"/deliveries", aliceLogin.AccessToken))
+		require.Len(t, deliveries, 1)
+		require.Equal(t, delivery.ID, deliveries[0].ID)
+
+		redeliver := doMethod(t, http.MethodPost, base+"/"+webhook.ID+"/deliveries/"+delivery.ID+"/redeliver", `{}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, redeliver.StatusCode)
+		require.Equal(t, delivery.ID, decodeBody[model.WebhookDeliveryResponse](t, redeliver).ID)
+
+		badLimit := doGet(t, base+"/"+webhook.ID+"/deliveries?limit=nope", aliceLogin.AccessToken)
+		require.Equal(t, http.StatusBadRequest, badLimit.StatusCode)
+		badLimit.Body.Close()
 
 		deleted := doMethod(t, http.MethodDelete, base+"/"+webhook.ID, "", aliceLogin.AccessToken)
 		require.Equal(t, http.StatusOK, deleted.StatusCode)

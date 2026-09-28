@@ -33,3 +33,16 @@ type UpdateWebhookRequest struct {
 	IsActive    *bool     `json:"is_active"`
 	InsecureTLS *bool     `json:"insecure_tls"`
 }
+
+type WebhookDeliveryResponse struct {
+	ID             string     `json:"id"`
+	WebhookID      string     `json:"webhook_id"`
+	EventType      string     `json:"event_type"`
+	State          string     `json:"state"`
+	Attempt        int64      `json:"attempt"`
+	ResponseStatus *int64     `json:"response_status,omitempty"`
+	LastError      string     `json:"last_error,omitempty"`
+	NextRetryAt    *time.Time `json:"next_retry_at,omitempty"`
+	DeliveredAt    *time.Time `json:"delivered_at,omitempty"`
+	CreatedAt      time.Time  `json:"created_at"`
+}

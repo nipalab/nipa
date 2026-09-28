@@ -18,6 +18,8 @@ type Config struct {
 	ChunkURLSigningKey     string `mapstructure:"CHUNK_URL_SIGNING_KEY"`
 	ChunkPresignTTLSeconds int    `mapstructure:"CHUNK_PRESIGN_TTL_SECONDS"`
 	ChunkMaxPageSize       int    `mapstructure:"CHUNK_MAX_PAGE_SIZE"`
+	WebhookEgressAllowlist string `mapstructure:"WEBHOOK_EGRESS_ALLOWLIST"`
+	WebhookTimeoutSeconds  int    `mapstructure:"WEBHOOK_TIMEOUT_SECONDS"`
 }
 
 func LoadConfig() (*Config, error) {

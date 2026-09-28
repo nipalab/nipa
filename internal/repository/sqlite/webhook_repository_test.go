@@ -88,6 +88,23 @@ func TestWebhookRepositorySQLite_CRUD(t *testing.T) {
 	requireRecordNotFound(t, repo.Delete(ctx, projectID, snow.ID(1002)))
 }
 
+func TestWebhookRepositorySQLite_GetByID(t *testing.T) {
+	ctx := context.Background()
+	db, q := newSQLiteTestDB(t)
+	repo := NewWebhookRepository(db)
+	projectID := seedProject(t, q, 1, "game")
+
+	created := seedWebhook(t, repo, projectID, 1001, "ci", []string{domain.WebhookEventPush})
+
+	got, err := repo.GetByID(ctx, created.ID)
+	require.NoError(t, err)
+	require.Equal(t, created.ID, got.ID)
+	require.Equal(t, created.ProjectID, got.ProjectID)
+
+	_, err = repo.GetByID(ctx, snow.ID(9999))
+	requireRecordNotFound(t, err)
+}
+
 func TestWebhookRepositorySQLite_ListEmpty(t *testing.T) {
 	ctx := context.Background()
 	db, q := newSQLiteTestDB(t)

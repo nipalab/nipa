@@ -137,6 +137,111 @@ func TestHandler_WebhookValidationAndAccess(t *testing.T) {
 	}
 }
 
+func TestHandler_WebhookDeliveryEndpoints(t *testing.T) {
+	env := newHandlerTestEnv(t)
+	params := map[string]string{"org": "default", "project": "default"}
+
+	appCtx := adminAppCtx(env.userID, params, `{"url":"https://example.com/hook","events":["push"]}`)
+	env.handler.CreateWebhook(appCtx)
+	require.Equal(t, http.StatusOK, appCtx.statusCode)
+	hook := appCtx.response.(model.WebhookResponse)
+
+	idParams := map[string]string{"org": "default", "project": "default", "id": hook.ID}
+	deliveryParams := map[string]string{"org": "default", "project": "default", "id": hook.ID, "deliveryId": "1"}
+
+	appCtx = adminAppCtx(env.userID, idParams, "")
+	env.handler.TestWebhook(appCtx)
+	require.Equal(t, http.StatusOK, appCtx.statusCode)
+	delivery := appCtx.response.(model.WebhookDeliveryResponse)
+	require.NotEmpty(t, delivery.ID)
+	require.Equal(t, domain.WebhookEventPing, delivery.EventType)
+	require.Equal(t, domain.WebhookDeliveryPending, delivery.State)
+	require.NotNil(t, delivery.NextRetryAt, "an immediate attempt is scheduled")
+
+	appCtx = adminAppCtx(env.userID, idParams, "")
+	env.handler.ListWebhookDeliveries(appCtx)
+	require.Equal(t, http.StatusOK, appCtx.statusCode)
+	deliveries := appCtx.response.([]model.WebhookDeliveryResponse)
+	require.Len(t, deliveries, 1)
+	require.Equal(t, delivery.ID, deliveries[0].ID)
+
+	deliveryParams["deliveryId"] = delivery.ID
+	appCtx = adminAppCtx(env.userID, deliveryParams, "")
+	env.handler.RedeliverWebhookDelivery(appCtx)
+	require.Equal(t, http.StatusOK, appCtx.statusCode)
+	requeued := appCtx.response.(model.WebhookDeliveryResponse)
+	require.Equal(t, delivery.ID, requeued.ID)
+	require.Equal(t, domain.WebhookDeliveryPending, requeued.State)
+
+	appCtx = adminAppCtx(env.userID, map[string]string{"org": "default", "project": "default", "id": hook.ID, "deliveryId": "999"}, "")
+	env.handler.RedeliverWebhookDelivery(appCtx)
+	require.Equal(t, http.StatusNotFound, appCtx.statusCode)
+
+	appCtx = adminAppCtx(env.userID, map[string]string{"org": "default", "project": "default", "id": "999"}, "")
+	env.handler.TestWebhook(appCtx)
+	require.Equal(t, http.StatusNotFound, appCtx.statusCode)
+
+	pagedParams := map[string]string{"org": "default", "project": "default", "id": hook.ID}
+	appCtx = &fakeAppContext{
+		claims:          &domain.Claims{UserID: env.userID, IsAdmin: true},
+		pathParameters:  pagedParams,
+		queryParameters: map[string]string{"limit": "abc"},
+	}
+	env.handler.ListWebhookDeliveries(appCtx)
+	require.Equal(t, http.StatusBadRequest, appCtx.statusCode)
+
+	appCtx = &fakeAppContext{
+		claims:          &domain.Claims{UserID: env.userID, IsAdmin: true},
+		pathParameters:  pagedParams,
+		queryParameters: map[string]string{"limit": "1", "offset": "0"},
+	}
+	env.handler.ListWebhookDeliveries(appCtx)
+	require.Equal(t, http.StatusOK, appCtx.statusCode)
+	require.Len(t, appCtx.response.([]model.WebhookDeliveryResponse), 1)
+}
+
+func TestHandler_WebhookDeliveryAccessDenied(t *testing.T) {
+	env := newHandlerTestEnv(t)
+	regular := &domain.Claims{UserID: env.userID}
+	idParams := map[string]string{"org": "default", "project": "default", "id": "1"}
+	deliveryParams := map[string]string{"org": "default", "project": "default", "id": "1", "deliveryId": "1"}
+
+	for _, tc := range []struct {
+		name   string
+		run    func(httpApp.AppContext)
+		params map[string]string
+	}{
+		{name: "test", run: env.handler.TestWebhook, params: idParams},
+		{name: "deliveries", run: env.handler.ListWebhookDeliveries, params: idParams},
+		{name: "redeliver", run: env.handler.RedeliverWebhookDelivery, params: deliveryParams},
+	} {
+		appCtx := &fakeAppContext{claims: regular, pathParameters: tc.params}
+		tc.run(appCtx)
+		require.Equal(t, http.StatusForbidden, appCtx.statusCode, tc.name)
+	}
+}
+
+func TestHandler_WebhookDeliveryContextError(t *testing.T) {
+	env := newHandlerTestEnv(t)
+	params := map[string]string{"org": "default", "project": "default", "id": "1", "deliveryId": "1"}
+
+	tests := []struct {
+		name string
+		run  func(appCtx httpApp.AppContext)
+	}{
+		{name: "test", run: env.handler.TestWebhook},
+		{name: "deliveries", run: env.handler.ListWebhookDeliveries},
+		{name: "redeliver", run: env.handler.RedeliverWebhookDelivery},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			appCtx := canceledAppCtx(env.userID, params, "")
+			tt.run(appCtx)
+			require.Equal(t, http.StatusInternalServerError, appCtx.statusCode)
+		})
+	}
+}
+
 func TestHandler_WebhookContextError(t *testing.T) {
 	env := newHandlerTestEnv(t)
 	params := map[string]string{"org": "default", "project": "default", "id": "1"}
