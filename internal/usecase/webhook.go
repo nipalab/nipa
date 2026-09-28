@@ -45,14 +45,15 @@ type webhookDispatcher interface {
 }
 
 var webhookEventTypes = map[string]struct{}{
-	domain.WebhookEventPush:          {},
-	domain.WebhookEventBranchCreated: {},
-	domain.WebhookEventBranchDeleted: {},
-	domain.WebhookEventMRCreated:     {},
-	domain.WebhookEventMRUpdated:     {},
-	domain.WebhookEventMRMerged:      {},
-	domain.WebhookEventMRClosed:      {},
-	domain.WebhookEventMRReopened:    {},
+	domain.WebhookEventPush:           {},
+	domain.WebhookEventBranchCreated:  {},
+	domain.WebhookEventBranchDeleted:  {},
+	domain.WebhookEventMRCreated:      {},
+	domain.WebhookEventMRUpdated:      {},
+	domain.WebhookEventMRSynchronized: {},
+	domain.WebhookEventMRMerged:       {},
+	domain.WebhookEventMRClosed:       {},
+	domain.WebhookEventMRReopened:     {},
 }
 
 // WebhookInput describes a new webhook endpoint.

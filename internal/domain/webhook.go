@@ -9,15 +9,16 @@ import (
 // Webhook event types emitted by the server. Ping is only sent through the
 // manual test endpoint.
 const (
-	WebhookEventPush          = "push"
-	WebhookEventBranchCreated = "branch.created"
-	WebhookEventBranchDeleted = "branch.deleted"
-	WebhookEventMRCreated     = "mr.created"
-	WebhookEventMRUpdated     = "mr.updated"
-	WebhookEventMRMerged      = "mr.merged"
-	WebhookEventMRClosed      = "mr.closed"
-	WebhookEventMRReopened    = "mr.reopened"
-	WebhookEventPing          = "ping"
+	WebhookEventPush           = "push"
+	WebhookEventBranchCreated  = "branch.created"
+	WebhookEventBranchDeleted  = "branch.deleted"
+	WebhookEventMRCreated      = "mr.created"
+	WebhookEventMRUpdated      = "mr.updated"
+	WebhookEventMRSynchronized = "mr.synchronized"
+	WebhookEventMRMerged       = "mr.merged"
+	WebhookEventMRClosed       = "mr.closed"
+	WebhookEventMRReopened     = "mr.reopened"
+	WebhookEventPing           = "ping"
 )
 
 // Webhook delivery states.

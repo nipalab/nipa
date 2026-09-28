@@ -136,6 +136,7 @@ func TestAPIRoutes(t *testing.T) {
 	hookEmitter := usecase.NewHookEmitter(webhookRepo, sqlite.NewProjectRepository(dbConn), sqlite.NewOrgRepository(dbConn), branchRepo, userRepo, webhookDispatcher)
 	branchUc = branchUc.WithHooks(hookEmitter)
 	mergeRequestUc = mergeRequestUc.WithHooks(hookEmitter)
+	reviewUc = reviewUc.WithHooks(hookEmitter)
 	pusher = pusher.WithHooks(hookEmitter)
 	reg := &testRegistry{
 		auth:         usecase.NewAuth("test-secret", stubPasswordHasher{}, userRepo, sqlite.NewAuthRepository(dbConn)),
@@ -998,7 +999,7 @@ func TestAPIRoutes(t *testing.T) {
 		t.Cleanup(receiver.Close)
 
 		created := doMethod(t, http.MethodPost, base+"/webhooks",
-			`{"name":"ci","url":"`+receiver.URL+`","events":["push","branch.created"]}`, aliceLogin.AccessToken)
+			`{"name":"ci","url":"`+receiver.URL+`","events":["push","branch.created","mr.synchronized"]}`, aliceLogin.AccessToken)
 		require.Equal(t, http.StatusOK, created.StatusCode)
 		hook := decodeBody[model.WebhookResponse](t, created)
 		t.Cleanup(func() {
@@ -1020,18 +1021,32 @@ func TestAPIRoutes(t *testing.T) {
 		require.Equal(t, http.StatusOK, createBranch.StatusCode)
 		createBranch.Body.Close()
 
-		deliveries := map[string]received{}
-		timeout := time.After(5 * time.Second)
-		for len(deliveries) < 2 {
-			select {
-			case delivery := <-requests:
-				deliveries[delivery.event] = delivery
-			case <-timeout:
-				t.Fatalf("timed out waiting for deliveries, got %v", deliveries)
+		var inbox []received
+		waitFor := func(count int) {
+			t.Helper()
+			timeout := time.After(5 * time.Second)
+			for len(inbox) < count {
+				select {
+				case delivery := <-requests:
+					inbox = append(inbox, delivery)
+				case <-timeout:
+					t.Fatalf("timed out waiting for %d deliveries, got %d", count, len(inbox))
+				}
+			}
+		}
+		waitFor(2)
+
+		var pushDelivery, branchDelivery received
+		for _, delivery := range inbox {
+			switch delivery.event {
+			case domain.WebhookEventPush:
+				pushDelivery = delivery
+			case domain.WebhookEventBranchCreated:
+				branchDelivery = delivery
 			}
 		}
 
-		pushDelivery := deliveries[domain.WebhookEventPush]
+		require.NotEmpty(t, pushDelivery.event)
 		require.True(t, webhook.Verify(hook.Secret, pushDelivery.body, pushDelivery.signature))
 		var pushPayload webhook.PushPayload
 		require.NoError(t, json.Unmarshal(pushDelivery.body, &pushPayload))
@@ -1045,15 +1060,47 @@ func TestAPIRoutes(t *testing.T) {
 			Path: "hook/note.txt", Operation: webhook.PushFileAdded, SizeBytes: 5,
 		})
 
-		branchDelivery := deliveries[domain.WebhookEventBranchCreated]
+		require.NotEmpty(t, branchDelivery.event)
 		require.True(t, webhook.Verify(hook.Secret, branchDelivery.body, branchDelivery.signature))
 		var branchPayload webhook.BranchPayload
 		require.NoError(t, json.Unmarshal(branchDelivery.body, &branchPayload))
 		require.Equal(t, "hook-branch", branchPayload.Branch.Name)
 		require.NotEmpty(t, branchPayload.Branch.CommitID)
 
+		// a push to an open merge request's source branch synchronizes it
+		createMR := doMethod(t, http.MethodPost, base+"/merge-requests",
+			`{"title":"Sync","source_branch":"hook-branch","target_branch":"main"}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, createMR.StatusCode)
+		mergeRequest := decodeBody[model.MergeRequestResponse](t, createMR)
+
+		branches = decodeBody[[]model.BranchResponse](t, doGet(t, base+"/branches", aliceLogin.AccessToken))
+		var syncHead string
+		for _, branch := range branches {
+			if branch.Name == "hook-branch" {
+				syncHead = branch.CommitID
+			}
+		}
+		require.NotEmpty(t, syncHead)
+		seedPushTo(t, "hook-branch", syncHead, map[string]string{"hook/sync.txt": "sync"})
+		waitFor(4)
+
+		var syncDelivery received
+		for _, delivery := range inbox[2:] {
+			if delivery.event == domain.WebhookEventMRSynchronized {
+				syncDelivery = delivery
+			}
+		}
+		require.NotEmpty(t, syncDelivery.event, "expected an mr.synchronized delivery, got %v", inbox)
+		require.True(t, webhook.Verify(hook.Secret, syncDelivery.body, syncDelivery.signature))
+		var syncPayload webhook.MergeRequestPayload
+		require.NoError(t, json.Unmarshal(syncDelivery.body, &syncPayload))
+		require.Equal(t, hook.ID, syncPayload.WebhookID)
+		require.Equal(t, mergeRequest.Number, syncPayload.MergeRequest.Number)
+		require.Equal(t, "hook-branch", syncPayload.MergeRequest.SourceBranch)
+		require.Equal(t, domain.MergeRequestOpen, syncPayload.MergeRequest.State)
+
 		listed := decodeBody[[]model.WebhookDeliveryResponse](t, doGet(t, base+"/webhooks/"+hook.ID+"/deliveries", aliceLogin.AccessToken))
-		require.Len(t, listed, 2)
+		require.Len(t, listed, 4)
 	})
 
 	t.Run("merge request reviews", func(t *testing.T) {

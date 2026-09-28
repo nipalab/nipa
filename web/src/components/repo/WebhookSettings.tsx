@@ -20,6 +20,7 @@ export const WEBHOOK_EVENTS: { value: string; label: string }[] = [
   { value: 'branch.deleted', label: 'Branch deleted' },
   { value: 'mr.created', label: 'Merge request created' },
   { value: 'mr.updated', label: 'Merge request updated' },
+  { value: 'mr.synchronized', label: 'Merge request synchronized' },
   { value: 'mr.merged', label: 'Merge request merged' },
   { value: 'mr.closed', label: 'Merge request closed' },
   { value: 'mr.reopened', label: 'Merge request reopened' },

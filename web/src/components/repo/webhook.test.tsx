@@ -128,6 +128,7 @@ describe('WebhookSettings', () => {
     await waitFor(() => container.textContent?.includes('No webhooks') ?? false)
 
     click(button(container, 'Create webhook'))
+    expect(container.textContent).toContain('Merge request synchronized')
     const textInputs = container.querySelectorAll<HTMLInputElement>('input:not([type="checkbox"])')
     type(textInputs[0], 'ci')
     type(textInputs[1], 'https://ci.example.com/hooks/nipa')

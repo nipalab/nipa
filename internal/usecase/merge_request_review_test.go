@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -699,7 +700,34 @@ func TestMergeRequestReview_NoteBranchPush(t *testing.T) {
 			return &event, nil
 		}).Times(2)
 
-	require.NoError(t, review.NoteBranchPush(context.Background(), snow.ID(1), snow.ID(3), snow.ID(11), snow.ID(9), "cafe"))
+	var emitted []int64
+	hooks := NewMockhookMergeRequestGate(gomock.NewController(t))
+	hooks.EXPECT().EmitMergeRequest(gomock.Any(), domain.WebhookEventMRSynchronized, snow.ID(1), gomock.Any(), snow.ID(9)).
+		DoAndReturn(func(_ context.Context, event string, _ snow.ID, mr *domain.MergeRequest, _ snow.ID) error {
+			require.Equal(t, domain.WebhookEventMRSynchronized, event)
+			emitted = append(emitted, mr.Number)
+			return nil
+		}).Times(2)
+
+	require.NoError(t, review.WithHooks(hooks).NoteBranchPush(context.Background(), snow.ID(1), snow.ID(3), snow.ID(11), snow.ID(9), "cafe"))
+	require.ElementsMatch(t, []int64{5, 6}, emitted)
+}
+
+// a delivery failure must not abort the review bookkeeping of the other
+// merge requests on the branch
+func TestMergeRequestReview_NoteBranchPush_HookFailureIsNotFatal(t *testing.T) {
+	review, repo, _, _, _, _, _ := newTestMergeRequestReview(t)
+	repo.EXPECT().ListOpenBySourceBranch(gomock.Any(), snow.ID(1), snow.ID(3)).
+		Return([]*domain.MergeRequest{{ID: 5, Number: 5}}, nil)
+	repo.EXPECT().DismissStaleReviews(gomock.Any(), gomock.Any(), snow.ID(11), snow.ID(9),
+		domain.MergeRequestDismissedNewCommits, gomock.Any()).Return(nil)
+	repo.EXPECT().CreateEvent(gomock.Any(), gomock.Any()).Return(&domain.MergeRequestTimelineItem{}, nil)
+
+	hooks := NewMockhookMergeRequestGate(gomock.NewController(t))
+	hooks.EXPECT().EmitMergeRequest(gomock.Any(), domain.WebhookEventMRSynchronized, snow.ID(1), gomock.Any(), snow.ID(9)).
+		Return(errors.New("dispatcher down"))
+
+	require.NoError(t, review.WithHooks(hooks).NoteBranchPush(context.Background(), snow.ID(1), snow.ID(3), snow.ID(11), snow.ID(9), "cafe"))
 }
 
 func TestMergeRequestReview_NoteBranchPush_NoOpenRequests(t *testing.T) {

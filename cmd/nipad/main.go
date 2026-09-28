@@ -109,6 +109,7 @@ func main() {
 	hookEmitter := usecase.NewHookEmitter(webhookRepository, projectRepo, orgRepo, branchRepository, userRepo, webhookDispatcher)
 	branchUsecase = branchUsecase.WithHooks(hookEmitter)
 	mergeRequestUsecase = mergeRequestUsecase.WithHooks(hookEmitter)
+	mergeRequestReviewUsecase = mergeRequestReviewUsecase.WithHooks(hookEmitter)
 	pushUsecase = pushUsecase.WithHooks(hookEmitter)
 	reg := &Registry{
 		authUsecase:               authUsecase,
