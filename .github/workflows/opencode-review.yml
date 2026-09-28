@@ -36,7 +36,7 @@ jobs:
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           OPENCODE_CONFIG_CONTENT: '{"permission":{"edit":"deny","external_directory":{"/tmp/*":"allow"}}}'
         with:
-          model: opencode-go/glm-5.3-flash
+          model: opencode-go/deepseek-v4.1-flash
           prompt: |
             You are reviewing pull request #${{ github.event.pull_request.number }}
             in ${{ github.repository }} (head ${{ github.event.pull_request.head.sha }}).
