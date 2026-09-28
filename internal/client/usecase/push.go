@@ -83,7 +83,8 @@ func (p *Push) Run(ctx context.Context, root, message string, progress ...Upload
 		return err
 	}
 	if revertState != nil && len(revertState.Targets) > 1 {
-		return domain.NewUserError("a revert sequence is in progress; run nipa revert --continue")
+		return domain.NewUserError("a revert sequence is in progress; run nipa revert --continue").
+			WithHint("the working copy is mid revert-sequence", "nipa revert --continue")
 	}
 
 	var baseTreeHash, baseCommitID, parent2 string

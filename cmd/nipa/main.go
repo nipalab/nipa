@@ -9,6 +9,7 @@ import (
 	"github.com/nipalab/nipa/internal/client/config"
 	"github.com/nipalab/nipa/internal/client/grpc"
 	"github.com/nipalab/nipa/internal/client/localrepo"
+	"github.com/nipalab/nipa/internal/client/output"
 	"github.com/nipalab/nipa/internal/client/securestorage"
 	"github.com/nipalab/nipa/internal/client/usecase"
 )
@@ -66,6 +67,10 @@ func main() {
 }
 
 func handleError(err error) {
-	fmt.Fprintln(os.Stderr, err)
-	os.Exit(1)
+	if cli.JSONRequested(os.Args[1:]) {
+		_ = output.WriteError(os.Stderr, err)
+	} else {
+		fmt.Fprintln(os.Stderr, err)
+	}
+	os.Exit(cli.ExitCode(err))
 }

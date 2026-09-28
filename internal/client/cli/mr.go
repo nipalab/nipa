@@ -2,6 +2,7 @@ package cli
 
 import (
 	"github.com/nipalab/nipa/internal/client/localrepo"
+	"github.com/nipalab/nipa/internal/client/output"
 	"github.com/nipalab/nipa/internal/client/usecase"
 	"github.com/spf13/cobra"
 )
@@ -103,6 +104,9 @@ func (c *Cli) setupMrListCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if jsonRequested(cmd) {
+				return output.WriteJSON(cmd.OutOrStdout(), output.NewMergeRequests(requests))
+			}
 			if len(requests) == 0 {
 				cmd.Println("no merge requests")
 				return nil
@@ -117,6 +121,7 @@ func (c *Cli) setupMrListCmd() *cobra.Command {
 	}
 	cmd.Flags().String("status", "", "Filter by status: open, merged, closed")
 	cmd.Flags().Int("limit", 50, "Maximum number of merge requests")
+	addJSONFlag(cmd)
 	return cmd
 }
 

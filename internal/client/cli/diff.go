@@ -12,6 +12,7 @@ import (
 	clientconfig "github.com/nipalab/nipa/internal/client/config"
 	"github.com/nipalab/nipa/internal/client/difftool"
 	"github.com/nipalab/nipa/internal/client/localrepo"
+	"github.com/nipalab/nipa/internal/client/output"
 	"github.com/nipalab/nipa/internal/client/usecase"
 	"github.com/nipalab/nipa/internal/diff"
 )
@@ -60,6 +61,7 @@ func (c *Cli) setupDiffCmd() *cobra.Command {
 	cmd.Flags().Bool("ext-diff", false, "Use the configured external diff command")
 	cmd.Flags().Bool("exit-code", false, "Exit with status 1 when there are differences")
 	cmd.Flags().Bool("no-cache", false, "Read every working file instead of trusting the stat cache")
+	addJSONFlag(cmd)
 	return cmd
 }
 
@@ -94,6 +96,15 @@ func (c *Cli) runDiff(cmd *cobra.Command, args []string) error {
 	if useExternal {
 		compareOpts.Binary = true
 	}
+	jsonMode := jsonRequested(cmd)
+	if jsonMode {
+		if mode != diffModePatch {
+			return fmt.Errorf("--json cannot be combined with another output format")
+		}
+		if useExternal {
+			return fmt.Errorf("--json cannot be combined with --ext-diff")
+		}
+	}
 	noPager, _ := cmd.Flags().GetBool("no-pager")
 	noColor, _ := cmd.Flags().GetBool("no-color")
 	exitCode, _ := cmd.Flags().GetBool("exit-code")
@@ -107,6 +118,12 @@ func (c *Cli) runDiff(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	files = diff.FilterIgnored(files, renderOpts)
+	if jsonMode {
+		if err := output.WriteJSON(cmd.OutOrStdout(), output.NewDiff(files, renderOpts)); err != nil {
+			return err
+		}
+		return exitCodeResult(files, exitCode)
+	}
 	if useExternal {
 		if err := runExternalDiff(cmd, externalCommand, files); err != nil {
 			return err

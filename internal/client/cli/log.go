@@ -8,6 +8,7 @@ import (
 	"syscall"
 
 	"github.com/nipalab/nipa/internal/client/domain"
+	"github.com/nipalab/nipa/internal/client/output"
 	"github.com/nipalab/nipa/internal/client/usecase"
 	serverDomain "github.com/nipalab/nipa/internal/domain"
 	"github.com/spf13/cobra"
@@ -35,6 +36,9 @@ func (c *Cli) setupLogCmd() *cobra.Command {
 				return err
 			}
 			out := cmd.OutOrStdout()
+			if jsonRequested(cmd) {
+				return output.WriteJSON(out, output.NewLog(entries))
+			}
 			if noPager || !isTTY(out) {
 				return printLogPlain(out, entries, oneline)
 			}
@@ -44,6 +48,7 @@ func (c *Cli) setupLogCmd() *cobra.Command {
 	cmd.Flags().IntP("limit", "n", 0, "Limit the number of commits shown (0 = full history)")
 	cmd.Flags().BoolP("oneline", "o", false, "Show one line per commit")
 	cmd.Flags().Bool("no-pager", false, "Print log without the interactive pager")
+	addJSONFlag(cmd)
 	return cmd
 }
 

@@ -6,6 +6,7 @@ import (
 
 	"github.com/nipalab/nipa/internal/client/domain"
 	"github.com/nipalab/nipa/internal/client/localrepo"
+	"github.com/nipalab/nipa/internal/client/output"
 	"github.com/spf13/cobra"
 )
 
@@ -37,7 +38,7 @@ func (c *Cli) setupLockCmd() *cobra.Command {
 }
 
 func (c *Cli) setupLockListCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:           "list",
 		Short:         "List active binary file locks",
 		Args:          cobra.NoArgs,
@@ -51,6 +52,9 @@ func (c *Cli) setupLockListCmd() *cobra.Command {
 			locks, err := c.useCase.Lock().List(cmd.Context(), root)
 			if err != nil {
 				return err
+			}
+			if jsonRequested(cmd) {
+				return output.WriteJSON(cmd.OutOrStdout(), output.NewLocks(locks))
 			}
 			if len(locks) == 0 {
 				cmd.Println("no locks")
@@ -68,6 +72,8 @@ func (c *Cli) setupLockListCmd() *cobra.Command {
 			return nil
 		},
 	}
+	addJSONFlag(cmd)
+	return cmd
 }
 
 func (c *Cli) setupUnlockCmd() *cobra.Command {

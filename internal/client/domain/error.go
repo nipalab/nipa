@@ -5,6 +5,14 @@ import "fmt"
 type Error struct {
 	Code    int
 	Message string
+	Hint    string
+	Action  string
+}
+
+func (e *Error) WithHint(hint, action string) *Error {
+	e.Hint = hint
+	e.Action = action
+	return e
 }
 
 func (e *Error) Error() string {

@@ -168,14 +168,16 @@ func (r *Revert) checkNoPendingOperations() error {
 		return err
 	}
 	if mergeState != nil {
-		return domain.NewUserError("a merge is already in progress; resolve the conflicts and push, or run nipa merge --abort")
+		return domain.NewUserError("a merge is already in progress; resolve the conflicts and push, or run nipa merge --abort").
+			WithHint("resolve the conflicts and push to complete the merge, or abort it", "nipa merge --abort")
 	}
 	revertState, err := r.localRepo.LoadRevertState()
 	if err != nil {
 		return err
 	}
 	if revertState != nil {
-		return domain.NewUserError("a revert is already in progress; resolve the conflicts and run nipa revert --continue, or run nipa revert --abort")
+		return domain.NewUserError("a revert is already in progress; resolve the conflicts and run nipa revert --continue, or run nipa revert --abort").
+			WithHint("resolve the conflicts and continue the revert sequence, or abort it", "nipa revert --continue")
 	}
 	staged, err := r.localRepo.ListStaged()
 	if err != nil {
