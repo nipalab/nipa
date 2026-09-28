@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/nipalab/nipa/internal/diff"
@@ -26,6 +27,12 @@ type branchMerger interface {
 	BinaryChangesBetween(ctx context.Context, projectID snow.ID, fromCommitID, toCommitID *snow.ID) ([]string, error)
 }
 
+// hookMergeRequestGate is the subset of the webhook emitter used by the merge
+// request lifecycle.
+type hookMergeRequestGate interface {
+	EmitMergeRequest(ctx context.Context, event string, projectID snow.ID, mr *domain.MergeRequest, actor snow.ID) error
+}
+
 type MergeRequest struct {
 	repo       mergeRequestRepository
 	branchRepo branchRepository
@@ -33,6 +40,7 @@ type MergeRequest struct {
 	merger     branchMerger
 	snowNode   snow.Node
 	fileLocks  fileLockGate
+	hooks      hookMergeRequestGate
 }
 
 // mergeRequestCommitLimit caps how many commits a merge request lists.
@@ -51,6 +59,12 @@ func NewMergeRequest(repo mergeRequestRepository, branchRepo branchRepository, p
 // WithFileLocks enables binary lock checks on merge-request transitions.
 func (m *MergeRequest) WithFileLocks(locks fileLockGate) *MergeRequest {
 	m.fileLocks = locks
+	return m
+}
+
+// WithHooks enables webhook events on this usecase.
+func (m *MergeRequest) WithHooks(hooks hookMergeRequestGate) *MergeRequest {
+	m.hooks = hooks
 	return m
 }
 
@@ -133,6 +147,7 @@ func (m *MergeRequest) Create(ctx context.Context, projectID snow.ID, title, des
 		}
 		return nil, err
 	}
+	m.emitHook(ctx, domain.WebhookEventMRCreated, projectID, created, claim.UserID)
 	return created, nil
 }
 
@@ -180,7 +195,12 @@ func (m *MergeRequest) Update(ctx context.Context, projectID snow.ID, number int
 	if description == "" {
 		description = mr.Description
 	}
-	return m.repo.Update(ctx, projectID, number, title, description)
+	updated, err := m.repo.Update(ctx, projectID, number, title, description)
+	if err != nil {
+		return nil, err
+	}
+	m.emitHook(ctx, domain.WebhookEventMRUpdated, projectID, updated, claim.UserID)
+	return updated, nil
 }
 
 func (m *MergeRequest) Check(ctx context.Context, projectID snow.ID, number int64) (*domain.Mergeability, error) {
@@ -244,6 +264,9 @@ func (m *MergeRequest) Merge(ctx context.Context, projectID snow.ID, number int6
 	if err != nil {
 		return nil, info, err
 	}
+	if claim, ok := domain.ClaimFromContext(ctx); ok {
+		m.emitHook(ctx, domain.WebhookEventMRMerged, projectID, merged, claim.UserID)
+	}
 	return merged, info, nil
 }
 
@@ -257,6 +280,9 @@ func (m *MergeRequest) Close(ctx context.Context, projectID snow.ID, number int6
 			return nil, err
 		}
 	}
+	if claim, ok := domain.ClaimFromContext(ctx); ok {
+		m.emitHook(ctx, domain.WebhookEventMRClosed, projectID, mr, claim.UserID)
+	}
 	return mr, nil
 }
 
@@ -269,6 +295,7 @@ func (m *MergeRequest) Reopen(ctx context.Context, projectID snow.ID, number int
 		if err := m.ensureLocksForRequest(ctx, projectID, mr, claim.UserID); err != nil {
 			return nil, err
 		}
+		m.emitHook(ctx, domain.WebhookEventMRReopened, projectID, mr, claim.UserID)
 	}
 	return mr, nil
 }
@@ -434,6 +461,17 @@ func (m *MergeRequest) check(ctx context.Context, projectID snow.ID, mr *domain.
 	}
 	info.Status = domain.MergeabilityMergeable
 	return info, nil
+}
+
+// emitHook publishes a merge request event. The state change is already
+// stored, so a delivery failure must not fail the operation.
+func (m *MergeRequest) emitHook(ctx context.Context, event string, projectID snow.ID, mr *domain.MergeRequest, actor snow.ID) {
+	if m.hooks == nil {
+		return
+	}
+	if err := m.hooks.EmitMergeRequest(ctx, event, projectID, mr, actor); err != nil {
+		slog.Warn("emitting webhook merge request event failed", "event", event, "project", projectID, "error", err)
+	}
 }
 
 func (m *MergeRequest) setStatus(ctx context.Context, projectID snow.ID, number int64, from, to string) (*domain.MergeRequest, error) {

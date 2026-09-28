@@ -106,6 +106,10 @@ func main() {
 		EgressAllowlist: splitAllowlist(cfg.WebhookEgressAllowlist),
 	}), snowUser, webhook.Config{})
 	webhookUsecase := usecase.NewWebhook(webhookRepository, permissionUsecase, userRepo, webhookDispatcher, snowUser)
+	hookEmitter := usecase.NewHookEmitter(webhookRepository, projectRepo, orgRepo, branchRepository, userRepo, webhookDispatcher)
+	branchUsecase = branchUsecase.WithHooks(hookEmitter)
+	mergeRequestUsecase = mergeRequestUsecase.WithHooks(hookEmitter)
+	pushUsecase = pushUsecase.WithHooks(hookEmitter)
 	reg := &Registry{
 		authUsecase:               authUsecase,
 		userUsecase:               usecase.NewUser(snowUser, userRepo, passwordHasher),

@@ -92,3 +92,41 @@ func (mr *MockreviewPushGateMockRecorder) NoteBranchPush(ctx, projectID, branchI
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NoteBranchPush", reflect.TypeOf((*MockreviewPushGate)(nil).NoteBranchPush), ctx, projectID, branchID, newHead, actor, commitHash)
 }
+
+// MockhookPushGate is a mock of hookPushGate interface.
+type MockhookPushGate struct {
+	ctrl     *gomock.Controller
+	recorder *MockhookPushGateMockRecorder
+	isgomock struct{}
+}
+
+// MockhookPushGateMockRecorder is the mock recorder for MockhookPushGate.
+type MockhookPushGateMockRecorder struct {
+	mock *MockhookPushGate
+}
+
+// NewMockhookPushGate creates a new mock instance.
+func NewMockhookPushGate(ctrl *gomock.Controller) *MockhookPushGate {
+	mock := &MockhookPushGate{ctrl: ctrl}
+	mock.recorder = &MockhookPushGateMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockhookPushGate) EXPECT() *MockhookPushGateMockRecorder {
+	return m.recorder
+}
+
+// EmitPush mocks base method.
+func (m *MockhookPushGate) EmitPush(ctx context.Context, event PushEvent) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "EmitPush", ctx, event)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// EmitPush indicates an expected call of EmitPush.
+func (mr *MockhookPushGateMockRecorder) EmitPush(ctx, event any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EmitPush", reflect.TypeOf((*MockhookPushGate)(nil).EmitPush), ctx, event)
+}

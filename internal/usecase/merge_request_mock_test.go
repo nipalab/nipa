@@ -200,3 +200,41 @@ func (mr *MockbranchMergerMockRecorder) TreeDiffBetween(ctx, projectID, baseID, 
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TreeDiffBetween", reflect.TypeOf((*MockbranchMerger)(nil).TreeDiffBetween), ctx, projectID, baseID, headID)
 }
+
+// MockhookMergeRequestGate is a mock of hookMergeRequestGate interface.
+type MockhookMergeRequestGate struct {
+	ctrl     *gomock.Controller
+	recorder *MockhookMergeRequestGateMockRecorder
+	isgomock struct{}
+}
+
+// MockhookMergeRequestGateMockRecorder is the mock recorder for MockhookMergeRequestGate.
+type MockhookMergeRequestGateMockRecorder struct {
+	mock *MockhookMergeRequestGate
+}
+
+// NewMockhookMergeRequestGate creates a new mock instance.
+func NewMockhookMergeRequestGate(ctrl *gomock.Controller) *MockhookMergeRequestGate {
+	mock := &MockhookMergeRequestGate{ctrl: ctrl}
+	mock.recorder = &MockhookMergeRequestGateMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockhookMergeRequestGate) EXPECT() *MockhookMergeRequestGateMockRecorder {
+	return m.recorder
+}
+
+// EmitMergeRequest mocks base method.
+func (m *MockhookMergeRequestGate) EmitMergeRequest(ctx context.Context, event string, projectID snow.ID, mr *domain.MergeRequest, actor snow.ID) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "EmitMergeRequest", ctx, event, projectID, mr, actor)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// EmitMergeRequest indicates an expected call of EmitMergeRequest.
+func (mr_2 *MockhookMergeRequestGateMockRecorder) EmitMergeRequest(ctx, event, projectID, mr, actor any) *gomock.Call {
+	mr_2.mock.ctrl.T.Helper()
+	return mr_2.mock.ctrl.RecordCallWithMethodType(mr_2.mock, "EmitMergeRequest", reflect.TypeOf((*MockhookMergeRequestGate)(nil).EmitMergeRequest), ctx, event, projectID, mr, actor)
+}

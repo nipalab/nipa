@@ -60,12 +60,18 @@ type Push struct {
 	snowNode   snow.Node
 	fileLocks  fileLockGate
 	reviews    reviewPushGate
+	hooks      hookPushGate
 }
 
 // reviewPushGate is the subset of the review usecase used by the push flow to
 // mark reviews stale and log the push on the merge request timeline.
 type reviewPushGate interface {
 	NoteBranchPush(ctx context.Context, projectID, branchID, newHead, actor snow.ID, commitHash string) error
+}
+
+// hookPushGate is the subset of the webhook emitter used by the push flow.
+type hookPushGate interface {
+	EmitPush(ctx context.Context, event PushEvent) error
 }
 
 func NewPush(permUc permissionUsecase, branchRepo branchRepository, pushRepo pushRepository, snowNode snow.Node) *Push {
@@ -86,6 +92,12 @@ func (p *Push) WithFileLocks(locks fileLockGate) *Push {
 // WithReviews enables the review staleness gate on this usecase.
 func (p *Push) WithReviews(reviews reviewPushGate) *Push {
 	p.reviews = reviews
+	return p
+}
+
+// WithHooks enables webhook events on this usecase.
+func (p *Push) WithHooks(hooks hookPushGate) *Push {
+	p.hooks = hooks
 	return p
 }
 
@@ -134,13 +146,22 @@ func (p *Push) Push(ctx context.Context, projectID snow.ID, branchName, baseTree
 		}
 	}
 
+	var headFlags map[string]bool
+	if headCommit != nil && (p.fileLocks != nil || p.hooks != nil) {
+		flags, err := p.headBinaryPaths(ctx, headCommit, touchedPushPaths(files, removed))
+		if err != nil {
+			if p.fileLocks != nil {
+				return nil, err
+			}
+			slog.Warn("scanning the head tree for the webhook payload failed", "project", projectID, "error", err)
+		} else {
+			headFlags = flags
+		}
+	}
+
 	var lockPlan pushLockPlan
 	if p.fileLocks != nil {
-		headBinary, err := p.headBinaryPaths(ctx, headCommit, touchedPushPaths(files, removed))
-		if err != nil {
-			return nil, err
-		}
-		lockPlan = planPushLocks(files, removed, headBinary)
+		lockPlan = planPushLocks(files, removed, headFlags)
 		if err := p.fileLocks.EnsureLocks(ctx, projectID, branch, lockPlan.required, lockPlan.checked, claim.UserID); err != nil {
 			return nil, err
 		}
@@ -208,6 +229,22 @@ func (p *Push) Push(ctx context.Context, projectID snow.ID, branchName, baseTree
 		// reported to the client as a failed push.
 		if err := p.reviews.NoteBranchPush(ctx, projectID, branch.ID, req.CommitID, claim.UserID, req.CommitHash.String()); err != nil {
 			slog.Warn("recording merge request push failed", "project", projectID, "branch", branchName, "error", err)
+		}
+	}
+	if p.hooks != nil {
+		// Delivery is post-commit and best effort, same as the review gate.
+		if err := p.hooks.EmitPush(ctx, PushEvent{
+			ProjectID:  projectID,
+			Actor:      claim.UserID,
+			Branch:     branch,
+			Before:     headCommit,
+			AfterID:    req.CommitID,
+			Message:    message,
+			Files:      files,
+			Removed:    removed,
+			HeadBinary: headFlags,
+		}); err != nil {
+			slog.Warn("emitting webhook push event failed", "project", projectID, "branch", branchName, "error", err)
 		}
 	}
 	return &domain.PushResult{
