@@ -97,6 +97,22 @@ func TestWebhook_Create(t *testing.T) {
 		requireUserError(t, err)
 	})
 
+	t.Run("accepts mr.synchronized", func(t *testing.T) {
+		uc, repo, perm := newTestWebhook(t)
+		perm.EXPECT().AdminHasProject(gomock.Any(), snow.ID(1)).Return(true)
+		repo.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, webhook domain.Webhook) (*domain.Webhook, error) {
+				require.Equal(t, []string{domain.WebhookEventMRSynchronized}, webhook.Events)
+				created := webhook
+				return &created, nil
+			})
+
+		_, err := uc.Create(ctx, snow.ID(1), WebhookInput{
+			URL: "https://example.com/hook", Events: []string{domain.WebhookEventMRSynchronized},
+		})
+		require.NoError(t, err)
+	})
+
 	t.Run("rejects an overlong url and name", func(t *testing.T) {
 		uc, _, perm := newTestWebhook(t)
 		perm.EXPECT().AdminHasProject(gomock.Any(), snow.ID(1)).Return(true).AnyTimes()

@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -65,6 +66,7 @@ type MergeRequestReview struct {
 	users      userLookup
 	snowNode   snow.Node
 	now        func() time.Time
+	hooks      hookMergeRequestGate
 }
 
 func NewMergeRequestReview(repo mergeRequestReviewRepository, mrRepo mergeRequestRepository,
@@ -80,6 +82,12 @@ func NewMergeRequestReview(repo mergeRequestReviewRepository, mrRepo mergeReques
 		snowNode:   snowNode,
 		now:        time.Now,
 	}
+}
+
+// WithHooks enables webhook events on this usecase.
+func (r *MergeRequestReview) WithHooks(hooks hookMergeRequestGate) *MergeRequestReview {
+	r.hooks = hooks
+	return r
 }
 
 // Reviews returns every review of a merge request, with staleness resolved
@@ -489,6 +497,7 @@ func (r *MergeRequestReview) Timeline(ctx context.Context, projectID snow.ID, nu
 // NoteBranchPush invalidates the reviews of every open merge request that takes
 // its source from a branch that just moved. Decisions given for the previous
 // head are dismissed, which keeps them in history but stops them from counting.
+// Subscribed webhooks receive an mr.synchronized event for each request.
 func (r *MergeRequestReview) NoteBranchPush(ctx context.Context, projectID, branchID, newHead, actor snow.ID, commitHash string) error {
 	requests, err := r.repo.ListOpenBySourceBranch(ctx, projectID, branchID)
 	if err != nil {
@@ -507,8 +516,21 @@ func (r *MergeRequestReview) NoteBranchPush(ctx context.Context, projectID, bran
 		}); err != nil {
 			return err
 		}
+		r.emitHook(ctx, domain.WebhookEventMRSynchronized, projectID, mr, actor)
 	}
 	return nil
+}
+
+// emitHook publishes a merge request event. The push itself already landed, so
+// a delivery failure must not fail the bookkeeping.
+func (r *MergeRequestReview) emitHook(ctx context.Context, event string, projectID snow.ID, mr *domain.MergeRequest, actor snow.ID) {
+	if r.hooks == nil {
+		return
+	}
+	if err := r.hooks.EmitMergeRequest(ctx, event, projectID, mr, actor); err != nil {
+		slog.Warn("emitting webhook merge request event failed",
+			"event", event, "project", projectID, "merge_request", mr.Number, "error", err)
+	}
 }
 
 func (r *MergeRequestReview) reviews(ctx context.Context, mr *domain.MergeRequest) ([]*domain.MergeRequestReview, error) {
