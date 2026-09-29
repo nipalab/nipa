@@ -86,6 +86,7 @@ func (s *server) push(ctx context.Context, _ *mcp.CallToolRequest, in pushInput)
 	if err != nil {
 		return nil, zero, toolError(err)
 	}
+	defer uc.close()
 	if uc.Push == nil {
 		return nil, zero, toolError(domain.NewUserError("push is not configured"))
 	}
@@ -120,6 +121,7 @@ func (s *server) branchCreate(ctx context.Context, _ *mcp.CallToolRequest, in br
 	if err != nil {
 		return nil, zero, toolError(err)
 	}
+	defer uc.close()
 	branch, err := uc.Repo.CreateBranch(ctx, root, url.Host, url.Org, url.Project, in.Name)
 	if err != nil {
 		return nil, zero, toolError(err)
@@ -149,6 +151,7 @@ func (s *server) lock(ctx context.Context, _ *mcp.CallToolRequest, in lockInput)
 	if err != nil {
 		return nil, zero, toolError(err)
 	}
+	defer uc.close()
 	if uc.Lock == nil {
 		return nil, zero, toolError(domain.NewUserError("locks are not configured"))
 	}
@@ -181,6 +184,7 @@ func (s *server) unlock(ctx context.Context, _ *mcp.CallToolRequest, in unlockIn
 	if err != nil {
 		return nil, zero, toolError(err)
 	}
+	defer uc.close()
 	if uc.Lock == nil {
 		return nil, zero, toolError(domain.NewUserError("locks are not configured"))
 	}
@@ -210,6 +214,7 @@ func (s *server) mrCreate(ctx context.Context, _ *mcp.CallToolRequest, in mrCrea
 	if err != nil {
 		return nil, zero, toolError(err)
 	}
+	defer uc.close()
 	if uc.MR == nil {
 		return nil, zero, toolError(domain.NewUserError("merge requests are not configured"))
 	}

@@ -97,7 +97,8 @@ func loggedInAuth() *usecase.Auth {
 }
 
 type fakeLockClient struct {
-	locks []*domain.FileLock
+	locks   []*domain.FileLock
+	listErr error
 }
 
 func (fakeLockClient) Connect(context.Context, string) error { return nil }
@@ -109,12 +110,13 @@ func (fakeLockClient) LockFile(_ context.Context, _, _, path, branch string) (*d
 func (fakeLockClient) UnlockFile(context.Context, string, string, string, string) error { return nil }
 
 func (f fakeLockClient) ListFileLocks(context.Context, string, string) ([]*domain.FileLock, error) {
-	return f.locks, nil
+	return f.locks, f.listErr
 }
 
 type fakeRepoClient struct {
 	branches []*serverDomain.Branch
 	log      []*serverDomain.CommitLogEntry
+	err      error
 }
 
 func (fakeRepoClient) GetDefaultBranch(context.Context, string, string) (*serverDomain.Branch, error) {
@@ -130,7 +132,7 @@ func (fakeRepoClient) GetTreeNodeManifest(context.Context, string, string, strin
 }
 
 func (f fakeRepoClient) ListBranches(context.Context, string, string) ([]*serverDomain.Branch, error) {
-	return f.branches, nil
+	return f.branches, f.err
 }
 
 func (fakeRepoClient) CreateBranch(_ context.Context, _, _, name, _, _, _ string) (*serverDomain.Branch, error) {
@@ -145,11 +147,12 @@ func (fakeRepoClient) DownloadChunks(context.Context, domain.ChunkScope, []serve
 }
 
 func (f fakeRepoClient) GetCommitLog(context.Context, string, string, string, *snow.ID, int) ([]*serverDomain.CommitLogEntry, error) {
-	return f.log, nil
+	return f.log, f.err
 }
 
 type fakeMRClient struct {
 	requests []*domain.MergeRequest
+	err      error
 }
 
 func (fakeMRClient) Connect(context.Context, string) error { return nil }
@@ -163,7 +166,7 @@ func (fakeMRClient) UpdateMergeRequest(context.Context, string, string, int64, s
 }
 
 func (f fakeMRClient) ListMergeRequests(context.Context, string, string, string, int) ([]*domain.MergeRequest, error) {
-	return f.requests, nil
+	return f.requests, f.err
 }
 
 func (fakeMRClient) MergeMergeRequest(context.Context, string, string, int64) (*domain.MergeRequest, *domain.Mergeability, error) {
@@ -611,4 +614,233 @@ func TestStatus_FromWorkingDirectory(t *testing.T) {
 	var st output.Status
 	require.NoError(t, json.Unmarshal([]byte(toolText(t, res)), &st))
 	require.Equal(t, []string{"b.txt"}, st.Untracked)
+}
+
+type fakePushClient struct{}
+
+func (fakePushClient) Connect(context.Context, string) error { return nil }
+
+func (fakePushClient) Push(context.Context, string, string, string, string, string, []*serverDomain.PushFile, []string, string, string) (*serverDomain.PushResult, error) {
+	return &serverDomain.PushResult{CommitID: snow.ID(9002), CommitHash: serverDomain.Hash{0x01}}, nil
+}
+
+func (fakePushClient) UploadChunks(context.Context, domain.ChunkScope, []*serverDomain.ChunkData, ...func(*serverDomain.ChunkData)) (int, int, error) {
+	return 0, 0, nil
+}
+
+func (fakePushClient) GetTreeNodeManifest(context.Context, string, string, string, []string) (*serverDomain.TreeNode, error) {
+	return &serverDomain.TreeNode{}, nil
+}
+
+func stageFile(t *testing.T, root, path string) {
+	t.Helper()
+	lr := localrepo.NewLocalRepo()
+	require.NoError(t, lr.Init(root))
+	defer lr.Close()
+	require.NoError(t, lr.StageAdd(path))
+}
+
+func TestUseCases_ClosedAfterCall(t *testing.T) {
+	root := setupRepo(t, map[string]string{"a.txt": "one\n"})
+	writeFile(t, root, "a.txt", "two\n")
+	closed := false
+	session := connect(t, Options{NewUseCases: func() UseCases {
+		uc := UseCases{Diff: usecase.NewDiff(nil, nil, localrepo.NewLocalRepo())}
+		uc.Close = func() { closed = true }
+		return uc
+	}})
+
+	res := call(t, session, "nipa_diff", map[string]any{"repo": root})
+	require.False(t, res.IsError)
+	require.True(t, closed)
+}
+
+func TestConnectContext_ClosesOnConnectError(t *testing.T) {
+	root := setupRepo(t, nil)
+	closed := false
+	session := connect(t, Options{NewUseCases: func() UseCases {
+		uc := UseCases{
+			Repo:      usecase.NewRepo(nil, nil, localrepo.NewLocalRepo()),
+			Connector: fakeConnector{err: errors.New("dial failed")},
+		}
+		uc.Close = func() { closed = true }
+		return uc
+	}})
+
+	res := call(t, session, "nipa_log", map[string]any{"repo": root})
+	require.True(t, res.IsError)
+	require.True(t, closed)
+}
+
+func TestTools_NotConfigured(t *testing.T) {
+	root := setupRepo(t, nil)
+	empty := func() UseCases { return UseCases{} }
+	readSession := connect(t, Options{NewUseCases: empty})
+	writeSession := connect(t, Options{AllowWrite: true, NewUseCases: empty})
+
+	cases := []struct {
+		name    string
+		session *mcp.ClientSession
+		tool    string
+		args    map[string]any
+		want    string
+	}{
+		{"diff", readSession, "nipa_diff", map[string]any{"repo": root}, "diff is not configured"},
+		{"mr list", readSession, "nipa_mr_list", map[string]any{"repo": root}, "merge requests are not configured"},
+		{"lock list", readSession, "nipa_lock_list", map[string]any{"repo": root}, "locks are not configured"},
+		{"push", writeSession, "nipa_push", map[string]any{"repo": root, "message": "m"}, "push is not configured"},
+		{"lock", writeSession, "nipa_lock", map[string]any{"repo": root, "path": "a.psd"}, "locks are not configured"},
+		{"unlock", writeSession, "nipa_unlock", map[string]any{"repo": root, "path": "a.psd"}, "locks are not configured"},
+		{"mr create", writeSession, "nipa_mr_create", map[string]any{"repo": root, "title": "t"}, "merge requests are not configured"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			res := call(t, tc.session, tc.tool, tc.args)
+			require.True(t, res.IsError)
+			require.Contains(t, toolText(t, res), tc.want)
+		})
+	}
+}
+
+func TestPush_Success(t *testing.T) {
+	root := setupRepo(t, nil)
+	writeFile(t, root, "a.txt", "hello\n")
+	stageFile(t, root, "a.txt")
+	session := connect(t, Options{AllowWrite: true, NewUseCases: func() UseCases {
+		return UseCases{Push: usecase.NewPush(loggedInAuth(), fakePushClient{}, localrepo.NewLocalRepo())}
+	}})
+
+	res := call(t, session, "nipa_push", map[string]any{"repo": root, "message": "add a"})
+	require.False(t, res.IsError)
+
+	var out pushOutput
+	require.NoError(t, json.Unmarshal([]byte(toolText(t, res)), &out))
+	require.Equal(t, "main", out.Branch)
+	require.Equal(t, "6y2", out.CommitID)
+}
+
+func TestTools_NoFactory(t *testing.T) {
+	root := setupRepo(t, nil)
+	readSession := connect(t, Options{})
+	writeSession := connect(t, Options{AllowWrite: true})
+
+	cases := []struct {
+		name    string
+		session *mcp.ClientSession
+		tool    string
+		args    map[string]any
+	}{
+		{"diff", readSession, "nipa_diff", map[string]any{"repo": root}},
+		{"push", writeSession, "nipa_push", map[string]any{"repo": root, "message": "m"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			res := call(t, tc.session, tc.tool, tc.args)
+			require.True(t, res.IsError)
+			require.Contains(t, toolText(t, res), "no usecase factory configured")
+		})
+	}
+}
+
+func TestOnlineTools_PropagateErrors(t *testing.T) {
+	root := setupRepo(t, nil)
+	want := errors.New("server exploded")
+	cases := []struct {
+		name string
+		uc   func() UseCases
+		tool string
+	}{
+		{
+			name: "log",
+			uc: func() UseCases {
+				return UseCases{
+					Repo:      usecase.NewRepo(loggedInAuth(), fakeRepoClient{err: want}, localrepo.NewLocalRepo()),
+					Connector: fakeConnector{},
+				}
+			},
+			tool: "nipa_log",
+		},
+		{
+			name: "branch list",
+			uc: func() UseCases {
+				return UseCases{
+					Repo:      usecase.NewRepo(loggedInAuth(), fakeRepoClient{err: want}, localrepo.NewLocalRepo()),
+					Connector: fakeConnector{},
+				}
+			},
+			tool: "nipa_branch_list",
+		},
+		{
+			name: "mr list",
+			uc: func() UseCases {
+				return UseCases{MR: usecase.NewMergeRequest(loggedInAuth(), fakeMRClient{err: want}, localrepo.NewLocalRepo())}
+			},
+			tool: "nipa_mr_list",
+		},
+		{
+			name: "lock list",
+			uc: func() UseCases {
+				return UseCases{Lock: usecase.NewFileLock(loggedInAuth(), fakeLockClient{listErr: want}, localrepo.NewLocalRepo())}
+			},
+			tool: "nipa_lock_list",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			session := connect(t, Options{NewUseCases: tc.uc})
+			res := call(t, session, tc.tool, map[string]any{"repo": root})
+			require.True(t, res.IsError)
+			require.Contains(t, toolText(t, res), "server exploded")
+		})
+	}
+}
+
+func TestDiff_MoreValidation(t *testing.T) {
+	root := setupRepo(t, map[string]string{"a.txt": "a\n"})
+	session := connect(t, Options{NewUseCases: offlineUseCases})
+
+	res := call(t, session, "nipa_diff", map[string]any{"repo": root, "merge_base": true})
+	require.True(t, res.IsError)
+	require.Contains(t, toolText(t, res), "merge_base requires two revisions")
+
+	negative := -1
+	res = call(t, session, "nipa_diff", map[string]any{"repo": root, "unified": negative})
+	require.True(t, res.IsError)
+	require.Contains(t, toolText(t, res), "unified must not be negative")
+
+	res = call(t, session, "nipa_diff", map[string]any{"repo": filepath.Join(t.TempDir(), "missing")})
+	require.True(t, res.IsError)
+	require.Contains(t, toolText(t, res), "not a nipa repository")
+}
+
+func TestWorkingCopy_InitError(t *testing.T) {
+	root := setupRepo(t, nil)
+	require.NoError(t, os.RemoveAll(filepath.Join(root, ".nipa", "objects")))
+	require.NoError(t, os.WriteFile(filepath.Join(root, ".nipa", "objects"), []byte("file"), 0o644))
+
+	readSession := connect(t, Options{NewUseCases: offlineUseCases})
+	res := call(t, readSession, "nipa_status", map[string]any{"repo": root})
+	require.True(t, res.IsError)
+
+	writeSession := connect(t, Options{AllowWrite: true, NewUseCases: offlineUseCases})
+	res = call(t, writeSession, "nipa_add", map[string]any{"repo": root, "paths": []string{"a.txt"}})
+	require.True(t, res.IsError)
+}
+
+func TestAdd_PathError(t *testing.T) {
+	root := setupRepo(t, nil)
+	session := connect(t, Options{AllowWrite: true, NewUseCases: offlineUseCases})
+
+	res := call(t, session, "nipa_add", map[string]any{"repo": root, "paths": []string{"missing.txt"}})
+	require.True(t, res.IsError)
+}
+
+func TestPush_RepoRootError(t *testing.T) {
+	session := connect(t, Options{AllowWrite: true, NewUseCases: func() UseCases {
+		return UseCases{Push: usecase.NewPush(nil, nil, localrepo.NewLocalRepo())}
+	}})
+
+	res := call(t, session, "nipa_push", map[string]any{"repo": filepath.Join(t.TempDir(), "missing"), "message": "m"})
+	require.True(t, res.IsError)
+	require.Contains(t, toolText(t, res), "not a nipa repository")
 }

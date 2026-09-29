@@ -56,8 +56,13 @@ func FindRepoRoot() (string, error) {
 }
 
 // FindRepoRootFrom searches dir and up to MaxSearchDepth parent directories for
-// a .nipa/config file.
+// a .nipa/config file. A relative dir is resolved against the process working
+// directory first, so callers can pass "." or a relative tool argument.
 func FindRepoRootFrom(dir string) (string, error) {
+	dir, err := filepath.Abs(dir)
+	if err != nil {
+		return "", err
+	}
 	for i := 0; i < MaxSearchDepth; i++ {
 		configPath := filepath.Join(dir, ConfigDir, ConfigFile)
 		if _, err := os.Stat(configPath); err == nil {

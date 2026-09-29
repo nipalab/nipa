@@ -30,6 +30,15 @@ type UseCases struct {
 	MR        *usecase.MergeRequest
 	Lock      *usecase.FileLock
 	Connector Connector
+	// Close releases the per-call client connection and local repository
+	// handles. It may be nil.
+	Close func()
+}
+
+func (u UseCases) close() {
+	if u.Close != nil {
+		u.Close()
+	}
 }
 
 type Options struct {

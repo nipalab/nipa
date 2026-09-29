@@ -101,6 +101,7 @@ func (s *server) diff(ctx context.Context, _ *mcp.CallToolRequest, in diffInput)
 	if err != nil {
 		return nil, zero, toolError(err)
 	}
+	defer uc.close()
 	if uc.Diff == nil {
 		return nil, zero, toolError(domain.NewUserError("diff is not configured"))
 	}
@@ -133,6 +134,7 @@ func (s *server) log(ctx context.Context, _ *mcp.CallToolRequest, in logInput) (
 	if err != nil {
 		return nil, zero, toolError(err)
 	}
+	defer uc.close()
 	opts := []usecase.CommitLogOption{}
 	if in.Limit > 0 {
 		opts = append(opts, usecase.WithCommitLogMax(in.Limit))
@@ -154,6 +156,7 @@ func (s *server) branchList(ctx context.Context, _ *mcp.CallToolRequest, in bran
 	if err != nil {
 		return nil, zero, toolError(err)
 	}
+	defer uc.close()
 	branches, err := uc.Repo.ListBranches(ctx, url.Host, url.Org, url.Project)
 	if err != nil {
 		return nil, zero, toolError(err)
@@ -177,6 +180,7 @@ func (s *server) mrList(ctx context.Context, _ *mcp.CallToolRequest, in mrListIn
 	if err != nil {
 		return nil, zero, toolError(err)
 	}
+	defer uc.close()
 	if uc.MR == nil {
 		return nil, zero, toolError(domain.NewUserError("merge requests are not configured"))
 	}
@@ -201,6 +205,7 @@ func (s *server) lockList(ctx context.Context, _ *mcp.CallToolRequest, in lockLi
 	if err != nil {
 		return nil, zero, toolError(err)
 	}
+	defer uc.close()
 	if uc.Lock == nil {
 		return nil, zero, toolError(domain.NewUserError("locks are not configured"))
 	}
@@ -231,9 +236,11 @@ func (s *server) connectContext(ctx context.Context, repo string) (string, *doma
 		return "", nil, nil, UseCases{}, err
 	}
 	if uc.Connector == nil || uc.Repo == nil {
+		uc.close()
 		return "", nil, nil, UseCases{}, domain.NewUserError("server connection is not configured")
 	}
 	if err := uc.Connector.Connect(ctx, url.Host); err != nil {
+		uc.close()
 		return "", nil, nil, UseCases{}, err
 	}
 	return root, cfg, url, uc, nil

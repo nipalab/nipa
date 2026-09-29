@@ -65,6 +65,18 @@ func TestFindRepoRootFrom(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, target, root)
 
+	withWD(t, child, func() {
+		root, err := FindRepoRootFrom(".")
+		require.NoError(t, err)
+		require.Equal(t, target, root)
+	})
+
+	withWD(t, target, func() {
+		root, err := FindRepoRootFrom(filepath.Join("a", "b"))
+		require.NoError(t, err)
+		require.Equal(t, target, root)
+	})
+
 	_, err = FindRepoRootFrom(t.TempDir())
 	require.Error(t, err)
 }
