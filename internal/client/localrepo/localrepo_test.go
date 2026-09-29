@@ -51,6 +51,24 @@ func TestFindRepoRoot_NotFound(t *testing.T) {
 	})
 }
 
+func TestFindRepoRootFrom(t *testing.T) {
+	target := t.TempDir()
+	lr := NewLocalRepo()
+	require.NoError(t, lr.Init(target))
+	require.NoError(t, lr.SaveConfig(domain.Config{Url: "http://example.com/org/project", Branch: "main"}))
+	lr.Close()
+
+	child := filepath.Join(target, "a", "b")
+	require.NoError(t, os.MkdirAll(child, 0o755))
+
+	root, err := FindRepoRootFrom(child)
+	require.NoError(t, err)
+	require.Equal(t, target, root)
+
+	_, err = FindRepoRootFrom(t.TempDir())
+	require.Error(t, err)
+}
+
 func TestFindRepoRoot_MaxDepth(t *testing.T) {
 	target := t.TempDir()
 	lr := NewLocalRepo()
