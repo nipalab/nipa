@@ -23,26 +23,33 @@ type MergeRequest struct {
 	UpdatedAt         string `json:"updated_at,omitempty"`
 }
 
+func NewMergeRequest(mr *clientDomain.MergeRequest) MergeRequest {
+	if mr == nil {
+		return MergeRequest{}
+	}
+	return MergeRequest{
+		ID:                mr.ID,
+		Number:            mr.Number,
+		SourceBranch:      mr.SourceBranch,
+		TargetBranch:      mr.TargetBranch,
+		Title:             mr.Title,
+		Description:       mr.Description,
+		Status:            mr.Status,
+		MergeCommitID:     mr.MergeCommitID,
+		MergeBaseCommitID: mr.MergeBaseCommitID,
+		CreatedBy:         mr.CreatedBy,
+		CreatedAt:         formatTime(mr.CreatedAt),
+		UpdatedAt:         formatTime(mr.UpdatedAt),
+	}
+}
+
 func NewMergeRequests(mrs []*clientDomain.MergeRequest) MergeRequests {
 	out := MergeRequests{MergeRequests: make([]MergeRequest, 0, len(mrs))}
 	for _, mr := range mrs {
 		if mr == nil {
 			continue
 		}
-		out.MergeRequests = append(out.MergeRequests, MergeRequest{
-			ID:                mr.ID,
-			Number:            mr.Number,
-			SourceBranch:      mr.SourceBranch,
-			TargetBranch:      mr.TargetBranch,
-			Title:             mr.Title,
-			Description:       mr.Description,
-			Status:            mr.Status,
-			MergeCommitID:     mr.MergeCommitID,
-			MergeBaseCommitID: mr.MergeBaseCommitID,
-			CreatedBy:         mr.CreatedBy,
-			CreatedAt:         formatTime(mr.CreatedAt),
-			UpdatedAt:         formatTime(mr.UpdatedAt),
-		})
+		out.MergeRequests = append(out.MergeRequests, NewMergeRequest(mr))
 	}
 	return out
 }

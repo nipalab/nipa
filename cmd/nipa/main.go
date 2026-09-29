@@ -58,7 +58,7 @@ func main() {
 	}
 
 	cliClient := cli.NewCli(registry, grpcClient)
-	if err := cliClient.Run(newServeCommand(authUsecase, newClient)); err != nil {
+	if err := cliClient.Run(newServeCommand(authUsecase, newClient), newMCPCommand(newClient, secureStorage)); err != nil {
 		if errors.Is(err, cli.ErrExitCode) {
 			os.Exit(1)
 		}
