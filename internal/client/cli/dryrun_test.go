@@ -185,3 +185,59 @@ func TestSetupRevertCmd_DryRunFlagConflicts(t *testing.T) {
 	_, err = runCmdInDir(t, root, cli.setupRevertCmd(), "--dry-run", "--no-commit", "2")
 	require.EqualError(t, err, "--dry-run cannot be combined with --no-commit")
 }
+
+func TestWritePlan_Nil(t *testing.T) {
+	cmd := &cobra.Command{Use: "x"}
+	require.EqualError(t, writePlan(cmd, nil), "nothing to report")
+}
+
+func TestWritePlan_MergeSummary(t *testing.T) {
+	cmd := &cobra.Command{Use: "x"}
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	plan := &domain.Plan{
+		Kind:         "merge",
+		SourceBranch: "feature",
+		Conflicts:    []string{"c.txt"},
+		Changes:      []domain.PlanChange{{Path: "a.txt", Status: "M"}},
+	}
+	require.NoError(t, writePlan(cmd, plan))
+	require.Equal(t, "M  a.txt\nC  c.txt\nwould merge 1 file(s), 1 conflict(s)\n", buf.String())
+}
+
+func TestSetupMergeCmd_JSONRequiresDryRun(t *testing.T) {
+	root := setupRepo(t, "main")
+	cli := newMergeCli(t, &fakeMergeClient{})
+
+	_, err := runCmdInDir(t, root, cli.setupMergeCmd(), "feature", "--json")
+	require.EqualError(t, err, "--json requires --dry-run")
+}
+
+func TestSetupRevertCmd_JSONRequiresDryRun(t *testing.T) {
+	root := setupRepo(t, "main")
+	cli := newRevertCli(t, &fakeRevertClient{})
+
+	_, err := runCmdInDir(t, root, cli.setupRevertCmd(), "2", "--json")
+	require.EqualError(t, err, "--json requires --dry-run")
+}
+
+func TestSetupRevertCmd_DryRun(t *testing.T) {
+	head := revertCliTree(t, 0xaa, map[string]string{"a.txt": "v2\n"})
+	v1 := revertCliTree(t, 0x01, map[string]string{"a.txt": "v1\n"})
+	v2 := revertCliTree(t, 0x02, map[string]string{"a.txt": "v2\n"})
+	root := setupRevertRepo(t, head, "v2\n", "v1\n")
+	client := &fakeRevertClient{
+		details: map[string]*domain.CommitDetail{
+			"2": {ID: "2", Hash: "c2hash", Parent1ID: "1", Message: "change a", Tree: v2},
+			"1": {ID: "1", Hash: "c1hash", Message: "add a", Tree: v1},
+		},
+		headTree: head,
+	}
+	cli := newRevertCli(t, client)
+
+	out, err := runCmdInDir(t, root, cli.setupRevertCmd(), "2", "--dry-run")
+	require.NoError(t, err)
+	require.Contains(t, out, "M  a.txt")
+	require.Contains(t, out, "would revert 1 file(s), 0 conflict(s)")
+	require.False(t, client.pushCalled)
+}

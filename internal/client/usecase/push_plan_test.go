@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -110,4 +111,48 @@ func TestPush_Plan_RevertSequenceInProgress(t *testing.T) {
 	_, err := pusher.Plan(context.Background(), t.TempDir())
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "revert sequence is in progress")
+}
+
+func TestPush_Plan_Errors(t *testing.T) {
+	cases := []struct {
+		name   string
+		mutate func(*stubLocalRepo)
+		want   string
+	}{
+		{"init", func(l *stubLocalRepo) { l.initErr = errors.New("init failed") }, "init failed"},
+		{"config", func(l *stubLocalRepo) { l.configLoadErr = errors.New("config failed") }, "config failed"},
+		{"url", func(l *stubLocalRepo) { l.loadConfig.Url = "not-a-nipa-url" }, "invalid"},
+		{"revert state", func(l *stubLocalRepo) { l.revertStateErr = errors.New("state failed") }, "state failed"},
+		{"snapshot", func(l *stubLocalRepo) { l.snapshotErr = errors.New("snapshot failed") }, "snapshot failed"},
+		{"staged", func(l *stubLocalRepo) { l.stagedErr = errors.New("staged failed") }, "staged failed"},
+		{"missing chunks", func(l *stubLocalRepo) { l.missingChunksErr = errors.New("missing failed") }, "missing failed"},
+		{"missing staged file", func(l *stubLocalRepo) { l.staged = []string{"gone.txt"} }, "does not exist"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			writeRepoFile(t, root, "a.txt", "hello")
+			local := &stubLocalRepo{
+				loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "main"},
+				snapshot:   &domain.Snapshot{},
+				staged:     []string{"a.txt"},
+			}
+			tc.mutate(local)
+			pusher := newTestPush(t, local, &stubPushClient{})
+
+			_, err := pusher.Plan(context.Background(), root)
+			require.Error(t, err)
+			require.Contains(t, err.Error(), tc.want)
+		})
+	}
+}
+
+func TestPlanCollector_DedupesChunks(t *testing.T) {
+	collector := newPlanCollector()
+	chunk := &serverDomain.ChunkData{Hash: serverDomain.Hash{0x01}, Data: []byte("abcd")}
+	require.NoError(t, collector.add(chunk))
+	require.NoError(t, collector.add(chunk))
+
+	require.Len(t, collector.order, 1)
+	require.Equal(t, int64(4), collector.sizes[serverDomain.Hash{0x01}])
 }

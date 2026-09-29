@@ -3,6 +3,7 @@ package usecase
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -753,4 +754,130 @@ func TestRevert_DryRunConflictingFlagCombinations(t *testing.T) {
 
 	_, err = revert.Run(context.Background(), t.TempDir(), "2", RevertOptions{DryRun: true, NoCommit: true})
 	require.EqualError(t, err, "--dry-run cannot be combined with --no-commit")
+}
+
+// Regression: a chained dry-run revert that text-merges the same path in two
+// targets must cache the first merged result locally, otherwise the second
+// target reloads chunk hashes the server never received.
+func TestRevert_Range_DryRunChainedTextMerge(t *testing.T) {
+	root := t.TempDir()
+	writeRepoFile(t, root, "a.txt", "H1\nX2\nl3\nX4\n")
+	v1 := testFile(t, "a.txt", "l1\nl2\nl3\nl4\n")
+	v2 := testFile(t, "a.txt", "l1\nX2\nl3\nl4\n")
+	v3 := testFile(t, "a.txt", "l1\nX2\nl3\nX4\n")
+	head := testFile(t, "a.txt", "H1\nX2\nl3\nX4\n")
+	headTree := testTree(0xaa, head.file)
+
+	client := &stubRevertClient{
+		walkEntries: []*domain.CommitWalkEntry{
+			{ID: "3", Hash: "c3hash", Message: "change line 4"},
+			{ID: "2", Hash: "c2hash", Message: "change line 2"},
+		},
+		details: map[string]*domain.CommitDetail{
+			"3": {ID: "3", Hash: "c3hash", Parent1ID: "2", Message: "change line 4", Tree: testTree(0x03, v3.file)},
+			"2": {ID: "2", Hash: "c2hash", Parent1ID: "1", Message: "change line 2", Tree: testTree(0x02, v2.file)},
+			"1": {ID: "1", Hash: "c1hash", Message: "root", Tree: testTree(0x01, v1.file)},
+		},
+		headTree: headTree,
+	}
+	local := &stubLocalRepo{loadConfig: revertConfig(), snapshot: snapshotOf(headTree)}
+	storeBlobs(local, v1, v2, v3, head)
+
+	revert, pushClient := newTestRevert(t, client, local)
+	outcome, err := revert.Run(context.Background(), root, "1..3", RevertOptions{DryRun: true})
+	require.NoError(t, err)
+	require.NotNil(t, outcome.Plan)
+	require.Equal(t, []string{"3", "2"}, outcome.Plan.Targets)
+	require.Empty(t, outcome.Plan.Conflicts)
+	require.Equal(t, []domain.PlanChange{{Path: "a.txt", Status: "M", SizeBytes: int64(len("H1\nl2\nl3\nl4\n"))}}, outcome.Plan.Changes)
+	require.Empty(t, pushClient.pushes)
+	require.Nil(t, local.savedRevert)
+
+	// The first target's merged content must be cached for the second target.
+	_, firstMergedChunks, err := chunker.EncodeBytes([]byte("H1\nX2\nl3\nl4\n"), "a.txt", false, "")
+	require.NoError(t, err)
+	for _, c := range firstMergedChunks {
+		_, ok := local.storedChunks[c.Hash]
+		require.True(t, ok, "chained dry-run must cache merged chunks locally")
+	}
+}
+
+func TestRevert_DryRun_PlanErrors(t *testing.T) {
+	root := t.TempDir()
+	writeRepoFile(t, root, "a.txt", "v2")
+	v1 := testFile(t, "a.txt", "v1")
+	v2 := testFile(t, "a.txt", "v2")
+	head := testTree(0xaa, v2.file)
+
+	newClient := func() *stubRevertClient {
+		return &stubRevertClient{
+			details: map[string]*domain.CommitDetail{
+				"2": {ID: "2", Hash: "c2hash", Parent1ID: "1", Message: "change a", Tree: testTree(0x02, v2.file)},
+				"1": {ID: "1", Hash: "c1hash", Message: "add a", Tree: testTree(0x01, v1.file)},
+			},
+			headTree: head,
+		}
+	}
+	newLocal := func() *stubLocalRepo {
+		return &stubLocalRepo{loadConfig: revertConfig(), snapshot: snapshotOf(head)}
+	}
+
+	t.Run("target detail", func(t *testing.T) {
+		client := newClient()
+		delete(client.details, "2")
+		revert, _ := newTestRevert(t, client, newLocal())
+		_, err := revert.Run(context.Background(), root, "2", RevertOptions{DryRun: true})
+		require.ErrorContains(t, err, "commit 2 not found")
+	})
+
+	t.Run("parent detail", func(t *testing.T) {
+		client := newClient()
+		delete(client.details, "1")
+		revert, _ := newTestRevert(t, client, newLocal())
+		_, err := revert.Run(context.Background(), root, "2", RevertOptions{DryRun: true})
+		require.ErrorContains(t, err, "commit 1 not found")
+	})
+
+	t.Run("snapshot", func(t *testing.T) {
+		local := newLocal()
+		local.snapshotErr = errors.New("snapshot failed")
+		local.snapshotErrOn = 2 // the head check passes, the plan's call fails
+		revert, _ := newTestRevert(t, newClient(), local)
+		_, err := revert.Run(context.Background(), root, "2", RevertOptions{DryRun: true})
+		require.ErrorContains(t, err, "snapshot failed")
+	})
+
+	t.Run("download", func(t *testing.T) {
+		local := newLocal()
+		local.missingChunks = v1.file.ChunkHashes
+		revert, _ := newTestRevert(t, newClient(), local)
+		_, err := revert.Run(context.Background(), root, "2", RevertOptions{DryRun: true})
+		require.ErrorContains(t, err, "not available")
+	})
+}
+
+func TestRevert_DryRun_StopsAtConflictingTarget(t *testing.T) {
+	root := t.TempDir()
+	writeRepoFile(t, root, "a.txt", "a\nH\nc\n")
+	head := testFile(t, "a.txt", "a\nH\nc\n")
+	target := testFile(t, "a.txt", "a\nX\nc\n")
+	parent := testFile(t, "a.txt", "a\nY\nc\n")
+	headTree := testTree(0xaa, head.file)
+
+	client := &stubRevertClient{
+		details: map[string]*domain.CommitDetail{
+			"2": {ID: "2", Hash: "c2hash", Parent1ID: "1", Message: "change a", Tree: testTree(0x02, target.file)},
+			"1": {ID: "1", Hash: "c1hash", Message: "parent", Tree: testTree(0x01, parent.file)},
+		},
+		headTree: headTree,
+	}
+	local := &stubLocalRepo{loadConfig: revertConfig(), snapshot: snapshotOf(headTree)}
+	storeBlobs(local, head, target, parent)
+
+	revert, pushClient := newTestRevert(t, client, local)
+	outcome, err := revert.Run(context.Background(), root, "2", RevertOptions{DryRun: true})
+	require.NoError(t, err)
+	require.Equal(t, []string{"a.txt"}, outcome.Plan.Conflicts)
+	require.Empty(t, pushClient.pushes)
+	require.Nil(t, local.savedRevert)
 }

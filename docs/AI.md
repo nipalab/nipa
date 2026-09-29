@@ -90,8 +90,9 @@ saves pending state.
   first conflicting target. `--dry-run` cannot be combined with `--continue`,
   `--abort`, `--skip` or `--no-commit`.
 
-Merge and revert dry runs may download missing content into the local object
-cache to detect text conflicts; the working copy and metadata are untouched.
+Merge and revert dry runs may download missing content and cache intermediate
+merge results in the local object cache to detect text conflicts; the working
+copy, staging state and metadata are untouched.
 
 ## REST API
 

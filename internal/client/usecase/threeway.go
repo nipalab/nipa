@@ -99,8 +99,15 @@ func applyThreeWay(ctx context.Context, client chunkDownloader, local threeWayLo
 					statEntries[p] = entry
 				}
 			} else {
-				mf, _, err = encodeMergedFile(p, merged, e.Ours.Mode, e.Ours.IsBinary || e.Theirs.IsBinary)
+				var batch []*serverDomain.ChunkData
+				mf, batch, err = encodeMergedFile(p, merged, e.Ours.Mode, e.Ours.IsBinary || e.Theirs.IsBinary)
 				if err != nil {
+					return nil, err
+				}
+				// Cache the merged chunks so a chained dry-run (a later target
+				// merging the same path) can reload them instead of asking the
+				// server for content that was never uploaded.
+				if err := local.StoreChunks(batch); err != nil {
 					return nil, err
 				}
 			}

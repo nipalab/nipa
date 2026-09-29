@@ -555,3 +555,72 @@ func TestMerge_Run_DryRunConflicts(t *testing.T) {
 	_, statErr := os.Stat(filepath.Join(root, "a.txt"))
 	require.True(t, os.IsNotExist(statErr), "a dry run must not write conflicting files")
 }
+
+func TestMerge_Run_DryRun_FastForwardManifestErrors(t *testing.T) {
+	newUse := func(client *stubMergeClient) *Merge {
+		local := &stubLocalRepo{loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "main"}}
+		return newTestMerge(t, client, local, nil)
+	}
+	base := func() *domain.MergeBaseInfo {
+		return &domain.MergeBaseInfo{
+			TargetCommitID:    "T1",
+			SourceCommitID:    "F1",
+			MergeBaseCommitID: "T1",
+		}
+	}
+
+	t.Run("target manifest", func(t *testing.T) {
+		client := &stubMergeClient{baseInfo: base(), treeErr: errors.New("tree failed")}
+		_, err := newUse(client).Run(context.Background(), t.TempDir(), "feature", MergeOptions{DryRun: true})
+		require.ErrorContains(t, err, "tree failed")
+	})
+
+	t.Run("source manifest", func(t *testing.T) {
+		client := &stubMergeClient{baseInfo: base(), treeErr: errors.New("tree failed"), treeErrOn: 2}
+		_, err := newUse(client).Run(context.Background(), t.TempDir(), "feature", MergeOptions{DryRun: true})
+		require.ErrorContains(t, err, "tree failed")
+	})
+}
+
+func TestMerge_Run_DryRun_ApplyError(t *testing.T) {
+	client, local, _ := setupThreeWaySeed(t, "a\nb\nc\n", "a\nX\nc\n", "a\nb\nY\n")
+	local.loadChunkErr = errors.New("load failed")
+	mergeUse := newTestMerge(t, client, local, nil)
+
+	_, err := mergeUse.Run(context.Background(), t.TempDir(), "feature", MergeOptions{DryRun: true})
+	require.ErrorContains(t, err, "load failed")
+}
+
+func TestPlanChanges(t *testing.T) {
+	oldFiles := map[string]merge.File{
+		"gone.txt": {Path: "gone.txt", SizeBytes: 3},
+		"mod.txt":  {Path: "mod.txt", Hash: serverDomain.Hash{0x01}},
+		"same.txt": {Path: "same.txt", Hash: serverDomain.Hash{0x02}},
+	}
+	newFiles := map[string]merge.File{
+		"new.txt":  {Path: "new.txt", SizeBytes: 4},
+		"mod.txt":  {Path: "mod.txt", Hash: serverDomain.Hash{0x03}},
+		"same.txt": {Path: "same.txt", Hash: serverDomain.Hash{0x02}},
+	}
+	require.Equal(t, []domain.PlanChange{
+		{Path: "gone.txt", Status: "D", SizeBytes: 3},
+		{Path: "mod.txt", Status: "M"},
+		{Path: "new.txt", Status: "A", SizeBytes: 4},
+	}, planChanges(oldFiles, newFiles))
+}
+
+func TestApplyThreeWay_ReturnsStoreError(t *testing.T) {
+	base := testFile(t, "a.txt", "a\nb\nc\n")
+	ours := testFile(t, "a.txt", "a\nX\nc\n")
+	theirs := testFile(t, "a.txt", "a\nb\nY\n")
+	local := &stubLocalRepo{}
+	storeBlobs(local, base, ours, theirs)
+	local.storeChunkErr = errors.New("store failed")
+
+	res := &merge.Result{Entries: map[string]merge.Entry{
+		"a.txt": {Decision: merge.TextMerge, Base: base.file, Ours: ours.file, Theirs: theirs.file},
+	}}
+	_, err := applyThreeWay(context.Background(), &stubMergeClient{}, local, t.TempDir(),
+		map[string]merge.File{}, nil, res, domain.ChunkScope{}, true)
+	require.ErrorContains(t, err, "store failed")
+}
