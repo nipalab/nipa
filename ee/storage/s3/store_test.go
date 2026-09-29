@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -25,9 +26,9 @@ type fakeS3 struct {
 	mu       sync.Mutex
 	buckets  map[string]map[string][]byte
 	puts     int
-	failPut  bool
-	failGet  bool
-	failHead bool
+	failPut  atomic.Bool
+	failGet  atomic.Bool
+	failHead atomic.Bool
 }
 
 func newFakeS3(t *testing.T) (*fakeS3, *httptest.Server) {
@@ -65,7 +66,7 @@ func (f *fakeS3) serveHTTP(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodPut:
-		if f.failPut {
+		if f.failPut.Load() {
 			writeS3Error(w, http.StatusForbidden, "AccessDenied")
 			return
 		}
@@ -88,7 +89,7 @@ func (f *fakeS3) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("ETag", `"fake-etag"`)
 		w.WriteHeader(http.StatusOK)
 	case http.MethodHead:
-		if f.failHead {
+		if f.failHead.Load() {
 			writeS3Error(w, http.StatusForbidden, "AccessDenied")
 			return
 		}
@@ -101,7 +102,7 @@ func (f *fakeS3) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Last-Modified", time.Now().UTC().Format(http.TimeFormat))
 		w.WriteHeader(http.StatusOK)
 	case http.MethodGet:
-		if f.failGet {
+		if f.failGet.Load() {
 			writeS3Error(w, http.StatusForbidden, "AccessDenied")
 			return
 		}
@@ -311,7 +312,7 @@ func TestStore_KeyLayout(t *testing.T) {
 
 func TestStore_PutError(t *testing.T) {
 	store, fake := newTestStore(t)
-	fake.failPut = true
+	fake.failPut.Store(true)
 
 	err := store.Put(context.Background(), chunker.Sum([]byte("x")), []byte("x"))
 	require.Error(t, err)
@@ -320,7 +321,7 @@ func TestStore_PutError(t *testing.T) {
 
 func TestStore_HeadError(t *testing.T) {
 	store, fake := newTestStore(t)
-	fake.failHead = true
+	fake.failHead.Store(true)
 	ctx := context.Background()
 	hash := chunker.Sum([]byte("x"))
 
@@ -337,7 +338,7 @@ func TestStore_HeadError(t *testing.T) {
 
 func TestStore_GetError(t *testing.T) {
 	store, fake := newTestStore(t)
-	fake.failGet = true
+	fake.failGet.Store(true)
 
 	_, err := store.Get(context.Background(), chunker.Sum([]byte("x")))
 	require.Error(t, err)
