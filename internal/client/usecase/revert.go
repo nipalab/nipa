@@ -371,6 +371,9 @@ func (r *Revert) plan(ctx context.Context, root string, url *domain.NipaUrl, bra
 		}
 		if len(applied.Conflicted) > 0 {
 			plan.Conflicts = applied.Conflicted
+			// The real sequence materializes and saves this target's files
+			// before stopping, so the plan must report its clean changes too.
+			ours = applied.Files
 			break
 		}
 		ours = applied.Files

@@ -878,6 +878,48 @@ func TestRevert_DryRun_StopsAtConflictingTarget(t *testing.T) {
 	outcome, err := revert.Run(context.Background(), root, "2", RevertOptions{DryRun: true})
 	require.NoError(t, err)
 	require.Equal(t, []string{"a.txt"}, outcome.Plan.Conflicts)
+	require.Len(t, outcome.Plan.Changes, 1)
+	require.Equal(t, "a.txt", outcome.Plan.Changes[0].Path)
+	require.Equal(t, "M", outcome.Plan.Changes[0].Status, "the conflict-marked file changes on disk")
+	require.Empty(t, pushClient.pushes)
+	require.Nil(t, local.savedRevert)
+}
+
+// A conflicting target can still cleanly change other files; the real sequence
+// materializes and saves them before stopping, so the dry-run plan must list
+// them alongside the conflict.
+func TestRevert_DryRun_ConflictReportsCleanChanges(t *testing.T) {
+	root := t.TempDir()
+	writeRepoFile(t, root, "a.txt", "a\nH\nc\n")
+	writeRepoFile(t, root, "b.txt", "new\n")
+	headA := testFile(t, "a.txt", "a\nH\nc\n")
+	headB := testFile(t, "b.txt", "new\n")
+	targetA := testFile(t, "a.txt", "a\nX\nc\n")
+	targetB := testFile(t, "b.txt", "new\n")
+	parentA := testFile(t, "a.txt", "a\nY\nc\n")
+	parentB := testFile(t, "b.txt", "old\n")
+	headTree := testTree(0xaa, headA.file, headB.file)
+
+	client := &stubRevertClient{
+		details: map[string]*domain.CommitDetail{
+			"2": {ID: "2", Hash: "c2hash", Parent1ID: "1", Message: "change files", Tree: testTree(0x02, targetA.file, targetB.file)},
+			"1": {ID: "1", Hash: "c1hash", Message: "parent", Tree: testTree(0x01, parentA.file, parentB.file)},
+		},
+		headTree: headTree,
+	}
+	local := &stubLocalRepo{loadConfig: revertConfig(), snapshot: snapshotOf(headTree)}
+	storeBlobs(local, headA, headB, targetA, targetB, parentA, parentB)
+
+	revert, pushClient := newTestRevert(t, client, local)
+	outcome, err := revert.Run(context.Background(), root, "2", RevertOptions{DryRun: true})
+	require.NoError(t, err)
+	require.Equal(t, []string{"a.txt"}, outcome.Plan.Conflicts)
+	require.Len(t, outcome.Plan.Changes, 2)
+	require.Equal(t, "a.txt", outcome.Plan.Changes[0].Path)
+	require.Equal(t, "M", outcome.Plan.Changes[0].Status)
+	require.Equal(t, "b.txt", outcome.Plan.Changes[1].Path)
+	require.Equal(t, "M", outcome.Plan.Changes[1].Status)
+	require.Equal(t, int64(len("old\n")), outcome.Plan.Changes[1].SizeBytes)
 	require.Empty(t, pushClient.pushes)
 	require.Nil(t, local.savedRevert)
 }
