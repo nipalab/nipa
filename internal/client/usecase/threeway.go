@@ -22,7 +22,11 @@ type threeWayResult struct {
 	Conflicted []string
 }
 
-func applyThreeWay(ctx context.Context, client chunkDownloader, local threeWayLocalRepo, root string, ours map[string]merge.File, baseByPath map[string]domain.SnapshotFile, res *merge.Result, scope domain.ChunkScope) (*threeWayResult, error) {
+// applyThreeWay decides and (when write is true) materializes the merge
+// result. A dry-run (write false) computes the exact resulting file map and
+// conflicts in memory, downloading missing content if needed but touching
+// neither the working copy nor the local metadata.
+func applyThreeWay(ctx context.Context, client chunkDownloader, local threeWayLocalRepo, root string, ours map[string]merge.File, baseByPath map[string]domain.SnapshotFile, res *merge.Result, scope domain.ChunkScope, write bool) (*threeWayResult, error) {
 	var needs []merge.File
 	for _, e := range res.Entries {
 		switch e.Decision {
@@ -57,11 +61,13 @@ func applyThreeWay(ctx context.Context, client chunkDownloader, local threeWayLo
 			out.Files[p] = e.Ours
 
 		case merge.KeepTheirs:
-			if err := materializeFile(root, toMaterialized(e.Theirs), local.OpenChunk); err != nil {
-				return nil, err
-			}
-			if entry, err := statEntryFor(root, p, e.Theirs.Hash); err == nil {
-				statEntries[p] = entry
+			if write {
+				if err := materializeFile(root, toMaterialized(e.Theirs), local.OpenChunk); err != nil {
+					return nil, err
+				}
+				if entry, err := statEntryFor(root, p, e.Theirs.Hash); err == nil {
+					statEntries[p] = entry
+				}
 			}
 			out.Files[p] = e.Theirs
 			out.Staged = append(out.Staged, p)
@@ -80,15 +86,23 @@ func applyThreeWay(ctx context.Context, client chunkDownloader, local threeWayLo
 				return nil, err
 			}
 			merged, wasConflict := merge.MergeText(baseContent, oursContent, theirsContent)
-			mf, err := storeMergedFile(local, p, merged, e.Ours.Mode, e.Ours.IsBinary || e.Theirs.IsBinary)
-			if err != nil {
-				return nil, err
-			}
-			if err := materializeFile(root, toMaterialized(mf), local.OpenChunk); err != nil {
-				return nil, err
-			}
-			if entry, err := statEntryFor(root, p, mf.Hash); err == nil {
-				statEntries[p] = entry
+			var mf merge.File
+			if write {
+				mf, err = storeMergedFile(local, p, merged, e.Ours.Mode, e.Ours.IsBinary || e.Theirs.IsBinary)
+				if err != nil {
+					return nil, err
+				}
+				if err := materializeFile(root, toMaterialized(mf), local.OpenChunk); err != nil {
+					return nil, err
+				}
+				if entry, err := statEntryFor(root, p, mf.Hash); err == nil {
+					statEntries[p] = entry
+				}
+			} else {
+				mf, _, err = encodeMergedFile(p, merged, e.Ours.Mode, e.Ours.IsBinary || e.Theirs.IsBinary)
+				if err != nil {
+					return nil, err
+				}
 			}
 			out.Files[p] = mf
 			out.Staged = append(out.Staged, p)
@@ -115,6 +129,11 @@ func applyThreeWay(ctx context.Context, client chunkDownloader, local threeWayLo
 		if !ok {
 			continue
 		}
+		if !write {
+			out.Deleted = append(out.Deleted, p)
+			out.Staged = append(out.Staged, p)
+			continue
+		}
 		removed, err := guardedRemove(root, base)
 		if err != nil {
 			return nil, fmt.Errorf("remove %s: %w", p, err)
@@ -125,6 +144,9 @@ func applyThreeWay(ctx context.Context, client chunkDownloader, local threeWayLo
 		}
 	}
 
+	if !write {
+		return out, nil
+	}
 	for _, p := range out.Staged {
 		if err := local.StageAdd(p); err != nil {
 			return nil, err
@@ -138,11 +160,11 @@ func applyThreeWay(ctx context.Context, client chunkDownloader, local threeWayLo
 	return out, nil
 }
 
-func storeMergedFile(local threeWayLocalRepo, path string, data []byte, mode int, isBinary bool) (merge.File, error) {
+func encodeMergedFile(path string, data []byte, mode int, isBinary bool) (merge.File, []*serverDomain.ChunkData, error) {
 	probeBinary := chunker.IsBinary(data)
 	encoding, chunks, err := chunker.EncodeBytes(data, path, probeBinary, "")
 	if err != nil {
-		return merge.File{}, err
+		return merge.File{}, nil, err
 	}
 	var hashes []serverDomain.Hash
 	var sizes []int64
@@ -151,9 +173,6 @@ func storeMergedFile(local threeWayLocalRepo, path string, data []byte, mode int
 		hashes = append(hashes, c.Hash)
 		sizes = append(sizes, c.SizeBytes)
 		batch = append(batch, &serverDomain.ChunkData{Hash: c.Hash, Data: c.Data})
-	}
-	if err := local.StoreChunks(batch); err != nil {
-		return merge.File{}, err
 	}
 	return merge.File{
 		Path:        path,
@@ -164,5 +183,16 @@ func storeMergedFile(local threeWayLocalRepo, path string, data []byte, mode int
 		Hash:        chunker.FileHash(hashes),
 		ChunkHashes: hashes,
 		ChunkSizes:  sizes,
-	}, nil
+	}, batch, nil
+}
+
+func storeMergedFile(local threeWayLocalRepo, path string, data []byte, mode int, isBinary bool) (merge.File, error) {
+	file, batch, err := encodeMergedFile(path, data, mode, isBinary)
+	if err != nil {
+		return merge.File{}, err
+	}
+	if err := local.StoreChunks(batch); err != nil {
+		return merge.File{}, err
+	}
+	return file, nil
 }

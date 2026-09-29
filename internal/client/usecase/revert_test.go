@@ -709,3 +709,48 @@ func TestRevert_Range_NoCommit_KeepsUntouchedFiles(t *testing.T) {
 	require.Equal(t, "blob", string(readRepoFile(t, root, "b.txt")))
 	require.Contains(t, merge.Flatten(local.tree), "b.txt", "the staged tree must keep untouched files")
 }
+
+func TestRevert_SingleCommit_DryRun(t *testing.T) {
+	root := t.TempDir()
+	writeRepoFile(t, root, "a.txt", "v2")
+	v1 := testFile(t, "a.txt", "v1")
+	v2 := testFile(t, "a.txt", "v2")
+	head := testTree(0xaa, v2.file)
+
+	client := &stubRevertClient{
+		details: map[string]*domain.CommitDetail{
+			"2": {ID: "2", Hash: "c2hash", Parent1ID: "1", Message: "change a", Tree: testTree(0x02, v2.file)},
+			"1": {ID: "1", Hash: "c1hash", Message: "add a", Tree: testTree(0x01, v1.file)},
+		},
+		headTree: head,
+	}
+	local := &stubLocalRepo{loadConfig: revertConfig(), snapshot: snapshotOf(head)}
+	storeBlobs(local, v1)
+
+	revert, pushClient := newTestRevert(t, client, local)
+	outcome, err := revert.Run(context.Background(), root, "2", RevertOptions{DryRun: true})
+	require.NoError(t, err)
+	require.NotNil(t, outcome.Plan)
+	require.Equal(t, "revert", outcome.Plan.Kind)
+	require.Equal(t, []string{"2"}, outcome.Plan.Targets)
+	require.Equal(t, []domain.PlanChange{{Path: "a.txt", Status: "M", SizeBytes: 2}}, outcome.Plan.Changes)
+	require.Empty(t, outcome.Plan.Conflicts)
+	require.Empty(t, pushClient.pushes, "a dry run must not commit")
+	require.Nil(t, local.savedRevert, "a dry run must not persist revert state")
+	require.Empty(t, local.stageAdd)
+
+	data, err := os.ReadFile(filepath.Join(root, "a.txt"))
+	require.NoError(t, err)
+	require.Equal(t, "v2", string(data), "a dry run must not rewrite working files")
+}
+
+func TestRevert_DryRunConflictingFlagCombinations(t *testing.T) {
+	local := &stubLocalRepo{loadConfig: revertConfig(), snapshot: &domain.Snapshot{}}
+	revert, _ := newTestRevert(t, &stubRevertClient{}, local)
+
+	_, err := revert.Run(context.Background(), t.TempDir(), "", RevertOptions{DryRun: true, Abort: true})
+	require.EqualError(t, err, "--dry-run cannot be combined with --continue, --abort or --skip")
+
+	_, err = revert.Run(context.Background(), t.TempDir(), "2", RevertOptions{DryRun: true, NoCommit: true})
+	require.EqualError(t, err, "--dry-run cannot be combined with --no-commit")
+}

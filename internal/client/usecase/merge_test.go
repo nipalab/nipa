@@ -469,3 +469,89 @@ func TestMerge_Run_UnrelatedError(t *testing.T) {
 	_, err := mergeUse.Run(context.Background(), t.TempDir(), "feature", MergeOptions{})
 	require.ErrorIs(t, err, wantErr)
 }
+
+func TestMerge_Run_DryRunUpToDate(t *testing.T) {
+	local := &stubLocalRepo{loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "main"}}
+	client := &stubMergeClient{baseInfo: &domain.MergeBaseInfo{
+		SourceCommitID:    "F1",
+		MergeBaseCommitID: "F1",
+	}}
+	mergeUse := newTestMerge(t, client, local, nil)
+
+	outcome, err := mergeUse.Run(context.Background(), t.TempDir(), "feature", MergeOptions{DryRun: true})
+	require.NoError(t, err)
+	require.True(t, outcome.UpToDate)
+	require.NotNil(t, outcome.Plan)
+	require.True(t, outcome.Plan.UpToDate)
+	require.False(t, client.pushCalled)
+}
+
+func TestMerge_Run_DryRunFastForward(t *testing.T) {
+	local := &stubLocalRepo{loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "main"}}
+	client := &stubMergeClient{
+		baseInfo: &domain.MergeBaseInfo{
+			TargetCommitID:    "T1",
+			SourceCommitID:    "F1",
+			SourceCommitHash:  "src-hash",
+			MergeBaseCommitID: "T1",
+		},
+		treeByBranch: map[string]*serverDomain.TreeNode{
+			"main": treeWithFiles(map[string]serverDomain.File{"a.txt": fileOf("a.txt", serverDomain.Hash{0x01}, []serverDomain.Chunk{{Hash: serverDomain.Hash{0x0a}}})}),
+			"feature": treeWithFiles(map[string]serverDomain.File{
+				"a.txt": fileOf("a.txt", serverDomain.Hash{0x02}, []serverDomain.Chunk{{Hash: serverDomain.Hash{0x0b}}}),
+				"b.txt": fileOf("b.txt", serverDomain.Hash{0x03}, []serverDomain.Chunk{{Hash: serverDomain.Hash{0x0c}}}),
+			}),
+		},
+	}
+	mergeUse := newTestMerge(t, client, local, nil)
+
+	outcome, err := mergeUse.Run(context.Background(), t.TempDir(), "feature", MergeOptions{DryRun: true})
+	require.NoError(t, err)
+	require.NotNil(t, outcome.Plan)
+	require.True(t, outcome.Plan.FastForward)
+	require.Equal(t, "feature", outcome.Plan.SourceBranch)
+	require.Equal(t, []domain.PlanChange{
+		{Path: "a.txt", Status: "M"},
+		{Path: "b.txt", Status: "A"},
+	}, outcome.Plan.Changes)
+	require.Nil(t, client.lastFF, "a dry run must not fast-forward the server")
+	require.Nil(t, local.tree, "a dry run must not refresh the local snapshot")
+	require.Empty(t, local.savedCommitID)
+	require.False(t, client.pushCalled)
+}
+
+func TestMerge_Run_DryRunCleanMerge(t *testing.T) {
+	client, local, _ := setupThreeWaySeed(t, "a\nb\nc\n", "a\nX\nc\n", "a\nb\nY\n")
+	mergeUse := newTestMerge(t, client, local, nil)
+
+	outcome, err := mergeUse.Run(context.Background(), t.TempDir(), "feature", MergeOptions{DryRun: true})
+	require.NoError(t, err)
+	require.NotNil(t, outcome.Plan)
+	require.Empty(t, outcome.Plan.Conflicts)
+	require.Equal(t, []domain.PlanChange{{Path: "a.txt", Status: "M", SizeBytes: int64(len("a\nX\nY\n"))}}, outcome.Plan.Changes)
+	require.Nil(t, local.savedMerge, "a dry run must not persist merge state")
+	require.Nil(t, local.tree, "a dry run must not update the snapshot")
+	require.Empty(t, local.stageAdd, "a dry run must not stage files")
+	require.Empty(t, local.savedStats, "a dry run must not record fingerprints")
+	require.False(t, client.pushCalled)
+}
+
+func TestMerge_Run_DryRunConflicts(t *testing.T) {
+	client, local, _ := setupThreeWaySeed(t, "a\nb\nc\n", "a\nX\nc\n", "a\nY\nc\n")
+	root := t.TempDir()
+	mergeUse := newTestMerge(t, client, local, nil)
+
+	outcome, err := mergeUse.Run(context.Background(), root, "feature", MergeOptions{DryRun: true})
+	require.NoError(t, err)
+	require.NotNil(t, outcome.Plan)
+	require.Equal(t, []string{"a.txt"}, outcome.Plan.Conflicts)
+	require.Len(t, outcome.Plan.Changes, 1)
+	require.Equal(t, "a.txt", outcome.Plan.Changes[0].Path)
+	require.Equal(t, "M", outcome.Plan.Changes[0].Status)
+	require.Nil(t, local.savedMerge, "a dry run must not persist merge state")
+	require.Nil(t, local.tree)
+	require.Empty(t, local.stageAdd)
+	require.False(t, client.pushCalled)
+	_, statErr := os.Stat(filepath.Join(root, "a.txt"))
+	require.True(t, os.IsNotExist(statErr), "a dry run must not write conflicting files")
+}

@@ -50,13 +50,14 @@ Run `nipa <command> --help` for full details.
 | `nipa lock <path> [--branch]` | Lock a tracked binary file, or a directory prefix covering a whole editing pass, so only you can land it. Locks on the default branch are project-global; `--branch` scopes the lock elsewhere. |
 | `nipa lock list`            | List active binary file locks: path, scope, holder, acquisition time, and the merge request when one holds it. |
 | `nipa unlock <path> [--branch]` | Release a binary file lock you hold. |
-| `nipa push -m "<message>"`  | Upload staged changes to the server and commit them on the configured branch. |
+| `nipa push -m "<message>"`  | Upload staged changes to the server and commit them on the configured branch. `--dry-run` reports the would-land changes and upload estimate without contacting the server. |
 | `nipa update`               | Fetch and apply the latest changes of the configured branch.                |
-| `nipa merge <branch>`       | Merge another branch into the current one. Fast-forwards when possible; `--no-ff` forces a merge commit, `--ff-only` refuses, `--abort` cancels a conflicted merge, `-m` sets the message. |
-| `nipa revert <commit>`      | Create new commits that undo the given commit or range (`<from>..<to>`, newest first, up to 16 commits) without rewriting history. `--mainline 1\|2` for merge commits, `--no-commit` stages without committing, `-m` sets the message (single commit only), `--continue` / `--abort` / `--skip` drive a conflicted revert. |
+| `nipa merge <branch>`       | Merge another branch into the current one. Fast-forwards when possible; `--no-ff` forces a merge commit, `--ff-only` refuses, `--abort` cancels a conflicted merge, `-m` sets the message, `--dry-run` reports the outcome and conflicts without applying. |
+| `nipa revert <commit>`      | Create new commits that undo the given commit or range (`<from>..<to>`, newest first, up to 16 commits) without rewriting history. `--mainline 1\|2` for merge commits, `--no-commit` stages without committing, `-m` sets the message (single commit only), `--continue` / `--abort` / `--skip` drive a conflicted revert, `--dry-run` reports the chained conflicts and changes without applying. |
 | `nipa log`                  | Show the commit history of the current branch. Interactive and scrollable when stdout is a terminal; `-n` limits, `--oneline` prints one line per commit, `--no-pager` disables the pager. |
 | `nipa diff [<rev1> [<rev2>]]` | Show changes as a unified patch. With no revisions: working tree vs the last synced snapshot (offline). One revision: that tree vs the working tree. Two revisions: tree vs tree. A revision is a branch name, a base36 commit ID (as printed by `nipa log`) or `HEAD`/`@`; `<a>..<b>` compares the two endpoints and `<a>...<b>` compares their merge base against `<b>`. Renames are detected automatically. `--staged` limits to what the next push would upload, `-U` sets the context, `--stat`/`--name-only`/`--name-status` select other formats, `-w`/`-b` ignore whitespace, `-- <path>` limits paths, `--exit-code` sets the exit status, `--ext-diff` opens each changed file in the configured external tool (`NIPA_EXTERNAL_DIFF` or `diffExternal` in `~/.config/nipa/config.json`), and `--no-pager`/`--no-color` disable the pager/colors. |
 | `nipa serve`                | Run the local daemon that GUI clients connect to: loopback gRPC with a capability token, a per-clone status cache fed by a file watcher, streaming progress for long operations and a pass-through proxy for the server APIs. Publishes its port and token in `~/.config/nipa/daemon.json` (0600) and stops on SIGINT/SIGTERM, draining in-flight operations. |
+| `nipa mcp [--repo <dir>] [--allow-write]` | Serve the working copy as a Model Context Protocol server over stdio so AI agents can inspect and change it directly. Read-only tools by default; mutating tools require `--allow-write`. See [AI agents and automation](#ai-agents-and-automation). |
 
 Branch creation (`nipa branch -c <name>`) forks from the exact commit the
 working copy is pinned to (clone, update, switch and push record the branch head
@@ -102,6 +103,33 @@ merged or closed. `nipa lock` also accepts a directory prefix to cover a whole
 editing pass — your exact-path lock is released once the push it guarded lands,
 while directory locks stay until you `nipa unlock` them.
 
+## AI agents and automation
+
+Nipa is designed to be driven by scripts and AI agents as well as humans:
+
+- **MCP server** — `nipa mcp [--repo <dir>] [--allow-write]` serves the clone
+  over stdio (Model Context Protocol) so agents such as Claude Code, Cursor or
+  Copilot can work with a working copy directly. Read-only tools
+  (`nipa_status`, `nipa_diff`, `nipa_log`, `nipa_branch_list`, `nipa_mr_list`,
+  `nipa_lock_list`) are always registered; `nipa_add`, `nipa_push`,
+  `nipa_branch_create`, `nipa_lock`/`nipa_unlock` and `nipa_mr_create` require
+  `--allow-write`. Authentication never prompts (a prompt would corrupt the
+  JSON-RPC stream), so log in with a normal CLI command in the clone first.
+- **Machine-readable output** — read commands accept `--json` (`nipa status`,
+  `nipa diff`, `nipa log`, `nipa branch`, `nipa lock list`, `nipa mr list`);
+  `NIPA_OUTPUT=json` enables it globally. Payloads go to stdout; failures are a
+  single `{"error":{"code","message","hint","action"}}` envelope on stderr, and
+  exit codes are stable: `0` success, `1` generic failure, `2`
+  locked/precondition, `127` not found.
+- **Dry runs** — `nipa push|merge|revert --dry-run [--json]` report the
+  file-level changes, conflicts and (for push) the upload estimate without
+  staging, committing, pushing or rewriting the working copy.
+- **REST API** — the server publishes its OpenAPI document at
+  `/docs/api.json` (Swagger UI at `/docs/`), covering browsing, merge
+  requests, reviews, file locks, permissions and groups.
+
+The full agent-facing reference lives in [`docs/AI.md`](docs/AI.md).
+
 ## Architecture
 
 - **Server** — `internal/`: `domain` (entities/errors), `usecase` (business
@@ -115,7 +143,9 @@ while directory locks stay until you `nipa unlock` them.
 - **Client** — `internal/client/`: `cli` (cobra commands), `usecase`
   (clone/branch/push/update/merge/revert/diff orchestration), `grpc` (transport),
   `localrepo` (`.nipa/` local metadata + SQLite), `merge` (three-way tree merge
-  + diff3), `securestorage` (keyring-backed token store).
+  + diff3), `securestorage` (keyring-backed token store), `output` (JSON DTOs
+  shared by `--json` and the MCP tools), and `mcp` (`nipa mcp`, the Model
+  Context Protocol server).
 - **Client daemon** — `internal/client/daemon/` (`nipa serve`): a loopback gRPC
   service (proto `internal/client/grpc/proto/daemon.proto`) with token
   discovery, a per-clone operation coordinator (status/stage/diff share the
