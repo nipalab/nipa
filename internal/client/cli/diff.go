@@ -11,6 +11,7 @@ import (
 
 	clientconfig "github.com/nipalab/nipa/internal/client/config"
 	"github.com/nipalab/nipa/internal/client/difftool"
+	"github.com/nipalab/nipa/internal/client/domain"
 	"github.com/nipalab/nipa/internal/client/localrepo"
 	"github.com/nipalab/nipa/internal/client/output"
 	"github.com/nipalab/nipa/internal/client/usecase"
@@ -99,10 +100,10 @@ func (c *Cli) runDiff(cmd *cobra.Command, args []string) error {
 	jsonMode := jsonRequested(cmd)
 	if jsonMode {
 		if mode != diffModePatch {
-			return fmt.Errorf("--json cannot be combined with another output format")
+			return domain.NewUserError("--json cannot be combined with another output format")
 		}
 		if useExternal {
-			return fmt.Errorf("--json cannot be combined with --ext-diff")
+			return domain.NewUserError("--json cannot be combined with --ext-diff")
 		}
 	}
 	noPager, _ := cmd.Flags().GetBool("no-pager")

@@ -74,6 +74,9 @@ func TestDiffCmd_JSONConflictsWithFormat(t *testing.T) {
 	root := setupDiffRepo(t, map[string]string{"a.txt": "a\n"})
 	_, err := runCmdInDir(t, root, newDiffCmd(t), "--json", "--stat")
 	require.EqualError(t, err, "--json cannot be combined with another output format")
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 400, domErr.Code)
 }
 
 func TestDiffCmd_JSONConflictsWithExtDiff(t *testing.T) {
@@ -81,6 +84,9 @@ func TestDiffCmd_JSONConflictsWithExtDiff(t *testing.T) {
 	root := setupDiffRepo(t, map[string]string{"a.txt": "a\n"})
 	_, err := runCmdInDir(t, root, newDiffCmd(t), "--json", "--ext-diff")
 	require.EqualError(t, err, "--json cannot be combined with --ext-diff")
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 400, domErr.Code)
 }
 
 func TestSetupLogCmd_JSON(t *testing.T) {
