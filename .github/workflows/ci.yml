@@ -28,7 +28,10 @@ jobs:
       - name: Run Tests & Generate Reports
         run: |
           set -o pipefail
-          go test -race -coverprofile=coverage.out -covermode=atomic -coverpkg=./... ./... 2>&1 | tee report.json
+          go test -race ./... 2>&1 | tee report.json
+
+      - name: Generate Coverage Report
+        run: go test -coverprofile=coverage.out -covermode=atomic -coverpkg=./... ./...
 
       - name: Upload Test and Coverage Reports
         if: always()
