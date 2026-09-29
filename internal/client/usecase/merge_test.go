@@ -624,3 +624,14 @@ func TestApplyThreeWay_ReturnsStoreError(t *testing.T) {
 		map[string]merge.File{}, nil, res, domain.ChunkScope{}, true)
 	require.ErrorContains(t, err, "store failed")
 }
+
+func TestMerge_Run_Error_DryRunAndAbort(t *testing.T) {
+	local := &stubLocalRepo{loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "main"}}
+	client := &stubMergeClient{}
+	mergeUse := newTestMerge(t, client, local, nil)
+
+	_, err := mergeUse.Run(context.Background(), t.TempDir(), "", MergeOptions{Abort: true, DryRun: true})
+	require.EqualError(t, err, "--dry-run cannot be combined with --abort")
+	require.False(t, local.clearedMerge, "a dry-run abort must not clear merge state")
+	require.Empty(t, client.connectHost, "a dry-run abort must not contact the server")
+}

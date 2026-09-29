@@ -241,3 +241,11 @@ func TestSetupRevertCmd_DryRun(t *testing.T) {
 	require.Contains(t, out, "would revert 1 file(s), 0 conflict(s)")
 	require.False(t, client.pushCalled)
 }
+
+func TestSetupMergeCmd_DryRunAbortRejected(t *testing.T) {
+	root := setupRepo(t, "main")
+	cli := newMergeCli(t, &fakeMergeClient{})
+
+	_, err := runCmdInDir(t, root, cli.setupMergeCmd(), "--abort", "--dry-run")
+	require.EqualError(t, err, "--dry-run cannot be combined with --abort")
+}

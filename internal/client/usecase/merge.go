@@ -88,6 +88,9 @@ func (m *Merge) Run(ctx context.Context, root, sourceBranch string, opts MergeOp
 	if nipaUrl.Path != "" || len(cfg.Sparse) > 0 {
 		return nil, domain.NewUserError("merging in a sparse or subdirectory clone is not supported yet")
 	}
+	if opts.DryRun && opts.Abort {
+		return nil, domain.NewUserError("--dry-run cannot be combined with --abort")
+	}
 
 	if opts.Abort {
 		return m.abort(ctx, root, nipaUrl, cfg.Branch)
