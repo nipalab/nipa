@@ -5,7 +5,18 @@ JWT_KEY: secret
 LOG_LEVEL: debug
 SNOWFLAKE_NODE_ID: 0
 HASHER_WORKERS: 4
+CHUNK_STORAGE: local
 CHUNK_STORAGE_DIR: ./chunks
+# S3-compatible chunk backend (enterprise). Used when CHUNK_STORAGE is s3.
+# Endpoint may include a scheme; bare hosts default to https.
+CHUNK_S3_ENDPOINT: ''
+CHUNK_S3_REGION: ''
+CHUNK_S3_BUCKET: ''
+CHUNK_S3_PREFIX: ''
+# Leave the static credentials empty to use the AWS environment and
+# EC2/ECS instance metadata providers.
+CHUNK_S3_ACCESS_KEY_ID: ''
+CHUNK_S3_SECRET_ACCESS_KEY: ''
 CHUNK_URL_SIGNING_KEY: change-me
 CHUNK_PRESIGN_TTL_SECONDS: 3600
 CHUNK_MAX_PAGE_SIZE: 1000

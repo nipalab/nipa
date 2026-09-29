@@ -450,6 +450,14 @@ Direct: `go build ./...`, `go vet ./...`, `go test ./...`.
   returns relative paths: the client connects with the bare host as the gRPC
   target (also the token-storage key) and `Client.httpURL` prefixes `http://`
   when the target has no scheme.
+- **Chunk content backends**: `internal/storage.ChunkStore` (Put/Get/Size/
+  Exists/Close, content-addressed by BLAKE3, idempotent Put) is the single seam.
+  `storage.NewLocalStore` (default, `CHUNK_STORAGE_DIR`) and the enterprise
+  `ee/storage/s3` store (`CHUNK_STORAGE=s3` + `CHUNK_S3_*`) are chosen by
+  `cmd/nipad`'s `createChunkStore`; the S3 store keys objects
+  `<prefix>/<hash[:2]>/<hash[2:]>` and probes the bucket at startup. `internal/`
+  must never import `ee/` — only `cmd/nipad` does. Transfers stay server-proxied
+  through the signed `/api/chunks` routes in s3 mode too.
 - `Parsec`/`ParseNipaUrl` (`internal/client/domain/url.go`): `/org/project[/path]`.
   `path` is threaded through to the manifest request so a missing subpath returns a
   404, and cloning a repo with an empty (no-commit) branch returns an empty tree,

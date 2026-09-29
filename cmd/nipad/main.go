@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/nipalab/nipa/db"
+	"github.com/nipalab/nipa/ee/storage/s3"
 	"github.com/nipalab/nipa/internal/config"
 	"github.com/nipalab/nipa/internal/grpc/pb"
 	"github.com/nipalab/nipa/internal/grpc/server"
@@ -66,7 +67,7 @@ func main() {
 	orgUsecase := usecase.NewOrg(orgRepo)
 	permissionUsecase := usecase.NewPermission(pbacRepository, userRepo, groupRepository, orgUsecase)
 	projectUsecase := usecase.NewProject(projectRepo, snowUser, permissionUsecase, orgUsecase)
-	chunkStore, err := storage.NewLocalStore(cfg.ChunkStorageDir)
+	chunkStore, err := createChunkStore(cfg)
 	if err != nil {
 		panic(fmt.Errorf("create chunk store: %w", err))
 	}
@@ -189,6 +190,34 @@ func main() {
 	slog.Info("server is running", "address", address)
 	if err := httpServer.Serve(ln); err != http.ErrServerClosed {
 		panic(err)
+	}
+}
+
+func createChunkStore(cfg *config.Config) (storage.ChunkStore, error) {
+	switch strings.ToLower(strings.TrimSpace(cfg.ChunkStorage)) {
+	case "", "local":
+		store, err := storage.NewLocalStore(cfg.ChunkStorageDir)
+		if err != nil {
+			return nil, err
+		}
+		slog.Info("chunk storage ready", "backend", "local", "dir", cfg.ChunkStorageDir)
+		return store, nil
+	case "s3":
+		store, err := s3.New(context.Background(), s3.Config{
+			Endpoint:        cfg.ChunkS3Endpoint,
+			Region:          cfg.ChunkS3Region,
+			Bucket:          cfg.ChunkS3Bucket,
+			Prefix:          cfg.ChunkS3Prefix,
+			AccessKeyID:     cfg.ChunkS3AccessKeyID,
+			SecretAccessKey: cfg.ChunkS3SecretAccessKey,
+		})
+		if err != nil {
+			return nil, err
+		}
+		slog.Info("chunk storage ready", "backend", "s3", "endpoint", cfg.ChunkS3Endpoint, "bucket", cfg.ChunkS3Bucket)
+		return store, nil
+	default:
+		return nil, fmt.Errorf("unknown CHUNK_STORAGE %q", cfg.ChunkStorage)
 	}
 }
 
