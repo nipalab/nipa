@@ -109,7 +109,8 @@ func (m *Merge) Run(ctx context.Context, root, sourceBranch string, opts MergeOp
 		return nil, err
 	}
 	if pending != nil {
-		return nil, domain.NewUserError("a merge is already in progress; resolve the conflicts and push, or run nipa merge --abort")
+		return nil, domain.NewUserError("a merge is already in progress; resolve the conflicts and push, or run nipa merge --abort").
+			WithHint("resolve the conflicts and push to complete the merge, or abort it", "nipa merge --abort")
 	}
 
 	staged, err := m.localRepo.ListStaged()

@@ -3,7 +3,6 @@ package localrepo
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 
@@ -64,5 +63,6 @@ func FindRepoRoot() (string, error) {
 		}
 		dir = parent
 	}
-	return "", fmt.Errorf("not a nipa repository (or any of the parent directories)")
+	return "", domain.NewUserError("not a nipa repository (or any of the parent directories)").
+		WithHint("run this command inside a nipa clone", "nipa clone <url> <target>")
 }

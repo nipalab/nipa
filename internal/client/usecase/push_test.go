@@ -47,7 +47,7 @@ type stubPushClient struct {
 	uploadMu       sync.Mutex
 	uploadActive   int
 	uploadMax      int
-	uploadDelay    time.Duration
+	uploadGate     chan struct{}
 	manifest       *serverDomain.TreeNode
 	manifestErr    error
 }
@@ -90,8 +90,8 @@ func (s *stubPushClient) UploadChunks(_ context.Context, _ domain.ChunkScope, ch
 	s.uploadedChunks = append(s.uploadedChunks, chunks...)
 	s.uploadMu.Unlock()
 
-	if s.uploadDelay > 0 {
-		time.Sleep(s.uploadDelay)
+	if s.uploadGate != nil {
+		<-s.uploadGate
 	}
 	for _, ch := range chunks {
 		if len(onChunk) > 0 && onChunk[0] != nil {
@@ -269,16 +269,26 @@ func TestPush_Run_UploadsWindowsConcurrently(t *testing.T) {
 		snapshot:   &domain.Snapshot{},
 		staged:     []string{"big.blend"},
 	}
+	gate := make(chan struct{})
 	client := &stubPushClient{
-		manifest:    &serverDomain.TreeNode{Name: "root"},
-		uploadDelay: 2 * time.Millisecond,
+		manifest:   &serverDomain.TreeNode{Name: "root"},
+		uploadGate: gate,
 	}
 	pusher := newTestPush(t, local, client)
 
-	require.NoError(t, pusher.Run(context.Background(), root, "add big"))
+	done := make(chan error, 1)
+	go func() { done <- pusher.Run(context.Background(), root, "add big") }()
+
+	require.Eventually(t, func() bool {
+		client.uploadMu.Lock()
+		defer client.uploadMu.Unlock()
+		return client.uploadMax >= 2
+	}, 5*time.Second, time.Millisecond, "windows should upload concurrently")
+
+	close(gate)
+	require.NoError(t, <-done)
 
 	require.Greater(t, client.uploadCalls, 1)
-	require.GreaterOrEqual(t, client.uploadMax, 2, "windows should upload concurrently")
 	require.LessOrEqual(t, client.uploadMax, uploadWindowWorkers)
 }
 

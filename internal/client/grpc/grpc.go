@@ -574,7 +574,7 @@ func toDomainError(err error) error {
 	case codes.InvalidArgument:
 		return &domain.Error{Code: 400, Message: st.Message()}
 	case codes.Unauthenticated:
-		return &domain.Error{Code: 401, Message: st.Message()}
+		return &domain.Error{Code: 401, Message: st.Message(), Hint: "authentication failed or the stored session expired"}
 	case codes.PermissionDenied:
 		return &domain.Error{Code: 403, Message: st.Message()}
 	case codes.FailedPrecondition:

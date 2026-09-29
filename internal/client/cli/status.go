@@ -2,6 +2,7 @@ package cli
 
 import (
 	"github.com/nipalab/nipa/internal/client/domain"
+	"github.com/nipalab/nipa/internal/client/output"
 	"github.com/nipalab/nipa/internal/client/usecase"
 	"github.com/spf13/cobra"
 )
@@ -25,11 +26,15 @@ func (c *Cli) setupStatusCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if jsonRequested(cmd) {
+				return output.WriteJSON(cmd.OutOrStdout(), output.NewStatus(st))
+			}
 			writeStatus(cmd, st)
 			return nil
 		},
 	}
 	cmd.Flags().BoolVar(&noCache, "no-cache", false, "Rehash every tracked file instead of trusting the stat cache")
+	addJSONFlag(cmd)
 	return cmd
 }
 

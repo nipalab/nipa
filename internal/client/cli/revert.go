@@ -54,7 +54,8 @@ func (c *Cli) setupRevertCmd() *cobra.Command {
 				for _, p := range outcome.Conflicts {
 					cmd.Printf("  C %s\n", p)
 				}
-				return domain.NewUserError("revert conflicts; resolve the files above and run nipa revert --continue")
+				return domain.NewUserError("revert conflicts; resolve the files above and run nipa revert --continue").
+					WithHint("one or more files have merge markers to resolve", "nipa revert --continue")
 			}
 			return nil
 		},

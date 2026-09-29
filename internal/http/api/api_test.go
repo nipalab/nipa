@@ -1022,29 +1022,25 @@ func TestAPIRoutes(t *testing.T) {
 		createBranch.Body.Close()
 
 		var inbox []received
-		waitFor := func(count int) {
+		waitForEvent := func(event string) received {
 			t.Helper()
 			timeout := time.After(5 * time.Second)
-			for len(inbox) < count {
+			for {
+				for _, delivery := range inbox {
+					if delivery.event == event {
+						return delivery
+					}
+				}
 				select {
 				case delivery := <-requests:
 					inbox = append(inbox, delivery)
 				case <-timeout:
-					t.Fatalf("timed out waiting for %d deliveries, got %d", count, len(inbox))
+					t.Fatalf("timed out waiting for %q delivery, got %v", event, inbox)
 				}
 			}
 		}
-		waitFor(2)
-
-		var pushDelivery, branchDelivery received
-		for _, delivery := range inbox {
-			switch delivery.event {
-			case domain.WebhookEventPush:
-				pushDelivery = delivery
-			case domain.WebhookEventBranchCreated:
-				branchDelivery = delivery
-			}
-		}
+		pushDelivery := waitForEvent(domain.WebhookEventPush)
+		branchDelivery := waitForEvent(domain.WebhookEventBranchCreated)
 
 		require.NotEmpty(t, pushDelivery.event)
 		require.True(t, webhook.Verify(hook.Secret, pushDelivery.body, pushDelivery.signature))
@@ -1082,14 +1078,7 @@ func TestAPIRoutes(t *testing.T) {
 		}
 		require.NotEmpty(t, syncHead)
 		seedPushTo(t, "hook-branch", syncHead, map[string]string{"hook/sync.txt": "sync"})
-		waitFor(4)
-
-		var syncDelivery received
-		for _, delivery := range inbox[2:] {
-			if delivery.event == domain.WebhookEventMRSynchronized {
-				syncDelivery = delivery
-			}
-		}
+		syncDelivery := waitForEvent(domain.WebhookEventMRSynchronized)
 		require.NotEmpty(t, syncDelivery.event, "expected an mr.synchronized delivery, got %v", inbox)
 		require.True(t, webhook.Verify(hook.Secret, syncDelivery.body, syncDelivery.signature))
 		var syncPayload webhook.MergeRequestPayload

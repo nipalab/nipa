@@ -5,6 +5,7 @@ import (
 
 	"github.com/nipalab/nipa/internal/client/domain"
 	"github.com/nipalab/nipa/internal/client/localrepo"
+	"github.com/nipalab/nipa/internal/client/output"
 	"github.com/spf13/cobra"
 )
 
@@ -29,18 +30,25 @@ func (c *Cli) setupBranchCmd() *cobra.Command {
 			if selected > 1 {
 				return domain.NewUserError("--all, --create and --delete are mutually exclusive")
 			}
+			jsonMode := jsonRequested(cmd)
+			if jsonMode && (create != "" || remove != "") {
+				return domain.NewUserError("--json cannot be combined with --create or --delete")
+			}
 			cfg, err := c.loadConfig()
 			if err != nil {
 				return err
 			}
 			if all {
-				return c.listAllBranches(cmd, cfg)
+				return c.listAllBranches(cmd, cfg, jsonMode)
 			}
 			if create != "" {
 				return c.createBranch(cmd, cfg, create)
 			}
 			if remove != "" {
 				return c.deleteBranch(cmd, cfg, remove)
+			}
+			if jsonMode {
+				return output.WriteJSON(cmd.OutOrStdout(), output.NewCurrentBranch(cfg.Branch))
 			}
 			cmd.Println(cfg.Branch)
 			return nil
@@ -49,6 +57,7 @@ func (c *Cli) setupBranchCmd() *cobra.Command {
 	cmd.Flags().BoolP("all", "a", false, "List all branches from the server")
 	cmd.Flags().StringP("create", "c", "", "Create a new branch on the server and switch the local working copy to it")
 	cmd.Flags().StringP("delete", "d", "", "Delete a branch on the server")
+	addJSONFlag(cmd)
 	return cmd
 }
 
@@ -106,7 +115,7 @@ func (c *Cli) deleteBranch(cmd *cobra.Command, cfg *domain.Config, name string) 
 	return nil
 }
 
-func (c *Cli) listAllBranches(cmd *cobra.Command, cfg *domain.Config) error {
+func (c *Cli) listAllBranches(cmd *cobra.Command, cfg *domain.Config, jsonMode bool) error {
 	nipaUrl, err := domain.ParseNipaUrl(cfg.Url)
 	if err != nil {
 		return err
@@ -118,6 +127,9 @@ func (c *Cli) listAllBranches(cmd *cobra.Command, cfg *domain.Config) error {
 	branches, err := c.useCase.Repo().ListBranches(ctx, nipaUrl.Host, nipaUrl.Org, nipaUrl.Project)
 	if err != nil {
 		return err
+	}
+	if jsonMode {
+		return output.WriteJSON(cmd.OutOrStdout(), output.NewBranches(cfg.Branch, branches))
 	}
 	for _, b := range branches {
 		line := b.Name
