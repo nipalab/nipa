@@ -16,7 +16,12 @@ func (c *Cli) setupMergeCmd() *cobra.Command {
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			dryRun, err := dryRunRequested(cmd)
+			if err != nil {
+				return err
+			}
 			opts := mergeOptionsFromFlags(cmd)
+			opts.DryRun = dryRun
 			if !opts.Abort && len(args) != 1 {
 				return domain.NewUserError("a source branch to merge is required (or use --abort)")
 			}
@@ -31,6 +36,9 @@ func (c *Cli) setupMergeCmd() *cobra.Command {
 			outcome, err := c.useCase.Merge().Run(cmd.Context(), root, source, opts)
 			if err != nil {
 				return err
+			}
+			if opts.DryRun {
+				return writePlan(cmd, outcome.Plan)
 			}
 			if opts.Abort {
 				cmd.Printf("Merge aborted; the working copy was restored.\n")
@@ -58,6 +66,7 @@ func (c *Cli) setupMergeCmd() *cobra.Command {
 	cmd.Flags().Bool("ff-only", false, "Error instead of creating a merge commit")
 	cmd.Flags().Bool("no-ff", false, "Create a merge commit even when a fast-forward is possible")
 	cmd.Flags().StringP("message", "m", "", "Message for the merge commit")
+	addDryRunFlags(cmd)
 	return cmd
 }
 
@@ -65,11 +74,13 @@ func mergeOptionsFromFlags(cmd *cobra.Command) usecase.MergeOptions {
 	abort, _ := cmd.Flags().GetBool("abort")
 	ffOnly, _ := cmd.Flags().GetBool("ff-only")
 	noFF, _ := cmd.Flags().GetBool("no-ff")
+	dryRun, _ := cmd.Flags().GetBool("dry-run")
 	message, _ := cmd.Flags().GetString("message")
 	return usecase.MergeOptions{
 		Abort:   abort,
 		FFOnly:  ffOnly,
 		NoFF:    noFF,
+		DryRun:  dryRun,
 		Message: message,
 	}
 }

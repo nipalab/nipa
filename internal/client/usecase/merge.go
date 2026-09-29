@@ -45,6 +45,7 @@ type MergeOptions struct {
 	Abort   bool
 	FFOnly  bool
 	NoFF    bool
+	DryRun  bool
 	Message string
 }
 
@@ -53,6 +54,7 @@ type Outcome struct {
 	FastForwarded  bool
 	MergeCommitted bool
 	Conflicts      []string
+	Plan           *domain.Plan
 }
 
 type Merge struct {
@@ -85,6 +87,9 @@ func (m *Merge) Run(ctx context.Context, root, sourceBranch string, opts MergeOp
 	}
 	if nipaUrl.Path != "" || len(cfg.Sparse) > 0 {
 		return nil, domain.NewUserError("merging in a sparse or subdirectory clone is not supported yet")
+	}
+	if opts.DryRun && opts.Abort {
+		return nil, domain.NewUserError("--dry-run cannot be combined with --abort")
 	}
 
 	if opts.Abort {
@@ -130,7 +135,11 @@ func (m *Merge) Run(ctx context.Context, root, sourceBranch string, opts MergeOp
 		return nil, domain.NewUserError(fmt.Sprintf("branch %q has no commits to merge", sourceBranch))
 	}
 	if info.MergeBaseCommitID == info.SourceCommitID {
-		return &Outcome{UpToDate: true}, nil
+		outcome := &Outcome{UpToDate: true}
+		if opts.DryRun {
+			outcome.Plan = &domain.Plan{Kind: "merge", UpToDate: true}
+		}
+		return outcome, nil
 	}
 
 	ffPossible := info.MergeBaseCommitID == info.TargetCommitID
@@ -138,10 +147,31 @@ func (m *Merge) Run(ctx context.Context, root, sourceBranch string, opts MergeOp
 		return nil, domain.NewUserError("cannot fast-forward; the target branch has moved since the branches diverged")
 	}
 	if ffPossible && !opts.NoFF {
+		if opts.DryRun {
+			return m.planFastForward(ctx, nipaUrl, cfg.Branch, sourceBranch)
+		}
 		return m.fastForward(ctx, root, nipaUrl, cfg.Branch, sourceBranch, info.SourceCommitHash)
 	}
 
 	return m.trueMerge(ctx, root, nipaUrl, cfg.Branch, sourceBranch, info, opts)
+}
+
+func (m *Merge) planFastForward(ctx context.Context, url *domain.NipaUrl, targetBranch, sourceBranch string) (*Outcome, error) {
+	targetTree, err := m.client.GetTreeNodeManifest(ctx, url.Org, url.Project, targetBranch, nil)
+	if err != nil {
+		return nil, err
+	}
+	sourceTree, err := m.client.GetTreeNodeManifest(ctx, url.Org, url.Project, sourceBranch, nil)
+	if err != nil {
+		return nil, err
+	}
+	plan := &domain.Plan{
+		Kind:         "merge",
+		FastForward:  true,
+		SourceBranch: sourceBranch,
+		Changes:      planChanges(merge.Flatten(targetTree), merge.Flatten(sourceTree)),
+	}
+	return &Outcome{Plan: plan}, nil
 }
 
 func (m *Merge) fastForward(ctx context.Context, root string, url *domain.NipaUrl, targetBranch, sourceBranch, sourceCommitHash string) (*Outcome, error) {
@@ -198,7 +228,20 @@ func (m *Merge) trueMerge(ctx context.Context, root string, url *domain.NipaUrl,
 		Project:   url.Project,
 		CommitIDs: commitIDs(info.TargetCommitID, info.SourceCommitID, info.MergeBaseCommitID),
 	}
-	applied, err := applyThreeWay(ctx, m.client, m.localRepo, root, ours, baseByPath, res, scope)
+	if opts.DryRun {
+		applied, err := applyThreeWay(ctx, m.client, m.localRepo, root, ours, baseByPath, res, scope, false)
+		if err != nil {
+			return nil, err
+		}
+		plan := &domain.Plan{
+			Kind:         "merge",
+			SourceBranch: sourceBranch,
+			Conflicts:    applied.Conflicted,
+			Changes:      planChanges(ours, applied.Files),
+		}
+		return &Outcome{Conflicts: applied.Conflicted, Plan: plan}, nil
+	}
+	applied, err := applyThreeWay(ctx, m.client, m.localRepo, root, ours, baseByPath, res, scope, true)
 	if err != nil {
 		return nil, err
 	}
@@ -288,6 +331,27 @@ func commitIDString(b *serverDomain.Branch) string {
 		return ""
 	}
 	return b.CommitID.Base36()
+}
+
+// planChanges returns the file-level delta between two tree states.
+func planChanges(oldFiles, newFiles map[string]merge.File) []domain.PlanChange {
+	out := make([]domain.PlanChange, 0, len(newFiles))
+	for path, file := range newFiles {
+		old, ok := oldFiles[path]
+		switch {
+		case !ok:
+			out = append(out, domain.PlanChange{Path: path, Status: "A", Binary: file.IsBinary, SizeBytes: file.SizeBytes})
+		case old.Hash != file.Hash || old.Mode != file.Mode:
+			out = append(out, domain.PlanChange{Path: path, Status: "M", Binary: file.IsBinary, SizeBytes: file.SizeBytes})
+		}
+	}
+	for path, file := range oldFiles {
+		if _, ok := newFiles[path]; !ok {
+			out = append(out, domain.PlanChange{Path: path, Status: "D", Binary: file.IsBinary, SizeBytes: file.SizeBytes})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
+	return out
 }
 
 func baseTreeHash(info *domain.MergeBaseInfo) string {

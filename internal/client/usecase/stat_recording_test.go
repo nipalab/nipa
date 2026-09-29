@@ -182,7 +182,7 @@ func TestApplyThreeWay_KeepTheirsRecordsStatFingerprint(t *testing.T) {
 	}}
 
 	applied, err := applyThreeWay(context.Background(), &stubMergeClient{}, local, root,
-		map[string]merge.File{}, nil, res, domain.ChunkScope{})
+		map[string]merge.File{}, nil, res, domain.ChunkScope{}, true)
 	require.NoError(t, err)
 	require.Equal(t, []string{"a.txt"}, applied.Staged)
 

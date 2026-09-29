@@ -45,6 +45,7 @@ type RevertOptions struct {
 	Continue bool
 	Skip     bool
 	NoCommit bool
+	DryRun   bool
 	Mainline int
 	Message  string
 }
@@ -53,6 +54,7 @@ type RevertOutcome struct {
 	Committed bool
 	NoChange  bool
 	Conflicts []string
+	Plan      *domain.Plan
 }
 
 type Revert struct {
@@ -88,6 +90,12 @@ func (r *Revert) Run(ctx context.Context, root, target string, opts RevertOption
 	}
 	if opts.Mainline != 0 && opts.Mainline != 1 && opts.Mainline != 2 {
 		return nil, domain.NewUserError("--mainline must be 1 or 2")
+	}
+	if opts.DryRun && (opts.Abort || opts.Continue || opts.Skip) {
+		return nil, domain.NewUserError("--dry-run cannot be combined with --continue, --abort or --skip")
+	}
+	if opts.DryRun && opts.NoCommit {
+		return nil, domain.NewUserError("--dry-run cannot be combined with --no-commit")
 	}
 
 	switch {
@@ -139,6 +147,9 @@ func (r *Revert) Run(ctx context.Context, root, target string, opts RevertOption
 	headHash := headTree.Hash.String()
 	if snapshot.TreeHash != headHash {
 		return nil, domain.NewUserError("the working copy is not at the branch head; run nipa update first")
+	}
+	if opts.DryRun {
+		return r.plan(ctx, root, nipaUrl, cfg.Branch, refs, merge.Flatten(headTree), opts.Mainline)
 	}
 
 	state := &domain.RevertState{
@@ -262,7 +273,7 @@ func (r *Revert) process(ctx context.Context, root string, url *domain.NipaUrl, 
 			Project:   url.Project,
 			CommitIDs: commitIDs(detail.ID, parentIDOf(detail, state.Mainline), headID),
 		}
-		applied, err := applyThreeWay(ctx, r.client, r.localRepo, root, ours, baseByPath, res, scope)
+		applied, err := applyThreeWay(ctx, r.client, r.localRepo, root, ours, baseByPath, res, scope, true)
 		if err != nil {
 			return nil, err
 		}
@@ -320,6 +331,55 @@ func (r *Revert) process(ctx context.Context, root string, url *domain.NipaUrl, 
 		return nil, err
 	}
 	return &RevertOutcome{Committed: committed, NoChange: !changed}, nil
+}
+
+// plan computes the chained three-way result of every revert target in memory
+// without staging, committing or saving revert state. The chain stops at the
+// first conflicting target, mirroring where the real sequence would stop.
+func (r *Revert) plan(ctx context.Context, root string, url *domain.NipaUrl, branch string, refs []domain.CommitRef, headFiles map[string]merge.File, mainline int) (*RevertOutcome, error) {
+	head, err := r.client.GetBranchByName(ctx, url.Org, url.Project, branch)
+	if err != nil {
+		return nil, err
+	}
+	headID := commitIDString(head)
+
+	ours := headFiles
+	plan := &domain.Plan{Kind: "revert", Targets: make([]string, 0, len(refs))}
+	for _, target := range refs {
+		plan.Targets = append(plan.Targets, target.ID)
+		detail, err := r.client.GetCommit(ctx, url.Org, url.Project, target.ID)
+		if err != nil {
+			return nil, err
+		}
+		theirs, err := r.parentTree(ctx, url, detail, mainline)
+		if err != nil {
+			return nil, err
+		}
+		res := merge.ThreeWay(merge.Flatten(detail.Tree), ours, theirs)
+		baseByPath, err := r.snapshotByPath()
+		if err != nil {
+			return nil, err
+		}
+		scope := domain.ChunkScope{
+			Org:       url.Org,
+			Project:   url.Project,
+			CommitIDs: commitIDs(detail.ID, parentIDOf(detail, mainline), headID),
+		}
+		applied, err := applyThreeWay(ctx, r.client, r.localRepo, root, ours, baseByPath, res, scope, false)
+		if err != nil {
+			return nil, err
+		}
+		if len(applied.Conflicted) > 0 {
+			plan.Conflicts = applied.Conflicted
+			// The real sequence materializes and saves this target's files
+			// before stopping, so the plan must report its clean changes too.
+			ours = applied.Files
+			break
+		}
+		ours = applied.Files
+	}
+	plan.Changes = planChanges(headFiles, ours)
+	return &RevertOutcome{Plan: plan}, nil
 }
 
 func (r *Revert) resume(ctx context.Context, root string, url *domain.NipaUrl, branch string, progress ...UploadProgress) (*RevertOutcome, error) {

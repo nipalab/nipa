@@ -469,3 +469,169 @@ func TestMerge_Run_UnrelatedError(t *testing.T) {
 	_, err := mergeUse.Run(context.Background(), t.TempDir(), "feature", MergeOptions{})
 	require.ErrorIs(t, err, wantErr)
 }
+
+func TestMerge_Run_DryRunUpToDate(t *testing.T) {
+	local := &stubLocalRepo{loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "main"}}
+	client := &stubMergeClient{baseInfo: &domain.MergeBaseInfo{
+		SourceCommitID:    "F1",
+		MergeBaseCommitID: "F1",
+	}}
+	mergeUse := newTestMerge(t, client, local, nil)
+
+	outcome, err := mergeUse.Run(context.Background(), t.TempDir(), "feature", MergeOptions{DryRun: true})
+	require.NoError(t, err)
+	require.True(t, outcome.UpToDate)
+	require.NotNil(t, outcome.Plan)
+	require.True(t, outcome.Plan.UpToDate)
+	require.False(t, client.pushCalled)
+}
+
+func TestMerge_Run_DryRunFastForward(t *testing.T) {
+	local := &stubLocalRepo{loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "main"}}
+	client := &stubMergeClient{
+		baseInfo: &domain.MergeBaseInfo{
+			TargetCommitID:    "T1",
+			SourceCommitID:    "F1",
+			SourceCommitHash:  "src-hash",
+			MergeBaseCommitID: "T1",
+		},
+		treeByBranch: map[string]*serverDomain.TreeNode{
+			"main": treeWithFiles(map[string]serverDomain.File{"a.txt": fileOf("a.txt", serverDomain.Hash{0x01}, []serverDomain.Chunk{{Hash: serverDomain.Hash{0x0a}}})}),
+			"feature": treeWithFiles(map[string]serverDomain.File{
+				"a.txt": fileOf("a.txt", serverDomain.Hash{0x02}, []serverDomain.Chunk{{Hash: serverDomain.Hash{0x0b}}}),
+				"b.txt": fileOf("b.txt", serverDomain.Hash{0x03}, []serverDomain.Chunk{{Hash: serverDomain.Hash{0x0c}}}),
+			}),
+		},
+	}
+	mergeUse := newTestMerge(t, client, local, nil)
+
+	outcome, err := mergeUse.Run(context.Background(), t.TempDir(), "feature", MergeOptions{DryRun: true})
+	require.NoError(t, err)
+	require.NotNil(t, outcome.Plan)
+	require.True(t, outcome.Plan.FastForward)
+	require.Equal(t, "feature", outcome.Plan.SourceBranch)
+	require.Equal(t, []domain.PlanChange{
+		{Path: "a.txt", Status: "M"},
+		{Path: "b.txt", Status: "A"},
+	}, outcome.Plan.Changes)
+	require.Nil(t, client.lastFF, "a dry run must not fast-forward the server")
+	require.Nil(t, local.tree, "a dry run must not refresh the local snapshot")
+	require.Empty(t, local.savedCommitID)
+	require.False(t, client.pushCalled)
+}
+
+func TestMerge_Run_DryRunCleanMerge(t *testing.T) {
+	client, local, _ := setupThreeWaySeed(t, "a\nb\nc\n", "a\nX\nc\n", "a\nb\nY\n")
+	mergeUse := newTestMerge(t, client, local, nil)
+
+	outcome, err := mergeUse.Run(context.Background(), t.TempDir(), "feature", MergeOptions{DryRun: true})
+	require.NoError(t, err)
+	require.NotNil(t, outcome.Plan)
+	require.Empty(t, outcome.Plan.Conflicts)
+	require.Equal(t, []domain.PlanChange{{Path: "a.txt", Status: "M", SizeBytes: int64(len("a\nX\nY\n"))}}, outcome.Plan.Changes)
+	require.Nil(t, local.savedMerge, "a dry run must not persist merge state")
+	require.Nil(t, local.tree, "a dry run must not update the snapshot")
+	require.Empty(t, local.stageAdd, "a dry run must not stage files")
+	require.Empty(t, local.savedStats, "a dry run must not record fingerprints")
+	require.False(t, client.pushCalled)
+}
+
+func TestMerge_Run_DryRunConflicts(t *testing.T) {
+	client, local, _ := setupThreeWaySeed(t, "a\nb\nc\n", "a\nX\nc\n", "a\nY\nc\n")
+	root := t.TempDir()
+	mergeUse := newTestMerge(t, client, local, nil)
+
+	outcome, err := mergeUse.Run(context.Background(), root, "feature", MergeOptions{DryRun: true})
+	require.NoError(t, err)
+	require.NotNil(t, outcome.Plan)
+	require.Equal(t, []string{"a.txt"}, outcome.Plan.Conflicts)
+	require.Len(t, outcome.Plan.Changes, 1)
+	require.Equal(t, "a.txt", outcome.Plan.Changes[0].Path)
+	require.Equal(t, "M", outcome.Plan.Changes[0].Status)
+	require.Nil(t, local.savedMerge, "a dry run must not persist merge state")
+	require.Nil(t, local.tree)
+	require.Empty(t, local.stageAdd)
+	require.False(t, client.pushCalled)
+	_, statErr := os.Stat(filepath.Join(root, "a.txt"))
+	require.True(t, os.IsNotExist(statErr), "a dry run must not write conflicting files")
+}
+
+func TestMerge_Run_DryRun_FastForwardManifestErrors(t *testing.T) {
+	newUse := func(client *stubMergeClient) *Merge {
+		local := &stubLocalRepo{loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "main"}}
+		return newTestMerge(t, client, local, nil)
+	}
+	base := func() *domain.MergeBaseInfo {
+		return &domain.MergeBaseInfo{
+			TargetCommitID:    "T1",
+			SourceCommitID:    "F1",
+			MergeBaseCommitID: "T1",
+		}
+	}
+
+	t.Run("target manifest", func(t *testing.T) {
+		client := &stubMergeClient{baseInfo: base(), treeErr: errors.New("tree failed")}
+		_, err := newUse(client).Run(context.Background(), t.TempDir(), "feature", MergeOptions{DryRun: true})
+		require.ErrorContains(t, err, "tree failed")
+	})
+
+	t.Run("source manifest", func(t *testing.T) {
+		client := &stubMergeClient{baseInfo: base(), treeErr: errors.New("tree failed"), treeErrOn: 2}
+		_, err := newUse(client).Run(context.Background(), t.TempDir(), "feature", MergeOptions{DryRun: true})
+		require.ErrorContains(t, err, "tree failed")
+	})
+}
+
+func TestMerge_Run_DryRun_ApplyError(t *testing.T) {
+	client, local, _ := setupThreeWaySeed(t, "a\nb\nc\n", "a\nX\nc\n", "a\nb\nY\n")
+	local.loadChunkErr = errors.New("load failed")
+	mergeUse := newTestMerge(t, client, local, nil)
+
+	_, err := mergeUse.Run(context.Background(), t.TempDir(), "feature", MergeOptions{DryRun: true})
+	require.ErrorContains(t, err, "load failed")
+}
+
+func TestPlanChanges(t *testing.T) {
+	oldFiles := map[string]merge.File{
+		"gone.txt": {Path: "gone.txt", SizeBytes: 3},
+		"mod.txt":  {Path: "mod.txt", Hash: serverDomain.Hash{0x01}},
+		"same.txt": {Path: "same.txt", Hash: serverDomain.Hash{0x02}},
+	}
+	newFiles := map[string]merge.File{
+		"new.txt":  {Path: "new.txt", SizeBytes: 4},
+		"mod.txt":  {Path: "mod.txt", Hash: serverDomain.Hash{0x03}},
+		"same.txt": {Path: "same.txt", Hash: serverDomain.Hash{0x02}},
+	}
+	require.Equal(t, []domain.PlanChange{
+		{Path: "gone.txt", Status: "D", SizeBytes: 3},
+		{Path: "mod.txt", Status: "M"},
+		{Path: "new.txt", Status: "A", SizeBytes: 4},
+	}, planChanges(oldFiles, newFiles))
+}
+
+func TestApplyThreeWay_ReturnsStoreError(t *testing.T) {
+	base := testFile(t, "a.txt", "a\nb\nc\n")
+	ours := testFile(t, "a.txt", "a\nX\nc\n")
+	theirs := testFile(t, "a.txt", "a\nb\nY\n")
+	local := &stubLocalRepo{}
+	storeBlobs(local, base, ours, theirs)
+	local.storeChunkErr = errors.New("store failed")
+
+	res := &merge.Result{Entries: map[string]merge.Entry{
+		"a.txt": {Decision: merge.TextMerge, Base: base.file, Ours: ours.file, Theirs: theirs.file},
+	}}
+	_, err := applyThreeWay(context.Background(), &stubMergeClient{}, local, t.TempDir(),
+		map[string]merge.File{}, nil, res, domain.ChunkScope{}, true)
+	require.ErrorContains(t, err, "store failed")
+}
+
+func TestMerge_Run_Error_DryRunAndAbort(t *testing.T) {
+	local := &stubLocalRepo{loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "main"}}
+	client := &stubMergeClient{}
+	mergeUse := newTestMerge(t, client, local, nil)
+
+	_, err := mergeUse.Run(context.Background(), t.TempDir(), "", MergeOptions{Abort: true, DryRun: true})
+	require.EqualError(t, err, "--dry-run cannot be combined with --abort")
+	require.False(t, local.clearedMerge, "a dry-run abort must not clear merge state")
+	require.Empty(t, client.connectHost, "a dry-run abort must not contact the server")
+}

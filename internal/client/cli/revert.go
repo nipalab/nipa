@@ -16,7 +16,12 @@ func (c *Cli) setupRevertCmd() *cobra.Command {
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			dryRun, err := dryRunRequested(cmd)
+			if err != nil {
+				return err
+			}
 			opts := revertOptionsFromFlags(cmd)
+			opts.DryRun = dryRun
 			modes := 0
 			if opts.Abort {
 				modes++
@@ -48,6 +53,9 @@ func (c *Cli) setupRevertCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if opts.DryRun {
+				return writePlan(cmd, outcome.Plan)
+			}
 			printRevertOutcome(cmd, opts, outcome)
 			if len(outcome.Conflicts) > 0 {
 				cmd.Printf("Automatic revert failed; the following files conflict:\n")
@@ -66,6 +74,7 @@ func (c *Cli) setupRevertCmd() *cobra.Command {
 	cmd.Flags().Bool("no-commit", false, "Apply the revert to the working copy without committing")
 	cmd.Flags().Int("mainline", 0, "Mainline parent (1 or 2) when reverting a merge commit")
 	cmd.Flags().StringP("message", "m", "", "Message for the revert commit (single commit only)")
+	addDryRunFlags(cmd)
 	return cmd
 }
 
@@ -74,6 +83,7 @@ func revertOptionsFromFlags(cmd *cobra.Command) usecase.RevertOptions {
 	cont, _ := cmd.Flags().GetBool("continue")
 	skip, _ := cmd.Flags().GetBool("skip")
 	noCommit, _ := cmd.Flags().GetBool("no-commit")
+	dryRun, _ := cmd.Flags().GetBool("dry-run")
 	mainline, _ := cmd.Flags().GetInt("mainline")
 	message, _ := cmd.Flags().GetString("message")
 	return usecase.RevertOptions{
@@ -81,6 +91,7 @@ func revertOptionsFromFlags(cmd *cobra.Command) usecase.RevertOptions {
 		Continue: cont,
 		Skip:     skip,
 		NoCommit: noCommit,
+		DryRun:   dryRun,
 		Mainline: mainline,
 		Message:  message,
 	}
