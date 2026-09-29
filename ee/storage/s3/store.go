@@ -15,6 +15,7 @@ import (
 	"io"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
@@ -24,6 +25,10 @@ import (
 )
 
 var _ storage.ChunkStore = (*Store)(nil)
+var _ storage.DirectTransferStore = (*Store)(nil)
+
+// maxPresignTTL is the longest expiry SigV4 presigned requests support.
+const maxPresignTTL = 7 * 24 * time.Hour
 
 // Config describes the S3-compatible backend. Endpoint may include a scheme
 // (https:// or http://); a bare host defaults to https. When no static
@@ -130,6 +135,19 @@ func (s *Store) Exists(ctx context.Context, hash domain.Hash) (bool, error) {
 
 func (s *Store) Close() error {
 	return nil
+}
+
+// PresignDownload returns an absolute URL the client can GET the chunk from.
+// Expiries beyond SigV4's 7-day limit are clamped.
+func (s *Store) PresignDownload(ctx context.Context, hash domain.Hash, expires time.Duration) (string, error) {
+	if expires > maxPresignTTL {
+		expires = maxPresignTTL
+	}
+	url, err := s.client.PresignedGetObject(ctx, s.bucket, s.key(hash), expires, nil)
+	if err != nil {
+		return "", fmt.Errorf("s3: presign download for chunk %s: %w", hash, err)
+	}
+	return url.String(), nil
 }
 
 func (s *Store) mapError(err error, hash domain.Hash) error {

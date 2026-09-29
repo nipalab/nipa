@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -350,6 +351,52 @@ func TestStore_Close(t *testing.T) {
 	require.NoError(t, store.Close())
 }
 
+func TestStore_PresignDownload(t *testing.T) {
+	store, _ := newTestStore(t)
+	ctx := context.Background()
+
+	data := []byte("presign me")
+	hash := chunker.Sum(data)
+	require.NoError(t, store.Put(ctx, hash, data))
+
+	raw, err := store.PresignDownload(ctx, hash, time.Hour)
+	require.NoError(t, err)
+
+	parsed, err := url.Parse(raw)
+	require.NoError(t, err)
+	require.True(t, parsed.IsAbs())
+	require.Equal(t, "/test-bucket/"+hash.String()[:2]+"/"+hash.String()[2:], parsed.Path)
+	require.Equal(t, "3600", parsed.Query().Get("X-Amz-Expires"))
+	require.NotEmpty(t, parsed.Query().Get("X-Amz-Signature"))
+
+	res, err := http.Get(raw)
+	require.NoError(t, err)
+	defer func() { _ = res.Body.Close() }()
+	require.Equal(t, http.StatusOK, res.StatusCode)
+	body, err := io.ReadAll(res.Body)
+	require.NoError(t, err)
+	require.Equal(t, data, body)
+}
+
+func TestStore_PresignDownloadClampsTTL(t *testing.T) {
+	store, _ := newTestStore(t)
+
+	raw, err := store.PresignDownload(context.Background(), chunker.Sum([]byte("x")), 30*24*time.Hour)
+	require.NoError(t, err)
+
+	parsed, err := url.Parse(raw)
+	require.NoError(t, err)
+	require.Equal(t, "604800", parsed.Query().Get("X-Amz-Expires"))
+}
+
+func TestStore_PresignDownloadInvalidTTL(t *testing.T) {
+	store, _ := newTestStore(t)
+
+	_, err := store.PresignDownload(context.Background(), chunker.Sum([]byte("x")), 0)
+	require.Error(t, err)
+	require.False(t, domain.IsErrorNotFound(err))
+}
+
 func TestParseEndpoint(t *testing.T) {
 	tests := []struct {
 		in     string
@@ -441,4 +488,14 @@ func TestIntegration_S3Compatible(t *testing.T) {
 	exists, err = store.Exists(ctx, hash)
 	require.NoError(t, err)
 	require.True(t, exists)
+
+	raw, err := store.PresignDownload(ctx, hash, time.Hour)
+	require.NoError(t, err)
+	res, err := http.Get(raw)
+	require.NoError(t, err)
+	defer func() { _ = res.Body.Close() }()
+	require.Equal(t, http.StatusOK, res.StatusCode)
+	body, err := io.ReadAll(res.Body)
+	require.NoError(t, err)
+	require.Equal(t, data, body)
 }

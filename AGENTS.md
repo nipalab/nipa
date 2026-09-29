@@ -406,7 +406,9 @@ Direct: `go build ./...`, `go vet ./...`, `go test ./...`.
   hashes are filtered against it first) return one
   page of signed paths built by `internal/chunkurl` (`/api/chunks/{org}/{project}/{hash}
   ?op=put|get&size=&exp=&sig=`, HMAC-SHA256 with `CHUNK_URL_SIGNING_KEY`,
-  constant-time verify, TTL `CHUNK_PRESIGN_TTL_SECONDS` default 3600s). The
+  constant-time verify, TTL `CHUNK_PRESIGN_TTL_SECONDS` default 3600s) — or
+  absolute backend presigned URLs when the store implements
+  `storage.DirectTransferStore` (S3 downloads). The
   client then PUTs/GETs bytes directly over HTTP through an adaptive transfer
   limiter (`internal/client/grpc/transfer.go`): concurrency starts at 16, is
   auto-tuned within [4, 64] from observed throughput, and can be pinned with
@@ -457,7 +459,10 @@ Direct: `go build ./...`, `go vet ./...`, `go test ./...`.
   `cmd/nipad`'s `createChunkStore`; the S3 store keys objects
   `<prefix>/<hash[:2]>/<hash[2:]>` and probes the bucket at startup. `internal/`
   must never import `ee/` — only `cmd/nipad` does. Transfers stay server-proxied
-  through the signed `/api/chunks` routes in s3 mode too.
+  through the signed `/api/chunks` routes, except that a store implementing
+  `storage.DirectTransferStore` hands clients absolute presigned backend URLs
+  for downloads (`usecase.Chunk` type-switches on the capability; the S3 store
+  implements it), and `Client.httpURL` passes absolute URLs through unchanged.
 - `Parsec`/`ParseNipaUrl` (`internal/client/domain/url.go`): `/org/project[/path]`.
   `path` is threaded through to the manifest request so a missing subpath returns a
   404, and cloning a repo with an empty (no-commit) branch returns an empty tree,

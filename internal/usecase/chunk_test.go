@@ -67,6 +67,21 @@ func (s *stubChunkStore) Exists(_ context.Context, hash domain.Hash) (bool, erro
 
 func (s *stubChunkStore) Close() error { return nil }
 
+type stubDirectChunkStore struct {
+	*stubChunkStore
+	downloadURL string
+	downloadErr error
+	ttl         time.Duration
+}
+
+func (s *stubDirectChunkStore) PresignDownload(_ context.Context, _ domain.Hash, expires time.Duration) (string, error) {
+	if s.downloadErr != nil {
+		return "", s.downloadErr
+	}
+	s.ttl = expires
+	return s.downloadURL, nil
+}
+
 func newChunkFixture(t *testing.T) (*Chunk, *MockchunkRepository, *storage.LocalStore) {
 	t.Helper()
 	ctrl := gomock.NewController(t)
@@ -80,6 +95,18 @@ func newChunkFixture(t *testing.T) (*Chunk, *MockchunkRepository, *storage.Local
 	})
 	uc.now = func() time.Time { return time.Unix(1700000000, 0) }
 	return uc, repo, store
+}
+
+func newDirectChunkFixture(t *testing.T, store storage.ChunkStore) (*Chunk, *MockchunkRepository) {
+	t.Helper()
+	repo := NewMockchunkRepository(gomock.NewController(t))
+	uc := NewChunk(repo, store, ChunkTransferConfig{
+		SigningKey:  "test-signing-key",
+		PresignTTL:  time.Hour,
+		MaxPageSize: 10,
+	})
+	uc.now = func() time.Time { return time.Unix(1700000000, 0) }
+	return uc, repo
 }
 
 func verifyChunkURL(t *testing.T, uc *Chunk, org, project, path, op string, size int64) {
@@ -239,7 +266,7 @@ func TestChunk_PresignDownloadURLs(t *testing.T) {
 	h1 := chunker.Sum([]byte("one"))
 	h2 := chunker.Sum([]byte("two"))
 
-	urls, next, err := uc.PresignDownloadURLs("acme", "game", []domain.Hash{h1, h2}, 10, "")
+	urls, next, err := uc.PresignDownloadURLs(context.Background(), "acme", "game", []domain.Hash{h1, h2}, 10, "")
 	require.NoError(t, err)
 	require.Empty(t, next)
 	require.Len(t, urls, 2)
@@ -248,6 +275,39 @@ func TestChunk_PresignDownloadURLs(t *testing.T) {
 	require.False(t, urls[0].AlreadyStored)
 	verifyChunkURL(t, uc, "acme", "game", urls[0].URL, chunkurl.OpDownload, 0)
 	verifyChunkURL(t, uc, "acme", "game", urls[1].URL, chunkurl.OpDownload, 0)
+}
+
+func TestChunk_PresignDownloadURLsDirectStore(t *testing.T) {
+	store := &stubDirectChunkStore{
+		stubChunkStore: newStubChunkStore(),
+		downloadURL:    "https://s3.example.com/nipa-chunks/ab/cdef?X-Amz-Signature=sig",
+	}
+	uc, _ := newDirectChunkFixture(t, store)
+
+	h1 := chunker.Sum([]byte("one"))
+	h2 := chunker.Sum([]byte("two"))
+	urls, next, err := uc.PresignDownloadURLs(context.Background(), "acme", "game", []domain.Hash{h1, h2}, 10, "")
+	require.NoError(t, err)
+	require.Empty(t, next)
+	require.Len(t, urls, 2)
+	require.Equal(t, h1, urls[0].Hash)
+	require.Equal(t, store.downloadURL, urls[0].URL)
+	require.Equal(t, store.downloadURL, urls[1].URL)
+	require.Equal(t, time.Hour, store.ttl)
+}
+
+func TestChunk_PresignDownloadURLsDirectStoreError(t *testing.T) {
+	store := &stubDirectChunkStore{
+		stubChunkStore: newStubChunkStore(),
+		downloadErr:    errors.New("s3 down"),
+	}
+	uc, _ := newDirectChunkFixture(t, store)
+
+	_, _, err := uc.PresignDownloadURLs(context.Background(), "acme", "game", []domain.Hash{chunker.Sum([]byte("x"))}, 10, "")
+	require.Error(t, err)
+	var domainErr *domain.Error
+	require.ErrorAs(t, err, &domainErr)
+	require.Equal(t, 500, domainErr.Code)
 }
 
 func TestChunk_ConfirmUploads(t *testing.T) {
@@ -378,7 +438,7 @@ func TestChunk_PresignUploadURLsStoreError(t *testing.T) {
 func TestChunk_PresignDownloadURLsInvalidToken(t *testing.T) {
 	uc, _, _ := newChunkFixture(t)
 
-	_, _, err := uc.PresignDownloadURLs("acme", "game", []domain.Hash{chunker.Sum([]byte("x"))}, 10, "bad")
+	_, _, err := uc.PresignDownloadURLs(context.Background(), "acme", "game", []domain.Hash{chunker.Sum([]byte("x"))}, 10, "bad")
 	require400(t, err, "invalid page token")
 }
 

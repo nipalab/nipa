@@ -53,7 +53,7 @@ func (n *nipaServer) GetChunkDownloadUrls(ctx context.Context, req *pb.GetChunkD
 			hashes = append(hashes, hash)
 		}
 	}
-	urls, next, err := n.uc.Chunk().PresignDownloadURLs(org.Slug, project.Slug, hashes, int(req.GetPageSize()), req.GetPageToken())
+	urls, next, err := n.uc.Chunk().PresignDownloadURLs(ctx, org.Slug, project.Slug, hashes, int(req.GetPageSize()), req.GetPageToken())
 	if err != nil {
 		return nil, handleError(err)
 	}

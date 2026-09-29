@@ -8,6 +8,7 @@ package storage
 
 import (
 	"context"
+	"time"
 
 	"github.com/nipalab/nipa/internal/domain"
 )
@@ -30,4 +31,14 @@ type ChunkStore interface {
 
 	// Close releases any resources held by the store.
 	Close() error
+}
+
+// DirectTransferStore is implemented by backends that hand out their own
+// presigned transfer URLs so clients can move chunk bytes directly to and from
+// the backend instead of proxying them through the server. Returned URLs are
+// absolute, carry their own authorization and expire after at most the given
+// duration.
+type DirectTransferStore interface {
+	// PresignDownload returns an absolute URL for reading chunk content.
+	PresignDownload(ctx context.Context, hash domain.Hash, expires time.Duration) (string, error)
 }

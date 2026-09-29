@@ -136,8 +136,9 @@ func (c *Chunk) PresignUploadURLs(ctx context.Context, org, project string, refs
 }
 
 // PresignDownloadURLs signs one page of download paths for hashes the caller
-// may read.
-func (c *Chunk) PresignDownloadURLs(org, project string, hashes []domain.Hash, pageSize int, pageToken string) ([]ChunkURL, string, error) {
+// may read. Stores implementing storage.DirectTransferStore hand out absolute
+// backend presigned URLs so clients fetch content directly from the backend.
+func (c *Chunk) PresignDownloadURLs(ctx context.Context, org, project string, hashes []domain.Hash, pageSize int, pageToken string) ([]ChunkURL, string, error) {
 	page, next, err := paginate(hashes, pageSize, pageToken, c.transfer.MaxPageSize)
 	if err != nil {
 		return nil, "", err
@@ -145,12 +146,25 @@ func (c *Chunk) PresignDownloadURLs(org, project string, hashes []domain.Hash, p
 	expiry := chunkurl.Expiry(c.now(), c.transfer.PresignTTL)
 	urls := make([]ChunkURL, 0, len(page))
 	for _, hash := range page {
-		urls = append(urls, ChunkURL{
-			Hash: hash,
-			URL:  chunkurl.DownloadPath(c.transfer.SigningKey, org, project, hash.String(), expiry),
-		})
+		path, err := c.downloadPath(ctx, org, project, hash, expiry)
+		if err != nil {
+			return nil, "", err
+		}
+		urls = append(urls, ChunkURL{Hash: hash, URL: path})
 	}
 	return urls, next, nil
+}
+
+func (c *Chunk) downloadPath(ctx context.Context, org, project string, hash domain.Hash, expiry int64) (string, error) {
+	direct, ok := c.chunkStore.(storage.DirectTransferStore)
+	if !ok {
+		return chunkurl.DownloadPath(c.transfer.SigningKey, org, project, hash.String(), expiry), nil
+	}
+	url, err := direct.PresignDownload(ctx, hash, c.transfer.PresignTTL)
+	if err != nil {
+		return "", domain.NewErrorInternalServer(fmt.Sprintf("presign download for chunk %s: %v", hash, err))
+	}
+	return url, nil
 }
 
 // ConfirmUploads verifies that uploaded chunk content landed in the store and
