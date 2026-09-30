@@ -15,6 +15,7 @@ import (
 //go:generate go run go.uber.org/mock/mockgen -source=$GOFILE -destination=chunk_mock_test.go -package=usecase
 type chunkRepository interface {
 	InsertChunkIfNotExists(ctx context.Context, hash domain.Hash, sizeBytes int64) error
+	HasChunk(ctx context.Context, hash domain.Hash) (bool, error)
 }
 
 // ChunkRef identifies a chunk and the exact size of its content.
@@ -23,11 +24,15 @@ type ChunkRef struct {
 	SizeBytes int64
 }
 
-// ChunkURL pairs a chunk hash with its signed transfer path.
+// ChunkURL pairs a chunk hash with its signed transfer path. Method and
+// FormData describe direct backend transfers: an empty method means PUT,
+// a POST method carries multipart form fields.
 type ChunkURL struct {
 	Hash          domain.Hash
 	URL           string
 	AlreadyStored bool
+	Method        string
+	FormData      map[string]string
 }
 
 // ChunkTransferConfig configures presigned chunk transfer.
@@ -126,13 +131,36 @@ func (c *Chunk) PresignUploadURLs(ctx context.Context, org, project string, refs
 		if err != nil {
 			return nil, "", domain.NewErrorDatabase(fmt.Sprintf("check chunk %s: %v", ref.Hash, err))
 		}
-		url := ""
-		if !exists {
-			url = chunkurl.UploadPath(c.transfer.SigningKey, org, project, ref.Hash.String(), ref.SizeBytes, expiry)
+		if exists {
+			urls = append(urls, ChunkURL{Hash: ref.Hash, AlreadyStored: true})
+			continue
 		}
-		urls = append(urls, ChunkURL{Hash: ref.Hash, URL: url, AlreadyStored: exists})
+		target, err := c.uploadTarget(ctx, org, project, ref, expiry)
+		if err != nil {
+			return nil, "", err
+		}
+		urls = append(urls, ChunkURL{
+			Hash:     ref.Hash,
+			URL:      target.URL,
+			Method:   target.Method,
+			FormData: target.FormData,
+		})
 	}
 	return urls, next, nil
+}
+
+func (c *Chunk) uploadTarget(ctx context.Context, org, project string, ref ChunkRef, expiry int64) (storage.UploadTarget, error) {
+	direct, ok := c.chunkStore.(storage.DirectTransferStore)
+	if !ok {
+		return storage.UploadTarget{
+			URL: chunkurl.UploadPath(c.transfer.SigningKey, org, project, ref.Hash.String(), ref.SizeBytes, expiry),
+		}, nil
+	}
+	target, err := direct.PresignUpload(ctx, ref.Hash, ref.SizeBytes, c.transfer.PresignTTL)
+	if err != nil {
+		return storage.UploadTarget{}, domain.NewErrorInternalServer(fmt.Sprintf("presign upload for chunk %s: %v", ref.Hash, err))
+	}
+	return target, nil
 }
 
 // PresignDownloadURLs signs one page of download paths for hashes the caller
@@ -169,9 +197,11 @@ func (c *Chunk) downloadPath(ctx context.Context, org, project string, hash doma
 
 // ConfirmUploads verifies that uploaded chunk content landed in the store and
 // records metadata rows for the present chunks. The recorded size is measured
-// from the stored content, never taken from the client. Hashes still missing
-// are returned so the client can retry them.
+// from the stored content, never taken from the client. Direct uploads are
+// re-verified because their bytes never passed through the server. Hashes
+// still missing are returned so the client can retry them.
 func (c *Chunk) ConfirmUploads(ctx context.Context, hashes []domain.Hash) ([]domain.Hash, error) {
+	direct, isDirect := c.chunkStore.(storage.DirectTransferStore)
 	var missing []domain.Hash
 	for _, hash := range hashes {
 		size, err := c.chunkStore.Size(ctx, hash)
@@ -182,11 +212,56 @@ func (c *Chunk) ConfirmUploads(ctx context.Context, hashes []domain.Hash) ([]dom
 			}
 			return nil, domain.NewErrorDatabase(fmt.Sprintf("stat chunk %s: %v", hash, err))
 		}
+		if isDirect {
+			verified, err := c.verifyDirectUpload(ctx, direct, hash, size)
+			if err != nil {
+				return nil, err
+			}
+			if !verified {
+				missing = append(missing, hash)
+				continue
+			}
+		}
 		if err := c.chunkRepo.InsertChunkIfNotExists(ctx, hash, size); err != nil {
 			return nil, err
 		}
 	}
 	return missing, nil
+}
+
+// verifyDirectUpload checks content that arrived through a direct upload
+// before it is recorded: oversized objects are dropped without being read,
+// and unrecorded chunks must hash to their key. Recorded chunks were verified
+// when they were first confirmed.
+func (c *Chunk) verifyDirectUpload(ctx context.Context, direct storage.DirectTransferStore, hash domain.Hash, size int64) (bool, error) {
+	if size > chunker.MaxChunkSize() {
+		return false, c.dropInvalidChunk(ctx, direct, hash)
+	}
+	recorded, err := c.chunkRepo.HasChunk(ctx, hash)
+	if err != nil {
+		return false, err
+	}
+	if recorded {
+		return true, nil
+	}
+	data, err := c.chunkStore.Get(ctx, hash)
+	if err != nil {
+		if domain.IsErrorNotFound(err) {
+			return false, nil
+		}
+		return false, domain.NewErrorDatabase(fmt.Sprintf("read chunk %s: %v", hash, err))
+	}
+	if chunker.Sum(data) == hash {
+		return true, nil
+	}
+	return false, c.dropInvalidChunk(ctx, direct, hash)
+}
+
+func (c *Chunk) dropInvalidChunk(ctx context.Context, direct storage.DirectTransferStore, hash domain.Hash) error {
+	if err := direct.DeleteChunk(ctx, hash); err != nil {
+		return domain.NewErrorInternalServer(fmt.Sprintf("delete invalid chunk %s: %v", hash, err))
+	}
+	return nil
 }
 
 // VerifyTransferURL checks that a signed chunk URL matches the project, hash

@@ -30,6 +30,24 @@ func chunkRow(t *testing.T, data string) (domain.Hash, int64, domain.Hash) {
 	return sum, int64(len(data)), fileHash
 }
 
+func TestPushRepositorySQLite_HasChunk(t *testing.T) {
+	ctx := context.Background()
+	repo, _, _, _, _ := newPushTestEnv(t)
+
+	present, size, _ := chunkRow(t, "present")
+	absent, _, _ := chunkRow(t, "absent")
+
+	require.NoError(t, repo.InsertChunkIfNotExists(ctx, present, size))
+
+	ok, err := repo.HasChunk(ctx, present)
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	ok, err = repo.HasChunk(ctx, absent)
+	require.NoError(t, err)
+	require.False(t, ok)
+}
+
 func TestPushRepositorySQLite_FirstPush(t *testing.T) {
 	ctx := context.Background()
 	repo, branchRepo, _, projectID, branchID := newPushTestEnv(t)

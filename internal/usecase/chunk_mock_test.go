@@ -41,6 +41,21 @@ func (m *MockchunkRepository) EXPECT() *MockchunkRepositoryMockRecorder {
 	return m.recorder
 }
 
+// HasChunk mocks base method.
+func (m *MockchunkRepository) HasChunk(ctx context.Context, hash domain.Hash) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "HasChunk", ctx, hash)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// HasChunk indicates an expected call of HasChunk.
+func (mr *MockchunkRepositoryMockRecorder) HasChunk(ctx, hash any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasChunk", reflect.TypeOf((*MockchunkRepository)(nil).HasChunk), ctx, hash)
+}
+
 // InsertChunkIfNotExists mocks base method.
 func (m *MockchunkRepository) InsertChunkIfNotExists(ctx context.Context, hash domain.Hash, sizeBytes int64) error {
 	m.ctrl.T.Helper()

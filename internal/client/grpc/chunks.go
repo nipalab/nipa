@@ -5,7 +5,10 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"maps"
+	"mime/multipart"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 
@@ -66,7 +69,13 @@ func (c *Client) UploadChunks(ctx context.Context, scope domain.ChunkScope, chun
 			if !ok {
 				return 0, 0, domain.NewUserError(fmt.Sprintf("server requested unknown chunk %s", hash))
 			}
-			jobs = append(jobs, chunkTransfer{hash: hash, url: u.GetUrl(), data: data})
+			jobs = append(jobs, chunkTransfer{
+				hash:     hash,
+				url:      u.GetUrl(),
+				method:   u.GetMethod(),
+				formData: u.GetFormData(),
+				data:     data,
+			})
 		}
 
 		if err := c.putChunks(authedCtx, jobs); err != nil {
@@ -160,28 +169,77 @@ func (c *Client) DownloadChunks(ctx context.Context, scope domain.ChunkScope, ha
 }
 
 type chunkTransfer struct {
-	hash serverDomain.Hash
-	url  string
-	data []byte
+	hash     serverDomain.Hash
+	url      string
+	method   string
+	formData map[string]string
+	data     []byte
 }
 
 func (c *Client) putChunks(ctx context.Context, jobs []chunkTransfer) error {
 	return c.forEachChunk(ctx, jobs, func(ctx context.Context, job chunkTransfer) (int64, error) {
-		request, err := http.NewRequestWithContext(ctx, http.MethodPut, c.httpURL(job.url), bytes.NewReader(job.data))
-		if err != nil {
-			return 0, err
+		switch {
+		case job.method == "" || strings.EqualFold(job.method, http.MethodPut):
+			return c.putChunk(ctx, job)
+		case strings.EqualFold(job.method, http.MethodPost):
+			return c.postChunk(ctx, job)
+		default:
+			return int64(len(job.data)), domain.NewUserError(fmt.Sprintf("unsupported chunk upload method %q", job.method))
 		}
-		request.Header.Set("Content-Type", "application/octet-stream")
-		res, err := c.http.Do(request)
-		if err != nil {
-			return 0, err
-		}
-		defer func() { _ = res.Body.Close() }()
-		if res.StatusCode == http.StatusNoContent || res.StatusCode == http.StatusOK {
-			return int64(len(job.data)), nil
-		}
-		return int64(len(job.data)), chunkHTTPError(res)
 	})
+}
+
+func (c *Client) putChunk(ctx context.Context, job chunkTransfer) (int64, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodPut, c.httpURL(job.url), bytes.NewReader(job.data))
+	if err != nil {
+		return 0, err
+	}
+	request.Header.Set("Content-Type", "application/octet-stream")
+	res, err := c.http.Do(request)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = res.Body.Close() }()
+	if res.StatusCode == http.StatusNoContent || res.StatusCode == http.StatusOK {
+		return int64(len(job.data)), nil
+	}
+	return int64(len(job.data)), chunkHTTPError(res)
+}
+
+// postChunk uploads one chunk through a POST policy where the form fields
+// must precede the file part, which the backend keeps last.
+func (c *Client) postChunk(ctx context.Context, job chunkTransfer) (int64, error) {
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	for _, key := range slices.Sorted(maps.Keys(job.formData)) {
+		if err := writer.WriteField(key, job.formData[key]); err != nil {
+			return 0, err
+		}
+	}
+	part, err := writer.CreateFormFile("file", "chunk")
+	if err != nil {
+		return 0, err
+	}
+	if _, err := part.Write(job.data); err != nil {
+		return 0, err
+	}
+	if err := writer.Close(); err != nil {
+		return 0, err
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, c.httpURL(job.url), &body)
+	if err != nil {
+		return 0, err
+	}
+	request.Header.Set("Content-Type", writer.FormDataContentType())
+	res, err := c.http.Do(request)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = res.Body.Close() }()
+	if res.StatusCode == http.StatusNoContent || res.StatusCode == http.StatusOK {
+		return int64(len(job.data)), nil
+	}
+	return int64(len(job.data)), chunkHTTPError(res)
 }
 
 // chunkSink serializes chunk delivery to the caller's callback and remembers

@@ -45,6 +45,11 @@ type chunkTestServer struct {
 	putStatus       int
 	getStatus       int
 	lastConfirm     *pb.ConfirmChunkUploadsRequest
+
+	postUpload     bool
+	methodOverride string
+	lastPostFields []string
+	lastPostValues map[string]string
 }
 
 func newChunkTestServer() *chunkTestServer {
@@ -64,6 +69,12 @@ func (s *chunkTestServer) storedChunk(hash string) ([]byte, bool) {
 	return data, ok
 }
 
+func (s *chunkTestServer) lastPost() ([]string, map[string]string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.lastPostFields, s.lastPostValues
+}
+
 func (s *chunkTestServer) GetChunkUploadUrls(ctx context.Context, req *pb.GetChunkUploadUrlsRequest) (*pb.GetChunkUploadUrlsResponse, error) {
 	if md, ok := metadata.FromIncomingContext(ctx); ok {
 		if auth := md.Get("authorization"); len(auth) > 0 {
@@ -78,14 +89,26 @@ func (s *chunkTestServer) GetChunkUploadUrls(ctx context.Context, req *pb.GetChu
 	for _, ref := range req.GetChunks() {
 		_, exists := s.storedChunk(ref.GetHash())
 		url := ""
+		method := ""
+		var formData map[string]string
 		if !exists {
 			url = fmt.Sprintf("/api/chunks/%s/%s/%s?op=put&size=%d&exp=9999999999&sig=test",
 				req.GetContext().GetOrg(), req.GetContext().GetProject(), ref.GetHash(), ref.GetSizeBytes())
+			if s.postUpload {
+				url = "/direct-upload"
+				method = http.MethodPost
+				formData = map[string]string{"key": ref.GetHash(), "policy": "test-policy"}
+			}
+			if s.methodOverride != "" {
+				method = s.methodOverride
+			}
 		}
 		resp.Urls = append(resp.Urls, &pb.PresignedChunkUrl{
 			Hash:          ref.GetHash(),
 			Url:           url,
 			AlreadyStored: exists,
+			Method:        method,
+			FormData:      formData,
 		})
 	}
 	if s.uploadBadHash {
@@ -133,6 +156,10 @@ func (s *chunkTestServer) ConfirmChunkUploads(_ context.Context, req *pb.Confirm
 }
 
 func (s *chunkTestServer) serveChunkHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodPost && r.URL.Path == "/direct-upload" {
+		s.serveDirectUpload(w, r)
+		return
+	}
 	hash := path.Base(r.URL.Path)
 	switch r.URL.Query().Get("op") {
 	case "put":
@@ -162,6 +189,57 @@ func (s *chunkTestServer) serveChunkHTTP(w http.ResponseWriter, r *http.Request)
 	default:
 		http.Error(w, "invalid op", http.StatusBadRequest)
 	}
+}
+
+// serveDirectUpload accepts a POST policy multipart upload, requiring the file
+// part to come after every other form field like S3 does.
+func (s *chunkTestServer) serveDirectUpload(w http.ResponseWriter, r *http.Request) {
+	reader, err := r.MultipartReader()
+	if err != nil {
+		http.Error(w, "bad multipart", http.StatusBadRequest)
+		return
+	}
+	values := map[string]string{}
+	var fields []string
+	var data []byte
+	sawFile := false
+	for {
+		part, err := reader.NextPart()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			http.Error(w, "bad part", http.StatusBadRequest)
+			return
+		}
+		body, err := io.ReadAll(part)
+		if err != nil {
+			http.Error(w, "bad part body", http.StatusBadRequest)
+			return
+		}
+		if part.FormName() == "file" && part.FileName() != "" {
+			data = body
+			sawFile = true
+			fields = append(fields, "file")
+			continue
+		}
+		if sawFile {
+			http.Error(w, "file part must be last", http.StatusBadRequest)
+			return
+		}
+		values[part.FormName()] = string(body)
+		fields = append(fields, part.FormName())
+	}
+	s.mu.Lock()
+	s.lastPostFields = fields
+	s.lastPostValues = values
+	s.mu.Unlock()
+	if !sawFile || values["key"] == "" {
+		http.Error(w, "missing key or file", http.StatusBadRequest)
+		return
+	}
+	s.put(values["key"], data)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // startChunkTestServer serves gRPC (for presign RPCs) and the signed HTTP
@@ -230,6 +308,46 @@ func TestClient_UploadChunks_Success(t *testing.T) {
 
 	require.NotNil(t, srv.lastConfirm)
 	require.Equal(t, []string{h1.String(), h2.String()}, srv.lastConfirm.GetHashes(), "confirm must send hashes only")
+}
+
+func TestClient_UploadChunks_DirectPOST(t *testing.T) {
+	h1 := testChunkHash(0x01)
+
+	srv := newChunkTestServer()
+	srv.postUpload = true
+	addr := startChunkTestServer(t, srv)
+	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
+	require.NoError(t, c.Connect(context.Background(), addr))
+
+	uploaded, skipped, err := c.UploadChunks(context.Background(), domain.ChunkScope{Org: "org", Project: "proj"}, []*serverDomain.ChunkData{
+		{Hash: h1, Data: []byte("aaaa")},
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, uploaded)
+	require.Equal(t, 0, skipped)
+
+	got, ok := srv.storedChunk(h1.String())
+	require.True(t, ok)
+	require.Equal(t, []byte("aaaa"), got)
+
+	fields, values := srv.lastPost()
+	require.NotEmpty(t, fields)
+	require.Equal(t, "file", fields[len(fields)-1], "the file part must be last")
+	require.Equal(t, h1.String(), values["key"])
+	require.Equal(t, "test-policy", values["policy"])
+}
+
+func TestClient_UploadChunks_UnsupportedMethod(t *testing.T) {
+	srv := newChunkTestServer()
+	srv.methodOverride = http.MethodPatch
+	addr := startChunkTestServer(t, srv)
+	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
+	require.NoError(t, c.Connect(context.Background(), addr))
+
+	_, _, err := c.UploadChunks(context.Background(), domain.ChunkScope{Org: "org", Project: "proj"}, []*serverDomain.ChunkData{
+		{Hash: testChunkHash(0x01), Data: []byte("x")},
+	})
+	require.ErrorContains(t, err, "unsupported chunk upload method")
 }
 
 func TestClient_UploadChunks_SkipsStored(t *testing.T) {

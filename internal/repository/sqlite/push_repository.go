@@ -26,6 +26,17 @@ func (p *PushRepository) InsertChunkIfNotExists(ctx context.Context, hash domain
 	}))
 }
 
+func (p *PushRepository) HasChunk(ctx context.Context, hash domain.Hash) (bool, error) {
+	q := sqlcSqlite.New(p.db)
+	if _, err := q.ChunkGetByHash(ctx, hash.Bytes()); err != nil {
+		if err == sql.ErrNoRows {
+			return false, nil
+		}
+		return false, handleError(err)
+	}
+	return true, nil
+}
+
 func (p *PushRepository) ApplyPush(ctx context.Context, req usecase.ApplyPushRequest) error {
 	tx, err := p.db.BeginTx(ctx, nil)
 	if err != nil {
