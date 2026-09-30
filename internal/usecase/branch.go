@@ -138,17 +138,49 @@ func (b *Branch) CreateBranch(ctx context.Context, projectID snow.ID, name strin
 		return nil, err
 	}
 
+	existing, err := b.branchRepo.ListBranches(ctx, projectID, 1, nil, 0)
+	if err != nil {
+		return nil, err
+	}
+
 	created, err := b.branchRepo.CreateBranch(ctx, domain.Branch{
 		ID:        b.snowNode.Generate(),
 		ProjectID: projectID,
 		Name:      name,
 		CommitID:  fromCommitID,
+		IsDefault: len(existing) == 0,
 	})
 	if err != nil {
 		return nil, err
 	}
 	b.emitHook(ctx, domain.WebhookEventBranchCreated, projectID, created)
 	return created, nil
+}
+
+// EnsureDefault creates the given branch as the project default when it does
+// not exist yet. It is called right after a project is created, so it skips
+// the project write check the caller already performed.
+func (b *Branch) EnsureDefault(ctx context.Context, projectID snow.ID, name string) error {
+	name = strings.TrimSpace(name)
+	if err := validateBranchName(name); err != nil {
+		return err
+	}
+	if _, err := b.branchRepo.GetBranchByName(ctx, projectID, name); err == nil {
+		return nil
+	} else if !domain.IsErrorNotFound(err) {
+		return err
+	}
+	created, err := b.branchRepo.CreateBranch(ctx, domain.Branch{
+		ID:        b.snowNode.Generate(),
+		ProjectID: projectID,
+		Name:      name,
+		IsDefault: true,
+	})
+	if err != nil {
+		return err
+	}
+	b.emitHook(ctx, domain.WebhookEventBranchCreated, projectID, created)
+	return nil
 }
 
 func (b *Branch) Rename(ctx context.Context, projectID snow.ID, name, newName string) (*domain.Branch, error) {
@@ -187,6 +219,13 @@ func (b *Branch) Delete(ctx context.Context, projectID snow.ID, name string) err
 	}
 	if branch.IsDefault {
 		return domain.NewErrorConflict(fmt.Sprintf("cannot delete the default branch %q", name))
+	}
+	remaining, err := b.branchRepo.ListBranches(ctx, projectID, 2, nil, 0)
+	if err != nil {
+		return err
+	}
+	if len(remaining) <= 1 {
+		return domain.NewErrorConflict("cannot delete the last branch")
 	}
 	hasOpen, err := b.branchRepo.HasOpenMergeRequests(ctx, projectID, branch.ID)
 	if err != nil {
@@ -324,7 +363,7 @@ func (b *Branch) resolveForkPoint(ctx context.Context, projectID snow.ID, fork B
 
 	def, err := b.branchRepo.GetDefaultBranch(ctx, projectID)
 	if domain.IsErrorNotFound(err) {
-		return nil, domain.NewErrorNotFound("no default branch found")
+		return nil, nil
 	}
 	if err != nil {
 		return nil, err

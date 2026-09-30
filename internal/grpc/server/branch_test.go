@@ -731,6 +731,8 @@ func TestCreateBranch_Success(t *testing.T) {
 			GetBranchByName(gomock.Any(), projectID, "main").
 			Return(&domain.Branch{ID: 2, ProjectID: projectID, Name: "main", CommitID: &commitID}, nil),
 	)
+	repo.EXPECT().ListBranches(gomock.Any(), projectID, 1, gomock.Nil(), snow.ID(0)).
+		Return([]*domain.Branch{{ID: 2, ProjectID: projectID, Name: "main"}}, nil)
 
 	repo.EXPECT().
 		CreateBranch(gomock.Any(), gomock.Any()).
@@ -822,6 +824,8 @@ func TestCreateBranch_FromCommitID(t *testing.T) {
 			GetCommit(gomock.Any(), forkID).
 			Return(commit, nil),
 	)
+	repo.EXPECT().ListBranches(gomock.Any(), projectID, 1, gomock.Nil(), snow.ID(0)).
+		Return([]*domain.Branch{{ID: 2, ProjectID: projectID, Name: "main"}}, nil)
 
 	var captured domain.Branch
 	repo.EXPECT().
@@ -865,6 +869,8 @@ func TestCreateBranch_FromCommitHash(t *testing.T) {
 			GetCommitByHash(gomock.Any(), wantHash).
 			Return(commit, nil),
 	)
+	repo.EXPECT().ListBranches(gomock.Any(), projectID, 1, gomock.Nil(), snow.ID(0)).
+		Return([]*domain.Branch{{ID: 2, ProjectID: projectID, Name: "main"}}, nil)
 
 	var captured domain.Branch
 	repo.EXPECT().
@@ -1209,6 +1215,11 @@ func TestDeleteBranch_Success(t *testing.T) {
 	repo.EXPECT().GetBranchByName(gomock.Any(), projectID, "feature").
 		Return(&domain.Branch{ID: 2, ProjectID: projectID, Name: "feature"}, nil)
 	perm.EXPECT().HasProjectAccess(gomock.Any(), projectID, domain.PermissionWrite).Return(true)
+	repo.EXPECT().ListBranches(gomock.Any(), projectID, 2, gomock.Nil(), snow.ID(0)).
+		Return([]*domain.Branch{
+			{ID: 2, ProjectID: projectID, Name: "feature"},
+			{ID: 1, ProjectID: projectID, Name: "main", IsDefault: true},
+		}, nil)
 	repo.EXPECT().HasOpenMergeRequests(gomock.Any(), projectID, snow.ID(2)).Return(false, nil)
 	repo.EXPECT().DeleteBranch(gomock.Any(), projectID, snow.ID(2)).Return(nil)
 

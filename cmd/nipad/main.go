@@ -78,6 +78,7 @@ func main() {
 	branchUsecase := usecase.NewBranchWithChunks(permissionUsecase, branchRepository, snowUser, chunkStore)
 	fileLockUsecase := usecase.NewFileLock(sqlite.NewFileLockRepository(dbConn), branchRepository, permissionUsecase, snowUser)
 	branchUsecase = branchUsecase.WithFileLocks(fileLockUsecase)
+	projectUsecase = projectUsecase.WithBranches(branchUsecase)
 	mergeRequestUsecase := usecase.NewMergeRequest(
 		sqlite.NewMergeRequestRepository(dbConn),
 		branchRepository,

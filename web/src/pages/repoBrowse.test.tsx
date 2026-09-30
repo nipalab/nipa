@@ -58,12 +58,12 @@ const BRANCHES = [
   { id: '1', name: 'main', is_default: true, is_protected: false, commit_id: 'c2', updated_at: new Date().toISOString() },
 ]
 
-function stubRepoRoutes(extra: (url: string) => Response | null = () => null) {
+function stubRepoRoutes(extra: (url: string, init?: RequestInit) => Response | null = () => null) {
   vi.stubGlobal(
     'fetch',
-    vi.fn(async (input: RequestInfo | URL) => {
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input)
-      const custom = extra(url)
+      const custom = extra(url, init)
       if (custom) return custom
       if (url.includes('/auth/refresh')) {
         return jsonResponse({ access_token: 'token', token_type: 'Bearer', expires_in: 1800 })
@@ -76,6 +76,18 @@ function stubRepoRoutes(extra: (url: string) => Response | null = () => null) {
       return jsonResponse({ error: 'not found' }, 404)
     }),
   )
+}
+
+function findButton(text: string): HTMLButtonElement {
+  const button = Array.from(document.querySelectorAll('button')).find((item) => item.textContent?.trim() === text)
+  if (!button) throw new Error(`button ${text} not found`)
+  return button as HTMLButtonElement
+}
+
+function setInputValue(el: HTMLInputElement, value: string) {
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set
+  setter?.call(el, value)
+  el.dispatchEvent(new Event('input', { bubbles: true }))
 }
 
 async function renderApp(url: string) {
@@ -326,6 +338,99 @@ describe('repo nav', () => {
       expect(container.querySelector('a[href="/acme/game/pulls"]')).not.toBeNull()
       act(() => root.unmount())
     }
+  })
+})
+
+describe('BranchesPage', () => {
+  const TWO_BRANCHES = [
+    { id: '1', name: 'main', is_default: true, is_protected: false, updated_at: new Date().toISOString() },
+    { id: '2', name: 'feature', is_default: false, is_protected: false, updated_at: new Date().toISOString() },
+  ]
+
+  it('creates a branch from the dedicated page', async () => {
+    const calls: { url: string; method: string; body: unknown }[] = []
+    stubRepoRoutes((url, init) => {
+      const method = init?.method ?? 'GET'
+      calls.push({ url, method, body: init?.body ? JSON.parse(String(init.body)) : undefined })
+      if (url.includes('/branches') && method === 'POST') {
+        return jsonResponse({
+          id: '3',
+          name: 'feature',
+          is_default: false,
+          is_protected: false,
+          updated_at: new Date().toISOString(),
+        })
+      }
+      if (url.includes('/branches') && method === 'GET') return jsonResponse(TWO_BRANCHES)
+      return null
+    })
+
+    const { container, root } = await renderApp('/acme/game/branches')
+    await waitForText(container, 'feature')
+    await act(async () => {
+      findButton('Add branch').click()
+    })
+    await waitFor(() => window.location.pathname === '/acme/game/branches/new')
+
+    const nameInput = container.querySelector('input') as HTMLInputElement
+    await act(async () => {
+      setInputValue(nameInput, 'feature')
+    })
+    await act(async () => {
+      findButton('Create branch').click()
+    })
+    await waitFor(() => calls.some((call) => call.method === 'POST' && call.url.includes('/branches')))
+    const post = calls.find((call) => call.method === 'POST' && call.url.includes('/branches'))
+    expect(post?.body).toEqual({ name: 'feature', from: '' })
+    await waitFor(() => window.location.pathname === '/acme/game/branches')
+    act(() => root.unmount())
+  })
+
+  it('deletes a branch after confirmation', async () => {
+    const calls: { url: string; method: string }[] = []
+    stubRepoRoutes((url, init) => {
+      const method = init?.method ?? 'GET'
+      calls.push({ url, method })
+      if (url.includes('/branches/feature') && method === 'DELETE') {
+        return jsonResponse({ message: 'branch deleted' })
+      }
+      if (url.includes('/branches') && method === 'GET') return jsonResponse(TWO_BRANCHES)
+      return null
+    })
+
+    const { container, root } = await renderApp('/acme/game/branches')
+    await waitForText(container, 'feature')
+    await act(async () => {
+      findButton('Delete').click()
+    })
+    await waitFor(() => (document.body.textContent?.includes('Delete branch feature') ?? false))
+    await act(async () => {
+      findButton('Delete branch').click()
+    })
+    await waitFor(() => calls.some((call) => call.method === 'DELETE'))
+    expect(calls.find((call) => call.method === 'DELETE')?.url).toContain('/branches/feature')
+    await waitFor(() => document.querySelector('[role="dialog"]') === null)
+    act(() => root.unmount())
+  })
+
+  it('hides delete when only one branch exists', async () => {
+    stubRepoRoutes((url, init) => {
+      const method = init?.method ?? 'GET'
+      if (url.includes('/branches') && method === 'GET') {
+        return jsonResponse([
+          { id: '1', name: 'trunk', is_default: false, is_protected: false, updated_at: new Date().toISOString() },
+        ])
+      }
+      return null
+    })
+
+    const { container, root } = await renderApp('/acme/game/branches')
+    await waitForText(container, 'trunk')
+    const deleteButton = Array.from(container.querySelectorAll('button')).find(
+      (button) => button.textContent?.trim() === 'Delete',
+    )
+    expect(deleteButton).toBeUndefined()
+    act(() => root.unmount())
   })
 })
 

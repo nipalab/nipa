@@ -14,6 +14,8 @@ var (
 	projectSlugSeparator = regexp.MustCompile(`[^a-z0-9]+`)
 )
 
+const defaultBranchName = "main"
+
 //go:generate go run go.uber.org/mock/mockgen -source=$GOFILE -destination=project_mock_test.go -package=usecase
 type projectRepository interface {
 	Create(ctx context.Context, project domain.Project) (*domain.Project, error)
@@ -29,11 +31,17 @@ type projectAccess interface {
 	AdminHasProject(ctx context.Context, projectID snow.ID) bool
 }
 
+// defaultBranchCreator seeds the default branch of a freshly created project.
+type defaultBranchCreator interface {
+	EnsureDefault(ctx context.Context, projectID snow.ID, name string) error
+}
+
 type Project struct {
 	repo     projectRepository
 	snowNode snow.Node
 	perm     projectAccess
 	orgs     orgAuthorizer
+	branches defaultBranchCreator
 }
 
 func NewProject(repo projectRepository, snowNode snow.Node, perm projectAccess, orgs orgAuthorizer) *Project {
@@ -43,6 +51,12 @@ func NewProject(repo projectRepository, snowNode snow.Node, perm projectAccess, 
 		perm:     perm,
 		orgs:     orgs,
 	}
+}
+
+// WithBranches enables seeding the default branch on project creation.
+func (p *Project) WithBranches(branches defaultBranchCreator) *Project {
+	p.branches = branches
+	return p
 }
 
 func (p *Project) List(ctx context.Context, orgID snow.ID) ([]*domain.Project, error) {
@@ -86,13 +100,22 @@ func (p *Project) Create(ctx context.Context, orgID snow.ID, name, description, 
 	} else if !domain.IsErrorNotFound(err) {
 		return nil, err
 	}
-	return p.repo.Create(ctx, domain.Project{
+	created, err := p.repo.Create(ctx, domain.Project{
 		ID:          p.snowNode.Generate(),
 		OrgID:       orgID,
 		Name:        name,
 		Description: strings.TrimSpace(description),
 		Slug:        slug,
 	})
+	if err != nil {
+		return nil, err
+	}
+	if p.branches != nil {
+		if err := p.branches.EnsureDefault(ctx, created.ID, defaultBranchName); err != nil {
+			return nil, err
+		}
+	}
+	return created, nil
 }
 
 func (p *Project) Update(ctx context.Context, projectID snow.ID, name, description string) (*domain.Project, error) {

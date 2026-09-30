@@ -67,6 +67,8 @@ func TestBranch_CreateEmitsWebhookEvent(t *testing.T) {
 	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").Return(nil, domain.NewErrorRecordNotFound())
 	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").
 		Return(&domain.Branch{ID: 2, ProjectID: 1, Name: "main", CommitID: &head}, nil)
+	repo.EXPECT().ListBranches(gomock.Any(), snow.ID(1), 1, nil, snow.ID(0)).
+		Return([]*domain.Branch{{ID: 2, ProjectID: 1, Name: "main", CommitID: &head}}, nil)
 	repo.EXPECT().CreateBranch(gomock.Any(), gomock.Any()).DoAndReturn(
 		func(_ context.Context, branch domain.Branch) (*domain.Branch, error) {
 			created := branch
@@ -93,6 +95,8 @@ func TestBranch_DeleteEmitsWebhookEvent(t *testing.T) {
 
 	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").Return(branch, nil)
 	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
+	repo.EXPECT().ListBranches(gomock.Any(), snow.ID(1), 2, nil, snow.ID(0)).
+		Return([]*domain.Branch{branch, {ID: 1, ProjectID: 1, Name: "main", IsDefault: true}}, nil)
 	repo.EXPECT().HasOpenMergeRequests(gomock.Any(), snow.ID(1), snow.ID(7)).Return(false, nil)
 	repo.EXPECT().DeleteBranch(gomock.Any(), snow.ID(1), snow.ID(7)).Return(nil)
 	hooks := NewMockhookBranchGate(gomock.NewController(t))
