@@ -334,6 +334,62 @@ func TestChunk_PresignDownloadURLsDirectStoreError(t *testing.T) {
 	require.Equal(t, 500, domainErr.Code)
 }
 
+func TestChunk_PresignDownloadURLsDirectStoreRejectsPendingInvalidContent(t *testing.T) {
+	ctx := context.Background()
+	hash := chunker.Sum([]byte("expected"))
+	store := &stubDirectChunkStore{
+		stubChunkStore: newStubChunkStore(),
+		downloadURL:    "https://s3.example.com/nipa-chunks/ab/cdef",
+	}
+	uc, _ := newDirectChunkFixture(t, store)
+
+	_, _, err := uc.PresignUploadURLs(ctx, "acme", "game", []ChunkRef{{Hash: hash, SizeBytes: int64(len("expected"))}}, 10, "")
+	require.NoError(t, err)
+
+	store.data[hash] = []byte("garbage")
+	_, _, err = uc.PresignDownloadURLs(ctx, "acme", "game", []domain.Hash{hash}, 10, "")
+	require.Error(t, err)
+	require.Equal(t, []domain.Hash{hash}, store.deleted)
+}
+
+func TestChunk_PresignDownloadURLsDirectStoreRejectsPendingMissingObject(t *testing.T) {
+	ctx := context.Background()
+	hash := chunker.Sum([]byte("expected"))
+	store := &stubDirectChunkStore{stubChunkStore: newStubChunkStore()}
+	uc, _ := newDirectChunkFixture(t, store)
+
+	_, _, err := uc.PresignUploadURLs(ctx, "acme", "game", []ChunkRef{{Hash: hash, SizeBytes: int64(len("expected"))}}, 10, "")
+	require.NoError(t, err)
+
+	_, _, err = uc.PresignDownloadURLs(ctx, "acme", "game", []domain.Hash{hash}, 10, "")
+	require.Error(t, err)
+	require.Empty(t, store.deleted)
+}
+
+func TestChunk_PresignDownloadURLsDirectStoreClearsPendingWhenValid(t *testing.T) {
+	ctx := context.Background()
+	data := []byte("expected")
+	hash := chunker.Sum(data)
+	store := &stubDirectChunkStore{
+		stubChunkStore: newStubChunkStore(),
+		downloadURL:    "https://s3.example.com/nipa-chunks/ab/cdef",
+	}
+	uc, _ := newDirectChunkFixture(t, store)
+
+	_, _, err := uc.PresignUploadURLs(ctx, "acme", "game", []ChunkRef{{Hash: hash, SizeBytes: int64(len(data))}}, 10, "")
+	require.NoError(t, err)
+
+	store.data[hash] = data
+	urls, _, err := uc.PresignDownloadURLs(ctx, "acme", "game", []domain.Hash{hash}, 10, "")
+	require.NoError(t, err)
+	require.Equal(t, store.downloadURL, urls[0].URL)
+	require.Equal(t, 1, store.gets)
+
+	_, _, err = uc.PresignDownloadURLs(ctx, "acme", "game", []domain.Hash{hash}, 10, "")
+	require.NoError(t, err)
+	require.Equal(t, 1, store.gets, "verified content must not be re-read")
+}
+
 func TestChunk_PresignUploadURLsDirectStore(t *testing.T) {
 	store := &stubDirectChunkStore{
 		stubChunkStore: newStubChunkStore(),
@@ -449,6 +505,53 @@ func TestChunk_ConfirmUploadsDirectStoreRejectsMismatch(t *testing.T) {
 	require.Equal(t, []domain.Hash{hash}, store.deleted)
 }
 
+func TestChunk_ConfirmUploadsDirectStoreVerifiesIssuedUploads(t *testing.T) {
+	ctx := context.Background()
+	hash := chunker.Sum([]byte("expected"))
+	store := &stubDirectChunkStore{
+		stubChunkStore: newStubChunkStore(),
+		uploadTarget: storage.UploadTarget{
+			URL:      "https://s3.example.com/nipa-chunks",
+			Method:   "POST",
+			FormData: map[string]string{"key": "ab/cdef"},
+		},
+	}
+	uc, _ := newDirectChunkFixture(t, store)
+
+	_, _, err := uc.PresignUploadURLs(ctx, "acme", "game", []ChunkRef{{Hash: hash, SizeBytes: int64(len("expected"))}}, 10, "")
+	require.NoError(t, err)
+
+	store.data[hash] = []byte("garbage")
+	missing, err := uc.ConfirmUploads(ctx, []domain.Hash{hash})
+	require.NoError(t, err)
+	require.Equal(t, []domain.Hash{hash}, missing)
+	require.Equal(t, []domain.Hash{hash}, store.deleted)
+	require.Equal(t, 1, store.gets)
+}
+
+func TestChunk_ConfirmUploadsDirectStorePendingExpires(t *testing.T) {
+	ctx := context.Background()
+	recorded := []byte("garbage but recorded")
+	hash := chunker.Sum([]byte("expected"))
+	store := &stubDirectChunkStore{stubChunkStore: newStubChunkStore()}
+	store.data[hash] = recorded
+	uc, repo := newDirectChunkFixture(t, store)
+
+	_, _, err := uc.PresignUploadURLs(ctx, "acme", "game", []ChunkRef{{Hash: hash, SizeBytes: int64(len("expected"))}}, 10, "")
+	require.NoError(t, err)
+
+	uc.now = func() time.Time { return time.Unix(1700000000, 0).Add(2 * time.Hour) }
+
+	repo.EXPECT().HasChunk(gomock.Any(), hash).Return(true, nil)
+	repo.EXPECT().InsertChunkIfNotExists(gomock.Any(), hash, int64(len(recorded))).Return(nil)
+
+	missing, err := uc.ConfirmUploads(ctx, []domain.Hash{hash})
+	require.NoError(t, err)
+	require.Empty(t, missing)
+	require.Zero(t, store.gets)
+	require.Empty(t, store.deleted)
+}
+
 func TestChunk_ConfirmUploadsDirectStoreSkipsRecordedContent(t *testing.T) {
 	ctx := context.Background()
 	recorded := []byte("garbage but recorded")
@@ -472,7 +575,9 @@ func TestChunk_ConfirmUploadsDirectStoreDropsOversized(t *testing.T) {
 	hash := chunker.Sum([]byte("oversized"))
 	store := &stubDirectChunkStore{stubChunkStore: newStubChunkStore()}
 	store.data[hash] = make([]byte, chunker.MaxChunkSize()+1)
-	uc, _ := newDirectChunkFixture(t, store)
+	uc, repo := newDirectChunkFixture(t, store)
+
+	repo.EXPECT().HasChunk(gomock.Any(), hash).Return(false, nil)
 
 	missing, err := uc.ConfirmUploads(ctx, []domain.Hash{hash})
 	require.NoError(t, err)

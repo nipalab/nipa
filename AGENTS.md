@@ -466,10 +466,14 @@ Direct: `go build ./...`, `go vet ./...`, `go test ./...`.
   type-switches on the capability, `PresignedChunkUrl` carries
   `method`/`form_data`, and the client POSTs multipart with the file part last
   (`Client.httpURL` passes absolute URLs through). Because direct upload bytes
-  never transit the server, `ConfirmUploads` re-verifies them: oversize objects
-  are deleted without being read, and unrecorded chunks must hash to their key
-  (mismatches are deleted and reported missing); recorded chunks only get a
-  store existence + metadata check.
+  never transit the server, `usecase.Chunk` tracks every hash it hands a direct
+  upload target to until the target expires: confirm-time verification always
+  hash-checks those regardless of metadata (oversize objects are deleted
+  without being read, mismatches deleted and reported missing), and download
+  presigning re-verifies them before issuing a URL; untouched unrecorded chunks
+  are verified too, while untouched recorded chunks only get a store existence
+  + metadata check. The marks are in-memory per server process and drop after
+  the presign TTL (a restart falls back to the metadata rule).
 - `Parsec`/`ParseNipaUrl` (`internal/client/domain/url.go`): `/org/project[/path]`.
   `path` is threaded through to the manifest request so a missing subpath returns a
   404, and cloning a repo with an empty (no-commit) branch returns an empty tree,

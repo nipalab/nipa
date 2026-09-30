@@ -274,6 +274,31 @@ func TestConfirmChunkUploadsHandler(t *testing.T) {
 	require.Equal(t, []string{absentHash.String()}, res.GetMissingHashes())
 }
 
+func TestConfirmChunkUploadsHandler_DirectStoreVerifiesIssuedUploads(t *testing.T) {
+	chunk, store := newDirectChunkUsecase(t)
+	branch, perm, _ := newTestBranchUc(t)
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), snow.ID(42), domain.PermissionWrite).
+		Return(true).
+		Times(2)
+	srv := New(&mockUsecaseContainer{branch: branch, common: newTestCommon(), chunk: chunk})
+
+	hash := chunker.Sum([]byte("expected"))
+	_, err := srv.GetChunkUploadUrls(context.Background(), &pb.GetChunkUploadUrlsRequest{
+		Context: testChunkContext(),
+		Chunks:  []*pb.ChunkRef{{Hash: hash.String(), SizeBytes: 8}},
+	})
+	require.NoError(t, err)
+	require.NoError(t, store.Put(context.Background(), hash, []byte("garbage")))
+
+	res, err := srv.ConfirmChunkUploads(context.Background(), &pb.ConfirmChunkUploadsRequest{
+		Context: testChunkContext(),
+		Hashes:  []string{hash.String()},
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{hash.String()}, res.GetMissingHashes())
+}
+
 func TestConfirmChunkUploadsHandler_InvalidHash(t *testing.T) {
 	chunk, _ := newChunkUsecase(t)
 	branch, perm, _ := newTestBranchUc(t)
