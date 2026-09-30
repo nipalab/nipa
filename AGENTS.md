@@ -406,7 +406,9 @@ Direct: `go build ./...`, `go vet ./...`, `go test ./...`.
   hashes are filtered against it first) return one
   page of signed paths built by `internal/chunkurl` (`/api/chunks/{org}/{project}/{hash}
   ?op=put|get&size=&exp=&sig=`, HMAC-SHA256 with `CHUNK_URL_SIGNING_KEY`,
-  constant-time verify, TTL `CHUNK_PRESIGN_TTL_SECONDS` default 3600s). The
+  constant-time verify, TTL `CHUNK_PRESIGN_TTL_SECONDS` default 3600s) — or
+  absolute backend presigned URLs when the store implements
+  `storage.DirectTransferStore` (S3). The
   client then PUTs/GETs bytes directly over HTTP through an adaptive transfer
   limiter (`internal/client/grpc/transfer.go`): concurrency starts at 16, is
   auto-tuned within [4, 64] from observed throughput, and can be pinned with
@@ -456,8 +458,22 @@ Direct: `go build ./...`, `go vet ./...`, `go test ./...`.
   `ee/storage/s3` store (`CHUNK_STORAGE=s3` + `CHUNK_S3_*`) are chosen by
   `cmd/nipad`'s `createChunkStore`; the S3 store keys objects
   `<prefix>/<hash[:2]>/<hash[2:]>` and probes the bucket at startup. `internal/`
-  must never import `ee/` — only `cmd/nipad` does. Transfers stay server-proxied
-  through the signed `/api/chunks` routes in s3 mode too.
+  must never import `ee/` — only `cmd/nipad` does. A store implementing
+  `storage.DirectTransferStore` (the S3 store does) hands clients absolute
+  presigned backend URLs: downloads via `PresignedGetObject`, uploads via a
+  POST policy whose `content-length-range` pins the exact declared chunk size
+  (S3 rejects oversized bodies with EntityTooLarge); `usecase.Chunk`
+  type-switches on the capability, `PresignedChunkUrl` carries
+  `method`/`form_data`, and the client POSTs multipart with the file part last
+  (`Client.httpURL` passes absolute URLs through). Because direct upload bytes
+  never transit the server, `usecase.Chunk` tracks every hash it hands a direct
+  upload target to until the target expires: confirm-time verification always
+  hash-checks those regardless of metadata (oversize objects are deleted
+  without being read, mismatches deleted and reported missing), and download
+  presigning re-verifies them before issuing a URL; untouched unrecorded chunks
+  are verified too, while untouched recorded chunks only get a store existence
+  + metadata check. The marks are in-memory per server process and drop after
+  the presign TTL (a restart falls back to the metadata rule).
 - `Parsec`/`ParseNipaUrl` (`internal/client/domain/url.go`): `/org/project[/path]`.
   `path` is threaded through to the manifest request so a missing subpath returns a
   404, and cloning a repo with an empty (no-commit) branch returns an empty tree,

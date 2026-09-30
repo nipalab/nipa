@@ -13,8 +13,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
@@ -24,6 +26,10 @@ import (
 )
 
 var _ storage.ChunkStore = (*Store)(nil)
+var _ storage.DirectTransferStore = (*Store)(nil)
+
+// maxPresignTTL is the longest expiry SigV4 presigned requests support.
+const maxPresignTTL = 7 * 24 * time.Hour
 
 // Config describes the S3-compatible backend. Endpoint may include a scheme
 // (https:// or http://); a bare host defaults to https. When no static
@@ -129,6 +135,57 @@ func (s *Store) Exists(ctx context.Context, hash domain.Hash) (bool, error) {
 }
 
 func (s *Store) Close() error {
+	return nil
+}
+
+// PresignDownload returns an absolute URL the client can GET the chunk from.
+// Expiries beyond SigV4's 7-day limit are clamped.
+func (s *Store) PresignDownload(ctx context.Context, hash domain.Hash, expires time.Duration) (string, error) {
+	if expires > maxPresignTTL {
+		expires = maxPresignTTL
+	}
+	url, err := s.client.PresignedGetObject(ctx, s.bucket, s.key(hash), expires, nil)
+	if err != nil {
+		return "", fmt.Errorf("s3: presign download for chunk %s: %w", hash, err)
+	}
+	return url.String(), nil
+}
+
+// PresignUpload returns a POST policy target for one chunk. The policy pins
+// the exact content length, so the object store rejects any body larger or
+// smaller than size before it is written.
+func (s *Store) PresignUpload(ctx context.Context, hash domain.Hash, size int64, expires time.Duration) (storage.UploadTarget, error) {
+	if size <= 0 {
+		return storage.UploadTarget{}, fmt.Errorf("s3: invalid chunk size %d", size)
+	}
+	if expires > maxPresignTTL {
+		expires = maxPresignTTL
+	}
+	policy := minio.NewPostPolicy()
+	if err := policy.SetBucket(s.bucket); err != nil {
+		return storage.UploadTarget{}, fmt.Errorf("s3: upload policy: %w", err)
+	}
+	if err := policy.SetKey(s.key(hash)); err != nil {
+		return storage.UploadTarget{}, fmt.Errorf("s3: upload policy: %w", err)
+	}
+	if err := policy.SetContentLengthRange(size, size); err != nil {
+		return storage.UploadTarget{}, fmt.Errorf("s3: upload policy: %w", err)
+	}
+	if err := policy.SetExpires(time.Now().Add(expires)); err != nil {
+		return storage.UploadTarget{}, fmt.Errorf("s3: upload policy: %w", err)
+	}
+	url, formData, err := s.client.PresignedPostPolicy(ctx, policy)
+	if err != nil {
+		return storage.UploadTarget{}, fmt.Errorf("s3: presign upload for chunk %s: %w", hash, err)
+	}
+	return storage.UploadTarget{URL: url.String(), Method: http.MethodPost, FormData: formData}, nil
+}
+
+// DeleteChunk removes chunk content so a client can re-upload it.
+func (s *Store) DeleteChunk(ctx context.Context, hash domain.Hash) error {
+	if err := s.client.RemoveObject(ctx, s.bucket, s.key(hash), minio.RemoveObjectOptions{}); err != nil {
+		return fmt.Errorf("s3: delete chunk %s: %w", hash, err)
+	}
 	return nil
 }
 

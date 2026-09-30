@@ -35,10 +35,44 @@ func newChunkUsecase(t *testing.T) (*usecase.Chunk, *storage.LocalStore) {
 	return uc, store
 }
 
+type directStubStore struct {
+	storage.ChunkStore
+}
+
+func (directStubStore) PresignDownload(context.Context, domain.Hash, time.Duration) (string, error) {
+	return "https://s3.example.com/bucket/chunk?X-Amz-Signature=x", nil
+}
+
+func (directStubStore) PresignUpload(context.Context, domain.Hash, int64, time.Duration) (storage.UploadTarget, error) {
+	return storage.UploadTarget{
+		URL:      "https://s3.example.com/bucket",
+		Method:   "POST",
+		FormData: map[string]string{"key": "ab/cdef", "policy": "p"},
+	}, nil
+}
+
+func (directStubStore) DeleteChunk(context.Context, domain.Hash) error { return nil }
+
+func newDirectChunkUsecase(t *testing.T) (*usecase.Chunk, *storage.LocalStore) {
+	t.Helper()
+	store, err := storage.NewLocalStore(t.TempDir())
+	require.NoError(t, err)
+	uc := usecase.NewChunk(stubChunkRepo{}, directStubStore{ChunkStore: store}, usecase.ChunkTransferConfig{
+		SigningKey:  testSigningKey,
+		PresignTTL:  time.Hour,
+		MaxPageSize: 100,
+	})
+	return uc, store
+}
+
 type stubChunkRepo struct{}
 
 func (stubChunkRepo) InsertChunkIfNotExists(_ context.Context, _ domain.Hash, _ int64) error {
 	return nil
+}
+
+func (stubChunkRepo) HasChunk(_ context.Context, _ domain.Hash) (bool, error) {
+	return false, nil
 }
 
 func testChunkContext() *pb.ProjectContext {
@@ -114,6 +148,28 @@ func TestGetChunkUploadUrlsHandler(t *testing.T) {
 
 	require.False(t, res.GetUrls()[1].GetAlreadyStored())
 	verifySignedURL(t, res.GetUrls()[1].GetUrl(), "org", "proj", chunkurl.OpUpload, int64(len(fresh)))
+}
+
+func TestGetChunkUploadUrlsHandler_DirectStore(t *testing.T) {
+	chunk, _ := newDirectChunkUsecase(t)
+	branch, perm, _ := newTestBranchUc(t)
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), snow.ID(42), domain.PermissionWrite).
+		Return(true)
+	srv := New(&mockUsecaseContainer{branch: branch, common: newTestCommon(), chunk: chunk})
+
+	fresh := []byte("fresh chunk")
+	freshHash := chunker.Sum(fresh)
+
+	res, err := srv.GetChunkUploadUrls(context.Background(), &pb.GetChunkUploadUrlsRequest{
+		Context: testChunkContext(),
+		Chunks:  []*pb.ChunkRef{{Hash: freshHash.String(), SizeBytes: int64(len(fresh))}},
+	})
+	require.NoError(t, err)
+	require.Len(t, res.GetUrls(), 1)
+	require.Equal(t, "https://s3.example.com/bucket", res.GetUrls()[0].GetUrl())
+	require.Equal(t, "POST", res.GetUrls()[0].GetMethod())
+	require.Equal(t, map[string]string{"key": "ab/cdef", "policy": "p"}, res.GetUrls()[0].GetFormData())
 }
 
 func TestGetChunkUploadUrlsHandler_NoPermission(t *testing.T) {
@@ -216,6 +272,31 @@ func TestConfirmChunkUploadsHandler(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, []string{absentHash.String()}, res.GetMissingHashes())
+}
+
+func TestConfirmChunkUploadsHandler_DirectStoreVerifiesIssuedUploads(t *testing.T) {
+	chunk, store := newDirectChunkUsecase(t)
+	branch, perm, _ := newTestBranchUc(t)
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), snow.ID(42), domain.PermissionWrite).
+		Return(true).
+		Times(2)
+	srv := New(&mockUsecaseContainer{branch: branch, common: newTestCommon(), chunk: chunk})
+
+	hash := chunker.Sum([]byte("expected"))
+	_, err := srv.GetChunkUploadUrls(context.Background(), &pb.GetChunkUploadUrlsRequest{
+		Context: testChunkContext(),
+		Chunks:  []*pb.ChunkRef{{Hash: hash.String(), SizeBytes: 8}},
+	})
+	require.NoError(t, err)
+	require.NoError(t, store.Put(context.Background(), hash, []byte("garbage")))
+
+	res, err := srv.ConfirmChunkUploads(context.Background(), &pb.ConfirmChunkUploadsRequest{
+		Context: testChunkContext(),
+		Hashes:  []string{hash.String()},
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{hash.String()}, res.GetMissingHashes())
 }
 
 func TestConfirmChunkUploadsHandler_InvalidHash(t *testing.T) {

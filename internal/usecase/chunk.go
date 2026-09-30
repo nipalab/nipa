@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/nipalab/nipa/internal/chunker"
@@ -15,6 +16,7 @@ import (
 //go:generate go run go.uber.org/mock/mockgen -source=$GOFILE -destination=chunk_mock_test.go -package=usecase
 type chunkRepository interface {
 	InsertChunkIfNotExists(ctx context.Context, hash domain.Hash, sizeBytes int64) error
+	HasChunk(ctx context.Context, hash domain.Hash) (bool, error)
 }
 
 // ChunkRef identifies a chunk and the exact size of its content.
@@ -23,11 +25,15 @@ type ChunkRef struct {
 	SizeBytes int64
 }
 
-// ChunkURL pairs a chunk hash with its signed transfer path.
+// ChunkURL pairs a chunk hash with its signed transfer path. Method and
+// FormData describe direct backend transfers: an empty method means PUT,
+// a POST method carries multipart form fields.
 type ChunkURL struct {
 	Hash          domain.Hash
 	URL           string
 	AlreadyStored bool
+	Method        string
+	FormData      map[string]string
 }
 
 // ChunkTransferConfig configures presigned chunk transfer.
@@ -44,6 +50,10 @@ type Chunk struct {
 	chunkStore storage.ChunkStore
 	transfer   ChunkTransferConfig
 	now        func() time.Time
+
+	unverifiedMu sync.Mutex
+	unverified   map[domain.Hash]time.Time
+	lastPrune    time.Time
 }
 
 func NewChunk(chunkRepo chunkRepository, chunkStore storage.ChunkStore, transfer ChunkTransferConfig) *Chunk {
@@ -52,6 +62,7 @@ func NewChunk(chunkRepo chunkRepository, chunkStore storage.ChunkStore, transfer
 		chunkStore: chunkStore,
 		transfer:   transfer,
 		now:        time.Now,
+		unverified: map[domain.Hash]time.Time{},
 	}
 }
 
@@ -126,18 +137,43 @@ func (c *Chunk) PresignUploadURLs(ctx context.Context, org, project string, refs
 		if err != nil {
 			return nil, "", domain.NewErrorDatabase(fmt.Sprintf("check chunk %s: %v", ref.Hash, err))
 		}
-		url := ""
-		if !exists {
-			url = chunkurl.UploadPath(c.transfer.SigningKey, org, project, ref.Hash.String(), ref.SizeBytes, expiry)
+		if exists {
+			urls = append(urls, ChunkURL{Hash: ref.Hash, AlreadyStored: true})
+			continue
 		}
-		urls = append(urls, ChunkURL{Hash: ref.Hash, URL: url, AlreadyStored: exists})
+		target, err := c.uploadTarget(ctx, org, project, ref, expiry)
+		if err != nil {
+			return nil, "", err
+		}
+		urls = append(urls, ChunkURL{
+			Hash:     ref.Hash,
+			URL:      target.URL,
+			Method:   target.Method,
+			FormData: target.FormData,
+		})
 	}
 	return urls, next, nil
 }
 
+func (c *Chunk) uploadTarget(ctx context.Context, org, project string, ref ChunkRef, expiry int64) (storage.UploadTarget, error) {
+	direct, ok := c.chunkStore.(storage.DirectTransferStore)
+	if !ok {
+		return storage.UploadTarget{
+			URL: chunkurl.UploadPath(c.transfer.SigningKey, org, project, ref.Hash.String(), ref.SizeBytes, expiry),
+		}, nil
+	}
+	target, err := direct.PresignUpload(ctx, ref.Hash, ref.SizeBytes, c.transfer.PresignTTL)
+	if err != nil {
+		return storage.UploadTarget{}, domain.NewErrorInternalServer(fmt.Sprintf("presign upload for chunk %s: %v", ref.Hash, err))
+	}
+	c.markUnverified(ref.Hash)
+	return target, nil
+}
+
 // PresignDownloadURLs signs one page of download paths for hashes the caller
-// may read.
-func (c *Chunk) PresignDownloadURLs(org, project string, hashes []domain.Hash, pageSize int, pageToken string) ([]ChunkURL, string, error) {
+// may read. Stores implementing storage.DirectTransferStore hand out absolute
+// backend presigned URLs so clients fetch content directly from the backend.
+func (c *Chunk) PresignDownloadURLs(ctx context.Context, org, project string, hashes []domain.Hash, pageSize int, pageToken string) ([]ChunkURL, string, error) {
 	page, next, err := paginate(hashes, pageSize, pageToken, c.transfer.MaxPageSize)
 	if err != nil {
 		return nil, "", err
@@ -145,19 +181,46 @@ func (c *Chunk) PresignDownloadURLs(org, project string, hashes []domain.Hash, p
 	expiry := chunkurl.Expiry(c.now(), c.transfer.PresignTTL)
 	urls := make([]ChunkURL, 0, len(page))
 	for _, hash := range page {
-		urls = append(urls, ChunkURL{
-			Hash: hash,
-			URL:  chunkurl.DownloadPath(c.transfer.SigningKey, org, project, hash.String(), expiry),
-		})
+		path, err := c.downloadPath(ctx, org, project, hash, expiry)
+		if err != nil {
+			return nil, "", err
+		}
+		urls = append(urls, ChunkURL{Hash: hash, URL: path})
 	}
 	return urls, next, nil
 }
 
+func (c *Chunk) downloadPath(ctx context.Context, org, project string, hash domain.Hash, expiry int64) (string, error) {
+	direct, ok := c.chunkStore.(storage.DirectTransferStore)
+	if !ok {
+		return chunkurl.DownloadPath(c.transfer.SigningKey, org, project, hash.String(), expiry), nil
+	}
+	if c.isUnverified(hash) {
+		verified, err := c.verifyUnverifiedObject(ctx, direct, hash)
+		if err != nil {
+			return "", err
+		}
+		if !verified {
+			c.clearUnverified(hash)
+			return "", domain.NewErrorInternalServer(fmt.Sprintf("chunk %s failed verification", hash))
+		}
+		c.clearUnverified(hash)
+	}
+	url, err := direct.PresignDownload(ctx, hash, c.transfer.PresignTTL)
+	if err != nil {
+		return "", domain.NewErrorInternalServer(fmt.Sprintf("presign download for chunk %s: %v", hash, err))
+	}
+	return url, nil
+}
+
 // ConfirmUploads verifies that uploaded chunk content landed in the store and
 // records metadata rows for the present chunks. The recorded size is measured
-// from the stored content, never taken from the client. Hashes still missing
-// are returned so the client can retry them.
+// from the stored content, never taken from the client. Content written
+// through a direct upload target is always hash-verified because its bytes
+// never passed through the server; untouched chunks are trusted once recorded.
+// Hashes still missing are returned so the client can retry them.
 func (c *Chunk) ConfirmUploads(ctx context.Context, hashes []domain.Hash) ([]domain.Hash, error) {
+	direct, isDirect := c.chunkStore.(storage.DirectTransferStore)
 	var missing []domain.Hash
 	for _, hash := range hashes {
 		size, err := c.chunkStore.Size(ctx, hash)
@@ -168,11 +231,130 @@ func (c *Chunk) ConfirmUploads(ctx context.Context, hashes []domain.Hash) ([]dom
 			}
 			return nil, domain.NewErrorDatabase(fmt.Sprintf("stat chunk %s: %v", hash, err))
 		}
+		if isDirect {
+			verify, err := c.needsVerification(ctx, hash)
+			if err != nil {
+				return nil, err
+			}
+			if verify {
+				verified, err := c.verifyChunkContent(ctx, direct, hash, size)
+				if err != nil {
+					return nil, err
+				}
+				c.clearUnverified(hash)
+				if !verified {
+					missing = append(missing, hash)
+					continue
+				}
+			}
+		}
 		if err := c.chunkRepo.InsertChunkIfNotExists(ctx, hash, size); err != nil {
 			return nil, err
 		}
 	}
 	return missing, nil
+}
+
+// needsVerification reports whether a chunk stored by a direct backend must be
+// hash-verified: content a direct upload target was issued for always must be,
+// since the object may have been rewritten or re-uploaded after it was
+// recorded, and untouched chunks only when no metadata row exists yet.
+func (c *Chunk) needsVerification(ctx context.Context, hash domain.Hash) (bool, error) {
+	if c.isUnverified(hash) {
+		return true, nil
+	}
+	recorded, err := c.chunkRepo.HasChunk(ctx, hash)
+	if err != nil {
+		return false, err
+	}
+	return !recorded, nil
+}
+
+// verifyUnverifiedObject reads and verifies the content behind a hash whose
+// object a direct upload target was issued for.
+func (c *Chunk) verifyUnverifiedObject(ctx context.Context, direct storage.DirectTransferStore, hash domain.Hash) (bool, error) {
+	size, err := c.chunkStore.Size(ctx, hash)
+	if err != nil {
+		if domain.IsErrorNotFound(err) {
+			return false, nil
+		}
+		return false, domain.NewErrorDatabase(fmt.Sprintf("stat chunk %s: %v", hash, err))
+	}
+	return c.verifyChunkContent(ctx, direct, hash, size)
+}
+
+// unverifiedPruneInterval bounds how often the unverified set is swept for
+// expired entries, keeping marks and lookups O(1) amortized on large pushes.
+const unverifiedPruneInterval = time.Minute
+
+// markUnverified records that a direct upload target was issued for hash. The
+// mark is dropped once the object is verified, or when the target can no
+// longer be used (presign TTL). It is kept in memory: a restart without the
+// mark falls back to the metadata rule, and the target itself expires.
+func (c *Chunk) markUnverified(hash domain.Hash) {
+	c.unverifiedMu.Lock()
+	defer c.unverifiedMu.Unlock()
+	now := c.now()
+	if now.Sub(c.lastPrune) >= unverifiedPruneInterval {
+		c.lastPrune = now
+		c.pruneUnverifiedLocked(now)
+	}
+	c.unverified[hash] = now.Add(c.transfer.PresignTTL)
+}
+
+func (c *Chunk) isUnverified(hash domain.Hash) bool {
+	c.unverifiedMu.Lock()
+	defer c.unverifiedMu.Unlock()
+	expiry, ok := c.unverified[hash]
+	if !ok {
+		return false
+	}
+	if c.now().After(expiry) {
+		delete(c.unverified, hash)
+		return false
+	}
+	return true
+}
+
+func (c *Chunk) clearUnverified(hash domain.Hash) {
+	c.unverifiedMu.Lock()
+	defer c.unverifiedMu.Unlock()
+	delete(c.unverified, hash)
+}
+
+func (c *Chunk) pruneUnverifiedLocked(now time.Time) {
+	for hash, expiry := range c.unverified {
+		if now.After(expiry) {
+			delete(c.unverified, hash)
+		}
+	}
+}
+
+// verifyChunkContent checks one object that may have been written by a direct
+// upload: oversized objects are dropped without being read, and content must
+// hash to its key.
+func (c *Chunk) verifyChunkContent(ctx context.Context, direct storage.DirectTransferStore, hash domain.Hash, size int64) (bool, error) {
+	if size > chunker.MaxChunkSize() {
+		return false, c.dropInvalidChunk(ctx, direct, hash)
+	}
+	data, err := c.chunkStore.Get(ctx, hash)
+	if err != nil {
+		if domain.IsErrorNotFound(err) {
+			return false, nil
+		}
+		return false, domain.NewErrorDatabase(fmt.Sprintf("read chunk %s: %v", hash, err))
+	}
+	if chunker.Sum(data) == hash {
+		return true, nil
+	}
+	return false, c.dropInvalidChunk(ctx, direct, hash)
+}
+
+func (c *Chunk) dropInvalidChunk(ctx context.Context, direct storage.DirectTransferStore, hash domain.Hash) error {
+	if err := direct.DeleteChunk(ctx, hash); err != nil {
+		return domain.NewErrorInternalServer(fmt.Sprintf("delete invalid chunk %s: %v", hash, err))
+	}
+	return nil
 }
 
 // VerifyTransferURL checks that a signed chunk URL matches the project, hash
