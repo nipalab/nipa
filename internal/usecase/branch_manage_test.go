@@ -109,14 +109,31 @@ func TestBranch_Rename_NotFound(t *testing.T) {
 
 func TestBranch_Delete_Success(t *testing.T) {
 	uc, perm, repo := newManageBranchFixture(t)
+	branch := &domain.Branch{ID: 7, ProjectID: 1, Name: "feature"}
+	other := &domain.Branch{ID: 1, ProjectID: 1, Name: "main", IsDefault: true}
 
-	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").
-		Return(&domain.Branch{ID: 7, ProjectID: 1, Name: "feature"}, nil)
+	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").Return(branch, nil)
 	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
+	repo.EXPECT().ListBranches(gomock.Any(), snow.ID(1), 2, nil, snow.ID(0)).
+		Return([]*domain.Branch{branch, other}, nil)
 	repo.EXPECT().HasOpenMergeRequests(gomock.Any(), snow.ID(1), snow.ID(7)).Return(false, nil)
 	repo.EXPECT().DeleteBranch(gomock.Any(), snow.ID(1), snow.ID(7)).Return(nil)
 
 	require.NoError(t, uc.Delete(permissionCtx(42), snow.ID(1), "feature"))
+}
+
+func TestBranch_Delete_LastBranchRefused(t *testing.T) {
+	uc, perm, repo := newManageBranchFixture(t)
+	branch := &domain.Branch{ID: 7, ProjectID: 1, Name: "feature"}
+
+	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").Return(branch, nil)
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
+	repo.EXPECT().ListBranches(gomock.Any(), snow.ID(1), 2, nil, snow.ID(0)).
+		Return([]*domain.Branch{branch}, nil)
+
+	err := uc.Delete(permissionCtx(42), snow.ID(1), "feature")
+	require.True(t, domain.IsErrorConflict(err))
+	require.Contains(t, err.Error(), "last branch")
 }
 
 func TestBranch_Delete_DefaultBranchRefused(t *testing.T) {
@@ -143,22 +160,41 @@ func TestBranch_Delete_ProtectedNeedsAdmin(t *testing.T) {
 
 func TestBranch_Delete_ProtectedByAdmin(t *testing.T) {
 	uc, perm, repo := newManageBranchFixture(t)
+	branch := &domain.Branch{ID: 3, ProjectID: 1, Name: "release", IsProtected: true}
+	other := &domain.Branch{ID: 1, ProjectID: 1, Name: "main", IsDefault: true}
 
-	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "release").
-		Return(&domain.Branch{ID: 3, ProjectID: 1, Name: "release", IsProtected: true}, nil)
+	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "release").Return(branch, nil)
 	perm.EXPECT().AdminHasProject(gomock.Any(), snow.ID(1)).Return(true)
+	repo.EXPECT().ListBranches(gomock.Any(), snow.ID(1), 2, nil, snow.ID(0)).
+		Return([]*domain.Branch{branch, other}, nil)
 	repo.EXPECT().HasOpenMergeRequests(gomock.Any(), snow.ID(1), snow.ID(3)).Return(false, nil)
 	repo.EXPECT().DeleteBranch(gomock.Any(), snow.ID(1), snow.ID(3)).Return(nil)
 
 	require.NoError(t, uc.Delete(permissionCtx(42), snow.ID(1), "release"))
 }
 
+func TestBranch_Delete_ListBranchesError(t *testing.T) {
+	wantErr := errors.New("db down")
+	uc, perm, repo := newManageBranchFixture(t)
+	branch := &domain.Branch{ID: 7, ProjectID: 1, Name: "feature"}
+
+	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").Return(branch, nil)
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
+	repo.EXPECT().ListBranches(gomock.Any(), snow.ID(1), 2, nil, snow.ID(0)).Return(nil, wantErr)
+
+	err := uc.Delete(permissionCtx(42), snow.ID(1), "feature")
+	require.ErrorIs(t, err, wantErr)
+}
+
 func TestBranch_Delete_OpenMergeRequestsRefused(t *testing.T) {
 	uc, perm, repo := newManageBranchFixture(t)
+	branch := &domain.Branch{ID: 7, ProjectID: 1, Name: "feature"}
+	other := &domain.Branch{ID: 1, ProjectID: 1, Name: "main", IsDefault: true}
 
-	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").
-		Return(&domain.Branch{ID: 7, ProjectID: 1, Name: "feature"}, nil)
+	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").Return(branch, nil)
 	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
+	repo.EXPECT().ListBranches(gomock.Any(), snow.ID(1), 2, nil, snow.ID(0)).
+		Return([]*domain.Branch{branch, other}, nil)
 	repo.EXPECT().HasOpenMergeRequests(gomock.Any(), snow.ID(1), snow.ID(7)).Return(true, nil)
 
 	err := uc.Delete(permissionCtx(42), snow.ID(1), "feature")
@@ -169,10 +205,13 @@ func TestBranch_Delete_OpenMergeRequestsRefused(t *testing.T) {
 func TestBranch_Delete_MergeRequestCheckError(t *testing.T) {
 	wantErr := errors.New("db down")
 	uc, perm, repo := newManageBranchFixture(t)
+	branch := &domain.Branch{ID: 7, ProjectID: 1, Name: "feature"}
+	other := &domain.Branch{ID: 1, ProjectID: 1, Name: "main", IsDefault: true}
 
-	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").
-		Return(&domain.Branch{ID: 7, ProjectID: 1, Name: "feature"}, nil)
+	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").Return(branch, nil)
 	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
+	repo.EXPECT().ListBranches(gomock.Any(), snow.ID(1), 2, nil, snow.ID(0)).
+		Return([]*domain.Branch{branch, other}, nil)
 	repo.EXPECT().HasOpenMergeRequests(gomock.Any(), snow.ID(1), snow.ID(7)).Return(false, wantErr)
 
 	err := uc.Delete(permissionCtx(42), snow.ID(1), "feature")
@@ -195,6 +234,8 @@ func TestBranch_DeleteThenRecreate(t *testing.T) {
 	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true).Times(2)
 	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").
 		Return(&domain.Branch{ID: 7, ProjectID: 1, Name: "feature"}, nil)
+	repo.EXPECT().ListBranches(gomock.Any(), snow.ID(1), 2, nil, snow.ID(0)).
+		Return([]*domain.Branch{{ID: 7, ProjectID: 1, Name: "feature"}, {ID: 1, ProjectID: 1, Name: "main", IsDefault: true}}, nil)
 	repo.EXPECT().HasOpenMergeRequests(gomock.Any(), snow.ID(1), snow.ID(7)).Return(false, nil)
 	repo.EXPECT().DeleteBranch(gomock.Any(), snow.ID(1), snow.ID(7)).Return(nil)
 	require.NoError(t, uc.Delete(ctx, snow.ID(1), "feature"))
@@ -202,6 +243,8 @@ func TestBranch_DeleteThenRecreate(t *testing.T) {
 	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").Return(nil, domain.NewErrorRecordNotFound())
 	repo.EXPECT().GetDefaultBranch(gomock.Any(), snow.ID(1)).
 		Return(&domain.Branch{ID: 1, ProjectID: 1, Name: "main"}, nil)
+	repo.EXPECT().ListBranches(gomock.Any(), snow.ID(1), 1, nil, snow.ID(0)).
+		Return([]*domain.Branch{{ID: 1, ProjectID: 1, Name: "main", IsDefault: true}}, nil)
 	repo.EXPECT().CreateBranch(gomock.Any(), gomock.Any()).
 		Return(&domain.Branch{ID: 8, ProjectID: 1, Name: "feature"}, nil)
 

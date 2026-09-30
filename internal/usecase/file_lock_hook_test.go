@@ -100,6 +100,8 @@ func TestBranch_Delete_ReleasesLocks(t *testing.T) {
 	branch := &domain.Branch{ID: 3, ProjectID: 1, Name: "feature"}
 	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
 	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").Return(branch, nil)
+	repo.EXPECT().ListBranches(gomock.Any(), snow.ID(1), 2, nil, snow.ID(0)).
+		Return([]*domain.Branch{branch, {ID: 1, ProjectID: 1, Name: "main", IsDefault: true}}, nil)
 	repo.EXPECT().HasOpenMergeRequests(gomock.Any(), snow.ID(1), snow.ID(3)).Return(false, nil)
 	gomock.InOrder(
 		repo.EXPECT().DeleteBranch(gomock.Any(), snow.ID(1), snow.ID(3)).Return(nil),
@@ -413,6 +415,8 @@ func TestBranch_Delete_DeleteError(t *testing.T) {
 	branch := &domain.Branch{ID: 3, ProjectID: 1, Name: "feature"}
 	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
 	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").Return(branch, nil)
+	repo.EXPECT().ListBranches(gomock.Any(), snow.ID(1), 2, nil, snow.ID(0)).
+		Return([]*domain.Branch{branch, {ID: 1, ProjectID: 1, Name: "main", IsDefault: true}}, nil)
 	repo.EXPECT().HasOpenMergeRequests(gomock.Any(), snow.ID(1), snow.ID(3)).Return(false, nil)
 	wantErr := errors.New("db down")
 	repo.EXPECT().DeleteBranch(gomock.Any(), snow.ID(1), snow.ID(3)).Return(wantErr)
@@ -430,6 +434,8 @@ func TestBranch_Delete_ReleaseError(t *testing.T) {
 	branch := &domain.Branch{ID: 3, ProjectID: 1, Name: "feature"}
 	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
 	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").Return(branch, nil)
+	repo.EXPECT().ListBranches(gomock.Any(), snow.ID(1), 2, nil, snow.ID(0)).
+		Return([]*domain.Branch{branch, {ID: 1, ProjectID: 1, Name: "main", IsDefault: true}}, nil)
 	repo.EXPECT().HasOpenMergeRequests(gomock.Any(), snow.ID(1), snow.ID(3)).Return(false, nil)
 	repo.EXPECT().DeleteBranch(gomock.Any(), snow.ID(1), snow.ID(3)).Return(nil)
 	wantErr := errors.New("db down")

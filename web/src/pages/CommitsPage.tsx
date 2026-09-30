@@ -13,10 +13,11 @@ export default function CommitsPage() {
   const [params] = useSearchParams()
   const branch = params.get('branch') ?? ''
   const path = params.get('path') ?? ''
-  const { canWrite, canAdmin, defaultBranch } = useRepoChrome(org, project)
+  const { canWrite, canAdmin, defaultBranch, branchesLoading, emptyProject } = useRepoChrome(org, project)
+  const skipCommits = branchesLoading || emptyProject
   const { data: commits, error, loading } = useAsync(
-    () => listCommits(org, project, branch, path),
-    [org, project, branch, path],
+    () => (skipCommits ? Promise.resolve(null) : listCommits(org, project, branch, path)),
+    [org, project, branch, path, skipCommits],
   )
   const { data: diff, error: diffError, loading: diffLoading } = useAsync(
     () => (commit ? getCommitDiff(org, project, commit) : Promise.resolve(null)),
@@ -45,8 +46,11 @@ export default function CommitsPage() {
           back to files
         </PrimerLink>
       )}
-      <ErrorBanner error={error} />
+      {!emptyProject && <ErrorBanner error={error} />}
       {loading && <Loading />}
+      {emptyProject && (
+        <EmptyState>This repository is empty. Push your first commit to get started.</EmptyState>
+      )}
       {!loading && commits && commits.length === 0 && <EmptyState>No commits yet.</EmptyState>}
       {commits && commits.length > 0 && (
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>

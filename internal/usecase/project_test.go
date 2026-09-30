@@ -75,13 +75,18 @@ func TestProject_Create_GlobalAdmin(t *testing.T) {
 
 	repo.EXPECT().GetByOrgIDAndSlug(gomock.Any(), snow.ID(1), "my-game").
 		Return(nil, domain.NewErrorRecordNotFound())
-	repo.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, created domain.Project) (*domain.Project, error) {
+	repo.EXPECT().CreateWithDefaultBranch(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, created domain.Project, branch domain.Branch) (*domain.Project, error) {
 			require.NotZero(t, created.ID)
 			require.Equal(t, snow.ID(1), created.OrgID)
 			require.Equal(t, "My Game", created.Name)
 			require.Equal(t, "my-game", created.Slug)
 			require.Equal(t, "fun", created.Description)
+			require.NotZero(t, branch.ID)
+			require.Equal(t, created.ID, branch.ProjectID)
+			require.Equal(t, "main", branch.Name)
+			require.True(t, branch.IsDefault)
+			require.Nil(t, branch.CommitID)
 			return &created, nil
 		},
 	)
@@ -97,8 +102,8 @@ func TestProject_Create_OrgOwner(t *testing.T) {
 
 	orgs.EXPECT().IsOrgOwner(gomock.Any(), snow.ID(1)).Return(true, nil)
 	repo.EXPECT().GetByOrgIDAndSlug(gomock.Any(), snow.ID(1), "assets").Return(nil, domain.NewErrorRecordNotFound())
-	repo.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, created domain.Project) (*domain.Project, error) {
+	repo.EXPECT().CreateWithDefaultBranch(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, created domain.Project, _ domain.Branch) (*domain.Project, error) {
 			return &created, nil
 		},
 	)
@@ -138,6 +143,28 @@ func TestProject_Create_DuplicateSlug(t *testing.T) {
 
 	_, err := project.Create(permissionCtx(42, withAdmin()), snow.ID(1), "Assets", "", "assets")
 	require.True(t, domain.IsErrorConflict(err))
+}
+
+func TestProject_Create_SlugCheckError(t *testing.T) {
+	wantErr := errors.New("db down")
+	project, repo, _, _ := newTestProject(t)
+
+	repo.EXPECT().GetByOrgIDAndSlug(gomock.Any(), snow.ID(1), "assets").Return(nil, wantErr)
+
+	_, err := project.Create(permissionCtx(42, withAdmin()), snow.ID(1), "Assets", "", "assets")
+	require.ErrorIs(t, err, wantErr)
+}
+
+func TestProject_Create_RepositoryError(t *testing.T) {
+	wantErr := errors.New("db down")
+	project, repo, _, _ := newTestProject(t)
+
+	repo.EXPECT().GetByOrgIDAndSlug(gomock.Any(), snow.ID(1), "assets").
+		Return(nil, domain.NewErrorRecordNotFound())
+	repo.EXPECT().CreateWithDefaultBranch(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, wantErr)
+
+	_, err := project.Create(permissionCtx(42, withAdmin()), snow.ID(1), "Assets", "", "assets")
+	require.ErrorIs(t, err, wantErr)
 }
 
 func TestProject_Update_ProjectAdmin(t *testing.T) {

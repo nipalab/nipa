@@ -985,6 +985,8 @@ func TestBranch_CreateBranch_FromBranchByCommit(t *testing.T) {
 			GetBranchByName(gomock.Any(), snow.ID(1), "main").
 			Return(&domain.Branch{ID: 2, ProjectID: 1, Name: "main", CommitID: &commitID}, nil),
 	)
+	repo.EXPECT().ListBranches(gomock.Any(), snow.ID(1), 1, nil, snow.ID(0)).
+		Return([]*domain.Branch{{ID: 2, ProjectID: 1, Name: "main", CommitID: &commitID}}, nil)
 
 	var captured domain.Branch
 	repo.EXPECT().
@@ -1053,6 +1055,8 @@ func TestBranch_CreateBranch_FromDefaultBranch(t *testing.T) {
 			GetDefaultBranch(gomock.Any(), snow.ID(1)).
 			Return(&domain.Branch{ID: 2, ProjectID: 1, Name: "main", CommitID: &commitID}, nil),
 	)
+	repo.EXPECT().ListBranches(gomock.Any(), snow.ID(1), 1, nil, snow.ID(0)).
+		Return([]*domain.Branch{{ID: 2, ProjectID: 1, Name: "main"}}, nil)
 
 	var captured domain.Branch
 	repo.EXPECT().
@@ -1070,7 +1074,7 @@ func TestBranch_CreateBranch_FromDefaultBranch(t *testing.T) {
 	require.Equal(t, commitID, *captured.CommitID)
 }
 
-func TestBranch_CreateBranch_NoDefaultBranch(t *testing.T) {
+func TestBranch_CreateBranch_NoDefaultBranch_ForksFromNothing(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	perm := newAllowAllPerm(ctrl)
 	repo := NewMockbranchRepository(ctrl)
@@ -1086,15 +1090,53 @@ func TestBranch_CreateBranch_NoDefaultBranch(t *testing.T) {
 		repo.EXPECT().
 			GetDefaultBranch(gomock.Any(), snow.ID(1)).
 			Return(nil, domain.NewErrorRecordNotFound()),
+		repo.EXPECT().
+			ListBranches(gomock.Any(), snow.ID(1), 1, nil, snow.ID(0)).
+			Return(nil, nil),
+	)
+
+	var captured domain.Branch
+	repo.EXPECT().
+		CreateBranch(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, b domain.Branch) (*domain.Branch, error) {
+			captured = b
+			return &b, nil
+		})
+
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
+	created, err := uc.CreateBranch(context.Background(), snow.ID(1), "feature", BranchForkPoint{})
+	require.NoError(t, err)
+	require.Equal(t, "feature", created.Name)
+	require.Nil(t, captured.CommitID)
+	require.True(t, captured.IsDefault, "the first branch of a project must become the default")
+}
+
+func TestBranch_CreateBranch_ListBranchesError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := newAllowAllPerm(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+
+	wantErr := errors.New("db down")
+	commitID := snow.ID(3)
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).
+		Return(true)
+
+	gomock.InOrder(
+		repo.EXPECT().
+			GetBranchByName(gomock.Any(), snow.ID(1), "feature").
+			Return(nil, domain.NewErrorRecordNotFound()),
+		repo.EXPECT().
+			GetDefaultBranch(gomock.Any(), snow.ID(1)).
+			Return(&domain.Branch{ID: 2, ProjectID: 1, Name: "main", CommitID: &commitID}, nil),
+		repo.EXPECT().
+			ListBranches(gomock.Any(), snow.ID(1), 1, nil, snow.ID(0)).
+			Return(nil, wantErr),
 	)
 
 	uc := NewBranch(perm, repo, newTestBranchNode(t))
 	_, err := uc.CreateBranch(context.Background(), snow.ID(1), "feature", BranchForkPoint{})
-
-	var domErr *domain.Error
-	require.ErrorAs(t, err, &domErr)
-	require.Equal(t, 404, domErr.Code)
-	require.Equal(t, "no default branch found", domErr.Message)
+	require.ErrorIs(t, err, wantErr)
 }
 
 func TestBranch_CreateBranch_UniquenessCheckError(t *testing.T) {
@@ -1134,6 +1176,9 @@ func TestBranch_CreateBranch_RepositoryError(t *testing.T) {
 			GetBranchByName(gomock.Any(), snow.ID(1), "main").
 			Return(&domain.Branch{ID: 2, ProjectID: 1, Name: "main"}, nil),
 		repo.EXPECT().
+			ListBranches(gomock.Any(), snow.ID(1), 1, nil, snow.ID(0)).
+			Return([]*domain.Branch{{ID: 2, ProjectID: 1, Name: "main"}}, nil),
+		repo.EXPECT().
 			CreateBranch(gomock.Any(), gomock.Any()).
 			Return(nil, wantErr),
 	)
@@ -1164,6 +1209,8 @@ func TestBranch_CreateBranch_FromCommitID(t *testing.T) {
 			GetCommit(gomock.Any(), forkID).
 			Return(commit, nil),
 	)
+	repo.EXPECT().ListBranches(gomock.Any(), projectID, 1, nil, snow.ID(0)).
+		Return([]*domain.Branch{{ID: 2, ProjectID: projectID, Name: "main"}}, nil)
 
 	var captured domain.Branch
 	repo.EXPECT().
@@ -1258,6 +1305,8 @@ func TestBranch_CreateBranch_FromCommitHash(t *testing.T) {
 			GetCommitByHash(gomock.Any(), forkHash).
 			Return(commit, nil),
 	)
+	repo.EXPECT().ListBranches(gomock.Any(), projectID, 1, nil, snow.ID(0)).
+		Return([]*domain.Branch{{ID: 2, ProjectID: projectID, Name: "main"}}, nil)
 
 	var captured domain.Branch
 	repo.EXPECT().

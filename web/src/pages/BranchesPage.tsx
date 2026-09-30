@@ -1,13 +1,13 @@
 import { useState } from 'react'
-import { Button, FormControl, Link as PrimerLink, Stack, TextInput } from '@primer/react'
-import { Link, useParams } from 'react-router-dom'
+import { Button, Link as PrimerLink, Stack } from '@primer/react'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
-  createBranch,
-  deleteBranch,
   renameBranch,
   setBranchProtection,
   setDefaultBranch,
 } from '../api/endpoints'
+import type { BranchResponse } from '../api/models'
+import { DeleteBranchDialog } from '../components/DeleteBranchDialog'
 import { RepoPageShell } from '../components/repo/RepoPageShell'
 import { treeUrl } from '../components/repo/repoPaths'
 import { useRepoChrome } from '../components/repo/useRepoChrome'
@@ -15,6 +15,7 @@ import { EmptyState, ErrorBanner, Loading, Mono } from '../components/ui'
 
 export default function BranchesPage() {
   const { org = '', project = '' } = useParams()
+  const navigate = useNavigate()
   const {
     branches,
     branchesError,
@@ -24,8 +25,7 @@ export default function BranchesPage() {
     canAdmin,
     defaultBranch,
   } = useRepoChrome(org, project)
-  const [name, setName] = useState('')
-  const [from, setFrom] = useState('')
+  const [deleting, setDeleting] = useState<BranchResponse | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
 
   async function run(action: () => Promise<unknown>) {
@@ -38,15 +38,6 @@ export default function BranchesPage() {
     }
   }
 
-  async function handleCreate(event: React.FormEvent) {
-    event.preventDefault()
-    await run(async () => {
-      await createBranch(org, project, name, from)
-      setName('')
-      setFrom('')
-    })
-  }
-
   return (
     <RepoPageShell
       org={org}
@@ -56,6 +47,13 @@ export default function BranchesPage() {
       canAdmin={canAdmin}
       canWrite={canWrite}
       heading="Branches"
+      actions={
+        canWrite && (
+          <Button variant="primary" onClick={() => navigate(`/${org}/${project}/branches/new`)}>
+            Add branch
+          </Button>
+        )
+      }
     >
       <ErrorBanner error={actionError ?? branchesError} />
       {branchesLoading && <Loading />}
@@ -102,16 +100,8 @@ export default function BranchesPage() {
                       >
                         Rename
                       </Button>
-                      {!branch.is_default && (
-                        <Button
-                          size="small"
-                          variant="danger"
-                          onClick={() => {
-                            if (window.confirm(`Delete branch ${branch.name}?`)) {
-                              run(() => deleteBranch(org, project, branch.name))
-                            }
-                          }}
-                        >
+                      {!branch.is_default && branches.length > 1 && (
+                        <Button size="small" variant="danger" onClick={() => setDeleting(branch)}>
                           Delete
                         </Button>
                       )}
@@ -124,27 +114,16 @@ export default function BranchesPage() {
         </table>
       )}
 
-      {canWrite && (
-        <form
-          onSubmit={handleCreate}
-          style={{ border: '1px solid var(--borderColor-default)', borderRadius: 6, padding: 16 }}
-        >
-          <Stack direction="vertical" gap="normal">
-            <strong>New branch</strong>
-            <FormControl required>
-              <FormControl.Label>Name</FormControl.Label>
-              <TextInput block value={name} onChange={(event) => setName(event.target.value)} />
-            </FormControl>
-            <FormControl>
-              <FormControl.Label>From (branch or commit, default branch when empty)</FormControl.Label>
-              <TextInput block value={from} onChange={(event) => setFrom(event.target.value)} />
-            </FormControl>
-            <Button type="submit" variant="primary" style={{ alignSelf: 'flex-start' }}>
-              Create branch
-            </Button>
-          </Stack>
-        </form>
-      )}
+      <DeleteBranchDialog
+        org={org}
+        project={project}
+        branch={deleting}
+        onClose={() => setDeleting(null)}
+        onDeleted={() => {
+          setDeleting(null)
+          reloadBranches()
+        }}
+      />
     </RepoPageShell>
   )
 }

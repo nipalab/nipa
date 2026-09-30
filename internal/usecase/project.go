@@ -14,9 +14,12 @@ var (
 	projectSlugSeparator = regexp.MustCompile(`[^a-z0-9]+`)
 )
 
+const defaultBranchName = "main"
+
 //go:generate go run go.uber.org/mock/mockgen -source=$GOFILE -destination=project_mock_test.go -package=usecase
 type projectRepository interface {
 	Create(ctx context.Context, project domain.Project) (*domain.Project, error)
+	CreateWithDefaultBranch(ctx context.Context, project domain.Project, defaultBranch domain.Branch) (*domain.Project, error)
 	Get(ctx context.Context, id snow.ID) (*domain.Project, error)
 	GetByOrgIDAndSlug(ctx context.Context, orgID snow.ID, slug string) (*domain.Project, error)
 	ListByOrgID(ctx context.Context, orgID snow.ID) ([]domain.Project, error)
@@ -86,13 +89,23 @@ func (p *Project) Create(ctx context.Context, orgID snow.ID, name, description, 
 	} else if !domain.IsErrorNotFound(err) {
 		return nil, err
 	}
-	return p.repo.Create(ctx, domain.Project{
-		ID:          p.snowNode.Generate(),
+	projectID := p.snowNode.Generate()
+	created, err := p.repo.CreateWithDefaultBranch(ctx, domain.Project{
+		ID:          projectID,
 		OrgID:       orgID,
 		Name:        name,
 		Description: strings.TrimSpace(description),
 		Slug:        slug,
+	}, domain.Branch{
+		ID:        p.snowNode.Generate(),
+		ProjectID: projectID,
+		Name:      defaultBranchName,
+		IsDefault: true,
 	})
+	if err != nil {
+		return nil, err
+	}
+	return created, nil
 }
 
 func (p *Project) Update(ctx context.Context, projectID snow.ID, name, description string) (*domain.Project, error) {

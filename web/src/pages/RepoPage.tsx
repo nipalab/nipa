@@ -36,15 +36,16 @@ export default function RepoPage() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const [findOpen, setFindOpen] = useState(false)
-  const { branches, canWrite, canAdmin, defaultBranch } = useRepoChrome(org, project)
+  const { branches, branchesLoading, emptyProject, canWrite, canAdmin, defaultBranch } = useRepoChrome(org, project)
 
   const legacyRev = searchParams.get('rev') ?? ''
   const path = splat || searchParams.get('path') || ''
   const rev = routeRev || legacyRev
+  const skipTree = branchesLoading || emptyProject
 
   const { data: tree, error, loading } = useAsync(
-    () => getTree(org, project, rev, path, { history: true }),
-    [org, project, rev, path],
+    () => (skipTree ? Promise.resolve(null) : getTree(org, project, rev, path, { history: true })),
+    [org, project, rev, path, skipTree],
   )
 
   const readme = useMemo(() => (tree ? findReadme(tree.entries) : undefined), [tree])
@@ -79,8 +80,11 @@ export default function RepoPage() {
         </Button>
       </Stack>
 
-      <ErrorBanner error={error} />
+      {!emptyProject && <ErrorBanner error={error} />}
       {loading && <Loading />}
+      {emptyProject && (
+        <EmptyState>This repository is empty. Push your first commit to get started.</EmptyState>
+      )}
       {!loading && tree && tree.entries.length === 0 && (
         <EmptyState>{emptyRepo ? 'This branch has no commits yet.' : 'This directory is empty.'}</EmptyState>
       )}

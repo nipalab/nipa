@@ -59,6 +59,103 @@ func TestProjectRepositorySQLite(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestProjectRepositorySQLite_CreateWithDefaultBranch(t *testing.T) {
+	ctx := context.Background()
+	db, _ := newSQLiteTestDB(t)
+	repo := NewProjectRepository(db)
+	branchRepo := NewBranchRepository(db)
+
+	node, err := snow.NewNode(1)
+	require.NoError(t, err)
+	projectID := node.Generate()
+	branchID := node.Generate()
+
+	created, err := repo.CreateWithDefaultBranch(ctx, domain.Project{
+		ID:    projectID,
+		OrgID: 1,
+		Slug:  "game",
+		Name:  "Game",
+	}, domain.Branch{
+		ID:        branchID,
+		ProjectID: projectID,
+		Name:      "main",
+		IsDefault: true,
+	})
+	require.NoError(t, err)
+	require.Equal(t, projectID, created.ID)
+	require.Equal(t, "game", created.Slug)
+
+	def, err := branchRepo.GetDefaultBranch(ctx, projectID)
+	require.NoError(t, err)
+	require.Equal(t, branchID, def.ID)
+	require.Equal(t, "main", def.Name)
+	require.True(t, def.IsDefault)
+}
+
+func TestProjectRepositorySQLite_CreateWithDefaultBranch_RollsBackProject(t *testing.T) {
+	ctx := context.Background()
+	db, _ := newSQLiteTestDB(t)
+	repo := NewProjectRepository(db)
+
+	node, err := snow.NewNode(1)
+	require.NoError(t, err)
+	sharedBranchID := node.Generate()
+
+	_, err = repo.CreateWithDefaultBranch(ctx, domain.Project{
+		ID: node.Generate(), OrgID: 1, Slug: "first", Name: "First",
+	}, domain.Branch{ID: sharedBranchID, ProjectID: node.Generate(), Name: "main", IsDefault: true})
+	require.NoError(t, err)
+
+	secondProjectID := node.Generate()
+	_, err = repo.CreateWithDefaultBranch(ctx, domain.Project{
+		ID: secondProjectID, OrgID: 1, Slug: "second", Name: "Second",
+	}, domain.Branch{ID: sharedBranchID, ProjectID: secondProjectID, Name: "main", IsDefault: true})
+	require.Error(t, err)
+
+	_, err = repo.Get(ctx, secondProjectID)
+	require.ErrorIs(t, err, sql.ErrNoRows, "a failed branch insert must roll back the project")
+}
+
+func TestProjectRepositorySQLite_CreateWithDefaultBranch_DerivesSlug(t *testing.T) {
+	ctx := context.Background()
+	db, _ := newSQLiteTestDB(t)
+	repo := NewProjectRepository(db)
+
+	node, err := snow.NewNode(1)
+	require.NoError(t, err)
+	projectID := node.Generate()
+
+	created, err := repo.CreateWithDefaultBranch(ctx, domain.Project{
+		ID: projectID, OrgID: 1, Name: "My Game",
+	}, domain.Branch{ID: node.Generate(), ProjectID: projectID, Name: "main", IsDefault: true})
+	require.NoError(t, err)
+	require.Equal(t, "my-game", created.Slug)
+}
+
+func TestProjectRepositorySQLite_CreateWithDefaultBranch_DuplicateSlug(t *testing.T) {
+	ctx := context.Background()
+	db, _ := newSQLiteTestDB(t)
+	repo := NewProjectRepository(db)
+
+	node, err := snow.NewNode(1)
+	require.NoError(t, err)
+	firstID := node.Generate()
+	_, err = repo.CreateWithDefaultBranch(ctx, domain.Project{
+		ID: firstID, OrgID: 1, Slug: "game", Name: "Game",
+	}, domain.Branch{ID: node.Generate(), ProjectID: firstID, Name: "main", IsDefault: true})
+	require.NoError(t, err)
+
+	secondID := node.Generate()
+	_, err = repo.CreateWithDefaultBranch(ctx, domain.Project{
+		ID: secondID, OrgID: 1, Slug: "game", Name: "Game Again",
+	}, domain.Branch{ID: node.Generate(), ProjectID: secondID, Name: "main", IsDefault: true})
+	require.Error(t, err)
+
+	got, err := repo.GetByOrgIDAndSlug(ctx, 1, "game")
+	require.NoError(t, err)
+	require.Equal(t, firstID, got.ID)
+}
+
 func TestProjectRepositorySQLite_GetByOrgIDAndSlug_Success(t *testing.T) {
 	ctx := context.Background()
 	db, q := newSQLiteTestDB(t)

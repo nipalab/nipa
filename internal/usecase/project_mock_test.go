@@ -57,6 +57,21 @@ func (mr *MockprojectRepositoryMockRecorder) Create(ctx, project any) *gomock.Ca
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*MockprojectRepository)(nil).Create), ctx, project)
 }
 
+// CreateWithDefaultBranch mocks base method.
+func (m *MockprojectRepository) CreateWithDefaultBranch(ctx context.Context, project domain.Project, defaultBranch domain.Branch) (*domain.Project, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateWithDefaultBranch", ctx, project, defaultBranch)
+	ret0, _ := ret[0].(*domain.Project)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateWithDefaultBranch indicates an expected call of CreateWithDefaultBranch.
+func (mr *MockprojectRepositoryMockRecorder) CreateWithDefaultBranch(ctx, project, defaultBranch any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateWithDefaultBranch", reflect.TypeOf((*MockprojectRepository)(nil).CreateWithDefaultBranch), ctx, project, defaultBranch)
+}
+
 // Delete mocks base method.
 func (m *MockprojectRepository) Delete(ctx context.Context, id snow.ID) error {
 	m.ctrl.T.Helper()
