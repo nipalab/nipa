@@ -552,6 +552,47 @@ func TestChunk_ConfirmUploadsDirectStorePendingExpires(t *testing.T) {
 	require.Empty(t, store.deleted)
 }
 
+func TestChunk_UnverifiedLookupExpiresEntry(t *testing.T) {
+	ctx := context.Background()
+	store := &stubDirectChunkStore{stubChunkStore: newStubChunkStore()}
+	uc, _ := newDirectChunkFixture(t, store)
+
+	hash := chunker.Sum([]byte("one"))
+	_, _, err := uc.PresignUploadURLs(ctx, "acme", "game", []ChunkRef{{Hash: hash, SizeBytes: 3}}, 10, "")
+	require.NoError(t, err)
+	require.True(t, uc.isUnverified(hash))
+
+	uc.now = func() time.Time { return time.Unix(1700000000, 0).Add(2 * time.Hour) }
+	require.False(t, uc.isUnverified(hash))
+
+	uc.unverifiedMu.Lock()
+	_, ok := uc.unverified[hash]
+	uc.unverifiedMu.Unlock()
+	require.False(t, ok)
+}
+
+func TestChunk_UnverifiedMarkSweepsExpiredEntries(t *testing.T) {
+	ctx := context.Background()
+	store := &stubDirectChunkStore{stubChunkStore: newStubChunkStore()}
+	uc, _ := newDirectChunkFixture(t, store)
+
+	stale := chunker.Sum([]byte("one"))
+	_, _, err := uc.PresignUploadURLs(ctx, "acme", "game", []ChunkRef{{Hash: stale, SizeBytes: 3}}, 10, "")
+	require.NoError(t, err)
+
+	uc.now = func() time.Time { return time.Unix(1700000000, 0).Add(2 * time.Hour) }
+	fresh := chunker.Sum([]byte("two"))
+	_, _, err = uc.PresignUploadURLs(ctx, "acme", "game", []ChunkRef{{Hash: fresh, SizeBytes: 3}}, 10, "")
+	require.NoError(t, err)
+
+	uc.unverifiedMu.Lock()
+	_, staleStillMarked := uc.unverified[stale]
+	_, freshMarked := uc.unverified[fresh]
+	uc.unverifiedMu.Unlock()
+	require.False(t, staleStillMarked)
+	require.True(t, freshMarked)
+}
+
 func TestChunk_ConfirmUploadsDirectStoreSkipsRecordedContent(t *testing.T) {
 	ctx := context.Background()
 	recorded := []byte("garbage but recorded")

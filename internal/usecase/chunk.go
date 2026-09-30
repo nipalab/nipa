@@ -53,6 +53,7 @@ type Chunk struct {
 
 	unverifiedMu sync.Mutex
 	unverified   map[domain.Hash]time.Time
+	lastPrune    time.Time
 }
 
 func NewChunk(chunkRepo chunkRepository, chunkStore storage.ChunkStore, transfer ChunkTransferConfig) *Chunk {
@@ -282,6 +283,10 @@ func (c *Chunk) verifyUnverifiedObject(ctx context.Context, direct storage.Direc
 	return c.verifyChunkContent(ctx, direct, hash, size)
 }
 
+// unverifiedPruneInterval bounds how often the unverified set is swept for
+// expired entries, keeping marks and lookups O(1) amortized on large pushes.
+const unverifiedPruneInterval = time.Minute
+
 // markUnverified records that a direct upload target was issued for hash. The
 // mark is dropped once the object is verified, or when the target can no
 // longer be used (presign TTL). It is kept in memory: a restart without the
@@ -290,17 +295,25 @@ func (c *Chunk) markUnverified(hash domain.Hash) {
 	c.unverifiedMu.Lock()
 	defer c.unverifiedMu.Unlock()
 	now := c.now()
-	c.pruneUnverifiedLocked(now)
+	if now.Sub(c.lastPrune) >= unverifiedPruneInterval {
+		c.lastPrune = now
+		c.pruneUnverifiedLocked(now)
+	}
 	c.unverified[hash] = now.Add(c.transfer.PresignTTL)
 }
 
 func (c *Chunk) isUnverified(hash domain.Hash) bool {
 	c.unverifiedMu.Lock()
 	defer c.unverifiedMu.Unlock()
-	now := c.now()
-	c.pruneUnverifiedLocked(now)
-	_, ok := c.unverified[hash]
-	return ok
+	expiry, ok := c.unverified[hash]
+	if !ok {
+		return false
+	}
+	if c.now().After(expiry) {
+		delete(c.unverified, hash)
+		return false
+	}
+	return true
 }
 
 func (c *Chunk) clearUnverified(hash domain.Hash) {
