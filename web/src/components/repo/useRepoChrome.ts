@@ -22,6 +22,7 @@ export function useRepoChrome(org: string, project: string) {
     me?.is_admin || me?.is_super_admin || ((permissions?.project_permission ?? 0) & PERMISSION_ADMIN) !== 0,
   )
   const defaultBranch = branches?.find((branch) => branch.is_default)?.name ?? ''
+  const emptyProject = !branchesLoading && branches !== null && branches.length === 0
   return {
     branches,
     branchesError,
@@ -30,5 +31,6 @@ export function useRepoChrome(org: string, project: string) {
     canWrite,
     canAdmin,
     defaultBranch,
+    emptyProject,
   }
 }

@@ -4,6 +4,7 @@ import AppShell from './components/AppShell'
 import LoginPage from './pages/LoginPage'
 import HomePage from './pages/HomePage'
 import OrgProjectsPage from './pages/OrgProjectsPage'
+import NewProjectPage from './pages/NewProjectPage'
 import RepoPage from './pages/RepoPage'
 import BlobPage from './pages/BlobPage'
 import CommitsPage from './pages/CommitsPage'
@@ -29,6 +30,7 @@ export default function App() {
               <Route path="/settings/profile" element={<ProfilePage />} />
               <Route path="/:org" element={<OrgProjectsPage />} />
               <Route path="/:org/settings" element={<OrgSettingsPage />} />
+              <Route path="/:org/new" element={<NewProjectPage />} />
               <Route path="/:org/:project" element={<RepoPage />} />
               <Route path="/:org/:project/tree" element={<RepoPage />} />
               <Route path="/:org/:project/tree/:rev/*" element={<RepoPage />} />

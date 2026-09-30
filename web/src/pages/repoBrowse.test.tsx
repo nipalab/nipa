@@ -159,6 +159,42 @@ describe('RepoPage', () => {
     act(() => root.unmount())
   })
 
+  it('shows an empty state for a project without branches instead of an error', async () => {
+    const treeCalls: string[] = []
+    stubRepoRoutes((url) => {
+      if (url.includes('/branches')) return jsonResponse([])
+      if (url.includes('/tree?')) {
+        treeCalls.push(url)
+        return jsonResponse({ error: 'record not found' }, 404)
+      }
+      return null
+    })
+
+    const { container, root } = await renderApp('/acme/game')
+    await waitForText(container, 'This repository is empty.')
+    expect(container.textContent).not.toContain('Request failed')
+    expect(treeCalls).toHaveLength(0)
+    act(() => root.unmount())
+  })
+
+  it('shows an empty state for commits of a project without branches', async () => {
+    const commitCalls: string[] = []
+    stubRepoRoutes((url) => {
+      if (url.includes('/branches')) return jsonResponse([])
+      if (url.includes('/commits')) {
+        commitCalls.push(url)
+        return jsonResponse({ error: 'record not found' }, 404)
+      }
+      return null
+    })
+
+    const { container, root } = await renderApp('/acme/game/commits')
+    await waitForText(container, 'This repository is empty.')
+    expect(container.textContent).not.toContain('Request failed')
+    expect(commitCalls).toHaveLength(0)
+    act(() => root.unmount())
+  })
+
   it('redirects legacy query-param URLs to path URLs', async () => {
     stubRepoRoutes((url) => {
       if (url.includes('/tree?')) return jsonResponse({ path: 'src', entries: [] })
