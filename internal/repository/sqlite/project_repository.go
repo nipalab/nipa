@@ -14,11 +14,12 @@ import (
 var nonAlphaNum = regexp.MustCompile(`[^a-z0-9]+`)
 
 type ProjectRepository struct {
+	db      *sql.DB
 	queries *sqlcSqlite.Queries
 }
 
 func NewProjectRepository(db *sql.DB) *ProjectRepository {
-	return &ProjectRepository{queries: sqlcSqlite.New(db)}
+	return &ProjectRepository{db: db, queries: sqlcSqlite.New(db)}
 }
 
 func (r *ProjectRepository) Create(ctx context.Context, project domain.Project) (*domain.Project, error) {
@@ -34,6 +35,53 @@ func (r *ProjectRepository) Create(ctx context.Context, project domain.Project) 
 		Description: project.Description,
 	})
 	if err != nil {
+		return nil, handleError(err)
+	}
+	return toDomainProject(row), nil
+}
+
+// CreateWithDefaultBranch inserts the project and its default branch in one
+// transaction, so a failure never leaves a project without its default branch.
+func (r *ProjectRepository) CreateWithDefaultBranch(ctx context.Context, project domain.Project, defaultBranch domain.Branch) (*domain.Project, error) {
+	slug := project.Slug
+	if slug == "" {
+		slug = slugify(project.Name)
+	}
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, handleError(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	q := sqlcSqlite.New(tx)
+	row, err := q.CreateProject(ctx, sqlcSqlite.CreateProjectParams{
+		ID:          project.ID.Int64(),
+		OrgID:       project.OrgID.Int64(),
+		Slug:        slug,
+		Name:        project.Name,
+		Description: project.Description,
+	})
+	if err != nil {
+		return nil, handleError(err)
+	}
+
+	var commitID sql.NullInt64
+	if defaultBranch.CommitID != nil {
+		commitID = sql.NullInt64{Int64: defaultBranch.CommitID.Int64(), Valid: true}
+	}
+	if err := q.BranchCreate(ctx, sqlcSqlite.BranchCreateParams{
+		ID:          defaultBranch.ID.Int64(),
+		ProjectID:   defaultBranch.ProjectID.Int64(),
+		Name:        defaultBranch.Name,
+		Key:         defaultBranch.Name,
+		CommitID:    commitID,
+		IsDefault:   defaultBranch.IsDefault,
+		IsProtected: defaultBranch.IsProtected,
+	}); err != nil {
+		return nil, handleError(err)
+	}
+
+	if err := tx.Commit(); err != nil {
 		return nil, handleError(err)
 	}
 	return toDomainProject(row), nil

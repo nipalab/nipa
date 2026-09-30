@@ -57,6 +57,21 @@ func (mr *MockprojectRepositoryMockRecorder) Create(ctx, project any) *gomock.Ca
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*MockprojectRepository)(nil).Create), ctx, project)
 }
 
+// CreateWithDefaultBranch mocks base method.
+func (m *MockprojectRepository) CreateWithDefaultBranch(ctx context.Context, project domain.Project, defaultBranch domain.Branch) (*domain.Project, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateWithDefaultBranch", ctx, project, defaultBranch)
+	ret0, _ := ret[0].(*domain.Project)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateWithDefaultBranch indicates an expected call of CreateWithDefaultBranch.
+func (mr *MockprojectRepositoryMockRecorder) CreateWithDefaultBranch(ctx, project, defaultBranch any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateWithDefaultBranch", reflect.TypeOf((*MockprojectRepository)(nil).CreateWithDefaultBranch), ctx, project, defaultBranch)
+}
+
 // Delete mocks base method.
 func (m *MockprojectRepository) Delete(ctx context.Context, id snow.ID) error {
 	m.ctrl.T.Helper()
@@ -181,42 +196,4 @@ func (m *MockprojectAccess) HasProjectAccess(ctx context.Context, projectID snow
 func (mr *MockprojectAccessMockRecorder) HasProjectAccess(ctx, projectID, permission any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasProjectAccess", reflect.TypeOf((*MockprojectAccess)(nil).HasProjectAccess), ctx, projectID, permission)
-}
-
-// MockdefaultBranchCreator is a mock of defaultBranchCreator interface.
-type MockdefaultBranchCreator struct {
-	ctrl     *gomock.Controller
-	recorder *MockdefaultBranchCreatorMockRecorder
-	isgomock struct{}
-}
-
-// MockdefaultBranchCreatorMockRecorder is the mock recorder for MockdefaultBranchCreator.
-type MockdefaultBranchCreatorMockRecorder struct {
-	mock *MockdefaultBranchCreator
-}
-
-// NewMockdefaultBranchCreator creates a new mock instance.
-func NewMockdefaultBranchCreator(ctrl *gomock.Controller) *MockdefaultBranchCreator {
-	mock := &MockdefaultBranchCreator{ctrl: ctrl}
-	mock.recorder = &MockdefaultBranchCreatorMockRecorder{mock}
-	return mock
-}
-
-// EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockdefaultBranchCreator) EXPECT() *MockdefaultBranchCreatorMockRecorder {
-	return m.recorder
-}
-
-// EnsureDefault mocks base method.
-func (m *MockdefaultBranchCreator) EnsureDefault(ctx context.Context, projectID snow.ID, name string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "EnsureDefault", ctx, projectID, name)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// EnsureDefault indicates an expected call of EnsureDefault.
-func (mr *MockdefaultBranchCreatorMockRecorder) EnsureDefault(ctx, projectID, name any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EnsureDefault", reflect.TypeOf((*MockdefaultBranchCreator)(nil).EnsureDefault), ctx, projectID, name)
 }

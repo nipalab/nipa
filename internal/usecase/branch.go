@@ -157,32 +157,6 @@ func (b *Branch) CreateBranch(ctx context.Context, projectID snow.ID, name strin
 	return created, nil
 }
 
-// EnsureDefault creates the given branch as the project default when it does
-// not exist yet. It is called right after a project is created, so it skips
-// the project write check the caller already performed.
-func (b *Branch) EnsureDefault(ctx context.Context, projectID snow.ID, name string) error {
-	name = strings.TrimSpace(name)
-	if err := validateBranchName(name); err != nil {
-		return err
-	}
-	if _, err := b.branchRepo.GetBranchByName(ctx, projectID, name); err == nil {
-		return nil
-	} else if !domain.IsErrorNotFound(err) {
-		return err
-	}
-	created, err := b.branchRepo.CreateBranch(ctx, domain.Branch{
-		ID:        b.snowNode.Generate(),
-		ProjectID: projectID,
-		Name:      name,
-		IsDefault: true,
-	})
-	if err != nil {
-		return err
-	}
-	b.emitHook(ctx, domain.WebhookEventBranchCreated, projectID, created)
-	return nil
-}
-
 func (b *Branch) Rename(ctx context.Context, projectID snow.ID, name, newName string) (*domain.Branch, error) {
 	branch, err := b.branchByName(ctx, projectID, name)
 	if err != nil {

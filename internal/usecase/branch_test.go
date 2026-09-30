@@ -1111,6 +1111,34 @@ func TestBranch_CreateBranch_NoDefaultBranch_ForksFromNothing(t *testing.T) {
 	require.True(t, captured.IsDefault, "the first branch of a project must become the default")
 }
 
+func TestBranch_CreateBranch_ListBranchesError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := newAllowAllPerm(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+
+	wantErr := errors.New("db down")
+	commitID := snow.ID(3)
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).
+		Return(true)
+
+	gomock.InOrder(
+		repo.EXPECT().
+			GetBranchByName(gomock.Any(), snow.ID(1), "feature").
+			Return(nil, domain.NewErrorRecordNotFound()),
+		repo.EXPECT().
+			GetDefaultBranch(gomock.Any(), snow.ID(1)).
+			Return(&domain.Branch{ID: 2, ProjectID: 1, Name: "main", CommitID: &commitID}, nil),
+		repo.EXPECT().
+			ListBranches(gomock.Any(), snow.ID(1), 1, nil, snow.ID(0)).
+			Return(nil, wantErr),
+	)
+
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
+	_, err := uc.CreateBranch(context.Background(), snow.ID(1), "feature", BranchForkPoint{})
+	require.ErrorIs(t, err, wantErr)
+}
+
 func TestBranch_CreateBranch_UniquenessCheckError(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	perm := newAllowAllPerm(ctrl)

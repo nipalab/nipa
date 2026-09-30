@@ -173,6 +173,19 @@ func TestBranch_Delete_ProtectedByAdmin(t *testing.T) {
 	require.NoError(t, uc.Delete(permissionCtx(42), snow.ID(1), "release"))
 }
 
+func TestBranch_Delete_ListBranchesError(t *testing.T) {
+	wantErr := errors.New("db down")
+	uc, perm, repo := newManageBranchFixture(t)
+	branch := &domain.Branch{ID: 7, ProjectID: 1, Name: "feature"}
+
+	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").Return(branch, nil)
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
+	repo.EXPECT().ListBranches(gomock.Any(), snow.ID(1), 2, nil, snow.ID(0)).Return(nil, wantErr)
+
+	err := uc.Delete(permissionCtx(42), snow.ID(1), "feature")
+	require.ErrorIs(t, err, wantErr)
+}
+
 func TestBranch_Delete_OpenMergeRequestsRefused(t *testing.T) {
 	uc, perm, repo := newManageBranchFixture(t)
 	branch := &domain.Branch{ID: 7, ProjectID: 1, Name: "feature"}
@@ -239,33 +252,6 @@ func TestBranch_DeleteThenRecreate(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "feature", created.Name)
 	require.NotEqual(t, snow.ID(7), created.ID)
-}
-
-func TestBranch_EnsureDefault_CreatesDefaultBranch(t *testing.T) {
-	uc, _, repo := newManageBranchFixture(t)
-
-	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(nil, domain.NewErrorRecordNotFound())
-	var captured domain.Branch
-	repo.EXPECT().CreateBranch(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, branch domain.Branch) (*domain.Branch, error) {
-			captured = branch
-			return &branch, nil
-		})
-
-	require.NoError(t, uc.EnsureDefault(context.Background(), snow.ID(1), "main"))
-	require.Equal(t, "main", captured.Name)
-	require.Equal(t, snow.ID(1), captured.ProjectID)
-	require.True(t, captured.IsDefault)
-	require.Nil(t, captured.CommitID)
-}
-
-func TestBranch_EnsureDefault_Idempotent(t *testing.T) {
-	uc, _, repo := newManageBranchFixture(t)
-
-	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").
-		Return(&domain.Branch{ID: 1, ProjectID: 1, Name: "main", IsDefault: true}, nil)
-
-	require.NoError(t, uc.EnsureDefault(context.Background(), snow.ID(1), "main"))
 }
 
 func TestBranch_SetDefault(t *testing.T) {
