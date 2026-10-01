@@ -635,3 +635,21 @@ func TestMerge_Run_Error_DryRunAndAbort(t *testing.T) {
 	require.False(t, local.clearedMerge, "a dry-run abort must not clear merge state")
 	require.Empty(t, client.connectHost, "a dry-run abort must not contact the server")
 }
+
+func TestMerge_Run_DetachedHeadBlocked(t *testing.T) {
+	local := &stubLocalRepo{
+		loadConfig: &domain.Config{
+			Url: "http://example.com/org/project", Branch: "main",
+			Head: &domain.HeadRef{Kind: domain.HeadKindTag, Name: "v1.0.0"},
+		},
+	}
+	merger := newTestMerge(t, &stubMergeClient{}, local, nil)
+
+	_, err := merger.Run(context.Background(), t.TempDir(), "feature", MergeOptions{})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), `cannot merge while HEAD is detached at tag "v1.0.0"`)
+
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 400, domErr.Code)
+}

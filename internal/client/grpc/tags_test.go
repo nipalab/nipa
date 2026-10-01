@@ -56,6 +56,50 @@ func (f *fakeServer) DeleteTag(_ context.Context, req *pb.DeleteTagRequest) (*pb
 	return &pb.DeleteTagResponse{}, nil
 }
 
+func (f *fakeServer) GetTagByName(_ context.Context, req *pb.GetTagByNameRequest) (*pb.GetTagByNameResponse, error) {
+	f.lastGetTagReq = req
+	if f.getTagErr != nil {
+		return nil, f.getTagErr
+	}
+	return &pb.GetTagByNameResponse{Tag: f.getTagResp}, nil
+}
+
+func TestClient_GetTagByName_Success(t *testing.T) {
+	fs := &fakeServer{getTagResp: &pb.Tag{
+		Id:       snow.ID(9).Base36(),
+		Name:     "v1.0.0",
+		CommitId: snow.ID(7).Base36(),
+		Message:  "release",
+	}}
+	addr := startTestServer(t, fs)
+	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
+	require.NoError(t, c.Connect(context.Background(), addr))
+
+	got, err := c.GetTagByName(context.Background(), "default", "sample", "v1.0.0")
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	require.Equal(t, "v1.0.0", got.Name)
+	require.Equal(t, snow.ID(7).Base36(), got.CommitID)
+	require.Equal(t, "release", got.Message)
+	require.NotNil(t, fs.lastGetTagReq)
+	require.Equal(t, "v1.0.0", fs.lastGetTagReq.GetName())
+	require.Equal(t, "default", fs.lastGetTagReq.GetContext().GetOrg())
+	require.Equal(t, "sample", fs.lastGetTagReq.GetContext().GetProject())
+}
+
+func TestClient_GetTagByName_NotFound(t *testing.T) {
+	addr := startTestServer(t, &fakeServer{getTagErr: status.Error(codes.NotFound, `tag "missing" not found`)})
+	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
+	require.NoError(t, c.Connect(context.Background(), addr))
+
+	_, err := c.GetTagByName(context.Background(), "default", "sample", "missing")
+	require.Error(t, err)
+
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 404, domErr.Code)
+}
+
 func TestClient_CreateTag_Success(t *testing.T) {
 	created := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
 	fs := &fakeServer{

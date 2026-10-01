@@ -585,6 +585,52 @@ func TestGetTreeManifest_Success(t *testing.T) {
 	require.Equal(t, wantAssetsHash.String(), resp.RootTree.SubTrees[0].TreeHash)
 }
 
+func TestGetTreeManifest_CommitID(t *testing.T) {
+	branch, perm, repo := newTestBranchUc(t)
+	srv := New(newMockUsecaseContainer(t, branch))
+
+	projectID := snow.ID(42)
+	commitID := snow.ID(9)
+
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), projectID, domain.PermissionRead).
+		Return(true)
+
+	repo.EXPECT().
+		GetCommit(gomock.Any(), commitID).
+		Return(&domain.Commit{ID: commitID, ProjectID: projectID, TreeID: 100}, nil)
+	repo.EXPECT().
+		GetTreeNode(gomock.Any(), int64(100)).
+		Return(&domain.TreeNode{ID: 100, Name: "root"}, nil)
+	repo.EXPECT().
+		ListFilesByTree(gomock.Any(), int64(100)).
+		Return([]*domain.File{{ID: 1, Name: "a.txt", Mode: 0o644}}, nil)
+	repo.EXPECT().
+		ListTreeChildren(gomock.Any(), int64(100)).
+		Return(nil, nil)
+
+	resp, err := srv.GetTreeManifest(context.Background(), &pb.GetTreeManifestRequest{
+		Context:   &pb.ProjectContext{Org: "org", Project: "proj"},
+		CommitId:  strPtr(commitID.Base36()),
+		Recursive: true,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, resp.RootTree)
+	require.Len(t, resp.RootTree.Files, 1)
+	require.Equal(t, "a.txt", resp.RootTree.Files[0].Path)
+}
+
+func TestGetTreeManifest_InvalidCommitID(t *testing.T) {
+	branch, _, _ := newTestBranchUc(t)
+	srv := New(newMockUsecaseContainer(t, branch))
+
+	_, err := srv.GetTreeManifest(context.Background(), &pb.GetTreeManifestRequest{
+		Context:  &pb.ProjectContext{Org: "org", Project: "proj"},
+		CommitId: strPtr("!!!"),
+	})
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+}
+
 func TestGetTreeManifest_NotRecursive(t *testing.T) {
 	branch, perm, repo := newTestBranchUc(t)
 	srv := New(newMockUsecaseContainer(t, branch))

@@ -923,3 +923,21 @@ func TestRevert_DryRun_ConflictReportsCleanChanges(t *testing.T) {
 	require.Empty(t, pushClient.pushes)
 	require.Nil(t, local.savedRevert)
 }
+
+func TestRevert_Run_DetachedHeadBlocked(t *testing.T) {
+	local := &stubLocalRepo{
+		loadConfig: &domain.Config{
+			Url: "http://example.com/org/project", Branch: "main",
+			Head: &domain.HeadRef{Kind: domain.HeadKindTag, Name: "v1.0.0"},
+		},
+	}
+	reverter, _ := newTestRevert(t, &stubRevertClient{}, local)
+
+	_, err := reverter.Run(context.Background(), t.TempDir(), "abc123", RevertOptions{})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), `cannot revert while HEAD is detached at tag "v1.0.0"`)
+
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 400, domErr.Code)
+}

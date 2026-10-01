@@ -17,6 +17,8 @@ type updateClient interface {
 	Connect(ctx context.Context, host string) error
 	GetBranchByName(ctx context.Context, org, project, name string) (*domain.Branch, error)
 	GetTreeNodeManifest(ctx context.Context, org, project, branch string, paths []string) (*domain.TreeNode, error)
+	GetCommitTreeManifest(ctx context.Context, org, project, commitID string, paths []string) (*domain.TreeNode, error)
+	GetTagByName(ctx context.Context, org, project, name string) (*clientDomain.Tag, error)
 	DownloadChunks(ctx context.Context, scope clientDomain.ChunkScope, hashes []domain.Hash, onChunk func(h domain.Hash, data []byte) error) error
 }
 
@@ -50,6 +52,7 @@ type updateLocalRepo interface {
 	LoadConfig() (*clientDomain.Config, error)
 	SaveConfig(cfg clientDomain.Config) error
 	ListStaged() ([]string, error)
+	LoadCommit() (*clientDomain.LocalCommit, error)
 	SaveCommit(commitID, commitHash string) error
 	Snapshot() (*clientDomain.Snapshot, error)
 	MissingChunks(hashes []domain.Hash) ([]domain.Hash, error)
@@ -92,6 +95,9 @@ func (u *Update) Run(ctx context.Context, root string, progress ...DownloadProgr
 	if err := u.auth.MakeSureLoggedIn(ctx, nu.Host); err != nil {
 		return err
 	}
+	if cfg.Head != nil {
+		return u.runDetached(ctx, root, cfg, nu, progress...)
+	}
 
 	base, err := u.localRepo.Snapshot()
 	if err != nil {
@@ -126,6 +132,33 @@ func (u *Update) Run(ctx context.Context, root string, progress ...DownloadProgr
 		return nil
 	}
 	return u.localRepo.SaveCommit(headCommitID, "")
+}
+
+func (u *Update) runDetached(ctx context.Context, root string, cfg *clientDomain.Config, nu *clientDomain.NipaUrl, progress ...DownloadProgress) error {
+	localCommit, err := u.localRepo.LoadCommit()
+	if err != nil {
+		return err
+	}
+	if localCommit == nil || localCommit.CommitID == "" {
+		return clientDomain.NewUserError("no commit checked out; run nipa switch to a branch first")
+	}
+	tree, err := u.client.GetCommitTreeManifest(ctx, nu.Org, nu.Project, localCommit.CommitID, cfg.Sparse)
+	if err != nil {
+		return err
+	}
+	scope := clientDomain.ChunkScope{
+		Org:       nu.Org,
+		Project:   nu.Project,
+		CommitIDs: commitIDs(localCommit.CommitID),
+		Paths:     cfg.Sparse,
+	}
+	if err := syncWorkingCopy(ctx, u.client, u.localRepo, root, tree, scope, progress...); err != nil {
+		return err
+	}
+	if err := u.localRepo.SaveTree(tree); err != nil {
+		return err
+	}
+	return u.localRepo.SaveCommit(localCommit.CommitID, localCommit.CommitHash)
 }
 
 func (u *Update) branchHead(ctx context.Context, nu *clientDomain.NipaUrl, branch string) (string, error) {
@@ -201,7 +234,7 @@ func (u *Update) Switch(ctx context.Context, root, branch string, progress ...Do
 	if strings.TrimSpace(branch) == "" {
 		return clientDomain.NewUserError("branch name is required")
 	}
-	if branch == cfg.Branch {
+	if branch == cfg.Branch && cfg.Head == nil {
 		return nil
 	}
 	nu, err := clientDomain.ParseNipaUrl(cfg.Url)
@@ -242,13 +275,70 @@ func (u *Update) Switch(ctx context.Context, root, branch string, progress ...Do
 	if err := u.localRepo.SaveTree(tree); err != nil {
 		return err
 	}
-	if err := u.localRepo.SaveConfig(clientDomain.Config{Url: cfg.Url, Branch: branch}); err != nil {
+	if err := u.localRepo.SaveConfig(clientDomain.Config{Url: cfg.Url, Branch: branch, Sparse: cfg.Sparse}); err != nil {
 		return err
 	}
 	if headCommitID == "" {
 		return nil
 	}
 	return u.localRepo.SaveCommit(headCommitID, "")
+}
+
+func (u *Update) SwitchTag(ctx context.Context, root, tagName string, progress ...DownloadProgress) error {
+	if err := u.localRepo.Init(root); err != nil {
+		return err
+	}
+	cfg, err := u.localRepo.LoadConfig()
+	if err != nil {
+		return err
+	}
+	tagName = strings.TrimSpace(tagName)
+	if tagName == "" {
+		return clientDomain.NewUserError("tag name is required")
+	}
+	nu, err := clientDomain.ParseNipaUrl(cfg.Url)
+	if err != nil {
+		return err
+	}
+	staged, err := u.localRepo.ListStaged()
+	if err != nil {
+		return err
+	}
+	if len(staged) > 0 {
+		return clientDomain.NewUserError("cannot switch to a tag with staged changes; push or reset them first")
+	}
+	if err := u.client.Connect(ctx, nu.Host); err != nil {
+		return err
+	}
+	if err := u.auth.MakeSureLoggedIn(ctx, nu.Host); err != nil {
+		return err
+	}
+
+	tag, err := u.client.GetTagByName(ctx, nu.Org, nu.Project, tagName)
+	if err != nil {
+		return err
+	}
+	tree, err := u.client.GetCommitTreeManifest(ctx, nu.Org, nu.Project, tag.CommitID, cfg.Sparse)
+	if err != nil {
+		return err
+	}
+	scope := clientDomain.ChunkScope{
+		Org:       nu.Org,
+		Project:   nu.Project,
+		CommitIDs: commitIDs(tag.CommitID),
+		Paths:     cfg.Sparse,
+	}
+	if err := syncWorkingCopy(ctx, u.client, u.localRepo, root, tree, scope, progress...); err != nil {
+		return err
+	}
+	if err := u.localRepo.SaveTree(tree); err != nil {
+		return err
+	}
+	cfg.Head = &clientDomain.HeadRef{Kind: clientDomain.HeadKindTag, Name: tag.Name}
+	if err := u.localRepo.SaveConfig(*cfg); err != nil {
+		return err
+	}
+	return u.localRepo.SaveCommit(tag.CommitID, "")
 }
 
 func syncWorkingCopy(ctx context.Context, client chunkDownloader, lr workingCopyLocalRepo, root string, tree *domain.TreeNode, scope clientDomain.ChunkScope, progress ...DownloadProgress) error {

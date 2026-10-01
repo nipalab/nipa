@@ -573,3 +573,35 @@ func TestPush_Run_Error_ClearRevertState(t *testing.T) {
 	err := pusher.Run(context.Background(), root, "revert")
 	require.ErrorIs(t, err, wantErr)
 }
+
+func TestPush_Run_DetachedHeadBlocked(t *testing.T) {
+	local := &stubLocalRepo{
+		loadConfig: &domain.Config{
+			Url: "http://example.com/org/project", Branch: "main",
+			Head: &domain.HeadRef{Kind: domain.HeadKindTag, Name: "v1.0.0"},
+		},
+	}
+	pusher := newTestPush(t, local, &stubPushClient{})
+
+	err := pusher.Run(context.Background(), t.TempDir(), "msg")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), `HEAD is detached at tag "v1.0.0"`)
+
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 400, domErr.Code)
+}
+
+func TestPush_Plan_DetachedHeadBlocked(t *testing.T) {
+	local := &stubLocalRepo{
+		loadConfig: &domain.Config{
+			Url: "http://example.com/org/project", Branch: "main",
+			Head: &domain.HeadRef{Kind: domain.HeadKindTag, Name: "v1.0.0"},
+		},
+	}
+	pusher := newTestPush(t, local, &stubPushClient{})
+
+	_, err := pusher.Plan(context.Background(), t.TempDir())
+	require.Error(t, err)
+	require.Contains(t, err.Error(), `HEAD is detached at tag "v1.0.0"`)
+}

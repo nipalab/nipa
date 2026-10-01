@@ -65,6 +65,10 @@ func (p *Push) Run(ctx context.Context, root, message string, progress ...Upload
 	if err != nil {
 		return err
 	}
+	if cfg.Head != nil {
+		return domain.NewUserError(fmt.Sprintf("HEAD is detached at tag %q; push happens on a branch", cfg.Head.Name)).
+			WithHint("switch to a branch first", "nipa switch <branch>")
+	}
 	nipaUrl, err := domain.ParseNipaUrl(cfg.Url)
 	if err != nil {
 		return err
@@ -123,6 +127,10 @@ func (p *Push) Plan(ctx context.Context, root string) (*domain.Plan, error) {
 	cfg, err := p.localRepo.LoadConfig()
 	if err != nil {
 		return nil, err
+	}
+	if cfg.Head != nil {
+		return nil, domain.NewUserError(fmt.Sprintf("HEAD is detached at tag %q; push happens on a branch", cfg.Head.Name)).
+			WithHint("switch to a branch first", "nipa switch <branch>")
 	}
 	if _, err := domain.ParseNipaUrl(cfg.Url); err != nil {
 		return nil, err

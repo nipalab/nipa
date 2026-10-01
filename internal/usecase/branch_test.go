@@ -294,6 +294,127 @@ func TestBranch_GetTreeManifest_BranchNotFound(t *testing.T) {
 	require.Equal(t, `branch "main" not found`, domErr.Message)
 }
 
+func TestBranch_GetCommitTreeManifest_NoPermission(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := newAllowAllPerm(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).
+		Return(false)
+
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
+	_, err := uc.GetCommitTreeManifest(context.Background(), snow.ID(1), snow.ID(9), nil, true)
+	require.Error(t, err)
+
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 403, domErr.Code)
+}
+
+func TestBranch_GetCommitTreeManifest_CommitNotFound(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := newAllowAllPerm(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).
+		Return(true)
+
+	repo.EXPECT().
+		GetCommit(gomock.Any(), snow.ID(9)).
+		Return(nil, domain.NewErrorRecordNotFound())
+
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
+	_, err := uc.GetCommitTreeManifest(context.Background(), snow.ID(1), snow.ID(9), nil, true)
+	require.Error(t, err)
+
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 404, domErr.Code)
+	require.Equal(t, "commit "+snow.ID(9).Base36()+" not found", domErr.Message)
+}
+
+func TestBranch_GetCommitTreeManifest_OtherProject(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := newAllowAllPerm(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).
+		Return(true)
+
+	repo.EXPECT().
+		GetCommit(gomock.Any(), snow.ID(9)).
+		Return(&domain.Commit{ID: 9, ProjectID: 2, TreeID: 100}, nil)
+
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
+	_, err := uc.GetCommitTreeManifest(context.Background(), snow.ID(1), snow.ID(9), nil, true)
+	require.Error(t, err)
+
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 404, domErr.Code)
+}
+
+func TestBranch_GetCommitTreeManifest_Success(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := newAllowAllPerm(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+
+	projectID := snow.ID(1)
+	commitID := snow.ID(9)
+	root := &domain.TreeNode{ID: 100, Name: "root"}
+	rootFiles := []*domain.File{{ID: 1, Name: "a.txt"}}
+
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), projectID, domain.PermissionRead).
+		Return(true)
+
+	repo.EXPECT().
+		GetCommit(gomock.Any(), commitID).
+		Return(&domain.Commit{ID: commitID, ProjectID: projectID, TreeID: 100}, nil)
+	repo.EXPECT().GetTreeNode(gomock.Any(), int64(100)).Return(root, nil)
+	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(100)).Return(rootFiles, nil)
+	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(100)).Return(nil, nil)
+
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
+	got, err := uc.GetCommitTreeManifest(context.Background(), projectID, commitID, nil, true)
+	require.NoError(t, err)
+	require.Equal(t, root, got)
+	require.Equal(t, rootFiles, got.FileChildren)
+}
+
+func TestBranch_GetCommitTreeManifest_SparsePathNotFound(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := newAllowAllPerm(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+
+	projectID := snow.ID(1)
+	commitID := snow.ID(9)
+
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), projectID, domain.PermissionRead).
+		Return(true)
+
+	repo.EXPECT().
+		GetCommit(gomock.Any(), commitID).
+		Return(&domain.Commit{ID: commitID, ProjectID: projectID, TreeID: 100}, nil)
+	repo.EXPECT().GetTreeNode(gomock.Any(), int64(100)).Return(&domain.TreeNode{ID: 100, Name: "root"}, nil)
+	repo.EXPECT().
+		GetTreeChildByName(gomock.Any(), int64(100), "missing").
+		Return(nil, domain.NewErrorRecordNotFound())
+
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
+	_, err := uc.GetCommitTreeManifest(context.Background(), projectID, commitID, []string{"missing"}, true)
+	require.Error(t, err)
+
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 404, domErr.Code)
+	require.Equal(t, `path "missing" not found in commit `+commitID.Base36(), domErr.Message)
+}
+
 func TestBranch_GetTreeManifest_NoCommit(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	perm := newAllowAllPerm(ctrl)
