@@ -67,3 +67,17 @@ type BranchInfo struct {
 	CommitID string `json:"commit_id,omitempty"`
 	Default  bool   `json:"default"`
 }
+
+// TagPayload is the body of a tag.* event.
+type TagPayload struct {
+	Envelope
+	Tag TagInfo `json:"tag"`
+}
+
+type TagInfo struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	CommitID  string `json:"commit_id"`
+	Message   string `json:"message,omitempty"`
+	CreatedBy string `json:"created_by"`
+}

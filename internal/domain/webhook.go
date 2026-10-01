@@ -12,6 +12,8 @@ const (
 	WebhookEventPush           = "push"
 	WebhookEventBranchCreated  = "branch.created"
 	WebhookEventBranchDeleted  = "branch.deleted"
+	WebhookEventTagCreated     = "tag.created"
+	WebhookEventTagDeleted     = "tag.deleted"
 	WebhookEventMRCreated      = "mr.created"
 	WebhookEventMRUpdated      = "mr.updated"
 	WebhookEventMRSynchronized = "mr.synchronized"

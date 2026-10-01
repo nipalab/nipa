@@ -48,6 +48,8 @@ var webhookEventTypes = map[string]struct{}{
 	domain.WebhookEventPush:           {},
 	domain.WebhookEventBranchCreated:  {},
 	domain.WebhookEventBranchDeleted:  {},
+	domain.WebhookEventTagCreated:     {},
+	domain.WebhookEventTagDeleted:     {},
 	domain.WebhookEventMRCreated:      {},
 	domain.WebhookEventMRUpdated:      {},
 	domain.WebhookEventMRSynchronized: {},

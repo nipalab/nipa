@@ -95,6 +95,12 @@ func (e *HookEmitter) EmitBranch(ctx context.Context, event string, projectID sn
 	})
 }
 
+func (e *HookEmitter) EmitTag(ctx context.Context, event string, projectID snow.ID, tag *domain.Tag, actor snow.ID) error {
+	return e.emit(ctx, event, projectID, actor, nil, func(env webhook.Envelope) any {
+		return webhook.TagPayload{Envelope: env, Tag: newTagInfo(tag)}
+	})
+}
+
 func (e *HookEmitter) emit(ctx context.Context, event string, projectID, actor snow.ID, paths []string, build func(webhook.Envelope) any) error {
 	hooks, err := e.hooks.ListActiveByProject(ctx, projectID)
 	if err != nil {
@@ -253,4 +259,14 @@ func newBranchInfo(branch *domain.Branch) webhook.BranchInfo {
 		info.CommitID = branch.CommitID.Base36()
 	}
 	return info
+}
+
+func newTagInfo(tag *domain.Tag) webhook.TagInfo {
+	return webhook.TagInfo{
+		ID:        tag.ID.Base36(),
+		Name:      tag.Name,
+		CommitID:  tag.CommitID.Base36(),
+		Message:   tag.Message,
+		CreatedBy: tag.UserID.Base36(),
+	}
 }
