@@ -19,6 +19,7 @@ import (
 type diffClient interface {
 	Connect(ctx context.Context, host string) error
 	GetBranchByName(ctx context.Context, org, project, name string) (*serverDomain.Branch, error)
+	GetTagByName(ctx context.Context, org, project, name string) (*clientDomain.Tag, error)
 	GetCommit(ctx context.Context, org, project, commitID string) (*clientDomain.CommitDetail, error)
 	GetMergeBase(ctx context.Context, org, project string, target, source clientDomain.MergeRef) (*clientDomain.MergeBaseInfo, error)
 	DownloadChunks(ctx context.Context, scope clientDomain.ChunkScope, hashes []serverDomain.Hash, onChunk func(h serverDomain.Hash, data []byte) error) error
@@ -247,6 +248,13 @@ func (d *Diff) resolveRevision(ctx context.Context, nu *clientDomain.NipaUrl, cf
 	}
 	if !isNotFoundError(err) {
 		return nil, err
+	}
+	tag, terr := d.client.GetTagByName(ctx, nu.Org, nu.Project, token)
+	if terr == nil {
+		return d.revisionByCommit(ctx, nu, tag.CommitID)
+	}
+	if !isNotFoundError(terr) {
+		return nil, terr
 	}
 	if _, perr := snow.ParseBase36(token); perr != nil {
 		return nil, clientDomain.NewUserError(fmt.Sprintf("revision %q not found", token))

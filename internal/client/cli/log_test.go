@@ -9,6 +9,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/nipalab/nipa/internal/client/domain"
+	"github.com/nipalab/nipa/internal/client/localrepo"
 	"github.com/nipalab/nipa/internal/client/usecase"
 	serverDomain "github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/snow"
@@ -18,9 +20,11 @@ type fakeLogRepo struct {
 	fakeRepoInterface
 	entries []*serverDomain.CommitLogEntry
 	err     error
+	start   *snow.ID
 }
 
-func (f *fakeLogRepo) GetCommitLog(_ context.Context, _, _, _ string, _ *snow.ID, _ int) ([]*serverDomain.CommitLogEntry, error) {
+func (f *fakeLogRepo) GetCommitLog(_ context.Context, _, _, _ string, start *snow.ID, _ int) ([]*serverDomain.CommitLogEntry, error) {
+	f.start = start
 	return f.entries, f.err
 }
 
@@ -89,6 +93,29 @@ func TestSetupLogCmd_DefaultBranchConfig(t *testing.T) {
 	out, err := runLogCmd(t, cli, root, "--no-pager")
 	require.NoError(t, err)
 	require.Contains(t, out, "first commit")
+}
+
+func TestSetupLogCmd_DetachedWalksFromPin(t *testing.T) {
+	root := setupRepo(t, "main")
+	lr := localrepo.NewLocalRepo()
+	require.NoError(t, lr.Init(root))
+	require.NoError(t, lr.SaveCommit(snow.ID(42).Base36(), "hash"))
+	require.NoError(t, lr.SaveConfig(domain.Config{
+		Url: "http://example.com/org/project", Branch: "main",
+		Head: &domain.HeadRef{Kind: domain.HeadKindTag, Name: "v1.0.0"},
+	}))
+	require.NoError(t, lr.Close())
+
+	fake := &fakeLogRepo{entries: testEntries()}
+	auth := usecase.NewAuth(fakeExecutor{}, &fakeStorage{}, &fakeInput{})
+	repo := usecase.NewRepo(auth, fake, fakeLocalRepo{})
+	cli := NewCli(&fakeUsecaseContainer{auth: auth, repo: repo}, &fakeConnector{})
+
+	out, err := runLogCmd(t, cli, root, "--no-pager")
+	require.NoError(t, err)
+	require.Contains(t, out, "first commit")
+	require.NotNil(t, fake.start, "a detached log must walk from the pinned commit")
+	require.Equal(t, snow.ID(42), *fake.start)
 }
 
 func TestSetupLogCmd_ServerError(t *testing.T) {

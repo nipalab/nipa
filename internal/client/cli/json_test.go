@@ -22,7 +22,7 @@ func TestSetupStatusCmd_JSON(t *testing.T) {
 
 	out, err := runCmdInDir(t, root, cli.setupStatusCmd(), "--json")
 	require.NoError(t, err)
-	require.JSONEq(t, `{"staged":["staged.txt"],"deleted":[],"modified":[],"untracked":["new.txt"],"missing":[],"conflicts":[]}`, out)
+	require.JSONEq(t, `{"branch":"main","staged":["staged.txt"],"deleted":[],"modified":[],"untracked":["new.txt"],"missing":[],"conflicts":[]}`, out)
 }
 
 func TestSetupStatusCmd_JSONFromEnv(t *testing.T) {
@@ -32,7 +32,7 @@ func TestSetupStatusCmd_JSONFromEnv(t *testing.T) {
 
 	out, err := runCmdInDir(t, root, cli.setupStatusCmd())
 	require.NoError(t, err)
-	require.JSONEq(t, `{"staged":[],"deleted":[],"modified":[],"untracked":[],"missing":[],"conflicts":[]}`, out)
+	require.JSONEq(t, `{"branch":"main","staged":[],"deleted":[],"modified":[],"untracked":[],"missing":[],"conflicts":[]}`, out)
 }
 
 func TestDiffCmd_JSON(t *testing.T) {

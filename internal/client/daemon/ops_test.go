@@ -22,8 +22,9 @@ import (
 )
 
 type stubUpdateRunner struct {
-	run      func(ctx context.Context, root string, progress ...usecase.DownloadProgress) error
-	switchFn func(ctx context.Context, root, branch string, progress ...usecase.DownloadProgress) error
+	run         func(ctx context.Context, root string, progress ...usecase.DownloadProgress) error
+	switchFn    func(ctx context.Context, root, branch string, progress ...usecase.DownloadProgress) error
+	switchTagFn func(ctx context.Context, root, tagName string, progress ...usecase.DownloadProgress) error
 }
 
 func (s *stubUpdateRunner) Run(ctx context.Context, root string, progress ...usecase.DownloadProgress) error {
@@ -36,6 +37,13 @@ func (s *stubUpdateRunner) Run(ctx context.Context, root string, progress ...use
 func (s *stubUpdateRunner) Switch(ctx context.Context, root, branch string, progress ...usecase.DownloadProgress) error {
 	if s.switchFn != nil {
 		return s.switchFn(ctx, root, branch, progress...)
+	}
+	return nil
+}
+
+func (s *stubUpdateRunner) SwitchTag(ctx context.Context, root, tagName string, progress ...usecase.DownloadProgress) error {
+	if s.switchTagFn != nil {
+		return s.switchTagFn(ctx, root, tagName, progress...)
 	}
 	return nil
 }
@@ -423,6 +431,28 @@ func TestServer_SwitchStreamsResult(t *testing.T) {
 	sync := terminalEvent(t, stream.events()).GetResult().GetSync()
 	require.Equal(t, "feature", sync.GetBranch())
 	require.Equal(t, "switched1", sync.GetCommitId())
+}
+
+func TestServer_SwitchTagStreamsResult(t *testing.T) {
+	root := newTestClone(t)
+	var gotTag string
+	srv := newOpServer(t, RepoOps{Update: &stubUpdateRunner{
+		switchTagFn: func(_ context.Context, _, tagName string, _ ...usecase.DownloadProgress) error {
+			gotTag = tagName
+			return nil
+		},
+	}})
+	_, err := srv.repos.watch(root)
+	require.NoError(t, err)
+	seedCommit(t, root, "tagged1", "hash1")
+
+	stream := &opTestStream{ctx: context.Background()}
+	require.NoError(t, srv.Switch(&daemonpb.SwitchRequest{Root: root, Tag: "v1.0.0"}, stream))
+	require.Equal(t, "v1.0.0", gotTag)
+
+	sync := terminalEvent(t, stream.events()).GetResult().GetSync()
+	require.Equal(t, "main", sync.GetBranch(), "the configured branch stays while HEAD is detached")
+	require.Equal(t, "tagged1", sync.GetCommitId())
 }
 
 func TestServer_SwitchFailures(t *testing.T) {

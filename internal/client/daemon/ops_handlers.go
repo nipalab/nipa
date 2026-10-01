@@ -21,12 +21,19 @@ func (s *Server) Update(req *daemonpb.UpdateRequest, stream daemonpb.NipaDaemon_
 	})
 }
 
-// Switch changes the configured branch and materializes its head.
+// Switch changes the configured branch and materializes its head, or detaches
+// HEAD at a tag when the request carries one.
 func (s *Server) Switch(req *daemonpb.SwitchRequest, stream daemonpb.NipaDaemon_SwitchServer) error {
 	ctx := stream.Context()
 	return s.runOp(ctx, req.GetRoot(), "switch", stream.Send, func(rp *repo, progress *progressAdapter) (*daemonpb.OpEvent, error) {
 		if rp.update == nil {
 			return nil, status.Error(codes.FailedPrecondition, "switch is not configured")
+		}
+		if tag := req.GetTag(); tag != "" {
+			if err := rp.update.SwitchTag(ctx, rp.root, tag, progress); err != nil {
+				return nil, err
+			}
+			return syncResultEvent(rp.config().Branch, rp.headCommitID()), nil
 		}
 		if err := rp.update.Switch(ctx, rp.root, req.GetBranch(), progress); err != nil {
 			return nil, err

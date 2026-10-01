@@ -70,6 +70,13 @@ message StatusResponse {
     repeated string untracked = 4;
     repeated string missing = 5;
     repeated string conflicts = 6;
+    string branch = 7;
+    StatusHead head = 8; // set when HEAD is detached
+}
+
+message StatusHead {
+    string kind = 1;
+    string name = 2;
 }
 
 message StageRequest {
@@ -85,6 +92,7 @@ message UpdateRequest {
 message SwitchRequest {
     string root = 1;
     string branch = 2;
+    string tag = 3; // when set, detaches HEAD at this tag instead of switching to a branch
 }
 
 message PushRequest {

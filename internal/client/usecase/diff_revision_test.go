@@ -19,6 +19,7 @@ type stubDiffClient struct {
 	connectHost     string
 	connectErr      error
 	branches        map[string]*serverDomain.Branch
+	tags            map[string]*clientDomain.Tag
 	commits         map[string]*clientDomain.CommitDetail
 	mergeBase       *clientDomain.MergeBaseInfo
 	mergeBaseErr    error
@@ -28,6 +29,7 @@ type stubDiffClient struct {
 	downloaded      []serverDomain.Hash
 	downloadErr     error
 	branchLookups   []string
+	tagLookups      []string
 	commitLookups   []string
 }
 
@@ -42,6 +44,14 @@ func (s *stubDiffClient) GetBranchByName(_ context.Context, _, _, name string) (
 		return branch, nil
 	}
 	return nil, &clientDomain.Error{Code: 404, Message: fmt.Sprintf("branch %q not found", name)}
+}
+
+func (s *stubDiffClient) GetTagByName(_ context.Context, _, _, name string) (*clientDomain.Tag, error) {
+	s.tagLookups = append(s.tagLookups, name)
+	if tag, ok := s.tags[name]; ok {
+		return tag, nil
+	}
+	return nil, &clientDomain.Error{Code: 404, Message: fmt.Sprintf("tag %q not found", name)}
 }
 
 func (s *stubDiffClient) GetCommit(_ context.Context, _, _, commitID string) (*clientDomain.CommitDetail, error) {
@@ -199,6 +209,30 @@ func TestDiff_RevisionNotFound(t *testing.T) {
 	client := &stubDiffClient{}
 	_, err := NewDiff(diffAuth(t), client, repo).Run(context.Background(), t.TempDir(), []string{"nope"}, DiffOptions{})
 	require.ErrorContains(t, err, `revision "nope" not found`)
+}
+
+func TestDiff_TagRevision(t *testing.T) {
+	root := t.TempDir()
+	content := "release\n"
+	commitID := snow.ID(5).Base36()
+	repo := newDiffStub()
+	client := &stubDiffClient{
+		tags: map[string]*clientDomain.Tag{
+			"v1.0.0": {Name: "v1.0.0", CommitID: commitID},
+		},
+		commits: map[string]*clientDomain.CommitDetail{
+			commitID: {ID: commitID, Tree: fileTree(t, "a.txt", content)},
+		},
+		download: contentChunks(t, content),
+	}
+	writeRepoFile(t, root, "a.txt", content)
+
+	files, err := NewDiff(diffAuth(t), client, repo).Run(context.Background(), root, []string{"v1.0.0"}, DiffOptions{})
+	require.NoError(t, err)
+	require.Empty(t, files)
+	require.Equal(t, []string{"v1.0.0"}, client.branchLookups)
+	require.Equal(t, []string{"v1.0.0"}, client.tagLookups)
+	require.Equal(t, []string{commitID}, client.commitLookups)
 }
 
 func TestDiff_HeadUsesPinnedCommit(t *testing.T) {
