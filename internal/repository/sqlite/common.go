@@ -5,27 +5,41 @@ import (
 	"errors"
 	"time"
 
+	sqliteDriver "modernc.org/sqlite"
+	sqlite3 "modernc.org/sqlite/lib"
+
 	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/snow"
 )
 
 func handleError(err error) error {
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, sql.ErrNoRows) {
+		return &domain.Error{
+			Code:    404,
+			Message: "record not found",
+			Cause:   err,
+		}
+	}
+	var sqliteErr *sqliteDriver.Error
+	if errors.As(err, &sqliteErr) {
+		switch sqliteErr.Code() {
+		case sqlite3.SQLITE_CONSTRAINT_UNIQUE, sqlite3.SQLITE_CONSTRAINT_PRIMARYKEY:
 			return &domain.Error{
-				Code:    404,
-				Message: "record not found",
+				Code:    409,
+				Message: "record already exists",
 				Cause:   err,
 			}
 		}
-		return &domain.Error{
-			Code:            500,
-			Message:         "database error",
-			InternalMessage: err.Error(),
-			Cause:           err,
-		}
 	}
-	return nil
+	return &domain.Error{
+		Code:            500,
+		Message:         "database error",
+		InternalMessage: err.Error(),
+		Cause:           err,
+	}
 }
 
 func nullTimePtr(t sql.NullTime) *time.Time {

@@ -283,6 +283,31 @@ func TestHookEmitter_EmitBranch(t *testing.T) {
 	require.False(t, captured.Branch.Default)
 }
 
+func TestHookEmitter_EmitTag(t *testing.T) {
+	deps := newHookEmitDeps(t)
+	hook := testHook(1001, []string{domain.WebhookEventTagCreated}, "")
+	deps.hooks.EXPECT().ListActiveByProject(gomock.Any(), snow.ID(1)).Return([]*domain.Webhook{hook}, nil)
+	deps.expectPayloadContext(snow.ID(1))
+
+	tag := &domain.Tag{ID: 5, ProjectID: 1, Name: "v1.0.0", CommitID: 12, Message: "first release", UserID: 8}
+
+	var captured webhook.TagPayload
+	deps.sender.EXPECT().Enqueue(gomock.Any(), gomock.Any(), domain.WebhookEventTagCreated, gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ domain.Webhook, _ string, payload []byte) (*domain.WebhookDelivery, error) {
+			require.NoError(t, json.Unmarshal(payload, &captured))
+			return &domain.WebhookDelivery{}, nil
+		})
+
+	require.NoError(t, deps.emitter.EmitTag(context.Background(), domain.WebhookEventTagCreated, snow.ID(1), tag, snow.ID(7)))
+
+	require.Equal(t, domain.WebhookEventTagCreated, captured.Event)
+	require.Equal(t, snow.ID(5).Base36(), captured.Tag.ID)
+	require.Equal(t, "v1.0.0", captured.Tag.Name)
+	require.Equal(t, snow.ID(12).Base36(), captured.Tag.CommitID)
+	require.Equal(t, "first release", captured.Tag.Message)
+	require.Equal(t, snow.ID(8).Base36(), captured.Tag.CreatedBy)
+}
+
 func TestHookEmitter_NoHooksSkipsLookups(t *testing.T) {
 	deps := newHookEmitDeps(t)
 	deps.hooks.EXPECT().ListActiveByProject(gomock.Any(), snow.ID(1)).Return(nil, nil)

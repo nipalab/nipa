@@ -26,7 +26,7 @@ func (g *Group) Create(ctx context.Context, group domain.Group) (*domain.Group, 
 		Description: sql.NullString{String: group.Description, Valid: group.Description != ""},
 	})
 	if err != nil {
-		return nil, domain.NewErrorDatabase(err.Error())
+		return nil, handleError(err)
 	}
 	return toDomainGroup(row), nil
 }

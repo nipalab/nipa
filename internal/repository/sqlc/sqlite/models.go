@@ -222,6 +222,18 @@ type RefreshToken struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+type Tag struct {
+	ID        int64     `json:"id"`
+	ProjectID int64     `json:"project_id"`
+	Name      string    `json:"name"`
+	Key       string    `json:"key"`
+	CommitID  int64     `json:"commit_id"`
+	Message   string    `json:"message"`
+	UserID    int64     `json:"user_id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
 type TreeNode struct {
 	ID           int64         `json:"id"`
 	Hash         []byte        `json:"hash"`

@@ -78,7 +78,7 @@ func TestGroupRepositorySQLite_Create_DuplicateName(t *testing.T) {
 
 	var domErr *domain.Error
 	require.ErrorAs(t, err, &domErr)
-	require.Equal(t, 500, domErr.Code)
+	require.Equal(t, 409, domErr.Code)
 }
 
 func TestGroupRepositorySQLite_GetByID_NotFound(t *testing.T) {
