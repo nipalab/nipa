@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -176,6 +177,15 @@ func TestWorkingCopy_Status(t *testing.T) {
 	require.Equal(t, []string{"missing.txt"}, st.Missing)
 	require.Equal(t, []string{"modified.txt"}, st.Modified)
 	require.Equal(t, []string{"new.txt"}, st.Untracked)
+}
+
+func TestWorkingCopy_Status_ConfigLoadError(t *testing.T) {
+	wantErr := errors.New("config gone")
+	local := &stubLocalRepo{configLoadErr: wantErr}
+	wc := newWorkingCopy(t, local, t.TempDir())
+
+	_, err := wc.Status(context.Background())
+	require.ErrorIs(t, err, wantErr)
 }
 
 func TestWorkingCopy_Status_StagedFileIsNotListedTwice(t *testing.T) {

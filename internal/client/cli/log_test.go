@@ -3,11 +3,14 @@ package cli
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"errors"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	_ "modernc.org/sqlite"
 
 	"github.com/nipalab/nipa/internal/client/domain"
 	"github.com/nipalab/nipa/internal/client/localrepo"
@@ -53,6 +56,15 @@ func runLogCmd(t *testing.T, cli *Cli, dir string, args ...string) (string, erro
 	cmd.SetArgs(args)
 	err = cmd.Execute()
 	return buf.String(), err
+}
+
+func runInDir(t *testing.T, dir string, fn func() error) error {
+	t.Helper()
+	oldWD, err := os.Getwd()
+	require.NoError(t, err)
+	defer func() { require.NoError(t, os.Chdir(oldWD)) }()
+	require.NoError(t, os.Chdir(dir))
+	return fn()
 }
 
 func TestSetupLogCmd_Plain(t *testing.T) {
@@ -154,6 +166,89 @@ func TestSetupLogCmd_NotARepo(t *testing.T) {
 	_, err := runLogCmd(t, cli, dir, "--no-pager")
 	require.Error(t, err)
 	require.Equal(t, "not a nipa repository (or any of the parent directories)", err.Error())
+}
+
+func TestDetachedLogStart_NoPinnedCommit(t *testing.T) {
+	root := setupRepo(t, "main")
+
+	var got *snow.ID
+	err := runInDir(t, root, func() error {
+		id, err := detachedLogStart()
+		got = id
+		return err
+	})
+	require.NoError(t, err)
+	require.Nil(t, got)
+}
+
+func TestDetachedLogStart_UnparsablePin(t *testing.T) {
+	root := setupRepoWithCommit(t, "main", "not-base36*", "hash")
+
+	var got *snow.ID
+	err := runInDir(t, root, func() error {
+		id, err := detachedLogStart()
+		got = id
+		return err
+	})
+	require.NoError(t, err)
+	require.Nil(t, got, "an unparsable pin falls back to the branch head")
+}
+
+func TestDetachedLogStart_InitError(t *testing.T) {
+	root := setupRepo(t, "main")
+	require.NoError(t, os.RemoveAll(filepath.Join(root, ".nipa", "objects")))
+	require.NoError(t, os.WriteFile(filepath.Join(root, ".nipa", "objects"), []byte("file"), 0o644))
+
+	err := runInDir(t, root, func() error {
+		_, err := detachedLogStart()
+		return err
+	})
+	require.Error(t, err)
+}
+
+func TestDetachedLogStart_LoadCommitError(t *testing.T) {
+	root := setupRepo(t, "main")
+	lr := localrepo.NewLocalRepo()
+	require.NoError(t, lr.Init(root))
+	require.NoError(t, lr.Close())
+
+	db, err := sql.Open("sqlite", filepath.Join(root, ".nipa", "nipa.db"))
+	require.NoError(t, err)
+	_, err = db.Exec("DROP TABLE meta")
+	require.NoError(t, err)
+	_, err = db.Exec("CREATE TABLE meta (key TEXT PRIMARY KEY)")
+	require.NoError(t, err)
+	require.NoError(t, db.Close())
+
+	err = runInDir(t, root, func() error {
+		_, err := detachedLogStart()
+		return err
+	})
+	require.Error(t, err, "a meta table without the value column must surface as an error")
+}
+
+func TestDetachedLogStart_NotARepo(t *testing.T) {
+	err := runInDir(t, t.TempDir(), func() error {
+		_, err := detachedLogStart()
+		return err
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "not a nipa repository")
+}
+
+func TestFetchLog_DetachedStartError(t *testing.T) {
+	cli := newLogCli(testEntries(), nil)
+	cfg := &domain.Config{
+		Url: "http://example.com/org/project", Branch: "main",
+		Head: &domain.HeadRef{Kind: domain.HeadKindTag, Name: "v1.0.0"},
+	}
+
+	err := runInDir(t, t.TempDir(), func() error {
+		_, err := cli.fetchLog(nil, cfg, 0)
+		return err
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "not a nipa repository")
 }
 
 func TestIsTTY_NonTerminal(t *testing.T) {

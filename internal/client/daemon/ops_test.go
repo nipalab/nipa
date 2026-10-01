@@ -479,6 +479,20 @@ func TestServer_SwitchFailures(t *testing.T) {
 	require.NoError(t, failing.Switch(&daemonpb.SwitchRequest{Root: failingRoot, Branch: "feature"}, stream))
 	last = stream.events()[len(stream.events())-1]
 	require.EqualValues(t, 401, last.GetFailure().GetCode())
+
+	tagRoot := newTestClone(t)
+	tagFailing := newOpServer(t, RepoOps{Update: &stubUpdateRunner{
+		switchTagFn: func(context.Context, string, string, ...usecase.DownloadProgress) error {
+			return clientDomain.NewUserError("tag not found")
+		},
+	}})
+	_, err = tagFailing.repos.watch(tagRoot)
+	require.NoError(t, err)
+	stream = &opTestStream{ctx: context.Background()}
+	require.NoError(t, tagFailing.Switch(&daemonpb.SwitchRequest{Root: tagRoot, Tag: "v9.9.9"}, stream))
+	last = stream.events()[len(stream.events())-1]
+	require.EqualValues(t, 400, last.GetFailure().GetCode())
+	require.Contains(t, last.GetFailure().GetMessage(), "tag not found")
 }
 
 func TestServer_OpRunnerFailures(t *testing.T) {

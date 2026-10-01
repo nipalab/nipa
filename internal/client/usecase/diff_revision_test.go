@@ -30,6 +30,7 @@ type stubDiffClient struct {
 	downloadErr     error
 	branchLookups   []string
 	tagLookups      []string
+	tagErr          error
 	commitLookups   []string
 }
 
@@ -48,6 +49,9 @@ func (s *stubDiffClient) GetBranchByName(_ context.Context, _, _, name string) (
 
 func (s *stubDiffClient) GetTagByName(_ context.Context, _, _, name string) (*clientDomain.Tag, error) {
 	s.tagLookups = append(s.tagLookups, name)
+	if s.tagErr != nil {
+		return nil, s.tagErr
+	}
 	if tag, ok := s.tags[name]; ok {
 		return tag, nil
 	}
@@ -233,6 +237,24 @@ func TestDiff_TagRevision(t *testing.T) {
 	require.Equal(t, []string{"v1.0.0"}, client.branchLookups)
 	require.Equal(t, []string{"v1.0.0"}, client.tagLookups)
 	require.Equal(t, []string{commitID}, client.commitLookups)
+}
+
+func TestDiff_TagLookupError(t *testing.T) {
+	repo := newDiffStub()
+	wantErr := errors.New("tag service down")
+	client := &stubDiffClient{tagErr: wantErr}
+
+	_, err := NewDiff(diffAuth(t), client, repo).Run(context.Background(), t.TempDir(), []string{"v1.0.0"}, DiffOptions{})
+	require.ErrorIs(t, err, wantErr)
+	require.Equal(t, []string{"v1.0.0"}, client.tagLookups)
+}
+
+func TestDiff_InvalidRevisionToken(t *testing.T) {
+	repo := newDiffStub()
+	client := &stubDiffClient{}
+
+	_, err := NewDiff(diffAuth(t), client, repo).Run(context.Background(), t.TempDir(), []string{"bad/ref"}, DiffOptions{})
+	require.ErrorContains(t, err, `revision "bad/ref" not found`)
 }
 
 func TestDiff_HeadUsesPinnedCommit(t *testing.T) {
