@@ -47,6 +47,7 @@ type testRegistry struct {
 	auth         *serverusecase.Auth
 	user         *serverusecase.User
 	branch       *serverusecase.Branch
+	tag          *serverusecase.Tag
 	common       *serverusecase.Common
 	push         *serverusecase.Push
 	chunk        *serverusecase.Chunk
@@ -60,6 +61,7 @@ type testRegistry struct {
 func (r *testRegistry) Auth() *serverusecase.Auth     { return r.auth }
 func (r *testRegistry) User() *serverusecase.User     { return r.user }
 func (r *testRegistry) Branch() *serverusecase.Branch { return r.branch }
+func (r *testRegistry) Tag() *serverusecase.Tag       { return r.tag }
 func (r *testRegistry) Common() *serverusecase.Common { return r.common }
 func (r *testRegistry) Push() *serverusecase.Push     { return r.push }
 func (r *testRegistry) Chunk() *serverusecase.Chunk   { return r.chunk }
@@ -174,6 +176,7 @@ func startTestServer(t *testing.T, dbConn *sql.DB) string {
 		auth:       authUc,
 		user:       serverusecase.NewUser(node, userRepo, passwordHasher),
 		branch:     branchUc,
+		tag:        serverusecase.NewTag(permissionUc, sqlite.NewTagRepository(dbConn), branchRepo, node),
 		common:     commonUc,
 		push:       serverusecase.NewPush(permissionUc, branchRepo, pushRepo, node).WithFileLocks(fileLockUc).WithReviews(reviewUc),
 		chunk:      chunkUc,

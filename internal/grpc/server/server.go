@@ -9,6 +9,7 @@ type usecaseContainer interface {
 	Auth() *usecase.Auth
 	User() *usecase.User
 	Branch() *usecase.Branch
+	Tag() *usecase.Tag
 	Common() *usecase.Common
 	Push() *usecase.Push
 	Chunk() *usecase.Chunk

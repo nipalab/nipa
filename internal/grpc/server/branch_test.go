@@ -23,6 +23,7 @@ import (
 
 type mockUsecaseContainer struct {
 	branch       *usecase.Branch
+	tag          *usecase.Tag
 	common       *usecase.Common
 	push         *usecase.Push
 	chunk        *usecase.Chunk
@@ -36,6 +37,7 @@ type mockUsecaseContainer struct {
 func (m *mockUsecaseContainer) Auth() *usecase.Auth     { return nil }
 func (m *mockUsecaseContainer) User() *usecase.User     { return nil }
 func (m *mockUsecaseContainer) Branch() *usecase.Branch { return m.branch }
+func (m *mockUsecaseContainer) Tag() *usecase.Tag       { return m.tag }
 func (m *mockUsecaseContainer) Common() *usecase.Common { return m.common }
 func (m *mockUsecaseContainer) Push() *usecase.Push     { return m.push }
 func (m *mockUsecaseContainer) Chunk() *usecase.Chunk   { return m.chunk }

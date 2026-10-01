@@ -6,6 +6,7 @@ type Registry struct {
 	authUsecase               *usecase.Auth
 	userUsecase               *usecase.User
 	branchUsecase             *usecase.Branch
+	tagUsecase                *usecase.Tag
 	commonUsecase             *usecase.Common
 	pushUsecase               *usecase.Push
 	chunkUsecase              *usecase.Chunk
@@ -29,6 +30,10 @@ func (r *Registry) User() *usecase.User {
 
 func (r *Registry) Branch() *usecase.Branch {
 	return r.branchUsecase
+}
+
+func (r *Registry) Tag() *usecase.Tag {
+	return r.tagUsecase
 }
 
 func (r *Registry) Common() *usecase.Common {

@@ -30,6 +30,10 @@ const (
 	NipaService_DeleteBranch_FullMethodName                    = "/greet.NipaService/DeleteBranch"
 	NipaService_SetDefaultBranch_FullMethodName                = "/greet.NipaService/SetDefaultBranch"
 	NipaService_SetBranchProtection_FullMethodName             = "/greet.NipaService/SetBranchProtection"
+	NipaService_ListTags_FullMethodName                        = "/greet.NipaService/ListTags"
+	NipaService_GetTagByName_FullMethodName                    = "/greet.NipaService/GetTagByName"
+	NipaService_CreateTag_FullMethodName                       = "/greet.NipaService/CreateTag"
+	NipaService_DeleteTag_FullMethodName                       = "/greet.NipaService/DeleteTag"
 	NipaService_GetTreeManifest_FullMethodName                 = "/greet.NipaService/GetTreeManifest"
 	NipaService_GetCommitLog_FullMethodName                    = "/greet.NipaService/GetCommitLog"
 	NipaService_GetCommit_FullMethodName                       = "/greet.NipaService/GetCommit"
@@ -92,6 +96,10 @@ type NipaServiceClient interface {
 	DeleteBranch(ctx context.Context, in *DeleteBranchRequest, opts ...grpc.CallOption) (*DeleteBranchResponse, error)
 	SetDefaultBranch(ctx context.Context, in *SetDefaultBranchRequest, opts ...grpc.CallOption) (*SetDefaultBranchResponse, error)
 	SetBranchProtection(ctx context.Context, in *SetBranchProtectionRequest, opts ...grpc.CallOption) (*SetBranchProtectionResponse, error)
+	ListTags(ctx context.Context, in *ListTagsRequest, opts ...grpc.CallOption) (*ListTagsResponse, error)
+	GetTagByName(ctx context.Context, in *GetTagByNameRequest, opts ...grpc.CallOption) (*GetTagByNameResponse, error)
+	CreateTag(ctx context.Context, in *CreateTagRequest, opts ...grpc.CallOption) (*CreateTagResponse, error)
+	DeleteTag(ctx context.Context, in *DeleteTagRequest, opts ...grpc.CallOption) (*DeleteTagResponse, error)
 	GetTreeManifest(ctx context.Context, in *GetTreeManifestRequest, opts ...grpc.CallOption) (*GetTreeManifestResponse, error)
 	GetCommitLog(ctx context.Context, in *GetCommitLogRequest, opts ...grpc.CallOption) (*GetCommitLogResponse, error)
 	GetCommit(ctx context.Context, in *GetCommitRequest, opts ...grpc.CallOption) (*GetCommitResponse, error)
@@ -251,6 +259,46 @@ func (c *nipaServiceClient) SetBranchProtection(ctx context.Context, in *SetBran
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(SetBranchProtectionResponse)
 	err := c.cc.Invoke(ctx, NipaService_SetBranchProtection_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nipaServiceClient) ListTags(ctx context.Context, in *ListTagsRequest, opts ...grpc.CallOption) (*ListTagsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListTagsResponse)
+	err := c.cc.Invoke(ctx, NipaService_ListTags_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nipaServiceClient) GetTagByName(ctx context.Context, in *GetTagByNameRequest, opts ...grpc.CallOption) (*GetTagByNameResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetTagByNameResponse)
+	err := c.cc.Invoke(ctx, NipaService_GetTagByName_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nipaServiceClient) CreateTag(ctx context.Context, in *CreateTagRequest, opts ...grpc.CallOption) (*CreateTagResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CreateTagResponse)
+	err := c.cc.Invoke(ctx, NipaService_CreateTag_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nipaServiceClient) DeleteTag(ctx context.Context, in *DeleteTagRequest, opts ...grpc.CallOption) (*DeleteTagResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DeleteTagResponse)
+	err := c.cc.Invoke(ctx, NipaService_DeleteTag_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -722,6 +770,10 @@ type NipaServiceServer interface {
 	DeleteBranch(context.Context, *DeleteBranchRequest) (*DeleteBranchResponse, error)
 	SetDefaultBranch(context.Context, *SetDefaultBranchRequest) (*SetDefaultBranchResponse, error)
 	SetBranchProtection(context.Context, *SetBranchProtectionRequest) (*SetBranchProtectionResponse, error)
+	ListTags(context.Context, *ListTagsRequest) (*ListTagsResponse, error)
+	GetTagByName(context.Context, *GetTagByNameRequest) (*GetTagByNameResponse, error)
+	CreateTag(context.Context, *CreateTagRequest) (*CreateTagResponse, error)
+	DeleteTag(context.Context, *DeleteTagRequest) (*DeleteTagResponse, error)
 	GetTreeManifest(context.Context, *GetTreeManifestRequest) (*GetTreeManifestResponse, error)
 	GetCommitLog(context.Context, *GetCommitLogRequest) (*GetCommitLogResponse, error)
 	GetCommit(context.Context, *GetCommitRequest) (*GetCommitResponse, error)
@@ -809,6 +861,18 @@ func (UnimplementedNipaServiceServer) SetDefaultBranch(context.Context, *SetDefa
 }
 func (UnimplementedNipaServiceServer) SetBranchProtection(context.Context, *SetBranchProtectionRequest) (*SetBranchProtectionResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SetBranchProtection not implemented")
+}
+func (UnimplementedNipaServiceServer) ListTags(context.Context, *ListTagsRequest) (*ListTagsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListTags not implemented")
+}
+func (UnimplementedNipaServiceServer) GetTagByName(context.Context, *GetTagByNameRequest) (*GetTagByNameResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetTagByName not implemented")
+}
+func (UnimplementedNipaServiceServer) CreateTag(context.Context, *CreateTagRequest) (*CreateTagResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreateTag not implemented")
+}
+func (UnimplementedNipaServiceServer) DeleteTag(context.Context, *DeleteTagRequest) (*DeleteTagResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DeleteTag not implemented")
 }
 func (UnimplementedNipaServiceServer) GetTreeManifest(context.Context, *GetTreeManifestRequest) (*GetTreeManifestResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetTreeManifest not implemented")
@@ -1160,6 +1224,78 @@ func _NipaService_SetBranchProtection_Handler(srv interface{}, ctx context.Conte
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(NipaServiceServer).SetBranchProtection(ctx, req.(*SetBranchProtectionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NipaService_ListTags_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListTagsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaServiceServer).ListTags(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaService_ListTags_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaServiceServer).ListTags(ctx, req.(*ListTagsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NipaService_GetTagByName_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetTagByNameRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaServiceServer).GetTagByName(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaService_GetTagByName_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaServiceServer).GetTagByName(ctx, req.(*GetTagByNameRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NipaService_CreateTag_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateTagRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaServiceServer).CreateTag(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaService_CreateTag_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaServiceServer).CreateTag(ctx, req.(*CreateTagRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NipaService_DeleteTag_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteTagRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaServiceServer).DeleteTag(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaService_DeleteTag_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaServiceServer).DeleteTag(ctx, req.(*DeleteTagRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -2024,6 +2160,22 @@ var NipaService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SetBranchProtection",
 			Handler:    _NipaService_SetBranchProtection_Handler,
+		},
+		{
+			MethodName: "ListTags",
+			Handler:    _NipaService_ListTags_Handler,
+		},
+		{
+			MethodName: "GetTagByName",
+			Handler:    _NipaService_GetTagByName_Handler,
+		},
+		{
+			MethodName: "CreateTag",
+			Handler:    _NipaService_CreateTag_Handler,
+		},
+		{
+			MethodName: "DeleteTag",
+			Handler:    _NipaService_DeleteTag_Handler,
 		},
 		{
 			MethodName: "GetTreeManifest",

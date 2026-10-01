@@ -86,6 +86,7 @@ func main() {
 		snowUser,
 	).WithFileLocks(fileLockUsecase)
 	pushUsecase := usecase.NewPush(permissionUsecase, branchRepository, pushRepository, snowUser).WithFileLocks(fileLockUsecase)
+	tagUsecase := usecase.NewTag(permissionUsecase, sqlite.NewTagRepository(dbConn), branchRepository, snowUser)
 	mergeRequestReviewUsecase := usecase.NewMergeRequestReview(
 		sqlite.NewMergeRequestReviewRepository(dbConn),
 		sqlite.NewMergeRequestRepository(dbConn),
@@ -109,6 +110,7 @@ func main() {
 	webhookUsecase := usecase.NewWebhook(webhookRepository, permissionUsecase, userRepo, webhookDispatcher, snowUser)
 	hookEmitter := usecase.NewHookEmitter(webhookRepository, projectRepo, orgRepo, branchRepository, userRepo, webhookDispatcher)
 	branchUsecase = branchUsecase.WithHooks(hookEmitter)
+	tagUsecase = tagUsecase.WithHooks(hookEmitter)
 	mergeRequestUsecase = mergeRequestUsecase.WithHooks(hookEmitter)
 	mergeRequestReviewUsecase = mergeRequestReviewUsecase.WithHooks(hookEmitter)
 	pushUsecase = pushUsecase.WithHooks(hookEmitter)
@@ -117,6 +119,7 @@ func main() {
 		userUsecase:               usecase.NewUser(snowUser, userRepo, passwordHasher),
 		commonUsecase:             usecase.NewCommon(orgRepo, projectRepo),
 		branchUsecase:             branchUsecase,
+		tagUsecase:                tagUsecase,
 		pushUsecase:               pushUsecase,
 		chunkUsecase:              chunkUsecase,
 		permissionUsecase:         permissionUsecase,
