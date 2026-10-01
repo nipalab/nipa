@@ -60,6 +60,9 @@ func (t *Tag) ListTags(ctx context.Context, projectID snow.ID, limit int, create
 	if !t.permUc.HasProjectAccess(ctx, projectID, domain.PermissionRead) {
 		return nil, domain.NewErrorNoPermission()
 	}
+	if lastID != 0 && createdBefore == nil {
+		return nil, domain.NewErrorUser("last_created_at is required with last_id")
+	}
 	return t.tagRepo.ListTags(ctx, projectID, limit, createdBefore, lastID)
 }
 

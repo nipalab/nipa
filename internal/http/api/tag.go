@@ -22,10 +22,11 @@ func setupTagRouter(ws *restful.WebService, h *handler.Handler) {
 		ws.GET("/orgs/{org}/projects/{project}/tags").
 			To(wrap(h.ListProjectTags)).
 			Param(ws.QueryParameter("limit", "maximum number of tags")).
-			Param(ws.QueryParameter("last_id", "pagination cursor (base36 tag id)")).
+			Param(ws.QueryParameter("last_id", "pagination cursor (base36 tag id; requires last_created_at)")).
 			Param(ws.QueryParameter("last_created_at", "pagination cursor (RFC3339)")).
 			Doc("List tags (project read)").
 			Returns(http.StatusOK, "tags", []model.TagResponse{}).
+			Returns(http.StatusBadRequest, "invalid cursor", model.APIError{}).
 			Operation("listProjectTags").
 			Metadata(restfulspec.KeyOpenAPITags, tags)))
 

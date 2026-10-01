@@ -127,6 +127,21 @@ func TestListTags_InvalidLastId(t *testing.T) {
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 }
 
+func TestListTags_LastIdWithoutCreatedAt(t *testing.T) {
+	srv, perm, _, _ := newTestTagServer(t)
+	projectID := snow.ID(42)
+
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), projectID, domain.PermissionRead).
+		Return(true)
+
+	_, err := srv.ListTags(context.Background(), &pb.ListTagsRequest{
+		Context: &pb.ProjectContext{Org: "org", Project: "proj"},
+		LastId:  strPtr(snow.ID(99).Base36()),
+	})
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+}
+
 func TestGetTagByName_Success(t *testing.T) {
 	srv, perm, repo, _ := newTestTagServer(t)
 	projectID := snow.ID(42)

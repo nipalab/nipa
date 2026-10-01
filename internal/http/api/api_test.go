@@ -772,6 +772,10 @@ func TestAPIRoutes(t *testing.T) {
 		tags := decodeBody[[]model.TagResponse](t, doGet(t, base, aliceLogin.AccessToken))
 		require.Len(t, tags, 2)
 
+		badCursor := doGet(t, base+"?last_id="+tag.ID, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusBadRequest, badCursor.StatusCode)
+		_ = badCursor.Body.Close()
+
 		duplicate := doMethod(t, http.MethodPost, base, `{"name":"v1.0.0","from":"main"}`, aliceLogin.AccessToken)
 		require.Equal(t, http.StatusConflict, duplicate.StatusCode)
 		_ = duplicate.Body.Close()
