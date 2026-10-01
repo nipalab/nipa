@@ -2,7 +2,7 @@
 
 A next-generation centralized Version Control System engineered for binary-heavy projects (e.g., game development, 3D assets, rich media) and large team monorepos.
 
-`nipa` combines the strengths of Git (lightweight branching, Merge Requests, client 3-way text merges), Perforce (exclusive file locking, high-throughput binary streaming), and SVN (fine-grained path-based access control, centralized single source of truth) to provide scalable asset tracking with developer autonomy.
+`nipa` combines the strengths of Git (lightweight branching, release tags, Merge Requests, client 3-way text merges), Perforce (exclusive file locking, high-throughput binary streaming), and SVN (fine-grained path-based access control, centralized single source of truth) to provide scalable asset tracking with developer autonomy.
 
 - **Language/Tech Stack:** Go (Golang), gRPC, Protobuf, SQLite (`modernc.org/sqlite`), FastCDC, BLAKE3
 - **Architecture Model:** Client-Server Monorepo (`nipa` / `nipad`) with a local client daemon (`nipa serve`) for GUI integrations
@@ -43,7 +43,8 @@ Run `nipa <command> --help` for full details.
 | --------------------------- | --------------------------------------------------------------------------- |
 | `nipa clone <url> <target>` | Clone a repository. `-b <name>` selects the starting branch (default `main`). |
 | `nipa branch`               | Show the current branch. `-a` lists all server branches, `-c <name>` creates a new branch and switches to it. |
-| `nipa switch <branch>`      | Fetch the given branch, materialize its tree in the working copy, and repoint the local repository at it. Not allowed while changes are staged. |
+| `nipa switch <branch>`      | Fetch the given branch, materialize its tree in the working copy, and repoint the local repository at it. `--tag <name>` checks out a release tag instead, detaching HEAD at that tag. Not allowed while changes are staged. |
+| `nipa tag`                  | List the project's release tags. `-c <name> [-m <message>]` creates an immutable tag pointing at the checked-out commit (or `--branch <b>` / `--commit <id\|hash>`), `-d <name>` deletes one. |
 | `nipa add <path> [...]`     | Mark files (or everything inside directories) for the next push.            |
 | `nipa remove <path> [...]`  | Unmark files for the next push. `-a` unmarks everything.                    |
 | `nipa status`               | Show the working copy status: `A` staged, `M` modified, `?` untracked, `!` missing, `C` conflicts. |
@@ -51,11 +52,11 @@ Run `nipa <command> --help` for full details.
 | `nipa lock list`            | List active binary file locks: path, scope, holder, acquisition time, and the merge request when one holds it. |
 | `nipa unlock <path> [--branch]` | Release a binary file lock you hold. |
 | `nipa push -m "<message>"`  | Upload staged changes to the server and commit them on the configured branch. `--dry-run` reports the would-land changes and upload estimate without contacting the server. |
-| `nipa update`               | Fetch and apply the latest changes of the configured branch.                |
+| `nipa update`               | Fetch and apply the latest changes of the configured branch; while detached at a tag, re-sync the checked-out tag instead. |
 | `nipa merge <branch>`       | Merge another branch into the current one. Fast-forwards when possible; `--no-ff` forces a merge commit, `--ff-only` refuses, `--abort` cancels a conflicted merge, `-m` sets the message, `--dry-run` reports the outcome and conflicts without applying. |
 | `nipa revert <commit>`      | Create new commits that undo the given commit or range (`<from>..<to>`, newest first, up to 16 commits) without rewriting history. `--mainline 1\|2` for merge commits, `--no-commit` stages without committing, `-m` sets the message (single commit only), `--continue` / `--abort` / `--skip` drive a conflicted revert, `--dry-run` reports the chained conflicts and changes without applying. |
 | `nipa log`                  | Show the commit history of the current branch. Interactive and scrollable when stdout is a terminal; `-n` limits, `--oneline` prints one line per commit, `--no-pager` disables the pager. |
-| `nipa diff [<rev1> [<rev2>]]` | Show changes as a unified patch. With no revisions: working tree vs the last synced snapshot (offline). One revision: that tree vs the working tree. Two revisions: tree vs tree. A revision is a branch name, a base36 commit ID (as printed by `nipa log`) or `HEAD`/`@`; `<a>..<b>` compares the two endpoints and `<a>...<b>` compares their merge base against `<b>`. Renames are detected automatically. `--staged` limits to what the next push would upload, `-U` sets the context, `--stat`/`--name-only`/`--name-status` select other formats, `-w`/`-b` ignore whitespace, `-- <path>` limits paths, `--exit-code` sets the exit status, `--ext-diff` opens each changed file in the configured external tool (`NIPA_EXTERNAL_DIFF` or `diffExternal` in `~/.config/nipa/config.json`), and `--no-pager`/`--no-color` disable the pager/colors. |
+| `nipa diff [<rev1> [<rev2>]]` | Show changes as a unified patch. With no revisions: working tree vs the last synced snapshot (offline). One revision: that tree vs the working tree. Two revisions: tree vs tree. A revision is a branch name, a tag name, a base36 commit ID (as printed by `nipa log`) or `HEAD`/`@`; `<a>..<b>` compares the two endpoints and `<a>...<b>` compares their merge base against `<b>`. Renames are detected automatically. `--staged` limits to what the next push would upload, `-U` sets the context, `--stat`/`--name-only`/`--name-status` select other formats, `-w`/`-b` ignore whitespace, `-- <path>` limits paths, `--exit-code` sets the exit status, `--ext-diff` opens each changed file in the configured external tool (`NIPA_EXTERNAL_DIFF` or `diffExternal` in `~/.config/nipa/config.json`), and `--no-pager`/`--no-color` disable the pager/colors. |
 | `nipa serve`                | Run the local daemon that GUI clients connect to: loopback gRPC with a capability token, a per-clone status cache fed by a file watcher, streaming progress for long operations and a pass-through proxy for the server APIs. Publishes its port and token in `~/.config/nipa/daemon.json` (0600) and stops on SIGINT/SIGTERM, draining in-flight operations. |
 | `nipa mcp [--repo <dir>] [--allow-write]` | Serve the working copy as a Model Context Protocol server over stdio so AI agents can inspect and change it directly. Read-only tools by default; mutating tools require `--allow-write`. See [AI agents and automation](#ai-agents-and-automation). |
 
@@ -63,6 +64,13 @@ Branch creation (`nipa branch -c <name>`) forks from the exact commit the
 working copy is pinned to (clone, update, switch and push record the branch head
 commit id locally; push also records its hash), falling back to the current
 branch head when there is nothing pinned yet.
+
+Release tags are immutable named pointers to one commit, with an optional
+annotation message (`nipa tag -c v1.0.0 -m "first release"`); the name is freed
+by `nipa tag -d`. `nipa switch --tag v1.0.0` checks the tagged tree out in a
+detached state: the configured branch stays, `nipa update` re-syncs the tag,
+`nipa status`, `nipa log` and `nipa diff` follow the pinned commit, and
+push/merge/revert refuse until `nipa switch <branch>` returns to a branch.
 
 Commit references are the base36 commit IDs printed by `nipa log`. A revert
 moves history forward: each reverted commit produces a new commit applying its
@@ -79,8 +87,9 @@ records each file's chunk hashes, so the old side of the comparison is
 reassembled from the local object cache.
 
 With revisions, each one resolves to a commit first: a branch name is looked up
-on the server, `HEAD`/`@` uses the locally pinned commit (the head recorded by
-clone/update/switch/push) and falls back to the configured branch head. One
+on the server, then a tag name, `HEAD`/`@` uses the locally pinned commit (the
+head recorded by clone/update/switch/push) and falls back to the configured
+branch head. One
 revision is compared against the working tree; two are compared as trees,
 downloading any missing chunks into the local cache. `<a>...<b>` compares the
 merge base of the two commits against `<b>`.
@@ -116,7 +125,8 @@ Nipa is designed to be driven by scripts and AI agents as well as humans:
   `--allow-write`. Authentication never prompts (a prompt would corrupt the
   JSON-RPC stream), so log in with a normal CLI command in the clone first.
 - **Machine-readable output** — read commands accept `--json` (`nipa status`,
-  `nipa diff`, `nipa log`, `nipa branch`, `nipa lock list`, `nipa mr list`);
+  `nipa diff`, `nipa log`, `nipa branch`, `nipa tag`, `nipa lock list`,
+  `nipa mr list`);
   `NIPA_OUTPUT=json` enables it globally. Payloads go to stdout; failures are a
   single `{"error":{"code","message","hint","action"}}` envelope on stderr, and
   exit codes are stable: `0` success, `1` generic failure, `2`
@@ -160,7 +170,8 @@ The full agent-facing reference lives in [`docs/AI.md`](docs/AI.md).
   [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md) and
   [`docs/DAEMON.md`](docs/DAEMON.md).
 - Local state lives in `.nipa/` inside the clone target: a JSON `config` with
-  the repository URL and current branch, and a SQLite database tracking the tree
+  the repository URL, current branch, sparse prefixes and (while detached at a
+  tag) the head marker, and a SQLite database tracking the tree
   snapshot (including each file's chunk hashes) and the staged file list, plus a
   content chunk cache (never erased, so updates can skip unchanged content and
   diffs can rebuild the old side).

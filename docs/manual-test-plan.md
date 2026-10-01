@@ -189,10 +189,62 @@ Server URL used throughout: `http://localhost:6745`.
 
 ---
 
-## 4. Working copy status (`nipa status`), `add`, `remove`
+## 4. Release tags (`nipa tag`, `nipa switch --tag`)
+
+### TC-TAG-01. Create a tag at the checked-out commit
+- **Pre:** worktree has pushed commits.
+- **Steps:** `nipa tag -c v1.0.0 -m "first release"`, then `nipa tag`.
+- **Expected:** tag created at the locally pinned commit; `nipa tag` lists
+  `v1.0.0` with its commit id and message; the branch head is unchanged.
+
+### TC-TAG-02. Create a tag from a branch or commit
+- **Steps:** `nipa tag -c v1.0.1 --branch dev`; then
+  `nipa tag -c v1.0.2 --commit <base36 id from nipa log>`.
+- **Expected:** each tag points at the resolved commit (branch head at creation
+  time, or the exact commit id); `--branch`/`--commit` together are rejected.
+
+### TC-TAG-03. Duplicate tag name is rejected
+- **Steps:** `nipa tag -c v1.0.0` again.
+- **Expected:** 409-style "tag already exists" error; existing tag unchanged.
+
+### TC-TAG-04. Delete frees the name
+- **Steps:** `nipa tag -d v1.0.0`, list tags, recreate `v1.0.0`.
+- **Expected:** delete succeeds; the name disappears from the list; recreation
+  succeeds; deleting a missing tag errors 404.
+
+### TC-TAG-05. Detached checkout (`nipa switch --tag`)
+- **Pre:** tag `v1.0.0` exists and the branch has newer commits.
+- **Steps:** `nipa switch --tag v1.0.0`, then `nipa status`.
+- **Expected:** working tree matches the tagged commit; `status` prints
+  `HEAD detached at tag "v1.0.0"`; `.nipa/config.branch` is unchanged and a
+  `head` marker names the tag.
+
+### TC-TAG-06. Update while detached re-syncs the tag
+- **Steps:** `nipa update`, then `nipa status`.
+- **Expected:** working tree stays at the tag (no move to the branch head) and
+  `status` still reports the detached tag.
+
+### TC-TAG-07. Push/merge/revert are blocked while detached
+- **Steps:** stage a change and run `nipa push -m x`; run `nipa merge main`;
+  run `nipa revert <commit>`.
+- **Expected:** each refuses with a "HEAD is detached at tag" error and a
+  `nipa switch <branch>` hint; nothing is committed or rewritten.
+
+### TC-TAG-08. Switch back to a branch re-attaches
+- **Steps:** `nipa switch main`, then `nipa status`.
+- **Expected:** working tree at the branch head; `status` prints `On branch
+  main`; the `head` marker is gone; a normal push works again.
+
+### TC-TAG-09. Invalid tag names
+- **Steps:** `nipa tag -c "has space"`, `nipa tag -c "a/b"`.
+- **Expected:** clear 400-style invalid-name errors; nothing is created.
+
+---
+
+## 5. Working copy status (`nipa status`), `add`, `remove`
 
 ### TC-WC-01. Fresh clone shows clean status
-- **Expected:** `nipa status` prints nothing (or "working copy clean"); exit 0.
+- **Expected:** `nipa status` prints `On branch main` (header only); exit 0.
 
 ### TC-WC-02. Status letters
 - **Steps:** create new file `new.txt` (?), modify tracked `a.txt` (M), stage
@@ -219,7 +271,7 @@ Server URL used throughout: `http://localhost:6745`.
 
 ---
 
-## 5. Push (`nipa push -m "..."`)
+## 6. Push (`nipa push -m "..."`)
 
 ### TC-PUSH-01. First push to a fresh repository
 - **Steps:** clone empty repo, add a `.gitignore`-like file + a text file, push.
@@ -279,7 +331,7 @@ Server URL used throughout: `http://localhost:6745`.
 
 ---
 
-## 6. Update (`nipa update`)
+## 7. Update (`nipa update`)
 
 ### TC-UPD-01. Update applies another worktree's push
 - **Pre:** A pushes a change; B is one commit behind.
@@ -310,7 +362,7 @@ Server URL used throughout: `http://localhost:6745`.
 
 ---
 
-## 7. Merge (`nipa merge <branch>`)
+## 8. Merge (`nipa merge <branch>`)
 
 Pre: every scenario uses two worktrees on `main` and `feature`.
 
@@ -415,7 +467,7 @@ Pre: every scenario uses two worktrees on `main` and `feature`.
 
 ---
 
-## 8. Binary / large-object behavior
+## 9. Binary / large-object behavior
 
 ### TC-BIN-01. Binary detection and round-trip
 - **Steps:** push files with different extensions/types: `.txt`, `.png`, `.zip`,
@@ -438,7 +490,7 @@ Pre: every scenario uses two worktrees on `main` and `feature`.
 
 ---
 
-## 9. Two-worktree concurrency scenarios
+## 10. Two-worktree concurrency scenarios
 
 ### TC-CONC-01. Concurrent pushes to different files
 - **Pre:** worktree A and B both fresh on `main`, both at head.
@@ -458,7 +510,7 @@ Pre: every scenario uses two worktrees on `main` and `feature`.
 
 ---
 
-## 10. Persistence & crash safety
+## 11. Persistence & crash safety
 
 ### TC-PERS-01. Server DB persists across restart
 - **Steps:** seed several repos/commits; stop server; start again on same DB.
@@ -487,7 +539,7 @@ Pre: every scenario uses two worktrees on `main` and `feature`.
 
 ---
 
-## 11. CLI UX & error handling
+## 12. CLI UX & error handling
 
 ### TC-CLI-01. `nipa --help` and per-command `--help`
 - **Expected:** every implemented command appears with usage; unknown flags fail
@@ -518,18 +570,19 @@ Pre: every scenario uses two worktrees on `main` and `feature`.
 
 ---
 
-## 12. Suggested priority / smoke suite
+## 13. Suggested priority / smoke suite
 
 Minimum set to run before a release:
 
 1. TC-AUTH-01, TC-AUTH-04
 2. TC-CLONE-01, TC-CLONE-02, TC-CLONE-04
 3. TC-BR-03, TC-BR-05, TC-BR-07
-4. TC-PUSH-01, TC-PUSH-02, TC-PUSH-06, TC-PUSH-08
-5. TC-UPD-01, TC-UPD-03
-6. TC-MRG-01, TC-MRG-04, TC-MRG-05, TC-MRG-06, TC-MRG-07
-7. TC-BIN-01, TC-BIN-03
-8. TC-CLI-04, TC-CLI-05
+4. TC-TAG-01, TC-TAG-05, TC-TAG-07
+5. TC-PUSH-01, TC-PUSH-02, TC-PUSH-06, TC-PUSH-08
+6. TC-UPD-01, TC-UPD-03
+7. TC-MRG-01, TC-MRG-04, TC-MRG-05, TC-MRG-06, TC-MRG-07
+8. TC-BIN-01, TC-BIN-03
+9. TC-CLI-04, TC-CLI-05
 
 Anything the testers mark as "blocked/not implemented yet" should be recorded
 with the observed CLI output so it can be turned into a regression test.

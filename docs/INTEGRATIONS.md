@@ -11,7 +11,7 @@ Every GUI surface (desktop client, Explorer, Unity, Unreal, Godot) talks to a si
 **Daemon responsibilities:**
 - Expose a loopback gRPC service (reuses `internal/client/grpc` transport types and `internal/client/usecase` orchestration).
 - Own authentication/session via `securestorage` (keyring-backed token store).
-- **Proxy remote operations server-side** (branches, merge requests, reviews, file locks, ACL/permissions) so GUI clients only ever know the daemon, never the direct server protocol.
+- **Proxy remote operations server-side** (branches, release tags, merge requests, reviews, file locks, ACL/permissions) so GUI clients only ever know the daemon, never the direct server protocol.
 - Run a file-system watcher (`fsnotify` / ReadDirectoryChangesW) per clone root and maintain an incremental **status cache** (staged / Modified / Untracked / Missing). Status is read 1000x more often than it changes — this is the difference between a snappy UI and scanning 100k binary assets per frame.
 - Serve async progress callbacks (server-streaming) so engine UIs, Explorer and the desktop client never block.
 
@@ -51,7 +51,7 @@ A standalone GUI client in the spirit of **P4V** — the primary visual workflow
 
 **Phase B — full parity ambition (target P4V feature coverage):**
 - Merge-request lifecycle: create, review decisions, inline diff comments, merge/close (reuses the REST/MR model from the web UI).
-- Revision graph (`WalkCommits` two-parent walk), branch management (create/switch/protect), pending multi-target revert control, sparse-checkout editor and ACL/admin panels.
+- Revision graph (`WalkCommits` two-parent walk), branch management (create/switch/protect), release tags (list/create/delete, detached `switch --tag` checkout), pending multi-target revert control, sparse-checkout editor and ACL/admin panels.
 
 ### P4V ↔ Nipa mapping
 
@@ -64,6 +64,7 @@ A standalone GUI client in the spirit of **P4V** — the primary visual workflow
 | Submit | Push (`base_commit_id` delta) |
 | Get Latest Revision | Update / Switch |
 | Integrate Source | Merge request lifecycle (`BRANCH_MERGING.md`) |
+| Label (release) | Release tags (`nipa tag`, `nipa switch --tag`) |
 | Revision graph | `WalkCommits` (newest-first, both parents) |
 | File History / Time-lapse view | `GetCommitLog` + commit diffs (`diff.TreeDiff`) |
 | Restricted/offline workspaces | Sparse-checkout prefixes in `.nipa/config` |

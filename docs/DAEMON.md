@@ -120,9 +120,9 @@ pb goes to `internal/client/grpc/daemonpb`. `make proto` gains a second
 |-----|-------|-------|
 | `Ping` | unary | readiness + version; discovery handshake |
 | `WatchRepo` / `UnwatchRepo` / `ListRepos` | unary | validate + register; returns config (url, branch, sparse) |
-| `Status` | unary | full `WorkingCopy.Status` result (staged/deleted/modified/untracked/missing/conflicts); `no_cache` passthrough |
+| `Status` | unary | full `WorkingCopy.Status` result (configured branch + detached `head` marker, staged/deleted/modified/untracked/missing/conflicts); `no_cache` passthrough |
 | `Stage` | unary | add/remove path lists → returns fresh status |
-| `Update`, `Switch` | **server-streaming** | progress events → terminal result |
+| `Update`, `Switch` | **server-streaming** | progress events → terminal result; `Switch` takes an optional `tag` to detach HEAD at a release tag instead of switching branches |
 | `Push` | **server-streaming** | message → progress → result (commit id/tree hash) |
 | `Merge`, `Revert` | **server-streaming** | incl. continue/skip/abort variants; conflicts returned as terminal event |
 | `Diff` | **server-streaming** | unified/stat/name output paged as bytes (reuse `usecase.Diff` renderers) |
@@ -261,6 +261,11 @@ Notes where the implementation settled details the design left open:
   addition outside `internal/client/daemon`; `localrepo.Init` now closes a
   previous handle and the DSN sets `busy_timeout`, since status and the
   reconciler share a handle.
+- **Tag checkout** rides the existing `Switch` stream: `SwitchRequest.tag`
+  routes to `UpdateRunner.SwitchTag`, `Status` carries the detached marker
+  (`branch` + `head{kind,name}`), and `Update` while detached re-syncs the
+  pinned commit. The manifest fetch uses `GetTreeManifest` with `commit_id`
+  (project-scoped), so a sparse clone only receives the tagged set.
 
 Not yet implemented: Phase B proxies (PBAC/path permissions, groups, review
 submission/thread writes, branch protection/default changes), idle-exit,
