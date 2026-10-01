@@ -89,6 +89,25 @@ func TestTag_ListTags_RepositoryError(t *testing.T) {
 	require.ErrorIs(t, err, wantErr)
 }
 
+func TestTag_ListTags_LastIDWithoutCreatedAt(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := newAllowAllPerm(ctrl)
+	repo := NewMocktagRepository(ctrl)
+	branchRepo := NewMockbranchRepository(ctrl)
+
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).
+		Return(true)
+
+	uc := NewTag(perm, repo, branchRepo, newTestBranchNode(t))
+	_, err := uc.ListTags(context.Background(), snow.ID(1), 10, nil, snow.ID(99))
+
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 400, domErr.Code)
+	require.Equal(t, "last_created_at is required with last_id", domErr.Message)
+}
+
 func TestTag_GetTagByName_NoPermission(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	perm := newAllowAllPerm(ctrl)

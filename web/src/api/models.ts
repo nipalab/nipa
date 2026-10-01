@@ -78,6 +78,15 @@ export interface BranchResponse {
   updated_at: string
 }
 
+export interface TagResponse {
+  id: string
+  name: string
+  commit_id: string
+  message?: string
+  user_id: string
+  created_at: string
+}
+
 export interface CommitResponse {
   id: string
   parent_1_id?: string

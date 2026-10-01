@@ -20,6 +20,7 @@ type usecaseContainer interface {
 	Group() *usecase.Group
 	Project() *usecase.Project
 	Branch() *usecase.Branch
+	Tag() *usecase.Tag
 	Chunk() *usecase.Chunk
 	MergeRequest() *usecase.MergeRequest
 	MergeRequestReview() *usecase.MergeRequestReview
@@ -64,6 +65,7 @@ func (a *API) SetupRoute() http.Handler {
 	setupUserRouter(apiWs, h)
 	setupProjectRouter(apiWs, h)
 	setupBrowserRouter(apiWs, h)
+	setupTagRouter(apiWs, h)
 	setupMergeRequestRouter(apiWs, h)
 	setupMergeRequestReviewRouter(apiWs, h)
 	setupFileLockRouter(apiWs, h)

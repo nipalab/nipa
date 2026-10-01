@@ -20,6 +20,7 @@ import type {
   ProjectPermissionResponse,
   ProjectResponse,
   SubmitReviewRequest,
+  TagResponse,
   ThreadCommentInput,
   ThreadResponse,
   CommentResponse,
@@ -153,6 +154,21 @@ export function setBranchProtection(
     method: 'PUT',
     body: JSON.stringify({ protected: protectedBranch }),
   })
+}
+
+export function listTags(org: string, project: string): Promise<TagResponse[]> {
+  return apiJson(`${projectBase(org, project)}/tags`)
+}
+
+export function createTag(org: string, project: string, name: string, from: string, message = ''): Promise<TagResponse> {
+  return apiJson(`${projectBase(org, project)}/tags`, {
+    method: 'POST',
+    body: JSON.stringify({ name, from, message }),
+  })
+}
+
+export function deleteTag(org: string, project: string, name: string): Promise<MessageResponse> {
+  return apiJson(`${projectBase(org, project)}/tags/${encodeURIComponent(name)}`, { method: 'DELETE' })
 }
 
 export function listCommits(org: string, project: string, branch: string, path = ''): Promise<CommitResponse[]> {

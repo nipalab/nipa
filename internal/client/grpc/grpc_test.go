@@ -84,6 +84,14 @@ type fakeServer struct {
 	walkCommitsErr      error
 	walkCommitsResp     *pb.WalkCommitsResponse
 	lastWalkCommitsReq  *pb.WalkCommitsRequest
+	createTagReq        *pb.CreateTagRequest
+	createTag           *pb.Tag
+	createTagErr        error
+	allTags             []*pb.Tag
+	listTagsErr         error
+	lastListTagsReq     *pb.ListTagsRequest
+	deleteTagErr        error
+	lastDeleteTagReq    *pb.DeleteTagRequest
 }
 
 func (f *fakeServer) GetDefaultBranch(_ context.Context, _ *pb.GetDefaultBranchRequest) (*pb.GetBranchResponse, error) {

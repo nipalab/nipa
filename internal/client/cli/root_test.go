@@ -20,6 +20,7 @@ type fakeUsecaseContainer struct {
 	permission *usecase.Permission
 	mr         *usecase.MergeRequest
 	lock       *usecase.FileLock
+	tag        *usecase.Tag
 }
 
 func (f *fakeUsecaseContainer) Auth() *usecase.Auth     { return f.auth }
@@ -34,6 +35,7 @@ func (f *fakeUsecaseContainer) Permission() *usecase.Permission {
 }
 func (f *fakeUsecaseContainer) MR() *usecase.MergeRequest { return f.mr }
 func (f *fakeUsecaseContainer) Lock() *usecase.FileLock   { return f.lock }
+func (f *fakeUsecaseContainer) Tag() *usecase.Tag         { return f.tag }
 
 func TestNewCli(t *testing.T) {
 	c := NewCli(&fakeUsecaseContainer{}, &fakeConnector{})
