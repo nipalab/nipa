@@ -18,10 +18,6 @@ type tagRepository interface {
 	GetTagByName(ctx context.Context, projectID snow.ID, name string) (*domain.Tag, error)
 	CreateTag(ctx context.Context, tag domain.Tag) (*domain.Tag, error)
 	DeleteTag(ctx context.Context, projectID, tagID snow.ID) error
-	GetCommit(ctx context.Context, commitID snow.ID) (*domain.Commit, error)
-	GetCommitByHash(ctx context.Context, hash domain.Hash) (*domain.Commit, error)
-	GetBranchByName(ctx context.Context, projectID snow.ID, name string) (*domain.Branch, error)
-	GetDefaultBranch(ctx context.Context, projectID snow.ID) (*domain.Branch, error)
 }
 
 // TagTarget selects the commit a tag points at. CommitID and CommitHash take
@@ -33,10 +29,11 @@ type TagTarget struct {
 }
 
 type Tag struct {
-	permUc   permissionUsecase
-	tagRepo  tagRepository
-	snowNode snow.Node
-	hooks    hookTagGate
+	permUc     permissionUsecase
+	tagRepo    tagRepository
+	branchRepo branchRepository
+	snowNode   snow.Node
+	hooks      hookTagGate
 }
 
 // hookTagGate is the subset of the webhook emitter used by tag management.
@@ -44,11 +41,12 @@ type hookTagGate interface {
 	EmitTag(ctx context.Context, event string, projectID snow.ID, tag *domain.Tag, actor snow.ID) error
 }
 
-func NewTag(permUc permissionUsecase, tagRepo tagRepository, snowNode snow.Node) *Tag {
+func NewTag(permUc permissionUsecase, tagRepo tagRepository, branchRepo branchRepository, snowNode snow.Node) *Tag {
 	return &Tag{
-		permUc:   permUc,
-		tagRepo:  tagRepo,
-		snowNode: snowNode,
+		permUc:     permUc,
+		tagRepo:    tagRepo,
+		branchRepo: branchRepo,
+		snowNode:   snowNode,
 	}
 }
 
@@ -145,7 +143,7 @@ func (t *Tag) tagByName(ctx context.Context, projectID snow.ID, name string) (*d
 
 func (t *Tag) resolveTarget(ctx context.Context, projectID snow.ID, target TagTarget) (*snow.ID, error) {
 	if target.CommitID != nil {
-		commit, err := t.tagRepo.GetCommit(ctx, *target.CommitID)
+		commit, err := t.branchRepo.GetCommit(ctx, *target.CommitID)
 		if err != nil {
 			if domain.IsErrorNotFound(err) {
 				return nil, domain.NewErrorNotFound(fmt.Sprintf("commit %s not found", target.CommitID.Base36()))
@@ -160,7 +158,7 @@ func (t *Tag) resolveTarget(ctx context.Context, projectID snow.ID, target TagTa
 	}
 
 	if target.CommitHash != nil {
-		commit, err := t.tagRepo.GetCommitByHash(ctx, *target.CommitHash)
+		commit, err := t.branchRepo.GetCommitByHash(ctx, *target.CommitHash)
 		if err != nil {
 			if domain.IsErrorNotFound(err) {
 				return nil, domain.NewErrorNotFound(fmt.Sprintf("commit %s not found", target.CommitHash.String()))
@@ -175,7 +173,7 @@ func (t *Tag) resolveTarget(ctx context.Context, projectID snow.ID, target TagTa
 	}
 
 	if target.BranchName != "" {
-		branch, err := t.tagRepo.GetBranchByName(ctx, projectID, target.BranchName)
+		branch, err := t.branchRepo.GetBranchByName(ctx, projectID, target.BranchName)
 		if domain.IsErrorNotFound(err) {
 			return nil, domain.NewErrorNotFound(fmt.Sprintf("branch %q not found", target.BranchName))
 		}
@@ -185,7 +183,7 @@ func (t *Tag) resolveTarget(ctx context.Context, projectID snow.ID, target TagTa
 		return branch.CommitID, nil
 	}
 
-	def, err := t.tagRepo.GetDefaultBranch(ctx, projectID)
+	def, err := t.branchRepo.GetDefaultBranch(ctx, projectID)
 	if domain.IsErrorNotFound(err) {
 		return nil, nil
 	}

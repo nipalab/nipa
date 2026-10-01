@@ -52,6 +52,7 @@ type loginMockContainer struct {
 func (m *loginMockContainer) Auth() *usecase.Auth             { return m.auth }
 func (m *loginMockContainer) User() *usecase.User             { return nil }
 func (m *loginMockContainer) Branch() *usecase.Branch         { return nil }
+func (m *loginMockContainer) Tag() *usecase.Tag               { return nil }
 func (m *loginMockContainer) Common() *usecase.Common         { return nil }
 func (m *loginMockContainer) Push() *usecase.Push             { return nil }
 func (m *loginMockContainer) Chunk() *usecase.Chunk           { return nil }

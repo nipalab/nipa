@@ -213,6 +213,56 @@ message SetBranchProtectionResponse {
     Branch branch = 1;
 }
 
+message Tag {
+    google.protobuf.Timestamp created_at = 1;
+    google.protobuf.Timestamp updated_at = 2;
+    string id = 3;
+    string name = 4;
+    string commit_id = 5;
+    string message = 6;
+    string user_id = 7;
+}
+
+message CreateTagRequest {
+    ProjectContext context = 1;
+    string name = 2;
+    string from_branch = 3; // branch whose head is tagged; empty to tag the default branch head
+    string from_commit_id = 4; // exact commit to tag (base36 snow ID); takes precedence over from_commit_hash and from_branch
+    string from_commit_hash = 5; // exact commit to tag (hex content hash); takes precedence over from_branch
+    string message = 6;
+}
+
+message CreateTagResponse {
+    Tag tag = 1;
+}
+
+message GetTagByNameRequest {
+    ProjectContext context = 1;
+    string name = 2;
+}
+
+message GetTagByNameResponse {
+    Tag tag = 1;
+}
+
+message ListTagsRequest {
+    ProjectContext context = 1;
+    int32 limit = 2;
+    optional google.protobuf.Timestamp last_created_at = 3;
+    optional string last_id = 4;
+}
+
+message ListTagsResponse {
+    repeated Tag tags = 1;
+}
+
+message DeleteTagRequest {
+    ProjectContext context = 1;
+    string name = 2;
+}
+
+message DeleteTagResponse {}
+
 message GetMergeBaseRequest {
     ProjectContext context = 1;
     string target_branch = 2; // used when target_commit_id is empty
@@ -811,6 +861,10 @@ service NipaService {
     rpc DeleteBranch(DeleteBranchRequest) returns (DeleteBranchResponse);
     rpc SetDefaultBranch(SetDefaultBranchRequest) returns (SetDefaultBranchResponse);
     rpc SetBranchProtection(SetBranchProtectionRequest) returns (SetBranchProtectionResponse);
+    rpc ListTags(ListTagsRequest) returns (ListTagsResponse);
+    rpc GetTagByName(GetTagByNameRequest) returns (GetTagByNameResponse);
+    rpc CreateTag(CreateTagRequest) returns (CreateTagResponse);
+    rpc DeleteTag(DeleteTagRequest) returns (DeleteTagResponse);
     rpc GetTreeManifest(GetTreeManifestRequest) returns (GetTreeManifestResponse);
     rpc GetCommitLog(GetCommitLogRequest) returns (GetCommitLogResponse);
     rpc GetCommit(GetCommitRequest) returns (GetCommitResponse);
