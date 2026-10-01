@@ -18,6 +18,7 @@ type usecaseContainer interface {
 	Permission() *usecase.Permission
 	MR() *usecase.MergeRequest
 	Lock() *usecase.FileLock
+	Tag() *usecase.Tag
 }
 
 type connector interface {
@@ -59,6 +60,7 @@ func (c *Cli) Run(extra ...*cobra.Command) error {
 	rootCmd.AddCommand(c.setupMrCmd())
 	rootCmd.AddCommand(c.setupLockCmd())
 	rootCmd.AddCommand(c.setupUnlockCmd())
+	rootCmd.AddCommand(c.setupTagCmd())
 	rootCmd.AddCommand(extra...)
 	return rootCmd.Execute()
 }
