@@ -121,6 +121,7 @@ type handlerRegistry struct {
 	group        *usecase.Group
 	project      *usecase.Project
 	branch       *usecase.Branch
+	tag          *usecase.Tag
 	chunk        *usecase.Chunk
 	mergeRequest *usecase.MergeRequest
 	review       *usecase.MergeRequestReview
@@ -136,6 +137,7 @@ func (r *handlerRegistry) Org() *usecase.Org               { return r.org }
 func (r *handlerRegistry) Group() *usecase.Group           { return r.group }
 func (r *handlerRegistry) Project() *usecase.Project       { return r.project }
 func (r *handlerRegistry) Branch() *usecase.Branch         { return r.branch }
+func (r *handlerRegistry) Tag() *usecase.Tag               { return r.tag }
 func (r *handlerRegistry) Chunk() *usecase.Chunk           { return r.chunk }
 func (r *handlerRegistry) MergeRequest() *usecase.MergeRequest {
 	return r.mergeRequest
@@ -229,6 +231,7 @@ func newHandlerTestEnv(t *testing.T) *handlerTestEnv {
 		group:        usecase.NewGroup(groupRepo, node, permissionUc, orgUc),
 		project:      projectUc,
 		branch:       branchUc,
+		tag:          usecase.NewTag(permissionUc, sqlite.NewTagRepository(dbConn), branchRepo, node),
 		chunk:        chunkUc,
 		mergeRequest: mergeRequestUc,
 		review:       reviewUc,

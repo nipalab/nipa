@@ -36,6 +36,7 @@ type testRegistry struct {
 	group        *usecase.Group
 	project      *usecase.Project
 	branch       *usecase.Branch
+	tag          *usecase.Tag
 	chunk        *usecase.Chunk
 	mergeRequest *usecase.MergeRequest
 	review       *usecase.MergeRequestReview
@@ -51,6 +52,7 @@ func (r *testRegistry) Org() *usecase.Org               { return r.org }
 func (r *testRegistry) Group() *usecase.Group           { return r.group }
 func (r *testRegistry) Project() *usecase.Project       { return r.project }
 func (r *testRegistry) Branch() *usecase.Branch         { return r.branch }
+func (r *testRegistry) Tag() *usecase.Tag               { return r.tag }
 func (r *testRegistry) Chunk() *usecase.Chunk           { return r.chunk }
 func (r *testRegistry) MergeRequest() *usecase.MergeRequest {
 	return r.mergeRequest
@@ -138,6 +140,7 @@ func TestAPIRoutes(t *testing.T) {
 	mergeRequestUc = mergeRequestUc.WithHooks(hookEmitter)
 	reviewUc = reviewUc.WithHooks(hookEmitter)
 	pusher = pusher.WithHooks(hookEmitter)
+	tagUc := usecase.NewTag(permissionUc, sqlite.NewTagRepository(dbConn), branchRepo, node).WithHooks(hookEmitter)
 	reg := &testRegistry{
 		auth:         usecase.NewAuth("test-secret", stubPasswordHasher{}, userRepo, sqlite.NewAuthRepository(dbConn)),
 		user:         usecase.NewUser(node, userRepo, stubPasswordHasher{}),
@@ -147,6 +150,7 @@ func TestAPIRoutes(t *testing.T) {
 		group:        usecase.NewGroup(groupRepo, node, permissionUc, orgUc),
 		project:      projectUc,
 		branch:       branchUc,
+		tag:          tagUc,
 		chunk:        chunkUc,
 		mergeRequest: mergeRequestUc,
 		review:       reviewUc,
@@ -732,6 +736,61 @@ func TestAPIRoutes(t *testing.T) {
 		branches := decodeBody[[]model.BranchResponse](t, doGet(t, base, aliceLogin.AccessToken))
 		require.Len(t, branches, 1)
 		require.Equal(t, "main", branches[0].Name)
+	})
+
+	t.Run("tags", func(t *testing.T) {
+		aliceLogin, _ := login(t)
+		bobLogin, _ := loginAs(t, "bob@example.com")
+		projectBase := server.URL + "/api/v1/orgs/default/projects/default"
+		base := projectBase + "/tags"
+
+		branches := decodeBody[[]model.BranchResponse](t, doGet(t, projectBase+"/branches", aliceLogin.AccessToken))
+		var mainHead string
+		for _, branch := range branches {
+			if branch.Name == "main" {
+				mainHead = branch.CommitID
+			}
+		}
+		require.NotEmpty(t, mainHead)
+
+		create := doMethod(t, http.MethodPost, base, `{"name":"v1.0.0","from":"main","message":"first release"}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, create.StatusCode)
+		tag := decodeBody[model.TagResponse](t, create)
+		require.Equal(t, "v1.0.0", tag.Name)
+		require.Equal(t, mainHead, tag.CommitID)
+		require.Equal(t, "first release", tag.Message)
+		require.NotEmpty(t, tag.ID)
+
+		fromCommit := doMethod(t, http.MethodPost, base, `{"name":"v1.0.1","from":"`+mainHead+`"}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, fromCommit.StatusCode)
+		require.Equal(t, mainHead, decodeBody[model.TagResponse](t, fromCommit).CommitID)
+
+		got := decodeBody[model.TagResponse](t, doGet(t, base+"/v1.0.0", aliceLogin.AccessToken))
+		require.Equal(t, tag.ID, got.ID)
+		require.Equal(t, "v1.0.0", got.Name)
+
+		tags := decodeBody[[]model.TagResponse](t, doGet(t, base, aliceLogin.AccessToken))
+		require.Len(t, tags, 2)
+
+		duplicate := doMethod(t, http.MethodPost, base, `{"name":"v1.0.0","from":"main"}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusConflict, duplicate.StatusCode)
+		_ = duplicate.Body.Close()
+
+		denied := doMethod(t, http.MethodPost, base, `{"name":"v2.0.0","from":"main"}`, bobLogin.AccessToken)
+		require.Equal(t, http.StatusForbidden, denied.StatusCode)
+		_ = denied.Body.Close()
+
+		remove := doMethod(t, http.MethodDelete, base+"/v1.0.0", "", aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, remove.StatusCode)
+		_ = remove.Body.Close()
+
+		gone := doGet(t, base+"/v1.0.0", aliceLogin.AccessToken)
+		require.Equal(t, http.StatusNotFound, gone.StatusCode)
+		_ = gone.Body.Close()
+
+		remaining := decodeBody[[]model.TagResponse](t, doGet(t, base, aliceLogin.AccessToken))
+		require.Len(t, remaining, 1)
+		require.Equal(t, "v1.0.1", remaining[0].Name)
 	})
 
 	t.Run("merge requests", func(t *testing.T) {

@@ -13,6 +13,7 @@ type usecaseContainer interface {
 	Group() *usecase.Group
 	Project() *usecase.Project
 	Branch() *usecase.Branch
+	Tag() *usecase.Tag
 	MergeRequest() *usecase.MergeRequest
 	MergeRequestReview() *usecase.MergeRequestReview
 	FileLock() *usecase.FileLock
