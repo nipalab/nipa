@@ -101,7 +101,14 @@ func terminalResult(t *testing.T, events []*daemonpb.OpEvent) *daemonpb.OpResult
 
 func firstEventIs(t *testing.T, events []*daemonpb.OpEvent, phase string) {
 	t.Helper()
-	require.Equal(t, phase, events[0].GetStarted().GetPhase())
+	for _, ev := range events {
+		if ev.GetQueued() != nil {
+			continue
+		}
+		require.Equal(t, phase, ev.GetStarted().GetPhase())
+		return
+	}
+	require.Fail(t, "the stream must carry a started event", "phase %q", phase)
 }
 
 func progressPhases(events []*daemonpb.OpEvent, phase string) (objects, bytes int64) {
