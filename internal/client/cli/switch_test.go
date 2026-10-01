@@ -92,3 +92,54 @@ func loadRepoConfig(t *testing.T, root string) domain.Config {
 	require.NoError(t, err)
 	return *cfg
 }
+
+func TestSetupSwitchCmd_Tag(t *testing.T) {
+	root := setupRepo(t, "main")
+	client := &fakeUpdateClient{
+		tagInfo:    &domain.Tag{Name: "v1.0.0", CommitID: "abc123"},
+		commitTree: &serverDomain.TreeNode{Name: "root"},
+	}
+	cli := newUpdateCli(t, client)
+
+	out, err := runCmdInDir(t, root, cli.setupSwitchCmd(), "--tag", "v1.0.0")
+	require.NoError(t, err)
+	require.Contains(t, out, `HEAD detached at tag "v1.0.0"`)
+	require.Equal(t, "v1.0.0", client.tagLookup)
+	require.Equal(t, "abc123", client.commitTreeID)
+
+	cfg := loadRepoConfig(t, root)
+	require.Equal(t, "main", cfg.Branch, "the branch identity must stay configured")
+	require.NotNil(t, cfg.Head)
+	require.Equal(t, domain.HeadKindTag, cfg.Head.Kind)
+	require.Equal(t, "v1.0.0", cfg.Head.Name)
+}
+
+func TestSetupSwitchCmd_TagWithBranchRejected(t *testing.T) {
+	root := setupRepo(t, "main")
+	cli := newUpdateCli(t, &fakeUpdateClient{})
+
+	_, err := runCmdInDir(t, root, cli.setupSwitchCmd(), "--tag", "v1.0.0", "dev")
+	require.EqualError(t, err, "--tag cannot be combined with a branch name")
+}
+
+func TestSetupSwitchCmd_ReattachDetachedBranch(t *testing.T) {
+	root := setupRepo(t, "main")
+	lr := localrepo.NewLocalRepo()
+	require.NoError(t, lr.Init(root))
+	require.NoError(t, lr.SaveConfig(domain.Config{
+		Url: "http://example.com/org/project", Branch: "main",
+		Head: &domain.HeadRef{Kind: domain.HeadKindTag, Name: "v1.0.0"},
+	}))
+	require.NoError(t, lr.Close())
+
+	client := &fakeUpdateClient{manifest: &serverDomain.TreeNode{Name: "root"}}
+	cli := newUpdateCli(t, client)
+
+	out, err := runCmdInDir(t, root, cli.setupSwitchCmd(), "main")
+	require.NoError(t, err)
+	require.Contains(t, out, `Switched to branch "main"`)
+	require.Equal(t, "main", client.branch, "a detached working copy must re-attach even to the configured branch")
+
+	cfg := loadRepoConfig(t, root)
+	require.Nil(t, cfg.Head)
+}

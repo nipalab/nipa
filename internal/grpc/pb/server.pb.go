@@ -285,7 +285,8 @@ type GetTreeManifestRequest struct {
 	Path          string                 `protobuf:"bytes,3,opt,name=path,proto3" json:"path,omitempty"`
 	TreeHash      *string                `protobuf:"bytes,4,opt,name=tree_hash,json=treeHash,proto3,oneof" json:"tree_hash,omitempty"`
 	Recursive     bool                   `protobuf:"varint,5,opt,name=recursive,proto3" json:"recursive,omitempty"`
-	Paths         []string               `protobuf:"bytes,6,rep,name=paths,proto3" json:"paths,omitempty"` // directory prefixes to include; empty = whole tree
+	Paths         []string               `protobuf:"bytes,6,rep,name=paths,proto3" json:"paths,omitempty"`                             // directory prefixes to include; empty = whole tree
+	CommitId      *string                `protobuf:"bytes,7,opt,name=commit_id,json=commitId,proto3,oneof" json:"commit_id,omitempty"` // base36 snow ID; when set, the manifest is built from that commit instead of the branch head
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -360,6 +361,13 @@ func (x *GetTreeManifestRequest) GetPaths() []string {
 		return x.Paths
 	}
 	return nil
+}
+
+func (x *GetTreeManifestRequest) GetCommitId() string {
+	if x != nil && x.CommitId != nil {
+		return *x.CommitId
+	}
+	return ""
 }
 
 type GetTreeManifestResponse struct {
@@ -8546,16 +8554,19 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"\ttree_hash\x18\x01 \x01(\tR\btreeHash\x12\x12\n" +
 	"\x04path\x18\x02 \x01(\tR\x04path\x120\n" +
 	"\tsub_trees\x18\x03 \x03(\v2\x13.greet.TreeManifestR\bsubTrees\x12%\n" +
-	"\x05files\x18\x04 \x03(\v2\x0f.greet.FileNodeR\x05files\"\xd9\x01\n" +
+	"\x05files\x18\x04 \x03(\v2\x0f.greet.FileNodeR\x05files\"\x89\x02\n" +
 	"\x16GetTreeManifestRequest\x12/\n" +
 	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12\x16\n" +
 	"\x06branch\x18\x02 \x01(\tR\x06branch\x12\x12\n" +
 	"\x04path\x18\x03 \x01(\tR\x04path\x12 \n" +
 	"\ttree_hash\x18\x04 \x01(\tH\x00R\btreeHash\x88\x01\x01\x12\x1c\n" +
 	"\trecursive\x18\x05 \x01(\bR\trecursive\x12\x14\n" +
-	"\x05paths\x18\x06 \x03(\tR\x05pathsB\f\n" +
+	"\x05paths\x18\x06 \x03(\tR\x05paths\x12 \n" +
+	"\tcommit_id\x18\a \x01(\tH\x01R\bcommitId\x88\x01\x01B\f\n" +
 	"\n" +
-	"_tree_hash\"c\n" +
+	"_tree_hashB\f\n" +
+	"\n" +
+	"_commit_id\"c\n" +
 	"\x17GetTreeManifestResponse\x12\x16\n" +
 	"\x06branch\x18\x01 \x01(\tR\x06branch\x120\n" +
 	"\troot_tree\x18\x02 \x01(\v2\x13.greet.TreeManifestR\brootTree\"\xdb\x01\n" +

@@ -69,6 +69,21 @@ func (c *Client) ListTags(ctx context.Context, org, project string) ([]*clientDo
 	}
 }
 
+func (c *Client) GetTagByName(ctx context.Context, org, project, name string) (*clientDomain.Tag, error) {
+	client, err := c.transport.NipaServiceClient()
+	if err != nil {
+		return nil, err
+	}
+	res, err := client.GetTagByName(ctx, &pb.GetTagByNameRequest{
+		Context: &pb.ProjectContext{Org: org, Project: project},
+		Name:    name,
+	})
+	if err != nil {
+		return nil, toDomainError(err)
+	}
+	return toClientTag(res.GetTag()), nil
+}
+
 func (c *Client) DeleteTag(ctx context.Context, org, project, name string) error {
 	client, err := c.transport.NipaServiceClient()
 	if err != nil {

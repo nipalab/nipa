@@ -81,6 +81,10 @@ func (r *Revert) Run(ctx context.Context, root, target string, opts RevertOption
 	if err != nil {
 		return nil, err
 	}
+	if cfg.Head != nil {
+		return nil, domain.NewUserError(fmt.Sprintf("cannot revert while HEAD is detached at tag %q", cfg.Head.Name)).
+			WithHint("switch to a branch first", "nipa switch <branch>")
+	}
 	nipaUrl, err := domain.ParseNipaUrl(cfg.Url)
 	if err != nil {
 		return nil, err

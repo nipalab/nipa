@@ -140,7 +140,7 @@ func (r *Repo) CreateBranch(ctx context.Context, root, host, org, project, name 
 	if err != nil {
 		return nil, err
 	}
-	if err := r.localRepo.SaveConfig(domain.Config{Url: cfg.Url, Branch: name}); err != nil {
+	if err := r.localRepo.SaveConfig(domain.Config{Url: cfg.Url, Branch: name, Sparse: cfg.Sparse}); err != nil {
 		return nil, err
 	}
 	return created, nil

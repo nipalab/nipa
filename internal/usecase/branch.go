@@ -388,6 +388,33 @@ func (b *Branch) GetTreeManifest(ctx context.Context, projectID snow.ID, branchN
 	if err != nil {
 		return nil, err
 	}
+	return b.manifestForCommit(ctx, projectID, commit, sparse, recursive, treeHash, fmt.Sprintf("branch %q", branchName))
+}
+
+// GetCommitTreeManifest builds the manifest of an arbitrary commit's tree,
+// scoped to the caller's read filter and the requested sparse paths.
+func (b *Branch) GetCommitTreeManifest(ctx context.Context, projectID snow.ID, commitID snow.ID, paths []string, recursive bool) (*domain.TreeNode, error) {
+	if !b.permUc.HasProjectAccess(ctx, projectID, domain.PermissionRead) {
+		return nil, domain.NewErrorNoPermission()
+	}
+	sparse, err := domain.NewPrefixSet(paths)
+	if err != nil {
+		return nil, domain.NewErrorUser(err.Error())
+	}
+	commit, err := b.branchRepo.GetCommit(ctx, commitID)
+	if domain.IsErrorNotFound(err) {
+		return nil, domain.NewErrorNotFound(fmt.Sprintf("commit %s not found", commitID.Base36()))
+	}
+	if err != nil {
+		return nil, err
+	}
+	if commit.ProjectID != projectID {
+		return nil, domain.NewErrorNotFound(fmt.Sprintf("commit %s not found", commitID.Base36()))
+	}
+	return b.manifestForCommit(ctx, projectID, commit, sparse, recursive, "", fmt.Sprintf("commit %s", commitID.Base36()))
+}
+
+func (b *Branch) manifestForCommit(ctx context.Context, projectID snow.ID, commit *domain.Commit, sparse domain.PrefixSet, recursive bool, treeHash, source string) (*domain.TreeNode, error) {
 	root, err := b.branchRepo.GetTreeNode(ctx, commit.TreeID)
 	if err != nil {
 		return nil, err
@@ -399,7 +426,7 @@ func (b *Branch) GetTreeManifest(ctx context.Context, projectID snow.ID, branchN
 	if treeHash != "" && sparse.Empty() && filter.All() && strings.EqualFold(treeHash, root.Hash.String()) {
 		return nil, nil
 	}
-	if err := b.verifySparsePaths(ctx, root, sparse, filter, branchName); err != nil {
+	if err := b.verifySparsePaths(ctx, root, sparse, filter, source); err != nil {
 		return nil, err
 	}
 	if err := b.loadTreeManifest(ctx, root, "", recursive, filter, sparse); err != nil {
@@ -412,17 +439,17 @@ func (b *Branch) GetTreeManifest(ctx context.Context, projectID snow.ID, branchN
 	return root, nil
 }
 
-func (b *Branch) verifySparsePaths(ctx context.Context, root *domain.TreeNode, sparse domain.PrefixSet, filter *PathFilter, branchName string) error {
+func (b *Branch) verifySparsePaths(ctx context.Context, root *domain.TreeNode, sparse domain.PrefixSet, filter *PathFilter, source string) error {
 	for _, prefix := range sparse {
 		if prefix == "" {
 			continue
 		}
 		if !filter.CanDescend(prefix) {
-			return domain.NewErrorNotFound(fmt.Sprintf("path %q not found in branch %q", prefix, branchName))
+			return domain.NewErrorNotFound(fmt.Sprintf("path %q not found in %s", prefix, source))
 		}
 		if _, err := b.findTreeNode(ctx, root, prefix); err != nil {
 			if domain.IsErrorNotFound(err) {
-				return domain.NewErrorNotFound(fmt.Sprintf("path %q not found in branch %q", prefix, branchName))
+				return domain.NewErrorNotFound(fmt.Sprintf("path %q not found in %s", prefix, source))
 			}
 			return err
 		}

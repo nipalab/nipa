@@ -26,6 +26,12 @@ type fakeUpdateClient struct {
 	downloaded  []serverDomain.Hash
 	branchErr   error
 	manifestErr error
+
+	tagInfo      *domain.Tag
+	tagErr       error
+	tagLookup    string
+	commitTree   *serverDomain.TreeNode
+	commitTreeID string
 }
 
 func (f *fakeUpdateClient) Connect(_ context.Context, host string) error {
@@ -54,6 +60,26 @@ func (f *fakeUpdateClient) GetTreeNodeManifest(_ context.Context, org, project, 
 		return &serverDomain.TreeNode{Name: "root"}, nil
 	}
 	return f.manifest, nil
+}
+
+func (f *fakeUpdateClient) GetCommitTreeManifest(_ context.Context, org, project, commitID string, paths []string) (*serverDomain.TreeNode, error) {
+	f.org, f.project, f.commitTreeID = org, project, commitID
+	f.path = ""
+	if len(paths) > 0 {
+		f.path = paths[0]
+	}
+	if f.manifestErr != nil {
+		return nil, f.manifestErr
+	}
+	if f.commitTree == nil {
+		return &serverDomain.TreeNode{Name: "root"}, nil
+	}
+	return f.commitTree, nil
+}
+
+func (f *fakeUpdateClient) GetTagByName(_ context.Context, org, project, name string) (*domain.Tag, error) {
+	f.org, f.project, f.tagLookup = org, project, name
+	return f.tagInfo, f.tagErr
 }
 
 func (f *fakeUpdateClient) DownloadChunks(_ context.Context, _ domain.ChunkScope, hashes []serverDomain.Hash, onChunk func(h serverDomain.Hash, data []byte) error) error {

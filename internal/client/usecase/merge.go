@@ -81,6 +81,10 @@ func (m *Merge) Run(ctx context.Context, root, sourceBranch string, opts MergeOp
 	if err != nil {
 		return nil, err
 	}
+	if cfg.Head != nil {
+		return nil, domain.NewUserError(fmt.Sprintf("cannot merge while HEAD is detached at tag %q", cfg.Head.Name)).
+			WithHint("switch to a branch first", "nipa switch <branch>")
+	}
 	nipaUrl, err := domain.ParseNipaUrl(cfg.Url)
 	if err != nil {
 		return nil, err

@@ -30,6 +30,13 @@ type stubUpdateClient struct {
 	downloadHashes   []serverDomain.Hash
 	downloadData     map[serverDomain.Hash][]byte
 	downloadErr      error
+
+	tagInfo           *domain.Tag
+	tagErr            error
+	tagLookup         string
+	commitTreeLookup  string
+	commitManifest    *serverDomain.TreeNode
+	commitManifestErr error
 }
 
 func (s *stubUpdateClient) Connect(_ context.Context, host string) error {
@@ -49,6 +56,20 @@ func (s *stubUpdateClient) GetTreeNodeManifest(_ context.Context, org, project, 
 		s.treePath = paths[0]
 	}
 	return s.manifest, s.manifestErr
+}
+
+func (s *stubUpdateClient) GetCommitTreeManifest(_ context.Context, org, project, commitID string, paths []string) (*serverDomain.TreeNode, error) {
+	s.org, s.project, s.commitTreeLookup = org, project, commitID
+	s.treePath = ""
+	if len(paths) > 0 {
+		s.treePath = paths[0]
+	}
+	return s.commitManifest, s.commitManifestErr
+}
+
+func (s *stubUpdateClient) GetTagByName(_ context.Context, org, project, name string) (*domain.Tag, error) {
+	s.org, s.project, s.tagLookup = org, project, name
+	return s.tagInfo, s.tagErr
 }
 
 func (s *stubUpdateClient) DownloadChunks(_ context.Context, _ domain.ChunkScope, hashes []serverDomain.Hash, onChunk func(h serverDomain.Hash, data []byte) error) error {
@@ -1219,4 +1240,189 @@ func TestSwitch_Error_SaveTreeFails(t *testing.T) {
 	err := updater.Switch(context.Background(), t.TempDir(), "dev")
 	require.ErrorIs(t, err, wantErr)
 	require.Empty(t, local.config.Branch, "config must not change when the tree cannot be saved")
+}
+
+func TestSwitch_ReattachesDetachedHead(t *testing.T) {
+	root := t.TempDir()
+	head := snow.ID(42)
+	local := &stubLocalRepo{
+		loadConfig: &domain.Config{
+			Url: "http://example.com/org/project", Branch: "main",
+			Head: &domain.HeadRef{Kind: domain.HeadKindTag, Name: "v1.0.0"},
+		},
+		snapshot: &domain.Snapshot{},
+	}
+	client := &stubUpdateClient{
+		manifest:   &serverDomain.TreeNode{Name: "root"},
+		branchInfo: &serverDomain.Branch{Name: "main", CommitID: &head},
+	}
+	updater := newTestUpdate(t, local, client)
+
+	require.NoError(t, updater.Switch(context.Background(), root, "main"))
+	require.Equal(t, "main", client.branchLookup, "switching to the configured branch must re-attach")
+	require.Nil(t, local.config.Head, "the detached marker must be cleared")
+	require.Equal(t, head.Base36(), local.savedCommitID)
+}
+
+func TestSwitch_PreservesSparse(t *testing.T) {
+	root := t.TempDir()
+	local := &stubLocalRepo{
+		loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "main", Sparse: []string{"src"}},
+		snapshot:   &domain.Snapshot{},
+	}
+	client := &stubUpdateClient{manifest: &serverDomain.TreeNode{Name: "root"}}
+	updater := newTestUpdate(t, local, client)
+
+	require.NoError(t, updater.Switch(context.Background(), root, "dev"))
+	require.Equal(t, []string{"src"}, local.config.Sparse, "switching must keep the sparse configuration")
+}
+
+func TestSwitchTag_MaterializesTaggedCommit(t *testing.T) {
+	root := t.TempDir()
+	fileHash, chunks, stored, fileEncoding := testEncodedFile(t, "d.txt", "release content")
+
+	local := &stubLocalRepo{
+		loadConfig:    &domain.Config{Url: "http://example.com/org/project", Branch: "main", Sparse: []string{"src"}},
+		snapshot:      &domain.Snapshot{},
+		missingChunks: []serverDomain.Hash{chunks[0].Hash},
+	}
+	client := &stubUpdateClient{
+		tagInfo: &domain.Tag{ID: "9", Name: "v1.0.0", CommitID: "abc123"},
+		commitManifest: &serverDomain.TreeNode{
+			Name: "root",
+			FileChildren: []*serverDomain.File{{
+				Name:      "d.txt",
+				Mode:      0o644,
+				SizeBytes: int64(len("release content")),
+				Encoding:  fileEncoding,
+				Hash:      fileHash,
+				Chunks:    chunks,
+			}},
+		},
+		downloadData: stored,
+	}
+	updater := newTestUpdate(t, local, client)
+
+	require.NoError(t, updater.SwitchTag(context.Background(), root, "v1.0.0"))
+
+	require.Equal(t, "v1.0.0", client.tagLookup)
+	require.Equal(t, "abc123", client.commitTreeLookup, "the manifest must be fetched for the tagged commit")
+	require.Equal(t, "src", client.treePath, "the sparse paths must be applied")
+	require.Equal(t, "release content", string(readRepoFile(t, root, "d.txt")))
+	require.Equal(t, "abc123", local.savedCommitID)
+	require.Empty(t, local.savedCommitHash)
+	require.Equal(t, domain.Config{
+		Url:    "http://example.com/org/project",
+		Branch: "main",
+		Sparse: []string{"src"},
+		Head:   &domain.HeadRef{Kind: domain.HeadKindTag, Name: "v1.0.0"},
+	}, local.config)
+}
+
+func TestSwitchTag_StagedChangesBlocked(t *testing.T) {
+	local := &stubLocalRepo{
+		loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "main"},
+		staged:     []string{"a.txt"},
+	}
+	client := &stubUpdateClient{}
+	updater := newTestUpdate(t, local, client)
+
+	err := updater.SwitchTag(context.Background(), t.TempDir(), "v1.0.0")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "staged changes")
+	require.Empty(t, client.connectHost, "staged changes must abort before any network call")
+
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 400, domErr.Code)
+}
+
+func TestSwitchTag_EmptyName(t *testing.T) {
+	local := &stubLocalRepo{
+		loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "main"},
+	}
+	updater := newTestUpdate(t, local, &stubUpdateClient{})
+
+	err := updater.SwitchTag(context.Background(), t.TempDir(), "  ")
+	require.EqualError(t, err, "tag name is required")
+}
+
+func TestSwitchTag_TagNotFound(t *testing.T) {
+	wantErr := &domain.Error{Code: 404, Message: `tag "missing" not found`}
+	local := &stubLocalRepo{
+		loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "main"},
+	}
+	updater := newTestUpdate(t, local, &stubUpdateClient{tagErr: wantErr})
+
+	err := updater.SwitchTag(context.Background(), t.TempDir(), "missing")
+	require.ErrorIs(t, err, wantErr)
+	require.Nil(t, local.config.Head, "a missing tag must not detach the working copy")
+}
+
+func TestSwitchTag_ManifestError(t *testing.T) {
+	wantErr := errors.New("manifest lookup failed")
+	local := &stubLocalRepo{
+		loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "main"},
+	}
+	client := &stubUpdateClient{
+		tagInfo:           &domain.Tag{Name: "v1.0.0", CommitID: "abc123"},
+		commitManifestErr: wantErr,
+	}
+	updater := newTestUpdate(t, local, client)
+
+	err := updater.SwitchTag(context.Background(), t.TempDir(), "v1.0.0")
+	require.ErrorIs(t, err, wantErr)
+	require.Nil(t, local.config.Head)
+}
+
+func TestUpdate_Run_DetachedResyncsPinnedCommit(t *testing.T) {
+	root := t.TempDir()
+	fileHash, chunks, stored, fileEncoding := testEncodedFile(t, "d.txt", "release content")
+
+	local := &stubLocalRepo{
+		loadConfig: &domain.Config{
+			Url: "http://example.com/org/project", Branch: "main",
+			Head: &domain.HeadRef{Kind: domain.HeadKindTag, Name: "v1.0.0"},
+		},
+		snapshot:      &domain.Snapshot{},
+		missingChunks: []serverDomain.Hash{chunks[0].Hash},
+		loadCommit:    &domain.LocalCommit{CommitID: "abc123", CommitHash: "deadbeef"},
+	}
+	client := &stubUpdateClient{
+		commitManifest: &serverDomain.TreeNode{
+			Name: "root",
+			FileChildren: []*serverDomain.File{{
+				Name:      "d.txt",
+				Mode:      0o644,
+				SizeBytes: int64(len("release content")),
+				Encoding:  fileEncoding,
+				Hash:      fileHash,
+				Chunks:    chunks,
+			}},
+		},
+		downloadData: stored,
+	}
+	updater := newTestUpdate(t, local, client)
+
+	require.NoError(t, updater.Run(context.Background(), root))
+
+	require.Equal(t, "abc123", client.commitTreeLookup, "a detached update must resync the pinned commit")
+	require.Equal(t, "", client.branch, "no branch manifest must be requested while detached")
+	require.Equal(t, "release content", string(readRepoFile(t, root, "d.txt")))
+	require.Equal(t, "abc123", local.savedCommitID)
+	require.Equal(t, "deadbeef", local.savedCommitHash)
+	require.Empty(t, local.config.Url, "an update while detached must not rewrite the config")
+}
+
+func TestUpdate_Run_DetachedNoPin(t *testing.T) {
+	local := &stubLocalRepo{
+		loadConfig: &domain.Config{
+			Url: "http://example.com/org/project", Branch: "main",
+			Head: &domain.HeadRef{Kind: domain.HeadKindTag, Name: "v1.0.0"},
+		},
+	}
+	updater := newTestUpdate(t, local, &stubUpdateClient{})
+
+	err := updater.Run(context.Background(), t.TempDir())
+	require.EqualError(t, err, "no commit checked out; run nipa switch to a branch first")
 }

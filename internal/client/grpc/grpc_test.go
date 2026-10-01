@@ -92,6 +92,11 @@ type fakeServer struct {
 	lastListTagsReq     *pb.ListTagsRequest
 	deleteTagErr        error
 	lastDeleteTagReq    *pb.DeleteTagRequest
+	getTagResp          *pb.Tag
+	getTagErr           error
+	lastGetTagReq       *pb.GetTagByNameRequest
+	lastTreeHash        string
+	lastCommitID        string
 }
 
 func (f *fakeServer) GetDefaultBranch(_ context.Context, _ *pb.GetDefaultBranchRequest) (*pb.GetBranchResponse, error) {
@@ -136,6 +141,8 @@ func (f *fakeServer) GetTreeManifest(_ context.Context, req *pb.GetTreeManifestR
 	f.lastBranch = req.GetBranch()
 	f.lastRecursive = req.GetRecursive()
 	f.lastPaths = req.GetPaths()
+	f.lastTreeHash = req.GetTreeHash()
+	f.lastCommitID = req.GetCommitId()
 	if f.treeManifestErr != nil {
 		return nil, f.treeManifestErr
 	}
@@ -661,6 +668,35 @@ func TestClient_GetTreeNodeManifest_NotFound(t *testing.T) {
 	require.ErrorAs(t, err, &domErr)
 	require.Equal(t, 404, domErr.Code)
 	require.Equal(t, `path "missing" not found in branch "main"`, domErr.Message)
+}
+
+func TestClient_GetCommitTreeManifest_Success(t *testing.T) {
+	fs := &fakeServer{treeManifest: &pb.TreeManifest{Path: "root"}}
+	addr := startTestServer(t, fs)
+	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
+	require.NoError(t, c.Connect(context.Background(), addr))
+
+	got, err := c.GetCommitTreeManifest(context.Background(), "default", "sample", "abc123", []string{"src"})
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	require.Equal(t, "abc123", fs.lastCommitID, "the manifest must be fetched for the requested commit")
+	require.Empty(t, fs.lastTreeHash, "no tree hash must be sent for a commit tree")
+	require.Empty(t, fs.lastBranch, "no branch must be sent for a commit tree")
+	require.True(t, fs.lastRecursive)
+	require.Equal(t, []string{"src"}, fs.lastPaths)
+}
+
+func TestClient_GetCommitTreeManifest_NotFound(t *testing.T) {
+	addr := startTestServer(t, &fakeServer{treeManifestErr: status.Error(codes.NotFound, "commit not found")})
+	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
+	require.NoError(t, c.Connect(context.Background(), addr))
+
+	_, err := c.GetCommitTreeManifest(context.Background(), "default", "sample", "missing", nil)
+	require.Error(t, err)
+
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 404, domErr.Code)
 }
 
 func TestClient_GetTreeNodeManifest_NotConnected(t *testing.T) {

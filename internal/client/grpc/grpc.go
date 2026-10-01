@@ -376,6 +376,23 @@ func (c *Client) GetTreeNodeManifest(ctx context.Context, org, project, branch s
 	return toServerTreeNode(res.GetRootTree()), nil
 }
 
+func (c *Client) GetCommitTreeManifest(ctx context.Context, org, project, commitID string, paths []string) (*serverDomain.TreeNode, error) {
+	client, err := c.transport.NipaServiceClient()
+	if err != nil {
+		return nil, err
+	}
+	res, err := client.GetTreeManifest(ctx, &pb.GetTreeManifestRequest{
+		Context:   &pb.ProjectContext{Org: org, Project: project},
+		CommitId:  &commitID,
+		Paths:     paths,
+		Recursive: true,
+	})
+	if err != nil {
+		return nil, toDomainError(err)
+	}
+	return toServerTreeNode(res.GetRootTree()), nil
+}
+
 func (c *Client) Push(ctx context.Context, org, project, branch, baseTreeHash, message string, files []*serverDomain.PushFile, removed []string, parent2CommitHash, baseCommitID string) (*serverDomain.PushResult, error) {
 	client, err := c.transport.NipaServiceClient()
 	if err != nil {
