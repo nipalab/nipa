@@ -198,7 +198,7 @@ nipa update                            # locked paths become read-only on disk
 
 | Step | Deliverable | Value |
 |------|-------------|-------|
-| 1 | `locks` table + migrations (`db/migrations/sqlite\|postgres`), `sqlc` queries | Foundation |
+| 1 | `locks` table + migrations (`db/migrations/sqlite`, `ee/db/migrations/postgres`), `sqlc` queries | Foundation |
 | 2 | RPCs `LockFile`/`UnlockFile`/`ListLocks` + usecase handler logic (gomock-tested), incl. the `is_binary` gate + text-lock ACL exception at `LockFile` | Server API |
 | 3 | Enforce in `Push` (+ `MergeFastForward` MR check) | The actual guarantee |
 | 4 | `nipa lock/unlock/status-L` CLI + read-only marking on `update` | Client UX |

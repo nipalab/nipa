@@ -1,0 +1,395 @@
+package postgres
+
+import (
+	"context"
+	"database/sql"
+	"time"
+
+	sqlcPostgres "github.com/nipalab/nipa/ee/repository/postgres/sqlc"
+	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/snow"
+	"gopkg.in/typ.v4/slices"
+)
+
+type BranchRepository struct {
+	db      *sql.DB
+	queries *sqlcPostgres.Queries
+}
+
+func NewBranchRepository(db *sql.DB) *BranchRepository {
+	return &BranchRepository{db: db, queries: sqlcPostgres.New(db)}
+}
+
+func (b *BranchRepository) ListBranches(ctx context.Context, projectID snow.ID, limit int, updatedAfter *time.Time, lastID snow.ID) ([]*domain.Branch, error) {
+	rows, err := b.queries.BranchList(ctx, sqlcPostgres.BranchListParams{
+		ProjectID:     projectID.Int64(),
+		Limit:         int64(limit),
+		LastUpdatedAt: timePtrToNullTime(updatedAfter),
+		LastID:        sql.NullInt64{Int64: lastID.Int64(), Valid: lastID != 0},
+	})
+	if err != nil {
+		return nil, handleError(err)
+	}
+
+	return slices.Map(rows, func(b sqlcPostgres.Branch) *domain.Branch {
+		return branchToDomain(b)
+	}), nil
+}
+
+func (b *BranchRepository) GetDefaultBranch(ctx context.Context, projectID snow.ID) (*domain.Branch, error) {
+	row, err := b.queries.BranchGetDefault(ctx, projectID.Int64())
+	if err != nil {
+		return nil, handleError(err)
+	}
+	return branchToDomain(row), nil
+}
+
+func (b *BranchRepository) GetByProjectIDAndID(ctx context.Context, projectID snow.ID, branchID snow.ID) (*domain.Branch, error) {
+	row, err := b.queries.BranchGet(ctx, sqlcPostgres.BranchGetParams{
+		ProjectID: projectID.Int64(),
+		ID:        branchID.Int64(),
+	})
+	if err != nil {
+		return nil, handleError(err)
+	}
+	return branchToDomain(row), nil
+}
+
+func (b *BranchRepository) GetBranchByName(ctx context.Context, projectID snow.ID, name string) (*domain.Branch, error) {
+	row, err := b.queries.BranchGetByName(ctx, sqlcPostgres.BranchGetByNameParams{ProjectID: projectID.Int64(), Name: name})
+	if err != nil {
+		return nil, handleError(err)
+	}
+	return branchToDomain(row), nil
+}
+
+func (b *BranchRepository) CreateBranch(ctx context.Context, branch domain.Branch) (*domain.Branch, error) {
+	var commitID sql.NullInt64
+	if branch.CommitID != nil {
+		commitID = sql.NullInt64{Int64: branch.CommitID.Int64(), Valid: true}
+	}
+	err := b.queries.BranchCreate(ctx, sqlcPostgres.BranchCreateParams{
+		ID:          branch.ID.Int64(),
+		ProjectID:   branch.ProjectID.Int64(),
+		Name:        branch.Name,
+		Key:         branch.Name,
+		CommitID:    commitID,
+		IsDefault:   branch.IsDefault,
+		IsProtected: branch.IsProtected,
+	})
+	if err != nil {
+		return nil, handleError(err)
+	}
+	return b.GetBranchByName(ctx, branch.ProjectID, branch.Name)
+}
+
+func (b *BranchRepository) RenameBranch(ctx context.Context, projectID, branchID snow.ID, name, key string) error {
+	err := b.queries.BranchSetName(ctx, sqlcPostgres.BranchSetNameParams{
+		Name:      name,
+		Key:       key,
+		ProjectID: projectID.Int64(),
+		ID:        branchID.Int64(),
+	})
+	return handleError(err)
+}
+
+func (b *BranchRepository) DeleteBranch(ctx context.Context, projectID, branchID snow.ID) error {
+	affected, err := b.queries.BranchSoftDelete(ctx, sqlcPostgres.BranchSoftDeleteParams{
+		ProjectID: projectID.Int64(),
+		ID:        branchID.Int64(),
+	})
+	if err != nil {
+		return handleError(err)
+	}
+	if affected == 0 {
+		return domain.NewErrorRecordNotFound()
+	}
+	return nil
+}
+
+func (b *BranchRepository) HasOpenMergeRequests(ctx context.Context, projectID, branchID snow.ID) (bool, error) {
+	count, err := b.queries.MergeRequestCountOpenByBranch(ctx, sqlcPostgres.MergeRequestCountOpenByBranchParams{
+		ProjectID: projectID.Int64(),
+		Status:    domain.MergeRequestOpen,
+		BranchID:  branchID.Int64(),
+	})
+	if err != nil {
+		return false, handleError(err)
+	}
+	return count > 0, nil
+}
+
+func (b *BranchRepository) SetBranchProtection(ctx context.Context, projectID, branchID snow.ID, protected bool) error {
+	err := b.queries.BranchSetProtection(ctx, sqlcPostgres.BranchSetProtectionParams{
+		IsProtected: protected,
+		ProjectID:   projectID.Int64(),
+		ID:          branchID.Int64(),
+	})
+	return handleError(err)
+}
+
+func (b *BranchRepository) SetDefaultBranch(ctx context.Context, projectID, branchID snow.ID) error {
+	tx, err := b.db.BeginTx(ctx, nil)
+	if err != nil {
+		return handleError(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	q := sqlcPostgres.New(tx)
+	if err := q.BranchRemoveDefault(ctx, projectID.Int64()); err != nil {
+		return handleError(err)
+	}
+	if err := q.BranchMarkDefault(ctx, sqlcPostgres.BranchMarkDefaultParams{
+		ProjectID: projectID.Int64(),
+		ID:        branchID.Int64(),
+	}); err != nil {
+		return handleError(err)
+	}
+	return handleError(tx.Commit())
+}
+
+func (b *BranchRepository) UpdateCommitIf(ctx context.Context, branchID snow.ID, fromCommitID, toCommitID *snow.ID) error {
+	res, err := b.queries.BranchUpdateCommitIf(ctx, sqlcPostgres.BranchUpdateCommitIfParams{
+		ID:           branchID.Int64(),
+		FromCommitID: nullSnowID(fromCommitID),
+		ToCommitID:   nullSnowID(toCommitID),
+	})
+	if err != nil {
+		return handleError(err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return handleError(err)
+	}
+	if n == 0 {
+		return domain.NewErrorConflict("branch has moved; refresh and try again")
+	}
+	return nil
+}
+
+func (b *BranchRepository) GetCommit(ctx context.Context, commitID snow.ID) (*domain.Commit, error) {
+	row, err := b.queries.CommitGet(ctx, commitID.Int64())
+	if err != nil {
+		return nil, handleError(err)
+	}
+	return commitToDomain(row), nil
+}
+
+func (b *BranchRepository) GetCommitByHash(ctx context.Context, hash domain.Hash) (*domain.Commit, error) {
+	row, err := b.queries.CommitGetByHash(ctx, hash.Bytes())
+	if err != nil {
+		return nil, handleError(err)
+	}
+	return commitToDomain(row), nil
+}
+
+func (b *BranchRepository) GetTreeNode(ctx context.Context, id int64) (*domain.TreeNode, error) {
+	row, err := b.queries.TreeNodeGet(ctx, id)
+	if err != nil {
+		return nil, handleError(err)
+	}
+	return treeNodeToDomain(row), nil
+}
+
+func (b *BranchRepository) GetTreeChildByName(ctx context.Context, parentID int64, name string) (*domain.TreeNode, error) {
+	row, err := b.queries.TreeNodeGetChildByName(ctx, sqlcPostgres.TreeNodeGetChildByNameParams{
+		ParentTreeID: parentID,
+		Name:         name,
+	})
+	if err != nil {
+		return nil, handleError(err)
+	}
+	return treeNodeToDomain(row), nil
+}
+
+func (b *BranchRepository) ListTreeChildren(ctx context.Context, parentID int64) ([]*domain.TreeNode, error) {
+	rows, err := b.queries.TreeNodeListChildren(ctx, parentID)
+	if err != nil {
+		return nil, handleError(err)
+	}
+	return slices.Map(rows, func(t sqlcPostgres.TreeNode) *domain.TreeNode {
+		return treeNodeToDomain(t)
+	}), nil
+}
+
+func (b *BranchRepository) ListFilesByTree(ctx context.Context, treeID int64) ([]*domain.File, error) {
+	rows, err := b.queries.FileListByTree(ctx, treeID)
+	if err != nil {
+		return nil, handleError(err)
+	}
+	files := make([]*domain.File, 0, len(rows))
+	filesByID := make(map[int64]*domain.File, len(rows))
+	for _, row := range rows {
+		file := fileToDomain(row)
+		files = append(files, file)
+		filesByID[row.ID] = file
+	}
+	if len(files) == 0 {
+		return files, nil
+	}
+	chunks, err := b.queries.ChunkListByTree(ctx, treeID)
+	if err != nil {
+		return nil, handleError(err)
+	}
+	for _, row := range chunks {
+		file, ok := filesByID[row.FileID]
+		if !ok {
+			continue
+		}
+		file.Chunks = append(file.Chunks, chunkToDomain(sqlcPostgres.Chunk{
+			ID:        row.ID,
+			Hash:      row.Hash,
+			SizeBytes: row.SizeBytes,
+			CreatedAt: row.CreatedAt,
+		}))
+	}
+	return files, nil
+}
+
+func (b *BranchRepository) CommitLog(ctx context.Context, projectID snow.ID, startCommitID snow.ID, limit int) ([]*domain.CommitLogEntry, error) {
+	rows, err := b.queries.CommitLog(ctx, sqlcPostgres.CommitLogParams{
+		ProjectID:     projectID.Int64(),
+		StartCommitID: startCommitID.Int64(),
+		Limit:         int64(limit),
+	})
+	if err != nil {
+		return nil, handleError(err)
+	}
+	return slices.Map(rows, func(row sqlcPostgres.CommitLogRow) *domain.CommitLogEntry {
+		return commitLogEntryToDomain(row)
+	}), nil
+}
+
+func commitLogEntryToDomain(row sqlcPostgres.CommitLogRow) *domain.CommitLogEntry {
+	return &domain.CommitLogEntry{
+		Commit: domain.Commit{
+			ID:        snow.ID(row.ID),
+			Hash:      bytesToHash(row.Hash),
+			ProjectID: snow.ID(row.ProjectID),
+			TreeID:    row.TreeID,
+			Parent1ID: nullInt64SnowIDPtr(row.Parent1ID),
+			Parent2ID: nullInt64SnowIDPtr(row.Parent2ID),
+			UserID:    snow.ID(row.UserID),
+			Message:   row.Message,
+			CreatedAt: row.CreatedAt,
+		},
+		AuthorName:  row.AuthorName,
+		AuthorEmail: row.AuthorEmail,
+	}
+}
+
+func (b *BranchRepository) CommitLogUntil(ctx context.Context, projectID snow.ID, startCommitID, stopCommitID snow.ID, limit int) ([]*domain.CommitLogEntry, error) {
+	rows, err := b.queries.CommitLogUntil(ctx, sqlcPostgres.CommitLogUntilParams{
+		ProjectID:     projectID.Int64(),
+		StartCommitID: startCommitID.Int64(),
+		StopCommitID:  stopCommitID.Int64(),
+		Limit:         int64(limit),
+	})
+	if err != nil {
+		return nil, handleError(err)
+	}
+	return slices.Map(rows, func(row sqlcPostgres.CommitLogUntilRow) *domain.CommitLogEntry {
+		return commitLogUntilEntryToDomain(row)
+	}), nil
+}
+
+func commitLogUntilEntryToDomain(row sqlcPostgres.CommitLogUntilRow) *domain.CommitLogEntry {
+	return &domain.CommitLogEntry{
+		Commit: domain.Commit{
+			ID:        snow.ID(row.ID),
+			Hash:      bytesToHash(row.Hash),
+			ProjectID: snow.ID(row.ProjectID),
+			TreeID:    row.TreeID,
+			Parent1ID: nullInt64SnowIDPtr(row.Parent1ID),
+			Parent2ID: nullInt64SnowIDPtr(row.Parent2ID),
+			UserID:    snow.ID(row.UserID),
+			Message:   row.Message,
+			CreatedAt: row.CreatedAt,
+		},
+		AuthorName:  row.AuthorName,
+		AuthorEmail: row.AuthorEmail,
+	}
+}
+
+func branchToDomain(b sqlcPostgres.Branch) *domain.Branch {
+	var commitID *snow.ID
+	if b.CommitID.Valid {
+		id := snow.ID(b.CommitID.Int64)
+		commitID = &id
+	}
+	return &domain.Branch{
+		ID:          snow.ID(b.ID),
+		ProjectID:   snow.ID(b.ProjectID),
+		Name:        b.Name,
+		IsProtected: b.IsProtected,
+		IsDefault:   b.IsDefault,
+		CommitID:    commitID,
+		UpdatedAt:   b.UpdatedAt,
+		CreatedAt:   b.CreatedAt,
+		Deleted:     b.Deleted,
+		DeletedAt:   nullTimePtr(b.DeletedAt),
+	}
+}
+
+func commitToDomain(c sqlcPostgres.Commit) *domain.Commit {
+	var parent1ID, parent2ID *snow.ID
+	if c.Parent1ID.Valid {
+		id := snow.ID(c.Parent1ID.Int64)
+		parent1ID = &id
+	}
+	if c.Parent2ID.Valid {
+		id := snow.ID(c.Parent2ID.Int64)
+		parent2ID = &id
+	}
+	return &domain.Commit{
+		ID:        snow.ID(c.ID),
+		Hash:      bytesToHash(c.Hash),
+		ProjectID: snow.ID(c.ProjectID),
+		TreeID:    c.TreeID,
+		Parent1ID: parent1ID,
+		Parent2ID: parent2ID,
+		UserID:    snow.ID(c.UserID),
+		Message:   c.Message,
+		CreatedAt: c.CreatedAt,
+	}
+}
+
+func treeNodeToDomain(t sqlcPostgres.TreeNode) *domain.TreeNode {
+	return &domain.TreeNode{
+		ID:        t.ID,
+		Hash:      bytesToHash(t.Hash),
+		Name:      t.Name,
+		Mode:      int(t.Mode),
+		ParentID:  nullInt64Ptr(t.ParentTreeID),
+		CreatedAt: t.CreatedAt.Time,
+	}
+}
+
+func fileToDomain(f sqlcPostgres.File) *domain.File {
+	return &domain.File{
+		ID:        f.ID,
+		Hash:      bytesToHash(f.Hash),
+		Name:      f.Name,
+		Mode:      int(f.Mode),
+		TreeID:    f.TreeID.Int64,
+		SizeBytes: f.SizeBytes,
+		IsBinary:  f.IsBinary,
+		Encoding:  f.Encoding,
+		CreatedAt: f.CreatedAt.Time,
+	}
+}
+
+func chunkToDomain(c sqlcPostgres.Chunk) domain.Chunk {
+	return domain.Chunk{
+		ID:        c.ID,
+		Hash:      bytesToHash(c.Hash),
+		SizeBytes: c.SizeBytes,
+		CreatedAt: c.CreatedAt.Time,
+	}
+}
+
+func bytesToHash(b []byte) domain.Hash {
+	var h domain.Hash
+	copy(h[:], b)
+	return h
+}

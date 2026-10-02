@@ -4,15 +4,17 @@ Project context for opencode. Read this before working in this repo.
 
 ## What this project is
 
-**Nipa** is a centralized version control system (Go/gRPC/SQLite) targeting
+**Nipa** is a centralized version control system (Go/gRPC) targeting
 binary-heavy projects (game dev, 3D assets, media) and large monorepos. It
 blends Git (lightweight branches, release tags, merge requests), Perforce
 (binary streaming), and SVN (path-based access control). Client-server monorepo: `nipa` (client,
-CLI at `cmd/nipa`) and `nipad` (server at `cmd/nipad`). `nipad` multiplexes
-gRPC (h2c), the REST API and the embedded SPA on one port — see
-`cmd/nipad/main.go` (`isAPIPath` routes `/auth`, `/docs`, `/api`; everything
-else falls through to the web UI handler). Dual-licensed (Apache 2.0;
-everything under `ee/` is enterprise).
+CLI at `cmd/nipa`) plus two server binaries: the free `nipad` (`cmd/nipad`;
+SQLite + local chunk storage) and the enterprise `nipad-ee` (`ee/cmd/nipad`;
+PostgreSQL + S3-only chunk storage, see `docs/POSTGRES.md`). Both multiplex
+gRPC (h2c), the REST API and the embedded SPA on one port through
+`internal/serverapp` (`isAPIPath` routes `/auth`, `/docs`, `/api`; everything
+else falls through to the web UI handler); the mains only compose repositories.
+Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
 
 ## Architecture
 
@@ -20,9 +22,15 @@ everything under `ee/` is enterprise).
   logic, gomock-tested, depends only on repository interfaces; `browser.go` /
   `browser_history.go` power the web UI tree/commit browsing,
   `merge_request.go` the MR lifecycle, `merge_request_review.go` reviews and
-  `tag.go` release tags), `repository`
-  (`sqlite`/`postgres` implementations over sqlc-generated `internal/repository/sqlc/*`),
-  `grpc` (proto + `pb` generated + `server` handlers), `http` (REST API).
+  `tag.go` release tags), `repository/sqlite` (free implementation over
+  sqlc-generated `internal/repository/sqlc/sqlite`), `serverapp` (shared
+  registry + HTTP/gRPC/SPA lifecycle used by both mains), `grpc` (proto + `pb`
+  generated + `server` handlers), `http` (REST API).
+- **Enterprise** (`ee/`): `db` (postgres opener/migrator + consolidated
+  migrations), `repository/postgres` (the same 13 repositories over
+  `ee/repository/postgres/sqlc`, queries in `ee/repository/postgres/queries`),
+  `storage/s3`, `cmd/nipad`/`cmd/migrate`, `e2e` (testcontainers smoke). All
+  postgres and S3 code lives here; details in `docs/POSTGRES.md`.
 - **Web UI** (`web/`): Vite/React/TypeScript SPA in `web/`, built with Primer
   React (`@primer/react` + `@primer/primitives` + `@primer/octicons-react`).
   UI code lives in `web/src/` (components use v38 API: `Stack`/`Banner`; the
@@ -39,7 +47,7 @@ everything under `ee/` is enterprise).
   with `make web` into
   `web/server/dist`, embedded into the `nipad` binary via
   `//go:embed all:dist` in `web/server/webui.go` (package `webui`) and served
-  for non-API paths in `cmd/nipad/main.go` (`isAPIPath`).
+  for non-API paths in `internal/serverapp` (`isAPIPath`).
 - **Client** (`internal/client/`): `cli` (cobra commands: clone, branch
   (`-a` list, `-c` create+switch, `-d` delete), tag (list, `-c` create, `-d`
   delete), add, remove, status, push, update, switch (branch or `--tag`),
@@ -258,19 +266,24 @@ UI commit pages diff a commit against its first parent through the same
 
 From `Makefile`:
 
-- `make sqlc` — regenerate all three sqlc packages (server sqlite/postgres +
-  `internal/repository/sqlc/localrepo` for the client). Uses
+- `make sqlc` — regenerate all sqlc packages: sqlite +
+  `internal/repository/sqlc/localrepo` for the free client/server, and postgres
+  in `ee/repository/postgres/sqlc` (inputs: `ee/db/migrations/postgres`,
+  `ee/repository/postgres/queries`). Uses
   `go run github.com/sqlc-dev/sqlc/cmd/sqlc@latest`.
 - `make mock` — `go generate ./...` (regenerates gomock mocks from `//go:generate`).
-- `make migrate-up` / `make migrate-down` — `go run ./cmd/migrate`
-  (default `DRIVER=sqlite3 DSN=nipa.db`; override for postgres). `nipad` also
-  applies pending sqlite migrations at startup.
-- `make migrate-create name=<name>` — new up/down migration pair in
-  `db/migrations/`. Migrations live per-dialect in `db/migrations/sqlite|postgres`
-  (embedded via `go:embed` in `db/migrate.go` and read by `sqlc.yaml`), so move
-  the created pair into the dialect dir.
-- `make build` — builds `bin/nipad`; `make build-client` — builds `bin/nipa`;
-  `make build-all` — web + server + client.
+- `make migrate-up` / `make migrate-down` — sqlite only, `go run ./cmd/migrate`
+  (default `DSN=nipa.db`). `nipad` also applies pending sqlite migrations at
+  startup. Postgres equivalents: `make migrate-up-postgres DSN=postgres://...`
+  / `make migrate-down-postgres` via `go run ./ee/cmd/migrate`; `nipad-ee`
+  applies pending postgres migrations at startup.
+- `make migrate-create name=<name>` — new up/down migration pair in both
+  dialect dirs: `db/migrations/sqlite` and `ee/db/migrations/postgres` (both
+  embedded via `go:embed` and read by `sqlc.yaml`).
+- `make build` — web + `bin/nipad` + `bin/nipa`; `make build-server-ee` —
+  `bin/nipad-ee`; `make build-all` — web + both servers + client.
+- `make test` — `go test ./...` (requires Docker for the testcontainers-backed
+  postgres/minio suites); `make test-ee` — `go test ./ee/...`.
 - `make web` / `web-dev` / `web-install` — build the SPA into
   `web/server/dist` / run the Vite dev server (proxies `/api`, `/docs` to
   `NIPA_SERVER_URL`) / `npm install`.
@@ -310,17 +323,26 @@ Direct: `go build ./...`, `go vet ./...`, `go test ./...`.
   `NewErrorInternalServer(...)`. Predicates: `domain.IsErrorNotFound(err)`,
   `domain.IsErrorNoPermission(err)`. Client mirrors this with
   `internal/client/domain.Error` (`NewUserError` 400, `NewTokenError` 401).
-- **SQL**: schema + queries are sqlc inputs (`db/migrations/sqlite|postgres`,
-  `db/queries/sqlite|postgres`, and `internal/client/localrepo/schema|queries`).
-  After changing a `.sql` file, run `make sqlc` and check the generated Go
-  compiles. Named params (`:name`) are converted to `?N` in `database/sql`.
+- **SQL**: schema + queries are sqlc inputs (`db/migrations/sqlite` +
+  `db/queries/sqlite` for the free server, `ee/db/migrations/postgres` +
+  `ee/repository/postgres/queries` for enterprise, and
+  `internal/client/localrepo/schema|queries` for the client). After changing a
+  `.sql` file, run `make sqlc` and check the generated Go compiles. Named params
+  (`:name`) are converted to `?N` in `database/sql`.
 - **sqlc gotchas**: a multi-statement `:exec` query has its SQL truncated by sqlc
   to one statement — use separate single-statement queries instead. Full-table
-  `DELETE` without `WHERE` trips SonarQube (S1035-ish); keep them out.
+  `DELETE` without `WHERE` trips SonarQube (S1035-ish); keep them out. On
+  postgres, quote keyword arg names (`sqlc.arg('limit')`), cast nullable filters
+  and `LIMIT`/`OFFSET` params (`sqlc.narg('x')::boolean`,
+  `sqlc.arg('limit')::bigint`), and keep integer columns `BIGINT` so generated
+  types stay `int64` like sqlite.
 - **Testing**: testify (`require`/`assert`) + gomock (`go.uber.org/mock`,
   `github.com/golang/mock` legacy mocks exist in `*_mock_test.go`). Server usecase
   tests use `NewMock<h1>...` gomock controllers; client usecases use hand-written
-  stubs. SQLite-backed tests use `t.TempDir()` for real DBs.
+  stubs. SQLite-backed tests use `t.TempDir()` for real DBs. Enterprise postgres
+  tests are testify suites over testcontainers (postgres + minio, one schema per
+  test); override with `NIPA_TEST_POSTGRES_DSN`/`NIPA_TEST_S3_ENDPOINT`/
+  `NIPA_TEST_S3_IMAGE` when using service containers.
 - **Mocks**: live next to the code with the name suffix `_mock_test.go`; regenerate
   with `make mock`. In `internal/grpc/server`, `*_deps_mock_test.go` /
   `*_usecase_mock_test.go` are the mocks.
@@ -500,11 +522,13 @@ Direct: `go build ./...`, `go vet ./...`, `go test ./...`.
   when the target has no scheme.
 - **Chunk content backends**: `internal/storage.ChunkStore` (Put/Get/Size/
   Exists/Close, content-addressed by BLAKE3, idempotent Put) is the single seam.
-  `storage.NewLocalStore` (default, `CHUNK_STORAGE_DIR`) and the enterprise
-  `ee/storage/s3` store (`CHUNK_STORAGE=s3` + `CHUNK_S3_*`) are chosen by
-  `cmd/nipad`'s `createChunkStore`; the S3 store keys objects
-  `<prefix>/<hash[:2]>/<hash[2:]>` and probes the bucket at startup. `internal/`
-  must never import `ee/` — only `cmd/nipad` does. A store implementing
+  `storage.NewLocalStore` (`CHUNK_STORAGE=local`, `CHUNK_STORAGE_DIR`) is the
+  free `cmd/nipad`'s only backend — `CHUNK_STORAGE=s3` there fails with a hint
+  to use `nipad-ee`. The enterprise `ee/cmd/nipad` is S3-only: empty or `s3`
+  selects `ee/storage/s3` (`CHUNK_S3_*`), anything else is a startup error. The
+  S3 store keys objects `<prefix>/<hash[:2]>/<hash[2:]>` and probes the bucket
+  at startup. `internal/` must never import `ee/` — only `ee/cmd/*` does (the
+  free `cmd/nipad` links no ee package). A store implementing
   `storage.DirectTransferStore` (the S3 store does) hands clients absolute
   presigned backend URLs: downloads via `PresignedGetObject`, uploads via a
   POST policy whose `content-length-range` pins the exact declared chunk size
@@ -524,7 +548,7 @@ Direct: `go build ./...`, `go vet ./...`, `go test ./...`.
   accepts an optional `StorageLedger` (`internal/usecase/storage_ledger.go`:
   `AttributedSizes`/`Headroom`/`Attribute`). The free version wires none (nil):
   presign/confirm skip all accounting and no quota applies. Cloud builds inject
-  an `ee/` implementation at `cmd/nipad` (same import pattern as `ee/storage/s3`);
+  an `ee/` implementation at `ee/cmd/nipad` (same import pattern as `ee/storage/s3`);
   it links chunks to projects, keeps per-project/org/owner counters and enforces
   the owner's quota at both `GetChunkUploadUrls` (projected new bytes) and
   `ConfirmChunkUploads` (authoritative). Quota failures use
@@ -542,8 +566,9 @@ Direct: `go build ./...`, `go vet ./...`, `go test ./...`.
 - CI runs `go build ./...`, `go vet ./...`, `go test -race -coverprofile=...
   -coverpkg=./...` (cross-package coverage, so the REST/e2e integration tests
   count towards the handler/usecase packages they exercise).
-- `sonar-project.properties` excludes generated code (`internal/repository/sqlc/**`),
-  swagger, and cmd mains from analysis; coverage expects `coverage.out`.
+- `sonar-project.properties` excludes generated code
+  (`internal/repository/sqlc/**`, `ee/repository/postgres/sqlc/**`), swagger,
+  and cmd mains from analysis; coverage expects `coverage.out`.
 - Avoid introducing SonarQube issues: no DELETE without WHERE, keep coverage in new
   packages high (localrepo aims ~90%+).
 
@@ -570,6 +595,9 @@ Direct: `go build ./...`, `go vet ./...`, `go test ./...`.
 
 - Big (10k+ files) manifests are expected on day one — never plan an O(entire repo)
   DB write for an update path; default to incremental upsert + sweep.
+- Keep the free/enterprise boundary: `internal/` never imports `ee/`, the free
+  `cmd/nipad` links no ee package (sqlite + local chunks only), and postgres/S3
+  are wired exclusively from `ee/cmd/*`; see `docs/POSTGRES.md`.
 - Revert is forward-only: one commit per target, history is never rewritten, and
   pending `revert_state` is cleared only on success/abort. It reuses existing
   queries and added no SQL, sqlc, or schema changes.

@@ -19,8 +19,8 @@ func clearConfigEnv(t *testing.T) {
 	t.Helper()
 	for _, k := range []string{"DATABASE_DSN", "SERVER_ADDRESS", "SERVER_PORT", "JWT_KEY", "LOG_LEVEL", "HASHER_WORKERS", "SNOWFLAKE_NODE_ID", "CHUNK_STORAGE", "CHUNK_STORAGE_DIR", "CHUNK_S3_ENDPOINT", "CHUNK_S3_REGION", "CHUNK_S3_BUCKET", "CHUNK_S3_PREFIX", "CHUNK_S3_ACCESS_KEY_ID", "CHUNK_S3_SECRET_ACCESS_KEY", "CHUNK_URL_SIGNING_KEY", "CHUNK_PRESIGN_TTL_SECONDS", "CHUNK_MAX_PAGE_SIZE"} {
 		if old, ok := os.LookupEnv(k); ok {
-			os.Unsetenv(k)
-			t.Cleanup(func() { os.Setenv(k, old) })
+			_ = os.Unsetenv(k)
+			t.Cleanup(func() { _ = os.Setenv(k, old) })
 		}
 	}
 }
@@ -79,7 +79,7 @@ func TestLoadConfig_ChunkURLDefaults(t *testing.T) {
 
 	cfg, err := LoadConfig()
 	require.NoError(t, err)
-	require.Equal(t, "local", cfg.ChunkStorage)
+	require.Empty(t, cfg.ChunkStorage)
 	require.Equal(t, 3600, cfg.ChunkPresignTTLSeconds)
 	require.Equal(t, 1000, cfg.ChunkMaxPageSize)
 	require.Empty(t, cfg.ChunkURLSigningKey)

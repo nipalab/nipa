@@ -1,13 +1,17 @@
 SERVER_ADDRESS: 0.0.0.0
 SERVER_PORT: 6745
+# SQLite file path for the free `nipad`; postgres connection string for the
+# enterprise `nipad-ee`.
 DATABASE_DSN: nipa.db
 JWT_KEY: secret
 LOG_LEVEL: debug
 SNOWFLAKE_NODE_ID: 0
 HASHER_WORKERS: 4
+# Chunk backend. The free `nipad` supports `local` only; the enterprise
+# `nipad-ee` supports `s3` only (empty defaults to s3 there).
 CHUNK_STORAGE: local
 CHUNK_STORAGE_DIR: ./chunks
-# S3-compatible chunk backend (enterprise). Used when CHUNK_STORAGE is s3.
+# S3-compatible chunk backend (enterprise `nipad-ee` only).
 # Endpoint may include a scheme; bare hosts default to https.
 CHUNK_S3_ENDPOINT: ''
 CHUNK_S3_REGION: ''

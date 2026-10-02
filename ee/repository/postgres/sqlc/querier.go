@@ -25,7 +25,7 @@ type Querier interface {
 	BranchUpdateCommitIf(ctx context.Context, arg BranchUpdateCommitIfParams) (sql.Result, error)
 	ChunkGetByHash(ctx context.Context, hash []byte) (Chunk, error)
 	ChunkInsertOrIgnore(ctx context.Context, arg ChunkInsertOrIgnoreParams) error
-	ChunkListByFile(ctx context.Context, fileID int64) ([]Chunk, error)
+	ChunkListByTree(ctx context.Context, treeID int64) ([]ChunkListByTreeRow, error)
 	CommitGet(ctx context.Context, id int64) (Commit, error)
 	CommitGetByHash(ctx context.Context, hash []byte) (Commit, error)
 	CommitInsert(ctx context.Context, arg CommitInsertParams) error

@@ -57,10 +57,3 @@ func MigrateDown(db *sql.DB, dialect string) error {
 	}
 	return nil
 }
-
-func FeedData(db *sql.DB, dialect string) error {
-	if dialect != "sqlite" || dialect == "sqlite" {
-
-	}
-	return nil
-}

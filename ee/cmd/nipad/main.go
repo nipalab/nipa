@@ -1,16 +1,17 @@
 package main
 
 import (
-	"database/sql"
+	"context"
 	"fmt"
 	"log/slog"
 	"strings"
 	"time"
 
-	"github.com/nipalab/nipa/db"
+	eedb "github.com/nipalab/nipa/ee/db"
+	"github.com/nipalab/nipa/ee/repository/postgres"
+	s3store "github.com/nipalab/nipa/ee/storage/s3"
 	"github.com/nipalab/nipa/internal/config"
 	"github.com/nipalab/nipa/internal/hasher"
-	"github.com/nipalab/nipa/internal/repository/sqlite"
 	"github.com/nipalab/nipa/internal/serverapp"
 	"github.com/nipalab/nipa/internal/snow"
 	"github.com/nipalab/nipa/internal/storage"
@@ -24,26 +25,25 @@ func main() {
 		panic(err)
 	}
 
-	dbConn, err := createDatabaseConnection(cfg.DatabaseDSN)
+	dbConn, err := eedb.Open(cfg.DatabaseDSN)
 	if err != nil {
 		panic(err)
 	}
 
 	slog.Info("migrating database...")
-	err = db.MigrateUp(dbConn, "sqlite3")
-	if err != nil {
+	if err := eedb.MigrateUp(dbConn); err != nil {
 		panic(err)
 	}
 	slog.Info("database migration completed")
 
-	orgRepo := sqlite.NewOrgRepository(dbConn)
-	projectRepo := sqlite.NewProjectRepository(dbConn)
-	authRepo := sqlite.NewAuthRepository(dbConn)
-	userRepo := sqlite.NewUserRepository(dbConn)
-	branchRepository := sqlite.NewBranchRepository(dbConn)
-	pushRepository := sqlite.NewPushRepository(dbConn)
-	pbacRepository := sqlite.NewPBACRepository(dbConn)
-	groupRepository := sqlite.NewGroupRepository(dbConn)
+	orgRepo := postgres.NewOrgRepository(dbConn)
+	projectRepo := postgres.NewProjectRepository(dbConn)
+	authRepo := postgres.NewAuthRepository(dbConn)
+	userRepo := postgres.NewUserRepository(dbConn)
+	branchRepository := postgres.NewBranchRepository(dbConn)
+	pushRepository := postgres.NewPushRepository(dbConn)
+	pbacRepository := postgres.NewPBACRepository(dbConn)
+	groupRepository := postgres.NewGroupRepository(dbConn)
 
 	passwordHasher := hasher.NewHasher(cfg.HasherWorkers)
 
@@ -59,25 +59,25 @@ func main() {
 	if err != nil {
 		panic(fmt.Errorf("create chunk store: %w", err))
 	}
-	defer chunkStore.Close()
+	defer func() { _ = chunkStore.Close() }()
 	if cfg.ChunkURLSigningKey == "" {
 		panic("CHUNK_URL_SIGNING_KEY must be set")
 	}
 	branchUsecase := usecase.NewBranchWithChunks(permissionUsecase, branchRepository, snowUser, chunkStore)
-	fileLockUsecase := usecase.NewFileLock(sqlite.NewFileLockRepository(dbConn), branchRepository, permissionUsecase, snowUser)
+	fileLockUsecase := usecase.NewFileLock(postgres.NewFileLockRepository(dbConn), branchRepository, permissionUsecase, snowUser)
 	branchUsecase = branchUsecase.WithFileLocks(fileLockUsecase)
 	mergeRequestUsecase := usecase.NewMergeRequest(
-		sqlite.NewMergeRequestRepository(dbConn),
+		postgres.NewMergeRequestRepository(dbConn),
 		branchRepository,
 		permissionUsecase,
 		branchUsecase,
 		snowUser,
 	).WithFileLocks(fileLockUsecase)
 	pushUsecase := usecase.NewPush(permissionUsecase, branchRepository, pushRepository, snowUser).WithFileLocks(fileLockUsecase)
-	tagUsecase := usecase.NewTag(permissionUsecase, sqlite.NewTagRepository(dbConn), branchRepository, snowUser)
+	tagUsecase := usecase.NewTag(permissionUsecase, postgres.NewTagRepository(dbConn), branchRepository, snowUser)
 	mergeRequestReviewUsecase := usecase.NewMergeRequestReview(
-		sqlite.NewMergeRequestReviewRepository(dbConn),
-		sqlite.NewMergeRequestRepository(dbConn),
+		postgres.NewMergeRequestReviewRepository(dbConn),
+		postgres.NewMergeRequestRepository(dbConn),
 		branchRepository,
 		branchUsecase,
 		permissionUsecase,
@@ -90,7 +90,7 @@ func main() {
 		PresignTTL:  time.Duration(cfg.ChunkPresignTTLSeconds) * time.Second,
 		MaxPageSize: cfg.ChunkMaxPageSize,
 	})
-	webhookRepository := sqlite.NewWebhookRepository(dbConn)
+	webhookRepository := postgres.NewWebhookRepository(dbConn)
 	webhookDispatcher := webhook.NewDispatcher(webhookRepository, webhook.NewClient(webhook.ClientConfig{
 		Timeout:         time.Duration(cfg.WebhookTimeoutSeconds) * time.Second,
 		EgressAllowlist: serverapp.SplitAllowlist(cfg.WebhookEgressAllowlist),
@@ -128,20 +128,21 @@ func main() {
 
 func createChunkStore(cfg *config.Config) (storage.ChunkStore, error) {
 	switch strings.ToLower(strings.TrimSpace(cfg.ChunkStorage)) {
-	case "", "local":
-		store, err := storage.NewLocalStore(cfg.ChunkStorageDir)
+	case "", "s3":
+		store, err := s3store.New(context.Background(), s3store.Config{
+			Endpoint:        cfg.ChunkS3Endpoint,
+			Region:          cfg.ChunkS3Region,
+			Bucket:          cfg.ChunkS3Bucket,
+			Prefix:          cfg.ChunkS3Prefix,
+			AccessKeyID:     cfg.ChunkS3AccessKeyID,
+			SecretAccessKey: cfg.ChunkS3SecretAccessKey,
+		})
 		if err != nil {
 			return nil, err
 		}
-		slog.Info("chunk storage ready", "backend", "local", "dir", cfg.ChunkStorageDir)
+		slog.Info("chunk storage ready", "backend", "s3", "endpoint", cfg.ChunkS3Endpoint, "bucket", cfg.ChunkS3Bucket)
 		return store, nil
-	case "s3":
-		return nil, fmt.Errorf("CHUNK_STORAGE=s3 requires the enterprise server (nipad-ee)")
 	default:
-		return nil, fmt.Errorf("unknown CHUNK_STORAGE %q", cfg.ChunkStorage)
+		return nil, fmt.Errorf("enterprise server only supports CHUNK_STORAGE=s3, got %q", cfg.ChunkStorage)
 	}
-}
-
-func createDatabaseConnection(dsn string) (*sql.DB, error) {
-	return db.OpenSQLite(dsn)
 }

@@ -60,6 +60,38 @@ func (s *ProjectRepositorySuite) TestCRUD() {
 	s.Require().Error(err)
 }
 
+func (s *ProjectRepositorySuite) TestCreateWithDefaultBranch() {
+	ctx := context.Background()
+	repo := NewProjectRepository(s.db)
+	branchRepo := NewBranchRepository(s.db)
+
+	node, err := snow.NewNode(1)
+	s.Require().NoError(err)
+	projectID := node.Generate()
+	branchID := node.Generate()
+
+	created, err := repo.CreateWithDefaultBranch(ctx, domain.Project{
+		ID:    projectID,
+		OrgID: 1,
+		Slug:  "game",
+		Name:  "Game",
+	}, domain.Branch{
+		ID:        branchID,
+		ProjectID: projectID,
+		Name:      "main",
+		IsDefault: true,
+	})
+	s.Require().NoError(err)
+	s.Equal(projectID, created.ID)
+	s.Equal("game", created.Slug)
+
+	def, err := branchRepo.GetDefaultBranch(ctx, projectID)
+	s.Require().NoError(err)
+	s.Equal(branchID, def.ID)
+	s.Equal("main", def.Name)
+	s.True(def.IsDefault)
+}
+
 func (s *ProjectRepositorySuite) TestCreateWithDefaultBranch_RollsBackProject() {
 	ctx := context.Background()
 	repo := NewProjectRepository(s.db)

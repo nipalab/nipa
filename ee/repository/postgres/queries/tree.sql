@@ -101,9 +101,21 @@ WHERE f.tree_id = (
     )
 ORDER BY f.name;
 
--- name: ChunkListByFile :many
-SELECT chunks.id, chunks.hash, chunks.size_bytes, chunks.created_at
+-- name: ChunkListByTree :many
+SELECT chunks.id, chunks.hash, chunks.size_bytes, chunks.created_at, file_chunks.file_id
 FROM chunks
 JOIN file_chunks ON file_chunks.chunk_id = chunks.id
-WHERE file_chunks.file_id = sqlc.arg(file_id)
-ORDER BY file_chunks.chunk_index;
+WHERE file_chunks.file_id IN (
+        SELECT f.id
+        FROM files f
+        WHERE f.tree_id = (
+                SELECT content.id
+                FROM tree_nodes content
+                JOIN tree_nodes ref ON ref.hash = content.hash
+                WHERE ref.id = sqlc.arg(tree_id)
+                  AND EXISTS (SELECT 1 FROM files cf WHERE cf.tree_id = content.id)
+                ORDER BY content.id
+                LIMIT 1
+            )
+    )
+ORDER BY file_chunks.file_id, file_chunks.chunk_index;

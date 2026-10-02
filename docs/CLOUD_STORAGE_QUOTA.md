@@ -80,9 +80,10 @@ golang-migrate instance against `ee_schema_migrations`:
 
   backed by `sqlite.Config{MigrationsTable: table}` /
   `pgxmigrate.Config{MigrationsTable: table}`.
-- `cmd/nipad` applies ee migrations after `db.MigrateUp` when the ledger is
-  enabled. Cloud runs sqlite (the postgres migration set is still incomplete);
-  add postgres ee migrations when the server supports postgres.
+- `ee/cmd/nipad` applies the ee postgres migrations at startup (`ee/db.MigrateUp`);
+  the free `cmd/nipad` applies sqlite migrations. Postgres support landed (see
+  `docs/POSTGRES.md`), so the ledger tables can target either backend once the
+  cloud implementation is wired.
 
 ## Schema (sqlite)
 
