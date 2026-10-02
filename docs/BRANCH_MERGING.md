@@ -319,6 +319,7 @@ Packages: `internal/client/usecase/mr.go`, `internal/client/merge/*.go`
 | Rebase while target is behind source | No-op (`source already contains target`); nothing to rewrite. |
 | Rebasing a branch with conflict at commit N of M | Stop at N; treeBuilder apply is restartable — continue replays N after resolution. |
 | Empty branch head on either side | Merge base walk handles `commit_id == NULL` (empty branch = empty tree at base). |
+| Working copy detached at a tag | `nipa merge` (and push/revert) refuse with a `nipa switch <branch>` hint; there is no branch to move. |
 
 ---
 

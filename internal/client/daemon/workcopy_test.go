@@ -10,7 +10,9 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	clientDomain "github.com/nipalab/nipa/internal/client/domain"
 	"github.com/nipalab/nipa/internal/client/grpc/daemonpb"
+	"github.com/nipalab/nipa/internal/client/localrepo"
 )
 
 func writeWorkingFile(t *testing.T, root, rel, content string) {
@@ -92,6 +94,8 @@ func TestServer_StatusStageFlow(t *testing.T) {
 	st, err := srv.client.Status(ctx, &daemonpb.StatusRequest{Root: root})
 	require.NoError(t, err)
 	require.Equal(t, []string{"tracked.txt"}, st.GetMissing(), "a tracked file absent from disk is missing")
+	require.Equal(t, "main", st.GetBranch())
+	require.Nil(t, st.GetHead())
 
 	writeWorkingFile(t, root, "tracked.txt", "hello")
 	writeWorkingFile(t, root, "untracked.txt", "new")
@@ -122,6 +126,29 @@ func TestServer_StatusStageFlow(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []string{"tracked.txt"}, st.GetStaged())
 	require.Equal(t, []string{"untracked.txt"}, st.GetUntracked())
+}
+
+func TestServer_StatusDetachedTag(t *testing.T) {
+	root := newTestClone(t)
+	lr := localrepo.NewLocalRepoWithTarget(root)
+	require.NoError(t, lr.Init(root))
+	require.NoError(t, lr.SaveConfig(clientDomain.Config{
+		Url: "https://nipa.example.com/default/default", Branch: "main",
+		Head: &clientDomain.HeadRef{Kind: clientDomain.HeadKindTag, Name: "v1.0.0"},
+	}))
+	require.NoError(t, lr.Close())
+
+	srv := startTestServer(t, Options{})
+	ctx := authed(context.Background(), srv.Endpoint().Token)
+	_, err := srv.client.WatchRepo(ctx, &daemonpb.WatchRepoRequest{Root: root})
+	require.NoError(t, err)
+
+	st, err := srv.client.Status(ctx, &daemonpb.StatusRequest{Root: root})
+	require.NoError(t, err)
+	require.Equal(t, "main", st.GetBranch())
+	require.NotNil(t, st.GetHead())
+	require.Equal(t, "tag", st.GetHead().GetKind())
+	require.Equal(t, "v1.0.0", st.GetHead().GetName())
 }
 
 func TestServer_StageRejectsMissingPath(t *testing.T) {

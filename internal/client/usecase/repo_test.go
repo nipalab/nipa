@@ -1035,6 +1035,25 @@ func TestRepo_Log_SinglePage(t *testing.T) {
 	require.Equal(t, "two", got[1].Message)
 }
 
+func TestRepo_Log_WithStart(t *testing.T) {
+	token := signTestToken(t, "secret")
+	storage := &stubSecureStorage{loadResult: &domain.LoginResult{AccessToken: token}}
+	auth := NewAuth(nil, storage, nil)
+	stub := &stubRepoInterface{
+		commitLogFn: func(_ context.Context, _, _, _ string, startCommitID *snow.ID, _ int) ([]*serverDomain.CommitLogEntry, error) {
+			require.NotNil(t, startCommitID, "the pinned start must be sent on the first page")
+			require.Equal(t, snow.ID(42), *startCommitID)
+			return []*serverDomain.CommitLogEntry{{Commit: serverDomain.Commit{ID: snow.ID(42), Message: "pinned"}}}, nil
+		},
+	}
+	repo := NewRepo(auth, stub, &stubLocalRepo{})
+
+	got, err := repo.Log(context.Background(), "example.com", "org", "project", "main", WithCommitLogStart(snow.ID(42)))
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	require.Equal(t, snow.ID(42), got[0].ID)
+}
+
 func TestRepo_Log_Paginates(t *testing.T) {
 	token := signTestToken(t, "secret")
 	storage := &stubSecureStorage{loadResult: &domain.LoginResult{AccessToken: token}}

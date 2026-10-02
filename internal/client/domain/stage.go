@@ -30,6 +30,8 @@ type StatEntry struct {
 }
 
 type Status struct {
+	Branch    string
+	Head      *HeadRef
 	Staged    []string
 	Deleted   []string
 	Modified  []string

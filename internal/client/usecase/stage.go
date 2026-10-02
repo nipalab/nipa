@@ -24,6 +24,7 @@ const nipaDir = ".nipa"
 
 type WorkingCopyRepo interface {
 	Init(target string) error
+	LoadConfig() (*domain.Config, error)
 	Snapshot() (*domain.Snapshot, error)
 	ListStaged() ([]string, error)
 	LoadMergeState() (*domain.MergeState, error)
@@ -113,6 +114,10 @@ type StatusOptions struct {
 func (w *WorkingCopy) Status(ctx context.Context, opts ...StatusOptions) (*domain.Status, error) {
 	noCache := len(opts) > 0 && opts[0].NoCache
 
+	cfg, err := w.localRepo.LoadConfig()
+	if err != nil {
+		return nil, err
+	}
 	snapshot, err := w.localRepo.Snapshot()
 	if err != nil {
 		return nil, err
@@ -146,7 +151,7 @@ func (w *WorkingCopy) Status(ctx context.Context, opts ...StatusOptions) (*domai
 		workingSet[p] = true
 	}
 
-	st := &domain.Status{}
+	st := &domain.Status{Branch: cfg.Branch, Head: cfg.Head}
 	for _, p := range staged {
 		_, err := os.Stat(filepath.Join(w.root, filepath.FromSlash(p)))
 		switch {

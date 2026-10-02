@@ -39,6 +39,12 @@ func (c *Cli) setupStatusCmd() *cobra.Command {
 }
 
 func writeStatus(cmd *cobra.Command, st *domain.Status) {
+	switch {
+	case st.Head != nil:
+		cmd.Printf("HEAD detached at tag %q\n", st.Head.Name)
+	case st.Branch != "":
+		cmd.Printf("On branch %s\n", st.Branch)
+	}
 	for _, p := range st.Staged {
 		cmd.Printf("A  %s\n", p)
 	}

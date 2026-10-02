@@ -8,9 +8,11 @@ import (
 	"syscall"
 
 	"github.com/nipalab/nipa/internal/client/domain"
+	"github.com/nipalab/nipa/internal/client/localrepo"
 	"github.com/nipalab/nipa/internal/client/output"
 	"github.com/nipalab/nipa/internal/client/usecase"
 	serverDomain "github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/snow"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
@@ -92,7 +94,42 @@ func (c *Cli) fetchLog(cmd *cobra.Command, cfg *domain.Config, limit int) ([]*se
 	if limit > 0 {
 		opts = append(opts, usecase.WithCommitLogMax(limit))
 	}
+	if cfg.Head != nil {
+		start, err := detachedLogStart()
+		if err != nil {
+			return nil, err
+		}
+		if start != nil {
+			opts = append(opts, usecase.WithCommitLogStart(*start))
+		}
+	}
 	return c.useCase.Repo().Log(ctx, nipaUrl.Host, nipaUrl.Org, nipaUrl.Project, cfg.Branch, opts...)
+}
+
+// detachedLogStart resolves the pinned commit a detached working copy walks
+// history from. A missing or unparsable pin falls back to the branch head.
+func detachedLogStart() (*snow.ID, error) {
+	root, err := localrepo.FindRepoRoot()
+	if err != nil {
+		return nil, err
+	}
+	lr := localrepo.NewLocalRepo()
+	if err := lr.Init(root); err != nil {
+		return nil, err
+	}
+	defer func() { _ = lr.Close() }()
+	pin, err := lr.LoadCommit()
+	if err != nil {
+		return nil, err
+	}
+	if pin == nil || pin.CommitID == "" {
+		return nil, nil
+	}
+	id, err := snow.ParseBase36(pin.CommitID)
+	if err != nil {
+		return nil, nil
+	}
+	return &id, nil
 }
 
 func isTTY(w io.Writer) bool {

@@ -31,6 +31,7 @@ type RepoOps struct {
 type UpdateRunner interface {
 	Run(ctx context.Context, root string, progress ...usecase.DownloadProgress) error
 	Switch(ctx context.Context, root, branch string, progress ...usecase.DownloadProgress) error
+	SwitchTag(ctx context.Context, root, tagName string, progress ...usecase.DownloadProgress) error
 }
 
 type PushRunner interface {

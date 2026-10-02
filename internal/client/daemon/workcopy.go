@@ -82,7 +82,8 @@ func (s *Server) Stage(ctx context.Context, req *daemonpb.StageRequest) (*daemon
 }
 
 func statusToPB(st *clientDomain.Status) *daemonpb.StatusResponse {
-	return &daemonpb.StatusResponse{
+	resp := &daemonpb.StatusResponse{
+		Branch:    st.Branch,
 		Staged:    st.Staged,
 		Deleted:   st.Deleted,
 		Modified:  st.Modified,
@@ -90,4 +91,8 @@ func statusToPB(st *clientDomain.Status) *daemonpb.StatusResponse {
 		Missing:   st.Missing,
 		Conflicts: st.Conflicts,
 	}
+	if st.Head != nil {
+		resp.Head = &daemonpb.StatusHead{Kind: st.Head.Kind, Name: st.Head.Name}
+	}
+	return resp
 }

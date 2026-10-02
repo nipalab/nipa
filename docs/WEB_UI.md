@@ -43,6 +43,13 @@ commits, comparing subtree hashes, and stops once every entry is resolved.
 (scan capped at 500 commits). Hidden paths return 404, like the tree and blob
 endpoints.
 
+## Tags API
+
+Release tags are exposed at `GET/POST …/tags` and `GET/DELETE …/tags/{name}`
+(`internal/http/api/tag.go`); the web API client already provides
+`listTags`/`createTag`/`deleteTag` in `web/src/api/endpoints.ts`. There is no
+Tags page in the SPA yet.
+
 ## Merge request reviews
 
 The merge request detail page is tabbed like GitHub, driven by `?tab=`:

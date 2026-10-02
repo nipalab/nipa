@@ -202,6 +202,10 @@ func (r *Repo) Log(ctx context.Context, host, org, project, branch string, opts 
 		all     []*serverDomain.CommitLogEntry
 		startID *snow.ID
 	)
+	if cfg.start != nil {
+		id := *cfg.start
+		startID = &id
+	}
 	for i := 0; i < 200; i++ {
 		page, err := r.repoInterface.GetCommitLog(ctx, org, project, branch, startID, cfg.pageSize)
 		if err != nil {
@@ -224,6 +228,7 @@ func (r *Repo) Log(ctx context.Context, host, org, project, branch string, opts 
 type commitLogConfig struct {
 	pageSize int
 	max      int
+	start    *snow.ID
 }
 
 type CommitLogOption func(*commitLogConfig)
@@ -236,4 +241,9 @@ func WithCommitLogPageSize(n int) CommitLogOption {
 // WithCommitLogMax caps the total number of commits returned (the -n flag).
 func WithCommitLogMax(n int) CommitLogOption {
 	return func(c *commitLogConfig) { c.max = n }
+}
+
+// WithCommitLogStart walks history from this commit instead of the branch head.
+func WithCommitLogStart(id snow.ID) CommitLogOption {
+	return func(c *commitLogConfig) { c.start = &id }
 }

@@ -57,6 +57,7 @@ Read commands accept `--json`, and `NIPA_OUTPUT=json` enables it globally:
   `new`, `text`, `no_newline`)
 - `nipa log --json`
 - `nipa branch --json` and `nipa branch -a --json`
+- `nipa tag --json` (listing; `-c`/`-d` reject `--json`)
 - `nipa lock list --json`
 - `nipa mr list --json`
 
@@ -98,8 +99,8 @@ copy, staging state and metadata are untouched.
 
 The server exposes an OpenAPI document at `/docs/api.json` (Swagger UI at
 `/docs/`). Routes live under `/api/v1/orgs/{org}/projects/{project}/...` and
-cover browsing, branches, merge requests, reviews, file locks, permissions and
-groups. Authenticate with a Bearer access token. The OpenAPI spec is generated
+cover browsing, branches, tags, merge requests, reviews, file locks, permissions
+and groups. Authenticate with a Bearer access token. The OpenAPI spec is generated
 from the route definitions, so it is always current.
 
 ## Related documentation

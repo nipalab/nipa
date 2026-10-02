@@ -30,7 +30,7 @@ func TestSetupStatusCmd_ShowsAllSections(t *testing.T) {
 
 	out, err := runCmdInDir(t, root, cli.setupStatusCmd())
 	require.NoError(t, err)
-	require.Equal(t, "A  staged.txt\nM  modified.txt\n?  new.txt\n!  missing.txt\n", out)
+	require.Equal(t, "On branch main\nA  staged.txt\nM  modified.txt\n?  new.txt\n!  missing.txt\n", out)
 }
 
 func TestSetupStatusCmd_Subdirectory(t *testing.T) {
@@ -42,7 +42,7 @@ func TestSetupStatusCmd_Subdirectory(t *testing.T) {
 	sub := root + "/src"
 	out, err := runCmdInDir(t, sub, cli.setupStatusCmd())
 	require.NoError(t, err)
-	require.Equal(t, "A  src/a.txt\n", out, "paths are reported relative to the repository root")
+	require.Equal(t, "On branch main\nA  src/a.txt\n", out, "paths are reported relative to the repository root")
 }
 
 func TestSetupStatusCmd_Clean(t *testing.T) {
@@ -51,7 +51,7 @@ func TestSetupStatusCmd_Clean(t *testing.T) {
 
 	out, err := runCmdInDir(t, root, cli.setupStatusCmd())
 	require.NoError(t, err)
-	require.Empty(t, out)
+	require.Equal(t, "On branch main\n", out)
 }
 
 func TestSetupStatusCmd_NotARepo(t *testing.T) {
@@ -80,7 +80,7 @@ func TestSetupStatusCmd_ShowsMergeConflicts(t *testing.T) {
 
 	out, err := runCmdInDir(t, root, cli.setupStatusCmd())
 	require.NoError(t, err)
-	require.Equal(t, "C  a.txt\nC  src/b.txt\n", out)
+	require.Equal(t, "On branch main\nC  a.txt\nC  src/b.txt\n", out)
 }
 
 func TestSetupStatusCmd_NoConflictsWhenNoMerge(t *testing.T) {
@@ -89,5 +89,25 @@ func TestSetupStatusCmd_NoConflictsWhenNoMerge(t *testing.T) {
 
 	out, err := runCmdInDir(t, root, cli.setupStatusCmd())
 	require.NoError(t, err)
-	require.Empty(t, out)
+	require.Equal(t, "On branch main\n", out)
+}
+
+func TestSetupStatusCmd_DetachedTag(t *testing.T) {
+	root := setupRepo(t, "main")
+	lr := localrepo.NewLocalRepo()
+	require.NoError(t, lr.Init(root))
+	require.NoError(t, lr.SaveConfig(domain.Config{
+		Url: "http://example.com/org/project", Branch: "main",
+		Head: &domain.HeadRef{Kind: domain.HeadKindTag, Name: "v1.0.0"},
+	}))
+	require.NoError(t, lr.Close())
+	cli := newStageCli()
+
+	out, err := runCmdInDir(t, root, cli.setupStatusCmd())
+	require.NoError(t, err)
+	require.Equal(t, "HEAD detached at tag \"v1.0.0\"\n", out)
+
+	jsonOut, err := runCmdInDir(t, root, cli.setupStatusCmd(), "--json")
+	require.NoError(t, err)
+	require.JSONEq(t, `{"branch":"main","head":{"kind":"tag","name":"v1.0.0"},"staged":[],"deleted":[],"modified":[],"untracked":[],"missing":[],"conflicts":[]}`, jsonOut)
 }

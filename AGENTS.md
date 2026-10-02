@@ -6,8 +6,8 @@ Project context for opencode. Read this before working in this repo.
 
 **Nipa** is a centralized version control system (Go/gRPC/SQLite) targeting
 binary-heavy projects (game dev, 3D assets, media) and large monorepos. It
-blends Git (lightweight branches, merge requests), Perforce (binary streaming),
-and SVN (path-based access control). Client-server monorepo: `nipa` (client,
+blends Git (lightweight branches, release tags, merge requests), Perforce
+(binary streaming), and SVN (path-based access control). Client-server monorepo: `nipa` (client,
 CLI at `cmd/nipa`) and `nipad` (server at `cmd/nipad`). `nipad` multiplexes
 gRPC (h2c), the REST API and the embedded SPA on one port — see
 `cmd/nipad/main.go` (`isAPIPath` routes `/auth`, `/docs`, `/api`; everything
@@ -18,9 +18,9 @@ everything under `ee/` is enterprise).
 
 - **Server** (`internal/`): `domain` (entities/errors), `usecase` (business
   logic, gomock-tested, depends only on repository interfaces; `browser.go` /
-  `browser_history.go` power the web UI tree/commit browsing and
-  `merge_request.go` the MR lifecycle and `merge_request_review.go` reviews),
-  `repository`
+  `browser_history.go` power the web UI tree/commit browsing,
+  `merge_request.go` the MR lifecycle, `merge_request_review.go` reviews and
+  `tag.go` release tags), `repository`
   (`sqlite`/`postgres` implementations over sqlc-generated `internal/repository/sqlc/*`),
   `grpc` (proto + `pb` generated + `server` handlers), `http` (REST API).
 - **Web UI** (`web/`): Vite/React/TypeScript SPA in `web/`, built with Primer
@@ -41,9 +41,11 @@ everything under `ee/` is enterprise).
   `//go:embed all:dist` in `web/server/webui.go` (package `webui`) and served
   for non-API paths in `cmd/nipad/main.go` (`isAPIPath`).
 - **Client** (`internal/client/`): `cli` (cobra commands: clone, branch
-  (`-a` list, `-c` create+switch, `-d` delete), add, remove, status, push, update, switch,
+  (`-a` list, `-c` create+switch, `-d` delete), tag (list, `-c` create, `-d`
+  delete), add, remove, status, push, update, switch (branch or `--tag`),
   merge, revert, log, diff, acl, group, sparse-checkout, mr, lock, unlock, serve), `usecase`
-  (clone/login, push, update/switch (incl. sparse), merge, revert, diff, log,
+  (clone/login, push, update/switch (incl. sparse and detached-tag checkout),
+  merge, revert, diff, log, tag management,
   permission, merge-request orchestration, file locks over small interfaces; `threeway.go`
   holds the shared materialize/stage/delete core), `grpc` (gRPC transport,
   converts pb→server domain types; `Client.ServiceClient()` exposes the typed
@@ -88,6 +90,31 @@ permission-filtered) clone sends the pinned head commit as
 `base_commit_id` (preferred over `base_tree_hash`) so the server applies the
 delta to the full base tree. Merge and revert still require a full checkout;
 `Push.Run` refuses to run mid multi-target revert sequence.
+
+Flow for release tags (`nipa tag`, `nipa tag -c <name> [-m msg] [--branch <b> |
+--commit <id|hash>]`, `nipa tag -d <name>`, `nipa switch --tag <name>`): a tag
+is an immutable project-scoped name pointing at one commit, with an optional
+annotation message (`tags` table, hard `UNIQUE(project_id, key)`; deleting frees
+the name). Server `usecase.Tag` resolves the target
+`commit_id > commit_hash > branch head > default branch head`, read-gates
+list/get, write-gates create/delete (409 on a live duplicate) and emits
+`tag.created` / `tag.deleted` webhooks. `nipa tag` lists (keyset cursor followed
+across pages); `-c` defaults to the locally pinned HEAD commit (offline-safe)
+and `--commit` accepts a base36 id or hex hash. `nipa switch --tag` is a
+Perforce-style detached checkout: resolve the tag, fetch the tagged commit's
+manifest with `GetCommitTreeManifest` (`GetTreeManifest` + `commit_id`, sparse
+and read-filtered, project-scoped), sync the working copy, pin the tag commit
+and record `{"head":{"kind":"tag","name":...}}` in `.nipa/config` — the branch
+identity stays configured. While detached, `nipa update` re-syncs the pinned
+commit (so sparse-checkout edits keep the checkout), `nipa status` prints
+`HEAD detached at tag "x"`, `nipa log` walks from the pinned commit, `nipa diff`
+accepts tag names as revisions, and push/merge/revert refuse with a
+`nipa switch <branch>` hint; switching to any branch clears the marker (and
+`branch -c` forks from the pinned commit and re-attaches). The `/tags` REST
+routes (`internal/http/api/tag.go`, handlers/DTOs in
+`internal/http/{handler,model}/tag.go`) mirror list/create/get/delete, and the
+web API client (`web/src/api/endpoints.ts`) already exposes
+`listTags`/`createTag`/`deleteTag` (no SPA page yet).
 
 Flow for binary file locks (`nipa lock <path> [--branch]`, `nipa unlock <path>`,
 `nipa lock list`): binary changes are mandatory-lock gated. `FileLock.Acquire`
@@ -164,7 +191,8 @@ stale fingerprints, real changes) is hashed with `chunkFile` → `diff.Compare`
 over path-keyed `diff.Entry` maps; untracked-unstaged files are excluded, missing
 tracked files are deletions, staged new files are additions. `--no-cache` reads
 every working file. With revisions, each token
-resolves to a commit ID first (branch name via gRPC `GetBranchByName`; `HEAD`/`@`
+resolves to a commit ID first (branch name via gRPC `GetBranchByName`, then tag
+name via `GetTagByName`; `HEAD`/`@`
 via localrepo `LoadCommit`, falling back to the configured branch; otherwise
 `snow.ParseBase36` → gRPC `GetCommit`), then `GetCommit(id).Tree` is flattened
 with `diff.FromTree`; missing chunks are downloaded with `downloadMissing`
@@ -191,10 +219,13 @@ any path inside a clone to its root (up to 32 parents), validates
 `usecase.WorkingCopy`, watcher/reconciler, coordinator and a `RepoOps` graph
 (`serveRepoOps` builds one usecase set and one gRPC client per root, since the
 client transport binds one host at a time). `Status`/`Stage` are read-through
-`WorkingCopy` calls under the shared coordinator slot; `Update`/`Switch`/
+`WorkingCopy` calls under the shared coordinator slot (`Status` reports the
+configured branch and the detached `head` marker); `Update`/`Switch`/
 `Push`/`Merge`/`Revert` take the exclusive slot (FIFO, queued exclusive blocks
 later shared waits) and stream `OpEvent`s (queued/started/progress/result/
 failure; cancelling the stream always terminates it with a failure event).
+`Switch` detaches at a tag when its request carries `tag`
+(`UpdateRunner.SwitchTag`), otherwise switches branch.
 `Diff` streams rendered patch/stat/name output (64 KiB chunks, file-by-file for
 patches) under the shared slot. An fsnotify watcher debounces events into
 dirty batches and a background reconciler refreshes `stat_cache` through
@@ -290,7 +321,9 @@ Direct: `go build ./...`, `go vet ./...`, `go test ./...`.
 
 ## Client localrepo design (`internal/client/localrepo`)
 
-- `.nipa/` inside the clone target: `config` (json `{url, branch, sparse?}`) written
+- `.nipa/` inside the clone target: `config` (json `{url, branch, sparse?,
+  head?}`; `head` is the detached marker `{"kind":"tag","name":"v1.0.0"}` and
+  is absent while on a branch) written
   atomically via `atomicWrite`, `nipa.db` (SQLite, `modernc.org/sqlite`,
   `_pragma=foreign_keys(ON)` in the DSN — cascades silently don't fire otherwise),
   and `objects/` with Git-style loose chunk objects.
@@ -362,7 +395,8 @@ Direct: `go build ./...`, `go vet ./...`, `go test ./...`.
   `LoginWithUsernamePassword`, `LoginWithRefreshToken`; branch RPCs
   `GetListBranch`, `GetBranch`, `GetBranchByName`, `GetDefaultBranch`,
   `CreateBranch`, `RenameBranch`, `DeleteBranch`, `SetDefaultBranch`,
-  `SetBranchProtection`; history/tree RPCs `GetTreeManifest`, `GetCommitLog`,
+  `SetBranchProtection`; tag RPCs `ListTags`, `GetTagByName`, `CreateTag`,
+  `DeleteTag`; history/tree RPCs `GetTreeManifest`, `GetCommitLog`,
   `GetCommit`, `WalkCommits`, `GetMergeBase`, `MergeFastForward`; merge-request
   RPCs `CreateMergeRequest`, `UpdateMergeRequest`, `ListMergeRequests`,
   `MergeMergeRequest`, `CloseMergeRequest`; review RPCs
@@ -381,8 +415,11 @@ Direct: `go build ./...`, `go vet ./...`, `go test ./...`.
   `DeleteProjectPathPermission`; group RPCs `CreateGroup`, `ListGroups`,
   `AddGroupMember`, `RemoveGroupMember`.
   `rpc` `GetTreeManifest` takes
-  `{context{org,project}, branch, path, tree_hash?, recursive, paths}` (`paths`
-  = directory prefixes to include, empty = whole tree) and returns
+  `{context{org,project}, branch, path, tree_hash?, recursive, paths,
+  commit_id?}` (`paths` = directory prefixes to include, empty = whole tree;
+  when `commit_id` is set the manifest is built from that commit's tree — the
+  commit must belong to the project, and `tree_hash` is then ignored) and
+  returns
   `{branch, root_tree}`. `TreeManifest` carries `tree_hash`, `path`, `sub_trees`,
   `files` (`path, mode, size_bytes, is_binary, chunk_hashes`). `GetBranch` takes
   `branch_id` (base36) and `GetBranchByName` takes `name`; both return the branch
@@ -502,7 +539,8 @@ Direct: `go build ./...`, `go vet ./...`, `go test ./...`.
   members/groups), user administration
   and profile; the browse endpoints are served by `internal/usecase/browser.go`
   (+ `browser_history.go` for per-file/per-dir last-commit info) under
-  `internal/http/api/`.
+  `internal/http/api/`. Release tags have REST routes (`/tags`,
+  `/tags/{name}`) and `endpoints.ts` helpers, but no SPA page yet.
 - Keep `web/src/api/endpoints.ts` in sync with the REST handlers under
   `internal/http/`. `npm run lint` (tsc), `npm test` (vitest) and `make web`
   must stay green; the built SPA is embedded via `web/server/webui.go`.
