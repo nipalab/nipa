@@ -244,6 +244,26 @@ func seedCommit(t *testing.T, db *sql.DB, q *sqlcPostgres.Queries, projectID sno
 	return id
 }
 
+func testDomainHash() domain.Hash {
+	var h domain.Hash
+	copy(h[:], testHashBytes())
+	return h
+}
+
+func seedCommitRow(t *testing.T, db *sql.DB, projectID snow.ID, treeID, userID int64, hash domain.Hash, parent1 sql.NullInt64, message string) snow.ID {
+	t.Helper()
+
+	node := newTestNode(t)
+	id := node.Generate()
+
+	_, err := db.ExecContext(context.Background(),
+		`INSERT INTO commits (id, hash, project_id, tree_id, parent_1_id, user_id, message) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		id.Int64(), hash.Bytes(), projectID.Int64(), treeID, parent1, userID, message,
+	)
+	require.NoError(t, err)
+	return id
+}
+
 func requireRecordNotFound(t *testing.T, err error) {
 	t.Helper()
 

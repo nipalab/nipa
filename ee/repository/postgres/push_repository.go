@@ -1,0 +1,142 @@
+package postgres
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+
+	sqlcPostgres "github.com/nipalab/nipa/ee/repository/postgres/sqlc"
+	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/usecase"
+)
+
+type PushRepository struct {
+	db *sql.DB
+}
+
+func NewPushRepository(db *sql.DB) *PushRepository {
+	return &PushRepository{db: db}
+}
+
+func (p *PushRepository) InsertChunkIfNotExists(ctx context.Context, hash domain.Hash, sizeBytes int64) error {
+	q := sqlcPostgres.New(p.db)
+	return handleError(q.ChunkInsertOrIgnore(ctx, sqlcPostgres.ChunkInsertOrIgnoreParams{
+		Hash:      hash.Bytes(),
+		SizeBytes: sizeBytes,
+	}))
+}
+
+func (p *PushRepository) HasChunk(ctx context.Context, hash domain.Hash) (bool, error) {
+	q := sqlcPostgres.New(p.db)
+	if _, err := q.ChunkGetByHash(ctx, hash.Bytes()); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, nil
+		}
+		return false, handleError(err)
+	}
+	return true, nil
+}
+
+func (p *PushRepository) ApplyPush(ctx context.Context, req usecase.ApplyPushRequest) error {
+	tx, err := p.db.BeginTx(ctx, nil)
+	if err != nil {
+		return handleError(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	q := sqlcPostgres.New(tx)
+
+	chunkIDs := map[domain.Hash]int64{}
+	ensureChunk := func(hash domain.Hash) error {
+		if _, ok := chunkIDs[hash]; ok {
+			return nil
+		}
+		row, err := q.ChunkGetByHash(ctx, hash.Bytes())
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return domain.NewErrorUser("missing chunk data for " + hash.String())
+			}
+			return handleError(err)
+		}
+		chunkIDs[hash] = row.ID
+		return nil
+	}
+	for _, f := range req.Files {
+		for _, ch := range f.ChunkHashes {
+			if err := ensureChunk(ch); err != nil {
+				return err
+			}
+		}
+	}
+
+	nodeIDs := map[int64]int64{}
+	for _, n := range req.Nodes {
+		var parent sql.NullInt64
+		if n.ParentID != nil {
+			parent = sql.NullInt64{Int64: nodeIDs[*n.ParentID], Valid: true}
+		}
+		id, err := q.TreeNodeInsert(ctx, sqlcPostgres.TreeNodeInsertParams{
+			Hash:         n.Hash.Bytes(),
+			Name:         n.Name,
+			Mode:         int64(n.Mode),
+			ParentTreeID: parent,
+		})
+		if err != nil {
+			return handleError(err)
+		}
+		nodeIDs[n.ID] = id
+	}
+	if len(req.Nodes) == 0 {
+		return domain.NewErrorDatabase("push produced no tree nodes")
+	}
+
+	for _, f := range req.Files {
+		fileID, err := q.FileInsert(ctx, sqlcPostgres.FileInsertParams{
+			Name:      f.Name,
+			Mode:      int64(f.Mode),
+			TreeID:    sql.NullInt64{Int64: nodeIDs[f.TreeID], Valid: true},
+			Hash:      f.Hash.Bytes(),
+			SizeBytes: f.SizeBytes,
+			IsBinary:  f.IsBinary,
+			Encoding:  f.Encoding,
+		})
+		if err != nil {
+			return handleError(err)
+		}
+		for index, ch := range f.ChunkHashes {
+			if err := q.FileChunkInsert(ctx, sqlcPostgres.FileChunkInsertParams{
+				FileID:     fileID,
+				ChunkID:    chunkIDs[ch],
+				ChunkIndex: int64(index),
+			}); err != nil {
+				return handleError(err)
+			}
+		}
+	}
+
+	rootID := nodeIDs[req.Nodes[0].ID]
+	if err := q.CommitInsert(ctx, sqlcPostgres.CommitInsertParams{
+		ID:        req.CommitID.Int64(),
+		Hash:      req.CommitHash.Bytes(),
+		ProjectID: req.ProjectID.Int64(),
+		TreeID:    rootID,
+		Parent1ID: nullSnowID(req.ParentID),
+		Parent2ID: nullSnowID(req.ParentID2),
+		UserID:    req.UserID.Int64(),
+		Message:   req.Message,
+	}); err != nil {
+		return handleError(err)
+	}
+
+	if err := q.BranchUpdateCommit(ctx, sqlcPostgres.BranchUpdateCommitParams{
+		CommitID: sql.NullInt64{Int64: req.CommitID.Int64(), Valid: true},
+		ID:       req.BranchID.Int64(),
+	}); err != nil {
+		return handleError(err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return handleError(err)
+	}
+	return nil
+}
