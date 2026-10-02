@@ -87,3 +87,47 @@ func timePtrToNullTime(t *time.Time) sql.NullTime {
 	}
 	return sql.NullTime{Time: *t, Valid: true}
 }
+
+func optionalSnowID(actor *domain.ReviewActor) sql.NullInt64 {
+	if actor == nil {
+		return sql.NullInt64{}
+	}
+	return sql.NullInt64{Int64: actor.UserID.Int64(), Valid: true}
+}
+
+func optionalString(value string) sql.NullString {
+	if value == "" {
+		return sql.NullString{}
+	}
+	return sql.NullString{String: value, Valid: true}
+}
+
+func optionalInt64(value *int) sql.NullInt64 {
+	if value == nil {
+		return sql.NullInt64{}
+	}
+	return sql.NullInt64{Int64: int64(*value), Valid: true}
+}
+
+func nullInt64IntPtr(value sql.NullInt64) *int {
+	if !value.Valid {
+		return nil
+	}
+	line := int(value.Int64)
+	return &line
+}
+
+func int64PtrToNull(i *int64) sql.NullInt64 {
+	if i == nil {
+		return sql.NullInt64{}
+	}
+	return sql.NullInt64{Int64: *i, Valid: true}
+}
+
+func reviewActor(userID int64, name string, photoURL sql.NullString) domain.ReviewActor {
+	return domain.ReviewActor{
+		UserID:   snow.ID(userID),
+		Name:     name,
+		PhotoURL: photoURL.String,
+	}
+}
