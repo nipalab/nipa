@@ -10,10 +10,13 @@ import (
 )
 
 const createProject = `-- name: CreateProject :one
-INSERT INTO projects (org_id, slug, name, description) VALUES ($1, $2, $3, $4) RETURNING id, org_id, slug, name, description, created_at, updated_at, deleted, deleted_at
+INSERT INTO projects (id, org_id, slug, name, description)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, org_id, slug, name, description, created_at, updated_at, deleted, deleted_at
 `
 
 type CreateProjectParams struct {
+	ID          int64  `json:"id"`
 	OrgID       int64  `json:"org_id"`
 	Slug        string `json:"slug"`
 	Name        string `json:"name"`
@@ -22,6 +25,7 @@ type CreateProjectParams struct {
 
 func (q *Queries) CreateProject(ctx context.Context, arg CreateProjectParams) (Project, error) {
 	row := q.db.QueryRowContext(ctx, createProject,
+		arg.ID,
 		arg.OrgID,
 		arg.Slug,
 		arg.Name,
@@ -72,6 +76,58 @@ func (q *Queries) GetProject(ctx context.Context, id int64) (Project, error) {
 	return i, err
 }
 
+const getProjectByOrgIDAndID = `-- name: GetProjectByOrgIDAndID :one
+SELECT id, org_id, slug, name, description, created_at, updated_at, deleted, deleted_at FROM projects WHERE id = $1 AND org_id = $2 AND deleted = false LIMIT 1
+`
+
+type GetProjectByOrgIDAndIDParams struct {
+	ID    int64 `json:"id"`
+	OrgID int64 `json:"org_id"`
+}
+
+func (q *Queries) GetProjectByOrgIDAndID(ctx context.Context, arg GetProjectByOrgIDAndIDParams) (Project, error) {
+	row := q.db.QueryRowContext(ctx, getProjectByOrgIDAndID, arg.ID, arg.OrgID)
+	var i Project
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.Slug,
+		&i.Name,
+		&i.Description,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Deleted,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const getProjectByOrgIDAndSlug = `-- name: GetProjectByOrgIDAndSlug :one
+SELECT id, org_id, slug, name, description, created_at, updated_at, deleted, deleted_at FROM projects WHERE org_id = $1 AND slug = $2 AND deleted = false LIMIT 1
+`
+
+type GetProjectByOrgIDAndSlugParams struct {
+	OrgID int64  `json:"org_id"`
+	Slug  string `json:"slug"`
+}
+
+func (q *Queries) GetProjectByOrgIDAndSlug(ctx context.Context, arg GetProjectByOrgIDAndSlugParams) (Project, error) {
+	row := q.db.QueryRowContext(ctx, getProjectByOrgIDAndSlug, arg.OrgID, arg.Slug)
+	var i Project
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.Slug,
+		&i.Name,
+		&i.Description,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Deleted,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
 const listProjectsByOrgId = `-- name: ListProjectsByOrgId :many
 SELECT id, org_id, slug, name, description, created_at, updated_at, deleted, deleted_at FROM projects WHERE org_id = $1 AND deleted = false ORDER BY id
 `
@@ -107,4 +163,33 @@ func (q *Queries) ListProjectsByOrgId(ctx context.Context, orgID int64) ([]Proje
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateProject = `-- name: UpdateProject :one
+UPDATE projects SET name = $1, description = $2, updated_at = now()
+WHERE id = $3 AND deleted = false
+RETURNING id, org_id, slug, name, description, created_at, updated_at, deleted, deleted_at
+`
+
+type UpdateProjectParams struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	ID          int64  `json:"id"`
+}
+
+func (q *Queries) UpdateProject(ctx context.Context, arg UpdateProjectParams) (Project, error) {
+	row := q.db.QueryRowContext(ctx, updateProject, arg.Name, arg.Description, arg.ID)
+	var i Project
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.Slug,
+		&i.Name,
+		&i.Description,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Deleted,
+		&i.DeletedAt,
+	)
+	return i, err
 }
