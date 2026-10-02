@@ -18,9 +18,10 @@ func seedOrg(t *testing.T, q *sqlite.Queries, name, slug string) snow.ID {
 	id := node.Generate()
 
 	_, err := q.CreateOrganization(context.Background(), sqlite.CreateOrganizationParams{
-		ID:   id.Int64(),
-		Name: name,
-		Slug: slug,
+		ID:              id.Int64(),
+		Name:            name,
+		Slug:            slug,
+		CreatedByUserID: 1,
 	})
 	require.NoError(t, err)
 	return id
@@ -68,6 +69,7 @@ func TestOrgRepositorySQLite_GetBySlug_SeededDefault(t *testing.T) {
 	require.Equal(t, snow.ID(1), got.ID)
 	require.Equal(t, "default", got.Slug)
 	require.Equal(t, "Default Organization", got.Name)
+	require.Equal(t, snow.ID(1), got.CreatedByUserID, "the seeded default org is owned by the seeded super admin")
 }
 
 func TestOrgRepositorySQLite_GetBySlug_NotFound(t *testing.T) {
@@ -159,8 +161,7 @@ func TestOrgRepositorySQLite_CreateWithOwner(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, orgID, created.ID)
 	require.Equal(t, "acme", created.Slug)
-	require.NotNil(t, created.CreatedByUserID)
-	require.Equal(t, ownerID, *created.CreatedByUserID)
+	require.Equal(t, ownerID, created.CreatedByUserID)
 
 	role, err := repo.MemberRole(ctx, orgID, ownerID)
 	require.NoError(t, err)
@@ -169,8 +170,7 @@ func TestOrgRepositorySQLite_CreateWithOwner(t *testing.T) {
 	stored, err := repo.GetBySlug(ctx, "acme")
 	require.NoError(t, err)
 	require.Equal(t, orgID, stored.ID)
-	require.NotNil(t, stored.CreatedByUserID)
-	require.Equal(t, ownerID, *stored.CreatedByUserID)
+	require.Equal(t, ownerID, stored.CreatedByUserID)
 }
 
 func TestOrgRepositorySQLite_CreateWithOwner_DuplicateSlug(t *testing.T) {

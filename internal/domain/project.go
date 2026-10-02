@@ -14,7 +14,7 @@ type Organization struct {
 	DeletedAt       *time.Time `json:"deleted_at,omitempty"`
 	Name            string     `json:"name"`
 	Slug            string     `json:"slug"`
-	CreatedByUserID *snow.ID   `json:"created_by_user_id,omitempty"`
+	CreatedByUserID snow.ID    `json:"created_by_user_id"`
 }
 
 type Project struct {

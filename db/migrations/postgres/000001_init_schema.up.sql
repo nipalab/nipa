@@ -6,7 +6,7 @@ CREATE TABLE organizations (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     deleted BOOLEAN NOT NULL DEFAULT false,
     deleted_at TIMESTAMPTZ,
-    created_by_user_id BIGINT
+    created_by_user_id BIGINT NOT NULL
 );
 
 CREATE TABLE projects (

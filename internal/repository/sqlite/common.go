@@ -63,14 +63,6 @@ func nullSnowID(id *snow.ID) sql.NullInt64 {
 	return sql.NullInt64{Int64: id.Int64(), Valid: true}
 }
 
-func nullSnowIDPtr(i sql.NullInt64) *snow.ID {
-	if !i.Valid {
-		return nil
-	}
-	id := snow.ID(i.Int64)
-	return &id
-}
-
 func timePtrToNullTime(t *time.Time) sql.NullTime {
 	if t == nil {
 		return sql.NullTime{Valid: false}

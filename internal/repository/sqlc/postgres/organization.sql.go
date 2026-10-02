@@ -7,7 +7,6 @@ package postgres
 
 import (
 	"context"
-	"database/sql"
 )
 
 const createOrganization = `-- name: CreateOrganization :one
@@ -15,9 +14,9 @@ INSERT INTO organizations (name, slug, created_by_user_id) VALUES ($1, $2, $3) R
 `
 
 type CreateOrganizationParams struct {
-	Name            string        `json:"name"`
-	Slug            string        `json:"slug"`
-	CreatedByUserID sql.NullInt64 `json:"created_by_user_id"`
+	Name            string `json:"name"`
+	Slug            string `json:"slug"`
+	CreatedByUserID int64  `json:"created_by_user_id"`
 }
 
 func (q *Queries) CreateOrganization(ctx context.Context, arg CreateOrganizationParams) (Organization, error) {

@@ -125,10 +125,11 @@ through external interference. `recount` rewrites both.
 `ensureBillingOwner(org)`:
 
 1. `SELECT user_id FROM ee_org_billing_owner WHERE org_id = ?` → done.
-2. Seed lazily: `organizations.created_by_user_id`; if NULL (legacy/seeded org),
-   first `org_members` row with `role = 'owner'` ordered by `created_at, user_id`.
-3. Insert the mapping. If no owner can be determined, fail the operation with a
-   clear 409/500 (open question 1) rather than silently allowing unlimited.
+2. Seed lazily from `organizations.created_by_user_id` (NOT NULL: every org,
+   including the seeded default org, has a creator), then insert the mapping.
+3. If the creator user no longer exists (hard delete), require a global admin to
+   transfer the org before further uploads instead of silently allowing
+   unlimited.
 
 Transfer (platform super admin only) updates `ee_org_billing_owner`; usage moves
 with the org because org counters are the source of the owner aggregate, so no
@@ -274,14 +275,11 @@ owner aggregate. Expose it as an offline/subcommand path
 
 ## Open questions
 
-1. Org with no resolvable owner (no creator, no owner-role member): block
-   uploads with an explicit error (recommended) or fall back to a per-org
-   default quota?
-2. Should owners be able to lower their own quota, or only buy above the
+1. Should owners be able to lower their own quota, or only buy above the
    current value? (Recommendation: purchase-only; admins can set anything.)
-3. Do soft-deleted orgs keep billing? (Current stance: yes; decide before
+2. Do soft-deleted orgs keep billing? (Current stance: yes; decide before
    enabling.)
-4. Chunk GC is out of scope; until it exists, rejected/unreferenced content
+3. Chunk GC is out of scope; until it exists, rejected/unreferenced content
    occupies disk but is never billed.
 
 ## Acceptance criteria

@@ -109,7 +109,7 @@ func (q *Queries) OrgMemberList(ctx context.Context, orgID int64) ([]OrgMemberLi
 }
 
 const orgMemberListForUser = `-- name: OrgMemberListForUser :many
-SELECT o.id, o.name, o.slug, o.created_at, o.updated_at, o.deleted, o.deleted_at, om.role
+SELECT o.id, o.name, o.slug, o.created_by_user_id, o.created_at, o.updated_at, o.deleted, o.deleted_at, om.role
 FROM org_members om
 JOIN organizations o ON o.id = om.org_id
 WHERE om.user_id = ? AND o.deleted = false
@@ -117,14 +117,15 @@ ORDER BY o.name, o.id
 `
 
 type OrgMemberListForUserRow struct {
-	ID        int64        `json:"id"`
-	Name      string       `json:"name"`
-	Slug      string       `json:"slug"`
-	CreatedAt time.Time    `json:"created_at"`
-	UpdatedAt time.Time    `json:"updated_at"`
-	Deleted   bool         `json:"deleted"`
-	DeletedAt sql.NullTime `json:"deleted_at"`
-	Role      string       `json:"role"`
+	ID              int64        `json:"id"`
+	Name            string       `json:"name"`
+	Slug            string       `json:"slug"`
+	CreatedByUserID int64        `json:"created_by_user_id"`
+	CreatedAt       time.Time    `json:"created_at"`
+	UpdatedAt       time.Time    `json:"updated_at"`
+	Deleted         bool         `json:"deleted"`
+	DeletedAt       sql.NullTime `json:"deleted_at"`
+	Role            string       `json:"role"`
 }
 
 func (q *Queries) OrgMemberListForUser(ctx context.Context, userID int64) ([]OrgMemberListForUserRow, error) {
@@ -140,6 +141,7 @@ func (q *Queries) OrgMemberListForUser(ctx context.Context, userID int64) ([]Org
 			&i.ID,
 			&i.Name,
 			&i.Slug,
+			&i.CreatedByUserID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.Deleted,

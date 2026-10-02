@@ -94,7 +94,7 @@ func TestGroupRepositorySQLite_ListByOrg(t *testing.T) {
 	db, _ := newSQLiteTestDB(t)
 	repo := NewGroupRepository(db)
 
-	_, err := db.ExecContext(ctx, `INSERT INTO organizations (id, slug, name) VALUES (2, 'other', 'Other')`)
+	_, err := db.ExecContext(ctx, `INSERT INTO organizations (id, slug, name, created_by_user_id) VALUES (2, 'other', 'Other', 1)`)
 	require.NoError(t, err)
 
 	for _, group := range []domain.Group{

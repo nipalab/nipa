@@ -13,7 +13,7 @@ WHERE om.org_id = ? AND u.deleted = false
 ORDER BY u.name, u.id;
 
 -- name: OrgMemberListForUser :many
-SELECT o.id, o.name, o.slug, o.created_at, o.updated_at, o.deleted, o.deleted_at, om.role
+SELECT o.id, o.name, o.slug, o.created_by_user_id, o.created_at, o.updated_at, o.deleted, o.deleted_at, om.role
 FROM org_members om
 JOIN organizations o ON o.id = om.org_id
 WHERE om.user_id = ? AND o.deleted = false

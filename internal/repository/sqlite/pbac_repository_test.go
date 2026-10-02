@@ -119,7 +119,7 @@ func TestPBACRepositorySQLite_ListEffectiveRules_RejectsForeignGroup(t *testing.
 
 	projectID := seedProject(t, q, 1, "game")
 	userID := seedPBACUser(t, db, 42)
-	_, err := db.ExecContext(ctx, `INSERT INTO organizations (id, slug, name) VALUES (2, 'other', 'Other')`)
+	_, err := db.ExecContext(ctx, `INSERT INTO organizations (id, slug, name, created_by_user_id) VALUES (2, 'other', 'Other', 1)`)
 	require.NoError(t, err)
 	foreignGroupID := seedPBACGroup(t, db, 5003, 2, "foreign", 42)
 

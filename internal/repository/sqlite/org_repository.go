@@ -33,7 +33,7 @@ func (r *OrgRepository) CreateWithOwner(ctx context.Context, org domain.Organiza
 		ID:              org.ID.Int64(),
 		Name:            org.Name,
 		Slug:            org.Slug,
-		CreatedByUserID: sql.NullInt64{Int64: ownerID.Int64(), Valid: true},
+		CreatedByUserID: ownerID.Int64(),
 	})
 	if err != nil {
 		return nil, handleError(err)
@@ -77,13 +77,14 @@ func (r *OrgRepository) ListForUser(ctx context.Context, userID snow.ID) ([]*dom
 	for _, row := range rows {
 		memberships = append(memberships, &domain.OrgMembership{
 			Org: domain.Organization{
-				ID:        snow.ID(row.ID),
-				Name:      row.Name,
-				Slug:      row.Slug,
-				CreatedAt: row.CreatedAt,
-				UpdatedAt: row.UpdatedAt,
-				Deleted:   row.Deleted,
-				DeletedAt: nullTimePtr(row.DeletedAt),
+				ID:              snow.ID(row.ID),
+				Name:            row.Name,
+				Slug:            row.Slug,
+				CreatedAt:       row.CreatedAt,
+				UpdatedAt:       row.UpdatedAt,
+				Deleted:         row.Deleted,
+				DeletedAt:       nullTimePtr(row.DeletedAt),
+				CreatedByUserID: snow.ID(row.CreatedByUserID),
 			},
 			Role: row.Role,
 		})
@@ -160,6 +161,6 @@ func toDomainOrganization(org sqlcSqlite.Organization) *domain.Organization {
 		Name:            org.Name,
 		CreatedAt:       org.CreatedAt,
 		UpdatedAt:       org.UpdatedAt,
-		CreatedByUserID: nullSnowIDPtr(org.CreatedByUserID),
+		CreatedByUserID: snow.ID(org.CreatedByUserID),
 	}
 }

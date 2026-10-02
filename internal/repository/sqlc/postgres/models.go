@@ -10,14 +10,14 @@ import (
 )
 
 type Organization struct {
-	ID              int64         `json:"id"`
-	Slug            string        `json:"slug"`
-	Name            string        `json:"name"`
-	CreatedAt       time.Time     `json:"created_at"`
-	UpdatedAt       time.Time     `json:"updated_at"`
-	Deleted         bool          `json:"deleted"`
-	DeletedAt       sql.NullTime  `json:"deleted_at"`
-	CreatedByUserID sql.NullInt64 `json:"created_by_user_id"`
+	ID              int64        `json:"id"`
+	Slug            string       `json:"slug"`
+	Name            string       `json:"name"`
+	CreatedAt       time.Time    `json:"created_at"`
+	UpdatedAt       time.Time    `json:"updated_at"`
+	Deleted         bool         `json:"deleted"`
+	DeletedAt       sql.NullTime `json:"deleted_at"`
+	CreatedByUserID int64        `json:"created_by_user_id"`
 }
 
 type Project struct {

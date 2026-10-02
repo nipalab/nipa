@@ -77,8 +77,7 @@ func TestHandler_CreateOrg(t *testing.T) {
 
 	stored, err := env.orgRepo.GetBySlug(context.Background(), "acme-corp")
 	require.NoError(t, err)
-	require.NotNil(t, stored.CreatedByUserID)
-	require.Equal(t, env.userID, *stored.CreatedByUserID)
+	require.Equal(t, env.userID, stored.CreatedByUserID)
 
 	role, err := env.orgRepo.MemberRole(context.Background(), stored.ID, env.userID)
 	require.NoError(t, err)
