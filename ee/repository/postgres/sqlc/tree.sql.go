@@ -11,28 +11,49 @@ import (
 	"time"
 )
 
-const chunkListByFile = `-- name: ChunkListByFile :many
-SELECT chunks.id, chunks.hash, chunks.size_bytes, chunks.created_at
+const chunkListByTree = `-- name: ChunkListByTree :many
+SELECT chunks.id, chunks.hash, chunks.size_bytes, chunks.created_at, file_chunks.file_id
 FROM chunks
 JOIN file_chunks ON file_chunks.chunk_id = chunks.id
-WHERE file_chunks.file_id = $1
-ORDER BY file_chunks.chunk_index
+WHERE file_chunks.file_id IN (
+        SELECT f.id
+        FROM files f
+        WHERE f.tree_id = (
+                SELECT content.id
+                FROM tree_nodes content
+                JOIN tree_nodes ref ON ref.hash = content.hash
+                WHERE ref.id = $1
+                  AND EXISTS (SELECT 1 FROM files cf WHERE cf.tree_id = content.id)
+                ORDER BY content.id
+                LIMIT 1
+            )
+    )
+ORDER BY file_chunks.file_id, file_chunks.chunk_index
 `
 
-func (q *Queries) ChunkListByFile(ctx context.Context, fileID int64) ([]Chunk, error) {
-	rows, err := q.db.QueryContext(ctx, chunkListByFile, fileID)
+type ChunkListByTreeRow struct {
+	ID        int64        `json:"id"`
+	Hash      []byte       `json:"hash"`
+	SizeBytes int64        `json:"size_bytes"`
+	CreatedAt sql.NullTime `json:"created_at"`
+	FileID    int64        `json:"file_id"`
+}
+
+func (q *Queries) ChunkListByTree(ctx context.Context, treeID int64) ([]ChunkListByTreeRow, error) {
+	rows, err := q.db.QueryContext(ctx, chunkListByTree, treeID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Chunk
+	var items []ChunkListByTreeRow
 	for rows.Next() {
-		var i Chunk
+		var i ChunkListByTreeRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.Hash,
 			&i.SizeBytes,
 			&i.CreatedAt,
+			&i.FileID,
 		); err != nil {
 			return nil, err
 		}

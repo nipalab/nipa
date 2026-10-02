@@ -35,7 +35,6 @@ func LoadConfig() (*Config, error) {
 	v.SetConfigType("yaml")
 	v.AddConfigPath(".")
 
-	v.SetDefault("CHUNK_STORAGE", "local")
 	v.SetDefault("CHUNK_PRESIGN_TTL_SECONDS", 3600)
 	v.SetDefault("CHUNK_MAX_PAGE_SIZE", 1000)
 

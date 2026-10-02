@@ -218,16 +218,30 @@ func (b *BranchRepository) ListFilesByTree(ctx context.Context, treeID int64) ([
 		return nil, handleError(err)
 	}
 	files := make([]*domain.File, 0, len(rows))
+	filesByID := make(map[int64]*domain.File, len(rows))
 	for _, row := range rows {
 		file := fileToDomain(row)
-		chunks, err := b.queries.ChunkListByFile(ctx, row.ID)
-		if err != nil {
-			return nil, handleError(err)
-		}
-		file.Chunks = slices.Map(chunks, func(c sqlcPostgres.Chunk) domain.Chunk {
-			return chunkToDomain(c)
-		})
 		files = append(files, file)
+		filesByID[row.ID] = file
+	}
+	if len(files) == 0 {
+		return files, nil
+	}
+	chunks, err := b.queries.ChunkListByTree(ctx, treeID)
+	if err != nil {
+		return nil, handleError(err)
+	}
+	for _, row := range chunks {
+		file, ok := filesByID[row.FileID]
+		if !ok {
+			continue
+		}
+		file.Chunks = append(file.Chunks, chunkToDomain(sqlcPostgres.Chunk{
+			ID:        row.ID,
+			Hash:      row.Hash,
+			SizeBytes: row.SizeBytes,
+			CreatedAt: row.CreatedAt,
+		}))
 	}
 	return files, nil
 }
