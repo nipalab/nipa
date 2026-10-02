@@ -21,11 +21,14 @@ sql:
         emit_interface: true
 
   - engine: "postgresql"
-    schema: "db/migrations/postgres"
-    queries: "db/queries/postgres"
+    schema: "ee/db/migrations/postgres"
+    queries: "ee/repository/postgres/queries"
     gen:
       go:
         package: "postgres"
-        out: "internal/repository/sqlc/postgres"
+        out: "ee/repository/postgres/sqlc"
         emit_json_tags: true
         emit_interface: true
+        overrides:
+          - db_type: "pg_catalog.int4"
+            go_type: "int64"

@@ -4,13 +4,11 @@ import (
 	"database/sql"
 	"fmt"
 
-	_ "github.com/jackc/pgx/v5/stdlib"
 	_ "modernc.org/sqlite"
 )
 
 var driverNames = map[string]string{
-	"sqlite3":  "sqlite",
-	"postgres": "pgx",
+	"sqlite3": "sqlite",
 }
 
 func Open(dialect, dataSourceName string) (*sql.DB, error) {

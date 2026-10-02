@@ -5,29 +5,19 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
-	"net"
-	"net/http"
-	"os"
-	"os/signal"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/nipalab/nipa/db"
 	"github.com/nipalab/nipa/ee/storage/s3"
 	"github.com/nipalab/nipa/internal/config"
-	"github.com/nipalab/nipa/internal/grpc/pb"
-	"github.com/nipalab/nipa/internal/grpc/server"
 	"github.com/nipalab/nipa/internal/hasher"
-	"github.com/nipalab/nipa/internal/http/api"
 	"github.com/nipalab/nipa/internal/repository/sqlite"
+	"github.com/nipalab/nipa/internal/serverapp"
 	"github.com/nipalab/nipa/internal/snow"
 	"github.com/nipalab/nipa/internal/storage"
 	"github.com/nipalab/nipa/internal/usecase"
 	"github.com/nipalab/nipa/internal/webhook"
-	webui "github.com/nipalab/nipa/web/server"
-	"google.golang.org/grpc"
-	_ "modernc.org/sqlite"
 )
 
 func main() {
@@ -105,7 +95,7 @@ func main() {
 	webhookRepository := sqlite.NewWebhookRepository(dbConn)
 	webhookDispatcher := webhook.NewDispatcher(webhookRepository, webhook.NewClient(webhook.ClientConfig{
 		Timeout:         time.Duration(cfg.WebhookTimeoutSeconds) * time.Second,
-		EgressAllowlist: splitAllowlist(cfg.WebhookEgressAllowlist),
+		EgressAllowlist: serverapp.SplitAllowlist(cfg.WebhookEgressAllowlist),
 	}), snowUser, webhook.Config{})
 	webhookUsecase := usecase.NewWebhook(webhookRepository, permissionUsecase, userRepo, webhookDispatcher, snowUser)
 	hookEmitter := usecase.NewHookEmitter(webhookRepository, projectRepo, orgRepo, branchRepository, userRepo, webhookDispatcher)
@@ -114,84 +104,26 @@ func main() {
 	mergeRequestUsecase = mergeRequestUsecase.WithHooks(hookEmitter)
 	mergeRequestReviewUsecase = mergeRequestReviewUsecase.WithHooks(hookEmitter)
 	pushUsecase = pushUsecase.WithHooks(hookEmitter)
-	reg := &Registry{
-		authUsecase:               authUsecase,
-		userUsecase:               usecase.NewUser(snowUser, userRepo, passwordHasher),
-		commonUsecase:             usecase.NewCommon(orgRepo, projectRepo),
-		branchUsecase:             branchUsecase,
-		tagUsecase:                tagUsecase,
-		pushUsecase:               pushUsecase,
-		chunkUsecase:              chunkUsecase,
-		permissionUsecase:         permissionUsecase,
-		groupUsecase:              usecase.NewGroup(groupRepository, snowUser, permissionUsecase, orgUsecase),
-		orgUsecase:                orgUsecase,
-		projectUsecase:            projectUsecase,
-		mergeRequestUsecase:       mergeRequestUsecase,
-		mergeRequestReviewUsecase: mergeRequestReviewUsecase,
-		fileLockUsecase:           fileLockUsecase,
-		webhookUsecase:            webhookUsecase,
-	}
 
-	apiApp := api.NewAPI(reg)
-	container := apiApp.SetupRoute()
-	webhookDispatcher.Start()
-
-	address := fmt.Sprintf("%s:%d", cfg.ServerAddress, cfg.ServerPort)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	grpcInterceptor := server.NewInterceptor(reg.Auth())
-
-	grpcRegistrar := grpc.NewServer(
-		grpc.UnaryInterceptor(grpcInterceptor.JWTUnary()),
-		grpc.StreamInterceptor(grpcInterceptor.JWTStream()),
-	)
-	grpcServer := server.New(reg)
-	pb.RegisterNipaServiceServer(grpcRegistrar, grpcServer)
-
-	webUI := webui.Handler()
-
-	mainHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		slog.Info("incoming connection", "content", r.Header.Get("Content-Type"), "method", r.Method, "url", r.URL.String(), "ProtoMajor", r.ProtoMajor)
-		if r.ProtoMajor == 2 && strings.HasPrefix(r.Header.Get("Content-Type"), "application/grpc") {
-			slog.Info("grpc connection is coming")
-			grpcRegistrar.ServeHTTP(w, r)
-		} else if isAPIPath(r.URL.Path) {
-			container.ServeHTTP(w, r)
-		} else {
-			webUI.ServeHTTP(w, r)
-		}
+	reg := serverapp.NewRegistry(serverapp.Usecases{
+		Auth:               authUsecase,
+		User:               usecase.NewUser(snowUser, userRepo, passwordHasher),
+		Common:             usecase.NewCommon(orgRepo, projectRepo),
+		Branch:             branchUsecase,
+		Tag:                tagUsecase,
+		Push:               pushUsecase,
+		Chunk:              chunkUsecase,
+		Permission:         permissionUsecase,
+		Group:              usecase.NewGroup(groupRepository, snowUser, permissionUsecase, orgUsecase),
+		Org:                orgUsecase,
+		Project:            projectUsecase,
+		MergeRequest:       mergeRequestUsecase,
+		MergeRequestReview: mergeRequestReviewUsecase,
+		FileLock:           fileLockUsecase,
+		Webhook:            webhookUsecase,
 	})
 
-	protocols := new(http.Protocols)
-	protocols.SetHTTP1(true)
-	protocols.SetUnencryptedHTTP2(true)
-
-	httpServer := &http.Server{Addr: address, Handler: mainHandler, Protocols: protocols}
-	ln, err := net.Listen("tcp", address)
-	if err != nil {
-		panic(err)
-	}
-
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt, syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP)
-
-	go func() {
-		<-c
-		slog.Info("shutting down server")
-		if err := httpServer.Shutdown(ctx); err != nil {
-			slog.Error("error shutting down server", "error", err)
-		}
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		if err := webhookDispatcher.Stop(shutdownCtx); err != nil {
-			slog.Warn("webhook dispatcher shutdown incomplete", "error", err)
-		}
-		os.Exit(0)
-	}()
-
-	slog.Info("server is running", "address", address)
-	if err := httpServer.Serve(ln); err != http.ErrServerClosed {
+	if err := serverapp.Run(cfg, reg, webhookDispatcher); err != nil {
 		panic(err)
 	}
 }
@@ -226,19 +158,4 @@ func createChunkStore(cfg *config.Config) (storage.ChunkStore, error) {
 
 func createDatabaseConnection(dsn string) (*sql.DB, error) {
 	return db.OpenSQLite(dsn)
-}
-
-// splitAllowlist turns the comma-separated WEBHOOK_EGRESS_ALLOWLIST into
-// entries. Empty means no egress restriction.
-func splitAllowlist(raw string) []string {
-	if strings.TrimSpace(raw) == "" {
-		return nil
-	}
-	return strings.Split(raw, ",")
-}
-
-func isAPIPath(p string) bool {
-	return strings.HasPrefix(p, "/auth") ||
-		strings.HasPrefix(p, "/docs") ||
-		strings.HasPrefix(p, "/api")
 }
