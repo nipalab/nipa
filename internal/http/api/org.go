@@ -22,6 +22,15 @@ func setupOrgRouter(ws *restful.WebService, h *handler.Handler) {
 			Metadata(restfulspec.KeyOpenAPITags, tags))
 
 	ws.Route(
+		ws.POST("/orgs").
+			To(wrap(h.CreateOrg)).
+			Reads(model.CreateOrgRequest{}).
+			Doc("Create an organization; the caller becomes its owner").
+			Returns(http.StatusOK, "created organization", model.OrgResponse{}).
+			Operation("createOrg").
+			Metadata(restfulspec.KeyOpenAPITags, tags))
+
+	ws.Route(
 		ws.GET("/orgs/{org}/members").
 			To(wrap(h.ListOrgMembers)).
 			Param(ws.PathParameter("org", "organization slug")).

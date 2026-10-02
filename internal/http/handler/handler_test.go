@@ -195,7 +195,7 @@ func newHandlerTestEnv(t *testing.T) *handlerTestEnv {
 	groupRepo := sqlite.NewGroupRepository(dbConn)
 	node, _ := snow.NewNode(1)
 	orgRepo := sqlite.NewOrgRepository(dbConn)
-	orgUc := usecase.NewOrg(orgRepo)
+	orgUc := usecase.NewOrg(orgRepo, node)
 	permissionUc := usecase.NewPermission(pbacRepo, userRepo, groupRepo, orgUc)
 	projectUc := usecase.NewProject(sqlite.NewProjectRepository(dbConn), node, permissionUc, orgUc)
 	branchRepo := sqlite.NewBranchRepository(dbConn)

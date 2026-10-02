@@ -61,6 +61,59 @@ func TestHandler_ListMyOrgs_NoClaims(t *testing.T) {
 	require.Equal(t, http.StatusUnauthorized, appCtx.statusCode)
 }
 
+func TestHandler_CreateOrg(t *testing.T) {
+	env := newHandlerTestEnv(t)
+
+	appCtx := &fakeAppContext{claims: &domain.Claims{UserID: env.userID}, body: []byte(`{"name":"Acme Corp"}`)}
+	env.handler.CreateOrg(appCtx)
+
+	require.Equal(t, http.StatusOK, appCtx.statusCode)
+	created, ok := appCtx.response.(model.OrgResponse)
+	require.True(t, ok)
+	require.NotEmpty(t, created.ID)
+	require.Equal(t, "Acme Corp", created.Name)
+	require.Equal(t, "acme-corp", created.Slug)
+	require.Equal(t, domain.OrgRoleOwner, created.Role)
+
+	stored, err := env.orgRepo.GetBySlug(context.Background(), "acme-corp")
+	require.NoError(t, err)
+	require.NotNil(t, stored.CreatedByUserID)
+	require.Equal(t, env.userID, *stored.CreatedByUserID)
+
+	role, err := env.orgRepo.MemberRole(context.Background(), stored.ID, env.userID)
+	require.NoError(t, err)
+	require.Equal(t, domain.OrgRoleOwner, role)
+}
+
+func TestHandler_CreateOrg_DuplicateSlug(t *testing.T) {
+	env := newHandlerTestEnv(t)
+
+	appCtx := &fakeAppContext{claims: &domain.Claims{UserID: env.userID}, body: []byte(`{"name":"Acme","slug":"acme"}`)}
+	env.handler.CreateOrg(appCtx)
+	require.Equal(t, http.StatusOK, appCtx.statusCode)
+
+	appCtx = &fakeAppContext{claims: &domain.Claims{UserID: env.userID}, body: []byte(`{"name":"Other","slug":"acme"}`)}
+	env.handler.CreateOrg(appCtx)
+	require.Equal(t, http.StatusConflict, appCtx.statusCode)
+}
+
+func TestHandler_CreateOrg_InvalidSlug(t *testing.T) {
+	env := newHandlerTestEnv(t)
+
+	appCtx := &fakeAppContext{claims: &domain.Claims{UserID: env.userID}, body: []byte(`{"name":"Acme","slug":"Bad Slug"}`)}
+	env.handler.CreateOrg(appCtx)
+	require.Equal(t, http.StatusBadRequest, appCtx.statusCode)
+}
+
+func TestHandler_CreateOrg_NoClaims(t *testing.T) {
+	env := newHandlerTestEnv(t)
+
+	appCtx := &fakeAppContext{body: []byte(`{"name":"Acme"}`)}
+	env.handler.CreateOrg(appCtx)
+
+	require.Equal(t, http.StatusUnauthorized, appCtx.statusCode)
+}
+
 func TestHandler_ListOrgMembers(t *testing.T) {
 	env := newHandlerTestEnv(t)
 

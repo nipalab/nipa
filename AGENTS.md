@@ -116,6 +116,15 @@ routes (`internal/http/api/tag.go`, handlers/DTOs in
 web API client (`web/src/api/endpoints.ts`) already exposes
 `listTags`/`createTag`/`deleteTag` (no SPA page yet).
 
+Flow for organization creation (`POST /api/v1/orgs`, "New organization" dialog
+on the SPA home page): any authenticated user creates an org; `usecase.Org.Create`
+trims the name, derives the slug from it when omitted, rejects invalid or
+duplicate slugs (409) and calls `OrgRepository.CreateWithOwner`, which in one
+transaction inserts the row with `created_by_user_id` and upserts the creator as
+an `owner` member — so project creation (`Project.Create` requires org owner)
+works immediately. The free version tracks no storage usage; cloud builds attach
+quota to `created_by_user_id` through the `usecase.StorageLedger` seam.
+
 Flow for binary file locks (`nipa lock <path> [--branch]`, `nipa unlock <path>`,
 `nipa lock list`): binary changes are mandatory-lock gated. `FileLock.Acquire`
 resolves the scope from the branch — the default branch is a project-global lock
@@ -511,6 +520,17 @@ Direct: `go build ./...`, `go vet ./...`, `go test ./...`.
   are verified too, while untouched recorded chunks only get a store existence
   + metadata check. The marks are in-memory per server process and drop after
   the presign TTL (a restart falls back to the metadata rule).
+- **Storage accounting seam (free vs cloud).** `usecase.Chunk.WithStorageLedger`
+  accepts an optional `StorageLedger` (`internal/usecase/storage_ledger.go`:
+  `AttributedSizes`/`Headroom`/`Attribute`). The free version wires none (nil):
+  presign/confirm skip all accounting and no quota applies. Cloud builds inject
+  an `ee/` implementation at `cmd/nipad` (same import pattern as `ee/storage/s3`);
+  it links chunks to projects, keeps per-project/org/owner counters and enforces
+  the owner's quota at both `GetChunkUploadUrls` (projected new bytes) and
+  `ConfirmChunkUploads` (authoritative). Quota failures use
+  `domain.NewErrorQuotaExceeded` (HTTP 402) and cross gRPC as
+  `ResourceExhausted`, which the client maps back to a 402 domain error so
+  `nipa push` reports it.
 - `Parsec`/`ParseNipaUrl` (`internal/client/domain/url.go`): `/org/project[/path]`.
   `path` is threaded through to the manifest request so a missing subpath returns a
   404, and cloning a repo with an empty (no-commit) branch returns an empty tree,

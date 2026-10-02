@@ -25,7 +25,7 @@ func (n *nipaServer) GetChunkUploadUrls(ctx context.Context, req *pb.GetChunkUpl
 	if err != nil {
 		return nil, handleError(err)
 	}
-	urls, next, err := n.uc.Chunk().PresignUploadURLs(ctx, org.Slug, project.Slug, refs, int(req.GetPageSize()), req.GetPageToken())
+	urls, next, err := n.uc.Chunk().PresignUploadURLs(ctx, org, project, refs, int(req.GetPageSize()), req.GetPageToken())
 	if err != nil {
 		return nil, handleError(err)
 	}
@@ -64,7 +64,7 @@ func (n *nipaServer) GetChunkDownloadUrls(ctx context.Context, req *pb.GetChunkD
 // records chunk metadata. The metadata size is measured server-side from the
 // stored content; hashes still missing are returned for retry.
 func (n *nipaServer) ConfirmChunkUploads(ctx context.Context, req *pb.ConfirmChunkUploadsRequest) (*pb.ConfirmChunkUploadsResponse, error) {
-	_, project, err := n.resolveChunkProject(ctx, req.GetContext())
+	org, project, err := n.resolveChunkProject(ctx, req.GetContext())
 	if err != nil {
 		return nil, err
 	}
@@ -75,7 +75,7 @@ func (n *nipaServer) ConfirmChunkUploads(ctx context.Context, req *pb.ConfirmChu
 	if err != nil {
 		return nil, handleError(err)
 	}
-	missing, err := n.uc.Chunk().ConfirmUploads(ctx, hashes)
+	missing, err := n.uc.Chunk().ConfirmUploads(ctx, org, project, hashes)
 	if err != nil {
 		return nil, handleError(err)
 	}

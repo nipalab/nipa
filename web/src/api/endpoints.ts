@@ -55,6 +55,13 @@ export function listOrgs(): Promise<OrgResponse[]> {
   return apiJson('/api/v1/orgs')
 }
 
+export function createOrg(name: string, slug: string): Promise<OrgResponse> {
+  return apiJson('/api/v1/orgs', {
+    method: 'POST',
+    body: JSON.stringify({ name, slug }),
+  })
+}
+
 export function listProjects(org: string): Promise<ProjectResponse[]> {
   return apiJson(`/api/v1/orgs/${encodeURIComponent(org)}/projects`)
 }

@@ -51,6 +51,13 @@ func TestHandleError_Domain404(t *testing.T) {
 	require.Equal(t, "record not found", status.Convert(err).Message())
 }
 
+func TestHandleError_Domain402(t *testing.T) {
+	err := handleError(&domain.Error{Code: 402, Message: "storage quota exceeded"})
+	require.Error(t, err)
+	require.Equal(t, codes.ResourceExhausted, status.Code(err))
+	require.Equal(t, "storage quota exceeded", status.Convert(err).Message())
+}
+
 func TestHandleError_Domain500(t *testing.T) {
 	err := handleError(&domain.Error{Code: 500, Message: "internal server error"})
 	require.Error(t, err)

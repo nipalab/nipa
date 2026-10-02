@@ -57,6 +57,36 @@ func (mr *MockorgMemberRepositoryMockRecorder) CountMembersByRole(ctx, orgID, ro
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountMembersByRole", reflect.TypeOf((*MockorgMemberRepository)(nil).CountMembersByRole), ctx, orgID, role)
 }
 
+// CreateWithOwner mocks base method.
+func (m *MockorgMemberRepository) CreateWithOwner(ctx context.Context, org domain.Organization, ownerID snow.ID) (*domain.Organization, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateWithOwner", ctx, org, ownerID)
+	ret0, _ := ret[0].(*domain.Organization)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateWithOwner indicates an expected call of CreateWithOwner.
+func (mr *MockorgMemberRepositoryMockRecorder) CreateWithOwner(ctx, org, ownerID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateWithOwner", reflect.TypeOf((*MockorgMemberRepository)(nil).CreateWithOwner), ctx, org, ownerID)
+}
+
+// GetBySlug mocks base method.
+func (m *MockorgMemberRepository) GetBySlug(ctx context.Context, slug string) (*domain.Organization, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetBySlug", ctx, slug)
+	ret0, _ := ret[0].(*domain.Organization)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetBySlug indicates an expected call of GetBySlug.
+func (mr *MockorgMemberRepositoryMockRecorder) GetBySlug(ctx, slug any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBySlug", reflect.TypeOf((*MockorgMemberRepository)(nil).GetBySlug), ctx, slug)
+}
+
 // ListForUser mocks base method.
 func (m *MockorgMemberRepository) ListForUser(ctx context.Context, userID snow.ID) ([]*domain.OrgMembership, error) {
 	m.ctrl.T.Helper()

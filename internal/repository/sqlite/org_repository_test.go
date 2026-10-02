@@ -147,6 +147,49 @@ func TestOrgRepositorySQLite_MemberRole_NotAMember(t *testing.T) {
 	requireRecordNotFound(t, err)
 }
 
+func TestOrgRepositorySQLite_CreateWithOwner(t *testing.T) {
+	ctx := context.Background()
+	db, _ := newSQLiteTestDB(t)
+	repo := NewOrgRepository(db)
+
+	orgID := newTestNode(t).Generate()
+	ownerID := snow.ID(1)
+
+	created, err := repo.CreateWithOwner(ctx, domain.Organization{ID: orgID, Name: "Acme Corp", Slug: "acme"}, ownerID)
+	require.NoError(t, err)
+	require.Equal(t, orgID, created.ID)
+	require.Equal(t, "acme", created.Slug)
+	require.NotNil(t, created.CreatedByUserID)
+	require.Equal(t, ownerID, *created.CreatedByUserID)
+
+	role, err := repo.MemberRole(ctx, orgID, ownerID)
+	require.NoError(t, err)
+	require.Equal(t, domain.OrgRoleOwner, role)
+
+	stored, err := repo.GetBySlug(ctx, "acme")
+	require.NoError(t, err)
+	require.Equal(t, orgID, stored.ID)
+	require.NotNil(t, stored.CreatedByUserID)
+	require.Equal(t, ownerID, *stored.CreatedByUserID)
+}
+
+func TestOrgRepositorySQLite_CreateWithOwner_DuplicateSlug(t *testing.T) {
+	ctx := context.Background()
+	db, _ := newSQLiteTestDB(t)
+	repo := NewOrgRepository(db)
+	node := newTestNode(t)
+
+	_, err := repo.CreateWithOwner(ctx, domain.Organization{ID: node.Generate(), Name: "Acme", Slug: "acme"}, 1)
+	require.NoError(t, err)
+
+	secondID := node.Generate()
+	_, err = repo.CreateWithOwner(ctx, domain.Organization{ID: secondID, Name: "Other", Slug: "acme"}, 1)
+	require.True(t, domain.IsErrorConflict(err))
+
+	_, err = repo.MemberRole(ctx, secondID, 1)
+	requireRecordNotFound(t, err)
+}
+
 func TestOrgRepositorySQLite_ListMembers_ExcludesDeletedUsers(t *testing.T) {
 	ctx := context.Background()
 	db, _ := newSQLiteTestDB(t)
