@@ -1,12 +1,12 @@
 SQLC       ?= go run github.com/sqlc-dev/sqlc/cmd/sqlc@latest
 MIGRATE_CMD := go run ./cmd/migrate
-DRIVER     ?= sqlite3
+MIGRATE_EE_CMD := go run ./ee/cmd/migrate
 DSN        ?= nipa.db
 MIGRATIONS_DIR := db/migrations
 POSTGRES_MIGRATIONS_DIR := ee/db/migrations/postgres
 mb         ?= 256
 
-.PHONY: sqlc mock migrate-up migrate-down migrate-create build build-all test lint web web-dev web-install bench-upload
+.PHONY: sqlc mock migrate-up migrate-down migrate-up-postgres migrate-down-postgres migrate-create build build-all build-server build-server-ee build-client test test-ee lint web web-dev web-install bench-upload
 
 GOLANGCI_LINT_IMAGE ?= docker.io/golangci/golangci-lint:latest
 
@@ -18,13 +18,21 @@ sqlc:
 mock:
 	go generate ./...
 
-## Apply all pending migrations. Override DRIVER=postgres DSN=... for postgres.
+## Apply all pending sqlite migrations. Override DSN=... to point at another database file.
 migrate-up:
-	$(MIGRATE_CMD) -dialect $(DRIVER) -dsn $(DSN) -action up
+	$(MIGRATE_CMD) -dialect sqlite3 -dsn $(DSN) -action up
 
-## Revert all applied migrations. Override DRIVER=postgres DSN=... for postgres.
+## Revert all applied sqlite migrations. Override DSN=... to point at another database file.
 migrate-down:
-	$(MIGRATE_CMD) -dialect $(DRIVER) -dsn $(DSN) -action down
+	$(MIGRATE_CMD) -dialect sqlite3 -dsn $(DSN) -action down
+
+## Apply all pending postgres migrations, e.g. `make migrate-up-postgres DSN=postgres://...`.
+migrate-up-postgres:
+	$(MIGRATE_EE_CMD) -dsn "$(DSN)" -action up
+
+## Revert all applied postgres migrations, e.g. `make migrate-down-postgres DSN=postgres://...`.
+migrate-down-postgres:
+	$(MIGRATE_EE_CMD) -dsn "$(DSN)" -action down
 
 ## Create a new pair of up/down migration files for both dialects, e.g. `make migrate-create name=add_users`.
 migrate-create:
@@ -37,6 +45,9 @@ migrate-create:
 
 build-server:
 	go build -o bin/nipad ./cmd/nipad
+
+build-server-ee:
+	go build -o bin/nipad-ee ./ee/cmd/nipad
 
 build-client:
 	go build -o bin/nipa ./cmd/nipa
@@ -54,8 +65,11 @@ web:
 web-dev:
 	cd web && npm run dev
 
-## Build the server including the web UI.
+## Build the free server including the web UI.
 build: web build-server build-client
+
+## Build both the free and enterprise servers including the web UI.
+build-all: build build-server-ee
 
 proto:
 	protoc --go_out=internal/grpc --go-grpc_out=internal/grpc internal/grpc/proto/server.proto
@@ -67,6 +81,10 @@ proto:
 ## Run all tests (requires Docker for testcontainers-backed repository tests).
 test:
 	go test ./... -v
+
+## Run the Enterprise Edition tests (requires Docker for testcontainers).
+test-ee:
+	go test ./ee/... -v
 
 ## Measure upload throughput with NIPA_BENCH_MB MiB files (e.g. make bench-upload mb=512).
 bench-upload:
