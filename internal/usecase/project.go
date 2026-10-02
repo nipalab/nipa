@@ -10,8 +10,8 @@ import (
 )
 
 var (
-	projectSlugPattern   = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
-	projectSlugSeparator = regexp.MustCompile(`[^a-z0-9]+`)
+	slugPattern   = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
+	slugSeparator = regexp.MustCompile(`[^a-z0-9]+`)
 )
 
 const defaultBranchName = "main"
@@ -79,9 +79,9 @@ func (p *Project) Create(ctx context.Context, orgID snow.ID, name, description, 
 	}
 	slug = strings.TrimSpace(slug)
 	if slug == "" {
-		slug = slugifyProject(name)
+		slug = slugify(name)
 	}
-	if !projectSlugPattern.MatchString(slug) {
+	if !slugPattern.MatchString(slug) {
 		return nil, domain.NewErrorUser("invalid project slug")
 	}
 	if _, err := p.repo.GetByOrgIDAndSlug(ctx, orgID, slug); err == nil {
@@ -170,8 +170,8 @@ func (p *Project) requireProjectAdmin(ctx context.Context, project *domain.Proje
 	return domain.NewErrorNoPermission()
 }
 
-func slugifyProject(name string) string {
+func slugify(name string) string {
 	s := strings.ToLower(strings.TrimSpace(name))
-	s = projectSlugSeparator.ReplaceAllString(s, "-")
+	s = slugSeparator.ReplaceAllString(s, "-")
 	return strings.Trim(s, "-")
 }

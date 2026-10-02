@@ -153,7 +153,7 @@ func startTestServer(t *testing.T, dbConn *sql.DB) string {
 
 	authUc := serverusecase.NewAuth(e2eJWTSecret, passwordHasher, userRepo, authRepo)
 	groupRepo := sqlite.NewGroupRepository(dbConn)
-	orgUc := serverusecase.NewOrg(orgRepo)
+	orgUc := serverusecase.NewOrg(orgRepo, node)
 	permissionUc := serverusecase.NewPermission(pbacRepo, userRepo, groupRepo, orgUc)
 	commonUc := serverusecase.NewCommon(orgRepo, projectRepo)
 	chunkStore, err := storage.NewLocalStore(t.TempDir())

@@ -17,7 +17,9 @@ func newTestOrg(t *testing.T) (*Org, *MockorgMemberRepository) {
 
 	ctrl := gomock.NewController(t)
 	repo := NewMockorgMemberRepository(ctrl)
-	return NewOrg(repo), repo
+	node, err := snow.NewNode(1)
+	require.NoError(t, err)
+	return NewOrg(repo, node), repo
 }
 
 func TestOrg_ListForUser(t *testing.T) {
@@ -28,6 +30,91 @@ func TestOrg_ListForUser(t *testing.T) {
 	got, err := org.ListForUser(context.Background(), snow.ID(42))
 	require.NoError(t, err)
 	require.Equal(t, want, got)
+}
+
+func TestOrg_Create(t *testing.T) {
+	org, repo := newTestOrg(t)
+
+	repo.EXPECT().GetBySlug(gomock.Any(), "acme-corp").Return(nil, domain.NewErrorNotFound("org not found"))
+	repo.EXPECT().CreateWithOwner(gomock.Any(), gomock.Any(), snow.ID(42)).DoAndReturn(
+		func(_ context.Context, created domain.Organization, _ snow.ID) (*domain.Organization, error) {
+			require.NotZero(t, created.ID)
+			require.Equal(t, "Acme Corp", created.Name)
+			require.Equal(t, "acme-corp", created.Slug)
+			return &created, nil
+		})
+
+	got, err := org.Create(permissionCtx(42), "Acme Corp", "")
+	require.NoError(t, err)
+	require.Equal(t, "Acme Corp", got.Name)
+	require.Equal(t, "acme-corp", got.Slug)
+}
+
+func TestOrg_Create_ExplicitSlug(t *testing.T) {
+	org, repo := newTestOrg(t)
+
+	repo.EXPECT().GetBySlug(gomock.Any(), "acme").Return(nil, domain.NewErrorNotFound("org not found"))
+	repo.EXPECT().CreateWithOwner(gomock.Any(), gomock.Any(), snow.ID(42)).DoAndReturn(
+		func(_ context.Context, created domain.Organization, _ snow.ID) (*domain.Organization, error) {
+			return &created, nil
+		})
+
+	got, err := org.Create(permissionCtx(42), "Acme Corp", " acme ")
+	require.NoError(t, err)
+	require.Equal(t, "acme", got.Slug)
+}
+
+func TestOrg_Create_SlugConflict(t *testing.T) {
+	org, repo := newTestOrg(t)
+
+	repo.EXPECT().GetBySlug(gomock.Any(), "acme").Return(&domain.Organization{Slug: "acme"}, nil)
+
+	_, err := org.Create(permissionCtx(42), "Acme", "acme")
+	require.True(t, domain.IsErrorConflict(err))
+}
+
+func TestOrg_Create_InvalidSlug(t *testing.T) {
+	org, _ := newTestOrg(t)
+
+	_, err := org.Create(permissionCtx(42), "Acme", "Bad Slug!")
+	requireUserError(t, err)
+}
+
+func TestOrg_Create_NameRequired(t *testing.T) {
+	org, _ := newTestOrg(t)
+
+	_, err := org.Create(permissionCtx(42), "   ", "acme")
+	requireUserError(t, err)
+}
+
+func TestOrg_Create_Unauthenticated(t *testing.T) {
+	org, _ := newTestOrg(t)
+
+	_, err := org.Create(context.Background(), "Acme", "acme")
+	var domainErr *domain.Error
+	require.ErrorAs(t, err, &domainErr)
+	require.Equal(t, 401, domainErr.Code)
+}
+
+func TestOrg_Create_LookupError(t *testing.T) {
+	org, repo := newTestOrg(t)
+	wantErr := errors.New("db down")
+
+	repo.EXPECT().GetBySlug(gomock.Any(), "acme").Return(nil, wantErr)
+
+	_, err := org.Create(permissionCtx(42), "Acme", "acme")
+	require.ErrorIs(t, err, wantErr)
+}
+
+func TestOrg_Create_RepositoryError(t *testing.T) {
+	org, repo := newTestOrg(t)
+	wantErr := errors.New("insert failed")
+
+	repo.EXPECT().GetBySlug(gomock.Any(), "acme").Return(nil, domain.NewErrorNotFound("org not found"))
+	repo.EXPECT().CreateWithOwner(gomock.Any(), gomock.Any(), snow.ID(42)).Return(nil, wantErr)
+
+	_, err := org.Create(permissionCtx(42), "Acme", "acme")
+	require.ErrorIs(t, err, wantErr)
 }
 
 func TestOrg_ListMembers_GlobalAdmin(t *testing.T) {

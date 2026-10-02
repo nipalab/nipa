@@ -20,6 +20,11 @@ type OrgMemberResponse struct {
 	JoinedAt     *time.Time `json:"joined_at,omitempty"`
 }
 
+type CreateOrgRequest struct {
+	Name string `json:"name"`
+	Slug string `json:"slug"`
+}
+
 type AddOrgMemberRequest struct {
 	UserID string `json:"user_id"`
 	Email  string `json:"email"`

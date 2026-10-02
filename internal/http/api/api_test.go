@@ -94,7 +94,7 @@ func TestAPIRoutes(t *testing.T) {
 	userRepo := sqlite.NewUserRepository(dbConn)
 	groupRepo := sqlite.NewGroupRepository(dbConn)
 	pbacRepo := sqlite.NewPBACRepository(dbConn)
-	orgUc := usecase.NewOrg(sqlite.NewOrgRepository(dbConn))
+	orgUc := usecase.NewOrg(sqlite.NewOrgRepository(dbConn), node)
 	permissionUc := usecase.NewPermission(pbacRepo, userRepo, groupRepo, orgUc)
 	projectUc := usecase.NewProject(sqlite.NewProjectRepository(dbConn), node, permissionUc, orgUc)
 	branchRepo := sqlite.NewBranchRepository(dbConn)
@@ -452,6 +452,28 @@ func TestAPIRoutes(t *testing.T) {
 		require.Len(t, orgs, 1)
 		require.Equal(t, "default", orgs[0].Slug)
 		require.Equal(t, "owner", orgs[0].Role)
+
+		createOrg := doMethod(t, http.MethodPost, server.URL+"/api/v1/orgs",
+			`{"name":"Acme Corp"}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, createOrg.StatusCode)
+		acme := decodeBody[model.OrgResponse](t, createOrg)
+		require.NotEmpty(t, acme.ID)
+		require.Equal(t, "Acme Corp", acme.Name)
+		require.Equal(t, "acme-corp", acme.Slug)
+		require.Equal(t, "owner", acme.Role)
+
+		duplicateOrg := doMethod(t, http.MethodPost, server.URL+"/api/v1/orgs",
+			`{"name":"Acme","slug":"acme-corp"}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusConflict, duplicateOrg.StatusCode)
+		duplicateOrg.Body.Close()
+
+		unauthenticatedOrg := doMethod(t, http.MethodPost, server.URL+"/api/v1/orgs",
+			`{"name":"Anon"}`, "")
+		require.Equal(t, http.StatusUnauthorized, unauthenticatedOrg.StatusCode)
+		unauthenticatedOrg.Body.Close()
+
+		orgs = decodeBody[[]model.OrgResponse](t, doGet(t, server.URL+"/api/v1/orgs", aliceLogin.AccessToken))
+		require.Len(t, orgs, 2)
 
 		createBob := doMethod(t, http.MethodPost, server.URL+"/api/v1/users",
 			`{"name":"bob","email":"bob@example.com","password":"password123"}`, aliceLogin.AccessToken)

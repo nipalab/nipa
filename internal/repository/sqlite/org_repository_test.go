@@ -18,9 +18,10 @@ func seedOrg(t *testing.T, q *sqlite.Queries, name, slug string) snow.ID {
 	id := node.Generate()
 
 	_, err := q.CreateOrganization(context.Background(), sqlite.CreateOrganizationParams{
-		ID:   id.Int64(),
-		Name: name,
-		Slug: slug,
+		ID:              id.Int64(),
+		Name:            name,
+		Slug:            slug,
+		CreatedByUserID: 1,
 	})
 	require.NoError(t, err)
 	return id
@@ -68,6 +69,7 @@ func TestOrgRepositorySQLite_GetBySlug_SeededDefault(t *testing.T) {
 	require.Equal(t, snow.ID(1), got.ID)
 	require.Equal(t, "default", got.Slug)
 	require.Equal(t, "Default Organization", got.Name)
+	require.Equal(t, snow.ID(1), got.CreatedByUserID, "the seeded default org is owned by the seeded super admin")
 }
 
 func TestOrgRepositorySQLite_GetBySlug_NotFound(t *testing.T) {
@@ -144,6 +146,47 @@ func TestOrgRepositorySQLite_MemberRole_NotAMember(t *testing.T) {
 	db, _ := newSQLiteTestDB(t)
 
 	_, err := NewOrgRepository(db).MemberRole(ctx, 1, 999)
+	requireRecordNotFound(t, err)
+}
+
+func TestOrgRepositorySQLite_CreateWithOwner(t *testing.T) {
+	ctx := context.Background()
+	db, _ := newSQLiteTestDB(t)
+	repo := NewOrgRepository(db)
+
+	orgID := newTestNode(t).Generate()
+	ownerID := snow.ID(1)
+
+	created, err := repo.CreateWithOwner(ctx, domain.Organization{ID: orgID, Name: "Acme Corp", Slug: "acme"}, ownerID)
+	require.NoError(t, err)
+	require.Equal(t, orgID, created.ID)
+	require.Equal(t, "acme", created.Slug)
+	require.Equal(t, ownerID, created.CreatedByUserID)
+
+	role, err := repo.MemberRole(ctx, orgID, ownerID)
+	require.NoError(t, err)
+	require.Equal(t, domain.OrgRoleOwner, role)
+
+	stored, err := repo.GetBySlug(ctx, "acme")
+	require.NoError(t, err)
+	require.Equal(t, orgID, stored.ID)
+	require.Equal(t, ownerID, stored.CreatedByUserID)
+}
+
+func TestOrgRepositorySQLite_CreateWithOwner_DuplicateSlug(t *testing.T) {
+	ctx := context.Background()
+	db, _ := newSQLiteTestDB(t)
+	repo := NewOrgRepository(db)
+	node := newTestNode(t)
+
+	_, err := repo.CreateWithOwner(ctx, domain.Organization{ID: node.Generate(), Name: "Acme", Slug: "acme"}, 1)
+	require.NoError(t, err)
+
+	secondID := node.Generate()
+	_, err = repo.CreateWithOwner(ctx, domain.Organization{ID: secondID, Name: "Other", Slug: "acme"}, 1)
+	require.True(t, domain.IsErrorConflict(err))
+
+	_, err = repo.MemberRole(ctx, secondID, 1)
 	requireRecordNotFound(t, err)
 }
 

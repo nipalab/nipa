@@ -17,6 +17,11 @@ import (
 	"github.com/nipalab/nipa/internal/storage"
 )
 
+var (
+	testOrg     = &domain.Organization{ID: 1, Slug: "acme"}
+	testProject = &domain.Project{ID: 1, Slug: "game"}
+)
+
 type stubChunkStore struct {
 	data      map[domain.Hash][]byte
 	existsErr error
@@ -225,7 +230,7 @@ func TestChunk_PresignUploadURLs(t *testing.T) {
 	fresh := []byte("fresh chunk")
 	freshHash := chunker.Sum(fresh)
 
-	urls, next, err := uc.PresignUploadURLs(ctx, "acme", "game", []ChunkRef{
+	urls, next, err := uc.PresignUploadURLs(ctx, testOrg, testProject, []ChunkRef{
 		{Hash: existingHash, SizeBytes: int64(len(existing))},
 		{Hash: freshHash, SizeBytes: int64(len(fresh))},
 	}, 10, "")
@@ -252,14 +257,14 @@ func TestChunk_PresignUploadURLsPaginates(t *testing.T) {
 		refs = append(refs, ChunkRef{Hash: hash, SizeBytes: int64(len(data))})
 	}
 
-	page1, next, err := uc.PresignUploadURLs(ctx, "acme", "game", refs, 10, "")
+	page1, next, err := uc.PresignUploadURLs(ctx, testOrg, testProject, refs, 10, "")
 	require.NoError(t, err)
 	require.Len(t, page1, 2)
 	require.Equal(t, "2", next)
 	require.Equal(t, refs[0].Hash, page1[0].Hash)
 	require.Equal(t, refs[1].Hash, page1[1].Hash)
 
-	page2, next2, err := uc.PresignUploadURLs(ctx, "acme", "game", refs, 10, next)
+	page2, next2, err := uc.PresignUploadURLs(ctx, testOrg, testProject, refs, 10, next)
 	require.NoError(t, err)
 	require.Len(t, page2, 1)
 	require.Empty(t, next2)
@@ -271,17 +276,17 @@ func TestChunk_PresignUploadURLsInvalid(t *testing.T) {
 	uc, _, _ := newChunkFixture(t)
 	hash := chunker.Sum([]byte("x"))
 
-	_, _, err := uc.PresignUploadURLs(ctx, "acme", "game", []ChunkRef{{Hash: hash, SizeBytes: 0}}, 10, "")
+	_, _, err := uc.PresignUploadURLs(ctx, testOrg, testProject, []ChunkRef{{Hash: hash, SizeBytes: 0}}, 10, "")
 	require400(t, err, "invalid chunk size")
 
-	_, _, err = uc.PresignUploadURLs(ctx, "acme", "game", []ChunkRef{{Hash: hash, SizeBytes: chunker.MaxChunkSize() + 1}}, 10, "")
+	_, _, err = uc.PresignUploadURLs(ctx, testOrg, testProject, []ChunkRef{{Hash: hash, SizeBytes: chunker.MaxChunkSize() + 1}}, 10, "")
 	require400(t, err, "invalid chunk size")
 
-	urls, _, err := uc.PresignUploadURLs(ctx, "acme", "game", []ChunkRef{{Hash: hash, SizeBytes: chunker.PackedAssetConfig.Max}}, 10, "")
+	urls, _, err := uc.PresignUploadURLs(ctx, testOrg, testProject, []ChunkRef{{Hash: hash, SizeBytes: chunker.PackedAssetConfig.Max}}, 10, "")
 	require.NoError(t, err)
 	require.Len(t, urls, 1)
 
-	_, _, err = uc.PresignUploadURLs(ctx, "acme", "game", []ChunkRef{{Hash: hash, SizeBytes: 10}}, 10, "-1")
+	_, _, err = uc.PresignUploadURLs(ctx, testOrg, testProject, []ChunkRef{{Hash: hash, SizeBytes: 10}}, 10, "-1")
 	require400(t, err, "invalid page token")
 }
 
@@ -343,7 +348,7 @@ func TestChunk_PresignDownloadURLsDirectStoreRejectsPendingInvalidContent(t *tes
 	}
 	uc, _ := newDirectChunkFixture(t, store)
 
-	_, _, err := uc.PresignUploadURLs(ctx, "acme", "game", []ChunkRef{{Hash: hash, SizeBytes: int64(len("expected"))}}, 10, "")
+	_, _, err := uc.PresignUploadURLs(ctx, testOrg, testProject, []ChunkRef{{Hash: hash, SizeBytes: int64(len("expected"))}}, 10, "")
 	require.NoError(t, err)
 
 	store.data[hash] = []byte("garbage")
@@ -358,7 +363,7 @@ func TestChunk_PresignDownloadURLsDirectStoreRejectsPendingMissingObject(t *test
 	store := &stubDirectChunkStore{stubChunkStore: newStubChunkStore()}
 	uc, _ := newDirectChunkFixture(t, store)
 
-	_, _, err := uc.PresignUploadURLs(ctx, "acme", "game", []ChunkRef{{Hash: hash, SizeBytes: int64(len("expected"))}}, 10, "")
+	_, _, err := uc.PresignUploadURLs(ctx, testOrg, testProject, []ChunkRef{{Hash: hash, SizeBytes: int64(len("expected"))}}, 10, "")
 	require.NoError(t, err)
 
 	_, _, err = uc.PresignDownloadURLs(ctx, "acme", "game", []domain.Hash{hash}, 10, "")
@@ -376,7 +381,7 @@ func TestChunk_PresignDownloadURLsDirectStoreClearsPendingWhenValid(t *testing.T
 	}
 	uc, _ := newDirectChunkFixture(t, store)
 
-	_, _, err := uc.PresignUploadURLs(ctx, "acme", "game", []ChunkRef{{Hash: hash, SizeBytes: int64(len(data))}}, 10, "")
+	_, _, err := uc.PresignUploadURLs(ctx, testOrg, testProject, []ChunkRef{{Hash: hash, SizeBytes: int64(len(data))}}, 10, "")
 	require.NoError(t, err)
 
 	store.data[hash] = data
@@ -403,7 +408,7 @@ func TestChunk_PresignUploadURLsDirectStore(t *testing.T) {
 
 	data := []byte("payload")
 	hash := chunker.Sum(data)
-	urls, next, err := uc.PresignUploadURLs(context.Background(), "acme", "game", []ChunkRef{{Hash: hash, SizeBytes: int64(len(data))}}, 10, "")
+	urls, next, err := uc.PresignUploadURLs(context.Background(), testOrg, testProject, []ChunkRef{{Hash: hash, SizeBytes: int64(len(data))}}, 10, "")
 	require.NoError(t, err)
 	require.Empty(t, next)
 	require.Len(t, urls, 1)
@@ -421,7 +426,7 @@ func TestChunk_PresignUploadURLsDirectStoreAlreadyStored(t *testing.T) {
 	store.data[chunker.Sum(data)] = data
 	uc, _ := newDirectChunkFixture(t, store)
 
-	urls, _, err := uc.PresignUploadURLs(context.Background(), "acme", "game", []ChunkRef{{Hash: chunker.Sum(data), SizeBytes: int64(len(data))}}, 10, "")
+	urls, _, err := uc.PresignUploadURLs(context.Background(), testOrg, testProject, []ChunkRef{{Hash: chunker.Sum(data), SizeBytes: int64(len(data))}}, 10, "")
 	require.NoError(t, err)
 	require.Len(t, urls, 1)
 	require.True(t, urls[0].AlreadyStored)
@@ -439,7 +444,7 @@ func TestChunk_PresignUploadURLsDirectStoreError(t *testing.T) {
 	uc, _ := newDirectChunkFixture(t, store)
 
 	data := []byte("payload")
-	_, _, err := uc.PresignUploadURLs(context.Background(), "acme", "game", []ChunkRef{{Hash: chunker.Sum(data), SizeBytes: int64(len(data))}}, 10, "")
+	_, _, err := uc.PresignUploadURLs(context.Background(), testOrg, testProject, []ChunkRef{{Hash: chunker.Sum(data), SizeBytes: int64(len(data))}}, 10, "")
 	require.Error(t, err)
 	var domainErr *domain.Error
 	require.ErrorAs(t, err, &domainErr)
@@ -457,7 +462,7 @@ func TestChunk_ConfirmUploads(t *testing.T) {
 	absentHash := chunker.Sum([]byte("absent"))
 	repo.EXPECT().InsertChunkIfNotExists(gomock.Any(), presentHash, int64(len(present))).Return(nil)
 
-	missing, err := uc.ConfirmUploads(ctx, []domain.Hash{presentHash, absentHash})
+	missing, err := uc.ConfirmUploads(ctx, testOrg, testProject, []domain.Hash{presentHash, absentHash})
 	require.NoError(t, err)
 	require.Equal(t, []domain.Hash{absentHash}, missing)
 }
@@ -468,7 +473,7 @@ func TestChunk_ConfirmUploadsSizeError(t *testing.T) {
 	uc := NewChunk(NewMockchunkRepository(gomock.NewController(t)), store, ChunkTransferConfig{})
 
 	data := []byte("payload")
-	_, err := uc.ConfirmUploads(ctx, []domain.Hash{chunker.Sum(data)})
+	_, err := uc.ConfirmUploads(ctx, testOrg, testProject, []domain.Hash{chunker.Sum(data)})
 	require.Error(t, err)
 }
 
@@ -483,7 +488,7 @@ func TestChunk_ConfirmUploadsDirectStoreVerifiesContent(t *testing.T) {
 	repo.EXPECT().HasChunk(gomock.Any(), hash).Return(false, nil)
 	repo.EXPECT().InsertChunkIfNotExists(gomock.Any(), hash, int64(len(data))).Return(nil)
 
-	missing, err := uc.ConfirmUploads(ctx, []domain.Hash{hash})
+	missing, err := uc.ConfirmUploads(ctx, testOrg, testProject, []domain.Hash{hash})
 	require.NoError(t, err)
 	require.Empty(t, missing)
 	require.Equal(t, 1, store.gets)
@@ -499,7 +504,7 @@ func TestChunk_ConfirmUploadsDirectStoreRejectsMismatch(t *testing.T) {
 
 	repo.EXPECT().HasChunk(gomock.Any(), hash).Return(false, nil)
 
-	missing, err := uc.ConfirmUploads(ctx, []domain.Hash{hash})
+	missing, err := uc.ConfirmUploads(ctx, testOrg, testProject, []domain.Hash{hash})
 	require.NoError(t, err)
 	require.Equal(t, []domain.Hash{hash}, missing)
 	require.Equal(t, []domain.Hash{hash}, store.deleted)
@@ -518,11 +523,11 @@ func TestChunk_ConfirmUploadsDirectStoreVerifiesIssuedUploads(t *testing.T) {
 	}
 	uc, _ := newDirectChunkFixture(t, store)
 
-	_, _, err := uc.PresignUploadURLs(ctx, "acme", "game", []ChunkRef{{Hash: hash, SizeBytes: int64(len("expected"))}}, 10, "")
+	_, _, err := uc.PresignUploadURLs(ctx, testOrg, testProject, []ChunkRef{{Hash: hash, SizeBytes: int64(len("expected"))}}, 10, "")
 	require.NoError(t, err)
 
 	store.data[hash] = []byte("garbage")
-	missing, err := uc.ConfirmUploads(ctx, []domain.Hash{hash})
+	missing, err := uc.ConfirmUploads(ctx, testOrg, testProject, []domain.Hash{hash})
 	require.NoError(t, err)
 	require.Equal(t, []domain.Hash{hash}, missing)
 	require.Equal(t, []domain.Hash{hash}, store.deleted)
@@ -537,7 +542,7 @@ func TestChunk_ConfirmUploadsDirectStorePendingExpires(t *testing.T) {
 	store.data[hash] = recorded
 	uc, repo := newDirectChunkFixture(t, store)
 
-	_, _, err := uc.PresignUploadURLs(ctx, "acme", "game", []ChunkRef{{Hash: hash, SizeBytes: int64(len("expected"))}}, 10, "")
+	_, _, err := uc.PresignUploadURLs(ctx, testOrg, testProject, []ChunkRef{{Hash: hash, SizeBytes: int64(len("expected"))}}, 10, "")
 	require.NoError(t, err)
 
 	uc.now = func() time.Time { return time.Unix(1700000000, 0).Add(2 * time.Hour) }
@@ -545,7 +550,7 @@ func TestChunk_ConfirmUploadsDirectStorePendingExpires(t *testing.T) {
 	repo.EXPECT().HasChunk(gomock.Any(), hash).Return(true, nil)
 	repo.EXPECT().InsertChunkIfNotExists(gomock.Any(), hash, int64(len(recorded))).Return(nil)
 
-	missing, err := uc.ConfirmUploads(ctx, []domain.Hash{hash})
+	missing, err := uc.ConfirmUploads(ctx, testOrg, testProject, []domain.Hash{hash})
 	require.NoError(t, err)
 	require.Empty(t, missing)
 	require.Zero(t, store.gets)
@@ -558,7 +563,7 @@ func TestChunk_UnverifiedLookupExpiresEntry(t *testing.T) {
 	uc, _ := newDirectChunkFixture(t, store)
 
 	hash := chunker.Sum([]byte("one"))
-	_, _, err := uc.PresignUploadURLs(ctx, "acme", "game", []ChunkRef{{Hash: hash, SizeBytes: 3}}, 10, "")
+	_, _, err := uc.PresignUploadURLs(ctx, testOrg, testProject, []ChunkRef{{Hash: hash, SizeBytes: 3}}, 10, "")
 	require.NoError(t, err)
 	require.True(t, uc.isUnverified(hash))
 
@@ -577,12 +582,12 @@ func TestChunk_UnverifiedMarkSweepsExpiredEntries(t *testing.T) {
 	uc, _ := newDirectChunkFixture(t, store)
 
 	stale := chunker.Sum([]byte("one"))
-	_, _, err := uc.PresignUploadURLs(ctx, "acme", "game", []ChunkRef{{Hash: stale, SizeBytes: 3}}, 10, "")
+	_, _, err := uc.PresignUploadURLs(ctx, testOrg, testProject, []ChunkRef{{Hash: stale, SizeBytes: 3}}, 10, "")
 	require.NoError(t, err)
 
 	uc.now = func() time.Time { return time.Unix(1700000000, 0).Add(2 * time.Hour) }
 	fresh := chunker.Sum([]byte("two"))
-	_, _, err = uc.PresignUploadURLs(ctx, "acme", "game", []ChunkRef{{Hash: fresh, SizeBytes: 3}}, 10, "")
+	_, _, err = uc.PresignUploadURLs(ctx, testOrg, testProject, []ChunkRef{{Hash: fresh, SizeBytes: 3}}, 10, "")
 	require.NoError(t, err)
 
 	uc.unverifiedMu.Lock()
@@ -604,7 +609,7 @@ func TestChunk_ConfirmUploadsDirectStoreSkipsRecordedContent(t *testing.T) {
 	repo.EXPECT().HasChunk(gomock.Any(), hash).Return(true, nil)
 	repo.EXPECT().InsertChunkIfNotExists(gomock.Any(), hash, int64(len(recorded))).Return(nil)
 
-	missing, err := uc.ConfirmUploads(ctx, []domain.Hash{hash})
+	missing, err := uc.ConfirmUploads(ctx, testOrg, testProject, []domain.Hash{hash})
 	require.NoError(t, err)
 	require.Empty(t, missing)
 	require.Zero(t, store.gets)
@@ -620,7 +625,7 @@ func TestChunk_ConfirmUploadsDirectStoreDropsOversized(t *testing.T) {
 
 	repo.EXPECT().HasChunk(gomock.Any(), hash).Return(false, nil)
 
-	missing, err := uc.ConfirmUploads(ctx, []domain.Hash{hash})
+	missing, err := uc.ConfirmUploads(ctx, testOrg, testProject, []domain.Hash{hash})
 	require.NoError(t, err)
 	require.Equal(t, []domain.Hash{hash}, missing)
 	require.Equal(t, []domain.Hash{hash}, store.deleted)
@@ -636,7 +641,7 @@ func TestChunk_ConfirmUploadsDirectStoreDeleteError(t *testing.T) {
 
 	repo.EXPECT().HasChunk(gomock.Any(), hash).Return(false, nil)
 
-	_, err := uc.ConfirmUploads(ctx, []domain.Hash{hash})
+	_, err := uc.ConfirmUploads(ctx, testOrg, testProject, []domain.Hash{hash})
 	require.Error(t, err)
 	var domainErr *domain.Error
 	require.ErrorAs(t, err, &domainErr)
@@ -653,7 +658,7 @@ func TestChunk_ConfirmUploadsDirectStoreHasChunkError(t *testing.T) {
 
 	repo.EXPECT().HasChunk(gomock.Any(), hash).Return(false, errors.New("db boom"))
 
-	_, err := uc.ConfirmUploads(ctx, []domain.Hash{hash})
+	_, err := uc.ConfirmUploads(ctx, testOrg, testProject, []domain.Hash{hash})
 	require.Error(t, err)
 }
 
@@ -752,7 +757,7 @@ func TestChunk_PresignUploadURLsStoreError(t *testing.T) {
 	})
 
 	data := []byte("payload")
-	_, _, err := uc.PresignUploadURLs(ctx, "acme", "game", []ChunkRef{{Hash: chunker.Sum(data), SizeBytes: int64(len(data))}}, 10, "")
+	_, _, err := uc.PresignUploadURLs(ctx, testOrg, testProject, []ChunkRef{{Hash: chunker.Sum(data), SizeBytes: int64(len(data))}}, 10, "")
 	require.Error(t, err)
 }
 
@@ -774,7 +779,7 @@ func TestChunk_ConfirmUploadsMetadataError(t *testing.T) {
 	repo.EXPECT().InsertChunkIfNotExists(gomock.Any(), hash, int64(len(data))).Return(errors.New("boom"))
 	uc := NewChunk(repo, store, ChunkTransferConfig{})
 
-	_, err := uc.ConfirmUploads(ctx, []domain.Hash{hash})
+	_, err := uc.ConfirmUploads(ctx, testOrg, testProject, []domain.Hash{hash})
 	require.Error(t, err)
 }
 
@@ -795,4 +800,93 @@ func TestPaginate(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, page)
 	require.Empty(t, next)
+}
+
+func TestChunk_PresignUploadURLsLedgerHeadroomRejects(t *testing.T) {
+	ctx := context.Background()
+	uc, _, _ := newChunkFixture(t)
+	ledger := NewMockStorageLedger(gomock.NewController(t))
+	uc = uc.WithStorageLedger(ledger)
+
+	data := []byte("new bytes")
+	hash := chunker.Sum(data)
+	quotaErr := domain.NewErrorQuotaExceeded("organization storage quota exceeded")
+
+	ledger.EXPECT().AttributedSizes(gomock.Any(), testProject.ID, []domain.Hash{hash}).Return(nil, nil)
+	ledger.EXPECT().Headroom(gomock.Any(), testOrg, testProject, int64(len(data))).Return(quotaErr)
+
+	_, _, err := uc.PresignUploadURLs(ctx, testOrg, testProject, []ChunkRef{{Hash: hash, SizeBytes: int64(len(data))}}, 10, "")
+	require.ErrorIs(t, err, quotaErr)
+}
+
+func TestChunk_PresignUploadURLsLedgerSkipsAttributedRefs(t *testing.T) {
+	ctx := context.Background()
+	uc, _, store := newChunkFixture(t)
+	ledger := NewMockStorageLedger(gomock.NewController(t))
+	uc = uc.WithStorageLedger(ledger)
+
+	data := []byte("known bytes")
+	hash := chunker.Sum(data)
+	require.NoError(t, store.Put(ctx, hash, data))
+
+	ledger.EXPECT().AttributedSizes(gomock.Any(), testProject.ID, []domain.Hash{hash}).
+		Return(map[domain.Hash]int64{hash: int64(len(data))}, nil)
+
+	urls, _, err := uc.PresignUploadURLs(ctx, testOrg, testProject, []ChunkRef{{Hash: hash, SizeBytes: int64(len(data))}}, 10, "")
+	require.NoError(t, err)
+	require.Len(t, urls, 1)
+	require.True(t, urls[0].AlreadyStored)
+}
+
+func TestChunk_PresignUploadURLsLedgerReadError(t *testing.T) {
+	ctx := context.Background()
+	uc, _, _ := newChunkFixture(t)
+	ledger := NewMockStorageLedger(gomock.NewController(t))
+	uc = uc.WithStorageLedger(ledger)
+
+	hash := chunker.Sum([]byte("read error"))
+	wantErr := errors.New("ledger down")
+	ledger.EXPECT().AttributedSizes(gomock.Any(), testProject.ID, []domain.Hash{hash}).Return(nil, wantErr)
+
+	_, _, err := uc.PresignUploadURLs(ctx, testOrg, testProject, []ChunkRef{{Hash: hash, SizeBytes: 4}}, 10, "")
+	require.ErrorIs(t, err, wantErr)
+}
+
+func TestChunk_ConfirmUploadsLedgerAttributesPresentChunks(t *testing.T) {
+	ctx := context.Background()
+	store := newStubChunkStore()
+	data := []byte("attribute me")
+	hash := chunker.Sum(data)
+	store.data[hash] = data
+	absentHash := chunker.Sum([]byte("absent"))
+
+	repo := NewMockchunkRepository(gomock.NewController(t))
+	repo.EXPECT().InsertChunkIfNotExists(gomock.Any(), hash, int64(len(data))).Return(nil)
+	ledger := NewMockStorageLedger(gomock.NewController(t))
+	ledger.EXPECT().Attribute(gomock.Any(), testOrg, testProject,
+		[]LedgerChunk{{Hash: hash, SizeBytes: int64(len(data))}}).Return(nil)
+	uc := NewChunk(repo, store, ChunkTransferConfig{}).WithStorageLedger(ledger)
+
+	missing, err := uc.ConfirmUploads(ctx, testOrg, testProject, []domain.Hash{hash, absentHash})
+	require.NoError(t, err)
+	require.Equal(t, []domain.Hash{absentHash}, missing)
+}
+
+func TestChunk_ConfirmUploadsLedgerQuotaError(t *testing.T) {
+	ctx := context.Background()
+	store := newStubChunkStore()
+	data := []byte("over quota")
+	hash := chunker.Sum(data)
+	store.data[hash] = data
+
+	repo := NewMockchunkRepository(gomock.NewController(t))
+	repo.EXPECT().InsertChunkIfNotExists(gomock.Any(), hash, int64(len(data))).Return(nil)
+	quotaErr := domain.NewErrorQuotaExceeded("organization storage quota exceeded")
+	ledger := NewMockStorageLedger(gomock.NewController(t))
+	ledger.EXPECT().Attribute(gomock.Any(), testOrg, testProject,
+		[]LedgerChunk{{Hash: hash, SizeBytes: int64(len(data))}}).Return(quotaErr)
+	uc := NewChunk(repo, store, ChunkTransferConfig{}).WithStorageLedger(ledger)
+
+	_, err := uc.ConfirmUploads(ctx, testOrg, testProject, []domain.Hash{hash})
+	require.ErrorIs(t, err, quotaErr)
 }

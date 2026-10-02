@@ -50,6 +50,25 @@ func (h *Handler) ListOrgMembers(appCtx http.AppContext) {
 	appCtx.WriteJson(nethttp.StatusOK, resp)
 }
 
+func (h *Handler) CreateOrg(appCtx http.AppContext) {
+	body := &model.CreateOrgRequest{}
+	if err := appCtx.ReadJson(body); err != nil {
+		appCtx.HandleError(err)
+		return
+	}
+	org, err := h.useCase.Org().Create(appCtx.Context(), body.Name, body.Slug)
+	if err != nil {
+		appCtx.HandleError(err)
+		return
+	}
+	appCtx.WriteJson(nethttp.StatusOK, model.OrgResponse{
+		ID:   org.ID.Base36(),
+		Slug: org.Slug,
+		Name: org.Name,
+		Role: domain.OrgRoleOwner,
+	})
+}
+
 func (h *Handler) AddOrgMember(appCtx http.AppContext) {
 	org, err := h.resolveOrg(appCtx)
 	if err != nil {

@@ -369,7 +369,7 @@ func TestEndToEnd_PBACRuleSubjectValidation(t *testing.T) {
 	require.Error(t, err)
 	require.Equal(t, 400, clientErrorCode(t, err), "unknown groups are rejected")
 
-	_, err = dbConn.ExecContext(ctx, `INSERT INTO organizations (id, slug, name) VALUES (2, 'other', 'Other')`)
+	_, err = dbConn.ExecContext(ctx, `INSERT INTO organizations (id, slug, name, created_by_user_id) VALUES (2, 'other', 'Other', 1)`)
 	require.NoError(t, err)
 	foreignGroup, err := adminClient.CreateGroup(ctx, "other", "foreign", "")
 	require.NoError(t, err)

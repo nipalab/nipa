@@ -10,16 +10,17 @@ import (
 )
 
 const createOrganization = `-- name: CreateOrganization :one
-INSERT INTO organizations (name, slug) VALUES ($1, $2) RETURNING id, slug, name, created_at, updated_at, deleted, deleted_at
+INSERT INTO organizations (name, slug, created_by_user_id) VALUES ($1, $2, $3) RETURNING id, slug, name, created_at, updated_at, deleted, deleted_at, created_by_user_id
 `
 
 type CreateOrganizationParams struct {
-	Name string `json:"name"`
-	Slug string `json:"slug"`
+	Name            string `json:"name"`
+	Slug            string `json:"slug"`
+	CreatedByUserID int64  `json:"created_by_user_id"`
 }
 
 func (q *Queries) CreateOrganization(ctx context.Context, arg CreateOrganizationParams) (Organization, error) {
-	row := q.db.QueryRowContext(ctx, createOrganization, arg.Name, arg.Slug)
+	row := q.db.QueryRowContext(ctx, createOrganization, arg.Name, arg.Slug, arg.CreatedByUserID)
 	var i Organization
 	err := row.Scan(
 		&i.ID,
@@ -29,6 +30,7 @@ func (q *Queries) CreateOrganization(ctx context.Context, arg CreateOrganization
 		&i.UpdatedAt,
 		&i.Deleted,
 		&i.DeletedAt,
+		&i.CreatedByUserID,
 	)
 	return i, err
 }
@@ -43,7 +45,7 @@ func (q *Queries) DeleteOrganization(ctx context.Context, id int64) error {
 }
 
 const getOrganization = `-- name: GetOrganization :one
-SELECT id, slug, name, created_at, updated_at, deleted, deleted_at FROM organizations WHERE id = $1 AND deleted = false LIMIT 1
+SELECT id, slug, name, created_at, updated_at, deleted, deleted_at, created_by_user_id FROM organizations WHERE id = $1 AND deleted = false LIMIT 1
 `
 
 func (q *Queries) GetOrganization(ctx context.Context, id int64) (Organization, error) {
@@ -57,12 +59,13 @@ func (q *Queries) GetOrganization(ctx context.Context, id int64) (Organization, 
 		&i.UpdatedAt,
 		&i.Deleted,
 		&i.DeletedAt,
+		&i.CreatedByUserID,
 	)
 	return i, err
 }
 
 const listOrganizations = `-- name: ListOrganizations :many
-SELECT id, slug, name, created_at, updated_at, deleted, deleted_at FROM organizations WHERE deleted = false ORDER BY id
+SELECT id, slug, name, created_at, updated_at, deleted, deleted_at, created_by_user_id FROM organizations WHERE deleted = false ORDER BY id
 `
 
 func (q *Queries) ListOrganizations(ctx context.Context) ([]Organization, error) {
@@ -82,6 +85,7 @@ func (q *Queries) ListOrganizations(ctx context.Context) ([]Organization, error)
 			&i.UpdatedAt,
 			&i.Deleted,
 			&i.DeletedAt,
+			&i.CreatedByUserID,
 		); err != nil {
 			return nil, err
 		}

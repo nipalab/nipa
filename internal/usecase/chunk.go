@@ -49,6 +49,7 @@ type Chunk struct {
 	chunkRepo  chunkRepository
 	chunkStore storage.ChunkStore
 	transfer   ChunkTransferConfig
+	ledger     StorageLedger
 	now        func() time.Time
 
 	unverifiedMu sync.Mutex
@@ -64,6 +65,13 @@ func NewChunk(chunkRepo chunkRepository, chunkStore storage.ChunkStore, transfer
 		now:        time.Now,
 		unverified: map[domain.Hash]time.Time{},
 	}
+}
+
+// WithStorageLedger attaches a storage ledger. Without one (the default), no
+// usage is tracked and no quota is enforced.
+func (c *Chunk) WithStorageLedger(ledger StorageLedger) *Chunk {
+	c.ledger = ledger
+	return c
 }
 
 // Upload stores one chunk. It returns true when the content was newly stored,
@@ -121,9 +129,13 @@ func (c *Chunk) Download(ctx context.Context, hash domain.Hash) ([]byte, error) 
 
 // PresignUploadURLs signs one page of upload paths for refs. Chunks already
 // present in the store get an empty URL with AlreadyStored set so clients can
-// skip the transfer.
-func (c *Chunk) PresignUploadURLs(ctx context.Context, org, project string, refs []ChunkRef, pageSize int, pageToken string) ([]ChunkURL, string, error) {
+// skip the transfer. When a ledger is attached, refs that would add new bytes
+// are checked against the organization's remaining quota first.
+func (c *Chunk) PresignUploadURLs(ctx context.Context, org *domain.Organization, project *domain.Project, refs []ChunkRef, pageSize int, pageToken string) ([]ChunkURL, string, error) {
 	if err := validateChunkRefs(refs); err != nil {
+		return nil, "", err
+	}
+	if err := c.checkHeadroom(ctx, org, project, refs); err != nil {
 		return nil, "", err
 	}
 	page, next, err := paginate(refs, pageSize, pageToken, c.transfer.MaxPageSize)
@@ -141,7 +153,7 @@ func (c *Chunk) PresignUploadURLs(ctx context.Context, org, project string, refs
 			urls = append(urls, ChunkURL{Hash: ref.Hash, AlreadyStored: true})
 			continue
 		}
-		target, err := c.uploadTarget(ctx, org, project, ref, expiry)
+		target, err := c.uploadTarget(ctx, org.Slug, project.Slug, ref, expiry)
 		if err != nil {
 			return nil, "", err
 		}
@@ -153,6 +165,33 @@ func (c *Chunk) PresignUploadURLs(ctx context.Context, org, project string, refs
 		})
 	}
 	return urls, next, nil
+}
+
+// checkHeadroom projects the bytes the unlinked refs would add and asks the
+// ledger whether the organization still has room for them.
+func (c *Chunk) checkHeadroom(ctx context.Context, org *domain.Organization, project *domain.Project, refs []ChunkRef) error {
+	if c.ledger == nil {
+		return nil
+	}
+	hashes := make([]domain.Hash, 0, len(refs))
+	for _, ref := range refs {
+		hashes = append(hashes, ref.Hash)
+	}
+	attributed, err := c.ledger.AttributedSizes(ctx, project.ID, hashes)
+	if err != nil {
+		return err
+	}
+	var projected int64
+	for _, ref := range refs {
+		if _, ok := attributed[ref.Hash]; ok {
+			continue
+		}
+		projected += ref.SizeBytes
+	}
+	if projected == 0 {
+		return nil
+	}
+	return c.ledger.Headroom(ctx, org, project, projected)
 }
 
 func (c *Chunk) uploadTarget(ctx context.Context, org, project string, ref ChunkRef, expiry int64) (storage.UploadTarget, error) {
@@ -218,10 +257,13 @@ func (c *Chunk) downloadPath(ctx context.Context, org, project string, hash doma
 // from the stored content, never taken from the client. Content written
 // through a direct upload target is always hash-verified because its bytes
 // never passed through the server; untouched chunks are trusted once recorded.
-// Hashes still missing are returned so the client can retry them.
-func (c *Chunk) ConfirmUploads(ctx context.Context, hashes []domain.Hash) ([]domain.Hash, error) {
+// Hashes still missing are returned so the client can retry them. When a
+// ledger is attached, present chunks are attributed to the project and the
+// organization's quota is enforced.
+func (c *Chunk) ConfirmUploads(ctx context.Context, org *domain.Organization, project *domain.Project, hashes []domain.Hash) ([]domain.Hash, error) {
 	direct, isDirect := c.chunkStore.(storage.DirectTransferStore)
 	var missing []domain.Hash
+	var attributed []LedgerChunk
 	for _, hash := range hashes {
 		size, err := c.chunkStore.Size(ctx, hash)
 		if err != nil {
@@ -249,6 +291,14 @@ func (c *Chunk) ConfirmUploads(ctx context.Context, hashes []domain.Hash) ([]dom
 			}
 		}
 		if err := c.chunkRepo.InsertChunkIfNotExists(ctx, hash, size); err != nil {
+			return nil, err
+		}
+		if c.ledger != nil {
+			attributed = append(attributed, LedgerChunk{Hash: hash, SizeBytes: size})
+		}
+	}
+	if len(attributed) > 0 {
+		if err := c.ledger.Attribute(ctx, org, project, attributed); err != nil {
 			return nil, err
 		}
 	}

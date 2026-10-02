@@ -596,6 +596,8 @@ func toDomainError(err error) error {
 		return &domain.Error{Code: 403, Message: st.Message()}
 	case codes.FailedPrecondition:
 		return &domain.Error{Code: 409, Message: st.Message()}
+	case codes.ResourceExhausted:
+		return &domain.Error{Code: 402, Message: st.Message()}
 	default:
 		return err
 	}

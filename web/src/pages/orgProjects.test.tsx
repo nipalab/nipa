@@ -173,3 +173,50 @@ describe('OrgProjectsPage', () => {
     act(() => root.unmount())
   })
 })
+
+describe('HomePage', () => {
+  it('creates an organization from the home page', async () => {
+    const requests: FetchCall[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input)
+        const method = init?.method ?? 'GET'
+        requests.push({ url, method, body: init?.body ? JSON.parse(String(init.body)) : undefined })
+        if (url.includes('/auth/refresh')) {
+          return jsonResponse({ access_token: 'token', token_type: 'Bearer', expires_in: 1800 })
+        }
+        if (url.includes('/api/v1/me')) return jsonResponse(ME)
+        const path = url.split('?')[0]
+        if (path.endsWith('/api/v1/orgs')) {
+          if (method === 'POST') return jsonResponse({ id: '2', slug: 'acme', name: 'Acme Corp', role: 'owner' })
+          return jsonResponse(ORGS)
+        }
+        if (path.endsWith('/orgs/acme/projects')) return jsonResponse([])
+        return jsonResponse({ error: 'not found' }, 404)
+      }),
+    )
+    const { root } = await renderApp('/')
+    await waitForText('Default')
+
+    await act(async () => {
+      findButton('New organization').click()
+    })
+    await waitFor(() => document.querySelector('[role="dialog"]') !== null)
+
+    const dialog = document.querySelector('[role="dialog"]') as HTMLElement
+    const input = dialog.querySelector('input') as HTMLInputElement
+    await act(async () => {
+      setInputValue(input, 'Acme Corp')
+    })
+
+    await act(async () => {
+      findButton('Create organization').click()
+    })
+    await waitFor(() => requests.some((call) => call.method === 'POST' && call.url.endsWith('/api/v1/orgs')))
+    const post = requests.find((call) => call.method === 'POST' && call.url.endsWith('/api/v1/orgs'))
+    expect(post?.body).toEqual({ name: 'Acme Corp', slug: '' })
+    await waitFor(() => window.location.pathname === '/acme')
+    act(() => root.unmount())
+  })
+})

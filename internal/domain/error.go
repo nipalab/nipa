@@ -104,6 +104,13 @@ func NewErrorConflict(message string) *Error {
 	}
 }
 
+func NewErrorQuotaExceeded(message string) *Error {
+	return &Error{
+		Code:    402,
+		Message: message,
+	}
+}
+
 func NewErrorInternalServer(internalMessage string) *Error {
 	return &Error{
 		Code:            500,

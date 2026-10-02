@@ -64,7 +64,7 @@ func main() {
 		panic(err)
 	}
 	authUsecase := usecase.NewAuth(cfg.JWTKey, passwordHasher, userRepo, authRepo)
-	orgUsecase := usecase.NewOrg(orgRepo)
+	orgUsecase := usecase.NewOrg(orgRepo, snowUser)
 	permissionUsecase := usecase.NewPermission(pbacRepository, userRepo, groupRepository, orgUsecase)
 	projectUsecase := usecase.NewProject(projectRepo, snowUser, permissionUsecase, orgUsecase)
 	chunkStore, err := createChunkStore(cfg)

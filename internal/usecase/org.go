@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"strings"
 
 	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/snow"
@@ -9,6 +10,8 @@ import (
 
 //go:generate go run go.uber.org/mock/mockgen -source=$GOFILE -destination=org_mock_test.go -package=usecase
 type orgMemberRepository interface {
+	GetBySlug(ctx context.Context, slug string) (*domain.Organization, error)
+	CreateWithOwner(ctx context.Context, org domain.Organization, ownerID snow.ID) (*domain.Organization, error)
 	ListForUser(ctx context.Context, userID snow.ID) ([]*domain.OrgMembership, error)
 	ListMembers(ctx context.Context, orgID snow.ID) ([]*domain.OrgMember, error)
 	MemberRole(ctx context.Context, orgID, userID snow.ID) (string, error)
@@ -23,11 +26,44 @@ type orgAuthorizer interface {
 }
 
 type Org struct {
-	repo orgMemberRepository
+	repo     orgMemberRepository
+	snowNode snow.Node
 }
 
-func NewOrg(repo orgMemberRepository) *Org {
-	return &Org{repo: repo}
+func NewOrg(repo orgMemberRepository, snowNode snow.Node) *Org {
+	return &Org{repo: repo, snowNode: snowNode}
+}
+
+func (o *Org) Create(ctx context.Context, name, slug string) (*domain.Organization, error) {
+	claim, ok := domain.ClaimFromContext(ctx)
+	if !ok {
+		return nil, domain.NewErrorUnauthorized("authentication required")
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return nil, domain.NewErrorUser("organization name is required")
+	}
+	slug = strings.TrimSpace(slug)
+	if slug == "" {
+		slug = slugify(name)
+	}
+	if !slugPattern.MatchString(slug) {
+		return nil, domain.NewErrorUser("invalid organization slug")
+	}
+	if _, err := o.repo.GetBySlug(ctx, slug); err == nil {
+		return nil, domain.NewErrorConflict("organization slug already in use")
+	} else if !domain.IsErrorNotFound(err) {
+		return nil, err
+	}
+	org, err := o.repo.CreateWithOwner(ctx, domain.Organization{
+		ID:   o.snowNode.Generate(),
+		Name: name,
+		Slug: slug,
+	}, claim.UserID)
+	if err != nil {
+		return nil, err
+	}
+	return org, nil
 }
 
 func (o *Org) ListForUser(ctx context.Context, userID snow.ID) ([]*domain.OrgMembership, error) {

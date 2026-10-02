@@ -10,13 +10,46 @@ import (
 )
 
 type OrgRepository struct {
+	db      *sql.DB
 	queries *sqlcSqlite.Queries
 }
 
 func NewOrgRepository(db *sql.DB) *OrgRepository {
 	return &OrgRepository{
+		db:      db,
 		queries: sqlcSqlite.New(db),
 	}
+}
+
+func (r *OrgRepository) CreateWithOwner(ctx context.Context, org domain.Organization, ownerID snow.ID) (*domain.Organization, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, handleError(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	q := sqlcSqlite.New(tx)
+	row, err := q.CreateOrganization(ctx, sqlcSqlite.CreateOrganizationParams{
+		ID:              org.ID.Int64(),
+		Name:            org.Name,
+		Slug:            org.Slug,
+		CreatedByUserID: ownerID.Int64(),
+	})
+	if err != nil {
+		return nil, handleError(err)
+	}
+	err = q.OrgMemberUpsert(ctx, sqlcSqlite.OrgMemberUpsertParams{
+		OrgID:  org.ID.Int64(),
+		UserID: ownerID.Int64(),
+		Role:   domain.OrgRoleOwner,
+	})
+	if err != nil {
+		return nil, handleError(err)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, handleError(err)
+	}
+	return toDomainOrganization(row), nil
 }
 
 func (r *OrgRepository) GetByID(ctx context.Context, id snow.ID) (*domain.Organization, error) {
@@ -44,13 +77,14 @@ func (r *OrgRepository) ListForUser(ctx context.Context, userID snow.ID) ([]*dom
 	for _, row := range rows {
 		memberships = append(memberships, &domain.OrgMembership{
 			Org: domain.Organization{
-				ID:        snow.ID(row.ID),
-				Name:      row.Name,
-				Slug:      row.Slug,
-				CreatedAt: row.CreatedAt,
-				UpdatedAt: row.UpdatedAt,
-				Deleted:   row.Deleted,
-				DeletedAt: nullTimePtr(row.DeletedAt),
+				ID:              snow.ID(row.ID),
+				Name:            row.Name,
+				Slug:            row.Slug,
+				CreatedAt:       row.CreatedAt,
+				UpdatedAt:       row.UpdatedAt,
+				Deleted:         row.Deleted,
+				DeletedAt:       nullTimePtr(row.DeletedAt),
+				CreatedByUserID: snow.ID(row.CreatedByUserID),
 			},
 			Role: row.Role,
 		})
@@ -122,10 +156,11 @@ func (r *OrgRepository) CountMembersByRole(ctx context.Context, orgID snow.ID, r
 
 func toDomainOrganization(org sqlcSqlite.Organization) *domain.Organization {
 	return &domain.Organization{
-		ID:        snow.ID(org.ID),
-		Slug:      org.Slug,
-		Name:      org.Name,
-		CreatedAt: org.CreatedAt,
-		UpdatedAt: org.UpdatedAt,
+		ID:              snow.ID(org.ID),
+		Slug:            org.Slug,
+		Name:            org.Name,
+		CreatedAt:       org.CreatedAt,
+		UpdatedAt:       org.UpdatedAt,
+		CreatedByUserID: snow.ID(org.CreatedByUserID),
 	}
 }

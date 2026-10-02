@@ -17,7 +17,7 @@ proxies `/api` and `/docs` to `NIPA_SERVER_URL`).
 
 | Route | Page | Notes |
 |---|---|---|
-| `/` | repositories | organizations the caller belongs to |
+| `/` | repositories | organizations the caller belongs to; "New organization" dialog |
 | `/:org` | repositories | project list filtered by PBAC read |
 | `/:org/:project` | tree browser | default branch root; legacy `?rev=&path=` links redirect |
 | `/:org/:project/tree/:rev/*` | tree browser | branch/commit + directory; per-file last commit, README, go-to-file |
@@ -49,6 +49,14 @@ Release tags are exposed at `GET/POST …/tags` and `GET/DELETE …/tags/{name}`
 (`internal/http/api/tag.go`); the web API client already provides
 `listTags`/`createTag`/`deleteTag` in `web/src/api/endpoints.ts`. There is no
 Tags page in the SPA yet.
+
+## Organizations API
+
+`GET /api/v1/orgs` lists the caller's memberships; `POST /api/v1/orgs` creates
+an organization (name + optional slug) and makes the caller its owner. The home
+page offers the "New organization" dialog (`web/src/components/CreateOrgDialog.tsx`,
+`createOrg` in `web/src/api/endpoints.ts`). Member and group management lives on
+the organization settings page (`/:org/settings`).
 
 ## Merge request reviews
 
