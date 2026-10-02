@@ -26,7 +26,7 @@ func groupMemberIDs(t *testing.T, db *sql.DB, groupID int64) []int64 {
 	rows, err := db.QueryContext(context.Background(),
 		`SELECT user_id FROM group_members WHERE group_id = $1 ORDER BY user_id`, groupID)
 	require.NoError(t, err)
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var ids []int64
 	for rows.Next() {
