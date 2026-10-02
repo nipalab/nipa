@@ -186,4 +186,4 @@ user *may* see, sparse paths decide what the client *wants* to materialize.
 | M3 | Per-path `Push`, fast-forward changed-path check |
 | M4 | Rule/group management RPCs + `nipa acl`/`group` CLI |
 | M5 | Sparse clone/update/push + `sparse-checkout` CLI |
-| M6 | Lazy subtree fetch, web UI ACL admin, Postgres parity |
+| M6 | Lazy subtree fetch, web UI ACL admin (Postgres parity: `ee/repository/postgres`) |
