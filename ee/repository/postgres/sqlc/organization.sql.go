@@ -10,17 +10,25 @@ import (
 )
 
 const createOrganization = `-- name: CreateOrganization :one
-INSERT INTO organizations (name, slug, created_by_user_id) VALUES ($1, $2, $3) RETURNING id, slug, name, created_at, updated_at, deleted, deleted_at, created_by_user_id
+INSERT INTO organizations (id, name, slug, created_by_user_id)
+VALUES ($1, $2, $3, $4)
+RETURNING id, slug, name, created_at, updated_at, deleted, deleted_at, created_by_user_id
 `
 
 type CreateOrganizationParams struct {
+	ID              int64  `json:"id"`
 	Name            string `json:"name"`
 	Slug            string `json:"slug"`
 	CreatedByUserID int64  `json:"created_by_user_id"`
 }
 
 func (q *Queries) CreateOrganization(ctx context.Context, arg CreateOrganizationParams) (Organization, error) {
-	row := q.db.QueryRowContext(ctx, createOrganization, arg.Name, arg.Slug, arg.CreatedByUserID)
+	row := q.db.QueryRowContext(ctx, createOrganization,
+		arg.ID,
+		arg.Name,
+		arg.Slug,
+		arg.CreatedByUserID,
+	)
 	var i Organization
 	err := row.Scan(
 		&i.ID,
@@ -50,6 +58,26 @@ SELECT id, slug, name, created_at, updated_at, deleted, deleted_at, created_by_u
 
 func (q *Queries) GetOrganization(ctx context.Context, id int64) (Organization, error) {
 	row := q.db.QueryRowContext(ctx, getOrganization, id)
+	var i Organization
+	err := row.Scan(
+		&i.ID,
+		&i.Slug,
+		&i.Name,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Deleted,
+		&i.DeletedAt,
+		&i.CreatedByUserID,
+	)
+	return i, err
+}
+
+const getOrganizationBySlug = `-- name: GetOrganizationBySlug :one
+SELECT id, slug, name, created_at, updated_at, deleted, deleted_at, created_by_user_id FROM organizations WHERE slug = $1 AND deleted = false LIMIT 1
+`
+
+func (q *Queries) GetOrganizationBySlug(ctx context.Context, slug string) (Organization, error) {
+	row := q.db.QueryRowContext(ctx, getOrganizationBySlug, slug)
 	var i Organization
 	err := row.Scan(
 		&i.ID,

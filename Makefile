@@ -3,6 +3,7 @@ MIGRATE_CMD := go run ./cmd/migrate
 DRIVER     ?= sqlite3
 DSN        ?= nipa.db
 MIGRATIONS_DIR := db/migrations
+POSTGRES_MIGRATIONS_DIR := ee/db/migrations/postgres
 mb         ?= 256
 
 .PHONY: sqlc mock migrate-up migrate-down migrate-create build build-all test lint web web-dev web-install bench-upload
@@ -25,12 +26,14 @@ migrate-up:
 migrate-down:
 	$(MIGRATE_CMD) -dialect $(DRIVER) -dsn $(DSN) -action down
 
-## Create a new pair of up/down migration files, e.g. `make migrate-create name=add_users`.
+## Create a new pair of up/down migration files for both dialects, e.g. `make migrate-create name=add_users`.
 migrate-create:
 	@test -n "$(name)" || (echo "usage: make migrate-create name=<migration_name>" && exit 1)
 	@ts=$$(date +%Y%m%d%H%M%S); \
-	touch "$(MIGRATIONS_DIR)/$${ts}_$(name).up.sql" "$(MIGRATIONS_DIR)/$${ts}_$(name).down.sql"; \
-	echo "created $(MIGRATIONS_DIR)/$${ts}_$(name).up.sql and .down.sql"
+	for dir in "$(MIGRATIONS_DIR)/sqlite" "$(POSTGRES_MIGRATIONS_DIR)"; do \
+		touch "$$dir/$${ts}_$(name).up.sql" "$$dir/$${ts}_$(name).down.sql"; \
+		echo "created $$dir/$${ts}_$(name).up.sql and .down.sql"; \
+	done
 
 build-server:
 	go build -o bin/nipad ./cmd/nipad
