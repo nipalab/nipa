@@ -530,7 +530,8 @@ Direct: `go build ./...`, `go vet ./...`, `go test ./...`.
   `ConfirmChunkUploads` (authoritative). Quota failures use
   `domain.NewErrorQuotaExceeded` (HTTP 402) and cross gRPC as
   `ResourceExhausted`, which the client maps back to a 402 domain error so
-  `nipa push` reports it.
+  `nipa push` reports it. The cloud implementation (ee tables, per-user quota,
+  purchase, recount) is planned in `docs/CLOUD_STORAGE_QUOTA.md`.
 - `Parsec`/`ParseNipaUrl` (`internal/client/domain/url.go`): `/org/project[/path]`.
   `path` is threaded through to the manifest request so a missing subpath returns a
   404, and cloning a repo with an empty (no-commit) branch returns an empty tree,
