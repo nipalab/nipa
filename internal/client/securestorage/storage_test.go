@@ -157,3 +157,30 @@ func TestStorage_TokenFile_SaveCreatesParentDir(t *testing.T) {
 	_, err := os.Stat(path)
 	require.NoError(t, err)
 }
+
+func TestStorage_TokenFile_ReadError(t *testing.T) {
+	t.Setenv(TokenFileEnv, t.TempDir())
+
+	_, err := New().LoadToken("example.com")
+	require.Error(t, err)
+}
+
+func TestStorage_TokenFile_EmptyFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "tokens.json")
+	require.NoError(t, os.WriteFile(path, nil, 0o600))
+	t.Setenv(TokenFileEnv, path)
+
+	_, err := New().LoadToken("example.com")
+	require.ErrorIs(t, err, keyring.ErrNotFound)
+}
+
+func TestStorage_TokenFile_SaveFailsWhenDirReadOnly(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.Chmod(dir, 0o500))
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
+	t.Setenv(TokenFileEnv, filepath.Join(dir, "tokens.json"))
+
+	if err := New().SaveToken(&domain.LoginResult{Host: "example.com"}); err == nil {
+		t.Skip("directory permissions are not enforced for this user")
+	}
+}

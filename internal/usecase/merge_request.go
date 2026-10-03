@@ -140,18 +140,26 @@ func (m *MergeRequest) Create(ctx context.Context, projectID snow.ID, title, des
 	if m.fileLocks != nil {
 		paths, err := m.merger.BinaryChangesBetween(ctx, projectID, info.MergeBaseCommitID, source.CommitID)
 		if err != nil {
-			_ = m.repo.Delete(ctx, projectID, mrID.Int64())
+			m.rollbackCreate(ctx, projectID, mrID)
 			return nil, err
 		}
 		if err := m.fileLocks.EnsureMergeRequestLocks(ctx, projectID, mrID, target, paths, claim.UserID, claim.UserID); err != nil {
-			_ = m.fileLocks.ReleaseForMergeRequest(ctx, projectID, mrID)
-			_ = m.repo.Delete(ctx, projectID, mrID.Int64())
+			if releaseErr := m.fileLocks.ReleaseForMergeRequest(ctx, projectID, mrID); releaseErr != nil {
+				slog.Warn("releasing merge request locks after create failure failed", "project", projectID, "merge_request", mrID, "error", releaseErr)
+			}
+			m.rollbackCreate(ctx, projectID, mrID)
 			return nil, err
 		}
 	}
 
 	m.emitHook(ctx, domain.WebhookEventMRCreated, projectID, created, claim.UserID)
 	return created, nil
+}
+
+func (m *MergeRequest) rollbackCreate(ctx context.Context, projectID, mrID snow.ID) {
+	if err := m.repo.Delete(ctx, projectID, mrID.Int64()); err != nil {
+		slog.Error("rolling back merge request after create failure failed", "project", projectID, "merge_request", mrID, "error", err)
+	}
 }
 
 func (m *MergeRequest) List(ctx context.Context, projectID snow.ID, status string, limit int) ([]*domain.MergeRequest, error) {
