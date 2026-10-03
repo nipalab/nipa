@@ -536,6 +536,9 @@ func TestAPIRoutes(t *testing.T) {
 
 		detail := decodeBody[model.GroupResponse](t, doGet(t, base+"/groups/"+group.ID, aliceLogin.AccessToken))
 		require.Equal(t, []string{bob.ID}, detail.MemberIDs)
+		require.Equal(t, []model.GroupMemberResponse{
+			{UserID: bob.ID, Name: "bob", Email: "bob@example.com"},
+		}, detail.Members)
 
 		removeMember := doMethod(t, http.MethodDelete, base+"/groups/"+group.ID+"/members/"+bob.ID, "", aliceLogin.AccessToken)
 		require.Equal(t, http.StatusOK, removeMember.StatusCode)

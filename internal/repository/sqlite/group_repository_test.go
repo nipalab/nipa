@@ -169,7 +169,7 @@ func TestGroupRepositorySQLite_QueryErrors(t *testing.T) {
 	require.Error(t, repo.RemoveMember(canceled, snow.ID(7030), userID))
 }
 
-func TestGroupRepositorySQLite_ListMemberIDs(t *testing.T) {
+func TestGroupRepositorySQLite_ListMembers(t *testing.T) {
 	ctx := context.Background()
 	db, _ := newSQLiteTestDB(t)
 	repo := NewGroupRepository(db)
@@ -181,7 +181,10 @@ func TestGroupRepositorySQLite_ListMemberIDs(t *testing.T) {
 	require.NoError(t, repo.AddMember(ctx, snow.ID(7030), userA))
 	require.NoError(t, repo.AddMember(ctx, snow.ID(7030), userB))
 
-	ids, err := repo.ListMemberIDs(ctx, snow.ID(7030))
+	members, err := repo.ListMembers(ctx, snow.ID(7030))
 	require.NoError(t, err)
-	require.Equal(t, []snow.ID{userA, userB}, ids)
+	require.Equal(t, []domain.GroupMember{
+		{UserID: userA, Name: "user42", Email: "user42@example.com"},
+		{UserID: userB, Name: "user43", Email: "user43@example.com"},
+	}, members)
 }

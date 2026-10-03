@@ -15,7 +15,7 @@ type groupRepository interface {
 	ListByOrg(ctx context.Context, orgID snow.ID) ([]*domain.Group, error)
 	AddMember(ctx context.Context, groupID, userID snow.ID) error
 	RemoveMember(ctx context.Context, groupID, userID snow.ID) error
-	ListMemberIDs(ctx context.Context, groupID snow.ID) ([]snow.ID, error)
+	ListMembers(ctx context.Context, groupID snow.ID) ([]domain.GroupMember, error)
 }
 
 type permissionCacheInvalidator interface {
@@ -107,14 +107,14 @@ func (g *Group) groupInOrg(ctx context.Context, orgID, groupID snow.ID) (*domain
 	return group, nil
 }
 
-func (g *Group) Members(ctx context.Context, orgID, groupID snow.ID) ([]snow.ID, error) {
+func (g *Group) Members(ctx context.Context, orgID, groupID snow.ID) ([]domain.GroupMember, error) {
 	if err := g.requireGroupAdmin(ctx, orgID); err != nil {
 		return nil, err
 	}
 	if _, err := g.groupInOrg(ctx, orgID, groupID); err != nil {
 		return nil, err
 	}
-	return g.repo.ListMemberIDs(ctx, groupID)
+	return g.repo.ListMembers(ctx, groupID)
 }
 
 func (g *Group) requireGroupAdmin(ctx context.Context, orgID snow.ID) error {

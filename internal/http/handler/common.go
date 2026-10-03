@@ -55,15 +55,20 @@ func toProjectResponse(project *domain.Project) model.ProjectResponse {
 	}
 }
 
-func toGroupResponse(group *domain.Group, memberIDs []snow.ID) model.GroupResponse {
+func toGroupResponse(group *domain.Group, members []domain.GroupMember) model.GroupResponse {
 	resp := model.GroupResponse{
 		ID:          group.ID.Base36(),
 		OrgID:       group.OrgID.Base36(),
 		Name:        group.Name,
 		Description: group.Description,
 	}
-	for _, id := range memberIDs {
-		resp.MemberIDs = append(resp.MemberIDs, id.Base36())
+	for _, member := range members {
+		resp.MemberIDs = append(resp.MemberIDs, member.UserID.Base36())
+		resp.Members = append(resp.Members, model.GroupMemberResponse{
+			UserID: member.UserID.Base36(),
+			Name:   member.Name,
+			Email:  member.Email,
+		})
 	}
 	return resp
 }

@@ -52,6 +52,12 @@ type Group struct {
 	MemberIDs   []snow.ID  `json:"member_ids"`
 }
 
+type GroupMember struct {
+	UserID snow.ID `json:"user_id"`
+	Name   string  `json:"name"`
+	Email  string  `json:"email"`
+}
+
 type RefreshToken struct {
 	ID        int64     `json:"id"`
 	UserID    snow.ID   `json:"user_id"`

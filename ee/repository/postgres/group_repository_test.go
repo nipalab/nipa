@@ -171,7 +171,7 @@ func (s *GroupRepositorySuite) TestQueryErrors() {
 	s.Require().Error(repo.RemoveMember(canceled, snow.ID(7030), userID))
 }
 
-func (s *GroupRepositorySuite) TestListMemberIDs() {
+func (s *GroupRepositorySuite) TestListMembers() {
 	ctx := context.Background()
 	repo := NewGroupRepository(s.db)
 
@@ -182,7 +182,10 @@ func (s *GroupRepositorySuite) TestListMemberIDs() {
 	s.Require().NoError(repo.AddMember(ctx, snow.ID(7030), userA))
 	s.Require().NoError(repo.AddMember(ctx, snow.ID(7030), userB))
 
-	ids, err := repo.ListMemberIDs(ctx, snow.ID(7030))
+	members, err := repo.ListMembers(ctx, snow.ID(7030))
 	s.Require().NoError(err)
-	s.Equal([]snow.ID{userA, userB}, ids)
+	s.Equal([]domain.GroupMember{
+		{UserID: userA, Name: "user42", Email: "user42@example.com"},
+		{UserID: userB, Name: "user43", Email: "user43@example.com"},
+	}, members)
 }

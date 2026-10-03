@@ -139,7 +139,10 @@ export default function OrgSettingsPage() {
       <ConfirmRemoveGroupMemberDialog
         userId={confirmRemoveGroupMember}
         groupId={selectedGroup}
-        label={(members ?? []).find((m) => m.user_id === confirmRemoveGroupMember)?.name}
+        label={
+          (groupDetail?.members ?? []).find((m) => m.user_id === confirmRemoveGroupMember)?.name ??
+          (members ?? []).find((m) => m.user_id === confirmRemoveGroupMember)?.name
+        }
         onClose={() => setConfirmRemoveGroupMember(null)}
         onRemoved={() => {
           setConfirmRemoveGroupMember(null)
@@ -364,40 +367,33 @@ function GroupDetailPanel({
         </Button>
       </div>
       <div style={{ margin: '12px 0' }}>
-        {(group.member_ids ?? []).map((memberId) => {
-          const member = membersById.get(memberId)
-          return (
-            <div
-              key={memberId}
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                padding: '6px 0',
-                borderBottom: '1px solid var(--borderColor-muted)',
-              }}
-            >
-              {member ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <ActorAvatar
-                    actor={{ user_id: member.user_id, name: member.name, photo_url: member.photo_url }}
-                    size={28}
-                  />
-                  <div>
-                    <div style={{ fontWeight: 600 }}>{member.name}</div>
-                    <div style={{ color: 'var(--fgColor-muted)', fontSize: 12 }}>{member.email}</div>
-                  </div>
-                </div>
-              ) : (
-                <Mono>{memberId}</Mono>
-              )}
-              <Button size="small" variant="danger" onClick={() => onRemoveMember(memberId)}>
-                Remove
-              </Button>
+        {(group.members ?? []).map((member) => (
+          <div
+            key={member.user_id}
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              padding: '6px 0',
+              borderBottom: '1px solid var(--borderColor-muted)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <ActorAvatar
+                actor={{ user_id: member.user_id, name: member.name, photo_url: membersById.get(member.user_id)?.photo_url }}
+                size={28}
+              />
+              <div>
+                <div style={{ fontWeight: 600 }}>{member.name}</div>
+                <div style={{ color: 'var(--fgColor-muted)', fontSize: 12 }}>{member.email}</div>
+              </div>
             </div>
-          )
-        })}
-        {(group.member_ids ?? []).length === 0 && <Text>No members.</Text>}
+            <Button size="small" variant="danger" onClick={() => onRemoveMember(member.user_id)}>
+              Remove
+            </Button>
+          </div>
+        ))}
+        {(group.members ?? []).length === 0 && <Text>No members.</Text>}
       </div>
 
       {showAddMember && (

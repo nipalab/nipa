@@ -264,12 +264,19 @@ export interface FileLockResponse {
   acquired_at: string
 }
 
+export interface GroupMemberResponse {
+  user_id: string
+  name: string
+  email: string
+}
+
 export interface GroupResponse {
   id: string
   org_id: string
   name: string
   description: string
   member_ids?: string[]
+  members?: GroupMemberResponse[]
 }
 
 export interface PermissionEntry {
