@@ -446,6 +446,21 @@ describe('MergeRequestOverview', () => {
     expect(container.textContent).toContain('rename this')
     expect(container.textContent).toContain('two-new')
   })
+
+  it.each([
+    ['mergeable', 'This branch has no conflicts with the base branch.'],
+    ['behind_target', 'The source branch is behind the target branch.'],
+    ['up_to_date', 'The source branch is already up to date with the target branch.'],
+    ['invalid', 'The source or target branch no longer exists.'],
+  ])('explains the %s mergeability status', async (status, expected) => {
+    const request = { ...base.request, mergeability: { status } }
+    const { container } = await render(<MergeRequestOverview {...base} request={request} />)
+    expect(container.textContent).toContain(expected)
+    const mergeButton = [...container.querySelectorAll('button')].find(
+      (button) => button.textContent === 'Merge pull request',
+    ) as HTMLButtonElement
+    expect(mergeButton.disabled).toBe(status !== 'mergeable')
+  })
 })
 
 describe('ChangesView', () => {

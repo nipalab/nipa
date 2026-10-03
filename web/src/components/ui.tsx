@@ -76,7 +76,7 @@ export function StatusLabel({ status }: { status: string }) {
   const color =
     status === 'merged' || status === 'mergeable'
       ? 'var(--fgColor-success)'
-      : status === 'closed' || status === 'conflicted'
+      : status === 'closed' || status === 'invalid'
         ? 'var(--fgColor-danger)'
         : status === 'behind_target'
           ? 'var(--fgColor-attention)'

@@ -705,6 +705,28 @@ export function MergeRequestOverview({
       )
     }
     const mergeable = mergeability === 'mergeable'
+    const MERGE_BOX_TEXT: Record<string, { title: string; hint: string }> = {
+      mergeable: {
+        title: 'This branch has no conflicts with the base branch.',
+        hint: 'Merging can be performed automatically.',
+      },
+      behind_target: {
+        title: 'The source branch is behind the target branch.',
+        hint: 'Update the source branch to include the target commits.',
+      },
+      up_to_date: {
+        title: 'The source branch is already up to date with the target branch.',
+        hint: 'There is nothing left to merge.',
+      },
+      invalid: {
+        title: 'The source or target branch no longer exists.',
+        hint: 'Recreate the missing branch or close this merge request.',
+      },
+    }
+    const mergeBoxText = MERGE_BOX_TEXT[mergeability ?? ''] ?? {
+      title: 'This merge request cannot be merged.',
+      hint: 'Refresh the page for the current merge status.',
+    }
     return (
       <div style={{ border: '1px solid var(--borderColor-default)', borderRadius: 6, overflow: 'hidden' }}>
         <div style={{ padding: 12, display: 'flex', gap: 8 }}>
@@ -721,14 +743,10 @@ export function MergeRequestOverview({
           </span>
           <div style={{ fontSize: 13 }}>
             <Text as="p" style={{ margin: 0, fontWeight: 600 }}>
-              {mergeable
-                ? 'This branch has no conflicts with the base branch.'
-                : mergeability === 'conflicted'
-                  ? 'This branch has conflicts that must be resolved.'
-                  : 'The source branch must contain the target before it can merge.'}
+              {mergeBoxText.title}
             </Text>
             <Text as="p" style={{ margin: 0, fontSize: 12, color: 'var(--fgColor-muted)' }}>
-              {mergeable ? 'Merging can be performed automatically.' : 'Update the source branch first.'}
+              {mergeBoxText.hint}
             </Text>
           </div>
         </div>
