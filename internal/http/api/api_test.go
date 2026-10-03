@@ -965,6 +965,16 @@ func TestAPIRoutes(t *testing.T) {
 
 		rules := decodeBody[[]model.PBACRuleResponse](t, doGet(t, base+"/rules", aliceLogin.AccessToken))
 		require.Len(t, rules, 2, "reader rule from the repository browser plus the grantee rule")
+		var granteeRule *model.PBACRuleResponse
+		for i := range rules {
+			if rules[i].ID == rule.ID {
+				granteeRule = &rules[i]
+			}
+		}
+		require.NotNil(t, granteeRule)
+		require.Equal(t, grantee.ID, granteeRule.UserID)
+		require.Equal(t, "grantee", granteeRule.UserName)
+		require.Equal(t, "grantee@example.com", granteeRule.UserEmail)
 
 		granteeLogin, _ := loginAs(t, "grantee@example.com")
 		info := decodeBody[model.ProjectPermissionResponse](t, doGet(t, base+"/me", granteeLogin.AccessToken))

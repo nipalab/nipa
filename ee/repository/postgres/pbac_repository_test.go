@@ -146,6 +146,31 @@ func (s *PBACRepositorySuite) TestListRulesByProject() {
 	s.Require().NoError(err)
 	s.Len(rules, 1)
 	s.Equal(onProject.ID, rules[0].ID)
+	s.Equal("user42", rules[0].UserName)
+	s.Equal("user42@example.com", rules[0].UserEmail)
+	s.Empty(rules[0].GroupName)
+}
+
+func (s *PBACRepositorySuite) TestListRulesByProjectResolvesGroupName() {
+	ctx := context.Background()
+	repo := NewPBACRepository(s.db)
+
+	projectID := seedProject(s.T(), s.q, 1, "game")
+	groupID := seedPBACGroup(s.T(), s.db, 77, 1, "artists")
+
+	_, err := repo.CreateRule(ctx, domain.PBACRule{
+		GroupID: pbacIDPtr(groupID), OrgID: 1, ProjectID: pbacIDPtr(projectID),
+		PathPrefix: "art", Permission: domain.PermissionWrite,
+	})
+	s.Require().NoError(err)
+
+	rules, err := repo.ListRulesByProject(ctx, projectID)
+	s.Require().NoError(err)
+	s.Len(rules, 1)
+	s.Equal(groupID, *rules[0].GroupID)
+	s.Equal("artists", rules[0].GroupName)
+	s.Empty(rules[0].UserName)
+	s.Empty(rules[0].UserEmail)
 }
 
 func (s *PBACRepositorySuite) TestDeleteRule() {

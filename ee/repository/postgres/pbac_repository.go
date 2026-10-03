@@ -34,7 +34,23 @@ func (p *PBAC) ListRulesByProject(ctx context.Context, projectID snow.ID) ([]*do
 	if err != nil {
 		return nil, domain.NewErrorDatabase(err.Error())
 	}
-	return toDomainPBACRules(rows), nil
+	rules := make([]*domain.PBACRule, 0, len(rows))
+	for _, row := range rows {
+		rules = append(rules, &domain.PBACRule{
+			ID:         row.ID,
+			UserID:     snowIDPtr(row.UserID),
+			UserName:   row.UserName,
+			UserEmail:  row.UserEmail,
+			GroupID:    snowIDPtr(row.GroupID),
+			GroupName:  row.GroupName,
+			OrgID:      snow.ID(row.OrgID),
+			ProjectID:  snowIDPtr(row.ProjectID),
+			PathPrefix: row.PathPrefix,
+			Permission: domain.Permission(row.Permission),
+			CreatedAt:  row.CreatedAt.Time,
+		})
+	}
+	return rules, nil
 }
 
 func (p *PBAC) CreateRule(ctx context.Context, rule domain.PBACRule) (*domain.PBACRule, error) {

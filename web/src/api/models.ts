@@ -293,7 +293,10 @@ export interface ProjectPermissionResponse {
 export interface PBACRuleResponse {
   id: number
   user_id?: string
+  user_name?: string
+  user_email?: string
   group_id?: string
+  group_name?: string
   path_prefix: string
   permission: number
 }

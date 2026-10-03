@@ -14,7 +14,10 @@ type ProjectPermissionResponse struct {
 type PBACRuleResponse struct {
 	ID         int64  `json:"id"`
 	UserID     string `json:"user_id,omitempty"`
+	UserName   string `json:"user_name,omitempty"`
+	UserEmail  string `json:"user_email,omitempty"`
 	GroupID    string `json:"group_id,omitempty"`
+	GroupName  string `json:"group_name,omitempty"`
 	PathPrefix string `json:"path_prefix"`
 	Permission uint64 `json:"permission"`
 }

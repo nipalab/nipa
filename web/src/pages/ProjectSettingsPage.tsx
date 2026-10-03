@@ -180,6 +180,13 @@ export default function ProjectSettingsPage() {
   )
 }
 
+function ruleSubject(rule: PBACRuleResponse): { name: string; email?: string } | null {
+  if (rule.user_id) {
+    return rule.user_name ? { name: rule.user_name, email: rule.user_email } : null
+  }
+  return rule.group_name ? { name: rule.group_name } : null
+}
+
 function AccessRulesSection({
   rules,
   loading,
@@ -218,27 +225,39 @@ function AccessRulesSection({
               </tr>
             </thead>
             <tbody>
-              {rules.map((rule) => (
-                <tr key={rule.id} style={{ borderTop: '1px solid var(--borderColor-muted)' }}>
-                  <td style={CELL}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <Label>{rule.user_id ? 'User' : 'Group'}</Label>
-                      <Mono>{rule.user_id ?? rule.group_id}</Mono>
-                    </div>
-                  </td>
-                  <td style={CELL}>
-                    <Mono>{rule.path_prefix || '/'}</Mono>
-                  </td>
-                  <td style={CELL}>
-                    <PermissionBadge permission={rule.permission} />
-                  </td>
-                  <td style={{ ...CELL, textAlign: 'right' }}>
-                    <Button size="small" variant="danger" onClick={() => onDelete(rule)}>
-                      Revoke
-                    </Button>
-                  </td>
-                </tr>
-              ))}
+              {rules.map((rule) => {
+                const subject = ruleSubject(rule)
+                return (
+                  <tr key={rule.id} style={{ borderTop: '1px solid var(--borderColor-muted)' }}>
+                    <td style={CELL}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <Label>{rule.user_id ? 'User' : 'Group'}</Label>
+                        {subject ? (
+                          <div>
+                            <div style={{ fontWeight: 600 }}>{subject.name}</div>
+                            {subject.email && (
+                              <div style={{ color: 'var(--fgColor-muted)', fontSize: 12 }}>{subject.email}</div>
+                            )}
+                          </div>
+                        ) : (
+                          <Mono>{rule.user_id ?? rule.group_id}</Mono>
+                        )}
+                      </div>
+                    </td>
+                    <td style={CELL}>
+                      <Mono>{rule.path_prefix || '/'}</Mono>
+                    </td>
+                    <td style={CELL}>
+                      <PermissionBadge permission={rule.permission} />
+                    </td>
+                    <td style={{ ...CELL, textAlign: 'right' }}>
+                      <Button size="small" variant="danger" onClick={() => onDelete(rule)}>
+                        Revoke
+                      </Button>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
@@ -500,13 +519,16 @@ function ConfirmDeleteRuleDialog({
   }
 
   if (!rule) return null
+  const subject = ruleSubject(rule)
   return (
     <Dialog title="Revoke access rule" onClose={onClose} width="medium">
       <Dialog.Body>
         <Text as="p">
           Revoke access for{' '}
           <strong>
-            {rule.user_id ? `user: ${rule.user_id}` : `group: ${rule.group_id}`}
+            {rule.user_id
+              ? `user: ${subject ? `${subject.name}${subject.email ? ` (${subject.email})` : ''}` : rule.user_id}`
+              : `group: ${subject?.name ?? rule.group_id}`}
           </strong>{' '}
           on path <Mono>{rule.path_prefix || '/'}</Mono>?
         </Text>

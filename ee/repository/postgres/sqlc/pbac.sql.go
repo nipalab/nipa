@@ -116,18 +116,40 @@ func (q *Queries) PBACRuleGetForProject(ctx context.Context, arg PBACRuleGetForP
 }
 
 const pBACRuleListByProject = `-- name: PBACRuleListByProject :many
-SELECT id, created_at, user_id, group_id, org_id, project_id, path_prefix, permission FROM pbac_rules WHERE project_id = $1 ORDER BY id
+SELECT r.id, r.created_at, r.user_id, r.group_id, r.org_id, r.project_id, r.path_prefix, r.permission,
+       COALESCE(u.name, '') AS user_name,
+       COALESCE(u.email, '') AS user_email,
+       COALESCE(g.name, '') AS group_name
+FROM pbac_rules r
+LEFT JOIN users u ON u.id = r.user_id AND u.deleted = false
+LEFT JOIN groups g ON g.id = r.group_id AND g.deleted = false
+WHERE r.project_id = $1
+ORDER BY r.id
 `
 
-func (q *Queries) PBACRuleListByProject(ctx context.Context, projectID sql.NullInt64) ([]PbacRule, error) {
+type PBACRuleListByProjectRow struct {
+	ID         int64         `json:"id"`
+	CreatedAt  sql.NullTime  `json:"created_at"`
+	UserID     sql.NullInt64 `json:"user_id"`
+	GroupID    sql.NullInt64 `json:"group_id"`
+	OrgID      int64         `json:"org_id"`
+	ProjectID  sql.NullInt64 `json:"project_id"`
+	PathPrefix string        `json:"path_prefix"`
+	Permission int64         `json:"permission"`
+	UserName   string        `json:"user_name"`
+	UserEmail  string        `json:"user_email"`
+	GroupName  string        `json:"group_name"`
+}
+
+func (q *Queries) PBACRuleListByProject(ctx context.Context, projectID sql.NullInt64) ([]PBACRuleListByProjectRow, error) {
 	rows, err := q.db.QueryContext(ctx, pBACRuleListByProject, projectID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []PbacRule
+	var items []PBACRuleListByProjectRow
 	for rows.Next() {
-		var i PbacRule
+		var i PBACRuleListByProjectRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.CreatedAt,
@@ -137,6 +159,9 @@ func (q *Queries) PBACRuleListByProject(ctx context.Context, projectID sql.NullI
 			&i.ProjectID,
 			&i.PathPrefix,
 			&i.Permission,
+			&i.UserName,
+			&i.UserEmail,
+			&i.GroupName,
 		); err != nil {
 			return nil, err
 		}
