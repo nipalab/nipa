@@ -1,7 +1,15 @@
 import { Fragment, useState } from 'react'
-import { Button, Stack, Text, Textarea } from '@primer/react'
+import { Button, Checkbox, Stack, Text, Textarea } from '@primer/react'
+import {
+  ChevronDownIcon,
+  ChevronRightIcon,
+  FileAddedIcon,
+  FileDiffIcon,
+  FileMovedIcon,
+  FileRemovedIcon,
+} from '@primer/octicons-react'
 import type { DiffFileResponse, DiffHunkResponse, DiffLineResponse, ThreadResponse } from '../../api/models'
-import { Mono, StatusLabel } from '../ui'
+import { Mono, PRIMARY_BUTTON_STYLE } from '../ui'
 import { ThreadCard } from './ThreadCard'
 
 export interface DiffAnchor {
@@ -30,6 +38,37 @@ const REMOVE_BG = 'var(--bgColor-danger-muted)'
 const EMPTY_BG = 'var(--bgColor-neutral-muted)'
 const CONTEXT_BG = 'transparent'
 
+// GitHub-style status icon for a changed file.
+export function FileStatusIcon({ status }: { status: string }) {
+  const label = status || 'modified'
+  switch (status) {
+    case 'added':
+      return (
+        <span title="added" style={{ color: 'var(--fgColor-success)', display: 'inline-flex' }}>
+          <FileAddedIcon />
+        </span>
+      )
+    case 'deleted':
+      return (
+        <span title="deleted" style={{ color: 'var(--fgColor-danger)', display: 'inline-flex' }}>
+          <FileRemovedIcon />
+        </span>
+      )
+    case 'renamed':
+      return (
+        <span title="renamed" style={{ color: 'var(--fgColor-attention)', display: 'inline-flex' }}>
+          <FileMovedIcon />
+        </span>
+      )
+    default:
+      return (
+        <span title={label} style={{ color: 'var(--fgColor-muted)', display: 'inline-flex' }}>
+          <FileDiffIcon />
+        </span>
+      )
+  }
+}
+
 function lineBackground(line: DiffLineResponse | undefined, side: 'left' | 'right'): string {
   if (!line) return EMPTY_BG
   if (side === 'left') return line.kind === 'remove' ? REMOVE_BG : CONTEXT_BG
@@ -40,6 +79,92 @@ function sign(kind: string | undefined): string {
   if (kind === 'add') return '+'
   if (kind === 'remove') return '-'
   return ' '
+}
+
+// ThreadCodeContext renders a few diff lines around an inline thread's anchor,
+// like GitHub shows the commented code in the conversation timeline.
+export function ThreadCodeContext({
+  files,
+  filePath,
+  side,
+  oldLine,
+  newLine,
+  radius = 3,
+}: {
+  files: DiffFileResponse[]
+  filePath?: string
+  side?: string
+  oldLine?: number
+  newLine?: number
+  radius?: number
+}) {
+  const file = files.find((entry) => entry.path === filePath || Boolean(filePath && entry.old_path === filePath))
+  if (!file || file.binary) return null
+
+  const isAnchor = (line: DiffLineResponse) => {
+    if (side === 'left' && oldLine !== undefined) return line.old_line === oldLine
+    if (newLine !== undefined) return line.new_line === newLine
+    if (oldLine !== undefined) return line.old_line === oldLine
+    return false
+  }
+  const hunk = (file.hunks ?? []).find((entry) => entry.lines.some(isAnchor))
+  if (!hunk) return null
+  const lines = hunk.lines
+  const index = lines.findIndex(isAnchor)
+  if (index < 0) return null
+
+  const start = Math.max(0, index - radius)
+  const window = lines.slice(start, Math.min(lines.length, index + radius + 1))
+  return (
+    <div
+      style={{
+        border: '1px solid var(--borderColor-muted)',
+        borderRadius: 4,
+        overflow: 'hidden',
+        fontSize: 12,
+        lineHeight: 1.5,
+      }}
+    >
+      {window.map((line, offset) => {
+        const anchor = start + offset === index
+        return (
+          <div
+            key={`${line.old_line ?? 'x'}-${line.new_line ?? 'x'}-${offset}`}
+            style={{
+              display: 'flex',
+              background: lineBackground(line, line.kind === 'remove' ? 'left' : 'right'),
+              boxShadow: anchor ? 'inset 2px 0 0 var(--fgColor-accent)' : undefined,
+            }}
+          >
+            <span
+              style={{
+                width: 44,
+                textAlign: 'right',
+                padding: '0 6px',
+                color: 'var(--fgColor-muted)',
+                userSelect: 'none',
+              }}
+            >
+              {line.old_line ?? ''}
+            </span>
+            <span
+              style={{
+                width: 44,
+                textAlign: 'right',
+                padding: '0 6px',
+                color: 'var(--fgColor-muted)',
+                userSelect: 'none',
+              }}
+            >
+              {line.new_line ?? ''}
+            </span>
+            <span style={{ width: 14, color: 'var(--fgColor-muted)', userSelect: 'none' }}>{sign(line.kind)}</span>
+            <span style={{ whiteSpace: 'pre', paddingRight: 8 }}>{line.text}</span>
+          </div>
+        )
+      })}
+    </div>
+  )
 }
 
 // buildRows turns a hunk's line stream into split-view rows: a remove run is
@@ -122,29 +247,60 @@ function DraftComment({
   const [body, setBody] = useState('')
   const target = `${anchor.filePath}:${anchor.newLine ?? anchor.oldLine ?? '?'}`
   return (
-    <div style={{ padding: '8px 10px', background: 'var(--bgColor-inset)' }}>
-      <Text as="p" style={{ fontSize: 12, color: 'var(--fgColor-muted)' }}>
-        New comment on <Mono>{target}</Mono>
-      </Text>
-      <Textarea
-        value={body}
-        placeholder="Leave a comment"
-        aria-label="New inline comment"
-        onChange={(event) => setBody(event.target.value)}
-      />
-      {error && (
-        <Text as="p" style={{ color: 'var(--fgColor-danger)', fontSize: 12 }}>
-          {error}
+    <div
+      style={{
+        border: '1px solid var(--borderColor-default)',
+        borderRadius: 6,
+        overflow: 'hidden',
+        background: 'var(--bgColor-default)',
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          padding: '6px 12px',
+          background: 'var(--bgColor-muted)',
+          borderBottom: '1px solid var(--borderColor-muted)',
+        }}
+      >
+        <Text style={{ fontSize: 12, fontWeight: 600 }}>Write</Text>
+        <Text style={{ fontSize: 12, color: 'var(--fgColor-muted)' }}>
+          a comment on <Mono>{target}</Mono>
         </Text>
-      )}
-      <Stack direction="horizontal" gap="condensed" style={{ marginTop: 6 }}>
-        <Button size="small" variant="primary" disabled={busy || !body.trim()} onClick={() => onSubmit(anchor, body.trim())}>
-          Comment
-        </Button>
-        <Button size="small" variant="invisible" onClick={onCancel}>
-          Cancel
-        </Button>
-      </Stack>
+      </div>
+      <div style={{ padding: 8 }}>
+        <Textarea
+          block
+          autoFocus
+          value={body}
+          placeholder="Leave a comment"
+          aria-label="New inline comment"
+          onChange={(event) => setBody(event.target.value)}
+        />
+        {error && (
+          <Text as="p" style={{ color: 'var(--fgColor-danger)', fontSize: 12, margin: '4px 0 0' }}>
+            {error}
+          </Text>
+        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+          <Button size="small" onClick={onCancel}>
+            Cancel
+          </Button>
+          <span style={{ marginLeft: 'auto' }}>
+            <Button
+              size="small"
+              variant="primary"
+              style={PRIMARY_BUTTON_STYLE}
+              disabled={busy || !body.trim()}
+              onClick={() => onSubmit(anchor, body.trim())}
+            >
+              Comment
+            </Button>
+          </span>
+        </div>
+      </div>
     </div>
   )
 }
@@ -154,14 +310,17 @@ function CommentButton({ onClick, label }: { onClick: () => void; label: string 
     <button
       type="button"
       aria-label={label}
+      title="Add a comment"
       onClick={onClick}
       style={{
-        border: 'none',
-        background: 'transparent',
+        border: '1px solid var(--borderColor-default)',
+        borderRadius: 4,
+        background: 'var(--bgColor-default)',
         color: 'var(--fgColor-muted)',
         cursor: 'pointer',
         fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-        padding: '0 2px',
+        lineHeight: '16px',
+        padding: '0 4px',
       }}
     >
       +
@@ -231,7 +390,7 @@ function LineCell({
   )
 }
 
-function DiffFile({
+export function DiffFile({
   file,
   threads,
   mode,
@@ -241,6 +400,10 @@ function DiffFile({
   draftError,
   me,
   busy,
+  viewed,
+  collapsed,
+  onToggleViewed,
+  onToggleCollapsed,
   onStartThread,
   onCancelDraft,
   onSubmitDraft,
@@ -258,6 +421,10 @@ function DiffFile({
   draftError?: string | null
   me?: string
   busy?: boolean
+  viewed?: boolean
+  collapsed?: boolean
+  onToggleViewed?: (viewed: boolean) => void
+  onToggleCollapsed?: () => void
   onStartThread?: (anchor: DiffAnchor) => void
   onCancelDraft?: () => void
   onSubmitDraft?: (anchor: DiffAnchor, body: string) => void
@@ -288,15 +455,32 @@ function DiffFile({
     <div
       style={{
         padding: '6px 12px',
-        borderBottom: '1px solid var(--borderColor-muted)',
+        borderBottom: collapsed ? undefined : '1px solid var(--borderColor-muted)',
         display: 'flex',
         gap: 8,
         alignItems: 'center',
         background: 'var(--bgColor-muted)',
       }}
     >
+      {onToggleCollapsed && (
+        <button
+          type="button"
+          aria-label={collapsed ? `Expand ${file.path}` : `Collapse ${file.path}`}
+          onClick={onToggleCollapsed}
+          style={{
+            border: 'none',
+            background: 'transparent',
+            color: 'var(--fgColor-muted)',
+            cursor: 'pointer',
+            display: 'inline-flex',
+            padding: 0,
+          }}
+        >
+          {collapsed ? <ChevronRightIcon /> : <ChevronDownIcon />}
+        </button>
+      )}
+      <FileStatusIcon status={file.status} />
       <Mono>{file.old_path ? `${file.old_path} → ${file.path}` : file.path}</Mono>{' '}
-      <StatusLabel status={file.status} />{' '}
       {!file.binary && (
         <>
           <Text style={{ color: 'var(--fgColor-success)' }}>+{file.additions}</Text>{' '}
@@ -312,6 +496,16 @@ function DiffFile({
         <Button size="small" variant="invisible" onClick={() => setOnlyOpenThreads((value) => !value)}>
           {onlyOpenThreads ? 'Show all lines' : 'Only open threads'}
         </Button>
+      )}
+      {onToggleViewed && (
+        <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <Checkbox
+            checked={Boolean(viewed)}
+            aria-label={`Viewed ${file.path}`}
+            onChange={(event) => onToggleViewed(event.target.checked)}
+          />
+          <Text style={{ fontSize: 12, color: 'var(--fgColor-muted)' }}>Viewed</Text>
+        </span>
       )}
     </div>
   )
@@ -330,6 +524,17 @@ function DiffFile({
     )
   }
 
+  if (collapsed) {
+    return (
+      <div
+        id={`file-${file.path}`}
+        style={{ border: '1px solid var(--borderColor-default)', borderRadius: 6, overflow: 'hidden', scrollMarginTop: 16 }}
+      >
+        {header}
+      </div>
+    )
+  }
+
   const threadRows = (row: LineRow) => {
     const anchored = threadsOnRow(threads, file, row)
     const draft = draftAnchor && rowHasDraft(draftAnchor, file, row) ? draftAnchor : null
@@ -339,6 +544,7 @@ function DiffFile({
         {anchored.map((thread) => (
           <ThreadCard
             key={thread.id}
+            variant="conversation"
             thread={thread}
             me={me}
             canWrite={canComment}

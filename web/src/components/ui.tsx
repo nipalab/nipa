@@ -1,6 +1,13 @@
 import type { CSSProperties, ReactNode } from 'react'
 import { Banner, Heading, Spinner, Stack, Text } from '@primer/react'
 
+// Primer's primary button is blue; GitHub's primary action is green.
+export const PRIMARY_BUTTON_STYLE = {
+  '--button-primary-bgColor-rest': '#1f883d',
+  '--button-primary-bgColor-hover': '#1a7f37',
+  '--button-primary-bgColor-active': '#187733',
+} as CSSProperties
+
 export function Page({
   title,
   subtitle,
@@ -69,7 +76,7 @@ export function StatusLabel({ status }: { status: string }) {
   const color =
     status === 'merged' || status === 'mergeable'
       ? 'var(--fgColor-success)'
-      : status === 'closed' || status === 'conflicted'
+      : status === 'closed' || status === 'invalid'
         ? 'var(--fgColor-danger)'
         : status === 'behind_target'
           ? 'var(--fgColor-attention)'

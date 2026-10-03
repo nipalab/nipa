@@ -90,6 +90,18 @@ function setInputValue(el: HTMLInputElement, value: string) {
   el.dispatchEvent(new Event('input', { bubbles: true }))
 }
 
+function setSelectValue(el: HTMLSelectElement, value: string) {
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value')?.set
+  setter?.call(el, value)
+  el.dispatchEvent(new Event('change', { bubbles: true }))
+}
+
+function setTextareaValue(el: HTMLTextAreaElement, value: string) {
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set
+  setter?.call(el, value)
+  el.dispatchEvent(new Event('input', { bubbles: true }))
+}
+
 async function renderApp(url: string) {
   window.history.pushState({}, '', url)
   const container = document.createElement('div')
@@ -313,7 +325,7 @@ describe('BlobPage', () => {
 })
 
 describe('repo nav', () => {
-  it('keeps the repository tabs on commits, branches, pulls and settings', async () => {
+  it('keeps the repository tabs on commits, branches, merges and settings', async () => {
     stubRepoRoutes((url) => {
       if (url.includes('/commits?')) return jsonResponse([])
       if (url.includes('/merge-requests')) return jsonResponse([])
@@ -325,7 +337,7 @@ describe('repo nav', () => {
     const tabs = [
       ['/acme/game/commits', 'Commits'],
       ['/acme/game/branches', 'Branches'],
-      ['/acme/game/pulls', 'Merge requests'],
+      ['/acme/game/merges', 'Merge requests'],
       ['/acme/game/settings', 'Settings'],
     ] as const
 
@@ -335,9 +347,186 @@ describe('repo nav', () => {
       expect(container.querySelector('a[href="/acme/game/tree/main"]')).not.toBeNull()
       expect(container.querySelector('a[href="/acme/game/commits?branch=main"]')).not.toBeNull()
       expect(container.querySelector('a[href="/acme/game/branches"]')).not.toBeNull()
-      expect(container.querySelector('a[href="/acme/game/pulls"]')).not.toBeNull()
+      expect(container.querySelector('a[href="/acme/game/merges"]')).not.toBeNull()
       act(() => root.unmount())
     }
+  })
+})
+
+describe('MergeRequestsPage', () => {
+  const TWO_BRANCHES = [
+    { id: '1', name: 'main', is_default: true, is_protected: false, updated_at: new Date().toISOString() },
+    { id: '2', name: 'feature', is_default: false, is_protected: false, updated_at: new Date().toISOString() },
+  ]
+
+  it('creates a merge request from the dedicated page', async () => {
+    const calls: { url: string; method: string; body: unknown }[] = []
+    const created = {
+      id: '1',
+      number: 7,
+      project_id: 'p1',
+      source_branch: 'feature',
+      target_branch: 'main',
+      title: 'Add feature',
+      description: '',
+      status: 'open',
+      created_by: '1',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }
+    stubRepoRoutes((url, init) => {
+      const method = init?.method ?? 'GET'
+      calls.push({ url, method, body: init?.body ? JSON.parse(String(init.body)) : undefined })
+      if (url.includes('/merge-requests') && method === 'POST') return jsonResponse(created)
+      if (url.includes('/merge-requests/7/diff') && method === 'GET') return jsonResponse({ files: [] })
+      if (url.includes('/merge-requests/7/review-state') && method === 'GET') return jsonResponse({})
+      if (url.includes('/merge-requests/7/') && method === 'GET') return jsonResponse([])
+      if (url.endsWith('/merge-requests/7') && method === 'GET') return jsonResponse(created)
+      if (url.includes('/merge-requests') && method === 'GET') return jsonResponse([])
+      if (url.includes('/branches') && method === 'GET') return jsonResponse(TWO_BRANCHES)
+      return null
+    })
+
+    const { container, root } = await renderApp('/acme/game/merges')
+    await waitForText(container, 'No merge requests.')
+    await act(async () => {
+      findButton('New merge request').click()
+    })
+    await waitFor(() => window.location.pathname === '/acme/game/merges/new')
+    await waitFor(() => container.querySelector('form') !== null)
+
+    const titleInput = container.querySelector('input') as HTMLInputElement
+    const [sourceSelect, targetSelect] = Array.from(container.querySelectorAll('select')) as HTMLSelectElement[]
+    await act(async () => {
+      setInputValue(titleInput, 'Add feature')
+      setSelectValue(sourceSelect, 'feature')
+      setSelectValue(targetSelect, 'main')
+    })
+    await act(async () => {
+      findButton('Create merge request').click()
+    })
+    await waitFor(() => calls.some((call) => call.method === 'POST' && call.url.includes('/merge-requests')))
+    const post = calls.find((call) => call.method === 'POST' && call.url.includes('/merge-requests'))
+    expect(post?.body).toEqual({
+      title: 'Add feature',
+      description: '',
+      source_branch: 'feature',
+      target_branch: 'main',
+    })
+    await waitFor(() => window.location.pathname === '/acme/game/merges/7')
+    act(() => root.unmount())
+  })
+})
+
+describe('MergeRequestPage files tab', () => {
+  const MR = {
+    id: '1',
+    number: 7,
+    project_id: 'p1',
+    source_branch: 'feature',
+    target_branch: 'main',
+    title: 'Change code',
+    description: '',
+    status: 'open',
+    created_by: '1',
+    created_at: '2024-01-01T00:00:00Z',
+    updated_at: '2024-01-01T00:00:00Z',
+    mergeability: { status: 'mergeable' },
+  }
+  const FILES = [
+    {
+      path: 'src/main.ts',
+      status: 'modified',
+      binary: false,
+      additions: 1,
+      deletions: 1,
+      hunks: [
+        {
+          old_start: 1,
+          old_lines: 1,
+          new_start: 1,
+          new_lines: 1,
+          lines: [
+            { kind: 'remove', old_line: 1, text: 'old line' },
+            { kind: 'add', new_line: 1, text: 'new line' },
+          ],
+        },
+      ],
+    },
+  ]
+  const THREAD = {
+    id: 't1',
+    merge_request_id: 7,
+    file_path: 'src/main.ts',
+    new_line: 1,
+    side: 'right',
+    outdated: false,
+    resolved: false,
+    created_by: { user_id: '1', name: 'Alice' },
+    created_at: '2024-01-02T00:00:00Z',
+    updated_at: '2024-01-02T00:00:00Z',
+    comments: [
+      {
+        id: 'c1',
+        thread_id: 't1',
+        user: { user_id: '1', name: 'Alice' },
+        body: 'please fix this',
+        system: false,
+        created_at: '2024-01-02T00:00:00Z',
+        updated_at: '2024-01-02T00:00:00Z',
+      },
+    ],
+  }
+
+  it('shows a new inline comment in the diff and in the conversation', async () => {
+    let created = false
+    stubRepoRoutes((url, init) => {
+      const method = init?.method ?? 'GET'
+      if (url.includes('/merge-requests/7/diff') && method === 'GET') return jsonResponse({ files: FILES })
+      if (url.includes('/merge-requests/7/commits') && method === 'GET') return jsonResponse([])
+      if (url.includes('/merge-requests/7/review-state') && method === 'GET') {
+        return jsonResponse({ approvals: 0, changes_requested: 0, dismissed_approvals: 0, outstanding_reviewers: [] })
+      }
+      if (url.includes('/merge-requests/7/threads') && method === 'POST') {
+        created = true
+        return jsonResponse(THREAD)
+      }
+      if (url.includes('/merge-requests/7/threads') && method === 'GET') {
+        return jsonResponse(created ? [THREAD] : [])
+      }
+      if (url.includes('/merge-requests/7/') && method === 'GET') return jsonResponse([])
+      if (url.endsWith('/merge-requests/7') && method === 'GET') return jsonResponse(MR)
+      if (url.includes('/branches') && method === 'GET') return jsonResponse(BRANCHES)
+      return null
+    })
+
+    const { container, root } = await renderApp('/acme/game/merges/7?tab=files')
+    await waitFor(() => container.querySelector('[aria-label="Comment on right line 1"]') !== null)
+    await act(async () => {
+      ;(container.querySelector('[aria-label="Comment on right line 1"]') as HTMLElement).dispatchEvent(
+        new MouseEvent('click', { bubbles: true }),
+      )
+    })
+    await waitFor(() => container.querySelector('[aria-label="New inline comment"]') !== null)
+    await act(async () => {
+      setTextareaValue(
+        container.querySelector('[aria-label="New inline comment"]') as HTMLTextAreaElement,
+        'please fix this',
+      )
+    })
+    await act(async () => {
+      findButton('Comment').click()
+    })
+    await waitForText(container, 'please fix this')
+
+    await act(async () => {
+      findButton('Conversation').click()
+    })
+    await waitForText(container, 'View on file')
+    expect(container.textContent).toContain('src/main.ts:1')
+    expect(container.textContent).toContain('opened this merge request')
+    expect(container.textContent).toContain('new line')
+    act(() => root.unmount())
   })
 })
 

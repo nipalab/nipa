@@ -1,22 +1,27 @@
 import { useState } from 'react'
-import { Button, FormControl, Stack, TextInput } from '@primer/react'
-import {
-  createUser,
-  deactivateUser,
-  listUsers,
-  resetUserPassword,
-  updateUserFlags,
-} from '../api/endpoints'
+import { Button, Label, Stack, TextInput } from '@primer/react'
+import { SearchIcon } from '@primer/octicons-react'
+import { useNavigate } from 'react-router-dom'
+import { deactivateUser, listUsers, resetUserPassword, updateUserFlags } from '../api/endpoints'
+import type { UserResponse } from '../api/models'
 import { useAuth } from '../auth'
-import { ErrorBanner, Loading, Mono, Page } from '../components/ui'
+import { ActorAvatar } from '../components/repo/ActorAvatar'
+import { EmptyState, ErrorBanner, Loading, Page } from '../components/ui'
 import { useAsync } from '../hooks'
+
+const HEADER_CELL = { padding: '8px 12px', fontWeight: 600, textAlign: 'left' as const }
+
+function roleLabel(user: UserResponse) {
+  if (user.is_super_admin) return <Label variant="danger">Super admin</Label>
+  if (user.is_admin) return <Label variant="attention">Admin</Label>
+  return <Label>Member</Label>
+}
 
 export default function AdminUsersPage() {
   const { me } = useAuth()
+  const navigate = useNavigate()
   const { data: users, error, loading, reload } = useAsync(listUsers, [])
-  const [name, setName] = useState('')
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
+  const [filter, setFilter] = useState('')
   const [actionError, setActionError] = useState<string | null>(null)
 
   async function run(action: () => Promise<unknown>) {
@@ -29,88 +34,106 @@ export default function AdminUsersPage() {
     }
   }
 
-  return (
-    <Page title="Users" subtitle="Global administration">
-      <ErrorBanner error={actionError ?? error} />
-      {loading && <Loading />}
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-        <tbody>
-          {users?.map((user) => (
-            <tr key={user.id} style={{ borderBottom: '1px solid var(--borderColor-muted)' }}>
-              <td style={{ padding: '6px 4px' }}>
-                {user.name} · {user.email}
-                {user.is_super_admin ? ' · superadmin' : user.is_admin ? ' · admin' : ''}
-              </td>
-              <td style={{ padding: '6px 4px', color: 'var(--fgColor-muted)' }}>
-                <Mono>{user.id}</Mono>
-              </td>
-              <td style={{ padding: '6px 4px', textAlign: 'right' }}>
-                <Stack direction="horizontal" gap="condensed" justify="end">
-                  {me?.is_super_admin && (
-                    <Button
-                      size="small"
-                      onClick={() => run(() => updateUserFlags(user.id, !user.is_admin, user.is_super_admin))}
-                    >
-                      {user.is_admin ? 'Remove admin' : 'Make admin'}
-                    </Button>
-                  )}
-                  <Button
-                    size="small"
-                    onClick={() => {
-                      const next = window.prompt(`New password for ${user.email}`)
-                      if (next) {
-                        run(() => resetUserPassword(user.id, next))
-                      }
-                    }}
-                  >
-                    Reset password
-                  </Button>
-                  <Button size="small" variant="danger" onClick={() => run(() => deactivateUser(user.id))}>
-                    Deactivate
-                  </Button>
-                </Stack>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+  const query = filter.trim().toLowerCase()
+  const visible = (users ?? []).filter(
+    (user) =>
+      query === '' ||
+      user.name.toLowerCase().includes(query) ||
+      user.email.toLowerCase().includes(query) ||
+      user.id.includes(query),
+  )
 
-      <form
-        onSubmit={(event) => {
-          event.preventDefault()
-          run(async () => {
-            await createUser(name, email, password)
-            setName('')
-            setEmail('')
-            setPassword('')
-          })
-        }}
-        style={{ border: '1px solid var(--borderColor-default)', borderRadius: 6, padding: 16 }}
-      >
-        <Stack direction="vertical" gap="normal">
-          <strong>Create user</strong>
-          <FormControl required>
-            <FormControl.Label>Name</FormControl.Label>
-            <TextInput block value={name} onChange={(event) => setName(event.target.value)} />
-          </FormControl>
-          <FormControl required>
-            <FormControl.Label>Email</FormControl.Label>
-            <TextInput block value={email} onChange={(event) => setEmail(event.target.value)} />
-          </FormControl>
-          <FormControl required>
-            <FormControl.Label>Password</FormControl.Label>
-            <TextInput
-              block
-              type="password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-            />
-          </FormControl>
-          <Button type="submit" variant="primary" style={{ alignSelf: 'flex-start' }}>
-            Create user
+  return (
+    <Page
+      title="Users"
+      subtitle="Global administration"
+      actions={
+        <Stack direction="horizontal" gap="condensed" align="center">
+          <TextInput
+            leadingVisual={SearchIcon}
+            placeholder="Filter users…"
+            aria-label="Filter users"
+            value={filter}
+            onChange={(event) => setFilter(event.target.value)}
+          />
+          <Button variant="primary" onClick={() => navigate('/admin/users/new')}>
+            New user
           </Button>
         </Stack>
-      </form>
+      }
+    >
+      <ErrorBanner error={actionError ?? error} />
+      {loading && <Loading />}
+      {!loading && visible.length === 0 && (
+        <EmptyState>{query ? 'No users match the filter.' : 'No users.'}</EmptyState>
+      )}
+      {visible.length > 0 && (
+        <div style={{ border: '1px solid var(--borderColor-default)', borderRadius: 6, overflow: 'hidden' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ background: 'var(--bgColor-muted)', fontSize: 12 }}>
+                <th style={HEADER_CELL}>User</th>
+                <th style={HEADER_CELL}>Role</th>
+                <th style={{ ...HEADER_CELL, textAlign: 'right' }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visible.map((user) => (
+                <tr
+                  key={user.id}
+                  className="nipa-user-row"
+                  style={{ borderTop: '1px solid var(--borderColor-muted)' }}
+                >
+                  <td style={{ padding: '8px 12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <ActorAvatar
+                        actor={{ user_id: user.id, name: user.name, photo_url: user.photo_url }}
+                        size={28}
+                      />
+                      <div>
+                        <div style={{ fontWeight: 600 }}>
+                          {user.name}
+                          {me?.id === user.id && (
+                            <span style={{ color: 'var(--fgColor-muted)', fontWeight: 400 }}> (you)</span>
+                          )}
+                        </div>
+                        <div style={{ color: 'var(--fgColor-muted)', fontSize: 12 }}>{user.email}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td style={{ padding: '8px 12px' }}>{roleLabel(user)}</td>
+                  <td style={{ padding: '8px 12px', textAlign: 'right' }}>
+                    <Stack direction="horizontal" gap="condensed" justify="end">
+                      {me?.is_super_admin && (
+                        <Button
+                          size="small"
+                          onClick={() => run(() => updateUserFlags(user.id, !user.is_admin, user.is_super_admin))}
+                        >
+                          {user.is_admin ? 'Remove admin' : 'Make admin'}
+                        </Button>
+                      )}
+                      <Button
+                        size="small"
+                        onClick={() => {
+                          const next = window.prompt(`New password for ${user.email}`)
+                          if (next) {
+                            run(() => resetUserPassword(user.id, next))
+                          }
+                        }}
+                      >
+                        Reset password
+                      </Button>
+                      <Button size="small" variant="danger" onClick={() => run(() => deactivateUser(user.id))}>
+                        Deactivate
+                      </Button>
+                    </Stack>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </Page>
   )
 }
