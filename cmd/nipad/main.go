@@ -10,6 +10,7 @@ import (
 	"github.com/nipalab/nipa/db"
 	"github.com/nipalab/nipa/internal/config"
 	"github.com/nipalab/nipa/internal/hasher"
+	"github.com/nipalab/nipa/internal/repository/dbtx"
 	"github.com/nipalab/nipa/internal/repository/sqlite"
 	"github.com/nipalab/nipa/internal/serverapp"
 	"github.com/nipalab/nipa/internal/snow"
@@ -72,6 +73,7 @@ func main() {
 		permissionUsecase,
 		branchUsecase,
 		snowUser,
+		dbtx.NewTransactor(dbConn),
 	).WithFileLocks(fileLockUsecase)
 	pushUsecase := usecase.NewPush(permissionUsecase, branchRepository, pushRepository, snowUser).WithFileLocks(fileLockUsecase)
 	tagUsecase := usecase.NewTag(permissionUsecase, sqlite.NewTagRepository(dbConn), branchRepository, snowUser)

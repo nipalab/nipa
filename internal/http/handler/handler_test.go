@@ -13,6 +13,7 @@ import (
 	"github.com/nipalab/nipa/internal/domain"
 	httpApp "github.com/nipalab/nipa/internal/http"
 	"github.com/nipalab/nipa/internal/http/model"
+	"github.com/nipalab/nipa/internal/repository/dbtx"
 	sqlcSqlite "github.com/nipalab/nipa/internal/repository/sqlc/sqlite"
 	"github.com/nipalab/nipa/internal/repository/sqlite"
 	"github.com/nipalab/nipa/internal/snow"
@@ -211,7 +212,7 @@ func newHandlerTestEnv(t *testing.T) *handlerTestEnv {
 		MaxPageSize: 1000,
 	})
 	mergeRequestUc := usecase.NewMergeRequest(
-		sqlite.NewMergeRequestRepository(dbConn), branchRepo, permissionUc, branchUc, node,
+		sqlite.NewMergeRequestRepository(dbConn), branchRepo, permissionUc, branchUc, node, dbtx.NewTransactor(dbConn),
 	)
 	fileLockUc := usecase.NewFileLock(sqlite.NewFileLockRepository(dbConn), branchRepo, permissionUc, node)
 	webhookRepo := sqlite.NewWebhookRepository(dbConn)

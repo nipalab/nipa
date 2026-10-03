@@ -20,6 +20,12 @@ type mergeRequestRepository interface {
 	UpdateStatus(ctx context.Context, projectID snow.ID, number int64, status string, mergeCommitID *snow.ID) error
 }
 
+// transactor runs a function inside a database transaction; repositories
+// constructed with dbtx.New resolve that transaction from the context.
+type transactor interface {
+	WithinTx(ctx context.Context, fn func(ctx context.Context) error) error
+}
+
 type branchMerger interface {
 	GetMergeBase(ctx context.Context, projectID snow.ID, target, source MergeRef) (*MergeBaseInfo, error)
 	FastForwardForMergeRequest(ctx context.Context, projectID snow.ID, targetBranch, sourceBranch string) (*domain.Branch, error)
@@ -41,18 +47,20 @@ type MergeRequest struct {
 	snowNode   snow.Node
 	fileLocks  fileLockGate
 	hooks      hookMergeRequestGate
+	transactor transactor
 }
 
 // mergeRequestCommitLimit caps how many commits a merge request lists.
 const mergeRequestCommitLimit = 250
 
-func NewMergeRequest(repo mergeRequestRepository, branchRepo branchRepository, perm permissionUsecase, merger branchMerger, snowNode snow.Node) *MergeRequest {
+func NewMergeRequest(repo mergeRequestRepository, branchRepo branchRepository, perm permissionUsecase, merger branchMerger, snowNode snow.Node, tx transactor) *MergeRequest {
 	return &MergeRequest{
 		repo:       repo,
 		branchRepo: branchRepo,
 		perm:       perm,
 		merger:     merger,
 		snowNode:   snowNode,
+		transactor: tx,
 	}
 }
 
@@ -117,36 +125,45 @@ func (m *MergeRequest) Create(ctx context.Context, projectID snow.ID, title, des
 	}
 
 	mrID := m.snowNode.Generate()
+
+	var paths []string
 	if m.fileLocks != nil {
-		paths, err := m.merger.BinaryChangesBetween(ctx, projectID, info.MergeBaseCommitID, source.CommitID)
+		paths, err = m.merger.BinaryChangesBetween(ctx, projectID, info.MergeBaseCommitID, source.CommitID)
 		if err != nil {
-			return nil, err
-		}
-		if err := m.fileLocks.EnsureMergeRequestLocks(ctx, projectID, mrID, target, paths, claim.UserID, claim.UserID); err != nil {
-			_ = m.fileLocks.ReleaseForMergeRequest(ctx, projectID, mrID)
 			return nil, err
 		}
 	}
 
-	created, err := m.repo.Create(ctx, domain.MergeRequest{
-		ID:                mrID.Int64(),
-		ProjectID:         projectID,
-		SourceBranchID:    source.ID,
-		TargetBranchID:    target.ID,
-		SourceBranch:      sourceBranch,
-		TargetBranch:      targetBranch,
-		Title:             title,
-		Description:       strings.TrimSpace(description),
-		Status:            domain.MergeRequestOpen,
-		MergeBaseCommitID: info.MergeBaseCommitID,
-		CreatedBy:         claim.UserID,
+	// Locks reference the merge request row, so both are written in one
+	// transaction: a lock failure rolls the row back.
+	var created *domain.MergeRequest
+	err = m.transactor.WithinTx(ctx, func(txCtx context.Context) error {
+		var createErr error
+		created, createErr = m.repo.Create(txCtx, domain.MergeRequest{
+			ID:                mrID.Int64(),
+			ProjectID:         projectID,
+			SourceBranchID:    source.ID,
+			TargetBranchID:    target.ID,
+			SourceBranch:      sourceBranch,
+			TargetBranch:      targetBranch,
+			Title:             title,
+			Description:       strings.TrimSpace(description),
+			Status:            domain.MergeRequestOpen,
+			MergeBaseCommitID: info.MergeBaseCommitID,
+			CreatedBy:         claim.UserID,
+		})
+		if createErr != nil {
+			return createErr
+		}
+		if m.fileLocks == nil {
+			return nil
+		}
+		return m.fileLocks.EnsureMergeRequestLocks(txCtx, projectID, mrID, target, paths, claim.UserID, claim.UserID)
 	})
 	if err != nil {
-		if m.fileLocks != nil {
-			_ = m.fileLocks.ReleaseForMergeRequest(ctx, projectID, mrID)
-		}
 		return nil, err
 	}
+
 	m.emitHook(ctx, domain.WebhookEventMRCreated, projectID, created, claim.UserID)
 	return created, nil
 }

@@ -38,6 +38,7 @@ import (
 	servergrpc "github.com/nipalab/nipa/internal/grpc/server"
 	"github.com/nipalab/nipa/internal/hasher"
 	"github.com/nipalab/nipa/internal/http/api"
+	"github.com/nipalab/nipa/internal/repository/dbtx"
 	"github.com/nipalab/nipa/internal/snow"
 	"github.com/nipalab/nipa/internal/storage"
 	serverusecase "github.com/nipalab/nipa/internal/usecase"
@@ -230,7 +231,7 @@ func startEnterpriseServer(t *testing.T, dbConn *sql.DB, chunkStore storage.Chun
 		chunk:        chunkUc,
 		permission:   permissionUc,
 		group:        serverusecase.NewGroup(groupRepo, node, permissionUc, orgUc),
-		mergeRequest: serverusecase.NewMergeRequest(mrRepo, branchRepo, permissionUc, branchUc, node).WithFileLocks(fileLockUc),
+		mergeRequest: serverusecase.NewMergeRequest(mrRepo, branchRepo, permissionUc, branchUc, node, dbtx.NewTransactor(dbConn)).WithFileLocks(fileLockUc),
 		review:       reviewUc,
 		fileLock:     fileLockUc,
 	}

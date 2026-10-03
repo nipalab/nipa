@@ -5,6 +5,7 @@ import (
 	"database/sql"
 
 	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/repository/dbtx"
 	sqlcSqlite "github.com/nipalab/nipa/internal/repository/sqlc/sqlite"
 	"github.com/nipalab/nipa/internal/snow"
 )
@@ -14,7 +15,7 @@ type FileLockRepository struct {
 }
 
 func NewFileLockRepository(db *sql.DB) *FileLockRepository {
-	return &FileLockRepository{queries: sqlcSqlite.New(db)}
+	return &FileLockRepository{queries: sqlcSqlite.New(dbtx.New(db))}
 }
 
 func (r *FileLockRepository) Create(ctx context.Context, lock domain.FileLock) (*domain.FileLock, error) {

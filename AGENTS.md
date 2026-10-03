@@ -150,8 +150,11 @@ editing pass and stay. Merge requests acquire locks for their changed binary
 paths at creation (re-checked and topped up at merge — `branchMerger.
 BinaryChangesBetween` is the permission-filter-free three-dot enumeration —
 accepting locks held by the request owner so an admin can merge on their
-behalf), release them on merge/close, re-acquire on reopen, and clean up
-partial acquisitions when creation fails. Plain `FastForward` enforces/releases
+behalf), release them on merge/close, and re-acquire on reopen. Creation writes
+the request row and its locks in one transaction through
+`dbtx.Transactor.WithinTx` (repositories built with `dbtx.New` resolve the
+transaction from the context), so a lock failure rolls the row back. Plain
+`FastForward` enforces/releases
 via `BinaryLockPlan` (required vs checked paths); `Branch.Delete` releases the
 branch's scoped locks (soft delete ⇒ no FK cascade). The `/locks` REST routes,
 `LockFile`/`UnlockFile`/`ListFileLocks` RPCs and the web Locks page expose
@@ -284,6 +287,18 @@ From `Makefile`:
   `bin/nipad-ee`; `make build-all` — web + both servers + client.
 - `make test` — `go test ./...` (requires Docker for the testcontainers-backed
   postgres/minio suites); `make test-ee` — `go test ./ee/...`.
+- `make test-client` / `test-client-ee` / `test-client-both` — the Ginkgo
+  black-box client e2e suite (`tests/run.sh [free|ee|both]`): builds `bin/nipa`,
+  starts a real `nipad`/`nipad-ee` (ee starts postgres + minio from
+  `tests/docker-compose.ee.yml`) and drives the compiled CLI against it, so both
+  editions are verified to behave the same client-side. Covers every command and
+  flag (clone/push/update, branch, switch, merge, revert, log, diff,
+  sparse-checkout, tag, lock, mr, acl, group) plus `nipa serve` (daemon gRPC),
+  `nipa mcp` (stdio JSON-RPC) and webhook deliveries (events, filters,
+  signatures, ping/redelivery), with multi-user identities for permission
+  and lock scenarios. `NIPA_TOKEN_FILE` makes `securestorage` file-backed so the
+  CLI runs without an OS keyring/TTY; the suite skips unless `NIPA_TEST_HOST` is
+  set. Details in `tests/README.md`.
 - `make web` / `web-dev` / `web-install` — build the SPA into
   `web/server/dist` / run the Vite dev server (proxies `/api`, `/docs` to
   `NIPA_SERVER_URL`) / `npm install`.

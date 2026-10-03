@@ -5,6 +5,7 @@ import (
 	"database/sql"
 
 	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/repository/dbtx"
 	sqlcSqlite "github.com/nipalab/nipa/internal/repository/sqlc/sqlite"
 	"github.com/nipalab/nipa/internal/snow"
 )
@@ -14,7 +15,7 @@ type MergeRequestRepository struct {
 }
 
 func NewMergeRequestRepository(db *sql.DB) *MergeRequestRepository {
-	return &MergeRequestRepository{queries: sqlcSqlite.New(db)}
+	return &MergeRequestRepository{queries: sqlcSqlite.New(dbtx.New(db))}
 }
 
 func (r *MergeRequestRepository) Create(ctx context.Context, mr domain.MergeRequest) (*domain.MergeRequest, error) {

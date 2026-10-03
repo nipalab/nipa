@@ -6,6 +6,7 @@ import (
 
 	sqlcPostgres "github.com/nipalab/nipa/ee/repository/postgres/sqlc"
 	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/repository/dbtx"
 	"github.com/nipalab/nipa/internal/snow"
 )
 
@@ -14,7 +15,7 @@ type FileLockRepository struct {
 }
 
 func NewFileLockRepository(db *sql.DB) *FileLockRepository {
-	return &FileLockRepository{queries: sqlcPostgres.New(db)}
+	return &FileLockRepository{queries: sqlcPostgres.New(dbtx.New(db))}
 }
 
 func (r *FileLockRepository) Create(ctx context.Context, lock domain.FileLock) (*domain.FileLock, error) {

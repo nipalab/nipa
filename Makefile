@@ -6,7 +6,7 @@ MIGRATIONS_DIR := db/migrations
 POSTGRES_MIGRATIONS_DIR := ee/db/migrations/postgres
 mb         ?= 256
 
-.PHONY: sqlc mock migrate-up migrate-down migrate-up-postgres migrate-down-postgres migrate-create build build-all build-server build-server-ee build-client test test-ee lint web web-dev web-install bench-upload
+.PHONY: sqlc mock migrate-up migrate-down migrate-up-postgres migrate-down-postgres migrate-create build build-all build-server build-server-ee build-client test test-ee test-client test-client-ee test-client-both lint web web-dev web-install bench-upload
 
 GOLANGCI_LINT_IMAGE ?= docker.io/golangci/golangci-lint:latest
 
@@ -85,6 +85,18 @@ test:
 ## Run the Enterprise Edition tests (requires Docker for testcontainers).
 test-ee:
 	go test ./ee/... -v
+
+## Run the client e2e suite against the free server (see tests/README.md).
+test-client:
+	tests/run.sh free
+
+## Run the client e2e suite against the enterprise server (starts postgres + minio).
+test-client-ee:
+	tests/run.sh ee
+
+## Run the client e2e suite against both servers, free first.
+test-client-both:
+	tests/run.sh both
 
 ## Measure upload throughput with NIPA_BENCH_MB MiB files (e.g. make bench-upload mb=512).
 bench-upload:

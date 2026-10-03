@@ -29,6 +29,9 @@ go.work.sum
 # Local config with secrets (tracked sample: config.yaml.sample)
 config.yaml
 
+# Client e2e harness scratch state (server logs, tokens, sqlite dbs)
+/tests/.tmp/
+
 # Local databases (sqlite DSN: nipa.db)
 *.db
 *.db-journal

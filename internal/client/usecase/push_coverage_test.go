@@ -162,3 +162,13 @@ func TestPush_Run_ReportsUploadProgress_EmptyFile(t *testing.T) {
 	require.Equal(t, []progressStart{{objects: 0, bytes: 0}}, prog.starts)
 	require.True(t, prog.endCalled)
 }
+
+func TestPush_PushStaged_InitError(t *testing.T) {
+	local := &stubLocalRepo{initErr: errors.New("init failed")}
+	pusher := newTestPush(t, local, &stubPushClient{})
+	url, err := domain.ParseNipaUrl("http://example.com/org/project")
+	require.NoError(t, err)
+
+	_, err = pusher.pushStaged(context.Background(), t.TempDir(), url, "main", "message", "", "", "")
+	require.ErrorContains(t, err, "init failed")
+}

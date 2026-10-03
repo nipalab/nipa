@@ -6,6 +6,7 @@ import (
 
 	sqlcPostgres "github.com/nipalab/nipa/ee/repository/postgres/sqlc"
 	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/repository/dbtx"
 	"github.com/nipalab/nipa/internal/snow"
 )
 
@@ -14,7 +15,7 @@ type MergeRequestRepository struct {
 }
 
 func NewMergeRequestRepository(db *sql.DB) *MergeRequestRepository {
-	return &MergeRequestRepository{queries: sqlcPostgres.New(db)}
+	return &MergeRequestRepository{queries: sqlcPostgres.New(dbtx.New(db))}
 }
 
 func (r *MergeRequestRepository) Create(ctx context.Context, mr domain.MergeRequest) (*domain.MergeRequest, error) {

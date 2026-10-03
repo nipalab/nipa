@@ -12,6 +12,12 @@ import (
 	"github.com/nipalab/nipa/internal/snow"
 )
 
+type noopTransactor struct{}
+
+func (noopTransactor) WithinTx(ctx context.Context, fn func(context.Context) error) error {
+	return fn(ctx)
+}
+
 func newTestMergeRequest(t *testing.T) (*MergeRequest, *MockmergeRequestRepository, *MockbranchRepository, *MockpermissionUsecase, *MockbranchMerger) {
 	t.Helper()
 
@@ -22,7 +28,7 @@ func newTestMergeRequest(t *testing.T) (*MergeRequest, *MockmergeRequestReposito
 	merger := NewMockbranchMerger(ctrl)
 	node, err := snow.NewNode(1)
 	require.NoError(t, err)
-	return NewMergeRequest(repo, branchRepo, perm, merger, node), repo, branchRepo, perm, merger
+	return NewMergeRequest(repo, branchRepo, perm, merger, node, noopTransactor{}), repo, branchRepo, perm, merger
 }
 
 func openMergeRequest() *domain.MergeRequest {
@@ -89,7 +95,7 @@ func TestMergeRequest_Create_Validation(t *testing.T) {
 	branchRepo2.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").
 		Return(&domain.Branch{ID: 3, ProjectID: 1}, nil)
 	mr2 := NewMergeRequest(NewMockmergeRequestRepository(gomock.NewController(t)), branchRepo2,
-		perm, NewMockbranchMerger(gomock.NewController(t)), newTestBranchNode(t))
+		perm, NewMockbranchMerger(gomock.NewController(t)), newTestBranchNode(t), noopTransactor{})
 	_, err = mr2.Create(permissionCtx(7), snow.ID(1), "t", "", "feature", "main")
 	requireUserError(t, err)
 }

@@ -43,6 +43,35 @@ jobs:
             report.json
           retention-days: 1
 
+  client-e2e:
+    name: Client e2e (${{ matrix.edition }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        edition: [free, ee]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      # The harness starts postgres + minio via docker compose for the ee
+      # edition and tears them down afterwards; GitHub runners ship Docker
+      # and the compose v2 plugin.
+      - name: Run client e2e suite
+        run: tests/run.sh ${{ matrix.edition }}
+
+      - name: Upload harness logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: client-e2e-${{ matrix.edition }}-logs
+          path: tests/.tmp/logs
+          retention-days: 3
+
   sonarqube:
     name: SonarQube
     runs-on: ubuntu-latest
