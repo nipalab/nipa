@@ -14,8 +14,9 @@ import (
 )
 
 // seedRun uses the client usecases in-process to land a change on the server.
-// It is test setup, independent of the compiled CLI under test.
-func seedRun(org, project, message string, mutate func(dir string) []string) {
+// It is test setup, independent of the compiled CLI under test. It returns the
+// unique commit message it pushed.
+func seedRun(org, project, message string, mutate func(dir string) []string) string {
 	GinkgoHelper()
 
 	ctx := context.Background()
@@ -39,13 +40,15 @@ func seedRun(org, project, message string, mutate func(dir string) []string) {
 		Expect(lr.StageAdd(path)).To(Succeed())
 	}
 
+	unique := uniqueMessage(message)
 	pusher := clientusecase.NewPush(auth, client, localrepo.NewLocalRepo())
-	Expect(pusher.Run(ctx, dir, uniqueMessage(message))).To(Succeed())
+	Expect(pusher.Run(ctx, dir, unique)).To(Succeed())
+	return unique
 }
 
-func seedRepo(org, project string, files map[string][]byte, message string) {
+func seedRepo(org, project string, files map[string][]byte, message string) string {
 	GinkgoHelper()
-	seedRun(org, project, message, func(dir string) []string {
+	return seedRun(org, project, message, func(dir string) []string {
 		paths := make([]string, 0, len(files))
 		for path, data := range files {
 			writeBytes(dir, path, data)
@@ -56,9 +59,9 @@ func seedRepo(org, project string, files map[string][]byte, message string) {
 	})
 }
 
-func seedRepoDelete(org, project string, paths []string, message string) {
+func seedRepoDelete(org, project string, paths []string, message string) string {
 	GinkgoHelper()
-	seedRun(org, project, message, func(dir string) []string {
+	return seedRun(org, project, message, func(dir string) []string {
 		for _, path := range paths {
 			removePath(dir, path)
 		}

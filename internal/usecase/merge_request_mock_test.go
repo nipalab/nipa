@@ -58,6 +58,20 @@ func (mr_2 *MockmergeRequestRepositoryMockRecorder) Create(ctx, mr any) *gomock.
 	return mr_2.mock.ctrl.RecordCallWithMethodType(mr_2.mock, "Create", reflect.TypeOf((*MockmergeRequestRepository)(nil).Create), ctx, mr)
 }
 
+// Delete mocks base method.
+func (m *MockmergeRequestRepository) Delete(ctx context.Context, projectID snow.ID, id int64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Delete", ctx, projectID, id)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Delete indicates an expected call of Delete.
+func (mr *MockmergeRequestRepositoryMockRecorder) Delete(ctx, projectID, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delete", reflect.TypeOf((*MockmergeRequestRepository)(nil).Delete), ctx, projectID, id)
+}
+
 // Get mocks base method.
 func (m *MockmergeRequestRepository) Get(ctx context.Context, projectID snow.ID, number int64) (*domain.MergeRequest, error) {
 	m.ctrl.T.Helper()

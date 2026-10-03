@@ -18,6 +18,7 @@ type mergeRequestRepository interface {
 	List(ctx context.Context, projectID snow.ID, status string, limit int) ([]*domain.MergeRequest, error)
 	Update(ctx context.Context, projectID snow.ID, number int64, title, description string) (*domain.MergeRequest, error)
 	UpdateStatus(ctx context.Context, projectID snow.ID, number int64, status string, mergeCommitID *snow.ID) error
+	Delete(ctx context.Context, projectID snow.ID, id int64) error
 }
 
 type branchMerger interface {
@@ -117,17 +118,6 @@ func (m *MergeRequest) Create(ctx context.Context, projectID snow.ID, title, des
 	}
 
 	mrID := m.snowNode.Generate()
-	if m.fileLocks != nil {
-		paths, err := m.merger.BinaryChangesBetween(ctx, projectID, info.MergeBaseCommitID, source.CommitID)
-		if err != nil {
-			return nil, err
-		}
-		if err := m.fileLocks.EnsureMergeRequestLocks(ctx, projectID, mrID, target, paths, claim.UserID, claim.UserID); err != nil {
-			_ = m.fileLocks.ReleaseForMergeRequest(ctx, projectID, mrID)
-			return nil, err
-		}
-	}
-
 	created, err := m.repo.Create(ctx, domain.MergeRequest{
 		ID:                mrID.Int64(),
 		ProjectID:         projectID,
@@ -142,11 +132,24 @@ func (m *MergeRequest) Create(ctx context.Context, projectID snow.ID, title, des
 		CreatedBy:         claim.UserID,
 	})
 	if err != nil {
-		if m.fileLocks != nil {
-			_ = m.fileLocks.ReleaseForMergeRequest(ctx, projectID, mrID)
-		}
 		return nil, err
 	}
+
+	// Locks reference the merge request row, so they are acquired only after it
+	// exists; a failed acquisition rolls the row back.
+	if m.fileLocks != nil {
+		paths, err := m.merger.BinaryChangesBetween(ctx, projectID, info.MergeBaseCommitID, source.CommitID)
+		if err != nil {
+			_ = m.repo.Delete(ctx, projectID, mrID.Int64())
+			return nil, err
+		}
+		if err := m.fileLocks.EnsureMergeRequestLocks(ctx, projectID, mrID, target, paths, claim.UserID, claim.UserID); err != nil {
+			_ = m.fileLocks.ReleaseForMergeRequest(ctx, projectID, mrID)
+			_ = m.repo.Delete(ctx, projectID, mrID.Int64())
+			return nil, err
+		}
+	}
+
 	m.emitHook(ctx, domain.WebhookEventMRCreated, projectID, created, claim.UserID)
 	return created, nil
 }

@@ -43,3 +43,6 @@ WHERE project_id = ? AND number = ?;
 UPDATE merge_requests SET title = ?, description = ?, updated_at = CURRENT_TIMESTAMP
 WHERE project_id = ? AND number = ?
 RETURNING *;
+
+-- name: MergeRequestDelete :exec
+DELETE FROM merge_requests WHERE id = sqlc.arg(id) AND project_id = sqlc.arg(project_id);

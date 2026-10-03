@@ -288,9 +288,13 @@ From `Makefile`:
   black-box client e2e suite (`tests/run.sh [free|ee|both]`): builds `bin/nipa`,
   starts a real `nipad`/`nipad-ee` (ee starts postgres + minio from
   `tests/docker-compose.ee.yml`) and drives the compiled CLI against it, so both
-  editions are verified to behave the same client-side. `NIPA_TOKEN_FILE` makes
-  `securestorage` file-backed so the CLI runs without an OS keyring/TTY; the
-  suite skips unless `NIPA_TEST_HOST` is set. Details in `tests/README.md`.
+  editions are verified to behave the same client-side. Covers every command and
+  flag (clone/push/update, branch, switch, merge, revert, log, diff,
+  sparse-checkout, tag, lock, mr, acl, group) plus `nipa serve` (daemon gRPC)
+  and `nipa mcp` (stdio JSON-RPC), with multi-user identities for permission
+  and lock scenarios. `NIPA_TOKEN_FILE` makes `securestorage` file-backed so the
+  CLI runs without an OS keyring/TTY; the suite skips unless `NIPA_TEST_HOST` is
+  set. Details in `tests/README.md`.
 - `make web` / `web-dev` / `web-install` — build the SPA into
   `web/server/dist` / run the Vite dev server (proxies `/api`, `/docs` to
   `NIPA_SERVER_URL`) / `npm install`.

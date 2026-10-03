@@ -97,6 +97,14 @@ func (r *MergeRequestRepository) UpdateStatus(ctx context.Context, projectID sno
 	return handleError(err)
 }
 
+func (r *MergeRequestRepository) Delete(ctx context.Context, projectID snow.ID, id int64) error {
+	err := r.queries.MergeRequestDelete(ctx, sqlcPostgres.MergeRequestDeleteParams{
+		ID:        id,
+		ProjectID: projectID.Int64(),
+	})
+	return handleError(err)
+}
+
 func mergeRequestToDomain(row sqlcPostgres.MergeRequest) *domain.MergeRequest {
 	return &domain.MergeRequest{
 		ID:                row.ID,

@@ -24,10 +24,18 @@ func (r commandResult) Output() string {
 
 func runNipa(cwd string, args ...string) commandResult {
 	GinkgoHelper()
+	return runNipaEnv(cwd, nil, args...)
+}
+
+// runNipaEnv runs the CLI with extra environment entries appended (later
+// duplicates win, so callers can override NIPA_TOKEN_FILE per identity).
+func runNipaEnv(cwd string, extraEnv []string, args ...string) commandResult {
+	GinkgoHelper()
 
 	cmd := exec.Command(cli.binary, args...)
 	cmd.Dir = cwd
 	cmd.Env = append(os.Environ(), "NIPA_TOKEN_FILE="+cli.tokenFile, "NO_COLOR=1")
+	cmd.Env = append(cmd.Env, extraEnv...)
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

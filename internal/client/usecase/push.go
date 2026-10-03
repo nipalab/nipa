@@ -194,6 +194,9 @@ func (p *Push) Plan(ctx context.Context, root string) (*domain.Plan, error) {
 }
 
 func (p *Push) pushStaged(ctx context.Context, root string, nipaUrl *domain.NipaUrl, branch, message, baseTreeHash, baseCommitID, parent2 string, progress ...UploadProgress) (*serverDomain.PushResult, error) {
+	if err := p.localRepo.Init(root); err != nil {
+		return nil, err
+	}
 	snapshot, err := p.localRepo.Snapshot()
 	if err != nil {
 		return nil, err

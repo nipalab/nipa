@@ -63,6 +63,11 @@ func (s *stubMergeRequestRepository) UpdateStatus(_ context.Context, _ snow.ID, 
 	return nil
 }
 
+func (s *stubMergeRequestRepository) Delete(_ context.Context, _ snow.ID, _ int64) error {
+	s.created = nil
+	return nil
+}
+
 type stubBranchMerger struct {
 	base     *usecase.MergeBaseInfo
 	baseErr  error

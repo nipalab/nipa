@@ -51,6 +51,23 @@ func (c *apiClient) createProject(org, name, slug string) {
 	}, nil, true)
 }
 
+func (c *apiClient) createUser(name, email, password string) string {
+	var resp struct {
+		ID string `json:"id"`
+	}
+	c.do(http.MethodPost, "/users", map[string]string{
+		"name":     name,
+		"email":    email,
+		"password": password,
+	}, &resp, true)
+	Expect(resp.ID).NotTo(BeEmpty(), "user creation returned no id")
+	return resp.ID
+}
+
+func (c *apiClient) setAdmin(userID string) {
+	c.do(http.MethodPatch, "/users/"+userID+"/admin", map[string]bool{"is_admin": true}, nil, true)
+}
+
 func (c *apiClient) do(method, path string, body any, out any, auth bool) int {
 	var reader io.Reader
 	if body != nil {

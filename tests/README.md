@@ -5,8 +5,14 @@ The same Ginkgo suite runs against the free (`nipad`) and enterprise
 (`nipad-ee`) servers so both editions are verified to behave identically from
 the client's point of view.
 
-Phase 1 covers `nipa clone`, `nipa push` and `nipa update` (plus the
-`nipa add` / `nipa remove` / `nipa status` glue needed to drive them).
+Coverage (161 specs): every in-repo command and flag — `clone`, `branch`,
+`add`, `remove`, `status`, `push`, `update`, `switch` (branch and `--tag`
+detach), `merge`, `revert` (single, range, conflicts, `--mainline`), `log`,
+`diff` (all output modes and revision shapes), `sparse-checkout`, `tag`,
+`lock`/`unlock`, `mr`, `acl` (rules and path defaults), `group` — plus the
+runtime commands `nipa serve` (daemon gRPC API) and `nipa mcp` (MCP over
+stdio), multi-user permission/lock scenarios, `NIPA_OUTPUT=json` and the
+exit-code contract (0/1/2/127).
 
 ## Usage
 
@@ -46,7 +52,7 @@ Makefile shortcuts: `make test-client`, `make test-client-ee`,
 The suite is a normal Go test package, so `go test ./...` compiles it but
 skips it when `NIPA_TEST_HOST` is unset.
 
-## Authentication
+## Authentication and identities
 
 The CLI stores tokens in the OS keyring and prompts on stdin with
 `term.ReadPassword`, neither of which works in CI. `securestorage` therefore
@@ -54,6 +60,11 @@ honors `NIPA_TOKEN_FILE`: when set, tokens are read/written as a JSON map
 (`host -> token`) in that file (0600, atomic writes). The suite logs in once
 in-process via the gRPC client and seeds that file; every CLI invocation runs
 with the same `NIPA_TOKEN_FILE`.
+
+Multi-user specs create accounts through the admin REST API and give each one
+its own token file (`newIdentity` / `runNipaAs` / `cloneRepoAs`); `.promote()`
+re-mints the token after granting admin rights because the admin claim is
+embedded at login time.
 
 Setup data (organization, project, seed commits) is created per run: the suite
 logs in as the migration-seeded `supernipa`/`supernipa`, creates a uniquely
@@ -70,22 +81,44 @@ tests/
   cmd/s3bucket/           creates the S3 bucket before nipad-ee starts
   suite/
     suite_test.go         RunSpecs, BeforeSuite (login + org), project factory
-    support_*.go          env, CLI exec wrapper, REST client, auth, workspaces, seeds
-    clone_test.go         nipa clone specs
-    push_test.go          nipa push specs
-    update_test.go        nipa update specs
+    support_*.go          env, CLI exec, REST, auth/identities, JSON DTOs,
+                          workspaces, seeds, external diff, daemon, MCP
+    clone_test.go         nipa clone
+    branch_test.go        nipa branch
+    push_test.go          nipa push (+ add/remove/status glue)
+    update_test.go        nipa update
+    switch_test.go        nipa switch (branches, detached tags)
+    merge_test.go         nipa merge
+    revert_test.go        nipa revert (ranges, conflicts, mainline)
+    log_test.go           nipa log
+    diff_test.go          nipa diff (formats, revisions, ext-diff)
+    sparse_test.go        nipa sparse-checkout
+    tag_test.go           nipa tag
+    lock_test.go          nipa lock/unlock
+    mr_test.go            nipa mr
+    acl_test.go           nipa acl + permission defaults
+    group_test.go         nipa group
+    meta_test.go          JSON output modes and error envelopes
+    daemon_test.go        nipa serve (daemon gRPC API)
+    mcp_test.go           nipa mcp (MCP over stdio)
 ```
 
 ## Adding specs
 
 - One `Describe` per command in a `<command>_test.go` file; keep the spec text
   edition-neutral so the same suite runs against both servers.
-- Drive the CLI through `runNipa(cwd, args...)` and assert on exit codes,
-  combined output and working-copy state. Exit codes are a contract: `0` ok,
-  `1` generic, `2` conflict/precondition (409), `127` not found (404).
+- Drive the CLI through `runNipa(cwd, args...)` (or `runNipaAs(identity, ...)`)
+  and assert on exit codes, combined output and working-copy state. Exit codes
+  are a contract: `0` ok, `1` generic, `2` conflict/precondition (409), `127`
+  not found (404). Some commands print through cobra's stderr writer, so use
+  `result.Output()` for text assertions and `result.Stdout` for `--json`.
 - Seed server state with `seedRepo`/`seedRepoDelete` (in-process usecases) and
   create isolated projects with `newProject(prefix)`.
 - Message uniqueness matters: the server hashes commits from tree, parents and
   message only, and `commits.hash` is globally unique, so identical first
   commits in two projects would collide. Always push through `pushRepo` /
   `seedRepo`, which append a unique suffix to the message.
+- Daemon specs use `startDaemon()` (spawns `nipa serve`, reads the discovery
+  file and dials the loopback gRPC API with the capability token); MCP specs
+  use `startMCP()` / `startMCPWithTokenFile()` and speak newline-delimited
+  JSON-RPC over the child's stdio.
