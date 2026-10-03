@@ -290,8 +290,9 @@ From `Makefile`:
   `tests/docker-compose.ee.yml`) and drives the compiled CLI against it, so both
   editions are verified to behave the same client-side. Covers every command and
   flag (clone/push/update, branch, switch, merge, revert, log, diff,
-  sparse-checkout, tag, lock, mr, acl, group) plus `nipa serve` (daemon gRPC)
-  and `nipa mcp` (stdio JSON-RPC), with multi-user identities for permission
+  sparse-checkout, tag, lock, mr, acl, group) plus `nipa serve` (daemon gRPC),
+  `nipa mcp` (stdio JSON-RPC) and webhook deliveries (events, filters,
+  signatures, ping/redelivery), with multi-user identities for permission
   and lock scenarios. `NIPA_TOKEN_FILE` makes `securestorage` file-backed so the
   CLI runs without an OS keyring/TTY; the suite skips unless `NIPA_TEST_HOST` is
   set. Details in `tests/README.md`.

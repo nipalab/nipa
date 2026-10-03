@@ -5,14 +5,15 @@ The same Ginkgo suite runs against the free (`nipad`) and enterprise
 (`nipad-ee`) servers so both editions are verified to behave identically from
 the client's point of view.
 
-Coverage (161 specs): every in-repo command and flag — `clone`, `branch`,
+Coverage (176 specs): every in-repo command and flag — `clone`, `branch`,
 `add`, `remove`, `status`, `push`, `update`, `switch` (branch and `--tag`
 detach), `merge`, `revert` (single, range, conflicts, `--mainline`), `log`,
 `diff` (all output modes and revision shapes), `sparse-checkout`, `tag`,
 `lock`/`unlock`, `mr`, `acl` (rules and path defaults), `group` — plus the
-runtime commands `nipa serve` (daemon gRPC API) and `nipa mcp` (MCP over
-stdio), multi-user permission/lock scenarios, `NIPA_OUTPUT=json` and the
-exit-code contract (0/1/2/127).
+runtime commands `nipa serve` (daemon gRPC API), `nipa mcp` (MCP over stdio)
+and the webhook delivery pipeline (push/branch/tag/mr events, signatures,
+filters, ping, retries/redelivery), multi-user permission/lock scenarios,
+`NIPA_OUTPUT=json` and the exit-code contract (0/1/2/127).
 
 ## Usage
 
@@ -101,6 +102,7 @@ tests/
     meta_test.go          JSON output modes and error envelopes
     daemon_test.go        nipa serve (daemon gRPC API)
     mcp_test.go           nipa mcp (MCP over stdio)
+    webhook_test.go       webhook deliveries (events, filters, signature)
 ```
 
 ## Adding specs
@@ -122,3 +124,9 @@ tests/
   file and dials the loopback gRPC API with the capability token); MCP specs
   use `startMCP()` / `startMCPWithTokenFile()` and speak newline-delimited
   JSON-RPC over the child's stdio.
+- Webhook specs use `startHookReceiver()` (in-process HTTP receiver recording
+  signed deliveries) plus the REST helpers `createWebhook`/`updateWebhook`/
+  `rotateWebhookSecret`/`testWebhook`/`listWebhookDeliveries`/`redeliverWebhook`.
+  The generated server config sets `WEBHOOK_EGRESS_ALLOWLIST: 127.0.0.1` so the
+  loopback receiver is reachable; deliveries are asynchronous, so specs wait on
+  the receiver (`wait`/`waitCount`) or the delivery ledger with `Eventually`.
