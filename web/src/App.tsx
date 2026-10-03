@@ -10,8 +10,9 @@ import BlobPage from './pages/BlobPage'
 import CommitsPage from './pages/CommitsPage'
 import BranchesPage from './pages/BranchesPage'
 import NewBranchPage from './pages/NewBranchPage'
-import PullsPage from './pages/PullsPage'
-import PullPage from './pages/PullPage'
+import MergeRequestsPage from './pages/MergeRequestsPage'
+import MergeRequestPage from './pages/MergeRequestPage'
+import NewMergeRequestPage from './pages/NewMergeRequestPage'
 import LocksPage from './pages/LocksPage'
 import ProjectSettingsPage from './pages/ProjectSettingsPage'
 import OrgSettingsPage from './pages/OrgSettingsPage'
@@ -41,8 +42,9 @@ export default function App() {
               <Route path="/:org/:project/commits/:commit" element={<CommitsPage />} />
               <Route path="/:org/:project/branches" element={<BranchesPage />} />
               <Route path="/:org/:project/branches/new" element={<NewBranchPage />} />
-              <Route path="/:org/:project/pulls" element={<PullsPage />} />
-              <Route path="/:org/:project/pulls/:id" element={<PullPage />} />
+              <Route path="/:org/:project/merges" element={<MergeRequestsPage />} />
+              <Route path="/:org/:project/merges/new" element={<NewMergeRequestPage />} />
+              <Route path="/:org/:project/merges/:id" element={<MergeRequestPage />} />
               <Route path="/:org/:project/locks" element={<LocksPage />} />
               <Route path="/:org/:project/settings" element={<ProjectSettingsPage />} />
               <Route path="*" element={<Navigate to="/" replace />} />

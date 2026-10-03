@@ -126,3 +126,53 @@
 .nipa-code-line:hover {
   background: var(--bgColor-muted);
 }
+
+.nipa-mr-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 296px;
+  gap: 16px;
+  align-items: start;
+}
+
+.nipa-mr-main,
+.nipa-mr-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+@media (max-width: 900px) {
+  .nipa-mr-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.nipa-changes-layout {
+  display: grid;
+  grid-template-columns: 296px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.nipa-changes-sidebar {
+  position: sticky;
+  top: 16px;
+}
+
+.nipa-changes-main {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+@media (max-width: 900px) {
+  .nipa-changes-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .nipa-changes-sidebar {
+    position: static;
+  }
+}

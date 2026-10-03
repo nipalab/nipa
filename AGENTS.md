@@ -178,7 +178,7 @@ after the apply succeeded and only logs bookkeeping failures. The timeline
 events carry a `subject` actor (e.g. the requested reviewer). REST routes live
 in `internal/http/api/merge_request_review.go`, the matching RPCs in
 `internal/grpc/server/merge_request_review.go`; MR list/detail responses carry
-the live `review` summary and the SPA renders a tabbed MR page (Overview /
+the live `review` summary and the SPA renders a tabbed MR page (Conversation /
 Commits / File changes, `?tab=`). The Commits tab is served by
 `MergeRequest.Commits`, a first-parent `CommitLogUntil` walk (stop = live merge
 base, authors joined) exposed at `GET .../merge-requests/{id}/commits`. The

@@ -24,7 +24,8 @@ proxies `/api` and `/docs` to `NIPA_SERVER_URL`).
 | `/:org/:project/blob/:rev/*` | file viewer | line numbers + syntax highlighting, image preview, raw/copy/download |
 | `/:org/:project/commits[/:commit]` | history + diff | commit diff against its parent; `?path=` filters by file/dir |
 | `/:org/:project/branches` | branches | create; default/protect/rename/delete for project admins |
-| `/:org/:project/pulls[/:id]` | merge requests | list/create; detail is tabbed (Overview / Commits / File changes) with merge/close/reopen, reviews (panel, inline threads, timeline) and a split diff |
+| `/:org/:project/merges[/new]` | merge requests | list; dedicated create page |
+| `/:org/:project/merges/:id` | merge request detail | GitHub-style conversation (description, timeline, comments, reviewers/participants sidebar, merge box) plus Commits and File changes tabs |
 | `/:org/:project/locks` | file locks | list binary asset locks, lock/unlock |
 | `/:org/:project/settings` | project settings | branch protection + ACL rules/defaults + webhooks |
 | `/:org/settings` | organization settings | members and groups (org owner or global admin) |
@@ -61,10 +62,19 @@ the organization settings page (`/:org/settings`).
 ## Merge request reviews
 
 The merge request detail page is tabbed like GitHub, driven by `?tab=`:
-**Overview** (status, merge actions, review summary, reviewer requests, review
-decision box, review history, activity timeline, conversation threads),
-**Commits** (the source-branch commits the request adds, linking to each
-commit page), and **File changes** (changed-file jump list + diff).
+**Conversation** (GitHub-style header with state and branch info, description
+card, interleaved timeline events/reviews/comments — including inline code
+threads with a diff snippet of the commented code, their `file:line` context
+and a "View on file" link — the opening description labelled as such, comment
+composer, and a sidebar with reviewers, participants and the merge box with
+merge/close/reopen),
+**Commits** (GitHub-style timeline of the source-branch commits, oldest first,
+with author, timestamp, copy-hash and browse-at-commit actions), and
+**File changes** (GitHub-style: file tree sidebar with
+status/counters, filter box, diffstat and Unified/Split toggle, per-file
+collapse and Viewed checkboxes, diff with inline comments). Posting inline
+comments or reviews refreshes the shared thread list, so both tabs and the
+overview stay in sync.
 
 The diff renderer (`web/src/components/repo/DiffView.tsx`) renders hunks
 **side by side by default** with a Unified/Split toggle, and is shared with

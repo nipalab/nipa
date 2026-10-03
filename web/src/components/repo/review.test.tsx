@@ -1,11 +1,19 @@
 import { act } from 'react'
 import type { ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
+import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { DiffView } from './DiffView'
-import { ReviewPanel } from './ReviewPanel'
+import { ChangesView } from './ChangesView'
+import { MergeRequestOverview } from './MergeRequestOverview'
 import { ThreadCard } from './ThreadCard'
-import type { DiffFileResponse, ThreadResponse } from '../../api/models'
+import type {
+  DiffFileResponse,
+  ReviewRequestResponse,
+  ReviewResponse,
+  ThreadResponse,
+  TimelineItemResponse,
+} from '../../api/models'
 
 vi.mock('../../api/endpoints', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../api/endpoints')>()
@@ -28,7 +36,9 @@ async function render(node: ReactNode) {
   document.body.appendChild(container)
   const root = createRoot(container)
   await act(async () => {
-    root.render(node)
+    root.render(
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>{node}</MemoryRouter>,
+    )
   })
   return { container, root }
 }
@@ -43,6 +53,15 @@ function type(el: Element | null | undefined, value: string) {
   act(() => {
     const target = el as HTMLTextAreaElement
     const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set
+    setter?.call(target, value)
+    target.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+}
+
+function typeInput(el: Element | null | undefined, value: string) {
+  act(() => {
+    const target = el as HTMLInputElement
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
     setter?.call(target, value)
     target.dispatchEvent(new Event('input', { bubbles: true }))
   })
@@ -180,7 +199,7 @@ describe('DiffView', () => {
         onSubmitDraft={(anchor, body) => submitted.push({ anchor, body })}
       />,
     )
-    expect(container.textContent).toContain('New comment on code.txt:2')
+    expect(container.textContent).toContain('a comment on code.txt:2')
     type(container.querySelector('[aria-label="New inline comment"]'), 'rename this')
     click([...container.querySelectorAll('button')].find((button) => button.textContent === 'Comment'))
     expect(submitted).toEqual([{ anchor: { filePath: 'code.txt', newLine: 2 }, body: 'rename this' }])
@@ -274,18 +293,26 @@ describe('ThreadCard', () => {
   })
 })
 
-describe('ReviewPanel', () => {
+describe('MergeRequestOverview', () => {
   const base = {
     org: 'acme',
     project: 'game',
     id: '7',
     me: 'u2',
-    request: mr,
-    state: { approvals: 1, changes_requested: 0, dismissed_approvals: 0, outstanding_reviewers: [], head_commit_id: 'c1' },
-    reviews: [],
-    threads: [],
-    reviewRequests: [],
-    timeline: [],
+    request: { ...mr, description: 'Please merge this', mergeability: { status: 'mergeable' } },
+    state: {
+      approvals: 1,
+      changes_requested: 0,
+      dismissed_approvals: 0,
+      outstanding_reviewers: [],
+      head_commit_id: 'c1',
+    },
+    reviews: [] as ReviewResponse[],
+    threads: [] as ThreadResponse[],
+    reviewRequests: [] as ReviewRequestResponse[],
+    timeline: [] as TimelineItemResponse[],
+    members: [],
+    files: [] as DiffFileResponse[],
     canWrite: true,
     busy: false,
     onChanged: () => {},
@@ -293,20 +320,25 @@ describe('ReviewPanel', () => {
     onResolveThread: () => {},
     onEditComment: () => {},
     onDeleteComment: () => {},
+    onMerge: () => {},
+    onClose: () => {},
+    onReopen: () => {},
   }
 
-  it('shows the live review summary and submits a decision', async () => {
+  it('shows the review summary and submits a decision', async () => {
     const onChanged = vi.fn()
-    const { container } = await render(<ReviewPanel {...base} onChanged={onChanged} />)
+    const { container } = await render(<MergeRequestOverview {...base} onChanged={onChanged} />)
     expect(container.textContent).toContain('1 approved')
+    expect(container.textContent).toContain('opened this merge request')
+    expect(container.textContent).toContain('Please merge this')
 
     type(container.querySelector('textarea'), 'looks good')
-    const submit = [...container.querySelectorAll('button')].find((button) => button.textContent === 'Submit review')
     await act(async () => {
-      ;(submit as HTMLElement).dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      const approve = [...container.querySelectorAll('button')].find((button) => button.textContent === 'Approve')
+      ;(approve as HTMLElement).dispatchEvent(new MouseEvent('click', { bubbles: true }))
     })
     expect(endpoints.submitMergeRequestReview).toHaveBeenCalledWith('acme', 'game', '7', {
-      state: 'commented',
+      state: 'approved',
       body: 'looks good',
       comments: [],
     })
@@ -314,13 +346,14 @@ describe('ReviewPanel', () => {
   })
 
   it('lets the author comment but not decide', async () => {
-    const { container } = await render(<ReviewPanel {...base} me="u1" />)
-    expect(container.textContent).toContain('This is your own merge request')
-    expect([...container.querySelectorAll('button')].some((button) => button.textContent === 'Submit review')).toBe(false)
+    const { container } = await render(<MergeRequestOverview {...base} me="u1" />)
+    expect(container.textContent).toContain('You cannot review your own merge request')
+    expect([...container.querySelectorAll('button')].some((button) => button.textContent === 'Approve')).toBe(false)
 
     type(container.querySelector('textarea'), 'nice work')
     await act(async () => {
-      ;(container.querySelector('button') as HTMLElement).dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      const comment = [...container.querySelectorAll('button')].find((button) => button.textContent === 'Comment')
+      ;(comment as HTMLElement).dispatchEvent(new MouseEvent('click', { bubbles: true }))
     })
     expect(endpoints.addMergeRequestComment).toHaveBeenCalledWith('acme', 'game', '7', {
       file_path: '',
@@ -332,9 +365,9 @@ describe('ReviewPanel', () => {
     const replies: unknown[] = []
     const topLevel: ThreadResponse = { ...thread, id: 't9', file_path: undefined, new_line: undefined, side: '' }
     const { container } = await render(
-      <ReviewPanel {...base} threads={[topLevel]} onReplyThread={(id, body) => replies.push({ id, body })} />,
+      <MergeRequestOverview {...base} threads={[topLevel]} onReplyThread={(id, body) => replies.push({ id, body })} />,
     )
-    expect(container.textContent).toContain('Conversation')
+    expect(container.textContent).toContain('rename this')
     click([...container.querySelectorAll('button')].find((button) => button.textContent === 'Reply'))
     type(container.querySelector('[aria-label="Reply to thread"]'), 'thanks')
     click([...container.querySelectorAll('button')].find((button) => button.textContent === 'Reply'))
@@ -343,7 +376,7 @@ describe('ReviewPanel', () => {
 
   it('renders the timeline and the pending review requests', async () => {
     const { container } = await render(
-      <ReviewPanel
+      <MergeRequestOverview
         {...base}
         reviewRequests={[
           {
@@ -368,14 +401,14 @@ describe('ReviewPanel', () => {
     )
     const text = container.textContent ?? ''
     expect(text).toContain('Peer')
-    expect(text).toContain('was asked to review by Author')
-    expect(text).toContain('Author requested a review from Peer')
+    expect(text).toContain('Author requested a review from')
     expect(text).toContain('Author pushed new commits')
+    expect(container.querySelector('[title="review pending"]')).not.toBeNull()
   })
 
   it('marks dismissed reviews as no longer counting', async () => {
     const { container } = await render(
-      <ReviewPanel
+      <MergeRequestOverview
         {...base}
         reviews={[
           {
@@ -396,8 +429,63 @@ describe('ReviewPanel', () => {
       />,
     )
     const text = container.textContent ?? ''
-    expect(text).toContain('Approve (outdated)')
-    expect(text).toContain('Dismissed by new commits by Author')
+    expect(text).toContain('had their review dismissed')
+    expect(text).toContain('Dismissed by new commits')
     expect([...container.querySelectorAll('button')].some((button) => button.textContent === 'Dismiss')).toBe(false)
   })
+
+  it('shows inline code threads with a link to the file', async () => {
+    const inlineThread: ThreadResponse = { ...thread, id: 't2', file_path: 'code.txt', new_line: 2 }
+    const { container } = await render(
+      <MergeRequestOverview {...base} files={[file]} threads={[inlineThread]} />,
+    )
+    expect(container.textContent).toContain('code.txt:2')
+    expect(container.textContent).toContain('View on file')
+    expect(container.querySelector('a[href="/acme/game/merges/7?tab=files#file-code.txt"]')).not.toBeNull()
+    expect(container.textContent).toContain('rename this')
+    expect(container.textContent).toContain('two-new')
+  })
 })
+
+describe('ChangesView', () => {
+  const addedFile: DiffFileResponse = {
+    path: 'docs/readme.md',
+    status: 'added',
+    binary: false,
+    additions: 1,
+    deletions: 0,
+    hunks: [
+      {
+        old_start: 0,
+        old_lines: 0,
+        new_start: 1,
+        new_lines: 1,
+        lines: [{ kind: 'add', new_line: 1, text: 'hello docs' }],
+      },
+    ],
+  }
+
+  it('lists changed files and filters them from the toolbar', async () => {
+    const { container } = await render(<ChangesView files={[file, addedFile]} />)
+    expect(container.textContent).toContain('2 files changed')
+    expect(container.querySelector('a[href="#file-code.txt"]')).not.toBeNull()
+    expect(container.querySelector('a[href="#file-docs/readme.md"]')).not.toBeNull()
+
+    typeInput(container.querySelector('[aria-label="Filter files"]'), 'docs')
+    expect(container.textContent).toContain('1 file changed')
+    expect(container.textContent).not.toContain('code.txt')
+    expect(container.textContent).toContain('hello docs')
+  })
+
+  it('marks files as viewed and collapses them', async () => {
+    const { container } = await render(<ChangesView files={[file, addedFile]} />)
+    click(container.querySelector('[aria-label="Viewed docs/readme.md"]'))
+    expect((container.querySelector('[aria-label="Viewed docs/readme.md"]') as HTMLInputElement).checked).toBe(true)
+
+    click(container.querySelector('[aria-label="Collapse docs/readme.md"]'))
+    expect(container.textContent).not.toContain('hello docs')
+    click(container.querySelector('[aria-label="Expand docs/readme.md"]'))
+    expect(container.textContent).toContain('hello docs')
+  })
+})
+

@@ -423,9 +423,12 @@ merging (which stays fast-forward-only).
 
 ### Web UI
 
-The merge request page (`web/src/pages/PullPage.tsx`) renders a review panel
-(summary, review form, reviewer picker, requests, history, timeline) next to
-the structured diff (`web/src/components/repo/MergeRequestDiff.tsx`), which
-supports line-level comments and filtering to lines with open threads. The
-merge request list shows the live approval/changes-requested counts.
+The merge request page (`web/src/pages/MergeRequestPage.tsx`) renders a
+GitHub-style conversation (`web/src/components/repo/MergeRequestOverview.tsx`):
+header with state and branch info, the description card, a timeline interleaving
+comments, reviews and system events, a comment/review composer, and a sidebar
+with reviewers, participants and the merge box. The File changes tab renders the
+structured diff (`web/src/components/repo/DiffView.tsx`), which supports
+line-level comments and filtering to lines with open threads. The merge request
+list shows the live approval/changes-requested counts.
 

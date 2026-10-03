@@ -5,13 +5,14 @@ import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { BookIcon, FileBinaryIcon, FileCodeIcon, FileDirectoryFillIcon, FileIcon, FileMediaIcon } from '@primer/octicons-react'
 import { BranchSelector } from './BranchSelector'
+import { MergeRequestCommits } from './MergeRequestCommits'
 import { Tabs } from './Tabs'
 import { RepoBreadcrumb } from './RepoBreadcrumb'
 import { RepoNav } from './RepoNav'
 import { fileIcon } from './fileIcon'
 import { commitTitle, formatBytes, relativeTime, shortSha } from './format'
 import { blobUrl, commitsUrl, parentPath, repoUrl, treeUrl } from './repoPaths'
-import type { BranchResponse } from '../../api/models'
+import type { BranchResponse, CommitResponse } from '../../api/models'
 
 async function render(node: ReactNode) {
   const container = document.createElement('div')
@@ -165,6 +166,35 @@ describe('BranchSelector', () => {
       <BranchSelector branches={branches} rev="" onSelect={() => {}} />,
     )
     expect(container.textContent).toContain('main')
+    act(() => root.unmount())
+  })
+})
+
+describe('MergeRequestCommits', () => {
+  const commits: CommitResponse[] = [
+    { id: 'c2', message: 'newer change\n\nbody text', author_name: 'Bob', created_at: '2024-01-02T00:00:00Z' },
+    { id: 'c1', message: 'older change', author_name: 'Alice', created_at: '2024-01-01T00:00:00Z' },
+  ]
+
+  it('lists the commits oldest first with commit and browse links', async () => {
+    const { container, root } = await render(
+      <MergeRequestCommits org="acme" project="game" commits={commits} />,
+    )
+    expect(container.textContent).toContain('2 commits')
+    const commitLinks = [...container.querySelectorAll('a[href^="/acme/game/commits/"]')]
+    expect(commitLinks.map((link) => link.textContent)).toEqual(['older change', 'newer change'])
+    expect(container.querySelector('a[href="/acme/game/tree/c1"]')).not.toBeNull()
+    expect(container.querySelector('a[href="/acme/game/tree/c2"]')).not.toBeNull()
+    expect(container.textContent).toContain('Alice')
+    expect(container.textContent).toContain('c1')
+    act(() => root.unmount())
+  })
+
+  it('renders an empty state without commits', async () => {
+    const { container, root } = await render(
+      <MergeRequestCommits org="acme" project="game" commits={[]} />,
+    )
+    expect(container.textContent).toContain('No commits on this request.')
     act(() => root.unmount())
   })
 })
