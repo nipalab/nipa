@@ -121,6 +121,15 @@ WEBHOOK_TIMEOUT_SECONDS: 30
 EOF
 }
 
+ensure_bucket() {
+	log "ensuring s3 bucket $S3_BUCKET"
+	(cd "$ROOT_DIR" && go run ./tests/cmd/s3bucket \
+		-endpoint "$S3_ENDPOINT" \
+		-bucket "$S3_BUCKET" \
+		-access-key "$S3_ACCESS_KEY" \
+		-secret-key "$S3_SECRET_KEY")
+}
+
 start_compose() {
 	if [[ -n "${NIPA_TEST_POSTGRES_DSN:-}" || -n "${NIPA_TEST_S3_ENDPOINT:-}" ]]; then
 		if [[ -z "${NIPA_TEST_POSTGRES_DSN:-}" || -z "${NIPA_TEST_S3_ENDPOINT:-}" ]]; then
@@ -130,6 +139,7 @@ start_compose() {
 		PG_DSN="$NIPA_TEST_POSTGRES_DSN"
 		S3_ENDPOINT="$NIPA_TEST_S3_ENDPOINT"
 		log "using external postgres and s3"
+		ensure_bucket
 		return
 	fi
 
@@ -162,12 +172,7 @@ start_compose() {
 	PG_DSN="postgres://nipa:nipa@127.0.0.1:$PG_PORT/nipa?sslmode=disable"
 	S3_ENDPOINT="http://127.0.0.1:$S3_PORT"
 
-	log "ensuring s3 bucket $S3_BUCKET"
-	(cd "$ROOT_DIR" && go run ./tests/cmd/s3bucket \
-		-endpoint "$S3_ENDPOINT" \
-		-bucket "$S3_BUCKET" \
-		-access-key "$S3_ACCESS_KEY" \
-		-secret-key "$S3_SECRET_KEY")
+	ensure_bucket
 }
 
 check_port_free() {
