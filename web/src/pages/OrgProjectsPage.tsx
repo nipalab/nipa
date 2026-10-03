@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Button, Link as PrimerLink } from '@primer/react'
+import { Button, Link as PrimerLink, Stack } from '@primer/react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { listOrgs, listProjects } from '../api/endpoints'
 import type { ProjectResponse } from '../api/models'
@@ -25,9 +25,14 @@ export default function OrgProjectsPage() {
       subtitle="Repositories in this organization"
       actions={
         canManage && (
-          <Button variant="primary" onClick={() => navigate(`/${org}/new`)}>
-            New repository
-          </Button>
+          <Stack direction="horizontal" gap="normal" align="center">
+            <PrimerLink as={Link} to={`/${org}/settings`}>
+              Settings
+            </PrimerLink>
+            <Button variant="primary" onClick={() => navigate(`/${org}/new`)}>
+              New repository
+            </Button>
+          </Stack>
         )
       }
     >

@@ -172,6 +172,22 @@ describe('OrgProjectsPage', () => {
     await waitFor(() => window.location.pathname === '/default/game-client')
     act(() => root.unmount())
   })
+  it('links to organization settings for owners', async () => {
+    const requests: FetchCall[] = []
+    stubOrgRoutes(requests)
+    const { root } = await renderApp('/default')
+    await waitForText('Engine')
+
+    const link = Array.from(document.querySelectorAll('a')).find((item) => item.textContent?.trim() === 'Settings')
+    expect(link?.getAttribute('href')).toBe('/default/settings')
+
+    await act(async () => {
+      link?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }))
+    })
+    await waitFor(() => window.location.pathname === '/default/settings')
+    await waitForText('default settings')
+    act(() => root.unmount())
+  })
 })
 
 describe('HomePage', () => {
