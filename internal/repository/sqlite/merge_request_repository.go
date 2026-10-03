@@ -5,6 +5,7 @@ import (
 	"database/sql"
 
 	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/repository/dbtx"
 	sqlcSqlite "github.com/nipalab/nipa/internal/repository/sqlc/sqlite"
 	"github.com/nipalab/nipa/internal/snow"
 )
@@ -14,7 +15,7 @@ type MergeRequestRepository struct {
 }
 
 func NewMergeRequestRepository(db *sql.DB) *MergeRequestRepository {
-	return &MergeRequestRepository{queries: sqlcSqlite.New(db)}
+	return &MergeRequestRepository{queries: sqlcSqlite.New(dbtx.New(db))}
 }
 
 func (r *MergeRequestRepository) Create(ctx context.Context, mr domain.MergeRequest) (*domain.MergeRequest, error) {
@@ -93,14 +94,6 @@ func (r *MergeRequestRepository) UpdateStatus(ctx context.Context, projectID sno
 		MergeCommitID: nullSnowID(mergeCommitID),
 		ProjectID:     projectID.Int64(),
 		Number:        number,
-	})
-	return handleError(err)
-}
-
-func (r *MergeRequestRepository) Delete(ctx context.Context, projectID snow.ID, id int64) error {
-	err := r.queries.MergeRequestDelete(ctx, sqlcSqlite.MergeRequestDeleteParams{
-		ID:        id,
-		ProjectID: projectID.Int64(),
 	})
 	return handleError(err)
 }

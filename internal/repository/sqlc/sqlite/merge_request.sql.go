@@ -94,20 +94,6 @@ func (q *Queries) MergeRequestCreate(ctx context.Context, arg MergeRequestCreate
 	return i, err
 }
 
-const mergeRequestDelete = `-- name: MergeRequestDelete :exec
-DELETE FROM merge_requests WHERE id = ?1 AND project_id = ?2
-`
-
-type MergeRequestDeleteParams struct {
-	ID        int64 `json:"id"`
-	ProjectID int64 `json:"project_id"`
-}
-
-func (q *Queries) MergeRequestDelete(ctx context.Context, arg MergeRequestDeleteParams) error {
-	_, err := q.db.ExecContext(ctx, mergeRequestDelete, arg.ID, arg.ProjectID)
-	return err
-}
-
 const mergeRequestGet = `-- name: MergeRequestGet :one
 SELECT id, number, project_id, source_branch_id, target_branch_id, source_branch_name, target_branch_name, title, description, status, merge_commit_id, merge_base_commit_id, created_by, created_at, updated_at FROM merge_requests WHERE project_id = ? AND number = ?
 `

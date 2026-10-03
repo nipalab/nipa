@@ -88,31 +88,3 @@ func (s *MergeRequestRepositorySuite) TestCRUD() {
 	_, err = repo.Get(ctx, projectID, 9999)
 	requireRecordNotFound(s.T(), err)
 }
-
-func (s *MergeRequestRepositorySuite) TestDelete() {
-	ctx := context.Background()
-	repo := NewMergeRequestRepository(s.db)
-
-	projectID := seedProject(s.T(), s.q, 1, "game")
-	userID := seedPBACUser(s.T(), s.db, 42)
-	sourceID := seedBranch(s.T(), s.db, projectID, "feature", sql.NullInt64{})
-	targetID := seedBranch(s.T(), s.db, projectID, "main", sql.NullInt64{})
-
-	created, err := repo.Create(ctx, domain.MergeRequest{
-		ID:             5101,
-		ProjectID:      projectID,
-		SourceBranchID: sourceID,
-		TargetBranchID: targetID,
-		SourceBranch:   "feature",
-		TargetBranch:   "main",
-		Title:          "Rollback me",
-		CreatedBy:      userID,
-	})
-	s.Require().NoError(err)
-
-	s.Require().NoError(repo.Delete(ctx, projectID, created.ID))
-	_, err = repo.Get(ctx, projectID, created.Number)
-	requireRecordNotFound(s.T(), err)
-
-	s.Require().NoError(repo.Delete(ctx, projectID, created.ID))
-}

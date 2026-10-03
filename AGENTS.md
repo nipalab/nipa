@@ -150,8 +150,11 @@ editing pass and stay. Merge requests acquire locks for their changed binary
 paths at creation (re-checked and topped up at merge — `branchMerger.
 BinaryChangesBetween` is the permission-filter-free three-dot enumeration —
 accepting locks held by the request owner so an admin can merge on their
-behalf), release them on merge/close, re-acquire on reopen, and clean up
-partial acquisitions when creation fails. Plain `FastForward` enforces/releases
+behalf), release them on merge/close, and re-acquire on reopen. Creation writes
+the request row and its locks in one transaction through
+`dbtx.Transactor.WithinTx` (repositories built with `dbtx.New` resolve the
+transaction from the context), so a lock failure rolls the row back. Plain
+`FastForward` enforces/releases
 via `BinaryLockPlan` (required vs checked paths); `Branch.Delete` releases the
 branch's scoped locks (soft delete ⇒ no FK cascade). The `/locks` REST routes,
 `LockFile`/`UnlockFile`/`ListFileLocks` RPCs and the web Locks page expose

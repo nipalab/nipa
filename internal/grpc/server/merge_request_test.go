@@ -125,8 +125,14 @@ func newTestMergeRequestServer(t *testing.T, repo *stubMergeRequestRepository, m
 	branchRepo := NewMockbranchRepository(ctrl)
 	node, err := snow.NewNode(1)
 	require.NoError(t, err)
-	uc := usecase.NewMergeRequest(repo, branchRepo, perm, merger, node)
+	uc := usecase.NewMergeRequest(repo, branchRepo, perm, merger, node, noopTransactor{})
 	return New(&mockUsecaseContainer{common: newTestCommon(), mergeRequest: uc}), branchRepo, perm
+}
+
+type noopTransactor struct{}
+
+func (noopTransactor) WithinTx(ctx context.Context, fn func(context.Context) error) error {
+	return fn(ctx)
 }
 
 func TestMergeRequestHandler_Create(t *testing.T) {

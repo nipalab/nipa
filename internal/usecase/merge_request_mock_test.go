@@ -58,20 +58,6 @@ func (mr_2 *MockmergeRequestRepositoryMockRecorder) Create(ctx, mr any) *gomock.
 	return mr_2.mock.ctrl.RecordCallWithMethodType(mr_2.mock, "Create", reflect.TypeOf((*MockmergeRequestRepository)(nil).Create), ctx, mr)
 }
 
-// Delete mocks base method.
-func (m *MockmergeRequestRepository) Delete(ctx context.Context, projectID snow.ID, id int64) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Delete", ctx, projectID, id)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// Delete indicates an expected call of Delete.
-func (mr *MockmergeRequestRepositoryMockRecorder) Delete(ctx, projectID, id any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delete", reflect.TypeOf((*MockmergeRequestRepository)(nil).Delete), ctx, projectID, id)
-}
-
 // Get mocks base method.
 func (m *MockmergeRequestRepository) Get(ctx context.Context, projectID snow.ID, number int64) (*domain.MergeRequest, error) {
 	m.ctrl.T.Helper()
@@ -129,6 +115,44 @@ func (m *MockmergeRequestRepository) UpdateStatus(ctx context.Context, projectID
 func (mr *MockmergeRequestRepositoryMockRecorder) UpdateStatus(ctx, projectID, number, status, mergeCommitID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateStatus", reflect.TypeOf((*MockmergeRequestRepository)(nil).UpdateStatus), ctx, projectID, number, status, mergeCommitID)
+}
+
+// Mocktransactor is a mock of transactor interface.
+type Mocktransactor struct {
+	ctrl     *gomock.Controller
+	recorder *MocktransactorMockRecorder
+	isgomock struct{}
+}
+
+// MocktransactorMockRecorder is the mock recorder for Mocktransactor.
+type MocktransactorMockRecorder struct {
+	mock *Mocktransactor
+}
+
+// NewMocktransactor creates a new mock instance.
+func NewMocktransactor(ctrl *gomock.Controller) *Mocktransactor {
+	mock := &Mocktransactor{ctrl: ctrl}
+	mock.recorder = &MocktransactorMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *Mocktransactor) EXPECT() *MocktransactorMockRecorder {
+	return m.recorder
+}
+
+// WithinTx mocks base method.
+func (m *Mocktransactor) WithinTx(ctx context.Context, fn func(context.Context) error) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "WithinTx", ctx, fn)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// WithinTx indicates an expected call of WithinTx.
+func (mr *MocktransactorMockRecorder) WithinTx(ctx, fn any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WithinTx", reflect.TypeOf((*Mocktransactor)(nil).WithinTx), ctx, fn)
 }
 
 // MockbranchMerger is a mock of branchMerger interface.

@@ -29,6 +29,7 @@ import (
 	servergrpc "github.com/nipalab/nipa/internal/grpc/server"
 	"github.com/nipalab/nipa/internal/hasher"
 	"github.com/nipalab/nipa/internal/http/api"
+	"github.com/nipalab/nipa/internal/repository/dbtx"
 	"github.com/nipalab/nipa/internal/repository/sqlite"
 	"github.com/nipalab/nipa/internal/snow"
 	"github.com/nipalab/nipa/internal/storage"
@@ -183,7 +184,7 @@ func startTestServer(t *testing.T, dbConn *sql.DB) string {
 		permission: permissionUc,
 		group:      serverusecase.NewGroup(groupRepo, node, permissionUc, orgUc),
 		mergeRequest: serverusecase.NewMergeRequest(
-			mrRepo, branchRepo, permissionUc, branchUc, node,
+			mrRepo, branchRepo, permissionUc, branchUc, node, dbtx.NewTransactor(dbConn),
 		).WithFileLocks(fileLockUc),
 		review:   reviewUc,
 		fileLock: fileLockUc,

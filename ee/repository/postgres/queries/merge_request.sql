@@ -48,6 +48,3 @@ WHERE project_id = sqlc.arg(project_id) AND number = sqlc.arg(number);
 UPDATE merge_requests SET title = sqlc.arg(title), description = sqlc.arg(description), updated_at = now()
 WHERE project_id = sqlc.arg(project_id) AND number = sqlc.arg(number)
 RETURNING *;
-
--- name: MergeRequestDelete :exec
-DELETE FROM merge_requests WHERE id = sqlc.arg(id) AND project_id = sqlc.arg(project_id);

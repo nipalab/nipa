@@ -72,7 +72,6 @@ type Querier interface {
 	// MergeRequestCreate allocates the per-project number while holding a lock on
 	// the project row, so concurrent creates cannot pick the same number.
 	MergeRequestCreate(ctx context.Context, arg MergeRequestCreateParams) (MergeRequest, error)
-	MergeRequestDelete(ctx context.Context, arg MergeRequestDeleteParams) error
 	MergeRequestEventCreate(ctx context.Context, arg MergeRequestEventCreateParams) (MergeRequestEvent, error)
 	MergeRequestEventList(ctx context.Context, mergeRequestID int64) ([]MergeRequestEventListRow, error)
 	MergeRequestGet(ctx context.Context, arg MergeRequestGetParams) (MergeRequest, error)
