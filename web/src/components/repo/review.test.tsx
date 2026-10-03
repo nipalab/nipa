@@ -264,11 +264,12 @@ describe('ThreadCard', () => {
         onDeleteComment={(threadId, commentId) => deleted.push({ threadId, commentId })}
       />,
     )
-    click([...container.querySelectorAll('button')].find((button) => button.textContent === 'Edit'))
+    const iconButtons = () => container.querySelectorAll('[data-component="IconButton"]')
+    click(iconButtons()[0])
     type(container.querySelector('[aria-label="Edit comment"]'), 'rename it')
     click([...container.querySelectorAll('button')].find((button) => button.textContent === 'Save'))
     expect(edited).toEqual([{ threadId: 't1', commentId: 'c1', body: 'rename it' }])
-    click([...container.querySelectorAll('button')].find((button) => button.textContent === 'Delete'))
+    click(iconButtons()[1])
     expect(deleted).toEqual([{ threadId: 't1', commentId: 'c1' }])
   })
 

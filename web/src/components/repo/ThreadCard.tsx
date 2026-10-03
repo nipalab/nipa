@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
-import { Button, Stack, Text, Textarea } from '@primer/react'
+import { Button, IconButton, Stack, Text, Textarea } from '@primer/react'
+import { PencilIcon, TrashIcon } from '@primer/octicons-react'
 import type { ThreadResponse } from '../../api/models'
 import { Mono } from '../ui'
 import { ActorAvatar, actorName } from './ActorAvatar'
@@ -152,22 +153,23 @@ export function ThreadCard({
                 </Text>
                 {canWrite && me === comment.user.user_id && (
                   <Stack direction="horizontal" gap="condensed">
-                    <Button
+                    <IconButton
+                      icon={PencilIcon}
+                      aria-label="Edit comment"
                       size="small"
+                      disabled={busy}
                       onClick={() => {
                         setEditingId(comment.id)
                         setEditBody(comment.body)
                       }}
-                    >
-                      Edit
-                    </Button>
-                    <Button
+                    />
+                    <IconButton
+                      icon={TrashIcon}
+                      aria-label="Delete comment"
                       size="small"
                       disabled={busy}
                       onClick={() => onDeleteComment?.(thread.id, comment.id)}
-                    >
-                      Delete
-                    </Button>
+                    />
                   </Stack>
                 )}
               </>
