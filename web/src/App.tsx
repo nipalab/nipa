@@ -17,6 +17,7 @@ import LocksPage from './pages/LocksPage'
 import ProjectSettingsPage from './pages/ProjectSettingsPage'
 import OrgSettingsPage from './pages/OrgSettingsPage'
 import AdminUsersPage from './pages/AdminUsersPage'
+import NewUserPage from './pages/NewUserPage'
 import ProfilePage from './pages/ProfilePage'
 
 export default function App() {
@@ -29,6 +30,7 @@ export default function App() {
             <Route element={<AppShell />}>
               <Route path="/" element={<HomePage />} />
               <Route path="/admin/users" element={<AdminUsersPage />} />
+              <Route path="/admin/users/new" element={<NewUserPage />} />
               <Route path="/settings/profile" element={<ProfilePage />} />
               <Route path="/:org" element={<OrgProjectsPage />} />
               <Route path="/:org/settings" element={<OrgSettingsPage />} />

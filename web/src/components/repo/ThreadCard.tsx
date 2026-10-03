@@ -139,7 +139,7 @@ export function ThreadCard({
                   >
                     Save
                   </Button>
-                  <Button size="small" variant="invisible" onClick={() => setEditingId(null)}>
+                  <Button size="small" onClick={() => setEditingId(null)}>
                     Cancel
                   </Button>
                 </Stack>
@@ -154,7 +154,6 @@ export function ThreadCard({
                   <Stack direction="horizontal" gap="condensed">
                     <Button
                       size="small"
-                      variant="invisible"
                       onClick={() => {
                         setEditingId(comment.id)
                         setEditBody(comment.body)
@@ -164,7 +163,6 @@ export function ThreadCard({
                     </Button>
                     <Button
                       size="small"
-                      variant="invisible"
                       disabled={busy}
                       onClick={() => onDeleteComment?.(thread.id, comment.id)}
                     >
@@ -200,20 +198,19 @@ export function ThreadCard({
                 >
                   Reply
                 </Button>
-                <Button size="small" variant="invisible" onClick={() => setReplyOpen(false)}>
+                <Button size="small" onClick={() => setReplyOpen(false)}>
                   Cancel
                 </Button>
               </Stack>
             </Stack>
           ) : (
             <Stack direction="horizontal" gap="condensed">
-              <Button size="small" variant="invisible" onClick={() => setReplyOpen(true)}>
+              <Button size="small" onClick={() => setReplyOpen(true)}>
                 Reply
               </Button>
               {onResolve && (!conversation || thread.file_path) && (
                 <Button
                   size="small"
-                  variant="invisible"
                   disabled={busy}
                   onClick={() => onResolve(thread.id, !thread.resolved)}
                 >

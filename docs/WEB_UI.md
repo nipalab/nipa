@@ -29,8 +29,9 @@ proxies `/api` and `/docs` to `NIPA_SERVER_URL`).
 | `/:org/:project/locks` | file locks | list binary asset locks, lock/unlock |
 | `/:org/:project/settings` | project settings | branch protection + ACL rules/defaults + webhooks |
 | `/:org/settings` | organization settings | members and groups (org owner or global admin) |
-| `/admin/users` | user administration | global admin CRUD, superadmin flags |
-| `/settings/profile` | profile | name/photo and password |
+| `/admin/users` | user administration | GitHub-style list with filter, avatar/role labels and row actions |
+| `/admin/users/new` | new user | dedicated create page (name, email, password) |
+| `/settings/profile` | public profile | GitHub-style settings layout: avatar preview + photo URL + name, and password change with confirmation/validation |
 
 ## Browse API
 

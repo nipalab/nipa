@@ -33,18 +33,12 @@ import type {
   ThreadResponse,
   TimelineItemResponse,
 } from '../../api/models'
-import { Mono } from '../ui'
+import { Mono, PRIMARY_BUTTON_STYLE } from '../ui'
 import { ActorAvatar, actorName, actorsFrom, type ActorLike } from './ActorAvatar'
 import { ThreadCodeContext } from './DiffView'
 import { ThreadCard } from './ThreadCard'
 
 const Markdown = lazy(() => import('./Markdown').then((module) => ({ default: module.Markdown })))
-
-const MERGE_BUTTON_STYLE = {
-  '--button-primary-bgColor-rest': '#1f883d',
-  '--button-primary-bgColor-hover': '#1a7f37',
-  '--button-primary-bgColor-active': '#187733',
-} as React.CSSProperties
 
 type ReviewerStatus = 'pending' | 'approved' | 'changes_requested' | 'commented' | 'dismissed'
 
@@ -452,7 +446,6 @@ export function MergeRequestOverview({
                       {me === review.reviewer.user_id && (
                         <Button
                           size="small"
-                          variant="invisible"
                           disabled={pending}
                           onClick={() => run(() => withdrawMergeRequestReview(org, project, id, review.id))}
                         >
@@ -462,7 +455,6 @@ export function MergeRequestOverview({
                       {me !== review.reviewer.user_id && (
                         <Button
                           size="small"
-                          variant="invisible"
                           disabled={pending}
                           onClick={() => run(() => dismissMergeRequestReview(org, project, id, review.id))}
                         >
@@ -542,7 +534,7 @@ export function MergeRequestOverview({
                   </Button>
                   <Button
                     disabled={pending || !body.trim()}
-                    style={MERGE_BUTTON_STYLE}
+                    style={PRIMARY_BUTTON_STYLE}
                     variant="primary"
                     onClick={() => submitDecision('approved')}
                   >
@@ -606,7 +598,6 @@ export function MergeRequestOverview({
                   {canWrite && entry.requestId && (
                     <Button
                       size="small"
-                      variant="invisible"
                       aria-label={`cancel review request for ${actorName(entry.user)}`}
                       disabled={pending}
                       onClick={() =>
@@ -747,7 +738,7 @@ export function MergeRequestOverview({
               <Button
                 block
                 variant="primary"
-                style={MERGE_BUTTON_STYLE}
+                style={PRIMARY_BUTTON_STYLE}
                 disabled={!mergeable || pending}
                 onClick={onMerge}
               >

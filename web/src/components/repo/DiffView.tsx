@@ -1,5 +1,4 @@
 import { Fragment, useState } from 'react'
-import type { CSSProperties } from 'react'
 import { Button, Checkbox, Stack, Text, Textarea } from '@primer/react'
 import {
   ChevronDownIcon,
@@ -10,7 +9,7 @@ import {
   FileRemovedIcon,
 } from '@primer/octicons-react'
 import type { DiffFileResponse, DiffHunkResponse, DiffLineResponse, ThreadResponse } from '../../api/models'
-import { Mono } from '../ui'
+import { Mono, PRIMARY_BUTTON_STYLE } from '../ui'
 import { ThreadCard } from './ThreadCard'
 
 export interface DiffAnchor {
@@ -38,12 +37,6 @@ const ADD_BG = 'var(--bgColor-success-muted)'
 const REMOVE_BG = 'var(--bgColor-danger-muted)'
 const EMPTY_BG = 'var(--bgColor-neutral-muted)'
 const CONTEXT_BG = 'transparent'
-
-const COMMENT_BUTTON_STYLE = {
-  '--button-primary-bgColor-rest': '#1f883d',
-  '--button-primary-bgColor-hover': '#1a7f37',
-  '--button-primary-bgColor-active': '#187733',
-} as CSSProperties
 
 // GitHub-style status icon for a changed file.
 export function FileStatusIcon({ status }: { status: string }) {
@@ -292,14 +285,14 @@ function DraftComment({
           </Text>
         )}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
-          <Button size="small" variant="invisible" onClick={onCancel}>
+          <Button size="small" onClick={onCancel}>
             Cancel
           </Button>
           <span style={{ marginLeft: 'auto' }}>
             <Button
               size="small"
               variant="primary"
-              style={COMMENT_BUTTON_STYLE}
+              style={PRIMARY_BUTTON_STYLE}
               disabled={busy || !body.trim()}
               onClick={() => onSubmit(anchor, body.trim())}
             >

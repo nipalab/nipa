@@ -127,6 +127,56 @@
   background: var(--bgColor-muted);
 }
 
+.nipa-user-row:hover {
+  background: var(--bgColor-muted);
+}
+
+.nipa-settings-layout {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+
+.nipa-settings-nav {
+  position: sticky;
+  top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.nipa-settings-nav a {
+  color: var(--fgColor-default);
+  text-decoration: none;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.nipa-settings-nav a:hover {
+  background: var(--bgColor-muted);
+}
+
+.nipa-settings-main {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+@media (max-width: 700px) {
+  .nipa-settings-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .nipa-settings-nav {
+    position: static;
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+}
+
 .nipa-mr-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 296px;
