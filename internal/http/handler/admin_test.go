@@ -260,6 +260,9 @@ func TestHandler_GroupLifecycle(t *testing.T) {
 	detail, ok := appCtx.response.(model.GroupResponse)
 	require.True(t, ok)
 	require.Equal(t, []string{bob.ID.Base36()}, detail.MemberIDs)
+	require.Equal(t, []model.GroupMemberResponse{
+		{UserID: bob.ID.Base36(), Name: "bob", Email: "bob@example.com"},
+	}, detail.Members)
 
 	appCtx = adminAppCtx(env.userID,
 		map[string]string{"org": "default", "group": group.ID, "user": bob.ID.Base36()}, "")

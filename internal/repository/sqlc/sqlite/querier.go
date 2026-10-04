@@ -59,6 +59,7 @@ type Querier interface {
 	GroupListByOrg(ctx context.Context, orgID int64) ([]Group, error)
 	GroupListByUser(ctx context.Context, userID int64) ([]Group, error)
 	GroupMemberAdd(ctx context.Context, arg GroupMemberAddParams) error
+	GroupMemberCountByOrg(ctx context.Context, orgID int64) ([]GroupMemberCountByOrgRow, error)
 	GroupMemberList(ctx context.Context, groupID int64) ([]GroupMemberListRow, error)
 	GroupMemberRemove(ctx context.Context, arg GroupMemberRemoveParams) error
 	ListOrganizations(ctx context.Context) ([]Organization, error)
@@ -114,7 +115,7 @@ type Querier interface {
 	PBACRuleDelete(ctx context.Context, id int64) error
 	PBACRuleDeleteForProject(ctx context.Context, arg PBACRuleDeleteForProjectParams) (int64, error)
 	PBACRuleGetForProject(ctx context.Context, arg PBACRuleGetForProjectParams) (PbacRule, error)
-	PBACRuleListByProject(ctx context.Context, projectID sql.NullInt64) ([]PbacRule, error)
+	PBACRuleListByProject(ctx context.Context, projectID sql.NullInt64) ([]PBACRuleListByProjectRow, error)
 	PBACRuleListEffective(ctx context.Context, arg PBACRuleListEffectiveParams) ([]PbacRule, error)
 	ProjectPathPermissionDelete(ctx context.Context, arg ProjectPathPermissionDeleteParams) error
 	ProjectPathPermissionList(ctx context.Context, projectID int64) ([]ProjectPathsPermission, error)

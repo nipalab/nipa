@@ -16,7 +16,15 @@ WHERE (
 ORDER BY r.id;
 
 -- name: PBACRuleListByProject :many
-SELECT * FROM pbac_rules WHERE project_id = sqlc.arg(project_id) ORDER BY id;
+SELECT r.*,
+       COALESCE(u.name, '') AS user_name,
+       COALESCE(u.email, '') AS user_email,
+       COALESCE(g.name, '') AS group_name
+FROM pbac_rules r
+LEFT JOIN users u ON u.id = r.user_id AND u.deleted = false
+LEFT JOIN groups g ON g.id = r.group_id AND g.deleted = false
+WHERE r.project_id = sqlc.arg(project_id)
+ORDER BY r.id;
 
 -- name: PBACRuleCreate :one
 INSERT INTO pbac_rules (user_id, group_id, org_id, project_id, path_prefix, permission)

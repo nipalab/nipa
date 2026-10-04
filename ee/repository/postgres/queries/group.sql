@@ -15,6 +15,14 @@ JOIN group_members gm ON gm.group_id = g.id
 WHERE gm.user_id = sqlc.arg(user_id) AND g.deleted = false
 ORDER BY g.name;
 
+-- name: GroupMemberCountByOrg :many
+SELECT g.id, COUNT(u.id) AS member_count
+FROM groups g
+LEFT JOIN group_members gm ON gm.group_id = g.id
+LEFT JOIN users u ON u.id = gm.user_id AND u.deleted = false
+WHERE g.org_id = sqlc.arg(org_id) AND g.deleted = false
+GROUP BY g.id;
+
 -- name: GroupMemberAdd :exec
 INSERT INTO group_members (group_id, user_id) VALUES (sqlc.arg(group_id), sqlc.arg(user_id))
 ON CONFLICT DO NOTHING;

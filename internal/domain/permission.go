@@ -29,10 +29,15 @@ func (p Permission) IsValid() bool {
 
 // PBACRule grants permission on a path prefix to a user or a group.
 // projectID is nil for rules that apply to every project in the org.
+// UserName/UserEmail and GroupName are resolved for admin listings; they are
+// empty when the subject is unknown or soft-deleted.
 type PBACRule struct {
 	ID         int64      `json:"id"`
 	UserID     *snow.ID   `json:"user_id,omitempty"`
+	UserName   string     `json:"user_name,omitempty"`
+	UserEmail  string     `json:"user_email,omitempty"`
 	GroupID    *snow.ID   `json:"group_id,omitempty"`
+	GroupName  string     `json:"group_name,omitempty"`
 	OrgID      snow.ID    `json:"org_id"`
 	ProjectID  *snow.ID   `json:"project_id,omitempty"`
 	PathPrefix string     `json:"path_prefix"`

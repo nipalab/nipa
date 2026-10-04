@@ -166,11 +166,17 @@ func TestGroup_Members_Success(t *testing.T) {
 	ctx := permissionCtx(42, withAdmin())
 
 	repo.EXPECT().GetByID(gomock.Any(), snow.ID(7)).Return(&domain.Group{ID: 7, OrgID: 1}, nil)
-	repo.EXPECT().ListMemberIDs(gomock.Any(), snow.ID(7)).Return([]snow.ID{9, 10}, nil)
+	repo.EXPECT().ListMembers(gomock.Any(), snow.ID(7)).Return([]domain.GroupMember{
+		{UserID: 9, Name: "ann", Email: "ann@example.com"},
+		{UserID: 10, Name: "bo", Email: "bo@example.com"},
+	}, nil)
 
 	members, err := group.Members(ctx, 1, 7)
 	require.NoError(t, err)
-	require.Equal(t, []snow.ID{9, 10}, members)
+	require.Equal(t, []domain.GroupMember{
+		{UserID: 9, Name: "ann", Email: "ann@example.com"},
+		{UserID: 10, Name: "bo", Email: "bo@example.com"},
+	}, members)
 }
 
 func TestGroup_Members_NoPermission(t *testing.T) {
