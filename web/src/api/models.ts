@@ -264,12 +264,20 @@ export interface FileLockResponse {
   acquired_at: string
 }
 
+export interface GroupMemberResponse {
+  user_id: string
+  name: string
+  email: string
+}
+
 export interface GroupResponse {
   id: string
   org_id: string
   name: string
   description: string
   member_ids?: string[]
+  members?: GroupMemberResponse[]
+  member_count: number
 }
 
 export interface PermissionEntry {
@@ -286,7 +294,10 @@ export interface ProjectPermissionResponse {
 export interface PBACRuleResponse {
   id: number
   user_id?: string
+  user_name?: string
+  user_email?: string
   group_id?: string
+  group_name?: string
   path_prefix: string
   permission: number
 }

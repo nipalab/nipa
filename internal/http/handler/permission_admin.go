@@ -148,6 +148,9 @@ func (h *Handler) DeleteProjectDefault(appCtx http.AppContext) {
 func toPBACRuleResponse(rule *domain.PBACRule) model.PBACRuleResponse {
 	resp := model.PBACRuleResponse{
 		ID:         rule.ID,
+		UserName:   rule.UserName,
+		UserEmail:  rule.UserEmail,
+		GroupName:  rule.GroupName,
 		PathPrefix: rule.PathPrefix,
 		Permission: uint64(rule.Permission),
 	}

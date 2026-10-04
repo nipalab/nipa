@@ -18,9 +18,16 @@ func (h *Handler) ListGroups(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
+	counts, err := h.useCase.Group().MemberCounts(appCtx.Context(), org.ID)
+	if err != nil {
+		appCtx.HandleError(err)
+		return
+	}
 	resp := make([]model.GroupResponse, 0, len(groups))
 	for _, group := range groups {
-		resp = append(resp, toGroupResponse(group, nil))
+		item := toGroupResponse(group, nil)
+		item.MemberCount = counts[group.ID]
+		resp = append(resp, item)
 	}
 	appCtx.WriteJson(nethttp.StatusOK, resp)
 }

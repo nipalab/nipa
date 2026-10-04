@@ -153,6 +153,43 @@ func (q *Queries) GroupMemberAdd(ctx context.Context, arg GroupMemberAddParams) 
 	return err
 }
 
+const groupMemberCountByOrg = `-- name: GroupMemberCountByOrg :many
+SELECT g.id, COUNT(u.id) AS member_count
+FROM groups g
+LEFT JOIN group_members gm ON gm.group_id = g.id
+LEFT JOIN users u ON u.id = gm.user_id AND u.deleted = false
+WHERE g.org_id = ? AND g.deleted = false
+GROUP BY g.id
+`
+
+type GroupMemberCountByOrgRow struct {
+	ID          int64 `json:"id"`
+	MemberCount int64 `json:"member_count"`
+}
+
+func (q *Queries) GroupMemberCountByOrg(ctx context.Context, orgID int64) ([]GroupMemberCountByOrgRow, error) {
+	rows, err := q.db.QueryContext(ctx, groupMemberCountByOrg, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GroupMemberCountByOrgRow
+	for rows.Next() {
+		var i GroupMemberCountByOrgRow
+		if err := rows.Scan(&i.ID, &i.MemberCount); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const groupMemberList = `-- name: GroupMemberList :many
 SELECT gm.user_id, u.name, u.email
 FROM group_members gm

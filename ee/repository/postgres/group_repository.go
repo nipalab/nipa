@@ -76,16 +76,32 @@ func (g *Group) RemoveMember(ctx context.Context, groupID, userID snow.ID) error
 	return nil
 }
 
-func (g *Group) ListMemberIDs(ctx context.Context, groupID snow.ID) ([]snow.ID, error) {
+func (g *Group) ListMembers(ctx context.Context, groupID snow.ID) ([]domain.GroupMember, error) {
 	rows, err := g.queries.GroupMemberList(ctx, groupID.Int64())
 	if err != nil {
 		return nil, domain.NewErrorDatabase(err.Error())
 	}
-	members := make([]snow.ID, 0, len(rows))
+	members := make([]domain.GroupMember, 0, len(rows))
 	for _, row := range rows {
-		members = append(members, snow.ID(row.UserID))
+		members = append(members, domain.GroupMember{
+			UserID: snow.ID(row.UserID),
+			Name:   row.Name,
+			Email:  row.Email,
+		})
 	}
 	return members, nil
+}
+
+func (g *Group) MemberCounts(ctx context.Context, orgID snow.ID) (map[snow.ID]int64, error) {
+	rows, err := g.queries.GroupMemberCountByOrg(ctx, orgID.Int64())
+	if err != nil {
+		return nil, domain.NewErrorDatabase(err.Error())
+	}
+	counts := make(map[snow.ID]int64, len(rows))
+	for _, row := range rows {
+		counts[snow.ID(row.ID)] = row.MemberCount
+	}
+	return counts, nil
 }
 
 func toDomainGroup(row sqlcPostgres.Group) *domain.Group {

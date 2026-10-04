@@ -169,7 +169,7 @@ func TestGroupRepositorySQLite_QueryErrors(t *testing.T) {
 	require.Error(t, repo.RemoveMember(canceled, snow.ID(7030), userID))
 }
 
-func TestGroupRepositorySQLite_ListMemberIDs(t *testing.T) {
+func TestGroupRepositorySQLite_ListMembers(t *testing.T) {
 	ctx := context.Background()
 	db, _ := newSQLiteTestDB(t)
 	repo := NewGroupRepository(db)
@@ -181,7 +181,70 @@ func TestGroupRepositorySQLite_ListMemberIDs(t *testing.T) {
 	require.NoError(t, repo.AddMember(ctx, snow.ID(7030), userA))
 	require.NoError(t, repo.AddMember(ctx, snow.ID(7030), userB))
 
-	ids, err := repo.ListMemberIDs(ctx, snow.ID(7030))
+	members, err := repo.ListMembers(ctx, snow.ID(7030))
 	require.NoError(t, err)
-	require.Equal(t, []snow.ID{userA, userB}, ids)
+	require.Equal(t, []domain.GroupMember{
+		{UserID: userA, Name: "user42", Email: "user42@example.com"},
+		{UserID: userB, Name: "user43", Email: "user43@example.com"},
+	}, members)
+}
+
+func TestGroupRepositorySQLite_MemberCounts(t *testing.T) {
+	ctx := context.Background()
+	db, _ := newSQLiteTestDB(t)
+	repo := NewGroupRepository(db)
+
+	userA := seedPBACUser(t, db, 52)
+	_, err := repo.Create(ctx, domain.Group{ID: snow.ID(7040), OrgID: 1, Name: "artists"})
+	require.NoError(t, err)
+	_, err = repo.Create(ctx, domain.Group{ID: snow.ID(7041), OrgID: 1, Name: "empty"})
+	require.NoError(t, err)
+	_, err = repo.Create(ctx, domain.Group{ID: snow.ID(7042), OrgID: 1, Name: "two-members"})
+	require.NoError(t, err)
+	require.NoError(t, repo.AddMember(ctx, snow.ID(7040), userA))
+	require.NoError(t, repo.AddMember(ctx, snow.ID(7042), userA))
+	require.NoError(t, repo.AddMember(ctx, snow.ID(7042), seedPBACUser(t, db, 53)))
+
+	counts, err := repo.MemberCounts(ctx, 1)
+	require.NoError(t, err)
+	require.Equal(t, map[snow.ID]int64{
+		snow.ID(7040): 1,
+		snow.ID(7041): 0,
+		snow.ID(7042): 2,
+	}, counts)
+
+	otherOrg, err := repo.Create(ctx, domain.Group{ID: snow.ID(7043), OrgID: 2, Name: "elsewhere"})
+	require.NoError(t, err)
+	require.NoError(t, repo.AddMember(ctx, otherOrg.ID, seedPBACUser(t, db, 54)))
+
+	counts, err = repo.MemberCounts(ctx, 1)
+	require.NoError(t, err)
+	require.NotContains(t, counts, otherOrg.ID)
+}
+
+func TestGroupRepositorySQLite_MemberCounts_ExcludesDeletedUsers(t *testing.T) {
+	ctx := context.Background()
+	db, _ := newSQLiteTestDB(t)
+	repo := NewGroupRepository(db)
+
+	alive := seedPBACUser(t, db, 62)
+	gone := seedPBACUser(t, db, 63)
+	_, err := repo.Create(ctx, domain.Group{ID: snow.ID(7050), OrgID: 1, Name: "artists"})
+	require.NoError(t, err)
+	require.NoError(t, repo.AddMember(ctx, snow.ID(7050), alive))
+	require.NoError(t, repo.AddMember(ctx, snow.ID(7050), gone))
+
+	_, err = db.ExecContext(ctx, `UPDATE users SET deleted = true WHERE id = ?`, gone.Int64())
+	require.NoError(t, err)
+
+	// A soft-deleted user keeps its group_members row, but ListMembers hides it,
+	// so the count has to agree with the detail list.
+	members, err := repo.ListMembers(ctx, snow.ID(7050))
+	require.NoError(t, err)
+	require.Len(t, members, 1)
+
+	counts, err := repo.MemberCounts(ctx, 1)
+	require.NoError(t, err)
+	require.Equal(t, int64(len(members)), counts[snow.ID(7050)])
+	require.Equal(t, map[snow.ID]int64{snow.ID(7050): 1}, counts)
 }

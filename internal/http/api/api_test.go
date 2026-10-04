@@ -524,6 +524,7 @@ func TestAPIRoutes(t *testing.T) {
 
 		groups := decodeBody[[]model.GroupResponse](t, doGet(t, base+"/groups", aliceLogin.AccessToken))
 		require.Len(t, groups, 1)
+		require.Equal(t, int64(0), groups[0].MemberCount, "new group has no members yet")
 
 		deniedGroups := doGet(t, base+"/groups", bobLogin.AccessToken)
 		require.Equal(t, http.StatusForbidden, deniedGroups.StatusCode)
@@ -534,12 +535,25 @@ func TestAPIRoutes(t *testing.T) {
 		require.Equal(t, http.StatusOK, addMember.StatusCode)
 		addMember.Body.Close()
 
+		groups = decodeBody[[]model.GroupResponse](t, doGet(t, base+"/groups", aliceLogin.AccessToken))
+		require.Len(t, groups, 1)
+		require.Equal(t, int64(1), groups[0].MemberCount, "list reports the resolved member count")
+		require.Empty(t, groups[0].Members, "the list does not expand member details")
+
 		detail := decodeBody[model.GroupResponse](t, doGet(t, base+"/groups/"+group.ID, aliceLogin.AccessToken))
 		require.Equal(t, []string{bob.ID}, detail.MemberIDs)
+		require.Equal(t, []model.GroupMemberResponse{
+			{UserID: bob.ID, Name: "bob", Email: "bob@example.com"},
+		}, detail.Members)
+		require.Equal(t, int64(1), detail.MemberCount)
 
 		removeMember := doMethod(t, http.MethodDelete, base+"/groups/"+group.ID+"/members/"+bob.ID, "", aliceLogin.AccessToken)
 		require.Equal(t, http.StatusOK, removeMember.StatusCode)
 		removeMember.Body.Close()
+
+		groups = decodeBody[[]model.GroupResponse](t, doGet(t, base+"/groups", aliceLogin.AccessToken))
+		require.Len(t, groups, 1)
+		require.Equal(t, int64(0), groups[0].MemberCount, "count drops back after removal")
 
 		removeBob := doMethod(t, http.MethodDelete, base+"/members/"+bob.ID, "", aliceLogin.AccessToken)
 		require.Equal(t, http.StatusOK, removeBob.StatusCode)
@@ -962,6 +976,16 @@ func TestAPIRoutes(t *testing.T) {
 
 		rules := decodeBody[[]model.PBACRuleResponse](t, doGet(t, base+"/rules", aliceLogin.AccessToken))
 		require.Len(t, rules, 2, "reader rule from the repository browser plus the grantee rule")
+		var granteeRule *model.PBACRuleResponse
+		for i := range rules {
+			if rules[i].ID == rule.ID {
+				granteeRule = &rules[i]
+			}
+		}
+		require.NotNil(t, granteeRule)
+		require.Equal(t, grantee.ID, granteeRule.UserID)
+		require.Equal(t, "grantee", granteeRule.UserName)
+		require.Equal(t, "grantee@example.com", granteeRule.UserEmail)
 
 		granteeLogin, _ := loginAs(t, "grantee@example.com")
 		info := decodeBody[model.ProjectPermissionResponse](t, doGet(t, base+"/me", granteeLogin.AccessToken))

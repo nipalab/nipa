@@ -178,6 +178,32 @@ func TestPBACRepositorySQLite_ListRulesByProject(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, rules, 1)
 	require.Equal(t, onProject.ID, rules[0].ID)
+	require.Equal(t, "user42", rules[0].UserName)
+	require.Equal(t, "user42@example.com", rules[0].UserEmail)
+	require.Empty(t, rules[0].GroupName)
+}
+
+func TestPBACRepositorySQLite_ListRulesByProject_ResolvesGroupName(t *testing.T) {
+	ctx := context.Background()
+	db, q := newSQLiteTestDB(t)
+	repo := NewPBACRepository(db)
+
+	projectID := seedProject(t, q, 1, "game")
+	groupID := seedPBACGroup(t, db, 77, 1, "artists")
+
+	_, err := repo.CreateRule(ctx, domain.PBACRule{
+		GroupID: pbacIDPtr(groupID), OrgID: 1, ProjectID: pbacIDPtr(projectID),
+		PathPrefix: "art", Permission: domain.PermissionWrite,
+	})
+	require.NoError(t, err)
+
+	rules, err := repo.ListRulesByProject(ctx, projectID)
+	require.NoError(t, err)
+	require.Len(t, rules, 1)
+	require.Equal(t, groupID, *rules[0].GroupID)
+	require.Equal(t, "artists", rules[0].GroupName)
+	require.Empty(t, rules[0].UserName)
+	require.Empty(t, rules[0].UserEmail)
 }
 
 func TestPBACRepositorySQLite_DeleteRule(t *testing.T) {
