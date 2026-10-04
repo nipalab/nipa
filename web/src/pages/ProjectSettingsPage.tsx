@@ -1,6 +1,17 @@
 import { useState } from 'react'
-import { Button, Dialog, FormControl, Label, Stack, Text, TextInput } from '@primer/react'
-import { useParams } from 'react-router-dom'
+import type { CSSProperties, ReactNode } from 'react'
+import {
+  Button,
+  Dialog,
+  FormControl,
+  Heading,
+  NavList,
+  Stack,
+  Text,
+  TextInput,
+  ToggleSwitch,
+} from '@primer/react'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import {
   createProjectRule,
   deleteProjectDefault,
@@ -10,18 +21,129 @@ import {
   setBranchProtection,
   setProjectDefault,
 } from '../api/endpoints'
-import type { PBACRuleResponse, PermissionEntry } from '../api/models'
+import type { BranchResponse, PBACRuleResponse, PermissionEntry } from '../api/models'
 import { RepoPageShell } from '../components/repo/RepoPageShell'
 import { useRepoChrome } from '../components/repo/useRepoChrome'
 import { WebhookSettings } from '../components/repo/WebhookSettings'
 import { PermissionBadge } from '../components/PermissionBadge'
 import { PermissionCheckboxes } from '../components/PermissionCheckboxes'
 import { UserGroupPicker } from '../components/UserGroupPicker'
-import { EmptyState, ErrorBanner, Loading, Mono } from '../components/ui'
+import { ErrorBanner, Loading, Mono } from '../components/ui'
 import { useAsync } from '../hooks'
 
-const CELL = { padding: '8px 12px' }
-const HEADER_CELL = { ...CELL, fontWeight: 600, textAlign: 'left' as const, fontSize: 12, color: 'var(--fgColor-muted)' }
+const SETTINGS_TABS = [
+  { key: 'access', label: 'Access' },
+  { key: 'branches', label: 'Branches' },
+  { key: 'webhooks', label: 'Webhooks' },
+] as const
+
+type SettingsTab = (typeof SETTINGS_TABS)[number]['key']
+
+function isSettingsTab(value: string | null): value is SettingsTab {
+  return SETTINGS_TABS.some((tab) => tab.key === value)
+}
+
+function Box({ children, style }: { children: ReactNode; style?: CSSProperties }) {
+  return (
+    <div
+      style={{
+        border: '1px solid var(--borderColor-default)',
+        borderRadius: 6,
+        overflow: 'hidden',
+        ...style,
+      }}
+    >
+      {children}
+    </div>
+  )
+}
+
+function SettingsCard({
+  title,
+  description,
+  actions,
+  footer,
+  children,
+}: {
+  title: string
+  description?: ReactNode
+  actions?: ReactNode
+  footer?: ReactNode
+  children: ReactNode
+}) {
+  return (
+    <Box>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 16,
+          padding: '12px 16px',
+          background: 'var(--bgColor-muted)',
+        }}
+      >
+        <div style={{ minWidth: 0 }}>
+          <Heading as="h2" style={{ margin: 0, fontSize: 16 }}>
+            {title}
+          </Heading>
+          {description && (
+            <Text as="p" style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--fgColor-muted)' }}>
+              {description}
+            </Text>
+          )}
+        </div>
+        {actions}
+      </div>
+      {children}
+      {footer && (
+        <div
+          style={{
+            borderTop: '1px solid var(--borderColor-default)',
+            background: 'var(--bgColor-muted)',
+            padding: '12px 16px',
+            display: 'flex',
+            justifyContent: 'flex-end',
+            gap: 8,
+          }}
+        >
+          {footer}
+        </div>
+      )}
+    </Box>
+  )
+}
+
+function SettingsRow({
+  label,
+  subtext,
+  children,
+}: {
+  label: ReactNode
+  subtext?: ReactNode
+  children?: ReactNode
+}) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexWrap: 'wrap',
+        alignItems: 'flex-start',
+        gap: 16,
+        padding: 16,
+        borderTop: '1px solid var(--borderColor-muted)',
+      }}
+    >
+      <div style={{ flex: '0 0 220px', minWidth: 0 }}>
+        <div style={{ fontWeight: 600, overflowWrap: 'anywhere' }}>{label}</div>
+        {subtext && (
+          <div style={{ color: 'var(--fgColor-muted)', fontSize: 12, overflowWrap: 'anywhere' }}>{subtext}</div>
+        )}
+      </div>
+      {children !== undefined && <div style={{ flex: '1 1 300px', minWidth: 0 }}>{children}</div>}
+    </div>
+  )
+}
 
 export default function ProjectSettingsPage() {
   const { org = '', project = '' } = useParams()
@@ -42,6 +164,10 @@ export default function ProjectSettingsPage() {
   const [editingDefault, setEditingDefault] = useState<PermissionEntry | null>(null)
   const [confirmDeleteRule, setConfirmDeleteRule] = useState<PBACRuleResponse | null>(null)
   const [confirmDeleteDefault, setConfirmDeleteDefault] = useState<PermissionEntry | null>(null)
+  const [searchParams] = useSearchParams()
+
+  const requestedTab = searchParams.get('tab')
+  const tab: SettingsTab = isSettingsTab(requestedTab) ? requestedTab : 'access'
 
   async function run(action: () => Promise<unknown>) {
     setActionError(null)
@@ -81,52 +207,62 @@ export default function ProjectSettingsPage() {
     >
       <ErrorBanner error={actionError ?? rulesError} />
 
-      <Text as="h3">Branch protection</Text>
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-        <tbody>
-          {branches?.map((branch) => (
-            <tr key={branch.id} style={{ borderBottom: '1px solid var(--borderColor-muted)' }}>
-              <td style={CELL}>
-                {branch.name}
-                {branch.is_default && <span style={{ color: 'var(--fgColor-accent)' }}> · default</span>}
-              </td>
-              <td style={{ ...CELL, textAlign: 'right' }}>
-                <Button
-                  size="small"
-                  onClick={() =>
-                    run(async () => {
-                      await setBranchProtection(org, project, branch.name, !branch.is_protected)
-                      reloadBranches()
-                    })
-                  }
-                >
-                  {branch.is_protected ? 'Unprotect' : 'Protect'}
-                </Button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 32, marginTop: 24 }}>
+        <div style={{ flex: '0 0 200px', minWidth: 0 }}>
+          <NavList aria-label="Repository settings">
+            {SETTINGS_TABS.map((item) => (
+              <NavList.Item
+                key={item.key}
+                as={Link}
+                to={`/${org}/${project}/settings?tab=${item.key}`}
+                aria-current={item.key === tab ? 'page' : undefined}
+              >
+                {item.label}
+              </NavList.Item>
+            ))}
+          </NavList>
+        </div>
 
-      <AccessRulesSection
-        rules={rules ?? []}
-        loading={rulesLoading}
-        onAdd={() => setShowAddRule(true)}
-        onDelete={(rule) => setConfirmDeleteRule(rule)}
-      />
+        <div style={{ flex: '1 1 0', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 24 }}>
+          {tab === 'access' && (
+            <>
+              <AccessRulesSection
+                rules={rules ?? []}
+                loading={rulesLoading}
+                onAdd={() => setShowAddRule(true)}
+                onDelete={(rule) => setConfirmDeleteRule(rule)}
+              />
 
-      <PathDefaultsSection
-        defaults={defaults ?? []}
-        onAdd={() => {
-          setEditingDefault(null)
-          setShowAddDefault(true)
-        }}
-        onEdit={(entry) => {
-          setEditingDefault(entry)
-          setShowAddDefault(true)
-        }}
-        onDelete={(entry) => setConfirmDeleteDefault(entry)}
-      />
+              <PathDefaultsSection
+                defaults={defaults ?? []}
+                onAdd={() => {
+                  setEditingDefault(null)
+                  setShowAddDefault(true)
+                }}
+                onEdit={(entry) => {
+                  setEditingDefault(entry)
+                  setShowAddDefault(true)
+                }}
+                onDelete={(entry) => setConfirmDeleteDefault(entry)}
+              />
+            </>
+          )}
+
+          {tab === 'branches' && (
+            <BranchProtectionCard
+              branches={branches ?? []}
+              onToggle={(branch, protect) =>
+                run(async () => {
+                  await setBranchProtection(org, project, branch.name, protect)
+                  reloadBranches()
+                })
+              }
+            />
+          )}
+
+          {tab === 'webhooks' && <WebhookSettings org={org} project={project} />}
+        </div>
+      </div>
 
       {showAddRule && (
         <AddRuleDialog
@@ -174,8 +310,6 @@ export default function ProjectSettingsPage() {
         }}
         onError={setActionError}
       />
-
-      <WebhookSettings org={org} project={project} />
     </RepoPageShell>
   )
 }
@@ -185,6 +319,43 @@ function ruleSubject(rule: PBACRuleResponse): { name: string; email?: string } |
     return rule.user_name ? { name: rule.user_name, email: rule.user_email } : null
   }
   return rule.group_name ? { name: rule.group_name } : null
+}
+
+function BranchProtectionCard({
+  branches,
+  onToggle,
+}: {
+  branches: BranchResponse[]
+  onToggle: (branch: BranchResponse, protect: boolean) => void
+}) {
+  return (
+    <SettingsCard
+      title="Protected branches"
+      description="Branch protection blocks force pushes and deletions, so history cannot be rewritten by accident."
+    >
+      {branches.length === 0 && <div style={{ padding: 16, color: 'var(--fgColor-muted)' }}>No branches yet.</div>}
+      {branches.map((branch, index) => (
+        <SettingsRow
+          key={branch.id}
+          label={<span id={`branch-protection-${index}`}>{branch.name}</span>}
+          subtext={branch.is_default ? 'Default branch' : undefined}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+            <Text style={{ color: 'var(--fgColor-muted)', fontSize: 12, margin: 0 }}>
+              {branch.is_protected
+                ? 'Protected — pushes and deletions are restricted.'
+                : 'Not protected — anyone with write access can push.'}
+            </Text>
+            <ToggleSwitch
+              aria-labelledby={`branch-protection-${index}`}
+              checked={Boolean(branch.is_protected)}
+              onChange={(value) => onToggle(branch, value)}
+            />
+          </div>
+        </SettingsRow>
+      ))}
+    </SettingsCard>
+  )
 }
 
 function AccessRulesSection({
@@ -199,70 +370,55 @@ function AccessRulesSection({
   onDelete: (rule: PBACRuleResponse) => void
 }) {
   return (
-    <>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Text as="h3">Access rules</Text>
-        <Button size="small" variant="primary" onClick={onAdd}>
+    <SettingsCard
+      title="Access rules"
+      description="Grant specific users or groups access to paths in this repository."
+      actions={
+        <Button size="small" onClick={onAdd}>
           Add access rule
         </Button>
-      </div>
-      <Text as="p" style={{ color: 'var(--fgColor-muted)' }}>
-        Grant specific users or groups access to paths in this repository.
-      </Text>
-      {loading && <Loading />}
-      {!loading && rules.length === 0 && (
-        <EmptyState>No access rules. Add one to grant specific users or groups access.</EmptyState>
-      )}
-      {!loading && rules.length > 0 && (
-        <div style={{ border: '1px solid var(--borderColor-default)', borderRadius: 6, overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ background: 'var(--bgColor-muted)' }}>
-                <th style={HEADER_CELL}>User / Group</th>
-                <th style={HEADER_CELL}>Path</th>
-                <th style={HEADER_CELL}>Permissions</th>
-                <th style={{ ...HEADER_CELL, textAlign: 'right' }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rules.map((rule) => {
-                const subject = ruleSubject(rule)
-                return (
-                  <tr key={rule.id} style={{ borderTop: '1px solid var(--borderColor-muted)' }}>
-                    <td style={CELL}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <Label>{rule.user_id ? 'User' : 'Group'}</Label>
-                        {subject ? (
-                          <div>
-                            <div style={{ fontWeight: 600 }}>{subject.name}</div>
-                            {subject.email && (
-                              <div style={{ color: 'var(--fgColor-muted)', fontSize: 12 }}>{subject.email}</div>
-                            )}
-                          </div>
-                        ) : (
-                          <Mono>{rule.user_id ?? rule.group_id}</Mono>
-                        )}
-                      </div>
-                    </td>
-                    <td style={CELL}>
-                      <Mono>{rule.path_prefix || '/'}</Mono>
-                    </td>
-                    <td style={CELL}>
-                      <PermissionBadge permission={rule.permission} />
-                    </td>
-                    <td style={{ ...CELL, textAlign: 'right' }}>
-                      <Button size="small" variant="danger" onClick={() => onDelete(rule)}>
-                        Revoke
-                      </Button>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
+      }
+    >
+      {loading && (
+        <div style={{ padding: 16 }}>
+          <Loading />
         </div>
       )}
-    </>
+      {!loading && rules.length === 0 && (
+        <div style={{ padding: 16, color: 'var(--fgColor-muted)' }}>
+          No access rules. Everyone with write access can reach the whole repository.
+        </div>
+      )}
+      {rules.map((rule) => {
+        const subject = ruleSubject(rule)
+        const fallbackId = rule.user_id || rule.group_id || rule.id
+        return (
+          <SettingsRow
+            key={rule.id}
+            label={subject?.name ?? fallbackId}
+            subtext={subject?.email ?? (subject ? undefined : fallbackId)}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: 16,
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Mono>{rule.path_prefix || '/'}</Mono>
+                <PermissionBadge permission={rule.permission} />
+              </div>
+              <Button size="small" variant="danger" onClick={() => onDelete(rule)}>
+                Revoke
+              </Button>
+            </div>
+          </SettingsRow>
+        )
+      })}
+    </SettingsCard>
   )
 }
 
@@ -278,55 +434,36 @@ function PathDefaultsSection({
   onDelete: (entry: PermissionEntry) => void
 }) {
   return (
-    <>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Text as="h3">Path defaults</Text>
-        <Button size="small" variant="primary" onClick={onAdd}>
-          Add default
+    <SettingsCard
+      title="Path defaults"
+      description="Default permissions for paths without a matching access rule."
+      actions={
+        <Button size="small" onClick={onAdd}>
+          Add path default
         </Button>
-      </div>
-      <Text as="p" style={{ color: 'var(--fgColor-muted)' }}>
-        Default permissions for paths without a matching access rule.
-      </Text>
+      }
+    >
       {defaults.length === 0 && (
-        <EmptyState>No path defaults. The repository is accessible to all members by default.</EmptyState>
-      )}
-      {defaults.length > 0 && (
-        <div style={{ border: '1px solid var(--borderColor-default)', borderRadius: 6, overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ background: 'var(--bgColor-muted)' }}>
-                <th style={HEADER_CELL}>Path</th>
-                <th style={HEADER_CELL}>Permissions</th>
-                <th style={{ ...HEADER_CELL, textAlign: 'right' }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {defaults.map((entry) => (
-                <tr key={entry.path_prefix} style={{ borderTop: '1px solid var(--borderColor-muted)' }}>
-                  <td style={CELL}>
-                    <Mono>{entry.path_prefix || '/'}</Mono>
-                  </td>
-                  <td style={CELL}>
-                    <PermissionBadge permission={entry.permission} />
-                  </td>
-                  <td style={{ ...CELL, textAlign: 'right' }}>
-                    <Stack direction="horizontal" gap="condensed" justify="end">
-                      <Button size="small" onClick={() => onEdit(entry)}>
-                        Edit
-                      </Button>
-                      <Button size="small" variant="danger" onClick={() => onDelete(entry)}>
-                        Remove
-                      </Button>
-                    </Stack>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div style={{ padding: 16, color: 'var(--fgColor-muted)' }}>
+          No path defaults. The repository is accessible to all members by default.
         </div>
       )}
-    </>
+      {defaults.map((entry) => (
+        <SettingsRow key={entry.path_prefix} label={<Mono>{entry.path_prefix || '/'}</Mono>}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+            <PermissionBadge permission={entry.permission} />
+            <Stack direction="horizontal" gap="condensed">
+              <Button size="small" onClick={() => onEdit(entry)}>
+                Edit
+              </Button>
+              <Button size="small" variant="danger" onClick={() => onDelete(entry)}>
+                Remove
+              </Button>
+            </Stack>
+          </div>
+        </SettingsRow>
+      ))}
+    </SettingsCard>
   )
 }
 

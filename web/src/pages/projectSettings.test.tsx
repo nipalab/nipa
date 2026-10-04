@@ -60,10 +60,11 @@ const RULES = [
   },
 ]
 
-function stubSettingsRoutes() {
+function stubSettingsRoutes(initialProtected = false) {
+  let isProtected = initialProtected
   vi.stubGlobal(
     'fetch',
-    vi.fn(async (input: RequestInfo | URL) => {
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input)
       const path = url.split('?')[0]
       if (url.includes('/auth/refresh')) {
@@ -75,7 +76,13 @@ function stubSettingsRoutes() {
       if (path.endsWith('/permissions/me')) {
         return jsonResponse({ project_permission: 3, rules: [], defaults: [] })
       }
-      if (path.endsWith('/branches')) return jsonResponse(BRANCHES)
+      if (path.endsWith('/protection')) {
+        isProtected = Boolean(JSON.parse(String(init?.body ?? '{}')).protected)
+        return jsonResponse({ ...BRANCHES[0], is_protected: isProtected })
+      }
+      if (path.endsWith('/branches')) {
+        return jsonResponse(BRANCHES.map((branch) => ({ ...branch, is_protected: isProtected })))
+      }
       return jsonResponse({ error: 'not found' }, 404)
     }),
   )
@@ -109,6 +116,84 @@ describe('ProjectSettingsPage access rules', () => {
 
     expect(document.body.textContent).not.toContain('u9')
     expect(document.body.textContent).not.toContain('g1')
+    act(() => root.unmount())
+  })
+})
+
+async function renderSettings(url: string) {
+  stubSettingsRoutes()
+  window.history.pushState({}, '', url)
+  const container = document.createElement('div')
+  container.id = 'root'
+  document.body.appendChild(container)
+  const root = createRoot(container)
+  await act(async () => {
+    root.render(<App />)
+  })
+  return root
+}
+
+function settingsNav() {
+  return document.querySelector('nav[aria-label="Repository settings"]') as HTMLElement | null
+}
+
+describe('ProjectSettingsPage github-style navigation', () => {
+  it('renders a settings sidebar with access, branches and webhooks', async () => {
+    const root = await renderSettings('/sticker/backend/settings')
+    await waitForText('Access rules')
+
+    const nav = settingsNav()
+    expect(nav).not.toBeNull()
+    const labels = Array.from(nav?.querySelectorAll('a') ?? []).map((link) => link.textContent)
+    expect(labels).toEqual(['Access', 'Branches', 'Webhooks'])
+    expect(nav?.querySelector('a[aria-current="page"]')?.textContent).toBe('Access')
+    expect(document.body.textContent).not.toContain('Protected branches')
+
+    act(() => root.unmount())
+  })
+
+  it('shows only the selected section for ?tab=branches', async () => {
+    const root = await renderSettings('/sticker/backend/settings?tab=branches')
+    await waitForText('Protected branches')
+
+    expect(settingsNav()?.querySelector('a[aria-current="page"]')?.textContent).toBe('Branches')
+    expect(document.body.textContent).toContain('main')
+    expect(document.body.textContent).not.toContain('Access rules')
+    expect(document.body.textContent).not.toContain('Create webhook')
+
+    act(() => root.unmount())
+  })
+
+  it('shows only the webhooks section for ?tab=webhooks', async () => {
+    const root = await renderSettings('/sticker/backend/settings?tab=webhooks')
+    await waitForText('Webhooks')
+
+    expect(settingsNav()?.querySelector('a[aria-current="page"]')?.textContent).toBe('Webhooks')
+    expect(document.body.textContent).not.toContain('Protected branches')
+
+    act(() => root.unmount())
+  })
+
+  it('protects a branch from the branch protection toggle', async () => {
+    const root = await renderSettings('/sticker/backend/settings?tab=branches')
+    await waitForText('Protected branches')
+
+    const toggle = document.querySelector('button[aria-labelledby="branch-protection-0"]')
+    expect(toggle).not.toBeNull()
+    expect(toggle?.getAttribute('aria-pressed')).toBe('false')
+    await act(async () => {
+      ;(toggle as HTMLButtonElement).click()
+    })
+
+    await waitFor(() => {
+      const calls = (globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mock.calls
+      const protectedCall = calls.find((call) => String(call[0]).endsWith('/branches/main/protection'))
+      expect(protectedCall).toBeDefined()
+      expect((protectedCall?.[1] as RequestInit | undefined)?.method).toBe('PUT')
+      return true
+    })
+    await waitForText('Protected — pushes and deletions are restricted.')
+
     act(() => root.unmount())
   })
 })
