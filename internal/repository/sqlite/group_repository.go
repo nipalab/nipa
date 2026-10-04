@@ -92,6 +92,18 @@ func (g *Group) ListMembers(ctx context.Context, groupID snow.ID) ([]domain.Grou
 	return members, nil
 }
 
+func (g *Group) MemberCounts(ctx context.Context, orgID snow.ID) (map[snow.ID]int64, error) {
+	rows, err := g.queries.GroupMemberCountByOrg(ctx, orgID.Int64())
+	if err != nil {
+		return nil, domain.NewErrorDatabase(err.Error())
+	}
+	counts := make(map[snow.ID]int64, len(rows))
+	for _, row := range rows {
+		counts[snow.ID(row.ID)] = row.MemberCount
+	}
+	return counts, nil
+}
+
 func toDomainGroup(row sqlcSqlite.Group) *domain.Group {
 	return &domain.Group{
 		ID:          snow.ID(row.ID),

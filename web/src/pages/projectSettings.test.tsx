@@ -60,7 +60,7 @@ const RULES = [
   },
 ]
 
-function stubSettingsRoutes(initialProtected = false) {
+function stubSettingsRoutes(initialProtected = false, defaults: unknown[] = []) {
   let isProtected = initialProtected
   vi.stubGlobal(
     'fetch',
@@ -72,7 +72,7 @@ function stubSettingsRoutes(initialProtected = false) {
       }
       if (url.includes('/api/v1/me')) return jsonResponse(ME)
       if (path.endsWith('/permissions/rules')) return jsonResponse(RULES)
-      if (path.endsWith('/permissions/defaults')) return jsonResponse([])
+      if (path.endsWith('/permissions/defaults')) return jsonResponse(defaults)
       if (path.endsWith('/permissions/me')) {
         return jsonResponse({ project_permission: 3, rules: [], defaults: [] })
       }
@@ -120,8 +120,8 @@ describe('ProjectSettingsPage access rules', () => {
   })
 })
 
-async function renderSettings(url: string) {
-  stubSettingsRoutes()
+async function renderSettings(url: string, defaults: unknown[] = []) {
+  stubSettingsRoutes(false, defaults)
   window.history.pushState({}, '', url)
   const container = document.createElement('div')
   container.id = 'root'
@@ -136,6 +136,51 @@ async function renderSettings(url: string) {
 function settingsNav() {
   return document.querySelector('nav[aria-label="Repository settings"]') as HTMLElement | null
 }
+
+function findButton(text: string): HTMLButtonElement {
+  const button = Array.from(document.querySelectorAll('button')).find((item) => item.textContent?.trim() === text)
+  if (!button) throw new Error(`button ${text} not found`)
+  return button as HTMLButtonElement
+}
+
+describe('ProjectSettingsPage path defaults', () => {
+  const defaults = [{ path_prefix: 'assets/textures', permission: 3 }]
+
+  it('locks the path prefix when editing an existing default', async () => {
+    const root = await renderSettings('/sticker/backend/settings', defaults)
+    await waitForText('assets/textures')
+
+    await act(async () => {
+      findButton('Edit').click()
+    })
+    await waitForText('Edit path default')
+
+    const prefix = Array.from(document.querySelectorAll('input')).find(
+      (input) => input.value === 'assets/textures',
+    ) as HTMLInputElement | undefined
+    expect(prefix).toBeDefined()
+    expect(prefix?.disabled).toBe(true)
+    expect(document.body.textContent).toContain('cannot be changed')
+
+    act(() => root.unmount())
+  })
+
+  it('keeps the path prefix editable when adding a default', async () => {
+    const root = await renderSettings('/sticker/backend/settings', defaults)
+    await waitForText('assets/textures')
+
+    await act(async () => {
+      findButton('Add path default').click()
+    })
+    await waitForText('Add path default')
+
+    const dialog = document.querySelector('input[placeholder^="e.g. assets/textures"]') as HTMLInputElement | null
+    expect(dialog).not.toBeNull()
+    expect(dialog?.disabled).toBe(false)
+
+    act(() => root.unmount())
+  })
+})
 
 describe('ProjectSettingsPage github-style navigation', () => {
   it('renders a settings sidebar with access, branches and webhooks', async () => {

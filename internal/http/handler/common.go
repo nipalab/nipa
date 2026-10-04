@@ -61,6 +61,7 @@ func toGroupResponse(group *domain.Group, members []domain.GroupMember) model.Gr
 		OrgID:       group.OrgID.Base36(),
 		Name:        group.Name,
 		Description: group.Description,
+		MemberCount: int64(len(members)),
 	}
 	for _, member := range members {
 		resp.MemberIDs = append(resp.MemberIDs, member.UserID.Base36())

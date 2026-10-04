@@ -601,7 +601,7 @@ function AddDefaultDialog({
       <Dialog.Body>
         <form onSubmit={handleSubmit}>
           <Stack direction="vertical" gap="normal">
-            <FormControl>
+            <FormControl disabled={editing !== null}>
               <FormControl.Label>Path prefix</FormControl.Label>
               <TextInput
                 block
@@ -609,7 +609,11 @@ function AddDefaultDialog({
                 value={prefix}
                 onChange={(e) => setPrefix(e.target.value)}
               />
-              <FormControl.Caption>Leave empty to apply to the entire repository.</FormControl.Caption>
+              <FormControl.Caption>
+                {editing
+                  ? 'The path prefix identifies this default and cannot be changed. Delete it and add a new one to move it.'
+                  : 'Leave empty to apply to the entire repository.'}
+              </FormControl.Caption>
             </FormControl>
             <FormControl required>
               <FormControl.Label>Permissions</FormControl.Label>

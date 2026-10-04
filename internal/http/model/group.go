@@ -7,6 +7,7 @@ type GroupResponse struct {
 	Description string                `json:"description"`
 	MemberIDs   []string              `json:"member_ids,omitempty"`
 	Members     []GroupMemberResponse `json:"members,omitempty"`
+	MemberCount int64                 `json:"member_count"`
 }
 
 type GroupMemberResponse struct {

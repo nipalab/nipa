@@ -524,6 +524,7 @@ func TestAPIRoutes(t *testing.T) {
 
 		groups := decodeBody[[]model.GroupResponse](t, doGet(t, base+"/groups", aliceLogin.AccessToken))
 		require.Len(t, groups, 1)
+		require.Equal(t, int64(0), groups[0].MemberCount, "new group has no members yet")
 
 		deniedGroups := doGet(t, base+"/groups", bobLogin.AccessToken)
 		require.Equal(t, http.StatusForbidden, deniedGroups.StatusCode)
@@ -534,15 +535,25 @@ func TestAPIRoutes(t *testing.T) {
 		require.Equal(t, http.StatusOK, addMember.StatusCode)
 		addMember.Body.Close()
 
+		groups = decodeBody[[]model.GroupResponse](t, doGet(t, base+"/groups", aliceLogin.AccessToken))
+		require.Len(t, groups, 1)
+		require.Equal(t, int64(1), groups[0].MemberCount, "list reports the resolved member count")
+		require.Empty(t, groups[0].Members, "the list does not expand member details")
+
 		detail := decodeBody[model.GroupResponse](t, doGet(t, base+"/groups/"+group.ID, aliceLogin.AccessToken))
 		require.Equal(t, []string{bob.ID}, detail.MemberIDs)
 		require.Equal(t, []model.GroupMemberResponse{
 			{UserID: bob.ID, Name: "bob", Email: "bob@example.com"},
 		}, detail.Members)
+		require.Equal(t, int64(1), detail.MemberCount)
 
 		removeMember := doMethod(t, http.MethodDelete, base+"/groups/"+group.ID+"/members/"+bob.ID, "", aliceLogin.AccessToken)
 		require.Equal(t, http.StatusOK, removeMember.StatusCode)
 		removeMember.Body.Close()
+
+		groups = decodeBody[[]model.GroupResponse](t, doGet(t, base+"/groups", aliceLogin.AccessToken))
+		require.Len(t, groups, 1)
+		require.Equal(t, int64(0), groups[0].MemberCount, "count drops back after removal")
 
 		removeBob := doMethod(t, http.MethodDelete, base+"/members/"+bob.ID, "", aliceLogin.AccessToken)
 		require.Equal(t, http.StatusOK, removeBob.StatusCode)

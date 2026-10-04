@@ -16,6 +16,7 @@ type groupRepository interface {
 	AddMember(ctx context.Context, groupID, userID snow.ID) error
 	RemoveMember(ctx context.Context, groupID, userID snow.ID) error
 	ListMembers(ctx context.Context, groupID snow.ID) ([]domain.GroupMember, error)
+	MemberCounts(ctx context.Context, orgID snow.ID) (map[snow.ID]int64, error)
 }
 
 type permissionCacheInvalidator interface {
@@ -115,6 +116,16 @@ func (g *Group) Members(ctx context.Context, orgID, groupID snow.ID) ([]domain.G
 		return nil, err
 	}
 	return g.repo.ListMembers(ctx, groupID)
+}
+
+// MemberCounts returns the member count per group in the org. The list view
+// needs a count per row; resolving it in one aggregate query avoids an N+1 over
+// ListMembers.
+func (g *Group) MemberCounts(ctx context.Context, orgID snow.ID) (map[snow.ID]int64, error) {
+	if err := g.requireGroupAdmin(ctx, orgID); err != nil {
+		return nil, err
+	}
+	return g.repo.MemberCounts(ctx, orgID)
 }
 
 func (g *Group) requireGroupAdmin(ctx context.Context, orgID snow.ID) error {

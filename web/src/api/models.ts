@@ -277,6 +277,7 @@ export interface GroupResponse {
   description: string
   member_ids?: string[]
   members?: GroupMemberResponse[]
+  member_count: number
 }
 
 export interface PermissionEntry {

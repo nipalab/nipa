@@ -189,3 +189,37 @@ func (s *GroupRepositorySuite) TestListMembers() {
 		{UserID: userB, Name: "user43", Email: "user43@example.com"},
 	}, members)
 }
+
+func (s *GroupRepositorySuite) TestMemberCounts() {
+	ctx := context.Background()
+	repo := NewGroupRepository(s.db)
+
+	userA := seedPBACUser(s.T(), s.db, 52)
+	_, err := repo.Create(ctx, domain.Group{ID: snow.ID(7040), OrgID: 1, Name: "artists"})
+	s.Require().NoError(err)
+	_, err = repo.Create(ctx, domain.Group{ID: snow.ID(7041), OrgID: 1, Name: "empty"})
+	s.Require().NoError(err)
+	_, err = repo.Create(ctx, domain.Group{ID: snow.ID(7042), OrgID: 1, Name: "two-members"})
+	s.Require().NoError(err)
+	s.Require().NoError(repo.AddMember(ctx, snow.ID(7040), userA))
+	s.Require().NoError(repo.AddMember(ctx, snow.ID(7042), userA))
+	s.Require().NoError(repo.AddMember(ctx, snow.ID(7042), seedPBACUser(s.T(), s.db, 53)))
+
+	counts, err := repo.MemberCounts(ctx, 1)
+	s.Require().NoError(err)
+	s.Equal(map[snow.ID]int64{
+		snow.ID(7040): 1,
+		snow.ID(7041): 0,
+		snow.ID(7042): 2,
+	}, counts)
+
+	_, err = s.db.ExecContext(ctx, `INSERT INTO organizations (id, slug, name, created_by_user_id) VALUES (2, 'other', 'Other', 1)`)
+	s.Require().NoError(err)
+	otherOrg, err := repo.Create(ctx, domain.Group{ID: snow.ID(7043), OrgID: 2, Name: "elsewhere"})
+	s.Require().NoError(err)
+	s.Require().NoError(repo.AddMember(ctx, otherOrg.ID, seedPBACUser(s.T(), s.db, 54)))
+
+	counts, err = repo.MemberCounts(ctx, 1)
+	s.Require().NoError(err)
+	s.NotContains(counts, otherOrg.ID)
+}

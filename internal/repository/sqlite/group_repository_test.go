@@ -188,3 +188,36 @@ func TestGroupRepositorySQLite_ListMembers(t *testing.T) {
 		{UserID: userB, Name: "user43", Email: "user43@example.com"},
 	}, members)
 }
+
+func TestGroupRepositorySQLite_MemberCounts(t *testing.T) {
+	ctx := context.Background()
+	db, _ := newSQLiteTestDB(t)
+	repo := NewGroupRepository(db)
+
+	userA := seedPBACUser(t, db, 52)
+	_, err := repo.Create(ctx, domain.Group{ID: snow.ID(7040), OrgID: 1, Name: "artists"})
+	require.NoError(t, err)
+	_, err = repo.Create(ctx, domain.Group{ID: snow.ID(7041), OrgID: 1, Name: "empty"})
+	require.NoError(t, err)
+	_, err = repo.Create(ctx, domain.Group{ID: snow.ID(7042), OrgID: 1, Name: "two-members"})
+	require.NoError(t, err)
+	require.NoError(t, repo.AddMember(ctx, snow.ID(7040), userA))
+	require.NoError(t, repo.AddMember(ctx, snow.ID(7042), userA))
+	require.NoError(t, repo.AddMember(ctx, snow.ID(7042), seedPBACUser(t, db, 53)))
+
+	counts, err := repo.MemberCounts(ctx, 1)
+	require.NoError(t, err)
+	require.Equal(t, map[snow.ID]int64{
+		snow.ID(7040): 1,
+		snow.ID(7041): 0,
+		snow.ID(7042): 2,
+	}, counts)
+
+	otherOrg, err := repo.Create(ctx, domain.Group{ID: snow.ID(7043), OrgID: 2, Name: "elsewhere"})
+	require.NoError(t, err)
+	require.NoError(t, repo.AddMember(ctx, otherOrg.ID, seedPBACUser(t, db, 54)))
+
+	counts, err = repo.MemberCounts(ctx, 1)
+	require.NoError(t, err)
+	require.NotContains(t, counts, otherOrg.ID)
+}

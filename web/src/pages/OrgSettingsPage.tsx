@@ -315,7 +315,7 @@ function GroupsSection({
                     )}
                   </td>
                   <td style={CELL}>
-                    <Mono>{group.member_ids?.length ?? 0}</Mono>
+                    <Mono>{group.member_count}</Mono>
                   </td>
                   <td style={{ ...CELL, textAlign: 'right' }}>
                     <Button size="small" onClick={() => onSelectGroup(selectedGroup === group.id ? null : group.id)}>

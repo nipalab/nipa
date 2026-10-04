@@ -52,7 +52,7 @@ const ORG_MEMBERS = [
   },
 ]
 
-const GROUPS = [{ id: 'g1', org_id: 'o1', name: 'Coder', description: 'coders' }]
+const GROUPS = [{ id: 'g1', org_id: 'o1', name: 'Coder', description: 'coders', member_count: 3 }]
 
 const GROUP_DETAIL = {
   id: 'g1',
@@ -61,6 +61,7 @@ const GROUP_DETAIL = {
   description: 'coders',
   member_ids: ['u9'],
   members: [{ user_id: 'u9', name: 'user1', email: 'user1@gmail.com' }],
+  member_count: 1,
 }
 
 function stubOrgSettings() {
@@ -100,6 +101,23 @@ afterEach(() => {
 })
 
 describe('OrgSettingsPage groups', () => {
+  it('shows the server-resolved member count in the groups table', async () => {
+    stubOrgSettings()
+    window.history.pushState({}, '', '/sticker/settings')
+    const container = document.createElement('div')
+    container.id = 'root'
+    document.body.appendChild(container)
+    const root = createRoot(container)
+    await act(async () => {
+      root.render(<App />)
+    })
+    await waitForText('Coder')
+
+    const row = Array.from(document.querySelectorAll('tr')).find((item) => item.textContent?.includes('Coder'))
+    expect(row?.textContent).toContain('3')
+    act(() => root.unmount())
+  })
+
   it('shows the email of a group member that is not an organization member', async () => {
     stubOrgSettings()
     window.history.pushState({}, '', '/sticker/settings')
