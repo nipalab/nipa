@@ -141,4 +141,84 @@ describe('OrgSettingsPage groups', () => {
     expect(document.body.textContent).not.toContain('u9')
     act(() => root.unmount())
   })
+
+  it('reloads the groups list after a group member is removed', async () => {
+    let groupListCalls = 0
+    let memberCount = 1
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input)
+        if (url.includes('/auth/refresh')) {
+          return jsonResponse({ access_token: 'token', token_type: 'Bearer', expires_in: 1800 })
+        }
+        if (url.includes('/api/v1/me')) return jsonResponse(ME)
+        const path = url.split('?')[0]
+        if (path.endsWith('/orgs/sticker/groups/g1/members/u9') && init?.method === 'DELETE') {
+          memberCount = 0
+          return jsonResponse({ message: 'removed' })
+        }
+        if (path.endsWith('/orgs/sticker/groups/g1')) {
+          return jsonResponse({
+            id: 'g1',
+            org_id: 'o1',
+            name: 'Coder',
+            description: 'coders',
+            member_ids: memberCount > 0 ? ['u9'] : [],
+            members: memberCount > 0 ? [{ user_id: 'u9', name: 'user1', email: 'user1@gmail.com' }] : [],
+            member_count: memberCount,
+          })
+        }
+        if (path.endsWith('/orgs/sticker/groups')) {
+          groupListCalls += 1
+          return jsonResponse([
+            { id: 'g1', org_id: 'o1', name: 'Coder', description: 'coders', member_count: memberCount },
+          ])
+        }
+        if (path.endsWith('/orgs/sticker/members')) return jsonResponse(ORG_MEMBERS)
+        if (path.endsWith('/api/v1/orgs')) return jsonResponse(ORGS)
+        return jsonResponse({ error: 'not found' }, 404)
+      }),
+    )
+    window.history.pushState({}, '', '/sticker/settings')
+    const container = document.createElement('div')
+    container.id = 'root'
+    document.body.appendChild(container)
+    const root = createRoot(container)
+    await act(async () => {
+      root.render(<App />)
+    })
+    await waitForText('Coder')
+
+    await act(async () => {
+      findButton('View').click()
+    })
+    await waitForText('user1@gmail.com')
+
+    const removeButton = Array.from(document.querySelectorAll('button')).find(
+      (button) =>
+        button.textContent?.trim() === 'Remove' && button.closest('div')?.textContent?.includes('user1@gmail.com'),
+    )
+    expect(removeButton).toBeDefined()
+    await act(async () => {
+      removeButton?.click()
+    })
+    await waitFor(() => document.querySelector('[role="dialog"]') !== null)
+
+    const dialog = document.querySelector('[role="dialog"]') as HTMLElement
+    const confirm = Array.from(dialog.querySelectorAll('button')).find(
+      (button) => button.textContent?.trim() === 'Remove',
+    )
+    expect(confirm).toBeDefined()
+    await act(async () => {
+      confirm?.click()
+    })
+
+    await waitFor(() => {
+      const row = Array.from(document.querySelectorAll('tr')).find((item) => item.textContent?.includes('Coder'))
+      return row?.textContent?.includes('0') ?? false
+    })
+    expect(groupListCalls).toBeGreaterThanOrEqual(2)
+    act(() => root.unmount())
+  })
 })

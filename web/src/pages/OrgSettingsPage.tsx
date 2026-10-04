@@ -96,6 +96,7 @@ export default function OrgSettingsPage() {
             if (selectedGroup) {
               await addGroupMember(org, selectedGroup, userId)
               reloadGroup()
+              reloadGroups()
             }
           })
         }
@@ -147,6 +148,7 @@ export default function OrgSettingsPage() {
         onRemoved={() => {
           setConfirmRemoveGroupMember(null)
           reloadGroup()
+          reloadGroups()
         }}
         onError={setActionError}
       />

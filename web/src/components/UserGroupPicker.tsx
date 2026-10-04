@@ -54,6 +54,7 @@ export function UserGroupPicker({
       setEntries([])
       return
     }
+    let active = true
     debounceRef.current = setTimeout(async () => {
       setLoading(true)
       try {
@@ -62,6 +63,7 @@ export function UserGroupPicker({
 
         if (kind === 'user' || kind === 'user-or-group') {
           const [usersResult, membersResult] = await Promise.allSettled([listUsers(), listOrgMembers(org)])
+          if (!active) return
           setSearchable(usersResult.status === 'fulfilled' || membersResult.status === 'fulfilled')
           const seen = new Set<string>()
           const members = membersResult.status === 'fulfilled' ? membersResult.value : []
@@ -104,6 +106,7 @@ export function UserGroupPicker({
 
         if (kind === 'group' || kind === 'user-or-group') {
           const groupsResult = await Promise.allSettled([listGroups(org)])
+          if (!active) return
           const groups = groupsResult[0].status === 'fulfilled' ? groupsResult[0].value : []
           if (groupsResult[0].status === 'fulfilled') setSearchable(true)
           else if (kind === 'group') setSearchable(false)
@@ -122,10 +125,11 @@ export function UserGroupPicker({
         setEntries(results.slice(0, 10))
         setHighlight(0)
       } finally {
-        setLoading(false)
+        if (active) setLoading(false)
       }
     }, 200)
     return () => {
+      active = false
       if (debounceRef.current) clearTimeout(debounceRef.current)
     }
   }, [query, org, kind])

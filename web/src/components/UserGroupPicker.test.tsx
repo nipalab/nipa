@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { UserGroupPicker } from './UserGroupPicker'
 import { listOrgMembers, listUsers } from '../api/endpoints'
+import type { UserResponse } from '../api/models'
 
 vi.mock('../api/endpoints', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../api/endpoints')>()
@@ -143,6 +144,56 @@ describe('UserGroupPicker', () => {
     })
 
     expect(selected).toEqual([{ id: 'abc123', isGroup: false }])
+  })
+
+  it('ignores out-of-order responses from stale queries', async () => {
+    const users: UserResponse[] = [
+      {
+        id: '1',
+        name: 'Alice',
+        email: 'alice@example.com',
+        photo_url: '',
+        is_admin: false,
+        is_super_admin: false,
+        deleted: false,
+      },
+      {
+        id: '2',
+        name: 'Abigail',
+        email: 'abigail@example.com',
+        photo_url: '',
+        is_admin: false,
+        is_super_admin: false,
+        deleted: false,
+      },
+    ]
+    let releaseFirst: (value: UserResponse[]) => void = () => undefined
+    let calls = 0
+    vi.mocked(listUsers).mockImplementation(async () => {
+      calls += 1
+      if (calls === 1) {
+        return new Promise<UserResponse[]>((resolve) => {
+          releaseFirst = resolve
+        })
+      }
+      return users
+    })
+
+    const container = await render(<UserGroupPicker org="acme" kind="user" onSelect={() => undefined} />)
+
+    type(container.querySelector('input'), 'al')
+    await waitFor(() => calls === 1)
+
+    type(container.querySelector('input'), 'ab')
+    await waitFor(() => (container.textContent ?? '').includes('Abigail'))
+
+    await act(async () => {
+      releaseFirst(users)
+      await Promise.resolve()
+    })
+
+    expect(container.textContent).toContain('Abigail')
+    expect(container.textContent).not.toContain('Alice')
   })
 
   it('allows manual group IDs', async () => {
