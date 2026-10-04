@@ -45,7 +45,7 @@ Run `nipa <command> --help` for full details.
 | `nipa branch`               | Show the current branch. `-a` lists all server branches, `-c <name>` creates a new branch and switches to it. |
 | `nipa switch <branch>`      | Fetch the given branch, materialize its tree in the working copy, and repoint the local repository at it. `--tag <name>` checks out a release tag instead, detaching HEAD at that tag. Not allowed while changes are staged. |
 | `nipa tag`                  | List the project's release tags. `-c <name> [-m <message>]` creates an immutable tag pointing at the checked-out commit (or `--branch <b>` / `--commit <id\|hash>`), `-d <name>` deletes one. |
-| `nipa add <path> [...]`     | Mark files (or everything inside directories) for the next push.            |
+| `nipa add <path> [...]`     | Mark files (or everything inside directories) for the next push. Ignored files are skipped; `-f` stages them anyway. |
 | `nipa remove <path> [...]`  | Unmark files for the next push. `-a` unmarks everything.                    |
 | `nipa status`               | Show the working copy status: `A` staged, `M` modified, `?` untracked, `!` missing, `C` conflicts. |
 | `nipa lock <path> [--branch]` | Lock a tracked binary file, or a directory prefix covering a whole editing pass, so only you can land it. Locks on the default branch are project-global; `--branch` scopes the lock elsewhere. |
@@ -71,6 +71,15 @@ by `nipa tag -d`. `nipa switch --tag v1.0.0` checks the tagged tree out in a
 detached state: the configured branch stays, `nipa update` re-syncs the tag,
 `nipa status`, `nipa log` and `nipa diff` follow the pinned commit, and
 push/merge/revert refuse until `nipa switch <branch>` returns to a branch.
+
+Files matching the root `.nipaignore` file (versioned, shared with the team) or
+the clone-local `.nipa/ignore` file (never tracked) are hidden from `nipa
+status` and skipped by `nipa add`; `nipa add -f` stages an ignored file anyway,
+after which it stays tracked. The syntax follows a pragmatic gitignore subset:
+`#` comments, `!` negation, `*`/`?`, `**` spanning directories, a leading or
+embedded `/` anchoring to the repository root, and a trailing `/` matching
+directories only; the last matching rule wins. Sparse checkouts always
+materialize the root `.nipaignore` so partial clones apply the same rules.
 
 Commit references are the base36 commit IDs printed by `nipa log`. A revert
 moves history forward: each reverted commit produces a new commit applying its

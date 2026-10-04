@@ -17,6 +17,7 @@ import (
 
 	"github.com/nipalab/nipa/internal/chunker"
 	"github.com/nipalab/nipa/internal/client/domain"
+	"github.com/nipalab/nipa/internal/client/ignore"
 	serverDomain "github.com/nipalab/nipa/internal/domain"
 )
 
@@ -50,8 +51,15 @@ func NewWorkingCopy(localRepo WorkingCopyRepo, root string) (*WorkingCopy, error
 	return w, nil
 }
 
-func (w *WorkingCopy) Add(ctx context.Context, targets []string) error {
-	paths, err := w.expandAddTargets(targets)
+// AddOptions controls how paths are staged.
+type AddOptions struct {
+	// Force stages paths even when they match the ignore rules.
+	Force bool
+}
+
+func (w *WorkingCopy) Add(ctx context.Context, targets []string, opts ...AddOptions) error {
+	force := len(opts) > 0 && opts[0].Force
+	paths, err := w.expandAddTargets(targets, force)
 	if err != nil {
 		return err
 	}
@@ -141,8 +149,12 @@ func (w *WorkingCopy) Status(ctx context.Context, opts ...StatusOptions) (*domai
 	for _, p := range staged {
 		stagedByPath[p] = true
 	}
+	ignores, err := newIgnoreState(w.root, append(snapshotPaths(snapshot), staged...))
+	if err != nil {
+		return nil, err
+	}
 
-	working, err := walkWorkingFiles(w.root)
+	working, err := walkWorkingFiles(w.root, ignores)
 	if err != nil {
 		return nil, err
 	}
@@ -393,17 +405,61 @@ func (w *WorkingCopy) rehash(jobs []statusHashJob) []statusHashResult {
 	return results
 }
 
+// ignoreState applies the ignore rules to a working-tree walk while keeping
+// tracked and staged paths exempt: tracking always wins over ignore rules.
+type ignoreState struct {
+	matcher   *ignore.Matcher
+	protected map[string]bool
+}
+
+func newIgnoreState(root string, protected []string) (*ignoreState, error) {
+	matcher, err := ignore.New(root)
+	if err != nil {
+		return nil, err
+	}
+	set := make(map[string]bool, len(protected)*2)
+	for _, p := range protected {
+		if p == "" {
+			continue
+		}
+		set[p] = true
+		for i := strings.LastIndexByte(p, '/'); i > 0; i = strings.LastIndexByte(p[:i], '/') {
+			set[p[:i]] = true
+		}
+	}
+	return &ignoreState{matcher: matcher, protected: set}, nil
+}
+
+func snapshotPaths(snapshot *domain.Snapshot) []string {
+	paths := make([]string, 0, len(snapshot.Files))
+	for _, f := range snapshot.Files {
+		paths = append(paths, f.Path)
+	}
+	return paths
+}
+
+func (s *ignoreState) skipDir(rel string) bool {
+	if s == nil || s.matcher.Empty() {
+		return false
+	}
+	return s.matcher.Ignores(rel, true) && !s.protected[rel]
+}
+
+func (s *ignoreState) skipFile(rel string) bool {
+	if s == nil || s.matcher.Empty() {
+		return false
+	}
+	return s.matcher.Ignores(rel, false) && !s.protected[rel]
+}
+
 // walkWorkingFiles returns the repo-relative slash paths of regular files in
-// the working tree, sorted, skipping the .nipa metadata directory.
-func walkWorkingFiles(root string) ([]string, error) {
+// the working tree, sorted, skipping the .nipa metadata directory and ignored
+// paths that are neither tracked nor staged.
+func walkWorkingFiles(root string, ignores *ignoreState) ([]string, error) {
 	var paths []string
 	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
-		}
-		rel, err := filepath.Rel(root, p)
-		if err != nil {
-			return err
 		}
 		if d.Name() == nipaDir {
 			if d.IsDir() {
@@ -411,13 +467,27 @@ func walkWorkingFiles(root string) ([]string, error) {
 			}
 			return nil
 		}
+		rel, err := filepath.Rel(root, p)
+		if err != nil {
+			return err
+		}
+		if rel == "." {
+			return nil
+		}
+		relSlash := filepath.ToSlash(rel)
 		if d.IsDir() {
+			if ignores.skipDir(relSlash) {
+				return filepath.SkipDir
+			}
 			return nil
 		}
 		if !d.Type().IsRegular() {
 			return nil
 		}
-		paths = append(paths, filepath.ToSlash(rel))
+		if ignores.skipFile(relSlash) {
+			return nil
+		}
+		paths = append(paths, relSlash)
 		return nil
 	})
 	if err != nil {
@@ -439,8 +509,12 @@ func (w *WorkingCopy) listStagedSet() (map[string]bool, error) {
 	return set, nil
 }
 
-func (w *WorkingCopy) expandAddTargets(targets []string) ([]string, error) {
+func (w *WorkingCopy) expandAddTargets(targets []string, force bool) ([]string, error) {
 	snapshot, err := w.localRepo.Snapshot()
+	if err != nil {
+		return nil, err
+	}
+	ignores, err := newIgnoreState(w.root, snapshotPaths(snapshot))
 	if err != nil {
 		return nil, err
 	}
@@ -475,8 +549,14 @@ func (w *WorkingCopy) expandAddTargets(targets []string) ([]string, error) {
 			continue
 		}
 		if !info.IsDir() {
+			if !force && ignores.skipFile(t) {
+				return nil, ignoredPathError(t)
+			}
 			add(t)
 			continue
+		}
+		if !force && ignores.skipDir(t) {
+			return nil, ignoredPathError(t)
 		}
 		err = filepath.WalkDir(abs, func(p string, d fs.DirEntry, walkErr error) error {
 			if walkErr != nil {
@@ -492,11 +572,20 @@ func (w *WorkingCopy) expandAddTargets(targets []string) ([]string, error) {
 			if err != nil {
 				return err
 			}
+			if rel == "." {
+				return nil
+			}
 			relSlash := filepath.ToSlash(rel)
 			if d.IsDir() {
+				if !force && ignores.skipDir(relSlash) {
+					return filepath.SkipDir
+				}
 				return nil
 			}
 			if !d.Type().IsRegular() {
+				return nil
+			}
+			if !force && ignores.skipFile(relSlash) {
 				return nil
 			}
 			add(relSlash)
@@ -517,6 +606,10 @@ func (w *WorkingCopy) expandAddTargets(targets []string) ([]string, error) {
 	}
 	sort.Strings(out)
 	return out, nil
+}
+
+func ignoredPathError(path string) error {
+	return fmt.Errorf("path %q is ignored; use -f to add it anyway", path)
 }
 
 // stageTrackedTarget marks a missing add target as a deletion: the exact path

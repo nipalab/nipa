@@ -42,6 +42,21 @@ func TestSetupAddCmd_SkipsNipaDir(t *testing.T) {
 	require.Equal(t, []string{"a.txt"}, stagedPathsAt(t, root))
 }
 
+func TestSetupAddCmd_ForceOverridesIgnore(t *testing.T) {
+	root := setupRepo(t, "main")
+	writeFile(t, root, ".nipaignore", "*.log\n")
+	writeFile(t, root, "app.log", "log")
+	cli := newStageCli()
+
+	_, err := runCmdInDir(t, root, cli.setupAddCmd(), "app.log")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "ignored")
+
+	_, err = runCmdInDir(t, root, cli.setupAddCmd(), "-f", "app.log")
+	require.NoError(t, err)
+	require.Equal(t, []string{"app.log"}, stagedPathsAt(t, root))
+}
+
 func TestSetupAddCmd_MissingPath(t *testing.T) {
 	root := setupRepo(t, "main")
 	cli := newStageCli()

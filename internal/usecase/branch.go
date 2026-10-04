@@ -480,7 +480,10 @@ func (b *Branch) loadTreeManifest(ctx context.Context, node *domain.TreeNode, pa
 	node.FileChildren = nil
 	for _, file := range files {
 		filePath := joinTreePath(path, file.Name)
-		if !filter.Allow(filePath) || !sparse.Covers(filePath) {
+		if !filter.Allow(filePath) {
+			continue
+		}
+		if !sparse.Covers(filePath) && !keepRootIgnoreFile(path, file.Name, sparse) {
 			continue
 		}
 		node.FileChildren = append(node.FileChildren, file)
@@ -519,6 +522,14 @@ func joinTreePath(parent, name string) string {
 		return parent
 	}
 	return parent + "/" + name
+}
+
+// rootIgnoreFile is the versioned ignore rules file. Sparse manifests always
+// keep it at the root so partial checkouts still apply the team rules.
+const rootIgnoreFile = ".nipaignore"
+
+func keepRootIgnoreFile(path, name string, sparse domain.PrefixSet) bool {
+	return path == "" && name == rootIgnoreFile && !sparse.Empty()
 }
 
 // EnsureProjectAccess returns a no-permission error unless the caller holds

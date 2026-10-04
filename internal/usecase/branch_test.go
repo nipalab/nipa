@@ -562,6 +562,76 @@ func TestBranch_GetTreeManifest_WithPath(t *testing.T) {
 	require.Equal(t, []*domain.File{shaderFile}, gotShaders.FileChildren)
 }
 
+func TestBranch_GetTreeManifest_SparseKeepsRootIgnoreFile(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := newAllowAllPerm(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+
+	commitID := snow.ID(9)
+	branch := &domain.Branch{ID: 1, ProjectID: 1, Name: "main", CommitID: &commitID}
+	commit := &domain.Commit{ID: commitID, TreeID: 100}
+	root := &domain.TreeNode{ID: 100, Name: "root"}
+	ignoreFile := &domain.File{ID: 1, Name: ".nipaignore", TreeID: 100}
+	readmeFile := &domain.File{ID: 2, Name: "README.md", TreeID: 100}
+	docs := &domain.TreeNode{ID: 200, Name: "docs"}
+	docsFile := &domain.File{ID: 3, Name: "guide.md", TreeID: 200}
+	src := &domain.TreeNode{ID: 300, Name: "src"}
+
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).
+		Return(true)
+
+	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(branch, nil)
+	repo.EXPECT().GetCommit(gomock.Any(), commitID).Return(commit, nil)
+	repo.EXPECT().GetTreeNode(gomock.Any(), int64(100)).Return(root, nil)
+	repo.EXPECT().GetTreeChildByName(gomock.Any(), int64(100), "docs").Return(docs, nil)
+	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(100)).Return([]*domain.File{ignoreFile, readmeFile}, nil)
+	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(100)).Return([]*domain.TreeNode{docs, src}, nil)
+	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(200)).Return([]*domain.File{docsFile}, nil)
+	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(200)).Return(nil, nil)
+
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
+	got, err := uc.GetTreeManifest(context.Background(), snow.ID(1), "main", []string{"docs"}, "", true)
+	require.NoError(t, err)
+	require.Equal(t, []*domain.File{ignoreFile}, got.FileChildren, "sparse manifests keep the root ignore file")
+	require.Len(t, got.TreeChildren, 1)
+	require.Equal(t, docs, got.TreeChildren[0])
+	require.Equal(t, []*domain.File{docsFile}, got.TreeChildren[0].FileChildren)
+}
+
+func TestBranch_GetTreeManifest_SparseRootIgnoreFileRespectsFilter(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := restrictedPerm(ctrl, []*domain.PBACRule{
+		{PathPrefix: "docs", Permission: domain.PermissionRead},
+	}, nil)
+	repo := NewMockbranchRepository(ctrl)
+
+	commitID := snow.ID(9)
+	branch := &domain.Branch{ID: 1, ProjectID: 1, Name: "main", CommitID: &commitID}
+	commit := &domain.Commit{ID: commitID, TreeID: 100}
+	root := &domain.TreeNode{ID: 100, Name: "root"}
+	ignoreFile := &domain.File{ID: 1, Name: ".nipaignore", TreeID: 100}
+	docs := &domain.TreeNode{ID: 200, Name: "docs"}
+	docsFile := &domain.File{ID: 2, Name: "guide.md", TreeID: 200}
+
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
+	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(branch, nil)
+	repo.EXPECT().GetCommit(gomock.Any(), commitID).Return(commit, nil)
+	repo.EXPECT().GetTreeNode(gomock.Any(), int64(100)).Return(root, nil)
+	repo.EXPECT().GetTreeChildByName(gomock.Any(), int64(100), "docs").Return(docs, nil)
+	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(100)).Return([]*domain.File{ignoreFile}, nil)
+	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(100)).Return([]*domain.TreeNode{docs}, nil)
+	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(200)).Return([]*domain.File{docsFile}, nil)
+	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(200)).Return(nil, nil)
+
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
+	got, err := uc.GetTreeManifest(context.Background(), snow.ID(1), "main", []string{"docs"}, "", true)
+	require.NoError(t, err)
+	require.Empty(t, got.FileChildren, "the root ignore file must not bypass the read filter")
+	require.Len(t, got.TreeChildren, 1)
+	require.Equal(t, []*domain.File{docsFile}, got.TreeChildren[0].FileChildren)
+}
+
 func TestBranch_GetTreeManifest_PrunesHiddenPaths(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	perm := restrictedPerm(ctrl, []*domain.PBACRule{
@@ -692,6 +762,35 @@ func TestBranch_VisibleChunks(t *testing.T) {
 	got, err := uc.VisibleChunks(context.Background(), snow.ID(1), []string{commitID.Base36()}, nil)
 	require.NoError(t, err)
 	require.Equal(t, []domain.Hash{visible, shared}, got)
+}
+
+func TestBranch_VisibleChunks_SparseKeepsRootIgnoreFile(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := newAllowAllPerm(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+
+	commitID := snow.ID(7)
+	ignoreHash := domain.Hash{0x01}
+	readmeHash := domain.Hash{0x02}
+	assetHash := domain.Hash{0x03}
+
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
+	repo.EXPECT().GetCommit(gomock.Any(), commitID).Return(&domain.Commit{ID: commitID, ProjectID: 1, TreeID: 100}, nil)
+	repo.EXPECT().GetTreeNode(gomock.Any(), int64(100)).Return(&domain.TreeNode{ID: 100, Name: "root"}, nil)
+	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(100)).Return([]*domain.File{
+		{ID: 1, Name: ".nipaignore", TreeID: 100, Chunks: []domain.Chunk{{Hash: ignoreHash}}},
+		{ID: 2, Name: "README.md", TreeID: 100, Chunks: []domain.Chunk{{Hash: readmeHash}}},
+	}, nil)
+	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(100)).Return([]*domain.TreeNode{{ID: 200, Name: "assets"}}, nil)
+	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(200)).Return([]*domain.File{
+		{ID: 3, Name: "wood.png", TreeID: 200, Chunks: []domain.Chunk{{Hash: assetHash}}},
+	}, nil)
+	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(200)).Return(nil, nil)
+
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
+	got, err := uc.VisibleChunks(context.Background(), snow.ID(1), []string{commitID.Base36()}, []string{"assets"})
+	require.NoError(t, err)
+	require.Equal(t, []domain.Hash{ignoreHash, assetHash}, got, "the ignore file's chunks stay downloadable")
 }
 
 func TestBranch_VisibleChunks_InvalidCommit(t *testing.T) {

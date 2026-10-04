@@ -60,8 +60,10 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   pb client for the daemon proxy), `merge` (three-way tree decisions + diff3
   text merge), `securestorage` (keyring-backed token store), `config`
   (`~/.config/nipa/config.json`: `diffExternal`, `uploadWorkers`), `difftool`
-  (external diff runner), `domain` (client config/url/errors/commit/pending
-  state), `localrepo` (`.nipa/` local metadata + SQLite),
+  (external diff runner), `ignore` (root `.nipaignore` + local `.nipa/ignore`
+  pattern matcher for untracked working files), `domain` (client
+  config/url/errors/commit/pending state), `localrepo` (`.nipa/` local metadata
+  + SQLite),
   `daemon` (the loopback gRPC service behind `nipa serve`, see the flow below).
   `localrepo.FindRepoRoot`
   searches up to 32 parent directories for a `.nipa/config` so every in-repo
@@ -98,6 +100,22 @@ permission-filtered) clone sends the pinned head commit as
 `base_commit_id` (preferred over `base_tree_hash`) so the server applies the
 delta to the full base tree. Merge and revert still require a full checkout;
 `Push.Run` refuses to run mid multi-target revert sequence.
+
+Flow for ignore rules (`.nipaignore` at the repo root, versioned; `.nipa/ignore`
+per clone, never tracked): `internal/client/ignore.New` compiles both files
+(local rules last, so they win) with a pragmatic gitignore subset (`#` comments,
+`!` negation, `*`/`?`, `**`, leading/mid `/` root anchoring, trailing `/` =
+directory-only; last match wins). `WorkingCopy.Status` and `Diff.scanWorking`
+walk the working tree through `walkWorkingFiles`, which drops ignored paths
+unless they are tracked or staged (tracking always wins over ignores) and prunes
+ignored directories that contain no protected paths. `nipa add` errors on an
+explicitly ignored target with a `use -f` hint (`AddOptions{Force}` / `nipa add
+-f` stages it anyway); directory and whole-repo adds skip ignored files
+silently. The matcher is client-side only: a hostile client can still push such
+paths, and a tracked file that later matches a rule stays tracked until
+explicitly removed. Sparse manifests always include the root `.nipaignore`
+(`loadTreeManifest`'s `keepRootIgnoreFile`, still behind the read filter), so
+partial checkouts apply the team rules too.
 
 Flow for release tags (`nipa tag`, `nipa tag -c <name> [-m msg] [--branch <b> |
 --commit <id|hash>]`, `nipa tag -d <name>`, `nipa switch --tag <name>`): a tag

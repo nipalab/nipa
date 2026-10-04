@@ -198,6 +198,43 @@ func TestDiff_UntrackedIsIgnored(t *testing.T) {
 	require.Empty(t, files)
 }
 
+func TestDiff_IgnoredUntrackedIsHidden(t *testing.T) {
+	root := t.TempDir()
+	stub := newDiffStub()
+	writeRepoFile(t, root, ".nipaignore", "*.log\n")
+	writeRepoFile(t, root, "loose.log", "hello\n")
+
+	files, err := NewDiff(nil, nil, stub).Run(context.Background(), root, nil, DiffOptions{})
+	require.NoError(t, err)
+	require.Empty(t, files)
+}
+
+func TestDiff_TrackedIgnoredFileIsShown(t *testing.T) {
+	root := t.TempDir()
+	stub := newDiffStub()
+	withSnapshotFile(t, stub, "build/out.o", "old\n")
+	writeRepoFile(t, root, ".nipaignore", "build/\n")
+	writeRepoFile(t, root, "build/out.o", "new\n")
+
+	files, err := NewDiff(nil, nil, stub).Run(context.Background(), root, nil, DiffOptions{})
+	require.NoError(t, err)
+	require.Len(t, files, 1, "tracking wins over ignore rules")
+	require.Equal(t, diff.Modified, files[0].Change.Status)
+}
+
+func TestDiff_StagedIgnoredFileIsShown(t *testing.T) {
+	root := t.TempDir()
+	stub := newDiffStub()
+	stub.staged = []string{"app.log"}
+	writeRepoFile(t, root, ".nipaignore", "*.log\n")
+	writeRepoFile(t, root, "app.log", "log\n")
+
+	files, err := NewDiff(nil, nil, stub).Run(context.Background(), root, nil, DiffOptions{})
+	require.NoError(t, err)
+	require.Len(t, files, 1, "a force-staged ignored file stays visible")
+	require.Equal(t, diff.Added, files[0].Change.Status)
+}
+
 func TestDiff_Deleted(t *testing.T) {
 	root := t.TempDir()
 	stub := newDiffStub()
