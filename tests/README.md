@@ -93,6 +93,7 @@ tests/
     revert_test.go        nipa revert (ranges, conflicts, mainline)
     log_test.go           nipa log
     diff_test.go          nipa diff (formats, revisions, ext-diff)
+    ignore_test.go        .nipaignore / .nipa/ignore rules (add -f, sparse)
     sparse_test.go        nipa sparse-checkout
     tag_test.go           nipa tag
     lock_test.go          nipa lock/unlock

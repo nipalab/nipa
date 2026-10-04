@@ -124,6 +124,64 @@ func TestWorkingCopy_Add_PathOutsideRepo(t *testing.T) {
 	require.Contains(t, err.Error(), "outside")
 }
 
+func TestWorkingCopy_Add_SkipsIgnoredFiles(t *testing.T) {
+	root := t.TempDir()
+	writeRepoFile(t, root, ".nipaignore", "*.log\nbuild/\n")
+	writeRepoFile(t, root, "a.txt", "a")
+	writeRepoFile(t, root, "app.log", "log")
+	writeRepoFile(t, root, "build/out.o", "o")
+	local := &stubLocalRepo{snapshot: &domain.Snapshot{}}
+	wc := newWorkingCopy(t, local, root)
+
+	require.NoError(t, wc.Add(context.Background(), []string{""}))
+	require.Equal(t, []string{".nipaignore", "a.txt"}, local.stageAdd)
+}
+
+func TestWorkingCopy_Add_IgnoredFileNeedsForce(t *testing.T) {
+	root := t.TempDir()
+	writeRepoFile(t, root, ".nipaignore", "*.log\n")
+	writeRepoFile(t, root, "app.log", "log")
+	local := &stubLocalRepo{snapshot: &domain.Snapshot{}}
+	wc := newWorkingCopy(t, local, root)
+
+	err := wc.Add(context.Background(), []string{"app.log"})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "ignored")
+	require.Contains(t, err.Error(), "-f")
+	require.Empty(t, local.stageAdd)
+
+	require.NoError(t, wc.Add(context.Background(), []string{"app.log"}, AddOptions{Force: true}))
+	require.Equal(t, []string{"app.log"}, local.stageAdd)
+}
+
+func TestWorkingCopy_Add_IgnoredDirectoryNeedsForce(t *testing.T) {
+	root := t.TempDir()
+	writeRepoFile(t, root, ".nipaignore", "build/\n")
+	writeRepoFile(t, root, "build/out.o", "o")
+	local := &stubLocalRepo{snapshot: &domain.Snapshot{}}
+	wc := newWorkingCopy(t, local, root)
+
+	err := wc.Add(context.Background(), []string{"build"})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "ignored")
+
+	require.NoError(t, wc.Add(context.Background(), []string{"build"}, AddOptions{Force: true}))
+	require.Equal(t, []string{"build/out.o"}, local.stageAdd)
+}
+
+func TestWorkingCopy_Add_TrackedIgnoredFileIsNotBlocked(t *testing.T) {
+	root := t.TempDir()
+	writeRepoFile(t, root, ".nipaignore", "docs/\n")
+	writeRepoFile(t, root, "docs/a.txt", "a")
+	local := &stubLocalRepo{snapshot: &domain.Snapshot{Files: []domain.SnapshotFile{{
+		Path: "docs/a.txt", Hash: contentHash(t, "a"),
+	}}}}
+	wc := newWorkingCopy(t, local, root)
+
+	require.NoError(t, wc.Add(context.Background(), []string{"docs"}))
+	require.Equal(t, []string{"docs/a.txt"}, local.stageAdd)
+}
+
 func TestWorkingCopy_Remove_ExactAndPrefix(t *testing.T) {
 	local := &stubLocalRepo{staged: []string{"a.txt", "b/c.txt", "b/d/e.txt"}}
 	wc := newWorkingCopy(t, local, t.TempDir())
@@ -177,6 +235,34 @@ func TestWorkingCopy_Status(t *testing.T) {
 	require.Equal(t, []string{"missing.txt"}, st.Missing)
 	require.Equal(t, []string{"modified.txt"}, st.Modified)
 	require.Equal(t, []string{"new.txt"}, st.Untracked)
+}
+
+func TestWorkingCopy_Status_HidesIgnoredUntracked(t *testing.T) {
+	root := t.TempDir()
+	writeRepoFile(t, root, ".nipaignore", "*.log\n")
+	writeRepoFile(t, root, "app.log", "log")
+	writeRepoFile(t, root, "a.txt", "a")
+	wc := newWorkingCopy(t, &stubLocalRepo{snapshot: &domain.Snapshot{}}, root)
+
+	st, err := wc.Status(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, []string{".nipaignore", "a.txt"}, st.Untracked)
+}
+
+func TestWorkingCopy_Status_KeepsIgnoredTracked(t *testing.T) {
+	root := t.TempDir()
+	writeRepoFile(t, root, ".nipaignore", "build/\n")
+	writeRepoFile(t, root, "build/out.o", "o")
+	local := &stubLocalRepo{snapshot: &domain.Snapshot{Files: []domain.SnapshotFile{{
+		Path: "build/out.o", Hash: contentHash(t, "o"),
+	}}}}
+	wc := newWorkingCopy(t, local, root)
+
+	st, err := wc.Status(context.Background())
+	require.NoError(t, err)
+	require.NotContains(t, st.Untracked, "build/out.o")
+	require.Empty(t, st.Missing)
+	require.Empty(t, st.Modified)
 }
 
 func TestWorkingCopy_Status_ConfigLoadError(t *testing.T) {

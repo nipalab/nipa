@@ -350,7 +350,18 @@ func isNotFoundError(err error) bool {
 }
 
 func (d *Diff) scanWorking(root string, oldMap map[string]diff.Entry, staged map[string]bool, opts DiffOptions) (map[string]diff.Entry, map[string][]byte, error) {
-	paths, err := walkWorkingFiles(root)
+	protected := make([]string, 0, len(oldMap)+len(staged))
+	for p := range oldMap {
+		protected = append(protected, p)
+	}
+	for p := range staged {
+		protected = append(protected, p)
+	}
+	ignores, err := newIgnoreState(root, protected)
+	if err != nil {
+		return nil, nil, err
+	}
+	paths, err := walkWorkingFiles(root, ignores)
 	if err != nil {
 		return nil, nil, err
 	}
