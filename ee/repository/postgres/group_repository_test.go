@@ -223,3 +223,28 @@ func (s *GroupRepositorySuite) TestMemberCounts() {
 	s.Require().NoError(err)
 	s.NotContains(counts, otherOrg.ID)
 }
+
+func (s *GroupRepositorySuite) TestMemberCountsExcludesDeletedUsers() {
+	ctx := context.Background()
+	repo := NewGroupRepository(s.db)
+
+	alive := seedPBACUser(s.T(), s.db, 62)
+	gone := seedPBACUser(s.T(), s.db, 63)
+	_, err := repo.Create(ctx, domain.Group{ID: snow.ID(7050), OrgID: 1, Name: "artists"})
+	s.Require().NoError(err)
+	s.Require().NoError(repo.AddMember(ctx, snow.ID(7050), alive))
+	s.Require().NoError(repo.AddMember(ctx, snow.ID(7050), gone))
+
+	_, err = s.db.ExecContext(ctx, `UPDATE users SET deleted = true WHERE id = $1`, gone.Int64())
+	s.Require().NoError(err)
+
+	// A soft-deleted user keeps its group_members row, but ListMembers hides it,
+	// so the count has to agree with the detail list.
+	members, err := repo.ListMembers(ctx, snow.ID(7050))
+	s.Require().NoError(err)
+	s.Len(members, 1)
+
+	counts, err := repo.MemberCounts(ctx, 1)
+	s.Require().NoError(err)
+	s.Equal(map[snow.ID]int64{snow.ID(7050): int64(len(members))}, counts)
+}

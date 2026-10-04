@@ -155,9 +155,10 @@ func (q *Queries) GroupMemberAdd(ctx context.Context, arg GroupMemberAddParams) 
 }
 
 const groupMemberCountByOrg = `-- name: GroupMemberCountByOrg :many
-SELECT g.id, COUNT(gm.user_id) AS member_count
+SELECT g.id, COUNT(u.id) AS member_count
 FROM groups g
 LEFT JOIN group_members gm ON gm.group_id = g.id
+LEFT JOIN users u ON u.id = gm.user_id AND u.deleted = false
 WHERE g.org_id = $1 AND g.deleted = false
 GROUP BY g.id
 `

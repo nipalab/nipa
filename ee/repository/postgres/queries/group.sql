@@ -16,9 +16,10 @@ WHERE gm.user_id = sqlc.arg(user_id) AND g.deleted = false
 ORDER BY g.name;
 
 -- name: GroupMemberCountByOrg :many
-SELECT g.id, COUNT(gm.user_id) AS member_count
+SELECT g.id, COUNT(u.id) AS member_count
 FROM groups g
 LEFT JOIN group_members gm ON gm.group_id = g.id
+LEFT JOIN users u ON u.id = gm.user_id AND u.deleted = false
 WHERE g.org_id = sqlc.arg(org_id) AND g.deleted = false
 GROUP BY g.id;
 
