@@ -99,7 +99,7 @@ func (h *Handler) SetProjectBranchProtection(appCtx http.AppContext) {
 		return
 	}
 	branch, err := h.useCase.Branch().SetProtection(
-		appCtx.Context(), project.ID, appCtx.PathParameter("name"), body.Protected,
+		appCtx.Context(), project.ID, appCtx.PathParameter("name"), body.Protected, body.RequiredApprovals,
 	)
 	if err != nil {
 		appCtx.HandleError(err)

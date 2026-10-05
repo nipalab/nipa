@@ -43,7 +43,7 @@ UPDATE branches SET deleted = TRUE, deleted_at = CURRENT_TIMESTAMP
 WHERE project_id = ? AND id = ? AND deleted = FALSE;
 
 -- name: BranchSetProtection :exec
-UPDATE branches SET is_protected = ?, updated_at = CURRENT_TIMESTAMP
+UPDATE branches SET is_protected = ?, required_approvals = ?, updated_at = CURRENT_TIMESTAMP
 WHERE project_id = ? AND id = ? AND deleted = FALSE;
 
 -- name: BranchMarkDefault :exec

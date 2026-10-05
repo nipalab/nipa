@@ -107,5 +107,7 @@ from the route definitions, so it is always current.
 
 - `docs/LOCKING.md` — binary lock rules, including the push gate.
 - `docs/BRANCH_MERGING.md` — merge, revert and merge-request semantics.
+- `docs/MERGE_REQUEST_GAPS.md` — audit of missing merge-request features for
+  later revisit.
 - `docs/DAEMON.md` — the loopback daemon (`nipa serve`).
 - `AGENTS.md` — repository-wide engineering context.

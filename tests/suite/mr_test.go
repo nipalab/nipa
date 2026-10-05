@@ -279,4 +279,46 @@ var _ = Describe("nipa mr", func() {
 		unknownMerge := runNipa(dir, "mr", "merge", "99")
 		Expect(unknownMerge.ExitCode).To(Equal(127))
 	})
+
+	It("gates merging on required approvals and change requests", func() {
+		project := newProject("mr-gate")
+		seedRepo(orgSlug, project, map[string][]byte{"base.txt": []byte("base\n")}, "seed")
+		parent := workspace()
+		dir := cloneRepo(parent, repoURLFor(orgSlug, project), "work")
+		Expect(runNipa(dir, "branch", "-c", "feature").ExitCode).To(Equal(0))
+		writeText(dir, "feature.txt", "feature\n")
+		Expect(runNipa(dir, "add", "feature.txt").ExitCode).To(Equal(0))
+		Expect(pushRepo(dir, "feature work").ExitCode).To(Equal(0))
+		Expect(runNipa(dir, "mr", "create", "--title", uniqueMessage("Gated MR")).ExitCode).To(Equal(0))
+
+		reviewer := newIdentity("mr-gate-reviewer").promote()
+		reviewerAPI := newAPIClient(cli.apiURL, reviewer.email, reviewer.password)
+
+		one := int64(1)
+		protection := api.setBranchProtection(orgSlug, project, "main", true, &one)
+		Expect(protection.RequiredApprovals).To(Equal(int64(1)))
+
+		check := api.checkMergeRequest(orgSlug, project, 1)
+		Expect(check.Status).To(Equal("mergeable"))
+		Expect(check.BlockedBy).To(Equal("insufficient_approvals"))
+
+		blocked := runNipa(dir, "mr", "merge", "1")
+		Expect(blocked.ExitCode).NotTo(Equal(0))
+		Expect(blocked.Output()).To(ContainSubstring("approvals"))
+
+		reviewerAPI.submitMergeRequestReview(orgSlug, project, 1, "changes_requested", "not yet")
+		check = api.checkMergeRequest(orgSlug, project, 1)
+		Expect(check.BlockedBy).To(Equal("changes_requested"))
+		blocked = runNipa(dir, "mr", "merge", "1")
+		Expect(blocked.ExitCode).NotTo(Equal(0))
+		Expect(blocked.Output()).To(ContainSubstring("change requests"))
+
+		reviewerAPI.submitMergeRequestReview(orgSlug, project, 1, "approved", "ok")
+		check = api.checkMergeRequest(orgSlug, project, 1)
+		Expect(check.BlockedBy).To(BeEmpty())
+
+		merge := runNipa(dir, "mr", "merge", "1")
+		Expect(merge.ExitCode).To(Equal(0), merge.Output())
+		Expect(merge.Output()).To(ContainSubstring("merged"))
+	})
 })

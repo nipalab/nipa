@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/repository/dbtx"
 	sqlcSqlite "github.com/nipalab/nipa/internal/repository/sqlc/sqlite"
 	"github.com/nipalab/nipa/internal/snow"
 )
@@ -23,7 +24,7 @@ type MergeRequestReviewRepository struct {
 }
 
 func NewMergeRequestReviewRepository(db *sql.DB) *MergeRequestReviewRepository {
-	return &MergeRequestReviewRepository{queries: sqlcSqlite.New(db)}
+	return &MergeRequestReviewRepository{queries: sqlcSqlite.New(dbtx.New(db))}
 }
 
 func (r *MergeRequestReviewRepository) UpsertReview(ctx context.Context, review domain.MergeRequestReview) (*domain.MergeRequestReview, error) {

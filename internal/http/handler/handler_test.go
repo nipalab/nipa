@@ -223,6 +223,7 @@ func newHandlerTestEnv(t *testing.T) *handlerTestEnv {
 		sqlite.NewMergeRequestRepository(dbConn),
 		branchRepo, branchUc, permissionUc, userRepo, node,
 	)
+	mergeRequestUc = mergeRequestUc.WithReview(reviewUc)
 	reg := &handlerRegistry{
 		auth:         usecase.NewAuth("test-secret", stubPasswordHasher{}, userRepo, authRepo),
 		user:         usecase.NewUser(node, userRepo, stubPasswordHasher{}),

@@ -231,7 +231,7 @@ func startEnterpriseServer(t *testing.T, dbConn *sql.DB, chunkStore storage.Chun
 		chunk:        chunkUc,
 		permission:   permissionUc,
 		group:        serverusecase.NewGroup(groupRepo, node, permissionUc, orgUc),
-		mergeRequest: serverusecase.NewMergeRequest(mrRepo, branchRepo, permissionUc, branchUc, node, dbtx.NewTransactor(dbConn)).WithFileLocks(fileLockUc),
+		mergeRequest: serverusecase.NewMergeRequest(mrRepo, branchRepo, permissionUc, branchUc, node, dbtx.NewTransactor(dbConn)).WithFileLocks(fileLockUc).WithReview(reviewUc),
 		review:       reviewUc,
 		fileLock:     fileLockUc,
 	}

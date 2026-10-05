@@ -267,11 +267,12 @@ func toTreeResponse(path string, node *domain.TreeNode) model.TreeResponse {
 
 func toBranchResponse(branch *domain.Branch) model.BranchResponse {
 	resp := model.BranchResponse{
-		ID:          branch.ID.Base36(),
-		Name:        branch.Name,
-		IsDefault:   branch.IsDefault,
-		IsProtected: branch.IsProtected,
-		UpdatedAt:   branch.UpdatedAt,
+		ID:                branch.ID.Base36(),
+		Name:              branch.Name,
+		IsDefault:         branch.IsDefault,
+		IsProtected:       branch.IsProtected,
+		RequiredApprovals: branch.RequiredApprovals,
+		UpdatedAt:         branch.UpdatedAt,
 	}
 	if branch.CommitID != nil {
 		resp.CommitID = branch.CommitID.Base36()
@@ -326,7 +327,7 @@ func toDiffHunkResponses(hunks []diff.Hunk) []model.DiffHunkResponse {
 		for _, line := range hunk.Lines {
 			text, _ := strings.CutSuffix(line.Text, "\n")
 			lines = append(lines, model.DiffLineResponse{
-				Kind:      diffLineKind(line.Kind),
+				Kind:      diff.LineKind(line.Kind),
 				Old:       line.Old,
 				New:       line.New,
 				Text:      text,
@@ -342,17 +343,6 @@ func toDiffHunkResponses(hunks []diff.Hunk) []model.DiffHunkResponse {
 		})
 	}
 	return out
-}
-
-func diffLineKind(kind byte) string {
-	switch kind {
-	case '+':
-		return "add"
-	case '-':
-		return "remove"
-	default:
-		return "context"
-	}
 }
 
 func joinPath(parent, name string) string {

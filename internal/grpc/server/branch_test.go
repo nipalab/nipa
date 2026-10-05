@@ -1303,21 +1303,24 @@ func TestSetBranchProtection_Success(t *testing.T) {
 	branch, perm, repo := newTestBranchUc(t)
 	srv := New(newMockUsecaseContainer(t, branch))
 	projectID := snow.ID(42)
+	approvals := int64(2)
 
 	perm.EXPECT().AdminHasProject(gomock.Any(), projectID).Return(true)
 	repo.EXPECT().GetBranchByName(gomock.Any(), projectID, "release").
 		Return(&domain.Branch{ID: 3, ProjectID: projectID, Name: "release"}, nil)
-	repo.EXPECT().SetBranchProtection(gomock.Any(), projectID, snow.ID(3), true).Return(nil)
+	repo.EXPECT().SetBranchProtection(gomock.Any(), projectID, snow.ID(3), true, approvals).Return(nil)
 	repo.EXPECT().GetByProjectIDAndID(gomock.Any(), projectID, snow.ID(3)).
-		Return(&domain.Branch{ID: 3, ProjectID: projectID, Name: "release", IsProtected: true}, nil)
+		Return(&domain.Branch{ID: 3, ProjectID: projectID, Name: "release", IsProtected: true, RequiredApprovals: approvals}, nil)
 
 	resp, err := srv.SetBranchProtection(context.Background(), &pb.SetBranchProtectionRequest{
-		Context:     &pb.ProjectContext{Org: "org", Project: "proj"},
-		Name:        "release",
-		IsProtected: true,
+		Context:           &pb.ProjectContext{Org: "org", Project: "proj"},
+		Name:              "release",
+		IsProtected:       true,
+		RequiredApprovals: &approvals,
 	})
 	require.NoError(t, err)
 	require.True(t, resp.GetBranch().GetIsProtected())
+	require.Equal(t, approvals, resp.GetBranch().GetRequiredApprovals())
 }
 
 func TestBranchManagement_ResolveError(t *testing.T) {

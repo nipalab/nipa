@@ -185,7 +185,7 @@ func startTestServer(t *testing.T, dbConn *sql.DB) string {
 		group:      serverusecase.NewGroup(groupRepo, node, permissionUc, orgUc),
 		mergeRequest: serverusecase.NewMergeRequest(
 			mrRepo, branchRepo, permissionUc, branchUc, node, dbtx.NewTransactor(dbConn),
-		).WithFileLocks(fileLockUc),
+		).WithFileLocks(fileLockUc).WithReview(reviewUc),
 		review:   reviewUc,
 		fileLock: fileLockUc,
 	}

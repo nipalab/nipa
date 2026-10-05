@@ -7,6 +7,7 @@ type MergeabilityResponse struct {
 	SourceCommitID    string `json:"source_commit_id,omitempty"`
 	TargetCommitID    string `json:"target_commit_id,omitempty"`
 	MergeBaseCommitID string `json:"merge_base_commit_id,omitempty"`
+	BlockedBy         string `json:"blocked_by,omitempty"`
 }
 
 type MergeRequestResponse struct {

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import {
   Button,
@@ -257,6 +257,12 @@ export default function ProjectSettingsPage() {
                   reloadBranches()
                 })
               }
+              onApprovals={(branch, approvals) =>
+                run(async () => {
+                  await setBranchProtection(org, project, branch.name, branch.is_protected, approvals)
+                  reloadBranches()
+                })
+              }
             />
           )}
 
@@ -324,14 +330,16 @@ function ruleSubject(rule: PBACRuleResponse): { name: string; email?: string } |
 function BranchProtectionCard({
   branches,
   onToggle,
+  onApprovals,
 }: {
   branches: BranchResponse[]
   onToggle: (branch: BranchResponse, protect: boolean) => void
+  onApprovals: (branch: BranchResponse, approvals: number) => void
 }) {
   return (
     <SettingsCard
       title="Protected branches"
-      description="Branch protection blocks force pushes and deletions, so history cannot be rewritten by accident."
+      description="Branch protection blocks force pushes and deletions, and can require approvals before a merge request lands."
     >
       {branches.length === 0 && <div style={{ padding: 16, color: 'var(--fgColor-muted)' }}>No branches yet.</div>}
       {branches.map((branch, index) => (
@@ -346,15 +354,52 @@ function BranchProtectionCard({
                 ? 'Protected — pushes and deletions are restricted.'
                 : 'Not protected — anyone with write access can push.'}
             </Text>
-            <ToggleSwitch
-              aria-labelledby={`branch-protection-${index}`}
-              checked={Boolean(branch.is_protected)}
-              onChange={(value) => onToggle(branch, value)}
-            />
+            <Stack direction="horizontal" gap="condensed" align="center">
+              <Text style={{ color: 'var(--fgColor-muted)', fontSize: 12, whiteSpace: 'nowrap' }}>
+                Required approvals
+              </Text>
+              <ApprovalsInput branch={branch} onCommit={(value) => onApprovals(branch, value)} />
+              <ToggleSwitch
+                aria-labelledby={`branch-protection-${index}`}
+                checked={Boolean(branch.is_protected)}
+                onChange={(value) => onToggle(branch, value)}
+              />
+            </Stack>
           </div>
         </SettingsRow>
       ))}
     </SettingsCard>
+  )
+}
+
+function ApprovalsInput({ branch, onCommit }: { branch: BranchResponse; onCommit: (value: number) => void }) {
+  const [value, setValue] = useState(String(branch.required_approvals ?? 0))
+
+  useEffect(() => {
+    setValue(String(branch.required_approvals ?? 0))
+  }, [branch.required_approvals])
+
+  function commit() {
+    const parsed = Number.parseInt(value, 10)
+    const next = Number.isFinite(parsed) && parsed > 0 ? parsed : 0
+    setValue(String(next))
+    if (next !== branch.required_approvals) onCommit(next)
+  }
+
+  return (
+    <TextInput
+      aria-label={`Required approvals for ${branch.name}`}
+      type="number"
+      min={0}
+      size="small"
+      value={value}
+      onChange={(event) => setValue(event.target.value)}
+      onBlur={commit}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') commit()
+      }}
+      style={{ width: 72 }}
+    />
   )
 }
 

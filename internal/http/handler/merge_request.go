@@ -266,7 +266,7 @@ func toMergeRequestResponse(request *domain.MergeRequest, info *domain.Mergeabil
 }
 
 func toMergeabilityResponse(info *domain.Mergeability) *model.MergeabilityResponse {
-	resp := &model.MergeabilityResponse{Status: info.Status}
+	resp := &model.MergeabilityResponse{Status: info.Status, BlockedBy: info.BlockedBy}
 	if info.SourceCommitID != nil {
 		resp.SourceCommitID = info.SourceCommitID.Base36()
 	}

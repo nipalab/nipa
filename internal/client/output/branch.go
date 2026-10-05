@@ -14,12 +14,13 @@ type Branches struct {
 }
 
 type Branch struct {
-	Name      string `json:"name"`
-	Current   bool   `json:"current"`
-	Default   bool   `json:"default"`
-	Protected bool   `json:"protected"`
-	CommitID  string `json:"commit_id,omitempty"`
-	UpdatedAt string `json:"updated_at,omitempty"`
+	Name              string `json:"name"`
+	Current           bool   `json:"current"`
+	Default           bool   `json:"default"`
+	Protected         bool   `json:"protected"`
+	RequiredApprovals int64  `json:"required_approvals,omitempty"`
+	CommitID          string `json:"commit_id,omitempty"`
+	UpdatedAt         string `json:"updated_at,omitempty"`
 }
 
 func NewCurrentBranch(name string) CurrentBranch {
@@ -33,12 +34,13 @@ func NewBranches(current string, branches []*serverDomain.Branch) Branches {
 			continue
 		}
 		out.Branches = append(out.Branches, Branch{
-			Name:      b.Name,
-			Current:   b.Name == current,
-			Default:   b.IsDefault,
-			Protected: b.IsProtected,
-			CommitID:  branchCommitID(b),
-			UpdatedAt: formatTime(b.UpdatedAt),
+			Name:              b.Name,
+			Current:           b.Name == current,
+			Default:           b.IsDefault,
+			Protected:         b.IsProtected,
+			RequiredApprovals: b.RequiredApprovals,
+			CommitID:          branchCommitID(b),
+			UpdatedAt:         formatTime(b.UpdatedAt),
 		})
 	}
 	return out

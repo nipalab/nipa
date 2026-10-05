@@ -119,11 +119,12 @@ func (b *BranchRepository) HasOpenMergeRequests(ctx context.Context, projectID, 
 	return count > 0, nil
 }
 
-func (b *BranchRepository) SetBranchProtection(ctx context.Context, projectID, branchID snow.ID, protected bool) error {
+func (b *BranchRepository) SetBranchProtection(ctx context.Context, projectID, branchID snow.ID, protected bool, requiredApprovals int64) error {
 	err := b.queries.BranchSetProtection(ctx, sqlcSqlite.BranchSetProtectionParams{
-		IsProtected: protected,
-		ProjectID:   projectID.Int64(),
-		ID:          branchID.Int64(),
+		IsProtected:       protected,
+		RequiredApprovals: requiredApprovals,
+		ProjectID:         projectID.Int64(),
+		ID:                branchID.Int64(),
 	})
 	return handleError(err)
 }
@@ -312,16 +313,17 @@ func branchToDomain(b sqlcSqlite.Branch) *domain.Branch {
 		commitID = &id
 	}
 	return &domain.Branch{
-		ID:          snow.ID(b.ID),
-		ProjectID:   snow.ID(b.ProjectID),
-		Name:        b.Name,
-		IsProtected: b.IsProtected,
-		IsDefault:   b.IsDefault,
-		CommitID:    commitID,
-		UpdatedAt:   b.UpdatedAt,
-		CreatedAt:   b.CreatedAt,
-		Deleted:     b.Deleted,
-		DeletedAt:   nullTimePtr(b.DeletedAt),
+		ID:                snow.ID(b.ID),
+		ProjectID:         snow.ID(b.ProjectID),
+		Name:              b.Name,
+		IsProtected:       b.IsProtected,
+		RequiredApprovals: b.RequiredApprovals,
+		IsDefault:         b.IsDefault,
+		CommitID:          commitID,
+		UpdatedAt:         b.UpdatedAt,
+		CreatedAt:         b.CreatedAt,
+		Deleted:           b.Deleted,
+		DeletedAt:         nullTimePtr(b.DeletedAt),
 	}
 }
 

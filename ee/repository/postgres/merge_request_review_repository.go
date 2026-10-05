@@ -7,6 +7,7 @@ import (
 
 	sqlcPostgres "github.com/nipalab/nipa/ee/repository/postgres/sqlc"
 	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/repository/dbtx"
 	"github.com/nipalab/nipa/internal/snow"
 )
 
@@ -23,7 +24,7 @@ type MergeRequestReviewRepository struct {
 }
 
 func NewMergeRequestReviewRepository(db *sql.DB) *MergeRequestReviewRepository {
-	return &MergeRequestReviewRepository{queries: sqlcPostgres.New(db)}
+	return &MergeRequestReviewRepository{queries: sqlcPostgres.New(dbtx.New(db))}
 }
 
 func (r *MergeRequestReviewRepository) UpsertReview(ctx context.Context, review domain.MergeRequestReview) (*domain.MergeRequestReview, error) {

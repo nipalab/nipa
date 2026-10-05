@@ -697,6 +697,17 @@ func (r *MergeRequestReview) addEvent(ctx context.Context, mr *domain.MergeReque
 	return err
 }
 
+// NoteEvent appends a lifecycle event to the merge request timeline on behalf
+// of the merge request usecase (opened, merged, closed, reopened).
+func (r *MergeRequestReview) NoteEvent(ctx context.Context, mr *domain.MergeRequest, kind string, commitID *snow.ID, commitHash string, actor snow.ID) error {
+	return r.addEvent(ctx, mr, domain.MergeRequestTimelineItem{
+		Kind:       kind,
+		Actor:      domain.ReviewActor{UserID: actor},
+		CommitID:   commitID,
+		CommitHash: commitHash,
+	})
+}
+
 func (r *MergeRequestReview) load(ctx context.Context, projectID snow.ID, number int64) (*domain.MergeRequest, error) {
 	if number <= 0 {
 		return nil, domain.NewErrorUser("invalid merge request number")
