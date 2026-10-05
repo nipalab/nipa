@@ -352,3 +352,134 @@ func TestMergeRequestHandler_CloseDenied(t *testing.T) {
 	})
 	require.Equal(t, codes.PermissionDenied, status.Code(err))
 }
+
+func TestMergeRequestHandler_Reopen(t *testing.T) {
+	repo := &stubMergeRequestRepository{
+		onGet: func(call int) (*domain.MergeRequest, error) {
+			mr := testMergeRequest(5, domain.MergeRequestClosed)
+			if call > 1 {
+				mr.Status = domain.MergeRequestOpen
+			}
+			return mr, nil
+		},
+	}
+	srv, _, perm := newTestMergeRequestServer(t, repo, &stubBranchMerger{})
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(42), domain.PermissionRead).Return(true)
+	ctx := domain.ContextWithClaim(context.Background(), domain.Claims{UserID: snow.ID(7)})
+
+	resp, err := srv.ReopenMergeRequest(ctx, &pb.ReopenMergeRequestRequest{
+		Context: &pb.ProjectContext{Org: "org", Project: "proj"},
+		Number:  5,
+	})
+	require.NoError(t, err)
+	require.Equal(t, domain.MergeRequestOpen, resp.MergeRequest.Status)
+	require.Equal(t, domain.MergeRequestOpen, repo.status)
+}
+
+func TestMergeRequestHandler_Check(t *testing.T) {
+	sourceHead := snow.ID(11)
+	targetHead := snow.ID(12)
+	repo := &stubMergeRequestRepository{
+		onGet: func(int) (*domain.MergeRequest, error) {
+			return testMergeRequest(5, domain.MergeRequestOpen), nil
+		},
+	}
+	merger := &stubBranchMerger{base: &usecase.MergeBaseInfo{MergeBaseCommitID: &targetHead}}
+	srv, branchRepo, perm := newTestMergeRequestServer(t, repo, merger)
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(42), domain.PermissionRead).Return(true)
+	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(42), "feature").
+		Return(&domain.Branch{ID: 3, ProjectID: 42, CommitID: &sourceHead}, nil)
+	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(42), "main").
+		Return(&domain.Branch{ID: 2, ProjectID: 42, CommitID: &targetHead}, nil)
+
+	resp, err := srv.CheckMergeRequest(context.Background(), &pb.CheckMergeRequestRequest{
+		Context: &pb.ProjectContext{Org: "org", Project: "proj"},
+		Number:  5,
+	})
+	require.NoError(t, err)
+	require.Equal(t, domain.MergeabilityMergeable, resp.GetMergeability().GetStatus())
+	require.Empty(t, resp.GetMergeability().GetBlockedBy())
+}
+
+func TestMergeRequestHandler_ListCommits(t *testing.T) {
+	sourceHead := snow.ID(11)
+	targetHead := snow.ID(12)
+	base := snow.ID(9)
+	repo := &stubMergeRequestRepository{
+		onGet: func(int) (*domain.MergeRequest, error) {
+			return testMergeRequest(5, domain.MergeRequestOpen), nil
+		},
+	}
+	merger := &stubBranchMerger{base: &usecase.MergeBaseInfo{MergeBaseCommitID: &base}}
+	srv, branchRepo, perm := newTestMergeRequestServer(t, repo, merger)
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(42), domain.PermissionRead).Return(true)
+	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(42), "feature").
+		Return(&domain.Branch{ID: 3, ProjectID: 42, CommitID: &sourceHead}, nil)
+	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(42), "main").
+		Return(&domain.Branch{ID: 2, ProjectID: 42, CommitID: &targetHead}, nil)
+	branchRepo.EXPECT().CommitLogUntil(gomock.Any(), snow.ID(42), sourceHead, base, 250).
+		Return([]*domain.CommitLogEntry{{Commit: domain.Commit{ID: sourceHead, Message: "second"}, AuthorName: "Alice"}}, nil)
+
+	resp, err := srv.ListMergeRequestCommits(context.Background(), &pb.ListMergeRequestCommitsRequest{
+		Context: &pb.ProjectContext{Org: "org", Project: "proj"},
+		Number:  5,
+	})
+	require.NoError(t, err)
+	require.Len(t, resp.GetCommits(), 1)
+	require.Equal(t, sourceHead.Base36(), resp.GetCommits()[0].GetCommitId())
+	require.Equal(t, "Alice", resp.GetCommits()[0].GetAuthorName())
+}
+
+func TestMergeRequestHandler_GetDiff(t *testing.T) {
+	repo := &stubMergeRequestRepository{
+		onGet: func(int) (*domain.MergeRequest, error) {
+			return testMergeRequest(5, domain.MergeRequestOpen), nil
+		},
+	}
+	srv, branchRepo, perm := newTestMergeRequestServer(t, repo, &stubBranchMerger{})
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(42), domain.PermissionRead).Return(true)
+	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(42), "feature").
+		Return(&domain.Branch{ID: 3, ProjectID: 42, CommitID: ptrSnow(11)}, nil)
+	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(42), "main").
+		Return(&domain.Branch{ID: 2, ProjectID: 42, CommitID: ptrSnow(12)}, nil)
+
+	resp, err := srv.GetMergeRequestDiff(context.Background(), &pb.GetMergeRequestDiffRequest{
+		Context: &pb.ProjectContext{Org: "org", Project: "proj"},
+		Number:  5,
+	})
+	require.NoError(t, err)
+	require.Empty(t, resp.GetFiles())
+}
+
+func TestDiffFileToPB(t *testing.T) {
+	file := diff.FileDiff{
+		Change: diff.Change{Path: "a.txt", Status: diff.Modified, New: diff.Entry{Path: "a.txt"}},
+		Old:    []byte("one\n"),
+		New:    []byte("two\n"),
+	}
+	detail := diffFileToPB(file)
+	require.Equal(t, "a.txt", detail.Path)
+	require.Equal(t, "M", detail.Status)
+	require.False(t, detail.Binary)
+	require.NotEmpty(t, detail.Patch)
+	require.Len(t, detail.Hunks, 1)
+	require.Equal(t, int64(1), detail.Additions)
+	require.Equal(t, int64(1), detail.Deletions)
+
+	renamed := diffFileToPB(diff.FileDiff{
+		Change: diff.Change{
+			Path: "new.txt", Status: diff.Renamed,
+			Old: diff.Entry{Path: "old.txt"}, New: diff.Entry{Path: "new.txt"},
+		},
+		Old: []byte("same\n"),
+		New: []byte("same\n"),
+	})
+	require.Equal(t, "old.txt", renamed.OldPath)
+
+	binary := diffFileToPB(diff.FileDiff{
+		Change: diff.Change{Path: "b.bin", Status: diff.Modified, New: diff.Entry{IsBinary: true}},
+	})
+	require.True(t, binary.Binary)
+	require.Empty(t, binary.Patch)
+	require.Empty(t, binary.Hunks)
+}

@@ -117,7 +117,7 @@ func TestAPIRoutes(t *testing.T) {
 	})
 	mergeRequestUc := usecase.NewMergeRequest(
 		sqlite.NewMergeRequestRepository(dbConn), branchRepo, permissionUc, branchUc, node, dbtx.NewTransactor(dbConn),
-	)
+	).WithReview(reviewUc)
 	fileLockUc := usecase.NewFileLock(sqlite.NewFileLockRepository(dbConn), branchRepo, permissionUc, node)
 	webhookRepo := sqlite.NewWebhookRepository(dbConn)
 	webhookDispatcher := webhook.NewDispatcher(webhookRepo, webhook.NewClient(webhook.ClientConfig{
@@ -1342,6 +1342,7 @@ func TestAPIRoutes(t *testing.T) {
 			}
 		}
 		require.Equal(t, []string{
+			domain.MergeRequestEventOpened,
 			domain.MergeRequestEventReviewRequested,
 			domain.MergeRequestEventReviewSubmitted,
 			domain.MergeRequestEventPushed,
@@ -1442,6 +1443,93 @@ func TestAPIRoutes(t *testing.T) {
 		unauthenticated := doMethod(t, http.MethodGet, mrURL+"/reviews", "", "")
 		require.Equal(t, http.StatusUnauthorized, unauthenticated.StatusCode)
 		unauthenticated.Body.Close()
+	})
+
+	t.Run("merge request approval gate", func(t *testing.T) {
+		aliceLogin, _ := login(t)
+		base := server.URL + "/api/v1/orgs/default/projects/default"
+
+		createReviewer := doMethod(t, http.MethodPost, server.URL+"/api/v1/users",
+			`{"name":"gate","email":"mr-gate@example.com","password":"password123"}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, createReviewer.StatusCode)
+		reviewer := decodeBody[model.UserResponse](t, createReviewer)
+		reviewerLogin, _ := loginAs(t, "mr-gate@example.com")
+		grant := doMethod(t, http.MethodPost, base+"/permissions/rules",
+			`{"user_id":"`+reviewer.ID+`","path_prefix":"","permission":`+
+				strconv.FormatUint(uint64(domain.PermissionRead|domain.PermissionWrite), 10)+`}`,
+			aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, grant.StatusCode)
+		grant.Body.Close()
+
+		branches := decodeBody[[]model.BranchResponse](t, doGet(t, base+"/branches", aliceLogin.AccessToken))
+		var mainHead string
+		for _, branch := range branches {
+			if branch.Name == "main" {
+				mainHead = branch.CommitID
+			}
+		}
+		require.NotEmpty(t, mainHead)
+		createBranch := doMethod(t, http.MethodPost, base+"/branches", `{"name":"gated","from":"main"}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, createBranch.StatusCode)
+		createBranch.Body.Close()
+		seedPushTo(t, "gated", mainHead, map[string]string{"gated.txt": "gated content\n"})
+
+		createMR := doMethod(t, http.MethodPost, base+"/merge-requests",
+			`{"title":"Gated change","source_branch":"gated","target_branch":"main"}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, createMR.StatusCode)
+		mr := decodeBody[model.MergeRequestResponse](t, createMR)
+		mrURL := base + "/merge-requests/" + strconv.FormatInt(mr.Number, 10)
+
+		protect := doMethod(t, http.MethodPut, base+"/branches/main/protection",
+			`{"protected":true,"required_approvals":1}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, protect.StatusCode)
+		require.EqualValues(t, 1, decodeBody[model.BranchResponse](t, protect).RequiredApprovals)
+
+		// the target branch requires an approval the request does not have yet
+		check := decodeBody[model.MergeabilityResponse](t, doGet(t, mrURL+"/check", aliceLogin.AccessToken))
+		require.Equal(t, domain.MergeabilityMergeable, check.Status)
+		require.Equal(t, domain.MergeabilityBlockedApprovals, check.BlockedBy)
+
+		blocked := doMethod(t, http.MethodPost, mrURL+"/merge", "", aliceLogin.AccessToken)
+		require.Equal(t, http.StatusConflict, blocked.StatusCode)
+		blocked.Body.Close()
+
+		// a live objection blocks even when the approval count is met
+		object := doMethod(t, http.MethodPost, mrURL+"/reviews",
+			`{"state":"changes_requested","body":"not yet"}`, reviewerLogin.AccessToken)
+		require.Equal(t, http.StatusOK, object.StatusCode)
+		object.Body.Close()
+		check = decodeBody[model.MergeabilityResponse](t, doGet(t, mrURL+"/check", aliceLogin.AccessToken))
+		require.Equal(t, domain.MergeabilityBlockedChangesRequested, check.BlockedBy)
+
+		// re-reviewing for the same head replaces the decision
+		approve := doMethod(t, http.MethodPost, mrURL+"/reviews",
+			`{"state":"approved","body":"looks good"}`, reviewerLogin.AccessToken)
+		require.Equal(t, http.StatusOK, approve.StatusCode)
+		approve.Body.Close()
+		check = decodeBody[model.MergeabilityResponse](t, doGet(t, mrURL+"/check", aliceLogin.AccessToken))
+		require.Empty(t, check.BlockedBy)
+
+		merge := doMethod(t, http.MethodPost, mrURL+"/merge", "", aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, merge.StatusCode)
+		merged := decodeBody[model.MergeRequestResponse](t, merge)
+		require.Equal(t, domain.MergeRequestMerged, merged.Status)
+
+		// the timeline records the whole lifecycle
+		timeline := decodeBody[[]model.TimelineItemResponse](t, doGet(t, mrURL+"/timeline", aliceLogin.AccessToken))
+		kinds := make([]string, 0, len(timeline))
+		for _, item := range timeline {
+			kinds = append(kinds, item.Kind)
+		}
+		require.Contains(t, kinds, domain.MergeRequestEventOpened)
+		require.Contains(t, kinds, domain.MergeRequestEventReviewSubmitted)
+		require.Contains(t, kinds, domain.MergeRequestEventMerged)
+
+		// cleanup: the next subtests must not inherit the protection policy
+		unprotect := doMethod(t, http.MethodPut, base+"/branches/main/protection",
+			`{"protected":false,"required_approvals":0}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, unprotect.StatusCode)
+		unprotect.Body.Close()
 	})
 
 	t.Run("openapi doc is served", func(t *testing.T) {

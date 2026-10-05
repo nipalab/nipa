@@ -368,8 +368,23 @@ Not in v1 (tracked for later): `allow_behind` policy, server-side merge commits
 
 ## Merge request reviews (v2)
 
-Reviews are advisory: they are recorded, shown and counted, but they do not gate
-merging (which stays fast-forward-only).
+Reviews are recorded, shown and counted, and they gate merging through the
+target branch policy described below (landing itself stays fast-forward-only).
+
+### Merge gate
+
+`Merge` computes `Mergeability.BlockedBy` next to the topology status:
+
+- A live (non-stale, non-dismissed) `changes_requested` decision always blocks,
+  regardless of the target branch settings.
+- A target branch can require a number of live approvals
+  (`branches.required_approvals`, default `0` = no requirement), set through
+  `SetBranchProtection` / `PUT .../branches/{name}/protection`; the optional
+  `required_approvals` field is kept when absent, so toggling `protected` never
+  clears it. `Branch.required_approvals` is returned on branch reads.
+- `BlockedBy` is `changes_requested` or `insufficient_approvals` (empty when
+  not blocked); `Check`/`GET .../{id}` surface it and `Merge` returns a 409 with
+  the reason. Approvals for an older source head are stale and do not count.
 
 ### Model
 
@@ -392,9 +407,12 @@ merging (which stays fast-forward-only).
 - **Review requests** name a user to review; submitting any review by that user
   answers the request, and re-requesting the same reviewer keeps the original
   requester.
-- The **timeline** records `pushed`, `review_requested`, `review_request_removed`,
+- The **timeline** records the lifecycle (`opened`, `merged`, `closed`,
+  `reopened`) plus `pushed`, `review_requested`, `review_request_removed`,
   `review_submitted` and `review_dismissed`, with a `subject` actor for events
-  about another user (e.g. the requested reviewer).
+  about another user (e.g. the requested reviewer). Lifecycle events are written
+  by the merge request usecase through the review seam; `opened` joins the
+  Create transaction, the others are logged bookkeeping failures only.
 
 ### Server surface
 
@@ -416,7 +434,11 @@ merging (which stays fast-forward-only).
   `DeleteMergeRequestComment`, `ResolveMergeRequestThread`,
   `DeleteMergeRequestThread`, `ListMergeRequestReviewRequests`,
   `RequestMergeRequestReview`, `RemoveMergeRequestReviewRequest`,
-  `ListMergeRequestTimeline`.
+  `ListMergeRequestTimeline`. The MR RPCs also gained parity with REST:
+  `ReopenMergeRequest`, `CheckMergeRequest`, `ListMergeRequestCommits` and
+  `GetMergeRequestDiff` (mirroring the REST diff model with
+  `DiffFileDetail`/`DiffHunkDetail`/`DiffLineDetail`); `MergeabilityDetail`
+  carries `blocked_by` and `MergeRequestDetail` an optional live `review`.
 - `Push` notifies the review usecase after a successful apply
   (`usecase.Push.WithReviews`), dismissing stale decisions and appending the
   push event. Bookkeeping failures are logged and never fail the push.

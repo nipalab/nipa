@@ -32,7 +32,7 @@ type branchRepository interface {
 	RenameBranch(ctx context.Context, projectID, branchID snow.ID, name, key string) error
 	DeleteBranch(ctx context.Context, projectID, branchID snow.ID) error
 	HasOpenMergeRequests(ctx context.Context, projectID, branchID snow.ID) (bool, error)
-	SetBranchProtection(ctx context.Context, projectID, branchID snow.ID, protected bool) error
+	SetBranchProtection(ctx context.Context, projectID, branchID snow.ID, protected bool, requiredApprovals int64) error
 	SetDefaultBranch(ctx context.Context, projectID, branchID snow.ID) error
 	UpdateCommitIf(ctx context.Context, branchID snow.ID, fromCommitID, toCommitID *snow.ID) error
 	GetCommit(ctx context.Context, commitID snow.ID) (*domain.Commit, error)
@@ -237,7 +237,10 @@ func (b *Branch) SetDefault(ctx context.Context, projectID snow.ID, name string)
 	return b.branchRepo.GetByProjectIDAndID(ctx, projectID, branch.ID)
 }
 
-func (b *Branch) SetProtection(ctx context.Context, projectID snow.ID, name string, protected bool) (*domain.Branch, error) {
+// SetProtection updates the protection settings of a branch. A nil
+// requiredApprovals keeps the current value, so the protect toggle does not
+// clear an approvals requirement set earlier.
+func (b *Branch) SetProtection(ctx context.Context, projectID snow.ID, name string, protected bool, requiredApprovals *int64) (*domain.Branch, error) {
 	if !b.permUc.AdminHasProject(ctx, projectID) {
 		return nil, domain.NewErrorNoPermission()
 	}
@@ -245,10 +248,17 @@ func (b *Branch) SetProtection(ctx context.Context, projectID snow.ID, name stri
 	if err != nil {
 		return nil, err
 	}
-	if branch.IsProtected == protected {
+	approvals := branch.RequiredApprovals
+	if requiredApprovals != nil {
+		if *requiredApprovals < 0 {
+			return nil, domain.NewErrorUser("required approvals cannot be negative")
+		}
+		approvals = *requiredApprovals
+	}
+	if branch.IsProtected == protected && branch.RequiredApprovals == approvals {
 		return branch, nil
 	}
-	if err := b.branchRepo.SetBranchProtection(ctx, projectID, branch.ID, protected); err != nil {
+	if err := b.branchRepo.SetBranchProtection(ctx, projectID, branch.ID, protected, approvals); err != nil {
 		return nil, err
 	}
 	return b.branchRepo.GetByProjectIDAndID(ctx, projectID, branch.ID)

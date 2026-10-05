@@ -166,6 +166,7 @@ CREATE TABLE branches (
     name TEXT NOT NULL,
     key TEXT NOT NULL,
     is_protected BOOLEAN NOT NULL DEFAULT FALSE,
+    required_approvals BIGINT NOT NULL DEFAULT 0,
     is_default BOOLEAN NOT NULL DEFAULT FALSE,
     commit_id BIGINT REFERENCES commits(id),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),

@@ -87,6 +87,7 @@ func main() {
 		snowUser,
 	)
 	pushUsecase = pushUsecase.WithReviews(mergeRequestReviewUsecase)
+	mergeRequestUsecase = mergeRequestUsecase.WithReview(mergeRequestReviewUsecase)
 	chunkUsecase := usecase.NewChunk(pushRepository, chunkStore, usecase.ChunkTransferConfig{
 		SigningKey:  cfg.ChunkURLSigningKey,
 		PresignTTL:  time.Duration(cfg.ChunkPresignTTLSeconds) * time.Second,

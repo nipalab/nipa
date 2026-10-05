@@ -134,6 +134,37 @@ func (c *apiClient) reopenMergeRequest(org, project string, number int64) {
 	c.do(http.MethodPost, fmt.Sprintf("/orgs/%s/projects/%s/merge-requests/%d/reopen", org, project, number), nil, nil, true)
 }
 
+type branchProtectionJSON struct {
+	IsProtected       bool  `json:"is_protected"`
+	RequiredApprovals int64 `json:"required_approvals"`
+}
+
+func (c *apiClient) setBranchProtection(org, project, branch string, protected bool, requiredApprovals *int64) branchProtectionJSON {
+	body := map[string]any{"protected": protected}
+	if requiredApprovals != nil {
+		body["required_approvals"] = *requiredApprovals
+	}
+	var out branchProtectionJSON
+	c.do(http.MethodPut, fmt.Sprintf("/orgs/%s/projects/%s/branches/%s/protection", org, project, branch), body, &out, true)
+	return out
+}
+
+type mergeabilityJSON struct {
+	Status    string `json:"status"`
+	BlockedBy string `json:"blocked_by"`
+}
+
+func (c *apiClient) checkMergeRequest(org, project string, number int64) mergeabilityJSON {
+	var out mergeabilityJSON
+	c.do(http.MethodGet, fmt.Sprintf("/orgs/%s/projects/%s/merge-requests/%d/check", org, project, number), nil, &out, true)
+	return out
+}
+
+func (c *apiClient) submitMergeRequestReview(org, project string, number int64, state, body string) {
+	c.do(http.MethodPost, fmt.Sprintf("/orgs/%s/projects/%s/merge-requests/%d/reviews", org, project, number),
+		map[string]string{"state": state, "body": body}, nil, true)
+}
+
 func (c *apiClient) do(method, path string, body any, out any, auth bool) int {
 	var reader io.Reader
 	hasBody := body != nil

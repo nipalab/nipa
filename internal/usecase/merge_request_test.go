@@ -733,3 +733,221 @@ func TestMergeRequest_MoreErrorPaths(t *testing.T) {
 		require.True(t, domain.IsErrorNoPermission(err))
 	})
 }
+
+func withReviewGate(t *testing.T, mr *MergeRequest, repo *MockmergeRequestRepository,
+	branchRepo *MockbranchRepository, perm *MockpermissionUsecase, merger *MockbranchMerger,
+) (*MergeRequest, *MockmergeRequestReviewRepository) {
+	t.Helper()
+	reviewRepo := NewMockmergeRequestReviewRepository(gomock.NewController(t))
+	review := NewMergeRequestReview(reviewRepo, repo, branchRepo, merger, perm, nil, newTestBranchNode(t))
+	return mr.WithReview(review), reviewRepo
+}
+
+func TestMergeRequest_Check_BlockedByChangesRequested(t *testing.T) {
+	mr, repo, branchRepo, perm, merger := newTestMergeRequest(t)
+	mr, reviewRepo := withReviewGate(t, mr, repo, branchRepo, perm, merger)
+	sourceHead := snow.ID(11)
+	targetHead := snow.ID(12)
+
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true).AnyTimes()
+	repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(openMergeRequest(), nil).AnyTimes()
+	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").
+		Return(branchWithHead(3, sourceHead), nil).AnyTimes()
+	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").
+		Return(branchWithHead(2, targetHead), nil)
+	merger.EXPECT().GetMergeBase(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
+		Return(&MergeBaseInfo{MergeBaseCommitID: &targetHead}, nil)
+	reviewRepo.EXPECT().ListReviews(gomock.Any(), int64(5)).Return([]*domain.MergeRequestReview{{
+		Reviewer:     domain.ReviewActor{UserID: 8},
+		State:        domain.MergeRequestReviewChangesRequested,
+		HeadCommitID: sourceHead,
+	}}, nil)
+	reviewRepo.EXPECT().ListReviewRequests(gomock.Any(), int64(5)).Return(nil, nil)
+
+	info, err := mr.Check(permissionCtx(7), snow.ID(1), 5)
+	require.NoError(t, err)
+	require.Equal(t, domain.MergeabilityMergeable, info.Status)
+	require.Equal(t, domain.MergeabilityBlockedChangesRequested, info.BlockedBy)
+}
+
+func TestMergeRequest_Check_BlockedByApprovals(t *testing.T) {
+	mr, repo, branchRepo, perm, merger := newTestMergeRequest(t)
+	mr, reviewRepo := withReviewGate(t, mr, repo, branchRepo, perm, merger)
+	sourceHead := snow.ID(11)
+	targetHead := snow.ID(12)
+
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true).AnyTimes()
+	repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(openMergeRequest(), nil).AnyTimes()
+	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").
+		Return(branchWithHead(3, sourceHead), nil).AnyTimes()
+	target := branchWithHead(2, targetHead)
+	target.RequiredApprovals = 2
+	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(target, nil)
+	merger.EXPECT().GetMergeBase(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
+		Return(&MergeBaseInfo{MergeBaseCommitID: &targetHead}, nil)
+	reviewRepo.EXPECT().ListReviews(gomock.Any(), int64(5)).Return([]*domain.MergeRequestReview{{
+		Reviewer:     domain.ReviewActor{UserID: 8},
+		State:        domain.MergeRequestReviewApproved,
+		HeadCommitID: sourceHead,
+	}}, nil)
+	reviewRepo.EXPECT().ListReviewRequests(gomock.Any(), int64(5)).Return(nil, nil)
+
+	info, err := mr.Check(permissionCtx(7), snow.ID(1), 5)
+	require.NoError(t, err)
+	require.Equal(t, domain.MergeabilityBlockedApprovals, info.BlockedBy)
+}
+
+func TestMergeRequest_Check_ApprovalsSatisfied(t *testing.T) {
+	mr, repo, branchRepo, perm, merger := newTestMergeRequest(t)
+	mr, reviewRepo := withReviewGate(t, mr, repo, branchRepo, perm, merger)
+	sourceHead := snow.ID(11)
+	targetHead := snow.ID(12)
+
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true).AnyTimes()
+	repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(openMergeRequest(), nil).AnyTimes()
+	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").
+		Return(branchWithHead(3, sourceHead), nil).AnyTimes()
+	target := branchWithHead(2, targetHead)
+	target.RequiredApprovals = 1
+	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(target, nil)
+	merger.EXPECT().GetMergeBase(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
+		Return(&MergeBaseInfo{MergeBaseCommitID: &targetHead}, nil)
+	reviewRepo.EXPECT().ListReviews(gomock.Any(), int64(5)).Return([]*domain.MergeRequestReview{{
+		Reviewer:     domain.ReviewActor{UserID: 8},
+		State:        domain.MergeRequestReviewApproved,
+		HeadCommitID: sourceHead,
+	}}, nil)
+	reviewRepo.EXPECT().ListReviewRequests(gomock.Any(), int64(5)).Return(nil, nil)
+
+	info, err := mr.Check(permissionCtx(7), snow.ID(1), 5)
+	require.NoError(t, err)
+	require.Empty(t, info.BlockedBy)
+}
+
+func TestMergeRequest_Merge_BlockedByChangesRequested(t *testing.T) {
+	mr, repo, branchRepo, perm, merger := newTestMergeRequest(t)
+	mr, reviewRepo := withReviewGate(t, mr, repo, branchRepo, perm, merger)
+	sourceHead := snow.ID(11)
+	targetHead := snow.ID(12)
+
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true).AnyTimes()
+	repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(openMergeRequest(), nil).AnyTimes()
+	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").
+		Return(branchWithHead(3, sourceHead), nil).AnyTimes()
+	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").
+		Return(branchWithHead(2, targetHead), nil)
+	merger.EXPECT().GetMergeBase(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
+		Return(&MergeBaseInfo{MergeBaseCommitID: &targetHead}, nil)
+	reviewRepo.EXPECT().ListReviews(gomock.Any(), int64(5)).Return([]*domain.MergeRequestReview{{
+		Reviewer:     domain.ReviewActor{UserID: 8},
+		State:        domain.MergeRequestReviewChangesRequested,
+		HeadCommitID: sourceHead,
+	}}, nil)
+	reviewRepo.EXPECT().ListReviewRequests(gomock.Any(), int64(5)).Return(nil, nil)
+
+	_, info, err := mr.Merge(permissionCtx(7), snow.ID(1), 5)
+	require.True(t, domain.IsErrorConflict(err))
+	require.Equal(t, domain.MergeabilityBlockedChangesRequested, info.BlockedBy)
+}
+
+func TestMergeRequest_Merge_RecordsLifecycleEvents(t *testing.T) {
+	mr, repo, branchRepo, perm, merger := newTestMergeRequest(t)
+	mr, reviewRepo := withReviewGate(t, mr, repo, branchRepo, perm, merger)
+	sourceHead := snow.ID(11)
+	targetHead := snow.ID(12)
+	var hash domain.Hash
+	hash[0] = 0xab
+	hash[31] = 0xcd
+
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true).AnyTimes()
+	repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(openMergeRequest(), nil).AnyTimes()
+	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").
+		Return(branchWithHead(3, sourceHead), nil).AnyTimes()
+	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").
+		Return(branchWithHead(2, targetHead), nil)
+	merger.EXPECT().GetMergeBase(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
+		Return(&MergeBaseInfo{MergeBaseCommitID: &targetHead}, nil)
+	reviewRepo.EXPECT().ListReviews(gomock.Any(), int64(5)).Return(nil, nil)
+	reviewRepo.EXPECT().ListReviewRequests(gomock.Any(), int64(5)).Return(nil, nil)
+	merger.EXPECT().FastForwardForMergeRequest(gomock.Any(), snow.ID(1), "main", "feature").
+		Return(&domain.Branch{ID: 2, ProjectID: 1, Name: "main", CommitID: &sourceHead}, nil)
+	repo.EXPECT().UpdateStatus(gomock.Any(), snow.ID(1), int64(5), domain.MergeRequestMerged, &sourceHead).Return(nil)
+	branchRepo.EXPECT().GetCommit(gomock.Any(), sourceHead).Return(&domain.Commit{ID: sourceHead, Hash: hash}, nil)
+
+	var events []domain.MergeRequestTimelineItem
+	reviewRepo.EXPECT().CreateEvent(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, item domain.MergeRequestTimelineItem) (*domain.MergeRequestTimelineItem, error) {
+			events = append(events, item)
+			return &item, nil
+		},
+	)
+
+	_, _, err := mr.Merge(permissionCtx(7), snow.ID(1), 5)
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+	require.Equal(t, domain.MergeRequestEventMerged, events[0].Kind)
+	require.Equal(t, int64(5), events[0].MergeRequestID)
+	require.Equal(t, snow.ID(7), events[0].Actor.UserID)
+	require.Equal(t, &sourceHead, events[0].CommitID)
+	require.Equal(t, hash.String(), events[0].CommitHash)
+}
+
+func TestMergeRequest_Create_RecordsOpenedEvent(t *testing.T) {
+	mr, repo, branchRepo, perm, merger := newTestMergeRequest(t)
+	mr, reviewRepo := withReviewGate(t, mr, repo, branchRepo, perm, merger)
+	sourceHead := snow.ID(11)
+	targetHead := snow.ID(12)
+
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
+	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").
+		Return(&domain.Branch{ID: 3, ProjectID: 1, CommitID: &sourceHead}, nil)
+	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").
+		Return(&domain.Branch{ID: 2, ProjectID: 1, CommitID: &targetHead}, nil)
+	merger.EXPECT().GetMergeBase(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
+		Return(&MergeBaseInfo{MergeBaseCommitID: &targetHead}, nil)
+	repo.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, created domain.MergeRequest) (*domain.MergeRequest, error) {
+			return &created, nil
+		},
+	)
+	reviewRepo.EXPECT().CreateEvent(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, item domain.MergeRequestTimelineItem) (*domain.MergeRequestTimelineItem, error) {
+			require.Equal(t, domain.MergeRequestEventOpened, item.Kind)
+			require.Equal(t, snow.ID(7), item.Actor.UserID)
+			require.NotZero(t, item.MergeRequestID)
+			return &item, nil
+		},
+	)
+
+	_, err := mr.Create(permissionCtx(7), snow.ID(1), "Feature", "", "feature", "main")
+	require.NoError(t, err)
+}
+
+func TestMergeRequest_CloseReopen_RecordsEvents(t *testing.T) {
+	mr, repo, _, perm, merger := newTestMergeRequest(t)
+	mr, reviewRepo := withReviewGate(t, mr, repo, NewMockbranchRepository(gomock.NewController(t)), perm, merger)
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true).AnyTimes()
+
+	repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(openMergeRequest(), nil)
+	repo.EXPECT().UpdateStatus(gomock.Any(), snow.ID(1), int64(5), domain.MergeRequestClosed, nil).Return(nil)
+	closed := openMergeRequest()
+	closed.Status = domain.MergeRequestClosed
+	repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(closed, nil)
+	repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(closed, nil)
+	repo.EXPECT().UpdateStatus(gomock.Any(), snow.ID(1), int64(5), domain.MergeRequestOpen, nil).Return(nil)
+	repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(openMergeRequest(), nil)
+
+	var events []string
+	reviewRepo.EXPECT().CreateEvent(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, item domain.MergeRequestTimelineItem) (*domain.MergeRequestTimelineItem, error) {
+			events = append(events, item.Kind)
+			return &item, nil
+		},
+	).Times(2)
+
+	_, err := mr.Close(permissionCtx(7), snow.ID(1), 5)
+	require.NoError(t, err)
+	_, err = mr.Reopen(permissionCtx(7), snow.ID(1), 5)
+	require.NoError(t, err)
+	require.Equal(t, []string{domain.MergeRequestEventClosed, domain.MergeRequestEventReopened}, events)
+}

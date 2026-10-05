@@ -156,10 +156,13 @@ export function setBranchProtection(
   project: string,
   name: string,
   protectedBranch: boolean,
+  requiredApprovals?: number,
 ): Promise<BranchResponse> {
+  const body: { protected: boolean; required_approvals?: number } = { protected: protectedBranch }
+  if (requiredApprovals !== undefined) body.required_approvals = requiredApprovals
   return apiJson(`${projectBase(org, project)}/branches/${encodeURIComponent(name)}/protection`, {
     method: 'PUT',
-    body: JSON.stringify({ protected: protectedBranch }),
+    body: JSON.stringify(body),
   })
 }
 

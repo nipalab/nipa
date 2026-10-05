@@ -74,6 +74,7 @@ export interface BranchResponse {
   name: string
   is_default: boolean
   is_protected: boolean
+  required_approvals: number
   commit_id?: string
   updated_at: string
 }
@@ -137,6 +138,7 @@ export interface MergeabilityResponse {
   source_commit_id?: string
   target_commit_id?: string
   merge_base_commit_id?: string
+  blocked_by?: string
 }
 
 export interface MergeRequestResponse {

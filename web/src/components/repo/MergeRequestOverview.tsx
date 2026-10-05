@@ -318,6 +318,7 @@ export function MergeRequestOverview({
   }
 
   const mergeability = request?.mergeability?.status
+  const blockedBy = request?.mergeability?.blocked_by
 
   return (
     <div className="nipa-mr-layout">
@@ -704,7 +705,7 @@ export function MergeRequestOverview({
         </div>
       )
     }
-    const mergeable = mergeability === 'mergeable'
+    const mergeable = mergeability === 'mergeable' && !blockedBy
     const MERGE_BOX_TEXT: Record<string, { title: string; hint: string }> = {
       mergeable: {
         title: 'This branch has no conflicts with the base branch.',
@@ -723,10 +724,22 @@ export function MergeRequestOverview({
         hint: 'Recreate the missing branch or close this merge request.',
       },
     }
-    const mergeBoxText = MERGE_BOX_TEXT[mergeability ?? ''] ?? {
-      title: 'This merge request cannot be merged.',
-      hint: 'Refresh the page for the current merge status.',
+    const BLOCKED_BOX_TEXT: Record<string, { title: string; hint: string }> = {
+      changes_requested: {
+        title: 'Changes were requested on this merge request.',
+        hint: 'Address the review feedback; a new review clears the block.',
+      },
+      insufficient_approvals: {
+        title: 'This merge request does not have enough approvals yet.',
+        hint: 'The target branch requires approvals before merging.',
+      },
     }
+    const mergeBoxText =
+      (blockedBy ? BLOCKED_BOX_TEXT[blockedBy] : undefined) ??
+      MERGE_BOX_TEXT[mergeability ?? ''] ?? {
+        title: 'This merge request cannot be merged.',
+        hint: 'Refresh the page for the current merge status.',
+      }
     return (
       <div style={{ border: '1px solid var(--borderColor-default)', borderRadius: 6, overflow: 'hidden' }}>
         <div style={{ padding: 12, display: 'flex', gap: 8 }}>

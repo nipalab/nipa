@@ -48,6 +48,7 @@ type MergeRequest struct {
 	fileLocks  fileLockGate
 	hooks      hookMergeRequestGate
 	transactor transactor
+	review     *MergeRequestReview
 }
 
 // mergeRequestCommitLimit caps how many commits a merge request lists.
@@ -73,6 +74,13 @@ func (m *MergeRequest) WithFileLocks(locks fileLockGate) *MergeRequest {
 // WithHooks enables webhook events on this usecase.
 func (m *MergeRequest) WithHooks(hooks hookMergeRequestGate) *MergeRequest {
 	m.hooks = hooks
+	return m
+}
+
+// WithReview attaches the review usecase: it enables the approval gate on
+// merge and the lifecycle timeline events.
+func (m *MergeRequest) WithReview(review *MergeRequestReview) *MergeRequest {
+	m.review = review
 	return m
 }
 
@@ -155,10 +163,12 @@ func (m *MergeRequest) Create(ctx context.Context, projectID snow.ID, title, des
 		if createErr != nil {
 			return createErr
 		}
-		if m.fileLocks == nil {
-			return nil
+		if m.fileLocks != nil {
+			if err := m.fileLocks.EnsureMergeRequestLocks(txCtx, projectID, mrID, target, paths, claim.UserID, claim.UserID); err != nil {
+				return err
+			}
 		}
-		return m.fileLocks.EnsureMergeRequestLocks(txCtx, projectID, mrID, target, paths, claim.UserID, claim.UserID)
+		return m.appendEvent(txCtx, domain.MergeRequestEventOpened, created, nil, "", claim.UserID)
 	})
 	if err != nil {
 		return nil, err
@@ -246,6 +256,9 @@ func (m *MergeRequest) Merge(ctx context.Context, projectID snow.ID, number int6
 	default:
 		return nil, info, domain.NewErrorConflict(fmt.Sprintf("merge request is %s", info.Status))
 	}
+	if info.BlockedBy != "" {
+		return nil, info, blockedMergeError(info.BlockedBy)
+	}
 
 	if m.fileLocks != nil {
 		target, err := m.branchRepo.GetBranchByName(ctx, projectID, mr.TargetBranch)
@@ -283,6 +296,7 @@ func (m *MergeRequest) Merge(ctx context.Context, projectID snow.ID, number int6
 	}
 	if claim, ok := domain.ClaimFromContext(ctx); ok {
 		m.emitHook(ctx, domain.WebhookEventMRMerged, projectID, merged, claim.UserID)
+		m.noteEvent(ctx, domain.MergeRequestEventMerged, merged, updated.CommitID, claim.UserID)
 	}
 	return merged, info, nil
 }
@@ -299,6 +313,7 @@ func (m *MergeRequest) Close(ctx context.Context, projectID snow.ID, number int6
 	}
 	if claim, ok := domain.ClaimFromContext(ctx); ok {
 		m.emitHook(ctx, domain.WebhookEventMRClosed, projectID, mr, claim.UserID)
+		m.noteEvent(ctx, domain.MergeRequestEventClosed, mr, nil, claim.UserID)
 	}
 	return mr, nil
 }
@@ -313,6 +328,7 @@ func (m *MergeRequest) Reopen(ctx context.Context, projectID snow.ID, number int
 			return nil, err
 		}
 		m.emitHook(ctx, domain.WebhookEventMRReopened, projectID, mr, claim.UserID)
+		m.noteEvent(ctx, domain.MergeRequestEventReopened, mr, nil, claim.UserID)
 	}
 	return mr, nil
 }
@@ -477,7 +493,66 @@ func (m *MergeRequest) check(ctx context.Context, projectID snow.ID, mr *domain.
 		return info, nil
 	}
 	info.Status = domain.MergeabilityMergeable
+	blocked, err := m.reviewBlockedBy(ctx, projectID, mr, target)
+	if err != nil {
+		return nil, err
+	}
+	info.BlockedBy = blocked
 	return info, nil
+}
+
+// reviewBlockedBy reports the review-policy reason the target branch refuses
+// the merge for: live change requests always block, and a target branch can
+// additionally require a number of live approvals.
+func (m *MergeRequest) reviewBlockedBy(ctx context.Context, projectID snow.ID, mr *domain.MergeRequest, target *domain.Branch) (string, error) {
+	if m.review == nil {
+		return "", nil
+	}
+	state, err := m.review.ReviewState(ctx, projectID, mr.Number)
+	if err != nil {
+		return "", err
+	}
+	if state.ChangesRequested > 0 {
+		return domain.MergeabilityBlockedChangesRequested, nil
+	}
+	if target.RequiredApprovals > int64(state.Approvals) {
+		return domain.MergeabilityBlockedApprovals, nil
+	}
+	return "", nil
+}
+
+func blockedMergeError(blockedBy string) error {
+	if blockedBy == domain.MergeabilityBlockedChangesRequested {
+		return domain.NewErrorConflict("merge request has unresolved change requests")
+	}
+	return domain.NewErrorConflict("merge request does not have the approvals required by the target branch")
+}
+
+// appendEvent writes a lifecycle timeline event; a nil review usecase disables
+// events.
+func (m *MergeRequest) appendEvent(ctx context.Context, kind string, mr *domain.MergeRequest, commitID *snow.ID, commitHash string, actor snow.ID) error {
+	if m.review == nil {
+		return nil
+	}
+	return m.review.NoteEvent(ctx, mr, kind, commitID, commitHash, actor)
+}
+
+// noteEvent records a lifecycle event after the state change is already
+// stored, so a bookkeeping failure must not fail the operation. A commit ID is
+// enriched with its hash so the timeline can display the landed commit.
+func (m *MergeRequest) noteEvent(ctx context.Context, kind string, mr *domain.MergeRequest, commitID *snow.ID, actor snow.ID) {
+	if m.review == nil {
+		return
+	}
+	var commitHash string
+	if commitID != nil {
+		if commit, err := m.branchRepo.GetCommit(ctx, *commitID); err == nil {
+			commitHash = commit.Hash.String()
+		}
+	}
+	if err := m.appendEvent(ctx, kind, mr, commitID, commitHash, actor); err != nil {
+		slog.Warn("writing merge request timeline event failed", "event", kind, "merge_request", mr.Number, "error", err)
+	}
 }
 
 // emitHook publishes a merge request event. The state change is already

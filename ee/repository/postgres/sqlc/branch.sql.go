@@ -39,7 +39,7 @@ func (q *Queries) BranchCreate(ctx context.Context, arg BranchCreateParams) erro
 }
 
 const branchGet = `-- name: BranchGet :one
-SELECT id, project_id, name, key, is_protected, is_default, commit_id, updated_at, created_at, deleted, deleted_at
+SELECT id, project_id, name, key, is_protected, required_approvals, is_default, commit_id, updated_at, created_at, deleted, deleted_at
 FROM branches
 WHERE project_id = $1 AND id = $2 AND deleted = FALSE
 LIMIT 1
@@ -59,6 +59,7 @@ func (q *Queries) BranchGet(ctx context.Context, arg BranchGetParams) (Branch, e
 		&i.Name,
 		&i.Key,
 		&i.IsProtected,
+		&i.RequiredApprovals,
 		&i.IsDefault,
 		&i.CommitID,
 		&i.UpdatedAt,
@@ -70,7 +71,7 @@ func (q *Queries) BranchGet(ctx context.Context, arg BranchGetParams) (Branch, e
 }
 
 const branchGetByName = `-- name: BranchGetByName :one
-SELECT id, project_id, name, key, is_protected, is_default, commit_id, updated_at, created_at, deleted, deleted_at
+SELECT id, project_id, name, key, is_protected, required_approvals, is_default, commit_id, updated_at, created_at, deleted, deleted_at
 FROM branches
 WHERE project_id = $1 AND name = $2 AND deleted = FALSE
 LIMIT 1
@@ -90,6 +91,7 @@ func (q *Queries) BranchGetByName(ctx context.Context, arg BranchGetByNameParams
 		&i.Name,
 		&i.Key,
 		&i.IsProtected,
+		&i.RequiredApprovals,
 		&i.IsDefault,
 		&i.CommitID,
 		&i.UpdatedAt,
@@ -101,7 +103,7 @@ func (q *Queries) BranchGetByName(ctx context.Context, arg BranchGetByNameParams
 }
 
 const branchGetDefault = `-- name: BranchGetDefault :one
-SELECT id, project_id, name, key, is_protected, is_default, commit_id, updated_at, created_at, deleted, deleted_at
+SELECT id, project_id, name, key, is_protected, required_approvals, is_default, commit_id, updated_at, created_at, deleted, deleted_at
 FROM branches
 WHERE project_id = $1 AND is_default = TRUE AND deleted = FALSE
 LIMIT 1
@@ -116,6 +118,7 @@ func (q *Queries) BranchGetDefault(ctx context.Context, projectID int64) (Branch
 		&i.Name,
 		&i.Key,
 		&i.IsProtected,
+		&i.RequiredApprovals,
 		&i.IsDefault,
 		&i.CommitID,
 		&i.UpdatedAt,
@@ -127,7 +130,7 @@ func (q *Queries) BranchGetDefault(ctx context.Context, projectID int64) (Branch
 }
 
 const branchList = `-- name: BranchList :many
-SELECT id, project_id, name, key, is_protected, is_default, commit_id, updated_at, created_at, deleted, deleted_at
+SELECT id, project_id, name, key, is_protected, required_approvals, is_default, commit_id, updated_at, created_at, deleted, deleted_at
 FROM branches
 WHERE project_id = $1
   AND deleted = FALSE
@@ -167,6 +170,7 @@ func (q *Queries) BranchList(ctx context.Context, arg BranchListParams) ([]Branc
 			&i.Name,
 			&i.Key,
 			&i.IsProtected,
+			&i.RequiredApprovals,
 			&i.IsDefault,
 			&i.CommitID,
 			&i.UpdatedAt,
@@ -234,18 +238,24 @@ func (q *Queries) BranchSetName(ctx context.Context, arg BranchSetNameParams) er
 }
 
 const branchSetProtection = `-- name: BranchSetProtection :exec
-UPDATE branches SET is_protected = $1, updated_at = now()
-WHERE project_id = $2 AND id = $3 AND deleted = FALSE
+UPDATE branches SET is_protected = $1, required_approvals = $2, updated_at = now()
+WHERE project_id = $3 AND id = $4 AND deleted = FALSE
 `
 
 type BranchSetProtectionParams struct {
-	IsProtected bool  `json:"is_protected"`
-	ProjectID   int64 `json:"project_id"`
-	ID          int64 `json:"id"`
+	IsProtected       bool  `json:"is_protected"`
+	RequiredApprovals int64 `json:"required_approvals"`
+	ProjectID         int64 `json:"project_id"`
+	ID                int64 `json:"id"`
 }
 
 func (q *Queries) BranchSetProtection(ctx context.Context, arg BranchSetProtectionParams) error {
-	_, err := q.db.ExecContext(ctx, branchSetProtection, arg.IsProtected, arg.ProjectID, arg.ID)
+	_, err := q.db.ExecContext(ctx, branchSetProtection,
+		arg.IsProtected,
+		arg.RequiredApprovals,
+		arg.ProjectID,
+		arg.ID,
+	)
 	return err
 }
 

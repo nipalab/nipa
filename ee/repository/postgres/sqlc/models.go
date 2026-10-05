@@ -10,17 +10,18 @@ import (
 )
 
 type Branch struct {
-	ID          int64         `json:"id"`
-	ProjectID   int64         `json:"project_id"`
-	Name        string        `json:"name"`
-	Key         string        `json:"key"`
-	IsProtected bool          `json:"is_protected"`
-	IsDefault   bool          `json:"is_default"`
-	CommitID    sql.NullInt64 `json:"commit_id"`
-	UpdatedAt   time.Time     `json:"updated_at"`
-	CreatedAt   time.Time     `json:"created_at"`
-	Deleted     bool          `json:"deleted"`
-	DeletedAt   sql.NullTime  `json:"deleted_at"`
+	ID                int64         `json:"id"`
+	ProjectID         int64         `json:"project_id"`
+	Name              string        `json:"name"`
+	Key               string        `json:"key"`
+	IsProtected       bool          `json:"is_protected"`
+	RequiredApprovals int64         `json:"required_approvals"`
+	IsDefault         bool          `json:"is_default"`
+	CommitID          sql.NullInt64 `json:"commit_id"`
+	UpdatedAt         time.Time     `json:"updated_at"`
+	CreatedAt         time.Time     `json:"created_at"`
+	Deleted           bool          `json:"deleted"`
+	DeletedAt         sql.NullTime  `json:"deleted_at"`
 }
 
 type Chunk struct {

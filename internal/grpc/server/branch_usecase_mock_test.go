@@ -364,17 +364,17 @@ func (mr *MockbranchRepositoryMockRecorder) RenameBranch(ctx, projectID, branchI
 }
 
 // SetBranchProtection mocks base method.
-func (m *MockbranchRepository) SetBranchProtection(ctx context.Context, projectID, branchID snow.ID, protected bool) error {
+func (m *MockbranchRepository) SetBranchProtection(ctx context.Context, projectID, branchID snow.ID, protected bool, requiredApprovals int64) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetBranchProtection", ctx, projectID, branchID, protected)
+	ret := m.ctrl.Call(m, "SetBranchProtection", ctx, projectID, branchID, protected, requiredApprovals)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // SetBranchProtection indicates an expected call of SetBranchProtection.
-func (mr *MockbranchRepositoryMockRecorder) SetBranchProtection(ctx, projectID, branchID, protected any) *gomock.Call {
+func (mr *MockbranchRepositoryMockRecorder) SetBranchProtection(ctx, projectID, branchID, protected, requiredApprovals any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetBranchProtection", reflect.TypeOf((*MockbranchRepository)(nil).SetBranchProtection), ctx, projectID, branchID, protected)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetBranchProtection", reflect.TypeOf((*MockbranchRepository)(nil).SetBranchProtection), ctx, projectID, branchID, protected, requiredApprovals)
 }
 
 // SetDefaultBranch mocks base method.
@@ -403,4 +403,42 @@ func (m *MockbranchRepository) UpdateCommitIf(ctx context.Context, branchID snow
 func (mr *MockbranchRepositoryMockRecorder) UpdateCommitIf(ctx, branchID, fromCommitID, toCommitID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateCommitIf", reflect.TypeOf((*MockbranchRepository)(nil).UpdateCommitIf), ctx, branchID, fromCommitID, toCommitID)
+}
+
+// MockhookBranchGate is a mock of hookBranchGate interface.
+type MockhookBranchGate struct {
+	ctrl     *gomock.Controller
+	recorder *MockhookBranchGateMockRecorder
+	isgomock struct{}
+}
+
+// MockhookBranchGateMockRecorder is the mock recorder for MockhookBranchGate.
+type MockhookBranchGateMockRecorder struct {
+	mock *MockhookBranchGate
+}
+
+// NewMockhookBranchGate creates a new mock instance.
+func NewMockhookBranchGate(ctrl *gomock.Controller) *MockhookBranchGate {
+	mock := &MockhookBranchGate{ctrl: ctrl}
+	mock.recorder = &MockhookBranchGateMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockhookBranchGate) EXPECT() *MockhookBranchGateMockRecorder {
+	return m.recorder
+}
+
+// EmitBranch mocks base method.
+func (m *MockhookBranchGate) EmitBranch(ctx context.Context, event string, projectID snow.ID, branch *domain.Branch, actor snow.ID) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "EmitBranch", ctx, event, projectID, branch, actor)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// EmitBranch indicates an expected call of EmitBranch.
+func (mr *MockhookBranchGateMockRecorder) EmitBranch(ctx, event, projectID, branch, actor any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EmitBranch", reflect.TypeOf((*MockhookBranchGate)(nil).EmitBranch), ctx, event, projectID, branch, actor)
 }

@@ -205,6 +205,26 @@ thread cards
 (`web/src/components/repo/DiffView.tsx` + `ThreadCard.tsx`, reused by the
 commit page).
 
+Merge is review-gated: `MergeRequest.WithReview` attaches the review usecase
+(the nil seam disables the gate, like file locks/hooks), and `check()` fills
+`Mergeability.BlockedBy` — live `changes_requested` always blocks, and a target
+branch's `required_approvals` (new `branches.required_approvals` column, set
+through `SetBranchProtection` / `PUT .../branches/{name}/protection` with an
+optional `required_approvals` that is kept when absent) must be met by live,
+non-stale approvals. `Merge` refuses blocked requests with a 409. The same
+review seam writes the lifecycle timeline events (`opened` inside the Create
+transaction; `merged` with the landed commit id+hash, `closed`, `reopened`
+log-only after the change landed), so the SPA's timeline renders them. The MR
+usecase's `AppendEvent` path requires the review repository to be
+transaction-aware (`dbtx.New`), which is why
+`NewMergeRequestReviewRepository` wraps its DB handle. gRPC carries the same
+surface: `ReopenMergeRequest`, `CheckMergeRequest`,
+`ListMergeRequestCommits` (reuses `CommitLogEntry`),
+`GetMergeRequestDiff` (new `DiffFileDetail`/`DiffHunkDetail`/`DiffLineDetail`
+messages mirroring the REST diff model), `MergeabilityDetail.blocked_by`,
+`MergeRequestDetail.review` (populated by `ListMergeRequests` via
+`AttachSummaries`), and `Branch.required_approvals`.
+
 Flow for `nipa revert <commit>` / `<from>..<to>`: resolve targets via gRPC
 `GetCommit` / `WalkCommits` (range walks newest-first, exclusive stop; ranges are
 capped at 16 targets and rejected before any three-way work) → for each
@@ -463,7 +483,9 @@ Direct: `go build ./...`, `go vet ./...`, `go test ./...`.
   `DeleteTag`; history/tree RPCs `GetTreeManifest`, `GetCommitLog`,
   `GetCommit`, `WalkCommits`, `GetMergeBase`, `MergeFastForward`; merge-request
   RPCs `CreateMergeRequest`, `UpdateMergeRequest`, `ListMergeRequests`,
-  `MergeMergeRequest`, `CloseMergeRequest`; review RPCs
+  `MergeMergeRequest`, `CloseMergeRequest`, `ReopenMergeRequest`,
+  `CheckMergeRequest`, `ListMergeRequestCommits`,
+  `GetMergeRequestDiff`; review RPCs
   `SubmitMergeRequestReview`, `ListMergeRequestReviews`,
   `GetMergeRequestReviewState`, `WithdrawMergeRequestReview`,
   `DismissMergeRequestReview`, `ListMergeRequestThreads`,

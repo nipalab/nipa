@@ -28,6 +28,18 @@ type HunkLine struct {
 	NoNewline bool
 }
 
+// LineKind names a HunkLine kind for API responses: add, remove or context.
+func LineKind(kind byte) string {
+	switch kind {
+	case '+':
+		return "add"
+	case '-':
+		return "remove"
+	default:
+		return "context"
+	}
+}
+
 // Header renders the git-style "@@ -a,b +c,d @@" header of the hunk.
 func (h Hunk) Header() string {
 	return fmt.Sprintf("@@ -%d,%d +%d,%d @@", h.OldStart, h.OldLines, h.NewStart, h.NewLines)
