@@ -165,6 +165,11 @@ func (c *apiClient) submitMergeRequestReview(org, project string, number int64, 
 		map[string]string{"state": state, "body": body}, nil, true)
 }
 
+func (c *apiClient) addMergeRequestComment(org, project string, number int64, filePath, body string) {
+	c.do(http.MethodPost, fmt.Sprintf("/orgs/%s/projects/%s/merge-requests/%d/threads", org, project, number),
+		map[string]string{"file_path": filePath, "body": body}, nil, true)
+}
+
 func (c *apiClient) do(method, path string, body any, out any, auth bool) int {
 	var reader io.Reader
 	hasBody := body != nil

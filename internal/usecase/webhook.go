@@ -56,6 +56,12 @@ var webhookEventTypes = map[string]struct{}{
 	domain.WebhookEventMRMerged:       {},
 	domain.WebhookEventMRClosed:       {},
 	domain.WebhookEventMRReopened:     {},
+
+	domain.WebhookEventMRReviewSubmitted:   {},
+	domain.WebhookEventMRReviewDismissed:   {},
+	domain.WebhookEventMRReviewRequested:   {},
+	domain.WebhookEventMRReviewUnrequested: {},
+	domain.WebhookEventMRCommentCreated:    {},
 }
 
 // WebhookInput describes a new webhook endpoint.

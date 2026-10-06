@@ -20,7 +20,14 @@ const (
 	WebhookEventMRMerged       = "mr.merged"
 	WebhookEventMRClosed       = "mr.closed"
 	WebhookEventMRReopened     = "mr.reopened"
-	WebhookEventPing           = "ping"
+
+	WebhookEventMRReviewSubmitted   = "mr.review_submitted"
+	WebhookEventMRReviewDismissed   = "mr.review_dismissed"
+	WebhookEventMRReviewRequested   = "mr.review_requested"
+	WebhookEventMRReviewUnrequested = "mr.review_request_removed"
+	WebhookEventMRCommentCreated    = "mr.comment_created"
+
+	WebhookEventPing = "ping"
 )
 
 // Webhook delivery states.

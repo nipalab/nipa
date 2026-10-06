@@ -229,3 +229,107 @@ func TestMergeRequest_WebhookHookFailureIsNotFatal(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, domain.MergeRequestClosed, got.Status)
 }
+
+func TestMergeRequestReview_SubmitEmitsWebhookEvent(t *testing.T) {
+	review, repo, mrRepo, branchRepo, perm, _, _ := newTestMergeRequestReview(t)
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
+	expectLoad(perm, mrRepo)
+	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").
+		Return(&domain.Branch{ID: 3, ProjectID: 1, CommitID: snowPtr(11)}, nil)
+	repo.EXPECT().UpsertReview(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, in domain.MergeRequestReview) (*domain.MergeRequestReview, error) {
+			return &in, nil
+		})
+	repo.EXPECT().CreateEvent(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, event domain.MergeRequestTimelineItem) (*domain.MergeRequestTimelineItem, error) {
+			return &event, nil
+		})
+	repo.EXPECT().DeleteReviewRequest(gomock.Any(), int64(5), snow.ID(9)).
+		Return(domain.NewErrorNotFound("no request"))
+	hooks := NewMockhookMergeRequestGate(gomock.NewController(t))
+	hooks.EXPECT().EmitMergeRequest(gomock.Any(), domain.WebhookEventMRReviewSubmitted, snow.ID(1), gomock.Any(), snow.ID(9)).Return(nil)
+
+	_, err := review.WithHooks(hooks).SubmitReview(permissionCtx(9), snow.ID(1), 5, domain.MergeRequestReviewApproved, "lgtm", nil)
+	require.NoError(t, err)
+}
+
+func TestMergeRequestReview_DismissEmitsWebhookEvent(t *testing.T) {
+	review, repo, mrRepo, _, perm, _, _ := newTestMergeRequestReview(t)
+	expectLoad(perm, mrRepo)
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
+	repo.EXPECT().GetReview(gomock.Any(), int64(5), snow.ID(1)).
+		Return(&domain.MergeRequestReview{ID: 1, Reviewer: domain.ReviewActor{UserID: 8}}, nil)
+	repo.EXPECT().DismissReview(gomock.Any(), int64(5), snow.ID(1), snow.ID(9), "manual", gomock.Any()).Return(nil)
+	repo.EXPECT().CreateEvent(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, event domain.MergeRequestTimelineItem) (*domain.MergeRequestTimelineItem, error) {
+			return &event, nil
+		})
+	hooks := NewMockhookMergeRequestGate(gomock.NewController(t))
+	hooks.EXPECT().EmitMergeRequest(gomock.Any(), domain.WebhookEventMRReviewDismissed, snow.ID(1), gomock.Any(), snow.ID(9)).Return(nil)
+
+	_, err := review.WithHooks(hooks).DismissReview(permissionCtx(9), snow.ID(1), 5, snow.ID(1))
+	require.NoError(t, err)
+}
+
+func TestMergeRequestReview_RequestEmitsWebhookEvent(t *testing.T) {
+	review, repo, mrRepo, _, perm, _, users := newTestMergeRequestReview(t)
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
+	expectLoad(perm, mrRepo)
+	users.EXPECT().GetByID(gomock.Any(), snow.ID(8)).Return(&domain.User{ID: 8, Name: "Rev"}, nil)
+	repo.EXPECT().CreateReviewRequest(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, req domain.MergeRequestReviewRequest) (*domain.MergeRequestReviewRequest, error) {
+			return &req, nil
+		})
+	repo.EXPECT().CreateEvent(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, event domain.MergeRequestTimelineItem) (*domain.MergeRequestTimelineItem, error) {
+			return &event, nil
+		})
+	hooks := NewMockhookMergeRequestGate(gomock.NewController(t))
+	hooks.EXPECT().EmitMergeRequest(gomock.Any(), domain.WebhookEventMRReviewRequested, snow.ID(1), gomock.Any(), snow.ID(9)).Return(nil)
+
+	_, err := review.WithHooks(hooks).RequestReview(permissionCtx(9), snow.ID(1), 5, snow.ID(8))
+	require.NoError(t, err)
+}
+
+func TestMergeRequestReview_UnrequestEmitsWebhookEvent(t *testing.T) {
+	review, repo, mrRepo, _, perm, _, _ := newTestMergeRequestReview(t)
+	expectLoad(perm, mrRepo)
+	repo.EXPECT().DeleteReviewRequest(gomock.Any(), int64(5), snow.ID(8)).Return(nil)
+	repo.EXPECT().CreateEvent(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, event domain.MergeRequestTimelineItem) (*domain.MergeRequestTimelineItem, error) {
+			return &event, nil
+		})
+	hooks := NewMockhookMergeRequestGate(gomock.NewController(t))
+	hooks.EXPECT().EmitMergeRequest(gomock.Any(), domain.WebhookEventMRReviewUnrequested, snow.ID(1), gomock.Any(), snow.ID(8)).Return(nil)
+
+	require.NoError(t, review.WithHooks(hooks).RemoveReviewRequest(permissionCtx(8), snow.ID(1), 5, snow.ID(8)))
+}
+
+func TestMergeRequestReview_CommentsEmitWebhookEvent(t *testing.T) {
+	review, repo, mrRepo, branchRepo, perm, _, _ := newTestMergeRequestReview(t)
+	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").
+		Return(&domain.Branch{ID: 3, ProjectID: 1, CommitID: snowPtr(11)}, nil).AnyTimes()
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true).Times(2)
+	expectLoad(perm, mrRepo)
+	expectLoad(perm, mrRepo)
+	repo.EXPECT().CreateThread(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, thread domain.MergeRequestThread) (*domain.MergeRequestThread, error) {
+			return &thread, nil
+		})
+	repo.EXPECT().CreateComment(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, c domain.MergeRequestComment) (*domain.MergeRequestComment, error) {
+			return &c, nil
+		}).Times(2)
+	repo.EXPECT().GetThread(gomock.Any(), int64(5), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ int64, _ snow.ID) (*domain.MergeRequestThread, error) {
+			return &domain.MergeRequestThread{ID: 1, MergeRequestID: 5}, nil
+		})
+	hooks := NewMockhookMergeRequestGate(gomock.NewController(t))
+	hooks.EXPECT().EmitMergeRequest(gomock.Any(), domain.WebhookEventMRCommentCreated, snow.ID(1), gomock.Any(), snow.ID(9)).Return(nil).Times(2)
+
+	review = review.WithHooks(hooks)
+	thread, err := review.AddComment(permissionCtx(9), snow.ID(1), 5, ThreadComment{Body: "first"})
+	require.NoError(t, err)
+	_, err = review.Reply(permissionCtx(9), snow.ID(1), 5, thread.ID, "second")
+	require.NoError(t, err)
+}

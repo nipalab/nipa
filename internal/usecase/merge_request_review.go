@@ -188,6 +188,7 @@ func (r *MergeRequestReview) SubmitReview(ctx context.Context, projectID snow.ID
 		return nil, err
 	}
 	review.Stale = false
+	r.emitHook(ctx, domain.WebhookEventMRReviewSubmitted, projectID, mr, claim.UserID)
 	return review, nil
 }
 
@@ -243,6 +244,7 @@ func (r *MergeRequestReview) DismissReview(ctx context.Context, projectID snow.I
 	review.DismissedReason = "manual"
 	review.DismissedBy = &domain.ReviewActor{UserID: claim.UserID}
 	review.Stale = true
+	r.emitHook(ctx, domain.WebhookEventMRReviewDismissed, projectID, mr, claim.UserID)
 	return review, nil
 }
 
@@ -266,6 +268,7 @@ func (r *MergeRequestReview) AddComment(ctx context.Context, projectID snow.ID, 
 		return nil, err
 	}
 	thread.Comments = []*domain.MergeRequestComment{created}
+	r.emitHook(ctx, domain.WebhookEventMRCommentCreated, projectID, mr, claim.UserID)
 	return thread, nil
 }
 
@@ -290,12 +293,17 @@ func (r *MergeRequestReview) Reply(ctx context.Context, projectID snow.ID, numbe
 	if err != nil {
 		return nil, err
 	}
-	return r.repo.CreateComment(ctx, domain.MergeRequestComment{
+	comment, err := r.repo.CreateComment(ctx, domain.MergeRequestComment{
 		ID:       r.snowNode.Generate(),
 		ThreadID: thread.ID,
 		User:     domain.ReviewActor{UserID: claim.UserID},
 		Body:     body,
 	})
+	if err != nil {
+		return nil, err
+	}
+	r.emitHook(ctx, domain.WebhookEventMRCommentCreated, projectID, mr, claim.UserID)
+	return comment, nil
 }
 
 // UpdateComment edits a comment; only its author may do so.
@@ -450,6 +458,7 @@ func (r *MergeRequestReview) RequestReview(ctx context.Context, projectID snow.I
 	}); err != nil {
 		return nil, err
 	}
+	r.emitHook(ctx, domain.WebhookEventMRReviewRequested, projectID, mr, claim.UserID)
 	return request, nil
 }
 
@@ -469,11 +478,15 @@ func (r *MergeRequestReview) RemoveReviewRequest(ctx context.Context, projectID 
 	if err := r.repo.DeleteReviewRequest(ctx, mr.ID, reviewerID); err != nil {
 		return err
 	}
-	return r.addEvent(ctx, mr, domain.MergeRequestTimelineItem{
+	if err := r.addEvent(ctx, mr, domain.MergeRequestTimelineItem{
 		Kind:    domain.MergeRequestEventReviewUnrequested,
 		Actor:   domain.ReviewActor{UserID: claim.UserID},
 		Subject: &domain.ReviewActor{UserID: reviewerID},
-	})
+	}); err != nil {
+		return err
+	}
+	r.emitHook(ctx, domain.WebhookEventMRReviewUnrequested, projectID, mr, claim.UserID)
+	return nil
 }
 
 // ReviewRequests returns the pending review requests of a merge request.
