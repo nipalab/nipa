@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState } from 'react'
-import { Button, Link as PrimerLink, Select, Stack, Text, Textarea } from '@primer/react'
+import { Button, Link as PrimerLink, Select, Stack, Text, Textarea, TextInput } from '@primer/react'
 import {
   CheckCircleFillIcon,
   CheckIcon,
@@ -30,6 +30,7 @@ import type {
   ReviewResponse,
   ReviewState,
   ReviewStateResponse,
+  ThreadCommentInput,
   ThreadResponse,
   TimelineItemResponse,
 } from '../../api/models'
@@ -47,6 +48,13 @@ interface ReviewerEntry {
   status: ReviewerStatus
   review?: ReviewResponse
   requestId?: string
+}
+
+interface InlineDraft {
+  filePath: string
+  side: 'new' | 'old'
+  line: number
+  body: string
 }
 
 function timestamp(value: string | undefined): string {
@@ -227,10 +235,20 @@ export function MergeRequestOverview({
   const [reviewer, setReviewer] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
+  const [inlineDrafts, setInlineDrafts] = useState<InlineDraft[]>([])
+  const [inlineOpen, setInlineOpen] = useState(false)
+  const [inlineFile, setInlineFile] = useState('')
+  const [inlineSide, setInlineSide] = useState<'new' | 'old'>('new')
+  const [inlineLine, setInlineLine] = useState('')
+  const [inlineBody, setInlineBody] = useState('')
 
   const isAuthor = Boolean(me && request && request.created_by === me)
   const canDecide = canWrite && request?.status === 'open' && !isAuthor
   const pending = busy || sending
+  const textFiles = files.filter((file) => !file.binary)
+  const inlineLineNumber = Number.parseInt(inlineLine, 10)
+  const canAddInline =
+    inlineFile !== '' && Number.isFinite(inlineLineNumber) && inlineLineNumber > 0 && inlineBody.trim() !== ''
   const threadActors = (thread: ThreadResponse) => [thread.created_by, ...thread.comments.map((comment) => comment.user)]
   const author: ActorLike | undefined =
     actorsFrom(
@@ -303,10 +321,40 @@ export function MergeRequestOverview({
     }
   }
 
+  function inlineComments(): ThreadCommentInput[] {
+    return inlineDrafts.map((draft) => ({
+      file_path: draft.filePath,
+      ...(draft.side === 'old' ? { old_line: draft.line } : { new_line: draft.line }),
+      body: draft.body,
+    }))
+  }
+
+  function addInlineDraft() {
+    if (!canAddInline) return
+    setInlineDrafts((drafts) => [
+      ...drafts,
+      { filePath: inlineFile, side: inlineSide, line: inlineLineNumber, body: inlineBody.trim() },
+    ])
+    setInlineOpen(false)
+    setInlineFile('')
+    setInlineSide('new')
+    setInlineLine('')
+    setInlineBody('')
+  }
+
+  function removeInlineDraft(index: number) {
+    setInlineDrafts((drafts) => drafts.filter((_, i) => i !== index))
+  }
+
   async function submitDecision(reviewState: ReviewState) {
     await run(async () => {
-      await submitMergeRequestReview(org, project, id, { state: reviewState, body: body.trim(), comments: [] })
+      await submitMergeRequestReview(org, project, id, {
+        state: reviewState,
+        body: body.trim(),
+        comments: inlineComments(),
+      })
       setBody('')
+      setInlineDrafts([])
     })
   }
 
@@ -522,19 +570,130 @@ export function MergeRequestOverview({
               onChange={(event) => setBody(event.target.value)}
               aria-label="Add a comment"
             />
+            {canDecide && (
+              <div style={{ marginTop: 8 }}>
+                {inlineDrafts.map((draft, index) => (
+                  <div
+                    key={`${draft.filePath}:${draft.side}:${draft.line}:${index}`}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      padding: '6px 8px',
+                      border: '1px solid var(--borderColor-muted)',
+                      borderRadius: 6,
+                      marginBottom: 4,
+                      fontSize: 12,
+                    }}
+                  >
+                    <Mono>{draft.filePath}</Mono>
+                    <Text style={{ color: 'var(--fgColor-muted)', whiteSpace: 'nowrap' }}>
+                      {draft.side === 'old' ? 'old' : 'new'} line {draft.line}
+                    </Text>
+                    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {draft.body}
+                    </span>
+                    <Button
+                      size="small"
+                      variant="invisible"
+                      aria-label={`Remove inline comment on ${draft.filePath}`}
+                      onClick={() => removeInlineDraft(index)}
+                    >
+                      <XIcon />
+                    </Button>
+                  </div>
+                ))}
+                {inlineOpen ? (
+                  <div
+                    style={{
+                      border: '1px dashed var(--borderColor-muted)',
+                      borderRadius: 6,
+                      padding: 8,
+                      marginBottom: 8,
+                    }}
+                  >
+                    <Stack direction="vertical" gap="condensed">
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        <Select
+                          aria-label="Inline comment file"
+                          value={inlineFile}
+                          onChange={(event) => setInlineFile(event.target.value)}
+                        >
+                          <option value="">select a file</option>
+                          {textFiles.map((file) => (
+                            <option key={file.path} value={file.path}>
+                              {file.path}
+                            </option>
+                          ))}
+                        </Select>
+                        <Select
+                          aria-label="Inline comment side"
+                          value={inlineSide}
+                          onChange={(event) => setInlineSide(event.target.value === 'old' ? 'old' : 'new')}
+                        >
+                          <option value="new">new line</option>
+                          <option value="old">old line</option>
+                        </Select>
+                        <TextInput
+                          type="number"
+                          min={1}
+                          style={{ width: 90 }}
+                          aria-label="Inline comment line"
+                          placeholder="line"
+                          value={inlineLine}
+                          onChange={(event) => setInlineLine(event.target.value)}
+                        />
+                      </div>
+                      <Textarea
+                        block
+                        value={inlineBody}
+                        placeholder="Comment on this line"
+                        aria-label="Inline comment body"
+                        onChange={(event) => setInlineBody(event.target.value)}
+                      />
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                        <Button
+                          size="small"
+                          onClick={() => {
+                            setInlineOpen(false)
+                            setInlineFile('')
+                            setInlineLine('')
+                            setInlineBody('')
+                          }}
+                        >
+                          Cancel
+                        </Button>
+                        <Button size="small" variant="primary" disabled={!canAddInline} onClick={addInlineDraft}>
+                          Add inline comment
+                        </Button>
+                      </div>
+                    </Stack>
+                  </div>
+                ) : (
+                  <Button
+                    size="small"
+                    variant="invisible"
+                    disabled={textFiles.length === 0}
+                    onClick={() => setInlineOpen(true)}
+                  >
+                    + Add inline comment
+                  </Button>
+                )}
+              </div>
+            )}
             <div
               style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8, marginTop: 8 }}
             >
               {canDecide ? (
                 <>
                   <Button
-                    disabled={pending || !body.trim()}
+                    disabled={pending || (!body.trim() && inlineDrafts.length === 0)}
                     onClick={() => submitDecision('commented')}
                   >
                     Comment
                   </Button>
                   <Button
-                    disabled={pending || !body.trim()}
+                    disabled={pending || (!body.trim() && inlineDrafts.length === 0)}
                     style={PRIMARY_BUTTON_STYLE}
                     variant="primary"
                     onClick={() => submitDecision('approved')}
@@ -543,7 +702,7 @@ export function MergeRequestOverview({
                   </Button>
                   <Button
                     variant="danger"
-                    disabled={pending || !body.trim()}
+                    disabled={pending || (!body.trim() && inlineDrafts.length === 0)}
                     onClick={() => submitDecision('changes_requested')}
                   >
                     Request changes

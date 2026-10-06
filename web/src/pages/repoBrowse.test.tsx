@@ -418,7 +418,7 @@ describe('MergeRequestsPage', () => {
   })
 })
 
-describe('MergeRequestPage files tab', () => {
+describe('MergeRequestPage', () => {
   const MR = {
     id: '1',
     number: 7,
@@ -526,6 +526,45 @@ describe('MergeRequestPage files tab', () => {
     expect(container.textContent).toContain('src/main.ts:1')
     expect(container.textContent).toContain('opened this merge request')
     expect(container.textContent).toContain('new line')
+    act(() => root.unmount())
+  })
+
+  it('edits the title and description from the dialog', async () => {
+    let patched: unknown = null
+    stubRepoRoutes((url, init) => {
+      const method = init?.method ?? 'GET'
+      if (url.endsWith('/merge-requests/7') && method === 'PATCH') {
+        patched = JSON.parse(String(init?.body ?? '{}'))
+        return jsonResponse({ ...MR, title: 'New title', description: 'New body' })
+      }
+      if (url.includes('/merge-requests/7/diff') && method === 'GET') return jsonResponse({ files: [] })
+      if (url.includes('/merge-requests/7/commits') && method === 'GET') return jsonResponse([])
+      if (url.includes('/merge-requests/7/review-state') && method === 'GET') {
+        return jsonResponse({ approvals: 0, changes_requested: 0, dismissed_approvals: 0, outstanding_reviewers: [] })
+      }
+      if (url.includes('/merge-requests/7/') && method === 'GET') return jsonResponse([])
+      if (url.endsWith('/merge-requests/7') && method === 'GET') return jsonResponse(MR)
+      if (url.includes('/branches') && method === 'GET') return jsonResponse(BRANCHES)
+      return null
+    })
+
+    const { container, root } = await renderApp('/acme/game/merges/7')
+    await waitForText(container, 'Change code')
+    await act(async () => {
+      findButton('Edit').click()
+    })
+    await waitFor(() => document.body.textContent?.includes('Edit merge request #7') ?? false)
+
+    const titleInput = document.querySelector('input[value="Change code"]') as HTMLInputElement
+    expect(titleInput).not.toBeNull()
+    await act(async () => {
+      setInputValue(titleInput, 'New title')
+    })
+    await act(async () => {
+      findButton('Save changes').click()
+    })
+    await waitFor(() => patched !== null)
+    expect(patched).toEqual({ title: 'New title', description: '' })
     act(() => root.unmount())
   })
 })
