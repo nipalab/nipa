@@ -114,16 +114,21 @@ func TestMergeRequest_List(t *testing.T) {
 	mr, repo, _, perm, _ := newTestMergeRequest(t)
 	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true).AnyTimes()
 
-	repo.EXPECT().List(gomock.Any(), snow.ID(1), "", 50).Return([]*domain.MergeRequest{openMergeRequest()}, nil)
-	got, err := mr.List(permissionCtx(7), snow.ID(1), "", 0)
+	repo.EXPECT().List(gomock.Any(), snow.ID(1), domain.MergeRequestListOptions{Limit: 50}).
+		Return([]*domain.MergeRequest{openMergeRequest()}, nil)
+	got, err := mr.List(permissionCtx(7), snow.ID(1), domain.MergeRequestListOptions{})
 	require.NoError(t, err)
 	require.Len(t, got, 1)
 
-	repo.EXPECT().List(gomock.Any(), snow.ID(1), domain.MergeRequestClosed, 10).Return(nil, nil)
-	_, err = mr.List(permissionCtx(7), snow.ID(1), "closed", 10)
+	repo.EXPECT().List(gomock.Any(), snow.ID(1), domain.MergeRequestListOptions{Status: domain.MergeRequestClosed, Limit: 10}).
+		Return(nil, nil)
+	_, err = mr.List(permissionCtx(7), snow.ID(1), domain.MergeRequestListOptions{Status: "closed", Limit: 10})
 	require.NoError(t, err)
 
-	_, err = mr.List(permissionCtx(7), snow.ID(1), "bogus", 10)
+	_, err = mr.List(permissionCtx(7), snow.ID(1), domain.MergeRequestListOptions{Status: "bogus", Limit: 10})
+	requireUserError(t, err)
+
+	_, err = mr.List(permissionCtx(7), snow.ID(1), domain.MergeRequestListOptions{After: -1, Limit: 10})
 	requireUserError(t, err)
 }
 
@@ -617,7 +622,7 @@ func TestMergeRequest_ErrorPaths(t *testing.T) {
 	t.Run("list needs read access", func(t *testing.T) {
 		mr, _, _, perm, _ := newTestMergeRequest(t)
 		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(false)
-		_, err := mr.List(permissionCtx(7), snow.ID(1), "", 0)
+		_, err := mr.List(permissionCtx(7), snow.ID(1), domain.MergeRequestListOptions{})
 		require.True(t, domain.IsErrorNoPermission(err))
 	})
 }

@@ -15,6 +15,14 @@ func runJSONInto(cwd string, out any, args ...string) commandResult {
 	return res
 }
 
+func runJSONIntoAs(id *identity, cwd string, out any, args ...string) commandResult {
+	GinkgoHelper()
+	res := runNipaAs(id, cwd, args...)
+	Expect(res.ExitCode).To(Equal(0), res.Output())
+	Expect(json.Unmarshal([]byte(res.Stdout), out)).To(Succeed(), "stdout: %s", res.Stdout)
+	return res
+}
+
 type statusJSON struct {
 	Branch string `json:"branch"`
 	Head   *struct {
@@ -102,7 +110,58 @@ type mergeRequestsJSON struct {
 		Title        string `json:"title"`
 		Description  string `json:"description"`
 		Status       string `json:"status"`
+		CreatedBy    string `json:"created_by"`
+		Review       *struct {
+			Approvals        int `json:"approvals"`
+			ChangesRequested int `json:"changes_requested"`
+		} `json:"review"`
 	} `json:"merge_requests"`
+	NextCursor string `json:"next_cursor"`
+}
+
+type mergeRequestViewJSON struct {
+	MergeRequest struct {
+		Number int64  `json:"number"`
+		Status string `json:"status"`
+	} `json:"merge_request"`
+	Mergeability *struct {
+		Status    string `json:"status"`
+		BlockedBy string `json:"blocked_by"`
+	} `json:"mergeability"`
+	Reviews []struct {
+		State string `json:"state"`
+	} `json:"reviews"`
+	Commits []struct {
+		Message string `json:"message"`
+	} `json:"commits"`
+}
+
+type mergeRequestDiffJSON struct {
+	Files []struct {
+		Path      string   `json:"path"`
+		Status    string   `json:"status"`
+		Additions int64    `json:"additions"`
+		Patch     []string `json:"patch"`
+	} `json:"files"`
+}
+
+type mergeRequestThreadsJSON struct {
+	Threads []struct {
+		ID       string `json:"id"`
+		FilePath string `json:"file_path"`
+		Side     string `json:"side"`
+		Resolved bool   `json:"resolved"`
+		Comments []struct {
+			ID   string `json:"id"`
+			Body string `json:"body"`
+		} `json:"comments"`
+	} `json:"threads"`
+}
+
+type mergeRequestTimelineJSON struct {
+	Timeline []struct {
+		Kind string `json:"kind"`
+	} `json:"timeline"`
 }
 
 type diffJSON struct {

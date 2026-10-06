@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"strconv"
+
 	"github.com/nipalab/nipa/internal/client/localrepo"
 	"github.com/nipalab/nipa/internal/client/output"
 	"github.com/nipalab/nipa/internal/client/usecase"
@@ -11,15 +13,27 @@ func (c *Cli) setupMrCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "mr",
 		Short:         "Manage merge requests",
-		Long:          "Create, update, list, close and merge merge requests. Commands run against the project of the current working copy; merge requests are fast-forward only, so the target branch must not have moved since the branches diverged.",
+		Long:          "Create, update, list, view, review, comment on, close, reopen and merge merge requests. Commands run against the project of the current working copy; merge requests are fast-forward only, so the target branch must not have moved since the branches diverged.",
 		SilenceErrors: true,
 		SilenceUsage:  true,
 	}
 	cmd.AddCommand(c.setupMrCreateCmd())
 	cmd.AddCommand(c.setupMrUpdateCmd())
 	cmd.AddCommand(c.setupMrListCmd())
+	cmd.AddCommand(c.setupMrViewCmd())
 	cmd.AddCommand(c.setupMrCloseCmd())
+	cmd.AddCommand(c.setupMrReopenCmd())
 	cmd.AddCommand(c.setupMrMergeCmd())
+	cmd.AddCommand(c.setupMrReviewCmd())
+	cmd.AddCommand(c.setupMrCommentsCmd())
+	cmd.AddCommand(c.setupMrCommentCmd())
+	cmd.AddCommand(c.setupMrReplyCmd())
+	cmd.AddCommand(c.setupMrResolveCmd())
+	cmd.AddCommand(c.setupMrTimelineCmd())
+	cmd.AddCommand(c.setupMrRequestsCmd())
+	cmd.AddCommand(c.setupMrRequestReviewCmd())
+	cmd.AddCommand(c.setupMrUnrequestReviewCmd())
+	cmd.AddCommand(c.setupMrDiffCmd())
 	return cmd
 }
 
@@ -96,16 +110,31 @@ func (c *Cli) setupMrListCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			status, _ := cmd.Flags().GetString("status")
 			limit, _ := cmd.Flags().GetInt("limit")
+			author, _ := cmd.Flags().GetString("author")
+			source, _ := cmd.Flags().GetString("source")
+			target, _ := cmd.Flags().GetString("target")
+			after, _ := cmd.Flags().GetInt64("after")
 			root, err := localrepo.FindRepoRoot()
 			if err != nil {
 				return err
 			}
-			requests, err := c.useCase.MR().List(cmd.Context(), root, status, limit)
+			requests, nextCursor, err := c.useCase.MR().List(cmd.Context(), root, usecase.ListMergeRequestOptions{
+				Status:       status,
+				Author:       author,
+				SourceBranch: source,
+				TargetBranch: target,
+				After:        after,
+				Limit:        limit,
+			})
 			if err != nil {
 				return err
 			}
 			if jsonRequested(cmd) {
-				return output.WriteJSON(cmd.OutOrStdout(), output.NewMergeRequests(requests))
+				out := output.NewMergeRequests(requests)
+				if nextCursor > 0 {
+					out.NextCursor = strconv.FormatInt(nextCursor, 10)
+				}
+				return output.WriteJSON(cmd.OutOrStdout(), out)
 			}
 			if len(requests) == 0 {
 				cmd.Println("no merge requests")
@@ -116,10 +145,17 @@ func (c *Cli) setupMrListCmd() *cobra.Command {
 				branches := mr.SourceBranch + " -> " + mr.TargetBranch
 				cmd.Printf("%-8d  %-7s  %-36s  %s\n", mr.Number, mr.Status, branches, mr.Title)
 			}
+			if nextCursor > 0 {
+				cmd.Printf("more results: --after %d\n", nextCursor)
+			}
 			return nil
 		},
 	}
 	cmd.Flags().String("status", "", "Filter by status: open, merged, closed")
+	cmd.Flags().String("author", "", "Filter by author (base36 user id)")
+	cmd.Flags().String("source", "", "Filter by source branch name")
+	cmd.Flags().String("target", "", "Filter by target branch name")
+	cmd.Flags().Int64("after", 0, "Fetch results after this merge request number")
 	cmd.Flags().Int("limit", 50, "Maximum number of merge requests")
 	addJSONFlag(cmd)
 	return cmd

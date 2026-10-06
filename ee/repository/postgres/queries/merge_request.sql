@@ -25,12 +25,11 @@ SELECT * FROM merge_requests WHERE project_id = sqlc.arg(project_id) AND number 
 -- name: MergeRequestList :many
 SELECT * FROM merge_requests
 WHERE project_id = sqlc.arg(project_id)
-ORDER BY number DESC
-LIMIT sqlc.arg('limit')::bigint;
-
--- name: MergeRequestListByStatus :many
-SELECT * FROM merge_requests
-WHERE project_id = sqlc.arg(project_id) AND status = sqlc.arg(status)
+  AND (sqlc.narg('status')::text IS NULL OR status = sqlc.narg('status')::text)
+  AND (sqlc.narg('author')::bigint IS NULL OR created_by = sqlc.narg('author')::bigint)
+  AND (sqlc.narg('source_branch')::text IS NULL OR source_branch_name = sqlc.narg('source_branch')::text)
+  AND (sqlc.narg('target_branch')::text IS NULL OR target_branch_name = sqlc.narg('target_branch')::text)
+  AND (sqlc.narg('after_number')::bigint IS NULL OR number < sqlc.narg('after_number')::bigint)
 ORDER BY number DESC
 LIMIT sqlc.arg('limit')::bigint;
 

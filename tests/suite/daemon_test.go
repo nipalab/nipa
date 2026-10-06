@@ -261,6 +261,99 @@ var _ = Describe("nipa serve", func() {
 		Expect(after.GetResponse().GetLocks()).To(BeEmpty())
 	})
 
+	It("proxies merge request calls with the clone context", func() {
+		project := newProject("daemon-mr-proxy")
+		seedRepo(orgSlug, project, map[string][]byte{"a.txt": []byte("a\n")}, "seed")
+		parent := workspace()
+		dir := cloneRepo(parent, repoURLFor(orgSlug, project), "work")
+		Expect(runNipa(dir, "branch", "-c", "feature").ExitCode).To(Equal(0))
+		writeText(dir, "feature.txt", "feature\n")
+		Expect(runNipa(dir, "add", "feature.txt").ExitCode).To(Equal(0))
+		Expect(pushRepo(dir, "feature work").ExitCode).To(Equal(0))
+		Expect(runNipa(dir, "mr", "create", "--title", "Proxied").ExitCode).To(Equal(0))
+
+		d := startDaemon()
+		d.watch(dir)
+
+		list, err := d.client.ProxyMergeRequestList(d.ctx, &daemonpb.ProxyMergeRequestListRequest{Root: dir})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(list.GetResponse().GetMergeRequests()).To(HaveLen(1))
+		Expect(list.GetResponse().GetMergeRequests()[0].GetNumber()).To(Equal(int64(1)))
+
+		got, err := d.client.ProxyMergeRequestGet(d.ctx, &daemonpb.ProxyMergeRequestGetRequest{
+			Root:    dir,
+			Request: &pb.GetMergeRequestRequest{Number: 1},
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got.GetResponse().GetMergeRequest().GetStatus()).To(Equal("open"))
+		Expect(got.GetResponse().GetMergeability().GetStatus()).To(Equal("mergeable"))
+
+		check, err := d.client.ProxyMergeRequestCheck(d.ctx, &daemonpb.ProxyMergeRequestCheckRequest{
+			Root:    dir,
+			Request: &pb.CheckMergeRequestRequest{Number: 1},
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(check.GetResponse().GetMergeability().GetStatus()).To(Equal("mergeable"))
+
+		review, err := d.client.ProxyMergeRequestSubmitReview(d.ctx, &daemonpb.ProxyMergeRequestSubmitReviewRequest{
+			Root:    dir,
+			Request: &pb.SubmitMergeRequestReviewRequest{Number: 1, State: "commented", Body: "noted"},
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(review.GetResponse().GetReview().GetState()).To(Equal("commented"))
+
+		reviews, err := d.client.ProxyMergeRequestReviews(d.ctx, &daemonpb.ProxyMergeRequestReviewsRequest{
+			Root:    dir,
+			Request: &pb.ListMergeRequestReviewsRequest{Number: 1},
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(reviews.GetResponse().GetReviews()).To(HaveLen(1))
+
+		state, err := d.client.ProxyMergeRequestReviewState(d.ctx, &daemonpb.ProxyMergeRequestReviewStateRequest{
+			Root:    dir,
+			Request: &pb.GetMergeRequestReviewStateRequest{Number: 1},
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(state.GetResponse().GetState()).NotTo(BeNil())
+
+		threads, err := d.client.ProxyMergeRequestThreads(d.ctx, &daemonpb.ProxyMergeRequestThreadsRequest{
+			Root:    dir,
+			Request: &pb.ListMergeRequestThreadsRequest{Number: 1},
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(threads.GetResponse().GetThreads()).To(BeEmpty())
+
+		created, err := d.client.ProxyMergeRequestCreate(d.ctx, &daemonpb.ProxyMergeRequestCreateRequest{
+			Root: dir,
+			Request: &pb.CreateMergeRequestRequest{
+				Title: "Second", SourceBranch: "feature", TargetBranch: "main",
+			},
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(created.GetResponse().GetMergeRequest().GetNumber()).To(Equal(int64(2)))
+
+		closed, err := d.client.ProxyMergeRequestClose(d.ctx, &daemonpb.ProxyMergeRequestCloseRequest{
+			Root:    dir,
+			Request: &pb.CloseMergeRequestRequest{Number: 2},
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(closed.GetResponse().GetMergeRequest().GetStatus()).To(Equal("closed"))
+
+		reopened, err := d.client.ProxyMergeRequestReopen(d.ctx, &daemonpb.ProxyMergeRequestReopenRequest{
+			Root:    dir,
+			Request: &pb.ReopenMergeRequestRequest{Number: 2},
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(reopened.GetResponse().GetMergeRequest().GetStatus()).To(Equal("open"))
+
+		merged, err := d.client.ProxyMergeRequestMerge(d.ctx, &daemonpb.ProxyMergeRequestMergeRequest{
+			Root:    dir,
+			Request: &pb.MergeMergeRequestRequest{Number: 1},
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(merged.GetResponse().GetMergeRequest().GetStatus()).To(Equal("merged"))
+	})
+
 	It("unwatches a repository", func() {
 		project := newProject("daemon-unwatch")
 		seedRepo(orgSlug, project, map[string][]byte{"a.txt": []byte("a\n")}, "seed")

@@ -916,8 +916,39 @@ func TestAPIRoutes(t *testing.T) {
 			doMethod(t, http.MethodPost, laggingURL+"/reopen", "", aliceLogin.AccessToken))
 		require.Equal(t, "open", reopened.Status)
 
-		list := decodeBody[[]model.MergeRequestResponse](t, doGet(t, base+"/merge-requests?status=merged", aliceLogin.AccessToken))
-		require.Len(t, list, 1)
+		list := decodeBody[model.MergeRequestListResponse](t, doGet(t, base+"/merge-requests?status=merged", aliceLogin.AccessToken))
+		require.Len(t, list.MergeRequests, 1)
+
+		// pagination: the newest number is the keyset cursor
+		firstPage := decodeBody[model.MergeRequestListResponse](t, doGet(t, base+"/merge-requests?limit=1", aliceLogin.AccessToken))
+		require.Len(t, firstPage.MergeRequests, 1)
+		require.Equal(t, lagging.Number, firstPage.MergeRequests[0].Number)
+		require.Equal(t, strconv.FormatInt(lagging.Number, 10), firstPage.NextCursor)
+		secondPage := decodeBody[model.MergeRequestListResponse](t,
+			doGet(t, base+"/merge-requests?limit=1&after="+firstPage.NextCursor, aliceLogin.AccessToken))
+		require.Len(t, secondPage.MergeRequests, 1)
+		require.Equal(t, mr.Number, secondPage.MergeRequests[0].Number)
+
+		// filters narrow the page
+		byAuthor := decodeBody[model.MergeRequestListResponse](t, doGet(t, base+"/merge-requests?author="+mr.CreatedBy, aliceLogin.AccessToken))
+		require.Len(t, byAuthor.MergeRequests, 2)
+		bySource := decodeBody[model.MergeRequestListResponse](t, doGet(t, base+"/merge-requests?source=lagging", aliceLogin.AccessToken))
+		require.Len(t, bySource.MergeRequests, 1)
+		require.Equal(t, lagging.Number, bySource.MergeRequests[0].Number)
+		byTarget := decodeBody[model.MergeRequestListResponse](t, doGet(t, base+"/merge-requests?target=ghost", aliceLogin.AccessToken))
+		require.Empty(t, byTarget.MergeRequests)
+
+		badAfter := doMethod(t, http.MethodGet, base+"/merge-requests?after=nope", "", aliceLogin.AccessToken)
+		require.Equal(t, http.StatusBadRequest, badAfter.StatusCode)
+		badAfter.Body.Close()
+
+		badAuthor := doMethod(t, http.MethodGet, base+"/merge-requests?author=!!", "", aliceLogin.AccessToken)
+		require.Equal(t, http.StatusBadRequest, badAuthor.StatusCode)
+		badAuthor.Body.Close()
+
+		// a non-positive limit falls back to the default page size
+		zeroLimit := decodeBody[model.MergeRequestListResponse](t, doGet(t, base+"/merge-requests?limit=0", aliceLogin.AccessToken))
+		require.Len(t, zeroLimit.MergeRequests, 2)
 
 		// Protected targets can only be moved by merging a merge request.
 		createBranch = doMethod(t, http.MethodPost, base+"/branches", `{"name":"protected-fix","from":"main"}`, aliceLogin.AccessToken)
@@ -1361,11 +1392,11 @@ func TestAPIRoutes(t *testing.T) {
 
 		// the merge request list carries the review summary of every request
 		// that still has a live decision
-		list := decodeBody[[]model.MergeRequestResponse](t, doGet(t, base+"/merge-requests", aliceLogin.AccessToken))
+		list := decodeBody[model.MergeRequestListResponse](t, doGet(t, base+"/merge-requests", aliceLogin.AccessToken))
 		var listed *model.MergeRequestResponse
-		for i := range list {
-			if list[i].Number == mr.Number {
-				listed = &list[i]
+		for i := range list.MergeRequests {
+			if list.MergeRequests[i].Number == mr.Number {
+				listed = &list.MergeRequests[i]
 			}
 		}
 		require.NotNil(t, listed)

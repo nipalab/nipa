@@ -4,6 +4,7 @@ import (
 	"context"
 
 	clientDomain "github.com/nipalab/nipa/internal/client/domain"
+	serverDomain "github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/grpc/pb"
 )
 
@@ -42,18 +43,25 @@ func (c *Client) UpdateMergeRequest(ctx context.Context, org, project string, nu
 	return toClientMergeRequest(res.GetMergeRequest()), nil
 }
 
-func (c *Client) ListMergeRequests(ctx context.Context, org, project, status string, limit int) ([]*clientDomain.MergeRequest, error) {
+func (c *Client) ListMergeRequests(ctx context.Context, org, project string, opts clientDomain.ListMergeRequestOptions) ([]*clientDomain.MergeRequest, int64, error) {
 	client, err := c.transport.NipaServiceClient()
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	res, err := client.ListMergeRequests(ctx, &pb.ListMergeRequestsRequest{
-		Context: &pb.ProjectContext{Org: org, Project: project},
-		Status:  status,
-		Limit:   int32(limit),
-	})
+	request := &pb.ListMergeRequestsRequest{
+		Context:      &pb.ProjectContext{Org: org, Project: project},
+		Status:       opts.Status,
+		Limit:        int32(opts.Limit),
+		Author:       opts.Author,
+		SourceBranch: opts.SourceBranch,
+		TargetBranch: opts.TargetBranch,
+	}
+	if opts.After > 0 {
+		request.AfterNumber = &opts.After
+	}
+	res, err := client.ListMergeRequests(ctx, request)
 	if err != nil {
-		return nil, toDomainError(err)
+		return nil, 0, toDomainError(err)
 	}
 	requests := make([]*clientDomain.MergeRequest, 0, len(res.GetMergeRequests()))
 	for _, mr := range res.GetMergeRequests() {
@@ -61,7 +69,7 @@ func (c *Client) ListMergeRequests(ctx context.Context, org, project, status str
 			requests = append(requests, converted)
 		}
 	}
-	return requests, nil
+	return requests, res.GetNextCursor(), nil
 }
 
 func (c *Client) MergeMergeRequest(ctx context.Context, org, project string, number int64) (*clientDomain.MergeRequest, *clientDomain.Mergeability, error) {
@@ -94,6 +102,99 @@ func (c *Client) CloseMergeRequest(ctx context.Context, org, project string, num
 	return toClientMergeRequest(res.GetMergeRequest()), nil
 }
 
+func (c *Client) GetMergeRequest(ctx context.Context, org, project string, number int64) (*clientDomain.MergeRequest, *clientDomain.Mergeability, error) {
+	client, err := c.transport.NipaServiceClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	res, err := client.GetMergeRequest(ctx, &pb.GetMergeRequestRequest{
+		Context: &pb.ProjectContext{Org: org, Project: project},
+		Number:  number,
+	})
+	if err != nil {
+		return nil, nil, toDomainError(err)
+	}
+	return toClientMergeRequest(res.GetMergeRequest()), toClientMergeability(res.GetMergeability()), nil
+}
+
+func (c *Client) ReopenMergeRequest(ctx context.Context, org, project string, number int64) (*clientDomain.MergeRequest, error) {
+	client, err := c.transport.NipaServiceClient()
+	if err != nil {
+		return nil, err
+	}
+	res, err := client.ReopenMergeRequest(ctx, &pb.ReopenMergeRequestRequest{
+		Context: &pb.ProjectContext{Org: org, Project: project},
+		Number:  number,
+	})
+	if err != nil {
+		return nil, toDomainError(err)
+	}
+	return toClientMergeRequest(res.GetMergeRequest()), nil
+}
+
+func (c *Client) CheckMergeRequest(ctx context.Context, org, project string, number int64) (*clientDomain.Mergeability, error) {
+	client, err := c.transport.NipaServiceClient()
+	if err != nil {
+		return nil, err
+	}
+	res, err := client.CheckMergeRequest(ctx, &pb.CheckMergeRequestRequest{
+		Context: &pb.ProjectContext{Org: org, Project: project},
+		Number:  number,
+	})
+	if err != nil {
+		return nil, toDomainError(err)
+	}
+	return toClientMergeability(res.GetMergeability()), nil
+}
+
+func (c *Client) ListMergeRequestCommits(ctx context.Context, org, project string, number int64) ([]*serverDomain.CommitLogEntry, error) {
+	client, err := c.transport.NipaServiceClient()
+	if err != nil {
+		return nil, err
+	}
+	res, err := client.ListMergeRequestCommits(ctx, &pb.ListMergeRequestCommitsRequest{
+		Context: &pb.ProjectContext{Org: org, Project: project},
+		Number:  number,
+	})
+	if err != nil {
+		return nil, toDomainError(err)
+	}
+	commits := make([]*serverDomain.CommitLogEntry, 0, len(res.GetCommits()))
+	for _, commit := range res.GetCommits() {
+		if converted := toServerCommitLogEntry(commit); converted != nil {
+			commits = append(commits, converted)
+		}
+	}
+	return commits, nil
+}
+
+func (c *Client) GetMergeRequestDiff(ctx context.Context, org, project string, number int64) ([]*clientDomain.MergeRequestDiffFile, error) {
+	client, err := c.transport.NipaServiceClient()
+	if err != nil {
+		return nil, err
+	}
+	res, err := client.GetMergeRequestDiff(ctx, &pb.GetMergeRequestDiffRequest{
+		Context: &pb.ProjectContext{Org: org, Project: project},
+		Number:  number,
+	})
+	if err != nil {
+		return nil, toDomainError(err)
+	}
+	files := make([]*clientDomain.MergeRequestDiffFile, 0, len(res.GetFiles()))
+	for _, file := range res.GetFiles() {
+		files = append(files, &clientDomain.MergeRequestDiffFile{
+			Path:      file.GetPath(),
+			OldPath:   file.GetOldPath(),
+			Status:    file.GetStatus(),
+			Binary:    file.GetBinary(),
+			Additions: file.GetAdditions(),
+			Deletions: file.GetDeletions(),
+			Patch:     file.GetPatch(),
+		})
+	}
+	return files, nil
+}
+
 func toClientMergeRequest(mr *pb.MergeRequestDetail) *clientDomain.MergeRequest {
 	if mr == nil {
 		return nil
@@ -112,6 +213,22 @@ func toClientMergeRequest(mr *pb.MergeRequestDetail) *clientDomain.MergeRequest 
 		CreatedBy:         mr.GetCreatedBy(),
 		CreatedAt:         mr.GetCreatedAt().AsTime(),
 		UpdatedAt:         mr.GetUpdatedAt().AsTime(),
+		Review:            toClientReviewState(mr.GetReview()),
+	}
+}
+
+func toClientReviewState(state *pb.MergeRequestReviewState) *clientDomain.MergeRequestReviewState {
+	if state == nil {
+		return nil
+	}
+	outstanding := make([]string, 0, len(state.GetOutstandingReviewers()))
+	outstanding = append(outstanding, state.GetOutstandingReviewers()...)
+	return &clientDomain.MergeRequestReviewState{
+		HeadCommitID:         state.GetHeadCommitId(),
+		Approvals:            int(state.GetApprovals()),
+		ChangesRequested:     int(state.GetChangesRequested()),
+		DismissedApprovals:   int(state.GetDismissedApprovals()),
+		OutstandingReviewers: outstanding,
 	}
 }
 
@@ -124,5 +241,6 @@ func toClientMergeability(info *pb.MergeabilityDetail) *clientDomain.Mergeabilit
 		SourceCommitID:    info.GetSourceCommitId(),
 		TargetCommitID:    info.GetTargetCommitId(),
 		MergeBaseCommitID: info.GetMergeBaseCommitId(),
+		BlockedBy:         info.GetBlockedBy(),
 	}
 }

@@ -22,6 +22,7 @@ type stubMergeRequestRepository struct {
 	list          []*domain.MergeRequest
 	listStatus    string
 	listLimit     int
+	listOptions   domain.MergeRequestListOptions
 	getCalls      int
 	onGet         func(call int) (*domain.MergeRequest, error)
 	updateFn      func(id int64, title, description string) (*domain.MergeRequest, error)
@@ -44,9 +45,10 @@ func (s *stubMergeRequestRepository) Get(_ context.Context, _ snow.ID, _ int64) 
 	return s.onGet(s.getCalls)
 }
 
-func (s *stubMergeRequestRepository) List(_ context.Context, _ snow.ID, status string, limit int) ([]*domain.MergeRequest, error) {
-	s.listStatus = status
-	s.listLimit = limit
+func (s *stubMergeRequestRepository) List(_ context.Context, _ snow.ID, opts domain.MergeRequestListOptions) ([]*domain.MergeRequest, error) {
+	s.listStatus = opts.Status
+	s.listLimit = opts.Limit
+	s.listOptions = opts
 	return s.list, nil
 }
 
@@ -241,7 +243,7 @@ func TestMergeRequestHandler_List(t *testing.T) {
 		testMergeRequest(4, domain.MergeRequestClosed),
 	}}
 	srv, _, perm := newTestMergeRequestServer(t, repo, &stubBranchMerger{})
-	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(42), domain.PermissionRead).Return(true)
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(42), domain.PermissionRead).Return(true).AnyTimes()
 
 	resp, err := srv.ListMergeRequests(context.Background(), &pb.ListMergeRequestsRequest{
 		Context: &pb.ProjectContext{Org: "org", Project: "proj"},
@@ -252,7 +254,61 @@ func TestMergeRequestHandler_List(t *testing.T) {
 	require.Len(t, resp.MergeRequests, 2)
 	require.Equal(t, snow.ID(5).Base36(), resp.MergeRequests[0].Id)
 	require.Equal(t, domain.MergeRequestClosed, repo.listStatus)
-	require.Equal(t, 10, repo.listLimit)
+	require.Equal(t, 11, repo.listLimit, "the handler over-fetches one row to detect more pages")
+	require.Nil(t, resp.NextCursor, "a short page has no cursor")
+
+	// a full page returns the last number as the cursor, and the filters and
+	// cursor are passed through
+	author := snow.ID(7)
+	after := int64(9)
+	resp, err = srv.ListMergeRequests(context.Background(), &pb.ListMergeRequestsRequest{
+		Context:      &pb.ProjectContext{Org: "org", Project: "proj"},
+		Limit:        1,
+		AfterNumber:  &after,
+		Author:       author.Base36(),
+		SourceBranch: "feature",
+		TargetBranch: "main",
+	})
+	require.NoError(t, err)
+	require.Len(t, resp.MergeRequests, 1)
+	require.NotNil(t, resp.NextCursor)
+	require.Equal(t, int64(5), *resp.NextCursor)
+	require.Equal(t, after, repo.listOptions.After)
+	require.Equal(t, author, *repo.listOptions.Author)
+	require.Equal(t, "feature", repo.listOptions.SourceBranch)
+	require.Equal(t, "main", repo.listOptions.TargetBranch)
+
+	_, err = srv.ListMergeRequests(context.Background(), &pb.ListMergeRequestsRequest{
+		Context: &pb.ProjectContext{Org: "org", Project: "proj"},
+		Author:  "not-base36!",
+	})
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+}
+
+func TestMergeRequestHandler_Get(t *testing.T) {
+	sourceHead := snow.ID(11)
+	targetHead := snow.ID(12)
+	repo := &stubMergeRequestRepository{
+		onGet: func(int) (*domain.MergeRequest, error) {
+			return testMergeRequest(5, domain.MergeRequestOpen), nil
+		},
+	}
+	merger := &stubBranchMerger{base: &usecase.MergeBaseInfo{MergeBaseCommitID: &targetHead}}
+	srv, branchRepo, perm := newTestMergeRequestServer(t, repo, merger)
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(42), domain.PermissionRead).Return(true).AnyTimes()
+	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(42), "feature").
+		Return(&domain.Branch{ID: 3, ProjectID: 42, CommitID: &sourceHead}, nil)
+	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(42), "main").
+		Return(&domain.Branch{ID: 2, ProjectID: 42, CommitID: &targetHead}, nil)
+
+	resp, err := srv.GetMergeRequest(context.Background(), &pb.GetMergeRequestRequest{
+		Context: &pb.ProjectContext{Org: "org", Project: "proj"},
+		Number:  5,
+	})
+	require.NoError(t, err)
+	require.Equal(t, snow.ID(5).Base36(), resp.GetMergeRequest().GetId())
+	require.Equal(t, "Add feature", resp.GetMergeRequest().GetTitle())
+	require.Equal(t, domain.MergeabilityMergeable, resp.GetMergeability().GetStatus())
 }
 
 func TestMergeRequestHandler_Merge(t *testing.T) {

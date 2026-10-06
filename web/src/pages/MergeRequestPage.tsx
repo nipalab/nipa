@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Heading, Stack, StateLabel } from '@primer/react'
+import { Button, Dialog, FormControl, Heading, Stack, StateLabel, TextInput } from '@primer/react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import {
   addMergeRequestComment,
@@ -18,8 +18,10 @@ import {
   reopenMergeRequest,
   replyMergeRequestThread,
   resolveMergeRequestThread,
+  updateMergeRequest,
   updateMergeRequestComment,
 } from '../api/endpoints'
+import type { MergeRequestResponse } from '../api/models'
 import { useAuth } from '../auth'
 import { DiffAnchor } from '../components/repo/DiffView'
 import { ActorAvatar, actorName, actorsFrom, type ActorLike } from '../components/repo/ActorAvatar'
@@ -74,11 +76,15 @@ export default function MergeRequestPage() {
   const [commentBusy, setCommentBusy] = useState(false)
   const [commentError, setCommentError] = useState<string | null>(null)
   const [draftAnchor, setDraftAnchor] = useState<DiffAnchor | null>(null)
+  const [editOpen, setEditOpen] = useState(false)
 
   const tab = params.get('tab') ?? 'overview'
   const files = diff?.files ?? []
   const canComment = canWrite && request?.status === 'open'
   const createdBy = request?.created_by ?? ''
+  const canEdit = Boolean(
+    request && request.status === 'open' && (me?.id === request.created_by || canAdmin),
+  )
   const author: ActorLike | undefined =
     actorsFrom(
       (threads ?? []).flatMap((thread) => [thread.created_by, ...thread.comments.map((comment) => comment.user)]),
@@ -177,6 +183,11 @@ export default function MergeRequestPage() {
           #{request?.number} {request?.title}
         </Heading>
         {request && <StateLabel status={stateLabelStatus(request.status)}>{stateLabelText(request.status)}</StateLabel>}
+        {canEdit && (
+          <Button size="small" style={{ marginLeft: 'auto' }} onClick={() => setEditOpen(true)}>
+            Edit
+          </Button>
+        )}
       </div>
       {request && (
         <div
@@ -267,7 +278,84 @@ export default function MergeRequestPage() {
           />
         </Stack>
       )}
+
+      {editOpen && request && (
+        <EditMergeRequestDialog
+          org={org}
+          project={project}
+          id={id}
+          request={request}
+          onClose={() => setEditOpen(false)}
+          onSaved={() => {
+            setEditOpen(false)
+            reloadAll()
+          }}
+        />
+      )}
     </RepoPageShell>
+  )
+}
+
+function EditMergeRequestDialog({
+  org,
+  project,
+  id,
+  request,
+  onClose,
+  onSaved,
+}: {
+  org: string
+  project: string
+  id: string
+  request: MergeRequestResponse
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [title, setTitle] = useState(request.title)
+  const [description, setDescription] = useState(request.description)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const canSubmit = title.trim() !== '' && !saving
+
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault()
+    if (!canSubmit) return
+    setSaving(true)
+    setError(null)
+    try {
+      await updateMergeRequest(org, project, id, title.trim(), description)
+      onSaved()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog title={`Edit merge request #${request.number}`} onClose={onClose} width="large">
+      <Dialog.Body>
+        <ErrorBanner error={error} />
+        <form onSubmit={handleSubmit}>
+          <Stack direction="vertical" gap="normal">
+            <FormControl required>
+              <FormControl.Label>Title</FormControl.Label>
+              <TextInput block autoFocus value={title} onChange={(event) => setTitle(event.target.value)} />
+            </FormControl>
+            <FormControl>
+              <FormControl.Label>Description</FormControl.Label>
+              <TextInput block value={description} onChange={(event) => setDescription(event.target.value)} />
+            </FormControl>
+          </Stack>
+        </form>
+      </Dialog.Body>
+      <Dialog.Footer>
+        <Button onClick={onClose}>Cancel</Button>
+        <Button variant="primary" disabled={!canSubmit} onClick={handleSubmit}>
+          {saving ? 'Saving…' : 'Save changes'}
+        </Button>
+      </Dialog.Footer>
+    </Dialog>
   )
 }
 

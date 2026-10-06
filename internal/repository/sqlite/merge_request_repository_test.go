@@ -56,14 +56,34 @@ func TestMergeRequestRepositorySQLite_CRUD(t *testing.T) {
 	require.Equal(t, "Add feature", got.Title)
 	require.Nil(t, got.MergeBaseCommitID)
 
-	list, err := repo.List(ctx, projectID, "", 10)
+	list, err := repo.List(ctx, projectID, domain.MergeRequestListOptions{Limit: 10})
 	require.NoError(t, err)
 	require.Len(t, list, 2)
 	require.Equal(t, int64(2), list[0].Number)
 
-	list, err = repo.List(ctx, projectID, domain.MergeRequestClosed, 10)
+	list, err = repo.List(ctx, projectID, domain.MergeRequestListOptions{Status: domain.MergeRequestClosed, Limit: 10})
 	require.NoError(t, err)
 	require.Empty(t, list)
+
+	// the number is the keyset cursor, and the filters narrow the page
+	page, err := repo.List(ctx, projectID, domain.MergeRequestListOptions{Limit: 1})
+	require.NoError(t, err)
+	require.Len(t, page, 1)
+	require.Equal(t, int64(2), page[0].Number)
+	next, err := repo.List(ctx, projectID, domain.MergeRequestListOptions{After: page[0].Number, Limit: 1})
+	require.NoError(t, err)
+	require.Len(t, next, 1)
+	require.Equal(t, int64(1), next[0].Number)
+
+	byAuthor, err := repo.List(ctx, projectID, domain.MergeRequestListOptions{Author: &userID, Limit: 10})
+	require.NoError(t, err)
+	require.Len(t, byAuthor, 2)
+	bySource, err := repo.List(ctx, projectID, domain.MergeRequestListOptions{SourceBranch: "feature", Limit: 10})
+	require.NoError(t, err)
+	require.Len(t, bySource, 2)
+	byTarget, err := repo.List(ctx, projectID, domain.MergeRequestListOptions{TargetBranch: "ghost", Limit: 10})
+	require.NoError(t, err)
+	require.Empty(t, byTarget)
 
 	updated, err := repo.Update(ctx, projectID, 1, "New title", "new body")
 	require.NoError(t, err)

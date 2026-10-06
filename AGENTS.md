@@ -218,12 +218,29 @@ log-only after the change landed), so the SPA's timeline renders them. The MR
 usecase's `AppendEvent` path requires the review repository to be
 transaction-aware (`dbtx.New`), which is why
 `NewMergeRequestReviewRepository` wraps its DB handle. gRPC carries the same
-surface: `ReopenMergeRequest`, `CheckMergeRequest`,
+surface: `GetMergeRequest` (detail + mergeability + live review summary),
+`ReopenMergeRequest`, `CheckMergeRequest`,
 `ListMergeRequestCommits` (reuses `CommitLogEntry`),
 `GetMergeRequestDiff` (new `DiffFileDetail`/`DiffHunkDetail`/`DiffLineDetail`
 messages mirroring the REST diff model), `MergeabilityDetail.blocked_by`,
 `MergeRequestDetail.review` (populated by `ListMergeRequests` via
 `AttachSummaries`), and `Branch.required_approvals`.
+
+MR lists paginate by number: `GET .../merge-requests` takes
+`status/author/source/target/after/limit` and returns
+`{merge_requests, next_cursor}` (the cursor is the last number of a full page;
+gRPC uses `ListMergeRequestsRequest.after_number`/`ListMergeRequestsResponse.
+next_cursor`). The handlers over-fetch one row, so `next_cursor` only appears
+when a next page really exists; changing filters resets the cursor. Review
+activity is webhook-visible through the same MR-shaped payload as the lifecycle
+events: `mr.review_submitted`, `mr.review_dismissed`, `mr.review_requested`,
+`mr.review_request_removed` and `mr.comment_created` (new comments only). The
+CLI mirrors the surface under `nipa mr`: `view`, `reopen`,
+`review --approve|--request-changes -m`, `comments`, `comment [-m] [--file
+--new-line/--old-line]`, `reply <number> <thread-id>`, `resolve <number>
+<thread-id> [--unresolve]`, `timeline`, `requests`, `request-review <number>
+<user-id>`, `unrequest-review`, `diff`, and `list
+--author/--source/--target/--after`.
 
 Flow for `nipa revert <commit>` / `<from>..<to>`: resolve targets via gRPC
 `GetCommit` / `WalkCommits` (range walks newest-first, exclusive stop; ranges are
@@ -483,8 +500,8 @@ Direct: `go build ./...`, `go vet ./...`, `go test ./...`.
   `DeleteTag`; history/tree RPCs `GetTreeManifest`, `GetCommitLog`,
   `GetCommit`, `WalkCommits`, `GetMergeBase`, `MergeFastForward`; merge-request
   RPCs `CreateMergeRequest`, `UpdateMergeRequest`, `ListMergeRequests`,
-  `MergeMergeRequest`, `CloseMergeRequest`, `ReopenMergeRequest`,
-  `CheckMergeRequest`, `ListMergeRequestCommits`,
+  `GetMergeRequest`, `MergeMergeRequest`, `CloseMergeRequest`,
+  `ReopenMergeRequest`, `CheckMergeRequest`, `ListMergeRequestCommits`,
   `GetMergeRequestDiff`; review RPCs
   `SubmitMergeRequestReview`, `ListMergeRequestReviews`,
   `GetMergeRequestReviewState`, `WithdrawMergeRequestReview`,

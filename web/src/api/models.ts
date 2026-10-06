@@ -159,6 +159,11 @@ export interface MergeRequestResponse {
   review?: ReviewStateResponse
 }
 
+export interface MergeRequestListResponse {
+  merge_requests: MergeRequestResponse[]
+  next_cursor?: string
+}
+
 export interface MergeRequestDiffResponse {
   base_id?: string
   files: DiffFileResponse[]

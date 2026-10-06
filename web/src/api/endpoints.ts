@@ -8,6 +8,7 @@ import type {
   FileLockResponse,
   GroupResponse,
   MergeRequestDiffResponse,
+  MergeRequestListResponse,
   MergeRequestResponse,
   ReviewRequestResponse,
   ReviewResponse,
@@ -193,11 +194,27 @@ export function getCommitDiff(org: string, project: string, commit: string): Pro
   return apiJson(`${projectBase(org, project)}/commits/${encodeURIComponent(commit)}/diff`)
 }
 
-export function listMergeRequests(org: string, project: string, status: string): Promise<MergeRequestResponse[]> {
-  const params = new URLSearchParams()
-  if (status) params.set('status', status)
-  const query = params.toString()
-  return apiJson(`${projectBase(org, project)}/merge-requests${query ? `?${query}` : ''}`)
+export function listMergeRequests(
+  org: string,
+  project: string,
+  params: {
+    status?: string
+    author?: string
+    source?: string
+    target?: string
+    after?: string
+    limit?: number
+  } = {},
+): Promise<MergeRequestListResponse> {
+  const query = new URLSearchParams()
+  if (params.status) query.set('status', params.status)
+  if (params.author) query.set('author', params.author)
+  if (params.source) query.set('source', params.source)
+  if (params.target) query.set('target', params.target)
+  if (params.after) query.set('after', params.after)
+  if (params.limit) query.set('limit', String(params.limit))
+  const qs = query.toString()
+  return apiJson(`${projectBase(org, project)}/merge-requests${qs ? `?${qs}` : ''}`)
 }
 
 export function createMergeRequest(

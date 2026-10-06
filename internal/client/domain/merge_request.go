@@ -18,6 +18,29 @@ type MergeRequest struct {
 	CreatedBy         string
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
+	// Review is resolved per request, not stored: it counts only the reviews
+	// given for the current source head.
+	Review *MergeRequestReviewState
+}
+
+// MergeRequestReviewState is the live review summary of a merge request.
+type MergeRequestReviewState struct {
+	HeadCommitID         string   `json:"head_commit_id,omitempty"`
+	Approvals            int      `json:"approvals"`
+	ChangesRequested     int      `json:"changes_requested"`
+	DismissedApprovals   int      `json:"dismissed_approvals"`
+	OutstandingReviewers []string `json:"outstanding_reviewers"`
+}
+
+// ListMergeRequestOptions filters and paginates a merge request listing.
+// After is the cursor returned by the previous page (0 starts from the newest).
+type ListMergeRequestOptions struct {
+	Status       string
+	Author       string
+	SourceBranch string
+	TargetBranch string
+	After        int64
+	Limit        int
 }
 
 // Mergeability is the live, computed state of an open merge request.
@@ -26,6 +49,9 @@ type Mergeability struct {
 	SourceCommitID    string
 	TargetCommitID    string
 	MergeBaseCommitID string
+	// BlockedBy is empty when the request can merge; otherwise it names the
+	// review reason the target branch policy refuses the merge for.
+	BlockedBy string
 }
 
 const (

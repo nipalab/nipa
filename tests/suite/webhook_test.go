@@ -306,6 +306,53 @@ var _ = Describe("webhook deliveries", func() {
 		Expect(reopened.MergeRequest.State).To(Equal("open"))
 	})
 
+	It("delivers merge request review and comment events", func() {
+		project := newProject("hook-mr-review")
+		seedRepo(orgSlug, project, map[string][]byte{"base.txt": []byte("base\n")}, "seed")
+		fixture := newWebhook(project, []string{
+			"mr.review_submitted", "mr.review_requested", "mr.review_request_removed",
+			"mr.review_dismissed", "mr.comment_created",
+		}, nil)
+
+		parent := workspace()
+		dir := cloneRepo(parent, repoURLFor(orgSlug, project), "work")
+		Expect(runNipa(dir, "branch", "-c", "feature").ExitCode).To(Equal(0))
+		writeText(dir, "feature.txt", "feature\n")
+		Expect(runNipa(dir, "add", "feature.txt").ExitCode).To(Equal(0))
+		Expect(pushRepo(dir, "feature work").ExitCode).To(Equal(0))
+		Expect(runNipa(dir, "mr", "create", "--title", "Review me").ExitCode).To(Equal(0))
+
+		reviewer := newIdentity("hook-reviewer").promote()
+		reviewerAPI := newAPIClient(cli.apiURL, reviewer.email, reviewer.password)
+		reviewID := reviewerAPI.submitMergeRequestReview(orgSlug, project, 1, "changes_requested", "please fix")
+
+		reviewed := fixture.receiver.wait("mr.review_submitted").mrPayload()
+		Expect(reviewed.Event).To(Equal("mr.review_submitted"))
+		Expect(reviewed.MergeRequest.Number).To(Equal(int64(1)))
+		Expect(reviewed.Actor.ID).To(Equal(reviewer.userID))
+
+		Expect(runNipa(dir, "mr", "request-review", "1", reviewer.userID).ExitCode).To(Equal(0))
+		requested := fixture.receiver.wait("mr.review_requested").mrPayload()
+		Expect(requested.Event).To(Equal("mr.review_requested"))
+		Expect(requested.MergeRequest.Number).To(Equal(int64(1)))
+
+		Expect(runNipa(dir, "mr", "unrequest-review", "1", reviewer.userID).ExitCode).To(Equal(0))
+		removed := fixture.receiver.wait("mr.review_request_removed").mrPayload()
+		Expect(removed.Event).To(Equal("mr.review_request_removed"))
+		Expect(removed.MergeRequest.Number).To(Equal(int64(1)))
+
+		api.dismissMergeRequestReview(orgSlug, project, 1, reviewID)
+		dismissed := fixture.receiver.wait("mr.review_dismissed").mrPayload()
+		Expect(dismissed.Event).To(Equal("mr.review_dismissed"))
+		Expect(dismissed.MergeRequest.Number).To(Equal(int64(1)))
+
+		reviewerAPI.addMergeRequestComment(orgSlug, project, 1, "", "overall note")
+		commented := fixture.receiver.wait("mr.comment_created").mrPayload()
+		Expect(commented.Event).To(Equal("mr.comment_created"))
+		Expect(commented.MergeRequest.Number).To(Equal(int64(1)))
+		Expect(commented.Actor.ID).To(Equal(reviewer.userID))
+	})
+
 	It("does not deliver while the webhook is inactive", func() {
 		project := newProject("hook-inactive")
 		fixture := newWebhook(project, []string{"push"}, map[string]any{"is_active": false})

@@ -349,6 +349,10 @@ Merge requests are live over the REST API with the recommended policy:
   `GET .../{id}/check`, `GET .../{id}/diff` (three-dot vs merge base),
   `POST .../{id}/merge|close|reopen`. `{id}` is the per-project sequential
   number (`#1`, `#2`, ...), assigned at creation and unique per project.
+- `GET .../merge-requests` filters by `status/author/source/target` and
+  paginates by number: `after` is the last number of the previous page and the
+  response is `{merge_requests, next_cursor}` (`next_cursor` only when a full
+  page was returned; changing filters resets the cursor).
 - Policy: **require up to date** (GitLab-style). `Check` reports
   `mergeable`, `behind_target`, `up_to_date`, `invalid`, or the terminal
   `merged`/`closed` status. A request is only landable when the target head is
@@ -361,8 +365,9 @@ Merge requests are live over the REST API with the recommended policy:
 - `Merge` on a request that is `behind_target`/`up_to_date`/terminal returns a
   409 and the author updates the branch (`nipa mr update`) before retrying.
 
-Not in v1 (tracked for later): `allow_behind` policy, server-side merge commits
-(3-way tree build), and `nipa mr` CLI commands.
+Not in v1 (tracked for later): `allow_behind` policy and server-side merge
+commits (3-way tree build). The `nipa mr` CLI surface landed later (see the
+review and CLI sections below).
 
 ---
 
@@ -435,13 +440,33 @@ target branch policy described below (landing itself stays fast-forward-only).
   `DeleteMergeRequestThread`, `ListMergeRequestReviewRequests`,
   `RequestMergeRequestReview`, `RemoveMergeRequestReviewRequest`,
   `ListMergeRequestTimeline`. The MR RPCs also gained parity with REST:
+  `GetMergeRequest` (detail + mergeability + review summary),
   `ReopenMergeRequest`, `CheckMergeRequest`, `ListMergeRequestCommits` and
   `GetMergeRequestDiff` (mirroring the REST diff model with
-  `DiffFileDetail`/`DiffHunkDetail`/`DiffLineDetail`); `MergeabilityDetail`
-  carries `blocked_by` and `MergeRequestDetail` an optional live `review`.
+  `DiffFileDetail`/`DiffHunkDetail`/`DiffLineDetail`); `ListMergeRequests`
+  filters by `author/source_branch/target_branch` and paginates with
+  `after_number`/`next_cursor`; `MergeabilityDetail` carries `blocked_by` and
+  `MergeRequestDetail` an optional live `review`.
+- Review activity is webhook-visible through the MR-shaped payload:
+  `mr.review_submitted`, `mr.review_dismissed`, `mr.review_requested`,
+  `mr.review_request_removed` and `mr.comment_created` (new comments only).
 - `Push` notifies the review usecase after a successful apply
   (`usecase.Push.WithReviews`), dismissing stale decisions and appending the
   push event. Bookkeeping failures are logged and never fail the push.
+
+### CLI
+
+`nipa mr` mirrors the server surface: `view <n>` (summary, reviewers, commits;
+`--json` adds mergeability, reviews and commits), `reopen <n>`,
+`review <n> --approve|--request-changes -m <msg>` (no flag = comment-only),
+`comments <n>`, `comment <n> -m [--file <path> --new-line|--old-line]`,
+`reply <n> <thread-id> -m`, `resolve <n> <thread-id> [--unresolve]`,
+`timeline <n>`, `requests <n>`, `request-review <n> <user-id>`,
+`unrequest-review <n> <user-id>` and `diff <n>`; `list` gained
+`--author/--source/--target/--after` and prints the `next_cursor` hint. The
+review request commands take a base36 user id; the SPA remains the friendly
+picker. The daemon proxies `GetMergeRequest`, `CheckMergeRequest`,
+`ReopenMergeRequest` and `SubmitMergeRequestReview` for `nipa serve` clients.
 
 ### Web UI
 

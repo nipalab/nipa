@@ -67,6 +67,15 @@ function typeInput(el: Element | null | undefined, value: string) {
   })
 }
 
+function selectOption(el: Element | null | undefined, value: string) {
+  act(() => {
+    const target = el as HTMLSelectElement
+    const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set
+    setter?.call(target, value)
+    target.dispatchEvent(new Event('change', { bubbles: true }))
+  })
+}
+
 function rows(container: HTMLElement): HTMLTableRowElement[] {
   return [...container.querySelectorAll('tr')] as HTMLTableRowElement[]
 }
@@ -460,6 +469,54 @@ describe('MergeRequestOverview', () => {
       (button) => button.textContent === 'Merge pull request',
     ) as HTMLButtonElement
     expect(mergeButton.disabled).toBe(status !== 'mergeable')
+  })
+
+  it.each([
+    ['changes_requested', 'Changes were requested on this merge request.'],
+    ['insufficient_approvals', 'This merge request does not have enough approvals yet.'],
+  ])('explains the %s review block and disables merge', async (blockedBy, expected) => {
+    const request = { ...base.request, mergeability: { status: 'mergeable', blocked_by: blockedBy } }
+    const { container } = await render(<MergeRequestOverview {...base} request={request} />)
+    expect(container.textContent).toContain(expected)
+    const mergeButton = [...container.querySelectorAll('button')].find(
+      (button) => button.textContent === 'Merge pull request',
+    ) as HTMLButtonElement
+    expect(mergeButton.disabled).toBe(true)
+  })
+
+  it('attaches inline comments to a review decision', async () => {
+    const { container } = await render(<MergeRequestOverview {...base} files={[file]} />)
+    click([...container.querySelectorAll('button')].find((button) => button.textContent === '+ Add inline comment'))
+    selectOption(container.querySelector('[aria-label="Inline comment file"]'), 'code.txt')
+    selectOption(container.querySelector('[aria-label="Inline comment side"]'), 'new')
+    typeInput(container.querySelector('[aria-label="Inline comment line"]'), '2')
+    type(container.querySelector('[aria-label="Inline comment body"]'), 'rename this')
+    click([...container.querySelectorAll('button')].find((button) => button.textContent === 'Add inline comment'))
+    expect(container.textContent).toContain('new line 2')
+    expect(container.textContent).toContain('rename this')
+
+    await act(async () => {
+      const approve = [...container.querySelectorAll('button')].find((button) => button.textContent === 'Approve')
+      ;(approve as HTMLElement).dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+    expect(endpoints.submitMergeRequestReview).toHaveBeenCalledWith('acme', 'game', '7', {
+      state: 'approved',
+      body: '',
+      comments: [{ file_path: 'code.txt', new_line: 2, body: 'rename this' }],
+    })
+  })
+
+  it('removes an inline comment draft before submitting', async () => {
+    const { container } = await render(<MergeRequestOverview {...base} files={[file]} />)
+    click([...container.querySelectorAll('button')].find((button) => button.textContent === '+ Add inline comment'))
+    selectOption(container.querySelector('[aria-label="Inline comment file"]'), 'code.txt')
+    typeInput(container.querySelector('[aria-label="Inline comment line"]'), '2')
+    type(container.querySelector('[aria-label="Inline comment body"]'), 'drop me')
+    click([...container.querySelectorAll('button')].find((button) => button.textContent === 'Add inline comment'))
+    expect(container.textContent).toContain('drop me')
+
+    click(container.querySelector('[aria-label="Remove inline comment on code.txt"]'))
+    expect(container.textContent).not.toContain('drop me')
   })
 })
 

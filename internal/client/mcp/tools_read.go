@@ -184,7 +184,10 @@ func (s *server) mrList(ctx context.Context, _ *mcp.CallToolRequest, in mrListIn
 	if uc.MR == nil {
 		return nil, zero, toolError(domain.NewUserError("merge requests are not configured"))
 	}
-	requests, err := uc.MR.List(ctx, root, in.Status, in.Limit)
+	requests, _, err := uc.MR.List(ctx, root, usecase.ListMergeRequestOptions{
+		Status: in.Status,
+		Limit:  in.Limit,
+	})
 	if err != nil {
 		return nil, zero, toolError(err)
 	}

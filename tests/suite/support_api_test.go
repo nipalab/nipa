@@ -160,9 +160,65 @@ func (c *apiClient) checkMergeRequest(org, project string, number int64) mergeab
 	return out
 }
 
-func (c *apiClient) submitMergeRequestReview(org, project string, number int64, state, body string) {
+func (c *apiClient) submitMergeRequestReview(org, project string, number int64, state, body string) string {
+	var out struct {
+		ID string `json:"id"`
+	}
 	c.do(http.MethodPost, fmt.Sprintf("/orgs/%s/projects/%s/merge-requests/%d/reviews", org, project, number),
-		map[string]string{"state": state, "body": body}, nil, true)
+		map[string]string{"state": state, "body": body}, &out, true)
+	return out.ID
+}
+
+// submitMergeRequestReviewWithComment posts a review decision carrying one
+// inline comment and returns the review id.
+func (c *apiClient) submitMergeRequestReviewWithComment(org, project string, number int64, state, body, filePath string, newLine int64) string {
+	var out struct {
+		ID string `json:"id"`
+	}
+	c.do(http.MethodPost, fmt.Sprintf("/orgs/%s/projects/%s/merge-requests/%d/reviews", org, project, number),
+		map[string]any{
+			"state": state,
+			"body":  body,
+			"comments": []map[string]any{
+				{"file_path": filePath, "new_line": newLine, "body": "inline review note"},
+			},
+		}, &out, true)
+	return out.ID
+}
+
+func (c *apiClient) dismissMergeRequestReview(org, project string, number int64, reviewID string) {
+	c.do(http.MethodPost,
+		fmt.Sprintf("/orgs/%s/projects/%s/merge-requests/%d/reviews/%s/dismiss", org, project, number, reviewID),
+		map[string]string{}, nil, true)
+}
+
+func (c *apiClient) withdrawMergeRequestReview(org, project string, number int64, reviewID string) {
+	c.do(http.MethodDelete,
+		fmt.Sprintf("/orgs/%s/projects/%s/merge-requests/%d/reviews/%s", org, project, number, reviewID),
+		nil, nil, true)
+}
+
+func (c *apiClient) updateMergeRequestComment(org, project string, number int64, threadID, commentID, body string) {
+	c.do(http.MethodPatch,
+		fmt.Sprintf("/orgs/%s/projects/%s/merge-requests/%d/threads/%s/comments/%s", org, project, number, threadID, commentID),
+		map[string]string{"body": body}, nil, true)
+}
+
+func (c *apiClient) deleteMergeRequestComment(org, project string, number int64, threadID, commentID string) {
+	c.do(http.MethodDelete,
+		fmt.Sprintf("/orgs/%s/projects/%s/merge-requests/%d/threads/%s/comments/%s", org, project, number, threadID, commentID),
+		nil, nil, true)
+}
+
+func (c *apiClient) deleteMergeRequestThread(org, project string, number int64, threadID string) {
+	c.do(http.MethodDelete,
+		fmt.Sprintf("/orgs/%s/projects/%s/merge-requests/%d/threads/%s", org, project, number, threadID),
+		nil, nil, true)
+}
+
+func (c *apiClient) addMergeRequestComment(org, project string, number int64, filePath, body string) {
+	c.do(http.MethodPost, fmt.Sprintf("/orgs/%s/projects/%s/merge-requests/%d/threads", org, project, number),
+		map[string]string{"file_path": filePath, "body": body}, nil, true)
 }
 
 func (c *apiClient) do(method, path string, body any, out any, auth bool) int {

@@ -24,6 +24,11 @@ export const WEBHOOK_EVENTS: { value: string; label: string }[] = [
   { value: 'mr.merged', label: 'Merge request merged' },
   { value: 'mr.closed', label: 'Merge request closed' },
   { value: 'mr.reopened', label: 'Merge request reopened' },
+  { value: 'mr.review_submitted', label: 'Merge request review submitted' },
+  { value: 'mr.review_dismissed', label: 'Merge request review dismissed' },
+  { value: 'mr.review_requested', label: 'Merge request review requested' },
+  { value: 'mr.review_request_removed', label: 'Merge request review request removed' },
+  { value: 'mr.comment_created', label: 'Merge request comment created' },
 ]
 
 export function webhookEventLabel(event: string): string {

@@ -165,8 +165,8 @@ func (fakeMRClient) UpdateMergeRequest(context.Context, string, string, int64, s
 	return nil, errors.New("not implemented")
 }
 
-func (f fakeMRClient) ListMergeRequests(context.Context, string, string, string, int) ([]*domain.MergeRequest, error) {
-	return f.requests, f.err
+func (f fakeMRClient) ListMergeRequests(context.Context, string, string, domain.ListMergeRequestOptions) ([]*domain.MergeRequest, int64, error) {
+	return f.requests, 0, f.err
 }
 
 func (fakeMRClient) MergeMergeRequest(context.Context, string, string, int64) (*domain.MergeRequest, *domain.Mergeability, error) {
@@ -179,6 +179,66 @@ func (fakeMRClient) CloseMergeRequest(context.Context, string, string, int64) (*
 
 func (fakeMRClient) GetDefaultBranch(context.Context, string, string) (*serverDomain.Branch, error) {
 	return &serverDomain.Branch{Name: "main"}, nil
+}
+
+func (fakeMRClient) GetMergeRequest(context.Context, string, string, int64) (*domain.MergeRequest, *domain.Mergeability, error) {
+	return nil, nil, errors.New("not implemented")
+}
+
+func (fakeMRClient) ReopenMergeRequest(context.Context, string, string, int64) (*domain.MergeRequest, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (fakeMRClient) CheckMergeRequest(context.Context, string, string, int64) (*domain.Mergeability, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (fakeMRClient) ListMergeRequestCommits(context.Context, string, string, int64) ([]*serverDomain.CommitLogEntry, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (fakeMRClient) GetMergeRequestDiff(context.Context, string, string, int64) ([]*domain.MergeRequestDiffFile, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (fakeMRClient) ListMergeRequestReviews(context.Context, string, string, int64) ([]*domain.MergeRequestReview, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (fakeMRClient) SubmitMergeRequestReview(context.Context, string, string, int64, string, string) (*domain.MergeRequestReview, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (fakeMRClient) ListMergeRequestThreads(context.Context, string, string, int64) ([]*domain.MergeRequestThread, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (fakeMRClient) AddMergeRequestComment(context.Context, string, string, int64, string, *int64, *int64, string) (*domain.MergeRequestThread, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (fakeMRClient) ReplyMergeRequestThread(context.Context, string, string, int64, string, string) (*domain.MergeRequestComment, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (fakeMRClient) ResolveMergeRequestThread(context.Context, string, string, int64, string, bool) (*domain.MergeRequestThread, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (fakeMRClient) ListMergeRequestTimeline(context.Context, string, string, int64) ([]*domain.MergeRequestTimelineItem, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (fakeMRClient) ListMergeRequestReviewRequests(context.Context, string, string, int64) ([]*domain.MergeRequestReviewRequest, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (fakeMRClient) RequestMergeRequestReview(context.Context, string, string, int64, string) (*domain.MergeRequestReviewRequest, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (fakeMRClient) RemoveMergeRequestReviewRequest(context.Context, string, string, int64, string) error {
+	return errors.New("not implemented")
 }
 
 func setupRepo(t *testing.T, files map[string]string) string {
