@@ -322,6 +322,37 @@ func TestToClientMergeRequest_Nil(t *testing.T) {
 	require.Nil(t, toClientMergeRequest(nil))
 }
 
+func TestToClientMergeRequest_ReviewState(t *testing.T) {
+	detail := mergeRequestDetail()
+	detail.Review = &pb.MergeRequestReviewState{
+		HeadCommitId:         snow.ID(11).Base36(),
+		Approvals:            2,
+		ChangesRequested:     1,
+		DismissedApprovals:   3,
+		OutstandingReviewers: []string{snow.ID(8).Base36(), snow.ID(9).Base36()},
+	}
+
+	got := toClientMergeRequest(detail)
+	require.NotNil(t, got.Review)
+	require.Equal(t, snow.ID(11).Base36(), got.Review.HeadCommitID)
+	require.Equal(t, 2, got.Review.Approvals)
+	require.Equal(t, 1, got.Review.ChangesRequested)
+	require.Equal(t, 3, got.Review.DismissedApprovals)
+	require.Equal(t, []string{snow.ID(8).Base36(), snow.ID(9).Base36()}, got.Review.OutstandingReviewers)
+
+	require.Nil(t, toClientMergeRequest(mergeRequestDetail()).Review, "an absent summary stays nil")
+	require.Nil(t, toClientReviewState(nil))
+}
+
 func TestToClientMergeability_Nil(t *testing.T) {
 	require.Nil(t, toClientMergeability(nil))
+}
+
+func TestToClientMergeability_BlockedBy(t *testing.T) {
+	got := toClientMergeability(&pb.MergeabilityDetail{
+		Status:    "mergeable",
+		BlockedBy: "insufficient_approvals",
+	})
+	require.Equal(t, "mergeable", got.Status)
+	require.Equal(t, "insufficient_approvals", got.BlockedBy)
 }

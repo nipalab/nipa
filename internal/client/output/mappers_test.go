@@ -192,6 +192,12 @@ func TestNewMergeRequests(t *testing.T) {
 			Title:        "Add b",
 			Status:       clientDomain.MergeRequestOpen,
 			CreatedAt:    time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+			Review: &clientDomain.MergeRequestReviewState{
+				Approvals:            1,
+				ChangesRequested:     2,
+				DismissedApprovals:   3,
+				OutstandingReviewers: []string{"rev"},
+			},
 		},
 		nil,
 	})
@@ -203,6 +209,10 @@ func TestNewMergeRequests(t *testing.T) {
 	require.Equal(t, "open", mr.Status)
 	require.Equal(t, "2026-01-01T00:00:00Z", mr.CreatedAt)
 	require.Empty(t, mr.UpdatedAt)
+	require.NotNil(t, mr.Review)
+	require.Equal(t, 1, mr.Review.Approvals)
+	require.Equal(t, 2, mr.Review.ChangesRequested)
+	require.Equal(t, []string{"rev"}, mr.Review.OutstandingReviewers)
 }
 
 func diffLineKinds(lines []DiffLine) []string {

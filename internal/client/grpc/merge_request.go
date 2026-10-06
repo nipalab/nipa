@@ -112,6 +112,22 @@ func toClientMergeRequest(mr *pb.MergeRequestDetail) *clientDomain.MergeRequest 
 		CreatedBy:         mr.GetCreatedBy(),
 		CreatedAt:         mr.GetCreatedAt().AsTime(),
 		UpdatedAt:         mr.GetUpdatedAt().AsTime(),
+		Review:            toClientReviewState(mr.GetReview()),
+	}
+}
+
+func toClientReviewState(state *pb.MergeRequestReviewState) *clientDomain.MergeRequestReviewState {
+	if state == nil {
+		return nil
+	}
+	outstanding := make([]string, 0, len(state.GetOutstandingReviewers()))
+	outstanding = append(outstanding, state.GetOutstandingReviewers()...)
+	return &clientDomain.MergeRequestReviewState{
+		HeadCommitID:         state.GetHeadCommitId(),
+		Approvals:            int(state.GetApprovals()),
+		ChangesRequested:     int(state.GetChangesRequested()),
+		DismissedApprovals:   int(state.GetDismissedApprovals()),
+		OutstandingReviewers: outstanding,
 	}
 }
 
@@ -124,5 +140,6 @@ func toClientMergeability(info *pb.MergeabilityDetail) *clientDomain.Mergeabilit
 		SourceCommitID:    info.GetSourceCommitId(),
 		TargetCommitID:    info.GetTargetCommitId(),
 		MergeBaseCommitID: info.GetMergeBaseCommitId(),
+		BlockedBy:         info.GetBlockedBy(),
 	}
 }
