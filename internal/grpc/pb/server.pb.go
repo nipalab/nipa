@@ -5439,6 +5439,10 @@ type ListMergeRequestsRequest struct {
 	Context       *ProjectContext        `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
 	Status        string                 `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"` // optional filter: open, merged, closed
 	Limit         int32                  `protobuf:"varint,3,opt,name=limit,proto3" json:"limit,omitempty"`
+	AfterNumber   *int64                 `protobuf:"varint,4,opt,name=after_number,json=afterNumber,proto3,oneof" json:"after_number,omitempty"` // keyset cursor: the last number of the previous page
+	Author        string                 `protobuf:"bytes,5,opt,name=author,proto3" json:"author,omitempty"`                                     // optional base36 user id
+	SourceBranch  string                 `protobuf:"bytes,6,opt,name=source_branch,json=sourceBranch,proto3" json:"source_branch,omitempty"`     // optional source branch name
+	TargetBranch  string                 `protobuf:"bytes,7,opt,name=target_branch,json=targetBranch,proto3" json:"target_branch,omitempty"`     // optional target branch name
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -5494,9 +5498,38 @@ func (x *ListMergeRequestsRequest) GetLimit() int32 {
 	return 0
 }
 
+func (x *ListMergeRequestsRequest) GetAfterNumber() int64 {
+	if x != nil && x.AfterNumber != nil {
+		return *x.AfterNumber
+	}
+	return 0
+}
+
+func (x *ListMergeRequestsRequest) GetAuthor() string {
+	if x != nil {
+		return x.Author
+	}
+	return ""
+}
+
+func (x *ListMergeRequestsRequest) GetSourceBranch() string {
+	if x != nil {
+		return x.SourceBranch
+	}
+	return ""
+}
+
+func (x *ListMergeRequestsRequest) GetTargetBranch() string {
+	if x != nil {
+		return x.TargetBranch
+	}
+	return ""
+}
+
 type ListMergeRequestsResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	MergeRequests []*MergeRequestDetail  `protobuf:"bytes,1,rep,name=merge_requests,json=mergeRequests,proto3" json:"merge_requests,omitempty"`
+	NextCursor    *int64                 `protobuf:"varint,2,opt,name=next_cursor,json=nextCursor,proto3,oneof" json:"next_cursor,omitempty"` // set when a full page was returned; pass back as after_number
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -5536,6 +5569,13 @@ func (x *ListMergeRequestsResponse) GetMergeRequests() []*MergeRequestDetail {
 		return x.MergeRequests
 	}
 	return nil
+}
+
+func (x *ListMergeRequestsResponse) GetNextCursor() int64 {
+	if x != nil && x.NextCursor != nil {
+		return *x.NextCursor
+	}
+	return 0
 }
 
 type MergeMergeRequestRequest struct {
@@ -9649,13 +9689,21 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"\x05title\x18\x03 \x01(\tR\x05title\x12 \n" +
 	"\vdescription\x18\x04 \x01(\tR\vdescription\"\\\n" +
 	"\x1aUpdateMergeRequestResponse\x12>\n" +
-	"\rmerge_request\x18\x01 \x01(\v2\x19.greet.MergeRequestDetailR\fmergeRequest\"y\n" +
+	"\rmerge_request\x18\x01 \x01(\v2\x19.greet.MergeRequestDetailR\fmergeRequest\"\x94\x02\n" +
 	"\x18ListMergeRequestsRequest\x12/\n" +
 	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12\x16\n" +
 	"\x06status\x18\x02 \x01(\tR\x06status\x12\x14\n" +
-	"\x05limit\x18\x03 \x01(\x05R\x05limit\"]\n" +
+	"\x05limit\x18\x03 \x01(\x05R\x05limit\x12&\n" +
+	"\fafter_number\x18\x04 \x01(\x03H\x00R\vafterNumber\x88\x01\x01\x12\x16\n" +
+	"\x06author\x18\x05 \x01(\tR\x06author\x12#\n" +
+	"\rsource_branch\x18\x06 \x01(\tR\fsourceBranch\x12#\n" +
+	"\rtarget_branch\x18\a \x01(\tR\ftargetBranchB\x0f\n" +
+	"\r_after_number\"\x93\x01\n" +
 	"\x19ListMergeRequestsResponse\x12@\n" +
-	"\x0emerge_requests\x18\x01 \x03(\v2\x19.greet.MergeRequestDetailR\rmergeRequests\"c\n" +
+	"\x0emerge_requests\x18\x01 \x03(\v2\x19.greet.MergeRequestDetailR\rmergeRequests\x12$\n" +
+	"\vnext_cursor\x18\x02 \x01(\x03H\x00R\n" +
+	"nextCursor\x88\x01\x01B\x0e\n" +
+	"\f_next_cursor\"c\n" +
 	"\x18MergeMergeRequestRequest\x12/\n" +
 	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12\x16\n" +
 	"\x06number\x18\x02 \x01(\x03R\x06number\"\x9a\x01\n" +
@@ -10480,6 +10528,8 @@ func file_internal_grpc_proto_server_proto_init() {
 	file_internal_grpc_proto_server_proto_msgTypes[61].OneofWrappers = []any{}
 	file_internal_grpc_proto_server_proto_msgTypes[84].OneofWrappers = []any{}
 	file_internal_grpc_proto_server_proto_msgTypes[85].OneofWrappers = []any{}
+	file_internal_grpc_proto_server_proto_msgTypes[90].OneofWrappers = []any{}
+	file_internal_grpc_proto_server_proto_msgTypes[91].OneofWrappers = []any{}
 	file_internal_grpc_proto_server_proto_msgTypes[102].OneofWrappers = []any{}
 	file_internal_grpc_proto_server_proto_msgTypes[109].OneofWrappers = []any{}
 	file_internal_grpc_proto_server_proto_msgTypes[114].OneofWrappers = []any{}

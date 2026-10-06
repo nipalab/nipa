@@ -11,6 +11,8 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
+const defaultMergeRequestLimit = 50
+
 func (n *nipaServer) CreateMergeRequest(ctx context.Context, req *pb.CreateMergeRequestRequest) (*pb.CreateMergeRequestResponse, error) {
 	_, project, err := n.uc.Common().ResolveBySlug(ctx, req.Context.Org, req.Context.Project)
 	if err != nil {
@@ -42,9 +44,31 @@ func (n *nipaServer) ListMergeRequests(ctx context.Context, req *pb.ListMergeReq
 	if err != nil {
 		return nil, handleError(err)
 	}
-	requests, err := n.uc.MergeRequest().List(ctx, project.ID, req.GetStatus(), int(req.GetLimit()))
+	limit := int(req.GetLimit())
+	if limit <= 0 {
+		limit = defaultMergeRequestLimit
+	}
+	opts := domain.MergeRequestListOptions{
+		Status:       req.GetStatus(),
+		SourceBranch: req.GetSourceBranch(),
+		TargetBranch: req.GetTargetBranch(),
+		After:        req.GetAfterNumber(),
+		Limit:        limit + 1,
+	}
+	if raw := req.GetAuthor(); raw != "" {
+		author, err := snow.ParseBase36(raw)
+		if err != nil {
+			return nil, handleError(domain.NewErrorUser("invalid author id"))
+		}
+		opts.Author = &author
+	}
+	requests, err := n.uc.MergeRequest().List(ctx, project.ID, opts)
 	if err != nil {
 		return nil, handleError(err)
+	}
+	hasMore := len(requests) > limit
+	if hasMore {
+		requests = requests[:limit]
 	}
 	if review := n.uc.MergeRequestReview(); review != nil {
 		if err := review.AttachSummaries(ctx, project.ID, requests); err != nil {
@@ -54,6 +78,10 @@ func (n *nipaServer) ListMergeRequests(ctx context.Context, req *pb.ListMergeReq
 	resp := &pb.ListMergeRequestsResponse{MergeRequests: make([]*pb.MergeRequestDetail, 0, len(requests))}
 	for _, request := range requests {
 		resp.MergeRequests = append(resp.MergeRequests, domainMergeRequestToPB(request))
+	}
+	if hasMore {
+		next := requests[len(requests)-1].Number
+		resp.NextCursor = &next
 	}
 	return resp, nil
 }

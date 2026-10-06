@@ -19,15 +19,14 @@ SELECT * FROM merge_requests WHERE project_id = ? AND number = ?;
 
 -- name: MergeRequestList :many
 SELECT * FROM merge_requests
-WHERE project_id = ?
+WHERE project_id = sqlc.arg(project_id)
+  AND (sqlc.narg('status') IS NULL OR status = sqlc.narg('status'))
+  AND (sqlc.narg('author') IS NULL OR created_by = sqlc.narg('author'))
+  AND (sqlc.narg('source_branch') IS NULL OR source_branch_name = sqlc.narg('source_branch'))
+  AND (sqlc.narg('target_branch') IS NULL OR target_branch_name = sqlc.narg('target_branch'))
+  AND (sqlc.narg('after_number') IS NULL OR number < sqlc.narg('after_number'))
 ORDER BY number DESC
-LIMIT ?;
-
--- name: MergeRequestListByStatus :many
-SELECT * FROM merge_requests
-WHERE project_id = ? AND status = ?
-ORDER BY number DESC
-LIMIT ?;
+LIMIT sqlc.arg('limit');
 
 -- name: MergeRequestCountOpenByBranch :one
 SELECT COUNT(*) FROM merge_requests

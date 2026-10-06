@@ -107,6 +107,23 @@ var _ = Describe("nipa mr", func() {
 		Expect(limited.ExitCode).To(Equal(0), limited.Output())
 		Expect(limited.Output()).To(ContainSubstring("feature-b"))
 		Expect(limited.Output()).NotTo(ContainSubstring("feature-a"))
+		Expect(limited.Output()).To(ContainSubstring("more results: --after 2"))
+
+		var limitedJSON mergeRequestsJSON
+		runJSONInto(dir, &limitedJSON, "mr", "list", "--limit", "1", "--json")
+		Expect(limitedJSON.MergeRequests).To(HaveLen(1))
+		Expect(limitedJSON.MergeRequests[0].SourceBranch).To(Equal("feature-b"))
+		Expect(limitedJSON.NextCursor).To(Equal("2"))
+
+		var nextPage mergeRequestsJSON
+		runJSONInto(dir, &nextPage, "mr", "list", "--limit", "1", "--after", limitedJSON.NextCursor, "--json")
+		Expect(nextPage.MergeRequests).To(HaveLen(1))
+		Expect(nextPage.MergeRequests[0].SourceBranch).To(Equal("feature-a"))
+		Expect(nextPage.NextCursor).To(BeEmpty())
+
+		bySource := runNipa(dir, "mr", "list", "--source", "feature-a")
+		Expect(bySource.Output()).To(ContainSubstring("feature-a"))
+		Expect(bySource.Output()).NotTo(ContainSubstring("feature-b"))
 
 		Expect(runNipa(dir, "mr", "merge", "1").ExitCode).To(Equal(0))
 		Expect(runNipa(dir, "mr", "close", "2").ExitCode).To(Equal(0))

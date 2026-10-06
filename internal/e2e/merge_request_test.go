@@ -44,7 +44,7 @@ func TestEndToEnd_MergeRequestLifecycle(t *testing.T) {
 	require.Equal(t, "feature", created.SourceBranch)
 	require.Equal(t, "main", created.TargetBranch)
 
-	list, err := requests.List(ctx, mainDir, domain.MergeRequestOpen, 0)
+	list, _, err := requests.List(ctx, mainDir, clientusecase.ListMergeRequestOptions{Status: domain.MergeRequestOpen})
 	require.NoError(t, err)
 	require.Len(t, list, 1)
 	require.Equal(t, created.ID, list[0].ID)

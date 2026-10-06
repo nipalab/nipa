@@ -19,18 +19,50 @@ func (h *Handler) ListMergeRequests(appCtx http.AppContext) {
 		return
 	}
 	limit := queryInt(appCtx.QueryParameter("limit"), defaultMergeRequestLimit)
-	requests, err := h.useCase.MergeRequest().List(appCtx.Context(), project.ID, appCtx.QueryParameter("status"), limit)
+	if limit <= 0 {
+		limit = defaultMergeRequestLimit
+	}
+	opts := domain.MergeRequestListOptions{
+		Status:       appCtx.QueryParameter("status"),
+		SourceBranch: appCtx.QueryParameter("source"),
+		TargetBranch: appCtx.QueryParameter("target"),
+		Limit:        limit + 1,
+	}
+	if raw := appCtx.QueryParameter("author"); raw != "" {
+		author, err := snow.ParseBase36(raw)
+		if err != nil {
+			appCtx.HandleError(domain.NewErrorUser("invalid author id"))
+			return
+		}
+		opts.Author = &author
+	}
+	if raw := appCtx.QueryParameter("after"); raw != "" {
+		after, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || after <= 0 {
+			appCtx.HandleError(domain.NewErrorUser("invalid after cursor"))
+			return
+		}
+		opts.After = after
+	}
+	requests, err := h.useCase.MergeRequest().List(appCtx.Context(), project.ID, opts)
 	if err != nil {
 		appCtx.HandleError(err)
 		return
+	}
+	hasMore := len(requests) > limit
+	if hasMore {
+		requests = requests[:limit]
 	}
 	if err := h.useCase.MergeRequestReview().AttachSummaries(appCtx.Context(), project.ID, requests); err != nil {
 		appCtx.HandleError(err)
 		return
 	}
-	resp := make([]model.MergeRequestResponse, 0, len(requests))
+	resp := model.MergeRequestListResponse{MergeRequests: make([]model.MergeRequestResponse, 0, len(requests))}
 	for _, request := range requests {
-		resp = append(resp, toMergeRequestResponse(request, nil))
+		resp.MergeRequests = append(resp.MergeRequests, toMergeRequestResponse(request, nil))
+	}
+	if hasMore {
+		resp.NextCursor = strconv.FormatInt(requests[len(requests)-1].Number, 10)
 	}
 	appCtx.WriteJson(nethttp.StatusOK, resp)
 }

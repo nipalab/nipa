@@ -31,6 +31,7 @@ type stubMRClient struct {
 
 	listStatus string
 	listLimit  int
+	listOpts   domain.ListMergeRequestOptions
 	listResult []*domain.MergeRequest
 	listErr    error
 
@@ -65,9 +66,9 @@ func (s *stubMRClient) UpdateMergeRequest(_ context.Context, _, _ string, number
 	return s.updateResult, s.updateErr
 }
 
-func (s *stubMRClient) ListMergeRequests(_ context.Context, _, _, status string, limit int) ([]*domain.MergeRequest, error) {
-	s.listStatus, s.listLimit = status, limit
-	return s.listResult, s.listErr
+func (s *stubMRClient) ListMergeRequests(_ context.Context, _, _ string, opts domain.ListMergeRequestOptions) ([]*domain.MergeRequest, int64, error) {
+	s.listStatus, s.listLimit, s.listOpts = opts.Status, opts.Limit, opts
+	return s.listResult, 7, s.listErr
 }
 
 func (s *stubMRClient) MergeMergeRequest(_ context.Context, _, _ string, number int64) (*domain.MergeRequest, *domain.Mergeability, error) {
@@ -199,18 +200,32 @@ func TestMergeRequest_List(t *testing.T) {
 	client := &stubMRClient{listResult: []*domain.MergeRequest{{Number: 1}}}
 	mr := newTestMergeRequest(t, local, client)
 
-	_, err := mr.List(context.Background(), t.TempDir(), "bogus", 0)
+	_, _, err := mr.List(context.Background(), t.TempDir(), domain.ListMergeRequestOptions{Status: "bogus"})
 	require.Contains(t, err.Error(), "status must be one of")
 
-	requests, err := mr.List(context.Background(), t.TempDir(), "", 0)
+	requests, cursor, err := mr.List(context.Background(), t.TempDir(), domain.ListMergeRequestOptions{})
 	require.NoError(t, err)
 	require.Len(t, requests, 1)
 	require.Equal(t, 50, client.listLimit)
+	require.Equal(t, int64(7), cursor)
 
-	_, err = mr.List(context.Background(), t.TempDir(), domain.MergeRequestClosed, 5)
+	_, _, err = mr.List(context.Background(), t.TempDir(), domain.ListMergeRequestOptions{
+		Status:       domain.MergeRequestClosed,
+		Author:       "user1",
+		SourceBranch: " feature ",
+		TargetBranch: "main",
+		After:        42,
+		Limit:        5,
+	})
 	require.NoError(t, err)
 	require.Equal(t, domain.MergeRequestClosed, client.listStatus)
 	require.Equal(t, 5, client.listLimit)
+	require.Equal(t, "user1", client.listOpts.Author)
+	require.Equal(t, "feature", client.listOpts.SourceBranch)
+	require.Equal(t, int64(42), client.listOpts.After)
+
+	_, _, err = mr.List(context.Background(), t.TempDir(), domain.ListMergeRequestOptions{After: -1})
+	require.Contains(t, err.Error(), "cannot be negative")
 }
 
 func TestMergeRequest_Close(t *testing.T) {
@@ -256,6 +271,6 @@ func TestMergeRequest_ConnectError(t *testing.T) {
 	}
 	client := &stubMRClient{connectErr: wantErr}
 
-	_, err := newTestMergeRequest(t, local, client).List(context.Background(), t.TempDir(), "", 0)
+	_, _, err := newTestMergeRequest(t, local, client).List(context.Background(), t.TempDir(), domain.ListMergeRequestOptions{})
 	require.ErrorIs(t, err, wantErr)
 }

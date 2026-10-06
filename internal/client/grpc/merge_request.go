@@ -42,18 +42,25 @@ func (c *Client) UpdateMergeRequest(ctx context.Context, org, project string, nu
 	return toClientMergeRequest(res.GetMergeRequest()), nil
 }
 
-func (c *Client) ListMergeRequests(ctx context.Context, org, project, status string, limit int) ([]*clientDomain.MergeRequest, error) {
+func (c *Client) ListMergeRequests(ctx context.Context, org, project string, opts clientDomain.ListMergeRequestOptions) ([]*clientDomain.MergeRequest, int64, error) {
 	client, err := c.transport.NipaServiceClient()
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	res, err := client.ListMergeRequests(ctx, &pb.ListMergeRequestsRequest{
-		Context: &pb.ProjectContext{Org: org, Project: project},
-		Status:  status,
-		Limit:   int32(limit),
-	})
+	request := &pb.ListMergeRequestsRequest{
+		Context:      &pb.ProjectContext{Org: org, Project: project},
+		Status:       opts.Status,
+		Limit:        int32(opts.Limit),
+		Author:       opts.Author,
+		SourceBranch: opts.SourceBranch,
+		TargetBranch: opts.TargetBranch,
+	}
+	if opts.After > 0 {
+		request.AfterNumber = &opts.After
+	}
+	res, err := client.ListMergeRequests(ctx, request)
 	if err != nil {
-		return nil, toDomainError(err)
+		return nil, 0, toDomainError(err)
 	}
 	requests := make([]*clientDomain.MergeRequest, 0, len(res.GetMergeRequests()))
 	for _, mr := range res.GetMergeRequests() {
@@ -61,7 +68,7 @@ func (c *Client) ListMergeRequests(ctx context.Context, org, project, status str
 			requests = append(requests, converted)
 		}
 	}
-	return requests, nil
+	return requests, res.GetNextCursor(), nil
 }
 
 func (c *Client) MergeMergeRequest(ctx context.Context, org, project string, number int64) (*clientDomain.MergeRequest, *clientDomain.Mergeability, error) {

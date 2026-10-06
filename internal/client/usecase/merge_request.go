@@ -14,7 +14,7 @@ type mrClient interface {
 	Connect(ctx context.Context, host string) error
 	CreateMergeRequest(ctx context.Context, org, project, title, description, sourceBranch, targetBranch string) (*domain.MergeRequest, error)
 	UpdateMergeRequest(ctx context.Context, org, project string, number int64, title, description string) (*domain.MergeRequest, error)
-	ListMergeRequests(ctx context.Context, org, project, status string, limit int) ([]*domain.MergeRequest, error)
+	ListMergeRequests(ctx context.Context, org, project string, opts domain.ListMergeRequestOptions) ([]*domain.MergeRequest, int64, error)
 	MergeMergeRequest(ctx context.Context, org, project string, number int64) (*domain.MergeRequest, *domain.Mergeability, error)
 	CloseMergeRequest(ctx context.Context, org, project string, number int64) (*domain.MergeRequest, error)
 	GetDefaultBranch(ctx context.Context, org, project string) (*serverDomain.Branch, error)
@@ -31,6 +31,9 @@ type CreateMergeRequestOptions struct {
 	Source      string
 	Target      string
 }
+
+// ListMergeRequestOptions filters and paginates a merge request listing.
+type ListMergeRequestOptions = domain.ListMergeRequestOptions
 
 type MergeRequest struct {
 	auth      *Auth
@@ -88,19 +91,27 @@ func (m *MergeRequest) Update(ctx context.Context, root, id, title, description 
 	return m.client.UpdateMergeRequest(ctx, url.Org, url.Project, number, title, description)
 }
 
-func (m *MergeRequest) List(ctx context.Context, root, status string, limit int) ([]*domain.MergeRequest, error) {
-	status = strings.TrimSpace(status)
-	if status != "" && !domain.IsValidMergeRequestStatus(status) {
-		return nil, domain.NewUserError("status must be one of open, merged, closed")
+// List returns one page of merge requests and the cursor for the next page
+// (0 when the page is the last one).
+func (m *MergeRequest) List(ctx context.Context, root string, opts domain.ListMergeRequestOptions) ([]*domain.MergeRequest, int64, error) {
+	opts.Status = strings.TrimSpace(opts.Status)
+	if opts.Status != "" && !domain.IsValidMergeRequestStatus(opts.Status) {
+		return nil, 0, domain.NewUserError("status must be one of open, merged, closed")
 	}
-	if limit <= 0 {
-		limit = 50
+	opts.Author = strings.TrimSpace(opts.Author)
+	opts.SourceBranch = strings.TrimSpace(opts.SourceBranch)
+	opts.TargetBranch = strings.TrimSpace(opts.TargetBranch)
+	if opts.After < 0 {
+		return nil, 0, domain.NewUserError("the after cursor cannot be negative")
+	}
+	if opts.Limit <= 0 {
+		opts.Limit = 50
 	}
 	url, _, err := m.connect(ctx, root)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	return m.client.ListMergeRequests(ctx, url.Org, url.Project, status, limit)
+	return m.client.ListMergeRequests(ctx, url.Org, url.Project, opts)
 }
 
 func (m *MergeRequest) Close(ctx context.Context, root, id string) (*domain.MergeRequest, error) {

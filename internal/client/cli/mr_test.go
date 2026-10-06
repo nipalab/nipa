@@ -29,6 +29,8 @@ type fakeMRClient struct {
 	listOrg, listProject, listStatus string
 	listLimit                        int
 	listResult                       []*domain.MergeRequest
+	listCursor                       int64
+	listOpts                         domain.ListMergeRequestOptions
 	listErr                          error
 
 	mergeNumber  int64
@@ -64,10 +66,10 @@ func (f *fakeMRClient) UpdateMergeRequest(_ context.Context, org, project string
 	return f.updateResult, f.updateErr
 }
 
-func (f *fakeMRClient) ListMergeRequests(_ context.Context, org, project, status string, limit int) ([]*domain.MergeRequest, error) {
+func (f *fakeMRClient) ListMergeRequests(_ context.Context, org, project string, opts domain.ListMergeRequestOptions) ([]*domain.MergeRequest, int64, error) {
 	f.listOrg, f.listProject = org, project
-	f.listStatus, f.listLimit = status, limit
-	return f.listResult, f.listErr
+	f.listStatus, f.listLimit, f.listOpts = opts.Status, opts.Limit, opts
+	return f.listResult, f.listCursor, f.listErr
 }
 
 func (f *fakeMRClient) MergeMergeRequest(_ context.Context, _, _ string, number int64) (*domain.MergeRequest, *domain.Mergeability, error) {
@@ -172,20 +174,30 @@ func TestSetupMrListCmd_Empty(t *testing.T) {
 
 func TestSetupMrListCmd_Rows(t *testing.T) {
 	root := setupRepo(t, "feature")
-	client := &fakeMRClient{listResult: []*domain.MergeRequest{
-		{Number: 1, Status: domain.MergeRequestOpen, SourceBranch: "feature", TargetBranch: "main", Title: "Add b"},
-		{Number: 2, Status: domain.MergeRequestClosed, SourceBranch: "fix", TargetBranch: "main", Title: "Fix a"},
-	}}
+	client := &fakeMRClient{
+		listResult: []*domain.MergeRequest{
+			{Number: 1, Status: domain.MergeRequestOpen, SourceBranch: "feature", TargetBranch: "main", Title: "Add b"},
+			{Number: 2, Status: domain.MergeRequestClosed, SourceBranch: "fix", TargetBranch: "main", Title: "Fix a"},
+		},
+		listCursor: 2,
+	}
 	cli := newMRCli(t, client)
 
-	out, err := runCmdInDir(t, root, cli.setupMrCmd(), "list", "--status", "open", "--limit", "5")
+	out, err := runCmdInDir(t, root, cli.setupMrCmd(), "list",
+		"--status", "open", "--limit", "5", "--author", "user1",
+		"--source", "feature", "--target", "main", "--after", "9")
 	require.NoError(t, err)
 	require.Contains(t, out, "#")
 	require.Contains(t, out, "feature -> main")
 	require.Contains(t, out, "Add b")
 	require.Contains(t, out, "Fix a")
+	require.Contains(t, out, "more results: --after 2")
 	require.Equal(t, domain.MergeRequestOpen, client.listStatus)
 	require.Equal(t, 5, client.listLimit)
+	require.Equal(t, "user1", client.listOpts.Author)
+	require.Equal(t, "feature", client.listOpts.SourceBranch)
+	require.Equal(t, "main", client.listOpts.TargetBranch)
+	require.Equal(t, int64(9), client.listOpts.After)
 }
 
 func TestSetupMrListCmd_Error(t *testing.T) {

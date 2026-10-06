@@ -194,22 +194,36 @@ func TestClient_UpdateMergeRequest_NotConnected(t *testing.T) {
 }
 
 func TestClient_ListMergeRequests_Success(t *testing.T) {
+	next := int64(5)
 	fs := &fakeMergeRequestServer{listResp: &pb.ListMergeRequestsResponse{
 		MergeRequests: []*pb.MergeRequestDetail{mergeRequestDetail()},
+		NextCursor:    &next,
 	}}
 	c := newMergeRequestTestClient(t, fs)
 
-	got, err := c.ListMergeRequests(context.Background(), "default", "sample", clientDomain.MergeRequestClosed, 10)
+	got, cursor, err := c.ListMergeRequests(context.Background(), "default", "sample", clientDomain.ListMergeRequestOptions{
+		Status:       clientDomain.MergeRequestClosed,
+		Author:       snow.ID(7).Base36(),
+		SourceBranch: "feature",
+		TargetBranch: "main",
+		After:        3,
+		Limit:        10,
+	})
 	require.NoError(t, err)
 	require.NotNil(t, fs.listReq)
 	require.Equal(t, "default", fs.listReq.GetContext().GetOrg())
 	require.Equal(t, "sample", fs.listReq.GetContext().GetProject())
 	require.Equal(t, clientDomain.MergeRequestClosed, fs.listReq.GetStatus())
+	require.Equal(t, snow.ID(7).Base36(), fs.listReq.GetAuthor())
+	require.Equal(t, "feature", fs.listReq.GetSourceBranch())
+	require.Equal(t, "main", fs.listReq.GetTargetBranch())
+	require.Equal(t, int64(3), fs.listReq.GetAfterNumber())
 	require.Equal(t, int32(10), fs.listReq.GetLimit())
 
 	require.Len(t, got, 1)
 	require.Equal(t, snow.ID(5).Base36(), got[0].ID)
 	require.Equal(t, int64(5), got[0].Number)
+	require.Equal(t, next, cursor)
 }
 
 func TestClient_ListMergeRequests_Error(t *testing.T) {
@@ -217,7 +231,7 @@ func TestClient_ListMergeRequests_Error(t *testing.T) {
 	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
 	require.NoError(t, c.Connect(context.Background(), addr))
 
-	_, err := c.ListMergeRequests(context.Background(), "default", "sample", "bogus", 10)
+	_, _, err := c.ListMergeRequests(context.Background(), "default", "sample", clientDomain.ListMergeRequestOptions{Status: "bogus", Limit: 10})
 	require.Error(t, err)
 
 	var domErr *clientDomain.Error
@@ -228,7 +242,7 @@ func TestClient_ListMergeRequests_Error(t *testing.T) {
 func TestClient_ListMergeRequests_NotConnected(t *testing.T) {
 	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
 
-	_, err := c.ListMergeRequests(context.Background(), "default", "sample", "", 10)
+	_, _, err := c.ListMergeRequests(context.Background(), "default", "sample", clientDomain.ListMergeRequestOptions{Limit: 10})
 	require.EqualError(t, err, "not connected to a nipa server")
 }
 

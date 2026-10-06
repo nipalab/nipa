@@ -32,6 +32,17 @@ type MergeRequestReviewState struct {
 	OutstandingReviewers []string `json:"outstanding_reviewers"`
 }
 
+// ListMergeRequestOptions filters and paginates a merge request listing.
+// After is the cursor returned by the previous page (0 starts from the newest).
+type ListMergeRequestOptions struct {
+	Status       string
+	Author       string
+	SourceBranch string
+	TargetBranch string
+	After        int64
+	Limit        int
+}
+
 // Mergeability is the live, computed state of an open merge request.
 type Mergeability struct {
 	Status            string

@@ -24,10 +24,14 @@ func setupMergeRequestRouter(ws *restful.WebService, h *handler.Handler) {
 	ws.Route(project(
 		ws.GET("/orgs/{org}/projects/{project}/merge-requests").
 			To(wrap(h.ListMergeRequests)).
-			Param(ws.QueryParameter("status", "filter by status")).
+			Param(ws.QueryParameter("status", "filter by status: open, merged, closed")).
+			Param(ws.QueryParameter("author", "filter by author (base36 user id)")).
+			Param(ws.QueryParameter("source", "filter by source branch name")).
+			Param(ws.QueryParameter("target", "filter by target branch name")).
+			Param(ws.QueryParameter("after", "pagination cursor: the last merge request number of the previous page")).
 			Param(ws.QueryParameter("limit", "maximum number of results")).
 			Doc("List merge requests").
-			Returns(http.StatusOK, "merge requests", []model.MergeRequestResponse{}).
+			Returns(http.StatusOK, "merge requests", model.MergeRequestListResponse{}).
 			Operation("listMergeRequests").
 			Metadata(restfulspec.KeyOpenAPITags, tags)))
 

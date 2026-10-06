@@ -128,70 +128,36 @@ func (q *Queries) MergeRequestGet(ctx context.Context, arg MergeRequestGetParams
 
 const mergeRequestList = `-- name: MergeRequestList :many
 SELECT id, number, project_id, source_branch_id, target_branch_id, source_branch_name, target_branch_name, title, description, status, merge_commit_id, merge_base_commit_id, created_by, created_at, updated_at FROM merge_requests
-WHERE project_id = ?
+WHERE project_id = ?1
+  AND (?2 IS NULL OR status = ?2)
+  AND (?3 IS NULL OR created_by = ?3)
+  AND (?4 IS NULL OR source_branch_name = ?4)
+  AND (?5 IS NULL OR target_branch_name = ?5)
+  AND (?6 IS NULL OR number < ?6)
 ORDER BY number DESC
-LIMIT ?
+LIMIT ?7
 `
 
 type MergeRequestListParams struct {
-	ProjectID int64 `json:"project_id"`
-	Limit     int64 `json:"limit"`
+	ProjectID    int64       `json:"project_id"`
+	Status       interface{} `json:"status"`
+	Author       interface{} `json:"author"`
+	SourceBranch interface{} `json:"source_branch"`
+	TargetBranch interface{} `json:"target_branch"`
+	AfterNumber  interface{} `json:"after_number"`
+	Limit        int64       `json:"limit"`
 }
 
 func (q *Queries) MergeRequestList(ctx context.Context, arg MergeRequestListParams) ([]MergeRequest, error) {
-	rows, err := q.db.QueryContext(ctx, mergeRequestList, arg.ProjectID, arg.Limit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []MergeRequest
-	for rows.Next() {
-		var i MergeRequest
-		if err := rows.Scan(
-			&i.ID,
-			&i.Number,
-			&i.ProjectID,
-			&i.SourceBranchID,
-			&i.TargetBranchID,
-			&i.SourceBranchName,
-			&i.TargetBranchName,
-			&i.Title,
-			&i.Description,
-			&i.Status,
-			&i.MergeCommitID,
-			&i.MergeBaseCommitID,
-			&i.CreatedBy,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const mergeRequestListByStatus = `-- name: MergeRequestListByStatus :many
-SELECT id, number, project_id, source_branch_id, target_branch_id, source_branch_name, target_branch_name, title, description, status, merge_commit_id, merge_base_commit_id, created_by, created_at, updated_at FROM merge_requests
-WHERE project_id = ? AND status = ?
-ORDER BY number DESC
-LIMIT ?
-`
-
-type MergeRequestListByStatusParams struct {
-	ProjectID int64  `json:"project_id"`
-	Status    string `json:"status"`
-	Limit     int64  `json:"limit"`
-}
-
-func (q *Queries) MergeRequestListByStatus(ctx context.Context, arg MergeRequestListByStatusParams) ([]MergeRequest, error) {
-	rows, err := q.db.QueryContext(ctx, mergeRequestListByStatus, arg.ProjectID, arg.Status, arg.Limit)
+	rows, err := q.db.QueryContext(ctx, mergeRequestList,
+		arg.ProjectID,
+		arg.Status,
+		arg.Author,
+		arg.SourceBranch,
+		arg.TargetBranch,
+		arg.AfterNumber,
+		arg.Limit,
+	)
 	if err != nil {
 		return nil, err
 	}

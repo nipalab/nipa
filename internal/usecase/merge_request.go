@@ -15,7 +15,7 @@ import (
 type mergeRequestRepository interface {
 	Create(ctx context.Context, mr domain.MergeRequest) (*domain.MergeRequest, error)
 	Get(ctx context.Context, projectID snow.ID, number int64) (*domain.MergeRequest, error)
-	List(ctx context.Context, projectID snow.ID, status string, limit int) ([]*domain.MergeRequest, error)
+	List(ctx context.Context, projectID snow.ID, opts domain.MergeRequestListOptions) ([]*domain.MergeRequest, error)
 	Update(ctx context.Context, projectID snow.ID, number int64, title, description string) (*domain.MergeRequest, error)
 	UpdateStatus(ctx context.Context, projectID snow.ID, number int64, status string, mergeCommitID *snow.ID) error
 }
@@ -178,18 +178,23 @@ func (m *MergeRequest) Create(ctx context.Context, projectID snow.ID, title, des
 	return created, nil
 }
 
-func (m *MergeRequest) List(ctx context.Context, projectID snow.ID, status string, limit int) ([]*domain.MergeRequest, error) {
+func (m *MergeRequest) List(ctx context.Context, projectID snow.ID, opts domain.MergeRequestListOptions) ([]*domain.MergeRequest, error) {
 	if !m.perm.HasProjectAccess(ctx, projectID, domain.PermissionRead) {
 		return nil, domain.NewErrorNoPermission()
 	}
-	status = strings.TrimSpace(status)
-	if status != "" && !domain.IsValidMergeRequestStatus(status) {
+	opts.Status = strings.TrimSpace(opts.Status)
+	if opts.Status != "" && !domain.IsValidMergeRequestStatus(opts.Status) {
 		return nil, domain.NewErrorUser("invalid merge request status")
 	}
-	if limit <= 0 {
-		limit = 50
+	opts.SourceBranch = strings.TrimSpace(opts.SourceBranch)
+	opts.TargetBranch = strings.TrimSpace(opts.TargetBranch)
+	if opts.After < 0 {
+		return nil, domain.NewErrorUser("invalid merge request cursor")
 	}
-	return m.repo.List(ctx, projectID, status, limit)
+	if opts.Limit <= 0 {
+		opts.Limit = 50
+	}
+	return m.repo.List(ctx, projectID, opts)
 }
 
 func (m *MergeRequest) Get(ctx context.Context, projectID snow.ID, number int64) (*domain.MergeRequest, error) {

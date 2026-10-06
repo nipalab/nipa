@@ -28,6 +28,13 @@ type MergeRequestResponse struct {
 	Review            *ReviewStateResponse  `json:"review,omitempty"`
 }
 
+type MergeRequestListResponse struct {
+	MergeRequests []MergeRequestResponse `json:"merge_requests"`
+	// NextCursor is set when the page was full; pass it as the after query
+	// parameter to fetch the next page.
+	NextCursor string `json:"next_cursor,omitempty"`
+}
+
 type CreateMergeRequestRequest struct {
 	Title        string `json:"title"`
 	Description  string `json:"description"`

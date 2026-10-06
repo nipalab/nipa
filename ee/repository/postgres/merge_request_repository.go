@@ -48,23 +48,27 @@ func (r *MergeRequestRepository) Get(ctx context.Context, projectID snow.ID, num
 	return mergeRequestToDomain(row), nil
 }
 
-func (r *MergeRequestRepository) List(ctx context.Context, projectID snow.ID, status string, limit int) ([]*domain.MergeRequest, error) {
-	var (
-		rows []sqlcPostgres.MergeRequest
-		err  error
-	)
-	if status == "" {
-		rows, err = r.queries.MergeRequestList(ctx, sqlcPostgres.MergeRequestListParams{
-			ProjectID: projectID.Int64(),
-			Limit:     int64(limit),
-		})
-	} else {
-		rows, err = r.queries.MergeRequestListByStatus(ctx, sqlcPostgres.MergeRequestListByStatusParams{
-			ProjectID: projectID.Int64(),
-			Status:    status,
-			Limit:     int64(limit),
-		})
+func (r *MergeRequestRepository) List(ctx context.Context, projectID snow.ID, opts domain.MergeRequestListOptions) ([]*domain.MergeRequest, error) {
+	params := sqlcPostgres.MergeRequestListParams{
+		ProjectID: projectID.Int64(),
+		Limit:     int64(opts.Limit),
 	}
+	if opts.Status != "" {
+		params.Status = sql.NullString{String: opts.Status, Valid: true}
+	}
+	if opts.Author != nil {
+		params.Author = sql.NullInt64{Int64: opts.Author.Int64(), Valid: true}
+	}
+	if opts.SourceBranch != "" {
+		params.SourceBranch = sql.NullString{String: opts.SourceBranch, Valid: true}
+	}
+	if opts.TargetBranch != "" {
+		params.TargetBranch = sql.NullString{String: opts.TargetBranch, Valid: true}
+	}
+	if opts.After > 0 {
+		params.AfterNumber = sql.NullInt64{Int64: opts.After, Valid: true}
+	}
+	rows, err := r.queries.MergeRequestList(ctx, params)
 	if err != nil {
 		return nil, handleError(err)
 	}

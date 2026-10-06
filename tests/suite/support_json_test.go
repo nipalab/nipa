@@ -103,6 +103,7 @@ type mergeRequestsJSON struct {
 		Description  string `json:"description"`
 		Status       string `json:"status"`
 	} `json:"merge_requests"`
+	NextCursor string `json:"next_cursor"`
 }
 
 type diffJSON struct {

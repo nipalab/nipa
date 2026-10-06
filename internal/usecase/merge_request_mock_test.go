@@ -74,18 +74,18 @@ func (mr *MockmergeRequestRepositoryMockRecorder) Get(ctx, projectID, number any
 }
 
 // List mocks base method.
-func (m *MockmergeRequestRepository) List(ctx context.Context, projectID snow.ID, status string, limit int) ([]*domain.MergeRequest, error) {
+func (m *MockmergeRequestRepository) List(ctx context.Context, projectID snow.ID, opts domain.MergeRequestListOptions) ([]*domain.MergeRequest, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "List", ctx, projectID, status, limit)
+	ret := m.ctrl.Call(m, "List", ctx, projectID, opts)
 	ret0, _ := ret[0].([]*domain.MergeRequest)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // List indicates an expected call of List.
-func (mr *MockmergeRequestRepositoryMockRecorder) List(ctx, projectID, status, limit any) *gomock.Call {
+func (mr *MockmergeRequestRepositoryMockRecorder) List(ctx, projectID, opts any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "List", reflect.TypeOf((*MockmergeRequestRepository)(nil).List), ctx, projectID, status, limit)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "List", reflect.TypeOf((*MockmergeRequestRepository)(nil).List), ctx, projectID, opts)
 }
 
 // Update mocks base method.

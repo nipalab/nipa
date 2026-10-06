@@ -178,7 +178,7 @@ func TestHandler_MergeRequestValidation(t *testing.T) {
 	appCtx = &fakeAppContext{claims: claims, pathParameters: projectParams}
 	env.handler.ListMergeRequests(appCtx)
 	require.Equal(t, http.StatusOK, appCtx.statusCode)
-	require.Empty(t, appCtx.response.([]model.MergeRequestResponse))
+	require.Empty(t, appCtx.response.(model.MergeRequestListResponse).MergeRequests)
 
 	appCtx = &fakeAppContext{claims: claims, pathParameters: projectParams, queryParameters: map[string]string{"status": "bogus"}}
 	env.handler.ListMergeRequests(appCtx)

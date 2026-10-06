@@ -328,7 +328,7 @@ describe('repo nav', () => {
   it('keeps the repository tabs on commits, branches, merges and settings', async () => {
     stubRepoRoutes((url) => {
       if (url.includes('/commits?')) return jsonResponse([])
-      if (url.includes('/merge-requests')) return jsonResponse([])
+      if (url.includes('/merge-requests')) return jsonResponse({ merge_requests: [] })
       if (url.includes('/permissions/rules')) return jsonResponse([])
       if (url.includes('/permissions/defaults')) return jsonResponse([])
       return null
@@ -382,7 +382,7 @@ describe('MergeRequestsPage', () => {
       if (url.includes('/merge-requests/7/review-state') && method === 'GET') return jsonResponse({})
       if (url.includes('/merge-requests/7/') && method === 'GET') return jsonResponse([])
       if (url.endsWith('/merge-requests/7') && method === 'GET') return jsonResponse(created)
-      if (url.includes('/merge-requests') && method === 'GET') return jsonResponse([])
+      if (url.includes('/merge-requests') && method === 'GET') return jsonResponse({ merge_requests: [] })
       if (url.includes('/branches') && method === 'GET') return jsonResponse(TWO_BRANCHES)
       return null
     })
@@ -414,6 +414,55 @@ describe('MergeRequestsPage', () => {
       target_branch: 'main',
     })
     await waitFor(() => window.location.pathname === '/acme/game/merges/7')
+    act(() => root.unmount())
+  })
+
+  it('filters and paginates the list', async () => {
+    const calls: string[] = []
+    const page = (numbers: number[], next?: string) => ({
+      merge_requests: numbers.map((number) => ({
+        id: String(number),
+        number,
+        project_id: 'p1',
+        source_branch: 'feature',
+        target_branch: 'main',
+        title: number === 2 ? 'Two' : 'One',
+        description: '',
+        status: 'open',
+        created_by: '1',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })),
+      next_cursor: next,
+    })
+    stubRepoRoutes((url) => {
+      if (url.includes('/orgs/acme/members')) {
+        return jsonResponse([
+          { user_id: '1', name: 'Alice', email: 'a@example.com', photo_url: '', is_admin: true, is_super_admin: false, role: 'owner' },
+        ])
+      }
+      if (url.includes('/merge-requests')) {
+        calls.push(url)
+        if (url.includes('after=2')) return jsonResponse(page([1]))
+        if (url.includes('source=feature')) return jsonResponse(page([1]))
+        return jsonResponse(page([2], '2'))
+      }
+      return null
+    })
+
+    const { container, root } = await renderApp('/acme/game/merges')
+    await waitForText(container, '#2 Two')
+    await act(async () => {
+      findButton('Load more').click()
+    })
+    await waitForText(container, '#1 One')
+
+    await act(async () => {
+      setInputValue(container.querySelector('[aria-label="Filter by source branch"]') as HTMLInputElement, 'feature')
+    })
+    await waitFor(() => calls.some((url) => url.includes('source=feature')))
+    await waitForText(container, '#1 One')
+    expect(container.textContent).not.toContain('#2 Two')
     act(() => root.unmount())
   })
 })

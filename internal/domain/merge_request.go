@@ -16,6 +16,18 @@ func IsValidMergeRequestStatus(status string) bool {
 	return status == MergeRequestOpen || status == MergeRequestMerged || status == MergeRequestClosed
 }
 
+// MergeRequestListOptions filters and paginates a project's merge requests.
+// Results are ordered by number descending; After is the number of the last
+// item of the previous page (0 starts from the newest).
+type MergeRequestListOptions struct {
+	Status       string
+	Author       *snow.ID
+	SourceBranch string
+	TargetBranch string
+	After        int64
+	Limit        int
+}
+
 // Mergeability is the live, computed state of an open merge request.
 type Mergeability struct {
 	Status            string   `json:"status"`

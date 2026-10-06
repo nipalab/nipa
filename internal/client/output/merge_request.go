@@ -6,6 +6,8 @@ import (
 
 type MergeRequests struct {
 	MergeRequests []MergeRequest `json:"merge_requests"`
+	// NextCursor is set when more results are available; pass it as --after.
+	NextCursor string `json:"next_cursor,omitempty"`
 }
 
 type MergeRequest struct {

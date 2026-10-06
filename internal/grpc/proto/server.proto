@@ -545,10 +545,15 @@ message ListMergeRequestsRequest {
     ProjectContext context = 1;
     string status = 2; // optional filter: open, merged, closed
     int32 limit = 3;
+    optional int64 after_number = 4; // keyset cursor: the last number of the previous page
+    string author = 5; // optional base36 user id
+    string source_branch = 6; // optional source branch name
+    string target_branch = 7; // optional target branch name
 }
 
 message ListMergeRequestsResponse {
     repeated MergeRequestDetail merge_requests = 1;
+    optional int64 next_cursor = 2; // set when a full page was returned; pass back as after_number
 }
 
 message MergeMergeRequestRequest {

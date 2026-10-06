@@ -75,7 +75,6 @@ type Querier interface {
 	MergeRequestEventList(ctx context.Context, mergeRequestID int64) ([]MergeRequestEventListRow, error)
 	MergeRequestGet(ctx context.Context, arg MergeRequestGetParams) (MergeRequest, error)
 	MergeRequestList(ctx context.Context, arg MergeRequestListParams) ([]MergeRequest, error)
-	MergeRequestListByStatus(ctx context.Context, arg MergeRequestListByStatusParams) ([]MergeRequest, error)
 	MergeRequestListOpenBySourceBranch(ctx context.Context, arg MergeRequestListOpenBySourceBranchParams) ([]MergeRequest, error)
 	MergeRequestReviewDelete(ctx context.Context, arg MergeRequestReviewDeleteParams) (int64, error)
 	MergeRequestReviewDismiss(ctx context.Context, arg MergeRequestReviewDismissParams) error

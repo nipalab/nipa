@@ -48,23 +48,27 @@ func (r *MergeRequestRepository) Get(ctx context.Context, projectID snow.ID, num
 	return mergeRequestToDomain(row), nil
 }
 
-func (r *MergeRequestRepository) List(ctx context.Context, projectID snow.ID, status string, limit int) ([]*domain.MergeRequest, error) {
-	var (
-		rows []sqlcSqlite.MergeRequest
-		err  error
-	)
-	if status == "" {
-		rows, err = r.queries.MergeRequestList(ctx, sqlcSqlite.MergeRequestListParams{
-			ProjectID: projectID.Int64(),
-			Limit:     int64(limit),
-		})
-	} else {
-		rows, err = r.queries.MergeRequestListByStatus(ctx, sqlcSqlite.MergeRequestListByStatusParams{
-			ProjectID: projectID.Int64(),
-			Status:    status,
-			Limit:     int64(limit),
-		})
+func (r *MergeRequestRepository) List(ctx context.Context, projectID snow.ID, opts domain.MergeRequestListOptions) ([]*domain.MergeRequest, error) {
+	params := sqlcSqlite.MergeRequestListParams{
+		ProjectID: projectID.Int64(),
+		Limit:     int64(opts.Limit),
 	}
+	if opts.Status != "" {
+		params.Status = opts.Status
+	}
+	if opts.Author != nil {
+		params.Author = opts.Author.Int64()
+	}
+	if opts.SourceBranch != "" {
+		params.SourceBranch = opts.SourceBranch
+	}
+	if opts.TargetBranch != "" {
+		params.TargetBranch = opts.TargetBranch
+	}
+	if opts.After > 0 {
+		params.AfterNumber = opts.After
+	}
+	rows, err := r.queries.MergeRequestList(ctx, params)
 	if err != nil {
 		return nil, handleError(err)
 	}
