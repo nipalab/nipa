@@ -24,8 +24,8 @@ proxies `/api` and `/docs` to `NIPA_SERVER_URL`).
 | `/:org/:project/blob/:rev/*` | file viewer | line numbers + syntax highlighting, image preview, raw/copy/download |
 | `/:org/:project/commits[/:commit]` | history + diff | commit diff against its parent; `?path=` filters by file/dir |
 | `/:org/:project/branches` | branches | create; default/protect/rename/delete for project admins |
-| `/:org/:project/merges[/new]` | merge requests | list; dedicated create page |
-| `/:org/:project/merges/:id` | merge request detail | GitHub-style conversation (description, timeline, comments, reviewers/participants sidebar, merge box) plus Commits and File changes tabs |
+| `/:org/:project/merges[/new]` | merge requests | list with status/author/source/target filters and "Load more" pagination; dedicated create page |
+| `/:org/:project/merges/:id` | merge request detail | GitHub-style conversation (description, timeline, comments, reviewers/participants sidebar, merge box) plus Commits and File changes tabs; author/admin can edit title/description |
 | `/:org/:project/locks` | file locks | list binary asset locks, lock/unlock |
 | `/:org/:project/settings` | project settings | branch protection + ACL rules/defaults + webhooks |
 | `/:org/settings` | organization settings | members and groups (org owner or global admin) |
@@ -73,9 +73,12 @@ merge/close/reopen),
 with author, timestamp, copy-hash and browse-at-commit actions), and
 **File changes** (GitHub-style: file tree sidebar with
 status/counters, filter box, diffstat and Unified/Split toggle, per-file
-collapse and Viewed checkboxes, diff with inline comments). Posting inline
-comments or reviews refreshes the shared thread list, so both tabs and the
-overview stay in sync.
+collapse and Viewed checkboxes, diff with inline comments). The conversation
+composer can attach inline comments (file/line drafts) to a review decision,
+and the merge box explains review blocks (`blocked_by` = `changes_requested`
+or `insufficient_approvals`) and disables merging until they clear. Posting
+inline comments or reviews refreshes the shared thread list, so both tabs and
+the overview stay in sync.
 
 The diff renderer (`web/src/components/repo/DiffView.tsx`) renders hunks
 **side by side by default** with a Unified/Split toggle, and is shared with

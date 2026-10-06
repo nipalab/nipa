@@ -1,8 +1,8 @@
 # Merge request feature gaps
 
-Status: **audit (2026-10-05); Batch A implemented (2026-10-05)**. This is a
-revisit list, not a plan of record. The MR feature is functional end to end
-(lifecycle, reviews, threads, locks, diff, commits, webhooks, SPA, daemon
+Status: **audit (2026-10-05); Batches A and B implemented (2026-10-06)**. This
+is a revisit list, not a plan of record. The MR feature is functional end to
+end (lifecycle, reviews, threads, locks, diff, commits, webhooks, SPA, daemon
 proxy); the items below are things that are absent or half-built, ordered
 roughly by impact. Every item cites the code that proves the gap so it can be
 re-verified after any of them lands.
@@ -10,8 +10,11 @@ re-verified after any of them lands.
 Batch A landed the approval gate (item 1, configurable
 `branches.required_approvals` plus the always-on objection block), the
 lifecycle timeline events (item 5), gRPC parity for reopen/check/diff/commits
-(item 6), and the merge/close/reopen half of item 10. Items are marked
-**[done]** below with what shipped; the rest are still open.
+(item 6), and the merge/close/reopen half of item 10. Batch B landed the SPA
+edit form and inline review comments (7, 8), per-action review webhooks (11),
+list filters plus number-keyset pagination (13) and the CLI review surface with
+`GetMergeRequest` (9). Items are marked **[done]** below with what shipped; the
+rest are still open.
 
 ## What exists today (end to end)
 
@@ -30,13 +33,19 @@ lifecycle timeline events (item 5), gRPC parity for reopen/check/diff/commits
   reopen/push, admin-merges-author lock top-up).
 - Protected-target merge restricted to project admins
   (`internal/usecase/merge.go:117-146`).
-- Webhooks: `mr.created/updated/synchronized/merged/closed/reopened`
-  (`internal/domain/webhook.go`).
-- SPA: tabbed MR page (Conversation / Commits / File changes), review
-  composer, threads, reviewer requests, timeline, merge box
-  (`web/src/components/repo/MergeRequestOverview.tsx`).
-- CLI: `nipa mr create|update|list|merge|close` (`internal/client/cli/mr.go`).
-- Daemon proxy for 7 MR/review RPCs (`internal/client/daemon/proxy_mr.go`).
+- Webhooks: `mr.created/updated/synchronized/merged/closed/reopened` plus
+  `mr.review_submitted/review_dismissed/review_requested/
+  review_request_removed/comment_created` (`internal/domain/webhook.go`).
+- SPA: tabbed MR page (Conversation / Commits / File changes), title/description
+  edit dialog, review composer with inline-comment drafts, threads, reviewer
+  requests, timeline, merge box with `blocked_by` hints; list page has
+  status/author/source/target filters and Load-more pagination
+  (`web/src/components/repo/MergeRequestOverview.tsx`,
+  `web/src/pages/MergeRequestsPage.tsx`).
+- CLI: `nipa mr create|update|list|view|close|reopen|merge|review|comments|
+  comment|reply|resolve|timeline|requests|request-review|unrequest-review|diff`
+  (`internal/client/cli/mr.go`, `mr_review.go`).
+- Daemon proxy for 11 MR/review RPCs (`internal/client/daemon/proxy_mr.go`).
 
 ## Missing features
 
@@ -85,20 +94,20 @@ lifecycle timeline events (item 5), gRPC parity for reopen/check/diff/commits
    `MergeabilityDetail.blocked_by`, `MergeRequestDetail.review` (List attaches
    summaries) and `Branch.required_approvals`.
 
-7. **SPA never edits MR title/description.** `updateMergeRequest` is defined
-   (`web/src/api/endpoints.ts:218`) but no edit form uses it; only
-   `updateMergeRequestComment` is wired. An edit affordance on the MR page is
-   missing entirely.
+7. **[done] SPA never edits MR title/description.** The MR page has an Edit
+   dialog for the author or a project admin while the request is open
+   (`MergeRequestPage.tsx`, PATCH via `updateMergeRequest`).
 
-8. **Review composer cannot create inline comments.** The SPA always posts
-   `comments: []` (`MergeRequestOverview.tsx`); inline threads can only be
-   created from the Files tab. The backend fully supports
-   `comments[]{file_path, old_line, new_line, body}` on review submission.
+8. **[done] Review composer cannot create inline comments.** The composer now
+   keeps inline-comment drafts (file, side, line, body) and posts them as
+   `comments[]` on the decision.
 
-9. **No CLI review surface.** `nipa mr` is create/update/list/merge/close
-   only; there is no `mr view`, and no review/comment/thread-resolve
-   subcommands — reviews are unreachable from the terminal. Item 6 landed, so
-   the gRPC groundwork for `mr view`/`mr reopen` now exists.
+9. **[done] No CLI review surface.** `nipa mr` gained `view`, `reopen`,
+   `review`, `comments`, `comment`, `reply`, `resolve`, `timeline`, `requests`,
+   `request-review`, `unrequest-review` and `diff` (`internal/client/cli/
+   mr_review.go`), backed by the `GetMergeRequest` RPC and transport wrappers;
+   the daemon proxies get/check/reopen/submit-review. Remaining nicety: the
+   review-request commands take a base36 user id (no user-lookup RPC).
 
 10. **[partial] `system` comments never written.** Lifecycle timeline events
     now cover open/merge/close/reopen, but `merge_request_comments.system`
@@ -108,21 +117,20 @@ lifecycle timeline events (item 5), gRPC parity for reopen/check/diff/commits
 
 ### Ecosystem gaps
 
-11. **No webhooks for review activity.** Only the six lifecycle events are
-    subscribable (`internal/usecase/webhook.go:53-58`); review
-    submitted/dismissed, comments, and review requests emit nothing. Add
-    `mr.review.*` / `mr.comment.*` event kinds or fold them into a generic
-    `mr.activity` event.
+11. **[done] No webhooks for review activity.** `mr.review_submitted`,
+    `mr.review_dismissed`, `mr.review_requested`, `mr.review_request_removed`
+    and `mr.comment_created` are subscribable and emitted by the review
+    usecase through the log-only hook seam.
 
 12. **No labels, milestones, or assignees.** Only reviewers exist
     (`merge_request_review_requests`); the UI synthesizes the reviewer list
     from reviews + pending requests. No labels/milestones tables, fields, or
     code anywhere.
 
-13. **No search / filtering / pagination.** `List(projectID, status, limit)`
-    only — no author/source/target filters, no free-text search, no cursor
-    pagination (tags have a keyset cursor; MRs do not). The SPA list page has
-    no pagination UI either (`web/src/pages/MergeRequestsPage.tsx`).
+13. **[done] No search / filtering / pagination.** The list takes
+    `status/author/source/target` and paginates by number keyset
+    (`after`/`next_cursor`); the SPA list page filters and loads more. Free-text
+    search is still absent.
 
 14. **No CI / status checks.** Mergeability is solely branch-topology based;
     nothing in the codebase (no check-run model, no external status hook).
@@ -136,9 +144,9 @@ lifecycle timeline events (item 5), gRPC parity for reopen/check/diff/commits
 
 - **Batch A — done:** approval gate on merge (1), timeline events (5), gRPC
   parity for reopen/check/diff/commits (6), lifecycle half of item 10.
-- **Batch B (schema-light, next):** MR edit affordance in SPA (7), inline
-  comments from review composer (8), review/comment webhooks (11), list filters
-  + keyset pagination (13), CLI review surface + `mr view` (9).
-- **Batch C (schema-heavy):** non-FF merge strategies + delete source branch
-  (2), draft state (3), branch protection settings (4), labels/milestones/
-  assignees (12), CI status checks (14).
+- **Batch B — done:** MR edit affordance in SPA (7), inline comments from the
+  review composer (8), review/comment webhooks (11), list filters + number
+  keyset pagination (13), CLI review surface + `GetMergeRequest` (9).
+- **Batch C (schema-heavy, next):** non-FF merge strategies + delete source
+  branch (2), draft state (3), branch protection settings (4), labels/
+  milestones/assignees (12), CI status checks (14).
