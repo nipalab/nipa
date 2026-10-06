@@ -37,6 +37,49 @@ type fakeMergeRequestServer struct {
 	closeReq  *pb.CloseMergeRequestRequest
 	closeResp *pb.CloseMergeRequestResponse
 	closeErr  error
+
+	getReq  *pb.GetMergeRequestRequest
+	getResp *pb.GetMergeRequestResponse
+	getErr  error
+
+	reopenReq  *pb.ReopenMergeRequestRequest
+	reopenResp *pb.ReopenMergeRequestResponse
+	reopenErr  error
+
+	checkReq  *pb.CheckMergeRequestRequest
+	checkResp *pb.CheckMergeRequestResponse
+	checkErr  error
+
+	commitsReq  *pb.ListMergeRequestCommitsRequest
+	commitsResp *pb.ListMergeRequestCommitsResponse
+	commitsErr  error
+
+	diffReq  *pb.GetMergeRequestDiffRequest
+	diffResp *pb.GetMergeRequestDiffResponse
+	diffErr  error
+
+	submitReq  *pb.SubmitMergeRequestReviewRequest
+	submitResp *pb.SubmitMergeRequestReviewResponse
+	submitErr  error
+
+	threadsReq  *pb.ListMergeRequestThreadsRequest
+	threadsResp *pb.ListMergeRequestThreadsResponse
+	threadsErr  error
+
+	timelineReq  *pb.ListMergeRequestTimelineRequest
+	timelineResp *pb.ListMergeRequestTimelineResponse
+	timelineErr  error
+
+	requestsReq  *pb.ListMergeRequestReviewRequestsRequest
+	requestsResp *pb.ListMergeRequestReviewRequestsResponse
+	requestsErr  error
+
+	requestReq  *pb.RequestMergeRequestReviewRequest
+	requestResp *pb.RequestMergeRequestReviewResponse
+	requestErr  error
+
+	removeReq *pb.RemoveMergeRequestReviewRequestRequest
+	removeErr error
 }
 
 func (f *fakeMergeRequestServer) CreateMergeRequest(_ context.Context, req *pb.CreateMergeRequestRequest) (*pb.CreateMergeRequestResponse, error) {
@@ -77,6 +120,94 @@ func (f *fakeMergeRequestServer) CloseMergeRequest(_ context.Context, req *pb.Cl
 		return nil, f.closeErr
 	}
 	return f.closeResp, nil
+}
+
+func (f *fakeMergeRequestServer) GetMergeRequest(_ context.Context, req *pb.GetMergeRequestRequest) (*pb.GetMergeRequestResponse, error) {
+	f.getReq = req
+	if f.getErr != nil {
+		return nil, f.getErr
+	}
+	return f.getResp, nil
+}
+
+func (f *fakeMergeRequestServer) ReopenMergeRequest(_ context.Context, req *pb.ReopenMergeRequestRequest) (*pb.ReopenMergeRequestResponse, error) {
+	f.reopenReq = req
+	if f.reopenErr != nil {
+		return nil, f.reopenErr
+	}
+	return f.reopenResp, nil
+}
+
+func (f *fakeMergeRequestServer) CheckMergeRequest(_ context.Context, req *pb.CheckMergeRequestRequest) (*pb.CheckMergeRequestResponse, error) {
+	f.checkReq = req
+	if f.checkErr != nil {
+		return nil, f.checkErr
+	}
+	return f.checkResp, nil
+}
+
+func (f *fakeMergeRequestServer) ListMergeRequestCommits(_ context.Context, req *pb.ListMergeRequestCommitsRequest) (*pb.ListMergeRequestCommitsResponse, error) {
+	f.commitsReq = req
+	if f.commitsErr != nil {
+		return nil, f.commitsErr
+	}
+	return f.commitsResp, nil
+}
+
+func (f *fakeMergeRequestServer) GetMergeRequestDiff(_ context.Context, req *pb.GetMergeRequestDiffRequest) (*pb.GetMergeRequestDiffResponse, error) {
+	f.diffReq = req
+	if f.diffErr != nil {
+		return nil, f.diffErr
+	}
+	return f.diffResp, nil
+}
+
+func (f *fakeMergeRequestServer) SubmitMergeRequestReview(_ context.Context, req *pb.SubmitMergeRequestReviewRequest) (*pb.SubmitMergeRequestReviewResponse, error) {
+	f.submitReq = req
+	if f.submitErr != nil {
+		return nil, f.submitErr
+	}
+	return f.submitResp, nil
+}
+
+func (f *fakeMergeRequestServer) ListMergeRequestThreads(_ context.Context, req *pb.ListMergeRequestThreadsRequest) (*pb.ListMergeRequestThreadsResponse, error) {
+	f.threadsReq = req
+	if f.threadsErr != nil {
+		return nil, f.threadsErr
+	}
+	return f.threadsResp, nil
+}
+
+func (f *fakeMergeRequestServer) ListMergeRequestTimeline(_ context.Context, req *pb.ListMergeRequestTimelineRequest) (*pb.ListMergeRequestTimelineResponse, error) {
+	f.timelineReq = req
+	if f.timelineErr != nil {
+		return nil, f.timelineErr
+	}
+	return f.timelineResp, nil
+}
+
+func (f *fakeMergeRequestServer) ListMergeRequestReviewRequests(_ context.Context, req *pb.ListMergeRequestReviewRequestsRequest) (*pb.ListMergeRequestReviewRequestsResponse, error) {
+	f.requestsReq = req
+	if f.requestsErr != nil {
+		return nil, f.requestsErr
+	}
+	return f.requestsResp, nil
+}
+
+func (f *fakeMergeRequestServer) RequestMergeRequestReview(_ context.Context, req *pb.RequestMergeRequestReviewRequest) (*pb.RequestMergeRequestReviewResponse, error) {
+	f.requestReq = req
+	if f.requestErr != nil {
+		return nil, f.requestErr
+	}
+	return f.requestResp, nil
+}
+
+func (f *fakeMergeRequestServer) RemoveMergeRequestReviewRequest(_ context.Context, req *pb.RemoveMergeRequestReviewRequestRequest) (*pb.RemoveMergeRequestReviewRequestResponse, error) {
+	f.removeReq = req
+	if f.removeErr != nil {
+		return nil, f.removeErr
+	}
+	return &pb.RemoveMergeRequestReviewRequestResponse{}, nil
 }
 
 func mergeRequestDetail() *pb.MergeRequestDetail {

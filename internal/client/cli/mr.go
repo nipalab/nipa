@@ -13,15 +13,27 @@ func (c *Cli) setupMrCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "mr",
 		Short:         "Manage merge requests",
-		Long:          "Create, update, list, close and merge merge requests. Commands run against the project of the current working copy; merge requests are fast-forward only, so the target branch must not have moved since the branches diverged.",
+		Long:          "Create, update, list, view, review, comment on, close, reopen and merge merge requests. Commands run against the project of the current working copy; merge requests are fast-forward only, so the target branch must not have moved since the branches diverged.",
 		SilenceErrors: true,
 		SilenceUsage:  true,
 	}
 	cmd.AddCommand(c.setupMrCreateCmd())
 	cmd.AddCommand(c.setupMrUpdateCmd())
 	cmd.AddCommand(c.setupMrListCmd())
+	cmd.AddCommand(c.setupMrViewCmd())
 	cmd.AddCommand(c.setupMrCloseCmd())
+	cmd.AddCommand(c.setupMrReopenCmd())
 	cmd.AddCommand(c.setupMrMergeCmd())
+	cmd.AddCommand(c.setupMrReviewCmd())
+	cmd.AddCommand(c.setupMrCommentsCmd())
+	cmd.AddCommand(c.setupMrCommentCmd())
+	cmd.AddCommand(c.setupMrReplyCmd())
+	cmd.AddCommand(c.setupMrResolveCmd())
+	cmd.AddCommand(c.setupMrTimelineCmd())
+	cmd.AddCommand(c.setupMrRequestsCmd())
+	cmd.AddCommand(c.setupMrRequestReviewCmd())
+	cmd.AddCommand(c.setupMrUnrequestReviewCmd())
+	cmd.AddCommand(c.setupMrDiffCmd())
 	return cmd
 }
 

@@ -15,6 +15,14 @@ func runJSONInto(cwd string, out any, args ...string) commandResult {
 	return res
 }
 
+func runJSONIntoAs(id *identity, cwd string, out any, args ...string) commandResult {
+	GinkgoHelper()
+	res := runNipaAs(id, cwd, args...)
+	Expect(res.ExitCode).To(Equal(0), res.Output())
+	Expect(json.Unmarshal([]byte(res.Stdout), out)).To(Succeed(), "stdout: %s", res.Stdout)
+	return res
+}
+
 type statusJSON struct {
 	Branch string `json:"branch"`
 	Head   *struct {
@@ -104,6 +112,25 @@ type mergeRequestsJSON struct {
 		Status       string `json:"status"`
 	} `json:"merge_requests"`
 	NextCursor string `json:"next_cursor"`
+}
+
+type mergeRequestThreadsJSON struct {
+	Threads []struct {
+		ID       string `json:"id"`
+		FilePath string `json:"file_path"`
+		Side     string `json:"side"`
+		Resolved bool   `json:"resolved"`
+		Comments []struct {
+			ID   string `json:"id"`
+			Body string `json:"body"`
+		} `json:"comments"`
+	} `json:"threads"`
+}
+
+type mergeRequestTimelineJSON struct {
+	Timeline []struct {
+		Kind string `json:"kind"`
+	} `json:"timeline"`
 }
 
 type diffJSON struct {

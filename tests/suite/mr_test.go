@@ -338,4 +338,117 @@ var _ = Describe("nipa mr", func() {
 		Expect(merge.ExitCode).To(Equal(0), merge.Output())
 		Expect(merge.Output()).To(ContainSubstring("merged"))
 	})
+
+	It("reviews, comments and resolves threads from the CLI", func() {
+		project := newProject("mr-review-cli")
+		seedRepo(orgSlug, project, map[string][]byte{"base.txt": []byte("base\n")}, "seed")
+		parent := workspace()
+		dir := cloneRepo(parent, repoURLFor(orgSlug, project), "work")
+		Expect(runNipa(dir, "branch", "-c", "feature").ExitCode).To(Equal(0))
+		writeText(dir, "feature.txt", "feature\n")
+		Expect(runNipa(dir, "add", "feature.txt").ExitCode).To(Equal(0))
+		Expect(pushRepo(dir, "feature work").ExitCode).To(Equal(0))
+		Expect(runNipa(dir, "mr", "create", "--title", uniqueMessage("Review CLI")).ExitCode).To(Equal(0))
+
+		reviewer := newIdentity("mr-cli-reviewer").promote()
+
+		view := runNipaAs(reviewer, dir, "mr", "view", "1")
+		Expect(view.ExitCode).To(Equal(0), view.Output())
+		Expect(view.Output()).To(ContainSubstring("#1"))
+		Expect(view.Output()).To(ContainSubstring("branches: feature -> main"))
+
+		review := runNipaAs(reviewer, dir, "mr", "review", "1", "--request-changes", "-m", "please fix")
+		Expect(review.ExitCode).To(Equal(0), review.Output())
+		Expect(review.Output()).To(ContainSubstring("reviewed: changes_requested"))
+
+		view = runNipaAs(reviewer, dir, "mr", "view", "1")
+		Expect(view.Output()).To(ContainSubstring("changes_requested"))
+		Expect(view.Output()).To(ContainSubstring("outstanding reviewers"))
+
+		comment := runNipaAs(reviewer, dir, "mr", "comment", "1", "-m", "overall note")
+		Expect(comment.ExitCode).To(Equal(0), comment.Output())
+		Expect(comment.Output()).To(ContainSubstring("thread"))
+
+		var threads mergeRequestThreadsJSON
+		runJSONIntoAs(reviewer, dir, &threads, "mr", "comments", "1", "--json")
+		Expect(threads.Threads).To(HaveLen(1))
+		threadID := threads.Threads[0].ID
+		Expect(threadID).NotTo(BeEmpty())
+
+		inline := runNipaAs(reviewer, dir, "mr", "comment", "1", "-m", "rename this", "--file", "feature.txt", "--new-line", "1")
+		Expect(inline.ExitCode).To(Equal(0), inline.Output())
+
+		reply := runNipaAs(reviewer, dir, "mr", "reply", "1", threadID, "-m", "done")
+		Expect(reply.ExitCode).To(Equal(0), reply.Output())
+		Expect(reply.Output()).To(ContainSubstring("added to thread"))
+
+		resolve := runNipaAs(reviewer, dir, "mr", "resolve", "1", threadID)
+		Expect(resolve.ExitCode).To(Equal(0), resolve.Output())
+		Expect(resolve.Output()).To(ContainSubstring("resolved"))
+
+		runJSONIntoAs(reviewer, dir, &threads, "mr", "comments", "1", "--json")
+		Expect(threads.Threads).To(HaveLen(2))
+		resolved := false
+		for _, thread := range threads.Threads {
+			if thread.ID == threadID {
+				resolved = thread.Resolved
+			}
+		}
+		Expect(resolved).To(BeTrue())
+
+		diff := runNipaAs(reviewer, dir, "mr", "diff", "1")
+		Expect(diff.ExitCode).To(Equal(0), diff.Output())
+		Expect(diff.Output()).To(ContainSubstring("feature.txt"))
+		Expect(diff.Output()).To(ContainSubstring("+feature"))
+
+		var timeline mergeRequestTimelineJSON
+		runJSONIntoAs(reviewer, dir, &timeline, "mr", "timeline", "1", "--json")
+		kinds := make([]string, 0, len(timeline.Timeline))
+		for _, item := range timeline.Timeline {
+			kinds = append(kinds, item.Kind)
+		}
+		Expect(kinds).To(ContainElement("opened"))
+		Expect(kinds).To(ContainElement("review_submitted"))
+
+		approve := runNipaAs(reviewer, dir, "mr", "review", "1", "--approve", "-m", "looks good")
+		Expect(approve.ExitCode).To(Equal(0), approve.Output())
+		Expect(approve.Output()).To(ContainSubstring("reviewed: approved"))
+	})
+
+	It("requests reviews and reopens from the CLI", func() {
+		project := newProject("mr-requests-cli")
+		seedRepo(orgSlug, project, map[string][]byte{"base.txt": []byte("base\n")}, "seed")
+		parent := workspace()
+		dir := cloneRepo(parent, repoURLFor(orgSlug, project), "work")
+		Expect(runNipa(dir, "branch", "-c", "feature").ExitCode).To(Equal(0))
+		writeText(dir, "feature.txt", "feature\n")
+		Expect(runNipa(dir, "add", "feature.txt").ExitCode).To(Equal(0))
+		Expect(pushRepo(dir, "feature work").ExitCode).To(Equal(0))
+		Expect(runNipa(dir, "mr", "create", "--title", uniqueMessage("Requests CLI")).ExitCode).To(Equal(0))
+
+		reviewer := newIdentity("mr-requests-reviewer").promote()
+
+		request := runNipa(dir, "mr", "request-review", "1", reviewer.userID)
+		Expect(request.ExitCode).To(Equal(0), request.Output())
+		Expect(request.Output()).To(ContainSubstring("review requested from"))
+
+		requests := runNipa(dir, "mr", "requests", "1")
+		Expect(requests.ExitCode).To(Equal(0), requests.Output())
+		Expect(requests.Output()).To(ContainSubstring("requested from"))
+
+		unrequest := runNipa(dir, "mr", "unrequest-review", "1", reviewer.userID)
+		Expect(unrequest.ExitCode).To(Equal(0), unrequest.Output())
+		Expect(unrequest.Output()).To(ContainSubstring("removed"))
+
+		empty := runNipa(dir, "mr", "requests", "1")
+		Expect(empty.Output()).To(ContainSubstring("no review requests"))
+
+		Expect(runNipa(dir, "mr", "close", "1").ExitCode).To(Equal(0))
+		reopen := runNipa(dir, "mr", "reopen", "1")
+		Expect(reopen.ExitCode).To(Equal(0), reopen.Output())
+		Expect(reopen.Output()).To(ContainSubstring("reopened"))
+
+		view := runNipa(dir, "mr", "view", "1")
+		Expect(view.Output()).To(ContainSubstring("status: open"))
+	})
 })

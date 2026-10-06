@@ -15,8 +15,23 @@ type mrClient interface {
 	CreateMergeRequest(ctx context.Context, org, project, title, description, sourceBranch, targetBranch string) (*domain.MergeRequest, error)
 	UpdateMergeRequest(ctx context.Context, org, project string, number int64, title, description string) (*domain.MergeRequest, error)
 	ListMergeRequests(ctx context.Context, org, project string, opts domain.ListMergeRequestOptions) ([]*domain.MergeRequest, int64, error)
+	GetMergeRequest(ctx context.Context, org, project string, number int64) (*domain.MergeRequest, *domain.Mergeability, error)
 	MergeMergeRequest(ctx context.Context, org, project string, number int64) (*domain.MergeRequest, *domain.Mergeability, error)
 	CloseMergeRequest(ctx context.Context, org, project string, number int64) (*domain.MergeRequest, error)
+	ReopenMergeRequest(ctx context.Context, org, project string, number int64) (*domain.MergeRequest, error)
+	CheckMergeRequest(ctx context.Context, org, project string, number int64) (*domain.Mergeability, error)
+	ListMergeRequestCommits(ctx context.Context, org, project string, number int64) ([]*serverDomain.CommitLogEntry, error)
+	GetMergeRequestDiff(ctx context.Context, org, project string, number int64) ([]*domain.MergeRequestDiffFile, error)
+	ListMergeRequestReviews(ctx context.Context, org, project string, number int64) ([]*domain.MergeRequestReview, error)
+	SubmitMergeRequestReview(ctx context.Context, org, project string, number int64, state, body string) (*domain.MergeRequestReview, error)
+	ListMergeRequestThreads(ctx context.Context, org, project string, number int64) ([]*domain.MergeRequestThread, error)
+	AddMergeRequestComment(ctx context.Context, org, project string, number int64, filePath string, oldLine, newLine *int64, body string) (*domain.MergeRequestThread, error)
+	ReplyMergeRequestThread(ctx context.Context, org, project string, number int64, threadID, body string) (*domain.MergeRequestComment, error)
+	ResolveMergeRequestThread(ctx context.Context, org, project string, number int64, threadID string, resolved bool) (*domain.MergeRequestThread, error)
+	ListMergeRequestTimeline(ctx context.Context, org, project string, number int64) ([]*domain.MergeRequestTimelineItem, error)
+	ListMergeRequestReviewRequests(ctx context.Context, org, project string, number int64) ([]*domain.MergeRequestReviewRequest, error)
+	RequestMergeRequestReview(ctx context.Context, org, project string, number int64, userID string) (*domain.MergeRequestReviewRequest, error)
+	RemoveMergeRequestReviewRequest(ctx context.Context, org, project string, number int64, userID string) error
 	GetDefaultBranch(ctx context.Context, org, project string) (*serverDomain.Branch, error)
 }
 
@@ -136,6 +151,176 @@ func (m *MergeRequest) Merge(ctx context.Context, root, id string) (*domain.Merg
 		return nil, nil, err
 	}
 	return m.client.MergeMergeRequest(ctx, url.Org, url.Project, number)
+}
+
+// View returns one merge request with its live mergeability and review summary.
+func (m *MergeRequest) View(ctx context.Context, root, id string) (*domain.MergeRequest, *domain.Mergeability, error) {
+	url, number, err := m.target(ctx, root, id)
+	if err != nil {
+		return nil, nil, err
+	}
+	return m.client.GetMergeRequest(ctx, url.Org, url.Project, number)
+}
+
+func (m *MergeRequest) Reopen(ctx context.Context, root, id string) (*domain.MergeRequest, error) {
+	url, number, err := m.target(ctx, root, id)
+	if err != nil {
+		return nil, err
+	}
+	return m.client.ReopenMergeRequest(ctx, url.Org, url.Project, number)
+}
+
+func (m *MergeRequest) Check(ctx context.Context, root, id string) (*domain.Mergeability, error) {
+	url, number, err := m.target(ctx, root, id)
+	if err != nil {
+		return nil, err
+	}
+	return m.client.CheckMergeRequest(ctx, url.Org, url.Project, number)
+}
+
+func (m *MergeRequest) Diff(ctx context.Context, root, id string) ([]*domain.MergeRequestDiffFile, error) {
+	url, number, err := m.target(ctx, root, id)
+	if err != nil {
+		return nil, err
+	}
+	return m.client.GetMergeRequestDiff(ctx, url.Org, url.Project, number)
+}
+
+func (m *MergeRequest) Commits(ctx context.Context, root, id string) ([]*serverDomain.CommitLogEntry, error) {
+	url, number, err := m.target(ctx, root, id)
+	if err != nil {
+		return nil, err
+	}
+	return m.client.ListMergeRequestCommits(ctx, url.Org, url.Project, number)
+}
+
+func (m *MergeRequest) Reviews(ctx context.Context, root, id string) ([]*domain.MergeRequestReview, error) {
+	url, number, err := m.target(ctx, root, id)
+	if err != nil {
+		return nil, err
+	}
+	return m.client.ListMergeRequestReviews(ctx, url.Org, url.Project, number)
+}
+
+// Review submits one decision (approved, changes_requested or commented) with
+// its message. The server requires a body when there are no inline comments.
+func (m *MergeRequest) Review(ctx context.Context, root, id, state, body string) (*domain.MergeRequestReview, error) {
+	state = strings.TrimSpace(state)
+	if !domain.IsValidMergeRequestReviewState(state) {
+		return nil, domain.NewUserError("state must be one of approved, changes_requested, commented")
+	}
+	body = strings.TrimSpace(body)
+	if body == "" {
+		return nil, domain.NewUserError("a review needs a message; pass -m")
+	}
+	url, number, err := m.target(ctx, root, id)
+	if err != nil {
+		return nil, err
+	}
+	return m.client.SubmitMergeRequestReview(ctx, url.Org, url.Project, number, state, body)
+}
+
+func (m *MergeRequest) Threads(ctx context.Context, root, id string) ([]*domain.MergeRequestThread, error) {
+	url, number, err := m.target(ctx, root, id)
+	if err != nil {
+		return nil, err
+	}
+	return m.client.ListMergeRequestThreads(ctx, url.Org, url.Project, number)
+}
+
+// Comment starts a conversation thread; an empty filePath creates a top-level
+// thread, otherwise the comment anchors to the given diff line.
+func (m *MergeRequest) Comment(ctx context.Context, root, id, filePath string, oldLine, newLine *int64, body string) (*domain.MergeRequestThread, error) {
+	body = strings.TrimSpace(body)
+	if body == "" {
+		return nil, domain.NewUserError("a comment needs a message; pass -m")
+	}
+	url, number, err := m.target(ctx, root, id)
+	if err != nil {
+		return nil, err
+	}
+	return m.client.AddMergeRequestComment(ctx, url.Org, url.Project, number, strings.TrimSpace(filePath), oldLine, newLine, body)
+}
+
+func (m *MergeRequest) Reply(ctx context.Context, root, id, threadID, body string) (*domain.MergeRequestComment, error) {
+	threadID = strings.TrimSpace(threadID)
+	if threadID == "" {
+		return nil, domain.NewUserError("a thread id is required")
+	}
+	body = strings.TrimSpace(body)
+	if body == "" {
+		return nil, domain.NewUserError("a reply needs a message; pass -m")
+	}
+	url, number, err := m.target(ctx, root, id)
+	if err != nil {
+		return nil, err
+	}
+	return m.client.ReplyMergeRequestThread(ctx, url.Org, url.Project, number, threadID, body)
+}
+
+func (m *MergeRequest) Resolve(ctx context.Context, root, id, threadID string, resolved bool) (*domain.MergeRequestThread, error) {
+	threadID = strings.TrimSpace(threadID)
+	if threadID == "" {
+		return nil, domain.NewUserError("a thread id is required")
+	}
+	url, number, err := m.target(ctx, root, id)
+	if err != nil {
+		return nil, err
+	}
+	return m.client.ResolveMergeRequestThread(ctx, url.Org, url.Project, number, threadID, resolved)
+}
+
+func (m *MergeRequest) Timeline(ctx context.Context, root, id string) ([]*domain.MergeRequestTimelineItem, error) {
+	url, number, err := m.target(ctx, root, id)
+	if err != nil {
+		return nil, err
+	}
+	return m.client.ListMergeRequestTimeline(ctx, url.Org, url.Project, number)
+}
+
+func (m *MergeRequest) ReviewRequests(ctx context.Context, root, id string) ([]*domain.MergeRequestReviewRequest, error) {
+	url, number, err := m.target(ctx, root, id)
+	if err != nil {
+		return nil, err
+	}
+	return m.client.ListMergeRequestReviewRequests(ctx, url.Org, url.Project, number)
+}
+
+func (m *MergeRequest) RequestReview(ctx context.Context, root, id, userID string) (*domain.MergeRequestReviewRequest, error) {
+	userID = strings.TrimSpace(userID)
+	if userID == "" {
+		return nil, domain.NewUserError("a reviewer user id is required")
+	}
+	url, number, err := m.target(ctx, root, id)
+	if err != nil {
+		return nil, err
+	}
+	return m.client.RequestMergeRequestReview(ctx, url.Org, url.Project, number, userID)
+}
+
+func (m *MergeRequest) RemoveReviewRequest(ctx context.Context, root, id, userID string) error {
+	userID = strings.TrimSpace(userID)
+	if userID == "" {
+		return domain.NewUserError("a reviewer user id is required")
+	}
+	url, number, err := m.target(ctx, root, id)
+	if err != nil {
+		return err
+	}
+	return m.client.RemoveMergeRequestReviewRequest(ctx, url.Org, url.Project, number, userID)
+}
+
+// target resolves the project of a working copy and parses the request number.
+func (m *MergeRequest) target(ctx context.Context, root, id string) (*domain.NipaUrl, int64, error) {
+	number, err := mergeRequestNumber(id)
+	if err != nil {
+		return nil, 0, err
+	}
+	url, _, err := m.connect(ctx, root)
+	if err != nil {
+		return nil, 0, err
+	}
+	return url, number, nil
 }
 
 func (m *MergeRequest) connect(ctx context.Context, root string) (*domain.NipaUrl, *domain.Config, error) {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -41,6 +42,59 @@ type fakeMRClient struct {
 	closeNumber int64
 	closeResult *domain.MergeRequest
 	closeErr    error
+
+	getResult       *domain.MergeRequest
+	getMergeability *domain.Mergeability
+	getErr          error
+
+	reopenResult *domain.MergeRequest
+	reopenErr    error
+
+	checkResult *domain.Mergeability
+	checkErr    error
+
+	diffResult []*domain.MergeRequestDiffFile
+	diffErr    error
+
+	commitsResult []*serverDomain.CommitLogEntry
+	commitsErr    error
+
+	reviewsResult []*domain.MergeRequestReview
+	reviewsErr    error
+
+	submitResult *domain.MergeRequestReview
+	submitState  string
+	submitBody   string
+	submitErr    error
+
+	threadsResult []*domain.MergeRequestThread
+	threadsErr    error
+
+	commentResult  *domain.MergeRequestThread
+	commentFile    string
+	commentNewLine *int64
+	commentOldLine *int64
+	commentBody    string
+	commentErr     error
+
+	replyResult *domain.MergeRequestComment
+	replyBody   string
+	replyErr    error
+
+	resolveResult   *domain.MergeRequestThread
+	resolveResolved bool
+	resolveErr      error
+
+	timelineResult []*domain.MergeRequestTimelineItem
+	timelineErr    error
+
+	requestsResult []*domain.MergeRequestReviewRequest
+	requestsErr    error
+
+	requestResult    *domain.MergeRequestReviewRequest
+	requestUserID    string
+	requestErr       error
+	removeRequestErr error
 
 	defaultBranch    *serverDomain.Branch
 	defaultBranchErr error
@@ -84,6 +138,72 @@ func (f *fakeMRClient) CloseMergeRequest(_ context.Context, _, _ string, number 
 
 func (f *fakeMRClient) GetDefaultBranch(_ context.Context, _, _ string) (*serverDomain.Branch, error) {
 	return f.defaultBranch, f.defaultBranchErr
+}
+
+func (f *fakeMRClient) GetMergeRequest(_ context.Context, _, _ string, _ int64) (*domain.MergeRequest, *domain.Mergeability, error) {
+	return f.getResult, f.getMergeability, f.getErr
+}
+
+func (f *fakeMRClient) ReopenMergeRequest(_ context.Context, _, _ string, _ int64) (*domain.MergeRequest, error) {
+	return f.reopenResult, f.reopenErr
+}
+
+func (f *fakeMRClient) CheckMergeRequest(_ context.Context, _, _ string, _ int64) (*domain.Mergeability, error) {
+	return f.checkResult, f.checkErr
+}
+
+func (f *fakeMRClient) ListMergeRequestCommits(_ context.Context, _, _ string, _ int64) ([]*serverDomain.CommitLogEntry, error) {
+	return f.commitsResult, f.commitsErr
+}
+
+func (f *fakeMRClient) GetMergeRequestDiff(_ context.Context, _, _ string, _ int64) ([]*domain.MergeRequestDiffFile, error) {
+	return f.diffResult, f.diffErr
+}
+
+func (f *fakeMRClient) ListMergeRequestReviews(_ context.Context, _, _ string, _ int64) ([]*domain.MergeRequestReview, error) {
+	return f.reviewsResult, f.reviewsErr
+}
+
+func (f *fakeMRClient) SubmitMergeRequestReview(_ context.Context, _, _ string, _ int64, state, body string) (*domain.MergeRequestReview, error) {
+	f.submitState, f.submitBody = state, body
+	return f.submitResult, f.submitErr
+}
+
+func (f *fakeMRClient) ListMergeRequestThreads(_ context.Context, _, _ string, _ int64) ([]*domain.MergeRequestThread, error) {
+	return f.threadsResult, f.threadsErr
+}
+
+func (f *fakeMRClient) AddMergeRequestComment(_ context.Context, _, _ string, _ int64, filePath string, oldLine, newLine *int64, body string) (*domain.MergeRequestThread, error) {
+	f.commentFile, f.commentOldLine, f.commentNewLine, f.commentBody = filePath, oldLine, newLine, body
+	return f.commentResult, f.commentErr
+}
+
+func (f *fakeMRClient) ReplyMergeRequestThread(_ context.Context, _, _ string, _ int64, _, body string) (*domain.MergeRequestComment, error) {
+	f.replyBody = body
+	return f.replyResult, f.replyErr
+}
+
+func (f *fakeMRClient) ResolveMergeRequestThread(_ context.Context, _, _ string, _ int64, _ string, resolved bool) (*domain.MergeRequestThread, error) {
+	f.resolveResolved = resolved
+	return f.resolveResult, f.resolveErr
+}
+
+func (f *fakeMRClient) ListMergeRequestTimeline(_ context.Context, _, _ string, _ int64) ([]*domain.MergeRequestTimelineItem, error) {
+	return f.timelineResult, f.timelineErr
+}
+
+func (f *fakeMRClient) ListMergeRequestReviewRequests(_ context.Context, _, _ string, _ int64) ([]*domain.MergeRequestReviewRequest, error) {
+	return f.requestsResult, f.requestsErr
+}
+
+func (f *fakeMRClient) RequestMergeRequestReview(_ context.Context, _, _ string, _ int64, userID string) (*domain.MergeRequestReviewRequest, error) {
+	f.requestUserID = userID
+	return f.requestResult, f.requestErr
+}
+
+func (f *fakeMRClient) RemoveMergeRequestReviewRequest(_ context.Context, _, _ string, _ int64, userID string) error {
+	f.requestUserID = userID
+	return f.removeRequestErr
 }
 
 func newMRCli(t *testing.T, client *fakeMRClient) *Cli {
@@ -257,4 +377,202 @@ func TestMr_NotARepo(t *testing.T) {
 
 	_, err := runCmdInDir(t, t.TempDir(), cli.setupMrCmd(), "list")
 	require.EqualError(t, err, "not a nipa repository (or any of the parent directories)")
+}
+
+func TestSetupMrViewCmd_Success(t *testing.T) {
+	root := setupRepo(t, "feature")
+	client := &fakeMRClient{
+		getResult: &domain.MergeRequest{
+			Number: 7, Title: "Change code", Status: domain.MergeRequestOpen,
+			SourceBranch: "feature", TargetBranch: "main", CreatedBy: "alice",
+			Review: &domain.MergeRequestReviewState{Approvals: 1, OutstandingReviewers: []string{"u2"}},
+		},
+		getMergeability: &domain.Mergeability{Status: "mergeable", BlockedBy: "changes_requested"},
+		reviewsResult: []*domain.MergeRequestReview{
+			{Reviewer: domain.ReviewActor{Name: "Rev"}, State: domain.MergeRequestReviewChangesRequested},
+			{Reviewer: domain.ReviewActor{Name: "Bob"}, State: domain.MergeRequestReviewApproved, Stale: true},
+		},
+	}
+	cli := newMRCli(t, client)
+
+	out, err := runCmdInDir(t, root, cli.setupMrCmd(), "view", "7")
+	require.NoError(t, err)
+	require.Contains(t, out, "#7 Change code")
+	require.Contains(t, out, "status: open · mergeable (blocked by changes_requested)")
+	require.Contains(t, out, "branches: feature -> main")
+	require.Contains(t, out, "approvals: 1 · changes requested: 0 · outstanding reviewers: 1")
+	require.Contains(t, out, "Rev changes_requested")
+	require.Contains(t, out, "Bob approved (stale)")
+}
+
+func TestSetupMrViewCmd_JSON(t *testing.T) {
+	root := setupRepo(t, "feature")
+	client := &fakeMRClient{
+		getResult:       &domain.MergeRequest{Number: 7, Title: "Change code", Status: domain.MergeRequestOpen},
+		getMergeability: &domain.Mergeability{Status: "mergeable"},
+	}
+	cli := newMRCli(t, client)
+
+	out, err := runCmdInDir(t, root, cli.setupMrCmd(), "view", "7", "--json")
+	require.NoError(t, err)
+	require.Contains(t, out, `"merge_request"`)
+	require.Contains(t, out, `"mergeability"`)
+	require.Contains(t, out, `"mergeable"`)
+}
+
+func TestSetupMrReviewCmd_Decisions(t *testing.T) {
+	root := setupRepo(t, "feature")
+	client := &fakeMRClient{submitResult: &domain.MergeRequestReview{State: domain.MergeRequestReviewApproved}}
+	cli := newMRCli(t, client)
+
+	out, err := runCmdInDir(t, root, cli.setupMrCmd(), "review", "7", "--approve", "-m", "lgtm")
+	require.NoError(t, err)
+	require.Contains(t, out, "reviewed: approved")
+	require.Equal(t, domain.MergeRequestReviewApproved, client.submitState)
+	require.Equal(t, "lgtm", client.submitBody)
+
+	_, err = runCmdInDir(t, root, cli.setupMrCmd(), "review", "7", "--request-changes", "-m", "fix")
+	require.NoError(t, err)
+	require.Equal(t, domain.MergeRequestReviewChangesRequested, client.submitState)
+
+	_, err = runCmdInDir(t, root, cli.setupMrCmd(), "review", "7", "-m", "note")
+	require.NoError(t, err)
+	require.Equal(t, domain.MergeRequestReviewCommented, client.submitState)
+
+	_, err = runCmdInDir(t, root, cli.setupMrCmd(), "review", "7", "--approve", "--request-changes", "-m", "x")
+	require.Contains(t, err.Error(), "not both")
+
+	_, err = runCmdInDir(t, root, cli.setupMrCmd(), "review", "7", "--approve")
+	require.Contains(t, err.Error(), "needs a message")
+}
+
+func TestSetupMrCommentsCmd_Rows(t *testing.T) {
+	root := setupRepo(t, "feature")
+	newLine := int64(2)
+	client := &fakeMRClient{threadsResult: []*domain.MergeRequestThread{
+		{
+			ID: "t1", FilePath: "code.txt", NewLine: &newLine,
+			CreatedBy: domain.ReviewActor{Name: "Alice"},
+			Comments:  []*domain.MergeRequestComment{{User: domain.ReviewActor{Name: "Rev"}, Body: "rename this"}},
+		},
+		{ID: "t2", Resolved: true, CreatedBy: domain.ReviewActor{Name: "Bob"}},
+	}}
+	cli := newMRCli(t, client)
+
+	out, err := runCmdInDir(t, root, cli.setupMrCmd(), "comments", "7")
+	require.NoError(t, err)
+	require.Contains(t, out, "thread t1 (code.txt:2, open)")
+	require.Contains(t, out, "Rev: rename this")
+	require.Contains(t, out, "thread t2 (top-level, resolved)")
+}
+
+func TestSetupMrCommentCmd_Anchoring(t *testing.T) {
+	root := setupRepo(t, "feature")
+	client := &fakeMRClient{commentResult: &domain.MergeRequestThread{ID: "t9"}}
+	cli := newMRCli(t, client)
+
+	_, err := runCmdInDir(t, root, cli.setupMrCmd(), "comment", "7", "-m", "x", "--new-line", "2")
+	require.Contains(t, err.Error(), "pass --file")
+
+	_, err = runCmdInDir(t, root, cli.setupMrCmd(), "comment", "7", "-m", "x", "--file", "code.txt")
+	require.Contains(t, err.Error(), "pass --new-line or --old-line")
+
+	out, err := runCmdInDir(t, root, cli.setupMrCmd(), "comment", "7", "-m", " note ", "--file", "code.txt", "--new-line", "2")
+	require.NoError(t, err)
+	require.Contains(t, out, "thread t9 opened")
+	require.Equal(t, "code.txt", client.commentFile)
+	require.Equal(t, "note", client.commentBody)
+	require.NotNil(t, client.commentNewLine)
+	require.Nil(t, client.commentOldLine)
+}
+
+func TestSetupMrReplyAndResolve(t *testing.T) {
+	root := setupRepo(t, "feature")
+	client := &fakeMRClient{
+		replyResult:   &domain.MergeRequestComment{ID: "c1", ThreadID: "t1"},
+		resolveResult: &domain.MergeRequestThread{ID: "t1", Resolved: true},
+	}
+	cli := newMRCli(t, client)
+
+	out, err := runCmdInDir(t, root, cli.setupMrCmd(), "reply", "7", "t1", "-m", "done")
+	require.NoError(t, err)
+	require.Contains(t, out, "comment c1 added to thread t1")
+	require.Equal(t, "done", client.replyBody)
+
+	out, err = runCmdInDir(t, root, cli.setupMrCmd(), "resolve", "7", "t1")
+	require.NoError(t, err)
+	require.Contains(t, out, "thread t1 resolved")
+	require.True(t, client.resolveResolved)
+
+	client.resolveResult = &domain.MergeRequestThread{ID: "t1", Resolved: false}
+	out, err = runCmdInDir(t, root, cli.setupMrCmd(), "resolve", "7", "t1", "--unresolve")
+	require.NoError(t, err)
+	require.Contains(t, out, "thread t1 reopened")
+	require.False(t, client.resolveResolved)
+}
+
+func TestSetupMrRequestsAndRequestReview(t *testing.T) {
+	root := setupRepo(t, "feature")
+	client := &fakeMRClient{
+		requestsResult: []*domain.MergeRequestReviewRequest{{
+			ID:          "r1",
+			Reviewer:    domain.ReviewActor{Name: "Rev"},
+			RequestedBy: domain.ReviewActor{Name: "Alice"},
+		}},
+		requestResult: &domain.MergeRequestReviewRequest{Reviewer: domain.ReviewActor{Name: "Rev"}},
+	}
+	cli := newMRCli(t, client)
+
+	out, err := runCmdInDir(t, root, cli.setupMrCmd(), "requests", "7")
+	require.NoError(t, err)
+	require.Contains(t, out, "requested from Rev by Alice")
+
+	out, err = runCmdInDir(t, root, cli.setupMrCmd(), "request-review", "7", "rev-id")
+	require.NoError(t, err)
+	require.Contains(t, out, "review requested from Rev")
+	require.Equal(t, "rev-id", client.requestUserID)
+
+	out, err = runCmdInDir(t, root, cli.setupMrCmd(), "unrequest-review", "7", "rev-id")
+	require.NoError(t, err)
+	require.Contains(t, out, "review request for rev-id removed")
+}
+
+func TestSetupMrDiffCmd(t *testing.T) {
+	root := setupRepo(t, "feature")
+	client := &fakeMRClient{diffResult: []*domain.MergeRequestDiffFile{
+		{Path: "a.txt", Status: "M", Additions: 1, Deletions: 1, Patch: []string{"@@ -1 +1 @@", "-one", "+two"}},
+		{Path: "b.bin", Status: "A", Binary: true},
+	}}
+	cli := newMRCli(t, client)
+
+	out, err := runCmdInDir(t, root, cli.setupMrCmd(), "diff", "7")
+	require.NoError(t, err)
+	require.Contains(t, out, "M a.txt (+1 -1)")
+	require.Contains(t, out, "+two")
+	require.Contains(t, out, "binary file")
+}
+
+func TestSetupMrReopenCmd(t *testing.T) {
+	root := setupRepo(t, "feature")
+	client := &fakeMRClient{reopenResult: &domain.MergeRequest{Number: 7}}
+	cli := newMRCli(t, client)
+
+	out, err := runCmdInDir(t, root, cli.setupMrCmd(), "reopen", "7")
+	require.NoError(t, err)
+	require.Contains(t, out, "Merge request #7 reopened.")
+}
+
+func TestSetupMrTimelineCmd(t *testing.T) {
+	root := setupRepo(t, "feature")
+	at := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	client := &fakeMRClient{timelineResult: []*domain.MergeRequestTimelineItem{
+		{Kind: "opened", Actor: domain.ReviewActor{Name: "Alice"}, CreatedAt: at},
+		{Kind: "review_requested", Actor: domain.ReviewActor{Name: "Alice"}, Subject: &domain.ReviewActor{Name: "Rev"}, CreatedAt: at},
+	}}
+	cli := newMRCli(t, client)
+
+	out, err := runCmdInDir(t, root, cli.setupMrCmd(), "timeline", "7")
+	require.NoError(t, err)
+	require.Contains(t, out, "opened  Alice")
+	require.Contains(t, out, "review_requested  Alice -> Rev")
 }

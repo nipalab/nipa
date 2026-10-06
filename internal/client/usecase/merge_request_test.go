@@ -44,6 +44,75 @@ type stubMRClient struct {
 	mergeability *domain.Mergeability
 	mergeErr     error
 
+	getResult       *domain.MergeRequest
+	getMergeability *domain.Mergeability
+	getErr          error
+	getNumber       int64
+
+	reopenResult *domain.MergeRequest
+	reopenErr    error
+	reopenNumber int64
+
+	checkResult *domain.Mergeability
+	checkErr    error
+	checkNumber int64
+
+	diffResult []*domain.MergeRequestDiffFile
+	diffErr    error
+	diffNumber int64
+
+	commitsResult []*serverDomain.CommitLogEntry
+	commitsErr    error
+	commitsNumber int64
+
+	reviewsResult []*domain.MergeRequestReview
+	reviewsErr    error
+	reviewsNumber int64
+
+	submitResult *domain.MergeRequestReview
+	submitState  string
+	submitBody   string
+	submitErr    error
+	submitNumber int64
+
+	threadsResult []*domain.MergeRequestThread
+	threadsErr    error
+	threadsNumber int64
+
+	commentResult  *domain.MergeRequestThread
+	commentFile    string
+	commentNewLine *int64
+	commentOldLine *int64
+	commentErr     error
+	commentNumber  int64
+	commentBody    string
+
+	replyResult   *domain.MergeRequestComment
+	replyThreadID string
+	replyErr      error
+	replyNumber   int64
+	replyBody     string
+
+	resolveResult   *domain.MergeRequestThread
+	resolveThreadID string
+	resolveResolved bool
+	resolveErr      error
+	resolveNumber   int64
+
+	timelineResult []*domain.MergeRequestTimelineItem
+	timelineErr    error
+	timelineNumber int64
+
+	requestsResult []*domain.MergeRequestReviewRequest
+	requestsErr    error
+	requestsNumber int64
+
+	requestResult    *domain.MergeRequestReviewRequest
+	requestUserID    string
+	requestErr       error
+	removeRequestErr error
+	requestNumber    int64
+
 	defaultBranch    *serverDomain.Branch
 	defaultBranchErr error
 }
@@ -79,6 +148,81 @@ func (s *stubMRClient) MergeMergeRequest(_ context.Context, _, _ string, number 
 func (s *stubMRClient) CloseMergeRequest(_ context.Context, _, _ string, number int64) (*domain.MergeRequest, error) {
 	s.closeNumber = number
 	return s.closeResult, s.closeErr
+}
+
+func (s *stubMRClient) GetMergeRequest(_ context.Context, _, _ string, number int64) (*domain.MergeRequest, *domain.Mergeability, error) {
+	s.getNumber = number
+	return s.getResult, s.getMergeability, s.getErr
+}
+
+func (s *stubMRClient) ReopenMergeRequest(_ context.Context, _, _ string, number int64) (*domain.MergeRequest, error) {
+	s.reopenNumber = number
+	return s.reopenResult, s.reopenErr
+}
+
+func (s *stubMRClient) CheckMergeRequest(_ context.Context, _, _ string, number int64) (*domain.Mergeability, error) {
+	s.checkNumber = number
+	return s.checkResult, s.checkErr
+}
+
+func (s *stubMRClient) ListMergeRequestCommits(_ context.Context, _, _ string, number int64) ([]*serverDomain.CommitLogEntry, error) {
+	s.commitsNumber = number
+	return s.commitsResult, s.commitsErr
+}
+
+func (s *stubMRClient) GetMergeRequestDiff(_ context.Context, _, _ string, number int64) ([]*domain.MergeRequestDiffFile, error) {
+	s.diffNumber = number
+	return s.diffResult, s.diffErr
+}
+
+func (s *stubMRClient) ListMergeRequestReviews(_ context.Context, _, _ string, number int64) ([]*domain.MergeRequestReview, error) {
+	s.reviewsNumber = number
+	return s.reviewsResult, s.reviewsErr
+}
+
+func (s *stubMRClient) SubmitMergeRequestReview(_ context.Context, _, _ string, number int64, state, body string) (*domain.MergeRequestReview, error) {
+	s.submitNumber, s.submitState, s.submitBody = number, state, body
+	return s.submitResult, s.submitErr
+}
+
+func (s *stubMRClient) ListMergeRequestThreads(_ context.Context, _, _ string, number int64) ([]*domain.MergeRequestThread, error) {
+	s.threadsNumber = number
+	return s.threadsResult, s.threadsErr
+}
+
+func (s *stubMRClient) AddMergeRequestComment(_ context.Context, _, _ string, number int64, filePath string, oldLine, newLine *int64, body string) (*domain.MergeRequestThread, error) {
+	s.commentNumber, s.commentFile, s.commentOldLine, s.commentNewLine, s.commentBody = number, filePath, oldLine, newLine, body
+	return s.commentResult, s.commentErr
+}
+
+func (s *stubMRClient) ReplyMergeRequestThread(_ context.Context, _, _ string, number int64, threadID, body string) (*domain.MergeRequestComment, error) {
+	s.replyNumber, s.replyThreadID, s.replyBody = number, threadID, body
+	return s.replyResult, s.replyErr
+}
+
+func (s *stubMRClient) ResolveMergeRequestThread(_ context.Context, _, _ string, number int64, threadID string, resolved bool) (*domain.MergeRequestThread, error) {
+	s.resolveNumber, s.resolveThreadID, s.resolveResolved = number, threadID, resolved
+	return s.resolveResult, s.resolveErr
+}
+
+func (s *stubMRClient) ListMergeRequestTimeline(_ context.Context, _, _ string, number int64) ([]*domain.MergeRequestTimelineItem, error) {
+	s.timelineNumber = number
+	return s.timelineResult, s.timelineErr
+}
+
+func (s *stubMRClient) ListMergeRequestReviewRequests(_ context.Context, _, _ string, number int64) ([]*domain.MergeRequestReviewRequest, error) {
+	s.requestsNumber = number
+	return s.requestsResult, s.requestsErr
+}
+
+func (s *stubMRClient) RequestMergeRequestReview(_ context.Context, _, _ string, number int64, userID string) (*domain.MergeRequestReviewRequest, error) {
+	s.requestNumber, s.requestUserID = number, userID
+	return s.requestResult, s.requestErr
+}
+
+func (s *stubMRClient) RemoveMergeRequestReviewRequest(_ context.Context, _, _ string, number int64, userID string) error {
+	s.requestNumber, s.requestUserID = number, userID
+	return s.removeRequestErr
 }
 
 func (s *stubMRClient) GetDefaultBranch(_ context.Context, _, _ string) (*serverDomain.Branch, error) {
@@ -273,4 +417,102 @@ func TestMergeRequest_ConnectError(t *testing.T) {
 
 	_, _, err := newTestMergeRequest(t, local, client).List(context.Background(), t.TempDir(), domain.ListMergeRequestOptions{})
 	require.ErrorIs(t, err, wantErr)
+}
+
+func newReviewTestFixture(t *testing.T, client *stubMRClient) *MergeRequest {
+	t.Helper()
+	local := &stubLocalRepo{
+		loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "feature"},
+	}
+	return newTestMergeRequest(t, local, client)
+}
+
+func TestMergeRequest_View(t *testing.T) {
+	client := &stubMRClient{
+		getResult:       &domain.MergeRequest{Number: 7},
+		getMergeability: &domain.Mergeability{Status: "mergeable"},
+	}
+	mr := newReviewTestFixture(t, client)
+
+	got, info, err := mr.View(context.Background(), t.TempDir(), "7")
+	require.NoError(t, err)
+	require.Equal(t, int64(7), got.Number)
+	require.Equal(t, "mergeable", info.Status)
+	require.Equal(t, int64(7), client.getNumber)
+
+	_, _, err = mr.View(context.Background(), t.TempDir(), "nope")
+	require.Contains(t, err.Error(), "invalid merge request number")
+}
+
+func TestMergeRequest_Review(t *testing.T) {
+	client := &stubMRClient{submitResult: &domain.MergeRequestReview{State: domain.MergeRequestReviewApproved}}
+	mr := newReviewTestFixture(t, client)
+
+	_, err := mr.Review(context.Background(), t.TempDir(), "7", "bogus", "x")
+	require.Contains(t, err.Error(), "state must be one of")
+
+	_, err = mr.Review(context.Background(), t.TempDir(), "7", domain.MergeRequestReviewApproved, "  ")
+	require.Contains(t, err.Error(), "needs a message")
+
+	review, err := mr.Review(context.Background(), t.TempDir(), "7", " approved ", " lgtm ")
+	require.NoError(t, err)
+	require.Equal(t, domain.MergeRequestReviewApproved, review.State)
+	require.Equal(t, "approved", client.submitState)
+	require.Equal(t, "lgtm", client.submitBody)
+}
+
+func TestMergeRequest_ThreadsAndComment(t *testing.T) {
+	client := &stubMRClient{
+		threadsResult: []*domain.MergeRequestThread{{ID: "t1"}},
+		commentResult: &domain.MergeRequestThread{ID: "t2"},
+	}
+	mr := newReviewTestFixture(t, client)
+
+	threads, err := mr.Threads(context.Background(), t.TempDir(), "7")
+	require.NoError(t, err)
+	require.Len(t, threads, 1)
+
+	_, err = mr.Comment(context.Background(), t.TempDir(), "7", "", nil, nil, "  ")
+	require.Contains(t, err.Error(), "needs a message")
+
+	newLine := int64(2)
+	thread, err := mr.Comment(context.Background(), t.TempDir(), "7", " code.txt ", nil, &newLine, " note ")
+	require.NoError(t, err)
+	require.Equal(t, "t2", thread.ID)
+	require.Equal(t, "code.txt", client.commentFile)
+	require.Equal(t, "note", client.commentBody)
+	require.Equal(t, &newLine, client.commentNewLine)
+}
+
+func TestMergeRequest_ReplyResolveAndRequests(t *testing.T) {
+	client := &stubMRClient{
+		replyResult:   &domain.MergeRequestComment{ID: "c1", ThreadID: "t1"},
+		resolveResult: &domain.MergeRequestThread{ID: "t1", Resolved: true},
+		requestResult: &domain.MergeRequestReviewRequest{Reviewer: domain.ReviewActor{Name: "Rev"}},
+	}
+	mr := newReviewTestFixture(t, client)
+
+	comment, err := mr.Reply(context.Background(), t.TempDir(), "7", "t1", " done ")
+	require.NoError(t, err)
+	require.Equal(t, "c1", comment.ID)
+	require.Equal(t, "done", client.replyBody)
+
+	_, err = mr.Reply(context.Background(), t.TempDir(), "7", "t1", "")
+	require.Contains(t, err.Error(), "needs a message")
+
+	thread, err := mr.Resolve(context.Background(), t.TempDir(), "7", "t1", false)
+	require.NoError(t, err)
+	require.True(t, thread.Resolved)
+	require.False(t, client.resolveResolved)
+
+	request, err := mr.RequestReview(context.Background(), t.TempDir(), "7", " rev ")
+	require.NoError(t, err)
+	require.Equal(t, "Rev", request.Reviewer.Name)
+	require.Equal(t, "rev", client.requestUserID)
+
+	require.NoError(t, mr.RemoveReviewRequest(context.Background(), t.TempDir(), "7", "rev"))
+	require.Equal(t, "rev", client.requestUserID)
+
+	_, err = mr.RequestReview(context.Background(), t.TempDir(), "7", " ")
+	require.Contains(t, err.Error(), "user id is required")
 }

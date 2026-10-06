@@ -2,6 +2,7 @@ package output
 
 import (
 	clientDomain "github.com/nipalab/nipa/internal/client/domain"
+	serverDomain "github.com/nipalab/nipa/internal/domain"
 )
 
 type MergeRequests struct {
@@ -56,4 +57,40 @@ func NewMergeRequests(mrs []*clientDomain.MergeRequest) MergeRequests {
 		out.MergeRequests = append(out.MergeRequests, NewMergeRequest(mr))
 	}
 	return out
+}
+
+// MergeRequestView is one merge request with its live mergeability, the
+// reviews given for the current source head and the commits it adds.
+type MergeRequestView struct {
+	MergeRequest MergeRequest                       `json:"merge_request"`
+	Mergeability *clientDomain.Mergeability         `json:"mergeability,omitempty"`
+	Reviews      []*clientDomain.MergeRequestReview `json:"reviews,omitempty"`
+	Commits      []*serverDomain.CommitLogEntry     `json:"commits,omitempty"`
+}
+
+func NewMergeRequestView(mr *clientDomain.MergeRequest, info *clientDomain.Mergeability,
+	reviews []*clientDomain.MergeRequestReview, commits []*serverDomain.CommitLogEntry,
+) MergeRequestView {
+	return MergeRequestView{
+		MergeRequest: NewMergeRequest(mr),
+		Mergeability: info,
+		Reviews:      reviews,
+		Commits:      commits,
+	}
+}
+
+type MergeRequestThreads struct {
+	Threads []*clientDomain.MergeRequestThread `json:"threads"`
+}
+
+type MergeRequestTimeline struct {
+	Timeline []*clientDomain.MergeRequestTimelineItem `json:"timeline"`
+}
+
+type MergeRequestReviewRequests struct {
+	ReviewRequests []*clientDomain.MergeRequestReviewRequest `json:"review_requests"`
+}
+
+type MergeRequestDiff struct {
+	Files []*clientDomain.MergeRequestDiffFile `json:"files"`
 }

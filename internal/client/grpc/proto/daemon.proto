@@ -342,6 +342,42 @@ message ProxyMergeRequestThreadsResponse {
     greet.ListMergeRequestThreadsResponse response = 1;
 }
 
+message ProxyMergeRequestGetRequest {
+    string root = 1;
+    greet.GetMergeRequestRequest request = 2;
+}
+
+message ProxyMergeRequestGetResponse {
+    greet.GetMergeRequestResponse response = 1;
+}
+
+message ProxyMergeRequestCheckRequest {
+    string root = 1;
+    greet.CheckMergeRequestRequest request = 2;
+}
+
+message ProxyMergeRequestCheckResponse {
+    greet.CheckMergeRequestResponse response = 1;
+}
+
+message ProxyMergeRequestReopenRequest {
+    string root = 1;
+    greet.ReopenMergeRequestRequest request = 2;
+}
+
+message ProxyMergeRequestReopenResponse {
+    greet.ReopenMergeRequestResponse response = 1;
+}
+
+message ProxyMergeRequestSubmitReviewRequest {
+    string root = 1;
+    greet.SubmitMergeRequestReviewRequest request = 2;
+}
+
+message ProxyMergeRequestSubmitReviewResponse {
+    greet.SubmitMergeRequestReviewResponse response = 1;
+}
+
 message ProxyLockFileRequest {
     string root = 1;
     greet.LockFileRequest request = 2;
@@ -403,6 +439,10 @@ service NipaDaemon {
     rpc ProxyMergeRequestReviews(ProxyMergeRequestReviewsRequest) returns (ProxyMergeRequestReviewsResponse);
     rpc ProxyMergeRequestReviewState(ProxyMergeRequestReviewStateRequest) returns (ProxyMergeRequestReviewStateResponse);
     rpc ProxyMergeRequestThreads(ProxyMergeRequestThreadsRequest) returns (ProxyMergeRequestThreadsResponse);
+    rpc ProxyMergeRequestGet(ProxyMergeRequestGetRequest) returns (ProxyMergeRequestGetResponse);
+    rpc ProxyMergeRequestCheck(ProxyMergeRequestCheckRequest) returns (ProxyMergeRequestCheckResponse);
+    rpc ProxyMergeRequestReopen(ProxyMergeRequestReopenRequest) returns (ProxyMergeRequestReopenResponse);
+    rpc ProxyMergeRequestSubmitReview(ProxyMergeRequestSubmitReviewRequest) returns (ProxyMergeRequestSubmitReviewResponse);
     rpc ProxyLockFile(ProxyLockFileRequest) returns (ProxyLockFileResponse);
     rpc ProxyUnlockFile(ProxyUnlockFileRequest) returns (ProxyUnlockFileResponse);
     rpc ProxyListFileLocks(ProxyListFileLocksRequest) returns (ProxyListFileLocksResponse);

@@ -86,6 +86,30 @@ func (n *nipaServer) ListMergeRequests(ctx context.Context, req *pb.ListMergeReq
 	return resp, nil
 }
 
+func (n *nipaServer) GetMergeRequest(ctx context.Context, req *pb.GetMergeRequestRequest) (*pb.GetMergeRequestResponse, error) {
+	_, project, err := n.uc.Common().ResolveBySlug(ctx, req.Context.Org, req.Context.Project)
+	if err != nil {
+		return nil, handleError(err)
+	}
+	request, err := n.uc.MergeRequest().Get(ctx, project.ID, req.GetNumber())
+	if err != nil {
+		return nil, handleError(err)
+	}
+	info, err := n.uc.MergeRequest().Check(ctx, project.ID, req.GetNumber())
+	if err != nil {
+		return nil, handleError(err)
+	}
+	if review := n.uc.MergeRequestReview(); review != nil {
+		if err := review.AttachSummaries(ctx, project.ID, []*domain.MergeRequest{request}); err != nil {
+			return nil, handleError(err)
+		}
+	}
+	return &pb.GetMergeRequestResponse{
+		MergeRequest: domainMergeRequestToPB(request),
+		Mergeability: domainMergeabilityToPB(info),
+	}, nil
+}
+
 func (n *nipaServer) MergeMergeRequest(ctx context.Context, req *pb.MergeMergeRequestRequest) (*pb.MergeMergeRequestResponse, error) {
 	_, project, err := n.uc.Common().ResolveBySlug(ctx, req.Context.Org, req.Context.Project)
 	if err != nil {

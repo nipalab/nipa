@@ -556,6 +556,16 @@ message ListMergeRequestsResponse {
     optional int64 next_cursor = 2; // set when a full page was returned; pass back as after_number
 }
 
+message GetMergeRequestRequest {
+    ProjectContext context = 1;
+    int64 number = 2; // sequential per-project number
+}
+
+message GetMergeRequestResponse {
+    MergeRequestDetail merge_request = 1;
+    MergeabilityDetail mergeability = 2;
+}
+
 message MergeMergeRequestRequest {
     ProjectContext context = 1;
     int64 number = 2; // sequential per-project number
@@ -947,6 +957,7 @@ service NipaService {
     rpc CreateMergeRequest(CreateMergeRequestRequest) returns (CreateMergeRequestResponse);
     rpc UpdateMergeRequest(UpdateMergeRequestRequest) returns (UpdateMergeRequestResponse);
     rpc ListMergeRequests(ListMergeRequestsRequest) returns (ListMergeRequestsResponse);
+    rpc GetMergeRequest(GetMergeRequestRequest) returns (GetMergeRequestResponse);
     rpc MergeMergeRequest(MergeMergeRequestRequest) returns (MergeMergeRequestResponse);
     rpc CloseMergeRequest(CloseMergeRequestRequest) returns (CloseMergeRequestResponse);
     rpc ReopenMergeRequest(ReopenMergeRequestRequest) returns (ReopenMergeRequestResponse);

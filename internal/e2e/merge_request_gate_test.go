@@ -98,6 +98,13 @@ func TestEndToEnd_MergeRequestApprovalGate(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, check.Mergeability.BlockedBy)
 
+	// Get returns the request with its mergeability and live review summary
+	detail, err := rpc.GetMergeRequest(adminCtx, &pb.GetMergeRequestRequest{Context: projectCtx, Number: number})
+	require.NoError(t, err)
+	require.Equal(t, "mergeable", detail.GetMergeability().GetStatus())
+	require.NotNil(t, detail.GetMergeRequest().GetReview())
+	require.EqualValues(t, 1, detail.GetMergeRequest().GetReview().GetApprovals())
+
 	diff, err := rpc.GetMergeRequestDiff(adminCtx, &pb.GetMergeRequestDiffRequest{Context: projectCtx, Number: number})
 	require.NoError(t, err)
 	require.Len(t, diff.Files, 1)
