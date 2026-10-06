@@ -500,6 +500,15 @@ func TestMergeRequest_ReplyResolveAndRequests(t *testing.T) {
 	_, err = mr.Reply(context.Background(), t.TempDir(), "7", "t1", "")
 	require.Contains(t, err.Error(), "needs a message")
 
+	_, err = mr.Reply(context.Background(), t.TempDir(), "7", "  ", "done")
+	require.Contains(t, err.Error(), "a thread id is required")
+
+	_, err = mr.Resolve(context.Background(), t.TempDir(), "7", " ", true)
+	require.Contains(t, err.Error(), "a thread id is required")
+
+	err = mr.RemoveReviewRequest(context.Background(), t.TempDir(), "7", " ")
+	require.Contains(t, err.Error(), "user id is required")
+
 	thread, err := mr.Resolve(context.Background(), t.TempDir(), "7", "t1", false)
 	require.NoError(t, err)
 	require.True(t, thread.Resolved)
@@ -515,4 +524,199 @@ func TestMergeRequest_ReplyResolveAndRequests(t *testing.T) {
 
 	_, err = mr.RequestReview(context.Background(), t.TempDir(), "7", " ")
 	require.Contains(t, err.Error(), "user id is required")
+}
+
+func TestMergeRequest_Check(t *testing.T) {
+	client := &stubMRClient{checkResult: &domain.Mergeability{Status: "mergeable", BlockedBy: "insufficient_approvals"}}
+	mr := newReviewTestFixture(t, client)
+
+	info, err := mr.Check(context.Background(), t.TempDir(), "7")
+	require.NoError(t, err)
+	require.Equal(t, "mergeable", info.Status)
+	require.Equal(t, "insufficient_approvals", info.BlockedBy)
+	require.Equal(t, int64(7), client.checkNumber)
+
+	_, err = mr.Check(context.Background(), t.TempDir(), "zero")
+	require.Contains(t, err.Error(), "invalid merge request number")
+}
+
+func TestMergeRequest_OperationsPropagateClientErrors(t *testing.T) {
+	wantErr := &domain.Error{Code: 404, Message: "merge request 7 not found"}
+	client := &stubMRClient{
+		getErr:           wantErr,
+		reopenErr:        wantErr,
+		checkErr:         wantErr,
+		diffErr:          wantErr,
+		commitsErr:       wantErr,
+		reviewsErr:       wantErr,
+		submitErr:        wantErr,
+		threadsErr:       wantErr,
+		commentErr:       wantErr,
+		replyErr:         wantErr,
+		resolveErr:       wantErr,
+		timelineErr:      wantErr,
+		requestsErr:      wantErr,
+		requestErr:       wantErr,
+		removeRequestErr: wantErr,
+		mergeErr:         wantErr,
+		closeErr:         wantErr,
+		updateErr:        wantErr,
+		createErr:        wantErr,
+		listErr:          wantErr,
+	}
+	mr := newReviewTestFixture(t, client)
+	ctx := context.Background()
+
+	_, _, err := mr.View(ctx, t.TempDir(), "7")
+	require.ErrorIs(t, err, wantErr)
+
+	_, err = mr.Reopen(ctx, t.TempDir(), "7")
+	require.ErrorIs(t, err, wantErr)
+
+	_, err = mr.Check(ctx, t.TempDir(), "7")
+	require.ErrorIs(t, err, wantErr)
+
+	_, err = mr.Diff(ctx, t.TempDir(), "7")
+	require.ErrorIs(t, err, wantErr)
+
+	_, err = mr.Commits(ctx, t.TempDir(), "7")
+	require.ErrorIs(t, err, wantErr)
+
+	_, err = mr.Reviews(ctx, t.TempDir(), "7")
+	require.ErrorIs(t, err, wantErr)
+
+	_, err = mr.Review(ctx, t.TempDir(), "7", domain.MergeRequestReviewApproved, "lgtm")
+	require.ErrorIs(t, err, wantErr)
+
+	_, err = mr.Threads(ctx, t.TempDir(), "7")
+	require.ErrorIs(t, err, wantErr)
+
+	_, err = mr.Comment(ctx, t.TempDir(), "7", "a.txt", nil, nil, "note")
+	require.ErrorIs(t, err, wantErr)
+
+	_, err = mr.Reply(ctx, t.TempDir(), "7", "t1", "done")
+	require.ErrorIs(t, err, wantErr)
+
+	_, err = mr.Resolve(ctx, t.TempDir(), "7", "t1", true)
+	require.ErrorIs(t, err, wantErr)
+
+	_, err = mr.Timeline(ctx, t.TempDir(), "7")
+	require.ErrorIs(t, err, wantErr)
+
+	_, err = mr.ReviewRequests(ctx, t.TempDir(), "7")
+	require.ErrorIs(t, err, wantErr)
+
+	_, err = mr.RequestReview(ctx, t.TempDir(), "7", "user1")
+	require.ErrorIs(t, err, wantErr)
+
+	err = mr.RemoveReviewRequest(ctx, t.TempDir(), "7", "user1")
+	require.ErrorIs(t, err, wantErr)
+
+	_, _, err = mr.Merge(ctx, t.TempDir(), "7")
+	require.ErrorIs(t, err, wantErr)
+
+	_, err = mr.Close(ctx, t.TempDir(), "7")
+	require.ErrorIs(t, err, wantErr)
+
+	_, err = mr.Update(ctx, t.TempDir(), "7", "New", "")
+	require.ErrorIs(t, err, wantErr)
+
+	_, err = mr.Create(ctx, t.TempDir(), CreateMergeRequestOptions{Title: "T", Source: "feature", Target: "main"})
+	require.ErrorIs(t, err, wantErr)
+
+	_, _, err = mr.List(ctx, t.TempDir(), domain.ListMergeRequestOptions{})
+	require.ErrorIs(t, err, wantErr)
+}
+
+func TestMergeRequest_InvalidNumberErrors(t *testing.T) {
+	client := &stubMRClient{}
+	mr := newReviewTestFixture(t, client)
+	dir := t.TempDir()
+	ctx := context.Background()
+
+	calls := map[string]func() error{
+		"View":    func() error { _, _, err := mr.View(ctx, dir, "bad"); return err },
+		"Reopen":  func() error { _, err := mr.Reopen(ctx, dir, "bad"); return err },
+		"Check":   func() error { _, err := mr.Check(ctx, dir, "bad"); return err },
+		"Diff":    func() error { _, err := mr.Diff(ctx, dir, "bad"); return err },
+		"Commits": func() error { _, err := mr.Commits(ctx, dir, "bad"); return err },
+		"Reviews": func() error { _, err := mr.Reviews(ctx, dir, "bad"); return err },
+		"Review": func() error {
+			_, err := mr.Review(ctx, dir, "bad", domain.MergeRequestReviewApproved, "lgtm")
+			return err
+		},
+		"Threads":             func() error { _, err := mr.Threads(ctx, dir, "bad"); return err },
+		"Comment":             func() error { _, err := mr.Comment(ctx, dir, "bad", "a.txt", nil, nil, "note"); return err },
+		"Reply":               func() error { _, err := mr.Reply(ctx, dir, "bad", "t1", "done"); return err },
+		"Resolve":             func() error { _, err := mr.Resolve(ctx, dir, "bad", "t1", true); return err },
+		"Timeline":            func() error { _, err := mr.Timeline(ctx, dir, "bad"); return err },
+		"ReviewRequests":      func() error { _, err := mr.ReviewRequests(ctx, dir, "bad"); return err },
+		"RequestReview":       func() error { _, err := mr.RequestReview(ctx, dir, "bad", "user1"); return err },
+		"RemoveReviewRequest": func() error { return mr.RemoveReviewRequest(ctx, dir, "bad", "user1") },
+	}
+	for name, call := range calls {
+		t.Run(name, func(t *testing.T) {
+			require.ErrorContains(t, call(), "invalid merge request number")
+		})
+	}
+}
+
+func TestMergeRequest_ConnectErrorForEveryOperation(t *testing.T) {
+	client := &stubMRClient{connectErr: errors.New("dial failed")}
+	mr := newReviewTestFixture(t, client)
+	dir := t.TempDir()
+	ctx := context.Background()
+
+	calls := map[string]func() error{
+		"View":    func() error { _, _, err := mr.View(ctx, dir, "7"); return err },
+		"Reopen":  func() error { _, err := mr.Reopen(ctx, dir, "7"); return err },
+		"Check":   func() error { _, err := mr.Check(ctx, dir, "7"); return err },
+		"Diff":    func() error { _, err := mr.Diff(ctx, dir, "7"); return err },
+		"Commits": func() error { _, err := mr.Commits(ctx, dir, "7"); return err },
+		"Reviews": func() error { _, err := mr.Reviews(ctx, dir, "7"); return err },
+		"Review": func() error {
+			_, err := mr.Review(ctx, dir, "7", domain.MergeRequestReviewApproved, "lgtm")
+			return err
+		},
+		"Threads":             func() error { _, err := mr.Threads(ctx, dir, "7"); return err },
+		"Comment":             func() error { _, err := mr.Comment(ctx, dir, "7", "a.txt", nil, nil, "note"); return err },
+		"Reply":               func() error { _, err := mr.Reply(ctx, dir, "7", "t1", "done"); return err },
+		"Resolve":             func() error { _, err := mr.Resolve(ctx, dir, "7", "t1", true); return err },
+		"Timeline":            func() error { _, err := mr.Timeline(ctx, dir, "7"); return err },
+		"ReviewRequests":      func() error { _, err := mr.ReviewRequests(ctx, dir, "7"); return err },
+		"RequestReview":       func() error { _, err := mr.RequestReview(ctx, dir, "7", "user1"); return err },
+		"RemoveReviewRequest": func() error { return mr.RemoveReviewRequest(ctx, dir, "7", "user1") },
+		"Close":               func() error { _, err := mr.Close(ctx, dir, "7"); return err },
+		"Merge":               func() error { _, _, err := mr.Merge(ctx, dir, "7"); return err },
+		"Update":              func() error { _, err := mr.Update(ctx, dir, "7", "New", ""); return err },
+		"Create": func() error {
+			_, err := mr.Create(ctx, dir, CreateMergeRequestOptions{Title: "T", Source: "feature", Target: "main"})
+			return err
+		},
+		"List": func() error { _, _, err := mr.List(ctx, dir, domain.ListMergeRequestOptions{}); return err },
+	}
+	for name, call := range calls {
+		t.Run(name, func(t *testing.T) {
+			require.ErrorContains(t, call(), "dial failed")
+		})
+	}
+}
+
+func TestMergeRequest_ConnectErrorPaths(t *testing.T) {
+	client := &stubMRClient{}
+	ctx := context.Background()
+
+	initErr := errors.New("init failed")
+	initLocal := &stubLocalRepo{initErr: initErr}
+	_, _, err := newTestMergeRequest(t, initLocal, client).List(ctx, t.TempDir(), domain.ListMergeRequestOptions{})
+	require.ErrorIs(t, err, initErr)
+
+	configErr := errors.New("config missing")
+	configLocal := &stubLocalRepo{configLoadErr: configErr}
+	_, _, err = newTestMergeRequest(t, configLocal, client).List(ctx, t.TempDir(), domain.ListMergeRequestOptions{})
+	require.ErrorIs(t, err, configErr)
+
+	badURL := &stubLocalRepo{loadConfig: &domain.Config{Url: "ftp://example.com/org/project"}}
+	_, _, err = newTestMergeRequest(t, badURL, client).List(ctx, t.TempDir(), domain.ListMergeRequestOptions{})
+	require.Contains(t, err.Error(), "invalid URL scheme")
 }

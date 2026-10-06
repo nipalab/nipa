@@ -942,6 +942,14 @@ func TestAPIRoutes(t *testing.T) {
 		require.Equal(t, http.StatusBadRequest, badAfter.StatusCode)
 		badAfter.Body.Close()
 
+		badAuthor := doMethod(t, http.MethodGet, base+"/merge-requests?author=!!", "", aliceLogin.AccessToken)
+		require.Equal(t, http.StatusBadRequest, badAuthor.StatusCode)
+		badAuthor.Body.Close()
+
+		// a non-positive limit falls back to the default page size
+		zeroLimit := decodeBody[model.MergeRequestListResponse](t, doGet(t, base+"/merge-requests?limit=0", aliceLogin.AccessToken))
+		require.Len(t, zeroLimit.MergeRequests, 2)
+
 		// Protected targets can only be moved by merging a merge request.
 		createBranch = doMethod(t, http.MethodPost, base+"/branches", `{"name":"protected-fix","from":"main"}`, aliceLogin.AccessToken)
 		require.Equal(t, http.StatusOK, createBranch.StatusCode)

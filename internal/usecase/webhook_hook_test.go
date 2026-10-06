@@ -333,3 +333,25 @@ func TestMergeRequestReview_CommentsEmitWebhookEvent(t *testing.T) {
 	_, err = review.Reply(permissionCtx(9), snow.ID(1), 5, thread.ID, "second")
 	require.NoError(t, err)
 }
+
+func TestMergeRequestReview_ReplyCommentError(t *testing.T) {
+	review, repo, mrRepo, _, perm, _, _ := newTestMergeRequestReview(t)
+	expectLoad(perm, mrRepo)
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
+	repo.EXPECT().GetThread(gomock.Any(), int64(5), gomock.Any()).
+		Return(&domain.MergeRequestThread{ID: 1, MergeRequestID: 5}, nil)
+	repo.EXPECT().CreateComment(gomock.Any(), gomock.Any()).Return(nil, errors.New("boom"))
+
+	_, err := review.Reply(permissionCtx(9), snow.ID(1), 5, snow.ID(1), "x")
+	require.ErrorContains(t, err, "boom")
+}
+
+func TestMergeRequestReview_UnrequestEventError(t *testing.T) {
+	review, repo, mrRepo, _, perm, _, _ := newTestMergeRequestReview(t)
+	expectLoad(perm, mrRepo)
+	repo.EXPECT().DeleteReviewRequest(gomock.Any(), int64(5), snow.ID(8)).Return(nil)
+	repo.EXPECT().CreateEvent(gomock.Any(), gomock.Any()).Return(nil, errors.New("boom"))
+
+	err := review.RemoveReviewRequest(permissionCtx(8), snow.ID(1), 5, snow.ID(8))
+	require.ErrorContains(t, err, "boom")
+}

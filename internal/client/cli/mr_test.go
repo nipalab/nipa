@@ -318,6 +318,10 @@ func TestSetupMrListCmd_Rows(t *testing.T) {
 	require.Equal(t, "feature", client.listOpts.SourceBranch)
 	require.Equal(t, "main", client.listOpts.TargetBranch)
 	require.Equal(t, int64(9), client.listOpts.After)
+
+	out, err = runCmdInDir(t, root, cli.setupMrCmd(), "list", "--json")
+	require.NoError(t, err)
+	require.Contains(t, out, `"next_cursor":"2"`)
 }
 
 func TestSetupMrListCmd_Error(t *testing.T) {
@@ -484,6 +488,13 @@ func TestSetupMrCommentCmd_Anchoring(t *testing.T) {
 	require.Equal(t, "note", client.commentBody)
 	require.NotNil(t, client.commentNewLine)
 	require.Nil(t, client.commentOldLine)
+
+	out, err = runCmdInDir(t, root, cli.setupMrCmd(), "comment", "7", "-m", "x", "--file", "code.txt", "--old-line", "3")
+	require.NoError(t, err)
+	require.NotNil(t, client.commentOldLine)
+	require.Equal(t, int64(3), *client.commentOldLine)
+	require.Nil(t, client.commentNewLine)
+	require.Contains(t, out, "thread t9 opened")
 }
 
 func TestSetupMrReplyAndResolve(t *testing.T) {
@@ -541,6 +552,7 @@ func TestSetupMrDiffCmd(t *testing.T) {
 	root := setupRepo(t, "feature")
 	client := &fakeMRClient{diffResult: []*domain.MergeRequestDiffFile{
 		{Path: "a.txt", Status: "M", Additions: 1, Deletions: 1, Patch: []string{"@@ -1 +1 @@", "-one", "+two"}},
+		{Path: "new.txt", OldPath: "old.txt", Status: "R", Additions: 0, Deletions: 0},
 		{Path: "b.bin", Status: "A", Binary: true},
 	}}
 	cli := newMRCli(t, client)
@@ -549,6 +561,7 @@ func TestSetupMrDiffCmd(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, out, "M a.txt (+1 -1)")
 	require.Contains(t, out, "+two")
+	require.Contains(t, out, "R old.txt -> new.txt (+0 -0)")
 	require.Contains(t, out, "binary file")
 }
 
@@ -568,6 +581,7 @@ func TestSetupMrTimelineCmd(t *testing.T) {
 	client := &fakeMRClient{timelineResult: []*domain.MergeRequestTimelineItem{
 		{Kind: "opened", Actor: domain.ReviewActor{Name: "Alice"}, CreatedAt: at},
 		{Kind: "review_requested", Actor: domain.ReviewActor{Name: "Alice"}, Subject: &domain.ReviewActor{Name: "Rev"}, CreatedAt: at},
+		{Kind: "pushed", Actor: domain.ReviewActor{Name: "Alice"}, Body: "one commit", CreatedAt: at},
 	}}
 	cli := newMRCli(t, client)
 
@@ -575,4 +589,170 @@ func TestSetupMrTimelineCmd(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, out, "opened  Alice")
 	require.Contains(t, out, "review_requested  Alice -> Rev")
+	require.Contains(t, out, "pushed  Alice: one commit")
+}
+
+func TestMrReviewCommands_ErrorPaths(t *testing.T) {
+	wantErr := errors.New("boom")
+	root := setupRepo(t, "feature")
+	client := &fakeMRClient{
+		getErr: wantErr, reopenErr: wantErr, threadsErr: wantErr, replyErr: wantErr,
+		resolveErr: wantErr, timelineErr: wantErr, requestsErr: wantErr,
+		requestErr: wantErr, removeRequestErr: wantErr, diffErr: wantErr, commentErr: wantErr,
+	}
+	cli := newMRCli(t, client)
+
+	calls := map[string][]string{
+		"view":             {"view", "7"},
+		"reopen":           {"reopen", "7"},
+		"comments":         {"comments", "7"},
+		"comment":          {"comment", "7", "-m", "x"},
+		"reply":            {"reply", "7", "t1", "-m", "x"},
+		"resolve":          {"resolve", "7", "t1"},
+		"timeline":         {"timeline", "7"},
+		"requests":         {"requests", "7"},
+		"request-review":   {"request-review", "7", "u1"},
+		"unrequest-review": {"unrequest-review", "7", "u1"},
+		"diff":             {"diff", "7"},
+	}
+	for name, args := range calls {
+		t.Run(name, func(t *testing.T) {
+			_, err := runCmdInDir(t, root, cli.setupMrCmd(), args...)
+			require.ErrorIs(t, err, wantErr)
+		})
+	}
+}
+
+func TestSetupMrViewCmd_ReviewsAndCommitsError(t *testing.T) {
+	wantErr := errors.New("boom")
+	root := setupRepo(t, "feature")
+
+	reviewsErr := &fakeMRClient{
+		getResult:  &domain.MergeRequest{Number: 7, Status: domain.MergeRequestOpen},
+		reviewsErr: wantErr,
+	}
+	cli := newMRCli(t, reviewsErr)
+	_, err := runCmdInDir(t, root, cli.setupMrCmd(), "view", "7")
+	require.ErrorIs(t, err, wantErr)
+
+	commitsErr := &fakeMRClient{
+		getResult:  &domain.MergeRequest{Number: 7, Status: domain.MergeRequestOpen},
+		commitsErr: wantErr,
+	}
+	cli = newMRCli(t, commitsErr)
+	_, err = runCmdInDir(t, root, cli.setupMrCmd(), "view", "7")
+	require.ErrorIs(t, err, wantErr)
+}
+
+func TestSetupMrViewCmd_DescriptionAndDismissedReview(t *testing.T) {
+	root := setupRepo(t, "feature")
+	dismissedAt := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	client := &fakeMRClient{
+		getResult: &domain.MergeRequest{
+			Number: 7, Title: "T", Status: domain.MergeRequestOpen, Description: "the body",
+		},
+		reviewsResult: []*domain.MergeRequestReview{{
+			Reviewer:        domain.ReviewActor{UserID: "u9"},
+			State:           domain.MergeRequestReviewApproved,
+			DismissedAt:     &dismissedAt,
+			DismissedReason: "new_commits",
+		}},
+	}
+	cli := newMRCli(t, client)
+
+	out, err := runCmdInDir(t, root, cli.setupMrCmd(), "view", "7")
+	require.NoError(t, err)
+	require.Contains(t, out, "u9 approved (dismissed: new_commits)")
+	require.Contains(t, out, "the body")
+}
+
+func TestMrReviewCommands_EmptyOutput(t *testing.T) {
+	root := setupRepo(t, "feature")
+	cli := newMRCli(t, &fakeMRClient{})
+
+	cases := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"comments", []string{"comments", "7"}, "no comments"},
+		{"timeline", []string{"timeline", "7"}, "no activity"},
+		{"requests", []string{"requests", "7"}, "no review requests"},
+		{"diff", []string{"diff", "7"}, "no changes"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			out, err := runCmdInDir(t, root, cli.setupMrCmd(), tc.args...)
+			require.NoError(t, err)
+			require.Contains(t, out, tc.want)
+		})
+	}
+}
+
+func TestMrReviewCommands_JSON(t *testing.T) {
+	root := setupRepo(t, "feature")
+	newLine := int64(2)
+	at := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	client := &fakeMRClient{
+		threadsResult:  []*domain.MergeRequestThread{{ID: "t1", NewLine: &newLine}},
+		timelineResult: []*domain.MergeRequestTimelineItem{{Kind: "opened", CreatedAt: at}},
+		requestsResult: []*domain.MergeRequestReviewRequest{{ID: "r1"}},
+		diffResult:     []*domain.MergeRequestDiffFile{{Path: "a.txt", Status: "M"}},
+	}
+	cli := newMRCli(t, client)
+
+	cases := []struct {
+		name string
+		args []string
+		key  string
+	}{
+		{"comments", []string{"comments", "7", "--json"}, `"threads"`},
+		{"timeline", []string{"timeline", "7", "--json"}, `"timeline"`},
+		{"requests", []string{"requests", "7", "--json"}, `"review_requests"`},
+		{"diff", []string{"diff", "7", "--json"}, `"files"`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			out, err := runCmdInDir(t, root, cli.setupMrCmd(), tc.args...)
+			require.NoError(t, err)
+			require.Contains(t, out, tc.key)
+		})
+	}
+}
+
+func TestMrReviewCommands_NotARepo(t *testing.T) {
+	cli := newMRCli(t, &fakeMRClient{})
+	dir := t.TempDir()
+
+	calls := [][]string{
+		{"view", "7"},
+		{"reopen", "7"},
+		{"review", "7", "-m", "x"},
+		{"comments", "7"},
+		{"comment", "7", "-m", "x"},
+		{"reply", "7", "t1", "-m", "x"},
+		{"resolve", "7", "t1"},
+		{"timeline", "7"},
+		{"requests", "7"},
+		{"request-review", "7", "u1"},
+		{"unrequest-review", "7", "u1"},
+		{"diff", "7"},
+	}
+	for _, args := range calls {
+		t.Run(args[0], func(t *testing.T) {
+			_, err := runCmdInDir(t, dir, cli.setupMrCmd(), args...)
+			require.EqualError(t, err, "not a nipa repository (or any of the parent directories)")
+		})
+	}
+}
+
+func TestThreadHeader(t *testing.T) {
+	oldLine := int64(4)
+	require.Equal(t, "thread t4 (top-level, open)", threadHeader(&domain.MergeRequestThread{ID: "t4"}))
+	require.Equal(t,
+		"thread t3 (code.txt(old):4, resolved, outdated)",
+		threadHeader(&domain.MergeRequestThread{ID: "t3", FilePath: "code.txt", OldLine: &oldLine, Resolved: true, Outdated: true}),
+	)
+	require.Equal(t, "u9", actorLabel(domain.ReviewActor{UserID: "u9"}))
+	require.Equal(t, "Rev", actorLabel(domain.ReviewActor{UserID: "u9", Name: "Rev"}))
 }
