@@ -110,8 +110,39 @@ type mergeRequestsJSON struct {
 		Title        string `json:"title"`
 		Description  string `json:"description"`
 		Status       string `json:"status"`
+		CreatedBy    string `json:"created_by"`
+		Review       *struct {
+			Approvals        int `json:"approvals"`
+			ChangesRequested int `json:"changes_requested"`
+		} `json:"review"`
 	} `json:"merge_requests"`
 	NextCursor string `json:"next_cursor"`
+}
+
+type mergeRequestViewJSON struct {
+	MergeRequest struct {
+		Number int64  `json:"number"`
+		Status string `json:"status"`
+	} `json:"merge_request"`
+	Mergeability *struct {
+		Status    string `json:"status"`
+		BlockedBy string `json:"blocked_by"`
+	} `json:"mergeability"`
+	Reviews []struct {
+		State string `json:"state"`
+	} `json:"reviews"`
+	Commits []struct {
+		Message string `json:"message"`
+	} `json:"commits"`
+}
+
+type mergeRequestDiffJSON struct {
+	Files []struct {
+		Path      string   `json:"path"`
+		Status    string   `json:"status"`
+		Additions int64    `json:"additions"`
+		Patch     []string `json:"patch"`
+	} `json:"files"`
 }
 
 type mergeRequestThreadsJSON struct {
