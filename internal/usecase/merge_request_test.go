@@ -1075,4 +1075,44 @@ func TestMergeRequest_SetDraft(t *testing.T) {
 		_, err := mr.SetDraft(context.Background(), snow.ID(1), 5, true)
 		require.True(t, domain.IsErrorNoPermission(err))
 	})
+
+	t.Run("load failure propagates", func(t *testing.T) {
+		mr, repo, _, perm, _ := newTestMergeRequest(t)
+		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
+		repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(nil, domain.NewErrorRecordNotFound())
+
+		_, err := mr.SetDraft(permissionCtx(7), snow.ID(1), 5, true)
+		require.True(t, domain.IsErrorNotFound(err))
+	})
+
+	t.Run("repository failure propagates", func(t *testing.T) {
+		mr, repo, _, perm, _ := newTestMergeRequest(t)
+		wantErr := errors.New("boom")
+		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
+		repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(openMergeRequest(), nil)
+		repo.EXPECT().SetDraft(gomock.Any(), snow.ID(1), int64(5), true).Return(nil, wantErr)
+
+		_, err := mr.SetDraft(permissionCtx(7), snow.ID(1), 5, true)
+		require.ErrorIs(t, err, wantErr)
+	})
+}
+
+func TestMergeRequest_Check_ReviewStateError(t *testing.T) {
+	mr, repo, branchRepo, perm, merger := newTestMergeRequest(t)
+	mr, reviewRepo := withReviewGate(t, mr, repo, branchRepo, perm, merger)
+	sourceHead := snow.ID(11)
+	targetHead := snow.ID(12)
+	wantErr := errors.New("boom")
+
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true).AnyTimes()
+	repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(openMergeRequest(), nil).AnyTimes()
+	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").
+		Return(branchWithHead(3, sourceHead), nil).AnyTimes()
+	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(branchWithHead(2, targetHead), nil)
+	merger.EXPECT().GetMergeBase(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
+		Return(&MergeBaseInfo{MergeBaseCommitID: &targetHead}, nil)
+	reviewRepo.EXPECT().ListReviews(gomock.Any(), int64(5)).Return(nil, wantErr)
+
+	_, err := mr.Check(permissionCtx(7), snow.ID(1), 5)
+	require.ErrorIs(t, err, wantErr)
 }

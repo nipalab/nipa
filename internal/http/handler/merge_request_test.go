@@ -185,6 +185,76 @@ func TestHandler_MergeRequestValidation(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, appCtx.statusCode)
 }
 
+func TestHandler_MergeRequestDraftFlow(t *testing.T) {
+	env := newHandlerTestEnv(t)
+	mainPush := env.seedFiles(t, map[string]string{"a.txt": "hello"})
+	env.createBranch(t, "feature", "main")
+	env.seedPushTo(t, "feature", mainPush.CommitID.Base36(), map[string]string{"b.txt": "feature"})
+
+	claims := &domain.Claims{UserID: env.userID, IsAdmin: true}
+	projectParams := map[string]string{"org": "default", "project": "default"}
+
+	appCtx := &fakeAppContext{
+		claims:         claims,
+		pathParameters: projectParams,
+		body:           []byte(`{"title":"Draft b","source_branch":"feature","target_branch":"main","draft":true}`),
+	}
+	env.handler.CreateMergeRequest(appCtx)
+	require.Equal(t, http.StatusOK, appCtx.statusCode)
+	created := appCtx.response.(model.MergeRequestResponse)
+	require.True(t, created.Draft)
+
+	appCtx = &fakeAppContext{
+		claims:          claims,
+		pathParameters:  projectParams,
+		queryParameters: map[string]string{"draft": "true"},
+	}
+	env.handler.ListMergeRequests(appCtx)
+	require.Equal(t, http.StatusOK, appCtx.statusCode)
+	require.Len(t, appCtx.response.(model.MergeRequestListResponse).MergeRequests, 1)
+
+	appCtx = &fakeAppContext{
+		claims:          claims,
+		pathParameters:  projectParams,
+		queryParameters: map[string]string{"draft": "not-a-bool"},
+	}
+	env.handler.ListMergeRequests(appCtx)
+	require.Equal(t, http.StatusBadRequest, appCtx.statusCode)
+
+	mrParams := map[string]string{"org": "default", "project": "default", "id": strconv.FormatInt(created.Number, 10)}
+
+	// toggling the draft state alone patches the request
+	appCtx = &fakeAppContext{claims: claims, pathParameters: mrParams, body: []byte(`{"draft":false}`)}
+	env.handler.UpdateMergeRequest(appCtx)
+	require.Equal(t, http.StatusOK, appCtx.statusCode)
+	require.False(t, appCtx.response.(model.MergeRequestResponse).Draft)
+
+	// a draft toggle combined with title applies both
+	appCtx = &fakeAppContext{claims: claims, pathParameters: mrParams, body: []byte(`{"title":"Draft b v2","draft":true}`)}
+	env.handler.UpdateMergeRequest(appCtx)
+	require.Equal(t, http.StatusOK, appCtx.statusCode)
+	combined := appCtx.response.(model.MergeRequestResponse)
+	require.True(t, combined.Draft)
+	require.Equal(t, "Draft b v2", combined.Title)
+
+	// a closed request cannot change its draft state
+	appCtx = &fakeAppContext{claims: claims, pathParameters: mrParams}
+	env.handler.CloseMergeRequest(appCtx)
+	require.Equal(t, http.StatusOK, appCtx.statusCode)
+	appCtx = &fakeAppContext{claims: claims, pathParameters: mrParams, body: []byte(`{"draft":false}`)}
+	env.handler.UpdateMergeRequest(appCtx)
+	require.Equal(t, http.StatusConflict, appCtx.statusCode)
+
+	// updating a missing request reports not found
+	appCtx = &fakeAppContext{
+		claims:         claims,
+		pathParameters: map[string]string{"org": "default", "project": "default", "id": "999999"},
+		body:           []byte(`{"title":"nope"}`),
+	}
+	env.handler.UpdateMergeRequest(appCtx)
+	require.Equal(t, http.StatusNotFound, appCtx.statusCode)
+}
+
 func TestHandler_MergeRequestContextError(t *testing.T) {
 	env := newHandlerTestEnv(t)
 	params := map[string]string{"org": "default", "project": "default", "id": "1"}

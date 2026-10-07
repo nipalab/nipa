@@ -268,6 +268,45 @@ func (s *MergeRequestReviewRepositorySuite) TestCarryOverReviews() {
 	s.Nil(reviews[0].DismissedAt)
 }
 
+// a comment-only review must stay behind: carrying both it and a decision row
+// for the same reviewer onto the new head would collide on the per-round
+// unique index and fail the whole carry-over.
+func (s *MergeRequestReviewRepositorySuite) TestCarryOverReviewsSkipsCommented() {
+	ctx := context.Background()
+	f := s.newReviewFixture()
+
+	_, err := f.repo.UpsertReview(ctx, domain.MergeRequestReview{
+		ID:             6001,
+		MergeRequestID: f.mrID,
+		Reviewer:       domain.ReviewActor{UserID: f.reviewerID},
+		State:          domain.MergeRequestReviewCommented,
+		Body:           "a note",
+		HeadCommitID:   f.headCommit,
+	})
+	s.Require().NoError(err)
+
+	decisionHead := f.pushSourceHead(s.T())
+	_, err = f.repo.UpsertReview(ctx, domain.MergeRequestReview{
+		ID:             6002,
+		MergeRequestID: f.mrID,
+		Reviewer:       domain.ReviewActor{UserID: f.reviewerID},
+		State:          domain.MergeRequestReviewApproved,
+		HeadCommitID:   decisionHead,
+	})
+	s.Require().NoError(err)
+
+	newHead := f.pushSourceHead(s.T())
+	s.Require().NoError(f.repo.CarryOverReviews(ctx, f.mrID, newHead))
+
+	reviews, err := f.repo.ListReviews(ctx, f.mrID)
+	s.Require().NoError(err)
+	s.Len(reviews, 2)
+	s.Equal(domain.MergeRequestReviewCommented, reviews[0].State)
+	s.Equal(f.headCommit, reviews[0].HeadCommitID)
+	s.Equal(domain.MergeRequestReviewApproved, reviews[1].State)
+	s.Equal(newHead, reviews[1].HeadCommitID)
+}
+
 func (s *MergeRequestReviewRepositorySuite) TestManualDismissAndWithdraw() {
 	ctx := context.Background()
 	f := s.newReviewFixture()

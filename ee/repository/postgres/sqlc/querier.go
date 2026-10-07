@@ -79,7 +79,9 @@ type Querier interface {
 	MergeRequestList(ctx context.Context, arg MergeRequestListParams) ([]MergeRequest, error)
 	MergeRequestListOpenBySourceBranch(ctx context.Context, arg MergeRequestListOpenBySourceBranchParams) ([]MergeRequest, error)
 	// MergeRequestReviewCarryOver moves live decisions onto a new source head when
-	// the target branch keeps decisions across pushes.
+	// the target branch keeps decisions across pushes. Comment-only reviews stay
+	// behind: they never count, and moving them onto the new head could collide
+	// with a decision row for the same reviewer on the per-round unique index.
 	MergeRequestReviewCarryOver(ctx context.Context, arg MergeRequestReviewCarryOverParams) error
 	MergeRequestReviewDelete(ctx context.Context, arg MergeRequestReviewDeleteParams) (int64, error)
 	MergeRequestReviewDismiss(ctx context.Context, arg MergeRequestReviewDismissParams) error

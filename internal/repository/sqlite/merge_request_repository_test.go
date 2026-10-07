@@ -85,6 +85,22 @@ func TestMergeRequestRepositorySQLite_CRUD(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, byTarget)
 
+	draftOnly := true
+	drafts, err := repo.List(ctx, projectID, domain.MergeRequestListOptions{Draft: &draftOnly, Limit: 10})
+	require.NoError(t, err)
+	require.Empty(t, drafts)
+
+	draft, err := repo.SetDraft(ctx, projectID, 1, true)
+	require.NoError(t, err)
+	require.True(t, draft.Draft)
+	drafts, err = repo.List(ctx, projectID, domain.MergeRequestListOptions{Draft: &draftOnly, Limit: 10})
+	require.NoError(t, err)
+	require.Len(t, drafts, 1)
+	require.Equal(t, int64(1), drafts[0].Number)
+
+	_, err = repo.SetDraft(ctx, projectID, 9999, false)
+	requireRecordNotFound(t, err)
+
 	updated, err := repo.Update(ctx, projectID, 1, "New title", "new body")
 	require.NoError(t, err)
 	require.Equal(t, "New title", updated.Title)

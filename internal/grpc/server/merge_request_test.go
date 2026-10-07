@@ -260,6 +260,28 @@ func TestMergeRequestHandler_UpdateDraft(t *testing.T) {
 	require.True(t, resp.MergeRequest.Draft)
 }
 
+func TestMergeRequestHandler_UpdateDraftError(t *testing.T) {
+	repo := &stubMergeRequestRepository{
+		onGet: func(int) (*domain.MergeRequest, error) {
+			return testMergeRequest(5, domain.MergeRequestOpen), nil
+		},
+		draftFn: func(int64, bool) (*domain.MergeRequest, error) {
+			return nil, domain.NewErrorConflict("merge request is closed")
+		},
+	}
+	srv, _, perm := newTestMergeRequestServer(t, repo, &stubBranchMerger{})
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(42), domain.PermissionRead).Return(true).AnyTimes()
+	ctx := domain.ContextWithClaim(context.Background(), domain.Claims{UserID: snow.ID(7)})
+
+	draft := true
+	_, err := srv.UpdateMergeRequest(ctx, &pb.UpdateMergeRequestRequest{
+		Context: &pb.ProjectContext{Org: "org", Project: "proj"},
+		Number:  5,
+		Draft:   &draft,
+	})
+	require.Equal(t, codes.FailedPrecondition, status.Code(err))
+}
+
 func TestMergeRequestHandler_UpdateNotFound(t *testing.T) {
 	srv, _, perm := newTestMergeRequestServer(t, &stubMergeRequestRepository{}, &stubBranchMerger{})
 	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(42), domain.PermissionRead).Return(true)

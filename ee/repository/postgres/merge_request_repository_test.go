@@ -91,6 +91,22 @@ func (s *MergeRequestRepositorySuite) TestCRUD() {
 	s.Require().NoError(err)
 	s.Empty(byTarget)
 
+	draftOnly := true
+	drafts, err := repo.List(ctx, projectID, domain.MergeRequestListOptions{Draft: &draftOnly, Limit: 10})
+	s.Require().NoError(err)
+	s.Empty(drafts)
+
+	draft, err := repo.SetDraft(ctx, projectID, 1, true)
+	s.Require().NoError(err)
+	s.True(draft.Draft)
+	drafts, err = repo.List(ctx, projectID, domain.MergeRequestListOptions{Draft: &draftOnly, Limit: 10})
+	s.Require().NoError(err)
+	s.Len(drafts, 1)
+	s.Equal(int64(1), drafts[0].Number)
+
+	_, err = repo.SetDraft(ctx, projectID, 9999, false)
+	requireRecordNotFound(s.T(), err)
+
 	updated, err := repo.Update(ctx, projectID, 1, "New title", "new body")
 	s.Require().NoError(err)
 	s.Equal("New title", updated.Title)

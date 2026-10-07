@@ -747,6 +747,33 @@ func TestMergeRequestReview_NoteBranchPush_KeepsDecisionsWhenDisabled(t *testing
 	require.NoError(t, review.NoteBranchPush(context.Background(), snow.ID(1), snow.ID(3), snow.ID(11), snow.ID(9), "cafe"))
 }
 
+func TestMergeRequestReview_NoteBranchPush_StaleDismissError(t *testing.T) {
+	review, repo, _, branchRepo, _, _, _ := newTestMergeRequestReview(t)
+	wantErr := errors.New("boom")
+	repo.EXPECT().ListOpenBySourceBranch(gomock.Any(), snow.ID(1), snow.ID(3)).
+		Return([]*domain.MergeRequest{{ID: 5, Number: 5}}, nil)
+	branchRepo.EXPECT().GetByProjectIDAndID(gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(&domain.Branch{DismissStaleApprovals: true}, nil)
+	repo.EXPECT().DismissStaleReviews(gomock.Any(), int64(5), snow.ID(11), snow.ID(9),
+		domain.MergeRequestDismissedNewCommits, gomock.Any()).Return(wantErr)
+
+	err := review.NoteBranchPush(context.Background(), snow.ID(1), snow.ID(3), snow.ID(11), snow.ID(9), "cafe")
+	require.ErrorIs(t, err, wantErr)
+}
+
+func TestMergeRequestReview_NoteBranchPush_CarryOverError(t *testing.T) {
+	review, repo, _, branchRepo, _, _, _ := newTestMergeRequestReview(t)
+	wantErr := errors.New("boom")
+	repo.EXPECT().ListOpenBySourceBranch(gomock.Any(), snow.ID(1), snow.ID(3)).
+		Return([]*domain.MergeRequest{{ID: 5, Number: 5}}, nil)
+	branchRepo.EXPECT().GetByProjectIDAndID(gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(&domain.Branch{DismissStaleApprovals: false}, nil)
+	repo.EXPECT().CarryOverReviews(gomock.Any(), int64(5), snow.ID(11)).Return(wantErr)
+
+	err := review.NoteBranchPush(context.Background(), snow.ID(1), snow.ID(3), snow.ID(11), snow.ID(9), "cafe")
+	require.ErrorIs(t, err, wantErr)
+}
+
 func TestMergeRequestReview_NoteBranchPush_NoOpenRequests(t *testing.T) {
 	review, repo, _, _, _, _, _ := newTestMergeRequestReview(t)
 	repo.EXPECT().ListOpenBySourceBranch(gomock.Any(), snow.ID(1), snow.ID(3)).Return(nil, nil)

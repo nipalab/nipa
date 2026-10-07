@@ -293,6 +293,18 @@ func TestSetupMrReadyCmd(t *testing.T) {
 	require.False(t, *client.updateDraft)
 }
 
+func TestSetupMrReadyCmd_Errors(t *testing.T) {
+	cli := newMRCli(t, &fakeMRClient{})
+	_, err := runCmdInDir(t, t.TempDir(), cli.setupMrCmd(), "ready", "1")
+	require.EqualError(t, err, "not a nipa repository (or any of the parent directories)")
+
+	wantErr := errors.New("boom")
+	root := setupRepo(t, "feature")
+	cli = newMRCli(t, &fakeMRClient{updateErr: wantErr})
+	_, err = runCmdInDir(t, root, cli.setupMrCmd(), "ready", "1")
+	require.ErrorIs(t, err, wantErr)
+}
+
 func TestSetupMrUpdateCmd_Success(t *testing.T) {
 	root := setupRepo(t, "feature")
 	client := &fakeMRClient{updateResult: &domain.MergeRequest{Number: 1, Title: "Renamed"}}
@@ -311,6 +323,22 @@ func TestSetupMrUpdateCmd_MissingFields(t *testing.T) {
 
 	_, err := runCmdInDir(t, root, cli.setupMrCmd(), "update", "1")
 	require.Contains(t, err.Error(), "pass --title, --description or --draft")
+}
+
+func TestSetupMrUpdateCmd_Draft(t *testing.T) {
+	root := setupRepo(t, "feature")
+	client := &fakeMRClient{updateResult: &domain.MergeRequest{Number: 1, Title: "Renamed"}}
+	cli := newMRCli(t, client)
+
+	_, err := runCmdInDir(t, root, cli.setupMrCmd(), "update", "1", "--draft")
+	require.NoError(t, err)
+	require.NotNil(t, client.updateDraft)
+	require.True(t, *client.updateDraft)
+
+	_, err = runCmdInDir(t, root, cli.setupMrCmd(), "update", "1", "--draft=false")
+	require.NoError(t, err)
+	require.NotNil(t, client.updateDraft)
+	require.False(t, *client.updateDraft)
 }
 
 func TestSetupMrListCmd_Empty(t *testing.T) {
@@ -352,6 +380,22 @@ func TestSetupMrListCmd_Rows(t *testing.T) {
 	out, err = runCmdInDir(t, root, cli.setupMrCmd(), "list", "--json")
 	require.NoError(t, err)
 	require.Contains(t, out, `"next_cursor":"2"`)
+}
+
+func TestSetupMrListCmd_DraftFilter(t *testing.T) {
+	root := setupRepo(t, "feature")
+	client := &fakeMRClient{listResult: []*domain.MergeRequest{
+		{Number: 3, Status: domain.MergeRequestOpen, Draft: true, SourceBranch: "feature", TargetBranch: "main", Title: "WIP"},
+	}}
+	cli := newMRCli(t, client)
+
+	out, err := runCmdInDir(t, root, cli.setupMrCmd(), "list", "--status", "draft")
+	require.NoError(t, err)
+	require.Contains(t, out, "draft")
+	require.Contains(t, out, "WIP")
+	require.Equal(t, domain.MergeRequestOpen, client.listStatus)
+	require.NotNil(t, client.listOpts.Draft)
+	require.True(t, *client.listOpts.Draft)
 }
 
 func TestSetupMrListCmd_Error(t *testing.T) {
@@ -437,6 +481,18 @@ func TestSetupMrViewCmd_Success(t *testing.T) {
 	require.Contains(t, out, "approvals: 1 · changes requested: 0 · outstanding reviewers: 1")
 	require.Contains(t, out, "Rev changes_requested")
 	require.Contains(t, out, "Bob approved (stale)")
+}
+
+func TestSetupMrViewCmd_Draft(t *testing.T) {
+	root := setupRepo(t, "feature")
+	client := &fakeMRClient{
+		getResult: &domain.MergeRequest{Number: 8, Title: "WIP", Status: domain.MergeRequestOpen, Draft: true},
+	}
+	cli := newMRCli(t, client)
+
+	out, err := runCmdInDir(t, root, cli.setupMrCmd(), "view", "8")
+	require.NoError(t, err)
+	require.Contains(t, out, "status: open (draft)")
 }
 
 func TestSetupMrViewCmd_JSON(t *testing.T) {

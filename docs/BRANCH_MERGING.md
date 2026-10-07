@@ -409,7 +409,8 @@ target branch policy described below (landing itself stays fast-forward-only).
   (`dismissed_reason = new_commits`) and the dismissal is written to the
   timeline; with the target branch's `dismiss_stale_approvals` off they are
   instead **carried onto the new head** and stay live. Comment-only reviews are
-  never dismissed (they become stale on the old head, or are carried too).
+  never dismissed and are not carried either: they stay on the head they were
+  given for, where they become stale (and never counted).
 - A reviewer cannot approve or request changes on their own merge request, but
   may comment. A project writer may **dismiss** a review (history is kept); a
   reviewer may **withdraw** their own review (the row is deleted, comment

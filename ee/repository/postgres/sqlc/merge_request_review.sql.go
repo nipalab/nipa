@@ -340,6 +340,7 @@ SET head_commit_id = $1,
 WHERE merge_request_id = $2
   AND dismissed_at IS NULL
   AND head_commit_id != $1
+  AND state != 'commented'
 `
 
 type MergeRequestReviewCarryOverParams struct {
@@ -348,7 +349,9 @@ type MergeRequestReviewCarryOverParams struct {
 }
 
 // MergeRequestReviewCarryOver moves live decisions onto a new source head when
-// the target branch keeps decisions across pushes.
+// the target branch keeps decisions across pushes. Comment-only reviews stay
+// behind: they never count, and moving them onto the new head could collide
+// with a decision row for the same reviewer on the per-round unique index.
 func (q *Queries) MergeRequestReviewCarryOver(ctx context.Context, arg MergeRequestReviewCarryOverParams) error {
 	_, err := q.db.ExecContext(ctx, mergeRequestReviewCarryOver, arg.HeadCommitID, arg.MergeRequestID)
 	return err

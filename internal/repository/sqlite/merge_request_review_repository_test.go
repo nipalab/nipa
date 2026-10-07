@@ -274,6 +274,45 @@ func TestMergeRequestReviewRepository_CarryOverReviews(t *testing.T) {
 	require.Nil(t, reviews[0].DismissedAt)
 }
 
+// a comment-only review must stay behind: carrying both it and a decision row
+// for the same reviewer onto the new head would collide on the per-round
+// unique index and fail the whole carry-over.
+func TestMergeRequestReviewRepository_CarryOverReviewsSkipsCommented(t *testing.T) {
+	ctx := context.Background()
+	f := newReviewFixture(t)
+
+	_, err := f.repo.UpsertReview(ctx, domain.MergeRequestReview{
+		ID:             6001,
+		MergeRequestID: f.mrID,
+		Reviewer:       domain.ReviewActor{UserID: f.reviewerID},
+		State:          domain.MergeRequestReviewCommented,
+		Body:           "a note",
+		HeadCommitID:   f.headCommit,
+	})
+	require.NoError(t, err)
+
+	decisionHead := f.pushSourceHead(t)
+	_, err = f.repo.UpsertReview(ctx, domain.MergeRequestReview{
+		ID:             6002,
+		MergeRequestID: f.mrID,
+		Reviewer:       domain.ReviewActor{UserID: f.reviewerID},
+		State:          domain.MergeRequestReviewApproved,
+		HeadCommitID:   decisionHead,
+	})
+	require.NoError(t, err)
+
+	newHead := f.pushSourceHead(t)
+	require.NoError(t, f.repo.CarryOverReviews(ctx, f.mrID, newHead))
+
+	reviews, err := f.repo.ListReviews(ctx, f.mrID)
+	require.NoError(t, err)
+	require.Len(t, reviews, 2)
+	require.Equal(t, domain.MergeRequestReviewCommented, reviews[0].State)
+	require.Equal(t, f.headCommit, reviews[0].HeadCommitID)
+	require.Equal(t, domain.MergeRequestReviewApproved, reviews[1].State)
+	require.Equal(t, newHead, reviews[1].HeadCommitID)
+}
+
 func TestMergeRequestReviewRepository_ManualDismissAndWithdraw(t *testing.T) {
 	ctx := context.Background()
 	f := newReviewFixture(t)
