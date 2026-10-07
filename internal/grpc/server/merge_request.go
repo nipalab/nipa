@@ -19,7 +19,7 @@ func (n *nipaServer) CreateMergeRequest(ctx context.Context, req *pb.CreateMerge
 		return nil, handleError(err)
 	}
 	request, err := n.uc.MergeRequest().Create(
-		ctx, project.ID, req.GetTitle(), req.GetDescription(), req.GetSourceBranch(), req.GetTargetBranch(),
+		ctx, project.ID, req.GetTitle(), req.GetDescription(), req.GetSourceBranch(), req.GetTargetBranch(), req.GetDraft(),
 	)
 	if err != nil {
 		return nil, handleError(err)
@@ -32,11 +32,26 @@ func (n *nipaServer) UpdateMergeRequest(ctx context.Context, req *pb.UpdateMerge
 	if err != nil {
 		return nil, handleError(err)
 	}
-	request, err := n.uc.MergeRequest().Update(ctx, project.ID, req.GetNumber(), req.GetTitle(), req.GetDescription())
-	if err != nil {
-		return nil, handleError(err)
+	number := req.GetNumber()
+	var toggled *domain.MergeRequest
+	if req.Draft != nil {
+		updated, err := n.uc.MergeRequest().SetDraft(ctx, project.ID, number, req.GetDraft())
+		if err != nil {
+			return nil, handleError(err)
+		}
+		toggled = updated
 	}
-	return &pb.UpdateMergeRequestResponse{MergeRequest: domainMergeRequestToPB(request)}, nil
+	if req.GetTitle() != "" || req.GetDescription() != "" {
+		request, err := n.uc.MergeRequest().Update(ctx, project.ID, number, req.GetTitle(), req.GetDescription())
+		if err != nil {
+			return nil, handleError(err)
+		}
+		return &pb.UpdateMergeRequestResponse{MergeRequest: domainMergeRequestToPB(request)}, nil
+	}
+	if toggled == nil {
+		return nil, handleError(domain.NewErrorUser("title or description is required"))
+	}
+	return &pb.UpdateMergeRequestResponse{MergeRequest: domainMergeRequestToPB(toggled)}, nil
 }
 
 func (n *nipaServer) ListMergeRequests(ctx context.Context, req *pb.ListMergeRequestsRequest) (*pb.ListMergeRequestsResponse, error) {
@@ -52,6 +67,7 @@ func (n *nipaServer) ListMergeRequests(ctx context.Context, req *pb.ListMergeReq
 		Status:       req.GetStatus(),
 		SourceBranch: req.GetSourceBranch(),
 		TargetBranch: req.GetTargetBranch(),
+		Draft:        req.Draft,
 		After:        req.GetAfterNumber(),
 		Limit:        limit + 1,
 	}
@@ -203,6 +219,7 @@ func domainMergeRequestToPB(request *domain.MergeRequest) *pb.MergeRequestDetail
 		Title:             request.Title,
 		Description:       request.Description,
 		Status:            request.Status,
+		Draft:             request.Draft,
 		MergeCommitId:     snowPtrToStringPtr(request.MergeCommitID),
 		MergeBaseCommitId: snowPtrToStringPtr(request.MergeBaseCommitID),
 		CreatedBy:         request.CreatedBy.Base36(),

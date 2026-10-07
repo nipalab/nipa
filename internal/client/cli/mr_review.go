@@ -46,6 +46,9 @@ func (c *Cli) setupMrViewCmd() *cobra.Command {
 			}
 			cmd.Printf("#%d %s\n", mr.Number, mr.Title)
 			status := mr.Status
+			if mr.Draft {
+				status += " (draft)"
+			}
 			if info != nil && info.Status != "" {
 				status += " · " + info.Status
 			}

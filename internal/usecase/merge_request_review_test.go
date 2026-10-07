@@ -687,9 +687,11 @@ func TestMergeRequestReview_RemoveReviewRequest(t *testing.T) {
 }
 
 func TestMergeRequestReview_NoteBranchPush(t *testing.T) {
-	review, repo, _, _, _, _, _ := newTestMergeRequestReview(t)
+	review, repo, _, branchRepo, _, _, _ := newTestMergeRequestReview(t)
 	repo.EXPECT().ListOpenBySourceBranch(gomock.Any(), snow.ID(1), snow.ID(3)).
 		Return([]*domain.MergeRequest{{ID: 5, Number: 5}, {ID: 6, Number: 6}}, nil)
+	branchRepo.EXPECT().GetByProjectIDAndID(gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(&domain.Branch{DismissStaleApprovals: true}, nil).Times(2)
 	repo.EXPECT().DismissStaleReviews(gomock.Any(), gomock.Any(), snow.ID(11), snow.ID(9),
 		domain.MergeRequestDismissedNewCommits, gomock.Any()).Return(nil).Times(2)
 	repo.EXPECT().CreateEvent(gomock.Any(), gomock.Any()).DoAndReturn(
@@ -716,9 +718,11 @@ func TestMergeRequestReview_NoteBranchPush(t *testing.T) {
 // a delivery failure must not abort the review bookkeeping of the other
 // merge requests on the branch
 func TestMergeRequestReview_NoteBranchPush_HookFailureIsNotFatal(t *testing.T) {
-	review, repo, _, _, _, _, _ := newTestMergeRequestReview(t)
+	review, repo, _, branchRepo, _, _, _ := newTestMergeRequestReview(t)
 	repo.EXPECT().ListOpenBySourceBranch(gomock.Any(), snow.ID(1), snow.ID(3)).
 		Return([]*domain.MergeRequest{{ID: 5, Number: 5}}, nil)
+	branchRepo.EXPECT().GetByProjectIDAndID(gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(&domain.Branch{DismissStaleApprovals: true}, nil)
 	repo.EXPECT().DismissStaleReviews(gomock.Any(), gomock.Any(), snow.ID(11), snow.ID(9),
 		domain.MergeRequestDismissedNewCommits, gomock.Any()).Return(nil)
 	repo.EXPECT().CreateEvent(gomock.Any(), gomock.Any()).Return(&domain.MergeRequestTimelineItem{}, nil)
@@ -728,6 +732,46 @@ func TestMergeRequestReview_NoteBranchPush_HookFailureIsNotFatal(t *testing.T) {
 		Return(errors.New("dispatcher down"))
 
 	require.NoError(t, review.WithHooks(hooks).NoteBranchPush(context.Background(), snow.ID(1), snow.ID(3), snow.ID(11), snow.ID(9), "cafe"))
+}
+
+// a branch that keeps decisions on push carries them onto the new head
+func TestMergeRequestReview_NoteBranchPush_KeepsDecisionsWhenDisabled(t *testing.T) {
+	review, repo, _, branchRepo, _, _, _ := newTestMergeRequestReview(t)
+	repo.EXPECT().ListOpenBySourceBranch(gomock.Any(), snow.ID(1), snow.ID(3)).
+		Return([]*domain.MergeRequest{{ID: 5, Number: 5}}, nil)
+	branchRepo.EXPECT().GetByProjectIDAndID(gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(&domain.Branch{DismissStaleApprovals: false}, nil)
+	repo.EXPECT().CarryOverReviews(gomock.Any(), int64(5), snow.ID(11)).Return(nil)
+	repo.EXPECT().CreateEvent(gomock.Any(), gomock.Any()).Return(&domain.MergeRequestTimelineItem{}, nil)
+
+	require.NoError(t, review.NoteBranchPush(context.Background(), snow.ID(1), snow.ID(3), snow.ID(11), snow.ID(9), "cafe"))
+}
+
+func TestMergeRequestReview_NoteBranchPush_StaleDismissError(t *testing.T) {
+	review, repo, _, branchRepo, _, _, _ := newTestMergeRequestReview(t)
+	wantErr := errors.New("boom")
+	repo.EXPECT().ListOpenBySourceBranch(gomock.Any(), snow.ID(1), snow.ID(3)).
+		Return([]*domain.MergeRequest{{ID: 5, Number: 5}}, nil)
+	branchRepo.EXPECT().GetByProjectIDAndID(gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(&domain.Branch{DismissStaleApprovals: true}, nil)
+	repo.EXPECT().DismissStaleReviews(gomock.Any(), int64(5), snow.ID(11), snow.ID(9),
+		domain.MergeRequestDismissedNewCommits, gomock.Any()).Return(wantErr)
+
+	err := review.NoteBranchPush(context.Background(), snow.ID(1), snow.ID(3), snow.ID(11), snow.ID(9), "cafe")
+	require.ErrorIs(t, err, wantErr)
+}
+
+func TestMergeRequestReview_NoteBranchPush_CarryOverError(t *testing.T) {
+	review, repo, _, branchRepo, _, _, _ := newTestMergeRequestReview(t)
+	wantErr := errors.New("boom")
+	repo.EXPECT().ListOpenBySourceBranch(gomock.Any(), snow.ID(1), snow.ID(3)).
+		Return([]*domain.MergeRequest{{ID: 5, Number: 5}}, nil)
+	branchRepo.EXPECT().GetByProjectIDAndID(gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(&domain.Branch{DismissStaleApprovals: false}, nil)
+	repo.EXPECT().CarryOverReviews(gomock.Any(), int64(5), snow.ID(11)).Return(wantErr)
+
+	err := review.NoteBranchPush(context.Background(), snow.ID(1), snow.ID(3), snow.ID(11), snow.ID(9), "cafe")
+	require.ErrorIs(t, err, wantErr)
 }
 
 func TestMergeRequestReview_NoteBranchPush_NoOpenRequests(t *testing.T) {

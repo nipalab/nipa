@@ -1114,11 +1114,12 @@ func TestBranchRepositorySQLite_Lifecycle(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "renamed", renamed.Name)
 
-	require.NoError(t, repo.SetBranchProtection(ctx, projectID, branchID, true, 2))
+	require.NoError(t, repo.SetBranchProtection(ctx, projectID, branchID, true, 2, true))
 	protected, err := repo.GetByProjectIDAndID(ctx, projectID, branchID)
 	require.NoError(t, err)
 	require.True(t, protected.IsProtected)
 	require.EqualValues(t, 2, protected.RequiredApprovals)
+	require.True(t, protected.DismissStaleApprovals)
 
 	require.NoError(t, repo.SetDefaultBranch(ctx, projectID, branchID))
 	def, err := repo.GetDefaultBranch(ctx, projectID)

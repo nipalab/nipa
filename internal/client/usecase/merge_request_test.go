@@ -13,6 +13,7 @@ import (
 
 type stubMRCreateCall struct {
 	org, project, title, description, source, target string
+	draft                                            bool
 }
 
 type stubMRClient struct {
@@ -26,6 +27,7 @@ type stubMRClient struct {
 	updateNumber      int64
 	updateTitle       string
 	updateDescription string
+	updateDraft       *bool
 	updateResult      *domain.MergeRequest
 	updateErr         error
 
@@ -122,16 +124,17 @@ func (s *stubMRClient) Connect(_ context.Context, host string) error {
 	return s.connectErr
 }
 
-func (s *stubMRClient) CreateMergeRequest(_ context.Context, org, project, title, description, sourceBranch, targetBranch string) (*domain.MergeRequest, error) {
+func (s *stubMRClient) CreateMergeRequest(_ context.Context, org, project, title, description, sourceBranch, targetBranch string, draft bool) (*domain.MergeRequest, error) {
 	s.createCalls = append(s.createCalls, stubMRCreateCall{
 		org: org, project: project, title: title, description: description,
-		source: sourceBranch, target: targetBranch,
+		source: sourceBranch, target: targetBranch, draft: draft,
 	})
 	return s.createResult, s.createErr
 }
 
-func (s *stubMRClient) UpdateMergeRequest(_ context.Context, _, _ string, number int64, title, description string) (*domain.MergeRequest, error) {
+func (s *stubMRClient) UpdateMergeRequest(_ context.Context, _, _ string, number int64, title, description string, draft *bool) (*domain.MergeRequest, error) {
 	s.updateNumber, s.updateTitle, s.updateDescription = number, title, description
+	s.updateDraft = draft
 	return s.updateResult, s.updateErr
 }
 
@@ -324,13 +327,13 @@ func TestMergeRequest_Update(t *testing.T) {
 	client := &stubMRClient{updateResult: &domain.MergeRequest{Number: 1, Title: "New"}}
 	mr := newTestMergeRequest(t, local, client)
 
-	_, err := mr.Update(context.Background(), t.TempDir(), "!!!", "New", "")
+	_, err := mr.Update(context.Background(), t.TempDir(), "!!!", "New", "", nil)
 	require.Contains(t, err.Error(), "invalid merge request number")
 
-	_, err = mr.Update(context.Background(), t.TempDir(), "1", "  ", "")
-	require.Contains(t, err.Error(), "pass --title or --description")
+	_, err = mr.Update(context.Background(), t.TempDir(), "1", "  ", "", nil)
+	require.Contains(t, err.Error(), "pass --title, --description or --draft")
 
-	updated, err := mr.Update(context.Background(), t.TempDir(), "1", " New ", "")
+	updated, err := mr.Update(context.Background(), t.TempDir(), "1", " New ", "", nil)
 	require.NoError(t, err)
 	require.Equal(t, "New", updated.Title)
 	require.Equal(t, int64(1), client.updateNumber)
@@ -618,7 +621,7 @@ func TestMergeRequest_OperationsPropagateClientErrors(t *testing.T) {
 	_, err = mr.Close(ctx, t.TempDir(), "7")
 	require.ErrorIs(t, err, wantErr)
 
-	_, err = mr.Update(ctx, t.TempDir(), "7", "New", "")
+	_, err = mr.Update(ctx, t.TempDir(), "7", "New", "", nil)
 	require.ErrorIs(t, err, wantErr)
 
 	_, err = mr.Create(ctx, t.TempDir(), CreateMergeRequestOptions{Title: "T", Source: "feature", Target: "main"})
@@ -688,7 +691,7 @@ func TestMergeRequest_ConnectErrorForEveryOperation(t *testing.T) {
 		"RemoveReviewRequest": func() error { return mr.RemoveReviewRequest(ctx, dir, "7", "user1") },
 		"Close":               func() error { _, err := mr.Close(ctx, dir, "7"); return err },
 		"Merge":               func() error { _, _, err := mr.Merge(ctx, dir, "7"); return err },
-		"Update":              func() error { _, err := mr.Update(ctx, dir, "7", "New", ""); return err },
+		"Update":              func() error { _, err := mr.Update(ctx, dir, "7", "New", "", nil); return err },
 		"Create": func() error {
 			_, err := mr.Create(ctx, dir, CreateMergeRequestOptions{Title: "T", Source: "feature", Target: "main"})
 			return err

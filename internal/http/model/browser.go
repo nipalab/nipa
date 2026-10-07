@@ -20,13 +20,14 @@ type TreeResponse struct {
 }
 
 type BranchResponse struct {
-	ID                string    `json:"id"`
-	Name              string    `json:"name"`
-	IsDefault         bool      `json:"is_default"`
-	IsProtected       bool      `json:"is_protected"`
-	RequiredApprovals int64     `json:"required_approvals"`
-	CommitID          string    `json:"commit_id,omitempty"`
-	UpdatedAt         time.Time `json:"updated_at"`
+	ID                    string    `json:"id"`
+	Name                  string    `json:"name"`
+	IsDefault             bool      `json:"is_default"`
+	IsProtected           bool      `json:"is_protected"`
+	RequiredApprovals     int64     `json:"required_approvals"`
+	DismissStaleApprovals bool      `json:"dismiss_stale_approvals"`
+	CommitID              string    `json:"commit_id,omitempty"`
+	UpdatedAt             time.Time `json:"updated_at"`
 }
 
 type CommitResponse struct {
@@ -86,4 +87,6 @@ type SetBranchProtectionRequest struct {
 	Protected bool `json:"protected"`
 	// RequiredApprovals is optional: absent keeps the current value.
 	RequiredApprovals *int64 `json:"required_approvals,omitempty"`
+	// DismissStaleApprovals is optional: absent keeps the current value.
+	DismissStaleApprovals *bool `json:"dismiss_stale_approvals,omitempty"`
 }

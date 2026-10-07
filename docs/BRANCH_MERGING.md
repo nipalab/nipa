@@ -382,14 +382,22 @@ target branch policy described below (landing itself stays fast-forward-only).
 
 - A live (non-stale, non-dismissed) `changes_requested` decision always blocks,
   regardless of the target branch settings.
+- A draft request (`merge_requests.is_draft`) always blocks with
+  `BlockedBy: draft`; `SetDraft` toggles it and marking ready emits the
+  `ready_for_review` timeline event and `mr.ready_for_review` webhook.
 - A target branch can require a number of live approvals
   (`branches.required_approvals`, default `0` = no requirement), set through
   `SetBranchProtection` / `PUT .../branches/{name}/protection`; the optional
   `required_approvals` field is kept when absent, so toggling `protected` never
   clears it. `Branch.required_approvals` is returned on branch reads.
-- `BlockedBy` is `changes_requested` or `insufficient_approvals` (empty when
-  not blocked); `Check`/`GET .../{id}` surface it and `Merge` returns a 409 with
-  the reason. Approvals for an older source head are stale and do not count.
+- `dismiss_stale_approvals` (default on) controls what a source push does to
+  decisions given for the previous head: on dismisses them (they stay in
+  history), off carries them onto the new head so they stay live. Set it
+  through the same protection endpoint (kept when absent).
+- `BlockedBy` is `draft`, `changes_requested` or `insufficient_approvals`
+  (empty when not blocked); `Check`/`GET .../{id}` surface it and `Merge`
+  returns a 409 with the reason. Approvals for an older source head are stale
+  and do not count unless they were carried over.
 
 ### Model
 
@@ -399,7 +407,10 @@ target branch policy described below (landing itself stays fast-forward-only).
   stops counting; the latest review per reviewer and head wins.
 - On every push to the source branch, prior decisions are **dismissed**
   (`dismissed_reason = new_commits`) and the dismissal is written to the
-  timeline. Comment-only reviews are not dismissed.
+  timeline; with the target branch's `dismiss_stale_approvals` off they are
+  instead **carried onto the new head** and stay live. Comment-only reviews are
+  never dismissed and are not carried either: they stay on the head they were
+  given for, where they become stale (and never counted).
 - A reviewer cannot approve or request changes on their own merge request, but
   may comment. A project writer may **dismiss** a review (history is kept); a
   reviewer may **withdraw** their own review (the row is deleted, comment
@@ -452,18 +463,22 @@ target branch policy described below (landing itself stays fast-forward-only).
   `mr.review_request_removed` and `mr.comment_created` (new comments only).
 - `Push` notifies the review usecase after a successful apply
   (`usecase.Push.WithReviews`), dismissing stale decisions and appending the
-  push event. Bookkeeping failures are logged and never fail the push.
+  push event (or carrying them onto the new head when the target branch has
+  `dismiss_stale_approvals` off). Bookkeeping failures are logged and never
+  fail the push.
 
 ### CLI
 
-`nipa mr` mirrors the server surface: `view <n>` (summary, reviewers, commits;
-`--json` adds mergeability, reviews and commits), `reopen <n>`,
+`nipa mr` mirrors the server surface: `create --draft`, `view <n>` (summary,
+reviewers, commits; `--json` adds mergeability, reviews and commits),
+`update --draft=false`, `ready <n>`, `reopen <n>`,
 `review <n> --approve|--request-changes -m <msg>` (no flag = comment-only),
 `comments <n>`, `comment <n> -m [--file <path> --new-line|--old-line]`,
 `reply <n> <thread-id> -m`, `resolve <n> <thread-id> [--unresolve]`,
 `timeline <n>`, `requests <n>`, `request-review <n> <user-id>`,
 `unrequest-review <n> <user-id>` and `diff <n>`; `list` gained
-`--author/--source/--target/--after` and prints the `next_cursor` hint. The
+`--author/--source/--target/--after` (plus `--status draft` for drafts) and
+prints the `next_cursor` hint. The
 review request commands take a base36 user id; the SPA remains the friendly
 picker. The daemon proxies `GetMergeRequest`, `CheckMergeRequest`,
 `ReopenMergeRequest` and `SubmitMergeRequestReview` for `nipa serve` clients.
@@ -477,5 +492,8 @@ comments, reviews and system events, a comment/review composer, and a sidebar
 with reviewers, participants and the merge box. The File changes tab renders the
 structured diff (`web/src/components/repo/DiffView.tsx`), which supports
 line-level comments and filtering to lines with open threads. The merge request
-list shows the live approval/changes-requested counts.
+list shows the live approval/changes-requested counts and marks drafts (the
+list filter has a `draft` option); the create page and edit dialog carry a
+draft checkbox and the merge box explains the `draft` block. Project settings
+expose `dismiss_stale_approvals` per branch next to the approvals input.
 

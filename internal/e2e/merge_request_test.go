@@ -49,7 +49,7 @@ func TestEndToEnd_MergeRequestLifecycle(t *testing.T) {
 	require.Len(t, list, 1)
 	require.Equal(t, created.ID, list[0].ID)
 
-	updated, err := requests.Update(ctx, mainDir, strconv.FormatInt(created.Number, 10), "Add b v2", "")
+	updated, err := requests.Update(ctx, mainDir, strconv.FormatInt(created.Number, 10), "Add b v2", "", nil)
 	require.NoError(t, err)
 	require.Equal(t, "Add b v2", updated.Title)
 	require.Equal(t, "body", updated.Description)

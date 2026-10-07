@@ -223,8 +223,21 @@ surface: `GetMergeRequest` (detail + mergeability + live review summary),
 `ListMergeRequestCommits` (reuses `CommitLogEntry`),
 `GetMergeRequestDiff` (new `DiffFileDetail`/`DiffHunkDetail`/`DiffLineDetail`
 messages mirroring the REST diff model), `MergeabilityDetail.blocked_by`,
-`MergeRequestDetail.review` (populated by `ListMergeRequests` via
-`AttachSummaries`), and `Branch.required_approvals`.
+`MergeRequestDetail.review`/`MergeRequestDetail.draft` (populated by
+`ListMergeRequests` via `AttachSummaries`), and
+`Branch.required_approvals`/`Branch.dismiss_stale_approvals`.
+
+Draft requests: `merge_requests.is_draft` blocks `Merge` through
+`check()`'s `blocked_by: "draft"`; `SetDraft` (author or project admin, open
+requests only) toggles it, marking ready emits the `ready_for_review` timeline
+event plus the `mr.ready_for_review` webhook, and the list takes a `draft`
+filter (the CLI's `--status draft` maps to open+draft). The SPA marks drafts in
+the list, the page header, the edit dialog and the merge box; the CLI adds
+`mr create --draft`, `mr update --draft=false` and `mr ready <number>`.
+`SetBranchProtection` also carries `dismiss_stale_approvals` (default on): off
+means a source push carries live decisions onto the new head through
+`CarryOverReviews` instead of dismissing them through `DismissStaleReviews`.
+`Branch.Delete` refuses protected branches (409) until they are unprotected.
 
 MR lists paginate by number: `GET .../merge-requests` takes
 `status/author/source/target/after/limit` and returns
@@ -235,12 +248,12 @@ when a next page really exists; changing filters resets the cursor. Review
 activity is webhook-visible through the same MR-shaped payload as the lifecycle
 events: `mr.review_submitted`, `mr.review_dismissed`, `mr.review_requested`,
 `mr.review_request_removed` and `mr.comment_created` (new comments only). The
-CLI mirrors the surface under `nipa mr`: `view`, `reopen`,
-`review --approve|--request-changes -m`, `comments`, `comment [-m] [--file
---new-line/--old-line]`, `reply <number> <thread-id>`, `resolve <number>
-<thread-id> [--unresolve]`, `timeline`, `requests`, `request-review <number>
-<user-id>`, `unrequest-review`, `diff`, and `list
---author/--source/--target/--after`.
+CLI mirrors the surface under `nipa mr`: `create --draft`, `view`, `reopen`,
+`ready`, `review --approve|--request-changes -m`, `comments`, `comment [-m]
+[--file --new-line/--old-line]`, `reply <number> <thread-id>`, `resolve
+<number> <thread-id> [--unresolve]`, `timeline`, `requests`,
+`request-review <number> <user-id>`, `unrequest-review`, `diff`, and `list
+--author/--source/--target/--after/--status draft`.
 
 Flow for `nipa revert <commit>` / `<from>..<to>`: resolve targets via gRPC
 `GetCommit` / `WalkCommits` (range walks newest-first, exclusive stop; ranges are

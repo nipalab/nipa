@@ -110,6 +110,7 @@ type mergeRequestsJSON struct {
 		Title        string `json:"title"`
 		Description  string `json:"description"`
 		Status       string `json:"status"`
+		Draft        bool   `json:"draft"`
 		CreatedBy    string `json:"created_by"`
 		Review       *struct {
 			Approvals        int `json:"approvals"`
@@ -123,6 +124,7 @@ type mergeRequestViewJSON struct {
 	MergeRequest struct {
 		Number int64  `json:"number"`
 		Status string `json:"status"`
+		Draft  bool   `json:"draft"`
 	} `json:"merge_request"`
 	Mergeability *struct {
 		Status    string `json:"status"`

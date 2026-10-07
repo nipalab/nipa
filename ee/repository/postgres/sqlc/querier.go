@@ -78,6 +78,11 @@ type Querier interface {
 	MergeRequestGet(ctx context.Context, arg MergeRequestGetParams) (MergeRequest, error)
 	MergeRequestList(ctx context.Context, arg MergeRequestListParams) ([]MergeRequest, error)
 	MergeRequestListOpenBySourceBranch(ctx context.Context, arg MergeRequestListOpenBySourceBranchParams) ([]MergeRequest, error)
+	// MergeRequestReviewCarryOver moves live decisions onto a new source head when
+	// the target branch keeps decisions across pushes. Comment-only reviews stay
+	// behind: they never count, and moving them onto the new head could collide
+	// with a decision row for the same reviewer on the per-round unique index.
+	MergeRequestReviewCarryOver(ctx context.Context, arg MergeRequestReviewCarryOverParams) error
 	MergeRequestReviewDelete(ctx context.Context, arg MergeRequestReviewDeleteParams) (int64, error)
 	MergeRequestReviewDismiss(ctx context.Context, arg MergeRequestReviewDismissParams) error
 	MergeRequestReviewDismissStale(ctx context.Context, arg MergeRequestReviewDismissStaleParams) error
@@ -92,6 +97,7 @@ type Querier interface {
 	// Aggregates the live review decisions per merge request for the list view.
 	MergeRequestReviewSummary(ctx context.Context, projectID int64) ([]MergeRequestReviewSummaryRow, error)
 	MergeRequestReviewUpsert(ctx context.Context, arg MergeRequestReviewUpsertParams) (MergeRequestReview, error)
+	MergeRequestSetDraft(ctx context.Context, arg MergeRequestSetDraftParams) (MergeRequest, error)
 	MergeRequestThreadCreate(ctx context.Context, arg MergeRequestThreadCreateParams) (MergeRequestThread, error)
 	MergeRequestThreadDelete(ctx context.Context, arg MergeRequestThreadDeleteParams) (int64, error)
 	MergeRequestThreadGet(ctx context.Context, arg MergeRequestThreadGetParams) (MergeRequestThread, error)

@@ -157,11 +157,11 @@ type fakeMRClient struct {
 
 func (fakeMRClient) Connect(context.Context, string) error { return nil }
 
-func (fakeMRClient) CreateMergeRequest(context.Context, string, string, string, string, string, string) (*domain.MergeRequest, error) {
+func (fakeMRClient) CreateMergeRequest(context.Context, string, string, string, string, string, string, bool) (*domain.MergeRequest, error) {
 	return &domain.MergeRequest{Number: 1, Title: "Add b", Status: domain.MergeRequestOpen}, nil
 }
 
-func (fakeMRClient) UpdateMergeRequest(context.Context, string, string, int64, string, string) (*domain.MergeRequest, error) {
+func (fakeMRClient) UpdateMergeRequest(context.Context, string, string, int64, string, string, *bool) (*domain.MergeRequest, error) {
 	return nil, errors.New("not implemented")
 }
 

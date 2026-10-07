@@ -14,6 +14,7 @@ export default function NewMergeRequestPage() {
   const [description, setDescription] = useState('')
   const [source, setSource] = useState('')
   const [target, setTarget] = useState('')
+  const [draft, setDraft] = useState(false)
   const [saving, setSaving] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
 
@@ -63,7 +64,7 @@ export default function NewMergeRequestPage() {
     setSaving(true)
     setActionError(null)
     try {
-      const request = await createMergeRequest(org, project, title.trim(), description, source, target)
+      const request = await createMergeRequest(org, project, title.trim(), description, source, target, draft)
       navigate(`/${org}/${project}/merges/${request.number}`)
     } catch (err) {
       setActionError(err instanceof Error ? err.message : String(err))
@@ -126,6 +127,12 @@ export default function NewMergeRequestPage() {
                 </option>
               ))}
             </select>
+          </FormControl>
+          <FormControl>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input type="checkbox" checked={draft} onChange={(event) => setDraft(event.target.checked)} />
+              Create as draft (cannot be merged until marked ready)
+            </label>
           </FormControl>
           <Button
             type="submit"

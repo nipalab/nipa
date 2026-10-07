@@ -130,7 +130,7 @@ func TestMergeRequest_CreateEmitsWebhookEvent(t *testing.T) {
 			return nil
 		})
 
-	_, err := mr.WithHooks(hooks).Create(ctx, snow.ID(1), "Feature", "", "feature", "main")
+	_, err := mr.WithHooks(hooks).Create(ctx, snow.ID(1), "Feature", "", "feature", "main", false)
 	require.NoError(t, err)
 }
 

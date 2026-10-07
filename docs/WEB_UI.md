@@ -24,7 +24,7 @@ proxies `/api` and `/docs` to `NIPA_SERVER_URL`).
 | `/:org/:project/blob/:rev/*` | file viewer | line numbers + syntax highlighting, image preview, raw/copy/download |
 | `/:org/:project/commits[/:commit]` | history + diff | commit diff against its parent; `?path=` filters by file/dir |
 | `/:org/:project/branches` | branches | create; default/protect/rename/delete for project admins |
-| `/:org/:project/merges[/new]` | merge requests | list with status/author/source/target filters and "Load more" pagination; dedicated create page |
+| `/:org/:project/merges[/new]` | merge requests | list with status/author/source/target filters (status includes a `draft` pseudo-filter) and "Load more" pagination; dedicated create page with a "create as draft" checkbox |
 | `/:org/:project/merges/:id` | merge request detail | GitHub-style conversation (description, timeline, comments, reviewers/participants sidebar, merge box) plus Commits and File changes tabs; author/admin can edit title/description |
 | `/:org/:project/locks` | file locks | list binary asset locks, lock/unlock |
 | `/:org/:project/settings` | project settings | branch protection + ACL rules/defaults + webhooks |
@@ -75,8 +75,12 @@ with author, timestamp, copy-hash and browse-at-commit actions), and
 status/counters, filter box, diffstat and Unified/Split toggle, per-file
 collapse and Viewed checkboxes, diff with inline comments). The conversation
 composer can attach inline comments (file/line drafts) to a review decision,
-and the merge box explains review blocks (`blocked_by` = `changes_requested`
-or `insufficient_approvals`) and disables merging until they clear. Posting
+and the merge box explains review blocks (`blocked_by` = `draft`,
+`changes_requested` or `insufficient_approvals`) and disables merging until
+they clear. Draft requests show a "Draft" marker in the list and header; the
+author/admin can mark one ready from the header or the edit dialog, which also
+carries the draft toggle. The project settings branch card exposes
+`dismiss_stale_approvals` next to the approvals input. Posting
 inline comments or reviews refreshes the shared thread list, so both tabs and
 the overview stay in sync.
 

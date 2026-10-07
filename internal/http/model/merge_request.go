@@ -19,6 +19,7 @@ type MergeRequestResponse struct {
 	Title             string                `json:"title"`
 	Description       string                `json:"description"`
 	Status            string                `json:"status"`
+	Draft             bool                  `json:"draft"`
 	MergeCommitID     string                `json:"merge_commit_id,omitempty"`
 	MergeBaseCommitID string                `json:"merge_base_commit_id,omitempty"`
 	CreatedBy         string                `json:"created_by"`
@@ -40,11 +41,14 @@ type CreateMergeRequestRequest struct {
 	Description  string `json:"description"`
 	SourceBranch string `json:"source_branch"`
 	TargetBranch string `json:"target_branch"`
+	Draft        bool   `json:"draft"`
 }
 
 type UpdateMergeRequestRequest struct {
 	Title       string `json:"title"`
 	Description string `json:"description"`
+	// Draft is optional: absent leaves the draft state untouched.
+	Draft *bool `json:"draft,omitempty"`
 }
 
 type MergeRequestDiffResponse struct {

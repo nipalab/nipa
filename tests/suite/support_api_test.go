@@ -135,14 +135,18 @@ func (c *apiClient) reopenMergeRequest(org, project string, number int64) {
 }
 
 type branchProtectionJSON struct {
-	IsProtected       bool  `json:"is_protected"`
-	RequiredApprovals int64 `json:"required_approvals"`
+	IsProtected           bool  `json:"is_protected"`
+	RequiredApprovals     int64 `json:"required_approvals"`
+	DismissStaleApprovals bool  `json:"dismiss_stale_approvals"`
 }
 
-func (c *apiClient) setBranchProtection(org, project, branch string, protected bool, requiredApprovals *int64) branchProtectionJSON {
+func (c *apiClient) setBranchProtection(org, project, branch string, protected bool, requiredApprovals *int64, dismissStaleApprovals *bool) branchProtectionJSON {
 	body := map[string]any{"protected": protected}
 	if requiredApprovals != nil {
 		body["required_approvals"] = *requiredApprovals
+	}
+	if dismissStaleApprovals != nil {
+		body["dismiss_stale_approvals"] = *dismissStaleApprovals
 	}
 	var out branchProtectionJSON
 	c.do(http.MethodPut, fmt.Sprintf("/orgs/%s/projects/%s/branches/%s/protection", org, project, branch), body, &out, true)

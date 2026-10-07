@@ -75,6 +75,7 @@ export interface BranchResponse {
   is_default: boolean
   is_protected: boolean
   required_approvals: number
+  dismiss_stale_approvals: boolean
   commit_id?: string
   updated_at: string
 }
@@ -150,6 +151,7 @@ export interface MergeRequestResponse {
   title: string
   description: string
   status: string
+  draft: boolean
   merge_commit_id?: string
   merge_base_commit_id?: string
   created_by: string

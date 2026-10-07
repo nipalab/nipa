@@ -158,19 +158,18 @@ func TestBranch_Delete_ProtectedNeedsAdmin(t *testing.T) {
 	require.True(t, domain.IsErrorNoPermission(err))
 }
 
-func TestBranch_Delete_ProtectedByAdmin(t *testing.T) {
+func TestBranch_Delete_ProtectedRefused(t *testing.T) {
 	uc, perm, repo := newManageBranchFixture(t)
-	branch := &domain.Branch{ID: 3, ProjectID: 1, Name: "release", IsProtected: true}
-	other := &domain.Branch{ID: 1, ProjectID: 1, Name: "main", IsDefault: true}
 
-	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "release").Return(branch, nil)
+	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "release").
+		Return(&domain.Branch{ID: 3, ProjectID: 1, Name: "release", IsProtected: true}, nil)
 	perm.EXPECT().AdminHasProject(gomock.Any(), snow.ID(1)).Return(true)
-	repo.EXPECT().ListBranches(gomock.Any(), snow.ID(1), 2, nil, snow.ID(0)).
-		Return([]*domain.Branch{branch, other}, nil)
-	repo.EXPECT().HasOpenMergeRequests(gomock.Any(), snow.ID(1), snow.ID(3)).Return(false, nil)
-	repo.EXPECT().DeleteBranch(gomock.Any(), snow.ID(1), snow.ID(3)).Return(nil)
 
-	require.NoError(t, uc.Delete(permissionCtx(42), snow.ID(1), "release"))
+	err := uc.Delete(permissionCtx(42), snow.ID(1), "release")
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 409, domErr.Code)
+	require.Contains(t, err.Error(), "protected")
 }
 
 func TestBranch_Delete_ListBranchesError(t *testing.T) {
@@ -283,11 +282,11 @@ func TestBranch_SetProtection(t *testing.T) {
 	perm.EXPECT().AdminHasProject(gomock.Any(), snow.ID(1)).Return(true)
 	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "release").
 		Return(&domain.Branch{ID: 3, ProjectID: 1, Name: "release"}, nil)
-	repo.EXPECT().SetBranchProtection(gomock.Any(), snow.ID(1), snow.ID(3), true, int64(0)).Return(nil)
+	repo.EXPECT().SetBranchProtection(gomock.Any(), snow.ID(1), snow.ID(3), true, int64(0), false).Return(nil)
 	repo.EXPECT().GetByProjectIDAndID(gomock.Any(), snow.ID(1), snow.ID(3)).
 		Return(&domain.Branch{ID: 3, ProjectID: 1, Name: "release", IsProtected: true}, nil)
 
-	got, err := uc.SetProtection(permissionCtx(42), snow.ID(1), "release", true, nil)
+	got, err := uc.SetProtection(permissionCtx(42), snow.ID(1), "release", true, nil, nil)
 	require.NoError(t, err)
 	require.True(t, got.IsProtected)
 }
@@ -299,11 +298,11 @@ func TestBranch_SetProtection_RequiredApprovals(t *testing.T) {
 	perm.EXPECT().AdminHasProject(gomock.Any(), snow.ID(1)).Return(true)
 	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "release").
 		Return(&domain.Branch{ID: 3, ProjectID: 1, Name: "release", IsProtected: true, RequiredApprovals: 1}, nil)
-	repo.EXPECT().SetBranchProtection(gomock.Any(), snow.ID(1), snow.ID(3), true, int64(2)).Return(nil)
+	repo.EXPECT().SetBranchProtection(gomock.Any(), snow.ID(1), snow.ID(3), true, int64(2), false).Return(nil)
 	repo.EXPECT().GetByProjectIDAndID(gomock.Any(), snow.ID(1), snow.ID(3)).
 		Return(&domain.Branch{ID: 3, ProjectID: 1, Name: "release", IsProtected: true, RequiredApprovals: 2}, nil)
 
-	got, err := uc.SetProtection(permissionCtx(42), snow.ID(1), "release", true, &approvals)
+	got, err := uc.SetProtection(permissionCtx(42), snow.ID(1), "release", true, &approvals, nil)
 	require.NoError(t, err)
 	require.Equal(t, int64(2), got.RequiredApprovals)
 }
@@ -315,7 +314,7 @@ func TestBranch_SetProtection_RequiredApprovalsKeptWhenAbsent(t *testing.T) {
 	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "release").
 		Return(&domain.Branch{ID: 3, ProjectID: 1, Name: "release", RequiredApprovals: 2}, nil)
 
-	got, err := uc.SetProtection(permissionCtx(42), snow.ID(1), "release", false, nil)
+	got, err := uc.SetProtection(permissionCtx(42), snow.ID(1), "release", false, nil, nil)
 	require.NoError(t, err)
 	require.Equal(t, int64(2), got.RequiredApprovals)
 }
@@ -328,7 +327,7 @@ func TestBranch_SetProtection_NegativeApprovals(t *testing.T) {
 	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "release").
 		Return(&domain.Branch{ID: 3, ProjectID: 1, Name: "release"}, nil)
 
-	_, err := uc.SetProtection(permissionCtx(42), snow.ID(1), "release", true, &approvals)
+	_, err := uc.SetProtection(permissionCtx(42), snow.ID(1), "release", true, &approvals, nil)
 	var domErr *domain.Error
 	require.ErrorAs(t, err, &domErr)
 	require.Equal(t, 400, domErr.Code)
@@ -338,7 +337,7 @@ func TestBranch_SetProtection_NoPermission(t *testing.T) {
 	uc, perm, _ := newManageBranchFixture(t)
 	perm.EXPECT().AdminHasProject(gomock.Any(), snow.ID(1)).Return(false)
 
-	_, err := uc.SetProtection(permissionCtx(42), snow.ID(1), "release", true, nil)
+	_, err := uc.SetProtection(permissionCtx(42), snow.ID(1), "release", true, nil, nil)
 	require.True(t, domain.IsErrorNoPermission(err))
 }
 

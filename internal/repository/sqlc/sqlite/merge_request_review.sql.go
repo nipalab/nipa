@@ -14,7 +14,7 @@ import (
 const mergeRequestCommentCreate = `-- name: MergeRequestCommentCreate :one
 INSERT INTO merge_request_comments (id, thread_id, user_id, body)
 VALUES (?1, ?2, ?3, ?4)
-RETURNING id, thread_id, user_id, body, system, created_at, updated_at
+RETURNING id, thread_id, user_id, body, created_at, updated_at
 `
 
 type MergeRequestCommentCreateParams struct {
@@ -37,7 +37,6 @@ func (q *Queries) MergeRequestCommentCreate(ctx context.Context, arg MergeReques
 		&i.ThreadID,
 		&i.UserID,
 		&i.Body,
-		&i.System,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -63,7 +62,7 @@ func (q *Queries) MergeRequestCommentDelete(ctx context.Context, arg MergeReques
 }
 
 const mergeRequestCommentGet = `-- name: MergeRequestCommentGet :one
-SELECT id, thread_id, user_id, body, system, created_at, updated_at FROM merge_request_comments
+SELECT id, thread_id, user_id, body, created_at, updated_at FROM merge_request_comments
 WHERE thread_id = ?1 AND id = ?2
 `
 
@@ -80,7 +79,6 @@ func (q *Queries) MergeRequestCommentGet(ctx context.Context, arg MergeRequestCo
 		&i.ThreadID,
 		&i.UserID,
 		&i.Body,
-		&i.System,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -89,7 +87,7 @@ func (q *Queries) MergeRequestCommentGet(ctx context.Context, arg MergeRequestCo
 
 const mergeRequestCommentListByThread = `-- name: MergeRequestCommentListByThread :many
 SELECT
-    c.id, c.thread_id, c.user_id, c.body, c.system, c.created_at, c.updated_at,
+    c.id, c.thread_id, c.user_id, c.body, c.created_at, c.updated_at,
     u.name AS user_name,
     u.photo_url AS user_photo_url
 FROM merge_request_comments c
@@ -105,7 +103,6 @@ type MergeRequestCommentListByThreadRow struct {
 	ThreadID     int64          `json:"thread_id"`
 	UserID       int64          `json:"user_id"`
 	Body         string         `json:"body"`
-	System       bool           `json:"system"`
 	CreatedAt    time.Time      `json:"created_at"`
 	UpdatedAt    time.Time      `json:"updated_at"`
 	UserName     string         `json:"user_name"`
@@ -126,7 +123,6 @@ func (q *Queries) MergeRequestCommentListByThread(ctx context.Context, mergeRequ
 			&i.ThreadID,
 			&i.UserID,
 			&i.Body,
-			&i.System,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.UserName,
@@ -149,7 +145,7 @@ const mergeRequestCommentUpdate = `-- name: MergeRequestCommentUpdate :one
 UPDATE merge_request_comments
 SET body = ?1, updated_at = CURRENT_TIMESTAMP
 WHERE thread_id = ?2 AND id = ?3
-RETURNING id, thread_id, user_id, body, system, created_at, updated_at
+RETURNING id, thread_id, user_id, body, created_at, updated_at
 `
 
 type MergeRequestCommentUpdateParams struct {
@@ -166,7 +162,6 @@ func (q *Queries) MergeRequestCommentUpdate(ctx context.Context, arg MergeReques
 		&i.ThreadID,
 		&i.UserID,
 		&i.Body,
-		&i.System,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -286,7 +281,7 @@ func (q *Queries) MergeRequestEventList(ctx context.Context, mergeRequestID int6
 }
 
 const mergeRequestListOpenBySourceBranch = `-- name: MergeRequestListOpenBySourceBranch :many
-SELECT id, number, project_id, source_branch_id, target_branch_id, source_branch_name, target_branch_name, title, description, status, merge_commit_id, merge_base_commit_id, created_by, created_at, updated_at FROM merge_requests
+SELECT id, number, project_id, source_branch_id, target_branch_id, source_branch_name, target_branch_name, title, description, status, is_draft, merge_commit_id, merge_base_commit_id, created_by, created_at, updated_at FROM merge_requests
 WHERE project_id = ?1
   AND status = ?2
   AND source_branch_id = ?3
@@ -318,6 +313,7 @@ func (q *Queries) MergeRequestListOpenBySourceBranch(ctx context.Context, arg Me
 			&i.Title,
 			&i.Description,
 			&i.Status,
+			&i.IsDraft,
 			&i.MergeCommitID,
 			&i.MergeBaseCommitID,
 			&i.CreatedBy,
@@ -335,6 +331,30 @@ func (q *Queries) MergeRequestListOpenBySourceBranch(ctx context.Context, arg Me
 		return nil, err
 	}
 	return items, nil
+}
+
+const mergeRequestReviewCarryOver = `-- name: MergeRequestReviewCarryOver :exec
+UPDATE merge_request_reviews
+SET head_commit_id = ?1,
+    updated_at = CURRENT_TIMESTAMP
+WHERE merge_request_id = ?2
+  AND dismissed_at IS NULL
+  AND head_commit_id != ?1
+  AND state != 'commented'
+`
+
+type MergeRequestReviewCarryOverParams struct {
+	HeadCommitID   int64 `json:"head_commit_id"`
+	MergeRequestID int64 `json:"merge_request_id"`
+}
+
+// MergeRequestReviewCarryOver moves live decisions onto a new source head when
+// the target branch keeps decisions across pushes. Comment-only reviews stay
+// behind: they never count, and moving them onto the new head could collide
+// with a decision row for the same reviewer on the per-round unique index.
+func (q *Queries) MergeRequestReviewCarryOver(ctx context.Context, arg MergeRequestReviewCarryOverParams) error {
+	_, err := q.db.ExecContext(ctx, mergeRequestReviewCarryOver, arg.HeadCommitID, arg.MergeRequestID)
+	return err
 }
 
 const mergeRequestReviewDelete = `-- name: MergeRequestReviewDelete :execrows

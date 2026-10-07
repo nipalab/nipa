@@ -36,18 +36,18 @@ WITH project_lock AS MATERIALIZED (
 )
 INSERT INTO merge_requests (
     id, number, project_id, source_branch_id, target_branch_id,
-    source_branch_name, target_branch_name, title, description,
+    source_branch_name, target_branch_name, title, description, is_draft,
     merge_base_commit_id, created_by
 )
 SELECT
     $1, COALESCE(MAX(merge_requests.number), 0) + 1, $2,
     $3, $4,
     $5, $6,
-    $7, $8,
-    $9, $10
+    $7, $8, $9,
+    $10, $11
 FROM merge_requests, project_lock
 WHERE merge_requests.project_id = $2
-RETURNING id, number, project_id, source_branch_id, target_branch_id, source_branch_name, target_branch_name, title, description, status, merge_commit_id, merge_base_commit_id, created_by, created_at, updated_at
+RETURNING id, number, project_id, source_branch_id, target_branch_id, source_branch_name, target_branch_name, title, description, status, is_draft, merge_commit_id, merge_base_commit_id, created_by, created_at, updated_at
 `
 
 type MergeRequestCreateParams struct {
@@ -59,6 +59,7 @@ type MergeRequestCreateParams struct {
 	TargetBranchName  string        `json:"target_branch_name"`
 	Title             string        `json:"title"`
 	Description       string        `json:"description"`
+	IsDraft           bool          `json:"is_draft"`
 	MergeBaseCommitID sql.NullInt64 `json:"merge_base_commit_id"`
 	CreatedBy         int64         `json:"created_by"`
 }
@@ -75,6 +76,7 @@ func (q *Queries) MergeRequestCreate(ctx context.Context, arg MergeRequestCreate
 		arg.TargetBranchName,
 		arg.Title,
 		arg.Description,
+		arg.IsDraft,
 		arg.MergeBaseCommitID,
 		arg.CreatedBy,
 	)
@@ -90,6 +92,7 @@ func (q *Queries) MergeRequestCreate(ctx context.Context, arg MergeRequestCreate
 		&i.Title,
 		&i.Description,
 		&i.Status,
+		&i.IsDraft,
 		&i.MergeCommitID,
 		&i.MergeBaseCommitID,
 		&i.CreatedBy,
@@ -100,7 +103,7 @@ func (q *Queries) MergeRequestCreate(ctx context.Context, arg MergeRequestCreate
 }
 
 const mergeRequestGet = `-- name: MergeRequestGet :one
-SELECT id, number, project_id, source_branch_id, target_branch_id, source_branch_name, target_branch_name, title, description, status, merge_commit_id, merge_base_commit_id, created_by, created_at, updated_at FROM merge_requests WHERE project_id = $1 AND number = $2
+SELECT id, number, project_id, source_branch_id, target_branch_id, source_branch_name, target_branch_name, title, description, status, is_draft, merge_commit_id, merge_base_commit_id, created_by, created_at, updated_at FROM merge_requests WHERE project_id = $1 AND number = $2
 `
 
 type MergeRequestGetParams struct {
@@ -122,6 +125,7 @@ func (q *Queries) MergeRequestGet(ctx context.Context, arg MergeRequestGetParams
 		&i.Title,
 		&i.Description,
 		&i.Status,
+		&i.IsDraft,
 		&i.MergeCommitID,
 		&i.MergeBaseCommitID,
 		&i.CreatedBy,
@@ -132,15 +136,16 @@ func (q *Queries) MergeRequestGet(ctx context.Context, arg MergeRequestGetParams
 }
 
 const mergeRequestList = `-- name: MergeRequestList :many
-SELECT id, number, project_id, source_branch_id, target_branch_id, source_branch_name, target_branch_name, title, description, status, merge_commit_id, merge_base_commit_id, created_by, created_at, updated_at FROM merge_requests
+SELECT id, number, project_id, source_branch_id, target_branch_id, source_branch_name, target_branch_name, title, description, status, is_draft, merge_commit_id, merge_base_commit_id, created_by, created_at, updated_at FROM merge_requests
 WHERE project_id = $1
   AND ($2::text IS NULL OR status = $2::text)
   AND ($3::bigint IS NULL OR created_by = $3::bigint)
   AND ($4::text IS NULL OR source_branch_name = $4::text)
   AND ($5::text IS NULL OR target_branch_name = $5::text)
-  AND ($6::bigint IS NULL OR number < $6::bigint)
+  AND ($6::boolean IS NULL OR is_draft = $6::boolean)
+  AND ($7::bigint IS NULL OR number < $7::bigint)
 ORDER BY number DESC
-LIMIT $7::bigint
+LIMIT $8::bigint
 `
 
 type MergeRequestListParams struct {
@@ -149,6 +154,7 @@ type MergeRequestListParams struct {
 	Author       sql.NullInt64  `json:"author"`
 	SourceBranch sql.NullString `json:"source_branch"`
 	TargetBranch sql.NullString `json:"target_branch"`
+	Draft        sql.NullBool   `json:"draft"`
 	AfterNumber  sql.NullInt64  `json:"after_number"`
 	Limit        int64          `json:"limit"`
 }
@@ -160,6 +166,7 @@ func (q *Queries) MergeRequestList(ctx context.Context, arg MergeRequestListPara
 		arg.Author,
 		arg.SourceBranch,
 		arg.TargetBranch,
+		arg.Draft,
 		arg.AfterNumber,
 		arg.Limit,
 	)
@@ -181,6 +188,7 @@ func (q *Queries) MergeRequestList(ctx context.Context, arg MergeRequestListPara
 			&i.Title,
 			&i.Description,
 			&i.Status,
+			&i.IsDraft,
 			&i.MergeCommitID,
 			&i.MergeBaseCommitID,
 			&i.CreatedBy,
@@ -200,10 +208,46 @@ func (q *Queries) MergeRequestList(ctx context.Context, arg MergeRequestListPara
 	return items, nil
 }
 
+const mergeRequestSetDraft = `-- name: MergeRequestSetDraft :one
+UPDATE merge_requests SET is_draft = $1, updated_at = now()
+WHERE project_id = $2 AND number = $3
+RETURNING id, number, project_id, source_branch_id, target_branch_id, source_branch_name, target_branch_name, title, description, status, is_draft, merge_commit_id, merge_base_commit_id, created_by, created_at, updated_at
+`
+
+type MergeRequestSetDraftParams struct {
+	IsDraft   bool  `json:"is_draft"`
+	ProjectID int64 `json:"project_id"`
+	Number    int64 `json:"number"`
+}
+
+func (q *Queries) MergeRequestSetDraft(ctx context.Context, arg MergeRequestSetDraftParams) (MergeRequest, error) {
+	row := q.db.QueryRowContext(ctx, mergeRequestSetDraft, arg.IsDraft, arg.ProjectID, arg.Number)
+	var i MergeRequest
+	err := row.Scan(
+		&i.ID,
+		&i.Number,
+		&i.ProjectID,
+		&i.SourceBranchID,
+		&i.TargetBranchID,
+		&i.SourceBranchName,
+		&i.TargetBranchName,
+		&i.Title,
+		&i.Description,
+		&i.Status,
+		&i.IsDraft,
+		&i.MergeCommitID,
+		&i.MergeBaseCommitID,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const mergeRequestUpdate = `-- name: MergeRequestUpdate :one
 UPDATE merge_requests SET title = $1, description = $2, updated_at = now()
 WHERE project_id = $3 AND number = $4
-RETURNING id, number, project_id, source_branch_id, target_branch_id, source_branch_name, target_branch_name, title, description, status, merge_commit_id, merge_base_commit_id, created_by, created_at, updated_at
+RETURNING id, number, project_id, source_branch_id, target_branch_id, source_branch_name, target_branch_name, title, description, status, is_draft, merge_commit_id, merge_base_commit_id, created_by, created_at, updated_at
 `
 
 type MergeRequestUpdateParams struct {
@@ -232,6 +276,7 @@ func (q *Queries) MergeRequestUpdate(ctx context.Context, arg MergeRequestUpdate
 		&i.Title,
 		&i.Description,
 		&i.Status,
+		&i.IsDraft,
 		&i.MergeCommitID,
 		&i.MergeBaseCommitID,
 		&i.CreatedBy,

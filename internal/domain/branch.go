@@ -80,15 +80,18 @@ type Commit struct {
 }
 
 type Branch struct {
-	ID                snow.ID    `json:"id"`
-	ProjectID         snow.ID    `json:"project_id"`
-	Name              string     `json:"name"`
-	IsProtected       bool       `json:"is_protected"`
-	RequiredApprovals int64      `json:"required_approvals"`
-	IsDefault         bool       `json:"is_default"`
-	CommitID          *snow.ID   `json:"commit_id"`
-	UpdatedAt         time.Time  `json:"updated_at"`
-	CreatedAt         time.Time  `json:"created_at"`
-	Deleted           bool       `json:"deleted"`
-	DeletedAt         *time.Time `json:"deleted_at,omitempty"`
+	ID                snow.ID `json:"id"`
+	ProjectID         snow.ID `json:"project_id"`
+	Name              string  `json:"name"`
+	IsProtected       bool    `json:"is_protected"`
+	RequiredApprovals int64   `json:"required_approvals"`
+	// DismissStaleApprovals controls whether a push to the source branch
+	// dismisses decisions given for the previous head.
+	DismissStaleApprovals bool       `json:"dismiss_stale_approvals"`
+	IsDefault             bool       `json:"is_default"`
+	CommitID              *snow.ID   `json:"commit_id"`
+	UpdatedAt             time.Time  `json:"updated_at"`
+	CreatedAt             time.Time  `json:"created_at"`
+	Deleted               bool       `json:"deleted"`
+	DeletedAt             *time.Time `json:"deleted_at,omitempty"`
 }

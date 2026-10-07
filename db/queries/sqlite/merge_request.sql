@@ -1,14 +1,14 @@
 -- name: MergeRequestCreate :one
 INSERT INTO merge_requests (
     id, number, project_id, source_branch_id, target_branch_id,
-    source_branch_name, target_branch_name, title, description,
+    source_branch_name, target_branch_name, title, description, is_draft,
     merge_base_commit_id, created_by
 )
 SELECT
     sqlc.arg(id), COALESCE(MAX(number), 0) + 1, sqlc.arg(project_id),
     sqlc.arg(source_branch_id), sqlc.arg(target_branch_id),
     sqlc.arg(source_branch_name), sqlc.arg(target_branch_name),
-    sqlc.arg(title), sqlc.arg(description),
+    sqlc.arg(title), sqlc.arg(description), sqlc.arg(is_draft),
     sqlc.arg(merge_base_commit_id), sqlc.arg(created_by)
 FROM merge_requests
 WHERE project_id = sqlc.arg(project_id)
@@ -24,6 +24,7 @@ WHERE project_id = sqlc.arg(project_id)
   AND (sqlc.narg('author') IS NULL OR created_by = sqlc.narg('author'))
   AND (sqlc.narg('source_branch') IS NULL OR source_branch_name = sqlc.narg('source_branch'))
   AND (sqlc.narg('target_branch') IS NULL OR target_branch_name = sqlc.narg('target_branch'))
+  AND (sqlc.narg('draft') IS NULL OR is_draft = sqlc.narg('draft'))
   AND (sqlc.narg('after_number') IS NULL OR number < sqlc.narg('after_number'))
 ORDER BY number DESC
 LIMIT sqlc.arg('limit');
@@ -40,5 +41,10 @@ WHERE project_id = ? AND number = ?;
 
 -- name: MergeRequestUpdate :one
 UPDATE merge_requests SET title = ?, description = ?, updated_at = CURRENT_TIMESTAMP
+WHERE project_id = ? AND number = ?
+RETURNING *;
+
+-- name: MergeRequestSetDraft :one
+UPDATE merge_requests SET is_draft = ?, updated_at = CURRENT_TIMESTAMP
 WHERE project_id = ? AND number = ?
 RETURNING *;

@@ -20,6 +20,7 @@ const (
 	WebhookEventMRMerged       = "mr.merged"
 	WebhookEventMRClosed       = "mr.closed"
 	WebhookEventMRReopened     = "mr.reopened"
+	WebhookEventMRReady        = "mr.ready_for_review"
 
 	WebhookEventMRReviewSubmitted   = "mr.review_submitted"
 	WebhookEventMRReviewDismissed   = "mr.review_dismissed"

@@ -866,11 +866,12 @@ func (s *BranchRepositorySuite) TestLifecycle() {
 	s.Require().NoError(err)
 	s.Equal("renamed", renamed.Name)
 
-	s.Require().NoError(repo.SetBranchProtection(ctx, projectID, branchID, true, 2))
+	s.Require().NoError(repo.SetBranchProtection(ctx, projectID, branchID, true, 2, true))
 	protected, err := repo.GetByProjectIDAndID(ctx, projectID, branchID)
 	s.Require().NoError(err)
 	s.True(protected.IsProtected)
 	s.EqualValues(2, protected.RequiredApprovals)
+	s.True(protected.DismissStaleApprovals)
 
 	s.Require().NoError(repo.SetDefaultBranch(ctx, projectID, branchID))
 	def, err := repo.GetDefaultBranch(ctx, projectID)

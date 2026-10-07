@@ -19,6 +19,7 @@ type MergeRequest struct {
 	Title             string                                `json:"title"`
 	Description       string                                `json:"description,omitempty"`
 	Status            string                                `json:"status"`
+	Draft             bool                                  `json:"draft,omitempty"`
 	MergeCommitID     string                                `json:"merge_commit_id,omitempty"`
 	MergeBaseCommitID string                                `json:"merge_base_commit_id,omitempty"`
 	CreatedBy         string                                `json:"created_by,omitempty"`
@@ -39,6 +40,7 @@ func NewMergeRequest(mr *clientDomain.MergeRequest) MergeRequest {
 		Title:             mr.Title,
 		Description:       mr.Description,
 		Status:            mr.Status,
+		Draft:             mr.Draft,
 		MergeCommitID:     mr.MergeCommitID,
 		MergeBaseCommitID: mr.MergeBaseCommitID,
 		CreatedBy:         mr.CreatedBy,

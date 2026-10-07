@@ -9,6 +9,7 @@ CREATE TABLE merge_requests (
     title TEXT NOT NULL,
     description TEXT NOT NULL DEFAULT '',
     status TEXT NOT NULL DEFAULT 'open',
+    is_draft BOOLEAN NOT NULL DEFAULT FALSE,
     merge_commit_id INTEGER REFERENCES commits(id),
     merge_base_commit_id INTEGER REFERENCES commits(id),
     created_by INTEGER NOT NULL REFERENCES users(id),

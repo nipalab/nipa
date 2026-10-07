@@ -1155,17 +1155,18 @@ func (x *PushResponse) GetTreeHash() string {
 }
 
 type Branch struct {
-	state             protoimpl.MessageState `protogen:"open.v1"`
-	CreatedAt         *timestamppb.Timestamp `protobuf:"bytes,1,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	UpdatedAt         *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
-	Id                string                 `protobuf:"bytes,3,opt,name=id,proto3" json:"id,omitempty"`
-	Name              string                 `protobuf:"bytes,4,opt,name=name,proto3" json:"name,omitempty"`
-	CommitId          *string                `protobuf:"bytes,5,opt,name=commit_id,json=commitId,proto3,oneof" json:"commit_id,omitempty"`
-	IsProtected       bool                   `protobuf:"varint,6,opt,name=is_protected,json=isProtected,proto3" json:"is_protected,omitempty"`
-	IsDefault         bool                   `protobuf:"varint,7,opt,name=is_default,json=isDefault,proto3" json:"is_default,omitempty"`
-	RequiredApprovals int64                  `protobuf:"varint,8,opt,name=required_approvals,json=requiredApprovals,proto3" json:"required_approvals,omitempty"` // live approvals a merge request into this branch needs
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	state                 protoimpl.MessageState `protogen:"open.v1"`
+	CreatedAt             *timestamppb.Timestamp `protobuf:"bytes,1,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	UpdatedAt             *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	Id                    string                 `protobuf:"bytes,3,opt,name=id,proto3" json:"id,omitempty"`
+	Name                  string                 `protobuf:"bytes,4,opt,name=name,proto3" json:"name,omitempty"`
+	CommitId              *string                `protobuf:"bytes,5,opt,name=commit_id,json=commitId,proto3,oneof" json:"commit_id,omitempty"`
+	IsProtected           bool                   `protobuf:"varint,6,opt,name=is_protected,json=isProtected,proto3" json:"is_protected,omitempty"`
+	IsDefault             bool                   `protobuf:"varint,7,opt,name=is_default,json=isDefault,proto3" json:"is_default,omitempty"`
+	RequiredApprovals     int64                  `protobuf:"varint,8,opt,name=required_approvals,json=requiredApprovals,proto3" json:"required_approvals,omitempty"`               // live approvals a merge request into this branch needs
+	DismissStaleApprovals bool                   `protobuf:"varint,9,opt,name=dismiss_stale_approvals,json=dismissStaleApprovals,proto3" json:"dismiss_stale_approvals,omitempty"` // a push to the source dismisses decisions for the old head
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
 }
 
 func (x *Branch) Reset() {
@@ -1252,6 +1253,13 @@ func (x *Branch) GetRequiredApprovals() int64 {
 		return x.RequiredApprovals
 	}
 	return 0
+}
+
+func (x *Branch) GetDismissStaleApprovals() bool {
+	if x != nil {
+		return x.DismissStaleApprovals
+	}
+	return false
 }
 
 type GetListBranchRequest struct {
@@ -2011,13 +2019,14 @@ func (x *SetDefaultBranchResponse) GetBranch() *Branch {
 }
 
 type SetBranchProtectionRequest struct {
-	state             protoimpl.MessageState `protogen:"open.v1"`
-	Context           *ProjectContext        `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
-	Name              string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	IsProtected       bool                   `protobuf:"varint,3,opt,name=is_protected,json=isProtected,proto3" json:"is_protected,omitempty"`
-	RequiredApprovals *int64                 `protobuf:"varint,4,opt,name=required_approvals,json=requiredApprovals,proto3,oneof" json:"required_approvals,omitempty"` // absent keeps the current value
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	state                 protoimpl.MessageState `protogen:"open.v1"`
+	Context               *ProjectContext        `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
+	Name                  string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	IsProtected           bool                   `protobuf:"varint,3,opt,name=is_protected,json=isProtected,proto3" json:"is_protected,omitempty"`
+	RequiredApprovals     *int64                 `protobuf:"varint,4,opt,name=required_approvals,json=requiredApprovals,proto3,oneof" json:"required_approvals,omitempty"`               // absent keeps the current value
+	DismissStaleApprovals *bool                  `protobuf:"varint,5,opt,name=dismiss_stale_approvals,json=dismissStaleApprovals,proto3,oneof" json:"dismiss_stale_approvals,omitempty"` // absent keeps the current value
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
 }
 
 func (x *SetBranchProtectionRequest) Reset() {
@@ -2076,6 +2085,13 @@ func (x *SetBranchProtectionRequest) GetRequiredApprovals() int64 {
 		return *x.RequiredApprovals
 	}
 	return 0
+}
+
+func (x *SetBranchProtectionRequest) GetDismissStaleApprovals() bool {
+	if x != nil && x.DismissStaleApprovals != nil {
+		return *x.DismissStaleApprovals
+	}
+	return false
 }
 
 type SetBranchProtectionResponse struct {
@@ -5070,6 +5086,7 @@ type MergeRequestDetail struct {
 	CreatedAt         *timestamppb.Timestamp   `protobuf:"bytes,12,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	UpdatedAt         *timestamppb.Timestamp   `protobuf:"bytes,13,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
 	Review            *MergeRequestReviewState `protobuf:"bytes,14,opt,name=review,proto3" json:"review,omitempty"` // live review summary, when resolved
+	Draft             bool                     `protobuf:"varint,15,opt,name=draft,proto3" json:"draft,omitempty"`  // draft requests cannot be merged until marked ready
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -5202,6 +5219,13 @@ func (x *MergeRequestDetail) GetReview() *MergeRequestReviewState {
 	return nil
 }
 
+func (x *MergeRequestDetail) GetDraft() bool {
+	if x != nil {
+		return x.Draft
+	}
+	return false
+}
+
 type CreateMergeRequestRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Context       *ProjectContext        `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
@@ -5209,6 +5233,7 @@ type CreateMergeRequestRequest struct {
 	Description   string                 `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
 	SourceBranch  string                 `protobuf:"bytes,4,opt,name=source_branch,json=sourceBranch,proto3" json:"source_branch,omitempty"`
 	TargetBranch  string                 `protobuf:"bytes,5,opt,name=target_branch,json=targetBranch,proto3" json:"target_branch,omitempty"`
+	Draft         bool                   `protobuf:"varint,6,opt,name=draft,proto3" json:"draft,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -5278,6 +5303,13 @@ func (x *CreateMergeRequestRequest) GetTargetBranch() string {
 	return ""
 }
 
+func (x *CreateMergeRequestRequest) GetDraft() bool {
+	if x != nil {
+		return x.Draft
+	}
+	return false
+}
+
 type CreateMergeRequestResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	MergeRequest  *MergeRequestDetail    `protobuf:"bytes,1,opt,name=merge_request,json=mergeRequest,proto3" json:"merge_request,omitempty"`
@@ -5328,6 +5360,7 @@ type UpdateMergeRequestRequest struct {
 	Number        int64                  `protobuf:"varint,2,opt,name=number,proto3" json:"number,omitempty"`          // sequential per-project number
 	Title         string                 `protobuf:"bytes,3,opt,name=title,proto3" json:"title,omitempty"`             // empty keeps the current title
 	Description   string                 `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"` // empty keeps the current description
+	Draft         *bool                  `protobuf:"varint,5,opt,name=draft,proto3,oneof" json:"draft,omitempty"`      // set to toggle the draft state
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -5390,6 +5423,13 @@ func (x *UpdateMergeRequestRequest) GetDescription() string {
 	return ""
 }
 
+func (x *UpdateMergeRequestRequest) GetDraft() bool {
+	if x != nil && x.Draft != nil {
+		return *x.Draft
+	}
+	return false
+}
+
 type UpdateMergeRequestResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	MergeRequest  *MergeRequestDetail    `protobuf:"bytes,1,opt,name=merge_request,json=mergeRequest,proto3" json:"merge_request,omitempty"`
@@ -5443,6 +5483,7 @@ type ListMergeRequestsRequest struct {
 	Author        string                 `protobuf:"bytes,5,opt,name=author,proto3" json:"author,omitempty"`                                     // optional base36 user id
 	SourceBranch  string                 `protobuf:"bytes,6,opt,name=source_branch,json=sourceBranch,proto3" json:"source_branch,omitempty"`     // optional source branch name
 	TargetBranch  string                 `protobuf:"bytes,7,opt,name=target_branch,json=targetBranch,proto3" json:"target_branch,omitempty"`     // optional target branch name
+	Draft         *bool                  `protobuf:"varint,8,opt,name=draft,proto3,oneof" json:"draft,omitempty"`                                // optional draft filter
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -5524,6 +5565,13 @@ func (x *ListMergeRequestsRequest) GetTargetBranch() string {
 		return x.TargetBranch
 	}
 	return ""
+}
+
+func (x *ListMergeRequestsRequest) GetDraft() bool {
+	if x != nil && x.Draft != nil {
+		return *x.Draft
+	}
+	return false
 }
 
 type ListMergeRequestsResponse struct {
@@ -6584,7 +6632,6 @@ type ReviewCommentDetail struct {
 	ThreadId      string                 `protobuf:"bytes,2,opt,name=thread_id,json=threadId,proto3" json:"thread_id,omitempty"` // base36 snow ID
 	User          *ReviewActor           `protobuf:"bytes,3,opt,name=user,proto3" json:"user,omitempty"`
 	Body          string                 `protobuf:"bytes,4,opt,name=body,proto3" json:"body,omitempty"`
-	System        bool                   `protobuf:"varint,5,opt,name=system,proto3" json:"system,omitempty"` // generated, e.g. the "resolved this thread" marker
 	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
 	Edited        bool                   `protobuf:"varint,8,opt,name=edited,proto3" json:"edited,omitempty"` // updated_at differs from created_at
@@ -6648,13 +6695,6 @@ func (x *ReviewCommentDetail) GetBody() string {
 		return x.Body
 	}
 	return ""
-}
-
-func (x *ReviewCommentDetail) GetSystem() bool {
-	if x != nil {
-		return x.System
-	}
-	return false
 }
 
 func (x *ReviewCommentDetail) GetCreatedAt() *timestamppb.Timestamp {
@@ -9445,7 +9485,7 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"\tcommit_id\x18\x01 \x01(\tR\bcommitId\x12\x1f\n" +
 	"\vcommit_hash\x18\x02 \x01(\tR\n" +
 	"commitHash\x12\x1b\n" +
-	"\ttree_hash\x18\x03 \x01(\tR\btreeHash\"\xc3\x02\n" +
+	"\ttree_hash\x18\x03 \x01(\tR\btreeHash\"\xfb\x02\n" +
 	"\x06Branch\x129\n" +
 	"\n" +
 	"created_at\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
@@ -9457,7 +9497,8 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"\fis_protected\x18\x06 \x01(\bR\visProtected\x12\x1d\n" +
 	"\n" +
 	"is_default\x18\a \x01(\bR\tisDefault\x12-\n" +
-	"\x12required_approvals\x18\b \x01(\x03R\x11requiredApprovalsB\f\n" +
+	"\x12required_approvals\x18\b \x01(\x03R\x11requiredApprovals\x126\n" +
+	"\x17dismiss_stale_approvals\x18\t \x01(\bR\x15dismissStaleApprovalsB\f\n" +
 	"\n" +
 	"_commit_id\"\xe4\x01\n" +
 	"\x14GetListBranchRequest\x12/\n" +
@@ -9505,13 +9546,15 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\"A\n" +
 	"\x18SetDefaultBranchResponse\x12%\n" +
-	"\x06branch\x18\x01 \x01(\v2\r.greet.BranchR\x06branch\"\xcf\x01\n" +
+	"\x06branch\x18\x01 \x01(\v2\r.greet.BranchR\x06branch\"\xa8\x02\n" +
 	"\x1aSetBranchProtectionRequest\x12/\n" +
 	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12!\n" +
 	"\fis_protected\x18\x03 \x01(\bR\visProtected\x122\n" +
-	"\x12required_approvals\x18\x04 \x01(\x03H\x00R\x11requiredApprovals\x88\x01\x01B\x15\n" +
-	"\x13_required_approvals\"D\n" +
+	"\x12required_approvals\x18\x04 \x01(\x03H\x00R\x11requiredApprovals\x88\x01\x01\x12;\n" +
+	"\x17dismiss_stale_approvals\x18\x05 \x01(\bH\x01R\x15dismissStaleApprovals\x88\x01\x01B\x15\n" +
+	"\x13_required_approvalsB\x1a\n" +
+	"\x18_dismiss_stale_approvals\"D\n" +
 	"\x1bSetBranchProtectionResponse\x12%\n" +
 	"\x06branch\x18\x01 \x01(\v2\r.greet.BranchR\x06branch\"\xef\x01\n" +
 	"\x03Tag\x129\n" +
@@ -9756,7 +9799,7 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"blocked_by\x18\x05 \x01(\tR\tblockedByB\x13\n" +
 	"\x11_source_commit_idB\x13\n" +
 	"\x11_target_commit_idB\x17\n" +
-	"\x15_merge_base_commit_id\"\xd2\x04\n" +
+	"\x15_merge_base_commit_id\"\xe8\x04\n" +
 	"\x12MergeRequestDetail\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x16\n" +
 	"\x06number\x18\x02 \x01(\x03R\x06number\x12\x1d\n" +
@@ -9776,24 +9819,28 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"created_at\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
 	"updated_at\x18\r \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x126\n" +
-	"\x06review\x18\x0e \x01(\v2\x1e.greet.MergeRequestReviewStateR\x06reviewB\x12\n" +
+	"\x06review\x18\x0e \x01(\v2\x1e.greet.MergeRequestReviewStateR\x06review\x12\x14\n" +
+	"\x05draft\x18\x0f \x01(\bR\x05draftB\x12\n" +
 	"\x10_merge_commit_idB\x17\n" +
-	"\x15_merge_base_commit_id\"\xce\x01\n" +
+	"\x15_merge_base_commit_id\"\xe4\x01\n" +
 	"\x19CreateMergeRequestRequest\x12/\n" +
 	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12\x14\n" +
 	"\x05title\x18\x02 \x01(\tR\x05title\x12 \n" +
 	"\vdescription\x18\x03 \x01(\tR\vdescription\x12#\n" +
 	"\rsource_branch\x18\x04 \x01(\tR\fsourceBranch\x12#\n" +
-	"\rtarget_branch\x18\x05 \x01(\tR\ftargetBranch\"\\\n" +
+	"\rtarget_branch\x18\x05 \x01(\tR\ftargetBranch\x12\x14\n" +
+	"\x05draft\x18\x06 \x01(\bR\x05draft\"\\\n" +
 	"\x1aCreateMergeRequestResponse\x12>\n" +
-	"\rmerge_request\x18\x01 \x01(\v2\x19.greet.MergeRequestDetailR\fmergeRequest\"\x9c\x01\n" +
+	"\rmerge_request\x18\x01 \x01(\v2\x19.greet.MergeRequestDetailR\fmergeRequest\"\xc1\x01\n" +
 	"\x19UpdateMergeRequestRequest\x12/\n" +
 	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12\x16\n" +
 	"\x06number\x18\x02 \x01(\x03R\x06number\x12\x14\n" +
 	"\x05title\x18\x03 \x01(\tR\x05title\x12 \n" +
-	"\vdescription\x18\x04 \x01(\tR\vdescription\"\\\n" +
+	"\vdescription\x18\x04 \x01(\tR\vdescription\x12\x19\n" +
+	"\x05draft\x18\x05 \x01(\bH\x00R\x05draft\x88\x01\x01B\b\n" +
+	"\x06_draft\"\\\n" +
 	"\x1aUpdateMergeRequestResponse\x12>\n" +
-	"\rmerge_request\x18\x01 \x01(\v2\x19.greet.MergeRequestDetailR\fmergeRequest\"\x94\x02\n" +
+	"\rmerge_request\x18\x01 \x01(\v2\x19.greet.MergeRequestDetailR\fmergeRequest\"\xb9\x02\n" +
 	"\x18ListMergeRequestsRequest\x12/\n" +
 	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12\x16\n" +
 	"\x06status\x18\x02 \x01(\tR\x06status\x12\x14\n" +
@@ -9801,8 +9848,10 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"\fafter_number\x18\x04 \x01(\x03H\x00R\vafterNumber\x88\x01\x01\x12\x16\n" +
 	"\x06author\x18\x05 \x01(\tR\x06author\x12#\n" +
 	"\rsource_branch\x18\x06 \x01(\tR\fsourceBranch\x12#\n" +
-	"\rtarget_branch\x18\a \x01(\tR\ftargetBranchB\x0f\n" +
-	"\r_after_number\"\x93\x01\n" +
+	"\rtarget_branch\x18\a \x01(\tR\ftargetBranch\x12\x19\n" +
+	"\x05draft\x18\b \x01(\bH\x01R\x05draft\x88\x01\x01B\x0f\n" +
+	"\r_after_numberB\b\n" +
+	"\x06_draft\"\x93\x01\n" +
 	"\x19ListMergeRequestsResponse\x12@\n" +
 	"\x0emerge_requests\x18\x01 \x03(\v2\x19.greet.MergeRequestDetailR\rmergeRequests\x12$\n" +
 	"\vnext_cursor\x18\x02 \x01(\x03H\x00R\n" +
@@ -9872,13 +9921,12 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"\vReviewActor\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1b\n" +
-	"\tphoto_url\x18\x03 \x01(\tR\bphotoUrl\"\xa4\x02\n" +
+	"\tphoto_url\x18\x03 \x01(\tR\bphotoUrl\"\x8c\x02\n" +
 	"\x13ReviewCommentDetail\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1b\n" +
 	"\tthread_id\x18\x02 \x01(\tR\bthreadId\x12&\n" +
 	"\x04user\x18\x03 \x01(\v2\x12.greet.ReviewActorR\x04user\x12\x12\n" +
-	"\x04body\x18\x04 \x01(\tR\x04body\x12\x16\n" +
-	"\x06system\x18\x05 \x01(\bR\x06system\x129\n" +
+	"\x04body\x18\x04 \x01(\tR\x04body\x129\n" +
 	"\n" +
 	"created_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
@@ -10646,6 +10694,7 @@ func file_internal_grpc_proto_server_proto_init() {
 	file_internal_grpc_proto_server_proto_msgTypes[61].OneofWrappers = []any{}
 	file_internal_grpc_proto_server_proto_msgTypes[84].OneofWrappers = []any{}
 	file_internal_grpc_proto_server_proto_msgTypes[85].OneofWrappers = []any{}
+	file_internal_grpc_proto_server_proto_msgTypes[88].OneofWrappers = []any{}
 	file_internal_grpc_proto_server_proto_msgTypes[90].OneofWrappers = []any{}
 	file_internal_grpc_proto_server_proto_msgTypes[91].OneofWrappers = []any{}
 	file_internal_grpc_proto_server_proto_msgTypes[104].OneofWrappers = []any{}

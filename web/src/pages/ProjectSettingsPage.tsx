@@ -263,6 +263,12 @@ export default function ProjectSettingsPage() {
                   reloadBranches()
                 })
               }
+              onDismissStale={(branch, dismiss) =>
+                run(async () => {
+                  await setBranchProtection(org, project, branch.name, branch.is_protected, undefined, dismiss)
+                  reloadBranches()
+                })
+              }
             />
           )}
 
@@ -331,10 +337,12 @@ function BranchProtectionCard({
   branches,
   onToggle,
   onApprovals,
+  onDismissStale,
 }: {
   branches: BranchResponse[]
   onToggle: (branch: BranchResponse, protect: boolean) => void
   onApprovals: (branch: BranchResponse, approvals: number) => void
+  onDismissStale: (branch: BranchResponse, dismiss: boolean) => void
 }) {
   return (
     <SettingsCard
@@ -359,6 +367,15 @@ function BranchProtectionCard({
                 Required approvals
               </Text>
               <ApprovalsInput branch={branch} onCommit={(value) => onApprovals(branch, value)} />
+              <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, whiteSpace: 'nowrap' }}>
+                <input
+                  type="checkbox"
+                  aria-label={`Dismiss stale approvals on push for ${branch.name}`}
+                  checked={branch.dismiss_stale_approvals}
+                  onChange={(event) => onDismissStale(branch, event.target.checked)}
+                />
+                Dismiss stale approvals on push
+              </label>
               <ToggleSwitch
                 aria-labelledby={`branch-protection-${index}`}
                 checked={Boolean(branch.is_protected)}

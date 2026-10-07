@@ -490,7 +490,6 @@ func toCommentResponse(comment *domain.MergeRequestComment) model.CommentRespons
 		ThreadID:  comment.ThreadID.Base36(),
 		User:      toReviewActorResponse(comment.User),
 		Body:      comment.Body,
-		System:    comment.System,
 		CreatedAt: comment.CreatedAt,
 		UpdatedAt: comment.UpdatedAt,
 	}

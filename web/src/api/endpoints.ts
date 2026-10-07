@@ -158,9 +158,13 @@ export function setBranchProtection(
   name: string,
   protectedBranch: boolean,
   requiredApprovals?: number,
+  dismissStaleApprovals?: boolean,
 ): Promise<BranchResponse> {
-  const body: { protected: boolean; required_approvals?: number } = { protected: protectedBranch }
+  const body: { protected: boolean; required_approvals?: number; dismiss_stale_approvals?: boolean } = {
+    protected: protectedBranch,
+  }
   if (requiredApprovals !== undefined) body.required_approvals = requiredApprovals
+  if (dismissStaleApprovals !== undefined) body.dismiss_stale_approvals = dismissStaleApprovals
   return apiJson(`${projectBase(org, project)}/branches/${encodeURIComponent(name)}/protection`, {
     method: 'PUT',
     body: JSON.stringify(body),
@@ -202,6 +206,7 @@ export function listMergeRequests(
     author?: string
     source?: string
     target?: string
+    draft?: boolean
     after?: string
     limit?: number
   } = {},
@@ -211,6 +216,7 @@ export function listMergeRequests(
   if (params.author) query.set('author', params.author)
   if (params.source) query.set('source', params.source)
   if (params.target) query.set('target', params.target)
+  if (params.draft !== undefined) query.set('draft', String(params.draft))
   if (params.after) query.set('after', params.after)
   if (params.limit) query.set('limit', String(params.limit))
   const qs = query.toString()
@@ -224,10 +230,11 @@ export function createMergeRequest(
   description: string,
   sourceBranch: string,
   targetBranch: string,
+  draft = false,
 ): Promise<MergeRequestResponse> {
   return apiJson(`${projectBase(org, project)}/merge-requests`, {
     method: 'POST',
-    body: JSON.stringify({ title, description, source_branch: sourceBranch, target_branch: targetBranch }),
+    body: JSON.stringify({ title, description, source_branch: sourceBranch, target_branch: targetBranch, draft }),
   })
 }
 
@@ -241,10 +248,13 @@ export function updateMergeRequest(
   id: string,
   title: string,
   description: string,
+  draft?: boolean,
 ): Promise<MergeRequestResponse> {
+  const body: { title: string; description: string; draft?: boolean } = { title, description }
+  if (draft !== undefined) body.draft = draft
   return apiJson(`${projectBase(org, project)}/merge-requests/${encodeURIComponent(id)}`, {
     method: 'PATCH',
-    body: JSON.stringify({ title, description }),
+    body: JSON.stringify(body),
   })
 }
 

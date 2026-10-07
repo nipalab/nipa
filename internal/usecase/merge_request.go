@@ -17,6 +17,7 @@ type mergeRequestRepository interface {
 	Get(ctx context.Context, projectID snow.ID, number int64) (*domain.MergeRequest, error)
 	List(ctx context.Context, projectID snow.ID, opts domain.MergeRequestListOptions) ([]*domain.MergeRequest, error)
 	Update(ctx context.Context, projectID snow.ID, number int64, title, description string) (*domain.MergeRequest, error)
+	SetDraft(ctx context.Context, projectID snow.ID, number int64, draft bool) (*domain.MergeRequest, error)
 	UpdateStatus(ctx context.Context, projectID snow.ID, number int64, status string, mergeCommitID *snow.ID) error
 }
 
@@ -84,7 +85,7 @@ func (m *MergeRequest) WithReview(review *MergeRequestReview) *MergeRequest {
 	return m
 }
 
-func (m *MergeRequest) Create(ctx context.Context, projectID snow.ID, title, description, sourceBranch, targetBranch string) (*domain.MergeRequest, error) {
+func (m *MergeRequest) Create(ctx context.Context, projectID snow.ID, title, description, sourceBranch, targetBranch string, draft bool) (*domain.MergeRequest, error) {
 	claim, ok := domain.ClaimFromContext(ctx)
 	if !ok {
 		return nil, domain.NewErrorNoPermission()
@@ -157,6 +158,7 @@ func (m *MergeRequest) Create(ctx context.Context, projectID snow.ID, title, des
 			Title:             title,
 			Description:       strings.TrimSpace(description),
 			Status:            domain.MergeRequestOpen,
+			Draft:             draft,
 			MergeBaseCommitID: info.MergeBaseCommitID,
 			CreatedBy:         claim.UserID,
 		})
@@ -232,6 +234,40 @@ func (m *MergeRequest) Update(ctx context.Context, projectID snow.ID, number int
 		return nil, err
 	}
 	m.emitHook(ctx, domain.WebhookEventMRUpdated, projectID, updated, claim.UserID)
+	return updated, nil
+}
+
+// SetDraft toggles the draft state of an open merge request. Marking a draft
+// ready emits the ready_for_review event; entering the draft state only
+// updates the request. Draft requests cannot be merged.
+func (m *MergeRequest) SetDraft(ctx context.Context, projectID snow.ID, number int64, draft bool) (*domain.MergeRequest, error) {
+	mr, err := m.load(ctx, projectID, number)
+	if err != nil {
+		return nil, err
+	}
+	claim, ok := domain.ClaimFromContext(ctx)
+	if !ok {
+		return nil, domain.NewErrorNoPermission()
+	}
+	if claim.UserID != mr.CreatedBy && !m.perm.AdminHasProject(ctx, projectID) {
+		return nil, domain.NewErrorNoPermission()
+	}
+	if mr.Status != domain.MergeRequestOpen {
+		return nil, domain.NewErrorConflict(fmt.Sprintf("merge request is %s", mr.Status))
+	}
+	if mr.Draft == draft {
+		return mr, nil
+	}
+	updated, err := m.repo.SetDraft(ctx, projectID, number, draft)
+	if err != nil {
+		return nil, err
+	}
+	if draft {
+		m.emitHook(ctx, domain.WebhookEventMRUpdated, projectID, updated, claim.UserID)
+		return updated, nil
+	}
+	m.emitHook(ctx, domain.WebhookEventMRReady, projectID, updated, claim.UserID)
+	m.noteEvent(ctx, domain.MergeRequestEventReady, updated, nil, claim.UserID)
 	return updated, nil
 }
 
@@ -478,6 +514,9 @@ func (m *MergeRequest) check(ctx context.Context, projectID snow.ID, mr *domain.
 	}
 	info.SourceCommitID = source.CommitID
 	info.TargetCommitID = target.CommitID
+	if mr.Draft {
+		info.BlockedBy = domain.MergeabilityBlockedDraft
+	}
 	if source.CommitID == nil || target.CommitID == nil {
 		info.Status = domain.MergeabilityInvalid
 		return info, nil
@@ -498,11 +537,13 @@ func (m *MergeRequest) check(ctx context.Context, projectID snow.ID, mr *domain.
 		return info, nil
 	}
 	info.Status = domain.MergeabilityMergeable
-	blocked, err := m.reviewBlockedBy(ctx, projectID, mr, target)
-	if err != nil {
-		return nil, err
+	if info.BlockedBy == "" {
+		blocked, err := m.reviewBlockedBy(ctx, projectID, mr, target)
+		if err != nil {
+			return nil, err
+		}
+		info.BlockedBy = blocked
 	}
-	info.BlockedBy = blocked
 	return info, nil
 }
 
@@ -527,8 +568,11 @@ func (m *MergeRequest) reviewBlockedBy(ctx context.Context, projectID snow.ID, m
 }
 
 func blockedMergeError(blockedBy string) error {
-	if blockedBy == domain.MergeabilityBlockedChangesRequested {
+	switch blockedBy {
+	case domain.MergeabilityBlockedChangesRequested:
 		return domain.NewErrorConflict("merge request has unresolved change requests")
+	case domain.MergeabilityBlockedDraft:
+		return domain.NewErrorConflict("merge request is a draft; mark it ready for review first")
 	}
 	return domain.NewErrorConflict("merge request does not have the approvals required by the target branch")
 }

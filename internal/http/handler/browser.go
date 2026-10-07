@@ -267,12 +267,13 @@ func toTreeResponse(path string, node *domain.TreeNode) model.TreeResponse {
 
 func toBranchResponse(branch *domain.Branch) model.BranchResponse {
 	resp := model.BranchResponse{
-		ID:                branch.ID.Base36(),
-		Name:              branch.Name,
-		IsDefault:         branch.IsDefault,
-		IsProtected:       branch.IsProtected,
-		RequiredApprovals: branch.RequiredApprovals,
-		UpdatedAt:         branch.UpdatedAt,
+		ID:                    branch.ID.Base36(),
+		Name:                  branch.Name,
+		IsDefault:             branch.IsDefault,
+		IsProtected:           branch.IsProtected,
+		RequiredApprovals:     branch.RequiredApprovals,
+		DismissStaleApprovals: branch.DismissStaleApprovals,
+		UpdatedAt:             branch.UpdatedAt,
 	}
 	if branch.CommitID != nil {
 		resp.CommitID = branch.CommitID.Base36()

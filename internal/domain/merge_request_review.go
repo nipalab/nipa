@@ -31,6 +31,7 @@ const (
 	MergeRequestEventMerged            = "merged"
 	MergeRequestEventClosed            = "closed"
 	MergeRequestEventReopened          = "reopened"
+	MergeRequestEventReady             = "ready_for_review"
 )
 
 // MergeRequestDismissedNewCommits marks a review that was dismissed because the
@@ -68,7 +69,6 @@ type MergeRequestComment struct {
 	ThreadID  snow.ID     `json:"thread_id"`
 	User      ReviewActor `json:"user"`
 	Body      string      `json:"body"`
-	System    bool        `json:"system"`
 	CreatedAt time.Time   `json:"created_at"`
 	UpdatedAt time.Time   `json:"updated_at"`
 }

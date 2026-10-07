@@ -26,6 +26,7 @@ type stubMergeRequestRepository struct {
 	getCalls      int
 	onGet         func(call int) (*domain.MergeRequest, error)
 	updateFn      func(id int64, title, description string) (*domain.MergeRequest, error)
+	draftFn       func(id int64, draft bool) (*domain.MergeRequest, error)
 	status        string
 	mergeCommitID *snow.ID
 }
@@ -57,6 +58,13 @@ func (s *stubMergeRequestRepository) Update(_ context.Context, _ snow.ID, id int
 		return nil, domain.NewErrorRecordNotFound()
 	}
 	return s.updateFn(id, title, description)
+}
+
+func (s *stubMergeRequestRepository) SetDraft(_ context.Context, _ snow.ID, id int64, draft bool) (*domain.MergeRequest, error) {
+	if s.draftFn == nil {
+		return nil, domain.NewErrorRecordNotFound()
+	}
+	return s.draftFn(id, draft)
 }
 
 func (s *stubMergeRequestRepository) UpdateStatus(_ context.Context, _ snow.ID, _ int64, status string, mergeCommitID *snow.ID) error {
@@ -156,6 +164,7 @@ func TestMergeRequestHandler_Create(t *testing.T) {
 		Description:  " body ",
 		SourceBranch: "feature",
 		TargetBranch: "main",
+		Draft:        true,
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, resp.MergeRequest.Id)
@@ -163,12 +172,14 @@ func TestMergeRequestHandler_Create(t *testing.T) {
 	require.Equal(t, "Add feature", resp.MergeRequest.Title)
 	require.Equal(t, "body", resp.MergeRequest.Description)
 	require.Equal(t, domain.MergeRequestOpen, resp.MergeRequest.Status)
+	require.True(t, resp.MergeRequest.Draft)
 	require.Equal(t, snow.ID(7).Base36(), resp.MergeRequest.CreatedBy)
 	require.Equal(t, snow.ID(12).Base36(), resp.MergeRequest.GetMergeBaseCommitId())
 	require.Equal(t, time.Unix(100, 0).UTC(), resp.MergeRequest.CreatedAt.AsTime())
 	require.NotNil(t, repo.created)
 	require.Equal(t, snow.ID(3), repo.created.SourceBranchID)
 	require.Equal(t, snow.ID(2), repo.created.TargetBranchID)
+	require.True(t, repo.created.Draft)
 }
 
 func TestMergeRequestHandler_CreateValidation(t *testing.T) {
@@ -222,6 +233,53 @@ func TestMergeRequestHandler_Update(t *testing.T) {
 		Title:   "x",
 	})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
+}
+
+func TestMergeRequestHandler_UpdateDraft(t *testing.T) {
+	repo := &stubMergeRequestRepository{
+		onGet: func(int) (*domain.MergeRequest, error) {
+			return testMergeRequest(5, domain.MergeRequestOpen), nil
+		},
+		draftFn: func(_ int64, draft bool) (*domain.MergeRequest, error) {
+			mr := testMergeRequest(5, domain.MergeRequestOpen)
+			mr.Draft = draft
+			return mr, nil
+		},
+	}
+	srv, _, perm := newTestMergeRequestServer(t, repo, &stubBranchMerger{})
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(42), domain.PermissionRead).Return(true).AnyTimes()
+	ctx := domain.ContextWithClaim(context.Background(), domain.Claims{UserID: snow.ID(7)})
+
+	draft := true
+	resp, err := srv.UpdateMergeRequest(ctx, &pb.UpdateMergeRequestRequest{
+		Context: &pb.ProjectContext{Org: "org", Project: "proj"},
+		Number:  5,
+		Draft:   &draft,
+	})
+	require.NoError(t, err)
+	require.True(t, resp.MergeRequest.Draft)
+}
+
+func TestMergeRequestHandler_UpdateDraftError(t *testing.T) {
+	repo := &stubMergeRequestRepository{
+		onGet: func(int) (*domain.MergeRequest, error) {
+			return testMergeRequest(5, domain.MergeRequestOpen), nil
+		},
+		draftFn: func(int64, bool) (*domain.MergeRequest, error) {
+			return nil, domain.NewErrorConflict("merge request is closed")
+		},
+	}
+	srv, _, perm := newTestMergeRequestServer(t, repo, &stubBranchMerger{})
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(42), domain.PermissionRead).Return(true).AnyTimes()
+	ctx := domain.ContextWithClaim(context.Background(), domain.Claims{UserID: snow.ID(7)})
+
+	draft := true
+	_, err := srv.UpdateMergeRequest(ctx, &pb.UpdateMergeRequestRequest{
+		Context: &pb.ProjectContext{Org: "org", Project: "proj"},
+		Number:  5,
+		Draft:   &draft,
+	})
+	require.Equal(t, codes.FailedPrecondition, status.Code(err))
 }
 
 func TestMergeRequestHandler_UpdateNotFound(t *testing.T) {

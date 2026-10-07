@@ -241,7 +241,6 @@ func toClientComment(comment *pb.ReviewCommentDetail) *clientDomain.MergeRequest
 		ThreadID:  comment.GetThreadId(),
 		User:      toClientReviewActor(comment.GetUser()),
 		Body:      comment.GetBody(),
-		System:    comment.GetSystem(),
 		Edited:    comment.GetEdited(),
 		CreatedAt: comment.GetCreatedAt().AsTime(),
 		UpdatedAt: comment.GetUpdatedAt().AsTime(),

@@ -106,6 +106,14 @@ func (r *MergeRequestReviewRepository) DismissStaleReviews(ctx context.Context, 
 	return handleError(err)
 }
 
+func (r *MergeRequestReviewRepository) CarryOverReviews(ctx context.Context, mergeRequestID int64, headCommitID snow.ID) error {
+	err := r.queries.MergeRequestReviewCarryOver(ctx, sqlcSqlite.MergeRequestReviewCarryOverParams{
+		HeadCommitID:   headCommitID.Int64(),
+		MergeRequestID: mergeRequestID,
+	})
+	return handleError(err)
+}
+
 func (r *MergeRequestReviewRepository) StaleReviews(ctx context.Context, mergeRequestID int64, headCommitID snow.ID) ([]*domain.MergeRequestReview, error) {
 	rows, err := r.queries.MergeRequestReviewStaleList(ctx, sqlcSqlite.MergeRequestReviewStaleListParams{
 		MergeRequestID: mergeRequestID,
@@ -434,7 +442,6 @@ func (r *MergeRequestReviewRepository) listThreadComments(ctx context.Context, m
 			ThreadID:  threadID,
 			User:      reviewActor(row.UserID, row.UserName, row.UserPhotoUrl),
 			Body:      row.Body,
-			System:    row.System,
 			CreatedAt: row.CreatedAt,
 			UpdatedAt: row.UpdatedAt,
 		})
@@ -550,7 +557,6 @@ func mergeRequestCommentToDomain(row sqlcSqlite.MergeRequestComment) *domain.Mer
 		ThreadID:  snow.ID(row.ThreadID),
 		User:      domain.ReviewActor{UserID: snow.ID(row.UserID)},
 		Body:      row.Body,
-		System:    row.System,
 		CreatedAt: row.CreatedAt,
 		UpdatedAt: row.UpdatedAt,
 	}

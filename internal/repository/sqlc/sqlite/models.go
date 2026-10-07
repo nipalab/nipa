@@ -10,18 +10,19 @@ import (
 )
 
 type Branch struct {
-	ID                int64         `json:"id"`
-	ProjectID         int64         `json:"project_id"`
-	Name              string        `json:"name"`
-	Key               string        `json:"key"`
-	IsProtected       bool          `json:"is_protected"`
-	RequiredApprovals int64         `json:"required_approvals"`
-	IsDefault         bool          `json:"is_default"`
-	CommitID          sql.NullInt64 `json:"commit_id"`
-	UpdatedAt         time.Time     `json:"updated_at"`
-	CreatedAt         time.Time     `json:"created_at"`
-	Deleted           bool          `json:"deleted"`
-	DeletedAt         sql.NullTime  `json:"deleted_at"`
+	ID                    int64         `json:"id"`
+	ProjectID             int64         `json:"project_id"`
+	Name                  string        `json:"name"`
+	Key                   string        `json:"key"`
+	IsProtected           bool          `json:"is_protected"`
+	RequiredApprovals     int64         `json:"required_approvals"`
+	DismissStaleApprovals bool          `json:"dismiss_stale_approvals"`
+	IsDefault             bool          `json:"is_default"`
+	CommitID              sql.NullInt64 `json:"commit_id"`
+	UpdatedAt             time.Time     `json:"updated_at"`
+	CreatedAt             time.Time     `json:"created_at"`
+	Deleted               bool          `json:"deleted"`
+	DeletedAt             sql.NullTime  `json:"deleted_at"`
 }
 
 type Chunk struct {
@@ -98,6 +99,7 @@ type MergeRequest struct {
 	Title             string        `json:"title"`
 	Description       string        `json:"description"`
 	Status            string        `json:"status"`
+	IsDraft           bool          `json:"is_draft"`
 	MergeCommitID     sql.NullInt64 `json:"merge_commit_id"`
 	MergeBaseCommitID sql.NullInt64 `json:"merge_base_commit_id"`
 	CreatedBy         int64         `json:"created_by"`
@@ -110,7 +112,6 @@ type MergeRequestComment struct {
 	ThreadID  int64     `json:"thread_id"`
 	UserID    int64     `json:"user_id"`
 	Body      string    `json:"body"`
-	System    bool      `json:"system"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
