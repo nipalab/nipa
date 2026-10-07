@@ -20,6 +20,7 @@ type mergeRequestReviewRepository interface {
 	DeleteReview(ctx context.Context, mergeRequestID int64, reviewID snow.ID) error
 	DismissReview(ctx context.Context, mergeRequestID int64, reviewID, dismissedBy snow.ID, reason string, at time.Time) error
 	DismissStaleReviews(ctx context.Context, mergeRequestID int64, headCommitID, dismissedBy snow.ID, reason string, at time.Time) error
+	CarryOverReviews(ctx context.Context, mergeRequestID int64, headCommitID snow.ID) error
 	StaleReviews(ctx context.Context, mergeRequestID int64, headCommitID snow.ID) ([]*domain.MergeRequestReview, error)
 	ReviewSummaries(ctx context.Context, projectID snow.ID) (map[int64]*domain.MergeRequestReviewState, error)
 	CreateThread(ctx context.Context, thread domain.MergeRequestThread) (*domain.MergeRequestThread, error)
@@ -518,8 +519,18 @@ func (r *MergeRequestReview) NoteBranchPush(ctx context.Context, projectID, bran
 	}
 	now := r.now()
 	for _, mr := range requests {
-		if err := r.repo.DismissStaleReviews(ctx, mr.ID, newHead, actor, domain.MergeRequestDismissedNewCommits, now); err != nil {
+		target, err := r.branchRepo.GetByProjectIDAndID(ctx, mr.ProjectID, mr.TargetBranchID)
+		if err != nil && !domain.IsErrorNotFound(err) {
 			return err
+		}
+		if target != nil {
+			if target.DismissStaleApprovals {
+				if err := r.repo.DismissStaleReviews(ctx, mr.ID, newHead, actor, domain.MergeRequestDismissedNewCommits, now); err != nil {
+					return err
+				}
+			} else if err := r.repo.CarryOverReviews(ctx, mr.ID, newHead); err != nil {
+				return err
+			}
 		}
 		if err := r.addEvent(ctx, mr, domain.MergeRequestTimelineItem{
 			Kind:       domain.MergeRequestEventPushed,

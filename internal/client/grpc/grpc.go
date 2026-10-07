@@ -488,14 +488,15 @@ func toServerBranch(pbBranch *pb.Branch) *serverDomain.Branch {
 		commitID = &cid
 	}
 	return &serverDomain.Branch{
-		ID:                id,
-		Name:              pbBranch.GetName(),
-		IsProtected:       pbBranch.GetIsProtected(),
-		RequiredApprovals: pbBranch.GetRequiredApprovals(),
-		IsDefault:         pbBranch.GetIsDefault(),
-		CommitID:          commitID,
-		UpdatedAt:         pbBranch.GetUpdatedAt().AsTime(),
-		CreatedAt:         pbBranch.GetCreatedAt().AsTime(),
+		ID:                    id,
+		Name:                  pbBranch.GetName(),
+		IsProtected:           pbBranch.GetIsProtected(),
+		RequiredApprovals:     pbBranch.GetRequiredApprovals(),
+		DismissStaleApprovals: pbBranch.GetDismissStaleApprovals(),
+		IsDefault:             pbBranch.GetIsDefault(),
+		CommitID:              commitID,
+		UpdatedAt:             pbBranch.GetUpdatedAt().AsTime(),
+		CreatedAt:             pbBranch.GetCreatedAt().AsTime(),
 	}
 }
 

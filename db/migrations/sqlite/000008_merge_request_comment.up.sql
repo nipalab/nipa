@@ -21,7 +21,6 @@ CREATE TABLE merge_request_comments (
     thread_id INTEGER NOT NULL REFERENCES merge_request_threads(id) ON DELETE CASCADE,
     user_id INTEGER NOT NULL REFERENCES users(id),
     body TEXT NOT NULL,
-    system BOOLEAN NOT NULL DEFAULT 0,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

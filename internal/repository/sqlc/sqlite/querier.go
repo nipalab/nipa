@@ -76,6 +76,9 @@ type Querier interface {
 	MergeRequestGet(ctx context.Context, arg MergeRequestGetParams) (MergeRequest, error)
 	MergeRequestList(ctx context.Context, arg MergeRequestListParams) ([]MergeRequest, error)
 	MergeRequestListOpenBySourceBranch(ctx context.Context, arg MergeRequestListOpenBySourceBranchParams) ([]MergeRequest, error)
+	// MergeRequestReviewCarryOver moves live decisions onto a new source head when
+	// the target branch keeps decisions across pushes.
+	MergeRequestReviewCarryOver(ctx context.Context, arg MergeRequestReviewCarryOverParams) error
 	MergeRequestReviewDelete(ctx context.Context, arg MergeRequestReviewDeleteParams) (int64, error)
 	MergeRequestReviewDismiss(ctx context.Context, arg MergeRequestReviewDismissParams) error
 	MergeRequestReviewDismissStale(ctx context.Context, arg MergeRequestReviewDismissStaleParams) error
@@ -96,6 +99,7 @@ type Querier interface {
 	// sqlc only numbers the parameters of the VALUES clause, so the conflict branch
 	// reads the pending row through excluded instead of repeating named parameters.
 	MergeRequestReviewUpsert(ctx context.Context, arg MergeRequestReviewUpsertParams) (MergeRequestReview, error)
+	MergeRequestSetDraft(ctx context.Context, arg MergeRequestSetDraftParams) (MergeRequest, error)
 	MergeRequestThreadCreate(ctx context.Context, arg MergeRequestThreadCreateParams) (MergeRequestThread, error)
 	MergeRequestThreadDelete(ctx context.Context, arg MergeRequestThreadDeleteParams) (int64, error)
 	MergeRequestThreadGet(ctx context.Context, arg MergeRequestThreadGetParams) (MergeRequestThread, error)

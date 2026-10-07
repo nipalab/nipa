@@ -44,6 +44,14 @@ func (h *Handler) ListMergeRequests(appCtx http.AppContext) {
 		}
 		opts.After = after
 	}
+	if raw := appCtx.QueryParameter("draft"); raw != "" {
+		draft, err := strconv.ParseBool(raw)
+		if err != nil {
+			appCtx.HandleError(domain.NewErrorUser("invalid draft filter"))
+			return
+		}
+		opts.Draft = &draft
+	}
 	requests, err := h.useCase.MergeRequest().List(appCtx.Context(), project.ID, opts)
 	if err != nil {
 		appCtx.HandleError(err)
@@ -79,7 +87,7 @@ func (h *Handler) CreateMergeRequest(appCtx http.AppContext) {
 		return
 	}
 	request, err := h.useCase.MergeRequest().Create(
-		appCtx.Context(), project.ID, body.Title, body.Description, body.SourceBranch, body.TargetBranch,
+		appCtx.Context(), project.ID, body.Title, body.Description, body.SourceBranch, body.TargetBranch, body.Draft,
 	)
 	if err != nil {
 		appCtx.HandleError(err)
@@ -104,14 +112,31 @@ func (h *Handler) UpdateMergeRequest(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	request, err := h.useCase.MergeRequest().Update(
-		appCtx.Context(), project.ID, number, body.Title, body.Description,
-	)
-	if err != nil {
-		appCtx.HandleError(err)
+	var toggled *domain.MergeRequest
+	if body.Draft != nil {
+		updated, err := h.useCase.MergeRequest().SetDraft(appCtx.Context(), project.ID, number, *body.Draft)
+		if err != nil {
+			appCtx.HandleError(err)
+			return
+		}
+		toggled = updated
+	}
+	if body.Title != "" || body.Description != "" {
+		request, err := h.useCase.MergeRequest().Update(
+			appCtx.Context(), project.ID, number, body.Title, body.Description,
+		)
+		if err != nil {
+			appCtx.HandleError(err)
+			return
+		}
+		appCtx.WriteJson(nethttp.StatusOK, toMergeRequestResponse(request, nil))
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, toMergeRequestResponse(request, nil))
+	if toggled == nil {
+		appCtx.HandleError(domain.NewErrorUser("title or description is required"))
+		return
+	}
+	appCtx.WriteJson(nethttp.StatusOK, toMergeRequestResponse(toggled, nil))
 }
 
 func (h *Handler) GetMergeRequest(appCtx http.AppContext) {
@@ -277,6 +302,7 @@ func toMergeRequestResponse(request *domain.MergeRequest, info *domain.Mergeabil
 		Title:        request.Title,
 		Description:  request.Description,
 		Status:       request.Status,
+		Draft:        request.Draft,
 		CreatedBy:    request.CreatedBy.Base36(),
 		CreatedAt:    request.CreatedAt,
 		UpdatedAt:    request.UpdatedAt,

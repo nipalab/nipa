@@ -31,7 +31,7 @@ import { MergeRequestOverview } from '../components/repo/MergeRequestOverview'
 import { RepoPageShell } from '../components/repo/RepoPageShell'
 import { Tabs } from '../components/repo/Tabs'
 import { useRepoChrome } from '../components/repo/useRepoChrome'
-import { ErrorBanner, Loading, Mono } from '../components/ui'
+import { ErrorBanner, Loading, Mono, StatusLabel } from '../components/ui'
 import { useAsync } from '../hooks'
 
 export default function MergeRequestPage() {
@@ -183,6 +183,15 @@ export default function MergeRequestPage() {
           #{request?.number} {request?.title}
         </Heading>
         {request && <StateLabel status={stateLabelStatus(request.status)}>{stateLabelText(request.status)}</StateLabel>}
+        {request?.draft && <StatusLabel status="draft" />}
+        {canEdit && request?.draft && (
+          <Button
+            size="small"
+            onClick={() => run(() => updateMergeRequest(org, project, id, '', '', false))}
+          >
+            Ready for review
+          </Button>
+        )}
         {canEdit && (
           <Button size="small" style={{ marginLeft: 'auto' }} onClick={() => setEditOpen(true)}>
             Edit
@@ -313,6 +322,7 @@ function EditMergeRequestDialog({
 }) {
   const [title, setTitle] = useState(request.title)
   const [description, setDescription] = useState(request.description)
+  const [draft, setDraft] = useState(request.draft)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -324,7 +334,7 @@ function EditMergeRequestDialog({
     setSaving(true)
     setError(null)
     try {
-      await updateMergeRequest(org, project, id, title.trim(), description)
+      await updateMergeRequest(org, project, id, title.trim(), description, draft)
       onSaved()
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -345,6 +355,12 @@ function EditMergeRequestDialog({
             <FormControl>
               <FormControl.Label>Description</FormControl.Label>
               <TextInput block value={description} onChange={(event) => setDescription(event.target.value)} />
+            </FormControl>
+            <FormControl>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input type="checkbox" checked={draft} onChange={(event) => setDraft(event.target.checked)} />
+                Draft (cannot be merged until marked ready)
+              </label>
             </FormControl>
           </Stack>
         </form>

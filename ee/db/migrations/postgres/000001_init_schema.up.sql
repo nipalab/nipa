@@ -167,6 +167,7 @@ CREATE TABLE branches (
     key TEXT NOT NULL,
     is_protected BOOLEAN NOT NULL DEFAULT FALSE,
     required_approvals BIGINT NOT NULL DEFAULT 0,
+    dismiss_stale_approvals BOOLEAN NOT NULL DEFAULT TRUE,
     is_default BOOLEAN NOT NULL DEFAULT FALSE,
     commit_id BIGINT REFERENCES commits(id),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -197,6 +198,7 @@ CREATE TABLE merge_requests (
     title TEXT NOT NULL,
     description TEXT NOT NULL DEFAULT '',
     status TEXT NOT NULL DEFAULT 'open',
+    is_draft BOOLEAN NOT NULL DEFAULT FALSE,
     merge_commit_id BIGINT REFERENCES commits(id),
     merge_base_commit_id BIGINT REFERENCES commits(id),
     created_by BIGINT NOT NULL REFERENCES users(id),
@@ -272,7 +274,6 @@ CREATE TABLE merge_request_comments (
     thread_id BIGINT NOT NULL REFERENCES merge_request_threads(id) ON DELETE CASCADE,
     user_id BIGINT NOT NULL REFERENCES users(id),
     body TEXT NOT NULL,
-    system BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );

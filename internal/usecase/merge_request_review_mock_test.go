@@ -43,6 +43,20 @@ func (m *MockmergeRequestReviewRepository) EXPECT() *MockmergeRequestReviewRepos
 	return m.recorder
 }
 
+// CarryOverReviews mocks base method.
+func (m *MockmergeRequestReviewRepository) CarryOverReviews(ctx context.Context, mergeRequestID int64, headCommitID snow.ID) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CarryOverReviews", ctx, mergeRequestID, headCommitID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CarryOverReviews indicates an expected call of CarryOverReviews.
+func (mr *MockmergeRequestReviewRepositoryMockRecorder) CarryOverReviews(ctx, mergeRequestID, headCommitID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CarryOverReviews", reflect.TypeOf((*MockmergeRequestReviewRepository)(nil).CarryOverReviews), ctx, mergeRequestID, headCommitID)
+}
+
 // CreateComment mocks base method.
 func (m *MockmergeRequestReviewRepository) CreateComment(ctx context.Context, comment domain.MergeRequestComment) (*domain.MergeRequestComment, error) {
 	m.ctrl.T.Helper()

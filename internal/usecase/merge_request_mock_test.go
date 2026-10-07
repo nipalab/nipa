@@ -88,6 +88,21 @@ func (mr *MockmergeRequestRepositoryMockRecorder) List(ctx, projectID, opts any)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "List", reflect.TypeOf((*MockmergeRequestRepository)(nil).List), ctx, projectID, opts)
 }
 
+// SetDraft mocks base method.
+func (m *MockmergeRequestRepository) SetDraft(ctx context.Context, projectID snow.ID, number int64, draft bool) (*domain.MergeRequest, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetDraft", ctx, projectID, number, draft)
+	ret0, _ := ret[0].(*domain.MergeRequest)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SetDraft indicates an expected call of SetDraft.
+func (mr *MockmergeRequestRepositoryMockRecorder) SetDraft(ctx, projectID, number, draft any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetDraft", reflect.TypeOf((*MockmergeRequestRepository)(nil).SetDraft), ctx, projectID, number, draft)
+}
+
 // Update mocks base method.
 func (m *MockmergeRequestRepository) Update(ctx context.Context, projectID snow.ID, number int64, title, description string) (*domain.MergeRequest, error) {
 	m.ctrl.T.Helper()

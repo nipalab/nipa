@@ -363,17 +363,17 @@ func (mr *MockbranchRepositoryMockRecorder) RenameBranch(ctx, projectID, branchI
 }
 
 // SetBranchProtection mocks base method.
-func (m *MockbranchRepository) SetBranchProtection(ctx context.Context, projectID, branchID snow.ID, protected bool, requiredApprovals int64) error {
+func (m *MockbranchRepository) SetBranchProtection(ctx context.Context, projectID, branchID snow.ID, protected bool, requiredApprovals int64, dismissStaleApprovals bool) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetBranchProtection", ctx, projectID, branchID, protected, requiredApprovals)
+	ret := m.ctrl.Call(m, "SetBranchProtection", ctx, projectID, branchID, protected, requiredApprovals, dismissStaleApprovals)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // SetBranchProtection indicates an expected call of SetBranchProtection.
-func (mr *MockbranchRepositoryMockRecorder) SetBranchProtection(ctx, projectID, branchID, protected, requiredApprovals any) *gomock.Call {
+func (mr *MockbranchRepositoryMockRecorder) SetBranchProtection(ctx, projectID, branchID, protected, requiredApprovals, dismissStaleApprovals any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetBranchProtection", reflect.TypeOf((*MockbranchRepository)(nil).SetBranchProtection), ctx, projectID, branchID, protected, requiredApprovals)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetBranchProtection", reflect.TypeOf((*MockbranchRepository)(nil).SetBranchProtection), ctx, projectID, branchID, protected, requiredApprovals, dismissStaleApprovals)
 }
 
 // SetDefaultBranch mocks base method.

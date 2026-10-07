@@ -157,7 +157,7 @@ func (n *nipaServer) SetBranchProtection(ctx context.Context, req *pb.SetBranchP
 	if err != nil {
 		return nil, handleError(err)
 	}
-	branch, err := n.uc.Branch().SetProtection(ctx, project.ID, req.GetName(), req.GetIsProtected(), req.RequiredApprovals)
+	branch, err := n.uc.Branch().SetProtection(ctx, project.ID, req.GetName(), req.GetIsProtected(), req.RequiredApprovals, req.DismissStaleApprovals)
 	if err != nil {
 		return nil, handleError(err)
 	}
@@ -260,14 +260,15 @@ func (n *nipaServer) MergeFastForward(ctx context.Context, req *pb.MergeFastForw
 
 func domainBranchToPB(branch *domain.Branch) *pb.Branch {
 	return &pb.Branch{
-		Id:                branch.ID.Base36(),
-		Name:              branch.Name,
-		IsProtected:       branch.IsProtected,
-		RequiredApprovals: branch.RequiredApprovals,
-		IsDefault:         branch.IsDefault,
-		CommitId:          snowPtrToStringPtr(branch.CommitID),
-		UpdatedAt:         timestamppb.New(branch.UpdatedAt),
-		CreatedAt:         timestamppb.New(branch.CreatedAt),
+		Id:                    branch.ID.Base36(),
+		Name:                  branch.Name,
+		IsProtected:           branch.IsProtected,
+		RequiredApprovals:     branch.RequiredApprovals,
+		DismissStaleApprovals: branch.DismissStaleApprovals,
+		IsDefault:             branch.IsDefault,
+		CommitId:              snowPtrToStringPtr(branch.CommitID),
+		UpdatedAt:             timestamppb.New(branch.UpdatedAt),
+		CreatedAt:             timestamppb.New(branch.CreatedAt),
 	}
 }
 

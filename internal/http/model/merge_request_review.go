@@ -68,7 +68,6 @@ type CommentResponse struct {
 	ThreadID  string              `json:"thread_id"`
 	User      ReviewActorResponse `json:"user"`
 	Body      string              `json:"body"`
-	System    bool                `json:"system"`
 	CreatedAt time.Time           `json:"created_at"`
 	UpdatedAt time.Time           `json:"updated_at"`
 }

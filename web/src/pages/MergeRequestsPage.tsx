@@ -20,8 +20,14 @@ export default function MergeRequestsPage() {
   const [loadingMore, setLoadingMore] = useState(false)
   const [moreError, setMoreError] = useState<string | null>(null)
   const { canWrite, canAdmin, defaultBranch } = useRepoChrome(org, project)
+  const draftFilter = status === 'draft'
   const { data, error, loading } = useAsync(
-    () => listMergeRequests(org, project, { status, author, source, target }),
+    () =>
+      listMergeRequests(
+        org,
+        project,
+        draftFilter ? { status: 'open', draft: true, author, source, target } : { status, author, source, target },
+      ),
     [org, project, status, author, source, target],
   )
   const { data: members } = useAsync(() => listOrgMembers(org), [org])
@@ -40,7 +46,13 @@ export default function MergeRequestsPage() {
     setLoadingMore(true)
     setMoreError(null)
     try {
-      const page = await listMergeRequests(org, project, { status, author, source, target, after: nextCursor })
+      const page = await listMergeRequests(
+        org,
+        project,
+        draftFilter
+          ? { status: 'open', draft: true, author, source, target, after: nextCursor }
+          : { status, author, source, target, after: nextCursor },
+      )
       setExtra((current) => [...current, ...page.merge_requests])
       setExtraCursor(page.next_cursor ?? '')
     } catch (err) {
@@ -108,6 +120,7 @@ export default function MergeRequestsPage() {
           style={{ padding: 4 }}
         >
           <option value="open">open</option>
+          <option value="draft">draft</option>
           <option value="merged">merged</option>
           <option value="closed">closed</option>
           <option value="">all</option>
@@ -125,7 +138,8 @@ export default function MergeRequestsPage() {
             #{request.number} {request.title}
           </PrimerLink>
           <div style={{ color: 'var(--fgColor-muted)', fontSize: 13 }}>
-            {request.source_branch} → {request.target_branch} · <StatusLabel status={request.status} />
+            {request.source_branch} → {request.target_branch} ·{' '}
+            <StatusLabel status={request.draft ? 'draft' : request.status} />
             {request.review && (
               <>
                 {' · '}

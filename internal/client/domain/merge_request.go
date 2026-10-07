@@ -13,6 +13,7 @@ type MergeRequest struct {
 	Title             string
 	Description       string
 	Status            string
+	Draft             bool
 	MergeCommitID     string
 	MergeBaseCommitID string
 	CreatedBy         string
@@ -39,19 +40,20 @@ type ListMergeRequestOptions struct {
 	Author       string
 	SourceBranch string
 	TargetBranch string
+	Draft        *bool
 	After        int64
 	Limit        int
 }
 
 // Mergeability is the live, computed state of an open merge request.
 type Mergeability struct {
-	Status            string
-	SourceCommitID    string
-	TargetCommitID    string
-	MergeBaseCommitID string
+	Status            string `json:"status"`
+	SourceCommitID    string `json:"source_commit_id,omitempty"`
+	TargetCommitID    string `json:"target_commit_id,omitempty"`
+	MergeBaseCommitID string `json:"merge_base_commit_id,omitempty"`
 	// BlockedBy is empty when the request can merge; otherwise it names the
 	// review reason the target branch policy refuses the merge for.
-	BlockedBy string
+	BlockedBy string `json:"blocked_by,omitempty"`
 }
 
 const (

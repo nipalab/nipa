@@ -45,7 +45,6 @@ type MergeRequestComment struct {
 	ThreadID  string      `json:"thread_id"`
 	User      ReviewActor `json:"user"`
 	Body      string      `json:"body"`
-	System    bool        `json:"system,omitempty"`
 	Edited    bool        `json:"edited,omitempty"`
 	CreatedAt time.Time   `json:"created_at"`
 	UpdatedAt time.Time   `json:"updated_at"`

@@ -48,7 +48,7 @@ UPDATE branches SET deleted = TRUE, deleted_at = now()
 WHERE project_id = sqlc.arg(project_id) AND id = sqlc.arg(id) AND deleted = FALSE;
 
 -- name: BranchSetProtection :exec
-UPDATE branches SET is_protected = sqlc.arg(is_protected), required_approvals = sqlc.arg(required_approvals), updated_at = now()
+UPDATE branches SET is_protected = sqlc.arg(is_protected), required_approvals = sqlc.arg(required_approvals), dismiss_stale_approvals = sqlc.arg(dismiss_stale_approvals), updated_at = now()
 WHERE project_id = sqlc.arg(project_id) AND id = sqlc.arg(id) AND deleted = FALSE;
 
 -- name: BranchMarkDefault :exec

@@ -28,6 +28,7 @@ func (r *MergeRequestRepository) Create(ctx context.Context, mr domain.MergeRequ
 		TargetBranchName:  mr.TargetBranch,
 		Title:             mr.Title,
 		Description:       mr.Description,
+		IsDraft:           mr.Draft,
 		MergeBaseCommitID: nullSnowID(mr.MergeBaseCommitID),
 		CreatedBy:         mr.CreatedBy.Int64(),
 	})
@@ -65,6 +66,9 @@ func (r *MergeRequestRepository) List(ctx context.Context, projectID snow.ID, op
 	if opts.TargetBranch != "" {
 		params.TargetBranch = opts.TargetBranch
 	}
+	if opts.Draft != nil {
+		params.Draft = *opts.Draft
+	}
 	if opts.After > 0 {
 		params.AfterNumber = opts.After
 	}
@@ -85,6 +89,18 @@ func (r *MergeRequestRepository) Update(ctx context.Context, projectID snow.ID, 
 		Description: description,
 		ProjectID:   projectID.Int64(),
 		Number:      number,
+	})
+	if err != nil {
+		return nil, handleError(err)
+	}
+	return mergeRequestToDomain(row), nil
+}
+
+func (r *MergeRequestRepository) SetDraft(ctx context.Context, projectID snow.ID, number int64, draft bool) (*domain.MergeRequest, error) {
+	row, err := r.queries.MergeRequestSetDraft(ctx, sqlcSqlite.MergeRequestSetDraftParams{
+		IsDraft:   draft,
+		ProjectID: projectID.Int64(),
+		Number:    number,
 	})
 	if err != nil {
 		return nil, handleError(err)
@@ -114,6 +130,7 @@ func mergeRequestToDomain(row sqlcSqlite.MergeRequest) *domain.MergeRequest {
 		Title:             row.Title,
 		Description:       row.Description,
 		Status:            row.Status,
+		Draft:             row.IsDraft,
 		MergeCommitID:     nullInt64SnowIDPtr(row.MergeCommitID),
 		MergeBaseCommitID: nullInt64SnowIDPtr(row.MergeBaseCommitID),
 		CreatedBy:         snow.ID(row.CreatedBy),

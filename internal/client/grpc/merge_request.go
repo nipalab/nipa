@@ -8,7 +8,7 @@ import (
 	"github.com/nipalab/nipa/internal/grpc/pb"
 )
 
-func (c *Client) CreateMergeRequest(ctx context.Context, org, project, title, description, sourceBranch, targetBranch string) (*clientDomain.MergeRequest, error) {
+func (c *Client) CreateMergeRequest(ctx context.Context, org, project, title, description, sourceBranch, targetBranch string, draft bool) (*clientDomain.MergeRequest, error) {
 	client, err := c.transport.NipaServiceClient()
 	if err != nil {
 		return nil, err
@@ -19,6 +19,7 @@ func (c *Client) CreateMergeRequest(ctx context.Context, org, project, title, de
 		Description:  description,
 		SourceBranch: sourceBranch,
 		TargetBranch: targetBranch,
+		Draft:        draft,
 	})
 	if err != nil {
 		return nil, toDomainError(err)
@@ -26,7 +27,7 @@ func (c *Client) CreateMergeRequest(ctx context.Context, org, project, title, de
 	return toClientMergeRequest(res.GetMergeRequest()), nil
 }
 
-func (c *Client) UpdateMergeRequest(ctx context.Context, org, project string, number int64, title, description string) (*clientDomain.MergeRequest, error) {
+func (c *Client) UpdateMergeRequest(ctx context.Context, org, project string, number int64, title, description string, draft *bool) (*clientDomain.MergeRequest, error) {
 	client, err := c.transport.NipaServiceClient()
 	if err != nil {
 		return nil, err
@@ -36,6 +37,7 @@ func (c *Client) UpdateMergeRequest(ctx context.Context, org, project string, nu
 		Number:      number,
 		Title:       title,
 		Description: description,
+		Draft:       draft,
 	})
 	if err != nil {
 		return nil, toDomainError(err)
@@ -55,6 +57,7 @@ func (c *Client) ListMergeRequests(ctx context.Context, org, project string, opt
 		Author:       opts.Author,
 		SourceBranch: opts.SourceBranch,
 		TargetBranch: opts.TargetBranch,
+		Draft:        opts.Draft,
 	}
 	if opts.After > 0 {
 		request.AfterNumber = &opts.After
@@ -208,6 +211,7 @@ func toClientMergeRequest(mr *pb.MergeRequestDetail) *clientDomain.MergeRequest 
 		Title:             mr.GetTitle(),
 		Description:       mr.GetDescription(),
 		Status:            mr.GetStatus(),
+		Draft:             mr.GetDraft(),
 		MergeCommitID:     mr.GetMergeCommitId(),
 		MergeBaseCommitID: mr.GetMergeBaseCommitId(),
 		CreatedBy:         mr.GetCreatedBy(),

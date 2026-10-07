@@ -19,6 +19,7 @@ func (c *Cli) setupMrCmd() *cobra.Command {
 	}
 	cmd.AddCommand(c.setupMrCreateCmd())
 	cmd.AddCommand(c.setupMrUpdateCmd())
+	cmd.AddCommand(c.setupMrReadyCmd())
 	cmd.AddCommand(c.setupMrListCmd())
 	cmd.AddCommand(c.setupMrViewCmd())
 	cmd.AddCommand(c.setupMrCloseCmd())
@@ -49,6 +50,7 @@ func (c *Cli) setupMrCreateCmd() *cobra.Command {
 			description, _ := cmd.Flags().GetString("description")
 			source, _ := cmd.Flags().GetString("source")
 			target, _ := cmd.Flags().GetString("target")
+			draft, _ := cmd.Flags().GetBool("draft")
 			root, err := localrepo.FindRepoRoot()
 			if err != nil {
 				return err
@@ -58,11 +60,16 @@ func (c *Cli) setupMrCreateCmd() *cobra.Command {
 				Description: description,
 				Source:      source,
 				Target:      target,
+				Draft:       draft,
 			})
 			if err != nil {
 				return err
 			}
-			cmd.Printf("Merge request #%d opened: %s -> %s (%s)\n", mr.Number, mr.SourceBranch, mr.TargetBranch, mr.Title)
+			suffix := ""
+			if mr.Draft {
+				suffix = " [draft]"
+			}
+			cmd.Printf("Merge request #%d opened: %s -> %s (%s)%s\n", mr.Number, mr.SourceBranch, mr.TargetBranch, mr.Title, suffix)
 			return nil
 		},
 	}
@@ -70,6 +77,7 @@ func (c *Cli) setupMrCreateCmd() *cobra.Command {
 	cmd.Flags().StringP("description", "d", "", "Merge request description")
 	cmd.Flags().String("source", "", "Source branch (defaults to the current branch)")
 	cmd.Flags().String("target", "", "Target branch (defaults to the project default branch)")
+	cmd.Flags().Bool("draft", false, "Open the merge request as a draft (cannot be merged until marked ready)")
 	return cmd
 }
 
@@ -83,11 +91,16 @@ func (c *Cli) setupMrUpdateCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			title, _ := cmd.Flags().GetString("title")
 			description, _ := cmd.Flags().GetString("description")
+			var draft *bool
+			if cmd.Flags().Changed("draft") {
+				value, _ := cmd.Flags().GetBool("draft")
+				draft = &value
+			}
 			root, err := localrepo.FindRepoRoot()
 			if err != nil {
 				return err
 			}
-			mr, err := c.useCase.MR().Update(cmd.Context(), root, args[0], title, description)
+			mr, err := c.useCase.MR().Update(cmd.Context(), root, args[0], title, description, draft)
 			if err != nil {
 				return err
 			}
@@ -97,7 +110,30 @@ func (c *Cli) setupMrUpdateCmd() *cobra.Command {
 	}
 	cmd.Flags().String("title", "", "New title")
 	cmd.Flags().StringP("description", "d", "", "New description")
+	cmd.Flags().Bool("draft", false, "Mark the request as a draft (--draft=false marks it ready)")
 	return cmd
+}
+
+func (c *Cli) setupMrReadyCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:           "ready <number>",
+		Short:         "Mark a draft merge request ready for review",
+		Args:          cobra.ExactArgs(1),
+		SilenceErrors: true,
+		SilenceUsage:  true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			root, err := localrepo.FindRepoRoot()
+			if err != nil {
+				return err
+			}
+			mr, err := c.useCase.MR().SetDraft(cmd.Context(), root, args[0], false)
+			if err != nil {
+				return err
+			}
+			cmd.Printf("Merge request #%d is ready for review.\n", mr.Number)
+			return nil
+		},
+	}
 }
 
 func (c *Cli) setupMrListCmd() *cobra.Command {
@@ -114,6 +150,12 @@ func (c *Cli) setupMrListCmd() *cobra.Command {
 			source, _ := cmd.Flags().GetString("source")
 			target, _ := cmd.Flags().GetString("target")
 			after, _ := cmd.Flags().GetInt64("after")
+			var draftFilter *bool
+			if status == "draft" {
+				status = "open"
+				draft := true
+				draftFilter = &draft
+			}
 			root, err := localrepo.FindRepoRoot()
 			if err != nil {
 				return err
@@ -123,6 +165,7 @@ func (c *Cli) setupMrListCmd() *cobra.Command {
 				Author:       author,
 				SourceBranch: source,
 				TargetBranch: target,
+				Draft:        draftFilter,
 				After:        after,
 				Limit:        limit,
 			})
@@ -143,7 +186,11 @@ func (c *Cli) setupMrListCmd() *cobra.Command {
 			cmd.Printf("%-8s  %-7s  %-36s  %s\n", "#", "STATUS", "BRANCHES", "TITLE")
 			for _, mr := range requests {
 				branches := mr.SourceBranch + " -> " + mr.TargetBranch
-				cmd.Printf("%-8d  %-7s  %-36s  %s\n", mr.Number, mr.Status, branches, mr.Title)
+				status := mr.Status
+				if mr.Draft {
+					status = "draft"
+				}
+				cmd.Printf("%-8d  %-7s  %-36s  %s\n", mr.Number, status, branches, mr.Title)
 			}
 			if nextCursor > 0 {
 				cmd.Printf("more results: --after %d\n", nextCursor)
@@ -151,7 +198,7 @@ func (c *Cli) setupMrListCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().String("status", "", "Filter by status: open, merged, closed")
+	cmd.Flags().String("status", "", "Filter by status: open, merged, closed, draft")
 	cmd.Flags().String("author", "", "Filter by author (base36 user id)")
 	cmd.Flags().String("source", "", "Filter by source branch name")
 	cmd.Flags().String("target", "", "Filter by target branch name")

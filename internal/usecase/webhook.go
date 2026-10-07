@@ -56,6 +56,7 @@ var webhookEventTypes = map[string]struct{}{
 	domain.WebhookEventMRMerged:       {},
 	domain.WebhookEventMRClosed:       {},
 	domain.WebhookEventMRReopened:     {},
+	domain.WebhookEventMRReady:        {},
 
 	domain.WebhookEventMRReviewSubmitted:   {},
 	domain.WebhookEventMRReviewDismissed:   {},

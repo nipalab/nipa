@@ -746,9 +746,11 @@ func TestAPIRoutes(t *testing.T) {
 		renamed := decodeBody[model.BranchResponse](t, rename)
 		require.Equal(t, "renamed", renamed.Name)
 
-		protect := doMethod(t, http.MethodPut, base+"/renamed/protection", `{"protected":true}`, aliceLogin.AccessToken)
+		protect := doMethod(t, http.MethodPut, base+"/renamed/protection", `{"protected":true,"dismiss_stale_approvals":false}`, aliceLogin.AccessToken)
 		require.Equal(t, http.StatusOK, protect.StatusCode)
-		require.True(t, decodeBody[model.BranchResponse](t, protect).IsProtected)
+		protected := decodeBody[model.BranchResponse](t, protect)
+		require.True(t, protected.IsProtected)
+		require.False(t, protected.DismissStaleApprovals)
 
 		denied := doMethod(t, http.MethodPost, base, `{"name":"nope"}`, bobLogin.AccessToken)
 		require.Equal(t, http.StatusForbidden, denied.StatusCode)
@@ -765,6 +767,14 @@ func TestAPIRoutes(t *testing.T) {
 		restore := doMethod(t, http.MethodPost, base+"/main/default", "", aliceLogin.AccessToken)
 		require.Equal(t, http.StatusOK, restore.StatusCode)
 		restore.Body.Close()
+
+		stillProtected := doMethod(t, http.MethodDelete, base+"/renamed", "", aliceLogin.AccessToken)
+		require.Equal(t, http.StatusConflict, stillProtected.StatusCode)
+		stillProtected.Body.Close()
+
+		unprotect := doMethod(t, http.MethodPut, base+"/renamed/protection", `{"protected":false}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, unprotect.StatusCode)
+		require.False(t, decodeBody[model.BranchResponse](t, unprotect).IsProtected)
 
 		remove := doMethod(t, http.MethodDelete, base+"/renamed", "", aliceLogin.AccessToken)
 		require.Equal(t, http.StatusOK, remove.StatusCode)
@@ -868,6 +878,22 @@ func TestAPIRoutes(t *testing.T) {
 			doMethod(t, http.MethodPatch, mrURL, `{"title":"Add feature v2","description":"updated"}`, aliceLogin.AccessToken))
 		require.Equal(t, "Add feature v2", updated.Title)
 		require.Equal(t, "updated", updated.Description)
+
+		drafted := decodeBody[model.MergeRequestResponse](t,
+			doMethod(t, http.MethodPatch, mrURL, `{"draft":true}`, aliceLogin.AccessToken))
+		require.True(t, drafted.Draft)
+
+		draftBlocked := doMethod(t, http.MethodPost, mrURL+"/merge", `{}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusConflict, draftBlocked.StatusCode)
+		draftBlocked.Body.Close()
+
+		drafts := decodeBody[model.MergeRequestListResponse](t, doGet(t, base+"/merge-requests?draft=true", aliceLogin.AccessToken))
+		require.Len(t, drafts.MergeRequests, 1)
+		require.True(t, drafts.MergeRequests[0].Draft)
+
+		ready := decodeBody[model.MergeRequestResponse](t,
+			doMethod(t, http.MethodPatch, mrURL, `{"draft":false}`, aliceLogin.AccessToken))
+		require.False(t, ready.Draft)
 
 		diff := decodeBody[model.MergeRequestDiffResponse](t, doGet(t, mrURL+"/diff", aliceLogin.AccessToken))
 		require.Len(t, diff.Files, 1)

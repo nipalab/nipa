@@ -884,6 +884,10 @@ export function MergeRequestOverview({
       },
     }
     const BLOCKED_BOX_TEXT: Record<string, { title: string; hint: string }> = {
+      draft: {
+        title: 'This merge request is a draft.',
+        hint: 'Mark it ready for review before it can be merged.',
+      },
       changes_requested: {
         title: 'Changes were requested on this merge request.',
         hint: 'Address the review feedback; a new review clears the block.',

@@ -386,7 +386,6 @@ func domainReviewCommentToPB(comment *domain.MergeRequestComment) *pb.ReviewComm
 		ThreadId:  comment.ThreadID.Base36(),
 		User:      domainReviewActorToPB(&comment.User),
 		Body:      comment.Body,
-		System:    comment.System,
 		CreatedAt: timestamppb.New(comment.CreatedAt),
 		UpdatedAt: timestamppb.New(comment.UpdatedAt),
 		Edited:    comment.UpdatedAt.After(comment.CreatedAt),

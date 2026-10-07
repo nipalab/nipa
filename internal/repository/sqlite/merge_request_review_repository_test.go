@@ -247,6 +247,33 @@ func TestMergeRequestReviewRepository_CommentOnlySurvivesDismissal(t *testing.T)
 	require.Nil(t, reviews[0].DismissedAt)
 }
 
+func TestMergeRequestReviewRepository_CarryOverReviews(t *testing.T) {
+	ctx := context.Background()
+	f := newReviewFixture(t)
+
+	_, err := f.repo.UpsertReview(ctx, domain.MergeRequestReview{
+		ID:             6001,
+		MergeRequestID: f.mrID,
+		Reviewer:       domain.ReviewActor{UserID: f.reviewerID},
+		State:          domain.MergeRequestReviewApproved,
+		HeadCommitID:   f.headCommit,
+	})
+	require.NoError(t, err)
+
+	newHead := f.pushSourceHead(t)
+	require.NoError(t, f.repo.CarryOverReviews(ctx, f.mrID, newHead))
+
+	stale, err := f.repo.StaleReviews(ctx, f.mrID, newHead)
+	require.NoError(t, err)
+	require.Empty(t, stale)
+
+	reviews, err := f.repo.ListReviews(ctx, f.mrID)
+	require.NoError(t, err)
+	require.Len(t, reviews, 1)
+	require.Equal(t, newHead, reviews[0].HeadCommitID)
+	require.Nil(t, reviews[0].DismissedAt)
+}
+
 func TestMergeRequestReviewRepository_ManualDismissAndWithdraw(t *testing.T) {
 	ctx := context.Background()
 	f := newReviewFixture(t)
@@ -309,7 +336,6 @@ func TestMergeRequestReviewRepository_ThreadAndComments(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, "rename this", comment.Body)
-	require.False(t, comment.System)
 
 	reply, err := f.repo.CreateComment(ctx, domain.MergeRequestComment{
 		ID:       8002,

@@ -19,11 +19,13 @@ type fakeMRClient struct {
 	connectErr error
 
 	createOrg, createProject, createTitle, createDescription, createSource, createTarget string
+	createDraft                                                                          bool
 	createResult                                                                         *domain.MergeRequest
 	createErr                                                                            error
 
 	updateOrg, updateProject, updateTitle, updateDescription string
 	updateNumber                                             int64
+	updateDraft                                              *bool
 	updateResult                                             *domain.MergeRequest
 	updateErr                                                error
 
@@ -107,16 +109,18 @@ func (f *fakeMRClient) Connect(ctx context.Context, host string) error {
 	return f.connectErr
 }
 
-func (f *fakeMRClient) CreateMergeRequest(_ context.Context, org, project, title, description, sourceBranch, targetBranch string) (*domain.MergeRequest, error) {
+func (f *fakeMRClient) CreateMergeRequest(_ context.Context, org, project, title, description, sourceBranch, targetBranch string, draft bool) (*domain.MergeRequest, error) {
 	f.createOrg, f.createProject = org, project
 	f.createTitle, f.createDescription = title, description
 	f.createSource, f.createTarget = sourceBranch, targetBranch
+	f.createDraft = draft
 	return f.createResult, f.createErr
 }
 
-func (f *fakeMRClient) UpdateMergeRequest(_ context.Context, org, project string, number int64, title, description string) (*domain.MergeRequest, error) {
+func (f *fakeMRClient) UpdateMergeRequest(_ context.Context, org, project string, number int64, title, description string, draft *bool) (*domain.MergeRequest, error) {
 	f.updateOrg, f.updateProject = org, project
 	f.updateNumber, f.updateTitle, f.updateDescription = number, title, description
+	f.updateDraft = draft
 	return f.updateResult, f.updateErr
 }
 
@@ -263,6 +267,32 @@ func TestSetupMrCreateCmd_Error(t *testing.T) {
 	require.ErrorIs(t, err, wantErr)
 }
 
+func TestSetupMrCreateCmd_Draft(t *testing.T) {
+	root := setupRepo(t, "feature")
+	client := &fakeMRClient{
+		defaultBranch: &serverDomain.Branch{Name: "main"},
+		createResult:  &domain.MergeRequest{Number: 1, SourceBranch: "feature", TargetBranch: "main", Title: "Add b", Draft: true},
+	}
+	cli := newMRCli(t, client)
+
+	out, err := runCmdInDir(t, root, cli.setupMrCmd(), "create", "--title", "Add b", "--draft")
+	require.NoError(t, err)
+	require.True(t, client.createDraft)
+	require.Contains(t, out, "[draft]")
+}
+
+func TestSetupMrReadyCmd(t *testing.T) {
+	root := setupRepo(t, "feature")
+	client := &fakeMRClient{updateResult: &domain.MergeRequest{Number: 2}}
+	cli := newMRCli(t, client)
+
+	out, err := runCmdInDir(t, root, cli.setupMrCmd(), "ready", "2")
+	require.NoError(t, err)
+	require.Contains(t, out, "ready for review")
+	require.NotNil(t, client.updateDraft)
+	require.False(t, *client.updateDraft)
+}
+
 func TestSetupMrUpdateCmd_Success(t *testing.T) {
 	root := setupRepo(t, "feature")
 	client := &fakeMRClient{updateResult: &domain.MergeRequest{Number: 1, Title: "Renamed"}}
@@ -280,7 +310,7 @@ func TestSetupMrUpdateCmd_MissingFields(t *testing.T) {
 	cli := newMRCli(t, &fakeMRClient{})
 
 	_, err := runCmdInDir(t, root, cli.setupMrCmd(), "update", "1")
-	require.Contains(t, err.Error(), "pass --title or --description")
+	require.Contains(t, err.Error(), "pass --title, --description or --draft")
 }
 
 func TestSetupMrListCmd_Empty(t *testing.T) {

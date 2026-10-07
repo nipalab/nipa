@@ -53,6 +53,16 @@ WHERE merge_request_id = :merge_request_id
   AND head_commit_id != :head_commit_id
   AND state != 'commented';
 
+-- MergeRequestReviewCarryOver moves live decisions onto a new source head when
+-- the target branch keeps decisions across pushes.
+-- name: MergeRequestReviewCarryOver :exec
+UPDATE merge_request_reviews
+SET head_commit_id = :head_commit_id,
+    updated_at = CURRENT_TIMESTAMP
+WHERE merge_request_id = :merge_request_id
+  AND dismissed_at IS NULL
+  AND head_commit_id != :head_commit_id;
+
 -- Aggregates the live review decisions per merge request for the list view.
 -- The head comparison mirrors the read-time staleness rule the usecase applies
 -- to individual reviews: a decision given for a head other than the current

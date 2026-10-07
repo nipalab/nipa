@@ -1,6 +1,6 @@
 # Merge request feature gaps
 
-Status: **audit (2026-10-05); Batches A and B implemented (2026-10-06)**. This
+Status: **audit (2026-10-05); Batches A, B and C1 implemented (2026-10-07)**. This
 is a revisit list, not a plan of record. The MR feature is functional end to
 end (lifecycle, reviews, threads, locks, diff, commits, webhooks, SPA, daemon
 proxy); the items below are things that are absent or half-built, ordered
@@ -13,8 +13,11 @@ lifecycle timeline events (item 5), gRPC parity for reopen/check/diff/commits
 (item 6), and the merge/close/reopen half of item 10. Batch B landed the SPA
 edit form and inline review comments (7, 8), per-action review webhooks (11),
 list filters plus number-keyset pagination (13) and the CLI review surface with
-`GetMergeRequest` (9). Items are marked **[done]** below with what shipped; the
-rest are still open.
+`GetMergeRequest` (9). Batch C1 landed draft requests (3), the
+dismiss-stale-approvals protection setting and protected-branch delete refusal
+(4, first half) and dropped the never-written `merge_request_comments.system`
+column (10). Items are marked **[done]** below with what shipped; the rest are
+still open.
 
 ## What exists today (end to end)
 
@@ -70,16 +73,22 @@ rest are still open.
    or an explicit "merge commit" generation step, plus the delete-source
    checkbox.
 
-3. **No draft / WIP state.** Statuses are only `open|merged|closed`
-   (`internal/domain/merge_request.go:9-13`, same CHECK in migration
-   `000006`). Draft MRs (hidden from merge, shown in list with a marker) are a
-   common expectation.
+3. **[done] No draft / WIP state.** `merge_requests.is_draft` (base migration
+   `000006`) carries the state; `Create` takes a draft flag and `Update` PATCH
+   toggles it (`SetDraft`), `Check`/`Merge` block drafts with
+   `blocked_by: "draft"`, marking ready emits the `ready_for_review` timeline
+   event and `mr.ready_for_review` webhook, and the list filters on `draft`.
+   CLI `mr create --draft` / `mr update --draft=false` / `mr ready`; SPA
+   composer, edit dialog, list filter and merge box. No WIP title-prefix
+   detection (item 15).
 
-4. **Branch protection is nearly a bare boolean.** `SetBranchProtection`
-   now also carries `required_approvals` (item 1), but everything else is
-   missing: dismiss-stale-approvals is hard-wired on (every push dismisses
-   decisions), and there are no required reviewers, disallow-force-push /
-   disallow-delete settings beyond the current single `is_protected` flag.
+4. **[partial] Branch protection beyond a boolean.** `SetBranchProtection`
+   carries `required_approvals` (item 1) and `dismiss_stale_approvals`
+   (default on; off carries live decisions onto the new head on push instead
+   of dismissing them). Deleting a protected branch now returns a 409 until it
+   is unprotected. Still missing: required reviewers by name, disallow
+   force-push (moot — the server never rewrites a branch head, pushes always
+   append), and richer policy rules.
 
 ### Half-built things (existing seams with unused surface)
 
@@ -109,11 +118,10 @@ rest are still open.
    the daemon proxies get/check/reopen/submit-review. Remaining nicety: the
    review-request commands take a base36 user id (no user-lookup RPC).
 
-10. **[partial] `system` comments never written.** Lifecycle timeline events
-    now cover open/merge/close/reopen, but `merge_request_comments.system`
-    still has no writer: resolving a thread, pushing to a source branch and
-    dismissing a review produce timeline events, not system comments. Either
-    emit system comments for those or drop the column.
+10. **[done] `system` comments never written.** The never-written
+    `merge_request_comments.system` column and its proto field were dropped;
+    the timeline is the single representation for lifecycle and review
+    bookkeeping.
 
 ### Ecosystem gaps
 
@@ -147,6 +155,8 @@ rest are still open.
 - **Batch B — done:** MR edit affordance in SPA (7), inline comments from the
   review composer (8), review/comment webhooks (11), list filters + number
   keyset pagination (13), CLI review surface + `GetMergeRequest` (9).
-- **Batch C (schema-heavy, next):** non-FF merge strategies + delete source
-  branch (2), draft state (3), branch protection settings (4), labels/
-  milestones/assignees (12), CI status checks (14).
+- **Batch C — in progress:** C1 done — draft state (3), dismiss-stale setting
+  + protected-delete refusal (4), `system` column dropped (10). Next: non-FF
+  merge strategies + delete source branch (2), labels/milestones/assignees
+  (12, milestones skipped until an issue tracker exists), CI status checks
+  (14).

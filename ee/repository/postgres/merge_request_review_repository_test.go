@@ -241,6 +241,33 @@ func (s *MergeRequestReviewRepositorySuite) TestCommentOnlySurvivesDismissal() {
 	s.Nil(reviews[0].DismissedAt)
 }
 
+func (s *MergeRequestReviewRepositorySuite) TestCarryOverReviews() {
+	ctx := context.Background()
+	f := s.newReviewFixture()
+
+	_, err := f.repo.UpsertReview(ctx, domain.MergeRequestReview{
+		ID:             6001,
+		MergeRequestID: f.mrID,
+		Reviewer:       domain.ReviewActor{UserID: f.reviewerID},
+		State:          domain.MergeRequestReviewApproved,
+		HeadCommitID:   f.headCommit,
+	})
+	s.Require().NoError(err)
+
+	newHead := f.pushSourceHead(s.T())
+	s.Require().NoError(f.repo.CarryOverReviews(ctx, f.mrID, newHead))
+
+	stale, err := f.repo.StaleReviews(ctx, f.mrID, newHead)
+	s.Require().NoError(err)
+	s.Empty(stale)
+
+	reviews, err := f.repo.ListReviews(ctx, f.mrID)
+	s.Require().NoError(err)
+	s.Len(reviews, 1)
+	s.Equal(newHead, reviews[0].HeadCommitID)
+	s.Nil(reviews[0].DismissedAt)
+}
+
 func (s *MergeRequestReviewRepositorySuite) TestManualDismissAndWithdraw() {
 	ctx := context.Background()
 	f := s.newReviewFixture()
@@ -303,7 +330,6 @@ func (s *MergeRequestReviewRepositorySuite) TestThreadAndComments() {
 	})
 	s.Require().NoError(err)
 	s.Equal("rename this", comment.Body)
-	s.False(comment.System)
 
 	reply, err := f.repo.CreateComment(ctx, domain.MergeRequestComment{
 		ID:       8002,

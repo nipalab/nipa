@@ -32,7 +32,7 @@ type branchRepository interface {
 	RenameBranch(ctx context.Context, projectID, branchID snow.ID, name, key string) error
 	DeleteBranch(ctx context.Context, projectID, branchID snow.ID) error
 	HasOpenMergeRequests(ctx context.Context, projectID, branchID snow.ID) (bool, error)
-	SetBranchProtection(ctx context.Context, projectID, branchID snow.ID, protected bool, requiredApprovals int64) error
+	SetBranchProtection(ctx context.Context, projectID, branchID snow.ID, protected bool, requiredApprovals int64, dismissStaleApprovals bool) error
 	SetDefaultBranch(ctx context.Context, projectID, branchID snow.ID) error
 	UpdateCommitIf(ctx context.Context, branchID snow.ID, fromCommitID, toCommitID *snow.ID) error
 	GetCommit(ctx context.Context, commitID snow.ID) (*domain.Commit, error)
@@ -194,6 +194,9 @@ func (b *Branch) Delete(ctx context.Context, projectID snow.ID, name string) err
 	if branch.IsDefault {
 		return domain.NewErrorConflict(fmt.Sprintf("cannot delete the default branch %q", name))
 	}
+	if branch.IsProtected {
+		return domain.NewErrorConflict(fmt.Sprintf("branch %q is protected; unprotect it before deleting", name))
+	}
 	remaining, err := b.branchRepo.ListBranches(ctx, projectID, 2, nil, 0)
 	if err != nil {
 		return err
@@ -238,9 +241,9 @@ func (b *Branch) SetDefault(ctx context.Context, projectID snow.ID, name string)
 }
 
 // SetProtection updates the protection settings of a branch. A nil
-// requiredApprovals keeps the current value, so the protect toggle does not
-// clear an approvals requirement set earlier.
-func (b *Branch) SetProtection(ctx context.Context, projectID snow.ID, name string, protected bool, requiredApprovals *int64) (*domain.Branch, error) {
+// requiredApprovals or dismissStaleApprovals keeps the current value, so the
+// protect toggle does not clear settings configured earlier.
+func (b *Branch) SetProtection(ctx context.Context, projectID snow.ID, name string, protected bool, requiredApprovals *int64, dismissStaleApprovals *bool) (*domain.Branch, error) {
 	if !b.permUc.AdminHasProject(ctx, projectID) {
 		return nil, domain.NewErrorNoPermission()
 	}
@@ -255,10 +258,14 @@ func (b *Branch) SetProtection(ctx context.Context, projectID snow.ID, name stri
 		}
 		approvals = *requiredApprovals
 	}
-	if branch.IsProtected == protected && branch.RequiredApprovals == approvals {
+	dismissStale := branch.DismissStaleApprovals
+	if dismissStaleApprovals != nil {
+		dismissStale = *dismissStaleApprovals
+	}
+	if branch.IsProtected == protected && branch.RequiredApprovals == approvals && branch.DismissStaleApprovals == dismissStale {
 		return branch, nil
 	}
-	if err := b.branchRepo.SetBranchProtection(ctx, projectID, branch.ID, protected, approvals); err != nil {
+	if err := b.branchRepo.SetBranchProtection(ctx, projectID, branch.ID, protected, approvals, dismissStale); err != nil {
 		return nil, err
 	}
 	return b.branchRepo.GetByProjectIDAndID(ctx, projectID, branch.ID)

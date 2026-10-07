@@ -412,6 +412,7 @@ describe('MergeRequestsPage', () => {
       description: '',
       source_branch: 'feature',
       target_branch: 'main',
+      draft: false,
     })
     await waitFor(() => window.location.pathname === '/acme/game/merges/7')
     act(() => root.unmount())
@@ -477,6 +478,7 @@ describe('MergeRequestPage', () => {
     title: 'Change code',
     description: '',
     status: 'open',
+    draft: false,
     created_by: '1',
     created_at: '2024-01-01T00:00:00Z',
     updated_at: '2024-01-01T00:00:00Z',
@@ -613,7 +615,7 @@ describe('MergeRequestPage', () => {
       findButton('Save changes').click()
     })
     await waitFor(() => patched !== null)
-    expect(patched).toEqual({ title: 'New title', description: '' })
+    expect(patched).toEqual({ title: 'New title', description: '', draft: false })
     act(() => root.unmount())
   })
 })

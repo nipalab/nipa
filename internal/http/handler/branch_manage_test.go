@@ -60,6 +60,19 @@ func TestHandler_BranchManagement(t *testing.T) {
 
 	appCtx = browserAppCtx(claims, map[string]string{"org": "default", "project": "default", "name": "renamed"}, nil)
 	env.handler.DeleteProjectBranch(appCtx)
+	require.Equal(t, http.StatusConflict, appCtx.statusCode, "protected branch cannot be deleted")
+
+	appCtx = &fakeAppContext{
+		claims:         claims,
+		pathParameters: map[string]string{"org": "default", "project": "default", "name": "renamed"},
+		body:           []byte(`{"protected":false}`),
+	}
+	env.handler.SetProjectBranchProtection(appCtx)
+	require.Equal(t, http.StatusOK, appCtx.statusCode)
+	require.False(t, appCtx.response.(model.BranchResponse).IsProtected)
+
+	appCtx = browserAppCtx(claims, map[string]string{"org": "default", "project": "default", "name": "renamed"}, nil)
+	env.handler.DeleteProjectBranch(appCtx)
 	require.Equal(t, http.StatusOK, appCtx.statusCode)
 
 	appCtx = browserAppCtx(claims, projectParams, nil)

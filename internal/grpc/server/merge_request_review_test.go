@@ -132,7 +132,6 @@ func TestDomainReviewCommentToPB(t *testing.T) {
 		ThreadID:  snow.ID(3),
 		User:      domain.ReviewActor{UserID: snow.ID(8), Name: "Rev"},
 		Body:      "nit",
-		System:    true,
 		CreatedAt: created,
 		UpdatedAt: created,
 	})
@@ -140,7 +139,6 @@ func TestDomainReviewCommentToPB(t *testing.T) {
 	require.Equal(t, snow.ID(3).Base36(), comment.ThreadId)
 	require.Equal(t, "Rev", comment.User.Name)
 	require.Equal(t, "nit", comment.Body)
-	require.True(t, comment.System)
 	require.False(t, comment.Edited)
 }
 

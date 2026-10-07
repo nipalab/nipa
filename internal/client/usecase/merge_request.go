@@ -12,8 +12,8 @@ import (
 
 type mrClient interface {
 	Connect(ctx context.Context, host string) error
-	CreateMergeRequest(ctx context.Context, org, project, title, description, sourceBranch, targetBranch string) (*domain.MergeRequest, error)
-	UpdateMergeRequest(ctx context.Context, org, project string, number int64, title, description string) (*domain.MergeRequest, error)
+	CreateMergeRequest(ctx context.Context, org, project, title, description, sourceBranch, targetBranch string, draft bool) (*domain.MergeRequest, error)
+	UpdateMergeRequest(ctx context.Context, org, project string, number int64, title, description string, draft *bool) (*domain.MergeRequest, error)
 	ListMergeRequests(ctx context.Context, org, project string, opts domain.ListMergeRequestOptions) ([]*domain.MergeRequest, int64, error)
 	GetMergeRequest(ctx context.Context, org, project string, number int64) (*domain.MergeRequest, *domain.Mergeability, error)
 	MergeMergeRequest(ctx context.Context, org, project string, number int64) (*domain.MergeRequest, *domain.Mergeability, error)
@@ -45,6 +45,7 @@ type CreateMergeRequestOptions struct {
 	Description string
 	Source      string
 	Target      string
+	Draft       bool
 }
 
 // ListMergeRequestOptions filters and paginates a merge request listing.
@@ -88,22 +89,28 @@ func (m *MergeRequest) Create(ctx context.Context, root string, opts CreateMerge
 	if source == target {
 		return nil, domain.NewUserError(fmt.Sprintf("source and target branches must differ (both are %q); pass --target", source))
 	}
-	return m.client.CreateMergeRequest(ctx, url.Org, url.Project, title, opts.Description, source, target)
+	return m.client.CreateMergeRequest(ctx, url.Org, url.Project, title, opts.Description, source, target, opts.Draft)
 }
 
-func (m *MergeRequest) Update(ctx context.Context, root, id, title, description string) (*domain.MergeRequest, error) {
+// Update patches the title and description and/or toggles the draft state.
+func (m *MergeRequest) Update(ctx context.Context, root, id, title, description string, draft *bool) (*domain.MergeRequest, error) {
 	number, err := mergeRequestNumber(id)
 	if err != nil {
 		return nil, err
 	}
-	if strings.TrimSpace(title) == "" && strings.TrimSpace(description) == "" {
-		return nil, domain.NewUserError("pass --title or --description to update a merge request")
+	if strings.TrimSpace(title) == "" && strings.TrimSpace(description) == "" && draft == nil {
+		return nil, domain.NewUserError("pass --title, --description or --draft to update a merge request")
 	}
 	url, _, err := m.connect(ctx, root)
 	if err != nil {
 		return nil, err
 	}
-	return m.client.UpdateMergeRequest(ctx, url.Org, url.Project, number, title, description)
+	return m.client.UpdateMergeRequest(ctx, url.Org, url.Project, number, title, description, draft)
+}
+
+// SetDraft toggles the draft state of a merge request.
+func (m *MergeRequest) SetDraft(ctx context.Context, root, id string, draft bool) (*domain.MergeRequest, error) {
+	return m.Update(ctx, root, id, "", "", &draft)
 }
 
 // List returns one page of merge requests and the cursor for the next page

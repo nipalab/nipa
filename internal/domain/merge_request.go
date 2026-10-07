@@ -24,6 +24,7 @@ type MergeRequestListOptions struct {
 	Author       *snow.ID
 	SourceBranch string
 	TargetBranch string
+	Draft        *bool
 	After        int64
 	Limit        int
 }
@@ -35,7 +36,7 @@ type Mergeability struct {
 	SourceCommitID    *snow.ID `json:"source_commit_id,omitempty"`
 	TargetCommitID    *snow.ID `json:"target_commit_id,omitempty"`
 	// BlockedBy is empty when the request can merge; otherwise it names the
-	// review reason the target branch policy refuses the merge for.
+	// policy reason the target branch refuses the merge for.
 	BlockedBy string `json:"blocked_by,omitempty"`
 }
 
@@ -50,6 +51,7 @@ type MergeRequest struct {
 	Title             string    `json:"title"`
 	Description       string    `json:"description"`
 	Status            string    `json:"status"`
+	Draft             bool      `json:"draft"`
 	MergeCommitID     *snow.ID  `json:"merge_commit_id,omitempty"`
 	MergeBaseCommitID *snow.ID  `json:"merge_base_commit_id,omitempty"`
 	CreatedBy         snow.ID   `json:"created_by"`
@@ -66,7 +68,8 @@ const (
 	MergeabilityUpToDate  = "up_to_date"
 	MergeabilityInvalid   = "invalid"
 
-	// Review-policy block reasons carried by Mergeability.BlockedBy.
+	// Policy block reasons carried by Mergeability.BlockedBy.
 	MergeabilityBlockedChangesRequested = "changes_requested"
 	MergeabilityBlockedApprovals        = "insufficient_approvals"
+	MergeabilityBlockedDraft            = "draft"
 )

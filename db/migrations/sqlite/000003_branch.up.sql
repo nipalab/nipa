@@ -53,6 +53,7 @@ CREATE TABLE branches (
     key TEXT NOT NULL,
     is_protected BOOLEAN NOT NULL DEFAULT FALSE,
     required_approvals INTEGER NOT NULL DEFAULT 0,
+    dismiss_stale_approvals BOOLEAN NOT NULL DEFAULT TRUE,
     is_default BOOLEAN NOT NULL DEFAULT FALSE,
     commit_id INTEGER REFERENCES commits(id),
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,

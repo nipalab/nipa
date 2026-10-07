@@ -132,6 +132,7 @@ message Branch {
     bool is_protected = 6;
     bool is_default = 7;
     int64 required_approvals = 8; // live approvals a merge request into this branch needs
+    bool dismiss_stale_approvals = 9; // a push to the source dismisses decisions for the old head
 }
 
 message GetListBranchRequest {
@@ -210,6 +211,7 @@ message SetBranchProtectionRequest {
     string name = 2;
     bool is_protected = 3;
     optional int64 required_approvals = 4; // absent keeps the current value
+    optional bool dismiss_stale_approvals = 5; // absent keeps the current value
 }
 
 message SetBranchProtectionResponse {
@@ -516,6 +518,7 @@ message MergeRequestDetail {
     google.protobuf.Timestamp created_at = 12;
     google.protobuf.Timestamp updated_at = 13;
     MergeRequestReviewState review = 14; // live review summary, when resolved
+    bool draft = 15; // draft requests cannot be merged until marked ready
 }
 
 message CreateMergeRequestRequest {
@@ -524,6 +527,7 @@ message CreateMergeRequestRequest {
     string description = 3;
     string source_branch = 4;
     string target_branch = 5;
+    bool draft = 6;
 }
 
 message CreateMergeRequestResponse {
@@ -535,6 +539,7 @@ message UpdateMergeRequestRequest {
     int64 number = 2; // sequential per-project number
     string title = 3; // empty keeps the current title
     string description = 4; // empty keeps the current description
+    optional bool draft = 5; // set to toggle the draft state
 }
 
 message UpdateMergeRequestResponse {
@@ -549,6 +554,7 @@ message ListMergeRequestsRequest {
     string author = 5; // optional base36 user id
     string source_branch = 6; // optional source branch name
     string target_branch = 7; // optional target branch name
+    optional bool draft = 8; // optional draft filter
 }
 
 message ListMergeRequestsResponse {
@@ -659,7 +665,6 @@ message ReviewCommentDetail {
     string thread_id = 2; // base36 snow ID
     ReviewActor user = 3;
     string body = 4;
-    bool system = 5; // generated, e.g. the "resolved this thread" marker
     google.protobuf.Timestamp created_at = 6;
     google.protobuf.Timestamp updated_at = 7;
     bool edited = 8; // updated_at differs from created_at

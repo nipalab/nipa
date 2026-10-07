@@ -159,8 +159,24 @@ describe('RepoBreadcrumb', () => {
 describe('BranchSelector', () => {
   it('shows the default branch until a revision is selected', async () => {
     const branches: BranchResponse[] = [
-      { id: '1', name: 'main', is_default: true, is_protected: false, required_approvals: 0, updated_at: '' },
-      { id: '2', name: 'feature/login', is_default: false, is_protected: false, required_approvals: 0, updated_at: '' },
+      {
+        id: '1',
+        name: 'main',
+        is_default: true,
+        is_protected: false,
+        required_approvals: 0,
+        dismiss_stale_approvals: true,
+        updated_at: '',
+      },
+      {
+        id: '2',
+        name: 'feature/login',
+        is_default: false,
+        is_protected: false,
+        required_approvals: 0,
+        dismiss_stale_approvals: true,
+        updated_at: '',
+      },
     ]
     const { container, root } = await render(
       <BranchSelector branches={branches} rev="" onSelect={() => {}} />,
