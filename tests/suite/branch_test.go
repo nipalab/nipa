@@ -114,6 +114,30 @@ var _ = Describe("nipa branch", func() {
 		Expect(res.Output()).To(ContainSubstring("cannot delete the default branch"))
 	})
 
+	It("refuses to delete a protected branch until it is unprotected", func() {
+		project := newProject("branch-delete-protected")
+		seedRepo(orgSlug, project, map[string][]byte{"a.txt": []byte("a\n")}, "seed")
+		parent := workspace()
+		dir := cloneRepo(parent, repoURLFor(orgSlug, project), "work")
+
+		Expect(runNipa(dir, "branch", "-c", "feature").ExitCode).To(Equal(0))
+		Expect(runNipa(dir, "switch", "main").ExitCode).To(Equal(0))
+
+		protection := api.setBranchProtection(orgSlug, project, "feature", true, nil, nil)
+		Expect(protection.IsProtected).To(BeTrue())
+
+		res := runNipa(dir, "branch", "-d", "feature")
+		Expect(res.ExitCode).To(Equal(2))
+		Expect(res.Output()).To(ContainSubstring("protected"))
+
+		protection = api.setBranchProtection(orgSlug, project, "feature", false, nil, nil)
+		Expect(protection.IsProtected).To(BeFalse())
+
+		res = runNipa(dir, "branch", "-d", "feature")
+		Expect(res.ExitCode).To(Equal(0), res.Output())
+		Expect(res.Output()).To(ContainSubstring(`Deleted branch "feature"`))
+	})
+
 	It("refuses to delete the current branch", func() {
 		project := newProject("branch-delete-current")
 		seedRepo(orgSlug, project, map[string][]byte{"a.txt": []byte("a\n")}, "seed")

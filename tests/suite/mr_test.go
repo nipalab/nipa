@@ -353,6 +353,15 @@ var _ = Describe("nipa mr", func() {
 		Expect(drafts.Output()).To(ContainSubstring("draft"))
 		Expect(drafts.Output()).To(ContainSubstring("Draft work"))
 
+		// update toggles the draft state in both directions
+		readyViaUpdate := runNipa(dir, "mr", "update", "1", "--draft=false")
+		Expect(readyViaUpdate.ExitCode).To(Equal(0), readyViaUpdate.Output())
+		draftedAgain := runNipa(dir, "mr", "update", "1", "--draft")
+		Expect(draftedAgain.ExitCode).To(Equal(0), draftedAgain.Output())
+		blockedAgain := runNipa(dir, "mr", "merge", "1")
+		Expect(blockedAgain.ExitCode).NotTo(Equal(0))
+		Expect(blockedAgain.Output()).To(ContainSubstring("draft"))
+
 		ready := runNipa(dir, "mr", "ready", "1")
 		Expect(ready.ExitCode).To(Equal(0), ready.Output())
 		Expect(ready.Output()).To(ContainSubstring("ready for review"))
@@ -379,6 +388,7 @@ var _ = Describe("nipa mr", func() {
 		one := int64(1)
 		protection := api.setBranchProtection(orgSlug, project, "main", true, &one, nil)
 		Expect(protection.RequiredApprovals).To(Equal(int64(1)))
+		Expect(protection.DismissStaleApprovals).To(BeTrue())
 
 		check := api.checkMergeRequest(orgSlug, project, 1)
 		Expect(check.Status).To(Equal("mergeable"))
