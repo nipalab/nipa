@@ -12,6 +12,23 @@ const (
 	MergeRequestClosed = "closed"
 )
 
+// Merge strategies for landing a merge request. Fast-forward only moves the
+// target head; the others author commits on the target server-side.
+const (
+	MergeStrategyFastForward = "ff"
+	MergeStrategyMerge       = "merge"
+	MergeStrategySquash      = "squash"
+	MergeStrategyRebase      = "rebase"
+)
+
+func IsValidMergeStrategy(strategy string) bool {
+	switch strategy {
+	case MergeStrategyFastForward, MergeStrategyMerge, MergeStrategySquash, MergeStrategyRebase:
+		return true
+	}
+	return false
+}
+
 func IsValidMergeRequestStatus(status string) bool {
 	return status == MergeRequestOpen || status == MergeRequestMerged || status == MergeRequestClosed
 }

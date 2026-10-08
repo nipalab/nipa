@@ -58,6 +58,10 @@ type Branch struct {
 	chunks     chunkReader
 	fileLocks  fileLockGate
 	hooks      hookBranchGate
+	// mergeCommitter and chunkUploads enable the non-fast-forward merge
+	// strategies; both are wired by the server mains.
+	mergeCommitter mergeCommitter
+	chunkUploads   chunkUploader
 }
 
 // hookBranchGate is the subset of the webhook emitter used by branch

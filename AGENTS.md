@@ -239,6 +239,27 @@ means a source push carries live decisions onto the new head through
 `CarryOverReviews` instead of dismissing them through `DismissStaleReviews`.
 `Branch.Delete` refuses protected branches (409) until they are unprotected.
 
+Merge strategies: `Merge` takes a `strategy` (`ff` default, `merge`, `squash`,
+`rebase`) and `delete_source`. `Branch.MergeForMergeRequest`
+(`internal/usecase/merge_strategies.go`) reuses the hoisted `internal/merge`
+three-way engine (the former `internal/client/merge`): it loads the full
+unfiltered trees (`mergeTree`), materializes taken files and diff3 text merges
+(new content stored through the `Chunk` usecase via `WithChunkUploader`), and
+writes the resulting tree and commit through `PushRepository.ApplyPushAll` —
+one transaction for the whole rebase chain (`WithMergeCommitter`). Conflicts
+return a 409 naming the paths and nothing lands; `behind_target` only blocks
+`ff` and the review gate still applies to it (an objection or missing approval
+blocks a diverged source too), while an ancestor source is `up_to_date`; rebase
+walks the source first-parent history oldest-first, stopping at any commit the
+base already contains, so a source that merged the target does not replay the
+shared history (`rebaseCommitLimit`). Squash uses the request title and creator
+as author;
+rebase keeps each original commit's author and message. The target branch stays
+protection-aware (admin required) and merged-source deletion is best-effort
+(warn on failure). The SPA merge box picks the strategy plus a delete-source
+checkbox; the CLI adds `mr merge --strategy <ff|merge|squash|rebase>
+[--delete-source]`.
+
 MR lists paginate by number: `GET .../merge-requests` takes
 `status/author/source/target/after/limit` and returns
 `{merge_requests, next_cursor}` (the cursor is the last number of a full page;
@@ -252,7 +273,8 @@ CLI mirrors the surface under `nipa mr`: `create --draft`, `view`, `reopen`,
 `ready`, `review --approve|--request-changes -m`, `comments`, `comment [-m]
 [--file --new-line/--old-line]`, `reply <number> <thread-id>`, `resolve
 <number> <thread-id> [--unresolve]`, `timeline`, `requests`,
-`request-review <number> <user-id>`, `unrequest-review`, `diff`, and `list
+`request-review <number> <user-id>`, `unrequest-review`, `diff`,
+`merge --strategy/--delete-source`, and `list
 --author/--source/--target/--after/--status draft`.
 
 Flow for `nipa revert <commit>` / `<from>..<to>`: resolve targets via gRPC

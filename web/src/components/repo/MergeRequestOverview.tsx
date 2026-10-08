@@ -227,7 +227,7 @@ export function MergeRequestOverview({
   onResolveThread: (threadId: string, resolved: boolean) => void
   onEditComment: (threadId: string, commentId: string, body: string) => void
   onDeleteComment: (threadId: string, commentId: string) => void
-  onMerge: () => void
+  onMerge: (strategy: string, deleteSource: boolean) => void
   onClose: () => void
   onReopen: () => void
 }) {
@@ -235,6 +235,8 @@ export function MergeRequestOverview({
   const [reviewer, setReviewer] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
+  const [strategy, setStrategy] = useState('ff')
+  const [deleteSource, setDeleteSource] = useState(false)
   const [inlineDrafts, setInlineDrafts] = useState<InlineDraft[]>([])
   const [inlineOpen, setInlineOpen] = useState(false)
   const [inlineFile, setInlineFile] = useState('')
@@ -864,7 +866,8 @@ export function MergeRequestOverview({
         </div>
       )
     }
-    const mergeable = mergeability === 'mergeable' && !blockedBy
+    const divergedMergeable = strategy !== 'ff' && mergeability === 'behind_target'
+    const mergeable = (mergeability === 'mergeable' || divergedMergeable) && !blockedBy
     const MERGE_BOX_TEXT: Record<string, { title: string; hint: string }> = {
       mergeable: {
         title: 'This branch has no conflicts with the base branch.',
@@ -897,12 +900,13 @@ export function MergeRequestOverview({
         hint: 'The target branch requires approvals before merging.',
       },
     }
-    const mergeBoxText =
-      (blockedBy ? BLOCKED_BOX_TEXT[blockedBy] : undefined) ??
-      MERGE_BOX_TEXT[mergeability ?? ''] ?? {
-        title: 'This merge request cannot be merged.',
-        hint: 'Refresh the page for the current merge status.',
-      }
+    const mergeBoxText = divergedMergeable
+      ? { title: 'The source branch is behind the target branch.', hint: 'Merging will combine both sides.' }
+      : ((blockedBy ? BLOCKED_BOX_TEXT[blockedBy] : undefined) ??
+        MERGE_BOX_TEXT[mergeability ?? ''] ?? {
+          title: 'This merge request cannot be merged.',
+          hint: 'Refresh the page for the current merge status.',
+        })
     return (
       <div style={{ border: '1px solid var(--borderColor-default)', borderRadius: 6, overflow: 'hidden' }}>
         <div style={{ padding: 12, display: 'flex', gap: 8 }}>
@@ -929,12 +933,34 @@ export function MergeRequestOverview({
         {canWrite && (
           <div style={{ padding: 12, borderTop: '1px solid var(--borderColor-muted)' }}>
             <Stack direction="vertical" gap="condensed">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <select
+                  aria-label="Merge strategy"
+                  value={strategy}
+                  onChange={(event) => setStrategy(event.target.value)}
+                  style={{ padding: 4 }}
+                >
+                  <option value="ff">Fast-forward</option>
+                  <option value="merge">Merge commit</option>
+                  <option value="squash">Squash</option>
+                  <option value="rebase">Rebase</option>
+                </select>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
+                  <input
+                    type="checkbox"
+                    aria-label="Delete source branch"
+                    checked={deleteSource}
+                    onChange={(event) => setDeleteSource(event.target.checked)}
+                  />
+                  Delete source branch
+                </label>
+              </div>
               <Button
                 block
                 variant="primary"
                 style={PRIMARY_BUTTON_STYLE}
                 disabled={!mergeable || pending}
-                onClick={onMerge}
+                onClick={() => onMerge(strategy, deleteSource)}
               >
                 Merge pull request
               </Button>

@@ -9,8 +9,8 @@ import (
 
 	"github.com/nipalab/nipa/internal/client/domain"
 	"github.com/nipalab/nipa/internal/client/localrepo"
-	"github.com/nipalab/nipa/internal/client/merge"
 	clientusecase "github.com/nipalab/nipa/internal/client/usecase"
+	"github.com/nipalab/nipa/internal/merge"
 	"github.com/nipalab/nipa/internal/snow"
 )
 

@@ -30,6 +30,8 @@ type transactor interface {
 type branchMerger interface {
 	GetMergeBase(ctx context.Context, projectID snow.ID, target, source MergeRef) (*MergeBaseInfo, error)
 	FastForwardForMergeRequest(ctx context.Context, projectID snow.ID, targetBranch, sourceBranch string) (*domain.Branch, error)
+	MergeForMergeRequest(ctx context.Context, projectID snow.ID, targetBranch, sourceBranch string, opts MergeCommitOptions) (*domain.Branch, error)
+	Delete(ctx context.Context, projectID snow.ID, name string) error
 	TreeDiffBetween(ctx context.Context, projectID snow.ID, baseID *snow.ID, headID snow.ID) ([]diff.FileDiff, error)
 	BinaryChangesBetween(ctx context.Context, projectID snow.ID, fromCommitID, toCommitID *snow.ID) ([]string, error)
 }
@@ -279,7 +281,14 @@ func (m *MergeRequest) Check(ctx context.Context, projectID snow.ID, number int6
 	return m.check(ctx, projectID, mr)
 }
 
-func (m *MergeRequest) Merge(ctx context.Context, projectID snow.ID, number int64) (*domain.MergeRequest, *domain.Mergeability, error) {
+func (m *MergeRequest) Merge(ctx context.Context, projectID snow.ID, number int64, strategy string, deleteSource bool) (*domain.MergeRequest, *domain.Mergeability, error) {
+	strategy = strings.TrimSpace(strategy)
+	if strategy == "" {
+		strategy = domain.MergeStrategyFastForward
+	}
+	if !domain.IsValidMergeStrategy(strategy) {
+		return nil, nil, domain.NewErrorUser("strategy must be one of ff, merge, squash, rebase")
+	}
 	mr, err := m.load(ctx, projectID, number)
 	if err != nil {
 		return nil, nil, err
@@ -291,7 +300,9 @@ func (m *MergeRequest) Merge(ctx context.Context, projectID snow.ID, number int6
 	switch info.Status {
 	case domain.MergeabilityMergeable:
 	case domain.MergeabilityBehind:
-		return nil, info, domain.NewErrorConflict("source branch is behind the target; update it first")
+		if strategy == domain.MergeStrategyFastForward {
+			return nil, info, domain.NewErrorConflict("source branch is behind the target; update it first")
+		}
 	case domain.MergeabilityUpToDate:
 		return nil, info, domain.NewErrorConflict("source branch is already up to date with the target")
 	default:
@@ -299,6 +310,10 @@ func (m *MergeRequest) Merge(ctx context.Context, projectID snow.ID, number int6
 	}
 	if info.BlockedBy != "" {
 		return nil, info, blockedMergeError(info.BlockedBy)
+	}
+	claim, ok := domain.ClaimFromContext(ctx)
+	if !ok {
+		return nil, info, domain.NewErrorNoPermission()
 	}
 
 	if m.fileLocks != nil {
@@ -310,16 +325,17 @@ func (m *MergeRequest) Merge(ctx context.Context, projectID snow.ID, number int6
 		if err != nil {
 			return nil, info, err
 		}
-		claim, ok := domain.ClaimFromContext(ctx)
-		if !ok {
-			return nil, info, domain.NewErrorNoPermission()
-		}
 		if err := m.fileLocks.EnsureMergeRequestLocks(ctx, projectID, snow.ID(mr.ID), target, paths, claim.UserID, mr.CreatedBy); err != nil {
 			return nil, info, err
 		}
 	}
 
-	updated, err := m.merger.FastForwardForMergeRequest(ctx, projectID, mr.TargetBranch, mr.SourceBranch)
+	opts := MergeCommitOptions{Strategy: strategy, Author: claim.UserID}
+	if strategy == domain.MergeStrategySquash {
+		opts.Message = mr.Title
+		opts.Author = mr.CreatedBy
+	}
+	updated, err := m.merger.MergeForMergeRequest(ctx, projectID, mr.TargetBranch, mr.SourceBranch, opts)
 	if err != nil {
 		return nil, info, err
 	}
@@ -335,9 +351,13 @@ func (m *MergeRequest) Merge(ctx context.Context, projectID snow.ID, number int6
 	if err != nil {
 		return nil, info, err
 	}
-	if claim, ok := domain.ClaimFromContext(ctx); ok {
-		m.emitHook(ctx, domain.WebhookEventMRMerged, projectID, merged, claim.UserID)
-		m.noteEvent(ctx, domain.MergeRequestEventMerged, merged, updated.CommitID, claim.UserID)
+	m.emitHook(ctx, domain.WebhookEventMRMerged, projectID, merged, claim.UserID)
+	m.noteEvent(ctx, domain.MergeRequestEventMerged, merged, updated.CommitID, claim.UserID)
+	if deleteSource {
+		if err := m.merger.Delete(ctx, projectID, mr.SourceBranch); err != nil {
+			slog.Warn("deleting merged source branch failed",
+				"branch", mr.SourceBranch, "merge_request", mr.Number, "error", err)
+		}
 	}
 	return merged, info, nil
 }
@@ -532,17 +552,28 @@ func (m *MergeRequest) check(ctx context.Context, projectID snow.ID, mr *domain.
 		return nil, err
 	}
 	info.MergeBaseCommitID = base.MergeBaseCommitID
-	if base.MergeBaseCommitID == nil || *base.MergeBaseCommitID != *target.CommitID {
+	switch {
+	case base.MergeBaseCommitID == nil:
 		info.Status = domain.MergeabilityBehind
-		return info, nil
+	case *base.MergeBaseCommitID == *source.CommitID:
+		// The source is contained in the target: every strategy has nothing to
+		// land.
+		info.Status = domain.MergeabilityUpToDate
+	case *base.MergeBaseCommitID != *target.CommitID:
+		info.Status = domain.MergeabilityBehind
+	default:
+		info.Status = domain.MergeabilityMergeable
 	}
-	info.Status = domain.MergeabilityMergeable
-	if info.BlockedBy == "" {
-		blocked, err := m.reviewBlockedBy(ctx, projectID, mr, target)
-		if err != nil {
-			return nil, err
+	// The review policy applies to every shape the merge could land, including
+	// a diverged source that a non-fast-forward strategy would merge.
+	if info.Status == domain.MergeabilityMergeable || info.Status == domain.MergeabilityBehind {
+		if info.BlockedBy == "" {
+			blocked, err := m.reviewBlockedBy(ctx, projectID, mr, target)
+			if err != nil {
+				return nil, err
+			}
+			info.BlockedBy = blocked
 		}
-		info.BlockedBy = blocked
 	}
 	return info, nil
 }

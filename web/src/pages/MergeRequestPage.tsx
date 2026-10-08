@@ -248,7 +248,9 @@ export default function MergeRequestPage() {
           canWrite={canWrite}
           busy={commentBusy}
           onChanged={reloadAll}
-          onMerge={() => run(() => mergeMergeRequest(org, project, id))}
+          onMerge={(strategy, deleteSource) =>
+            run(() => mergeMergeRequest(org, project, id, strategy, deleteSource))
+          }
           onClose={() => run(() => closeMergeRequest(org, project, id))}
           onReopen={() => run(() => reopenMergeRequest(org, project, id))}
           {...threadActions()}

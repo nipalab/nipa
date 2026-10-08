@@ -36,10 +36,12 @@ type fakeMRClient struct {
 	listOpts                         domain.ListMergeRequestOptions
 	listErr                          error
 
-	mergeNumber  int64
-	mergeResult  *domain.MergeRequest
-	mergeability *domain.Mergeability
-	mergeErr     error
+	mergeNumber       int64
+	mergeStrategy     string
+	mergeDeleteSource bool
+	mergeResult       *domain.MergeRequest
+	mergeability      *domain.Mergeability
+	mergeErr          error
 
 	closeNumber int64
 	closeResult *domain.MergeRequest
@@ -130,8 +132,10 @@ func (f *fakeMRClient) ListMergeRequests(_ context.Context, org, project string,
 	return f.listResult, f.listCursor, f.listErr
 }
 
-func (f *fakeMRClient) MergeMergeRequest(_ context.Context, _, _ string, number int64) (*domain.MergeRequest, *domain.Mergeability, error) {
+func (f *fakeMRClient) MergeMergeRequest(_ context.Context, _, _ string, number int64, strategy string, deleteSource bool) (*domain.MergeRequest, *domain.Mergeability, error) {
 	f.mergeNumber = number
+	f.mergeStrategy = strategy
+	f.mergeDeleteSource = deleteSource
 	return f.mergeResult, f.mergeability, f.mergeErr
 }
 

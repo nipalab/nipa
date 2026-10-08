@@ -68,7 +68,9 @@ card, interleaved timeline events/reviews/comments — including inline code
 threads with a diff snippet of the commented code, their `file:line` context
 and a "View on file" link — the opening description labelled as such, comment
 composer, and a sidebar with reviewers, participants and the merge box with
-merge/close/reopen),
+merge/close/reopen; the merge box picks the merge strategy (fast-forward, merge
+commit, squash, rebase) and whether to delete the source branch, and with a
+non-fast-forward strategy a diverged source stays mergeable),
 **Commits** (GitHub-style timeline of the source-branch commits, oldest first,
 with author, timestamp, copy-hash and browse-at-commit actions), and
 **File changes** (GitHub-style: file tree sidebar with

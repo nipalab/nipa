@@ -13,8 +13,8 @@ import (
 
 	"github.com/nipalab/nipa/internal/chunker"
 	"github.com/nipalab/nipa/internal/client/domain"
-	"github.com/nipalab/nipa/internal/client/merge"
 	serverDomain "github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/merge"
 )
 
 type stubRevertClient struct {

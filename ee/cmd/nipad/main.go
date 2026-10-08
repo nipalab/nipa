@@ -93,6 +93,7 @@ func main() {
 		PresignTTL:  time.Duration(cfg.ChunkPresignTTLSeconds) * time.Second,
 		MaxPageSize: cfg.ChunkMaxPageSize,
 	})
+	branchUsecase = branchUsecase.WithMergeCommitter(pushRepository).WithChunkUploader(chunkUsecase)
 	webhookRepository := postgres.NewWebhookRepository(dbConn)
 	webhookDispatcher := webhook.NewDispatcher(webhookRepository, webhook.NewClient(webhook.ClientConfig{
 		Timeout:         time.Duration(cfg.WebhookTimeoutSeconds) * time.Second,

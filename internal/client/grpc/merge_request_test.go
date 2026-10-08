@@ -442,7 +442,7 @@ func TestClient_MergeMergeRequest_Success(t *testing.T) {
 	}}
 	c := newMergeRequestTestClient(t, fs)
 
-	got, info, err := c.MergeMergeRequest(context.Background(), "default", "sample", 5)
+	got, info, err := c.MergeMergeRequest(context.Background(), "default", "sample", 5, "squash", true)
 	require.NoError(t, err)
 	require.NotNil(t, fs.mergeReq)
 	require.Equal(t, "default", fs.mergeReq.GetContext().GetOrg())
@@ -460,7 +460,7 @@ func TestClient_MergeMergeRequest_Error(t *testing.T) {
 	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
 	require.NoError(t, c.Connect(context.Background(), addr))
 
-	_, _, err := c.MergeMergeRequest(context.Background(), "default", "sample", 5)
+	_, _, err := c.MergeMergeRequest(context.Background(), "default", "sample", 5, "", false)
 	require.Error(t, err)
 
 	var domErr *clientDomain.Error
@@ -472,7 +472,7 @@ func TestClient_MergeMergeRequest_Error(t *testing.T) {
 func TestClient_MergeMergeRequest_NotConnected(t *testing.T) {
 	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
 
-	_, _, err := c.MergeMergeRequest(context.Background(), "default", "sample", 5)
+	_, _, err := c.MergeMergeRequest(context.Background(), "default", "sample", 5, "", false)
 	require.EqualError(t, err, "not connected to a nipa server")
 }
 

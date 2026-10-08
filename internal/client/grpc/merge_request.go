@@ -75,14 +75,16 @@ func (c *Client) ListMergeRequests(ctx context.Context, org, project string, opt
 	return requests, res.GetNextCursor(), nil
 }
 
-func (c *Client) MergeMergeRequest(ctx context.Context, org, project string, number int64) (*clientDomain.MergeRequest, *clientDomain.Mergeability, error) {
+func (c *Client) MergeMergeRequest(ctx context.Context, org, project string, number int64, strategy string, deleteSource bool) (*clientDomain.MergeRequest, *clientDomain.Mergeability, error) {
 	client, err := c.transport.NipaServiceClient()
 	if err != nil {
 		return nil, nil, err
 	}
 	res, err := client.MergeMergeRequest(ctx, &pb.MergeMergeRequestRequest{
-		Context: &pb.ProjectContext{Org: org, Project: project},
-		Number:  number,
+		Context:      &pb.ProjectContext{Org: org, Project: project},
+		Number:       number,
+		Strategy:     strategy,
+		DeleteSource: deleteSource,
 	})
 	if err != nil {
 		return nil, nil, toDomainError(err)

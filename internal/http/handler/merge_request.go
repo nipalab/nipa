@@ -198,7 +198,14 @@ func (h *Handler) MergeMergeRequest(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	request, info, err := h.useCase.MergeRequest().Merge(appCtx.Context(), project.ID, number)
+	body := &model.MergeMergeRequestRequest{}
+	if appCtx.Request().ContentLength > 0 {
+		if err := appCtx.ReadJson(body); err != nil {
+			appCtx.HandleError(err)
+			return
+		}
+	}
+	request, info, err := h.useCase.MergeRequest().Merge(appCtx.Context(), project.ID, number, body.Strategy, body.DeleteSource)
 	if err != nil {
 		appCtx.HandleError(err)
 		return

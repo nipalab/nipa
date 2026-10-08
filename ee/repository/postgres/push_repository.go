@@ -38,6 +38,12 @@ func (p *PushRepository) HasChunk(ctx context.Context, hash domain.Hash) (bool, 
 }
 
 func (p *PushRepository) ApplyPush(ctx context.Context, req usecase.ApplyPushRequest) error {
+	return p.ApplyPushAll(ctx, []usecase.ApplyPushRequest{req})
+}
+
+// ApplyPushAll applies one or more commits in a single transaction. A rebase
+// replays several commits, and either the whole chain lands or none of it does.
+func (p *PushRepository) ApplyPushAll(ctx context.Context, reqs []usecase.ApplyPushRequest) error {
 	tx, err := p.db.BeginTx(ctx, nil)
 	if err != nil {
 		return handleError(err)
@@ -45,7 +51,18 @@ func (p *PushRepository) ApplyPush(ctx context.Context, req usecase.ApplyPushReq
 	defer func() { _ = tx.Rollback() }()
 
 	q := sqlcPostgres.New(tx)
+	for _, req := range reqs {
+		if err := applyPush(ctx, q, req); err != nil {
+			return err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return handleError(err)
+	}
+	return nil
+}
 
+func applyPush(ctx context.Context, q *sqlcPostgres.Queries, req usecase.ApplyPushRequest) error {
 	chunkIDs := map[domain.Hash]int64{}
 	ensureChunk := func(hash domain.Hash) error {
 		if _, ok := chunkIDs[hash]; ok {
@@ -132,10 +149,6 @@ func (p *PushRepository) ApplyPush(ctx context.Context, req usecase.ApplyPushReq
 		CommitID: sql.NullInt64{Int64: req.CommitID.Int64(), Valid: true},
 		ID:       req.BranchID.Int64(),
 	}); err != nil {
-		return handleError(err)
-	}
-
-	if err := tx.Commit(); err != nil {
 		return handleError(err)
 	}
 	return nil
