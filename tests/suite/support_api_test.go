@@ -65,6 +65,16 @@ func (c *apiClient) createUser(name, email, password string) string {
 	return resp.ID
 }
 
+// createPathRule grants a user a path prefix permission; permission is the
+// PBAC bitmask (1 read, 2 write, 4 lock).
+func (c *apiClient) createPathRule(org, project, userID, pathPrefix string, permission uint64) {
+	c.do(http.MethodPost, fmt.Sprintf("/orgs/%s/projects/%s/permissions/rules", org, project), map[string]any{
+		"user_id":     userID,
+		"path_prefix": pathPrefix,
+		"permission":  permission,
+	}, nil, true)
+}
+
 func (c *apiClient) setAdmin(userID string) {
 	c.do(http.MethodPatch, "/users/"+userID+"/admin", map[string]bool{"is_admin": true}, nil, true)
 }
@@ -161,6 +171,26 @@ type mergeabilityJSON struct {
 func (c *apiClient) checkMergeRequest(org, project string, number int64) mergeabilityJSON {
 	var out mergeabilityJSON
 	c.do(http.MethodGet, fmt.Sprintf("/orgs/%s/projects/%s/merge-requests/%d/check", org, project, number), nil, &out, true)
+	return out
+}
+
+type mergedRequestJSON struct {
+	Number int64  `json:"number"`
+	Status string `json:"status"`
+}
+
+// mergeMergeRequest lands a request over the REST API with an explicit
+// strategy and delete-source option.
+func (c *apiClient) mergeMergeRequest(org, project string, number int64, strategy string, deleteSource bool) mergedRequestJSON {
+	body := map[string]any{}
+	if strategy != "" {
+		body["strategy"] = strategy
+	}
+	if deleteSource {
+		body["delete_source"] = true
+	}
+	var out mergedRequestJSON
+	c.do(http.MethodPost, fmt.Sprintf("/orgs/%s/projects/%s/merge-requests/%d/merge", org, project, number), body, &out, true)
 	return out
 }
 

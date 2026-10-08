@@ -948,6 +948,7 @@ export function MergeRequestOverview({
                 <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
                   <input
                     type="checkbox"
+                    aria-label="Delete source branch"
                     checked={deleteSource}
                     onChange={(event) => setDeleteSource(event.target.checked)}
                   />

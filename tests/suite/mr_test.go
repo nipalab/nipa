@@ -350,6 +350,66 @@ var _ = Describe("nipa mr", func() {
 		Expect(readText(fresh, "feature.txt")).To(Equal("feature\n"))
 	})
 
+	It("merges over the REST API with a strategy and deletes the source", func() {
+		project := newProject("mr-rest-strategy")
+		seedRepo(orgSlug, project, map[string][]byte{"base.txt": []byte("base\n")}, "seed")
+		url := repoURLFor(orgSlug, project)
+		parent := workspace()
+		dir := cloneRepo(parent, url, "work")
+		Expect(runNipa(dir, "branch", "-c", "feature").ExitCode).To(Equal(0))
+		writeText(dir, "feature.txt", "feature\n")
+		Expect(runNipa(dir, "add", "feature.txt").ExitCode).To(Equal(0))
+		Expect(pushRepo(dir, "feature work").ExitCode).To(Equal(0))
+		Expect(runNipa(dir, "mr", "create", "--title", uniqueMessage("REST strategy")).ExitCode).To(Equal(0))
+
+		seedRepo(orgSlug, project, map[string][]byte{"main.txt": []byte("main\n")}, "move main")
+
+		merged := api.mergeMergeRequest(orgSlug, project, 1, "squash", true)
+		Expect(merged.Status).To(Equal("merged"))
+
+		branches := runNipa(dir, "branch", "-a")
+		Expect(branches.Output()).NotTo(ContainSubstring("feature"))
+
+		fresh := cloneRepo(parent, url, "fresh")
+		Expect(readText(fresh, "feature.txt")).To(Equal("feature\n"))
+		Expect(readText(fresh, "main.txt")).To(Equal("main\n"))
+	})
+
+	It("refuses a non-admin merge into a protected target", func() {
+		project := newProject("mr-protected-target")
+		seedRepo(orgSlug, project, map[string][]byte{"base.txt": []byte("base\n")}, "seed")
+		url := repoURLFor(orgSlug, project)
+
+		dev := newIdentity("mr-protected-dev")
+		api.createPathRule(orgSlug, project, dev.userID, "", 1|2|4)
+		devDir := cloneRepoAs(dev, workspace(), url, "dev-work")
+		createFeature := runNipaAs(dev, devDir, "branch", "-c", "feature")
+		Expect(createFeature.ExitCode).To(Equal(0), createFeature.Output())
+		writeText(devDir, "feature.txt", "feature\n")
+		Expect(runNipaAs(dev, devDir, "add", "feature.txt").ExitCode).To(Equal(0))
+		Expect(runNipaAs(dev, devDir, "push", "-m", uniqueMessage("dev feature")).ExitCode).To(Equal(0))
+		Expect(runNipaAs(dev, devDir, "mr", "create", "--title", uniqueMessage("Protected target")).ExitCode).To(Equal(0))
+
+		api.setBranchProtection(orgSlug, project, "main", true, nil, nil)
+
+		for _, args := range [][]string{
+			{"mr", "merge", "1"},
+			{"mr", "merge", "1", "--strategy", "merge"},
+			{"mr", "merge", "1", "--strategy", "rebase"},
+		} {
+			denied := runNipaAs(dev, devDir, args...)
+			Expect(denied.ExitCode).NotTo(Equal(0), denied.Output())
+			Expect(denied.Output()).To(ContainSubstring("permission"))
+		}
+
+		adminDir := cloneRepo(workspace(), url, "admin-work")
+		merged := runNipa(adminDir, "mr", "merge", "1", "--strategy", "merge")
+		Expect(merged.ExitCode).To(Equal(0), merged.Output())
+
+		fresh := cloneRepo(workspace(), url, "fresh")
+		Expect(readText(fresh, "feature.txt")).To(Equal("feature\n"))
+	})
+
 	It("keeps the request open when the source branch is pushed again", func() {
 		project := newProject("mr-source-push")
 		seedRepo(orgSlug, project, map[string][]byte{"base.txt": []byte("base\n")}, "seed")
@@ -453,6 +513,10 @@ var _ = Describe("nipa mr", func() {
 		unanchored := runNipa(dir, "mr", "comment", "1", "-m", "x", "--new-line", "2")
 		Expect(unanchored.ExitCode).To(Equal(1))
 		Expect(unanchored.Output()).To(ContainSubstring("pass --file"))
+
+		badStrategy := runNipa(dir, "mr", "merge", "1", "--strategy", "octopus")
+		Expect(badStrategy.ExitCode).To(Equal(1))
+		Expect(badStrategy.Output()).To(ContainSubstring("strategy must be one of"))
 	})
 
 	It("tracks draft state and refuses to merge drafts", func() {

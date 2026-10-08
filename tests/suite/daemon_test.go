@@ -348,7 +348,7 @@ var _ = Describe("nipa serve", func() {
 
 		merged, err := d.client.ProxyMergeRequestMerge(d.ctx, &daemonpb.ProxyMergeRequestMergeRequest{
 			Root:    dir,
-			Request: &pb.MergeMergeRequestRequest{Number: 1},
+			Request: &pb.MergeMergeRequestRequest{Number: 1, Strategy: "merge"},
 		})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(merged.GetResponse().GetMergeRequest().GetStatus()).To(Equal("merged"))

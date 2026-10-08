@@ -485,6 +485,23 @@ describe('MergeRequestOverview', () => {
     expect(mergeButton.disabled).toBe(true)
   })
 
+  it('enables a diverged merge for non-fast-forward strategies and forwards the choice', async () => {
+    const onMerge = vi.fn()
+    const request = { ...base.request, mergeability: { status: 'behind_target' } }
+    const { container } = await render(<MergeRequestOverview {...base} request={request} onMerge={onMerge} />)
+    const mergeButton = [...container.querySelectorAll('button')].find(
+      (button) => button.textContent === 'Merge pull request',
+    ) as HTMLButtonElement
+    expect(mergeButton.disabled).toBe(true)
+
+    selectOption(container.querySelector('[aria-label="Merge strategy"]'), 'squash')
+    expect(mergeButton.disabled).toBe(false)
+
+    click(container.querySelector('[aria-label="Delete source branch"]'))
+    click(mergeButton)
+    expect(onMerge).toHaveBeenCalledWith('squash', true)
+  })
+
   it('attaches inline comments to a review decision', async () => {
     const { container } = await render(<MergeRequestOverview {...base} files={[file]} />)
     click([...container.querySelectorAll('button')].find((button) => button.textContent === '+ Add inline comment'))
