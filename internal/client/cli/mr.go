@@ -13,7 +13,7 @@ func (c *Cli) setupMrCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "mr",
 		Short:         "Manage merge requests",
-		Long:          "Create, update, list, view, review, comment on, close, reopen and merge merge requests. Commands run against the project of the current working copy; merge requests are fast-forward only, so the target branch must not have moved since the branches diverged.",
+		Long:          "Create, update, list, view, review, comment on, close, reopen and merge merge requests. Commands run against the project of the current working copy; a merge can fast-forward, create a merge commit, squash or rebase the source branch onto the target.",
 		SilenceErrors: true,
 		SilenceUsage:  true,
 	}
@@ -231,22 +231,27 @@ func (c *Cli) setupMrCloseCmd() *cobra.Command {
 }
 
 func (c *Cli) setupMrMergeCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:           "merge <number>",
 		Short:         "Merge a merge request",
 		Args:          cobra.ExactArgs(1),
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			strategy, _ := cmd.Flags().GetString("strategy")
+			deleteSource, _ := cmd.Flags().GetBool("delete-source")
 			root, err := localrepo.FindRepoRoot()
 			if err != nil {
 				return err
 			}
-			mr, info, err := c.useCase.MR().Merge(cmd.Context(), root, args[0])
+			mr, info, err := c.useCase.MR().Merge(cmd.Context(), root, args[0], strategy, deleteSource)
 			if err != nil {
 				return err
 			}
 			cmd.Printf("Merge request #%d merged: %s -> %s", mr.Number, mr.SourceBranch, mr.TargetBranch)
+			if strategy != "" {
+				cmd.Printf(" (%s)", strategy)
+			}
 			if info != nil && info.Status != "" {
 				cmd.Printf(" (%s)", info.Status)
 			}
@@ -254,4 +259,7 @@ func (c *Cli) setupMrMergeCmd() *cobra.Command {
 			return nil
 		},
 	}
+	cmd.Flags().String("strategy", "", "Merge strategy: ff (default), merge, squash or rebase")
+	cmd.Flags().Bool("delete-source", false, "Delete the source branch after a successful merge")
+	return cmd
 }

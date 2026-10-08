@@ -212,17 +212,20 @@ Rebase rewrites published history; on a shared feature branch it is opt-in
 
 ### Landing the MR (server-side merge)
 
-When the author requests a merge (`nipa mr merge <id>`), the server:
+When the author requests a merge (`nipa mr merge <id> [--strategy <s>]`), the
+server:
 
 1. Re-checks status in one transaction — MR is `open`, source and target exist,
-   policy satisfied (up-to-date if required), 3-way is conflict-free.
-2. **Fast-forward**: if merge base == target head, move target's `commit_id` to
-   source head (no commit).
-3. Otherwise create a **merge commit** server-side: tree = clean 3-way
-   (base, target, source), parents `(target_head, source_head)`, set target head
-   and `merge_commit_id`. Because it is server-side and content-addressed, the
-   merged tree reuses untouched subtrees by hash; only truly-merged paths are new
-   rows.
+   policy satisfied (`behind_target` only blocks `ff`), 3-way is conflict-free.
+2. **Fast-forward** (`ff`, default): if merge base == target head, move target's
+   `commit_id` to source head (no commit).
+3. Otherwise author commits per the strategy: `merge` creates a merge commit
+   (tree = clean 3-way (base, target, source), parents
+   `(target_head, source_head)`), `squash` one commit with the request title,
+   `rebase` one commit per source commit. Because it is server-side and
+   content-addressed, the merged tree reuses untouched subtrees by hash; only
+   truly-merged paths are new rows. The target head and `merge_commit_id` are
+   set to the last landed commit.
 4. Post-merge event hooks (CI, notifications) fire on the new commit.
 
 Conflicted MRs are rejected until the author resolves locally (Part 1) — the
@@ -374,7 +377,31 @@ review and CLI sections below).
 ## Merge request reviews (v2)
 
 Reviews are recorded, shown and counted, and they gate merging through the
-target branch policy described below (landing itself stays fast-forward-only).
+target branch policy described below.
+
+### Merge strategies
+
+`Merge` takes a `strategy` and a `delete_source` flag:
+
+- `ff` (default) only moves the target head; a diverged source is refused with
+  `behind_target`.
+- `merge` creates a two-parent merge commit on the target. The tree comes from
+  the three-way engine (`internal/merge`, hoisted from the client): base =
+  merge base, ours = target head, theirs = source head. Non-overlapping text
+  changes are combined with a diff3 merge; taken files keep their stored
+  chunks.
+- `squash` creates one commit on the target with the request title as message
+  and the request creator as author.
+- `rebase` replays the source's first-parent commits onto the target,
+  oldest-first, keeping each original author and message. A fast-forwardable
+  source is a pointer move.
+
+Conflicts (add/add, modify/delete, binary) are refused with a 409 naming the
+conflicted paths and nothing lands; a rebase reports the failing commit. New
+content produced by a text merge is stored server-side through the chunk
+usecase; the whole commit chain is written in one transaction
+(`ApplyPushAll`). `delete_source` deletes the source branch after a successful
+merge (best-effort; a protected source is left in place with a warning).
 
 ### Merge gate
 
@@ -476,7 +503,8 @@ reviewers, commits; `--json` adds mergeability, reviews and commits),
 `comments <n>`, `comment <n> -m [--file <path> --new-line|--old-line]`,
 `reply <n> <thread-id> -m`, `resolve <n> <thread-id> [--unresolve]`,
 `timeline <n>`, `requests <n>`, `request-review <n> <user-id>`,
-`unrequest-review <n> <user-id>` and `diff <n>`; `list` gained
+`unrequest-review <n> <user-id>` and `diff <n>`; `merge` gained
+`--strategy <ff|merge|squash|rebase>` and `--delete-source`, and `list` gained
 `--author/--source/--target/--after` (plus `--status draft` for drafts) and
 prints the `next_cursor` hint. The
 review request commands take a base36 user id; the SPA remains the friendly
@@ -494,6 +522,9 @@ structured diff (`web/src/components/repo/DiffView.tsx`), which supports
 line-level comments and filtering to lines with open threads. The merge request
 list shows the live approval/changes-requested counts and marks drafts (the
 list filter has a `draft` option); the create page and edit dialog carry a
-draft checkbox and the merge box explains the `draft` block. Project settings
+draft checkbox and the merge box explains the `draft` block. The merge box also
+picks the merge strategy (fast-forward, merge commit, squash, rebase) and the
+delete-source option; with a non-`ff` strategy a diverged source stays
+mergeable. Project settings
 expose `dismiss_stale_approvals` per branch next to the approvals input.
 

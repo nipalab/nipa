@@ -209,6 +209,20 @@ func (mr *MockbranchMergerMockRecorder) BinaryChangesBetween(ctx, projectID, fro
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BinaryChangesBetween", reflect.TypeOf((*MockbranchMerger)(nil).BinaryChangesBetween), ctx, projectID, fromCommitID, toCommitID)
 }
 
+// Delete mocks base method.
+func (m *MockbranchMerger) Delete(ctx context.Context, projectID snow.ID, name string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Delete", ctx, projectID, name)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Delete indicates an expected call of Delete.
+func (mr *MockbranchMergerMockRecorder) Delete(ctx, projectID, name any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delete", reflect.TypeOf((*MockbranchMerger)(nil).Delete), ctx, projectID, name)
+}
+
 // FastForwardForMergeRequest mocks base method.
 func (m *MockbranchMerger) FastForwardForMergeRequest(ctx context.Context, projectID snow.ID, targetBranch, sourceBranch string) (*domain.Branch, error) {
 	m.ctrl.T.Helper()
@@ -237,6 +251,21 @@ func (m *MockbranchMerger) GetMergeBase(ctx context.Context, projectID snow.ID, 
 func (mr *MockbranchMergerMockRecorder) GetMergeBase(ctx, projectID, target, source any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMergeBase", reflect.TypeOf((*MockbranchMerger)(nil).GetMergeBase), ctx, projectID, target, source)
+}
+
+// MergeForMergeRequest mocks base method.
+func (m *MockbranchMerger) MergeForMergeRequest(ctx context.Context, projectID snow.ID, targetBranch, sourceBranch string, opts MergeCommitOptions) (*domain.Branch, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MergeForMergeRequest", ctx, projectID, targetBranch, sourceBranch, opts)
+	ret0, _ := ret[0].(*domain.Branch)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// MergeForMergeRequest indicates an expected call of MergeForMergeRequest.
+func (mr *MockbranchMergerMockRecorder) MergeForMergeRequest(ctx, projectID, targetBranch, sourceBranch, opts any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MergeForMergeRequest", reflect.TypeOf((*MockbranchMerger)(nil).MergeForMergeRequest), ctx, projectID, targetBranch, sourceBranch, opts)
 }
 
 // TreeDiffBetween mocks base method.

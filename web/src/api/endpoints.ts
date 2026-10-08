@@ -258,10 +258,16 @@ export function updateMergeRequest(
   })
 }
 
-export function mergeMergeRequest(org: string, project: string, id: string): Promise<MergeRequestResponse> {
+export function mergeMergeRequest(
+  org: string,
+  project: string,
+  id: string,
+  strategy = '',
+  deleteSource = false,
+): Promise<MergeRequestResponse> {
   return apiJson(`${projectBase(org, project)}/merge-requests/${encodeURIComponent(id)}/merge`, {
     method: 'POST',
-    body: JSON.stringify({}),
+    body: JSON.stringify({ strategy, delete_source: deleteSource }),
   })
 }
 

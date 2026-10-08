@@ -41,10 +41,12 @@ type stubMRClient struct {
 	closeResult *domain.MergeRequest
 	closeErr    error
 
-	mergeNumber  int64
-	mergeResult  *domain.MergeRequest
-	mergeability *domain.Mergeability
-	mergeErr     error
+	mergeNumber       int64
+	mergeStrategy     string
+	mergeDeleteSource bool
+	mergeResult       *domain.MergeRequest
+	mergeability      *domain.Mergeability
+	mergeErr          error
 
 	getResult       *domain.MergeRequest
 	getMergeability *domain.Mergeability
@@ -143,8 +145,10 @@ func (s *stubMRClient) ListMergeRequests(_ context.Context, _, _ string, opts do
 	return s.listResult, 7, s.listErr
 }
 
-func (s *stubMRClient) MergeMergeRequest(_ context.Context, _, _ string, number int64) (*domain.MergeRequest, *domain.Mergeability, error) {
+func (s *stubMRClient) MergeMergeRequest(_ context.Context, _, _ string, number int64, strategy string, deleteSource bool) (*domain.MergeRequest, *domain.Mergeability, error) {
 	s.mergeNumber = number
+	s.mergeStrategy = strategy
+	s.mergeDeleteSource = deleteSource
 	return s.mergeResult, s.mergeability, s.mergeErr
 }
 
@@ -401,10 +405,10 @@ func TestMergeRequest_Merge(t *testing.T) {
 	}
 	mr := newTestMergeRequest(t, local, client)
 
-	_, _, err := mr.Merge(context.Background(), t.TempDir(), "nope!")
+	_, _, err := mr.Merge(context.Background(), t.TempDir(), "nope!", "", false)
 	require.Contains(t, err.Error(), "invalid merge request number")
 
-	merged, info, err := mr.Merge(context.Background(), t.TempDir(), "1")
+	merged, info, err := mr.Merge(context.Background(), t.TempDir(), "1", "", false)
 	require.NoError(t, err)
 	require.Equal(t, domain.MergeRequestMerged, merged.Status)
 	require.Equal(t, "mergeable", info.Status)
@@ -615,7 +619,7 @@ func TestMergeRequest_OperationsPropagateClientErrors(t *testing.T) {
 	err = mr.RemoveReviewRequest(ctx, t.TempDir(), "7", "user1")
 	require.ErrorIs(t, err, wantErr)
 
-	_, _, err = mr.Merge(ctx, t.TempDir(), "7")
+	_, _, err = mr.Merge(ctx, t.TempDir(), "7", "", false)
 	require.ErrorIs(t, err, wantErr)
 
 	_, err = mr.Close(ctx, t.TempDir(), "7")
@@ -690,7 +694,7 @@ func TestMergeRequest_ConnectErrorForEveryOperation(t *testing.T) {
 		"RequestReview":       func() error { _, err := mr.RequestReview(ctx, dir, "7", "user1"); return err },
 		"RemoveReviewRequest": func() error { return mr.RemoveReviewRequest(ctx, dir, "7", "user1") },
 		"Close":               func() error { _, err := mr.Close(ctx, dir, "7"); return err },
-		"Merge":               func() error { _, _, err := mr.Merge(ctx, dir, "7"); return err },
+		"Merge":               func() error { _, _, err := mr.Merge(ctx, dir, "7", "", false); return err },
 		"Update":              func() error { _, err := mr.Update(ctx, dir, "7", "New", "", nil); return err },
 		"Create": func() error {
 			_, err := mr.Create(ctx, dir, CreateMergeRequestOptions{Title: "T", Source: "feature", Target: "main"})

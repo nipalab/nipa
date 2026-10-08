@@ -131,7 +131,7 @@ func (n *nipaServer) MergeMergeRequest(ctx context.Context, req *pb.MergeMergeRe
 	if err != nil {
 		return nil, handleError(err)
 	}
-	request, info, err := n.uc.MergeRequest().Merge(ctx, project.ID, req.GetNumber())
+	request, info, err := n.uc.MergeRequest().Merge(ctx, project.ID, req.GetNumber(), req.GetStrategy(), req.GetDeleteSource())
 	if err != nil {
 		return nil, handleError(err)
 	}

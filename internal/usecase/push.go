@@ -412,14 +412,20 @@ func (p *Push) toApplyRequest(ctx context.Context, projectID snow.ID, branch *do
 			parentID2 = &id
 		}
 	}
+	return buildApplyRequest(p.snowNode, projectID, branch.ID, parentID, parentID2, parentHashes, message, root)
+}
 
+// buildApplyRequest turns a built tree into the row-level request the push
+// repository writes. Parent hashes feed the commit hash; parent IDs feed the
+// commit rows.
+func buildApplyRequest(snowNode snow.Node, projectID, branchID snow.ID, parentID, parent2ID *snow.ID, parentHashes []domain.Hash, message string, root *pushTreeNode) ApplyPushRequest {
 	req := ApplyPushRequest{
 		ProjectID:  projectID,
-		BranchID:   branch.ID,
-		CommitID:   p.snowNode.Generate(),
+		BranchID:   branchID,
+		CommitID:   snowNode.Generate(),
 		CommitHash: treehash.CommitHash(root.Hash, parentHashes, message),
 		ParentID:   parentID,
-		ParentID2:  parentID2,
+		ParentID2:  parent2ID,
 		Message:    message,
 	}
 

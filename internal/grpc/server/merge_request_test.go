@@ -79,10 +79,12 @@ func (s *stubMergeRequestRepository) Delete(_ context.Context, _ snow.ID, _ int6
 }
 
 type stubBranchMerger struct {
-	base     *usecase.MergeBaseInfo
-	baseErr  error
-	ffBranch *domain.Branch
-	ffErr    error
+	base          *usecase.MergeBaseInfo
+	baseErr       error
+	ffBranch      *domain.Branch
+	ffErr         error
+	mergeOpts     usecase.MergeCommitOptions
+	deletedBranch bool
 }
 
 func (s *stubBranchMerger) GetMergeBase(_ context.Context, _ snow.ID, _, _ usecase.MergeRef) (*usecase.MergeBaseInfo, error) {
@@ -100,6 +102,19 @@ func (s *stubBranchMerger) FastForwardForMergeRequest(_ context.Context, _ snow.
 		return nil, s.ffErr
 	}
 	return s.ffBranch, nil
+}
+
+func (s *stubBranchMerger) MergeForMergeRequest(_ context.Context, _ snow.ID, _, _ string, opts usecase.MergeCommitOptions) (*domain.Branch, error) {
+	s.mergeOpts = opts
+	if s.ffErr != nil {
+		return nil, s.ffErr
+	}
+	return s.ffBranch, nil
+}
+
+func (s *stubBranchMerger) Delete(_ context.Context, _ snow.ID, _ string) error {
+	s.deletedBranch = true
+	return nil
 }
 
 func (s *stubBranchMerger) TreeDiffBetween(_ context.Context, _ snow.ID, _ *snow.ID, _ snow.ID) ([]diff.FileDiff, error) {
@@ -392,7 +407,7 @@ func TestMergeRequestHandler_Merge(t *testing.T) {
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(42), "main").
 		Return(&domain.Branch{ID: 2, ProjectID: 42, CommitID: &targetHead}, nil)
 
-	resp, err := srv.MergeMergeRequest(context.Background(), &pb.MergeMergeRequestRequest{
+	resp, err := srv.MergeMergeRequest(domain.ContextWithClaim(context.Background(), domain.Claims{UserID: snow.ID(7)}), &pb.MergeMergeRequestRequest{
 		Context: &pb.ProjectContext{Org: "org", Project: "proj"},
 		Number:  5,
 	})
@@ -419,7 +434,7 @@ func TestMergeRequestHandler_MergeBehind(t *testing.T) {
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(42), "main").
 		Return(&domain.Branch{ID: 2, ProjectID: 42, CommitID: &targetHead}, nil)
 
-	_, err := srv.MergeMergeRequest(context.Background(), &pb.MergeMergeRequestRequest{
+	_, err := srv.MergeMergeRequest(domain.ContextWithClaim(context.Background(), domain.Claims{UserID: snow.ID(7)}), &pb.MergeMergeRequestRequest{
 		Context: &pb.ProjectContext{Org: "org", Project: "proj"},
 		Number:  5,
 	})

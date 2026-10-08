@@ -211,7 +211,7 @@ func TestEndToEnd_FileLockMergeRequest(t *testing.T) {
 		require.Equal(t, mr.Number, *lock.MergeRequestNumber)
 	}
 
-	merged, info, err := requests.Merge(ctx, mainDir, strconv.FormatInt(mr.Number, 10))
+	merged, info, err := requests.Merge(ctx, mainDir, strconv.FormatInt(mr.Number, 10), "", false)
 	require.NoError(t, err)
 	require.Equal(t, domain.MergeRequestMerged, merged.Status)
 	require.Equal(t, "mergeable", info.Status)
@@ -287,7 +287,7 @@ func TestEndToEnd_FileLockAdminMergesAuthorRequest(t *testing.T) {
 	require.Equal(t, snow.ID(9100).Base36(), list[0].HeldBy)
 
 	adminRequests := clientusecase.NewMergeRequest(adminAuth, adminClient, localrepo.NewLocalRepo())
-	merged, info, err := adminRequests.Merge(ctx, mainDir, strconv.FormatInt(mr.Number, 10))
+	merged, info, err := adminRequests.Merge(ctx, mainDir, strconv.FormatInt(mr.Number, 10), "", false)
 	require.NoError(t, err, "an admin must be able to merge an author's request while the author holds its locks")
 	require.Equal(t, domain.MergeRequestMerged, merged.Status)
 	require.Equal(t, "mergeable", info.Status)

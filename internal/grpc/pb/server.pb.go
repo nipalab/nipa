@@ -5733,7 +5733,9 @@ func (x *GetMergeRequestResponse) GetMergeability() *MergeabilityDetail {
 type MergeMergeRequestRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Context       *ProjectContext        `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
-	Number        int64                  `protobuf:"varint,2,opt,name=number,proto3" json:"number,omitempty"` // sequential per-project number
+	Number        int64                  `protobuf:"varint,2,opt,name=number,proto3" json:"number,omitempty"`                                 // sequential per-project number
+	Strategy      string                 `protobuf:"bytes,3,opt,name=strategy,proto3" json:"strategy,omitempty"`                              // ff (default), merge, squash or rebase
+	DeleteSource  bool                   `protobuf:"varint,4,opt,name=delete_source,json=deleteSource,proto3" json:"delete_source,omitempty"` // delete the source branch after a successful merge
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -5780,6 +5782,20 @@ func (x *MergeMergeRequestRequest) GetNumber() int64 {
 		return x.Number
 	}
 	return 0
+}
+
+func (x *MergeMergeRequestRequest) GetStrategy() string {
+	if x != nil {
+		return x.Strategy
+	}
+	return ""
+}
+
+func (x *MergeMergeRequestRequest) GetDeleteSource() bool {
+	if x != nil {
+		return x.DeleteSource
+	}
+	return false
 }
 
 type MergeMergeRequestResponse struct {
@@ -9862,10 +9878,12 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"\x06number\x18\x02 \x01(\x03R\x06number\"\x98\x01\n" +
 	"\x17GetMergeRequestResponse\x12>\n" +
 	"\rmerge_request\x18\x01 \x01(\v2\x19.greet.MergeRequestDetailR\fmergeRequest\x12=\n" +
-	"\fmergeability\x18\x02 \x01(\v2\x19.greet.MergeabilityDetailR\fmergeability\"c\n" +
+	"\fmergeability\x18\x02 \x01(\v2\x19.greet.MergeabilityDetailR\fmergeability\"\xa4\x01\n" +
 	"\x18MergeMergeRequestRequest\x12/\n" +
 	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12\x16\n" +
-	"\x06number\x18\x02 \x01(\x03R\x06number\"\x9a\x01\n" +
+	"\x06number\x18\x02 \x01(\x03R\x06number\x12\x1a\n" +
+	"\bstrategy\x18\x03 \x01(\tR\bstrategy\x12#\n" +
+	"\rdelete_source\x18\x04 \x01(\bR\fdeleteSource\"\x9a\x01\n" +
 	"\x19MergeMergeRequestResponse\x12>\n" +
 	"\rmerge_request\x18\x01 \x01(\v2\x19.greet.MergeRequestDetailR\fmergeRequest\x12=\n" +
 	"\fmergeability\x18\x02 \x01(\v2\x19.greet.MergeabilityDetailR\fmergeability\"c\n" +

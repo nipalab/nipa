@@ -16,7 +16,7 @@ type mrClient interface {
 	UpdateMergeRequest(ctx context.Context, org, project string, number int64, title, description string, draft *bool) (*domain.MergeRequest, error)
 	ListMergeRequests(ctx context.Context, org, project string, opts domain.ListMergeRequestOptions) ([]*domain.MergeRequest, int64, error)
 	GetMergeRequest(ctx context.Context, org, project string, number int64) (*domain.MergeRequest, *domain.Mergeability, error)
-	MergeMergeRequest(ctx context.Context, org, project string, number int64) (*domain.MergeRequest, *domain.Mergeability, error)
+	MergeMergeRequest(ctx context.Context, org, project string, number int64, strategy string, deleteSource bool) (*domain.MergeRequest, *domain.Mergeability, error)
 	CloseMergeRequest(ctx context.Context, org, project string, number int64) (*domain.MergeRequest, error)
 	ReopenMergeRequest(ctx context.Context, org, project string, number int64) (*domain.MergeRequest, error)
 	CheckMergeRequest(ctx context.Context, org, project string, number int64) (*domain.Mergeability, error)
@@ -148,16 +148,22 @@ func (m *MergeRequest) Close(ctx context.Context, root, id string) (*domain.Merg
 	return m.client.CloseMergeRequest(ctx, url.Org, url.Project, number)
 }
 
-func (m *MergeRequest) Merge(ctx context.Context, root, id string) (*domain.MergeRequest, *domain.Mergeability, error) {
+// Merge lands a merge request with the given strategy (empty = ff) and can
+// delete the source branch after a successful merge.
+func (m *MergeRequest) Merge(ctx context.Context, root, id, strategy string, deleteSource bool) (*domain.MergeRequest, *domain.Mergeability, error) {
 	number, err := mergeRequestNumber(id)
 	if err != nil {
 		return nil, nil, err
+	}
+	strategy = strings.TrimSpace(strategy)
+	if strategy != "" && !serverDomain.IsValidMergeStrategy(strategy) {
+		return nil, nil, domain.NewUserError("strategy must be one of ff, merge, squash, rebase")
 	}
 	url, _, err := m.connect(ctx, root)
 	if err != nil {
 		return nil, nil, err
 	}
-	return m.client.MergeMergeRequest(ctx, url.Org, url.Project, number)
+	return m.client.MergeMergeRequest(ctx, url.Org, url.Project, number, strategy, deleteSource)
 }
 
 // View returns one merge request with its live mergeability and review summary.

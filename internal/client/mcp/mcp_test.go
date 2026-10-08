@@ -169,7 +169,7 @@ func (f fakeMRClient) ListMergeRequests(context.Context, string, string, domain.
 	return f.requests, 0, f.err
 }
 
-func (fakeMRClient) MergeMergeRequest(context.Context, string, string, int64) (*domain.MergeRequest, *domain.Mergeability, error) {
+func (fakeMRClient) MergeMergeRequest(context.Context, string, string, int64, string, bool) (*domain.MergeRequest, *domain.Mergeability, error) {
 	return nil, nil, errors.New("not implemented")
 }
 

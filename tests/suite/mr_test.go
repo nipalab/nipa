@@ -220,6 +220,136 @@ var _ = Describe("nipa mr", func() {
 		Expect(readText(fresh, "main.txt")).To(Equal("main\n"))
 	})
 
+	It("merges a diverged source with a merge commit and combines text changes", func() {
+		project := newProject("mr-strategy-merge")
+		seedRepo(orgSlug, project, map[string][]byte{"base.txt": []byte("one\ntwo\nthree\n")}, "seed")
+		url := repoURLFor(orgSlug, project)
+		parent := workspace()
+		dir := cloneRepo(parent, url, "work")
+		Expect(runNipa(dir, "branch", "-c", "feature").ExitCode).To(Equal(0))
+		writeText(dir, "base.txt", "one\ntwo\nthree-feature\n")
+		Expect(runNipa(dir, "add", "base.txt").ExitCode).To(Equal(0))
+		Expect(pushRepo(dir, "feature work").ExitCode).To(Equal(0))
+		Expect(runNipa(dir, "mr", "create", "--title", uniqueMessage("Strategy merge")).ExitCode).To(Equal(0))
+
+		seedRepo(orgSlug, project, map[string][]byte{"base.txt": []byte("one-main\ntwo\nthree\n")}, "move main")
+
+		behind := runNipa(dir, "mr", "merge", "1")
+		Expect(behind.ExitCode).To(Equal(2))
+
+		merge := runNipa(dir, "mr", "merge", "1", "--strategy", "merge")
+		Expect(merge.ExitCode).To(Equal(0), merge.Output())
+
+		fresh := cloneRepo(parent, url, "fresh")
+		Expect(readText(fresh, "base.txt")).To(Equal("one-main\ntwo\nthree-feature\n"))
+		log := runNipa(fresh, "log")
+		Expect(log.Output()).To(ContainSubstring("Merge branch 'feature' into main"))
+	})
+
+	It("squashes a diverged source into one commit", func() {
+		project := newProject("mr-strategy-squash")
+		seedRepo(orgSlug, project, map[string][]byte{"base.txt": []byte("base\n")}, "seed")
+		url := repoURLFor(orgSlug, project)
+		parent := workspace()
+		dir := cloneRepo(parent, url, "work")
+		Expect(runNipa(dir, "branch", "-c", "feature").ExitCode).To(Equal(0))
+		writeText(dir, "feature.txt", "feature\n")
+		Expect(runNipa(dir, "add", "feature.txt").ExitCode).To(Equal(0))
+		Expect(pushRepo(dir, "feature work").ExitCode).To(Equal(0))
+		title := uniqueMessage("Squashed work")
+		Expect(runNipa(dir, "mr", "create", "--title", title).ExitCode).To(Equal(0))
+
+		seedRepo(orgSlug, project, map[string][]byte{"main.txt": []byte("main\n")}, "move main")
+
+		merge := runNipa(dir, "mr", "merge", "1", "--strategy", "squash")
+		Expect(merge.ExitCode).To(Equal(0), merge.Output())
+
+		fresh := cloneRepo(parent, url, "fresh")
+		Expect(readText(fresh, "feature.txt")).To(Equal("feature\n"))
+		Expect(readText(fresh, "main.txt")).To(Equal("main\n"))
+		log := runNipa(fresh, "log")
+		Expect(log.Output()).To(ContainSubstring(title))
+		Expect(log.Output()).NotTo(ContainSubstring("Merge branch"))
+	})
+
+	It("rebases a diverged source onto the target", func() {
+		project := newProject("mr-strategy-rebase")
+		seedRepo(orgSlug, project, map[string][]byte{"base.txt": []byte("base\n")}, "seed")
+		url := repoURLFor(orgSlug, project)
+		parent := workspace()
+		dir := cloneRepo(parent, url, "work")
+		Expect(runNipa(dir, "branch", "-c", "feature").ExitCode).To(Equal(0))
+		writeText(dir, "one.txt", "one\n")
+		Expect(runNipa(dir, "add", "one.txt").ExitCode).To(Equal(0))
+		first := uniqueMessage("rebase first")
+		Expect(pushRepo(dir, first).ExitCode).To(Equal(0))
+		writeText(dir, "two.txt", "two\n")
+		Expect(runNipa(dir, "add", "two.txt").ExitCode).To(Equal(0))
+		second := uniqueMessage("rebase second")
+		Expect(pushRepo(dir, second).ExitCode).To(Equal(0))
+		Expect(runNipa(dir, "mr", "create", "--title", uniqueMessage("Rebase work")).ExitCode).To(Equal(0))
+
+		seedRepo(orgSlug, project, map[string][]byte{"main.txt": []byte("main\n")}, "move main")
+
+		merge := runNipa(dir, "mr", "merge", "1", "--strategy", "rebase")
+		Expect(merge.ExitCode).To(Equal(0), merge.Output())
+
+		fresh := cloneRepo(parent, url, "fresh")
+		Expect(readText(fresh, "one.txt")).To(Equal("one\n"))
+		Expect(readText(fresh, "two.txt")).To(Equal("two\n"))
+		Expect(readText(fresh, "main.txt")).To(Equal("main\n"))
+		log := runNipa(fresh, "log")
+		Expect(log.Output()).To(ContainSubstring(first))
+		Expect(log.Output()).To(ContainSubstring(second))
+		Expect(log.Output()).NotTo(ContainSubstring("Merge branch"))
+	})
+
+	It("refuses a conflicting non-fast-forward merge", func() {
+		project := newProject("mr-strategy-conflict")
+		seedRepo(orgSlug, project, map[string][]byte{"base.txt": []byte("base\n")}, "seed")
+		url := repoURLFor(orgSlug, project)
+		parent := workspace()
+		dir := cloneRepo(parent, url, "work")
+		Expect(runNipa(dir, "branch", "-c", "feature").ExitCode).To(Equal(0))
+		writeText(dir, "base.txt", "feature side\n")
+		Expect(runNipa(dir, "add", "base.txt").ExitCode).To(Equal(0))
+		Expect(pushRepo(dir, "feature work").ExitCode).To(Equal(0))
+		Expect(runNipa(dir, "mr", "create", "--title", uniqueMessage("Conflict work")).ExitCode).To(Equal(0))
+
+		seedRepo(orgSlug, project, map[string][]byte{"base.txt": []byte("main side\n")}, "move main")
+
+		conflict := runNipa(dir, "mr", "merge", "1", "--strategy", "merge")
+		Expect(conflict.ExitCode).To(Equal(2))
+		Expect(conflict.Output()).To(ContainSubstring("merge conflicts in base.txt"))
+
+		var out mergeRequestsJSON
+		runJSONInto(dir, &out, "mr", "list", "--status", "open", "--json")
+		Expect(out.MergeRequests).To(HaveLen(1))
+	})
+
+	It("deletes the source branch after merging", func() {
+		project := newProject("mr-delete-source")
+		seedRepo(orgSlug, project, map[string][]byte{"base.txt": []byte("base\n")}, "seed")
+		url := repoURLFor(orgSlug, project)
+		parent := workspace()
+		dir := cloneRepo(parent, url, "work")
+		Expect(runNipa(dir, "branch", "-c", "feature").ExitCode).To(Equal(0))
+		writeText(dir, "feature.txt", "feature\n")
+		Expect(runNipa(dir, "add", "feature.txt").ExitCode).To(Equal(0))
+		Expect(pushRepo(dir, "feature work").ExitCode).To(Equal(0))
+		Expect(runNipa(dir, "mr", "create", "--title", uniqueMessage("Delete source")).ExitCode).To(Equal(0))
+
+		merge := runNipa(dir, "mr", "merge", "1", "--delete-source")
+		Expect(merge.ExitCode).To(Equal(0), merge.Output())
+
+		branches := runNipa(dir, "branch", "-a")
+		Expect(branches.ExitCode).To(Equal(0), branches.Output())
+		Expect(branches.Output()).NotTo(ContainSubstring("feature"))
+
+		fresh := cloneRepo(parent, url, "fresh")
+		Expect(readText(fresh, "feature.txt")).To(Equal("feature\n"))
+	})
+
 	It("keeps the request open when the source branch is pushed again", func() {
 		project := newProject("mr-source-push")
 		seedRepo(orgSlug, project, map[string][]byte{"base.txt": []byte("base\n")}, "seed")

@@ -199,13 +199,13 @@ func TestMergeRequest_MergeEmitsWebhookEvent(t *testing.T) {
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(branchWithHead(2, targetHead), nil)
 	merger.EXPECT().GetMergeBase(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
 		Return(&MergeBaseInfo{MergeBaseCommitID: &targetHead}, nil)
-	merger.EXPECT().FastForwardForMergeRequest(gomock.Any(), snow.ID(1), "main", "feature").
+	merger.EXPECT().MergeForMergeRequest(gomock.Any(), snow.ID(1), "main", "feature", gomock.Any()).
 		Return(&domain.Branch{ID: 2, ProjectID: 1, Name: "main", CommitID: &sourceHead}, nil)
 	repo.EXPECT().UpdateStatus(gomock.Any(), snow.ID(1), int64(5), domain.MergeRequestMerged, &sourceHead).Return(nil)
 	hooks := NewMockhookMergeRequestGate(gomock.NewController(t))
 	hooks.EXPECT().EmitMergeRequest(gomock.Any(), domain.WebhookEventMRMerged, snow.ID(1), gomock.Any(), snow.ID(7)).Return(nil)
 
-	merged, _, err := mr.WithHooks(hooks).Merge(permissionCtx(7), snow.ID(1), 5)
+	merged, _, err := mr.WithHooks(hooks).Merge(permissionCtx(7), snow.ID(1), 5, "", false)
 	require.NoError(t, err)
 	require.Equal(t, openMergeRequest().ID, merged.ID)
 }

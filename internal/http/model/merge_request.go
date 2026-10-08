@@ -51,6 +51,12 @@ type UpdateMergeRequestRequest struct {
 	Draft *bool `json:"draft,omitempty"`
 }
 
+type MergeMergeRequestRequest struct {
+	// Strategy is ff (default), merge, squash or rebase.
+	Strategy     string `json:"strategy"`
+	DeleteSource bool   `json:"delete_source"`
+}
+
 type MergeRequestDiffResponse struct {
 	BaseID string             `json:"base_id,omitempty"`
 	Files  []DiffFileResponse `json:"files"`

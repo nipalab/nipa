@@ -1,11 +1,11 @@
 # Merge request feature gaps
 
-Status: **audit (2026-10-05); Batches A, B and C1 implemented (2026-10-07)**. This
-is a revisit list, not a plan of record. The MR feature is functional end to
-end (lifecycle, reviews, threads, locks, diff, commits, webhooks, SPA, daemon
-proxy); the items below are things that are absent or half-built, ordered
-roughly by impact. Every item cites the code that proves the gap so it can be
-re-verified after any of them lands.
+Status: **audit (2026-10-05); Batches A, B, C1 and C2 implemented
+(2026-10-08)**. This is a revisit list, not a plan of record. The MR feature is
+functional end to end (lifecycle, reviews, threads, locks, diff, commits,
+webhooks, SPA, daemon proxy); the items below are things that are absent or
+half-built, ordered roughly by impact. Every item cites the code that proves
+the gap so it can be re-verified after any of them lands.
 
 Batch A landed the approval gate (item 1, configurable
 `branches.required_approvals` plus the always-on objection block), the
@@ -64,14 +64,14 @@ still open.
    `required_approvals` kept when absent) and surfaced in the SPA merge box.
    Remaining follow-up: none known.
 
-2. **Fast-forward-only merging.** The MR path is strictly
-   `FastForwardForMergeRequest` (`internal/usecase/merge.go:117`): no merge
-   commit, no squash, no rebase, no "delete source branch after merge"
-   option. A diverged source yields `behind_target` (409) and catch-up has to
-   happen client-side via `nipa merge`
-   (`tests/suite/mr_test.go:173`). Needs non-FF strategies (three-way/squash)
-   or an explicit "merge commit" generation step, plus the delete-source
-   checkbox.
+2. **[done] Fast-forward-only merging.** The server authors commits for the
+   `merge` (two-parent merge commit), `squash` (single commit with the request
+   title) and `rebase` (per-commit replay) strategies, reusing the hoisted
+   `internal/merge` three-way engine; conflicts are refused with the conflicted
+   paths and nothing lands. `delete_source` removes the source branch after a
+   successful merge. Surfaced through REST `POST .../merge {strategy,
+   delete_source}`, gRPC `MergeMergeRequestRequest.strategy/delete_source`,
+   `nipa mr merge --strategy/--delete-source` and the SPA merge box.
 
 3. **[done] No draft / WIP state.** `merge_requests.is_draft` (base migration
    `000006`) carries the state; `Create` takes a draft flag and `Update` PATCH
@@ -156,7 +156,7 @@ still open.
   review composer (8), review/comment webhooks (11), list filters + number
   keyset pagination (13), CLI review surface + `GetMergeRequest` (9).
 - **Batch C — in progress:** C1 done — draft state (3), dismiss-stale setting
-  + protected-delete refusal (4), `system` column dropped (10). Next: non-FF
-  merge strategies + delete source branch (2), labels/milestones/assignees
+  + protected-delete refusal (4), `system` column dropped (10). C2 done —
+  non-FF merge strategies + delete source branch (2). Next: labels/assignees
   (12, milestones skipped until an issue tracker exists), CI status checks
   (14).

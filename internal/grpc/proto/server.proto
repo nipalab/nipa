@@ -575,6 +575,8 @@ message GetMergeRequestResponse {
 message MergeMergeRequestRequest {
     ProjectContext context = 1;
     int64 number = 2; // sequential per-project number
+    string strategy = 3; // ff (default), merge, squash or rebase
+    bool delete_source = 4; // delete the source branch after a successful merge
 }
 
 message MergeMergeRequestResponse {

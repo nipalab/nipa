@@ -179,14 +179,14 @@ func TestMergeRequest_Merge_FileLocks(t *testing.T) {
 		Return([]string{"tex.png"}, nil)
 	gate.EXPECT().EnsureMergeRequestLocks(gomock.Any(), snow.ID(1), snow.ID(5), gomock.Any(), []string{"tex.png"}, snow.ID(7), snow.ID(7)).
 		Return(nil)
-	merger.EXPECT().FastForwardForMergeRequest(gomock.Any(), snow.ID(1), "main", "feature").
+	merger.EXPECT().MergeForMergeRequest(gomock.Any(), snow.ID(1), "main", "feature", gomock.Any()).
 		Return(&domain.Branch{ID: 2, ProjectID: 1, Name: "main", CommitID: &sourceHead}, nil)
 	gomock.InOrder(
 		repo.EXPECT().UpdateStatus(gomock.Any(), snow.ID(1), int64(5), domain.MergeRequestMerged, &sourceHead).Return(nil),
 		gate.EXPECT().ReleaseForMergeRequest(gomock.Any(), snow.ID(1), snow.ID(5)).Return(nil),
 	)
 
-	merged, _, err := mr.WithFileLocks(gate).Merge(permissionCtx(7), snow.ID(1), 5)
+	merged, _, err := mr.WithFileLocks(gate).Merge(permissionCtx(7), snow.ID(1), 5, "", false)
 	require.NoError(t, err)
 	require.Equal(t, openMergeRequest().ID, merged.ID)
 }
@@ -263,7 +263,7 @@ func TestMergeRequest_Merge_FileLocksBranchError(t *testing.T) {
 	merger.EXPECT().GetMergeBase(gomock.Any(), snow.ID(1), MergeRef{CommitID: &targetHead}, MergeRef{CommitID: &sourceHead}).
 		Return(&MergeBaseInfo{MergeBaseCommitID: &targetHead}, nil)
 
-	_, _, err := mr.WithFileLocks(gate).Merge(permissionCtx(7), snow.ID(1), 5)
+	_, _, err := mr.WithFileLocks(gate).Merge(permissionCtx(7), snow.ID(1), 5, "", false)
 	require.Error(t, err)
 }
 
@@ -284,7 +284,7 @@ func TestMergeRequest_Merge_FileLocksReject(t *testing.T) {
 	gate.EXPECT().EnsureMergeRequestLocks(gomock.Any(), snow.ID(1), snow.ID(5), gomock.Any(), []string{"tex.png"}, snow.ID(7), snow.ID(7)).
 		Return(wantErr)
 
-	_, _, err := mr.WithFileLocks(gate).Merge(permissionCtx(7), snow.ID(1), 5)
+	_, _, err := mr.WithFileLocks(gate).Merge(permissionCtx(7), snow.ID(1), 5, "", false)
 	require.ErrorIs(t, err, wantErr)
 }
 
@@ -303,13 +303,13 @@ func TestMergeRequest_Merge_FileLocksReleaseError(t *testing.T) {
 		Return([]string{"tex.png"}, nil)
 	gate.EXPECT().EnsureMergeRequestLocks(gomock.Any(), snow.ID(1), snow.ID(5), gomock.Any(), []string{"tex.png"}, snow.ID(7), snow.ID(7)).
 		Return(nil)
-	merger.EXPECT().FastForwardForMergeRequest(gomock.Any(), snow.ID(1), "main", "feature").
+	merger.EXPECT().MergeForMergeRequest(gomock.Any(), snow.ID(1), "main", "feature", gomock.Any()).
 		Return(&domain.Branch{ID: 2, ProjectID: 1, Name: "main", CommitID: &sourceHead}, nil)
 	repo.EXPECT().UpdateStatus(gomock.Any(), snow.ID(1), int64(5), domain.MergeRequestMerged, &sourceHead).Return(nil)
 	wantErr := errors.New("db down")
 	gate.EXPECT().ReleaseForMergeRequest(gomock.Any(), snow.ID(1), snow.ID(5)).Return(wantErr)
 
-	_, _, err := mr.WithFileLocks(gate).Merge(permissionCtx(7), snow.ID(1), 5)
+	_, _, err := mr.WithFileLocks(gate).Merge(permissionCtx(7), snow.ID(1), 5, "", false)
 	require.ErrorIs(t, err, wantErr)
 }
 
@@ -518,7 +518,7 @@ func TestMergeRequest_Merge_AdminMergesAuthorRequest(t *testing.T) {
 		Return(&MergeBaseInfo{MergeBaseCommitID: &targetHead}, nil)
 	merger.EXPECT().BinaryChangesBetween(gomock.Any(), snow.ID(1), &targetHead, &sourceHead).
 		Return([]string{"tex.png"}, nil)
-	merger.EXPECT().FastForwardForMergeRequest(gomock.Any(), snow.ID(1), "main", "feature").
+	merger.EXPECT().MergeForMergeRequest(gomock.Any(), snow.ID(1), "main", "feature", gomock.Any()).
 		Return(&domain.Branch{ID: 2, ProjectID: 1, Name: "main", CommitID: &sourceHead}, nil)
 	gomock.InOrder(
 		gate.EXPECT().EnsureMergeRequestLocks(gomock.Any(), snow.ID(1), snow.ID(5), gomock.Any(), []string{"tex.png"}, snow.ID(99), snow.ID(7)).Return(nil),
@@ -526,7 +526,7 @@ func TestMergeRequest_Merge_AdminMergesAuthorRequest(t *testing.T) {
 		gate.EXPECT().ReleaseForMergeRequest(gomock.Any(), snow.ID(1), snow.ID(5)).Return(nil),
 	)
 
-	merged, _, err := mr.WithFileLocks(gate).Merge(permissionCtx(99), snow.ID(1), 5)
+	merged, _, err := mr.WithFileLocks(gate).Merge(permissionCtx(99), snow.ID(1), 5, "", false)
 	require.NoError(t, err)
 	require.Equal(t, openMergeRequest().ID, merged.ID)
 }

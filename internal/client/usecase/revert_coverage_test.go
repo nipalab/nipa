@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/nipalab/nipa/internal/client/domain"
-	"github.com/nipalab/nipa/internal/client/merge"
 	serverDomain "github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/merge"
 )
 
 func newTestRevertWithAuth(t *testing.T, client *stubRevertClient, local *stubLocalRepo, auth *Auth) (*Revert, *stubPushClient) {
