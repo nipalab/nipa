@@ -248,8 +248,12 @@ unfiltered trees (`mergeTree`), materializes taken files and diff3 text merges
 writes the resulting tree and commit through `PushRepository.ApplyPushAll` —
 one transaction for the whole rebase chain (`WithMergeCommitter`). Conflicts
 return a 409 naming the paths and nothing lands; `behind_target` only blocks
-`ff`; rebase walks the source first-parent history oldest-first
-(`rebaseCommitLimit`). Squash uses the request title and creator as author;
+`ff` and the review gate still applies to it (an objection or missing approval
+blocks a diverged source too), while an ancestor source is `up_to_date`; rebase
+walks the source first-parent history oldest-first, stopping at any commit the
+base already contains, so a source that merged the target does not replay the
+shared history (`rebaseCommitLimit`). Squash uses the request title and creator
+as author;
 rebase keeps each original commit's author and message. The target branch stays
 protection-aware (admin required) and merged-source deletion is best-effort
 (warn on failure). The SPA merge box picks the strategy plus a delete-source

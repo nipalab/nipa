@@ -552,17 +552,28 @@ func (m *MergeRequest) check(ctx context.Context, projectID snow.ID, mr *domain.
 		return nil, err
 	}
 	info.MergeBaseCommitID = base.MergeBaseCommitID
-	if base.MergeBaseCommitID == nil || *base.MergeBaseCommitID != *target.CommitID {
+	switch {
+	case base.MergeBaseCommitID == nil:
 		info.Status = domain.MergeabilityBehind
-		return info, nil
+	case *base.MergeBaseCommitID == *source.CommitID:
+		// The source is contained in the target: every strategy has nothing to
+		// land.
+		info.Status = domain.MergeabilityUpToDate
+	case *base.MergeBaseCommitID != *target.CommitID:
+		info.Status = domain.MergeabilityBehind
+	default:
+		info.Status = domain.MergeabilityMergeable
 	}
-	info.Status = domain.MergeabilityMergeable
-	if info.BlockedBy == "" {
-		blocked, err := m.reviewBlockedBy(ctx, projectID, mr, target)
-		if err != nil {
-			return nil, err
+	// The review policy applies to every shape the merge could land, including
+	// a diverged source that a non-fast-forward strategy would merge.
+	if info.Status == domain.MergeabilityMergeable || info.Status == domain.MergeabilityBehind {
+		if info.BlockedBy == "" {
+			blocked, err := m.reviewBlockedBy(ctx, projectID, mr, target)
+			if err != nil {
+				return nil, err
+			}
+			info.BlockedBy = blocked
 		}
-		info.BlockedBy = blocked
 	}
 	return info, nil
 }

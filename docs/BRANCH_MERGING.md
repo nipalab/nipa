@@ -216,13 +216,17 @@ When the author requests a merge (`nipa mr merge <id> [--strategy <s>]`), the
 server:
 
 1. Re-checks status in one transaction — MR is `open`, source and target exist,
-   policy satisfied (`behind_target` only blocks `ff`), 3-way is conflict-free.
+   policy satisfied (`up_to_date` always refused; `behind_target` only blocks
+   `ff`, and the review gate is evaluated for a diverged source too), 3-way is
+   conflict-free.
 2. **Fast-forward** (`ff`, default): if merge base == target head, move target's
    `commit_id` to source head (no commit).
 3. Otherwise author commits per the strategy: `merge` creates a merge commit
    (tree = clean 3-way (base, target, source), parents
    `(target_head, source_head)`), `squash` one commit with the request title,
-   `rebase` one commit per source commit. Because it is server-side and
+   `rebase` one commit per source first-parent commit not already contained in
+   the merge base (a source that already merged the target does not replay the
+   shared history). Because it is server-side and
    content-addressed, the merged tree reuses untouched subtrees by hash; only
    truly-merged paths are new rows. The target head and `merge_commit_id` are
    set to the last landed commit.

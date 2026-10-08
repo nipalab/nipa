@@ -144,6 +144,10 @@ func (b *Branch) MergeForMergeRequest(ctx context.Context, projectID snow.ID, ta
 		if err != nil {
 			return nil, err
 		}
+		if len(commits) == 0 {
+			// The source is already contained in the target: nothing to replay.
+			return b.branchRepo.GetByProjectIDAndID(ctx, projectID, target.ID)
+		}
 		parentID := target.CommitID
 		parentHashes := []domain.Hash{targetHead.Hash}
 		current := targetTree
@@ -317,16 +321,19 @@ func (b *Branch) mergeTree(ctx context.Context, projectID snow.ID, commitID snow
 	return merge.Flatten(root), nil
 }
 
-// rebaseCommits walks the first-parent history from head to stop (exclusive),
-// oldest first.
-func (b *Branch) rebaseCommits(ctx context.Context, projectID snow.ID, head snow.ID, stop *snow.ID) ([]*domain.Commit, error) {
+// rebaseCommits returns the source's first-parent commits that the base does
+// not already contain, oldest first. Stopping on containment (rather than
+// equality) keeps the walk correct when the merge base lives on a second-parent
+// chain, e.g. after the source merged the target.
+func (b *Branch) rebaseCommits(ctx context.Context, projectID snow.ID, head snow.ID, base *snow.ID) ([]*domain.Commit, error) {
+	contained, err := b.reachableFrom(ctx, projectID, base)
+	if err != nil {
+		return nil, err
+	}
 	var out []*domain.Commit
 	seen := map[snow.ID]bool{}
 	current := head
-	for {
-		if stop != nil && current == *stop {
-			break
-		}
+	for !contained[current] {
 		if seen[current] {
 			return nil, domain.NewErrorInternalServer("commit graph cycle")
 		}
@@ -348,6 +355,35 @@ func (b *Branch) rebaseCommits(ctx context.Context, projectID snow.ID, head snow
 		out[i], out[j] = out[j], out[i]
 	}
 	return out, nil
+}
+
+// reachableFrom collects every commit reachable from start over both parents,
+// start included.
+func (b *Branch) reachableFrom(ctx context.Context, projectID snow.ID, start *snow.ID) (map[snow.ID]bool, error) {
+	reached := map[snow.ID]bool{}
+	if start == nil {
+		return reached, nil
+	}
+	stack := []snow.ID{*start}
+	for len(stack) > 0 {
+		id := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		if reached[id] {
+			continue
+		}
+		reached[id] = true
+		commit, err := b.commitByIDInProject(ctx, projectID, id)
+		if err != nil {
+			return nil, err
+		}
+		if commit.Parent1ID != nil {
+			stack = append(stack, *commit.Parent1ID)
+		}
+		if commit.Parent2ID != nil {
+			stack = append(stack, *commit.Parent2ID)
+		}
+	}
+	return reached, nil
 }
 
 // mergeDelta expresses a merged file set as a delta against the target head
