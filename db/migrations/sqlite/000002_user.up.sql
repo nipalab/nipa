@@ -78,7 +78,7 @@ CREATE TABLE org_members (
 
 CREATE INDEX idx_org_members_user ON org_members (user_id);
 
-INSERT INTO users (id, name, email, password, is_super_admin) VALUES (1, 'Super Admin', 'supernipa', '$2a$10$kBH8NXuoJIXiUuA7jPEXOe8cybytpUH6eR6M3EO71tZgSU2D9QncW', 1);
+INSERT INTO users (id, name, email, password, is_super_admin) VALUES (1, 'Super Admin', 'nipa', '$2a$10$ErgrBnd6ahfz6eZkVzfnlu6dcE4T0HUcxvAjwmI0ItFsMReHVCdYO', 1);
 INSERT INTO organizations (id, slug, name, created_by_user_id) VALUES (1, 'default', 'Default Organization', 1);
 INSERT INTO projects (id, org_id, slug, name) VALUES (1, 1, 'default', 'Default Project');
 INSERT INTO org_members (org_id, user_id, role) VALUES (1, 1, 'owner');

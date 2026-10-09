@@ -40,8 +40,8 @@ const (
 	e2eJWTSecret       = "test-secret"
 	e2eOrgSlug         = "default"
 	e2eProjectSlug     = "default"
-	e2eSuperAdminEmail = "supernipa"
-	e2eSuperAdminPass  = "supernipa"
+	e2eSuperAdminEmail = "nipa"
+	e2eSuperAdminPass  = "nipa"
 )
 
 type testRegistry struct {
