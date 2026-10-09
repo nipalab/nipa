@@ -17,6 +17,7 @@ type usecaseContainer interface {
 	Group() *usecase.Group
 	MergeRequest() *usecase.MergeRequest
 	MergeRequestReview() *usecase.MergeRequestReview
+	MergeRequestCheck() *usecase.MergeRequestCheck
 	FileLock() *usecase.FileLock
 }
 

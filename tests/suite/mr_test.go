@@ -410,6 +410,184 @@ var _ = Describe("nipa mr", func() {
 		Expect(readText(fresh, "feature.txt")).To(Equal("feature\n"))
 	})
 
+	It("assigns users and searches the list", func() {
+		project := newProject("mr-assign-search")
+		seedRepo(orgSlug, project, map[string][]byte{"base.txt": []byte("base\n")}, "seed")
+		dir := cloneRepo(workspace(), repoURLFor(orgSlug, project), "work")
+		Expect(runNipa(dir, "branch", "-c", "feature").ExitCode).To(Equal(0))
+		writeText(dir, "feature.txt", "feature\n")
+		Expect(runNipa(dir, "add", "feature.txt").ExitCode).To(Equal(0))
+		Expect(pushRepo(dir, "feature work").ExitCode).To(Equal(0))
+		Expect(runNipa(dir, "mr", "create", "--title", uniqueMessage("Findable feature")).ExitCode).To(Equal(0))
+
+		assignee := newIdentity("mr-assignee")
+		other := newIdentity("mr-other-user")
+		api.setMergeRequestAssignees(orgSlug, project, 1, []string{assignee.userID})
+
+		view := runNipa(dir, "mr", "view", "1")
+		Expect(view.ExitCode).To(Equal(0), view.Output())
+		Expect(view.Output()).To(ContainSubstring("assignees: mr-assignee"))
+
+		byAssignee := runNipa(dir, "mr", "list", "--assignee", assignee.userID)
+		Expect(byAssignee.ExitCode).To(Equal(0), byAssignee.Output())
+		Expect(byAssignee.Output()).To(ContainSubstring("Findable feature"))
+
+		byOther := runNipa(dir, "mr", "list", "--assignee", other.userID)
+		Expect(byOther.ExitCode).To(Equal(0), byOther.Output())
+		Expect(byOther.Output()).NotTo(ContainSubstring("Findable feature"))
+
+		search := runNipa(dir, "mr", "list", "--search", "findable")
+		Expect(search.ExitCode).To(Equal(0), search.Output())
+		Expect(search.Output()).To(ContainSubstring("Findable feature"))
+
+		noMatch := runNipa(dir, "mr", "list", "--search", "zzz-nothing")
+		Expect(noMatch.ExitCode).To(Equal(0), noMatch.Output())
+		Expect(noMatch.Output()).To(ContainSubstring("no merge requests"))
+	})
+
+	It("auto-drafts WIP titles and marks them ready when the prefix is removed", func() {
+		project := newProject("mr-wip")
+		seedRepo(orgSlug, project, map[string][]byte{"base.txt": []byte("base\n")}, "seed")
+		dir := cloneRepo(workspace(), repoURLFor(orgSlug, project), "work")
+		Expect(runNipa(dir, "branch", "-c", "feature").ExitCode).To(Equal(0))
+		writeText(dir, "feature.txt", "feature\n")
+		Expect(runNipa(dir, "add", "feature.txt").ExitCode).To(Equal(0))
+		Expect(pushRepo(dir, "feature work").ExitCode).To(Equal(0))
+		Expect(runNipa(dir, "mr", "create", "--title", "WIP: half done").ExitCode).To(Equal(0))
+
+		var view mergeRequestViewJSON
+		runJSONInto(dir, &view, "mr", "view", "1", "--json")
+		Expect(view.MergeRequest.Draft).To(BeTrue())
+
+		blocked := runNipa(dir, "mr", "merge", "1")
+		Expect(blocked.ExitCode).NotTo(Equal(0))
+
+		Expect(runNipa(dir, "mr", "update", "1", "--title", "All done").ExitCode).To(Equal(0))
+		view = mergeRequestViewJSON{}
+		runJSONInto(dir, &view, "mr", "view", "1", "--json")
+		Expect(view.MergeRequest.Draft).To(BeFalse())
+
+		merged := runNipa(dir, "mr", "merge", "1")
+		Expect(merged.ExitCode).To(Equal(0), merged.Output())
+	})
+
+	It("marks a diverged request as merged without moving the target", func() {
+		project := newProject("mr-mark-merged")
+		seedRepo(orgSlug, project, map[string][]byte{"base.txt": []byte("base\n")}, "seed")
+		url := repoURLFor(orgSlug, project)
+		dir := cloneRepo(workspace(), url, "work")
+		Expect(runNipa(dir, "branch", "-c", "feature").ExitCode).To(Equal(0))
+		writeText(dir, "feature.txt", "feature\n")
+		Expect(runNipa(dir, "add", "feature.txt").ExitCode).To(Equal(0))
+		Expect(pushRepo(dir, "feature work").ExitCode).To(Equal(0))
+		Expect(runNipa(dir, "mr", "create", "--title", uniqueMessage("Manual merge")).ExitCode).To(Equal(0))
+
+		seedRepo(orgSlug, project, map[string][]byte{"main.txt": []byte("main\n")}, "move main")
+
+		res := runNipa(dir, "mr", "mark-merged", "1")
+		Expect(res.ExitCode).To(Equal(0), res.Output())
+		Expect(res.Output()).To(ContainSubstring("marked as merged"))
+
+		var out mergeRequestsJSON
+		runJSONInto(dir, &out, "mr", "list", "--status", "merged", "--json")
+		Expect(out.MergeRequests).To(HaveLen(1))
+		Expect(out.MergeRequests[0].Status).To(Equal("merged"))
+
+		fresh := cloneRepo(workspace(), url, "fresh")
+		Expect(fileExists(fresh, "feature.txt")).To(BeFalse())
+		Expect(readText(fresh, "main.txt")).To(Equal("main\n"))
+	})
+
+	It("requires named reviewers to approve before merging", func() {
+		project := newProject("mr-required-reviewers")
+		seedRepo(orgSlug, project, map[string][]byte{"base.txt": []byte("base\n")}, "seed")
+		dir := cloneRepo(workspace(), repoURLFor(orgSlug, project), "work")
+		Expect(runNipa(dir, "branch", "-c", "feature").ExitCode).To(Equal(0))
+		writeText(dir, "feature.txt", "feature\n")
+		Expect(runNipa(dir, "add", "feature.txt").ExitCode).To(Equal(0))
+		Expect(pushRepo(dir, "feature work").ExitCode).To(Equal(0))
+		Expect(runNipa(dir, "mr", "create", "--title", uniqueMessage("Required reviewers")).ExitCode).To(Equal(0))
+
+		requiredReviewer := newIdentity("mr-required-reviewer").promote()
+		other := newIdentity("mr-other-reviewer").promote()
+		requiredAPI := newAPIClient(cli.apiURL, requiredReviewer.email, requiredReviewer.password)
+		otherAPI := newAPIClient(cli.apiURL, other.email, other.password)
+
+		protection := api.setBranchProtectionFull(orgSlug, project, "main", branchProtectionOptions{
+			Protected:         true,
+			RequiredReviewers: []string{requiredReviewer.userID},
+		})
+		Expect(protection.RequiredReviewers).To(HaveLen(1))
+		Expect(protection.RequiredReviewers[0].UserID).To(Equal(requiredReviewer.userID))
+
+		otherAPI.submitMergeRequestReview(orgSlug, project, 1, "approved", "looks fine")
+		check := api.checkMergeRequest(orgSlug, project, 1)
+		Expect(check.BlockedBy).To(Equal("required_reviewers"))
+		view := runNipa(dir, "mr", "view", "1")
+		Expect(view.Output()).To(ContainSubstring("blocked by required_reviewers"))
+		blocked := runNipa(dir, "mr", "merge", "1")
+		Expect(blocked.ExitCode).NotTo(Equal(0))
+		Expect(blocked.Output()).To(ContainSubstring("required reviewers"))
+
+		requiredAPI.submitMergeRequestReview(orgSlug, project, 1, "approved", "approved")
+		check = api.checkMergeRequest(orgSlug, project, 1)
+		Expect(check.BlockedBy).To(BeEmpty())
+
+		merged := runNipa(dir, "mr", "merge", "1")
+		Expect(merged.ExitCode).To(Equal(0), merged.Output())
+	})
+
+	It("gates merging on required status checks", func() {
+		project := newProject("mr-status-checks")
+		seedRepo(orgSlug, project, map[string][]byte{"base.txt": []byte("base\n")}, "seed")
+		dir := cloneRepo(workspace(), repoURLFor(orgSlug, project), "work")
+		Expect(runNipa(dir, "branch", "-c", "feature").ExitCode).To(Equal(0))
+		writeText(dir, "feature.txt", "feature\n")
+		Expect(runNipa(dir, "add", "feature.txt").ExitCode).To(Equal(0))
+		Expect(pushRepo(dir, "feature work").ExitCode).To(Equal(0))
+		Expect(runNipa(dir, "mr", "create", "--title", uniqueMessage("Checked work")).ExitCode).To(Equal(0))
+
+		required := true
+		protection := api.setBranchProtectionFull(orgSlug, project, "main", branchProtectionOptions{
+			Protected:           true,
+			RequireStatusChecks: &required,
+			RequiredChecks:      []string{"build"},
+		})
+		Expect(protection.RequireStatusChecks).To(BeTrue())
+		Expect(protection.RequiredChecks).To(Equal([]string{"build"}))
+
+		check := api.checkMergeRequest(orgSlug, project, 1)
+		Expect(check.BlockedBy).To(Equal("status_checks"))
+		view := runNipa(dir, "mr", "view", "1")
+		Expect(view.Output()).To(ContainSubstring("blocked by status_checks"))
+
+		api.reportMergeRequestCheck(orgSlug, project, 1, "build", "failed", "")
+		check = api.checkMergeRequest(orgSlug, project, 1)
+		Expect(check.BlockedBy).To(Equal("status_checks"))
+
+		api.reportMergeRequestCheck(orgSlug, project, 1, "build", "success", "https://ci.example/run/1")
+		check = api.checkMergeRequest(orgSlug, project, 1)
+		Expect(check.BlockedBy).To(BeEmpty())
+
+		checks := runNipa(dir, "mr", "checks", "1")
+		Expect(checks.ExitCode).To(Equal(0), checks.Output())
+		Expect(checks.Output()).To(ContainSubstring("build"))
+		Expect(checks.Output()).To(ContainSubstring("success"))
+
+		// a new push starts a clean slate for the new head
+		writeText(dir, "more.txt", "more\n")
+		Expect(runNipa(dir, "add", "more.txt").ExitCode).To(Equal(0))
+		Expect(pushRepo(dir, "more work").ExitCode).To(Equal(0))
+		check = api.checkMergeRequest(orgSlug, project, 1)
+		Expect(check.BlockedBy).To(Equal("status_checks"))
+
+		reported := runNipa(dir, "mr", "check", "1", "--name", "build", "--state", "success")
+		Expect(reported.ExitCode).To(Equal(0), reported.Output())
+
+		merged := runNipa(dir, "mr", "merge", "1")
+		Expect(merged.ExitCode).To(Equal(0), merged.Output())
+	})
+
 	It("keeps the request open when the source branch is pushed again", func() {
 		project := newProject("mr-source-push")
 		seedRepo(orgSlug, project, map[string][]byte{"base.txt": []byte("base\n")}, "seed")

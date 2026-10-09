@@ -43,6 +43,34 @@ func (m *MockmergeRequestRepository) EXPECT() *MockmergeRequestRepositoryMockRec
 	return m.recorder
 }
 
+// AddAssignee mocks base method.
+func (m *MockmergeRequestRepository) AddAssignee(ctx context.Context, mergeRequestID int64, userID snow.ID) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AddAssignee", ctx, mergeRequestID, userID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// AddAssignee indicates an expected call of AddAssignee.
+func (mr *MockmergeRequestRepositoryMockRecorder) AddAssignee(ctx, mergeRequestID, userID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddAssignee", reflect.TypeOf((*MockmergeRequestRepository)(nil).AddAssignee), ctx, mergeRequestID, userID)
+}
+
+// ClearAssignees mocks base method.
+func (m *MockmergeRequestRepository) ClearAssignees(ctx context.Context, mergeRequestID int64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ClearAssignees", ctx, mergeRequestID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ClearAssignees indicates an expected call of ClearAssignees.
+func (mr *MockmergeRequestRepositoryMockRecorder) ClearAssignees(ctx, mergeRequestID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClearAssignees", reflect.TypeOf((*MockmergeRequestRepository)(nil).ClearAssignees), ctx, mergeRequestID)
+}
+
 // Create mocks base method.
 func (m *MockmergeRequestRepository) Create(ctx context.Context, mr domain.MergeRequest) (*domain.MergeRequest, error) {
 	m.ctrl.T.Helper()
@@ -86,6 +114,21 @@ func (m *MockmergeRequestRepository) List(ctx context.Context, projectID snow.ID
 func (mr *MockmergeRequestRepositoryMockRecorder) List(ctx, projectID, opts any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "List", reflect.TypeOf((*MockmergeRequestRepository)(nil).List), ctx, projectID, opts)
+}
+
+// ListAssignees mocks base method.
+func (m *MockmergeRequestRepository) ListAssignees(ctx context.Context, projectID snow.ID) (map[int64][]domain.ReviewActor, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListAssignees", ctx, projectID)
+	ret0, _ := ret[0].(map[int64][]domain.ReviewActor)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListAssignees indicates an expected call of ListAssignees.
+func (mr *MockmergeRequestRepositoryMockRecorder) ListAssignees(ctx, projectID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListAssignees", reflect.TypeOf((*MockmergeRequestRepository)(nil).ListAssignees), ctx, projectID)
 }
 
 // SetDraft mocks base method.

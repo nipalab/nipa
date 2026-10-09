@@ -17,6 +17,12 @@ type Querier interface {
 	BranchList(ctx context.Context, arg BranchListParams) ([]Branch, error)
 	BranchMarkDefault(ctx context.Context, arg BranchMarkDefaultParams) error
 	BranchRemoveDefault(ctx context.Context, projectID int64) error
+	BranchRequiredCheckAdd(ctx context.Context, arg BranchRequiredCheckAddParams) error
+	BranchRequiredCheckClear(ctx context.Context, branchID int64) error
+	BranchRequiredCheckList(ctx context.Context, branchID int64) ([]string, error)
+	BranchRequiredReviewerAdd(ctx context.Context, arg BranchRequiredReviewerAddParams) error
+	BranchRequiredReviewerClear(ctx context.Context, branchID int64) error
+	BranchRequiredReviewerList(ctx context.Context, branchID int64) ([]BranchRequiredReviewerListRow, error)
 	BranchSetName(ctx context.Context, arg BranchSetNameParams) error
 	BranchSetProtection(ctx context.Context, arg BranchSetProtectionParams) error
 	BranchSoftDelete(ctx context.Context, arg BranchSoftDeleteParams) (int64, error)
@@ -64,6 +70,11 @@ type Querier interface {
 	GroupMemberRemove(ctx context.Context, arg GroupMemberRemoveParams) error
 	ListOrganizations(ctx context.Context) ([]Organization, error)
 	ListProjectsByOrgId(ctx context.Context, orgID int64) ([]Project, error)
+	MergeRequestAssigneeAdd(ctx context.Context, arg MergeRequestAssigneeAddParams) error
+	MergeRequestAssigneeClear(ctx context.Context, mergeRequestID int64) error
+	MergeRequestAssigneeList(ctx context.Context, projectID int64) ([]MergeRequestAssigneeListRow, error)
+	MergeRequestCheckList(ctx context.Context, arg MergeRequestCheckListParams) ([]MergeRequestCheckListRow, error)
+	MergeRequestCheckUpsert(ctx context.Context, arg MergeRequestCheckUpsertParams) (MergeRequestCheck, error)
 	MergeRequestCommentCreate(ctx context.Context, arg MergeRequestCommentCreateParams) (MergeRequestComment, error)
 	MergeRequestCommentDelete(ctx context.Context, arg MergeRequestCommentDeleteParams) (int64, error)
 	MergeRequestCommentGet(ctx context.Context, arg MergeRequestCommentGetParams) (MergeRequestComment, error)

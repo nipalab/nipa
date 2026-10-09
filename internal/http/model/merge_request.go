@@ -25,6 +25,7 @@ type MergeRequestResponse struct {
 	CreatedBy         string                `json:"created_by"`
 	CreatedAt         time.Time             `json:"created_at"`
 	UpdatedAt         time.Time             `json:"updated_at"`
+	Assignees         []ReviewActorResponse `json:"assignees,omitempty"`
 	Mergeability      *MergeabilityResponse `json:"mergeability,omitempty"`
 	Review            *ReviewStateResponse  `json:"review,omitempty"`
 }
@@ -55,6 +56,27 @@ type MergeMergeRequestRequest struct {
 	// Strategy is ff (default), merge, squash or rebase.
 	Strategy     string `json:"strategy"`
 	DeleteSource bool   `json:"delete_source"`
+}
+
+type SetAssigneesRequest struct {
+	// UserIDs are base36 snow IDs; the set replaces the current assignees.
+	UserIDs []string `json:"user_ids"`
+}
+
+type MergeRequestCheckResponse struct {
+	ID         string              `json:"id"`
+	Name       string              `json:"name"`
+	State      string              `json:"state"`
+	DetailsURL string              `json:"details_url,omitempty"`
+	Reporter   ReviewActorResponse `json:"reporter"`
+	CreatedAt  time.Time           `json:"created_at"`
+	UpdatedAt  time.Time           `json:"updated_at"`
+}
+
+type ReportMergeRequestCheckRequest struct {
+	Name       string `json:"name"`
+	State      string `json:"state"`
+	DetailsURL string `json:"details_url"`
 }
 
 type MergeRequestDiffResponse struct {

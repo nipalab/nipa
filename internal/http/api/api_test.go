@@ -41,6 +41,7 @@ type testRegistry struct {
 	chunk        *usecase.Chunk
 	mergeRequest *usecase.MergeRequest
 	review       *usecase.MergeRequestReview
+	check        *usecase.MergeRequestCheck
 	fileLock     *usecase.FileLock
 	webhook      *usecase.Webhook
 }
@@ -60,6 +61,10 @@ func (r *testRegistry) MergeRequest() *usecase.MergeRequest {
 }
 func (r *testRegistry) MergeRequestReview() *usecase.MergeRequestReview {
 	return r.review
+}
+
+func (r *testRegistry) MergeRequestCheck() *usecase.MergeRequestCheck {
+	return r.check
 }
 
 func (r *testRegistry) FileLock() *usecase.FileLock { return r.fileLock }
@@ -140,6 +145,14 @@ func TestAPIRoutes(t *testing.T) {
 	branchUc = branchUc.WithHooks(hookEmitter)
 	mergeRequestUc = mergeRequestUc.WithHooks(hookEmitter)
 	reviewUc = reviewUc.WithHooks(hookEmitter)
+	checkUc := usecase.NewMergeRequestCheck(
+		sqlite.NewMergeRequestCheckRepository(dbConn),
+		sqlite.NewMergeRequestRepository(dbConn),
+		branchRepo,
+		permissionUc,
+		node,
+	).WithHooks(hookEmitter)
+	mergeRequestUc = mergeRequestUc.WithChecks(checkUc)
 	pusher = pusher.WithHooks(hookEmitter)
 	tagUc := usecase.NewTag(permissionUc, sqlite.NewTagRepository(dbConn), branchRepo, node).WithHooks(hookEmitter)
 	reg := &testRegistry{
@@ -155,6 +168,7 @@ func TestAPIRoutes(t *testing.T) {
 		chunk:        chunkUc,
 		mergeRequest: mergeRequestUc,
 		review:       reviewUc,
+		check:        checkUc,
 		fileLock:     fileLockUc,
 		webhook:      usecase.NewWebhook(webhookRepo, permissionUc, userRepo, webhookDispatcher, node),
 	}

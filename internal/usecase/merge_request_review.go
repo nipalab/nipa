@@ -545,6 +545,26 @@ func (r *MergeRequestReview) NoteBranchPush(ctx context.Context, projectID, bran
 	return nil
 }
 
+// ApprovedReviewers returns the reviewers with a live approval for the
+// request's current source head.
+func (r *MergeRequestReview) ApprovedReviewers(ctx context.Context, projectID snow.ID, number int64) (map[snow.ID]bool, error) {
+	mr, err := r.load(ctx, projectID, number)
+	if err != nil {
+		return nil, err
+	}
+	reviews, err := r.reviews(ctx, mr)
+	if err != nil {
+		return nil, err
+	}
+	approved := make(map[snow.ID]bool)
+	for _, review := range reviews {
+		if review.State == domain.MergeRequestReviewApproved && !review.Stale && review.DismissedAt == nil {
+			approved[review.Reviewer.UserID] = true
+		}
+	}
+	return approved, nil
+}
+
 // emitHook publishes a merge request event. The push itself already landed, so
 // a delivery failure must not fail the bookkeeping.
 func (r *MergeRequestReview) emitHook(ctx context.Context, event string, projectID snow.ID, mr *domain.MergeRequest, actor snow.ID) {

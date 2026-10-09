@@ -42,6 +42,8 @@ type MergeRequestListOptions struct {
 	SourceBranch string
 	TargetBranch string
 	Draft        *bool
+	Search       string
+	Assignee     *snow.ID
 	After        int64
 	Limit        int
 }
@@ -74,6 +76,8 @@ type MergeRequest struct {
 	CreatedBy         snow.ID   `json:"created_by"`
 	CreatedAt         time.Time `json:"created_at"`
 	UpdatedAt         time.Time `json:"updated_at"`
+	// Assignees are resolved per request, not stored on the row.
+	Assignees []ReviewActor `json:"assignees,omitempty"`
 	// Review is resolved per request, not stored: it counts only the reviews
 	// given for the current source head.
 	Review *MergeRequestReviewState `json:"review,omitempty"`
@@ -86,7 +90,9 @@ const (
 	MergeabilityInvalid   = "invalid"
 
 	// Policy block reasons carried by Mergeability.BlockedBy.
-	MergeabilityBlockedChangesRequested = "changes_requested"
-	MergeabilityBlockedApprovals        = "insufficient_approvals"
-	MergeabilityBlockedDraft            = "draft"
+	MergeabilityBlockedChangesRequested  = "changes_requested"
+	MergeabilityBlockedApprovals         = "insufficient_approvals"
+	MergeabilityBlockedDraft             = "draft"
+	MergeabilityBlockedRequiredReviewers = "required_reviewers"
+	MergeabilityBlockedChecks            = "status_checks"
 )

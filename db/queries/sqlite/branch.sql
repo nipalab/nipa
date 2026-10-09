@@ -43,8 +43,30 @@ UPDATE branches SET deleted = TRUE, deleted_at = CURRENT_TIMESTAMP
 WHERE project_id = ? AND id = ? AND deleted = FALSE;
 
 -- name: BranchSetProtection :exec
-UPDATE branches SET is_protected = ?, required_approvals = ?, dismiss_stale_approvals = ?, updated_at = CURRENT_TIMESTAMP
+UPDATE branches SET is_protected = ?, required_approvals = ?, dismiss_stale_approvals = ?, require_status_checks = ?, updated_at = CURRENT_TIMESTAMP
 WHERE project_id = ? AND id = ? AND deleted = FALSE;
+
+-- name: BranchRequiredReviewerList :many
+SELECT u.id AS user_id, u.name AS user_name, u.photo_url AS user_photo_url
+FROM branches_required_reviewers br
+JOIN users u ON u.id = br.user_id
+WHERE br.branch_id = :branch_id
+ORDER BY u.id;
+
+-- name: BranchRequiredReviewerClear :exec
+DELETE FROM branches_required_reviewers WHERE branch_id = :branch_id;
+
+-- name: BranchRequiredReviewerAdd :exec
+INSERT INTO branches_required_reviewers (branch_id, user_id) VALUES (:branch_id, :user_id);
+
+-- name: BranchRequiredCheckList :many
+SELECT name FROM branches_required_checks WHERE branch_id = :branch_id ORDER BY name;
+
+-- name: BranchRequiredCheckClear :exec
+DELETE FROM branches_required_checks WHERE branch_id = :branch_id;
+
+-- name: BranchRequiredCheckAdd :exec
+INSERT INTO branches_required_checks (branch_id, name) VALUES (:branch_id, :name);
 
 -- name: BranchMarkDefault :exec
 UPDATE branches SET is_default = TRUE, updated_at = CURRENT_TIMESTAMP

@@ -311,7 +311,7 @@ var _ = Describe("webhook deliveries", func() {
 		seedRepo(orgSlug, project, map[string][]byte{"base.txt": []byte("base\n")}, "seed")
 		fixture := newWebhook(project, []string{
 			"mr.review_submitted", "mr.review_requested", "mr.review_request_removed",
-			"mr.review_dismissed", "mr.comment_created",
+			"mr.review_dismissed", "mr.comment_created", "mr.check_reported",
 		}, nil)
 
 		parent := workspace()
@@ -351,6 +351,11 @@ var _ = Describe("webhook deliveries", func() {
 		Expect(commented.Event).To(Equal("mr.comment_created"))
 		Expect(commented.MergeRequest.Number).To(Equal(int64(1)))
 		Expect(commented.Actor.ID).To(Equal(reviewer.userID))
+
+		api.reportMergeRequestCheck(orgSlug, project, 1, "build", "success", "")
+		checked := fixture.receiver.wait("mr.check_reported").mrPayload()
+		Expect(checked.Event).To(Equal("mr.check_reported"))
+		Expect(checked.MergeRequest.Number).To(Equal(int64(1)))
 	})
 
 	It("does not deliver while the webhook is inactive", func() {

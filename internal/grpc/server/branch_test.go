@@ -52,6 +52,10 @@ func (m *mockUsecaseContainer) MergeRequestReview() *usecase.MergeRequestReview 
 	return m.review
 }
 
+func (m *mockUsecaseContainer) MergeRequestCheck() *usecase.MergeRequestCheck {
+	return nil
+}
+
 func (m *mockUsecaseContainer) FileLock() *usecase.FileLock { return m.fileLock }
 
 func newMockUsecaseContainer(t *testing.T, branch *usecase.Branch) *mockUsecaseContainer {
@@ -128,6 +132,8 @@ func newTestBranchUc(t *testing.T) (*usecase.Branch, *MockpermissionUsecase, *Mo
 		Return(true).
 		AnyTimes()
 	repo := NewMockbranchRepository(ctrl)
+	repo.EXPECT().RequiredReviewers(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
+	repo.EXPECT().RequiredChecks(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 	node, err := snow.NewNode(1)
 	require.NoError(t, err)
 	return usecase.NewBranch(perm, repo, node), perm, repo
@@ -1308,7 +1314,7 @@ func TestSetBranchProtection_Success(t *testing.T) {
 	perm.EXPECT().AdminHasProject(gomock.Any(), projectID).Return(true)
 	repo.EXPECT().GetBranchByName(gomock.Any(), projectID, "release").
 		Return(&domain.Branch{ID: 3, ProjectID: projectID, Name: "release"}, nil)
-	repo.EXPECT().SetBranchProtection(gomock.Any(), projectID, snow.ID(3), true, approvals, false).Return(nil)
+	repo.EXPECT().SetBranchProtection(gomock.Any(), projectID, snow.ID(3), domain.BranchProtection{Protected: true, RequiredApprovals: approvals}).Return(nil)
 	repo.EXPECT().GetByProjectIDAndID(gomock.Any(), projectID, snow.ID(3)).
 		Return(&domain.Branch{ID: 3, ProjectID: projectID, Name: "release", IsProtected: true, RequiredApprovals: approvals}, nil)
 

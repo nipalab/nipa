@@ -231,13 +231,36 @@ Draft requests: `merge_requests.is_draft` blocks `Merge` through
 `check()`'s `blocked_by: "draft"`; `SetDraft` (author or project admin, open
 requests only) toggles it, marking ready emits the `ready_for_review` timeline
 event plus the `mr.ready_for_review` webhook, and the list takes a `draft`
-filter (the CLI's `--status draft` maps to open+draft). The SPA marks drafts in
-the list, the page header, the edit dialog and the merge box; the CLI adds
-`mr create --draft`, `mr update --draft=false` and `mr ready <number>`.
-`SetBranchProtection` also carries `dismiss_stale_approvals` (default on): off
-means a source push carries live decisions onto the new head through
-`CarryOverReviews` instead of dismissing them through `DismissStaleReviews`.
-`Branch.Delete` refuses protected branches (409) until they are unprotected.
+filter (the CLI's `--status draft` maps to open+draft). A WIP/Draft title
+prefix (`wip:`, `draft:`, `[wip]`, ...) auto-drafts on create and on rename,
+and removing the prefix from a title-drafted request marks it ready. The SPA
+marks drafts in the list, the page header, the edit dialog and the merge box;
+the CLI adds `mr create --draft`, `mr update --draft=false` and
+`mr ready <number>`.
+`SetBranchProtection` carries `dismiss_stale_approvals` (default on; off
+carries live decisions onto the new head through `CarryOverReviews` instead of
+dismissing them), `require_status_checks` plus required check names, and named
+`required_reviewers` whose live approval the review gate demands
+(`blocked_by: "required_reviewers"`). `Branch.Delete` refuses protected
+branches (409) until they are unprotected.
+
+Status checks: `merge_request_checks` rows are keyed by (request, head commit,
+name) and written by `MergeRequestCheck.Report` (`POST .../checks`, gRPC
+`ReportMergeRequestCheck`, `nipa mr check`); a target branch with
+`require_status_checks` blocks merging (`blocked_by: "status_checks"`) until
+every required name succeeded for the current source head — a push starts a
+clean slate. `List`/`nipa mr checks` return the head's checks; reporting emits
+`mr.check_reported`.
+
+Assignees: `merge_request_assignees` (base-set through
+`SetAssignees` / `POST .../assignees` / gRPC `SetMergeRequestAssignees` /
+`nipa mr assign`, project-write gated, ids validated) attach to list and get
+payloads and drive the list's `assignee` filter; the SPA has a sidebar picker
+and a list filter. The list also takes a free-text `search` (title/description
+LIKE; CLI `--search`). "Mark merged manually"
+(`MergeRequest.MarkMerged`, `POST .../mark-merged`, `nipa mr mark-merged`)
+closes an open request as merged without moving the target, recording the
+source head when the branch still exists.
 
 Merge strategies: `Merge` takes a `strategy` (`ff` default, `merge`, `squash`,
 `rebase`) and `delete_source`. `Branch.MergeForMergeRequest`
@@ -261,21 +284,24 @@ checkbox; the CLI adds `mr merge --strategy <ff|merge|squash|rebase>
 [--delete-source]`.
 
 MR lists paginate by number: `GET .../merge-requests` takes
-`status/author/source/target/after/limit` and returns
+`status/author/source/target/draft/assignee/search/after/limit` and returns
 `{merge_requests, next_cursor}` (the cursor is the last number of a full page;
 gRPC uses `ListMergeRequestsRequest.after_number`/`ListMergeRequestsResponse.
 next_cursor`). The handlers over-fetch one row, so `next_cursor` only appears
 when a next page really exists; changing filters resets the cursor. Review
 activity is webhook-visible through the same MR-shaped payload as the lifecycle
 events: `mr.review_submitted`, `mr.review_dismissed`, `mr.review_requested`,
-`mr.review_request_removed` and `mr.comment_created` (new comments only). The
+`mr.review_request_removed`, `mr.comment_created` (new comments only) and
+`mr.check_reported`. The
 CLI mirrors the surface under `nipa mr`: `create --draft`, `view`, `reopen`,
-`ready`, `review --approve|--request-changes -m`, `comments`, `comment [-m]
+`ready`, `assign <n> <user-id>...`, `review --approve|--request-changes -m`,
+`comments`, `comment [-m]
 [--file --new-line/--old-line]`, `reply <number> <thread-id>`, `resolve
 <number> <thread-id> [--unresolve]`, `timeline`, `requests`,
-`request-review <number> <user-id>`, `unrequest-review`, `diff`,
+`request-review <number> <user-id>`, `unrequest-review`, `diff`, `checks <n>`,
+`check <n> --name --state [--url]`, `mark-merged <n>`,
 `merge --strategy/--delete-source`, and `list
---author/--source/--target/--after/--status draft`.
+--author/--source/--target/--assignee/--search/--after/--status draft`.
 
 Flow for `nipa revert <commit>` / `<from>..<to>`: resolve targets via gRPC
 `GetCommit` / `WalkCommits` (range walks newest-first, exclusive stop; ranges are

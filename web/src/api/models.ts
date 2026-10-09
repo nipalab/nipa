@@ -76,6 +76,9 @@ export interface BranchResponse {
   is_protected: boolean
   required_approvals: number
   dismiss_stale_approvals: boolean
+  require_status_checks: boolean
+  required_reviewers?: ReviewActorResponse[]
+  required_checks?: string[]
   commit_id?: string
   updated_at: string
 }
@@ -157,6 +160,7 @@ export interface MergeRequestResponse {
   created_by: string
   created_at: string
   updated_at: string
+  assignees?: ReviewActorResponse[]
   mergeability?: MergeabilityResponse
   review?: ReviewStateResponse
 }
@@ -164,6 +168,16 @@ export interface MergeRequestResponse {
 export interface MergeRequestListResponse {
   merge_requests: MergeRequestResponse[]
   next_cursor?: string
+}
+
+export interface MergeRequestCheckResponse {
+  id: string
+  name: string
+  state: string
+  details_url?: string
+  reporter: ReviewActorResponse
+  created_at: string
+  updated_at: string
 }
 
 export interface MergeRequestDiffResponse {

@@ -27,6 +27,7 @@ const (
 	WebhookEventMRReviewRequested   = "mr.review_requested"
 	WebhookEventMRReviewUnrequested = "mr.review_request_removed"
 	WebhookEventMRCommentCreated    = "mr.comment_created"
+	WebhookEventMRCheckReported     = "mr.check_reported"
 
 	WebhookEventPing = "ping"
 )

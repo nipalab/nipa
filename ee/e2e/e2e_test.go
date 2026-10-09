@@ -164,6 +164,7 @@ type testRegistry struct {
 	group        *serverusecase.Group
 	mergeRequest *serverusecase.MergeRequest
 	review       *serverusecase.MergeRequestReview
+	check        *serverusecase.MergeRequestCheck
 	fileLock     *serverusecase.FileLock
 }
 
@@ -184,7 +185,8 @@ func (r *testRegistry) MergeRequest() *serverusecase.MergeRequest {
 func (r *testRegistry) MergeRequestReview() *serverusecase.MergeRequestReview {
 	return r.review
 }
-func (r *testRegistry) FileLock() *serverusecase.FileLock { return r.fileLock }
+func (r *testRegistry) MergeRequestCheck() *serverusecase.MergeRequestCheck { return r.check }
+func (r *testRegistry) FileLock() *serverusecase.FileLock                   { return r.fileLock }
 
 func startEnterpriseServer(t *testing.T, dbConn *sql.DB, chunkStore storage.ChunkStore) string {
 	t.Helper()
@@ -221,6 +223,9 @@ func startEnterpriseServer(t *testing.T, dbConn *sql.DB, chunkStore storage.Chun
 	reviewUc := serverusecase.NewMergeRequestReview(
 		postgres.NewMergeRequestReviewRepository(dbConn), mrRepo, branchRepo, branchUc, permissionUc, userRepo, node,
 	)
+	checkUc := serverusecase.NewMergeRequestCheck(
+		postgres.NewMergeRequestCheckRepository(dbConn), mrRepo, branchRepo, permissionUc, node,
+	)
 	reg := &testRegistry{
 		auth:         authUc,
 		user:         serverusecase.NewUser(node, userRepo, passwordHasher),
@@ -231,8 +236,9 @@ func startEnterpriseServer(t *testing.T, dbConn *sql.DB, chunkStore storage.Chun
 		chunk:        chunkUc,
 		permission:   permissionUc,
 		group:        serverusecase.NewGroup(groupRepo, node, permissionUc, orgUc),
-		mergeRequest: serverusecase.NewMergeRequest(mrRepo, branchRepo, permissionUc, branchUc, node, dbtx.NewTransactor(dbConn)).WithFileLocks(fileLockUc).WithReview(reviewUc),
+		mergeRequest: serverusecase.NewMergeRequest(mrRepo, branchRepo, permissionUc, branchUc, node, dbtx.NewTransactor(dbConn)).WithFileLocks(fileLockUc).WithReview(reviewUc).WithChecks(checkUc),
 		review:       reviewUc,
+		check:        checkUc,
 		fileLock:     fileLockUc,
 	}
 

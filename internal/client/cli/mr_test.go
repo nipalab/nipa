@@ -39,9 +39,23 @@ type fakeMRClient struct {
 	mergeNumber       int64
 	mergeStrategy     string
 	mergeDeleteSource bool
-	mergeResult       *domain.MergeRequest
-	mergeability      *domain.Mergeability
-	mergeErr          error
+
+	checkName        string
+	checkState       string
+	checkURL         string
+	reportCheck      *domain.MergeRequestCheck
+	reportErr        error
+	checksResult     []*domain.MergeRequestCheck
+	checksErr        error
+	markMergedNumber int64
+	markMergedResult *domain.MergeRequest
+	markMergedErr    error
+	assigneeIDs      []string
+	assigneeResult   *domain.MergeRequest
+	assigneeErr      error
+	mergeResult      *domain.MergeRequest
+	mergeability     *domain.Mergeability
+	mergeErr         error
 
 	closeNumber int64
 	closeResult *domain.MergeRequest
@@ -144,6 +158,16 @@ func (f *fakeMRClient) CloseMergeRequest(_ context.Context, _, _ string, number 
 	return f.closeResult, f.closeErr
 }
 
+func (f *fakeMRClient) MarkMergeRequestMerged(_ context.Context, _, _ string, number int64) (*domain.MergeRequest, error) {
+	f.markMergedNumber = number
+	return f.markMergedResult, f.markMergedErr
+}
+
+func (f *fakeMRClient) SetMergeRequestAssignees(_ context.Context, _, _ string, _ int64, userIDs []string) (*domain.MergeRequest, error) {
+	f.assigneeIDs = userIDs
+	return f.assigneeResult, f.assigneeErr
+}
+
 func (f *fakeMRClient) GetDefaultBranch(_ context.Context, _, _ string) (*serverDomain.Branch, error) {
 	return f.defaultBranch, f.defaultBranchErr
 }
@@ -170,6 +194,15 @@ func (f *fakeMRClient) GetMergeRequestDiff(_ context.Context, _, _ string, _ int
 
 func (f *fakeMRClient) ListMergeRequestReviews(_ context.Context, _, _ string, _ int64) ([]*domain.MergeRequestReview, error) {
 	return f.reviewsResult, f.reviewsErr
+}
+
+func (f *fakeMRClient) ReportMergeRequestCheck(_ context.Context, _, _ string, _ int64, name, state, detailsURL string) (*domain.MergeRequestCheck, error) {
+	f.checkName, f.checkState, f.checkURL = name, state, detailsURL
+	return f.reportCheck, f.reportErr
+}
+
+func (f *fakeMRClient) ListMergeRequestChecks(_ context.Context, _, _ string, _ int64) ([]*domain.MergeRequestCheck, error) {
+	return f.checksResult, f.checksErr
 }
 
 func (f *fakeMRClient) SubmitMergeRequestReview(_ context.Context, _, _ string, _ int64, state, body string) (*domain.MergeRequestReview, error) {

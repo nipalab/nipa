@@ -1114,12 +1114,30 @@ func TestBranchRepositorySQLite_Lifecycle(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "renamed", renamed.Name)
 
-	require.NoError(t, repo.SetBranchProtection(ctx, projectID, branchID, true, 2, true))
+	reviewerID := seedUser(t, q, "reviewer", "reviewer@example.com", sql.NullString{})
+	require.NoError(t, repo.SetBranchProtection(ctx, projectID, branchID, domain.BranchProtection{
+		Protected:             true,
+		RequiredApprovals:     2,
+		DismissStaleApprovals: true,
+		RequireStatusChecks:   true,
+		RequiredReviewers:     []snow.ID{reviewerID},
+		RequiredChecks:        []string{"build", "test"},
+	}))
 	protected, err := repo.GetByProjectIDAndID(ctx, projectID, branchID)
 	require.NoError(t, err)
 	require.True(t, protected.IsProtected)
 	require.EqualValues(t, 2, protected.RequiredApprovals)
 	require.True(t, protected.DismissStaleApprovals)
+	require.True(t, protected.RequireStatusChecks)
+
+	reviewers, err := repo.RequiredReviewers(ctx, branchID)
+	require.NoError(t, err)
+	require.Len(t, reviewers, 1)
+	require.Equal(t, reviewerID, reviewers[0].UserID)
+
+	checks, err := repo.RequiredChecks(ctx, branchID)
+	require.NoError(t, err)
+	require.Equal(t, []string{"build", "test"}, checks)
 
 	require.NoError(t, repo.SetDefaultBranch(ctx, projectID, branchID))
 	def, err := repo.GetDefaultBranch(ctx, projectID)

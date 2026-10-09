@@ -133,6 +133,9 @@ message Branch {
     bool is_default = 7;
     int64 required_approvals = 8; // live approvals a merge request into this branch needs
     bool dismiss_stale_approvals = 9; // a push to the source dismisses decisions for the old head
+    bool require_status_checks = 10; // required checks must pass before merging
+    repeated ReviewActor required_reviewers = 11; // reviewers whose approval is mandatory
+    repeated string required_checks = 12; // status check names that must pass
 }
 
 message GetListBranchRequest {
@@ -212,6 +215,9 @@ message SetBranchProtectionRequest {
     bool is_protected = 3;
     optional int64 required_approvals = 4; // absent keeps the current value
     optional bool dismiss_stale_approvals = 5; // absent keeps the current value
+    optional bool require_status_checks = 6; // absent keeps the current value
+    repeated string required_reviewer_ids = 7; // absent (nil) keeps the current set
+    repeated string required_checks = 8; // absent (nil) keeps the current set
 }
 
 message SetBranchProtectionResponse {
@@ -519,6 +525,7 @@ message MergeRequestDetail {
     google.protobuf.Timestamp updated_at = 13;
     MergeRequestReviewState review = 14; // live review summary, when resolved
     bool draft = 15; // draft requests cannot be merged until marked ready
+    repeated ReviewActor assignees = 16; // resolved per request
 }
 
 message CreateMergeRequestRequest {
@@ -555,6 +562,8 @@ message ListMergeRequestsRequest {
     string source_branch = 6; // optional source branch name
     string target_branch = 7; // optional target branch name
     optional bool draft = 8; // optional draft filter
+    string search = 9; // optional free-text title/description filter
+    string assignee = 10; // optional base36 assignee user id
 }
 
 message ListMergeRequestsResponse {
@@ -572,6 +581,16 @@ message GetMergeRequestResponse {
     MergeabilityDetail mergeability = 2;
 }
 
+message SetMergeRequestAssigneesRequest {
+    ProjectContext context = 1;
+    int64 number = 2; // sequential per-project number
+    repeated string user_ids = 3; // base36 snow IDs; replaces the current set
+}
+
+message SetMergeRequestAssigneesResponse {
+    MergeRequestDetail merge_request = 1;
+}
+
 message MergeMergeRequestRequest {
     ProjectContext context = 1;
     int64 number = 2; // sequential per-project number
@@ -582,6 +601,15 @@ message MergeMergeRequestRequest {
 message MergeMergeRequestResponse {
     MergeRequestDetail merge_request = 1;
     MergeabilityDetail mergeability = 2;
+}
+
+message MarkMergeRequestMergedRequest {
+    ProjectContext context = 1;
+    int64 number = 2; // sequential per-project number
+}
+
+message MarkMergeRequestMergedResponse {
+    MergeRequestDetail merge_request = 1;
 }
 
 message CloseMergeRequestRequest {
@@ -609,6 +637,37 @@ message CheckMergeRequestRequest {
 
 message CheckMergeRequestResponse {
     MergeabilityDetail mergeability = 1;
+}
+
+message MergeRequestCheckDetail {
+    string id = 1; // base36 snow ID
+    string name = 2;
+    string state = 3; // pending, success or failed
+    string details_url = 4;
+    ReviewActor reporter = 5;
+    google.protobuf.Timestamp created_at = 6;
+    google.protobuf.Timestamp updated_at = 7;
+}
+
+message ReportMergeRequestCheckRequest {
+    ProjectContext context = 1;
+    int64 number = 2; // sequential per-project number
+    string name = 3; // check name, e.g. "build"
+    string state = 4; // pending, success or failed
+    string details_url = 5; // optional link to the run
+}
+
+message ReportMergeRequestCheckResponse {
+    MergeRequestCheckDetail check = 1;
+}
+
+message ListMergeRequestChecksRequest {
+    ProjectContext context = 1;
+    int64 number = 2; // sequential per-project number
+}
+
+message ListMergeRequestChecksResponse {
+    repeated MergeRequestCheckDetail checks = 1;
 }
 
 message ListMergeRequestCommitsRequest {
@@ -965,10 +1024,14 @@ service NipaService {
     rpc UpdateMergeRequest(UpdateMergeRequestRequest) returns (UpdateMergeRequestResponse);
     rpc ListMergeRequests(ListMergeRequestsRequest) returns (ListMergeRequestsResponse);
     rpc GetMergeRequest(GetMergeRequestRequest) returns (GetMergeRequestResponse);
+    rpc SetMergeRequestAssignees(SetMergeRequestAssigneesRequest) returns (SetMergeRequestAssigneesResponse);
     rpc MergeMergeRequest(MergeMergeRequestRequest) returns (MergeMergeRequestResponse);
+    rpc MarkMergeRequestMerged(MarkMergeRequestMergedRequest) returns (MarkMergeRequestMergedResponse);
     rpc CloseMergeRequest(CloseMergeRequestRequest) returns (CloseMergeRequestResponse);
     rpc ReopenMergeRequest(ReopenMergeRequestRequest) returns (ReopenMergeRequestResponse);
     rpc CheckMergeRequest(CheckMergeRequestRequest) returns (CheckMergeRequestResponse);
+    rpc ReportMergeRequestCheck(ReportMergeRequestCheckRequest) returns (ReportMergeRequestCheckResponse);
+    rpc ListMergeRequestChecks(ListMergeRequestChecksRequest) returns (ListMergeRequestChecksResponse);
     rpc ListMergeRequestCommits(ListMergeRequestCommitsRequest) returns (ListMergeRequestCommitsResponse);
     rpc GetMergeRequestDiff(GetMergeRequestDiffRequest) returns (GetMergeRequestDiffResponse);
 

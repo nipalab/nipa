@@ -2,6 +2,7 @@ package cli
 
 import (
 	"strconv"
+	"strings"
 
 	"github.com/nipalab/nipa/internal/client/localrepo"
 	"github.com/nipalab/nipa/internal/client/output"
@@ -20,9 +21,11 @@ func (c *Cli) setupMrCmd() *cobra.Command {
 	cmd.AddCommand(c.setupMrCreateCmd())
 	cmd.AddCommand(c.setupMrUpdateCmd())
 	cmd.AddCommand(c.setupMrReadyCmd())
+	cmd.AddCommand(c.setupMrAssignCmd())
 	cmd.AddCommand(c.setupMrListCmd())
 	cmd.AddCommand(c.setupMrViewCmd())
 	cmd.AddCommand(c.setupMrCloseCmd())
+	cmd.AddCommand(c.setupMrMarkMergedCmd())
 	cmd.AddCommand(c.setupMrReopenCmd())
 	cmd.AddCommand(c.setupMrMergeCmd())
 	cmd.AddCommand(c.setupMrReviewCmd())
@@ -35,6 +38,8 @@ func (c *Cli) setupMrCmd() *cobra.Command {
 	cmd.AddCommand(c.setupMrRequestReviewCmd())
 	cmd.AddCommand(c.setupMrUnrequestReviewCmd())
 	cmd.AddCommand(c.setupMrDiffCmd())
+	cmd.AddCommand(c.setupMrChecksCmd())
+	cmd.AddCommand(c.setupMrCheckCmd())
 	return cmd
 }
 
@@ -136,6 +141,36 @@ func (c *Cli) setupMrReadyCmd() *cobra.Command {
 	}
 }
 
+func (c *Cli) setupMrAssignCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:           "assign <number> <user-id>...",
+		Short:         "Replace the assignees of a merge request",
+		Args:          cobra.MinimumNArgs(1),
+		SilenceErrors: true,
+		SilenceUsage:  true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			root, err := localrepo.FindRepoRoot()
+			if err != nil {
+				return err
+			}
+			mr, err := c.useCase.MR().SetAssignees(cmd.Context(), root, args[0], args[1:])
+			if err != nil {
+				return err
+			}
+			names := make([]string, 0, len(mr.Assignees))
+			for _, assignee := range mr.Assignees {
+				names = append(names, assignee.Name)
+			}
+			if len(names) == 0 {
+				cmd.Printf("Merge request #%d has no assignees.\n", mr.Number)
+				return nil
+			}
+			cmd.Printf("Merge request #%d assigned to %s.\n", mr.Number, strings.Join(names, ", "))
+			return nil
+		},
+	}
+}
+
 func (c *Cli) setupMrListCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "list",
@@ -150,6 +185,8 @@ func (c *Cli) setupMrListCmd() *cobra.Command {
 			source, _ := cmd.Flags().GetString("source")
 			target, _ := cmd.Flags().GetString("target")
 			after, _ := cmd.Flags().GetInt64("after")
+			search, _ := cmd.Flags().GetString("search")
+			assignee, _ := cmd.Flags().GetString("assignee")
 			var draftFilter *bool
 			if status == "draft" {
 				status = "open"
@@ -166,6 +203,8 @@ func (c *Cli) setupMrListCmd() *cobra.Command {
 				SourceBranch: source,
 				TargetBranch: target,
 				Draft:        draftFilter,
+				Search:       search,
+				Assignee:     assignee,
 				After:        after,
 				Limit:        limit,
 			})
@@ -202,6 +241,8 @@ func (c *Cli) setupMrListCmd() *cobra.Command {
 	cmd.Flags().String("author", "", "Filter by author (base36 user id)")
 	cmd.Flags().String("source", "", "Filter by source branch name")
 	cmd.Flags().String("target", "", "Filter by target branch name")
+	cmd.Flags().String("search", "", "Filter by title or description text")
+	cmd.Flags().String("assignee", "", "Filter by assignee (base36 user id)")
 	cmd.Flags().Int64("after", 0, "Fetch results after this merge request number")
 	cmd.Flags().Int("limit", 50, "Maximum number of merge requests")
 	addJSONFlag(cmd)
@@ -228,6 +269,92 @@ func (c *Cli) setupMrCloseCmd() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+func (c *Cli) setupMrMarkMergedCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:           "mark-merged <number>",
+		Short:         "Mark a request as merged without moving the target branch",
+		Args:          cobra.ExactArgs(1),
+		SilenceErrors: true,
+		SilenceUsage:  true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			root, err := localrepo.FindRepoRoot()
+			if err != nil {
+				return err
+			}
+			mr, err := c.useCase.MR().MarkMerged(cmd.Context(), root, args[0])
+			if err != nil {
+				return err
+			}
+			cmd.Printf("Merge request #%d marked as merged.\n", mr.Number)
+			return nil
+		},
+	}
+}
+
+func (c *Cli) setupMrChecksCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:           "checks <number>",
+		Short:         "List the status checks reported for the current source head",
+		Args:          cobra.ExactArgs(1),
+		SilenceErrors: true,
+		SilenceUsage:  true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			root, err := localrepo.FindRepoRoot()
+			if err != nil {
+				return err
+			}
+			checks, err := c.useCase.MR().Checks(cmd.Context(), root, args[0])
+			if err != nil {
+				return err
+			}
+			if jsonRequested(cmd) {
+				return output.WriteJSON(cmd.OutOrStdout(), output.NewMergeRequestChecks(checks))
+			}
+			if len(checks) == 0 {
+				cmd.Println("no status checks")
+				return nil
+			}
+			cmd.Printf("%-24s  %-8s  %s\n", "NAME", "STATE", "REPORTER")
+			for _, check := range checks {
+				reporter := actorLabel(check.Reporter)
+				cmd.Printf("%-24s  %-8s  %s\n", check.Name, check.State, reporter)
+			}
+			return nil
+		},
+	}
+	addJSONFlag(cmd)
+	return cmd
+}
+
+func (c *Cli) setupMrCheckCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:           "check <number>",
+		Short:         "Report a status check result for the current source head",
+		Args:          cobra.ExactArgs(1),
+		SilenceErrors: true,
+		SilenceUsage:  true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name, _ := cmd.Flags().GetString("name")
+			state, _ := cmd.Flags().GetString("state")
+			detailsURL, _ := cmd.Flags().GetString("url")
+			root, err := localrepo.FindRepoRoot()
+			if err != nil {
+				return err
+			}
+			check, err := c.useCase.MR().ReportCheck(cmd.Context(), root, args[0], name, state, detailsURL)
+			if err != nil {
+				return err
+			}
+			cmd.Printf("Check %q reported as %s.\n", check.Name, check.State)
+			return nil
+		},
+	}
+	cmd.Flags().String("name", "", "Check name, e.g. build (required)")
+	cmd.Flags().String("state", "", "Check state: pending, success or failed (required)")
+	cmd.Flags().String("url", "", "Optional link to the run details")
+	return cmd
 }
 
 func (c *Cli) setupMrMergeCmd() *cobra.Command {

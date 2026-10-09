@@ -44,10 +44,14 @@ const (
 	NipaService_UpdateMergeRequest_FullMethodName              = "/greet.NipaService/UpdateMergeRequest"
 	NipaService_ListMergeRequests_FullMethodName               = "/greet.NipaService/ListMergeRequests"
 	NipaService_GetMergeRequest_FullMethodName                 = "/greet.NipaService/GetMergeRequest"
+	NipaService_SetMergeRequestAssignees_FullMethodName        = "/greet.NipaService/SetMergeRequestAssignees"
 	NipaService_MergeMergeRequest_FullMethodName               = "/greet.NipaService/MergeMergeRequest"
+	NipaService_MarkMergeRequestMerged_FullMethodName          = "/greet.NipaService/MarkMergeRequestMerged"
 	NipaService_CloseMergeRequest_FullMethodName               = "/greet.NipaService/CloseMergeRequest"
 	NipaService_ReopenMergeRequest_FullMethodName              = "/greet.NipaService/ReopenMergeRequest"
 	NipaService_CheckMergeRequest_FullMethodName               = "/greet.NipaService/CheckMergeRequest"
+	NipaService_ReportMergeRequestCheck_FullMethodName         = "/greet.NipaService/ReportMergeRequestCheck"
+	NipaService_ListMergeRequestChecks_FullMethodName          = "/greet.NipaService/ListMergeRequestChecks"
 	NipaService_ListMergeRequestCommits_FullMethodName         = "/greet.NipaService/ListMergeRequestCommits"
 	NipaService_GetMergeRequestDiff_FullMethodName             = "/greet.NipaService/GetMergeRequestDiff"
 	NipaService_SubmitMergeRequestReview_FullMethodName        = "/greet.NipaService/SubmitMergeRequestReview"
@@ -115,10 +119,14 @@ type NipaServiceClient interface {
 	UpdateMergeRequest(ctx context.Context, in *UpdateMergeRequestRequest, opts ...grpc.CallOption) (*UpdateMergeRequestResponse, error)
 	ListMergeRequests(ctx context.Context, in *ListMergeRequestsRequest, opts ...grpc.CallOption) (*ListMergeRequestsResponse, error)
 	GetMergeRequest(ctx context.Context, in *GetMergeRequestRequest, opts ...grpc.CallOption) (*GetMergeRequestResponse, error)
+	SetMergeRequestAssignees(ctx context.Context, in *SetMergeRequestAssigneesRequest, opts ...grpc.CallOption) (*SetMergeRequestAssigneesResponse, error)
 	MergeMergeRequest(ctx context.Context, in *MergeMergeRequestRequest, opts ...grpc.CallOption) (*MergeMergeRequestResponse, error)
+	MarkMergeRequestMerged(ctx context.Context, in *MarkMergeRequestMergedRequest, opts ...grpc.CallOption) (*MarkMergeRequestMergedResponse, error)
 	CloseMergeRequest(ctx context.Context, in *CloseMergeRequestRequest, opts ...grpc.CallOption) (*CloseMergeRequestResponse, error)
 	ReopenMergeRequest(ctx context.Context, in *ReopenMergeRequestRequest, opts ...grpc.CallOption) (*ReopenMergeRequestResponse, error)
 	CheckMergeRequest(ctx context.Context, in *CheckMergeRequestRequest, opts ...grpc.CallOption) (*CheckMergeRequestResponse, error)
+	ReportMergeRequestCheck(ctx context.Context, in *ReportMergeRequestCheckRequest, opts ...grpc.CallOption) (*ReportMergeRequestCheckResponse, error)
+	ListMergeRequestChecks(ctx context.Context, in *ListMergeRequestChecksRequest, opts ...grpc.CallOption) (*ListMergeRequestChecksResponse, error)
 	ListMergeRequestCommits(ctx context.Context, in *ListMergeRequestCommitsRequest, opts ...grpc.CallOption) (*ListMergeRequestCommitsResponse, error)
 	GetMergeRequestDiff(ctx context.Context, in *GetMergeRequestDiffRequest, opts ...grpc.CallOption) (*GetMergeRequestDiffResponse, error)
 	SubmitMergeRequestReview(ctx context.Context, in *SubmitMergeRequestReviewRequest, opts ...grpc.CallOption) (*SubmitMergeRequestReviewResponse, error)
@@ -415,10 +423,30 @@ func (c *nipaServiceClient) GetMergeRequest(ctx context.Context, in *GetMergeReq
 	return out, nil
 }
 
+func (c *nipaServiceClient) SetMergeRequestAssignees(ctx context.Context, in *SetMergeRequestAssigneesRequest, opts ...grpc.CallOption) (*SetMergeRequestAssigneesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SetMergeRequestAssigneesResponse)
+	err := c.cc.Invoke(ctx, NipaService_SetMergeRequestAssignees_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *nipaServiceClient) MergeMergeRequest(ctx context.Context, in *MergeMergeRequestRequest, opts ...grpc.CallOption) (*MergeMergeRequestResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(MergeMergeRequestResponse)
 	err := c.cc.Invoke(ctx, NipaService_MergeMergeRequest_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nipaServiceClient) MarkMergeRequestMerged(ctx context.Context, in *MarkMergeRequestMergedRequest, opts ...grpc.CallOption) (*MarkMergeRequestMergedResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(MarkMergeRequestMergedResponse)
+	err := c.cc.Invoke(ctx, NipaService_MarkMergeRequestMerged_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -449,6 +477,26 @@ func (c *nipaServiceClient) CheckMergeRequest(ctx context.Context, in *CheckMerg
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(CheckMergeRequestResponse)
 	err := c.cc.Invoke(ctx, NipaService_CheckMergeRequest_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nipaServiceClient) ReportMergeRequestCheck(ctx context.Context, in *ReportMergeRequestCheckRequest, opts ...grpc.CallOption) (*ReportMergeRequestCheckResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ReportMergeRequestCheckResponse)
+	err := c.cc.Invoke(ctx, NipaService_ReportMergeRequestCheck_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nipaServiceClient) ListMergeRequestChecks(ctx context.Context, in *ListMergeRequestChecksRequest, opts ...grpc.CallOption) (*ListMergeRequestChecksResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListMergeRequestChecksResponse)
+	err := c.cc.Invoke(ctx, NipaService_ListMergeRequestChecks_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -844,10 +892,14 @@ type NipaServiceServer interface {
 	UpdateMergeRequest(context.Context, *UpdateMergeRequestRequest) (*UpdateMergeRequestResponse, error)
 	ListMergeRequests(context.Context, *ListMergeRequestsRequest) (*ListMergeRequestsResponse, error)
 	GetMergeRequest(context.Context, *GetMergeRequestRequest) (*GetMergeRequestResponse, error)
+	SetMergeRequestAssignees(context.Context, *SetMergeRequestAssigneesRequest) (*SetMergeRequestAssigneesResponse, error)
 	MergeMergeRequest(context.Context, *MergeMergeRequestRequest) (*MergeMergeRequestResponse, error)
+	MarkMergeRequestMerged(context.Context, *MarkMergeRequestMergedRequest) (*MarkMergeRequestMergedResponse, error)
 	CloseMergeRequest(context.Context, *CloseMergeRequestRequest) (*CloseMergeRequestResponse, error)
 	ReopenMergeRequest(context.Context, *ReopenMergeRequestRequest) (*ReopenMergeRequestResponse, error)
 	CheckMergeRequest(context.Context, *CheckMergeRequestRequest) (*CheckMergeRequestResponse, error)
+	ReportMergeRequestCheck(context.Context, *ReportMergeRequestCheckRequest) (*ReportMergeRequestCheckResponse, error)
+	ListMergeRequestChecks(context.Context, *ListMergeRequestChecksRequest) (*ListMergeRequestChecksResponse, error)
 	ListMergeRequestCommits(context.Context, *ListMergeRequestCommitsRequest) (*ListMergeRequestCommitsResponse, error)
 	GetMergeRequestDiff(context.Context, *GetMergeRequestDiffRequest) (*GetMergeRequestDiffResponse, error)
 	SubmitMergeRequestReview(context.Context, *SubmitMergeRequestReviewRequest) (*SubmitMergeRequestReviewResponse, error)
@@ -969,8 +1021,14 @@ func (UnimplementedNipaServiceServer) ListMergeRequests(context.Context, *ListMe
 func (UnimplementedNipaServiceServer) GetMergeRequest(context.Context, *GetMergeRequestRequest) (*GetMergeRequestResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetMergeRequest not implemented")
 }
+func (UnimplementedNipaServiceServer) SetMergeRequestAssignees(context.Context, *SetMergeRequestAssigneesRequest) (*SetMergeRequestAssigneesResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SetMergeRequestAssignees not implemented")
+}
 func (UnimplementedNipaServiceServer) MergeMergeRequest(context.Context, *MergeMergeRequestRequest) (*MergeMergeRequestResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method MergeMergeRequest not implemented")
+}
+func (UnimplementedNipaServiceServer) MarkMergeRequestMerged(context.Context, *MarkMergeRequestMergedRequest) (*MarkMergeRequestMergedResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method MarkMergeRequestMerged not implemented")
 }
 func (UnimplementedNipaServiceServer) CloseMergeRequest(context.Context, *CloseMergeRequestRequest) (*CloseMergeRequestResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CloseMergeRequest not implemented")
@@ -980,6 +1038,12 @@ func (UnimplementedNipaServiceServer) ReopenMergeRequest(context.Context, *Reope
 }
 func (UnimplementedNipaServiceServer) CheckMergeRequest(context.Context, *CheckMergeRequestRequest) (*CheckMergeRequestResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CheckMergeRequest not implemented")
+}
+func (UnimplementedNipaServiceServer) ReportMergeRequestCheck(context.Context, *ReportMergeRequestCheckRequest) (*ReportMergeRequestCheckResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ReportMergeRequestCheck not implemented")
+}
+func (UnimplementedNipaServiceServer) ListMergeRequestChecks(context.Context, *ListMergeRequestChecksRequest) (*ListMergeRequestChecksResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListMergeRequestChecks not implemented")
 }
 func (UnimplementedNipaServiceServer) ListMergeRequestCommits(context.Context, *ListMergeRequestCommitsRequest) (*ListMergeRequestCommitsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListMergeRequestCommits not implemented")
@@ -1560,6 +1624,24 @@ func _NipaService_GetMergeRequest_Handler(srv interface{}, ctx context.Context, 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _NipaService_SetMergeRequestAssignees_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetMergeRequestAssigneesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaServiceServer).SetMergeRequestAssignees(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaService_SetMergeRequestAssignees_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaServiceServer).SetMergeRequestAssignees(ctx, req.(*SetMergeRequestAssigneesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _NipaService_MergeMergeRequest_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(MergeMergeRequestRequest)
 	if err := dec(in); err != nil {
@@ -1574,6 +1656,24 @@ func _NipaService_MergeMergeRequest_Handler(srv interface{}, ctx context.Context
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(NipaServiceServer).MergeMergeRequest(ctx, req.(*MergeMergeRequestRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NipaService_MarkMergeRequestMerged_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MarkMergeRequestMergedRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaServiceServer).MarkMergeRequestMerged(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaService_MarkMergeRequestMerged_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaServiceServer).MarkMergeRequestMerged(ctx, req.(*MarkMergeRequestMergedRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1628,6 +1728,42 @@ func _NipaService_CheckMergeRequest_Handler(srv interface{}, ctx context.Context
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(NipaServiceServer).CheckMergeRequest(ctx, req.(*CheckMergeRequestRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NipaService_ReportMergeRequestCheck_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReportMergeRequestCheckRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaServiceServer).ReportMergeRequestCheck(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaService_ReportMergeRequestCheck_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaServiceServer).ReportMergeRequestCheck(ctx, req.(*ReportMergeRequestCheckRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NipaService_ListMergeRequestChecks_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListMergeRequestChecksRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaServiceServer).ListMergeRequestChecks(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaService_ListMergeRequestChecks_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaServiceServer).ListMergeRequestChecks(ctx, req.(*ListMergeRequestChecksRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -2388,8 +2524,16 @@ var NipaService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _NipaService_GetMergeRequest_Handler,
 		},
 		{
+			MethodName: "SetMergeRequestAssignees",
+			Handler:    _NipaService_SetMergeRequestAssignees_Handler,
+		},
+		{
 			MethodName: "MergeMergeRequest",
 			Handler:    _NipaService_MergeMergeRequest_Handler,
+		},
+		{
+			MethodName: "MarkMergeRequestMerged",
+			Handler:    _NipaService_MarkMergeRequestMerged_Handler,
 		},
 		{
 			MethodName: "CloseMergeRequest",
@@ -2402,6 +2546,14 @@ var NipaService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "CheckMergeRequest",
 			Handler:    _NipaService_CheckMergeRequest_Handler,
+		},
+		{
+			MethodName: "ReportMergeRequestCheck",
+			Handler:    _NipaService_ReportMergeRequestCheck_Handler,
+		},
+		{
+			MethodName: "ListMergeRequestChecks",
+			Handler:    _NipaService_ListMergeRequestChecks_Handler,
 		},
 		{
 			MethodName: "ListMergeRequestCommits",

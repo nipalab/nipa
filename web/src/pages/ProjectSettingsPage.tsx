@@ -6,22 +6,25 @@ import {
   FormControl,
   Heading,
   NavList,
+  Select,
   Stack,
   Text,
   TextInput,
   ToggleSwitch,
 } from '@primer/react'
+import { XIcon } from '@primer/octicons-react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import {
   createProjectRule,
   deleteProjectDefault,
   deleteProjectRule,
+  listOrgMembers,
   listProjectDefaults,
   listProjectRules,
   setBranchProtection,
   setProjectDefault,
 } from '../api/endpoints'
-import type { BranchResponse, PBACRuleResponse, PermissionEntry } from '../api/models'
+import type { BranchResponse, OrgMemberResponse, PBACRuleResponse, PermissionEntry } from '../api/models'
 import { RepoPageShell } from '../components/repo/RepoPageShell'
 import { useRepoChrome } from '../components/repo/useRepoChrome'
 import { WebhookSettings } from '../components/repo/WebhookSettings'
@@ -157,6 +160,7 @@ export default function ProjectSettingsPage() {
     () => listProjectDefaults(org, project),
     [org, project],
   )
+  const { data: members } = useAsync(() => listOrgMembers(org), [org])
 
   const [actionError, setActionError] = useState<string | null>(null)
   const [showAddRule, setShowAddRule] = useState(false)
@@ -269,6 +273,52 @@ export default function ProjectSettingsPage() {
                   reloadBranches()
                 })
               }
+              onRequireChecks={(branch, require) =>
+                run(async () => {
+                  await setBranchProtection(
+                    org,
+                    project,
+                    branch.name,
+                    branch.is_protected,
+                    undefined,
+                    undefined,
+                    require,
+                  )
+                  reloadBranches()
+                })
+              }
+              onRequiredReviewers={(branch, reviewerIDs) =>
+                run(async () => {
+                  await setBranchProtection(
+                    org,
+                    project,
+                    branch.name,
+                    branch.is_protected,
+                    undefined,
+                    undefined,
+                    undefined,
+                    reviewerIDs,
+                  )
+                  reloadBranches()
+                })
+              }
+              onRequiredChecks={(branch, checks) =>
+                run(async () => {
+                  await setBranchProtection(
+                    org,
+                    project,
+                    branch.name,
+                    branch.is_protected,
+                    undefined,
+                    undefined,
+                    undefined,
+                    undefined,
+                    checks,
+                  )
+                  reloadBranches()
+                })
+              }
+              members={members ?? []}
             />
           )}
 
@@ -335,14 +385,22 @@ function ruleSubject(rule: PBACRuleResponse): { name: string; email?: string } |
 
 function BranchProtectionCard({
   branches,
+  members,
   onToggle,
   onApprovals,
   onDismissStale,
+  onRequireChecks,
+  onRequiredReviewers,
+  onRequiredChecks,
 }: {
   branches: BranchResponse[]
+  members: OrgMemberResponse[]
   onToggle: (branch: BranchResponse, protect: boolean) => void
   onApprovals: (branch: BranchResponse, approvals: number) => void
   onDismissStale: (branch: BranchResponse, dismiss: boolean) => void
+  onRequireChecks: (branch: BranchResponse, require: boolean) => void
+  onRequiredReviewers: (branch: BranchResponse, reviewerIDs: string[]) => void
+  onRequiredChecks: (branch: BranchResponse, checks: string[]) => void
 }) {
   return (
     <SettingsCard
@@ -383,9 +441,144 @@ function BranchProtectionCard({
               />
             </Stack>
           </div>
+          <div
+            style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              alignItems: 'center',
+              gap: 12,
+              marginTop: 8,
+              fontSize: 12,
+            }}
+          >
+            <label style={{ display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
+              <input
+                type="checkbox"
+                aria-label={`Require status checks for ${branch.name}`}
+                checked={branch.require_status_checks}
+                onChange={(event) => onRequireChecks(branch, event.target.checked)}
+              />
+              Require status checks
+            </label>
+            <RequiredChecksInput branch={branch} onCommit={(checks) => onRequiredChecks(branch, checks)} />
+            <RequiredReviewersPicker
+              branch={branch}
+              members={members}
+              onCommit={(reviewerIDs) => onRequiredReviewers(branch, reviewerIDs)}
+            />
+          </div>
         </SettingsRow>
       ))}
     </SettingsCard>
+  )
+}
+
+function RequiredChecksInput({
+  branch,
+  onCommit,
+}: {
+  branch: BranchResponse
+  onCommit: (checks: string[]) => void
+}) {
+  const [value, setValue] = useState((branch.required_checks ?? []).join(', '))
+
+  useEffect(() => {
+    setValue((branch.required_checks ?? []).join(', '))
+  }, [branch.required_checks])
+
+  function commit() {
+    const names = value
+      .split(',')
+      .map((name) => name.trim())
+      .filter((name) => name !== '')
+    const current = branch.required_checks ?? []
+    if (names.join('\u0000') !== current.join('\u0000')) {
+      onCommit(names)
+    } else {
+      setValue(current.join(', '))
+    }
+  }
+
+  return (
+    <TextInput
+      aria-label={`Required checks for ${branch.name}`}
+      placeholder="checks, comma separated"
+      size="small"
+      value={value}
+      onChange={(event) => setValue(event.target.value)}
+      onBlur={commit}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') commit()
+      }}
+      style={{ width: 220 }}
+    />
+  )
+}
+
+function RequiredReviewersPicker({
+  branch,
+  members,
+  onCommit,
+}: {
+  branch: BranchResponse
+  members: OrgMemberResponse[]
+  onCommit: (reviewerIDs: string[]) => void
+}) {
+  const [pick, setPick] = useState('')
+  const required = branch.required_reviewers ?? []
+  const candidates = members.filter(
+    (member) => !required.some((reviewer) => reviewer.user_id === member.user_id),
+  )
+
+  return (
+    <Stack direction="horizontal" gap="condensed" align="center">
+      {required.map((reviewer) => (
+        <span
+          key={reviewer.user_id}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}
+        >
+          {reviewer.name || reviewer.user_id}
+          <Button
+            size="small"
+            aria-label={`remove required reviewer ${reviewer.name || reviewer.user_id}`}
+            onClick={() =>
+              onCommit(
+                required.filter((entry) => entry.user_id !== reviewer.user_id).map((entry) => entry.user_id),
+              )
+            }
+          >
+            <XIcon />
+          </Button>
+        </span>
+      ))}
+      {candidates.length > 0 && (
+        <>
+          <Select
+            aria-label={`Add required reviewer for ${branch.name}`}
+            value={pick}
+            onChange={(event) => setPick(event.target.value)}
+            size="small"
+          >
+            <option value="">add required reviewer…</option>
+            {candidates.map((member) => (
+              <option key={member.user_id} value={member.user_id}>
+                {member.name || member.email}
+              </option>
+            ))}
+          </Select>
+          <Button
+            size="small"
+            disabled={!pick}
+            onClick={() => {
+              onCommit([...required.map((entry) => entry.user_id), pick])
+              setPick('')
+            }}
+          >
+            Add
+          </Button>
+        </>
+      )}
+    </Stack>
   )
 }
 

@@ -119,15 +119,71 @@ func (b *BranchRepository) HasOpenMergeRequests(ctx context.Context, projectID, 
 	return count > 0, nil
 }
 
-func (b *BranchRepository) SetBranchProtection(ctx context.Context, projectID, branchID snow.ID, protected bool, requiredApprovals int64, dismissStaleApprovals bool) error {
-	err := b.queries.BranchSetProtection(ctx, sqlcSqlite.BranchSetProtectionParams{
-		IsProtected:           protected,
-		RequiredApprovals:     requiredApprovals,
-		DismissStaleApprovals: dismissStaleApprovals,
+func (b *BranchRepository) SetBranchProtection(ctx context.Context, projectID, branchID snow.ID, protection domain.BranchProtection) error {
+	tx, err := b.db.BeginTx(ctx, nil)
+	if err != nil {
+		return handleError(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	q := sqlcSqlite.New(tx)
+	if err := q.BranchSetProtection(ctx, sqlcSqlite.BranchSetProtectionParams{
+		IsProtected:           protection.Protected,
+		RequiredApprovals:     protection.RequiredApprovals,
+		DismissStaleApprovals: protection.DismissStaleApprovals,
+		RequireStatusChecks:   protection.RequireStatusChecks,
 		ProjectID:             projectID.Int64(),
 		ID:                    branchID.Int64(),
-	})
-	return handleError(err)
+	}); err != nil {
+		return handleError(err)
+	}
+	if err := q.BranchRequiredReviewerClear(ctx, branchID.Int64()); err != nil {
+		return handleError(err)
+	}
+	for _, reviewer := range protection.RequiredReviewers {
+		if err := q.BranchRequiredReviewerAdd(ctx, sqlcSqlite.BranchRequiredReviewerAddParams{
+			BranchID: branchID.Int64(),
+			UserID:   reviewer.Int64(),
+		}); err != nil {
+			return handleError(err)
+		}
+	}
+	if err := q.BranchRequiredCheckClear(ctx, branchID.Int64()); err != nil {
+		return handleError(err)
+	}
+	for _, name := range protection.RequiredChecks {
+		if err := q.BranchRequiredCheckAdd(ctx, sqlcSqlite.BranchRequiredCheckAddParams{
+			BranchID: branchID.Int64(),
+			Name:     name,
+		}); err != nil {
+			return handleError(err)
+		}
+	}
+	return handleError(tx.Commit())
+}
+
+func (b *BranchRepository) RequiredReviewers(ctx context.Context, branchID snow.ID) ([]domain.ReviewActor, error) {
+	rows, err := b.queries.BranchRequiredReviewerList(ctx, branchID.Int64())
+	if err != nil {
+		return nil, handleError(err)
+	}
+	reviewers := make([]domain.ReviewActor, 0, len(rows))
+	for _, row := range rows {
+		reviewers = append(reviewers, domain.ReviewActor{
+			UserID:   snow.ID(row.UserID),
+			Name:     row.UserName,
+			PhotoURL: row.UserPhotoUrl.String,
+		})
+	}
+	return reviewers, nil
+}
+
+func (b *BranchRepository) RequiredChecks(ctx context.Context, branchID snow.ID) ([]string, error) {
+	names, err := b.queries.BranchRequiredCheckList(ctx, branchID.Int64())
+	if err != nil {
+		return nil, handleError(err)
+	}
+	return names, nil
 }
 
 func (b *BranchRepository) SetDefaultBranch(ctx context.Context, projectID, branchID snow.ID) error {
@@ -320,6 +376,7 @@ func branchToDomain(b sqlcSqlite.Branch) *domain.Branch {
 		IsProtected:           b.IsProtected,
 		RequiredApprovals:     b.RequiredApprovals,
 		DismissStaleApprovals: b.DismissStaleApprovals,
+		RequireStatusChecks:   b.RequireStatusChecks,
 		IsDefault:             b.IsDefault,
 		CommitID:              commitID,
 		UpdatedAt:             b.UpdatedAt,

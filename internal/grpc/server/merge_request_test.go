@@ -67,6 +67,18 @@ func (s *stubMergeRequestRepository) SetDraft(_ context.Context, _ snow.ID, id i
 	return s.draftFn(id, draft)
 }
 
+func (s *stubMergeRequestRepository) AddAssignee(_ context.Context, _ int64, _ snow.ID) error {
+	return nil
+}
+
+func (s *stubMergeRequestRepository) ListAssignees(_ context.Context, _ snow.ID) (map[int64][]domain.ReviewActor, error) {
+	return nil, nil
+}
+
+func (s *stubMergeRequestRepository) ClearAssignees(_ context.Context, _ int64) error {
+	return nil
+}
+
 func (s *stubMergeRequestRepository) UpdateStatus(_ context.Context, _ snow.ID, _ int64, status string, mergeCommitID *snow.ID) error {
 	s.status = status
 	s.mergeCommitID = mergeCommitID

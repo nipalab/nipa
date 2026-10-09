@@ -403,6 +403,17 @@ func domainReviewActorToPB(actor *domain.ReviewActor) *pb.ReviewActor {
 	}
 }
 
+func domainReviewActorsToPB(actors []domain.ReviewActor) []*pb.ReviewActor {
+	if len(actors) == 0 {
+		return nil
+	}
+	out := make([]*pb.ReviewActor, 0, len(actors))
+	for i := range actors {
+		out = append(out, domainReviewActorToPB(&actors[i]))
+	}
+	return out
+}
+
 func parseBase36ID(value string) (snow.ID, error) {
 	if value == "" {
 		return 0, domain.NewErrorUser("id is required")

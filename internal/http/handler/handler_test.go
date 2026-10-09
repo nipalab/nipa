@@ -147,6 +147,10 @@ func (r *handlerRegistry) MergeRequestReview() *usecase.MergeRequestReview {
 	return r.review
 }
 
+func (r *handlerRegistry) MergeRequestCheck() *usecase.MergeRequestCheck {
+	return nil
+}
+
 func (r *handlerRegistry) FileLock() *usecase.FileLock { return r.fileLock }
 
 func (r *handlerRegistry) Webhook() *usecase.Webhook { return r.webhook }

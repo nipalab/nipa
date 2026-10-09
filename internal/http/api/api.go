@@ -24,6 +24,7 @@ type usecaseContainer interface {
 	Chunk() *usecase.Chunk
 	MergeRequest() *usecase.MergeRequest
 	MergeRequestReview() *usecase.MergeRequestReview
+	MergeRequestCheck() *usecase.MergeRequestCheck
 	FileLock() *usecase.FileLock
 	Webhook() *usecase.Webhook
 }

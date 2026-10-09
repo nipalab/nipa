@@ -15,20 +15,26 @@ export default function MergeRequestsPage() {
   const [author, setAuthor] = useState('')
   const [source, setSource] = useState('')
   const [target, setTarget] = useState('')
+  const [search, setSearch] = useState('')
+  const [assignee, setAssignee] = useState('')
   const [extra, setExtra] = useState<MergeRequestResponse[]>([])
   const [extraCursor, setExtraCursor] = useState<string | null>(null)
   const [loadingMore, setLoadingMore] = useState(false)
   const [moreError, setMoreError] = useState<string | null>(null)
   const { canWrite, canAdmin, defaultBranch } = useRepoChrome(org, project)
   const draftFilter = status === 'draft'
+  const listParams = (after?: string) => ({
+    ...(draftFilter ? { status: 'open', draft: true } : { status }),
+    author,
+    source,
+    target,
+    search,
+    assignee,
+    ...(after ? { after } : {}),
+  })
   const { data, error, loading } = useAsync(
-    () =>
-      listMergeRequests(
-        org,
-        project,
-        draftFilter ? { status: 'open', draft: true, author, source, target } : { status, author, source, target },
-      ),
-    [org, project, status, author, source, target],
+    () => listMergeRequests(org, project, listParams()),
+    [org, project, status, author, source, target, search, assignee],
   )
   const { data: members } = useAsync(() => listOrgMembers(org), [org])
 
@@ -46,13 +52,7 @@ export default function MergeRequestsPage() {
     setLoadingMore(true)
     setMoreError(null)
     try {
-      const page = await listMergeRequests(
-        org,
-        project,
-        draftFilter
-          ? { status: 'open', draft: true, author, source, target, after: nextCursor }
-          : { status, author, source, target, after: nextCursor },
-      )
+      const page = await listMergeRequests(org, project, listParams(nextCursor))
       setExtra((current) => [...current, ...page.merge_requests])
       setExtraCursor(page.next_cursor ?? '')
     } catch (err) {
@@ -89,6 +89,12 @@ export default function MergeRequestsPage() {
         }}
       >
         <TextInput
+          aria-label="Search merge requests"
+          placeholder="search title or description"
+          value={search}
+          onChange={(event) => changeFilter(() => setSearch(event.target.value))}
+        />
+        <TextInput
           aria-label="Filter by source branch"
           placeholder="source branch"
           value={source}
@@ -107,6 +113,19 @@ export default function MergeRequestsPage() {
           style={{ padding: 4 }}
         >
           <option value="">any author</option>
+          {(members ?? []).map((member) => (
+            <option key={member.user_id} value={member.user_id}>
+              {member.name}
+            </option>
+          ))}
+        </select>
+        <select
+          aria-label="Filter by assignee"
+          value={assignee}
+          onChange={(event) => changeFilter(() => setAssignee(event.target.value))}
+          style={{ padding: 4 }}
+        >
+          <option value="">any assignee</option>
           {(members ?? []).map((member) => (
             <option key={member.user_id} value={member.user_id}>
               {member.name}

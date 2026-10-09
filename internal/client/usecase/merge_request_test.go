@@ -44,9 +44,23 @@ type stubMRClient struct {
 	mergeNumber       int64
 	mergeStrategy     string
 	mergeDeleteSource bool
-	mergeResult       *domain.MergeRequest
-	mergeability      *domain.Mergeability
-	mergeErr          error
+
+	checkName        string
+	checkState       string
+	checkURL         string
+	reportCheck      *domain.MergeRequestCheck
+	reportErr        error
+	checksResult     []*domain.MergeRequestCheck
+	checksErr        error
+	markMergedNumber int64
+	markMergedResult *domain.MergeRequest
+	markMergedErr    error
+	assigneeIDs      []string
+	assigneeResult   *domain.MergeRequest
+	assigneeErr      error
+	mergeResult      *domain.MergeRequest
+	mergeability     *domain.Mergeability
+	mergeErr         error
 
 	getResult       *domain.MergeRequest
 	getMergeability *domain.Mergeability
@@ -157,6 +171,16 @@ func (s *stubMRClient) CloseMergeRequest(_ context.Context, _, _ string, number 
 	return s.closeResult, s.closeErr
 }
 
+func (s *stubMRClient) MarkMergeRequestMerged(_ context.Context, _, _ string, number int64) (*domain.MergeRequest, error) {
+	s.markMergedNumber = number
+	return s.markMergedResult, s.markMergedErr
+}
+
+func (s *stubMRClient) SetMergeRequestAssignees(_ context.Context, _, _ string, _ int64, userIDs []string) (*domain.MergeRequest, error) {
+	s.assigneeIDs = userIDs
+	return s.assigneeResult, s.assigneeErr
+}
+
 func (s *stubMRClient) GetMergeRequest(_ context.Context, _, _ string, number int64) (*domain.MergeRequest, *domain.Mergeability, error) {
 	s.getNumber = number
 	return s.getResult, s.getMergeability, s.getErr
@@ -185,6 +209,15 @@ func (s *stubMRClient) GetMergeRequestDiff(_ context.Context, _, _ string, numbe
 func (s *stubMRClient) ListMergeRequestReviews(_ context.Context, _, _ string, number int64) ([]*domain.MergeRequestReview, error) {
 	s.reviewsNumber = number
 	return s.reviewsResult, s.reviewsErr
+}
+
+func (s *stubMRClient) ReportMergeRequestCheck(_ context.Context, _, _ string, _ int64, name, state, detailsURL string) (*domain.MergeRequestCheck, error) {
+	s.checkName, s.checkState, s.checkURL = name, state, detailsURL
+	return s.reportCheck, s.reportErr
+}
+
+func (s *stubMRClient) ListMergeRequestChecks(_ context.Context, _, _ string, _ int64) ([]*domain.MergeRequestCheck, error) {
+	return s.checksResult, s.checksErr
 }
 
 func (s *stubMRClient) SubmitMergeRequestReview(_ context.Context, _, _ string, number int64, state, body string) (*domain.MergeRequestReview, error) {

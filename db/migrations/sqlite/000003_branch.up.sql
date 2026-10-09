@@ -54,6 +54,7 @@ CREATE TABLE branches (
     is_protected BOOLEAN NOT NULL DEFAULT FALSE,
     required_approvals INTEGER NOT NULL DEFAULT 0,
     dismiss_stale_approvals BOOLEAN NOT NULL DEFAULT TRUE,
+    require_status_checks BOOLEAN NOT NULL DEFAULT FALSE,
     is_default BOOLEAN NOT NULL DEFAULT FALSE,
     commit_id INTEGER REFERENCES commits(id),
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -72,5 +73,17 @@ CREATE INDEX idx_branches_project_updated_id
 CREATE UNIQUE INDEX idx_branches_one_default_per_project 
     ON branches (project_id) 
     WHERE is_default = TRUE;
+
+CREATE TABLE branches_required_reviewers (
+    branch_id INTEGER NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    PRIMARY KEY (branch_id, user_id)
+);
+
+CREATE TABLE branches_required_checks (
+    branch_id INTEGER NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    PRIMARY KEY (branch_id, name)
+);
 
 INSERT INTO branches (id, project_id, name, key, is_default) VALUES (1, 1, 'main', 'main', TRUE);

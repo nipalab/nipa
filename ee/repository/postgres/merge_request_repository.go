@@ -69,6 +69,12 @@ func (r *MergeRequestRepository) List(ctx context.Context, projectID snow.ID, op
 	if opts.Draft != nil {
 		params.Draft = sql.NullBool{Bool: *opts.Draft, Valid: true}
 	}
+	if opts.Search != "" {
+		params.Search = sql.NullString{String: opts.Search, Valid: true}
+	}
+	if opts.Assignee != nil {
+		params.Assignee = sql.NullInt64{Int64: opts.Assignee.Int64(), Valid: true}
+	}
 	if opts.After > 0 {
 		params.AfterNumber = sql.NullInt64{Int64: opts.After, Valid: true}
 	}
@@ -116,6 +122,33 @@ func (r *MergeRequestRepository) UpdateStatus(ctx context.Context, projectID sno
 		Number:        number,
 	})
 	return handleError(err)
+}
+
+func (r *MergeRequestRepository) ListAssignees(ctx context.Context, projectID snow.ID) (map[int64][]domain.ReviewActor, error) {
+	rows, err := r.queries.MergeRequestAssigneeList(ctx, projectID.Int64())
+	if err != nil {
+		return nil, handleError(err)
+	}
+	assignees := make(map[int64][]domain.ReviewActor)
+	for _, row := range rows {
+		assignees[row.MergeRequestNumber] = append(assignees[row.MergeRequestNumber], domain.ReviewActor{
+			UserID:   snow.ID(row.UserID),
+			Name:     row.UserName,
+			PhotoURL: row.UserPhotoUrl.String,
+		})
+	}
+	return assignees, nil
+}
+
+func (r *MergeRequestRepository) ClearAssignees(ctx context.Context, mergeRequestID int64) error {
+	return handleError(r.queries.MergeRequestAssigneeClear(ctx, mergeRequestID))
+}
+
+func (r *MergeRequestRepository) AddAssignee(ctx context.Context, mergeRequestID int64, userID snow.ID) error {
+	return handleError(r.queries.MergeRequestAssigneeAdd(ctx, sqlcPostgres.MergeRequestAssigneeAddParams{
+		MergeRequestID: mergeRequestID,
+		UserID:         userID.Int64(),
+	}))
 }
 
 func mergeRequestToDomain(row sqlcPostgres.MergeRequest) *domain.MergeRequest {

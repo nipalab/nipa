@@ -148,19 +148,67 @@ type branchProtectionJSON struct {
 	IsProtected           bool  `json:"is_protected"`
 	RequiredApprovals     int64 `json:"required_approvals"`
 	DismissStaleApprovals bool  `json:"dismiss_stale_approvals"`
+	RequireStatusChecks   bool  `json:"require_status_checks"`
+	RequiredReviewers     []struct {
+		UserID string `json:"user_id"`
+		Name   string `json:"name"`
+	} `json:"required_reviewers"`
+	RequiredChecks []string `json:"required_checks"`
 }
 
-func (c *apiClient) setBranchProtection(org, project, branch string, protected bool, requiredApprovals *int64, dismissStaleApprovals *bool) branchProtectionJSON {
-	body := map[string]any{"protected": protected}
-	if requiredApprovals != nil {
-		body["required_approvals"] = *requiredApprovals
+type branchProtectionOptions struct {
+	Protected             bool
+	RequiredApprovals     *int64
+	DismissStaleApprovals *bool
+	RequireStatusChecks   *bool
+	RequiredReviewers     []string
+	RequiredChecks        []string
+}
+
+func (c *apiClient) setBranchProtectionFull(org, project, branch string, opts branchProtectionOptions) branchProtectionJSON {
+	body := map[string]any{"protected": opts.Protected}
+	if opts.RequiredApprovals != nil {
+		body["required_approvals"] = *opts.RequiredApprovals
 	}
-	if dismissStaleApprovals != nil {
-		body["dismiss_stale_approvals"] = *dismissStaleApprovals
+	if opts.DismissStaleApprovals != nil {
+		body["dismiss_stale_approvals"] = *opts.DismissStaleApprovals
+	}
+	if opts.RequireStatusChecks != nil {
+		body["require_status_checks"] = *opts.RequireStatusChecks
+	}
+	if opts.RequiredReviewers != nil {
+		body["required_reviewers"] = opts.RequiredReviewers
+	}
+	if opts.RequiredChecks != nil {
+		body["required_checks"] = opts.RequiredChecks
 	}
 	var out branchProtectionJSON
 	c.do(http.MethodPut, fmt.Sprintf("/orgs/%s/projects/%s/branches/%s/protection", org, project, branch), body, &out, true)
 	return out
+}
+
+func (c *apiClient) setBranchProtection(org, project, branch string, protected bool, requiredApprovals *int64, dismissStaleApprovals *bool) branchProtectionJSON {
+	return c.setBranchProtectionFull(org, project, branch, branchProtectionOptions{
+		Protected:             protected,
+		RequiredApprovals:     requiredApprovals,
+		DismissStaleApprovals: dismissStaleApprovals,
+	})
+}
+
+// setMergeRequestAssignees replaces the assignees over the REST API.
+func (c *apiClient) setMergeRequestAssignees(org, project string, number int64, userIDs []string) {
+	c.do(http.MethodPost, fmt.Sprintf("/orgs/%s/projects/%s/merge-requests/%d/assignees", org, project, number), map[string]any{
+		"user_ids": userIDs,
+	}, nil, true)
+}
+
+// reportMergeRequestCheck records a status check result over the REST API.
+func (c *apiClient) reportMergeRequestCheck(org, project string, number int64, name, state, detailsURL string) {
+	c.do(http.MethodPost, fmt.Sprintf("/orgs/%s/projects/%s/merge-requests/%d/checks", org, project, number), map[string]any{
+		"name":        name,
+		"state":       state,
+		"details_url": detailsURL,
+	}, nil, true)
 }
 
 type mergeabilityJSON struct {

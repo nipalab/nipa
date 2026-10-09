@@ -26,6 +26,7 @@ func (h *Handler) ListMergeRequests(appCtx http.AppContext) {
 		Status:       appCtx.QueryParameter("status"),
 		SourceBranch: appCtx.QueryParameter("source"),
 		TargetBranch: appCtx.QueryParameter("target"),
+		Search:       appCtx.QueryParameter("search"),
 		Limit:        limit + 1,
 	}
 	if raw := appCtx.QueryParameter("author"); raw != "" {
@@ -35,6 +36,14 @@ func (h *Handler) ListMergeRequests(appCtx http.AppContext) {
 			return
 		}
 		opts.Author = &author
+	}
+	if raw := appCtx.QueryParameter("assignee"); raw != "" {
+		assignee, err := snow.ParseBase36(raw)
+		if err != nil {
+			appCtx.HandleError(domain.NewErrorUser("invalid assignee id"))
+			return
+		}
+		opts.Assignee = &assignee
 	}
 	if raw := appCtx.QueryParameter("after"); raw != "" {
 		after, err := strconv.ParseInt(raw, 10, 64)
@@ -139,6 +148,108 @@ func (h *Handler) UpdateMergeRequest(appCtx http.AppContext) {
 	appCtx.WriteJson(nethttp.StatusOK, toMergeRequestResponse(toggled, nil))
 }
 
+func (h *Handler) ReportMergeRequestCheck(appCtx http.AppContext) {
+	_, project, err := h.resolveProject(appCtx)
+	if err != nil {
+		appCtx.HandleError(err)
+		return
+	}
+	number, err := parseMergeRequestNumber(appCtx)
+	if err != nil {
+		appCtx.HandleError(err)
+		return
+	}
+	body := &model.ReportMergeRequestCheckRequest{}
+	if err := appCtx.ReadJson(body); err != nil {
+		appCtx.HandleError(err)
+		return
+	}
+	checks := h.useCase.MergeRequestCheck()
+	if checks == nil {
+		appCtx.HandleError(domain.NewErrorInternalServer("status checks are not configured"))
+		return
+	}
+	check, err := checks.Report(appCtx.Context(), project.ID, number, body.Name, body.State, body.DetailsURL)
+	if err != nil {
+		appCtx.HandleError(err)
+		return
+	}
+	appCtx.WriteJson(nethttp.StatusOK, toMergeRequestCheckResponse(check))
+}
+
+func (h *Handler) ListMergeRequestChecks(appCtx http.AppContext) {
+	_, project, err := h.resolveProject(appCtx)
+	if err != nil {
+		appCtx.HandleError(err)
+		return
+	}
+	number, err := parseMergeRequestNumber(appCtx)
+	if err != nil {
+		appCtx.HandleError(err)
+		return
+	}
+	checks := h.useCase.MergeRequestCheck()
+	if checks == nil {
+		appCtx.HandleError(domain.NewErrorInternalServer("status checks are not configured"))
+		return
+	}
+	list, err := checks.List(appCtx.Context(), project.ID, number)
+	if err != nil {
+		appCtx.HandleError(err)
+		return
+	}
+	resp := make([]model.MergeRequestCheckResponse, 0, len(list))
+	for _, check := range list {
+		resp = append(resp, toMergeRequestCheckResponse(check))
+	}
+	appCtx.WriteJson(nethttp.StatusOK, resp)
+}
+
+func toMergeRequestCheckResponse(check *domain.MergeRequestCheck) model.MergeRequestCheckResponse {
+	return model.MergeRequestCheckResponse{
+		ID:         check.ID.Base36(),
+		Name:       check.Name,
+		State:      check.State,
+		DetailsURL: check.DetailsURL,
+		Reporter:   toReviewActorResponse(check.Reporter),
+		CreatedAt:  check.CreatedAt,
+		UpdatedAt:  check.UpdatedAt,
+	}
+}
+
+func (h *Handler) SetMergeRequestAssignees(appCtx http.AppContext) {
+	_, project, err := h.resolveProject(appCtx)
+	if err != nil {
+		appCtx.HandleError(err)
+		return
+	}
+	number, err := parseMergeRequestNumber(appCtx)
+	if err != nil {
+		appCtx.HandleError(err)
+		return
+	}
+	body := &model.SetAssigneesRequest{}
+	if err := appCtx.ReadJson(body); err != nil {
+		appCtx.HandleError(err)
+		return
+	}
+	userIDs := make([]snow.ID, 0, len(body.UserIDs))
+	for _, raw := range body.UserIDs {
+		id, err := snow.ParseBase36(raw)
+		if err != nil {
+			appCtx.HandleError(domain.NewErrorUser("invalid assignee id"))
+			return
+		}
+		userIDs = append(userIDs, id)
+	}
+	request, err := h.useCase.MergeRequest().SetAssignees(appCtx.Context(), project.ID, number, userIDs)
+	if err != nil {
+		appCtx.HandleError(err)
+		return
+	}
+	appCtx.WriteJson(nethttp.StatusOK, toMergeRequestResponse(request, nil))
+}
+
 func (h *Handler) GetMergeRequest(appCtx http.AppContext) {
 	_, project, err := h.resolveProject(appCtx)
 	if err != nil {
@@ -211,6 +322,25 @@ func (h *Handler) MergeMergeRequest(appCtx http.AppContext) {
 		return
 	}
 	appCtx.WriteJson(nethttp.StatusOK, toMergeRequestResponse(request, info))
+}
+
+func (h *Handler) MarkMergeRequestMerged(appCtx http.AppContext) {
+	_, project, err := h.resolveProject(appCtx)
+	if err != nil {
+		appCtx.HandleError(err)
+		return
+	}
+	number, err := parseMergeRequestNumber(appCtx)
+	if err != nil {
+		appCtx.HandleError(err)
+		return
+	}
+	request, err := h.useCase.MergeRequest().MarkMerged(appCtx.Context(), project.ID, number)
+	if err != nil {
+		appCtx.HandleError(err)
+		return
+	}
+	appCtx.WriteJson(nethttp.StatusOK, toMergeRequestResponse(request, nil))
 }
 
 func (h *Handler) CloseMergeRequest(appCtx http.AppContext) {
@@ -326,6 +456,9 @@ func toMergeRequestResponse(request *domain.MergeRequest, info *domain.Mergeabil
 	if request.Review != nil {
 		review := toReviewStateResponse(request.Review)
 		resp.Review = &review
+	}
+	for _, assignee := range request.Assignees {
+		resp.Assignees = append(resp.Assignees, toReviewActorResponse(assignee))
 	}
 	return resp
 }

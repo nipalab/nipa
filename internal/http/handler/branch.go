@@ -98,8 +98,30 @@ func (h *Handler) SetProjectBranchProtection(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
+	opts := usecase.BranchProtectionOptions{
+		Protected:             body.Protected,
+		RequiredApprovals:     body.RequiredApprovals,
+		DismissStaleApprovals: body.DismissStaleApprovals,
+		RequireStatusChecks:   body.RequireStatusChecks,
+	}
+	if body.RequiredReviewers != nil {
+		ids := make([]snow.ID, 0, len(*body.RequiredReviewers))
+		for _, raw := range *body.RequiredReviewers {
+			id, err := snow.ParseBase36(raw)
+			if err != nil {
+				appCtx.HandleError(domain.NewErrorUser("invalid required reviewer id"))
+				return
+			}
+			ids = append(ids, id)
+		}
+		opts.RequiredReviewers = &ids
+	}
+	if body.RequiredChecks != nil {
+		checks := *body.RequiredChecks
+		opts.RequiredChecks = &checks
+	}
 	branch, err := h.useCase.Branch().SetProtection(
-		appCtx.Context(), project.ID, appCtx.PathParameter("name"), body.Protected, body.RequiredApprovals, body.DismissStaleApprovals,
+		appCtx.Context(), project.ID, appCtx.PathParameter("name"), opts,
 	)
 	if err != nil {
 		appCtx.HandleError(err)

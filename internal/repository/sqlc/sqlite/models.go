@@ -17,12 +17,23 @@ type Branch struct {
 	IsProtected           bool          `json:"is_protected"`
 	RequiredApprovals     int64         `json:"required_approvals"`
 	DismissStaleApprovals bool          `json:"dismiss_stale_approvals"`
+	RequireStatusChecks   bool          `json:"require_status_checks"`
 	IsDefault             bool          `json:"is_default"`
 	CommitID              sql.NullInt64 `json:"commit_id"`
 	UpdatedAt             time.Time     `json:"updated_at"`
 	CreatedAt             time.Time     `json:"created_at"`
 	Deleted               bool          `json:"deleted"`
 	DeletedAt             sql.NullTime  `json:"deleted_at"`
+}
+
+type BranchesRequiredCheck struct {
+	BranchID int64  `json:"branch_id"`
+	Name     string `json:"name"`
+}
+
+type BranchesRequiredReviewer struct {
+	BranchID int64 `json:"branch_id"`
+	UserID   int64 `json:"user_id"`
 }
 
 type Chunk struct {
@@ -105,6 +116,23 @@ type MergeRequest struct {
 	CreatedBy         int64         `json:"created_by"`
 	CreatedAt         time.Time     `json:"created_at"`
 	UpdatedAt         time.Time     `json:"updated_at"`
+}
+
+type MergeRequestAssignee struct {
+	MergeRequestID int64 `json:"merge_request_id"`
+	UserID         int64 `json:"user_id"`
+}
+
+type MergeRequestCheck struct {
+	ID             int64     `json:"id"`
+	MergeRequestID int64     `json:"merge_request_id"`
+	HeadCommitID   int64     `json:"head_commit_id"`
+	Name           string    `json:"name"`
+	State          string    `json:"state"`
+	DetailsUrl     string    `json:"details_url"`
+	ReporterID     int64     `json:"reporter_id"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
 }
 
 type MergeRequestComment struct {

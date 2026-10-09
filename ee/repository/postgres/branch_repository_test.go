@@ -866,12 +866,30 @@ func (s *BranchRepositorySuite) TestLifecycle() {
 	s.Require().NoError(err)
 	s.Equal("renamed", renamed.Name)
 
-	s.Require().NoError(repo.SetBranchProtection(ctx, projectID, branchID, true, 2, true))
+	reviewerID := seedUser(s.T(), s.q, "reviewer", "reviewer@example.com", sql.NullString{})
+	s.Require().NoError(repo.SetBranchProtection(ctx, projectID, branchID, domain.BranchProtection{
+		Protected:             true,
+		RequiredApprovals:     2,
+		DismissStaleApprovals: true,
+		RequireStatusChecks:   true,
+		RequiredReviewers:     []snow.ID{reviewerID},
+		RequiredChecks:        []string{"build", "test"},
+	}))
 	protected, err := repo.GetByProjectIDAndID(ctx, projectID, branchID)
 	s.Require().NoError(err)
 	s.True(protected.IsProtected)
 	s.EqualValues(2, protected.RequiredApprovals)
 	s.True(protected.DismissStaleApprovals)
+	s.True(protected.RequireStatusChecks)
+
+	reviewers, err := repo.RequiredReviewers(ctx, branchID)
+	s.Require().NoError(err)
+	s.Len(reviewers, 1)
+	s.Equal(reviewerID, reviewers[0].UserID)
+
+	checks, err := repo.RequiredChecks(ctx, branchID)
+	s.Require().NoError(err)
+	s.Equal([]string{"build", "test"}, checks)
 
 	s.Require().NoError(repo.SetDefaultBranch(ctx, projectID, branchID))
 	def, err := repo.GetDefaultBranch(ctx, projectID)

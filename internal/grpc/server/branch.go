@@ -157,7 +157,28 @@ func (n *nipaServer) SetBranchProtection(ctx context.Context, req *pb.SetBranchP
 	if err != nil {
 		return nil, handleError(err)
 	}
-	branch, err := n.uc.Branch().SetProtection(ctx, project.ID, req.GetName(), req.GetIsProtected(), req.RequiredApprovals, req.DismissStaleApprovals)
+	opts := usecase.BranchProtectionOptions{
+		Protected:             req.GetIsProtected(),
+		RequiredApprovals:     req.RequiredApprovals,
+		DismissStaleApprovals: req.DismissStaleApprovals,
+		RequireStatusChecks:   req.RequireStatusChecks,
+	}
+	if req.RequiredReviewerIds != nil {
+		ids := make([]snow.ID, 0, len(req.GetRequiredReviewerIds()))
+		for _, raw := range req.GetRequiredReviewerIds() {
+			id, err := snow.ParseBase36(raw)
+			if err != nil {
+				return nil, handleError(domain.NewErrorUser("invalid required reviewer id"))
+			}
+			ids = append(ids, id)
+		}
+		opts.RequiredReviewers = &ids
+	}
+	if req.RequiredChecks != nil {
+		checks := req.GetRequiredChecks()
+		opts.RequiredChecks = &checks
+	}
+	branch, err := n.uc.Branch().SetProtection(ctx, project.ID, req.GetName(), opts)
 	if err != nil {
 		return nil, handleError(err)
 	}
@@ -265,6 +286,9 @@ func domainBranchToPB(branch *domain.Branch) *pb.Branch {
 		IsProtected:           branch.IsProtected,
 		RequiredApprovals:     branch.RequiredApprovals,
 		DismissStaleApprovals: branch.DismissStaleApprovals,
+		RequireStatusChecks:   branch.RequireStatusChecks,
+		RequiredReviewers:     domainReviewActorsToPB(branch.RequiredReviewers),
+		RequiredChecks:        branch.RequiredChecks,
 		IsDefault:             branch.IsDefault,
 		CommitId:              snowPtrToStringPtr(branch.CommitID),
 		UpdatedAt:             timestamppb.New(branch.UpdatedAt),

@@ -273,7 +273,12 @@ func toBranchResponse(branch *domain.Branch) model.BranchResponse {
 		IsProtected:           branch.IsProtected,
 		RequiredApprovals:     branch.RequiredApprovals,
 		DismissStaleApprovals: branch.DismissStaleApprovals,
+		RequireStatusChecks:   branch.RequireStatusChecks,
+		RequiredChecks:        branch.RequiredChecks,
 		UpdatedAt:             branch.UpdatedAt,
+	}
+	for _, reviewer := range branch.RequiredReviewers {
+		resp.RequiredReviewers = append(resp.RequiredReviewers, toReviewActorResponse(reviewer))
 	}
 	if branch.CommitID != nil {
 		resp.CommitID = branch.CommitID.Base36()

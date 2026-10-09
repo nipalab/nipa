@@ -8,7 +8,190 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"time"
 )
+
+const mergeRequestAssigneeAdd = `-- name: MergeRequestAssigneeAdd :exec
+INSERT INTO merge_request_assignees (merge_request_id, user_id)
+VALUES (?1, ?2)
+`
+
+type MergeRequestAssigneeAddParams struct {
+	MergeRequestID int64 `json:"merge_request_id"`
+	UserID         int64 `json:"user_id"`
+}
+
+func (q *Queries) MergeRequestAssigneeAdd(ctx context.Context, arg MergeRequestAssigneeAddParams) error {
+	_, err := q.db.ExecContext(ctx, mergeRequestAssigneeAdd, arg.MergeRequestID, arg.UserID)
+	return err
+}
+
+const mergeRequestAssigneeClear = `-- name: MergeRequestAssigneeClear :exec
+DELETE FROM merge_request_assignees WHERE merge_request_id = ?1
+`
+
+func (q *Queries) MergeRequestAssigneeClear(ctx context.Context, mergeRequestID int64) error {
+	_, err := q.db.ExecContext(ctx, mergeRequestAssigneeClear, mergeRequestID)
+	return err
+}
+
+const mergeRequestAssigneeList = `-- name: MergeRequestAssigneeList :many
+SELECT
+    mr.number AS merge_request_number,
+    u.id AS user_id,
+    u.name AS user_name,
+    u.photo_url AS user_photo_url
+FROM merge_request_assignees a
+JOIN merge_requests mr ON mr.id = a.merge_request_id
+JOIN users u ON u.id = a.user_id
+WHERE mr.project_id = ?1
+ORDER BY mr.number, u.id
+`
+
+type MergeRequestAssigneeListRow struct {
+	MergeRequestNumber int64          `json:"merge_request_number"`
+	UserID             int64          `json:"user_id"`
+	UserName           string         `json:"user_name"`
+	UserPhotoUrl       sql.NullString `json:"user_photo_url"`
+}
+
+func (q *Queries) MergeRequestAssigneeList(ctx context.Context, projectID int64) ([]MergeRequestAssigneeListRow, error) {
+	rows, err := q.db.QueryContext(ctx, mergeRequestAssigneeList, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []MergeRequestAssigneeListRow
+	for rows.Next() {
+		var i MergeRequestAssigneeListRow
+		if err := rows.Scan(
+			&i.MergeRequestNumber,
+			&i.UserID,
+			&i.UserName,
+			&i.UserPhotoUrl,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const mergeRequestCheckList = `-- name: MergeRequestCheckList :many
+SELECT c.id, c.merge_request_id, c.head_commit_id, c.name, c.state, c.details_url, c.reporter_id, c.created_at, c.updated_at, u.name AS reporter_name, u.photo_url AS reporter_photo_url
+FROM merge_request_checks c
+JOIN users u ON u.id = c.reporter_id
+WHERE c.merge_request_id = ?1 AND c.head_commit_id = ?2
+ORDER BY c.name
+`
+
+type MergeRequestCheckListParams struct {
+	MergeRequestID int64 `json:"merge_request_id"`
+	HeadCommitID   int64 `json:"head_commit_id"`
+}
+
+type MergeRequestCheckListRow struct {
+	ID               int64          `json:"id"`
+	MergeRequestID   int64          `json:"merge_request_id"`
+	HeadCommitID     int64          `json:"head_commit_id"`
+	Name             string         `json:"name"`
+	State            string         `json:"state"`
+	DetailsUrl       string         `json:"details_url"`
+	ReporterID       int64          `json:"reporter_id"`
+	CreatedAt        time.Time      `json:"created_at"`
+	UpdatedAt        time.Time      `json:"updated_at"`
+	ReporterName     string         `json:"reporter_name"`
+	ReporterPhotoUrl sql.NullString `json:"reporter_photo_url"`
+}
+
+func (q *Queries) MergeRequestCheckList(ctx context.Context, arg MergeRequestCheckListParams) ([]MergeRequestCheckListRow, error) {
+	rows, err := q.db.QueryContext(ctx, mergeRequestCheckList, arg.MergeRequestID, arg.HeadCommitID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []MergeRequestCheckListRow
+	for rows.Next() {
+		var i MergeRequestCheckListRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.MergeRequestID,
+			&i.HeadCommitID,
+			&i.Name,
+			&i.State,
+			&i.DetailsUrl,
+			&i.ReporterID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.ReporterName,
+			&i.ReporterPhotoUrl,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const mergeRequestCheckUpsert = `-- name: MergeRequestCheckUpsert :one
+INSERT INTO merge_request_checks (
+    id, merge_request_id, head_commit_id, name, state, details_url, reporter_id
+)
+VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+ON CONFLICT (merge_request_id, head_commit_id, name) DO UPDATE SET
+    state = excluded.state,
+    details_url = excluded.details_url,
+    reporter_id = excluded.reporter_id,
+    updated_at = CURRENT_TIMESTAMP
+RETURNING id, merge_request_id, head_commit_id, name, state, details_url, reporter_id, created_at, updated_at
+`
+
+type MergeRequestCheckUpsertParams struct {
+	ID             int64  `json:"id"`
+	MergeRequestID int64  `json:"merge_request_id"`
+	HeadCommitID   int64  `json:"head_commit_id"`
+	Name           string `json:"name"`
+	State          string `json:"state"`
+	DetailsUrl     string `json:"details_url"`
+	ReporterID     int64  `json:"reporter_id"`
+}
+
+func (q *Queries) MergeRequestCheckUpsert(ctx context.Context, arg MergeRequestCheckUpsertParams) (MergeRequestCheck, error) {
+	row := q.db.QueryRowContext(ctx, mergeRequestCheckUpsert,
+		arg.ID,
+		arg.MergeRequestID,
+		arg.HeadCommitID,
+		arg.Name,
+		arg.State,
+		arg.DetailsUrl,
+		arg.ReporterID,
+	)
+	var i MergeRequestCheck
+	err := row.Scan(
+		&i.ID,
+		&i.MergeRequestID,
+		&i.HeadCommitID,
+		&i.Name,
+		&i.State,
+		&i.DetailsUrl,
+		&i.ReporterID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
 
 const mergeRequestCountOpenByBranch = `-- name: MergeRequestCountOpenByBranch :one
 SELECT COUNT(*) FROM merge_requests
@@ -138,9 +321,14 @@ WHERE project_id = ?1
   AND (?4 IS NULL OR source_branch_name = ?4)
   AND (?5 IS NULL OR target_branch_name = ?5)
   AND (?6 IS NULL OR is_draft = ?6)
-  AND (?7 IS NULL OR number < ?7)
+  AND (?7 IS NULL OR title LIKE '%' || ?7 || '%' OR description LIKE '%' || ?7 || '%')
+  AND (?8 IS NULL OR EXISTS (
+      SELECT 1 FROM merge_request_assignees ma
+      WHERE ma.merge_request_id = merge_requests.id AND ma.user_id = ?8
+  ))
+  AND (?9 IS NULL OR number < ?9)
 ORDER BY number DESC
-LIMIT ?8
+LIMIT ?10
 `
 
 type MergeRequestListParams struct {
@@ -150,6 +338,8 @@ type MergeRequestListParams struct {
 	SourceBranch interface{} `json:"source_branch"`
 	TargetBranch interface{} `json:"target_branch"`
 	Draft        interface{} `json:"draft"`
+	Search       interface{} `json:"search"`
+	Assignee     interface{} `json:"assignee"`
 	AfterNumber  interface{} `json:"after_number"`
 	Limit        int64       `json:"limit"`
 }
@@ -162,6 +352,8 @@ func (q *Queries) MergeRequestList(ctx context.Context, arg MergeRequestListPara
 		arg.SourceBranch,
 		arg.TargetBranch,
 		arg.Draft,
+		arg.Search,
+		arg.Assignee,
 		arg.AfterNumber,
 		arg.Limit,
 	)

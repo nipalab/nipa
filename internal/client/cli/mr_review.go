@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/nipalab/nipa/internal/client/domain"
@@ -58,6 +59,13 @@ func (c *Cli) setupMrViewCmd() *cobra.Command {
 			cmd.Printf("status: %s\n", status)
 			cmd.Printf("branches: %s -> %s\n", mr.SourceBranch, mr.TargetBranch)
 			cmd.Printf("author: %s\n", mr.CreatedBy)
+			if len(mr.Assignees) > 0 {
+				names := make([]string, 0, len(mr.Assignees))
+				for _, assignee := range mr.Assignees {
+					names = append(names, actorLabel(assignee))
+				}
+				cmd.Printf("assignees: %s\n", strings.Join(names, ", "))
+			}
 			cmd.Printf("commits: %d\n", len(commits))
 			if mr.Review != nil {
 				cmd.Printf("approvals: %d · changes requested: %d · outstanding reviewers: %d\n",

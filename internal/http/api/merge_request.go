@@ -62,6 +62,15 @@ func setupMergeRequestRouter(ws *restful.WebService, h *handler.Handler) {
 			Metadata(restfulspec.KeyOpenAPITags, tags)))
 
 	ws.Route(requestID(
+		ws.POST("/orgs/{org}/projects/{project}/merge-requests/{id}/assignees").
+			To(wrap(h.SetMergeRequestAssignees)).
+			Reads(model.SetAssigneesRequest{}).
+			Doc("Replace the assignees of a merge request (project write)").
+			Returns(http.StatusOK, "updated merge request", model.MergeRequestResponse{}).
+			Operation("setMergeRequestAssignees").
+			Metadata(restfulspec.KeyOpenAPITags, tags)))
+
+	ws.Route(requestID(
 		ws.GET("/orgs/{org}/projects/{project}/merge-requests/{id}/check").
 			To(wrap(h.CheckMergeRequest)).
 			Doc("Recompute a merge request's mergeability").
@@ -76,6 +85,15 @@ func setupMergeRequestRouter(ws *restful.WebService, h *handler.Handler) {
 			Doc("Merge the request into its target branch (project write; project admin for protected targets)").
 			Returns(http.StatusOK, "merged merge request", model.MergeRequestResponse{}).
 			Operation("mergeMergeRequest").
+			Metadata(restfulspec.KeyOpenAPITags, tags)))
+
+	ws.Route(requestID(
+		ws.POST("/orgs/{org}/projects/{project}/merge-requests/{id}/mark-merged").
+			To(wrap(h.MarkMergeRequestMerged)).
+			AllowedMethodsWithoutContentType([]string{"POST"}).
+			Doc("Mark an open request as merged without moving the target (author or project admin)").
+			Returns(http.StatusOK, "merged merge request", model.MergeRequestResponse{}).
+			Operation("markMergeRequestMerged").
 			Metadata(restfulspec.KeyOpenAPITags, tags)))
 
 	ws.Route(requestID(
@@ -94,6 +112,23 @@ func setupMergeRequestRouter(ws *restful.WebService, h *handler.Handler) {
 			Doc("Reopen a closed merge request (author or project admin)").
 			Returns(http.StatusOK, "reopened merge request", model.MergeRequestResponse{}).
 			Operation("reopenMergeRequest").
+			Metadata(restfulspec.KeyOpenAPITags, tags)))
+
+	ws.Route(requestID(
+		ws.GET("/orgs/{org}/projects/{project}/merge-requests/{id}/checks").
+			To(wrap(h.ListMergeRequestChecks)).
+			Doc("List the status checks reported for the current source head").
+			Returns(http.StatusOK, "checks", []model.MergeRequestCheckResponse{}).
+			Operation("listMergeRequestChecks").
+			Metadata(restfulspec.KeyOpenAPITags, tags)))
+
+	ws.Route(requestID(
+		ws.POST("/orgs/{org}/projects/{project}/merge-requests/{id}/checks").
+			To(wrap(h.ReportMergeRequestCheck)).
+			Reads(model.ReportMergeRequestCheckRequest{}).
+			Doc("Report a status check for the current source head (project write)").
+			Returns(http.StatusOK, "check", model.MergeRequestCheckResponse{}).
+			Operation("reportMergeRequestCheck").
 			Metadata(restfulspec.KeyOpenAPITags, tags)))
 
 	ws.Route(requestID(
