@@ -460,6 +460,9 @@ Direct: `go build ./...`, `go vet ./...`, `go test ./...`.
 - **sqlc gotchas**: a multi-statement `:exec` query has its SQL truncated by sqlc
   to one statement — use separate single-statement queries instead. Full-table
   `DELETE` without `WHERE` trips SonarQube (S1035-ish); keep them out. On
+  sqlite, mixing unnamed `?` placeholders with `sqlc.narg(...)` makes sqlc emit
+  a broken `?N` mixture that misbinds args at runtime — name every parameter
+  with `sqlc.arg(...)` once a query uses `narg`. On
   postgres, quote keyword arg names (`sqlc.arg('limit')`), cast nullable filters
   and `LIMIT`/`OFFSET` params (`sqlc.narg('x')::boolean`,
   `sqlc.arg('limit')::bigint`), and keep integer columns `BIGINT` so generated

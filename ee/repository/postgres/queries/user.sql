@@ -13,7 +13,8 @@ SELECT * FROM users WHERE id = sqlc.arg(id) AND deleted = false LIMIT 1;
 UPDATE users SET deleted = true, deleted_at = now() WHERE id = sqlc.arg(id) AND deleted = false;
 
 -- name: UserUpdateProfile :exec
-UPDATE users SET name = sqlc.arg(name), photo_url = sqlc.arg(photo_url)
+UPDATE users SET name = sqlc.arg(name), photo_url = sqlc.arg(photo_url),
+    notify_email = COALESCE(sqlc.narg('notify_email')::boolean, notify_email)
 WHERE id = sqlc.arg(id) AND deleted = false;
 
 -- name: UserUpdatePassword :exec

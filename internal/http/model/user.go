@@ -7,6 +7,7 @@ type UserResponse struct {
 	PhotoUrl     string `json:"photo_url"`
 	IsAdmin      bool   `json:"is_admin"`
 	IsSuperAdmin bool   `json:"is_super_admin"`
+	NotifyEmail  bool   `json:"notify_email"`
 	Deleted      bool   `json:"deleted"`
 }
 
@@ -30,8 +31,9 @@ type ResetPasswordRequest struct {
 }
 
 type UpdateProfileRequest struct {
-	Name     string `json:"name"`
-	PhotoUrl string `json:"photo_url"`
+	Name        string `json:"name"`
+	PhotoUrl    string `json:"photo_url"`
+	NotifyEmail *bool  `json:"notify_email"`
 }
 
 type ChangePasswordRequest struct {

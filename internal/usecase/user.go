@@ -15,7 +15,7 @@ type userAdminRepository interface {
 	userRepository
 	List(ctx context.Context) ([]*domain.User, error)
 	Create(ctx context.Context, user domain.User) (*domain.User, error)
-	UpdateProfile(ctx context.Context, id snow.ID, name, photoUrl string) error
+	UpdateProfile(ctx context.Context, id snow.ID, name, photoUrl string, notifyEmail *bool) error
 	UpdateEmail(ctx context.Context, id snow.ID, email string) error
 	UpdatePassword(ctx context.Context, id snow.ID, passwordHash string) error
 	UpdateAdminFlags(ctx context.Context, id snow.ID, isAdmin, isSuperAdmin bool) error
@@ -79,7 +79,7 @@ func (u *User) Create(ctx context.Context, name, email, password string) (*domai
 	})
 }
 
-func (u *User) UpdateProfile(ctx context.Context, userID snow.ID, name, photoUrl string) (*domain.User, error) {
+func (u *User) UpdateProfile(ctx context.Context, userID snow.ID, name, photoUrl string, notifyEmail *bool) (*domain.User, error) {
 	claim, ok := domain.ClaimFromContext(ctx)
 	if !ok {
 		return nil, domain.NewErrorNoPermission()
@@ -91,7 +91,7 @@ func (u *User) UpdateProfile(ctx context.Context, userID snow.ID, name, photoUrl
 	if name == "" {
 		return nil, domain.NewErrorUser("name is required")
 	}
-	if err := u.repo.UpdateProfile(ctx, userID, name, strings.TrimSpace(photoUrl)); err != nil {
+	if err := u.repo.UpdateProfile(ctx, userID, name, strings.TrimSpace(photoUrl), notifyEmail); err != nil {
 		return nil, err
 	}
 	return u.repo.GetByID(ctx, userID)

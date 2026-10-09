@@ -10,6 +10,7 @@ CREATE TABLE users (
     photo_url TEXT,
     is_super_admin BOOLEAN NOT NULL DEFAULT false,
     is_admin BOOLEAN NOT NULL DEFAULT false,
+    notify_email BOOLEAN NOT NULL DEFAULT true,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     deleted BOOLEAN NOT NULL DEFAULT false,

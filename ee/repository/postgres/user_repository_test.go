@@ -105,11 +105,23 @@ func (s *UserRepositorySuite) TestCRUD() {
 	s.Require().NoError(err)
 	s.Len(users, 2, "seeded super admin plus the created user")
 
-	s.Require().NoError(repo.UpdateProfile(ctx, created.ID, "bobby", "https://example.com/b.png"))
+	s.Require().NoError(repo.UpdateProfile(ctx, created.ID, "bobby", "https://example.com/b.png", nil))
 	got, err := repo.GetByID(ctx, created.ID)
 	s.Require().NoError(err)
 	s.Equal("bobby", got.Name)
 	s.Equal("https://example.com/b.png", got.PhotoUrl)
+	s.True(got.NotifyEmail, "notifications default to enabled")
+
+	disabled := false
+	s.Require().NoError(repo.UpdateProfile(ctx, created.ID, "bobby", "https://example.com/b.png", &disabled))
+	got, err = repo.GetByID(ctx, created.ID)
+	s.Require().NoError(err)
+	s.False(got.NotifyEmail)
+
+	s.Require().NoError(repo.UpdateProfile(ctx, created.ID, "bobby", "https://example.com/b.png", nil))
+	got, err = repo.GetByID(ctx, created.ID)
+	s.Require().NoError(err)
+	s.False(got.NotifyEmail, "a nil notify_email keeps the stored value")
 
 	s.Require().NoError(repo.UpdateEmail(ctx, created.ID, "robert@example.com"))
 	s.Require().NoError(repo.UpdatePassword(ctx, created.ID, "new-hash"))

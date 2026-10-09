@@ -368,7 +368,7 @@ func TestHandler_SelfProfile(t *testing.T) {
 
 	appCtx := &fakeAppContext{
 		claims: &domain.Claims{UserID: env.userID},
-		body:   []byte(`{"name":"Alice Admin","photo_url":"https://example.com/a.png"}`),
+		body:   []byte(`{"name":"Alice Admin","photo_url":"https://example.com/a.png","notify_email":false}`),
 	}
 	env.handler.UpdateMyProfile(appCtx)
 	require.Equal(t, http.StatusOK, appCtx.statusCode)
@@ -376,6 +376,7 @@ func TestHandler_SelfProfile(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, "Alice Admin", profile.Name)
 	require.Equal(t, "https://example.com/a.png", profile.PhotoUrl)
+	require.False(t, profile.NotifyEmail)
 
 	appCtx = &fakeAppContext{
 		claims: &domain.Claims{UserID: env.userID},

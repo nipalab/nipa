@@ -33,7 +33,7 @@ func (h *Handler) UpdateMyProfile(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	user, err := h.useCase.User().UpdateProfile(appCtx.Context(), claims.UserID, body.Name, body.PhotoUrl)
+	user, err := h.useCase.User().UpdateProfile(appCtx.Context(), claims.UserID, body.Name, body.PhotoUrl, body.NotifyEmail)
 	if err != nil {
 		appCtx.HandleError(err)
 		return
