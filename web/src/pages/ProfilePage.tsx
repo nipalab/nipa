@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { CSSProperties } from 'react'
-import { Button, Flash, FormControl, Heading, Stack, TextInput } from '@primer/react'
+import { Button, Checkbox, Flash, FormControl, Heading, Stack, TextInput } from '@primer/react'
 import { changeMyPassword, updateMyProfile } from '../api/endpoints'
 import { useAuth } from '../auth'
 import { ActorAvatar } from '../components/repo/ActorAvatar'
@@ -17,6 +17,7 @@ export default function ProfilePage() {
   const { me, refreshMe } = useAuth()
   const [name, setName] = useState(me?.name ?? '')
   const [photoUrl, setPhotoUrl] = useState(me?.photo_url ?? '')
+  const [notifyEmail, setNotifyEmail] = useState(me?.notify_email ?? true)
   const [oldPassword, setOldPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -37,7 +38,7 @@ export default function ProfilePage() {
     setError(null)
     setNotice(null)
     try {
-      await updateMyProfile(name.trim(), photoUrl.trim())
+      await updateMyProfile(name.trim(), photoUrl.trim(), notifyEmail)
       await refreshMe()
       setNotice('Profile updated.')
     } catch (err) {
@@ -73,6 +74,7 @@ export default function ProfilePage() {
       <div className="nipa-settings-layout">
         <nav className="nipa-settings-nav" aria-label="Profile settings">
           <a href="#public-profile">Public profile</a>
+          <a href="#notifications">Email notifications</a>
           <a href="#password">Password and authentication</a>
         </nav>
         <div className="nipa-settings-main">
@@ -108,6 +110,19 @@ export default function ProfilePage() {
                   Your name may appear where you contribute or are mentioned.
                 </FormControl.Caption>
               </FormControl>
+              <div id="notifications" style={{ borderTop: '1px solid var(--borderColor-muted)', paddingTop: 12 }}>
+                <FormControl>
+                  <Checkbox
+                    checked={notifyEmail}
+                    onChange={(event) => setNotifyEmail(event.target.checked)}
+                  />
+                  <FormControl.Label>Email notifications</FormControl.Label>
+                  <FormControl.Caption>
+                    Receive email about merge requests you participate in, as author, reviewer, assignee or
+                    commenter. Notifications are sent to {me?.email ?? 'your email address'}.
+                  </FormControl.Caption>
+                </FormControl>
+              </div>
               <div style={{ borderTop: '1px solid var(--borderColor-muted)', paddingTop: 12 }}>
                 <Button
                   type="submit"

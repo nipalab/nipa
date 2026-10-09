@@ -48,7 +48,7 @@ func (q *Queries) UserDeleteByID(ctx context.Context, id int64) error {
 }
 
 const userGetByEmail = `-- name: UserGetByEmail :one
-SELECT id, name, email, password, photo_url, is_super_admin, is_admin, created_at, updated_at, deleted, deleted_at FROM users WHERE email = ? AND deleted = false LIMIT 1
+SELECT id, name, email, password, photo_url, is_super_admin, is_admin, notify_email, created_at, updated_at, deleted, deleted_at FROM users WHERE email = ? AND deleted = false LIMIT 1
 `
 
 func (q *Queries) UserGetByEmail(ctx context.Context, email string) (User, error) {
@@ -62,6 +62,7 @@ func (q *Queries) UserGetByEmail(ctx context.Context, email string) (User, error
 		&i.PhotoUrl,
 		&i.IsSuperAdmin,
 		&i.IsAdmin,
+		&i.NotifyEmail,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Deleted,
@@ -71,7 +72,7 @@ func (q *Queries) UserGetByEmail(ctx context.Context, email string) (User, error
 }
 
 const userGetById = `-- name: UserGetById :one
-SELECT id, name, email, password, photo_url, is_super_admin, is_admin, created_at, updated_at, deleted, deleted_at FROM users WHERE id = ? AND deleted = false LIMIT 1
+SELECT id, name, email, password, photo_url, is_super_admin, is_admin, notify_email, created_at, updated_at, deleted, deleted_at FROM users WHERE id = ? AND deleted = false LIMIT 1
 `
 
 func (q *Queries) UserGetById(ctx context.Context, id int64) (User, error) {
@@ -85,6 +86,7 @@ func (q *Queries) UserGetById(ctx context.Context, id int64) (User, error) {
 		&i.PhotoUrl,
 		&i.IsSuperAdmin,
 		&i.IsAdmin,
+		&i.NotifyEmail,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Deleted,
@@ -94,7 +96,7 @@ func (q *Queries) UserGetById(ctx context.Context, id int64) (User, error) {
 }
 
 const userList = `-- name: UserList :many
-SELECT id, name, email, password, photo_url, is_super_admin, is_admin, created_at, updated_at, deleted, deleted_at FROM users WHERE deleted = false ORDER BY name, id
+SELECT id, name, email, password, photo_url, is_super_admin, is_admin, notify_email, created_at, updated_at, deleted, deleted_at FROM users WHERE deleted = false ORDER BY name, id
 `
 
 func (q *Queries) UserList(ctx context.Context) ([]User, error) {
@@ -114,6 +116,7 @@ func (q *Queries) UserList(ctx context.Context) ([]User, error) {
 			&i.PhotoUrl,
 			&i.IsSuperAdmin,
 			&i.IsAdmin,
+			&i.NotifyEmail,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.Deleted,
@@ -177,17 +180,23 @@ func (q *Queries) UserUpdatePassword(ctx context.Context, arg UserUpdatePassword
 }
 
 const userUpdateProfile = `-- name: UserUpdateProfile :exec
-UPDATE users SET name = ?, photo_url = ? 
-WHERE id = ? AND deleted = false
+UPDATE users SET name = ?1, photo_url = ?2, notify_email = COALESCE(?3, notify_email)
+WHERE id = ?4 AND deleted = false
 `
 
 type UserUpdateProfileParams struct {
-	Name     string         `json:"name"`
-	PhotoUrl sql.NullString `json:"photo_url"`
-	ID       int64          `json:"id"`
+	Name        string         `json:"name"`
+	PhotoUrl    sql.NullString `json:"photo_url"`
+	NotifyEmail sql.NullBool   `json:"notify_email"`
+	ID          int64          `json:"id"`
 }
 
 func (q *Queries) UserUpdateProfile(ctx context.Context, arg UserUpdateProfileParams) error {
-	_, err := q.db.ExecContext(ctx, userUpdateProfile, arg.Name, arg.PhotoUrl, arg.ID)
+	_, err := q.db.ExecContext(ctx, userUpdateProfile,
+		arg.Name,
+		arg.PhotoUrl,
+		arg.NotifyEmail,
+		arg.ID,
+	)
 	return err
 }

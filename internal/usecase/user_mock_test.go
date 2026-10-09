@@ -159,15 +159,15 @@ func (mr *MockuserAdminRepositoryMockRecorder) UpdatePassword(ctx, id, passwordH
 }
 
 // UpdateProfile mocks base method.
-func (m *MockuserAdminRepository) UpdateProfile(ctx context.Context, id snow.ID, name, photoUrl string) error {
+func (m *MockuserAdminRepository) UpdateProfile(ctx context.Context, id snow.ID, name, photoUrl string, notifyEmail *bool) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateProfile", ctx, id, name, photoUrl)
+	ret := m.ctrl.Call(m, "UpdateProfile", ctx, id, name, photoUrl, notifyEmail)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // UpdateProfile indicates an expected call of UpdateProfile.
-func (mr *MockuserAdminRepositoryMockRecorder) UpdateProfile(ctx, id, name, photoUrl any) *gomock.Call {
+func (mr *MockuserAdminRepositoryMockRecorder) UpdateProfile(ctx, id, name, photoUrl, notifyEmail any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateProfile", reflect.TypeOf((*MockuserAdminRepository)(nil).UpdateProfile), ctx, id, name, photoUrl)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateProfile", reflect.TypeOf((*MockuserAdminRepository)(nil).UpdateProfile), ctx, id, name, photoUrl, notifyEmail)
 }

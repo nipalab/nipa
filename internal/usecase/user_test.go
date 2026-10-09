@@ -136,18 +136,31 @@ func TestUser_UpdateProfile_Self(t *testing.T) {
 	user, repo := newTestUser(t, true)
 	ctx := permissionCtx(42)
 
-	repo.EXPECT().UpdateProfile(gomock.Any(), snow.ID(42), "alice", "https://example.com/a.png").Return(nil)
+	repo.EXPECT().UpdateProfile(gomock.Any(), snow.ID(42), "alice", "https://example.com/a.png", nil).Return(nil)
 	repo.EXPECT().GetByID(gomock.Any(), snow.ID(42)).Return(&domain.User{ID: 42, Name: "alice"}, nil)
 
-	got, err := user.UpdateProfile(ctx, snow.ID(42), " alice ", " https://example.com/a.png ")
+	got, err := user.UpdateProfile(ctx, snow.ID(42), " alice ", " https://example.com/a.png ", nil)
 	require.NoError(t, err)
 	require.Equal(t, "alice", got.Name)
+}
+
+func TestUser_UpdateProfile_NotifyEmail(t *testing.T) {
+	user, repo := newTestUser(t, true)
+	ctx := permissionCtx(42)
+
+	disabled := false
+	repo.EXPECT().UpdateProfile(gomock.Any(), snow.ID(42), "alice", "", &disabled).Return(nil)
+	repo.EXPECT().GetByID(gomock.Any(), snow.ID(42)).Return(&domain.User{ID: 42, Name: "alice", NotifyEmail: false}, nil)
+
+	got, err := user.UpdateProfile(ctx, snow.ID(42), "alice", "", &disabled)
+	require.NoError(t, err)
+	require.False(t, got.NotifyEmail)
 }
 
 func TestUser_UpdateProfile_OtherUserForbidden(t *testing.T) {
 	user, _ := newTestUser(t, true)
 
-	_, err := user.UpdateProfile(permissionCtx(42), snow.ID(7), "bob", "")
+	_, err := user.UpdateProfile(permissionCtx(42), snow.ID(7), "bob", "", nil)
 	require.True(t, domain.IsErrorNoPermission(err))
 }
 
@@ -155,17 +168,17 @@ func TestUser_UpdateProfile_AdminCanEditOther(t *testing.T) {
 	user, repo := newTestUser(t, true)
 	ctx := permissionCtx(42, withAdmin())
 
-	repo.EXPECT().UpdateProfile(gomock.Any(), snow.ID(7), "bob", "").Return(nil)
+	repo.EXPECT().UpdateProfile(gomock.Any(), snow.ID(7), "bob", "", nil).Return(nil)
 	repo.EXPECT().GetByID(gomock.Any(), snow.ID(7)).Return(&domain.User{ID: 7, Name: "bob"}, nil)
 
-	_, err := user.UpdateProfile(ctx, snow.ID(7), "bob", "")
+	_, err := user.UpdateProfile(ctx, snow.ID(7), "bob", "", nil)
 	require.NoError(t, err)
 }
 
 func TestUser_UpdateProfile_EmptyName(t *testing.T) {
 	user, _ := newTestUser(t, true)
 
-	_, err := user.UpdateProfile(permissionCtx(42), snow.ID(42), "  ", "")
+	_, err := user.UpdateProfile(permissionCtx(42), snow.ID(42), "  ", "", nil)
 	requireUserError(t, err)
 }
 

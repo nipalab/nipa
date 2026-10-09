@@ -282,6 +282,7 @@ type User struct {
 	PhotoUrl     sql.NullString `json:"photo_url"`
 	IsSuperAdmin bool           `json:"is_super_admin"`
 	IsAdmin      bool           `json:"is_admin"`
+	NotifyEmail  bool           `json:"notify_email"`
 	CreatedAt    time.Time      `json:"created_at"`
 	UpdatedAt    time.Time      `json:"updated_at"`
 	Deleted      bool           `json:"deleted"`

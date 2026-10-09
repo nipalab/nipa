@@ -42,8 +42,11 @@ export function getMe(): Promise<UserResponse> {
   return apiJson('/api/v1/me')
 }
 
-export function updateMyProfile(name: string, photoUrl: string): Promise<UserResponse> {
-  return apiJson('/api/v1/me', { method: 'PATCH', body: JSON.stringify({ name, photo_url: photoUrl }) })
+export function updateMyProfile(name: string, photoUrl: string, notifyEmail: boolean): Promise<UserResponse> {
+  return apiJson('/api/v1/me', {
+    method: 'PATCH',
+    body: JSON.stringify({ name, photo_url: photoUrl, notify_email: notifyEmail }),
+  })
 }
 
 export function changeMyPassword(oldPassword: string, newPassword: string): Promise<MessageResponse> {

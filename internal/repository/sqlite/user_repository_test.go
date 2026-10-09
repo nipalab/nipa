@@ -145,11 +145,23 @@ func TestUserRepositorySQLite_CRUD(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, users, 2, "seeded super admin plus the created user")
 
-	require.NoError(t, repo.UpdateProfile(ctx, created.ID, "bobby", "https://example.com/b.png"))
+	require.NoError(t, repo.UpdateProfile(ctx, created.ID, "bobby", "https://example.com/b.png", nil))
 	got, err := repo.GetByID(ctx, created.ID)
 	require.NoError(t, err)
 	require.Equal(t, "bobby", got.Name)
 	require.Equal(t, "https://example.com/b.png", got.PhotoUrl)
+	require.True(t, got.NotifyEmail, "notifications default to enabled")
+
+	disabled := false
+	require.NoError(t, repo.UpdateProfile(ctx, created.ID, "bobby", "https://example.com/b.png", &disabled))
+	got, err = repo.GetByID(ctx, created.ID)
+	require.NoError(t, err)
+	require.False(t, got.NotifyEmail)
+
+	require.NoError(t, repo.UpdateProfile(ctx, created.ID, "bobby", "https://example.com/b.png", nil))
+	got, err = repo.GetByID(ctx, created.ID)
+	require.NoError(t, err)
+	require.False(t, got.NotifyEmail, "a nil notify_email keeps the stored value")
 
 	require.NoError(t, repo.UpdateEmail(ctx, created.ID, "robert@example.com"))
 	require.NoError(t, repo.UpdatePassword(ctx, created.ID, "new-hash"))

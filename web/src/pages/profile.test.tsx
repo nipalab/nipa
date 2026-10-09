@@ -35,6 +35,7 @@ const ME = {
   photo_url: '',
   is_admin: false,
   is_super_admin: false,
+  notify_email: true,
   deleted: false,
 }
 
@@ -99,7 +100,12 @@ describe('ProfilePage', () => {
       const method = init?.method ?? 'GET'
       if (url.endsWith('/api/v1/me') && method === 'PATCH') {
         calls.push({ url, method, body: init?.body ? JSON.parse(String(init.body)) : undefined })
-        return jsonResponse({ ...ME, name: 'Alice Smith', photo_url: 'https://example.com/a.png' })
+        return jsonResponse({
+          ...ME,
+          name: 'Alice Smith',
+          photo_url: 'https://example.com/a.png',
+          notify_email: false,
+        })
       }
       return null
     })
@@ -107,6 +113,7 @@ describe('ProfilePage', () => {
     const { container, root } = await renderApp('/settings/profile')
     await waitFor(() => (container.querySelectorAll('input')[1] as HTMLInputElement)?.value === 'Alice')
     expect(container.textContent).toContain('Public profile')
+    expect(container.textContent).toContain('Email notifications')
     expect(container.textContent).toContain('Change password')
 
     const inputs = container.querySelectorAll('input')
@@ -115,10 +122,17 @@ describe('ProfilePage', () => {
       setInputValue(inputs[1] as HTMLInputElement, 'Alice Smith')
     })
     await act(async () => {
+      ;(inputs[2] as HTMLInputElement).click()
+    })
+    await act(async () => {
       findButton('Update profile').click()
     })
     await waitFor(() => calls.length > 0)
-    expect(calls[0]?.body).toEqual({ name: 'Alice Smith', photo_url: 'https://example.com/a.png' })
+    expect(calls[0]?.body).toEqual({
+      name: 'Alice Smith',
+      photo_url: 'https://example.com/a.png',
+      notify_email: false,
+    })
     await waitForText(container, 'Profile updated.')
     expect(container.querySelector('img[src="https://example.com/a.png"]')).not.toBeNull()
     act(() => root.unmount())
@@ -136,23 +150,23 @@ describe('ProfilePage', () => {
     })
 
     const { container, root } = await renderApp('/settings/profile')
-    await waitFor(() => container.querySelectorAll('input').length === 5)
+    await waitFor(() => container.querySelectorAll('input').length === 6)
     const inputs = container.querySelectorAll('input')
 
     await act(async () => {
-      setInputValue(inputs[2] as HTMLInputElement, 'oldpass')
-      setInputValue(inputs[3] as HTMLInputElement, 'short')
+      setInputValue(inputs[3] as HTMLInputElement, 'oldpass')
+      setInputValue(inputs[4] as HTMLInputElement, 'short')
     })
     await waitForText(container, 'at least 8 characters')
 
     await act(async () => {
-      setInputValue(inputs[3] as HTMLInputElement, 'secret123')
-      setInputValue(inputs[4] as HTMLInputElement, 'different')
+      setInputValue(inputs[4] as HTMLInputElement, 'secret123')
+      setInputValue(inputs[5] as HTMLInputElement, 'different')
     })
     await waitForText(container, 'Passwords do not match.')
 
     await act(async () => {
-      setInputValue(inputs[4] as HTMLInputElement, 'secret123')
+      setInputValue(inputs[5] as HTMLInputElement, 'secret123')
     })
     await act(async () => {
       findButton('Update password').click()

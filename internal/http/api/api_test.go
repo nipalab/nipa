@@ -628,11 +628,20 @@ func TestAPIRoutes(t *testing.T) {
 		aliceLogin, _ := login(t)
 
 		update := doMethod(t, http.MethodPatch, server.URL+"/api/v1/me",
-			`{"name":"Alice Admin","photo_url":"https://example.com/a.png"}`, aliceLogin.AccessToken)
+			`{"name":"Alice Admin","photo_url":"https://example.com/a.png","notify_email":false}`, aliceLogin.AccessToken)
 		require.Equal(t, http.StatusOK, update.StatusCode)
 		profile := decodeBody[model.UserResponse](t, update)
 		require.Equal(t, "Alice Admin", profile.Name)
 		require.Equal(t, "https://example.com/a.png", profile.PhotoUrl)
+		require.False(t, profile.NotifyEmail)
+
+		me := decodeBody[model.UserResponse](t, doGet(t, server.URL+"/api/v1/me", aliceLogin.AccessToken))
+		require.False(t, me.NotifyEmail)
+
+		reenable := doMethod(t, http.MethodPatch, server.URL+"/api/v1/me",
+			`{"name":"Alice Admin","notify_email":true}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, reenable.StatusCode)
+		require.True(t, decodeBody[model.UserResponse](t, reenable).NotifyEmail)
 
 		short := doMethod(t, http.MethodPost, server.URL+"/api/v1/me/password",
 			`{"old_password":"whatever","new_password":"short"}`, aliceLogin.AccessToken)

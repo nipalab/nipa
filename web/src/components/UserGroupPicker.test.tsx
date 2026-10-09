@@ -18,6 +18,7 @@ vi.mock('../api/endpoints', async (importOriginal) => {
         photo_url: '',
         is_admin: false,
         is_super_admin: false,
+        notify_email: true,
         deleted: false,
       },
       {
@@ -27,6 +28,7 @@ vi.mock('../api/endpoints', async (importOriginal) => {
         photo_url: '',
         is_admin: false,
         is_super_admin: false,
+        notify_email: true,
         deleted: false,
       },
     ]),
@@ -155,6 +157,7 @@ describe('UserGroupPicker', () => {
         photo_url: '',
         is_admin: false,
         is_super_admin: false,
+        notify_email: true,
         deleted: false,
       },
       {
@@ -164,6 +167,7 @@ describe('UserGroupPicker', () => {
         photo_url: '',
         is_admin: false,
         is_super_admin: false,
+        notify_email: true,
         deleted: false,
       },
     ]

@@ -67,11 +67,12 @@ func (a *User) List(ctx context.Context) ([]*domain.User, error) {
 	return users, nil
 }
 
-func (a *User) UpdateProfile(ctx context.Context, id snow.ID, name, photoUrl string) error {
+func (a *User) UpdateProfile(ctx context.Context, id snow.ID, name, photoUrl string, notifyEmail *bool) error {
 	err := a.queries.UserUpdateProfile(ctx, sqlcPostgres.UserUpdateProfileParams{
-		Name:     name,
-		PhotoUrl: sql.NullString{String: photoUrl, Valid: photoUrl != ""},
-		ID:       id.Int64(),
+		Name:        name,
+		PhotoUrl:    sql.NullString{String: photoUrl, Valid: photoUrl != ""},
+		NotifyEmail: sql.NullBool{Bool: notifyEmail != nil && *notifyEmail, Valid: notifyEmail != nil},
+		ID:          id.Int64(),
 	})
 	return handleError(err)
 }
@@ -115,6 +116,7 @@ func toDomainUser(row sqlcPostgres.User) *domain.User {
 		PhotoUrl:     row.PhotoUrl.String,
 		IsSuperAdmin: row.IsSuperAdmin,
 		IsAdmin:      row.IsAdmin,
+		NotifyEmail:  row.NotifyEmail,
 		CreatedAt:    row.CreatedAt,
 		UpdatedAt:    row.UpdatedAt,
 		Deleted:      row.Deleted,

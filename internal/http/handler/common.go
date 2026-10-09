@@ -27,6 +27,7 @@ func toUserResponse(user *domain.User) model.UserResponse {
 		PhotoUrl:     user.PhotoUrl,
 		IsAdmin:      user.IsAdmin,
 		IsSuperAdmin: user.IsSuperAdmin,
+		NotifyEmail:  user.NotifyEmail,
 		Deleted:      user.Deleted,
 	}
 }

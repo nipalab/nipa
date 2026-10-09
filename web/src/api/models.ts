@@ -16,6 +16,7 @@ export interface UserResponse {
   photo_url: string
   is_admin: boolean
   is_super_admin: boolean
+  notify_email: boolean
   deleted: boolean
 }
 
