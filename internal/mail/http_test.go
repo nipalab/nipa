@@ -92,6 +92,27 @@ func TestHTTPSender_Overrides(t *testing.T) {
 	require.Equal(t, `{"from":"other@example.com","reply_to":"reply@example.com"}`, capturedBody)
 }
 
+func TestHTTPSender_RejectsHeaderInjection(t *testing.T) {
+	called := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(server.Close)
+
+	sender, err := newHTTPSender(HTTPConfig{Endpoint: server.URL}, "noreply@example.com", "", 5*time.Second)
+	require.NoError(t, err)
+
+	err = sender.Send(context.Background(), Message{
+		To:         []string{"dev@example.com"},
+		Subject:    "s",
+		Text:       "b",
+		References: []string{"root@nipa", "x\nBcc: attacker@example.com"},
+	})
+	require.Error(t, err)
+	require.False(t, called)
+}
+
 func TestHTTPSender_InvalidRecipient(t *testing.T) {
 	sender, err := newHTTPSender(HTTPConfig{Endpoint: "https://mail.example.com"}, "noreply@example.com", "", 5*time.Second)
 	require.NoError(t, err)

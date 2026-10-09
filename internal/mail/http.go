@@ -123,15 +123,27 @@ func (s *httpSender) Send(ctx context.Context, msg Message) error {
 		HTML:      msg.HTML,
 	}
 	if msg.MessageID != "" {
-		data.MessageID = normalizeMessageID(msg.MessageID)
+		id, err := normalizeMessageID(msg.MessageID)
+		if err != nil {
+			return err
+		}
+		data.MessageID = id
 	}
 	if msg.InReplyTo != "" {
-		data.InReplyTo = normalizeMessageID(msg.InReplyTo)
+		id, err := normalizeMessageID(msg.InReplyTo)
+		if err != nil {
+			return err
+		}
+		data.InReplyTo = id
 	}
 	if len(msg.References) > 0 {
 		refs := make([]string, 0, len(msg.References))
 		for _, ref := range msg.References {
-			refs = append(refs, normalizeMessageID(ref))
+			id, err := normalizeMessageID(ref)
+			if err != nil {
+				return err
+			}
+			refs = append(refs, id)
 		}
 		data.References = refs
 	}

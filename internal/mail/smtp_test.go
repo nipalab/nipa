@@ -293,6 +293,23 @@ func TestSMTPSender_ImplicitTLS(t *testing.T) {
 	require.Len(t, server.delivered(), 1)
 }
 
+func TestSMTPSender_RejectsHeaderInjection(t *testing.T) {
+	server := newFakeSMTP(t, smtpTLSNone)
+	host, port := server.hostPort(t)
+
+	sender, err := newSMTPSender(SMTPConfig{Host: host, Port: port, TLS: smtpTLSNone}, "noreply@example.com", "", 5*time.Second)
+	require.NoError(t, err)
+
+	err = sender.Send(context.Background(), Message{
+		To:        []string{"dev@example.com"},
+		Subject:   "s",
+		Text:      "b",
+		MessageID: "x>\r\nBcc: attacker@example.com",
+	})
+	require.Error(t, err)
+	require.Empty(t, server.delivered())
+}
+
 func TestSMTPSender_Overrides(t *testing.T) {
 	server := newFakeSMTP(t, smtpTLSNone)
 	host, port := server.hostPort(t)

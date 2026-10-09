@@ -70,6 +70,27 @@ func TestSendGridSender_ErrorResponse(t *testing.T) {
 	require.Contains(t, err.Error(), "bad key")
 }
 
+func TestSendGridSender_RejectsHeaderInjection(t *testing.T) {
+	called := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	t.Cleanup(server.Close)
+
+	sender, err := newSendGridSender(SendGridConfig{APIKey: "key", Endpoint: server.URL}, "noreply@example.com", "", 5*time.Second)
+	require.NoError(t, err)
+
+	err = sender.Send(context.Background(), Message{
+		To:        []string{"dev@example.com"},
+		Subject:   "s",
+		Text:      "b",
+		InReplyTo: "x>\r\nBcc: attacker@example.com",
+	})
+	require.Error(t, err)
+	require.False(t, called)
+}
+
 func TestSendGridSender_InvalidRecipient(t *testing.T) {
 	sender, err := newSendGridSender(SendGridConfig{APIKey: "key"}, "noreply@example.com", "", 5*time.Second)
 	require.NoError(t, err)

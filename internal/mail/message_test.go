@@ -139,7 +139,14 @@ func TestResolveAddressOverrides(t *testing.T) {
 }
 
 func TestNormalizeMessageID(t *testing.T) {
-	require.Equal(t, "<a@b>", normalizeMessageID("a@b"))
-	require.Equal(t, "<a@b>", normalizeMessageID("<a@b>"))
-	require.Equal(t, "<a@b>", normalizeMessageID(" <a@b> "))
+	for _, raw := range []string{"a@b", "<a@b>", " <a@b> "} {
+		id, err := normalizeMessageID(raw)
+		require.NoError(t, err)
+		require.Equal(t, "<a@b>", id)
+	}
+
+	for _, raw := range []string{"", "  ", "a@b\r\nBcc: attacker@example.com", "a\nb", "a\rb", "a\tb", "a\x7fb"} {
+		_, err := normalizeMessageID(raw)
+		require.Error(t, err, "message id %q should be rejected", raw)
+	}
 }

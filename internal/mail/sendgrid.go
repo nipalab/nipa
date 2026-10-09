@@ -97,15 +97,27 @@ func (s *sendGridSender) Send(ctx context.Context, msg Message) error {
 	personalization := sendGridPersonalization{To: recipients}
 	headers := map[string]string{}
 	if msg.MessageID != "" {
-		headers["Message-ID"] = normalizeMessageID(msg.MessageID)
+		id, err := normalizeMessageID(msg.MessageID)
+		if err != nil {
+			return err
+		}
+		headers["Message-ID"] = id
 	}
 	if msg.InReplyTo != "" {
-		headers["In-Reply-To"] = normalizeMessageID(msg.InReplyTo)
+		id, err := normalizeMessageID(msg.InReplyTo)
+		if err != nil {
+			return err
+		}
+		headers["In-Reply-To"] = id
 	}
 	if len(msg.References) > 0 {
 		refs := make([]string, 0, len(msg.References))
 		for _, ref := range msg.References {
-			refs = append(refs, normalizeMessageID(ref))
+			id, err := normalizeMessageID(ref)
+			if err != nil {
+				return err
+			}
+			refs = append(refs, id)
 		}
 		headers["References"] = strings.Join(refs, " ")
 	}

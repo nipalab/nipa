@@ -114,15 +114,27 @@ func mimeBytes(msg Message, from address, to []address, replyTo *address, now ti
 		writeHeader("Reply-To", formatAddress(*replyTo))
 	}
 	if msg.MessageID != "" {
-		writeHeader("Message-ID", normalizeMessageID(msg.MessageID))
+		id, err := normalizeMessageID(msg.MessageID)
+		if err != nil {
+			return nil, err
+		}
+		writeHeader("Message-ID", id)
 	}
 	if msg.InReplyTo != "" {
-		writeHeader("In-Reply-To", normalizeMessageID(msg.InReplyTo))
+		id, err := normalizeMessageID(msg.InReplyTo)
+		if err != nil {
+			return nil, err
+		}
+		writeHeader("In-Reply-To", id)
 	}
 	if len(msg.References) > 0 {
 		refs := make([]string, 0, len(msg.References))
 		for _, ref := range msg.References {
-			refs = append(refs, normalizeMessageID(ref))
+			id, err := normalizeMessageID(ref)
+			if err != nil {
+				return nil, err
+			}
+			refs = append(refs, id)
 		}
 		writeHeader("References", strings.Join(refs, " "))
 	}
@@ -182,10 +194,18 @@ func randomBoundary() (string, error) {
 	return "nipa-" + hex.EncodeToString(raw[:]), nil
 }
 
-func normalizeMessageID(id string) string {
+func normalizeMessageID(id string) (string, error) {
 	trimmed := strings.TrimSpace(id)
-	if strings.HasPrefix(trimmed, "<") && strings.HasSuffix(trimmed, ">") {
-		return trimmed
+	if trimmed == "" {
+		return "", fmt.Errorf("empty message id")
 	}
-	return "<" + trimmed + ">"
+	for _, r := range trimmed {
+		if r < 0x20 || r == 0x7f {
+			return "", fmt.Errorf("invalid message id %q", id)
+		}
+	}
+	if strings.HasPrefix(trimmed, "<") && strings.HasSuffix(trimmed, ">") {
+		return trimmed, nil
+	}
+	return "<" + trimmed + ">", nil
 }
