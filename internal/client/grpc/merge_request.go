@@ -110,21 +110,6 @@ func (c *Client) MergeMergeRequest(ctx context.Context, org, project string, num
 	return toClientMergeRequest(res.GetMergeRequest()), toClientMergeability(res.GetMergeability()), nil
 }
 
-func (c *Client) MarkMergeRequestMerged(ctx context.Context, org, project string, number int64) (*clientDomain.MergeRequest, error) {
-	client, err := c.transport.NipaServiceClient()
-	if err != nil {
-		return nil, err
-	}
-	res, err := client.MarkMergeRequestMerged(ctx, &pb.MarkMergeRequestMergedRequest{
-		Context: &pb.ProjectContext{Org: org, Project: project},
-		Number:  number,
-	})
-	if err != nil {
-		return nil, toDomainError(err)
-	}
-	return toClientMergeRequest(res.GetMergeRequest()), nil
-}
-
 func (c *Client) CloseMergeRequest(ctx context.Context, org, project string, number int64) (*clientDomain.MergeRequest, error) {
 	client, err := c.transport.NipaServiceClient()
 	if err != nil {

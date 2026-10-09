@@ -1191,55 +1191,6 @@ func TestMergeRequest_Merge_DeleteSourceFailureIsNotFatal(t *testing.T) {
 	require.Equal(t, int64(5), merged.ID)
 }
 
-func TestMergeRequest_MarkMerged(t *testing.T) {
-	t.Run("author marks the source head", func(t *testing.T) {
-		mr, repo, branchRepo, perm, _ := newTestMergeRequest(t)
-		sourceHead := snow.ID(11)
-
-		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true).AnyTimes()
-		repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(openMergeRequest(), nil).Times(2)
-		branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").Return(branchWithHead(3, sourceHead), nil)
-		repo.EXPECT().UpdateStatus(gomock.Any(), snow.ID(1), int64(5), domain.MergeRequestMerged, &sourceHead).Return(nil)
-
-		merged, err := mr.MarkMerged(permissionCtx(7), snow.ID(1), 5)
-		require.NoError(t, err)
-		require.Equal(t, int64(5), merged.ID)
-	})
-
-	t.Run("a missing source branch records no commit", func(t *testing.T) {
-		mr, repo, branchRepo, perm, _ := newTestMergeRequest(t)
-
-		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true).AnyTimes()
-		repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(openMergeRequest(), nil).Times(2)
-		branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").Return(nil, domain.NewErrorRecordNotFound())
-		repo.EXPECT().UpdateStatus(gomock.Any(), snow.ID(1), int64(5), domain.MergeRequestMerged, nil).Return(nil)
-
-		_, err := mr.MarkMerged(permissionCtx(7), snow.ID(1), 5)
-		require.NoError(t, err)
-	})
-
-	t.Run("a third party may not", func(t *testing.T) {
-		mr, repo, _, perm, _ := newTestMergeRequest(t)
-		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
-		repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(openMergeRequest(), nil)
-		perm.EXPECT().AdminHasProject(gomock.Any(), snow.ID(1)).Return(false)
-
-		_, err := mr.MarkMerged(permissionCtx(9), snow.ID(1), 5)
-		require.True(t, domain.IsErrorNoPermission(err))
-	})
-
-	t.Run("a merged request cannot be marked again", func(t *testing.T) {
-		mr, repo, _, perm, _ := newTestMergeRequest(t)
-		merged := openMergeRequest()
-		merged.Status = domain.MergeRequestMerged
-		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
-		repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(merged, nil)
-
-		_, err := mr.MarkMerged(permissionCtx(7), snow.ID(1), 5)
-		require.True(t, domain.IsErrorConflict(err))
-	})
-}
-
 func TestMergeRequest_SetAssignees(t *testing.T) {
 	t.Run("replaces and deduplicates", func(t *testing.T) {
 		mr, repo, _, perm, _ := newTestMergeRequest(t)

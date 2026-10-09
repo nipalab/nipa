@@ -257,10 +257,7 @@ Assignees: `merge_request_assignees` (base-set through
 `nipa mr assign`, project-write gated, ids validated) attach to list and get
 payloads and drive the list's `assignee` filter; the SPA has a sidebar picker
 and a list filter. The list also takes a free-text `search` (title/description
-LIKE; CLI `--search`). "Mark merged manually"
-(`MergeRequest.MarkMerged`, `POST .../mark-merged`, `nipa mr mark-merged`)
-closes an open request as merged without moving the target, recording the
-source head when the branch still exists.
+LIKE; CLI `--search`).
 
 Merge strategies: `Merge` takes a `strategy` (`ff` default, `merge`, `squash`,
 `rebase`) and `delete_source`. `Branch.MergeForMergeRequest`
@@ -299,7 +296,7 @@ CLI mirrors the surface under `nipa mr`: `create --draft`, `view`, `reopen`,
 [--file --new-line/--old-line]`, `reply <number> <thread-id>`, `resolve
 <number> <thread-id> [--unresolve]`, `timeline`, `requests`,
 `request-review <number> <user-id>`, `unrequest-review`, `diff`, `checks <n>`,
-`check <n> --name --state [--url]`, `mark-merged <n>`,
+`check <n> --name --state [--url]`,
 `merge --strategy/--delete-source`, and `list
 --author/--source/--target/--assignee/--search/--after/--status draft`.
 

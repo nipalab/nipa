@@ -383,48 +383,6 @@ func (m *MergeRequest) syncWIPTitle(ctx context.Context, projectID snow.ID, befo
 	return updated, nil
 }
 
-// MarkMerged marks an open request as merged without moving the target branch:
-// for changes that landed outside the merge-request flow. The source head is
-// recorded as the merge commit when the branch still exists.
-func (m *MergeRequest) MarkMerged(ctx context.Context, projectID snow.ID, number int64) (*domain.MergeRequest, error) {
-	mr, err := m.load(ctx, projectID, number)
-	if err != nil {
-		return nil, err
-	}
-	claim, ok := domain.ClaimFromContext(ctx)
-	if !ok {
-		return nil, domain.NewErrorNoPermission()
-	}
-	if claim.UserID != mr.CreatedBy && !m.perm.AdminHasProject(ctx, projectID) {
-		return nil, domain.NewErrorNoPermission()
-	}
-	if mr.Status != domain.MergeRequestOpen {
-		return nil, domain.NewErrorConflict(fmt.Sprintf("merge request is %s", mr.Status))
-	}
-	var mergeCommitID *snow.ID
-	source, err := m.branchRepo.GetBranchByName(ctx, projectID, mr.SourceBranch)
-	if err == nil {
-		mergeCommitID = source.CommitID
-	} else if !domain.IsErrorNotFound(err) {
-		return nil, err
-	}
-	if err := m.repo.UpdateStatus(ctx, projectID, number, domain.MergeRequestMerged, mergeCommitID); err != nil {
-		return nil, err
-	}
-	if m.fileLocks != nil {
-		if err := m.fileLocks.ReleaseForMergeRequest(ctx, projectID, snow.ID(mr.ID)); err != nil {
-			return nil, err
-		}
-	}
-	merged, err := m.repo.Get(ctx, projectID, number)
-	if err != nil {
-		return nil, err
-	}
-	m.emitHook(ctx, domain.WebhookEventMRMerged, projectID, merged, claim.UserID)
-	m.noteEvent(ctx, domain.MergeRequestEventMerged, merged, mergeCommitID, claim.UserID)
-	return merged, nil
-}
-
 // SetDraft toggles the draft state of an open merge request. Marking a draft
 // ready emits the ready_for_review event; entering the draft state only
 // updates the request. Draft requests cannot be merged.

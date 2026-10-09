@@ -306,13 +306,6 @@ export function closeMergeRequest(org: string, project: string, id: string): Pro
   })
 }
 
-export function markMergeRequestMerged(org: string, project: string, id: string): Promise<MergeRequestResponse> {
-  return apiJson(`${projectBase(org, project)}/merge-requests/${encodeURIComponent(id)}/mark-merged`, {
-    method: 'POST',
-    body: JSON.stringify({}),
-  })
-}
-
 export function reopenMergeRequest(org: string, project: string, id: string): Promise<MergeRequestResponse> {
   return apiJson(`${projectBase(org, project)}/merge-requests/${encodeURIComponent(id)}/reopen`, {
     method: 'POST',

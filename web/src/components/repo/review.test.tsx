@@ -337,7 +337,6 @@ describe('MergeRequestOverview', () => {
     onMerge: () => {},
     onClose: () => {},
     onReopen: () => {},
-    onMarkMerged: () => {},
   }
 
   it('shows the review summary and submits a decision', async () => {

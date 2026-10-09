@@ -20,7 +20,6 @@ type mrClient interface {
 	ListMergeRequests(ctx context.Context, org, project string, opts domain.ListMergeRequestOptions) ([]*domain.MergeRequest, int64, error)
 	GetMergeRequest(ctx context.Context, org, project string, number int64) (*domain.MergeRequest, *domain.Mergeability, error)
 	MergeMergeRequest(ctx context.Context, org, project string, number int64, strategy string, deleteSource bool) (*domain.MergeRequest, *domain.Mergeability, error)
-	MarkMergeRequestMerged(ctx context.Context, org, project string, number int64) (*domain.MergeRequest, error)
 	CloseMergeRequest(ctx context.Context, org, project string, number int64) (*domain.MergeRequest, error)
 	ReopenMergeRequest(ctx context.Context, org, project string, number int64) (*domain.MergeRequest, error)
 	CheckMergeRequest(ctx context.Context, org, project string, number int64) (*domain.Mergeability, error)
@@ -193,15 +192,6 @@ func (m *MergeRequest) Close(ctx context.Context, root, id string) (*domain.Merg
 		return nil, err
 	}
 	return m.client.CloseMergeRequest(ctx, url.Org, url.Project, number)
-}
-
-// MarkMerged marks a request as merged without moving the target branch.
-func (m *MergeRequest) MarkMerged(ctx context.Context, root, id string) (*domain.MergeRequest, error) {
-	url, number, err := m.target(ctx, root, id)
-	if err != nil {
-		return nil, err
-	}
-	return m.client.MarkMergeRequestMerged(ctx, url.Org, url.Project, number)
 }
 
 // Merge lands a merge request with the given strategy (empty = ff) and can

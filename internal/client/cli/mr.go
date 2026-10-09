@@ -25,7 +25,6 @@ func (c *Cli) setupMrCmd() *cobra.Command {
 	cmd.AddCommand(c.setupMrListCmd())
 	cmd.AddCommand(c.setupMrViewCmd())
 	cmd.AddCommand(c.setupMrCloseCmd())
-	cmd.AddCommand(c.setupMrMarkMergedCmd())
 	cmd.AddCommand(c.setupMrReopenCmd())
 	cmd.AddCommand(c.setupMrMergeCmd())
 	cmd.AddCommand(c.setupMrReviewCmd())
@@ -266,28 +265,6 @@ func (c *Cli) setupMrCloseCmd() *cobra.Command {
 				return err
 			}
 			cmd.Printf("Merge request #%d closed.\n", mr.Number)
-			return nil
-		},
-	}
-}
-
-func (c *Cli) setupMrMarkMergedCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:           "mark-merged <number>",
-		Short:         "Mark a request as merged without moving the target branch",
-		Args:          cobra.ExactArgs(1),
-		SilenceErrors: true,
-		SilenceUsage:  true,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			root, err := localrepo.FindRepoRoot()
-			if err != nil {
-				return err
-			}
-			mr, err := c.useCase.MR().MarkMerged(cmd.Context(), root, args[0])
-			if err != nil {
-				return err
-			}
-			cmd.Printf("Merge request #%d marked as merged.\n", mr.Number)
 			return nil
 		},
 	}

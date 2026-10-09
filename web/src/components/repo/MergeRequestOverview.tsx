@@ -210,7 +210,6 @@ export function MergeRequestOverview({
   onMerge,
   onClose,
   onReopen,
-  onMarkMerged,
 }: {
   org: string
   project: string
@@ -235,7 +234,6 @@ export function MergeRequestOverview({
   onMerge: (strategy: string, deleteSource: boolean) => void
   onClose: () => void
   onReopen: () => void
-  onMarkMerged: () => void
 }) {
   const [body, setBody] = useState('')
   const [reviewer, setReviewer] = useState('')
@@ -1090,11 +1088,6 @@ export function MergeRequestOverview({
               <Button block disabled={pending} onClick={onClose}>
                 Close merge request
               </Button>
-              {mergeability !== 'mergeable' && (
-                <Button block disabled={pending} onClick={onMarkMerged}>
-                  Mark as merged
-                </Button>
-              )}
             </Stack>
           </div>
         )}

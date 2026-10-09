@@ -324,25 +324,6 @@ func (h *Handler) MergeMergeRequest(appCtx http.AppContext) {
 	appCtx.WriteJson(nethttp.StatusOK, toMergeRequestResponse(request, info))
 }
 
-func (h *Handler) MarkMergeRequestMerged(appCtx http.AppContext) {
-	_, project, err := h.resolveProject(appCtx)
-	if err != nil {
-		appCtx.HandleError(err)
-		return
-	}
-	number, err := parseMergeRequestNumber(appCtx)
-	if err != nil {
-		appCtx.HandleError(err)
-		return
-	}
-	request, err := h.useCase.MergeRequest().MarkMerged(appCtx.Context(), project.ID, number)
-	if err != nil {
-		appCtx.HandleError(err)
-		return
-	}
-	appCtx.WriteJson(nethttp.StatusOK, toMergeRequestResponse(request, nil))
-}
-
 func (h *Handler) CloseMergeRequest(appCtx http.AppContext) {
 	h.setMergeRequestStatus(appCtx, func(number int64) (*domain.MergeRequest, error) {
 		_, project, err := h.resolveProject(appCtx)

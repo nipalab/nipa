@@ -471,33 +471,6 @@ var _ = Describe("nipa mr", func() {
 		Expect(merged.ExitCode).To(Equal(0), merged.Output())
 	})
 
-	It("marks a diverged request as merged without moving the target", func() {
-		project := newProject("mr-mark-merged")
-		seedRepo(orgSlug, project, map[string][]byte{"base.txt": []byte("base\n")}, "seed")
-		url := repoURLFor(orgSlug, project)
-		dir := cloneRepo(workspace(), url, "work")
-		Expect(runNipa(dir, "branch", "-c", "feature").ExitCode).To(Equal(0))
-		writeText(dir, "feature.txt", "feature\n")
-		Expect(runNipa(dir, "add", "feature.txt").ExitCode).To(Equal(0))
-		Expect(pushRepo(dir, "feature work").ExitCode).To(Equal(0))
-		Expect(runNipa(dir, "mr", "create", "--title", uniqueMessage("Manual merge")).ExitCode).To(Equal(0))
-
-		seedRepo(orgSlug, project, map[string][]byte{"main.txt": []byte("main\n")}, "move main")
-
-		res := runNipa(dir, "mr", "mark-merged", "1")
-		Expect(res.ExitCode).To(Equal(0), res.Output())
-		Expect(res.Output()).To(ContainSubstring("marked as merged"))
-
-		var out mergeRequestsJSON
-		runJSONInto(dir, &out, "mr", "list", "--status", "merged", "--json")
-		Expect(out.MergeRequests).To(HaveLen(1))
-		Expect(out.MergeRequests[0].Status).To(Equal("merged"))
-
-		fresh := cloneRepo(workspace(), url, "fresh")
-		Expect(fileExists(fresh, "feature.txt")).To(BeFalse())
-		Expect(readText(fresh, "main.txt")).To(Equal("main\n"))
-	})
-
 	It("requires named reviewers to approve before merging", func() {
 		project := newProject("mr-required-reviewers")
 		seedRepo(orgSlug, project, map[string][]byte{"base.txt": []byte("base\n")}, "seed")

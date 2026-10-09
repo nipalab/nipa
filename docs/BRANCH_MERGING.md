@@ -520,8 +520,7 @@ reviewers, commits; `--json` adds mergeability, reviews and commits),
 `unrequest-review <n> <user-id>` and `diff <n>`; `merge` gained
 `--strategy <ff|merge|squash|rebase>` and `--delete-source`, `assign <n>
 <user-id>...` replaces the assignees, `checks <n>` lists and `check <n> --name
---state [--url]` reports a status check, `mark-merged <n>` closes a request as
-merged without moving the target, and `list` gained
+--state [--url]` reports a status check, and `list` gained
 `--author/--source/--target/--after` (plus `--status draft` for drafts) and
 prints the `next_cursor` hint. The
 review request commands take a base36 user id; the SPA remains the friendly

@@ -603,15 +603,6 @@ message MergeMergeRequestResponse {
     MergeabilityDetail mergeability = 2;
 }
 
-message MarkMergeRequestMergedRequest {
-    ProjectContext context = 1;
-    int64 number = 2; // sequential per-project number
-}
-
-message MarkMergeRequestMergedResponse {
-    MergeRequestDetail merge_request = 1;
-}
-
 message CloseMergeRequestRequest {
     ProjectContext context = 1;
     int64 number = 2; // sequential per-project number
@@ -1026,7 +1017,6 @@ service NipaService {
     rpc GetMergeRequest(GetMergeRequestRequest) returns (GetMergeRequestResponse);
     rpc SetMergeRequestAssignees(SetMergeRequestAssigneesRequest) returns (SetMergeRequestAssigneesResponse);
     rpc MergeMergeRequest(MergeMergeRequestRequest) returns (MergeMergeRequestResponse);
-    rpc MarkMergeRequestMerged(MarkMergeRequestMergedRequest) returns (MarkMergeRequestMergedResponse);
     rpc CloseMergeRequest(CloseMergeRequestRequest) returns (CloseMergeRequestResponse);
     rpc ReopenMergeRequest(ReopenMergeRequestRequest) returns (ReopenMergeRequestResponse);
     rpc CheckMergeRequest(CheckMergeRequestRequest) returns (CheckMergeRequestResponse);

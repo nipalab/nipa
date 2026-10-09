@@ -169,18 +169,6 @@ func (n *nipaServer) MergeMergeRequest(ctx context.Context, req *pb.MergeMergeRe
 	}, nil
 }
 
-func (n *nipaServer) MarkMergeRequestMerged(ctx context.Context, req *pb.MarkMergeRequestMergedRequest) (*pb.MarkMergeRequestMergedResponse, error) {
-	_, project, err := n.uc.Common().ResolveBySlug(ctx, req.Context.Org, req.Context.Project)
-	if err != nil {
-		return nil, handleError(err)
-	}
-	request, err := n.uc.MergeRequest().MarkMerged(ctx, project.ID, req.GetNumber())
-	if err != nil {
-		return nil, handleError(err)
-	}
-	return &pb.MarkMergeRequestMergedResponse{MergeRequest: domainMergeRequestToPB(request)}, nil
-}
-
 func (n *nipaServer) CloseMergeRequest(ctx context.Context, req *pb.CloseMergeRequestRequest) (*pb.CloseMergeRequestResponse, error) {
 	_, project, err := n.uc.Common().ResolveBySlug(ctx, req.Context.Org, req.Context.Project)
 	if err != nil {

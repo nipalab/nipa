@@ -1,7 +1,7 @@
 # Merge request feature gaps
 
 Status: **audit (2026-10-05); Batches A, B, C1 and C2 implemented
-(2026-10-08); C4 + assignees/search/WIP/mark-merged (2026-10-09)**. This is a
+(2026-10-08); C4 + assignees/search/WIP (2026-10-09)**. This is a
 revisit list, not a plan of record. The MR feature is functional end to end
 (lifecycle, reviews, threads, locks, diff, commits, webhooks, SPA, daemon
 proxy); the items below are things that are absent or half-built, ordered
@@ -150,11 +150,11 @@ still open.
     succeeds for the current head; a push starts a clean slate. Reporting
     emits `mr.check_reported` and the SPA merge box lists checks.
 
-15. **[partial] Miscellaneous.** "Mark merged manually" exists (`POST
-    .../mark-merged`, `nipa mr mark-merged`) for changes that landed outside
-    the flow, and WIP/Draft title prefixes auto-draft (removing the prefix
-    marks ready). Still absent: email notifications (webhooks only) and MR
-    templates.
+15. **[partial] Miscellaneous.** WIP/Draft title prefixes auto-draft on create
+    and rename (removing the prefix marks ready). "Mark merged manually" was
+    deliberately dropped (an explicit reconcile action was judged unnecessary;
+    requests land through the normal merge strategies or are closed). Still
+    absent: email notifications (webhooks only) and MR templates.
 
 ## Suggested batches (when revisiting)
 
@@ -167,5 +167,5 @@ still open.
   protected-delete refusal (4), `system` column dropped (10). C2 — non-FF
   merge strategies + delete source branch (2). C3 — assignees (12, labels
   deferred). C4 — required reviewers (4), status checks (14), free-text search
-  (13), WIP detection and mark-merged (15). Email notifications and MR
+  (13), WIP detection (15; mark-merged dropped). Email notifications and MR
   templates remain open.

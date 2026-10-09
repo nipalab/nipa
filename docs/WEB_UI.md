@@ -82,8 +82,7 @@ and the merge box explains review blocks (`blocked_by` = `draft`,
 `status_checks`) and disables merging until they clear. Draft requests show a
 "Draft" marker in the list and header; the
 author/admin can mark one ready from the header or the edit dialog, which also
-carries the draft toggle; a diverged or blocked open request offers "Mark as
-merged" for changes that landed outside the flow. The sidebar shows the
+carries the draft toggle. The sidebar shows the
 reported status checks (state + details link) and the assignees with a picker.
 The project settings branch card exposes
 `dismiss_stale_approvals`, `require_status_checks` with required check names,

@@ -40,22 +40,19 @@ type fakeMRClient struct {
 	mergeStrategy     string
 	mergeDeleteSource bool
 
-	checkName        string
-	checkState       string
-	checkURL         string
-	reportCheck      *domain.MergeRequestCheck
-	reportErr        error
-	checksResult     []*domain.MergeRequestCheck
-	checksErr        error
-	markMergedNumber int64
-	markMergedResult *domain.MergeRequest
-	markMergedErr    error
-	assigneeIDs      []string
-	assigneeResult   *domain.MergeRequest
-	assigneeErr      error
-	mergeResult      *domain.MergeRequest
-	mergeability     *domain.Mergeability
-	mergeErr         error
+	checkName      string
+	checkState     string
+	checkURL       string
+	reportCheck    *domain.MergeRequestCheck
+	reportErr      error
+	checksResult   []*domain.MergeRequestCheck
+	checksErr      error
+	assigneeIDs    []string
+	assigneeResult *domain.MergeRequest
+	assigneeErr    error
+	mergeResult    *domain.MergeRequest
+	mergeability   *domain.Mergeability
+	mergeErr       error
 
 	closeNumber int64
 	closeResult *domain.MergeRequest
@@ -156,11 +153,6 @@ func (f *fakeMRClient) MergeMergeRequest(_ context.Context, _, _ string, number 
 func (f *fakeMRClient) CloseMergeRequest(_ context.Context, _, _ string, number int64) (*domain.MergeRequest, error) {
 	f.closeNumber = number
 	return f.closeResult, f.closeErr
-}
-
-func (f *fakeMRClient) MarkMergeRequestMerged(_ context.Context, _, _ string, number int64) (*domain.MergeRequest, error) {
-	f.markMergedNumber = number
-	return f.markMergedResult, f.markMergedErr
 }
 
 func (f *fakeMRClient) SetMergeRequestAssignees(_ context.Context, _, _ string, _ int64, userIDs []string) (*domain.MergeRequest, error) {

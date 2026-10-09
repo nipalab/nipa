@@ -88,15 +88,6 @@ func setupMergeRequestRouter(ws *restful.WebService, h *handler.Handler) {
 			Metadata(restfulspec.KeyOpenAPITags, tags)))
 
 	ws.Route(requestID(
-		ws.POST("/orgs/{org}/projects/{project}/merge-requests/{id}/mark-merged").
-			To(wrap(h.MarkMergeRequestMerged)).
-			AllowedMethodsWithoutContentType([]string{"POST"}).
-			Doc("Mark an open request as merged without moving the target (author or project admin)").
-			Returns(http.StatusOK, "merged merge request", model.MergeRequestResponse{}).
-			Operation("markMergeRequestMerged").
-			Metadata(restfulspec.KeyOpenAPITags, tags)))
-
-	ws.Route(requestID(
 		ws.POST("/orgs/{org}/projects/{project}/merge-requests/{id}/close").
 			To(wrap(h.CloseMergeRequest)).
 			AllowedMethodsWithoutContentType([]string{"POST"}).

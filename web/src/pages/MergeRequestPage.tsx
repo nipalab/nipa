@@ -16,7 +16,6 @@ import {
   listOrgMembers,
   mergeMergeRequest,
   closeMergeRequest,
-  markMergeRequestMerged,
   reopenMergeRequest,
   replyMergeRequestThread,
   resolveMergeRequestThread,
@@ -260,7 +259,6 @@ export default function MergeRequestPage() {
             run(() => mergeMergeRequest(org, project, id, strategy, deleteSource))
           }
           onClose={() => run(() => closeMergeRequest(org, project, id))}
-          onMarkMerged={() => run(() => markMergeRequestMerged(org, project, id))}
           onReopen={() => run(() => reopenMergeRequest(org, project, id))}
           {...threadActions()}
         />
