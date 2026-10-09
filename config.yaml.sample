@@ -28,3 +28,33 @@ CHUNK_MAX_PAGE_SIZE: 1000
 # allows public addresses only; loopback/private targets need an entry.
 WEBHOOK_EGRESS_ALLOWLIST: ''
 WEBHOOK_TIMEOUT_SECONDS: 30
+# Outbound email. EMAIL_SENDER selects the transport: `off` (default), `log`,
+# `smtp`, `sendgrid` or `http` (a generic REST sender configured with a body
+# template). See docs/EMAIL.md for provider examples.
+EMAIL_SENDER: 'off'
+EMAIL_FROM: 'Nipa <noreply@example.com>'
+EMAIL_REPLY_TO: ''
+# Public base URL of the web UI, used for links in notification emails.
+EMAIL_BASE_URL: ''
+EMAIL_TIMEOUT_SECONDS: 10
+# SMTP transport. TLS is `starttls` (default), `ssl` (implicit TLS) or
+# `none`; the port defaults to 587, 465 and 25 respectively.
+EMAIL_SMTP_HOST: ''
+EMAIL_SMTP_PORT: 0
+EMAIL_SMTP_USERNAME: ''
+EMAIL_SMTP_PASSWORD: ''
+EMAIL_SMTP_TLS: starttls
+# Allow self-signed SMTP certificates; keep off outside development.
+EMAIL_SMTP_INSECURE_SKIP_VERIFY: false
+# SendGrid v3 API transport.
+EMAIL_SENDGRID_API_KEY: ''
+# Override the API base URL (defaults to https://api.sendgrid.com).
+EMAIL_SENDGRID_ENDPOINT: ''
+# Generic HTTP transport: the body template is rendered per recipient with
+# {{.From}}/{{.FromEmail}}/{{.To}}/{{.ToHeader}}/{{.Subject}}/{{.Text}}/
+# {{.HTML}}/{{.MessageID}}/{{.InReplyTo}}/{{.References}} and a `json` helper.
+EMAIL_HTTP_ENDPOINT: ''
+EMAIL_HTTP_METHOD: POST
+EMAIL_HTTP_HEADERS: ''
+EMAIL_HTTP_CONTENT_TYPE: application/json
+EMAIL_HTTP_BODY_TEMPLATE: ''

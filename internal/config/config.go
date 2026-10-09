@@ -27,6 +27,24 @@ type Config struct {
 	ChunkMaxPageSize       int    `mapstructure:"CHUNK_MAX_PAGE_SIZE"`
 	WebhookEgressAllowlist string `mapstructure:"WEBHOOK_EGRESS_ALLOWLIST"`
 	WebhookTimeoutSeconds  int    `mapstructure:"WEBHOOK_TIMEOUT_SECONDS"`
+	EmailSender            string `mapstructure:"EMAIL_SENDER"`
+	EmailFrom              string `mapstructure:"EMAIL_FROM"`
+	EmailReplyTo           string `mapstructure:"EMAIL_REPLY_TO"`
+	EmailBaseURL           string `mapstructure:"EMAIL_BASE_URL"`
+	EmailTimeoutSeconds    int    `mapstructure:"EMAIL_TIMEOUT_SECONDS"`
+	EmailSMTPHost          string `mapstructure:"EMAIL_SMTP_HOST"`
+	EmailSMTPPort          int    `mapstructure:"EMAIL_SMTP_PORT"`
+	EmailSMTPUsername      string `mapstructure:"EMAIL_SMTP_USERNAME"`
+	EmailSMTPPassword      string `mapstructure:"EMAIL_SMTP_PASSWORD"`
+	EmailSMTPTLS           string `mapstructure:"EMAIL_SMTP_TLS"`
+	EmailSMTPInsecureTLS   bool   `mapstructure:"EMAIL_SMTP_INSECURE_SKIP_VERIFY"`
+	EmailSendGridAPIKey    string `mapstructure:"EMAIL_SENDGRID_API_KEY"`
+	EmailSendGridEndpoint  string `mapstructure:"EMAIL_SENDGRID_ENDPOINT"`
+	EmailHTTPEndpoint      string `mapstructure:"EMAIL_HTTP_ENDPOINT"`
+	EmailHTTPMethod        string `mapstructure:"EMAIL_HTTP_METHOD"`
+	EmailHTTPHeaders       string `mapstructure:"EMAIL_HTTP_HEADERS"`
+	EmailHTTPContentType   string `mapstructure:"EMAIL_HTTP_CONTENT_TYPE"`
+	EmailHTTPBodyTemplate  string `mapstructure:"EMAIL_HTTP_BODY_TEMPLATE"`
 }
 
 func LoadConfig() (*Config, error) {
