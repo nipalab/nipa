@@ -41,8 +41,8 @@ func loadEnv() *testEnv {
 		edition:   envOr("NIPA_TEST_EDITION", "free"),
 		binary:    envOr("NIPA_TEST_BINARY", filepath.Join(root, "bin", "nipa")),
 		apiURL:    envOr("NIPA_TEST_API_URL", "http://"+host+"/api/v1"),
-		user:      envOr("NIPA_TEST_USER", "supernipa"),
-		password:  envOr("NIPA_TEST_PASS", "supernipa"),
+		user:      envOr("NIPA_TEST_USER", "nipa"),
+		password:  envOr("NIPA_TEST_PASS", "nipa"),
 		tokenFile: tokenFile,
 	}
 }

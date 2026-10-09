@@ -448,7 +448,7 @@ func TestAPIRoutes(t *testing.T) {
 
 	t.Run("organization membership and groups", func(t *testing.T) {
 		aliceLogin, _ := login(t)
-		superLogin, _ := loginAs(t, "supernipa")
+		superLogin, _ := loginAs(t, "nipa")
 		aliceID := snow.ID(userID).Base36()
 		base := server.URL + "/api/v1/orgs/default"
 
@@ -577,7 +577,7 @@ func TestAPIRoutes(t *testing.T) {
 	})
 
 	t.Run("user administration", func(t *testing.T) {
-		superLogin, _ := loginAs(t, "supernipa")
+		superLogin, _ := loginAs(t, "nipa")
 
 		createCarol := doMethod(t, http.MethodPost, server.URL+"/api/v1/users",
 			`{"name":"carol","email":"carol@example.com","password":"password123"}`, superLogin.AccessToken)

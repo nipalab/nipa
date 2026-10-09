@@ -123,7 +123,7 @@ describe('LoginPage', () => {
         return jsonResponse({ access_token: 't', token_type: 'Bearer', expires_in: 1800 })
       }
       if (url.includes('/api/v1/me')) {
-        return jsonResponse({ id: '1', name: 'A', email: 'supernipa', photo_url: '', is_admin: true, is_super_admin: true, deleted: false })
+        return jsonResponse({ id: '1', name: 'A', email: 'nipa', photo_url: '', is_admin: true, is_super_admin: true, deleted: false })
       }
       if (url.includes('/api/v1/orgs')) return jsonResponse([])
       return jsonResponse({ error: 'not found' }, 404)
@@ -134,8 +134,8 @@ describe('LoginPage', () => {
     const inputs = container.querySelectorAll('input')
     expect(inputs[0].getAttribute('type')).toBe('text')
     await act(async () => {
-      setInputValue(inputs[0] as HTMLInputElement, 'supernipa')
-      setInputValue(inputs[1] as HTMLInputElement, 'supernipa')
+      setInputValue(inputs[0] as HTMLInputElement, 'nipa')
+      setInputValue(inputs[1] as HTMLInputElement, 'nipa')
     })
     await act(async () => {
       ;(container.querySelector('button[type="submit"]') as HTMLButtonElement).click()
@@ -155,7 +155,7 @@ describe('LoginPage', () => {
     await waitForText(container, 'Sign in')
     const inputs = container.querySelectorAll('input')
     await act(async () => {
-      setInputValue(inputs[0] as HTMLInputElement, 'supernipa')
+      setInputValue(inputs[0] as HTMLInputElement, 'nipa')
       setInputValue(inputs[1] as HTMLInputElement, 'wrong')
     })
     await act(async () => {

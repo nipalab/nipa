@@ -68,7 +68,7 @@ re-mints the token after granting admin rights because the admin claim is
 embedded at login time.
 
 Setup data (organization, project, seed commits) is created per run: the suite
-logs in as the migration-seeded `supernipa`/`supernipa`, creates a uniquely
+logs in as the migration-seeded `nipa`/`nipa`, creates a uniquely
 named org via the REST API and one project per spec, and seeds content with the
 client usecases in-process (`support_seed_test.go`), independent of the binary
 under test.

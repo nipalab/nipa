@@ -72,7 +72,7 @@ func (s *MigrateSuite) TestUpDown() {
 	s.Require().NoError(MigrateUp(s.conn))
 
 	var count int
-	s.Require().NoError(s.conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM users WHERE email = 'supernipa'").Scan(&count))
+	s.Require().NoError(s.conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM users WHERE email = 'nipa'").Scan(&count))
 	s.Equal(1, count)
 
 	var exists bool

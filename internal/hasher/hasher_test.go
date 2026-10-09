@@ -11,13 +11,13 @@ func TestHasherHashAndCompare(t *testing.T) {
 	h := NewHasher(1)
 	defer h.Close()
 
-	hash, err := h.Hash("supernipa")
+	hash, err := h.Hash("nipa")
 	require.NoError(t, err)
 	require.NotEmpty(t, hash)
-	require.NotEqual(t, "supernipa", hash)
+	require.NotEqual(t, "nipa", hash)
 	fmt.Println(hash)
 
-	require.True(t, h.Compare(hash, "supernipa"))
+	require.True(t, h.Compare(hash, "nipa"))
 	require.False(t, h.Compare(hash, "wrongpassword"))
 }
 

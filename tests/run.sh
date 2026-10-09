@@ -225,8 +225,8 @@ run_suite() {
 	export NIPA_TEST_EDITION="$edition"
 	export NIPA_TEST_BINARY="$ROOT_DIR/bin/nipa"
 	export NIPA_TEST_API_URL="http://127.0.0.1:$port/api/v1"
-	export NIPA_TEST_USER="${NIPA_TEST_USER:-supernipa}"
-	export NIPA_TEST_PASS="${NIPA_TEST_PASS:-supernipa}"
+	export NIPA_TEST_USER="${NIPA_TEST_USER:-nipa}"
+	export NIPA_TEST_PASS="${NIPA_TEST_PASS:-nipa}"
 	export NIPA_TOKEN_FILE="$TMP_DIR/tokens-$edition.json"
 	rm -f "$NIPA_TOKEN_FILE"
 
