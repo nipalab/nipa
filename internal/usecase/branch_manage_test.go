@@ -343,6 +343,54 @@ func TestBranch_SetProtection_NoPermission(t *testing.T) {
 	require.True(t, domain.IsErrorNoPermission(err))
 }
 
+func TestBranch_SetProtection_KeepsStoredReviewersAndChecksWhenAbsent(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := NewMockpermissionUsecase(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
+
+	perm.EXPECT().AdminHasProject(gomock.Any(), snow.ID(1)).Return(true)
+	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "release").
+		Return(&domain.Branch{ID: 3, ProjectID: 1, Name: "release"}, nil)
+	repo.EXPECT().RequiredReviewers(gomock.Any(), snow.ID(3)).
+		Return([]domain.ReviewActor{{UserID: 7, Name: "alice"}}, nil).Times(2)
+	repo.EXPECT().RequiredChecks(gomock.Any(), snow.ID(3)).Return([]string{"build"}, nil).Times(2)
+	repo.EXPECT().SetBranchProtection(gomock.Any(), snow.ID(1), snow.ID(3), domain.BranchProtection{
+		Protected:         true,
+		RequiredReviewers: []snow.ID{7},
+		RequiredChecks:    []string{"build"},
+	}).Return(nil)
+	repo.EXPECT().GetByProjectIDAndID(gomock.Any(), snow.ID(1), snow.ID(3)).
+		Return(&domain.Branch{ID: 3, ProjectID: 1, Name: "release", IsProtected: true}, nil)
+
+	got, err := uc.SetProtection(permissionCtx(42), snow.ID(1), "release", BranchProtectionOptions{Protected: true})
+	require.NoError(t, err)
+	require.True(t, got.IsProtected)
+}
+
+func TestBranch_SetProtection_UnknownRequiredReviewer(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := NewMockpermissionUsecase(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+	users := NewMockuserLookup(ctrl)
+	uc := NewBranch(perm, repo, newTestBranchNode(t)).WithUsers(users)
+
+	perm.EXPECT().AdminHasProject(gomock.Any(), snow.ID(1)).Return(true)
+	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "release").
+		Return(&domain.Branch{ID: 3, ProjectID: 1, Name: "release"}, nil)
+	repo.EXPECT().RequiredReviewers(gomock.Any(), snow.ID(3)).Return(nil, nil)
+	repo.EXPECT().RequiredChecks(gomock.Any(), snow.ID(3)).Return(nil, nil)
+	users.EXPECT().GetByID(gomock.Any(), snow.ID(7)).Return(nil, domain.NewErrorRecordNotFound())
+
+	_, err := uc.SetProtection(permissionCtx(42), snow.ID(1), "release", BranchProtectionOptions{
+		RequiredReviewers: &[]snow.ID{7},
+	})
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 400, domErr.Code)
+	require.Equal(t, "user "+snow.ID(7).Base36()+" not found", domErr.Message)
+}
+
 func TestPush_ProtectedBranch_DeniedEvenForAdmins(t *testing.T) {
 	uc, perm, repo, _, ctx := newPushFixture(t)
 

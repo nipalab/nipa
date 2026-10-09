@@ -60,6 +60,7 @@ type Branch struct {
 	chunks     chunkReader
 	fileLocks  fileLockGate
 	hooks      hookBranchGate
+	users      userLookup
 	// mergeCommitter and chunkUploads enable the non-fast-forward merge
 	// strategies; both are wired by the server mains.
 	mergeCommitter mergeCommitter
@@ -89,6 +90,12 @@ func (b *Branch) WithFileLocks(locks fileLockGate) *Branch {
 // WithHooks enables webhook events on this usecase.
 func (b *Branch) WithHooks(hooks hookBranchGate) *Branch {
 	b.hooks = hooks
+	return b
+}
+
+// WithUsers enables required-reviewer validation against real accounts.
+func (b *Branch) WithUsers(users userLookup) *Branch {
+	b.users = users
 	return b
 }
 
@@ -276,6 +283,9 @@ func (b *Branch) SetProtection(ctx context.Context, projectID snow.ID, name stri
 	if err != nil {
 		return nil, err
 	}
+	if err := b.attachProtection(ctx, branch); err != nil {
+		return nil, err
+	}
 	approvals := branch.RequiredApprovals
 	if opts.RequiredApprovals != nil {
 		if *opts.RequiredApprovals < 0 {
@@ -294,6 +304,13 @@ func (b *Branch) SetProtection(ctx context.Context, projectID snow.ID, name stri
 	var reviewers []snow.ID
 	if opts.RequiredReviewers != nil {
 		reviewers = uniqueIDs(*opts.RequiredReviewers)
+		if b.users != nil {
+			for _, id := range reviewers {
+				if _, err := b.users.GetByID(ctx, id); err != nil {
+					return nil, domain.NewErrorUser(fmt.Sprintf("user %s not found", id.Base36()))
+				}
+			}
+		}
 	} else if len(branch.RequiredReviewers) > 0 {
 		reviewers = make([]snow.ID, 0, len(branch.RequiredReviewers))
 		for _, reviewer := range branch.RequiredReviewers {

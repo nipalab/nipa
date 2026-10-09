@@ -67,6 +67,7 @@ func main() {
 	branchUsecase := usecase.NewBranchWithChunks(permissionUsecase, branchRepository, snowUser, chunkStore)
 	fileLockUsecase := usecase.NewFileLock(postgres.NewFileLockRepository(dbConn), branchRepository, permissionUsecase, snowUser)
 	branchUsecase = branchUsecase.WithFileLocks(fileLockUsecase)
+	branchUsecase = branchUsecase.WithUsers(userRepo)
 	mergeRequestUsecase := usecase.NewMergeRequest(
 		postgres.NewMergeRequestRepository(dbConn),
 		branchRepository,
