@@ -752,3 +752,64 @@ func TestMergeRequest_ConnectErrorPaths(t *testing.T) {
 	_, _, err = newTestMergeRequest(t, badURL, client).List(ctx, t.TempDir(), domain.ListMergeRequestOptions{})
 	require.Contains(t, err.Error(), "invalid URL scheme")
 }
+
+func TestMergeRequest_SetAssignees(t *testing.T) {
+	local := &stubLocalRepo{
+		loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "feature"},
+	}
+	client := &stubMRClient{assigneeResult: &domain.MergeRequest{Number: 5, Assignees: []domain.ReviewActor{{UserID: "8"}}}}
+	mr := newTestMergeRequest(t, local, client)
+
+	got, err := mr.SetAssignees(context.Background(), t.TempDir(), "5", []string{" 8 ", "", "9"})
+	require.NoError(t, err)
+	require.Equal(t, int64(5), got.Number)
+	require.Equal(t, []string{"8", "9"}, client.assigneeIDs, "blank ids are dropped and the rest trimmed")
+	require.Len(t, got.Assignees, 1)
+
+	_, err = mr.SetAssignees(context.Background(), t.TempDir(), "not-a-number", nil)
+	require.Error(t, err)
+}
+
+func TestMergeRequest_Checks(t *testing.T) {
+	local := &stubLocalRepo{
+		loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "feature"},
+	}
+	client := &stubMRClient{checksResult: []*domain.MergeRequestCheck{{Name: "build"}}}
+	mr := newTestMergeRequest(t, local, client)
+
+	got, err := mr.Checks(context.Background(), t.TempDir(), "5")
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	require.Equal(t, "build", got[0].Name)
+
+	client.checksErr = errors.New("boom")
+	_, err = mr.Checks(context.Background(), t.TempDir(), "5")
+	require.EqualError(t, err, "boom")
+
+	_, err = mr.Checks(context.Background(), t.TempDir(), "bad")
+	require.Error(t, err)
+}
+
+func TestMergeRequest_ReportCheck(t *testing.T) {
+	local := &stubLocalRepo{
+		loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "feature"},
+	}
+	client := &stubMRClient{reportCheck: &domain.MergeRequestCheck{Name: "build", State: "success"}}
+	mr := newTestMergeRequest(t, local, client)
+
+	got, err := mr.ReportCheck(context.Background(), t.TempDir(), "5", " build ", "success", "https://ci.example/run/1")
+	require.NoError(t, err)
+	require.Equal(t, "build", got.Name)
+	require.Equal(t, "build", client.checkName)
+	require.Equal(t, "success", client.checkState)
+	require.Equal(t, "https://ci.example/run/1", client.checkURL)
+
+	_, err = mr.ReportCheck(context.Background(), t.TempDir(), "5", "  ", "success", "")
+	require.Error(t, err)
+
+	_, err = mr.ReportCheck(context.Background(), t.TempDir(), "5", "build", "exploded", "")
+	require.Error(t, err)
+
+	_, err = mr.ReportCheck(context.Background(), t.TempDir(), "bad", "build", "success", "")
+	require.Error(t, err)
+}

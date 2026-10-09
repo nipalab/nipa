@@ -1330,6 +1330,45 @@ func TestSetBranchProtection_Success(t *testing.T) {
 	require.Equal(t, approvals, resp.GetBranch().GetRequiredApprovals())
 }
 
+func TestSetBranchProtection_WithReviewersAndChecks(t *testing.T) {
+	branch, perm, repo := newTestBranchUc(t)
+	srv := New(newMockUsecaseContainer(t, branch))
+	projectID := snow.ID(42)
+
+	perm.EXPECT().AdminHasProject(gomock.Any(), projectID).Return(true)
+	repo.EXPECT().GetBranchByName(gomock.Any(), projectID, "release").
+		Return(&domain.Branch{ID: 3, ProjectID: projectID, Name: "release"}, nil)
+	repo.EXPECT().SetBranchProtection(gomock.Any(), projectID, snow.ID(3), domain.BranchProtection{
+		Protected:         true,
+		RequiredReviewers: []snow.ID{7, 8},
+		RequiredChecks:    []string{"build", "test"},
+	}).Return(nil)
+	repo.EXPECT().GetByProjectIDAndID(gomock.Any(), projectID, snow.ID(3)).
+		Return(&domain.Branch{ID: 3, ProjectID: projectID, Name: "release", IsProtected: true}, nil)
+
+	resp, err := srv.SetBranchProtection(context.Background(), &pb.SetBranchProtectionRequest{
+		Context:             &pb.ProjectContext{Org: "org", Project: "proj"},
+		Name:                "release",
+		IsProtected:         true,
+		RequiredReviewerIds: []string{snow.ID(7).Base36(), snow.ID(8).Base36()},
+		RequiredChecks:      []string{"test", "build"},
+	})
+	require.NoError(t, err)
+	require.True(t, resp.GetBranch().GetIsProtected())
+}
+
+func TestSetBranchProtection_InvalidReviewerID(t *testing.T) {
+	branch, _, _ := newTestBranchUc(t)
+	srv := New(newMockUsecaseContainer(t, branch))
+
+	_, err := srv.SetBranchProtection(context.Background(), &pb.SetBranchProtectionRequest{
+		Context:             &pb.ProjectContext{Org: "org", Project: "proj"},
+		Name:                "release",
+		RequiredReviewerIds: []string{"not-base36!"},
+	})
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+}
+
 func TestBranchManagement_ResolveError(t *testing.T) {
 	srv := New(newMockUsecaseContainer(t, nil))
 	badContext := &pb.ProjectContext{Org: "missing", Project: "proj"}

@@ -1025,3 +1025,31 @@ func (s *BranchRepositorySuite) TestHasOpenMergeRequests_DatabaseError() {
 	s.Require().ErrorAs(err, &domErr)
 	s.Equal(500, domErr.Code)
 }
+
+func (s *BranchRepositorySuite) TestClosedDatabaseErrors() {
+	ctx := context.Background()
+	repo := NewBranchRepository(s.db)
+	s.Require().NoError(s.db.Close())
+
+	projectID := snow.ID(1)
+	branchID := snow.ID(2)
+
+	_, err := repo.ListBranches(ctx, projectID, 10, nil, 0)
+	s.Require().Error(err)
+	_, err = repo.GetBranchByName(ctx, projectID, "main")
+	s.Require().Error(err)
+	s.Require().Error(repo.DeleteBranch(ctx, projectID, branchID))
+	s.Require().Error(repo.SetBranchProtection(ctx, projectID, branchID, domain.BranchProtection{Protected: true}))
+	_, err = repo.RequiredReviewers(ctx, branchID)
+	s.Require().Error(err)
+	_, err = repo.RequiredChecks(ctx, branchID)
+	s.Require().Error(err)
+	s.Require().Error(repo.SetDefaultBranch(ctx, projectID, branchID))
+	s.Require().Error(repo.UpdateCommitIf(ctx, branchID, nil, nil))
+	_, err = repo.ListTreeChildren(ctx, 2)
+	s.Require().Error(err)
+	_, err = repo.ListFilesByTree(ctx, 2)
+	s.Require().Error(err)
+	_, err = repo.CommitLogUntil(ctx, projectID, snow.ID(2), snow.ID(3), 10)
+	s.Require().Error(err)
+}

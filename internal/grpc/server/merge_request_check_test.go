@@ -170,13 +170,13 @@ func TestMergeRequestChecksHandler_MissingProject(t *testing.T) {
 func TestDomainMergeRequestCheckToPB(t *testing.T) {
 	now := time.Unix(100, 0).UTC()
 	in := &domain.MergeRequestCheck{
-		ID:           snow.ID(9),
-		Name:         "build",
-		State:        domain.MergeRequestCheckSuccess,
-		DetailsURL:   "https://ci.example/run/1",
-		Reporter:     domain.ReviewActor{UserID: snow.ID(7), Name: "Alice", PhotoURL: "https://x/a.png"},
-		CreatedAt:    now,
-		UpdatedAt:    now,
+		ID:         snow.ID(9),
+		Name:       "build",
+		State:      domain.MergeRequestCheckSuccess,
+		DetailsURL: "https://ci.example/run/1",
+		Reporter:   domain.ReviewActor{UserID: snow.ID(7), Name: "Alice", PhotoURL: "https://x/a.png"},
+		CreatedAt:  now,
+		UpdatedAt:  now,
 	}
 	out := domainMergeRequestCheckToPB(in)
 	require.Equal(t, snow.ID(9).Base36(), out.Id)

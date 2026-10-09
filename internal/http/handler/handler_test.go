@@ -126,6 +126,7 @@ type handlerRegistry struct {
 	chunk        *usecase.Chunk
 	mergeRequest *usecase.MergeRequest
 	review       *usecase.MergeRequestReview
+	mergeCheck   *usecase.MergeRequestCheck
 	fileLock     *usecase.FileLock
 	webhook      *usecase.Webhook
 }
@@ -148,7 +149,7 @@ func (r *handlerRegistry) MergeRequestReview() *usecase.MergeRequestReview {
 }
 
 func (r *handlerRegistry) MergeRequestCheck() *usecase.MergeRequestCheck {
-	return nil
+	return r.mergeCheck
 }
 
 func (r *handlerRegistry) FileLock() *usecase.FileLock { return r.fileLock }
@@ -162,6 +163,7 @@ func (stubPasswordHasher) Compare(_, _ string) bool      { return true }
 
 type handlerTestEnv struct {
 	handler    *Handler
+	registry   *handlerRegistry
 	authRepo   *sqlite.Auth
 	pbacRepo   *sqlite.PBAC
 	userRepo   *sqlite.User
@@ -228,6 +230,11 @@ func newHandlerTestEnv(t *testing.T) *handlerTestEnv {
 		branchRepo, branchUc, permissionUc, userRepo, node,
 	)
 	mergeRequestUc = mergeRequestUc.WithReview(reviewUc)
+	checkUc := usecase.NewMergeRequestCheck(
+		sqlite.NewMergeRequestCheckRepository(dbConn),
+		sqlite.NewMergeRequestRepository(dbConn),
+		branchRepo, permissionUc, node,
+	)
 	reg := &handlerRegistry{
 		auth:         usecase.NewAuth("test-secret", stubPasswordHasher{}, userRepo, authRepo),
 		user:         usecase.NewUser(node, userRepo, stubPasswordHasher{}),
@@ -241,11 +248,13 @@ func newHandlerTestEnv(t *testing.T) *handlerTestEnv {
 		chunk:        chunkUc,
 		mergeRequest: mergeRequestUc,
 		review:       reviewUc,
+		mergeCheck:   checkUc,
 		fileLock:     fileLockUc,
 		webhook:      webhookUc,
 	}
 	return &handlerTestEnv{
 		handler:    NewHandler(reg),
+		registry:   reg,
 		authRepo:   authRepo,
 		pbacRepo:   pbacRepo,
 		userRepo:   userRepo,

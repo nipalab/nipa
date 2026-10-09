@@ -117,3 +117,70 @@ func TestMergeRequestRepositorySQLite_CRUD(t *testing.T) {
 	_, err = repo.Get(ctx, projectID, 9999)
 	requireRecordNotFound(t, err)
 }
+
+func TestMergeRequestRepositorySQLite_AssigneesAndSearch(t *testing.T) {
+	ctx := context.Background()
+	db, q := newSQLiteTestDB(t)
+	repo := NewMergeRequestRepository(db)
+
+	projectID := seedProject(t, q, 1, "game")
+	userID := seedPBACUser(t, db, 42)
+	otherID := seedPBACUser(t, db, 43)
+	sourceID := seedBranch(t, db, projectID, "feature", sql.NullInt64{})
+	targetID := seedBranch(t, db, projectID, "main", sql.NullInt64{})
+
+	first, err := repo.Create(ctx, domain.MergeRequest{
+		ID: 5001, ProjectID: projectID, SourceBranchID: sourceID, TargetBranchID: targetID,
+		SourceBranch: "feature", TargetBranch: "main", Title: "Add feature", CreatedBy: userID,
+	})
+	require.NoError(t, err)
+	second, err := repo.Create(ctx, domain.MergeRequest{
+		ID: 5002, ProjectID: projectID, SourceBranchID: sourceID, TargetBranchID: targetID,
+		SourceBranch: "feature", TargetBranch: "main", Title: "Fix bug", CreatedBy: userID,
+	})
+	require.NoError(t, err)
+
+	require.NoError(t, repo.AddAssignee(ctx, first.ID, userID))
+	require.NoError(t, repo.AddAssignee(ctx, first.ID, otherID))
+
+	assignees, err := repo.ListAssignees(ctx, projectID)
+	require.NoError(t, err)
+	require.Len(t, assignees[first.Number], 2)
+	names := []string{assignees[first.Number][0].Name, assignees[first.Number][1].Name}
+	require.Contains(t, names, "user42")
+	require.Contains(t, names, "user43")
+
+	assigned, err := repo.List(ctx, projectID, domain.MergeRequestListOptions{Assignee: &userID, Limit: 10})
+	require.NoError(t, err)
+	require.Len(t, assigned, 1)
+	require.Equal(t, first.Number, assigned[0].Number)
+
+	searched, err := repo.List(ctx, projectID, domain.MergeRequestListOptions{Search: "bug", Limit: 10})
+	require.NoError(t, err)
+	require.Len(t, searched, 1)
+	require.Equal(t, second.Number, searched[0].Number)
+
+	require.NoError(t, repo.ClearAssignees(ctx, first.ID))
+	assignees, err = repo.ListAssignees(ctx, projectID)
+	require.NoError(t, err)
+	require.Empty(t, assignees[first.Number])
+}
+
+func TestMergeRequestRepositorySQLite_Errors(t *testing.T) {
+	ctx := context.Background()
+	db, _ := newSQLiteTestDB(t)
+	repo := NewMergeRequestRepository(db)
+	require.NoError(t, db.Close())
+
+	_, err := repo.Create(ctx, domain.MergeRequest{ID: 1, ProjectID: 1, SourceBranchID: 1, TargetBranchID: 2, CreatedBy: 1})
+	require.Error(t, err)
+
+	_, err = repo.List(ctx, 1, domain.MergeRequestListOptions{Limit: 1})
+	require.Error(t, err)
+
+	_, err = repo.ListAssignees(ctx, 1)
+	require.Error(t, err)
+
+	require.Error(t, repo.ClearAssignees(ctx, 1))
+	require.Error(t, repo.AddAssignee(ctx, 1, 42))
+}

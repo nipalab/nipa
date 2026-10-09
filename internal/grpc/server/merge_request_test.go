@@ -370,6 +370,56 @@ func TestMergeRequestHandler_List(t *testing.T) {
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 }
 
+func TestMergeRequestHandler_ListAssigneeFilter(t *testing.T) {
+	repo := &stubMergeRequestRepository{list: []*domain.MergeRequest{
+		testMergeRequest(5, domain.MergeRequestOpen),
+	}}
+	srv, _, perm := newTestMergeRequestServer(t, repo, &stubBranchMerger{})
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(42), domain.PermissionRead).Return(true).AnyTimes()
+
+	assignee := snow.ID(7)
+	resp, err := srv.ListMergeRequests(context.Background(), &pb.ListMergeRequestsRequest{
+		Context:  &pb.ProjectContext{Org: "org", Project: "proj"},
+		Assignee: assignee.Base36(),
+	})
+	require.NoError(t, err)
+	require.Len(t, resp.MergeRequests, 1)
+	require.Equal(t, &assignee, repo.listOptions.Assignee)
+
+	_, err = srv.ListMergeRequests(context.Background(), &pb.ListMergeRequestsRequest{
+		Context:  &pb.ProjectContext{Org: "org", Project: "proj"},
+		Assignee: "not-base36!",
+	})
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+}
+
+func TestMergeRequestHandler_SetAssignees(t *testing.T) {
+	repo := &stubMergeRequestRepository{
+		onGet: func(int) (*domain.MergeRequest, error) {
+			return testMergeRequest(5, domain.MergeRequestOpen), nil
+		},
+	}
+	srv, _, perm := newTestMergeRequestServer(t, repo, &stubBranchMerger{})
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(42), domain.PermissionRead).Return(true).AnyTimes()
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(42), domain.PermissionWrite).Return(true).AnyTimes()
+	ctx := domain.ContextWithClaim(context.Background(), domain.Claims{UserID: snow.ID(7)})
+
+	resp, err := srv.SetMergeRequestAssignees(ctx, &pb.SetMergeRequestAssigneesRequest{
+		Context: &pb.ProjectContext{Org: "org", Project: "proj"},
+		Number:  5,
+		UserIds: []string{snow.ID(8).Base36(), snow.ID(9).Base36()},
+	})
+	require.NoError(t, err)
+	require.Equal(t, snow.ID(5).Base36(), resp.GetMergeRequest().GetId())
+
+	_, err = srv.SetMergeRequestAssignees(ctx, &pb.SetMergeRequestAssigneesRequest{
+		Context: &pb.ProjectContext{Org: "org", Project: "proj"},
+		Number:  5,
+		UserIds: []string{"not-base36!"},
+	})
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+}
+
 func TestMergeRequestHandler_Get(t *testing.T) {
 	sourceHead := snow.ID(11)
 	targetHead := snow.ID(12)
