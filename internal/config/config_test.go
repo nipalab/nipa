@@ -17,7 +17,7 @@ func writeFile(t *testing.T, dir, name, content string) {
 // otherwise pick up and override file-based values.
 func clearConfigEnv(t *testing.T) {
 	t.Helper()
-	for _, k := range []string{"DATABASE_DSN", "SERVER_ADDRESS", "SERVER_PORT", "JWT_KEY", "LOG_LEVEL", "HASHER_WORKERS", "SNOWFLAKE_NODE_ID", "CHUNK_STORAGE", "CHUNK_STORAGE_DIR", "CHUNK_S3_ENDPOINT", "CHUNK_S3_REGION", "CHUNK_S3_BUCKET", "CHUNK_S3_PREFIX", "CHUNK_S3_ACCESS_KEY_ID", "CHUNK_S3_SECRET_ACCESS_KEY", "CHUNK_URL_SIGNING_KEY", "CHUNK_PRESIGN_TTL_SECONDS", "CHUNK_MAX_PAGE_SIZE"} {
+	for _, k := range []string{"DATABASE_DSN", "SERVER_ADDRESS", "SERVER_PORT", "JWT_KEY", "LOG_LEVEL", "HASHER_WORKERS", "SNOWFLAKE_NODE_ID", "CHUNK_STORAGE", "CHUNK_STORAGE_DIR", "CHUNK_S3_ENDPOINT", "CHUNK_S3_REGION", "CHUNK_S3_BUCKET", "CHUNK_S3_PREFIX", "CHUNK_S3_ACCESS_KEY_ID", "CHUNK_S3_SECRET_ACCESS_KEY", "CHUNK_URL_SIGNING_KEY", "CHUNK_PRESIGN_TTL_SECONDS", "CHUNK_MAX_PAGE_SIZE", "EMAIL_SENDER", "EMAIL_FROM", "EMAIL_REPLY_TO", "EMAIL_BASE_URL", "EMAIL_TIMEOUT_SECONDS", "EMAIL_SMTP_HOST", "EMAIL_SMTP_PORT", "EMAIL_SMTP_USERNAME", "EMAIL_SMTP_PASSWORD", "EMAIL_SMTP_TLS", "EMAIL_SMTP_INSECURE_SKIP_VERIFY", "EMAIL_SENDGRID_API_KEY", "EMAIL_SENDGRID_ENDPOINT", "EMAIL_HTTP_ENDPOINT", "EMAIL_HTTP_METHOD", "EMAIL_HTTP_HEADERS", "EMAIL_HTTP_CONTENT_TYPE", "EMAIL_HTTP_BODY_TEMPLATE"} {
 		if old, ok := os.LookupEnv(k); ok {
 			_ = os.Unsetenv(k)
 			t.Cleanup(func() { _ = os.Setenv(k, old) })
@@ -41,6 +41,22 @@ CHUNK_S3_SECRET_ACCESS_KEY: minio-secret
 CHUNK_URL_SIGNING_KEY: yaml-chunk-secret
 CHUNK_PRESIGN_TTL_SECONDS: 120
 CHUNK_MAX_PAGE_SIZE: 50
+EMAIL_SENDER: smtp
+EMAIL_FROM: Nipa <noreply@example.com>
+EMAIL_REPLY_TO: support@example.com
+EMAIL_BASE_URL: https://nipa.example.com
+EMAIL_TIMEOUT_SECONDS: 15
+EMAIL_SMTP_HOST: smtp.example.com
+EMAIL_SMTP_PORT: 2525
+EMAIL_SMTP_USERNAME: mailer
+EMAIL_SMTP_PASSWORD: mailer-secret
+EMAIL_SMTP_TLS: starttls
+EMAIL_SMTP_INSECURE_SKIP_VERIFY: true
+EMAIL_HTTP_ENDPOINT: https://mail.example.com/send
+EMAIL_HTTP_METHOD: PUT
+EMAIL_HTTP_HEADERS: '{"X-Api-Key":"secret"}'
+EMAIL_HTTP_CONTENT_TYPE: application/json
+EMAIL_HTTP_BODY_TEMPLATE: '{"to":{{json .To}}}'
 `
 
 func TestLoadConfig_FromYAML(t *testing.T) {
@@ -68,6 +84,22 @@ func TestLoadConfig_FromYAML(t *testing.T) {
 	require.Equal(t, "yaml-chunk-secret", cfg.ChunkURLSigningKey)
 	require.Equal(t, 120, cfg.ChunkPresignTTLSeconds)
 	require.Equal(t, 50, cfg.ChunkMaxPageSize)
+	require.Equal(t, "smtp", cfg.EmailSender)
+	require.Equal(t, "Nipa <noreply@example.com>", cfg.EmailFrom)
+	require.Equal(t, "support@example.com", cfg.EmailReplyTo)
+	require.Equal(t, "https://nipa.example.com", cfg.EmailBaseURL)
+	require.Equal(t, 15, cfg.EmailTimeoutSeconds)
+	require.Equal(t, "smtp.example.com", cfg.EmailSMTPHost)
+	require.Equal(t, 2525, cfg.EmailSMTPPort)
+	require.Equal(t, "mailer", cfg.EmailSMTPUsername)
+	require.Equal(t, "mailer-secret", cfg.EmailSMTPPassword)
+	require.Equal(t, "starttls", cfg.EmailSMTPTLS)
+	require.True(t, cfg.EmailSMTPInsecureTLS)
+	require.Equal(t, "https://mail.example.com/send", cfg.EmailHTTPEndpoint)
+	require.Equal(t, "PUT", cfg.EmailHTTPMethod)
+	require.Equal(t, `{"X-Api-Key":"secret"}`, cfg.EmailHTTPHeaders)
+	require.Equal(t, "application/json", cfg.EmailHTTPContentType)
+	require.Equal(t, `{"to":{{json .To}}}`, cfg.EmailHTTPBodyTemplate)
 }
 
 func TestLoadConfig_ChunkURLDefaults(t *testing.T) {
