@@ -46,8 +46,9 @@ func newHTTPSender(cfg HTTPConfig, from, replyTo string, timeout time.Duration) 
 	if endpoint == "" {
 		return nil, fmt.Errorf("http sender: endpoint is required")
 	}
-	if _, err := url.Parse(endpoint); err != nil {
-		return nil, fmt.Errorf("http sender: invalid endpoint: %w", err)
+	parsedEndpoint, err := url.Parse(endpoint)
+	if err != nil || (parsedEndpoint.Scheme != "http" && parsedEndpoint.Scheme != "https") || parsedEndpoint.Host == "" {
+		return nil, fmt.Errorf("http sender: invalid endpoint %q", endpoint)
 	}
 	parsedFrom, err := parseAddress(from, "from")
 	if err != nil {
@@ -112,17 +113,27 @@ func (s *httpSender) Send(ctx context.Context, msg Message) error {
 		toEmails = append(toEmails, addr.Addr)
 	}
 	data := httpTemplateData{
-		From:       formatAddress(from),
-		FromName:   from.Name,
-		FromEmail:  from.Addr,
-		To:         toEmails,
-		ToHeader:   strings.Join(toEmails, ", "),
-		Subject:    msg.Subject,
-		Text:       msg.Text,
-		HTML:       msg.HTML,
-		MessageID:  normalizeMessageID(msg.MessageID),
-		InReplyTo:  normalizeMessageID(msg.InReplyTo),
-		References: msg.References,
+		From:      formatAddress(from),
+		FromName:  from.Name,
+		FromEmail: from.Addr,
+		To:        toEmails,
+		ToHeader:  strings.Join(toEmails, ", "),
+		Subject:   msg.Subject,
+		Text:      msg.Text,
+		HTML:      msg.HTML,
+	}
+	if msg.MessageID != "" {
+		data.MessageID = normalizeMessageID(msg.MessageID)
+	}
+	if msg.InReplyTo != "" {
+		data.InReplyTo = normalizeMessageID(msg.InReplyTo)
+	}
+	if len(msg.References) > 0 {
+		refs := make([]string, 0, len(msg.References))
+		for _, ref := range msg.References {
+			refs = append(refs, normalizeMessageID(ref))
+		}
+		data.References = refs
 	}
 	if replyTo != nil {
 		data.ReplyTo = formatAddress(*replyTo)

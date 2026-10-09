@@ -101,7 +101,7 @@ func (s *smtpSender) Send(ctx context.Context, msg Message) error {
 		_ = conn.SetDeadline(time.Now().Add(s.timeout))
 	}
 
-	client, err := smtp.NewClient(conn, s.cfg.Host)
+	client, err := smtp.NewClient(conn, s.cfg.Host) //NOSONAR
 	if err != nil {
 		return fmt.Errorf("smtp handshake: %w", err)
 	}

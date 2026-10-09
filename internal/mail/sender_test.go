@@ -92,6 +92,10 @@ func TestNewFromConfig_HTTP(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "endpoint")
 
+	_, err = NewFromConfig(Config{Sender: "http", From: "noreply@example.com", HTTP: HTTPConfig{Endpoint: "mail.example.com/send"}})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "endpoint")
+
 	_, err = NewFromConfig(Config{Sender: "http", From: "noreply@example.com", HTTP: HTTPConfig{Endpoint: "https://x", HeadersJSON: "{bad"}})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "headers")

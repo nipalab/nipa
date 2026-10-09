@@ -101,8 +101,60 @@ func TestHTTPSender_InvalidRecipient(t *testing.T) {
 }
 
 func TestHTTPSender_InvalidEndpoint(t *testing.T) {
-	_, err := newHTTPSender(HTTPConfig{Endpoint: "://bad"}, "noreply@example.com", "", 5*time.Second)
-	require.Error(t, err)
+	for _, endpoint := range []string{"://bad", "mail.example.com/send", "ftp://mail.example.com/send", "https://"} {
+		_, err := newHTTPSender(HTTPConfig{Endpoint: endpoint}, "noreply@example.com", "", 5*time.Second)
+		require.Error(t, err, "endpoint %q should be rejected", endpoint)
+		require.Contains(t, err.Error(), "endpoint")
+	}
+}
+
+func TestHTTPSender_EmptyThreadingHeaders(t *testing.T) {
+	var capturedBody string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		capturedBody = string(body)
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(server.Close)
+
+	sender, err := newHTTPSender(HTTPConfig{
+		Endpoint:     server.URL,
+		BodyTemplate: `{"message_id":{{json .MessageID}},"in_reply_to":{{json .InReplyTo}},"references":{{json .References}}}`,
+	}, "noreply@example.com", "", 5*time.Second)
+	require.NoError(t, err)
+
+	err = sender.Send(context.Background(), Message{To: []string{"dev@example.com"}, Subject: "s", Text: "b"})
+	require.NoError(t, err)
+	require.JSONEq(t, `{"message_id":"","in_reply_to":"","references":null}`, capturedBody)
+}
+
+func TestHTTPSender_NormalizedReferences(t *testing.T) {
+	var capturedBody string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		capturedBody = string(body)
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(server.Close)
+
+	sender, err := newHTTPSender(HTTPConfig{
+		Endpoint:     server.URL,
+		BodyTemplate: `{"message_id":{{json .MessageID}},"in_reply_to":{{json .InReplyTo}},"references":{{json .References}}}`,
+	}, "noreply@example.com", "", 5*time.Second)
+	require.NoError(t, err)
+
+	err = sender.Send(context.Background(), Message{
+		To:         []string{"dev@example.com"},
+		Subject:    "s",
+		Text:       "b",
+		MessageID:  "msg-1@nipa",
+		InReplyTo:  "root@nipa",
+		References: []string{"root@nipa", "<prev@nipa>"},
+	})
+	require.NoError(t, err)
+	require.JSONEq(t, `{"message_id":"<msg-1@nipa>","in_reply_to":"<root@nipa>","references":["<root@nipa>","<prev@nipa>"]}`, capturedBody)
 }
 
 func TestJSONStringError(t *testing.T) {
