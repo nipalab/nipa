@@ -123,3 +123,68 @@ func (s *MergeRequestRepositorySuite) TestCRUD() {
 	_, err = repo.Get(ctx, projectID, 9999)
 	requireRecordNotFound(s.T(), err)
 }
+
+func (s *MergeRequestRepositorySuite) TestAssigneesAndSearch() {
+	ctx := context.Background()
+	repo := NewMergeRequestRepository(s.db)
+
+	projectID := seedProject(s.T(), s.q, 1, "game")
+	userID := seedPBACUser(s.T(), s.db, 42)
+	otherID := seedPBACUser(s.T(), s.db, 43)
+	sourceID := seedBranch(s.T(), s.db, projectID, "feature", sql.NullInt64{})
+	targetID := seedBranch(s.T(), s.db, projectID, "main", sql.NullInt64{})
+
+	first, err := repo.Create(ctx, domain.MergeRequest{
+		ID: 5001, ProjectID: projectID, SourceBranchID: sourceID, TargetBranchID: targetID,
+		SourceBranch: "feature", TargetBranch: "main", Title: "Add feature", CreatedBy: userID,
+	})
+	s.Require().NoError(err)
+	second, err := repo.Create(ctx, domain.MergeRequest{
+		ID: 5002, ProjectID: projectID, SourceBranchID: sourceID, TargetBranchID: targetID,
+		SourceBranch: "feature", TargetBranch: "main", Title: "Fix bug", CreatedBy: userID,
+	})
+	s.Require().NoError(err)
+
+	s.Require().NoError(repo.AddAssignee(ctx, first.ID, userID))
+	s.Require().NoError(repo.AddAssignee(ctx, first.ID, otherID))
+
+	assignees, err := repo.ListAssignees(ctx, projectID)
+	s.Require().NoError(err)
+	s.Len(assignees[first.Number], 2)
+	names := []string{assignees[first.Number][0].Name, assignees[first.Number][1].Name}
+	s.Contains(names, "user42")
+	s.Contains(names, "user43")
+
+	assigned, err := repo.List(ctx, projectID, domain.MergeRequestListOptions{Assignee: &userID, Limit: 10})
+	s.Require().NoError(err)
+	s.Len(assigned, 1)
+	s.Equal(first.Number, assigned[0].Number)
+
+	searched, err := repo.List(ctx, projectID, domain.MergeRequestListOptions{Search: "bug", Limit: 10})
+	s.Require().NoError(err)
+	s.Len(searched, 1)
+	s.Equal(second.Number, searched[0].Number)
+
+	s.Require().NoError(repo.ClearAssignees(ctx, first.ID))
+	assignees, err = repo.ListAssignees(ctx, projectID)
+	s.Require().NoError(err)
+	s.Empty(assignees[first.Number])
+}
+
+func (s *MergeRequestRepositorySuite) TestErrors() {
+	ctx := context.Background()
+	repo := NewMergeRequestRepository(s.db)
+	s.Require().NoError(s.db.Close())
+
+	_, err := repo.Create(ctx, domain.MergeRequest{ID: 1, ProjectID: 1, SourceBranchID: 1, TargetBranchID: 2, CreatedBy: 1})
+	s.Error(err)
+
+	_, err = repo.List(ctx, 1, domain.MergeRequestListOptions{Limit: 1})
+	s.Error(err)
+
+	_, err = repo.ListAssignees(ctx, 1)
+	s.Error(err)
+
+	s.Error(repo.ClearAssignees(ctx, 1))
+	s.Error(repo.AddAssignee(ctx, 1, 42))
+}

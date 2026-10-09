@@ -39,7 +39,7 @@ func (q *Queries) BranchCreate(ctx context.Context, arg BranchCreateParams) erro
 }
 
 const branchGet = `-- name: BranchGet :one
-SELECT id, project_id, name, key, is_protected, required_approvals, dismiss_stale_approvals, is_default, commit_id, updated_at, created_at, deleted, deleted_at
+SELECT id, project_id, name, key, is_protected, required_approvals, dismiss_stale_approvals, require_status_checks, is_default, commit_id, updated_at, created_at, deleted, deleted_at
 FROM branches
 WHERE project_id = $1 AND id = $2 AND deleted = FALSE
 LIMIT 1
@@ -61,6 +61,7 @@ func (q *Queries) BranchGet(ctx context.Context, arg BranchGetParams) (Branch, e
 		&i.IsProtected,
 		&i.RequiredApprovals,
 		&i.DismissStaleApprovals,
+		&i.RequireStatusChecks,
 		&i.IsDefault,
 		&i.CommitID,
 		&i.UpdatedAt,
@@ -72,7 +73,7 @@ func (q *Queries) BranchGet(ctx context.Context, arg BranchGetParams) (Branch, e
 }
 
 const branchGetByName = `-- name: BranchGetByName :one
-SELECT id, project_id, name, key, is_protected, required_approvals, dismiss_stale_approvals, is_default, commit_id, updated_at, created_at, deleted, deleted_at
+SELECT id, project_id, name, key, is_protected, required_approvals, dismiss_stale_approvals, require_status_checks, is_default, commit_id, updated_at, created_at, deleted, deleted_at
 FROM branches
 WHERE project_id = $1 AND name = $2 AND deleted = FALSE
 LIMIT 1
@@ -94,6 +95,7 @@ func (q *Queries) BranchGetByName(ctx context.Context, arg BranchGetByNameParams
 		&i.IsProtected,
 		&i.RequiredApprovals,
 		&i.DismissStaleApprovals,
+		&i.RequireStatusChecks,
 		&i.IsDefault,
 		&i.CommitID,
 		&i.UpdatedAt,
@@ -105,7 +107,7 @@ func (q *Queries) BranchGetByName(ctx context.Context, arg BranchGetByNameParams
 }
 
 const branchGetDefault = `-- name: BranchGetDefault :one
-SELECT id, project_id, name, key, is_protected, required_approvals, dismiss_stale_approvals, is_default, commit_id, updated_at, created_at, deleted, deleted_at
+SELECT id, project_id, name, key, is_protected, required_approvals, dismiss_stale_approvals, require_status_checks, is_default, commit_id, updated_at, created_at, deleted, deleted_at
 FROM branches
 WHERE project_id = $1 AND is_default = TRUE AND deleted = FALSE
 LIMIT 1
@@ -122,6 +124,7 @@ func (q *Queries) BranchGetDefault(ctx context.Context, projectID int64) (Branch
 		&i.IsProtected,
 		&i.RequiredApprovals,
 		&i.DismissStaleApprovals,
+		&i.RequireStatusChecks,
 		&i.IsDefault,
 		&i.CommitID,
 		&i.UpdatedAt,
@@ -133,7 +136,7 @@ func (q *Queries) BranchGetDefault(ctx context.Context, projectID int64) (Branch
 }
 
 const branchList = `-- name: BranchList :many
-SELECT id, project_id, name, key, is_protected, required_approvals, dismiss_stale_approvals, is_default, commit_id, updated_at, created_at, deleted, deleted_at
+SELECT id, project_id, name, key, is_protected, required_approvals, dismiss_stale_approvals, require_status_checks, is_default, commit_id, updated_at, created_at, deleted, deleted_at
 FROM branches
 WHERE project_id = $1
   AND deleted = FALSE
@@ -175,6 +178,7 @@ func (q *Queries) BranchList(ctx context.Context, arg BranchListParams) ([]Branc
 			&i.IsProtected,
 			&i.RequiredApprovals,
 			&i.DismissStaleApprovals,
+			&i.RequireStatusChecks,
 			&i.IsDefault,
 			&i.CommitID,
 			&i.UpdatedAt,
@@ -219,6 +223,116 @@ func (q *Queries) BranchRemoveDefault(ctx context.Context, projectID int64) erro
 	return err
 }
 
+const branchRequiredCheckAdd = `-- name: BranchRequiredCheckAdd :exec
+INSERT INTO branches_required_checks (branch_id, name) VALUES ($1, $2)
+`
+
+type BranchRequiredCheckAddParams struct {
+	BranchID int64  `json:"branch_id"`
+	Name     string `json:"name"`
+}
+
+func (q *Queries) BranchRequiredCheckAdd(ctx context.Context, arg BranchRequiredCheckAddParams) error {
+	_, err := q.db.ExecContext(ctx, branchRequiredCheckAdd, arg.BranchID, arg.Name)
+	return err
+}
+
+const branchRequiredCheckClear = `-- name: BranchRequiredCheckClear :exec
+DELETE FROM branches_required_checks WHERE branch_id = $1
+`
+
+func (q *Queries) BranchRequiredCheckClear(ctx context.Context, branchID int64) error {
+	_, err := q.db.ExecContext(ctx, branchRequiredCheckClear, branchID)
+	return err
+}
+
+const branchRequiredCheckList = `-- name: BranchRequiredCheckList :many
+SELECT name FROM branches_required_checks WHERE branch_id = $1 ORDER BY name
+`
+
+func (q *Queries) BranchRequiredCheckList(ctx context.Context, branchID int64) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, branchRequiredCheckList, branchID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		items = append(items, name)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const branchRequiredReviewerAdd = `-- name: BranchRequiredReviewerAdd :exec
+INSERT INTO branches_required_reviewers (branch_id, user_id) VALUES ($1, $2)
+`
+
+type BranchRequiredReviewerAddParams struct {
+	BranchID int64 `json:"branch_id"`
+	UserID   int64 `json:"user_id"`
+}
+
+func (q *Queries) BranchRequiredReviewerAdd(ctx context.Context, arg BranchRequiredReviewerAddParams) error {
+	_, err := q.db.ExecContext(ctx, branchRequiredReviewerAdd, arg.BranchID, arg.UserID)
+	return err
+}
+
+const branchRequiredReviewerClear = `-- name: BranchRequiredReviewerClear :exec
+DELETE FROM branches_required_reviewers WHERE branch_id = $1
+`
+
+func (q *Queries) BranchRequiredReviewerClear(ctx context.Context, branchID int64) error {
+	_, err := q.db.ExecContext(ctx, branchRequiredReviewerClear, branchID)
+	return err
+}
+
+const branchRequiredReviewerList = `-- name: BranchRequiredReviewerList :many
+SELECT u.id AS user_id, u.name AS user_name, u.photo_url AS user_photo_url
+FROM branches_required_reviewers br
+JOIN users u ON u.id = br.user_id
+WHERE br.branch_id = $1
+ORDER BY u.id
+`
+
+type BranchRequiredReviewerListRow struct {
+	UserID       int64          `json:"user_id"`
+	UserName     string         `json:"user_name"`
+	UserPhotoUrl sql.NullString `json:"user_photo_url"`
+}
+
+func (q *Queries) BranchRequiredReviewerList(ctx context.Context, branchID int64) ([]BranchRequiredReviewerListRow, error) {
+	rows, err := q.db.QueryContext(ctx, branchRequiredReviewerList, branchID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []BranchRequiredReviewerListRow
+	for rows.Next() {
+		var i BranchRequiredReviewerListRow
+		if err := rows.Scan(&i.UserID, &i.UserName, &i.UserPhotoUrl); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const branchSetName = `-- name: BranchSetName :exec
 UPDATE branches SET name = $1, key = $2, updated_at = now()
 WHERE project_id = $3 AND id = $4 AND deleted = FALSE
@@ -242,14 +356,15 @@ func (q *Queries) BranchSetName(ctx context.Context, arg BranchSetNameParams) er
 }
 
 const branchSetProtection = `-- name: BranchSetProtection :exec
-UPDATE branches SET is_protected = $1, required_approvals = $2, dismiss_stale_approvals = $3, updated_at = now()
-WHERE project_id = $4 AND id = $5 AND deleted = FALSE
+UPDATE branches SET is_protected = $1, required_approvals = $2, dismiss_stale_approvals = $3, require_status_checks = $4, updated_at = now()
+WHERE project_id = $5 AND id = $6 AND deleted = FALSE
 `
 
 type BranchSetProtectionParams struct {
 	IsProtected           bool  `json:"is_protected"`
 	RequiredApprovals     int64 `json:"required_approvals"`
 	DismissStaleApprovals bool  `json:"dismiss_stale_approvals"`
+	RequireStatusChecks   bool  `json:"require_status_checks"`
 	ProjectID             int64 `json:"project_id"`
 	ID                    int64 `json:"id"`
 }
@@ -259,6 +374,7 @@ func (q *Queries) BranchSetProtection(ctx context.Context, arg BranchSetProtecti
 		arg.IsProtected,
 		arg.RequiredApprovals,
 		arg.DismissStaleApprovals,
+		arg.RequireStatusChecks,
 		arg.ProjectID,
 		arg.ID,
 	)

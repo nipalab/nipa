@@ -9,6 +9,7 @@ import {
   getMergeRequestReviewState,
   getMergeRequestTimeline,
   listMergeRequestCommits,
+  listMergeRequestChecks,
   listMergeRequestReviewRequests,
   listMergeRequestReviews,
   listMergeRequestThreads,
@@ -72,6 +73,10 @@ export default function MergeRequestPage() {
     [org, project, id],
   )
   const { data: members } = useAsync(() => listOrgMembers(org), [org])
+  const { data: checks, reload: reloadChecks } = useAsync(
+    () => listMergeRequestChecks(org, project, id),
+    [org, project, id],
+  )
   const [actionError, setActionError] = useState<string | null>(null)
   const [commentBusy, setCommentBusy] = useState(false)
   const [commentError, setCommentError] = useState<string | null>(null)
@@ -110,6 +115,7 @@ export default function MergeRequestPage() {
     reloadThreads()
     reloadReviewRequests()
     reloadTimeline()
+    reloadChecks()
   }
 
   async function run(action: () => Promise<unknown>) {
@@ -241,6 +247,7 @@ export default function MergeRequestPage() {
           state={state}
           reviews={reviews ?? []}
           threads={threads ?? []}
+          checks={checks ?? []}
           reviewRequests={reviewRequests ?? []}
           timeline={timeline ?? []}
           members={members ?? []}

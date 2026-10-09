@@ -14,6 +14,9 @@ type mrClient interface {
 	Connect(ctx context.Context, host string) error
 	CreateMergeRequest(ctx context.Context, org, project, title, description, sourceBranch, targetBranch string, draft bool) (*domain.MergeRequest, error)
 	UpdateMergeRequest(ctx context.Context, org, project string, number int64, title, description string, draft *bool) (*domain.MergeRequest, error)
+	SetMergeRequestAssignees(ctx context.Context, org, project string, number int64, userIDs []string) (*domain.MergeRequest, error)
+	ReportMergeRequestCheck(ctx context.Context, org, project string, number int64, name, state, detailsURL string) (*domain.MergeRequestCheck, error)
+	ListMergeRequestChecks(ctx context.Context, org, project string, number int64) ([]*domain.MergeRequestCheck, error)
 	ListMergeRequests(ctx context.Context, org, project string, opts domain.ListMergeRequestOptions) ([]*domain.MergeRequest, int64, error)
 	GetMergeRequest(ctx context.Context, org, project string, number int64) (*domain.MergeRequest, *domain.Mergeability, error)
 	MergeMergeRequest(ctx context.Context, org, project string, number int64, strategy string, deleteSource bool) (*domain.MergeRequest, *domain.Mergeability, error)
@@ -113,6 +116,47 @@ func (m *MergeRequest) SetDraft(ctx context.Context, root, id string, draft bool
 	return m.Update(ctx, root, id, "", "", &draft)
 }
 
+// SetAssignees replaces the assignees of a merge request.
+func (m *MergeRequest) SetAssignees(ctx context.Context, root, id string, userIDs []string) (*domain.MergeRequest, error) {
+	url, number, err := m.target(ctx, root, id)
+	if err != nil {
+		return nil, err
+	}
+	cleaned := make([]string, 0, len(userIDs))
+	for _, userID := range userIDs {
+		if trimmed := strings.TrimSpace(userID); trimmed != "" {
+			cleaned = append(cleaned, trimmed)
+		}
+	}
+	return m.client.SetMergeRequestAssignees(ctx, url.Org, url.Project, number, cleaned)
+}
+
+// Checks lists the status checks reported for the request's current head.
+func (m *MergeRequest) Checks(ctx context.Context, root, id string) ([]*domain.MergeRequestCheck, error) {
+	url, number, err := m.target(ctx, root, id)
+	if err != nil {
+		return nil, err
+	}
+	return m.client.ListMergeRequestChecks(ctx, url.Org, url.Project, number)
+}
+
+// ReportCheck records a status check result for the request's current head.
+func (m *MergeRequest) ReportCheck(ctx context.Context, root, id, name, state, detailsURL string) (*domain.MergeRequestCheck, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return nil, domain.NewUserError("a check name is required")
+	}
+	state = strings.TrimSpace(state)
+	if !domain.IsValidMergeRequestCheckState(state) {
+		return nil, domain.NewUserError("state must be one of pending, success, failed")
+	}
+	url, number, err := m.target(ctx, root, id)
+	if err != nil {
+		return nil, err
+	}
+	return m.client.ReportMergeRequestCheck(ctx, url.Org, url.Project, number, name, state, detailsURL)
+}
+
 // List returns one page of merge requests and the cursor for the next page
 // (0 when the page is the last one).
 func (m *MergeRequest) List(ctx context.Context, root string, opts domain.ListMergeRequestOptions) ([]*domain.MergeRequest, int64, error) {
@@ -123,6 +167,8 @@ func (m *MergeRequest) List(ctx context.Context, root string, opts domain.ListMe
 	opts.Author = strings.TrimSpace(opts.Author)
 	opts.SourceBranch = strings.TrimSpace(opts.SourceBranch)
 	opts.TargetBranch = strings.TrimSpace(opts.TargetBranch)
+	opts.Search = strings.TrimSpace(opts.Search)
+	opts.Assignee = strings.TrimSpace(opts.Assignee)
 	if opts.After < 0 {
 		return nil, 0, domain.NewUserError("the after cursor cannot be negative")
 	}

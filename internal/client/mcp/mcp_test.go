@@ -205,6 +205,18 @@ func (fakeMRClient) ListMergeRequestReviews(context.Context, string, string, int
 	return nil, errors.New("not implemented")
 }
 
+func (fakeMRClient) ReportMergeRequestCheck(context.Context, string, string, int64, string, string, string) (*domain.MergeRequestCheck, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (fakeMRClient) ListMergeRequestChecks(context.Context, string, string, int64) ([]*domain.MergeRequestCheck, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (fakeMRClient) SetMergeRequestAssignees(context.Context, string, string, int64, []string) (*domain.MergeRequest, error) {
+	return nil, errors.New("not implemented")
+}
+
 func (fakeMRClient) SubmitMergeRequestReview(context.Context, string, string, int64, string, string) (*domain.MergeRequestReview, error) {
 	return nil, errors.New("not implemented")
 }

@@ -168,6 +168,7 @@ CREATE TABLE branches (
     is_protected BOOLEAN NOT NULL DEFAULT FALSE,
     required_approvals BIGINT NOT NULL DEFAULT 0,
     dismiss_stale_approvals BOOLEAN NOT NULL DEFAULT TRUE,
+    require_status_checks BOOLEAN NOT NULL DEFAULT FALSE,
     is_default BOOLEAN NOT NULL DEFAULT FALSE,
     commit_id BIGINT REFERENCES commits(id),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -186,6 +187,18 @@ CREATE INDEX idx_branches_project_updated_id
 CREATE UNIQUE INDEX idx_branches_one_default_per_project
     ON branches (project_id)
     WHERE is_default = TRUE;
+
+CREATE TABLE branches_required_reviewers (
+    branch_id BIGINT NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+    user_id BIGINT NOT NULL REFERENCES users(id),
+    PRIMARY KEY (branch_id, user_id)
+);
+
+CREATE TABLE branches_required_checks (
+    branch_id BIGINT NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    PRIMARY KEY (branch_id, name)
+);
 
 CREATE TABLE merge_requests (
     id BIGINT PRIMARY KEY,
@@ -210,6 +223,30 @@ CREATE TABLE merge_requests (
 CREATE INDEX idx_merge_requests_project ON merge_requests (project_id, id DESC);
 
 CREATE UNIQUE INDEX idx_merge_requests_project_number ON merge_requests (project_id, number);
+
+CREATE TABLE merge_request_assignees (
+    merge_request_id BIGINT NOT NULL REFERENCES merge_requests(id) ON DELETE CASCADE,
+    user_id BIGINT NOT NULL REFERENCES users(id),
+    PRIMARY KEY (merge_request_id, user_id)
+);
+
+CREATE INDEX idx_merge_request_assignees_user ON merge_request_assignees (user_id);
+
+CREATE TABLE merge_request_checks (
+    id BIGINT PRIMARY KEY,
+    merge_request_id BIGINT NOT NULL REFERENCES merge_requests(id) ON DELETE CASCADE,
+    head_commit_id BIGINT NOT NULL REFERENCES commits(id),
+    name TEXT NOT NULL,
+    state TEXT NOT NULL,
+    details_url TEXT NOT NULL DEFAULT '',
+    reporter_id BIGINT NOT NULL REFERENCES users(id),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CHECK (state IN ('pending', 'success', 'failed')),
+    UNIQUE (merge_request_id, head_commit_id, name)
+);
+
+CREATE INDEX idx_merge_request_checks_mr ON merge_request_checks (merge_request_id, head_commit_id);
 
 CREATE TABLE merge_request_reviews (
     id BIGINT PRIMARY KEY,

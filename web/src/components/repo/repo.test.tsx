@@ -166,6 +166,7 @@ describe('BranchSelector', () => {
         is_protected: false,
         required_approvals: 0,
         dismiss_stale_approvals: true,
+        require_status_checks: false,
         updated_at: '',
       },
       {
@@ -175,6 +176,7 @@ describe('BranchSelector', () => {
         is_protected: false,
         required_approvals: 0,
         dismiss_stale_approvals: true,
+        require_status_checks: false,
         updated_at: '',
       },
     ]

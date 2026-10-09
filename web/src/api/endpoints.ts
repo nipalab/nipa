@@ -7,6 +7,7 @@ import type {
   CreateWebhookInput,
   FileLockResponse,
   GroupResponse,
+  MergeRequestCheckResponse,
   MergeRequestDiffResponse,
   MergeRequestListResponse,
   MergeRequestResponse,
@@ -159,12 +160,23 @@ export function setBranchProtection(
   protectedBranch: boolean,
   requiredApprovals?: number,
   dismissStaleApprovals?: boolean,
+  requireStatusChecks?: boolean,
+  requiredReviewers?: string[],
+  requiredChecks?: string[],
 ): Promise<BranchResponse> {
-  const body: { protected: boolean; required_approvals?: number; dismiss_stale_approvals?: boolean } = {
-    protected: protectedBranch,
-  }
+  const body: {
+    protected: boolean
+    required_approvals?: number
+    dismiss_stale_approvals?: boolean
+    require_status_checks?: boolean
+    required_reviewers?: string[]
+    required_checks?: string[]
+  } = { protected: protectedBranch }
   if (requiredApprovals !== undefined) body.required_approvals = requiredApprovals
   if (dismissStaleApprovals !== undefined) body.dismiss_stale_approvals = dismissStaleApprovals
+  if (requireStatusChecks !== undefined) body.require_status_checks = requireStatusChecks
+  if (requiredReviewers !== undefined) body.required_reviewers = requiredReviewers
+  if (requiredChecks !== undefined) body.required_checks = requiredChecks
   return apiJson(`${projectBase(org, project)}/branches/${encodeURIComponent(name)}/protection`, {
     method: 'PUT',
     body: JSON.stringify(body),
@@ -207,6 +219,8 @@ export function listMergeRequests(
     source?: string
     target?: string
     draft?: boolean
+    search?: string
+    assignee?: string
     after?: string
     limit?: number
   } = {},
@@ -217,6 +231,8 @@ export function listMergeRequests(
   if (params.source) query.set('source', params.source)
   if (params.target) query.set('target', params.target)
   if (params.draft !== undefined) query.set('draft', String(params.draft))
+  if (params.search) query.set('search', params.search)
+  if (params.assignee) query.set('assignee', params.assignee)
   if (params.after) query.set('after', params.after)
   if (params.limit) query.set('limit', String(params.limit))
   const qs = query.toString()
@@ -240,6 +256,18 @@ export function createMergeRequest(
 
 export function getMergeRequest(org: string, project: string, id: string): Promise<MergeRequestResponse> {
   return apiJson(`${projectBase(org, project)}/merge-requests/${encodeURIComponent(id)}`)
+}
+
+export function setMergeRequestAssignees(
+  org: string,
+  project: string,
+  id: string,
+  userIds: string[],
+): Promise<MergeRequestResponse> {
+  return apiJson(`${projectBase(org, project)}/merge-requests/${encodeURIComponent(id)}/assignees`, {
+    method: 'POST',
+    body: JSON.stringify({ user_ids: userIds }),
+  })
 }
 
 export function updateMergeRequest(
@@ -287,6 +315,14 @@ export function reopenMergeRequest(org: string, project: string, id: string): Pr
 
 export function getMergeRequestDiff(org: string, project: string, id: string): Promise<MergeRequestDiffResponse> {
   return apiJson(`${projectBase(org, project)}/merge-requests/${encodeURIComponent(id)}/diff`)
+}
+
+export function listMergeRequestChecks(
+  org: string,
+  project: string,
+  id: string,
+): Promise<MergeRequestCheckResponse[]> {
+  return apiJson(`${projectBase(org, project)}/merge-requests/${encodeURIComponent(id)}/checks`)
 }
 
 function mergeRequestBase(org: string, project: string, id: string): string {

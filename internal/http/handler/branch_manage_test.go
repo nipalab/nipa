@@ -82,6 +82,35 @@ func TestHandler_BranchManagement(t *testing.T) {
 	require.Equal(t, "main", branches[0].Name)
 }
 
+func TestHandler_BranchProtection_ReviewersAndChecks(t *testing.T) {
+	env := newHandlerTestEnv(t)
+	env.seedFiles(t, map[string]string{"a.txt": "hello"})
+	env.createBranch(t, "feature", "main")
+
+	claims := &domain.Claims{UserID: env.userID, IsAdmin: true}
+	params := map[string]string{"org": "default", "project": "default", "name": "feature"}
+
+	appCtx := &fakeAppContext{
+		claims: claims, pathParameters: params,
+		body: []byte(`{"protected":true,"require_status_checks":true,"required_reviewers":["` +
+			env.userID.Base36() + `"],"required_checks":["test","build"]}`),
+	}
+	env.handler.SetProjectBranchProtection(appCtx)
+	require.Equal(t, http.StatusOK, appCtx.statusCode)
+	branch := appCtx.response.(model.BranchResponse)
+	require.True(t, branch.RequireStatusChecks)
+	require.Equal(t, []string{"build", "test"}, branch.RequiredChecks)
+	require.Len(t, branch.RequiredReviewers, 1)
+	require.Equal(t, env.userID.Base36(), branch.RequiredReviewers[0].UserID)
+
+	appCtx = &fakeAppContext{
+		claims: claims, pathParameters: params,
+		body: []byte(`{"protected":true,"required_reviewers":["!!"]}`),
+	}
+	env.handler.SetProjectBranchProtection(appCtx)
+	require.Equal(t, http.StatusBadRequest, appCtx.statusCode)
+}
+
 func TestHandler_BranchManagement_ValidationAndAccess(t *testing.T) {
 	env := newHandlerTestEnv(t)
 	admin := &domain.Claims{UserID: env.userID, IsAdmin: true}

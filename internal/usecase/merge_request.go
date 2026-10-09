@@ -19,6 +19,9 @@ type mergeRequestRepository interface {
 	Update(ctx context.Context, projectID snow.ID, number int64, title, description string) (*domain.MergeRequest, error)
 	SetDraft(ctx context.Context, projectID snow.ID, number int64, draft bool) (*domain.MergeRequest, error)
 	UpdateStatus(ctx context.Context, projectID snow.ID, number int64, status string, mergeCommitID *snow.ID) error
+	ListAssignees(ctx context.Context, projectID snow.ID) (map[int64][]domain.ReviewActor, error)
+	ClearAssignees(ctx context.Context, mergeRequestID int64) error
+	AddAssignee(ctx context.Context, mergeRequestID int64, userID snow.ID) error
 }
 
 // transactor runs a function inside a database transaction; repositories
@@ -52,6 +55,8 @@ type MergeRequest struct {
 	hooks      hookMergeRequestGate
 	transactor transactor
 	review     *MergeRequestReview
+	users      userLookup
+	checks     *MergeRequestCheck
 }
 
 // mergeRequestCommitLimit caps how many commits a merge request lists.
@@ -84,6 +89,19 @@ func (m *MergeRequest) WithHooks(hooks hookMergeRequestGate) *MergeRequest {
 // merge and the lifecycle timeline events.
 func (m *MergeRequest) WithReview(review *MergeRequestReview) *MergeRequest {
 	m.review = review
+	return m
+}
+
+// WithUsers enables assignee validation against real accounts.
+func (m *MergeRequest) WithUsers(users userLookup) *MergeRequest {
+	m.users = users
+	return m
+}
+
+// WithChecks attaches the status-check usecase: it enables the required-check
+// gate on merge.
+func (m *MergeRequest) WithChecks(checks *MergeRequestCheck) *MergeRequest {
+	m.checks = checks
 	return m
 }
 
@@ -133,6 +151,9 @@ func (m *MergeRequest) Create(ctx context.Context, projectID snow.ID, title, des
 		MergeRef{CommitID: target.CommitID}, MergeRef{CommitID: source.CommitID})
 	if err != nil {
 		return nil, err
+	}
+	if !draft && isWIPTitle(title) {
+		draft = true
 	}
 
 	mrID := m.snowNode.Generate()
@@ -192,17 +213,100 @@ func (m *MergeRequest) List(ctx context.Context, projectID snow.ID, opts domain.
 	}
 	opts.SourceBranch = strings.TrimSpace(opts.SourceBranch)
 	opts.TargetBranch = strings.TrimSpace(opts.TargetBranch)
+	opts.Search = strings.TrimSpace(opts.Search)
 	if opts.After < 0 {
 		return nil, domain.NewErrorUser("invalid merge request cursor")
 	}
 	if opts.Limit <= 0 {
 		opts.Limit = 50
 	}
-	return m.repo.List(ctx, projectID, opts)
+	requests, err := m.repo.List(ctx, projectID, opts)
+	if err != nil {
+		return nil, err
+	}
+	if err := m.attachAssignees(ctx, projectID, requests); err != nil {
+		return nil, err
+	}
+	return requests, nil
 }
 
 func (m *MergeRequest) Get(ctx context.Context, projectID snow.ID, number int64) (*domain.MergeRequest, error) {
-	return m.load(ctx, projectID, number)
+	mr, err := m.load(ctx, projectID, number)
+	if err != nil {
+		return nil, err
+	}
+	if err := m.attachAssignees(ctx, projectID, []*domain.MergeRequest{mr}); err != nil {
+		return nil, err
+	}
+	return mr, nil
+}
+
+// attachAssignees resolves the assignees of a page of requests in one query.
+func (m *MergeRequest) attachAssignees(ctx context.Context, projectID snow.ID, requests []*domain.MergeRequest) error {
+	if len(requests) == 0 {
+		return nil
+	}
+	assignees, err := m.repo.ListAssignees(ctx, projectID)
+	if err != nil {
+		return err
+	}
+	for _, mr := range requests {
+		mr.Assignees = assignees[mr.Number]
+	}
+	return nil
+}
+
+// SetAssignees replaces the assignees of an open merge request. Any project
+// writer may assign; the ids must name real accounts.
+func (m *MergeRequest) SetAssignees(ctx context.Context, projectID snow.ID, number int64, userIDs []snow.ID) (*domain.MergeRequest, error) {
+	mr, err := m.load(ctx, projectID, number)
+	if err != nil {
+		return nil, err
+	}
+	if !m.perm.HasProjectAccess(ctx, projectID, domain.PermissionWrite) {
+		return nil, domain.NewErrorNoPermission()
+	}
+	if mr.Status != domain.MergeRequestOpen {
+		return nil, domain.NewErrorConflict(fmt.Sprintf("merge request is %s", mr.Status))
+	}
+	unique := make([]snow.ID, 0, len(userIDs))
+	seen := map[snow.ID]bool{}
+	for _, id := range userIDs {
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		unique = append(unique, id)
+	}
+	if m.users != nil {
+		for _, id := range unique {
+			if _, err := m.users.GetByID(ctx, id); err != nil {
+				return nil, domain.NewErrorUser(fmt.Sprintf("user %s not found", id.Base36()))
+			}
+		}
+	}
+	err = m.transactor.WithinTx(ctx, func(txCtx context.Context) error {
+		if err := m.repo.ClearAssignees(txCtx, mr.ID); err != nil {
+			return err
+		}
+		for _, id := range unique {
+			if err := m.repo.AddAssignee(txCtx, mr.ID, id); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	updated, err := m.Get(ctx, projectID, number)
+	if err != nil {
+		return nil, err
+	}
+	if claim, ok := domain.ClaimFromContext(ctx); ok {
+		m.emitHook(ctx, domain.WebhookEventMRUpdated, projectID, updated, claim.UserID)
+	}
+	return updated, nil
 }
 
 func (m *MergeRequest) Update(ctx context.Context, projectID snow.ID, number int64, title, description string) (*domain.MergeRequest, error) {
@@ -235,7 +339,47 @@ func (m *MergeRequest) Update(ctx context.Context, projectID snow.ID, number int
 	if err != nil {
 		return nil, err
 	}
+	updated, err = m.syncWIPTitle(ctx, projectID, mr, updated)
+	if err != nil {
+		return nil, err
+	}
 	m.emitHook(ctx, domain.WebhookEventMRUpdated, projectID, updated, claim.UserID)
+	return updated, nil
+}
+
+// wipTitlePrefixes mark a title as work in progress; creating or renaming a
+// request with one keeps it a draft, and removing it marks the request ready.
+var wipTitlePrefixes = []string{"wip:", "draft:", "[wip]", "[draft]", "wip ", "draft "}
+
+func isWIPTitle(title string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(title))
+	for _, prefix := range wipTitlePrefixes {
+		if strings.HasPrefix(normalized, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// syncWIPTitle keeps the draft state in line with a WIP title prefix: adding
+// the prefix drafts the request, removing it from a request that was drafted
+// by its title marks it ready.
+func (m *MergeRequest) syncWIPTitle(ctx context.Context, projectID snow.ID, before, updated *domain.MergeRequest) (*domain.MergeRequest, error) {
+	wip := isWIPTitle(updated.Title)
+	switch {
+	case wip && !updated.Draft:
+		return m.repo.SetDraft(ctx, projectID, updated.Number, true)
+	case !wip && updated.Draft && isWIPTitle(before.Title):
+		draft, err := m.repo.SetDraft(ctx, projectID, updated.Number, false)
+		if err != nil {
+			return nil, err
+		}
+		if claim, ok := domain.ClaimFromContext(ctx); ok {
+			m.emitHook(ctx, domain.WebhookEventMRReady, projectID, draft, claim.UserID)
+			m.noteEvent(ctx, domain.MergeRequestEventReady, draft, nil, claim.UserID)
+		}
+		return draft, nil
+	}
 	return updated, nil
 }
 
@@ -574,13 +718,20 @@ func (m *MergeRequest) check(ctx context.Context, projectID snow.ID, mr *domain.
 			}
 			info.BlockedBy = blocked
 		}
+		if info.BlockedBy == "" && m.checks != nil {
+			blocked, err := m.checks.BlockedBy(ctx, projectID, mr, target, *info.SourceCommitID)
+			if err != nil {
+				return nil, err
+			}
+			info.BlockedBy = blocked
+		}
 	}
 	return info, nil
 }
 
 // reviewBlockedBy reports the review-policy reason the target branch refuses
-// the merge for: live change requests always block, and a target branch can
-// additionally require a number of live approvals.
+// the merge for: live change requests always block, a target branch can
+// require a number of live approvals, and named reviewers must have approved.
 func (m *MergeRequest) reviewBlockedBy(ctx context.Context, projectID snow.ID, mr *domain.MergeRequest, target *domain.Branch) (string, error) {
 	if m.review == nil {
 		return "", nil
@@ -595,6 +746,21 @@ func (m *MergeRequest) reviewBlockedBy(ctx context.Context, projectID snow.ID, m
 	if target.RequiredApprovals > int64(state.Approvals) {
 		return domain.MergeabilityBlockedApprovals, nil
 	}
+	required, err := m.branchRepo.RequiredReviewers(ctx, target.ID)
+	if err != nil {
+		return "", err
+	}
+	if len(required) > 0 {
+		approved, err := m.review.ApprovedReviewers(ctx, projectID, mr.Number)
+		if err != nil {
+			return "", err
+		}
+		for _, reviewer := range required {
+			if !approved[reviewer.UserID] {
+				return domain.MergeabilityBlockedRequiredReviewers, nil
+			}
+		}
+	}
 	return "", nil
 }
 
@@ -604,6 +770,10 @@ func blockedMergeError(blockedBy string) error {
 		return domain.NewErrorConflict("merge request has unresolved change requests")
 	case domain.MergeabilityBlockedDraft:
 		return domain.NewErrorConflict("merge request is a draft; mark it ready for review first")
+	case domain.MergeabilityBlockedRequiredReviewers:
+		return domain.NewErrorConflict("merge request is missing approvals from required reviewers")
+	case domain.MergeabilityBlockedChecks:
+		return domain.NewErrorConflict("required status checks have not passed")
 	}
 	return domain.NewErrorConflict("merge request does not have the approvals required by the target branch")
 }

@@ -68,6 +68,7 @@ func (n *nipaServer) ListMergeRequests(ctx context.Context, req *pb.ListMergeReq
 		SourceBranch: req.GetSourceBranch(),
 		TargetBranch: req.GetTargetBranch(),
 		Draft:        req.Draft,
+		Search:       req.GetSearch(),
 		After:        req.GetAfterNumber(),
 		Limit:        limit + 1,
 	}
@@ -77,6 +78,13 @@ func (n *nipaServer) ListMergeRequests(ctx context.Context, req *pb.ListMergeReq
 			return nil, handleError(domain.NewErrorUser("invalid author id"))
 		}
 		opts.Author = &author
+	}
+	if raw := req.GetAssignee(); raw != "" {
+		assignee, err := snow.ParseBase36(raw)
+		if err != nil {
+			return nil, handleError(domain.NewErrorUser("invalid assignee id"))
+		}
+		opts.Assignee = &assignee
 	}
 	requests, err := n.uc.MergeRequest().List(ctx, project.ID, opts)
 	if err != nil {
@@ -124,6 +132,26 @@ func (n *nipaServer) GetMergeRequest(ctx context.Context, req *pb.GetMergeReques
 		MergeRequest: domainMergeRequestToPB(request),
 		Mergeability: domainMergeabilityToPB(info),
 	}, nil
+}
+
+func (n *nipaServer) SetMergeRequestAssignees(ctx context.Context, req *pb.SetMergeRequestAssigneesRequest) (*pb.SetMergeRequestAssigneesResponse, error) {
+	_, project, err := n.uc.Common().ResolveBySlug(ctx, req.Context.Org, req.Context.Project)
+	if err != nil {
+		return nil, handleError(err)
+	}
+	userIDs := make([]snow.ID, 0, len(req.GetUserIds()))
+	for _, raw := range req.GetUserIds() {
+		id, err := snow.ParseBase36(raw)
+		if err != nil {
+			return nil, handleError(domain.NewErrorUser("invalid assignee id"))
+		}
+		userIDs = append(userIDs, id)
+	}
+	request, err := n.uc.MergeRequest().SetAssignees(ctx, project.ID, req.GetNumber(), userIDs)
+	if err != nil {
+		return nil, handleError(err)
+	}
+	return &pb.SetMergeRequestAssigneesResponse{MergeRequest: domainMergeRequestToPB(request)}, nil
 }
 
 func (n *nipaServer) MergeMergeRequest(ctx context.Context, req *pb.MergeMergeRequestRequest) (*pb.MergeMergeRequestResponse, error) {
@@ -229,6 +257,7 @@ func domainMergeRequestToPB(request *domain.MergeRequest) *pb.MergeRequestDetail
 	if request.Review != nil {
 		detail.Review = domainReviewStateToPB(request.Review)
 	}
+	detail.Assignees = domainReviewActorsToPB(request.Assignees)
 	return detail
 }
 

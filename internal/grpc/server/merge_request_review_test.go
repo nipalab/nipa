@@ -9,6 +9,20 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestDomainReviewActorsToPB(t *testing.T) {
+	require.Nil(t, domainReviewActorsToPB(nil))
+
+	actors := domainReviewActorsToPB([]domain.ReviewActor{
+		{UserID: snow.ID(7), Name: "Alice", PhotoURL: "a.png"},
+		{UserID: snow.ID(8), Name: "Bob"},
+	})
+	require.Len(t, actors, 2)
+	require.Equal(t, snow.ID(7).Base36(), actors[0].UserId)
+	require.Equal(t, "Alice", actors[0].Name)
+	require.Equal(t, "a.png", actors[0].PhotoUrl)
+	require.Equal(t, "Bob", actors[1].Name)
+}
+
 func TestDomainReviewToPB(t *testing.T) {
 	created := time.Unix(100, 0).UTC()
 	dismissed := time.Unix(300, 0).UTC()

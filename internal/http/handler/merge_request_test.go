@@ -255,6 +255,116 @@ func TestHandler_MergeRequestDraftFlow(t *testing.T) {
 	require.Equal(t, http.StatusNotFound, appCtx.statusCode)
 }
 
+func TestHandler_MergeRequestChecksAndAssignees(t *testing.T) {
+	env := newHandlerTestEnv(t)
+	mainPush := env.seedFiles(t, map[string]string{"a.txt": "hello"})
+	env.createBranch(t, "feature", "main")
+	env.seedPushTo(t, "feature", mainPush.CommitID.Base36(), map[string]string{"b.txt": "feature"})
+
+	claims := &domain.Claims{UserID: env.userID, IsAdmin: true}
+	projectParams := map[string]string{"org": "default", "project": "default"}
+	appCtx := &fakeAppContext{
+		claims:         claims,
+		pathParameters: projectParams,
+		body:           []byte(`{"title":"Add b","source_branch":"feature","target_branch":"main"}`),
+	}
+	env.handler.CreateMergeRequest(appCtx)
+	require.Equal(t, http.StatusOK, appCtx.statusCode)
+	created := appCtx.response.(model.MergeRequestResponse)
+	mrParams := map[string]string{"org": "default", "project": "default", "id": strconv.FormatInt(created.Number, 10)}
+
+	appCtx = &fakeAppContext{
+		claims: claims, pathParameters: mrParams,
+		body: []byte(`{"name":" build ","state":"success","details_url":"https://ci.example/run/1"}`),
+	}
+	env.handler.ReportMergeRequestCheck(appCtx)
+	require.Equal(t, http.StatusOK, appCtx.statusCode)
+	check := appCtx.response.(model.MergeRequestCheckResponse)
+	require.NotEmpty(t, check.ID)
+	require.Equal(t, "build", check.Name)
+	require.Equal(t, domain.MergeRequestCheckSuccess, check.State)
+	require.Equal(t, "https://ci.example/run/1", check.DetailsURL)
+	require.Equal(t, env.userID.Base36(), check.Reporter.UserID)
+
+	appCtx = &fakeAppContext{claims: claims, pathParameters: mrParams}
+	env.handler.ListMergeRequestChecks(appCtx)
+	require.Equal(t, http.StatusOK, appCtx.statusCode)
+	checks := appCtx.response.([]model.MergeRequestCheckResponse)
+	require.Len(t, checks, 1)
+	require.Equal(t, "build", checks[0].Name)
+
+	appCtx = &fakeAppContext{
+		claims: claims, pathParameters: mrParams,
+		body: []byte(`{"name":"build","state":"exploded"}`),
+	}
+	env.handler.ReportMergeRequestCheck(appCtx)
+	require.Equal(t, http.StatusBadRequest, appCtx.statusCode)
+
+	appCtx = &fakeAppContext{
+		claims:         claims,
+		pathParameters: map[string]string{"org": "default", "project": "default", "id": "nope"},
+	}
+	env.handler.ListMergeRequestChecks(appCtx)
+	require.Equal(t, http.StatusBadRequest, appCtx.statusCode)
+
+	appCtx = &fakeAppContext{
+		claims: claims, pathParameters: mrParams,
+		body: []byte(`{"user_ids":["` + env.userID.Base36() + `"]}`),
+	}
+	env.handler.SetMergeRequestAssignees(appCtx)
+	require.Equal(t, http.StatusOK, appCtx.statusCode)
+	assigned := appCtx.response.(model.MergeRequestResponse)
+	require.Len(t, assigned.Assignees, 1)
+	require.Equal(t, env.userID.Base36(), assigned.Assignees[0].UserID)
+
+	appCtx = &fakeAppContext{claims: claims, pathParameters: mrParams, body: []byte(`{"user_ids":["!!"]}`)}
+	env.handler.SetMergeRequestAssignees(appCtx)
+	require.Equal(t, http.StatusBadRequest, appCtx.statusCode)
+
+	// an invalid assignee filter is rejected before listing
+	appCtx = &fakeAppContext{
+		claims: claims, pathParameters: projectParams,
+		queryParameters: map[string]string{"assignee": "not-base36!"},
+	}
+	env.handler.ListMergeRequests(appCtx)
+	require.Equal(t, http.StatusBadRequest, appCtx.statusCode)
+
+	// malformed bodies and unknown request numbers surface as API errors
+	appCtx = &fakeAppContext{claims: claims, pathParameters: mrParams, body: []byte(`{`)}
+	env.handler.ReportMergeRequestCheck(appCtx)
+	require.Equal(t, http.StatusInternalServerError, appCtx.statusCode)
+
+	appCtx = &fakeAppContext{claims: claims, pathParameters: mrParams, body: []byte(`{`)}
+	env.handler.SetMergeRequestAssignees(appCtx)
+	require.Equal(t, http.StatusInternalServerError, appCtx.statusCode)
+
+	missingParams := map[string]string{"org": "default", "project": "default", "id": "999999"}
+	appCtx = &fakeAppContext{claims: claims, pathParameters: missingParams}
+	env.handler.ListMergeRequestChecks(appCtx)
+	require.Equal(t, http.StatusNotFound, appCtx.statusCode)
+
+	appCtx = &fakeAppContext{claims: claims, pathParameters: missingParams, body: []byte(`{"user_ids":[]}`)}
+	env.handler.SetMergeRequestAssignees(appCtx)
+	require.Equal(t, http.StatusNotFound, appCtx.statusCode)
+}
+
+func TestHandler_MergeRequestChecks_Unconfigured(t *testing.T) {
+	env := newHandlerTestEnv(t)
+	env.registry.mergeCheck = nil
+	params := map[string]string{"org": "default", "project": "default", "id": "1"}
+
+	appCtx := &fakeAppContext{
+		claims: &domain.Claims{UserID: env.userID}, pathParameters: params,
+		body: []byte(`{"name":"build","state":"success"}`),
+	}
+	env.handler.ReportMergeRequestCheck(appCtx)
+	require.Equal(t, http.StatusInternalServerError, appCtx.statusCode)
+
+	appCtx = &fakeAppContext{claims: &domain.Claims{UserID: env.userID}, pathParameters: params}
+	env.handler.ListMergeRequestChecks(appCtx)
+	require.Equal(t, http.StatusInternalServerError, appCtx.statusCode)
+}
+
 func TestHandler_MergeRequestContextError(t *testing.T) {
 	env := newHandlerTestEnv(t)
 	params := map[string]string{"org": "default", "project": "default", "id": "1"}
@@ -273,6 +383,9 @@ func TestHandler_MergeRequestContextError(t *testing.T) {
 		{name: "close", run: env.handler.CloseMergeRequest},
 		{name: "reopen", run: env.handler.ReopenMergeRequest},
 		{name: "diff", run: env.handler.MergeRequestDiff},
+		{name: "report_check", body: `{"name":"build","state":"success"}`, run: env.handler.ReportMergeRequestCheck},
+		{name: "list_checks", run: env.handler.ListMergeRequestChecks},
+		{name: "set_assignees", body: `{"user_ids":[]}`, run: env.handler.SetMergeRequestAssignees},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

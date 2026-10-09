@@ -19,11 +19,13 @@ import {
   dismissMergeRequestReview,
   removeMergeRequestReviewRequest,
   requestMergeRequestReview,
+  setMergeRequestAssignees,
   submitMergeRequestReview,
   withdrawMergeRequestReview,
 } from '../../api/endpoints'
 import type {
   DiffFileResponse,
+  MergeRequestCheckResponse,
   MergeRequestResponse,
   OrgMemberResponse,
   ReviewRequestResponse,
@@ -193,6 +195,7 @@ export function MergeRequestOverview({
   state,
   reviews,
   threads,
+  checks,
   reviewRequests,
   timeline,
   members,
@@ -216,6 +219,7 @@ export function MergeRequestOverview({
   state: ReviewStateResponse | null
   reviews: ReviewResponse[]
   threads: ThreadResponse[]
+  checks: MergeRequestCheckResponse[]
   reviewRequests: ReviewRequestResponse[]
   timeline: TimelineItemResponse[]
   members: OrgMemberResponse[]
@@ -233,6 +237,7 @@ export function MergeRequestOverview({
 }) {
   const [body, setBody] = useState('')
   const [reviewer, setReviewer] = useState('')
+  const [assignee, setAssignee] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
   const [strategy, setStrategy] = useState('ff')
@@ -296,6 +301,10 @@ export function MergeRequestOverview({
     (member) =>
       member.user_id !== request?.created_by &&
       !reviewRequests.some((entry) => entry.reviewer.user_id === member.user_id),
+  )
+
+  const assigneeCandidates = members.filter(
+    (member) => !(request?.assignees ?? []).some((assignee) => assignee.user_id === member.user_id),
   )
 
   const entries: (
@@ -732,6 +741,110 @@ export function MergeRequestOverview({
       </div>
 
       <div className="nipa-mr-sidebar">
+        {checks.length > 0 &&
+          sidebarBox(
+            'Checks',
+            <>
+              {checks.map((check) => (
+                <div key={check.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+                  <span
+                    style={{
+                      color:
+                        check.state === 'success'
+                          ? 'var(--fgColor-success)'
+                          : check.state === 'failed'
+                            ? 'var(--fgColor-danger)'
+                            : 'var(--fgColor-attention)',
+                      fontWeight: 600,
+                      textTransform: 'capitalize',
+                    }}
+                  >
+                    {check.state}
+                  </span>
+                  {check.details_url ? (
+                    <PrimerLink href={check.details_url} target="_blank" rel="noreferrer" style={{ flex: 1 }}>
+                      {check.name}
+                    </PrimerLink>
+                  ) : (
+                    <span style={{ flex: 1 }}>{check.name}</span>
+                  )}
+                </div>
+              ))}
+            </>,
+          )}
+
+        {sidebarBox(
+          'Assignees',
+          <>
+            {(request?.assignees ?? []).length === 0 && (
+              <Text style={{ fontSize: 12, color: 'var(--fgColor-muted)' }}>No one assigned.</Text>
+            )}
+            {(request?.assignees ?? []).map((assignee) => (
+              <div
+                key={assignee.user_id}
+                style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}
+              >
+                <ActorAvatar actor={assignee} size={20} />
+                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {actorName(assignee)}
+                </span>
+                {canWrite && request?.status === 'open' && (
+                  <Button
+                    size="small"
+                    aria-label={`unassign ${actorName(assignee)}`}
+                    disabled={pending}
+                    onClick={() =>
+                      run(() =>
+                        setMergeRequestAssignees(
+                          org,
+                          project,
+                          id,
+                          (request?.assignees ?? [])
+                            .filter((entry) => entry.user_id !== assignee.user_id)
+                            .map((entry) => entry.user_id),
+                        ),
+                      )
+                    }
+                  >
+                    <XIcon />
+                  </Button>
+                )}
+              </div>
+            ))}
+            {canWrite && request?.status === 'open' && assigneeCandidates.length > 0 && (
+              <Stack direction="vertical" gap="condensed">
+                <Select
+                  aria-label="Add assignee"
+                  value={assignee}
+                  onChange={(event) => setAssignee(event.target.value)}
+                >
+                  <option value="">Add assignee…</option>
+                  {assigneeCandidates.map((member) => (
+                    <option key={member.user_id} value={member.user_id}>
+                      {member.name || member.email}
+                    </option>
+                  ))}
+                </Select>
+                <Button
+                  size="small"
+                  disabled={pending || !assignee}
+                  onClick={() =>
+                    run(async () => {
+                      await setMergeRequestAssignees(org, project, id, [
+                        ...(request?.assignees ?? []).map((entry) => entry.user_id),
+                        assignee,
+                      ])
+                      setAssignee('')
+                    })
+                  }
+                >
+                  Assign
+                </Button>
+              </Stack>
+            )}
+          </>,
+        )}
+
         {sidebarBox(
           'Reviewers',
           <>
@@ -898,6 +1011,14 @@ export function MergeRequestOverview({
       insufficient_approvals: {
         title: 'This merge request does not have enough approvals yet.',
         hint: 'The target branch requires approvals before merging.',
+      },
+      required_reviewers: {
+        title: 'A required reviewer has not approved this merge request.',
+        hint: 'Every required reviewer must approve before merging.',
+      },
+      status_checks: {
+        title: 'Required status checks have not passed.',
+        hint: 'All required checks must succeed for the current source head.',
       },
     }
     const mergeBoxText = divergedMergeable

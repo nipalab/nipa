@@ -96,6 +96,42 @@ type fakeMergeRequestServer struct {
 
 	removeReq *pb.RemoveMergeRequestReviewRequestRequest
 	removeErr error
+
+	setAssigneesReq  *pb.SetMergeRequestAssigneesRequest
+	setAssigneesResp *pb.SetMergeRequestAssigneesResponse
+	setAssigneesErr  error
+
+	reportCheckReq  *pb.ReportMergeRequestCheckRequest
+	reportCheckResp *pb.ReportMergeRequestCheckResponse
+	reportCheckErr  error
+
+	listChecksReq  *pb.ListMergeRequestChecksRequest
+	listChecksResp *pb.ListMergeRequestChecksResponse
+	listChecksErr  error
+}
+
+func (f *fakeMergeRequestServer) SetMergeRequestAssignees(_ context.Context, req *pb.SetMergeRequestAssigneesRequest) (*pb.SetMergeRequestAssigneesResponse, error) {
+	f.setAssigneesReq = req
+	if f.setAssigneesErr != nil {
+		return nil, f.setAssigneesErr
+	}
+	return f.setAssigneesResp, nil
+}
+
+func (f *fakeMergeRequestServer) ReportMergeRequestCheck(_ context.Context, req *pb.ReportMergeRequestCheckRequest) (*pb.ReportMergeRequestCheckResponse, error) {
+	f.reportCheckReq = req
+	if f.reportCheckErr != nil {
+		return nil, f.reportCheckErr
+	}
+	return f.reportCheckResp, nil
+}
+
+func (f *fakeMergeRequestServer) ListMergeRequestChecks(_ context.Context, req *pb.ListMergeRequestChecksRequest) (*pb.ListMergeRequestChecksResponse, error) {
+	f.listChecksReq = req
+	if f.listChecksErr != nil {
+		return nil, f.listChecksErr
+	}
+	return f.listChecksResp, nil
 }
 
 func (f *fakeMergeRequestServer) CreateMergeRequest(_ context.Context, req *pb.CreateMergeRequestRequest) (*pb.CreateMergeRequestResponse, error) {
@@ -258,6 +294,19 @@ func (f *fakeMergeRequestServer) RemoveMergeRequestReviewRequest(_ context.Conte
 	return &pb.RemoveMergeRequestReviewRequestResponse{}, nil
 }
 
+func mergeRequestCheckDetail() *pb.MergeRequestCheckDetail {
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	return &pb.MergeRequestCheckDetail{
+		Id:         snow.ID(6).Base36(),
+		Name:       "build",
+		State:      clientDomain.MergeRequestCheckSuccess,
+		DetailsUrl: "https://ci.example/run/1",
+		Reporter:   &pb.ReviewActor{UserId: snow.ID(8).Base36(), Name: "Bob"},
+		CreatedAt:  timestamppb.New(now),
+		UpdatedAt:  timestamppb.New(now),
+	}
+}
+
 func mergeRequestDetail() *pb.MergeRequestDetail {
 	now := time.Now().UTC().Truncate(time.Microsecond)
 	mergeCommitID := snow.ID(9).Base36()
@@ -274,6 +323,7 @@ func mergeRequestDetail() *pb.MergeRequestDetail {
 		MergeCommitId:     &mergeCommitID,
 		MergeBaseCommitId: &mergeBaseID,
 		CreatedBy:         snow.ID(7).Base36(),
+		Assignees:         []*pb.ReviewActor{{UserId: snow.ID(8).Base36(), Name: "Bob"}},
 		CreatedAt:         timestamppb.New(now),
 		UpdatedAt:         timestamppb.New(now.Add(time.Hour)),
 	}
@@ -700,4 +750,96 @@ func TestToClientMergeability_BlockedBy(t *testing.T) {
 	})
 	require.Equal(t, "mergeable", got.Status)
 	require.Equal(t, "insufficient_approvals", got.BlockedBy)
+}
+
+func TestClient_SetMergeRequestAssignees_Success(t *testing.T) {
+	fs := &fakeMergeRequestServer{setAssigneesResp: &pb.SetMergeRequestAssigneesResponse{MergeRequest: mergeRequestDetail()}}
+	c := newMergeRequestTestClient(t, fs)
+
+	got, err := c.SetMergeRequestAssignees(context.Background(), "default", "sample", 5, []string{snow.ID(8).Base36()})
+	require.NoError(t, err)
+	require.NotNil(t, fs.setAssigneesReq)
+	require.Equal(t, int64(5), fs.setAssigneesReq.GetNumber())
+	require.Equal(t, []string{snow.ID(8).Base36()}, fs.setAssigneesReq.GetUserIds())
+	require.Equal(t, snow.ID(5).Base36(), got.ID)
+	require.Len(t, got.Assignees, 1)
+	require.Equal(t, "Bob", got.Assignees[0].Name)
+}
+
+func TestClient_SetMergeRequestAssignees_Errors(t *testing.T) {
+	fs := &fakeMergeRequestServer{setAssigneesErr: status.Error(codes.NotFound, "merge request not found")}
+	c := newMergeRequestTestClient(t, fs)
+
+	_, err := c.SetMergeRequestAssignees(context.Background(), "default", "sample", 9, nil)
+	var domErr *clientDomain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 404, domErr.Code)
+
+	c = NewClient(NewTransport(), &stubSession{accessToken: "tok"})
+	_, err = c.SetMergeRequestAssignees(context.Background(), "default", "sample", 5, nil)
+	require.EqualError(t, err, "not connected to a nipa server")
+}
+
+func TestClient_ReportMergeRequestCheck_Success(t *testing.T) {
+	fs := &fakeMergeRequestServer{reportCheckResp: &pb.ReportMergeRequestCheckResponse{Check: mergeRequestCheckDetail()}}
+	c := newMergeRequestTestClient(t, fs)
+
+	got, err := c.ReportMergeRequestCheck(context.Background(), "default", "sample", 5, "build", "success", "https://ci.example/run/1")
+	require.NoError(t, err)
+	require.NotNil(t, fs.reportCheckReq)
+	require.Equal(t, int64(5), fs.reportCheckReq.GetNumber())
+	require.Equal(t, "build", fs.reportCheckReq.GetName())
+	require.Equal(t, "success", fs.reportCheckReq.GetState())
+	require.Equal(t, "https://ci.example/run/1", fs.reportCheckReq.GetDetailsUrl())
+	require.Equal(t, "build", got.Name)
+	require.Equal(t, "Bob", got.Reporter.Name)
+	require.NotZero(t, got.CreatedAt)
+}
+
+func TestClient_ReportMergeRequestCheck_Errors(t *testing.T) {
+	fs := &fakeMergeRequestServer{reportCheckErr: status.Error(codes.InvalidArgument, "state must be one of pending, success, failed")}
+	c := newMergeRequestTestClient(t, fs)
+
+	_, err := c.ReportMergeRequestCheck(context.Background(), "default", "sample", 5, "build", "exploded", "")
+	var domErr *clientDomain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 400, domErr.Code)
+
+	c = NewClient(NewTransport(), &stubSession{accessToken: "tok"})
+	_, err = c.ReportMergeRequestCheck(context.Background(), "default", "sample", 5, "build", "success", "")
+	require.EqualError(t, err, "not connected to a nipa server")
+}
+
+func TestClient_ListMergeRequestChecks(t *testing.T) {
+	fs := &fakeMergeRequestServer{listChecksResp: &pb.ListMergeRequestChecksResponse{
+		Checks: []*pb.MergeRequestCheckDetail{mergeRequestCheckDetail()},
+	}}
+	c := newMergeRequestTestClient(t, fs)
+
+	checks, err := c.ListMergeRequestChecks(context.Background(), "default", "sample", 5)
+	require.NoError(t, err)
+	require.NotNil(t, fs.listChecksReq)
+	require.Equal(t, int64(5), fs.listChecksReq.GetNumber())
+	require.Len(t, checks, 1)
+	require.Equal(t, "build", checks[0].Name)
+	require.Equal(t, clientDomain.MergeRequestCheckSuccess, checks[0].State)
+
+	fs = &fakeMergeRequestServer{listChecksErr: status.Error(codes.NotFound, "merge request not found")}
+	c = newMergeRequestTestClient(t, fs)
+	_, err = c.ListMergeRequestChecks(context.Background(), "default", "sample", 9)
+	var domErr *clientDomain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 404, domErr.Code)
+
+	c = NewClient(NewTransport(), &stubSession{accessToken: "tok"})
+	_, err = c.ListMergeRequestChecks(context.Background(), "default", "sample", 5)
+	require.EqualError(t, err, "not connected to a nipa server")
+}
+
+func TestToClientMergeRequestCheck_Nil(t *testing.T) {
+	require.Nil(t, toClientMergeRequestCheck(nil))
+}
+
+func TestToClientReviewActors_Empty(t *testing.T) {
+	require.Nil(t, toClientReviewActors(nil))
 }

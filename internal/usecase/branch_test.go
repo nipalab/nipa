@@ -67,6 +67,8 @@ func TestBranch_ListBranches_Success(t *testing.T) {
 	repo.EXPECT().
 		ListBranches(gomock.Any(), snow.ID(1), 10, &after, lastID).
 		Return(want, nil)
+	repo.EXPECT().RequiredReviewers(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
+	repo.EXPECT().RequiredChecks(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 
 	uc := NewBranch(perm, repo, newTestBranchNode(t))
 	got, err := uc.ListBranches(context.Background(), snow.ID(1), 10, &after, lastID)

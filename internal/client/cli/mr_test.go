@@ -39,9 +39,20 @@ type fakeMRClient struct {
 	mergeNumber       int64
 	mergeStrategy     string
 	mergeDeleteSource bool
-	mergeResult       *domain.MergeRequest
-	mergeability      *domain.Mergeability
-	mergeErr          error
+
+	checkName      string
+	checkState     string
+	checkURL       string
+	reportCheck    *domain.MergeRequestCheck
+	reportErr      error
+	checksResult   []*domain.MergeRequestCheck
+	checksErr      error
+	assigneeIDs    []string
+	assigneeResult *domain.MergeRequest
+	assigneeErr    error
+	mergeResult    *domain.MergeRequest
+	mergeability   *domain.Mergeability
+	mergeErr       error
 
 	closeNumber int64
 	closeResult *domain.MergeRequest
@@ -144,6 +155,11 @@ func (f *fakeMRClient) CloseMergeRequest(_ context.Context, _, _ string, number 
 	return f.closeResult, f.closeErr
 }
 
+func (f *fakeMRClient) SetMergeRequestAssignees(_ context.Context, _, _ string, _ int64, userIDs []string) (*domain.MergeRequest, error) {
+	f.assigneeIDs = userIDs
+	return f.assigneeResult, f.assigneeErr
+}
+
 func (f *fakeMRClient) GetDefaultBranch(_ context.Context, _, _ string) (*serverDomain.Branch, error) {
 	return f.defaultBranch, f.defaultBranchErr
 }
@@ -170,6 +186,15 @@ func (f *fakeMRClient) GetMergeRequestDiff(_ context.Context, _, _ string, _ int
 
 func (f *fakeMRClient) ListMergeRequestReviews(_ context.Context, _, _ string, _ int64) ([]*domain.MergeRequestReview, error) {
 	return f.reviewsResult, f.reviewsErr
+}
+
+func (f *fakeMRClient) ReportMergeRequestCheck(_ context.Context, _, _ string, _ int64, name, state, detailsURL string) (*domain.MergeRequestCheck, error) {
+	f.checkName, f.checkState, f.checkURL = name, state, detailsURL
+	return f.reportCheck, f.reportErr
+}
+
+func (f *fakeMRClient) ListMergeRequestChecks(_ context.Context, _, _ string, _ int64) ([]*domain.MergeRequestCheck, error) {
+	return f.checksResult, f.checksErr
 }
 
 func (f *fakeMRClient) SubmitMergeRequestReview(_ context.Context, _, _ string, _ int64, state, body string) (*domain.MergeRequestReview, error) {
@@ -827,6 +852,9 @@ func TestMrReviewCommands_NotARepo(t *testing.T) {
 		{"request-review", "7", "u1"},
 		{"unrequest-review", "7", "u1"},
 		{"diff", "7"},
+		{"assign", "7", "8"},
+		{"checks", "7"},
+		{"check", "7", "--name", "build", "--state", "success"},
 	}
 	for _, args := range calls {
 		t.Run(args[0], func(t *testing.T) {
@@ -845,4 +873,87 @@ func TestThreadHeader(t *testing.T) {
 	)
 	require.Equal(t, "u9", actorLabel(domain.ReviewActor{UserID: "u9"}))
 	require.Equal(t, "Rev", actorLabel(domain.ReviewActor{UserID: "u9", Name: "Rev"}))
+}
+
+func TestSetupMrAssignCmd(t *testing.T) {
+	root := setupRepo(t, "feature")
+	client := &fakeMRClient{assigneeResult: &domain.MergeRequest{
+		Number: 2, Assignees: []domain.ReviewActor{{UserID: "8", Name: "Bob"}},
+	}}
+	cli := newMRCli(t, client)
+
+	out, err := runCmdInDir(t, root, cli.setupMrCmd(), "assign", "2", " 8 ", "9")
+	require.NoError(t, err)
+	require.Contains(t, out, "Merge request #2 assigned to Bob.")
+	require.Equal(t, []string{"8", "9"}, client.assigneeIDs)
+
+	client = &fakeMRClient{assigneeResult: &domain.MergeRequest{Number: 2}}
+	cli = newMRCli(t, client)
+	out, err = runCmdInDir(t, root, cli.setupMrCmd(), "assign", "2")
+	require.NoError(t, err)
+	require.Contains(t, out, "Merge request #2 has no assignees.")
+
+	client = &fakeMRClient{assigneeErr: errors.New("boom")}
+	cli = newMRCli(t, client)
+	_, err = runCmdInDir(t, root, cli.setupMrCmd(), "assign", "2", "8")
+	require.EqualError(t, err, "boom")
+}
+
+func TestSetupMrChecksCmd(t *testing.T) {
+	root := setupRepo(t, "feature")
+	client := &fakeMRClient{checksResult: []*domain.MergeRequestCheck{
+		{Name: "build", State: "success", Reporter: domain.ReviewActor{UserID: "8", Name: "Bob"}},
+	}}
+	cli := newMRCli(t, client)
+
+	out, err := runCmdInDir(t, root, cli.setupMrCmd(), "checks", "7")
+	require.NoError(t, err)
+	require.Contains(t, out, "build")
+	require.Contains(t, out, "Bob")
+
+	out, err = runCmdInDir(t, root, cli.setupMrCmd(), "checks", "7", "--json")
+	require.NoError(t, err)
+	require.Contains(t, out, `"checks"`)
+
+	client = &fakeMRClient{}
+	cli = newMRCli(t, client)
+	out, err = runCmdInDir(t, root, cli.setupMrCmd(), "checks", "7")
+	require.NoError(t, err)
+	require.Contains(t, out, "no status checks")
+
+	client = &fakeMRClient{checksErr: errors.New("boom")}
+	cli = newMRCli(t, client)
+	_, err = runCmdInDir(t, root, cli.setupMrCmd(), "checks", "7")
+	require.EqualError(t, err, "boom")
+}
+
+func TestSetupMrCheckCmd(t *testing.T) {
+	root := setupRepo(t, "feature")
+	client := &fakeMRClient{reportCheck: &domain.MergeRequestCheck{Name: "build", State: "success"}}
+	cli := newMRCli(t, client)
+
+	out, err := runCmdInDir(t, root, cli.setupMrCmd(), "check", "7", "--name", " build ", "--state", "success", "--url", "https://ci/x")
+	require.NoError(t, err)
+	require.Contains(t, out, `Check "build" reported as success.`)
+	require.Equal(t, "build", client.checkName)
+	require.Equal(t, "success", client.checkState)
+	require.Equal(t, "https://ci/x", client.checkURL)
+
+	client = &fakeMRClient{reportErr: errors.New("boom")}
+	cli = newMRCli(t, client)
+	_, err = runCmdInDir(t, root, cli.setupMrCmd(), "check", "7", "--name", "build", "--state", "success")
+	require.EqualError(t, err, "boom")
+}
+
+func TestSetupMrViewCmd_Assignees(t *testing.T) {
+	root := setupRepo(t, "feature")
+	client := &fakeMRClient{getResult: &domain.MergeRequest{
+		Number: 7, Status: domain.MergeRequestOpen,
+		Assignees: []domain.ReviewActor{{UserID: "8", Name: "Bob"}},
+	}}
+	cli := newMRCli(t, client)
+
+	out, err := runCmdInDir(t, root, cli.setupMrCmd(), "view", "7")
+	require.NoError(t, err)
+	require.Contains(t, out, "assignees: Bob")
 }

@@ -32,7 +32,9 @@ type branchRepository interface {
 	RenameBranch(ctx context.Context, projectID, branchID snow.ID, name, key string) error
 	DeleteBranch(ctx context.Context, projectID, branchID snow.ID) error
 	HasOpenMergeRequests(ctx context.Context, projectID, branchID snow.ID) (bool, error)
-	SetBranchProtection(ctx context.Context, projectID, branchID snow.ID, protected bool, requiredApprovals int64, dismissStaleApprovals bool) error
+	SetBranchProtection(ctx context.Context, projectID, branchID snow.ID, protection domain.BranchProtection) error
+	RequiredReviewers(ctx context.Context, branchID snow.ID) ([]domain.ReviewActor, error)
+	RequiredChecks(ctx context.Context, branchID snow.ID) ([]string, error)
 	SetDefaultBranch(ctx context.Context, projectID, branchID snow.ID) error
 	UpdateCommitIf(ctx context.Context, branchID snow.ID, fromCommitID, toCommitID *snow.ID) error
 	GetCommit(ctx context.Context, commitID snow.ID) (*domain.Commit, error)
@@ -58,6 +60,7 @@ type Branch struct {
 	chunks     chunkReader
 	fileLocks  fileLockGate
 	hooks      hookBranchGate
+	users      userLookup
 	// mergeCommitter and chunkUploads enable the non-fast-forward merge
 	// strategies; both are wired by the server mains.
 	mergeCommitter mergeCommitter
@@ -90,11 +93,26 @@ func (b *Branch) WithHooks(hooks hookBranchGate) *Branch {
 	return b
 }
 
+// WithUsers enables required-reviewer validation against real accounts.
+func (b *Branch) WithUsers(users userLookup) *Branch {
+	b.users = users
+	return b
+}
+
 func (b *Branch) ListBranches(ctx context.Context, projectID snow.ID, limit int, updatedAfter *time.Time, lastID snow.ID) ([]*domain.Branch, error) {
 	if !b.permUc.HasProjectAccess(ctx, projectID, domain.PermissionRead) {
 		return nil, domain.NewErrorNoPermission()
 	}
-	return b.branchRepo.ListBranches(ctx, projectID, limit, updatedAfter, lastID)
+	branches, err := b.branchRepo.ListBranches(ctx, projectID, limit, updatedAfter, lastID)
+	if err != nil {
+		return nil, err
+	}
+	for _, branch := range branches {
+		if err := b.attachProtection(ctx, branch); err != nil {
+			return nil, err
+		}
+	}
+	return branches, nil
 }
 
 func (b *Branch) GetByProjectIDAndID(ctx context.Context, projectID snow.ID, branchID snow.ID) (*domain.Branch, error) {
@@ -244,10 +262,20 @@ func (b *Branch) SetDefault(ctx context.Context, projectID snow.ID, name string)
 	return b.branchRepo.GetByProjectIDAndID(ctx, projectID, branch.ID)
 }
 
-// SetProtection updates the protection settings of a branch. A nil
-// requiredApprovals or dismissStaleApprovals keeps the current value, so the
-// protect toggle does not clear settings configured earlier.
-func (b *Branch) SetProtection(ctx context.Context, projectID snow.ID, name string, protected bool, requiredApprovals *int64, dismissStaleApprovals *bool) (*domain.Branch, error) {
+// BranchProtectionOptions patches a branch's protection. Nil fields keep the
+// current value, so the protect toggle does not clear settings configured
+// earlier.
+type BranchProtectionOptions struct {
+	Protected             bool
+	RequiredApprovals     *int64
+	DismissStaleApprovals *bool
+	RequiredReviewers     *[]snow.ID
+	RequireStatusChecks   *bool
+	RequiredChecks        *[]string
+}
+
+// SetProtection updates the protection settings of a branch.
+func (b *Branch) SetProtection(ctx context.Context, projectID snow.ID, name string, opts BranchProtectionOptions) (*domain.Branch, error) {
 	if !b.permUc.AdminHasProject(ctx, projectID) {
 		return nil, domain.NewErrorNoPermission()
 	}
@@ -255,24 +283,143 @@ func (b *Branch) SetProtection(ctx context.Context, projectID snow.ID, name stri
 	if err != nil {
 		return nil, err
 	}
-	approvals := branch.RequiredApprovals
-	if requiredApprovals != nil {
-		if *requiredApprovals < 0 {
-			return nil, domain.NewErrorUser("required approvals cannot be negative")
-		}
-		approvals = *requiredApprovals
-	}
-	dismissStale := branch.DismissStaleApprovals
-	if dismissStaleApprovals != nil {
-		dismissStale = *dismissStaleApprovals
-	}
-	if branch.IsProtected == protected && branch.RequiredApprovals == approvals && branch.DismissStaleApprovals == dismissStale {
-		return branch, nil
-	}
-	if err := b.branchRepo.SetBranchProtection(ctx, projectID, branch.ID, protected, approvals, dismissStale); err != nil {
+	if err := b.attachProtection(ctx, branch); err != nil {
 		return nil, err
 	}
-	return b.branchRepo.GetByProjectIDAndID(ctx, projectID, branch.ID)
+	approvals := branch.RequiredApprovals
+	if opts.RequiredApprovals != nil {
+		if *opts.RequiredApprovals < 0 {
+			return nil, domain.NewErrorUser("required approvals cannot be negative")
+		}
+		approvals = *opts.RequiredApprovals
+	}
+	dismissStale := branch.DismissStaleApprovals
+	if opts.DismissStaleApprovals != nil {
+		dismissStale = *opts.DismissStaleApprovals
+	}
+	requireChecks := branch.RequireStatusChecks
+	if opts.RequireStatusChecks != nil {
+		requireChecks = *opts.RequireStatusChecks
+	}
+	var reviewers []snow.ID
+	if opts.RequiredReviewers != nil {
+		reviewers = uniqueIDs(*opts.RequiredReviewers)
+		if b.users != nil {
+			for _, id := range reviewers {
+				if _, err := b.users.GetByID(ctx, id); err != nil {
+					return nil, domain.NewErrorUser(fmt.Sprintf("user %s not found", id.Base36()))
+				}
+			}
+		}
+	} else if len(branch.RequiredReviewers) > 0 {
+		reviewers = make([]snow.ID, 0, len(branch.RequiredReviewers))
+		for _, reviewer := range branch.RequiredReviewers {
+			reviewers = append(reviewers, reviewer.UserID)
+		}
+	}
+	var checks []string
+	if opts.RequiredChecks != nil {
+		checks = normalizeCheckNames(*opts.RequiredChecks)
+	} else {
+		checks = branch.RequiredChecks
+	}
+	if branch.IsProtected == opts.Protected && branch.RequiredApprovals == approvals &&
+		branch.DismissStaleApprovals == dismissStale && branch.RequireStatusChecks == requireChecks &&
+		sameIDs(reviewers, branch.RequiredReviewers) && sameStrings(checks, branch.RequiredChecks) {
+		return branch, nil
+	}
+	if err := b.branchRepo.SetBranchProtection(ctx, projectID, branch.ID, domain.BranchProtection{
+		Protected:             opts.Protected,
+		RequiredApprovals:     approvals,
+		DismissStaleApprovals: dismissStale,
+		RequireStatusChecks:   requireChecks,
+		RequiredReviewers:     reviewers,
+		RequiredChecks:        checks,
+	}); err != nil {
+		return nil, err
+	}
+	return b.protectedBranch(ctx, projectID, branch.ID)
+}
+
+// protectedBranch loads a branch with its protection lists attached.
+func (b *Branch) protectedBranch(ctx context.Context, projectID, branchID snow.ID) (*domain.Branch, error) {
+	branch, err := b.branchRepo.GetByProjectIDAndID(ctx, projectID, branchID)
+	if err != nil {
+		return nil, err
+	}
+	return branch, b.attachProtection(ctx, branch)
+}
+
+func (b *Branch) attachProtection(ctx context.Context, branch *domain.Branch) error {
+	reviewers, err := b.branchRepo.RequiredReviewers(ctx, branch.ID)
+	if err != nil {
+		return err
+	}
+	checks, err := b.branchRepo.RequiredChecks(ctx, branch.ID)
+	if err != nil {
+		return err
+	}
+	branch.RequiredReviewers = reviewers
+	branch.RequiredChecks = checks
+	return nil
+}
+
+func uniqueIDs(ids []snow.ID) []snow.ID {
+	if len(ids) == 0 {
+		return nil
+	}
+	out := make([]snow.ID, 0, len(ids))
+	seen := map[snow.ID]bool{}
+	for _, id := range ids {
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		out = append(out, id)
+	}
+	return out
+}
+
+func normalizeCheckNames(names []string) []string {
+	out := make([]string, 0, len(names))
+	seen := map[string]bool{}
+	for _, name := range names {
+		trimmed := strings.TrimSpace(name)
+		if trimmed == "" || seen[trimmed] {
+			continue
+		}
+		seen[trimmed] = true
+		out = append(out, trimmed)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	sort.Strings(out)
+	return out
+}
+
+func sameIDs(ids []snow.ID, actors []domain.ReviewActor) bool {
+	if len(ids) != len(actors) {
+		return false
+	}
+	for i, actor := range actors {
+		if ids[i] != actor.UserID {
+			return false
+		}
+	}
+	return true
+}
+
+func sameStrings(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // emitHook publishes a branch event. The change is already stored, so a

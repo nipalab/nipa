@@ -87,11 +87,27 @@ type Branch struct {
 	RequiredApprovals int64   `json:"required_approvals"`
 	// DismissStaleApprovals controls whether a push to the source branch
 	// dismisses decisions given for the previous head.
-	DismissStaleApprovals bool       `json:"dismiss_stale_approvals"`
-	IsDefault             bool       `json:"is_default"`
-	CommitID              *snow.ID   `json:"commit_id"`
-	UpdatedAt             time.Time  `json:"updated_at"`
-	CreatedAt             time.Time  `json:"created_at"`
-	Deleted               bool       `json:"deleted"`
-	DeletedAt             *time.Time `json:"deleted_at,omitempty"`
+	DismissStaleApprovals bool `json:"dismiss_stale_approvals"`
+	// RequireStatusChecks gates merging on the required checks passing for the
+	// source head.
+	RequireStatusChecks bool       `json:"require_status_checks"`
+	IsDefault           bool       `json:"is_default"`
+	CommitID            *snow.ID   `json:"commit_id"`
+	UpdatedAt           time.Time  `json:"updated_at"`
+	CreatedAt           time.Time  `json:"created_at"`
+	Deleted             bool       `json:"deleted"`
+	DeletedAt           *time.Time `json:"deleted_at,omitempty"`
+	// RequiredReviewers and RequiredChecks are resolved per request.
+	RequiredReviewers []ReviewActor `json:"required_reviewers,omitempty"`
+	RequiredChecks    []string      `json:"required_checks,omitempty"`
+}
+
+// BranchProtection is the full protection configuration written in one go.
+type BranchProtection struct {
+	Protected             bool
+	RequiredApprovals     int64
+	DismissStaleApprovals bool
+	RequireStatusChecks   bool
+	RequiredReviewers     []snow.ID
+	RequiredChecks        []string
 }

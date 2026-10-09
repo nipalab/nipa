@@ -23,6 +23,7 @@ func TestRegistryExposesUsecases(t *testing.T) {
 		Project:            &usecase.Project{},
 		MergeRequest:       &usecase.MergeRequest{},
 		MergeRequestReview: &usecase.MergeRequestReview{},
+		MergeRequestCheck:  &usecase.MergeRequestCheck{},
 		FileLock:           &usecase.FileLock{},
 		Webhook:            &usecase.Webhook{},
 	}
@@ -42,6 +43,7 @@ func TestRegistryExposesUsecases(t *testing.T) {
 	require.Same(t, uc.Project, reg.Project())
 	require.Same(t, uc.MergeRequest, reg.MergeRequest())
 	require.Same(t, uc.MergeRequestReview, reg.MergeRequestReview())
+	require.Same(t, uc.MergeRequestCheck, reg.MergeRequestCheck())
 	require.Same(t, uc.FileLock, reg.FileLock())
 	require.Same(t, uc.Webhook, reg.Webhook())
 }

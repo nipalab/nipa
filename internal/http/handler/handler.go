@@ -16,6 +16,7 @@ type usecaseContainer interface {
 	Tag() *usecase.Tag
 	MergeRequest() *usecase.MergeRequest
 	MergeRequestReview() *usecase.MergeRequestReview
+	MergeRequestCheck() *usecase.MergeRequestCheck
 	FileLock() *usecase.FileLock
 	Webhook() *usecase.Webhook
 }

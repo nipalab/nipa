@@ -44,9 +44,20 @@ type stubMRClient struct {
 	mergeNumber       int64
 	mergeStrategy     string
 	mergeDeleteSource bool
-	mergeResult       *domain.MergeRequest
-	mergeability      *domain.Mergeability
-	mergeErr          error
+
+	checkName      string
+	checkState     string
+	checkURL       string
+	reportCheck    *domain.MergeRequestCheck
+	reportErr      error
+	checksResult   []*domain.MergeRequestCheck
+	checksErr      error
+	assigneeIDs    []string
+	assigneeResult *domain.MergeRequest
+	assigneeErr    error
+	mergeResult    *domain.MergeRequest
+	mergeability   *domain.Mergeability
+	mergeErr       error
 
 	getResult       *domain.MergeRequest
 	getMergeability *domain.Mergeability
@@ -157,6 +168,11 @@ func (s *stubMRClient) CloseMergeRequest(_ context.Context, _, _ string, number 
 	return s.closeResult, s.closeErr
 }
 
+func (s *stubMRClient) SetMergeRequestAssignees(_ context.Context, _, _ string, _ int64, userIDs []string) (*domain.MergeRequest, error) {
+	s.assigneeIDs = userIDs
+	return s.assigneeResult, s.assigneeErr
+}
+
 func (s *stubMRClient) GetMergeRequest(_ context.Context, _, _ string, number int64) (*domain.MergeRequest, *domain.Mergeability, error) {
 	s.getNumber = number
 	return s.getResult, s.getMergeability, s.getErr
@@ -185,6 +201,15 @@ func (s *stubMRClient) GetMergeRequestDiff(_ context.Context, _, _ string, numbe
 func (s *stubMRClient) ListMergeRequestReviews(_ context.Context, _, _ string, number int64) ([]*domain.MergeRequestReview, error) {
 	s.reviewsNumber = number
 	return s.reviewsResult, s.reviewsErr
+}
+
+func (s *stubMRClient) ReportMergeRequestCheck(_ context.Context, _, _ string, _ int64, name, state, detailsURL string) (*domain.MergeRequestCheck, error) {
+	s.checkName, s.checkState, s.checkURL = name, state, detailsURL
+	return s.reportCheck, s.reportErr
+}
+
+func (s *stubMRClient) ListMergeRequestChecks(_ context.Context, _, _ string, _ int64) ([]*domain.MergeRequestCheck, error) {
+	return s.checksResult, s.checksErr
 }
 
 func (s *stubMRClient) SubmitMergeRequestReview(_ context.Context, _, _ string, number int64, state, body string) (*domain.MergeRequestReview, error) {
@@ -726,4 +751,65 @@ func TestMergeRequest_ConnectErrorPaths(t *testing.T) {
 	badURL := &stubLocalRepo{loadConfig: &domain.Config{Url: "ftp://example.com/org/project"}}
 	_, _, err = newTestMergeRequest(t, badURL, client).List(ctx, t.TempDir(), domain.ListMergeRequestOptions{})
 	require.Contains(t, err.Error(), "invalid URL scheme")
+}
+
+func TestMergeRequest_SetAssignees(t *testing.T) {
+	local := &stubLocalRepo{
+		loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "feature"},
+	}
+	client := &stubMRClient{assigneeResult: &domain.MergeRequest{Number: 5, Assignees: []domain.ReviewActor{{UserID: "8"}}}}
+	mr := newTestMergeRequest(t, local, client)
+
+	got, err := mr.SetAssignees(context.Background(), t.TempDir(), "5", []string{" 8 ", "", "9"})
+	require.NoError(t, err)
+	require.Equal(t, int64(5), got.Number)
+	require.Equal(t, []string{"8", "9"}, client.assigneeIDs, "blank ids are dropped and the rest trimmed")
+	require.Len(t, got.Assignees, 1)
+
+	_, err = mr.SetAssignees(context.Background(), t.TempDir(), "not-a-number", nil)
+	require.Error(t, err)
+}
+
+func TestMergeRequest_Checks(t *testing.T) {
+	local := &stubLocalRepo{
+		loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "feature"},
+	}
+	client := &stubMRClient{checksResult: []*domain.MergeRequestCheck{{Name: "build"}}}
+	mr := newTestMergeRequest(t, local, client)
+
+	got, err := mr.Checks(context.Background(), t.TempDir(), "5")
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	require.Equal(t, "build", got[0].Name)
+
+	client.checksErr = errors.New("boom")
+	_, err = mr.Checks(context.Background(), t.TempDir(), "5")
+	require.EqualError(t, err, "boom")
+
+	_, err = mr.Checks(context.Background(), t.TempDir(), "bad")
+	require.Error(t, err)
+}
+
+func TestMergeRequest_ReportCheck(t *testing.T) {
+	local := &stubLocalRepo{
+		loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "feature"},
+	}
+	client := &stubMRClient{reportCheck: &domain.MergeRequestCheck{Name: "build", State: "success"}}
+	mr := newTestMergeRequest(t, local, client)
+
+	got, err := mr.ReportCheck(context.Background(), t.TempDir(), "5", " build ", "success", "https://ci.example/run/1")
+	require.NoError(t, err)
+	require.Equal(t, "build", got.Name)
+	require.Equal(t, "build", client.checkName)
+	require.Equal(t, "success", client.checkState)
+	require.Equal(t, "https://ci.example/run/1", client.checkURL)
+
+	_, err = mr.ReportCheck(context.Background(), t.TempDir(), "5", "  ", "success", "")
+	require.Error(t, err)
+
+	_, err = mr.ReportCheck(context.Background(), t.TempDir(), "5", "build", "exploded", "")
+	require.Error(t, err)
+
+	_, err = mr.ReportCheck(context.Background(), t.TempDir(), "bad", "build", "success", "")
+	require.Error(t, err)
 }

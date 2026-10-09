@@ -19,6 +19,8 @@ type MergeRequest struct {
 	CreatedBy         string
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
+	// Assignees are resolved per request.
+	Assignees []ReviewActor
 	// Review is resolved per request, not stored: it counts only the reviews
 	// given for the current source head.
 	Review *MergeRequestReviewState
@@ -41,6 +43,8 @@ type ListMergeRequestOptions struct {
 	SourceBranch string
 	TargetBranch string
 	Draft        *bool
+	Search       string
+	Assignee     string
 	After        int64
 	Limit        int
 }

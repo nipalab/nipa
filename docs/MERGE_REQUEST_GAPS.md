@@ -1,11 +1,12 @@
 # Merge request feature gaps
 
 Status: **audit (2026-10-05); Batches A, B, C1 and C2 implemented
-(2026-10-08)**. This is a revisit list, not a plan of record. The MR feature is
-functional end to end (lifecycle, reviews, threads, locks, diff, commits,
-webhooks, SPA, daemon proxy); the items below are things that are absent or
-half-built, ordered roughly by impact. Every item cites the code that proves
-the gap so it can be re-verified after any of them lands.
+(2026-10-08); C4 + assignees/search/WIP (2026-10-09)**. This is a
+revisit list, not a plan of record. The MR feature is functional end to end
+(lifecycle, reviews, threads, locks, diff, commits, webhooks, SPA, daemon
+proxy); the items below are things that are absent or half-built, ordered
+roughly by impact. Every item cites the code that proves the gap so it can be
+re-verified after any of them lands.
 
 Batch A landed the approval gate (item 1, configurable
 `branches.required_approvals` plus the always-on objection block), the
@@ -82,13 +83,12 @@ still open.
    composer, edit dialog, list filter and merge box. No WIP title-prefix
    detection (item 15).
 
-4. **[partial] Branch protection beyond a boolean.** `SetBranchProtection`
-   carries `required_approvals` (item 1) and `dismiss_stale_approvals`
-   (default on; off carries live decisions onto the new head on push instead
-   of dismissing them). Deleting a protected branch now returns a 409 until it
-   is unprotected. Still missing: required reviewers by name, disallow
-   force-push (moot — the server never rewrites a branch head, pushes always
-   append), and richer policy rules.
+4. **[done] Branch protection beyond a boolean.** `SetBranchProtection`
+   carries `required_approvals`, `dismiss_stale_approvals` (off carries live
+   decisions onto the new head), `require_status_checks` + required check
+   names, and named `required_reviewers` whose approval is mandatory. Deleting
+   a protected branch returns a 409 until it is unprotected. Disallow
+   force-push is moot — the server never rewrites a branch head.
 
 ### Half-built things (existing seams with unused surface)
 
@@ -130,23 +130,31 @@ still open.
     and `mr.comment_created` are subscribable and emitted by the review
     usecase through the log-only hook seam.
 
-12. **No labels, milestones, or assignees.** Only reviewers exist
-    (`merge_request_review_requests`); the UI synthesizes the reviewer list
-    from reviews + pending requests. No labels/milestones tables, fields, or
-    code anywhere.
+12. **[partial] Assignees done, labels deferred.** `merge_request_assignees`
+    (base-set through `POST .../assignees` / gRPC
+    `SetMergeRequestAssignees` / `nipa mr assign`) with list filters and SPA
+    pickers. Labels/milestones were consciously skipped: milestones need an
+    issue tracker, labels are deferred until needed.
 
 13. **[done] No search / filtering / pagination.** The list takes
-    `status/author/source/target` and paginates by number keyset
-    (`after`/`next_cursor`); the SPA list page filters and loads more. Free-text
-    search is still absent.
+    `status/author/source/target/draft/assignee` plus free-text `search`
+    (title/description LIKE) and paginates by number keyset
+    (`after`/`next_cursor`); the SPA list page filters, searches and loads
+    more.
 
-14. **No CI / status checks.** Mergeability is solely branch-topology based;
-    nothing in the codebase (no check-run model, no external status hook).
+14. **[done] No CI / status checks.** `merge_request_checks` is keyed by
+    (request, head commit, name); `POST/GET .../checks`, gRPC
+    `ReportMergeRequestCheck`/`ListMergeRequestChecks` and `nipa mr check`/
+    `mr checks` report and list. A target branch with `require_status_checks`
+    blocks merging (`blocked_by: "status_checks"`) until every required check
+    succeeds for the current head; a push starts a clean slate. Reporting
+    emits `mr.check_reported` and the SPA merge box lists checks.
 
-15. **Miscellaneous.** No "mark merged manually" for diverged requests
-    (`UpdateStatus` is not exposed; close is the only alternative); no email
-    notifications anywhere (webhooks only); no MR templates; no WIP title
-    prefix detection.
+15. **[partial] Miscellaneous.** WIP/Draft title prefixes auto-draft on create
+    and rename (removing the prefix marks ready). "Mark merged manually" was
+    deliberately dropped (an explicit reconcile action was judged unnecessary;
+    requests land through the normal merge strategies or are closed). Still
+    absent: email notifications (webhooks only) and MR templates.
 
 ## Suggested batches (when revisiting)
 
@@ -155,8 +163,9 @@ still open.
 - **Batch B — done:** MR edit affordance in SPA (7), inline comments from the
   review composer (8), review/comment webhooks (11), list filters + number
   keyset pagination (13), CLI review surface + `GetMergeRequest` (9).
-- **Batch C — in progress:** C1 done — draft state (3), dismiss-stale setting
-  + protected-delete refusal (4), `system` column dropped (10). C2 done —
-  non-FF merge strategies + delete source branch (2). Next: labels/assignees
-  (12, milestones skipped until an issue tracker exists), CI status checks
-  (14).
+- **Batch C — done:** C1 — draft state (3), dismiss-stale setting +
+  protected-delete refusal (4), `system` column dropped (10). C2 — non-FF
+  merge strategies + delete source branch (2). C3 — assignees (12, labels
+  deferred). C4 — required reviewers (4), status checks (14), free-text search
+  (13), WIP detection (15; mark-merged dropped). Email notifications and MR
+  templates remain open.

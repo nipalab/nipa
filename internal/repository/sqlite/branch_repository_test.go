@@ -1114,12 +1114,30 @@ func TestBranchRepositorySQLite_Lifecycle(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "renamed", renamed.Name)
 
-	require.NoError(t, repo.SetBranchProtection(ctx, projectID, branchID, true, 2, true))
+	reviewerID := seedUser(t, q, "reviewer", "reviewer@example.com", sql.NullString{})
+	require.NoError(t, repo.SetBranchProtection(ctx, projectID, branchID, domain.BranchProtection{
+		Protected:             true,
+		RequiredApprovals:     2,
+		DismissStaleApprovals: true,
+		RequireStatusChecks:   true,
+		RequiredReviewers:     []snow.ID{reviewerID},
+		RequiredChecks:        []string{"build", "test"},
+	}))
 	protected, err := repo.GetByProjectIDAndID(ctx, projectID, branchID)
 	require.NoError(t, err)
 	require.True(t, protected.IsProtected)
 	require.EqualValues(t, 2, protected.RequiredApprovals)
 	require.True(t, protected.DismissStaleApprovals)
+	require.True(t, protected.RequireStatusChecks)
+
+	reviewers, err := repo.RequiredReviewers(ctx, branchID)
+	require.NoError(t, err)
+	require.Len(t, reviewers, 1)
+	require.Equal(t, reviewerID, reviewers[0].UserID)
+
+	checks, err := repo.RequiredChecks(ctx, branchID)
+	require.NoError(t, err)
+	require.Equal(t, []string{"build", "test"}, checks)
 
 	require.NoError(t, repo.SetDefaultBranch(ctx, projectID, branchID))
 	def, err := repo.GetDefaultBranch(ctx, projectID)
@@ -1258,4 +1276,33 @@ func TestBranchRepositorySQLite_HasOpenMergeRequests_DatabaseError(t *testing.T)
 	var domErr *domain.Error
 	require.ErrorAs(t, err, &domErr)
 	require.Equal(t, 500, domErr.Code)
+}
+
+func TestBranchRepositorySQLite_ClosedDatabaseErrors(t *testing.T) {
+	ctx := context.Background()
+	db, _ := newSQLiteTestDB(t)
+	repo := NewBranchRepository(db)
+	require.NoError(t, db.Close())
+
+	projectID := snow.ID(1)
+	branchID := snow.ID(2)
+
+	_, err := repo.ListBranches(ctx, projectID, 10, nil, 0)
+	require.Error(t, err)
+	_, err = repo.GetBranchByName(ctx, projectID, "main")
+	require.Error(t, err)
+	require.Error(t, repo.DeleteBranch(ctx, projectID, branchID))
+	require.Error(t, repo.SetBranchProtection(ctx, projectID, branchID, domain.BranchProtection{Protected: true}))
+	_, err = repo.RequiredReviewers(ctx, branchID)
+	require.Error(t, err)
+	_, err = repo.RequiredChecks(ctx, branchID)
+	require.Error(t, err)
+	require.Error(t, repo.SetDefaultBranch(ctx, projectID, branchID))
+	require.Error(t, repo.UpdateCommitIf(ctx, branchID, nil, nil))
+	_, err = repo.ListTreeChildren(ctx, 2)
+	require.Error(t, err)
+	_, err = repo.ListFilesByTree(ctx, 2)
+	require.Error(t, err)
+	_, err = repo.CommitLogUntil(ctx, projectID, snow.ID(2), snow.ID(3), 10)
+	require.Error(t, err)
 }

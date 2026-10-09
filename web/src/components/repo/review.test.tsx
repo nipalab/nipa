@@ -9,6 +9,8 @@ import { MergeRequestOverview } from './MergeRequestOverview'
 import { ThreadCard } from './ThreadCard'
 import type {
   DiffFileResponse,
+  MergeRequestCheckResponse,
+  OrgMemberResponse,
   ReviewRequestResponse,
   ReviewResponse,
   ThreadResponse,
@@ -320,6 +322,7 @@ describe('MergeRequestOverview', () => {
     },
     reviews: [] as ReviewResponse[],
     threads: [] as ThreadResponse[],
+    checks: [] as MergeRequestCheckResponse[],
     reviewRequests: [] as ReviewRequestResponse[],
     timeline: [] as TimelineItemResponse[],
     members: [],
@@ -500,6 +503,18 @@ describe('MergeRequestOverview', () => {
     click(container.querySelector('[aria-label="Delete source branch"]'))
     click(mergeButton)
     expect(onMerge).toHaveBeenCalledWith('squash', true)
+  })
+
+  it('renders assignees and the assign picker', async () => {
+    const request = { ...base.request, assignees: [{ user_id: 'u3', name: 'Dana' }] }
+    const members = [{ user_id: 'u4', name: 'Eve', email: 'eve@example.com' }] as OrgMemberResponse[]
+    const { container } = await render(
+      <MergeRequestOverview {...base} request={request} members={members} />,
+    )
+    expect(container.textContent).toContain('Assignees')
+    expect(container.textContent).toContain('Dana')
+    expect(container.querySelector('[aria-label="Add assignee"]')).not.toBeNull()
+    expect(container.querySelector('[aria-label="unassign Dana"]')).not.toBeNull()
   })
 
   it('attaches inline comments to a review decision', async () => {

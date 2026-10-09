@@ -67,6 +67,7 @@ func main() {
 	branchUsecase := usecase.NewBranchWithChunks(permissionUsecase, branchRepository, snowUser, chunkStore)
 	fileLockUsecase := usecase.NewFileLock(sqlite.NewFileLockRepository(dbConn), branchRepository, permissionUsecase, snowUser)
 	branchUsecase = branchUsecase.WithFileLocks(fileLockUsecase)
+	branchUsecase = branchUsecase.WithUsers(userRepo)
 	mergeRequestUsecase := usecase.NewMergeRequest(
 		sqlite.NewMergeRequestRepository(dbConn),
 		branchRepository,
@@ -88,6 +89,7 @@ func main() {
 	)
 	pushUsecase = pushUsecase.WithReviews(mergeRequestReviewUsecase)
 	mergeRequestUsecase = mergeRequestUsecase.WithReview(mergeRequestReviewUsecase)
+	mergeRequestUsecase = mergeRequestUsecase.WithUsers(userRepo)
 	chunkUsecase := usecase.NewChunk(pushRepository, chunkStore, usecase.ChunkTransferConfig{
 		SigningKey:  cfg.ChunkURLSigningKey,
 		PresignTTL:  time.Duration(cfg.ChunkPresignTTLSeconds) * time.Second,
@@ -106,6 +108,14 @@ func main() {
 	mergeRequestUsecase = mergeRequestUsecase.WithHooks(hookEmitter)
 	mergeRequestReviewUsecase = mergeRequestReviewUsecase.WithHooks(hookEmitter)
 	pushUsecase = pushUsecase.WithHooks(hookEmitter)
+	mergeRequestCheckUsecase := usecase.NewMergeRequestCheck(
+		sqlite.NewMergeRequestCheckRepository(dbConn),
+		sqlite.NewMergeRequestRepository(dbConn),
+		branchRepository,
+		permissionUsecase,
+		snowUser,
+	).WithHooks(hookEmitter)
+	mergeRequestUsecase = mergeRequestUsecase.WithChecks(mergeRequestCheckUsecase)
 
 	reg := serverapp.NewRegistry(serverapp.Usecases{
 		Auth:               authUsecase,
@@ -121,6 +131,7 @@ func main() {
 		Project:            projectUsecase,
 		MergeRequest:       mergeRequestUsecase,
 		MergeRequestReview: mergeRequestReviewUsecase,
+		MergeRequestCheck:  mergeRequestCheckUsecase,
 		FileLock:           fileLockUsecase,
 		Webhook:            webhookUsecase,
 	})

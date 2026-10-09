@@ -22,6 +22,7 @@ type Usecases struct {
 	Project            *usecase.Project
 	MergeRequest       *usecase.MergeRequest
 	MergeRequestReview *usecase.MergeRequestReview
+	MergeRequestCheck  *usecase.MergeRequestCheck
 	FileLock           *usecase.FileLock
 	Webhook            *usecase.Webhook
 }
@@ -87,6 +88,10 @@ func (r *Registry) MergeRequest() *usecase.MergeRequest {
 
 func (r *Registry) MergeRequestReview() *usecase.MergeRequestReview {
 	return r.uc.MergeRequestReview
+}
+
+func (r *Registry) MergeRequestCheck() *usecase.MergeRequestCheck {
+	return r.uc.MergeRequestCheck
 }
 
 func (r *Registry) FileLock() *usecase.FileLock {

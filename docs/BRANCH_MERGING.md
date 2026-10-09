@@ -425,10 +425,20 @@ merge (best-effort; a protected source is left in place with a warning).
   decisions given for the previous head: on dismisses them (they stay in
   history), off carries them onto the new head so they stay live. Set it
   through the same protection endpoint (kept when absent).
-- `BlockedBy` is `draft`, `changes_requested` or `insufficient_approvals`
-  (empty when not blocked); `Check`/`GET .../{id}` surface it and `Merge`
-  returns a 409 with the reason. Approvals for an older source head are stale
-  and do not count unless they were carried over.
+- Named `required_reviewers` must each have a live approval; otherwise
+  `BlockedBy: required_reviewers`. Their ids are set through the protection
+  endpoint (kept when absent) and returned as actors on branch reads.
+- With `require_status_checks` on, every name in the branch's required-check
+  list must have a `success` check for the current source head; otherwise
+  `BlockedBy: status_checks`. Checks are reported through
+  `POST .../merge-requests/{id}/checks` (gRPC `ReportMergeRequestCheck`,
+  `nipa mr check`) and listed by `GET .../checks` (`nipa mr checks`); a push
+  starts a clean slate for the new head. Reporting emits `mr.check_reported`.
+- `BlockedBy` is `draft`, `changes_requested`, `insufficient_approvals`,
+  `required_reviewers` or `status_checks` (empty when not blocked);
+  `Check`/`GET .../{id}` surface it and `Merge` returns a 409 with the reason.
+  Approvals for an older source head are stale and do not count unless they
+  were carried over.
 
 ### Model
 
@@ -508,7 +518,9 @@ reviewers, commits; `--json` adds mergeability, reviews and commits),
 `reply <n> <thread-id> -m`, `resolve <n> <thread-id> [--unresolve]`,
 `timeline <n>`, `requests <n>`, `request-review <n> <user-id>`,
 `unrequest-review <n> <user-id>` and `diff <n>`; `merge` gained
-`--strategy <ff|merge|squash|rebase>` and `--delete-source`, and `list` gained
+`--strategy <ff|merge|squash|rebase>` and `--delete-source`, `assign <n>
+<user-id>...` replaces the assignees, `checks <n>` lists and `check <n> --name
+--state [--url]` reports a status check, and `list` gained
 `--author/--source/--target/--after` (plus `--status draft` for drafts) and
 prints the `next_cursor` hint. The
 review request commands take a base36 user id; the SPA remains the friendly
@@ -525,10 +537,13 @@ with reviewers, participants and the merge box. The File changes tab renders the
 structured diff (`web/src/components/repo/DiffView.tsx`), which supports
 line-level comments and filtering to lines with open threads. The merge request
 list shows the live approval/changes-requested counts and marks drafts (the
-list filter has a `draft` option); the create page and edit dialog carry a
-draft checkbox and the merge box explains the `draft` block. The merge box also
+list filter has `draft`, `assignee` and a free-text `search` box); the create
+page and edit dialog carry a draft checkbox and the merge box explains the
+`draft` block. The merge box also
 picks the merge strategy (fast-forward, merge commit, squash, rebase) and the
 delete-source option; with a non-`ff` strategy a diverged source stays
-mergeable. Project settings
-expose `dismiss_stale_approvals` per branch next to the approvals input.
+mergeable, and it lists the reported status checks. The sidebar shows the
+assignees (with a picker) and Project settings
+expose `dismiss_stale_approvals`, `require_status_checks` with required check
+names, and named required reviewers per branch next to the approvals input.
 
