@@ -152,7 +152,8 @@ func TestEmailNotifier_CommentRecipients(t *testing.T) {
 	require.Contains(t, body.Text, "alice commented on merge request !42 \"Fix textures\" in acme/game.")
 	require.Contains(t, body.Text, "https://nipa.example.com/acme/game/merges/42")
 	require.Contains(t, body.HTML, `href="https://nipa.example.com/acme/game/merges/42"`)
-	require.Equal(t, "<nipa-acme-game-mr42@nipa.example.com>", body.MessageID, "the first contact carries the thread root")
+	require.Equal(t, fmt.Sprintf("<nipa-acme-game-mr42-%s@nipa.example.com>", snow.ID(10).Base36()), body.MessageID,
+		"the first contact carries the recipient's thread root")
 	require.Empty(t, body.InReplyTo)
 	require.Empty(t, body.References)
 	for _, delivery := range captured {
@@ -178,7 +179,7 @@ func TestEmailNotifier_SkipsActorAndUndeliverableUsers(t *testing.T) {
 	deps.users.EXPECT().GetByID(gomock.Any(), snow.ID(20)).
 		Return(&domain.User{ID: 20, Email: "reviewer@example.com", NotifyEmail: false}, nil)
 	deps.users.EXPECT().GetByID(gomock.Any(), snow.ID(30)).
-		Return(&domain.User{ID: 30, Email: "", NotifyEmail: true}, nil)
+		Return(&domain.User{ID: 30, Email: "nipa", NotifyEmail: true}, nil)
 	deps.users.EXPECT().GetByID(gomock.Any(), snow.ID(40)).
 		Return(&domain.User{ID: 40, Email: "gone@example.com", NotifyEmail: true, Deleted: true}, nil)
 	deps.users.EXPECT().GetByID(gomock.Any(), snow.ID(50)).
@@ -286,7 +287,7 @@ func TestEmailNotifier_NoBaseURL(t *testing.T) {
 	require.NoError(t, err)
 	require.NotContains(t, body.Text, "http")
 	require.NotContains(t, body.HTML, "href")
-	require.Equal(t, "<nipa-acme-game-mr42@nipa.local>", body.MessageID)
+	require.Equal(t, fmt.Sprintf("<nipa-acme-game-mr42-%s@nipa.local>", snow.ID(20).Base36()), body.MessageID)
 	require.Empty(t, body.InReplyTo)
 }
 
@@ -315,21 +316,23 @@ func TestEmailNotifier_ThreadsReplies(t *testing.T) {
 	require.NoError(t, deps.notifier.Notify(context.Background(), event))
 	require.Len(t, captured, 2)
 
-	root := "<nipa-acme-game-mr42@nipa.example.com>"
+	authorRoot := fmt.Sprintf("<nipa-acme-game-mr42-%s@nipa.example.com>", snow.ID(10).Base36())
+	reviewerRoot := fmt.Sprintf("<nipa-acme-game-mr42-%s@nipa.example.com>", snow.ID(20).Base36())
 	byEmail := map[string]*domain.EmailDelivery{}
 	for _, delivery := range captured {
 		byEmail[delivery.Email] = delivery
 	}
 	first, err := mail.DecodeMessage(byEmail["author@example.com"].Body)
 	require.NoError(t, err)
-	require.Equal(t, root, first.MessageID, "a recipient without prior mail gets the root")
+	require.Equal(t, authorRoot, first.MessageID, "a recipient without prior mail gets their own root")
 	require.Empty(t, first.InReplyTo)
 
 	reply, err := mail.DecodeMessage(byEmail["reviewer@example.com"].Body)
 	require.NoError(t, err)
-	require.NotEqual(t, root, reply.MessageID, "a reply gets a unique message id")
-	require.Equal(t, root, reply.InReplyTo)
-	require.Equal(t, []string{root}, reply.References)
+	require.NotEqual(t, reviewerRoot, reply.MessageID, "a reply gets a unique message id")
+	require.Equal(t, reviewerRoot, reply.InReplyTo)
+	require.Equal(t, []string{reviewerRoot}, reply.References)
+	require.NotEqual(t, first.MessageID, reply.MessageID, "distinct emails never share a Message-ID")
 }
 
 func TestEmailNotifier_RecipientSets(t *testing.T) {

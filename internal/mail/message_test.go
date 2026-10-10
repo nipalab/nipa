@@ -26,6 +26,15 @@ func TestParseAddress(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestValidAddress(t *testing.T) {
+	require.True(t, ValidAddress("dev@example.com"))
+	require.True(t, ValidAddress("Dev <dev@example.com>"))
+	require.True(t, ValidAddress(" dev@example.com "))
+	require.False(t, ValidAddress(""))
+	require.False(t, ValidAddress("nipa"))
+	require.False(t, ValidAddress("a b@example.com"))
+}
+
 func TestParseAddresses(t *testing.T) {
 	addrs, err := parseAddresses([]string{"a@example.com", "B <b@example.com>"}, "to")
 	require.NoError(t, err)

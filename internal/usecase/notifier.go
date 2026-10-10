@@ -123,10 +123,11 @@ func (n *EmailNotifier) Notify(ctx context.Context, event NotifyEvent) error {
 	if err != nil {
 		return err
 	}
-	root := n.threadRoot(event)
 	rendered := n.render(event)
 	deliveries := make([]*domain.EmailDelivery, 0, len(recipients))
 	for _, recipient := range recipients {
+		deliveryID := n.node.Generate()
+		root := n.threadRoot(event, recipient.ID)
 		msg := mail.Message{
 			To:      []string{recipient.Email},
 			Subject: rendered.subject,
@@ -134,7 +135,7 @@ func (n *EmailNotifier) Notify(ctx context.Context, event NotifyEvent) error {
 			HTML:    rendered.html,
 		}
 		if _, seen := existing[recipient.ID]; seen {
-			msg.MessageID = n.messageID(event, recipient.ID)
+			msg.MessageID = n.messageID(event, recipient.ID, deliveryID)
 			msg.InReplyTo = root
 			msg.References = []string{root}
 		} else {
@@ -146,7 +147,7 @@ func (n *EmailNotifier) Notify(ctx context.Context, event NotifyEvent) error {
 		}
 		now := n.now()
 		deliveries = append(deliveries, &domain.EmailDelivery{
-			ID:            n.node.Generate(),
+			ID:            deliveryID,
 			Event:         event.Event,
 			ProjectID:     event.ProjectID,
 			UserID:        recipient.ID,
@@ -192,7 +193,7 @@ func (n *EmailNotifier) recipients(ctx context.Context, event NotifyEvent) ([]*d
 			}
 			return nil, err
 		}
-		if user == nil || user.Deleted || !user.NotifyEmail || strings.TrimSpace(user.Email) == "" {
+		if user == nil || user.Deleted || !user.NotifyEmail || !mail.ValidAddress(user.Email) {
 			continue
 		}
 		recipients = append(recipients, user)
@@ -395,14 +396,15 @@ func (n *EmailNotifier) threadKey(event NotifyEvent) string {
 	return fmt.Sprintf("%s/%s/mr%d", event.Envelope.Organization.Slug, event.Envelope.Project.Slug, event.MR.Number)
 }
 
-// threadRoot is the stable Message-ID of the first notification about one
-// merge request; replies reference it.
-func (n *EmailNotifier) threadRoot(event NotifyEvent) string {
-	return fmt.Sprintf("<nipa-%s-%s-mr%d@%s>", event.Envelope.Organization.Slug,
-		event.Envelope.Project.Slug, event.MR.Number, n.messageHost())
-}
-
-func (n *EmailNotifier) messageID(event NotifyEvent, recipient snow.ID) string {
+// threadRoot is the Message-ID of the first notification sent to one
+// recipient about one merge request; replies from that recipient reference it.
+// The recipient is part of the id so distinct emails never share a Message-ID.
+func (n *EmailNotifier) threadRoot(event NotifyEvent, recipient snow.ID) string {
 	return fmt.Sprintf("<nipa-%s-%s-mr%d-%s@%s>", event.Envelope.Organization.Slug,
 		event.Envelope.Project.Slug, event.MR.Number, recipient.Base36(), n.messageHost())
+}
+
+func (n *EmailNotifier) messageID(event NotifyEvent, recipient, delivery snow.ID) string {
+	return fmt.Sprintf("<nipa-%s-%s-mr%d-%s-%s@%s>", event.Envelope.Organization.Slug,
+		event.Envelope.Project.Slug, event.MR.Number, recipient.Base36(), delivery.Base36(), n.messageHost())
 }

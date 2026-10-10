@@ -53,6 +53,12 @@ func parseAddress(raw, field string) (address, error) {
 	return address{Name: parsed.Name, Addr: parsed.Address}, nil
 }
 
+// ValidAddress reports whether raw parses as a single mail address.
+func ValidAddress(raw string) bool {
+	_, err := parseAddress(raw, "recipient")
+	return err == nil
+}
+
 func parseAddresses(raw []string, field string) ([]address, error) {
 	if len(raw) == 0 {
 		return nil, fmt.Errorf("no %s recipients", field)

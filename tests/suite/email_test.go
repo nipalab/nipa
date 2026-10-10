@@ -34,14 +34,14 @@ var _ = Describe("email notifications", func() {
 		Expect(reviewEmail.Text).To(ContainSubstring("requested a review on merge request !1"))
 		Expect(reviewEmail.Text).To(ContainSubstring("/" + orgSlug + "/" + project + "/merges/1"))
 		Expect(reviewEmail.HTML).To(ContainSubstring("href="))
-		Expect(reviewEmail.MessageID).To(ContainSubstring("-mr1@"), "the first contact carries the thread root")
+		Expect(reviewEmail.MessageID).To(MatchRegexp(`-mr1-[0-9a-z]+@`), "the first contact carries the recipient's thread root")
 		Expect(reviewEmail.InReplyTo).To(BeEmpty())
 		Expect(email.countFor(author.email)).To(Equal(0), "the requesting author is not emailed")
 
 		reviewerAPI.addMergeRequestComment(orgSlug, project, 1, "", "looks good")
 		commentEmail := email.waitForSubject(author.email, "New comment")
 		Expect(commentEmail.Text).To(ContainSubstring("commented on merge request !1"))
-		Expect(commentEmail.MessageID).To(ContainSubstring("-mr1@"))
+		Expect(commentEmail.MessageID).To(MatchRegexp(`-mr1-[0-9a-z]+@`))
 		Expect(commentEmail.InReplyTo).To(BeEmpty())
 		Expect(email.countFor(reviewer.email)).To(Equal(1), "the commenter gets no copy of their own comment")
 
