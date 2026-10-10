@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"log/slog"
 
 	"github.com/nipalab/nipa/internal/domain"
 	"google.golang.org/grpc"
@@ -10,6 +9,20 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
+
+// isPublicMethod lists the RPCs that skip JWT authentication: the login calls
+// and the standard gRPC health service.
+func isPublicMethod(method string) bool {
+	switch method {
+	case "/greet.NipaService/LoginWithUsernamePassword",
+		"/greet.NipaService/LoginWithRefreshToken",
+		"/grpc.health.v1.Health/Check",
+		"/grpc.health.v1.Health/Watch":
+		return true
+	default:
+		return false
+	}
+}
 
 type tokenValidator interface {
 	ValidateToken(ctx context.Context, tokenString string) (*domain.Claims, error)
@@ -27,9 +40,7 @@ func NewInterceptor(tokenValidator tokenValidator) *Interceptor {
 
 func (i *Interceptor) JWTUnary() func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
-
-		slog.Info("method", "name", info.FullMethod)
-		if info.FullMethod == "/greet.NipaService/LoginWithUsernamePassword" || info.FullMethod == "/greet.NipaService/LoginWithRefreshToken" || info.FullMethod == "/nipa.AuthService/health" {
+		if isPublicMethod(info.FullMethod) {
 			return handler(ctx, req)
 		}
 
@@ -71,7 +82,7 @@ func (w *wrappedStream) Context() context.Context {
 
 func (i *Interceptor) JWTStream() grpc.StreamServerInterceptor {
 	return func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
-		if info.FullMethod == "/greet.NipaService/LoginWithUsernamePassword" || info.FullMethod == "/greet.NipaService/LoginWithRefreshToken" || info.FullMethod == "/nipa.AuthService/health" {
+		if isPublicMethod(info.FullMethod) {
 			return handler(srv, ss)
 		}
 

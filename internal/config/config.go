@@ -12,6 +12,8 @@ type Config struct {
 	ServerPort             int    `mapstructure:"SERVER_PORT"`
 	JWTKey                 string `mapstructure:"JWT_KEY"`
 	LogLevel               string `mapstructure:"LOG_LEVEL"`
+	LogFormat              string `mapstructure:"LOG_FORMAT"`
+	PprofEnabled           bool   `mapstructure:"PPROF_ENABLED"`
 	SnowflakeNodeID        int64  `mapstructure:"SNOWFLAKE_NODE_ID"`
 	HasherWorkers          int    `mapstructure:"HASHER_WORKERS"`
 	ChunkStorage           string `mapstructure:"CHUNK_STORAGE"`
@@ -58,6 +60,9 @@ func LoadConfig() (*Config, error) {
 
 	v.SetDefault("CHUNK_PRESIGN_TTL_SECONDS", 3600)
 	v.SetDefault("CHUNK_MAX_PAGE_SIZE", 1000)
+	v.SetDefault("LOG_LEVEL", "info")
+	v.SetDefault("LOG_FORMAT", "console")
+	v.SetDefault("PPROF_ENABLED", false)
 
 	if err := v.ReadInConfig(); err != nil {
 		return nil, err

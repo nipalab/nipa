@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 	"strings"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/nipalab/nipa/internal/config"
 	"github.com/nipalab/nipa/internal/hasher"
 	"github.com/nipalab/nipa/internal/mail"
+	"github.com/nipalab/nipa/internal/obs"
 	"github.com/nipalab/nipa/internal/repository/dbtx"
 	"github.com/nipalab/nipa/internal/serverapp"
 	"github.com/nipalab/nipa/internal/snow"
@@ -26,6 +28,8 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+
+	obs.Setup(cfg.LogLevel, cfg.LogFormat, "nipad-ee", os.Stderr)
 
 	dbConn, err := eedb.Open(cfg.DatabaseDSN)
 	if err != nil {
@@ -159,7 +163,7 @@ func main() {
 	if emailDispatcher != nil {
 		dispatchers = append(dispatchers, emailDispatcher)
 	}
-	if err := serverapp.Run(cfg, reg, dispatchers...); err != nil {
+	if err := serverapp.Run(cfg, reg, dispatchers, serverapp.WithReadiness(dbConn.PingContext)); err != nil {
 		panic(err)
 	}
 }

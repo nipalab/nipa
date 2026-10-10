@@ -4,7 +4,12 @@ SERVER_PORT: 6745
 # enterprise `nipad-ee`.
 DATABASE_DSN: nipa.db
 JWT_KEY: secret
+# Logging: level is debug|info|warn|error, format is console|json.
 LOG_LEVEL: debug
+LOG_FORMAT: console
+# Serve net/http/pprof on /debug/pprof/ of the main port; keep off outside
+# trusted networks.
+PPROF_ENABLED: false
 SNOWFLAKE_NODE_ID: 0
 HASHER_WORKERS: 4
 # Chunk backend. The free `nipad` supports `local` only; the enterprise

@@ -47,7 +47,8 @@ func TestInterceptor_PublicRoutes(t *testing.T) {
 	publicRoutes := []string{
 		"/greet.NipaService/LoginWithUsernamePassword",
 		"/greet.NipaService/LoginWithRefreshToken",
-		"/nipa.AuthService/health",
+		"/grpc.health.v1.Health/Check",
+		"/grpc.health.v1.Health/Watch",
 	}
 
 	for _, route := range publicRoutes {
@@ -166,7 +167,8 @@ func TestStreamInterceptor_PublicRoutes(t *testing.T) {
 	publicRoutes := []string{
 		"/greet.NipaService/LoginWithUsernamePassword",
 		"/greet.NipaService/LoginWithRefreshToken",
-		"/nipa.AuthService/health",
+		"/grpc.health.v1.Health/Check",
+		"/grpc.health.v1.Health/Watch",
 	}
 
 	for _, route := range publicRoutes {
