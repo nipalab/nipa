@@ -163,8 +163,11 @@ through `usecase.EmailDelivery`: `GET .../emails/deliveries`
 (`state`/`after`/`limit` keyset, `next_cursor`) and
 `POST .../emails/deliveries/{id}/redeliver` (delivered/failed only), surfaced
 by the SPA project settings "Email deliveries" tab. The harness runs `nipad`
-with `EMAIL_SENDER=sendgrid` pointed at an in-suite receiver (and 1s
-retry/poll knobs) and covers opt-out, failed retries and redelivery.
+with `EMAIL_SENDER` set to `sendgrid` or `http` (via
+`NIPA_TEST_EMAIL_TRANSPORT`, one transport per edition in CI) pointed at an
+in-suite receiver (and 1s retry/poll knobs) and covers opt-out, participant
+emails, thread replies, synchronized/check/merge events, failed retries and
+redelivery.
 
 Flow for organization creation (`POST /api/v1/orgs`, "New organization" dialog
 on the SPA home page): any authenticated user creates an org; `usecase.Org.Create`
