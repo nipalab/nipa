@@ -19,6 +19,7 @@ hint to use `nipad-ee`.
 ee/
   db/                        postgres opener + migration runner
     migrations/postgres/     single consolidated schema + embed.FS
+  nodelease/                 per-instance snowflake node id leases
   repository/postgres/       13 repositories (the server repository surface)
     queries/                 sqlc inputs
     sqlc/                    generated code (excluded from Sonar)
@@ -44,6 +45,27 @@ ee/
   owner membership, matching `db/migrations/sqlite`.
 - There is one consolidated `000001_init_schema` (no postgres deployments
   exist); future changes add `make migrate-create` pairs.
+
+## Snowflake node ids (multi-pod)
+
+App-generated ids embed an 8-bit node id (0–255) in `internal/snow`; two
+instances sharing a node id would generate colliding ids. `nipad-ee` resolves
+the node id as follows:
+
+- `SNOWFLAKE_NODE_ID` set (env, `config.yaml` or `.env`): that static id is
+  used as-is.
+- unset: the instance claims a free or expired id in `snowflake_node_leases`
+  (`ee/nodelease`) and renews the lease every `SNOWFLAKE_LEASE_TTL_SECONDS / 3`
+  (default TTL 60s) until shutdown, when the row is released. A crashed
+  instance's id becomes reclaimable once the TTL expires; if a lease cannot be
+  renewed before it expires the process exits and re-claims on restart instead
+  of risking collisions. Startup fails when all 256 ids are held by live
+  instances.
+- The free `nipad` (SQLite, local chunks) is single-instance by design and
+  keeps using `SNOWFLAKE_NODE_ID` (default 0).
+
+All lease expiry math runs on the database clock (`now()`), so instance clock
+skew does not matter.
 
 ## Queries and sqlc
 
@@ -90,7 +112,11 @@ made the old `MAX(number)+1` race invisible).
   against real FKs, so fixtures seed real trees/commits.
 - `ee/db` has an env-agnostic `MigrateSuite`; `ee/e2e` boots postgres + minio
   and runs the real client through login → clone → push (S3 presigned direct
-  upload) → clone → tag.
+  upload) → clone → tag. A second e2e test leases node ids for two in-process
+  instances against the shared postgres and pushes through both.
+- `ee/nodelease` has its own testcontainers suite (fresh schema per test)
+  covering distinct ids, expired-lease steal, exhaustion, renew, release and
+  the lost-lease callback.
 - Overrides for service-container CI: `NIPA_TEST_POSTGRES_DSN`,
   `NIPA_TEST_S3_ENDPOINT`, `NIPA_TEST_S3_IMAGE` (default
   `docker.io/pgsty/minio:latest`).

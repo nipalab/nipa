@@ -272,6 +272,13 @@ type RefreshToken struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+type SnowflakeNodeLease struct {
+	NodeID     int64     `json:"node_id"`
+	Holder     string    `json:"holder"`
+	AcquiredAt time.Time `json:"acquired_at"`
+	ExpiresAt  time.Time `json:"expires_at"`
+}
+
 type Tag struct {
 	ID        int64     `json:"id"`
 	ProjectID int64     `json:"project_id"`

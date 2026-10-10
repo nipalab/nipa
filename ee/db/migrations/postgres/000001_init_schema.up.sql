@@ -426,6 +426,17 @@ CREATE INDEX idx_email_deliveries_due ON email_deliveries (state, next_attempt_a
 
 CREATE INDEX idx_email_deliveries_project ON email_deliveries (project_id, id DESC);
 
+-- Snowflake node leases: when SNOWFLAKE_NODE_ID is not set, each server
+-- instance claims a free (or expired) node id here and renews it until
+-- shutdown, so every instance of a multi-pod deployment generates ids with a
+-- distinct node.
+CREATE TABLE snowflake_node_leases (
+    node_id     BIGINT PRIMARY KEY CHECK (node_id BETWEEN 0 AND 255),
+    holder      TEXT NOT NULL,
+    acquired_at TIMESTAMPTZ NOT NULL,
+    expires_at  TIMESTAMPTZ NOT NULL
+);
+
 INSERT INTO users (id, name, email, password, is_super_admin) VALUES (1, 'Super Admin', 'nipa', '$2a$10$ErgrBnd6ahfz6eZkVzfnlu6dcE4T0HUcxvAjwmI0ItFsMReHVCdYO', TRUE);
 INSERT INTO organizations (id, slug, name, created_by_user_id) VALUES (1, 'default', 'Default Organization', 1);
 INSERT INTO projects (id, org_id, slug, name) VALUES (1, 1, 'default', 'Default Project');

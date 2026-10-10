@@ -475,6 +475,10 @@ Direct: `go build ./...`, `go vet ./...`, `go test ./...`.
   existing import ordering (stdlib, third-party, then `github.com/nipalab/nipa/*`).
 - **IDs**: server-side records use `github.com/nipalab/nipa/internal/snow`
   (`snow.ID`, `.Base36()` for wire, `.Int64()`/`snow.ParseBase36` for DB/proto).
+  The 8-bit node id comes from `SNOWFLAKE_NODE_ID`; when unset `nipad-ee` leases
+  a unique one per instance from `snowflake_node_leases` (`ee/nodelease`,
+  renewed until shutdown, exit on lost lease) so multi-pod never collides,
+  while the free `nipad` stays single-instance with the static default 0.
   Client localrepo tables do NOT use snow IDs.
 - **Errors**: `internal/domain.Error` with HTTP-style `Code` + `Message` +
   `InternalMessage` + `Cause`. Constructions: `NewErrorNotFound(msg)`,

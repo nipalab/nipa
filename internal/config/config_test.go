@@ -17,7 +17,7 @@ func writeFile(t *testing.T, dir, name, content string) {
 // otherwise pick up and override file-based values.
 func clearConfigEnv(t *testing.T) {
 	t.Helper()
-	for _, k := range []string{"DATABASE_DSN", "SERVER_ADDRESS", "SERVER_PORT", "JWT_KEY", "LOG_LEVEL", "LOG_FORMAT", "PPROF_ENABLED", "METRICS_ENABLED", "HASHER_WORKERS", "SNOWFLAKE_NODE_ID", "CHUNK_STORAGE", "CHUNK_STORAGE_DIR", "CHUNK_S3_ENDPOINT", "CHUNK_S3_REGION", "CHUNK_S3_BUCKET", "CHUNK_S3_PREFIX", "CHUNK_S3_ACCESS_KEY_ID", "CHUNK_S3_SECRET_ACCESS_KEY", "CHUNK_URL_SIGNING_KEY", "CHUNK_PRESIGN_TTL_SECONDS", "CHUNK_MAX_PAGE_SIZE", "EMAIL_SENDER", "EMAIL_FROM", "EMAIL_REPLY_TO", "EMAIL_BASE_URL", "EMAIL_TIMEOUT_SECONDS", "EMAIL_MAX_ATTEMPTS", "EMAIL_RETRY_BACKOFF_SECONDS", "EMAIL_POLL_SECONDS", "EMAIL_SMTP_HOST", "EMAIL_SMTP_PORT", "EMAIL_SMTP_USERNAME", "EMAIL_SMTP_PASSWORD", "EMAIL_SMTP_TLS", "EMAIL_SMTP_INSECURE_SKIP_VERIFY", "EMAIL_SENDGRID_API_KEY", "EMAIL_SENDGRID_ENDPOINT", "EMAIL_HTTP_ENDPOINT", "EMAIL_HTTP_METHOD", "EMAIL_HTTP_HEADERS", "EMAIL_HTTP_CONTENT_TYPE", "EMAIL_HTTP_BODY_TEMPLATE"} {
+	for _, k := range []string{"DATABASE_DSN", "SERVER_ADDRESS", "SERVER_PORT", "JWT_KEY", "LOG_LEVEL", "LOG_FORMAT", "PPROF_ENABLED", "METRICS_ENABLED", "HASHER_WORKERS", "SNOWFLAKE_NODE_ID", "SNOWFLAKE_LEASE_TTL_SECONDS", "CHUNK_STORAGE", "CHUNK_STORAGE_DIR", "CHUNK_S3_ENDPOINT", "CHUNK_S3_REGION", "CHUNK_S3_BUCKET", "CHUNK_S3_PREFIX", "CHUNK_S3_ACCESS_KEY_ID", "CHUNK_S3_SECRET_ACCESS_KEY", "CHUNK_URL_SIGNING_KEY", "CHUNK_PRESIGN_TTL_SECONDS", "CHUNK_MAX_PAGE_SIZE", "EMAIL_SENDER", "EMAIL_FROM", "EMAIL_REPLY_TO", "EMAIL_BASE_URL", "EMAIL_TIMEOUT_SECONDS", "EMAIL_MAX_ATTEMPTS", "EMAIL_RETRY_BACKOFF_SECONDS", "EMAIL_POLL_SECONDS", "EMAIL_SMTP_HOST", "EMAIL_SMTP_PORT", "EMAIL_SMTP_USERNAME", "EMAIL_SMTP_PASSWORD", "EMAIL_SMTP_TLS", "EMAIL_SMTP_INSECURE_SKIP_VERIFY", "EMAIL_SENDGRID_API_KEY", "EMAIL_SENDGRID_ENDPOINT", "EMAIL_HTTP_ENDPOINT", "EMAIL_HTTP_METHOD", "EMAIL_HTTP_HEADERS", "EMAIL_HTTP_CONTENT_TYPE", "EMAIL_HTTP_BODY_TEMPLATE"} {
 		if old, ok := os.LookupEnv(k); ok {
 			_ = os.Unsetenv(k)
 			t.Cleanup(func() { _ = os.Setenv(k, old) })
@@ -131,6 +131,38 @@ func TestLoadConfig_ChunkURLDefaults(t *testing.T) {
 	require.Equal(t, "console", cfg.LogFormat)
 	require.False(t, cfg.PprofEnabled)
 	require.True(t, cfg.MetricsEnabled)
+	require.Equal(t, 60, cfg.SnowflakeLeaseTTLSecs)
+	require.False(t, cfg.SnowflakeNodeIDSet)
+}
+
+func TestLoadConfig_SnowflakeNodeIDFromEnv(t *testing.T) {
+	clearConfigEnv(t)
+
+	dir := t.TempDir()
+	writeFile(t, dir, "config.yaml", "DATABASE_DSN: nipa.db\n")
+	t.Chdir(dir)
+
+	t.Setenv("SNOWFLAKE_NODE_ID", "3")
+	t.Setenv("SNOWFLAKE_LEASE_TTL_SECONDS", "30")
+
+	cfg, err := LoadConfig()
+	require.NoError(t, err)
+	require.Equal(t, int64(3), cfg.SnowflakeNodeID)
+	require.True(t, cfg.SnowflakeNodeIDSet)
+	require.Equal(t, 30, cfg.SnowflakeLeaseTTLSecs)
+}
+
+func TestLoadConfig_SnowflakeNodeIDFromYAML(t *testing.T) {
+	clearConfigEnv(t)
+
+	dir := t.TempDir()
+	writeFile(t, dir, "config.yaml", "DATABASE_DSN: nipa.db\nSNOWFLAKE_NODE_ID: 0\n")
+	t.Chdir(dir)
+
+	cfg, err := LoadConfig()
+	require.NoError(t, err)
+	require.Equal(t, int64(0), cfg.SnowflakeNodeID)
+	require.True(t, cfg.SnowflakeNodeIDSet)
 }
 
 func TestLoadConfig_EnvFileOverridesYAML(t *testing.T) {

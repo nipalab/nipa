@@ -16,6 +16,8 @@ type Config struct {
 	PprofEnabled           bool   `mapstructure:"PPROF_ENABLED"`
 	MetricsEnabled         bool   `mapstructure:"METRICS_ENABLED"`
 	SnowflakeNodeID        int64  `mapstructure:"SNOWFLAKE_NODE_ID"`
+	SnowflakeNodeIDSet     bool   `mapstructure:"-"`
+	SnowflakeLeaseTTLSecs  int    `mapstructure:"SNOWFLAKE_LEASE_TTL_SECONDS"`
 	HasherWorkers          int    `mapstructure:"HASHER_WORKERS"`
 	ChunkStorage           string `mapstructure:"CHUNK_STORAGE"`
 	ChunkStorageDir        string `mapstructure:"CHUNK_STORAGE_DIR"`
@@ -61,6 +63,7 @@ func LoadConfig() (*Config, error) {
 
 	v.SetDefault("CHUNK_PRESIGN_TTL_SECONDS", 3600)
 	v.SetDefault("CHUNK_MAX_PAGE_SIZE", 1000)
+	v.SetDefault("SNOWFLAKE_LEASE_TTL_SECONDS", 60)
 	v.SetDefault("LOG_LEVEL", "info")
 	v.SetDefault("LOG_FORMAT", "console")
 	v.SetDefault("PPROF_ENABLED", false)
@@ -75,11 +78,15 @@ func LoadConfig() (*Config, error) {
 	_ = v.MergeInConfig()
 
 	v.AutomaticEnv()
+	if err := v.BindEnv("SNOWFLAKE_NODE_ID"); err != nil {
+		return nil, fmt.Errorf("bind SNOWFLAKE_NODE_ID: %w", err)
+	}
 
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("unable to parse config: %w", err)
 	}
+	cfg.SnowflakeNodeIDSet = v.IsSet("SNOWFLAKE_NODE_ID")
 
 	return &cfg, nil
 }

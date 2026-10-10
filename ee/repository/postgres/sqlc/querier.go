@@ -130,6 +130,9 @@ type Querier interface {
 	MergeRequestThreadSetReview(ctx context.Context, arg MergeRequestThreadSetReviewParams) error
 	MergeRequestUpdate(ctx context.Context, arg MergeRequestUpdateParams) (MergeRequest, error)
 	MergeRequestUpdateStatus(ctx context.Context, arg MergeRequestUpdateStatusParams) error
+	NodeLeaseClaim(ctx context.Context, arg NodeLeaseClaimParams) (int64, error)
+	NodeLeaseRelease(ctx context.Context, arg NodeLeaseReleaseParams) error
+	NodeLeaseRenew(ctx context.Context, arg NodeLeaseRenewParams) (int64, error)
 	OrgMemberCountByRole(ctx context.Context, arg OrgMemberCountByRoleParams) (int64, error)
 	OrgMemberDelete(ctx context.Context, arg OrgMemberDeleteParams) error
 	OrgMemberGet(ctx context.Context, arg OrgMemberGetParams) (string, error)
