@@ -54,6 +54,7 @@ type Querier interface {
 	EmailDeliveryReclaimStale(ctx context.Context, staleBefore sql.NullTime) (int64, error)
 	EmailDeliveryScheduleRetry(ctx context.Context, arg EmailDeliveryScheduleRetryParams) error
 	EmailDeliverySweep(ctx context.Context, before time.Time) (int64, error)
+	EmailDeliveryThreadRecipients(ctx context.Context, arg EmailDeliveryThreadRecipientsParams) ([]int64, error)
 	FileChunkInsert(ctx context.Context, arg FileChunkInsertParams) error
 	FileInsert(ctx context.Context, arg FileInsertParams) (int64, error)
 	FileListByTree(ctx context.Context, treeID int64) ([]File, error)
@@ -82,6 +83,7 @@ type Querier interface {
 	MergeRequestAssigneeAdd(ctx context.Context, arg MergeRequestAssigneeAddParams) error
 	MergeRequestAssigneeClear(ctx context.Context, mergeRequestID int64) error
 	MergeRequestAssigneeList(ctx context.Context, projectID int64) ([]MergeRequestAssigneeListRow, error)
+	MergeRequestAssigneeListByMergeRequest(ctx context.Context, mergeRequestID int64) ([]MergeRequestAssigneeListByMergeRequestRow, error)
 	MergeRequestCheckList(ctx context.Context, arg MergeRequestCheckListParams) ([]MergeRequestCheckListRow, error)
 	MergeRequestCheckUpsert(ctx context.Context, arg MergeRequestCheckUpsertParams) (MergeRequestCheck, error)
 	MergeRequestCommentCreate(ctx context.Context, arg MergeRequestCommentCreateParams) (MergeRequestComment, error)

@@ -20,10 +20,13 @@ const notificationRecipientLimit = 200
 //go:generate go run go.uber.org/mock/mockgen -source=$GOFILE -destination=notifier_mock_test.go -package=usecase
 type notifierOutbox interface {
 	Enqueue(ctx context.Context, deliveries []*domain.EmailDelivery) error
+	// ThreadRecipients returns the users that already received a delivery for
+	// the thread key.
+	ThreadRecipients(ctx context.Context, projectID snow.ID, threadKey string) (map[snow.ID]struct{}, error)
 }
 
 type notifierMRRepository interface {
-	ListAssignees(ctx context.Context, projectID snow.ID) (map[int64][]domain.ReviewActor, error)
+	ListAssigneesByMergeRequest(ctx context.Context, mergeRequestID int64) ([]domain.ReviewActor, error)
 }
 
 type notifierReviewRepository interface {
@@ -115,18 +118,29 @@ func (n *EmailNotifier) Notify(ctx context.Context, event NotifyEvent) error {
 	if len(recipients) == 0 {
 		return nil
 	}
+	threadKey := n.threadKey(event)
+	existing, err := n.outbox.ThreadRecipients(ctx, event.ProjectID, threadKey)
+	if err != nil {
+		return err
+	}
+	root := n.threadRoot(event)
 	rendered := n.render(event)
 	deliveries := make([]*domain.EmailDelivery, 0, len(recipients))
 	for _, recipient := range recipients {
-		body, err := mail.EncodeMessage(mail.Message{
-			To:         []string{recipient.Email},
-			Subject:    rendered.subject,
-			Text:       rendered.text,
-			HTML:       rendered.html,
-			MessageID:  n.messageID(event, recipient.ID),
-			InReplyTo:  n.threadRoot(event),
-			References: []string{n.threadRoot(event)},
-		})
+		msg := mail.Message{
+			To:      []string{recipient.Email},
+			Subject: rendered.subject,
+			Text:    rendered.text,
+			HTML:    rendered.html,
+		}
+		if _, seen := existing[recipient.ID]; seen {
+			msg.MessageID = n.messageID(event, recipient.ID)
+			msg.InReplyTo = root
+			msg.References = []string{root}
+		} else {
+			msg.MessageID = root
+		}
+		body, err := mail.EncodeMessage(msg)
 		if err != nil {
 			return err
 		}
@@ -138,6 +152,7 @@ func (n *EmailNotifier) Notify(ctx context.Context, event NotifyEvent) error {
 			UserID:        recipient.ID,
 			Email:         recipient.Email,
 			Subject:       rendered.subject,
+			ThreadKey:     threadKey,
 			Body:          body,
 			State:         domain.EmailDeliveryPending,
 			NextAttemptAt: &now,
@@ -199,14 +214,14 @@ func (n *EmailNotifier) recipientIDs(ctx context.Context, event NotifyEvent) ([]
 			return nil, err
 		}
 		ids = append(ids, reviewers...)
-		assignees, err := n.assigneeIDs(ctx, event.ProjectID, mr)
+		assignees, err := n.assigneeIDs(ctx, mr)
 		if err != nil {
 			return nil, err
 		}
 		ids = append(ids, assignees...)
 	case domain.WebhookEventMRReviewSubmitted:
 		ids = append(ids, mr.CreatedBy)
-		assignees, err := n.assigneeIDs(ctx, event.ProjectID, mr)
+		assignees, err := n.assigneeIDs(ctx, mr)
 		if err != nil {
 			return nil, err
 		}
@@ -223,7 +238,7 @@ func (n *EmailNotifier) recipientIDs(ctx context.Context, event NotifyEvent) ([]
 			return nil, err
 		}
 		ids = append(ids, reviewers...)
-		assignees, err := n.assigneeIDs(ctx, event.ProjectID, mr)
+		assignees, err := n.assigneeIDs(ctx, mr)
 		if err != nil {
 			return nil, err
 		}
@@ -240,7 +255,7 @@ func (n *EmailNotifier) recipientIDs(ctx context.Context, event NotifyEvent) ([]
 			return nil, err
 		}
 		ids = append(ids, reviewers...)
-		assignees, err := n.assigneeIDs(ctx, event.ProjectID, mr)
+		assignees, err := n.assigneeIDs(ctx, mr)
 		if err != nil {
 			return nil, err
 		}
@@ -252,7 +267,7 @@ func (n *EmailNotifier) recipientIDs(ctx context.Context, event NotifyEvent) ([]
 			return nil, err
 		}
 		ids = append(ids, reviewers...)
-		assignees, err := n.assigneeIDs(ctx, event.ProjectID, mr)
+		assignees, err := n.assigneeIDs(ctx, mr)
 		if err != nil {
 			return nil, err
 		}
@@ -269,7 +284,7 @@ func (n *EmailNotifier) recipientIDs(ctx context.Context, event NotifyEvent) ([]
 			return nil, err
 		}
 		ids = append(ids, reviewers...)
-		assignees, err := n.assigneeIDs(ctx, event.ProjectID, mr)
+		assignees, err := n.assigneeIDs(ctx, mr)
 		if err != nil {
 			return nil, err
 		}
@@ -290,12 +305,11 @@ func (n *EmailNotifier) reviewerIDs(ctx context.Context, mr *domain.MergeRequest
 	return ids, nil
 }
 
-func (n *EmailNotifier) assigneeIDs(ctx context.Context, projectID snow.ID, mr *domain.MergeRequest) ([]snow.ID, error) {
-	assignees, err := n.mrs.ListAssignees(ctx, projectID)
+func (n *EmailNotifier) assigneeIDs(ctx context.Context, mr *domain.MergeRequest) ([]snow.ID, error) {
+	actors, err := n.mrs.ListAssigneesByMergeRequest(ctx, mr.ID)
 	if err != nil {
 		return nil, err
 	}
-	actors := assignees[mr.Number]
 	ids := make([]snow.ID, 0, len(actors))
 	for _, actor := range actors {
 		ids = append(ids, actor.UserID)
@@ -376,8 +390,13 @@ func (n *EmailNotifier) messageHost() string {
 	return "nipa.local"
 }
 
-// threadRoot is the stable Message-ID every notification about one merge
-// request references, so mail clients group the conversation.
+// threadKey identifies the outbox thread of one merge request.
+func (n *EmailNotifier) threadKey(event NotifyEvent) string {
+	return fmt.Sprintf("%s/%s/mr%d", event.Envelope.Organization.Slug, event.Envelope.Project.Slug, event.MR.Number)
+}
+
+// threadRoot is the stable Message-ID of the first notification about one
+// merge request; replies reference it.
 func (n *EmailNotifier) threadRoot(event NotifyEvent) string {
 	return fmt.Sprintf("<nipa-%s-%s-mr%d@%s>", event.Envelope.Organization.Slug,
 		event.Envelope.Project.Slug, event.MR.Number, n.messageHost())

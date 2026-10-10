@@ -41,6 +41,7 @@ func (r *EmailRepository) Enqueue(ctx context.Context, deliveries []*domain.Emai
 				UserID:        delivery.UserID.Int64(),
 				Email:         delivery.Email,
 				Subject:       delivery.Subject,
+				ThreadKey:     delivery.ThreadKey,
 				Body:          delivery.Body,
 				State:         delivery.State,
 				NextAttemptAt: timePtrToNullTime(next),
@@ -59,6 +60,23 @@ func (r *EmailRepository) Get(ctx context.Context, id snow.ID) (*domain.EmailDel
 		return nil, handleError(err)
 	}
 	return toDomainEmailDelivery(row), nil
+}
+
+// ThreadRecipients returns the users that already received a delivery for the
+// thread key, so the notifier can reference the thread root only in replies.
+func (r *EmailRepository) ThreadRecipients(ctx context.Context, projectID snow.ID, threadKey string) (map[snow.ID]struct{}, error) {
+	rows, err := r.queries.EmailDeliveryThreadRecipients(ctx, sqlcPostgres.EmailDeliveryThreadRecipientsParams{
+		ProjectID: projectID.Int64(),
+		ThreadKey: threadKey,
+	})
+	if err != nil {
+		return nil, handleError(err)
+	}
+	recipients := make(map[snow.ID]struct{}, len(rows))
+	for _, id := range rows {
+		recipients[snow.ID(id)] = struct{}{}
+	}
+	return recipients, nil
 }
 
 // ClaimDue reclaims stale sending rows and claims the due pending rows for
@@ -122,6 +140,7 @@ func toDomainEmailDelivery(row sqlcPostgres.EmailDelivery) *domain.EmailDelivery
 		UserID:        snow.ID(row.UserID),
 		Email:         row.Email,
 		Subject:       row.Subject,
+		ThreadKey:     row.ThreadKey,
 		Body:          row.Body,
 		State:         row.State,
 		Attempts:      row.Attempts,

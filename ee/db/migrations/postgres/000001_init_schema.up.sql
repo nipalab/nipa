@@ -409,6 +409,7 @@ CREATE TABLE email_deliveries (
     user_id         BIGINT NOT NULL,
     email           TEXT NOT NULL,
     subject         TEXT NOT NULL DEFAULT '',
+    thread_key      TEXT NOT NULL DEFAULT '',
     body            BYTEA NOT NULL,
     state           TEXT NOT NULL DEFAULT 'pending',
     attempts        INTEGER NOT NULL DEFAULT 0,

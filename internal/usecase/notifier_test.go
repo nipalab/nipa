@@ -101,8 +101,8 @@ func TestEmailNotifier_CommentRecipients(t *testing.T) {
 
 	deps.reviews.EXPECT().ListReviewRequests(gomock.Any(), int64(5)).
 		Return([]*domain.MergeRequestReviewRequest{{Reviewer: domain.ReviewActor{UserID: 20}}}, nil)
-	deps.mrs.EXPECT().ListAssignees(gomock.Any(), snow.ID(1)).
-		Return(map[int64][]domain.ReviewActor{42: {{UserID: 30}}}, nil)
+	deps.mrs.EXPECT().ListAssigneesByMergeRequest(gomock.Any(), int64(5)).
+		Return([]domain.ReviewActor{{UserID: 30}}, nil)
 	deps.reviews.EXPECT().ListComments(gomock.Any(), int64(5)).
 		Return([]*domain.MergeRequestComment{
 			{User: domain.ReviewActor{UserID: 40}},
@@ -119,6 +119,7 @@ func TestEmailNotifier_CommentRecipients(t *testing.T) {
 		Return(testNotifierUser(40, "commenter@example.com"), nil)
 
 	var captured []*domain.EmailDelivery
+	deps.outbox.EXPECT().ThreadRecipients(gomock.Any(), snow.ID(1), "acme/game/mr42").Return(nil, nil)
 	deps.outbox.EXPECT().Enqueue(gomock.Any(), gomock.Any()).
 		DoAndReturn(func(_ context.Context, deliveries []*domain.EmailDelivery) error {
 			captured = deliveries
@@ -151,9 +152,12 @@ func TestEmailNotifier_CommentRecipients(t *testing.T) {
 	require.Contains(t, body.Text, "alice commented on merge request !42 \"Fix textures\" in acme/game.")
 	require.Contains(t, body.Text, "https://nipa.example.com/acme/game/merges/42")
 	require.Contains(t, body.HTML, `href="https://nipa.example.com/acme/game/merges/42"`)
-	require.Contains(t, body.MessageID, "@nipa.example.com>")
-	require.Equal(t, "<nipa-acme-game-mr42@nipa.example.com>", body.InReplyTo)
-	require.Equal(t, []string{"<nipa-acme-game-mr42@nipa.example.com>"}, body.References)
+	require.Equal(t, "<nipa-acme-game-mr42@nipa.example.com>", body.MessageID, "the first contact carries the thread root")
+	require.Empty(t, body.InReplyTo)
+	require.Empty(t, body.References)
+	for _, delivery := range captured {
+		require.Equal(t, "acme/game/mr42", delivery.ThreadKey)
+	}
 }
 
 func TestEmailNotifier_SkipsActorAndUndeliverableUsers(t *testing.T) {
@@ -163,8 +167,8 @@ func TestEmailNotifier_SkipsActorAndUndeliverableUsers(t *testing.T) {
 
 	deps.reviews.EXPECT().ListReviewRequests(gomock.Any(), int64(5)).
 		Return([]*domain.MergeRequestReviewRequest{{Reviewer: domain.ReviewActor{UserID: 20}}}, nil)
-	deps.mrs.EXPECT().ListAssignees(gomock.Any(), snow.ID(1)).
-		Return(map[int64][]domain.ReviewActor{42: {{UserID: 30}}}, nil)
+	deps.mrs.EXPECT().ListAssigneesByMergeRequest(gomock.Any(), int64(5)).
+		Return([]domain.ReviewActor{{UserID: 30}}, nil)
 	deps.reviews.EXPECT().ListComments(gomock.Any(), int64(5)).
 		Return([]*domain.MergeRequestComment{
 			{User: domain.ReviewActor{UserID: 40}},
@@ -197,9 +201,10 @@ func TestEmailNotifier_CheckEvent(t *testing.T) {
 	failed := testNotifyEvent(domain.WebhookEventMRCheckReported)
 	failed.Check = &domain.MergeRequestCheck{Name: "build", State: domain.MergeRequestCheckFailed}
 	deps.reviews.EXPECT().ListReviewRequests(gomock.Any(), int64(5)).Return(nil, nil)
-	deps.mrs.EXPECT().ListAssignees(gomock.Any(), snow.ID(1)).Return(nil, nil)
+	deps.mrs.EXPECT().ListAssigneesByMergeRequest(gomock.Any(), int64(5)).Return(nil, nil)
 	deps.users.EXPECT().GetByID(gomock.Any(), snow.ID(10)).
 		Return(testNotifierUser(10, "author@example.com"), nil)
+	deps.outbox.EXPECT().ThreadRecipients(gomock.Any(), snow.ID(1), "acme/game/mr42").Return(nil, nil)
 	deps.outbox.EXPECT().Enqueue(gomock.Any(), gomock.Any()).
 		DoAndReturn(func(_ context.Context, deliveries []*domain.EmailDelivery) error {
 			require.Len(t, deliveries, 1)
@@ -221,12 +226,13 @@ func TestEmailNotifier_RecipientLimit(t *testing.T) {
 		})
 	}
 	deps.reviews.EXPECT().ListReviewRequests(gomock.Any(), int64(5)).Return(requests, nil)
-	deps.mrs.EXPECT().ListAssignees(gomock.Any(), snow.ID(1)).Return(nil, nil)
+	deps.mrs.EXPECT().ListAssigneesByMergeRequest(gomock.Any(), int64(5)).Return(nil, nil)
 	deps.users.EXPECT().GetByID(gomock.Any(), gomock.Any()).
 		DoAndReturn(func(_ context.Context, id snow.ID) (*domain.User, error) {
 			return testNotifierUser(id, fmt.Sprintf("user%d@example.com", id)), nil
 		}).AnyTimes()
 
+	deps.outbox.EXPECT().ThreadRecipients(gomock.Any(), snow.ID(1), "acme/game/mr42").Return(nil, nil)
 	deps.outbox.EXPECT().Enqueue(gomock.Any(), gomock.Any()).
 		DoAndReturn(func(_ context.Context, deliveries []*domain.EmailDelivery) error {
 			require.Len(t, deliveries, notificationRecipientLimit)
@@ -242,9 +248,10 @@ func TestEmailNotifier_EnqueueError(t *testing.T) {
 
 	deps.reviews.EXPECT().ListReviewRequests(gomock.Any(), int64(5)).
 		Return([]*domain.MergeRequestReviewRequest{{Reviewer: domain.ReviewActor{UserID: 20}}}, nil)
-	deps.mrs.EXPECT().ListAssignees(gomock.Any(), snow.ID(1)).Return(nil, nil)
+	deps.mrs.EXPECT().ListAssigneesByMergeRequest(gomock.Any(), int64(5)).Return(nil, nil)
 	deps.users.EXPECT().GetByID(gomock.Any(), snow.ID(20)).
 		Return(testNotifierUser(20, "reviewer@example.com"), nil)
+	deps.outbox.EXPECT().ThreadRecipients(gomock.Any(), snow.ID(1), "acme/game/mr42").Return(nil, nil)
 	deps.outbox.EXPECT().Enqueue(gomock.Any(), gomock.Any()).Return(errors.New("db down"))
 
 	err := deps.notifier.Notify(context.Background(), event)
@@ -259,13 +266,14 @@ func TestEmailNotifier_NoBaseURL(t *testing.T) {
 	event.MR.CreatedBy = 0
 
 	deps.reviews.EXPECT().ListReviewRequests(gomock.Any(), int64(5)).Return(nil, nil)
-	deps.mrs.EXPECT().ListAssignees(gomock.Any(), snow.ID(1)).Return(nil, nil)
+	deps.mrs.EXPECT().ListAssigneesByMergeRequest(gomock.Any(), int64(5)).Return(nil, nil)
 	deps.reviews.EXPECT().ListComments(gomock.Any(), int64(5)).
 		Return([]*domain.MergeRequestComment{{User: domain.ReviewActor{UserID: 20}}}, nil)
 	deps.users.EXPECT().GetByID(gomock.Any(), snow.ID(20)).
 		Return(testNotifierUser(20, "reviewer@example.com"), nil)
 
 	var captured []*domain.EmailDelivery
+	deps.outbox.EXPECT().ThreadRecipients(gomock.Any(), snow.ID(1), "acme/game/mr42").Return(nil, nil)
 	deps.outbox.EXPECT().Enqueue(gomock.Any(), gomock.Any()).
 		DoAndReturn(func(_ context.Context, deliveries []*domain.EmailDelivery) error {
 			captured = deliveries
@@ -278,7 +286,50 @@ func TestEmailNotifier_NoBaseURL(t *testing.T) {
 	require.NoError(t, err)
 	require.NotContains(t, body.Text, "http")
 	require.NotContains(t, body.HTML, "href")
-	require.Contains(t, body.MessageID, "@nipa.local>")
+	require.Equal(t, "<nipa-acme-game-mr42@nipa.local>", body.MessageID)
+	require.Empty(t, body.InReplyTo)
+}
+
+func TestEmailNotifier_ThreadsReplies(t *testing.T) {
+	deps := newNotifierDeps(t)
+	event := testNotifyEvent(domain.WebhookEventMRCommentCreated)
+
+	deps.reviews.EXPECT().ListReviewRequests(gomock.Any(), int64(5)).Return(nil, nil)
+	deps.mrs.EXPECT().ListAssigneesByMergeRequest(gomock.Any(), int64(5)).Return(nil, nil)
+	deps.reviews.EXPECT().ListComments(gomock.Any(), int64(5)).
+		Return([]*domain.MergeRequestComment{{User: domain.ReviewActor{UserID: 20}}}, nil)
+	deps.users.EXPECT().GetByID(gomock.Any(), snow.ID(10)).
+		Return(testNotifierUser(10, "author@example.com"), nil)
+	deps.users.EXPECT().GetByID(gomock.Any(), snow.ID(20)).
+		Return(testNotifierUser(20, "reviewer@example.com"), nil)
+	deps.outbox.EXPECT().ThreadRecipients(gomock.Any(), snow.ID(1), "acme/game/mr42").
+		Return(map[snow.ID]struct{}{20: {}}, nil)
+
+	var captured []*domain.EmailDelivery
+	deps.outbox.EXPECT().Enqueue(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, deliveries []*domain.EmailDelivery) error {
+			captured = deliveries
+			return nil
+		})
+
+	require.NoError(t, deps.notifier.Notify(context.Background(), event))
+	require.Len(t, captured, 2)
+
+	root := "<nipa-acme-game-mr42@nipa.example.com>"
+	byEmail := map[string]*domain.EmailDelivery{}
+	for _, delivery := range captured {
+		byEmail[delivery.Email] = delivery
+	}
+	first, err := mail.DecodeMessage(byEmail["author@example.com"].Body)
+	require.NoError(t, err)
+	require.Equal(t, root, first.MessageID, "a recipient without prior mail gets the root")
+	require.Empty(t, first.InReplyTo)
+
+	reply, err := mail.DecodeMessage(byEmail["reviewer@example.com"].Body)
+	require.NoError(t, err)
+	require.NotEqual(t, root, reply.MessageID, "a reply gets a unique message id")
+	require.Equal(t, root, reply.InReplyTo)
+	require.Equal(t, []string{root}, reply.References)
 }
 
 func TestEmailNotifier_RecipientSets(t *testing.T) {
@@ -310,8 +361,8 @@ func TestEmailNotifier_RecipientSets(t *testing.T) {
 					Return([]*domain.MergeRequestReviewRequest{{Reviewer: domain.ReviewActor{UserID: 20}}}, nil)
 			}
 			if tc.assignees {
-				deps.mrs.EXPECT().ListAssignees(gomock.Any(), snow.ID(1)).
-					Return(map[int64][]domain.ReviewActor{42: {{UserID: 30}}}, nil)
+				deps.mrs.EXPECT().ListAssigneesByMergeRequest(gomock.Any(), int64(5)).
+					Return([]domain.ReviewActor{{UserID: 30}}, nil)
 			}
 			if tc.commenters {
 				deps.reviews.EXPECT().ListComments(gomock.Any(), int64(5)).
@@ -323,6 +374,7 @@ func TestEmailNotifier_RecipientSets(t *testing.T) {
 				}).AnyTimes()
 
 			var captured []*domain.EmailDelivery
+			deps.outbox.EXPECT().ThreadRecipients(gomock.Any(), snow.ID(1), "acme/game/mr42").Return(nil, nil)
 			deps.outbox.EXPECT().Enqueue(gomock.Any(), gomock.Any()).
 				DoAndReturn(func(_ context.Context, deliveries []*domain.EmailDelivery) error {
 					captured = deliveries
@@ -346,13 +398,13 @@ func TestEmailNotifier_RecipientSourceErrors(t *testing.T) {
 	synchronized := newNotifierDeps(t)
 	event := testNotifyEvent(domain.WebhookEventMRSynchronized)
 	synchronized.reviews.EXPECT().ListReviewRequests(gomock.Any(), int64(5)).Return(nil, nil)
-	synchronized.mrs.EXPECT().ListAssignees(gomock.Any(), snow.ID(1)).Return(nil, errors.New("assignees down"))
+	synchronized.mrs.EXPECT().ListAssigneesByMergeRequest(gomock.Any(), int64(5)).Return(nil, errors.New("assignees down"))
 	require.ErrorContains(t, synchronized.notifier.Notify(context.Background(), event), "assignees down")
 
 	merged := newNotifierDeps(t)
 	event = testNotifyEvent(domain.WebhookEventMRMerged)
 	merged.reviews.EXPECT().ListReviewRequests(gomock.Any(), int64(5)).Return(nil, nil)
-	merged.mrs.EXPECT().ListAssignees(gomock.Any(), snow.ID(1)).Return(nil, nil)
+	merged.mrs.EXPECT().ListAssigneesByMergeRequest(gomock.Any(), int64(5)).Return(nil, nil)
 	merged.reviews.EXPECT().ListComments(gomock.Any(), int64(5)).Return(nil, errors.New("comments down"))
 	require.ErrorContains(t, merged.notifier.Notify(context.Background(), event), "comments down")
 }

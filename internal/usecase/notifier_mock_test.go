@@ -56,6 +56,21 @@ func (mr *MocknotifierOutboxMockRecorder) Enqueue(ctx, deliveries any) *gomock.C
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Enqueue", reflect.TypeOf((*MocknotifierOutbox)(nil).Enqueue), ctx, deliveries)
 }
 
+// ThreadRecipients mocks base method.
+func (m *MocknotifierOutbox) ThreadRecipients(ctx context.Context, projectID snow.ID, threadKey string) (map[snow.ID]struct{}, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ThreadRecipients", ctx, projectID, threadKey)
+	ret0, _ := ret[0].(map[snow.ID]struct{})
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ThreadRecipients indicates an expected call of ThreadRecipients.
+func (mr *MocknotifierOutboxMockRecorder) ThreadRecipients(ctx, projectID, threadKey any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ThreadRecipients", reflect.TypeOf((*MocknotifierOutbox)(nil).ThreadRecipients), ctx, projectID, threadKey)
+}
+
 // MocknotifierMRRepository is a mock of notifierMRRepository interface.
 type MocknotifierMRRepository struct {
 	ctrl     *gomock.Controller
@@ -80,19 +95,19 @@ func (m *MocknotifierMRRepository) EXPECT() *MocknotifierMRRepositoryMockRecorde
 	return m.recorder
 }
 
-// ListAssignees mocks base method.
-func (m *MocknotifierMRRepository) ListAssignees(ctx context.Context, projectID snow.ID) (map[int64][]domain.ReviewActor, error) {
+// ListAssigneesByMergeRequest mocks base method.
+func (m *MocknotifierMRRepository) ListAssigneesByMergeRequest(ctx context.Context, mergeRequestID int64) ([]domain.ReviewActor, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListAssignees", ctx, projectID)
-	ret0, _ := ret[0].(map[int64][]domain.ReviewActor)
+	ret := m.ctrl.Call(m, "ListAssigneesByMergeRequest", ctx, mergeRequestID)
+	ret0, _ := ret[0].([]domain.ReviewActor)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// ListAssignees indicates an expected call of ListAssignees.
-func (mr *MocknotifierMRRepositoryMockRecorder) ListAssignees(ctx, projectID any) *gomock.Call {
+// ListAssigneesByMergeRequest indicates an expected call of ListAssigneesByMergeRequest.
+func (mr *MocknotifierMRRepositoryMockRecorder) ListAssigneesByMergeRequest(ctx, mergeRequestID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListAssignees", reflect.TypeOf((*MocknotifierMRRepository)(nil).ListAssignees), ctx, projectID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListAssigneesByMergeRequest", reflect.TypeOf((*MocknotifierMRRepository)(nil).ListAssigneesByMergeRequest), ctx, mergeRequestID)
 }
 
 // MocknotifierReviewRepository is a mock of notifierReviewRepository interface.

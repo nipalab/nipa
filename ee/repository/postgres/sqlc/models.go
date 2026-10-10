@@ -62,6 +62,7 @@ type EmailDelivery struct {
 	UserID        int64        `json:"user_id"`
 	Email         string       `json:"email"`
 	Subject       string       `json:"subject"`
+	ThreadKey     string       `json:"thread_key"`
 	Body          []byte       `json:"body"`
 	State         string       `json:"state"`
 	Attempts      int64        `json:"attempts"`
