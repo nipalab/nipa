@@ -55,6 +55,24 @@ type Commit struct {
 	CreatedAt time.Time     `json:"created_at"`
 }
 
+type EmailDelivery struct {
+	ID            int64        `json:"id"`
+	Event         string       `json:"event"`
+	ProjectID     int64        `json:"project_id"`
+	UserID        int64        `json:"user_id"`
+	Email         string       `json:"email"`
+	Subject       string       `json:"subject"`
+	Body          []byte       `json:"body"`
+	State         string       `json:"state"`
+	Attempts      int64        `json:"attempts"`
+	NextAttemptAt sql.NullTime `json:"next_attempt_at"`
+	LastError     string       `json:"last_error"`
+	ClaimedAt     sql.NullTime `json:"claimed_at"`
+	DeliveredAt   sql.NullTime `json:"delivered_at"`
+	CreatedAt     time.Time    `json:"created_at"`
+	UpdatedAt     time.Time    `json:"updated_at"`
+}
+
 type File struct {
 	ID        int64         `json:"id"`
 	Name      string        `json:"name"`

@@ -7,6 +7,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"time"
 )
 
 type Querier interface {
@@ -45,6 +46,14 @@ type Querier interface {
 	CreateProject(ctx context.Context, arg CreateProjectParams) (Project, error)
 	DeleteOrganization(ctx context.Context, id int64) error
 	DeleteProject(ctx context.Context, id int64) error
+	EmailDeliveryClaimDue(ctx context.Context, arg EmailDeliveryClaimDueParams) ([]EmailDelivery, error)
+	EmailDeliveryCreate(ctx context.Context, arg EmailDeliveryCreateParams) (EmailDelivery, error)
+	EmailDeliveryGet(ctx context.Context, id int64) (EmailDelivery, error)
+	EmailDeliveryMarkDelivered(ctx context.Context, arg EmailDeliveryMarkDeliveredParams) error
+	EmailDeliveryMarkFailed(ctx context.Context, arg EmailDeliveryMarkFailedParams) error
+	EmailDeliveryReclaimStale(ctx context.Context, staleBefore sql.NullTime) (int64, error)
+	EmailDeliveryScheduleRetry(ctx context.Context, arg EmailDeliveryScheduleRetryParams) error
+	EmailDeliverySweep(ctx context.Context, before time.Time) (int64, error)
 	FileChunkInsert(ctx context.Context, arg FileChunkInsertParams) error
 	FileInsert(ctx context.Context, arg FileInsertParams) (int64, error)
 	FileListByTree(ctx context.Context, treeID int64) ([]File, error)

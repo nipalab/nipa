@@ -1,3 +1,4 @@
+DROP TABLE IF EXISTS email_deliveries;
 DROP TABLE IF EXISTS tags;
 DROP TABLE IF EXISTS webhook_deliveries;
 DROP TABLE IF EXISTS webhooks;

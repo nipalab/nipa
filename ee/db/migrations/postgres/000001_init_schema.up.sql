@@ -402,6 +402,29 @@ CREATE UNIQUE INDEX idx_tags_project_key ON tags (project_id, key);
 
 CREATE INDEX idx_tags_project_created_id ON tags (project_id, created_at DESC, id DESC);
 
+CREATE TABLE email_deliveries (
+    id              BIGINT PRIMARY KEY,
+    event           TEXT NOT NULL,
+    project_id      BIGINT NOT NULL,
+    user_id         BIGINT NOT NULL,
+    email           TEXT NOT NULL,
+    subject         TEXT NOT NULL DEFAULT '',
+    body            BYTEA NOT NULL,
+    state           TEXT NOT NULL DEFAULT 'pending',
+    attempts        INTEGER NOT NULL DEFAULT 0,
+    next_attempt_at TIMESTAMPTZ,
+    last_error      TEXT NOT NULL DEFAULT '',
+    claimed_at      TIMESTAMPTZ,
+    delivered_at    TIMESTAMPTZ,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CHECK (state IN ('pending', 'sending', 'delivered', 'failed'))
+);
+
+CREATE INDEX idx_email_deliveries_due ON email_deliveries (state, next_attempt_at);
+
+CREATE INDEX idx_email_deliveries_project ON email_deliveries (project_id, id DESC);
+
 INSERT INTO users (id, name, email, password, is_super_admin) VALUES (1, 'Super Admin', 'nipa', '$2a$10$ErgrBnd6ahfz6eZkVzfnlu6dcE4T0HUcxvAjwmI0ItFsMReHVCdYO', TRUE);
 INSERT INTO organizations (id, slug, name, created_by_user_id) VALUES (1, 'default', 'Default Organization', 1);
 INSERT INTO projects (id, org_id, slug, name) VALUES (1, 1, 'default', 'Default Project');
