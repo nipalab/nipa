@@ -7,7 +7,9 @@ package e2e
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net"
@@ -31,6 +33,7 @@ import (
 	"github.com/nipalab/nipa/ee/nodelease"
 	"github.com/nipalab/nipa/ee/repository/postgres"
 	s3store "github.com/nipalab/nipa/ee/storage/s3"
+	"github.com/nipalab/nipa/ee/storageusage"
 	clientdomain "github.com/nipalab/nipa/internal/client/domain"
 	clientgrpc "github.com/nipalab/nipa/internal/client/grpc"
 	"github.com/nipalab/nipa/internal/client/localrepo"
@@ -189,7 +192,7 @@ func (r *testRegistry) MergeRequestReview() *serverusecase.MergeRequestReview {
 func (r *testRegistry) MergeRequestCheck() *serverusecase.MergeRequestCheck { return r.check }
 func (r *testRegistry) FileLock() *serverusecase.FileLock                   { return r.fileLock }
 
-func startEnterpriseServer(t *testing.T, dbConn *sql.DB, chunkStore storage.ChunkStore, node snow.Node) string {
+func startEnterpriseServer(t *testing.T, dbConn *sql.DB, chunkStore storage.ChunkStore, node snow.Node, ledger *storageusage.Ledger) string {
 	t.Helper()
 
 	orgRepo := postgres.NewOrgRepository(dbConn)
@@ -217,6 +220,9 @@ func startEnterpriseServer(t *testing.T, dbConn *sql.DB, chunkStore storage.Chun
 		PresignTTL:  time.Hour,
 		MaxPageSize: 1000,
 	})
+	if ledger != nil {
+		chunkUc = chunkUc.WithStorageLedger(ledger)
+	}
 	mrRepo := postgres.NewMergeRequestRepository(dbConn)
 	reviewUc := serverusecase.NewMergeRequestReview(
 		postgres.NewMergeRequestReviewRepository(dbConn), mrRepo, branchRepo, branchUc, permissionUc, userRepo, node,
@@ -363,7 +369,7 @@ func TestEnterpriseClonePushTag(t *testing.T) {
 	t.Cleanup(func() { _ = dbConn.Close() })
 	require.NoError(t, eedb.MigrateUp(dbConn))
 
-	host := startEnterpriseServer(t, dbConn, newS3ChunkStore(t), mustSnowNode(t, 0))
+	host := startEnterpriseServer(t, dbConn, newS3ChunkStore(t), mustSnowNode(t, 0), nil)
 
 	store := newMemoryStore()
 	transport := clientgrpc.NewTransport()
@@ -446,8 +452,8 @@ func TestEnterpriseTwoInstanceNodeLease(t *testing.T) {
 	require.Equal(t, 3, leased)
 
 	chunkStore := newS3ChunkStore(t)
-	hostA := startEnterpriseServer(t, dbConn, chunkStore, nodeA)
-	hostB := startEnterpriseServer(t, dbConn, chunkStore, nodeB)
+	hostA := startEnterpriseServer(t, dbConn, chunkStore, nodeA, nil)
+	hostB := startEnterpriseServer(t, dbConn, chunkStore, nodeB, nil)
 
 	repoA, pushA := connectClient(t, hostA)
 	repoB, pushB := connectClient(t, hostB)
@@ -482,4 +488,47 @@ func TestEnterpriseTwoInstanceNodeLease(t *testing.T) {
 	reacquired, err := newManager("instance-d").Acquire(ctx)
 	require.NoError(t, err)
 	require.NotNil(t, reacquired)
+}
+
+func TestEnterpriseStorageQuota(t *testing.T) {
+	ctx := context.Background()
+
+	dbConn, err := eedb.Open(testPGDSN)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = dbConn.Close() })
+	require.NoError(t, eedb.MigrateUp(dbConn))
+
+	ledger := storageusage.NewLedger(dbConn, storageusage.Config{})
+	quota := int64(64)
+	require.NoError(t, ledger.SetOwnerQuota(ctx, snow.ID(1), &quota))
+
+	host := startEnterpriseServer(t, dbConn, newS3ChunkStore(t), mustSnowNode(t, 0), ledger)
+
+	repo, pusher := connectClient(t, host)
+	url := "http://" + host + "/" + e2eOrgSlug + "/" + e2eProjectSlug
+
+	target := filepath.Join(t.TempDir(), "work")
+	require.NoError(t, repo.Clone(ctx, url, host, e2eOrgSlug, e2eProjectSlug, "", nil, target))
+
+	raw := make([]byte, 4096)
+	_, err = rand.Read(raw)
+	require.NoError(t, err)
+	writeFile(t, target, "big.txt", hex.EncodeToString(raw))
+	stagePath(t, target, "big.txt")
+
+	err = pusher.Run(ctx, target, "add big")
+	require.Error(t, err)
+	var clientErr *clientdomain.Error
+	require.ErrorAs(t, err, &clientErr)
+	require.Equal(t, 402, clientErr.Code, "push over quota: %v", err)
+
+	bigger := int64(1 << 20)
+	require.NoError(t, ledger.SetOwnerQuota(ctx, snow.ID(1), &bigger))
+	require.NoError(t, pusher.Run(ctx, target, "add big"))
+
+	summary, err := ledger.OrgStorage(ctx, snow.ID(1))
+	require.NoError(t, err)
+	require.Positive(t, summary.UsedBytes)
+	require.NotNil(t, summary.QuotaBytes)
+	require.Equal(t, bigger, *summary.QuotaBytes)
 }

@@ -11,6 +11,8 @@ import (
 )
 
 type Querier interface {
+	AddOrgUsage(ctx context.Context, arg AddOrgUsageParams) error
+	AddProjectUsage(ctx context.Context, arg AddProjectUsageParams) error
 	BranchCreate(ctx context.Context, arg BranchCreateParams) error
 	BranchGet(ctx context.Context, arg BranchGetParams) (Branch, error)
 	BranchGetByName(ctx context.Context, arg BranchGetByNameParams) (Branch, error)
@@ -46,6 +48,7 @@ type Querier interface {
 	CreateProject(ctx context.Context, arg CreateProjectParams) (Project, error)
 	DeleteOrganization(ctx context.Context, id int64) error
 	DeleteProject(ctx context.Context, id int64) error
+	DeleteProjectChunks(ctx context.Context, projectID int64) error
 	EmailDeliveryClaimDue(ctx context.Context, arg EmailDeliveryClaimDueParams) ([]EmailDelivery, error)
 	EmailDeliveryCreate(ctx context.Context, arg EmailDeliveryCreateParams) (EmailDelivery, error)
 	EmailDeliveryGet(ctx context.Context, id int64) (EmailDelivery, error)
@@ -57,6 +60,7 @@ type Querier interface {
 	EmailDeliveryScheduleRetry(ctx context.Context, arg EmailDeliveryScheduleRetryParams) error
 	EmailDeliverySweep(ctx context.Context, before time.Time) (int64, error)
 	EmailDeliveryThreadRecipients(ctx context.Context, arg EmailDeliveryThreadRecipientsParams) ([]int64, error)
+	EnsureBillingOwner(ctx context.Context, arg EnsureBillingOwnerParams) (int64, error)
 	FileChunkInsert(ctx context.Context, arg FileChunkInsertParams) error
 	FileInsert(ctx context.Context, arg FileInsertParams) (int64, error)
 	FileListByTree(ctx context.Context, treeID int64) ([]File, error)
@@ -67,11 +71,20 @@ type Querier interface {
 	FileLockGet(ctx context.Context, arg FileLockGetParams) (FileLock, error)
 	FileLockListProject(ctx context.Context, projectID int64) ([]FileLockListProjectRow, error)
 	FileSetTree(ctx context.Context, arg FileSetTreeParams) error
+	GetActiveUserID(ctx context.Context, id int64) (int64, error)
+	GetBillingOwner(ctx context.Context, orgID int64) (int64, error)
+	GetChunkIDByHash(ctx context.Context, hash []byte) (GetChunkIDByHashRow, error)
+	GetOrgCreatedBy(ctx context.Context, orgID int64) (int64, error)
+	GetOrgUsage(ctx context.Context, orgID int64) (int64, error)
 	GetOrganization(ctx context.Context, id int64) (Organization, error)
 	GetOrganizationBySlug(ctx context.Context, slug string) (Organization, error)
+	GetOwnerQuota(ctx context.Context, userID int64) (sql.NullInt64, error)
+	GetOwnerUsage(ctx context.Context, userID int64) (int64, error)
 	GetProject(ctx context.Context, id int64) (Project, error)
 	GetProjectByOrgIDAndID(ctx context.Context, arg GetProjectByOrgIDAndIDParams) (Project, error)
 	GetProjectByOrgIDAndSlug(ctx context.Context, arg GetProjectByOrgIDAndSlugParams) (Project, error)
+	GetProjectChunkSizeByHash(ctx context.Context, arg GetProjectChunkSizeByHashParams) (int64, error)
+	GetProjectOrgID(ctx context.Context, id int64) (int64, error)
 	GroupCreate(ctx context.Context, arg GroupCreateParams) (Group, error)
 	GroupGet(ctx context.Context, id int64) (Group, error)
 	GroupListByOrg(ctx context.Context, orgID int64) ([]Group, error)
@@ -80,7 +93,11 @@ type Querier interface {
 	GroupMemberCountByOrg(ctx context.Context, orgID int64) ([]GroupMemberCountByOrgRow, error)
 	GroupMemberList(ctx context.Context, groupID int64) ([]GroupMemberListRow, error)
 	GroupMemberRemove(ctx context.Context, arg GroupMemberRemoveParams) error
+	InsertProjectChunk(ctx context.Context, arg InsertProjectChunkParams) (int64, error)
 	ListOrganizations(ctx context.Context) ([]Organization, error)
+	ListOwnerOrgUsage(ctx context.Context, userID int64) ([]ListOwnerOrgUsageRow, error)
+	ListProjectIDsByOrg(ctx context.Context, orgID int64) ([]int64, error)
+	ListProjectUsage(ctx context.Context, orgID int64) ([]ListProjectUsageRow, error)
 	ListProjectsByOrgId(ctx context.Context, orgID int64) ([]Project, error)
 	MergeRequestAssigneeAdd(ctx context.Context, arg MergeRequestAssigneeAddParams) error
 	MergeRequestAssigneeClear(ctx context.Context, mergeRequestID int64) error
@@ -148,8 +165,12 @@ type Querier interface {
 	ProjectPathPermissionDelete(ctx context.Context, arg ProjectPathPermissionDeleteParams) error
 	ProjectPathPermissionList(ctx context.Context, projectID int64) ([]ProjectPathsPermission, error)
 	ProjectPathPermissionUpsert(ctx context.Context, arg ProjectPathPermissionUpsertParams) (ProjectPathsPermission, error)
+	RebuildProjectChunks(ctx context.Context, projectID int64) error
 	RefreshTokenCreate(ctx context.Context, arg RefreshTokenCreateParams) (int64, error)
 	RefreshTokenDeleteByToken(ctx context.Context, token string) (RefreshToken, error)
+	SetOrgUsageFromProjects(ctx context.Context, orgID int64) error
+	SetOwnerQuota(ctx context.Context, arg SetOwnerQuotaParams) error
+	SetProjectUsage(ctx context.Context, projectID int64) error
 	TagCreate(ctx context.Context, arg TagCreateParams) (Tag, error)
 	TagDelete(ctx context.Context, arg TagDeleteParams) (int64, error)
 	TagGetByName(ctx context.Context, arg TagGetByNameParams) (Tag, error)
@@ -160,6 +181,7 @@ type Querier interface {
 	TreeNodeListChildren(ctx context.Context, parentTreeID int64) ([]TreeNode, error)
 	TreeNodeSetParent(ctx context.Context, arg TreeNodeSetParentParams) error
 	UpdateProject(ctx context.Context, arg UpdateProjectParams) (Project, error)
+	UpsertBillingOwner(ctx context.Context, arg UpsertBillingOwnerParams) error
 	UserCreate(ctx context.Context, arg UserCreateParams) (int64, error)
 	UserDeleteByID(ctx context.Context, id int64) error
 	UserGetByEmail(ctx context.Context, email string) (User, error)

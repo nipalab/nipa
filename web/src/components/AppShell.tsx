@@ -26,6 +26,9 @@ export default function AppShell() {
             Users
           </PrimerLink>
         ) : null}
+        <PrimerLink as={Link} to="/settings/billing">
+          Billing
+        </PrimerLink>
         <PrimerLink as={Link} to="/settings/profile">
           {me?.name ?? 'Profile'}
         </PrimerLink>

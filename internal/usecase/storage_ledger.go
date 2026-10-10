@@ -32,4 +32,9 @@ type StorageLedger interface {
 	// in one step, enforcing the quota. When the batch would exceed the quota
 	// nothing is recorded and a quota error is returned.
 	Attribute(ctx context.Context, org *domain.Organization, project *domain.Project, chunks []LedgerChunk) error
+
+	// AttributeProjectChunks attributes chunks the server produced itself
+	// (merge strategies), where only the project id is at hand.
+	// Implementations resolve the owning organization.
+	AttributeProjectChunks(ctx context.Context, projectID snow.ID, chunks []LedgerChunk) error
 }

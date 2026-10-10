@@ -33,9 +33,11 @@ type mergeCommitter interface {
 	ApplyPushAll(ctx context.Context, reqs []ApplyPushRequest) error
 }
 
-// chunkUploader stores merge-generated content and records its metadata.
+// chunkUploader stores merge-generated content, records its metadata and
+// attributes it to the project's storage ledger.
 type chunkUploader interface {
 	Upload(ctx context.Context, hash domain.Hash, data []byte) (bool, error)
+	AttributeProjectChunks(ctx context.Context, projectID snow.ID, chunks []LedgerChunk) error
 }
 
 // WithMergeCommitter enables the non-fast-forward merge strategies.
@@ -110,13 +112,14 @@ func (b *Branch) MergeForMergeRequest(ctx context.Context, projectID snow.ID, ta
 
 	var reqs []ApplyPushRequest
 	var merged map[string]merge.File
+	var stored []LedgerChunk
 	switch opts.Strategy {
 	case domain.MergeStrategyMerge, domain.MergeStrategySquash:
 		sourceHead, err := b.commitByIDInProject(ctx, projectID, *source.CommitID)
 		if err != nil {
 			return nil, err
 		}
-		merged, err = b.mergeOnto(ctx, projectID, base, *target.CommitID, *source.CommitID, targetTree)
+		merged, stored, err = b.mergeOnto(ctx, projectID, base, *target.CommitID, *source.CommitID, targetTree)
 		if err != nil {
 			return nil, err
 		}
@@ -169,10 +172,12 @@ func (b *Branch) MergeForMergeRequest(ctx context.Context, projectID snow.ID, ta
 			if len(result.Conflicts) > 0 {
 				return nil, conflictError(conflictPaths(result), fmt.Sprintf("commit %s", commit.Hash.String()[:10]))
 			}
-			current, err = b.materialize(ctx, result, current)
+			var added []LedgerChunk
+			current, added, err = b.materialize(ctx, projectID, result, current)
 			if err != nil {
 				return nil, err
 			}
+			stored = append(stored, added...)
 			files, removed := mergeDelta(targetTree, current)
 			root, err := buildNewTree(ctx, b.branchRepo, targetHead, files, removed)
 			if err != nil {
@@ -194,6 +199,9 @@ func (b *Branch) MergeForMergeRequest(ctx context.Context, projectID snow.ID, ta
 	if err := b.ensureMergedWrites(ctx, projectID, targetTree, merged); err != nil {
 		return nil, err
 	}
+	if err := b.chunkUploads.AttributeProjectChunks(ctx, projectID, stored); err != nil {
+		return nil, err
+	}
 	if err := b.mergeCommitter.ApplyPushAll(ctx, reqs); err != nil {
 		return nil, err
 	}
@@ -201,37 +209,39 @@ func (b *Branch) MergeForMergeRequest(ctx context.Context, projectID snow.ID, ta
 }
 
 // mergeOnto runs one three-way merge and materializes text merges. The result
-// is the complete post-merge file set.
-func (b *Branch) mergeOnto(ctx context.Context, projectID snow.ID, baseID *snow.ID, oursID, theirsID snow.ID, ours map[string]merge.File) (map[string]merge.File, error) {
+// is the complete post-merge file set plus the chunks stored for text merges.
+func (b *Branch) mergeOnto(ctx context.Context, projectID snow.ID, baseID *snow.ID, oursID, theirsID snow.ID, ours map[string]merge.File) (map[string]merge.File, []LedgerChunk, error) {
 	var base map[string]merge.File
 	if baseID != nil {
 		var err error
 		base, err = b.mergeTree(ctx, projectID, *baseID)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	} else {
 		base = map[string]merge.File{}
 	}
 	theirs, err := b.mergeTree(ctx, projectID, theirsID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	result := merge.ThreeWay(base, ours, theirs)
 	if len(result.Conflicts) > 0 {
-		return nil, conflictError(conflictPaths(result), "")
+		return nil, nil, conflictError(conflictPaths(result), "")
 	}
-	return b.materialize(ctx, result, ours)
+	return b.materialize(ctx, projectID, result, ours)
 }
 
 // materialize applies a three-way result to the current file set: taken files
 // replace the current entry, text merges are computed and stored, deletions
-// are dropped and conflicts are reported. On error nothing is written.
-func (b *Branch) materialize(ctx context.Context, result *merge.Result, current map[string]merge.File) (map[string]merge.File, error) {
+// are dropped and conflicts are reported. It returns the chunks stored for
+// text merges so the caller can attribute them. On error nothing is written.
+func (b *Branch) materialize(ctx context.Context, projectID snow.ID, result *merge.Result, current map[string]merge.File) (map[string]merge.File, []LedgerChunk, error) {
 	merged := make(map[string]merge.File, len(current))
 	for path, file := range current {
 		merged[path] = file
 	}
+	var stored []LedgerChunk
 	for path, entry := range result.Entries {
 		switch entry.Decision {
 		case merge.KeepTheirs:
@@ -239,31 +249,32 @@ func (b *Branch) materialize(ctx context.Context, result *merge.Result, current 
 		case merge.TextMerge:
 			baseData, err := b.loadMergedContent(ctx, entry.Base)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			oursData, err := b.loadMergedContent(ctx, entry.Ours)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			theirsData, err := b.loadMergedContent(ctx, entry.Theirs)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			content, conflicted := merge.MergeText(baseData, oursData, theirsData)
 			if conflicted {
-				return nil, conflictError([]string{path}, "")
+				return nil, nil, conflictError([]string{path}, "")
 			}
-			file, err := b.storeMergedContent(ctx, path, entry.Theirs.Mode, content)
+			file, chunks, err := b.storeMergedContent(ctx, path, entry.Theirs.Mode, content)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
+			stored = append(stored, chunks...)
 			merged[path] = file
 		}
 	}
 	for _, path := range result.Deleted {
 		delete(merged, path)
 	}
-	return merged, nil
+	return merged, stored, nil
 }
 
 func (b *Branch) loadMergedContent(ctx context.Context, file merge.File) ([]byte, error) {
@@ -278,19 +289,21 @@ func (b *Branch) loadMergedContent(ctx context.Context, file merge.File) ([]byte
 	return chunker.Decode(file.Encoding, bytes.Join(parts, nil))
 }
 
-func (b *Branch) storeMergedContent(ctx context.Context, path string, mode int, content []byte) (merge.File, error) {
+func (b *Branch) storeMergedContent(ctx context.Context, path string, mode int, content []byte) (merge.File, []LedgerChunk, error) {
 	encoding, chunks, err := chunker.EncodeBytes(content, path, false, "")
 	if err != nil {
-		return merge.File{}, err
+		return merge.File{}, nil, err
 	}
 	hashes := make([]domain.Hash, 0, len(chunks))
 	sizes := make([]int64, 0, len(chunks))
+	stored := make([]LedgerChunk, 0, len(chunks))
 	for _, chunk := range chunks {
 		if _, err := b.chunkUploads.Upload(ctx, chunk.Hash, chunk.Data); err != nil {
-			return merge.File{}, err
+			return merge.File{}, nil, err
 		}
 		hashes = append(hashes, chunk.Hash)
 		sizes = append(sizes, chunk.SizeBytes)
+		stored = append(stored, LedgerChunk{Hash: chunk.Hash, SizeBytes: chunk.SizeBytes})
 	}
 	return merge.File{
 		Path:        path,
@@ -300,7 +313,7 @@ func (b *Branch) storeMergedContent(ctx context.Context, path string, mode int, 
 		Hash:        chunker.FileHash(hashes),
 		ChunkHashes: hashes,
 		ChunkSizes:  sizes,
-	}, nil
+	}, stored, nil
 }
 
 // mergeTree loads a commit's complete tree, unfiltered: a merge must see every

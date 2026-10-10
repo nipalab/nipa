@@ -341,6 +341,94 @@ func (c *apiClient) do(method, path string, body any, out any, auth bool) int {
 	return resp.StatusCode
 }
 
+// doRaw performs an authenticated request and returns the status code and body
+// without asserting success, for specs that expect failures.
+func (c *apiClient) doRaw(method, path string, body any) (int, []byte) {
+	var reader io.Reader
+	hasBody := body != nil
+	if body != nil {
+		data, err := json.Marshal(body)
+		Expect(err).NotTo(HaveOccurred())
+		reader = bytes.NewReader(data)
+	} else if method == http.MethodPost || method == http.MethodPatch || method == http.MethodPut {
+		reader = bytes.NewReader([]byte("{}"))
+		hasBody = true
+	}
+
+	req, err := http.NewRequest(method, c.baseURL+path, reader)
+	Expect(err).NotTo(HaveOccurred())
+	if hasBody {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	req.Header.Set("Authorization", "Bearer "+c.token)
+
+	resp, err := c.http.Do(req)
+	Expect(err).NotTo(HaveOccurred())
+	defer func() { _ = resp.Body.Close() }()
+
+	data, err := io.ReadAll(resp.Body)
+	Expect(err).NotTo(HaveOccurred())
+	return resp.StatusCode, data
+}
+
+// me returns the authenticated user's id.
+func (c *apiClient) me() string {
+	var out struct {
+		ID string `json:"id"`
+	}
+	c.do(http.MethodGet, "/me", nil, &out, true)
+	return out.ID
+}
+
+type orgStorageJSON struct {
+	UsedBytes  int64  `json:"used_bytes"`
+	QuotaBytes *int64 `json:"quota_bytes"`
+	OwnerID    string `json:"owner_id"`
+	Projects   []struct {
+		ID        string `json:"id"`
+		Slug      string `json:"slug"`
+		UsedBytes int64  `json:"used_bytes"`
+	} `json:"projects"`
+}
+
+type ownerStorageJSON struct {
+	UserID     string `json:"user_id"`
+	UsedBytes  int64  `json:"used_bytes"`
+	QuotaBytes *int64 `json:"quota_bytes"`
+	Orgs       []struct {
+		ID        string `json:"id"`
+		Slug      string `json:"slug"`
+		UsedBytes int64  `json:"used_bytes"`
+	} `json:"orgs"`
+}
+
+func (c *apiClient) getOrgStorage(org string) (int, orgStorageJSON) {
+	status, data := c.doRaw(http.MethodGet, "/orgs/"+org+"/storage", nil)
+	var out orgStorageJSON
+	if status >= 200 && status < 300 {
+		Expect(json.Unmarshal(data, &out)).To(Succeed())
+	}
+	return status, out
+}
+
+// setOwnerQuota sets or clears (nil) an owner's quota over the admin API.
+func (c *apiClient) setOwnerQuota(userID string, quota *int64) (int, ownerStorageJSON) {
+	status, data := c.doRaw(http.MethodPut, "/admin/billing/owners/"+userID+"/quota", map[string]any{
+		"quota_bytes": quota,
+	})
+	var out ownerStorageJSON
+	if status >= 200 && status < 300 {
+		Expect(json.Unmarshal(data, &out)).To(Succeed())
+	}
+	return status, out
+}
+
+func (c *apiClient) getMyBilling() ownerStorageJSON {
+	var out ownerStorageJSON
+	c.do(http.MethodGet, "/billing/me", nil, &out, true)
+	return out
+}
+
 type emailDeliveryJSON struct {
 	ID        string    `json:"id"`
 	Event     string    `json:"event"`

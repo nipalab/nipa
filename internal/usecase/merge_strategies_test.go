@@ -324,10 +324,17 @@ type stubMergeCommitter struct{}
 
 func (stubMergeCommitter) ApplyPushAll(context.Context, []ApplyPushRequest) error { return nil }
 
-type stubChunkUploader struct{ err error }
+type stubChunkUploader struct {
+	err     error
+	attrErr error
+}
 
 func (u stubChunkUploader) Upload(context.Context, domain.Hash, []byte) (bool, error) {
 	return false, u.err
+}
+
+func (u stubChunkUploader) AttributeProjectChunks(context.Context, snow.ID, []LedgerChunk) error {
+	return u.attrErr
 }
 
 func TestMergeForMergeRequest_RebaseEmptyReplayIsNoOp(t *testing.T) {
@@ -375,7 +382,7 @@ func TestMergeOnto_NoBase(t *testing.T) {
 	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(5)).Return(nil, nil)
 
 	current := map[string]merge.File{"keep.txt": {Path: "keep.txt", Mode: 1, Hash: domain.Hash{1}}}
-	merged, err := uc.mergeOnto(context.Background(), snow.ID(1), nil, snow.ID(10), theirsID, current)
+	merged, _, err := uc.mergeOnto(context.Background(), snow.ID(1), nil, snow.ID(10), theirsID, current)
 	require.NoError(t, err)
 	require.Len(t, merged, 1)
 	require.Contains(t, merged, "keep.txt")
@@ -431,13 +438,35 @@ func TestMaterialize_ContentErrors(t *testing.T) {
 
 	uc, _, _ := newStrategyBranch(t)
 	uc.chunks = &stubChunkReader{err: errors.New("chunk gone")}
-	_, err := uc.materialize(context.Background(), &merge.Result{Entries: map[string]merge.Entry{"a.txt": entry}}, map[string]merge.File{})
+	_, _, err := uc.materialize(context.Background(), snow.ID(1), &merge.Result{Entries: map[string]merge.Entry{"a.txt": entry}}, map[string]merge.File{})
 	require.Error(t, err)
 
 	uc.chunks = &stubChunkReader{data: map[domain.Hash][]byte{chunkHash: []byte("one\n")}}
 	uc.WithChunkUploader(stubChunkUploader{err: errors.New("upload failed")})
-	_, err = uc.materialize(context.Background(), &merge.Result{Entries: map[string]merge.Entry{"a.txt": entry}}, map[string]merge.File{})
+	_, _, err = uc.materialize(context.Background(), snow.ID(1), &merge.Result{Entries: map[string]merge.Entry{"a.txt": entry}}, map[string]merge.File{})
 	require.Error(t, err)
+}
+
+func TestMaterialize_ReturnsStoredChunks(t *testing.T) {
+	chunkHash := domain.Hash{1}
+	entry := merge.Entry{
+		Decision: merge.TextMerge,
+		Base:     merge.File{Path: "a.txt", Encoding: chunker.EncodingRaw, ChunkHashes: []domain.Hash{chunkHash}},
+		Ours:     merge.File{Path: "a.txt", Encoding: chunker.EncodingRaw, ChunkHashes: []domain.Hash{chunkHash}},
+		Theirs:   merge.File{Path: "a.txt", Encoding: chunker.EncodingRaw, ChunkHashes: []domain.Hash{chunkHash}},
+	}
+
+	uc, _, _ := newStrategyBranch(t)
+	uc.chunks = &stubChunkReader{data: map[domain.Hash][]byte{chunkHash: []byte("one\n")}}
+	uc.WithChunkUploader(stubChunkUploader{})
+
+	merged, stored, err := uc.materialize(context.Background(), snow.ID(1), &merge.Result{Entries: map[string]merge.Entry{"a.txt": entry}}, map[string]merge.File{})
+	require.NoError(t, err)
+	require.Len(t, merged, 1)
+	require.NotEmpty(t, stored)
+	for _, chunk := range stored {
+		require.Positive(t, chunk.SizeBytes)
+	}
 }
 
 func TestStoreMergedContent_UploadError(t *testing.T) {
@@ -445,7 +474,7 @@ func TestStoreMergedContent_UploadError(t *testing.T) {
 	wantErr := errors.New("upload failed")
 	uc.WithChunkUploader(stubChunkUploader{err: wantErr})
 
-	_, err := uc.storeMergedContent(context.Background(), "a.txt", 1, []byte("hello\n"))
+	_, _, err := uc.storeMergedContent(context.Background(), "a.txt", 1, []byte("hello\n"))
 	require.ErrorIs(t, err, wantErr)
 }
 

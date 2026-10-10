@@ -19,6 +19,7 @@ import OrgSettingsPage from './pages/OrgSettingsPage'
 import AdminUsersPage from './pages/AdminUsersPage'
 import NewUserPage from './pages/NewUserPage'
 import ProfilePage from './pages/ProfilePage'
+import BillingPage from './pages/BillingPage'
 
 export default function App() {
   return (
@@ -32,6 +33,7 @@ export default function App() {
               <Route path="/admin/users" element={<AdminUsersPage />} />
               <Route path="/admin/users/new" element={<NewUserPage />} />
               <Route path="/settings/profile" element={<ProfilePage />} />
+              <Route path="/settings/billing" element={<BillingPage />} />
               <Route path="/:org" element={<OrgProjectsPage />} />
               <Route path="/:org/settings" element={<OrgSettingsPage />} />
               <Route path="/:org/new" element={<NewProjectPage />} />

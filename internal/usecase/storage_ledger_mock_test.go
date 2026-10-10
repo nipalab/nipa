@@ -56,6 +56,20 @@ func (mr *MockStorageLedgerMockRecorder) Attribute(ctx, org, project, chunks any
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Attribute", reflect.TypeOf((*MockStorageLedger)(nil).Attribute), ctx, org, project, chunks)
 }
 
+// AttributeProjectChunks mocks base method.
+func (m *MockStorageLedger) AttributeProjectChunks(ctx context.Context, projectID snow.ID, chunks []LedgerChunk) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AttributeProjectChunks", ctx, projectID, chunks)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// AttributeProjectChunks indicates an expected call of AttributeProjectChunks.
+func (mr *MockStorageLedgerMockRecorder) AttributeProjectChunks(ctx, projectID, chunks any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AttributeProjectChunks", reflect.TypeOf((*MockStorageLedger)(nil).AttributeProjectChunks), ctx, projectID, chunks)
+}
+
 // AttributedSizes mocks base method.
 func (m *MockStorageLedger) AttributedSizes(ctx context.Context, projectID snow.ID, hashes []domain.Hash) (map[domain.Hash]int64, error) {
 	m.ctrl.T.Helper()

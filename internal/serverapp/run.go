@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/emicklei/go-restful/v3"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
@@ -42,6 +43,7 @@ type Option func(*runOptions)
 type runOptions struct {
 	readiness func(context.Context) error
 	metrics   *obs.Metrics
+	routes    []func(*restful.WebService)
 }
 
 // WithReadiness configures the check behind /readyz (typically a database
@@ -60,6 +62,15 @@ func WithMetrics(metrics *obs.Metrics) Option {
 	}
 }
 
+// WithRoutes registers extra routes on the authenticated /api/v1 WebService,
+// e.g. the enterprise storage quota API. go-restful rejects a second
+// WebService with the same root path, so extensions share the main one.
+func WithRoutes(register func(*restful.WebService)) Option {
+	return func(o *runOptions) {
+		o.routes = append(o.routes, register)
+	}
+}
+
 // Run serves the REST API, the gRPC service and the embedded web UI on the
 // configured address until the process is signalled to shut down. Background
 // dispatchers are started before the listener and drained on shutdown.
@@ -69,7 +80,11 @@ func Run(cfg *config.Config, reg *Registry, dispatchers []Dispatcher, opts ...Op
 		opt(&ro)
 	}
 
-	apiApp := api.NewAPI(reg, api.WithMetrics(ro.metrics))
+	apiOpts := []api.Option{api.WithMetrics(ro.metrics)}
+	for _, register := range ro.routes {
+		apiOpts = append(apiOpts, api.WithRoutes(register))
+	}
+	apiApp := api.NewAPI(reg, apiOpts...)
 	container := apiApp.SetupRoute()
 	for _, dispatcher := range dispatchers {
 		if dispatcher != nil {

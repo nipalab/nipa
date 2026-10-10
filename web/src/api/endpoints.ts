@@ -11,6 +11,8 @@ import type {
   MergeRequestDiffResponse,
   MergeRequestListResponse,
   MergeRequestResponse,
+  OrgStorageResponse,
+  OwnerStorageResponse,
   ReviewRequestResponse,
   ReviewResponse,
   ReviewStateResponse,
@@ -759,4 +761,38 @@ export function redeliverEmailDelivery(
     `${projectBase(org, project)}/emails/deliveries/${encodeURIComponent(id)}/redeliver`,
     { method: 'POST', body: JSON.stringify({}) },
   )
+}
+
+// getOrgStorage returns null when the server runs without the storage ledger
+// (the routes are not registered and answer 404), so the UI can hide itself.
+export async function getOrgStorage(org: string): Promise<OrgStorageResponse | null> {
+  const res = await apiFetch(`/api/v1/orgs/${encodeURIComponent(org)}/storage`)
+  if (res.status === 404) return null
+  if (!res.ok) throw await errorFromResponse(res)
+  return (await res.json()) as OrgStorageResponse
+}
+
+export function getMyBilling(): Promise<OwnerStorageResponse> {
+  return apiJson('/api/v1/billing/me')
+}
+
+export function setOwnerQuota(userId: string, quotaBytes: number | null): Promise<OwnerStorageResponse> {
+  return apiJson(`/api/v1/admin/billing/owners/${encodeURIComponent(userId)}/quota`, {
+    method: 'PUT',
+    body: JSON.stringify({ quota_bytes: quotaBytes }),
+  })
+}
+
+export function setOrgBillingOwner(org: string, userId: string): Promise<OrgStorageResponse> {
+  return apiJson(`/api/v1/admin/orgs/${encodeURIComponent(org)}/billing-owner`, {
+    method: 'PUT',
+    body: JSON.stringify({ user_id: userId }),
+  })
+}
+
+export function recountOrgStorage(org: string): Promise<OrgStorageResponse> {
+  return apiJson(`/api/v1/admin/orgs/${encodeURIComponent(org)}/storage/recount`, {
+    method: 'POST',
+    body: JSON.stringify({}),
+  })
 }

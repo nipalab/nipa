@@ -28,10 +28,11 @@ proxies `/api` and `/docs` to `NIPA_SERVER_URL`).
 | `/:org/:project/merges/:id` | merge request detail | GitHub-style conversation (description, timeline, comments, reviewers/participants sidebar, merge box) plus Commits and File changes tabs; author/admin can edit title/description |
 | `/:org/:project/locks` | file locks | list binary asset locks, lock/unlock |
 | `/:org/:project/settings` | project settings | branch protection + ACL rules/defaults + webhooks + email deliveries |
-| `/:org/settings` | organization settings | members and groups (org owner or global admin) |
+| `/:org/settings` | organization settings | members and groups (org owner or global admin) + storage card (usage, quota, per-project breakdown; hidden when the server has no ledger) |
 | `/admin/users` | user administration | GitHub-style list with filter, avatar/role labels and row actions |
 | `/admin/users/new` | new user | dedicated create page (name, email, password) |
 | `/settings/profile` | public profile | GitHub-style settings layout: avatar preview + photo URL + name, and password change with confirmation/validation |
+| `/settings/billing` | billing | the caller's billing-owner aggregate usage, quota and per-org breakdown; super admins can set/clear owner quotas |
 
 ## Browse API
 
@@ -59,6 +60,17 @@ an organization (name + optional slug) and makes the caller its owner. The home
 page offers the "New organization" dialog (`web/src/components/CreateOrgDialog.tsx`,
 `createOrg` in `web/src/api/endpoints.ts`). Member and group management lives on
 the organization settings page (`/:org/settings`).
+
+## Storage API
+
+The enterprise storage ledger exposes `GET /orgs/{org}/storage`,
+`GET /billing/me`, `PUT /admin/billing/owners/{user}/quota`,
+`PUT /admin/orgs/{org}/billing-owner` and
+`POST /admin/orgs/{org}/storage/recount` (see
+`docs/CLOUD_STORAGE_QUOTA.md`). `getOrgStorage` returns null on 404, so the org
+settings storage card hides itself when the server runs without a ledger; the
+`/settings/billing` page shows the owner aggregate and the super-admin quota
+editor.
 
 ## Merge request reviews
 

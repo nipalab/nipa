@@ -1,5 +1,10 @@
 DROP TABLE IF EXISTS email_deliveries;
 DROP TABLE IF EXISTS snowflake_node_leases;
+DROP TABLE IF EXISTS org_usage;
+DROP TABLE IF EXISTS project_usage;
+DROP TABLE IF EXISTS project_chunks;
+DROP TABLE IF EXISTS owner_quota;
+DROP TABLE IF EXISTS org_billing_owner;
 DROP TABLE IF EXISTS tags;
 DROP TABLE IF EXISTS webhook_deliveries;
 DROP TABLE IF EXISTS webhooks;

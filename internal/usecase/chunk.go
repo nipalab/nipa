@@ -11,6 +11,7 @@ import (
 	"github.com/nipalab/nipa/internal/chunkurl"
 	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/obs"
+	"github.com/nipalab/nipa/internal/snow"
 	"github.com/nipalab/nipa/internal/storage"
 )
 
@@ -111,6 +112,15 @@ func (c *Chunk) Upload(ctx context.Context, hash domain.Hash, data []byte) (bool
 		return false, err
 	}
 	return true, nil
+}
+
+// AttributeProjectChunks attributes chunks the server produced itself (merge
+// output) to the project. Without a ledger it is a no-op.
+func (c *Chunk) AttributeProjectChunks(ctx context.Context, projectID snow.ID, chunks []LedgerChunk) error {
+	if c.ledger == nil || len(chunks) == 0 {
+		return nil
+	}
+	return c.ledger.AttributeProjectChunks(ctx, projectID, chunks)
 }
 
 // StoreUploaded verifies and stores chunk content without recording metadata;

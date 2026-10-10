@@ -395,6 +395,26 @@ messages verbatim over `Client.ServiceClient()`, filling the clone's
 org/project context from `.nipa/config`; `UnwatchRepo` waits for in-flight refs
 before closing handles.
 
+Flow for storage quota (design in `docs/CLOUD_STORAGE_QUOTA.md`):
+`internal/usecase.StorageLedger` is attached with `Chunk.WithStorageLedger`;
+nil (the free default) skips all accounting. `PresignUploadURLs` calls
+`checkHeadroom` before signing (advisory), `ConfirmUploads` attributes the
+present chunks in one transaction, and `MergeForMergeRequest` attributes
+server-generated diff3 chunks through `Chunk.AttributeProjectChunks` (the
+`chunkUploader` seam) before the commit lands. Quota failures are 402
+(`domain.NewErrorQuotaExceeded`), crossing gRPC as `ResourceExhausted`. The
+enterprise implementation lives in `ee/storageusage` (postgres,
+`STORAGE_LEDGER=cloud`; the free `cmd/nipad` rejects the setting): it bills
+every org to one owner user (lazily seeded from
+`organizations.created_by_user_id`), tracks per-project chunk links with
+cached project/org counters, and enforces `owner_quota` (NULL/0 =
+unlimited; missing row = `STORAGE_LEDGER_DEFAULT_QUOTA_BYTES`). `RecountOrg`
+rebuilds links and counters from the stored history. REST routes
+(`/orgs/{org}/storage`, `/billing/me`, admin quota/transfer/recount) are
+registered on the shared `/api/v1` WebService via `serverapp.WithRoutes` only
+when the ledger is enabled, so they 404 otherwise; the SPA hides the org
+storage card on 404 and has a `/settings/billing` page.
+
 Server merge-request diffs reuse the same engine: `usecase.MergeRequest.Diff`
 resolves the source and target heads, `GetMergeBase`, and calls
 `Branch.TreeDiffBetween` (`internal/usecase/browser.go`), which loads both
