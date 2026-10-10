@@ -2,13 +2,13 @@ package api
 
 import (
 	"context"
-	"log/slog"
 	"net/http"
 
 	"github.com/emicklei/go-restful/v3"
 	"github.com/nipalab/nipa/internal/domain"
 	httpApp "github.com/nipalab/nipa/internal/http"
 	"github.com/nipalab/nipa/internal/http/model"
+	"github.com/nipalab/nipa/internal/obs"
 )
 
 type appContext struct {
@@ -83,7 +83,11 @@ func (a *appContext) QueryParameter(name string) string {
 func (a *appContext) HandleError(err error) {
 	apiErr, ok := err.(*domain.Error)
 	if !ok {
-		slog.Error("error unknown", "error", err)
+		obs.Log(a.Context()).Error("unhandled server error",
+			"method", a.req.Request.Method,
+			"path", a.req.Request.URL.Path,
+			"error", err,
+		)
 		a.resp.WriteHeaderAndJson(http.StatusInternalServerError, model.NewAPIError("internal unknown error"), restful.MIME_JSON)
 	} else {
 		a.resp.WriteHeaderAndJson(apiErr.Code, model.NewAPIError(apiErr.Message), restful.MIME_JSON)

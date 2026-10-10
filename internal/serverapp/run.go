@@ -13,12 +13,20 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/nipalab/nipa/internal/config"
 	"github.com/nipalab/nipa/internal/grpc/pb"
 	grpcserver "github.com/nipalab/nipa/internal/grpc/server"
 	"github.com/nipalab/nipa/internal/http/api"
+	"github.com/nipalab/nipa/internal/obs"
 	webui "github.com/nipalab/nipa/web/server"
+)
+
+const (
+	shutdownTimeout = 15 * time.Second
+	dispatcherDrain = 10 * time.Second
 )
 
 // Dispatcher is the background worker the server starts and drains around its
@@ -28,10 +36,30 @@ type Dispatcher interface {
 	Stop(ctx context.Context) error
 }
 
+// Option tunes optional Run behavior.
+type Option func(*runOptions)
+
+type runOptions struct {
+	readiness func(context.Context) error
+}
+
+// WithReadiness configures the check behind /readyz (typically a database
+// ping). Without one, /readyz is always ready.
+func WithReadiness(check func(context.Context) error) Option {
+	return func(o *runOptions) {
+		o.readiness = check
+	}
+}
+
 // Run serves the REST API, the gRPC service and the embedded web UI on the
 // configured address until the process is signalled to shut down. Background
 // dispatchers are started before the listener and drained on shutdown.
-func Run(cfg *config.Config, reg *Registry, dispatchers ...Dispatcher) error {
+func Run(cfg *config.Config, reg *Registry, dispatchers []Dispatcher, opts ...Option) error {
+	var ro runOptions
+	for _, opt := range opts {
+		opt(&ro)
+	}
+
 	apiApp := api.NewAPI(reg)
 	container := apiApp.SetupRoute()
 	for _, dispatcher := range dispatchers {
@@ -41,8 +69,6 @@ func Run(cfg *config.Config, reg *Registry, dispatchers ...Dispatcher) error {
 	}
 
 	address := fmt.Sprintf("%s:%d", cfg.ServerAddress, cfg.ServerPort)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	grpcInterceptor := grpcserver.NewInterceptor(reg.Auth())
 
@@ -52,26 +78,47 @@ func Run(cfg *config.Config, reg *Registry, dispatchers ...Dispatcher) error {
 	)
 	nipaServer := grpcserver.New(reg)
 	pb.RegisterNipaServiceServer(grpcRegistrar, nipaServer)
+	grpcHealth := health.NewServer()
+	healthpb.RegisterHealthServer(grpcRegistrar, grpcHealth)
+	grpcHealth.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
 
 	webUI := webui.Handler()
 
+	healthHandler := obs.HealthHandler()
+	readyHandler := obs.ReadinessHandler(ro.readiness)
+	pprofHandler := http.NotFoundHandler()
+	if cfg.PprofEnabled {
+		pprofHandler = obs.PprofHandler()
+	}
+
 	mainHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		slog.Info("incoming connection", "content", r.Header.Get("Content-Type"), "method", r.Method, "url", r.URL.String(), "ProtoMajor", r.ProtoMajor)
-		if r.ProtoMajor == 2 && strings.HasPrefix(r.Header.Get("Content-Type"), "application/grpc") {
-			slog.Info("grpc connection is coming")
+		if obs.IsGRPCRequest(r) {
 			grpcRegistrar.ServeHTTP(w, r)
-		} else if isAPIPath(r.URL.Path) {
+			return
+		}
+		switch {
+		case r.URL.Path == "/healthz":
+			healthHandler.ServeHTTP(w, r)
+		case r.URL.Path == "/readyz":
+			readyHandler.ServeHTTP(w, r)
+		case strings.HasPrefix(r.URL.Path, "/debug/pprof"):
+			pprofHandler.ServeHTTP(w, r)
+		case isAPIPath(r.URL.Path):
 			container.ServeHTTP(w, r)
-		} else {
+		default:
 			webUI.ServeHTTP(w, r)
 		}
 	})
+
+	handler := obs.RequestID(obs.AccessLog(func(r *http.Request) bool {
+		return !isAPIPath(r.URL.Path)
+	}, mainHandler))
 
 	protocols := new(http.Protocols)
 	protocols.SetHTTP1(true)
 	protocols.SetUnencryptedHTTP2(true)
 
-	httpServer := &http.Server{Addr: address, Handler: mainHandler, Protocols: protocols}
+	httpServer := &http.Server{Addr: address, Handler: handler, Protocols: protocols}
 	ln, err := net.Listen("tcp", address)
 	if err != nil {
 		return err
@@ -83,16 +130,19 @@ func Run(cfg *config.Config, reg *Registry, dispatchers ...Dispatcher) error {
 	go func() {
 		<-c
 		slog.Info("shutting down server")
-		if err := httpServer.Shutdown(ctx); err != nil {
-			slog.Error("error shutting down server", "error", err)
+		grpcHealth.SetServingStatus("", healthpb.HealthCheckResponse_NOT_SERVING)
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), shutdownTimeout)
+		defer shutdownCancel()
+		if err := httpServer.Shutdown(shutdownCtx); err != nil {
+			slog.Error("server shutdown incomplete", "error", err)
 		}
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
+		drainCtx, drainCancel := context.WithTimeout(context.Background(), dispatcherDrain)
+		defer drainCancel()
 		for _, dispatcher := range dispatchers {
 			if dispatcher == nil {
 				continue
 			}
-			if err := dispatcher.Stop(shutdownCtx); err != nil {
+			if err := dispatcher.Stop(drainCtx); err != nil {
 				slog.Warn("background dispatcher shutdown incomplete", "error", err)
 			}
 		}
