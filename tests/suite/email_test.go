@@ -107,4 +107,49 @@ var _ = Describe("email notifications", func() {
 			return ""
 		}, "20s", "100ms").Should(Equal("delivered"))
 	})
+
+	It("emails synchronized, status check and merge events", func() {
+		project := newProject("email-events")
+		seedRepo(orgSlug, project, map[string][]byte{"base.txt": []byte("base\n")}, "seed")
+
+		author := newIdentity("email-events-author").promote()
+		reviewer := newIdentity("email-events-reviewer").promote()
+
+		parent := workspace()
+		dir := cloneRepoAs(author, parent, repoURLFor(orgSlug, project), "work")
+		Expect(runNipaAs(author, dir, "branch", "-c", "feature").ExitCode).To(Equal(0))
+		writeText(dir, "feature.txt", "feature\n")
+		Expect(runNipaAs(author, dir, "add", "feature.txt").ExitCode).To(Equal(0))
+		push := runNipaAs(author, dir, "push", "-m", uniqueMessage("email events work"))
+		Expect(push.ExitCode).To(Equal(0), push.Output())
+		create := runNipaAs(author, dir, "mr", "create", "--title", uniqueMessage("Email events MR"))
+		Expect(create.ExitCode).To(Equal(0), create.Output())
+		request := runNipaAs(author, dir, "mr", "request-review", "1", reviewer.userID)
+		Expect(request.ExitCode).To(Equal(0), request.Output())
+		email.waitForSubject(reviewer.email, "Review requested")
+
+		// A push to the source branch notifies the reviewer.
+		writeText(dir, "feature.txt", "feature v2\n")
+		Expect(runNipaAs(author, dir, "add", "feature.txt").ExitCode).To(Equal(0))
+		pushAgain := runNipaAs(author, dir, "push", "-m", uniqueMessage("email events push"))
+		Expect(pushAgain.ExitCode).To(Equal(0), pushAgain.Output())
+		syncEmail := email.waitForSubject(reviewer.email, "New pushes")
+		Expect(syncEmail.Text).To(ContainSubstring("pushed to merge request !1"))
+
+		// A successful status check stays silent; a failed one notifies.
+		baseline := email.countFor(reviewer.email)
+		success := runNipaAs(author, dir, "mr", "check", "1", "--name", "build", "--state", "success")
+		Expect(success.ExitCode).To(Equal(0), success.Output())
+		Consistently(func() int { return email.countFor(reviewer.email) }, "2s", "100ms").Should(Equal(baseline))
+
+		failed := runNipaAs(author, dir, "mr", "check", "1", "--name", "build", "--state", "failed")
+		Expect(failed.ExitCode).To(Equal(0), failed.Output())
+		checkEmail := email.waitForSubject(reviewer.email, "Status check failed")
+		Expect(checkEmail.Text).To(ContainSubstring("reported a failed status check on merge request !1"))
+
+		merge := runNipaAs(author, dir, "mr", "merge", "1")
+		Expect(merge.ExitCode).To(Equal(0), merge.Output())
+		mergeEmail := email.waitForSubject(reviewer.email, "Merge request merged")
+		Expect(mergeEmail.Text).To(ContainSubstring("merged merge request !1"))
+	})
 })

@@ -50,7 +50,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        edition: [free, ee]
+        # Each edition exercises one email transport end to end.
+        include:
+          - edition: free
+            email_transport: sendgrid
+          - edition: ee
+            email_transport: http
     steps:
       - uses: actions/checkout@v4
 
@@ -62,7 +67,7 @@ jobs:
       # edition and tears them down afterwards; GitHub runners ship Docker
       # and the compose v2 plugin.
       - name: Run client e2e suite
-        run: tests/run.sh ${{ matrix.edition }}
+        run: NIPA_TEST_EMAIL_TRANSPORT=${{ matrix.email_transport }} tests/run.sh ${{ matrix.edition }}
 
       - name: Upload harness logs
         if: failure()

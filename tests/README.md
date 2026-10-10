@@ -31,6 +31,7 @@ tests/run.sh ee --keep                    # keep postgres/minio after the run
 SKIP_BUILD=1 tests/run.sh free            # reuse binaries already in bin/
 NIPA_TEST_PORT=7000 tests/run.sh free     # free server port (default 6745)
 NIPA_TEST_EE_PORT=7001 tests/run.sh ee    # enterprise server port (default 6747)
+NIPA_TEST_EMAIL_TRANSPORT=http tests/run.sh free  # email transport: sendgrid or http
 NIPA_TEST_POSTGRES_DSN=... NIPA_TEST_S3_ENDPOINT=... tests/run.sh ee   # external services
 ```
 

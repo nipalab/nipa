@@ -16,6 +16,7 @@ S3_ACCESS_KEY="${NIPA_TEST_S3_ACCESS_KEY:-minioadmin}"
 S3_SECRET_KEY="${NIPA_TEST_S3_SECRET_KEY:-minioadmin}"
 
 DOCKER="${NIPA_TEST_DOCKER:-docker}"
+EMAIL_TRANSPORT="${NIPA_TEST_EMAIL_TRANSPORT:-sendgrid}"
 SERVER_PID=""
 COMPOSE_STARTED=0
 PG_DSN=""
@@ -34,10 +35,11 @@ Options:
 
 Environment:
   SKIP_BUILD=1              Reuse existing binaries in bin/
-	NIPA_TEST_PORT=6745       Free server port
-	NIPA_TEST_EE_PORT=6747    Enterprise server port
-	NIPA_TEST_EMAIL_PORT      Email receiver port (default: server port + 1)
-	NIPA_TEST_PG_PORT=55432   Postgres host port
+  NIPA_TEST_PORT=6745       Free server port
+  NIPA_TEST_EE_PORT=6747    Enterprise server port
+  NIPA_TEST_EMAIL_PORT      Email receiver port (default: server port + 1)
+  NIPA_TEST_EMAIL_TRANSPORT Email transport exercised (sendgrid or http)
+  NIPA_TEST_PG_PORT=55432   Postgres host port
   NIPA_TEST_S3_PORT=55900   MinIO host port
   NIPA_TEST_POSTGRES_DSN    External postgres DSN (with NIPA_TEST_S3_ENDPOINT)
   NIPA_TEST_S3_ENDPOINT     External S3 endpoint (with NIPA_TEST_POSTGRES_DSN)
@@ -90,6 +92,33 @@ write_config() {
 	local email_port
 	email_port="$(email_port_for "$port")"
 
+	local email_lines
+	case "$EMAIL_TRANSPORT" in
+	sendgrid)
+		email_lines=$(cat <<EOF
+EMAIL_SENDER: sendgrid
+EMAIL_SENDGRID_API_KEY: 'client-e2e-sendgrid-key'
+EMAIL_SENDGRID_ENDPOINT: 'http://127.0.0.1:$email_port'
+EOF
+)
+		;;
+	http)
+		# The generic REST sender is configured to emit the same SendGrid v3
+		# shape the in-suite receiver decodes, so both transports exercise the
+		# same scenarios.
+		email_lines=$(cat <<EOF
+EMAIL_SENDER: http
+EMAIL_HTTP_ENDPOINT: 'http://127.0.0.1:$email_port/email'
+EMAIL_HTTP_BODY_TEMPLATE: '{"personalizations":[{"to":[{"email":{{json (index .To 0)}}}],"headers":{"Message-ID":{{json .MessageID}},"In-Reply-To":{{json .InReplyTo}}}}],"from":{"email":{{json .FromEmail}}},"subject":{{json .Subject}},"content":[{"type":"text/plain","value":{{json .Text}}},{"type":"text/html","value":{{json .HTML}}}]}'
+EOF
+)
+		;;
+	*)
+		echo "unknown NIPA_TEST_EMAIL_TRANSPORT $EMAIL_TRANSPORT (expected sendgrid or http)" >&2
+		exit 1
+		;;
+	esac
+
 	local db_dsn chunk_lines
 	if [[ "$edition" == "ee" ]]; then
 		db_dsn="$PG_DSN"
@@ -126,11 +155,9 @@ CHUNK_PRESIGN_TTL_SECONDS: 3600
 CHUNK_MAX_PAGE_SIZE: 1000
 WEBHOOK_EGRESS_ALLOWLIST: '127.0.0.1'
 WEBHOOK_TIMEOUT_SECONDS: 30
-EMAIL_SENDER: sendgrid
+$email_lines
 EMAIL_FROM: 'Nipa <noreply@example.com>'
 EMAIL_BASE_URL: 'http://127.0.0.1:$port'
-EMAIL_SENDGRID_API_KEY: 'client-e2e-sendgrid-key'
-EMAIL_SENDGRID_ENDPOINT: 'http://127.0.0.1:$email_port'
 EMAIL_MAX_ATTEMPTS: 2
 EMAIL_RETRY_BACKOFF_SECONDS: 1
 EMAIL_POLL_SECONDS: 1
