@@ -32,6 +32,9 @@ type Config struct {
 	EmailReplyTo           string `mapstructure:"EMAIL_REPLY_TO"`
 	EmailBaseURL           string `mapstructure:"EMAIL_BASE_URL"`
 	EmailTimeoutSeconds    int    `mapstructure:"EMAIL_TIMEOUT_SECONDS"`
+	EmailMaxAttempts       int    `mapstructure:"EMAIL_MAX_ATTEMPTS"`
+	EmailRetryBackoffSecs  int    `mapstructure:"EMAIL_RETRY_BACKOFF_SECONDS"`
+	EmailPollSeconds       int    `mapstructure:"EMAIL_POLL_SECONDS"`
 	EmailSMTPHost          string `mapstructure:"EMAIL_SMTP_HOST"`
 	EmailSMTPPort          int    `mapstructure:"EMAIL_SMTP_PORT"`
 	EmailSMTPUsername      string `mapstructure:"EMAIL_SMTP_USERNAME"`

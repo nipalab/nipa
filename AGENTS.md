@@ -142,6 +142,30 @@ routes (`internal/http/api/tag.go`, handlers/DTOs in
 web API client (`web/src/api/endpoints.ts`) already exposes
 `listTags`/`createTag`/`deleteTag` (no SPA page yet).
 
+Flow for email notifications (design in `docs/EMAIL.md`): `internal/mail` is
+the sender layer (`EMAIL_SENDER` = `smtp|sendgrid|http|log|off`), one message
+per recipient is persisted in the `email_deliveries` outbox and
+`mail.Dispatcher` claims due rows, retries with exponential backoff
+(`EMAIL_MAX_ATTEMPTS`/`EMAIL_RETRY_BACKOFF_SECONDS`/`EMAIL_POLL_SECONDS`) and
+sweeps expired rows; both mains build the sender + dispatcher from
+`internal/config` (an `off` sender leaves the notification seam unwired).
+`usecase.EmailNotifier` is attached through `HookEmitter.WithNotifier`: on the
+MR events (created/ready/review-requested/review-submitted/comment/
+synchronized/merged/closed/reopened and failed `mr.check_reported`, carried by
+`EmitMergeRequestCheck`) it resolves the participants (author, requested
+reviewers, assignees, commenters), skips the actor, deleted users, invalid
+addresses and `users.notify_email = false`, and enqueues one rendered message
+per recipient (deep link from `EMAIL_BASE_URL`; the first message to a
+recipient uses a per-recipient thread `Message-ID`, later messages reference
+it with `In-Reply-To`/`References` via the `thread_key` column). The
+dispatcher is kicked after each enqueue. Project admins inspect and redeliver
+through `usecase.EmailDelivery`: `GET .../emails/deliveries`
+(`state`/`after`/`limit` keyset, `next_cursor`) and
+`POST .../emails/deliveries/{id}/redeliver` (delivered/failed only), surfaced
+by the SPA project settings "Email deliveries" tab. The harness runs `nipad`
+with `EMAIL_SENDER=sendgrid` pointed at an in-suite receiver (and 1s
+retry/poll knobs) and covers opt-out, failed retries and redelivery.
+
 Flow for organization creation (`POST /api/v1/orgs`, "New organization" dialog
 on the SPA home page): any authenticated user creates an org; `usecase.Org.Create`
 trims the name, derives the slug from it when omitted, rejects invalid or

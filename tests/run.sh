@@ -131,6 +131,9 @@ EMAIL_FROM: 'Nipa <noreply@example.com>'
 EMAIL_BASE_URL: 'http://127.0.0.1:$port'
 EMAIL_SENDGRID_API_KEY: 'client-e2e-sendgrid-key'
 EMAIL_SENDGRID_ENDPOINT: 'http://127.0.0.1:$email_port'
+EMAIL_MAX_ATTEMPTS: 2
+EMAIL_RETRY_BACKOFF_SECONDS: 1
+EMAIL_POLL_SECONDS: 1
 EOF
 }
 

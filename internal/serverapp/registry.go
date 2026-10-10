@@ -25,6 +25,7 @@ type Usecases struct {
 	MergeRequestCheck  *usecase.MergeRequestCheck
 	FileLock           *usecase.FileLock
 	Webhook            *usecase.Webhook
+	EmailDelivery      *usecase.EmailDelivery
 }
 
 // Registry adapts the usecase set to the containers expected by the HTTP and
@@ -100,4 +101,8 @@ func (r *Registry) FileLock() *usecase.FileLock {
 
 func (r *Registry) Webhook() *usecase.Webhook {
 	return r.uc.Webhook
+}
+
+func (r *Registry) EmailDelivery() *usecase.EmailDelivery {
+	return r.uc.EmailDelivery
 }

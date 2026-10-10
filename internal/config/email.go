@@ -35,3 +35,13 @@ func (c *Config) MailSenderConfig() mail.Config {
 		},
 	}
 }
+
+// EmailDispatcherConfig maps the EMAIL_* delivery knobs onto the outbox
+// dispatcher config. Zero values keep the dispatcher defaults.
+func (c *Config) EmailDispatcherConfig() mail.DispatcherConfig {
+	return mail.DispatcherConfig{
+		MaxAttempts:    c.EmailMaxAttempts,
+		InitialBackoff: time.Duration(c.EmailRetryBackoffSecs) * time.Second,
+		PollInterval:   time.Duration(c.EmailPollSeconds) * time.Second,
+	}
+}

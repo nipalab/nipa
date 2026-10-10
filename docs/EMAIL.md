@@ -5,9 +5,9 @@ Nipa sends transactional email through a pluggable sender. The sender layer
 JSON sender that adapts to any REST provider; delivery is durable through an
 outbox (see [Delivery model](#delivery-model)).
 
-Status: the sender layer, configuration, the durable outbox and the merge
-request notification wiring are implemented. The delivery admin surface
-(listing failed deliveries and redelivery) follows in a later change.
+Status: complete. The sender layer, configuration, the durable outbox, the
+merge request notification wiring and the delivery admin surface (inspection
+and redelivery) are implemented.
 
 ## Choosing a sender
 
@@ -133,9 +133,39 @@ Email delivery is durable: notification events render one message per
 recipient and enqueue a row in the `email_deliveries` outbox in the same
 request that landed the change. A background dispatcher claims due rows,
 sends them through the configured sender with bounded retries and exponential
-backoff, and records `delivered`/`failed` state with the last error. Failed
-deliveries can be inspected and redelivered from the project settings page.
-(The inspection and redelivery surface is implemented in a follow-up phase.)
+backoff, and records `delivered`/`failed` state with the last error.
+
+## Notifications
+
+Merge request events produce email to the participants: `mr.created`,
+`mr.ready_for_review`, `mr.review_requested`, `mr.review_submitted`,
+`mr.comment_created`, `mr.synchronized`, `mr.merged`, `mr.closed`,
+`mr.reopened` and failed `mr.check_reported` reports. The recipient set is the
+author, the requested reviewers, the assignees and the commenters; the actor,
+deleted users, users without a valid email address and users who disabled
+`notify_email` in their profile are skipped, duplicates collapse and one event
+fans out to at most 200 recipients. Each message carries a deep link to the
+merge request when `EMAIL_BASE_URL` is set; the first message a recipient gets
+about a merge request uses a per-recipient thread `Message-ID` that later
+messages reference with `In-Reply-To`/`References`, so mail clients group the
+conversation.
+
+## Inspecting and redelivering
+
+Project admins can inspect the outbox and retry deliveries:
+
+- `GET /api/v1/orgs/{org}/projects/{project}/emails/deliveries` — newest first,
+  filters `state`, keyset `after` cursor and `limit` (default 50, max 200);
+  the response carries `next_cursor` when a next page exists.
+- `POST /api/v1/orgs/{org}/projects/{project}/emails/deliveries/{id}/redeliver`
+  — re-queues a `delivered` or `failed` delivery, resetting its attempt
+  history; `pending` and `sending` deliveries return a 409.
+
+The same surface is in the SPA under project settings → "Email deliveries"
+(state filter, last error, redeliver). Delivery retries are tuned with
+`EMAIL_MAX_ATTEMPTS` (default 5), `EMAIL_RETRY_BACKOFF_SECONDS` (default 10,
+exponential) and `EMAIL_POLL_SECONDS` (default 10, how often the outbox is
+polled).
 
 ## Configuration reference
 
@@ -146,6 +176,9 @@ deliveries can be inspected and redelivered from the project settings page.
 | `EMAIL_REPLY_TO`                | –                        | Optional Reply-To address.                              |
 | `EMAIL_BASE_URL`                | –                        | Public web UI URL for links in emails.                  |
 | `EMAIL_TIMEOUT_SECONDS`         | `10`                     | Timeout per delivery attempt.                           |
+| `EMAIL_MAX_ATTEMPTS`            | `5`                      | Total delivery attempts per message.                    |
+| `EMAIL_RETRY_BACKOFF_SECONDS`   | `10`                     | Delay before the second attempt (exponential after).    |
+| `EMAIL_POLL_SECONDS`            | `10`                     | How often the outbox is polled for due deliveries.      |
 | `EMAIL_SMTP_HOST`               | –                        | SMTP host.                                              |
 | `EMAIL_SMTP_PORT`               | per TLS mode             | 587 / 465 / 25 for starttls / ssl / none.               |
 | `EMAIL_SMTP_USERNAME`           | –                        | SMTP username; empty skips authentication.              |

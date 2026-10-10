@@ -106,14 +106,16 @@ func main() {
 	}), snowUser, webhook.Config{})
 	webhookUsecase := usecase.NewWebhook(webhookRepository, permissionUsecase, userRepo, webhookDispatcher, snowUser)
 	hookEmitter := usecase.NewHookEmitter(webhookRepository, projectRepo, orgRepo, branchRepository, userRepo, webhookDispatcher)
+	emailRepository := postgres.NewEmailRepository(dbConn)
+	emailDeliveryUsecase := usecase.NewEmailDelivery(emailRepository, permissionUsecase)
 	emailSender, err := mail.NewFromConfig(cfg.MailSenderConfig())
 	if err != nil {
 		panic(fmt.Errorf("email sender: %w", err))
 	}
 	var emailDispatcher *mail.Dispatcher
 	if emailSender != nil {
-		emailRepository := postgres.NewEmailRepository(dbConn)
-		emailDispatcher = mail.NewDispatcher(emailRepository, emailSender, mail.DispatcherConfig{})
+		emailDispatcher = mail.NewDispatcher(emailRepository, emailSender, cfg.EmailDispatcherConfig())
+		emailDeliveryUsecase = emailDeliveryUsecase.WithKicker(emailDispatcher)
 		hookEmitter = hookEmitter.WithNotifier(usecase.NewEmailNotifier(
 			emailRepository, userRepo, mergeRequestRepository, mergeRequestReviewRepository, cfg.EmailBaseURL, snowUser,
 		).WithKicker(emailDispatcher))
@@ -150,6 +152,7 @@ func main() {
 		MergeRequestCheck:  mergeRequestCheckUsecase,
 		FileLock:           fileLockUsecase,
 		Webhook:            webhookUsecase,
+		EmailDelivery:      emailDeliveryUsecase,
 	})
 
 	dispatchers := []serverapp.Dispatcher{webhookDispatcher}

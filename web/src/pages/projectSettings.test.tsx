@@ -60,7 +60,7 @@ const RULES = [
   },
 ]
 
-function stubSettingsRoutes(initialProtected = false, defaults: unknown[] = []) {
+function stubSettingsRoutes(initialProtected = false, defaults: unknown[] = [], deliveries: unknown[] = []) {
   let isProtected = initialProtected
   vi.stubGlobal(
     'fetch',
@@ -82,6 +82,13 @@ function stubSettingsRoutes(initialProtected = false, defaults: unknown[] = []) 
       }
       if (path.endsWith('/branches')) {
         return jsonResponse(BRANCHES.map((branch) => ({ ...branch, is_protected: isProtected })))
+      }
+      if (path.endsWith('/emails/deliveries')) {
+        return jsonResponse({ deliveries, next_cursor: '' })
+      }
+      if (path.endsWith('/redeliver')) {
+        const delivery = (deliveries[0] ?? {}) as Record<string, unknown>
+        return jsonResponse({ ...delivery, state: 'pending', attempts: 0, last_error: '' })
       }
       return jsonResponse({ error: 'not found' }, 404)
     }),
@@ -120,8 +127,8 @@ describe('ProjectSettingsPage access rules', () => {
   })
 })
 
-async function renderSettings(url: string, defaults: unknown[] = []) {
-  stubSettingsRoutes(false, defaults)
+async function renderSettings(url: string, defaults: unknown[] = [], deliveries: unknown[] = []) {
+  stubSettingsRoutes(false, defaults, deliveries)
   window.history.pushState({}, '', url)
   const container = document.createElement('div')
   container.id = 'root'
@@ -183,14 +190,14 @@ describe('ProjectSettingsPage path defaults', () => {
 })
 
 describe('ProjectSettingsPage github-style navigation', () => {
-  it('renders a settings sidebar with access, branches and webhooks', async () => {
+  it('renders a settings sidebar with access, branches, webhooks and email', async () => {
     const root = await renderSettings('/sticker/backend/settings')
     await waitForText('Access rules')
 
     const nav = settingsNav()
     expect(nav).not.toBeNull()
     const labels = Array.from(nav?.querySelectorAll('a') ?? []).map((link) => link.textContent)
-    expect(labels).toEqual(['Access', 'Branches', 'Webhooks'])
+    expect(labels).toEqual(['Access', 'Branches', 'Webhooks', 'Email deliveries'])
     expect(nav?.querySelector('a[aria-current="page"]')?.textContent).toBe('Access')
     expect(document.body.textContent).not.toContain('Protected branches')
 
@@ -215,6 +222,40 @@ describe('ProjectSettingsPage github-style navigation', () => {
 
     expect(settingsNav()?.querySelector('a[aria-current="page"]')?.textContent).toBe('Webhooks')
     expect(document.body.textContent).not.toContain('Protected branches')
+
+    act(() => root.unmount())
+  })
+
+  it('lists email deliveries and redelivers a failed one', async () => {
+    const deliveries = [
+      {
+        id: '42',
+        event: 'mr.comment_created',
+        user_id: '9',
+        email: 'dev@example.com',
+        subject: 'New comment !1: Fix textures',
+        state: 'failed',
+        attempts: 5,
+        last_error: 'smtp down',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+    ]
+    const root = await renderSettings('/sticker/backend/settings?tab=email', [], deliveries)
+    await waitForText('dev@example.com')
+    expect(document.body.textContent).toContain('smtp down')
+    expect(settingsNav()?.querySelector('a[aria-current="page"]')?.textContent).toBe('Email deliveries')
+
+    await act(async () => {
+      findButton('Redeliver').click()
+    })
+    await waitFor(() => {
+      const calls = (globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mock.calls
+      const redeliverCall = calls.find((call) => String(call[0]).includes('/emails/deliveries/42/redeliver'))
+      expect(redeliverCall).toBeDefined()
+      expect((redeliverCall?.[1] as RequestInit | undefined)?.method).toBe('POST')
+      return true
+    })
 
     act(() => root.unmount())
   })

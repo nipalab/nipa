@@ -48,8 +48,9 @@ type sendGridEmailPayload struct {
 type emailReceiver struct {
 	server *httptest.Server
 
-	mu     sync.Mutex
-	emails []receivedEmail
+	mu       sync.Mutex
+	emails   []receivedEmail
+	failures map[string]int
 }
 
 // startEmailReceiver binds the SendGrid endpoint nipad was configured with at
@@ -60,7 +61,7 @@ func startEmailReceiver() *emailReceiver {
 	port := os.Getenv("NIPA_TEST_EMAIL_PORT")
 	Expect(port).NotTo(BeEmpty(), "NIPA_TEST_EMAIL_PORT is not set; run the suite via tests/run.sh")
 
-	receiver := &emailReceiver{}
+	receiver := &emailReceiver{failures: map[string]int{}}
 	receiver.server = httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		body, err := io.ReadAll(req.Body)
 		if err != nil {
@@ -81,6 +82,10 @@ func startEmailReceiver() *emailReceiver {
 			}
 			email.MessageID = personalization.Headers["Message-ID"]
 			email.InReplyTo = personalization.Headers["In-Reply-To"]
+		}
+		if receiver.consumeFailure(email.To) {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
 		}
 		for _, content := range payload.Content {
 			switch content.Type {
@@ -108,6 +113,26 @@ func (r *emailReceiver) all() []receivedEmail {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return append([]receivedEmail(nil), r.emails...)
+}
+
+// failFor makes the next count requests to the address fail with a 500, so a
+// delivery can exhaust its retries deterministically.
+func (r *emailReceiver) failFor(address string, count int) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.failures[address] = count
+}
+
+func (r *emailReceiver) consumeFailure(recipients []string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, recipient := range recipients {
+		if remaining := r.failures[recipient]; remaining > 0 {
+			r.failures[recipient] = remaining - 1
+			return true
+		}
+	}
+	return false
 }
 
 func (r *emailReceiver) countFor(address string) int {

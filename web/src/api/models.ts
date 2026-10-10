@@ -375,6 +375,26 @@ export interface WebhookDeliveryResponse {
   created_at: string
 }
 
+export interface EmailDeliveryResponse {
+  id: string
+  event: string
+  user_id: string
+  email: string
+  subject: string
+  state: string
+  attempts: number
+  last_error?: string
+  next_attempt_at?: string
+  delivered_at?: string
+  created_at: string
+  updated_at: string
+}
+
+export interface EmailDeliveryListResponse {
+  deliveries: EmailDeliveryResponse[]
+  next_cursor?: string
+}
+
 export const PERMISSION_READ = 1
 export const PERMISSION_WRITE = 2
 export const PERMISSION_LOCK = 4

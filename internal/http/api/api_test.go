@@ -29,21 +29,22 @@ import (
 )
 
 type testRegistry struct {
-	auth         *usecase.Auth
-	user         *usecase.User
-	common       *usecase.Common
-	permission   *usecase.Permission
-	org          *usecase.Org
-	group        *usecase.Group
-	project      *usecase.Project
-	branch       *usecase.Branch
-	tag          *usecase.Tag
-	chunk        *usecase.Chunk
-	mergeRequest *usecase.MergeRequest
-	review       *usecase.MergeRequestReview
-	check        *usecase.MergeRequestCheck
-	fileLock     *usecase.FileLock
-	webhook      *usecase.Webhook
+	auth          *usecase.Auth
+	user          *usecase.User
+	common        *usecase.Common
+	permission    *usecase.Permission
+	org           *usecase.Org
+	group         *usecase.Group
+	project       *usecase.Project
+	branch        *usecase.Branch
+	tag           *usecase.Tag
+	chunk         *usecase.Chunk
+	mergeRequest  *usecase.MergeRequest
+	review        *usecase.MergeRequestReview
+	check         *usecase.MergeRequestCheck
+	fileLock      *usecase.FileLock
+	webhook       *usecase.Webhook
+	emailDelivery *usecase.EmailDelivery
 }
 
 func (r *testRegistry) Auth() *usecase.Auth             { return r.auth }
@@ -70,6 +71,8 @@ func (r *testRegistry) MergeRequestCheck() *usecase.MergeRequestCheck {
 func (r *testRegistry) FileLock() *usecase.FileLock { return r.fileLock }
 
 func (r *testRegistry) Webhook() *usecase.Webhook { return r.webhook }
+
+func (r *testRegistry) EmailDelivery() *usecase.EmailDelivery { return r.emailDelivery }
 
 type stubPasswordHasher struct{}
 
@@ -156,21 +159,22 @@ func TestAPIRoutes(t *testing.T) {
 	pusher = pusher.WithHooks(hookEmitter)
 	tagUc := usecase.NewTag(permissionUc, sqlite.NewTagRepository(dbConn), branchRepo, node).WithHooks(hookEmitter)
 	reg := &testRegistry{
-		auth:         usecase.NewAuth("test-secret", stubPasswordHasher{}, userRepo, sqlite.NewAuthRepository(dbConn)),
-		user:         usecase.NewUser(node, userRepo, stubPasswordHasher{}),
-		common:       usecase.NewCommon(sqlite.NewOrgRepository(dbConn), sqlite.NewProjectRepository(dbConn)),
-		permission:   permissionUc,
-		org:          orgUc,
-		group:        usecase.NewGroup(groupRepo, node, permissionUc, orgUc),
-		project:      projectUc,
-		branch:       branchUc,
-		tag:          tagUc,
-		chunk:        chunkUc,
-		mergeRequest: mergeRequestUc,
-		review:       reviewUc,
-		check:        checkUc,
-		fileLock:     fileLockUc,
-		webhook:      usecase.NewWebhook(webhookRepo, permissionUc, userRepo, webhookDispatcher, node),
+		auth:          usecase.NewAuth("test-secret", stubPasswordHasher{}, userRepo, sqlite.NewAuthRepository(dbConn)),
+		user:          usecase.NewUser(node, userRepo, stubPasswordHasher{}),
+		common:        usecase.NewCommon(sqlite.NewOrgRepository(dbConn), sqlite.NewProjectRepository(dbConn)),
+		permission:    permissionUc,
+		org:           orgUc,
+		group:         usecase.NewGroup(groupRepo, node, permissionUc, orgUc),
+		project:       projectUc,
+		branch:        branchUc,
+		tag:           tagUc,
+		chunk:         chunkUc,
+		mergeRequest:  mergeRequestUc,
+		review:        reviewUc,
+		check:         checkUc,
+		fileLock:      fileLockUc,
+		webhook:       usecase.NewWebhook(webhookRepo, permissionUc, userRepo, webhookDispatcher, node),
+		emailDelivery: usecase.NewEmailDelivery(sqlite.NewEmailRepository(dbConn), permissionUc),
 	}
 
 	seedPushTo := func(t *testing.T, branch, baseCommitID string, files map[string]string) *domain.PushResult {
@@ -1165,6 +1169,36 @@ func TestAPIRoutes(t *testing.T) {
 		missing := doMethod(t, http.MethodGet, base+"/"+webhook.ID, "", aliceLogin.AccessToken)
 		require.Equal(t, http.StatusNotFound, missing.StatusCode)
 		missing.Body.Close()
+	})
+
+	t.Run("email deliveries admin", func(t *testing.T) {
+		aliceLogin, _ := login(t)
+		base := server.URL + "/api/v1/orgs/default/projects/default/emails/deliveries"
+
+		list := decodeBody[model.EmailDeliveryListResponse](t, doGet(t, base, aliceLogin.AccessToken))
+		require.Empty(t, list.Deliveries)
+		require.Empty(t, list.NextCursor)
+
+		invalidState := doGet(t, base+"?state=bogus", aliceLogin.AccessToken)
+		require.Equal(t, http.StatusBadRequest, invalidState.StatusCode)
+		invalidState.Body.Close()
+
+		invalidAfter := doGet(t, base+"?after=!!!", aliceLogin.AccessToken)
+		require.Equal(t, http.StatusBadRequest, invalidAfter.StatusCode)
+		invalidAfter.Body.Close()
+
+		invalidLimit := doGet(t, base+"?limit=abc", aliceLogin.AccessToken)
+		require.Equal(t, http.StatusBadRequest, invalidLimit.StatusCode)
+		invalidLimit.Body.Close()
+
+		missing := doMethod(t, http.MethodPost, base+"/1/redeliver", "{}", aliceLogin.AccessToken)
+		require.Equal(t, http.StatusNotFound, missing.StatusCode)
+		missing.Body.Close()
+
+		bobLogin, _ := loginAs(t, "bob@example.com")
+		forbidden := doGet(t, base, bobLogin.AccessToken)
+		require.Equal(t, http.StatusForbidden, forbidden.StatusCode)
+		forbidden.Body.Close()
 	})
 
 	t.Run("webhook delivery", func(t *testing.T) {

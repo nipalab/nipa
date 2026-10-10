@@ -132,6 +132,47 @@ func (r *EmailRepository) SweepRetention(ctx context.Context, before time.Time) 
 	return deleted, nil
 }
 
+// ListDeliveries returns the project's deliveries newest first. after is the
+// exclusive keyset cursor: the last id of the previous page.
+func (r *EmailRepository) ListDeliveries(ctx context.Context, projectID snow.ID, state string, after *snow.ID, limit int64) ([]*domain.EmailDelivery, error) {
+	params := sqlcPostgres.EmailDeliveryListParams{
+		ProjectID: projectID.Int64(),
+		Limit:     limit,
+	}
+	if state != "" {
+		params.State = sql.NullString{String: state, Valid: true}
+	}
+	if after != nil {
+		params.After = sql.NullInt64{Int64: after.Int64(), Valid: true}
+	}
+	rows, err := r.queries.EmailDeliveryList(ctx, params)
+	if err != nil {
+		return nil, handleError(err)
+	}
+	deliveries := make([]*domain.EmailDelivery, 0, len(rows))
+	for _, row := range rows {
+		deliveries = append(deliveries, toDomainEmailDelivery(row))
+	}
+	return deliveries, nil
+}
+
+// Redeliver re-queues a delivery in the project, resetting its attempt
+// history.
+func (r *EmailRepository) Redeliver(ctx context.Context, projectID, id snow.ID, at time.Time) error {
+	affected, err := r.queries.EmailDeliveryRedeliver(ctx, sqlcPostgres.EmailDeliveryRedeliverParams{
+		Now:       timePtrToNullTime(&at),
+		ID:        id.Int64(),
+		ProjectID: projectID.Int64(),
+	})
+	if err != nil {
+		return handleError(err)
+	}
+	if affected == 0 {
+		return domain.NewErrorRecordNotFound()
+	}
+	return nil
+}
+
 func toDomainEmailDelivery(row sqlcPostgres.EmailDelivery) *domain.EmailDelivery {
 	return &domain.EmailDelivery{
 		ID:            snow.ID(row.ID),
