@@ -212,6 +212,83 @@ func TestEmailRepositorySQLite_ThreadRecipients(t *testing.T) {
 	require.Equal(t, "acme/game/mr1", row.ThreadKey)
 }
 
+func TestEmailRepositorySQLite_ListDeliveries(t *testing.T) {
+	ctx := context.Background()
+	db, _ := newSQLiteTestDB(t)
+	repo := NewEmailRepository(db)
+
+	now := time.Now()
+	rows := []*domain.EmailDelivery{
+		testEmailDelivery(10, &now),
+		testEmailDelivery(20, &now),
+		testEmailDelivery(30, &now),
+	}
+	rows[0].State = domain.EmailDeliveryDelivered
+	rows[1].State = domain.EmailDeliveryFailed
+	require.NoError(t, repo.Enqueue(ctx, rows))
+	require.NoError(t, repo.MarkFailed(ctx, 20, "smtp down"))
+
+	list, err := repo.ListDeliveries(ctx, 7, "", nil, 10)
+	require.NoError(t, err)
+	require.Len(t, list, 3)
+	require.Equal(t, snow.ID(30), list[0].ID, "newest first")
+
+	failed, err := repo.ListDeliveries(ctx, 7, domain.EmailDeliveryFailed, nil, 10)
+	require.NoError(t, err)
+	require.Len(t, failed, 1)
+	require.Equal(t, snow.ID(20), failed[0].ID)
+	require.Equal(t, "smtp down", failed[0].LastError)
+
+	page, err := repo.ListDeliveries(ctx, 7, "", nil, 2)
+	require.NoError(t, err)
+	require.Len(t, page, 2)
+	after := page[len(page)-1].ID
+	page2, err := repo.ListDeliveries(ctx, 7, "", &after, 2)
+	require.NoError(t, err)
+	require.Len(t, page2, 1)
+	require.Equal(t, snow.ID(10), page2[0].ID)
+
+	other, err := repo.ListDeliveries(ctx, 8, "", nil, 10)
+	require.NoError(t, err)
+	require.Empty(t, other)
+}
+
+func TestEmailRepositorySQLite_Redeliver(t *testing.T) {
+	ctx := context.Background()
+	db, _ := newSQLiteTestDB(t)
+	repo := NewEmailRepository(db)
+
+	now := time.Now()
+	require.NoError(t, repo.Enqueue(ctx, []*domain.EmailDelivery{testEmailDelivery(1, &now)}))
+	claimed, err := repo.ClaimDue(ctx, now, now.Add(-time.Minute), 10)
+	require.NoError(t, err)
+	require.Len(t, claimed, 1)
+	require.NoError(t, repo.MarkDelivered(ctx, 1, now))
+	delivered, err := repo.Get(ctx, 1)
+	require.NoError(t, err)
+	require.NotNil(t, delivered.DeliveredAt)
+
+	at := now.Add(time.Minute)
+	require.NoError(t, repo.Redeliver(ctx, 7, 1, at))
+	row, err := repo.Get(ctx, 1)
+	require.NoError(t, err)
+	require.Equal(t, domain.EmailDeliveryPending, row.State)
+	require.Zero(t, row.Attempts)
+	require.Nil(t, row.DeliveredAt, "redelivery clears the delivered marker")
+	require.Empty(t, row.LastError)
+	require.NotNil(t, row.NextAttemptAt)
+
+	require.True(t, domain.IsErrorNotFound(repo.Redeliver(ctx, 8, 1, at)), "another project cannot redeliver")
+	require.True(t, domain.IsErrorNotFound(repo.Redeliver(ctx, 7, 999, at)))
+
+	require.NoError(t, repo.MarkDelivered(ctx, 1, at))
+	require.NoError(t, repo.MarkFailed(ctx, 1, "boom"))
+	failed, err := repo.Get(ctx, 1)
+	require.NoError(t, err)
+	require.Equal(t, domain.EmailDeliveryFailed, failed.State)
+	require.Nil(t, failed.DeliveredAt, "a failed delivery is not marked delivered")
+}
+
 func TestEmailRepositorySQLite_Errors(t *testing.T) {
 	ctx := context.Background()
 	db, _ := newSQLiteTestDB(t)

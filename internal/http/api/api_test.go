@@ -1175,9 +1175,51 @@ func TestAPIRoutes(t *testing.T) {
 		aliceLogin, _ := login(t)
 		base := server.URL + "/api/v1/orgs/default/projects/default/emails/deliveries"
 
+		emailRepo := sqlite.NewEmailRepository(dbConn)
+		now := time.Now()
+		require.NoError(t, emailRepo.Enqueue(context.Background(), []*domain.EmailDelivery{
+			{ID: 9001, Event: "mr.merged", ProjectID: 1, UserID: 1, Email: "dev@example.com", Subject: "merged", Body: []byte("{}"), State: domain.EmailDeliveryDelivered, NextAttemptAt: &now},
+			{ID: 9002, Event: "mr.comment_created", ProjectID: 1, UserID: 1, Email: "dev@example.com", Subject: "comment", Body: []byte("{}"), State: domain.EmailDeliveryFailed, NextAttemptAt: &now},
+			{ID: 9003, Event: "mr.created", ProjectID: 1, UserID: 1, Email: "dev@example.com", Subject: "created", Body: []byte("{}"), State: domain.EmailDeliveryPending, NextAttemptAt: &now},
+		}))
+		require.NoError(t, emailRepo.MarkDelivered(context.Background(), 9001, now))
+		require.NoError(t, emailRepo.MarkFailed(context.Background(), 9002, "smtp down"))
+
 		list := decodeBody[model.EmailDeliveryListResponse](t, doGet(t, base, aliceLogin.AccessToken))
-		require.Empty(t, list.Deliveries)
+		require.Len(t, list.Deliveries, 3)
+		require.Equal(t, snow.ID(9003).Base36(), list.Deliveries[0].ID, "newest first")
+		require.Equal(t, "mr.created", list.Deliveries[0].Event)
+		require.Equal(t, "dev@example.com", list.Deliveries[0].Email)
 		require.Empty(t, list.NextCursor)
+
+		failed := decodeBody[model.EmailDeliveryListResponse](t, doGet(t, base+"?state=failed", aliceLogin.AccessToken))
+		require.Len(t, failed.Deliveries, 1)
+		require.Equal(t, snow.ID(9002).Base36(), failed.Deliveries[0].ID)
+		require.Equal(t, "smtp down", failed.Deliveries[0].LastError)
+
+		firstPage := decodeBody[model.EmailDeliveryListResponse](t, doGet(t, base+"?limit=1", aliceLogin.AccessToken))
+		require.Len(t, firstPage.Deliveries, 1)
+		require.Equal(t, snow.ID(9003).Base36(), firstPage.NextCursor)
+		secondPage := decodeBody[model.EmailDeliveryListResponse](t,
+			doGet(t, base+"?limit=1&after="+firstPage.NextCursor, aliceLogin.AccessToken))
+		require.Len(t, secondPage.Deliveries, 1)
+		require.Equal(t, snow.ID(9002).Base36(), secondPage.Deliveries[0].ID)
+
+		redelivered := decodeBody[model.EmailDeliveryResponse](t,
+			doMethod(t, http.MethodPost, base+"/"+snow.ID(9002).Base36()+"/redeliver", "{}", aliceLogin.AccessToken))
+		require.Equal(t, "pending", redelivered.State)
+		require.Zero(t, redelivered.Attempts)
+		require.Empty(t, redelivered.LastError)
+		require.Nil(t, redelivered.DeliveredAt)
+
+		deliveredRedeliver := decodeBody[model.EmailDeliveryResponse](t,
+			doMethod(t, http.MethodPost, base+"/"+snow.ID(9001).Base36()+"/redeliver", "{}", aliceLogin.AccessToken))
+		require.Equal(t, "pending", deliveredRedeliver.State)
+		require.Nil(t, deliveredRedeliver.DeliveredAt, "redelivery clears the delivered marker")
+
+		pending := doMethod(t, http.MethodPost, base+"/"+snow.ID(9003).Base36()+"/redeliver", "{}", aliceLogin.AccessToken)
+		require.Equal(t, http.StatusConflict, pending.StatusCode)
+		pending.Body.Close()
 
 		invalidState := doGet(t, base+"?state=bogus", aliceLogin.AccessToken)
 		require.Equal(t, http.StatusBadRequest, invalidState.StatusCode)
@@ -1195,8 +1237,21 @@ func TestAPIRoutes(t *testing.T) {
 		require.Equal(t, http.StatusNotFound, missing.StatusCode)
 		missing.Body.Close()
 
-		bobLogin, _ := loginAs(t, "bob@example.com")
-		forbidden := doGet(t, base, bobLogin.AccessToken)
+		badID := doMethod(t, http.MethodPost, base+"/!!!/redeliver", "{}", aliceLogin.AccessToken)
+		require.Equal(t, http.StatusBadRequest, badID.StatusCode)
+		badID.Body.Close()
+
+		unknownProject := doGet(t, server.URL+"/api/v1/orgs/default/projects/missing/emails/deliveries", aliceLogin.AccessToken)
+		require.Equal(t, http.StatusNotFound, unknownProject.StatusCode)
+		unknownProject.Body.Close()
+
+		superLogin, _ := loginAs(t, "nipa")
+		createdOutsider := doMethod(t, http.MethodPost, server.URL+"/api/v1/users",
+			`{"name":"outsider","email":"outsider@example.com","password":"password123"}`, superLogin.AccessToken)
+		require.Equal(t, http.StatusOK, createdOutsider.StatusCode)
+		createdOutsider.Body.Close()
+		outsiderLogin, _ := loginAs(t, "outsider@example.com")
+		forbidden := doGet(t, base, outsiderLogin.AccessToken)
 		require.Equal(t, http.StatusForbidden, forbidden.StatusCode)
 		forbidden.Body.Close()
 	})

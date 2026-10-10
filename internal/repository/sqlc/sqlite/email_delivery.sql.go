@@ -235,6 +235,7 @@ func (q *Queries) EmailDeliveryMarkDelivered(ctx context.Context, arg EmailDeliv
 const emailDeliveryMarkFailed = `-- name: EmailDeliveryMarkFailed :exec
 UPDATE email_deliveries
 SET state = 'failed',
+    delivered_at = NULL,
     last_error = ?1,
     next_attempt_at = NULL,
     claimed_at = NULL,
@@ -271,6 +272,7 @@ UPDATE email_deliveries
 SET state = 'pending',
     attempts = 0,
     last_error = '',
+    delivered_at = NULL,
     next_attempt_at = ?1,
     claimed_at = NULL,
     updated_at = ?1

@@ -48,6 +48,7 @@ WHERE id = sqlc.arg('id');
 -- name: EmailDeliveryMarkFailed :exec
 UPDATE email_deliveries
 SET state = 'failed',
+    delivered_at = NULL,
     last_error = sqlc.arg('last_error'),
     next_attempt_at = NULL,
     claimed_at = NULL,
@@ -71,6 +72,7 @@ UPDATE email_deliveries
 SET state = 'pending',
     attempts = 0,
     last_error = '',
+    delivered_at = NULL,
     next_attempt_at = sqlc.arg('now'),
     claimed_at = NULL,
     updated_at = sqlc.arg('now')

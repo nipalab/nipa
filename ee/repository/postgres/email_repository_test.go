@@ -195,6 +195,81 @@ func (s *EmailRepositorySuite) TestThreadRecipients() {
 	s.Equal("acme/game/mr1", row.ThreadKey)
 }
 
+func (s *EmailRepositorySuite) TestListDeliveries() {
+	ctx := context.Background()
+	repo := NewEmailRepository(s.db)
+
+	now := time.Now()
+	rows := []*domain.EmailDelivery{
+		testEmailDelivery(10, &now),
+		testEmailDelivery(20, &now),
+		testEmailDelivery(30, &now),
+	}
+	rows[0].State = domain.EmailDeliveryDelivered
+	rows[1].State = domain.EmailDeliveryFailed
+	s.Require().NoError(repo.Enqueue(ctx, rows))
+	s.Require().NoError(repo.MarkFailed(ctx, 20, "smtp down"))
+
+	list, err := repo.ListDeliveries(ctx, 7, "", nil, 10)
+	s.Require().NoError(err)
+	s.Len(list, 3)
+	s.Equal(snow.ID(30), list[0].ID, "newest first")
+
+	failed, err := repo.ListDeliveries(ctx, 7, domain.EmailDeliveryFailed, nil, 10)
+	s.Require().NoError(err)
+	s.Require().Len(failed, 1)
+	s.Equal(snow.ID(20), failed[0].ID)
+	s.Equal("smtp down", failed[0].LastError)
+
+	page, err := repo.ListDeliveries(ctx, 7, "", nil, 2)
+	s.Require().NoError(err)
+	s.Len(page, 2)
+	after := page[len(page)-1].ID
+	page2, err := repo.ListDeliveries(ctx, 7, "", &after, 2)
+	s.Require().NoError(err)
+	s.Require().Len(page2, 1)
+	s.Equal(snow.ID(10), page2[0].ID)
+
+	other, err := repo.ListDeliveries(ctx, 8, "", nil, 10)
+	s.Require().NoError(err)
+	s.Empty(other)
+}
+
+func (s *EmailRepositorySuite) TestRedeliver() {
+	ctx := context.Background()
+	repo := NewEmailRepository(s.db)
+
+	now := time.Now()
+	s.Require().NoError(repo.Enqueue(ctx, []*domain.EmailDelivery{testEmailDelivery(1, &now)}))
+	claimed, err := repo.ClaimDue(ctx, now, now.Add(-time.Minute), 10)
+	s.Require().NoError(err)
+	s.Require().Len(claimed, 1)
+	s.Require().NoError(repo.MarkDelivered(ctx, 1, now))
+	delivered, err := repo.Get(ctx, 1)
+	s.Require().NoError(err)
+	s.NotNil(delivered.DeliveredAt)
+
+	at := now.Add(time.Minute)
+	s.Require().NoError(repo.Redeliver(ctx, 7, 1, at))
+	row, err := repo.Get(ctx, 1)
+	s.Require().NoError(err)
+	s.Equal(domain.EmailDeliveryPending, row.State)
+	s.Zero(row.Attempts)
+	s.Nil(row.DeliveredAt, "redelivery clears the delivered marker")
+	s.Empty(row.LastError)
+	s.NotNil(row.NextAttemptAt)
+
+	s.True(domain.IsErrorNotFound(repo.Redeliver(ctx, 8, 1, at)), "another project cannot redeliver")
+	s.True(domain.IsErrorNotFound(repo.Redeliver(ctx, 7, 999, at)))
+
+	s.Require().NoError(repo.MarkDelivered(ctx, 1, at))
+	s.Require().NoError(repo.MarkFailed(ctx, 1, "boom"))
+	failed, err := repo.Get(ctx, 1)
+	s.Require().NoError(err)
+	s.Equal(domain.EmailDeliveryFailed, failed.State)
+	s.Nil(failed.DeliveredAt, "a failed delivery is not marked delivered")
+}
+
 func (s *EmailRepositorySuite) TestErrors() {
 	ctx := context.Background()
 	repo := NewEmailRepository(s.db)
