@@ -29,12 +29,15 @@ type Dispatcher interface {
 }
 
 // Run serves the REST API, the gRPC service and the embedded web UI on the
-// configured address until the process is signalled to shut down.
-func Run(cfg *config.Config, reg *Registry, dispatcher Dispatcher) error {
+// configured address until the process is signalled to shut down. Background
+// dispatchers are started before the listener and drained on shutdown.
+func Run(cfg *config.Config, reg *Registry, dispatchers ...Dispatcher) error {
 	apiApp := api.NewAPI(reg)
 	container := apiApp.SetupRoute()
-	if dispatcher != nil {
-		dispatcher.Start()
+	for _, dispatcher := range dispatchers {
+		if dispatcher != nil {
+			dispatcher.Start()
+		}
 	}
 
 	address := fmt.Sprintf("%s:%d", cfg.ServerAddress, cfg.ServerPort)
@@ -85,7 +88,10 @@ func Run(cfg *config.Config, reg *Registry, dispatcher Dispatcher) error {
 		}
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		if dispatcher != nil {
+		for _, dispatcher := range dispatchers {
+			if dispatcher == nil {
+				continue
+			}
 			if err := dispatcher.Stop(shutdownCtx); err != nil {
 				slog.Warn("background dispatcher shutdown incomplete", "error", err)
 			}

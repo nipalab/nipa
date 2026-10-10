@@ -366,3 +366,89 @@ func TestHookEmitter_ToleratesOptionalLookupFailures(t *testing.T) {
 	require.Empty(t, captured.Project.DefaultBranch)
 	require.Empty(t, captured.Actor.Username)
 }
+
+type fakeEmailNotifier struct {
+	wants  map[string]bool
+	events []NotifyEvent
+	err    error
+}
+
+func (f *fakeEmailNotifier) Wants(event string) bool { return f.wants[event] }
+
+func (f *fakeEmailNotifier) Notify(_ context.Context, event NotifyEvent) error {
+	f.events = append(f.events, event)
+	return f.err
+}
+
+func testEmitMergeRequest() *domain.MergeRequest {
+	return &domain.MergeRequest{
+		ID:           5,
+		Number:       42,
+		Title:        "Fix textures",
+		Status:       domain.MergeRequestOpen,
+		SourceBranch: "feature",
+		TargetBranch: "main",
+		CreatedBy:    10,
+	}
+}
+
+func TestHookEmitter_NotifierRunsWithoutHooks(t *testing.T) {
+	deps := newHookEmitDeps(t)
+	notifier := &fakeEmailNotifier{wants: map[string]bool{domain.WebhookEventMRCreated: true}}
+	deps.emitter = deps.emitter.WithNotifier(notifier)
+	deps.hooks.EXPECT().ListActiveByProject(gomock.Any(), snow.ID(1)).Return(nil, nil)
+	deps.expectPayloadContext(snow.ID(1))
+
+	require.NoError(t, deps.emitter.EmitMergeRequest(context.Background(), domain.WebhookEventMRCreated, snow.ID(1), testEmitMergeRequest(), snow.ID(7)))
+
+	require.Len(t, notifier.events, 1, "the notifier runs even when no webhook matches")
+	got := notifier.events[0]
+	require.Equal(t, domain.WebhookEventMRCreated, got.Event)
+	require.Equal(t, snow.ID(1), got.ProjectID)
+	require.Equal(t, snow.ID(7), got.Actor)
+	require.Equal(t, "acme", got.Envelope.Organization.Slug)
+	require.Equal(t, "game", got.Envelope.Project.Slug)
+	require.Equal(t, "alice", got.Envelope.Actor.Username)
+	require.Equal(t, int64(5), got.MR.ID)
+	require.Nil(t, got.Check)
+}
+
+func TestHookEmitter_NotifierSkippedWhenNotWanted(t *testing.T) {
+	deps := newHookEmitDeps(t)
+	notifier := &fakeEmailNotifier{wants: map[string]bool{}}
+	deps.emitter = deps.emitter.WithNotifier(notifier)
+	deps.hooks.EXPECT().ListActiveByProject(gomock.Any(), snow.ID(1)).Return(nil, nil)
+
+	require.NoError(t, deps.emitter.EmitMergeRequest(context.Background(), domain.WebhookEventMRCreated, snow.ID(1), testEmitMergeRequest(), snow.ID(7)))
+	require.Empty(t, notifier.events, "an unwanted event resolves no context and sends nothing")
+}
+
+func TestHookEmitter_NotifierErrorIsReturned(t *testing.T) {
+	deps := newHookEmitDeps(t)
+	notifier := &fakeEmailNotifier{
+		wants: map[string]bool{domain.WebhookEventMRMerged: true},
+		err:   errors.New("outbox down"),
+	}
+	deps.emitter = deps.emitter.WithNotifier(notifier)
+	deps.hooks.EXPECT().ListActiveByProject(gomock.Any(), snow.ID(1)).Return(nil, nil)
+	deps.expectPayloadContext(snow.ID(1))
+
+	err := deps.emitter.EmitMergeRequest(context.Background(), domain.WebhookEventMRMerged, snow.ID(1), testEmitMergeRequest(), snow.ID(7))
+	require.ErrorContains(t, err, "outbox down")
+}
+
+func TestHookEmitter_EmitMergeRequestCheckCarriesCheck(t *testing.T) {
+	deps := newHookEmitDeps(t)
+	notifier := &fakeEmailNotifier{wants: map[string]bool{domain.WebhookEventMRCheckReported: true}}
+	deps.emitter = deps.emitter.WithNotifier(notifier)
+	deps.hooks.EXPECT().ListActiveByProject(gomock.Any(), snow.ID(1)).Return(nil, nil)
+	deps.expectPayloadContext(snow.ID(1))
+
+	check := &domain.MergeRequestCheck{ID: snow.ID(9), Name: "build", State: domain.MergeRequestCheckFailed}
+	require.NoError(t, deps.emitter.EmitMergeRequestCheck(context.Background(), domain.WebhookEventMRCheckReported, snow.ID(1), testEmitMergeRequest(), check, snow.ID(7)))
+
+	require.Len(t, notifier.events, 1)
+	require.NotNil(t, notifier.events[0].Check)
+	require.Equal(t, "build", notifier.events[0].Check.Name)
+	require.Equal(t, domain.MergeRequestCheckFailed, notifier.events[0].Check.State)
+}

@@ -149,7 +149,7 @@ func TestMergeRequestCheck_Report_Additional(t *testing.T) {
 		mrRepo := NewMockmergeRequestRepository(ctrl)
 		branchRepo := NewMockbranchRepository(ctrl)
 		perm := NewMockpermissionUsecase(ctrl)
-		hooks := NewMockhookMergeRequestGate(ctrl)
+		hooks := NewMockhookMergeRequestCheckGate(ctrl)
 		uc := NewMergeRequestCheck(repo, mrRepo, branchRepo, perm, newTestBranchNode(t)).WithHooks(hooks)
 		require.NotNil(t, uc)
 
@@ -160,12 +160,12 @@ func TestMergeRequestCheck_Report_Additional(t *testing.T) {
 			Return(branchWithHead(3, snow.ID(11)), nil).Times(2)
 		repo.EXPECT().Upsert(gomock.Any(), gomock.Any()).
 			Return(&domain.MergeRequestCheck{ID: snow.ID(9)}, nil).Times(2)
-		hooks.EXPECT().EmitMergeRequest(gomock.Any(), domain.WebhookEventMRCheckReported, snow.ID(1), openMergeRequest(), snow.ID(7)).
+		hooks.EXPECT().EmitMergeRequestCheck(gomock.Any(), domain.WebhookEventMRCheckReported, snow.ID(1), openMergeRequest(), gomock.Any(), snow.ID(7)).
 			Return(nil)
 		_, err := uc.Report(permissionCtx(7), snow.ID(1), 5, "build", "success", "")
 		require.NoError(t, err)
 
-		hooks.EXPECT().EmitMergeRequest(gomock.Any(), domain.WebhookEventMRCheckReported, snow.ID(1), openMergeRequest(), snow.ID(7)).
+		hooks.EXPECT().EmitMergeRequestCheck(gomock.Any(), domain.WebhookEventMRCheckReported, snow.ID(1), openMergeRequest(), gomock.Any(), snow.ID(7)).
 			Return(errors.New("boom"))
 		_, err = uc.Report(permissionCtx(7), snow.ID(1), 5, "build", "success", "")
 		require.NoError(t, err)

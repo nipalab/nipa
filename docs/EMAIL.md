@@ -5,8 +5,9 @@ Nipa sends transactional email through a pluggable sender. The sender layer
 JSON sender that adapts to any REST provider; delivery is durable through an
 outbox (see [Delivery model](#delivery-model)).
 
-Status: the sender layer and configuration are implemented; the event
-notifications and the outbox dispatcher are being added in follow-up phases.
+Status: the sender layer, configuration, the durable outbox and the merge
+request notification wiring are implemented. The delivery admin surface
+(listing failed deliveries and redelivery) follows in a later change.
 
 ## Choosing a sender
 
@@ -134,8 +135,7 @@ request that landed the change. A background dispatcher claims due rows,
 sends them through the configured sender with bounded retries and exponential
 backoff, and records `delivered`/`failed` state with the last error. Failed
 deliveries can be inspected and redelivered from the project settings page.
-(The outbox, dispatcher and admin surface are implemented in the follow-up
-phases; until then `EMAIL_SENDER` can be configured but nothing enqueues.)
+(The inspection and redelivery surface is implemented in a follow-up phase.)
 
 ## Configuration reference
 

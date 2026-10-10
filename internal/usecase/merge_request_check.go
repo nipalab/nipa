@@ -16,6 +16,10 @@ type mergeRequestCheckRepository interface {
 	List(ctx context.Context, mergeRequestID int64, headCommitID snow.ID) ([]*domain.MergeRequestCheck, error)
 }
 
+type hookMergeRequestCheckGate interface {
+	EmitMergeRequestCheck(ctx context.Context, event string, projectID snow.ID, mr *domain.MergeRequest, check *domain.MergeRequestCheck, actor snow.ID) error
+}
+
 // mergeRequestCheckNameLimit caps a check name; it must fit a branch's
 // required-check list.
 const mergeRequestCheckNameLimit = 128
@@ -29,7 +33,7 @@ type MergeRequestCheck struct {
 	branchRepo branchRepository
 	perm       permissionUsecase
 	snowNode   snow.Node
-	hooks      hookMergeRequestGate
+	hooks      hookMergeRequestCheckGate
 }
 
 func NewMergeRequestCheck(repo mergeRequestCheckRepository, mrRepo mergeRequestRepository,
@@ -45,7 +49,7 @@ func NewMergeRequestCheck(repo mergeRequestCheckRepository, mrRepo mergeRequestR
 }
 
 // WithHooks enables webhook events on this usecase.
-func (c *MergeRequestCheck) WithHooks(hooks hookMergeRequestGate) *MergeRequestCheck {
+func (c *MergeRequestCheck) WithHooks(hooks hookMergeRequestCheckGate) *MergeRequestCheck {
 	c.hooks = hooks
 	return c
 }
@@ -95,7 +99,7 @@ func (c *MergeRequestCheck) Report(ctx context.Context, projectID snow.ID, numbe
 		return nil, err
 	}
 	if c.hooks != nil {
-		if err := c.hooks.EmitMergeRequest(ctx, domain.WebhookEventMRCheckReported, projectID, mr, claim.UserID); err != nil {
+		if err := c.hooks.EmitMergeRequestCheck(ctx, domain.WebhookEventMRCheckReported, projectID, mr, check, claim.UserID); err != nil {
 			slog.Warn("emitting check webhook failed", "merge_request", mr.Number, "error", err)
 		}
 	}

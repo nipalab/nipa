@@ -71,3 +71,41 @@ func (mr *MockmergeRequestCheckRepositoryMockRecorder) Upsert(ctx, check any) *g
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Upsert", reflect.TypeOf((*MockmergeRequestCheckRepository)(nil).Upsert), ctx, check)
 }
+
+// MockhookMergeRequestCheckGate is a mock of hookMergeRequestCheckGate interface.
+type MockhookMergeRequestCheckGate struct {
+	ctrl     *gomock.Controller
+	recorder *MockhookMergeRequestCheckGateMockRecorder
+	isgomock struct{}
+}
+
+// MockhookMergeRequestCheckGateMockRecorder is the mock recorder for MockhookMergeRequestCheckGate.
+type MockhookMergeRequestCheckGateMockRecorder struct {
+	mock *MockhookMergeRequestCheckGate
+}
+
+// NewMockhookMergeRequestCheckGate creates a new mock instance.
+func NewMockhookMergeRequestCheckGate(ctrl *gomock.Controller) *MockhookMergeRequestCheckGate {
+	mock := &MockhookMergeRequestCheckGate{ctrl: ctrl}
+	mock.recorder = &MockhookMergeRequestCheckGateMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockhookMergeRequestCheckGate) EXPECT() *MockhookMergeRequestCheckGateMockRecorder {
+	return m.recorder
+}
+
+// EmitMergeRequestCheck mocks base method.
+func (m *MockhookMergeRequestCheckGate) EmitMergeRequestCheck(ctx context.Context, event string, projectID snow.ID, mr *domain.MergeRequest, check *domain.MergeRequestCheck, actor snow.ID) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "EmitMergeRequestCheck", ctx, event, projectID, mr, check, actor)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// EmitMergeRequestCheck indicates an expected call of EmitMergeRequestCheck.
+func (mr_2 *MockhookMergeRequestCheckGateMockRecorder) EmitMergeRequestCheck(ctx, event, projectID, mr, check, actor any) *gomock.Call {
+	mr_2.mock.ctrl.T.Helper()
+	return mr_2.mock.ctrl.RecordCallWithMethodType(mr_2.mock, "EmitMergeRequestCheck", reflect.TypeOf((*MockhookMergeRequestCheckGate)(nil).EmitMergeRequestCheck), ctx, event, projectID, mr, check, actor)
+}
