@@ -1,0 +1,198 @@
+package sqlite
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
+
+	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/snow"
+)
+
+func testEmailDelivery(id int64, next *time.Time) *domain.EmailDelivery {
+	return &domain.EmailDelivery{
+		ID:            snow.ID(id),
+		Event:         "mr.comment_created",
+		ProjectID:     7,
+		UserID:        42,
+		Email:         "dev@example.com",
+		Subject:       "subject",
+		Body:          []byte(`{"to":["dev@example.com"],"subject":"subject","text":"body"}`),
+		State:         domain.EmailDeliveryPending,
+		NextAttemptAt: next,
+	}
+}
+
+func TestEmailRepositorySQLite_EnqueueAndClaimDue(t *testing.T) {
+	ctx := context.Background()
+	db, _ := newSQLiteTestDB(t)
+	repo := NewEmailRepository(db)
+
+	now := time.Now()
+	due := now.Add(-time.Minute)
+	future := now.Add(time.Hour)
+	require.NoError(t, repo.Enqueue(ctx, []*domain.EmailDelivery{
+		testEmailDelivery(1, &due),
+		testEmailDelivery(2, &due),
+		testEmailDelivery(3, &future),
+	}))
+
+	claimed, err := repo.ClaimDue(ctx, now, now.Add(-5*time.Minute), 10)
+	require.NoError(t, err)
+	require.Len(t, claimed, 2, "only the due rows are claimed")
+	for _, delivery := range claimed {
+		require.Equal(t, domain.EmailDeliverySending, delivery.State)
+		require.Equal(t, int64(1), delivery.Attempts)
+		require.NotNil(t, delivery.ClaimedAt)
+	}
+
+	claimed, err = repo.ClaimDue(ctx, now, now.Add(-5*time.Minute), 10)
+	require.NoError(t, err)
+	require.Empty(t, claimed, "sending rows are not claimed twice")
+
+	futureRow, err := repo.Get(ctx, 3)
+	require.NoError(t, err)
+	require.Equal(t, domain.EmailDeliveryPending, futureRow.State)
+
+	claimed, err = repo.ClaimDue(ctx, now, now.Add(time.Hour), 10)
+	require.NoError(t, err)
+	require.Len(t, claimed, 2, "stale sending rows are reclaimed and claimed again")
+	require.Equal(t, int64(2), claimed[0].Attempts)
+
+	claimed, err = repo.ClaimDue(ctx, now, now.Add(time.Hour), 1)
+	require.NoError(t, err)
+	require.Len(t, claimed, 1, "the limit caps one claim")
+	require.Equal(t, int64(3), claimed[0].Attempts)
+}
+
+func TestEmailRepositorySQLite_Lifecycle(t *testing.T) {
+	ctx := context.Background()
+	db, _ := newSQLiteTestDB(t)
+	repo := NewEmailRepository(db)
+
+	now := time.Now()
+	due := now.Add(-time.Minute)
+	require.NoError(t, repo.Enqueue(ctx, []*domain.EmailDelivery{
+		testEmailDelivery(1, &due),
+		testEmailDelivery(2, &due),
+		testEmailDelivery(3, &due),
+	}))
+	claimed, err := repo.ClaimDue(ctx, now, now.Add(-5*time.Minute), 10)
+	require.NoError(t, err)
+	require.Len(t, claimed, 3)
+
+	require.NoError(t, repo.MarkDelivered(ctx, claimed[0].ID, now))
+	delivered, err := repo.Get(ctx, claimed[0].ID)
+	require.NoError(t, err)
+	require.Equal(t, domain.EmailDeliveryDelivered, delivered.State)
+	require.NotNil(t, delivered.DeliveredAt)
+	require.Nil(t, delivered.NextAttemptAt)
+	require.Empty(t, delivered.LastError)
+
+	retryAt := now.Add(time.Minute)
+	require.NoError(t, repo.ScheduleRetry(ctx, claimed[1].ID, "smtp down", retryAt))
+	pending, err := repo.Get(ctx, claimed[1].ID)
+	require.NoError(t, err)
+	require.Equal(t, domain.EmailDeliveryPending, pending.State)
+	require.Equal(t, "smtp down", pending.LastError)
+	require.Nil(t, pending.ClaimedAt)
+	require.NotNil(t, pending.NextAttemptAt)
+	require.WithinDuration(t, retryAt, *pending.NextAttemptAt, time.Second)
+
+	require.NoError(t, repo.MarkFailed(ctx, claimed[2].ID, "boom"))
+	failed, err := repo.Get(ctx, claimed[2].ID)
+	require.NoError(t, err)
+	require.Equal(t, domain.EmailDeliveryFailed, failed.State)
+	require.Equal(t, "boom", failed.LastError)
+	require.Nil(t, failed.NextAttemptAt)
+}
+
+func TestEmailRepositorySQLite_SweepRetention(t *testing.T) {
+	ctx := context.Background()
+	db, _ := newSQLiteTestDB(t)
+	repo := NewEmailRepository(db)
+
+	now := time.Now()
+	due := now.Add(-time.Minute)
+	future := now.Add(time.Hour)
+	require.NoError(t, repo.Enqueue(ctx, []*domain.EmailDelivery{
+		testEmailDelivery(1, &due),
+		testEmailDelivery(2, &due),
+		testEmailDelivery(3, &due),
+		testEmailDelivery(4, &future),
+	}))
+	claimed, err := repo.ClaimDue(ctx, now, now.Add(-5*time.Minute), 10)
+	require.NoError(t, err)
+	require.Len(t, claimed, 3)
+	require.NoError(t, repo.MarkDelivered(ctx, claimed[0].ID, now))
+	require.NoError(t, repo.MarkFailed(ctx, claimed[1].ID, "boom"))
+
+	old := now.Add(-48 * time.Hour)
+	_, err = db.ExecContext(ctx, "UPDATE email_deliveries SET updated_at = ? WHERE id IN (?, ?)", old, int64(1), int64(2))
+	require.NoError(t, err)
+
+	deleted, err := repo.SweepRetention(ctx, now.Add(-24*time.Hour))
+	require.NoError(t, err)
+	require.Equal(t, int64(2), deleted)
+
+	_, err = repo.Get(ctx, 1)
+	require.True(t, domain.IsErrorNotFound(err))
+	_, err = repo.Get(ctx, 2)
+	require.True(t, domain.IsErrorNotFound(err))
+	remaining, err := repo.Get(ctx, 4)
+	require.NoError(t, err)
+	require.Equal(t, domain.EmailDeliveryPending, remaining.State, "pending rows are never swept")
+}
+
+func TestEmailRepositorySQLite_EnqueueDefaultsToImmediate(t *testing.T) {
+	ctx := context.Background()
+	db, _ := newSQLiteTestDB(t)
+	repo := NewEmailRepository(db)
+
+	require.NoError(t, repo.Enqueue(ctx, []*domain.EmailDelivery{testEmailDelivery(1, nil)}))
+	claimed, err := repo.ClaimDue(ctx, time.Now(), time.Now().Add(-time.Minute), 10)
+	require.NoError(t, err)
+	require.Len(t, claimed, 1, "a delivery without a scheduled attempt is due immediately")
+	require.Equal(t, domain.EmailDeliverySending, claimed[0].State)
+}
+
+func TestEmailRepositorySQLite_EnqueueRollsBack(t *testing.T) {
+	ctx := context.Background()
+	db, _ := newSQLiteTestDB(t)
+	repo := NewEmailRepository(db)
+
+	due := time.Now()
+	require.NoError(t, repo.Enqueue(ctx, []*domain.EmailDelivery{testEmailDelivery(1, &due)}))
+
+	err := repo.Enqueue(ctx, []*domain.EmailDelivery{
+		testEmailDelivery(2, &due),
+		testEmailDelivery(1, &due),
+	})
+	require.Error(t, err, "duplicate ids fail the batch")
+
+	_, err = repo.Get(ctx, 1)
+	require.NoError(t, err, "the first enqueue is untouched")
+	_, err = repo.Get(ctx, 2)
+	require.True(t, domain.IsErrorNotFound(err), "the failed batch rolled back")
+}
+
+func TestEmailRepositorySQLite_Errors(t *testing.T) {
+	ctx := context.Background()
+	db, _ := newSQLiteTestDB(t)
+	repo := NewEmailRepository(db)
+	require.NoError(t, db.Close())
+
+	due := time.Now()
+	require.Error(t, repo.Enqueue(ctx, []*domain.EmailDelivery{testEmailDelivery(1, &due)}))
+	_, err := repo.ClaimDue(ctx, time.Now(), time.Now(), 10)
+	require.Error(t, err)
+	_, err = repo.Get(ctx, 1)
+	require.Error(t, err)
+	require.Error(t, repo.MarkDelivered(ctx, 1, time.Now()))
+	require.Error(t, repo.ScheduleRetry(ctx, 1, "x", time.Now()))
+	require.Error(t, repo.MarkFailed(ctx, 1, "x"))
+	_, err = repo.SweepRetention(ctx, time.Now())
+	require.Error(t, err)
+}

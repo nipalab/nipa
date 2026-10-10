@@ -18,15 +18,15 @@ import (
 // References carry RFC 5322 threading headers; an empty MessageID lets the
 // provider assign one.
 type Message struct {
-	From       string
-	ReplyTo    string
-	To         []string
-	Subject    string
-	Text       string
-	HTML       string
-	MessageID  string
-	InReplyTo  string
-	References []string
+	From       string   `json:"from,omitempty"`
+	ReplyTo    string   `json:"reply_to,omitempty"`
+	To         []string `json:"to,omitempty"`
+	Subject    string   `json:"subject,omitempty"`
+	Text       string   `json:"text,omitempty"`
+	HTML       string   `json:"html,omitempty"`
+	MessageID  string   `json:"message_id,omitempty"`
+	InReplyTo  string   `json:"in_reply_to,omitempty"`
+	References []string `json:"references,omitempty"`
 }
 
 // Sender delivers one message per Send call. Implementations are safe for
