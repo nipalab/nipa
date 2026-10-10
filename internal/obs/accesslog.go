@@ -44,8 +44,15 @@ func AccessLog(quiet func(*http.Request) bool, next http.Handler) http.Handler {
 	})
 }
 
+// IsGRPCRequest reports whether the shared mux dispatches the request to the
+// gRPC handler: h2c traffic with a gRPC content type. HTTP/1.1 requests never
+// reach gRPC even when they carry the content type.
+func IsGRPCRequest(r *http.Request) bool {
+	return r.ProtoMajor == 2 && strings.HasPrefix(r.Header.Get("Content-Type"), "application/grpc")
+}
+
 func skipAccessLog(r *http.Request) bool {
-	if strings.HasPrefix(r.Header.Get("Content-Type"), "application/grpc") {
+	if IsGRPCRequest(r) {
 		return true
 	}
 	p := r.URL.Path

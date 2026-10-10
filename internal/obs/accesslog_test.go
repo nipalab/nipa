@@ -137,15 +137,16 @@ func TestAccessLog_QuietDoesNotHideErrors(t *testing.T) {
 
 func TestAccessLog_Skips(t *testing.T) {
 	tests := []struct {
-		name    string
-		target  string
-		headers map[string]string
+		name       string
+		target     string
+		protoMajor int
+		headers    map[string]string
 	}{
-		{"healthz", "/healthz", nil},
-		{"readyz", "/readyz", nil},
-		{"metrics", "/metrics", nil},
-		{"pprof", "/debug/pprof/heap", nil},
-		{"grpc", "/greet.NipaService/GetCommit", map[string]string{"Content-Type": "application/grpc+proto"}},
+		{"healthz", "/healthz", 0, nil},
+		{"readyz", "/readyz", 0, nil},
+		{"metrics", "/metrics", 0, nil},
+		{"pprof", "/debug/pprof/heap", 0, nil},
+		{"grpc", "/greet.NipaService/GetCommit", 2, map[string]string{"Content-Type": "application/grpc+proto"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -154,6 +155,10 @@ func TestAccessLog_Skips(t *testing.T) {
 			h := AccessLog(nil, http.HandlerFunc(func(http.ResponseWriter, *http.Request) { called = true }))
 
 			req := httptest.NewRequest(http.MethodGet, tt.target, nil)
+			if tt.protoMajor != 0 {
+				req.ProtoMajor = tt.protoMajor
+				req.Proto = "HTTP/2.0"
+			}
 			for k, v := range tt.headers {
 				req.Header.Set(k, v)
 			}
@@ -161,6 +166,46 @@ func TestAccessLog_Skips(t *testing.T) {
 
 			require.True(t, called)
 			require.Empty(t, collector.records())
+		})
+	}
+}
+
+func TestAccessLog_HTTP1WithGRPCContentTypeIsLogged(t *testing.T) {
+	collector := installCollector(t)
+	h := AccessLog(nil, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/orgs", nil)
+	req.Header.Set("Content-Type", "application/grpc+proto")
+	h.ServeHTTP(httptest.NewRecorder(), req)
+
+	records := collector.records()
+	require.Len(t, records, 1)
+	require.Equal(t, "/api/v1/orgs", attrsOf(records[0])["path"])
+}
+
+func TestIsGRPCRequest(t *testing.T) {
+	tests := []struct {
+		name       string
+		protoMajor int
+		content    string
+		want       bool
+	}{
+		{"h2 grpc", 2, "application/grpc", true},
+		{"h2 grpc proto", 2, "application/grpc+proto", true},
+		{"http1 grpc", 1, "application/grpc", false},
+		{"h2 json", 2, "application/json", false},
+		{"h2 empty", 2, "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/x", nil)
+			req.ProtoMajor = tt.protoMajor
+			if tt.content != "" {
+				req.Header.Set("Content-Type", tt.content)
+			}
+			require.Equal(t, tt.want, IsGRPCRequest(req))
 		})
 	}
 }

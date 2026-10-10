@@ -92,7 +92,7 @@ func Run(cfg *config.Config, reg *Registry, dispatchers []Dispatcher, opts ...Op
 	}
 
 	mainHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.ProtoMajor == 2 && strings.HasPrefix(r.Header.Get("Content-Type"), "application/grpc") {
+		if obs.IsGRPCRequest(r) {
 			grpcRegistrar.ServeHTTP(w, r)
 			return
 		}
