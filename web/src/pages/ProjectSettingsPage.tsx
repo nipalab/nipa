@@ -28,6 +28,7 @@ import type { BranchResponse, OrgMemberResponse, PBACRuleResponse, PermissionEnt
 import { RepoPageShell } from '../components/repo/RepoPageShell'
 import { useRepoChrome } from '../components/repo/useRepoChrome'
 import { WebhookSettings } from '../components/repo/WebhookSettings'
+import { EmailSettings } from '../components/repo/EmailSettings'
 import { PermissionBadge } from '../components/PermissionBadge'
 import { PermissionCheckboxes } from '../components/PermissionCheckboxes'
 import { UserGroupPicker } from '../components/UserGroupPicker'
@@ -38,6 +39,7 @@ const SETTINGS_TABS = [
   { key: 'access', label: 'Access' },
   { key: 'branches', label: 'Branches' },
   { key: 'webhooks', label: 'Webhooks' },
+  { key: 'email', label: 'Email deliveries' },
 ] as const
 
 type SettingsTab = (typeof SETTINGS_TABS)[number]['key']
@@ -323,6 +325,8 @@ export default function ProjectSettingsPage() {
           )}
 
           {tab === 'webhooks' && <WebhookSettings org={org} project={project} />}
+
+          {tab === 'email' && <EmailSettings org={org} project={project} />}
         </div>
       </div>
 

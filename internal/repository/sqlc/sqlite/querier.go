@@ -49,9 +49,11 @@ type Querier interface {
 	EmailDeliveryClaimDue(ctx context.Context, arg EmailDeliveryClaimDueParams) ([]EmailDelivery, error)
 	EmailDeliveryCreate(ctx context.Context, arg EmailDeliveryCreateParams) (EmailDelivery, error)
 	EmailDeliveryGet(ctx context.Context, id int64) (EmailDelivery, error)
+	EmailDeliveryList(ctx context.Context, arg EmailDeliveryListParams) ([]EmailDelivery, error)
 	EmailDeliveryMarkDelivered(ctx context.Context, arg EmailDeliveryMarkDeliveredParams) error
 	EmailDeliveryMarkFailed(ctx context.Context, arg EmailDeliveryMarkFailedParams) error
 	EmailDeliveryReclaimStale(ctx context.Context, staleBefore sql.NullTime) (int64, error)
+	EmailDeliveryRedeliver(ctx context.Context, arg EmailDeliveryRedeliverParams) (int64, error)
 	EmailDeliveryScheduleRetry(ctx context.Context, arg EmailDeliveryScheduleRetryParams) error
 	EmailDeliverySweep(ctx context.Context, before time.Time) (int64, error)
 	EmailDeliveryThreadRecipients(ctx context.Context, arg EmailDeliveryThreadRecipientsParams) ([]int64, error)

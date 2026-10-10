@@ -27,7 +27,7 @@ proxies `/api` and `/docs` to `NIPA_SERVER_URL`).
 | `/:org/:project/merges[/new]` | merge requests | list with status/author/source/target/assignee filters plus free-text search (status includes a `draft` pseudo-filter) and "Load more" pagination; dedicated create page with a "create as draft" checkbox |
 | `/:org/:project/merges/:id` | merge request detail | GitHub-style conversation (description, timeline, comments, reviewers/participants sidebar, merge box) plus Commits and File changes tabs; author/admin can edit title/description |
 | `/:org/:project/locks` | file locks | list binary asset locks, lock/unlock |
-| `/:org/:project/settings` | project settings | branch protection + ACL rules/defaults + webhooks |
+| `/:org/:project/settings` | project settings | branch protection + ACL rules/defaults + webhooks + email deliveries |
 | `/:org/settings` | organization settings | members and groups (org owner or global admin) |
 | `/admin/users` | user administration | GitHub-style list with filter, avatar/role labels and row actions |
 | `/admin/users/new` | new user | dedicated create page (name, email, password) |

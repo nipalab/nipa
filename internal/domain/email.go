@@ -15,6 +15,16 @@ const (
 	EmailDeliveryFailed    = "failed"
 )
 
+// IsValidEmailDeliveryState reports whether state names a delivery state.
+func IsValidEmailDeliveryState(state string) bool {
+	switch state {
+	case EmailDeliveryPending, EmailDeliverySending, EmailDeliveryDelivered, EmailDeliveryFailed:
+		return true
+	default:
+		return false
+	}
+}
+
 // EmailDelivery is one rendered notification queued in the outbox for a single
 // recipient. Body holds the encoded mail message.
 type EmailDelivery struct {

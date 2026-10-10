@@ -47,3 +47,20 @@ func TestMailSenderConfig(t *testing.T) {
 	require.Equal(t, "application/json", mapped.HTTP.ContentType)
 	require.Equal(t, `{"to":{{json .To}}}`, mapped.HTTP.BodyTemplate)
 }
+
+func TestEmailDispatcherConfig(t *testing.T) {
+	cfg := &Config{
+		EmailMaxAttempts:      4,
+		EmailRetryBackoffSecs: 3,
+		EmailPollSeconds:      2,
+	}
+	mapped := cfg.EmailDispatcherConfig()
+	require.Equal(t, 4, mapped.MaxAttempts)
+	require.Equal(t, 3*time.Second, mapped.InitialBackoff)
+	require.Equal(t, 2*time.Second, mapped.PollInterval)
+
+	empty := (&Config{}).EmailDispatcherConfig()
+	require.Zero(t, empty.MaxAttempts)
+	require.Zero(t, empty.InitialBackoff)
+	require.Zero(t, empty.PollInterval)
+}

@@ -114,21 +114,22 @@ func (f *fakeAppContext) HandleError(err error) {
 }
 
 type handlerRegistry struct {
-	auth         *usecase.Auth
-	user         *usecase.User
-	common       *usecase.Common
-	permission   *usecase.Permission
-	org          *usecase.Org
-	group        *usecase.Group
-	project      *usecase.Project
-	branch       *usecase.Branch
-	tag          *usecase.Tag
-	chunk        *usecase.Chunk
-	mergeRequest *usecase.MergeRequest
-	review       *usecase.MergeRequestReview
-	mergeCheck   *usecase.MergeRequestCheck
-	fileLock     *usecase.FileLock
-	webhook      *usecase.Webhook
+	auth          *usecase.Auth
+	user          *usecase.User
+	common        *usecase.Common
+	permission    *usecase.Permission
+	org           *usecase.Org
+	group         *usecase.Group
+	project       *usecase.Project
+	branch        *usecase.Branch
+	tag           *usecase.Tag
+	chunk         *usecase.Chunk
+	mergeRequest  *usecase.MergeRequest
+	review        *usecase.MergeRequestReview
+	mergeCheck    *usecase.MergeRequestCheck
+	fileLock      *usecase.FileLock
+	webhook       *usecase.Webhook
+	emailDelivery *usecase.EmailDelivery
 }
 
 func (r *handlerRegistry) Auth() *usecase.Auth             { return r.auth }
@@ -155,6 +156,8 @@ func (r *handlerRegistry) MergeRequestCheck() *usecase.MergeRequestCheck {
 func (r *handlerRegistry) FileLock() *usecase.FileLock { return r.fileLock }
 
 func (r *handlerRegistry) Webhook() *usecase.Webhook { return r.webhook }
+
+func (r *handlerRegistry) EmailDelivery() *usecase.EmailDelivery { return r.emailDelivery }
 
 type stubPasswordHasher struct{}
 
@@ -236,21 +239,22 @@ func newHandlerTestEnv(t *testing.T) *handlerTestEnv {
 		branchRepo, permissionUc, node,
 	)
 	reg := &handlerRegistry{
-		auth:         usecase.NewAuth("test-secret", stubPasswordHasher{}, userRepo, authRepo),
-		user:         usecase.NewUser(node, userRepo, stubPasswordHasher{}),
-		common:       usecase.NewCommon(orgRepo, sqlite.NewProjectRepository(dbConn)),
-		permission:   permissionUc,
-		org:          orgUc,
-		group:        usecase.NewGroup(groupRepo, node, permissionUc, orgUc),
-		project:      projectUc,
-		branch:       branchUc,
-		tag:          usecase.NewTag(permissionUc, sqlite.NewTagRepository(dbConn), branchRepo, node),
-		chunk:        chunkUc,
-		mergeRequest: mergeRequestUc,
-		review:       reviewUc,
-		mergeCheck:   checkUc,
-		fileLock:     fileLockUc,
-		webhook:      webhookUc,
+		auth:          usecase.NewAuth("test-secret", stubPasswordHasher{}, userRepo, authRepo),
+		user:          usecase.NewUser(node, userRepo, stubPasswordHasher{}),
+		common:        usecase.NewCommon(orgRepo, sqlite.NewProjectRepository(dbConn)),
+		permission:    permissionUc,
+		org:           orgUc,
+		group:         usecase.NewGroup(groupRepo, node, permissionUc, orgUc),
+		project:       projectUc,
+		branch:        branchUc,
+		tag:           usecase.NewTag(permissionUc, sqlite.NewTagRepository(dbConn), branchRepo, node),
+		chunk:         chunkUc,
+		mergeRequest:  mergeRequestUc,
+		review:        reviewUc,
+		mergeCheck:    checkUc,
+		fileLock:      fileLockUc,
+		webhook:       webhookUc,
+		emailDelivery: usecase.NewEmailDelivery(sqlite.NewEmailRepository(dbConn), permissionUc),
 	}
 	return &handlerTestEnv{
 		handler:    NewHandler(reg),

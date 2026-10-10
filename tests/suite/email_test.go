@@ -57,4 +57,54 @@ var _ = Describe("email notifications", func() {
 		reviewerAPI.addMergeRequestComment(orgSlug, project, 1, "", "one more")
 		Consistently(func() int { return email.countFor(author.email) }, "2s", "100ms").Should(Equal(1))
 	})
+
+	It("retries failed deliveries and redelivers them from the admin surface", func() {
+		project := newProject("email-retry")
+		seedRepo(orgSlug, project, map[string][]byte{"base.txt": []byte("base\n")}, "seed")
+
+		author := newIdentity("email-retry-author").promote()
+		reviewer := newIdentity("email-retry-reviewer").promote()
+		reviewerAPI := newAPIClient(cli.apiURL, reviewer.email, reviewer.password)
+
+		parent := workspace()
+		dir := cloneRepoAs(author, parent, repoURLFor(orgSlug, project), "work")
+		Expect(runNipaAs(author, dir, "branch", "-c", "feature").ExitCode).To(Equal(0))
+		writeText(dir, "feature.txt", "feature\n")
+		Expect(runNipaAs(author, dir, "add", "feature.txt").ExitCode).To(Equal(0))
+		push := runNipaAs(author, dir, "push", "-m", uniqueMessage("email retry work"))
+		Expect(push.ExitCode).To(Equal(0), push.Output())
+		create := runNipaAs(author, dir, "mr", "create", "--title", uniqueMessage("Email retry MR"))
+		Expect(create.ExitCode).To(Equal(0), create.Output())
+
+		email.failFor(author.email, 2)
+		reviewerAPI.addMergeRequestComment(orgSlug, project, 1, "", "retry me")
+
+		var failed emailDeliveryJSON
+		Eventually(func() bool {
+			for _, delivery := range api.listEmailDeliveries(orgSlug, project, "failed").Deliveries {
+				if delivery.Email == author.email {
+					failed = delivery
+					return true
+				}
+			}
+			return false
+		}, "20s", "100ms").Should(BeTrue(), "the delivery never reached failed")
+
+		Expect(failed.Attempts).To(Equal(int64(2)), "both configured attempts were used")
+		Expect(failed.State).To(Equal("failed"))
+		Expect(failed.LastError).NotTo(BeEmpty())
+
+		redelivered := api.redeliverEmailDelivery(orgSlug, project, failed.ID)
+		Expect(redelivered.State).NotTo(Equal("failed"), "redelivery re-queues the delivery")
+		email.waitForSubject(author.email, "New comment")
+
+		Eventually(func() string {
+			for _, delivery := range api.listEmailDeliveries(orgSlug, project, "delivered").Deliveries {
+				if delivery.ID == failed.ID {
+					return delivery.State
+				}
+			}
+			return ""
+		}, "20s", "100ms").Should(Equal("delivered"))
+	})
 })

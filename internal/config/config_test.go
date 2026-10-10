@@ -17,7 +17,7 @@ func writeFile(t *testing.T, dir, name, content string) {
 // otherwise pick up and override file-based values.
 func clearConfigEnv(t *testing.T) {
 	t.Helper()
-	for _, k := range []string{"DATABASE_DSN", "SERVER_ADDRESS", "SERVER_PORT", "JWT_KEY", "LOG_LEVEL", "HASHER_WORKERS", "SNOWFLAKE_NODE_ID", "CHUNK_STORAGE", "CHUNK_STORAGE_DIR", "CHUNK_S3_ENDPOINT", "CHUNK_S3_REGION", "CHUNK_S3_BUCKET", "CHUNK_S3_PREFIX", "CHUNK_S3_ACCESS_KEY_ID", "CHUNK_S3_SECRET_ACCESS_KEY", "CHUNK_URL_SIGNING_KEY", "CHUNK_PRESIGN_TTL_SECONDS", "CHUNK_MAX_PAGE_SIZE", "EMAIL_SENDER", "EMAIL_FROM", "EMAIL_REPLY_TO", "EMAIL_BASE_URL", "EMAIL_TIMEOUT_SECONDS", "EMAIL_SMTP_HOST", "EMAIL_SMTP_PORT", "EMAIL_SMTP_USERNAME", "EMAIL_SMTP_PASSWORD", "EMAIL_SMTP_TLS", "EMAIL_SMTP_INSECURE_SKIP_VERIFY", "EMAIL_SENDGRID_API_KEY", "EMAIL_SENDGRID_ENDPOINT", "EMAIL_HTTP_ENDPOINT", "EMAIL_HTTP_METHOD", "EMAIL_HTTP_HEADERS", "EMAIL_HTTP_CONTENT_TYPE", "EMAIL_HTTP_BODY_TEMPLATE"} {
+	for _, k := range []string{"DATABASE_DSN", "SERVER_ADDRESS", "SERVER_PORT", "JWT_KEY", "LOG_LEVEL", "HASHER_WORKERS", "SNOWFLAKE_NODE_ID", "CHUNK_STORAGE", "CHUNK_STORAGE_DIR", "CHUNK_S3_ENDPOINT", "CHUNK_S3_REGION", "CHUNK_S3_BUCKET", "CHUNK_S3_PREFIX", "CHUNK_S3_ACCESS_KEY_ID", "CHUNK_S3_SECRET_ACCESS_KEY", "CHUNK_URL_SIGNING_KEY", "CHUNK_PRESIGN_TTL_SECONDS", "CHUNK_MAX_PAGE_SIZE", "EMAIL_SENDER", "EMAIL_FROM", "EMAIL_REPLY_TO", "EMAIL_BASE_URL", "EMAIL_TIMEOUT_SECONDS", "EMAIL_MAX_ATTEMPTS", "EMAIL_RETRY_BACKOFF_SECONDS", "EMAIL_POLL_SECONDS", "EMAIL_SMTP_HOST", "EMAIL_SMTP_PORT", "EMAIL_SMTP_USERNAME", "EMAIL_SMTP_PASSWORD", "EMAIL_SMTP_TLS", "EMAIL_SMTP_INSECURE_SKIP_VERIFY", "EMAIL_SENDGRID_API_KEY", "EMAIL_SENDGRID_ENDPOINT", "EMAIL_HTTP_ENDPOINT", "EMAIL_HTTP_METHOD", "EMAIL_HTTP_HEADERS", "EMAIL_HTTP_CONTENT_TYPE", "EMAIL_HTTP_BODY_TEMPLATE"} {
 		if old, ok := os.LookupEnv(k); ok {
 			_ = os.Unsetenv(k)
 			t.Cleanup(func() { _ = os.Setenv(k, old) })
@@ -46,6 +46,9 @@ EMAIL_FROM: Nipa <noreply@example.com>
 EMAIL_REPLY_TO: support@example.com
 EMAIL_BASE_URL: https://nipa.example.com
 EMAIL_TIMEOUT_SECONDS: 15
+EMAIL_MAX_ATTEMPTS: 4
+EMAIL_RETRY_BACKOFF_SECONDS: 3
+EMAIL_POLL_SECONDS: 2
 EMAIL_SMTP_HOST: smtp.example.com
 EMAIL_SMTP_PORT: 2525
 EMAIL_SMTP_USERNAME: mailer
@@ -89,6 +92,9 @@ func TestLoadConfig_FromYAML(t *testing.T) {
 	require.Equal(t, "support@example.com", cfg.EmailReplyTo)
 	require.Equal(t, "https://nipa.example.com", cfg.EmailBaseURL)
 	require.Equal(t, 15, cfg.EmailTimeoutSeconds)
+	require.Equal(t, 4, cfg.EmailMaxAttempts)
+	require.Equal(t, 3, cfg.EmailRetryBackoffSecs)
+	require.Equal(t, 2, cfg.EmailPollSeconds)
 	require.Equal(t, "smtp.example.com", cfg.EmailSMTPHost)
 	require.Equal(t, 2525, cfg.EmailSMTPPort)
 	require.Equal(t, "mailer", cfg.EmailSMTPUsername)

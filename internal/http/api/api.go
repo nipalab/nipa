@@ -27,6 +27,7 @@ type usecaseContainer interface {
 	MergeRequestCheck() *usecase.MergeRequestCheck
 	FileLock() *usecase.FileLock
 	Webhook() *usecase.Webhook
+	EmailDelivery() *usecase.EmailDelivery
 }
 
 type API struct {
@@ -74,6 +75,7 @@ func (a *API) SetupRoute() http.Handler {
 	setupGroupRouter(apiWs, h)
 	setupPermissionRouter(apiWs, h)
 	setupWebhookRouter(apiWs, h)
+	setupEmailDeliveryRouter(apiWs, h)
 	restful.Add(apiWs)
 
 	chunkWs := new(restful.WebService).ApiVersion("1.0.0")

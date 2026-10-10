@@ -31,6 +31,8 @@ import type {
   UpdateWebhookInput,
   UserResponse,
   WebhookDeliveryResponse,
+  EmailDeliveryListResponse,
+  EmailDeliveryResponse,
   WebhookResponse,
 } from './models'
 
@@ -731,6 +733,30 @@ export function redeliverWebhookDelivery(
 ): Promise<WebhookDeliveryResponse> {
   return apiJson(
     `${webhookBase(org, project, id)}/deliveries/${encodeURIComponent(deliveryID)}/redeliver`,
+    { method: 'POST', body: JSON.stringify({}) },
+  )
+}
+
+export function listEmailDeliveries(
+  org: string,
+  project: string,
+  state = '',
+  after = '',
+  limit = 50,
+): Promise<EmailDeliveryListResponse> {
+  const params = new URLSearchParams({ limit: String(limit) })
+  if (state) params.set('state', state)
+  if (after) params.set('after', after)
+  return apiJson(`${projectBase(org, project)}/emails/deliveries?${params.toString()}`)
+}
+
+export function redeliverEmailDelivery(
+  org: string,
+  project: string,
+  id: string,
+): Promise<EmailDeliveryResponse> {
+  return apiJson(
+    `${projectBase(org, project)}/emails/deliveries/${encodeURIComponent(id)}/redeliver`,
     { method: 'POST', body: JSON.stringify({}) },
   )
 }

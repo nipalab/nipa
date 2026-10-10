@@ -340,3 +340,38 @@ func (c *apiClient) do(method, path string, body any, out any, auth bool) int {
 	}
 	return resp.StatusCode
 }
+
+type emailDeliveryJSON struct {
+	ID        string    `json:"id"`
+	Event     string    `json:"event"`
+	UserID    string    `json:"user_id"`
+	Email     string    `json:"email"`
+	Subject   string    `json:"subject"`
+	State     string    `json:"state"`
+	Attempts  int64     `json:"attempts"`
+	LastError string    `json:"last_error"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+type emailDeliveryListJSON struct {
+	Deliveries []emailDeliveryJSON `json:"deliveries"`
+	NextCursor string              `json:"next_cursor"`
+}
+
+func (c *apiClient) listEmailDeliveries(org, project, state string) emailDeliveryListJSON {
+	var out emailDeliveryListJSON
+	path := fmt.Sprintf("/orgs/%s/projects/%s/emails/deliveries", org, project)
+	if state != "" {
+		path += "?state=" + state
+	}
+	c.do(http.MethodGet, path, nil, &out, true)
+	return out
+}
+
+func (c *apiClient) redeliverEmailDelivery(org, project, id string) emailDeliveryJSON {
+	var out emailDeliveryJSON
+	c.do(http.MethodPost,
+		fmt.Sprintf("/orgs/%s/projects/%s/emails/deliveries/%s/redeliver", org, project, id),
+		nil, &out, true)
+	return out
+}

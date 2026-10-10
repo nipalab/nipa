@@ -37,6 +37,11 @@ EMAIL_REPLY_TO: ''
 # Public base URL of the web UI, used for links in notification emails.
 EMAIL_BASE_URL: ''
 EMAIL_TIMEOUT_SECONDS: 10
+# Outbox delivery: total attempts per message, the delay before a retry and
+# how often due deliveries are polled (zero keeps the built-in defaults).
+EMAIL_MAX_ATTEMPTS: 0
+EMAIL_RETRY_BACKOFF_SECONDS: 0
+EMAIL_POLL_SECONDS: 0
 # SMTP transport. TLS is `starttls` (default), `ssl` (implicit TLS) or
 # `none`; the port defaults to 587, 465 and 25 respectively.
 EMAIL_SMTP_HOST: ''

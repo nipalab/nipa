@@ -131,6 +131,46 @@ func (r *EmailRepository) SweepRetention(ctx context.Context, before time.Time) 
 	return deleted, nil
 }
 
+// ListDeliveries returns the project's deliveries newest first. after is the
+// exclusive keyset cursor: the last id of the previous page.
+func (r *EmailRepository) ListDeliveries(ctx context.Context, projectID snow.ID, state string, after *snow.ID, limit int64) ([]*domain.EmailDelivery, error) {
+	params := sqlcSqlite.EmailDeliveryListParams{
+		ProjectID: projectID.Int64(),
+		Limit:     limit,
+	}
+	if state != "" {
+		params.State = state
+	}
+	if after != nil {
+		params.After = after.Int64()
+	}
+	rows, err := r.queries.EmailDeliveryList(ctx, params)
+	if err != nil {
+		return nil, handleError(err)
+	}
+	deliveries := make([]*domain.EmailDelivery, 0, len(rows))
+	for _, row := range rows {
+		deliveries = append(deliveries, toDomainEmailDelivery(row))
+	}
+	return deliveries, nil
+}
+
+// Redeliver re-queues a delivered or failed delivery in the project, resetting
+// its attempt history. It reports whether the row was still redeliverable: the
+// state predicate makes the transition atomic against concurrent redeliveries
+// and in-flight dispatcher claims.
+func (r *EmailRepository) Redeliver(ctx context.Context, projectID, id snow.ID, at time.Time) (bool, error) {
+	affected, err := r.queries.EmailDeliveryRedeliver(ctx, sqlcSqlite.EmailDeliveryRedeliverParams{
+		Now:       timePtrToNullTime(&at),
+		ID:        id.Int64(),
+		ProjectID: projectID.Int64(),
+	})
+	if err != nil {
+		return false, handleError(err)
+	}
+	return affected > 0, nil
+}
+
 func toDomainEmailDelivery(row sqlcSqlite.EmailDelivery) *domain.EmailDelivery {
 	return &domain.EmailDelivery{
 		ID:            snow.ID(row.ID),

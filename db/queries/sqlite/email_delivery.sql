@@ -48,6 +48,7 @@ WHERE id = :id;
 -- name: EmailDeliveryMarkFailed :exec
 UPDATE email_deliveries
 SET state = 'failed',
+    delivered_at = NULL,
     last_error = :last_error,
     next_attempt_at = NULL,
     claimed_at = NULL,
@@ -57,3 +58,23 @@ WHERE id = :id;
 -- name: EmailDeliverySweep :execrows
 DELETE FROM email_deliveries
 WHERE state IN ('delivered', 'failed') AND updated_at < :before;
+
+-- name: EmailDeliveryList :many
+SELECT * FROM email_deliveries
+WHERE project_id = sqlc.arg('project_id')
+  AND (sqlc.narg('state') IS NULL OR state = sqlc.narg('state'))
+  AND (sqlc.narg('after') IS NULL OR id < sqlc.narg('after'))
+ORDER BY id DESC
+LIMIT sqlc.arg('limit');
+
+-- name: EmailDeliveryRedeliver :execrows
+UPDATE email_deliveries
+SET state = 'pending',
+    attempts = 0,
+    last_error = '',
+    delivered_at = NULL,
+    next_attempt_at = sqlc.arg('now'),
+    claimed_at = NULL,
+    updated_at = sqlc.arg('now')
+WHERE id = sqlc.arg('id') AND project_id = sqlc.arg('project_id')
+  AND state IN ('delivered', 'failed');

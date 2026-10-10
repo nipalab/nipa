@@ -150,6 +150,67 @@ func (q *Queries) EmailDeliveryGet(ctx context.Context, id int64) (EmailDelivery
 	return i, err
 }
 
+const emailDeliveryList = `-- name: EmailDeliveryList :many
+SELECT id, event, project_id, user_id, email, subject, thread_key, body, state, attempts, next_attempt_at, last_error, claimed_at, delivered_at, created_at, updated_at FROM email_deliveries
+WHERE project_id = $1
+  AND ($2::text IS NULL OR state = $2::text)
+  AND ($3::bigint IS NULL OR id < $3::bigint)
+ORDER BY id DESC
+LIMIT $4::bigint
+`
+
+type EmailDeliveryListParams struct {
+	ProjectID int64          `json:"project_id"`
+	State     sql.NullString `json:"state"`
+	After     sql.NullInt64  `json:"after"`
+	Limit     int64          `json:"limit"`
+}
+
+func (q *Queries) EmailDeliveryList(ctx context.Context, arg EmailDeliveryListParams) ([]EmailDelivery, error) {
+	rows, err := q.db.QueryContext(ctx, emailDeliveryList,
+		arg.ProjectID,
+		arg.State,
+		arg.After,
+		arg.Limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []EmailDelivery
+	for rows.Next() {
+		var i EmailDelivery
+		if err := rows.Scan(
+			&i.ID,
+			&i.Event,
+			&i.ProjectID,
+			&i.UserID,
+			&i.Email,
+			&i.Subject,
+			&i.ThreadKey,
+			&i.Body,
+			&i.State,
+			&i.Attempts,
+			&i.NextAttemptAt,
+			&i.LastError,
+			&i.ClaimedAt,
+			&i.DeliveredAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const emailDeliveryMarkDelivered = `-- name: EmailDeliveryMarkDelivered :exec
 UPDATE email_deliveries
 SET state = 'delivered',
@@ -174,6 +235,7 @@ func (q *Queries) EmailDeliveryMarkDelivered(ctx context.Context, arg EmailDeliv
 const emailDeliveryMarkFailed = `-- name: EmailDeliveryMarkFailed :exec
 UPDATE email_deliveries
 SET state = 'failed',
+    delivered_at = NULL,
     last_error = $1,
     next_attempt_at = NULL,
     claimed_at = NULL,
@@ -199,6 +261,33 @@ WHERE state = 'sending' AND claimed_at IS NOT NULL AND claimed_at < $1
 
 func (q *Queries) EmailDeliveryReclaimStale(ctx context.Context, staleBefore sql.NullTime) (int64, error) {
 	result, err := q.db.ExecContext(ctx, emailDeliveryReclaimStale, staleBefore)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const emailDeliveryRedeliver = `-- name: EmailDeliveryRedeliver :execrows
+UPDATE email_deliveries
+SET state = 'pending',
+    attempts = 0,
+    last_error = '',
+    delivered_at = NULL,
+    next_attempt_at = $1,
+    claimed_at = NULL,
+    updated_at = $1
+WHERE id = $2 AND project_id = $3
+  AND state IN ('delivered', 'failed')
+`
+
+type EmailDeliveryRedeliverParams struct {
+	Now       sql.NullTime `json:"now"`
+	ID        int64        `json:"id"`
+	ProjectID int64        `json:"project_id"`
+}
+
+func (q *Queries) EmailDeliveryRedeliver(ctx context.Context, arg EmailDeliveryRedeliverParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, emailDeliveryRedeliver, arg.Now, arg.ID, arg.ProjectID)
 	if err != nil {
 		return 0, err
 	}
