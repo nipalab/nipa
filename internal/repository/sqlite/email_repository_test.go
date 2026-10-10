@@ -178,6 +178,40 @@ func TestEmailRepositorySQLite_EnqueueRollsBack(t *testing.T) {
 	require.True(t, domain.IsErrorNotFound(err), "the failed batch rolled back")
 }
 
+func TestEmailRepositorySQLite_ThreadRecipients(t *testing.T) {
+	ctx := context.Background()
+	db, _ := newSQLiteTestDB(t)
+	repo := NewEmailRepository(db)
+
+	now := time.Now()
+	first := testEmailDelivery(1, &now)
+	first.UserID = 10
+	first.ThreadKey = "acme/game/mr1"
+	second := testEmailDelivery(2, &now)
+	second.UserID = 20
+	second.ThreadKey = "acme/game/mr1"
+	other := testEmailDelivery(3, &now)
+	other.UserID = 30
+	other.ThreadKey = "acme/game/mr2"
+	require.NoError(t, repo.Enqueue(ctx, []*domain.EmailDelivery{first, second, other}))
+
+	recipients, err := repo.ThreadRecipients(ctx, 7, "acme/game/mr1")
+	require.NoError(t, err)
+	require.Equal(t, map[snow.ID]struct{}{10: {}, 20: {}}, recipients)
+
+	recipients, err = repo.ThreadRecipients(ctx, 7, "acme/game/mr2")
+	require.NoError(t, err)
+	require.Equal(t, map[snow.ID]struct{}{30: {}}, recipients)
+
+	recipients, err = repo.ThreadRecipients(ctx, 7, "acme/game/mr3")
+	require.NoError(t, err)
+	require.Empty(t, recipients)
+
+	row, err := repo.Get(ctx, 1)
+	require.NoError(t, err)
+	require.Equal(t, "acme/game/mr1", row.ThreadKey)
+}
+
 func TestEmailRepositorySQLite_Errors(t *testing.T) {
 	ctx := context.Background()
 	db, _ := newSQLiteTestDB(t)
@@ -189,6 +223,8 @@ func TestEmailRepositorySQLite_Errors(t *testing.T) {
 	_, err := repo.ClaimDue(ctx, time.Now(), time.Now(), 10)
 	require.Error(t, err)
 	_, err = repo.Get(ctx, 1)
+	require.Error(t, err)
+	_, err = repo.ThreadRecipients(ctx, 1, "acme/game/mr1")
 	require.Error(t, err)
 	require.Error(t, repo.MarkDelivered(ctx, 1, time.Now()))
 	require.Error(t, repo.ScheduleRetry(ctx, 1, "x", time.Now()))

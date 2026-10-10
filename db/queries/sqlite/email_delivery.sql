@@ -1,10 +1,14 @@
 -- name: EmailDeliveryCreate :one
-INSERT INTO email_deliveries (id, event, project_id, user_id, email, subject, body, state, next_attempt_at)
-VALUES (:id, :event, :project_id, :user_id, :email, :subject, :body, :state, :next_attempt_at)
+INSERT INTO email_deliveries (id, event, project_id, user_id, email, subject, thread_key, body, state, next_attempt_at)
+VALUES (:id, :event, :project_id, :user_id, :email, :subject, :thread_key, :body, :state, :next_attempt_at)
 RETURNING *;
 
 -- name: EmailDeliveryGet :one
 SELECT * FROM email_deliveries WHERE id = :id;
+
+-- name: EmailDeliveryThreadRecipients :many
+SELECT DISTINCT user_id FROM email_deliveries
+WHERE project_id = :project_id AND thread_key = :thread_key;
 
 -- name: EmailDeliveryReclaimStale :execrows
 UPDATE email_deliveries

@@ -34,9 +34,10 @@ Options:
 
 Environment:
   SKIP_BUILD=1              Reuse existing binaries in bin/
-  NIPA_TEST_PORT=6745       Free server port
-  NIPA_TEST_EE_PORT=6747    Enterprise server port
-  NIPA_TEST_PG_PORT=55432   Postgres host port
+	NIPA_TEST_PORT=6745       Free server port
+	NIPA_TEST_EE_PORT=6747    Enterprise server port
+	NIPA_TEST_EMAIL_PORT      Email receiver port (default: server port + 1)
+	NIPA_TEST_PG_PORT=55432   Postgres host port
   NIPA_TEST_S3_PORT=55900   MinIO host port
   NIPA_TEST_POSTGRES_DSN    External postgres DSN (with NIPA_TEST_S3_ENDPOINT)
   NIPA_TEST_S3_ENDPOINT     External S3 endpoint (with NIPA_TEST_POSTGRES_DSN)
@@ -78,9 +79,16 @@ build_binaries() {
 	fi
 }
 
+email_port_for() {
+	echo "${NIPA_TEST_EMAIL_PORT:-$(( $1 + 1 ))}"
+}
+
 write_config() {
 	local edition="$1" port="$2" dir="$3"
 	mkdir -p "$dir"
+
+	local email_port
+	email_port="$(email_port_for "$port")"
 
 	local db_dsn chunk_lines
 	if [[ "$edition" == "ee" ]]; then
@@ -118,6 +126,11 @@ CHUNK_PRESIGN_TTL_SECONDS: 3600
 CHUNK_MAX_PAGE_SIZE: 1000
 WEBHOOK_EGRESS_ALLOWLIST: '127.0.0.1'
 WEBHOOK_TIMEOUT_SECONDS: 30
+EMAIL_SENDER: sendgrid
+EMAIL_FROM: 'Nipa <noreply@example.com>'
+EMAIL_BASE_URL: 'http://127.0.0.1:$port'
+EMAIL_SENDGRID_API_KEY: 'client-e2e-sendgrid-key'
+EMAIL_SENDGRID_ENDPOINT: 'http://127.0.0.1:$email_port'
 EOF
 }
 
@@ -186,6 +199,7 @@ check_port_free() {
 start_server() {
 	local edition="$1" port="$2" binary dir
 	check_port_free "$port"
+	check_port_free "$(email_port_for "$port")"
 	if [[ "$edition" == "ee" ]]; then
 		binary="$ROOT_DIR/bin/nipad-ee"
 	else
@@ -223,6 +237,7 @@ run_suite() {
 	local edition="$1" port="$2"
 	export NIPA_TEST_HOST="127.0.0.1:$port"
 	export NIPA_TEST_EDITION="$edition"
+	export NIPA_TEST_EMAIL_PORT="$(email_port_for "$port")"
 	export NIPA_TEST_BINARY="$ROOT_DIR/bin/nipa"
 	export NIPA_TEST_API_URL="http://127.0.0.1:$port/api/v1"
 	export NIPA_TEST_USER="${NIPA_TEST_USER:-nipa}"

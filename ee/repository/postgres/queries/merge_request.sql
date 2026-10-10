@@ -96,3 +96,13 @@ FROM merge_request_checks c
 JOIN users u ON u.id = c.reporter_id
 WHERE c.merge_request_id = sqlc.arg(merge_request_id) AND c.head_commit_id = sqlc.arg(head_commit_id)
 ORDER BY c.name;
+
+-- name: MergeRequestAssigneeListByMergeRequest :many
+SELECT
+    u.id AS user_id,
+    u.name AS user_name,
+    u.photo_url AS user_photo_url
+FROM merge_request_assignees a
+JOIN users u ON u.id = a.user_id
+WHERE a.merge_request_id = sqlc.arg(merge_request_id)
+ORDER BY u.id;

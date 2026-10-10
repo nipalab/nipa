@@ -12,6 +12,7 @@ import (
 	s3store "github.com/nipalab/nipa/ee/storage/s3"
 	"github.com/nipalab/nipa/internal/config"
 	"github.com/nipalab/nipa/internal/hasher"
+	"github.com/nipalab/nipa/internal/mail"
 	"github.com/nipalab/nipa/internal/repository/dbtx"
 	"github.com/nipalab/nipa/internal/serverapp"
 	"github.com/nipalab/nipa/internal/snow"
@@ -68,8 +69,10 @@ func main() {
 	fileLockUsecase := usecase.NewFileLock(postgres.NewFileLockRepository(dbConn), branchRepository, permissionUsecase, snowUser)
 	branchUsecase = branchUsecase.WithFileLocks(fileLockUsecase)
 	branchUsecase = branchUsecase.WithUsers(userRepo)
+	mergeRequestRepository := postgres.NewMergeRequestRepository(dbConn)
+	mergeRequestReviewRepository := postgres.NewMergeRequestReviewRepository(dbConn)
 	mergeRequestUsecase := usecase.NewMergeRequest(
-		postgres.NewMergeRequestRepository(dbConn),
+		mergeRequestRepository,
 		branchRepository,
 		permissionUsecase,
 		branchUsecase,
@@ -79,8 +82,8 @@ func main() {
 	pushUsecase := usecase.NewPush(permissionUsecase, branchRepository, pushRepository, snowUser).WithFileLocks(fileLockUsecase)
 	tagUsecase := usecase.NewTag(permissionUsecase, postgres.NewTagRepository(dbConn), branchRepository, snowUser)
 	mergeRequestReviewUsecase := usecase.NewMergeRequestReview(
-		postgres.NewMergeRequestReviewRepository(dbConn),
-		postgres.NewMergeRequestRepository(dbConn),
+		mergeRequestReviewRepository,
+		mergeRequestRepository,
 		branchRepository,
 		branchUsecase,
 		permissionUsecase,
@@ -103,6 +106,19 @@ func main() {
 	}), snowUser, webhook.Config{})
 	webhookUsecase := usecase.NewWebhook(webhookRepository, permissionUsecase, userRepo, webhookDispatcher, snowUser)
 	hookEmitter := usecase.NewHookEmitter(webhookRepository, projectRepo, orgRepo, branchRepository, userRepo, webhookDispatcher)
+	emailSender, err := mail.NewFromConfig(cfg.MailSenderConfig())
+	if err != nil {
+		panic(fmt.Errorf("email sender: %w", err))
+	}
+	var emailDispatcher *mail.Dispatcher
+	if emailSender != nil {
+		emailRepository := postgres.NewEmailRepository(dbConn)
+		emailDispatcher = mail.NewDispatcher(emailRepository, emailSender, mail.DispatcherConfig{})
+		hookEmitter = hookEmitter.WithNotifier(usecase.NewEmailNotifier(
+			emailRepository, userRepo, mergeRequestRepository, mergeRequestReviewRepository, cfg.EmailBaseURL, snowUser,
+		).WithKicker(emailDispatcher))
+		slog.Info("email notifications enabled", "sender", cfg.EmailSender)
+	}
 	branchUsecase = branchUsecase.WithHooks(hookEmitter)
 	tagUsecase = tagUsecase.WithHooks(hookEmitter)
 	mergeRequestUsecase = mergeRequestUsecase.WithHooks(hookEmitter)
@@ -136,7 +152,11 @@ func main() {
 		Webhook:            webhookUsecase,
 	})
 
-	if err := serverapp.Run(cfg, reg, webhookDispatcher); err != nil {
+	dispatchers := []serverapp.Dispatcher{webhookDispatcher}
+	if emailDispatcher != nil {
+		dispatchers = append(dispatchers, emailDispatcher)
+	}
+	if err := serverapp.Run(cfg, reg, dispatchers...); err != nil {
 		panic(err)
 	}
 }

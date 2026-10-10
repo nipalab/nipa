@@ -20,7 +20,7 @@ WHERE id IN (
     ORDER BY next_attempt_at, id
     LIMIT ?2
 )
-RETURNING id, event, project_id, user_id, email, subject, body, state, attempts, next_attempt_at, last_error, claimed_at, delivered_at, created_at, updated_at
+RETURNING id, event, project_id, user_id, email, subject, thread_key, body, state, attempts, next_attempt_at, last_error, claimed_at, delivered_at, created_at, updated_at
 `
 
 type EmailDeliveryClaimDueParams struct {
@@ -44,6 +44,7 @@ func (q *Queries) EmailDeliveryClaimDue(ctx context.Context, arg EmailDeliveryCl
 			&i.UserID,
 			&i.Email,
 			&i.Subject,
+			&i.ThreadKey,
 			&i.Body,
 			&i.State,
 			&i.Attempts,
@@ -68,9 +69,9 @@ func (q *Queries) EmailDeliveryClaimDue(ctx context.Context, arg EmailDeliveryCl
 }
 
 const emailDeliveryCreate = `-- name: EmailDeliveryCreate :one
-INSERT INTO email_deliveries (id, event, project_id, user_id, email, subject, body, state, next_attempt_at)
-VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
-RETURNING id, event, project_id, user_id, email, subject, body, state, attempts, next_attempt_at, last_error, claimed_at, delivered_at, created_at, updated_at
+INSERT INTO email_deliveries (id, event, project_id, user_id, email, subject, thread_key, body, state, next_attempt_at)
+VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+RETURNING id, event, project_id, user_id, email, subject, thread_key, body, state, attempts, next_attempt_at, last_error, claimed_at, delivered_at, created_at, updated_at
 `
 
 type EmailDeliveryCreateParams struct {
@@ -80,6 +81,7 @@ type EmailDeliveryCreateParams struct {
 	UserID        int64        `json:"user_id"`
 	Email         string       `json:"email"`
 	Subject       string       `json:"subject"`
+	ThreadKey     string       `json:"thread_key"`
 	Body          []byte       `json:"body"`
 	State         string       `json:"state"`
 	NextAttemptAt sql.NullTime `json:"next_attempt_at"`
@@ -93,6 +95,7 @@ func (q *Queries) EmailDeliveryCreate(ctx context.Context, arg EmailDeliveryCrea
 		arg.UserID,
 		arg.Email,
 		arg.Subject,
+		arg.ThreadKey,
 		arg.Body,
 		arg.State,
 		arg.NextAttemptAt,
@@ -105,6 +108,7 @@ func (q *Queries) EmailDeliveryCreate(ctx context.Context, arg EmailDeliveryCrea
 		&i.UserID,
 		&i.Email,
 		&i.Subject,
+		&i.ThreadKey,
 		&i.Body,
 		&i.State,
 		&i.Attempts,
@@ -119,7 +123,7 @@ func (q *Queries) EmailDeliveryCreate(ctx context.Context, arg EmailDeliveryCrea
 }
 
 const emailDeliveryGet = `-- name: EmailDeliveryGet :one
-SELECT id, event, project_id, user_id, email, subject, body, state, attempts, next_attempt_at, last_error, claimed_at, delivered_at, created_at, updated_at FROM email_deliveries WHERE id = ?1
+SELECT id, event, project_id, user_id, email, subject, thread_key, body, state, attempts, next_attempt_at, last_error, claimed_at, delivered_at, created_at, updated_at FROM email_deliveries WHERE id = ?1
 `
 
 func (q *Queries) EmailDeliveryGet(ctx context.Context, id int64) (EmailDelivery, error) {
@@ -132,6 +136,7 @@ func (q *Queries) EmailDeliveryGet(ctx context.Context, id int64) (EmailDelivery
 		&i.UserID,
 		&i.Email,
 		&i.Subject,
+		&i.ThreadKey,
 		&i.Body,
 		&i.State,
 		&i.Attempts,
@@ -232,4 +237,37 @@ func (q *Queries) EmailDeliverySweep(ctx context.Context, before time.Time) (int
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+const emailDeliveryThreadRecipients = `-- name: EmailDeliveryThreadRecipients :many
+SELECT DISTINCT user_id FROM email_deliveries
+WHERE project_id = ?1 AND thread_key = ?2
+`
+
+type EmailDeliveryThreadRecipientsParams struct {
+	ProjectID int64  `json:"project_id"`
+	ThreadKey string `json:"thread_key"`
+}
+
+func (q *Queries) EmailDeliveryThreadRecipients(ctx context.Context, arg EmailDeliveryThreadRecipientsParams) ([]int64, error) {
+	rows, err := q.db.QueryContext(ctx, emailDeliveryThreadRecipients, arg.ProjectID, arg.ThreadKey)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var user_id int64
+		if err := rows.Scan(&user_id); err != nil {
+			return nil, err
+		}
+		items = append(items, user_id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

@@ -140,6 +140,22 @@ func (r *MergeRequestRepository) ListAssignees(ctx context.Context, projectID sn
 	return assignees, nil
 }
 
+func (r *MergeRequestRepository) ListAssigneesByMergeRequest(ctx context.Context, mergeRequestID int64) ([]domain.ReviewActor, error) {
+	rows, err := r.queries.MergeRequestAssigneeListByMergeRequest(ctx, mergeRequestID)
+	if err != nil {
+		return nil, handleError(err)
+	}
+	assignees := make([]domain.ReviewActor, 0, len(rows))
+	for _, row := range rows {
+		assignees = append(assignees, domain.ReviewActor{
+			UserID:   snow.ID(row.UserID),
+			Name:     row.UserName,
+			PhotoURL: row.UserPhotoUrl.String,
+		})
+	}
+	return assignees, nil
+}
+
 func (r *MergeRequestRepository) ClearAssignees(ctx context.Context, mergeRequestID int64) error {
 	return handleError(r.queries.MergeRequestAssigneeClear(ctx, mergeRequestID))
 }

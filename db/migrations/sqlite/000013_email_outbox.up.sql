@@ -5,6 +5,7 @@ CREATE TABLE email_deliveries (
     user_id         INTEGER NOT NULL,
     email           TEXT NOT NULL,
     subject         TEXT NOT NULL DEFAULT '',
+    thread_key      TEXT NOT NULL DEFAULT '',
     body            BLOB NOT NULL,
     state           TEXT NOT NULL DEFAULT 'pending',
     attempts        INTEGER NOT NULL DEFAULT 0,

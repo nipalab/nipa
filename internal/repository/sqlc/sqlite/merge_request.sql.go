@@ -83,6 +83,46 @@ func (q *Queries) MergeRequestAssigneeList(ctx context.Context, projectID int64)
 	return items, nil
 }
 
+const mergeRequestAssigneeListByMergeRequest = `-- name: MergeRequestAssigneeListByMergeRequest :many
+SELECT
+    u.id AS user_id,
+    u.name AS user_name,
+    u.photo_url AS user_photo_url
+FROM merge_request_assignees a
+JOIN users u ON u.id = a.user_id
+WHERE a.merge_request_id = ?1
+ORDER BY u.id
+`
+
+type MergeRequestAssigneeListByMergeRequestRow struct {
+	UserID       int64          `json:"user_id"`
+	UserName     string         `json:"user_name"`
+	UserPhotoUrl sql.NullString `json:"user_photo_url"`
+}
+
+func (q *Queries) MergeRequestAssigneeListByMergeRequest(ctx context.Context, mergeRequestID int64) ([]MergeRequestAssigneeListByMergeRequestRow, error) {
+	rows, err := q.db.QueryContext(ctx, mergeRequestAssigneeListByMergeRequest, mergeRequestID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []MergeRequestAssigneeListByMergeRequestRow
+	for rows.Next() {
+		var i MergeRequestAssigneeListByMergeRequestRow
+		if err := rows.Scan(&i.UserID, &i.UserName, &i.UserPhotoUrl); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const mergeRequestCheckList = `-- name: MergeRequestCheckList :many
 SELECT c.id, c.merge_request_id, c.head_commit_id, c.name, c.state, c.details_url, c.reporter_id, c.created_at, c.updated_at, u.name AS reporter_name, u.photo_url AS reporter_photo_url
 FROM merge_request_checks c

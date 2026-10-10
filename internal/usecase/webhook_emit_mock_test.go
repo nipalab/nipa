@@ -212,3 +212,55 @@ func (mr *MockhookSenderMockRecorder) Enqueue(ctx, hook, event, payload any) *go
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Enqueue", reflect.TypeOf((*MockhookSender)(nil).Enqueue), ctx, hook, event, payload)
 }
+
+// MockemailNotifier is a mock of emailNotifier interface.
+type MockemailNotifier struct {
+	ctrl     *gomock.Controller
+	recorder *MockemailNotifierMockRecorder
+	isgomock struct{}
+}
+
+// MockemailNotifierMockRecorder is the mock recorder for MockemailNotifier.
+type MockemailNotifierMockRecorder struct {
+	mock *MockemailNotifier
+}
+
+// NewMockemailNotifier creates a new mock instance.
+func NewMockemailNotifier(ctrl *gomock.Controller) *MockemailNotifier {
+	mock := &MockemailNotifier{ctrl: ctrl}
+	mock.recorder = &MockemailNotifierMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockemailNotifier) EXPECT() *MockemailNotifierMockRecorder {
+	return m.recorder
+}
+
+// Notify mocks base method.
+func (m *MockemailNotifier) Notify(ctx context.Context, event NotifyEvent) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Notify", ctx, event)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Notify indicates an expected call of Notify.
+func (mr *MockemailNotifierMockRecorder) Notify(ctx, event any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Notify", reflect.TypeOf((*MockemailNotifier)(nil).Notify), ctx, event)
+}
+
+// Wants mocks base method.
+func (m *MockemailNotifier) Wants(event string) bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Wants", event)
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// Wants indicates an expected call of Wants.
+func (mr *MockemailNotifierMockRecorder) Wants(event any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Wants", reflect.TypeOf((*MockemailNotifier)(nil).Wants), event)
+}

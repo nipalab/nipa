@@ -433,10 +433,14 @@ Direct: `go build ./...`, `go vet ./...`, `go test ./...`.
   `NIPA_BENCH_WORKERS` pins transfer concurrency (otherwise the adaptive tuner
   is exercised).
 - The server opens SQLite through `db.OpenSQLite`, which appends
-  `_pragma=busy_timeout(10000)` and `_pragma=journal_mode(WAL)` to the DSN.
-  Without WAL + a busy timeout, concurrent reads (every RPC resolves the
-  project first) collide with confirm/Push writes and surface as
-  `database is locked (5) (SQLITE_BUSY)`.
+  `_pragma=busy_timeout(10000)`, `_pragma=journal_mode(WAL)` and
+  `_txlock=immediate` to the DSN. Without WAL + a busy timeout, concurrent
+  reads (every RPC resolves the project first) collide with confirm/Push
+  writes and surface as `database is locked (5) (SQLITE_BUSY)`; without
+  immediate transactions, a deferred transaction that reads before writing
+  (e.g. `ApplyPushAll` resolving chunk rows) fails upgrading with
+  `SQLITE_BUSY_SNAPSHOT` when another connection commits in between, and the
+  busy handler is not invoked for that case.
 
 ## Conventions
 

@@ -162,6 +162,39 @@ func (s *EmailRepositorySuite) TestSweepRetention() {
 	s.Equal(domain.EmailDeliveryPending, remaining.State, "pending rows are never swept")
 }
 
+func (s *EmailRepositorySuite) TestThreadRecipients() {
+	ctx := context.Background()
+	repo := NewEmailRepository(s.db)
+
+	now := time.Now()
+	first := testEmailDelivery(1, &now)
+	first.UserID = 10
+	first.ThreadKey = "acme/game/mr1"
+	second := testEmailDelivery(2, &now)
+	second.UserID = 20
+	second.ThreadKey = "acme/game/mr1"
+	other := testEmailDelivery(3, &now)
+	other.UserID = 30
+	other.ThreadKey = "acme/game/mr2"
+	s.Require().NoError(repo.Enqueue(ctx, []*domain.EmailDelivery{first, second, other}))
+
+	recipients, err := repo.ThreadRecipients(ctx, 7, "acme/game/mr1")
+	s.Require().NoError(err)
+	s.Equal(map[snow.ID]struct{}{10: {}, 20: {}}, recipients)
+
+	recipients, err = repo.ThreadRecipients(ctx, 7, "acme/game/mr2")
+	s.Require().NoError(err)
+	s.Equal(map[snow.ID]struct{}{30: {}}, recipients)
+
+	recipients, err = repo.ThreadRecipients(ctx, 7, "acme/game/mr3")
+	s.Require().NoError(err)
+	s.Empty(recipients)
+
+	row, err := repo.Get(ctx, 1)
+	s.Require().NoError(err)
+	s.Equal("acme/game/mr1", row.ThreadKey)
+}
+
 func (s *EmailRepositorySuite) TestErrors() {
 	ctx := context.Background()
 	repo := NewEmailRepository(s.db)
@@ -172,6 +205,8 @@ func (s *EmailRepositorySuite) TestErrors() {
 	_, err := repo.ClaimDue(ctx, time.Now(), time.Now(), 10)
 	s.Error(err)
 	_, err = repo.Get(ctx, 1)
+	s.Error(err)
+	_, err = repo.ThreadRecipients(ctx, 1, "acme/game/mr1")
 	s.Error(err)
 	s.Error(repo.MarkDelivered(ctx, 1, time.Now()))
 	s.Error(repo.ScheduleRetry(ctx, 1, "x", time.Now()))

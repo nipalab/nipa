@@ -37,6 +37,12 @@ type hookSender interface {
 	Enqueue(ctx context.Context, hook domain.Webhook, event string, payload []byte) (*domain.WebhookDelivery, error)
 }
 
+// emailNotifier is the optional email fan-out seam on the emitter.
+type emailNotifier interface {
+	Wants(event string) bool
+	Notify(ctx context.Context, event NotifyEvent) error
+}
+
 // PushEvent describes a landed push for the webhook payload.
 type PushEvent struct {
 	ProjectID snow.ID
@@ -62,6 +68,7 @@ type HookEmitter struct {
 	branches hookDefaultBranchLookup
 	users    userLookup
 	sender   hookSender
+	notifier emailNotifier
 	now      func() time.Time
 }
 
@@ -77,31 +84,61 @@ func NewHookEmitter(hooks hookActiveRepository, projects hookProjectLookup, orgs
 	}
 }
 
+// WithNotifier enables email notifications next to webhook deliveries. A nil
+// notifier leaves email unwired.
+func (e *HookEmitter) WithNotifier(notifier emailNotifier) *HookEmitter {
+	e.notifier = notifier
+	return e
+}
+
 func (e *HookEmitter) EmitPush(ctx context.Context, event PushEvent) error {
 	return e.emit(ctx, domain.WebhookEventPush, event.ProjectID, event.Actor, pushEventPaths(event), func(env webhook.Envelope) any {
 		return webhook.PushPayload{Envelope: env, Changes: []webhook.PushChange{newPushChange(event)}}
-	})
+	}, nil)
 }
 
 func (e *HookEmitter) EmitMergeRequest(ctx context.Context, event string, projectID snow.ID, mr *domain.MergeRequest, actor snow.ID) error {
+	return e.emitMergeRequest(ctx, event, projectID, mr, actor, nil)
+}
+
+// EmitMergeRequestCheck publishes a status check event and carries the check
+// to the email notifier.
+func (e *HookEmitter) EmitMergeRequestCheck(ctx context.Context, event string, projectID snow.ID, mr *domain.MergeRequest, check *domain.MergeRequestCheck, actor snow.ID) error {
+	return e.emitMergeRequest(ctx, event, projectID, mr, actor, check)
+}
+
+func (e *HookEmitter) emitMergeRequest(ctx context.Context, event string, projectID snow.ID, mr *domain.MergeRequest, actor snow.ID, check *domain.MergeRequestCheck) error {
+	var notify func(context.Context, webhook.Envelope) error
+	if e.notifier != nil && e.notifier.Wants(event) {
+		notify = func(ctx context.Context, env webhook.Envelope) error {
+			return e.notifier.Notify(ctx, NotifyEvent{
+				Event:     event,
+				ProjectID: projectID,
+				MR:        mr,
+				Actor:     actor,
+				Envelope:  env,
+				Check:     check,
+			})
+		}
+	}
 	return e.emit(ctx, event, projectID, actor, nil, func(env webhook.Envelope) any {
 		return webhook.MergeRequestPayload{Envelope: env, MergeRequest: newMergeRequestInfo(mr)}
-	})
+	}, notify)
 }
 
 func (e *HookEmitter) EmitBranch(ctx context.Context, event string, projectID snow.ID, branch *domain.Branch, actor snow.ID) error {
 	return e.emit(ctx, event, projectID, actor, nil, func(env webhook.Envelope) any {
 		return webhook.BranchPayload{Envelope: env, Branch: newBranchInfo(branch)}
-	})
+	}, nil)
 }
 
 func (e *HookEmitter) EmitTag(ctx context.Context, event string, projectID snow.ID, tag *domain.Tag, actor snow.ID) error {
 	return e.emit(ctx, event, projectID, actor, nil, func(env webhook.Envelope) any {
 		return webhook.TagPayload{Envelope: env, Tag: newTagInfo(tag)}
-	})
+	}, nil)
 }
 
-func (e *HookEmitter) emit(ctx context.Context, event string, projectID, actor snow.ID, paths []string, build func(webhook.Envelope) any) error {
+func (e *HookEmitter) emit(ctx context.Context, event string, projectID, actor snow.ID, paths []string, build func(webhook.Envelope) any, notify func(context.Context, webhook.Envelope) error) error {
 	hooks, err := e.hooks.ListActiveByProject(ctx, projectID)
 	if err != nil {
 		return err
@@ -112,7 +149,7 @@ func (e *HookEmitter) emit(ctx context.Context, event string, projectID, actor s
 			matching = append(matching, hook)
 		}
 	}
-	if len(matching) == 0 {
+	if len(matching) == 0 && notify == nil {
 		return nil
 	}
 
@@ -130,6 +167,11 @@ func (e *HookEmitter) emit(ctx context.Context, event string, projectID, actor s
 		}
 		if _, err := e.sender.Enqueue(ctx, *hook, event, payload); err != nil {
 			errs = append(errs, fmt.Errorf("queue %s for webhook %s: %w", event, hook.ID, err))
+		}
+	}
+	if notify != nil {
+		if err := notify(ctx, env); err != nil {
+			errs = append(errs, fmt.Errorf("notify %s: %w", event, err))
 		}
 	}
 	return errors.Join(errs...)

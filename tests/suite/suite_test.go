@@ -15,6 +15,7 @@ import (
 var (
 	cli        *testEnv
 	api        *apiClient
+	email      *emailReceiver
 	orgSlug    string
 	projectSeq int
 	messageSeq int
@@ -36,6 +37,7 @@ var _ = BeforeSuite(func() {
 
 	seedCLIToken(cli.host, cli.user, cli.password)
 	api = newAPIClient(cli.apiURL, cli.user, cli.password)
+	email = startEmailReceiver()
 
 	orgSlug = fmt.Sprintf("e2e-%d-%s", time.Now().UnixNano(), randSuffix(3))
 	api.createOrg(orgSlug, orgSlug)
