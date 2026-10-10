@@ -8,6 +8,7 @@ import (
 
 	"github.com/nipalab/nipa/internal/dispatch"
 	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/obs"
 	"github.com/nipalab/nipa/internal/snow"
 )
 
@@ -51,8 +52,9 @@ type Dispatcher struct {
 	node   snow.Node
 	cfg    Config
 
-	runner *dispatch.Runner
-	jobs   chan job
+	runner  *dispatch.Runner
+	jobs    chan job
+	metrics *obs.Metrics
 
 	mu       sync.Mutex
 	inFlight map[snow.ID]struct{}
@@ -73,6 +75,18 @@ func NewDispatcher(store DispatcherStore, client *Client, node snow.Node, cfg Co
 		jobs:     make(chan job, 64),
 		inFlight: map[snow.ID]struct{}{},
 	}
+}
+
+// WithMetrics attaches observability metrics and registers the queue gauges.
+func (d *Dispatcher) WithMetrics(metrics *obs.Metrics) *Dispatcher {
+	d.metrics = metrics
+	metrics.RegisterWebhookQueue(func() float64 { return float64(len(d.jobs)) })
+	metrics.RegisterWebhookInFlight(func() float64 {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		return float64(len(d.inFlight))
+	})
+	return d
 }
 
 // Start launches the workers and the retry sweeper. It is a no-op when the
@@ -194,6 +208,7 @@ func (d *Dispatcher) deliver(j job) {
 
 	ctx := context.Background()
 	if result.Err == nil {
+		d.metrics.ObserveWebhookDelivery("delivered")
 		if _, err := d.store.MarkDelivered(ctx, j.delivery.ID, attempt, errorStatus(result.StatusCode), time.Now()); err != nil {
 			slog.Warn("webhook delivery state update failed", "delivery_id", j.delivery.ID, "error", err)
 		}
@@ -206,6 +221,7 @@ func (d *Dispatcher) deliver(j job) {
 		d.markFailed(j.delivery, attempt, status, result.Err.Error())
 		return
 	}
+	d.metrics.ObserveWebhookDelivery("retry")
 	next := time.Now().Add(d.backoff(attempt))
 	if _, err := d.store.Reschedule(ctx, j.delivery.ID, attempt, status, result.Err.Error(), next); err != nil {
 		slog.Warn("webhook delivery reschedule failed", "delivery_id", j.delivery.ID, "error", err)
@@ -215,6 +231,7 @@ func (d *Dispatcher) deliver(j job) {
 }
 
 func (d *Dispatcher) markFailed(delivery domain.WebhookDelivery, attempt int64, status *int64, reason string) {
+	d.metrics.ObserveWebhookDelivery("failed")
 	if _, err := d.store.MarkFailed(context.Background(), delivery.ID, attempt, status, reason); err != nil {
 		slog.Warn("webhook delivery state update failed", "delivery_id", delivery.ID, "error", err)
 	}

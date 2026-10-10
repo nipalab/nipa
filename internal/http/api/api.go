@@ -8,6 +8,7 @@ import (
 	"github.com/nipalab/nipa/internal/http/handler"
 	"github.com/nipalab/nipa/internal/http/model"
 	"github.com/nipalab/nipa/internal/http/swagger"
+	"github.com/nipalab/nipa/internal/obs"
 	"github.com/nipalab/nipa/internal/usecase"
 )
 
@@ -32,11 +33,31 @@ type usecaseContainer interface {
 
 type API struct {
 	useCase usecaseContainer
+	metrics *obs.Metrics
 }
 
-func NewAPI(useCase usecaseContainer) *API {
+// Option tunes optional API behavior.
+type Option func(*apiOptions)
+
+type apiOptions struct {
+	metrics *obs.Metrics
+}
+
+// WithMetrics enables per-route HTTP metrics on the REST container.
+func WithMetrics(metrics *obs.Metrics) Option {
+	return func(o *apiOptions) {
+		o.metrics = metrics
+	}
+}
+
+func NewAPI(useCase usecaseContainer, opts ...Option) *API {
+	var options apiOptions
+	for _, opt := range opts {
+		opt(&options)
+	}
 	return &API{
 		useCase: useCase,
+		metrics: options.metrics,
 	}
 }
 
@@ -86,6 +107,10 @@ func (a *API) SetupRoute() http.Handler {
 	restful.Add(chunkWs)
 
 	swagger.SetupSwagger()
+
+	if a.metrics != nil {
+		restful.DefaultContainer.Filter(metricsFilter(a.metrics))
+	}
 
 	return restful.DefaultContainer
 }

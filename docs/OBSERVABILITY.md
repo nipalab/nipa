@@ -17,8 +17,8 @@ identically.
 - All runtime endpoints (`/metrics`, `/healthz`, `/readyz`, pprof) live on the
   existing server port. pprof is flag-gated and off by default.
 
-**Status:** phase 1 is implemented (`internal/obs`, wired through
-`internal/serverapp` and both mains). Phases 2 and 3 are planned.
+**Status:** phase 1 and phase 2 are implemented (`internal/obs`, wired through
+`internal/serverapp` and both mains). Phase 3 is planned.
 
 ---
 
@@ -134,20 +134,20 @@ with the standard Go/process/build-info collectors and:
 
 | Metric | Type | Labels | Instrumented at |
 |---|---|---|---|
-| `nipa_http_requests_total` | counter | `route`, `method`, `code` | container filter in `internal/http/api/api.go` |
+| `nipa_http_requests_total` | counter | `route`, `method`, `code` | container filter in `internal/http/api/metrics.go` |
 | `nipa_http_request_duration_seconds` | histogram | `route`, `method` | same filter |
-| `nipa_grpc_requests_total` | counter | `method`, `code` | new `MetricsUnary` / `MetricsStream` interceptors in `internal/grpc/server` |
-| `nipa_grpc_stream_duration_seconds` | histogram | `method` | same |
-| `nipa_chunk_ops_total` | counter | `op=put\|get\|confirm\|presign`, `result` | REST chunk handler, gRPC chunk service, `usecase.Chunk` |
-| `nipa_chunk_bytes_total` | counter | `op=put\|get\|confirm` | same |
-| `nipa_chunk_verify_failures_total` | counter | `stage=store\|confirm` | `usecase.Chunk` verification paths |
-| `nipa_push_total` | counter | `result` | `internal/grpc/server/push.go` |
+| `nipa_grpc_requests_total` | counter | `method`, `code` | `MetricsUnary` / `MetricsStream` interceptors in `internal/grpc/server/metrics_interceptor.go` |
+| `nipa_grpc_request_duration_seconds` | histogram | `method` | same |
+| `nipa_chunk_ops_total` | counter | `op=put\|upload\|get\|confirm\|presign_upload\|presign_download`, `result` | `usecase.Chunk` (single source for REST and gRPC) |
+| `nipa_chunk_bytes_total` | counter | `op=put\|upload\|get\|confirm` | same |
+| `nipa_chunk_verify_failures_total` | counter | `stage=store\|confirm\|download` | `usecase.Chunk` verification paths |
+| `nipa_push_total` | counter | `result=ok\|error` | `usecase.Push.Push` |
 | `nipa_webhook_deliveries_total` | counter | `result=delivered\|retry\|failed` | `internal/webhook/dispatcher.go` |
 | `nipa_webhook_queue_depth` | gauge (func) | — | reads `len(dispatcher.jobs)` |
 | `nipa_webhook_in_flight` | gauge (func) | — | reads the dispatcher in-flight set |
 | `nipa_mail_deliveries_total` | counter | `result=delivered\|retry\|failed` | `internal/mail/dispatcher.go` |
 | `nipa_mail_queue_depth` | gauge (func) | — | reads `len(dispatcher.jobs)` |
-| `nipa_db_pool_open_connections` / `_idle` / `_in_use` | gauge (func) | `db` | `WithDBs` handles via `sql.DBStats` |
+| `nipa_db_pool_open_connections` / `_idle` / `_in_use` | gauge | `db` | `Metrics.RegisterDB` (custom collector reading `sql.DBStats`) |
 | `nipa_db_pool_wait_count_total` / `_wait_seconds_total` | counter (func) | `db` | same |
 
 Cardinality rules: `route` is the go-restful route template
@@ -159,15 +159,17 @@ user-supplied (org names, branch names, paths, chunk hashes) becomes a label.
 
 - `Metrics.Handler()` mounts at `/metrics` on the main port (unauthenticated,
   standard). `METRICS_ENABLED` (default true) toggles the route.
-- The metrics object is created in each main (`obs.NewMetrics()`), passed to
-  `serverapp.Run` via `WithMetrics`, and stored on the `serverapp.Registry` so
-  `api.NewAPI(reg)` can add the container filter without a signature change.
-- gRPC: `grpc.ChainUnaryInterceptor(metricsUnary, jwtUnary)` and the stream
+- The metrics object is created in each main (`obs.NewMetrics()`), the DB pool
+  is registered with `metrics.RegisterDB("sqlite"|"postgres", dbConn)`, and
+  `serverapp.Run(..., WithMetrics(metrics))` mounts the endpoint and
+  instruments HTTP (`api.WithMetrics` container filter) and gRPC.
+- gRPC: `grpc.ChainUnaryInterceptor(MetricsUnary, JWTUnary)` and the stream
   equivalent.
-- `usecase.Chunk` gets a nil-safe `WithMetrics(*obs.Metrics)` builder; the
-  dispatchers get a `WithMetrics` option read at construction.
+- `usecase.Chunk` and `usecase.Push` get nil-safe `WithMetrics(*obs.Metrics)`
+  builders; the dispatchers get a `WithMetrics` builder that also registers the
+  queue gauges.
 - Both editions share all of it: EE gets postgres pool stats through the same
-  `DBStats` collector.
+  `sql.DBStats` collector.
 
 ### 2.3 Non-goals for metrics (this pass)
 
@@ -223,15 +225,13 @@ When enabled later, tracing attaches to the hooks phase 1/2 already provide:
 | `internal/obs/*.go` (new) | logging, request ID, access log, health, pprof, metrics |
 | `internal/config/config.go`, `config.yaml.sample` | new knobs, wire `LOG_LEVEL` |
 | `internal/serverapp/run.go` | obs setup, mux routes, middleware, gRPC health, shutdown deadline, options |
-| `internal/serverapp/registry.go` | optional metrics handle |
-| `internal/http/api/api.go` | metrics container filter |
+| `internal/http/api/api.go`, `metrics.go` | metrics container filter |
 | `internal/http/api/model.go` | request-ID-aware error logging |
-| `internal/http/handler/chunk.go` | chunk op/byte metrics |
-| `internal/grpc/server/interceptor.go` (+ tests) | drop stale logs/skip entries; metrics interceptors |
-| `internal/grpc/server/chunk.go`, `internal/grpc/server/push.go` | gRPC-side chunk/push metrics |
-| `internal/usecase/chunk.go` | nil-safe metrics, verify-failure counters |
+| `internal/grpc/server/interceptor.go` (+ tests) | drop stale logs/skip entries |
+| `internal/grpc/server/metrics_interceptor.go` (+ tests) | gRPC metrics interceptors |
+| `internal/usecase/chunk.go`, `push.go` | nil-safe metrics, chunk/push counters |
 | `internal/webhook/dispatcher.go`, `internal/mail/dispatcher.go` | delivery counters, queue/in-flight gauges |
-| `cmd/nipad/main.go`, `ee/cmd/nipad/main.go` | `obs.Setup` name, `WithReadiness` |
+| `cmd/nipad/main.go`, `ee/cmd/nipad/main.go` | `obs.Setup`, `WithReadiness`, `WithMetrics`, DB registration |
 | `go.mod` | `prometheus/client_golang` |
 | `docs/OBSERVABILITY.md` (this file) | design + runbook |
 

@@ -9,6 +9,7 @@ import (
 
 	"github.com/nipalab/nipa/internal/chunker"
 	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/obs"
 	"github.com/nipalab/nipa/internal/snow"
 	"github.com/nipalab/nipa/internal/treehash"
 )
@@ -61,6 +62,7 @@ type Push struct {
 	fileLocks  fileLockGate
 	reviews    reviewPushGate
 	hooks      hookPushGate
+	metrics    *obs.Metrics
 }
 
 // reviewPushGate is the subset of the review usecase used by the push flow to
@@ -101,7 +103,21 @@ func (p *Push) WithHooks(hooks hookPushGate) *Push {
 	return p
 }
 
-func (p *Push) Push(ctx context.Context, projectID snow.ID, branchName, baseTreeHash, message string, files []*domain.PushFile, removed []string, parent2CommitHash, baseCommitID string) (*domain.PushResult, error) {
+// WithMetrics attaches observability metrics. Without one (the default), push
+// results are not counted.
+func (p *Push) WithMetrics(metrics *obs.Metrics) *Push {
+	p.metrics = metrics
+	return p
+}
+
+func (p *Push) Push(ctx context.Context, projectID snow.ID, branchName, baseTreeHash, message string, files []*domain.PushFile, removed []string, parent2CommitHash, baseCommitID string) (result *domain.PushResult, err error) {
+	defer func() {
+		if err != nil {
+			p.metrics.ObservePush("error")
+			return
+		}
+		p.metrics.ObservePush("ok")
+	}()
 	if !p.permUc.HasProjectAccess(ctx, projectID, domain.PermissionWrite) {
 		return nil, domain.NewErrorNoPermission()
 	}

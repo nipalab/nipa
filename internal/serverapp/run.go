@@ -41,6 +41,7 @@ type Option func(*runOptions)
 
 type runOptions struct {
 	readiness func(context.Context) error
+	metrics   *obs.Metrics
 }
 
 // WithReadiness configures the check behind /readyz (typically a database
@@ -48,6 +49,14 @@ type runOptions struct {
 func WithReadiness(check func(context.Context) error) Option {
 	return func(o *runOptions) {
 		o.readiness = check
+	}
+}
+
+// WithMetrics enables the /metrics endpoint and instruments HTTP and gRPC
+// traffic with it.
+func WithMetrics(metrics *obs.Metrics) Option {
+	return func(o *runOptions) {
+		o.metrics = metrics
 	}
 }
 
@@ -60,7 +69,7 @@ func Run(cfg *config.Config, reg *Registry, dispatchers []Dispatcher, opts ...Op
 		opt(&ro)
 	}
 
-	apiApp := api.NewAPI(reg)
+	apiApp := api.NewAPI(reg, api.WithMetrics(ro.metrics))
 	container := apiApp.SetupRoute()
 	for _, dispatcher := range dispatchers {
 		if dispatcher != nil {
@@ -73,8 +82,8 @@ func Run(cfg *config.Config, reg *Registry, dispatchers []Dispatcher, opts ...Op
 	grpcInterceptor := grpcserver.NewInterceptor(reg.Auth())
 
 	grpcRegistrar := grpc.NewServer(
-		grpc.UnaryInterceptor(grpcInterceptor.JWTUnary()),
-		grpc.StreamInterceptor(grpcInterceptor.JWTStream()),
+		grpc.ChainUnaryInterceptor(grpcserver.MetricsUnary(ro.metrics), grpcInterceptor.JWTUnary()),
+		grpc.ChainStreamInterceptor(grpcserver.MetricsStream(ro.metrics), grpcInterceptor.JWTStream()),
 	)
 	nipaServer := grpcserver.New(reg)
 	pb.RegisterNipaServiceServer(grpcRegistrar, nipaServer)
@@ -90,6 +99,10 @@ func Run(cfg *config.Config, reg *Registry, dispatchers []Dispatcher, opts ...Op
 	if cfg.PprofEnabled {
 		pprofHandler = obs.PprofHandler()
 	}
+	metricsHandler := http.NotFoundHandler()
+	if cfg.MetricsEnabled {
+		metricsHandler = ro.metrics.Handler()
+	}
 
 	mainHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if obs.IsGRPCRequest(r) {
@@ -101,6 +114,8 @@ func Run(cfg *config.Config, reg *Registry, dispatchers []Dispatcher, opts ...Op
 			healthHandler.ServeHTTP(w, r)
 		case r.URL.Path == "/readyz":
 			readyHandler.ServeHTTP(w, r)
+		case r.URL.Path == "/metrics":
+			metricsHandler.ServeHTTP(w, r)
 		case strings.HasPrefix(r.URL.Path, "/debug/pprof"):
 			pprofHandler.ServeHTTP(w, r)
 		case isAPIPath(r.URL.Path):

@@ -10,6 +10,7 @@ import (
 	"github.com/nipalab/nipa/internal/chunker"
 	"github.com/nipalab/nipa/internal/chunkurl"
 	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/obs"
 	"github.com/nipalab/nipa/internal/storage"
 )
 
@@ -50,6 +51,7 @@ type Chunk struct {
 	chunkStore storage.ChunkStore
 	transfer   ChunkTransferConfig
 	ledger     StorageLedger
+	metrics    *obs.Metrics
 	now        func() time.Time
 
 	unverifiedMu sync.Mutex
@@ -74,24 +76,37 @@ func (c *Chunk) WithStorageLedger(ledger StorageLedger) *Chunk {
 	return c
 }
 
+// WithMetrics attaches observability metrics. Without one (the default), chunk
+// operations are not counted.
+func (c *Chunk) WithMetrics(metrics *obs.Metrics) *Chunk {
+	c.metrics = metrics
+	return c
+}
+
 // Upload stores one chunk. It returns true when the content was newly stored,
 // false when an identical chunk was already present. The chunk metadata row is
 // recorded only after content exists, so a Push that references this hash can
 // rely on it.
 func (c *Chunk) Upload(ctx context.Context, hash domain.Hash, data []byte) (bool, error) {
 	if got := chunker.Sum(data); got != hash {
+		c.metrics.ObserveChunkVerifyFailure("store")
 		return false, domain.NewErrorUser(fmt.Sprintf("chunk hash mismatch for %s", hash))
 	}
 	exists, err := c.chunkStore.Exists(ctx, hash)
 	if err != nil {
+		c.metrics.ObserveChunkOp("upload", "error")
 		return false, domain.NewErrorDatabase(fmt.Sprintf("check chunk %s: %v", hash, err))
 	}
 	if exists {
+		c.metrics.ObserveChunkOp("upload", "dedup")
 		return false, nil
 	}
 	if err := c.chunkStore.Put(ctx, hash, data); err != nil {
+		c.metrics.ObserveChunkOp("upload", "error")
 		return false, domain.NewErrorDatabase(fmt.Sprintf("store chunk %s: %v", hash, err))
 	}
+	c.metrics.ObserveChunkOp("upload", "stored")
+	c.metrics.ObserveChunkBytes("upload", int64(len(data)))
 	if err := c.chunkRepo.InsertChunkIfNotExists(ctx, hash, int64(len(data))); err != nil {
 		return false, err
 	}
@@ -103,18 +118,24 @@ func (c *Chunk) Upload(ctx context.Context, hash domain.Hash, data []byte) (bool
 // transfer done. Content writes are safe to run concurrently.
 func (c *Chunk) StoreUploaded(ctx context.Context, hash domain.Hash, data []byte) error {
 	if got := chunker.Sum(data); got != hash {
+		c.metrics.ObserveChunkVerifyFailure("store")
 		return domain.NewErrorUser(fmt.Sprintf("chunk hash mismatch for %s", hash))
 	}
 	exists, err := c.chunkStore.Exists(ctx, hash)
 	if err != nil {
+		c.metrics.ObserveChunkOp("put", "error")
 		return domain.NewErrorDatabase(fmt.Sprintf("check chunk %s: %v", hash, err))
 	}
 	if exists {
+		c.metrics.ObserveChunkOp("put", "dedup")
 		return nil
 	}
 	if err := c.chunkStore.Put(ctx, hash, data); err != nil {
+		c.metrics.ObserveChunkOp("put", "error")
 		return domain.NewErrorDatabase(fmt.Sprintf("store chunk %s: %v", hash, err))
 	}
+	c.metrics.ObserveChunkOp("put", "stored")
+	c.metrics.ObserveChunkBytes("put", int64(len(data)))
 	return nil
 }
 
@@ -122,8 +143,11 @@ func (c *Chunk) StoreUploaded(ctx context.Context, hash domain.Hash, data []byte
 func (c *Chunk) Download(ctx context.Context, hash domain.Hash) ([]byte, error) {
 	data, err := c.chunkStore.Get(ctx, hash)
 	if err != nil {
+		c.metrics.ObserveChunkOp("get", "error")
 		return nil, err
 	}
+	c.metrics.ObserveChunkOp("get", "ok")
+	c.metrics.ObserveChunkBytes("get", int64(len(data)))
 	return data, nil
 }
 
@@ -132,6 +156,16 @@ func (c *Chunk) Download(ctx context.Context, hash domain.Hash) ([]byte, error) 
 // skip the transfer. When a ledger is attached, refs that would add new bytes
 // are checked against the organization's remaining quota first.
 func (c *Chunk) PresignUploadURLs(ctx context.Context, org *domain.Organization, project *domain.Project, refs []ChunkRef, pageSize int, pageToken string) ([]ChunkURL, string, error) {
+	urls, next, err := c.presignUploadURLs(ctx, org, project, refs, pageSize, pageToken)
+	result := "ok"
+	if err != nil {
+		result = "error"
+	}
+	c.metrics.ObserveChunkOp("presign_upload", result)
+	return urls, next, err
+}
+
+func (c *Chunk) presignUploadURLs(ctx context.Context, org *domain.Organization, project *domain.Project, refs []ChunkRef, pageSize int, pageToken string) ([]ChunkURL, string, error) {
 	if err := validateChunkRefs(refs); err != nil {
 		return nil, "", err
 	}
@@ -213,6 +247,16 @@ func (c *Chunk) uploadTarget(ctx context.Context, org, project string, ref Chunk
 // may read. Stores implementing storage.DirectTransferStore hand out absolute
 // backend presigned URLs so clients fetch content directly from the backend.
 func (c *Chunk) PresignDownloadURLs(ctx context.Context, org, project string, hashes []domain.Hash, pageSize int, pageToken string) ([]ChunkURL, string, error) {
+	urls, next, err := c.presignDownloadURLs(ctx, org, project, hashes, pageSize, pageToken)
+	result := "ok"
+	if err != nil {
+		result = "error"
+	}
+	c.metrics.ObserveChunkOp("presign_download", result)
+	return urls, next, err
+}
+
+func (c *Chunk) presignDownloadURLs(ctx context.Context, org, project string, hashes []domain.Hash, pageSize int, pageToken string) ([]ChunkURL, string, error) {
 	page, next, err := paginate(hashes, pageSize, pageToken, c.transfer.MaxPageSize)
 	if err != nil {
 		return nil, "", err
@@ -240,6 +284,7 @@ func (c *Chunk) downloadPath(ctx context.Context, org, project string, hash doma
 			return "", err
 		}
 		if !verified {
+			c.metrics.ObserveChunkVerifyFailure("download")
 			c.clearUnverified(hash)
 			return "", domain.NewErrorInternalServer(fmt.Sprintf("chunk %s failed verification", hash))
 		}
@@ -261,9 +306,24 @@ func (c *Chunk) downloadPath(ctx context.Context, org, project string, hash doma
 // ledger is attached, present chunks are attributed to the project and the
 // organization's quota is enforced.
 func (c *Chunk) ConfirmUploads(ctx context.Context, org *domain.Organization, project *domain.Project, hashes []domain.Hash) ([]domain.Hash, error) {
+	missing, confirmedBytes, err := c.confirmUploads(ctx, org, project, hashes)
+	result := "ok"
+	switch {
+	case err != nil:
+		result = "error"
+	case len(missing) > 0:
+		result = "partial"
+	}
+	c.metrics.ObserveChunkOp("confirm", result)
+	c.metrics.ObserveChunkBytes("confirm", confirmedBytes)
+	return missing, err
+}
+
+func (c *Chunk) confirmUploads(ctx context.Context, org *domain.Organization, project *domain.Project, hashes []domain.Hash) ([]domain.Hash, int64, error) {
 	direct, isDirect := c.chunkStore.(storage.DirectTransferStore)
 	var missing []domain.Hash
 	var attributed []LedgerChunk
+	var confirmedBytes int64
 	for _, hash := range hashes {
 		size, err := c.chunkStore.Size(ctx, hash)
 		if err != nil {
@@ -271,38 +331,40 @@ func (c *Chunk) ConfirmUploads(ctx context.Context, org *domain.Organization, pr
 				missing = append(missing, hash)
 				continue
 			}
-			return nil, domain.NewErrorDatabase(fmt.Sprintf("stat chunk %s: %v", hash, err))
+			return nil, 0, domain.NewErrorDatabase(fmt.Sprintf("stat chunk %s: %v", hash, err))
 		}
 		if isDirect {
 			verify, err := c.needsVerification(ctx, hash)
 			if err != nil {
-				return nil, err
+				return nil, 0, err
 			}
 			if verify {
 				verified, err := c.verifyChunkContent(ctx, direct, hash, size)
 				if err != nil {
-					return nil, err
+					return nil, 0, err
 				}
 				c.clearUnverified(hash)
 				if !verified {
+					c.metrics.ObserveChunkVerifyFailure("confirm")
 					missing = append(missing, hash)
 					continue
 				}
 			}
 		}
 		if err := c.chunkRepo.InsertChunkIfNotExists(ctx, hash, size); err != nil {
-			return nil, err
+			return nil, 0, err
 		}
+		confirmedBytes += size
 		if c.ledger != nil {
 			attributed = append(attributed, LedgerChunk{Hash: hash, SizeBytes: size})
 		}
 	}
 	if len(attributed) > 0 {
 		if err := c.ledger.Attribute(ctx, org, project, attributed); err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 	}
-	return missing, nil
+	return missing, confirmedBytes, nil
 }
 
 // needsVerification reports whether a chunk stored by a direct backend must be
