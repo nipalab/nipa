@@ -12,7 +12,13 @@ LOG_FORMAT: console
 PPROF_ENABLED: false
 # Serve Prometheus metrics on /metrics of the main port.
 METRICS_ENABLED: true
+# Snowflake node id. The free `nipad` is single-instance and uses this value.
+# `nipad-ee` uses it when set; remove the key (or leave the env var empty) to
+# have each instance lease its own id from postgres, which is what a multi-pod
+# deployment needs.
 SNOWFLAKE_NODE_ID: 0
+# TTL in seconds of the enterprise auto-assigned node id lease.
+SNOWFLAKE_LEASE_TTL_SECONDS: 60
 HASHER_WORKERS: 4
 # Chunk backend. The free `nipad` supports `local` only; the enterprise
 # `nipad-ee` supports `s3` only (empty defaults to s3 there).

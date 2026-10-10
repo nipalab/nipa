@@ -28,6 +28,7 @@ import (
 	"google.golang.org/grpc"
 
 	eedb "github.com/nipalab/nipa/ee/db"
+	"github.com/nipalab/nipa/ee/nodelease"
 	"github.com/nipalab/nipa/ee/repository/postgres"
 	s3store "github.com/nipalab/nipa/ee/storage/s3"
 	clientdomain "github.com/nipalab/nipa/internal/client/domain"
@@ -188,7 +189,7 @@ func (r *testRegistry) MergeRequestReview() *serverusecase.MergeRequestReview {
 func (r *testRegistry) MergeRequestCheck() *serverusecase.MergeRequestCheck { return r.check }
 func (r *testRegistry) FileLock() *serverusecase.FileLock                   { return r.fileLock }
 
-func startEnterpriseServer(t *testing.T, dbConn *sql.DB, chunkStore storage.ChunkStore) string {
+func startEnterpriseServer(t *testing.T, dbConn *sql.DB, chunkStore storage.ChunkStore, node snow.Node) string {
 	t.Helper()
 
 	orgRepo := postgres.NewOrgRepository(dbConn)
@@ -201,9 +202,6 @@ func startEnterpriseServer(t *testing.T, dbConn *sql.DB, chunkStore storage.Chun
 
 	passwordHasher := hasher.NewHasher(2)
 	t.Cleanup(passwordHasher.Close)
-
-	node, err := snow.NewNode(0)
-	require.NoError(t, err)
 
 	authUc := serverusecase.NewAuth(e2eJWTSecret, passwordHasher, userRepo, authRepo)
 	groupRepo := postgres.NewGroupRepository(dbConn)
@@ -331,6 +329,32 @@ func readFile(t *testing.T, target, path string) string {
 	return string(got)
 }
 
+func mustSnowNode(t *testing.T, nodeID int64) snow.Node {
+	t.Helper()
+	node, err := snow.NewNode(nodeID)
+	require.NoError(t, err)
+	return node
+}
+
+func connectClient(t *testing.T, host string) (*clientusecase.Repo, *clientusecase.Push) {
+	t.Helper()
+
+	ctx := context.Background()
+	store := newMemoryStore()
+	transport := clientgrpc.NewTransport()
+	session := clientusecase.NewSession(store, transport, failPrompt{})
+	grpcClient := clientgrpc.NewClient(transport, session)
+	auth := clientusecase.NewAuth(grpcClient, store, failPrompt{})
+	require.NoError(t, grpcClient.Connect(ctx, host))
+
+	loginResult, err := grpcClient.LoginWithUsernamePassword(ctx, host, e2eSuperAdmin, e2eSuperPass)
+	require.NoError(t, err)
+	require.NoError(t, store.SaveToken(loginResult))
+
+	return clientusecase.NewRepo(auth, grpcClient, localrepo.NewLocalRepo()),
+		clientusecase.NewPush(auth, grpcClient, localrepo.NewLocalRepo())
+}
+
 func TestEnterpriseClonePushTag(t *testing.T) {
 	ctx := context.Background()
 
@@ -339,7 +363,7 @@ func TestEnterpriseClonePushTag(t *testing.T) {
 	t.Cleanup(func() { _ = dbConn.Close() })
 	require.NoError(t, eedb.MigrateUp(dbConn))
 
-	host := startEnterpriseServer(t, dbConn, newS3ChunkStore(t))
+	host := startEnterpriseServer(t, dbConn, newS3ChunkStore(t), mustSnowNode(t, 0))
 
 	store := newMemoryStore()
 	transport := clientgrpc.NewTransport()
@@ -380,4 +404,82 @@ func TestEnterpriseClonePushTag(t *testing.T) {
 	require.Len(t, tags, 1)
 	require.Equal(t, "v0.1.0", tags[0].Name)
 	require.NotEmpty(t, tags[0].CommitID)
+}
+
+func TestEnterpriseTwoInstanceNodeLease(t *testing.T) {
+	ctx := context.Background()
+
+	dbConn, err := eedb.Open(testPGDSN)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = dbConn.Close() })
+	require.NoError(t, eedb.MigrateUp(dbConn))
+
+	_, err = dbConn.ExecContext(ctx, "DELETE FROM snowflake_node_leases")
+	require.NoError(t, err)
+
+	newManager := func(holder string) *nodelease.Manager {
+		t.Helper()
+		manager, err := nodelease.New(nodelease.Config{DB: dbConn, Holder: holder, TTL: 30 * time.Second})
+		require.NoError(t, err)
+		t.Cleanup(func() { manager.Release(context.Background()) })
+		return manager
+	}
+
+	mgrA := newManager("instance-a")
+	nodeA, err := mgrA.Acquire(ctx)
+	require.NoError(t, err)
+
+	mgrB := newManager("instance-b")
+	nodeB, err := mgrB.Acquire(ctx)
+	require.NoError(t, err)
+
+	mgrC := newManager("instance-c")
+	_, err = mgrC.Acquire(ctx)
+	require.NoError(t, err)
+
+	require.NotEqual(t, mgrA.NodeID(), mgrB.NodeID())
+	require.NotEqual(t, mgrA.NodeID(), mgrC.NodeID())
+	require.NotEqual(t, mgrB.NodeID(), mgrC.NodeID())
+
+	var leased int
+	require.NoError(t, dbConn.QueryRowContext(ctx, "SELECT count(*) FROM snowflake_node_leases").Scan(&leased))
+	require.Equal(t, 3, leased)
+
+	chunkStore := newS3ChunkStore(t)
+	hostA := startEnterpriseServer(t, dbConn, chunkStore, nodeA)
+	hostB := startEnterpriseServer(t, dbConn, chunkStore, nodeB)
+
+	repoA, pushA := connectClient(t, hostA)
+	repoB, pushB := connectClient(t, hostB)
+
+	urlA := "http://" + hostA + "/" + e2eOrgSlug + "/" + e2eProjectSlug
+	urlB := "http://" + hostB + "/" + e2eOrgSlug + "/" + e2eProjectSlug
+
+	targetA := filepath.Join(t.TempDir(), "work-a")
+	require.NoError(t, repoA.Clone(ctx, urlA, hostA, e2eOrgSlug, e2eProjectSlug, "", nil, targetA))
+	writeFile(t, targetA, "instance-a.txt", "written through instance a\n")
+	stagePath(t, targetA, "instance-a.txt")
+	require.NoError(t, pushA.Run(ctx, targetA, "add instance-a.txt"))
+
+	targetB := filepath.Join(t.TempDir(), "work-b")
+	require.NoError(t, repoB.Clone(ctx, urlB, hostB, e2eOrgSlug, e2eProjectSlug, "", nil, targetB))
+	require.Equal(t, "written through instance a\n", readFile(t, targetB, "instance-a.txt"))
+	writeFile(t, targetB, "instance-b.txt", "written through instance b\n")
+	stagePath(t, targetB, "instance-b.txt")
+	require.NoError(t, pushB.Run(ctx, targetB, "add instance-b.txt"))
+
+	checkout := filepath.Join(t.TempDir(), "checkout")
+	require.NoError(t, repoA.Clone(ctx, urlA, hostA, e2eOrgSlug, e2eProjectSlug, "", nil, checkout))
+	require.Equal(t, "written through instance b\n", readFile(t, checkout, "instance-b.txt"))
+
+	mgrA.Release(ctx)
+	mgrB.Release(ctx)
+	mgrC.Release(ctx)
+
+	require.NoError(t, dbConn.QueryRowContext(ctx, "SELECT count(*) FROM snowflake_node_leases").Scan(&leased))
+	require.Zero(t, leased)
+
+	reacquired, err := newManager("instance-d").Acquire(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, reacquired)
 }

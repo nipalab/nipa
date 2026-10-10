@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log/slog"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	eedb "github.com/nipalab/nipa/ee/db"
+	"github.com/nipalab/nipa/ee/nodelease"
 	"github.com/nipalab/nipa/ee/repository/postgres"
 	s3store "github.com/nipalab/nipa/ee/storage/s3"
 	"github.com/nipalab/nipa/internal/config"
@@ -55,9 +57,12 @@ func main() {
 
 	passwordHasher := hasher.NewHasher(cfg.HasherWorkers)
 
-	snowUser, err := snow.NewNode(cfg.SnowflakeNodeID)
+	snowUser, leaseManager, err := resolveSnowflakeNode(cfg, dbConn)
 	if err != nil {
 		panic(err)
+	}
+	if leaseManager != nil {
+		defer leaseManager.Release(context.Background())
 	}
 	authUsecase := usecase.NewAuth(cfg.JWTKey, passwordHasher, userRepo, authRepo)
 	orgUsecase := usecase.NewOrg(orgRepo, snowUser)
@@ -168,6 +173,35 @@ func main() {
 	if err := serverapp.Run(cfg, reg, dispatchers, serverapp.WithReadiness(dbConn.PingContext), serverapp.WithMetrics(metrics)); err != nil {
 		panic(err)
 	}
+}
+
+func resolveSnowflakeNode(cfg *config.Config, dbConn *sql.DB) (snow.Node, *nodelease.Manager, error) {
+	if cfg.SnowflakeNodeIDSet {
+		node, err := snow.NewNode(cfg.SnowflakeNodeID)
+		if err != nil {
+			return nil, nil, err
+		}
+		slog.Info("using configured snowflake node id", "node_id", cfg.SnowflakeNodeID)
+		return node, nil, nil
+	}
+
+	hostname, err := os.Hostname()
+	if err != nil {
+		return nil, nil, fmt.Errorf("resolve hostname for snowflake node lease: %w", err)
+	}
+	manager, err := nodelease.New(nodelease.Config{
+		DB:     dbConn,
+		Holder: hostname,
+		TTL:    time.Duration(cfg.SnowflakeLeaseTTLSecs) * time.Second,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	node, err := manager.Acquire(context.Background())
+	if err != nil {
+		return nil, nil, fmt.Errorf("acquire snowflake node lease: %w", err)
+	}
+	return node, manager, nil
 }
 
 func createChunkStore(cfg *config.Config) (storage.ChunkStore, error) {

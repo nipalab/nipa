@@ -1,4 +1,5 @@
 DROP TABLE IF EXISTS email_deliveries;
+DROP TABLE IF EXISTS snowflake_node_leases;
 DROP TABLE IF EXISTS tags;
 DROP TABLE IF EXISTS webhook_deliveries;
 DROP TABLE IF EXISTS webhooks;
