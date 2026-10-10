@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/nipalab/nipa/internal/dispatch"
 	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/snow"
 )
@@ -50,15 +51,11 @@ type Dispatcher struct {
 	node   snow.Node
 	cfg    Config
 
-	jobs chan job
-	stop chan struct{}
-	done chan struct{}
+	runner *dispatch.Runner
+	jobs   chan job
 
 	mu       sync.Mutex
-	workers  sync.WaitGroup
 	inFlight map[snow.ID]struct{}
-	started  bool
-	stopped  bool
 }
 
 type job struct {
@@ -72,9 +69,8 @@ func NewDispatcher(store DispatcherStore, client *Client, node snow.Node, cfg Co
 		client:   client,
 		node:     node,
 		cfg:      cfg.withDefaults(),
+		runner:   dispatch.NewRunner(),
 		jobs:     make(chan job, 64),
-		stop:     make(chan struct{}),
-		done:     make(chan struct{}),
 		inFlight: map[snow.ID]struct{}{},
 	}
 }
@@ -82,54 +78,14 @@ func NewDispatcher(store DispatcherStore, client *Client, node snow.Node, cfg Co
 // Start launches the workers and the retry sweeper. It is a no-op when the
 // dispatcher is already running or has been stopped.
 func (d *Dispatcher) Start() {
-	d.mu.Lock()
-	if d.started || d.stopped {
-		d.mu.Unlock()
-		return
-	}
-	d.started = true
-	d.mu.Unlock()
-
-	for i := 0; i < d.cfg.Workers; i++ {
-		d.workers.Add(1)
-		go d.worker()
-	}
-	go d.run()
+	d.runner.Start(d.cfg.Workers, d.worker, d.run)
 }
 
 // Stop stops scheduling new attempts and waits for the in-flight ones to
 // finish. Pending deliveries stay in the store and are resumed by the sweep
 // on the next Start.
 func (d *Dispatcher) Stop(ctx context.Context) error {
-	d.mu.Lock()
-	started := d.started
-	d.started = false
-	d.stopped = true
-	if started {
-		close(d.stop)
-	}
-	d.mu.Unlock()
-	if !started {
-		return nil
-	}
-
-	select {
-	case <-d.done:
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-
-	finished := make(chan struct{})
-	go func() {
-		d.workers.Wait()
-		close(finished)
-	}()
-	select {
-	case <-finished:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
+	return d.runner.Stop(ctx)
 }
 
 // Enqueue persists a pending delivery and schedules an immediate attempt. The
@@ -154,10 +110,7 @@ func (d *Dispatcher) Enqueue(ctx context.Context, hook domain.Webhook, event str
 
 // Schedule queues an already persisted delivery for an immediate attempt.
 func (d *Dispatcher) Schedule(hook domain.Webhook, delivery domain.WebhookDelivery) {
-	d.mu.Lock()
-	running := d.started && !d.stopped
-	d.mu.Unlock()
-	if !running {
+	if !d.runner.Running() {
 		return
 	}
 	if !d.claim(delivery.ID) {
@@ -171,20 +124,18 @@ func (d *Dispatcher) Schedule(hook domain.Webhook, delivery domain.WebhookDelive
 }
 
 func (d *Dispatcher) run() {
-	defer close(d.done)
-
 	d.sweep()
 
 	ticker := time.NewTicker(d.cfg.SweepInterval)
 	defer ticker.Stop()
 	for {
 		select {
-		case <-d.stop:
+		case <-d.runner.StopCh():
 			return
 		default:
 		}
 		select {
-		case <-d.stop:
+		case <-d.runner.StopCh():
 			return
 		case <-ticker.C:
 			d.sweep()
@@ -193,15 +144,14 @@ func (d *Dispatcher) run() {
 }
 
 func (d *Dispatcher) worker() {
-	defer d.workers.Done()
 	for {
 		select {
-		case <-d.stop:
+		case <-d.runner.StopCh():
 			return
 		default:
 		}
 		select {
-		case <-d.stop:
+		case <-d.runner.StopCh():
 			return
 		case j := <-d.jobs:
 			d.deliver(j)

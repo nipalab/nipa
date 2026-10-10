@@ -74,6 +74,17 @@ func (s *EmailRepositorySuite) TestEnqueueAndClaimDue() {
 	s.Equal(int64(3), claimed[0].Attempts)
 }
 
+func (s *EmailRepositorySuite) TestEnqueueDefaultsToImmediate() {
+	ctx := context.Background()
+	repo := NewEmailRepository(s.db)
+
+	s.Require().NoError(repo.Enqueue(ctx, []*domain.EmailDelivery{testEmailDelivery(1, nil)}))
+	claimed, err := repo.ClaimDue(ctx, time.Now(), time.Now().Add(-time.Minute), 10)
+	s.Require().NoError(err)
+	s.Require().Len(claimed, 1, "a delivery without a scheduled attempt is due immediately")
+	s.Equal(domain.EmailDeliverySending, claimed[0].State)
+}
+
 func (s *EmailRepositorySuite) TestLifecycle() {
 	ctx := context.Background()
 	repo := NewEmailRepository(s.db)

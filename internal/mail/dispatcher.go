@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"sync"
 	"time"
 
+	"github.com/nipalab/nipa/internal/dispatch"
 	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/snow"
 )
@@ -65,15 +65,9 @@ type Dispatcher struct {
 	sender Sender
 	cfg    DispatcherConfig
 
-	jobs chan domain.EmailDelivery
-	kick chan struct{}
-	stop chan struct{}
-	done chan struct{}
-
-	mu      sync.Mutex
-	workers sync.WaitGroup
-	started bool
-	stopped bool
+	runner *dispatch.Runner
+	jobs   chan domain.EmailDelivery
+	kick   chan struct{}
 }
 
 func NewDispatcher(store DispatcherStore, sender Sender, cfg DispatcherConfig) *Dispatcher {
@@ -81,63 +75,22 @@ func NewDispatcher(store DispatcherStore, sender Sender, cfg DispatcherConfig) *
 		store:  store,
 		sender: sender,
 		cfg:    cfg.withDefaults(),
+		runner: dispatch.NewRunner(),
 		jobs:   make(chan domain.EmailDelivery, 64),
 		kick:   make(chan struct{}, 1),
-		stop:   make(chan struct{}),
-		done:   make(chan struct{}),
 	}
 }
 
 // Start launches the workers and the poll loop. It is a no-op when the
 // dispatcher is already running or has been stopped.
 func (d *Dispatcher) Start() {
-	d.mu.Lock()
-	if d.started || d.stopped {
-		d.mu.Unlock()
-		return
-	}
-	d.started = true
-	d.mu.Unlock()
-
-	for i := 0; i < d.cfg.Workers; i++ {
-		d.workers.Add(1)
-		go d.worker()
-	}
-	go d.run()
+	d.runner.Start(d.cfg.Workers, d.worker, d.run)
 }
 
 // Stop stops claiming new rows and waits for in-flight deliveries to finish.
 // Claimed-but-undelivered rows are reclaimed by the next Start.
 func (d *Dispatcher) Stop(ctx context.Context) error {
-	d.mu.Lock()
-	started := d.started
-	d.started = false
-	d.stopped = true
-	if started {
-		close(d.stop)
-	}
-	d.mu.Unlock()
-	if !started {
-		return nil
-	}
-
-	select {
-	case <-d.done:
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-
-	finished := make(chan struct{})
-	go func() {
-		d.workers.Wait()
-		close(finished)
-	}()
-	select {
-	case <-finished:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
+	return d.runner.Stop(ctx)
 }
 
 // Kick asks the dispatcher to poll immediately instead of waiting for the next
@@ -150,8 +103,6 @@ func (d *Dispatcher) Kick() {
 }
 
 func (d *Dispatcher) run() {
-	defer close(d.done)
-
 	d.sweep()
 
 	poll := time.NewTicker(d.cfg.PollInterval)
@@ -160,7 +111,7 @@ func (d *Dispatcher) run() {
 	defer retention.Stop()
 	for {
 		select {
-		case <-d.stop:
+		case <-d.runner.StopCh():
 			return
 		case <-poll.C:
 			d.sweep()
@@ -173,15 +124,14 @@ func (d *Dispatcher) run() {
 }
 
 func (d *Dispatcher) worker() {
-	defer d.workers.Done()
 	for {
 		select {
-		case <-d.stop:
+		case <-d.runner.StopCh():
 			return
 		default:
 		}
 		select {
-		case <-d.stop:
+		case <-d.runner.StopCh():
 			return
 		case delivery := <-d.jobs:
 			d.deliver(delivery)
@@ -199,7 +149,7 @@ func (d *Dispatcher) sweep() {
 	for _, row := range rows {
 		select {
 		case d.jobs <- *row:
-		case <-d.stop:
+		case <-d.runner.StopCh():
 			return
 		}
 	}

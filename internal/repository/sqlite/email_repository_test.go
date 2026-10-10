@@ -146,6 +146,18 @@ func TestEmailRepositorySQLite_SweepRetention(t *testing.T) {
 	require.Equal(t, domain.EmailDeliveryPending, remaining.State, "pending rows are never swept")
 }
 
+func TestEmailRepositorySQLite_EnqueueDefaultsToImmediate(t *testing.T) {
+	ctx := context.Background()
+	db, _ := newSQLiteTestDB(t)
+	repo := NewEmailRepository(db)
+
+	require.NoError(t, repo.Enqueue(ctx, []*domain.EmailDelivery{testEmailDelivery(1, nil)}))
+	claimed, err := repo.ClaimDue(ctx, time.Now(), time.Now().Add(-time.Minute), 10)
+	require.NoError(t, err)
+	require.Len(t, claimed, 1, "a delivery without a scheduled attempt is due immediately")
+	require.Equal(t, domain.EmailDeliverySending, claimed[0].State)
+}
+
 func TestEmailRepositorySQLite_EnqueueRollsBack(t *testing.T) {
 	ctx := context.Background()
 	db, _ := newSQLiteTestDB(t)

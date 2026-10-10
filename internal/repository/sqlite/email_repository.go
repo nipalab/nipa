@@ -23,10 +23,16 @@ func NewEmailRepository(db *sql.DB) *EmailRepository {
 	}
 }
 
-// Enqueue persists pending deliveries in one transaction.
+// Enqueue persists pending deliveries in one transaction. A delivery without
+// a scheduled attempt is due immediately.
 func (r *EmailRepository) Enqueue(ctx context.Context, deliveries []*domain.EmailDelivery) error {
 	return r.tx.WithinTx(ctx, func(ctx context.Context) error {
 		for _, delivery := range deliveries {
+			next := delivery.NextAttemptAt
+			if next == nil {
+				now := time.Now()
+				next = &now
+			}
 			_, err := r.queries.EmailDeliveryCreate(ctx, sqlcSqlite.EmailDeliveryCreateParams{
 				ID:            delivery.ID.Int64(),
 				Event:         delivery.Event,
@@ -36,7 +42,7 @@ func (r *EmailRepository) Enqueue(ctx context.Context, deliveries []*domain.Emai
 				Subject:       delivery.Subject,
 				Body:          delivery.Body,
 				State:         delivery.State,
-				NextAttemptAt: timePtrToNullTime(delivery.NextAttemptAt),
+				NextAttemptAt: timePtrToNullTime(next),
 			})
 			if err != nil {
 				return handleError(err)

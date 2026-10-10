@@ -125,6 +125,29 @@ func TestDispatcher_DeliversDueRow(t *testing.T) {
 	require.Equal(t, "dev@example.com", sender.sent[0].To[0])
 }
 
+func TestDispatcher_DeliversUnscheduledDelivery(t *testing.T) {
+	repo, _ := newOutboxTestRepo(t)
+	sender := &fakeSender{}
+	body, err := EncodeMessage(Message{To: []string{"dev@example.com"}, Subject: "subject", Text: "body"})
+	require.NoError(t, err)
+	require.NoError(t, repo.Enqueue(context.Background(), []*domain.EmailDelivery{{
+		ID:        snow.ID(8),
+		Event:     "mr.created",
+		ProjectID: 1,
+		UserID:    2,
+		Email:     "dev@example.com",
+		Subject:   "subject",
+		Body:      body,
+		State:     domain.EmailDeliveryPending,
+	}}))
+	startTestDispatcher(t, repo, sender, fastDispatcherConfig())
+
+	waitForState(t, repo, 8, domain.EmailDeliveryDelivered)
+	calls, sent := sender.stats()
+	require.Equal(t, 1, calls)
+	require.Equal(t, 1, sent)
+}
+
 func TestDispatcher_RetriesThenFails(t *testing.T) {
 	repo, _ := newOutboxTestRepo(t)
 	sender := &fakeSender{failures: 100}
