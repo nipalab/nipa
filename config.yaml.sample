@@ -10,6 +10,8 @@ LOG_FORMAT: console
 # Serve net/http/pprof on /debug/pprof/ of the main port; keep off outside
 # trusted networks.
 PPROF_ENABLED: false
+# Serve Prometheus metrics on /metrics of the main port.
+METRICS_ENABLED: true
 SNOWFLAKE_NODE_ID: 0
 HASHER_WORKERS: 4
 # Chunk backend. The free `nipad` supports `local` only; the enterprise

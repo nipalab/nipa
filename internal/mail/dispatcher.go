@@ -9,6 +9,7 @@ import (
 
 	"github.com/nipalab/nipa/internal/dispatch"
 	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/obs"
 	"github.com/nipalab/nipa/internal/snow"
 )
 
@@ -65,9 +66,10 @@ type Dispatcher struct {
 	sender Sender
 	cfg    DispatcherConfig
 
-	runner *dispatch.Runner
-	jobs   chan domain.EmailDelivery
-	kick   chan struct{}
+	runner  *dispatch.Runner
+	jobs    chan domain.EmailDelivery
+	kick    chan struct{}
+	metrics *obs.Metrics
 }
 
 func NewDispatcher(store DispatcherStore, sender Sender, cfg DispatcherConfig) *Dispatcher {
@@ -79,6 +81,13 @@ func NewDispatcher(store DispatcherStore, sender Sender, cfg DispatcherConfig) *
 		jobs:   make(chan domain.EmailDelivery, 64),
 		kick:   make(chan struct{}, 1),
 	}
+}
+
+// WithMetrics attaches observability metrics and registers the queue gauge.
+func (d *Dispatcher) WithMetrics(metrics *obs.Metrics) *Dispatcher {
+	d.metrics = metrics
+	metrics.RegisterMailQueue(func() float64 { return float64(len(d.jobs)) })
+	return d
 }
 
 // Start launches the workers and the poll loop. It is a no-op when the
@@ -167,6 +176,7 @@ func (d *Dispatcher) deliver(delivery domain.EmailDelivery) {
 			d.markFailed(delivery, err)
 			return
 		}
+		d.metrics.ObserveMailDelivery("retry")
 		next := time.Now().Add(d.backoff(delivery.Attempts))
 		if err := d.store.ScheduleRetry(ctx, delivery.ID, err.Error(), next); err != nil {
 			slog.Warn("email delivery reschedule failed", "delivery_id", delivery.ID, "error", err)
@@ -175,12 +185,14 @@ func (d *Dispatcher) deliver(delivery domain.EmailDelivery) {
 			"delivery_id", delivery.ID, "attempt", delivery.Attempts, "next_retry_at", next, "error", err)
 		return
 	}
+	d.metrics.ObserveMailDelivery("delivered")
 	if err := d.store.MarkDelivered(ctx, delivery.ID, time.Now()); err != nil {
 		slog.Warn("email delivery state update failed", "delivery_id", delivery.ID, "error", err)
 	}
 }
 
 func (d *Dispatcher) markFailed(delivery domain.EmailDelivery, cause error) {
+	d.metrics.ObserveMailDelivery("failed")
 	if err := d.store.MarkFailed(context.Background(), delivery.ID, cause.Error()); err != nil {
 		slog.Warn("email delivery state update failed", "delivery_id", delivery.ID, "error", err)
 	}

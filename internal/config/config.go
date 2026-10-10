@@ -14,6 +14,7 @@ type Config struct {
 	LogLevel               string `mapstructure:"LOG_LEVEL"`
 	LogFormat              string `mapstructure:"LOG_FORMAT"`
 	PprofEnabled           bool   `mapstructure:"PPROF_ENABLED"`
+	MetricsEnabled         bool   `mapstructure:"METRICS_ENABLED"`
 	SnowflakeNodeID        int64  `mapstructure:"SNOWFLAKE_NODE_ID"`
 	HasherWorkers          int    `mapstructure:"HASHER_WORKERS"`
 	ChunkStorage           string `mapstructure:"CHUNK_STORAGE"`
@@ -63,6 +64,7 @@ func LoadConfig() (*Config, error) {
 	v.SetDefault("LOG_LEVEL", "info")
 	v.SetDefault("LOG_FORMAT", "console")
 	v.SetDefault("PPROF_ENABLED", false)
+	v.SetDefault("METRICS_ENABLED", true)
 
 	if err := v.ReadInConfig(); err != nil {
 		return nil, err

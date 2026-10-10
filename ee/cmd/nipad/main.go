@@ -30,11 +30,13 @@ func main() {
 	}
 
 	obs.Setup(cfg.LogLevel, cfg.LogFormat, "nipad-ee", os.Stderr)
+	metrics := obs.NewMetrics()
 
 	dbConn, err := eedb.Open(cfg.DatabaseDSN)
 	if err != nil {
 		panic(err)
 	}
+	metrics.RegisterDB("postgres", dbConn)
 
 	slog.Info("migrating database...")
 	if err := eedb.MigrateUp(dbConn); err != nil {
@@ -83,7 +85,7 @@ func main() {
 		snowUser,
 		dbtx.NewTransactor(dbConn),
 	).WithFileLocks(fileLockUsecase)
-	pushUsecase := usecase.NewPush(permissionUsecase, branchRepository, pushRepository, snowUser).WithFileLocks(fileLockUsecase)
+	pushUsecase := usecase.NewPush(permissionUsecase, branchRepository, pushRepository, snowUser).WithFileLocks(fileLockUsecase).WithMetrics(metrics)
 	tagUsecase := usecase.NewTag(permissionUsecase, postgres.NewTagRepository(dbConn), branchRepository, snowUser)
 	mergeRequestReviewUsecase := usecase.NewMergeRequestReview(
 		mergeRequestReviewRepository,
@@ -101,13 +103,13 @@ func main() {
 		SigningKey:  cfg.ChunkURLSigningKey,
 		PresignTTL:  time.Duration(cfg.ChunkPresignTTLSeconds) * time.Second,
 		MaxPageSize: cfg.ChunkMaxPageSize,
-	})
+	}).WithMetrics(metrics)
 	branchUsecase = branchUsecase.WithMergeCommitter(pushRepository).WithChunkUploader(chunkUsecase)
 	webhookRepository := postgres.NewWebhookRepository(dbConn)
 	webhookDispatcher := webhook.NewDispatcher(webhookRepository, webhook.NewClient(webhook.ClientConfig{
 		Timeout:         time.Duration(cfg.WebhookTimeoutSeconds) * time.Second,
 		EgressAllowlist: serverapp.SplitAllowlist(cfg.WebhookEgressAllowlist),
-	}), snowUser, webhook.Config{})
+	}), snowUser, webhook.Config{}).WithMetrics(metrics)
 	webhookUsecase := usecase.NewWebhook(webhookRepository, permissionUsecase, userRepo, webhookDispatcher, snowUser)
 	hookEmitter := usecase.NewHookEmitter(webhookRepository, projectRepo, orgRepo, branchRepository, userRepo, webhookDispatcher)
 	emailRepository := postgres.NewEmailRepository(dbConn)
@@ -118,7 +120,7 @@ func main() {
 	}
 	var emailDispatcher *mail.Dispatcher
 	if emailSender != nil {
-		emailDispatcher = mail.NewDispatcher(emailRepository, emailSender, cfg.EmailDispatcherConfig())
+		emailDispatcher = mail.NewDispatcher(emailRepository, emailSender, cfg.EmailDispatcherConfig()).WithMetrics(metrics)
 		emailDeliveryUsecase = emailDeliveryUsecase.WithKicker(emailDispatcher)
 		hookEmitter = hookEmitter.WithNotifier(usecase.NewEmailNotifier(
 			emailRepository, userRepo, mergeRequestRepository, mergeRequestReviewRepository, cfg.EmailBaseURL, snowUser,
@@ -163,7 +165,7 @@ func main() {
 	if emailDispatcher != nil {
 		dispatchers = append(dispatchers, emailDispatcher)
 	}
-	if err := serverapp.Run(cfg, reg, dispatchers, serverapp.WithReadiness(dbConn.PingContext)); err != nil {
+	if err := serverapp.Run(cfg, reg, dispatchers, serverapp.WithReadiness(dbConn.PingContext), serverapp.WithMetrics(metrics)); err != nil {
 		panic(err)
 	}
 }
