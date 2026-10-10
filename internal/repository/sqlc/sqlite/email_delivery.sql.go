@@ -277,6 +277,7 @@ SET state = 'pending',
     claimed_at = NULL,
     updated_at = ?1
 WHERE id = ?2 AND project_id = ?3
+  AND state IN ('delivered', 'failed')
 `
 
 type EmailDeliveryRedeliverParams struct {

@@ -87,7 +87,7 @@ func TestEmailDelivery_Redeliver(t *testing.T) {
 	uc, repo, perm, kicker := newTestEmailDelivery(t)
 	perm.EXPECT().AdminHasProject(gomock.Any(), snow.ID(1)).Return(true)
 	repo.EXPECT().Get(gomock.Any(), snow.ID(9)).Return(testEmailDeliveryRow(9, 1, domain.EmailDeliveryFailed), nil)
-	repo.EXPECT().Redeliver(gomock.Any(), snow.ID(1), snow.ID(9), time.Unix(1000, 0).UTC()).Return(nil)
+	repo.EXPECT().Redeliver(gomock.Any(), snow.ID(1), snow.ID(9), time.Unix(1000, 0).UTC()).Return(true, nil)
 	repo.EXPECT().Get(gomock.Any(), snow.ID(9)).Return(testEmailDeliveryRow(9, 1, domain.EmailDeliveryPending), nil)
 
 	delivery, err := uc.Redeliver(context.Background(), snow.ID(1), snow.ID(9))
@@ -124,8 +124,18 @@ func TestEmailDelivery_RedeliverRejects(t *testing.T) {
 		uc, repo, perm, _ := newTestEmailDelivery(t)
 		perm.EXPECT().AdminHasProject(gomock.Any(), snow.ID(1)).Return(true)
 		repo.EXPECT().Get(gomock.Any(), snow.ID(9)).Return(testEmailDeliveryRow(9, 1, domain.EmailDeliveryDelivered), nil)
-		repo.EXPECT().Redeliver(gomock.Any(), snow.ID(1), snow.ID(9), gomock.Any()).Return(errors.New("db down"))
+		repo.EXPECT().Redeliver(gomock.Any(), snow.ID(1), snow.ID(9), gomock.Any()).Return(false, errors.New("db down"))
 		_, err := uc.Redeliver(context.Background(), snow.ID(1), snow.ID(9))
 		require.ErrorContains(t, err, "db down")
+	})
+
+	t.Run("state moved before the update", func(t *testing.T) {
+		uc, repo, perm, kicker := newTestEmailDelivery(t)
+		perm.EXPECT().AdminHasProject(gomock.Any(), snow.ID(1)).Return(true)
+		repo.EXPECT().Get(gomock.Any(), snow.ID(9)).Return(testEmailDeliveryRow(9, 1, domain.EmailDeliveryFailed), nil)
+		repo.EXPECT().Redeliver(gomock.Any(), snow.ID(1), snow.ID(9), gomock.Any()).Return(false, nil)
+		_, err := uc.Redeliver(context.Background(), snow.ID(1), snow.ID(9))
+		require.True(t, domain.IsErrorConflict(err), "a raced redelivery conflicts")
+		require.Zero(t, kicker.kicks)
 	})
 }

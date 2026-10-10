@@ -155,21 +155,20 @@ func (r *EmailRepository) ListDeliveries(ctx context.Context, projectID snow.ID,
 	return deliveries, nil
 }
 
-// Redeliver re-queues a delivery in the project, resetting its attempt
-// history.
-func (r *EmailRepository) Redeliver(ctx context.Context, projectID, id snow.ID, at time.Time) error {
+// Redeliver re-queues a delivered or failed delivery in the project, resetting
+// its attempt history. It reports whether the row was still redeliverable: the
+// state predicate makes the transition atomic against concurrent redeliveries
+// and in-flight dispatcher claims.
+func (r *EmailRepository) Redeliver(ctx context.Context, projectID, id snow.ID, at time.Time) (bool, error) {
 	affected, err := r.queries.EmailDeliveryRedeliver(ctx, sqlcSqlite.EmailDeliveryRedeliverParams{
 		Now:       timePtrToNullTime(&at),
 		ID:        id.Int64(),
 		ProjectID: projectID.Int64(),
 	})
 	if err != nil {
-		return handleError(err)
+		return false, handleError(err)
 	}
-	if affected == 0 {
-		return domain.NewErrorRecordNotFound()
-	}
-	return nil
+	return affected > 0, nil
 }
 
 func toDomainEmailDelivery(row sqlcSqlite.EmailDelivery) *domain.EmailDelivery {

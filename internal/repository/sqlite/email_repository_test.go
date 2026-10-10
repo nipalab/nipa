@@ -269,7 +269,9 @@ func TestEmailRepositorySQLite_Redeliver(t *testing.T) {
 	require.NotNil(t, delivered.DeliveredAt)
 
 	at := now.Add(time.Minute)
-	require.NoError(t, repo.Redeliver(ctx, 7, 1, at))
+	requeued, err := repo.Redeliver(ctx, 7, 1, at)
+	require.NoError(t, err)
+	require.True(t, requeued)
 	row, err := repo.Get(ctx, 1)
 	require.NoError(t, err)
 	require.Equal(t, domain.EmailDeliveryPending, row.State)
@@ -278,8 +280,15 @@ func TestEmailRepositorySQLite_Redeliver(t *testing.T) {
 	require.Empty(t, row.LastError)
 	require.NotNil(t, row.NextAttemptAt)
 
-	require.True(t, domain.IsErrorNotFound(repo.Redeliver(ctx, 8, 1, at)), "another project cannot redeliver")
-	require.True(t, domain.IsErrorNotFound(repo.Redeliver(ctx, 7, 999, at)))
+	requeued, err = repo.Redeliver(ctx, 8, 1, at)
+	require.NoError(t, err)
+	require.False(t, requeued, "another project cannot redeliver")
+	requeued, err = repo.Redeliver(ctx, 7, 999, at)
+	require.NoError(t, err)
+	require.False(t, requeued)
+	requeued, err = repo.Redeliver(ctx, 7, 1, at)
+	require.NoError(t, err)
+	require.False(t, requeued, "a pending delivery is not redeliverable")
 
 	require.NoError(t, repo.MarkDelivered(ctx, 1, at))
 	require.NoError(t, repo.MarkFailed(ctx, 1, "boom"))
@@ -307,5 +316,7 @@ func TestEmailRepositorySQLite_Errors(t *testing.T) {
 	require.Error(t, repo.ScheduleRetry(ctx, 1, "x", time.Now()))
 	require.Error(t, repo.MarkFailed(ctx, 1, "x"))
 	_, err = repo.SweepRetention(ctx, time.Now())
+	require.Error(t, err)
+	_, err = repo.Redeliver(ctx, 1, 1, time.Now())
 	require.Error(t, err)
 }

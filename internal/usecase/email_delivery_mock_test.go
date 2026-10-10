@@ -74,11 +74,12 @@ func (mr *MockemailDeliveryRepositoryMockRecorder) ListDeliveries(ctx, projectID
 }
 
 // Redeliver mocks base method.
-func (m *MockemailDeliveryRepository) Redeliver(ctx context.Context, projectID, id snow.ID, at time.Time) error {
+func (m *MockemailDeliveryRepository) Redeliver(ctx context.Context, projectID, id snow.ID, at time.Time) (bool, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Redeliver", ctx, projectID, id, at)
-	ret0, _ := ret[0].(error)
-	return ret0
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // Redeliver indicates an expected call of Redeliver.

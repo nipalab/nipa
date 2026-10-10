@@ -250,7 +250,9 @@ func (s *EmailRepositorySuite) TestRedeliver() {
 	s.NotNil(delivered.DeliveredAt)
 
 	at := now.Add(time.Minute)
-	s.Require().NoError(repo.Redeliver(ctx, 7, 1, at))
+	requeued, err := repo.Redeliver(ctx, 7, 1, at)
+	s.Require().NoError(err)
+	s.True(requeued)
 	row, err := repo.Get(ctx, 1)
 	s.Require().NoError(err)
 	s.Equal(domain.EmailDeliveryPending, row.State)
@@ -259,8 +261,15 @@ func (s *EmailRepositorySuite) TestRedeliver() {
 	s.Empty(row.LastError)
 	s.NotNil(row.NextAttemptAt)
 
-	s.True(domain.IsErrorNotFound(repo.Redeliver(ctx, 8, 1, at)), "another project cannot redeliver")
-	s.True(domain.IsErrorNotFound(repo.Redeliver(ctx, 7, 999, at)))
+	requeued, err = repo.Redeliver(ctx, 8, 1, at)
+	s.Require().NoError(err)
+	s.False(requeued, "another project cannot redeliver")
+	requeued, err = repo.Redeliver(ctx, 7, 999, at)
+	s.Require().NoError(err)
+	s.False(requeued)
+	requeued, err = repo.Redeliver(ctx, 7, 1, at)
+	s.Require().NoError(err)
+	s.False(requeued, "a pending delivery is not redeliverable")
 
 	s.Require().NoError(repo.MarkDelivered(ctx, 1, at))
 	s.Require().NoError(repo.MarkFailed(ctx, 1, "boom"))
@@ -287,5 +296,7 @@ func (s *EmailRepositorySuite) TestErrors() {
 	s.Error(repo.ScheduleRetry(ctx, 1, "x", time.Now()))
 	s.Error(repo.MarkFailed(ctx, 1, "x"))
 	_, err = repo.SweepRetention(ctx, time.Now())
+	s.Error(err)
+	_, err = repo.Redeliver(ctx, 1, 1, time.Now())
 	s.Error(err)
 }

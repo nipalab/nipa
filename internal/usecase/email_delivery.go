@@ -18,7 +18,7 @@ const (
 type emailDeliveryRepository interface {
 	ListDeliveries(ctx context.Context, projectID snow.ID, state string, after *snow.ID, limit int64) ([]*domain.EmailDelivery, error)
 	Get(ctx context.Context, id snow.ID) (*domain.EmailDelivery, error)
-	Redeliver(ctx context.Context, projectID, id snow.ID, at time.Time) error
+	Redeliver(ctx context.Context, projectID, id snow.ID, at time.Time) (bool, error)
 }
 
 // EmailDelivery lists and re-queues outbox deliveries for project admins.
@@ -95,8 +95,12 @@ func (e *EmailDelivery) Redeliver(ctx context.Context, projectID, id snow.ID) (*
 	default:
 		return nil, domain.NewErrorConflict("delivery is " + delivery.State + "; only delivered or failed deliveries can be redelivered")
 	}
-	if err := e.repo.Redeliver(ctx, projectID, id, e.now()); err != nil {
+	requeued, err := e.repo.Redeliver(ctx, projectID, id, e.now())
+	if err != nil {
 		return nil, err
+	}
+	if !requeued {
+		return nil, domain.NewErrorConflict("delivery is no longer redeliverable")
 	}
 	if e.kick != nil {
 		e.kick.Kick()

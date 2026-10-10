@@ -76,4 +76,5 @@ SET state = 'pending',
     next_attempt_at = sqlc.arg('now'),
     claimed_at = NULL,
     updated_at = sqlc.arg('now')
-WHERE id = sqlc.arg('id') AND project_id = sqlc.arg('project_id');
+WHERE id = sqlc.arg('id') AND project_id = sqlc.arg('project_id')
+  AND state IN ('delivered', 'failed');
