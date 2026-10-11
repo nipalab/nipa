@@ -429,6 +429,28 @@ func (c *apiClient) getMyBilling() ownerStorageJSON {
 	return out
 }
 
+// setOrgBillingOwner transfers an organization over the admin API.
+func (c *apiClient) setOrgBillingOwner(org, userID string) (int, orgStorageJSON) {
+	status, data := c.doRaw(http.MethodPut, "/admin/orgs/"+org+"/billing-owner", map[string]any{
+		"user_id": userID,
+	})
+	var out orgStorageJSON
+	if status >= 200 && status < 300 {
+		Expect(json.Unmarshal(data, &out)).To(Succeed())
+	}
+	return status, out
+}
+
+// recountOrgStorage rebuilds one organization's ledger over the admin API.
+func (c *apiClient) recountOrgStorage(org string) (int, orgStorageJSON) {
+	status, data := c.doRaw(http.MethodPost, "/admin/orgs/"+org+"/storage/recount", nil)
+	var out orgStorageJSON
+	if status >= 200 && status < 300 {
+		Expect(json.Unmarshal(data, &out)).To(Succeed())
+	}
+	return status, out
+}
+
 type emailDeliveryJSON struct {
 	ID        string    `json:"id"`
 	Event     string    `json:"event"`
