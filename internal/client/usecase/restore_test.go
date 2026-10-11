@@ -46,6 +46,46 @@ func mergeStored(sets ...map[serverDomain.Hash][]byte) map[serverDomain.Hash][]b
 	return out
 }
 
+func TestWorkingCopy_Restore_ModeOnlyChange(t *testing.T) {
+	root := t.TempDir()
+	writeRepoFile(t, root, "run.sh", "#!/bin/sh\n")
+	writeRepoFile(t, root, "tool.sh", "#!/bin/sh\n")
+	run, runStored := snapshotFileWithContent(t, "run.sh", "#!/bin/sh\n", chunker.EncodingRaw)
+	tool, toolStored := snapshotFileWithContent(t, "tool.sh", "#!/bin/sh\n", chunker.EncodingRaw)
+	tool.Mode = 3
+	require.NoError(t, os.Chmod(filepath.Join(root, "run.sh"), 0o755))
+	require.NoError(t, os.Chmod(filepath.Join(root, "tool.sh"), 0o644))
+	local := &stubLocalRepo{
+		snapshot:     &domain.Snapshot{Files: []domain.SnapshotFile{run, tool}},
+		storedChunks: mergeStored(runStored, toolStored),
+	}
+	wc := newWorkingCopy(t, local, root)
+
+	require.NoError(t, wc.Restore(context.Background(), []string{"run.sh", "tool.sh"}))
+
+	runInfo, err := os.Stat(filepath.Join(root, "run.sh"))
+	require.NoError(t, err)
+	require.Equal(t, os.FileMode(0o644), runInfo.Mode().Perm(), "a spurious exec bit is dropped")
+	toolInfo, err := os.Stat(filepath.Join(root, "tool.sh"))
+	require.NoError(t, err)
+	require.Equal(t, os.FileMode(0o755), toolInfo.Mode().Perm(), "a lost exec bit is restored")
+	require.Len(t, local.savedStats, 2, "mode-only changes refresh the stat cache")
+}
+
+func TestWorkingCopy_Restore_DirectoryWithTrailingSlash(t *testing.T) {
+	root := t.TempDir()
+	writeRepoFile(t, root, "docs/a.txt", "edit")
+	snap, stored := snapshotFileWithContent(t, "docs/a.txt", "a", chunker.EncodingRaw)
+	local := &stubLocalRepo{
+		snapshot:     &domain.Snapshot{Files: []domain.SnapshotFile{snap}},
+		storedChunks: stored,
+	}
+	wc := newWorkingCopy(t, local, root)
+
+	require.NoError(t, wc.Restore(context.Background(), []string{"docs/"}))
+	require.Equal(t, "a", string(readRepoFile(t, root, "docs/a.txt")))
+}
+
 func TestWorkingCopy_Restore_ModifiedFile(t *testing.T) {
 	root := t.TempDir()
 	writeRepoFile(t, root, "a.txt", "local edit")

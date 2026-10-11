@@ -3,6 +3,8 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -39,7 +41,7 @@ func (w *WorkingCopy) Restore(_ context.Context, targets []string) error {
 	statEntries := make(map[string]domain.StatEntry)
 	for _, p := range paths {
 		f := tracked[p]
-		if current, err := w.hashFile(p, f.Encoding); err == nil && current == f.Hash {
+		if w.matchesSnapshot(p, f) {
 			continue
 		}
 		if err := materializeFile(w.root, snapshotMaterialized(f), w.localRepo.OpenChunk); err != nil {
@@ -53,6 +55,21 @@ func (w *WorkingCopy) Restore(_ context.Context, targets []string) error {
 		return nil
 	}
 	return w.localRepo.SaveStatEntries(statEntries)
+}
+
+// matchesSnapshot reports whether the working file already has the snapshot
+// content and mode, so restoring it would be a no-op. Status uses the same
+// mode comparison, so skipping here cannot leave a file reported modified.
+func (w *WorkingCopy) matchesSnapshot(path string, f domain.SnapshotFile) bool {
+	info, err := os.Stat(filepath.Join(w.root, filepath.FromSlash(path)))
+	if err != nil {
+		return false
+	}
+	if serverModeFromPerm(info.Mode()) != normalizedMode(f.Mode) {
+		return false
+	}
+	current, err := w.hashFile(path, f.Encoding)
+	return err == nil && current == f.Hash
 }
 
 // restoreTargets expands exact paths and directory prefixes to the tracked
@@ -70,9 +87,10 @@ func restoreTargets(targets []string, tracked map[string]domain.SnapshotFile) ([
 		if t == "" {
 			return nil, fmt.Errorf("a path is required")
 		}
+		target := filepath.ToSlash(filepath.Clean(t))
 		matched := false
 		for p := range tracked {
-			if p != t && !strings.HasPrefix(p, t+"/") {
+			if p != target && !strings.HasPrefix(p, target+"/") {
 				continue
 			}
 			matched = true

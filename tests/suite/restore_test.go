@@ -1,6 +1,9 @@
 package suite_test
 
 import (
+	"os"
+	"path/filepath"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -19,6 +22,15 @@ var _ = Describe("nipa restore", func() {
 		Expect(res.ExitCode).To(Equal(0), res.Stderr)
 		Expect(readText(dir, "file.txt")).To(Equal("v1\n"))
 		assertCleanStatus(dir)
+
+		Expect(os.Chmod(filepath.Join(dir, "file.txt"), 0o755)).To(Succeed())
+		res = runNipa(dir, "restore", "file.txt")
+		Expect(res.ExitCode).To(Equal(0), res.Stderr)
+		assertCleanStatus(dir)
+
+		info, err := os.Stat(filepath.Join(dir, "file.txt"))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(info.Mode().Perm()).To(Equal(os.FileMode(0o644)), "a mode-only change is discarded too")
 	})
 
 	It("restores a deleted tracked file", func() {
@@ -56,6 +68,11 @@ var _ = Describe("nipa restore", func() {
 		Expect(readText(dir, "docs/a.txt")).To(Equal("a\n"))
 		Expect(readText(dir, "docs/sub/b.txt")).To(Equal("b\n"))
 		Expect(readText(dir, "other.txt")).To(Equal("keep\n"), "paths outside the target stay modified")
+
+		writeText(dir, "docs/a.txt", "edited again\n")
+		res = runNipa(dir, "restore", "docs/")
+		Expect(res.ExitCode).To(Equal(0), res.Stderr)
+		Expect(readText(dir, "docs/a.txt")).To(Equal("a\n"), "a trailing slash is accepted like shell tab-completion")
 
 		status := runNipa(dir, "status")
 		Expect(status.Output()).To(ContainSubstring("M  other.txt"))
