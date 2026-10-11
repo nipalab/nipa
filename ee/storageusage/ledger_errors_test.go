@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -149,6 +150,25 @@ func TestLedger_RecountOrg_ErrorPaths(t *testing.T) {
 func TestLedger_SetBillingOwner_UserLookupError(t *testing.T) {
 	_, ledger := newErrorLedger(t, "users")
 	require.Equal(t, 500, errorCode(ledger.SetBillingOwner(context.Background(), snow.ID(1), snow.ID(1))))
+}
+
+func TestLedger_RecountOrg_SerializesWithAttribution(t *testing.T) {
+	ctx := context.Background()
+	db := newTestDB(t)
+	ledger := NewLedger(db, Config{})
+
+	tx, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	_, err = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock($1)`, int64(1))
+	require.NoError(t, err)
+
+	blocked, cancel := context.WithTimeout(ctx, 300*time.Millisecond)
+	defer cancel()
+	require.Error(t, ledger.RecountOrg(blocked, snow.ID(1)),
+		"recount must wait for the owner lock an in-flight confirm holds")
+	require.NoError(t, tx.Rollback())
+
+	require.NoError(t, ledger.RecountOrg(ctx, snow.ID(1)), "the lock is released with the transaction")
 }
 
 func TestLedger_Attribute_ConcurrentQuota(t *testing.T) {
