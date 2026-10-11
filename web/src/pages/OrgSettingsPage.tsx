@@ -16,6 +16,7 @@ import {
 import type { GroupResponse, OrgMemberResponse } from '../api/models'
 import { useAuth } from '../auth'
 import { ActorAvatar } from '../components/repo/ActorAvatar'
+import StorageCard from '../components/StorageCard'
 import { UserGroupPicker } from '../components/UserGroupPicker'
 import { EmptyState, ErrorBanner, Loading, Mono, Page } from '../components/ui'
 import { useAsync } from '../hooks'
@@ -102,6 +103,8 @@ export default function OrgSettingsPage() {
         }
         onRemoveMember={(userId) => setConfirmRemoveGroupMember(userId)}
       />
+
+      <StorageCard org={org} onError={setActionError} />
 
       {showAddMember && (
         <AddMemberDialog

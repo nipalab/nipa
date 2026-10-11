@@ -437,6 +437,41 @@ CREATE TABLE snowflake_node_leases (
     expires_at  TIMESTAMPTZ NOT NULL
 );
 
+-- Storage ledger: chunk bytes are charged per project and every organization
+-- is billed to exactly one owner user. project_usage and org_usage are
+-- caches derived from project_chunks; the link insert and the counter
+-- updates happen in one transaction.
+CREATE TABLE org_billing_owner (
+    org_id     BIGINT PRIMARY KEY REFERENCES organizations(id) ON DELETE CASCADE,
+    user_id    BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_org_billing_owner_user ON org_billing_owner (user_id);
+
+CREATE TABLE owner_quota (
+    user_id     BIGINT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    quota_bytes BIGINT,
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE project_chunks (
+    project_id BIGINT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    chunk_id   BIGINT NOT NULL REFERENCES chunks(id),
+    size_bytes BIGINT NOT NULL,
+    PRIMARY KEY (project_id, chunk_id)
+);
+
+CREATE TABLE project_usage (
+    project_id BIGINT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+    used_bytes BIGINT NOT NULL DEFAULT 0
+);
+
+CREATE TABLE org_usage (
+    org_id     BIGINT PRIMARY KEY REFERENCES organizations(id) ON DELETE CASCADE,
+    used_bytes BIGINT NOT NULL DEFAULT 0
+);
+
 INSERT INTO users (id, name, email, password, is_super_admin) VALUES (1, 'Super Admin', 'nipa', '$2a$10$ErgrBnd6ahfz6eZkVzfnlu6dcE4T0HUcxvAjwmI0ItFsMReHVCdYO', TRUE);
 INSERT INTO organizations (id, slug, name, created_by_user_id) VALUES (1, 'default', 'Default Organization', 1);
 INSERT INTO projects (id, org_id, slug, name) VALUES (1, 1, 'default', 'Default Project');

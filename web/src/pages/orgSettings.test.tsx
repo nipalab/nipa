@@ -100,6 +100,64 @@ afterEach(() => {
   document.body.innerHTML = ''
 })
 
+describe('OrgSettingsPage storage', () => {
+  it('hides the storage card when the ledger is disabled', async () => {
+    stubOrgSettings()
+    window.history.pushState({}, '', '/sticker/settings')
+    const container = document.createElement('div')
+    container.id = 'root'
+    document.body.appendChild(container)
+    const root = createRoot(container)
+    await act(async () => {
+      root.render(<App />)
+    })
+    await waitForText('Coder')
+
+    expect(document.body.textContent).not.toContain('Storage')
+    act(() => root.unmount())
+  })
+
+  it('renders usage, quota and the per-project breakdown', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input)
+        if (url.includes('/auth/refresh')) {
+          return jsonResponse({ access_token: 'token', token_type: 'Bearer', expires_in: 1800 })
+        }
+        if (url.includes('/api/v1/me')) return jsonResponse(ME)
+        const path = url.split('?')[0]
+        if (path.endsWith('/orgs/sticker/storage')) {
+          return jsonResponse({
+            used_bytes: 1536,
+            quota_bytes: 4096,
+            owner_id: '1',
+            projects: [{ id: 'p1', slug: 'demo', name: 'Demo', deleted: false, used_bytes: 1536 }],
+          })
+        }
+        if (path.endsWith('/orgs/sticker/groups')) return jsonResponse(GROUPS)
+        if (path.endsWith('/orgs/sticker/members')) return jsonResponse(ORG_MEMBERS)
+        if (path.endsWith('/api/v1/orgs')) return jsonResponse(ORGS)
+        return jsonResponse({ error: 'not found' }, 404)
+      }),
+    )
+    window.history.pushState({}, '', '/sticker/settings')
+    const container = document.createElement('div')
+    container.id = 'root'
+    document.body.appendChild(container)
+    const root = createRoot(container)
+    await act(async () => {
+      root.render(<App />)
+    })
+    await waitForText('Storage')
+
+    expect(document.body.textContent).toContain('1.5 KiB of 4.0 KiB used')
+    const row = Array.from(document.querySelectorAll('tr')).find((item) => item.textContent?.includes('Demo'))
+    expect(row?.textContent).toContain('1.5 KiB')
+    act(() => root.unmount())
+  })
+})
+
 describe('OrgSettingsPage groups', () => {
   it('shows the server-resolved member count in the groups table', async () => {
     stubOrgSettings()

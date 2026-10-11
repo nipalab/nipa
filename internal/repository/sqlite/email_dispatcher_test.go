@@ -240,9 +240,16 @@ func TestEmailDispatcher_RetentionSweep(t *testing.T) {
 	cfg.RetentionSweepInterval = 10 * time.Millisecond
 	startEmailDispatcher(t, repo, sender, cfg)
 
-	waitForDeliveryState(t, repo, 7, domain.EmailDeliveryDelivered)
+	// The retention is a nanosecond, so the sweep can delete the row before a
+	// poll observes the delivered state. Assert the end state instead: the
+	// message was sent and the delivered row was swept (an undelivered row
+	// would stay pending and never be removed).
 	require.Eventually(t, func() bool {
 		_, err := repo.Get(context.Background(), 7)
 		return domain.IsErrorNotFound(err)
 	}, 3*time.Second, 10*time.Millisecond, "the delivered row was never swept")
+
+	calls, sent := sender.stats()
+	require.Equal(t, 1, calls)
+	require.Equal(t, 1, sent)
 }

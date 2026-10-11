@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/emicklei/go-restful/v3"
 	"github.com/golang-jwt/jwt/v5"
 	database "github.com/nipalab/nipa/db"
 	"github.com/nipalab/nipa/internal/chunker"
@@ -208,7 +209,11 @@ func TestAPIRoutes(t *testing.T) {
 		return seedPushTo(t, "main", "", files)
 	}
 
-	container := NewAPI(reg).SetupRoute()
+	container := NewAPI(reg, WithRoutes(func(ws *restful.WebService) {
+		ws.Route(ws.GET("/ping").To(func(_ *restful.Request, resp *restful.Response) {
+			resp.WriteHeader(http.StatusNoContent)
+		}))
+	})).SetupRoute()
 	server := httptest.NewServer(container)
 	t.Cleanup(server.Close)
 
@@ -252,6 +257,18 @@ func TestAPIRoutes(t *testing.T) {
 
 		parsed := parseLoginAccessToken(t, loginResponse.AccessToken, "test-secret")
 		require.Equal(t, snow.ID(userID), parsed.UserID)
+	})
+
+	t.Run("extension routes share the authenticated webservice", func(t *testing.T) {
+		loginResponse, _ := login(t)
+
+		resp := doGet(t, server.URL+"/api/v1/ping", loginResponse.AccessToken)
+		defer resp.Body.Close()
+		require.Equal(t, http.StatusNoContent, resp.StatusCode)
+
+		unauthorized := doGet(t, server.URL+"/api/v1/ping", "")
+		defer unauthorized.Body.Close()
+		require.Equal(t, http.StatusUnauthorized, unauthorized.StatusCode)
 	})
 
 	t.Run("refresh rotates the cookie", func(t *testing.T) {

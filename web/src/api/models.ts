@@ -395,6 +395,35 @@ export interface EmailDeliveryListResponse {
   next_cursor?: string
 }
 
+export interface ProjectStorageResponse {
+  id: string
+  slug: string
+  name: string
+  deleted: boolean
+  used_bytes: number
+}
+
+export interface OrgStorageResponse {
+  used_bytes: number
+  quota_bytes: number | null
+  owner_id: string
+  projects: ProjectStorageResponse[]
+}
+
+export interface OwnerOrgStorageResponse {
+  id: string
+  slug: string
+  name: string
+  used_bytes: number
+}
+
+export interface OwnerStorageResponse {
+  user_id: string
+  used_bytes: number
+  quota_bytes: number | null
+  orgs: OwnerOrgStorageResponse[]
+}
+
 export const PERMISSION_READ = 1
 export const PERMISSION_WRITE = 2
 export const PERMISSION_LOCK = 4

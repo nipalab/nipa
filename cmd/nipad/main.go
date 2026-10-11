@@ -68,7 +68,7 @@ func main() {
 	if err != nil {
 		panic(fmt.Errorf("create chunk store: %w", err))
 	}
-	defer chunkStore.Close()
+	defer func() { _ = chunkStore.Close() }()
 	if cfg.ChunkURLSigningKey == "" {
 		panic("CHUNK_URL_SIGNING_KEY must be set")
 	}

@@ -34,6 +34,7 @@ type usecaseContainer interface {
 type API struct {
 	useCase usecaseContainer
 	metrics *obs.Metrics
+	routes  []func(*restful.WebService)
 }
 
 // Option tunes optional API behavior.
@@ -41,12 +42,23 @@ type Option func(*apiOptions)
 
 type apiOptions struct {
 	metrics *obs.Metrics
+	routes  []func(*restful.WebService)
 }
 
 // WithMetrics enables per-route HTTP metrics on the REST container.
 func WithMetrics(metrics *obs.Metrics) Option {
 	return func(o *apiOptions) {
 		o.metrics = metrics
+	}
+}
+
+// WithRoutes registers extra routes on the authenticated /api/v1 WebService
+// before it is added to the container. Extensions use it to expose additional
+// API surfaces; a second WebService with the same root path is rejected by
+// go-restful, so new routes must share this one.
+func WithRoutes(register func(*restful.WebService)) Option {
+	return func(o *apiOptions) {
+		o.routes = append(o.routes, register)
 	}
 }
 
@@ -58,6 +70,7 @@ func NewAPI(useCase usecaseContainer, opts ...Option) *API {
 	return &API{
 		useCase: useCase,
 		metrics: options.metrics,
+		routes:  options.routes,
 	}
 }
 
@@ -97,6 +110,9 @@ func (a *API) SetupRoute() http.Handler {
 	setupPermissionRouter(apiWs, h)
 	setupWebhookRouter(apiWs, h)
 	setupEmailDeliveryRouter(apiWs, h)
+	for _, register := range a.routes {
+		register(apiWs)
+	}
 	restful.Add(apiWs)
 
 	chunkWs := new(restful.WebService).ApiVersion("1.0.0")

@@ -214,12 +214,23 @@ type MergeRequestThread struct {
 	ReviewID       sql.NullInt64  `json:"review_id"`
 }
 
+type OrgBillingOwner struct {
+	OrgID     int64     `json:"org_id"`
+	UserID    int64     `json:"user_id"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 type OrgMember struct {
 	OrgID     int64     `json:"org_id"`
 	UserID    int64     `json:"user_id"`
 	Role      string    `json:"role"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type OrgUsage struct {
+	OrgID     int64 `json:"org_id"`
+	UsedBytes int64 `json:"used_bytes"`
 }
 
 type Organization struct {
@@ -231,6 +242,12 @@ type Organization struct {
 	Deleted         bool         `json:"deleted"`
 	DeletedAt       sql.NullTime `json:"deleted_at"`
 	CreatedByUserID int64        `json:"created_by_user_id"`
+}
+
+type OwnerQuotum struct {
+	UserID     int64         `json:"user_id"`
+	QuotaBytes sql.NullInt64 `json:"quota_bytes"`
+	UpdatedAt  time.Time     `json:"updated_at"`
 }
 
 type PbacRule struct {
@@ -256,12 +273,23 @@ type Project struct {
 	DeletedAt   sql.NullTime `json:"deleted_at"`
 }
 
+type ProjectChunk struct {
+	ProjectID int64 `json:"project_id"`
+	ChunkID   int64 `json:"chunk_id"`
+	SizeBytes int64 `json:"size_bytes"`
+}
+
 type ProjectPathsPermission struct {
 	ID         int64        `json:"id"`
 	ProjectID  int64        `json:"project_id"`
 	PathPrefix string       `json:"path_prefix"`
 	Permission int64        `json:"permission"`
 	CreatedAt  sql.NullTime `json:"created_at"`
+}
+
+type ProjectUsage struct {
+	ProjectID int64 `json:"project_id"`
+	UsedBytes int64 `json:"used_bytes"`
 }
 
 type RefreshToken struct {

@@ -17,6 +17,7 @@ S3_SECRET_KEY="${NIPA_TEST_S3_SECRET_KEY:-minioadmin}"
 
 DOCKER="${NIPA_TEST_DOCKER:-docker}"
 EMAIL_TRANSPORT="${NIPA_TEST_EMAIL_TRANSPORT:-sendgrid}"
+STORAGE_LEDGER="${NIPA_TEST_STORAGE_LEDGER-cloud}"
 SERVER_PID=""
 COMPOSE_STARTED=0
 PG_DSN=""
@@ -39,6 +40,8 @@ Environment:
   NIPA_TEST_EE_PORT=6747    Enterprise server port
   NIPA_TEST_EMAIL_PORT      Email receiver port (default: server port + 1)
   NIPA_TEST_EMAIL_TRANSPORT Email transport exercised (sendgrid or http)
+  NIPA_TEST_STORAGE_LEDGER  Enterprise storage ledger (default: cloud; set to
+                            empty to disable, so the storage spec is skipped)
   NIPA_TEST_PG_PORT=55432   Postgres host port
   NIPA_TEST_S3_PORT=55900   MinIO host port
   NIPA_TEST_POSTGRES_DSN    External postgres DSN (with NIPA_TEST_S3_ENDPOINT)
@@ -132,6 +135,11 @@ CHUNK_S3_ACCESS_KEY_ID: '$S3_ACCESS_KEY'
 CHUNK_S3_SECRET_ACCESS_KEY: '$S3_SECRET_KEY'
 EOF
 )
+		if [[ -n "$STORAGE_LEDGER" ]]; then
+			chunk_lines="$chunk_lines
+STORAGE_LEDGER: '$STORAGE_LEDGER'
+STORAGE_LEDGER_DEFAULT_QUOTA_BYTES: 0"
+		fi
 	else
 		db_dsn="$dir/nipa.db"
 		chunk_lines=$(cat <<EOF
@@ -200,6 +208,13 @@ start_compose() {
 		fi
 		sleep 1
 	done
+
+	# Start from a clean schema every run: `compose down -v` does not remove
+	# anonymous volumes on every runtime (rootless podman leaves them behind),
+	# and the consolidated migration is edited in place during development.
+	log "resetting postgres schema"
+	"$DOCKER" compose -f "$COMPOSE_FILE" exec -T postgres \
+		psql -U nipa -d nipa -q -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public;' >/dev/null
 
 	log "waiting for minio"
 	tries=0
@@ -270,6 +285,9 @@ run_suite() {
 	export NIPA_TEST_EMAIL_PORT="$(email_port_for "$port")"
 	export NIPA_TEST_BINARY="$ROOT_DIR/bin/nipa"
 	export NIPA_TEST_API_URL="http://127.0.0.1:$port/api/v1"
+	# The suite feature-detects the ledger: on free the storage routes must be
+	# absent (404), on ee they are registered when the ledger is enabled.
+	export NIPA_TEST_STORAGE_LEDGER="$STORAGE_LEDGER"
 	export NIPA_TEST_USER="${NIPA_TEST_USER:-nipa}"
 	export NIPA_TEST_PASS="${NIPA_TEST_PASS:-nipa}"
 	export NIPA_TOKEN_FILE="$TMP_DIR/tokens-$edition.json"

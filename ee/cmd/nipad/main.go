@@ -9,10 +9,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/emicklei/go-restful/v3"
+
 	eedb "github.com/nipalab/nipa/ee/db"
 	"github.com/nipalab/nipa/ee/nodelease"
 	"github.com/nipalab/nipa/ee/repository/postgres"
 	s3store "github.com/nipalab/nipa/ee/storage/s3"
+	"github.com/nipalab/nipa/ee/storageusage"
 	"github.com/nipalab/nipa/internal/config"
 	"github.com/nipalab/nipa/internal/hasher"
 	"github.com/nipalab/nipa/internal/mail"
@@ -66,6 +69,7 @@ func main() {
 	}
 	authUsecase := usecase.NewAuth(cfg.JWTKey, passwordHasher, userRepo, authRepo)
 	orgUsecase := usecase.NewOrg(orgRepo, snowUser)
+	commonUsecase := usecase.NewCommon(orgRepo, projectRepo)
 	permissionUsecase := usecase.NewPermission(pbacRepository, userRepo, groupRepository, orgUsecase)
 	projectUsecase := usecase.NewProject(projectRepo, snowUser, permissionUsecase, orgUsecase)
 	chunkStore, err := createChunkStore(cfg)
@@ -109,6 +113,14 @@ func main() {
 		PresignTTL:  time.Duration(cfg.ChunkPresignTTLSeconds) * time.Second,
 		MaxPageSize: cfg.ChunkMaxPageSize,
 	}).WithMetrics(metrics)
+	storageLedger, err := createStorageLedger(cfg, dbConn)
+	if err != nil {
+		panic(err)
+	}
+	if storageLedger != nil {
+		chunkUsecase = chunkUsecase.WithStorageLedger(storageLedger)
+		slog.Info("storage ledger enabled", "default_quota_bytes", cfg.StorageLedgerDefaultQuotaBytes)
+	}
 	branchUsecase = branchUsecase.WithMergeCommitter(pushRepository).WithChunkUploader(chunkUsecase)
 	webhookRepository := postgres.NewWebhookRepository(dbConn)
 	webhookDispatcher := webhook.NewDispatcher(webhookRepository, webhook.NewClient(webhook.ClientConfig{
@@ -149,7 +161,7 @@ func main() {
 	reg := serverapp.NewRegistry(serverapp.Usecases{
 		Auth:               authUsecase,
 		User:               usecase.NewUser(snowUser, userRepo, passwordHasher),
-		Common:             usecase.NewCommon(orgRepo, projectRepo),
+		Common:             commonUsecase,
 		Branch:             branchUsecase,
 		Tag:                tagUsecase,
 		Push:               pushUsecase,
@@ -170,7 +182,17 @@ func main() {
 	if emailDispatcher != nil {
 		dispatchers = append(dispatchers, emailDispatcher)
 	}
-	if err := serverapp.Run(cfg, reg, dispatchers, serverapp.WithReadiness(dbConn.PingContext), serverapp.WithMetrics(metrics)); err != nil {
+	runOpts := []serverapp.Option{serverapp.WithReadiness(dbConn.PingContext), serverapp.WithMetrics(metrics)}
+	if storageLedger != nil {
+		runOpts = append(runOpts, serverapp.WithRoutes(func(ws *restful.WebService) {
+			storageusage.RegisterRoutes(ws, storageusage.RoutesConfig{
+				Ledger: storageLedger,
+				Common: commonUsecase,
+				Orgs:   orgUsecase,
+			})
+		}))
+	}
+	if err := serverapp.Run(cfg, reg, dispatchers, runOpts...); err != nil {
 		panic(err)
 	}
 }
@@ -202,6 +224,19 @@ func resolveSnowflakeNode(cfg *config.Config, dbConn *sql.DB) (snow.Node, *nodel
 		return nil, nil, fmt.Errorf("acquire snowflake node lease: %w", err)
 	}
 	return node, manager, nil
+}
+
+func createStorageLedger(cfg *config.Config, dbConn *sql.DB) (*storageusage.Ledger, error) {
+	switch strings.ToLower(strings.TrimSpace(cfg.StorageLedger)) {
+	case "":
+		return nil, nil
+	case "cloud":
+		return storageusage.NewLedger(dbConn, storageusage.Config{
+			DefaultQuotaBytes: cfg.StorageLedgerDefaultQuotaBytes,
+		}), nil
+	default:
+		return nil, fmt.Errorf("unknown STORAGE_LEDGER %q", cfg.StorageLedger)
+	}
 }
 
 func createChunkStore(cfg *config.Config) (storage.ChunkStore, error) {

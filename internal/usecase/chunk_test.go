@@ -14,6 +14,7 @@ import (
 	"github.com/nipalab/nipa/internal/chunker"
 	"github.com/nipalab/nipa/internal/chunkurl"
 	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/snow"
 	"github.com/nipalab/nipa/internal/storage"
 )
 
@@ -174,7 +175,7 @@ func TestChunk_UploadDedupes(t *testing.T) {
 
 	data := []byte("dedupe me")
 	hash := chunker.Sum(data)
-	repo.EXPECT().InsertChunkIfNotExists(gomock.Any(), hash, int64(len(data))).Return(nil)
+	repo.EXPECT().InsertChunkIfNotExists(gomock.Any(), hash, int64(len(data))).Return(nil).Times(2)
 
 	first, err := uc.Upload(ctx, hash, data)
 	require.NoError(t, err)
@@ -183,6 +184,49 @@ func TestChunk_UploadDedupes(t *testing.T) {
 	second, err := uc.Upload(ctx, hash, data)
 	require.NoError(t, err)
 	require.False(t, second)
+}
+
+func TestChunk_UploadDedupRecordsMetadata(t *testing.T) {
+	ctx := context.Background()
+	uc, repo, store := newChunkFixture(t)
+
+	data := []byte("stored without a metadata row")
+	hash := chunker.Sum(data)
+	require.NoError(t, store.Put(ctx, hash, data))
+
+	repo.EXPECT().InsertChunkIfNotExists(gomock.Any(), hash, int64(len(data))).Return(nil)
+
+	isNew, err := uc.Upload(ctx, hash, data)
+	require.NoError(t, err)
+	require.False(t, isNew)
+}
+
+func TestChunk_UploadDedupMetadataError(t *testing.T) {
+	ctx := context.Background()
+	uc, repo, store := newChunkFixture(t)
+
+	data := []byte("stored without a metadata row")
+	hash := chunker.Sum(data)
+	require.NoError(t, store.Put(ctx, hash, data))
+
+	wantErr := errors.New("insert failed")
+	repo.EXPECT().InsertChunkIfNotExists(gomock.Any(), hash, int64(len(data))).Return(wantErr)
+
+	_, err := uc.Upload(ctx, hash, data)
+	require.ErrorIs(t, err, wantErr)
+}
+
+func TestChunk_AttributeProjectChunks(t *testing.T) {
+	ctx := context.Background()
+	uc, _, _ := newChunkFixture(t)
+	ledger := NewMockStorageLedger(gomock.NewController(t))
+	uc = uc.WithStorageLedger(ledger)
+
+	require.NoError(t, uc.AttributeProjectChunks(ctx, snow.ID(1), nil), "nothing to attribute")
+
+	chunks := []LedgerChunk{{Hash: domain.Hash{1}, SizeBytes: 1}}
+	ledger.EXPECT().AttributeProjectChunks(ctx, snow.ID(1), chunks).Return(nil)
+	require.NoError(t, uc.AttributeProjectChunks(ctx, snow.ID(1), chunks))
 }
 
 func TestChunk_UploadHashMismatch(t *testing.T) {

@@ -1,8 +1,10 @@
-# Cloud storage quota (Phase 2)
+# Cloud storage quota
 
-Status: **not implemented**. Phase 1 (free side) is done and this document is
-the implementation plan for the cloud (enterprise, `ee/`) part. Nothing here
-belongs in `internal/`: the free version ships no quota and no usage tracking.
+Status: **implemented**. The free seam (`internal/usecase/storage_ledger.go`)
+ships in the free server with a nil ledger; the enterprise implementation
+(`ee/storageusage/`) is wired by `ee/cmd/nipad` when `STORAGE_LEDGER=cloud`.
+Nothing here belongs in `internal/`: the free version ships no quota and no
+usage tracking.
 
 ## Model
 
@@ -22,7 +24,7 @@ belongs in `internal/`: the free version ships no quota and no usage tracking.
 - No quota row or a NULL quota means unlimited; the free version always runs
   unlimited because it wires no ledger at all.
 
-## Phase 1 contract (already implemented)
+## Seam (free side)
 
 `internal/usecase/storage_ledger.go`:
 
@@ -39,240 +41,195 @@ type StorageLedger interface {
     Headroom(ctx context.Context, org *domain.Organization, project *domain.Project, projectedNewBytes int64) error
     // Link chunks to the project and update counters in one transaction.
     Attribute(ctx context.Context, org *domain.Organization, project *domain.Project, chunks []LedgerChunk) error
+    // Attribute server-generated content (merge output), project id only.
+    AttributeProjectChunks(ctx context.Context, projectID snow.ID, chunks []LedgerChunk) error
 }
 ```
 
 - `usecase.Chunk.WithStorageLedger` attaches it; nil (free default) skips all
-  accounting.
+  accounting. `Chunk.AttributeProjectChunks` delegates to the ledger, so the
+  merge strategies (`internal/usecase/merge_strategies.go`) can attribute the
+  diff3 text chunks they store through the one-caller `chunkUploader` seam.
 - Call sites: `usecase.Chunk.checkHeadroom` (from `PresignUploadURLs`, before
-  any upload URL is signed) and `ConfirmUploads` (after each present chunk's
-  metadata row was recorded, one `Attribute` call per confirm batch).
+  any upload URL is signed), `ConfirmUploads` (after each present chunk's
+  metadata row was recorded, one `Attribute` call per confirm batch) and
+  `MergeForMergeRequest` (after the permission checks, before the commit
+  lands).
 - Quota failures use `domain.NewErrorQuotaExceeded` (HTTP 402); gRPC maps it to
   `codes.ResourceExhausted` and the client maps that back to a 402 domain error,
   so `nipa push` shows the message.
 - `organizations.created_by_user_id` (base schema) records who created an org;
-  it is the seed for the owner mapping, not the mapping itself.
+  it seeds the owner mapping lazily on first use.
 
 ## Package layout
 
 ```
 ee/storageusage/
-  migrations/            # own embedded FS, see "Migrations"
-  ledger.go              # implements usecase.StorageLedger
-  owner.go               # owner resolution / transfer
-  recount.go             # backfill & repair
-  api.go                 # REST routes (self-registered, see "REST API")
-  store.go               # sqlc-generated access (own queries dir)
+  ledger.go              # implements usecase.StorageLedger over postgres
+  owner.go               # owner resolution / lazy seeding
+  recount.go             # rebuild links and counters for one org
+  api.go                 # REST routes on the shared /api/v1 WebService
 ```
 
-Only `cmd/nipad` imports `ee/` (same rule as `ee/storage/s3`).
+SQL lives in `ee/repository/postgres/queries/storage_usage.sql` (generated into
+`ee/repository/postgres/sqlc`), so `make sqlc` keeps one postgres config.
 
-## Migrations
+## Schema (postgres)
 
-ee tables must not share the free `schema_migrations` table. Run a second
-golang-migrate instance against `ee_schema_migrations`:
-
-- Add an exported helper to the free `db` package (interface-level plumbing):
-
-  ```go
-  func MigrateUpWithTable(db *sql.DB, dialect string, migrationsFS fs.FS, table string) error
-  ```
-
-  backed by `sqlite.Config{MigrationsTable: table}` /
-  `pgxmigrate.Config{MigrationsTable: table}`.
-- `ee/cmd/nipad` applies the ee postgres migrations at startup (`ee/db.MigrateUp`);
-  the free `cmd/nipad` applies sqlite migrations. Postgres support landed (see
-  `docs/POSTGRES.md`), so the ledger tables can target either backend once the
-  cloud implementation is wired.
-
-## Schema (sqlite)
+The five tables are part of the consolidated `000001_init_schema` migration
+(development-phase policy: no new migration pair yet):
 
 ```sql
-CREATE TABLE ee_org_billing_owner (
-    org_id  INTEGER PRIMARY KEY REFERENCES organizations(id),
-    user_id INTEGER NOT NULL REFERENCES users(id)
+CREATE TABLE org_billing_owner (
+    org_id     BIGINT PRIMARY KEY REFERENCES organizations(id) ON DELETE CASCADE,
+    user_id    BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-
-CREATE TABLE ee_owner_quota (
-    user_id     INTEGER PRIMARY KEY REFERENCES users(id),
-    quota_bytes INTEGER,              -- NULL = unlimited
-    updated_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+CREATE TABLE owner_quota (
+    user_id     BIGINT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    quota_bytes BIGINT,               -- NULL = unlimited
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-
-CREATE TABLE ee_project_chunks (
-    project_id INTEGER NOT NULL,
-    chunk_id   INTEGER NOT NULL REFERENCES chunks(id),
-    size_bytes INTEGER NOT NULL,
+CREATE TABLE project_chunks (
+    project_id BIGINT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    chunk_id   BIGINT NOT NULL REFERENCES chunks(id),
+    size_bytes BIGINT NOT NULL,
     PRIMARY KEY (project_id, chunk_id)
 );
-
-CREATE TABLE ee_project_usage (
-    project_id INTEGER PRIMARY KEY REFERENCES projects(id),
-    used_bytes INTEGER NOT NULL DEFAULT 0
+CREATE TABLE project_usage (
+    project_id BIGINT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+    used_bytes BIGINT NOT NULL DEFAULT 0
 );
-
-CREATE TABLE ee_org_usage (
-    org_id     INTEGER PRIMARY KEY REFERENCES organizations(id),
-    used_bytes INTEGER NOT NULL DEFAULT 0
+CREATE TABLE org_usage (
+    org_id     BIGINT PRIMARY KEY REFERENCES organizations(id) ON DELETE CASCADE,
+    used_bytes BIGINT NOT NULL DEFAULT 0
 );
 ```
 
-Counters are caches derived from `ee_project_chunks`; the link insert and the
+Counters are caches derived from `project_chunks`; the link insert and the
 counter updates happen in the same transaction, so they cannot drift except
 through external interference. `recount` rewrites both.
 
 ## Owner resolution
 
-`ensureBillingOwner(org)`:
+`billingOwner(orgID)`:
 
-1. `SELECT user_id FROM ee_org_billing_owner WHERE org_id = ?` → done.
-2. Seed lazily from `organizations.created_by_user_id` (NOT NULL: every org,
-   including the seeded default org, has a creator), then insert the mapping.
-3. If the creator user no longer exists (hard delete), require a global admin to
-   transfer the org before further uploads instead of silently allowing
-   unlimited.
-
-Transfer (platform super admin only) updates `ee_org_billing_owner`; usage moves
-with the org because org counters are the source of the owner aggregate, so no
-recount is needed.
+1. `SELECT user_id FROM org_billing_owner WHERE org_id = $1` → done.
+2. Seed lazily from `organizations.created_by_user_id` through
+   `EnsureBillingOwner`, whose `ON CONFLICT DO UPDATE SET user_id =
+   org_billing_owner.user_id` never overwrites a concurrent transfer.
+3. Transfer (super admin) writes `org_billing_owner`; usage moves with the
+   org because org counters are the source of the owner aggregate, so no
+   recount is needed.
 
 ## Enforcement
 
-`Attribute` (confirm batch), one transaction:
+`Attribute` (confirm batch and merge output), one transaction:
 
 ```
-owner      := ensureBillingOwner(org)
-quota      := SELECT quota_bytes FROM ee_owner_quota WHERE user_id = owner
-              (missing row -> STORAGE_LEDGER_DEFAULT_QUOTA_BYTES; 0/NULL = unlimited)
-used       := SELECT COALESCE(SUM(u.used_bytes), 0)
-              FROM ee_org_usage u JOIN ee_org_billing_owner b ON b.org_id = u.org_id
-              WHERE b.user_id = owner
-newBytes   := 0
+owner, quota := ownerQuota(orgID)        -- default quota when no row; 0/NULL = unlimited
+used         := SELECT COALESCE(SUM(u.used_bytes), 0) ...
+newBytes     := 0
 for each chunk:
-    chunkID  := SELECT id FROM chunks WHERE hash = ?      -- written by the free confirm path
-    inserted := INSERT INTO ee_project_chunks (project_id, chunk_id, size_bytes)
-                VALUES (?, ?, ?) ON CONFLICT(project_id, chunk_id) DO NOTHING
-                RETURNING size_bytes
-    if inserted: newBytes += size_bytes
-if quota > 0 && used+newBytes > quota:
-    ROLLBACK; return domain.NewErrorQuotaExceeded(fmt.Sprintf(
-        "storage quota exceeded: %d bytes used, %d bytes quota, %d bytes needed", used, quota, used+newBytes))
-for each inserted: UPDATE ee_project_usage / ee_org_usage (+= size_bytes)
+    chunkID  := SELECT id FROM chunks WHERE hash = $1
+    inserted := INSERT INTO project_chunks (...) ON CONFLICT DO NOTHING
+                RETURNING size_bytes        -- no row = already linked
+    newBytes += inserted
+if newBytes > 0 && quota > 0 && used+newBytes > quota:
+    ROLLBACK; return domain.NewErrorQuotaExceeded(...)
+UPDATE project_usage / org_usage (+= newBytes)
 COMMIT
 ```
 
-- All-or-nothing per confirm batch. The retry after a quota raise reuses the
+- All-or-nothing per batch. The retry after a quota raise reuses the
   already-stored bytes (`AlreadyStored`), so no re-upload.
 - `Headroom` (presign) is the advisory early gate: `used + projectedNewBytes`
   against the same quota; it protects upload bandwidth, `Attribute` is
   authoritative (concurrent pushes can race past presign).
 - The free `chunks` metadata row is inserted before `Attribute`; a crash in
   between leaves a recorded but unattributed chunk, which `recount` repairs.
-  Rejected content stays in the store unrecorded until a chunk GC exists;
-  it is not billed.
-
-`AttributedSizes` is a per-hash lookup (`ee_project_chunks JOIN chunks`); the
-presign page is small (page size <= `CHUNK_MAX_PAGE_SIZE`).
+  Rejected content stays in the store unrecorded until a chunk GC exists; it is
+  not billed.
+- `AttributedSizes` is a per-hash lookup (`project_chunks JOIN chunks`); the
+  presign page is small (page size <= `CHUNK_MAX_PAGE_SIZE`).
 
 ## Buying additional storage
 
 Purchasing does not need new seam methods: it changes
-`ee_owner_quota.quota_bytes`, which presign/confirm read on every operation.
-
-Recommended split:
+`owner_quota.quota_bytes`, which presign/confirm read on every operation.
 
 - `ee/` owns quota values and enforcement.
-- Billing/payment (e.g. Stripe) is an external service that calls an ee admin
-  or internal endpoint to set the quota after a successful purchase; cloud can
-  also run it as a periodic sync job.
+- Billing/payment (e.g. Stripe) is an external service that calls the admin
+  quota endpoint after a successful purchase; cloud can also run it as a
+  periodic sync job.
 - A `plan`/`purchased_bytes` model can be added later; with one explicit
   `quota_bytes` column any plan math is just how the value is produced.
 
 ## REST API
 
-Registered as a separate `restful.WebService` on the same container in
-`cmd/nipad` (after `api.SetupRoute()`), reusing
-`api.NewAuthFilter(auth).Auth()` so `domain.ClaimFromContext` works. The free
-`internal/http/api` package is not modified.
+`ee/storageusage.RegisterRoutes` is attached to the authenticated `/api/v1`
+WebService through `serverapp.WithRoutes` (go-restful rejects a second
+WebService with the same root path, so extensions share the main one). With the
+ledger disabled the routes are not registered and answer 404, so clients can
+feature-detect the capability.
 
 | Route | Guard | Purpose |
 |---|---|---|
 | `GET /api/v1/orgs/{org}/storage` | org owner or global admin | usage, quota, per-project breakdown for one org |
 | `GET /api/v1/billing/me` | authenticated | owner quota, aggregate usage, per-org breakdown |
-| `PUT /api/v1/admin/billing/owners/{user}/quota` | `IsSuperAdmin` | set/clear an owner's quota (NULL = unlimited) |
-| `PUT /api/v1/admin/orgs/{org}/billing-owner` | `IsSuperAdmin` | transfer an org's billing owner |
-| `POST /api/v1/admin/orgs/{org}/storage/recount` | `IsSuperAdmin` | rebuild ledger + counters for one org |
+| `PUT /api/v1/admin/billing/owners/{user}/quota` | super admin | set/clear an owner's quota (`quota_bytes` null = unlimited) |
+| `PUT /api/v1/admin/orgs/{org}/billing-owner` | super admin | transfer an org's billing owner |
+| `POST /api/v1/admin/orgs/{org}/storage/recount` | super admin | rebuild ledger + counters for one org |
 
-All read endpoints feature-detect on the SPA side: with the ledger disabled
-they are not registered and return 404, so the storage UI hides itself.
+## Config and wiring (`ee/cmd/nipad`)
+
+- `internal/config`: `StorageLedger` (`STORAGE_LEDGER`, empty = off, `cloud`
+  enables the ledger) and `StorageLedgerDefaultQuotaBytes`
+  (`STORAGE_LEDGER_DEFAULT_QUOTA_BYTES`, 0 = unlimited).
+- The free `cmd/nipad` ignores `STORAGE_LEDGER` (it wires no ledger), so a free
+  server started with the setting still runs unlimited and the storage routes
+  answer 404.
+- `ee/cmd/nipad` builds the ledger after `eedb.MigrateUp`, attaches it with
+  `chunkUsecase.WithStorageLedger(ledger)` and registers the routes with
+  `serverapp.WithRoutes` only when the ledger is enabled.
+- The ledger is a thin object over `*sql.DB` built with `dbtx.New`, so every
+  query resolves the transaction carried in the context and `Attribute` is one
+  atomic transaction.
 
 ## Web UI
 
-- `web/src/api/endpoints.ts`: `getOrgStorage`, `getMyBilling`, `setOwnerQuota`,
-  `setOrgBillingOwner`, `recountOrgStorage`.
-- `OrgSettingsPage.tsx`: storage card (used/quota progress, per-project table),
-  hidden when `getOrgStorage` returns 404.
-- New `/settings/billing` page for the owner: aggregate usage, per-org table,
-  quota, and the "buy additional storage" entry point (links to the payment
-  flow / support).
-- AdminUsersPage or a small admin section can expose quota editing.
-- Keep `npm run lint`, `npm test` and `make web` green.
+- `web/src/api/endpoints.ts`: `getOrgStorage` (returns null on 404 for feature
+  detection), `getMyBilling`, `setOwnerQuota`, `setOrgBillingOwner`,
+  `recountOrgStorage`.
+- `OrgSettingsPage`: storage card (used/quota progress, per-project table,
+  super-admin recount and billing-owner transfer), hidden when the API 404s.
+- `/settings/billing`: the owner's aggregate usage, per-org table and quota,
+  plus a super-admin quota editor.
 
 ## Recount / backfill
 
 Required once when enabling the ledger on an existing deployment and useful for
-repair. For each project, rebuild `ee_project_chunks` from the actual history:
-
-```sql
-WITH RECURSIVE tree_ids(id) AS (
-    SELECT tree_id FROM commits WHERE project_id = :project
-    UNION
-    SELECT tn.id FROM tree_nodes tn JOIN tree_ids ti ON tn.parent_tree_id = ti.id
-)
-SELECT DISTINCT fc.chunk_id, ch.size_bytes
-FROM files f
-JOIN file_chunks fc ON fc.file_id = f.id
-JOIN chunks ch ON ch.id = fc.chunk_id
-WHERE f.tree_id IN (SELECT id FROM tree_ids);
-```
-
-Run per project in one transaction: delete the project's links, insert the
-recomputed set, set `ee_project_usage`, then refresh `ee_org_usage` and the
-owner aggregate. Expose it as an offline/subcommand path
-(`nipad -recount-storage [org-slug|all]`) so large repos do not block the API.
-
-## Config and wiring (`cmd/nipad`)
-
-- `internal/config`: `StorageLedger string` (`STORAGE_LEDGER`, empty = off) and
-  `StorageLedgerDefaultQuotaBytes int64` (`STORAGE_LEDGER_DEFAULT_QUOTA_BYTES`,
-  0 = unlimited).
-- Mirror `createChunkStore`:
-
-  ```go
-  chunkUsecase := usecase.NewChunk(pushRepository, chunkStore, transferCfg)
-  if strings.EqualFold(cfg.StorageLedger, "cloud") {
-      if err := db.MigrateUpWithTable(dbConn, "sqlite3", storageusage.MigrationsFS, "ee_schema_migrations"); err != nil { ... }
-      ledger := storageusage.NewLedger(dbConn, storageusage.Config{DefaultQuotaBytes: cfg.StorageLedgerDefaultQuotaBytes})
-      chunkUsecase = chunkUsecase.WithStorageLedger(ledger)
-  }
-  ```
-
-- The ledger is a thin object over `*sql.DB`; it must be safe for concurrent
-  confirms (the existing client serializes confirmations, and SQLite WAL +
-  busy timeout covers the rest).
+repair. `RecountOrg` rebuilds one organization's links and counters in a single
+transaction: for each project it deletes the links and recomputes them from the
+actual history (recursive commit-tree walk over `commits`, `tree_nodes`,
+`files`, `file_chunks`, `chunks`), then derives the project and org counters.
+It is exposed as the super-admin REST route.
 
 ## Testing
 
-- `ee/storageusage`: sqlite-backed tests for every method — lazy owner seeding
-  (creator, legacy first-owner fallback), link idempotency and exactly-once
-  counter increments, quota rejection rollback (no links, no counter changes),
-  unlimited paths, transfer moving the aggregate, recount repairing drift.
-- `usecase` seam is already covered with a mock ledger; add an integration test
-  wiring the real ee ledger through `Chunk` (confirm over/below quota).
-- gRPC/REST: 402 payload, admin guards, 404 feature detection when disabled.
-- `internal/e2e`: push that trips a quota, raise it, retry push succeeds
-  without re-uploading bytes.
-- Web: storage card hidden on 404, quota editing for admins.
+- `ee/storageusage`: postgres testcontainers suite for every method — lazy
+  owner seeding, link idempotency and exactly-once counter increments, quota
+  rejection rollback (no links, no counter changes), unlimited paths, shared
+  quota across an owner's orgs, transfer moving the aggregate, recount
+  repairing drift.
+- `internal/usecase`: the seam is covered with a gomock ledger (presign
+  headroom, confirm attribution, merge chunk attribution).
+- `ee/e2e`: real-ledger integration through `Chunk` — a push over quota fails
+  with 402, the retry after raising the quota succeeds.
+- Ginkgo client suite (`tests/`): ee runs enable `STORAGE_LEDGER=cloud`
+  (`NIPA_TEST_STORAGE_LEDGER`, default cloud); the storage spec trips the
+  quota, raises it over the admin API, verifies the retry and checks the
+  storage/billing endpoints, while the free run asserts the routes 404.
 
 ## Open questions
 
