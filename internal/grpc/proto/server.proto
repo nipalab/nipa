@@ -988,9 +988,19 @@ message ListFileLocksResponse {
     repeated FileLockDetail locks = 1;
 }
 
+message GetServerVersionRequest {
+}
+
+message GetServerVersionResponse {
+    string version = 1;
+    string revision = 2;
+    string go_version = 3;
+}
+
 service NipaService {
     rpc LoginWithUsernamePassword(LoginUsernamePasswordRequest) returns (LoginResponse);
     rpc LoginWithRefreshToken(LoginWithRefreshRequest) returns (LoginResponse);
+    rpc GetServerVersion(GetServerVersionRequest) returns (GetServerVersionResponse);
 
     rpc GetListBranch(GetListBranchRequest) returns (GetListBranchResponse);
     rpc GetBranch(GetBranchRequest) returns (GetBranchResponse);

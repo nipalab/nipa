@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/nipalab/nipa/internal/client/usecase"
+	"github.com/nipalab/nipa/internal/version"
 	"github.com/spf13/cobra"
 )
 
@@ -19,6 +20,7 @@ type usecaseContainer interface {
 	MR() *usecase.MergeRequest
 	Lock() *usecase.FileLock
 	Tag() *usecase.Tag
+	Version() *usecase.Version
 }
 
 type connector interface {
@@ -39,8 +41,9 @@ func NewCli(useCase usecaseContainer, connector connector) *Cli {
 
 func (c *Cli) Run(extra ...*cobra.Command) error {
 	var rootCmd = &cobra.Command{
-		Use:   "nipa",
-		Short: "nipa is centralized version control system for your project",
+		Use:     "nipa",
+		Short:   "nipa is centralized version control system for your project",
+		Version: version.Resolve().Version,
 	}
 	rootCmd.AddCommand(c.setupCloneCmd())
 	rootCmd.AddCommand(c.setupBranchCmd())
@@ -62,6 +65,7 @@ func (c *Cli) Run(extra ...*cobra.Command) error {
 	rootCmd.AddCommand(c.setupLockCmd())
 	rootCmd.AddCommand(c.setupUnlockCmd())
 	rootCmd.AddCommand(c.setupTagCmd())
+	rootCmd.AddCommand(c.setupVersionCmd())
 	rootCmd.AddCommand(extra...)
 	return rootCmd.Execute()
 }

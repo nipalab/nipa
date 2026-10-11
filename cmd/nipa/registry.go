@@ -14,6 +14,7 @@ type Registry struct {
 	mrUsecase         *usecase.MergeRequest
 	lockUsecase       *usecase.FileLock
 	tagUsecase        *usecase.Tag
+	versionUsecase    *usecase.Version
 }
 
 func (r *Registry) Auth() *usecase.Auth {
@@ -58,4 +59,8 @@ func (r *Registry) Lock() *usecase.FileLock {
 
 func (r *Registry) Tag() *usecase.Tag {
 	return r.tagUsecase
+}
+
+func (r *Registry) Version() *usecase.Version {
+	return r.versionUsecase
 }

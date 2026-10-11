@@ -227,7 +227,9 @@ func (c *Client) unaryAuthInterceptor() grpc.UnaryClientInterceptor {
 		invoker grpc.UnaryInvoker,
 		opts ...grpc.CallOption,
 	) error {
-		if method == "/greet.NipaService/LoginWithUsernamePassword" || method == "/greet.NipaService/LoginWithRefreshToken" {
+		if method == "/greet.NipaService/LoginWithUsernamePassword" ||
+			method == "/greet.NipaService/LoginWithRefreshToken" ||
+			method == "/greet.NipaService/GetServerVersion" {
 			return invoker(ctx, method, req, reply, cc, opts...)
 		}
 

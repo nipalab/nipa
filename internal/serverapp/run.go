@@ -22,6 +22,7 @@ import (
 	grpcserver "github.com/nipalab/nipa/internal/grpc/server"
 	"github.com/nipalab/nipa/internal/http/api"
 	"github.com/nipalab/nipa/internal/obs"
+	"github.com/nipalab/nipa/internal/version"
 	webui "github.com/nipalab/nipa/web/server"
 )
 
@@ -110,6 +111,7 @@ func Run(cfg *config.Config, reg *Registry, dispatchers []Dispatcher, opts ...Op
 
 	healthHandler := obs.HealthHandler()
 	readyHandler := obs.ReadinessHandler(ro.readiness)
+	versionHandler := version.Handler()
 	pprofHandler := http.NotFoundHandler()
 	if cfg.PprofEnabled {
 		pprofHandler = obs.PprofHandler()
@@ -129,6 +131,8 @@ func Run(cfg *config.Config, reg *Registry, dispatchers []Dispatcher, opts ...Op
 			healthHandler.ServeHTTP(w, r)
 		case r.URL.Path == "/readyz":
 			readyHandler.ServeHTTP(w, r)
+		case r.URL.Path == "/version":
+			versionHandler.ServeHTTP(w, r)
 		case r.URL.Path == "/metrics":
 			metricsHandler.ServeHTTP(w, r)
 		case strings.HasPrefix(r.URL.Path, "/debug/pprof"):
@@ -179,7 +183,7 @@ func Run(cfg *config.Config, reg *Registry, dispatchers []Dispatcher, opts ...Op
 		os.Exit(0)
 	}()
 
-	slog.Info("server is running", "address", address)
+	slog.Info("server is running", "address", address, "version", version.Resolve().Version)
 	if err := httpServer.Serve(ln); err != http.ErrServerClosed {
 		return err
 	}
