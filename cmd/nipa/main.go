@@ -39,6 +39,7 @@ func main() {
 	mrUsecase := usecase.NewMergeRequest(authUsecase, grpcClient, localrepo.NewLocalRepo())
 	lockUsecase := usecase.NewFileLock(authUsecase, grpcClient, localrepo.NewLocalRepo())
 	tagUsecase := usecase.NewTag(authUsecase, grpcClient, localrepo.NewLocalRepo())
+	versionUsecase := usecase.NewVersion(grpcClient)
 	registry := &Registry{
 		authUsecase:       authUsecase,
 		repoUsecase:       repoUsecase,
@@ -51,6 +52,7 @@ func main() {
 		mrUsecase:         mrUsecase,
 		lockUsecase:       lockUsecase,
 		tagUsecase:        tagUsecase,
+		versionUsecase:    versionUsecase,
 	}
 
 	newClient := func() *grpc.Client {

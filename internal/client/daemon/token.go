@@ -11,13 +11,17 @@ import (
 	"path/filepath"
 	"runtime"
 	"syscall"
+
+	"github.com/nipalab/nipa/internal/version"
 )
 
 // TokenHeader carries the daemon capability token on every RPC.
 const TokenHeader = "x-nipa-daemon-token"
 
-// Version is the daemon version reported by Ping.
-var Version = "dev"
+// Version is the daemon version reported by Ping. It defaults to the build
+// version and can be overridden (Options.Version) by callers embedding the
+// server.
+var Version = version.Resolve().Version
 
 // Endpoint is the discovery record stored in ~/.config/nipa/daemon.json.
 type Endpoint struct {

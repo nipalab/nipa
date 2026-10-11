@@ -6,7 +6,12 @@ MIGRATIONS_DIR := db/migrations
 POSTGRES_MIGRATIONS_DIR := ee/db/migrations/postgres
 mb         ?= 256
 
-.PHONY: sqlc mock migrate-up migrate-down migrate-up-postgres migrate-down-postgres migrate-create build build-all build-server build-server-ee build-client test test-ee test-client test-client-ee test-client-both lint web web-dev web-install bench-upload
+VERSION    ?= $(shell git describe --tags --always --dirty 2>/dev/null)
+REVISION   ?= $(shell git rev-parse --short HEAD 2>/dev/null)
+LDFLAGS    := $(if $(VERSION),-X 'github.com/nipalab/nipa/internal/version.Version=$(VERSION)') \
+              $(if $(REVISION),-X 'github.com/nipalab/nipa/internal/version.Revision=$(REVISION)')
+
+.PHONY: sqlc mock migrate-up migrate-down migrate-up-postgres migrate-down-postgres migrate-create build build-all build-server build-server-ee build-client test test-ee test-client test-client-ee test-client-both lint web web-dev web-install bench-upload release
 
 GOLANGCI_LINT_IMAGE ?= docker.io/golangci/golangci-lint:latest
 
@@ -44,13 +49,13 @@ migrate-create:
 	done
 
 build-server:
-	go build -o bin/nipad ./cmd/nipad
+	go build -ldflags "$(LDFLAGS)" -o bin/nipad ./cmd/nipad
 
 build-server-ee:
-	go build -o bin/nipad-ee ./ee/cmd/nipad
+	go build -ldflags "$(LDFLAGS)" -o bin/nipad-ee ./ee/cmd/nipad
 
 build-client:
-	go build -o bin/nipa ./cmd/nipa
+	go build -ldflags "$(LDFLAGS)" -o bin/nipa ./cmd/nipa
 
 ## Install web UI dependencies (first time, or after changes to web/package.json).
 web-install:
@@ -70,6 +75,15 @@ build: web build-server build-client
 
 ## Build both the free and enterprise servers including the web UI.
 build-all: build build-server-ee
+
+## Tag a release on a clean HEAD, e.g. `make release version=v0.1.0`.
+release:
+	@test -n "$(version)" || (echo "usage: make release version=v0.1.0" && exit 1)
+	@echo "$(version)" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$$' || (echo "version must look like vX.Y.Z (got '$(version)')" && exit 1)
+	@git diff-index --quiet HEAD -- || (echo "working tree is dirty; commit or stash first" && exit 1)
+	@if git rev-parse -q --verify "refs/tags/$(version)" >/dev/null; then echo "tag $(version) already exists"; exit 1; fi
+	git tag -a "$(version)" -m "Release $(version)"
+	@echo "created tag $(version); publish it with: git push origin $(version)"
 
 proto:
 	protoc --go_out=internal/grpc --go-grpc_out=internal/grpc internal/grpc/proto/server.proto

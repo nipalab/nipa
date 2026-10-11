@@ -21,6 +21,7 @@ const _ = grpc.SupportPackageIsVersion9
 const (
 	NipaService_LoginWithUsernamePassword_FullMethodName       = "/greet.NipaService/LoginWithUsernamePassword"
 	NipaService_LoginWithRefreshToken_FullMethodName           = "/greet.NipaService/LoginWithRefreshToken"
+	NipaService_GetServerVersion_FullMethodName                = "/greet.NipaService/GetServerVersion"
 	NipaService_GetListBranch_FullMethodName                   = "/greet.NipaService/GetListBranch"
 	NipaService_GetBranch_FullMethodName                       = "/greet.NipaService/GetBranch"
 	NipaService_GetBranchByName_FullMethodName                 = "/greet.NipaService/GetBranchByName"
@@ -95,6 +96,7 @@ const (
 type NipaServiceClient interface {
 	LoginWithUsernamePassword(ctx context.Context, in *LoginUsernamePasswordRequest, opts ...grpc.CallOption) (*LoginResponse, error)
 	LoginWithRefreshToken(ctx context.Context, in *LoginWithRefreshRequest, opts ...grpc.CallOption) (*LoginResponse, error)
+	GetServerVersion(ctx context.Context, in *GetServerVersionRequest, opts ...grpc.CallOption) (*GetServerVersionResponse, error)
 	GetListBranch(ctx context.Context, in *GetListBranchRequest, opts ...grpc.CallOption) (*GetListBranchResponse, error)
 	GetBranch(ctx context.Context, in *GetBranchRequest, opts ...grpc.CallOption) (*GetBranchResponse, error)
 	GetBranchByName(ctx context.Context, in *GetBranchByNameRequest, opts ...grpc.CallOption) (*GetBranchByNameResponse, error)
@@ -185,6 +187,16 @@ func (c *nipaServiceClient) LoginWithRefreshToken(ctx context.Context, in *Login
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(LoginResponse)
 	err := c.cc.Invoke(ctx, NipaService_LoginWithRefreshToken_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nipaServiceClient) GetServerVersion(ctx context.Context, in *GetServerVersionRequest, opts ...grpc.CallOption) (*GetServerVersionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetServerVersionResponse)
+	err := c.cc.Invoke(ctx, NipaService_GetServerVersion_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -857,6 +869,7 @@ func (c *nipaServiceClient) RemoveGroupMember(ctx context.Context, in *RemoveGro
 type NipaServiceServer interface {
 	LoginWithUsernamePassword(context.Context, *LoginUsernamePasswordRequest) (*LoginResponse, error)
 	LoginWithRefreshToken(context.Context, *LoginWithRefreshRequest) (*LoginResponse, error)
+	GetServerVersion(context.Context, *GetServerVersionRequest) (*GetServerVersionResponse, error)
 	GetListBranch(context.Context, *GetListBranchRequest) (*GetListBranchResponse, error)
 	GetBranch(context.Context, *GetBranchRequest) (*GetBranchResponse, error)
 	GetBranchByName(context.Context, *GetBranchByNameRequest) (*GetBranchByNameResponse, error)
@@ -938,6 +951,9 @@ func (UnimplementedNipaServiceServer) LoginWithUsernamePassword(context.Context,
 }
 func (UnimplementedNipaServiceServer) LoginWithRefreshToken(context.Context, *LoginWithRefreshRequest) (*LoginResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method LoginWithRefreshToken not implemented")
+}
+func (UnimplementedNipaServiceServer) GetServerVersion(context.Context, *GetServerVersionRequest) (*GetServerVersionResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetServerVersion not implemented")
 }
 func (UnimplementedNipaServiceServer) GetListBranch(context.Context, *GetListBranchRequest) (*GetListBranchResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetListBranch not implemented")
@@ -1190,6 +1206,24 @@ func _NipaService_LoginWithRefreshToken_Handler(srv interface{}, ctx context.Con
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(NipaServiceServer).LoginWithRefreshToken(ctx, req.(*LoginWithRefreshRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NipaService_GetServerVersion_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetServerVersionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaServiceServer).GetServerVersion(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaService_GetServerVersion_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaServiceServer).GetServerVersion(ctx, req.(*GetServerVersionRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -2396,6 +2430,10 @@ var NipaService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "LoginWithRefreshToken",
 			Handler:    _NipaService_LoginWithRefreshToken_Handler,
+		},
+		{
+			MethodName: "GetServerVersion",
+			Handler:    _NipaService_GetServerVersion_Handler,
 		},
 		{
 			MethodName: "GetListBranch",

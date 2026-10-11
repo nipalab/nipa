@@ -10,12 +10,13 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// isPublicMethod lists the RPCs that skip JWT authentication: the login calls
-// and the standard gRPC health service.
+// isPublicMethod lists the RPCs that skip JWT authentication: the login calls,
+// the version probe and the standard gRPC health service.
 func isPublicMethod(method string) bool {
 	switch method {
 	case "/greet.NipaService/LoginWithUsernamePassword",
 		"/greet.NipaService/LoginWithRefreshToken",
+		"/greet.NipaService/GetServerVersion",
 		"/grpc.health.v1.Health/Check",
 		"/grpc.health.v1.Health/Watch":
 		return true

@@ -455,7 +455,16 @@ From `Makefile`:
   dialect dirs: `db/migrations/sqlite` and `ee/db/migrations/postgres` (both
   embedded via `go:embed` and read by `sqlc.yaml`).
 - `make build` — web + `bin/nipad` + `bin/nipa`; `make build-server-ee` —
-  `bin/nipad-ee`; `make build-all` — web + both servers + client.
+  `bin/nipad-ee`; `make build-all` — web + both servers + client. Builds inject
+  `internal/version` via `-ldflags` from
+  `VERSION ?= git describe --tags --always --dirty` / `REVISION`; plain
+  `go build` falls back to `debug.ReadBuildInfo` (`dev-<sha>` or the VCS
+  pseudo-version). `make release version=vX.Y.Z` tags a clean HEAD (annotated;
+  push manually). `nipa version [--server] [url]` reports the client build and
+  probes the server through the public `GetServerVersion` RPC; both servers
+  also answer unauthenticated `GET /version` (JSON) and `-version`, and log the
+  version at startup. `daemon.Version` defaults to the build version (Ping /
+  `daemon.json` / `nipa mcp`).
 - `make test` — `go test ./...` (requires Docker for the testcontainers-backed
   postgres/minio suites); `make test-ee` — `go test ./ee/...`.
 - `make test-client` / `test-client-ee` / `test-client-both` — the Ginkgo

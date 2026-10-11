@@ -81,4 +81,37 @@ var _ = Describe("nipa output modes", func() {
 		Expect(command.ExitCode).To(Equal(1))
 		Expect(command.Output()).NotTo(BeEmpty())
 	})
+
+	It("reports client and server versions", func() {
+		project := newProject("meta-version")
+		seedRepo(orgSlug, project, map[string][]byte{"a.txt": []byte("a\n")}, "seed")
+		parent := workspace()
+		dir := cloneRepo(parent, repoURLFor(orgSlug, project), "work")
+
+		local := runNipa(dir, "version")
+		Expect(local.ExitCode).To(Equal(0), local.Output())
+		Expect(local.Output()).To(HavePrefix("nipa version "))
+
+		server := runNipa(dir, "version", "--server")
+		Expect(server.ExitCode).To(Equal(0), server.Output())
+		Expect(server.Output()).To(ContainSubstring("client: "))
+		Expect(server.Output()).To(ContainSubstring("server: "))
+
+		byURL := runNipa(parent, "version", "--server", repoURLFor(orgSlug, project))
+		Expect(byURL.ExitCode).To(Equal(0), byURL.Output())
+		Expect(byURL.Output()).To(ContainSubstring("server: "))
+
+		var out struct {
+			Client struct {
+				Version string `json:"version"`
+			} `json:"client"`
+			Server struct {
+				Version string `json:"version"`
+			} `json:"server"`
+		}
+		runJSONInto(dir, &out, "version", "--server", "--json")
+		Expect(out.Client.Version).NotTo(BeEmpty())
+		Expect(out.Server.Version).NotTo(BeEmpty())
+		Expect(out.Client.Version).To(Equal(out.Server.Version))
+	})
 })

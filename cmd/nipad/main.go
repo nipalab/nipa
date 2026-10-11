@@ -19,10 +19,16 @@ import (
 	"github.com/nipalab/nipa/internal/snow"
 	"github.com/nipalab/nipa/internal/storage"
 	"github.com/nipalab/nipa/internal/usecase"
+	"github.com/nipalab/nipa/internal/version"
 	"github.com/nipalab/nipa/internal/webhook"
 )
 
 func main() {
+	if version.Flag(os.Args[1:]) {
+		fmt.Println("nipad " + version.Resolve().String())
+		return
+	}
+
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		panic(err)
