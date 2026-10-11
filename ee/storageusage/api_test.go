@@ -265,6 +265,9 @@ func TestAPI_SetOwnerQuota(t *testing.T) {
 	status, _ = h.do(http.MethodPut, "/api/v1/admin/billing/owners/1/quota", "super", map[string]any{"quota_bytes": int64(-1)})
 	require.Equal(t, http.StatusBadRequest, status)
 
+	status, _ = h.do(http.MethodPut, "/api/v1/admin/billing/owners/999999/quota", "super", map[string]any{"quota_bytes": quota})
+	require.Equal(t, http.StatusNotFound, status, "unknown owner must not surface as a database error")
+
 	status, body := h.do(http.MethodPut, "/api/v1/admin/billing/owners/1/quota", "super", map[string]any{"quota_bytes": quota})
 	var billing ownerStorageJSON
 	h.decode(status, body, &billing)

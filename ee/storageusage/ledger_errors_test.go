@@ -152,6 +152,18 @@ func TestLedger_SetBillingOwner_UserLookupError(t *testing.T) {
 	require.Equal(t, 500, errorCode(ledger.SetBillingOwner(context.Background(), snow.ID(1), snow.ID(1))))
 }
 
+func TestLedger_SetOwnerQuota_UserLookupError(t *testing.T) {
+	ctx := context.Background()
+	quota := int64(1)
+
+	_, ledger := newErrorLedger(t)
+	require.True(t, domain.IsErrorNotFound(ledger.SetOwnerQuota(ctx, snow.ID(999999), &quota)),
+		"an unknown owner must be a 404, not an FK failure")
+
+	_, ledger = newErrorLedger(t, "users")
+	require.Equal(t, 500, errorCode(ledger.SetOwnerQuota(ctx, snow.ID(1), &quota)))
+}
+
 func TestLedger_RecountOrg_SerializesWithAttribution(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)

@@ -404,7 +404,8 @@ server-generated diff3 chunks through `Chunk.AttributeProjectChunks` (the
 `chunkUploader` seam) before the commit lands. Quota failures are 402
 (`domain.NewErrorQuotaExceeded`), crossing gRPC as `ResourceExhausted`. The
 enterprise implementation lives in `ee/storageusage` (postgres,
-`STORAGE_LEDGER=cloud`; the free `cmd/nipad` rejects the setting): it bills
+`STORAGE_LEDGER=cloud`; the free `cmd/nipad` ignores the setting and keeps
+running with no ledger, no quota and the routes 404): it bills
 every org to one owner user (lazily seeded from
 `organizations.created_by_user_id`), tracks per-project chunk links with
 cached project/org counters, and enforces `owner_quota` (NULL/0 =

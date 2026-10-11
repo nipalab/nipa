@@ -186,8 +186,9 @@ feature-detect the capability.
 - `internal/config`: `StorageLedger` (`STORAGE_LEDGER`, empty = off, `cloud`
   enables the ledger) and `StorageLedgerDefaultQuotaBytes`
   (`STORAGE_LEDGER_DEFAULT_QUOTA_BYTES`, 0 = unlimited).
-- The free `cmd/nipad` rejects a non-empty `STORAGE_LEDGER` with a hint to use
-  `nipad-ee`.
+- The free `cmd/nipad` ignores `STORAGE_LEDGER` (it wires no ledger), so a free
+  server started with the setting still runs unlimited and the storage routes
+  answer 404.
 - `ee/cmd/nipad` builds the ledger after `eedb.MigrateUp`, attaches it with
   `chunkUsecase.WithStorageLedger(ledger)` and registers the routes with
   `serverapp.WithRoutes` only when the ledger is enabled.

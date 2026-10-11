@@ -294,6 +294,9 @@ func (l *Ledger) SetOwnerQuota(ctx context.Context, userID snow.ID, quota *int64
 	if quota != nil && *quota < 0 {
 		return domain.NewErrorUser("quota_bytes must be zero or positive")
 	}
+	if err := l.ensureActiveUser(ctx, userID); err != nil {
+		return err
+	}
 	return dbError(l.queries.SetOwnerQuota(ctx, sqlcPostgres.SetOwnerQuotaParams{
 		UserID:     userID.Int64(),
 		QuotaBytes: nullQuota(quota),
@@ -302,16 +305,25 @@ func (l *Ledger) SetOwnerQuota(ctx context.Context, userID snow.ID, quota *int64
 
 // SetBillingOwner transfers an organization to another billing owner.
 func (l *Ledger) SetBillingOwner(ctx context.Context, orgID, userID snow.ID) error {
+	if err := l.ensureActiveUser(ctx, userID); err != nil {
+		return err
+	}
+	return dbError(l.queries.UpsertBillingOwner(ctx, sqlcPostgres.UpsertBillingOwnerParams{
+		OrgID:  orgID.Int64(),
+		UserID: userID.Int64(),
+	}))
+}
+
+// ensureActiveUser rejects unknown or deleted users with a 404 instead of
+// letting the foreign key fail as a generic database error.
+func (l *Ledger) ensureActiveUser(ctx context.Context, userID snow.ID) error {
 	if _, err := l.queries.GetActiveUserID(ctx, userID.Int64()); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return domain.NewErrorNotFound(fmt.Sprintf("user %s not found", userID.Base36()))
 		}
 		return dbError(err)
 	}
-	return dbError(l.queries.UpsertBillingOwner(ctx, sqlcPostgres.UpsertBillingOwnerParams{
-		OrgID:  orgID.Int64(),
-		UserID: userID.Int64(),
-	}))
+	return nil
 }
 
 // ownerQuotaBytes resolves an owner's effective quota; zero means unlimited.
