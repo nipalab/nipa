@@ -85,6 +85,11 @@ message StageRequest {
     repeated string unstage = 3; // staged paths to drop from the staged set
 }
 
+message RestoreRequest {
+    string root = 1;
+    repeated string paths = 2; // files/directories to restore from the last synced tree
+}
+
 message UpdateRequest {
     string root = 1;
 }
@@ -416,6 +421,7 @@ service NipaDaemon {
 
     rpc Status(StatusRequest) returns (StatusResponse);
     rpc Stage(StageRequest) returns (StatusResponse);
+    rpc Restore(RestoreRequest) returns (StatusResponse);
 
     rpc Update(UpdateRequest) returns (stream OpEvent);
     rpc Switch(SwitchRequest) returns (stream OpEvent);

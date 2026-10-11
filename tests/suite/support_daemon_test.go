@@ -120,6 +120,13 @@ func (d *daemonProc) stage(root string, add, unstage []string) *daemonpb.StatusR
 	return resp
 }
 
+func (d *daemonProc) restore(root string, paths []string) *daemonpb.StatusResponse {
+	GinkgoHelper()
+	resp, err := d.client.Restore(d.ctx, &daemonpb.RestoreRequest{Root: root, Paths: paths})
+	Expect(err).NotTo(HaveOccurred())
+	return resp
+}
+
 type daemonOpStream interface {
 	Recv() (*daemonpb.OpEvent, error)
 }

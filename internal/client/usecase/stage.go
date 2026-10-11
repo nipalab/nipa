@@ -32,6 +32,7 @@ type WorkingCopyRepo interface {
 	LoadRevertState() (*domain.RevertState, error)
 	LoadStatCache() (map[string]domain.StatEntry, error)
 	SaveStatEntries(entries map[string]domain.StatEntry) error
+	OpenChunk(hash serverDomain.Hash) (io.ReadCloser, error)
 	StageAdd(path string) error
 	StageRemove(paths []string) error
 }

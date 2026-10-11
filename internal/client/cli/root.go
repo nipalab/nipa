@@ -46,6 +46,7 @@ func (c *Cli) Run(extra ...*cobra.Command) error {
 	rootCmd.AddCommand(c.setupBranchCmd())
 	rootCmd.AddCommand(c.setupAddCmd())
 	rootCmd.AddCommand(c.setupRemoveCmd())
+	rootCmd.AddCommand(c.setupRestoreCmd())
 	rootCmd.AddCommand(c.setupStatusCmd())
 	rootCmd.AddCommand(c.setupPushCmd())
 	rootCmd.AddCommand(c.setupUpdateCmd())
