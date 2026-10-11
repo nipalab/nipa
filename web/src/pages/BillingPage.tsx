@@ -27,6 +27,10 @@ export default function BillingPage() {
       <ErrorBanner error={actionError ?? error} />
       {loading && <Loading />}
 
+      {!loading && !error && data === null && (
+        <EmptyState>Storage billing is not enabled on this server.</EmptyState>
+      )}
+
       {data && (
         <>
           <Text as="p">

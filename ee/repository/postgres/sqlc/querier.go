@@ -74,7 +74,7 @@ type Querier interface {
 	GetActiveUserID(ctx context.Context, id int64) (int64, error)
 	GetAttributedSizes(ctx context.Context, arg GetAttributedSizesParams) ([]GetAttributedSizesRow, error)
 	GetBillingOwner(ctx context.Context, orgID int64) (int64, error)
-	GetChunkIDByHash(ctx context.Context, hash []byte) (GetChunkIDByHashRow, error)
+	GetChunkIDsByHashes(ctx context.Context, hashes [][]byte) ([]GetChunkIDsByHashesRow, error)
 	GetOrgCreatedBy(ctx context.Context, orgID int64) (int64, error)
 	GetOrgUsage(ctx context.Context, orgID int64) (int64, error)
 	GetOrganization(ctx context.Context, id int64) (Organization, error)
@@ -93,7 +93,7 @@ type Querier interface {
 	GroupMemberCountByOrg(ctx context.Context, orgID int64) ([]GroupMemberCountByOrgRow, error)
 	GroupMemberList(ctx context.Context, groupID int64) ([]GroupMemberListRow, error)
 	GroupMemberRemove(ctx context.Context, arg GroupMemberRemoveParams) error
-	InsertProjectChunk(ctx context.Context, arg InsertProjectChunkParams) (int64, error)
+	InsertProjectChunks(ctx context.Context, arg InsertProjectChunksParams) ([]int64, error)
 	ListOrganizations(ctx context.Context) ([]Organization, error)
 	ListOwnerOrgUsage(ctx context.Context, userID int64) ([]ListOwnerOrgUsageRow, error)
 	ListProjectIDsByOrg(ctx context.Context, orgID int64) ([]int64, error)

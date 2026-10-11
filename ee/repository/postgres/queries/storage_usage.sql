@@ -55,8 +55,8 @@ LEFT JOIN org_usage u ON u.org_id = b.org_id
 WHERE b.user_id = sqlc.arg(user_id)
 ORDER BY used_bytes DESC, o.slug;
 
--- name: GetChunkIDByHash :one
-SELECT id, size_bytes FROM chunks WHERE hash = sqlc.arg(hash);
+-- name: GetChunkIDsByHashes :many
+SELECT id, hash FROM chunks WHERE hash = ANY(sqlc.arg(hashes)::bytea[]);
 
 -- name: GetAttributedSizes :many
 SELECT ch.hash, pc.size_bytes
@@ -68,9 +68,11 @@ WHERE pc.project_id = sqlc.arg(project_id)
 -- name: LockBillingOwner :exec
 SELECT pg_advisory_xact_lock(sqlc.arg(owner_id)::bigint);
 
--- name: InsertProjectChunk :one
+-- name: InsertProjectChunks :many
 INSERT INTO project_chunks (project_id, chunk_id, size_bytes)
-VALUES (sqlc.arg(project_id), sqlc.arg(chunk_id), sqlc.arg(size_bytes))
+SELECT sqlc.arg(project_id), ch.id, ch.size_bytes
+FROM chunks ch
+WHERE ch.id = ANY(sqlc.arg(chunk_ids)::bigint[])
 ON CONFLICT (project_id, chunk_id) DO NOTHING
 RETURNING size_bytes;
 

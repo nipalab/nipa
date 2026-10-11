@@ -1,10 +1,13 @@
 import { Button, Link as PrimerLink } from '@primer/react'
 import { SignOutIcon } from '@primer/octicons-react'
 import { Link, Outlet } from 'react-router-dom'
+import { getMyBilling } from '../api/endpoints'
 import { useAuth } from '../auth'
+import { useAsync } from '../hooks'
 
 export default function AppShell() {
   const { me, signOut } = useAuth()
+  const { data: billing } = useAsync(getMyBilling, [])
 
   return (
     <div>
@@ -26,9 +29,11 @@ export default function AppShell() {
             Users
           </PrimerLink>
         ) : null}
-        <PrimerLink as={Link} to="/settings/billing">
-          Billing
-        </PrimerLink>
+        {billing ? (
+          <PrimerLink as={Link} to="/settings/billing">
+            Billing
+          </PrimerLink>
+        ) : null}
         <PrimerLink as={Link} to="/settings/profile">
           {me?.name ?? 'Profile'}
         </PrimerLink>

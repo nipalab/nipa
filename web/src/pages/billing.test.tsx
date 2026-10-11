@@ -56,6 +56,22 @@ function stubBilling() {
   )
 }
 
+// stubBillingDisabled simulates a free server: the ledger routes are not
+// registered and answer 404.
+function stubBillingDisabled() {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes('/auth/refresh')) {
+        return jsonResponse({ access_token: 'token', token_type: 'Bearer', expires_in: 1800 })
+      }
+      if (url.includes('/api/v1/me')) return jsonResponse(ME)
+      return jsonResponse({ error: 'not found' }, 404)
+    }),
+  )
+}
+
 beforeEach(() => {
   clearSession()
   window.history.pushState({}, '', '/')
@@ -84,6 +100,26 @@ describe('BillingPage', () => {
     const row = Array.from(document.querySelectorAll('tr')).find((item) => item.textContent?.includes('Sticker'))
     expect(row?.textContent).toContain('2.0 KiB')
     expect(document.body.textContent).not.toContain('Set owner quota')
+    const navLink = Array.from(document.querySelectorAll('a')).find((a) => a.textContent?.trim() === 'Billing')
+    expect(navLink).toBeDefined()
+    act(() => root.unmount())
+  })
+
+  it('hides the nav link and explains when the ledger is disabled', async () => {
+    stubBillingDisabled()
+    window.history.pushState({}, '', '/settings/billing')
+    const container = document.createElement('div')
+    container.id = 'root'
+    document.body.appendChild(container)
+    const root = createRoot(container)
+    await act(async () => {
+      root.render(<App />)
+    })
+    await waitForText('Storage billing is not enabled on this server.')
+
+    const navLink = Array.from(document.querySelectorAll('a')).find((a) => a.textContent?.trim() === 'Billing')
+    expect(navLink).toBeUndefined()
+    expect(document.body.textContent).not.toContain('Billing owner')
     act(() => root.unmount())
   })
 })

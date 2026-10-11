@@ -31,6 +31,20 @@ func (s *ledgerSuite) TestAttribute_LinksAndCountsExactlyOnce() {
 	s.Equal(1, s.linkCount(project))
 }
 
+func (s *ledgerSuite) TestAttribute_LargeBatch() {
+	ctx := context.Background()
+	const n = 300
+	chunks := make([]usecase.LedgerChunk, 0, n)
+	for i := 0; i < n; i++ {
+		hash, _ := s.seedChunk(10)
+		chunks = append(chunks, usecase.LedgerChunk{Hash: hash, SizeBytes: 10})
+	}
+
+	s.NoError(s.ledger.Attribute(ctx, &domain.Organization{ID: 1}, &domain.Project{ID: 1}, chunks))
+	s.Equal(int64(n*10), s.orgUsed(snow.ID(1)))
+	s.Equal(n, s.linkCount(snow.ID(1)))
+}
+
 func (s *ledgerSuite) TestAttribute_QuotaRejectsAndRollsBack() {
 	ctx := context.Background()
 	ledger := NewLedger(s.db, Config{DefaultQuotaBytes: 50})

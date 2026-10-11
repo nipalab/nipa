@@ -772,8 +772,13 @@ export async function getOrgStorage(org: string): Promise<OrgStorageResponse | n
   return (await res.json()) as OrgStorageResponse
 }
 
-export function getMyBilling(): Promise<OwnerStorageResponse> {
-  return apiJson('/api/v1/billing/me')
+// getMyBilling returns null when the server runs without the storage ledger
+// (the routes are not registered and answer 404), so the UI can hide itself.
+export async function getMyBilling(): Promise<OwnerStorageResponse | null> {
+  const res = await apiFetch('/api/v1/billing/me')
+  if (res.status === 404) return null
+  if (!res.ok) throw await errorFromResponse(res)
+  return (await res.json()) as OwnerStorageResponse
 }
 
 export function setOwnerQuota(userId: string, quotaBytes: number | null): Promise<OwnerStorageResponse> {

@@ -168,26 +168,39 @@ func (l *Ledger) attribute(ctx context.Context, orgID, projectID snow.ID, chunks
 				return dbError(err)
 			}
 		}
-		var newBytes int64
+		// One batched lookup and one batched link insert keep the per-owner
+		// lock short: a confirm can carry hundreds of chunks.
+		hashes := make([][]byte, 0, len(chunks))
 		for _, chunk := range chunks {
-			row, err := l.queries.GetChunkIDByHash(ctx, chunk.Hash[:])
-			if errors.Is(err, sql.ErrNoRows) {
+			hashes = append(hashes, append([]byte(nil), chunk.Hash[:]...))
+		}
+		rows, err := l.queries.GetChunkIDsByHashes(ctx, hashes)
+		if err != nil {
+			return dbError(err)
+		}
+		ids := make(map[domain.Hash]int64, len(rows))
+		for _, row := range rows {
+			var hash domain.Hash
+			copy(hash[:], row.Hash)
+			ids[hash] = row.ID
+		}
+		chunkIDs := make([]int64, 0, len(chunks))
+		for _, chunk := range chunks {
+			id, ok := ids[chunk.Hash]
+			if !ok {
 				return domain.NewErrorInternalServer(fmt.Sprintf("chunk %s has no metadata row", chunk.Hash))
 			}
-			if err != nil {
-				return dbError(err)
-			}
-			size, err := l.queries.InsertProjectChunk(ctx, sqlcPostgres.InsertProjectChunkParams{
-				ProjectID: projectID.Int64(),
-				ChunkID:   row.ID,
-				SizeBytes: chunk.SizeBytes,
-			})
-			if errors.Is(err, sql.ErrNoRows) {
-				continue
-			}
-			if err != nil {
-				return dbError(err)
-			}
+			chunkIDs = append(chunkIDs, id)
+		}
+		inserted, err := l.queries.InsertProjectChunks(ctx, sqlcPostgres.InsertProjectChunksParams{
+			ProjectID: projectID.Int64(),
+			ChunkIds:  chunkIDs,
+		})
+		if err != nil {
+			return dbError(err)
+		}
+		var newBytes int64
+		for _, size := range inserted {
 			newBytes += size
 		}
 		if newBytes > 0 && quota > 0 && used+newBytes > quota {

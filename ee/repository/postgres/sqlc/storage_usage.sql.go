@@ -135,20 +135,36 @@ func (q *Queries) GetBillingOwner(ctx context.Context, orgID int64) (int64, erro
 	return user_id, err
 }
 
-const getChunkIDByHash = `-- name: GetChunkIDByHash :one
-SELECT id, size_bytes FROM chunks WHERE hash = $1
+const getChunkIDsByHashes = `-- name: GetChunkIDsByHashes :many
+SELECT id, hash FROM chunks WHERE hash = ANY($1::bytea[])
 `
 
-type GetChunkIDByHashRow struct {
-	ID        int64 `json:"id"`
-	SizeBytes int64 `json:"size_bytes"`
+type GetChunkIDsByHashesRow struct {
+	ID   int64  `json:"id"`
+	Hash []byte `json:"hash"`
 }
 
-func (q *Queries) GetChunkIDByHash(ctx context.Context, hash []byte) (GetChunkIDByHashRow, error) {
-	row := q.db.QueryRowContext(ctx, getChunkIDByHash, hash)
-	var i GetChunkIDByHashRow
-	err := row.Scan(&i.ID, &i.SizeBytes)
-	return i, err
+func (q *Queries) GetChunkIDsByHashes(ctx context.Context, hashes [][]byte) ([]GetChunkIDsByHashesRow, error) {
+	rows, err := q.db.QueryContext(ctx, getChunkIDsByHashes, pq.Array(hashes))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetChunkIDsByHashesRow
+	for rows.Next() {
+		var i GetChunkIDsByHashesRow
+		if err := rows.Scan(&i.ID, &i.Hash); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getOrgCreatedBy = `-- name: GetOrgCreatedBy :one
@@ -209,24 +225,41 @@ func (q *Queries) GetProjectOrgID(ctx context.Context, id int64) (int64, error) 
 	return org_id, err
 }
 
-const insertProjectChunk = `-- name: InsertProjectChunk :one
+const insertProjectChunks = `-- name: InsertProjectChunks :many
 INSERT INTO project_chunks (project_id, chunk_id, size_bytes)
-VALUES ($1, $2, $3)
+SELECT $1, ch.id, ch.size_bytes
+FROM chunks ch
+WHERE ch.id = ANY($2::bigint[])
 ON CONFLICT (project_id, chunk_id) DO NOTHING
 RETURNING size_bytes
 `
 
-type InsertProjectChunkParams struct {
-	ProjectID int64 `json:"project_id"`
-	ChunkID   int64 `json:"chunk_id"`
-	SizeBytes int64 `json:"size_bytes"`
+type InsertProjectChunksParams struct {
+	ProjectID int64   `json:"project_id"`
+	ChunkIds  []int64 `json:"chunk_ids"`
 }
 
-func (q *Queries) InsertProjectChunk(ctx context.Context, arg InsertProjectChunkParams) (int64, error) {
-	row := q.db.QueryRowContext(ctx, insertProjectChunk, arg.ProjectID, arg.ChunkID, arg.SizeBytes)
-	var size_bytes int64
-	err := row.Scan(&size_bytes)
-	return size_bytes, err
+func (q *Queries) InsertProjectChunks(ctx context.Context, arg InsertProjectChunksParams) ([]int64, error) {
+	rows, err := q.db.QueryContext(ctx, insertProjectChunks, arg.ProjectID, pq.Array(arg.ChunkIds))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var size_bytes int64
+		if err := rows.Scan(&size_bytes); err != nil {
+			return nil, err
+		}
+		items = append(items, size_bytes)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listOwnerOrgUsage = `-- name: ListOwnerOrgUsage :many
