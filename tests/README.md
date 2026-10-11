@@ -5,9 +5,10 @@ The same Ginkgo suite runs against the free (`nipad`) and enterprise
 (`nipad-ee`) servers so both editions are verified to behave identically from
 the client's point of view.
 
-Coverage (176 specs): every in-repo command and flag — `clone`, `branch`,
-`add`, `remove`, `status`, `push`, `update`, `switch` (branch and `--tag`
-detach), `merge`, `revert` (single, range, conflicts, `--mainline`), `log`,
+Coverage (211 specs): every in-repo command and flag — `clone`, `branch`,
+`add`, `remove`, `restore`, `status`, `push`, `update`, `switch` (branch and
+`--tag` detach), `merge`, `revert` (single, range, conflicts, `--mainline`),
+`log`,
 `diff` (all output modes and revision shapes), `sparse-checkout`, `tag`,
 `lock`/`unlock`, `mr`, `acl` (rules and path defaults), `group` — plus the
 runtime commands `nipa serve` (daemon gRPC API), `nipa mcp` (MCP over stdio)
@@ -88,6 +89,7 @@ tests/
     clone_test.go         nipa clone
     branch_test.go        nipa branch
     push_test.go          nipa push (+ add/remove/status glue)
+    restore_test.go       nipa restore (discard modifications/deletions)
     update_test.go        nipa update
     switch_test.go        nipa switch (branches, detached tags)
     merge_test.go         nipa merge

@@ -122,6 +122,7 @@ pb goes to `internal/client/grpc/daemonpb`. `make proto` gains a second
 | `WatchRepo` / `UnwatchRepo` / `ListRepos` | unary | validate + register; returns config (url, branch, sparse) |
 | `Status` | unary | full `WorkingCopy.Status` result (configured branch + detached `head` marker, staged/deleted/modified/untracked/missing/conflicts); `no_cache` passthrough |
 | `Stage` | unary | add/remove path lists → returns fresh status |
+| `Restore` | unary | discard unpushed changes for files/dirs → returns fresh status; staged paths refused |
 | `Update`, `Switch` | **server-streaming** | progress events → terminal result; `Switch` takes an optional `tag` to detach HEAD at a release tag instead of switching branches |
 | `Push` | **server-streaming** | message → progress → result (commit id/tree hash) |
 | `Merge`, `Revert` | **server-streaming** | incl. continue/skip/abort variants; conflicts returned as terminal event |

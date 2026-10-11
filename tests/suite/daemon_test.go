@@ -71,6 +71,24 @@ var _ = Describe("nipa serve", func() {
 		Expect(cli.Output()).NotTo(ContainSubstring("A  b.txt"))
 	})
 
+	It("restores changes through the daemon", func() {
+		project := newProject("daemon-restore")
+		seedRepo(orgSlug, project, map[string][]byte{"a.txt": []byte("v1\n")}, "seed")
+		parent := workspace()
+		dir := cloneRepo(parent, repoURLFor(orgSlug, project), "work")
+
+		d := startDaemon()
+		d.watch(dir)
+		writeText(dir, "a.txt", "local edit\n")
+
+		st := d.status(dir)
+		Expect(st.GetModified()).To(ContainElement("a.txt"))
+
+		restored := d.restore(dir, []string{"a.txt"})
+		Expect(restored.GetModified()).To(BeEmpty())
+		Expect(readText(dir, "a.txt")).To(Equal("v1\n"))
+	})
+
 	It("streams update results", func() {
 		project := newProject("daemon-update")
 		seedRepo(orgSlug, project, map[string][]byte{"a.txt": []byte("v1\n")}, "seed")

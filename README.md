@@ -47,6 +47,7 @@ Run `nipa <command> --help` for full details.
 | `nipa tag`                  | List the project's release tags. `-c <name> [-m <message>]` creates an immutable tag pointing at the checked-out commit (or `--branch <b>` / `--commit <id\|hash>`), `-d <name>` deletes one. |
 | `nipa add <path> [...]`     | Mark files (or everything inside directories) for the next push. Ignored files are skipped; `-f` stages them anyway. |
 | `nipa remove <path> [...]`  | Unmark files for the next push. `-a` unmarks everything.                    |
+| `nipa restore <path> [...]` | Discard unpushed changes to files (or everything inside directories), restoring them from the last synced tree; deleted tracked files come back. Refused for staged paths. |
 | `nipa status`               | Show the working copy status: `A` staged, `M` modified, `?` untracked, `!` missing, `C` conflicts. |
 | `nipa lock <path> [--branch]` | Lock a tracked binary file, or a directory prefix covering a whole editing pass, so only you can land it. Locks on the default branch are project-global; `--branch` scopes the lock elsewhere. |
 | `nipa lock list`            | List active binary file locks: path, scope, holder, acquisition time, and the merge request when one holds it. |

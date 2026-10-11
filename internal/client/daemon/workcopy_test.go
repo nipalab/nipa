@@ -10,14 +10,53 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/nipalab/nipa/internal/chunker"
 	clientDomain "github.com/nipalab/nipa/internal/client/domain"
 	"github.com/nipalab/nipa/internal/client/grpc/daemonpb"
 	"github.com/nipalab/nipa/internal/client/localrepo"
+	serverDomain "github.com/nipalab/nipa/internal/domain"
 )
 
 func writeWorkingFile(t *testing.T, root, rel, content string) {
 	t.Helper()
 	require.NoError(t, os.WriteFile(filepath.Join(root, filepath.FromSlash(rel)), []byte(content), 0o644))
+}
+
+// newTestCloneWithContent builds a clone whose tracked.txt has real stored
+// chunks, so restore can materialize it through the localrepo stack.
+func newTestCloneWithContent(t *testing.T, rel, content string) string {
+	t.Helper()
+	root := t.TempDir()
+	lr := localrepo.NewLocalRepoWithTarget(root)
+	require.NoError(t, lr.Init(root))
+	require.NoError(t, lr.SaveConfig(clientDomain.Config{
+		Url:    "https://nipa.example.com/default/default",
+		Branch: "main",
+	}))
+	data := []byte(content)
+	_, chunks, err := chunker.EncodeBytes(data, rel, false, chunker.EncodingRaw)
+	require.NoError(t, err)
+	hashes := make([]serverDomain.Hash, 0, len(chunks))
+	stored := make([]*serverDomain.ChunkData, 0, len(chunks))
+	wrapped := make([]serverDomain.Chunk, 0, len(chunks))
+	for _, c := range chunks {
+		hashes = append(hashes, c.Hash)
+		stored = append(stored, &serverDomain.ChunkData{Hash: c.Hash, Data: c.Data})
+		wrapped = append(wrapped, serverDomain.Chunk{Hash: c.Hash, SizeBytes: c.SizeBytes})
+	}
+	require.NoError(t, lr.StoreChunks(stored))
+	require.NoError(t, lr.SaveTree(&serverDomain.TreeNode{
+		Hash: serverDomain.Hash{0x01},
+		Name: "root",
+		FileChildren: []*serverDomain.File{{
+			Name:      rel,
+			Hash:      chunker.FileHash(hashes),
+			SizeBytes: int64(len(data)),
+			Chunks:    wrapped,
+		}},
+	}))
+	require.NoError(t, lr.Close())
+	return root
 }
 
 func TestServer_WatchRepoRejectsNonRepo(t *testing.T) {
@@ -126,6 +165,62 @@ func TestServer_StatusStageFlow(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []string{"tracked.txt"}, st.GetStaged())
 	require.Equal(t, []string{"untracked.txt"}, st.GetUntracked())
+}
+
+func TestServer_RestoreFlow(t *testing.T) {
+	root := newTestCloneWithContent(t, "tracked.txt", "hello")
+	srv := startTestServer(t, Options{})
+	ctx := authed(context.Background(), srv.Endpoint().Token)
+
+	_, err := srv.client.WatchRepo(ctx, &daemonpb.WatchRepoRequest{Root: root})
+	require.NoError(t, err)
+
+	writeWorkingFile(t, root, "tracked.txt", "edited")
+	st, err := srv.client.Status(ctx, &daemonpb.StatusRequest{Root: root})
+	require.NoError(t, err)
+	require.Equal(t, []string{"tracked.txt"}, st.GetModified())
+
+	st, err = srv.client.Restore(ctx, &daemonpb.RestoreRequest{Root: root, Paths: []string{"tracked.txt"}})
+	require.NoError(t, err)
+	require.Empty(t, st.GetModified())
+
+	data, err := os.ReadFile(filepath.Join(root, "tracked.txt"))
+	require.NoError(t, err)
+	require.Equal(t, "hello", string(data))
+}
+
+func TestServer_RestoreRejectsStagedFile(t *testing.T) {
+	root := newTestCloneWithContent(t, "tracked.txt", "hello")
+	srv := startTestServer(t, Options{})
+	ctx := authed(context.Background(), srv.Endpoint().Token)
+
+	_, err := srv.client.WatchRepo(ctx, &daemonpb.WatchRepoRequest{Root: root})
+	require.NoError(t, err)
+	writeWorkingFile(t, root, "tracked.txt", "edited")
+	_, err = srv.client.Stage(ctx, &daemonpb.StageRequest{Root: root, Add: []string{"tracked.txt"}})
+	require.NoError(t, err)
+
+	_, err = srv.client.Restore(ctx, &daemonpb.RestoreRequest{Root: root, Paths: []string{"tracked.txt"}})
+	require.NotEqual(t, codes.OK, status.Code(err))
+	require.Contains(t, status.Convert(err).Message(), "staged changes")
+
+	data, err := os.ReadFile(filepath.Join(root, "tracked.txt"))
+	require.NoError(t, err)
+	require.Equal(t, "edited", string(data))
+}
+
+func TestServer_RestoreRejectsUntrackedPath(t *testing.T) {
+	root := newTestCloneWithContent(t, "tracked.txt", "hello")
+	srv := startTestServer(t, Options{})
+	ctx := authed(context.Background(), srv.Endpoint().Token)
+
+	_, err := srv.client.WatchRepo(ctx, &daemonpb.WatchRepoRequest{Root: root})
+	require.NoError(t, err)
+	writeWorkingFile(t, root, "local.txt", "mine")
+
+	_, err = srv.client.Restore(ctx, &daemonpb.RestoreRequest{Root: root, Paths: []string{"local.txt"}})
+	require.NotEqual(t, codes.OK, status.Code(err))
+	require.Contains(t, status.Convert(err).Message(), "not tracked")
 }
 
 func TestServer_StatusDetachedTag(t *testing.T) {

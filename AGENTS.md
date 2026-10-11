@@ -50,7 +50,7 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   for non-API paths in `internal/serverapp` (`isAPIPath`).
 - **Client** (`internal/client/`): `cli` (cobra commands: clone, branch
   (`-a` list, `-c` create+switch, `-d` delete), tag (list, `-c` create, `-d`
-  delete), add, remove, status, push, update, switch (branch or `--tag`),
+  delete), add, remove, restore, status, push, update, switch (branch or `--tag`),
   merge, revert, log, diff, acl, group, sparse-checkout, mr, lock, unlock, serve), `usecase`
   (clone/login, push, update/switch (incl. sparse and detached-tag checkout),
   merge, revert, diff, log, tag management,
@@ -339,6 +339,16 @@ conflicts) and return; `--continue` commits the resolved step and resumes,
 `--skip` drops it, `--abort` restores the original tree/pin, `--no-commit`
 applies to the working copy without committing (single commit, `-m` sets the
 message). Reverts are forward-only; history is never rewritten.
+
+Flow for `nipa restore <path>...` (git-restore equivalent, `internal/client/usecase/restore.go`):
+`WorkingCopy.Restore` loads the local snapshot, expands file/directory targets
+over tracked paths (unknown paths error `not tracked`), refuses any target with
+staged changes ("push or reset them first" — staged content is not stored
+separately), then re-materializes the rest from the local object store through
+`materializeFile`, skipping files whose working hash already matches so mtimes
+stay stable; refreshed fingerprints are batched into `stat_cache`. Fully
+offline (chunks are cached in `.nipa/objects`); the daemon exposes it as the
+unary `Restore` RPC returning the refreshed status.
 
 Flow for `nipa diff [<rev1> [<rev2>]] [--] [<path>...]`: `cli/diff.go` splits
 revisions from paths (paths only after `--`; `<a>..<b>`/`<a>...<b>` expand to two

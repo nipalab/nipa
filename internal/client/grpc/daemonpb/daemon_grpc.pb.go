@@ -27,6 +27,7 @@ const (
 	NipaDaemon_ListRepos_FullMethodName                     = "/nipadaemon.NipaDaemon/ListRepos"
 	NipaDaemon_Status_FullMethodName                        = "/nipadaemon.NipaDaemon/Status"
 	NipaDaemon_Stage_FullMethodName                         = "/nipadaemon.NipaDaemon/Stage"
+	NipaDaemon_Restore_FullMethodName                       = "/nipadaemon.NipaDaemon/Restore"
 	NipaDaemon_Update_FullMethodName                        = "/nipadaemon.NipaDaemon/Update"
 	NipaDaemon_Switch_FullMethodName                        = "/nipadaemon.NipaDaemon/Switch"
 	NipaDaemon_Push_FullMethodName                          = "/nipadaemon.NipaDaemon/Push"
@@ -69,6 +70,7 @@ type NipaDaemonClient interface {
 	ListRepos(ctx context.Context, in *ListReposRequest, opts ...grpc.CallOption) (*ListReposResponse, error)
 	Status(ctx context.Context, in *StatusRequest, opts ...grpc.CallOption) (*StatusResponse, error)
 	Stage(ctx context.Context, in *StageRequest, opts ...grpc.CallOption) (*StatusResponse, error)
+	Restore(ctx context.Context, in *RestoreRequest, opts ...grpc.CallOption) (*StatusResponse, error)
 	Update(ctx context.Context, in *UpdateRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[OpEvent], error)
 	Switch(ctx context.Context, in *SwitchRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[OpEvent], error)
 	Push(ctx context.Context, in *PushRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[OpEvent], error)
@@ -181,6 +183,16 @@ func (c *nipaDaemonClient) Stage(ctx context.Context, in *StageRequest, opts ...
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(StatusResponse)
 	err := c.cc.Invoke(ctx, NipaDaemon_Stage_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nipaDaemonClient) Restore(ctx context.Context, in *RestoreRequest, opts ...grpc.CallOption) (*StatusResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StatusResponse)
+	err := c.cc.Invoke(ctx, NipaDaemon_Restore_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -533,6 +545,7 @@ type NipaDaemonServer interface {
 	ListRepos(context.Context, *ListReposRequest) (*ListReposResponse, error)
 	Status(context.Context, *StatusRequest) (*StatusResponse, error)
 	Stage(context.Context, *StageRequest) (*StatusResponse, error)
+	Restore(context.Context, *RestoreRequest) (*StatusResponse, error)
 	Update(*UpdateRequest, grpc.ServerStreamingServer[OpEvent]) error
 	Switch(*SwitchRequest, grpc.ServerStreamingServer[OpEvent]) error
 	Push(*PushRequest, grpc.ServerStreamingServer[OpEvent]) error
@@ -594,6 +607,9 @@ func (UnimplementedNipaDaemonServer) Status(context.Context, *StatusRequest) (*S
 }
 func (UnimplementedNipaDaemonServer) Stage(context.Context, *StageRequest) (*StatusResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Stage not implemented")
+}
+func (UnimplementedNipaDaemonServer) Restore(context.Context, *RestoreRequest) (*StatusResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Restore not implemented")
 }
 func (UnimplementedNipaDaemonServer) Update(*UpdateRequest, grpc.ServerStreamingServer[OpEvent]) error {
 	return status.Errorf(codes.Unimplemented, "method Update not implemented")
@@ -840,6 +856,24 @@ func _NipaDaemon_Stage_Handler(srv interface{}, ctx context.Context, dec func(in
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(NipaDaemonServer).Stage(ctx, req.(*StageRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NipaDaemon_Restore_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RestoreRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaDaemonServer).Restore(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaDaemon_Restore_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaDaemonServer).Restore(ctx, req.(*RestoreRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1344,6 +1378,10 @@ var NipaDaemon_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Stage",
 			Handler:    _NipaDaemon_Stage_Handler,
+		},
+		{
+			MethodName: "Restore",
+			Handler:    _NipaDaemon_Restore_Handler,
 		},
 		{
 			MethodName: "ProxyBranchList",

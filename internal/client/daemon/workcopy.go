@@ -81,6 +81,27 @@ func (s *Server) Stage(ctx context.Context, req *daemonpb.StageRequest) (*daemon
 	return statusToPB(status), nil
 }
 
+// Restore discards unpushed changes to the given files/directories and returns
+// the refreshed status.
+func (s *Server) Restore(ctx context.Context, req *daemonpb.RestoreRequest) (*daemonpb.StatusResponse, error) {
+	var status *clientDomain.Status
+	err := s.repos.withRepo(ctx, req.GetRoot(), false, func(rp *repo) error {
+		if err := rp.wc.Restore(ctx, req.GetPaths()); err != nil {
+			return err
+		}
+		st, err := rp.wc.Status(ctx)
+		if err != nil {
+			return err
+		}
+		status = st
+		return nil
+	})
+	if err != nil {
+		return nil, toStatusError(err)
+	}
+	return statusToPB(status), nil
+}
+
 func statusToPB(st *clientDomain.Status) *daemonpb.StatusResponse {
 	resp := &daemonpb.StatusResponse{
 		Branch:    st.Branch,
