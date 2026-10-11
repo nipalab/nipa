@@ -77,21 +77,28 @@ type OwnerStorage struct {
 }
 
 // AttributedSizes returns the stored size of every hash already linked to the
-// project. Hashes without a link are absent from the result.
+// project. Hashes without a link are absent from the result. The lookup is one
+// batched query: presign hands over the whole unpaginated ref list of a push.
 func (l *Ledger) AttributedSizes(ctx context.Context, projectID snow.ID, hashes []domain.Hash) (map[domain.Hash]int64, error) {
 	sizes := make(map[domain.Hash]int64, len(hashes))
+	if len(hashes) == 0 {
+		return sizes, nil
+	}
+	raw := make([][]byte, 0, len(hashes))
 	for _, hash := range hashes {
-		size, err := l.queries.GetProjectChunkSizeByHash(ctx, sqlcPostgres.GetProjectChunkSizeByHashParams{
-			ProjectID: projectID.Int64(),
-			Hash:      hash[:],
-		})
-		if errors.Is(err, sql.ErrNoRows) {
-			continue
-		}
-		if err != nil {
-			return nil, dbError(err)
-		}
-		sizes[hash] = size
+		raw = append(raw, append([]byte(nil), hash[:]...))
+	}
+	rows, err := l.queries.GetAttributedSizes(ctx, sqlcPostgres.GetAttributedSizesParams{
+		ProjectID: projectID.Int64(),
+		Hashes:    raw,
+	})
+	if err != nil {
+		return nil, dbError(err)
+	}
+	for _, row := range rows {
+		var hash domain.Hash
+		copy(hash[:], row.Hash)
+		sizes[hash] = row.SizeBytes
 	}
 	return sizes, nil
 }
@@ -147,6 +154,12 @@ func (l *Ledger) attribute(ctx context.Context, orgID, projectID snow.ID, chunks
 		owner, quota, err := l.ownerQuota(ctx, orgID)
 		if err != nil {
 			return err
+		}
+		// Serialize quota accounting per owner: without this, two concurrent
+		// confirms for the same owner can both read the same used bytes and
+		// both pass the quota check at read-committed isolation.
+		if err := l.queries.LockBillingOwner(ctx, owner.Int64()); err != nil {
+			return dbError(err)
 		}
 		var used int64
 		if quota > 0 {

@@ -8,6 +8,8 @@ package postgres
 import (
 	"context"
 	"database/sql"
+
+	"github.com/lib/pq"
 )
 
 const addOrgUsage = `-- name: AddOrgUsage :exec
@@ -79,6 +81,47 @@ func (q *Queries) GetActiveUserID(ctx context.Context, id int64) (int64, error) 
 	var id_2 int64
 	err := row.Scan(&id_2)
 	return id_2, err
+}
+
+const getAttributedSizes = `-- name: GetAttributedSizes :many
+SELECT ch.hash, pc.size_bytes
+FROM project_chunks pc
+JOIN chunks ch ON ch.id = pc.chunk_id
+WHERE pc.project_id = $1
+  AND ch.hash = ANY($2::bytea[])
+`
+
+type GetAttributedSizesParams struct {
+	ProjectID int64    `json:"project_id"`
+	Hashes    [][]byte `json:"hashes"`
+}
+
+type GetAttributedSizesRow struct {
+	Hash      []byte `json:"hash"`
+	SizeBytes int64  `json:"size_bytes"`
+}
+
+func (q *Queries) GetAttributedSizes(ctx context.Context, arg GetAttributedSizesParams) ([]GetAttributedSizesRow, error) {
+	rows, err := q.db.QueryContext(ctx, getAttributedSizes, arg.ProjectID, pq.Array(arg.Hashes))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetAttributedSizesRow
+	for rows.Next() {
+		var i GetAttributedSizesRow
+		if err := rows.Scan(&i.Hash, &i.SizeBytes); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getBillingOwner = `-- name: GetBillingOwner :one
@@ -153,25 +196,6 @@ func (q *Queries) GetOwnerUsage(ctx context.Context, userID int64) (int64, error
 	var used_bytes int64
 	err := row.Scan(&used_bytes)
 	return used_bytes, err
-}
-
-const getProjectChunkSizeByHash = `-- name: GetProjectChunkSizeByHash :one
-SELECT pc.size_bytes
-FROM project_chunks pc
-JOIN chunks ch ON ch.id = pc.chunk_id
-WHERE pc.project_id = $1 AND ch.hash = $2
-`
-
-type GetProjectChunkSizeByHashParams struct {
-	ProjectID int64  `json:"project_id"`
-	Hash      []byte `json:"hash"`
-}
-
-func (q *Queries) GetProjectChunkSizeByHash(ctx context.Context, arg GetProjectChunkSizeByHashParams) (int64, error) {
-	row := q.db.QueryRowContext(ctx, getProjectChunkSizeByHash, arg.ProjectID, arg.Hash)
-	var size_bytes int64
-	err := row.Scan(&size_bytes)
-	return size_bytes, err
 }
 
 const getProjectOrgID = `-- name: GetProjectOrgID :one
@@ -321,6 +345,15 @@ func (q *Queries) ListProjectUsage(ctx context.Context, orgID int64) ([]ListProj
 		return nil, err
 	}
 	return items, nil
+}
+
+const lockBillingOwner = `-- name: LockBillingOwner :exec
+SELECT pg_advisory_xact_lock($1::bigint)
+`
+
+func (q *Queries) LockBillingOwner(ctx context.Context, ownerID int64) error {
+	_, err := q.db.ExecContext(ctx, lockBillingOwner, ownerID)
+	return err
 }
 
 const rebuildProjectChunks = `-- name: RebuildProjectChunks :exec

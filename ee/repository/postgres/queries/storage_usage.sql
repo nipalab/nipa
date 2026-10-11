@@ -58,11 +58,15 @@ ORDER BY used_bytes DESC, o.slug;
 -- name: GetChunkIDByHash :one
 SELECT id, size_bytes FROM chunks WHERE hash = sqlc.arg(hash);
 
--- name: GetProjectChunkSizeByHash :one
-SELECT pc.size_bytes
+-- name: GetAttributedSizes :many
+SELECT ch.hash, pc.size_bytes
 FROM project_chunks pc
 JOIN chunks ch ON ch.id = pc.chunk_id
-WHERE pc.project_id = sqlc.arg(project_id) AND ch.hash = sqlc.arg(hash);
+WHERE pc.project_id = sqlc.arg(project_id)
+  AND ch.hash = ANY(sqlc.arg(hashes)::bytea[]);
+
+-- name: LockBillingOwner :exec
+SELECT pg_advisory_xact_lock(sqlc.arg(owner_id)::bigint);
 
 -- name: InsertProjectChunk :one
 INSERT INTO project_chunks (project_id, chunk_id, size_bytes)

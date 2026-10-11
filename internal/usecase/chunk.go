@@ -100,6 +100,12 @@ func (c *Chunk) Upload(ctx context.Context, hash domain.Hash, data []byte) (bool
 	}
 	if exists {
 		c.metrics.ObserveChunkOp("upload", "dedup")
+		// The content may be present without a metadata row (a direct upload
+		// whose confirm never ran); record it so callers that need the row
+		// (merge attribution) do not fail on dedup.
+		if err := c.chunkRepo.InsertChunkIfNotExists(ctx, hash, int64(len(data))); err != nil {
+			return false, err
+		}
 		return false, nil
 	}
 	if err := c.chunkStore.Put(ctx, hash, data); err != nil {

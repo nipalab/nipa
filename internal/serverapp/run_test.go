@@ -4,6 +4,7 @@ import (
 	"net"
 	"testing"
 
+	"github.com/emicklei/go-restful/v3"
 	"github.com/stretchr/testify/require"
 
 	"github.com/nipalab/nipa/internal/config"
@@ -32,5 +33,9 @@ func TestRunReturnsListenError(t *testing.T) {
 		ServerPort:    ln.Addr().(*net.TCPAddr).Port,
 	}
 
-	require.Error(t, Run(cfg, NewRegistry(Usecases{}), nil))
+	require.Error(t, Run(cfg, NewRegistry(Usecases{}), nil, WithRoutes(func(ws *restful.WebService) {
+		ws.Route(ws.GET("/extra").To(func(_ *restful.Request, resp *restful.Response) {
+			resp.WriteHeader(204)
+		}))
+	})))
 }

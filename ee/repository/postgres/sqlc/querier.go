@@ -72,6 +72,7 @@ type Querier interface {
 	FileLockListProject(ctx context.Context, projectID int64) ([]FileLockListProjectRow, error)
 	FileSetTree(ctx context.Context, arg FileSetTreeParams) error
 	GetActiveUserID(ctx context.Context, id int64) (int64, error)
+	GetAttributedSizes(ctx context.Context, arg GetAttributedSizesParams) ([]GetAttributedSizesRow, error)
 	GetBillingOwner(ctx context.Context, orgID int64) (int64, error)
 	GetChunkIDByHash(ctx context.Context, hash []byte) (GetChunkIDByHashRow, error)
 	GetOrgCreatedBy(ctx context.Context, orgID int64) (int64, error)
@@ -83,7 +84,6 @@ type Querier interface {
 	GetProject(ctx context.Context, id int64) (Project, error)
 	GetProjectByOrgIDAndID(ctx context.Context, arg GetProjectByOrgIDAndIDParams) (Project, error)
 	GetProjectByOrgIDAndSlug(ctx context.Context, arg GetProjectByOrgIDAndSlugParams) (Project, error)
-	GetProjectChunkSizeByHash(ctx context.Context, arg GetProjectChunkSizeByHashParams) (int64, error)
 	GetProjectOrgID(ctx context.Context, id int64) (int64, error)
 	GroupCreate(ctx context.Context, arg GroupCreateParams) (Group, error)
 	GroupGet(ctx context.Context, id int64) (Group, error)
@@ -99,6 +99,7 @@ type Querier interface {
 	ListProjectIDsByOrg(ctx context.Context, orgID int64) ([]int64, error)
 	ListProjectUsage(ctx context.Context, orgID int64) ([]ListProjectUsageRow, error)
 	ListProjectsByOrgId(ctx context.Context, orgID int64) ([]Project, error)
+	LockBillingOwner(ctx context.Context, ownerID int64) error
 	MergeRequestAssigneeAdd(ctx context.Context, arg MergeRequestAssigneeAddParams) error
 	MergeRequestAssigneeClear(ctx context.Context, mergeRequestID int64) error
 	MergeRequestAssigneeList(ctx context.Context, projectID int64) ([]MergeRequestAssigneeListRow, error)
