@@ -53,6 +53,14 @@ Release tags are exposed at `GET/POST …/tags` and `GET/DELETE …/tags/{name}`
 `listTags`/`createTag`/`deleteTag` in `web/src/api/endpoints.ts`. There is no
 Tags page in the SPA yet.
 
+## SSH keys API
+
+SSH public keys of the authenticated user are exposed at `GET/POST /api/v1/keys`
+and `DELETE /api/v1/keys/{id}` (`internal/http/api/ssh_key.go`). A key carries an
+optional `name` (falls back to the OpenSSH key comment when omitted) so users
+can identify it. Keys are the credential for the SSH-key login flow; the SPA has
+no keys page yet, but the profile page will list them.
+
 ## Organizations API
 
 `GET /api/v1/orgs` lists the caller's memberships; `POST /api/v1/orgs` creates

@@ -7,6 +7,7 @@ import (
 type usecaseContainer interface {
 	Auth() *usecase.Auth
 	User() *usecase.User
+	SSHKey() *usecase.SSHKey
 	Common() *usecase.Common
 	Permission() *usecase.Permission
 	Org() *usecase.Org

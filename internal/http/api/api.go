@@ -15,6 +15,7 @@ import (
 type usecaseContainer interface {
 	Auth() *usecase.Auth
 	User() *usecase.User
+	SSHKey() *usecase.SSHKey
 	Common() *usecase.Common
 	Permission() *usecase.Permission
 	Org() *usecase.Org
@@ -99,6 +100,7 @@ func (a *API) SetupRoute() http.Handler {
 		Consumes(restful.MIME_JSON).
 		Produces(restful.MIME_JSON)
 	setupUserRouter(apiWs, h)
+	setupSSHKeyRouter(apiWs, h)
 	setupProjectRouter(apiWs, h)
 	setupBrowserRouter(apiWs, h)
 	setupTagRouter(apiWs, h)

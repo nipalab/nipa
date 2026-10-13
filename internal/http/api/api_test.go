@@ -32,6 +32,7 @@ import (
 type testRegistry struct {
 	auth          *usecase.Auth
 	user          *usecase.User
+	sshKey        *usecase.SSHKey
 	common        *usecase.Common
 	permission    *usecase.Permission
 	org           *usecase.Org
@@ -50,6 +51,7 @@ type testRegistry struct {
 
 func (r *testRegistry) Auth() *usecase.Auth             { return r.auth }
 func (r *testRegistry) User() *usecase.User             { return r.user }
+func (r *testRegistry) SSHKey() *usecase.SSHKey         { return r.sshKey }
 func (r *testRegistry) Common() *usecase.Common         { return r.common }
 func (r *testRegistry) Permission() *usecase.Permission { return r.permission }
 func (r *testRegistry) Org() *usecase.Org               { return r.org }
@@ -162,6 +164,7 @@ func TestAPIRoutes(t *testing.T) {
 	reg := &testRegistry{
 		auth:          usecase.NewAuth("test-secret", stubPasswordHasher{}, userRepo, sqlite.NewAuthRepository(dbConn)),
 		user:          usecase.NewUser(node, userRepo, stubPasswordHasher{}),
+		sshKey:        usecase.NewSSHKey(node, sqlite.NewSSHKeyRepository(dbConn)),
 		common:        usecase.NewCommon(sqlite.NewOrgRepository(dbConn), sqlite.NewProjectRepository(dbConn)),
 		permission:    permissionUc,
 		org:           orgUc,

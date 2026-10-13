@@ -167,6 +167,7 @@ func main() {
 	reg := serverapp.NewRegistry(serverapp.Usecases{
 		Auth:               authUsecase,
 		User:               usecase.NewUser(snowUser, userRepo, passwordHasher),
+		SSHKey:             usecase.NewSSHKey(snowUser, postgres.NewSSHKeyRepository(dbConn)),
 		Common:             commonUsecase,
 		Branch:             branchUsecase,
 		Tag:                tagUsecase,

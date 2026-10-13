@@ -169,6 +169,12 @@ type Querier interface {
 	RebuildProjectChunks(ctx context.Context, projectID int64) error
 	RefreshTokenCreate(ctx context.Context, arg RefreshTokenCreateParams) (int64, error)
 	RefreshTokenDeleteByToken(ctx context.Context, token string) (RefreshToken, error)
+	SSHKeyCountByUser(ctx context.Context, userID int64) (int64, error)
+	SSHKeyCreate(ctx context.Context, arg SSHKeyCreateParams) (SshPublicKey, error)
+	SSHKeyDelete(ctx context.Context, arg SSHKeyDeleteParams) (int64, error)
+	SSHKeyGetByFingerprint(ctx context.Context, fingerprint string) (SshPublicKey, error)
+	SSHKeyGetByID(ctx context.Context, id int64) (SshPublicKey, error)
+	SSHKeyListByUser(ctx context.Context, userID int64) ([]SshPublicKey, error)
 	SetOrgUsageFromProjects(ctx context.Context, orgID int64) error
 	SetOwnerQuota(ctx context.Context, arg SetOwnerQuotaParams) error
 	SetProjectUsage(ctx context.Context, projectID int64) error

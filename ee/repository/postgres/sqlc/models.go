@@ -307,6 +307,17 @@ type SnowflakeNodeLease struct {
 	ExpiresAt  time.Time `json:"expires_at"`
 }
 
+type SshPublicKey struct {
+	ID          int64     `json:"id"`
+	UserID      int64     `json:"user_id"`
+	Name        string    `json:"name"`
+	KeyType     string    `json:"key_type"`
+	KeyBlob     string    `json:"key_blob"`
+	Fingerprint string    `json:"fingerprint"`
+	Comment     string    `json:"comment"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
 type Tag struct {
 	ID        int64     `json:"id"`
 	ProjectID int64     `json:"project_id"`

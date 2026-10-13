@@ -1,4 +1,5 @@
 DROP TABLE IF EXISTS email_deliveries;
+DROP TABLE IF EXISTS ssh_public_keys;
 DROP TABLE IF EXISTS snowflake_node_leases;
 DROP TABLE IF EXISTS org_usage;
 DROP TABLE IF EXISTS project_usage;
