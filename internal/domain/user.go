@@ -66,3 +66,10 @@ type RefreshToken struct {
 	ExpiresAt time.Time `json:"expires_at"`
 	CreatedAt time.Time `json:"created_at"`
 }
+
+type SSHLoginChallenge struct {
+	Email     string    `json:"email"`
+	Nonce     string    `json:"nonce"`
+	ExpiresAt time.Time `json:"expires_at"`
+	CreatedAt time.Time `json:"created_at"`
+}

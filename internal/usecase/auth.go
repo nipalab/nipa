@@ -2,18 +2,26 @@ package usecase
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/snow"
+	"github.com/nipalab/nipa/internal/sshkey"
 	"github.com/nipalab/nipa/internal/usecase/dto"
+	"golang.org/x/crypto/ssh"
 )
 
 const (
 	tokenExpirationMinutes = 30
 	refreshTokenExpiration = 60 * 24 * time.Hour
+	sshLoginChallengeTTL   = 60 * time.Second
+	sshLoginChallengeBytes = 32
+	sshLoginPayloadPrefix  = "nipa-login:v1:"
 )
 
 //go:generate go run go.uber.org/mock/mockgen -source=$GOFILE -destination=auth_mock_test.go -package=usecase
@@ -26,6 +34,13 @@ type userRepository interface {
 type authRepository interface {
 	SaveRefreshToken(ctx context.Context, userID snow.ID, refreshToken string, expiresAt time.Time) error
 	GetAndDeleteRefreshToken(ctx context.Context, refreshToken string) (*domain.RefreshToken, error)
+	CreateSSHLoginChallenge(ctx context.Context, email, nonce string, expiresAt time.Time) error
+	DeleteExpiredSSHLoginChallenges(ctx context.Context, before time.Time) error
+	ConsumeSSHLoginChallenge(ctx context.Context, nonce string) (*domain.SSHLoginChallenge, error)
+}
+
+type authSSHKeyRepository interface {
+	GetByFingerprint(ctx context.Context, fingerprint string) (*domain.SSHPublicKey, error)
 }
 
 type passwordHasher interface {
@@ -38,6 +53,7 @@ type Auth struct {
 	passwordHasher passwordHasher
 	userRepo       userRepository
 	authRepo       authRepository
+	sshKeyRepo     authSSHKeyRepository
 }
 
 func NewAuth(secret string, passwordHasher passwordHasher, userRepo userRepository, authRepo authRepository) *Auth {
@@ -47,6 +63,12 @@ func NewAuth(secret string, passwordHasher passwordHasher, userRepo userReposito
 		userRepo:       userRepo,
 		authRepo:       authRepo,
 	}
+}
+
+// WithSSHKeys enables SSH key login on this usecase.
+func (a *Auth) WithSSHKeys(repo authSSHKeyRepository) *Auth {
+	a.sshKeyRepo = repo
+	return a
 }
 
 func (a *Auth) LoginWithEmailPassword(ctx context.Context, email string, password string) (*dto.LoginResult, error) {
@@ -79,6 +101,99 @@ func (a *Auth) LoginWithRefreshToken(ctx context.Context, refreshToken string) (
 	}
 
 	return a.generateLoginResult(ctx, user)
+}
+
+func (a *Auth) BeginSSHKeyLogin(ctx context.Context, email string) (*dto.SSHKeyChallenge, error) {
+	email = strings.TrimSpace(email)
+	if email == "" {
+		return nil, domain.NewErrorUser("email must not be empty")
+	}
+	nonce, err := newSSHLoginNonce()
+	if err != nil {
+		return nil, domain.NewErrorInternalServer(err.Error())
+	}
+	now := time.Now()
+	if err := a.authRepo.DeleteExpiredSSHLoginChallenges(ctx, now); err != nil {
+		return nil, err
+	}
+	if err := a.authRepo.CreateSSHLoginChallenge(ctx, email, nonce, now.Add(sshLoginChallengeTTL)); err != nil {
+		return nil, err
+	}
+	return &dto.SSHKeyChallenge{
+		Nonce:     nonce,
+		ExpiresIn: int(sshLoginChallengeTTL.Seconds()),
+	}, nil
+}
+
+func (a *Auth) CompleteSSHKeyLogin(ctx context.Context, email, nonce string, publicKey, signature []byte) (*dto.LoginResult, error) {
+	email = strings.TrimSpace(email)
+	if email == "" {
+		return nil, domain.NewErrorUser("email must not be empty")
+	}
+	if nonce == "" {
+		return nil, domain.NewErrorUser("nonce must not be empty")
+	}
+	if len(publicKey) == 0 || len(signature) == 0 {
+		return nil, domain.NewErrorUser("public key and signature are required")
+	}
+	if a.sshKeyRepo == nil {
+		return nil, sshLoginFailed()
+	}
+
+	challenge, err := a.authRepo.ConsumeSSHLoginChallenge(ctx, nonce)
+	if err != nil {
+		if domain.IsErrorNotFound(err) {
+			return nil, sshLoginFailed()
+		}
+		return nil, err
+	}
+	if challenge.Email != email || challenge.ExpiresAt.Before(time.Now()) {
+		return nil, sshLoginFailed()
+	}
+
+	user, err := a.userRepo.GetByEmail(ctx, email)
+	if err != nil {
+		if domain.IsErrorNotFound(err) {
+			return nil, sshLoginFailed()
+		}
+		return nil, err
+	}
+
+	pub, err := ssh.ParsePublicKey(publicKey)
+	if err != nil {
+		return nil, sshLoginFailed()
+	}
+	if err := sshkey.ValidateSupported(pub); err != nil {
+		return nil, sshLoginFailed()
+	}
+
+	key, err := a.sshKeyRepo.GetByFingerprint(ctx, ssh.FingerprintSHA256(pub))
+	if err != nil {
+		if domain.IsErrorNotFound(err) {
+			return nil, sshLoginFailed()
+		}
+		return nil, err
+	}
+	if key.UserID != user.ID {
+		return nil, sshLoginFailed()
+	}
+
+	if err := sshkey.Verify(pub, []byte(sshLoginPayloadPrefix+nonce), signature); err != nil {
+		return nil, sshLoginFailed()
+	}
+	return a.generateLoginResult(ctx, user)
+}
+
+func sshLoginFailed() error {
+	return domain.NewErrorUser("invalid email or SSH key")
+}
+
+func newSSHLoginNonce() (string, error) {
+	buf := make([]byte, sshLoginChallengeBytes)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(buf), nil
 }
 
 func (a *Auth) Logout(ctx context.Context, refreshToken string) error {

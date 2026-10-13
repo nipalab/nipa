@@ -7,3 +7,8 @@ type LoginResult struct {
 	ExpiresIn        int    `json:"expires_in"`
 	RefreshExpiresIn int    `json:"-"`
 }
+
+type SSHKeyChallenge struct {
+	Nonce     string `json:"nonce"`
+	ExpiresIn int    `json:"expires_in"`
+}

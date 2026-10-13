@@ -485,6 +485,13 @@ CREATE TABLE ssh_public_keys (
 
 CREATE INDEX idx_ssh_public_keys_user ON ssh_public_keys(user_id);
 
+CREATE TABLE ssh_login_challenges (
+    email      TEXT NOT NULL,
+    nonce      TEXT NOT NULL UNIQUE,
+    expires_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 INSERT INTO users (id, name, email, password, is_super_admin) VALUES (1, 'Super Admin', 'nipa', '$2a$10$ErgrBnd6ahfz6eZkVzfnlu6dcE4T0HUcxvAjwmI0ItFsMReHVCdYO', TRUE);
 INSERT INTO organizations (id, slug, name, created_by_user_id) VALUES (1, 'default', 'Default Organization', 1);
 INSERT INTO projects (id, org_id, slug, name) VALUES (1, 1, 'default', 'Default Project');

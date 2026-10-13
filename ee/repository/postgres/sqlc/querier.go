@@ -175,6 +175,9 @@ type Querier interface {
 	SSHKeyGetByFingerprint(ctx context.Context, fingerprint string) (SshPublicKey, error)
 	SSHKeyGetByID(ctx context.Context, id int64) (SshPublicKey, error)
 	SSHKeyListByUser(ctx context.Context, userID int64) ([]SshPublicKey, error)
+	SSHLoginChallengeConsume(ctx context.Context, nonce string) (SshLoginChallenge, error)
+	SSHLoginChallengeCreate(ctx context.Context, arg SSHLoginChallengeCreateParams) error
+	SSHLoginChallengeDeleteExpired(ctx context.Context, expiresAt time.Time) (int64, error)
 	SetOrgUsageFromProjects(ctx context.Context, orgID int64) error
 	SetOwnerQuota(ctx context.Context, arg SetOwnerQuotaParams) error
 	SetProjectUsage(ctx context.Context, projectID int64) error

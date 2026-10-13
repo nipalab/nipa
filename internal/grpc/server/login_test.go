@@ -30,6 +30,14 @@ type stubAuthRepo struct {
 	saveErr      error
 	refreshErr   error
 	refreshToken *domain.RefreshToken
+
+	challengeErr  error
+	challenge     *domain.SSHLoginChallenge
+	consumeErr    error
+	sweepErr      error
+	createdEmail  string
+	createdNonce  string
+	createdExpiry time.Time
 }
 
 func (s *stubAuthRepo) SaveRefreshToken(_ context.Context, _ snow.ID, _ string, _ time.Time) error {
@@ -38,6 +46,30 @@ func (s *stubAuthRepo) SaveRefreshToken(_ context.Context, _ snow.ID, _ string, 
 
 func (s *stubAuthRepo) GetAndDeleteRefreshToken(_ context.Context, _ string) (*domain.RefreshToken, error) {
 	return s.refreshToken, s.refreshErr
+}
+
+func (s *stubAuthRepo) CreateSSHLoginChallenge(_ context.Context, email, nonce string, expiresAt time.Time) error {
+	s.createdEmail = email
+	s.createdNonce = nonce
+	s.createdExpiry = expiresAt
+	return s.challengeErr
+}
+
+func (s *stubAuthRepo) DeleteExpiredSSHLoginChallenges(_ context.Context, _ time.Time) error {
+	return s.sweepErr
+}
+
+func (s *stubAuthRepo) ConsumeSSHLoginChallenge(_ context.Context, _ string) (*domain.SSHLoginChallenge, error) {
+	return s.challenge, s.consumeErr
+}
+
+type stubSSHKeyRepo struct {
+	key *domain.SSHPublicKey
+	err error
+}
+
+func (s *stubSSHKeyRepo) GetByFingerprint(_ context.Context, _ string) (*domain.SSHPublicKey, error) {
+	return s.key, s.err
 }
 
 type stubPasswordHasher struct{}

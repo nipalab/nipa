@@ -97,6 +97,49 @@ func (m *MockauthRepository) EXPECT() *MockauthRepositoryMockRecorder {
 	return m.recorder
 }
 
+// ConsumeSSHLoginChallenge mocks base method.
+func (m *MockauthRepository) ConsumeSSHLoginChallenge(ctx context.Context, nonce string) (*domain.SSHLoginChallenge, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ConsumeSSHLoginChallenge", ctx, nonce)
+	ret0, _ := ret[0].(*domain.SSHLoginChallenge)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ConsumeSSHLoginChallenge indicates an expected call of ConsumeSSHLoginChallenge.
+func (mr *MockauthRepositoryMockRecorder) ConsumeSSHLoginChallenge(ctx, nonce any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ConsumeSSHLoginChallenge", reflect.TypeOf((*MockauthRepository)(nil).ConsumeSSHLoginChallenge), ctx, nonce)
+}
+
+// CreateSSHLoginChallenge mocks base method.
+func (m *MockauthRepository) CreateSSHLoginChallenge(ctx context.Context, email, nonce string, expiresAt time.Time) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateSSHLoginChallenge", ctx, email, nonce, expiresAt)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CreateSSHLoginChallenge indicates an expected call of CreateSSHLoginChallenge.
+func (mr *MockauthRepositoryMockRecorder) CreateSSHLoginChallenge(ctx, email, nonce, expiresAt any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateSSHLoginChallenge", reflect.TypeOf((*MockauthRepository)(nil).CreateSSHLoginChallenge), ctx, email, nonce, expiresAt)
+}
+
+// DeleteExpiredSSHLoginChallenges mocks base method.
+func (m *MockauthRepository) DeleteExpiredSSHLoginChallenges(ctx context.Context, before time.Time) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteExpiredSSHLoginChallenges", ctx, before)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteExpiredSSHLoginChallenges indicates an expected call of DeleteExpiredSSHLoginChallenges.
+func (mr *MockauthRepositoryMockRecorder) DeleteExpiredSSHLoginChallenges(ctx, before any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteExpiredSSHLoginChallenges", reflect.TypeOf((*MockauthRepository)(nil).DeleteExpiredSSHLoginChallenges), ctx, before)
+}
+
 // GetAndDeleteRefreshToken mocks base method.
 func (m *MockauthRepository) GetAndDeleteRefreshToken(ctx context.Context, refreshToken string) (*domain.RefreshToken, error) {
 	m.ctrl.T.Helper()
@@ -124,6 +167,45 @@ func (m *MockauthRepository) SaveRefreshToken(ctx context.Context, userID snow.I
 func (mr *MockauthRepositoryMockRecorder) SaveRefreshToken(ctx, userID, refreshToken, expiresAt any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SaveRefreshToken", reflect.TypeOf((*MockauthRepository)(nil).SaveRefreshToken), ctx, userID, refreshToken, expiresAt)
+}
+
+// MockauthSSHKeyRepository is a mock of authSSHKeyRepository interface.
+type MockauthSSHKeyRepository struct {
+	ctrl     *gomock.Controller
+	recorder *MockauthSSHKeyRepositoryMockRecorder
+	isgomock struct{}
+}
+
+// MockauthSSHKeyRepositoryMockRecorder is the mock recorder for MockauthSSHKeyRepository.
+type MockauthSSHKeyRepositoryMockRecorder struct {
+	mock *MockauthSSHKeyRepository
+}
+
+// NewMockauthSSHKeyRepository creates a new mock instance.
+func NewMockauthSSHKeyRepository(ctrl *gomock.Controller) *MockauthSSHKeyRepository {
+	mock := &MockauthSSHKeyRepository{ctrl: ctrl}
+	mock.recorder = &MockauthSSHKeyRepositoryMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockauthSSHKeyRepository) EXPECT() *MockauthSSHKeyRepositoryMockRecorder {
+	return m.recorder
+}
+
+// GetByFingerprint mocks base method.
+func (m *MockauthSSHKeyRepository) GetByFingerprint(ctx context.Context, fingerprint string) (*domain.SSHPublicKey, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetByFingerprint", ctx, fingerprint)
+	ret0, _ := ret[0].(*domain.SSHPublicKey)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetByFingerprint indicates an expected call of GetByFingerprint.
+func (mr *MockauthSSHKeyRepositoryMockRecorder) GetByFingerprint(ctx, fingerprint any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByFingerprint", reflect.TypeOf((*MockauthSSHKeyRepository)(nil).GetByFingerprint), ctx, fingerprint)
 }
 
 // MockpasswordHasher is a mock of passwordHasher interface.
