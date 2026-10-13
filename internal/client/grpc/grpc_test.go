@@ -97,6 +97,13 @@ type fakeServer struct {
 	lastGetTagReq       *pb.GetTagByNameRequest
 	lastTreeHash        string
 	lastCommitID        string
+	sshBeginErr         error
+	sshCompleteErr      error
+	sshNonce            string
+	lastSSHEmail        string
+	lastSSHNonce        string
+	lastSSHPublicKey    []byte
+	lastSSHSignature    []byte
 }
 
 func (f *fakeServer) GetDefaultBranch(_ context.Context, _ *pb.GetDefaultBranchRequest) (*pb.GetBranchResponse, error) {
@@ -166,6 +173,29 @@ func (f *fakeServer) LoginWithRefreshToken(_ context.Context, req *pb.LoginWithR
 	f.lastRefreshToken = req.GetRefreshToken()
 	if f.refreshErr != nil {
 		return nil, f.refreshErr
+	}
+	return &pb.LoginResponse{
+		AccessToken:  f.accessToken,
+		RefreshToken: f.refreshToken,
+		ExpiresIn:    f.expiresIn,
+	}, nil
+}
+
+func (f *fakeServer) BeginLoginSSHKey(_ context.Context, req *pb.BeginLoginSSHKeyRequest) (*pb.BeginLoginSSHKeyResponse, error) {
+	f.lastSSHEmail = req.GetEmail()
+	if f.sshBeginErr != nil {
+		return nil, f.sshBeginErr
+	}
+	return &pb.BeginLoginSSHKeyResponse{Nonce: f.sshNonce, ExpiresIn: 60}, nil
+}
+
+func (f *fakeServer) CompleteLoginSSHKey(_ context.Context, req *pb.CompleteLoginSSHKeyRequest) (*pb.LoginResponse, error) {
+	f.lastSSHEmail = req.GetEmail()
+	f.lastSSHNonce = req.GetNonce()
+	f.lastSSHPublicKey = req.GetPublicKey()
+	f.lastSSHSignature = req.GetSignature()
+	if f.sshCompleteErr != nil {
+		return nil, f.sshCompleteErr
 	}
 	return &pb.LoginResponse{
 		AccessToken:  f.accessToken,
@@ -1116,4 +1146,71 @@ func TestClient_GetCommitLog_NotConnected(t *testing.T) {
 	_, err := c.GetCommitLog(context.Background(), "default", "sample", "main", nil, 10)
 	require.Error(t, err)
 	require.Equal(t, "not connected to a nipa server", err.Error())
+}
+
+func TestClient_BeginLoginSSHKey(t *testing.T) {
+	addr := startTestServer(t, &fakeServer{sshNonce: "nonce-1"})
+	c := NewClient(NewTransport(), &stubSession{getTokenErr: errors.New("no token stored")})
+	require.NoError(t, c.Connect(context.Background(), addr))
+
+	got, err := c.BeginLoginSSHKey(context.Background(), addr, "alice@example.com")
+	require.NoError(t, err)
+	require.Equal(t, "nonce-1", got.Nonce)
+	require.Equal(t, 60, got.ExpiresIn)
+}
+
+func TestClient_BeginLoginSSHKey_ServerError(t *testing.T) {
+	addr := startTestServer(t, &fakeServer{sshBeginErr: status.Error(codes.InvalidArgument, "email must not be empty")})
+	c := NewClient(NewTransport(), &stubSession{})
+	require.NoError(t, c.Connect(context.Background(), addr))
+
+	_, err := c.BeginLoginSSHKey(context.Background(), addr, "")
+	require.Error(t, err)
+
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 400, domErr.Code)
+}
+
+func TestClient_CompleteLoginSSHKey(t *testing.T) {
+	srv := &fakeServer{accessToken: "access", refreshToken: "refresh", expiresIn: 1800}
+	addr := startTestServer(t, srv)
+	c := NewClient(NewTransport(), &stubSession{getTokenErr: errors.New("no token stored")})
+	require.NoError(t, c.Connect(context.Background(), addr))
+
+	got, err := c.CompleteLoginSSHKey(context.Background(), addr, "alice@example.com", "nonce-1", []byte("pub"), []byte("sig"))
+	require.NoError(t, err)
+	require.Equal(t, &domain.LoginResult{
+		AccessToken:  "access",
+		RefreshToken: "refresh",
+		ExpiresIn:    1800,
+		Host:         addr,
+	}, got)
+	require.Equal(t, "alice@example.com", srv.lastSSHEmail)
+	require.Equal(t, "nonce-1", srv.lastSSHNonce)
+	require.Equal(t, []byte("pub"), srv.lastSSHPublicKey)
+	require.Equal(t, []byte("sig"), srv.lastSSHSignature)
+}
+
+func TestClient_CompleteLoginSSHKey_ServerError(t *testing.T) {
+	addr := startTestServer(t, &fakeServer{sshCompleteErr: status.Error(codes.InvalidArgument, "invalid email or SSH key")})
+	c := NewClient(NewTransport(), &stubSession{})
+	require.NoError(t, c.Connect(context.Background(), addr))
+
+	_, err := c.CompleteLoginSSHKey(context.Background(), addr, "alice@example.com", "nonce", []byte("pub"), []byte("sig"))
+	require.Error(t, err)
+
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 400, domErr.Code)
+}
+
+func TestClient_SSHLoginMethods_NotConnected(t *testing.T) {
+	c := NewClient(NewTransport(), &stubSession{})
+
+	_, err := c.BeginLoginSSHKey(context.Background(), "example.com", "alice@example.com")
+	require.ErrorContains(t, err, "not connected to a nipa server")
+
+	_, err = c.CompleteLoginSSHKey(context.Background(), "example.com", "alice@example.com", "nonce", []byte("pub"), []byte("sig"))
+	require.ErrorContains(t, err, "not connected to a nipa server")
 }

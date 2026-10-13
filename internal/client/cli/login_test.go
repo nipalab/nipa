@@ -6,6 +6,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/pem"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -19,12 +20,24 @@ import (
 )
 
 type fakeSSHExecutor struct {
-	sshResult *domain.LoginResult
-	sshErr    error
-	lastEmail string
+	sshResult      *domain.LoginResult
+	sshErr         error
+	passwordResult *domain.LoginResult
+	passwordErr    error
+	lastEmail      string
+	lastUsername   string
+	lastPassword   string
 }
 
-func (f *fakeSSHExecutor) LoginWithUsernamePassword(_ context.Context, _, _, _ string) (*domain.LoginResult, error) {
+func (f *fakeSSHExecutor) LoginWithUsernamePassword(_ context.Context, _, username, password string) (*domain.LoginResult, error) {
+	f.lastUsername = username
+	f.lastPassword = password
+	if f.passwordErr != nil {
+		return nil, f.passwordErr
+	}
+	if f.passwordResult != nil {
+		return f.passwordResult, nil
+	}
 	return &domain.LoginResult{AccessToken: "password-tok"}, nil
 }
 
@@ -178,4 +191,43 @@ func TestLoginCmd_SSHFailureWithExplicitKey(t *testing.T) {
 		"--ssh-key", keyPath,
 	)
 	require.ErrorContains(t, err, "invalid email or SSH key")
+}
+
+func TestLoginCmd_InvalidRepoURL(t *testing.T) {
+	isolateLoginEnv(t)
+	repo := setupRepoURL(t, "main", "not-a-url")
+	cli, _, _ := newLoginCli(&fakeSSHExecutor{})
+
+	_, err := runLoginCmd(t, cli, repo,
+		"--username", "alice@example.com",
+		"--ssh-key", writeLoginTestKey(t),
+	)
+	require.ErrorContains(t, err, "invalid URL scheme")
+}
+
+func TestLoginCmd_ConnectError(t *testing.T) {
+	isolateLoginEnv(t)
+	cli, connector, _ := newLoginCli(&fakeSSHExecutor{})
+	connector.err = errors.New("connection refused")
+
+	_, err := runLoginCmd(t, cli, "",
+		"--host", "nipa.example.com",
+		"--username", "alice@example.com",
+		"--ssh-key", writeLoginTestKey(t),
+	)
+	require.ErrorContains(t, err, "connection refused")
+}
+
+func TestLoginCmd_UsernamePromptError(t *testing.T) {
+	isolateLoginEnv(t)
+	cli, _, _ := newLoginCli(&fakeSSHExecutor{})
+
+	reader, writer, err := os.Pipe()
+	require.NoError(t, err)
+	require.NoError(t, writer.Close())
+	t.Cleanup(func() { _ = reader.Close() })
+	withStdin(t, reader)
+
+	_, err = runLoginCmd(t, cli, "", "--host", "nipa.example.com")
+	require.Error(t, err)
 }

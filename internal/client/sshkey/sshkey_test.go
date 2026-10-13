@@ -4,6 +4,8 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/pem"
+	"errors"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -209,4 +211,91 @@ func serveTestAgent(t *testing.T) string {
 
 	t.Setenv("SSH_AUTH_SOCK", socket)
 	return socket
+}
+
+type failingSigner struct{}
+
+func (failingSigner) PublicKey() ssh.PublicKey { return nil }
+
+func (failingSigner) Sign(io.Reader, []byte) (*ssh.Signature, error) {
+	return nil, errors.New("sign failed")
+}
+
+func TestSignPayload_SignError(t *testing.T) {
+	_, err := Signer{Signer: failingSigner{}}.SignPayload([]byte("payload"))
+	require.ErrorContains(t, err, "sign failed")
+}
+
+func TestResolve_MalformedConfig(t *testing.T) {
+	home := isolateHome(t)
+	configDir := filepath.Join(home, ".config", "nipa")
+	require.NoError(t, os.MkdirAll(configDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(configDir, "config.json"), []byte("{invalid"), 0o600))
+
+	_, err := Resolve("", nil)
+	require.ErrorContains(t, err, "parse")
+}
+
+func TestResolve_PassphrasePromptError(t *testing.T) {
+	home := isolateHome(t)
+	path := writePrivateKey(t, home, "id_ed25519", generateKey(t), "secret")
+
+	_, err := Resolve(path, func(string) (string, error) { return "", errors.New("no tty") })
+	require.ErrorContains(t, err, "no tty")
+}
+
+func TestResolve_NoHomeDirectory(t *testing.T) {
+	home := isolateHome(t)
+	t.Setenv("HOME", "")
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+
+	signers, err := Resolve("", nil)
+	require.NoError(t, err)
+	require.Empty(t, signers)
+}
+
+func TestResolve_AgentSocketUnavailable(t *testing.T) {
+	isolateHome(t)
+	t.Setenv("SSH_AUTH_SOCK", filepath.Join(t.TempDir(), "missing.sock"))
+
+	signers, err := Resolve("", nil)
+	require.NoError(t, err)
+	require.Empty(t, signers)
+}
+
+func TestResolve_AgentListError(t *testing.T) {
+	isolateHome(t)
+
+	dir, err := os.MkdirTemp("", "nipa-agent-bad")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	socket := filepath.Join(dir, "agent.sock")
+
+	listener, err := net.Listen("unix", socket)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = listener.Close() })
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			_ = conn.Close()
+		}
+	}()
+	t.Setenv("SSH_AUTH_SOCK", socket)
+
+	signers, err := Resolve("", nil)
+	require.NoError(t, err)
+	require.Empty(t, signers)
+}
+
+func TestAgentSigner_Sign_SocketUnavailable(t *testing.T) {
+	priv := generateKey(t)
+	pub, err := ssh.NewPublicKey(priv.Public())
+	require.NoError(t, err)
+
+	signer := agentSigner{socket: filepath.Join(t.TempDir(), "missing.sock"), pub: pub}
+	_, err = signer.Sign(rand.Reader, []byte("payload"))
+	require.Error(t, err)
 }

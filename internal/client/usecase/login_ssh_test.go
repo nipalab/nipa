@@ -4,7 +4,9 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"encoding/base64"
 	"errors"
+	"io"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -76,7 +78,16 @@ type stubSplitInput struct {
 	username         string
 	password         string
 	err              error
+	passwordErr      error
 	passwordPrompted bool
+}
+
+type failingSigner struct{}
+
+func (failingSigner) PublicKey() ssh.PublicKey { return nil }
+
+func (failingSigner) Sign(io.Reader, []byte) (*ssh.Signature, error) {
+	return nil, errors.New("signing failed")
 }
 
 func (s *stubSplitInput) PromptUsername() (string, error) {
@@ -95,6 +106,9 @@ func (s *stubSplitInput) PromptUsernameAndPassword() (string, string, error) {
 
 func (s *stubSplitInput) PromptPassword() (string, error) {
 	s.passwordPrompted = true
+	if s.passwordErr != nil {
+		return "", s.passwordErr
+	}
 	if s.err != nil {
 		return "", s.err
 	}
@@ -330,4 +344,160 @@ func TestSession_Refresh_PreservesEmail(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "new-access", token)
 	require.Equal(t, "alice@example.com", storage.savedTokens[0].Email)
+}
+
+func TestAuth_LoginWithSSHKey_SignerFailureTriesNext(t *testing.T) {
+	executor := &stubSSHExecutor{results: []*domain.LoginResult{{AccessToken: "tok", Host: "h"}}}
+	storage := &stubSecureStorage{}
+	auth := newSSHTestAuth(executor, storage)
+
+	broken := sshkey.Signer{Signer: failingSigner{}, Name: "broken"}
+	signers := append([]sshkey.Signer{broken}, testSSHSigner(t, "good"))
+
+	err := auth.LoginWithSSHKey(context.Background(), "example.com", "alice@example.com", signers)
+	require.NoError(t, err)
+	require.Equal(t, 1, executor.completeCalls)
+	require.Equal(t, "tok", storage.savedTokens[0].AccessToken)
+}
+
+func TestLoginWithSSHKey_NoSignersAvailable(t *testing.T) {
+	_, err := loginWithSSHKey(context.Background(), &stubSSHExecutor{}, "example.com", "alice@example.com", nil)
+
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 400, domErr.Code)
+	require.Equal(t, "no SSH key available for login", domErr.Message)
+}
+
+func TestAuth_IsLoggedIn_InvalidTokens(t *testing.T) {
+	cases := map[string]string{
+		"not a jwt":  "invalid",
+		"bad base64": "a.!!!.c",
+		"bad claims": "a." + base64.RawURLEncoding.EncodeToString([]byte("not json")) + ".c",
+	}
+	for name, token := range cases {
+		storage := &stubSecureStorage{loadResult: &domain.LoginResult{AccessToken: token}}
+		auth := NewAuth(&stubLoginExecutor{}, storage, nil)
+
+		loggedIn, err := auth.isLoggedIn("example.com")
+		require.False(t, loggedIn, name)
+		require.Error(t, err, name)
+	}
+}
+
+func TestAuth_MakeSureLoggedIn_UsernamePromptError(t *testing.T) {
+	executor := &stubFullExecutor{
+		stubLoginExecutor: &stubLoginExecutor{},
+		stubSSHExecutor:   &stubSSHExecutor{},
+	}
+	storage := &stubSecureStorage{loadErr: errors.New("no token")}
+	input := &stubSplitInput{err: errors.New("stdin closed")}
+	auth := NewAuth(executor, storage, input).
+		WithSSHLogin(func() ([]sshkey.Signer, error) { return testSigners(t, "key"), nil })
+
+	err := auth.MakeSureLoggedIn(context.Background(), "example.com")
+	require.ErrorContains(t, err, "stdin closed")
+}
+
+func TestAuth_MakeSureLoggedIn_PasswordPromptError(t *testing.T) {
+	executor := &stubFullExecutor{
+		stubLoginExecutor: &stubLoginExecutor{},
+		stubSSHExecutor:   &stubSSHExecutor{},
+	}
+	storage := &stubSecureStorage{loadErr: errors.New("no token")}
+	input := &stubSplitInput{username: "alice@example.com", passwordErr: errors.New("no tty")}
+	auth := NewAuth(executor, storage, input).
+		WithSSHLogin(func() ([]sshkey.Signer, error) { return nil, nil })
+
+	err := auth.MakeSureLoggedIn(context.Background(), "example.com")
+	require.ErrorContains(t, err, "no tty")
+}
+
+func TestSession_Refresh_LoadError(t *testing.T) {
+	storage := &stubSecureStorage{loadErr: errors.New("no token")}
+	session := NewSession(storage, &stubRefreshExecutor{})
+
+	_, err := session.Refresh(context.Background(), "example.com")
+	require.ErrorContains(t, err, "no token")
+}
+
+func TestSession_Reauth_EmptyUsername(t *testing.T) {
+	storage := &stubSecureStorage{loadResult: &domain.LoginResult{RefreshToken: "rt", Host: "example.com"}}
+	executor := &stubRefreshExecutor{err: domain.NewUserError("refresh token expired")}
+	session := NewSession(storage, executor, &stubUserInput{username: "", password: "secret"})
+
+	_, err := session.Refresh(context.Background(), "example.com")
+	require.ErrorContains(t, err, "username cannot be empty")
+}
+
+func TestSession_Reauth_SSHNotSupported(t *testing.T) {
+	storage := &stubSecureStorage{loadResult: &domain.LoginResult{
+		RefreshToken: "rt",
+		Email:        "alice@example.com",
+		Host:         "example.com",
+	}}
+	executor := &stubRefreshExecutor{err: domain.NewUserError("refresh token expired")}
+	session := NewSession(storage, executor).
+		WithSSHLogin(func() ([]sshkey.Signer, error) { return testSigners(t, "key"), nil })
+
+	_, err := session.Refresh(context.Background(), "example.com")
+	require.ErrorContains(t, err, "refresh token expired")
+}
+
+func TestSession_Reauth_ResolverError(t *testing.T) {
+	storage := &stubSecureStorage{loadResult: &domain.LoginResult{
+		RefreshToken: "rt",
+		Email:        "alice@example.com",
+		Host:         "example.com",
+	}}
+	executor := &stubSSHSessionExecutor{
+		refresh: &stubRefreshExecutor{err: domain.NewUserError("refresh token expired")},
+		ssh:     &stubSSHExecutor{},
+	}
+	session := NewSession(storage, executor).
+		WithSSHLogin(func() ([]sshkey.Signer, error) { return nil, errors.New("config broken") })
+
+	_, err := session.Refresh(context.Background(), "example.com")
+	require.ErrorContains(t, err, "refresh token expired")
+	require.Zero(t, executor.ssh.completeCalls)
+}
+
+func TestSession_Reauth_SSHFailureFallsBackToCause(t *testing.T) {
+	storage := &stubSecureStorage{loadResult: &domain.LoginResult{
+		RefreshToken: "rt",
+		Email:        "alice@example.com",
+		Host:         "example.com",
+	}}
+	executor := &stubSSHSessionExecutor{
+		refresh: &stubRefreshExecutor{err: domain.NewUserError("refresh token expired")},
+		ssh: &stubSSHExecutor{
+			completeErrs: []error{domain.NewUserError("invalid email or SSH key")},
+		},
+	}
+	session := NewSession(storage, executor).
+		WithSSHLogin(func() ([]sshkey.Signer, error) { return testSigners(t, "key"), nil })
+
+	_, err := session.Refresh(context.Background(), "example.com")
+	require.ErrorContains(t, err, "refresh token expired")
+	require.Equal(t, 1, executor.ssh.completeCalls)
+}
+
+func TestSession_Reauth_SaveError(t *testing.T) {
+	storage := &stubSecureStorage{
+		saveErr: errors.New("keyring locked"),
+		loadResult: &domain.LoginResult{
+			RefreshToken: "rt",
+			Email:        "alice@example.com",
+			Host:         "example.com",
+		},
+	}
+	executor := &stubSSHSessionExecutor{
+		refresh: &stubRefreshExecutor{err: domain.NewUserError("refresh token expired")},
+		ssh:     &stubSSHExecutor{results: []*domain.LoginResult{{AccessToken: "ssh-access", Host: "example.com"}}},
+	}
+	session := NewSession(storage, executor).
+		WithSSHLogin(func() ([]sshkey.Signer, error) { return testSigners(t, "key"), nil })
+
+	_, err := session.Refresh(context.Background(), "example.com")
+	require.ErrorContains(t, err, "refresh token expired")
 }
