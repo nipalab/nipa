@@ -52,7 +52,7 @@ func (s *SSHKey) Add(ctx context.Context, userID snow.ID, name, publicKey string
 		return nil, domain.NewErrorUser(err.Error())
 	}
 	if name == "" {
-		name = parsed.Comment
+		name = truncateRunes(parsed.Comment, maxSSHKeyNameRunes)
 	}
 	if existing, err := s.repo.GetByFingerprint(ctx, parsed.Fingerprint); err == nil {
 		if existing.UserID == userID {
@@ -102,6 +102,13 @@ func (s *SSHKey) Delete(ctx context.Context, userID, keyID snow.ID) error {
 		return domain.NewErrorNotFound("SSH key not found")
 	}
 	return s.repo.Delete(ctx, userID, keyID)
+}
+
+func truncateRunes(s string, max int) string {
+	if utf8.RuneCountInString(s) <= max {
+		return s
+	}
+	return string([]rune(s)[:max])
 }
 
 func requireSelfOrAdmin(ctx context.Context, userID snow.ID) error {

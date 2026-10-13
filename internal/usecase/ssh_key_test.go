@@ -96,6 +96,33 @@ func TestSSHKey_Add_NameFallsBackToComment(t *testing.T) {
 	require.Equal(t, "alice@laptop", captured.Name)
 }
 
+func TestSSHKey_Add_LongCommentFallbackTruncated(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	repo := NewMocksshKeyRepository(ctrl)
+	uc := NewSSHKey(newTestBranchNode(t), repo)
+
+	repo.EXPECT().
+		GetByFingerprint(gomock.Any(), gomock.Any()).
+		Return(nil, domain.NewErrorRecordNotFound())
+	repo.EXPECT().
+		CountByUser(gomock.Any(), snow.ID(7)).
+		Return(0, nil)
+
+	var captured domain.SSHPublicKey
+	repo.EXPECT().
+		Create(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, key domain.SSHPublicKey) (*domain.SSHPublicKey, error) {
+			captured = key
+			return &key, nil
+		})
+
+	longComment := strings.Repeat("c", maxSSHKeyNameRunes+50)
+	got, err := uc.Add(sshKeyClaimCtx(7, false), 7, "", testSSHKeyLine(t, longComment))
+	require.NoError(t, err)
+	require.Equal(t, strings.Repeat("c", maxSSHKeyNameRunes), got.Name)
+	require.Equal(t, longComment, captured.Comment)
+}
+
 func TestSSHKey_Add_NameTooLong(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	repo := NewMocksshKeyRepository(ctrl)
