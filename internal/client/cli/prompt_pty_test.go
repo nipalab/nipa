@@ -9,13 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func withStdin(t *testing.T, file *os.File) {
-	t.Helper()
-	old := os.Stdin
-	os.Stdin = file
-	t.Cleanup(func() { os.Stdin = old })
-}
-
 func TestPrompter_PromptUsername_Pty(t *testing.T) {
 	master, slave := openPty(t)
 	t.Cleanup(func() { _ = master.Close(); _ = slave.Close() })

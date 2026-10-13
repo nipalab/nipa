@@ -54,6 +54,13 @@ func (f *fakeSSHExecutor) CompleteLoginSSHKey(_ context.Context, _, _, _ string,
 	return f.sshResult, f.sshErr
 }
 
+func withStdin(t *testing.T, file *os.File) {
+	t.Helper()
+	old := os.Stdin
+	os.Stdin = file
+	t.Cleanup(func() { os.Stdin = old })
+}
+
 func isolateLoginEnv(t *testing.T) {
 	t.Helper()
 	home := t.TempDir()
