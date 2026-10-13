@@ -56,3 +56,46 @@ func (s *AuthRepositorySuite) TestGetAndDeleteUnknownToken() {
 	_, err := repo.GetAndDeleteRefreshToken(ctx, "unknown-token")
 	requireRecordNotFound(s.T(), err)
 }
+
+func (s *AuthRepositorySuite) TestSSHLoginChallengeLifecycle() {
+	ctx := context.Background()
+	repo := NewAuthRepository(s.db)
+
+	expiresAt := time.Now().Add(time.Minute)
+	s.Require().NoError(repo.CreateSSHLoginChallenge(ctx, "alice@example.com", "nonce-1", expiresAt))
+
+	got, err := repo.ConsumeSSHLoginChallenge(ctx, "nonce-1")
+	s.Require().NoError(err)
+	s.Equal("alice@example.com", got.Email)
+	s.Equal("nonce-1", got.Nonce)
+	s.WithinDuration(expiresAt, got.ExpiresAt, time.Second)
+	s.False(got.CreatedAt.IsZero())
+
+	_, err = repo.ConsumeSSHLoginChallenge(ctx, "nonce-1")
+	requireRecordNotFound(s.T(), err)
+}
+
+func (s *AuthRepositorySuite) TestSSHLoginChallengeUnknown() {
+	ctx := context.Background()
+	repo := NewAuthRepository(s.db)
+
+	_, err := repo.ConsumeSSHLoginChallenge(ctx, "missing")
+	requireRecordNotFound(s.T(), err)
+}
+
+func (s *AuthRepositorySuite) TestSSHLoginChallengeDeleteExpired() {
+	ctx := context.Background()
+	repo := NewAuthRepository(s.db)
+
+	s.Require().NoError(repo.CreateSSHLoginChallenge(ctx, "alice@example.com", "expired", time.Now().Add(-time.Minute)))
+	s.Require().NoError(repo.CreateSSHLoginChallenge(ctx, "alice@example.com", "live", time.Now().Add(time.Minute)))
+
+	s.Require().NoError(repo.DeleteExpiredSSHLoginChallenges(ctx, time.Now()))
+
+	_, err := repo.ConsumeSSHLoginChallenge(ctx, "expired")
+	requireRecordNotFound(s.T(), err)
+
+	got, err := repo.ConsumeSSHLoginChallenge(ctx, "live")
+	s.Require().NoError(err)
+	s.Equal("live", got.Nonce)
+}

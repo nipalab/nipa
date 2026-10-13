@@ -73,7 +73,8 @@ func main() {
 	if leaseManager != nil {
 		defer leaseManager.Release(context.Background())
 	}
-	authUsecase := usecase.NewAuth(cfg.JWTKey, passwordHasher, userRepo, authRepo)
+	authUsecase := usecase.NewAuth(cfg.JWTKey, passwordHasher, userRepo, authRepo).
+		WithSSHKeys(postgres.NewSSHKeyRepository(dbConn))
 	orgUsecase := usecase.NewOrg(orgRepo, snowUser)
 	commonUsecase := usecase.NewCommon(orgRepo, projectRepo)
 	permissionUsecase := usecase.NewPermission(pbacRepository, userRepo, groupRepository, orgUsecase)

@@ -51,3 +51,48 @@ func TestAuthRepositorySQLite_GetAndDeleteUnknownToken(t *testing.T) {
 	_, err := repo.GetAndDeleteRefreshToken(ctx, "unknown-token")
 	requireRecordNotFound(t, err)
 }
+
+func TestAuthRepositorySQLite_SSHLoginChallengeLifecycle(t *testing.T) {
+	ctx := context.Background()
+	db, _ := newSQLiteTestDB(t)
+	repo := NewAuthRepository(db)
+
+	expiresAt := time.Now().Add(time.Minute)
+	require.NoError(t, repo.CreateSSHLoginChallenge(ctx, "alice@example.com", "nonce-1", expiresAt))
+
+	got, err := repo.ConsumeSSHLoginChallenge(ctx, "nonce-1")
+	require.NoError(t, err)
+	require.Equal(t, "alice@example.com", got.Email)
+	require.Equal(t, "nonce-1", got.Nonce)
+	require.WithinDuration(t, expiresAt, got.ExpiresAt, time.Second)
+	require.False(t, got.CreatedAt.IsZero())
+
+	_, err = repo.ConsumeSSHLoginChallenge(ctx, "nonce-1")
+	requireRecordNotFound(t, err)
+}
+
+func TestAuthRepositorySQLite_SSHLoginChallengeUnknown(t *testing.T) {
+	db, _ := newSQLiteTestDB(t)
+	repo := NewAuthRepository(db)
+
+	_, err := repo.ConsumeSSHLoginChallenge(context.Background(), "missing")
+	requireRecordNotFound(t, err)
+}
+
+func TestAuthRepositorySQLite_SSHLoginChallengeDeleteExpired(t *testing.T) {
+	ctx := context.Background()
+	db, _ := newSQLiteTestDB(t)
+	repo := NewAuthRepository(db)
+
+	require.NoError(t, repo.CreateSSHLoginChallenge(ctx, "alice@example.com", "expired", time.Now().Add(-time.Minute)))
+	require.NoError(t, repo.CreateSSHLoginChallenge(ctx, "alice@example.com", "live", time.Now().Add(time.Minute)))
+
+	require.NoError(t, repo.DeleteExpiredSSHLoginChallenges(ctx, time.Now()))
+
+	_, err := repo.ConsumeSSHLoginChallenge(ctx, "expired")
+	requireRecordNotFound(t, err)
+
+	got, err := repo.ConsumeSSHLoginChallenge(ctx, "live")
+	require.NoError(t, err)
+	require.Equal(t, "live", got.Nonce)
+}

@@ -376,6 +376,22 @@ message LoginWithRefreshRequest {
     string refresh_token = 1;
 }
 
+message BeginLoginSSHKeyRequest {
+    string email = 1;
+}
+
+message BeginLoginSSHKeyResponse {
+    string nonce = 1;
+    int32 expires_in = 2;
+}
+
+message CompleteLoginSSHKeyRequest {
+    string email = 1;
+    string nonce = 2;
+    bytes public_key = 3; // SSH wire-format public key the signature was made with
+    bytes signature = 4; // SSH wire-format signature over "nipa-login:v1:<nonce>"
+}
+
 message LoginResponse {
     string access_token = 1;
     string refresh_token = 2;
@@ -1000,6 +1016,8 @@ message GetServerVersionResponse {
 service NipaService {
     rpc LoginWithUsernamePassword(LoginUsernamePasswordRequest) returns (LoginResponse);
     rpc LoginWithRefreshToken(LoginWithRefreshRequest) returns (LoginResponse);
+    rpc BeginLoginSSHKey(BeginLoginSSHKeyRequest) returns (BeginLoginSSHKeyResponse);
+    rpc CompleteLoginSSHKey(CompleteLoginSSHKeyRequest) returns (LoginResponse);
     rpc GetServerVersion(GetServerVersionRequest) returns (GetServerVersionResponse);
 
     rpc GetListBranch(GetListBranchRequest) returns (GetListBranchResponse);

@@ -29,3 +29,26 @@ func (n *nipaServer) LoginWithRefreshToken(ctx context.Context, req *pb.LoginWit
 		ExpiresIn:    int32(result.ExpiresIn),
 	}, nil
 }
+
+func (n *nipaServer) BeginLoginSSHKey(ctx context.Context, req *pb.BeginLoginSSHKeyRequest) (*pb.BeginLoginSSHKeyResponse, error) {
+	challenge, err := n.uc.Auth().BeginSSHKeyLogin(ctx, req.GetEmail())
+	if err != nil {
+		return nil, handleError(err)
+	}
+	return &pb.BeginLoginSSHKeyResponse{
+		Nonce:     challenge.Nonce,
+		ExpiresIn: int32(challenge.ExpiresIn),
+	}, nil
+}
+
+func (n *nipaServer) CompleteLoginSSHKey(ctx context.Context, req *pb.CompleteLoginSSHKeyRequest) (*pb.LoginResponse, error) {
+	result, err := n.uc.Auth().CompleteSSHKeyLogin(ctx, req.GetEmail(), req.GetNonce(), req.GetPublicKey(), req.GetSignature())
+	if err != nil {
+		return nil, handleError(err)
+	}
+	return &pb.LoginResponse{
+		AccessToken:  result.AccessToken,
+		RefreshToken: result.RefreshToken,
+		ExpiresIn:    int32(result.ExpiresIn),
+	}, nil
+}

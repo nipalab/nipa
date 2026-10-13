@@ -44,3 +44,50 @@ func (q *Queries) RefreshTokenDeleteByToken(ctx context.Context, token string) (
 	)
 	return i, err
 }
+
+const sSHLoginChallengeConsume = `-- name: SSHLoginChallengeConsume :one
+DELETE FROM ssh_login_challenges
+WHERE nonce = $1
+RETURNING email, nonce, expires_at, created_at
+`
+
+func (q *Queries) SSHLoginChallengeConsume(ctx context.Context, nonce string) (SshLoginChallenge, error) {
+	row := q.db.QueryRowContext(ctx, sSHLoginChallengeConsume, nonce)
+	var i SshLoginChallenge
+	err := row.Scan(
+		&i.Email,
+		&i.Nonce,
+		&i.ExpiresAt,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const sSHLoginChallengeCreate = `-- name: SSHLoginChallengeCreate :exec
+INSERT INTO ssh_login_challenges (email, nonce, expires_at)
+VALUES ($1, $2, $3)
+`
+
+type SSHLoginChallengeCreateParams struct {
+	Email     string    `json:"email"`
+	Nonce     string    `json:"nonce"`
+	ExpiresAt time.Time `json:"expires_at"`
+}
+
+func (q *Queries) SSHLoginChallengeCreate(ctx context.Context, arg SSHLoginChallengeCreateParams) error {
+	_, err := q.db.ExecContext(ctx, sSHLoginChallengeCreate, arg.Email, arg.Nonce, arg.ExpiresAt)
+	return err
+}
+
+const sSHLoginChallengeDeleteExpired = `-- name: SSHLoginChallengeDeleteExpired :execrows
+DELETE FROM ssh_login_challenges
+WHERE expires_at < $1
+`
+
+func (q *Queries) SSHLoginChallengeDeleteExpired(ctx context.Context, expiresAt time.Time) (int64, error) {
+	result, err := q.db.ExecContext(ctx, sSHLoginChallengeDeleteExpired, expiresAt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}

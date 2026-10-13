@@ -66,7 +66,8 @@ func main() {
 		panic(err)
 	}
 	slog.Info("using snowflake node id", "node_id", cfg.SnowflakeNodeID)
-	authUsecase := usecase.NewAuth(cfg.JWTKey, passwordHasher, userRepo, authRepo)
+	authUsecase := usecase.NewAuth(cfg.JWTKey, passwordHasher, userRepo, authRepo).
+		WithSSHKeys(sqlite.NewSSHKeyRepository(dbConn))
 	orgUsecase := usecase.NewOrg(orgRepo, snowUser)
 	permissionUsecase := usecase.NewPermission(pbacRepository, userRepo, groupRepository, orgUsecase)
 	projectUsecase := usecase.NewProject(projectRepo, snowUser, permissionUsecase, orgUsecase)

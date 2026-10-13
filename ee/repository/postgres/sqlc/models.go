@@ -307,6 +307,13 @@ type SnowflakeNodeLease struct {
 	ExpiresAt  time.Time `json:"expires_at"`
 }
 
+type SshLoginChallenge struct {
+	Email     string    `json:"email"`
+	Nonce     string    `json:"nonce"`
+	ExpiresAt time.Time `json:"expires_at"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 type SshPublicKey struct {
 	ID          int64     `json:"id"`
 	UserID      int64     `json:"user_id"`

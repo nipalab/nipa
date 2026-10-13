@@ -16,6 +16,8 @@ func isPublicMethod(method string) bool {
 	switch method {
 	case "/greet.NipaService/LoginWithUsernamePassword",
 		"/greet.NipaService/LoginWithRefreshToken",
+		"/greet.NipaService/BeginLoginSSHKey",
+		"/greet.NipaService/CompleteLoginSSHKey",
 		"/greet.NipaService/GetServerVersion",
 		"/grpc.health.v1.Health/Check",
 		"/grpc.health.v1.Health/Watch":
