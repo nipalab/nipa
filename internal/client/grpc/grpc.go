@@ -125,6 +125,43 @@ func (t *Transport) LoginWithRefreshToken(ctx context.Context, host, refreshToke
 	}, nil
 }
 
+func (t *Transport) BeginLoginSSHKey(ctx context.Context, host, email string) (*domain.SSHKeyChallenge, error) {
+	client, err := t.NipaServiceClient()
+	if err != nil {
+		return nil, err
+	}
+	res, err := client.BeginLoginSSHKey(ctx, &pb.BeginLoginSSHKeyRequest{Email: email})
+	if err != nil {
+		return nil, toDomainError(err)
+	}
+	return &domain.SSHKeyChallenge{
+		Nonce:     res.GetNonce(),
+		ExpiresIn: int(res.GetExpiresIn()),
+	}, nil
+}
+
+func (t *Transport) CompleteLoginSSHKey(ctx context.Context, host, email, nonce string, publicKey, signature []byte) (*domain.LoginResult, error) {
+	client, err := t.NipaServiceClient()
+	if err != nil {
+		return nil, err
+	}
+	res, err := client.CompleteLoginSSHKey(ctx, &pb.CompleteLoginSSHKeyRequest{
+		Email:     email,
+		Nonce:     nonce,
+		PublicKey: publicKey,
+		Signature: signature,
+	})
+	if err != nil {
+		return nil, toDomainError(err)
+	}
+	return &domain.LoginResult{
+		AccessToken:  res.GetAccessToken(),
+		RefreshToken: res.GetRefreshToken(),
+		ExpiresIn:    int(res.GetExpiresIn()),
+		Host:         host,
+	}, nil
+}
+
 type tokenSession interface {
 	AccessToken(ctx context.Context, host string) (string, error)
 	Refresh(ctx context.Context, host string) (string, error)
@@ -218,6 +255,14 @@ func (c *Client) LoginWithRefreshToken(ctx context.Context, host, refreshToken s
 	return c.transport.LoginWithRefreshToken(ctx, host, refreshToken)
 }
 
+func (c *Client) BeginLoginSSHKey(ctx context.Context, host, email string) (*domain.SSHKeyChallenge, error) {
+	return c.transport.BeginLoginSSHKey(ctx, host, email)
+}
+
+func (c *Client) CompleteLoginSSHKey(ctx context.Context, host, email, nonce string, publicKey, signature []byte) (*domain.LoginResult, error) {
+	return c.transport.CompleteLoginSSHKey(ctx, host, email, nonce, publicKey, signature)
+}
+
 func (c *Client) unaryAuthInterceptor() grpc.UnaryClientInterceptor {
 	return func(
 		ctx context.Context,
@@ -229,6 +274,8 @@ func (c *Client) unaryAuthInterceptor() grpc.UnaryClientInterceptor {
 	) error {
 		if method == "/greet.NipaService/LoginWithUsernamePassword" ||
 			method == "/greet.NipaService/LoginWithRefreshToken" ||
+			method == "/greet.NipaService/BeginLoginSSHKey" ||
+			method == "/greet.NipaService/CompleteLoginSSHKey" ||
 			method == "/greet.NipaService/GetServerVersion" {
 			return invoker(ctx, method, req, reply, cc, opts...)
 		}

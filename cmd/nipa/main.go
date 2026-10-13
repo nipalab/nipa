@@ -11,6 +11,7 @@ import (
 	"github.com/nipalab/nipa/internal/client/localrepo"
 	"github.com/nipalab/nipa/internal/client/output"
 	"github.com/nipalab/nipa/internal/client/securestorage"
+	"github.com/nipalab/nipa/internal/client/sshkey"
 	"github.com/nipalab/nipa/internal/client/usecase"
 )
 
@@ -18,8 +19,15 @@ func main() {
 	secureStorage := securestorage.New()
 	prompter := cli.NewPrompter()
 
+	resolveSigners := func(promptPassphrase func(string) (string, error)) func() ([]sshkey.Signer, error) {
+		return func() ([]sshkey.Signer, error) {
+			return sshkey.Resolve("", promptPassphrase)
+		}
+	}
+
 	transport := grpc.NewTransport()
-	session := usecase.NewSession(secureStorage, transport, prompter)
+	session := usecase.NewSession(secureStorage, transport, prompter).
+		WithSSHLogin(resolveSigners(prompter.PromptPassphrase))
 	var clientOpts []grpc.ClientOption
 	if workers, pinned, err := config.ResolveUploadWorkers(); err != nil {
 		handleError(err)
@@ -28,7 +36,8 @@ func main() {
 	}
 	grpcClient := grpc.NewClient(transport, session, clientOpts...)
 
-	authUsecase := usecase.NewAuth(grpcClient, secureStorage, prompter)
+	authUsecase := usecase.NewAuth(grpcClient, secureStorage, prompter).
+		WithSSHLogin(resolveSigners(prompter.PromptPassphrase))
 	repoUsecase := usecase.NewRepo(authUsecase, grpcClient, localrepo.NewLocalRepo())
 	pushUsecase := usecase.NewPush(authUsecase, grpcClient, localrepo.NewLocalRepo())
 	updateUsecase := usecase.NewUpdate(authUsecase, grpcClient, localrepo.NewLocalRepo())
@@ -57,7 +66,8 @@ func main() {
 
 	newClient := func() *grpc.Client {
 		transport := grpc.NewTransport()
-		session := usecase.NewSession(secureStorage, transport)
+		session := usecase.NewSession(secureStorage, transport).
+			WithSSHLogin(resolveSigners(nil))
 		return grpc.NewClient(transport, session, clientOpts...)
 	}
 

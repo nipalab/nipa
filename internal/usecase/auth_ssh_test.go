@@ -14,6 +14,7 @@ import (
 
 	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/snow"
+	"github.com/nipalab/nipa/internal/sshkey"
 )
 
 func sshLoginTestSigner(t *testing.T) ssh.Signer {
@@ -25,9 +26,9 @@ func sshLoginTestSigner(t *testing.T) ssh.Signer {
 	return signer
 }
 
-func sshLoginTestSignature(t *testing.T, signer ssh.Signer, payload string) []byte {
+func sshLoginTestSignature(t *testing.T, signer ssh.Signer, payload []byte) []byte {
 	t.Helper()
-	sig, err := signer.Sign(rand.Reader, []byte(payload))
+	sig, err := signer.Sign(rand.Reader, payload)
 	require.NoError(t, err)
 	return ssh.Marshal(sig)
 }
@@ -135,7 +136,7 @@ func TestAuth_CompleteSSHKeyLogin_Success(t *testing.T) {
 		"alice@example.com",
 		nonce,
 		signer.PublicKey().Marshal(),
-		sshLoginTestSignature(t, signer, sshLoginPayloadPrefix+nonce),
+		sshLoginTestSignature(t, signer, sshkey.LoginPayload(nonce)),
 	)
 	require.NoError(t, err)
 	require.NotEmpty(t, result.AccessToken)
@@ -299,7 +300,7 @@ func TestAuth_CompleteSSHKeyLogin_KeyNotRegistered(t *testing.T) {
 
 	_, err := auth.CompleteSSHKeyLogin(
 		context.Background(), "alice@example.com", "nonce",
-		signer.PublicKey().Marshal(), sshLoginTestSignature(t, signer, sshLoginPayloadPrefix+"nonce"),
+		signer.PublicKey().Marshal(), sshLoginTestSignature(t, signer, sshkey.LoginPayload("nonce")),
 	)
 	assertSSHLoginFailed(t, err)
 }
@@ -328,7 +329,7 @@ func TestAuth_CompleteSSHKeyLogin_KeyBelongsToOtherUser(t *testing.T) {
 
 	_, err := auth.CompleteSSHKeyLogin(
 		context.Background(), "alice@example.com", "nonce",
-		signer.PublicKey().Marshal(), sshLoginTestSignature(t, signer, sshLoginPayloadPrefix+"nonce"),
+		signer.PublicKey().Marshal(), sshLoginTestSignature(t, signer, sshkey.LoginPayload("nonce")),
 	)
 	assertSSHLoginFailed(t, err)
 }
@@ -357,7 +358,7 @@ func TestAuth_CompleteSSHKeyLogin_BadSignature(t *testing.T) {
 
 	_, err := auth.CompleteSSHKeyLogin(
 		context.Background(), "alice@example.com", "nonce",
-		signer.PublicKey().Marshal(), sshLoginTestSignature(t, signer, sshLoginPayloadPrefix+"tampered"),
+		signer.PublicKey().Marshal(), sshLoginTestSignature(t, signer, sshkey.LoginPayload("tampered")),
 	)
 	assertSSHLoginFailed(t, err)
 }

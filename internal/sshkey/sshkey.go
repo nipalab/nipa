@@ -15,6 +15,13 @@ import (
 // MinRSABits is the smallest accepted RSA modulus.
 const MinRSABits = 2048
 
+const loginPayloadPrefix = "nipa-login:v1:"
+
+// LoginPayload returns the message a client signs to complete an SSH key login.
+func LoginPayload(nonce string) []byte {
+	return []byte(loginPayloadPrefix + nonce)
+}
+
 // ParsedKey is a normalized OpenSSH public key.
 type ParsedKey struct {
 	Type        string

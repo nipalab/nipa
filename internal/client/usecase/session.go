@@ -12,9 +12,10 @@ type refreshExecutor interface {
 }
 
 type Session struct {
-	storage secureStorage
-	login   refreshExecutor
-	input   userInput
+	storage        secureStorage
+	login          refreshExecutor
+	input          userInput
+	resolveSigners signerResolver
 }
 
 func NewSession(storage secureStorage, login refreshExecutor, inputs ...userInput) *Session {
@@ -27,6 +28,12 @@ func NewSession(storage secureStorage, login refreshExecutor, inputs ...userInpu
 		login:   login,
 		input:   input,
 	}
+}
+
+// WithSSHLogin enables SSH key re-authentication with the given signer resolver.
+func (s *Session) WithSSHLogin(resolve signerResolver) *Session {
+	s.resolveSigners = resolve
+	return s
 }
 
 func (s *Session) AccessToken(ctx context.Context, host string) (string, error) {
@@ -54,6 +61,7 @@ func (s *Session) Refresh(ctx context.Context, host string) (string, error) {
 		return s.reauth(ctx, host, err)
 	}
 
+	refreshed.Email = loginResult.Email
 	err = s.storage.SaveToken(refreshed)
 	if err != nil {
 		return "", err
@@ -68,6 +76,10 @@ func isRefreshRejection(err error) bool {
 }
 
 func (s *Session) reauth(ctx context.Context, host string, cause error) (string, error) {
+	if token, ok := s.trySSHReauth(ctx, host); ok {
+		return token, nil
+	}
+
 	passwordLogin, ok := s.login.(loginExecutor)
 	if !ok || s.input == nil {
 		return "", cause
@@ -85,6 +97,7 @@ func (s *Session) reauth(ctx context.Context, host string, cause error) (string,
 	if err != nil {
 		return "", err
 	}
+	loginResult.Email = username
 
 	err = s.storage.SaveToken(loginResult)
 	if err != nil {
@@ -92,4 +105,31 @@ func (s *Session) reauth(ctx context.Context, host string, cause error) (string,
 	}
 
 	return loginResult.AccessToken, nil
+}
+
+func (s *Session) trySSHReauth(ctx context.Context, host string) (string, bool) {
+	if s.resolveSigners == nil {
+		return "", false
+	}
+	sshLogin, ok := s.login.(sshLoginExecutor)
+	if !ok {
+		return "", false
+	}
+	stored, err := s.storage.LoadToken(host)
+	if err != nil || stored.Email == "" {
+		return "", false
+	}
+	signers, err := s.resolveSigners()
+	if err != nil || len(signers) == 0 {
+		return "", false
+	}
+	loginResult, err := loginWithSSHKey(ctx, sshLogin, host, stored.Email, signers)
+	if err != nil {
+		return "", false
+	}
+	loginResult.Email = stored.Email
+	if err := s.storage.SaveToken(loginResult); err != nil {
+		return "", false
+	}
+	return loginResult.AccessToken, true
 }

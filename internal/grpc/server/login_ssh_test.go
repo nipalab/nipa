@@ -15,6 +15,7 @@ import (
 	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/grpc/pb"
 	"github.com/nipalab/nipa/internal/snow"
+	"github.com/nipalab/nipa/internal/sshkey"
 	"github.com/nipalab/nipa/internal/usecase"
 )
 
@@ -35,7 +36,7 @@ func sshLoginSigner(t *testing.T) ssh.Signer {
 
 func sshLoginSignature(t *testing.T, signer ssh.Signer, nonce string) []byte {
 	t.Helper()
-	sig, err := signer.Sign(rand.Reader, []byte("nipa-login:v1:"+nonce))
+	sig, err := signer.Sign(rand.Reader, sshkey.LoginPayload(nonce))
 	require.NoError(t, err)
 	return ssh.Marshal(sig)
 }
@@ -133,7 +134,7 @@ func TestCompleteLoginSSHKey_BadSignature(t *testing.T) {
 	keyRepo := &stubSSHKeyRepo{key: &domain.SSHPublicKey{ID: snow.ID(1), UserID: snow.ID(42)}}
 	srv := newSSHLoginServer(t, &stubUserRepo{user: &domain.User{ID: snow.ID(42), Email: "alice@example.com"}}, authRepo, keyRepo)
 
-	sig, err := signer.Sign(rand.Reader, []byte("nipa-login:v1:tampered"))
+	sig, err := signer.Sign(rand.Reader, sshkey.LoginPayload("tampered"))
 	require.NoError(t, err)
 
 	_, err = srv.CompleteLoginSSHKey(context.Background(), &pb.CompleteLoginSSHKeyRequest{
