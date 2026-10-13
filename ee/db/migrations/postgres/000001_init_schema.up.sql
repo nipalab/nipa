@@ -472,6 +472,19 @@ CREATE TABLE org_usage (
     used_bytes BIGINT NOT NULL DEFAULT 0
 );
 
+CREATE TABLE ssh_public_keys (
+    id          BIGINT PRIMARY KEY,
+    user_id     BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name        TEXT NOT NULL DEFAULT '',
+    key_type    TEXT NOT NULL,
+    key_blob    TEXT NOT NULL,
+    fingerprint TEXT NOT NULL UNIQUE,
+    comment     TEXT NOT NULL DEFAULT '',
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_ssh_public_keys_user ON ssh_public_keys(user_id);
+
 INSERT INTO users (id, name, email, password, is_super_admin) VALUES (1, 'Super Admin', 'nipa', '$2a$10$ErgrBnd6ahfz6eZkVzfnlu6dcE4T0HUcxvAjwmI0ItFsMReHVCdYO', TRUE);
 INSERT INTO organizations (id, slug, name, created_by_user_id) VALUES (1, 'default', 'Default Organization', 1);
 INSERT INTO projects (id, org_id, slug, name) VALUES (1, 1, 'default', 'Default Project');

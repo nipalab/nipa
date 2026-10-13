@@ -151,6 +151,7 @@ func main() {
 	reg := serverapp.NewRegistry(serverapp.Usecases{
 		Auth:               authUsecase,
 		User:               usecase.NewUser(snowUser, userRepo, passwordHasher),
+		SSHKey:             usecase.NewSSHKey(snowUser, sqlite.NewSSHKeyRepository(dbConn)),
 		Common:             usecase.NewCommon(orgRepo, projectRepo),
 		Branch:             branchUsecase,
 		Tag:                tagUsecase,

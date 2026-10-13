@@ -11,6 +11,7 @@ import "github.com/nipalab/nipa/internal/usecase"
 type Usecases struct {
 	Auth               *usecase.Auth
 	User               *usecase.User
+	SSHKey             *usecase.SSHKey
 	Branch             *usecase.Branch
 	Tag                *usecase.Tag
 	Common             *usecase.Common
@@ -45,6 +46,10 @@ func (r *Registry) Auth() *usecase.Auth {
 
 func (r *Registry) User() *usecase.User {
 	return r.uc.User
+}
+
+func (r *Registry) SSHKey() *usecase.SSHKey {
+	return r.uc.SSHKey
 }
 
 func (r *Registry) Branch() *usecase.Branch {

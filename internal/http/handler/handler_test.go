@@ -116,6 +116,7 @@ func (f *fakeAppContext) HandleError(err error) {
 type handlerRegistry struct {
 	auth          *usecase.Auth
 	user          *usecase.User
+	sshKey        *usecase.SSHKey
 	common        *usecase.Common
 	permission    *usecase.Permission
 	org           *usecase.Org
@@ -134,6 +135,7 @@ type handlerRegistry struct {
 
 func (r *handlerRegistry) Auth() *usecase.Auth             { return r.auth }
 func (r *handlerRegistry) User() *usecase.User             { return r.user }
+func (r *handlerRegistry) SSHKey() *usecase.SSHKey         { return r.sshKey }
 func (r *handlerRegistry) Common() *usecase.Common         { return r.common }
 func (r *handlerRegistry) Permission() *usecase.Permission { return r.permission }
 func (r *handlerRegistry) Org() *usecase.Org               { return r.org }
@@ -241,6 +243,7 @@ func newHandlerTestEnv(t *testing.T) *handlerTestEnv {
 	reg := &handlerRegistry{
 		auth:          usecase.NewAuth("test-secret", stubPasswordHasher{}, userRepo, authRepo),
 		user:          usecase.NewUser(node, userRepo, stubPasswordHasher{}),
+		sshKey:        usecase.NewSSHKey(node, sqlite.NewSSHKeyRepository(dbConn)),
 		common:        usecase.NewCommon(orgRepo, sqlite.NewProjectRepository(dbConn)),
 		permission:    permissionUc,
 		org:           orgUc,
