@@ -54,9 +54,24 @@ function stubRoutes(extra: (url: string, init?: RequestInit) => Response | null 
         return jsonResponse({ message: 'password updated' })
       }
       if (url.endsWith('/api/v1/me') && method === 'GET') return jsonResponse(ME)
+      if (url.endsWith('/api/v1/keys') && method === 'GET') return jsonResponse([])
       return jsonResponse({ error: 'not found' }, 404)
     }),
   )
+}
+
+function setTextareaValue(el: HTMLTextAreaElement, value: string) {
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set
+  setter?.call(el, value)
+  el.dispatchEvent(new Event('input', { bubbles: true }))
+}
+
+function findButtonIn(root: Element, text: string): HTMLButtonElement {
+  const button = Array.from(root.querySelectorAll('button')).find(
+    (item) => item.textContent?.trim() === text,
+  )
+  if (!button) throw new Error(`button ${text} not found`)
+  return button as HTMLButtonElement
 }
 
 function findButton(text: string): HTMLButtonElement {
@@ -174,6 +189,76 @@ describe('ProfilePage', () => {
     await waitFor(() => calls.length > 0)
     expect(calls[0]?.body).toEqual({ old_password: 'oldpass', new_password: 'secret123' })
     await waitForText(container, 'Password updated.')
+    act(() => root.unmount())
+  })
+
+  it('lists, adds and removes SSH keys', async () => {
+    const existing = {
+      id: '7',
+      name: 'work laptop',
+      key_type: 'ssh-ed25519',
+      fingerprint: 'SHA256:abc123',
+      comment: 'alice@laptop',
+      created_at: '2026-10-01T10:00:00Z',
+    }
+    let keys = [existing]
+    const calls: { url: string; method: string; body: unknown }[] = []
+    stubRoutes((url, init) => {
+      const method = init?.method ?? 'GET'
+      if (url.endsWith('/api/v1/keys') && method === 'GET') return jsonResponse(keys)
+      if (url.endsWith('/api/v1/keys') && method === 'POST') {
+        calls.push({ url, method, body: init?.body ? JSON.parse(String(init.body)) : undefined })
+        const created = { ...existing, id: '8', name: 'desktop', fingerprint: 'SHA256:def456' }
+        keys = [...keys, created]
+        return jsonResponse(created)
+      }
+      if (url.includes('/api/v1/keys/7') && method === 'DELETE') {
+        calls.push({ url, method, body: undefined })
+        keys = keys.filter((key) => key.id !== '7')
+        return jsonResponse({ message: 'SSH key removed' })
+      }
+      return null
+    })
+
+    const { container, root } = await renderApp('/settings/profile')
+    await waitForText(container, 'SHA256:abc123')
+    expect(container.textContent).toContain('work laptop')
+    expect(container.textContent).not.toContain('No SSH keys yet.')
+
+    await act(async () => {
+      findButton('Add SSH key').click()
+    })
+    await waitFor(() => document.querySelector('[role="dialog"]') !== null)
+    const addDialog = document.querySelector('[role="dialog"]') as HTMLElement
+    await act(async () => {
+      setTextareaValue(
+        addDialog.querySelector('textarea') as HTMLTextAreaElement,
+        'ssh-ed25519 AAAAC3Nza alice@desktop',
+      )
+      setInputValue(addDialog.querySelector('input') as HTMLInputElement, 'desktop')
+    })
+    await act(async () => {
+      findButtonIn(addDialog, 'Add SSH key').click()
+    })
+    await waitFor(() => calls.length > 0)
+    expect(calls[0]?.body).toEqual({
+      name: 'desktop',
+      public_key: 'ssh-ed25519 AAAAC3Nza alice@desktop',
+    })
+    await waitForText(container, 'SHA256:def456')
+
+    await act(async () => {
+      findButtonIn(container, 'Remove').click()
+    })
+    await waitFor(() => document.querySelector('[role="dialog"]') !== null)
+    const removeDialog = document.querySelector('[role="dialog"]') as HTMLElement
+    await act(async () => {
+      findButtonIn(removeDialog, 'Remove key').click()
+    })
+    await waitFor(() => calls.length > 1)
+    expect(calls[1]?.method).toBe('DELETE')
+    expect(calls[1]?.url).toContain('/api/v1/keys/7')
+    await waitFor(() => !container.textContent?.includes('SHA256:abc123'))
     act(() => root.unmount())
   })
 })
