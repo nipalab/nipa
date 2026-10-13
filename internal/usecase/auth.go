@@ -21,7 +21,6 @@ const (
 	refreshTokenExpiration = 60 * 24 * time.Hour
 	sshLoginChallengeTTL   = 60 * time.Second
 	sshLoginChallengeBytes = 32
-	sshLoginPayloadPrefix  = "nipa-login:v1:"
 )
 
 //go:generate go run go.uber.org/mock/mockgen -source=$GOFILE -destination=auth_mock_test.go -package=usecase
@@ -178,7 +177,7 @@ func (a *Auth) CompleteSSHKeyLogin(ctx context.Context, email, nonce string, pub
 		return nil, sshLoginFailed()
 	}
 
-	if err := sshkey.Verify(pub, []byte(sshLoginPayloadPrefix+nonce), signature); err != nil {
+	if err := sshkey.Verify(pub, sshkey.LoginPayload(nonce), signature); err != nil {
 		return nil, sshLoginFailed()
 	}
 	return a.generateLoginResult(ctx, user)

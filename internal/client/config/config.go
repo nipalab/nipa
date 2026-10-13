@@ -23,6 +23,7 @@ const EnvUploadWorkers = "NIPA_UPLOAD_WORKERS"
 type Config struct {
 	DiffExternal  string `json:"diffExternal,omitempty"`
 	UploadWorkers int    `json:"uploadWorkers,omitempty"`
+	SSHKeyPath    string `json:"sshKeyPath,omitempty"`
 }
 
 // Path returns the user configuration file location.

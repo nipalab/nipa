@@ -27,6 +27,7 @@ func (s *Storage) SaveToken(data *domain.LoginResult) error {
 		Host:         data.Host,
 		AccessToken:  data.AccessToken,
 		RefreshToken: data.RefreshToken,
+		Email:        data.Email,
 		ExpiresIn:    data.ExpiresIn,
 	}
 	if path := os.Getenv(TokenFileEnv); path != "" {
@@ -68,6 +69,7 @@ func (s *Storage) LoadToken(host string) (*domain.LoginResult, error) {
 		Host:         token.Host,
 		AccessToken:  token.AccessToken,
 		RefreshToken: token.RefreshToken,
+		Email:        token.Email,
 		ExpiresIn:    token.ExpiresIn,
 	}, nil
 }

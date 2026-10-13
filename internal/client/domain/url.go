@@ -14,6 +14,24 @@ type NipaUrl struct {
 	Path    string
 }
 
+// ParseHost normalizes a bare host, URL or repository URL to its host part.
+// The scheme is irrelevant for a host, so a bare value is parsed as a
+// scheme-relative reference.
+func ParseHost(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", NewUserError("host cannot be empty")
+	}
+	if !strings.Contains(raw, "://") {
+		raw = "//" + raw
+	}
+	parsedURL, err := url.Parse(raw)
+	if err != nil || parsedURL.Host == "" {
+		return "", NewUserError(fmt.Sprintf("invalid host %q", raw))
+	}
+	return parsedURL.Host, nil
+}
+
 func ParseNipaUrl(urlString string) (*NipaUrl, error) {
 	allowedSchemes := map[string]struct{}{
 		"http":  {},

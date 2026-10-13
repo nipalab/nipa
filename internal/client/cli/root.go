@@ -45,6 +45,7 @@ func (c *Cli) Run(extra ...*cobra.Command) error {
 		Short:   "nipa is centralized version control system for your project",
 		Version: version.Resolve().Version,
 	}
+	rootCmd.AddCommand(c.setupLoginCmd())
 	rootCmd.AddCommand(c.setupCloneCmd())
 	rootCmd.AddCommand(c.setupBranchCmd())
 	rootCmd.AddCommand(c.setupAddCmd())
