@@ -5,7 +5,9 @@ The same Ginkgo suite runs against the free (`nipad`) and enterprise
 (`nipad-ee`) servers so both editions are verified to behave identically from
 the client's point of view.
 
-Coverage (211 specs): every in-repo command and flag — `clone`, `branch`,
+Coverage (216 specs): every in-repo command and flag — `login` (SSH key:
+key-only sign-in, lazy sign-in for clone through `NIPA_SSH_KEY`,
+unregistered-key rejection and username binding), `clone`, `branch`,
 `add`, `remove`, `restore`, `status`, `push`, `update`, `switch` (branch and
 `--tag` detach), `merge`, `revert` (single, range, conflicts, `--mainline`),
 `log`,

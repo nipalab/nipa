@@ -48,7 +48,8 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   `web/server/dist`, embedded into the `nipad` binary via
   `//go:embed all:dist` in `web/server/webui.go` (package `webui`) and served
   for non-API paths in `internal/serverapp` (`isAPIPath`).
-- **Client** (`internal/client/`): `cli` (cobra commands: clone, branch
+- **Client** (`internal/client/`): `cli` (cobra commands: login (password or SSH
+  key), clone, branch
   (`-a` list, `-c` create+switch, `-d` delete), tag (list, `-c` create, `-d`
   delete), add, remove, restore, status, push, update, switch (branch or `--tag`),
   merge, revert, log, diff, acl, group, sparse-checkout, mr, lock, unlock, serve), `usecase`
@@ -141,6 +142,34 @@ routes (`internal/http/api/tag.go`, handlers/DTOs in
 `internal/http/{handler,model}/tag.go`) mirror list/create/get/delete, and the
 web API client (`web/src/api/endpoints.ts`) already exposes
 `listTags`/`createTag`/`deleteTag` (no SPA page yet).
+
+Flow for SSH key login (design in `docs/SSH.md`: `nipa login`, the implicit
+login behind every command, the profile page card): an SSH key is an alternate
+credential that bootstraps the normal JWT session over the same gRPC transport;
+the private key never leaves the client. Public keys live in `ssh_public_keys`
+(name, type, blob, globally unique `SHA256:` fingerprint, comment; max 10 per
+user) and are managed over REST only (`GET/POST /api/v1/keys`,
+`DELETE /api/v1/keys/{id}`, rendered by the SPA profile "SSH keys" card);
+`internal/sshkey` parses authorized_keys lines (ed25519/ecdsa/RSA ≥ 2048, no
+DSA or certificates) and verifies signatures. Login is a two-RPC
+challenge–response: `BeginLoginSSHKey(email?)` stores a 32-byte nonce (60 s TTL,
+single-use, expired rows swept on insert) in `ssh_login_challenges`, the client
+signs `nipa-login:v1:<nonce>` and `CompleteSSHKeyLogin` consumes the challenge,
+resolves the account from the key fingerprint (key-only, git-style) or checks
+the optional email against the key owner, verifies and returns the usual
+access/refresh pair; every failure is the generic 400
+`invalid email or SSH key` and neither call reveals whether an account exists.
+Both RPCs are in the interceptor's public list. Client-side
+`internal/client/sshkey.Resolve` resolves signers in order: `--ssh-key`,
+`NIPA_SSH_KEY`, config `sshKeyPath`, ssh-agent keys, then
+`~/.ssh/id_ed25519|id_ecdsa|id_rsa` (configured keys fail loudly with a
+passphrase prompt, auto-detected keys are skipped); `nipa login` tries SSH
+before any prompt and falls back to the password flow (flag/env failures are
+hard errors), `MakeSureLoggedIn` does the same for every command, and
+`Session` re-authenticates with the key — email-bound when the stored session
+has one, key-only otherwise. Covered by unit tests plus the
+`tests/suite/ssh_test.go` e2e specs (key-only login, lazy clone login through
+`NIPA_SSH_KEY`, unregistered-key rejection, username binding).
 
 Flow for email notifications (design in `docs/EMAIL.md`): `internal/mail` is
 the sender layer (`EMAIL_SENDER` = `smtp|sendgrid|http|log|off`), one message
