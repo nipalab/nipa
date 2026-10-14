@@ -485,3 +485,31 @@ func (c *apiClient) redeliverEmailDelivery(org, project, id string) emailDeliver
 		nil, &out, true)
 	return out
 }
+
+type sshKeyJSON struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	KeyType     string `json:"key_type"`
+	Fingerprint string `json:"fingerprint"`
+	Comment     string `json:"comment"`
+	CreatedAt   string `json:"created_at"`
+}
+
+func (c *apiClient) addSSHKey(name, publicKey string) sshKeyJSON {
+	var out sshKeyJSON
+	c.do(http.MethodPost, "/keys", map[string]string{
+		"name":       name,
+		"public_key": publicKey,
+	}, &out, true)
+	return out
+}
+
+func (c *apiClient) listSSHKeys() []sshKeyJSON {
+	var out []sshKeyJSON
+	c.do(http.MethodGet, "/keys", nil, &out, true)
+	return out
+}
+
+func (c *apiClient) removeSSHKey(id string) {
+	c.do(http.MethodDelete, "/keys/"+id, nil, nil, true)
+}
