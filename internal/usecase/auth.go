@@ -102,11 +102,11 @@ func (a *Auth) LoginWithRefreshToken(ctx context.Context, refreshToken string) (
 	return a.generateLoginResult(ctx, user)
 }
 
+// BeginSSHKeyLogin issues a challenge for an SSH key login. The email is
+// optional: when set, the completed login must present a key registered to
+// that account; when empty, the key itself identifies the account.
 func (a *Auth) BeginSSHKeyLogin(ctx context.Context, email string) (*dto.SSHKeyChallenge, error) {
 	email = strings.TrimSpace(email)
-	if email == "" {
-		return nil, domain.NewErrorUser("email must not be empty")
-	}
 	nonce, err := newSSHLoginNonce()
 	if err != nil {
 		return nil, domain.NewErrorInternalServer(err.Error())
@@ -126,9 +126,6 @@ func (a *Auth) BeginSSHKeyLogin(ctx context.Context, email string) (*dto.SSHKeyC
 
 func (a *Auth) CompleteSSHKeyLogin(ctx context.Context, email, nonce string, publicKey, signature []byte) (*dto.LoginResult, error) {
 	email = strings.TrimSpace(email)
-	if email == "" {
-		return nil, domain.NewErrorUser("email must not be empty")
-	}
 	if nonce == "" {
 		return nil, domain.NewErrorUser("nonce must not be empty")
 	}
@@ -150,14 +147,6 @@ func (a *Auth) CompleteSSHKeyLogin(ctx context.Context, email, nonce string, pub
 		return nil, sshLoginFailed()
 	}
 
-	user, err := a.userRepo.GetByEmail(ctx, email)
-	if err != nil {
-		if domain.IsErrorNotFound(err) {
-			return nil, sshLoginFailed()
-		}
-		return nil, err
-	}
-
 	pub, err := ssh.ParsePublicKey(publicKey)
 	if err != nil {
 		return nil, sshLoginFailed()
@@ -173,14 +162,42 @@ func (a *Auth) CompleteSSHKeyLogin(ctx context.Context, email, nonce string, pub
 		}
 		return nil, err
 	}
-	if key.UserID != user.ID {
-		return nil, sshLoginFailed()
+
+	user, err := a.sshUser(ctx, email, key.UserID)
+	if err != nil {
+		return nil, err
 	}
 
 	if err := sshkey.Verify(pub, sshkey.LoginPayload(nonce), signature); err != nil {
 		return nil, sshLoginFailed()
 	}
 	return a.generateLoginResult(ctx, user)
+}
+
+// sshUser resolves the account an SSH login belongs to: the email is an
+// optional assertion, otherwise the registered key identifies its owner.
+func (a *Auth) sshUser(ctx context.Context, email string, keyUserID snow.ID) (*domain.User, error) {
+	if email == "" {
+		user, err := a.userRepo.GetByID(ctx, keyUserID)
+		if err != nil {
+			if domain.IsErrorNotFound(err) {
+				return nil, sshLoginFailed()
+			}
+			return nil, err
+		}
+		return user, nil
+	}
+	user, err := a.userRepo.GetByEmail(ctx, email)
+	if err != nil {
+		if domain.IsErrorNotFound(err) {
+			return nil, sshLoginFailed()
+		}
+		return nil, err
+	}
+	if user.ID != keyUserID {
+		return nil, sshLoginFailed()
+	}
+	return user, nil
 }
 
 func sshLoginFailed() error {

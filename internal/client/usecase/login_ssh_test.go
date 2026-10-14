@@ -74,45 +74,12 @@ type stubFullExecutor struct {
 	*stubSSHExecutor
 }
 
-type stubSplitInput struct {
-	username         string
-	password         string
-	err              error
-	passwordErr      error
-	passwordPrompted bool
-}
-
 type failingSigner struct{}
 
 func (failingSigner) PublicKey() ssh.PublicKey { return nil }
 
 func (failingSigner) Sign(io.Reader, []byte) (*ssh.Signature, error) {
 	return nil, errors.New("signing failed")
-}
-
-func (s *stubSplitInput) PromptUsername() (string, error) {
-	if s.err != nil {
-		return "", s.err
-	}
-	return s.username, nil
-}
-
-func (s *stubSplitInput) PromptUsernameAndPassword() (string, string, error) {
-	if s.err != nil {
-		return "", "", s.err
-	}
-	return s.username, s.password, nil
-}
-
-func (s *stubSplitInput) PromptPassword() (string, error) {
-	s.passwordPrompted = true
-	if s.passwordErr != nil {
-		return "", s.passwordErr
-	}
-	if s.err != nil {
-		return "", s.err
-	}
-	return s.password, nil
 }
 
 func newSSHTestAuth(sshExec *stubSSHExecutor, storage secureStorage) *Auth {
@@ -168,14 +135,17 @@ func TestAuth_LoginWithSSHKey_BeginError(t *testing.T) {
 	require.ErrorIs(t, err, wantErr)
 }
 
-func TestAuth_LoginWithSSHKey_EmptyUsername(t *testing.T) {
-	auth := newSSHTestAuth(&stubSSHExecutor{}, &stubSecureStorage{})
+func TestAuth_LoginWithSSHKey_KeyOnly(t *testing.T) {
+	executor := &stubSSHExecutor{results: []*domain.LoginResult{{AccessToken: "tok", RefreshToken: "refresh", Host: "h"}}}
+	storage := &stubSecureStorage{}
+	auth := newSSHTestAuth(executor, storage)
 
 	err := auth.LoginWithSSHKey(context.Background(), "example.com", "", testSigners(t, "key"))
-
-	var domErr *domain.Error
-	require.ErrorAs(t, err, &domErr)
-	require.Equal(t, 400, domErr.Code)
+	require.NoError(t, err)
+	require.Empty(t, executor.lastEmail)
+	require.Len(t, storage.savedTokens, 1)
+	require.Equal(t, "tok", storage.savedTokens[0].AccessToken)
+	require.Empty(t, storage.savedTokens[0].Email)
 }
 
 func TestAuth_LoginWithSSHKey_NoSigners(t *testing.T) {
@@ -204,15 +174,15 @@ func TestAuth_MakeSureLoggedIn_SSHFirst(t *testing.T) {
 		stubSSHExecutor:   &stubSSHExecutor{results: []*domain.LoginResult{{AccessToken: "ssh-tok", Host: "h"}}},
 	}
 	storage := &stubSecureStorage{loadErr: errors.New("no token")}
-	input := &stubSplitInput{username: "alice@example.com", password: "secret"}
+	input := &stubUserInput{err: errors.New("should not be prompted")}
 	auth := NewAuth(executor, storage, input).
 		WithSSHLogin(func() ([]sshkey.Signer, error) { return testSigners(t, "key"), nil })
 
 	require.NoError(t, auth.MakeSureLoggedIn(context.Background(), "example.com"))
-	require.False(t, input.passwordPrompted)
+	require.Empty(t, executor.lastEmail)
 	require.Empty(t, executor.lastPassword)
 	require.Equal(t, "ssh-tok", storage.savedTokens[0].AccessToken)
-	require.Equal(t, "alice@example.com", storage.savedTokens[0].Email)
+	require.Empty(t, storage.savedTokens[0].Email)
 }
 
 func TestAuth_MakeSureLoggedIn_SSHFailureFallsBackToPassword(t *testing.T) {
@@ -223,12 +193,12 @@ func TestAuth_MakeSureLoggedIn_SSHFailureFallsBackToPassword(t *testing.T) {
 		},
 	}
 	storage := &stubSecureStorage{loadErr: errors.New("no token")}
-	input := &stubSplitInput{username: "alice@example.com", password: "secret"}
+	input := &stubUserInput{username: "alice@example.com", password: "secret"}
 	auth := NewAuth(executor, storage, input).
 		WithSSHLogin(func() ([]sshkey.Signer, error) { return testSigners(t, "key"), nil })
 
 	require.NoError(t, auth.MakeSureLoggedIn(context.Background(), "example.com"))
-	require.True(t, input.passwordPrompted)
+	require.Equal(t, "alice@example.com", executor.lastUsername)
 	require.Equal(t, "secret", executor.lastPassword)
 	require.Equal(t, "password-tok", storage.savedTokens[0].AccessToken)
 	require.Equal(t, "alice@example.com", storage.savedTokens[0].Email)
@@ -240,27 +210,12 @@ func TestAuth_MakeSureLoggedIn_NoSignersUsesPasswordPrompt(t *testing.T) {
 		stubSSHExecutor:   &stubSSHExecutor{},
 	}
 	storage := &stubSecureStorage{loadErr: errors.New("no token")}
-	input := &stubSplitInput{username: "alice@example.com", password: "secret"}
+	input := &stubUserInput{username: "alice@example.com", password: "secret"}
 	auth := NewAuth(executor, storage, input).
 		WithSSHLogin(func() ([]sshkey.Signer, error) { return nil, nil })
 
 	require.NoError(t, auth.MakeSureLoggedIn(context.Background(), "example.com"))
-	require.True(t, input.passwordPrompted)
-	require.Zero(t, executor.completeCalls)
-}
-
-func TestAuth_MakeSureLoggedIn_PlainInputUsesCombinedPrompt(t *testing.T) {
-	executor := &stubFullExecutor{
-		stubLoginExecutor: &stubLoginExecutor{usernameResult: &domain.LoginResult{AccessToken: "password-tok", Host: "h"}},
-		stubSSHExecutor:   &stubSSHExecutor{},
-	}
-	storage := &stubSecureStorage{loadErr: errors.New("no token")}
-	input := &stubUserInput{username: "alice@example.com", password: "secret"}
-	auth := NewAuth(executor, storage, input).
-		WithSSHLogin(func() ([]sshkey.Signer, error) { return testSigners(t, "key"), nil })
-
-	require.NoError(t, auth.MakeSureLoggedIn(context.Background(), "example.com"))
-	require.Equal(t, "alice@example.com", executor.lastUsername)
+	require.Equal(t, "secret", executor.lastPassword)
 	require.Zero(t, executor.completeCalls)
 }
 
@@ -310,21 +265,29 @@ func TestSession_ReauthViaSSH(t *testing.T) {
 	require.Equal(t, "alice@example.com", storage.savedTokens[0].Email)
 }
 
-func TestSession_ReauthViaSSH_NoStoredEmailFallsBack(t *testing.T) {
+func TestSession_ReauthViaSSH_KeyOnly(t *testing.T) {
 	storage := &stubSecureStorage{loadResult: &domain.LoginResult{
 		RefreshToken: "old-refresh",
 		Host:         "example.com",
 	}}
 	executor := &stubSSHSessionExecutor{
 		refresh: &stubRefreshExecutor{err: domain.NewUserError("refresh token expired")},
-		ssh:     &stubSSHExecutor{},
+		ssh: &stubSSHExecutor{results: []*domain.LoginResult{{
+			AccessToken:  "ssh-access",
+			RefreshToken: "ssh-refresh",
+			Host:         "example.com",
+		}}},
 	}
 	session := NewSession(storage, executor).
 		WithSSHLogin(func() ([]sshkey.Signer, error) { return testSigners(t, "key"), nil })
 
-	_, err := session.Refresh(context.Background(), "example.com")
-	require.Error(t, err)
-	require.Zero(t, executor.ssh.completeCalls)
+	token, err := session.Refresh(context.Background(), "example.com")
+	require.NoError(t, err)
+	require.Equal(t, "ssh-access", token)
+	require.Equal(t, 1, executor.ssh.completeCalls)
+	require.Empty(t, executor.ssh.lastEmail)
+	require.Len(t, storage.savedTokens, 1)
+	require.Empty(t, storage.savedTokens[0].Email)
 }
 
 func TestSession_Refresh_PreservesEmail(t *testing.T) {
@@ -385,32 +348,20 @@ func TestAuth_IsLoggedIn_InvalidTokens(t *testing.T) {
 	}
 }
 
-func TestAuth_MakeSureLoggedIn_UsernamePromptError(t *testing.T) {
+func TestAuth_MakeSureLoggedIn_SSHFailurePromptError(t *testing.T) {
 	executor := &stubFullExecutor{
 		stubLoginExecutor: &stubLoginExecutor{},
-		stubSSHExecutor:   &stubSSHExecutor{},
+		stubSSHExecutor: &stubSSHExecutor{
+			completeErrs: []error{domain.NewUserError("invalid email or SSH key")},
+		},
 	}
 	storage := &stubSecureStorage{loadErr: errors.New("no token")}
-	input := &stubSplitInput{err: errors.New("stdin closed")}
+	input := &stubUserInput{err: errors.New("stdin closed")}
 	auth := NewAuth(executor, storage, input).
 		WithSSHLogin(func() ([]sshkey.Signer, error) { return testSigners(t, "key"), nil })
 
 	err := auth.MakeSureLoggedIn(context.Background(), "example.com")
 	require.ErrorContains(t, err, "stdin closed")
-}
-
-func TestAuth_MakeSureLoggedIn_PasswordPromptError(t *testing.T) {
-	executor := &stubFullExecutor{
-		stubLoginExecutor: &stubLoginExecutor{},
-		stubSSHExecutor:   &stubSSHExecutor{},
-	}
-	storage := &stubSecureStorage{loadErr: errors.New("no token")}
-	input := &stubSplitInput{username: "alice@example.com", passwordErr: errors.New("no tty")}
-	auth := NewAuth(executor, storage, input).
-		WithSSHLogin(func() ([]sshkey.Signer, error) { return nil, nil })
-
-	err := auth.MakeSureLoggedIn(context.Background(), "example.com")
-	require.ErrorContains(t, err, "no tty")
 }
 
 func TestSession_Refresh_LoadError(t *testing.T) {

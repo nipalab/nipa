@@ -56,11 +56,14 @@ func TestBeginLoginSSHKey_Success(t *testing.T) {
 	require.WithinDuration(t, time.Now().Add(60*time.Second), authRepo.createdExpiry, 5*time.Second)
 }
 
-func TestBeginLoginSSHKey_EmptyEmail(t *testing.T) {
-	srv := newSSHLoginServer(t, &stubUserRepo{}, &stubAuthRepo{}, &stubSSHKeyRepo{})
+func TestBeginLoginSSHKey_KeyOnly(t *testing.T) {
+	authRepo := &stubAuthRepo{}
+	srv := newSSHLoginServer(t, &stubUserRepo{}, authRepo, &stubSSHKeyRepo{})
 
-	_, err := srv.BeginLoginSSHKey(context.Background(), &pb.BeginLoginSSHKeyRequest{Email: " "})
-	require.Equal(t, codes.InvalidArgument, status.Code(err))
+	resp, err := srv.BeginLoginSSHKey(context.Background(), &pb.BeginLoginSSHKeyRequest{Email: " "})
+	require.NoError(t, err)
+	require.NotEmpty(t, resp.Nonce)
+	require.Empty(t, authRepo.createdEmail)
 }
 
 func TestCompleteLoginSSHKey_Success(t *testing.T) {
@@ -87,6 +90,29 @@ func TestCompleteLoginSSHKey_Success(t *testing.T) {
 	require.NotEmpty(t, resp.AccessToken)
 	require.NotEmpty(t, resp.RefreshToken)
 	require.Equal(t, int32(30*60), resp.ExpiresIn)
+}
+
+func TestCompleteLoginSSHKey_KeyOnlySuccess(t *testing.T) {
+	signer := sshLoginSigner(t)
+	nonce := "nonce-1"
+	user := &domain.User{ID: snow.ID(42), Name: "alice", Email: "alice@example.com"}
+	authRepo := &stubAuthRepo{
+		challenge: &domain.SSHLoginChallenge{
+			Nonce:     nonce,
+			ExpiresAt: time.Now().Add(30 * time.Second),
+		},
+	}
+	keyRepo := &stubSSHKeyRepo{key: &domain.SSHPublicKey{ID: snow.ID(1), UserID: snow.ID(42)}}
+	srv := newSSHLoginServer(t, &stubUserRepo{user: user}, authRepo, keyRepo)
+
+	resp, err := srv.CompleteLoginSSHKey(context.Background(), &pb.CompleteLoginSSHKeyRequest{
+		Nonce:     nonce,
+		PublicKey: signer.PublicKey().Marshal(),
+		Signature: sshLoginSignature(t, signer, nonce),
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, resp.AccessToken)
+	require.NotEmpty(t, resp.RefreshToken)
 }
 
 func TestCompleteLoginSSHKey_UnknownNonce(t *testing.T) {

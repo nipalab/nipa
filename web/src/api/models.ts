@@ -20,6 +20,15 @@ export interface UserResponse {
   deleted: boolean
 }
 
+export interface SSHKeyResponse {
+  id: string
+  name: string
+  key_type: string
+  fingerprint: string
+  comment?: string
+  created_at: string
+}
+
 export interface OrgResponse {
   id: string
   slug: string

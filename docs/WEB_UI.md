@@ -31,7 +31,7 @@ proxies `/api` and `/docs` to `NIPA_SERVER_URL`).
 | `/:org/settings` | organization settings | members and groups (org owner or global admin) + storage card (usage, quota, per-project breakdown; hidden when the server has no ledger) |
 | `/admin/users` | user administration | GitHub-style list with filter, avatar/role labels and row actions |
 | `/admin/users/new` | new user | dedicated create page (name, email, password) |
-| `/settings/profile` | public profile | GitHub-style settings layout: avatar preview + photo URL + name, and password change with confirmation/validation |
+| `/settings/profile` | public profile | GitHub-style settings layout: avatar preview + photo URL + name, password change with confirmation/validation, and SSH key management (list/add/remove) |
 | `/settings/billing` | billing | the caller's billing-owner aggregate usage, quota and per-org breakdown; super admins can set/clear owner quotas |
 
 ## Browse API
@@ -56,10 +56,12 @@ Tags page in the SPA yet.
 ## SSH keys API
 
 SSH public keys of the authenticated user are exposed at `GET/POST /api/v1/keys`
-and `DELETE /api/v1/keys/{id}` (`internal/http/api/ssh_key.go`). A key carries an
-optional `name` (falls back to the OpenSSH key comment when omitted) so users
-can identify it. Keys are the credential for the SSH-key login flow; the SPA has
-no keys page yet, but the profile page will list them.
+and `DELETE /api/v1/keys/{id}` (`internal/http/api/ssh_key.go`), with
+`listMySSHKeys`/`addMySSHKey`/`removeMySSHKey` helpers in
+`web/src/api/endpoints.ts`. A key carries an optional `name` (falls back to the
+OpenSSH key comment when omitted) so users can identify it. Keys are the
+credential for the SSH-key login flow; the profile page's "SSH keys" card
+(`web/src/components/SSHKeysCard.tsx`) lists, adds and removes them.
 
 ## Organizations API
 

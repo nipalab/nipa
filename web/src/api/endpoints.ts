@@ -16,6 +16,7 @@ import type {
   ReviewRequestResponse,
   ReviewResponse,
   ReviewStateResponse,
+  SSHKeyResponse,
   MessageResponse,
   OrgMemberResponse,
   OrgResponse,
@@ -58,6 +59,21 @@ export function changeMyPassword(oldPassword: string, newPassword: string): Prom
     method: 'POST',
     body: JSON.stringify({ old_password: oldPassword, new_password: newPassword }),
   })
+}
+
+export function listMySSHKeys(): Promise<SSHKeyResponse[]> {
+  return apiJson('/api/v1/keys')
+}
+
+export function addMySSHKey(name: string, publicKey: string): Promise<SSHKeyResponse> {
+  return apiJson('/api/v1/keys', {
+    method: 'POST',
+    body: JSON.stringify({ name, public_key: publicKey }),
+  })
+}
+
+export function removeMySSHKey(id: string): Promise<MessageResponse> {
+  return apiJson(`/api/v1/keys/${encodeURIComponent(id)}`, { method: 'DELETE' })
 }
 
 export function listOrgs(): Promise<OrgResponse[]> {
