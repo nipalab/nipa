@@ -61,15 +61,26 @@ func TestAuth_BeginSSHKeyLogin_Success(t *testing.T) {
 	require.WithinDuration(t, time.Now().Add(60*time.Second), capturedExpiry, 5*time.Second)
 }
 
-func TestAuth_BeginSSHKeyLogin_EmptyEmail(t *testing.T) {
+func TestAuth_BeginSSHKeyLogin_KeyOnly(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	auth := newTestAuth("test-secret", true, NewMockuserRepository(ctrl), NewMockauthRepository(ctrl))
+	authRepo := NewMockauthRepository(ctrl)
+	auth := newTestAuth("test-secret", true, NewMockuserRepository(ctrl), authRepo)
 
-	_, err := auth.BeginSSHKeyLogin(context.Background(), "   ")
+	authRepo.EXPECT().
+		DeleteExpiredSSHLoginChallenges(gomock.Any(), gomock.Any()).
+		Return(nil)
+	var capturedEmail string
+	authRepo.EXPECT().
+		CreateSSHLoginChallenge(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, email, _ string, _ time.Time) error {
+			capturedEmail = email
+			return nil
+		})
 
-	var domErr *domain.Error
-	require.ErrorAs(t, err, &domErr)
-	require.Equal(t, 400, domErr.Code)
+	challenge, err := auth.BeginSSHKeyLogin(context.Background(), "   ")
+	require.NoError(t, err)
+	require.NotEmpty(t, challenge.Nonce)
+	require.Empty(t, capturedEmail)
 }
 
 func TestAuth_BeginSSHKeyLogin_SweepError(t *testing.T) {
@@ -147,6 +158,47 @@ func TestAuth_CompleteSSHKeyLogin_Success(t *testing.T) {
 	require.Equal(t, snow.ID(42), claims.UserID)
 }
 
+func TestAuth_CompleteSSHKeyLogin_KeyOnlySuccess(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	userRepo := NewMockuserRepository(ctrl)
+	authRepo := NewMockauthRepository(ctrl)
+	keyRepo := NewMockauthSSHKeyRepository(ctrl)
+	auth := newTestAuth("test-secret", true, userRepo, authRepo).WithSSHKeys(keyRepo)
+
+	signer := sshLoginTestSigner(t)
+	nonce := "nonce-1"
+	user := &domain.User{ID: snow.ID(42), Email: "alice@example.com"}
+
+	authRepo.EXPECT().
+		ConsumeSSHLoginChallenge(gomock.Any(), nonce).
+		Return(&domain.SSHLoginChallenge{
+			Nonce:     nonce,
+			ExpiresAt: time.Now().Add(30 * time.Second),
+		}, nil)
+	keyRepo.EXPECT().
+		GetByFingerprint(gomock.Any(), ssh.FingerprintSHA256(signer.PublicKey())).
+		Return(&domain.SSHPublicKey{ID: snow.ID(1), UserID: snow.ID(42)}, nil)
+	userRepo.EXPECT().
+		GetByID(gomock.Any(), snow.ID(42)).
+		Return(user, nil)
+	authRepo.EXPECT().
+		SaveRefreshToken(gomock.Any(), snow.ID(42), gomock.Any(), gomock.Any()).
+		Return(nil)
+
+	result, err := auth.CompleteSSHKeyLogin(
+		context.Background(),
+		"",
+		nonce,
+		signer.PublicKey().Marshal(),
+		sshLoginTestSignature(t, signer, sshkey.LoginPayload(nonce)),
+	)
+	require.NoError(t, err)
+	require.NotEmpty(t, result.AccessToken)
+
+	claims := parseAccessToken(t, result.AccessToken, "test-secret")
+	require.Equal(t, snow.ID(42), claims.UserID)
+}
+
 func TestAuth_CompleteSSHKeyLogin_EmptyInputs(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	auth := newTestAuth("test-secret", true, NewMockuserRepository(ctrl), NewMockauthRepository(ctrl)).
@@ -157,10 +209,9 @@ func TestAuth_CompleteSSHKeyLogin_EmptyInputs(t *testing.T) {
 	sig := []byte("sig")
 
 	for name, err := range map[string]error{
-		"email":      mustComplete(t, auth, ctx, "", "nonce", pub, sig),
-		"nonce":      mustComplete(t, auth, ctx, "a@b.c", "", pub, sig),
-		"public key": mustComplete(t, auth, ctx, "a@b.c", "nonce", nil, sig),
-		"signature":  mustComplete(t, auth, ctx, "a@b.c", "nonce", pub, nil),
+		"nonce":      mustComplete(t, auth, ctx, "", "", pub, sig),
+		"public key": mustComplete(t, auth, ctx, "", "nonce", nil, sig),
+		"signature":  mustComplete(t, auth, ctx, "", "nonce", pub, nil),
 	} {
 		var domErr *domain.Error
 		require.ErrorAs(t, err, &domErr, name)
@@ -236,9 +287,10 @@ func TestAuth_CompleteSSHKeyLogin_UnknownUser(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	authRepo := NewMockauthRepository(ctrl)
 	userRepo := NewMockuserRepository(ctrl)
-	auth := newTestAuth("test-secret", true, userRepo, authRepo).
-		WithSSHKeys(NewMockauthSSHKeyRepository(ctrl))
+	keyRepo := NewMockauthSSHKeyRepository(ctrl)
+	auth := newTestAuth("test-secret", true, userRepo, authRepo).WithSSHKeys(keyRepo)
 
+	signer := sshLoginTestSigner(t)
 	authRepo.EXPECT().
 		ConsumeSSHLoginChallenge(gomock.Any(), "nonce").
 		Return(&domain.SSHLoginChallenge{
@@ -246,11 +298,17 @@ func TestAuth_CompleteSSHKeyLogin_UnknownUser(t *testing.T) {
 			Nonce:     "nonce",
 			ExpiresAt: time.Now().Add(30 * time.Second),
 		}, nil)
+	keyRepo.EXPECT().
+		GetByFingerprint(gomock.Any(), gomock.Any()).
+		Return(&domain.SSHPublicKey{ID: snow.ID(1), UserID: snow.ID(42)}, nil)
 	userRepo.EXPECT().
 		GetByEmail(gomock.Any(), "alice@example.com").
 		Return(nil, domain.NewErrorRecordNotFound())
 
-	_, err := auth.CompleteSSHKeyLogin(context.Background(), "alice@example.com", "nonce", []byte("key"), []byte("sig"))
+	_, err := auth.CompleteSSHKeyLogin(
+		context.Background(), "alice@example.com", "nonce",
+		signer.PublicKey().Marshal(), sshLoginTestSignature(t, signer, sshkey.LoginPayload("nonce")),
+	)
 	assertSSHLoginFailed(t, err)
 }
 
@@ -268,9 +326,6 @@ func TestAuth_CompleteSSHKeyLogin_InvalidPublicKey(t *testing.T) {
 			Nonce:     "nonce",
 			ExpiresAt: time.Now().Add(30 * time.Second),
 		}, nil)
-	userRepo.EXPECT().
-		GetByEmail(gomock.Any(), "alice@example.com").
-		Return(&domain.User{ID: snow.ID(42), Email: "alice@example.com"}, nil)
 
 	_, err := auth.CompleteSSHKeyLogin(context.Background(), "alice@example.com", "nonce", []byte("junk"), []byte("sig"))
 	assertSSHLoginFailed(t, err)
@@ -291,9 +346,6 @@ func TestAuth_CompleteSSHKeyLogin_KeyNotRegistered(t *testing.T) {
 			Nonce:     "nonce",
 			ExpiresAt: time.Now().Add(30 * time.Second),
 		}, nil)
-	userRepo.EXPECT().
-		GetByEmail(gomock.Any(), "alice@example.com").
-		Return(&domain.User{ID: snow.ID(42), Email: "alice@example.com"}, nil)
 	keyRepo.EXPECT().
 		GetByFingerprint(gomock.Any(), gomock.Any()).
 		Return(nil, domain.NewErrorRecordNotFound())
@@ -382,9 +434,10 @@ func TestAuth_CompleteSSHKeyLogin_UserLookupError(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	authRepo := NewMockauthRepository(ctrl)
 	userRepo := NewMockuserRepository(ctrl)
-	auth := newTestAuth("test-secret", true, userRepo, authRepo).
-		WithSSHKeys(NewMockauthSSHKeyRepository(ctrl))
+	keyRepo := NewMockauthSSHKeyRepository(ctrl)
+	auth := newTestAuth("test-secret", true, userRepo, authRepo).WithSSHKeys(keyRepo)
 
+	signer := sshLoginTestSigner(t)
 	wantErr := errors.New("db down")
 	authRepo.EXPECT().
 		ConsumeSSHLoginChallenge(gomock.Any(), "nonce").
@@ -393,11 +446,17 @@ func TestAuth_CompleteSSHKeyLogin_UserLookupError(t *testing.T) {
 			Nonce:     "nonce",
 			ExpiresAt: time.Now().Add(30 * time.Second),
 		}, nil)
+	keyRepo.EXPECT().
+		GetByFingerprint(gomock.Any(), gomock.Any()).
+		Return(&domain.SSHPublicKey{ID: snow.ID(1), UserID: snow.ID(42)}, nil)
 	userRepo.EXPECT().
 		GetByEmail(gomock.Any(), "alice@example.com").
 		Return(nil, wantErr)
 
-	_, err := auth.CompleteSSHKeyLogin(context.Background(), "alice@example.com", "nonce", []byte("key"), []byte("sig"))
+	_, err := auth.CompleteSSHKeyLogin(
+		context.Background(), "alice@example.com", "nonce",
+		signer.PublicKey().Marshal(), sshLoginTestSignature(t, signer, sshkey.LoginPayload("nonce")),
+	)
 	require.ErrorIs(t, err, wantErr)
 }
 
@@ -407,4 +466,33 @@ func assertSSHLoginFailed(t *testing.T, err error) {
 	require.ErrorAs(t, err, &domErr)
 	require.Equal(t, 400, domErr.Code)
 	require.Equal(t, "invalid email or SSH key", domErr.Message)
+}
+
+func TestAuth_CompleteSSHKeyLogin_KeyOnlyUserLookupError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	authRepo := NewMockauthRepository(ctrl)
+	userRepo := NewMockuserRepository(ctrl)
+	keyRepo := NewMockauthSSHKeyRepository(ctrl)
+	auth := newTestAuth("test-secret", true, userRepo, authRepo).WithSSHKeys(keyRepo)
+
+	signer := sshLoginTestSigner(t)
+	wantErr := errors.New("db down")
+	authRepo.EXPECT().
+		ConsumeSSHLoginChallenge(gomock.Any(), "nonce").
+		Return(&domain.SSHLoginChallenge{
+			Nonce:     "nonce",
+			ExpiresAt: time.Now().Add(30 * time.Second),
+		}, nil)
+	keyRepo.EXPECT().
+		GetByFingerprint(gomock.Any(), gomock.Any()).
+		Return(&domain.SSHPublicKey{ID: snow.ID(1), UserID: snow.ID(42)}, nil)
+	userRepo.EXPECT().
+		GetByID(gomock.Any(), snow.ID(42)).
+		Return(nil, wantErr)
+
+	_, err := auth.CompleteSSHKeyLogin(
+		context.Background(), "", "nonce",
+		signer.PublicKey().Marshal(), sshLoginTestSignature(t, signer, sshkey.LoginPayload("nonce")),
+	)
+	require.ErrorIs(t, err, wantErr)
 }

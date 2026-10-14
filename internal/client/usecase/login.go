@@ -25,14 +25,6 @@ type userInput interface {
 	PromptUsernameAndPassword() (username, password string, err error)
 }
 
-type usernameInput interface {
-	PromptUsername() (string, error)
-}
-
-type passwordInput interface {
-	PromptPassword() (string, error)
-}
-
 type secureStorage interface {
 	SaveToken(data *domain.LoginResult) error
 	LoadToken(host string) (*domain.LoginResult, error)
@@ -81,10 +73,10 @@ func (l *Auth) LoginWithUsernamePassword(ctx context.Context, host, username, pa
 	return nil
 }
 
+// LoginWithSSHKey logs in with a registered SSH key. The email is optional:
+// when set it must match the account that owns the key, otherwise the key
+// identifies the account.
 func (l *Auth) LoginWithSSHKey(ctx context.Context, host, email string, signers []sshkey.Signer) error {
-	if email == "" {
-		return domain.NewUserError("username cannot be empty")
-	}
 	if len(signers) == 0 {
 		return domain.NewUserError("no SSH key available")
 	}
@@ -93,6 +85,7 @@ func (l *Auth) LoginWithSSHKey(ctx context.Context, host, email string, signers 
 		return domain.NewUserError("SSH key login is not supported by this client")
 	}
 
+	email = strings.TrimSpace(email)
 	loginResult, err := loginWithSSHKey(ctx, executor, host, email, signers)
 	if err != nil {
 		return err
@@ -167,24 +160,15 @@ func (l *Auth) MakeSureLoggedIn(ctx context.Context, host string) error {
 	return nil
 }
 
+// loginInteractively tries a registered SSH key first, which identifies its
+// account on its own, and falls back to the interactive password prompt.
 func (l *Auth) loginInteractively(ctx context.Context, host string) error {
-	usernamePrompt, hasUsername := l.userInput.(usernameInput)
-	passwordPrompt, hasPassword := l.userInput.(passwordInput)
-	if l.resolveSigners != nil && hasUsername && hasPassword {
-		username, err := usernamePrompt.PromptUsername()
-		if err != nil {
-			return err
-		}
+	if l.resolveSigners != nil {
 		if signers, err := l.resolveSigners(); err == nil && len(signers) > 0 {
-			if err := l.LoginWithSSHKey(ctx, host, username, signers); err == nil {
+			if err := l.LoginWithSSHKey(ctx, host, "", signers); err == nil {
 				return nil
 			}
 		}
-		password, err := passwordPrompt.PromptPassword()
-		if err != nil {
-			return err
-		}
-		return l.LoginWithUsernamePassword(ctx, host, username, password)
 	}
 
 	username, password, err := l.userInput.PromptUsernameAndPassword()

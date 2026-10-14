@@ -113,9 +113,10 @@ func runLoginCmd(t *testing.T, cli *Cli, dir string, args ...string) (string, er
 func TestLoginCmd_HostFlagAndSSHKey(t *testing.T) {
 	isolateLoginEnv(t)
 	keyPath := writeLoginTestKey(t)
-	cli, connector, storage := newLoginCli(&fakeSSHExecutor{
+	executor := &fakeSSHExecutor{
 		sshResult: &domain.LoginResult{AccessToken: "ssh-tok", Host: "nipa.example.com"},
-	})
+	}
+	cli, connector, storage := newLoginCli(executor)
 
 	out, err := runLoginCmd(t, cli, "",
 		"--host", "nipa.example.com",
@@ -124,10 +125,32 @@ func TestLoginCmd_HostFlagAndSSHKey(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.Equal(t, "nipa.example.com", connector.lastHost)
+	require.Equal(t, "alice@example.com", executor.lastEmail)
 	require.Contains(t, out, "Logged in to nipa.example.com as alice@example.com using SSH key")
 	require.Len(t, storage.saved, 1)
 	require.Equal(t, "ssh-tok", storage.saved[0].AccessToken)
 	require.Equal(t, "alice@example.com", storage.saved[0].Email)
+}
+
+func TestLoginCmd_KeyOnlyWithoutUsername(t *testing.T) {
+	isolateLoginEnv(t)
+	keyPath := writeLoginTestKey(t)
+	executor := &fakeSSHExecutor{
+		sshResult: &domain.LoginResult{AccessToken: "ssh-tok", Host: "nipa.example.com"},
+	}
+	cli, connector, storage := newLoginCli(executor)
+
+	out, err := runLoginCmd(t, cli, "",
+		"--host", "nipa.example.com",
+		"--ssh-key", keyPath,
+	)
+	require.NoError(t, err)
+	require.Equal(t, "nipa.example.com", connector.lastHost)
+	require.Empty(t, executor.lastEmail)
+	require.Contains(t, out, "Logged in to nipa.example.com using SSH key")
+	require.Len(t, storage.saved, 1)
+	require.Equal(t, "ssh-tok", storage.saved[0].AccessToken)
+	require.Empty(t, storage.saved[0].Email)
 }
 
 func TestLoginCmd_HostFlagAcceptsURL(t *testing.T) {

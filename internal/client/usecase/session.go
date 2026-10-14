@@ -116,7 +116,7 @@ func (s *Session) trySSHReauth(ctx context.Context, host string) (string, bool) 
 		return "", false
 	}
 	stored, err := s.storage.LoadToken(host)
-	if err != nil || stored.Email == "" {
+	if err != nil {
 		return "", false
 	}
 	signers, err := s.resolveSigners()
