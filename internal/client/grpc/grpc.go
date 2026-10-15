@@ -13,6 +13,7 @@ import (
 	"github.com/nipalab/nipa/internal/client/domain"
 	serverDomain "github.com/nipalab/nipa/internal/domain"
 	pb "github.com/nipalab/nipa/internal/grpc/pb"
+	"github.com/nipalab/nipa/internal/obs"
 	"github.com/nipalab/nipa/internal/snow"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -48,7 +49,10 @@ func (t *Transport) Connect(url string, opts ...grpc.DialOption) error {
 		t.clientConn = nil
 		t.url = ""
 	}
-	opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	opts = append(opts,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		obs.ActiveTracing().GRPCDialOption(),
+	)
 	conn, err := grpc.NewClient(url, opts...)
 	if err != nil {
 		return err

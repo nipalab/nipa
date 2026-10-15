@@ -12,6 +12,15 @@ LOG_FORMAT: console
 PPROF_ENABLED: false
 # Serve Prometheus metrics on /metrics of the main port.
 METRICS_ENABLED: true
+# Export OpenTelemetry spans over OTLP (docs/TRACING.md). Disabled keeps the
+# process on the no-op tracer. TRACING_STDOUT pretty-prints spans to stderr
+# instead of exporting; the endpoint accepts host:port or a URL (https:// for
+# TLS, bare host or http:// for plaintext).
+TRACING_ENABLED: false
+TRACING_OTLP_ENDPOINT: localhost:4317
+TRACING_STDOUT: false
+TRACING_SAMPLE_RATIO: 1.0
+TRACING_SERVICE_NAME: ''
 # Snowflake node id. The free `nipad` is single-instance and uses this value.
 # `nipad-ee` uses it when set; remove the key (or leave the env var empty) to
 # have each instance lease its own id from postgres, which is what a multi-pod

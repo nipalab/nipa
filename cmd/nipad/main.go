@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log/slog"
@@ -36,6 +37,22 @@ func main() {
 
 	obs.Setup(cfg.LogLevel, cfg.LogFormat, "nipad", os.Stderr)
 	metrics := obs.NewMetrics()
+
+	serviceName := cfg.TracingServiceName
+	if serviceName == "" {
+		serviceName = "nipad"
+	}
+	tracing, err := obs.SetupTracing(context.Background(), obs.TracingConfig{
+		Enabled:        cfg.TracingEnabled,
+		Endpoint:       cfg.TracingOTLPEndpoint,
+		Stdout:         cfg.TracingStdout,
+		SampleRatio:    cfg.TracingSampleRatio,
+		ServiceName:    serviceName,
+		ServiceVersion: version.Resolve().Version,
+	})
+	if err != nil {
+		panic(fmt.Errorf("setup tracing: %w", err))
+	}
 
 	dbConn, err := createDatabaseConnection(cfg.DatabaseDSN)
 	if err != nil {
@@ -174,7 +191,7 @@ func main() {
 	if emailDispatcher != nil {
 		dispatchers = append(dispatchers, emailDispatcher)
 	}
-	if err := serverapp.Run(cfg, reg, dispatchers, serverapp.WithReadiness(dbConn.PingContext), serverapp.WithMetrics(metrics)); err != nil {
+	if err := serverapp.Run(cfg, reg, dispatchers, serverapp.WithReadiness(dbConn.PingContext), serverapp.WithMetrics(metrics), serverapp.WithTracing(tracing)); err != nil {
 		panic(err)
 	}
 }

@@ -20,8 +20,10 @@ import (
 
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
+	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/obs"
 	"github.com/nipalab/nipa/internal/storage"
 )
 
@@ -84,7 +86,14 @@ func New(ctx context.Context, cfg Config) (*Store, error) {
 	return &Store{client: client, bucket: bucket, prefix: normalizePrefix(cfg.Prefix)}, nil
 }
 
-func (s *Store) Put(ctx context.Context, hash domain.Hash, data []byte) error {
+func (s *Store) Put(ctx context.Context, hash domain.Hash, data []byte) (err error) {
+	ctx, span := obs.StartSpan(ctx, "storage.s3.put_object",
+		attribute.String(obs.AttrChunkHash, hash.String()),
+		attribute.Int(obs.AttrChunkSize, len(data)),
+		attribute.String(obs.AttrBackend, "s3"),
+		attribute.String("nipa.storage.bucket", s.bucket))
+	defer func() { obs.FinishSpan(span, err) }()
+
 	exists, err := s.Exists(ctx, hash)
 	if err != nil {
 		return err
@@ -101,21 +110,33 @@ func (s *Store) Put(ctx context.Context, hash domain.Hash, data []byte) error {
 	return nil
 }
 
-func (s *Store) Get(ctx context.Context, hash domain.Hash) ([]byte, error) {
+func (s *Store) Get(ctx context.Context, hash domain.Hash) (data []byte, err error) {
+	ctx, span := obs.StartSpan(ctx, "storage.s3.get_object",
+		attribute.String(obs.AttrChunkHash, hash.String()),
+		attribute.String(obs.AttrBackend, "s3"),
+		attribute.String("nipa.storage.bucket", s.bucket))
+	defer func() { obs.FinishSpan(span, err) }()
+
 	object, err := s.client.GetObject(ctx, s.bucket, s.key(hash), minio.GetObjectOptions{})
 	if err != nil {
 		return nil, s.mapError(err, hash)
 	}
 	defer func() { _ = object.Close() }()
 
-	data, err := io.ReadAll(object)
+	data, err = io.ReadAll(object)
 	if err != nil {
 		return nil, s.mapError(err, hash)
 	}
 	return data, nil
 }
 
-func (s *Store) Size(ctx context.Context, hash domain.Hash) (int64, error) {
+func (s *Store) Size(ctx context.Context, hash domain.Hash) (size int64, err error) {
+	ctx, span := obs.StartSpan(ctx, "storage.s3.stat_object",
+		attribute.String(obs.AttrChunkHash, hash.String()),
+		attribute.String(obs.AttrBackend, "s3"),
+		attribute.String("nipa.storage.bucket", s.bucket))
+	defer func() { obs.FinishSpan(span, err) }()
+
 	info, err := s.client.StatObject(ctx, s.bucket, s.key(hash), minio.StatObjectOptions{})
 	if err != nil {
 		return 0, s.mapError(err, hash)
@@ -140,21 +161,34 @@ func (s *Store) Close() error {
 
 // PresignDownload returns an absolute URL the client can GET the chunk from.
 // Expiries beyond SigV4's 7-day limit are clamped.
-func (s *Store) PresignDownload(ctx context.Context, hash domain.Hash, expires time.Duration) (string, error) {
+func (s *Store) PresignDownload(ctx context.Context, hash domain.Hash, expires time.Duration) (presignedURL string, err error) {
+	ctx, span := obs.StartSpan(ctx, "storage.s3.presign_download",
+		attribute.String(obs.AttrChunkHash, hash.String()),
+		attribute.String(obs.AttrBackend, "s3"),
+		attribute.String("nipa.storage.bucket", s.bucket))
+	defer func() { obs.FinishSpan(span, err) }()
+
 	if expires > maxPresignTTL {
 		expires = maxPresignTTL
 	}
-	url, err := s.client.PresignedGetObject(ctx, s.bucket, s.key(hash), expires, nil)
+	presigned, err := s.client.PresignedGetObject(ctx, s.bucket, s.key(hash), expires, nil)
 	if err != nil {
 		return "", fmt.Errorf("s3: presign download for chunk %s: %w", hash, err)
 	}
-	return url.String(), nil
+	return presigned.String(), nil
 }
 
 // PresignUpload returns a POST policy target for one chunk. The policy pins
 // the exact content length, so the object store rejects any body larger or
 // smaller than size before it is written.
-func (s *Store) PresignUpload(ctx context.Context, hash domain.Hash, size int64, expires time.Duration) (storage.UploadTarget, error) {
+func (s *Store) PresignUpload(ctx context.Context, hash domain.Hash, size int64, expires time.Duration) (target storage.UploadTarget, err error) {
+	ctx, span := obs.StartSpan(ctx, "storage.s3.presign_upload",
+		attribute.String(obs.AttrChunkHash, hash.String()),
+		attribute.Int64(obs.AttrChunkSize, size),
+		attribute.String(obs.AttrBackend, "s3"),
+		attribute.String("nipa.storage.bucket", s.bucket))
+	defer func() { obs.FinishSpan(span, err) }()
+
 	if size <= 0 {
 		return storage.UploadTarget{}, fmt.Errorf("s3: invalid chunk size %d", size)
 	}
@@ -182,7 +216,13 @@ func (s *Store) PresignUpload(ctx context.Context, hash domain.Hash, size int64,
 }
 
 // DeleteChunk removes chunk content so a client can re-upload it.
-func (s *Store) DeleteChunk(ctx context.Context, hash domain.Hash) error {
+func (s *Store) DeleteChunk(ctx context.Context, hash domain.Hash) (err error) {
+	ctx, span := obs.StartSpan(ctx, "storage.s3.delete_object",
+		attribute.String(obs.AttrChunkHash, hash.String()),
+		attribute.String(obs.AttrBackend, "s3"),
+		attribute.String("nipa.storage.bucket", s.bucket))
+	defer func() { obs.FinishSpan(span, err) }()
+
 	if err := s.client.RemoveObject(ctx, s.bucket, s.key(hash), minio.RemoveObjectOptions{}); err != nil {
 		return fmt.Errorf("s3: delete chunk %s: %w", hash, err)
 	}

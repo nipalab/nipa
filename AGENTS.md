@@ -455,6 +455,28 @@ registered on the shared `/api/v1` WebService via `serverapp.WithRoutes` only
 when the ledger is enabled, so they 404 otherwise; the SPA hides the org
 storage card on 404 and has a `/settings/billing` page.
 
+Flow for tracing (design in `docs/TRACING.md`): `internal/obs/tracing.go`
+builds an OTLP gRPC tracer provider (`SetupTracing`), installed globally with
+the W3C propagator only when enabled — otherwise every path stays on the OTel
+no-op provider (no exporter, no spans, no headers). Server: config
+`TRACING_ENABLED` / `TRACING_OTLP_ENDPOINT` / `TRACING_STDOUT` /
+`TRACING_SAMPLE_RATIO` / `TRACING_SERVICE_NAME`, wired in both mains and
+`serverapp.WithTracing` (gRPC via the in-module
+`google.golang.org/grpc/stats/opentelemetry` server option, HTTP via
+`otelhttp` around the non-gRPC mux, flush before `os.Exit` in the signal
+handler). Client: env-only `NIPA_TRACING` (`1` or `stdout`),
+`NIPA_TRACING_OTLP_ENDPOINT`, `NIPA_TRACING_SAMPLE_RATIO`;
+`obs.ActiveTracing().GRPCDialOption()` is appended in
+`Transport.Connect`, chunk PUT/POST/GET requests inject `traceparent`
+manually (`injectTraceContext`) so a single trace spans CLI → gRPC →
+presigned HTTP → S3/local store. Manual spans go through
+`obs.StartSpan`/`obs.FinishSpan` with the shared `nipa.*` attribute
+constants: client `nipa.push`/`push.upload`/`push.commit`/`nipa.clone`/
+`nipa.update`/`nipa.switch`/`nipa.sync`/`chunk.upload.*`/`chunk.download.get`,
+server `push.apply`, `chunk.presign_*`/`chunk.confirm`/`chunk.store`/
+`chunk.verify`/`chunk.download` and the per-object `storage.local.*` /
+`storage.s3.*` store spans.
+
 Server merge-request diffs reuse the same engine: `usecase.MergeRequest.Diff`
 resolves the source and target heads, `GetMergeBase`, and calls
 `Branch.TreeDiffBetween` (`internal/usecase/browser.go`), which loads both

@@ -8,7 +8,10 @@ import (
 	"os"
 	"path/filepath"
 
+	"go.opentelemetry.io/otel/attribute"
+
 	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/obs"
 )
 
 // LocalStore is the default chunk content backend: it writes each chunk to a
@@ -30,7 +33,13 @@ func NewLocalStore(root string) (*LocalStore, error) {
 	return &LocalStore{root: root}, nil
 }
 
-func (s *LocalStore) Put(ctx context.Context, hash domain.Hash, data []byte) error {
+func (s *LocalStore) Put(ctx context.Context, hash domain.Hash, data []byte) (err error) {
+	_, span := obs.StartSpan(ctx, "storage.local.put",
+		attribute.String(obs.AttrChunkHash, hash.String()),
+		attribute.Int(obs.AttrChunkSize, len(data)),
+		attribute.String(obs.AttrBackend, "local"))
+	defer func() { obs.FinishSpan(span, err) }()
+
 	p := s.path(hash)
 	if _, err := os.Stat(p); err == nil {
 		return nil
@@ -64,7 +73,12 @@ func (s *LocalStore) Put(ctx context.Context, hash domain.Hash, data []byte) err
 	return nil
 }
 
-func (s *LocalStore) Get(ctx context.Context, hash domain.Hash) ([]byte, error) {
+func (s *LocalStore) Get(ctx context.Context, hash domain.Hash) (data []byte, err error) {
+	_, span := obs.StartSpan(ctx, "storage.local.get",
+		attribute.String(obs.AttrChunkHash, hash.String()),
+		attribute.String(obs.AttrBackend, "local"))
+	defer func() { obs.FinishSpan(span, err) }()
+
 	b, err := os.ReadFile(s.path(hash))
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, domain.NewErrorNotFound("chunk not found: " + hash.String())
@@ -75,7 +89,12 @@ func (s *LocalStore) Get(ctx context.Context, hash domain.Hash) ([]byte, error) 
 	return b, nil
 }
 
-func (s *LocalStore) Size(ctx context.Context, hash domain.Hash) (int64, error) {
+func (s *LocalStore) Size(ctx context.Context, hash domain.Hash) (size int64, err error) {
+	_, span := obs.StartSpan(ctx, "storage.local.size",
+		attribute.String(obs.AttrChunkHash, hash.String()),
+		attribute.String(obs.AttrBackend, "local"))
+	defer func() { obs.FinishSpan(span, err) }()
+
 	info, err := os.Stat(s.path(hash))
 	if errors.Is(err, fs.ErrNotExist) {
 		return 0, domain.NewErrorNotFound("chunk not found: " + hash.String())

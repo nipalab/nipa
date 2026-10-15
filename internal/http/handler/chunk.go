@@ -4,9 +4,13 @@ import (
 	"io"
 	nethttp "net/http"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/nipalab/nipa/internal/chunkurl"
 	"github.com/nipalab/nipa/internal/domain"
 	httpApp "github.com/nipalab/nipa/internal/http"
+	"github.com/nipalab/nipa/internal/obs"
 	"github.com/nipalab/nipa/internal/usecase"
 )
 
@@ -41,6 +45,7 @@ func (h *ChunkHandler) PutChunk(appCtx httpApp.AppContext) {
 		appCtx.HandleError(domain.NewErrorUser("invalid chunk hash"))
 		return
 	}
+	trace.SpanFromContext(appCtx.Context()).SetAttributes(attribute.String(obs.AttrChunkHash, hashHex))
 	request := appCtx.Request()
 	if request.ContentLength >= 0 && request.ContentLength != params.Size {
 		appCtx.HandleError(domain.NewErrorUser("chunk size mismatch"))
@@ -83,6 +88,7 @@ func (h *ChunkHandler) GetChunk(appCtx httpApp.AppContext) {
 		appCtx.HandleError(domain.NewErrorUser("invalid chunk hash"))
 		return
 	}
+	trace.SpanFromContext(appCtx.Context()).SetAttributes(attribute.String(obs.AttrChunkHash, hashHex))
 	data, err := h.chunks.Download(appCtx.Context(), hash)
 	if err != nil {
 		appCtx.HandleError(err)

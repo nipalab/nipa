@@ -7,8 +7,11 @@ import (
 	"os"
 	"strings"
 
+	"go.opentelemetry.io/otel/attribute"
+
 	"github.com/nipalab/nipa/internal/client/domain"
 	serverDomain "github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/obs"
 	"github.com/nipalab/nipa/internal/snow"
 )
 
@@ -55,11 +58,17 @@ func NewRepo(auth *Auth, repoInterface repoInterface, localRepo localRepo) *Repo
 	}
 }
 
-func (r *Repo) Clone(ctx context.Context, url, host, org, project, branch string, sparse []string, target string, progress ...DownloadProgress) error {
+func (r *Repo) Clone(ctx context.Context, url, host, org, project, branch string, sparse []string, target string, progress ...DownloadProgress) (err error) {
+	ctx, span := obs.StartSpan(ctx, "nipa.clone",
+		attribute.String(obs.AttrOrg, org),
+		attribute.String(obs.AttrProject, project),
+		attribute.String(obs.AttrBranch, branch))
+	defer func() { obs.FinishSpan(span, err) }()
+
 	if err := ensureEmptyTarget(target); err != nil {
 		return err
 	}
-	err := r.auth.MakeSureLoggedIn(ctx, host)
+	err = r.auth.MakeSureLoggedIn(ctx, host)
 	if err != nil {
 		return err
 	}
@@ -78,6 +87,7 @@ func (r *Repo) Clone(ctx context.Context, url, host, org, project, branch string
 		}
 		headCommitID = commitIDString(domainBranch)
 	}
+	span.SetAttributes(attribute.String(obs.AttrBranch, branch))
 	paths, err := normalizeSparsePaths(sparse)
 	if err != nil {
 		return err
