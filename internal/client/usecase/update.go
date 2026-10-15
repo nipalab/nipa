@@ -8,9 +8,12 @@ import (
 	"path/filepath"
 	"strings"
 
+	"go.opentelemetry.io/otel/attribute"
+
 	"github.com/nipalab/nipa/internal/chunker"
 	clientDomain "github.com/nipalab/nipa/internal/client/domain"
 	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/obs"
 )
 
 type updateClient interface {
@@ -77,7 +80,10 @@ func NewUpdate(auth *Auth, client updateClient, localRepo updateLocalRepo) *Upda
 	}
 }
 
-func (u *Update) Run(ctx context.Context, root string, progress ...DownloadProgress) error {
+func (u *Update) Run(ctx context.Context, root string, progress ...DownloadProgress) (err error) {
+	ctx, span := obs.StartSpan(ctx, "nipa.update")
+	defer func() { obs.FinishSpan(span, err) }()
+
 	if err := u.localRepo.Init(root); err != nil {
 		return err
 	}
@@ -89,6 +95,11 @@ func (u *Update) Run(ctx context.Context, root string, progress ...DownloadProgr
 	if err != nil {
 		return err
 	}
+	span.SetAttributes(
+		attribute.String(obs.AttrOrg, nu.Org),
+		attribute.String(obs.AttrProject, nu.Project),
+		attribute.String(obs.AttrBranch, cfg.Branch),
+	)
 	if err := u.client.Connect(ctx, nu.Host); err != nil {
 		return err
 	}
@@ -223,7 +234,11 @@ func normalizeSparsePaths(paths []string) ([]string, error) {
 	return out, nil
 }
 
-func (u *Update) Switch(ctx context.Context, root, branch string, progress ...DownloadProgress) error {
+func (u *Update) Switch(ctx context.Context, root, branch string, progress ...DownloadProgress) (err error) {
+	ctx, span := obs.StartSpan(ctx, "nipa.switch",
+		attribute.String(obs.AttrBranch, branch))
+	defer func() { obs.FinishSpan(span, err) }()
+
 	if err := u.localRepo.Init(root); err != nil {
 		return err
 	}
@@ -284,7 +299,11 @@ func (u *Update) Switch(ctx context.Context, root, branch string, progress ...Do
 	return u.localRepo.SaveCommit(headCommitID, "")
 }
 
-func (u *Update) SwitchTag(ctx context.Context, root, tagName string, progress ...DownloadProgress) error {
+func (u *Update) SwitchTag(ctx context.Context, root, tagName string, progress ...DownloadProgress) (err error) {
+	ctx, span := obs.StartSpan(ctx, "nipa.switch",
+		attribute.String("nipa.tag", tagName))
+	defer func() { obs.FinishSpan(span, err) }()
+
 	if err := u.localRepo.Init(root); err != nil {
 		return err
 	}
@@ -341,7 +360,12 @@ func (u *Update) SwitchTag(ctx context.Context, root, tagName string, progress .
 	return u.localRepo.SaveCommit(tag.CommitID, "")
 }
 
-func syncWorkingCopy(ctx context.Context, client chunkDownloader, lr workingCopyLocalRepo, root string, tree *domain.TreeNode, scope clientDomain.ChunkScope, progress ...DownloadProgress) error {
+func syncWorkingCopy(ctx context.Context, client chunkDownloader, lr workingCopyLocalRepo, root string, tree *domain.TreeNode, scope clientDomain.ChunkScope, progress ...DownloadProgress) (err error) {
+	ctx, span := obs.StartSpan(ctx, "nipa.sync",
+		attribute.String(obs.AttrOrg, scope.Org),
+		attribute.String(obs.AttrProject, scope.Project))
+	defer func() { obs.FinishSpan(span, err) }()
+
 	base, err := lr.Snapshot()
 	if err != nil {
 		return err

@@ -7,6 +7,8 @@ import (
 	"sync"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+
 	"github.com/nipalab/nipa/internal/chunker"
 	"github.com/nipalab/nipa/internal/chunkurl"
 	"github.com/nipalab/nipa/internal/domain"
@@ -132,7 +134,12 @@ func (c *Chunk) AttributeProjectChunks(ctx context.Context, projectID snow.ID, c
 // StoreUploaded verifies and stores chunk content without recording metadata;
 // the metadata row is written by ConfirmUploads once the client reports the
 // transfer done. Content writes are safe to run concurrently.
-func (c *Chunk) StoreUploaded(ctx context.Context, hash domain.Hash, data []byte) error {
+func (c *Chunk) StoreUploaded(ctx context.Context, hash domain.Hash, data []byte) (err error) {
+	ctx, span := obs.StartSpan(ctx, "chunk.store",
+		attribute.String(obs.AttrChunkHash, hash.String()),
+		attribute.Int(obs.AttrChunkSize, len(data)))
+	defer func() { obs.FinishSpan(span, err) }()
+
 	if got := chunker.Sum(data); got != hash {
 		c.metrics.ObserveChunkVerifyFailure("store")
 		return domain.NewErrorUser(fmt.Sprintf("chunk hash mismatch for %s", hash))
@@ -156,8 +163,12 @@ func (c *Chunk) StoreUploaded(ctx context.Context, hash domain.Hash, data []byte
 }
 
 // Download returns the stored content for a chunk hash.
-func (c *Chunk) Download(ctx context.Context, hash domain.Hash) ([]byte, error) {
-	data, err := c.chunkStore.Get(ctx, hash)
+func (c *Chunk) Download(ctx context.Context, hash domain.Hash) (data []byte, err error) {
+	ctx, span := obs.StartSpan(ctx, "chunk.download",
+		attribute.String(obs.AttrChunkHash, hash.String()))
+	defer func() { obs.FinishSpan(span, err) }()
+
+	data, err = c.chunkStore.Get(ctx, hash)
 	if err != nil {
 		c.metrics.ObserveChunkOp("get", "error")
 		return nil, err
@@ -172,7 +183,12 @@ func (c *Chunk) Download(ctx context.Context, hash domain.Hash) ([]byte, error) 
 // skip the transfer. When a ledger is attached, refs that would add new bytes
 // are checked against the organization's remaining quota first.
 func (c *Chunk) PresignUploadURLs(ctx context.Context, org *domain.Organization, project *domain.Project, refs []ChunkRef, pageSize int, pageToken string) ([]ChunkURL, string, error) {
+	ctx, span := obs.StartSpan(ctx, "chunk.presign_upload",
+		attribute.String(obs.AttrOrg, org.Slug),
+		attribute.String(obs.AttrProject, project.Slug),
+		attribute.Int(obs.AttrChunkCount, len(refs)))
 	urls, next, err := c.presignUploadURLs(ctx, org, project, refs, pageSize, pageToken)
+	obs.FinishSpan(span, err)
 	result := "ok"
 	if err != nil {
 		result = "error"
@@ -322,7 +338,18 @@ func (c *Chunk) downloadPath(ctx context.Context, org, project string, hash doma
 // ledger is attached, present chunks are attributed to the project and the
 // organization's quota is enforced.
 func (c *Chunk) ConfirmUploads(ctx context.Context, org *domain.Organization, project *domain.Project, hashes []domain.Hash) ([]domain.Hash, error) {
+	ctx, span := obs.StartSpan(ctx, "chunk.confirm",
+		attribute.String(obs.AttrOrg, org.Slug),
+		attribute.String(obs.AttrProject, project.Slug),
+		attribute.Int(obs.AttrChunkCount, len(hashes)))
 	missing, confirmedBytes, err := c.confirmUploads(ctx, org, project, hashes)
+	if err == nil {
+		span.SetAttributes(
+			attribute.Int(obs.AttrChunkMissing, len(missing)),
+			attribute.Int64(obs.AttrChunkBytes, confirmedBytes),
+		)
+	}
+	obs.FinishSpan(span, err)
 	result := "ok"
 	switch {
 	case err != nil:
@@ -461,7 +488,12 @@ func (c *Chunk) pruneUnverifiedLocked(now time.Time) {
 // verifyChunkContent checks one object that may have been written by a direct
 // upload: oversized objects are dropped without being read, and content must
 // hash to its key.
-func (c *Chunk) verifyChunkContent(ctx context.Context, direct storage.DirectTransferStore, hash domain.Hash, size int64) (bool, error) {
+func (c *Chunk) verifyChunkContent(ctx context.Context, direct storage.DirectTransferStore, hash domain.Hash, size int64) (verified bool, err error) {
+	ctx, span := obs.StartSpan(ctx, "chunk.verify",
+		attribute.String(obs.AttrChunkHash, hash.String()),
+		attribute.Int64(obs.AttrChunkSize, size))
+	defer func() { obs.FinishSpan(span, err) }()
+
 	if size > chunker.MaxChunkSize() {
 		return false, c.dropInvalidChunk(ctx, direct, hash)
 	}

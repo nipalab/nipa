@@ -12,13 +12,13 @@ identically.
 - Server binaries only in this pass. The `nipa` CLI and `nipa serve` daemon are
   a later phase.
 - Metrics use Prometheus (`/metrics` text format) as the primary stack; OTel
-  tracing is deferred (see phase 3) and only needs to attach to the hooks
-  created here.
+  tracing is an opt-in layer on top (see phase 3 and `docs/TRACING.md`).
 - All runtime endpoints (`/metrics`, `/healthz`, `/readyz`, pprof) live on the
   existing server port. pprof is flag-gated and off by default.
 
-**Status:** phase 1 and phase 2 are implemented (`internal/obs`, wired through
-`internal/serverapp` and both mains). Phase 3 is planned.
+**Status:** phase 1, phase 2 and phase 3 are implemented (`internal/obs`, wired
+through `internal/serverapp` and both mains). Tracing usage lives in
+`docs/TRACING.md`.
 
 ---
 
@@ -180,18 +180,20 @@ user-supplied (org names, branch names, paths, chunk hashes) becomes a label.
 
 ---
 
-## Phase 3 — OTel tracing (deferred)
+## Phase 3 — OTel tracing (implemented)
 
-When enabled later, tracing attaches to the hooks phase 1/2 already provide:
+See `docs/TRACING.md` for configuration and the span inventory. Summary:
 
-- Add `otel/sdk` + OTLP exporter, enabled only when
-  `OTEL_EXPORTER_OTLP_ENDPOINT` (or the standard `OTEL_*` variables) is set —
-  otherwise a no-op.
-- The request-ID middleware does W3C `traceparent` extraction/injection in the
-  same slot; the request ID is kept as a span attribute for log correlation.
-- The gRPC interceptor chain gains the otel interceptor in front of the JWT
-  and metrics interceptors.
-- No phase 1/2 code needs to move: this is additive.
+- `internal/obs/tracing.go` builds the OTLP gRPC exporter + tracer provider,
+  enabled by `TRACING_ENABLED` (client: `NIPA_TRACING`); a no-op otherwise.
+- gRPC uses `google.golang.org/grpc/stats/opentelemetry` (in the already
+  pinned grpc module) via `serverapp.WithTracing` and the client transport's
+  dial option; HTTP uses `otelhttp`.
+- Push/clone spans cover the CLI root operation, per-chunk HTTP transfers,
+  `usecase.Push`/`usecase.Chunk` and the local/S3 chunk stores. W3C
+  `traceparent` crosses both gRPC metadata and the chunk HTTP requests.
+- Disabled tracing costs nothing at runtime: no exporter, no spans recorded,
+  no headers injected.
 
 ---
 
@@ -203,6 +205,11 @@ When enabled later, tracing attaches to the hooks phase 1/2 already provide:
 | `LOG_FORMAT` | `console` | `console` (text) or `json` |
 | `PPROF_ENABLED` | `false` | Serve `/debug/pprof/*` on the main port |
 | `METRICS_ENABLED` | `true` | Serve `/metrics` on the main port |
+| `TRACING_ENABLED` | `false` | Export OTLP spans (see `docs/TRACING.md`) |
+| `TRACING_OTLP_ENDPOINT` | `localhost:4317` | OTLP gRPC collector endpoint |
+| `TRACING_STDOUT` | `false` | Pretty-print spans to stderr instead of exporting |
+| `TRACING_SAMPLE_RATIO` | `1.0` | Root span sampling ratio in `(0, 1]` |
+| `TRACING_SERVICE_NAME` | `nipad` / `nipad-ee` | OTel `service.name` |
 
 ---
 

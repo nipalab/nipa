@@ -1,9 +1,11 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/nipalab/nipa/internal/client/cli"
 	"github.com/nipalab/nipa/internal/client/config"
@@ -13,9 +15,12 @@ import (
 	"github.com/nipalab/nipa/internal/client/securestorage"
 	"github.com/nipalab/nipa/internal/client/sshkey"
 	"github.com/nipalab/nipa/internal/client/usecase"
+	"github.com/nipalab/nipa/internal/obs"
 )
 
 func main() {
+	stopTracing := startTracing()
+
 	secureStorage := securestorage.New()
 	prompter := cli.NewPrompter()
 
@@ -73,10 +78,36 @@ func main() {
 
 	cliClient := cli.NewCli(registry, grpcClient)
 	if err := cliClient.Run(newServeCommand(authUsecase, newClient), newMCPCommand(newClient, secureStorage)); err != nil {
+		stopTracing()
 		if errors.Is(err, cli.ErrExitCode) {
 			os.Exit(1)
 		}
 		handleError(err)
+	}
+	stopTracing()
+}
+
+// startTracing boots the client tracer from the environment and returns a
+// flush function the process must call before exiting. Failures disable
+// tracing without failing the command.
+func startTracing() func() {
+	cfg, err := config.ResolveTracing()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "warning: tracing disabled:", err)
+		return func() {}
+	}
+	if !cfg.Enabled {
+		return func() {}
+	}
+	tracing, err := obs.SetupTracing(context.Background(), cfg)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "warning: tracing disabled:", err)
+		return func() {}
+	}
+	return func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = tracing.Shutdown(ctx)
 	}
 }
 

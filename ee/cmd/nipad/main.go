@@ -43,6 +43,22 @@ func main() {
 	obs.Setup(cfg.LogLevel, cfg.LogFormat, "nipad-ee", os.Stderr)
 	metrics := obs.NewMetrics()
 
+	serviceName := cfg.TracingServiceName
+	if serviceName == "" {
+		serviceName = "nipad-ee"
+	}
+	tracing, err := obs.SetupTracing(context.Background(), obs.TracingConfig{
+		Enabled:        cfg.TracingEnabled,
+		Endpoint:       cfg.TracingOTLPEndpoint,
+		Stdout:         cfg.TracingStdout,
+		SampleRatio:    cfg.TracingSampleRatio,
+		ServiceName:    serviceName,
+		ServiceVersion: version.Resolve().Version,
+	})
+	if err != nil {
+		panic(fmt.Errorf("setup tracing: %w", err))
+	}
+
 	dbConn, err := eedb.Open(cfg.DatabaseDSN)
 	if err != nil {
 		panic(err)
@@ -190,7 +206,7 @@ func main() {
 	if emailDispatcher != nil {
 		dispatchers = append(dispatchers, emailDispatcher)
 	}
-	runOpts := []serverapp.Option{serverapp.WithReadiness(dbConn.PingContext), serverapp.WithMetrics(metrics)}
+	runOpts := []serverapp.Option{serverapp.WithReadiness(dbConn.PingContext), serverapp.WithMetrics(metrics), serverapp.WithTracing(tracing)}
 	if storageLedger != nil {
 		runOpts = append(runOpts, serverapp.WithRoutes(func(ws *restful.WebService) {
 			storageusage.RegisterRoutes(ws, storageusage.RoutesConfig{

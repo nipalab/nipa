@@ -7,6 +7,8 @@ import (
 	"sort"
 	"strings"
 
+	"go.opentelemetry.io/otel/attribute"
+
 	"github.com/nipalab/nipa/internal/chunker"
 	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/obs"
@@ -111,6 +113,21 @@ func (p *Push) WithMetrics(metrics *obs.Metrics) *Push {
 }
 
 func (p *Push) Push(ctx context.Context, projectID snow.ID, branchName, baseTreeHash, message string, files []*domain.PushFile, removed []string, parent2CommitHash, baseCommitID string) (result *domain.PushResult, err error) {
+	ctx, span := obs.StartSpan(ctx, "push.apply",
+		attribute.String(obs.AttrProjectID, projectID.Base36()),
+		attribute.String(obs.AttrBranch, branchName),
+		attribute.Int(obs.AttrPushFiles, len(files)),
+		attribute.Int(obs.AttrPushRemoved, len(removed)),
+		attribute.String("nipa.push.base_tree", baseTreeHash))
+	defer func() {
+		if result != nil {
+			span.SetAttributes(
+				attribute.String("nipa.push.commit", result.CommitID.Base36()),
+				attribute.String("nipa.push.commit_hash", result.CommitHash.String()),
+			)
+		}
+		obs.FinishSpan(span, err)
+	}()
 	defer func() {
 		if err != nil {
 			p.metrics.ObservePush("error")

@@ -10,9 +10,12 @@ import (
 	"strings"
 	"sync"
 
+	"go.opentelemetry.io/otel/attribute"
+
 	"github.com/nipalab/nipa/internal/chunker"
 	"github.com/nipalab/nipa/internal/client/domain"
 	serverDomain "github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/obs"
 )
 
 type pushClient interface {
@@ -54,7 +57,10 @@ func NewPush(auth *Auth, pushClient pushClient, localRepo pushLocalRepo) *Push {
 	}
 }
 
-func (p *Push) Run(ctx context.Context, root, message string, progress ...UploadProgress) error {
+func (p *Push) Run(ctx context.Context, root, message string, progress ...UploadProgress) (err error) {
+	ctx, span := obs.StartSpan(ctx, "nipa.push")
+	defer func() { obs.FinishSpan(span, err) }()
+
 	if strings.TrimSpace(message) == "" {
 		return domain.NewUserError("commit message is required")
 	}
@@ -73,6 +79,11 @@ func (p *Push) Run(ctx context.Context, root, message string, progress ...Upload
 	if err != nil {
 		return err
 	}
+	span.SetAttributes(
+		attribute.String(obs.AttrOrg, nipaUrl.Org),
+		attribute.String(obs.AttrProject, nipaUrl.Project),
+		attribute.String(obs.AttrBranch, cfg.Branch),
+	)
 	if err := p.pushClient.Connect(ctx, nipaUrl.Host); err != nil {
 		return err
 	}
@@ -244,21 +255,27 @@ func (p *Push) pushStaged(ctx context.Context, root string, nipaUrl *domain.Nipa
 		}
 	}
 
-	uploader := newChunkUploader(ctx, p.pushClient, p.localRepo,
+	uploadCtx, uploadSpan := obs.StartSpan(ctx, "push.upload",
+		attribute.Int(obs.AttrPushFiles, len(toRead)),
+		attribute.Int64("nipa.push.upload_bytes", estBytes))
+	uploader := newChunkUploader(uploadCtx, p.pushClient, p.localRepo,
 		domain.ChunkScope{Org: nipaUrl.Org, Project: nipaUrl.Project}, onChunk)
 	statEntries := make(map[string]domain.StatEntry, len(toRead))
 	for _, sf := range toRead {
 		file, err := scanPushFile(sf, uploader)
 		if err != nil {
 			uploader.abort()
+			obs.FinishSpan(uploadSpan, err)
 			return nil, err
 		}
 		files = append(files, file)
 		statEntries[sf.path] = statEntryFromInfo(sf.info, file.FileHash)
 	}
 	if err := uploader.close(); err != nil {
+		obs.FinishSpan(uploadSpan, err)
 		return nil, err
 	}
+	obs.FinishSpan(uploadSpan, nil)
 	if prog != nil {
 		prog.UploadEnd()
 	}
@@ -271,13 +288,24 @@ func (p *Push) pushStaged(ctx context.Context, root string, nipaUrl *domain.Nipa
 	if baseTreeHash == "" {
 		baseTreeHash = snapshot.TreeHash
 	}
-	result, err := p.pushClient.Push(ctx, nipaUrl.Org, nipaUrl.Project, branch, baseTreeHash, message, files, removed, parent2, baseCommitID)
+	commitCtx, commitSpan := obs.StartSpan(ctx, "push.commit",
+		attribute.String(obs.AttrBranch, branch),
+		attribute.Int(obs.AttrPushFiles, len(files)),
+		attribute.Int(obs.AttrPushRemoved, len(removed)))
+	result, err := p.pushClient.Push(commitCtx, nipaUrl.Org, nipaUrl.Project, branch, baseTreeHash, message, files, removed, parent2, baseCommitID)
 	if err != nil {
+		obs.FinishSpan(commitSpan, err)
 		return nil, err
 	}
 	if err := p.localRepo.SaveCommit(result.CommitID.Base36(), result.CommitHash.String()); err != nil {
+		obs.FinishSpan(commitSpan, err)
 		return nil, err
 	}
+	commitSpan.SetAttributes(
+		attribute.String("nipa.push.commit", result.CommitID.Base36()),
+		attribute.String("nipa.push.commit_hash", result.CommitHash.String()),
+	)
+	obs.FinishSpan(commitSpan, nil)
 
 	var sparse []string
 	if cfg, err := p.localRepo.LoadConfig(); err == nil && cfg != nil {

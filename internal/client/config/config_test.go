@@ -112,3 +112,49 @@ func TestResolveUploadWorkers_InvalidEnv(t *testing.T) {
 	_, _, err = ResolveUploadWorkers()
 	require.ErrorContains(t, err, EnvUploadWorkers)
 }
+
+func TestResolveTracing_DisabledByDefault(t *testing.T) {
+	t.Setenv(EnvTracing, "")
+	t.Setenv(EnvTracingOTLPEndpoint, "")
+	t.Setenv(EnvTracingSampleRatio, "")
+
+	cfg, err := ResolveTracing()
+	require.NoError(t, err)
+	require.False(t, cfg.Enabled)
+}
+
+func TestResolveTracing_Enabled(t *testing.T) {
+	t.Setenv(EnvTracing, "1")
+	t.Setenv(EnvTracingOTLPEndpoint, " collector:4317 ")
+	t.Setenv(EnvTracingSampleRatio, "0.25")
+
+	cfg, err := ResolveTracing()
+	require.NoError(t, err)
+	require.True(t, cfg.Enabled)
+	require.False(t, cfg.Stdout)
+	require.Equal(t, "collector:4317", cfg.Endpoint)
+	require.InDelta(t, 0.25, cfg.SampleRatio, 0.0001)
+}
+
+func TestResolveTracing_Stdout(t *testing.T) {
+	t.Setenv(EnvTracing, "stdout")
+	t.Setenv(EnvTracingOTLPEndpoint, "")
+	t.Setenv(EnvTracingSampleRatio, "")
+
+	cfg, err := ResolveTracing()
+	require.NoError(t, err)
+	require.True(t, cfg.Enabled)
+	require.True(t, cfg.Stdout)
+}
+
+func TestResolveTracing_InvalidRatio(t *testing.T) {
+	t.Setenv(EnvTracing, "on")
+	t.Setenv(EnvTracingSampleRatio, "2")
+
+	_, err := ResolveTracing()
+	require.ErrorContains(t, err, EnvTracingSampleRatio)
+
+	t.Setenv(EnvTracingSampleRatio, "half")
+	_, err = ResolveTracing()
+	require.ErrorContains(t, err, EnvTracingSampleRatio)
+}

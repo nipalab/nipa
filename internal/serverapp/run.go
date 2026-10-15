@@ -44,6 +44,7 @@ type Option func(*runOptions)
 type runOptions struct {
 	readiness func(context.Context) error
 	metrics   *obs.Metrics
+	tracing   *obs.Tracing
 	routes    []func(*restful.WebService)
 }
 
@@ -60,6 +61,14 @@ func WithReadiness(check func(context.Context) error) Option {
 func WithMetrics(metrics *obs.Metrics) Option {
 	return func(o *runOptions) {
 		o.metrics = metrics
+	}
+}
+
+// WithTracing instruments gRPC and HTTP traffic with distributed traces. A
+// disabled handle (or none) leaves the server on the no-op provider.
+func WithTracing(tracing *obs.Tracing) Option {
+	return func(o *runOptions) {
+		o.tracing = tracing
 	}
 }
 
@@ -98,6 +107,7 @@ func Run(cfg *config.Config, reg *Registry, dispatchers []Dispatcher, opts ...Op
 	grpcInterceptor := grpcserver.NewInterceptor(reg.Auth())
 
 	grpcRegistrar := grpc.NewServer(
+		ro.tracing.GRPCServerOption(),
 		grpc.ChainUnaryInterceptor(grpcserver.MetricsUnary(ro.metrics), grpcInterceptor.JWTUnary()),
 		grpc.ChainStreamInterceptor(grpcserver.MetricsStream(ro.metrics), grpcInterceptor.JWTStream()),
 	)
@@ -146,7 +156,7 @@ func Run(cfg *config.Config, reg *Registry, dispatchers []Dispatcher, opts ...Op
 
 	handler := obs.RequestID(obs.AccessLog(func(r *http.Request) bool {
 		return !isAPIPath(r.URL.Path)
-	}, mainHandler))
+	}, ro.tracing.HTTPHandler("nipa", mainHandler, skipTraceRequest)))
 
 	protocols := new(http.Protocols)
 	protocols.SetHTTP1(true)
@@ -180,6 +190,11 @@ func Run(cfg *config.Config, reg *Registry, dispatchers []Dispatcher, opts ...Op
 				slog.Warn("background dispatcher shutdown incomplete", "error", err)
 			}
 		}
+		traceCtx, traceCancel := context.WithTimeout(context.Background(), shutdownTimeout)
+		if err := ro.tracing.Shutdown(traceCtx); err != nil {
+			slog.Warn("tracing shutdown incomplete", "error", err)
+		}
+		traceCancel()
 		os.Exit(0)
 	}()
 
@@ -203,4 +218,15 @@ func isAPIPath(p string) bool {
 	return strings.HasPrefix(p, "/auth") ||
 		strings.HasPrefix(p, "/docs") ||
 		strings.HasPrefix(p, "/api")
+}
+
+func skipTraceRequest(r *http.Request) bool {
+	if obs.IsGRPCRequest(r) {
+		return true
+	}
+	switch r.URL.Path {
+	case "/healthz", "/readyz", "/version", "/metrics":
+		return true
+	}
+	return strings.HasPrefix(r.URL.Path, "/debug/pprof")
 }

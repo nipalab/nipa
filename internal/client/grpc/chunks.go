@@ -12,9 +12,14 @@ import (
 	"strings"
 	"sync"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/propagation"
+
 	"github.com/nipalab/nipa/internal/client/domain"
 	serverDomain "github.com/nipalab/nipa/internal/domain"
 	pb "github.com/nipalab/nipa/internal/grpc/pb"
+	"github.com/nipalab/nipa/internal/obs"
 )
 
 // UploadChunks sends chunk content to the signed upload URLs returned by the
@@ -189,17 +194,24 @@ func (c *Client) putChunks(ctx context.Context, jobs []chunkTransfer) error {
 	})
 }
 
-func (c *Client) putChunk(ctx context.Context, job chunkTransfer) (int64, error) {
+func (c *Client) putChunk(ctx context.Context, job chunkTransfer) (size int64, err error) {
+	ctx, span := obs.StartSpan(ctx, "chunk.upload.put",
+		attribute.String(obs.AttrChunkHash, job.hash.String()),
+		attribute.Int(obs.AttrChunkSize, len(job.data)))
+	defer func() { obs.FinishSpan(span, err) }()
+
 	request, err := http.NewRequestWithContext(ctx, http.MethodPut, c.httpURL(job.url), bytes.NewReader(job.data))
 	if err != nil {
 		return 0, err
 	}
 	request.Header.Set("Content-Type", "application/octet-stream")
+	injectTraceContext(ctx, request.Header)
 	res, err := c.http.Do(request)
 	if err != nil {
 		return 0, err
 	}
 	defer func() { _ = res.Body.Close() }()
+	span.SetAttributes(attribute.Int("http.response.status_code", res.StatusCode))
 	if res.StatusCode == http.StatusNoContent || res.StatusCode == http.StatusOK {
 		return int64(len(job.data)), nil
 	}
@@ -208,7 +220,12 @@ func (c *Client) putChunk(ctx context.Context, job chunkTransfer) (int64, error)
 
 // postChunk uploads one chunk through a POST policy where the form fields
 // must precede the file part, which the backend keeps last.
-func (c *Client) postChunk(ctx context.Context, job chunkTransfer) (int64, error) {
+func (c *Client) postChunk(ctx context.Context, job chunkTransfer) (size int64, err error) {
+	ctx, span := obs.StartSpan(ctx, "chunk.upload.post",
+		attribute.String(obs.AttrChunkHash, job.hash.String()),
+		attribute.Int(obs.AttrChunkSize, len(job.data)))
+	defer func() { obs.FinishSpan(span, err) }()
+
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
 	for _, key := range slices.Sorted(maps.Keys(job.formData)) {
@@ -231,11 +248,13 @@ func (c *Client) postChunk(ctx context.Context, job chunkTransfer) (int64, error
 		return 0, err
 	}
 	request.Header.Set("Content-Type", writer.FormDataContentType())
+	injectTraceContext(ctx, request.Header)
 	res, err := c.http.Do(request)
 	if err != nil {
 		return 0, err
 	}
 	defer func() { _ = res.Body.Close() }()
+	span.SetAttributes(attribute.Int("http.response.status_code", res.StatusCode))
 	if res.StatusCode == http.StatusNoContent || res.StatusCode == http.StatusOK {
 		return int64(len(job.data)), nil
 	}
@@ -265,16 +284,22 @@ func (s *chunkSink) deliver(hash serverDomain.Hash, data []byte) error {
 
 func (c *Client) getChunks(ctx context.Context, jobs []chunkTransfer, onChunk func(h serverDomain.Hash, data []byte) error) error {
 	sink := &chunkSink{fn: onChunk}
-	return c.forEachChunk(ctx, jobs, func(ctx context.Context, job chunkTransfer) (int64, error) {
+	return c.forEachChunk(ctx, jobs, func(ctx context.Context, job chunkTransfer) (size int64, err error) {
+		ctx, span := obs.StartSpan(ctx, "chunk.download.get",
+			attribute.String(obs.AttrChunkHash, job.hash.String()))
+		defer func() { obs.FinishSpan(span, err) }()
+
 		request, err := http.NewRequestWithContext(ctx, http.MethodGet, c.httpURL(job.url), nil)
 		if err != nil {
 			return 0, err
 		}
+		injectTraceContext(ctx, request.Header)
 		res, err := c.http.Do(request)
 		if err != nil {
 			return 0, err
 		}
 		defer func() { _ = res.Body.Close() }()
+		span.SetAttributes(attribute.Int("http.response.status_code", res.StatusCode))
 		if res.StatusCode != http.StatusOK {
 			return 0, chunkHTTPError(res)
 		}
@@ -282,11 +307,18 @@ func (c *Client) getChunks(ctx context.Context, jobs []chunkTransfer, onChunk fu
 		if err != nil {
 			return 0, err
 		}
+		span.SetAttributes(attribute.Int(obs.AttrChunkSize, len(data)))
 		if err := sink.deliver(job.hash, data); err != nil {
 			return int64(len(data)), err
 		}
 		return int64(len(data)), nil
 	})
+}
+
+// injectTraceContext propagates the current span to the receiving HTTP
+// endpoint; a no-op when tracing is disabled.
+func injectTraceContext(ctx context.Context, header http.Header) {
+	otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(header))
 }
 
 // forEachChunk runs fn for every job with the client's adaptive transfer limit
