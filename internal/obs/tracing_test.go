@@ -179,6 +179,30 @@ func TestTracing_GRPCPropagation(t *testing.T) {
 	}, 2*time.Second, 10*time.Millisecond, "server RPC span must be recorded")
 }
 
+func TestResolveOTLPEndpoint(t *testing.T) {
+	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "")
+	t.Setenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "")
+
+	target := resolveOTLPEndpoint("")
+	require.Equal(t, defaultOTLPEndpoint, target.endpoint)
+	require.True(t, target.insecure)
+	require.Len(t, target.options(), 2)
+
+	target = resolveOTLPEndpoint("collector:4317")
+	require.Equal(t, "collector:4317", target.endpoint)
+	require.True(t, target.insecure, "a bare host:port is a plaintext local collector")
+
+	target = resolveOTLPEndpoint("https://collector.example.com:4317")
+	require.Equal(t, "https://collector.example.com:4317", target.endpoint)
+	require.False(t, target.insecure, "an explicit URL scheme decides TLS")
+	require.Len(t, target.options(), 1)
+
+	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "collector.example.com:4317")
+	target = resolveOTLPEndpoint("")
+	require.Empty(t, target.endpoint, "an unset endpoint defers to the OTEL_* variables")
+	require.Empty(t, target.options())
+}
+
 func attributeValue(attrs []attribute.KeyValue, key string) string {
 	for _, attr := range attrs {
 		if string(attr.Key) == key {

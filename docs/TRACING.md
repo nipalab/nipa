@@ -19,7 +19,7 @@ Environment variables (or `config.yaml` keys with the same names):
 | Variable | Default | Meaning |
 |---|---|---|
 | `TRACING_ENABLED` | `false` | Export spans over OTLP |
-| `TRACING_OTLP_ENDPOINT` | `localhost:4317` | OTLP gRPC collector endpoint (`host:port` or URL; `https://` uses TLS, bare/`http://` is plaintext) |
+| `TRACING_OTLP_ENDPOINT` | `OTEL_*` env, else `localhost:4317` | OTLP gRPC collector endpoint (`host:port` or URL; `https://` uses TLS, bare/`http://` is plaintext) |
 | `TRACING_STDOUT` | `false` | Pretty-print spans to stderr instead of exporting (debugging) |
 | `TRACING_SAMPLE_RATIO` | `1.0` | Root span sampling ratio in `(0, 1]` |
 | `TRACING_SERVICE_NAME` | `nipad` / `nipad-ee` | `service.name` resource attribute |

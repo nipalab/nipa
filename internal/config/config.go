@@ -76,7 +76,6 @@ func LoadConfig() (*Config, error) {
 	v.SetDefault("PPROF_ENABLED", false)
 	v.SetDefault("METRICS_ENABLED", true)
 	v.SetDefault("TRACING_ENABLED", false)
-	v.SetDefault("TRACING_OTLP_ENDPOINT", "localhost:4317")
 	v.SetDefault("TRACING_STDOUT", false)
 	v.SetDefault("TRACING_SAMPLE_RATIO", 1.0)
 

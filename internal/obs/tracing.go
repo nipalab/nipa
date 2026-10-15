@@ -86,18 +86,7 @@ func SetupTracing(ctx context.Context, cfg TracingConfig) (*Tracing, error) {
 	if cfg.Stdout {
 		exporter, err = stdouttrace.New(stdouttrace.WithPrettyPrint(), stdouttrace.WithWriter(os.Stderr))
 	} else {
-		var opts []otlptracegrpc.Option
-		endpoint := strings.TrimSpace(cfg.Endpoint)
-		if endpoint == "" && !otlpEndpointFromEnv() {
-			endpoint = defaultOTLPEndpoint
-		}
-		if endpoint != "" {
-			if !strings.Contains(endpoint, "://") {
-				endpoint = "http://" + endpoint
-			}
-			opts = append(opts, otlptracegrpc.WithEndpointURL(endpoint))
-		}
-		exporter, err = otlptracegrpc.New(ctx, opts...)
+		exporter, err = otlptracegrpc.New(ctx, resolveOTLPEndpoint(cfg.Endpoint).options()...)
 	}
 	if err != nil {
 		return nil, err
@@ -206,6 +195,42 @@ func StartSpan(ctx context.Context, name string, attrs ...attribute.KeyValue) (c
 
 func otlpEndpointFromEnv() bool {
 	return os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT") != "" || os.Getenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT") != ""
+}
+
+// otlpEndpointTarget is a resolved collector target. An empty endpoint leaves
+// the export configuration to the standard OTEL_* environment variables.
+type otlpEndpointTarget struct {
+	endpoint string
+	insecure bool
+}
+
+// resolveOTLPEndpoint picks the collector target: the configured endpoint
+// wins (a URL's scheme decides TLS, a bare host:port is plaintext), then the
+// standard OTEL_* variables, then the local plaintext default.
+func resolveOTLPEndpoint(configured string) otlpEndpointTarget {
+	configured = strings.TrimSpace(configured)
+	switch {
+	case configured == "":
+		if otlpEndpointFromEnv() {
+			return otlpEndpointTarget{}
+		}
+		return otlpEndpointTarget{endpoint: defaultOTLPEndpoint, insecure: true}
+	case strings.Contains(configured, "://"):
+		return otlpEndpointTarget{endpoint: configured}
+	default:
+		return otlpEndpointTarget{endpoint: configured, insecure: true}
+	}
+}
+
+func (t otlpEndpointTarget) options() []otlptracegrpc.Option {
+	switch {
+	case t.endpoint == "":
+		return nil
+	case t.insecure:
+		return []otlptracegrpc.Option{otlptracegrpc.WithEndpoint(t.endpoint), otlptracegrpc.WithInsecure()}
+	default:
+		return []otlptracegrpc.Option{otlptracegrpc.WithEndpointURL(t.endpoint)}
+	}
 }
 
 // FinishSpan records err (when non-nil) and ends the span.
