@@ -259,6 +259,7 @@ type summary struct {
 	ErrorRate float64              `json:"error_rate"`
 	TotalOps  int                  `json:"total_ops"`
 	TotalErrs int                  `json:"total_errors"`
+	WorkerErr int                  `json:"worker_errors"`
 }
 
 func run(opts options) error {
@@ -331,14 +332,15 @@ func run(opts options) error {
 		branches = append(branches, name)
 	}
 	defer func() {
+		if opts.keepState {
+			return
+		}
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cleanupCancel()
 		for _, name := range branches {
 			_ = grpcClient.DeleteBranch(cleanupCtx, opts.org, opts.project, name)
 		}
-		if !opts.keepState {
-			_ = grpcClient.DeleteBranch(cleanupCtx, opts.org, opts.project, seedBranch)
-		}
+		_ = grpcClient.DeleteBranch(cleanupCtx, opts.org, opts.project, seedBranch)
 	}()
 
 	start := time.Now()
@@ -390,6 +392,7 @@ func run(opts options) error {
 		sum.TotalOps += s.Count
 		sum.TotalErrs += s.Errors
 	}
+	sum.WorkerErr = len(workerErrs)
 	if sum.TotalOps > 0 {
 		sum.ErrorRate = math.Round(float64(sum.TotalErrs)/float64(sum.TotalOps)*10000) / 10000
 	}
@@ -411,6 +414,9 @@ func run(opts options) error {
 	}
 	if sum.TotalOps == 0 {
 		return errors.New("no operations completed")
+	}
+	if sum.WorkerErr > 0 {
+		return fmt.Errorf("%d worker(s) failed; see stderr", sum.WorkerErr)
 	}
 	if sum.ErrorRate > opts.maxErrorRate {
 		return fmt.Errorf("error rate %.2f%% exceeds maximum %.2f%%", sum.ErrorRate*100, opts.maxErrorRate*100)

@@ -59,7 +59,10 @@ clones download real content, then fork `-clients` branches
 
 - per-op count, errors and client-observed latency p50/p95/p99;
 - wire bytes: PUT/POST (upload) and GET (download) MiB/s;
-- total error rate (exit code 1 when above `-max-error-rate`);
+- total error rate; the run exits 1 when the rate exceeds `-max-error-rate`
+  or when any worker fails outside a recorded op window (setup clone errors,
+  a push that stops the worker, ...), which also shows up as `worker_errors`
+  in the `-json` summary;
 - a delta of the server's Prometheus counters/gauges scraped before and after
   the run, summed across labels, top 30 by absolute delta. Watch in particular:
   `nipa_db_pool_wait_count_total`, `nipa_db_pool_wait_seconds_total`,
