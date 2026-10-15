@@ -528,6 +528,16 @@ Direct: `go build ./...`, `go vet ./...`, `go test ./...`.
   re-clones and verifies the bytes. Skipped unless `NIPA_BENCH_MB` is set;
   `NIPA_BENCH_WORKERS` pins transfer concurrency (otherwise the adaptive tuner
   is exercised).
+- Performance tooling (see `docs/PERFORMANCE.md`): `make bench-download mb=512`
+  times a fresh clone plus a no-op update (`TestEndToEnd_CloneThroughput`),
+  `make bench-scale gb=2` pushes/clones one N-GiB file and asserts peak heap
+  growth stays below the file size (`NIPA_BENCH_GB`,
+  `TestEndToEnd_GBScaleMemoryCeiling`), `make bench-unit` runs the
+  chunker/diff/treehash micro-benchmarks, and `make load-test args='...'` runs
+  the `tests/load` scenarios (push/clone/mixed, one branch and worktree per
+  worker, client-side p50/p95/p99 plus a `/metrics` delta) against a running
+  server. Requested metrics must be namespace-filtered (`nipa_*`), bench and
+  load code stays env-gated so CI never runs it.
 - The server opens SQLite through `db.OpenSQLite`, which appends
   `_pragma=busy_timeout(10000)`, `_pragma=journal_mode(WAL)` and
   `_txlock=immediate` to the DSN. Without WAL + a busy timeout, concurrent
