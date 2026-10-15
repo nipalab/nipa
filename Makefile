@@ -5,13 +5,14 @@ DSN        ?= nipa.db
 MIGRATIONS_DIR := db/migrations
 POSTGRES_MIGRATIONS_DIR := ee/db/migrations/postgres
 mb         ?= 256
+gb         ?= 1
 
 VERSION    ?= $(shell git describe --tags --always --dirty 2>/dev/null)
 REVISION   ?= $(shell git rev-parse --short HEAD 2>/dev/null)
 LDFLAGS    := $(if $(VERSION),-X 'github.com/nipalab/nipa/internal/version.Version=$(VERSION)') \
               $(if $(REVISION),-X 'github.com/nipalab/nipa/internal/version.Revision=$(REVISION)')
 
-.PHONY: sqlc mock migrate-up migrate-down migrate-up-postgres migrate-down-postgres migrate-create build build-all build-server build-server-ee build-client test test-ee test-client test-client-ee test-client-both lint web web-dev web-install bench-upload release
+.PHONY: sqlc mock migrate-up migrate-down migrate-up-postgres migrate-down-postgres migrate-create build build-all build-server build-server-ee build-client test test-ee test-client test-client-ee test-client-both lint web web-dev web-install bench-upload bench-download bench-scale bench-unit load-test release
 
 GOLANGCI_LINT_IMAGE ?= docker.io/golangci/golangci-lint:latest
 
@@ -115,6 +116,22 @@ test-client-both:
 ## Measure upload throughput with NIPA_BENCH_MB MiB files (e.g. make bench-upload mb=512).
 bench-upload:
 	NIPA_BENCH_MB=$(mb) go test ./internal/e2e -run TestEndToEnd_UploadThroughput -v -count=1
+
+## Measure clone/download throughput with NIPA_BENCH_MB MiB files (e.g. make bench-download mb=512).
+bench-download:
+	NIPA_BENCH_MB=$(mb) go test ./internal/e2e -run TestEndToEnd_CloneThroughput -v -count=1
+
+## Push and clone one NIPA_BENCH_GB GiB file, reporting peak heap against the file size (e.g. make bench-scale gb=2).
+bench-scale:
+	NIPA_BENCH_GB=$(gb) go test ./internal/e2e -run TestEndToEnd_GBScaleMemoryCeiling -v -count=1
+
+## Run the package micro-benchmarks (chunker, diff, treehash).
+bench-unit:
+	go test ./internal/chunker ./internal/diff ./internal/treehash -run '^$$' -bench=. -benchmem
+
+## Run load scenarios against a running server (e.g. make load-test args='-scenario push -clients 16').
+load-test:
+	go run ./tests/load $(args)
 
 ## Lint the code via golangci-lint's Docker image.
 lint:
