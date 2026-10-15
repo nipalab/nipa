@@ -315,7 +315,9 @@ func run(opts options) error {
 	if err := repo.Clone(ctx, url, opts.host, opts.org, opts.project, seedBranch, nil, seedDir); err != nil {
 		return fmt.Errorf("clone seed branch: %w", err)
 	}
-	writeRandomFile(seedDir, "seed.bin", opts.sizeMB, 1)
+	if err := writeRandomFile(seedDir, "seed.bin", opts.sizeMB, 1); err != nil {
+		return fmt.Errorf("write seed file: %w", err)
+	}
 	if err := stageFile(seedDir, "seed.bin"); err != nil {
 		return err
 	}
@@ -464,7 +466,9 @@ func pushLoop(ctx context.Context, opts options, col *collector, auth *clientuse
 		round++
 		for i := 0; i < opts.files; i++ {
 			name := fmt.Sprintf("worker%d/round%d/file%d.bin", worker, round, i)
-			writeRandomFile(dir, name, opts.sizeMB, int64(worker)*1000+int64(round)*100+int64(i))
+			if err := writeRandomFile(dir, name, opts.sizeMB, int64(worker)*1000+int64(round)*100+int64(i)); err != nil {
+				return fmt.Errorf("write %s: %w", name, err)
+			}
 			if err := stageFile(dir, name); err != nil {
 				return err
 			}
@@ -577,12 +581,14 @@ func stageFile(root, path string) error {
 	return lr.StageAdd(path)
 }
 
-func writeRandomFile(root, path string, sizeMB int, seed int64) {
+func writeRandomFile(root, path string, sizeMB int, seed int64) error {
 	fp := filepath.Join(root, filepath.FromSlash(path))
-	_ = os.MkdirAll(filepath.Dir(fp), 0o755)
+	if err := os.MkdirAll(filepath.Dir(fp), 0o755); err != nil {
+		return err
+	}
 	f, err := os.Create(fp)
 	if err != nil {
-		return
+		return err
 	}
 	defer func() { _ = f.Close() }()
 
@@ -599,10 +605,11 @@ func writeRandomFile(root, path string, sizeMB int, seed int64) {
 			n = remaining
 		}
 		if _, err := f.Write(buf[:n]); err != nil {
-			return
+			return err
 		}
 		remaining -= n
 	}
+	return f.Close()
 }
 
 func scrapeMetrics(url string) map[string]float64 {

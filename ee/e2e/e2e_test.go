@@ -296,11 +296,19 @@ func newS3ChunkStore(t *testing.T) storage.ChunkStore {
 	})
 	require.NoError(t, err)
 
-	exists, err := admin.BucketExists(ctx, e2eBucket)
-	require.NoError(t, err)
-	if !exists {
-		require.NoError(t, admin.MakeBucket(ctx, e2eBucket, minio.MakeBucketOptions{}))
-	}
+	// The minio module's wait strategy can report the container ready before
+	// the server accepts S3 calls ("Server not initialized yet, please try
+	// again"), so retry until the bucket exists or can be created.
+	require.Eventually(t, func() bool {
+		exists, err := admin.BucketExists(ctx, e2eBucket)
+		if err != nil {
+			return false
+		}
+		if exists {
+			return true
+		}
+		return admin.MakeBucket(ctx, e2eBucket, minio.MakeBucketOptions{}) == nil
+	}, 30*time.Second, 250*time.Millisecond, "minio bucket %q must become ready", e2eBucket)
 
 	store, err := s3store.New(ctx, s3store.Config{
 		Endpoint:        endpoint,
