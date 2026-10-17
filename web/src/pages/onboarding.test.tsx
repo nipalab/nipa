@@ -2,7 +2,14 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from '../App'
+import { oauthStartURL } from '../api/endpoints'
 import { clearSession } from '../api/client'
+import { socialRedirect } from '../components/SocialButtons'
+
+vi.mock('../api/endpoints', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../api/endpoints')>()
+  return { ...actual, oauthStartURL: vi.fn(actual.oauthStartURL) }
+})
 
 function jsonResponse(body: unknown, status = 200): Response {
   return {
@@ -81,8 +88,9 @@ function findButtonIn(root: HTMLElement, text: string): HTMLButtonElement {
   return button as HTMLButtonElement
 }
 
-async function renderApp(url: string) {
-  window.history.pushState({}, '', url)
+async function renderApp(url: string, state: unknown = {}) {
+  // react-router reads history.state.usr (see @remix-run/router getLocation).
+  window.history.pushState({ usr: state, key: 'test', idx: 0 }, '', url)
   const container = document.createElement('div')
   container.id = 'root'
   document.body.appendChild(container)
@@ -95,6 +103,7 @@ async function renderApp(url: string) {
 
 beforeEach(() => {
   clearSession()
+  vi.mocked(oauthStartURL).mockClear()
   window.history.pushState({}, '', '/')
 })
 
@@ -246,6 +255,63 @@ describe('OAuthCallbackPage', () => {
     const { container } = await renderApp('/oauth/callback?oauth_error=email_conflict')
     await waitForText(container, 'Sign-in failed')
     expect(container.textContent).toContain('already exists')
+  })
+
+  it('returns to the from destination after exchanging the code', async () => {
+    stubRoutes((url, init) => {
+      if (url.endsWith('/api/v1/auth/oauth/complete') && (init?.method ?? 'GET') === 'POST') {
+        return jsonResponse({ access_token: 'token', token_type: 'Bearer', expires_in: 1800 })
+      }
+      return null
+    })
+
+    await renderApp('/oauth/callback?code=xyz&from=%2Facme%2Fproj')
+    await waitFor(() => window.location.pathname === '/acme/proj')
+  })
+
+  it('rejects an off-site from destination', async () => {
+    stubRoutes((url, init) => {
+      if (url.endsWith('/api/v1/auth/oauth/complete') && (init?.method ?? 'GET') === 'POST') {
+        return jsonResponse({ access_token: 'token', token_type: 'Bearer', expires_in: 1800 })
+      }
+      return null
+    })
+
+    await renderApp('/oauth/callback?code=xyz&from=%2F%2Fevil.example')
+    await waitFor(() => window.location.pathname === '/')
+  })
+})
+
+describe('SocialButtons', () => {
+  it('builds callback redirects that carry the destination', () => {
+    expect(socialRedirect('/')).toBe('/oauth/callback')
+    expect(socialRedirect('/acme/proj')).toBe('/oauth/callback?from=%2Facme%2Fproj')
+    expect(socialRedirect('//evil.example')).toBe('/oauth/callback')
+    expect(socialRedirect('https://evil.example')).toBe('/oauth/callback')
+  })
+
+  it('routes social sign-in through the OAuth callback page', async () => {
+    stubRoutes()
+
+    const { container } = await renderApp('/login')
+    await waitForText(container, 'Continue with GitHub')
+    await act(async () => {
+      findButtonIn(container, 'Continue with GitHub').click()
+    })
+
+    expect(vi.mocked(oauthStartURL)).toHaveBeenCalledWith('github', '/oauth/callback')
+  })
+
+  it('carries the post-login destination through the OAuth round-trip', async () => {
+    stubRoutes()
+
+    const { container } = await renderApp('/login', { from: '/acme/proj' })
+    await waitForText(container, 'Continue with GitHub')
+    await act(async () => {
+      findButtonIn(container, 'Continue with GitHub').click()
+    })
+
+    expect(vi.mocked(oauthStartURL)).toHaveBeenCalledWith('github', '/oauth/callback?from=%2Facme%2Fproj')
   })
 })
 

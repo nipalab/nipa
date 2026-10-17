@@ -20,6 +20,10 @@ export default function OAuthCallbackPage() {
   const code = params.get('code') ?? ''
   const isNew = params.get('new') === '1'
   const oauthError = params.get('oauth_error') ?? ''
+  const fromParam = params.get('from') ?? '/'
+  // The destination rides inside the callback URL's query, so only same-origin
+  // SPA paths are honored no matter what the browser sends.
+  const from = fromParam.startsWith('/') && !fromParam.startsWith('//') ? fromParam : '/'
   const [error, setError] = useState<string | null>(null)
   const started = useRef(false)
 
@@ -37,12 +41,12 @@ export default function OAuthCallbackPage() {
     establishSession('/api/v1/auth/oauth/complete', { code })
       .then(() => {
         signIn()
-        navigate(isNew ? '/onboarding' : '/', { replace: true })
+        navigate(isNew ? '/onboarding' : from, { replace: true })
       })
       .catch((err: unknown) => {
         setError(err instanceof Error ? err.message : String(err))
       })
-  }, [code, isNew, oauthError, signIn, navigate])
+  }, [code, isNew, oauthError, from, signIn, navigate])
 
   return (
     <div style={{ maxWidth: 420, margin: '48px auto 0', padding: '0 16px' }}>

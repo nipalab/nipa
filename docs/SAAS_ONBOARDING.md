@@ -52,9 +52,13 @@ callback URLs with the providers:
 
 ## Social login and signup
 
-1. The SPA links to `GET /api/v1/auth/oauth/{provider}/start?redirect=…`
-   (anonymous flow) which sets a signed state (HMAC with `JWT_KEY`, 10 min
-   TTL, relative-path-only redirect) and 302s to the provider.
+1. The SPA's social buttons link to
+   `GET /api/v1/auth/oauth/{provider}/start?redirect=/oauth/callback?from=…`
+   (anonymous flow): the redirect target must be the SPA callback route that
+   exchanges the one-time code, and the post-login destination rides along in
+   its own `from` parameter. The endpoint sets a signed state (HMAC with
+   `JWT_KEY`, 10 min TTL, relative-path-only redirect) and 302s to the
+   provider.
 2. `GET /api/v1/auth/oauth/{provider}/callback?code&state` exchanges the code,
    fetches the profile (Google userinfo; GitHub `/user` + verified primary
    email) and resolves the account:
@@ -73,9 +77,11 @@ callback URLs with the providers:
    link attempt targets a provider account linked elsewhere.
 3. The callback never puts a token in a URL: it stores a one-time
    `oauth_login_codes` row (2 min TTL, single use) and redirects to
-   `<redirect>?code=…&new=1` (new accounts only). The SPA's
-   `/oauth/callback` page posts `POST /api/v1/auth/oauth/complete {code}` and
-   receives the standard login result.
+   `<redirect>?code=…` (new accounts only), i.e. to
+   `/oauth/callback?from=…&code=…`. The SPA's `/oauth/callback` page posts
+   `POST /api/v1/auth/oauth/complete {code}`, receives the standard login
+   result and returns to the `from` destination (`/onboarding` for new
+   accounts).
 
 ## Unified onboarding
 

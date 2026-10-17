@@ -20,7 +20,7 @@ proxies `/api` and `/docs` to `NIPA_SERVER_URL`).
 | `/login` | sign in | password form, "Create an account" link and social buttons when the server reports them |
 | `/register` | sign up | SaaS only (`/api/v1/auth/capabilities`); emails a confirmation link, then offers a resend |
 | `/verify` | email confirmation | consumes `?token=` from the confirmation email and starts the session |
-| `/oauth/callback` | social login handoff | exchanges `?code=` for a session; shows `email_conflict`/`email_required` guidance |
+| `/oauth/callback` | social login handoff | exchanges `?code=` for a session, returns to the `?from=` destination, and shows `email_conflict`/`email_required` guidance |
 | `/onboarding` | first-run setup | names the first workspace (skipped when the user already has an organization) |
 | `/` | repositories | organizations the caller belongs to; "New organization" dialog |
 | `/:org` | repositories | project list filtered by PBAC read |

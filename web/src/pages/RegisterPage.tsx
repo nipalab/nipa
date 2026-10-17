@@ -151,7 +151,7 @@ export default function RegisterPage() {
                 {capabilities.providers.length > 0 && (
                   <>
                     <div style={{ textAlign: 'center', color: 'var(--fgColor-muted)', fontSize: 12 }}>or</div>
-                    <SocialButtons providers={capabilities.providers} redirect={from} />
+                    <SocialButtons providers={capabilities.providers} from={from} />
                   </>
                 )}
               </Stack>

@@ -30,8 +30,17 @@ function GoogleIcon() {
   )
 }
 
-export function SocialButtons({ providers, redirect }: { providers: string[]; redirect: string }) {
+// socialRedirect builds the OAuth `redirect` the server signs into the state.
+// It must be the SPA callback route that exchanges the one-time code; the
+// post-login destination rides along as its own `from` parameter.
+export function socialRedirect(from: string): string {
+  const destination = from.startsWith('/') && !from.startsWith('//') ? from : '/'
+  return destination === '/' ? '/oauth/callback' : `/oauth/callback?from=${encodeURIComponent(destination)}`
+}
+
+export function SocialButtons({ providers, from }: { providers: string[]; from: string }) {
   if (providers.length === 0) return null
+  const redirect = socialRedirect(from)
   return (
     <Stack direction="vertical" gap="condensed">
       {providers.map((provider) => (
