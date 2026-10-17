@@ -59,13 +59,18 @@ callback URLs with the providers:
    fetches the profile (Google userinfo; GitHub `/user` + verified primary
    email) and resolves the account:
    - a linked identity logs that account in;
+   - a provider whose email is missing **or unverified** redirects with
+     `?oauth_error=email_required`: an untrusted address must never create
+     (squat) an account or activate one through auto-linking;
    - a **verified** provider email matching an existing account links the
      identity (an unconfirmed password account is activated — the provider
      proved the email) and logs in;
-   - an unverified email conflict, or a provider that shares no email,
-     redirects with `?oauth_error=email_conflict|email_required`;
    - otherwise a new verified account is created with the provider avatar and
      the free-tier quota seed, and the identity is linked.
+   The `email_conflict`/`identity_taken` error codes remain in the SPA error
+   map for compatibility with older servers; current servers answer
+   `email_required` for untrusted provider emails and `identity_taken` when a
+   link attempt targets a provider account linked elsewhere.
 3. The callback never puts a token in a URL: it stores a one-time
    `oauth_login_codes` row (2 min TTL, single use) and redirects to
    `<redirect>?code=…&new=1` (new accounts only). The SPA's

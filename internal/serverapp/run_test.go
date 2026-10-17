@@ -33,9 +33,16 @@ func TestRunReturnsListenError(t *testing.T) {
 		ServerPort:    ln.Addr().(*net.TCPAddr).Port,
 	}
 
-	require.Error(t, Run(cfg, NewRegistry(Usecases{}), nil, WithRoutes(func(ws *restful.WebService) {
-		ws.Route(ws.GET("/extra").To(func(_ *restful.Request, resp *restful.Response) {
-			resp.WriteHeader(204)
-		}))
-	})))
+	require.Error(t, Run(cfg, NewRegistry(Usecases{}), nil,
+		WithRoutes(func(ws *restful.WebService) {
+			ws.Route(ws.GET("/extra").To(func(_ *restful.Request, resp *restful.Response) {
+				resp.WriteHeader(204)
+			}))
+		}),
+		WithPublicRoutes(func(ws *restful.WebService) {
+			ws.Route(ws.GET("/extra-public").To(func(_ *restful.Request, resp *restful.Response) {
+				resp.WriteHeader(204)
+			}))
+		}),
+	))
 }

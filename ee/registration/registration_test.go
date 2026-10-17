@@ -21,6 +21,7 @@ func (stubTransactor) WithinTx(ctx context.Context, fn func(ctx context.Context)
 type stubHasher struct{}
 
 func (stubHasher) Hash(password string) (string, error) { return "hash:" + password, nil }
+func (stubHasher) Compare(hash, password string) bool   { return hash == "hash:"+password }
 
 type stubUsers struct {
 	users []*domain.User
@@ -297,4 +298,14 @@ func TestVerificationURLUsesTheBaseURL(t *testing.T) {
 	link := env.registration.verificationURL("tok en")
 	require.Equal(t, "https://nipa.example.com/verify?token=tok+en", link)
 	require.True(t, strings.HasPrefix(link, "https://nipa.example.com/verify?token="))
+}
+
+func TestMessageHostFallsBackWithoutABaseURL(t *testing.T) {
+	env := newRegistrationEnv(t)
+
+	require.Equal(t, "nipa.example.com", env.registration.messageHost())
+	env.registration.cfg.BaseURL = ""
+	require.Equal(t, "nipa.local", env.registration.messageHost())
+	env.registration.cfg.BaseURL = "://invalid"
+	require.Equal(t, "nipa.local", env.registration.messageHost())
 }

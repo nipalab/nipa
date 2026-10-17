@@ -143,11 +143,13 @@ func (o *OAuth) Callback(ctx context.Context, provider, code, rawState string) (
 	if profile.Email == "" {
 		return withQueryParam(base, "oauth_error", "email_required"), nil
 	}
+	if !profile.EmailVerified {
+		// An untrusted provider email must never create (and thereby squat) an
+		// account: only provider-verified addresses pass the confirmation gate.
+		return withQueryParam(base, "oauth_error", "email_required"), nil
+	}
 	existing, err := o.users.GetByEmail(ctx, profile.Email)
 	if err == nil {
-		if !profile.EmailVerified {
-			return withQueryParam(base, "oauth_error", "email_conflict"), nil
-		}
 		if err := o.attachIdentity(ctx, existing.ID, provider, profile, true); err != nil {
 			return "", err
 		}

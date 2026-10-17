@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"net/url"
 	"strings"
 	"time"
 
@@ -86,10 +87,15 @@ func (s *stateSigner) signature(encoded string) string {
 }
 
 // safeRedirect only accepts relative SPA paths, so a forged state can never
-// turn the callback into an open redirect.
+// turn the callback into an open redirect. Besides absolute URLs and
+// protocol-relative targets ("//host"), backslashes and ASCII control
+// characters are rejected: browsers normalize "\" to "/" and strip tabs, so
+// "/\evil.com" or "/\t/evil.com" would otherwise resolve off-site.
 func safeRedirect(target string) string {
 	target = strings.TrimSpace(target)
-	if !strings.HasPrefix(target, "/") || strings.HasPrefix(target, "//") {
+	parsed, err := url.Parse(target)
+	if err != nil || parsed.Scheme != "" || parsed.Host != "" || parsed.Opaque != "" ||
+		!strings.HasPrefix(parsed.Path, "/") || strings.Contains(target, `\`) {
 		return "/"
 	}
 	return target

@@ -15,6 +15,7 @@ import (
 
 type stubProvider struct {
 	profile *Profile
+	err     error
 }
 
 func (p *stubProvider) Name() string { return ProviderGitHub }
@@ -24,6 +25,9 @@ func (p *stubProvider) AuthCodeURL(state string) string {
 }
 
 func (p *stubProvider) Exchange(_ context.Context, _ string) (*Profile, error) {
+	if p.err != nil {
+		return nil, p.err
+	}
 	return p.profile, nil
 }
 
@@ -217,6 +221,27 @@ func redirectQuery(t *testing.T, target string) url.Values {
 	return parsed.Query()
 }
 
+func TestProvidersListsEnabledProviders(t *testing.T) {
+	env := newOAuthEnv(t)
+
+	require.ElementsMatch(t, []string{ProviderGitHub}, env.oauth.Providers())
+	require.Equal(t, "local", emailLocalPart("local"), "addresses without @ keep their value")
+	require.Equal(t, "alice", emailLocalPart("alice@example.com"))
+}
+
+func TestCallbackFallsBackToTheEmailLocalPartForTheName(t *testing.T) {
+	env := newOAuthEnv(t)
+	env.provider.profile = &Profile{AccountID: "1001", Email: "alice@example.com", EmailVerified: true}
+	state, err := env.oauth.states.Sign("/", 0)
+	require.NoError(t, err)
+
+	target, err := env.oauth.Callback(context.Background(), ProviderGitHub, "code", state)
+	require.NoError(t, err)
+	require.NotEmpty(t, redirectQuery(t, target).Get("code"))
+	require.Len(t, env.users.users, 1)
+	require.Equal(t, "alice", env.users.users[0].Name)
+}
+
 func TestStartSignsStateAndSanitizesRedirect(t *testing.T) {
 	env := newOAuthEnv(t)
 
@@ -314,7 +339,7 @@ func TestCallbackLinksVerifiedEmailToUnconfirmedAccount(t *testing.T) {
 	require.Len(t, env.users.users, 1)
 }
 
-func TestCallbackRejectsUnverifiedEmailConflict(t *testing.T) {
+func TestCallbackRejectsUnverifiedProviderEmail(t *testing.T) {
 	env := newOAuthEnv(t)
 	env.users.users = []*domain.User{{ID: 42, Email: "alice@example.com", EmailVerified: true}}
 	env.provider.profile = &Profile{AccountID: "1001", Email: "alice@example.com", EmailVerified: false}
@@ -323,8 +348,23 @@ func TestCallbackRejectsUnverifiedEmailConflict(t *testing.T) {
 
 	target, err := env.oauth.Callback(context.Background(), ProviderGitHub, "code", state)
 	require.NoError(t, err)
-	require.Equal(t, "email_conflict", redirectQuery(t, target).Get("oauth_error"))
+	require.Equal(t, "email_required", redirectQuery(t, target).Get("oauth_error"))
 	require.Empty(t, env.repo.identities)
+	require.Empty(t, env.repo.verified, "an unverified email must not activate an account")
+}
+
+func TestCallbackRejectsUnverifiedProviderEmailForNewAccount(t *testing.T) {
+	env := newOAuthEnv(t)
+	env.provider.profile = &Profile{AccountID: "1001", Email: "victim@example.com", EmailVerified: false}
+	state, err := env.oauth.states.Sign("/", 0)
+	require.NoError(t, err)
+
+	target, err := env.oauth.Callback(context.Background(), ProviderGitHub, "code", state)
+	require.NoError(t, err)
+	require.Equal(t, "email_required", redirectQuery(t, target).Get("oauth_error"))
+	require.Empty(t, env.users.users, "an unverified provider email must not pre-register (squat) an address")
+	require.Empty(t, env.repo.identities)
+	require.Empty(t, env.repo.codes)
 }
 
 func TestCallbackRequiresAnEmailForNewAccounts(t *testing.T) {
@@ -429,6 +469,26 @@ func TestDisconnectIdentityRejectsForeignIdentity(t *testing.T) {
 	var domErr *domain.Error
 	require.ErrorAs(t, err, &domErr)
 	require.Equal(t, 403, domErr.Code)
+}
+
+func TestSafeRedirectRejectsBypasses(t *testing.T) {
+	cases := map[string]string{
+		"/onboarding":                      "/onboarding",
+		"/settings/profile?tab=identities": "/settings/profile?tab=identities",
+		"/":                                "/",
+		"//evil.example":                   "/",
+		`/\evil.example`:                   "/",
+		"/\t/evil.example":                 "/",
+		"/\n/evil.example":                 "/",
+		"https://evil.example":             "/",
+		"javascript:alert(1)":              "/",
+		"evil.example":                     "/",
+		"":                                 "/",
+		" /onboarding ":                    "/onboarding",
+	}
+	for target, want := range cases {
+		require.Equal(t, want, safeRedirect(target), "safeRedirect(%q)", target)
+	}
 }
 
 func TestStateRoundTripAndExpiry(t *testing.T) {
