@@ -165,6 +165,13 @@ Purchasing does not need new seam methods: it changes
 - A `plan`/`purchased_bytes` model can be added later; with one explicit
   `quota_bytes` column any plan math is just how the value is produced.
 
+SaaS self-registration seeds every new account with the free-tier baseline
+(`SAAS_FREE_QUOTA_BYTES`, default 15 GiB) through the same `owner_quota` row;
+see docs/SAAS_ONBOARDING.md for that flow and for the planned
+monthly/yearly subscription integration (an external billing service driving
+`billing_subscriptions` with nipad access tokens, enforced lazily at the
+presign/confirm gates).
+
 ## REST API
 
 `ee/storageusage.RegisterRoutes` is attached to the authenticated `/api/v1`

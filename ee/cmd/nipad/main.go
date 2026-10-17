@@ -13,6 +13,8 @@ import (
 
 	eedb "github.com/nipalab/nipa/ee/db"
 	"github.com/nipalab/nipa/ee/nodelease"
+	"github.com/nipalab/nipa/ee/oauth"
+	"github.com/nipalab/nipa/ee/registration"
 	"github.com/nipalab/nipa/ee/repository/postgres"
 	s3store "github.com/nipalab/nipa/ee/storage/s3"
 	"github.com/nipalab/nipa/ee/storageusage"
@@ -216,9 +218,67 @@ func main() {
 			})
 		}))
 	}
+	if cfg.SaaSMode {
+		runOpts = append(runOpts, saasOptions(cfg, snowUser, passwordHasher, userRepo, authUsecase, emailRepository, emailDispatcher, dbConn)...)
+	}
 	if err := serverapp.Run(cfg, reg, dispatchers, runOpts...); err != nil {
 		panic(err)
 	}
+}
+
+// saasOptions wires the self-registration and social login surfaces of the
+// SaaS deployment. Both use the same onboarding repository, which runs inside
+// the caller's transaction.
+func saasOptions(cfg *config.Config, snowUser snow.Node, hasher *hasher.Hasher, userRepo *postgres.User,
+	authUsecase *usecase.Auth, emailRepository *postgres.EmailRepository, emailDispatcher *mail.Dispatcher, dbConn *sql.DB,
+) []serverapp.Option {
+	if strings.TrimSpace(cfg.EmailBaseURL) == "" {
+		panic("SAAS_MODE requires EMAIL_BASE_URL: the confirmation link has no public base URL")
+	}
+	registrationRepo := postgres.NewRegistrationRepository(dbConn)
+	transactor := dbtx.NewTransactor(dbConn)
+
+	registrationUsecase := registration.New(snowUser, hasher, userRepo, registrationRepo, transactor, registration.Config{
+		FreeQuotaBytes: cfg.SaasFreeQuotaBytes,
+		BaseURL:        cfg.EmailBaseURL,
+	})
+	registrationHandler := registration.NewHandler(registrationUsecase, authUsecase)
+	if emailDispatcher != nil {
+		registrationUsecase = registrationUsecase.WithMailer(emailRepository, emailDispatcher)
+	} else {
+		slog.Warn("SAAS_MODE with EMAIL_SENDER=off: confirmation emails will not be sent")
+	}
+	options := []serverapp.Option{
+		serverapp.WithPublicRoutes(func(ws *restful.WebService) {
+			registration.RegisterPublicRoutes(ws, registrationHandler)
+		}),
+	}
+	slog.Info("saas self-registration enabled", "free_quota_bytes", cfg.SaasFreeQuotaBytes)
+
+	providers := oauth.NewProviders(oauth.ProvidersConfig{
+		BaseURL:            cfg.OAuthBaseURL,
+		GoogleClientID:     cfg.OAuthGoogleClientID,
+		GoogleClientSecret: cfg.OAuthGoogleClientSecret,
+		GitHubClientID:     cfg.OAuthGitHubClientID,
+		GitHubClientSecret: cfg.OAuthGitHubClientSecret,
+	})
+	if len(providers) > 0 {
+		oauthUsecase := oauth.New(providers, cfg.JWTKey, userRepo, registrationRepo, transactor, snowUser, oauth.Config{
+			FreeQuotaBytes: cfg.SaasFreeQuotaBytes,
+		})
+		registrationHandler = registrationHandler.WithProviders(oauthUsecase.Providers)
+		oauthHandler := oauth.NewHandler(oauthUsecase, authUsecase)
+		options = append(options,
+			serverapp.WithPublicRoutes(func(ws *restful.WebService) {
+				oauth.RegisterPublicRoutes(ws, oauthHandler)
+			}),
+			serverapp.WithRoutes(func(ws *restful.WebService) {
+				oauth.RegisterRoutes(ws, oauthHandler)
+			}),
+		)
+		slog.Info("social login enabled", "providers", oauthUsecase.Providers())
+	}
+	return options
 }
 
 func resolveSnowflakeNode(cfg *config.Config, dbConn *sql.DB) (snow.Node, *nodelease.Manager, error) {

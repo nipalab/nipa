@@ -15,7 +15,7 @@ func setupOrgRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(
 		ws.GET("/orgs").
-			To(wrap(h.ListMyOrgs)).
+			To(Wrap(h.ListMyOrgs)).
 			Doc("List the organizations the caller belongs to").
 			Returns(http.StatusOK, "organizations", []model.OrgResponse{}).
 			Operation("listMyOrgs").
@@ -23,7 +23,7 @@ func setupOrgRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(
 		ws.POST("/orgs").
-			To(wrap(h.CreateOrg)).
+			To(Wrap(h.CreateOrg)).
 			Reads(model.CreateOrgRequest{}).
 			Doc("Create an organization; the caller becomes its owner").
 			Returns(http.StatusOK, "created organization", model.OrgResponse{}).
@@ -32,7 +32,7 @@ func setupOrgRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(
 		ws.GET("/orgs/{org}/members").
-			To(wrap(h.ListOrgMembers)).
+			To(Wrap(h.ListOrgMembers)).
 			Param(ws.PathParameter("org", "organization slug")).
 			Doc("List organization members (org owner or global admin)").
 			Returns(http.StatusOK, "members", []model.OrgMemberResponse{}).
@@ -41,7 +41,7 @@ func setupOrgRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(
 		ws.POST("/orgs/{org}/members").
-			To(wrap(h.AddOrgMember)).
+			To(Wrap(h.AddOrgMember)).
 			Param(ws.PathParameter("org", "organization slug")).
 			Reads(model.AddOrgMemberRequest{}).
 			Doc("Add an existing user to the organization (org owner or global admin)").
@@ -51,7 +51,7 @@ func setupOrgRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(
 		ws.PATCH("/orgs/{org}/members/{user}").
-			To(wrap(h.UpdateOrgMember)).
+			To(Wrap(h.UpdateOrgMember)).
 			Param(ws.PathParameter("org", "organization slug")).
 			Param(ws.PathParameter("user", "user id (base36)")).
 			Reads(model.UpdateOrgMemberRequest{}).
@@ -62,7 +62,7 @@ func setupOrgRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(
 		ws.DELETE("/orgs/{org}/members/{user}").
-			To(wrap(h.RemoveOrgMember)).
+			To(Wrap(h.RemoveOrgMember)).
 			Param(ws.PathParameter("org", "organization slug")).
 			Param(ws.PathParameter("user", "user id (base36)")).
 			Doc("Remove an organization member (org owner or global admin)").

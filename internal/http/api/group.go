@@ -15,7 +15,7 @@ func setupGroupRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(
 		ws.GET("/orgs/{org}/groups").
-			To(wrap(h.ListGroups)).
+			To(Wrap(h.ListGroups)).
 			Param(ws.PathParameter("org", "organization slug")).
 			Doc("List organization groups (org owner or global admin)").
 			Returns(http.StatusOK, "groups", []model.GroupResponse{}).
@@ -24,7 +24,7 @@ func setupGroupRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(
 		ws.POST("/orgs/{org}/groups").
-			To(wrap(h.CreateGroup)).
+			To(Wrap(h.CreateGroup)).
 			Param(ws.PathParameter("org", "organization slug")).
 			Reads(model.CreateGroupRequest{}).
 			Doc("Create an organization group (org owner or global admin)").
@@ -34,7 +34,7 @@ func setupGroupRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(
 		ws.GET("/orgs/{org}/groups/{group}").
-			To(wrap(h.GetGroup)).
+			To(Wrap(h.GetGroup)).
 			Param(ws.PathParameter("org", "organization slug")).
 			Param(ws.PathParameter("group", "group id (base36)")).
 			Doc("Get a group with its members (org owner or global admin)").
@@ -44,7 +44,7 @@ func setupGroupRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(
 		ws.POST("/orgs/{org}/groups/{group}/members").
-			To(wrap(h.AddGroupMember)).
+			To(Wrap(h.AddGroupMember)).
 			Param(ws.PathParameter("org", "organization slug")).
 			Param(ws.PathParameter("group", "group id (base36)")).
 			Reads(model.GroupMemberRequest{}).
@@ -55,7 +55,7 @@ func setupGroupRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(
 		ws.DELETE("/orgs/{org}/groups/{group}/members/{user}").
-			To(wrap(h.RemoveGroupMember)).
+			To(Wrap(h.RemoveGroupMember)).
 			Param(ws.PathParameter("org", "organization slug")).
 			Param(ws.PathParameter("group", "group id (base36)")).
 			Param(ws.PathParameter("user", "user id (base36)")).

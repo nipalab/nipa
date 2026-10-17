@@ -312,18 +312,20 @@ type TreeNode struct {
 }
 
 type User struct {
-	ID           int64          `json:"id"`
-	Name         string         `json:"name"`
-	Email        string         `json:"email"`
-	Password     string         `json:"password"`
-	PhotoUrl     sql.NullString `json:"photo_url"`
-	IsSuperAdmin bool           `json:"is_super_admin"`
-	IsAdmin      bool           `json:"is_admin"`
-	NotifyEmail  bool           `json:"notify_email"`
-	CreatedAt    time.Time      `json:"created_at"`
-	UpdatedAt    time.Time      `json:"updated_at"`
-	Deleted      bool           `json:"deleted"`
-	DeletedAt    sql.NullTime   `json:"deleted_at"`
+	ID              int64          `json:"id"`
+	Name            string         `json:"name"`
+	Email           string         `json:"email"`
+	Password        string         `json:"password"`
+	PhotoUrl        sql.NullString `json:"photo_url"`
+	IsSuperAdmin    bool           `json:"is_super_admin"`
+	IsAdmin         bool           `json:"is_admin"`
+	NotifyEmail     bool           `json:"notify_email"`
+	EmailVerified   bool           `json:"email_verified"`
+	EmailVerifiedAt sql.NullTime   `json:"email_verified_at"`
+	CreatedAt       time.Time      `json:"created_at"`
+	UpdatedAt       time.Time      `json:"updated_at"`
+	Deleted         bool           `json:"deleted"`
+	DeletedAt       sql.NullTime   `json:"deleted_at"`
 }
 
 type Webhook struct {

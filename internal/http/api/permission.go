@@ -15,7 +15,7 @@ func setupPermissionRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(
 		ws.GET("/orgs/{org}/projects/{project}/permissions/me").
-			To(wrap(h.MyProjectPermissions)).
+			To(Wrap(h.MyProjectPermissions)).
 			Param(ws.PathParameter("org", "organization slug")).
 			Param(ws.PathParameter("project", "project slug")).
 			Doc("Get the caller's effective permissions on a project").
@@ -25,7 +25,7 @@ func setupPermissionRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(
 		ws.GET("/orgs/{org}/projects/{project}/permissions/rules").
-			To(wrap(h.ListProjectRules)).
+			To(Wrap(h.ListProjectRules)).
 			Param(ws.PathParameter("org", "organization slug")).
 			Param(ws.PathParameter("project", "project slug")).
 			Doc("List project access rules (project admin)").
@@ -35,7 +35,7 @@ func setupPermissionRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(
 		ws.POST("/orgs/{org}/projects/{project}/permissions/rules").
-			To(wrap(h.CreateProjectRule)).
+			To(Wrap(h.CreateProjectRule)).
 			Param(ws.PathParameter("org", "organization slug")).
 			Param(ws.PathParameter("project", "project slug")).
 			Reads(model.CreatePBACRuleRequest{}).
@@ -46,7 +46,7 @@ func setupPermissionRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(
 		ws.DELETE("/orgs/{org}/projects/{project}/permissions/rules/{id}").
-			To(wrap(h.DeleteProjectRule)).
+			To(Wrap(h.DeleteProjectRule)).
 			Param(ws.PathParameter("org", "organization slug")).
 			Param(ws.PathParameter("project", "project slug")).
 			Param(ws.PathParameter("id", "rule id")).
@@ -57,7 +57,7 @@ func setupPermissionRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(
 		ws.GET("/orgs/{org}/projects/{project}/permissions/defaults").
-			To(wrap(h.ListProjectDefaults)).
+			To(Wrap(h.ListProjectDefaults)).
 			Param(ws.PathParameter("org", "organization slug")).
 			Param(ws.PathParameter("project", "project slug")).
 			Doc("List project path defaults (project admin)").
@@ -67,7 +67,7 @@ func setupPermissionRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(
 		ws.PUT("/orgs/{org}/projects/{project}/permissions/defaults").
-			To(wrap(h.SetProjectDefault)).
+			To(Wrap(h.SetProjectDefault)).
 			Param(ws.PathParameter("org", "organization slug")).
 			Param(ws.PathParameter("project", "project slug")).
 			Reads(model.SetPathPermissionRequest{}).
@@ -78,7 +78,7 @@ func setupPermissionRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(
 		ws.DELETE("/orgs/{org}/projects/{project}/permissions/defaults").
-			To(wrap(h.DeleteProjectDefault)).
+			To(Wrap(h.DeleteProjectDefault)).
 			Param(ws.PathParameter("org", "organization slug")).
 			Param(ws.PathParameter("project", "project slug")).
 			Param(ws.QueryParameter("path", "path prefix to remove")).

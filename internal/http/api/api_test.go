@@ -212,11 +212,18 @@ func TestAPIRoutes(t *testing.T) {
 		return seedPushTo(t, "main", "", files)
 	}
 
-	container := NewAPI(reg, WithRoutes(func(ws *restful.WebService) {
-		ws.Route(ws.GET("/ping").To(func(_ *restful.Request, resp *restful.Response) {
-			resp.WriteHeader(http.StatusNoContent)
-		}))
-	})).SetupRoute()
+	container := NewAPI(reg,
+		WithRoutes(func(ws *restful.WebService) {
+			ws.Route(ws.GET("/ping").To(func(_ *restful.Request, resp *restful.Response) {
+				resp.WriteHeader(http.StatusNoContent)
+			}))
+		}),
+		WithPublicRoutes(func(ws *restful.WebService) {
+			ws.Route(ws.GET("/ping-public").To(func(_ *restful.Request, resp *restful.Response) {
+				resp.WriteHeader(http.StatusNoContent)
+			}))
+		}),
+	).SetupRoute()
 	server := httptest.NewServer(container)
 	t.Cleanup(server.Close)
 
@@ -272,6 +279,16 @@ func TestAPIRoutes(t *testing.T) {
 		unauthorized := doGet(t, server.URL+"/api/v1/ping", "")
 		defer unauthorized.Body.Close()
 		require.Equal(t, http.StatusUnauthorized, unauthorized.StatusCode)
+	})
+
+	t.Run("public extension routes skip authentication", func(t *testing.T) {
+		resp := doGet(t, server.URL+"/api/v1/auth/ping-public", "")
+		defer resp.Body.Close()
+		require.Equal(t, http.StatusNoContent, resp.StatusCode)
+
+		missing := doGet(t, server.URL+"/api/v1/auth/capabilities", "")
+		defer missing.Body.Close()
+		require.Equal(t, http.StatusNotFound, missing.StatusCode)
 	})
 
 	t.Run("refresh rotates the cookie", func(t *testing.T) {

@@ -42,10 +42,11 @@ type Dispatcher interface {
 type Option func(*runOptions)
 
 type runOptions struct {
-	readiness func(context.Context) error
-	metrics   *obs.Metrics
-	tracing   *obs.Tracing
-	routes    []func(*restful.WebService)
+	readiness    func(context.Context) error
+	metrics      *obs.Metrics
+	tracing      *obs.Tracing
+	routes       []func(*restful.WebService)
+	publicRoutes []func(*restful.WebService)
 }
 
 // WithReadiness configures the check behind /readyz (typically a database
@@ -81,6 +82,15 @@ func WithRoutes(register func(*restful.WebService)) Option {
 	}
 }
 
+// WithPublicRoutes registers extra routes on the unauthenticated
+// /api/v1/auth WebService, e.g. the SaaS registration and OAuth flows. Routes
+// registered here are reachable without a bearer token.
+func WithPublicRoutes(register func(*restful.WebService)) Option {
+	return func(o *runOptions) {
+		o.publicRoutes = append(o.publicRoutes, register)
+	}
+}
+
 // Run serves the REST API, the gRPC service and the embedded web UI on the
 // configured address until the process is signalled to shut down. Background
 // dispatchers are started before the listener and drained on shutdown.
@@ -93,6 +103,9 @@ func Run(cfg *config.Config, reg *Registry, dispatchers []Dispatcher, opts ...Op
 	apiOpts := []api.Option{api.WithMetrics(ro.metrics)}
 	for _, register := range ro.routes {
 		apiOpts = append(apiOpts, api.WithRoutes(register))
+	}
+	for _, register := range ro.publicRoutes {
+		apiOpts = append(apiOpts, api.WithPublicRoutes(register))
 	}
 	apiApp := api.NewAPI(reg, apiOpts...)
 	container := apiApp.SetupRoute()

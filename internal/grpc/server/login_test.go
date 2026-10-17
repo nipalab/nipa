@@ -107,10 +107,11 @@ func newLoginServer(t *testing.T, userRepo *stubUserRepo, authRepo *stubAuthRepo
 
 func TestLoginWithUsernamePassword_Success(t *testing.T) {
 	user := &domain.User{
-		ID:      snow.ID(42),
-		Name:    "alice",
-		Email:   "alice@example.com",
-		IsAdmin: true,
+		ID:            snow.ID(42),
+		Name:          "alice",
+		Email:         "alice@example.com",
+		IsAdmin:       true,
+		EmailVerified: true,
 	}
 	srv := newLoginServer(t,
 		&stubUserRepo{user: user},
@@ -141,7 +142,7 @@ func TestLoginWithUsernamePassword_UserNotFound(t *testing.T) {
 }
 
 func TestLoginWithUsernamePassword_SaveRefreshTokenFails(t *testing.T) {
-	user := &domain.User{ID: snow.ID(1)}
+	user := &domain.User{ID: snow.ID(1), EmailVerified: true}
 	srv := newLoginServer(t,
 		&stubUserRepo{user: user},
 		&stubAuthRepo{saveErr: domain.NewErrorDatabase("db error")},
@@ -155,7 +156,7 @@ func TestLoginWithUsernamePassword_SaveRefreshTokenFails(t *testing.T) {
 }
 
 func TestLoginWithRefreshToken_Success(t *testing.T) {
-	user := &domain.User{ID: snow.ID(7), IsSuperAdmin: true}
+	user := &domain.User{ID: snow.ID(7), IsSuperAdmin: true, EmailVerified: true}
 	srv := newLoginServer(t,
 		&stubUserRepo{user: user},
 		&stubAuthRepo{

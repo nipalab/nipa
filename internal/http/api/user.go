@@ -15,7 +15,7 @@ func setupUserRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(
 		ws.GET("/me").
-			To(wrap(h.Me)).
+			To(Wrap(h.Me)).
 			Doc("Get the authenticated user profile").
 			Returns(http.StatusOK, "current user", model.UserResponse{}).
 			Operation("getMe").
@@ -23,7 +23,7 @@ func setupUserRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(
 		ws.PATCH("/me").
-			To(wrap(h.UpdateMyProfile)).
+			To(Wrap(h.UpdateMyProfile)).
 			Reads(model.UpdateProfileRequest{}).
 			Doc("Update the authenticated user profile").
 			Returns(http.StatusOK, "updated user", model.UserResponse{}).
@@ -32,7 +32,7 @@ func setupUserRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(
 		ws.POST("/me/password").
-			To(wrap(h.ChangeMyPassword)).
+			To(Wrap(h.ChangeMyPassword)).
 			Reads(model.ChangePasswordRequest{}).
 			Doc("Change the authenticated user password").
 			Returns(http.StatusOK, "updated", model.MessageResponse{}).
@@ -41,7 +41,7 @@ func setupUserRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(
 		ws.GET("/users").
-			To(wrap(h.ListUsers)).
+			To(Wrap(h.ListUsers)).
 			Doc("List all users (global admin)").
 			Returns(http.StatusOK, "users", []model.UserResponse{}).
 			Operation("listUsers").
@@ -49,7 +49,7 @@ func setupUserRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(
 		ws.POST("/users").
-			To(wrap(h.CreateUser)).
+			To(Wrap(h.CreateUser)).
 			Reads(model.CreateUserRequest{}).
 			Doc("Create a user (global admin)").
 			Returns(http.StatusOK, "created user", model.UserResponse{}).
@@ -58,7 +58,7 @@ func setupUserRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(
 		ws.PATCH("/users/{user}").
-			To(wrap(h.UpdateUser)).
+			To(Wrap(h.UpdateUser)).
 			Param(ws.PathParameter("user", "user id (base36)")).
 			Reads(model.UpdateUserRequest{}).
 			Doc("Update a user email (global admin)").
@@ -68,7 +68,7 @@ func setupUserRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(
 		ws.DELETE("/users/{user}").
-			To(wrap(h.DeleteUser)).
+			To(Wrap(h.DeleteUser)).
 			Param(ws.PathParameter("user", "user id (base36)")).
 			Doc("Deactivate a user (global admin)").
 			Returns(http.StatusOK, "deactivated", model.MessageResponse{}).
@@ -77,7 +77,7 @@ func setupUserRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(
 		ws.POST("/users/{user}/password").
-			To(wrap(h.ResetUserPassword)).
+			To(Wrap(h.ResetUserPassword)).
 			Param(ws.PathParameter("user", "user id (base36)")).
 			Reads(model.ResetPasswordRequest{}).
 			Doc("Reset a user password (global admin)").
@@ -87,7 +87,7 @@ func setupUserRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(
 		ws.PATCH("/users/{user}/admin").
-			To(wrap(h.UpdateUserFlags)).
+			To(Wrap(h.UpdateUserFlags)).
 			Param(ws.PathParameter("user", "user id (base36)")).
 			Reads(model.UpdateUserFlagsRequest{}).
 			Doc("Set user admin flags (super admin)").

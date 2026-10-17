@@ -7,6 +7,7 @@ import (
 
 	sqlcPostgres "github.com/nipalab/nipa/ee/repository/postgres/sqlc"
 	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/repository/dbtx"
 	"github.com/nipalab/nipa/internal/snow"
 )
 
@@ -15,7 +16,7 @@ type User struct {
 }
 
 func NewUserRepository(db *sql.DB) *User {
-	return &User{queries: sqlcPostgres.New(db)}
+	return &User{queries: sqlcPostgres.New(dbtx.New(db))}
 }
 
 func (a *User) GetByEmail(ctx context.Context, email string) (*domain.User, error) {
@@ -109,18 +110,20 @@ func (a *User) Deactivate(ctx context.Context, id snow.ID) error {
 
 func toDomainUser(row sqlcPostgres.User) *domain.User {
 	user := domain.User{
-		ID:           snow.ID(row.ID),
-		Name:         row.Name,
-		Email:        row.Email,
-		Password:     row.Password,
-		PhotoUrl:     row.PhotoUrl.String,
-		IsSuperAdmin: row.IsSuperAdmin,
-		IsAdmin:      row.IsAdmin,
-		NotifyEmail:  row.NotifyEmail,
-		CreatedAt:    row.CreatedAt,
-		UpdatedAt:    row.UpdatedAt,
-		Deleted:      row.Deleted,
-		DeletedAt:    nullTimePtr(row.DeletedAt),
+		ID:              snow.ID(row.ID),
+		Name:            row.Name,
+		Email:           row.Email,
+		Password:        row.Password,
+		PhotoUrl:        row.PhotoUrl.String,
+		IsSuperAdmin:    row.IsSuperAdmin,
+		IsAdmin:         row.IsAdmin,
+		NotifyEmail:     row.NotifyEmail,
+		EmailVerified:   row.EmailVerified,
+		EmailVerifiedAt: nullTimePtr(row.EmailVerifiedAt),
+		CreatedAt:       row.CreatedAt,
+		UpdatedAt:       row.UpdatedAt,
+		Deleted:         row.Deleted,
+		DeletedAt:       nullTimePtr(row.DeletedAt),
 	}
 	return &user
 }

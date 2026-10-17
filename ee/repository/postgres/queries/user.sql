@@ -29,3 +29,7 @@ UPDATE users SET email = sqlc.arg(email) WHERE id = sqlc.arg(id) AND deleted = f
 
 -- name: UserUpdateAdminFlags :exec
 UPDATE users SET is_admin = sqlc.arg(is_admin), is_super_admin = sqlc.arg(is_super_admin) WHERE id = sqlc.arg(id) AND deleted = false;
+
+-- name: UserSetEmailVerified :exec
+UPDATE users SET email_verified = true, email_verified_at = now(), updated_at = now()
+WHERE id = sqlc.arg(id) AND deleted = false;

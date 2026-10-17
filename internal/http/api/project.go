@@ -15,7 +15,7 @@ func setupProjectRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(
 		ws.GET("/orgs/{org}/projects").
-			To(wrap(h.ListProjects)).
+			To(Wrap(h.ListProjects)).
 			Param(ws.PathParameter("org", "organization slug")).
 			Doc("List the projects the caller can read").
 			Returns(http.StatusOK, "projects", []model.ProjectResponse{}).
@@ -24,7 +24,7 @@ func setupProjectRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(
 		ws.POST("/orgs/{org}/projects").
-			To(wrap(h.CreateProject)).
+			To(Wrap(h.CreateProject)).
 			Param(ws.PathParameter("org", "organization slug")).
 			Reads(model.CreateProjectRequest{}).
 			Doc("Create a project (org owner or global admin)").
@@ -34,7 +34,7 @@ func setupProjectRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(
 		ws.GET("/orgs/{org}/projects/{project}").
-			To(wrap(h.GetProject)).
+			To(Wrap(h.GetProject)).
 			Param(ws.PathParameter("org", "organization slug")).
 			Param(ws.PathParameter("project", "project slug")).
 			Doc("Get a project the caller can read").
@@ -44,7 +44,7 @@ func setupProjectRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(
 		ws.PATCH("/orgs/{org}/projects/{project}").
-			To(wrap(h.UpdateProject)).
+			To(Wrap(h.UpdateProject)).
 			Param(ws.PathParameter("org", "organization slug")).
 			Param(ws.PathParameter("project", "project slug")).
 			Reads(model.UpdateProjectRequest{}).
@@ -55,7 +55,7 @@ func setupProjectRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(
 		ws.DELETE("/orgs/{org}/projects/{project}").
-			To(wrap(h.DeleteProject)).
+			To(Wrap(h.DeleteProject)).
 			Param(ws.PathParameter("org", "organization slug")).
 			Param(ws.PathParameter("project", "project slug")).
 			Doc("Delete a project (org owner or global admin)").

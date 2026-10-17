@@ -28,7 +28,7 @@ func newTestAuth(secret string, match bool, userRepo userRepository, authRepo au
 
 func TestAuth_LoginWithEmailPassword(t *testing.T) {
 	ctx := context.Background()
-	user := &domain.User{ID: snow.ID(42), Email: "user@example.com", IsAdmin: true}
+	user := &domain.User{ID: snow.ID(42), Email: "user@example.com", IsAdmin: true, EmailVerified: true}
 
 	ctrl := gomock.NewController(t)
 	userRepo := NewMockuserRepository(ctrl)
@@ -89,13 +89,52 @@ func TestAuth_LoginWithEmailPassword_SaveRefreshTokenError(t *testing.T) {
 
 	userRepo.EXPECT().
 		GetByEmail(gomock.Any(), "user@example.com").
-		Return(&domain.User{ID: 1}, nil)
+		Return(&domain.User{ID: 1, EmailVerified: true}, nil)
 	authRepo.EXPECT().
 		SaveRefreshToken(gomock.Any(), snow.ID(1), gomock.Any(), gomock.Any()).
 		Return(wantErr)
 
 	_, err := newTestAuth("secret", true, userRepo, authRepo).LoginWithEmailPassword(ctx, "user@example.com", "password")
 	require.ErrorIs(t, err, wantErr)
+}
+
+func TestAuth_LoginWithEmailPassword_UnverifiedEmail(t *testing.T) {
+	ctx := context.Background()
+
+	ctrl := gomock.NewController(t)
+	userRepo := NewMockuserRepository(ctrl)
+	authRepo := NewMockauthRepository(ctrl)
+
+	userRepo.EXPECT().
+		GetByEmail(gomock.Any(), "user@example.com").
+		Return(&domain.User{ID: 42, EmailVerified: false}, nil)
+
+	_, err := newTestAuth("secret", true, userRepo, authRepo).LoginWithEmailPassword(ctx, "user@example.com", "password")
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 403, domErr.Code)
+	require.Equal(t, "email not confirmed", domErr.Message)
+}
+
+func TestAuth_LoginWithRefreshToken_UnverifiedEmail(t *testing.T) {
+	ctx := context.Background()
+
+	ctrl := gomock.NewController(t)
+	userRepo := NewMockuserRepository(ctrl)
+	authRepo := NewMockauthRepository(ctrl)
+
+	authRepo.EXPECT().
+		GetAndDeleteRefreshToken(gomock.Any(), "some-token").
+		Return(&domain.RefreshToken{UserID: 7, ExpiresAt: time.Now().Add(time.Hour)}, nil)
+	userRepo.EXPECT().
+		GetByID(gomock.Any(), snow.ID(7)).
+		Return(&domain.User{ID: 7, EmailVerified: false}, nil)
+
+	_, err := NewAuth("secret", nil, userRepo, authRepo).LoginWithRefreshToken(ctx, "some-token")
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 403, domErr.Code)
+	require.Equal(t, "email not confirmed", domErr.Message)
 }
 
 func TestAuth_LoginWithRefreshToken(t *testing.T) {
@@ -112,7 +151,7 @@ func TestAuth_LoginWithRefreshToken(t *testing.T) {
 
 	userRepo.EXPECT().
 		GetByID(gomock.Any(), snow.ID(7)).
-		Return(&domain.User{ID: 7, IsSuperAdmin: true}, nil)
+		Return(&domain.User{ID: 7, IsSuperAdmin: true, EmailVerified: true}, nil)
 
 	authRepo.EXPECT().
 		SaveRefreshToken(gomock.Any(), snow.ID(7), gomock.Not("old-refresh-token"), gomock.Any()).

@@ -32,7 +32,7 @@ func setupMergeRequestReviewRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(request(
 		ws.GET("/orgs/{org}/projects/{project}/merge-requests/{id}/reviews").
-			To(wrap(h.ListMergeRequestReviews)).
+			To(Wrap(h.ListMergeRequestReviews)).
 			Doc("List the reviews of a merge request, with staleness against the source head (project read)").
 			Returns(http.StatusOK, "reviews", []model.ReviewResponse{}).
 			Operation("listMergeRequestReviews").
@@ -40,7 +40,7 @@ func setupMergeRequestReviewRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(request(
 		ws.GET("/orgs/{org}/projects/{project}/merge-requests/{id}/review-state").
-			To(wrap(h.GetMergeRequestReviewState)).
+			To(Wrap(h.GetMergeRequestReviewState)).
 			Doc("Live review summary: approvals, changes requested and outstanding reviewers (project read)").
 			Returns(http.StatusOK, "review state", model.ReviewStateResponse{}).
 			Operation("getMergeRequestReviewState").
@@ -48,7 +48,7 @@ func setupMergeRequestReviewRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(request(
 		ws.POST("/orgs/{org}/projects/{project}/merge-requests/{id}/reviews").
-			To(wrap(h.SubmitMergeRequestReview)).
+			To(Wrap(h.SubmitMergeRequestReview)).
 			Reads(model.SubmitReviewRequest{}).
 			Doc("Submit a review decision with its comments for the current source head (project write; a decision on your own merge request is rejected)").
 			Returns(http.StatusOK, "submitted review", model.ReviewResponse{}).
@@ -57,7 +57,7 @@ func setupMergeRequestReviewRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(review(
 		ws.DELETE("/orgs/{org}/projects/{project}/merge-requests/{id}/reviews/{reviewId}").
-			To(wrap(h.WithdrawMergeRequestReview)).
+			To(Wrap(h.WithdrawMergeRequestReview)).
 			Doc("Withdraw one of your own reviews (reviewer or project admin)").
 			Returns(http.StatusOK, "withdrawn", nil).
 			Operation("withdrawMergeRequestReview").
@@ -65,7 +65,7 @@ func setupMergeRequestReviewRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(review(
 		ws.POST("/orgs/{org}/projects/{project}/merge-requests/{id}/reviews/{reviewId}/dismiss").
-			To(wrap(h.DismissMergeRequestReview)).
+			To(Wrap(h.DismissMergeRequestReview)).
 			AllowedMethodsWithoutContentType([]string{"POST"}).
 			Doc("Stop counting a review without deleting it (project write)").
 			Returns(http.StatusOK, "dismissed", nil).
@@ -74,7 +74,7 @@ func setupMergeRequestReviewRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(request(
 		ws.GET("/orgs/{org}/projects/{project}/merge-requests/{id}/threads").
-			To(wrap(h.ListMergeRequestThreads)).
+			To(Wrap(h.ListMergeRequestThreads)).
 			Param(ws.QueryParameter("resolved", "filter by resolution state")).
 			Doc("List review threads, top-level and inline, with outdatedness against the source head (project read)").
 			Returns(http.StatusOK, "threads", []model.ThreadResponse{}).
@@ -83,7 +83,7 @@ func setupMergeRequestReviewRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(request(
 		ws.POST("/orgs/{org}/projects/{project}/merge-requests/{id}/threads").
-			To(wrap(h.AddMergeRequestComment)).
+			To(Wrap(h.AddMergeRequestComment)).
 			Reads(model.AddCommentRequest{}).
 			Doc("Start a conversation thread, top-level or on a diff line (project write)").
 			Returns(http.StatusOK, "thread", model.ThreadResponse{}).
@@ -92,7 +92,7 @@ func setupMergeRequestReviewRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(thread(
 		ws.POST("/orgs/{org}/projects/{project}/merge-requests/{id}/threads/{threadId}/comments").
-			To(wrap(h.ReplyMergeRequestThread)).
+			To(Wrap(h.ReplyMergeRequestThread)).
 			Reads(model.AddCommentRequest{}).
 			Doc("Reply in a thread (project write)").
 			Returns(http.StatusOK, "comment", model.CommentResponse{}).
@@ -101,7 +101,7 @@ func setupMergeRequestReviewRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(thread(
 		ws.POST("/orgs/{org}/projects/{project}/merge-requests/{id}/threads/{threadId}/resolve").
-			To(wrap(h.ResolveMergeRequestThread)).
+			To(Wrap(h.ResolveMergeRequestThread)).
 			Reads(model.ResolveThreadRequest{}).
 			Doc("Resolve or reopen a thread (project write)").
 			Returns(http.StatusOK, "thread", model.ThreadResponse{}).
@@ -110,7 +110,7 @@ func setupMergeRequestReviewRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(thread(
 		ws.DELETE("/orgs/{org}/projects/{project}/merge-requests/{id}/threads/{threadId}").
-			To(wrap(h.DeleteMergeRequestThread)).
+			To(Wrap(h.DeleteMergeRequestThread)).
 			Doc("Delete a thread and its comments (author or project admin)").
 			Returns(http.StatusOK, "deleted", nil).
 			Operation("deleteMergeRequestThread").
@@ -118,7 +118,7 @@ func setupMergeRequestReviewRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(comment(
 		ws.PATCH("/orgs/{org}/projects/{project}/merge-requests/{id}/threads/{threadId}/comments/{commentId}").
-			To(wrap(h.UpdateMergeRequestComment)).
+			To(Wrap(h.UpdateMergeRequestComment)).
 			Reads(model.AddCommentRequest{}).
 			Doc("Edit your own comment (author)").
 			Returns(http.StatusOK, "comment", model.CommentResponse{}).
@@ -127,7 +127,7 @@ func setupMergeRequestReviewRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(comment(
 		ws.DELETE("/orgs/{org}/projects/{project}/merge-requests/{id}/threads/{threadId}/comments/{commentId}").
-			To(wrap(h.DeleteMergeRequestComment)).
+			To(Wrap(h.DeleteMergeRequestComment)).
 			Doc("Delete a comment (author or project admin)").
 			Returns(http.StatusOK, "deleted", nil).
 			Operation("deleteMergeRequestComment").
@@ -135,7 +135,7 @@ func setupMergeRequestReviewRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(request(
 		ws.GET("/orgs/{org}/projects/{project}/merge-requests/{id}/review-requests").
-			To(wrap(h.ListMergeRequestReviewRequests)).
+			To(Wrap(h.ListMergeRequestReviewRequests)).
 			Doc("List pending review requests (project read)").
 			Returns(http.StatusOK, "review requests", []model.ReviewRequestResponse{}).
 			Operation("listMergeRequestReviewRequests").
@@ -143,7 +143,7 @@ func setupMergeRequestReviewRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(request(
 		ws.POST("/orgs/{org}/projects/{project}/merge-requests/{id}/review-requests").
-			To(wrap(h.RequestMergeRequestReview)).
+			To(Wrap(h.RequestMergeRequestReview)).
 			Reads(model.ReviewRequestUserRequest{}).
 			Doc("Ask a user to review the merge request (project write)").
 			Returns(http.StatusOK, "review request", model.ReviewRequestResponse{}).
@@ -152,7 +152,7 @@ func setupMergeRequestReviewRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(request(
 		ws.DELETE("/orgs/{org}/projects/{project}/merge-requests/{id}/review-requests").
-			To(wrap(h.RemoveMergeRequestReviewRequest)).
+			To(Wrap(h.RemoveMergeRequestReviewRequest)).
 			Reads(model.ReviewRequestUserRequest{}).
 			Doc("Withdraw a review request (the requested reviewer or project write)").
 			Returns(http.StatusOK, "withdrawn", nil).
@@ -161,7 +161,7 @@ func setupMergeRequestReviewRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(request(
 		ws.GET("/orgs/{org}/projects/{project}/merge-requests/{id}/timeline").
-			To(wrap(h.MergeRequestTimeline)).
+			To(Wrap(h.MergeRequestTimeline)).
 			Doc("Merge request activity timeline, oldest first (project read)").
 			Returns(http.StatusOK, "timeline", []model.TimelineItemResponse{}).
 			Operation("mergeRequestTimeline").

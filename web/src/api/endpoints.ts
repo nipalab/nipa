@@ -7,10 +7,12 @@ import type {
   CreateWebhookInput,
   FileLockResponse,
   GroupResponse,
+  IdentityResponse,
   MergeRequestCheckResponse,
   MergeRequestDiffResponse,
   MergeRequestListResponse,
   MergeRequestResponse,
+  OnboardingCapabilities,
   OrgStorageResponse,
   OwnerStorageResponse,
   ReviewRequestResponse,
@@ -24,6 +26,7 @@ import type {
   PermissionEntry,
   ProjectPermissionResponse,
   ProjectResponse,
+  RegisterResponse,
   SubmitReviewRequest,
   TagResponse,
   ThreadCommentInput,
@@ -45,6 +48,51 @@ function projectBase(org: string, project: string): string {
 
 export function getMe(): Promise<UserResponse> {
   return apiJson('/api/v1/me')
+}
+
+// getOnboardingCapabilities returns null when the server does not run in SaaS
+// mode (the routes are not registered and answer 404), so the UI can hide the
+// registration and social login entry points.
+export async function getOnboardingCapabilities(): Promise<OnboardingCapabilities | null> {
+  const res = await apiFetch('/api/v1/auth/capabilities')
+  if (res.status === 404) return null
+  if (!res.ok) throw await errorFromResponse(res)
+  return (await res.json()) as OnboardingCapabilities
+}
+
+export function registerAccount(input: { name: string; email: string; password: string }): Promise<RegisterResponse> {
+  return apiJson('/api/v1/auth/register', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
+}
+
+export function resendVerification(email: string): Promise<MessageResponse> {
+  return apiJson('/api/v1/auth/register/resend', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  })
+}
+
+export function oauthStartURL(provider: string, redirect: string): string {
+  return `/api/v1/auth/oauth/${encodeURIComponent(provider)}/start?redirect=${encodeURIComponent(redirect)}`
+}
+
+// listIdentities returns null when the server has no social login support
+// (404), so the profile card can hide itself.
+export async function listIdentities(): Promise<IdentityResponse[] | null> {
+  const res = await apiFetch('/api/v1/me/identities')
+  if (res.status === 404) return null
+  if (!res.ok) throw await errorFromResponse(res)
+  return (await res.json()) as IdentityResponse[]
+}
+
+export function startIdentityLink(provider: string, redirect: string): Promise<{ url: string }> {
+  return apiJson(`/api/v1/me/identities/${encodeURIComponent(provider)}/start?redirect=${encodeURIComponent(redirect)}`)
+}
+
+export function disconnectIdentity(id: string): Promise<MessageResponse> {
+  return apiJson(`/api/v1/me/identities/${encodeURIComponent(id)}`, { method: 'DELETE' })
 }
 
 export function updateMyProfile(name: string, photoUrl: string, notifyEmail: boolean): Promise<UserResponse> {

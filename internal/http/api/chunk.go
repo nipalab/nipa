@@ -19,7 +19,7 @@ func setupChunkRouter(ws *restful.WebService, h *handler.ChunkHandler) {
 
 	ws.Route(
 		ws.PUT("/{org}/{project}/{hash}").
-			To(wrap(h.PutChunk)).
+			To(Wrap(h.PutChunk)).
 			AllowedMethodsWithoutContentType([]string{"PUT"}).
 			Param(ws.PathParameter("org", "organization slug")).
 			Param(ws.PathParameter("project", "project slug")).
@@ -35,7 +35,7 @@ func setupChunkRouter(ws *restful.WebService, h *handler.ChunkHandler) {
 
 	ws.Route(
 		ws.GET("/{org}/{project}/{hash}").
-			To(wrap(h.GetChunk)).
+			To(Wrap(h.GetChunk)).
 			Param(ws.PathParameter("org", "organization slug")).
 			Param(ws.PathParameter("project", "project slug")).
 			Param(ws.PathParameter("hash", "chunk hash (hex)")).

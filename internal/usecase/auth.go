@@ -81,7 +81,10 @@ func (a *Auth) LoginWithEmailPassword(ctx context.Context, email string, passwor
 	if !a.passwordHasher.Compare(user.Password, password) {
 		return nil, domain.NewErrorUser("invalid email or password")
 	}
-	return a.generateLoginResult(ctx, user)
+	if !user.EmailVerified {
+		return nil, errEmailNotVerified()
+	}
+	return a.LoginResult(ctx, user)
 }
 
 func (a *Auth) LoginWithRefreshToken(ctx context.Context, refreshToken string) (*dto.LoginResult, error) {
@@ -98,8 +101,17 @@ func (a *Auth) LoginWithRefreshToken(ctx context.Context, refreshToken string) (
 	if err != nil {
 		return nil, err
 	}
+	if !user.EmailVerified {
+		return nil, errEmailNotVerified()
+	}
 
-	return a.generateLoginResult(ctx, user)
+	return a.LoginResult(ctx, user)
+}
+
+// errEmailNotVerified refuses logins of accounts that have not confirmed their
+// email yet; the SPA offers a resend link on this error.
+func errEmailNotVerified() error {
+	return domain.NewErrorForbidden("email not confirmed")
 }
 
 // BeginSSHKeyLogin issues a challenge for an SSH key login. The email is
@@ -171,7 +183,7 @@ func (a *Auth) CompleteSSHKeyLogin(ctx context.Context, email, nonce string, pub
 	if err := sshkey.Verify(pub, sshkey.LoginPayload(nonce), signature); err != nil {
 		return nil, sshLoginFailed()
 	}
-	return a.generateLoginResult(ctx, user)
+	return a.LoginResult(ctx, user)
 }
 
 // sshUser resolves the account an SSH login belongs to: the email is an
@@ -185,6 +197,9 @@ func (a *Auth) sshUser(ctx context.Context, email string, keyUserID snow.ID) (*d
 			}
 			return nil, err
 		}
+		if !user.EmailVerified {
+			return nil, sshLoginFailed()
+		}
 		return user, nil
 	}
 	user, err := a.userRepo.GetByEmail(ctx, email)
@@ -195,6 +210,9 @@ func (a *Auth) sshUser(ctx context.Context, email string, keyUserID snow.ID) (*d
 		return nil, err
 	}
 	if user.ID != keyUserID {
+		return nil, sshLoginFailed()
+	}
+	if !user.EmailVerified {
 		return nil, sshLoginFailed()
 	}
 	return user, nil
@@ -244,7 +262,10 @@ func (a *Auth) ValidateToken(ctx context.Context, tokenString string) (*domain.C
 	}
 }
 
-func (a *Auth) generateLoginResult(ctx context.Context, user *domain.User) (*dto.LoginResult, error) {
+// LoginResult issues the access token and refresh token for an already authenticated
+// user. SaaS flows (registration verification, OAuth completion) reuse it after
+// establishing the account.
+func (a *Auth) LoginResult(ctx context.Context, user *domain.User) (*dto.LoginResult, error) {
 	timeStart := time.Now()
 	claims := domain.Claims{
 		RegisteredClaims: jwt.RegisteredClaims{

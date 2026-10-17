@@ -74,6 +74,13 @@ type EmailDelivery struct {
 	UpdatedAt     time.Time    `json:"updated_at"`
 }
 
+type EmailVerification struct {
+	UserID    int64     `json:"user_id"`
+	TokenHash string    `json:"token_hash"`
+	ExpiresAt time.Time `json:"expires_at"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 type File struct {
 	ID        int64         `json:"id"`
 	Name      string        `json:"name"`
@@ -214,6 +221,13 @@ type MergeRequestThread struct {
 	ReviewID       sql.NullInt64  `json:"review_id"`
 }
 
+type OauthLoginCode struct {
+	Code      string    `json:"code"`
+	UserID    int64     `json:"user_id"`
+	ExpiresAt time.Time `json:"expires_at"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 type OrgBillingOwner struct {
 	OrgID     int64     `json:"org_id"`
 	UserID    int64     `json:"user_id"`
@@ -347,18 +361,30 @@ type TreeNode struct {
 }
 
 type User struct {
-	ID           int64          `json:"id"`
-	Name         string         `json:"name"`
-	Email        string         `json:"email"`
-	Password     string         `json:"password"`
-	PhotoUrl     sql.NullString `json:"photo_url"`
-	IsSuperAdmin bool           `json:"is_super_admin"`
-	IsAdmin      bool           `json:"is_admin"`
-	NotifyEmail  bool           `json:"notify_email"`
-	CreatedAt    time.Time      `json:"created_at"`
-	UpdatedAt    time.Time      `json:"updated_at"`
-	Deleted      bool           `json:"deleted"`
-	DeletedAt    sql.NullTime   `json:"deleted_at"`
+	ID              int64          `json:"id"`
+	Name            string         `json:"name"`
+	Email           string         `json:"email"`
+	Password        string         `json:"password"`
+	PhotoUrl        sql.NullString `json:"photo_url"`
+	IsSuperAdmin    bool           `json:"is_super_admin"`
+	IsAdmin         bool           `json:"is_admin"`
+	NotifyEmail     bool           `json:"notify_email"`
+	EmailVerified   bool           `json:"email_verified"`
+	EmailVerifiedAt sql.NullTime   `json:"email_verified_at"`
+	CreatedAt       time.Time      `json:"created_at"`
+	UpdatedAt       time.Time      `json:"updated_at"`
+	Deleted         bool           `json:"deleted"`
+	DeletedAt       sql.NullTime   `json:"deleted_at"`
+}
+
+type UserIdentity struct {
+	ID                int64     `json:"id"`
+	UserID            int64     `json:"user_id"`
+	Provider          string    `json:"provider"`
+	ProviderAccountID string    `json:"provider_account_id"`
+	Email             string    `json:"email"`
+	CreatedAt         time.Time `json:"created_at"`
+	UpdatedAt         time.Time `json:"updated_at"`
 }
 
 type Webhook struct {

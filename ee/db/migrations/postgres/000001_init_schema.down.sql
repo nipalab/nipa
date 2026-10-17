@@ -1,4 +1,7 @@
 DROP TABLE IF EXISTS email_deliveries;
+DROP TABLE IF EXISTS oauth_login_codes;
+DROP TABLE IF EXISTS user_identities;
+DROP TABLE IF EXISTS email_verifications;
 DROP TABLE IF EXISTS ssh_login_challenges;
 DROP TABLE IF EXISTS ssh_public_keys;
 DROP TABLE IF EXISTS snowflake_node_leases;

@@ -37,6 +37,13 @@ type Config struct {
 	ChunkMaxPageSize               int     `mapstructure:"CHUNK_MAX_PAGE_SIZE"`
 	StorageLedger                  string  `mapstructure:"STORAGE_LEDGER"`
 	StorageLedgerDefaultQuotaBytes int64   `mapstructure:"STORAGE_LEDGER_DEFAULT_QUOTA_BYTES"`
+	SaaSMode                       bool    `mapstructure:"SAAS_MODE"`
+	SaasFreeQuotaBytes             int64   `mapstructure:"SAAS_FREE_QUOTA_BYTES"`
+	OAuthBaseURL                   string  `mapstructure:"OAUTH_BASE_URL"`
+	OAuthGoogleClientID            string  `mapstructure:"OAUTH_GOOGLE_CLIENT_ID"`
+	OAuthGoogleClientSecret        string  `mapstructure:"OAUTH_GOOGLE_CLIENT_SECRET"`
+	OAuthGitHubClientID            string  `mapstructure:"OAUTH_GITHUB_CLIENT_ID"`
+	OAuthGitHubClientSecret        string  `mapstructure:"OAUTH_GITHUB_CLIENT_SECRET"`
 	WebhookEgressAllowlist         string  `mapstructure:"WEBHOOK_EGRESS_ALLOWLIST"`
 	WebhookTimeoutSeconds          int     `mapstructure:"WEBHOOK_TIMEOUT_SECONDS"`
 	EmailSender                    string  `mapstructure:"EMAIL_SENDER"`
@@ -71,6 +78,8 @@ func LoadConfig() (*Config, error) {
 	v.SetDefault("CHUNK_PRESIGN_TTL_SECONDS", 3600)
 	v.SetDefault("CHUNK_MAX_PAGE_SIZE", 1000)
 	v.SetDefault("SNOWFLAKE_LEASE_TTL_SECONDS", 60)
+	v.SetDefault("SAAS_MODE", false)
+	v.SetDefault("SAAS_FREE_QUOTA_BYTES", int64(15*1024*1024*1024))
 	v.SetDefault("LOG_LEVEL", "info")
 	v.SetDefault("LOG_FORMAT", "console")
 	v.SetDefault("PPROF_ENABLED", false)

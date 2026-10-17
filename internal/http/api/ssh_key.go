@@ -15,7 +15,7 @@ func setupSSHKeyRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(
 		ws.GET("/keys").
-			To(wrap(h.ListMySSHKeys)).
+			To(Wrap(h.ListMySSHKeys)).
 			Doc("List the authenticated user's SSH public keys").
 			Returns(http.StatusOK, "SSH keys", []model.SSHKeyResponse{}).
 			Operation("listMySSHKeys").
@@ -23,7 +23,7 @@ func setupSSHKeyRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(
 		ws.POST("/keys").
-			To(wrap(h.AddMySSHKey)).
+			To(Wrap(h.AddMySSHKey)).
 			Reads(model.AddSSHKeyRequest{}).
 			Doc("Register an SSH public key for the authenticated user (optional name, falls back to the key comment)").
 			Returns(http.StatusOK, "created SSH key", model.SSHKeyResponse{}).
@@ -32,7 +32,7 @@ func setupSSHKeyRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(
 		ws.DELETE("/keys/{key}").
-			To(wrap(h.RemoveMySSHKey)).
+			To(Wrap(h.RemoveMySSHKey)).
 			Param(ws.PathParameter("key", "SSH key id (base36)")).
 			Doc("Remove one of the authenticated user's SSH public keys").
 			Returns(http.StatusOK, "removed", model.MessageResponse{}).
