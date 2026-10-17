@@ -3,7 +3,8 @@
 This page summarizes the interfaces an automated agent can use: the MCP server,
 the machine-readable CLI output, dry runs and the REST API. Everything is
 served by the regular client and server binaries; no separate agent service
-exists.
+exists. The final section collects proposed AI-native directions and how they
+would build on these seams.
 
 ## MCP server
 
@@ -102,6 +103,107 @@ The server exposes an OpenAPI document at `/docs/api.json` (Swagger UI at
 cover browsing, branches, tags, merge requests, reviews, file locks, permissions
 and groups. Authenticate with a Bearer access token. The OpenAPI spec is generated
 from the route definitions, so it is always current.
+
+## AI-native directions (proposal)
+
+Evaluations of proposed AI features plus follow-up ideas. The guiding
+principle: Nipa stays the system of record and exposes structured data; AI
+lives at the edges (MCP tools, webhook workers), never in the server core or
+request path.
+
+### 1. Asset-aware MCP tools (build first)
+
+The current MCP tools are workflow tools bound to a local working copy. What
+is missing for agents is asset-centric remote querying, served through the
+daemon's gRPC proxy so a multi-gigabyte repository can be inspected without a
+full clone:
+
+| Proposed tool | Purpose | Backing seam |
+| --- | --- | --- |
+| `nipa_tree_manifest` | list a subtree with `mode`, `size_bytes`, `is_binary`, `chunk_hashes` for a branch/tag/commit, narrowed by path prefixes | `GetTreeManifest` (paths, recursive, `commit_id`) |
+| `nipa_lock_query` | report locks covering a path (exact or directory prefix) and their holders | `ListFileLocks` filtered client-side |
+| `nipa_asset_fetch` | fetch one asset's content for agent-side analysis | presigned `GetChunkDownloadUrls` (commit-scoped) |
+| `nipa_describe_binary_changes` | structured delta per changed binary between two revisions | manifests + chunk-overlap comparison (see 3) |
+
+All four are client-side (`internal/client/mcp` plus the existing gRPC
+transports); no server changes. Every tool must honor the caller's read
+filter, like `Branch.VisibleChunks` already does.
+
+### 2. Asset quality linters as external workers
+
+The plumbing ships today: status checks (`ReportMergeRequestCheck`, exposed as
+`nipa mr check`) feed branch protection's `require_status_checks`, and
+webhooks (`mr.synchronized`, `mr.check_reported`) plus commit-scoped
+presigned downloads let an external worker see exactly what changed. A linter
+is therefore a separate daemon, not server code:
+
+webhook → download changed binaries → format-specific analysis →
+`POST .../merge-requests/{id}/checks` → merge gate blocks on failure.
+
+This shape works for both editions and keeps AI (and GPU workloads) out of
+`nipad`. Caveat: chunk hashes say *which bytes changed*, not "120k polygons" —
+per-format metadata extractors (FBX, blend, texture headers) are the real
+work; AI is the judgment layer on top of extracted metadata, not the chunk
+reader. Pair the worker with an asset budget file (below) so linting is
+deterministic first.
+
+### 3. Binary change summaries via chunk deltas
+
+The machinery for a format-agnostic v0 already exists: `diff.DetectRenames`
+computes chunk-overlap similarity, and manifests carry per-file
+`chunk_hashes`. The `nipa_describe_binary_changes` MCP tool returns structured
+deltas (chunk overlap percentage, size delta, encoding change) and the
+connected agent writes the prose summary itself. No LLM runs inside `nipad`;
+if automated summaries on the timeline are wanted later, the webhook worker
+from section 2 posts them as comments or check output.
+
+### 4. Semantic search — metadata first, vectors later
+
+A vector index is heavy (embedding pipeline, new storage, push-path sync) and
+only as good as the metadata underneath. A pragmatic v0:
+
+- SQLite FTS5 over paths plus decoded text chunks (`chunker.Decode` exists
+  server-side; text is zstd-compressed, cheap to decode).
+- Asset metadata from extractors (below) as indexed documents.
+- Vector search only once extractors produce metadata rich enough to embed.
+
+Indexing must be asynchronous and outbox-driven (like `email_deliveries`),
+never in the push request path.
+
+### Additional suggestions
+
+- **Asset metadata layer** (`internal/assetmeta`): pluggable per-format
+  extractors (png/exif, fbx, gltf, blend, psd, ...) run asynchronously at
+  confirm time into a sidecar table. This is the backbone powering linting
+  budgets (2), summaries (3) and search (4).
+- **Asset budget file** (`.nipaassets.yml` at the repo root, versioned like
+  `.nipaignore`): polycount, texture resolution and naming rules per path.
+  The linter enforces them deterministically; AI only explains failures.
+- **Reference webhook worker**: a small first-party example (`nipa-bot`)
+  demonstrating sections 2 and 3 end to end, kept out of the server binaries.
+- **Server-side MCP** (streamable HTTP on `nipad`): optional later phase so
+  agents can query a remote repository with no clone at all — JWT
+  authenticated and permission-filtered. Bigger server surface; the stdio +
+  daemon path covers most needs first.
+- **Client-side generation**: `nipa commit`/`nipa mr create --generate`
+  drafting messages from diff data. Pure client work, no server AI.
+- **Privacy stance**: studios will not ship unreleased assets to cloud AI.
+  Workers must support local models and a rules-only (no-AI) mode; Nipa core
+  never calls an LLM.
+
+### Suggested build order
+
+1 → 3 (MCP tools) → 2 with the budget file and reference worker → asset
+metadata layer → 4 (FTS first, vectors later).
+
+### Guardrails
+
+- No LLM calls in the `nipad`/`nipad-ee` core; AI lives in MCP tools and
+  external workers.
+- Nothing O(entire repo) in request paths; indexing and extraction run
+  through the async outbox pattern.
+- Free/enterprise boundary respected: `internal/` never imports `ee/`.
+- Every new surface honors the caller's permission-filtered read scope.
 
 ## Related documentation
 
