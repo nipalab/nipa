@@ -22,7 +22,10 @@ The free `nipad` never registers these routes, so every endpoint below answers
 | `OAUTH_GITHUB_CLIENT_ID` / `OAUTH_GITHUB_CLIENT_SECRET` | enable GitHub sign-in |
 
 Providers are enabled per credential pair; a provider appears in
-`/capabilities` and the SPA only when both values are set. Register the
+`/capabilities` and the SPA only when both values are set. The authenticated
+identity routes (list/unlink/start-link) exist whenever `SAAS_MODE` is on —
+unlike the provider entry points they keep working with no credentials
+configured, and linking an unconfigured provider answers 404. Register the
 callback URLs with the providers:
 `<OAUTH_BASE_URL>/api/v1/auth/oauth/google/callback` and
 `<OAUTH_BASE_URL>/api/v1/auth/oauth/github/callback`.

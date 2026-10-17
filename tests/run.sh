@@ -18,6 +18,7 @@ S3_SECRET_KEY="${NIPA_TEST_S3_SECRET_KEY:-minioadmin}"
 DOCKER="${NIPA_TEST_DOCKER:-docker}"
 EMAIL_TRANSPORT="${NIPA_TEST_EMAIL_TRANSPORT:-sendgrid}"
 STORAGE_LEDGER="${NIPA_TEST_STORAGE_LEDGER-cloud}"
+SAAS_MODE="${NIPA_TEST_SAAS-1}"
 SERVER_PID=""
 COMPOSE_STARTED=0
 PG_DSN=""
@@ -42,6 +43,10 @@ Environment:
   NIPA_TEST_EMAIL_TRANSPORT Email transport exercised (sendgrid or http)
   NIPA_TEST_STORAGE_LEDGER  Enterprise storage ledger (default: cloud; set to
                             empty to disable, so the storage spec is skipped)
+  NIPA_TEST_SAAS            SaaS onboarding routes (default: 1; set to empty
+                            to disable, so the onboarding spec is skipped).
+                            Inert on the free server: no enterprise package is
+                            wired, which the spec asserts as 404s
   NIPA_TEST_PG_PORT=55432   Postgres host port
   NIPA_TEST_S3_PORT=55900   MinIO host port
   NIPA_TEST_POSTGRES_DSN    External postgres DSN (with NIPA_TEST_S3_ENDPOINT)
@@ -149,6 +154,18 @@ EOF
 )
 	fi
 
+	local saas_lines=""
+	if [[ -n "$SAAS_MODE" ]]; then
+		# The free `nipad` wires no enterprise package, so SAAS_MODE is inert
+		# there; the onboarding spec verifies the routes stay absent (404) on
+		# free and work on ee. No OAuth credentials are configured, so social
+		# providers stay disabled and `/auth/capabilities` reports an empty
+		# provider list.
+		saas_lines="SAAS_MODE: true
+SAAS_FREE_QUOTA_BYTES: 16106127360
+OAUTH_BASE_URL: 'http://127.0.0.1:$port'"
+	fi
+
 	cat > "$dir/config.yaml" <<EOF
 SERVER_ADDRESS: 127.0.0.1
 SERVER_PORT: $port
@@ -169,6 +186,7 @@ EMAIL_BASE_URL: 'http://127.0.0.1:$port'
 EMAIL_MAX_ATTEMPTS: 2
 EMAIL_RETRY_BACKOFF_SECONDS: 1
 EMAIL_POLL_SECONDS: 1
+$saas_lines
 EOF
 }
 
@@ -288,6 +306,9 @@ run_suite() {
 	# The suite feature-detects the ledger: on free the storage routes must be
 	# absent (404), on ee they are registered when the ledger is enabled.
 	export NIPA_TEST_STORAGE_LEDGER="$STORAGE_LEDGER"
+	# Same feature detection for the SaaS onboarding routes (registration and
+	# social login); they exist on ee only.
+	export NIPA_TEST_SAAS="$SAAS_MODE"
 	export NIPA_TEST_USER="${NIPA_TEST_USER:-nipa}"
 	export NIPA_TEST_PASS="${NIPA_TEST_PASS:-nipa}"
 	export NIPA_TOKEN_FILE="$TMP_DIR/tokens-$edition.json"

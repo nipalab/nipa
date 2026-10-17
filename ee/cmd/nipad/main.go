@@ -262,21 +262,23 @@ func saasOptions(cfg *config.Config, snowUser snow.Node, hasher *hasher.Hasher, 
 		GitHubClientID:     cfg.OAuthGitHubClientID,
 		GitHubClientSecret: cfg.OAuthGitHubClientSecret,
 	})
+	oauthUsecase := oauth.New(providers, cfg.JWTKey, userRepo, registrationRepo, transactor, snowUser, oauth.Config{
+		FreeQuotaBytes: cfg.SaasFreeQuotaBytes,
+	})
+	registrationHandler = registrationHandler.WithProviders(oauthUsecase.Providers)
+	oauthHandler := oauth.NewHandler(oauthUsecase, authUsecase)
+	options = append(options,
+		serverapp.WithPublicRoutes(func(ws *restful.WebService) {
+			oauth.RegisterPublicRoutes(ws, oauthHandler)
+		}),
+		serverapp.WithRoutes(func(ws *restful.WebService) {
+			oauth.RegisterRoutes(ws, oauthHandler)
+		}),
+	)
 	if len(providers) > 0 {
-		oauthUsecase := oauth.New(providers, cfg.JWTKey, userRepo, registrationRepo, transactor, snowUser, oauth.Config{
-			FreeQuotaBytes: cfg.SaasFreeQuotaBytes,
-		})
-		registrationHandler = registrationHandler.WithProviders(oauthUsecase.Providers)
-		oauthHandler := oauth.NewHandler(oauthUsecase, authUsecase)
-		options = append(options,
-			serverapp.WithPublicRoutes(func(ws *restful.WebService) {
-				oauth.RegisterPublicRoutes(ws, oauthHandler)
-			}),
-			serverapp.WithRoutes(func(ws *restful.WebService) {
-				oauth.RegisterRoutes(ws, oauthHandler)
-			}),
-		)
 		slog.Info("social login enabled", "providers", oauthUsecase.Providers())
+	} else {
+		slog.Info("social login routes enabled without providers: set OAUTH_* client credentials to enable a provider")
 	}
 	return options
 }

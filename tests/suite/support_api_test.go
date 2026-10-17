@@ -371,6 +371,46 @@ func (c *apiClient) doRaw(method, path string, body any) (int, []byte) {
 	return resp.StatusCode, data
 }
 
+// doAnonRaw performs an unauthenticated request and returns the status code
+// and body without asserting success, for the public onboarding endpoints
+// (registration, verification, login attempts before confirmation).
+func (c *apiClient) doAnonRaw(method, path string, body any) (int, []byte) {
+	var reader io.Reader
+	hasBody := body != nil
+	if body != nil {
+		data, err := json.Marshal(body)
+		Expect(err).NotTo(HaveOccurred())
+		reader = bytes.NewReader(data)
+	} else if method == http.MethodPost || method == http.MethodPatch || method == http.MethodPut {
+		reader = bytes.NewReader([]byte("{}"))
+		hasBody = true
+	}
+
+	req, err := http.NewRequest(method, c.baseURL+path, reader)
+	Expect(err).NotTo(HaveOccurred())
+	if hasBody {
+		req.Header.Set("Content-Type", "application/json")
+	}
+
+	resp, err := c.http.Do(req)
+	Expect(err).NotTo(HaveOccurred())
+	defer func() { _ = resp.Body.Close() }()
+
+	data, err := io.ReadAll(resp.Body)
+	Expect(err).NotTo(HaveOccurred())
+	return resp.StatusCode, data
+}
+
+// newAPIClientWithToken builds an apiClient around an existing access token,
+// e.g. the one a freshly verified account received.
+func newAPIClientWithToken(baseURL, token string) *apiClient {
+	return &apiClient{
+		baseURL: baseURL,
+		token:   token,
+		http:    &http.Client{Timeout: 30 * time.Second},
+	}
+}
+
 // me returns the authenticated user's id.
 func (c *apiClient) me() string {
 	var out struct {

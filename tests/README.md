@@ -5,7 +5,7 @@ The same Ginkgo suite runs against the free (`nipad`) and enterprise
 (`nipad-ee`) servers so both editions are verified to behave identically from
 the client's point of view.
 
-Coverage (216 specs): every in-repo command and flag — `login` (SSH key:
+Coverage (219 specs): every in-repo command and flag — `login` (SSH key:
 key-only sign-in, lazy sign-in for clone through `NIPA_SSH_KEY`,
 unregistered-key rejection and username binding), `clone`, `branch`,
 `add`, `remove`, `restore`, `status`, `push`, `update`, `switch` (branch and
@@ -17,6 +17,14 @@ runtime commands `nipa serve` (daemon gRPC API), `nipa mcp` (MCP over stdio)
 and the webhook delivery pipeline (push/branch/tag/mr events, signatures,
 filters, ping, retries/redelivery), multi-user permission/lock scenarios,
 `NIPA_OUTPUT=json` and the exit-code contract (0/1/2/127).
+
+The enterprise run additionally enables the SaaS onboarding stack
+(`SAAS_MODE`) and covers it through the REST surface: registration with the
+email-confirmation gate (unconfirmed login refused, one-time verification
+token read out of the in-suite email receiver, single-use enforcement,
+resent emails voiding the old token, duplicate/weak-password rejections, gRPC
+login of the confirmed account) and the identity routes without providers.
+On free the same spec asserts the routes stay absent (404).
 
 ## Usage
 
@@ -35,6 +43,7 @@ SKIP_BUILD=1 tests/run.sh free            # reuse binaries already in bin/
 NIPA_TEST_PORT=7000 tests/run.sh free     # free server port (default 6745)
 NIPA_TEST_EE_PORT=7001 tests/run.sh ee    # enterprise server port (default 6747)
 NIPA_TEST_EMAIL_TRANSPORT=http tests/run.sh free  # email transport: sendgrid or http
+NIPA_TEST_SAAS= tests/run.sh ee           # disable the SaaS onboarding config + spec
 NIPA_TEST_POSTGRES_DSN=... NIPA_TEST_S3_ENDPOINT=... tests/run.sh ee   # external services
 ```
 
@@ -106,6 +115,7 @@ tests/
     acl_test.go           nipa acl + permission defaults
     group_test.go         nipa group
     meta_test.go          JSON output modes and error envelopes
+    onboarding_test.go    SaaS registration + email confirmation (ee only)
     daemon_test.go        nipa serve (daemon gRPC API)
     mcp_test.go           nipa mcp (MCP over stdio)
     webhook_test.go       webhook deliveries (events, filters, signature)
