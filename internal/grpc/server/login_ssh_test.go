@@ -69,7 +69,7 @@ func TestBeginLoginSSHKey_KeyOnly(t *testing.T) {
 func TestCompleteLoginSSHKey_Success(t *testing.T) {
 	signer := sshLoginSigner(t)
 	nonce := "nonce-1"
-	user := &domain.User{ID: snow.ID(42), Name: "alice", Email: "alice@example.com", IsAdmin: true}
+	user := &domain.User{ID: snow.ID(42), Name: "alice", Email: "alice@example.com", IsAdmin: true, EmailVerified: true}
 	authRepo := &stubAuthRepo{
 		challenge: &domain.SSHLoginChallenge{
 			Email:     "alice@example.com",
@@ -95,7 +95,7 @@ func TestCompleteLoginSSHKey_Success(t *testing.T) {
 func TestCompleteLoginSSHKey_KeyOnlySuccess(t *testing.T) {
 	signer := sshLoginSigner(t)
 	nonce := "nonce-1"
-	user := &domain.User{ID: snow.ID(42), Name: "alice", Email: "alice@example.com"}
+	user := &domain.User{ID: snow.ID(42), Name: "alice", Email: "alice@example.com", EmailVerified: true}
 	authRepo := &stubAuthRepo{
 		challenge: &domain.SSHLoginChallenge{
 			Nonce:     nonce,
@@ -158,7 +158,7 @@ func TestCompleteLoginSSHKey_BadSignature(t *testing.T) {
 		},
 	}
 	keyRepo := &stubSSHKeyRepo{key: &domain.SSHPublicKey{ID: snow.ID(1), UserID: snow.ID(42)}}
-	srv := newSSHLoginServer(t, &stubUserRepo{user: &domain.User{ID: snow.ID(42), Email: "alice@example.com"}}, authRepo, keyRepo)
+	srv := newSSHLoginServer(t, &stubUserRepo{user: &domain.User{ID: snow.ID(42), Email: "alice@example.com", EmailVerified: true}}, authRepo, keyRepo)
 
 	sig, err := signer.Sign(rand.Reader, sshkey.LoginPayload("tampered"))
 	require.NoError(t, err)

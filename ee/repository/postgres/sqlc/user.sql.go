@@ -49,7 +49,7 @@ func (q *Queries) UserDeleteByID(ctx context.Context, id int64) error {
 }
 
 const userGetByEmail = `-- name: UserGetByEmail :one
-SELECT id, name, email, password, photo_url, is_super_admin, is_admin, notify_email, created_at, updated_at, deleted, deleted_at FROM users WHERE email = $1 AND deleted = false LIMIT 1
+SELECT id, name, email, password, photo_url, is_super_admin, is_admin, notify_email, email_verified, email_verified_at, created_at, updated_at, deleted, deleted_at FROM users WHERE email = $1 AND deleted = false LIMIT 1
 `
 
 func (q *Queries) UserGetByEmail(ctx context.Context, email string) (User, error) {
@@ -64,6 +64,8 @@ func (q *Queries) UserGetByEmail(ctx context.Context, email string) (User, error
 		&i.IsSuperAdmin,
 		&i.IsAdmin,
 		&i.NotifyEmail,
+		&i.EmailVerified,
+		&i.EmailVerifiedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Deleted,
@@ -73,7 +75,7 @@ func (q *Queries) UserGetByEmail(ctx context.Context, email string) (User, error
 }
 
 const userGetById = `-- name: UserGetById :one
-SELECT id, name, email, password, photo_url, is_super_admin, is_admin, notify_email, created_at, updated_at, deleted, deleted_at FROM users WHERE id = $1 AND deleted = false LIMIT 1
+SELECT id, name, email, password, photo_url, is_super_admin, is_admin, notify_email, email_verified, email_verified_at, created_at, updated_at, deleted, deleted_at FROM users WHERE id = $1 AND deleted = false LIMIT 1
 `
 
 func (q *Queries) UserGetById(ctx context.Context, id int64) (User, error) {
@@ -88,6 +90,8 @@ func (q *Queries) UserGetById(ctx context.Context, id int64) (User, error) {
 		&i.IsSuperAdmin,
 		&i.IsAdmin,
 		&i.NotifyEmail,
+		&i.EmailVerified,
+		&i.EmailVerifiedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Deleted,
@@ -97,7 +101,7 @@ func (q *Queries) UserGetById(ctx context.Context, id int64) (User, error) {
 }
 
 const userList = `-- name: UserList :many
-SELECT id, name, email, password, photo_url, is_super_admin, is_admin, notify_email, created_at, updated_at, deleted, deleted_at FROM users WHERE deleted = false ORDER BY name, id
+SELECT id, name, email, password, photo_url, is_super_admin, is_admin, notify_email, email_verified, email_verified_at, created_at, updated_at, deleted, deleted_at FROM users WHERE deleted = false ORDER BY name, id
 `
 
 func (q *Queries) UserList(ctx context.Context) ([]User, error) {
@@ -118,6 +122,8 @@ func (q *Queries) UserList(ctx context.Context) ([]User, error) {
 			&i.IsSuperAdmin,
 			&i.IsAdmin,
 			&i.NotifyEmail,
+			&i.EmailVerified,
+			&i.EmailVerifiedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.Deleted,
@@ -134,6 +140,16 @@ func (q *Queries) UserList(ctx context.Context) ([]User, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const userSetEmailVerified = `-- name: UserSetEmailVerified :exec
+UPDATE users SET email_verified = true, email_verified_at = now(), updated_at = now()
+WHERE id = $1 AND deleted = false
+`
+
+func (q *Queries) UserSetEmailVerified(ctx context.Context, id int64) error {
+	_, err := q.db.ExecContext(ctx, userSetEmailVerified, id)
+	return err
 }
 
 const userUpdateAdminFlags = `-- name: UserUpdateAdminFlags :exec

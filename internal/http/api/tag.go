@@ -20,7 +20,7 @@ func setupTagRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(project(
 		ws.GET("/orgs/{org}/projects/{project}/tags").
-			To(wrap(h.ListProjectTags)).
+			To(Wrap(h.ListProjectTags)).
 			Param(ws.QueryParameter("limit", "maximum number of tags")).
 			Param(ws.QueryParameter("last_id", "pagination cursor (base36 tag id; requires last_created_at)")).
 			Param(ws.QueryParameter("last_created_at", "pagination cursor (RFC3339)")).
@@ -32,7 +32,7 @@ func setupTagRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(project(
 		ws.POST("/orgs/{org}/projects/{project}/tags").
-			To(wrap(h.CreateProjectTag)).
+			To(Wrap(h.CreateProjectTag)).
 			Reads(model.CreateTagRequest{}).
 			Doc("Create a tag pointing at a branch head or commit (project write)").
 			Returns(http.StatusOK, "created tag", model.TagResponse{}).
@@ -41,7 +41,7 @@ func setupTagRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(project(
 		ws.GET("/orgs/{org}/projects/{project}/tags/{name}").
-			To(wrap(h.GetProjectTag)).
+			To(Wrap(h.GetProjectTag)).
 			Param(ws.PathParameter("name", "tag name")).
 			Doc("Get a tag by name (project read)").
 			Returns(http.StatusOK, "tag", model.TagResponse{}).
@@ -50,7 +50,7 @@ func setupTagRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(project(
 		ws.DELETE("/orgs/{org}/projects/{project}/tags/{name}").
-			To(wrap(h.DeleteProjectTag)).
+			To(Wrap(h.DeleteProjectTag)).
 			Param(ws.PathParameter("name", "tag name")).
 			Doc("Delete a tag (project write)").
 			Returns(http.StatusOK, "deleted", model.MessageResponse{}).

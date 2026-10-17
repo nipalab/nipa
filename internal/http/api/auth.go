@@ -15,7 +15,7 @@ func setupAuthRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(
 		ws.POST("/login").
-			To(wrap(h.AuthLogin)).
+			To(Wrap(h.AuthLogin)).
 			Reads(model.LoginRequest{}).
 			Doc("Login with email and password").
 			Notes("Returns a short-lived access token and sets an HttpOnly refresh cookie").
@@ -25,7 +25,7 @@ func setupAuthRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(
 		ws.POST("/refresh").
-			To(wrap(h.AuthRefreshToken)).
+			To(Wrap(h.AuthRefreshToken)).
 			AllowedMethodsWithoutContentType([]string{"POST"}).
 			Doc("Exchange the refresh cookie for a new access token").
 			Notes("Rotates the refresh cookie; the previous refresh token is invalidated").
@@ -35,7 +35,7 @@ func setupAuthRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(
 		ws.POST("/logout").
-			To(wrap(h.AuthLogout)).
+			To(Wrap(h.AuthLogout)).
 			AllowedMethodsWithoutContentType([]string{"POST"}).
 			Doc("Revoke the refresh token and clear the cookie").
 			Returns(http.StatusOK, "logged out", model.MessageResponse{}).

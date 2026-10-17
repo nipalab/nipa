@@ -15,7 +15,7 @@ func setupBrowserRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(
 		ws.GET("/orgs/{org}/projects/{project}/branches").
-			To(wrap(h.ListProjectBranches)).
+			To(Wrap(h.ListProjectBranches)).
 			Param(ws.PathParameter("org", "organization slug")).
 			Param(ws.PathParameter("project", "project slug")).
 			Param(ws.QueryParameter("limit", "maximum number of branches")).
@@ -28,7 +28,7 @@ func setupBrowserRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(
 		ws.POST("/orgs/{org}/projects/{project}/branches").
-			To(wrap(h.CreateProjectBranch)).
+			To(Wrap(h.CreateProjectBranch)).
 			Param(ws.PathParameter("org", "organization slug")).
 			Param(ws.PathParameter("project", "project slug")).
 			Reads(model.CreateBranchRequest{}).
@@ -39,7 +39,7 @@ func setupBrowserRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(
 		ws.PATCH("/orgs/{org}/projects/{project}/branches/{name}").
-			To(wrap(h.RenameProjectBranch)).
+			To(Wrap(h.RenameProjectBranch)).
 			Param(ws.PathParameter("org", "organization slug")).
 			Param(ws.PathParameter("project", "project slug")).
 			Param(ws.PathParameter("name", "current branch name")).
@@ -51,7 +51,7 @@ func setupBrowserRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(
 		ws.DELETE("/orgs/{org}/projects/{project}/branches/{name}").
-			To(wrap(h.DeleteProjectBranch)).
+			To(Wrap(h.DeleteProjectBranch)).
 			Param(ws.PathParameter("org", "organization slug")).
 			Param(ws.PathParameter("project", "project slug")).
 			Param(ws.PathParameter("name", "branch name")).
@@ -62,7 +62,7 @@ func setupBrowserRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(
 		ws.POST("/orgs/{org}/projects/{project}/branches/{name}/default").
-			To(wrap(h.SetProjectBranchDefault)).
+			To(Wrap(h.SetProjectBranchDefault)).
 			AllowedMethodsWithoutContentType([]string{"POST"}).
 			Param(ws.PathParameter("org", "organization slug")).
 			Param(ws.PathParameter("project", "project slug")).
@@ -74,7 +74,7 @@ func setupBrowserRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(
 		ws.PUT("/orgs/{org}/projects/{project}/branches/{name}/protection").
-			To(wrap(h.SetProjectBranchProtection)).
+			To(Wrap(h.SetProjectBranchProtection)).
 			Param(ws.PathParameter("org", "organization slug")).
 			Param(ws.PathParameter("project", "project slug")).
 			Param(ws.PathParameter("name", "branch name")).
@@ -86,7 +86,7 @@ func setupBrowserRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(
 		ws.GET("/orgs/{org}/projects/{project}/commits").
-			To(wrap(h.ListCommits)).
+			To(Wrap(h.ListCommits)).
 			Param(ws.PathParameter("org", "organization slug")).
 			Param(ws.PathParameter("project", "project slug")).
 			Param(ws.QueryParameter("branch", "branch name (defaults to the default branch)")).
@@ -100,7 +100,7 @@ func setupBrowserRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(
 		ws.GET("/orgs/{org}/projects/{project}/commits/{commit}/diff").
-			To(wrap(h.GetCommitDiff)).
+			To(Wrap(h.GetCommitDiff)).
 			Param(ws.PathParameter("org", "organization slug")).
 			Param(ws.PathParameter("project", "project slug")).
 			Param(ws.PathParameter("commit", "commit id (base36)")).
@@ -112,7 +112,7 @@ func setupBrowserRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(
 		ws.GET("/orgs/{org}/projects/{project}/tree").
-			To(wrap(h.GetTree)).
+			To(Wrap(h.GetTree)).
 			Param(ws.PathParameter("org", "organization slug")).
 			Param(ws.PathParameter("project", "project slug")).
 			Param(ws.QueryParameter("rev", "branch name or commit id (defaults to the default branch)")).
@@ -126,7 +126,7 @@ func setupBrowserRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(
 		ws.GET("/orgs/{org}/projects/{project}/blob").
-			To(wrap(h.GetBlob)).
+			To(Wrap(h.GetBlob)).
 			Param(ws.PathParameter("org", "organization slug")).
 			Param(ws.PathParameter("project", "project slug")).
 			Param(ws.QueryParameter("rev", "branch name or commit id (defaults to the default branch)")).

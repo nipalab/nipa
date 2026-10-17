@@ -20,6 +20,23 @@ export interface UserResponse {
   deleted: boolean
 }
 
+export interface OnboardingCapabilities {
+  registration: boolean
+  providers: string[]
+}
+
+export interface RegisterResponse {
+  status: string
+  email: string
+}
+
+export interface IdentityResponse {
+  id: string
+  provider: string
+  email: string
+  created_at: string
+}
+
 export interface SSHKeyResponse {
   id: string
   name: string

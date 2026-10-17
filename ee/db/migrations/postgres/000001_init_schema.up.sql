@@ -11,6 +11,8 @@ CREATE TABLE users (
     is_super_admin BOOLEAN NOT NULL DEFAULT false,
     is_admin BOOLEAN NOT NULL DEFAULT false,
     notify_email BOOLEAN NOT NULL DEFAULT true,
+    email_verified BOOLEAN NOT NULL DEFAULT true,
+    email_verified_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     deleted BOOLEAN NOT NULL DEFAULT false,
@@ -488,6 +490,40 @@ CREATE INDEX idx_ssh_public_keys_user ON ssh_public_keys(user_id);
 CREATE TABLE ssh_login_challenges (
     email      TEXT NOT NULL,
     nonce      TEXT NOT NULL UNIQUE,
+    expires_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- SaaS onboarding: self-registration creates an inactive (email_verified =
+-- false) account, a one-time verification token is emailed and consumed by the
+-- verify endpoint, which activates the account and starts the setup session.
+CREATE TABLE email_verifications (
+    user_id    BIGINT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    token_hash TEXT NOT NULL UNIQUE,
+    expires_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Social login: one row per linked external identity. The provider plus its
+-- stable account id identifies the nipad account it signs in.
+CREATE TABLE user_identities (
+    id                  BIGINT PRIMARY KEY,
+    user_id             BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    provider            TEXT NOT NULL,
+    provider_account_id TEXT NOT NULL,
+    email               TEXT NOT NULL DEFAULT '',
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (provider, provider_account_id)
+);
+
+CREATE INDEX idx_user_identities_user ON user_identities (user_id);
+
+-- One-time handoff code between the OAuth callback (server redirect) and the
+-- SPA session bootstrap, so the access token never travels in a URL.
+CREATE TABLE oauth_login_codes (
+    code       TEXT PRIMARY KEY,
+    user_id    BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     expires_at TIMESTAMPTZ NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );

@@ -4,6 +4,7 @@ import { Button, Checkbox, Flash, FormControl, Heading, Stack, TextInput } from 
 import { changeMyPassword, updateMyProfile } from '../api/endpoints'
 import { useAuth } from '../auth'
 import { ActorAvatar } from '../components/repo/ActorAvatar'
+import { IdentitiesCard } from '../components/IdentitiesCard'
 import { SSHKeysCard } from '../components/SSHKeysCard'
 import { ErrorBanner, Page, PRIMARY_BUTTON_STYLE } from '../components/ui'
 
@@ -77,6 +78,7 @@ export default function ProfilePage() {
           <a href="#public-profile">Public profile</a>
           <a href="#notifications">Email notifications</a>
           <a href="#password">Password and authentication</a>
+          <a href="#connected-accounts">Connected accounts</a>
           <a href="#ssh-keys">SSH keys</a>
         </nav>
         <div className="nipa-settings-main">
@@ -193,6 +195,10 @@ export default function ProfilePage() {
               </div>
             </Stack>
           </form>
+
+          <div id="connected-accounts" style={CARD}>
+            <IdentitiesCard />
+          </div>
 
           <div id="ssh-keys" style={CARD}>
             <SSHKeysCard />

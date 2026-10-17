@@ -87,3 +87,18 @@ EMAIL_HTTP_METHOD: POST
 EMAIL_HTTP_HEADERS: ''
 EMAIL_HTTP_CONTENT_TYPE: application/json
 EMAIL_HTTP_BODY_TEMPLATE: ''
+# SaaS onboarding (`nipad-ee` only, see docs/SAAS_ONBOARDING.md). SAAS_MODE=1
+# enables self-registration with email confirmation and the social login
+# routes; existing deployments keep it off. Registration needs EMAIL_BASE_URL
+# (the confirmation link) and a configured EMAIL_SENDER to deliver it.
+SAAS_MODE: false
+# Free-tier storage quota seeded for every self-registered account (bytes).
+SAAS_FREE_QUOTA_BYTES: 16106127360
+# Public base URL used to build OAuth callback URLs. Social login providers
+# are enabled per client id/secret pair; all four values are required for a
+# provider to appear (Google and GitHub are supported).
+OAUTH_BASE_URL: ''
+OAUTH_GOOGLE_CLIENT_ID: ''
+OAUTH_GOOGLE_CLIENT_SECRET: ''
+OAUTH_GITHUB_CLIENT_ID: ''
+OAUTH_GITHUB_CLIENT_SECRET: ''

@@ -207,6 +207,41 @@ an `owner` member — so project creation (`Project.Create` requires org owner)
 works immediately. The free version tracks no storage usage; cloud builds attach
 quota to `created_by_user_id` through the `usecase.StorageLedger` seam.
 
+Flow for SaaS onboarding (see docs/SAAS_ONBOARDING.md; `nipad-ee` only, gated by
+`SAAS_MODE=1`, free edition answers 404): `ee/registration` serves
+`POST /api/v1/auth/register` (creates an inactive `email_verified=false` account
+via `RegistrationRepository.CreateUnverifiedUser`, seeds the free-tier
+`owner_quota` from `SAAS_FREE_QUOTA_BYTES`, stores a 72 h one-time token in
+`email_verifications` and queues the confirmation email in the existing outbox
+using `EMAIL_BASE_URL`), `POST /api/v1/auth/register/resend` (always 200) and
+`POST /api/v1/auth/verify` (activates the account, consumes the token and
+returns the standard login result via the exported `usecase.Auth.LoginResult`).
+Login gates live in `internal/usecase/auth.go`: password, refresh-token and SSH
+logins refuse unverified accounts with a 403 `email not confirmed`. `ee/oauth`
+serves the social flow: signed-HMAC state (JWT key, relative redirects only)
+through `GET /api/v1/auth/oauth/{provider}/start`, Google userinfo / GitHub
+`/user` + verified-email exchange in the callback, account resolution (linked
+identity → verified-email match — an unconfirmed account is activated — →
+`oauth_error=email_conflict|email_required` → new verified account with free
+quota), a one-time `oauth_login_codes` handoff (token never in a URL) and
+`POST /api/v1/auth/oauth/complete`; authenticated `GET/DELETE
+/api/v1/me/identities` plus `GET /api/v1/me/identities/{provider}/start`
+(returns `{url}`) manage links, refusing to unlink the last login method of a
+passwordless account (409). Both flows end on the SPA `/onboarding` step
+(workspace name → existing `POST /orgs`); the public SPA pages `/register`,
+`/verify` and `/oauth/callback` plus the profile "Connected accounts" card do
+the client side, and `GET /api/v1/auth/capabilities` (registered by
+`ee/registration`, providers list supplied by `ee/oauth`) lets the SPA hide the
+entry points on servers without SaaS mode. Registration/social write through
+`postgres.NewRegistrationRepository` (dbtx-aware, joins the caller's
+transaction); the public routes attach to the unfiltered `/api/v1/auth`
+WebService through `api.WithPublicRoutes`/`serverapp.WithPublicRoutes`, and
+`api.Wrap` is the exported AppContext route adapter. Monthly/yearly billing
+stays external (agreed design in docs/SAAS_ONBOARDING.md, not built): a
+billing service account uses nipad access tokens and the existing
+`GET /api/v1/me` to validate tokens and updates `billing_subscriptions`
+entitlements, enforced lazily at the storage-ledger gates.
+
 Flow for binary file locks (`nipa lock <path> [--branch]`, `nipa unlock <path>`,
 `nipa lock list`): binary changes are mandatory-lock gated. `FileLock.Acquire`
 resolves the scope from the branch — the default branch is a project-global lock

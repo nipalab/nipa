@@ -123,7 +123,7 @@ func TestAuth_CompleteSSHKeyLogin_Success(t *testing.T) {
 
 	signer := sshLoginTestSigner(t)
 	nonce := "nonce-1"
-	user := &domain.User{ID: snow.ID(42), Email: "alice@example.com", IsAdmin: true}
+	user := &domain.User{ID: snow.ID(42), Email: "alice@example.com", IsAdmin: true, EmailVerified: true}
 
 	authRepo.EXPECT().
 		ConsumeSSHLoginChallenge(gomock.Any(), nonce).
@@ -167,7 +167,7 @@ func TestAuth_CompleteSSHKeyLogin_KeyOnlySuccess(t *testing.T) {
 
 	signer := sshLoginTestSigner(t)
 	nonce := "nonce-1"
-	user := &domain.User{ID: snow.ID(42), Email: "alice@example.com"}
+	user := &domain.User{ID: snow.ID(42), Email: "alice@example.com", EmailVerified: true}
 
 	authRepo.EXPECT().
 		ConsumeSSHLoginChallenge(gomock.Any(), nonce).
@@ -374,7 +374,7 @@ func TestAuth_CompleteSSHKeyLogin_KeyBelongsToOtherUser(t *testing.T) {
 		}, nil)
 	userRepo.EXPECT().
 		GetByEmail(gomock.Any(), "alice@example.com").
-		Return(&domain.User{ID: snow.ID(42), Email: "alice@example.com"}, nil)
+		Return(&domain.User{ID: snow.ID(42), Email: "alice@example.com", EmailVerified: true}, nil)
 	keyRepo.EXPECT().
 		GetByFingerprint(gomock.Any(), gomock.Any()).
 		Return(&domain.SSHPublicKey{ID: snow.ID(1), UserID: snow.ID(99)}, nil)
@@ -403,7 +403,7 @@ func TestAuth_CompleteSSHKeyLogin_BadSignature(t *testing.T) {
 		}, nil)
 	userRepo.EXPECT().
 		GetByEmail(gomock.Any(), "alice@example.com").
-		Return(&domain.User{ID: snow.ID(42), Email: "alice@example.com"}, nil)
+		Return(&domain.User{ID: snow.ID(42), Email: "alice@example.com", EmailVerified: true}, nil)
 	keyRepo.EXPECT().
 		GetByFingerprint(gomock.Any(), gomock.Any()).
 		Return(&domain.SSHPublicKey{ID: snow.ID(1), UserID: snow.ID(42)}, nil)

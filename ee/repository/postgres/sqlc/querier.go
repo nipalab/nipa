@@ -60,6 +60,10 @@ type Querier interface {
 	EmailDeliveryScheduleRetry(ctx context.Context, arg EmailDeliveryScheduleRetryParams) error
 	EmailDeliverySweep(ctx context.Context, before time.Time) (int64, error)
 	EmailDeliveryThreadRecipients(ctx context.Context, arg EmailDeliveryThreadRecipientsParams) ([]int64, error)
+	EmailVerificationDelete(ctx context.Context, userID int64) error
+	EmailVerificationDeleteExpired(ctx context.Context, before time.Time) (int64, error)
+	EmailVerificationGetByToken(ctx context.Context, tokenHash string) (EmailVerificationGetByTokenRow, error)
+	EmailVerificationUpsert(ctx context.Context, arg EmailVerificationUpsertParams) error
 	EnsureBillingOwner(ctx context.Context, arg EnsureBillingOwnerParams) (int64, error)
 	FileChunkInsert(ctx context.Context, arg FileChunkInsertParams) error
 	FileInsert(ctx context.Context, arg FileInsertParams) (int64, error)
@@ -151,6 +155,9 @@ type Querier interface {
 	NodeLeaseClaim(ctx context.Context, arg NodeLeaseClaimParams) (int64, error)
 	NodeLeaseRelease(ctx context.Context, arg NodeLeaseReleaseParams) error
 	NodeLeaseRenew(ctx context.Context, arg NodeLeaseRenewParams) (int64, error)
+	OAuthLoginCodeCreate(ctx context.Context, arg OAuthLoginCodeCreateParams) error
+	OAuthLoginCodeDeleteExpired(ctx context.Context, before time.Time) (int64, error)
+	OAuthLoginCodeGetAndDelete(ctx context.Context, code string) (OauthLoginCode, error)
 	OrgMemberCountByRole(ctx context.Context, arg OrgMemberCountByRoleParams) (int64, error)
 	OrgMemberDelete(ctx context.Context, arg OrgMemberDeleteParams) error
 	OrgMemberGet(ctx context.Context, arg OrgMemberGetParams) (string, error)
@@ -193,10 +200,18 @@ type Querier interface {
 	UpdateProject(ctx context.Context, arg UpdateProjectParams) (Project, error)
 	UpsertBillingOwner(ctx context.Context, arg UpsertBillingOwnerParams) error
 	UserCreate(ctx context.Context, arg UserCreateParams) (int64, error)
+	UserCreateUnverified(ctx context.Context, arg UserCreateUnverifiedParams) (int64, error)
 	UserDeleteByID(ctx context.Context, id int64) error
 	UserGetByEmail(ctx context.Context, email string) (User, error)
 	UserGetById(ctx context.Context, id int64) (User, error)
+	UserIdentityCountByUser(ctx context.Context, userID int64) (int64, error)
+	UserIdentityCreate(ctx context.Context, arg UserIdentityCreateParams) (int64, error)
+	UserIdentityDelete(ctx context.Context, arg UserIdentityDeleteParams) (int64, error)
+	UserIdentityGet(ctx context.Context, arg UserIdentityGetParams) (UserIdentity, error)
+	UserIdentityGetByID(ctx context.Context, id int64) (UserIdentity, error)
+	UserIdentityListByUser(ctx context.Context, userID int64) ([]UserIdentity, error)
 	UserList(ctx context.Context) ([]User, error)
+	UserSetEmailVerified(ctx context.Context, id int64) error
 	UserUpdateAdminFlags(ctx context.Context, arg UserUpdateAdminFlagsParams) error
 	UserUpdateEmail(ctx context.Context, arg UserUpdateEmailParams) error
 	UserUpdatePassword(ctx context.Context, arg UserUpdatePasswordParams) error

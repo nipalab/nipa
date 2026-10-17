@@ -15,7 +15,7 @@ func setupWebhookRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(
 		ws.GET("/orgs/{org}/projects/{project}/webhooks").
-			To(wrap(h.ListWebhooks)).
+			To(Wrap(h.ListWebhooks)).
 			Param(ws.PathParameter("org", "organization slug")).
 			Param(ws.PathParameter("project", "project slug")).
 			Doc("List project webhooks (project admin)").
@@ -25,7 +25,7 @@ func setupWebhookRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(
 		ws.POST("/orgs/{org}/projects/{project}/webhooks").
-			To(wrap(h.CreateWebhook)).
+			To(Wrap(h.CreateWebhook)).
 			Param(ws.PathParameter("org", "organization slug")).
 			Param(ws.PathParameter("project", "project slug")).
 			Reads(model.CreateWebhookRequest{}).
@@ -36,7 +36,7 @@ func setupWebhookRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(
 		ws.GET("/orgs/{org}/projects/{project}/webhooks/{id}").
-			To(wrap(h.GetWebhook)).
+			To(Wrap(h.GetWebhook)).
 			Param(ws.PathParameter("org", "organization slug")).
 			Param(ws.PathParameter("project", "project slug")).
 			Param(ws.PathParameter("id", "webhook id")).
@@ -47,7 +47,7 @@ func setupWebhookRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(
 		ws.PATCH("/orgs/{org}/projects/{project}/webhooks/{id}").
-			To(wrap(h.UpdateWebhook)).
+			To(Wrap(h.UpdateWebhook)).
 			Param(ws.PathParameter("org", "organization slug")).
 			Param(ws.PathParameter("project", "project slug")).
 			Param(ws.PathParameter("id", "webhook id")).
@@ -59,7 +59,7 @@ func setupWebhookRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(
 		ws.DELETE("/orgs/{org}/projects/{project}/webhooks/{id}").
-			To(wrap(h.DeleteWebhook)).
+			To(Wrap(h.DeleteWebhook)).
 			Param(ws.PathParameter("org", "organization slug")).
 			Param(ws.PathParameter("project", "project slug")).
 			Param(ws.PathParameter("id", "webhook id")).
@@ -70,7 +70,7 @@ func setupWebhookRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(
 		ws.POST("/orgs/{org}/projects/{project}/webhooks/{id}/rotate-secret").
-			To(wrap(h.RotateWebhookSecret)).
+			To(Wrap(h.RotateWebhookSecret)).
 			Param(ws.PathParameter("org", "organization slug")).
 			Param(ws.PathParameter("project", "project slug")).
 			Param(ws.PathParameter("id", "webhook id")).
@@ -81,7 +81,7 @@ func setupWebhookRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(
 		ws.POST("/orgs/{org}/projects/{project}/webhooks/{id}/test").
-			To(wrap(h.TestWebhook)).
+			To(Wrap(h.TestWebhook)).
 			Param(ws.PathParameter("org", "organization slug")).
 			Param(ws.PathParameter("project", "project slug")).
 			Param(ws.PathParameter("id", "webhook id")).
@@ -92,7 +92,7 @@ func setupWebhookRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(
 		ws.GET("/orgs/{org}/projects/{project}/webhooks/{id}/deliveries").
-			To(wrap(h.ListWebhookDeliveries)).
+			To(Wrap(h.ListWebhookDeliveries)).
 			Param(ws.PathParameter("org", "organization slug")).
 			Param(ws.PathParameter("project", "project slug")).
 			Param(ws.PathParameter("id", "webhook id")).
@@ -105,7 +105,7 @@ func setupWebhookRouter(ws *restful.WebService, h *handler.Handler) {
 
 	ws.Route(
 		ws.POST("/orgs/{org}/projects/{project}/webhooks/{id}/deliveries/{deliveryId}/redeliver").
-			To(wrap(h.RedeliverWebhookDelivery)).
+			To(Wrap(h.RedeliverWebhookDelivery)).
 			Param(ws.PathParameter("org", "organization slug")).
 			Param(ws.PathParameter("project", "project slug")).
 			Param(ws.PathParameter("id", "webhook id")).

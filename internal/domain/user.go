@@ -7,18 +7,20 @@ import (
 )
 
 type User struct {
-	ID           snow.ID    `json:"id"`
-	Name         string     `json:"name"`
-	Email        string     `json:"email"`
-	Password     string     `json:"password"`
-	PhotoUrl     string     `json:"photo_url"`
-	IsSuperAdmin bool       `json:"is_super_admin"`
-	IsAdmin      bool       `json:"is_admin"`
-	NotifyEmail  bool       `json:"notify_email"`
-	CreatedAt    time.Time  `json:"created_at"`
-	UpdatedAt    time.Time  `json:"updated_at"`
-	Deleted      bool       `json:"deleted"`
-	DeletedAt    *time.Time `json:"deleted_at,omitempty"`
+	ID              snow.ID    `json:"id"`
+	Name            string     `json:"name"`
+	Email           string     `json:"email"`
+	Password        string     `json:"password"`
+	PhotoUrl        string     `json:"photo_url"`
+	IsSuperAdmin    bool       `json:"is_super_admin"`
+	IsAdmin         bool       `json:"is_admin"`
+	NotifyEmail     bool       `json:"notify_email"`
+	EmailVerified   bool       `json:"email_verified"`
+	EmailVerifiedAt *time.Time `json:"email_verified_at,omitempty"`
+	CreatedAt       time.Time  `json:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at"`
+	Deleted         bool       `json:"deleted"`
+	DeletedAt       *time.Time `json:"deleted_at,omitempty"`
 }
 
 const (
@@ -72,4 +74,15 @@ type SSHLoginChallenge struct {
 	Nonce     string    `json:"nonce"`
 	ExpiresAt time.Time `json:"expires_at"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+// UserIdentity links one external OAuth account to a nipad user.
+type UserIdentity struct {
+	ID                snow.ID   `json:"id"`
+	UserID            snow.ID   `json:"user_id"`
+	Provider          string    `json:"provider"`
+	ProviderAccountID string    `json:"provider_account_id"`
+	Email             string    `json:"email"`
+	CreatedAt         time.Time `json:"created_at"`
+	UpdatedAt         time.Time `json:"updated_at"`
 }

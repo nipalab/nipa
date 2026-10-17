@@ -2,6 +2,10 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider, RequireAuth } from './auth'
 import AppShell from './components/AppShell'
 import LoginPage from './pages/LoginPage'
+import RegisterPage from './pages/RegisterPage'
+import VerifyPage from './pages/VerifyPage'
+import OAuthCallbackPage from './pages/OAuthCallbackPage'
+import OnboardingPage from './pages/OnboardingPage'
 import HomePage from './pages/HomePage'
 import OrgProjectsPage from './pages/OrgProjectsPage'
 import NewProjectPage from './pages/NewProjectPage'
@@ -27,9 +31,13 @@ export default function App() {
       <AuthProvider>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
+          <Route path="/verify" element={<VerifyPage />} />
+          <Route path="/oauth/callback" element={<OAuthCallbackPage />} />
           <Route element={<RequireAuth />}>
             <Route element={<AppShell />}>
               <Route path="/" element={<HomePage />} />
+              <Route path="/onboarding" element={<OnboardingPage />} />
               <Route path="/admin/users" element={<AdminUsersPage />} />
               <Route path="/admin/users/new" element={<NewUserPage />} />
               <Route path="/settings/profile" element={<ProfilePage />} />

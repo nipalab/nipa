@@ -109,18 +109,20 @@ func (a *User) Deactivate(ctx context.Context, id snow.ID) error {
 
 func toDomainUser(row sqlcSqlite.User) *domain.User {
 	user := domain.User{
-		ID:           snow.ID(row.ID),
-		Name:         row.Name,
-		Email:        row.Email,
-		Password:     row.Password,
-		PhotoUrl:     row.PhotoUrl.String,
-		IsSuperAdmin: row.IsSuperAdmin,
-		IsAdmin:      row.IsAdmin,
-		NotifyEmail:  row.NotifyEmail,
-		CreatedAt:    row.CreatedAt,
-		UpdatedAt:    row.UpdatedAt,
-		Deleted:      row.Deleted,
-		DeletedAt:    nullTimePtr(row.DeletedAt),
+		ID:              snow.ID(row.ID),
+		Name:            row.Name,
+		Email:           row.Email,
+		Password:        row.Password,
+		PhotoUrl:        row.PhotoUrl.String,
+		IsSuperAdmin:    row.IsSuperAdmin,
+		IsAdmin:         row.IsAdmin,
+		NotifyEmail:     row.NotifyEmail,
+		EmailVerified:   row.EmailVerified,
+		EmailVerifiedAt: nullTimePtr(row.EmailVerifiedAt),
+		CreatedAt:       row.CreatedAt,
+		UpdatedAt:       row.UpdatedAt,
+		Deleted:         row.Deleted,
+		DeletedAt:       nullTimePtr(row.DeletedAt),
 	}
 	return &user
 }

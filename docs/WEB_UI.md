@@ -10,13 +10,18 @@ proxies `/api` and `/docs` to `NIPA_SERVER_URL`).
 - Access token lives in memory only; the refresh token is an `HttpOnly` cookie
   (`web/src/api/client.ts`). `AuthProvider` silently refreshes on load, keeps
   `/me` in context, and reacts to cross-tab login/logout events.
-- `RequireAuth` guards every route except `/login` and redirects back after
-  sign-in.
+- `RequireAuth` guards every route except `/login`, `/register`, `/verify` and
+  `/oauth/callback` and redirects back after sign-in.
 
 ## Routes
 
 | Route | Page | Notes |
 |---|---|---|
+| `/login` | sign in | password form, "Create an account" link and social buttons when the server reports them |
+| `/register` | sign up | SaaS only (`/api/v1/auth/capabilities`); emails a confirmation link, then offers a resend |
+| `/verify` | email confirmation | consumes `?token=` from the confirmation email and starts the session |
+| `/oauth/callback` | social login handoff | exchanges `?code=` for a session, returns to the `?from=` destination, and shows `email_conflict`/`email_required` guidance |
+| `/onboarding` | first-run setup | names the first workspace (skipped when the user already has an organization) |
 | `/` | repositories | organizations the caller belongs to; "New organization" dialog |
 | `/:org` | repositories | project list filtered by PBAC read |
 | `/:org/:project` | tree browser | default branch root; legacy `?rev=&path=` links redirect |
@@ -31,7 +36,7 @@ proxies `/api` and `/docs` to `NIPA_SERVER_URL`).
 | `/:org/settings` | organization settings | members and groups (org owner or global admin) + storage card (usage, quota, per-project breakdown; hidden when the server has no ledger) |
 | `/admin/users` | user administration | GitHub-style list with filter, avatar/role labels and row actions |
 | `/admin/users/new` | new user | dedicated create page (name, email, password) |
-| `/settings/profile` | public profile | GitHub-style settings layout: avatar preview + photo URL + name, password change with confirmation/validation, and SSH key management (list/add/remove) |
+| `/settings/profile` | public profile | GitHub-style settings layout: avatar preview + photo URL + name, password change with confirmation/validation, connected social accounts (link/unlink; hidden when the server has no social login) and SSH key management (list/add/remove) |
 | `/settings/billing` | billing | the caller's billing-owner aggregate usage, quota and per-org breakdown; super admins can set/clear owner quotas |
 
 ## Browse API
@@ -70,6 +75,19 @@ an organization (name + optional slug) and makes the caller its owner. The home
 page offers the "New organization" dialog (`web/src/components/CreateOrgDialog.tsx`,
 `createOrg` in `web/src/api/endpoints.ts`). Member and group management lives on
 the organization settings page (`/:org/settings`).
+
+## Onboarding API
+
+The SaaS registration and social login surface (`GET /auth/capabilities`,
+`POST /auth/register`, `POST /auth/register/resend`, `POST /auth/verify`,
+`GET /auth/oauth/{provider}/start`, the provider callback,
+`POST /auth/oauth/complete`, plus the authenticated `/me/identities` routes)
+is documented in `docs/SAAS_ONBOARDING.md`. The SPA helpers
+(`registerAccount`, `resendVerification`, `oauthStartURL`,
+`getOnboardingCapabilities`, `listIdentities`, `startIdentityLink`,
+`disconnectIdentity`) live in `web/src/api/endpoints.ts`; capabilities returns
+null on 404, so the login/register pages hide the entry points on servers
+without SaaS mode.
 
 ## Storage API
 

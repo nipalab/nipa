@@ -25,7 +25,7 @@ func (h *Handler) AuthLogin(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.SetCookie(refreshCookie(result.RefreshToken, result.RefreshExpiresIn))
+	appCtx.SetCookie(RefreshCookie(result.RefreshToken, result.RefreshExpiresIn))
 	appCtx.WriteJson(nethttp.StatusOK, model.LoginResponse{
 		AccessToken: result.AccessToken,
 		TokenType:   result.TokenType,
@@ -44,12 +44,12 @@ func (h *Handler) AuthRefreshToken(appCtx http.AppContext) {
 		// A missing token means another tab rotated the cookie first; keep the
 		// browser cookie so the loser can retry with the newer value.
 		if !domain.IsErrorNotFound(err) {
-			clearRefreshCookie(appCtx)
+			ClearRefreshCookie(appCtx)
 		}
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.SetCookie(refreshCookie(result.RefreshToken, result.RefreshExpiresIn))
+	appCtx.SetCookie(RefreshCookie(result.RefreshToken, result.RefreshExpiresIn))
 	appCtx.WriteJson(nethttp.StatusOK, model.LoginResponse{
 		AccessToken: result.AccessToken,
 		TokenType:   result.TokenType,
@@ -61,11 +61,13 @@ func (h *Handler) AuthLogout(appCtx http.AppContext) {
 	if cookie, err := appCtx.Cookie(refreshCookieName); err == nil && cookie.Value != "" {
 		_ = h.useCase.Auth().Logout(appCtx.Context(), cookie.Value)
 	}
-	clearRefreshCookie(appCtx)
+	ClearRefreshCookie(appCtx)
 	appCtx.WriteJson(nethttp.StatusOK, model.MessageResponse{Message: "logged out"})
 }
 
-func refreshCookie(token string, maxAge int) *nethttp.Cookie {
+// RefreshCookie builds the HttpOnly refresh cookie shared by every login surface
+// (password login, registration verify, OAuth completion).
+func RefreshCookie(token string, maxAge int) *nethttp.Cookie {
 	return &nethttp.Cookie{
 		Name:     refreshCookieName,
 		Value:    token,
@@ -77,7 +79,8 @@ func refreshCookie(token string, maxAge int) *nethttp.Cookie {
 	}
 }
 
-func clearRefreshCookie(appCtx http.AppContext) {
+// ClearRefreshCookie expires the refresh cookie and clears it from the browser.
+func ClearRefreshCookie(appCtx http.AppContext) {
 	appCtx.SetCookie(&nethttp.Cookie{
 		Name:     refreshCookieName,
 		Value:    "",

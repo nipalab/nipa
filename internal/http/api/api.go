@@ -33,17 +33,19 @@ type usecaseContainer interface {
 }
 
 type API struct {
-	useCase usecaseContainer
-	metrics *obs.Metrics
-	routes  []func(*restful.WebService)
+	useCase      usecaseContainer
+	metrics      *obs.Metrics
+	routes       []func(*restful.WebService)
+	publicRoutes []func(*restful.WebService)
 }
 
 // Option tunes optional API behavior.
 type Option func(*apiOptions)
 
 type apiOptions struct {
-	metrics *obs.Metrics
-	routes  []func(*restful.WebService)
+	metrics      *obs.Metrics
+	routes       []func(*restful.WebService)
+	publicRoutes []func(*restful.WebService)
 }
 
 // WithMetrics enables per-route HTTP metrics on the REST container.
@@ -63,15 +65,25 @@ func WithRoutes(register func(*restful.WebService)) Option {
 	}
 }
 
+// WithPublicRoutes registers extra routes on the unauthenticated
+// /api/v1/auth WebService, e.g. the SaaS registration and OAuth flows. The
+// routes are public: whoever registers them owns their authentication.
+func WithPublicRoutes(register func(*restful.WebService)) Option {
+	return func(o *apiOptions) {
+		o.publicRoutes = append(o.publicRoutes, register)
+	}
+}
+
 func NewAPI(useCase usecaseContainer, opts ...Option) *API {
 	var options apiOptions
 	for _, opt := range opts {
 		opt(&options)
 	}
 	return &API{
-		useCase: useCase,
-		metrics: options.metrics,
-		routes:  options.routes,
+		useCase:      useCase,
+		metrics:      options.metrics,
+		routes:       options.routes,
+		publicRoutes: options.publicRoutes,
 	}
 }
 
@@ -90,6 +102,9 @@ func (a *API) SetupRoute() http.Handler {
 		Consumes(restful.MIME_JSON).
 		Produces(restful.MIME_JSON)
 	setupAuthRouter(authWs, h)
+	for _, register := range a.publicRoutes {
+		register(authWs)
+	}
 	restful.Add(authWs)
 
 	apiWs := new(restful.WebService).ApiVersion("1.0.0")
@@ -133,7 +148,10 @@ func (a *API) SetupRoute() http.Handler {
 	return restful.DefaultContainer
 }
 
-func wrap(fn func(httpApp.AppContext)) restful.RouteFunction {
+// Wrap adapts an AppContext handler to a go-restful route function. Extension
+// packages (e.g. the enterprise onboarding routes) reuse it to write handlers
+// with the same request/response helpers as the core API.
+func Wrap(fn func(httpApp.AppContext)) restful.RouteFunction {
 	return func(req *restful.Request, resp *restful.Response) {
 		ctx, err := newAppContext(req, resp)
 		if err != nil {

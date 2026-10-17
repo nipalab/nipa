@@ -74,6 +74,18 @@ export async function login(req: LoginRequest): Promise<TokenResponse> {
   return tokens
 }
 
+// establishSession posts credentials to a login-compatible endpoint (email
+// verification, OAuth completion) and installs the returned session.
+export async function establishSession(path: string, body: unknown): Promise<TokenResponse> {
+  const tokens = await requestJson<TokenResponse>(path, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
+  setSession(tokens)
+  broadcast('login')
+  return tokens
+}
+
 export async function logout(): Promise<void> {
   try {
     await apiFetch('/api/v1/auth/logout', { method: 'POST' })

@@ -55,11 +55,18 @@ func (u *User) Create(ctx context.Context, name, email, password string) (*domai
 	if err := requireGlobalAdmin(ctx); err != nil {
 		return nil, err
 	}
-	name, email, err := validateUserIdentity(name, email)
+	return u.CreateAccount(ctx, name, email, password)
+}
+
+// CreateAccount validates the identity, hashes the password and creates a
+// verified account. It performs no permission check: the admin create path and
+// the SaaS onboarding flows share it, the latter checking its own rules.
+func (u *User) CreateAccount(ctx context.Context, name, email, password string) (*domain.User, error) {
+	name, email, err := ValidateUserIdentity(name, email)
 	if err != nil {
 		return nil, err
 	}
-	if err := validatePassword(password); err != nil {
+	if err := ValidatePassword(password); err != nil {
 		return nil, err
 	}
 	if _, err := u.repo.GetByEmail(ctx, email); err == nil {
@@ -72,10 +79,11 @@ func (u *User) Create(ctx context.Context, name, email, password string) (*domai
 		return nil, domain.NewErrorInternalServer(err.Error())
 	}
 	return u.repo.Create(ctx, domain.User{
-		ID:       u.snowNode.Generate(),
-		Name:     name,
-		Email:    email,
-		Password: hash,
+		ID:            u.snowNode.Generate(),
+		Name:          name,
+		Email:         email,
+		Password:      hash,
+		EmailVerified: true,
 	})
 }
 
@@ -128,7 +136,7 @@ func (u *User) ChangePassword(ctx context.Context, userID snow.ID, oldPassword, 
 	if !u.hasher.Compare(user.Password, oldPassword) {
 		return domain.NewErrorUser("current password is incorrect")
 	}
-	if err := validatePassword(newPassword); err != nil {
+	if err := ValidatePassword(newPassword); err != nil {
 		return err
 	}
 	hash, err := u.hasher.Hash(newPassword)
@@ -142,7 +150,7 @@ func (u *User) ResetPassword(ctx context.Context, userID snow.ID, newPassword st
 	if err := requireGlobalAdmin(ctx); err != nil {
 		return err
 	}
-	if err := validatePassword(newPassword); err != nil {
+	if err := ValidatePassword(newPassword); err != nil {
 		return err
 	}
 	hash, err := u.hasher.Hash(newPassword)
@@ -191,7 +199,9 @@ func requireGlobalAdmin(ctx context.Context) error {
 	return domain.NewErrorNoPermission()
 }
 
-func validateUserIdentity(name, email string) (string, string, error) {
+// ValidateUserIdentity trims and checks a name/email pair, returning the
+// normalized values.
+func ValidateUserIdentity(name, email string) (string, string, error) {
 	name = strings.TrimSpace(name)
 	email = strings.TrimSpace(email)
 	if name == "" {
@@ -208,7 +218,8 @@ func isEmail(email string) bool {
 	return at > 0 && at < len(email)-1 && !strings.ContainsAny(email, " \t")
 }
 
-func validatePassword(password string) error {
+// ValidatePassword enforces the minimum password policy.
+func ValidatePassword(password string) error {
 	if len(password) < minPasswordLength {
 		return domain.NewErrorUser("password must be at least 8 characters")
 	}
