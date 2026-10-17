@@ -9,23 +9,27 @@ import (
 
 func TestMailSenderConfig(t *testing.T) {
 	cfg := &Config{
-		EmailSender:           "smtp",
-		EmailFrom:             "Nipa <noreply@example.com>",
-		EmailReplyTo:          "support@example.com",
-		EmailTimeoutSeconds:   15,
-		EmailSMTPHost:         "smtp.example.com",
-		EmailSMTPPort:         2525,
-		EmailSMTPUsername:     "mailer",
-		EmailSMTPPassword:     "mailer-secret",
-		EmailSMTPTLS:          "ssl",
-		EmailSMTPInsecureTLS:  true,
-		EmailSendGridAPIKey:   "sg-key",
-		EmailSendGridEndpoint: "https://sendgrid.internal",
-		EmailHTTPEndpoint:     "https://mail.example.com/send",
-		EmailHTTPMethod:       "PUT",
-		EmailHTTPHeaders:      `{"X-Api-Key":"secret"}`,
-		EmailHTTPContentType:  "application/json",
-		EmailHTTPBodyTemplate: `{"to":{{json .To}}}`,
+		EmailSender:            "smtp",
+		EmailFrom:              "Nipa <noreply@example.com>",
+		EmailReplyTo:           "support@example.com",
+		EmailTimeoutSeconds:    15,
+		EmailSMTPHost:          "smtp.example.com",
+		EmailSMTPPort:          2525,
+		EmailSMTPUsername:      "mailer",
+		EmailSMTPPassword:      "mailer-secret",
+		EmailSMTPTLS:           "ssl",
+		EmailSMTPInsecureTLS:   true,
+		EmailSendGridAPIKey:    "sg-key",
+		EmailSendGridEndpoint:  "https://sendgrid.internal",
+		EmailScalewayAPIKey:    "scw-secret",
+		EmailScalewayProjectID: "11111111-2222-3333-4444-555555555555",
+		EmailScalewayRegion:    "nl-ams",
+		EmailScalewayEndpoint:  "https://api.scaleway.test",
+		EmailHTTPEndpoint:      "https://mail.example.com/send",
+		EmailHTTPMethod:        "PUT",
+		EmailHTTPHeaders:       `{"X-Api-Key":"secret"}`,
+		EmailHTTPContentType:   "application/json",
+		EmailHTTPBodyTemplate:  `{"to":{{json .To}}}`,
 	}
 
 	mapped := cfg.MailSenderConfig()
@@ -41,6 +45,10 @@ func TestMailSenderConfig(t *testing.T) {
 	require.True(t, mapped.SMTP.InsecureSkipVerify)
 	require.Equal(t, "sg-key", mapped.SendGrid.APIKey)
 	require.Equal(t, "https://sendgrid.internal", mapped.SendGrid.Endpoint)
+	require.Equal(t, "scw-secret", mapped.Scaleway.APIKey)
+	require.Equal(t, "11111111-2222-3333-4444-555555555555", mapped.Scaleway.ProjectID)
+	require.Equal(t, "nl-ams", mapped.Scaleway.Region)
+	require.Equal(t, "https://api.scaleway.test", mapped.Scaleway.Endpoint)
 	require.Equal(t, "https://mail.example.com/send", mapped.HTTP.Endpoint)
 	require.Equal(t, "PUT", mapped.HTTP.Method)
 	require.Equal(t, `{"X-Api-Key":"secret"}`, mapped.HTTP.HeadersJSON)

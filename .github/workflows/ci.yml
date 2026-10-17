@@ -50,12 +50,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Each edition exercises one email transport end to end.
+        # Each edition exercises one email transport end to end; the remaining
+        # transports stay selectable via NIPA_TEST_EMAIL_TRANSPORT.
         include:
           - edition: free
             email_transport: sendgrid
           - edition: ee
-            email_transport: http
+            email_transport: scaleway
     steps:
       - uses: actions/checkout@v4
 

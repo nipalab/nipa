@@ -1,15 +1,20 @@
 // Package mail delivers transactional email through a pluggable sender:
-// SMTP (any provider with an SMTP endpoint), the SendGrid v3 REST API, a
-// generic HTTP JSON sender that adapts to any REST provider via a body
-// template, or the server log for development.
+// SMTP (any provider with an SMTP endpoint), the SendGrid v3 REST API, the
+// Scaleway Transactional Email REST API, a generic HTTP JSON sender that
+// adapts to any REST provider via a body template, or the server log for
+// development.
 package mail
 
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 )
+
+// maxResponseSnippet bounds the provider error body echoed in send errors.
+const maxResponseSnippet = 512
 
 // Sender kinds accepted by NewFromConfig.
 const (
@@ -17,6 +22,7 @@ const (
 	SenderLog      = "log"
 	SenderSMTP     = "smtp"
 	SenderSendGrid = "sendgrid"
+	SenderScaleway = "scaleway"
 	SenderHTTP     = "http"
 )
 
@@ -36,6 +42,7 @@ type Config struct {
 
 	SMTP     SMTPConfig
 	SendGrid SendGridConfig
+	Scaleway ScalewayConfig
 	HTTP     HTTPConfig
 }
 
@@ -55,6 +62,15 @@ type SMTPConfig struct {
 type SendGridConfig struct {
 	APIKey   string
 	Endpoint string
+}
+
+// ScalewayConfig configures the Scaleway Transactional Email sender. Endpoint
+// defaults to https://api.scaleway.com and Region to fr-par.
+type ScalewayConfig struct {
+	APIKey    string
+	ProjectID string
+	Region    string
+	Endpoint  string
 }
 
 // HTTPConfig configures the generic REST sender. HeadersJSON is a JSON object
@@ -84,11 +100,25 @@ func NewFromConfig(cfg Config) (Sender, error) {
 		return newSMTPSender(cfg.SMTP, cfg.From, cfg.ReplyTo, timeout)
 	case SenderSendGrid:
 		return newSendGridSender(cfg.SendGrid, cfg.From, cfg.ReplyTo, timeout)
+	case SenderScaleway:
+		return newScalewaySender(cfg.Scaleway, cfg.From, cfg.ReplyTo, timeout)
 	case SenderHTTP:
 		return newHTTPSender(cfg.HTTP, cfg.From, cfg.ReplyTo, timeout)
 	default:
 		return nil, fmt.Errorf("unknown email sender %q", cfg.Sender)
 	}
+}
+
+func responseSnippet(body io.Reader) string {
+	data, err := io.ReadAll(io.LimitReader(body, maxResponseSnippet))
+	if err != nil {
+		return ""
+	}
+	snippet := strings.TrimSpace(string(data))
+	if snippet == "" {
+		return ""
+	}
+	return ": " + snippet
 }
 
 func parseHeadersJSON(raw string) (map[string]string, error) {

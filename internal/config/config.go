@@ -62,6 +62,10 @@ type Config struct {
 	EmailSMTPInsecureTLS           bool    `mapstructure:"EMAIL_SMTP_INSECURE_SKIP_VERIFY"`
 	EmailSendGridAPIKey            string  `mapstructure:"EMAIL_SENDGRID_API_KEY"`
 	EmailSendGridEndpoint          string  `mapstructure:"EMAIL_SENDGRID_ENDPOINT"`
+	EmailScalewayAPIKey            string  `mapstructure:"EMAIL_SCALEWAY_API_KEY"`
+	EmailScalewayProjectID         string  `mapstructure:"EMAIL_SCALEWAY_PROJECT_ID"`
+	EmailScalewayRegion            string  `mapstructure:"EMAIL_SCALEWAY_REGION"`
+	EmailScalewayEndpoint          string  `mapstructure:"EMAIL_SCALEWAY_ENDPOINT"`
 	EmailHTTPEndpoint              string  `mapstructure:"EMAIL_HTTP_ENDPOINT"`
 	EmailHTTPMethod                string  `mapstructure:"EMAIL_HTTP_METHOD"`
 	EmailHTTPHeaders               string  `mapstructure:"EMAIL_HTTP_HEADERS"`

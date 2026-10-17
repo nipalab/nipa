@@ -53,8 +53,8 @@ CHUNK_MAX_PAGE_SIZE: 1000
 WEBHOOK_EGRESS_ALLOWLIST: ''
 WEBHOOK_TIMEOUT_SECONDS: 30
 # Outbound email. EMAIL_SENDER selects the transport: `off` (default), `log`,
-# `smtp`, `sendgrid` or `http` (a generic REST sender configured with a body
-# template). See docs/EMAIL.md for provider examples.
+# `smtp`, `sendgrid`, `scaleway` or `http` (a generic REST sender configured
+# with a body template). See docs/EMAIL.md for provider examples.
 EMAIL_SENDER: 'off'
 EMAIL_FROM: 'Nipa <noreply@example.com>'
 EMAIL_REPLY_TO: ''
@@ -79,6 +79,14 @@ EMAIL_SMTP_INSECURE_SKIP_VERIFY: false
 EMAIL_SENDGRID_API_KEY: ''
 # Override the API base URL (defaults to https://api.sendgrid.com).
 EMAIL_SENDGRID_ENDPOINT: ''
+# Scaleway Transactional Email transport (REST API). The API key is a secret
+# key with the TransactionalEmailFullAccess permission and the project must
+# own the verified sending domain; region defaults to fr-par.
+EMAIL_SCALEWAY_API_KEY: ''
+EMAIL_SCALEWAY_PROJECT_ID: ''
+EMAIL_SCALEWAY_REGION: ''
+# Override the API base URL (defaults to https://api.scaleway.com).
+EMAIL_SCALEWAY_ENDPOINT: ''
 # Generic HTTP transport: the body template is rendered per recipient with
 # {{.From}}/{{.FromEmail}}/{{.To}}/{{.ToHeader}}/{{.Subject}}/{{.Text}}/
 # {{.HTML}}/{{.MessageID}}/{{.InReplyTo}}/{{.References}} and a `json` helper.

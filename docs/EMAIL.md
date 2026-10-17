@@ -1,9 +1,10 @@
 # Email notifications
 
 Nipa sends transactional email through a pluggable sender. The sender layer
-(`internal/mail`) supports SMTP, the SendGrid v3 REST API and a generic HTTP
-JSON sender that adapts to any REST provider; delivery is durable through an
-outbox (see [Delivery model](#delivery-model)).
+(`internal/mail`) supports SMTP, the SendGrid v3 REST API, the Scaleway
+Transactional Email REST API and a generic HTTP JSON sender that adapts to any
+REST provider; delivery is durable through an outbox (see
+[Delivery model](#delivery-model)).
 
 Status: complete. The sender layer, configuration, the durable outbox, the
 merge request notification wiring and the delivery admin surface (inspection
@@ -19,6 +20,7 @@ and redelivery) are implemented.
 | `log`      | Writes rendered messages to the server log. Development and tests.     |
 | `smtp`     | Any provider with an SMTP endpoint (SES, Mailgun, Postmark, Gmail, …). |
 | `sendgrid` | SendGrid v3 API (`POST /v3/mail/send`) with an API key.                |
+| `scaleway` | Scaleway Transactional Email REST API with a secret key and project.   |
 | `http`     | Generic REST sender: configurable endpoint, method, headers and body.  |
 
 `EMAIL_FROM` is required by every active sender except `log` and accepts
@@ -66,6 +68,25 @@ EMAIL_SENDGRID_API_KEY: SG.xxxxx
 Messages carry plain-text and HTML parts; `Message-ID`, `In-Reply-To` and
 `References` are forwarded as personalization headers so notification threads
 stay grouped in the recipient's mail client.
+
+## Scaleway
+
+```yaml
+EMAIL_SENDER: scaleway
+EMAIL_FROM: 'Nipa <noreply@example.com>'
+EMAIL_SCALEWAY_API_KEY: <secret key>   # TransactionalEmailFullAccess
+EMAIL_SCALEWAY_PROJECT_ID: <project uuid>
+# EMAIL_SCALEWAY_REGION: fr-par          # default
+# EMAIL_SCALEWAY_ENDPOINT: https://api.scaleway.com   # override for tests
+```
+
+The sender posts to the regional
+`POST /transactional-email/v1alpha1/regions/{region}/emails` endpoint with the
+secret key as `X-Auth-Token`. `EMAIL_FROM` must use a domain verified in the
+configured Scaleway project. Plain-text and HTML parts map to `text`/`html`;
+`Reply-To`, `Message-ID`, `In-Reply-To` and `References` travel as
+`additional_headers` so notification threads stay grouped in the recipient's
+mail client.
 
 ## Generic HTTP
 
@@ -171,7 +192,7 @@ polled).
 
 | Key                             | Default                  | Description                                             |
 | ------------------------------- | ------------------------ | ------------------------------------------------------- |
-| `EMAIL_SENDER`                  | `off`                    | `off`, `log`, `smtp`, `sendgrid` or `http`.             |
+| `EMAIL_SENDER`                  | `off`                    | `off`, `log`, `smtp`, `sendgrid`, `scaleway` or `http`. |
 | `EMAIL_FROM`                    | –                        | Envelope and header From address.                       |
 | `EMAIL_REPLY_TO`                | –                        | Optional Reply-To address.                              |
 | `EMAIL_BASE_URL`                | –                        | Public web UI URL for links in emails.                  |
@@ -187,6 +208,10 @@ polled).
 | `EMAIL_SMTP_INSECURE_SKIP_VERIFY` | `false`                | Accept self-signed SMTP certificates.                   |
 | `EMAIL_SENDGRID_API_KEY`        | –                        | SendGrid API key.                                       |
 | `EMAIL_SENDGRID_ENDPOINT`       | `https://api.sendgrid.com` | API base URL override.                                |
+| `EMAIL_SCALEWAY_API_KEY`        | –                        | Scaleway secret key.                                    |
+| `EMAIL_SCALEWAY_PROJECT_ID`     | –                        | Scaleway project owning the verified domain.            |
+| `EMAIL_SCALEWAY_REGION`         | `fr-par`                 | Scaleway region.                                        |
+| `EMAIL_SCALEWAY_ENDPOINT`       | `https://api.scaleway.com` | API base URL override.                                |
 | `EMAIL_HTTP_ENDPOINT`           | –                        | Generic sender endpoint URL.                            |
 | `EMAIL_HTTP_METHOD`             | `POST`                   | HTTP method.                                            |
 | `EMAIL_HTTP_HEADERS`            | –                        | JSON object of extra headers.                           |

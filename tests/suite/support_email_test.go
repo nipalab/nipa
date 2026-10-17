@@ -26,23 +26,41 @@ type receivedEmail struct {
 	At        time.Time
 }
 
-type sendGridEmailPayload struct {
+type receivedAddress struct {
+	Email string `json:"email"`
+	Name  string `json:"name"`
+}
+
+// sentEmailPayload decodes both the SendGrid v3 shape (personalizations,
+// content) that the sendgrid/http transports emit and the Scaleway shape
+// (top-level to, text/html, additional_headers) the scaleway transport emits.
+type sentEmailPayload struct {
 	Personalizations []struct {
-		To []struct {
-			Email string `json:"email"`
-			Name  string `json:"name"`
-		} `json:"to"`
+		To      []receivedAddress `json:"to"`
 		Headers map[string]string `json:"headers"`
 	} `json:"personalizations"`
-	From struct {
-		Email string `json:"email"`
-		Name  string `json:"name"`
-	} `json:"from"`
-	Subject string `json:"subject"`
+	From    receivedAddress   `json:"from"`
+	To      []receivedAddress `json:"to"`
+	Subject string            `json:"subject"`
 	Content []struct {
 		Type  string `json:"type"`
 		Value string `json:"value"`
 	} `json:"content"`
+	Text              string `json:"text"`
+	HTML              string `json:"html"`
+	AdditionalHeaders []struct {
+		Key   string `json:"key"`
+		Value string `json:"value"`
+	} `json:"additional_headers"`
+}
+
+func additionalHeader(payload sentEmailPayload, key string) string {
+	for _, header := range payload.AdditionalHeaders {
+		if header.Key == key {
+			return header.Value
+		}
+	}
+	return ""
 }
 
 type emailReceiver struct {
@@ -53,8 +71,9 @@ type emailReceiver struct {
 	failures map[string]int
 }
 
-// startEmailReceiver binds the SendGrid endpoint nipad was configured with at
-// startup, so every notification the server renders lands here.
+// startEmailReceiver binds the provider endpoint nipad was configured with at
+// startup (the transport is chosen via NIPA_TEST_EMAIL_TRANSPORT), so every
+// notification the server renders lands here.
 func startEmailReceiver() *emailReceiver {
 	GinkgoHelper()
 
@@ -68,7 +87,7 @@ func startEmailReceiver() *emailReceiver {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-		var payload sendGridEmailPayload
+		var payload sentEmailPayload
 		Expect(json.Unmarshal(body, &payload)).To(Succeed(), string(body))
 
 		email := receivedEmail{
@@ -76,24 +95,37 @@ func startEmailReceiver() *emailReceiver {
 			Subject: payload.Subject,
 			At:      time.Now(),
 		}
-		for _, personalization := range payload.Personalizations {
-			for _, to := range personalization.To {
+		if len(payload.Personalizations) > 0 {
+			for _, personalization := range payload.Personalizations {
+				for _, to := range personalization.To {
+					email.To = append(email.To, to.Email)
+				}
+				email.MessageID = personalization.Headers["Message-ID"]
+				email.InReplyTo = personalization.Headers["In-Reply-To"]
+			}
+		} else {
+			for _, to := range payload.To {
 				email.To = append(email.To, to.Email)
 			}
-			email.MessageID = personalization.Headers["Message-ID"]
-			email.InReplyTo = personalization.Headers["In-Reply-To"]
+			email.MessageID = additionalHeader(payload, "Message-ID")
+			email.InReplyTo = additionalHeader(payload, "In-Reply-To")
 		}
 		if receiver.consumeFailure(email.To) {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-		for _, content := range payload.Content {
-			switch content.Type {
-			case "text/plain":
-				email.Text = content.Value
-			case "text/html":
-				email.HTML = content.Value
+		if len(payload.Content) > 0 {
+			for _, content := range payload.Content {
+				switch content.Type {
+				case "text/plain":
+					email.Text = content.Value
+				case "text/html":
+					email.HTML = content.Value
+				}
 			}
+		} else {
+			email.Text = payload.Text
+			email.HTML = payload.HTML
 		}
 
 		receiver.mu.Lock()

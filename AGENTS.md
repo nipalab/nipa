@@ -172,7 +172,7 @@ has one, key-only otherwise. Covered by unit tests plus the
 `NIPA_SSH_KEY`, unregistered-key rejection, username binding).
 
 Flow for email notifications (design in `docs/EMAIL.md`): `internal/mail` is
-the sender layer (`EMAIL_SENDER` = `smtp|sendgrid|http|log|off`), one message
+the sender layer (`EMAIL_SENDER` = `smtp|sendgrid|scaleway|http|log|off`), one message
 per recipient is persisted in the `email_deliveries` outbox and
 `mail.Dispatcher` claims due rows, retries with exponential backoff
 (`EMAIL_MAX_ATTEMPTS`/`EMAIL_RETRY_BACKOFF_SECONDS`/`EMAIL_POLL_SECONDS`) and
@@ -192,7 +192,7 @@ through `usecase.EmailDelivery`: `GET .../emails/deliveries`
 (`state`/`after`/`limit` keyset, `next_cursor`) and
 `POST .../emails/deliveries/{id}/redeliver` (delivered/failed only), surfaced
 by the SPA project settings "Email deliveries" tab. The harness runs `nipad`
-with `EMAIL_SENDER` set to `sendgrid` or `http` (via
+with `EMAIL_SENDER` set to `sendgrid`, `scaleway` or `http` (via
 `NIPA_TEST_EMAIL_TRANSPORT`, one transport per edition in CI) pointed at an
 in-suite receiver (and 1s retry/poll knobs) and covers opt-out, participant
 emails, thread replies, synchronized/check/merge events, failed retries and
