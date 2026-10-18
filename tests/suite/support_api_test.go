@@ -65,6 +65,14 @@ func (c *apiClient) createUser(name, email, password string) string {
 	return resp.ID
 }
 
+// addOrgMember adds an existing user to an organization by email.
+func (c *apiClient) addOrgMember(org, email, role string) {
+	c.do(http.MethodPost, "/orgs/"+org+"/members", map[string]string{
+		"email": email,
+		"role":  role,
+	}, nil, true)
+}
+
 // createPathRule grants a user a path prefix permission; permission is the
 // PBAC bitmask (1 read, 2 write, 4 lock).
 func (c *apiClient) createPathRule(org, project, userID, pathPrefix string, permission uint64) {

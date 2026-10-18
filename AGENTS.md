@@ -571,6 +571,7 @@ From `Makefile`:
   sparse-checkout, tag, lock, mr, acl, group) plus `nipa serve` (daemon gRPC),
   `nipa mcp` (stdio JSON-RPC) and webhook deliveries (events, filters,
   signatures, ping/redelivery), with multi-user identities for permission
+  (incl. org owners' implicit project access vs. plain members' deny-by-default)
   and lock scenarios. `NIPA_TOKEN_FILE` makes `securestorage` file-backed so the
   CLI runs without an OS keyring/TTY; the suite skips unless `NIPA_TEST_HOST` is
   set. Details in `tests/README.md`.
