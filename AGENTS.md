@@ -525,6 +525,28 @@ server `push.apply`, `chunk.presign_*`/`chunk.confirm`/`chunk.store`/
 `chunk.verify`/`chunk.download` and the per-object `storage.local.*` /
 `storage.s3.*` store spans.
 
+Flow for observability to OpenObserve (SaaS; design in `docs/OBSERVABILITY.md`):
+`internal/obs/otlp.go` holds the shared OTLP endpoint resolution
+(`otlpEndpointTarget.traceOptions`/`logOptions`, plus the
+`traceHTTPOptions`/`logHTTPOptions` variants), transport selection
+(`TRACING_OTLP_PROTOCOL` = `grpc` default / `http`; the OTLP/HTTP exporters get
+the `/v1/traces` or `/v1/logs` signal path appended to a configured URL prefix
+by `httpSignalURL` before `WithEndpointURL` uses it as-is), `ParseHeaders`
+(comma-separated `KEY=VALUE`, first `=` only so base64 padding survives) and the
+shared resource; `TRACING_OTLP_HEADERS` feeds the trace exporters.
+`obs.SetupLogs` (`internal/obs/logs.go`, OTLP + otelslog bridge)
+ships slog records over OTLP when `LOGS_OTLP_ENABLED` (endpoint and protocol
+fall back to the `TRACING_*` values, same headers), fanned out next to the
+console/JSON output via `fanoutHandler` in `obs.Setup` with a
+`levelFilterHandler` so every sink obeys `LOG_LEVEL`; both exporters flush on
+shutdown via `serverapp.WithLogs`. Metrics are pull-based (`/metrics`, `nipa_*`
+series) or pushed directly with `METRICS_OTLP_ENABLED`: `obs.SetupMetricsPush`
+(`internal/obs/metrics_push.go`) bridges the Prometheus registry through
+`contrib/bridges/prometheus` into a periodic OTLP reader (endpoint/protocol
+fall back to `TRACING_*`, headers shared, `METRICS_OTLP_INTERVAL_SECONDS`
+cadence), flushed via `serverapp.WithMetricsPush` — no collector required
+(scraping and remote-write agents remain supported in docs/OBSERVABILITY.md).
+
 Server merge-request diffs reuse the same engine: `usecase.MergeRequest.Diff`
 resolves the source and target heads, `GetMergeBase`, and calls
 `Branch.TreeDiffBetween` (`internal/usecase/browser.go`), which loads both

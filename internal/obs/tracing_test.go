@@ -183,24 +183,27 @@ func TestResolveOTLPEndpoint(t *testing.T) {
 	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "")
 	t.Setenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "")
 
-	target := resolveOTLPEndpoint("")
+	target := resolveOTLPEndpoint("", defaultOTLPEndpoint)
 	require.Equal(t, defaultOTLPEndpoint, target.endpoint)
 	require.True(t, target.insecure)
-	require.Len(t, target.options(), 2)
+	require.Len(t, target.traceOptions(nil), 2)
 
-	target = resolveOTLPEndpoint("collector:4317")
+	target = resolveOTLPEndpoint("collector:4317", defaultOTLPEndpoint)
 	require.Equal(t, "collector:4317", target.endpoint)
 	require.True(t, target.insecure, "a bare host:port is a plaintext local collector")
 
-	target = resolveOTLPEndpoint("https://collector.example.com:4317")
+	target = resolveOTLPEndpoint("https://collector.example.com:4317", defaultOTLPEndpoint)
 	require.Equal(t, "https://collector.example.com:4317", target.endpoint)
 	require.False(t, target.insecure, "an explicit URL scheme decides TLS")
-	require.Len(t, target.options(), 1)
+	require.Len(t, target.traceOptions(nil), 1)
+
+	headers := ParseHeaders("Authorization=Basic dXNlcjpwYXNz")
+	require.Len(t, target.traceOptions(headers), 2, "headers must be appended to the TLS options")
 
 	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "collector.example.com:4317")
-	target = resolveOTLPEndpoint("")
+	target = resolveOTLPEndpoint("", defaultOTLPEndpoint)
 	require.Empty(t, target.endpoint, "an unset endpoint defers to the OTEL_* variables")
-	require.Empty(t, target.options())
+	require.Empty(t, target.traceOptions(nil))
 }
 
 func attributeValue(attrs []attribute.KeyValue, key string) string {

@@ -17,9 +17,18 @@ type Config struct {
 	MetricsEnabled                 bool    `mapstructure:"METRICS_ENABLED"`
 	TracingEnabled                 bool    `mapstructure:"TRACING_ENABLED"`
 	TracingOTLPEndpoint            string  `mapstructure:"TRACING_OTLP_ENDPOINT"`
+	TracingOTLPProtocol            string  `mapstructure:"TRACING_OTLP_PROTOCOL"`
+	TracingOTLPHeaders             string  `mapstructure:"TRACING_OTLP_HEADERS"`
 	TracingStdout                  bool    `mapstructure:"TRACING_STDOUT"`
 	TracingSampleRatio             float64 `mapstructure:"TRACING_SAMPLE_RATIO"`
 	TracingServiceName             string  `mapstructure:"TRACING_SERVICE_NAME"`
+	LogsOTLPEnabled                bool    `mapstructure:"LOGS_OTLP_ENABLED"`
+	LogsOTLPEndpoint               string  `mapstructure:"LOGS_OTLP_ENDPOINT"`
+	LogsOTLPProtocol               string  `mapstructure:"LOGS_OTLP_PROTOCOL"`
+	MetricsOTLPEnabled             bool    `mapstructure:"METRICS_OTLP_ENABLED"`
+	MetricsOTLPEndpoint            string  `mapstructure:"METRICS_OTLP_ENDPOINT"`
+	MetricsOTLPProtocol            string  `mapstructure:"METRICS_OTLP_PROTOCOL"`
+	MetricsOTLPIntervalSeconds     int     `mapstructure:"METRICS_OTLP_INTERVAL_SECONDS"`
 	SnowflakeNodeID                int64   `mapstructure:"SNOWFLAKE_NODE_ID"`
 	SnowflakeNodeIDSet             bool    `mapstructure:"-"`
 	SnowflakeLeaseTTLSecs          int     `mapstructure:"SNOWFLAKE_LEASE_TTL_SECONDS"`
@@ -92,6 +101,9 @@ func LoadConfig() (*Config, error) {
 	v.SetDefault("TRACING_ENABLED", false)
 	v.SetDefault("TRACING_STDOUT", false)
 	v.SetDefault("TRACING_SAMPLE_RATIO", 1.0)
+	v.SetDefault("LOGS_OTLP_ENABLED", false)
+	v.SetDefault("METRICS_OTLP_ENABLED", false)
+	v.SetDefault("METRICS_OTLP_INTERVAL_SECONDS", 30)
 
 	if err := v.ReadInConfig(); err != nil {
 		return nil, err

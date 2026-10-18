@@ -16,9 +16,10 @@ identically.
 - All runtime endpoints (`/metrics`, `/healthz`, `/readyz`, pprof) live on the
   existing server port. pprof is flag-gated and off by default.
 
-**Status:** phase 1, phase 2 and phase 3 are implemented (`internal/obs`, wired
-through `internal/serverapp` and both mains). Tracing usage lives in
-`docs/TRACING.md`.
+**Status:** phase 1, phase 2, phase 3 and the phase 4 log shipping are
+implemented (`internal/obs`, wired through `internal/serverapp` and both
+mains); phase 5 adds direct OTLP metrics push. Tracing usage lives in
+`docs/TRACING.md`; the OpenObserve deployment runbook is in phase 4 below.
 
 ---
 
@@ -197,6 +198,161 @@ See `docs/TRACING.md` for configuration and the span inventory. Summary:
 
 ---
 
+## Phase 4 — log shipping over OTLP (implemented)
+
+Structured logs are mirrored to an OTLP backend (OpenObserve in the SaaS
+deployment) next to the unchanged console/JSON output. Traces and logs both
+support **OTLP/gRPC** (default) and **OTLP/HTTP**.
+
+- `internal/obs/otlp.go` — shared OTLP plumbing: endpoint resolution (same
+  scheme/TLS rules as tracing, including the `OTEL_EXPORTER_OTLP_*` fallback),
+  transport selection (`grpc`/`http`), `ParseHeaders` for comma-separated
+  `KEY=VALUE` headers (split on the first `=`, so base64 padding survives), the
+  signal-path normalization for HTTP endpoints (`/v1/traces`, `/v1/logs` are
+  appended unless present) and the shared resource
+  (`service.name`/`service.version`).
+- `internal/obs/tracing.go` — `TracingConfig.Headers` feeds
+  `otlptracegrpc.WithHeaders` / `otlptracehttp.WithHeaders`;
+  `TRACING_OTLP_HEADERS` therefore authenticates traces (and, below, logs)
+  against backends that require it, e.g. OpenObserve.
+- `internal/obs/logs.go` — `SetupLogs` builds an OTLP log exporter (gRPC or
+  HTTP) with a batch processor and the `contrib/bridges/otelslog` bridge; a
+  disabled config is a nil-safe no-op (`Handler()` returns nil, `Shutdown`
+  succeeds).
+- `internal/obs/logging.go` — `Setup` accepts optional extra handlers and
+  composes them with the console/JSON handler through a `fanoutHandler`; a
+  `levelFilterHandler` applies `LOG_LEVEL` to the bridge, so every sink obeys
+  the configured level.
+- `internal/serverapp/run.go` — `WithLogs(*obs.Logs)` flushes the exporter on
+  SIGTERM/SIGINT next to the tracer; both mains wire it.
+- Configuration: `LOGS_OTLP_ENABLED` (default false), `LOGS_OTLP_ENDPOINT` and
+  `LOGS_OTLP_PROTOCOL` (fall back to the `TRACING_*` values), headers shared
+  via `TRACING_OTLP_HEADERS`.
+
+Records emitted with a context (`obs.Log(ctx)`, `slog.*Context`, the access
+log) carry the active `trace_id`/`span_id`, so logs and spans correlate in the
+backend.
+
+### OpenObserve runbook (SaaS)
+
+1. Deploy OpenObserve (self-hosted example):
+   `docker run -d --name openobserve -p 5080:5080 -p 5081:5081 -v openobserve-data:/data public.ecr.aws/zinclabs/openobserve:latest`
+   with `ZO_ROOT_USER_EMAIL`/`ZO_ROOT_USER_PASSWORD` set. Port `5080` serves
+   the UI/HTTP API, `5081` OTLP over gRPC; streams are created on first write
+   (default organization `default`).
+2. Grab credentials from **Data Sources → Ingestion** (basic auth,
+   `base64(email:password)`) or create a service account under **IAM → Service
+   Accounts** and use its token as `Bearer <token>`.
+3. Configure `nipad-ee` (env or `config.yaml`/`.env`). Direct OTLP/gRPC (plaintext
+   on the OpenObserve gRPC port; the organization travels in a header):
+
+   ```sh
+   TRACING_ENABLED=true
+   TRACING_OTLP_ENDPOINT=openobserve.internal:5081
+   TRACING_OTLP_HEADERS="Authorization=Basic <base64(email:password)>,organization=default"
+   LOGS_OTLP_ENABLED=true   # endpoint, protocol and headers are shared with tracing
+   METRICS_ENABLED=true     # keep /metrics exposed for the collector
+   ```
+
+   Or OTLP/HTTP through an HTTPS host (works behind ordinary HTTP proxies and
+   CDNs; `/v1/traces` and `/v1/logs` are appended to the endpoint path):
+
+   ```sh
+   TRACING_ENABLED=true
+   TRACING_OTLP_PROTOCOL=http
+   TRACING_OTLP_ENDPOINT=https://openobserve.example.com/api/default
+   TRACING_OTLP_HEADERS="Authorization=Basic <base64(email:password)>"
+   LOGS_OTLP_ENABLED=true
+   METRICS_ENABLED=true
+   ```
+
+   Do not point the gRPC exporter at the HTTP port or at a TLS terminator that
+   does not speak gRPC (`5080`, or `443` behind an HTTP/1.1 proxy): the
+   handshake fails with `tls: server selected unadvertised ALPN protocol`. Use
+   the gRPC port directly or switch to `TRACING_OTLP_PROTOCOL=http`.
+
+4. Metrics, pick one:
+   - Push straight from `nipad-ee` (no Prometheus, collector or vmagent —
+     phase 5): the registry is exported over OTLP on the same transport as
+     traces/logs, `/v1/metrics` is appended to HTTP endpoints.
+
+     ```sh
+     METRICS_OTLP_ENABLED=true
+     METRICS_OTLP_INTERVAL_SECONDS=30   # push cadence, default 30
+     ```
+
+   - Or scrape with an agent and remote-write to OpenObserve's Prometheus
+     endpoint (`POST /api/{org}/prometheus/api/v1/write`, port `5080`
+     self-hosted): point an OpenTelemetry Collector (or vmagent) at the
+     server's `/metrics`:
+
+   ```yaml
+   receivers:
+     prometheus:
+       config:
+         scrape_configs:
+           - job_name: nipad-ee
+             scrape_interval: 30s
+             metrics_path: /metrics
+             static_configs:
+               - targets: ["nipad-ee.nipad.svc:6745"]
+   exporters:
+     prometheusremotewrite:
+       endpoint: https://openobserve.example.com/api/default/prometheus/api/v1/write
+       headers:
+         Authorization: Basic <base64(email:password)>
+   service:
+     pipelines:
+       metrics:
+         receivers: [prometheus]
+         exporters: [prometheusremotewrite]
+   ```
+
+   A Prometheus in agent mode (or VictoriaMetrics' vmagent) works the same way:
+
+   ```yaml
+   global:
+     scrape_interval: 30s
+   remote_write:
+     - url: https://openobserve.example.com/api/default/prometheus/api/v1/write
+       basic_auth:
+         username: admin@example.com
+         password: change-me
+   scrape_configs:
+     - job_name: nipad-ee
+       metrics_path: /metrics
+       static_configs:
+         - targets: ["nipad-ee.nipad.svc:6745"]
+   ```
+
+5. Explore: filter logs by `service = 'nipad-ee'` or a `trace_id`; the trace
+   stream carries the spans inventoried in `docs/TRACING.md`; dashboards and
+   alerts run over the `nipa_*` series listed in phase 2.
+
+---
+
+## Phase 5 — direct metrics push (implemented)
+
+`nipad`/`nipad-ee` can push their own metrics straight to an OTLP backend — no
+Prometheus, collector or vmagent in between. `obs.SetupMetricsPush`
+(`internal/obs/metrics_push.go`) feeds the existing Prometheus registry through
+the OpenTelemetry Prometheus bridge
+(`go.opentelemetry.io/contrib/bridges/prometheus`) into a periodic OTLP reader,
+so metrics reuse the trace/log endpoint, protocol and header configuration.
+
+- `METRICS_OTLP_ENABLED` (default false) turns the push on;
+  `METRICS_OTLP_ENDPOINT` and `METRICS_OTLP_PROTOCOL` fall back to the
+  `TRACING_*` values, headers are `TRACING_OTLP_HEADERS`, and
+  `METRICS_OTLP_INTERVAL_SECONDS` (default 30) sets the push cadence.
+- The registry is read in-process: the push also works with
+  `METRICS_ENABLED=false`, and scraping `/metrics` can run in parallel.
+- Counters are exported cumulatively and the exporter flushes on
+  SIGTERM/SIGINT via `serverapp.WithMetricsPush`.
+- The push complements the phase 4 collector/remote-write path; both produce
+  the same `nipa_*` series in the backend.
+
+---
+
 ## Configuration reference
 
 | Variable | Default | Meaning |
@@ -206,10 +362,51 @@ See `docs/TRACING.md` for configuration and the span inventory. Summary:
 | `PPROF_ENABLED` | `false` | Serve `/debug/pprof/*` on the main port |
 | `METRICS_ENABLED` | `true` | Serve `/metrics` on the main port |
 | `TRACING_ENABLED` | `false` | Export OTLP spans (see `docs/TRACING.md`) |
-| `TRACING_OTLP_ENDPOINT` | `localhost:4317` | OTLP gRPC collector endpoint |
+| `TRACING_OTLP_ENDPOINT` | `localhost:4317` (gRPC) / `localhost:4318` (HTTP) | OTLP collector endpoint; an HTTP endpoint may carry a path prefix (e.g. OpenObserve's `/api/<org>`) |
+| `TRACING_OTLP_PROTOCOL` | `grpc` | `grpc` or `http` |
+| `TRACING_OTLP_HEADERS` | empty | Comma-separated `KEY=VALUE` headers on every OTLP request (traces and logs), e.g. an OpenObserve `Authorization` (and `organization` for gRPC) |
 | `TRACING_STDOUT` | `false` | Pretty-print spans to stderr instead of exporting |
 | `TRACING_SAMPLE_RATIO` | `1.0` | Root span sampling ratio in `(0, 1]` |
 | `TRACING_SERVICE_NAME` | `nipad` / `nipad-ee` | OTel `service.name` |
+| `LOGS_OTLP_ENABLED` | `false` | Ship logs over OTLP next to the console/JSON output |
+| `LOGS_OTLP_ENDPOINT` | `TRACING_OTLP_ENDPOINT` | OTLP endpoint for logs |
+| `LOGS_OTLP_PROTOCOL` | `TRACING_OTLP_PROTOCOL` | OTLP transport for logs |
+| `METRICS_OTLP_ENABLED` | `false` | Push the Prometheus registry over OTLP (no agent needed) |
+| `METRICS_OTLP_ENDPOINT` | `TRACING_OTLP_ENDPOINT` | OTLP endpoint for metrics |
+| `METRICS_OTLP_PROTOCOL` | `TRACING_OTLP_PROTOCOL` | OTLP transport for metrics |
+| `METRICS_OTLP_INTERVAL_SECONDS` | `30` | Metrics push cadence |
+
+---
+
+## Runtime cost and concurrency
+
+Every signal is opt-in and costs nothing when disabled: no provider, no
+goroutine, no connection. When enabled, the exporters are batch pipelines —
+the request path formats and enqueues, background goroutines ship.
+
+| Signal | Background worker | Caller-path cost | Queue | Cadence |
+|---|---|---|---|---|
+| Traces | one `BatchSpanProcessor` goroutine + one OTLP connection | span end + enqueue (mutex ring) | 2048 spans, export batches of 512 | every 5s |
+| Logs | one log `BatchProcessor` goroutine + one OTLP connection | record conversion and enqueue (allocs + one lock), network is async | 2048 records (oldest overwritten when full) | every 1s |
+| Metrics | one `PeriodicReader` ticker goroutine + one OTLP connection | none beyond the existing Prometheus counter/atomic updates | full registry gathered per tick | `METRICS_OTLP_INTERVAL_SECONDS` (30s) |
+
+- Traces: ended spans are enqueued by the SDK's batch processor and exported
+  in the background; a full queue drops spans instead of blocking the caller.
+- Logs: the `otelslog` bridge converts each `slog.Record` to an OTLP record
+  on the calling goroutine, then the batch processor queues it. `LOG_LEVEL`
+  gates both the stderr and the OTLP sink, so debug verbosity is one knob.
+- Metrics: the registry is gathered and converted on the ticker goroutine,
+  never on request paths; counters are exported cumulatively (each push
+  carries the running totals). A push slower than the interval skips ticks.
+- Connections: at most one persistent gRPC/HTTP2 connection per enabled
+  signal (three total). gRPC retries transient export failures in the
+  background; failures surface through the `opentelemetry error` warn log.
+- Shutdown flushes all enabled exporters within the 15s `serverapp` deadline.
+
+Expected footprint: a few MB of memory and negligible CPU on an idle server.
+The variable cost is serialization volume, controlled with `LOG_LEVEL`,
+`TRACING_SAMPLE_RATIO` (and a collector-side sampler if needed) and, for
+metrics, `METRICS_OTLP_INTERVAL_SECONDS`.
 
 ---
 
@@ -217,7 +414,10 @@ See `docs/TRACING.md` for configuration and the span inventory. Summary:
 
 - `internal/obs` unit tests: level/format parsing, request-ID generation and
   pass-through, access-log levels and query sanitization, health/readiness
-  handlers, pprof disabled returns 404, metrics counters/labels.
+  handlers, pprof disabled returns 404, metrics counters/labels, OTLP header
+  parsing, fanout level handling and real OTLP gRPC/HTTP receivers asserting
+  log record and pushed metrics (`nipa_push_total`) delivery with the
+  `Authorization` metadata.
 - REST filter test with `httptest` asserting route-template labels; gRPC
   metrics interceptor tests in the style of `interceptor_test.go`; dispatcher
   counters via a recorder.
@@ -230,6 +430,8 @@ See `docs/TRACING.md` for configuration and the span inventory. Summary:
 | File | Change |
 |---|---|
 | `internal/obs/*.go` (new) | logging, request ID, access log, health, pprof, metrics |
+| `internal/obs/otlp.go`, `logs.go`, `metrics_push.go` (new) | shared OTLP helpers, OTLP log shipping, direct metrics push |
+| `internal/obs/logging.go`, `tracing.go` | fanout logging, OTLP headers |
 | `internal/config/config.go`, `config.yaml.sample` | new knobs, wire `LOG_LEVEL` |
 | `internal/serverapp/run.go` | obs setup, mux routes, middleware, gRPC health, shutdown deadline, options |
 | `internal/http/api/api.go`, `metrics.go` | metrics container filter |
@@ -238,8 +440,8 @@ See `docs/TRACING.md` for configuration and the span inventory. Summary:
 | `internal/grpc/server/metrics_interceptor.go` (+ tests) | gRPC metrics interceptors |
 | `internal/usecase/chunk.go`, `push.go` | nil-safe metrics, chunk/push counters |
 | `internal/webhook/dispatcher.go`, `internal/mail/dispatcher.go` | delivery counters, queue/in-flight gauges |
-| `cmd/nipad/main.go`, `ee/cmd/nipad/main.go` | `obs.Setup`, `WithReadiness`, `WithMetrics`, DB registration |
-| `go.mod` | `prometheus/client_golang` |
+| `cmd/nipad/main.go`, `ee/cmd/nipad/main.go` | `obs.Setup`, `WithReadiness`, `WithMetrics`, DB registration, OTLP logs + metrics |
+| `go.mod` | `prometheus/client_golang`, `otlploggrpc`/`sdk/log`/`otelslog`, `otlpmetric*`/`sdk/metric`/`bridges/prometheus` |
 | `docs/OBSERVABILITY.md` (this file) | design + runbook |
 
 No SQL, proto or schema changes; free/EE parity preserved (`internal/` never

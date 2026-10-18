@@ -4,7 +4,6 @@ import (
 	"context"
 	"net/http"
 	"os"
-	"strings"
 	"sync/atomic"
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
@@ -12,22 +11,18 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
 	metricnoop "go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/propagation"
-	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	semconv "go.opentelemetry.io/otel/semconv/v1.33.0"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc"
 	experimental "google.golang.org/grpc/experimental/opentelemetry"
 	otelrpcs "google.golang.org/grpc/stats/opentelemetry"
 )
 
-const (
-	tracerScope         = "github.com/nipalab/nipa"
-	defaultOTLPEndpoint = "localhost:4317"
-)
+const tracerScope = "github.com/nipalab/nipa"
 
 // Span attribute names shared by client and server instrumentation.
 const (
@@ -49,6 +44,8 @@ const (
 type TracingConfig struct {
 	Enabled        bool
 	Endpoint       string
+	Protocol       string
+	Headers        map[string]string
 	Stdout         bool
 	SampleRatio    float64
 	ServiceName    string
@@ -74,28 +71,26 @@ func SetupTracing(ctx context.Context, cfg TracingConfig) (*Tracing, error) {
 		return t, nil
 	}
 
-	serviceName := strings.TrimSpace(cfg.ServiceName)
-	if serviceName == "" {
-		serviceName = "nipa"
+	serviceName := resolveServiceName(cfg.ServiceName)
+
+	protocol, err := resolveOTLPProtocol(cfg.Protocol)
+	if err != nil {
+		return nil, err
 	}
 
-	var (
-		exporter sdktrace.SpanExporter
-		err      error
-	)
+	var exporter sdktrace.SpanExporter
 	if cfg.Stdout {
 		exporter, err = stdouttrace.New(stdouttrace.WithPrettyPrint(), stdouttrace.WithWriter(os.Stderr))
+	} else if protocol == otlpProtocolHTTP {
+		exporter, err = otlptracehttp.New(ctx, resolveOTLPEndpoint(cfg.Endpoint, defaultOTLPHTTPEndpoint).traceHTTPOptions(cfg.Headers)...)
 	} else {
-		exporter, err = otlptracegrpc.New(ctx, resolveOTLPEndpoint(cfg.Endpoint).options()...)
+		exporter, err = otlptracegrpc.New(ctx, resolveOTLPEndpoint(cfg.Endpoint, defaultOTLPEndpoint).traceOptions(cfg.Headers)...)
 	}
 	if err != nil {
 		return nil, err
 	}
 
-	res, err := resource.Merge(resource.Default(), resource.NewSchemaless(
-		semconv.ServiceName(serviceName),
-		semconv.ServiceVersion(cfg.ServiceVersion),
-	))
+	res, err := telemetryResource(serviceName, cfg.ServiceVersion)
 	if err != nil {
 		return nil, err
 	}
@@ -191,46 +186,6 @@ func (t *Tracing) Shutdown(ctx context.Context) error {
 // is disabled.
 func StartSpan(ctx context.Context, name string, attrs ...attribute.KeyValue) (context.Context, trace.Span) {
 	return otel.Tracer(tracerScope).Start(ctx, name, trace.WithAttributes(attrs...))
-}
-
-func otlpEndpointFromEnv() bool {
-	return os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT") != "" || os.Getenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT") != ""
-}
-
-// otlpEndpointTarget is a resolved collector target. An empty endpoint leaves
-// the export configuration to the standard OTEL_* environment variables.
-type otlpEndpointTarget struct {
-	endpoint string
-	insecure bool
-}
-
-// resolveOTLPEndpoint picks the collector target: the configured endpoint
-// wins (a URL's scheme decides TLS, a bare host:port is plaintext), then the
-// standard OTEL_* variables, then the local plaintext default.
-func resolveOTLPEndpoint(configured string) otlpEndpointTarget {
-	configured = strings.TrimSpace(configured)
-	switch {
-	case configured == "":
-		if otlpEndpointFromEnv() {
-			return otlpEndpointTarget{}
-		}
-		return otlpEndpointTarget{endpoint: defaultOTLPEndpoint, insecure: true}
-	case strings.Contains(configured, "://"):
-		return otlpEndpointTarget{endpoint: configured}
-	default:
-		return otlpEndpointTarget{endpoint: configured, insecure: true}
-	}
-}
-
-func (t otlpEndpointTarget) options() []otlptracegrpc.Option {
-	switch {
-	case t.endpoint == "":
-		return nil
-	case t.insecure:
-		return []otlptracegrpc.Option{otlptracegrpc.WithEndpoint(t.endpoint), otlptracegrpc.WithInsecure()}
-	default:
-		return []otlptracegrpc.Option{otlptracegrpc.WithEndpointURL(t.endpoint)}
-	}
 }
 
 // FinishSpan records err (when non-nil) and ends the span.

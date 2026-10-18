@@ -45,6 +45,8 @@ type runOptions struct {
 	readiness    func(context.Context) error
 	metrics      *obs.Metrics
 	tracing      *obs.Tracing
+	logs         *obs.Logs
+	metricsPush  *obs.MetricsPush
 	routes       []func(*restful.WebService)
 	publicRoutes []func(*restful.WebService)
 }
@@ -70,6 +72,22 @@ func WithMetrics(metrics *obs.Metrics) Option {
 func WithTracing(tracing *obs.Tracing) Option {
 	return func(o *runOptions) {
 		o.tracing = tracing
+	}
+}
+
+// WithLogs flushes the OTLP log exporter on shutdown. A disabled handle (or
+// none) is a no-op.
+func WithLogs(logs *obs.Logs) Option {
+	return func(o *runOptions) {
+		o.logs = logs
+	}
+}
+
+// WithMetricsPush flushes the OTLP metrics exporter on shutdown. A disabled
+// handle (or none) is a no-op.
+func WithMetricsPush(metricsPush *obs.MetricsPush) Option {
+	return func(o *runOptions) {
+		o.metricsPush = metricsPush
 	}
 }
 
@@ -208,6 +226,16 @@ func Run(cfg *config.Config, reg *Registry, dispatchers []Dispatcher, opts ...Op
 			slog.Warn("tracing shutdown incomplete", "error", err)
 		}
 		traceCancel()
+		logsCtx, logsCancel := context.WithTimeout(context.Background(), shutdownTimeout)
+		if err := ro.logs.Shutdown(logsCtx); err != nil {
+			slog.Warn("logs shutdown incomplete", "error", err)
+		}
+		logsCancel()
+		metricsCtx, metricsCancel := context.WithTimeout(context.Background(), shutdownTimeout)
+		if err := ro.metricsPush.Shutdown(metricsCtx); err != nil {
+			slog.Warn("metrics push shutdown incomplete", "error", err)
+		}
+		metricsCancel()
 		os.Exit(0)
 	}()
 
