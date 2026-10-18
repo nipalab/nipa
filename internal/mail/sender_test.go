@@ -80,6 +80,32 @@ func TestNewFromConfig_SendGrid(t *testing.T) {
 	require.Contains(t, err.Error(), "from")
 }
 
+func TestNewFromConfig_Scaleway(t *testing.T) {
+	sender, err := NewFromConfig(Config{Sender: "scaleway", From: "noreply@example.com", Scaleway: ScalewayConfig{APIKey: "key", ProjectID: "project"}})
+	require.NoError(t, err)
+	scw, ok := sender.(*scalewaySender)
+	require.True(t, ok)
+	require.Equal(t, defaultScalewayEndpoint, scw.endpoint)
+	require.Equal(t, defaultScalewayRegion, scw.region)
+
+	custom, err := NewFromConfig(Config{Sender: "scaleway", From: "noreply@example.com", Scaleway: ScalewayConfig{APIKey: "key", ProjectID: "project", Region: "nl-ams", Endpoint: "https://api.scaleway.test/"}})
+	require.NoError(t, err)
+	require.Equal(t, "https://api.scaleway.test", custom.(*scalewaySender).endpoint)
+	require.Equal(t, "nl-ams", custom.(*scalewaySender).region)
+
+	_, err = NewFromConfig(Config{Sender: "scaleway", From: "noreply@example.com", Scaleway: ScalewayConfig{ProjectID: "project"}})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "api key")
+
+	_, err = NewFromConfig(Config{Sender: "scaleway", From: "noreply@example.com", Scaleway: ScalewayConfig{APIKey: "key"}})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "project id")
+
+	_, err = NewFromConfig(Config{Sender: "scaleway", Scaleway: ScalewayConfig{APIKey: "key", ProjectID: "project"}})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "from")
+}
+
 func TestNewFromConfig_HTTP(t *testing.T) {
 	sender, err := NewFromConfig(Config{Sender: "http", From: "noreply@example.com", HTTP: HTTPConfig{Endpoint: "https://mail.example.com/send"}})
 	require.NoError(t, err)

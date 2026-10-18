@@ -26,6 +26,12 @@ func (c *Config) MailSenderConfig() mail.Config {
 			APIKey:   c.EmailSendGridAPIKey,
 			Endpoint: c.EmailSendGridEndpoint,
 		},
+		Scaleway: mail.ScalewayConfig{
+			APIKey:    c.EmailScalewayAPIKey,
+			ProjectID: c.EmailScalewayProjectID,
+			Region:    c.EmailScalewayRegion,
+			Endpoint:  c.EmailScalewayEndpoint,
+		},
 		HTTP: mail.HTTPConfig{
 			Endpoint:     c.EmailHTTPEndpoint,
 			Method:       c.EmailHTTPMethod,

@@ -16,7 +16,7 @@ The free `nipad` never registers these routes, so every endpoint below answers
 | `SAAS_MODE` | `1` enables registration + social routes in `nipad-ee` |
 | `SAAS_FREE_QUOTA_BYTES` | free-tier quota seeded per new account (default `16106127360` = 15 GiB) |
 | `EMAIL_BASE_URL` | public web UI base URL; confirmation links are `<base>/verify?token=…` (required in SaaS mode) |
-| `EMAIL_SENDER` | must be `smtp`/`sendgrid`/`http` in SaaS mode to deliver confirmation emails; `off` logs a warning and creates accounts without sending |
+| `EMAIL_SENDER` | must be `smtp`/`sendgrid`/`scaleway`/`http` in SaaS mode to deliver confirmation emails; `off` logs a warning and creates accounts without sending |
 | `OAUTH_BASE_URL` | public base URL used to build OAuth callback URLs |
 | `OAUTH_GOOGLE_CLIENT_ID` / `OAUTH_GOOGLE_CLIENT_SECRET` | enable Google sign-in |
 | `OAUTH_GITHUB_CLIENT_ID` / `OAUTH_GITHUB_CLIENT_SECRET` | enable GitHub sign-in |

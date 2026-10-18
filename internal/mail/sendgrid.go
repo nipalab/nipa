@@ -11,10 +11,7 @@ import (
 	"time"
 )
 
-const (
-	defaultSendGridEndpoint = "https://api.sendgrid.com"
-	maxResponseSnippet      = 512
-)
+const defaultSendGridEndpoint = "https://api.sendgrid.com"
 
 type sendGridSender struct {
 	apiKey   string
@@ -170,16 +167,4 @@ func (s *sendGridSender) Send(ctx context.Context, msg Message) error {
 func (s *sendGridSender) Close() error {
 	s.client.CloseIdleConnections()
 	return nil
-}
-
-func responseSnippet(body io.Reader) string {
-	data, err := io.ReadAll(io.LimitReader(body, maxResponseSnippet))
-	if err != nil {
-		return ""
-	}
-	snippet := strings.TrimSpace(string(data))
-	if snippet == "" {
-		return ""
-	}
-	return ": " + snippet
 }

@@ -40,7 +40,7 @@ Environment:
   NIPA_TEST_PORT=6745       Free server port
   NIPA_TEST_EE_PORT=6747    Enterprise server port
   NIPA_TEST_EMAIL_PORT      Email receiver port (default: server port + 1)
-  NIPA_TEST_EMAIL_TRANSPORT Email transport exercised (sendgrid or http)
+  NIPA_TEST_EMAIL_TRANSPORT Email transport exercised (sendgrid, scaleway or http)
   NIPA_TEST_STORAGE_LEDGER  Enterprise storage ledger (default: cloud; set to
                             empty to disable, so the storage spec is skipped)
   NIPA_TEST_SAAS            SaaS onboarding routes (default: 1; set to empty
@@ -110,9 +110,18 @@ EMAIL_SENDGRID_ENDPOINT: 'http://127.0.0.1:$email_port'
 EOF
 )
 		;;
+	scaleway)
+		email_lines=$(cat <<EOF
+EMAIL_SENDER: scaleway
+EMAIL_SCALEWAY_API_KEY: 'client-e2e-scaleway-key'
+EMAIL_SCALEWAY_PROJECT_ID: '11111111-2222-3333-4444-555555555555'
+EMAIL_SCALEWAY_ENDPOINT: 'http://127.0.0.1:$email_port'
+EOF
+)
+		;;
 	http)
 		# The generic REST sender is configured to emit the same SendGrid v3
-		# shape the in-suite receiver decodes, so both transports exercise the
+		# shape the in-suite receiver decodes, so every transport exercises the
 		# same scenarios.
 		email_lines=$(cat <<EOF
 EMAIL_SENDER: http
@@ -122,7 +131,7 @@ EOF
 )
 		;;
 	*)
-		echo "unknown NIPA_TEST_EMAIL_TRANSPORT $EMAIL_TRANSPORT (expected sendgrid or http)" >&2
+		echo "unknown NIPA_TEST_EMAIL_TRANSPORT $EMAIL_TRANSPORT (expected sendgrid, scaleway or http)" >&2
 		exit 1
 		;;
 	esac
