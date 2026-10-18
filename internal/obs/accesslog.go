@@ -33,13 +33,13 @@ func AccessLog(quiet func(*http.Request) bool, next http.Handler) http.Handler {
 		}
 		switch {
 		case rec.status >= http.StatusInternalServerError:
-			logger.Error("http request", attrs...)
+			logger.ErrorContext(r.Context(), "http request", attrs...)
 		case rec.status >= http.StatusBadRequest:
-			logger.Warn("http request", attrs...)
+			logger.WarnContext(r.Context(), "http request", attrs...)
 		case quiet != nil && quiet(r):
-			logger.Debug("http request", attrs...)
+			logger.DebugContext(r.Context(), "http request", attrs...)
 		default:
-			logger.Info("http request", attrs...)
+			logger.InfoContext(r.Context(), "http request", attrs...)
 		}
 	})
 }

@@ -60,17 +60,19 @@ func TestResolveOTLPProtocol(t *testing.T) {
 }
 
 func TestResolveOTLPEndpointHTTPDefault(t *testing.T) {
-	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "")
-	t.Setenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "")
+	t.Setenv(envOTLPEndpoint, "")
+	t.Setenv(envOTLPTracesEndpoint, "")
+	t.Setenv(envOTLPLogsEndpoint, "")
+	t.Setenv(envOTLPMetricsEndpoint, "")
 
-	target := resolveOTLPEndpoint("", defaultOTLPHTTPEndpoint)
+	target := resolveOTLPEndpoint("", defaultOTLPHTTPEndpoint, envOTLPTracesEndpoint)
 	require.Equal(t, defaultOTLPHTTPEndpoint, target.endpoint)
 	require.True(t, target.insecure)
 	require.Len(t, target.traceHTTPOptions(nil), 2)
 	require.Len(t, target.logHTTPOptions(nil), 2)
 	require.Len(t, target.metricHTTPOptions(nil), 2)
 
-	target = resolveOTLPEndpoint("https://openobserve.example.com/api/default", defaultOTLPHTTPEndpoint)
+	target = resolveOTLPEndpoint("https://openobserve.example.com/api/default", defaultOTLPHTTPEndpoint, envOTLPTracesEndpoint)
 	require.False(t, target.insecure, "an explicit URL scheme decides TLS")
 	require.Len(t, target.traceHTTPOptions(nil), 1)
 	require.Len(t, target.logHTTPOptions(nil), 1)
@@ -80,6 +82,13 @@ func TestResolveOTLPEndpointHTTPDefault(t *testing.T) {
 	require.Len(t, target.traceHTTPOptions(headers), 2, "headers must be appended to the TLS options")
 	require.Len(t, target.logHTTPOptions(headers), 2)
 	require.Len(t, target.metricHTTPOptions(headers), 2)
+
+	t.Setenv(envOTLPMetricsEndpoint, "https://metrics.example.com")
+	target = resolveOTLPEndpoint("", defaultOTLPHTTPEndpoint, envOTLPMetricsEndpoint)
+	require.Empty(t, target.endpoint, "the metrics-specific variable defers for metrics")
+	target = resolveOTLPEndpoint("", defaultOTLPHTTPEndpoint, envOTLPLogsEndpoint)
+	require.Equal(t, defaultOTLPHTTPEndpoint, target.endpoint,
+		"another signal's env variable must not suppress the fallback for logs")
 }
 
 func TestSetup_UnknownProtocol(t *testing.T) {

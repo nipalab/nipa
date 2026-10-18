@@ -130,6 +130,34 @@ func TestSetupLogs_ExportsRecordsWithHeaders(t *testing.T) {
 	require.Contains(t, receiver.headers[0].Get("authorization"), "Basic dXNlcjpwYXNz")
 }
 
+func TestSetupLogs_HonorsLogsEnvEndpoint(t *testing.T) {
+	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+
+	receiver := &logsReceiver{}
+	registrar := grpc.NewServer()
+	collogspb.RegisterLogsServiceServer(registrar, receiver)
+	go func() { _ = registrar.Serve(lis) }()
+	t.Cleanup(registrar.Stop)
+
+	t.Setenv(envOTLPLogsEndpoint, "http://"+lis.Addr().String())
+
+	logs, err := SetupLogs(context.Background(), LogsConfig{Enabled: true})
+	require.NoError(t, err)
+
+	record := slog.NewRecord(time.Now(), slog.LevelInfo, "hello", 0)
+	require.NoError(t, logs.Handler().Handle(context.Background(), record))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	require.NoError(t, logs.Shutdown(ctx))
+
+	receiver.mu.Lock()
+	defer receiver.mu.Unlock()
+	require.NotEmpty(t, receiver.requests,
+		"an endpoint-less config must defer to OTEL_EXPORTER_OTLP_LOGS_ENDPOINT instead of localhost")
+}
+
 func TestSetupLogs_ExportsOverHTTP(t *testing.T) {
 	var (
 		mu       sync.Mutex

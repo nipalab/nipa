@@ -9,11 +9,13 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type recordStore struct {
-	mu      sync.Mutex
-	records []slog.Record
+	mu       sync.Mutex
+	records  []slog.Record
+	contexts []context.Context
 }
 
 type recordCollector struct {
@@ -27,11 +29,12 @@ func newRecordCollector() *recordCollector {
 
 func (c *recordCollector) Enabled(context.Context, slog.Level) bool { return true }
 
-func (c *recordCollector) Handle(_ context.Context, r slog.Record) error {
+func (c *recordCollector) Handle(ctx context.Context, r slog.Record) error {
 	r.AddAttrs(c.attrs...)
 	c.store.mu.Lock()
 	defer c.store.mu.Unlock()
 	c.store.records = append(c.store.records, r.Clone())
+	c.store.contexts = append(c.store.contexts, ctx)
 	return nil
 }
 
@@ -45,6 +48,12 @@ func (c *recordCollector) records() []slog.Record {
 	c.store.mu.Lock()
 	defer c.store.mu.Unlock()
 	return append([]slog.Record{}, c.store.records...)
+}
+
+func (c *recordCollector) contexts() []context.Context {
+	c.store.mu.Lock()
+	defer c.store.mu.Unlock()
+	return append([]context.Context{}, c.store.contexts...)
 }
 
 func attrsOf(r slog.Record) map[string]any {
@@ -222,4 +231,24 @@ func TestAccessLog_RequestIDFromContext(t *testing.T) {
 
 	attrs := attrsOf(collector.records()[0])
 	require.Equal(t, "req-99", attrs["request_id"])
+}
+
+func TestAccessLog_CarriesTraceContext(t *testing.T) {
+	tracing, _ := withRecordingProvider(t)
+	collector := installCollector(t)
+
+	// The server wraps the access log inside the tracing handler so its
+	// context carries the request span.
+	h := tracing.HTTPHandler("nipa", AccessLog(nil, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})), nil)
+	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/api/v1/orgs", nil))
+
+	records := collector.records()
+	require.Len(t, records, 1)
+	require.Equal(t, "http request", records[0].Message)
+
+	contexts := collector.contexts()
+	require.True(t, trace.SpanContextFromContext(contexts[0]).IsValid(),
+		"the access log must run inside the request span so logs correlate with traces")
 }

@@ -185,9 +185,9 @@ func Run(cfg *config.Config, reg *Registry, dispatchers []Dispatcher, opts ...Op
 		}
 	})
 
-	handler := obs.RequestID(obs.AccessLog(func(r *http.Request) bool {
+	handler := obs.RequestID(ro.tracing.HTTPHandler("nipa", obs.AccessLog(func(r *http.Request) bool {
 		return !isAPIPath(r.URL.Path)
-	}, ro.tracing.HTTPHandler("nipa", mainHandler, skipTraceRequest)))
+	}, mainHandler), skipTraceRequest))
 
 	protocols := new(http.Protocols)
 	protocols.SetHTTP1(true)

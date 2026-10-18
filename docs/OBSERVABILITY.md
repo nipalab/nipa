@@ -229,9 +229,11 @@ support **OTLP/gRPC** (default) and **OTLP/HTTP**.
   `LOGS_OTLP_PROTOCOL` (fall back to the `TRACING_*` values), headers shared
   via `TRACING_OTLP_HEADERS`.
 
-Records emitted with a context (`obs.Log(ctx)`, `slog.*Context`, the access
-log) carry the active `trace_id`/`span_id`, so logs and spans correlate in the
-backend.
+Records emitted through the request context (`slog.InfoContext` and friends,
+including the access log and unhandled-error logs) carry the active
+`trace_id`/`span_id`, so logs and spans correlate in the backend. Logger calls
+without a context (`slog.Info`, `obs.Log(ctx).Info`) keep the request ID but
+not the span IDs.
 
 ### OpenObserve runbook (SaaS)
 

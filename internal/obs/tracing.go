@@ -82,9 +82,9 @@ func SetupTracing(ctx context.Context, cfg TracingConfig) (*Tracing, error) {
 	if cfg.Stdout {
 		exporter, err = stdouttrace.New(stdouttrace.WithPrettyPrint(), stdouttrace.WithWriter(os.Stderr))
 	} else if protocol == otlpProtocolHTTP {
-		exporter, err = otlptracehttp.New(ctx, resolveOTLPEndpoint(cfg.Endpoint, defaultOTLPHTTPEndpoint).traceHTTPOptions(cfg.Headers)...)
+		exporter, err = otlptracehttp.New(ctx, resolveOTLPEndpoint(cfg.Endpoint, defaultOTLPHTTPEndpoint, envOTLPTracesEndpoint).traceHTTPOptions(cfg.Headers)...)
 	} else {
-		exporter, err = otlptracegrpc.New(ctx, resolveOTLPEndpoint(cfg.Endpoint, defaultOTLPEndpoint).traceOptions(cfg.Headers)...)
+		exporter, err = otlptracegrpc.New(ctx, resolveOTLPEndpoint(cfg.Endpoint, defaultOTLPEndpoint, envOTLPTracesEndpoint).traceOptions(cfg.Headers)...)
 	}
 	if err != nil {
 		return nil, err

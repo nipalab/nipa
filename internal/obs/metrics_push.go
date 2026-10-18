@@ -45,9 +45,9 @@ func SetupMetricsPush(ctx context.Context, metrics *Metrics, cfg MetricsPushConf
 
 	var exporter sdkmetric.Exporter
 	if protocol == otlpProtocolHTTP {
-		exporter, err = otlpmetrichttp.New(ctx, resolveOTLPEndpoint(cfg.Endpoint, defaultOTLPHTTPEndpoint).metricHTTPOptions(cfg.Headers)...)
+		exporter, err = otlpmetrichttp.New(ctx, resolveOTLPEndpoint(cfg.Endpoint, defaultOTLPHTTPEndpoint, envOTLPMetricsEndpoint).metricHTTPOptions(cfg.Headers)...)
 	} else {
-		exporter, err = otlpmetricgrpc.New(ctx, resolveOTLPEndpoint(cfg.Endpoint, defaultOTLPEndpoint).metricOptions(cfg.Headers)...)
+		exporter, err = otlpmetricgrpc.New(ctx, resolveOTLPEndpoint(cfg.Endpoint, defaultOTLPEndpoint, envOTLPMetricsEndpoint).metricOptions(cfg.Headers)...)
 	}
 	if err != nil {
 		return nil, err

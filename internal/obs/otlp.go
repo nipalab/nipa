@@ -27,6 +27,15 @@ const (
 	otlpProtocolHTTP = "http"
 )
 
+// Standard OTLP endpoint environment variables, honored when Nipa's own
+// endpoint config is empty.
+const (
+	envOTLPEndpoint        = "OTEL_EXPORTER_OTLP_ENDPOINT"
+	envOTLPTracesEndpoint  = "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"
+	envOTLPLogsEndpoint    = "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT"
+	envOTLPMetricsEndpoint = "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT"
+)
+
 // resolveOTLPProtocol normalizes the configured OTLP transport. Empty means
 // gRPC.
 func resolveOTLPProtocol(configured string) (string, error) {
@@ -65,8 +74,14 @@ func ParseHeaders(raw string) map[string]string {
 	return headers
 }
 
-func otlpEndpointFromEnv() bool {
-	return os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT") != "" || os.Getenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT") != ""
+// otlpEndpointFromEnv reports whether the standard environment variables
+// configure the endpoint for the signal: the general variable or the
+// signal-specific one, mirroring how each OTLP exporter resolves them.
+func otlpEndpointFromEnv(signalEndpointEnv string) bool {
+	if os.Getenv(envOTLPEndpoint) != "" {
+		return true
+	}
+	return signalEndpointEnv != "" && os.Getenv(signalEndpointEnv) != ""
 }
 
 // otlpEndpointTarget is a resolved collector target. An empty endpoint leaves
@@ -78,14 +93,15 @@ type otlpEndpointTarget struct {
 
 // resolveOTLPEndpoint picks the collector target: the configured endpoint
 // wins (a URL's scheme decides TLS, a bare host:port is plaintext), then the
-// standard OTEL_* variables, then the fallback default. HTTP endpoints may
-// carry a path prefix (OpenObserve uses /api/<org>); the exporters append
-// /v1/traces or /v1/logs.
-func resolveOTLPEndpoint(configured, fallback string) otlpEndpointTarget {
+// standard OTEL_* variables for the signal (signalEndpointEnv is e.g.
+// OTEL_EXPORTER_OTLP_LOGS_ENDPOINT), then the fallback default. HTTP
+// endpoints may carry a path prefix (OpenObserve uses /api/<org>); the
+// exporters append /v1/traces, /v1/logs or /v1/metrics.
+func resolveOTLPEndpoint(configured, fallback, signalEndpointEnv string) otlpEndpointTarget {
 	configured = strings.TrimSpace(configured)
 	switch {
 	case configured == "":
-		if otlpEndpointFromEnv() {
+		if otlpEndpointFromEnv(signalEndpointEnv) {
 			return otlpEndpointTarget{}
 		}
 		return otlpEndpointTarget{endpoint: fallback, insecure: true}

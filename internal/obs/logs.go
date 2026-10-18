@@ -42,9 +42,9 @@ func SetupLogs(ctx context.Context, cfg LogsConfig) (*Logs, error) {
 
 	var exporter sdklog.Exporter
 	if protocol == otlpProtocolHTTP {
-		exporter, err = otlploghttp.New(ctx, resolveOTLPEndpoint(cfg.Endpoint, defaultOTLPHTTPEndpoint).logHTTPOptions(cfg.Headers)...)
+		exporter, err = otlploghttp.New(ctx, resolveOTLPEndpoint(cfg.Endpoint, defaultOTLPHTTPEndpoint, envOTLPLogsEndpoint).logHTTPOptions(cfg.Headers)...)
 	} else {
-		exporter, err = otlploggrpc.New(ctx, resolveOTLPEndpoint(cfg.Endpoint, defaultOTLPEndpoint).logOptions(cfg.Headers)...)
+		exporter, err = otlploggrpc.New(ctx, resolveOTLPEndpoint(cfg.Endpoint, defaultOTLPEndpoint, envOTLPLogsEndpoint).logOptions(cfg.Headers)...)
 	}
 	if err != nil {
 		return nil, err
