@@ -1426,3 +1426,19 @@ func TestUpdate_Run_DetachedNoPin(t *testing.T) {
 	err := updater.Run(context.Background(), t.TempDir())
 	require.EqualError(t, err, "no commit checked out; run nipa switch to a branch first")
 }
+
+func TestEstimateBytesToDownload_FallsBackToFileSize(t *testing.T) {
+	var first, second serverDomain.Hash
+	first[0], second[0] = 1, 2
+	files := []materializedFile{{
+		SizeBytes:   1024,
+		ChunkHashes: []serverDomain.Hash{first, second},
+		ChunkSizes:  []int64{0, 0},
+	}}
+
+	require.Equal(t, int64(1024), estimateBytesToDownload(files, []serverDomain.Hash{first, second}),
+		"a full download of a file without chunk sizes must estimate its size")
+	require.Equal(t, int64(512), estimateBytesToDownload(files, []serverDomain.Hash{first}),
+		"a partial download must scale the file size by the missing chunk ratio")
+	require.Zero(t, estimateBytesToDownload(files, nil))
+}
