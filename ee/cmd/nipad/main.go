@@ -313,7 +313,12 @@ func resolveSnowflakeNode(cfg *config.Config, dbConn *sql.DB) (snow.Node, *nodel
 }
 
 func createStorageLedger(cfg *config.Config, dbConn *sql.DB) (*storageusage.Ledger, error) {
-	switch strings.ToLower(strings.TrimSpace(cfg.StorageLedger)) {
+	setting := strings.ToLower(strings.TrimSpace(cfg.StorageLedger))
+	if setting == "" && cfg.SaaSMode {
+		slog.Info("SAAS_MODE enables the cloud storage ledger so seeded quotas are enforced")
+		setting = "cloud"
+	}
+	switch setting {
 	case "":
 		return nil, nil
 	case "cloud":

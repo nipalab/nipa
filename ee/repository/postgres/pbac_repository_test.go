@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/snow"
 )
 
 type PBACRepositorySuite struct {
@@ -15,6 +16,20 @@ type PBACRepositorySuite struct {
 
 func TestPBACRepositorySuite(t *testing.T) {
 	suite.Run(t, new(PBACRepositorySuite))
+}
+
+func (s *PBACRepositorySuite) TestProjectOrgID() {
+	ctx := context.Background()
+	repo := NewPBACRepository(s.db)
+
+	projectID := seedProject(s.T(), s.q, 1, "game")
+
+	orgID, err := repo.ProjectOrgID(ctx, projectID)
+	s.Require().NoError(err)
+	s.Equal(snow.ID(1), orgID)
+
+	_, err = repo.ProjectOrgID(ctx, snow.ID(999999))
+	requireRecordNotFound(s.T(), err)
 }
 
 func (s *PBACRepositorySuite) TestListEffectiveRules() {

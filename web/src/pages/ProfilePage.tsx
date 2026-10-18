@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { CSSProperties } from 'react'
 import { Button, Checkbox, Flash, FormControl, Heading, Stack, TextInput } from '@primer/react'
+import { Link } from 'react-router-dom'
 import { changeMyPassword, updateMyProfile } from '../api/endpoints'
 import { useAuth } from '../auth'
 import { ActorAvatar } from '../components/repo/ActorAvatar'
@@ -80,6 +81,7 @@ export default function ProfilePage() {
           <a href="#password">Password and authentication</a>
           <a href="#connected-accounts">Connected accounts</a>
           <a href="#ssh-keys">SSH keys</a>
+          <Link to="/settings/billing">Billing</Link>
         </nav>
         <div className="nipa-settings-main">
           <form id="public-profile" onSubmit={saveProfile} style={CARD}>

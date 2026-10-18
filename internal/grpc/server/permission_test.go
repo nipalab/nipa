@@ -31,13 +31,16 @@ func newTestPermissionHandler(t *testing.T) (*nipaServer, *MockpbacRepository) {
 
 	ctrl := gomock.NewController(t)
 	repo := NewMockpbacRepository(ctrl)
+	repo.EXPECT().ProjectOrgID(gomock.Any(), gomock.Any()).Return(snow.ID(1), nil).AnyTimes()
 	users := NewMockuserLookup(ctrl)
 	users.EXPECT().GetByID(gomock.Any(), gomock.Any()).Return(&domain.User{}, nil).AnyTimes()
 	groups := NewMockgroupLookup(ctrl)
 	groups.EXPECT().GetByID(gomock.Any(), gomock.Any()).Return(&domain.Group{OrgID: 1}, nil).AnyTimes()
+	orgs := NewMockorgAuthorizer(ctrl)
+	orgs.EXPECT().IsOrgOwner(gomock.Any(), gomock.Any()).Return(false, nil).AnyTimes()
 	uc := &mockUsecaseContainer{
 		common:     newTestCommon(),
-		permission: usecase.NewPermission(repo, users, groups, NewMockorgAuthorizer(ctrl)),
+		permission: usecase.NewPermission(repo, users, groups, orgs),
 	}
 	return New(uc), repo
 }

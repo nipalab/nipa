@@ -1,20 +1,12 @@
 import { useState } from 'react'
 import { Button, FormControl, Link as PrimerLink, Stack, Text, Textarea, TextInput } from '@primer/react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import { ApiError } from '../api/client'
 import { createProject, listOrgs } from '../api/endpoints'
 import { useAuth } from '../auth'
 import { ErrorBanner, Loading, Page } from '../components/ui'
 import { useAsync } from '../hooks'
-
-const SLUG_PATTERN = /^[a-z0-9][a-z0-9-]*$/
-
-function slugify(value: string): string {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-}
+import { SLUG_PATTERN, slugify } from '../slug'
 
 export default function NewProjectPage() {
   const { org = '' } = useParams()
@@ -24,6 +16,7 @@ export default function NewProjectPage() {
   const [name, setName] = useState('')
   const [slug, setSlug] = useState('')
   const [slugEdited, setSlugEdited] = useState(false)
+  const [slugError, setSlugError] = useState<string | null>(null)
   const [description, setDescription] = useState('')
   const [saving, setSaving] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
@@ -31,7 +24,7 @@ export default function NewProjectPage() {
   const role = orgs?.find((item) => item.slug === org)?.role
   const canManage = Boolean(me?.is_admin || me?.is_super_admin || role === 'owner')
   const effectiveSlug = slugEdited ? slug : slugify(name)
-  const slugValid = effectiveSlug === '' || SLUG_PATTERN.test(effectiveSlug)
+  const slugValid = effectiveSlug !== '' && SLUG_PATTERN.test(effectiveSlug)
   const canSubmit = name.trim() !== '' && slugValid && !saving
 
   if (orgsLoading) {
@@ -58,11 +51,16 @@ export default function NewProjectPage() {
     if (!canSubmit) return
     setSaving(true)
     setActionError(null)
+    setSlugError(null)
     try {
-      const project = await createProject(org, name.trim(), description, slugEdited ? slug.trim() : '')
+      const project = await createProject(org, name.trim(), description, effectiveSlug)
       navigate(`/${org}/${project.slug}`)
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : String(err))
+      if (err instanceof ApiError && err.status === 409) {
+        setSlugError('This slug is already taken. Choose a different one.')
+      } else {
+        setActionError(err instanceof Error ? err.message : String(err))
+      }
       setSaving(false)
     }
   }
@@ -85,16 +83,25 @@ export default function NewProjectPage() {
         <Stack direction="vertical" gap="normal">
           <FormControl required>
             <FormControl.Label>Name</FormControl.Label>
-            <TextInput block value={name} onChange={(event) => setName(event.target.value)} autoFocus />
+            <TextInput
+              block
+              value={name}
+              onChange={(event) => {
+                setName(event.target.value)
+                setSlugError(null)
+              }}
+              autoFocus
+            />
           </FormControl>
-          <FormControl>
-            <FormControl.Label>Slug (optional)</FormControl.Label>
+          <FormControl required>
+            <FormControl.Label>Slug</FormControl.Label>
             <TextInput
               block
               value={effectiveSlug}
               onChange={(event) => {
                 setSlugEdited(true)
                 setSlug(event.target.value)
+                setSlugError(null)
               }}
             />
             <FormControl.Caption>
@@ -102,9 +109,12 @@ export default function NewProjectPage() {
             </FormControl.Caption>
             {!slugValid && (
               <FormControl.Validation variant="error">
-                Slug must start with a letter or digit and contain only lowercase letters, digits and dashes.
+                {effectiveSlug === ''
+                  ? 'Slug is required.'
+                  : 'Slug must start with a letter or digit and contain only lowercase letters, digits and dashes.'}
               </FormControl.Validation>
             )}
+            {slugError && <FormControl.Validation variant="error">{slugError}</FormControl.Validation>}
           </FormControl>
           <FormControl>
             <FormControl.Label>Description</FormControl.Label>

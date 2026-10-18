@@ -48,6 +48,15 @@ CHUNK_S3_SECRET_ACCESS_KEY: ''
 CHUNK_URL_SIGNING_KEY: change-me
 CHUNK_PRESIGN_TTL_SECONDS: 3600
 CHUNK_MAX_PAGE_SIZE: 1000
+# Enterprise storage accounting and quota (`nipad-ee` only, see
+# docs/CLOUD_STORAGE_QUOTA.md). Empty disables the ledger and its
+# /orgs/{org}/storage and /billing/me routes; `cloud` tracks usage per
+# project/org/owner and enforces the owner quota. SAAS_MODE turns it on
+# automatically so the seeded free-tier quota is enforced and visible.
+STORAGE_LEDGER: ''
+# Quota in bytes for owners without an explicit quota row (default
+# 16106127360 = 15 GiB; set 0 for unlimited).
+STORAGE_LEDGER_DEFAULT_QUOTA_BYTES: 16106127360
 # Comma-separated hostnames, IPs or CIDR ranges webhooks may reach. Empty
 # allows public addresses only; loopback/private targets need an entry.
 WEBHOOK_EGRESS_ALLOWLIST: ''
@@ -98,7 +107,8 @@ EMAIL_HTTP_BODY_TEMPLATE: ''
 # SaaS onboarding (`nipad-ee` only, see docs/SAAS_ONBOARDING.md). SAAS_MODE=1
 # enables self-registration with email confirmation and the social login
 # routes; existing deployments keep it off. Registration needs EMAIL_BASE_URL
-# (the confirmation link) and a configured EMAIL_SENDER to deliver it.
+# (the confirmation link) and a configured EMAIL_SENDER to deliver it. SaaS
+# mode also enables the cloud storage ledger (see STORAGE_LEDGER above).
 SAAS_MODE: false
 # Free-tier storage quota seeded for every self-registered account (bytes).
 SAAS_FREE_QUOTA_BYTES: 16106127360

@@ -542,14 +542,29 @@ func estimateBytesToDownload(files []materializedFile, missing []domain.Hash) in
 	}
 	var total int64
 	for _, f := range files {
+		matched, known := 0, int64(0)
+		unknown := false
 		for i, h := range f.ChunkHashes {
 			if _, ok := missingSet[h]; !ok {
 				continue
 			}
 			delete(missingSet, h)
-			if i < len(f.ChunkSizes) {
-				total += f.ChunkSizes[i]
+			matched++
+			if i < len(f.ChunkSizes) && f.ChunkSizes[i] > 0 {
+				known += f.ChunkSizes[i]
+			} else {
+				unknown = true
 			}
+		}
+		if matched == 0 {
+			continue
+		}
+		if unknown {
+			// The tree manifest does not carry per-chunk sizes, so scale the
+			// file size by the missing chunk ratio (exact for a full download).
+			total += f.SizeBytes * int64(matched) / int64(len(f.ChunkHashes))
+		} else {
+			total += known
 		}
 	}
 	return total

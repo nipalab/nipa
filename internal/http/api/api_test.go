@@ -737,6 +737,48 @@ func TestAPIRoutes(t *testing.T) {
 		gone.Body.Close()
 	})
 
+	t.Run("org owner has full project access", func(t *testing.T) {
+		superLogin, _ := loginAs(t, "nipa")
+
+		createDave := doMethod(t, http.MethodPost, server.URL+"/api/v1/users",
+			`{"name":"dave","email":"dave@example.com","password":"password123"}`, superLogin.AccessToken)
+		require.Equal(t, http.StatusOK, createDave.StatusCode)
+		dave := decodeBody[model.UserResponse](t, createDave)
+		require.False(t, dave.IsAdmin)
+		daveLogin, _ := loginAs(t, "dave@example.com")
+
+		createOrg := doMethod(t, http.MethodPost, server.URL+"/api/v1/orgs",
+			`{"name":"Dave Studio","slug":"dave-studio"}`, daveLogin.AccessToken)
+		require.Equal(t, http.StatusOK, createOrg.StatusCode)
+		createOrg.Body.Close()
+
+		base := server.URL + "/api/v1/orgs/dave-studio/projects"
+		create := doMethod(t, http.MethodPost, base, `{"name":"Game","slug":"game"}`, daveLogin.AccessToken)
+		require.Equal(t, http.StatusOK, create.StatusCode)
+		project := decodeBody[model.ProjectResponse](t, create)
+		require.Equal(t, "game", project.Slug)
+
+		got := doGet(t, base+"/game", daveLogin.AccessToken)
+		require.Equal(t, http.StatusOK, got.StatusCode)
+		got.Body.Close()
+
+		projects := decodeBody[[]model.ProjectResponse](t, doGet(t, base, daveLogin.AccessToken))
+		require.Len(t, projects, 1)
+
+		perms := decodeBody[model.ProjectPermissionResponse](t, doGet(t, base+"/game/permissions/me", daveLogin.AccessToken))
+		require.Equal(t, uint64(domain.PermissionAll), perms.ProjectPermission)
+
+		addBob := doMethod(t, http.MethodPost, server.URL+"/api/v1/orgs/dave-studio/members",
+			`{"email":"bob@example.com","role":"member"}`, daveLogin.AccessToken)
+		require.Equal(t, http.StatusOK, addBob.StatusCode)
+		addBob.Body.Close()
+
+		bobLogin, _ := loginAs(t, "bob@example.com")
+		hidden := doGet(t, base+"/game", bobLogin.AccessToken)
+		require.Equal(t, http.StatusNotFound, hidden.StatusCode, "org members without rules stay denied")
+		hidden.Body.Close()
+	})
+
 	t.Run("repository browser", func(t *testing.T) {
 		seed := seedBrowserFiles(t, map[string]string{
 			"public/a.txt":   "hello",

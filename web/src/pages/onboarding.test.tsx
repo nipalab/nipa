@@ -204,7 +204,7 @@ describe('VerifyPage', () => {
 })
 
 describe('OnboardingPage', () => {
-  it('creates the first workspace and navigates to it', async () => {
+  it('creates the first workspace with the derived slug and navigates to it', async () => {
     const calls: { url: string; method: string; body: unknown }[] = []
     stubRoutes((url, init) => {
       const method = init?.method ?? 'GET'
@@ -219,16 +219,73 @@ describe('OnboardingPage', () => {
     const { container } = await renderApp('/onboarding')
     await waitForText(container, 'Name your workspace')
 
-    const input = container.querySelector('input') as HTMLInputElement
+    const inputs = container.querySelectorAll('input')
     await act(async () => {
-      setInputValue(input, 'Acme')
+      setInputValue(inputs[0] as HTMLInputElement, 'Acme')
+    })
+    expect((inputs[1] as HTMLInputElement).value).toBe('acme')
+
+    await act(async () => {
+      findButtonIn(container, 'Create workspace').click()
+    })
+    await waitFor(() => calls.length > 0)
+    expect(calls[0]?.body).toEqual({ name: 'Acme', slug: 'acme' })
+    await waitFor(() => window.location.pathname === '/acme')
+  })
+
+  it('lets the user override the derived slug', async () => {
+    const calls: { url: string; method: string; body: unknown }[] = []
+    stubRoutes((url, init) => {
+      const method = init?.method ?? 'GET'
+      if (url.endsWith('/api/v1/orgs') && method === 'POST') {
+        calls.push({ url, method, body: init?.body ? JSON.parse(String(init.body)) : undefined })
+        return jsonResponse({ id: '9', slug: 'acme-studio', name: 'Acme Game Studio', role: 'owner' })
+      }
+      if (url.endsWith('/api/v1/orgs/acme-studio/projects') && method === 'GET') return jsonResponse([])
+      return null
+    })
+
+    const { container } = await renderApp('/onboarding')
+    await waitForText(container, 'Name your workspace')
+
+    const inputs = container.querySelectorAll('input')
+    await act(async () => {
+      setInputValue(inputs[0] as HTMLInputElement, 'Acme Game Studio')
+    })
+    expect((inputs[1] as HTMLInputElement).value).toBe('acme-game-studio')
+
+    await act(async () => {
+      setInputValue(inputs[1] as HTMLInputElement, 'acme-studio')
     })
     await act(async () => {
       findButtonIn(container, 'Create workspace').click()
     })
     await waitFor(() => calls.length > 0)
-    expect(calls[0]?.body).toEqual({ name: 'Acme', slug: '' })
-    await waitFor(() => window.location.pathname === '/acme')
+    expect(calls[0]?.body).toEqual({ name: 'Acme Game Studio', slug: 'acme-studio' })
+    await waitFor(() => window.location.pathname === '/acme-studio')
+  })
+
+  it('reports a taken slug at the field and stays on the page', async () => {
+    stubRoutes((url, init) => {
+      if (url.endsWith('/api/v1/orgs') && (init?.method ?? 'GET') === 'POST') {
+        return jsonResponse({ error: 'organization slug already in use' }, 409)
+      }
+      return null
+    })
+
+    const { container } = await renderApp('/onboarding')
+    await waitForText(container, 'Name your workspace')
+
+    const inputs = container.querySelectorAll('input')
+    await act(async () => {
+      setInputValue(inputs[0] as HTMLInputElement, 'Acme')
+    })
+    await act(async () => {
+      findButtonIn(container, 'Create workspace').click()
+    })
+
+    await waitForText(container, 'already taken')
+    expect(window.location.pathname).toBe('/onboarding')
   })
 })
 

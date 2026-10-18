@@ -72,6 +72,7 @@ Patterns are directory prefixes, not globs (Git cone-mode semantics):
 ```
 resolve(claim, project, path) -> Permission:
   admin/super-admin                    -> PermissionAll
+  org owner                            -> PermissionAll
   mask := 0
   for rule in effective_rules(user, project):   # user rules + group rules
       if PrefixCovers(rule.path_prefix, path):
@@ -82,10 +83,17 @@ resolve(claim, project, path) -> Permission:
   return mask
 ```
 
+- An owner of the project's organization (`org_members.role = 'owner'`)
+  implicitly holds `PermissionAll` on every project in that org — the creator
+  of an org can use the projects they create without seeding rules. Plain org
+  members get nothing without rules. `Permission.load` resolves this per
+  project through `pbacRepository.ProjectOrgID` + `orgAuthorizer.IsOrgOwner`
+  (cached with the rest of the rule set, so owner add/demote/remove surfaces
+  at the next TTL expiry).
 - Effective rules are fetched with one query that joins `group_members` and
   resolves org scope via the project (`pbac.sql`, `PBACRuleListEffective`).
-- `HasProjectAccess(project, bit)` = admin OR any rule/default carries the bit;
-  it gates project-wide operations (list branches, clone).
+- `HasProjectAccess(project, bit)` = admin OR org owner OR any rule/default
+  carries the bit; it gates project-wide operations (list branches, clone).
 - `HasPathAccess(project, path, bit)` checks `resolve`.
 - A path with `Read` denied returns **404** (do not disclose existence); a path
   readable but not writable returns **403**.
@@ -134,7 +142,8 @@ by `ConfirmChunkUploads` after the content exists.
 ### Admin surface
 
 `GetMyPermissions` is available to any authenticated user. Rule and project
-default management requires `IsAdmin`/`IsSuperAdmin` or a rule granting
+default management requires `IsAdmin`/`IsSuperAdmin`, an owner of the project's
+organization, or a rule granting
 `PermissionAdmin` on the whole project (prefix `""`); org-wide rules (no
 project) require a global admin, and the gRPC API currently creates
 project-scoped rules only. Rule targets are validated: the user must exist and

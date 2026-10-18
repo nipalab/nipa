@@ -5,7 +5,7 @@ The same Ginkgo suite runs against the free (`nipad`) and enterprise
 (`nipad-ee`) servers so both editions are verified to behave identically from
 the client's point of view.
 
-Coverage (219 specs): every in-repo command and flag — `login` (SSH key:
+Coverage (220 specs): every in-repo command and flag — `login` (SSH key:
 key-only sign-in, lazy sign-in for clone through `NIPA_SSH_KEY`,
 unregistered-key rejection and username binding), `clone`, `branch`,
 `add`, `remove`, `restore`, `status`, `push`, `update`, `switch` (branch and
@@ -15,7 +15,8 @@ unregistered-key rejection and username binding), `clone`, `branch`,
 `lock`/`unlock`, `mr`, `acl` (rules and path defaults), `group` — plus the
 runtime commands `nipa serve` (daemon gRPC API), `nipa mcp` (MCP over stdio)
 and the webhook delivery pipeline (push/branch/tag/mr events, signatures,
-filters, ping, retries/redelivery), multi-user permission/lock scenarios,
+filters, ping, retries/redelivery), multi-user permission/lock scenarios
+(org owners' implicit full project access and plain members' deny-by-default),
 `NIPA_OUTPUT=json` and the exit-code contract (0/1/2/127).
 
 The enterprise run additionally enables the SaaS onboarding stack
@@ -113,6 +114,7 @@ tests/
     lock_test.go          nipa lock/unlock
     mr_test.go            nipa mr
     acl_test.go           nipa acl + permission defaults
+    org_owner_test.go     org owners' implicit project access vs. members
     group_test.go         nipa group
     meta_test.go          JSON output modes and error envelopes
     onboarding_test.go    SaaS registration + email confirmation (ee only)

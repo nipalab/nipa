@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"io"
+	"strings"
 )
 
 type progressRenderer struct {
@@ -13,6 +14,7 @@ type progressRenderer struct {
 	doneObjects  int
 	doneBytes    int64
 	reported     bool
+	lineLen      int
 }
 
 func newProgressRenderer(w io.Writer) *progressRenderer {
@@ -47,6 +49,8 @@ func (p *progressRenderer) begin(verb string, objects int, bytes int64) {
 	p.verb = verb
 	p.totalObjects = objects
 	p.totalBytes = bytes
+	p.reported = false
+	p.lineLen = 0
 	fmt.Fprintf(p.w, "%s %d objects (%s)...\n", verb, objects, humanBytes(bytes))
 }
 
@@ -55,13 +59,16 @@ func (p *progressRenderer) update(objectsDone int, bytesDone int64) {
 	p.doneBytes = bytesDone
 	p.reported = true
 	pct := int64(0)
-	if p.totalBytes > 0 {
+	switch {
+	case p.totalBytes > 0:
 		pct = bytesDone * 100 / p.totalBytes
-		if pct > 100 {
-			pct = 100
-		}
+	case p.totalObjects > 0:
+		pct = int64(objectsDone) * 100 / int64(p.totalObjects)
 	}
-	fmt.Fprintf(p.w, "\r  %d/%d objects, %s %s (%d%%)", objectsDone, p.totalObjects, humanBytes(bytesDone), pastTense(p.verb), pct)
+	if pct > 100 {
+		pct = 100
+	}
+	p.writeLine(fmt.Sprintf("  %d/%d objects, %s %s (%d%%)", objectsDone, p.totalObjects, humanBytes(bytesDone), pastTense(p.verb), pct))
 }
 
 func (p *progressRenderer) finish(verb string) {
@@ -69,7 +76,20 @@ func (p *progressRenderer) finish(verb string) {
 	if p.reported {
 		objects, bytes = p.doneObjects, p.doneBytes
 	}
-	fmt.Fprintf(p.w, "\r  %s %d objects (%s)\n", verb, objects, humanBytes(bytes))
+	p.writeLine(fmt.Sprintf("  %s %d objects (%s)", verb, objects, humanBytes(bytes)))
+	fmt.Fprint(p.w, "\n")
+	p.lineLen = 0
+}
+
+// writeLine redraws the current line in place. Shorter lines are padded to the
+// previous frame's length so leftovers never stay visible after the overwrite.
+func (p *progressRenderer) writeLine(line string) {
+	if len(line) < p.lineLen {
+		line += strings.Repeat(" ", p.lineLen-len(line))
+	} else {
+		p.lineLen = len(line)
+	}
+	fmt.Fprintf(p.w, "\r%s", line)
 }
 
 func pastTense(verb string) string {

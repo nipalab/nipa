@@ -21,7 +21,7 @@ proxies `/api` and `/docs` to `NIPA_SERVER_URL`).
 | `/register` | sign up | SaaS only (`/api/v1/auth/capabilities`); emails a confirmation link, then offers a resend |
 | `/verify` | email confirmation | consumes `?token=` from the confirmation email and starts the session |
 | `/oauth/callback` | social login handoff | exchanges `?code=` for a session, returns to the `?from=` destination, and shows `email_conflict`/`email_required` guidance |
-| `/onboarding` | first-run setup | names the first workspace (skipped when the user already has an organization) |
+| `/onboarding` | first-run setup | names the first workspace and its URL slug (skipped when the user already has an organization) |
 | `/` | repositories | organizations the caller belongs to; "New organization" dialog |
 | `/:org` | repositories | project list filtered by PBAC read |
 | `/:org/:project` | tree browser | default branch root; legacy `?rev=&path=` links redirect |
@@ -37,7 +37,7 @@ proxies `/api` and `/docs` to `NIPA_SERVER_URL`).
 | `/admin/users` | user administration | GitHub-style list with filter, avatar/role labels and row actions |
 | `/admin/users/new` | new user | dedicated create page (name, email, password) |
 | `/settings/profile` | public profile | GitHub-style settings layout: avatar preview + photo URL + name, password change with confirmation/validation, connected social accounts (link/unlink; hidden when the server has no social login) and SSH key management (list/add/remove) |
-| `/settings/billing` | billing | the caller's billing-owner aggregate usage, quota and per-org breakdown; super admins can set/clear owner quotas |
+| `/settings/billing` | billing | the caller's billing-owner aggregate usage, quota and per-org breakdown; super admins can set/clear owner quotas; linked from the header and profile settings, shows an empty state when the server has no ledger |
 
 ## Browse API
 
@@ -71,10 +71,13 @@ credential for the SSH-key login flow; the profile page's "SSH keys" card
 ## Organizations API
 
 `GET /api/v1/orgs` lists the caller's memberships; `POST /api/v1/orgs` creates
-an organization (name + optional slug) and makes the caller its owner. The home
-page offers the "New organization" dialog (`web/src/components/CreateOrgDialog.tsx`,
-`createOrg` in `web/src/api/endpoints.ts`). Member and group management lives on
-the organization settings page (`/:org/settings`).
+an organization (name + slug; the API derives it from the name when omitted) and
+makes the caller its owner. The home page offers the "New organization" dialog
+(`web/src/components/CreateOrgDialog.tsx`, `createOrg` in
+`web/src/api/endpoints.ts`). The onboarding page and the dialog require a valid
+slug, auto-derive it from the name until the user edits it and show a taken-slug
+409 at the field (same for project creation on the new repository page). Member
+and group management lives on the organization settings page (`/:org/settings`).
 
 ## Onboarding API
 
@@ -98,7 +101,8 @@ The enterprise storage ledger exposes `GET /orgs/{org}/storage`,
 `docs/CLOUD_STORAGE_QUOTA.md`). `getOrgStorage` returns null on 404, so the org
 settings storage card hides itself when the server runs without a ledger; the
 `/settings/billing` page shows the owner aggregate and the super-admin quota
-editor.
+editor, and is always linked (header + profile settings) — on servers without a
+ledger it explains that storage billing is not enabled.
 
 ## Merge request reviews
 
@@ -156,5 +160,7 @@ The REST endpoints behind it: `GET/POST .../reviews`,
 `GET /api/v1/orgs/{org}/projects/{project}/permissions/me` supplies the
 capability mask. The UI hides controls the caller cannot use (`write` for
 branch creation, `admin` for settings/ACL, org `owner` or global admin for
-org settings), but every request is re-authorized server-side: hidden paths
-return 404 and denied mutations return 403.
+org settings); organization owners receive the full project mask on every
+project in their org, while plain members need PBAC rules. Every request is
+re-authorized server-side: hidden paths return 404 and denied mutations
+return 403.

@@ -13,7 +13,7 @@ The free `nipad` never registers these routes, so every endpoint below answers
 
 | Env | Meaning |
 |---|---|
-| `SAAS_MODE` | `1` enables registration + social routes in `nipad-ee` |
+| `SAAS_MODE` | `1` enables registration + social routes in `nipad-ee`; also turns on the cloud storage ledger (`STORAGE_LEDGER=cloud`) so the seeded free-tier quota is enforced and visible |
 | `SAAS_FREE_QUOTA_BYTES` | free-tier quota seeded per new account (default `16106127360` = 15 GiB) |
 | `EMAIL_BASE_URL` | public web UI base URL; confirmation links are `<base>/verify?token=…` (required in SaaS mode) |
 | `EMAIL_SENDER` | must be `smtp`/`sendgrid`/`scaleway`/`http` in SaaS mode to deliver confirmation emails; `off` logs a warning and creates accounts without sending |
@@ -86,10 +86,11 @@ callback URLs with the providers:
 ## Unified onboarding
 
 Both paths end on the same SPA step: `/onboarding` asks for a workspace name
-and calls `POST /api/v1/orgs` (the caller becomes owner; the slug is derived
-and uniquified). Users who already belong to an organization skip the step.
-Additional organizations can be created later through the normal dialog —
-registration does not restrict that.
+and its URL slug (auto-derived from the name, editable) and calls
+`POST /api/v1/orgs` (the caller becomes owner; a taken slug comes back as 409
+and is shown at the slug field). Users who already belong to an organization
+skip the step. Additional organizations can be created later through the normal
+dialog — registration does not restrict that.
 
 ## Account management
 

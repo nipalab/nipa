@@ -2,9 +2,11 @@ import { useState } from 'react'
 import { Button, FormControl, Heading, Stack, TextInput } from '@primer/react'
 import { RepoIcon } from '@primer/octicons-react'
 import { Navigate, useNavigate } from 'react-router-dom'
+import { ApiError } from '../api/client'
 import { createOrg, listOrgs } from '../api/endpoints'
 import { ErrorBanner, Loading } from '../components/ui'
 import { useAsync } from '../hooks'
+import { SLUG_PATTERN, slugify } from '../slug'
 
 // OnboardingPage is the shared first-run step after registration confirmation
 // and social signup: name the first workspace. Users who already belong to an
@@ -13,8 +15,14 @@ export default function OnboardingPage() {
   const navigate = useNavigate()
   const { data: orgs, error: loadError, loading } = useAsync(listOrgs, [])
   const [name, setName] = useState('')
+  const [slug, setSlug] = useState('')
+  const [slugEdited, setSlugEdited] = useState(false)
+  const [slugError, setSlugError] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+
+  const effectiveSlug = slugEdited ? slug : slugify(name)
+  const slugValid = effectiveSlug !== '' && SLUG_PATTERN.test(effectiveSlug)
 
   if (loading) {
     return (
@@ -36,14 +44,19 @@ export default function OnboardingPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!name.trim() || busy) return
+    if (!name.trim() || !slugValid || busy) return
     setBusy(true)
     setError(null)
+    setSlugError(null)
     try {
-      const org = await createOrg(name.trim(), '')
+      const org = await createOrg(name.trim(), effectiveSlug)
       navigate(`/${org.slug}`, { replace: true })
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      if (err instanceof ApiError && err.status === 409) {
+        setSlugError('This slug is already taken. Choose a different one.')
+      } else {
+        setError(err instanceof Error ? err.message : String(err))
+      }
       setBusy(false)
     }
   }
@@ -73,7 +86,10 @@ export default function OnboardingPage() {
               <TextInput
                 block
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={(e) => {
+                  setName(e.target.value)
+                  setSlugError(null)
+                }}
                 placeholder="e.g. Acme Game Studio"
                 autoFocus
               />
@@ -82,9 +98,45 @@ export default function OnboardingPage() {
               </FormControl.Caption>
             </FormControl>
 
+            <FormControl required>
+              <FormControl.Label>Slug</FormControl.Label>
+              <TextInput
+                block
+                value={effectiveSlug}
+                onChange={(e) => {
+                  const value = e.target.value
+                  setSlugError(null)
+                  if (value.trim() === '') {
+                    setSlugEdited(false)
+                    setSlug('')
+                    return
+                  }
+                  setSlugEdited(true)
+                  setSlug(value)
+                }}
+                placeholder="acme-game-studio"
+              />
+              <FormControl.Caption>
+                Your workspace URL: /{effectiveSlug || '…'}
+              </FormControl.Caption>
+              {!slugValid && (
+                <FormControl.Validation variant="error">
+                  {effectiveSlug === ''
+                    ? 'Slug is required.'
+                    : 'Slug must start with a letter or digit and contain only lowercase letters, digits and dashes.'}
+                </FormControl.Validation>
+              )}
+              {slugError && <FormControl.Validation variant="error">{slugError}</FormControl.Validation>}
+            </FormControl>
+
             <ErrorBanner error={error} />
 
-            <Button type="submit" variant="primary" block disabled={busy || !name.trim()}>
+            <Button
+              type="submit"
+              variant="primary"
+              block
+              disabled={busy || !name.trim() || !slugValid}
+            >
               {busy ? 'Creating…' : 'Create workspace'}
             </Button>
           </Stack>

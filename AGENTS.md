@@ -199,13 +199,22 @@ emails, thread replies, synchronized/check/merge events, failed retries and
 redelivery.
 
 Flow for organization creation (`POST /api/v1/orgs`, "New organization" dialog
-on the SPA home page): any authenticated user creates an org; `usecase.Org.Create`
+on the SPA home page and the `/onboarding` step): any authenticated user creates
+an org; `usecase.Org.Create`
 trims the name, derives the slug from it when omitted, rejects invalid or
 duplicate slugs (409) and calls `OrgRepository.CreateWithOwner`, which in one
 transaction inserts the row with `created_by_user_id` and upserts the creator as
 an `owner` member — so project creation (`Project.Create` requires org owner)
-works immediately. The free version tracks no storage usage; cloud builds attach
-quota to `created_by_user_id` through the `usecase.StorageLedger` seam.
+works immediately, and `usecase.Permission` grants org owners `PermissionAll`
+on every project in the org (`load` resolves the project's org through
+`pbacRepository.ProjectOrgID` + `orgAuthorizer.IsOrgOwner`), so the creator can
+read/write/admin the project without seeding rules; plain org members still
+need PBAC rules. The free version tracks no storage usage; cloud builds attach
+quota to `created_by_user_id` through the `usecase.StorageLedger` seam. The SPA
+forms (`OnboardingPage`, `CreateOrgDialog`, `NewProjectPage`) share
+`web/src/slug.ts` for `slugify`/`SLUG_PATTERN`, require a valid non-empty slug,
+auto-derive it until the user edits it, and surface a taken slug (409,
+`ApiError.status`) at the slug field.
 
 Flow for SaaS onboarding (see docs/SAAS_ONBOARDING.md; `nipad-ee` only, gated by
 `SAAS_MODE=1`, free edition answers 404): `ee/registration` serves
@@ -228,7 +237,7 @@ quota), a one-time `oauth_login_codes` handoff (token never in a URL) and
 /api/v1/me/identities` plus `GET /api/v1/me/identities/{provider}/start`
 (returns `{url}`) manage links, refusing to unlink the last login method of a
 passwordless account (409). Both flows end on the SPA `/onboarding` step
-(workspace name → existing `POST /orgs`); the public SPA pages `/register`,
+(workspace name + editable URL slug → existing `POST /orgs`); the public SPA pages `/register`,
 `/verify` and `/oauth/callback` plus the profile "Connected accounts" card do
 the client side, and `GET /api/v1/auth/capabilities` (registered by
 `ee/registration`, providers list supplied by `ee/oauth`) lets the SPA hide the
@@ -478,17 +487,21 @@ server-generated diff3 chunks through `Chunk.AttributeProjectChunks` (the
 `chunkUploader` seam) before the commit lands. Quota failures are 402
 (`domain.NewErrorQuotaExceeded`), crossing gRPC as `ResourceExhausted`. The
 enterprise implementation lives in `ee/storageusage` (postgres,
-`STORAGE_LEDGER=cloud`; the free `cmd/nipad` ignores the setting and keeps
+`STORAGE_LEDGER=cloud`; `SAAS_MODE=1` auto-enables it so the seeded free-tier
+quota is enforced; the free `cmd/nipad` ignores the setting and keeps
 running with no ledger, no quota and the routes 404): it bills
 every org to one owner user (lazily seeded from
 `organizations.created_by_user_id`), tracks per-project chunk links with
 cached project/org counters, and enforces `owner_quota` (NULL/0 =
-unlimited; missing row = `STORAGE_LEDGER_DEFAULT_QUOTA_BYTES`). `RecountOrg`
+unlimited; missing row = `STORAGE_LEDGER_DEFAULT_QUOTA_BYTES`, default
+15 GiB). `RecountOrg`
 rebuilds links and counters from the stored history. REST routes
 (`/orgs/{org}/storage`, `/billing/me`, admin quota/transfer/recount) are
 registered on the shared `/api/v1` WebService via `serverapp.WithRoutes` only
 when the ledger is enabled, so they 404 otherwise; the SPA hides the org
-storage card on 404 and has a `/settings/billing` page.
+storage card on 404, while the `/settings/billing` page is always linked from
+the header and the profile settings nav (it shows an empty state when the
+ledger is off).
 
 Flow for tracing (design in `docs/TRACING.md`): `internal/obs/tracing.go`
 builds an OTLP gRPC tracer provider (`SetupTracing`), installed globally with
@@ -562,6 +575,7 @@ From `Makefile`:
   sparse-checkout, tag, lock, mr, acl, group) plus `nipa serve` (daemon gRPC),
   `nipa mcp` (stdio JSON-RPC) and webhook deliveries (events, filters,
   signatures, ping/redelivery), with multi-user identities for permission
+  (incl. org owners' implicit project access vs. plain members' deny-by-default)
   and lock scenarios. `NIPA_TOKEN_FILE` makes `securestorage` file-backed so the
   CLI runs without an OS keyring/TTY; the suite skips unless `NIPA_TEST_HOST` is
   set. Details in `tests/README.md`.

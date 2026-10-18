@@ -105,7 +105,7 @@ describe('BillingPage', () => {
     act(() => root.unmount())
   })
 
-  it('hides the nav link and explains when the ledger is disabled', async () => {
+  it('keeps the nav link and explains when the ledger is disabled', async () => {
     stubBillingDisabled()
     window.history.pushState({}, '', '/settings/billing')
     const container = document.createElement('div')
@@ -118,7 +118,7 @@ describe('BillingPage', () => {
     await waitForText('Storage billing is not enabled on this server.')
 
     const navLink = Array.from(document.querySelectorAll('a')).find((a) => a.textContent?.trim() === 'Billing')
-    expect(navLink).toBeUndefined()
+    expect(navLink).toBeDefined()
     expect(document.body.textContent).not.toContain('Billing owner')
     act(() => root.unmount())
   })

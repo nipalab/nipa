@@ -161,18 +161,28 @@ export async function apiFetch(path: string, init: ApiRequestInit = {}): Promise
   return res
 }
 
-export async function errorFromResponse(res: Response): Promise<Error> {
+export class ApiError extends Error {
+  readonly status: number
+
+  constructor(message: string, status: number) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+  }
+}
+
+export async function errorFromResponse(res: Response): Promise<ApiError> {
   const body = await res.text()
   try {
     const parsed = JSON.parse(body) as { error?: string; message?: string }
     const message = parsed.error ?? parsed.message
     if (message) {
-      return new Error(message)
+      return new ApiError(message, res.status)
     }
   } catch {
     // fall through to the raw body
   }
-  return new Error(`API ${res.status}: ${body}`)
+  return new ApiError(`API ${res.status}: ${body}`, res.status)
 }
 
 export async function apiJson<T>(path: string, init: ApiRequestInit = {}): Promise<T> {

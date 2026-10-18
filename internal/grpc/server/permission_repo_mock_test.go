@@ -145,6 +145,21 @@ func (mr *MockpbacRepositoryMockRecorder) ListRulesByProject(ctx, projectID any)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListRulesByProject", reflect.TypeOf((*MockpbacRepository)(nil).ListRulesByProject), ctx, projectID)
 }
 
+// ProjectOrgID mocks base method.
+func (m *MockpbacRepository) ProjectOrgID(ctx context.Context, projectID snow.ID) (snow.ID, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ProjectOrgID", ctx, projectID)
+	ret0, _ := ret[0].(snow.ID)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ProjectOrgID indicates an expected call of ProjectOrgID.
+func (mr *MockpbacRepositoryMockRecorder) ProjectOrgID(ctx, projectID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ProjectOrgID", reflect.TypeOf((*MockpbacRepository)(nil).ProjectOrgID), ctx, projectID)
+}
+
 // UpsertPathPermission mocks base method.
 func (m *MockpbacRepository) UpsertPathPermission(ctx context.Context, perm domain.ProjectPathPermission) (*domain.ProjectPathPermission, error) {
 	m.ctrl.T.Helper()
