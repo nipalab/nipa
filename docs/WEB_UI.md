@@ -159,5 +159,7 @@ The REST endpoints behind it: `GET/POST .../reviews`,
 `GET /api/v1/orgs/{org}/projects/{project}/permissions/me` supplies the
 capability mask. The UI hides controls the caller cannot use (`write` for
 branch creation, `admin` for settings/ACL, org `owner` or global admin for
-org settings), but every request is re-authorized server-side: hidden paths
-return 404 and denied mutations return 403.
+org settings); organization owners receive the full project mask on every
+project in their org, while plain members need PBAC rules. Every request is
+re-authorized server-side: hidden paths return 404 and denied mutations
+return 403.

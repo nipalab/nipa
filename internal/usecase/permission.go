@@ -13,6 +13,7 @@ const permissionCacheTTL = 30 * time.Second
 
 //go:generate go run go.uber.org/mock/mockgen -source=$GOFILE -destination=permission_mock_test.go -package=usecase
 type pbacRepository interface {
+	ProjectOrgID(ctx context.Context, projectID snow.ID) (snow.ID, error)
 	ListEffectiveRules(ctx context.Context, projectID snow.ID, userID snow.ID) ([]*domain.PBACRule, error)
 	ListRulesByProject(ctx context.Context, projectID snow.ID) ([]*domain.PBACRule, error)
 	CreateRule(ctx context.Context, rule domain.PBACRule) (*domain.PBACRule, error)
@@ -45,6 +46,7 @@ type permissionCacheEntry struct {
 type permissionSet struct {
 	rules    []*domain.PBACRule
 	defaults []*domain.ProjectPathPermission
+	orgOwner bool
 }
 
 type Permission struct {
@@ -170,7 +172,10 @@ func AllowAllFilter() *PathFilter {
 
 // All reports whether the filter permits every path.
 func (f *PathFilter) All() bool {
-	return f != nil && f.all
+	if f == nil {
+		return false
+	}
+	return f.all || (f.set != nil && f.set.orgOwner)
 }
 
 // Allow reports whether path carries every bit of the filter's permission.
@@ -190,6 +195,9 @@ func (f *PathFilter) CanDescend(dir string) bool {
 		return false
 	}
 	if f.all {
+		return true
+	}
+	if f.set.orgOwner {
 		return true
 	}
 	for _, rule := range f.set.rules {
@@ -309,6 +317,9 @@ func (p *Permission) MyPermissions(ctx context.Context, projectID snow.ID) (doma
 	if err != nil {
 		return 0, nil, nil, err
 	}
+	if set.orgOwner {
+		return domain.PermissionAll, set.rules, set.defaults, nil
+	}
 	var mask domain.Permission
 	for _, rule := range set.rules {
 		mask |= rule.Permission
@@ -392,6 +403,18 @@ func (p *Permission) load(ctx context.Context, projectID snow.ID, userID snow.ID
 	}
 
 	set := &permissionSet{rules: rules, defaults: defaults}
+	orgID, err := p.repo.ProjectOrgID(ctx, projectID)
+	if err != nil {
+		if !domain.IsErrorNotFound(err) {
+			return nil, err
+		}
+	} else {
+		owner, err := p.orgs.IsOrgOwner(ctx, orgID)
+		if err != nil {
+			return nil, err
+		}
+		set.orgOwner = owner
+	}
 
 	p.mu.Lock()
 	if p.versions[projectID] == version {
@@ -418,6 +441,9 @@ func (s *permissionSet) grantsAnywhere(permission domain.Permission) bool {
 	if permission == 0 {
 		return false
 	}
+	if s.orgOwner {
+		return true
+	}
 	for _, rule := range s.rules {
 		if rule.Permission&permission != 0 {
 			return true
@@ -432,6 +458,9 @@ func (s *permissionSet) grantsAnywhere(permission domain.Permission) bool {
 }
 
 func (s *permissionSet) effective(path string) domain.Permission {
+	if s.orgOwner {
+		return domain.PermissionAll
+	}
 	var mask domain.Permission
 	for _, rule := range s.rules {
 		if domain.PrefixCovers(rule.PathPrefix, path) {

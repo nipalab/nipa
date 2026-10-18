@@ -205,7 +205,11 @@ trims the name, derives the slug from it when omitted, rejects invalid or
 duplicate slugs (409) and calls `OrgRepository.CreateWithOwner`, which in one
 transaction inserts the row with `created_by_user_id` and upserts the creator as
 an `owner` member — so project creation (`Project.Create` requires org owner)
-works immediately. The free version tracks no storage usage; cloud builds attach
+works immediately, and `usecase.Permission` grants org owners `PermissionAll`
+on every project in the org (`load` resolves the project's org through
+`pbacRepository.ProjectOrgID` + `orgAuthorizer.IsOrgOwner`), so the creator can
+read/write/admin the project without seeding rules; plain org members still
+need PBAC rules. The free version tracks no storage usage; cloud builds attach
 quota to `created_by_user_id` through the `usecase.StorageLedger` seam. The SPA
 forms (`OnboardingPage`, `CreateOrgDialog`, `NewProjectPage`) share
 `web/src/slug.ts` for `slugify`/`SLUG_PATTERN`, require a valid non-empty slug,

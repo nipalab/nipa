@@ -18,6 +18,17 @@ func NewPBACRepository(db *sql.DB) *PBAC {
 	return &PBAC{queries: sqlcSqlite.New(db)}
 }
 
+func (p *PBAC) ProjectOrgID(ctx context.Context, projectID snow.ID) (snow.ID, error) {
+	row, err := p.queries.GetProject(ctx, projectID.Int64())
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, domain.NewErrorRecordNotFound()
+		}
+		return 0, domain.NewErrorDatabase(err.Error())
+	}
+	return snow.ID(row.OrgID), nil
+}
+
 func (p *PBAC) ListEffectiveRules(ctx context.Context, projectID snow.ID, userID snow.ID) ([]*domain.PBACRule, error) {
 	rows, err := p.queries.PBACRuleListEffective(ctx, sqlcSqlite.PBACRuleListEffectiveParams{
 		UserID:    userID.Int64(),

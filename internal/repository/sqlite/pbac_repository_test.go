@@ -45,6 +45,21 @@ func pbacIDPtr(id snow.ID) *snow.ID {
 	return &id
 }
 
+func TestPBACRepositorySQLite_ProjectOrgID(t *testing.T) {
+	ctx := context.Background()
+	db, q := newSQLiteTestDB(t)
+	repo := NewPBACRepository(db)
+
+	projectID := seedProject(t, q, 1, "game")
+
+	orgID, err := repo.ProjectOrgID(ctx, projectID)
+	require.NoError(t, err)
+	require.Equal(t, snow.ID(1), orgID)
+
+	_, err = repo.ProjectOrgID(ctx, snow.ID(999999))
+	requireRecordNotFound(t, err)
+}
+
 func TestPBACRepositorySQLite_ListEffectiveRules(t *testing.T) {
 	ctx := context.Background()
 	db, q := newSQLiteTestDB(t)

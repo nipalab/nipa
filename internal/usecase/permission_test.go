@@ -30,16 +30,24 @@ func withAdmin() func(*domain.Claims) {
 
 func newTestPermission(t *testing.T, rules []*domain.PBACRule, defaults []*domain.ProjectPathPermission) *Permission {
 	t.Helper()
+	return newTestPermissionAs(t, rules, defaults, false)
+}
+
+func newTestPermissionAs(t *testing.T, rules []*domain.PBACRule, defaults []*domain.ProjectPathPermission, orgOwner bool) *Permission {
+	t.Helper()
 
 	ctrl := gomock.NewController(t)
 	repo := NewMockpbacRepository(ctrl)
+	repo.EXPECT().ProjectOrgID(gomock.Any(), gomock.Any()).Return(snow.ID(1), nil).AnyTimes()
 	repo.EXPECT().ListEffectiveRules(gomock.Any(), gomock.Any(), gomock.Any()).Return(rules, nil).AnyTimes()
 	repo.EXPECT().ListPathPermissions(gomock.Any(), gomock.Any()).Return(defaults, nil).AnyTimes()
 	users := NewMockuserLookup(ctrl)
 	users.EXPECT().GetByID(gomock.Any(), gomock.Any()).Return(&domain.User{}, nil).AnyTimes()
 	groups := NewMockgroupLookup(ctrl)
 	groups.EXPECT().GetByID(gomock.Any(), gomock.Any()).Return(&domain.Group{OrgID: 1}, nil).AnyTimes()
-	return NewPermission(repo, users, groups, NewMockorgAuthorizer(ctrl))
+	orgs := NewMockorgAuthorizer(ctrl)
+	orgs.EXPECT().IsOrgOwner(gomock.Any(), gomock.Any()).Return(orgOwner, nil).AnyTimes()
+	return NewPermission(repo, users, groups, orgs)
 }
 
 func newAllowAllPerm(ctrl *gomock.Controller) *MockpermissionUsecase {
@@ -276,6 +284,7 @@ func TestPermission_ProjectAdminRuleAllowsManagement(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	repo := NewMockpbacRepository(ctrl)
+	repo.EXPECT().ProjectOrgID(gomock.Any(), projectID).Return(snow.ID(1), nil).AnyTimes()
 	repo.EXPECT().ListEffectiveRules(gomock.Any(), projectID, userID).Return(adminRule, nil)
 	repo.EXPECT().ListPathPermissions(gomock.Any(), projectID).Return(nil, nil)
 	repo.EXPECT().ListRulesByProject(gomock.Any(), projectID).Return(adminRule, nil)
@@ -284,7 +293,9 @@ func TestPermission_ProjectAdminRuleAllowsManagement(t *testing.T) {
 	}, nil)
 	repo.EXPECT().DeleteRuleForProject(gomock.Any(), projectID, int64(7)).Return(nil)
 
-	perm := NewPermission(repo, NewMockuserLookup(ctrl), NewMockgroupLookup(ctrl), NewMockorgAuthorizer(ctrl))
+	orgs := NewMockorgAuthorizer(ctrl)
+	orgs.EXPECT().IsOrgOwner(gomock.Any(), gomock.Any()).Return(false, nil).AnyTimes()
+	perm := NewPermission(repo, NewMockuserLookup(ctrl), NewMockgroupLookup(ctrl), orgs)
 	ctx := permissionCtx(userID)
 
 	rules, err := perm.ListRules(ctx, projectID)
@@ -314,13 +325,14 @@ func TestPermission_DeleteRule_OrgWideNeedsOrgAdmin(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	repo := NewMockpbacRepository(ctrl)
+	repo.EXPECT().ProjectOrgID(gomock.Any(), projectID).Return(snow.ID(1), nil).AnyTimes()
 	repo.EXPECT().ListEffectiveRules(gomock.Any(), projectID, userID).Return([]*domain.PBACRule{
 		{PathPrefix: "", Permission: domain.PermissionAdmin},
 	}, nil)
 	repo.EXPECT().ListPathPermissions(gomock.Any(), projectID).Return(nil, nil)
 	repo.EXPECT().GetRuleForProject(gomock.Any(), projectID, int64(7)).Return(&domain.PBACRule{ID: 7, OrgID: 1}, nil)
 	orgs := NewMockorgAuthorizer(ctrl)
-	orgs.EXPECT().IsOrgOwner(gomock.Any(), snow.ID(1)).Return(false, nil)
+	orgs.EXPECT().IsOrgOwner(gomock.Any(), gomock.Any()).Return(false, nil).AnyTimes()
 
 	perm := NewPermission(repo, NewMockuserLookup(ctrl), NewMockgroupLookup(ctrl), orgs)
 	err := perm.DeleteRule(permissionCtx(userID), projectID, 7)
@@ -414,6 +426,7 @@ func TestPermission_CreateRule_NormalizesAndInvalidatesCache(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	repo := NewMockpbacRepository(ctrl)
+	repo.EXPECT().ProjectOrgID(gomock.Any(), projectID).Return(snow.ID(1), nil).AnyTimes()
 
 	gomock.InOrder(
 		repo.EXPECT().ListEffectiveRules(gomock.Any(), projectID, userID).Return([]*domain.PBACRule{
@@ -438,7 +451,9 @@ func TestPermission_CreateRule_NormalizesAndInvalidatesCache(t *testing.T) {
 		repo.EXPECT().ListPathPermissions(gomock.Any(), projectID).Return(nil, nil),
 	)
 
-	perm := NewPermission(repo, users, NewMockgroupLookup(ctrl), NewMockorgAuthorizer(ctrl))
+	orgs := NewMockorgAuthorizer(ctrl)
+	orgs.EXPECT().IsOrgOwner(gomock.Any(), gomock.Any()).Return(false, nil).AnyTimes()
+	perm := NewPermission(repo, users, NewMockgroupLookup(ctrl), orgs)
 
 	require.False(t, perm.HasPathAccess(ctx, projectID, "assets/textures/wood.png", domain.PermissionRead))
 
@@ -460,15 +475,45 @@ func TestPermission_Cache_ServesRepeatedReads(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	repo := NewMockpbacRepository(ctrl)
 
+	repo.EXPECT().ProjectOrgID(gomock.Any(), projectID).Return(snow.ID(1), nil).Times(1)
 	repo.EXPECT().ListEffectiveRules(gomock.Any(), projectID, userID).Return([]*domain.PBACRule{
 		{PathPrefix: "", Permission: domain.PermissionRead},
 	}, nil).Times(1)
 	repo.EXPECT().ListPathPermissions(gomock.Any(), projectID).Return(nil, nil).Times(1)
 
-	perm := NewPermission(repo, NewMockuserLookup(ctrl), NewMockgroupLookup(ctrl), NewMockorgAuthorizer(ctrl))
+	orgs := NewMockorgAuthorizer(ctrl)
+	orgs.EXPECT().IsOrgOwner(gomock.Any(), gomock.Any()).Return(false, nil).AnyTimes()
+	perm := NewPermission(repo, NewMockuserLookup(ctrl), NewMockgroupLookup(ctrl), orgs)
 	require.True(t, perm.HasPathAccess(ctx, projectID, "a.txt", domain.PermissionRead))
 	require.True(t, perm.HasPathAccess(ctx, projectID, "b.txt", domain.PermissionRead))
 	require.True(t, perm.HasProjectAccess(ctx, projectID, domain.PermissionRead))
+}
+
+func TestPermission_OrgOwnerHasFullAccess(t *testing.T) {
+	const projectID snow.ID = 1
+	const userID snow.ID = 42
+	ctx := permissionCtx(userID)
+
+	perm := newTestPermissionAs(t, []*domain.PBACRule{
+		{PathPrefix: "assets", Permission: domain.PermissionRead},
+	}, nil, true)
+
+	require.True(t, perm.HasProjectAccess(ctx, projectID, domain.PermissionRead))
+	require.True(t, perm.HasProjectAccess(ctx, projectID, domain.PermissionWrite))
+	require.True(t, perm.HasProjectAccess(ctx, projectID, domain.PermissionAdmin))
+	require.Equal(t, domain.PermissionAll, perm.Effective(ctx, projectID, "any/path"))
+	require.True(t, perm.HasPathAccess(ctx, projectID, "src/main.go", domain.PermissionWrite))
+	require.True(t, perm.AdminHasProject(ctx, projectID))
+
+	filter, err := perm.CompileFilter(ctx, projectID, domain.PermissionRead)
+	require.NoError(t, err)
+	require.True(t, filter.All())
+	require.True(t, filter.Allow("any/path"))
+	require.True(t, filter.CanDescend("src"))
+
+	mask, _, _, err := perm.MyPermissions(ctx, projectID)
+	require.NoError(t, err)
+	require.Equal(t, domain.PermissionAll, mask)
 }
 
 func TestPermission_PathPermissionCRUD(t *testing.T) {
