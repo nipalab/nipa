@@ -44,13 +44,17 @@ const PROJECTS = [{ id: 'p1', org_id: '1', slug: 'engine', name: 'Engine', descr
 
 type FetchCall = { url: string; method: string; body: unknown }
 
-function stubOrgRoutes(requests: FetchCall[]) {
+type RouteStub = (url: string, init?: RequestInit) => Response | null
+
+function stubOrgRoutes(requests: FetchCall[], extra: RouteStub = () => null) {
   vi.stubGlobal(
     'fetch',
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input)
       const method = init?.method ?? 'GET'
       requests.push({ url, method, body: init?.body ? JSON.parse(String(init.body)) : undefined })
+      const custom = extra(url, init)
+      if (custom) return custom
       if (url.includes('/auth/refresh')) {
         return jsonResponse({ access_token: 'token', token_type: 'Bearer', expires_in: 1800 })
       }
@@ -168,8 +172,38 @@ describe('OrgProjectsPage', () => {
     )
     const post = requests.find((call) => call.method === 'POST' && call.url.includes('/orgs/default/projects'))
     expect(post?.url).toContain('/api/v1/orgs/default/projects')
-    expect(post?.body).toEqual({ name: 'Game Client', description: '', slug: '' })
+    expect(post?.body).toEqual({ name: 'Game Client', description: '', slug: 'game-client' })
     await waitFor(() => window.location.pathname === '/default/game-client')
+    act(() => root.unmount())
+  })
+
+  it('surfaces a taken project slug at the slug field', async () => {
+    const requests: FetchCall[] = []
+    stubOrgRoutes(requests, (url, init) => {
+      if (url.split('?')[0].endsWith('/orgs/default/projects') && (init?.method ?? 'GET') === 'POST') {
+        return jsonResponse({ error: 'project slug already in use' }, 409)
+      }
+      return null
+    })
+    const { container, root } = await renderApp('/default')
+    await waitForText('Engine')
+
+    await act(async () => {
+      findButton('New repository').click()
+    })
+    await waitFor(() => window.location.pathname === '/default/new')
+    await waitForText('New repository in default')
+
+    const inputs = container.querySelectorAll('input')
+    await act(async () => {
+      setInputValue(inputs[0] as HTMLInputElement, 'Game Client')
+    })
+    await act(async () => {
+      findButton('Create repository').click()
+    })
+
+    await waitForText('already taken')
+    expect(window.location.pathname).toBe('/default/new')
     act(() => root.unmount())
   })
   it('links to organization settings for owners', async () => {
@@ -231,8 +265,39 @@ describe('HomePage', () => {
     })
     await waitFor(() => requests.some((call) => call.method === 'POST' && call.url.endsWith('/api/v1/orgs')))
     const post = requests.find((call) => call.method === 'POST' && call.url.endsWith('/api/v1/orgs'))
-    expect(post?.body).toEqual({ name: 'Acme Corp', slug: '' })
+    expect(post?.body).toEqual({ name: 'Acme Corp', slug: 'acme-corp' })
     await waitFor(() => window.location.pathname === '/acme')
+    act(() => root.unmount())
+  })
+
+  it('surfaces a taken organization slug in the dialog', async () => {
+    const requests: FetchCall[] = []
+    stubOrgRoutes(requests, (url, init) => {
+      if (url.split('?')[0].endsWith('/api/v1/orgs') && (init?.method ?? 'GET') === 'POST') {
+        return jsonResponse({ error: 'organization slug already in use' }, 409)
+      }
+      return null
+    })
+    const { root } = await renderApp('/')
+    await waitForText('Default')
+
+    await act(async () => {
+      findButton('New organization').click()
+    })
+    await waitFor(() => document.querySelector('[role="dialog"]') !== null)
+
+    const dialog = document.querySelector('[role="dialog"]') as HTMLElement
+    const input = dialog.querySelector('input') as HTMLInputElement
+    await act(async () => {
+      setInputValue(input, 'Acme Corp')
+    })
+    await act(async () => {
+      findButton('Create organization').click()
+    })
+
+    await waitForText('already taken')
+    expect(window.location.pathname).toBe('/')
+    expect(document.querySelector('[role="dialog"]')).not.toBeNull()
     act(() => root.unmount())
   })
 })

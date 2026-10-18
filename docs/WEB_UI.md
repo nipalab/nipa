@@ -21,7 +21,7 @@ proxies `/api` and `/docs` to `NIPA_SERVER_URL`).
 | `/register` | sign up | SaaS only (`/api/v1/auth/capabilities`); emails a confirmation link, then offers a resend |
 | `/verify` | email confirmation | consumes `?token=` from the confirmation email and starts the session |
 | `/oauth/callback` | social login handoff | exchanges `?code=` for a session, returns to the `?from=` destination, and shows `email_conflict`/`email_required` guidance |
-| `/onboarding` | first-run setup | names the first workspace (skipped when the user already has an organization) |
+| `/onboarding` | first-run setup | names the first workspace and its URL slug (skipped when the user already has an organization) |
 | `/` | repositories | organizations the caller belongs to; "New organization" dialog |
 | `/:org` | repositories | project list filtered by PBAC read |
 | `/:org/:project` | tree browser | default branch root; legacy `?rev=&path=` links redirect |
@@ -71,10 +71,13 @@ credential for the SSH-key login flow; the profile page's "SSH keys" card
 ## Organizations API
 
 `GET /api/v1/orgs` lists the caller's memberships; `POST /api/v1/orgs` creates
-an organization (name + optional slug) and makes the caller its owner. The home
-page offers the "New organization" dialog (`web/src/components/CreateOrgDialog.tsx`,
-`createOrg` in `web/src/api/endpoints.ts`). Member and group management lives on
-the organization settings page (`/:org/settings`).
+an organization (name + slug; the API derives it from the name when omitted) and
+makes the caller its owner. The home page offers the "New organization" dialog
+(`web/src/components/CreateOrgDialog.tsx`, `createOrg` in
+`web/src/api/endpoints.ts`). The onboarding page and the dialog require a valid
+slug, auto-derive it from the name until the user edits it and show a taken-slug
+409 at the field (same for project creation on the new repository page). Member
+and group management lives on the organization settings page (`/:org/settings`).
 
 ## Onboarding API
 

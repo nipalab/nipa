@@ -86,10 +86,11 @@ callback URLs with the providers:
 ## Unified onboarding
 
 Both paths end on the same SPA step: `/onboarding` asks for a workspace name
-and calls `POST /api/v1/orgs` (the caller becomes owner; the slug is derived
-and uniquified). Users who already belong to an organization skip the step.
-Additional organizations can be created later through the normal dialog —
-registration does not restrict that.
+and its URL slug (auto-derived from the name, editable) and calls
+`POST /api/v1/orgs` (the caller becomes owner; a taken slug comes back as 409
+and is shown at the slug field). Users who already belong to an organization
+skip the step. Additional organizations can be created later through the normal
+dialog — registration does not restrict that.
 
 ## Account management
 

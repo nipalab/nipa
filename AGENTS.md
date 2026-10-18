@@ -199,13 +199,18 @@ emails, thread replies, synchronized/check/merge events, failed retries and
 redelivery.
 
 Flow for organization creation (`POST /api/v1/orgs`, "New organization" dialog
-on the SPA home page): any authenticated user creates an org; `usecase.Org.Create`
+on the SPA home page and the `/onboarding` step): any authenticated user creates
+an org; `usecase.Org.Create`
 trims the name, derives the slug from it when omitted, rejects invalid or
 duplicate slugs (409) and calls `OrgRepository.CreateWithOwner`, which in one
 transaction inserts the row with `created_by_user_id` and upserts the creator as
 an `owner` member — so project creation (`Project.Create` requires org owner)
 works immediately. The free version tracks no storage usage; cloud builds attach
-quota to `created_by_user_id` through the `usecase.StorageLedger` seam.
+quota to `created_by_user_id` through the `usecase.StorageLedger` seam. The SPA
+forms (`OnboardingPage`, `CreateOrgDialog`, `NewProjectPage`) share
+`web/src/slug.ts` for `slugify`/`SLUG_PATTERN`, require a valid non-empty slug,
+auto-derive it until the user edits it, and surface a taken slug (409,
+`ApiError.status`) at the slug field.
 
 Flow for SaaS onboarding (see docs/SAAS_ONBOARDING.md; `nipad-ee` only, gated by
 `SAAS_MODE=1`, free edition answers 404): `ee/registration` serves
@@ -228,7 +233,7 @@ quota), a one-time `oauth_login_codes` handoff (token never in a URL) and
 /api/v1/me/identities` plus `GET /api/v1/me/identities/{provider}/start`
 (returns `{url}`) manage links, refusing to unlink the last login method of a
 passwordless account (409). Both flows end on the SPA `/onboarding` step
-(workspace name → existing `POST /orgs`); the public SPA pages `/register`,
+(workspace name + editable URL slug → existing `POST /orgs`); the public SPA pages `/register`,
 `/verify` and `/oauth/callback` plus the profile "Connected accounts" card do
 the client side, and `GET /api/v1/auth/capabilities` (registered by
 `ee/registration`, providers list supplied by `ee/oauth`) lets the SPA hide the
