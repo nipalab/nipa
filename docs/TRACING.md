@@ -19,14 +19,17 @@ Environment variables (or `config.yaml` keys with the same names):
 | Variable | Default | Meaning |
 |---|---|---|
 | `TRACING_ENABLED` | `false` | Export spans over OTLP |
-| `TRACING_OTLP_ENDPOINT` | `OTEL_*` env, else `localhost:4317` | OTLP gRPC collector endpoint (`host:port` or URL; `https://` uses TLS, bare/`http://` is plaintext) |
+| `TRACING_OTLP_ENDPOINT` | `OTEL_*` env, else `localhost:4317` / `localhost:4318` | OTLP collector endpoint (`host:port` or URL; `https://` uses TLS, bare/`http://` is plaintext; HTTP endpoints may carry a path prefix like OpenObserve's `/api/<org>`) |
+| `TRACING_OTLP_PROTOCOL` | `grpc` | `grpc` or `http` (use `http` when only a plain HTTPS endpoint is reachable) |
+| `TRACING_OTLP_HEADERS` | empty | Extra headers on every OTLP request, comma-separated `KEY=VALUE` (e.g. an OpenObserve `Authorization`); shared with the OTLP log exporter |
 | `TRACING_STDOUT` | `false` | Pretty-print spans to stderr instead of exporting (debugging) |
 | `TRACING_SAMPLE_RATIO` | `1.0` | Root span sampling ratio in `(0, 1]` |
 | `TRACING_SERVICE_NAME` | `nipad` / `nipad-ee` | `service.name` resource attribute |
 
 When `TRACING_OTLP_ENDPOINT` is unset, the standard
 `OTEL_EXPORTER_OTLP_ENDPOINT` / `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`
-variables are honored.
+variables are honored. Log shipping and the OpenObserve walkthrough are in
+[OBSERVABILITY.md](OBSERVABILITY.md).
 
 ### Client (`nipa`, including `nipa serve`)
 

@@ -42,16 +42,58 @@ func main() {
 		panic(err)
 	}
 
-	obs.Setup(cfg.LogLevel, cfg.LogFormat, "nipad-ee", os.Stderr)
-	metrics := obs.NewMetrics()
-
 	serviceName := cfg.TracingServiceName
 	if serviceName == "" {
 		serviceName = "nipad-ee"
 	}
+	logsEndpoint := cfg.LogsOTLPEndpoint
+	if logsEndpoint == "" {
+		logsEndpoint = cfg.TracingOTLPEndpoint
+	}
+	logsProtocol := cfg.LogsOTLPProtocol
+	if logsProtocol == "" {
+		logsProtocol = cfg.TracingOTLPProtocol
+	}
+	logs, err := obs.SetupLogs(context.Background(), obs.LogsConfig{
+		Enabled:        cfg.LogsOTLPEnabled,
+		Endpoint:       logsEndpoint,
+		Protocol:       logsProtocol,
+		Headers:        obs.ParseHeaders(cfg.TracingOTLPHeaders),
+		ServiceName:    serviceName,
+		ServiceVersion: version.Resolve().Version,
+	})
+	if err != nil {
+		panic(fmt.Errorf("setup logs: %w", err))
+	}
+	obs.Setup(cfg.LogLevel, cfg.LogFormat, "nipad-ee", os.Stderr, logs.Handler())
+	metrics := obs.NewMetrics()
+
+	metricsEndpoint := cfg.MetricsOTLPEndpoint
+	if metricsEndpoint == "" {
+		metricsEndpoint = cfg.TracingOTLPEndpoint
+	}
+	metricsProtocol := cfg.MetricsOTLPProtocol
+	if metricsProtocol == "" {
+		metricsProtocol = cfg.TracingOTLPProtocol
+	}
+	metricsPush, err := obs.SetupMetricsPush(context.Background(), metrics, obs.MetricsPushConfig{
+		Enabled:        cfg.MetricsOTLPEnabled,
+		Endpoint:       metricsEndpoint,
+		Protocol:       metricsProtocol,
+		Headers:        obs.ParseHeaders(cfg.TracingOTLPHeaders),
+		ServiceName:    serviceName,
+		ServiceVersion: version.Resolve().Version,
+		Interval:       time.Duration(cfg.MetricsOTLPIntervalSeconds) * time.Second,
+	})
+	if err != nil {
+		panic(fmt.Errorf("setup metrics push: %w", err))
+	}
+
 	tracing, err := obs.SetupTracing(context.Background(), obs.TracingConfig{
 		Enabled:        cfg.TracingEnabled,
 		Endpoint:       cfg.TracingOTLPEndpoint,
+		Protocol:       cfg.TracingOTLPProtocol,
+		Headers:        obs.ParseHeaders(cfg.TracingOTLPHeaders),
 		Stdout:         cfg.TracingStdout,
 		SampleRatio:    cfg.TracingSampleRatio,
 		ServiceName:    serviceName,
@@ -208,7 +250,7 @@ func main() {
 	if emailDispatcher != nil {
 		dispatchers = append(dispatchers, emailDispatcher)
 	}
-	runOpts := []serverapp.Option{serverapp.WithReadiness(dbConn.PingContext), serverapp.WithMetrics(metrics), serverapp.WithTracing(tracing)}
+	runOpts := []serverapp.Option{serverapp.WithReadiness(dbConn.PingContext), serverapp.WithMetrics(metrics), serverapp.WithTracing(tracing), serverapp.WithLogs(logs), serverapp.WithMetricsPush(metricsPush)}
 	if storageLedger != nil {
 		runOpts = append(runOpts, serverapp.WithRoutes(func(ws *restful.WebService) {
 			storageusage.RegisterRoutes(ws, storageusage.RoutesConfig{

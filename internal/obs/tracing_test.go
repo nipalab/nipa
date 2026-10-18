@@ -180,27 +180,44 @@ func TestTracing_GRPCPropagation(t *testing.T) {
 }
 
 func TestResolveOTLPEndpoint(t *testing.T) {
-	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "")
-	t.Setenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "")
+	t.Setenv(envOTLPEndpoint, "")
+	t.Setenv(envOTLPTracesEndpoint, "")
+	t.Setenv(envOTLPLogsEndpoint, "")
 
-	target := resolveOTLPEndpoint("")
+	target := resolveOTLPEndpoint("", defaultOTLPEndpoint, envOTLPTracesEndpoint)
 	require.Equal(t, defaultOTLPEndpoint, target.endpoint)
 	require.True(t, target.insecure)
-	require.Len(t, target.options(), 2)
+	require.Len(t, target.traceOptions(nil), 2)
 
-	target = resolveOTLPEndpoint("collector:4317")
+	target = resolveOTLPEndpoint("collector:4317", defaultOTLPEndpoint, envOTLPTracesEndpoint)
 	require.Equal(t, "collector:4317", target.endpoint)
 	require.True(t, target.insecure, "a bare host:port is a plaintext local collector")
 
-	target = resolveOTLPEndpoint("https://collector.example.com:4317")
+	target = resolveOTLPEndpoint("https://collector.example.com:4317", defaultOTLPEndpoint, envOTLPTracesEndpoint)
 	require.Equal(t, "https://collector.example.com:4317", target.endpoint)
 	require.False(t, target.insecure, "an explicit URL scheme decides TLS")
-	require.Len(t, target.options(), 1)
+	require.Len(t, target.traceOptions(nil), 1)
 
-	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "collector.example.com:4317")
-	target = resolveOTLPEndpoint("")
+	headers := ParseHeaders("Authorization=Basic dXNlcjpwYXNz")
+	require.Len(t, target.traceOptions(headers), 2, "headers must be appended to the TLS options")
+
+	t.Setenv(envOTLPEndpoint, "collector.example.com:4317")
+	target = resolveOTLPEndpoint("", defaultOTLPEndpoint, envOTLPTracesEndpoint)
 	require.Empty(t, target.endpoint, "an unset endpoint defers to the OTEL_* variables")
-	require.Empty(t, target.options())
+	require.Empty(t, target.traceOptions(nil))
+
+	t.Setenv(envOTLPEndpoint, "")
+	t.Setenv(envOTLPTracesEndpoint, "collector.example.com:4317")
+	target = resolveOTLPEndpoint("", defaultOTLPEndpoint, envOTLPTracesEndpoint)
+	require.Empty(t, target.endpoint, "the traces-specific variable defers for traces")
+
+	target = resolveOTLPEndpoint("", defaultOTLPEndpoint, envOTLPLogsEndpoint)
+	require.Equal(t, defaultOTLPEndpoint, target.endpoint,
+		"another signal's env variable must not suppress the fallback for logs")
+
+	t.Setenv(envOTLPLogsEndpoint, "logs.example.com:4317")
+	target = resolveOTLPEndpoint("", defaultOTLPEndpoint, envOTLPLogsEndpoint)
+	require.Empty(t, target.endpoint, "the logs-specific variable defers for logs")
 }
 
 func attributeValue(attrs []attribute.KeyValue, key string) string {

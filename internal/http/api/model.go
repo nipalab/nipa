@@ -83,7 +83,7 @@ func (a *appContext) QueryParameter(name string) string {
 func (a *appContext) HandleError(err error) {
 	apiErr, ok := err.(*domain.Error)
 	if !ok {
-		obs.Log(a.Context()).Error("unhandled server error",
+		obs.Log(a.Context()).ErrorContext(a.Context(), "unhandled server error",
 			"method", a.req.Request.Method,
 			"path", a.req.Request.URL.Path,
 			"error", err,

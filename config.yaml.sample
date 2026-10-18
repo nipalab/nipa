@@ -17,12 +17,33 @@ METRICS_ENABLED: true
 # instead of exporting; the endpoint accepts host:port or a URL (https:// for
 # TLS, bare host or http:// for plaintext). Empty falls back to the standard
 # OTEL_EXPORTER_OTLP_ENDPOINT / OTEL_EXPORTER_OTLP_TRACES_ENDPOINT variables,
-# then to localhost:4317.
+# then to localhost:4317 (gRPC) or localhost:4318 (HTTP). TRACING_OTLP_PROTOCOL
+# selects `grpc` (default) or `http`; an HTTP endpoint may carry a path prefix
+# (e.g. OpenObserve's /api/<org>).
 TRACING_ENABLED: false
 TRACING_OTLP_ENDPOINT: ''
+TRACING_OTLP_PROTOCOL: ''
 TRACING_STDOUT: false
 TRACING_SAMPLE_RATIO: 1.0
 TRACING_SERVICE_NAME: ''
+# Extra headers sent with every OTLP request, comma-separated KEY=VALUE pairs
+# (e.g. "Authorization=Basic <base64>" for OpenObserve; add organization=<org>
+# on gRPC). Shared by traces and logs.
+TRACING_OTLP_HEADERS: ''
+# Ship structured logs over OTLP alongside the local console/JSON output
+# (docs/OBSERVABILITY.md). Endpoint and protocol default to the TRACING_*
+# values; the headers are TRACING_OTLP_HEADERS.
+LOGS_OTLP_ENABLED: false
+LOGS_OTLP_ENDPOINT: ''
+LOGS_OTLP_PROTOCOL: ''
+# Push the Prometheus registry straight to the OTLP backend (no collector or
+# Prometheus needed). Endpoint and protocol default to the TRACING_* values,
+# headers are TRACING_OTLP_HEADERS; the interval is the push cadence in
+# seconds. Independent of METRICS_ENABLED, which keeps serving /metrics.
+METRICS_OTLP_ENABLED: false
+METRICS_OTLP_ENDPOINT: ''
+METRICS_OTLP_PROTOCOL: ''
+METRICS_OTLP_INTERVAL_SECONDS: 30
 # Snowflake node id. The free `nipad` is single-instance and uses this value.
 # `nipad-ee` uses it when set; remove the key (or leave the env var empty) to
 # have each instance lease its own id from postgres, which is what a multi-pod
