@@ -192,7 +192,11 @@ feature-detect the capability.
 
 - `internal/config`: `StorageLedger` (`STORAGE_LEDGER`, empty = off, `cloud`
   enables the ledger) and `StorageLedgerDefaultQuotaBytes`
-  (`STORAGE_LEDGER_DEFAULT_QUOTA_BYTES`, 0 = unlimited).
+  (`STORAGE_LEDGER_DEFAULT_QUOTA_BYTES`, default 15 GiB, 0 = unlimited).
+- `SAAS_MODE=1` implies `STORAGE_LEDGER=cloud` in `ee/cmd/nipad`
+  (`createStorageLedger` falls back to the cloud ledger when the setting is
+  empty): registration seeds an `owner_quota`, so the ledger must exist for
+  that quota to be enforced and visible.
 - The free `cmd/nipad` ignores `STORAGE_LEDGER` (it wires no ledger), so a free
   server started with the setting still runs unlimited and the storage routes
   answer 404.
@@ -211,7 +215,10 @@ feature-detect the capability.
 - `OrgSettingsPage`: storage card (used/quota progress, per-project table,
   super-admin recount and billing-owner transfer), hidden when the API 404s.
 - `/settings/billing`: the owner's aggregate usage, per-org table and quota,
-  plus a super-admin quota editor.
+  plus a super-admin quota editor. The page is always linked from the header
+  and the profile settings nav (no feature detection); when the server has no
+  ledger it shows the "Storage billing is not enabled on this server." empty
+  state.
 
 ## Recount / backfill
 

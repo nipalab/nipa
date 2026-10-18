@@ -13,7 +13,7 @@ The free `nipad` never registers these routes, so every endpoint below answers
 
 | Env | Meaning |
 |---|---|
-| `SAAS_MODE` | `1` enables registration + social routes in `nipad-ee` |
+| `SAAS_MODE` | `1` enables registration + social routes in `nipad-ee`; also turns on the cloud storage ledger (`STORAGE_LEDGER=cloud`) so the seeded free-tier quota is enforced and visible |
 | `SAAS_FREE_QUOTA_BYTES` | free-tier quota seeded per new account (default `16106127360` = 15 GiB) |
 | `EMAIL_BASE_URL` | public web UI base URL; confirmation links are `<base>/verify?token=…` (required in SaaS mode) |
 | `EMAIL_SENDER` | must be `smtp`/`sendgrid`/`scaleway`/`http` in SaaS mode to deliver confirmation emails; `off` logs a warning and creates accounts without sending |

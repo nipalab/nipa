@@ -82,6 +82,7 @@ func LoadConfig() (*Config, error) {
 	v.SetDefault("CHUNK_PRESIGN_TTL_SECONDS", 3600)
 	v.SetDefault("CHUNK_MAX_PAGE_SIZE", 1000)
 	v.SetDefault("SNOWFLAKE_LEASE_TTL_SECONDS", 60)
+	v.SetDefault("STORAGE_LEDGER_DEFAULT_QUOTA_BYTES", int64(15*1024*1024*1024))
 	v.SetDefault("SAAS_MODE", false)
 	v.SetDefault("SAAS_FREE_QUOTA_BYTES", int64(15*1024*1024*1024))
 	v.SetDefault("LOG_LEVEL", "info")

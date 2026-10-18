@@ -131,6 +131,12 @@ describe('ProfilePage', () => {
     expect(container.textContent).toContain('Email notifications')
     expect(container.textContent).toContain('Change password')
 
+    const settingsNav = container.querySelector('.nipa-settings-nav')
+    const billingLink = Array.from(settingsNav?.querySelectorAll('a') ?? []).find(
+      (item) => item.textContent?.trim() === 'Billing',
+    )
+    expect(billingLink?.getAttribute('href')).toBe('/settings/billing')
+
     const inputs = container.querySelectorAll('input')
     await act(async () => {
       setInputValue(inputs[0] as HTMLInputElement, 'https://example.com/a.png')

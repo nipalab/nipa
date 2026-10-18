@@ -37,7 +37,7 @@ proxies `/api` and `/docs` to `NIPA_SERVER_URL`).
 | `/admin/users` | user administration | GitHub-style list with filter, avatar/role labels and row actions |
 | `/admin/users/new` | new user | dedicated create page (name, email, password) |
 | `/settings/profile` | public profile | GitHub-style settings layout: avatar preview + photo URL + name, password change with confirmation/validation, connected social accounts (link/unlink; hidden when the server has no social login) and SSH key management (list/add/remove) |
-| `/settings/billing` | billing | the caller's billing-owner aggregate usage, quota and per-org breakdown; super admins can set/clear owner quotas |
+| `/settings/billing` | billing | the caller's billing-owner aggregate usage, quota and per-org breakdown; super admins can set/clear owner quotas; linked from the header and profile settings, shows an empty state when the server has no ledger |
 
 ## Browse API
 
@@ -101,7 +101,8 @@ The enterprise storage ledger exposes `GET /orgs/{org}/storage`,
 `docs/CLOUD_STORAGE_QUOTA.md`). `getOrgStorage` returns null on 404, so the org
 settings storage card hides itself when the server runs without a ledger; the
 `/settings/billing` page shows the owner aggregate and the super-admin quota
-editor.
+editor, and is always linked (header + profile settings) — on servers without a
+ledger it explains that storage billing is not enabled.
 
 ## Merge request reviews
 

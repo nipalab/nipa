@@ -487,17 +487,21 @@ server-generated diff3 chunks through `Chunk.AttributeProjectChunks` (the
 `chunkUploader` seam) before the commit lands. Quota failures are 402
 (`domain.NewErrorQuotaExceeded`), crossing gRPC as `ResourceExhausted`. The
 enterprise implementation lives in `ee/storageusage` (postgres,
-`STORAGE_LEDGER=cloud`; the free `cmd/nipad` ignores the setting and keeps
+`STORAGE_LEDGER=cloud`; `SAAS_MODE=1` auto-enables it so the seeded free-tier
+quota is enforced; the free `cmd/nipad` ignores the setting and keeps
 running with no ledger, no quota and the routes 404): it bills
 every org to one owner user (lazily seeded from
 `organizations.created_by_user_id`), tracks per-project chunk links with
 cached project/org counters, and enforces `owner_quota` (NULL/0 =
-unlimited; missing row = `STORAGE_LEDGER_DEFAULT_QUOTA_BYTES`). `RecountOrg`
+unlimited; missing row = `STORAGE_LEDGER_DEFAULT_QUOTA_BYTES`, default
+15 GiB). `RecountOrg`
 rebuilds links and counters from the stored history. REST routes
 (`/orgs/{org}/storage`, `/billing/me`, admin quota/transfer/recount) are
 registered on the shared `/api/v1` WebService via `serverapp.WithRoutes` only
 when the ledger is enabled, so they 404 otherwise; the SPA hides the org
-storage card on 404 and has a `/settings/billing` page.
+storage card on 404, while the `/settings/billing` page is always linked from
+the header and the profile settings nav (it shows an empty state when the
+ledger is off).
 
 Flow for tracing (design in `docs/TRACING.md`): `internal/obs/tracing.go`
 builds an OTLP gRPC tracer provider (`SetupTracing`), installed globally with
