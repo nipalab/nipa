@@ -153,6 +153,7 @@ func TestLoadConfig_ChunkURLDefaults(t *testing.T) {
 	require.Empty(t, cfg.MetricsOTLPEndpoint)
 	require.Empty(t, cfg.MetricsOTLPProtocol)
 	require.Equal(t, 30, cfg.MetricsOTLPIntervalSeconds)
+	require.Equal(t, 15, cfg.ShutdownTimeoutSeconds)
 	require.Equal(t, 60, cfg.SnowflakeLeaseTTLSecs)
 	require.False(t, cfg.SnowflakeNodeIDSet)
 	require.Equal(t, int64(15*1024*1024*1024), cfg.StorageLedgerDefaultQuotaBytes)
@@ -231,6 +232,24 @@ func TestLoadConfig_ProcessEnvOverridesFiles(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 8080, cfg.ServerPort)
 	require.Equal(t, "env-secret", cfg.JWTKey)
+}
+
+func TestLoadConfig_ServerEnvWithoutConfigKeys(t *testing.T) {
+	clearConfigEnv(t)
+
+	dir := t.TempDir()
+	writeFile(t, dir, "config.yaml", "DATABASE_DSN: nipa.db\n")
+	t.Chdir(dir)
+
+	t.Setenv("SERVER_ADDRESS", "127.0.0.1")
+	t.Setenv("SERVER_PORT", "8002")
+	t.Setenv("SHUTDOWN_TIMEOUT_SECONDS", "60")
+
+	cfg, err := LoadConfig()
+	require.NoError(t, err)
+	require.Equal(t, "127.0.0.1", cfg.ServerAddress)
+	require.Equal(t, 8002, cfg.ServerPort, "per-color systemd env files set the port without a config.yaml key")
+	require.Equal(t, 60, cfg.ShutdownTimeoutSeconds)
 }
 
 func TestLoadConfig_MissingConfigFile(t *testing.T) {

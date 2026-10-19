@@ -1,0 +1,42 @@
+[Unit]
+Description=Nipa enterprise server (nipad-ee, %i color)
+Documentation=https://github.com/nipalab/nipa/blob/main/docs/DEPLOY.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=nipa
+Group=nipa
+WorkingDirectory=/etc/nipa
+EnvironmentFile=/etc/nipa/%i.env
+ExecStart=/opt/nipa/%i/nipad-ee
+ExecStartPost=/usr/bin/curl -fsS --retry 60 --retry-delay 1 --retry-connrefused --max-time 5 "http://127.0.0.1:${SERVER_PORT}/readyz"
+Restart=on-failure
+RestartSec=3
+TimeoutStartSec=120
+# Must exceed SHUTDOWN_TIMEOUT_SECONDS plus the background dispatcher drain, or
+# systemd SIGKILLs the process mid-drain during a blue-green flip.
+TimeoutStopSec=180
+KillSignal=SIGTERM
+LimitNOFILE=65536
+
+# Hardening: postgres and S3 are remote and logs go to the journal, so the
+# process needs no writable path of its own.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+# AF_NETLINK keeps glibc's DNS resolver (AI_ADDRCONFIG) working.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+CapabilityBoundingSet=
+AmbientCapabilities=
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

@@ -267,7 +267,7 @@ func (c *Cli) repoScope() (host, org, project string, err error) {
 	if err != nil {
 		return "", "", "", err
 	}
-	return nipaUrl.Host, nipaUrl.Org, nipaUrl.Project, nil
+	return nipaUrl.Origin, nipaUrl.Org, nipaUrl.Project, nil
 }
 
 func parsePermission(raw string) (uint64, error) {

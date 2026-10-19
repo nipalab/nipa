@@ -36,7 +36,10 @@ func (s *Session) WithSSHLogin(resolve signerResolver) *Session {
 	return s
 }
 
-func (s *Session) AccessToken(ctx context.Context, host string) (string, error) {
+// AccessToken returns the stored access token for the server address, which
+// may be a bare host or an http(s) origin; tokens are keyed by bare host.
+func (s *Session) AccessToken(ctx context.Context, address string) (string, error) {
+	host := domain.HostForAddress(address)
 	loginResult, err := s.storage.LoadToken(host)
 	if err != nil {
 		return "", err
@@ -44,7 +47,8 @@ func (s *Session) AccessToken(ctx context.Context, host string) (string, error) 
 	return loginResult.AccessToken, nil
 }
 
-func (s *Session) Refresh(ctx context.Context, host string) (string, error) {
+func (s *Session) Refresh(ctx context.Context, address string) (string, error) {
+	host := domain.HostForAddress(address)
 	loginResult, err := s.storage.LoadToken(host)
 	if err != nil {
 		return "", err

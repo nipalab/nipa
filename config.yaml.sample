@@ -1,5 +1,9 @@
 SERVER_ADDRESS: 0.0.0.0
 SERVER_PORT: 6745
+# Graceful shutdown drain window in seconds (default 15): on SIGTERM /readyz
+# answers 503 and in-flight requests get this long to finish. For zero-downtime
+# blue/green upgrades keep the unit's TimeoutStopSec above it (docs/DEPLOY.md).
+SHUTDOWN_TIMEOUT_SECONDS: 15
 # SQLite file path for the free `nipad`; postgres connection string for the
 # enterprise `nipad-ee`.
 DATABASE_DSN: nipa.db

@@ -641,6 +641,28 @@ Direct: `go build ./...`, `go vet ./...`, `go test ./...`.
   `SQLITE_BUSY_SNAPSHOT` when another connection commits in between, and the
   busy handler is not invoked for that case.
 
+## Deployment (zero-downtime SaaS)
+
+`docs/DEPLOY.md` is the runbook for running the SaaS on a VPS without Docker:
+two `nipad-ee` colors (`nipad-ee@blue`/`@green`) behind Caddy, which terminates
+TLS for the single h2c port and proxies to the active color. Assets live in
+`deploy/` (`nipad-ee@.service` template, `nipad-ee.env.sample`, `caddy/Caddyfile`,
+`upgrade.sh`). The upgrade script installs the new binary into the idle color,
+waits for `/readyz`, rewrites the Caddyfile upstream + `systemctl reload caddy`
+(a reload never drops connections), waits for the old color to drain, then
+SIGTERMs it. `internal/serverapp` drains gracefully: on SIGTERM `/readyz`
+answers 503 (`readinessHandler` + drain flag), the gRPC health service reports
+NOT_SERVING, `httpServer.Shutdown` waits up to `SHUTDOWN_TIMEOUT_SECONDS`
+(config default 15, unit's `TimeoutStopSec` must stay above it), dispatchers
+drain and the exporters flush. `Run` returns only after the drain finished
+(`serveUntilShutdown`): `Serve` returns the moment the listener closes, so
+returning then would exit the process mid-request. Both colors may run
+concurrently during a flip:
+snowflake node ids are leased from postgres (never pin `SNOWFLAKE_NODE_ID`),
+email deliveries are claimed atomically, but webhooks can double-deliver in the
+overlap window (consumers must be idempotent). Migrations must stay forward
+compatible for one release.
+
 ## Conventions
 
 - **Package layout**: consider packages under `internal/` as the border; use the
@@ -857,9 +879,12 @@ Direct: `go build ./...`, `go vet ./...`, `go test ./...`.
   `ChunkScope{Org, Project, CommitIDs, Paths}` that scopes download visibility;
   download callbacks are
   serialized under a mutex because transfers run concurrently. The server only
-  returns relative paths: the client connects with the bare host as the gRPC
-  target (also the token-storage key) and `Client.httpURL` prefixes `http://`
-  when the target has no scheme.
+  returns relative paths: the client connects with the address from
+  `domain.NipaUrl.Origin` (`scheme://host[:port]`; a bare host keeps cleartext
+  h2c, `https://` dials TLS with system roots) and `Client.httpURL` prefixes
+  `http://` when the target has no scheme. Tokens are still keyed by the bare
+  host (`domain.HostForAddress`); `Auth`/`Session` normalize any address they
+  receive so the transport may carry a scheme while `securestorage` never does.
 - **Chunk content backends**: `internal/storage.ChunkStore` (Put/Get/Size/
   Exists/Close, content-addressed by BLAKE3, idempotent Put) is the single seam.
   `storage.NewLocalStore` (`CHUNK_STORAGE=local`, `CHUNK_STORAGE_DIR`) is the

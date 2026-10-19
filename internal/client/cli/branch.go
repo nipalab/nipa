@@ -84,7 +84,7 @@ func (c *Cli) createBranch(cmd *cobra.Command, cfg *domain.Config, name string) 
 		return err
 	}
 	ctx := context.Background()
-	if err := c.connector.Connect(ctx, nipaUrl.Host); err != nil {
+	if err := c.connector.Connect(ctx, nipaUrl.Origin); err != nil {
 		return err
 	}
 	created, err := c.useCase.Repo().CreateBranch(ctx, root, nipaUrl.Host, nipaUrl.Org, nipaUrl.Project, name)
@@ -105,7 +105,7 @@ func (c *Cli) deleteBranch(cmd *cobra.Command, cfg *domain.Config, name string) 
 		return err
 	}
 	ctx := context.Background()
-	if err := c.connector.Connect(ctx, nipaUrl.Host); err != nil {
+	if err := c.connector.Connect(ctx, nipaUrl.Origin); err != nil {
 		return err
 	}
 	if err := c.useCase.Repo().DeleteBranch(ctx, root, nipaUrl.Host, nipaUrl.Org, nipaUrl.Project, name); err != nil {
@@ -121,7 +121,7 @@ func (c *Cli) listAllBranches(cmd *cobra.Command, cfg *domain.Config, jsonMode b
 		return err
 	}
 	ctx := context.Background()
-	if err := c.connector.Connect(ctx, nipaUrl.Host); err != nil {
+	if err := c.connector.Connect(ctx, nipaUrl.Origin); err != nil {
 		return err
 	}
 	branches, err := c.useCase.Repo().ListBranches(ctx, nipaUrl.Host, nipaUrl.Org, nipaUrl.Project)

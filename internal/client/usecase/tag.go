@@ -113,7 +113,7 @@ func (t *Tag) connect(ctx context.Context, root string) (*domain.NipaUrl, *domai
 	if err != nil {
 		return nil, nil, err
 	}
-	if err := t.client.Connect(ctx, url.Host); err != nil {
+	if err := t.client.Connect(ctx, url.Origin); err != nil {
 		return nil, nil, err
 	}
 	if err := t.auth.MakeSureLoggedIn(ctx, url.Host); err != nil {

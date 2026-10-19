@@ -87,7 +87,7 @@ func (c *Cli) fetchLog(cmd *cobra.Command, cfg *domain.Config, limit int) ([]*se
 		return nil, err
 	}
 	ctx := context.Background()
-	if err := c.connector.Connect(ctx, nipaUrl.Host); err != nil {
+	if err := c.connector.Connect(ctx, nipaUrl.Origin); err != nil {
 		return nil, err
 	}
 	opts := []usecase.CommitLogOption{}

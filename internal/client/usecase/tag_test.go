@@ -73,7 +73,7 @@ func TestTagUsecase_Create_DefaultsToPinnedCommit(t *testing.T) {
 		Create(context.Background(), t.TempDir(), " v1.0.0 ", "release", TagTarget{})
 	require.NoError(t, err)
 	require.Equal(t, "v1.0.0", tag.Name)
-	require.Equal(t, "example.com", client.connectHost)
+	require.Equal(t, "http://example.com", client.connectHost)
 	require.Equal(t, "v1.0.0", client.createName)
 	require.Equal(t, "release", client.createMessage)
 	require.Empty(t, client.createBranch)

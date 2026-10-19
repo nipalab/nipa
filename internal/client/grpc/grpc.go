@@ -2,10 +2,12 @@ package grpc
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/hex"
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -17,6 +19,7 @@ import (
 	"github.com/nipalab/nipa/internal/snow"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
@@ -32,13 +35,15 @@ func NewTransport() *Transport {
 	return &Transport{}
 }
 
-// Connect binds the transport to host. Reconnecting to the same host is a
-// no-op, so concurrent callers (the daemon proxies every request) reuse one
-// connection instead of leaking one per call.
-func (t *Transport) Connect(url string, opts ...grpc.DialOption) error {
+// Connect binds the transport to an address: a bare host, or an http(s) origin
+// as produced by domain.ParseNipaUrl/ParseEndpoint. https dials TLS (system
+// root certificates); everything else stays cleartext h2c. Reconnecting to the
+// same address is a no-op, so concurrent callers (the daemon proxies every
+// request) reuse one connection instead of leaking one per call.
+func (t *Transport) Connect(address string, opts ...grpc.DialOption) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	if t.clientConn != nil && url == t.url {
+	if t.clientConn != nil && address == t.url {
 		return nil
 	}
 	if t.clientConn != nil {
@@ -49,17 +54,36 @@ func (t *Transport) Connect(url string, opts ...grpc.DialOption) error {
 		t.clientConn = nil
 		t.url = ""
 	}
-	opts = append(opts,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		obs.ActiveTracing().GRPCDialOption(),
-	)
-	conn, err := grpc.NewClient(url, opts...)
+	target, creds, err := dialTarget(address)
 	if err != nil {
 		return err
 	}
-	t.url = url
+	opts = append(opts,
+		grpc.WithTransportCredentials(creds),
+		obs.ActiveTracing().GRPCDialOption(),
+	)
+	conn, err := grpc.NewClient(target, opts...)
+	if err != nil {
+		return err
+	}
+	t.url = address
 	t.clientConn = conn
 	return nil
+}
+
+// dialTarget resolves a server address into the gRPC dial target and the
+// matching transport credentials. An https origin selects TLS with the system
+// root certificates and the standard 443 default port; a bare host or an http
+// origin keeps the cleartext h2c behavior.
+func dialTarget(address string) (string, credentials.TransportCredentials, error) {
+	target, err := domain.ParseHost(address)
+	if err != nil {
+		return "", nil, err
+	}
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(address)), "https://") {
+		return target, credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12}), nil
+	}
+	return target, insecure.NewCredentials(), nil
 }
 
 // URL reports the host the transport is currently bound to.

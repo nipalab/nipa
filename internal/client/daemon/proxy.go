@@ -35,7 +35,7 @@ func (s *Server) withProxy(ctx context.Context, root string, fn func(pb.NipaServ
 	if err != nil {
 		return err
 	}
-	if err := rp.proxy.Connect(ctx, nu.Host); err != nil {
+	if err := rp.proxy.Connect(ctx, nu.Origin); err != nil {
 		return err
 	}
 	client, err := rp.proxy.ServiceClient()

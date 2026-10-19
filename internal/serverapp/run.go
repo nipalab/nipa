@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -27,8 +28,8 @@ import (
 )
 
 const (
-	shutdownTimeout = 15 * time.Second
-	dispatcherDrain = 10 * time.Second
+	defaultShutdownTimeout = 15 * time.Second
+	dispatcherDrain        = 10 * time.Second
 )
 
 // Dispatcher is the background worker the server starts and drains around its
@@ -113,6 +114,16 @@ func WithPublicRoutes(register func(*restful.WebService)) Option {
 // configured address until the process is signalled to shut down. Background
 // dispatchers are started before the listener and drained on shutdown.
 func Run(cfg *config.Config, reg *Registry, dispatchers []Dispatcher, opts ...Option) error {
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP)
+	return run(cfg, reg, dispatchers, c, opts...)
+}
+
+// run is Run with an injectable signal source. It does not return until the
+// graceful shutdown finished: Serve returns as soon as Shutdown closes the
+// listener, so the process must not exit before the in-flight requests
+// drained.
+func run(cfg *config.Config, reg *Registry, dispatchers []Dispatcher, signals <-chan os.Signal, opts ...Option) error {
 	var ro runOptions
 	for _, opt := range opts {
 		opt(&ro)
@@ -134,6 +145,10 @@ func Run(cfg *config.Config, reg *Registry, dispatchers []Dispatcher, opts ...Op
 	}
 
 	address := fmt.Sprintf("%s:%d", cfg.ServerAddress, cfg.ServerPort)
+	shutdownTimeout := defaultShutdownTimeout
+	if cfg.ShutdownTimeoutSeconds > 0 {
+		shutdownTimeout = time.Duration(cfg.ShutdownTimeoutSeconds) * time.Second
+	}
 
 	grpcInterceptor := grpcserver.NewInterceptor(reg.Auth())
 
@@ -151,7 +166,8 @@ func Run(cfg *config.Config, reg *Registry, dispatchers []Dispatcher, opts ...Op
 	webUI := webui.Handler()
 
 	healthHandler := obs.HealthHandler()
-	readyHandler := obs.ReadinessHandler(ro.readiness)
+	draining := &atomic.Bool{}
+	readyHandler := readinessHandler(draining, ro.readiness)
 	versionHandler := version.Handler()
 	pprofHandler := http.NotFoundHandler()
 	if cfg.PprofEnabled {
@@ -199,12 +215,9 @@ func Run(cfg *config.Config, reg *Registry, dispatchers []Dispatcher, opts ...Op
 		return err
 	}
 
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt, syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP)
-
-	go func() {
-		<-c
+	shutdown := func() {
 		slog.Info("shutting down server")
+		draining.Store(true)
 		grpcHealth.SetServingStatus("", healthpb.HealthCheckResponse_NOT_SERVING)
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), shutdownTimeout)
 		defer shutdownCancel()
@@ -236,14 +249,43 @@ func Run(cfg *config.Config, reg *Registry, dispatchers []Dispatcher, opts ...Op
 			slog.Warn("metrics push shutdown incomplete", "error", err)
 		}
 		metricsCancel()
-		os.Exit(0)
-	}()
+	}
 
 	slog.Info("server is running", "address", address, "version", version.Resolve().Version)
-	if err := httpServer.Serve(ln); err != http.ErrServerClosed {
+	return serveUntilShutdown(ln, httpServer, signals, shutdown)
+}
+
+// serveUntilShutdown serves on ln until a signal arrives, runs the graceful
+// shutdown and only then returns. Serve returns as soon as Shutdown closes the
+// listener, so returning at that point would exit the process while in-flight
+// requests are still draining.
+func serveUntilShutdown(ln net.Listener, srv *http.Server, signals <-chan os.Signal, shutdown func()) error {
+	shutdownDone := make(chan struct{})
+	go func() {
+		<-signals
+		shutdown()
+		close(shutdownDone)
+	}()
+	if err := srv.Serve(ln); err != http.ErrServerClosed {
 		return err
 	}
+	<-shutdownDone
 	return nil
+}
+
+// readinessHandler wraps the readiness check so /readyz answers 503 as soon as
+// shutdown starts: proxies and load balancers polling it stop routing new
+// traffic to the draining instance. Liveness (/healthz) stays 200 until the
+// process actually exits.
+func readinessHandler(draining *atomic.Bool, check func(context.Context) error) http.Handler {
+	ready := obs.ReadinessHandler(check)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if draining.Load() {
+			http.Error(w, "draining", http.StatusServiceUnavailable)
+			return
+		}
+		ready.ServeHTTP(w, r)
+	})
 }
 
 // SplitAllowlist turns the comma-separated WEBHOOK_EGRESS_ALLOWLIST into

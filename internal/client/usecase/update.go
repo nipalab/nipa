@@ -100,7 +100,7 @@ func (u *Update) Run(ctx context.Context, root string, progress ...DownloadProgr
 		attribute.String(obs.AttrProject, nu.Project),
 		attribute.String(obs.AttrBranch, cfg.Branch),
 	)
-	if err := u.client.Connect(ctx, nu.Host); err != nil {
+	if err := u.client.Connect(ctx, nu.Origin); err != nil {
 		return err
 	}
 	if err := u.auth.MakeSureLoggedIn(ctx, nu.Host); err != nil {
@@ -263,7 +263,7 @@ func (u *Update) Switch(ctx context.Context, root, branch string, progress ...Do
 	if len(staged) > 0 {
 		return clientDomain.NewUserError("cannot switch branches with staged changes; push or reset them first")
 	}
-	if err := u.client.Connect(ctx, nu.Host); err != nil {
+	if err := u.client.Connect(ctx, nu.Origin); err != nil {
 		return err
 	}
 	if err := u.auth.MakeSureLoggedIn(ctx, nu.Host); err != nil {
@@ -326,7 +326,7 @@ func (u *Update) SwitchTag(ctx context.Context, root, tagName string, progress .
 	if len(staged) > 0 {
 		return clientDomain.NewUserError("cannot switch to a tag with staged changes; push or reset them first")
 	}
-	if err := u.client.Connect(ctx, nu.Host); err != nil {
+	if err := u.client.Connect(ctx, nu.Origin); err != nil {
 		return err
 	}
 	if err := u.auth.MakeSureLoggedIn(ctx, nu.Host); err != nil {

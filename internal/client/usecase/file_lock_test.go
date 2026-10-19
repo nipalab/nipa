@@ -69,7 +69,7 @@ func TestFileLockUsecase_Lock_DefaultsToCurrentBranch(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "art/tex.png", lock.Path)
 	require.Equal(t, root, local.initTarget)
-	require.Equal(t, "example.com", client.connectHost)
+	require.Equal(t, "http://example.com", client.connectHost)
 	require.Equal(t, "art/tex.png", client.lockPath)
 	require.Equal(t, "feature", client.lockBranch)
 }

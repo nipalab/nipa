@@ -84,7 +84,7 @@ func (p *Push) Run(ctx context.Context, root, message string, progress ...Upload
 		attribute.String(obs.AttrProject, nipaUrl.Project),
 		attribute.String(obs.AttrBranch, cfg.Branch),
 	)
-	if err := p.pushClient.Connect(ctx, nipaUrl.Host); err != nil {
+	if err := p.pushClient.Connect(ctx, nipaUrl.Origin); err != nil {
 		return err
 	}
 	if err := p.auth.MakeSureLoggedIn(ctx, nipaUrl.Host); err != nil {

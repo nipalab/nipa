@@ -284,7 +284,7 @@ func TestMergeRequest_Create_Defaults(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int64(1), mr.Number)
 	require.Equal(t, root, local.initTarget)
-	require.Equal(t, "example.com", client.connectHost)
+	require.Equal(t, "http://example.com", client.connectHost)
 	require.Len(t, client.createCalls, 1)
 	call := client.createCalls[0]
 	require.Equal(t, "org", call.org)
