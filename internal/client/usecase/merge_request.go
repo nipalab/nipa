@@ -394,7 +394,7 @@ func (m *MergeRequest) connect(ctx context.Context, root string) (*domain.NipaUr
 	if err != nil {
 		return nil, nil, err
 	}
-	if err := m.client.Connect(ctx, url.Host); err != nil {
+	if err := m.client.Connect(ctx, url.Origin); err != nil {
 		return nil, nil, err
 	}
 	if err := m.auth.MakeSureLoggedIn(ctx, url.Host); err != nil {

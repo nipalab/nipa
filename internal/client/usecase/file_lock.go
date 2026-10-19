@@ -85,7 +85,7 @@ func (f *FileLock) connect(ctx context.Context, root string) (*domain.NipaUrl, *
 	if err != nil {
 		return nil, nil, err
 	}
-	if err := f.client.Connect(ctx, url.Host); err != nil {
+	if err := f.client.Connect(ctx, url.Origin); err != nil {
 		return nil, nil, err
 	}
 	if err := f.auth.MakeSureLoggedIn(ctx, url.Host); err != nil {

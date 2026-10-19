@@ -166,7 +166,7 @@ func TestLoginCmd_HostFlagAcceptsURL(t *testing.T) {
 		"--ssh-key", keyPath,
 	)
 	require.NoError(t, err)
-	require.Equal(t, "nipa.example.com:8080", connector.lastHost)
+	require.Equal(t, "http://nipa.example.com:8080", connector.lastHost)
 }
 
 func TestLoginCmd_HostFromRepoConfig(t *testing.T) {
@@ -182,7 +182,7 @@ func TestLoginCmd_HostFromRepoConfig(t *testing.T) {
 		"--ssh-key", keyPath,
 	)
 	require.NoError(t, err)
-	require.Equal(t, "example.com", connector.lastHost)
+	require.Equal(t, "http://example.com", connector.lastHost)
 }
 
 func TestLoginCmd_MissingHost(t *testing.T) {

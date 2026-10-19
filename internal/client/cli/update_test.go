@@ -139,7 +139,7 @@ func TestSetupUpdateCmd_MaterializesFiles(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, out, "Downloading 1 objects (17 B)...", "update must announce how many objects are fetched")
 
-	require.Equal(t, "example.com", client.host)
+	require.Equal(t, "http://example.com", client.host)
 	require.Equal(t, "org", client.org)
 	require.Equal(t, "project", client.project)
 	require.Equal(t, "main", client.branch)

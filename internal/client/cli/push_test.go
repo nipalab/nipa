@@ -68,7 +68,7 @@ func TestSetupPushCmd_Success(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, out, "Uploading 1 objects (11 B)...", "push must announce how many chunk objects are uploaded")
 
-	require.Equal(t, "example.com", client.host)
+	require.Equal(t, "http://example.com", client.host)
 	require.Equal(t, "org", client.org)
 	require.Equal(t, "project", client.project)
 	require.Equal(t, "main", client.branch)

@@ -366,7 +366,7 @@ func TestServer_ProxyFillsProjectContext(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "default", got.GetContext().GetOrg())
 	require.Equal(t, "default", got.GetContext().GetProject())
-	require.Equal(t, "nipa.example.com", conn.host, "the proxy connects to the clone's server host")
+	require.Equal(t, "https://nipa.example.com", conn.host, "the proxy connects to the clone's server origin")
 	require.Equal(t, 1, conn.connects)
 	require.Equal(t, "main", res.GetResponse().GetBranches()[0].GetName())
 }

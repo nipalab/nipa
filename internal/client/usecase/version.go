@@ -28,7 +28,7 @@ func (v *Version) Server(ctx context.Context, url string) (*version.Info, error)
 	if err != nil {
 		return nil, err
 	}
-	if err := v.client.Connect(ctx, nipaUrl.Host); err != nil {
+	if err := v.client.Connect(ctx, nipaUrl.Origin); err != nil {
 		return nil, err
 	}
 	return v.client.GetServerVersion(ctx)

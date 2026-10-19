@@ -242,7 +242,7 @@ func (s *server) connectContext(ctx context.Context, repo string) (string, *doma
 		uc.close()
 		return "", nil, nil, UseCases{}, domain.NewUserError("server connection is not configured")
 	}
-	if err := uc.Connector.Connect(ctx, url.Host); err != nil {
+	if err := uc.Connector.Connect(ctx, url.Origin); err != nil {
 		uc.close()
 		return "", nil, nil, UseCases{}, err
 	}

@@ -560,6 +560,62 @@ func TestTransport_Connect_ConcurrentSafe(t *testing.T) {
 	require.NoError(t, tr.Close())
 }
 
+func TestDialTarget(t *testing.T) {
+	tests := []struct {
+		name         string
+		address      string
+		wantTarget   string
+		wantProtocol string
+	}{
+		{name: "bare host stays cleartext", address: "example.com:6745", wantTarget: "example.com:6745", wantProtocol: "insecure"},
+		{name: "bare host without port", address: "example.com", wantTarget: "example.com", wantProtocol: "insecure"},
+		{name: "https selects tls", address: "https://example.com", wantTarget: "example.com", wantProtocol: "tls"},
+		{name: "https keeps the port", address: "https://example.com:8443", wantTarget: "example.com:8443", wantProtocol: "tls"},
+		{name: "https strips the path", address: "https://example.com/org/project", wantTarget: "example.com", wantProtocol: "tls"},
+		{name: "http stays cleartext", address: "http://example.com:6745", wantTarget: "example.com:6745", wantProtocol: "insecure"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			target, creds, err := dialTarget(tt.address)
+			require.NoError(t, err)
+			require.Equal(t, tt.wantTarget, target)
+			require.Equal(t, tt.wantProtocol, creds.Info().SecurityProtocol)
+		})
+	}
+
+	_, _, err := dialTarget("")
+	require.Error(t, err)
+}
+
+func TestTransport_Connect_HTTPSSelectsTLS(t *testing.T) {
+	addr := startTestServer(t, &fakeServer{accessToken: "tok"})
+
+	tr := NewTransport()
+	require.NoError(t, tr.Connect("https://"+addr))
+	require.Equal(t, "https://"+addr, tr.URL())
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	_, err := tr.LoginWithUsernamePassword(ctx, "https://"+addr, "alice", "secret")
+	require.Error(t, err, "a TLS client must not complete a handshake with a cleartext server")
+	require.NoError(t, tr.Close())
+}
+
+func TestTransport_Connect_HTTPStaysCleartext(t *testing.T) {
+	addr := startTestServer(t, &fakeServer{accessToken: "tok"})
+
+	tr := NewTransport()
+	require.NoError(t, tr.Connect("http://"+addr))
+	require.Equal(t, "http://"+addr, tr.URL())
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	res, err := tr.LoginWithUsernamePassword(ctx, "http://"+addr, "alice", "secret")
+	require.NoError(t, err)
+	require.Equal(t, "tok", res.AccessToken)
+	require.NoError(t, tr.Close())
+}
+
 func TestClient_GetDefaultBranch_Success(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Microsecond)
 	commitID := snow.ID(7).Base36()

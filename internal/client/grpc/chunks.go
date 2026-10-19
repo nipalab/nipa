@@ -380,8 +380,9 @@ func (c *Client) httpURL(path string) string {
 	if base == "" {
 		return path
 	}
+	// The transport address keeps the scheme when the client connected over
+	// TLS; a bare host falls back to cleartext, matching Connect.
 	if !strings.Contains(base, "://") {
-		// TODO: check later, it should be https
 		base = "http://" + base
 	}
 	return strings.TrimRight(base, "/") + path

@@ -29,7 +29,7 @@ func (c *Cli) setupCloneCmd() *cobra.Command {
 				paths = append(paths, nipaUrl.Path)
 			}
 			ctx := context.Background()
-			err = c.connector.Connect(ctx, nipaUrl.Host)
+			err = c.connector.Connect(ctx, nipaUrl.Origin)
 			if err != nil {
 				return err
 			}

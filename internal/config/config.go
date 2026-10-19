@@ -10,6 +10,7 @@ type Config struct {
 	DatabaseDSN                    string  `mapstructure:"DATABASE_DSN"`
 	ServerAddress                  string  `mapstructure:"SERVER_ADDRESS"`
 	ServerPort                     int     `mapstructure:"SERVER_PORT"`
+	ShutdownTimeoutSeconds         int     `mapstructure:"SHUTDOWN_TIMEOUT_SECONDS"`
 	JWTKey                         string  `mapstructure:"JWT_KEY"`
 	LogLevel                       string  `mapstructure:"LOG_LEVEL"`
 	LogFormat                      string  `mapstructure:"LOG_FORMAT"`
@@ -90,6 +91,7 @@ func LoadConfig() (*Config, error) {
 
 	v.SetDefault("CHUNK_PRESIGN_TTL_SECONDS", 3600)
 	v.SetDefault("CHUNK_MAX_PAGE_SIZE", 1000)
+	v.SetDefault("SHUTDOWN_TIMEOUT_SECONDS", 15)
 	v.SetDefault("SNOWFLAKE_LEASE_TTL_SECONDS", 60)
 	v.SetDefault("STORAGE_LEDGER_DEFAULT_QUOTA_BYTES", int64(15*1024*1024*1024))
 	v.SetDefault("SAAS_MODE", false)
@@ -114,8 +116,12 @@ func LoadConfig() (*Config, error) {
 	_ = v.MergeInConfig()
 
 	v.AutomaticEnv()
-	if err := v.BindEnv("SNOWFLAKE_NODE_ID"); err != nil {
-		return nil, fmt.Errorf("bind SNOWFLAKE_NODE_ID: %w", err)
+	// AutomaticEnv alone does not feed Unmarshal for keys missing from the
+	// config file, so the per-color systemd env files must bind explicitly.
+	for _, key := range []string{"SERVER_ADDRESS", "SERVER_PORT", "SHUTDOWN_TIMEOUT_SECONDS", "SNOWFLAKE_NODE_ID"} {
+		if err := v.BindEnv(key); err != nil {
+			return nil, fmt.Errorf("bind %s: %w", key, err)
+		}
 	}
 
 	var cfg Config

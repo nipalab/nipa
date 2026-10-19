@@ -68,7 +68,7 @@ func TestSetupVersionCmd_ServerWithURL(t *testing.T) {
 
 	out, err := runCmdInDir(t, t.TempDir(), cli.setupVersionCmd(), "--server", "http://example.com/org/project")
 	require.NoError(t, err)
-	require.Equal(t, "example.com", client.host)
+	require.Equal(t, "http://example.com", client.host)
 	require.Contains(t, out, "client: v1.2.3 (revision abc1234")
 	require.Contains(t, out, "server: v1.2.3 (revision def5678")
 	require.NotContains(t, out, "note:")
@@ -82,7 +82,7 @@ func TestSetupVersionCmd_ServerUsesCloneRemote(t *testing.T) {
 
 	out, err := runCmdInDir(t, root, cli.setupVersionCmd(), "--server")
 	require.NoError(t, err)
-	require.Equal(t, "nipa.internal", client.host)
+	require.Equal(t, "http://nipa.internal", client.host)
 	require.Contains(t, out, "server: v1.0.0")
 	require.Contains(t, out, "note: client and server versions differ")
 }

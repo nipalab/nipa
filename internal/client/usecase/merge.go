@@ -106,7 +106,7 @@ func (m *Merge) Run(ctx context.Context, root, sourceBranch string, opts MergeOp
 		return nil, domain.NewUserError("--ff-only and --no-ff are mutually exclusive")
 	}
 
-	if err := m.client.Connect(ctx, nipaUrl.Host); err != nil {
+	if err := m.client.Connect(ctx, nipaUrl.Origin); err != nil {
 		return nil, err
 	}
 	if err := m.auth.MakeSureLoggedIn(ctx, nipaUrl.Host); err != nil {
@@ -293,7 +293,7 @@ func (m *Merge) abort(ctx context.Context, root string, url *domain.NipaUrl, bra
 	if pending == nil {
 		return nil, domain.NewUserError("no merge in progress to abort")
 	}
-	if err := m.client.Connect(ctx, url.Host); err != nil {
+	if err := m.client.Connect(ctx, url.Origin); err != nil {
 		return nil, err
 	}
 	if err := m.auth.MakeSureLoggedIn(ctx, url.Host); err != nil {

@@ -19,6 +19,7 @@ func TestParseNipaUrl_Valid(t *testing.T) {
 			want: &NipaUrl{
 				Url:     "https://example.com:9000/org/project",
 				Host:    "example.com:9000",
+				Origin:  "https://example.com:9000",
 				Org:     "org",
 				Project: "project",
 				Path:    "",
@@ -30,6 +31,7 @@ func TestParseNipaUrl_Valid(t *testing.T) {
 			want: &NipaUrl{
 				Url:     "http://example.com/org/project",
 				Host:    "example.com",
+				Origin:  "http://example.com",
 				Org:     "org",
 				Project: "project",
 				Path:    "",
@@ -41,6 +43,7 @@ func TestParseNipaUrl_Valid(t *testing.T) {
 			want: &NipaUrl{
 				Url:     "https://example.com/org/project/path/to/repo",
 				Host:    "example.com",
+				Origin:  "https://example.com",
 				Org:     "org",
 				Project: "project",
 				Path:    "path/to/repo",
@@ -52,6 +55,7 @@ func TestParseNipaUrl_Valid(t *testing.T) {
 			want: &NipaUrl{
 				Url:     "https://example.com/org/project/subdir",
 				Host:    "example.com",
+				Origin:  "https://example.com",
 				Org:     "org",
 				Project: "project",
 				Path:    "subdir",

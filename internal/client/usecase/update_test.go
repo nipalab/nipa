@@ -146,7 +146,7 @@ func TestUpdate_Run_MaterializesChangedFile(t *testing.T) {
 	require.NoError(t, updater.Run(context.Background(), root))
 
 	require.Equal(t, root, local.initTarget)
-	require.Equal(t, "example.com", client.connectHost)
+	require.Equal(t, "http://example.com", client.connectHost)
 	require.Equal(t, "org", client.org)
 	require.Equal(t, "project", client.project)
 	require.Equal(t, "main", client.branch)
@@ -569,7 +569,7 @@ func TestSwitch_Success(t *testing.T) {
 	require.NoError(t, updater.Switch(context.Background(), root, "dev"))
 
 	require.Equal(t, root, local.initTarget)
-	require.Equal(t, "example.com", client.connectHost)
+	require.Equal(t, "http://example.com", client.connectHost)
 	require.Equal(t, "org", client.org)
 	require.Equal(t, "project", client.project)
 	require.Equal(t, "dev", client.branch, "the target branch must be fetched, not the configured one")

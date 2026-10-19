@@ -114,7 +114,7 @@ func (r *Revert) Run(ctx context.Context, root, target string, opts RevertOption
 	if strings.TrimSpace(target) == "" {
 		return nil, domain.NewUserError("a commit to revert is required")
 	}
-	if err := r.client.Connect(ctx, nipaUrl.Host); err != nil {
+	if err := r.client.Connect(ctx, nipaUrl.Origin); err != nil {
 		return nil, err
 	}
 	if err := r.auth.MakeSureLoggedIn(ctx, nipaUrl.Host); err != nil {
@@ -394,7 +394,7 @@ func (r *Revert) resume(ctx context.Context, root string, url *domain.NipaUrl, b
 	if state == nil || len(state.Targets) == 0 {
 		return nil, domain.NewUserError("no revert in progress to continue")
 	}
-	if err := r.client.Connect(ctx, url.Host); err != nil {
+	if err := r.client.Connect(ctx, url.Origin); err != nil {
 		return nil, err
 	}
 	if err := r.auth.MakeSureLoggedIn(ctx, url.Host); err != nil {
@@ -471,7 +471,7 @@ func (r *Revert) abort(ctx context.Context, root string, url *domain.NipaUrl, br
 	if state == nil {
 		return nil, domain.NewUserError("no revert in progress to abort")
 	}
-	if err := r.client.Connect(ctx, url.Host); err != nil {
+	if err := r.client.Connect(ctx, url.Origin); err != nil {
 		return nil, err
 	}
 	if err := r.auth.MakeSureLoggedIn(ctx, url.Host); err != nil {
@@ -519,7 +519,7 @@ func (r *Revert) skip(ctx context.Context, root string, url *domain.NipaUrl, bra
 	if state.NoCommit {
 		return nil, domain.NewUserError("cannot skip a commit during a --no-commit revert")
 	}
-	if err := r.client.Connect(ctx, url.Host); err != nil {
+	if err := r.client.Connect(ctx, url.Origin); err != nil {
 		return nil, err
 	}
 	if err := r.auth.MakeSureLoggedIn(ctx, url.Host); err != nil {

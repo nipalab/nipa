@@ -141,7 +141,7 @@ func TestPush_Run_Success(t *testing.T) {
 	require.NoError(t, pusher.Run(context.Background(), root, "add a.txt"))
 
 	require.Equal(t, root, local.initTarget)
-	require.Equal(t, "example.com", client.connectHost)
+	require.Equal(t, "http://example.com", client.connectHost)
 	require.Equal(t, "org", client.org)
 	require.Equal(t, "project", client.project)
 	require.Equal(t, "main", client.branch)

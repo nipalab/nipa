@@ -1,0 +1,38 @@
+# Nipa SaaS edge: terminates TLS for the single h2c nipad-ee port and proxies to
+# the active blue/green color. deploy/upgrade.sh rewrites the reverse_proxy
+# upstream line between flips and reloads Caddy; a reload never drops
+# established connections.
+#
+# Keep the reverse_proxy line in the exact
+#     reverse_proxy 127.0.0.1:<port> {
+# shape: upgrade.sh matches it with sed.
+{
+	email admin@nipalab.com
+}
+
+nipalab.com {
+	encode zstd gzip
+
+	# Keep the observability endpoints off the public edge: probe the loopback
+	# ports instead. /debug/pprof only exists when PPROF_ENABLED=true.
+	@internal path /metrics /debug/pprof /debug/pprof/*
+	respond @internal 404
+
+	reverse_proxy 127.0.0.1:8001 {
+		transport http {
+			versions h2c 2
+			read_timeout 0
+			write_timeout 0
+		}
+		# Stream responses (gRPC, long REST calls) without buffering.
+		flush_interval -1
+		# Stop routing to a backend that reports /readyz unhealthy, including
+		# while one color drains during an upgrade.
+		health_uri /readyz
+		health_interval 5s
+		health_timeout 2s
+		# Retry a request against the other upstream when the selected one is
+		# mid-restart; safe for the idempotent API surface.
+		lb_try_duration 5s
+	}
+}

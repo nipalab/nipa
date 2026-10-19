@@ -96,7 +96,7 @@ func (d *Diff) dispatch(ctx context.Context, root string, revs []string, cfg *cl
 	if err != nil {
 		return nil, err
 	}
-	if err := d.client.Connect(ctx, nu.Host); err != nil {
+	if err := d.client.Connect(ctx, nu.Origin); err != nil {
 		return nil, err
 	}
 	if err := d.auth.MakeSureLoggedIn(ctx, nu.Host); err != nil {

@@ -54,11 +54,12 @@ func (l *Auth) WithSSHLogin(resolve signerResolver) *Auth {
 	return l
 }
 
-func (l *Auth) LoginWithUsernamePassword(ctx context.Context, host, username, password string) error {
+func (l *Auth) LoginWithUsernamePassword(ctx context.Context, address, username, password string) error {
 	if username == "" {
 		return domain.NewUserError("username cannot be empty")
 	}
 
+	host := domain.HostForAddress(address)
 	loginResult, err := l.loginExecutor.LoginWithUsernamePassword(ctx, host, username, password)
 	if err != nil {
 		return err
@@ -76,7 +77,7 @@ func (l *Auth) LoginWithUsernamePassword(ctx context.Context, host, username, pa
 // LoginWithSSHKey logs in with a registered SSH key. The email is optional:
 // when set it must match the account that owns the key, otherwise the key
 // identifies the account.
-func (l *Auth) LoginWithSSHKey(ctx context.Context, host, email string, signers []sshkey.Signer) error {
+func (l *Auth) LoginWithSSHKey(ctx context.Context, address, email string, signers []sshkey.Signer) error {
 	if len(signers) == 0 {
 		return domain.NewUserError("no SSH key available")
 	}
@@ -85,6 +86,7 @@ func (l *Auth) LoginWithSSHKey(ctx context.Context, host, email string, signers 
 		return domain.NewUserError("SSH key login is not supported by this client")
 	}
 
+	host := domain.HostForAddress(address)
 	email = strings.TrimSpace(email)
 	loginResult, err := loginWithSSHKey(ctx, executor, host, email, signers)
 	if err != nil {
@@ -153,7 +155,8 @@ func (l *Auth) isLoggedIn(host string) (bool, error) {
 	return true, nil
 }
 
-func (l *Auth) MakeSureLoggedIn(ctx context.Context, host string) error {
+func (l *Auth) MakeSureLoggedIn(ctx context.Context, address string) error {
+	host := domain.HostForAddress(address)
 	if loggedIn, err := l.isLoggedIn(host); !loggedIn || err != nil {
 		return l.loginInteractively(ctx, host)
 	}

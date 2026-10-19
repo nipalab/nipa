@@ -160,7 +160,7 @@ func TestSetupCloneCmd_Valid(t *testing.T) {
 	cmd := cli.setupCloneCmd()
 	cmd.SetArgs([]string{"http://example.com/org/project/path/to/repo", "./target"})
 	require.NoError(t, cmd.Execute())
-	require.Equal(t, "example.com", connector.lastHost)
+	require.Equal(t, "http://example.com", connector.lastHost)
 	require.Equal(t, "example.com", storage.lastHost)
 }
 
@@ -195,5 +195,5 @@ func TestSetupCloneCmd_ConnectError(t *testing.T) {
 	cmd.SetArgs([]string{"http://example.com/org/project", "./target"})
 	err := cmd.Execute()
 	require.ErrorIs(t, err, wantErr)
-	require.Equal(t, "example.com", connector.lastHost)
+	require.Equal(t, "http://example.com", connector.lastHost)
 }

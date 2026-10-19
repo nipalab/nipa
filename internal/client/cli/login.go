@@ -24,16 +24,17 @@ func (c *Cli) setupLoginCmd() *cobra.Command {
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			host, err := c.resolveLoginHost(cmd)
+			endpoint, err := c.resolveLoginHost(cmd)
 			if err != nil {
 				return err
 			}
+			host := endpoint.Host
 			prompter := NewPrompter()
 
 			username, _ := cmd.Flags().GetString("username")
 			username = strings.TrimSpace(username)
 
-			if err := c.connector.Connect(cmd.Context(), host); err != nil {
+			if err := c.connector.Connect(cmd.Context(), endpoint.Address); err != nil {
 				return err
 			}
 
@@ -43,7 +44,7 @@ func (c *Cli) setupLoginCmd() *cobra.Command {
 				return err
 			}
 			if len(signers) > 0 {
-				err := c.useCase.Auth().LoginWithSSHKey(cmd.Context(), host, username, signers)
+				err := c.useCase.Auth().LoginWithSSHKey(cmd.Context(), endpoint.Address, username, signers)
 				if err == nil {
 					if username != "" {
 						cmd.Printf("Logged in to %s as %s using SSH key\n", host, username)
@@ -72,7 +73,7 @@ func (c *Cli) setupLoginCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := c.useCase.Auth().LoginWithUsernamePassword(cmd.Context(), host, username, password); err != nil {
+			if err := c.useCase.Auth().LoginWithUsernamePassword(cmd.Context(), endpoint.Address, username, password); err != nil {
 				return err
 			}
 			cmd.Printf("Logged in to %s as %s\n", host, username)
@@ -85,17 +86,17 @@ func (c *Cli) setupLoginCmd() *cobra.Command {
 	return cmd
 }
 
-func (c *Cli) resolveLoginHost(cmd *cobra.Command) (string, error) {
+func (c *Cli) resolveLoginHost(cmd *cobra.Command) (domain.Endpoint, error) {
 	if raw, _ := cmd.Flags().GetString("host"); raw != "" {
-		return domain.ParseHost(raw)
+		return domain.ParseEndpoint(raw)
 	}
 	cfg, err := c.loadConfig()
 	if err != nil {
-		return "", domain.NewUserError("host is required: pass --host or run inside a nipa working copy")
+		return domain.Endpoint{}, domain.NewUserError("host is required: pass --host or run inside a nipa working copy")
 	}
 	nipaUrl, err := domain.ParseNipaUrl(cfg.Url)
 	if err != nil {
-		return "", err
+		return domain.Endpoint{}, err
 	}
-	return nipaUrl.Host, nil
+	return domain.Endpoint{Address: nipaUrl.Origin, Host: nipaUrl.Host}, nil
 }
