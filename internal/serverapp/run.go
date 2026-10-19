@@ -29,7 +29,6 @@ import (
 
 const (
 	defaultShutdownTimeout = 15 * time.Second
-	dispatcherDrain        = 10 * time.Second
 )
 
 // Dispatcher is the background worker the server starts and drains around its
@@ -219,36 +218,31 @@ func run(cfg *config.Config, reg *Registry, dispatchers []Dispatcher, signals <-
 		slog.Info("shutting down server")
 		draining.Store(true)
 		grpcHealth.SetServingStatus("", healthpb.HealthCheckResponse_NOT_SERVING)
+		// One deadline bounds the whole graceful shutdown (HTTP drain,
+		// dispatcher stop and exporter flushes) so it stays below the systemd
+		// unit's TimeoutStopSec. Phases reached after the deadline are skipped.
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), shutdownTimeout)
 		defer shutdownCancel()
 		if err := httpServer.Shutdown(shutdownCtx); err != nil {
 			slog.Error("server shutdown incomplete", "error", err)
 		}
-		drainCtx, drainCancel := context.WithTimeout(context.Background(), dispatcherDrain)
-		defer drainCancel()
 		for _, dispatcher := range dispatchers {
 			if dispatcher == nil {
 				continue
 			}
-			if err := dispatcher.Stop(drainCtx); err != nil {
+			if err := dispatcher.Stop(shutdownCtx); err != nil {
 				slog.Warn("background dispatcher shutdown incomplete", "error", err)
 			}
 		}
-		traceCtx, traceCancel := context.WithTimeout(context.Background(), shutdownTimeout)
-		if err := ro.tracing.Shutdown(traceCtx); err != nil {
+		if err := ro.tracing.Shutdown(shutdownCtx); err != nil {
 			slog.Warn("tracing shutdown incomplete", "error", err)
 		}
-		traceCancel()
-		logsCtx, logsCancel := context.WithTimeout(context.Background(), shutdownTimeout)
-		if err := ro.logs.Shutdown(logsCtx); err != nil {
+		if err := ro.logs.Shutdown(shutdownCtx); err != nil {
 			slog.Warn("logs shutdown incomplete", "error", err)
 		}
-		logsCancel()
-		metricsCtx, metricsCancel := context.WithTimeout(context.Background(), shutdownTimeout)
-		if err := ro.metricsPush.Shutdown(metricsCtx); err != nil {
+		if err := ro.metricsPush.Shutdown(shutdownCtx); err != nil {
 			slog.Warn("metrics push shutdown incomplete", "error", err)
 		}
-		metricsCancel()
 	}
 
 	slog.Info("server is running", "address", address, "version", version.Resolve().Version)

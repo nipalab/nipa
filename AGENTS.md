@@ -652,11 +652,12 @@ waits for `/readyz`, rewrites the Caddyfile upstream + `systemctl reload caddy`
 (a reload never drops connections), waits for the old color to drain, then
 SIGTERMs it. `internal/serverapp` drains gracefully: on SIGTERM `/readyz`
 answers 503 (`readinessHandler` + drain flag), the gRPC health service reports
-NOT_SERVING, `httpServer.Shutdown` waits up to `SHUTDOWN_TIMEOUT_SECONDS`
-(config default 15, unit's `TimeoutStopSec` must stay above it), dispatchers
-drain and the exporters flush. `Run` returns only after the drain finished
-(`serveUntilShutdown`): `Serve` returns the moment the listener closes, so
-returning then would exit the process mid-request. Both colors may run
+NOT_SERVING, and one `SHUTDOWN_TIMEOUT_SECONDS` deadline (config default 15,
+unit's `TimeoutStopSec` must stay above it) bounds the whole shutdown:
+`httpServer.Shutdown`, the dispatcher stop and the exporter flushes. `Run`
+returns only after the drain finished (`serveUntilShutdown`): `Serve` returns
+the moment the listener closes, so returning then would exit the process
+mid-request. Both colors may run
 concurrently during a flip:
 snowflake node ids are leased from postgres (never pin `SNOWFLAKE_NODE_ID`),
 email deliveries are claimed atomically, but webhooks can double-deliver in the

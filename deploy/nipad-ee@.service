@@ -15,8 +15,9 @@ ExecStartPost=/usr/bin/curl -fsS --retry 60 --retry-delay 1 --retry-connrefused 
 Restart=on-failure
 RestartSec=3
 TimeoutStartSec=120
-# Must exceed SHUTDOWN_TIMEOUT_SECONDS plus the background dispatcher drain, or
-# systemd SIGKILLs the process mid-drain during a blue-green flip.
+# The whole graceful shutdown (HTTP drain, dispatchers, exporter flush) is
+# bounded by SHUTDOWN_TIMEOUT_SECONDS; keep this above that budget or systemd
+# SIGKILLs the process mid-drain during a blue-green flip.
 TimeoutStopSec=180
 KillSignal=SIGTERM
 LimitNOFILE=65536

@@ -95,9 +95,10 @@ URLs stay valid across restarts; do not rotate those keys during an upgrade.
    sudo sed -i 's/^SERVER_PORT=.*/SERVER_PORT=8002/' /etc/nipa/green.env
    ```
 
-   `SHUTDOWN_TIMEOUT_SECONDS` is the drain window for in-flight pushes/merges
-   during a flip; set it above your longest expected operation (60 is a good
-   start) and keep the unit's `TimeoutStopSec=180` above it.
+   `SHUTDOWN_TIMEOUT_SECONDS` bounds the whole graceful shutdown (in-flight
+   pushes/merges plus the dispatcher and exporter drain); set it above your
+   longest expected operation (60 is a good start) and keep the unit's
+   `TimeoutStopSec=180` above it.
 
 5. **Install the unit and start the blue color.**
 
@@ -116,13 +117,17 @@ URLs stay valid across restarts; do not rotate those keys during an upgrade.
 
    ```
    sudo install -m 0644 deploy/caddy/Caddyfile /etc/caddy/Caddyfile
-   sudo sed -i 's/nipa\.example\.com/your.host.example/' /etc/caddy/Caddyfile
-   sudo sed -i 's/admin@example\.com/you@example.com/' /etc/caddy/Caddyfile
+   sudo sed -i \
+     -e 's/admin@nipalab\.com/you@example.com/' \
+     -e 's/^nipalab\.com {/your.host.example {/' \
+     /etc/caddy/Caddyfile
    sudo systemctl enable --now caddy
    echo blue | sudo tee /var/lib/nipa/active-color
    ```
 
-   The Caddyfile already points at `127.0.0.1:8001` (blue). Keep the
+   The Caddyfile already points at `127.0.0.1:8001` (blue) and answers 404 for
+   `/metrics` and `/debug/pprof`; remove that matcher (or restrict it to a
+   private scraper) if you intentionally expose them. Keep the
    `reverse_proxy 127.0.0.1:<port> {` line shape: `upgrade.sh` rewrites it.
 
 7. **First admin.** Register the first account through the web UI (SaaS mode),
@@ -162,8 +167,8 @@ What the script does:
 5. Waits for the old color's connections to drain (`ss`, bounded by
    `NIPA_DRAIN_TIMEOUT`), then `systemctl stop` → SIGTERM → graceful shutdown:
    `/readyz` answers 503 while draining, in-flight requests get the
-   `SHUTDOWN_TIMEOUT_SECONDS` window, dispatchers drain, then the process
-   exits.
+   `SHUTDOWN_TIMEOUT_SECONDS` budget (shared with the dispatcher and exporter
+   drain), then the process exits.
 6. Writes the new active color.
 
 Failure behavior: every failure before the Caddy reload stops the idle color,
@@ -208,8 +213,10 @@ releases that share the current schema.
 - **Health/metrics:** `/healthz` (liveness), `/readyz` (postgres readiness;
   503 while draining), `/version` (unauthenticated build info), `/metrics`
   (Prometheus, `METRICS_ENABLED=true` by default). Keep these on the loopback
-  ports for probes; optionally expose `/metrics` through Caddy to a private
-  scraper.
+  ports for probes; the sample Caddyfile answers 404 for `/metrics` and
+  `/debug/pprof` on the public host. To scrape metrics externally, add a
+  matcher restricted to the scraper (or a basic-auth protected route) instead
+  of removing that block outright.
 - **Backups:** managed-postgres automated backups/PITR; S3 bucket versioning
   plus lifecycle rules. The VPS itself holds no state worth backing up
   (config + binaries only).

@@ -6,13 +6,17 @@
 # Keep the reverse_proxy line in the exact
 #     reverse_proxy 127.0.0.1:<port> {
 # shape: upgrade.sh matches it with sed.
-
 {
 	email admin@nipalab.com
 }
 
 nipalab.com {
 	encode zstd gzip
+
+	# Keep the observability endpoints off the public edge: probe the loopback
+	# ports instead. /debug/pprof only exists when PPROF_ENABLED=true.
+	@internal path /metrics /debug/pprof /debug/pprof/*
+	respond @internal 404
 
 	reverse_proxy 127.0.0.1:8001 {
 		transport http {
