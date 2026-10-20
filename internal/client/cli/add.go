@@ -11,7 +11,7 @@ func (c *Cli) setupAddCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "add <path> [...]",
 		Short:         "Mark files to be pushed",
-		Long:          "Mark the given files (or everything inside directories) for the next push. Missing paths that are still tracked are marked as deletions. Paths are relative to the repository root. Files matching the ignore rules in the root .nipaignore file or the local .nipa/ignore file are skipped unless -f is given.",
+		Long:          "Mark the given files (or everything inside directories) for the next push. Missing paths that are still tracked are marked as deletions, and tracked files that are unchanged are skipped. Paths are relative to the repository root. Files matching the ignore rules in the root .nipaignore file or the local .nipa/ignore file are skipped unless -f is given.",
 		Args:          cobra.MinimumNArgs(1),
 		SilenceErrors: true,
 		SilenceUsage:  true,

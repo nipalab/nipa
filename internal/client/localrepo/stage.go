@@ -14,12 +14,30 @@ import (
 )
 
 func (l *LocalRepo) StageAdd(path string) error {
+	return l.StageAddMany([]string{path})
+}
+
+func (l *LocalRepo) StageAddMany(paths []string) error {
 	if l.db == nil {
 		return errors.New("local repo not initialized")
 	}
+	if len(paths) == 0 {
+		return nil
+	}
 	ctx := context.Background()
-	q := sqlcLocalrepo.New(l.db)
-	return q.StagedFileInsert(ctx, path)
+	tx, err := l.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	q := sqlcLocalrepo.New(tx)
+	for _, path := range paths {
+		if err := q.StagedFileInsert(ctx, path); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 func (l *LocalRepo) StageRemove(paths []string) error {
