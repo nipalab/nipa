@@ -204,6 +204,12 @@ func (s *stubLocalRepo) StageAdd(path string) error {
 	return s.stageAddErr
 }
 
+func (s *stubLocalRepo) StageAddMany(paths []string) error {
+	s.stageAdd = append(s.stageAdd, paths...)
+	s.staged = append(s.staged, paths...)
+	return s.stageAddErr
+}
+
 func (s *stubLocalRepo) StageRemove(paths []string) error {
 	s.stageRemove = append(s.stageRemove, paths...)
 	return s.stageRemoveErr

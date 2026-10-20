@@ -6,9 +6,11 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"go.opentelemetry.io/otel/attribute"
 
@@ -229,7 +231,6 @@ func (p *Push) pushStaged(ctx context.Context, root string, nipaUrl *domain.Nipa
 	if err != nil {
 		return nil, err
 	}
-	var files []*serverDomain.PushFile
 	var estBytes int64
 	var estObjects int
 	for _, sf := range toRead {
@@ -260,16 +261,11 @@ func (p *Push) pushStaged(ctx context.Context, root string, nipaUrl *domain.Nipa
 		attribute.Int64("nipa.push.upload_bytes", estBytes))
 	uploader := newChunkUploader(uploadCtx, p.pushClient, p.localRepo,
 		domain.ChunkScope{Org: nipaUrl.Org, Project: nipaUrl.Project}, onChunk)
-	statEntries := make(map[string]domain.StatEntry, len(toRead))
-	for _, sf := range toRead {
-		file, err := scanPushFile(sf, uploader)
-		if err != nil {
-			uploader.abort()
-			obs.FinishSpan(uploadSpan, err)
-			return nil, err
-		}
-		files = append(files, file)
-		statEntries[sf.path] = statEntryFromInfo(sf.info, file.FileHash)
+	files, statEntries, err := scanPushFiles(toRead, uploader)
+	if err != nil {
+		uploader.abort()
+		obs.FinishSpan(uploadSpan, err)
+		return nil, err
 	}
 	if err := uploader.close(); err != nil {
 		obs.FinishSpan(uploadSpan, err)
@@ -346,6 +342,8 @@ type chunkUploader struct {
 	batch []*serverDomain.ChunkData
 	bytes int
 
+	batchMu sync.Mutex
+
 	windows chan []*serverDomain.ChunkData
 	wg      sync.WaitGroup
 
@@ -393,6 +391,8 @@ func (u *chunkUploader) upload(window []*serverDomain.ChunkData) error {
 }
 
 func (u *chunkUploader) add(ch *serverDomain.ChunkData) error {
+	u.batchMu.Lock()
+	defer u.batchMu.Unlock()
 	if u.ctx.Err() != nil {
 		return u.failure()
 	}
@@ -405,10 +405,16 @@ func (u *chunkUploader) add(ch *serverDomain.ChunkData) error {
 	if u.bytes < uploadWindowBytes {
 		return nil
 	}
-	return u.flush()
+	return u.flushLocked()
 }
 
 func (u *chunkUploader) flush() error {
+	u.batchMu.Lock()
+	defer u.batchMu.Unlock()
+	return u.flushLocked()
+}
+
+func (u *chunkUploader) flushLocked() error {
 	if len(u.batch) == 0 {
 		return nil
 	}
@@ -582,4 +588,65 @@ func scanPushFile(sf stagedFile, sink chunkSink) (*serverDomain.PushFile, error)
 		FileHash:    chunker.FileHash(hashes),
 		ChunkHashes: hashes,
 	}, nil
+}
+
+const maxPushScanWorkers = 8
+
+func pushScanWorkers(n int) int {
+	workers := runtime.GOMAXPROCS(0)
+	if workers > maxPushScanWorkers {
+		workers = maxPushScanWorkers
+	}
+	if workers > n {
+		workers = n
+	}
+	if workers < 1 {
+		workers = 1
+	}
+	return workers
+}
+
+// scanPushFiles hashes files with bounded parallelism, overlapping disk reads
+// across cores. Results are indexed so the push payload keeps path order; the
+// first error stops the remaining work.
+func scanPushFiles(staged []stagedFile, sink chunkSink) ([]*serverDomain.PushFile, map[string]domain.StatEntry, error) {
+	if len(staged) == 0 {
+		return nil, map[string]domain.StatEntry{}, nil
+	}
+	files := make([]*serverDomain.PushFile, len(staged))
+	errs := make([]error, len(staged))
+	var stopped atomic.Bool
+	indices := make(chan int)
+	var wg sync.WaitGroup
+	for i := 0; i < pushScanWorkers(len(staged)); i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for idx := range indices {
+				if stopped.Load() {
+					continue
+				}
+				files[idx], errs[idx] = scanPushFile(staged[idx], sink)
+				if errs[idx] != nil {
+					stopped.Store(true)
+				}
+			}
+		}()
+	}
+	for i := range staged {
+		indices <- i
+	}
+	close(indices)
+	wg.Wait()
+
+	for _, err := range errs {
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+	statEntries := make(map[string]domain.StatEntry, len(staged))
+	for i, file := range files {
+		statEntries[staged[i].path] = statEntryFromInfo(staged[i].info, file.FileHash)
+	}
+	return files, statEntries, nil
 }

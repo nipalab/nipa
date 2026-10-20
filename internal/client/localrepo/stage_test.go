@@ -30,6 +30,25 @@ func TestStageAdd_Idempotent(t *testing.T) {
 	require.Equal(t, []string{"a.txt"}, got)
 }
 
+func TestStageAddMany(t *testing.T) {
+	lr := newTestLocalRepo(t)
+	require.NoError(t, lr.StageAdd("existing.txt"))
+
+	require.NoError(t, lr.StageAddMany([]string{"a.txt", "b/c.txt", "a.txt", "existing.txt"}))
+
+	got, err := lr.ListStaged()
+	require.NoError(t, err)
+	require.Equal(t, []string{"a.txt", "b/c.txt", "existing.txt"}, got)
+}
+
+func TestStageAddMany_Empty(t *testing.T) {
+	lr := newTestLocalRepo(t)
+	require.NoError(t, lr.StageAddMany(nil))
+	got, err := lr.ListStaged()
+	require.NoError(t, err)
+	require.Empty(t, got)
+}
+
 func TestStageRemove(t *testing.T) {
 	lr := newTestLocalRepo(t)
 	require.NoError(t, lr.StageAdd("a.txt"))
@@ -44,6 +63,7 @@ func TestStageRemove(t *testing.T) {
 func TestStageAdd_NotInitialized(t *testing.T) {
 	lr := NewLocalRepo()
 	require.Error(t, lr.StageAdd("a.txt"))
+	require.Error(t, lr.StageAddMany([]string{"a.txt"}))
 	require.Error(t, lr.StageRemove([]string{"a.txt"}))
 	_, err := lr.ListStaged()
 	require.Error(t, err)

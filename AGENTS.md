@@ -112,9 +112,13 @@ unless they are tracked or staged (tracking always wins over ignores) and prunes
 ignored directories that contain no protected paths. `nipa add` errors on an
 explicitly ignored target with a `use -f` hint (`AddOptions{Force}` / `nipa add
 -f` stages it anyway); directory and whole-repo adds skip ignored files
-silently. The matcher is client-side only: a hostile client can still push such
-paths, and a tracked file that later matches a rule stays tracked until
-explicitly removed. Sparse manifests always include the root `.nipaignore`
+silently. Add stages only tracked paths that are new, modified or missing:
+files whose fresh `stat_cache` fingerprint matches the snapshot hash are
+skipped (no content is read), and the remaining paths are staged in one
+transaction (`StageAddMany`, client DB runs WAL + `synchronous=NORMAL`), so
+`nipa add *` on a large clone is cheap. The matcher is client-side only: a
+hostile client can still push such paths, and a tracked file that later matches
+a rule stays tracked until explicitly removed. Sparse manifests always include the root `.nipaignore`
 (`loadTreeManifest`'s `keepRootIgnoreFile`, still behind the read filter), so
 partial checkouts apply the team rules too.
 

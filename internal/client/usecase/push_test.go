@@ -3,8 +3,10 @@ package usecase
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -659,4 +661,77 @@ func TestScanPushFile_GrewDuringRead(t *testing.T) {
 	_, err = scanPushFile(stagedFile{path: "grow.txt", info: info, abs: abs, cfg: chunker.DefaultConfig}, newPlanCollector())
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "changed while reading")
+}
+
+type lockedChunkSink struct {
+	mu     sync.Mutex
+	chunks map[serverDomain.Hash]bool
+	err    error
+}
+
+func (s *lockedChunkSink) add(ch *serverDomain.ChunkData) error {
+	if s.err != nil {
+		return s.err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.chunks == nil {
+		s.chunks = make(map[serverDomain.Hash]bool)
+	}
+	s.chunks[ch.Hash] = true
+	return nil
+}
+
+func TestScanPushFiles_ParallelPreservesOrder(t *testing.T) {
+	dir := t.TempDir()
+	var staged []stagedFile
+	var want []string
+	for i := 0; i < 24; i++ {
+		name := fmt.Sprintf("file-%02d.txt", i)
+		abs := filepath.Join(dir, name)
+		content := strings.Repeat(fmt.Sprintf("%d", i), 32+i)
+		require.NoError(t, os.WriteFile(abs, []byte(content), 0o644))
+		info, err := os.Stat(abs)
+		require.NoError(t, err)
+		staged = append(staged, stagedFile{path: name, info: info, abs: abs, cfg: chunker.DefaultConfig})
+		want = append(want, name)
+	}
+
+	sink := &lockedChunkSink{}
+	files, stats, err := scanPushFiles(staged, sink)
+	require.NoError(t, err)
+	require.Len(t, files, len(want))
+	for i, file := range files {
+		require.Equal(t, want[i], file.Path)
+	}
+	require.Len(t, stats, len(want))
+	require.NotEmpty(t, sink.chunks)
+}
+
+func TestScanPushFiles_StopsOnError(t *testing.T) {
+	dir := t.TempDir()
+	var staged []stagedFile
+	for i := 0; i < 8; i++ {
+		name := fmt.Sprintf("file-%02d.txt", i)
+		abs := filepath.Join(dir, name)
+		require.NoError(t, os.WriteFile(abs, []byte("content"), 0o644))
+		info, err := os.Stat(abs)
+		require.NoError(t, err)
+		staged = append(staged, stagedFile{path: name, info: info, abs: abs, cfg: chunker.DefaultConfig})
+	}
+
+	sink := &lockedChunkSink{err: errors.New("upload failed")}
+	files, stats, err := scanPushFiles(staged, sink)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "upload failed")
+	require.Nil(t, files)
+	require.Nil(t, stats)
+}
+
+func TestPushScanWorkers(t *testing.T) {
+	require.Equal(t, 1, pushScanWorkers(0))
+	require.Equal(t, 1, pushScanWorkers(1))
+	workers := pushScanWorkers(1000)
+	require.GreaterOrEqual(t, workers, 1)
+	require.LessOrEqual(t, workers, maxPushScanWorkers)
 }

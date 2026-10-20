@@ -34,6 +34,7 @@ type WorkingCopyRepo interface {
 	SaveStatEntries(entries map[string]domain.StatEntry) error
 	OpenChunk(hash serverDomain.Hash) (io.ReadCloser, error)
 	StageAdd(path string) error
+	StageAddMany(paths []string) error
 	StageRemove(paths []string) error
 }
 
@@ -60,16 +61,59 @@ type AddOptions struct {
 
 func (w *WorkingCopy) Add(ctx context.Context, targets []string, opts ...AddOptions) error {
 	force := len(opts) > 0 && opts[0].Force
-	paths, err := w.expandAddTargets(targets, force)
+	snapshot, err := w.localRepo.Snapshot()
 	if err != nil {
 		return err
 	}
-	for _, path := range paths {
-		if err := w.localRepo.StageAdd(path); err != nil {
-			return err
-		}
+	paths, err := w.expandAddTargets(snapshot, targets, force)
+	if err != nil {
+		return err
 	}
-	return nil
+	paths, err = w.withoutUnchanged(snapshot, paths)
+	if err != nil {
+		return err
+	}
+	return w.localRepo.StageAddMany(paths)
+}
+
+// withoutUnchanged drops tracked paths whose cached fingerprint still matches
+// the snapshot, so adding a large tree only stages new, modified and deleted
+// files. Paths without a trustworthy fingerprint stay staged; Add never hashes
+// content.
+func (w *WorkingCopy) withoutUnchanged(snapshot *domain.Snapshot, paths []string) ([]string, error) {
+	statCache, err := w.localRepo.LoadStatCache()
+	if err != nil {
+		return nil, err
+	}
+	if len(statCache) == 0 {
+		return paths, nil
+	}
+	baseByPath := make(map[string]domain.SnapshotFile, len(snapshot.Files))
+	for _, f := range snapshot.Files {
+		baseByPath[f.Path] = f
+	}
+	kept := paths[:0]
+	for _, path := range paths {
+		base, tracked := baseByPath[path]
+		if !tracked {
+			kept = append(kept, path)
+			continue
+		}
+		info, err := os.Stat(filepath.Join(w.root, filepath.FromSlash(path)))
+		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				kept = append(kept, path)
+				continue
+			}
+			return nil, err
+		}
+		entry, cached := statCache[path]
+		if cached && statMatches(entry, info) && entry.Hash == base.Hash && serverModeFromPerm(info.Mode()) == normalizedMode(base.Mode) {
+			continue
+		}
+		kept = append(kept, path)
+	}
+	return kept, nil
 }
 
 func (w *WorkingCopy) Remove(ctx context.Context, targets []string) error {
@@ -510,11 +554,7 @@ func (w *WorkingCopy) listStagedSet() (map[string]bool, error) {
 	return set, nil
 }
 
-func (w *WorkingCopy) expandAddTargets(targets []string, force bool) ([]string, error) {
-	snapshot, err := w.localRepo.Snapshot()
-	if err != nil {
-		return nil, err
-	}
+func (w *WorkingCopy) expandAddTargets(snapshot *domain.Snapshot, targets []string, force bool) ([]string, error) {
 	ignores, err := newIgnoreState(w.root, snapshotPaths(snapshot))
 	if err != nil {
 		return nil, err

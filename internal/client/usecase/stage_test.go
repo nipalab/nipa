@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -48,7 +49,114 @@ func TestWorkingCopy_Add_DoesNotReadContent(t *testing.T) {
 	wc := newWorkingCopy(t, local, root)
 
 	require.NoError(t, wc.Add(context.Background(), []string{"a.txt"}))
-	require.Equal(t, []string{"a.txt"}, local.stageAdd, "an unchanged file is still marked for push")
+	require.Equal(t, []string{"a.txt"}, local.stageAdd, "without a fingerprint the file is staged; Add never hashes")
+}
+
+func TestWorkingCopy_Add_SkipsUnchangedFiles(t *testing.T) {
+	root := t.TempDir()
+	writeRepoFile(t, root, "same.txt", "same")
+	writeRepoFile(t, root, "changed.txt", "changed")
+	writeRepoFile(t, root, "new.txt", "new")
+
+	sameInfo, err := os.Stat(filepath.Join(root, "same.txt"))
+	require.NoError(t, err)
+	sameHash := contentHash(t, "same")
+	local := &stubLocalRepo{
+		snapshot: &domain.Snapshot{Files: []domain.SnapshotFile{
+			{Path: "same.txt", Hash: sameHash},
+			{Path: "changed.txt", Hash: contentHash(t, "original")},
+			{Path: "gone.txt", Hash: contentHash(t, "gone")},
+		}},
+		statCache: map[string]domain.StatEntry{
+			"same.txt": {
+				SizeBytes: sameInfo.Size(),
+				MtimeNS:   sameInfo.ModTime().UnixNano(),
+				Mode:      2,
+				Hash:      sameHash,
+				CachedAt:  time.Now().Add(time.Hour).UnixNano(),
+			},
+		},
+	}
+	wc := newWorkingCopy(t, local, root)
+
+	require.NoError(t, wc.Add(context.Background(), []string{""}))
+	require.Equal(t, []string{"changed.txt", "gone.txt", "new.txt"}, local.stageAdd)
+}
+
+func TestWorkingCopy_Add_StaleFingerprintStagesFile(t *testing.T) {
+	root := t.TempDir()
+	writeRepoFile(t, root, "a.txt", "current")
+	info, err := os.Stat(filepath.Join(root, "a.txt"))
+	require.NoError(t, err)
+	baseHash := contentHash(t, "old")
+	local := &stubLocalRepo{
+		snapshot: &domain.Snapshot{Files: []domain.SnapshotFile{{
+			Path: "a.txt", Hash: baseHash,
+		}}},
+		statCache: map[string]domain.StatEntry{
+			"a.txt": {
+				SizeBytes: info.Size(),
+				MtimeNS:   info.ModTime().UnixNano() - 1,
+				Mode:      2,
+				Hash:      baseHash,
+				CachedAt:  time.Now().Add(time.Hour).UnixNano(),
+			},
+		},
+	}
+	wc := newWorkingCopy(t, local, root)
+
+	require.NoError(t, wc.Add(context.Background(), []string{"a.txt"}))
+	require.Equal(t, []string{"a.txt"}, local.stageAdd)
+}
+
+func TestWorkingCopy_Add_StagesModeOnlyChange(t *testing.T) {
+	root := t.TempDir()
+	writeRepoFile(t, root, "script.sh", "echo hi")
+	info, err := os.Stat(filepath.Join(root, "script.sh"))
+	require.NoError(t, err)
+	hash := contentHash(t, "echo hi")
+	local := &stubLocalRepo{
+		snapshot: &domain.Snapshot{Files: []domain.SnapshotFile{{
+			Path: "script.sh", Hash: hash,
+		}}},
+		statCache: map[string]domain.StatEntry{
+			"script.sh": {
+				SizeBytes: info.Size(),
+				MtimeNS:   info.ModTime().UnixNano(),
+				Mode:      2,
+				Hash:      hash,
+				CachedAt:  time.Now().Add(time.Hour).UnixNano(),
+			},
+		},
+	}
+	wc := newWorkingCopy(t, local, root)
+	require.NoError(t, os.Chmod(filepath.Join(root, "script.sh"), 0o755))
+
+	require.NoError(t, wc.Add(context.Background(), []string{"script.sh"}))
+	require.Equal(t, []string{"script.sh"}, local.stageAdd, "a mode-only change is not hidden by the fingerprint")
+}
+
+func TestWorkingCopy_Add_StatCacheLoadError(t *testing.T) {
+	root := t.TempDir()
+	writeRepoFile(t, root, "a.txt", "a")
+	wantErr := errors.New("stat cache gone")
+	local := &stubLocalRepo{snapshot: &domain.Snapshot{}, statCacheErr: wantErr}
+	wc := newWorkingCopy(t, local, root)
+
+	err := wc.Add(context.Background(), []string{"a.txt"})
+	require.ErrorIs(t, err, wantErr)
+	require.Empty(t, local.stageAdd)
+}
+
+func TestWorkingCopy_Add_StageError(t *testing.T) {
+	root := t.TempDir()
+	writeRepoFile(t, root, "a.txt", "a")
+	wantErr := errors.New("database down")
+	local := &stubLocalRepo{snapshot: &domain.Snapshot{}, stageAddErr: wantErr}
+	wc := newWorkingCopy(t, local, root)
+
+	err := wc.Add(context.Background(), []string{"a.txt"})
+	require.ErrorIs(t, err, wantErr)
 }
 
 func TestWorkingCopy_Add_DirectoryAndWholeRepo(t *testing.T) {
