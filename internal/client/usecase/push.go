@@ -560,17 +560,23 @@ func scanPushFile(sf stagedFile, sink chunkSink) (*serverDomain.PushFile, error)
 	}
 	defer func() { _ = f.Close() }()
 	var hashes []serverDomain.Hash
+	var rawSize int64
 	encoding, err := chunker.Encode(f, sf.path, sf.isBinary, "", func(c chunker.EncodedChunk) error {
 		hashes = append(hashes, c.Hash)
+		rawSize += c.RawSize
 		return sink.add(&serverDomain.ChunkData{Hash: c.Hash, Data: c.Data, RawSize: c.RawSize})
 	})
 	if err != nil {
 		return nil, err
 	}
+	if rawSize != sf.info.Size() {
+		return nil, domain.NewUserError(fmt.Sprintf("file %q changed while reading", sf.path)).
+			WithHint("re-run nipa add after the write finishes", "nipa add "+sf.path)
+	}
 	return &serverDomain.PushFile{
 		Path:        sf.path,
 		Mode:        int(sf.info.Mode().Perm()),
-		SizeBytes:   sf.info.Size(),
+		SizeBytes:   rawSize,
 		IsBinary:    sf.isBinary,
 		Encoding:    encoding,
 		FileHash:    chunker.FileHash(hashes),

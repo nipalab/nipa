@@ -112,7 +112,7 @@ func TestPush_FileLocks_NewBinaryAddNeedsNoLock(t *testing.T) {
 	pushRepo.EXPECT().ApplyPush(gomock.Any(), gomock.Any()).Return(nil)
 
 	ch, fh := chunkAndFileHash(t, "new art")
-	file := &domain.PushFile{Path: "assets/new.png", Mode: 0o644, IsBinary: true, FileHash: fh, ChunkHashes: []domain.Hash{ch}}
+	file := &domain.PushFile{Path: "assets/new.png", Mode: 0o644, SizeBytes: 7, IsBinary: true, FileHash: fh, ChunkHashes: []domain.Hash{ch}}
 	_, err := uc.WithFileLocks(gate).Push(ctx, snow.ID(1), "main", "", "msg", []*domain.PushFile{file}, nil, "", head.Base36())
 	require.NoError(t, err, "adding a brand-new binary must not require a lock")
 	require.Empty(t, *required)
@@ -130,7 +130,7 @@ func TestPush_FileLocks_NewBinaryAddBlockedByOtherLock(t *testing.T) {
 	gate.EXPECT().EnsureLocks(gomock.Any(), snow.ID(1), gomock.Any(), nil, []string{"a.png"}, snow.ID(7)).Return(wantErr)
 
 	ch, fh := chunkAndFileHash(t, "x")
-	file := &domain.PushFile{Path: "a.png", Mode: 0o644, IsBinary: true, FileHash: fh, ChunkHashes: []domain.Hash{ch}}
+	file := &domain.PushFile{Path: "a.png", Mode: 0o644, SizeBytes: 1, IsBinary: true, FileHash: fh, ChunkHashes: []domain.Hash{ch}}
 	_, err := uc.WithFileLocks(gate).Push(ctx, snow.ID(1), "main", "", "msg", []*domain.PushFile{file}, nil, "", "")
 	require.ErrorIs(t, err, wantErr)
 }
@@ -151,7 +151,7 @@ func TestPush_FileLocks_EnsureLocksError(t *testing.T) {
 	gate.EXPECT().EnsureLocks(gomock.Any(), snow.ID(1), gomock.Any(), []string{"assets/tex.png"}, gomock.Any(), snow.ID(7)).Return(wantErr)
 
 	ch, fh := chunkAndFileHash(t, "x")
-	file := &domain.PushFile{Path: "assets/tex.png", Mode: 0o644, IsBinary: true, FileHash: fh, ChunkHashes: []domain.Hash{ch}}
+	file := &domain.PushFile{Path: "assets/tex.png", Mode: 0o644, SizeBytes: 1, IsBinary: true, FileHash: fh, ChunkHashes: []domain.Hash{ch}}
 	_, err := uc.WithFileLocks(gate).Push(ctx, snow.ID(1), "main", "", "msg", []*domain.PushFile{file}, nil, "", head.Base36())
 	require.ErrorIs(t, err, wantErr)
 }
@@ -169,7 +169,7 @@ func TestPush_FileLocks_ReleaseLandedError(t *testing.T) {
 	gate.EXPECT().ReleaseLanded(gomock.Any(), snow.ID(1), gomock.Any(), []string{"a.png"}, snow.ID(7)).Return(wantErr)
 
 	ch, fh := chunkAndFileHash(t, "x")
-	file := &domain.PushFile{Path: "a.png", Mode: 0o644, IsBinary: true, FileHash: fh, ChunkHashes: []domain.Hash{ch}}
+	file := &domain.PushFile{Path: "a.png", Mode: 0o644, SizeBytes: 1, IsBinary: true, FileHash: fh, ChunkHashes: []domain.Hash{ch}}
 	_, err := uc.WithFileLocks(gate).Push(ctx, snow.ID(1), "main", "", "msg", []*domain.PushFile{file}, nil, "", "")
 	require.ErrorIs(t, err, wantErr)
 }
@@ -188,7 +188,7 @@ func TestPush_FileLocks_HeadTreeError(t *testing.T) {
 	repo.EXPECT().GetTreeNode(gomock.Any(), int64(100)).Return(nil, wantErr)
 
 	ch, fh := chunkAndFileHash(t, "x")
-	file := &domain.PushFile{Path: "a.txt", Mode: 0o644, FileHash: fh, ChunkHashes: []domain.Hash{ch}}
+	file := &domain.PushFile{Path: "a.txt", Mode: 0o644, SizeBytes: 1, FileHash: fh, ChunkHashes: []domain.Hash{ch}}
 	_, err := uc.WithFileLocks(gate).Push(ctx, snow.ID(1), "main", "", "msg", []*domain.PushFile{file}, nil, "", head.Base36())
 	require.ErrorIs(t, err, wantErr)
 }
