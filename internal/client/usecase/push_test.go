@@ -3,6 +3,8 @@ package usecase
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -604,4 +606,31 @@ func TestPush_Plan_DetachedHeadBlocked(t *testing.T) {
 	_, err := pusher.Plan(context.Background(), t.TempDir())
 	require.Error(t, err)
 	require.Contains(t, err.Error(), `HEAD is detached at tag "v1.0.0"`)
+}
+
+func TestScanPushFile_EmptyFile(t *testing.T) {
+	dir := t.TempDir()
+	abs := filepath.Join(dir, "empty.txt")
+	require.NoError(t, os.WriteFile(abs, nil, 0o644))
+	info, err := os.Stat(abs)
+	require.NoError(t, err)
+
+	file, err := scanPushFile(stagedFile{path: "empty.txt", info: info, abs: abs, cfg: chunker.DefaultConfig}, newPlanCollector())
+	require.NoError(t, err)
+	require.Empty(t, file.ChunkHashes)
+	require.Equal(t, int64(0), file.SizeBytes)
+	require.Equal(t, chunker.FileHash(nil), file.FileHash)
+}
+
+func TestScanPushFile_SizeMismatch(t *testing.T) {
+	dir := t.TempDir()
+	abs := filepath.Join(dir, "a.txt")
+	require.NoError(t, os.WriteFile(abs, []byte("abc"), 0o644))
+	info, err := os.Stat(abs)
+	require.NoError(t, err)
+	require.NoError(t, os.Truncate(abs, 0))
+
+	_, err = scanPushFile(stagedFile{path: "a.txt", info: info, abs: abs, cfg: chunker.DefaultConfig}, newPlanCollector())
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "produced no chunks")
 }

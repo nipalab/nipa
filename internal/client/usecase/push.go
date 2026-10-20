@@ -567,6 +567,9 @@ func scanPushFile(sf stagedFile, sink chunkSink) (*serverDomain.PushFile, error)
 	if err != nil {
 		return nil, err
 	}
+	if len(hashes) == 0 && sf.info.Size() != 0 {
+		return nil, domain.NewUserError(fmt.Sprintf("file %q produced no chunks", sf.path))
+	}
 	return &serverDomain.PushFile{
 		Path:        sf.path,
 		Mode:        int(sf.info.Mode().Perm()),

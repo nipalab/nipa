@@ -529,7 +529,7 @@ func validatePushFiles(files []*domain.PushFile) error {
 			return domain.NewErrorUser(fmt.Sprintf("duplicate file path %q", f.Path))
 		}
 		seen[f.Path] = struct{}{}
-		if len(f.ChunkHashes) == 0 {
+		if len(f.ChunkHashes) == 0 && f.SizeBytes != 0 {
 			return domain.NewErrorUser(fmt.Sprintf("file %q has no chunks", f.Path))
 		}
 		encoding, ok := chunker.NormalizeEncoding(f.Encoding)

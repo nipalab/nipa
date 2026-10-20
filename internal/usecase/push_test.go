@@ -122,6 +122,19 @@ func TestPush_MissingEncodingIsRaw(t *testing.T) {
 	require.Equal(t, chunker.EncodingRaw, file.Encoding)
 }
 
+func TestPush_EmptyFileAllowed(t *testing.T) {
+	file := &domain.PushFile{Path: "empty.txt", Mode: 0o644, FileHash: treehash.FileHash(nil)}
+	require.NoError(t, validatePushFiles([]*domain.PushFile{file}))
+	require.Equal(t, chunker.EncodingRaw, file.Encoding)
+	require.Empty(t, file.ChunkHashes)
+}
+
+func TestPush_NonEmptyFileWithoutChunks(t *testing.T) {
+	file := &domain.PushFile{Path: "a.txt", Mode: 0o644, SizeBytes: 3, FileHash: treehash.FileHash(nil)}
+	err := validatePushFiles([]*domain.PushFile{file})
+	require400(t, err, "has no chunks")
+}
+
 func TestPush_FileHashMismatch(t *testing.T) {
 	uc, perm, _, _, ctx := newPushFixture(t)
 	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)

@@ -25,6 +25,24 @@ var _ = Describe("nipa push", func() {
 		Expect(readText(fresh, "hello.txt")).To(Equal("hello from the client\n"))
 	})
 
+	It("pushes an empty file", func() {
+		project := newProject("push-empty")
+		url := repoURLFor(orgSlug, project)
+
+		parent := workspace()
+		dir := cloneRepo(parent, url, "work")
+		writeText(dir, "Content/Localization/EngineOverrides/EngineOverrides_Conflicts.txt", "")
+		res := runNipa(dir, "add", "Content/Localization/EngineOverrides/EngineOverrides_Conflicts.txt")
+		Expect(res.ExitCode).To(Equal(0), res.Stderr)
+
+		push := pushRepo(dir, "add empty file")
+		Expect(push.ExitCode).To(Equal(0), push.Stderr)
+
+		fresh := cloneRepo(parent, url, "fresh")
+		Expect(fileExists(fresh, "Content/Localization/EngineOverrides/EngineOverrides_Conflicts.txt")).To(BeTrue())
+		Expect(readText(fresh, "Content/Localization/EngineOverrides/EngineOverrides_Conflicts.txt")).To(BeEmpty())
+	})
+
 	It("pushes multiple files in nested directories", func() {
 		project := newProject("push-multi")
 		url := repoURLFor(orgSlug, project)
