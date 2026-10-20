@@ -108,7 +108,7 @@ func (w *WorkingCopy) withoutUnchanged(snapshot *domain.Snapshot, paths []string
 			return nil, err
 		}
 		entry, cached := statCache[path]
-		if cached && statMatches(entry, info) && entry.Hash == base.Hash && entry.Mode == normalizedMode(base.Mode) {
+		if cached && statMatches(entry, info) && entry.Hash == base.Hash && serverModeFromPerm(info.Mode()) == normalizedMode(base.Mode) {
 			continue
 		}
 		kept = append(kept, path)

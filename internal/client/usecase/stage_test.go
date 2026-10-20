@@ -109,6 +109,33 @@ func TestWorkingCopy_Add_StaleFingerprintStagesFile(t *testing.T) {
 	require.Equal(t, []string{"a.txt"}, local.stageAdd)
 }
 
+func TestWorkingCopy_Add_StagesModeOnlyChange(t *testing.T) {
+	root := t.TempDir()
+	writeRepoFile(t, root, "script.sh", "echo hi")
+	info, err := os.Stat(filepath.Join(root, "script.sh"))
+	require.NoError(t, err)
+	hash := contentHash(t, "echo hi")
+	local := &stubLocalRepo{
+		snapshot: &domain.Snapshot{Files: []domain.SnapshotFile{{
+			Path: "script.sh", Hash: hash,
+		}}},
+		statCache: map[string]domain.StatEntry{
+			"script.sh": {
+				SizeBytes: info.Size(),
+				MtimeNS:   info.ModTime().UnixNano(),
+				Mode:      2,
+				Hash:      hash,
+				CachedAt:  time.Now().Add(time.Hour).UnixNano(),
+			},
+		},
+	}
+	wc := newWorkingCopy(t, local, root)
+	require.NoError(t, os.Chmod(filepath.Join(root, "script.sh"), 0o755))
+
+	require.NoError(t, wc.Add(context.Background(), []string{"script.sh"}))
+	require.Equal(t, []string{"script.sh"}, local.stageAdd, "a mode-only change is not hidden by the fingerprint")
+}
+
 func TestWorkingCopy_Add_StatCacheLoadError(t *testing.T) {
 	root := t.TempDir()
 	writeRepoFile(t, root, "a.txt", "a")
