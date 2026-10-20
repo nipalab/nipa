@@ -622,7 +622,20 @@ func TestScanPushFile_EmptyFile(t *testing.T) {
 	require.Equal(t, chunker.FileHash(nil), file.FileHash)
 }
 
-func TestScanPushFile_SizeMismatch(t *testing.T) {
+func TestScanPushFile_UsesReadSize(t *testing.T) {
+	dir := t.TempDir()
+	abs := filepath.Join(dir, "a.txt")
+	require.NoError(t, os.WriteFile(abs, []byte("hello"), 0o644))
+	info, err := os.Stat(abs)
+	require.NoError(t, err)
+
+	file, err := scanPushFile(stagedFile{path: "a.txt", info: info, abs: abs, cfg: chunker.DefaultConfig}, newPlanCollector())
+	require.NoError(t, err)
+	require.Equal(t, int64(5), file.SizeBytes)
+	require.NotEmpty(t, file.ChunkHashes)
+}
+
+func TestScanPushFile_ShrankDuringRead(t *testing.T) {
 	dir := t.TempDir()
 	abs := filepath.Join(dir, "a.txt")
 	require.NoError(t, os.WriteFile(abs, []byte("abc"), 0o644))
@@ -632,5 +645,18 @@ func TestScanPushFile_SizeMismatch(t *testing.T) {
 
 	_, err = scanPushFile(stagedFile{path: "a.txt", info: info, abs: abs, cfg: chunker.DefaultConfig}, newPlanCollector())
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "produced no chunks")
+	require.Contains(t, err.Error(), "changed while reading")
+}
+
+func TestScanPushFile_GrewDuringRead(t *testing.T) {
+	dir := t.TempDir()
+	abs := filepath.Join(dir, "grow.txt")
+	require.NoError(t, os.WriteFile(abs, nil, 0o644))
+	info, err := os.Stat(abs)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(abs, []byte("late content"), 0o644))
+
+	_, err = scanPushFile(stagedFile{path: "grow.txt", info: info, abs: abs, cfg: chunker.DefaultConfig}, newPlanCollector())
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "changed while reading")
 }

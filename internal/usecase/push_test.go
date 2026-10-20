@@ -64,8 +64,8 @@ func TestPush_PathWriteDenied(t *testing.T) {
 
 	chunkHash, fileHash := chunkAndFileHash(t, "logo")
 	files := []*domain.PushFile{
-		{Path: "assets/logo.png", Mode: 0o644, FileHash: fileHash, ChunkHashes: []domain.Hash{chunkHash}},
-		{Path: "src/main.go", Mode: 0o644, FileHash: fileHash, ChunkHashes: []domain.Hash{chunkHash}},
+		{Path: "assets/logo.png", Mode: 0o644, SizeBytes: 5, FileHash: fileHash, ChunkHashes: []domain.Hash{chunkHash}},
+		{Path: "src/main.go", Mode: 0o644, SizeBytes: 5, FileHash: fileHash, ChunkHashes: []domain.Hash{chunkHash}},
 	}
 
 	node, err := snow.NewNode(1)
@@ -110,14 +110,14 @@ func TestPush_InvalidEncoding(t *testing.T) {
 	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
 
 	ch, fh := chunkAndFileHash(t, "x")
-	file := &domain.PushFile{Path: "a.txt", Mode: 0o644, Encoding: "bogus", FileHash: fh, ChunkHashes: []domain.Hash{ch}}
+	file := &domain.PushFile{Path: "a.txt", Mode: 0o644, SizeBytes: 1, Encoding: "bogus", FileHash: fh, ChunkHashes: []domain.Hash{ch}}
 	_, err := uc.Push(ctx, snow.ID(1), "main", "", "msg", []*domain.PushFile{file}, nil, "", "")
 	require400(t, err, "invalid encoding")
 }
 
 func TestPush_MissingEncodingIsRaw(t *testing.T) {
 	ch, fh := chunkAndFileHash(t, "x")
-	file := &domain.PushFile{Path: "a.txt", Mode: 0o644, FileHash: fh, ChunkHashes: []domain.Hash{ch}}
+	file := &domain.PushFile{Path: "a.txt", Mode: 0o644, SizeBytes: 1, FileHash: fh, ChunkHashes: []domain.Hash{ch}}
 	require.NoError(t, validatePushFiles([]*domain.PushFile{file}))
 	require.Equal(t, chunker.EncodingRaw, file.Encoding)
 }
@@ -135,12 +135,26 @@ func TestPush_NonEmptyFileWithoutChunks(t *testing.T) {
 	require400(t, err, "has no chunks")
 }
 
+func TestPush_NegativeSizeRejected(t *testing.T) {
+	ch, fh := chunkAndFileHash(t, "x")
+	file := &domain.PushFile{Path: "a.txt", Mode: 0o644, SizeBytes: -1, FileHash: fh, ChunkHashes: []domain.Hash{ch}}
+	err := validatePushFiles([]*domain.PushFile{file})
+	require400(t, err, "invalid size")
+}
+
+func TestPush_ZeroSizeWithChunksRejected(t *testing.T) {
+	ch, fh := chunkAndFileHash(t, "x")
+	file := &domain.PushFile{Path: "a.txt", Mode: 0o644, SizeBytes: 0, FileHash: fh, ChunkHashes: []domain.Hash{ch}}
+	err := validatePushFiles([]*domain.PushFile{file})
+	require400(t, err, "zero size")
+}
+
 func TestPush_FileHashMismatch(t *testing.T) {
 	uc, perm, _, _, ctx := newPushFixture(t)
 	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
 
 	ch, _ := chunkAndFileHash(t, "x")
-	file := &domain.PushFile{Path: "a.txt", Mode: 0o644, FileHash: domain.Hash{9}, ChunkHashes: []domain.Hash{ch}}
+	file := &domain.PushFile{Path: "a.txt", Mode: 0o644, SizeBytes: 1, FileHash: domain.Hash{9}, ChunkHashes: []domain.Hash{ch}}
 	_, err := uc.Push(ctx, snow.ID(1), "main", "", "msg", []*domain.PushFile{file}, nil, "", "")
 	require400(t, err, "file hash mismatch")
 }
@@ -150,7 +164,7 @@ func TestPush_SamePathPushedAndRemoved(t *testing.T) {
 	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
 
 	ch, fh := chunkAndFileHash(t, "x")
-	file := &domain.PushFile{Path: "a.txt", Mode: 0o644, FileHash: fh, ChunkHashes: []domain.Hash{ch}}
+	file := &domain.PushFile{Path: "a.txt", Mode: 0o644, SizeBytes: 1, FileHash: fh, ChunkHashes: []domain.Hash{ch}}
 	_, err := uc.Push(ctx, snow.ID(1), "main", "", "msg", []*domain.PushFile{file}, []string{"a.txt"}, "", "")
 	require400(t, err, "both pushed and removed")
 }
@@ -420,7 +434,7 @@ func TestPush_StaleBaseSkipsApply(t *testing.T) {
 
 	ch, fh := chunkAndFileHash(t, "unwanted")
 	_, err := uc.Push(ctx, snow.ID(1), "main", "wrong-base", "msg",
-		[]*domain.PushFile{{Path: "a.txt", Mode: 0o644, FileHash: fh, ChunkHashes: []domain.Hash{ch}}},
+		[]*domain.PushFile{{Path: "a.txt", Mode: 0o644, SizeBytes: 1, FileHash: fh, ChunkHashes: []domain.Hash{ch}}},
 		nil, "", "")
 	require.True(t, domain.IsErrorConflict(err))
 }
