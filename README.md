@@ -10,8 +10,10 @@ A next-generation centralized Version Control System engineered for binary-heavy
 ## Quick Start
 
 ```sh
-make build-server build-client   # bin/nipad + bin/nipa
+make web-install                 # first time only (npm dependencies)
+make build                       # web UI + bin/nipad + bin/nipa
 # run the server (see config.yaml.sample for settings)
+cp config.yaml.sample config.yaml
 ./bin/nipad
 
 # clone a repository (prompts for credentials on first use)
@@ -28,6 +30,11 @@ The working copy tracks the branch configured at clone time. Files are split
 into content-addressed chunks (FastCDC) and rehydrated from a local chunk cache,
 so updates and branch switches only transfer what actually changed.
 
+See [`docs/SERVER_GUIDE.md`](docs/SERVER_GUIDE.md) for building, configuring and
+running the server (including first-user and project bootstrapping), and
+[`docs/CLIENT_GUIDE.md`](docs/CLIENT_GUIDE.md) for a task-oriented walkthrough of
+every client command.
+
 GUI clients (the desktop client, a Windows Explorer extension, game-engine
 plugins) connect to a local daemon instead of spawning the CLI per event:
 
@@ -37,7 +44,9 @@ nipa serve   # foreground; publishes its loopback endpoint in ~/.config/nipa/dae
 
 ## Commands
 
-Run `nipa <command> --help` for full details.
+Run `nipa <command> --help` for full details, or see
+[`docs/CLIENT_GUIDE.md`](docs/CLIENT_GUIDE.md) for examples of every command
+and flag.
 
 | Command                     | Description                                                                 |
 | --------------------------- | --------------------------------------------------------------------------- |
