@@ -37,6 +37,15 @@ func TestIsAPIPath(t *testing.T) {
 	require.False(t, isAPIPath("/repository/browse"))
 }
 
+func TestIsPprofPath(t *testing.T) {
+	require.True(t, isPprofPath("/debug/pprof"))
+	require.True(t, isPprofPath("/debug/pprof/"))
+	require.True(t, isPprofPath("/debug/pprof/cmdline"))
+	require.False(t, isPprofPath("/debug"))
+	require.False(t, isPprofPath("/debug/pprofx"))
+	require.False(t, isPprofPath("/repository/browse"))
+}
+
 func TestIsMarketingPath(t *testing.T) {
 	require.True(t, isMarketingPath("/"))
 	require.True(t, isMarketingPath("/web"))

@@ -9,6 +9,7 @@ var reservedOrgSlugs = map[string]struct{}{
 	"assets":     {},
 	"auth":       {},
 	"dashboard":  {},
+	"debug":      {},
 	"docs":       {},
 	"healthz":    {},
 	"login":      {},

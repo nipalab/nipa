@@ -201,7 +201,7 @@ func run(cfg *config.Config, reg *Registry, dispatchers []Dispatcher, signals <-
 			versionHandler.ServeHTTP(w, r)
 		case r.URL.Path == "/metrics":
 			metricsHandler.ServeHTTP(w, r)
-		case strings.HasPrefix(r.URL.Path, "/debug/pprof"):
+		case isPprofPath(r.URL.Path):
 			pprofHandler.ServeHTTP(w, r)
 		case isAPIPath(r.URL.Path):
 			container.ServeHTTP(w, r)
@@ -307,6 +307,10 @@ func isAPIPath(p string) bool {
 		p == "/api" || strings.HasPrefix(p, "/api/")
 }
 
+func isPprofPath(p string) bool {
+	return p == "/debug/pprof" || strings.HasPrefix(p, "/debug/pprof/")
+}
+
 // isMarketingPath matches the root and the marketing site's own subtree. The
 // /web prefix also matches /web itself but not siblings like /website.
 func isMarketingPath(p string) bool {
@@ -334,5 +338,5 @@ func skipTraceRequest(r *http.Request) bool {
 	case "/healthz", "/readyz", "/version", "/metrics":
 		return true
 	}
-	return strings.HasPrefix(r.URL.Path, "/debug/pprof")
+	return isPprofPath(r.URL.Path)
 }

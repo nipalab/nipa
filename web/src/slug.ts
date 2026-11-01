@@ -8,6 +8,7 @@ export const RESERVED_ORG_SLUGS = new Set([
   'assets',
   'auth',
   'dashboard',
+  'debug',
   'docs',
   'healthz',
   'login',
