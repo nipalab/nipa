@@ -30,6 +30,7 @@ type identityRepository interface {
 	CreateIdentity(ctx context.Context, identity domain.UserIdentity) error
 	DeleteIdentity(ctx context.Context, id, userID snow.ID) error
 	SetEmailVerified(ctx context.Context, userID snow.ID) error
+	ResetUnverifiedCredentials(ctx context.Context, userID snow.ID) error
 	SeedOwnerQuota(ctx context.Context, userID snow.ID, quotaBytes int64) error
 	CreateOAuthLoginCode(ctx context.Context, code string, userID snow.ID, expiresAt time.Time) error
 	ConsumeOAuthLoginCode(ctx context.Context, code string) (snow.ID, time.Time, error)
@@ -150,7 +151,7 @@ func (o *OAuth) Callback(ctx context.Context, provider, code, rawState string) (
 	}
 	existing, err := o.users.GetByEmail(ctx, profile.Email)
 	if err == nil {
-		if err := o.attachIdentity(ctx, existing.ID, provider, profile, true); err != nil {
+		if err := o.attachIdentity(ctx, existing.ID, provider, profile, !existing.EmailVerified); err != nil {
 			return "", err
 		}
 		return o.issueLoginCode(ctx, existing.ID, base, false)
@@ -220,6 +221,9 @@ func (o *OAuth) DisconnectIdentity(ctx context.Context, userID, identityID snow.
 func (o *OAuth) attachIdentity(ctx context.Context, userID snow.ID, provider string, profile *Profile, confirmEmail bool) error {
 	return o.tx.WithinTx(ctx, func(ctx context.Context) error {
 		if confirmEmail {
+			if err := o.repo.ResetUnverifiedCredentials(ctx, userID); err != nil {
+				return err
+			}
 			if err := o.repo.SetEmailVerified(ctx, userID); err != nil {
 				return err
 			}

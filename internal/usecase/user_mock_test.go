@@ -71,6 +71,20 @@ func (mr *MockuserAdminRepositoryMockRecorder) Deactivate(ctx, id any) *gomock.C
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Deactivate", reflect.TypeOf((*MockuserAdminRepository)(nil).Deactivate), ctx, id)
 }
 
+// DeleteRefreshTokens mocks base method.
+func (m *MockuserAdminRepository) DeleteRefreshTokens(ctx context.Context, id snow.ID) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteRefreshTokens", ctx, id)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteRefreshTokens indicates an expected call of DeleteRefreshTokens.
+func (mr *MockuserAdminRepositoryMockRecorder) DeleteRefreshTokens(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteRefreshTokens", reflect.TypeOf((*MockuserAdminRepository)(nil).DeleteRefreshTokens), ctx, id)
+}
+
 // GetByEmail mocks base method.
 func (m *MockuserAdminRepository) GetByEmail(ctx context.Context, email string) (*domain.User, error) {
 	m.ctrl.T.Helper()

@@ -17,3 +17,5 @@ WHERE expires_at < ?;
 DELETE FROM ssh_login_challenges
 WHERE nonce = ?
 RETURNING *;
+-- name: RefreshTokenDeleteByUser :exec
+DELETE FROM refresh_tokens WHERE user_id = ?;

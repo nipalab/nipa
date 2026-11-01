@@ -69,6 +69,7 @@ type stubIdentityRepo struct {
 	byID          map[snow.ID]*domain.UserIdentity
 	quotas        map[snow.ID]int64
 	verified      []snow.ID
+	reset         []snow.ID
 	codes         map[string]codeRow
 	deleted       []snow.ID
 	expiredSweeps int
@@ -139,6 +140,11 @@ func (s *stubIdentityRepo) DeleteIdentity(_ context.Context, id, userID snow.ID)
 
 func (s *stubIdentityRepo) SetEmailVerified(_ context.Context, userID snow.ID) error {
 	s.verified = append(s.verified, userID)
+	return nil
+}
+
+func (s *stubIdentityRepo) ResetUnverifiedCredentials(_ context.Context, userID snow.ID) error {
+	s.reset = append(s.reset, userID)
 	return nil
 }
 
@@ -335,6 +341,7 @@ func TestCallbackLinksVerifiedEmailToUnconfirmedAccount(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, redirectQuery(t, target).Get("code"))
 	require.Equal(t, []snow.ID{42}, env.repo.verified)
+	require.Equal(t, []snow.ID{42}, env.repo.reset)
 	require.Len(t, env.repo.identities, 1)
 	require.Len(t, env.users.users, 1)
 }
@@ -506,4 +513,17 @@ func TestStateRoundTripAndExpiry(t *testing.T) {
 	now = now.Add(stateTTL + time.Minute)
 	_, err = signer.Verify(state)
 	require.Error(t, err)
+}
+
+func TestCallbackKeepsCredentialsOfVerifiedAccount(t *testing.T) {
+	env := newOAuthEnv(t)
+	user := &domain.User{ID: 42, Email: "alice@example.com", EmailVerified: true}
+	env.users.users = []*domain.User{user}
+	env.provider.profile = &Profile{AccountID: "1001", Email: user.Email, EmailVerified: true}
+	state, err := env.oauth.states.Sign("/", 0)
+	require.NoError(t, err)
+
+	_, err = env.oauth.Callback(context.Background(), ProviderGitHub, "code", state)
+	require.NoError(t, err)
+	require.Empty(t, env.repo.reset)
 }

@@ -20,6 +20,7 @@ type userAdminRepository interface {
 	UpdatePassword(ctx context.Context, id snow.ID, passwordHash string) error
 	UpdateAdminFlags(ctx context.Context, id snow.ID, isAdmin, isSuperAdmin bool) error
 	Deactivate(ctx context.Context, id snow.ID) error
+	DeleteRefreshTokens(ctx context.Context, id snow.ID) error
 }
 
 type User struct {
@@ -41,7 +42,7 @@ func (u *User) Get(ctx context.Context, id snow.ID) (*domain.User, error) {
 }
 
 func (u *User) GetByEmail(ctx context.Context, email string) (*domain.User, error) {
-	return u.repo.GetByEmail(ctx, strings.TrimSpace(email))
+	return u.repo.GetByEmail(ctx, normalizeEmail(email))
 }
 
 func (u *User) List(ctx context.Context) ([]*domain.User, error) {
@@ -92,8 +93,10 @@ func (u *User) UpdateProfile(ctx context.Context, userID snow.ID, name, photoUrl
 	if !ok {
 		return nil, domain.NewErrorNoPermission()
 	}
-	if claim.UserID != userID && !claim.IsAdmin && !claim.IsSuperAdmin {
-		return nil, domain.NewErrorNoPermission()
+	if claim.UserID != userID {
+		if err := u.requireCanManage(ctx, userID); err != nil {
+			return nil, err
+		}
 	}
 	name = strings.TrimSpace(name)
 	if name == "" {
@@ -106,10 +109,10 @@ func (u *User) UpdateProfile(ctx context.Context, userID snow.ID, name, photoUrl
 }
 
 func (u *User) UpdateEmail(ctx context.Context, userID snow.ID, email string) (*domain.User, error) {
-	if err := requireGlobalAdmin(ctx); err != nil {
+	if err := u.requireCanManage(ctx, userID); err != nil {
 		return nil, err
 	}
-	email = strings.TrimSpace(email)
+	email = normalizeEmail(email)
 	if !isEmail(email) {
 		return nil, domain.NewErrorUser("invalid email")
 	}
@@ -119,6 +122,9 @@ func (u *User) UpdateEmail(ctx context.Context, userID snow.ID, email string) (*
 		return nil, err
 	}
 	if err := u.repo.UpdateEmail(ctx, userID, email); err != nil {
+		return nil, err
+	}
+	if err := u.repo.DeleteRefreshTokens(ctx, userID); err != nil {
 		return nil, err
 	}
 	return u.repo.GetByID(ctx, userID)
@@ -143,11 +149,14 @@ func (u *User) ChangePassword(ctx context.Context, userID snow.ID, oldPassword, 
 	if err != nil {
 		return domain.NewErrorInternalServer(err.Error())
 	}
-	return u.repo.UpdatePassword(ctx, userID, hash)
+	if err := u.repo.UpdatePassword(ctx, userID, hash); err != nil {
+		return err
+	}
+	return u.repo.DeleteRefreshTokens(ctx, userID)
 }
 
 func (u *User) ResetPassword(ctx context.Context, userID snow.ID, newPassword string) error {
-	if err := requireGlobalAdmin(ctx); err != nil {
+	if err := u.requireCanManage(ctx, userID); err != nil {
 		return err
 	}
 	if err := ValidatePassword(newPassword); err != nil {
@@ -157,7 +166,10 @@ func (u *User) ResetPassword(ctx context.Context, userID snow.ID, newPassword st
 	if err != nil {
 		return domain.NewErrorInternalServer(err.Error())
 	}
-	return u.repo.UpdatePassword(ctx, userID, hash)
+	if err := u.repo.UpdatePassword(ctx, userID, hash); err != nil {
+		return err
+	}
+	return u.repo.DeleteRefreshTokens(ctx, userID)
 }
 
 func (u *User) SetAdminFlags(ctx context.Context, userID snow.ID, isAdmin, isSuperAdmin bool) (*domain.User, error) {
@@ -179,13 +191,38 @@ func (u *User) Deactivate(ctx context.Context, userID snow.ID) error {
 	if !ok {
 		return domain.NewErrorNoPermission()
 	}
-	if err := requireGlobalAdmin(ctx); err != nil {
-		return err
-	}
 	if claim.UserID == userID {
 		return domain.NewErrorUser("cannot deactivate yourself")
 	}
-	return u.repo.Deactivate(ctx, userID)
+	if err := u.requireCanManage(ctx, userID); err != nil {
+		return err
+	}
+	if err := u.repo.Deactivate(ctx, userID); err != nil {
+		return err
+	}
+	return u.repo.DeleteRefreshTokens(ctx, userID)
+}
+
+func (u *User) requireCanManage(ctx context.Context, targetID snow.ID) error {
+	if err := requireGlobalAdmin(ctx); err != nil {
+		return err
+	}
+	claim, _ := domain.ClaimFromContext(ctx)
+	if claim.IsSuperAdmin {
+		return nil
+	}
+	target, err := u.repo.GetByID(ctx, targetID)
+	if err != nil {
+		return err
+	}
+	if target.IsAdmin || target.IsSuperAdmin {
+		return domain.NewErrorNoPermission()
+	}
+	return nil
+}
+
+func normalizeEmail(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
 }
 
 func requireGlobalAdmin(ctx context.Context) error {
@@ -203,7 +240,7 @@ func requireGlobalAdmin(ctx context.Context) error {
 // normalized values.
 func ValidateUserIdentity(name, email string) (string, string, error) {
 	name = strings.TrimSpace(name)
-	email = strings.TrimSpace(email)
+	email = normalizeEmail(email)
 	if name == "" {
 		return "", "", domain.NewErrorUser("name is required")
 	}
