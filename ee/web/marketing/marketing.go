@@ -27,33 +27,28 @@ func Handler() http.Handler {
 
 func newHandler(sub fs.FS, indexHTML []byte) http.Handler {
 	fileServer := http.FileServer(http.FS(sub))
+	pages, files := loadSite(sub)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == BasePath {
 			http.Redirect(w, r, BasePath+"/", http.StatusMovedPermanently)
 			return
 		}
-		rel := strings.TrimPrefix(path.Clean("/"+strings.TrimPrefix(r.URL.Path, BasePath)), "/")
+		rel := pagePath(r.URL.Path)
 		if rel == "" {
 			writeHTMLPage(w, indexHTML)
 			return
 		}
-		file, ok := lookup(sub, rel)
-		if !ok {
-			writeHTMLPage(w, indexHTML)
+		// Pages come from the preloaded map: http.FileServer redirects any
+		// path ending in /index.html, so they are written directly.
+		if page, ok := pages[rel]; ok {
+			writeHTMLPage(w, page)
 			return
 		}
-		// http.FileServer redirects any path ending in /index.html, so page
-		// files are written directly; assets still go through the file server.
-		if strings.HasSuffix(file, "index.html") {
-			data, err := fs.ReadFile(sub, file)
-			if err != nil {
-				http.NotFound(w, r)
-				return
-			}
-			writeHTMLPage(w, data)
+		if files[rel] {
+			serveFile(w, r, fileServer, rel)
 			return
 		}
-		serveFile(w, r, fileServer, file)
+		writeHTMLPage(w, indexHTML)
 	})
 }
 
@@ -69,29 +64,52 @@ func embeddedDist() (fs.FS, []byte, error) {
 	return sub, indexHTML, nil
 }
 
-// lookup resolves a request path to a concrete file, expanding directory
-// paths to their index.html so the file server never issues redirects.
-func lookup(sub fs.FS, rel string) (string, bool) {
-	info, err := fs.Stat(sub, rel)
-	if err != nil {
-		if file := rel + ".html"; exists(sub, file) {
-			return file, true
-		}
-		return "", false
-	}
-	if info.IsDir() {
-		index := path.Join(rel, "index.html")
-		if exists(sub, index) {
-			return index, true
-		}
-		return "", false
-	}
-	return rel, true
+// pagePath normalizes a request path to a path relative to the embedded site.
+func pagePath(urlPath string) string {
+	return strings.TrimPrefix(path.Clean("/"+strings.TrimPrefix(urlPath, BasePath)), "/")
 }
 
-func exists(sub fs.FS, name string) bool {
-	info, err := fs.Stat(sub, name)
-	return err == nil && !info.IsDir()
+// loadSite indexes the embedded site once so request paths are only looked up
+// in memory, never handed to a filesystem read. Directory routes resolve to
+// their index.html; extensionless routes also try a sibling .html file.
+func loadSite(sub fs.FS) (pages map[string][]byte, files map[string]bool) {
+	files = map[string]bool{}
+	var htmlFiles []string
+	_ = fs.WalkDir(sub, ".", func(name string, entry fs.DirEntry, err error) error {
+		if err != nil || entry.IsDir() {
+			return nil
+		}
+		files[name] = true
+		if strings.HasSuffix(name, ".html") {
+			htmlFiles = append(htmlFiles, name)
+		}
+		return nil
+	})
+
+	pages = make(map[string][]byte, len(htmlFiles)*2)
+	contents := make(map[string][]byte, len(htmlFiles))
+	for _, name := range htmlFiles {
+		data, err := fs.ReadFile(sub, name)
+		if err != nil {
+			continue
+		}
+		contents[name] = data
+		pages[name] = data
+		if path.Base(name) != "index.html" {
+			pages[strings.TrimSuffix(name, ".html")] = data
+		}
+	}
+	// Directory indexes win over a sibling page with the same route, matching
+	// the file server's directory-first lookup for an existing directory.
+	for _, name := range htmlFiles {
+		if path.Base(name) != "index.html" {
+			continue
+		}
+		if dir := path.Dir(name); dir != "." {
+			pages[dir] = contents[name]
+		}
+	}
+	return pages, files
 }
 
 func serveFile(w http.ResponseWriter, r *http.Request, fileServer http.Handler, file string) {

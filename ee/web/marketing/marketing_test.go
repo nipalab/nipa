@@ -68,7 +68,7 @@ func TestHandlerServesPagesAndAssets(t *testing.T) {
 	require.Equal(t, "/web/", rec.Header().Get("Location"))
 }
 
-func TestLookup(t *testing.T) {
+func TestLoadSite(t *testing.T) {
 	fsys := fstest.MapFS{
 		"index.html":         &fstest.MapFile{Data: []byte("<html>")},
 		"pricing/index.html": &fstest.MapFile{Data: []byte("pricing")},
@@ -76,18 +76,52 @@ func TestLookup(t *testing.T) {
 		"logo.svg":           &fstest.MapFile{Data: []byte("<svg>")},
 	}
 
-	file, ok := lookup(fsys, "pricing")
-	require.True(t, ok)
-	require.Equal(t, "pricing/index.html", file)
+	pages, files := loadSite(fsys)
+	require.Equal(t, "<html>", string(pages["index.html"]))
+	require.Equal(t, "pricing", string(pages["pricing"]))
+	require.Equal(t, "pricing", string(pages["pricing/index.html"]))
+	require.Equal(t, "about", string(pages["about"]))
+	require.Equal(t, "about", string(pages["about.html"]))
+	require.True(t, files["logo.svg"])
+	require.True(t, files["about.html"])
+	require.False(t, files["missing"])
+}
 
-	file, ok = lookup(fsys, "about")
-	require.True(t, ok)
-	require.Equal(t, "about.html", file)
+func TestLoadSiteDirectoryIndexWins(t *testing.T) {
+	fsys := fstest.MapFS{
+		"about.html":        &fstest.MapFile{Data: []byte("file")},
+		"about/index.html":  &fstest.MapFile{Data: []byte("index")},
+		"index.html":        &fstest.MapFile{Data: []byte("home")},
+		"nested/index.html": &fstest.MapFile{Data: []byte("nested")},
+	}
 
-	file, ok = lookup(fsys, "logo.svg")
-	require.True(t, ok)
-	require.Equal(t, "logo.svg", file)
+	pages, _ := loadSite(fsys)
+	require.Equal(t, "index", string(pages["about"]))
+	require.Equal(t, "file", string(pages["about.html"]))
+	require.Equal(t, "nested", string(pages["nested"]))
+	require.NotContains(t, pages, "")
+}
 
-	_, ok = lookup(fsys, "missing")
-	require.False(t, ok)
+func TestHandlerDoesNotEscapeSite(t *testing.T) {
+	sub := fstest.MapFS{
+		"index.html": &fstest.MapFile{Data: []byte("<html>home</html>")},
+		"about.html": &fstest.MapFile{Data: []byte("<html>about</html>")},
+	}
+	handler := newHandler(sub, []byte("<html>home</html>"))
+
+	get := func(requestPath string) *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, requestPath, nil))
+		require.Equal(t, http.StatusOK, rec.Code, requestPath)
+		require.Equal(t, "text/html; charset=utf-8", rec.Header().Get("Content-Type"), requestPath)
+		return rec
+	}
+
+	// Traversal is normalized to a path inside the embedded site.
+	require.Equal(t, "<html>about</html>", get("/web/../about").Body.String())
+	require.Equal(t, "<html>about</html>", get("/../about").Body.String())
+
+	// Escaping the site root falls back to the index page.
+	require.Equal(t, "<html>home</html>", get("/web/../../etc/passwd").Body.String())
+	require.Equal(t, "<html>home</html>", get("/web/%2e%2e/%2e%2e/etc/passwd").Body.String())
 }
