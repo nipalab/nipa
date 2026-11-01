@@ -138,6 +138,7 @@ describe('AdminUsersPage', () => {
       findButton('New user').click()
     })
     await waitFor(() => window.location.pathname === '/admin/users/new')
+    await waitFor(() => container.querySelectorAll('input').length >= 3)
 
     const inputs = container.querySelectorAll('input')
     await act(async () => {

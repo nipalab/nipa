@@ -13,6 +13,17 @@ export default defineConfig({
   build: {
     outDir: 'server/dist',
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return undefined
+          if (/node_modules\/(react|react-dom|react-router|react-router-dom|react-is|scheduler)\//.test(id)) {
+            return 'vendor-react'
+          }
+          return undefined
+        },
+      },
+    },
   },
   server: {
     port: 5173,

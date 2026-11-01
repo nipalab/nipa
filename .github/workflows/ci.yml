@@ -28,10 +28,15 @@ jobs:
       - name: Run Tests & Generate Reports
         run: |
           set -o pipefail
-          go test -race ./... 2>&1 | tee report.json
+          go test -race -covermode=atomic -coverprofile=coverage.out -coverpkg=./... ./... 2>&1 | tee report.json
 
-      - name: Generate Coverage Report
-        run: go test -coverprofile=coverage.out -covermode=atomic -coverpkg=./... ./...
+      - name: Enforce coverage threshold
+        env:
+          MIN_COVERAGE: "80.0"
+        run: |
+          total=$(go tool cover -func=coverage.out | awk '/^total:/ {gsub("%","",$NF); print $NF}')
+          echo "total coverage: ${total}% (minimum ${MIN_COVERAGE}%)"
+          awk -v t="$total" -v m="$MIN_COVERAGE" 'BEGIN { exit !(t+0 >= m+0) }'
 
       - name: Upload Test and Coverage Reports
         if: always()
@@ -42,6 +47,38 @@ jobs:
             coverage.out
             report.json
           retention-days: 1
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      # The existing code base still carries findings; only issues introduced
+      # by the change under review fail the job.
+      - uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.14.0
+          only-new-issues: true
+
+  govulncheck:
+    name: Vulnerability scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
 
   client-e2e:
     name: Client e2e (${{ matrix.edition }})

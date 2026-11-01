@@ -650,6 +650,7 @@ describe('BranchesPage', () => {
       findButton('Add branch').click()
     })
     await waitFor(() => window.location.pathname === '/acme/game/branches/new')
+    await waitFor(() => container.querySelector('input') !== null)
 
     const nameInput = container.querySelector('input') as HTMLInputElement
     await act(async () => {

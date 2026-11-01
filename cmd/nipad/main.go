@@ -14,7 +14,6 @@ import (
 	"github.com/nipalab/nipa/internal/hasher"
 	"github.com/nipalab/nipa/internal/mail"
 	"github.com/nipalab/nipa/internal/obs"
-	"github.com/nipalab/nipa/internal/repository/dbtx"
 	"github.com/nipalab/nipa/internal/repository/sqlite"
 	"github.com/nipalab/nipa/internal/serverapp"
 	"github.com/nipalab/nipa/internal/snow"
@@ -109,15 +108,6 @@ func main() {
 	}
 	slog.Info("database migration completed")
 
-	orgRepo := sqlite.NewOrgRepository(dbConn)
-	projectRepo := sqlite.NewProjectRepository(dbConn)
-	authRepo := sqlite.NewAuthRepository(dbConn)
-	userRepo := sqlite.NewUserRepository(dbConn)
-	branchRepository := sqlite.NewBranchRepository(dbConn)
-	pushRepository := sqlite.NewPushRepository(dbConn)
-	pbacRepository := sqlite.NewPBACRepository(dbConn)
-	groupRepository := sqlite.NewGroupRepository(dbConn)
-
 	passwordHasher := hasher.NewHasher(cfg.HasherWorkers)
 
 	snowUser, err := snow.NewNode(cfg.SnowflakeNodeID)
@@ -125,12 +115,7 @@ func main() {
 		panic(err)
 	}
 	slog.Info("using snowflake node id", "node_id", cfg.SnowflakeNodeID)
-	authUsecase := usecase.NewAuth(cfg.JWTKey, passwordHasher, userRepo, authRepo).
-		WithSSHKeys(sqlite.NewSSHKeyRepository(dbConn))
-	orgUsecase := usecase.NewOrg(orgRepo, snowUser)
-	permissionUsecase := usecase.NewPermission(pbacRepository, userRepo, groupRepository, orgUsecase)
-	orgUsecase.WithPermissionCache(permissionUsecase)
-	projectUsecase := usecase.NewProject(projectRepo, snowUser, permissionUsecase, orgUsecase)
+
 	chunkStore, err := createChunkStore(cfg)
 	if err != nil {
 		panic(fmt.Errorf("create chunk store: %w", err))
@@ -139,51 +124,14 @@ func main() {
 	if cfg.ChunkURLSigningKey == "" {
 		panic("CHUNK_URL_SIGNING_KEY must be set")
 	}
-	branchUsecase := usecase.NewBranchWithChunks(permissionUsecase, branchRepository, snowUser, chunkStore)
-	fileLockUsecase := usecase.NewFileLock(sqlite.NewFileLockRepository(dbConn), branchRepository, permissionUsecase, snowUser)
-	branchUsecase = branchUsecase.WithFileLocks(fileLockUsecase)
-	branchUsecase = branchUsecase.WithUsers(userRepo)
-	mergeRequestRepository := sqlite.NewMergeRequestRepository(dbConn)
-	mergeRequestReviewRepository := sqlite.NewMergeRequestReviewRepository(dbConn)
-	mergeRequestUsecase := usecase.NewMergeRequest(
-		mergeRequestRepository,
-		branchRepository,
-		permissionUsecase,
-		branchUsecase,
-		snowUser,
-		dbtx.NewTransactor(dbConn),
-	).WithFileLocks(fileLockUsecase)
-	pushUsecase := usecase.NewPush(permissionUsecase, branchRepository, pushRepository, snowUser).WithFileLocks(fileLockUsecase).WithMetrics(metrics)
-	tagUsecase := usecase.NewTag(permissionUsecase, sqlite.NewTagRepository(dbConn), branchRepository, snowUser)
-	mergeRequestReviewUsecase := usecase.NewMergeRequestReview(
-		mergeRequestReviewRepository,
-		mergeRequestRepository,
-		branchRepository,
-		branchUsecase,
-		permissionUsecase,
-		userRepo,
-		snowUser,
-	)
-	pushUsecase = pushUsecase.WithReviews(mergeRequestReviewUsecase)
-	mergeRequestUsecase = mergeRequestUsecase.WithReview(mergeRequestReviewUsecase)
-	mergeRequestUsecase = mergeRequestUsecase.WithUsers(userRepo)
-	mergeRequestUsecase = mergeRequestUsecase.WithAccessChecker(permissionUsecase)
-	mergeRequestReviewUsecase = mergeRequestReviewUsecase.WithAccessChecker(permissionUsecase)
-	chunkUsecase := usecase.NewChunk(pushRepository, chunkStore, usecase.ChunkTransferConfig{
-		SigningKey:  cfg.ChunkURLSigningKey,
-		PresignTTL:  time.Duration(cfg.ChunkPresignTTLSeconds) * time.Second,
-		MaxPageSize: cfg.ChunkMaxPageSize,
-	}).WithMetrics(metrics)
-	branchUsecase = branchUsecase.WithMergeCommitter(pushRepository).WithChunkUploader(chunkUsecase)
+
 	webhookRepository := sqlite.NewWebhookRepository(dbConn)
 	webhookDispatcher := webhook.NewDispatcher(webhookRepository, webhook.NewClient(webhook.ClientConfig{
 		Timeout:         time.Duration(cfg.WebhookTimeoutSeconds) * time.Second,
 		EgressAllowlist: serverapp.SplitAllowlist(cfg.WebhookEgressAllowlist),
 	}), snowUser, webhook.Config{}).WithMetrics(metrics)
-	webhookUsecase := usecase.NewWebhook(webhookRepository, permissionUsecase, userRepo, webhookDispatcher, snowUser)
-	hookEmitter := usecase.NewHookEmitter(webhookRepository, projectRepo, orgRepo, branchRepository, userRepo, webhookDispatcher)
+
 	emailRepository := sqlite.NewEmailRepository(dbConn)
-	emailDeliveryUsecase := usecase.NewEmailDelivery(emailRepository, permissionUsecase)
 	emailSender, err := mail.NewFromConfig(cfg.MailSenderConfig())
 	if err != nil {
 		panic(fmt.Errorf("email sender: %w", err))
@@ -191,46 +139,35 @@ func main() {
 	var emailDispatcher *mail.Dispatcher
 	if emailSender != nil {
 		emailDispatcher = mail.NewDispatcher(emailRepository, emailSender, cfg.EmailDispatcherConfig()).WithMetrics(metrics)
-		emailDeliveryUsecase = emailDeliveryUsecase.WithKicker(emailDispatcher)
-		hookEmitter = hookEmitter.WithNotifier(usecase.NewEmailNotifier(
-			emailRepository, userRepo, mergeRequestRepository, mergeRequestReviewRepository, cfg.EmailBaseURL, snowUser,
-		).WithKicker(emailDispatcher))
-		slog.Info("email notifications enabled", "sender", cfg.EmailSender)
 	}
-	branchUsecase = branchUsecase.WithHooks(hookEmitter)
-	tagUsecase = tagUsecase.WithHooks(hookEmitter)
-	mergeRequestUsecase = mergeRequestUsecase.WithHooks(hookEmitter)
-	mergeRequestReviewUsecase = mergeRequestReviewUsecase.WithHooks(hookEmitter)
-	pushUsecase = pushUsecase.WithHooks(hookEmitter)
-	mergeRequestCheckUsecase := usecase.NewMergeRequestCheck(
-		sqlite.NewMergeRequestCheckRepository(dbConn),
-		sqlite.NewMergeRequestRepository(dbConn),
-		branchRepository,
-		permissionUsecase,
-		snowUser,
-	).WithHooks(hookEmitter)
-	mergeRequestUsecase = mergeRequestUsecase.WithChecks(mergeRequestCheckUsecase)
 
-	reg := serverapp.NewRegistry(serverapp.Usecases{
-		Auth:               authUsecase,
-		User:               usecase.NewUser(snowUser, userRepo, passwordHasher),
-		SSHKey:             usecase.NewSSHKey(snowUser, sqlite.NewSSHKeyRepository(dbConn)),
-		Common:             usecase.NewCommon(orgRepo, projectRepo),
-		Branch:             branchUsecase,
-		Tag:                tagUsecase,
-		Push:               pushUsecase,
-		Chunk:              chunkUsecase,
-		Permission:         permissionUsecase,
-		Group:              usecase.NewGroup(groupRepository, snowUser, permissionUsecase, orgUsecase),
-		Org:                orgUsecase,
-		Project:            projectUsecase,
-		MergeRequest:       mergeRequestUsecase,
-		MergeRequestReview: mergeRequestReviewUsecase,
-		MergeRequestCheck:  mergeRequestCheckUsecase,
-		FileLock:           fileLockUsecase,
-		Webhook:            webhookUsecase,
-		EmailDelivery:      emailDeliveryUsecase,
-	})
+	reg := serverapp.NewRegistry(serverapp.BuildUsecases(usecase.Repositories{
+		Org:                sqlite.NewOrgRepository(dbConn),
+		Project:            sqlite.NewProjectRepository(dbConn),
+		Auth:               sqlite.NewAuthRepository(dbConn),
+		SSHKey:             sqlite.NewSSHKeyRepository(dbConn),
+		User:               sqlite.NewUserRepository(dbConn),
+		Branch:             sqlite.NewBranchRepository(dbConn),
+		Push:               sqlite.NewPushRepository(dbConn),
+		PBAC:               sqlite.NewPBACRepository(dbConn),
+		Group:              sqlite.NewGroupRepository(dbConn),
+		FileLock:           sqlite.NewFileLockRepository(dbConn),
+		MergeRequest:       sqlite.NewMergeRequestRepository(dbConn),
+		MergeRequestReview: sqlite.NewMergeRequestReviewRepository(dbConn),
+		MergeRequestCheck:  sqlite.NewMergeRequestCheckRepository(dbConn),
+		Tag:                sqlite.NewTagRepository(dbConn),
+		Webhook:            webhookRepository,
+		Email:              emailRepository,
+	}, serverapp.UsecaseDeps{
+		Config:            cfg,
+		DB:                dbConn,
+		Snow:              snowUser,
+		Hasher:            passwordHasher,
+		ChunkStore:        chunkStore,
+		Metrics:           metrics,
+		WebhookDispatcher: webhookDispatcher,
+		EmailDispatcher:   emailDispatcher,
+	}))
 
 	dispatchers := []serverapp.Dispatcher{webhookDispatcher}
 	if emailDispatcher != nil {
