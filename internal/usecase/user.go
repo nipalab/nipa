@@ -208,7 +208,7 @@ func (u *User) requireCanManage(ctx context.Context, targetID snow.ID) error {
 		return err
 	}
 	claim, _ := domain.ClaimFromContext(ctx)
-	if claim.IsSuperAdmin {
+	if claim.IsSuperAdmin || claim.UserID == targetID {
 		return nil
 	}
 	target, err := u.repo.GetByID(ctx, targetID)
