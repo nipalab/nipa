@@ -112,7 +112,7 @@ func TestResolveEntryCommits(t *testing.T) {
 func TestBranch_TreeHistory_MissingDirectory(t *testing.T) {
 	_, _, uc := newHistoryTestBranch(t)
 
-	history, err := uc.treeHistory(context.Background(), snow.ID(1), snow.ID(10), "missing", &domain.TreeNode{})
+	history, err := uc.treeHistory(context.Background(), snow.ID(1), snow.ID(10), "missing", nil)
 	require.NoError(t, err)
 	require.Nil(t, history.Latest)
 	require.Empty(t, history.ByPath)

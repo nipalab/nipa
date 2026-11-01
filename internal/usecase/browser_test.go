@@ -172,7 +172,6 @@ func TestBranch_FileContent_ChunkError(t *testing.T) {
 	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(101)).Return([]*domain.File{
 		{ID: 1, Name: "a.txt", Hash: domain.Hash{9}, SizeBytes: 5, Chunks: []domain.Chunk{{Hash: domain.Hash{1}, SizeBytes: 5}}},
 	}, nil)
-	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(101)).Return(nil, nil)
 
 	_, _, err := uc.FileContent(context.Background(), snow.ID(1), "main", "a.txt")
 	require.Error(t, err)
@@ -274,8 +273,7 @@ func TestBranch_TreeAt_NestedSubtree(t *testing.T) {
 	repo.EXPECT().GetCommit(gomock.Any(), commitID).
 		Return(&domain.Commit{ID: commitID, ProjectID: 1, TreeID: 101}, nil)
 	repo.EXPECT().GetTreeNode(gomock.Any(), int64(101)).Return(&domain.TreeNode{ID: 101, Name: "root"}, nil)
-	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(101)).Return(nil, nil)
-	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(101)).Return([]*domain.TreeNode{{ID: 201, Name: "public"}}, nil)
+	repo.EXPECT().GetTreeChildByName(gomock.Any(), int64(101), "public").Return(&domain.TreeNode{ID: 201, Name: "public"}, nil)
 	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(201)).Return([]*domain.File{
 		{ID: 1, Name: "a.txt", Hash: domain.Hash{9}, SizeBytes: 5, Chunks: []domain.Chunk{{Hash: domain.Hash{1}, SizeBytes: 5}}},
 	}, nil)
@@ -302,8 +300,7 @@ func TestBranch_TreeAt_PathNotFound(t *testing.T) {
 	repo.EXPECT().GetCommit(gomock.Any(), commitID).
 		Return(&domain.Commit{ID: commitID, ProjectID: 1, TreeID: 101}, nil)
 	repo.EXPECT().GetTreeNode(gomock.Any(), int64(101)).Return(&domain.TreeNode{ID: 101, Name: "root"}, nil)
-	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(101)).Return(nil, nil)
-	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(101)).Return(nil, nil)
+	repo.EXPECT().GetTreeChildByName(gomock.Any(), int64(101), "nope").Return(nil, domain.NewErrorNotFound("nope"))
 
 	_, err := uc.TreeAt(context.Background(), snow.ID(1), "main", "nope")
 	require.True(t, domain.IsErrorNotFound(err))
@@ -318,17 +315,9 @@ func TestBranch_TreeAt_FilterError(t *testing.T) {
 
 	commitID := snow.ID(11)
 	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
-	gomock.InOrder(
-		perm.EXPECT().CompileFilter(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(AllowAllFilter(), nil),
-		perm.EXPECT().CompileFilter(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(nil, wantErr),
-	)
+	perm.EXPECT().CompileFilter(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(nil, wantErr)
 	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").
 		Return(&domain.Branch{Name: "main", CommitID: &commitID}, nil)
-	repo.EXPECT().GetCommit(gomock.Any(), commitID).
-		Return(&domain.Commit{ID: commitID, ProjectID: 1, TreeID: 101}, nil)
-	repo.EXPECT().GetTreeNode(gomock.Any(), int64(101)).Return(&domain.TreeNode{ID: 101, Name: "root"}, nil)
-	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(101)).Return(nil, nil)
-	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(101)).Return(nil, nil)
 
 	_, err := uc.TreeAt(context.Background(), snow.ID(1), "main", "dir")
 	require.ErrorIs(t, err, wantErr)
@@ -407,7 +396,6 @@ func TestBranch_FileContent_NoChunkStore(t *testing.T) {
 	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(101)).Return([]*domain.File{
 		{ID: 1, Name: "a.txt", Hash: domain.Hash{9}, SizeBytes: 5, Chunks: []domain.Chunk{{Hash: domain.Hash{1}, SizeBytes: 5}}},
 	}, nil)
-	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(101)).Return(nil, nil)
 
 	_, _, err := uc.FileContent(context.Background(), snow.ID(1), "main", "a.txt")
 	var domErr *domain.Error
@@ -541,4 +529,104 @@ func TestBranch_TreeDiffBetween(t *testing.T) {
 		_, err := uc.TreeDiffBetween(context.Background(), snow.ID(1), &baseID, snow.ID(11))
 		require.True(t, domain.IsErrorNotFound(err))
 	})
+}
+
+func TestBranch_FileEntryAt(t *testing.T) {
+	restricted := &PathFilter{
+		set:        &permissionSet{rules: []*domain.PBACRule{{PathPrefix: "public", Permission: domain.PermissionRead}}},
+		permission: domain.PermissionRead,
+	}
+	commitID := snow.ID(11)
+	setup := func(t *testing.T, filter *PathFilter) (*MockbranchRepository, *Branch) {
+		ctrl := gomock.NewController(t)
+		perm := NewMockpermissionUsecase(ctrl)
+		repo := NewMockbranchRepository(ctrl)
+		perm.EXPECT().CompileFilter(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(filter, nil).AnyTimes()
+		return repo, NewBranchWithChunks(perm, repo, newTestBranchNode(t), &stubChunkReader{})
+	}
+	expectRoot := func(repo *MockbranchRepository) {
+		repo.EXPECT().GetCommit(gomock.Any(), commitID).Return(&domain.Commit{ID: commitID, TreeID: 101}, nil)
+		repo.EXPECT().GetTreeNode(gomock.Any(), int64(101)).Return(&domain.TreeNode{ID: 101}, nil)
+	}
+
+	t.Run("empty path", func(t *testing.T) {
+		_, uc := setup(t, AllowAllFilter())
+		_, ok, err := uc.fileEntryAt(context.Background(), 1, commitID, "/")
+		require.NoError(t, err)
+		require.False(t, ok)
+	})
+
+	t.Run("denied file", func(t *testing.T) {
+		_, uc := setup(t, restricted)
+		_, ok, err := uc.fileEntryAt(context.Background(), 1, commitID, "secret/a.txt")
+		require.NoError(t, err)
+		require.False(t, ok)
+	})
+
+	t.Run("nested file", func(t *testing.T) {
+		repo, uc := setup(t, restricted)
+		expectRoot(repo)
+		repo.EXPECT().GetTreeChildByName(gomock.Any(), int64(101), "public").Return(&domain.TreeNode{ID: 201}, nil)
+		repo.EXPECT().ListFilesByTree(gomock.Any(), int64(201)).Return([]*domain.File{
+			{Name: "other.txt"},
+			{Name: "a.txt", Mode: 420, SizeBytes: 5, Chunks: []domain.Chunk{{Hash: domain.Hash{1}, SizeBytes: 5}}},
+		}, nil)
+		entry, ok, err := uc.fileEntryAt(context.Background(), 1, commitID, "public/a.txt")
+		require.NoError(t, err)
+		require.True(t, ok)
+		require.Equal(t, "public/a.txt", entry.Path)
+		require.Equal(t, int64(5), entry.SizeBytes)
+	})
+
+	t.Run("missing parent", func(t *testing.T) {
+		repo, uc := setup(t, AllowAllFilter())
+		expectRoot(repo)
+		repo.EXPECT().GetTreeChildByName(gomock.Any(), int64(101), "dir").Return(nil, domain.NewErrorNotFound("dir"))
+		_, ok, err := uc.fileEntryAt(context.Background(), 1, commitID, "dir/a.txt")
+		require.NoError(t, err)
+		require.False(t, ok)
+	})
+
+	t.Run("filter error", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		perm := NewMockpermissionUsecase(ctrl)
+		wantErr := errors.New("db down")
+		perm.EXPECT().CompileFilter(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(nil, wantErr)
+		uc := NewBranchWithChunks(perm, NewMockbranchRepository(ctrl), newTestBranchNode(t), &stubChunkReader{})
+		_, _, err := uc.fileEntryAt(context.Background(), 1, commitID, "a.txt")
+		require.ErrorIs(t, err, wantErr)
+	})
+
+	t.Run("list error", func(t *testing.T) {
+		repo, uc := setup(t, AllowAllFilter())
+		expectRoot(repo)
+		wantErr := errors.New("db down")
+		repo.EXPECT().ListFilesByTree(gomock.Any(), int64(101)).Return(nil, wantErr)
+		_, _, err := uc.fileEntryAt(context.Background(), 1, commitID, "a.txt")
+		require.ErrorIs(t, err, wantErr)
+	})
+}
+
+func TestBranch_ShallowDirAt_Errors(t *testing.T) {
+	commitID := snow.ID(11)
+	for name, tc := range map[string]struct {
+		files, children error
+	}{
+		"files":    {files: errors.New("files down")},
+		"children": {children: errors.New("children down")},
+	} {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			repo := NewMockbranchRepository(ctrl)
+			uc := NewBranchWithChunks(NewMockpermissionUsecase(ctrl), repo, newTestBranchNode(t), &stubChunkReader{})
+			repo.EXPECT().GetCommit(gomock.Any(), commitID).Return(&domain.Commit{ID: commitID, TreeID: 101}, nil)
+			repo.EXPECT().GetTreeNode(gomock.Any(), int64(101)).Return(&domain.TreeNode{ID: 101}, nil)
+			repo.EXPECT().ListFilesByTree(gomock.Any(), int64(101)).Return(nil, tc.files)
+			if tc.files == nil {
+				repo.EXPECT().ListTreeChildren(gomock.Any(), int64(101)).Return(nil, tc.children)
+			}
+			_, err := uc.shallowDirAt(context.Background(), commitID, "")
+			require.Error(t, err)
+		})
+	}
 }

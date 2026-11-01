@@ -52,16 +52,33 @@ func (b *Branch) treeAt(ctx context.Context, projectID snow.ID, rev, path string
 		}
 		return &domain.TreeNode{}, &TreeHistory{ByPath: map[string]*domain.CommitLogEntry{}}, nil
 	}
+	filter, err := b.permUc.CompileFilter(ctx, projectID, domain.PermissionRead)
+	if err != nil {
+		return nil, nil, err
+	}
+	if filter.All() {
+		node, err := b.shallowDirAt(ctx, *commitID, path)
+		if err != nil {
+			return nil, nil, err
+		}
+		if node == nil {
+			return nil, nil, domain.NewErrorNotFound(fmt.Sprintf("path %q not found", path))
+		}
+		if !withHistory {
+			return node, nil, nil
+		}
+		history, err := b.treeHistory(ctx, projectID, *commitID, path, node)
+		if err != nil {
+			return nil, nil, err
+		}
+		return node, history, nil
+	}
 	root, err := b.commitTreeManifest(ctx, projectID, *commitID, true)
 	if err != nil {
 		return nil, nil, err
 	}
 	node := root
 	if path != "" {
-		filter, err := b.permUc.CompileFilter(ctx, projectID, domain.PermissionRead)
-		if err != nil {
-			return nil, nil, err
-		}
 		if !filter.CanDescend(path) {
 			return nil, nil, domain.NewErrorNotFound(fmt.Sprintf("path %q not found", path))
 		}
@@ -73,11 +90,73 @@ func (b *Branch) treeAt(ctx context.Context, projectID snow.ID, rev, path string
 	if !withHistory {
 		return node, nil, nil
 	}
-	history, err := b.treeHistory(ctx, projectID, *commitID, path, root)
+	history, err := b.treeHistory(ctx, projectID, *commitID, path, node)
 	if err != nil {
 		return nil, nil, err
 	}
 	return node, history, nil
+}
+
+// shallowDirAt loads the direct files and sub-directories of path using the
+// stored tree hashes. It must only be used when the caller can read everything.
+func (b *Branch) shallowDirAt(ctx context.Context, commitID snow.ID, path string) (*domain.TreeNode, error) {
+	node, err := b.treeNodeAtCommit(ctx, commitID, path)
+	if err != nil || node == nil {
+		return nil, err
+	}
+	return b.loadShallow(ctx, node)
+}
+
+func (b *Branch) loadShallow(ctx context.Context, node *domain.TreeNode) (*domain.TreeNode, error) {
+	files, err := b.branchRepo.ListFilesByTree(ctx, node.ID)
+	if err != nil {
+		return nil, err
+	}
+	children, err := b.branchRepo.ListTreeChildren(ctx, node.ID)
+	if err != nil {
+		return nil, err
+	}
+	node.FileChildren = files
+	node.TreeChildren = children
+	return node, nil
+}
+
+// fileEntryAt resolves one readable file by walking only its ancestor
+// directories.
+func (b *Branch) fileEntryAt(ctx context.Context, projectID snow.ID, commitID snow.ID, path string) (diff.Entry, bool, error) {
+	segments := splitPath(path)
+	if len(segments) == 0 {
+		return diff.Entry{}, false, nil
+	}
+	filter, err := b.permUc.CompileFilter(ctx, projectID, domain.PermissionRead)
+	if err != nil {
+		return diff.Entry{}, false, err
+	}
+	if !filter.Allow(path) {
+		return diff.Entry{}, false, nil
+	}
+	parent := strings.Join(segments[:len(segments)-1], "/")
+	if parent != "" && !filter.CanDescend(parent) {
+		return diff.Entry{}, false, nil
+	}
+	node, err := b.treeNodeAtCommit(ctx, commitID, parent)
+	if err != nil || node == nil {
+		return diff.Entry{}, false, err
+	}
+	files, err := b.branchRepo.ListFilesByTree(ctx, node.ID)
+	if err != nil {
+		return diff.Entry{}, false, err
+	}
+	name := segments[len(segments)-1]
+	for _, file := range files {
+		if file.Name != name {
+			continue
+		}
+		entry := diff.FromTree(&domain.TreeNode{FileChildren: []*domain.File{file}})[name]
+		entry.Path = strings.Join(segments, "/")
+		return entry, true, nil
+	}
+	return diff.Entry{}, false, nil
 }
 
 // TreeFilesAt flattens every readable file under path with repo-relative paths.
@@ -136,11 +215,10 @@ func (b *Branch) FileContent(ctx context.Context, projectID snow.ID, rev, path s
 	if commitID == nil {
 		return nil, diff.Entry{}, domain.NewErrorNotFound(fmt.Sprintf("file %q not found", path))
 	}
-	root, err := b.commitTreeManifest(ctx, projectID, *commitID, true)
+	entry, ok, err := b.fileEntryAt(ctx, projectID, *commitID, path)
 	if err != nil {
 		return nil, diff.Entry{}, err
 	}
-	entry, ok := diff.FromTree(root)[path]
 	if !ok {
 		return nil, diff.Entry{}, domain.NewErrorNotFound(fmt.Sprintf("file %q not found", path))
 	}
