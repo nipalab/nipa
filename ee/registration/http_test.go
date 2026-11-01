@@ -119,7 +119,7 @@ func TestRegisterEndpoint(t *testing.T) {
 
 	resp, body = server.do(t, http.MethodPost, "/api/v1/auth/register",
 		`{"name":"Alice","email":"alice@example.com","password":"password123"}`)
-	require.Equal(t, http.StatusConflict, resp.StatusCode, body)
+	require.Equal(t, http.StatusAccepted, resp.StatusCode, body)
 
 	resp, body = server.do(t, http.MethodPost, "/api/v1/auth/register",
 		`{"name":"Bob","email":"bob@example.com","password":"short"}`)

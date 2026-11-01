@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -53,6 +54,8 @@ type Auth struct {
 	userRepo       userRepository
 	authRepo       authRepository
 	sshKeyRepo     authSSHKeyRepository
+	dummyOnce      sync.Once
+	dummyHash      string
 }
 
 func NewAuth(secret string, passwordHasher passwordHasher, userRepo userRepository, authRepo authRepository) *Auth {
@@ -74,6 +77,7 @@ func (a *Auth) LoginWithEmailPassword(ctx context.Context, email string, passwor
 	user, err := a.userRepo.GetByEmail(ctx, email)
 	if err != nil {
 		if domain.IsErrorNotFound(err) {
+			a.spendPasswordCheck(password)
 			return nil, domain.NewErrorUser("invalid email or password")
 		}
 		return nil, err
@@ -85,6 +89,18 @@ func (a *Auth) LoginWithEmailPassword(ctx context.Context, email string, passwor
 		return nil, errEmailNotVerified()
 	}
 	return a.LoginResult(ctx, user)
+}
+
+// spendPasswordCheck burns a hash comparison for an unknown account so the
+// response time does not reveal whether the email is registered.
+func (a *Auth) spendPasswordCheck(password string) {
+	if a.passwordHasher == nil {
+		return
+	}
+	a.dummyOnce.Do(func() {
+		a.dummyHash, _ = a.passwordHasher.Hash("nipa-timing-equalizer")
+	})
+	a.passwordHasher.Compare(a.dummyHash, password)
 }
 
 func (a *Auth) LoginWithRefreshToken(ctx context.Context, refreshToken string) (*dto.LoginResult, error) {

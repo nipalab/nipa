@@ -697,3 +697,76 @@ func TestFileLock_Acquire_RequiresWriteOnThePath(t *testing.T) {
 	_, err = uc.Acquire(permissionCtx(7), snow.ID(1), "", "secret")
 	require.True(t, domain.IsErrorNoPermission(err))
 }
+
+type recordingTx struct {
+	runs int
+	err  error
+}
+
+func (r *recordingTx) WithinTx(ctx context.Context, fn func(ctx context.Context) error) error {
+	r.runs++
+	if r.err != nil {
+		return r.err
+	}
+	return fn(ctx)
+}
+
+type recordingSerializer struct {
+	projects []snow.ID
+	err      error
+}
+
+func (r *recordingSerializer) LockProject(_ context.Context, projectID snow.ID) error {
+	r.projects = append(r.projects, projectID)
+	return r.err
+}
+
+func TestFileLock_Acquire_SerializedAcrossProcesses(t *testing.T) {
+	expectGrant := func(repo *MockfileLockRepository, branchRepo *MockbranchRepository, perm *MockpermissionUsecase) {
+		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
+		branchRepo.EXPECT().GetDefaultBranch(gomock.Any(), snow.ID(1)).Return(defaultBranchFixture(), nil)
+	}
+
+	t.Run("grants inside a transaction holding the project lock", func(t *testing.T) {
+		uc, repo, branchRepo, perm := newTestFileLock(t)
+		tx, serializer := &recordingTx{}, &recordingSerializer{}
+		uc.WithSerializer(tx, serializer)
+		expectGrant(repo, branchRepo, perm)
+		repo.EXPECT().ListProject(gomock.Any(), snow.ID(1)).Return(nil, nil)
+		repo.EXPECT().Create(gomock.Any(), gomock.Any()).Return(&domain.FileLock{ID: 5, Path: "a.png"}, nil)
+
+		lock, err := uc.Acquire(permissionCtx(7), snow.ID(1), "", "a.png")
+		require.NoError(t, err)
+		require.Equal(t, snow.ID(5), lock.ID)
+		require.Equal(t, 1, tx.runs)
+		require.Equal(t, []snow.ID{1}, serializer.projects)
+	})
+
+	t.Run("a conflict is still reported", func(t *testing.T) {
+		uc, repo, branchRepo, perm := newTestFileLock(t)
+		uc.WithSerializer(&recordingTx{}, &recordingSerializer{})
+		expectGrant(repo, branchRepo, perm)
+		repo.EXPECT().ListProject(gomock.Any(), snow.ID(1)).Return([]*domain.FileLock{{ID: 1, Path: "a.png", HeldBy: 9}}, nil)
+
+		_, err := uc.Acquire(permissionCtx(7), snow.ID(1), "", "a.png")
+		require.True(t, domain.IsErrorConflict(err))
+	})
+
+	t.Run("lock error aborts", func(t *testing.T) {
+		uc, repo, branchRepo, perm := newTestFileLock(t)
+		uc.WithSerializer(&recordingTx{}, &recordingSerializer{err: errors.New("boom")})
+		expectGrant(repo, branchRepo, perm)
+
+		_, err := uc.Acquire(permissionCtx(7), snow.ID(1), "", "a.png")
+		require.EqualError(t, err, "boom")
+	})
+
+	t.Run("transaction error aborts", func(t *testing.T) {
+		uc, repo, branchRepo, perm := newTestFileLock(t)
+		uc.WithSerializer(&recordingTx{err: errors.New("begin failed")}, &recordingSerializer{})
+		expectGrant(repo, branchRepo, perm)
+
+		_, err := uc.Acquire(permissionCtx(7), snow.ID(1), "", "a.png")
+		require.EqualError(t, err, "begin failed")
+	})
+}

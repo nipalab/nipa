@@ -247,3 +247,15 @@ func (s *RegistrationRepositorySuite) TestRegistrationWritesJoinTheTransaction()
 	_, err = NewUserRepository(s.db).GetByEmail(ctx, "boom@example.com")
 	requireRecordNotFound(s.T(), err)
 }
+
+func (s *RegistrationRepositorySuite) TestSetPasswordHash() {
+	ctx := context.Background()
+	repo := NewRegistrationRepository(s.db)
+	user := s.createUser()
+
+	s.Require().NoError(repo.SetPasswordHash(ctx, user.ID, "new-hash"))
+
+	got, err := NewUserRepository(s.db).GetByID(ctx, user.ID)
+	s.Require().NoError(err)
+	s.Equal("new-hash", got.Password)
+}

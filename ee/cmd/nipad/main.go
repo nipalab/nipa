@@ -150,7 +150,9 @@ func main() {
 		panic("CHUNK_URL_SIGNING_KEY must be set")
 	}
 	branchUsecase := usecase.NewBranchWithChunks(permissionUsecase, branchRepository, snowUser, chunkStore)
-	fileLockUsecase := usecase.NewFileLock(postgres.NewFileLockRepository(dbConn), branchRepository, permissionUsecase, snowUser)
+	fileLockRepo := postgres.NewFileLockRepository(dbConn)
+	fileLockUsecase := usecase.NewFileLock(fileLockRepo, branchRepository, permissionUsecase, snowUser).
+		WithSerializer(dbtx.NewTransactor(dbConn), fileLockRepo)
 	branchUsecase = branchUsecase.WithFileLocks(fileLockUsecase)
 	branchUsecase = branchUsecase.WithUsers(userRepo)
 	mergeRequestRepository := postgres.NewMergeRequestRepository(dbConn)

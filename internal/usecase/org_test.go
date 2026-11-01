@@ -343,3 +343,16 @@ func TestOrg_RemoveMember_InvalidatesPermissionCache(t *testing.T) {
 	require.Error(t, org.RemoveMember(ctx, snow.ID(1), snow.ID(7)))
 	require.Equal(t, 1, cache.invalidated, "a failed removal keeps the cache")
 }
+
+func TestOrg_EnsureOwner(t *testing.T) {
+	org, repo := newTestOrg(t)
+
+	require.NoError(t, org.EnsureOwner(permissionCtx(42, withAdmin()), snow.ID(1)))
+
+	repo.EXPECT().MemberRole(gomock.Any(), snow.ID(1), snow.ID(9)).Return(domain.OrgRoleMember, nil)
+	err := org.EnsureOwner(permissionCtx(9), snow.ID(1))
+	require.True(t, domain.IsErrorNoPermission(err))
+
+	repo.EXPECT().MemberRole(gomock.Any(), snow.ID(1), snow.ID(8)).Return(domain.OrgRoleOwner, nil)
+	require.NoError(t, org.EnsureOwner(permissionCtx(8), snow.ID(1)))
+}

@@ -242,7 +242,14 @@ quota), a one-time `oauth_login_codes` handoff (token never in a URL) and
 `POST /api/v1/auth/oauth/complete`; authenticated `GET/DELETE
 /api/v1/me/identities` plus `GET /api/v1/me/identities/{provider}/start`
 (returns `{url}`) manage links, refusing to unlink the last login method of a
-passwordless account (409). Both flows end on the SPA `/onboarding` step
+passwordless account (409). Both OAuth flows bind the callback to the starting browser: `Start` sets an
+HttpOnly `nipa_oauth_binding` cookie (Lax, path `/api/v1/auth/oauth`) whose hash is
+in the signed state, and `Callback` refuses a state without the matching cookie.
+Linking an existing unconfirmed account clears its password, pending tokens and
+sessions first. Registering an address that already has an account always looks
+like a success (an unconfirmed squat is re-issued a token with the newest
+registrant's password), and password login spends a hash comparison on unknown
+emails so timing does not reveal registrations. Both flows end on the SPA `/onboarding` step
 (workspace name + editable URL slug → existing `POST /orgs`); the public SPA pages `/register`,
 `/verify` and `/oauth/callback` plus the profile "Connected accounts" card do
 the client side, and `GET /api/v1/auth/capabilities` (registered by
@@ -267,7 +274,9 @@ touched binaries against the head tree (`headBinaryPaths`): tracked binaries
 being modified or removed must be covered by the pusher's lock (409 `binary file
 %q requires a lock`), while new binary files only conflict with someone else's
 covering lock (409 `%q is locked by <holder>`) — adding a brand-new asset needs
-no lock unless a directory or pre-emptive lock guards it. Acquiring needs write on the path itself. Binary
+no lock unless a directory or pre-emptive lock guards it. Acquiring needs write on the path itself, and on `nipad-ee` grants run in a
+transaction holding a per-project advisory lock (`FileLock.WithSerializer`) so
+overlapping server processes cannot grant overlapping locks. Binary
 classification is forced server-side for known asset extensions
 (`markLockableBinaries`, the client flag can only add). `EnsureLocks` enforces
 both lists in the target scope; after `ApplyPush`, `ReleaseLanded` drops the

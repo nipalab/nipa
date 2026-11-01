@@ -83,24 +83,30 @@ func (o *OAuth) Providers() []string {
 }
 
 // Start builds the provider authorization URL for the login/signup flow
-// (linkUser = 0) or for attaching the provider to a logged-in account.
-func (o *OAuth) Start(provider, redirect string, linkUser snow.ID) (string, error) {
+// (linkUser = 0) or for attaching the provider to a logged-in account. The
+// returned binding must be kept by the starting browser (cookie) and presented
+// again at the callback.
+func (o *OAuth) Start(provider, redirect string, linkUser snow.ID) (target, binding string, err error) {
 	p, ok := o.providers[provider]
 	if !ok {
-		return "", domain.NewErrorNotFound("oauth provider is not enabled")
+		return "", "", domain.NewErrorNotFound("oauth provider is not enabled")
 	}
-	state, err := o.states.Sign(redirect, linkUser.Int64())
+	binding, err = newBinding()
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	return p.AuthCodeURL(state), nil
+	state, err := o.states.Sign(redirect, linkUser.Int64(), binding)
+	if err != nil {
+		return "", "", err
+	}
+	return p.AuthCodeURL(state), binding, nil
 }
 
 // Callback completes the provider round-trip and returns the SPA URL the
 // browser must be sent to next. Expected outcomes are encoded as query
 // parameters (?code=… for a login handoff, ?oauth=linked, ?oauth_error=…);
 // only transport-level failures return an error.
-func (o *OAuth) Callback(ctx context.Context, provider, code, rawState string) (string, error) {
+func (o *OAuth) Callback(ctx context.Context, provider, code, rawState, binding string) (string, error) {
 	p, ok := o.providers[provider]
 	if !ok {
 		return "", domain.NewErrorNotFound("oauth provider is not enabled")
@@ -108,6 +114,9 @@ func (o *OAuth) Callback(ctx context.Context, provider, code, rawState string) (
 	state, err := o.states.Verify(rawState)
 	if err != nil {
 		return "", err
+	}
+	if !state.bound(binding) {
+		return "", errInvalidState()
 	}
 	if strings.TrimSpace(code) == "" {
 		return "", domain.NewErrorUser("authorization code is required")

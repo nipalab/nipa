@@ -31,7 +31,15 @@ type fileLockGate interface {
 	ReleaseBranch(ctx context.Context, projectID, branchID snow.ID) error
 }
 
+// lockSerializer takes a project-wide exclusive lock for the current
+// transaction, so lock grants stay serialized across server processes.
+type lockSerializer interface {
+	LockProject(ctx context.Context, projectID snow.ID) error
+}
+
 type FileLock struct {
+	tx         transactor
+	serializer lockSerializer
 	repo       fileLockRepository
 	branchRepo branchRepository
 	perm       permissionUsecase
@@ -51,6 +59,15 @@ func NewFileLock(repo fileLockRepository, branchRepo branchRepository, perm perm
 		perm:       perm,
 		snowNode:   snowNode,
 	}
+}
+
+// WithSerializer makes Acquire run its overlap check and insert inside one
+// transaction guarded by a database-level project lock, which keeps grants
+// exclusive when several server processes overlap (rolling upgrades).
+func (f *FileLock) WithSerializer(tx transactor, serializer lockSerializer) *FileLock {
+	f.tx = tx
+	f.serializer = serializer
+	return f
 }
 
 // Acquire takes an exclusive lock on a binary path or path prefix. Locks on
@@ -78,6 +95,25 @@ func (f *FileLock) Acquire(ctx context.Context, projectID snow.ID, branchName, p
 	f.acquireMu.Lock()
 	defer f.acquireMu.Unlock()
 
+	if f.tx == nil || f.serializer == nil {
+		return f.grant(ctx, projectID, norm, *scope, claim.UserID)
+	}
+	var granted *domain.FileLock
+	err = f.tx.WithinTx(ctx, func(txCtx context.Context) error {
+		if err := f.serializer.LockProject(txCtx, projectID); err != nil {
+			return err
+		}
+		var err error
+		granted, err = f.grant(txCtx, projectID, norm, *scope, claim.UserID)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return granted, nil
+}
+
+func (f *FileLock) grant(ctx context.Context, projectID snow.ID, norm string, scope lockScope, holder snow.ID) (*domain.FileLock, error) {
 	locks, err := f.repo.ListProject(ctx, projectID)
 	if err != nil {
 		return nil, err
@@ -88,7 +124,7 @@ func (f *FileLock) Acquire(ctx context.Context, projectID snow.ID, branchName, p
 		}
 		// The same holder still needs the wider lock when their existing lock
 		// only overlaps without covering the request (file held, dir wanted).
-		if lock.HeldBy == claim.UserID {
+		if lock.HeldBy == holder {
 			if domain.PrefixCovers(lock.Path, norm) {
 				return lock, nil
 			}
@@ -101,11 +137,11 @@ func (f *FileLock) Acquire(ctx context.Context, projectID snow.ID, branchName, p
 		ProjectID: projectID,
 		BranchID:  scope.branchID,
 		Path:      norm,
-		HeldBy:    claim.UserID,
+		HeldBy:    holder,
 	})
 	if err != nil {
 		if existing, getErr := f.repo.Get(ctx, projectID, norm, scope.branchID); getErr == nil {
-			if existing.HeldBy != claim.UserID {
+			if existing.HeldBy != holder {
 				return nil, lockConflictError(existing, norm)
 			}
 			return existing, nil

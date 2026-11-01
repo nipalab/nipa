@@ -42,6 +42,7 @@ type onboardingRepository interface {
 	DeleteExpiredEmailVerifications(ctx context.Context, before time.Time) error
 	SetEmailVerified(ctx context.Context, userID snow.ID) error
 	SeedOwnerQuota(ctx context.Context, userID snow.ID, quotaBytes int64) error
+	SetPasswordHash(ctx context.Context, userID snow.ID, passwordHash string) error
 }
 
 type passwordHasher interface {
@@ -116,11 +117,6 @@ func (r *Registration) Register(ctx context.Context, name, email, password strin
 	if err := usecase.ValidatePassword(password); err != nil {
 		return err
 	}
-	if _, err := r.users.GetByEmail(ctx, email); err == nil {
-		return domain.NewErrorConflict("email already in use")
-	} else if !domain.IsErrorNotFound(err) {
-		return err
-	}
 	hash, err := r.hasher.Hash(password)
 	if err != nil {
 		return domain.NewErrorInternalServer(err.Error())
@@ -130,6 +126,13 @@ func (r *Registration) Register(ctx context.Context, name, email, password strin
 		return domain.NewErrorInternalServer(err.Error())
 	}
 	now := r.now()
+	existing, err := r.users.GetByEmail(ctx, email)
+	switch {
+	case err == nil:
+		return r.registerExisting(ctx, existing, hash, token, tokenHash, now)
+	case !domain.IsErrorNotFound(err):
+		return err
+	}
 	err = r.tx.WithinTx(ctx, func(ctx context.Context) error {
 		user, err := r.repo.CreateUnverifiedUser(ctx, domain.User{
 			ID:       r.node.Generate(),
@@ -160,6 +163,34 @@ func (r *Registration) Register(ctx context.Context, name, email, password strin
 	if r.outbox == nil {
 		slog.Warn("account registered without a verification email: EMAIL_SENDER is off", "email", email)
 	}
+	return nil
+}
+
+// registerExisting answers a registration for an address that already has an
+// account without revealing that it does: a confirmed account is left alone and
+// the caller sees the same success as a new signup. An unconfirmed account is
+// re-issued a token with the newest registrant's password, so a squatter's
+// earlier password stops working once the real owner signs up.
+func (r *Registration) registerExisting(ctx context.Context, existing *domain.User, hash, token, tokenHash string, now time.Time) error {
+	if existing.EmailVerified {
+		return nil
+	}
+	err := r.tx.WithinTx(ctx, func(ctx context.Context) error {
+		if err := r.repo.SetPasswordHash(ctx, existing.ID, hash); err != nil {
+			return err
+		}
+		if err := r.repo.DeleteExpiredEmailVerifications(ctx, now); err != nil {
+			return err
+		}
+		if err := r.repo.UpsertEmailVerification(ctx, existing.ID, tokenHash, now.Add(verificationTTL())); err != nil {
+			return err
+		}
+		return r.enqueueVerification(ctx, existing, token, now)
+	})
+	if err != nil {
+		return err
+	}
+	r.kickDispatcher()
 	return nil
 }
 

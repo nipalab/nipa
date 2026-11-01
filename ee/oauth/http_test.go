@@ -109,10 +109,24 @@ func (s *oauthServer) do(t *testing.T, method, path, body string) (*http.Respons
 	return resp, string(data)
 }
 
+func (s *oauthServer) doWithBinding(t *testing.T, method, path, binding string) (*http.Response, string) {
+	t.Helper()
+
+	req, err := http.NewRequest(method, s.server.URL+path, nil)
+	require.NoError(t, err)
+	req.AddCookie(&http.Cookie{Name: bindingCookieName, Value: binding})
+	resp, err := s.client.Do(req)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = resp.Body.Close() })
+	data, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	return resp, string(data)
+}
+
 func (s *oauthServer) signedState(t *testing.T, redirect string, linkUser int64) string {
 	t.Helper()
 
-	state, err := s.env.oauth.states.Sign(redirect, linkUser)
+	state, err := s.env.oauth.states.Sign(redirect, linkUser, testBinding)
 	require.NoError(t, err)
 	return state
 }
@@ -139,22 +153,64 @@ func TestCallbackRedirectsWithTheLoginCode(t *testing.T) {
 	server.env.users.users = []*domain.User{{ID: 42, Email: "alice@example.com", EmailVerified: true}}
 
 	state := server.signedState(t, "/oauth/callback", 0)
-	resp, _ := server.do(t, http.MethodGet, "/api/v1/auth/oauth/github/callback?code=abc&state="+state, "")
+	resp, _ := server.doWithBinding(t, http.MethodGet, "/api/v1/auth/oauth/github/callback?code=abc&state="+state, testBinding)
 	require.Equal(t, http.StatusFound, resp.StatusCode)
 	require.Contains(t, resp.Header.Get("Location"), "/oauth/callback?code=")
+	cleared := false
+	for _, cookie := range resp.Cookies() {
+		cleared = cleared || (cookie.Name == bindingCookieName && cookie.MaxAge < 0)
+	}
+	require.True(t, cleared, "the binding cookie is single use")
 
-	resp, _ = server.do(t, http.MethodGet, "/api/v1/auth/oauth/github/callback?state="+state, "")
+	resp, _ = server.doWithBinding(t, http.MethodGet, "/api/v1/auth/oauth/github/callback?state="+state, testBinding)
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode, "a missing code is rejected")
 
-	resp, _ = server.do(t, http.MethodGet, "/api/v1/auth/oauth/github/callback?code=abc&state=tampered", "")
+	resp, _ = server.doWithBinding(t, http.MethodGet, "/api/v1/auth/oauth/github/callback?code=abc&state=tampered", testBinding)
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode, "a tampered state is rejected")
 
 	server.env.provider.err = domain.NewErrorUser("github sign-in failed")
-	resp, _ = server.do(t, http.MethodGet, "/api/v1/auth/oauth/github/callback?code=abc&state="+state, "")
+	resp, _ = server.doWithBinding(t, http.MethodGet, "/api/v1/auth/oauth/github/callback?code=abc&state="+state, testBinding)
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode, "provider errors surface as client errors")
 
 	resp, _ = server.do(t, http.MethodGet, "/api/v1/auth/oauth/google/callback", "")
 	require.Equal(t, http.StatusNotFound, resp.StatusCode, "disabled providers reject callbacks")
+}
+
+func TestCallbackRejectsAnotherBrowser(t *testing.T) {
+	server := newOAuthHandlerServer(t, 42)
+	server.env.provider.profile = &Profile{AccountID: "1001", Email: "alice@example.com", EmailVerified: true}
+	server.env.users.users = []*domain.User{{ID: 42, Email: "alice@example.com", EmailVerified: true}}
+	state := server.signedState(t, "/", 0)
+	path := "/api/v1/auth/oauth/github/callback?code=abc&state=" + state
+
+	resp, _ := server.do(t, http.MethodGet, path, "")
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode, "a browser without the binding cookie is refused")
+
+	resp, _ = server.doWithBinding(t, http.MethodGet, path, "someone-elses-binding")
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode, "a different binding is refused")
+	require.Empty(t, server.env.repo.identities)
+}
+
+func TestStartSetsTheBindingCookie(t *testing.T) {
+	server := newOAuthHandlerServer(t, 42)
+
+	resp, _ := server.do(t, http.MethodGet, "/api/v1/auth/oauth/github/start", "")
+	require.Equal(t, http.StatusFound, resp.StatusCode)
+	var binding *http.Cookie
+	for _, cookie := range resp.Cookies() {
+		if cookie.Name == bindingCookieName {
+			binding = cookie
+		}
+	}
+	require.NotNil(t, binding)
+	require.True(t, binding.HttpOnly)
+	require.True(t, binding.Secure)
+	require.Equal(t, http.SameSiteLaxMode, binding.SameSite)
+
+	state, err := server.env.oauth.states.Verify(strings.TrimPrefix(resp.Header.Get("Location"), "https://github.example/authorize?state="))
+	require.NoError(t, err)
+	require.True(t, state.bound(binding.Value))
+	require.False(t, state.bound("other"))
 }
 
 func TestCompleteExchangesTheCodeForASession(t *testing.T) {

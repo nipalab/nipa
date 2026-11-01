@@ -23,6 +23,7 @@ type stateData struct {
 	Nonce     string `json:"n"`
 	Redirect  string `json:"r"`
 	LinkUser  int64  `json:"u,omitempty"`
+	Binding   string `json:"b"`
 	ExpiresAt int64  `json:"e"`
 }
 
@@ -36,8 +37,10 @@ func newStateSigner(secret string) *stateSigner {
 }
 
 // Sign builds a signed state for the given SPA redirect and optional link user
-// (0 = anonymous login/signup flow).
-func (s *stateSigner) Sign(redirect string, linkUser int64) (string, error) {
+// (0 = anonymous login/signup flow). The binding is a random secret the starting
+// browser keeps in a cookie; only its hash travels through the provider, so a
+// state forwarded to a different browser cannot complete the callback.
+func (s *stateSigner) Sign(redirect string, linkUser int64, binding string) (string, error) {
 	nonce := make([]byte, 16)
 	if _, err := rand.Read(nonce); err != nil {
 		return "", domain.NewErrorInternalServer(err.Error())
@@ -46,6 +49,7 @@ func (s *stateSigner) Sign(redirect string, linkUser int64) (string, error) {
 		Nonce:     base64.RawURLEncoding.EncodeToString(nonce),
 		Redirect:  safeRedirect(redirect),
 		LinkUser:  linkUser,
+		Binding:   bindingHash(binding),
 		ExpiresAt: s.now().Add(stateTTL).Unix(),
 	}
 	payload, err := json.Marshal(data)
@@ -78,6 +82,31 @@ func (s *stateSigner) Verify(raw string) (*stateData, error) {
 	}
 	data.Redirect = safeRedirect(data.Redirect)
 	return &data, nil
+}
+
+// bound reports whether the browser presenting binding is the one that started
+// the flow.
+func (d *stateData) bound(binding string) bool {
+	if binding == "" || d.Binding == "" {
+		return false
+	}
+	return hmac.Equal([]byte(d.Binding), []byte(bindingHash(binding)))
+}
+
+func bindingHash(binding string) string {
+	if binding == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(binding))
+	return base64.RawURLEncoding.EncodeToString(sum[:])
+}
+
+func newBinding() (string, error) {
+	raw := make([]byte, 24)
+	if _, err := rand.Read(raw); err != nil {
+		return "", domain.NewErrorInternalServer(err.Error())
+	}
+	return base64.RawURLEncoding.EncodeToString(raw), nil
 }
 
 func (s *stateSigner) signature(encoded string) string {

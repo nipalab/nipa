@@ -4,11 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/suite"
 
 	sqlcPostgres "github.com/nipalab/nipa/ee/repository/postgres/sqlc"
 	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/repository/dbtx"
 	"github.com/nipalab/nipa/internal/snow"
 )
 
@@ -120,4 +122,58 @@ func (s *FileLockRepositorySuite) TestListEmpty() {
 	list, err := repo.ListProject(ctx, projectID)
 	s.Require().NoError(err)
 	s.Empty(list)
+}
+
+func (s *FileLockRepositorySuite) TestLockProjectSerializesTransactions() {
+	ctx := context.Background()
+	repo := NewFileLockRepository(s.db)
+	transactor := dbtx.NewTransactor(s.db)
+
+	acquired := make(chan struct{})
+	release := make(chan struct{})
+	holderDone := make(chan error, 1)
+	go func() {
+		holderDone <- transactor.WithinTx(ctx, func(txCtx context.Context) error {
+			if err := repo.LockProject(txCtx, 77); err != nil {
+				return err
+			}
+			close(acquired)
+			<-release
+			return nil
+		})
+	}()
+	<-acquired
+
+	waiterDone := make(chan error, 1)
+	waiterEntered := make(chan struct{})
+	go func() {
+		waiterDone <- transactor.WithinTx(ctx, func(txCtx context.Context) error {
+			close(waiterEntered)
+			return repo.LockProject(txCtx, 77)
+		})
+	}()
+	<-waiterEntered
+
+	select {
+	case err := <-waiterDone:
+		s.Failf("second transaction should wait for the project lock", "returned early: %v", err)
+	case <-time.After(300 * time.Millisecond):
+	}
+
+	other := make(chan error, 1)
+	go func() {
+		other <- transactor.WithinTx(ctx, func(txCtx context.Context) error {
+			return repo.LockProject(txCtx, 78)
+		})
+	}()
+	select {
+	case err := <-other:
+		s.Require().NoError(err, "other projects are not blocked")
+	case <-time.After(5 * time.Second):
+		s.Fail("a different project must not wait")
+	}
+
+	close(release)
+	s.Require().NoError(<-holderDone)
+	s.Require().NoError(<-waiterDone)
 }

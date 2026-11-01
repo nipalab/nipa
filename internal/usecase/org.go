@@ -87,6 +87,11 @@ func (o *Org) ListMembers(ctx context.Context, orgID snow.ID) ([]*domain.OrgMemb
 	return o.repo.ListMembers(ctx, orgID)
 }
 
+// EnsureOwner fails with a permission error unless the caller owns the org.
+func (o *Org) EnsureOwner(ctx context.Context, orgID snow.ID) error {
+	return o.requireOrgOwner(ctx, orgID)
+}
+
 func (o *Org) AddMember(ctx context.Context, orgID, userID snow.ID, role string) error {
 	if err := o.requireOrgOwner(ctx, orgID); err != nil {
 		return err
