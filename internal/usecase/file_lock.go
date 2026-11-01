@@ -95,22 +95,32 @@ func (f *FileLock) Acquire(ctx context.Context, projectID snow.ID, branchName, p
 	f.acquireMu.Lock()
 	defer f.acquireMu.Unlock()
 
-	if f.tx == nil || f.serializer == nil {
-		return f.grant(ctx, projectID, norm, *scope, claim.UserID)
-	}
 	var granted *domain.FileLock
-	err = f.tx.WithinTx(ctx, func(txCtx context.Context) error {
-		if err := f.serializer.LockProject(txCtx, projectID); err != nil {
-			return err
-		}
+	err = f.serialized(ctx, projectID, func(ctx context.Context) error {
 		var err error
-		granted, err = f.grant(txCtx, projectID, norm, *scope, claim.UserID)
+		granted, err = f.grant(ctx, projectID, norm, *scope, claim.UserID)
 		return err
 	})
 	if err != nil {
 		return nil, err
 	}
 	return granted, nil
+}
+
+// serialized runs fn so that lock grants of one project cannot interleave
+// across server processes: inside a transaction holding the project's advisory
+// lock (joining the caller's transaction when there is one). Without a
+// serializer only the in-process mutex applies.
+func (f *FileLock) serialized(ctx context.Context, projectID snow.ID, fn func(ctx context.Context) error) error {
+	if f.tx == nil || f.serializer == nil {
+		return fn(ctx)
+	}
+	return f.tx.WithinTx(ctx, func(txCtx context.Context) error {
+		if err := f.serializer.LockProject(txCtx, projectID); err != nil {
+			return err
+		}
+		return fn(txCtx)
+	})
 }
 
 func (f *FileLock) grant(ctx context.Context, projectID snow.ID, norm string, scope lockScope, holder snow.ID) (*domain.FileLock, error) {
@@ -275,6 +285,12 @@ func (f *FileLock) EnsureMergeRequestLocks(ctx context.Context, projectID snow.I
 	f.acquireMu.Lock()
 	defer f.acquireMu.Unlock()
 
+	return f.serialized(ctx, projectID, func(ctx context.Context) error {
+		return f.ensureMergeRequestLocks(ctx, projectID, mergeRequestID, target, paths, holder, author)
+	})
+}
+
+func (f *FileLock) ensureMergeRequestLocks(ctx context.Context, projectID snow.ID, mergeRequestID snow.ID, target *domain.Branch, paths []string, holder, author snow.ID) error {
 	locks, err := f.repo.ListProject(ctx, projectID)
 	if err != nil {
 		return err

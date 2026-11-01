@@ -19,8 +19,12 @@ func NewTransactor(db *sql.DB) *Transactor {
 }
 
 // WithinTx begins a transaction, runs fn with a context carrying it and commits
-// when fn succeeds; any error rolls the transaction back.
+// when fn succeeds; any error rolls the transaction back. When ctx already
+// carries a transaction, fn joins it and the outer caller commits or rolls back.
 func (t *Transactor) WithinTx(ctx context.Context, fn func(ctx context.Context) error) error {
+	if _, ok := txFromContext(ctx); ok {
+		return fn(ctx)
+	}
 	tx, err := t.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err

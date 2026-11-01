@@ -132,10 +132,10 @@ describe('RegisterPage', () => {
     await waitForText(container, 'Create account')
 
     const inputs = container.querySelectorAll('input')
+    expect(inputs).toHaveLength(2)
     await act(async () => {
       setInputValue(inputs[0] as HTMLInputElement, 'Alice')
       setInputValue(inputs[1] as HTMLInputElement, 'alice@example.com')
-      setInputValue(inputs[2] as HTMLInputElement, 'password123')
     })
     await act(async () => {
       findButtonIn(container, 'Create account').click()
@@ -145,7 +145,7 @@ describe('RegisterPage', () => {
     expect(calls[0]).toEqual({
       url: expect.stringContaining('/api/v1/auth/register'),
       method: 'POST',
-      body: { name: 'Alice', email: 'alice@example.com', password: 'password123' },
+      body: { name: 'Alice', email: 'alice@example.com' },
     })
 
     await act(async () => {
@@ -171,7 +171,7 @@ describe('RegisterPage', () => {
 })
 
 describe('VerifyPage', () => {
-  it('confirms the email, signs in and lands on onboarding', async () => {
+  it('lets the link holder choose a password, signs in and lands on onboarding', async () => {
     const calls: { url: string; method: string; body: unknown }[] = []
     stubRoutes((url, init) => {
       const method = init?.method ?? 'GET'
@@ -183,9 +183,38 @@ describe('VerifyPage', () => {
     })
 
     const { container } = await renderApp('/verify?token=abc')
+    await waitForText(container, 'choose a password')
+
+    const inputs = container.querySelectorAll('input')
+    await act(async () => {
+      setInputValue(inputs[0] as HTMLInputElement, 'short')
+      setInputValue(inputs[1] as HTMLInputElement, 'short')
+    })
+    await act(async () => {
+      findButtonIn(container, 'Confirm and continue').click()
+    })
+    await waitForText(container, 'at least 8 characters.')
+    expect(calls).toHaveLength(0)
+
+    await act(async () => {
+      setInputValue(inputs[0] as HTMLInputElement, 'password123')
+      setInputValue(inputs[1] as HTMLInputElement, 'different123')
+    })
+    await act(async () => {
+      findButtonIn(container, 'Confirm and continue').click()
+    })
+    await waitForText(container, 'do not match')
+    expect(calls).toHaveLength(0)
+
+    await act(async () => {
+      setInputValue(inputs[1] as HTMLInputElement, 'password123')
+    })
+    await act(async () => {
+      findButtonIn(container, 'Confirm and continue').click()
+    })
     await waitForText(container, 'Name your workspace')
 
-    expect(calls[0]?.body).toEqual({ token: 'abc' })
+    expect(calls[0]?.body).toEqual({ token: 'abc', password: 'password123' })
     expect(container.textContent).toContain('Welcome to Nipa')
   })
 
@@ -198,7 +227,24 @@ describe('VerifyPage', () => {
     })
 
     const { container } = await renderApp('/verify?token=stale')
+    await waitForText(container, 'choose a password')
+    const inputs = container.querySelectorAll('input')
+    await act(async () => {
+      setInputValue(inputs[0] as HTMLInputElement, 'password123')
+      setInputValue(inputs[1] as HTMLInputElement, 'password123')
+    })
+    await act(async () => {
+      findButtonIn(container, 'Confirm and continue').click()
+    })
     await waitForText(container, 'Confirmation failed')
+    expect(container.textContent).toContain('Resend confirmation email')
+  })
+
+  it('offers a resend when the link has no token', async () => {
+    stubRoutes(() => null)
+
+    const { container } = await renderApp('/verify')
+    await waitForText(container, 'missing its token')
     expect(container.textContent).toContain('Resend confirmation email')
   })
 })

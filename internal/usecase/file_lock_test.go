@@ -770,3 +770,45 @@ func TestFileLock_Acquire_SerializedAcrossProcesses(t *testing.T) {
 		require.EqualError(t, err, "begin failed")
 	})
 }
+
+func TestFileLock_EnsureMergeRequestLocks_SerializedAcrossProcesses(t *testing.T) {
+	t.Run("takes the project lock before checking and creating", func(t *testing.T) {
+		uc, repo, _, _ := newTestFileLock(t)
+		tx, serializer := &recordingTx{}, &recordingSerializer{}
+		uc.WithSerializer(tx, serializer)
+		repo.EXPECT().ListProject(gomock.Any(), snow.ID(1)).Return(nil, nil)
+		repo.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, lock domain.FileLock) (*domain.FileLock, error) { return &lock, nil })
+
+		err := uc.EnsureMergeRequestLocks(permissionCtx(7), snow.ID(1), 5, defaultBranchFixture(), []string{"a.png"}, 7, 7)
+		require.NoError(t, err)
+		require.Equal(t, 1, tx.runs)
+		require.Equal(t, []snow.ID{1}, serializer.projects)
+	})
+
+	t.Run("a lock held by someone else still conflicts", func(t *testing.T) {
+		uc, repo, _, _ := newTestFileLock(t)
+		uc.WithSerializer(&recordingTx{}, &recordingSerializer{})
+		repo.EXPECT().ListProject(gomock.Any(), snow.ID(1)).Return([]*domain.FileLock{{ID: 1, Path: "assets", HeldBy: 9}}, nil)
+
+		err := uc.EnsureMergeRequestLocks(permissionCtx(7), snow.ID(1), 5, defaultBranchFixture(), []string{"assets/hero.png"}, 7, 7)
+		require.True(t, domain.IsErrorConflict(err))
+	})
+
+	t.Run("lock failure aborts before any check", func(t *testing.T) {
+		uc, _, _, _ := newTestFileLock(t)
+		uc.WithSerializer(&recordingTx{}, &recordingSerializer{err: errors.New("boom")})
+
+		err := uc.EnsureMergeRequestLocks(permissionCtx(7), snow.ID(1), 5, defaultBranchFixture(), []string{"a.png"}, 7, 7)
+		require.EqualError(t, err, "boom")
+	})
+
+	t.Run("nothing to lock needs no transaction", func(t *testing.T) {
+		uc, _, _, _ := newTestFileLock(t)
+		tx := &recordingTx{}
+		uc.WithSerializer(tx, &recordingSerializer{})
+
+		require.NoError(t, uc.EnsureMergeRequestLocks(permissionCtx(7), snow.ID(1), 5, defaultBranchFixture(), nil, 7, 7))
+		require.Zero(t, tx.runs)
+	})
+}

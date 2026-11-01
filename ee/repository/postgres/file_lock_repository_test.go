@@ -177,3 +177,43 @@ func (s *FileLockRepositorySuite) TestLockProjectSerializesTransactions() {
 	s.Require().NoError(<-holderDone)
 	s.Require().NoError(<-waiterDone)
 }
+
+func (s *FileLockRepositorySuite) TestLockProjectJoinsAnOuterTransaction() {
+	ctx := context.Background()
+	repo := NewFileLockRepository(s.db)
+	transactor := dbtx.NewTransactor(s.db)
+
+	acquired := make(chan struct{})
+	release := make(chan struct{})
+	outerDone := make(chan error, 1)
+	go func() {
+		outerDone <- transactor.WithinTx(ctx, func(outerCtx context.Context) error {
+			return transactor.WithinTx(outerCtx, func(innerCtx context.Context) error {
+				if err := repo.LockProject(innerCtx, 91); err != nil {
+					return err
+				}
+				close(acquired)
+				<-release
+				return nil
+			})
+		})
+	}()
+	<-acquired
+
+	waiter := make(chan error, 1)
+	go func() {
+		waiter <- transactor.WithinTx(ctx, func(txCtx context.Context) error {
+			return repo.LockProject(txCtx, 91)
+		})
+	}()
+
+	select {
+	case err := <-waiter:
+		s.Failf("the lock must be held until the outer transaction ends", "returned early: %v", err)
+	case <-time.After(300 * time.Millisecond):
+	}
+
+	close(release)
+	s.Require().NoError(<-outerDone)
+	s.Require().NoError(<-waiter)
+}

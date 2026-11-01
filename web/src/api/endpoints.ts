@@ -60,7 +60,7 @@ export async function getOnboardingCapabilities(): Promise<OnboardingCapabilitie
   return (await res.json()) as OnboardingCapabilities
 }
 
-export function registerAccount(input: { name: string; email: string; password: string }): Promise<RegisterResponse> {
+export function registerAccount(input: { name: string; email: string }): Promise<RegisterResponse> {
   return apiJson('/api/v1/auth/register', {
     method: 'POST',
     body: JSON.stringify(input),
