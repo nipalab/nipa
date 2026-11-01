@@ -6573,10 +6573,11 @@ func (x *MergeRequestCheckDetail) GetUpdatedAt() *timestamppb.Timestamp {
 type ReportMergeRequestCheckRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Context       *ProjectContext        `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
-	Number        int64                  `protobuf:"varint,2,opt,name=number,proto3" json:"number,omitempty"`                          // sequential per-project number
-	Name          string                 `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`                               // check name, e.g. "build"
-	State         string                 `protobuf:"bytes,4,opt,name=state,proto3" json:"state,omitempty"`                             // pending, success or failed
-	DetailsUrl    string                 `protobuf:"bytes,5,opt,name=details_url,json=detailsUrl,proto3" json:"details_url,omitempty"` // optional link to the run
+	Number        int64                  `protobuf:"varint,2,opt,name=number,proto3" json:"number,omitempty"`                                  // sequential per-project number
+	Name          string                 `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`                                       // check name, e.g. "build"
+	State         string                 `protobuf:"bytes,4,opt,name=state,proto3" json:"state,omitempty"`                                     // pending, success or failed
+	DetailsUrl    string                 `protobuf:"bytes,5,opt,name=details_url,json=detailsUrl,proto3" json:"details_url,omitempty"`         // optional link to the run
+	HeadCommitId  string                 `protobuf:"bytes,6,opt,name=head_commit_id,json=headCommitId,proto3" json:"head_commit_id,omitempty"` // base36 source head the run was started for; must still be the head
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -6642,6 +6643,13 @@ func (x *ReportMergeRequestCheckRequest) GetState() string {
 func (x *ReportMergeRequestCheckRequest) GetDetailsUrl() string {
 	if x != nil {
 		return x.DetailsUrl
+	}
+	return ""
+}
+
+func (x *ReportMergeRequestCheckRequest) GetHeadCommitId() string {
+	if x != nil {
+		return x.HeadCommitId
 	}
 	return ""
 }
@@ -10686,14 +10694,15 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
-	"updated_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\xb4\x01\n" +
+	"updated_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\xda\x01\n" +
 	"\x1eReportMergeRequestCheckRequest\x12/\n" +
 	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12\x16\n" +
 	"\x06number\x18\x02 \x01(\x03R\x06number\x12\x12\n" +
 	"\x04name\x18\x03 \x01(\tR\x04name\x12\x14\n" +
 	"\x05state\x18\x04 \x01(\tR\x05state\x12\x1f\n" +
 	"\vdetails_url\x18\x05 \x01(\tR\n" +
-	"detailsUrl\"W\n" +
+	"detailsUrl\x12$\n" +
+	"\x0ehead_commit_id\x18\x06 \x01(\tR\fheadCommitId\"W\n" +
 	"\x1fReportMergeRequestCheckResponse\x124\n" +
 	"\x05check\x18\x01 \x01(\v2\x1e.greet.MergeRequestCheckDetailR\x05check\"h\n" +
 	"\x1dListMergeRequestChecksRequest\x12/\n" +

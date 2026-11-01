@@ -15,7 +15,7 @@ type mrClient interface {
 	CreateMergeRequest(ctx context.Context, org, project, title, description, sourceBranch, targetBranch string, draft bool) (*domain.MergeRequest, error)
 	UpdateMergeRequest(ctx context.Context, org, project string, number int64, title, description string, draft *bool) (*domain.MergeRequest, error)
 	SetMergeRequestAssignees(ctx context.Context, org, project string, number int64, userIDs []string) (*domain.MergeRequest, error)
-	ReportMergeRequestCheck(ctx context.Context, org, project string, number int64, name, state, detailsURL string) (*domain.MergeRequestCheck, error)
+	ReportMergeRequestCheck(ctx context.Context, org, project string, number int64, name, state, detailsURL, headCommitID string) (*domain.MergeRequestCheck, error)
 	ListMergeRequestChecks(ctx context.Context, org, project string, number int64) ([]*domain.MergeRequestCheck, error)
 	ListMergeRequests(ctx context.Context, org, project string, opts domain.ListMergeRequestOptions) ([]*domain.MergeRequest, int64, error)
 	GetMergeRequest(ctx context.Context, org, project string, number int64) (*domain.MergeRequest, *domain.Mergeability, error)
@@ -41,6 +41,7 @@ type mrClient interface {
 type mrLocalRepo interface {
 	Init(target string) error
 	LoadConfig() (*domain.Config, error)
+	LoadCommit() (*domain.LocalCommit, error)
 }
 
 type CreateMergeRequestOptions struct {
@@ -140,8 +141,11 @@ func (m *MergeRequest) Checks(ctx context.Context, root, id string) ([]*domain.M
 	return m.client.ListMergeRequestChecks(ctx, url.Org, url.Project, number)
 }
 
-// ReportCheck records a status check result for the request's current head.
-func (m *MergeRequest) ReportCheck(ctx context.Context, root, id, name, state, detailsURL string) (*domain.MergeRequestCheck, error) {
+// ReportCheck records a status check result for the given source commit. With
+// no explicit commit it uses the commit the working copy is pinned to, i.e. the
+// content the checks actually ran against, never the server's current head: a
+// head that moved while the checks ran must be refused, not silently adopted.
+func (m *MergeRequest) ReportCheck(ctx context.Context, root, id, name, state, detailsURL, commit string) (*domain.MergeRequestCheck, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return nil, domain.NewUserError("a check name is required")
@@ -154,7 +158,18 @@ func (m *MergeRequest) ReportCheck(ctx context.Context, root, id, name, state, d
 	if err != nil {
 		return nil, err
 	}
-	return m.client.ReportMergeRequestCheck(ctx, url.Org, url.Project, number, name, state, detailsURL)
+	commit = strings.TrimSpace(commit)
+	if commit == "" {
+		pin, err := m.localRepo.LoadCommit()
+		if err != nil {
+			return nil, err
+		}
+		if pin == nil || pin.CommitID == "" {
+			return nil, domain.NewUserError("this working copy has no pinned commit; run nipa update or pass --commit")
+		}
+		commit = pin.CommitID
+	}
+	return m.client.ReportMergeRequestCheck(ctx, url.Org, url.Project, number, name, state, detailsURL, commit)
 }
 
 // List returns one page of merge requests and the cursor for the next page

@@ -17,7 +17,7 @@ func (n *nipaServer) ReportMergeRequestCheck(ctx context.Context, req *pb.Report
 	if checks == nil {
 		return nil, handleError(domain.NewErrorInternalServer("status checks are not configured"))
 	}
-	check, err := checks.Report(ctx, project.ID, req.GetNumber(), req.GetName(), req.GetState(), req.GetDetailsUrl())
+	check, err := checks.Report(ctx, project.ID, req.GetNumber(), req.GetName(), req.GetState(), req.GetDetailsUrl(), req.GetHeadCommitId())
 	if err != nil {
 		return nil, handleError(err)
 	}

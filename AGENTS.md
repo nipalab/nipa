@@ -267,7 +267,9 @@ touched binaries against the head tree (`headBinaryPaths`): tracked binaries
 being modified or removed must be covered by the pusher's lock (409 `binary file
 %q requires a lock`), while new binary files only conflict with someone else's
 covering lock (409 `%q is locked by <holder>`) — adding a brand-new asset needs
-no lock unless a directory or pre-emptive lock guards it. `EnsureLocks` enforces
+no lock unless a directory or pre-emptive lock guards it. Binary
+classification is forced server-side for known asset extensions
+(`markLockableBinaries`, the client flag can only add). `EnsureLocks` enforces
 both lists in the target scope; after `ApplyPush`, `ReleaseLanded` drops the
 pusher's own exact-path, non-request locks while directory locks span the
 editing pass and stay. Merge requests acquire locks for their changed binary
@@ -352,7 +354,10 @@ branches (409) until they are unprotected.
 
 Status checks: `merge_request_checks` rows are keyed by (request, head commit,
 name) and written by `MergeRequestCheck.Report` (`POST .../checks`, gRPC
-`ReportMergeRequestCheck`, `nipa mr check`); a target branch with
+`ReportMergeRequestCheck`, `nipa mr check [--commit <id>]`). A report must name
+the source head it was started for (`head_commit_id`; the CLI defaults to the
+commit the working copy is pinned to, never the server's current head); a moved head is a 409, and the request author cannot report
+when the target requires status checks; a target branch with
 `require_status_checks` blocks merging (`blocked_by: "status_checks"`) until
 every required name succeeded for the current source head — a push starts a
 clean slate. `List`/`nipa mr checks` return the head's checks; reporting emits

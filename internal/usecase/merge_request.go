@@ -474,7 +474,8 @@ func (m *MergeRequest) Merge(ctx context.Context, projectID snow.ID, number int6
 		}
 	}
 
-	opts := MergeCommitOptions{Strategy: strategy, Author: claim.UserID}
+	sourceHead := info.SourceCommitID
+	opts := MergeCommitOptions{Strategy: strategy, Author: claim.UserID, SourceCommitID: sourceHead}
 	if strategy == domain.MergeStrategySquash {
 		opts.Message = mr.Title
 		opts.Author = mr.CreatedBy

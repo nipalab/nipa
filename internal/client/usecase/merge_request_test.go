@@ -48,6 +48,7 @@ type stubMRClient struct {
 	checkName      string
 	checkState     string
 	checkURL       string
+	checkCommit    string
 	reportCheck    *domain.MergeRequestCheck
 	reportErr      error
 	checksResult   []*domain.MergeRequestCheck
@@ -203,8 +204,8 @@ func (s *stubMRClient) ListMergeRequestReviews(_ context.Context, _, _ string, n
 	return s.reviewsResult, s.reviewsErr
 }
 
-func (s *stubMRClient) ReportMergeRequestCheck(_ context.Context, _, _ string, _ int64, name, state, detailsURL string) (*domain.MergeRequestCheck, error) {
-	s.checkName, s.checkState, s.checkURL = name, state, detailsURL
+func (s *stubMRClient) ReportMergeRequestCheck(_ context.Context, _, _ string, _ int64, name, state, detailsURL, commit string) (*domain.MergeRequestCheck, error) {
+	s.checkName, s.checkState, s.checkURL, s.checkCommit = name, state, detailsURL, commit
 	return s.reportCheck, s.reportErr
 }
 
@@ -797,19 +798,53 @@ func TestMergeRequest_ReportCheck(t *testing.T) {
 	client := &stubMRClient{reportCheck: &domain.MergeRequestCheck{Name: "build", State: "success"}}
 	mr := newTestMergeRequest(t, local, client)
 
-	got, err := mr.ReportCheck(context.Background(), t.TempDir(), "5", " build ", "success", "https://ci.example/run/1")
+	got, err := mr.ReportCheck(context.Background(), t.TempDir(), "5", " build ", "success", "https://ci.example/run/1", " 1b ")
 	require.NoError(t, err)
 	require.Equal(t, "build", got.Name)
 	require.Equal(t, "build", client.checkName)
 	require.Equal(t, "success", client.checkState)
 	require.Equal(t, "https://ci.example/run/1", client.checkURL)
+	require.Equal(t, "1b", client.checkCommit)
 
-	_, err = mr.ReportCheck(context.Background(), t.TempDir(), "5", "  ", "success", "")
+	_, err = mr.ReportCheck(context.Background(), t.TempDir(), "5", "  ", "success", "", "")
 	require.Error(t, err)
 
-	_, err = mr.ReportCheck(context.Background(), t.TempDir(), "5", "build", "exploded", "")
+	_, err = mr.ReportCheck(context.Background(), t.TempDir(), "5", "build", "exploded", "", "")
 	require.Error(t, err)
 
-	_, err = mr.ReportCheck(context.Background(), t.TempDir(), "bad", "build", "success", "")
+	_, err = mr.ReportCheck(context.Background(), t.TempDir(), "bad", "build", "success", "", "")
 	require.Error(t, err)
+}
+
+func TestMergeRequest_ReportCheck_DefaultsToThePinnedCommit(t *testing.T) {
+	local := &stubLocalRepo{
+		loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "feature"},
+		loadCommit: &domain.LocalCommit{CommitID: "tested"},
+	}
+	client := &stubMRClient{
+		reportCheck:     &domain.MergeRequestCheck{Name: "build", State: "success"},
+		getResult:       &domain.MergeRequest{Number: 5},
+		getMergeability: &domain.Mergeability{SourceCommitID: "moved-on"},
+	}
+	mr := newTestMergeRequest(t, local, client)
+
+	_, err := mr.ReportCheck(context.Background(), t.TempDir(), "5", "build", "success", "", "")
+	require.NoError(t, err)
+	require.Equal(t, "tested", client.checkCommit, "the server's newer head must not be adopted")
+
+	_, err = mr.ReportCheck(context.Background(), t.TempDir(), "5", "build", "success", "", "explicit")
+	require.NoError(t, err)
+	require.Equal(t, "explicit", client.checkCommit, "--commit overrides the pin")
+
+	local.loadCommit = &domain.LocalCommit{}
+	_, err = mr.ReportCheck(context.Background(), t.TempDir(), "5", "build", "success", "", "")
+	require.Error(t, err, "an unpinned working copy must name the commit")
+
+	local.loadCommit = nil
+	_, err = mr.ReportCheck(context.Background(), t.TempDir(), "5", "build", "success", "", "")
+	require.Error(t, err)
+
+	local.loadCommitErr = errors.New("boom")
+	_, err = mr.ReportCheck(context.Background(), t.TempDir(), "5", "build", "success", "", "")
+	require.EqualError(t, err, "boom")
 }

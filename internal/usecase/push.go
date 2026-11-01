@@ -113,6 +113,7 @@ func (p *Push) WithMetrics(metrics *obs.Metrics) *Push {
 }
 
 func (p *Push) Push(ctx context.Context, projectID snow.ID, branchName, baseTreeHash, message string, files []*domain.PushFile, removed []string, parent2CommitHash, baseCommitID string) (result *domain.PushResult, err error) {
+	markLockableBinaries(files)
 	ctx, span := obs.StartSpan(ctx, "push.apply",
 		attribute.String(obs.AttrProjectID, projectID.Base36()),
 		attribute.String(obs.AttrBranch, branchName),
@@ -305,6 +306,17 @@ func touchedPushPaths(files []*domain.PushFile, removed []string) []string {
 		paths = append(paths, path)
 	}
 	return paths
+}
+
+// markLockableBinaries forces the binary flag on known binary asset
+// extensions: the client's flag may only add, never clear, so a hostile client
+// cannot dodge the lock requirement by declaring such a file as text.
+func markLockableBinaries(files []*domain.PushFile) {
+	for _, file := range files {
+		if file != nil && chunker.IsLockablePath(file.Path) {
+			file.IsBinary = true
+		}
+	}
 }
 
 // pushLockPlan splits the touched binary paths into paths that must be covered

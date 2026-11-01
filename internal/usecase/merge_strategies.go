@@ -26,6 +26,8 @@ type MergeCommitOptions struct {
 	Strategy string
 	Message  string
 	Author   snow.ID
+	// SourceCommitID pins the source head the gates were evaluated against.
+	SourceCommitID *snow.ID
 }
 
 // mergeCommitter writes one or more prebuilt commits atomically.
@@ -80,6 +82,9 @@ func (b *Branch) MergeForMergeRequest(ctx context.Context, projectID snow.ID, ta
 	if source.CommitID == nil {
 		return nil, domain.NewErrorConflict(fmt.Sprintf("cannot merge branch %q: source branch %q has no commits", targetBranch, sourceBranch))
 	}
+	if opts.SourceCommitID != nil && *source.CommitID != *opts.SourceCommitID {
+		return nil, domain.NewErrorConflict(fmt.Sprintf("source branch %q changed since the merge request was checked; review it again", sourceBranch))
+	}
 	if target.CommitID == nil {
 		return nil, domain.NewErrorConflict(fmt.Sprintf("cannot merge into empty branch %q", targetBranch))
 	}
@@ -87,7 +92,7 @@ func (b *Branch) MergeForMergeRequest(ctx context.Context, projectID snow.ID, ta
 		return nil, domain.NewErrorConflict("source branch is already up to date with the target")
 	}
 	if opts.Strategy == domain.MergeStrategyFastForward {
-		return b.FastForwardForMergeRequest(ctx, projectID, targetBranch, sourceBranch)
+		return b.fastForward(ctx, projectID, targetBranch, sourceBranch, true, opts.SourceCommitID)
 	}
 	if b.mergeCommitter == nil || b.chunkUploads == nil || b.chunks == nil {
 		return nil, domain.NewErrorInternalServer("non-fast-forward merge strategies are not configured")
@@ -107,7 +112,7 @@ func (b *Branch) MergeForMergeRequest(ctx context.Context, projectID snow.ID, ta
 	}
 
 	if opts.Strategy == domain.MergeStrategyRebase && base != nil && *base == *target.CommitID {
-		return b.FastForwardForMergeRequest(ctx, projectID, targetBranch, sourceBranch)
+		return b.fastForward(ctx, projectID, targetBranch, sourceBranch, true, opts.SourceCommitID)
 	}
 
 	var reqs []ApplyPushRequest

@@ -259,7 +259,7 @@ func TestHandler_MergeRequestChecksAndAssignees(t *testing.T) {
 	env := newHandlerTestEnv(t)
 	mainPush := env.seedFiles(t, map[string]string{"a.txt": "hello"})
 	env.createBranch(t, "feature", "main")
-	env.seedPushTo(t, "feature", mainPush.CommitID.Base36(), map[string]string{"b.txt": "feature"})
+	featurePush := env.seedPushTo(t, "feature", mainPush.CommitID.Base36(), map[string]string{"b.txt": "feature"})
 
 	claims := &domain.Claims{UserID: env.userID, IsAdmin: true}
 	projectParams := map[string]string{"org": "default", "project": "default"}
@@ -275,7 +275,7 @@ func TestHandler_MergeRequestChecksAndAssignees(t *testing.T) {
 
 	appCtx = &fakeAppContext{
 		claims: claims, pathParameters: mrParams,
-		body: []byte(`{"name":" build ","state":"success","details_url":"https://ci.example/run/1"}`),
+		body: []byte(`{"name":" build ","state":"success","details_url":"https://ci.example/run/1","head_commit_id":"` + featurePush.CommitID.Base36() + `"}`),
 	}
 	env.handler.ReportMergeRequestCheck(appCtx)
 	require.Equal(t, http.StatusOK, appCtx.statusCode)

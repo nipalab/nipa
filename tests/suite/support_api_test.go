@@ -213,15 +213,17 @@ func (c *apiClient) setMergeRequestAssignees(org, project string, number int64, 
 // reportMergeRequestCheck records a status check result over the REST API.
 func (c *apiClient) reportMergeRequestCheck(org, project string, number int64, name, state, detailsURL string) {
 	c.do(http.MethodPost, fmt.Sprintf("/orgs/%s/projects/%s/merge-requests/%d/checks", org, project, number), map[string]any{
-		"name":        name,
-		"state":       state,
-		"details_url": detailsURL,
+		"name":           name,
+		"state":          state,
+		"details_url":    detailsURL,
+		"head_commit_id": c.checkMergeRequest(org, project, number).SourceCommitID,
 	}, nil, true)
 }
 
 type mergeabilityJSON struct {
-	Status    string `json:"status"`
-	BlockedBy string `json:"blocked_by"`
+	Status         string `json:"status"`
+	BlockedBy      string `json:"blocked_by"`
+	SourceCommitID string `json:"source_commit_id"`
 }
 
 func (c *apiClient) checkMergeRequest(org, project string, number int64) mergeabilityJSON {

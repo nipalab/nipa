@@ -109,16 +109,19 @@ func (b *Branch) GetMergeBase(ctx context.Context, projectID snow.ID, target, so
 }
 
 func (b *Branch) FastForward(ctx context.Context, projectID snow.ID, targetBranch, sourceBranch string) (*domain.Branch, error) {
-	return b.fastForward(ctx, projectID, targetBranch, sourceBranch, false)
+	return b.fastForward(ctx, projectID, targetBranch, sourceBranch, false, nil)
 }
 
 // FastForwardForMergeRequest lands a merge request. Unlike FastForward it may
 // move a protected target, but only for project admins.
 func (b *Branch) FastForwardForMergeRequest(ctx context.Context, projectID snow.ID, targetBranch, sourceBranch string) (*domain.Branch, error) {
-	return b.fastForward(ctx, projectID, targetBranch, sourceBranch, true)
+	return b.fastForward(ctx, projectID, targetBranch, sourceBranch, true, nil)
 }
 
-func (b *Branch) fastForward(ctx context.Context, projectID snow.ID, targetBranch, sourceBranch string, allowProtected bool) (*domain.Branch, error) {
+// fastForward moves the target to the source head. A non-nil pinnedSource is the
+// head the caller evaluated its gates against; the source is re-read here, so
+// it must still match or the landing is refused.
+func (b *Branch) fastForward(ctx context.Context, projectID snow.ID, targetBranch, sourceBranch string, allowProtected bool, pinnedSource *snow.ID) (*domain.Branch, error) {
 	if !b.permUc.HasProjectAccess(ctx, projectID, domain.PermissionWrite) {
 		return nil, domain.NewErrorNoPermission()
 	}
@@ -151,6 +154,9 @@ func (b *Branch) fastForward(ctx context.Context, projectID snow.ID, targetBranc
 	}
 	if target.CommitID == nil {
 		return nil, domain.NewErrorConflict(fmt.Sprintf("cannot fast-forward empty branch %q", targetBranch))
+	}
+	if pinnedSource != nil && *source.CommitID != *pinnedSource {
+		return nil, domain.NewErrorConflict(fmt.Sprintf("source branch %q changed since the merge request was checked; review it again", sourceBranch))
 	}
 
 	base, err := b.findMergeBase(ctx, target.CommitID, source.CommitID)

@@ -662,6 +662,7 @@ message ReportMergeRequestCheckRequest {
     string name = 3; // check name, e.g. "build"
     string state = 4; // pending, success or failed
     string details_url = 5; // optional link to the run
+    string head_commit_id = 6; // base36 source head the run was started for; must still be the head
 }
 
 message ReportMergeRequestCheckResponse {

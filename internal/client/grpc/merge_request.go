@@ -218,17 +218,18 @@ func (c *Client) GetMergeRequestDiff(ctx context.Context, org, project string, n
 	return files, nil
 }
 
-func (c *Client) ReportMergeRequestCheck(ctx context.Context, org, project string, number int64, name, state, detailsURL string) (*clientDomain.MergeRequestCheck, error) {
+func (c *Client) ReportMergeRequestCheck(ctx context.Context, org, project string, number int64, name, state, detailsURL, headCommitID string) (*clientDomain.MergeRequestCheck, error) {
 	client, err := c.transport.NipaServiceClient()
 	if err != nil {
 		return nil, err
 	}
 	res, err := client.ReportMergeRequestCheck(ctx, &pb.ReportMergeRequestCheckRequest{
-		Context:    &pb.ProjectContext{Org: org, Project: project},
-		Number:     number,
-		Name:       name,
-		State:      state,
-		DetailsUrl: detailsURL,
+		Context:      &pb.ProjectContext{Org: org, Project: project},
+		Number:       number,
+		Name:         name,
+		State:        state,
+		DetailsUrl:   detailsURL,
+		HeadCommitId: headCommitID,
 	})
 	if err != nil {
 		return nil, toDomainError(err)
