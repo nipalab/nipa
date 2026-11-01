@@ -694,6 +694,66 @@ func chunkFile(path string, data []byte, encoding string) (serverDomain.Hash, []
 	return chunkReader(bytes.NewReader(data), path, chunker.IsBinary(data), encoding)
 }
 
+const inlineContentMax = chunker.TextSingleBlobRawMax
+
+type hashedFile struct {
+	hash     serverDomain.Hash
+	chunks   []serverDomain.Chunk
+	encoding string
+	size     int64
+	isBinary bool
+	inline   []byte
+}
+
+// hashWorkingFile hashes a working file without retaining it: files up to
+// inlineContentMax are read once and, when text, handed back as inline;
+// larger ones are streamed through the chunker.
+func hashWorkingFile(abs, rel string, size int64, encoding string) (hashedFile, error) {
+	if size <= inlineContentMax {
+		data, err := os.ReadFile(abs)
+		if err != nil {
+			return hashedFile{}, err
+		}
+		hash, chunks, enc, err := chunkFile(rel, data, encoding)
+		if err != nil {
+			return hashedFile{}, err
+		}
+		out := hashedFile{hash: hash, chunks: chunks, encoding: enc, size: int64(len(data)), isBinary: chunker.IsBinary(data)}
+		if !out.isBinary {
+			out.inline = data
+		}
+		return out, nil
+	}
+	f, err := os.Open(abs)
+	if err != nil {
+		return hashedFile{}, err
+	}
+	defer func() { _ = f.Close() }()
+	info, err := f.Stat()
+	if err != nil {
+		return hashedFile{}, err
+	}
+	isBinary, err := chunker.ProbeBinary(f)
+	if err != nil {
+		return hashedFile{}, err
+	}
+	hash, chunks, enc, err := chunkReader(f, rel, isBinary, encoding)
+	if err != nil {
+		return hashedFile{}, err
+	}
+	return hashedFile{hash: hash, chunks: chunks, encoding: enc, size: info.Size(), isBinary: isBinary}, nil
+}
+
+func chunkHashesAndSizes(chunks []serverDomain.Chunk) ([]serverDomain.Hash, []int64) {
+	hashes := make([]serverDomain.Hash, len(chunks))
+	sizes := make([]int64, len(chunks))
+	for i, c := range chunks {
+		hashes[i] = c.Hash
+		sizes[i] = c.SizeBytes
+	}
+	return hashes, sizes
+}
+
 func chunkReader(r io.ReadSeeker, path string, isBinary bool, encoding string) (serverDomain.Hash, []serverDomain.Chunk, string, error) {
 	var hashes []serverDomain.Hash
 	var wrapped []serverDomain.Chunk
