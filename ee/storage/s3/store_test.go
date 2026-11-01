@@ -3,17 +3,12 @@ package s3
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"io"
-	"maps"
-	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
-	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -77,6 +72,10 @@ func (f *fakeS3) serveHTTP(w http.ResponseWriter, r *http.Request) {
 			writeS3Error(w, http.StatusForbidden, "AccessDenied")
 			return
 		}
+		if r.Header.Get("If-None-Match") == "*" && exists {
+			writeS3Error(w, http.StatusPreconditionFailed, "PreconditionFailed")
+			return
+		}
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			writeS3Error(w, http.StatusBadRequest, "InvalidRequest")
@@ -131,21 +130,7 @@ func (f *fakeS3) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (f *fakeS3) putRaw(bucket, key string, data []byte) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.buckets[bucket][key] = data
-}
-
 func (f *fakeS3) serveBucket(w http.ResponseWriter, r *http.Request, bucketOK bool) {
-	if r.Method == http.MethodPost {
-		if !bucketOK {
-			writeS3Error(w, http.StatusNotFound, "NoSuchBucket")
-			return
-		}
-		f.servePost(w, r)
-		return
-	}
 	if r.Method == http.MethodGet && r.URL.Query().Has("location") {
 		if !bucketOK {
 			writeS3Error(w, http.StatusNotFound, "NoSuchBucket")
@@ -164,55 +149,6 @@ func (f *fakeS3) serveBucket(w http.ResponseWriter, r *http.Request, bucketOK bo
 		return
 	}
 	w.WriteHeader(http.StatusOK)
-}
-
-// servePost mimics an S3 POST policy upload: form fields must precede the
-// file part and the file is stored under the key form field.
-func (f *fakeS3) servePost(w http.ResponseWriter, r *http.Request) {
-	reader, err := r.MultipartReader()
-	if err != nil {
-		writeS3Error(w, http.StatusBadRequest, "InvalidRequest")
-		return
-	}
-	values := map[string]string{}
-	var fileData []byte
-	sawFile := false
-	for {
-		part, err := reader.NextPart()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			writeS3Error(w, http.StatusBadRequest, "InvalidRequest")
-			return
-		}
-		data, err := io.ReadAll(part)
-		if err != nil {
-			writeS3Error(w, http.StatusBadRequest, "InvalidRequest")
-			return
-		}
-		if part.FormName() == "file" && part.FileName() != "" {
-			fileData = data
-			sawFile = true
-			continue
-		}
-		if sawFile {
-			writeS3Error(w, http.StatusBadRequest, "InvalidRequest")
-			return
-		}
-		values[part.FormName()] = string(data)
-	}
-	key := values["key"]
-	if key == "" || !sawFile {
-		writeS3Error(w, http.StatusBadRequest, "InvalidRequest")
-		return
-	}
-	f.mu.Lock()
-	f.buckets["test-bucket"][key] = fileData
-	f.puts++
-	f.mu.Unlock()
-	w.Header().Set("ETag", `"fake-etag"`)
-	w.WriteHeader(http.StatusNoContent)
 }
 
 func writeS3Error(w http.ResponseWriter, status int, code string) {
@@ -476,131 +412,90 @@ func TestStore_PresignUpload(t *testing.T) {
 	data := []byte("upload me")
 	hash := chunker.Sum(data)
 
-	target, err := store.PresignUpload(context.Background(), "slot-1", hash, int64(len(data)), time.Hour)
+	target, err := store.PresignUpload(context.Background(), hash, int64(len(data)), time.Hour)
 	require.NoError(t, err)
-	require.Equal(t, http.MethodPost, target.Method)
+	require.Equal(t, map[string]string{"If-None-Match": "*"}, target.Headers)
 
 	parsed, err := url.Parse(target.URL)
 	require.NoError(t, err)
 	require.True(t, parsed.IsAbs())
-	require.Equal(t, "/test-bucket", strings.TrimSuffix(parsed.Path, "/"))
-	require.Equal(t, store.stagingKey("slot-1", hash), target.FormData["key"])
-	require.NotEqual(t, store.key(hash), target.FormData["key"], "uploads never target the shared key")
-	require.NotEmpty(t, target.FormData["policy"])
-	require.NotEmpty(t, target.FormData["x-amz-signature"])
-
-	policy := decodePolicy(t, target.FormData["policy"])
-	require.Contains(t, policy, fmt.Sprintf(`["content-length-range", %d, %d]`, len(data), len(data)))
-}
-
-func TestStore_StagingKeyLayout(t *testing.T) {
-	hash := chunker.Sum([]byte("layout"))
-	hex := hash.String()
-
-	require.Equal(t, "uploads/slot/"+hex[:2]+"/"+hex[2:], (&Store{}).stagingKey("slot", hash))
-	require.Equal(t, "nipa/uploads/slot/"+hex[:2]+"/"+hex[2:], (&Store{prefix: "nipa"}).stagingKey("slot", hash))
+	require.Equal(t, "/test-bucket/"+hash.String()[:2]+"/"+hash.String()[2:], parsed.Path, "uploads target the shared key")
+	signed := strings.Split(parsed.Query().Get("X-Amz-SignedHeaders"), ";")
+	require.Contains(t, signed, "if-none-match", "create-only is part of the signature")
+	require.Contains(t, signed, "content-length", "the exact size is part of the signature")
+	require.Equal(t, "3600", parsed.Query().Get("X-Amz-Expires"))
+	require.NotEmpty(t, parsed.Query().Get("X-Amz-Signature"))
 }
 
 func TestStore_PresignUploadClampsTTL(t *testing.T) {
 	store, _ := newTestStore(t)
 
-	target, err := store.PresignUpload(context.Background(), "slot", chunker.Sum([]byte("x")), 1, 30*24*time.Hour)
+	target, err := store.PresignUpload(context.Background(), chunker.Sum([]byte("x")), 1, 30*24*time.Hour)
 	require.NoError(t, err)
 
-	var doc struct {
-		Expiration string `json:"expiration"`
-	}
-	require.NoError(t, json.Unmarshal([]byte(decodePolicy(t, target.FormData["policy"])), &doc))
-	expiration, err := time.Parse("2006-01-02T15:04:05.000Z", doc.Expiration)
+	parsed, err := url.Parse(target.URL)
 	require.NoError(t, err)
-	require.WithinDuration(t, time.Now().Add(maxPresignTTL), expiration, time.Minute)
+	require.Equal(t, "604800", parsed.Query().Get("X-Amz-Expires"))
 }
 
 func TestStore_PresignUploadInvalidInput(t *testing.T) {
 	store, _ := newTestStore(t)
 
-	_, err := store.PresignUpload(context.Background(), "slot", chunker.Sum([]byte("x")), 0, time.Hour)
+	_, err := store.PresignUpload(context.Background(), chunker.Sum([]byte("x")), 0, time.Hour)
 	require.Error(t, err)
-	_, err = store.PresignUpload(context.Background(), "", chunker.Sum([]byte("x")), 1, time.Hour)
+	_, err = store.PresignUpload(context.Background(), chunker.Sum([]byte("x")), 1, 0)
 	require.Error(t, err)
 }
 
-func TestStore_StagedUploadLifecycle(t *testing.T) {
+func TestStore_PresignUploadIsCreateOnly(t *testing.T) {
 	store, _ := newTestStore(t)
 	ctx := context.Background()
 
 	data := []byte("direct upload payload")
 	hash := chunker.Sum(data)
-	target, err := store.PresignUpload(ctx, "slot", hash, int64(len(data)), time.Hour)
+	target, err := store.PresignUpload(ctx, hash, int64(len(data)), time.Hour)
 	require.NoError(t, err)
 
-	res := postUploadTarget(t, target, data)
-	defer func() { _ = res.Body.Close() }()
-	require.Equal(t, http.StatusNoContent, res.StatusCode)
+	first := putUploadTarget(t, target, data)
+	defer func() { _ = first.Body.Close() }()
+	require.Equal(t, http.StatusOK, first.StatusCode)
 
-	exists, err := store.Exists(ctx, hash)
-	require.NoError(t, err)
-	require.False(t, exists, "a direct upload does not touch the shared key")
-
-	staged, err := store.GetStaged(ctx, "slot", hash)
-	require.NoError(t, err)
-	require.Equal(t, data, staged)
-	_, err = store.GetStaged(ctx, "other-slot", hash)
-	require.True(t, domain.IsErrorNotFound(err), "slots are isolated")
-
-	require.NoError(t, store.Put(ctx, hash, staged))
-	require.NoError(t, store.DiscardStaged(ctx, "slot", hash))
 	got, err := store.Get(ctx, hash)
 	require.NoError(t, err)
 	require.Equal(t, data, got)
-	_, err = store.GetStaged(ctx, "slot", hash)
-	require.True(t, domain.IsErrorNotFound(err), "discarding drops the staging object")
+
+	replay := putUploadTarget(t, target, []byte("different bytes, same target"))
+	defer func() { _ = replay.Body.Close() }()
+	require.Equal(t, http.StatusPreconditionFailed, replay.StatusCode, "a replayed target cannot overwrite the object")
+
+	got, err = store.Get(ctx, hash)
+	require.NoError(t, err)
+	require.Equal(t, data, got)
 }
 
-func TestStore_DiscardStaged(t *testing.T) {
-	store, fake := newTestStore(t)
+func TestStore_DeleteChunk(t *testing.T) {
+	store, _ := newTestStore(t)
 	ctx := context.Background()
-	hash := chunker.Sum([]byte("discard me"))
-	fake.putRaw("test-bucket", store.stagingKey("slot", hash), []byte("junk"))
 
-	require.NoError(t, store.DiscardStaged(ctx, "slot", hash))
-	_, err := store.GetStaged(ctx, "slot", hash)
-	require.True(t, domain.IsErrorNotFound(err))
-	require.NoError(t, store.DiscardStaged(ctx, "slot", hash), "discarding an absent object is fine")
-}
+	data := []byte("delete me")
+	hash := chunker.Sum(data)
+	require.NoError(t, store.Put(ctx, hash, data))
+	require.NoError(t, store.DeleteChunk(ctx, hash))
 
-func TestStore_GetStagedError(t *testing.T) {
-	store, fake := newTestStore(t)
-	fake.failGet.Store(true)
-
-	_, err := store.GetStaged(context.Background(), "slot", chunker.Sum([]byte("x")))
-	require.Error(t, err)
-	require.False(t, domain.IsErrorNotFound(err))
-}
-
-func decodePolicy(t *testing.T, encoded string) string {
-	t.Helper()
-	decoded, err := base64.StdEncoding.DecodeString(encoded)
+	exists, err := store.Exists(ctx, hash)
 	require.NoError(t, err)
-	return string(decoded)
+	require.False(t, exists)
+
+	require.NoError(t, store.DeleteChunk(ctx, chunker.Sum([]byte("absent"))))
 }
 
-func postUploadTarget(t *testing.T, target storage.UploadTarget, data []byte) *http.Response {
+func putUploadTarget(t *testing.T, target storage.UploadTarget, data []byte) *http.Response {
 	t.Helper()
-	var body bytes.Buffer
-	writer := multipart.NewWriter(&body)
-	for _, key := range slices.Sorted(maps.Keys(target.FormData)) {
-		require.NoError(t, writer.WriteField(key, target.FormData[key]))
+	request, err := http.NewRequest(http.MethodPut, target.URL, bytes.NewReader(data))
+	require.NoError(t, err)
+	for name, value := range target.Headers {
+		request.Header.Set(name, value)
 	}
-	part, err := writer.CreateFormFile("file", "chunk")
-	require.NoError(t, err)
-	_, err = part.Write(data)
-	require.NoError(t, err)
-	require.NoError(t, writer.Close())
-
-	request, err := http.NewRequest(http.MethodPost, target.URL, &body)
-	require.NoError(t, err)
-	request.Header.Set("Content-Type", writer.FormDataContentType())
 	res, err := http.DefaultClient.Do(request)
 	require.NoError(t, err)
 	return res
@@ -707,19 +602,82 @@ func TestIntegration_S3Compatible(t *testing.T) {
 	body, err := io.ReadAll(res.Body)
 	require.NoError(t, err)
 	require.Equal(t, data, body)
+}
 
-	target, err := store.PresignUpload(ctx, "integration", hash, int64(len(data)), time.Hour)
+// TestIntegration_S3CreateOnlyUploads checks, against a real S3-compatible
+// backend (AWS S3, MinIO, Cloudflare R2), that a presigned PUT is create-only:
+// the backend must enforce the signed If-None-Match and Content-Length. It
+// shares the NIPA_S3_TEST_* variables with TestIntegration_S3Compatible, e.g.
+// for R2:
+//
+//	NIPA_S3_TEST_ENDPOINT=https://<account>.r2.cloudflarestorage.com
+//	NIPA_S3_TEST_BUCKET=<bucket> NIPA_S3_TEST_REGION=auto
+//	NIPA_S3_TEST_ACCESS_KEY_ID=... NIPA_S3_TEST_SECRET_ACCESS_KEY=...
+func TestIntegration_S3CreateOnlyUploads(t *testing.T) {
+	store := newIntegrationStore(t)
+	ctx := context.Background()
+
+	unique := fmt.Sprintf("nipa create-only %d", time.Now().UnixNano())
+	data := []byte(unique + strings.Repeat("y", 512))
+	hash := chunker.Sum(data)
+	t.Cleanup(func() { _ = store.DeleteChunk(context.Background(), hash) })
+
+	target, err := store.PresignUpload(ctx, hash, int64(len(data)), time.Hour)
 	require.NoError(t, err)
-	t.Cleanup(func() {
-		_ = store.client.RemoveObject(context.Background(), store.bucket, store.stagingKey("integration", hash), minio.RemoveObjectOptions{})
-	})
-	uploadRes := postUploadTarget(t, target, data)
-	defer func() { _ = uploadRes.Body.Close() }()
-	require.Contains(t, []int{http.StatusOK, http.StatusNoContent}, uploadRes.StatusCode)
 
-	oversized := append(append([]byte{}, data...), 'x')
-	rejectedRes := postUploadTarget(t, target, oversized)
-	defer func() { _ = rejectedRes.Body.Close() }()
-	require.NotEqual(t, http.StatusOK, rejectedRes.StatusCode)
-	require.NotEqual(t, http.StatusNoContent, rejectedRes.StatusCode)
+	wrongSize := putUploadTarget(t, target, append(append([]byte{}, data...), 'x'))
+	defer func() { _ = wrongSize.Body.Close() }()
+	require.GreaterOrEqual(t, wrongSize.StatusCode, 400, "the signed content length is enforced")
+
+	request, err := http.NewRequest(http.MethodPut, target.URL, bytes.NewReader(data))
+	require.NoError(t, err)
+	unconditional, err := http.DefaultClient.Do(request)
+	require.NoError(t, err)
+	defer func() { _ = unconditional.Body.Close() }()
+	require.GreaterOrEqual(t, unconditional.StatusCode, 400, "dropping the signed If-None-Match header is refused")
+
+	exists, err := store.Exists(ctx, hash)
+	require.NoError(t, err)
+	require.False(t, exists, "rejected writes leave nothing behind")
+
+	first := putUploadTarget(t, target, data)
+	defer func() { _ = first.Body.Close() }()
+	require.Contains(t, []int{http.StatusOK, http.StatusNoContent}, first.StatusCode)
+	got, err := store.Get(ctx, hash)
+	require.NoError(t, err)
+	require.Equal(t, data, got)
+
+	replay := putUploadTarget(t, target, bytes.Repeat([]byte("z"), len(data)))
+	defer func() { _ = replay.Body.Close() }()
+	require.Equal(t, http.StatusPreconditionFailed, replay.StatusCode, "a replayed target must not overwrite")
+
+	fresh, err := store.PresignUpload(ctx, hash, int64(len(data)), time.Hour)
+	require.NoError(t, err)
+	again := putUploadTarget(t, fresh, bytes.Repeat([]byte("z"), len(data)))
+	defer func() { _ = again.Body.Close() }()
+	require.Equal(t, http.StatusPreconditionFailed, again.StatusCode, "a new target for an existing key must not overwrite either")
+
+	got, err = store.Get(ctx, hash)
+	require.NoError(t, err)
+	require.Equal(t, data, got, "the original bytes survive every overwrite attempt")
+}
+
+func newIntegrationStore(t *testing.T) *Store {
+	t.Helper()
+	endpoint := os.Getenv("NIPA_S3_TEST_ENDPOINT")
+	bucket := os.Getenv("NIPA_S3_TEST_BUCKET")
+	if endpoint == "" || bucket == "" {
+		t.Skip("set NIPA_S3_TEST_ENDPOINT and NIPA_S3_TEST_BUCKET to run against a real S3-compatible server")
+	}
+	store, err := New(context.Background(), Config{
+		Endpoint:        endpoint,
+		Region:          os.Getenv("NIPA_S3_TEST_REGION"),
+		Bucket:          bucket,
+		Prefix:          os.Getenv("NIPA_S3_TEST_PREFIX"),
+		AccessKeyID:     os.Getenv("NIPA_S3_TEST_ACCESS_KEY_ID"),
+		SecretAccessKey: os.Getenv("NIPA_S3_TEST_SECRET_ACCESS_KEY"),
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+	return store
 }

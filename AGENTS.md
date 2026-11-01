@@ -863,20 +863,19 @@ compatible for one release.
   size server-side (`ChunkStore.Size`, never a client-supplied value) and writes
   the chunk metadata rows, so `Push` can rely on them; confirmations are
   serialized client-side under a mutex so concurrent upload windows never stack
-  SQLite metadata writes. Chunks already stored for the project come back with `already_stored` so
-  clients skip the transfer; content that exists only for other projects is
-  never reported. A project may reference a chunk only after it proved it
+  SQLite metadata writes. Chunks the project is already linked to come back with `already_stored` so
+  clients skip the transfer. A project may reference a chunk only after it proved it
   holds the bytes (`internal/chunkproof`): `GetChunkUploadUrls` hands every
   chunk the project is not linked to an HMAC-signed, project- and hash-bound
-  `proof_challenge` (identically whether or not the content exists, so it leaks
-  nothing), the client answers with `BLAKE3(challenge || bytes)` in
+  `proof_challenge`, the client answers with `BLAKE3(challenge || bytes)` in
   `ConfirmChunkUploads.proofs`, and the server reads the stored object back,
   checks it against its hash and the proof, and links the project in one batch
   (`project_chunk_uploads`). The client claims with proofs first, so content the
   server already holds for another project is linked without being sent again;
   only chunks reported missing are uploaded and then confirmed with their proofs.
   Unproven hashes are reported missing, `ApplyPush` joins through the link table,
-  and server-generated merge content is linked via `AttributeProjectChunks`. `Push` sends `base_commit_id` (base36; preferred over
+  and server-generated merge content is linked via `AttributeProjectChunks`.
+  `Push` sends `base_commit_id` (base36; preferred over
   `base_tree_hash`, so sparse/permission-filtered clones push deltas against the
   full server tree) and `parent_2_commit_hash` for merge commits.
   `Push.pushStaged` scans into 16MB windows handed to
@@ -929,17 +928,24 @@ compatible for one release.
   (S3 rejects oversized bodies with EntityTooLarge); `usecase.Chunk`
   type-switches on the capability, `PresignedChunkUrl` carries
   `method`/`form_data`, and the client POSTs multipart with the file part last
-  (`Client.httpURL` passes absolute URLs through). Direct uploads never write the
-  shared content-addressed key: the POST policy targets a per-project staging key
-  `<prefix>/uploads/<project>/<hash[:2]>/<hash[2:]>` (put a lifecycle expiry on
-  `uploads/`), so one project can neither overwrite nor corrupt content another
-  relies on. `ConfirmChunkUploads` reads the staged bytes, hashes them, checks the
-  possession proof, and then writes those very bytes to the shared key with a
-  plain `Put` (never a copy of the staging object, which its uploader can still
-  overwrite until the target expires) before discarding the staging object — a
-  staged object that does not match its hash is discarded unstored. Because the
-  shared key is written only from verified bytes, content found there is trusted
-  and download presigning needs no re-verification.
+  (`Client.httpURL` passes absolute URLs through). Direct uploads are
+  presigned PUTs (not POST policies, which Cloudflare R2 does not implement) to
+  the shared key, signed with `If-None-Match: *` and the exact `Content-Length`:
+  the backend refuses (412) a write when the object exists, even when a target is
+  replayed, so a stored chunk can never be overwritten and one project cannot
+  corrupt content another relies on. The client sends the target's `headers`
+  and treats a 412 as "stored meanwhile". A chunk that already exists gets no
+  upload target at all (`url` empty, only a `proof_challenge`): the project
+  claims it with the possession proof, which costs no write. Because direct
+  writes bypass the server, `ConfirmChunkUploads` hashes whatever it reads from
+  the shared key: an object that does not match its hash is deleted and
+  reported missing, and the client presigns and uploads that chunk again (up to
+  three attempts). The side effect is that a project writer who knows a hash
+  learns that its content exists (no target is issued). Backends must support
+  conditional create on presigned PUT (AWS S3, MinIO, R2);
+  `TestIntegration_S3CreateOnlyUploads` verifies it against a real backend when
+  the `NIPA_S3_TEST_*` variables are set (R2: endpoint
+  `https://<account>.r2.cloudflarestorage.com`, region `auto`).
 - **Storage accounting seam (free vs cloud).** `usecase.Chunk.WithStorageLedger`
   accepts an optional `StorageLedger` (`internal/usecase/storage_ledger.go`:
   `AttributedSizes`/`Headroom`/`Attribute`). The free version wires none (nil):

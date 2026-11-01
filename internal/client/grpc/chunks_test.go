@@ -48,10 +48,11 @@ type chunkTestServer struct {
 	getStatus       int
 	lastConfirm     *pb.ConfirmChunkUploadsRequest
 
-	postUpload     bool
-	methodOverride string
-	lastPostFields []string
-	lastPostValues map[string]string
+	putHeaders    http.Header
+	rejectedPuts  int
+	hookBeforePut func()
+	raceWinner    map[string][]byte
+	garbageOnce   map[string]bool
 }
 
 func newChunkTestServer() *chunkTestServer {
@@ -83,12 +84,6 @@ func (s *chunkTestServer) storedChunk(hash string) ([]byte, bool) {
 	return data, ok
 }
 
-func (s *chunkTestServer) lastPost() ([]string, map[string]string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.lastPostFields, s.lastPostValues
-}
-
 func (s *chunkTestServer) GetChunkUploadUrls(ctx context.Context, req *pb.GetChunkUploadUrlsRequest) (*pb.GetChunkUploadUrlsResponse, error) {
 	if md, ok := metadata.FromIncomingContext(ctx); ok {
 		if auth := md.Get("authorization"); len(auth) > 0 {
@@ -101,32 +96,18 @@ func (s *chunkTestServer) GetChunkUploadUrls(ctx context.Context, req *pb.GetChu
 	}
 	resp := &pb.GetChunkUploadUrlsResponse{}
 	for _, ref := range req.GetChunks() {
-		exists := s.isLinked(ref.GetHash())
-		url := ""
-		method := ""
-		var formData map[string]string
-		challenge := ""
-		if !exists {
-			challenge = "challenge-" + ref.GetHash()
-			url = fmt.Sprintf("/api/chunks/%s/%s/%s?op=put&size=%d&exp=9999999999&sig=test",
-				req.GetContext().GetOrg(), req.GetContext().GetProject(), ref.GetHash(), ref.GetSizeBytes())
-			if s.postUpload {
-				url = "/direct-upload"
-				method = http.MethodPost
-				formData = map[string]string{"key": ref.GetHash(), "policy": "test-policy"}
-			}
-			if s.methodOverride != "" {
-				method = s.methodOverride
+		linked := s.isLinked(ref.GetHash())
+		_, stored := s.storedChunk(ref.GetHash())
+		entry := &pb.PresignedChunkUrl{Hash: ref.GetHash(), AlreadyStored: linked}
+		if !linked {
+			entry.ProofChallenge = "challenge-" + ref.GetHash()
+			if !stored {
+				entry.Url = fmt.Sprintf("/api/chunks/%s/%s/%s?op=put&size=%d&exp=9999999999&sig=test",
+					req.GetContext().GetOrg(), req.GetContext().GetProject(), ref.GetHash(), ref.GetSizeBytes())
+				entry.Headers = map[string]string{"If-None-Match": "*"}
 			}
 		}
-		resp.Urls = append(resp.Urls, &pb.PresignedChunkUrl{
-			Hash:           ref.GetHash(),
-			Url:            url,
-			AlreadyStored:  exists,
-			Method:         method,
-			FormData:       formData,
-			ProofChallenge: challenge,
-		})
+		resp.Urls = append(resp.Urls, entry)
 	}
 	if s.uploadBadHash {
 		resp.Urls = append(resp.Urls, &pb.PresignedChunkUrl{Hash: "zz-not-hex", Url: "/api/chunks/org/proj/zz?op=put"})
@@ -164,6 +145,17 @@ func (s *chunkTestServer) GetChunkDownloadUrls(ctx context.Context, req *pb.GetC
 	return resp, nil
 }
 
+func (s *chunkTestServer) takeGarbage(hash string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.garbageOnce[hash] {
+		return false
+	}
+	delete(s.garbageOnce, hash)
+	delete(s.stored, hash)
+	return true
+}
+
 func (s *chunkTestServer) ConfirmChunkUploads(_ context.Context, req *pb.ConfirmChunkUploadsRequest) (*pb.ConfirmChunkUploadsResponse, error) {
 	s.lastConfirm = req
 	if s.confirmErr != nil {
@@ -181,6 +173,10 @@ func (s *chunkTestServer) ConfirmChunkUploads(_ context.Context, req *pb.Confirm
 		if s.isLinked(hash) {
 			continue
 		}
+		if s.takeGarbage(hash) {
+			missing = append(missing, hash)
+			continue
+		}
 		data, stored := s.storedChunk(hash)
 		proof, proved := proofs[hash]
 		if !stored || !proved || proof.GetChallenge() != "challenge-"+hash || proof.GetProof() != chunkproof.Proof(proof.GetChallenge(), data) {
@@ -193,10 +189,6 @@ func (s *chunkTestServer) ConfirmChunkUploads(_ context.Context, req *pb.Confirm
 }
 
 func (s *chunkTestServer) serveChunkHTTP(w http.ResponseWriter, r *http.Request) {
-	if r.Method == http.MethodPost && r.URL.Path == "/direct-upload" {
-		s.serveDirectUpload(w, r)
-		return
-	}
 	hash := path.Base(r.URL.Path)
 	switch r.URL.Query().Get("op") {
 	case "put":
@@ -207,6 +199,20 @@ func (s *chunkTestServer) serveChunkHTTP(w http.ResponseWriter, r *http.Request)
 		data, err := io.ReadAll(r.Body)
 		if err != nil {
 			http.Error(w, "unable to read body", http.StatusBadRequest)
+			return
+		}
+		if s.hookBeforePut != nil {
+			s.hookBeforePut()
+		}
+		s.mu.Lock()
+		s.putHeaders = r.Header.Clone()
+		_, exists := s.stored[hash]
+		s.mu.Unlock()
+		if r.Header.Get("If-None-Match") == "*" && exists {
+			s.mu.Lock()
+			s.rejectedPuts++
+			s.mu.Unlock()
+			http.Error(w, "exists", http.StatusPreconditionFailed)
 			return
 		}
 		s.put(hash, data)
@@ -226,57 +232,6 @@ func (s *chunkTestServer) serveChunkHTTP(w http.ResponseWriter, r *http.Request)
 	default:
 		http.Error(w, "invalid op", http.StatusBadRequest)
 	}
-}
-
-// serveDirectUpload accepts a POST policy multipart upload, requiring the file
-// part to come after every other form field like S3 does.
-func (s *chunkTestServer) serveDirectUpload(w http.ResponseWriter, r *http.Request) {
-	reader, err := r.MultipartReader()
-	if err != nil {
-		http.Error(w, "bad multipart", http.StatusBadRequest)
-		return
-	}
-	values := map[string]string{}
-	var fields []string
-	var data []byte
-	sawFile := false
-	for {
-		part, err := reader.NextPart()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			http.Error(w, "bad part", http.StatusBadRequest)
-			return
-		}
-		body, err := io.ReadAll(part)
-		if err != nil {
-			http.Error(w, "bad part body", http.StatusBadRequest)
-			return
-		}
-		if part.FormName() == "file" && part.FileName() != "" {
-			data = body
-			sawFile = true
-			fields = append(fields, "file")
-			continue
-		}
-		if sawFile {
-			http.Error(w, "file part must be last", http.StatusBadRequest)
-			return
-		}
-		values[part.FormName()] = string(body)
-		fields = append(fields, part.FormName())
-	}
-	s.mu.Lock()
-	s.lastPostFields = fields
-	s.lastPostValues = values
-	s.mu.Unlock()
-	if !sawFile || values["key"] == "" {
-		http.Error(w, "missing key or file", http.StatusBadRequest)
-		return
-	}
-	s.put(values["key"], data)
-	w.WriteHeader(http.StatusNoContent)
 }
 
 // startChunkTestServer serves gRPC (for presign RPCs) and the signed HTTP
@@ -349,46 +304,6 @@ func TestClient_UploadChunks_Success(t *testing.T) {
 	require.True(t, srv.isLinked(h1.String()))
 }
 
-func TestClient_UploadChunks_DirectPOST(t *testing.T) {
-	h1 := testChunkHash(0x01)
-
-	srv := newChunkTestServer()
-	srv.postUpload = true
-	addr := startChunkTestServer(t, srv)
-	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
-	require.NoError(t, c.Connect(context.Background(), addr))
-
-	uploaded, skipped, err := c.UploadChunks(context.Background(), domain.ChunkScope{Org: "org", Project: "proj"}, []*serverDomain.ChunkData{
-		{Hash: h1, Data: []byte("aaaa")},
-	})
-	require.NoError(t, err)
-	require.Equal(t, 1, uploaded)
-	require.Equal(t, 0, skipped)
-
-	got, ok := srv.storedChunk(h1.String())
-	require.True(t, ok)
-	require.Equal(t, []byte("aaaa"), got)
-
-	fields, values := srv.lastPost()
-	require.NotEmpty(t, fields)
-	require.Equal(t, "file", fields[len(fields)-1], "the file part must be last")
-	require.Equal(t, h1.String(), values["key"])
-	require.Equal(t, "test-policy", values["policy"])
-}
-
-func TestClient_UploadChunks_UnsupportedMethod(t *testing.T) {
-	srv := newChunkTestServer()
-	srv.methodOverride = http.MethodPatch
-	addr := startChunkTestServer(t, srv)
-	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
-	require.NoError(t, c.Connect(context.Background(), addr))
-
-	_, _, err := c.UploadChunks(context.Background(), domain.ChunkScope{Org: "org", Project: "proj"}, []*serverDomain.ChunkData{
-		{Hash: testChunkHash(0x01), Data: []byte("x")},
-	})
-	require.ErrorContains(t, err, "unsupported chunk upload method")
-}
-
 func TestClient_UploadChunks_SkipsStored(t *testing.T) {
 	h1 := testChunkHash(0x01)
 	h2 := testChunkHash(0x02)
@@ -425,23 +340,6 @@ func TestClient_UploadChunks_ProvesPossessionInsteadOfUploadingSharedContent(t *
 	require.Equal(t, 0, uploaded, "content another project stored is not sent again")
 	require.Equal(t, 1, skipped)
 	require.True(t, srv.isLinked(h1.String()), "the proof links the project")
-}
-
-func TestClient_UploadChunks_WrongBytesAreUploadedNotLinkedByProof(t *testing.T) {
-	h1 := testChunkHash(0x01)
-
-	srv := newChunkTestServer()
-	srv.put(h1.String(), []byte("stored elsewhere with different bytes"))
-	addr := startChunkTestServer(t, srv)
-	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
-	require.NoError(t, c.Connect(context.Background(), addr))
-
-	uploaded, skipped, err := c.UploadChunks(context.Background(), domain.ChunkScope{Org: "org", Project: "proj"}, []*serverDomain.ChunkData{
-		{Hash: h1, Data: []byte("aaaa")},
-	})
-	require.NoError(t, err)
-	require.Equal(t, 1, uploaded, "a proof that does not match falls back to a real upload")
-	require.Equal(t, 0, skipped)
 }
 
 func TestClient_UploadChunks_ReportsEachChunk(t *testing.T) {
@@ -879,4 +777,75 @@ func TestClient_ChunkSinkStopsAfterError(t *testing.T) {
 	require.ErrorIs(t, sink.deliver(testChunkHash(0x01), []byte("a")), sinkErr)
 	require.ErrorIs(t, sink.deliver(testChunkHash(0x02), []byte("b")), sinkErr)
 	require.Equal(t, 1, calls, "delivery must stop after the sink fails")
+}
+
+func TestClient_UploadChunks_SendsTheSignedHeaders(t *testing.T) {
+	h1 := testChunkHash(0x01)
+
+	srv := newChunkTestServer()
+	addr := startChunkTestServer(t, srv)
+	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
+	require.NoError(t, c.Connect(context.Background(), addr))
+
+	_, _, err := c.UploadChunks(context.Background(), domain.ChunkScope{Org: "org", Project: "proj"}, []*serverDomain.ChunkData{
+		{Hash: h1, Data: []byte("aaaa")},
+	})
+	require.NoError(t, err)
+
+	srv.mu.Lock()
+	defer srv.mu.Unlock()
+	require.Equal(t, "*", srv.putHeaders.Get("If-None-Match"), "the create-only header is part of the signature")
+}
+
+func TestClient_UploadChunks_ToleratesTheChunkAppearingFirst(t *testing.T) {
+	h1 := testChunkHash(0x01)
+
+	srv := newChunkTestServer()
+	addr := startChunkTestServer(t, srv)
+	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
+	require.NoError(t, c.Connect(context.Background(), addr))
+
+	srv.hookBeforePut = func() { srv.put(h1.String(), []byte("aaaa")) }
+	uploaded, _, err := c.UploadChunks(context.Background(), domain.ChunkScope{Org: "org", Project: "proj"}, []*serverDomain.ChunkData{
+		{Hash: h1, Data: []byte("aaaa")},
+	})
+	require.NoError(t, err, "a 412 means someone stored the same chunk meanwhile; the proof decides")
+	require.Equal(t, 1, uploaded)
+	require.Equal(t, 1, srv.rejectedPuts)
+	require.True(t, srv.isLinked(h1.String()))
+}
+
+func TestClient_UploadChunks_RetriesAfterGarbageWasRemoved(t *testing.T) {
+	h1 := testChunkHash(0x01)
+
+	srv := newChunkTestServer()
+	srv.put(h1.String(), []byte("planted garbage"))
+	srv.garbageOnce = map[string]bool{h1.String(): true}
+	addr := startChunkTestServer(t, srv)
+	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
+	require.NoError(t, c.Connect(context.Background(), addr))
+
+	uploaded, skipped, err := c.UploadChunks(context.Background(), domain.ChunkScope{Org: "org", Project: "proj"}, []*serverDomain.ChunkData{
+		{Hash: h1, Data: []byte("aaaa")},
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, uploaded, "after the server deleted the garbage the chunk is presigned and uploaded again")
+	require.Zero(t, skipped)
+	got, _ := srv.storedChunk(h1.String())
+	require.Equal(t, []byte("aaaa"), got)
+}
+
+func TestClient_UploadChunks_GivesUpAfterRepeatedFailures(t *testing.T) {
+	h1 := testChunkHash(0x01)
+
+	srv := newChunkTestServer()
+	srv.confirmMissing = []string{h1.String()}
+	addr := startChunkTestServer(t, srv)
+	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
+	require.NoError(t, c.Connect(context.Background(), addr))
+
+	_, _, err := c.UploadChunks(context.Background(), domain.ChunkScope{Org: "org", Project: "proj"}, []*serverDomain.ChunkData{
+		{Hash: h1, Data: []byte("aaaa")},
+	})
+	require.ErrorContains(t, err, "upload incomplete")
 }

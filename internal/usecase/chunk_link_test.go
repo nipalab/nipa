@@ -32,9 +32,12 @@ func proofFor(t *testing.T, uc *Chunk, hash domain.Hash, data []byte) ChunkProof
 	return ChunkProof{Hash: hash, Challenge: challenge, Proof: chunkproof.Proof(challenge, data)}
 }
 
-func TestChunk_Presign_ChallengesEveryUnlinkedChunkAlike(t *testing.T) {
+func TestChunk_Presign_NeverOffersToWriteStoredContent(t *testing.T) {
 	ctx := context.Background()
-	store := newStubChunkStore()
+	store := &stubDirectChunkStore{
+		stubChunkStore: newStubChunkStore(),
+		uploadTarget:   storage.UploadTarget{URL: "https://s3.example.com/put", Headers: map[string]string{"If-None-Match": "*"}},
+	}
 	linkedData, foreignData, freshData := []byte("linked"), []byte("foreign"), []byte("fresh")
 	linked, foreign, fresh := chunker.Sum(linkedData), chunker.Sum(foreignData), chunker.Sum(freshData)
 	store.data[linked] = linkedData
@@ -51,13 +54,44 @@ func TestChunk_Presign_ChallengesEveryUnlinkedChunkAlike(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Len(t, urls, 3)
+
 	require.True(t, urls[0].AlreadyStored)
 	require.Empty(t, urls[0].ProofChallenge)
-	for _, entry := range urls[1:] {
-		require.False(t, entry.AlreadyStored, "content held for another project is not reported")
-		require.NotEmpty(t, entry.URL)
-		require.NoError(t, chunkproof.VerifyChallenge(linkTestKey, testProject.ID, entry.Hash, entry.ProofChallenge, uc.now()))
+	require.Empty(t, urls[0].URL)
+
+	require.False(t, urls[1].AlreadyStored, "content held for another project is not reported as stored")
+	require.Empty(t, urls[1].URL, "stored content gets no upload target, it is claimed with a proof")
+	require.NoError(t, chunkproof.VerifyChallenge(linkTestKey, testProject.ID, foreign, urls[1].ProofChallenge, uc.now()))
+
+	require.Equal(t, "https://s3.example.com/put", urls[2].URL, "only absent content gets a create-only target")
+	require.Equal(t, map[string]string{"If-None-Match": "*"}, urls[2].Headers)
+	require.NoError(t, chunkproof.VerifyChallenge(linkTestKey, testProject.ID, fresh, urls[2].ProofChallenge, uc.now()))
+}
+
+func TestChunk_Presign_LinkedButMissingObjectIsUploadedAgain(t *testing.T) {
+	data := []byte("lost object")
+	hash := chunker.Sum(data)
+	store := &stubDirectChunkStore{
+		stubChunkStore: newStubChunkStore(),
+		uploadTarget:   storage.UploadTarget{URL: "https://s3.example.com/put"},
 	}
+	uc, repo := newLinkFixture(t, store)
+	repo.EXPECT().LinkedProjectChunks(gomock.Any(), testProject.ID, gomock.Any()).Return(map[domain.Hash]bool{hash: true}, nil)
+
+	urls, _, err := uc.PresignUploadURLs(context.Background(), testOrg, testProject, []ChunkRef{{Hash: hash, SizeBytes: int64(len(data))}}, 10, "")
+	require.NoError(t, err)
+	require.False(t, urls[0].AlreadyStored)
+	require.NotEmpty(t, urls[0].URL)
+}
+
+func TestChunk_Presign_ExistsCheckError(t *testing.T) {
+	store := &stubChunkStore{data: map[domain.Hash][]byte{}, existsErr: errors.New("boom")}
+	uc, repo := newLinkFixture(t, store)
+	repo.EXPECT().LinkedProjectChunks(gomock.Any(), testProject.ID, gomock.Any()).Return(map[domain.Hash]bool{}, nil)
+
+	_, _, err := uc.PresignUploadURLs(context.Background(), testOrg, testProject,
+		[]ChunkRef{{Hash: chunker.Sum([]byte("x")), SizeBytes: 1}}, 10, "")
+	require.Error(t, err)
 }
 
 func TestChunk_Presign_LinkLookupError(t *testing.T) {
@@ -188,11 +222,10 @@ func TestChunk_ConfirmUploads_LinksOnlyWithAValidProof(t *testing.T) {
 	})
 }
 
-func TestChunk_ConfirmUploads_DirectStoreStagesUploads(t *testing.T) {
+func TestChunk_ConfirmUploads_DirectStoreVerifiesWhatClientsWrote(t *testing.T) {
 	ctx := context.Background()
 	data := []byte("payload")
 	hash := chunker.Sum(data)
-	slot := testProject.ID.Base36()
 
 	setup := func(t *testing.T) (*Chunk, *MockchunkRepository, *stubDirectChunkStore) {
 		store := &stubDirectChunkStore{stubChunkStore: newStubChunkStore()}
@@ -201,57 +234,7 @@ func TestChunk_ConfirmUploads_DirectStoreStagesUploads(t *testing.T) {
 		return uc, repo, store
 	}
 
-	t.Run("a verified staged upload is promoted and linked", func(t *testing.T) {
-		uc, repo, store := setup(t)
-		store.stage(slot, hash, data)
-		repo.EXPECT().InsertChunkIfNotExists(gomock.Any(), hash, int64(len(data))).Return(nil)
-		repo.EXPECT().LinkProjectChunks(gomock.Any(), testProject.ID, []domain.Hash{hash}).Return(nil)
-
-		missing, err := uc.ConfirmUploads(ctx, testOrg, testProject, []domain.Hash{hash}, []ChunkProof{proofFor(t, uc, hash, data)})
-		require.NoError(t, err)
-		require.Empty(t, missing)
-		require.Equal(t, []domain.Hash{hash}, store.discarded, "the staging object is dropped once stored")
-		require.Equal(t, data, store.data[hash], "the shared key holds the bytes the server verified")
-	})
-
-	t.Run("a staged upload that does not match its key is discarded", func(t *testing.T) {
-		uc, _, store := setup(t)
-		store.stage(slot, hash, []byte("garbage"))
-
-		missing, err := uc.ConfirmUploads(ctx, testOrg, testProject, []domain.Hash{hash}, []ChunkProof{proofFor(t, uc, hash, []byte("garbage"))})
-		require.NoError(t, err)
-		require.Equal(t, []domain.Hash{hash}, missing)
-		require.Equal(t, []domain.Hash{hash}, store.discarded)
-		require.Empty(t, store.data, "nothing reaches the shared key")
-	})
-
-	t.Run("a wrong proof leaves the staged upload unpromoted", func(t *testing.T) {
-		uc, _, store := setup(t)
-		store.stage(slot, hash, data)
-
-		missing, err := uc.ConfirmUploads(ctx, testOrg, testProject, []domain.Hash{hash}, []ChunkProof{proofFor(t, uc, hash, []byte("other"))})
-		require.NoError(t, err)
-		require.Equal(t, []domain.Hash{hash}, missing)
-		require.Empty(t, store.discarded)
-	})
-
-	t.Run("nothing staged is missing", func(t *testing.T) {
-		uc, _, _ := setup(t)
-		missing, err := uc.ConfirmUploads(ctx, testOrg, testProject, []domain.Hash{hash}, []ChunkProof{proofFor(t, uc, hash, data)})
-		require.NoError(t, err)
-		require.Equal(t, []domain.Hash{hash}, missing)
-	})
-
-	t.Run("another project's staging slot is not readable", func(t *testing.T) {
-		uc, _, store := setup(t)
-		store.stage(snow.ID(999).Base36(), hash, data)
-
-		missing, err := uc.ConfirmUploads(ctx, testOrg, testProject, []domain.Hash{hash}, []ChunkProof{proofFor(t, uc, hash, data)})
-		require.NoError(t, err)
-		require.Equal(t, []domain.Hash{hash}, missing)
-	})
-
-	t.Run("shared content is proven without touching staging", func(t *testing.T) {
+	t.Run("a direct upload with a valid proof is linked", func(t *testing.T) {
 		uc, repo, store := setup(t)
 		store.data[hash] = data
 		repo.EXPECT().InsertChunkIfNotExists(gomock.Any(), hash, int64(len(data))).Return(nil)
@@ -260,63 +243,37 @@ func TestChunk_ConfirmUploads_DirectStoreStagesUploads(t *testing.T) {
 		missing, err := uc.ConfirmUploads(ctx, testOrg, testProject, []domain.Hash{hash}, []ChunkProof{proofFor(t, uc, hash, data)})
 		require.NoError(t, err)
 		require.Empty(t, missing)
-		require.Empty(t, store.discarded)
+		require.Empty(t, store.deleted)
 	})
 
-	t.Run("staging read error surfaces", func(t *testing.T) {
+	t.Run("garbage on the key is deleted so the real content can be uploaded", func(t *testing.T) {
 		uc, _, store := setup(t)
-		store.stagedErr = errors.New("s3 down")
-		_, err := uc.ConfirmUploads(ctx, testOrg, testProject, []domain.Hash{hash}, []ChunkProof{proofFor(t, uc, hash, data)})
-		require.Error(t, err)
+		store.data[hash] = []byte("same size, other bytes")
+
+		missing, err := uc.ConfirmUploads(ctx, testOrg, testProject, []domain.Hash{hash}, []ChunkProof{proofFor(t, uc, hash, []byte("same size, other bytes"))})
+		require.NoError(t, err)
+		require.Equal(t, []domain.Hash{hash}, missing)
+		require.Equal(t, []domain.Hash{hash}, store.deleted)
+		require.Empty(t, store.data)
 	})
 
-	t.Run("a failed store of verified bytes surfaces", func(t *testing.T) {
+	t.Run("a failed delete of garbage surfaces", func(t *testing.T) {
 		uc, _, store := setup(t)
-		store.stage(slot, hash, data)
-		store.putErr = errors.New("s3 down")
-		_, err := uc.ConfirmUploads(ctx, testOrg, testProject, []domain.Hash{hash}, []ChunkProof{proofFor(t, uc, hash, data)})
-		require.Error(t, err)
-	})
-
-	t.Run("a discard failure after storing surfaces", func(t *testing.T) {
-		uc, _, store := setup(t)
-		store.stage(slot, hash, data)
-		store.discardErr = errors.New("delete failed")
-		_, err := uc.ConfirmUploads(ctx, testOrg, testProject, []domain.Hash{hash}, []ChunkProof{proofFor(t, uc, hash, data)})
-		require.Error(t, err)
-	})
-
-	t.Run("discard error surfaces", func(t *testing.T) {
-		uc, _, store := setup(t)
-		store.stage(slot, hash, []byte("garbage"))
-		store.discardErr = errors.New("delete failed")
+		store.data[hash] = []byte("garbage")
+		store.deleteErr = errors.New("delete failed")
 		_, err := uc.ConfirmUploads(ctx, testOrg, testProject, []domain.Hash{hash}, []ChunkProof{proofFor(t, uc, hash, []byte("garbage"))})
 		require.Error(t, err)
 	})
-}
 
-func TestChunk_DirectUploadCannotOverwriteSharedContent(t *testing.T) {
-	ctx := context.Background()
-	owned := []byte("owned by another project")
-	hash := chunker.Sum(owned)
-	store := &stubDirectChunkStore{stubChunkStore: newStubChunkStore()}
-	store.data[hash] = owned
-	uc, repo := newLinkFixture(t, store)
-	repo.EXPECT().LinkedProjectChunks(gomock.Any(), testProject.ID, gomock.Any()).Return(map[domain.Hash]bool{}, nil).Times(2)
-
-	urls, _, err := uc.PresignUploadURLs(ctx, testOrg, testProject, []ChunkRef{{Hash: hash, SizeBytes: int64(len(owned))}}, 10, "")
-	require.NoError(t, err)
-	require.False(t, urls[0].AlreadyStored)
-	require.Equal(t, testProject.ID.Base36(), store.uploadSlot, "the target is the attacker's own staging slot, not the shared key")
-
-	store.stage(testProject.ID.Base36(), hash, []byte("same size, other bytes!!"))
-	missing, err := uc.ConfirmUploads(ctx, testOrg, testProject, []domain.Hash{hash}, []ChunkProof{{
-		Hash: hash, Challenge: urls[0].ProofChallenge, Proof: chunkproof.Proof(urls[0].ProofChallenge, []byte("same size, other bytes!!")),
-	}})
-	require.NoError(t, err)
-	require.Equal(t, []domain.Hash{hash}, missing, "a different payload is rejected")
-	require.Empty(t, store.discarded)
-	require.Equal(t, owned, store.data[hash], "the shared object is untouched")
+	t.Run("a wrong proof over valid content links nothing and deletes nothing", func(t *testing.T) {
+		uc, _, store := setup(t)
+		store.data[hash] = data
+		missing, err := uc.ConfirmUploads(ctx, testOrg, testProject, []domain.Hash{hash}, []ChunkProof{proofFor(t, uc, hash, []byte("guess"))})
+		require.NoError(t, err)
+		require.Equal(t, []domain.Hash{hash}, missing)
+		require.Empty(t, store.deleted)
+		require.Equal(t, data, store.data[hash])
+	})
 }
 
 func TestChunk_AttributeProjectChunks_LinksWithoutLedger(t *testing.T) {
@@ -363,42 +320,4 @@ func TestChunk_UploadForProject(t *testing.T) {
 		_, err := uc.UploadForProject(ctx, snow.ID(7), hash, data)
 		require.EqualError(t, err, "boom")
 	})
-}
-
-func TestChunk_StagedUploadIsStoredFromTheVerifiedBytes(t *testing.T) {
-	ctx := context.Background()
-	data := []byte("verified payload")
-	hash := chunker.Sum(data)
-	base := &stubDirectChunkStore{stubChunkStore: newStubChunkStore()}
-	base.stage(testProject.ID.Base36(), hash, data)
-	store := &swappingStore{stubDirectChunkStore: base, slot: testProject.ID.Base36(), hash: hash}
-	uc, repo := newLinkFixture(t, store)
-	repo.EXPECT().LinkedProjectChunks(gomock.Any(), testProject.ID, gomock.Any()).Return(map[domain.Hash]bool{}, nil)
-	repo.EXPECT().InsertChunkIfNotExists(gomock.Any(), hash, int64(len(data))).Return(nil)
-	repo.EXPECT().LinkProjectChunks(gomock.Any(), testProject.ID, gomock.Any()).Return(nil)
-
-	missing, err := uc.ConfirmUploads(ctx, testOrg, testProject, []domain.Hash{hash}, []ChunkProof{proofFor(t, uc, hash, data)})
-
-	require.NoError(t, err)
-	require.Empty(t, missing)
-	require.True(t, store.swapped, "the uploader replaced the staging object right after it was read")
-	require.Equal(t, data, base.data[hash], "the shared key holds the verified bytes, not the swapped ones")
-}
-
-// swappingStore simulates an uploader that overwrites its staging object as
-// soon as the server has read it.
-type swappingStore struct {
-	*stubDirectChunkStore
-	slot    string
-	hash    domain.Hash
-	swapped bool
-}
-
-func (s *swappingStore) GetStaged(ctx context.Context, slot string, hash domain.Hash) ([]byte, error) {
-	data, err := s.stubDirectChunkStore.GetStaged(ctx, slot, hash)
-	if err == nil {
-		s.stage(s.slot, s.hash, []byte("swapped after verification"))
-		s.swapped = true
-	}
-	return data, err
 }

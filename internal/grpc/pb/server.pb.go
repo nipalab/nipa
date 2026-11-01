@@ -568,12 +568,11 @@ func (x *ChunkRef) GetSizeBytes() int64 {
 
 type PresignedChunkUrl struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
-	Hash           string                 `protobuf:"bytes,1,opt,name=hash,proto3" json:"hash,omitempty"`                                                                                                   // hex-encoded BLAKE3 hash of data
-	Url            string                 `protobuf:"bytes,2,opt,name=url,proto3" json:"url,omitempty"`                                                                                                     // signed path relative to the server base URL, or an absolute backend URL
-	AlreadyStored  bool                   `protobuf:"varint,3,opt,name=already_stored,json=alreadyStored,proto3" json:"already_stored,omitempty"`                                                           // content is already stored; skip the transfer
-	Method         string                 `protobuf:"bytes,4,opt,name=method,proto3" json:"method,omitempty"`                                                                                               // HTTP method for the transfer; empty means PUT
-	FormData       map[string]string      `protobuf:"bytes,5,rep,name=form_data,json=formData,proto3" json:"form_data,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // multipart form fields for POST policy uploads
-	ProofChallenge string                 `protobuf:"bytes,6,opt,name=proof_challenge,json=proofChallenge,proto3" json:"proof_challenge,omitempty"`                                                         // upload URLs only: answer it in ConfirmChunkUploads to link the chunk to the project
+	Hash           string                 `protobuf:"bytes,1,opt,name=hash,proto3" json:"hash,omitempty"`                                                                                 // hex-encoded BLAKE3 hash of data
+	Url            string                 `protobuf:"bytes,2,opt,name=url,proto3" json:"url,omitempty"`                                                                                   // PUT/GET URL: signed path relative to the server base URL, or an absolute backend URL; empty for an upload when the content already exists and only a proof is needed
+	AlreadyStored  bool                   `protobuf:"varint,3,opt,name=already_stored,json=alreadyStored,proto3" json:"already_stored,omitempty"`                                         // the project is already linked to the chunk; skip the transfer
+	Headers        map[string]string      `protobuf:"bytes,4,rep,name=headers,proto3" json:"headers,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // upload URLs only: request headers the PUT must carry (they are part of the signature)
+	ProofChallenge string                 `protobuf:"bytes,5,opt,name=proof_challenge,json=proofChallenge,proto3" json:"proof_challenge,omitempty"`                                       // answer it in ConfirmChunkUploads to link the chunk to the project; unset when already_stored
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -629,16 +628,9 @@ func (x *PresignedChunkUrl) GetAlreadyStored() bool {
 	return false
 }
 
-func (x *PresignedChunkUrl) GetMethod() string {
+func (x *PresignedChunkUrl) GetHeaders() map[string]string {
 	if x != nil {
-		return x.Method
-	}
-	return ""
-}
-
-func (x *PresignedChunkUrl) GetFormData() map[string]string {
-	if x != nil {
-		return x.FormData
+		return x.Headers
 	}
 	return nil
 }
@@ -10280,15 +10272,14 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"\bChunkRef\x12\x12\n" +
 	"\x04hash\x18\x01 \x01(\tR\x04hash\x12\x1d\n" +
 	"\n" +
-	"size_bytes\x18\x02 \x01(\x03R\tsizeBytes\"\xa3\x02\n" +
+	"size_bytes\x18\x02 \x01(\x03R\tsizeBytes\"\x86\x02\n" +
 	"\x11PresignedChunkUrl\x12\x12\n" +
 	"\x04hash\x18\x01 \x01(\tR\x04hash\x12\x10\n" +
 	"\x03url\x18\x02 \x01(\tR\x03url\x12%\n" +
-	"\x0ealready_stored\x18\x03 \x01(\bR\ralreadyStored\x12\x16\n" +
-	"\x06method\x18\x04 \x01(\tR\x06method\x12C\n" +
-	"\tform_data\x18\x05 \x03(\v2&.greet.PresignedChunkUrl.FormDataEntryR\bformData\x12'\n" +
-	"\x0fproof_challenge\x18\x06 \x01(\tR\x0eproofChallenge\x1a;\n" +
-	"\rFormDataEntry\x12\x10\n" +
+	"\x0ealready_stored\x18\x03 \x01(\bR\ralreadyStored\x12?\n" +
+	"\aheaders\x18\x04 \x03(\v2%.greet.PresignedChunkUrl.HeadersEntryR\aheaders\x12'\n" +
+	"\x0fproof_challenge\x18\x05 \x01(\tR\x0eproofChallenge\x1a:\n" +
+	"\fHeadersEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xb1\x01\n" +
 	"\x19GetChunkUploadUrlsRequest\x12/\n" +
@@ -11312,7 +11303,7 @@ var file_internal_grpc_proto_server_proto_goTypes = []any{
 	(*ListFileLocksResponse)(nil),                   // 167: greet.ListFileLocksResponse
 	(*GetServerVersionRequest)(nil),                 // 168: greet.GetServerVersionRequest
 	(*GetServerVersionResponse)(nil),                // 169: greet.GetServerVersionResponse
-	nil,                                             // 170: greet.PresignedChunkUrl.FormDataEntry
+	nil,                                             // 170: greet.PresignedChunkUrl.HeadersEntry
 	(*timestamppb.Timestamp)(nil),                   // 171: google.protobuf.Timestamp
 }
 var file_internal_grpc_proto_server_proto_depIdxs = []int32{
@@ -11322,7 +11313,7 @@ var file_internal_grpc_proto_server_proto_depIdxs = []int32{
 	1,   // 3: greet.GetTreeManifestRequest.context:type_name -> greet.ProjectContext
 	3,   // 4: greet.GetTreeManifestResponse.root_tree:type_name -> greet.TreeManifest
 	0,   // 5: greet.PushFile.mode:type_name -> greet.FileMode
-	170, // 6: greet.PresignedChunkUrl.form_data:type_name -> greet.PresignedChunkUrl.FormDataEntry
+	170, // 6: greet.PresignedChunkUrl.headers:type_name -> greet.PresignedChunkUrl.HeadersEntry
 	1,   // 7: greet.GetChunkUploadUrlsRequest.context:type_name -> greet.ProjectContext
 	7,   // 8: greet.GetChunkUploadUrlsRequest.chunks:type_name -> greet.ChunkRef
 	8,   // 9: greet.GetChunkUploadUrlsResponse.urls:type_name -> greet.PresignedChunkUrl

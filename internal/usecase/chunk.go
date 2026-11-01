@@ -32,17 +32,17 @@ type ChunkRef struct {
 	SizeBytes int64
 }
 
-// ChunkURL pairs a chunk hash with its signed transfer path. Method and
-// FormData describe direct backend transfers: an empty method means PUT,
-// a POST method carries multipart form fields.
+// ChunkURL pairs a chunk hash with its signed transfer path. For uploads, URL
+// is empty when the content already exists and the project only has to prove it
+// holds it; Headers are request headers the PUT must carry because they are
+// part of a direct backend's signature.
 type ChunkURL struct {
 	Hash          domain.Hash
 	URL           string
 	AlreadyStored bool
-	Method        string
-	FormData      map[string]string
-	// ProofChallenge is set for upload URLs of chunks the project is not linked
-	// to yet; ConfirmUploads must be given the matching proof.
+	Headers       map[string]string
+	// ProofChallenge is set for every chunk the project is not linked to yet;
+	// ConfirmUploads must be given the matching proof.
 	ProofChallenge string
 }
 
@@ -209,9 +209,10 @@ func (c *Chunk) Download(ctx context.Context, hash domain.Hash) (data []byte, er
 
 // PresignUploadURLs signs one page of upload paths for refs. Chunks the
 // project is already linked to get an empty URL with AlreadyStored set so
-// clients can skip the transfer. Every other chunk gets an upload target and a
-// proof challenge, whether or not the content exists for another project, so
-// the response reveals nothing about content the caller has not proven it holds. When a ledger is attached, refs that would add new bytes
+// clients can skip the transfer. Every other chunk gets a proof challenge. Only
+// content that does not exist yet gets an upload target: a stored chunk is never
+// written again, and a project that holds the bytes claims it with the proof
+// instead, which links it without any transfer. When a ledger is attached, refs that would add new bytes
 // are checked against the organization's remaining quota first.
 func (c *Chunk) PresignUploadURLs(ctx context.Context, org *domain.Organization, project *domain.Project, refs []ChunkRef, pageSize int, pageToken string) ([]ChunkURL, string, error) {
 	ctx, span := obs.StartSpan(ctx, "chunk.presign_upload",
@@ -250,32 +251,27 @@ func (c *Chunk) presignUploadURLs(ctx context.Context, org *domain.Organization,
 	}
 	urls := make([]ChunkURL, 0, len(page))
 	for _, ref := range page {
-		exists := false
-		if linked[ref.Hash] {
-			exists, err = c.chunkStore.Exists(ctx, ref.Hash)
-			if err != nil {
-				return nil, "", domain.NewErrorDatabase(fmt.Sprintf("check chunk %s: %v", ref.Hash, err))
-			}
+		exists, err := c.chunkStore.Exists(ctx, ref.Hash)
+		if err != nil {
+			return nil, "", domain.NewErrorDatabase(fmt.Sprintf("check chunk %s: %v", ref.Hash, err))
 		}
-		if exists {
+		if exists && linked[ref.Hash] {
 			urls = append(urls, ChunkURL{Hash: ref.Hash, AlreadyStored: true})
 			continue
-		}
-		target, err := c.uploadTarget(ctx, org, project, ref, expiry)
-		if err != nil {
-			return nil, "", err
 		}
 		challenge, err := chunkproof.NewChallenge(c.transfer.SigningKey, project.ID, ref.Hash, c.now().Add(c.transfer.PresignTTL))
 		if err != nil {
 			return nil, "", domain.NewErrorInternalServer(err.Error())
 		}
-		urls = append(urls, ChunkURL{
-			Hash:           ref.Hash,
-			URL:            target.URL,
-			Method:         target.Method,
-			FormData:       target.FormData,
-			ProofChallenge: challenge,
-		})
+		entry := ChunkURL{Hash: ref.Hash, ProofChallenge: challenge}
+		if !exists {
+			target, err := c.uploadTarget(ctx, org, project, ref, expiry)
+			if err != nil {
+				return nil, "", err
+			}
+			entry.URL, entry.Headers = target.URL, target.Headers
+		}
+		urls = append(urls, entry)
 	}
 	return urls, next, nil
 }
@@ -314,7 +310,7 @@ func (c *Chunk) uploadTarget(ctx context.Context, org *domain.Organization, proj
 			URL: chunkurl.UploadPath(c.transfer.SigningKey, org.Slug, project.Slug, ref.Hash.String(), ref.SizeBytes, expiry),
 		}, nil
 	}
-	target, err := direct.PresignUpload(ctx, stagingSlot(project), ref.Hash, ref.SizeBytes, c.transfer.PresignTTL)
+	target, err := direct.PresignUpload(ctx, ref.Hash, ref.SizeBytes, c.transfer.PresignTTL)
 	if err != nil {
 		return storage.UploadTarget{}, domain.NewErrorInternalServer(fmt.Sprintf("presign upload for chunk %s: %v", ref.Hash, err))
 	}
@@ -361,11 +357,6 @@ func (c *Chunk) downloadPath(ctx context.Context, org, project string, hash doma
 		return "", domain.NewErrorInternalServer(fmt.Sprintf("presign download for chunk %s: %v", hash, err))
 	}
 	return url, nil
-}
-
-// stagingSlot names where a project's direct uploads wait for verification.
-func stagingSlot(project *domain.Project) string {
-	return project.ID.Base36()
 }
 
 // ConfirmUploads verifies that uploaded chunk content landed in the store and
@@ -462,12 +453,10 @@ func (c *Chunk) confirmUploads(ctx context.Context, org *domain.Organization, pr
 // verifyPossession decides whether the caller may be linked to a chunk it is
 // not linked to yet and returns the chunk's size. The challenge must be a live
 // one issued for this project and hash, and the proof must equal
-// BLAKE3(challenge || bytes) over bytes the server read itself. The shared
-// content-addressed key is only ever written after verification, so content
-// found there is trusted; a direct upload is read from the project's staging
-// slot, hashed, and the very bytes that were hashed are then written to the
-// shared key: the staging object is never copied, because its uploader can
-// still overwrite it until the upload target expires.
+// BLAKE3(challenge || bytes) over bytes the server read itself. Direct uploads
+// land on the shared key without passing through the server, so the bytes are
+// also hashed: an object that does not match its key is deleted (it is garbage
+// that would otherwise block the real content) and reported missing.
 func (c *Chunk) verifyPossession(ctx context.Context, project *domain.Project, hash domain.Hash, proof ChunkProof) (int64, bool, error) {
 	if proof.Challenge == "" || proof.Proof == "" {
 		return 0, false, nil
@@ -476,47 +465,28 @@ func (c *Chunk) verifyPossession(ctx context.Context, project *domain.Project, h
 		return 0, false, nil
 	}
 	data, err := c.chunkStore.Get(ctx, hash)
-	staged := false
 	if domain.IsErrorNotFound(err) {
-		direct, isDirect := c.chunkStore.(storage.DirectTransferStore)
-		if !isDirect {
-			return 0, false, nil
-		}
-		data, err = direct.GetStaged(ctx, stagingSlot(project), hash)
-		if domain.IsErrorNotFound(err) {
-			return 0, false, nil
-		}
-		staged = true
+		return 0, false, nil
 	}
 	if err != nil {
 		return 0, false, domain.NewErrorDatabase(fmt.Sprintf("read chunk %s: %v", hash, err))
 	}
-	if staged {
-		return c.storeVerifiedStaged(ctx, project, hash, data, proof)
+	if chunker.Sum(data) != hash {
+		c.metrics.ObserveChunkVerifyFailure("confirm")
+		return 0, false, c.dropInvalidChunk(ctx, hash)
 	}
 	return int64(len(data)), chunkproof.Equal(chunkproof.Proof(proof.Challenge, data), proof.Proof), nil
 }
 
-func (c *Chunk) storeVerifiedStaged(ctx context.Context, project *domain.Project, hash domain.Hash, data []byte, proof ChunkProof) (int64, bool, error) {
-	direct := c.chunkStore.(storage.DirectTransferStore)
-	slot := stagingSlot(project)
-	if chunker.Sum(data) != hash {
-		c.metrics.ObserveChunkVerifyFailure("confirm")
-		if err := direct.DiscardStaged(ctx, slot, hash); err != nil {
-			return 0, false, domain.NewErrorInternalServer(fmt.Sprintf("discard staged chunk %s: %v", hash, err))
-		}
-		return 0, false, nil
+func (c *Chunk) dropInvalidChunk(ctx context.Context, hash domain.Hash) error {
+	direct, ok := c.chunkStore.(storage.DirectTransferStore)
+	if !ok {
+		return nil
 	}
-	if !chunkproof.Equal(chunkproof.Proof(proof.Challenge, data), proof.Proof) {
-		return 0, false, nil
+	if err := direct.DeleteChunk(ctx, hash); err != nil {
+		return domain.NewErrorInternalServer(fmt.Sprintf("delete invalid chunk %s: %v", hash, err))
 	}
-	if err := c.chunkStore.Put(ctx, hash, data); err != nil {
-		return 0, false, domain.NewErrorInternalServer(fmt.Sprintf("store chunk %s: %v", hash, err))
-	}
-	if err := direct.DiscardStaged(ctx, slot, hash); err != nil {
-		return 0, false, domain.NewErrorInternalServer(fmt.Sprintf("discard staged chunk %s: %v", hash, err))
-	}
-	return int64(len(data)), true, nil
+	return nil
 }
 
 // VerifyTransferURL checks that a signed chunk URL matches the project, hash

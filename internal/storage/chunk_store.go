@@ -42,26 +42,22 @@ type DirectTransferStore interface {
 	// PresignDownload returns an absolute URL for reading chunk content.
 	PresignDownload(ctx context.Context, hash domain.Hash, expires time.Duration) (string, error)
 
-	// PresignUpload returns an absolute upload target for one chunk of the
-	// given exact size. The target writes to a staging slot owned by the
-	// caller (never to the shared content-addressed key), so an upload can
-	// neither overwrite nor corrupt content another project relies on. The
-	// backend must pin the size server-side when it can.
-	PresignUpload(ctx context.Context, slot string, hash domain.Hash, size int64, expires time.Duration) (UploadTarget, error)
+	// PresignUpload returns an absolute PUT target for one chunk of the given
+	// exact size. The target writes the shared content-addressed key, so it
+	// must be create-only: the request is signed with If-None-Match: * (the
+	// backend rejects a write when the object exists, even if the target is
+	// replayed) and with the exact content length.
+	PresignUpload(ctx context.Context, hash domain.Hash, size int64, expires time.Duration) (UploadTarget, error)
 
-	// GetStaged returns the staged bytes of a slot, or a domain NotFound error
-	// when nothing was uploaded there.
-	GetStaged(ctx context.Context, slot string, hash domain.Hash) ([]byte, error)
-
-	// DiscardStaged removes a staging object once it was verified and stored
-	// (or rejected). The staging key stays writable by the uploader until its
-	// target expires, so callers must store the bytes they verified, never copy
-	// the staging object.
-	DiscardStaged(ctx context.Context, slot string, hash domain.Hash) error
+	// DeleteChunk removes chunk content, used to drop an object whose bytes
+	// do not match its hash.
+	DeleteChunk(ctx context.Context, hash domain.Hash) error
 }
 
+// UploadTarget is an absolute PUT URL plus the request headers the client must
+// send with it; the backend verifies them because they are part of the
+// signature.
 type UploadTarget struct {
-	URL      string
-	Method   string
-	FormData map[string]string
+	URL     string
+	Headers map[string]string
 }

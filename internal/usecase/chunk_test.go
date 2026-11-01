@@ -89,12 +89,9 @@ type stubDirectChunkStore struct {
 	uploadErr    error
 	uploadSize   int64
 	uploadTTL    time.Duration
-	uploadSlot   string
 
-	staged     map[string][]byte
-	stagedErr  error
-	discarded  []domain.Hash
-	discardErr error
+	deleted   []domain.Hash
+	deleteErr error
 }
 
 func (s *stubDirectChunkStore) PresignDownload(_ context.Context, _ domain.Hash, expires time.Duration) (string, error) {
@@ -105,41 +102,19 @@ func (s *stubDirectChunkStore) PresignDownload(_ context.Context, _ domain.Hash,
 	return s.downloadURL, nil
 }
 
-func (s *stubDirectChunkStore) PresignUpload(_ context.Context, slot string, _ domain.Hash, size int64, expires time.Duration) (storage.UploadTarget, error) {
+func (s *stubDirectChunkStore) PresignUpload(_ context.Context, _ domain.Hash, size int64, expires time.Duration) (storage.UploadTarget, error) {
 	s.uploadSize = size
 	s.uploadTTL = expires
-	s.uploadSlot = slot
 	if s.uploadErr != nil {
 		return storage.UploadTarget{}, s.uploadErr
 	}
 	return s.uploadTarget, nil
 }
 
-func (s *stubDirectChunkStore) stage(slot string, hash domain.Hash, data []byte) {
-	if s.staged == nil {
-		s.staged = map[string][]byte{}
-	}
-	s.staged[slot+"/"+hash.String()] = data
-}
-
-func (s *stubDirectChunkStore) GetStaged(_ context.Context, slot string, hash domain.Hash) ([]byte, error) {
-	if s.stagedErr != nil {
-		return nil, s.stagedErr
-	}
-	data, ok := s.staged[slot+"/"+hash.String()]
-	if !ok {
-		return nil, domain.NewErrorNotFound("nothing staged")
-	}
-	return data, nil
-}
-
-func (s *stubDirectChunkStore) DiscardStaged(_ context.Context, slot string, hash domain.Hash) error {
-	if s.discardErr != nil {
-		return s.discardErr
-	}
-	delete(s.staged, slot+"/"+hash.String())
-	s.discarded = append(s.discarded, hash)
-	return nil
+func (s *stubDirectChunkStore) DeleteChunk(_ context.Context, hash domain.Hash) error {
+	s.deleted = append(s.deleted, hash)
+	delete(s.data, hash)
+	return s.deleteErr
 }
 
 func linkEverything(repo *MockchunkRepository) {
@@ -432,9 +407,8 @@ func TestChunk_PresignUploadURLsDirectStore(t *testing.T) {
 	store := &stubDirectChunkStore{
 		stubChunkStore: newStubChunkStore(),
 		uploadTarget: storage.UploadTarget{
-			URL:      "https://s3.example.com/nipa-chunks",
-			Method:   "POST",
-			FormData: map[string]string{"key": "ab/cdef", "policy": "policy"},
+			URL:     "https://s3.example.com/nipa-chunks",
+			Headers: map[string]string{"If-None-Match": "*"},
 		},
 	}
 	uc, _ := newDirectChunkFixture(t, store)
@@ -447,11 +421,9 @@ func TestChunk_PresignUploadURLsDirectStore(t *testing.T) {
 	require.Len(t, urls, 1)
 	require.Equal(t, hash, urls[0].Hash)
 	require.Equal(t, store.uploadTarget.URL, urls[0].URL)
-	require.Equal(t, "POST", urls[0].Method)
-	require.Equal(t, store.uploadTarget.FormData, urls[0].FormData)
+	require.Equal(t, store.uploadTarget.Headers, urls[0].Headers)
 	require.Equal(t, int64(len(data)), store.uploadSize)
 	require.Equal(t, time.Hour, store.uploadTTL)
-	require.Equal(t, testProject.ID.Base36(), store.uploadSlot, "direct uploads land in the project's staging slot")
 	require.NotEmpty(t, urls[0].ProofChallenge)
 }
 
@@ -466,8 +438,6 @@ func TestChunk_PresignUploadURLsDirectStoreAlreadyStored(t *testing.T) {
 	require.Len(t, urls, 1)
 	require.True(t, urls[0].AlreadyStored)
 	require.Empty(t, urls[0].URL)
-	require.Empty(t, urls[0].Method)
-	require.Nil(t, urls[0].FormData)
 	require.Zero(t, store.uploadSize)
 }
 
