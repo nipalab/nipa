@@ -203,9 +203,9 @@ func TestEndToEnd_PBACWriteEnforcement(t *testing.T) {
 	target := filepath.Join(t.TempDir(), "seed")
 	require.NoError(t, repo.Clone(ctx, url, host, e2eOrgSlug, e2eProjectSlug, "", nil, target))
 
-	writeFile(t, target, "assets/logo.png", "logo-v1")
+	writeFile(t, target, "assets/logo.cfg", "logo-v1")
 	writeFile(t, target, "src/main.go", "package main")
-	stagePath(t, target, "assets/logo.png")
+	stagePath(t, target, "assets/logo.cfg")
 	stagePath(t, target, "src/main.go")
 	pusher := clientusecase.NewPush(adminAuth, adminClient, localrepo.NewLocalRepo())
 	require.NoError(t, pusher.Run(ctx, target, "seed pbac write files"))
@@ -240,8 +240,8 @@ func TestEndToEnd_PBACWriteEnforcement(t *testing.T) {
 	work := filepath.Join(t.TempDir(), "writer")
 	require.NoError(t, writerRepo.Clone(ctx, url, host, e2eOrgSlug, e2eProjectSlug, "", nil, work))
 
-	writeFile(t, work, "assets/logo.png", "logo-v2")
-	stagePath(t, work, "assets/logo.png")
+	writeFile(t, work, "assets/logo.cfg", "logo-v2")
+	stagePath(t, work, "assets/logo.cfg")
 	writerPusher := clientusecase.NewPush(writerAuth, writerClient, localrepo.NewLocalRepo())
 	require.NoError(t, writerPusher.Run(ctx, work, "update logo"))
 
@@ -265,9 +265,9 @@ func TestEndToEnd_PBACManifestFiltering(t *testing.T) {
 	target := filepath.Join(t.TempDir(), "work")
 	require.NoError(t, repo.Clone(ctx, url, host, e2eOrgSlug, e2eProjectSlug, "", nil, target))
 
-	writeFile(t, target, "assets/logo.png", "logo-bytes")
+	writeFile(t, target, "assets/logo.cfg", "logo-bytes")
 	writeFile(t, target, "src/main.go", "package main")
-	stagePath(t, target, "assets/logo.png")
+	stagePath(t, target, "assets/logo.cfg")
 	stagePath(t, target, "src/main.go")
 	pusher := clientusecase.NewPush(adminAuth, adminClient, localrepo.NewLocalRepo())
 	require.NoError(t, pusher.Run(ctx, target, "seed pbac files"))
@@ -313,7 +313,7 @@ func TestEndToEnd_PBACManifestFiltering(t *testing.T) {
 	require.Equal(t, "assets", manifest.TreeChildren[0].Name)
 	require.Len(t, manifest.TreeChildren[0].FileChildren, 1)
 	logo := manifest.TreeChildren[0].FileChildren[0]
-	require.Equal(t, "logo.png", logo.Name)
+	require.Equal(t, "logo.cfg", logo.Name)
 
 	_, err = regularClient.GetTreeNodeManifest(ctx, e2eOrgSlug, e2eProjectSlug, "main", []string{"src"})
 	require.Error(t, err)

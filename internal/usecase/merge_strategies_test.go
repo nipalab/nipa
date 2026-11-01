@@ -552,3 +552,18 @@ func TestStoreMergedContent_UploadError(t *testing.T) {
 }
 
 func ptr[T any](v T) *T { return &v }
+
+func TestMergeForMergeRequest_RejectsMovedSourceHead(t *testing.T) {
+	uc, perm, repo := newStrategyBranch(t)
+	targetHead, sourceHead, checked := snow.ID(10), snow.ID(12), snow.ID(11)
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
+	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").
+		Return(&domain.Branch{ID: 2, ProjectID: 1, Name: "main", CommitID: &targetHead}, nil)
+	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").
+		Return(&domain.Branch{ID: 3, ProjectID: 1, Name: "feature", CommitID: &sourceHead}, nil)
+
+	_, err := uc.MergeForMergeRequest(context.Background(), snow.ID(1), "main", "feature",
+		MergeCommitOptions{Strategy: domain.MergeStrategyFastForward, SourceCommitID: &checked})
+	require.True(t, domain.IsErrorConflict(err))
+	require.Contains(t, err.Error(), "changed since")
+}

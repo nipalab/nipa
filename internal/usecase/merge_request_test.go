@@ -1142,6 +1142,8 @@ func TestMergeRequest_Merge_SquashStrategy(t *testing.T) {
 		Strategy: domain.MergeStrategySquash,
 		Message:  "Squash me",
 		Author:   snow.ID(7),
+
+		SourceCommitID: &sourceHead,
 	}).Return(&domain.Branch{ID: 2, ProjectID: 1, Name: "main", CommitID: &sourceHead}, nil)
 	repo.EXPECT().UpdateStatus(gomock.Any(), snow.ID(1), int64(5), domain.MergeRequestMerged, &sourceHead).Return(nil)
 

@@ -316,11 +316,12 @@ func (c *Cli) setupMrCheckCmd() *cobra.Command {
 			name, _ := cmd.Flags().GetString("name")
 			state, _ := cmd.Flags().GetString("state")
 			detailsURL, _ := cmd.Flags().GetString("url")
+			commit, _ := cmd.Flags().GetString("commit")
 			root, err := localrepo.FindRepoRoot()
 			if err != nil {
 				return err
 			}
-			check, err := c.useCase.MR().ReportCheck(cmd.Context(), root, args[0], name, state, detailsURL)
+			check, err := c.useCase.MR().ReportCheck(cmd.Context(), root, args[0], name, state, detailsURL, commit)
 			if err != nil {
 				return err
 			}
@@ -331,6 +332,7 @@ func (c *Cli) setupMrCheckCmd() *cobra.Command {
 	cmd.Flags().String("name", "", "Check name, e.g. build (required)")
 	cmd.Flags().String("state", "", "Check state: pending, success or failed (required)")
 	cmd.Flags().String("url", "", "Optional link to the run details")
+	cmd.Flags().String("commit", "", "Source commit id the run was started for (default: current source head)")
 	return cmd
 }
 

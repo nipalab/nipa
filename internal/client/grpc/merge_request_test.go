@@ -784,9 +784,10 @@ func TestClient_ReportMergeRequestCheck_Success(t *testing.T) {
 	fs := &fakeMergeRequestServer{reportCheckResp: &pb.ReportMergeRequestCheckResponse{Check: mergeRequestCheckDetail()}}
 	c := newMergeRequestTestClient(t, fs)
 
-	got, err := c.ReportMergeRequestCheck(context.Background(), "default", "sample", 5, "build", "success", "https://ci.example/run/1")
+	got, err := c.ReportMergeRequestCheck(context.Background(), "default", "sample", 5, "build", "success", "https://ci.example/run/1", "b")
 	require.NoError(t, err)
 	require.NotNil(t, fs.reportCheckReq)
+	require.Equal(t, "b", fs.reportCheckReq.GetHeadCommitId())
 	require.Equal(t, int64(5), fs.reportCheckReq.GetNumber())
 	require.Equal(t, "build", fs.reportCheckReq.GetName())
 	require.Equal(t, "success", fs.reportCheckReq.GetState())
@@ -800,13 +801,13 @@ func TestClient_ReportMergeRequestCheck_Errors(t *testing.T) {
 	fs := &fakeMergeRequestServer{reportCheckErr: status.Error(codes.InvalidArgument, "state must be one of pending, success, failed")}
 	c := newMergeRequestTestClient(t, fs)
 
-	_, err := c.ReportMergeRequestCheck(context.Background(), "default", "sample", 5, "build", "exploded", "")
+	_, err := c.ReportMergeRequestCheck(context.Background(), "default", "sample", 5, "build", "exploded", "", "b")
 	var domErr *clientDomain.Error
 	require.ErrorAs(t, err, &domErr)
 	require.Equal(t, 400, domErr.Code)
 
 	c = NewClient(NewTransport(), &stubSession{accessToken: "tok"})
-	_, err = c.ReportMergeRequestCheck(context.Background(), "default", "sample", 5, "build", "success", "")
+	_, err = c.ReportMergeRequestCheck(context.Background(), "default", "sample", 5, "build", "success", "", "b")
 	require.EqualError(t, err, "not connected to a nipa server")
 }
 

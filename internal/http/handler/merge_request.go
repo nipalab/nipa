@@ -169,7 +169,7 @@ func (h *Handler) ReportMergeRequestCheck(appCtx http.AppContext) {
 		appCtx.HandleError(domain.NewErrorInternalServer("status checks are not configured"))
 		return
 	}
-	check, err := checks.Report(appCtx.Context(), project.ID, number, body.Name, body.State, body.DetailsURL)
+	check, err := checks.Report(appCtx.Context(), project.ID, number, body.Name, body.State, body.DetailsURL, body.HeadCommitID)
 	if err != nil {
 		appCtx.HandleError(err)
 		return

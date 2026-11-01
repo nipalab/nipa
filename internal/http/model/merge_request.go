@@ -74,9 +74,10 @@ type MergeRequestCheckResponse struct {
 }
 
 type ReportMergeRequestCheckRequest struct {
-	Name       string `json:"name"`
-	State      string `json:"state"`
-	DetailsURL string `json:"details_url"`
+	Name         string `json:"name"`
+	State        string `json:"state"`
+	DetailsURL   string `json:"details_url"`
+	HeadCommitID string `json:"head_commit_id"`
 }
 
 type MergeRequestDiffResponse struct {

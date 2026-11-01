@@ -26,6 +26,8 @@ type MergeCommitOptions struct {
 	Strategy string
 	Message  string
 	Author   snow.ID
+	// SourceCommitID pins the source head the gates were evaluated against.
+	SourceCommitID *snow.ID
 }
 
 // mergeCommitter writes one or more prebuilt commits atomically.
@@ -79,6 +81,9 @@ func (b *Branch) MergeForMergeRequest(ctx context.Context, projectID snow.ID, ta
 	}
 	if source.CommitID == nil {
 		return nil, domain.NewErrorConflict(fmt.Sprintf("cannot merge branch %q: source branch %q has no commits", targetBranch, sourceBranch))
+	}
+	if opts.SourceCommitID != nil && *source.CommitID != *opts.SourceCommitID {
+		return nil, domain.NewErrorConflict(fmt.Sprintf("source branch %q changed since the merge request was checked; review it again", sourceBranch))
 	}
 	if target.CommitID == nil {
 		return nil, domain.NewErrorConflict(fmt.Sprintf("cannot merge into empty branch %q", targetBranch))

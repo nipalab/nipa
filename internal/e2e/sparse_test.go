@@ -35,9 +35,9 @@ func TestEndToEnd_RestrictedUserSparsePush(t *testing.T) {
 
 	seed := filepath.Join(t.TempDir(), "seed")
 	require.NoError(t, repo.Clone(ctx, url, host, e2eOrgSlug, e2eProjectSlug, "", nil, seed))
-	writeFile(t, seed, "assets/logo.png", "logo-v1")
+	writeFile(t, seed, "assets/logo.cfg", "logo-v1")
 	writeFile(t, seed, "src/main.go", "package main")
-	stagePath(t, seed, "assets/logo.png")
+	stagePath(t, seed, "assets/logo.cfg")
 	stagePath(t, seed, "src/main.go")
 	require.NoError(t, clientusecase.NewPush(adminAuth, adminClient, localrepo.NewLocalRepo()).Run(ctx, seed, "seed"))
 
@@ -69,16 +69,16 @@ func TestEndToEnd_RestrictedUserSparsePush(t *testing.T) {
 	writerRepo := clientusecase.NewRepo(writerAuth, writerClient, localrepo.NewLocalRepo())
 	work := filepath.Join(t.TempDir(), "writer")
 	require.NoError(t, writerRepo.Clone(ctx, url, host, e2eOrgSlug, e2eProjectSlug, "", []string{"assets"}, work))
-	assertFileContent(t, work, "assets/logo.png", "logo-v1")
+	assertFileContent(t, work, "assets/logo.cfg", "logo-v1")
 	assertNoFile(t, work, "src/main.go")
 
-	writeFile(t, work, "assets/logo.png", "logo-v2")
-	stagePath(t, work, "assets/logo.png")
+	writeFile(t, work, "assets/logo.cfg", "logo-v2")
+	stagePath(t, work, "assets/logo.cfg")
 	require.NoError(t, clientusecase.NewPush(writerAuth, writerClient, localrepo.NewLocalRepo()).Run(ctx, work, "sparse write"))
 
 	full := filepath.Join(t.TempDir(), "full")
 	require.NoError(t, repo.Clone(ctx, url, host, e2eOrgSlug, e2eProjectSlug, "", nil, full))
-	assertFileContent(t, full, "assets/logo.png", "logo-v2")
+	assertFileContent(t, full, "assets/logo.cfg", "logo-v2")
 	assertFileContent(t, full, "src/main.go", "package main")
 }
 
@@ -93,10 +93,10 @@ func TestEndToEnd_SparseCheckout(t *testing.T) {
 
 	seed := filepath.Join(t.TempDir(), "seed")
 	require.NoError(t, repo.Clone(ctx, url, host, e2eOrgSlug, e2eProjectSlug, "", nil, seed))
-	writeFile(t, seed, "assets/logo.png", "logo-v1")
+	writeFile(t, seed, "assets/logo.cfg", "logo-v1")
 	writeFile(t, seed, "src/main.go", "package main")
 	writeFile(t, seed, "docs/readme.md", "docs-v1")
-	stagePath(t, seed, "assets/logo.png")
+	stagePath(t, seed, "assets/logo.cfg")
 	stagePath(t, seed, "src/main.go")
 	stagePath(t, seed, "docs/readme.md")
 	pusher := clientusecase.NewPush(adminAuth, adminClient, localrepo.NewLocalRepo())
@@ -104,17 +104,17 @@ func TestEndToEnd_SparseCheckout(t *testing.T) {
 
 	work := filepath.Join(t.TempDir(), "sparse")
 	require.NoError(t, repo.Clone(ctx, url, host, e2eOrgSlug, e2eProjectSlug, "", []string{"assets"}, work))
-	assertFileContent(t, work, "assets/logo.png", "logo-v1")
+	assertFileContent(t, work, "assets/logo.cfg", "logo-v1")
 	assertNoFile(t, work, "src/main.go")
 	assertNoFile(t, work, "docs/readme.md")
 
-	writeFile(t, work, "assets/logo.png", "logo-v2")
-	stagePath(t, work, "assets/logo.png")
+	writeFile(t, work, "assets/logo.cfg", "logo-v2")
+	stagePath(t, work, "assets/logo.cfg")
 	require.NoError(t, pusher.Run(ctx, work, "update logo"), "sparse clones must be able to push")
 
 	full := filepath.Join(t.TempDir(), "full")
 	require.NoError(t, repo.Clone(ctx, url, host, e2eOrgSlug, e2eProjectSlug, "", nil, full))
-	assertFileContent(t, full, "assets/logo.png", "logo-v2")
+	assertFileContent(t, full, "assets/logo.cfg", "logo-v2")
 	assertFileContent(t, full, "src/main.go", "package main")
 	assertFileContent(t, full, "docs/readme.md", "docs-v1")
 
@@ -125,12 +125,12 @@ func TestEndToEnd_SparseCheckout(t *testing.T) {
 
 	require.NoError(t, updater.SetSparse(work, []string{"docs"}))
 	require.NoError(t, updater.Run(ctx, work))
-	assertNoFile(t, work, "assets/logo.png")
+	assertNoFile(t, work, "assets/logo.cfg")
 	assertFileContent(t, work, "docs/readme.md", "docs-v1")
 
 	require.NoError(t, updater.SetSparse(work, nil))
 	require.NoError(t, updater.Run(ctx, work))
 	assertFileContent(t, work, "src/main.go", "package main")
-	assertFileContent(t, work, "assets/logo.png", "logo-v2")
+	assertFileContent(t, work, "assets/logo.cfg", "logo-v2")
 	assertFileContent(t, work, "docs/readme.md", "docs-v1")
 }

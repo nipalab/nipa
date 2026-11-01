@@ -82,14 +82,17 @@ func TestMergeRequestChecksHandler_Report(t *testing.T) {
 	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(42), domain.PermissionRead).Return(true)
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(42), "feature").
 		Return(&domain.Branch{ID: 3, ProjectID: 42, CommitID: &head}, nil)
+	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(42), "main").
+		Return(&domain.Branch{ID: 2, ProjectID: 42}, nil).AnyTimes()
 
 	ctx := domain.ContextWithClaim(context.Background(), domain.Claims{UserID: snow.ID(7)})
 	resp, err := srv.ReportMergeRequestCheck(ctx, &pb.ReportMergeRequestCheckRequest{
-		Context:    &pb.ProjectContext{Org: "org", Project: "proj"},
-		Number:     5,
-		Name:       "build",
-		State:      domain.MergeRequestCheckSuccess,
-		DetailsUrl: "https://ci.example/run/1",
+		Context:      &pb.ProjectContext{Org: "org", Project: "proj"},
+		Number:       5,
+		Name:         "build",
+		State:        domain.MergeRequestCheckSuccess,
+		DetailsUrl:   "https://ci.example/run/1",
+		HeadCommitId: head.Base36(),
 	})
 	require.NoError(t, err)
 	require.Equal(t, snow.ID(9).Base36(), resp.GetCheck().GetId())

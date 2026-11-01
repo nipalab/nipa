@@ -55,8 +55,10 @@ func (c *MergeRequestCheck) WithHooks(hooks hookMergeRequestCheckGate) *MergeReq
 }
 
 // Report records the latest result of a named check for the request's current
-// source head. Any project writer may report.
-func (c *MergeRequestCheck) Report(ctx context.Context, projectID snow.ID, number int64, name, state, detailsURL string) (*domain.MergeRequestCheck, error) {
+// source head, which the caller must name so a push after the run started
+// cannot inherit its result. Any project writer may report, except the request's
+// author when the target branch requires status checks.
+func (c *MergeRequestCheck) Report(ctx context.Context, projectID snow.ID, number int64, name, state, detailsURL, headCommitID string) (*domain.MergeRequestCheck, error) {
 	claim, ok := domain.ClaimFromContext(ctx)
 	if !ok {
 		return nil, domain.NewErrorNoPermission()
@@ -75,6 +77,13 @@ func (c *MergeRequestCheck) Report(ctx context.Context, projectID snow.ID, numbe
 	if !domain.IsValidMergeRequestCheckState(state) {
 		return nil, domain.NewErrorUser("state must be one of pending, success, failed")
 	}
+	if strings.TrimSpace(headCommitID) == "" {
+		return nil, domain.NewErrorUser("head_commit_id is required")
+	}
+	reported, err := snow.ParseBase36(strings.TrimSpace(headCommitID))
+	if err != nil {
+		return nil, domain.NewErrorUser("invalid head_commit_id")
+	}
 	mr, err := c.load(ctx, projectID, number)
 	if err != nil {
 		return nil, err
@@ -85,6 +94,18 @@ func (c *MergeRequestCheck) Report(ctx context.Context, projectID snow.ID, numbe
 	}
 	if head == nil {
 		return nil, domain.NewErrorConflict("the source branch has no commits")
+	}
+	if *head != reported {
+		return nil, domain.NewErrorConflict("the source branch moved since this check started")
+	}
+	if mr.CreatedBy == claim.UserID {
+		target, err := c.branchRepo.GetBranchByName(ctx, projectID, mr.TargetBranch)
+		if err != nil {
+			return nil, err
+		}
+		if target.RequireStatusChecks {
+			return nil, domain.NewErrorNoPermission()
+		}
 	}
 	check, err := c.repo.Upsert(ctx, domain.MergeRequestCheck{
 		ID:             c.snowNode.Generate(),

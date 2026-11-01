@@ -43,6 +43,7 @@ type fakeMRClient struct {
 	checkName      string
 	checkState     string
 	checkURL       string
+	checkCommit    string
 	reportCheck    *domain.MergeRequestCheck
 	reportErr      error
 	checksResult   []*domain.MergeRequestCheck
@@ -188,8 +189,8 @@ func (f *fakeMRClient) ListMergeRequestReviews(_ context.Context, _, _ string, _
 	return f.reviewsResult, f.reviewsErr
 }
 
-func (f *fakeMRClient) ReportMergeRequestCheck(_ context.Context, _, _ string, _ int64, name, state, detailsURL string) (*domain.MergeRequestCheck, error) {
-	f.checkName, f.checkState, f.checkURL = name, state, detailsURL
+func (f *fakeMRClient) ReportMergeRequestCheck(_ context.Context, _, _ string, _ int64, name, state, detailsURL, commit string) (*domain.MergeRequestCheck, error) {
+	f.checkName, f.checkState, f.checkURL, f.checkCommit = name, state, detailsURL, commit
 	return f.reportCheck, f.reportErr
 }
 
@@ -929,17 +930,25 @@ func TestSetupMrChecksCmd(t *testing.T) {
 
 func TestSetupMrCheckCmd(t *testing.T) {
 	root := setupRepo(t, "feature")
-	client := &fakeMRClient{reportCheck: &domain.MergeRequestCheck{Name: "build", State: "success"}}
+	client := &fakeMRClient{
+		reportCheck:     &domain.MergeRequestCheck{Name: "build", State: "success"},
+		getMergeability: &domain.Mergeability{SourceCommitID: "head1"},
+	}
 	cli := newMRCli(t, client)
 
 	out, err := runCmdInDir(t, root, cli.setupMrCmd(), "check", "7", "--name", " build ", "--state", "success", "--url", "https://ci/x")
 	require.NoError(t, err)
+	require.Equal(t, "head1", client.checkCommit)
+
+	_, err = runCmdInDir(t, root, cli.setupMrCmd(), "check", "7", "--name", " build ", "--state", "success", "--url", "https://ci/x", "--commit", "zz")
+	require.NoError(t, err)
+	require.Equal(t, "zz", client.checkCommit)
 	require.Contains(t, out, `Check "build" reported as success.`)
 	require.Equal(t, "build", client.checkName)
 	require.Equal(t, "success", client.checkState)
 	require.Equal(t, "https://ci/x", client.checkURL)
 
-	client = &fakeMRClient{reportErr: errors.New("boom")}
+	client = &fakeMRClient{reportErr: errors.New("boom"), getMergeability: &domain.Mergeability{SourceCommitID: "head1"}}
 	cli = newMRCli(t, client)
 	_, err = runCmdInDir(t, root, cli.setupMrCmd(), "check", "7", "--name", "build", "--state", "success")
 	require.EqualError(t, err, "boom")

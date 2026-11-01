@@ -1,6 +1,9 @@
 package suite_test
 
 import (
+	"fmt"
+	"net/http"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -534,11 +537,23 @@ var _ = Describe("nipa mr", func() {
 		view := runNipa(dir, "mr", "view", "1")
 		Expect(view.Output()).To(ContainSubstring("blocked by status_checks"))
 
-		api.reportMergeRequestCheck(orgSlug, project, 1, "build", "failed", "")
+		ci := newIdentity("ci-bot")
+		api.createPathRule(orgSlug, project, ci.userID, "", 3)
+		ciAPI := newAPIClient(cli.apiURL, ci.email, ci.password)
+
+		ciAPI.reportMergeRequestCheck(orgSlug, project, 1, "build", "failed", "")
 		check = api.checkMergeRequest(orgSlug, project, 1)
 		Expect(check.BlockedBy).To(Equal("status_checks"))
 
-		api.reportMergeRequestCheck(orgSlug, project, 1, "build", "success", "https://ci.example/run/1")
+		stale, _ := ciAPI.doRaw(http.MethodPost, fmt.Sprintf("/orgs/%s/projects/%s/merge-requests/1/checks", orgSlug, project),
+			map[string]any{"name": "build", "state": "success", "head_commit_id": "1"})
+		Expect(stale).To(Equal(http.StatusConflict), "a result for an old head is refused")
+
+		selfReport, _ := api.doRaw(http.MethodPost, fmt.Sprintf("/orgs/%s/projects/%s/merge-requests/1/checks", orgSlug, project),
+			map[string]any{"name": "build", "state": "success", "head_commit_id": check.SourceCommitID})
+		Expect(selfReport).To(Equal(http.StatusForbidden), "the author cannot vouch for their own request")
+
+		ciAPI.reportMergeRequestCheck(orgSlug, project, 1, "build", "success", "https://ci.example/run/1")
 		check = api.checkMergeRequest(orgSlug, project, 1)
 		Expect(check.BlockedBy).To(BeEmpty())
 
@@ -554,7 +569,8 @@ var _ = Describe("nipa mr", func() {
 		check = api.checkMergeRequest(orgSlug, project, 1)
 		Expect(check.BlockedBy).To(Equal("status_checks"))
 
-		reported := runNipa(dir, "mr", "check", "1", "--name", "build", "--state", "success")
+		ciDir := cloneRepoAs(ci, workspace(), repoURLFor(orgSlug, project), "ci-work")
+		reported := runNipaAs(ci, ciDir, "mr", "check", "1", "--name", "build", "--state", "success")
 		Expect(reported.ExitCode).To(Equal(0), reported.Output())
 
 		merged := runNipa(dir, "mr", "merge", "1")
