@@ -77,10 +77,6 @@ func (f *fakeS3) serveHTTP(w http.ResponseWriter, r *http.Request) {
 			writeS3Error(w, http.StatusForbidden, "AccessDenied")
 			return
 		}
-		if source := r.Header.Get("X-Amz-Copy-Source"); source != "" {
-			f.serveCopy(w, objects, key, source)
-			return
-		}
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			writeS3Error(w, http.StatusBadRequest, "InvalidRequest")
@@ -139,27 +135,6 @@ func (f *fakeS3) putRaw(bucket, key string, data []byte) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.buckets[bucket][key] = data
-}
-
-func (f *fakeS3) serveCopy(w http.ResponseWriter, objects map[string][]byte, key, source string) {
-	decoded, err := url.PathUnescape(strings.TrimPrefix(source, "/"))
-	if err != nil {
-		writeS3Error(w, http.StatusBadRequest, "InvalidRequest")
-		return
-	}
-	_, srcKey, _ := strings.Cut(decoded, "/")
-	f.mu.Lock()
-	data, ok := objects[srcKey]
-	if ok {
-		objects[key] = append([]byte(nil), data...)
-	}
-	f.mu.Unlock()
-	if !ok {
-		writeS3Error(w, http.StatusNotFound, "NoSuchKey")
-		return
-	}
-	w.Header().Set("Content-Type", "application/xml")
-	_, _ = io.WriteString(w, `<CopyObjectResult><ETag>"fake-etag"</ETag><LastModified>2026-01-01T00:00:00.000Z</LastModified></CopyObjectResult>`)
 }
 
 func (f *fakeS3) serveBucket(w http.ResponseWriter, r *http.Request, bucketOK bool) {
@@ -573,41 +548,13 @@ func TestStore_StagedUploadLifecycle(t *testing.T) {
 	_, err = store.GetStaged(ctx, "other-slot", hash)
 	require.True(t, domain.IsErrorNotFound(err), "slots are isolated")
 
-	require.NoError(t, store.PromoteStaged(ctx, "slot", hash))
+	require.NoError(t, store.Put(ctx, hash, staged))
+	require.NoError(t, store.DiscardStaged(ctx, "slot", hash))
 	got, err := store.Get(ctx, hash)
 	require.NoError(t, err)
 	require.Equal(t, data, got)
 	_, err = store.GetStaged(ctx, "slot", hash)
-	require.True(t, domain.IsErrorNotFound(err), "promotion drops the staging object")
-}
-
-func TestStore_PromoteKeepsExistingContent(t *testing.T) {
-	store, fake := newTestStore(t)
-	ctx := context.Background()
-
-	data := []byte("already shared")
-	hash := chunker.Sum(data)
-	require.NoError(t, store.Put(ctx, hash, data))
-	fake.putRaw("test-bucket", store.stagingKey("slot", hash), []byte("staged copy"))
-
-	require.NoError(t, store.PromoteStaged(ctx, "slot", hash))
-
-	got, err := store.Get(ctx, hash)
-	require.NoError(t, err)
-	require.Equal(t, data, got, "the shared object is never overwritten")
-	_, err = store.GetStaged(ctx, "slot", hash)
-	require.True(t, domain.IsErrorNotFound(err))
-}
-
-func TestStore_PromoteErrors(t *testing.T) {
-	store, fake := newTestStore(t)
-	ctx := context.Background()
-	hash := chunker.Sum([]byte("missing staged"))
-
-	require.Error(t, store.PromoteStaged(ctx, "slot", hash), "nothing staged to copy")
-
-	fake.failHead.Store(true)
-	require.Error(t, store.PromoteStaged(ctx, "slot", hash))
+	require.True(t, domain.IsErrorNotFound(err), "discarding drops the staging object")
 }
 
 func TestStore_DiscardStaged(t *testing.T) {

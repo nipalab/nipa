@@ -93,8 +93,6 @@ type stubDirectChunkStore struct {
 
 	staged     map[string][]byte
 	stagedErr  error
-	promoted   []domain.Hash
-	promoteErr error
 	discarded  []domain.Hash
 	discardErr error
 }
@@ -133,17 +131,6 @@ func (s *stubDirectChunkStore) GetStaged(_ context.Context, slot string, hash do
 		return nil, domain.NewErrorNotFound("nothing staged")
 	}
 	return data, nil
-}
-
-func (s *stubDirectChunkStore) PromoteStaged(_ context.Context, slot string, hash domain.Hash) error {
-	if s.promoteErr != nil {
-		return s.promoteErr
-	}
-	key := slot + "/" + hash.String()
-	s.data[hash] = s.staged[key]
-	delete(s.staged, key)
-	s.promoted = append(s.promoted, hash)
-	return nil
 }
 
 func (s *stubDirectChunkStore) DiscardStaged(_ context.Context, slot string, hash domain.Hash) error {

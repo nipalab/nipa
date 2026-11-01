@@ -934,11 +934,12 @@ compatible for one release.
   `<prefix>/uploads/<project>/<hash[:2]>/<hash[2:]>` (put a lifecycle expiry on
   `uploads/`), so one project can neither overwrite nor corrupt content another
   relies on. `ConfirmChunkUploads` reads the staged bytes, hashes them, checks the
-  possession proof and only then promotes them with a server-side copy to the
-  shared key (`PromoteStaged`; a no-op when the chunk already exists) — a staged
-  object that does not match its hash is discarded. Because the shared key is
-  written only after verification, content found there is trusted and download
-  presigning needs no re-verification.
+  possession proof, and then writes those very bytes to the shared key with a
+  plain `Put` (never a copy of the staging object, which its uploader can still
+  overwrite until the target expires) before discarding the staging object — a
+  staged object that does not match its hash is discarded unstored. Because the
+  shared key is written only from verified bytes, content found there is trusted
+  and download presigning needs no re-verification.
 - **Storage accounting seam (free vs cloud).** `usecase.Chunk.WithStorageLedger`
   accepts an optional `StorageLedger` (`internal/usecase/storage_ledger.go`:
   `AttributedSizes`/`Headroom`/`Attribute`). The free version wires none (nil):

@@ -61,15 +61,6 @@ func (s directStubStore) GetStaged(_ context.Context, slot string, hash domain.H
 	return data, nil
 }
 
-func (s directStubStore) PromoteStaged(ctx context.Context, slot string, hash domain.Hash) error {
-	key := slot + "/" + hash.String()
-	if err := s.ChunkStore.Put(ctx, hash, s.staged[key]); err != nil {
-		return err
-	}
-	delete(s.staged, key)
-	return nil
-}
-
 func (s directStubStore) DiscardStaged(_ context.Context, slot string, hash domain.Hash) error {
 	delete(s.staged, slot+"/"+hash.String())
 	return nil

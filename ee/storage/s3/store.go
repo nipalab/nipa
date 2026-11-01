@@ -240,31 +240,6 @@ func (s *Store) GetStaged(ctx context.Context, slot string, hash domain.Hash) (d
 	return data, nil
 }
 
-// PromoteStaged copies verified staged content to the shared key with a
-// server-side copy (skipped when the chunk is already stored) and removes the
-// staging object.
-func (s *Store) PromoteStaged(ctx context.Context, slot string, hash domain.Hash) (err error) {
-	ctx, span := obs.StartSpan(ctx, "storage.s3.promote_staged",
-		attribute.String(obs.AttrChunkHash, hash.String()),
-		attribute.String(obs.AttrBackend, "s3"),
-		attribute.String("nipa.storage.bucket", s.bucket))
-	defer func() { obs.FinishSpan(span, err) }()
-
-	exists, err := s.Exists(ctx, hash)
-	if err != nil {
-		return err
-	}
-	if !exists {
-		_, err = s.client.CopyObject(ctx,
-			minio.CopyDestOptions{Bucket: s.bucket, Object: s.key(hash)},
-			minio.CopySrcOptions{Bucket: s.bucket, Object: s.stagingKey(slot, hash)})
-		if err != nil {
-			return fmt.Errorf("s3: promote chunk %s: %w", hash, err)
-		}
-	}
-	return s.DiscardStaged(ctx, slot, hash)
-}
-
 // DiscardStaged removes a staging object.
 func (s *Store) DiscardStaged(ctx context.Context, slot string, hash domain.Hash) (err error) {
 	ctx, span := obs.StartSpan(ctx, "storage.s3.discard_staged",

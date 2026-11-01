@@ -465,7 +465,9 @@ func (c *Chunk) confirmUploads(ctx context.Context, org *domain.Organization, pr
 // BLAKE3(challenge || bytes) over bytes the server read itself. The shared
 // content-addressed key is only ever written after verification, so content
 // found there is trusted; a direct upload is read from the project's staging
-// slot, hashed, and only then promoted to the shared key.
+// slot, hashed, and the very bytes that were hashed are then written to the
+// shared key: the staging object is never copied, because its uploader can
+// still overwrite it until the upload target expires.
 func (c *Chunk) verifyPossession(ctx context.Context, project *domain.Project, hash domain.Hash, proof ChunkProof) (int64, bool, error) {
 	if proof.Challenge == "" || proof.Proof == "" {
 		return 0, false, nil
@@ -490,12 +492,12 @@ func (c *Chunk) verifyPossession(ctx context.Context, project *domain.Project, h
 		return 0, false, domain.NewErrorDatabase(fmt.Sprintf("read chunk %s: %v", hash, err))
 	}
 	if staged {
-		return c.promoteStaged(ctx, project, hash, data, proof)
+		return c.storeVerifiedStaged(ctx, project, hash, data, proof)
 	}
 	return int64(len(data)), chunkproof.Equal(chunkproof.Proof(proof.Challenge, data), proof.Proof), nil
 }
 
-func (c *Chunk) promoteStaged(ctx context.Context, project *domain.Project, hash domain.Hash, data []byte, proof ChunkProof) (int64, bool, error) {
+func (c *Chunk) storeVerifiedStaged(ctx context.Context, project *domain.Project, hash domain.Hash, data []byte, proof ChunkProof) (int64, bool, error) {
 	direct := c.chunkStore.(storage.DirectTransferStore)
 	slot := stagingSlot(project)
 	if chunker.Sum(data) != hash {
@@ -508,8 +510,11 @@ func (c *Chunk) promoteStaged(ctx context.Context, project *domain.Project, hash
 	if !chunkproof.Equal(chunkproof.Proof(proof.Challenge, data), proof.Proof) {
 		return 0, false, nil
 	}
-	if err := direct.PromoteStaged(ctx, slot, hash); err != nil {
-		return 0, false, domain.NewErrorInternalServer(fmt.Sprintf("promote chunk %s: %v", hash, err))
+	if err := c.chunkStore.Put(ctx, hash, data); err != nil {
+		return 0, false, domain.NewErrorInternalServer(fmt.Sprintf("store chunk %s: %v", hash, err))
+	}
+	if err := direct.DiscardStaged(ctx, slot, hash); err != nil {
+		return 0, false, domain.NewErrorInternalServer(fmt.Sprintf("discard staged chunk %s: %v", hash, err))
 	}
 	return int64(len(data)), true, nil
 }

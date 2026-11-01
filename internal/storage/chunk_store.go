@@ -53,12 +53,10 @@ type DirectTransferStore interface {
 	// when nothing was uploaded there.
 	GetStaged(ctx context.Context, slot string, hash domain.Hash) ([]byte, error)
 
-	// PromoteStaged stores verified staged content under its shared
-	// content-addressed key (a no-op when already present) and drops the
-	// staging object. Only the server calls it, after verifying the bytes.
-	PromoteStaged(ctx context.Context, slot string, hash domain.Hash) error
-
-	// DiscardStaged removes a staging object, e.g. one that failed verification.
+	// DiscardStaged removes a staging object once it was verified and stored
+	// (or rejected). The staging key stays writable by the uploader until its
+	// target expires, so callers must store the bytes they verified, never copy
+	// the staging object.
 	DiscardStaged(ctx context.Context, slot string, hash domain.Hash) error
 }
 
