@@ -87,3 +87,9 @@ CREATE TABLE branches_required_checks (
 );
 
 INSERT INTO branches (id, project_id, name, key, is_default) VALUES (1, 1, 'main', 'main', TRUE);
+CREATE TABLE project_chunk_uploads (
+    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    hash BLOB NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (project_id, hash)
+);

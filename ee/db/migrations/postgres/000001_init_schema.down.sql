@@ -7,6 +7,7 @@ DROP TABLE IF EXISTS ssh_public_keys;
 DROP TABLE IF EXISTS snowflake_node_leases;
 DROP TABLE IF EXISTS org_usage;
 DROP TABLE IF EXISTS project_usage;
+DROP TABLE IF EXISTS project_chunk_uploads;
 DROP TABLE IF EXISTS project_chunks;
 DROP TABLE IF EXISTS owner_quota;
 DROP TABLE IF EXISTS org_billing_owner;

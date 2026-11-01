@@ -173,7 +173,7 @@ func startTestServer(t *testing.T, dbConn *sql.DB) string {
 		SigningKey:  "e2e-chunk-signing-key",
 		PresignTTL:  time.Hour,
 		MaxPageSize: 1000,
-	})
+	}).WithProjectResolver(commonUc)
 	branchUc = branchUc.WithMergeCommitter(pushRepo).WithChunkUploader(chunkUc)
 	mrRepo := sqlite.NewMergeRequestRepository(dbConn)
 	reviewUc := serverusecase.NewMergeRequestReview(

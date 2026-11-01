@@ -626,3 +626,72 @@ func TestPermission_AdminHasProject(t *testing.T) {
 	reader := newTestPermission(t, []*domain.PBACRule{{PathPrefix: "", Permission: domain.PermissionRead}}, nil)
 	require.False(t, reader.AdminHasProject(permissionCtx(42), snow.ID(1)))
 }
+
+func TestPathFilter_CanDescendIgnoresRulesWithoutThePermissionBit(t *testing.T) {
+	filter := &PathFilter{
+		set: &permissionSet{
+			rules:    []*domain.PBACRule{{PathPrefix: "docs", Permission: domain.PermissionWrite}},
+			defaults: []*domain.ProjectPathPermission{{PathPrefix: "secret", Permission: 0}},
+		},
+		permission: domain.PermissionRead,
+	}
+
+	require.False(t, filter.CanDescend("secret/x"), "a deny default must not open the directory")
+	require.False(t, filter.CanDescend("docs"), "a write-only rule does not grant read")
+
+	filter.set.rules = append(filter.set.rules, &domain.PBACRule{PathPrefix: "docs", Permission: domain.PermissionRead})
+	require.True(t, filter.CanDescend("docs"))
+}
+
+func TestPermission_UserHasProjectAccess(t *testing.T) {
+	read := []*domain.PBACRule{{PathPrefix: "", Permission: domain.PermissionRead}}
+
+	build := func(t *testing.T, user *domain.User, userErr error, rules []*domain.PBACRule, rulesErr error, orgOwner bool) *Permission {
+		ctrl := gomock.NewController(t)
+		repo := NewMockpbacRepository(ctrl)
+		repo.EXPECT().ListEffectiveRules(gomock.Any(), gomock.Any(), gomock.Any()).Return(rules, rulesErr).AnyTimes()
+		repo.EXPECT().ListPathPermissions(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
+		repo.EXPECT().ProjectOrgID(gomock.Any(), gomock.Any()).Return(snow.ID(1), nil).AnyTimes()
+		users := NewMockuserLookup(ctrl)
+		users.EXPECT().GetByID(gomock.Any(), gomock.Any()).Return(user, userErr).AnyTimes()
+		orgs := NewMockorgAuthorizer(ctrl)
+		orgs.EXPECT().IsOrgOwner(gomock.Any(), gomock.Any()).DoAndReturn(
+			func(ctx context.Context, _ snow.ID) (bool, error) {
+				claim, _ := domain.ClaimFromContext(ctx)
+				require.Equal(t, snow.ID(9), claim.UserID, "the owner check must run as the target account")
+				return orgOwner, nil
+			}).AnyTimes()
+		return NewPermission(repo, users, NewMockgroupLookup(ctrl), orgs)
+	}
+	ctx := permissionCtx(1)
+
+	t.Run("rule grants access", func(t *testing.T) {
+		p := build(t, &domain.User{ID: 9}, nil, read, nil, false)
+		require.True(t, p.UserHasProjectAccess(ctx, 1, 9, domain.PermissionRead))
+		require.False(t, p.UserHasProjectAccess(ctx, 1, 9, domain.PermissionWrite))
+	})
+
+	t.Run("no rules means no access", func(t *testing.T) {
+		p := build(t, &domain.User{ID: 9}, nil, nil, nil, false)
+		require.False(t, p.UserHasProjectAccess(ctx, 1, 9, domain.PermissionRead))
+	})
+
+	t.Run("global admins always have access", func(t *testing.T) {
+		require.True(t, build(t, &domain.User{ID: 9, IsAdmin: true}, nil, nil, nil, false).
+			UserHasProjectAccess(ctx, 1, 9, domain.PermissionRead))
+		require.True(t, build(t, &domain.User{ID: 9, IsSuperAdmin: true}, nil, nil, nil, false).
+			UserHasProjectAccess(ctx, 1, 9, domain.PermissionRead))
+	})
+
+	t.Run("org owners have access", func(t *testing.T) {
+		p := build(t, &domain.User{ID: 9}, nil, nil, nil, true)
+		require.True(t, p.UserHasProjectAccess(ctx, 1, 9, domain.PermissionRead))
+	})
+
+	t.Run("lookup failures deny", func(t *testing.T) {
+		require.False(t, build(t, nil, errors.New("boom"), read, nil, false).
+			UserHasProjectAccess(ctx, 1, 9, domain.PermissionRead))
+		require.False(t, build(t, &domain.User{ID: 9}, nil, nil, errors.New("boom"), false).
+			UserHasProjectAccess(ctx, 1, 9, domain.PermissionRead))
+	})
+}

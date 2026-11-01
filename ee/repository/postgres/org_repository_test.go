@@ -205,3 +205,22 @@ func (s *OrgRepositorySuite) TestListMembers_ExcludesDeletedUsers() {
 		s.NotEqual(userID, member.User.ID)
 	}
 }
+
+func (s *OrgRepositorySuite) TestRemoveMember_DropsAccess() {
+	ctx := context.Background()
+	repo := NewOrgRepository(s.db)
+
+	userID := seedPBACUser(s.T(), s.db, 3)
+	group := seedPBACGroup(s.T(), s.db, 701, 1, "devs", userID.Int64())
+	s.Require().NoError(repo.UpsertMember(ctx, 1, userID, domain.OrgRoleMember))
+	_, err := s.db.ExecContext(ctx, `INSERT INTO pbac_rules (user_id, org_id, permission) VALUES ($1, 1, 3)`, userID.Int64())
+	s.Require().NoError(err)
+
+	s.Require().NoError(repo.RemoveMember(ctx, 1, userID))
+
+	var rules, memberships int
+	s.Require().NoError(s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM pbac_rules WHERE user_id = $1`, userID.Int64()).Scan(&rules))
+	s.Zero(rules)
+	s.Require().NoError(s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM group_members WHERE group_id = $1`, group.Int64()).Scan(&memberships))
+	s.Zero(memberships)
+}

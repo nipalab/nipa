@@ -167,6 +167,13 @@ func (b *Branch) pathHashAtCommit(ctx context.Context, projectID snow.ID, commit
 		}
 		for _, file := range files {
 			if file.Name == last {
+				filter, err := b.permUc.CompileFilter(ctx, projectID, domain.PermissionRead)
+				if err != nil {
+					return domain.Hash{}, false, err
+				}
+				if !filter.Allow(path) {
+					return domain.Hash{}, false, nil
+				}
 				return file.Hash, true, nil
 			}
 		}

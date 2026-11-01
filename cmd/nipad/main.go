@@ -129,6 +129,7 @@ func main() {
 		WithSSHKeys(sqlite.NewSSHKeyRepository(dbConn))
 	orgUsecase := usecase.NewOrg(orgRepo, snowUser)
 	permissionUsecase := usecase.NewPermission(pbacRepository, userRepo, groupRepository, orgUsecase)
+	orgUsecase.WithPermissionCache(permissionUsecase)
 	projectUsecase := usecase.NewProject(projectRepo, snowUser, permissionUsecase, orgUsecase)
 	chunkStore, err := createChunkStore(cfg)
 	if err != nil {
@@ -166,11 +167,14 @@ func main() {
 	pushUsecase = pushUsecase.WithReviews(mergeRequestReviewUsecase)
 	mergeRequestUsecase = mergeRequestUsecase.WithReview(mergeRequestReviewUsecase)
 	mergeRequestUsecase = mergeRequestUsecase.WithUsers(userRepo)
+	mergeRequestUsecase = mergeRequestUsecase.WithAccessChecker(permissionUsecase)
+	mergeRequestReviewUsecase = mergeRequestReviewUsecase.WithAccessChecker(permissionUsecase)
+	commonUsecase := usecase.NewCommon(orgRepo, projectRepo)
 	chunkUsecase := usecase.NewChunk(pushRepository, chunkStore, usecase.ChunkTransferConfig{
 		SigningKey:  cfg.ChunkURLSigningKey,
 		PresignTTL:  time.Duration(cfg.ChunkPresignTTLSeconds) * time.Second,
 		MaxPageSize: cfg.ChunkMaxPageSize,
-	}).WithMetrics(metrics)
+	}).WithProjectResolver(commonUsecase).WithMetrics(metrics)
 	branchUsecase = branchUsecase.WithMergeCommitter(pushRepository).WithChunkUploader(chunkUsecase)
 	webhookRepository := sqlite.NewWebhookRepository(dbConn)
 	webhookDispatcher := webhook.NewDispatcher(webhookRepository, webhook.NewClient(webhook.ClientConfig{
@@ -212,7 +216,7 @@ func main() {
 		Auth:               authUsecase,
 		User:               usecase.NewUser(snowUser, userRepo, passwordHasher),
 		SSHKey:             usecase.NewSSHKey(snowUser, sqlite.NewSSHKeyRepository(dbConn)),
-		Common:             usecase.NewCommon(orgRepo, projectRepo),
+		Common:             commonUsecase,
 		Branch:             branchUsecase,
 		Tag:                tagUsecase,
 		Push:               pushUsecase,

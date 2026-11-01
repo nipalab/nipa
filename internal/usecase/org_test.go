@@ -323,3 +323,23 @@ func TestOrg_IsOrgOwner(t *testing.T) {
 		require.ErrorIs(t, err, wantErr)
 	})
 }
+
+type fakePermissionCache struct{ invalidated int }
+
+func (f *fakePermissionCache) InvalidateAll() { f.invalidated++ }
+
+func TestOrg_RemoveMember_InvalidatesPermissionCache(t *testing.T) {
+	org, repo := newTestOrg(t)
+	cache := &fakePermissionCache{}
+	org.WithPermissionCache(cache)
+	ctx := permissionCtx(42, withAdmin())
+
+	repo.EXPECT().MemberRole(gomock.Any(), snow.ID(1), snow.ID(7)).Return(domain.OrgRoleMember, nil).Times(2)
+	repo.EXPECT().RemoveMember(gomock.Any(), snow.ID(1), snow.ID(7)).Return(nil)
+	require.NoError(t, org.RemoveMember(ctx, snow.ID(1), snow.ID(7)))
+	require.Equal(t, 1, cache.invalidated)
+
+	repo.EXPECT().RemoveMember(gomock.Any(), snow.ID(1), snow.ID(7)).Return(errors.New("boom"))
+	require.Error(t, org.RemoveMember(ctx, snow.ID(1), snow.ID(7)))
+	require.Equal(t, 1, cache.invalidated, "a failed removal keeps the cache")
+}

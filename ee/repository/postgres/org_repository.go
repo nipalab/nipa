@@ -136,11 +136,32 @@ func (r *OrgRepository) UpsertMember(ctx context.Context, orgID, userID snow.ID,
 }
 
 func (r *OrgRepository) RemoveMember(ctx context.Context, orgID, userID snow.ID) error {
-	err := r.queries.OrgMemberDelete(ctx, sqlcPostgres.OrgMemberDeleteParams{
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return handleError(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	q := sqlcPostgres.New(tx)
+	if err := q.OrgMemberDelete(ctx, sqlcPostgres.OrgMemberDeleteParams{
 		OrgID:  orgID.Int64(),
 		UserID: userID.Int64(),
-	})
-	return handleError(err)
+	}); err != nil {
+		return handleError(err)
+	}
+	if err := q.PBACRuleDeleteByUserOrg(ctx, sqlcPostgres.PBACRuleDeleteByUserOrgParams{
+		UserID: sql.NullInt64{Int64: userID.Int64(), Valid: true},
+		OrgID:  orgID.Int64(),
+	}); err != nil {
+		return handleError(err)
+	}
+	if err := q.GroupMemberDeleteByUserOrg(ctx, sqlcPostgres.GroupMemberDeleteByUserOrgParams{
+		UserID: userID.Int64(),
+		OrgID:  orgID.Int64(),
+	}); err != nil {
+		return handleError(err)
+	}
+	return handleError(tx.Commit())
 }
 
 func (r *OrgRepository) CountMembersByRole(ctx context.Context, orgID snow.ID, role string) (int, error) {

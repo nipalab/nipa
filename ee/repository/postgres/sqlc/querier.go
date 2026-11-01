@@ -33,6 +33,7 @@ type Querier interface {
 	BranchUpdateCommit(ctx context.Context, arg BranchUpdateCommitParams) error
 	BranchUpdateCommitIf(ctx context.Context, arg BranchUpdateCommitIfParams) (sql.Result, error)
 	ChunkGetByHash(ctx context.Context, hash []byte) (Chunk, error)
+	ChunkGetByHashForProject(ctx context.Context, arg ChunkGetByHashForProjectParams) (Chunk, error)
 	ChunkInsertOrIgnore(ctx context.Context, arg ChunkInsertOrIgnoreParams) error
 	ChunkListByTree(ctx context.Context, treeID int64) ([]ChunkListByTreeRow, error)
 	CommitGet(ctx context.Context, id int64) (Commit, error)
@@ -95,6 +96,7 @@ type Querier interface {
 	GroupListByUser(ctx context.Context, userID int64) ([]Group, error)
 	GroupMemberAdd(ctx context.Context, arg GroupMemberAddParams) error
 	GroupMemberCountByOrg(ctx context.Context, orgID int64) ([]GroupMemberCountByOrgRow, error)
+	GroupMemberDeleteByUserOrg(ctx context.Context, arg GroupMemberDeleteByUserOrgParams) error
 	GroupMemberList(ctx context.Context, groupID int64) ([]GroupMemberListRow, error)
 	GroupMemberRemove(ctx context.Context, arg GroupMemberRemoveParams) error
 	InsertProjectChunks(ctx context.Context, arg InsertProjectChunksParams) ([]int64, error)
@@ -166,10 +168,13 @@ type Querier interface {
 	OrgMemberUpsert(ctx context.Context, arg OrgMemberUpsertParams) error
 	PBACRuleCreate(ctx context.Context, arg PBACRuleCreateParams) (PbacRule, error)
 	PBACRuleDelete(ctx context.Context, id int64) error
+	PBACRuleDeleteByUserOrg(ctx context.Context, arg PBACRuleDeleteByUserOrgParams) error
 	PBACRuleDeleteForProject(ctx context.Context, arg PBACRuleDeleteForProjectParams) (int64, error)
 	PBACRuleGetForProject(ctx context.Context, arg PBACRuleGetForProjectParams) (PbacRule, error)
 	PBACRuleListByProject(ctx context.Context, projectID sql.NullInt64) ([]PBACRuleListByProjectRow, error)
 	PBACRuleListEffective(ctx context.Context, arg PBACRuleListEffectiveParams) ([]PbacRule, error)
+	ProjectChunkUploadInsert(ctx context.Context, arg ProjectChunkUploadInsertParams) error
+	ProjectChunkUploadList(ctx context.Context, arg ProjectChunkUploadListParams) ([][]byte, error)
 	ProjectPathPermissionDelete(ctx context.Context, arg ProjectPathPermissionDeleteParams) error
 	ProjectPathPermissionList(ctx context.Context, projectID int64) ([]ProjectPathsPermission, error)
 	ProjectPathPermissionUpsert(ctx context.Context, arg ProjectPathPermissionUpsertParams) (ProjectPathsPermission, error)

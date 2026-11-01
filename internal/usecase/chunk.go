@@ -21,6 +21,12 @@ import (
 type chunkRepository interface {
 	InsertChunkIfNotExists(ctx context.Context, hash domain.Hash, sizeBytes int64) error
 	HasChunk(ctx context.Context, hash domain.Hash) (bool, error)
+	LinkProjectChunk(ctx context.Context, projectID snow.ID, hash domain.Hash) error
+	LinkedProjectChunks(ctx context.Context, projectID snow.ID, hashes []domain.Hash) (map[domain.Hash]bool, error)
+}
+
+type chunkProjectResolver interface {
+	ResolveBySlug(ctx context.Context, orgSlug, projectSlug string) (*domain.Organization, *domain.Project, error)
 }
 
 // ChunkRef identifies a chunk and the exact size of its content.
@@ -54,6 +60,7 @@ type Chunk struct {
 	chunkStore storage.ChunkStore
 	transfer   ChunkTransferConfig
 	ledger     StorageLedger
+	projects   chunkProjectResolver
 	metrics    *obs.Metrics
 	now        func() time.Time
 
@@ -76,6 +83,13 @@ func NewChunk(chunkRepo chunkRepository, chunkStore storage.ChunkStore, transfer
 // usage is tracked and no quota is enforced.
 func (c *Chunk) WithStorageLedger(ledger StorageLedger) *Chunk {
 	c.ledger = ledger
+	return c
+}
+
+// WithProjectResolver lets signed uploads be attributed to the project named in
+// the transfer URL; without one, StoreUploaded refuses to run.
+func (c *Chunk) WithProjectResolver(projects chunkProjectResolver) *Chunk {
+	c.projects = projects
 	return c
 }
 
@@ -122,19 +136,39 @@ func (c *Chunk) Upload(ctx context.Context, hash domain.Hash, data []byte) (bool
 	return true, nil
 }
 
-// AttributeProjectChunks attributes chunks the server produced itself (merge
-// output) to the project. Without a ledger it is a no-op.
+// AttributeProjectChunks links chunks the server produced itself (merge output)
+// to the project and, when a ledger is attached, attributes their bytes.
 func (c *Chunk) AttributeProjectChunks(ctx context.Context, projectID snow.ID, chunks []LedgerChunk) error {
+	for _, chunk := range chunks {
+		if err := c.chunkRepo.LinkProjectChunk(ctx, projectID, chunk.Hash); err != nil {
+			return err
+		}
+	}
 	if c.ledger == nil || len(chunks) == 0 {
 		return nil
 	}
 	return c.ledger.AttributeProjectChunks(ctx, projectID, chunks)
 }
 
+// UploadForProject stores server-held content and links it to the project so a
+// push of that project may reference it.
+func (c *Chunk) UploadForProject(ctx context.Context, projectID snow.ID, hash domain.Hash, data []byte) (bool, error) {
+	isNew, err := c.Upload(ctx, hash, data)
+	if err != nil {
+		return false, err
+	}
+	if err := c.chunkRepo.LinkProjectChunk(ctx, projectID, hash); err != nil {
+		return false, err
+	}
+	return isNew, nil
+}
+
 // StoreUploaded verifies and stores chunk content without recording metadata;
 // the metadata row is written by ConfirmUploads once the client reports the
-// transfer done. Content writes are safe to run concurrently.
-func (c *Chunk) StoreUploaded(ctx context.Context, hash domain.Hash, data []byte) (err error) {
+// transfer done. The project named in the signed URL is linked to the hash,
+// which is what lets its pushes reference the chunk: only a caller that sent
+// the bytes can link them. Content writes are safe to run concurrently.
+func (c *Chunk) StoreUploaded(ctx context.Context, orgSlug, projectSlug string, hash domain.Hash, data []byte) (err error) {
 	ctx, span := obs.StartSpan(ctx, "chunk.store",
 		attribute.String(obs.AttrChunkHash, hash.String()),
 		attribute.Int(obs.AttrChunkSize, len(data)))
@@ -144,6 +178,13 @@ func (c *Chunk) StoreUploaded(ctx context.Context, hash domain.Hash, data []byte
 		c.metrics.ObserveChunkVerifyFailure("store")
 		return domain.NewErrorUser(fmt.Sprintf("chunk hash mismatch for %s", hash))
 	}
+	if c.projects == nil {
+		return domain.NewErrorInternalServer("chunk uploads are not attributable to a project")
+	}
+	_, project, err := c.projects.ResolveBySlug(ctx, orgSlug, projectSlug)
+	if err != nil {
+		return err
+	}
 	exists, err := c.chunkStore.Exists(ctx, hash)
 	if err != nil {
 		c.metrics.ObserveChunkOp("put", "error")
@@ -151,7 +192,7 @@ func (c *Chunk) StoreUploaded(ctx context.Context, hash domain.Hash, data []byte
 	}
 	if exists {
 		c.metrics.ObserveChunkOp("put", "dedup")
-		return nil
+		return c.chunkRepo.LinkProjectChunk(ctx, project.ID, hash)
 	}
 	if err := c.chunkStore.Put(ctx, hash, data); err != nil {
 		c.metrics.ObserveChunkOp("put", "error")
@@ -159,7 +200,7 @@ func (c *Chunk) StoreUploaded(ctx context.Context, hash domain.Hash, data []byte
 	}
 	c.metrics.ObserveChunkOp("put", "stored")
 	c.metrics.ObserveChunkBytes("put", int64(len(data)))
-	return nil
+	return c.chunkRepo.LinkProjectChunk(ctx, project.ID, hash)
 }
 
 // Download returns the stored content for a chunk hash.
@@ -178,9 +219,10 @@ func (c *Chunk) Download(ctx context.Context, hash domain.Hash) (data []byte, er
 	return data, nil
 }
 
-// PresignUploadURLs signs one page of upload paths for refs. Chunks already
-// present in the store get an empty URL with AlreadyStored set so clients can
-// skip the transfer. When a ledger is attached, refs that would add new bytes
+// PresignUploadURLs signs one page of upload paths for refs. Chunks the
+// project already uploaded get an empty URL with AlreadyStored set so clients
+// can skip the transfer; content that exists only for other projects is never
+// reported, so the client has to send the bytes itself. When a ledger is attached, refs that would add new bytes
 // are checked against the organization's remaining quota first.
 func (c *Chunk) PresignUploadURLs(ctx context.Context, org *domain.Organization, project *domain.Project, refs []ChunkRef, pageSize int, pageToken string) ([]ChunkURL, string, error) {
 	ctx, span := obs.StartSpan(ctx, "chunk.presign_upload",
@@ -209,11 +251,22 @@ func (c *Chunk) presignUploadURLs(ctx context.Context, org *domain.Organization,
 		return nil, "", err
 	}
 	expiry := chunkurl.Expiry(c.now(), c.transfer.PresignTTL)
+	pageHashes := make([]domain.Hash, 0, len(page))
+	for _, ref := range page {
+		pageHashes = append(pageHashes, ref.Hash)
+	}
+	linked, err := c.chunkRepo.LinkedProjectChunks(ctx, project.ID, pageHashes)
+	if err != nil {
+		return nil, "", err
+	}
 	urls := make([]ChunkURL, 0, len(page))
 	for _, ref := range page {
-		exists, err := c.chunkStore.Exists(ctx, ref.Hash)
-		if err != nil {
-			return nil, "", domain.NewErrorDatabase(fmt.Sprintf("check chunk %s: %v", ref.Hash, err))
+		exists := false
+		if linked[ref.Hash] {
+			exists, err = c.chunkStore.Exists(ctx, ref.Hash)
+			if err != nil {
+				return nil, "", domain.NewErrorDatabase(fmt.Sprintf("check chunk %s: %v", ref.Hash, err))
+			}
 		}
 		if exists {
 			urls = append(urls, ChunkURL{Hash: ref.Hash, AlreadyStored: true})
@@ -367,6 +420,10 @@ func (c *Chunk) confirmUploads(ctx context.Context, org *domain.Organization, pr
 	var missing []domain.Hash
 	var attributed []LedgerChunk
 	var confirmedBytes int64
+	linked, err := c.chunkRepo.LinkedProjectChunks(ctx, project.ID, hashes)
+	if err != nil {
+		return nil, 0, err
+	}
 	for _, hash := range hashes {
 		size, err := c.chunkStore.Size(ctx, hash)
 		if err != nil {
@@ -376,12 +433,13 @@ func (c *Chunk) confirmUploads(ctx context.Context, org *domain.Organization, pr
 			}
 			return nil, 0, domain.NewErrorDatabase(fmt.Sprintf("stat chunk %s: %v", hash, err))
 		}
+		proven := linked[hash]
 		if isDirect {
 			verify, err := c.needsVerification(ctx, hash)
 			if err != nil {
 				return nil, 0, err
 			}
-			if verify {
+			if verify || !proven {
 				verified, err := c.verifyChunkContent(ctx, direct, hash, size)
 				if err != nil {
 					return nil, 0, err
@@ -392,7 +450,17 @@ func (c *Chunk) confirmUploads(ctx context.Context, org *domain.Organization, pr
 					missing = append(missing, hash)
 					continue
 				}
+				if !proven {
+					if err := c.chunkRepo.LinkProjectChunk(ctx, project.ID, hash); err != nil {
+						return nil, 0, err
+					}
+					proven = true
+				}
 			}
+		}
+		if !proven {
+			missing = append(missing, hash)
+			continue
 		}
 		if err := c.chunkRepo.InsertChunkIfNotExists(ctx, hash, size); err != nil {
 			return nil, 0, err

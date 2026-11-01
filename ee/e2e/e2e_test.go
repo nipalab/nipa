@@ -219,7 +219,7 @@ func startEnterpriseServer(t *testing.T, dbConn *sql.DB, chunkStore storage.Chun
 		SigningKey:  "ee-e2e-chunk-signing-key",
 		PresignTTL:  time.Hour,
 		MaxPageSize: 1000,
-	})
+	}).WithProjectResolver(commonUc)
 	if ledger != nil {
 		chunkUc = chunkUc.WithStorageLedger(ledger)
 	}

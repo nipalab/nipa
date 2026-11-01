@@ -125,7 +125,7 @@ func TestAPIRoutes(t *testing.T) {
 		SigningKey:  "test-chunk-signing-key",
 		PresignTTL:  time.Hour,
 		MaxPageSize: 1000,
-	})
+	}).WithProjectResolver(usecase.NewCommon(sqlite.NewOrgRepository(dbConn), sqlite.NewProjectRepository(dbConn)))
 	mergeRequestUc := usecase.NewMergeRequest(
 		sqlite.NewMergeRequestRepository(dbConn), branchRepo, permissionUc, branchUc, node, dbtx.NewTransactor(dbConn),
 	).WithReview(reviewUc)
@@ -191,7 +191,7 @@ func TestAPIRoutes(t *testing.T) {
 			require.NoError(t, err)
 			hashes := make([]domain.Hash, 0, len(chunks))
 			for _, c := range chunks {
-				_, err := chunkUc.Upload(pushCtx, c.Hash, c.Data)
+				_, err := chunkUc.UploadForProject(pushCtx, snow.ID(1), c.Hash, c.Data)
 				require.NoError(t, err)
 				hashes = append(hashes, c.Hash)
 			}

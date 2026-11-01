@@ -1292,3 +1292,22 @@ func TestMergeRequest_Update_WIPSync(t *testing.T) {
 		require.True(t, updated.Draft)
 	})
 }
+
+type stubAccessChecker struct{ allowed map[snow.ID]bool }
+
+func (s stubAccessChecker) UserHasProjectAccess(_ context.Context, _, userID snow.ID, _ domain.Permission) bool {
+	return s.allowed[userID]
+}
+
+func TestMergeRequest_SetAssignees_RequiresProjectAccess(t *testing.T) {
+	mr, repo, _, perm, _ := newTestMergeRequest(t)
+	users := NewMockuserLookup(gomock.NewController(t))
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
+	repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(openMergeRequest(), nil)
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
+	users.EXPECT().GetByID(gomock.Any(), snow.ID(8)).Return(&domain.User{ID: 8}, nil)
+
+	_, err := mr.WithUsers(users).WithAccessChecker(stubAccessChecker{}).
+		SetAssignees(permissionCtx(7), snow.ID(1), 5, []snow.ID{8})
+	requireUserError(t, err)
+}

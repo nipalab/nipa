@@ -36,3 +36,17 @@ INSERT INTO commits (id, hash, project_id, tree_id, parent_1_id, parent_2_id, us
 UPDATE branches
 SET commit_id = :commit_id, updated_at = CURRENT_TIMESTAMP
 WHERE id = :id AND deleted = FALSE;
+-- name: ProjectChunkUploadInsert :exec
+INSERT INTO project_chunk_uploads (project_id, hash) VALUES (?, ?)
+ON CONFLICT(project_id, hash) DO NOTHING;
+
+-- name: ProjectChunkUploadList :many
+SELECT hash FROM project_chunk_uploads
+WHERE project_id = sqlc.arg(project_id) AND hash IN (sqlc.slice('hashes'));
+
+-- name: ChunkGetByHashForProject :one
+SELECT c.*
+FROM chunks c
+JOIN project_chunk_uploads u ON u.hash = c.hash
+WHERE c.hash = sqlc.arg(hash) AND u.project_id = sqlc.arg(project_id)
+LIMIT 1;

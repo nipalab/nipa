@@ -65,6 +65,7 @@ type MergeRequestReview struct {
 	merger     branchMerger
 	perm       permissionUsecase
 	users      userLookup
+	access     projectAccessChecker
 	snowNode   snow.Node
 	now        func() time.Time
 	hooks      hookMergeRequestGate
@@ -83,6 +84,13 @@ func NewMergeRequestReview(repo mergeRequestReviewRepository, mrRepo mergeReques
 		snowNode:   snowNode,
 		now:        time.Now,
 	}
+}
+
+// WithAccessChecker restricts review requests to accounts that can read the
+// project.
+func (r *MergeRequestReview) WithAccessChecker(access projectAccessChecker) *MergeRequestReview {
+	r.access = access
+	return r
 }
 
 // WithHooks enables webhook events on this usecase.
@@ -366,6 +374,18 @@ func (r *MergeRequestReview) Threads(ctx context.Context, projectID snow.ID, num
 	if err != nil {
 		return nil, err
 	}
+	filter, err := r.perm.CompileFilter(ctx, projectID, domain.PermissionRead)
+	if err != nil {
+		return nil, err
+	}
+	visible := threads[:0:0]
+	for _, thread := range threads {
+		if !thread.IsTopLevel() && !filter.Allow(thread.FilePath) {
+			continue
+		}
+		visible = append(visible, thread)
+	}
+	threads = visible
 	for _, thread := range threads {
 		// only a comment on a diff line can go stale; a top-level conversation
 		// thread is not about the diff
@@ -442,6 +462,9 @@ func (r *MergeRequestReview) RequestReview(ctx context.Context, projectID snow.I
 			return nil, domain.NewErrorUser("reviewer not found")
 		}
 		return nil, err
+	}
+	if r.access != nil && !r.access.UserHasProjectAccess(ctx, projectID, reviewerID, domain.PermissionRead) {
+		return nil, domain.NewErrorUser("reviewer not found")
 	}
 	request, err := r.repo.CreateReviewRequest(ctx, domain.MergeRequestReviewRequest{
 		ID:             r.snowNode.Generate(),

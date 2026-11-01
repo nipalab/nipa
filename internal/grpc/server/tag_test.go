@@ -379,7 +379,7 @@ func TestDeleteTag_Success(t *testing.T) {
 
 	repo.EXPECT().
 		GetTagByName(gomock.Any(), projectID, "v1.0.0").
-		Return(&domain.Tag{ID: 99, ProjectID: projectID, Name: "v1.0.0"}, nil)
+		Return(&domain.Tag{ID: 99, ProjectID: projectID, Name: "v1.0.0", UserID: 7}, nil)
 	repo.EXPECT().
 		DeleteTag(gomock.Any(), projectID, snow.ID(99)).
 		Return(nil)

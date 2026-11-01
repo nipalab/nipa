@@ -67,6 +67,9 @@ func (f *FileLock) Acquire(ctx context.Context, projectID snow.ID, branchName, p
 	if err != nil {
 		return nil, err
 	}
+	if !f.perm.HasPathAccess(ctx, projectID, norm, domain.PermissionWrite) {
+		return nil, domain.NewErrorNoPermission()
+	}
 	scope, err := f.resolveScope(ctx, projectID, branchName)
 	if err != nil {
 		return nil, err
@@ -151,10 +154,17 @@ func (f *FileLock) List(ctx context.Context, projectID snow.ID) ([]*domain.FileL
 	if err != nil {
 		return nil, err
 	}
-	if locks == nil {
-		locks = []*domain.FileLock{}
+	filter, err := f.perm.CompileFilter(ctx, projectID, domain.PermissionRead)
+	if err != nil {
+		return nil, err
 	}
-	return locks, nil
+	visible := make([]*domain.FileLock, 0, len(locks))
+	for _, lock := range locks {
+		if filter.Allow(lock.Path) {
+			visible = append(visible, lock)
+		}
+	}
+	return visible, nil
 }
 
 // EnsureLocks is the mandatory gate for pushes and fast-forwards. Required

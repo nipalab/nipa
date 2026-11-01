@@ -267,7 +267,7 @@ touched binaries against the head tree (`headBinaryPaths`): tracked binaries
 being modified or removed must be covered by the pusher's lock (409 `binary file
 %q requires a lock`), while new binary files only conflict with someone else's
 covering lock (409 `%q is locked by <holder>`) — adding a brand-new asset needs
-no lock unless a directory or pre-emptive lock guards it. Binary
+no lock unless a directory or pre-emptive lock guards it. Acquiring needs write on the path itself. Binary
 classification is forced server-side for known asset extensions
 (`markLockableBinaries`, the client flag can only add). `EnsureLocks` enforces
 both lists in the target scope; after `ApplyPush`, `ReleaseLanded` drops the
@@ -863,8 +863,14 @@ compatible for one release.
   size server-side (`ChunkStore.Size`, never a client-supplied value) and writes
   the chunk metadata rows, so `Push` can rely on them; confirmations are
   serialized client-side under a mutex so concurrent upload windows never stack
-  SQLite metadata writes. Chunks already stored come back with `already_stored` so
-  clients skip the transfer. `Push` sends `base_commit_id` (base36; preferred over
+  SQLite metadata writes. Chunks already stored for the project come back with `already_stored` so
+  clients skip the transfer; content that exists only for other projects is
+  never reported. A project may reference a chunk only after it uploaded it:
+  the signed PUT (or a verified direct upload at confirm, or a server-side merge
+  via `AttributeProjectChunks`) writes a `project_chunk_uploads` row, `Confirm`
+  refuses unlinked hashes and `ApplyPush` joins through that table. Direct (S3)
+  uploads bypass the server, so there the proof is the read-back verification at
+  confirm, not the PUT itself. `Push` sends `base_commit_id` (base36; preferred over
   `base_tree_hash`, so sparse/permission-filtered clones push deltas against the
   full server tree) and `parent_2_commit_hash` for merge commits.
   `Push.pushStaged` scans into 16MB windows handed to

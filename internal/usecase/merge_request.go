@@ -56,6 +56,7 @@ type MergeRequest struct {
 	transactor transactor
 	review     *MergeRequestReview
 	users      userLookup
+	access     projectAccessChecker
 	checks     *MergeRequestCheck
 }
 
@@ -89,6 +90,18 @@ func (m *MergeRequest) WithHooks(hooks hookMergeRequestGate) *MergeRequest {
 // merge and the lifecycle timeline events.
 func (m *MergeRequest) WithReview(review *MergeRequestReview) *MergeRequest {
 	m.review = review
+	return m
+}
+
+// projectAccessChecker answers whether an arbitrary account can access a project.
+type projectAccessChecker interface {
+	UserHasProjectAccess(ctx context.Context, projectID, userID snow.ID, permission domain.Permission) bool
+}
+
+// WithAccessChecker restricts assignees and reviewers to accounts that can
+// read the project.
+func (m *MergeRequest) WithAccessChecker(access projectAccessChecker) *MergeRequest {
+	m.access = access
 	return m
 }
 
@@ -281,6 +294,9 @@ func (m *MergeRequest) SetAssignees(ctx context.Context, projectID snow.ID, numb
 	if m.users != nil {
 		for _, id := range unique {
 			if _, err := m.users.GetByID(ctx, id); err != nil {
+				return nil, domain.NewErrorUser(fmt.Sprintf("user %s not found", id.Base36()))
+			}
+			if m.access != nil && !m.access.UserHasProjectAccess(ctx, projectID, id, domain.PermissionRead) {
 				return nil, domain.NewErrorUser(fmt.Sprintf("user %s not found", id.Base36()))
 			}
 		}

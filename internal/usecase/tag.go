@@ -116,7 +116,8 @@ func (t *Tag) CreateTag(ctx context.Context, projectID snow.ID, name string, tar
 }
 
 func (t *Tag) DeleteTag(ctx context.Context, projectID snow.ID, name string) error {
-	if _, ok := domain.ClaimFromContext(ctx); !ok {
+	claim, ok := domain.ClaimFromContext(ctx)
+	if !ok {
 		return domain.NewErrorNoPermission()
 	}
 	if !t.permUc.HasProjectAccess(ctx, projectID, domain.PermissionWrite) {
@@ -125,6 +126,9 @@ func (t *Tag) DeleteTag(ctx context.Context, projectID snow.ID, name string) err
 	tag, err := t.tagByName(ctx, projectID, name)
 	if err != nil {
 		return err
+	}
+	if tag.UserID != claim.UserID && !t.permUc.AdminHasProject(ctx, projectID) {
+		return domain.NewErrorNoPermission()
 	}
 	if err := t.tagRepo.DeleteTag(ctx, projectID, tag.ID); err != nil {
 		return err

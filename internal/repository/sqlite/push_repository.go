@@ -37,6 +37,43 @@ func (p *PushRepository) HasChunk(ctx context.Context, hash domain.Hash) (bool, 
 	return true, nil
 }
 
+func (p *PushRepository) LinkProjectChunk(ctx context.Context, projectID snow.ID, hash domain.Hash) error {
+	q := sqlcSqlite.New(p.db)
+	return handleError(q.ProjectChunkUploadInsert(ctx, sqlcSqlite.ProjectChunkUploadInsertParams{
+		ProjectID: projectID.Int64(),
+		Hash:      hash.Bytes(),
+	}))
+}
+
+const linkedChunkBatch = 500
+
+func (p *PushRepository) LinkedProjectChunks(ctx context.Context, projectID snow.ID, hashes []domain.Hash) (map[domain.Hash]bool, error) {
+	q := sqlcSqlite.New(p.db)
+	linked := make(map[domain.Hash]bool, len(hashes))
+	for start := 0; start < len(hashes); start += linkedChunkBatch {
+		end := min(start+linkedChunkBatch, len(hashes))
+		batch := make([][]byte, 0, end-start)
+		for _, hash := range hashes[start:end] {
+			batch = append(batch, hash.Bytes())
+		}
+		rows, err := q.ProjectChunkUploadList(ctx, sqlcSqlite.ProjectChunkUploadListParams{
+			ProjectID: projectID.Int64(),
+			Hashes:    batch,
+		})
+		if err != nil {
+			return nil, handleError(err)
+		}
+		for _, raw := range rows {
+			hash, err := domain.HashFromBytes(raw)
+			if err != nil {
+				return nil, domain.NewErrorDatabase(err.Error())
+			}
+			linked[hash] = true
+		}
+	}
+	return linked, nil
+}
+
 func (p *PushRepository) ApplyPush(ctx context.Context, req usecase.ApplyPushRequest) error {
 	return p.ApplyPushAll(ctx, []usecase.ApplyPushRequest{req})
 }
@@ -68,7 +105,7 @@ func applyPush(ctx context.Context, q *sqlcSqlite.Queries, req usecase.ApplyPush
 		if _, ok := chunkIDs[hash]; ok {
 			return nil
 		}
-		row, err := q.ChunkGetByHash(ctx, hash.Bytes())
+		row, err := q.ChunkGetByHashForProject(ctx, sqlcSqlite.ChunkGetByHashForProjectParams{Hash: hash.Bytes(), ProjectID: req.ProjectID.Int64()})
 		if err != nil {
 			if err == sql.ErrNoRows {
 				return domain.NewErrorUser("missing chunk data for " + hash.String())

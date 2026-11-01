@@ -88,6 +88,35 @@ func (p *Permission) HasProjectAccess(ctx context.Context, projectID snow.ID, pe
 	return set.grantsAnywhere(permission)
 }
 
+// UserHasProjectAccess reports whether another account holds permission on any
+// path of the project. It is used to keep notifications and review requests
+// from reaching accounts that could not open the project.
+func (p *Permission) UserHasProjectAccess(ctx context.Context, projectID, userID snow.ID, permission domain.Permission) bool {
+	user, err := p.users.GetByID(ctx, userID)
+	if err != nil {
+		return false
+	}
+	if user.IsAdmin || user.IsSuperAdmin {
+		return true
+	}
+	rules, err := p.repo.ListEffectiveRules(ctx, projectID, userID)
+	if err != nil {
+		return false
+	}
+	defaults, err := p.repo.ListPathPermissions(ctx, projectID)
+	if err != nil {
+		return false
+	}
+	set := &permissionSet{rules: rules, defaults: defaults}
+	if orgID, err := p.repo.ProjectOrgID(ctx, projectID); err == nil {
+		targetCtx := domain.ContextWithClaim(ctx, domain.Claims{UserID: userID})
+		if owner, err := p.orgs.IsOrgOwner(targetCtx, orgID); err == nil {
+			set.orgOwner = owner
+		}
+	}
+	return set.grantsAnywhere(permission)
+}
+
 // Effective resolves the permission mask for a single path.
 func (p *Permission) Effective(ctx context.Context, projectID snow.ID, path string) domain.Permission {
 	claim, ok := domain.ClaimFromContext(ctx)
@@ -201,12 +230,12 @@ func (f *PathFilter) CanDescend(dir string) bool {
 		return true
 	}
 	for _, rule := range f.set.rules {
-		if domain.PrefixCanDescend(rule.PathPrefix, dir) {
+		if rule.Permission.Has(f.permission) && domain.PrefixCanDescend(rule.PathPrefix, dir) {
 			return true
 		}
 	}
 	for _, def := range f.set.defaults {
-		if domain.PrefixCanDescend(def.PathPrefix, dir) {
+		if def.Permission.Has(f.permission) && domain.PrefixCanDescend(def.PathPrefix, dir) {
 			return true
 		}
 	}

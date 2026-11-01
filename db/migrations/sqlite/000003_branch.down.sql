@@ -1,3 +1,4 @@
+drop table project_chunk_uploads;
 drop table chunks;
 drop table files;
 drop table file_chunks;

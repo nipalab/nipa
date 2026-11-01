@@ -206,3 +206,37 @@ func TestOrgRepositorySQLite_ListMembers_ExcludesDeletedUsers(t *testing.T) {
 		require.NotEqual(t, userID, member.User.ID)
 	}
 }
+
+func TestOrgRepositorySQLite_RemoveMember_DropsAccess(t *testing.T) {
+	ctx := context.Background()
+	db, q := newSQLiteTestDB(t)
+	repo := NewOrgRepository(db)
+
+	orgID := seedOrg(t, q, "Acme Corp", "acme")
+	otherOrgID := seedOrg(t, q, "Other", "other")
+	userID := seedPBACUser(t, db, 501)
+	group := seedPBACGroup(t, db, 601, orgID.Int64(), "devs", userID.Int64())
+	otherGroup := seedPBACGroup(t, db, 602, otherOrgID.Int64(), "others", userID.Int64())
+	require.NoError(t, repo.UpsertMember(ctx, orgID, userID, domain.OrgRoleMember))
+	for _, org := range []snow.ID{orgID, otherOrgID} {
+		_, err := db.ExecContext(ctx,
+			`INSERT INTO pbac_rules (user_id, org_id, permission) VALUES (?, ?, 3)`, userID.Int64(), org.Int64())
+		require.NoError(t, err)
+	}
+
+	require.NoError(t, repo.RemoveMember(ctx, orgID, userID))
+
+	var rules int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT COUNT(*) FROM pbac_rules WHERE user_id = ? AND org_id = ?`,
+		userID.Int64(), orgID.Int64()).Scan(&rules))
+	require.Zero(t, rules)
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT COUNT(*) FROM pbac_rules WHERE user_id = ? AND org_id = ?`,
+		userID.Int64(), otherOrgID.Int64()).Scan(&rules))
+	require.Equal(t, 1, rules, "rules of other organizations stay")
+
+	var memberships int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT COUNT(*) FROM group_members WHERE group_id = ?`, group.Int64()).Scan(&memberships))
+	require.Zero(t, memberships)
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT COUNT(*) FROM group_members WHERE group_id = ?`, otherGroup.Int64()).Scan(&memberships))
+	require.Equal(t, 1, memberships)
+}
