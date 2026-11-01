@@ -567,3 +567,23 @@ func TestMergeForMergeRequest_RejectsMovedSourceHead(t *testing.T) {
 	require.True(t, domain.IsErrorConflict(err))
 	require.Contains(t, err.Error(), "changed since")
 }
+
+func TestMergeForMergeRequest_FastForwardRechecksThePinnedSource(t *testing.T) {
+	uc, perm, repo := newStrategyBranch(t)
+	targetHead, pinned, pushedLater := snow.ID(10), snow.ID(11), snow.ID(12)
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true).Times(2)
+	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").
+		Return(&domain.Branch{ID: 2, ProjectID: 1, Name: "main", CommitID: &targetHead}, nil).Times(2)
+	gomock.InOrder(
+		repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").
+			Return(&domain.Branch{ID: 3, ProjectID: 1, Name: "feature", CommitID: &pinned}, nil),
+		repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").
+			Return(&domain.Branch{ID: 3, ProjectID: 1, Name: "feature", CommitID: &pushedLater}, nil),
+	)
+
+	_, err := uc.MergeForMergeRequest(context.Background(), snow.ID(1), "main", "feature",
+		MergeCommitOptions{Strategy: domain.MergeStrategyFastForward, SourceCommitID: &pinned})
+
+	require.True(t, domain.IsErrorConflict(err))
+	require.Contains(t, err.Error(), "changed since")
+}

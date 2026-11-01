@@ -92,7 +92,7 @@ func (b *Branch) MergeForMergeRequest(ctx context.Context, projectID snow.ID, ta
 		return nil, domain.NewErrorConflict("source branch is already up to date with the target")
 	}
 	if opts.Strategy == domain.MergeStrategyFastForward {
-		return b.FastForwardForMergeRequest(ctx, projectID, targetBranch, sourceBranch)
+		return b.fastForward(ctx, projectID, targetBranch, sourceBranch, true, opts.SourceCommitID)
 	}
 	if b.mergeCommitter == nil || b.chunkUploads == nil || b.chunks == nil {
 		return nil, domain.NewErrorInternalServer("non-fast-forward merge strategies are not configured")
@@ -112,7 +112,7 @@ func (b *Branch) MergeForMergeRequest(ctx context.Context, projectID snow.ID, ta
 	}
 
 	if opts.Strategy == domain.MergeStrategyRebase && base != nil && *base == *target.CommitID {
-		return b.FastForwardForMergeRequest(ctx, projectID, targetBranch, sourceBranch)
+		return b.fastForward(ctx, projectID, targetBranch, sourceBranch, true, opts.SourceCommitID)
 	}
 
 	var reqs []ApplyPushRequest
