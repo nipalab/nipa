@@ -22,9 +22,8 @@ type TreeHistory struct {
 	ByPath map[string]*domain.CommitLogEntry
 }
 
-func (b *Branch) treeHistory(ctx context.Context, projectID snow.ID, headID snow.ID, path string, headRoot *domain.TreeNode) (*TreeHistory, error) {
+func (b *Branch) treeHistory(ctx context.Context, projectID snow.ID, headID snow.ID, path string, headDir *domain.TreeNode) (*TreeHistory, error) {
 	history := &TreeHistory{ByPath: make(map[string]*domain.CommitLogEntry)}
-	headDir := findLoadedTreeNode(headRoot, path)
 	if headDir == nil {
 		return history, nil
 	}
@@ -138,6 +137,9 @@ func (b *Branch) dirManifestAt(ctx context.Context, projectID snow.ID, commitID 
 	filter, err := b.permUc.CompileFilter(ctx, projectID, domain.PermissionRead)
 	if err != nil {
 		return nil, err
+	}
+	if filter.All() {
+		return b.loadShallow(ctx, node)
 	}
 	if err := b.loadTreeManifest(ctx, node, path, true, filter, nil); err != nil {
 		return nil, err

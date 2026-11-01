@@ -9,6 +9,7 @@ import (
 
 	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/snow"
+	"github.com/nipalab/nipa/internal/treehash"
 )
 
 type testTreeSpec struct {
@@ -18,16 +19,28 @@ type testTreeSpec struct {
 	children []*testTreeSpec
 }
 
+func specHash(spec *testTreeSpec) domain.Hash {
+	files := make([]treehash.FileEntry, 0, len(spec.files))
+	for name, hash := range spec.files {
+		files = append(files, treehash.FileEntry{Name: name, Hash: hash})
+	}
+	trees := make([]treehash.TreeEntry, 0, len(spec.children))
+	for _, child := range spec.children {
+		trees = append(trees, treehash.TreeEntry{Name: child.name, Hash: specHash(child)})
+	}
+	return treehash.TreeHash(files, trees)
+}
+
 func expectTreeManifest(repo *MockbranchRepository, spec *testTreeSpec) {
 	repo.EXPECT().GetTreeNode(gomock.Any(), spec.id).
 		DoAndReturn(func(context.Context, int64) (*domain.TreeNode, error) {
-			return &domain.TreeNode{ID: spec.id, Name: spec.name}, nil
+			return &domain.TreeNode{ID: spec.id, Name: spec.name, Hash: specHash(spec)}, nil
 		}).AnyTimes()
 	repo.EXPECT().GetTreeChildByName(gomock.Any(), spec.id, gomock.Any()).
 		DoAndReturn(func(_ context.Context, _ int64, name string) (*domain.TreeNode, error) {
 			for _, child := range spec.children {
 				if child.name == name {
-					return &domain.TreeNode{ID: child.id, Name: child.name}, nil
+					return &domain.TreeNode{ID: child.id, Name: child.name, Hash: specHash(child)}, nil
 				}
 			}
 			return nil, domain.NewErrorRecordNotFound()
@@ -39,7 +52,7 @@ func expectTreeManifest(repo *MockbranchRepository, spec *testTreeSpec) {
 	repo.EXPECT().ListFilesByTree(gomock.Any(), spec.id).Return(files, nil).AnyTimes()
 	children := make([]*domain.TreeNode, 0, len(spec.children))
 	for _, child := range spec.children {
-		children = append(children, &domain.TreeNode{ID: child.id, Name: child.name})
+		children = append(children, &domain.TreeNode{ID: child.id, Name: child.name, Hash: specHash(child)})
 	}
 	repo.EXPECT().ListTreeChildren(gomock.Any(), spec.id).Return(children, nil).AnyTimes()
 	for _, child := range spec.children {

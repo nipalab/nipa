@@ -114,6 +114,45 @@ is the pod-sizing input.
   concurrent MR activity multiplies deliveries. The `mixed` scenario plus a
   webhook subscriber is the next harness increment if delivery lag shows up.
 
+## Web browse endpoints
+
+`GET .../tree` (incl. `history=1`) and `GET .../blob` only load what they
+return: `Branch.treeAt` reads one directory level through `shallowDirAt` when
+the caller can read everything (restricted callers still take the full
+filtered manifest path, because their tree hashes are computed over the
+visible subset), the history walk compares stored child hashes one level per
+commit, and `FileEntry` walks only the file's ancestors. `GetBlob` checks the
+declared size (413) before reading chunks, serves `ETag` = file hash with
+`If-None-Match` 304s, and `diff.LoadContent` preallocates from the file size.
+
+### Deferred: simplify the `tree_nodes` content lookup
+
+Tree nodes are deduplicated by hash: identical subtrees share a hash, but only
+one `tree_nodes` row holds the files and children. `TreeNodeGetChildByName`,
+`TreeNodeListChildren`, `FileListByTree` and `ChunkListByTree`
+(`db/queries/sqlite/tree.sql` and the postgres twins) therefore resolve the
+"content" row on every call with a `tree_nodes` self-join on `hash`, two
+`EXISTS` probes and `ORDER BY id LIMIT 1`; `ChunkListByTree` nests it twice.
+
+Not done because the shallow loads left only a handful of these queries per
+request and the hash lookup is indexed; revisit if profiling shows it on large
+directories or deep history walks. Plan:
+
+1. Add `tree_nodes.content_id` (the row that holds the files/children, itself
+   for the holder), set where push creates nodes in
+   `internal/repository/sqlite` and `ee/repository/postgres`. Pre-release, so
+   fold it into the initial migrations and recreate dev databases.
+2. Rewrite the four queries to use `content_id` instead of the self-join and
+   `EXISTS` probes; run `make sqlc`.
+3. Cheap, independent step: fold `ChunkListByTree` into one
+   `files JOIN file_chunks` query.
+4. Cover with push and e2e tests on both editions; the write path is where a
+   bug would corrupt trees.
+
+Other deferred ideas: LRU cache of decoded chunks, cache of last-commit
+results keyed by (project, commit, path, filter signature), TTL cache for
+`resolveProject`.
+
 ## Free-edition envelope
 
 SQLite + local chunks is single-instance by design (WAL, `busy_timeout(10s)`,

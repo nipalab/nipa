@@ -208,7 +208,7 @@ func (h *Handler) GetBlob(appCtx http.AppContext) {
 		return
 	}
 	path := strings.Trim(appCtx.QueryParameter("path"), "/")
-	content, entry, err := h.useCase.Branch().FileContent(appCtx.Context(), project.ID, appCtx.QueryParameter("rev"), path)
+	entry, err := h.useCase.Branch().FileEntry(appCtx.Context(), project.ID, appCtx.QueryParameter("rev"), path)
 	if err != nil {
 		appCtx.HandleError(err)
 		return
@@ -217,11 +217,34 @@ func (h *Handler) GetBlob(appCtx http.AppContext) {
 		appCtx.WriteJson(nethttp.StatusRequestEntityTooLarge, model.NewAPIError("file is too large for the web viewer"))
 		return
 	}
+	etag := `"` + entry.Hash.String() + `"`
+	header := appCtx.ResponseWriter().Header()
+	header.Set("ETag", etag)
+	header.Set("Cache-Control", "private, no-cache")
+	if etagMatches(appCtx.Request().Header.Get("If-None-Match"), etag) {
+		appCtx.ResponseWriter().WriteHeader(nethttp.StatusNotModified)
+		return
+	}
+	content, err := h.useCase.Branch().ReadEntry(appCtx.Context(), entry)
+	if err != nil {
+		appCtx.HandleError(err)
+		return
+	}
 	contentType := "text/plain; charset=utf-8"
 	if entry.IsBinary {
 		contentType = "application/octet-stream"
 	}
 	appCtx.WriteBytes(nethttp.StatusOK, contentType, content)
+}
+
+func etagMatches(header, etag string) bool {
+	for _, candidate := range strings.Split(header, ",") {
+		candidate = strings.TrimPrefix(strings.TrimSpace(candidate), "W/")
+		if candidate == "*" || candidate == etag {
+			return true
+		}
+	}
+	return false
 }
 
 func queryInt(raw string, fallback int) int {
