@@ -6,6 +6,7 @@ import { useAuth } from '../auth'
 import { formatBytes } from '../components/StorageCard'
 import { EmptyState, ErrorBanner, Loading, Mono, Page } from '../components/ui'
 import { useAsync } from '../hooks'
+import { APP_HOME } from '../routes'
 
 const CELL = { padding: '8px 12px' }
 const HEADER_CELL = { ...CELL, fontWeight: 600, textAlign: 'left' as const, fontSize: 12, color: 'var(--fgColor-muted)' }
@@ -22,7 +23,7 @@ export default function BillingPage() {
     <Page
       title="Billing"
       subtitle="Storage quota and usage for the organizations you own"
-      actions={<Link to="/">back to home</Link>}
+      actions={<Link to={APP_HOME}>back to home</Link>}
     >
       <ErrorBanner error={actionError ?? error} />
       {loading && <Loading />}

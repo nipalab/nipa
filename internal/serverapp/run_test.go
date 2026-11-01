@@ -31,6 +31,53 @@ func TestIsAPIPath(t *testing.T) {
 	require.False(t, isAPIPath("/repository/browse"))
 }
 
+func TestIsMarketingPath(t *testing.T) {
+	require.True(t, isMarketingPath("/"))
+	require.True(t, isMarketingPath("/web"))
+	require.True(t, isMarketingPath("/web/"))
+	require.True(t, isMarketingPath("/web/pricing"))
+	require.False(t, isMarketingPath("/website"))
+	require.False(t, isMarketingPath("/webhooks"))
+	require.False(t, isMarketingPath("/acme"))
+	require.False(t, isMarketingPath("/dashboard"))
+}
+
+func TestNewUIHandlerRoutesMarketing(t *testing.T) {
+	var marketingHits, webHits []string
+	marketing := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		marketingHits = append(marketingHits, r.URL.Path)
+		w.WriteHeader(http.StatusNoContent)
+	})
+	web := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		webHits = append(webHits, r.URL.Path)
+		w.WriteHeader(http.StatusNoContent)
+	})
+	handler := newUIHandler(web, marketing)
+
+	for _, path := range []string{"/", "/web", "/web/", "/web/pricing", "/web/assets/app.js"} {
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		require.Equal(t, http.StatusNoContent, rec.Code)
+	}
+	for _, path := range []string{"/acme", "/acme/game", "/dashboard", "/login"} {
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		require.Equal(t, http.StatusNoContent, rec.Code)
+	}
+
+	require.Equal(t, []string{"/", "/web", "/web/", "/web/pricing", "/web/assets/app.js"}, marketingHits)
+	require.Equal(t, []string{"/acme", "/acme/game", "/dashboard", "/login"}, webHits)
+}
+
+func TestNewUIHandlerWithoutMarketing(t *testing.T) {
+	web := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+	rec := httptest.NewRecorder()
+	newUIHandler(web, nil).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+	require.Equal(t, http.StatusNoContent, rec.Code)
+}
+
 func TestReadinessHandler_DrainsOnShutdown(t *testing.T) {
 	draining := &atomic.Bool{}
 	handler := readinessHandler(draining, nil)

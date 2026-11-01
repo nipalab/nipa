@@ -335,7 +335,7 @@ describe('OAuthCallbackPage', () => {
     })
 
     await renderApp('/oauth/callback?code=xyz&from=%2F%2Fevil.example')
-    await waitFor(() => window.location.pathname === '/')
+    await waitFor(() => window.location.pathname === '/dashboard')
   })
 })
 
@@ -343,8 +343,8 @@ describe('SocialButtons', () => {
   it('builds callback redirects that carry the destination', () => {
     expect(socialRedirect('/')).toBe('/oauth/callback')
     expect(socialRedirect('/acme/proj')).toBe('/oauth/callback?from=%2Facme%2Fproj')
-    expect(socialRedirect('//evil.example')).toBe('/oauth/callback')
-    expect(socialRedirect('https://evil.example')).toBe('/oauth/callback')
+    expect(socialRedirect('//evil.example')).toBe('/oauth/callback?from=%2Fdashboard')
+    expect(socialRedirect('https://evil.example')).toBe('/oauth/callback?from=%2Fdashboard')
   })
 
   it('routes social sign-in through the OAuth callback page', async () => {
@@ -356,7 +356,7 @@ describe('SocialButtons', () => {
       findButtonIn(container, 'Continue with GitHub').click()
     })
 
-    expect(vi.mocked(oauthStartURL)).toHaveBeenCalledWith('github', '/oauth/callback')
+    expect(vi.mocked(oauthStartURL)).toHaveBeenCalledWith('github', '/oauth/callback?from=%2Fdashboard')
   })
 
   it('carries the post-login destination through the OAuth round-trip', async () => {

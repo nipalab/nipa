@@ -18,6 +18,7 @@ import (
 	"github.com/nipalab/nipa/ee/repository/postgres"
 	s3store "github.com/nipalab/nipa/ee/storage/s3"
 	"github.com/nipalab/nipa/ee/storageusage"
+	"github.com/nipalab/nipa/ee/web/marketing"
 	"github.com/nipalab/nipa/internal/config"
 	"github.com/nipalab/nipa/internal/hasher"
 	"github.com/nipalab/nipa/internal/mail"
@@ -291,11 +292,13 @@ func saasOptions(cfg *config.Config, snowUser snow.Node, hasher *hasher.Hasher, 
 		slog.Warn("SAAS_MODE with EMAIL_SENDER=off: confirmation emails will not be sent")
 	}
 	options := []serverapp.Option{
+		serverapp.WithMarketingUI(marketing.Handler()),
 		serverapp.WithPublicRoutes(func(ws *restful.WebService) {
 			registration.RegisterPublicRoutes(ws, registrationHandler)
 		}),
 	}
 	slog.Info("saas self-registration enabled", "free_quota_bytes", cfg.SaasFreeQuotaBytes)
+	slog.Info("saas marketing fallback enabled", "base_path", marketing.BasePath)
 
 	providers := oauth.NewProviders(oauth.ProvidersConfig{
 		BaseURL:            cfg.OAuthBaseURL,

@@ -6,7 +6,7 @@ import { createProject, listOrgs } from '../api/endpoints'
 import { useAuth } from '../auth'
 import { ErrorBanner, Loading, Page } from '../components/ui'
 import { useAsync } from '../hooks'
-import { SLUG_PATTERN, slugify } from '../slug'
+import { RESERVED_PROJECT_SLUGS, SLUG_PATTERN, slugify } from '../slug'
 
 export default function NewProjectPage() {
   const { org = '' } = useParams()
@@ -24,7 +24,9 @@ export default function NewProjectPage() {
   const role = orgs?.find((item) => item.slug === org)?.role
   const canManage = Boolean(me?.is_admin || me?.is_super_admin || role === 'owner')
   const effectiveSlug = slugEdited ? slug : slugify(name)
-  const slugValid = effectiveSlug !== '' && SLUG_PATTERN.test(effectiveSlug)
+  const slugReserved =
+    effectiveSlug !== '' && SLUG_PATTERN.test(effectiveSlug) && RESERVED_PROJECT_SLUGS.has(effectiveSlug)
+  const slugValid = effectiveSlug !== '' && SLUG_PATTERN.test(effectiveSlug) && !slugReserved
   const canSubmit = name.trim() !== '' && slugValid && !saving
 
   if (orgsLoading) {
@@ -111,7 +113,9 @@ export default function NewProjectPage() {
               <FormControl.Validation variant="error">
                 {effectiveSlug === ''
                   ? 'Slug is required.'
-                  : 'Slug must start with a letter or digit and contain only lowercase letters, digits and dashes.'}
+                  : slugReserved
+                    ? 'This slug is reserved. Choose a different one.'
+                    : 'Slug must start with a letter or digit and contain only lowercase letters, digits and dashes.'}
               </FormControl.Validation>
             )}
             {slugError && <FormControl.Validation variant="error">{slugError}</FormControl.Validation>}

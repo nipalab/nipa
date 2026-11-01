@@ -50,6 +50,9 @@ func (o *Org) Create(ctx context.Context, name, slug string) (*domain.Organizati
 	if !slugPattern.MatchString(slug) {
 		return nil, domain.NewErrorUser("invalid organization slug")
 	}
+	if isReservedOrgSlug(slug) {
+		return nil, domain.NewErrorUser("organization slug is reserved")
+	}
 	if _, err := o.repo.GetBySlug(ctx, slug); err == nil {
 		return nil, domain.NewErrorConflict("organization slug already in use")
 	} else if !domain.IsErrorNotFound(err) {

@@ -135,6 +135,20 @@ func TestProject_Create_Validation(t *testing.T) {
 	requireUserError(t, err)
 }
 
+func TestProject_Create_ReservedSlug(t *testing.T) {
+	project, _, _, _ := newTestProject(t)
+	ctx := permissionCtx(42, withAdmin())
+
+	for _, slug := range []string{"new", "settings"} {
+		_, err := project.Create(ctx, snow.ID(1), "Assets", "", slug)
+		require.Error(t, err, "slug %q must be reserved", slug)
+		requireUserError(t, err)
+	}
+
+	_, err := project.Create(ctx, snow.ID(1), "Settings", "", "")
+	requireUserError(t, err)
+}
+
 func TestProject_Create_DuplicateSlug(t *testing.T) {
 	project, repo, _, _ := newTestProject(t)
 

@@ -1,22 +1,40 @@
 # Nipa SaaS edge: terminates TLS for the single h2c nipad-ee port and proxies to
-# the active blue/green color. deploy/upgrade.sh rewrites the reverse_proxy
-# upstream line between flips and reloads Caddy; a reload never drops
-# established connections.
+# the active blue/green color. deploy/upgrade.sh rewrites the nipad-ee upstream
+# line between flips and reloads Caddy; a reload never drops established
+# connections.
 #
-# Keep the reverse_proxy line in the exact
+# The marketing site is a separate Netlify deployment (nipa-web repo): the bare
+# root and the /web subtree are proxied there, so marketing changes go live with
+# a Netlify deploy instead of a nipad-ee rebuild. Configure the upstream with
+#     MARKETING_UPSTREAM=https://nipalab.com
+#     MARKETING_HOST=nipalab.com
+# (or edit the defaults below).
+#
+# Keep the nipad-ee reverse_proxy line in the exact
 #     reverse_proxy 127.0.0.1:<port> {
-# shape: upgrade.sh matches it with sed.
+# shape: upgrade.sh matches it with sed. The marketing upstream never matches.
 {
 	email admin@nipalab.com
 }
 
-nipalab.com {
+nipa.com {
 	encode zstd gzip
 
 	# Keep the observability endpoints off the public edge: probe the loopback
 	# ports instead. /debug/pprof only exists when PPROF_ENABLED=true.
 	@internal path /metrics /debug/pprof /debug/pprof/*
 	respond @internal 404
+
+	# Marketing lives on Netlify (nipalab.com, clean root URLs). nipa.com
+	# mirrors its landing page at / plus that page's build assets; every
+	# marketing page link is absolute to nipalab.com, so navigation stays
+	# there. The app owns every other path.
+	@marketing path / /_astro/*
+	handle @marketing {
+		reverse_proxy {$MARKETING_UPSTREAM:https://nipalab.com} {
+			header_up Host {$MARKETING_HOST:nipalab.com}
+		}
+	}
 
 	reverse_proxy 127.0.0.1:8001 {
 		transport http {

@@ -59,6 +59,7 @@ describe('App', () => {
 
     const { container, root } = await renderApp()
     await waitForText(container, 'Sign in')
+    expect(window.location.pathname).toBe('/login')
     expect(container.querySelectorAll('input')).toHaveLength(2)
     act(() => root.unmount())
   })
@@ -91,6 +92,7 @@ describe('App', () => {
 
     const { container, root } = await renderApp()
     await waitForText(container, 'Repositories')
+    expect(window.location.pathname).toBe('/dashboard')
     act(() => root.unmount())
   })
 })

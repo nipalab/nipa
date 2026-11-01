@@ -48,3 +48,6 @@ web/server/dist/*
 
 config.yaml
 internal/storage/chunks/3a/e7d805f6789a6402acb70ad4096a85a56bf6804eaf25c0493ac697548d30b5
+# SaaS marketing build (committed placeholder index.html, real build copied in)
+ee/web/marketing/dist/*
+!ee/web/marketing/dist/index.html

@@ -6,13 +6,14 @@ MIGRATIONS_DIR := db/migrations
 POSTGRES_MIGRATIONS_DIR := ee/db/migrations/postgres
 mb         ?= 256
 gb         ?= 1
+MARKETING_DIR ?= ../nipa-web
 
 VERSION    ?= $(shell git describe --tags --always --dirty 2>/dev/null)
 REVISION   ?= $(shell git rev-parse --short HEAD 2>/dev/null)
 LDFLAGS    := $(if $(VERSION),-X 'github.com/nipalab/nipa/internal/version.Version=$(VERSION)') \
               $(if $(REVISION),-X 'github.com/nipalab/nipa/internal/version.Revision=$(REVISION)')
 
-.PHONY: sqlc mock migrate-up migrate-down migrate-up-postgres migrate-down-postgres migrate-create build build-all build-server build-server-ee build-client test test-ee test-client test-client-ee test-client-both lint web web-dev web-install bench-upload bench-download bench-scale bench-unit load-test release
+.PHONY: sqlc mock migrate-up migrate-down migrate-up-postgres migrate-down-postgres migrate-create build build-all build-server build-server-ee build-client test test-ee test-client test-client-ee test-client-both lint web web-dev web-install marketing-dist bench-upload bench-download bench-scale bench-unit load-test release
 
 GOLANGCI_LINT_IMAGE ?= docker.io/golangci/golangci-lint:latest
 
@@ -61,6 +62,16 @@ build-client:
 ## Install web UI dependencies (first time, or after changes to web/package.json).
 web-install:
 	cd web && npm install
+
+## Build the Astro marketing site (nipa-web) and sync it into
+## ee/web/marketing/dist for the embedded fallback. The production site is
+## Netlify behind the Caddy proxy and needs no rebuild.
+marketing-dist:
+	@test -n "$(MARKETING_DIR)" || (echo "usage: make marketing-dist MARKETING_DIR=/path/to/nipa-web" && exit 1)
+	@test -f "$(MARKETING_DIR)/package.json" || (echo "marketing repo not found at $(MARKETING_DIR)" && exit 1)
+	cd "$(MARKETING_DIR)" && npm install && MARKETING_BASE=/web/ npm run build
+	rsync -a --delete "$(MARKETING_DIR)/dist/" ee/web/marketing/dist/
+	@test -f ee/web/marketing/dist/index.html
 
 ## Build the web UI into web/server/dist, embedded into the nipad binary via go:embed.
 web:

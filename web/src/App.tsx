@@ -1,5 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
-import { AuthProvider, RequireAuth } from './auth'
+import { AuthProvider, RequireAuth, useAuth } from './auth'
+import { Loading } from './components/ui'
+import { APP_HOME } from './routes'
 import AppShell from './components/AppShell'
 import LoginPage from './pages/LoginPage'
 import RegisterPage from './pages/RegisterPage'
@@ -30,13 +32,14 @@ export default function App() {
     <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <AuthProvider>
         <Routes>
+          <Route path="/" element={<RootRedirect />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/verify" element={<VerifyPage />} />
           <Route path="/oauth/callback" element={<OAuthCallbackPage />} />
           <Route element={<RequireAuth />}>
             <Route element={<AppShell />}>
-              <Route path="/" element={<HomePage />} />
+              <Route path="/dashboard" element={<HomePage />} />
               <Route path="/onboarding" element={<OnboardingPage />} />
               <Route path="/admin/users" element={<AdminUsersPage />} />
               <Route path="/admin/users/new" element={<NewUserPage />} />
@@ -59,11 +62,22 @@ export default function App() {
               <Route path="/:org/:project/merges/:id" element={<MergeRequestPage />} />
               <Route path="/:org/:project/locks" element={<LocksPage />} />
               <Route path="/:org/:project/settings" element={<ProjectSettingsPage />} />
-              <Route path="*" element={<Navigate to="/" replace />} />
+              <Route path="*" element={<Navigate to={APP_HOME} replace />} />
             </Route>
           </Route>
         </Routes>
       </AuthProvider>
     </BrowserRouter>
   )
+}
+
+function RootRedirect() {
+  const { status } = useAuth()
+  if (status === 'loading') {
+    return <Loading />
+  }
+  if (status === 'anonymous') {
+    return <Navigate to="/login" state={{ from: APP_HOME }} replace />
+  }
+  return <Navigate to={APP_HOME} replace />
 }

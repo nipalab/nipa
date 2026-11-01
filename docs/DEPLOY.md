@@ -38,7 +38,7 @@ URLs stay valid across restarts; do not rotate those keys during an upgrade.
 
 - A VPS with systemd (Debian/Ubuntu assumed below) and root/sudo.
 - DNS: an `A`/`AAAA` record for the public host (e.g. `nipa.example.com`)
-  pointing at the VPS.
+  pointing at the VPS, plus the marketing host on Netlify (see below).
 - Firewall: allow `22`, `80`, `443` only. The color ports stay on loopback.
 - Managed Postgres (15+), reachable with TLS, and a managed S3-compatible
   bucket. Enable bucket versioning and (recommended) object lock/retention for
@@ -51,9 +51,32 @@ URLs stay valid across restarts; do not rotate those keys during an upgrade.
 1. **Build the release.** From a checkout on the build machine:
 
    ```
-   make web build-server-ee      # produces bin/nipad-ee with embedded SPA
+   make web build-server-ee      # produces bin/nipad-ee with the embedded SPA
    sha256sum bin/nipad-ee        # ship this checksum with the binary
    ```
+
+### Marketing site (Netlify)
+
+The marketing site is a separate Astro deployment (the `nipa-web` repo on
+Netlify) served natively at `https://nipalab.com` with clean root URLs. Caddy
+mirrors it on the app domain: `/` proxies the Netlify landing page and
+`/_astro/*` its build assets. Every marketing page link is absolute to
+`https://nipalab.com`, so marketing navigation stays on the marketing domain;
+`Sign in` / `Open dashboard` link to `https://nipa.com`. A marketing change
+only needs a Netlify deploy — no `nipad-ee` rebuild or blue/green flip:
+
+- Keep the `@marketing` `handle` block in `deploy/caddy/Caddyfile` ahead of the
+  app's `reverse_proxy`. `upgrade.sh` only rewrites the `reverse_proxy
+  127.0.0.1:<port>` line, so the marketing upstream is untouched by flips.
+- Point it at the Netlify site with `MARKETING_UPSTREAM` / `MARKETING_HOST`
+  (defaults `https://nipalab.com` / `nipalab.com`; set them in the Caddy
+  service environment or edit the Caddyfile).
+- Build `nipa-web` with the default base `/` (`netlify.toml` carries the build
+  command); `site` and `APP_SITE` in `src/consts.ts` decide the two origins.
+
+`make marketing-dist` remains an optional fallback that builds the site with
+base `/web/` and embeds a copy into `nipad-ee` (for a SaaS host without the
+Caddy proxy); it is not part of the Netlify deployment.
 
 2. **Create the service user and directories.**
 
@@ -76,7 +99,7 @@ URLs stay valid across restarts; do not rotate those keys during an upgrade.
    | `CHUNK_STORAGE` | `s3` (or omit; enterprise defaults to S3) |
    | `CHUNK_S3_ENDPOINT`, `CHUNK_S3_REGION`, `CHUNK_S3_BUCKET`, `CHUNK_S3_PREFIX` | managed bucket |
    | `CHUNK_S3_ACCESS_KEY_ID` / `CHUNK_S3_SECRET_ACCESS_KEY` | leave empty to use the AWS env/instance providers |
-   | `SAAS_MODE` | `1` (enables registration, social login and the storage ledger) |
+   | `SAAS_MODE` | `1` (enables registration, social login and the storage ledger; the marketing site is served by Caddy from Netlify) |
    | `SAAS_FREE_QUOTA_BYTES` | free-tier quota per new account |
    | `EMAIL_BASE_URL` | `https://nipa.example.com` (required in SaaS mode) |
    | `EMAIL_SENDER` + provider keys | e.g. `sendgrid`/`scaleway`/`smtp`; `off` logs a warning and registration emails are not delivered |

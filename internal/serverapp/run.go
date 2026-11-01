@@ -49,6 +49,7 @@ type runOptions struct {
 	metricsPush  *obs.MetricsPush
 	routes       []func(*restful.WebService)
 	publicRoutes []func(*restful.WebService)
+	marketing    http.Handler
 }
 
 // WithReadiness configures the check behind /readyz (typically a database
@@ -109,6 +110,14 @@ func WithPublicRoutes(register func(*restful.WebService)) Option {
 	}
 }
 
+// WithMarketingUI serves an embedded marketing site at / and /web on the SaaS
+// deployment. Without it / falls through to the SPA (the auth redirect).
+func WithMarketingUI(handler http.Handler) Option {
+	return func(o *runOptions) {
+		o.marketing = handler
+	}
+}
+
 // Run serves the REST API, the gRPC service and the embedded web UI on the
 // configured address until the process is signalled to shut down. Background
 // dispatchers are started before the listener and drained on shutdown.
@@ -163,6 +172,7 @@ func run(cfg *config.Config, reg *Registry, dispatchers []Dispatcher, signals <-
 	grpcHealth.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
 
 	webUI := webui.Handler()
+	uiHandler := newUIHandler(webUI, ro.marketing)
 
 	healthHandler := obs.HealthHandler()
 	draining := &atomic.Bool{}
@@ -196,7 +206,7 @@ func run(cfg *config.Config, reg *Registry, dispatchers []Dispatcher, signals <-
 		case isAPIPath(r.URL.Path):
 			container.ServeHTTP(w, r)
 		default:
-			webUI.ServeHTTP(w, r)
+			uiHandler.ServeHTTP(w, r)
 		}
 	})
 
@@ -295,6 +305,25 @@ func isAPIPath(p string) bool {
 	return strings.HasPrefix(p, "/auth") ||
 		strings.HasPrefix(p, "/docs") ||
 		strings.HasPrefix(p, "/api")
+}
+
+// isMarketingPath matches the root and the marketing site's own subtree. The
+// /web prefix also matches /web itself but not siblings like /website.
+func isMarketingPath(p string) bool {
+	return p == "/" || p == "/web" || strings.HasPrefix(p, "/web/")
+}
+
+func newUIHandler(webUI, marketing http.Handler) http.Handler {
+	if marketing == nil {
+		return webUI
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if isMarketingPath(r.URL.Path) {
+			marketing.ServeHTTP(w, r)
+			return
+		}
+		webUI.ServeHTTP(w, r)
+	})
 }
 
 func skipTraceRequest(r *http.Request) bool {

@@ -17,12 +17,13 @@ import { getOnboardingCapabilities, resendVerification } from '../api/endpoints'
 import { useAuth } from '../auth'
 import { SocialButtons } from '../components/SocialButtons'
 import { useAsync } from '../hooks'
+import { APP_HOME } from '../routes'
 
 export default function LoginPage() {
   const { signIn } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
-  const from = (location.state as { from?: string } | null)?.from ?? '/'
+  const from = (location.state as { from?: string } | null)?.from ?? APP_HOME
   const { data: capabilities } = useAsync(getOnboardingCapabilities, [])
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')

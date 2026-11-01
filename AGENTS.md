@@ -12,8 +12,10 @@ CLI at `cmd/nipa`) plus two server binaries: the free `nipad` (`cmd/nipad`;
 SQLite + local chunk storage) and the enterprise `nipad-ee` (`ee/cmd/nipad`;
 PostgreSQL + S3-only chunk storage, see `docs/POSTGRES.md`). Both multiplex
 gRPC (h2c), the REST API and the embedded SPA on one port through
-`internal/serverapp` (`isAPIPath` routes `/auth`, `/docs`, `/api`; everything
-else falls through to the web UI handler); the mains only compose repositories.
+`internal/serverapp` (`isAPIPath` routes `/auth`, `/docs`, `/api`; the SaaS
+marketing landing is mirrored at `/` — Caddy proxies it from Netlify, and the
+embedded fallback answers `/` and `/web/*`; everything else falls through to
+the web UI handler); the mains only compose repositories.
 Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
 
 ## Architecture
@@ -607,7 +609,11 @@ From `Makefile`:
   set. Details in `tests/README.md`.
 - `make web` / `web-dev` / `web-install` — build the SPA into
   `web/server/dist` / run the Vite dev server (proxies `/api`, `/docs` to
-  `NIPA_SERVER_URL`) / `npm install`.
+  `NIPA_SERVER_URL`) / `npm install`. `make marketing-dist
+  [MARKETING_DIR=../nipa-web]` builds the Astro marketing site with
+  `MARKETING_BASE=/web/` and syncs it into `ee/web/marketing/dist` for the
+  embedded fallback; production marketing is Netlify (base `/`) behind the
+  Caddy proxy and needs no rebuild.
 - `make proto` — regenerates pb from `internal/grpc/proto/server.proto` into
   `internal/grpc/pb` and from `internal/client/grpc/proto/daemon.proto` into
   `internal/client/grpc/daemonpb` (the daemon proto imports the server one;
@@ -947,6 +953,23 @@ compatible for one release.
 - Routes/API map lives in `docs/WEB_UI.md`. SPA uses `react-router-dom` v6,
   memory-only access token + `HttpOnly` refresh cookie, and a capability mask
   from `/permissions/me` to hide admin controls (server remains authoritative).
+  The SPA root `/` is an entry redirect (`anonymous → /login`, signed in →
+  `/dashboard`, the app home; `APP_HOME` in `web/src/routes.ts`). The SaaS
+  marketing site is a separate Astro deployment (the `nipa-web` repo on
+  Netlify) served natively at `https://nipalab.com`; `deploy/caddy/Caddyfile`
+  mirrors its landing page on the app domain by proxying `/` and `/_astro/*`
+  (`MARKETING_UPSTREAM`/`MARKETING_HOST`, defaults `https://nipalab.com` /
+  `nipalab.com`). Marketing links are absolute to `nipalab.com`, app links to
+  `nipa.com` (`siteUrl`/`appUrl` in `web/src/consts.ts`), so marketing changes
+  ship without rebuilding `nipad-ee`; `upgrade.sh` only rewrites the
+  `reverse_proxy 127.0.0.1` line. The optional embedded fallback
+  (`ee/web/marketing`, base `/web`, placeholder committed,
+  `serverapp.WithMarketingUI` only when `SAAS_MODE=1`) serves the same paths
+  when the Caddy proxy is not used; `make marketing-dist
+  [MARKETING_DIR=../nipa-web]` builds with `MARKETING_BASE=/web/` and syncs the
+  result into it. Organization/project slugs reject the paths owned by the
+  router, marketing and fixed endpoints (`internal/usecase/reserved.go`,
+  mirrored in `web/src/slug.ts`).
   Pages cover repository/org lists, tree browser, blob viewer, commit history
   + diffs, branch management, merge requests (list/create; detail tabs for
   overview, commits and file changes; merge/reviews with decisions, inline
