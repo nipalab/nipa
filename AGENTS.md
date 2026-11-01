@@ -956,13 +956,13 @@ compatible for one release.
   The SPA root `/` is an entry redirect (`anonymous → /login`, signed in →
   `/dashboard`, the app home; `APP_HOME` in `web/src/routes.ts`). The SaaS
   marketing site is a separate Astro deployment (the `nipa-web` repo on
-  Netlify) served natively at `https://nipalab.com`; `deploy/caddy/Caddyfile`
+  Netlify) served at `https://nipalab.com`; `deploy/caddy/Caddyfile`
   mirrors its landing page on the app domain by proxying `/` and `/_astro/*`
-  (`MARKETING_UPSTREAM`/`MARKETING_HOST`, defaults `https://nipalab.com` /
-  `nipalab.com`). Marketing links are absolute to `nipalab.com`, app links to
-  `nipalab.com` (`siteUrl`/`appUrl` in `web/src/consts.ts`), so marketing changes
-  ship without rebuilding `nipad-ee`; `upgrade.sh` only rewrites the
-  `reverse_proxy 127.0.0.1` line. The optional embedded fallback
+  (`MARKETING_UPSTREAM` required, the Netlify origin; `MARKETING_HOST`
+  defaults `nipalab.com`). Marketing links are absolute to `nipalab.com`, app
+  links to `nipalab.com` (`siteUrl`/`appUrl` in `web/src/consts.ts`), so
+  marketing changes ship without rebuilding `nipad-ee`; `upgrade.sh` only
+  rewrites the `reverse_proxy 127.0.0.1` line. The optional embedded fallback
   (`ee/web/marketing`, base `/web`, placeholder committed,
   `serverapp.WithMarketingUI` only when `SAAS_MODE=1`) serves the same paths
   when the Caddy proxy is not used; `make marketing-dist

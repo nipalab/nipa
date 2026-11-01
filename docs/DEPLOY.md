@@ -37,8 +37,9 @@ URLs stay valid across restarts; do not rotate those keys during an upgrade.
 ## Prerequisites
 
 - A VPS with systemd (Debian/Ubuntu assumed below) and root/sudo.
-- DNS: an `A`/`AAAA` record for the public host (e.g. `nipa.example.com`)
-  pointing at the VPS, plus the marketing host on Netlify (see below).
+- DNS: an `A`/`AAAA` record for the public host (e.g. `nipalab.com`) pointing
+  at the VPS; the Netlify marketing site stays reachable at its own
+  `*.netlify.app` hostname (see below).
 - Firewall: allow `22`, `80`, `443` only. The color ports stay on loopback.
 - Managed Postgres (15+), reachable with TLS, and a managed S3-compatible
   bucket. Enable bucket versioning and (recommended) object lock/retention for
@@ -58,9 +59,12 @@ URLs stay valid across restarts; do not rotate those keys during an upgrade.
 ### Marketing site (Netlify)
 
 The marketing site is a separate Astro deployment (the `nipa-web` repo on
-Netlify) served natively at `https://nipalab.com` with clean root URLs. Caddy
-mirrors it on the app domain: `/` proxies the Netlify landing page and
-`/_astro/*` its build assets. Every marketing page link is absolute to
+Netlify). Caddy serves both the app and the marketing landing page on
+`nipalab.com`: `/` proxies the Netlify landing page, `/_astro/*` its build
+assets, and every other path goes to `nipad-ee`. Because Caddy owns the apex
+domain, the upstream must be the Netlify site's own origin (its
+`*.netlify.app` hostname), never `https://nipalab.com` — that would proxy Caddy
+back into itself. Every marketing page link is absolute to
 `https://nipalab.com`, so marketing navigation stays on the marketing domain;
 `Sign in` / `Open dashboard` link to `https://nipalab.com`. A marketing change
 only needs a Netlify deploy — no `nipad-ee` rebuild or blue/green flip:
@@ -68,9 +72,10 @@ only needs a Netlify deploy — no `nipad-ee` rebuild or blue/green flip:
 - Keep the `@marketing` `handle` block in `deploy/caddy/Caddyfile` ahead of the
   app's `reverse_proxy`. `upgrade.sh` only rewrites the `reverse_proxy
   127.0.0.1:<port>` line, so the marketing upstream is untouched by flips.
-- Point it at the Netlify site with `MARKETING_UPSTREAM` / `MARKETING_HOST`
-  (defaults `https://nipalab.com` / `nipalab.com`; set them in the Caddy
-  service environment or edit the Caddyfile).
+- Point it at the Netlify site with `MARKETING_UPSTREAM` (required: the
+  Netlify-generated origin, never `https://nipalab.com`) and `MARKETING_HOST`
+  (defaults `nipalab.com`; set them in the Caddy service environment or edit
+  the Caddyfile).
 - Build `nipa-web` with the default base `/` (`netlify.toml` carries the build
   command); `site` and `APP_SITE` in `src/consts.ts` decide the two origins.
 
@@ -152,6 +157,11 @@ Caddy proxy); it is not part of the Netlify deployment.
    `/metrics` and `/debug/pprof`; remove that matcher (or restrict it to a
    private scraper) if you intentionally expose them. Keep the
    `reverse_proxy 127.0.0.1:<port> {` line shape: `upgrade.sh` rewrites it.
+
+   Caddy will not load the config until `MARKETING_UPSTREAM` points at the
+   Netlify site origin (see [Marketing site](#marketing-site-netlify)). Export
+   the same value when running `deploy/upgrade.sh`, whose `caddy validate`
+   expands the same placeholders.
 
 7. **First admin.** Register the first account through the web UI (SaaS mode),
    confirm the email, then promote it directly in postgres:

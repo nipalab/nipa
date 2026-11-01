@@ -25,9 +25,15 @@ func TestSplitAllowlist(t *testing.T) {
 }
 
 func TestIsAPIPath(t *testing.T) {
+	require.True(t, isAPIPath("/auth"))
 	require.True(t, isAPIPath("/auth/login"))
 	require.True(t, isAPIPath("/docs"))
+	require.True(t, isAPIPath("/docs/"))
+	require.True(t, isAPIPath("/api"))
 	require.True(t, isAPIPath("/api/v1/orgs"))
+	require.False(t, isAPIPath("/author"))
+	require.False(t, isAPIPath("/apiary"))
+	require.False(t, isAPIPath("/docsmith"))
 	require.False(t, isAPIPath("/repository/browse"))
 }
 

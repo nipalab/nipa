@@ -4,11 +4,13 @@
 # connections.
 #
 # The marketing site is a separate Netlify deployment (nipa-web repo): the bare
-# root and the /web subtree are proxied there, so marketing changes go live with
-# a Netlify deploy instead of a nipad-ee rebuild. Configure the upstream with
-#     MARKETING_UPSTREAM=https://nipalab.com
+# root and its /_astro/* build assets are proxied there, so marketing changes go
+# live with a Netlify deploy instead of a nipad-ee rebuild. Caddy owns
+# nipalab.com, so MARKETING_UPSTREAM must be the Netlify site origin, never
+# https://nipalab.com (that would proxy Caddy back into itself). Configure it
+# with:
+#     MARKETING_UPSTREAM=https://<site>.netlify.app
 #     MARKETING_HOST=nipalab.com
-# (or edit the defaults below).
 #
 # Keep the nipad-ee reverse_proxy line in the exact
 #     reverse_proxy 127.0.0.1:<port> {
@@ -25,13 +27,13 @@ nipalab.com {
 	@internal path /metrics /debug/pprof /debug/pprof/*
 	respond @internal 404
 
-	# Marketing lives on Netlify (nipalab.com, clean root URLs). Caddy
-	# mirrors its landing page at / plus that page's build assets; every
-	# marketing page link is absolute to nipalab.com, so navigation stays
-	# there. The app owns every other path.
+	# Marketing lives on Netlify. Caddy mirrors its landing page at / plus
+	# that page's build assets; every marketing page link is absolute to
+	# nipalab.com, so navigation stays there. The app owns every other path.
+	# MARKETING_UPSTREAM is required and must not be nipalab.com.
 	@marketing path / /_astro/*
 	handle @marketing {
-		reverse_proxy {$MARKETING_UPSTREAM:https://nipalab.com} {
+		reverse_proxy {$MARKETING_UPSTREAM} {
 			header_up Host {$MARKETING_HOST:nipalab.com}
 		}
 	}

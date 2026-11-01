@@ -302,9 +302,9 @@ func SplitAllowlist(raw string) []string {
 }
 
 func isAPIPath(p string) bool {
-	return strings.HasPrefix(p, "/auth") ||
-		strings.HasPrefix(p, "/docs") ||
-		strings.HasPrefix(p, "/api")
+	return p == "/auth" || strings.HasPrefix(p, "/auth/") ||
+		p == "/docs" || strings.HasPrefix(p, "/docs/") ||
+		p == "/api" || strings.HasPrefix(p, "/api/")
 }
 
 // isMarketingPath matches the root and the marketing site's own subtree. The
