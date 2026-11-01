@@ -187,8 +187,7 @@ func TestUser_UpdateEmail(t *testing.T) {
 	ctx := permissionCtx(42, withAdmin())
 
 	repo.EXPECT().GetByEmail(gomock.Any(), "new@example.com").Return(nil, domain.NewErrorRecordNotFound())
-	repo.EXPECT().UpdateEmail(gomock.Any(), snow.ID(7), "new@example.com").Return(nil)
-	repo.EXPECT().DeleteRefreshTokens(gomock.Any(), snow.ID(7)).Return(nil)
+	repo.EXPECT().UpdateEmailAndRevokeTokens(gomock.Any(), snow.ID(7), "new@example.com").Return(nil)
 	repo.EXPECT().GetByID(gomock.Any(), snow.ID(7)).Return(&domain.User{ID: 7, Email: "new@example.com"}, nil).Times(2)
 
 	got, err := user.UpdateEmail(ctx, snow.ID(7), "New@Example.com")
@@ -203,8 +202,7 @@ func TestUser_UpdateEmail_RevokeError(t *testing.T) {
 
 	repo.EXPECT().GetByID(gomock.Any(), snow.ID(7)).Return(&domain.User{ID: 7}, nil)
 	repo.EXPECT().GetByEmail(gomock.Any(), "new@example.com").Return(nil, domain.NewErrorRecordNotFound())
-	repo.EXPECT().UpdateEmail(gomock.Any(), snow.ID(7), "new@example.com").Return(nil)
-	repo.EXPECT().DeleteRefreshTokens(gomock.Any(), snow.ID(7)).Return(wantErr)
+	repo.EXPECT().UpdateEmailAndRevokeTokens(gomock.Any(), snow.ID(7), "new@example.com").Return(wantErr)
 
 	_, err := user.UpdateEmail(ctx, snow.ID(7), "new@example.com")
 	require.ErrorIs(t, err, wantErr)
@@ -232,8 +230,7 @@ func TestUser_ChangePassword(t *testing.T) {
 	ctx := permissionCtx(42)
 
 	repo.EXPECT().GetByID(gomock.Any(), snow.ID(42)).Return(&domain.User{ID: 42, Password: "old-hash"}, nil)
-	repo.EXPECT().UpdatePassword(gomock.Any(), snow.ID(42), "hash").Return(nil)
-	repo.EXPECT().DeleteRefreshTokens(gomock.Any(), snow.ID(42)).Return(nil)
+	repo.EXPECT().UpdatePasswordAndRevokeTokens(gomock.Any(), snow.ID(42), "hash").Return(nil)
 
 	require.NoError(t, user.ChangePassword(ctx, snow.ID(42), "old-password", "new-password"))
 }
@@ -244,7 +241,7 @@ func TestUser_ChangePassword_UpdateError(t *testing.T) {
 	ctx := permissionCtx(42)
 
 	repo.EXPECT().GetByID(gomock.Any(), snow.ID(42)).Return(&domain.User{ID: 42, Password: "old-hash"}, nil)
-	repo.EXPECT().UpdatePassword(gomock.Any(), snow.ID(42), "hash").Return(wantErr)
+	repo.EXPECT().UpdatePasswordAndRevokeTokens(gomock.Any(), snow.ID(42), "hash").Return(wantErr)
 
 	err := user.ChangePassword(ctx, snow.ID(42), "old-password", "new-password")
 	require.ErrorIs(t, err, wantErr)
@@ -280,8 +277,7 @@ func TestUser_ChangePassword_ShortNewPassword(t *testing.T) {
 func TestUser_ResetPassword(t *testing.T) {
 	user, repo := newTestUser(t, true)
 	repo.EXPECT().GetByID(gomock.Any(), snow.ID(7)).Return(&domain.User{ID: 7}, nil)
-	repo.EXPECT().UpdatePassword(gomock.Any(), snow.ID(7), "hash").Return(nil)
-	repo.EXPECT().DeleteRefreshTokens(gomock.Any(), snow.ID(7)).Return(nil)
+	repo.EXPECT().UpdatePasswordAndRevokeTokens(gomock.Any(), snow.ID(7), "hash").Return(nil)
 
 	require.NoError(t, user.ResetPassword(permissionCtx(42, withAdmin()), snow.ID(7), "new-password"))
 }
@@ -290,7 +286,7 @@ func TestUser_ResetPassword_UpdateError(t *testing.T) {
 	user, repo := newTestUser(t, true)
 	wantErr := errors.New("db down")
 	repo.EXPECT().GetByID(gomock.Any(), snow.ID(7)).Return(&domain.User{ID: 7}, nil)
-	repo.EXPECT().UpdatePassword(gomock.Any(), snow.ID(7), "hash").Return(wantErr)
+	repo.EXPECT().UpdatePasswordAndRevokeTokens(gomock.Any(), snow.ID(7), "hash").Return(wantErr)
 
 	err := user.ResetPassword(permissionCtx(42, withAdmin()), snow.ID(7), "new-password")
 	require.ErrorIs(t, err, wantErr)
@@ -322,8 +318,7 @@ func TestUser_AdminCannotManagePrivilegedUsers(t *testing.T) {
 
 func TestUser_SuperAdminCanManagePrivilegedUsers(t *testing.T) {
 	user, repo := newTestUser(t, true)
-	repo.EXPECT().UpdatePassword(gomock.Any(), snow.ID(7), "hash").Return(nil)
-	repo.EXPECT().DeleteRefreshTokens(gomock.Any(), snow.ID(7)).Return(nil)
+	repo.EXPECT().UpdatePasswordAndRevokeTokens(gomock.Any(), snow.ID(7), "hash").Return(nil)
 
 	require.NoError(t, user.ResetPassword(permissionCtx(42, withSuperAdmin()), snow.ID(7), "new-password"))
 }
@@ -364,8 +359,7 @@ func TestUser_SetAdminFlags_CannotDemoteSelf(t *testing.T) {
 func TestUser_Deactivate(t *testing.T) {
 	user, repo := newTestUser(t, true)
 	repo.EXPECT().GetByID(gomock.Any(), snow.ID(7)).Return(&domain.User{ID: 7}, nil)
-	repo.EXPECT().Deactivate(gomock.Any(), snow.ID(7)).Return(nil)
-	repo.EXPECT().DeleteRefreshTokens(gomock.Any(), snow.ID(7)).Return(nil)
+	repo.EXPECT().DeactivateAndRevokeTokens(gomock.Any(), snow.ID(7)).Return(nil)
 
 	require.NoError(t, user.Deactivate(permissionCtx(42, withAdmin()), snow.ID(7)))
 }
@@ -374,7 +368,7 @@ func TestUser_Deactivate_RepositoryError(t *testing.T) {
 	user, repo := newTestUser(t, true)
 	wantErr := errors.New("db down")
 	repo.EXPECT().GetByID(gomock.Any(), snow.ID(7)).Return(&domain.User{ID: 7}, nil)
-	repo.EXPECT().Deactivate(gomock.Any(), snow.ID(7)).Return(wantErr)
+	repo.EXPECT().DeactivateAndRevokeTokens(gomock.Any(), snow.ID(7)).Return(wantErr)
 
 	err := user.Deactivate(permissionCtx(42, withAdmin()), snow.ID(7))
 	require.ErrorIs(t, err, wantErr)

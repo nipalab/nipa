@@ -16,11 +16,10 @@ type userAdminRepository interface {
 	List(ctx context.Context) ([]*domain.User, error)
 	Create(ctx context.Context, user domain.User) (*domain.User, error)
 	UpdateProfile(ctx context.Context, id snow.ID, name, photoUrl string, notifyEmail *bool) error
-	UpdateEmail(ctx context.Context, id snow.ID, email string) error
-	UpdatePassword(ctx context.Context, id snow.ID, passwordHash string) error
+	UpdateEmailAndRevokeTokens(ctx context.Context, id snow.ID, email string) error
+	UpdatePasswordAndRevokeTokens(ctx context.Context, id snow.ID, passwordHash string) error
 	UpdateAdminFlags(ctx context.Context, id snow.ID, isAdmin, isSuperAdmin bool) error
-	Deactivate(ctx context.Context, id snow.ID) error
-	DeleteRefreshTokens(ctx context.Context, id snow.ID) error
+	DeactivateAndRevokeTokens(ctx context.Context, id snow.ID) error
 }
 
 type User struct {
@@ -121,10 +120,7 @@ func (u *User) UpdateEmail(ctx context.Context, userID snow.ID, email string) (*
 	} else if err != nil && !domain.IsErrorNotFound(err) {
 		return nil, err
 	}
-	if err := u.repo.UpdateEmail(ctx, userID, email); err != nil {
-		return nil, err
-	}
-	if err := u.repo.DeleteRefreshTokens(ctx, userID); err != nil {
+	if err := u.repo.UpdateEmailAndRevokeTokens(ctx, userID, email); err != nil {
 		return nil, err
 	}
 	return u.repo.GetByID(ctx, userID)
@@ -149,10 +145,7 @@ func (u *User) ChangePassword(ctx context.Context, userID snow.ID, oldPassword, 
 	if err != nil {
 		return domain.NewErrorInternalServer(err.Error())
 	}
-	if err := u.repo.UpdatePassword(ctx, userID, hash); err != nil {
-		return err
-	}
-	return u.repo.DeleteRefreshTokens(ctx, userID)
+	return u.repo.UpdatePasswordAndRevokeTokens(ctx, userID, hash)
 }
 
 func (u *User) ResetPassword(ctx context.Context, userID snow.ID, newPassword string) error {
@@ -166,10 +159,7 @@ func (u *User) ResetPassword(ctx context.Context, userID snow.ID, newPassword st
 	if err != nil {
 		return domain.NewErrorInternalServer(err.Error())
 	}
-	if err := u.repo.UpdatePassword(ctx, userID, hash); err != nil {
-		return err
-	}
-	return u.repo.DeleteRefreshTokens(ctx, userID)
+	return u.repo.UpdatePasswordAndRevokeTokens(ctx, userID, hash)
 }
 
 func (u *User) SetAdminFlags(ctx context.Context, userID snow.ID, isAdmin, isSuperAdmin bool) (*domain.User, error) {
@@ -197,10 +187,7 @@ func (u *User) Deactivate(ctx context.Context, userID snow.ID) error {
 	if err := u.requireCanManage(ctx, userID); err != nil {
 		return err
 	}
-	if err := u.repo.Deactivate(ctx, userID); err != nil {
-		return err
-	}
-	return u.repo.DeleteRefreshTokens(ctx, userID)
+	return u.repo.DeactivateAndRevokeTokens(ctx, userID)
 }
 
 func (u *User) requireCanManage(ctx context.Context, targetID snow.ID) error {

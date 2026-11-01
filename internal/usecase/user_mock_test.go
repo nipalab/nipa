@@ -57,32 +57,18 @@ func (mr *MockuserAdminRepositoryMockRecorder) Create(ctx, user any) *gomock.Cal
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*MockuserAdminRepository)(nil).Create), ctx, user)
 }
 
-// Deactivate mocks base method.
-func (m *MockuserAdminRepository) Deactivate(ctx context.Context, id snow.ID) error {
+// DeactivateAndRevokeTokens mocks base method.
+func (m *MockuserAdminRepository) DeactivateAndRevokeTokens(ctx context.Context, id snow.ID) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Deactivate", ctx, id)
+	ret := m.ctrl.Call(m, "DeactivateAndRevokeTokens", ctx, id)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// Deactivate indicates an expected call of Deactivate.
-func (mr *MockuserAdminRepositoryMockRecorder) Deactivate(ctx, id any) *gomock.Call {
+// DeactivateAndRevokeTokens indicates an expected call of DeactivateAndRevokeTokens.
+func (mr *MockuserAdminRepositoryMockRecorder) DeactivateAndRevokeTokens(ctx, id any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Deactivate", reflect.TypeOf((*MockuserAdminRepository)(nil).Deactivate), ctx, id)
-}
-
-// DeleteRefreshTokens mocks base method.
-func (m *MockuserAdminRepository) DeleteRefreshTokens(ctx context.Context, id snow.ID) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteRefreshTokens", ctx, id)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// DeleteRefreshTokens indicates an expected call of DeleteRefreshTokens.
-func (mr *MockuserAdminRepositoryMockRecorder) DeleteRefreshTokens(ctx, id any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteRefreshTokens", reflect.TypeOf((*MockuserAdminRepository)(nil).DeleteRefreshTokens), ctx, id)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeactivateAndRevokeTokens", reflect.TypeOf((*MockuserAdminRepository)(nil).DeactivateAndRevokeTokens), ctx, id)
 }
 
 // GetByEmail mocks base method.
@@ -144,32 +130,32 @@ func (mr *MockuserAdminRepositoryMockRecorder) UpdateAdminFlags(ctx, id, isAdmin
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateAdminFlags", reflect.TypeOf((*MockuserAdminRepository)(nil).UpdateAdminFlags), ctx, id, isAdmin, isSuperAdmin)
 }
 
-// UpdateEmail mocks base method.
-func (m *MockuserAdminRepository) UpdateEmail(ctx context.Context, id snow.ID, email string) error {
+// UpdateEmailAndRevokeTokens mocks base method.
+func (m *MockuserAdminRepository) UpdateEmailAndRevokeTokens(ctx context.Context, id snow.ID, email string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateEmail", ctx, id, email)
+	ret := m.ctrl.Call(m, "UpdateEmailAndRevokeTokens", ctx, id, email)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// UpdateEmail indicates an expected call of UpdateEmail.
-func (mr *MockuserAdminRepositoryMockRecorder) UpdateEmail(ctx, id, email any) *gomock.Call {
+// UpdateEmailAndRevokeTokens indicates an expected call of UpdateEmailAndRevokeTokens.
+func (mr *MockuserAdminRepositoryMockRecorder) UpdateEmailAndRevokeTokens(ctx, id, email any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateEmail", reflect.TypeOf((*MockuserAdminRepository)(nil).UpdateEmail), ctx, id, email)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateEmailAndRevokeTokens", reflect.TypeOf((*MockuserAdminRepository)(nil).UpdateEmailAndRevokeTokens), ctx, id, email)
 }
 
-// UpdatePassword mocks base method.
-func (m *MockuserAdminRepository) UpdatePassword(ctx context.Context, id snow.ID, passwordHash string) error {
+// UpdatePasswordAndRevokeTokens mocks base method.
+func (m *MockuserAdminRepository) UpdatePasswordAndRevokeTokens(ctx context.Context, id snow.ID, passwordHash string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdatePassword", ctx, id, passwordHash)
+	ret := m.ctrl.Call(m, "UpdatePasswordAndRevokeTokens", ctx, id, passwordHash)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// UpdatePassword indicates an expected call of UpdatePassword.
-func (mr *MockuserAdminRepositoryMockRecorder) UpdatePassword(ctx, id, passwordHash any) *gomock.Call {
+// UpdatePasswordAndRevokeTokens indicates an expected call of UpdatePasswordAndRevokeTokens.
+func (mr *MockuserAdminRepositoryMockRecorder) UpdatePasswordAndRevokeTokens(ctx, id, passwordHash any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdatePassword", reflect.TypeOf((*MockuserAdminRepository)(nil).UpdatePassword), ctx, id, passwordHash)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdatePasswordAndRevokeTokens", reflect.TypeOf((*MockuserAdminRepository)(nil).UpdatePasswordAndRevokeTokens), ctx, id, passwordHash)
 }
 
 // UpdateProfile mocks base method.

@@ -7,16 +7,18 @@ import (
 	"strings"
 
 	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/repository/dbtx"
 	sqlcSqlite "github.com/nipalab/nipa/internal/repository/sqlc/sqlite"
 	"github.com/nipalab/nipa/internal/snow"
 )
 
 type User struct {
 	queries *sqlcSqlite.Queries
+	tx      *dbtx.Transactor
 }
 
 func NewUserRepository(db *sql.DB) *User {
-	return &User{queries: sqlcSqlite.New(db)}
+	return &User{queries: sqlcSqlite.New(dbtx.New(db)), tx: dbtx.NewTransactor(db)}
 }
 
 func (a *User) GetByEmail(ctx context.Context, email string) (*domain.User, error) {
@@ -110,6 +112,33 @@ func (a *User) DeleteRefreshTokens(ctx context.Context, id snow.ID) error {
 func (a *User) Deactivate(ctx context.Context, id snow.ID) error {
 	err := a.queries.UserDeleteByID(ctx, id.Int64())
 	return handleError(err)
+}
+
+func (a *User) UpdateEmailAndRevokeTokens(ctx context.Context, id snow.ID, email string) error {
+	return a.tx.WithinTx(ctx, func(ctx context.Context) error {
+		if err := a.UpdateEmail(ctx, id, email); err != nil {
+			return err
+		}
+		return a.DeleteRefreshTokens(ctx, id)
+	})
+}
+
+func (a *User) UpdatePasswordAndRevokeTokens(ctx context.Context, id snow.ID, passwordHash string) error {
+	return a.tx.WithinTx(ctx, func(ctx context.Context) error {
+		if err := a.UpdatePassword(ctx, id, passwordHash); err != nil {
+			return err
+		}
+		return a.DeleteRefreshTokens(ctx, id)
+	})
+}
+
+func (a *User) DeactivateAndRevokeTokens(ctx context.Context, id snow.ID) error {
+	return a.tx.WithinTx(ctx, func(ctx context.Context) error {
+		if err := a.Deactivate(ctx, id); err != nil {
+			return err
+		}
+		return a.DeleteRefreshTokens(ctx, id)
+	})
 }
 
 func toDomainUser(row sqlcSqlite.User) *domain.User {
