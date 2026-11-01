@@ -15,8 +15,6 @@ func baseRateLimitConfig() *config.Config {
 	return &config.Config{RateLimitEnabled: true, RateLimitTrustedProxies: "127.0.0.1", RateLimitAuthIPPerMinute: 60, RateLimitAuthIPBurst: 1}
 }
 
-type nopStore struct{ ratelimit.Store }
-
 func TestBuildRateLimiterMemoryDefault(t *testing.T) {
 	limiter, proxies, err := BuildRateLimiter(baseRateLimitConfig(), nil, nil)
 	require.NoError(t, err)

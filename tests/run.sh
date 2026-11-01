@@ -12,6 +12,7 @@ EE_PORT="${NIPA_TEST_EE_PORT:-6747}"
 PG_PORT="${NIPA_TEST_PG_PORT:-55432}"
 S3_PORT="${NIPA_TEST_S3_PORT:-55900}"
 REDIS_PORT="${NIPA_TEST_REDIS_PORT:-6379}"
+REDIS_ADDR="${NIPA_TEST_REDIS_ADDR:-}"
 S3_BUCKET="${NIPA_TEST_S3_BUCKET:-nipa}"
 S3_ACCESS_KEY="${NIPA_TEST_S3_ACCESS_KEY:-minioadmin}"
 S3_SECRET_KEY="${NIPA_TEST_S3_SECRET_KEY:-minioadmin}"
@@ -177,10 +178,10 @@ RATE_LIMIT_CHUNK_IP_PER_MINUTE: 6000000
 RATE_LIMIT_CHUNK_IP_BURST: 1000000
 RATE_LIMIT_GLOBAL_IP_PER_MINUTE: 6000000
 RATE_LIMIT_GLOBAL_IP_BURST: 1000000"
-	if [[ "$edition" == "ee" ]]; then
+	if [[ "$edition" == "ee" && -n "$REDIS_ADDR" ]]; then
 		rate_limit_lines="$rate_limit_lines
 RATE_LIMIT_STORE: redis
-RATE_LIMIT_REDIS_ADDR: '127.0.0.1:$REDIS_PORT'"
+RATE_LIMIT_REDIS_ADDR: '$REDIS_ADDR'"
 	fi
 
 	local saas_lines=""
@@ -243,6 +244,7 @@ start_compose() {
 	fi
 
 	log "starting postgres, redis and minio containers"
+	[[ -n "$REDIS_ADDR" ]] || REDIS_ADDR="127.0.0.1:$REDIS_PORT"
 	"$DOCKER" compose -f "$COMPOSE_FILE" up -d
 	COMPOSE_STARTED=1
 

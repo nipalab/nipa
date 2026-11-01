@@ -96,7 +96,7 @@ func TestRedisKeysIndependentAndPrefixed(t *testing.T) {
 	assert.False(t, a2.Allowed)
 
 	raw := redis.NewClient(&redis.Options{Addr: testRedisAddr})
-	defer raw.Close()
+	defer func() { _ = raw.Close() }()
 	n, err := raw.Exists(context.Background(), store.prefix+"a").Result()
 	require.NoError(t, err)
 	assert.EqualValues(t, 1, n)
@@ -109,7 +109,7 @@ func TestRedisAtomicAcrossStores(t *testing.T) {
 	a := newStore(t)
 	b, err := New(context.Background(), Config{Addr: testRedisAddr, Prefix: a.prefix})
 	require.NoError(t, err)
-	defer b.Close()
+	defer func() { _ = b.Close() }()
 
 	rule := ratelimit.Rule{Rate: 0.0001, Burst: 40}
 	var allowed int64
@@ -137,7 +137,7 @@ func TestRedisUnreachable(t *testing.T) {
 	require.ErrorContains(t, err, "ping redis")
 
 	store := NewWithClient(redis.NewClient(&redis.Options{Addr: "127.0.0.1:1"}), "x:")
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 	_, err = store.Take(context.Background(), "k", ratelimit.Rule{Rate: 1, Burst: 1}, 1)
 	assert.Error(t, err)
 }
@@ -145,6 +145,6 @@ func TestRedisUnreachable(t *testing.T) {
 func TestRedisLimiterFailsOpen(t *testing.T) {
 	store := NewWithClient(redis.NewClient(&redis.Options{Addr: "127.0.0.1:1"}), "x:")
 	limiter := ratelimit.NewLimiter(store, map[string]ratelimit.Rule{ratelimit.ScopeAuthIP: {Rate: 1, Burst: 1}})
-	defer limiter.Close()
+	defer func() { _ = limiter.Close() }()
 	assert.True(t, limiter.Allow(context.Background(), ratelimit.ScopeAuthIP, "1.2.3.4").Allowed)
 }

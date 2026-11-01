@@ -47,6 +47,7 @@ NIPA_TEST_EMAIL_TRANSPORT=http tests/run.sh free  # email transport: sendgrid, s
 NIPA_TEST_SAAS= tests/run.sh ee           # disable the SaaS onboarding config + spec
 NIPA_TEST_POSTGRES_DSN=... NIPA_TEST_S3_ENDPOINT=... tests/run.sh ee   # external services
 NIPA_TEST_REDIS_PORT=6380 tests/run.sh ee # redis port for the ee rate limit store (default 6379)
+NIPA_TEST_REDIS_ADDR=host:6379 tests/run.sh ee # external redis; with external postgres/s3 and no address the ee run uses the memory store
 ```
 
 Makefile shortcuts: `make test-client`, `make test-client-ee`,
