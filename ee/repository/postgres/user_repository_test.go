@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/suite"
 
@@ -136,6 +137,29 @@ func (s *UserRepositorySuite) TestCRUD() {
 	s.Require().NoError(repo.Deactivate(ctx, created.ID))
 	_, err = repo.GetByID(ctx, created.ID)
 	requireRecordNotFound(s.T(), err)
+}
+
+func (s *UserRepositorySuite) TestDeleteRefreshTokens() {
+	ctx := context.Background()
+	repo := NewUserRepository(s.db)
+	auth := NewAuthRepository(s.db)
+
+	userID := seedUser(s.T(), s.q, "alice", "alice@example.com", sql.NullString{})
+	otherID := seedUser(s.T(), s.q, "bob", "bob@example.com", sql.NullString{})
+	expiresAt := time.Now().Add(time.Hour)
+	s.Require().NoError(auth.SaveRefreshToken(ctx, userID, "token-1", expiresAt))
+	s.Require().NoError(auth.SaveRefreshToken(ctx, userID, "token-2", expiresAt))
+	s.Require().NoError(auth.SaveRefreshToken(ctx, otherID, "other-token", expiresAt))
+
+	s.Require().NoError(repo.DeleteRefreshTokens(ctx, userID))
+
+	_, err := auth.GetAndDeleteRefreshToken(ctx, "token-1")
+	requireRecordNotFound(s.T(), err)
+	_, err = auth.GetAndDeleteRefreshToken(ctx, "token-2")
+	requireRecordNotFound(s.T(), err)
+	got, err := auth.GetAndDeleteRefreshToken(ctx, "other-token")
+	s.Require().NoError(err)
+	s.Equal(otherID, got.UserID)
 }
 
 func (s *UserRepositorySuite) TestCreate_DuplicateEmail() {
