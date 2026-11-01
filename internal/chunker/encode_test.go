@@ -114,3 +114,18 @@ func TestDecode_InvalidZstd(t *testing.T) {
 	_, err := Decode(EncodingZstd, []byte("not a zstd frame"))
 	require.Error(t, err)
 }
+
+func TestDecodeAppend(t *testing.T) {
+	out, err := DecodeAppend([]byte("ab"), EncodingRaw, []byte("cd"))
+	require.NoError(t, err)
+	require.Equal(t, "abcd", string(out))
+
+	_, chunks, err := EncodeBytes([]byte("compressed text payload"), "a.txt", false, "")
+	require.NoError(t, err)
+	out, err = DecodeAppend([]byte("x:"), EncodingZstd, chunks[0].Data)
+	require.NoError(t, err)
+	require.Equal(t, "x:compressed text payload", string(out))
+
+	_, err = DecodeAppend(nil, EncodingZstd, []byte("not a zstd frame"))
+	require.Error(t, err)
+}

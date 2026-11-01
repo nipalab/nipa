@@ -121,3 +121,13 @@ func TestLoadContent_MissingChunk(t *testing.T) {
 type assertErr struct{}
 
 func (assertErr) Error() string { return "missing" }
+
+func TestLoadContent_PreallocatesBySize(t *testing.T) {
+	h1, h2 := serverDomain.Hash{1}, serverDomain.Hash{2}
+	chunks := map[serverDomain.Hash][]byte{h1: []byte("foo"), h2: []byte("bar")}
+	load := func(h serverDomain.Hash) ([]byte, error) { return chunks[h], nil }
+	content, err := LoadContent(load, Entry{SizeBytes: 6, ChunkHashes: []serverDomain.Hash{h1, h2}})
+	require.NoError(t, err)
+	require.Equal(t, "foobar", string(content))
+	require.Equal(t, 6, cap(content))
+}

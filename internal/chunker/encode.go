@@ -97,7 +97,15 @@ func Decode(encoding string, data []byte) ([]byte, error) {
 	if encoding != EncodingZstd {
 		return data, nil
 	}
-	decoded, err := zstdDecoder.DecodeAll(data, nil)
+	return DecodeAppend(nil, encoding, data)
+}
+
+// DecodeAppend appends the plaintext bytes of a stored chunk to dst.
+func DecodeAppend(dst []byte, encoding string, data []byte) ([]byte, error) {
+	if encoding != EncodingZstd {
+		return append(dst, data...), nil
+	}
+	decoded, err := zstdDecoder.DecodeAll(data, dst)
 	if err != nil {
 		return nil, fmt.Errorf("decode zstd chunk: %w", err)
 	}

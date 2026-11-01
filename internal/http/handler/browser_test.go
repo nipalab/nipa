@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -251,4 +252,40 @@ func TestHandler_BlobBinaryContent(t *testing.T) {
 	require.Equal(t, http.StatusOK, appCtx.statusCode)
 	require.Equal(t, "application/octet-stream", appCtx.contentType)
 	require.Equal(t, "\x00\x01\x02", string(appCtx.raw))
+}
+
+func TestHandler_BlobETag(t *testing.T) {
+	env := newHandlerTestEnv(t)
+	env.seedFiles(t, map[string]string{"a.txt": "hello"})
+
+	claims := &domain.Claims{UserID: env.userID, IsAdmin: true}
+	params := map[string]string{"org": "default", "project": "default"}
+	query := map[string]string{"rev": "main", "path": "a.txt"}
+
+	rec := httptest.NewRecorder()
+	appCtx := browserAppCtx(claims, params, query)
+	appCtx.responseWriter = rec
+	env.handler.GetBlob(appCtx)
+	require.Equal(t, http.StatusOK, appCtx.statusCode)
+	etag := rec.Header().Get("ETag")
+	require.NotEmpty(t, etag)
+	require.Equal(t, "private, no-cache", rec.Header().Get("Cache-Control"))
+
+	rec = httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("If-None-Match", `"other", W/`+etag)
+	appCtx = browserAppCtx(claims, params, query)
+	appCtx.responseWriter = rec
+	appCtx.request = req
+	env.handler.GetBlob(appCtx)
+	require.Equal(t, http.StatusNotModified, rec.Code)
+	require.Nil(t, appCtx.raw)
+}
+
+func TestEtagMatches(t *testing.T) {
+	require.True(t, etagMatches(`"a", "b"`, `"b"`))
+	require.True(t, etagMatches(`*`, `"b"`))
+	require.True(t, etagMatches(`W/"b"`, `"b"`))
+	require.False(t, etagMatches(`"a"`, `"b"`))
+	require.False(t, etagMatches(``, `"b"`))
 }

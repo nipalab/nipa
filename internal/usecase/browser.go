@@ -202,32 +202,51 @@ func (b *Branch) TreeFilesAt(ctx context.Context, projectID snow.ID, rev, path s
 	return files, nil
 }
 
-// FileContent reassembles one readable file at the given revision.
-func (b *Branch) FileContent(ctx context.Context, projectID snow.ID, rev, path string) ([]byte, diff.Entry, error) {
+// FileEntry resolves one readable file at the given revision without reading
+// its content.
+func (b *Branch) FileEntry(ctx context.Context, projectID snow.ID, rev, path string) (diff.Entry, error) {
 	if !b.permUc.HasProjectAccess(ctx, projectID, domain.PermissionRead) {
-		return nil, diff.Entry{}, domain.NewErrorNoPermission()
+		return diff.Entry{}, domain.NewErrorNoPermission()
 	}
 	commitID, err := b.resolveRevision(ctx, projectID, rev)
 	if err != nil {
-		return nil, diff.Entry{}, err
+		return diff.Entry{}, err
 	}
 	path = strings.Trim(path, "/")
 	if commitID == nil {
-		return nil, diff.Entry{}, domain.NewErrorNotFound(fmt.Sprintf("file %q not found", path))
+		return diff.Entry{}, domain.NewErrorNotFound(fmt.Sprintf("file %q not found", path))
 	}
 	entry, ok, err := b.fileEntryAt(ctx, projectID, *commitID, path)
 	if err != nil {
-		return nil, diff.Entry{}, err
+		return diff.Entry{}, err
 	}
 	if !ok {
-		return nil, diff.Entry{}, domain.NewErrorNotFound(fmt.Sprintf("file %q not found", path))
+		return diff.Entry{}, domain.NewErrorNotFound(fmt.Sprintf("file %q not found", path))
 	}
+	return entry, nil
+}
+
+// ReadEntry reassembles the content of an entry returned by FileEntry.
+func (b *Branch) ReadEntry(ctx context.Context, entry diff.Entry) ([]byte, error) {
 	if b.chunks == nil {
-		return nil, diff.Entry{}, domain.NewErrorInternalServer("chunk store is not configured")
+		return nil, domain.NewErrorInternalServer("chunk store is not configured")
 	}
 	data, err := diff.LoadContent(b.loadChunk(ctx), entry)
 	if err != nil {
-		return nil, diff.Entry{}, domain.NewErrorInternalServer(err.Error())
+		return nil, domain.NewErrorInternalServer(err.Error())
+	}
+	return data, nil
+}
+
+// FileContent reassembles one readable file at the given revision.
+func (b *Branch) FileContent(ctx context.Context, projectID snow.ID, rev, path string) ([]byte, diff.Entry, error) {
+	entry, err := b.FileEntry(ctx, projectID, rev, path)
+	if err != nil {
+		return nil, diff.Entry{}, err
+	}
+	data, err := b.ReadEntry(ctx, entry)
+	if err != nil {
+		return nil, diff.Entry{}, err
 	}
 	return data, entry, nil
 }

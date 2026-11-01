@@ -120,20 +120,24 @@ func flattenTree(node *serverDomain.TreeNode, prefix string, out map[string]Entr
 	}
 }
 
+const maxPreallocBytes = 64 << 20
+
 // LoadContent reassembles a file from its cached chunks, decoding the stored
 // encoding when the file was compressed.
 func LoadContent(loadChunk func(serverDomain.Hash) ([]byte, error), e Entry) ([]byte, error) {
 	var out []byte
+	if e.SizeBytes > 0 && e.SizeBytes <= maxPreallocBytes {
+		out = make([]byte, 0, e.SizeBytes)
+	}
 	for _, h := range e.ChunkHashes {
 		data, err := loadChunk(h)
 		if err != nil {
 			return nil, fmt.Errorf("load chunk %s for %s: %w", h, e.Path, err)
 		}
-		decoded, err := chunker.Decode(e.Encoding, data)
+		out, err = chunker.DecodeAppend(out, e.Encoding, data)
 		if err != nil {
 			return nil, fmt.Errorf("decode chunk %s for %s: %w", h, e.Path, err)
 		}
-		out = append(out, decoded...)
 	}
 	return out, nil
 }

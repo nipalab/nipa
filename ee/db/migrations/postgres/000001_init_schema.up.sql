@@ -195,6 +195,10 @@ CREATE UNIQUE INDEX idx_branches_project_key
     ON branches (project_id, key)
     WHERE deleted = FALSE;
 
+CREATE INDEX idx_branches_project_name
+    ON branches (project_id, name)
+    WHERE deleted = FALSE;
+
 CREATE INDEX idx_branches_project_updated_id
     ON branches (project_id, updated_at DESC, id DESC);
 
