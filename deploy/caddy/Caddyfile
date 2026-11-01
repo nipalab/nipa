@@ -17,7 +17,7 @@
 	email admin@nipalab.com
 }
 
-nipa.com {
+nipalab.com {
 	encode zstd gzip
 
 	# Keep the observability endpoints off the public edge: probe the loopback
@@ -25,7 +25,7 @@ nipa.com {
 	@internal path /metrics /debug/pprof /debug/pprof/*
 	respond @internal 404
 
-	# Marketing lives on Netlify (nipalab.com, clean root URLs). nipa.com
+	# Marketing lives on Netlify (nipalab.com, clean root URLs). Caddy
 	# mirrors its landing page at / plus that page's build assets; every
 	# marketing page link is absolute to nipalab.com, so navigation stays
 	# there. The app owns every other path.

@@ -960,7 +960,7 @@ compatible for one release.
   mirrors its landing page on the app domain by proxying `/` and `/_astro/*`
   (`MARKETING_UPSTREAM`/`MARKETING_HOST`, defaults `https://nipalab.com` /
   `nipalab.com`). Marketing links are absolute to `nipalab.com`, app links to
-  `nipa.com` (`siteUrl`/`appUrl` in `web/src/consts.ts`), so marketing changes
+  `nipalab.com` (`siteUrl`/`appUrl` in `web/src/consts.ts`), so marketing changes
   ship without rebuilding `nipad-ee`; `upgrade.sh` only rewrites the
   `reverse_proxy 127.0.0.1` line. The optional embedded fallback
   (`ee/web/marketing`, base `/web`, placeholder committed,

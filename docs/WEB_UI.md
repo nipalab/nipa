@@ -7,7 +7,7 @@ proxies `/api` and `/docs` to `NIPA_SERVER_URL`).
 
 In SaaS mode the marketing site is a separate Astro deployment (the `nipa-web`
 repo on Netlify) served at `https://nipalab.com`; the deploy Caddyfile mirrors
-its landing page on `https://nipa.com/` (and `/_astro/*`) and marketing links
+its landing page on `https://nipalab.com/` (and `/_astro/*`) and marketing links
 stay on `nipalab.com`. The same binary also carries an optional embedded
 fallback (`ee/web/marketing`, built under base path `/web` with
 `make marketing-dist`) that serves `/` and `/web/...` when no Caddy proxy is

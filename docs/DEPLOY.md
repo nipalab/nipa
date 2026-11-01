@@ -62,7 +62,7 @@ Netlify) served natively at `https://nipalab.com` with clean root URLs. Caddy
 mirrors it on the app domain: `/` proxies the Netlify landing page and
 `/_astro/*` its build assets. Every marketing page link is absolute to
 `https://nipalab.com`, so marketing navigation stays on the marketing domain;
-`Sign in` / `Open dashboard` link to `https://nipa.com`. A marketing change
+`Sign in` / `Open dashboard` link to `https://nipalab.com`. A marketing change
 only needs a Netlify deploy — no `nipad-ee` rebuild or blue/green flip:
 
 - Keep the `@marketing` `handle` block in `deploy/caddy/Caddyfile` ahead of the
