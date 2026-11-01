@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -70,4 +71,14 @@ func TestNewErrorConstructors(t *testing.T) {
 	require.Equal(t, 500, internalErr.Code)
 	require.Equal(t, "internal server error", internalErr.Message)
 	require.Equal(t, "panic", internalErr.InternalMessage)
+}
+
+func TestNewErrorTooManyRequests(t *testing.T) {
+	err := NewErrorTooManyRequests(1500 * time.Millisecond)
+	if err.Code != 429 || err.Message != "rate limit exceeded, retry in 2s" {
+		t.Fatalf("unexpected error: %+v", err)
+	}
+	if NewErrorTooManyRequests(0).Message != "rate limit exceeded, retry in 1s" {
+		t.Fatal("expected a minimum of one second")
+	}
 }

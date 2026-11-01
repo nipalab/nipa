@@ -79,7 +79,8 @@ func (f *fakeStore) CreateDelivery(_ context.Context, delivery domain.WebhookDel
 	}
 	stored := delivery
 	f.deliveries[delivery.ID] = &stored
-	return &stored, nil
+	created := stored
+	return &created, nil
 }
 
 func (f *fakeStore) ListPendingRetries(_ context.Context, now time.Time, limit int64) ([]*domain.WebhookDelivery, error) {

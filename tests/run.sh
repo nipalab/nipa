@@ -11,6 +11,8 @@ FREE_PORT="${NIPA_TEST_PORT:-6745}"
 EE_PORT="${NIPA_TEST_EE_PORT:-6747}"
 PG_PORT="${NIPA_TEST_PG_PORT:-55432}"
 S3_PORT="${NIPA_TEST_S3_PORT:-55900}"
+REDIS_PORT="${NIPA_TEST_REDIS_PORT:-6379}"
+REDIS_ADDR="${NIPA_TEST_REDIS_ADDR:-}"
 S3_BUCKET="${NIPA_TEST_S3_BUCKET:-nipa}"
 S3_ACCESS_KEY="${NIPA_TEST_S3_ACCESS_KEY:-minioadmin}"
 S3_SECRET_KEY="${NIPA_TEST_S3_SECRET_KEY:-minioadmin}"
@@ -163,6 +165,25 @@ EOF
 )
 	fi
 
+	# The suite hammers /auth and the API from one address with a handful of
+	# identities, so every scope stays generous except auth_id, which the
+	# rate limit spec exhausts with a throwaway email.
+	local rate_limit_lines="RATE_LIMIT_AUTH_IP_PER_MINUTE: 600000
+RATE_LIMIT_AUTH_IP_BURST: 100000
+RATE_LIMIT_AUTH_ID_PER_MINUTE: 1
+RATE_LIMIT_AUTH_ID_BURST: 60
+RATE_LIMIT_API_USER_PER_MINUTE: 600000
+RATE_LIMIT_API_USER_BURST: 100000
+RATE_LIMIT_CHUNK_IP_PER_MINUTE: 6000000
+RATE_LIMIT_CHUNK_IP_BURST: 1000000
+RATE_LIMIT_GLOBAL_IP_PER_MINUTE: 6000000
+RATE_LIMIT_GLOBAL_IP_BURST: 1000000"
+	if [[ "$edition" == "ee" && -n "$REDIS_ADDR" ]]; then
+		rate_limit_lines="$rate_limit_lines
+RATE_LIMIT_STORE: redis
+RATE_LIMIT_REDIS_ADDR: '$REDIS_ADDR'"
+	fi
+
 	local saas_lines=""
 	if [[ -n "$SAAS_MODE" ]]; then
 		# The free `nipad` wires no enterprise package, so SAAS_MODE is inert
@@ -196,6 +217,7 @@ EMAIL_MAX_ATTEMPTS: 2
 EMAIL_RETRY_BACKOFF_SECONDS: 1
 EMAIL_POLL_SECONDS: 1
 $saas_lines
+$rate_limit_lines
 EOF
 }
 
@@ -221,7 +243,8 @@ start_compose() {
 		return
 	fi
 
-	log "starting postgres and minio containers"
+	log "starting postgres, redis and minio containers"
+	[[ -n "$REDIS_ADDR" ]] || REDIS_ADDR="127.0.0.1:$REDIS_PORT"
 	"$DOCKER" compose -f "$COMPOSE_FILE" up -d
 	COMPOSE_STARTED=1
 
@@ -242,6 +265,17 @@ start_compose() {
 	log "resetting postgres schema"
 	"$DOCKER" compose -f "$COMPOSE_FILE" exec -T postgres \
 		psql -U nipa -d nipa -q -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public;' >/dev/null
+
+	log "waiting for redis"
+	tries=0
+	until "$DOCKER" compose -f "$COMPOSE_FILE" exec -T redis redis-cli ping >/dev/null 2>&1; do
+		tries=$((tries + 1))
+		if [[ $tries -gt 60 ]]; then
+			echo "redis did not become ready" >&2
+			exit 1
+		fi
+		sleep 1
+	done
 
 	log "waiting for minio"
 	tries=0
@@ -318,6 +352,7 @@ run_suite() {
 	# Same feature detection for the SaaS onboarding routes (registration and
 	# social login); they exist on ee only.
 	export NIPA_TEST_SAAS="$SAAS_MODE"
+	export NIPA_TEST_RATELIMIT=1
 	export NIPA_TEST_USER="${NIPA_TEST_USER:-nipa}"
 	export NIPA_TEST_PASS="${NIPA_TEST_PASS:-nipa}"
 	export NIPA_TOKEN_FILE="$TMP_DIR/tokens-$edition.json"

@@ -3,7 +3,9 @@ package usecase
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"strings"
 	"sync"
 	"time"
@@ -11,6 +13,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/ratelimit"
 	"github.com/nipalab/nipa/internal/snow"
 	"github.com/nipalab/nipa/internal/sshkey"
 	"github.com/nipalab/nipa/internal/usecase/dto"
@@ -49,6 +52,7 @@ type passwordHasher interface {
 }
 
 type Auth struct {
+	limiter        *ratelimit.Limiter
 	secret         string
 	passwordHasher passwordHasher
 	userRepo       userRepository
@@ -68,12 +72,33 @@ func NewAuth(secret string, passwordHasher passwordHasher, userRepo userReposito
 }
 
 // WithSSHKeys enables SSH key login on this usecase.
+func (a *Auth) WithLimiter(limiter *ratelimit.Limiter) *Auth {
+	a.limiter = limiter
+	return a
+}
+
+func (a *Auth) throttleIdentity(ctx context.Context, email string) error {
+	email = strings.ToLower(strings.TrimSpace(email))
+	if a.limiter == nil || email == "" {
+		return nil
+	}
+	sum := sha256.Sum256([]byte(email))
+	res := a.limiter.Allow(ctx, ratelimit.ScopeAuthID, hex.EncodeToString(sum[:]))
+	if !res.Allowed {
+		return domain.NewErrorTooManyRequests(res.RetryAfter)
+	}
+	return nil
+}
+
 func (a *Auth) WithSSHKeys(repo authSSHKeyRepository) *Auth {
 	a.sshKeyRepo = repo
 	return a
 }
 
 func (a *Auth) LoginWithEmailPassword(ctx context.Context, email string, password string) (*dto.LoginResult, error) {
+	if err := a.throttleIdentity(ctx, email); err != nil {
+		return nil, err
+	}
 	user, err := a.userRepo.GetByEmail(ctx, email)
 	if err != nil {
 		if domain.IsErrorNotFound(err) {
@@ -135,6 +160,9 @@ func errEmailNotVerified() error {
 // that account; when empty, the key itself identifies the account.
 func (a *Auth) BeginSSHKeyLogin(ctx context.Context, email string) (*dto.SSHKeyChallenge, error) {
 	email = strings.TrimSpace(email)
+	if err := a.throttleIdentity(ctx, email); err != nil {
+		return nil, err
+	}
 	nonce, err := newSSHLoginNonce()
 	if err != nil {
 		return nil, domain.NewErrorInternalServer(err.Error())
@@ -154,6 +182,9 @@ func (a *Auth) BeginSSHKeyLogin(ctx context.Context, email string) (*dto.SSHKeyC
 
 func (a *Auth) CompleteSSHKeyLogin(ctx context.Context, email, nonce string, publicKey, signature []byte) (*dto.LoginResult, error) {
 	email = strings.TrimSpace(email)
+	if err := a.throttleIdentity(ctx, email); err != nil {
+		return nil, err
+	}
 	if nonce == "" {
 		return nil, domain.NewErrorUser("nonce must not be empty")
 	}

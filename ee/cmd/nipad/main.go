@@ -14,6 +14,7 @@ import (
 	eedb "github.com/nipalab/nipa/ee/db"
 	"github.com/nipalab/nipa/ee/nodelease"
 	"github.com/nipalab/nipa/ee/oauth"
+	eeratelimit "github.com/nipalab/nipa/ee/ratelimit"
 	"github.com/nipalab/nipa/ee/registration"
 	"github.com/nipalab/nipa/ee/repository/postgres"
 	s3store "github.com/nipalab/nipa/ee/storage/s3"
@@ -23,6 +24,7 @@ import (
 	"github.com/nipalab/nipa/internal/hasher"
 	"github.com/nipalab/nipa/internal/mail"
 	"github.com/nipalab/nipa/internal/obs"
+	"github.com/nipalab/nipa/internal/ratelimit"
 	"github.com/nipalab/nipa/internal/repository/dbtx"
 	"github.com/nipalab/nipa/internal/serverapp"
 	"github.com/nipalab/nipa/internal/snow"
@@ -157,6 +159,11 @@ func main() {
 		emailDispatcher = mail.NewDispatcher(emailRepository, emailSender, cfg.EmailDispatcherConfig()).WithMetrics(metrics)
 	}
 
+	rateLimiter, trustedProxies, err := serverapp.BuildRateLimiter(cfg, metrics, newRedisRateLimitStore)
+	if err != nil {
+		panic(fmt.Errorf("rate limit: %w", err))
+	}
+
 	fileLockRepo := postgres.NewFileLockRepository(dbConn)
 	deps := serverapp.UsecaseDeps{
 		Config:            cfg,
@@ -167,6 +174,7 @@ func main() {
 		Metrics:           metrics,
 		WebhookDispatcher: webhookDispatcher,
 		EmailDispatcher:   emailDispatcher,
+		RateLimiter:       rateLimiter,
 	}
 	if storageLedger != nil {
 		deps.StorageLedger = storageLedger
@@ -198,7 +206,7 @@ func main() {
 	if emailDispatcher != nil {
 		dispatchers = append(dispatchers, emailDispatcher)
 	}
-	runOpts := []serverapp.Option{serverapp.WithReadiness(dbConn.PingContext), serverapp.WithMetrics(metrics), serverapp.WithTracing(tracing), serverapp.WithLogs(logs), serverapp.WithMetricsPush(metricsPush)}
+	runOpts := []serverapp.Option{serverapp.WithReadiness(dbConn.PingContext), serverapp.WithMetrics(metrics), serverapp.WithTracing(tracing), serverapp.WithLogs(logs), serverapp.WithMetricsPush(metricsPush), serverapp.WithRateLimit(rateLimiter, trustedProxies)}
 	if storageLedger != nil {
 		runOpts = append(runOpts, serverapp.WithRoutes(func(ws *restful.WebService) {
 			storageusage.RegisterRoutes(ws, storageusage.RoutesConfig{
@@ -341,4 +349,14 @@ func createChunkStore(cfg *config.Config) (storage.ChunkStore, error) {
 	default:
 		return nil, fmt.Errorf("enterprise server only supports CHUNK_STORAGE=s3, got %q", cfg.ChunkStorage)
 	}
+}
+
+func newRedisRateLimitStore(cfg *config.Config) (ratelimit.Store, error) {
+	return eeratelimit.New(context.Background(), eeratelimit.Config{
+		Addr:     cfg.RateLimitRedisAddr,
+		Password: cfg.RateLimitRedisPassword,
+		DB:       cfg.RateLimitRedisDB,
+		TLS:      cfg.RateLimitRedisTLS,
+		Prefix:   cfg.RateLimitRedisPrefix,
+	})
 }

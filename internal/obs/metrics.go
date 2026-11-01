@@ -28,6 +28,7 @@ type Metrics struct {
 	push                *prometheus.CounterVec
 	webhookDeliveries   *prometheus.CounterVec
 	mailDeliveries      *prometheus.CounterVec
+	rateLimit           *prometheus.CounterVec
 }
 
 // NewMetrics builds an isolated registry with the standard Go and process
@@ -97,6 +98,12 @@ func NewMetrics() *Metrics {
 			Name:      "deliveries_total",
 			Help:      "Email deliveries by result.",
 		}, []string{"result"}),
+		rateLimit: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: metricsNamespace,
+			Subsystem: "ratelimit",
+			Name:      "total",
+			Help:      "Rate limit decisions by scope and result.",
+		}, []string{"scope", "result"}),
 	}
 	m.registry.MustRegister(
 		collectors.NewGoCollector(),
@@ -111,6 +118,7 @@ func NewMetrics() *Metrics {
 		m.push,
 		m.webhookDeliveries,
 		m.mailDeliveries,
+		m.rateLimit,
 	)
 	return m
 }
@@ -187,6 +195,14 @@ func (m *Metrics) ObserveMailDelivery(result string) {
 		return
 	}
 	m.mailDeliveries.WithLabelValues(result).Inc()
+}
+
+// ObserveRateLimit records one rate limit decision.
+func (m *Metrics) ObserveRateLimit(scope, result string) {
+	if m == nil {
+		return
+	}
+	m.rateLimit.WithLabelValues(scope, result).Inc()
 }
 
 // RegisterWebhookQueue exposes the webhook job queue depth.

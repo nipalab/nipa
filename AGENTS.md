@@ -528,6 +528,26 @@ storage card on 404, while the `/settings/billing` page is always linked from
 the header and the profile settings nav (it shows an empty state when the
 ledger is off).
 
+Flow for rate limiting (design in `docs/RATE_LIMIT.md`): `internal/ratelimit`
+holds the `Store` seam (atomic token-bucket `Take`), the `Limiter` (named scope
+rules, fail-open on store errors, nil limiter allows everything), the `Memory`
+store (free `nipad`, also selectable on `nipad-ee`) and `ClientIP`
+(`X-Forwarded-For` honoured only from `RATE_LIMIT_TRUSTED_PROXIES`, right-most
+untrusted hop). `ee/ratelimit.Redis` is the shared store (one Lua script);
+`RATE_LIMIT_STORE=memory|redis` is resolved by `serverapp.BuildRateLimiter`
+(`config.RateLimitStoreName`: the free main passes no redis factory, so `redis`
+is a startup error there; on `nipad-ee` an unset store picks redis when
+`RATE_LIMIT_REDIS_ADDR` is set). One limiter feeds `UsecaseDeps.RateLimiter`
+(`usecase.Auth.WithLimiter`, the per-email `auth_id` scope for password and SSH
+logins, 429 via `domain.NewErrorTooManyRequests`) and `serverapp.WithRateLimit`
+(`api.RateLimit`: global/chunk middleware inside the access log, `auth_ip`
+filter on the `/api/v1/auth` WebService, `api_user` filter after the bearer
+filter; `grpcserver.RateLimiter` chained after JWT: public login RPCs per IP,
+the rest per user). REST answers 429 with `Retry-After`; gRPC answers
+`ResourceExhausted` with the `rate limit exceeded` prefix, which
+`client/grpc.toDomainError` maps back to 429 (other `ResourceExhausted` stays
+402). Metric: `nipa_ratelimit_total{scope,result}`.
+
 Flow for tracing (design in `docs/TRACING.md`): `internal/obs/tracing.go`
 builds an OTLP gRPC tracer provider (`SetupTracing`), installed globally with
 the W3C propagator only when enabled — otherwise every path stays on the OTel

@@ -141,6 +141,11 @@ func main() {
 		emailDispatcher = mail.NewDispatcher(emailRepository, emailSender, cfg.EmailDispatcherConfig()).WithMetrics(metrics)
 	}
 
+	rateLimiter, trustedProxies, err := serverapp.BuildRateLimiter(cfg, metrics, nil)
+	if err != nil {
+		panic(fmt.Errorf("rate limit: %w", err))
+	}
+
 	reg := serverapp.NewRegistry(serverapp.BuildUsecases(usecase.Repositories{
 		Org:                sqlite.NewOrgRepository(dbConn),
 		Project:            sqlite.NewProjectRepository(dbConn),
@@ -167,13 +172,14 @@ func main() {
 		Metrics:           metrics,
 		WebhookDispatcher: webhookDispatcher,
 		EmailDispatcher:   emailDispatcher,
+		RateLimiter:       rateLimiter,
 	}))
 
 	dispatchers := []serverapp.Dispatcher{webhookDispatcher}
 	if emailDispatcher != nil {
 		dispatchers = append(dispatchers, emailDispatcher)
 	}
-	if err := serverapp.Run(cfg, reg, dispatchers, serverapp.WithReadiness(dbConn.PingContext), serverapp.WithMetrics(metrics), serverapp.WithTracing(tracing), serverapp.WithLogs(logs), serverapp.WithMetricsPush(metricsPush)); err != nil {
+	if err := serverapp.Run(cfg, reg, dispatchers, serverapp.WithReadiness(dbConn.PingContext), serverapp.WithMetrics(metrics), serverapp.WithTracing(tracing), serverapp.WithLogs(logs), serverapp.WithMetricsPush(metricsPush), serverapp.WithRateLimit(rateLimiter, trustedProxies)); err != nil {
 		panic(err)
 	}
 }

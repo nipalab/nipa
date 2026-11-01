@@ -81,6 +81,24 @@ type Config struct {
 	EmailHTTPHeaders               string  `mapstructure:"EMAIL_HTTP_HEADERS"`
 	EmailHTTPContentType           string  `mapstructure:"EMAIL_HTTP_CONTENT_TYPE"`
 	EmailHTTPBodyTemplate          string  `mapstructure:"EMAIL_HTTP_BODY_TEMPLATE"`
+	RateLimitEnabled               bool    `mapstructure:"RATE_LIMIT_ENABLED"`
+	RateLimitStore                 string  `mapstructure:"RATE_LIMIT_STORE"`
+	RateLimitTrustedProxies        string  `mapstructure:"RATE_LIMIT_TRUSTED_PROXIES"`
+	RateLimitRedisAddr             string  `mapstructure:"RATE_LIMIT_REDIS_ADDR"`
+	RateLimitRedisPassword         string  `mapstructure:"RATE_LIMIT_REDIS_PASSWORD"`
+	RateLimitRedisDB               int     `mapstructure:"RATE_LIMIT_REDIS_DB"`
+	RateLimitRedisTLS              bool    `mapstructure:"RATE_LIMIT_REDIS_TLS"`
+	RateLimitRedisPrefix           string  `mapstructure:"RATE_LIMIT_REDIS_PREFIX"`
+	RateLimitAuthIPPerMinute       float64 `mapstructure:"RATE_LIMIT_AUTH_IP_PER_MINUTE"`
+	RateLimitAuthIPBurst           int     `mapstructure:"RATE_LIMIT_AUTH_IP_BURST"`
+	RateLimitAuthIDPerMinute       float64 `mapstructure:"RATE_LIMIT_AUTH_ID_PER_MINUTE"`
+	RateLimitAuthIDBurst           int     `mapstructure:"RATE_LIMIT_AUTH_ID_BURST"`
+	RateLimitAPIUserPerMinute      float64 `mapstructure:"RATE_LIMIT_API_USER_PER_MINUTE"`
+	RateLimitAPIUserBurst          int     `mapstructure:"RATE_LIMIT_API_USER_BURST"`
+	RateLimitChunkIPPerMinute      float64 `mapstructure:"RATE_LIMIT_CHUNK_IP_PER_MINUTE"`
+	RateLimitChunkIPBurst          int     `mapstructure:"RATE_LIMIT_CHUNK_IP_BURST"`
+	RateLimitGlobalIPPerMinute     float64 `mapstructure:"RATE_LIMIT_GLOBAL_IP_PER_MINUTE"`
+	RateLimitGlobalIPBurst         int     `mapstructure:"RATE_LIMIT_GLOBAL_IP_BURST"`
 }
 
 func LoadConfig() (*Config, error) {
@@ -106,6 +124,19 @@ func LoadConfig() (*Config, error) {
 	v.SetDefault("LOGS_OTLP_ENABLED", false)
 	v.SetDefault("METRICS_OTLP_ENABLED", false)
 	v.SetDefault("METRICS_OTLP_INTERVAL_SECONDS", 30)
+	v.SetDefault("RATE_LIMIT_ENABLED", true)
+	v.SetDefault("RATE_LIMIT_TRUSTED_PROXIES", "127.0.0.1,::1")
+	v.SetDefault("RATE_LIMIT_REDIS_PREFIX", "nipa:rl:")
+	v.SetDefault("RATE_LIMIT_AUTH_IP_PER_MINUTE", 10.0)
+	v.SetDefault("RATE_LIMIT_AUTH_IP_BURST", 10)
+	v.SetDefault("RATE_LIMIT_AUTH_ID_PER_MINUTE", 5.0/15.0)
+	v.SetDefault("RATE_LIMIT_AUTH_ID_BURST", 5)
+	v.SetDefault("RATE_LIMIT_API_USER_PER_MINUTE", 3000.0)
+	v.SetDefault("RATE_LIMIT_API_USER_BURST", 200)
+	v.SetDefault("RATE_LIMIT_CHUNK_IP_PER_MINUTE", 12000.0)
+	v.SetDefault("RATE_LIMIT_CHUNK_IP_BURST", 1000)
+	v.SetDefault("RATE_LIMIT_GLOBAL_IP_PER_MINUTE", 6000.0)
+	v.SetDefault("RATE_LIMIT_GLOBAL_IP_BURST", 300)
 
 	if err := v.ReadInConfig(); err != nil {
 		return nil, err
@@ -118,7 +149,8 @@ func LoadConfig() (*Config, error) {
 	v.AutomaticEnv()
 	// AutomaticEnv alone does not feed Unmarshal for keys missing from the
 	// config file, so the per-color systemd env files must bind explicitly.
-	for _, key := range []string{"SERVER_ADDRESS", "SERVER_PORT", "SHUTDOWN_TIMEOUT_SECONDS", "SNOWFLAKE_NODE_ID"} {
+	for _, key := range []string{"SERVER_ADDRESS", "SERVER_PORT", "SHUTDOWN_TIMEOUT_SECONDS", "SNOWFLAKE_NODE_ID",
+		"RATE_LIMIT_STORE", "RATE_LIMIT_REDIS_ADDR", "RATE_LIMIT_REDIS_PASSWORD", "RATE_LIMIT_REDIS_DB", "RATE_LIMIT_REDIS_TLS"} {
 		if err := v.BindEnv(key); err != nil {
 			return nil, fmt.Errorf("bind %s: %w", key, err)
 		}

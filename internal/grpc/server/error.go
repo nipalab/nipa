@@ -33,7 +33,7 @@ func handleError(err error) error {
 		return status.Error(codes.NotFound, e.Message)
 	case 409:
 		return status.Error(codes.FailedPrecondition, e.Message)
-	case 402:
+	case 402, 429:
 		return status.Error(codes.ResourceExhausted, e.Message)
 	default:
 		return status.Error(codes.Internal, e.Message)
