@@ -38,32 +38,67 @@ func newChunkUsecase(t *testing.T) (*usecase.Chunk, *storage.LocalStore) {
 
 type directStubStore struct {
 	storage.ChunkStore
+	staged map[string][]byte
 }
 
 func (directStubStore) PresignDownload(context.Context, domain.Hash, time.Duration) (string, error) {
 	return "https://s3.example.com/bucket/chunk?X-Amz-Signature=x", nil
 }
 
-func (directStubStore) PresignUpload(context.Context, domain.Hash, int64, time.Duration) (storage.UploadTarget, error) {
+func (directStubStore) PresignUpload(context.Context, string, domain.Hash, int64, time.Duration) (storage.UploadTarget, error) {
 	return storage.UploadTarget{
 		URL:      "https://s3.example.com/bucket",
 		Method:   "POST",
-		FormData: map[string]string{"key": "ab/cdef", "policy": "p"},
+		FormData: map[string]string{"key": "uploads/slot/ab/cdef", "policy": "p"},
 	}, nil
 }
 
-func (directStubStore) DeleteChunk(context.Context, domain.Hash) error { return nil }
+func (s directStubStore) GetStaged(_ context.Context, slot string, hash domain.Hash) ([]byte, error) {
+	data, ok := s.staged[slot+"/"+hash.String()]
+	if !ok {
+		return nil, domain.NewErrorNotFound("nothing staged")
+	}
+	return data, nil
+}
+
+func (s directStubStore) PromoteStaged(ctx context.Context, slot string, hash domain.Hash) error {
+	key := slot + "/" + hash.String()
+	if err := s.ChunkStore.Put(ctx, hash, s.staged[key]); err != nil {
+		return err
+	}
+	delete(s.staged, key)
+	return nil
+}
+
+func (s directStubStore) DiscardStaged(_ context.Context, slot string, hash domain.Hash) error {
+	delete(s.staged, slot+"/"+hash.String())
+	return nil
+}
 
 func newDirectChunkUsecase(t *testing.T) (*usecase.Chunk, *storage.LocalStore) {
+	uc, store, _ := newStagingChunkUsecase(t, stubChunkRepo{})
+	return uc, store
+}
+
+func newStagingChunkUsecase(t *testing.T, repo usecaseChunkRepo) (*usecase.Chunk, *storage.LocalStore, map[string][]byte) {
 	t.Helper()
 	store, err := storage.NewLocalStore(t.TempDir())
 	require.NoError(t, err)
-	uc := usecase.NewChunk(stubChunkRepo{}, directStubStore{ChunkStore: store}, usecase.ChunkTransferConfig{
+	staged := map[string][]byte{}
+	uc := usecase.NewChunk(repo, directStubStore{ChunkStore: store, staged: staged}, usecase.ChunkTransferConfig{
 		SigningKey:  testSigningKey,
 		PresignTTL:  time.Hour,
 		MaxPageSize: 100,
 	})
-	return uc, store
+	return uc, store, staged
+}
+
+type usecaseChunkRepo interface {
+	InsertChunkIfNotExists(ctx context.Context, hash domain.Hash, sizeBytes int64) error
+	HasChunk(ctx context.Context, hash domain.Hash) (bool, error)
+	LinkProjectChunk(ctx context.Context, projectID snow.ID, hash domain.Hash) error
+	LinkProjectChunks(ctx context.Context, projectID snow.ID, hashes []domain.Hash) error
+	LinkedProjectChunks(ctx context.Context, projectID snow.ID, hashes []domain.Hash) (map[domain.Hash]bool, error)
 }
 
 type stubChunkRepo struct{}
@@ -186,7 +221,7 @@ func TestGetChunkUploadUrlsHandler_DirectStore(t *testing.T) {
 	require.Len(t, res.GetUrls(), 1)
 	require.Equal(t, "https://s3.example.com/bucket", res.GetUrls()[0].GetUrl())
 	require.Equal(t, "POST", res.GetUrls()[0].GetMethod())
-	require.Equal(t, map[string]string{"key": "ab/cdef", "policy": "p"}, res.GetUrls()[0].GetFormData())
+	require.Equal(t, map[string]string{"key": "uploads/slot/ab/cdef", "policy": "p"}, res.GetUrls()[0].GetFormData())
 }
 
 func TestGetChunkUploadUrlsHandler_NoPermission(t *testing.T) {
@@ -291,29 +326,50 @@ func TestConfirmChunkUploadsHandler(t *testing.T) {
 	require.Equal(t, []string{absentHash.String()}, res.GetMissingHashes())
 }
 
-func TestConfirmChunkUploadsHandler_DirectStoreVerifiesIssuedUploads(t *testing.T) {
-	chunk, store := newDirectChunkUsecase(t)
+func TestConfirmChunkUploadsHandler_DirectStoreStagesAndPromotes(t *testing.T) {
+	repo := &linkTrackingRepo{linked: map[domain.Hash]bool{}}
+	chunk, store, staged := newStagingChunkUsecase(t, repo)
 	branch, perm, _ := newTestBranchUc(t)
 	perm.EXPECT().
 		HasProjectAccess(gomock.Any(), snow.ID(42), domain.PermissionWrite).
 		Return(true).
-		Times(2)
+		Times(3)
 	srv := New(&mockUsecaseContainer{branch: branch, common: newTestCommon(), chunk: chunk})
 
-	hash := chunker.Sum([]byte("expected"))
-	_, err := srv.GetChunkUploadUrls(context.Background(), &pb.GetChunkUploadUrlsRequest{
+	data := []byte("expected")
+	hash := chunker.Sum(data)
+	presigned, err := srv.GetChunkUploadUrls(context.Background(), &pb.GetChunkUploadUrlsRequest{
 		Context: testChunkContext(),
-		Chunks:  []*pb.ChunkRef{{Hash: hash.String(), SizeBytes: 8}},
+		Chunks:  []*pb.ChunkRef{{Hash: hash.String(), SizeBytes: int64(len(data))}},
 	})
 	require.NoError(t, err)
-	require.NoError(t, store.Put(context.Background(), hash, []byte("garbage")))
+	challenge := presigned.GetUrls()[0].GetProofChallenge()
+	slot := snow.ID(42).Base36()
 
+	staged[slot+"/"+hash.String()] = []byte("garbage")
 	res, err := srv.ConfirmChunkUploads(context.Background(), &pb.ConfirmChunkUploadsRequest{
 		Context: testChunkContext(),
 		Hashes:  []string{hash.String()},
+		Proofs:  []*pb.ChunkPossessionProof{{Hash: hash.String(), Challenge: challenge, Proof: chunkproof.Proof(challenge, []byte("garbage"))}},
 	})
 	require.NoError(t, err)
-	require.Equal(t, []string{hash.String()}, res.GetMissingHashes())
+	require.Equal(t, []string{hash.String()}, res.GetMissingHashes(), "a staged object that does not match its hash is rejected")
+	exists, err := store.Exists(context.Background(), hash)
+	require.NoError(t, err)
+	require.False(t, exists)
+
+	staged[slot+"/"+hash.String()] = data
+	res, err = srv.ConfirmChunkUploads(context.Background(), &pb.ConfirmChunkUploadsRequest{
+		Context: testChunkContext(),
+		Hashes:  []string{hash.String()},
+		Proofs:  []*pb.ChunkPossessionProof{{Hash: hash.String(), Challenge: challenge, Proof: chunkproof.Proof(challenge, data)}},
+	})
+	require.NoError(t, err)
+	require.Empty(t, res.GetMissingHashes())
+	exists, err = store.Exists(context.Background(), hash)
+	require.NoError(t, err)
+	require.True(t, exists, "the verified upload reached the shared key")
+	require.True(t, repo.linked[hash])
 }
 
 func TestConfirmChunkUploadsHandler_InvalidHash(t *testing.T) {

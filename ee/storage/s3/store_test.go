@@ -77,6 +77,10 @@ func (f *fakeS3) serveHTTP(w http.ResponseWriter, r *http.Request) {
 			writeS3Error(w, http.StatusForbidden, "AccessDenied")
 			return
 		}
+		if source := r.Header.Get("X-Amz-Copy-Source"); source != "" {
+			f.serveCopy(w, objects, key, source)
+			return
+		}
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			writeS3Error(w, http.StatusBadRequest, "InvalidRequest")
@@ -129,6 +133,33 @@ func (f *fakeS3) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeS3Error(w, http.StatusMethodNotAllowed, "MethodNotAllowed")
 	}
+}
+
+func (f *fakeS3) putRaw(bucket, key string, data []byte) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.buckets[bucket][key] = data
+}
+
+func (f *fakeS3) serveCopy(w http.ResponseWriter, objects map[string][]byte, key, source string) {
+	decoded, err := url.PathUnescape(strings.TrimPrefix(source, "/"))
+	if err != nil {
+		writeS3Error(w, http.StatusBadRequest, "InvalidRequest")
+		return
+	}
+	_, srcKey, _ := strings.Cut(decoded, "/")
+	f.mu.Lock()
+	data, ok := objects[srcKey]
+	if ok {
+		objects[key] = append([]byte(nil), data...)
+	}
+	f.mu.Unlock()
+	if !ok {
+		writeS3Error(w, http.StatusNotFound, "NoSuchKey")
+		return
+	}
+	w.Header().Set("Content-Type", "application/xml")
+	_, _ = io.WriteString(w, `<CopyObjectResult><ETag>"fake-etag"</ETag><LastModified>2026-01-01T00:00:00.000Z</LastModified></CopyObjectResult>`)
 }
 
 func (f *fakeS3) serveBucket(w http.ResponseWriter, r *http.Request, bucketOK bool) {
@@ -470,7 +501,7 @@ func TestStore_PresignUpload(t *testing.T) {
 	data := []byte("upload me")
 	hash := chunker.Sum(data)
 
-	target, err := store.PresignUpload(context.Background(), hash, int64(len(data)), time.Hour)
+	target, err := store.PresignUpload(context.Background(), "slot-1", hash, int64(len(data)), time.Hour)
 	require.NoError(t, err)
 	require.Equal(t, http.MethodPost, target.Method)
 
@@ -478,7 +509,8 @@ func TestStore_PresignUpload(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, parsed.IsAbs())
 	require.Equal(t, "/test-bucket", strings.TrimSuffix(parsed.Path, "/"))
-	require.Equal(t, store.key(hash), target.FormData["key"])
+	require.Equal(t, store.stagingKey("slot-1", hash), target.FormData["key"])
+	require.NotEqual(t, store.key(hash), target.FormData["key"], "uploads never target the shared key")
 	require.NotEmpty(t, target.FormData["policy"])
 	require.NotEmpty(t, target.FormData["x-amz-signature"])
 
@@ -486,10 +518,18 @@ func TestStore_PresignUpload(t *testing.T) {
 	require.Contains(t, policy, fmt.Sprintf(`["content-length-range", %d, %d]`, len(data), len(data)))
 }
 
+func TestStore_StagingKeyLayout(t *testing.T) {
+	hash := chunker.Sum([]byte("layout"))
+	hex := hash.String()
+
+	require.Equal(t, "uploads/slot/"+hex[:2]+"/"+hex[2:], (&Store{}).stagingKey("slot", hash))
+	require.Equal(t, "nipa/uploads/slot/"+hex[:2]+"/"+hex[2:], (&Store{prefix: "nipa"}).stagingKey("slot", hash))
+}
+
 func TestStore_PresignUploadClampsTTL(t *testing.T) {
 	store, _ := newTestStore(t)
 
-	target, err := store.PresignUpload(context.Background(), chunker.Sum([]byte("x")), 1, 30*24*time.Hour)
+	target, err := store.PresignUpload(context.Background(), "slot", chunker.Sum([]byte("x")), 1, 30*24*time.Hour)
 	require.NoError(t, err)
 
 	var doc struct {
@@ -501,45 +541,94 @@ func TestStore_PresignUploadClampsTTL(t *testing.T) {
 	require.WithinDuration(t, time.Now().Add(maxPresignTTL), expiration, time.Minute)
 }
 
-func TestStore_PresignUploadInvalidSize(t *testing.T) {
+func TestStore_PresignUploadInvalidInput(t *testing.T) {
 	store, _ := newTestStore(t)
 
-	_, err := store.PresignUpload(context.Background(), chunker.Sum([]byte("x")), 0, time.Hour)
+	_, err := store.PresignUpload(context.Background(), "slot", chunker.Sum([]byte("x")), 0, time.Hour)
+	require.Error(t, err)
+	_, err = store.PresignUpload(context.Background(), "", chunker.Sum([]byte("x")), 1, time.Hour)
 	require.Error(t, err)
 }
 
-func TestStore_PresignUploadRoundTrip(t *testing.T) {
+func TestStore_StagedUploadLifecycle(t *testing.T) {
 	store, _ := newTestStore(t)
 	ctx := context.Background()
 
 	data := []byte("direct upload payload")
 	hash := chunker.Sum(data)
-	target, err := store.PresignUpload(ctx, hash, int64(len(data)), time.Hour)
+	target, err := store.PresignUpload(ctx, "slot", hash, int64(len(data)), time.Hour)
 	require.NoError(t, err)
 
 	res := postUploadTarget(t, target, data)
 	defer func() { _ = res.Body.Close() }()
 	require.Equal(t, http.StatusNoContent, res.StatusCode)
 
+	exists, err := store.Exists(ctx, hash)
+	require.NoError(t, err)
+	require.False(t, exists, "a direct upload does not touch the shared key")
+
+	staged, err := store.GetStaged(ctx, "slot", hash)
+	require.NoError(t, err)
+	require.Equal(t, data, staged)
+	_, err = store.GetStaged(ctx, "other-slot", hash)
+	require.True(t, domain.IsErrorNotFound(err), "slots are isolated")
+
+	require.NoError(t, store.PromoteStaged(ctx, "slot", hash))
 	got, err := store.Get(ctx, hash)
 	require.NoError(t, err)
 	require.Equal(t, data, got)
+	_, err = store.GetStaged(ctx, "slot", hash)
+	require.True(t, domain.IsErrorNotFound(err), "promotion drops the staging object")
 }
 
-func TestStore_DeleteChunk(t *testing.T) {
-	store, _ := newTestStore(t)
+func TestStore_PromoteKeepsExistingContent(t *testing.T) {
+	store, fake := newTestStore(t)
 	ctx := context.Background()
 
-	data := []byte("delete me")
+	data := []byte("already shared")
 	hash := chunker.Sum(data)
 	require.NoError(t, store.Put(ctx, hash, data))
-	require.NoError(t, store.DeleteChunk(ctx, hash))
+	fake.putRaw("test-bucket", store.stagingKey("slot", hash), []byte("staged copy"))
 
-	exists, err := store.Exists(ctx, hash)
+	require.NoError(t, store.PromoteStaged(ctx, "slot", hash))
+
+	got, err := store.Get(ctx, hash)
 	require.NoError(t, err)
-	require.False(t, exists)
+	require.Equal(t, data, got, "the shared object is never overwritten")
+	_, err = store.GetStaged(ctx, "slot", hash)
+	require.True(t, domain.IsErrorNotFound(err))
+}
 
-	require.NoError(t, store.DeleteChunk(ctx, chunker.Sum([]byte("absent"))))
+func TestStore_PromoteErrors(t *testing.T) {
+	store, fake := newTestStore(t)
+	ctx := context.Background()
+	hash := chunker.Sum([]byte("missing staged"))
+
+	require.Error(t, store.PromoteStaged(ctx, "slot", hash), "nothing staged to copy")
+
+	fake.failHead.Store(true)
+	require.Error(t, store.PromoteStaged(ctx, "slot", hash))
+}
+
+func TestStore_DiscardStaged(t *testing.T) {
+	store, fake := newTestStore(t)
+	ctx := context.Background()
+	hash := chunker.Sum([]byte("discard me"))
+	fake.putRaw("test-bucket", store.stagingKey("slot", hash), []byte("junk"))
+
+	require.NoError(t, store.DiscardStaged(ctx, "slot", hash))
+	_, err := store.GetStaged(ctx, "slot", hash)
+	require.True(t, domain.IsErrorNotFound(err))
+	require.NoError(t, store.DiscardStaged(ctx, "slot", hash), "discarding an absent object is fine")
+}
+
+func TestStore_GetStagedError(t *testing.T) {
+	store, fake := newTestStore(t)
+	fake.failGet.Store(true)
+
+	_, err := store.GetStaged(context.Background(), "slot", chunker.Sum([]byte("x")))
+	require.Error(t, err)
+	require.False(t, domain.IsErrorNotFound(err))
 }
 
 func decodePolicy(t *testing.T, encoded string) string {
@@ -672,8 +761,11 @@ func TestIntegration_S3Compatible(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, data, body)
 
-	target, err := store.PresignUpload(ctx, hash, int64(len(data)), time.Hour)
+	target, err := store.PresignUpload(ctx, "integration", hash, int64(len(data)), time.Hour)
 	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = store.client.RemoveObject(context.Background(), store.bucket, store.stagingKey("integration", hash), minio.RemoveObjectOptions{})
+	})
 	uploadRes := postUploadTarget(t, target, data)
 	defer func() { _ = uploadRes.Body.Close() }()
 	require.Contains(t, []int{http.StatusOK, http.StatusNoContent}, uploadRes.StatusCode)

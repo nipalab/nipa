@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strconv"
-	"sync"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -71,10 +70,6 @@ type Chunk struct {
 	ledger     StorageLedger
 	metrics    *obs.Metrics
 	now        func() time.Time
-
-	unverifiedMu sync.Mutex
-	unverified   map[domain.Hash]time.Time
-	lastPrune    time.Time
 }
 
 func NewChunk(chunkRepo chunkRepository, chunkStore storage.ChunkStore, transfer ChunkTransferConfig) *Chunk {
@@ -83,7 +78,6 @@ func NewChunk(chunkRepo chunkRepository, chunkStore storage.ChunkStore, transfer
 		chunkStore: chunkStore,
 		transfer:   transfer,
 		now:        time.Now,
-		unverified: map[domain.Hash]time.Time{},
 	}
 }
 
@@ -267,7 +261,7 @@ func (c *Chunk) presignUploadURLs(ctx context.Context, org *domain.Organization,
 			urls = append(urls, ChunkURL{Hash: ref.Hash, AlreadyStored: true})
 			continue
 		}
-		target, err := c.uploadTarget(ctx, org.Slug, project.Slug, ref, expiry)
+		target, err := c.uploadTarget(ctx, org, project, ref, expiry)
 		if err != nil {
 			return nil, "", err
 		}
@@ -313,18 +307,17 @@ func (c *Chunk) checkHeadroom(ctx context.Context, org *domain.Organization, pro
 	return c.ledger.Headroom(ctx, org, project, projected)
 }
 
-func (c *Chunk) uploadTarget(ctx context.Context, org, project string, ref ChunkRef, expiry int64) (storage.UploadTarget, error) {
+func (c *Chunk) uploadTarget(ctx context.Context, org *domain.Organization, project *domain.Project, ref ChunkRef, expiry int64) (storage.UploadTarget, error) {
 	direct, ok := c.chunkStore.(storage.DirectTransferStore)
 	if !ok {
 		return storage.UploadTarget{
-			URL: chunkurl.UploadPath(c.transfer.SigningKey, org, project, ref.Hash.String(), ref.SizeBytes, expiry),
+			URL: chunkurl.UploadPath(c.transfer.SigningKey, org.Slug, project.Slug, ref.Hash.String(), ref.SizeBytes, expiry),
 		}, nil
 	}
-	target, err := direct.PresignUpload(ctx, ref.Hash, ref.SizeBytes, c.transfer.PresignTTL)
+	target, err := direct.PresignUpload(ctx, stagingSlot(project), ref.Hash, ref.SizeBytes, c.transfer.PresignTTL)
 	if err != nil {
 		return storage.UploadTarget{}, domain.NewErrorInternalServer(fmt.Sprintf("presign upload for chunk %s: %v", ref.Hash, err))
 	}
-	c.markUnverified(ref.Hash)
 	return target, nil
 }
 
@@ -363,23 +356,16 @@ func (c *Chunk) downloadPath(ctx context.Context, org, project string, hash doma
 	if !ok {
 		return chunkurl.DownloadPath(c.transfer.SigningKey, org, project, hash.String(), expiry), nil
 	}
-	if c.isUnverified(hash) {
-		verified, err := c.verifyUnverifiedObject(ctx, direct, hash)
-		if err != nil {
-			return "", err
-		}
-		if !verified {
-			c.metrics.ObserveChunkVerifyFailure("download")
-			c.clearUnverified(hash)
-			return "", domain.NewErrorInternalServer(fmt.Sprintf("chunk %s failed verification", hash))
-		}
-		c.clearUnverified(hash)
-	}
 	url, err := direct.PresignDownload(ctx, hash, c.transfer.PresignTTL)
 	if err != nil {
 		return "", domain.NewErrorInternalServer(fmt.Sprintf("presign download for chunk %s: %v", hash, err))
 	}
 	return url, nil
+}
+
+// stagingSlot names where a project's direct uploads wait for verification.
+func stagingSlot(project *domain.Project) string {
+	return project.ID.Base36()
 }
 
 // ConfirmUploads verifies that uploaded chunk content landed in the store and
@@ -416,7 +402,6 @@ func (c *Chunk) ConfirmUploads(ctx context.Context, org *domain.Organization, pr
 }
 
 func (c *Chunk) confirmUploads(ctx context.Context, org *domain.Organization, project *domain.Project, hashes []domain.Hash, proofs []ChunkProof) ([]domain.Hash, int64, error) {
-	direct, isDirect := c.chunkStore.(storage.DirectTransferStore)
 	var missing []domain.Hash
 	var attributed []LedgerChunk
 	var confirmedBytes int64
@@ -430,44 +415,28 @@ func (c *Chunk) confirmUploads(ctx context.Context, org *domain.Organization, pr
 		proofByHash[proof.Hash] = proof
 	}
 	for _, hash := range hashes {
-		size, err := c.chunkStore.Size(ctx, hash)
-		if err != nil {
-			if domain.IsErrorNotFound(err) {
-				missing = append(missing, hash)
-				continue
-			}
-			return nil, 0, domain.NewErrorDatabase(fmt.Sprintf("stat chunk %s: %v", hash, err))
-		}
+		var size int64
+		var present bool
 		if linked[hash] {
-			if isDirect {
-				verify, err := c.needsVerification(ctx, hash)
-				if err != nil {
-					return nil, 0, err
-				}
-				if verify {
-					verified, err := c.verifyChunkContent(ctx, direct, hash, size)
-					if err != nil {
-						return nil, 0, err
-					}
-					c.clearUnverified(hash)
-					if !verified {
-						c.metrics.ObserveChunkVerifyFailure("confirm")
-						missing = append(missing, hash)
-						continue
-					}
-				}
+			size, err = c.chunkStore.Size(ctx, hash)
+			switch {
+			case err == nil:
+				present = true
+			case !domain.IsErrorNotFound(err):
+				return nil, 0, domain.NewErrorDatabase(fmt.Sprintf("stat chunk %s: %v", hash, err))
 			}
 		} else {
-			proven, err := c.verifyPossession(ctx, project, hash, size, proofByHash[hash])
+			size, present, err = c.verifyPossession(ctx, project, hash, proofByHash[hash])
 			if err != nil {
 				return nil, 0, err
 			}
-			if !proven {
-				missing = append(missing, hash)
-				continue
+			if present {
+				toLink = append(toLink, hash)
 			}
-			c.clearUnverified(hash)
-			toLink = append(toLink, hash)
+		}
+		if !present {
+			missing = append(missing, hash)
+			continue
 		}
 		if err := c.chunkRepo.InsertChunkIfNotExists(ctx, hash, size); err != nil {
 			return nil, 0, err
@@ -490,148 +459,59 @@ func (c *Chunk) confirmUploads(ctx context.Context, org *domain.Organization, pr
 	return missing, confirmedBytes, nil
 }
 
-// needsVerification reports whether a chunk stored by a direct backend must be
-// hash-verified: content a direct upload target was issued for always must be,
-// since the object may have been rewritten or re-uploaded after it was
-// recorded, and untouched chunks only when no metadata row exists yet.
-func (c *Chunk) needsVerification(ctx context.Context, hash domain.Hash) (bool, error) {
-	if c.isUnverified(hash) {
-		return true, nil
-	}
-	recorded, err := c.chunkRepo.HasChunk(ctx, hash)
-	if err != nil {
-		return false, err
-	}
-	return !recorded, nil
-}
-
-// verifyUnverifiedObject reads and verifies the content behind a hash whose
-// object a direct upload target was issued for.
-func (c *Chunk) verifyUnverifiedObject(ctx context.Context, direct storage.DirectTransferStore, hash domain.Hash) (bool, error) {
-	size, err := c.chunkStore.Size(ctx, hash)
-	if err != nil {
-		if domain.IsErrorNotFound(err) {
-			return false, nil
-		}
-		return false, domain.NewErrorDatabase(fmt.Sprintf("stat chunk %s: %v", hash, err))
-	}
-	return c.verifyChunkContent(ctx, direct, hash, size)
-}
-
-// unverifiedPruneInterval bounds how often the unverified set is swept for
-// expired entries, keeping marks and lookups O(1) amortized on large pushes.
-const unverifiedPruneInterval = time.Minute
-
-// markUnverified records that a direct upload target was issued for hash. The
-// mark is dropped once the object is verified, or when the target can no
-// longer be used (presign TTL). It is kept in memory: a restart without the
-// mark falls back to the metadata rule, and the target itself expires.
-func (c *Chunk) markUnverified(hash domain.Hash) {
-	c.unverifiedMu.Lock()
-	defer c.unverifiedMu.Unlock()
-	now := c.now()
-	if now.Sub(c.lastPrune) >= unverifiedPruneInterval {
-		c.lastPrune = now
-		c.pruneUnverifiedLocked(now)
-	}
-	c.unverified[hash] = now.Add(c.transfer.PresignTTL)
-}
-
-func (c *Chunk) isUnverified(hash domain.Hash) bool {
-	c.unverifiedMu.Lock()
-	defer c.unverifiedMu.Unlock()
-	expiry, ok := c.unverified[hash]
-	if !ok {
-		return false
-	}
-	if c.now().After(expiry) {
-		delete(c.unverified, hash)
-		return false
-	}
-	return true
-}
-
-func (c *Chunk) clearUnverified(hash domain.Hash) {
-	c.unverifiedMu.Lock()
-	defer c.unverifiedMu.Unlock()
-	delete(c.unverified, hash)
-}
-
 // verifyPossession decides whether the caller may be linked to a chunk it is
-// not linked to yet: the challenge must be a live one issued for this project
-// and hash, and the proof must equal BLAKE3(challenge || stored bytes). The
-// stored bytes are read back and hashed too, so a direct upload that does not
-// match its key is dropped instead of being linked.
-func (c *Chunk) verifyPossession(ctx context.Context, project *domain.Project, hash domain.Hash, size int64, proof ChunkProof) (bool, error) {
+// not linked to yet and returns the chunk's size. The challenge must be a live
+// one issued for this project and hash, and the proof must equal
+// BLAKE3(challenge || bytes) over bytes the server read itself. The shared
+// content-addressed key is only ever written after verification, so content
+// found there is trusted; a direct upload is read from the project's staging
+// slot, hashed, and only then promoted to the shared key.
+func (c *Chunk) verifyPossession(ctx context.Context, project *domain.Project, hash domain.Hash, proof ChunkProof) (int64, bool, error) {
 	if proof.Challenge == "" || proof.Proof == "" {
-		return false, nil
+		return 0, false, nil
 	}
 	if err := chunkproof.VerifyChallenge(c.transfer.SigningKey, project.ID, hash, proof.Challenge, c.now()); err != nil {
-		return false, nil
-	}
-	direct, isDirect := c.chunkStore.(storage.DirectTransferStore)
-	if size > chunker.MaxChunkSize() {
-		return false, c.dropInvalid(ctx, direct, isDirect, hash)
+		return 0, false, nil
 	}
 	data, err := c.chunkStore.Get(ctx, hash)
-	if err != nil {
-		if domain.IsErrorNotFound(err) {
-			return false, nil
+	staged := false
+	if domain.IsErrorNotFound(err) {
+		direct, isDirect := c.chunkStore.(storage.DirectTransferStore)
+		if !isDirect {
+			return 0, false, nil
 		}
-		return false, domain.NewErrorDatabase(fmt.Sprintf("read chunk %s: %v", hash, err))
+		data, err = direct.GetStaged(ctx, stagingSlot(project), hash)
+		if domain.IsErrorNotFound(err) {
+			return 0, false, nil
+		}
+		staged = true
 	}
+	if err != nil {
+		return 0, false, domain.NewErrorDatabase(fmt.Sprintf("read chunk %s: %v", hash, err))
+	}
+	if staged {
+		return c.promoteStaged(ctx, project, hash, data, proof)
+	}
+	return int64(len(data)), chunkproof.Equal(chunkproof.Proof(proof.Challenge, data), proof.Proof), nil
+}
+
+func (c *Chunk) promoteStaged(ctx context.Context, project *domain.Project, hash domain.Hash, data []byte, proof ChunkProof) (int64, bool, error) {
+	direct := c.chunkStore.(storage.DirectTransferStore)
+	slot := stagingSlot(project)
 	if chunker.Sum(data) != hash {
 		c.metrics.ObserveChunkVerifyFailure("confirm")
-		return false, c.dropInvalid(ctx, direct, isDirect, hash)
-	}
-	return chunkproof.Equal(chunkproof.Proof(proof.Challenge, data), proof.Proof), nil
-}
-
-func (c *Chunk) dropInvalid(ctx context.Context, direct storage.DirectTransferStore, isDirect bool, hash domain.Hash) error {
-	if !isDirect {
-		return nil
-	}
-	return c.dropInvalidChunk(ctx, direct, hash)
-}
-
-func (c *Chunk) pruneUnverifiedLocked(now time.Time) {
-	for hash, expiry := range c.unverified {
-		if now.After(expiry) {
-			delete(c.unverified, hash)
+		if err := direct.DiscardStaged(ctx, slot, hash); err != nil {
+			return 0, false, domain.NewErrorInternalServer(fmt.Sprintf("discard staged chunk %s: %v", hash, err))
 		}
+		return 0, false, nil
 	}
-}
-
-// verifyChunkContent checks one object that may have been written by a direct
-// upload: oversized objects are dropped without being read, and content must
-// hash to its key.
-func (c *Chunk) verifyChunkContent(ctx context.Context, direct storage.DirectTransferStore, hash domain.Hash, size int64) (verified bool, err error) {
-	ctx, span := obs.StartSpan(ctx, "chunk.verify",
-		attribute.String(obs.AttrChunkHash, hash.String()),
-		attribute.Int64(obs.AttrChunkSize, size))
-	defer func() { obs.FinishSpan(span, err) }()
-
-	if size > chunker.MaxChunkSize() {
-		return false, c.dropInvalidChunk(ctx, direct, hash)
+	if !chunkproof.Equal(chunkproof.Proof(proof.Challenge, data), proof.Proof) {
+		return 0, false, nil
 	}
-	data, err := c.chunkStore.Get(ctx, hash)
-	if err != nil {
-		if domain.IsErrorNotFound(err) {
-			return false, nil
-		}
-		return false, domain.NewErrorDatabase(fmt.Sprintf("read chunk %s: %v", hash, err))
+	if err := direct.PromoteStaged(ctx, slot, hash); err != nil {
+		return 0, false, domain.NewErrorInternalServer(fmt.Sprintf("promote chunk %s: %v", hash, err))
 	}
-	if chunker.Sum(data) == hash {
-		return true, nil
-	}
-	return false, c.dropInvalidChunk(ctx, direct, hash)
-}
-
-func (c *Chunk) dropInvalidChunk(ctx context.Context, direct storage.DirectTransferStore, hash domain.Hash) error {
-	if err := direct.DeleteChunk(ctx, hash); err != nil {
-		return domain.NewErrorInternalServer(fmt.Sprintf("delete invalid chunk %s: %v", hash, err))
-	}
-	return nil
+	return int64(len(data)), true, nil
 }
 
 // VerifyTransferURL checks that a signed chunk URL matches the project, hash

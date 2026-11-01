@@ -929,15 +929,16 @@ compatible for one release.
   (S3 rejects oversized bodies with EntityTooLarge); `usecase.Chunk`
   type-switches on the capability, `PresignedChunkUrl` carries
   `method`/`form_data`, and the client POSTs multipart with the file part last
-  (`Client.httpURL` passes absolute URLs through). Because direct upload bytes
-  never transit the server, `usecase.Chunk` tracks every hash it hands a direct
-  upload target to until the target expires: confirm-time verification always
-  hash-checks those regardless of metadata (oversize objects are deleted
-  without being read, mismatches deleted and reported missing), and download
-  presigning re-verifies them before issuing a URL; untouched unrecorded chunks
-  are verified too, while untouched recorded chunks only get a store existence
-  + metadata check. The marks are in-memory per server process and drop after
-  the presign TTL (a restart falls back to the metadata rule).
+  (`Client.httpURL` passes absolute URLs through). Direct uploads never write the
+  shared content-addressed key: the POST policy targets a per-project staging key
+  `<prefix>/uploads/<project>/<hash[:2]>/<hash[2:]>` (put a lifecycle expiry on
+  `uploads/`), so one project can neither overwrite nor corrupt content another
+  relies on. `ConfirmChunkUploads` reads the staged bytes, hashes them, checks the
+  possession proof and only then promotes them with a server-side copy to the
+  shared key (`PromoteStaged`; a no-op when the chunk already exists) — a staged
+  object that does not match its hash is discarded. Because the shared key is
+  written only after verification, content found there is trusted and download
+  presigning needs no re-verification.
 - **Storage accounting seam (free vs cloud).** `usecase.Chunk.WithStorageLedger`
   accepts an optional `StorageLedger` (`internal/usecase/storage_ledger.go`:
   `AttributedSizes`/`Headroom`/`Attribute`). The free version wires none (nil):

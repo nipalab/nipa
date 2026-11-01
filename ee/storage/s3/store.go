@@ -178,10 +178,11 @@ func (s *Store) PresignDownload(ctx context.Context, hash domain.Hash, expires t
 	return presigned.String(), nil
 }
 
-// PresignUpload returns a POST policy target for one chunk. The policy pins
-// the exact content length, so the object store rejects any body larger or
+// PresignUpload returns a POST policy target for one chunk. It writes to the
+// slot's staging key, never to the shared content-addressed key, and the policy
+// pins the exact content length, so the object store rejects any body larger or
 // smaller than size before it is written.
-func (s *Store) PresignUpload(ctx context.Context, hash domain.Hash, size int64, expires time.Duration) (target storage.UploadTarget, err error) {
+func (s *Store) PresignUpload(ctx context.Context, slot string, hash domain.Hash, size int64, expires time.Duration) (target storage.UploadTarget, err error) {
 	ctx, span := obs.StartSpan(ctx, "storage.s3.presign_upload",
 		attribute.String(obs.AttrChunkHash, hash.String()),
 		attribute.Int64(obs.AttrChunkSize, size),
@@ -192,6 +193,9 @@ func (s *Store) PresignUpload(ctx context.Context, hash domain.Hash, size int64,
 	if size <= 0 {
 		return storage.UploadTarget{}, fmt.Errorf("s3: invalid chunk size %d", size)
 	}
+	if slot == "" {
+		return storage.UploadTarget{}, errors.New("s3: upload slot is required")
+	}
 	if expires > maxPresignTTL {
 		expires = maxPresignTTL
 	}
@@ -199,7 +203,7 @@ func (s *Store) PresignUpload(ctx context.Context, hash domain.Hash, size int64,
 	if err := policy.SetBucket(s.bucket); err != nil {
 		return storage.UploadTarget{}, fmt.Errorf("s3: upload policy: %w", err)
 	}
-	if err := policy.SetKey(s.key(hash)); err != nil {
+	if err := policy.SetKey(s.stagingKey(slot, hash)); err != nil {
 		return storage.UploadTarget{}, fmt.Errorf("s3: upload policy: %w", err)
 	}
 	if err := policy.SetContentLengthRange(size, size); err != nil {
@@ -215,16 +219,62 @@ func (s *Store) PresignUpload(ctx context.Context, hash domain.Hash, size int64,
 	return storage.UploadTarget{URL: url.String(), Method: http.MethodPost, FormData: formData}, nil
 }
 
-// DeleteChunk removes chunk content so a client can re-upload it.
-func (s *Store) DeleteChunk(ctx context.Context, hash domain.Hash) (err error) {
-	ctx, span := obs.StartSpan(ctx, "storage.s3.delete_object",
+// GetStaged reads the object a direct upload left in the slot's staging key.
+func (s *Store) GetStaged(ctx context.Context, slot string, hash domain.Hash) (data []byte, err error) {
+	ctx, span := obs.StartSpan(ctx, "storage.s3.get_staged",
 		attribute.String(obs.AttrChunkHash, hash.String()),
 		attribute.String(obs.AttrBackend, "s3"),
 		attribute.String("nipa.storage.bucket", s.bucket))
 	defer func() { obs.FinishSpan(span, err) }()
 
-	if err := s.client.RemoveObject(ctx, s.bucket, s.key(hash), minio.RemoveObjectOptions{}); err != nil {
-		return fmt.Errorf("s3: delete chunk %s: %w", hash, err)
+	object, err := s.client.GetObject(ctx, s.bucket, s.stagingKey(slot, hash), minio.GetObjectOptions{})
+	if err != nil {
+		return nil, s.mapError(err, hash)
+	}
+	defer func() { _ = object.Close() }()
+
+	data, err = io.ReadAll(object)
+	if err != nil {
+		return nil, s.mapError(err, hash)
+	}
+	return data, nil
+}
+
+// PromoteStaged copies verified staged content to the shared key with a
+// server-side copy (skipped when the chunk is already stored) and removes the
+// staging object.
+func (s *Store) PromoteStaged(ctx context.Context, slot string, hash domain.Hash) (err error) {
+	ctx, span := obs.StartSpan(ctx, "storage.s3.promote_staged",
+		attribute.String(obs.AttrChunkHash, hash.String()),
+		attribute.String(obs.AttrBackend, "s3"),
+		attribute.String("nipa.storage.bucket", s.bucket))
+	defer func() { obs.FinishSpan(span, err) }()
+
+	exists, err := s.Exists(ctx, hash)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		_, err = s.client.CopyObject(ctx,
+			minio.CopyDestOptions{Bucket: s.bucket, Object: s.key(hash)},
+			minio.CopySrcOptions{Bucket: s.bucket, Object: s.stagingKey(slot, hash)})
+		if err != nil {
+			return fmt.Errorf("s3: promote chunk %s: %w", hash, err)
+		}
+	}
+	return s.DiscardStaged(ctx, slot, hash)
+}
+
+// DiscardStaged removes a staging object.
+func (s *Store) DiscardStaged(ctx context.Context, slot string, hash domain.Hash) (err error) {
+	ctx, span := obs.StartSpan(ctx, "storage.s3.discard_staged",
+		attribute.String(obs.AttrChunkHash, hash.String()),
+		attribute.String(obs.AttrBackend, "s3"),
+		attribute.String("nipa.storage.bucket", s.bucket))
+	defer func() { obs.FinishSpan(span, err) }()
+
+	if err := s.client.RemoveObject(ctx, s.bucket, s.stagingKey(slot, hash), minio.RemoveObjectOptions{}); err != nil {
+		return fmt.Errorf("s3: discard staged chunk %s: %w", hash, err)
 	}
 	return nil
 }
@@ -239,6 +289,18 @@ func (s *Store) mapError(err error, hash domain.Hash) error {
 func (s *Store) key(hash domain.Hash) string {
 	hex := hash.String()
 	base := hex[:2] + "/" + hex[2:]
+	if s.prefix == "" {
+		return base
+	}
+	return s.prefix + "/" + base
+}
+
+// stagingKey is where a slot's direct uploads land before they are verified:
+// <prefix>/uploads/<slot>/<hash[:2]>/<hash[2:]>. A lifecycle rule on the
+// uploads/ prefix should expire abandoned objects.
+func (s *Store) stagingKey(slot string, hash domain.Hash) string {
+	hex := hash.String()
+	base := "uploads/" + slot + "/" + hex[:2] + "/" + hex[2:]
 	if s.prefix == "" {
 		return base
 	}
