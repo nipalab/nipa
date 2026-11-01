@@ -361,9 +361,10 @@ func (c *Chunk) downloadPath(ctx context.Context, org, project string, hash doma
 
 // ConfirmUploads verifies that uploaded chunk content landed in the store and
 // records metadata rows for the present chunks. The recorded size is measured
-// from the stored content, never taken from the client. Content written
-// through a direct upload target is always hash-verified because its bytes
-// never passed through the server; untouched chunks are trusted once recorded.
+// from the stored content, never taken from the client. A hash the project is
+// not linked to yet, or one the client supplies a proof for, is read back,
+// hashed and checked against the proof, because direct uploads never pass
+// through the server; linked chunks without a proof are trusted once linked.
 // Hashes still missing are returned so the client can retry them. When a
 // ledger is attached, present chunks are attributed to the project and the
 // organization's quota is enforced.
@@ -408,13 +409,18 @@ func (c *Chunk) confirmUploads(ctx context.Context, org *domain.Organization, pr
 	for _, hash := range hashes {
 		var size int64
 		var present bool
-		if linked[hash] {
+		if proof, supplied := proofByHash[hash]; linked[hash] && !supplied {
 			size, err = c.chunkStore.Size(ctx, hash)
 			switch {
 			case err == nil:
 				present = true
 			case !domain.IsErrorNotFound(err):
 				return nil, 0, domain.NewErrorDatabase(fmt.Sprintf("stat chunk %s: %v", hash, err))
+			}
+		} else if linked[hash] {
+			size, present, err = c.verifyPossession(ctx, project, hash, proof)
+			if err != nil {
+				return nil, 0, err
 			}
 		} else {
 			size, present, err = c.verifyPossession(ctx, project, hash, proofByHash[hash])

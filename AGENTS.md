@@ -938,7 +938,8 @@ compatible for one release.
   upload target at all (`url` empty, only a `proof_challenge`): the project
   claims it with the possession proof, which costs no write. Because direct
   writes bypass the server, `ConfirmChunkUploads` hashes whatever it reads from
-  the shared key: an object that does not match its hash is deleted and
+  the shared key (for chunks the project is not linked to yet and for linked
+  ones the client supplies a proof for): an object that does not match its hash is deleted and
   reported missing, and the client presigns and uploads that chunk again (up to
   three attempts). The side effect is that a project writer who knows a hash
   learns that its content exists (no target is issued). Backends must support
