@@ -176,6 +176,7 @@ type Querier interface {
 	RebuildProjectChunks(ctx context.Context, projectID int64) error
 	RefreshTokenCreate(ctx context.Context, arg RefreshTokenCreateParams) (int64, error)
 	RefreshTokenDeleteByToken(ctx context.Context, token string) (RefreshToken, error)
+	RefreshTokenDeleteByUser(ctx context.Context, userID int64) error
 	SSHKeyCountByUser(ctx context.Context, userID int64) (int64, error)
 	SSHKeyCreate(ctx context.Context, arg SSHKeyCreateParams) (SshPublicKey, error)
 	SSHKeyDelete(ctx context.Context, arg SSHKeyDeleteParams) (int64, error)

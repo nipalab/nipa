@@ -45,6 +45,15 @@ func (q *Queries) RefreshTokenDeleteByToken(ctx context.Context, token string) (
 	return i, err
 }
 
+const refreshTokenDeleteByUser = `-- name: RefreshTokenDeleteByUser :exec
+DELETE FROM refresh_tokens WHERE user_id = $1
+`
+
+func (q *Queries) RefreshTokenDeleteByUser(ctx context.Context, userID int64) error {
+	_, err := q.db.ExecContext(ctx, refreshTokenDeleteByUser, userID)
+	return err
+}
+
 const sSHLoginChallengeConsume = `-- name: SSHLoginChallengeConsume :one
 DELETE FROM ssh_login_challenges
 WHERE nonce = $1

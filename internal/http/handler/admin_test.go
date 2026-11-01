@@ -350,6 +350,13 @@ func TestHandler_UserAdminLifecycle(t *testing.T) {
 
 	appCtx = adminAppCtx(env.userID, map[string]string{"user": carol.ID}, "")
 	env.handler.DeleteUser(appCtx)
+	require.Equal(t, http.StatusForbidden, appCtx.statusCode, "admins cannot deactivate other admins")
+
+	appCtx = &fakeAppContext{
+		claims:         &domain.Claims{UserID: env.userID, IsAdmin: true, IsSuperAdmin: true},
+		pathParameters: map[string]string{"user": carol.ID},
+	}
+	env.handler.DeleteUser(appCtx)
 	require.Equal(t, http.StatusOK, appCtx.statusCode)
 	_, err = env.userRepo.GetByID(ctx, carolID)
 	require.Error(t, err)

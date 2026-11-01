@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"strings"
 	"time"
 
 	sqlcPostgres "github.com/nipalab/nipa/ee/repository/postgres/sqlc"
@@ -31,7 +32,7 @@ func (r *RegistrationRepository) CreateUnverifiedUser(ctx context.Context, user 
 	id, err := r.queries.UserCreateUnverified(ctx, sqlcPostgres.UserCreateUnverifiedParams{
 		ID:       user.ID.Int64(),
 		Name:     user.Name,
-		Email:    user.Email,
+		Email:    strings.ToLower(strings.TrimSpace(user.Email)),
 		Password: user.Password,
 		PhotoUrl: sql.NullString{String: user.PhotoUrl, Valid: user.PhotoUrl != ""},
 	})
@@ -73,6 +74,17 @@ func (r *RegistrationRepository) DeleteExpiredEmailVerifications(ctx context.Con
 
 func (r *RegistrationRepository) SetEmailVerified(ctx context.Context, userID snow.ID) error {
 	return handleError(r.queries.UserSetEmailVerified(ctx, userID.Int64()))
+}
+
+func (r *RegistrationRepository) ResetUnverifiedCredentials(ctx context.Context, userID snow.ID) error {
+	id := userID.Int64()
+	if err := r.queries.UserUpdatePassword(ctx, sqlcPostgres.UserUpdatePasswordParams{Password: "", ID: id}); err != nil {
+		return handleError(err)
+	}
+	if err := r.queries.EmailVerificationDelete(ctx, id); err != nil {
+		return handleError(err)
+	}
+	return handleError(r.queries.RefreshTokenDeleteByUser(ctx, id))
 }
 
 func (r *RegistrationRepository) SeedOwnerQuota(ctx context.Context, userID snow.ID, quotaBytes int64) error {

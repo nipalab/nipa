@@ -4,22 +4,25 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 
 	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/repository/dbtx"
 	sqlcSqlite "github.com/nipalab/nipa/internal/repository/sqlc/sqlite"
 	"github.com/nipalab/nipa/internal/snow"
 )
 
 type User struct {
 	queries *sqlcSqlite.Queries
+	tx      *dbtx.Transactor
 }
 
 func NewUserRepository(db *sql.DB) *User {
-	return &User{queries: sqlcSqlite.New(db)}
+	return &User{queries: sqlcSqlite.New(dbtx.New(db)), tx: dbtx.NewTransactor(db)}
 }
 
 func (a *User) GetByEmail(ctx context.Context, email string) (*domain.User, error) {
-	user, err := a.queries.UserGetByEmail(ctx, email)
+	user, err := a.queries.UserGetByEmail(ctx, strings.ToLower(strings.TrimSpace(email)))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, domain.NewErrorRecordNotFound()
@@ -44,7 +47,7 @@ func (a *User) Create(ctx context.Context, user domain.User) (*domain.User, erro
 	id, err := a.queries.UserCreate(ctx, sqlcSqlite.UserCreateParams{
 		ID:       user.ID.Int64(),
 		Name:     user.Name,
-		Email:    user.Email,
+		Email:    strings.ToLower(strings.TrimSpace(user.Email)),
 		Password: user.Password,
 		PhotoUrl: sql.NullString{String: user.PhotoUrl, Valid: user.PhotoUrl != ""},
 		IsAdmin:  user.IsAdmin,
@@ -79,7 +82,7 @@ func (a *User) UpdateProfile(ctx context.Context, id snow.ID, name, photoUrl str
 
 func (a *User) UpdateEmail(ctx context.Context, id snow.ID, email string) error {
 	err := a.queries.UserUpdateEmail(ctx, sqlcSqlite.UserUpdateEmailParams{
-		Email: email,
+		Email: strings.ToLower(strings.TrimSpace(email)),
 		ID:    id.Int64(),
 	})
 	return handleError(err)
@@ -102,9 +105,40 @@ func (a *User) UpdateAdminFlags(ctx context.Context, id snow.ID, isAdmin, isSupe
 	return handleError(err)
 }
 
+func (a *User) DeleteRefreshTokens(ctx context.Context, id snow.ID) error {
+	return handleError(a.queries.RefreshTokenDeleteByUser(ctx, id.Int64()))
+}
+
 func (a *User) Deactivate(ctx context.Context, id snow.ID) error {
 	err := a.queries.UserDeleteByID(ctx, id.Int64())
 	return handleError(err)
+}
+
+func (a *User) UpdateEmailAndRevokeTokens(ctx context.Context, id snow.ID, email string) error {
+	return a.tx.WithinTx(ctx, func(ctx context.Context) error {
+		if err := a.UpdateEmail(ctx, id, email); err != nil {
+			return err
+		}
+		return a.DeleteRefreshTokens(ctx, id)
+	})
+}
+
+func (a *User) UpdatePasswordAndRevokeTokens(ctx context.Context, id snow.ID, passwordHash string) error {
+	return a.tx.WithinTx(ctx, func(ctx context.Context) error {
+		if err := a.UpdatePassword(ctx, id, passwordHash); err != nil {
+			return err
+		}
+		return a.DeleteRefreshTokens(ctx, id)
+	})
+}
+
+func (a *User) DeactivateAndRevokeTokens(ctx context.Context, id snow.ID) error {
+	return a.tx.WithinTx(ctx, func(ctx context.Context) error {
+		if err := a.Deactivate(ctx, id); err != nil {
+			return err
+		}
+		return a.DeleteRefreshTokens(ctx, id)
+	})
 }
 
 func toDomainUser(row sqlcSqlite.User) *domain.User {

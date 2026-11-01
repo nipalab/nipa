@@ -17,3 +17,6 @@ WHERE expires_at < sqlc.arg(expires_at);
 DELETE FROM ssh_login_challenges
 WHERE nonce = sqlc.arg(nonce)
 RETURNING *;
+
+-- name: RefreshTokenDeleteByUser :exec
+DELETE FROM refresh_tokens WHERE user_id = sqlc.arg(user_id);

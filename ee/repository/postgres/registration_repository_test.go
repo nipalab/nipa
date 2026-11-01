@@ -69,6 +69,42 @@ func (s *RegistrationRepositorySuite) TestEmailVerificationLifecycle() {
 	requireRecordNotFound(s.T(), err)
 }
 
+func (s *RegistrationRepositorySuite) TestResetUnverifiedCredentials() {
+	ctx := context.Background()
+	repo := NewRegistrationRepository(s.db)
+	auth := NewAuthRepository(s.db)
+	user := s.createUser()
+	other, err := repo.CreateUnverifiedUser(ctx, domain.User{
+		ID:       newTestNode(s.T()).Generate(),
+		Name:     "bob",
+		Email:    "bob@example.com",
+		Password: "other-hash",
+	})
+	s.Require().NoError(err)
+
+	expiresAt := time.Now().Add(time.Hour)
+	s.Require().NoError(repo.UpsertEmailVerification(ctx, user.ID, "verify-1", expiresAt))
+	s.Require().NoError(auth.SaveRefreshToken(ctx, user.ID, "token-1", expiresAt))
+	s.Require().NoError(auth.SaveRefreshToken(ctx, other.ID, "other-token", expiresAt))
+
+	s.Require().NoError(repo.ResetUnverifiedCredentials(ctx, user.ID))
+
+	reset, err := NewUserRepository(s.db).GetByID(ctx, user.ID)
+	s.Require().NoError(err)
+	s.Empty(reset.Password)
+	s.False(reset.EmailVerified)
+
+	_, _, err = repo.EmailVerificationByToken(ctx, "verify-1")
+	requireRecordNotFound(s.T(), err)
+
+	_, err = auth.GetAndDeleteRefreshToken(ctx, "token-1")
+	requireRecordNotFound(s.T(), err)
+
+	got, err := auth.GetAndDeleteRefreshToken(ctx, "other-token")
+	s.Require().NoError(err)
+	s.Equal(other.ID, got.UserID)
+}
+
 func (s *RegistrationRepositorySuite) TestDeleteExpiredEmailVerifications() {
 	ctx := context.Background()
 	repo := NewRegistrationRepository(s.db)
