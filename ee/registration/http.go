@@ -37,9 +37,8 @@ type capabilitiesResponse struct {
 }
 
 type registerRequest struct {
-	Name     string `json:"name"`
-	Email    string `json:"email"`
-	Password string `json:"password"`
+	Name  string `json:"name"`
+	Email string `json:"email"`
 }
 
 type registerResponse struct {
@@ -52,7 +51,8 @@ type resendRequest struct {
 }
 
 type verifyRequest struct {
-	Token string `json:"token"`
+	Token    string `json:"token"`
+	Password string `json:"password"`
 }
 
 // RegisterPublicRoutes attaches the unauthenticated registration endpoints to
@@ -117,7 +117,7 @@ func (h *Handler) Register(appCtx httpApp.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	if err := h.reg.Register(appCtx.Context(), body.Name, body.Email, body.Password); err != nil {
+	if err := h.reg.Register(appCtx.Context(), body.Name, body.Email); err != nil {
 		appCtx.HandleError(err)
 		return
 	}
@@ -143,7 +143,7 @@ func (h *Handler) Verify(appCtx httpApp.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	user, err := h.reg.Verify(appCtx.Context(), body.Token)
+	user, err := h.reg.Verify(appCtx.Context(), body.Token, body.Password)
 	if err != nil {
 		appCtx.HandleError(err)
 		return

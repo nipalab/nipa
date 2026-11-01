@@ -68,7 +68,7 @@ var _ = Describe("saas onboarding", func() {
 			status, _ := saasCapabilitiesProbe()
 			Expect(status).To(Equal(http.StatusNotFound), "the free edition wires no onboarding routes")
 			status, _ = api.doAnonRaw(http.MethodPost, "/auth/register", map[string]string{
-				"name": "Free User", "email": "free-" + randSuffix(4) + "@example.com", "password": "saas-password-123",
+				"name": "Free User", "email": "free-" + randSuffix(4) + "@example.com",
 			})
 			Expect(status).To(Equal(http.StatusNotFound), "registration is enterprise-only")
 			return
@@ -83,32 +83,34 @@ var _ = Describe("saas onboarding", func() {
 		const password = "saas-password-123"
 
 		status, body := api.doAnonRaw(http.MethodPost, "/auth/register", map[string]string{
-			"name": "SaaS User", "email": address, "password": password,
+			"name": "SaaS User", "email": address,
 		})
 		Expect(status).To(Equal(http.StatusAccepted), "register: %s", body)
 		Expect(string(body)).To(ContainSubstring("pending_verification"))
 
 		status, body = api.doAnonRaw(http.MethodPost, "/auth/register", map[string]string{
-			"name": "SaaS User", "email": address, "password": password,
+			"name": "Someone Else", "email": address,
 		})
-		Expect(status).To(Equal(http.StatusConflict), "duplicate email: %s", body)
+		Expect(status).To(Equal(http.StatusAccepted), "an address that is already registered looks like a new signup: %s", body)
 
 		status, body = api.doAnonRaw(http.MethodPost, "/auth/register", map[string]string{
-			"name": "SaaS User", "email": "weak-" + randSuffix(4) + "@example.com", "password": "short",
+			"name": "", "email": "invalid-" + randSuffix(4) + "@example.com",
 		})
-		Expect(status).To(Equal(http.StatusBadRequest), "weak password: %s", body)
+		Expect(status).To(Equal(http.StatusBadRequest), "missing name: %s", body)
 
 		status, body = api.doAnonRaw(http.MethodPost, "/auth/login", map[string]string{
 			"email": address, "password": password,
 		})
-		Expect(status).To(Equal(http.StatusForbidden), "unconfirmed account cannot log in: %s", body)
-		Expect(string(body)).To(ContainSubstring("email not confirmed"))
+		Expect(status).To(BeNumerically(">=", 400), "an unconfirmed account has no password to log in with: %s", body)
 
-		confirmation := email.waitForSubject(address, "Confirm your email address")
-		Expect(confirmation.From).NotTo(BeEmpty())
-		token := verificationToken(confirmation)
+		confirmations := waitForConfirmations(address, 2)
+		Expect(confirmations[0].From).NotTo(BeEmpty())
+		token := verificationToken(confirmations[len(confirmations)-1])
 
-		status, body = api.doAnonRaw(http.MethodPost, "/auth/verify", map[string]string{"token": token})
+		status, body = api.doAnonRaw(http.MethodPost, "/auth/verify", map[string]string{"token": token, "password": "short"})
+		Expect(status).To(Equal(http.StatusBadRequest), "a weak password is refused and keeps the link usable: %s", body)
+
+		status, body = api.doAnonRaw(http.MethodPost, "/auth/verify", map[string]string{"token": token, "password": password})
 		Expect(status).To(Equal(http.StatusOK), "verify: %s", body)
 		var session struct {
 			AccessToken string `json:"access_token"`
@@ -125,7 +127,7 @@ var _ = Describe("saas onboarding", func() {
 		Expect(me.Email).To(Equal(address))
 		Expect(me.ID).NotTo(BeEmpty())
 
-		status, body = api.doAnonRaw(http.MethodPost, "/auth/verify", map[string]string{"token": token})
+		status, body = api.doAnonRaw(http.MethodPost, "/auth/verify", map[string]string{"token": token, "password": password})
 		Expect(status).To(Equal(http.StatusNotFound), "the confirmation token is single use: %s", body)
 
 		// The gRPC login path the CLI uses accepts the confirmed account.
@@ -142,7 +144,7 @@ var _ = Describe("saas onboarding", func() {
 
 		address := "saas-resend-" + randSuffix(6) + "@example.com"
 		status, body := api.doAnonRaw(http.MethodPost, "/auth/register", map[string]string{
-			"name": "Resend User", "email": address, "password": "saas-password-123",
+			"name": "Resend User", "email": address,
 		})
 		Expect(status).To(Equal(http.StatusAccepted), "register: %s", body)
 
@@ -155,10 +157,10 @@ var _ = Describe("saas onboarding", func() {
 		secondToken := verificationToken(confirmations[len(confirmations)-1])
 		Expect(secondToken).NotTo(Equal(firstToken))
 
-		status, _ = api.doAnonRaw(http.MethodPost, "/auth/verify", map[string]string{"token": firstToken})
+		status, _ = api.doAnonRaw(http.MethodPost, "/auth/verify", map[string]string{"token": firstToken, "password": "saas-password-123"})
 		Expect(status).To(Equal(http.StatusNotFound), "resending voids the previous token")
 
-		status, body = api.doAnonRaw(http.MethodPost, "/auth/verify", map[string]string{"token": secondToken})
+		status, body = api.doAnonRaw(http.MethodPost, "/auth/verify", map[string]string{"token": secondToken, "password": "saas-password-123"})
 		Expect(status).To(Equal(http.StatusOK), "the resent token works: %s", body)
 
 		status, _ = api.doAnonRaw(http.MethodPost, "/auth/register/resend", map[string]string{

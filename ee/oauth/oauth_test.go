@@ -243,10 +243,10 @@ func TestProvidersListsEnabledProviders(t *testing.T) {
 func TestCallbackFallsBackToTheEmailLocalPartForTheName(t *testing.T) {
 	env := newOAuthEnv(t)
 	env.provider.profile = &Profile{AccountID: "1001", Email: "alice@example.com", EmailVerified: true}
-	state, err := env.oauth.states.Sign("/", 0)
+	state, err := env.oauth.states.Sign("/", 0, testBinding)
 	require.NoError(t, err)
 
-	target, err := env.oauth.Callback(context.Background(), ProviderGitHub, "code", state)
+	target, err := env.oauth.Callback(context.Background(), ProviderGitHub, "code", state, testBinding)
 	require.NoError(t, err)
 	require.NotEmpty(t, redirectQuery(t, target).Get("code"))
 	require.Len(t, env.users.users, 1)
@@ -256,14 +256,14 @@ func TestCallbackFallsBackToTheEmailLocalPartForTheName(t *testing.T) {
 func TestStartSignsStateAndSanitizesRedirect(t *testing.T) {
 	env := newOAuthEnv(t)
 
-	target, err := env.oauth.Start(ProviderGitHub, "//evil.example", 0)
+	target, _, err := env.oauth.Start(ProviderGitHub, "//evil.example", 0)
 	require.NoError(t, err)
 	state, err := env.oauth.states.Verify(stateFromURL(t, target))
 	require.NoError(t, err)
 	require.Equal(t, "/", state.Redirect)
 	require.Zero(t, state.LinkUser)
 
-	target, err = env.oauth.Start(ProviderGitHub, "/onboarding", 42)
+	target, _, err = env.oauth.Start(ProviderGitHub, "/onboarding", 42)
 	require.NoError(t, err)
 	state, err = env.oauth.states.Verify(stateFromURL(t, target))
 	require.NoError(t, err)
@@ -271,10 +271,12 @@ func TestStartSignsStateAndSanitizesRedirect(t *testing.T) {
 	require.Equal(t, int64(42), state.LinkUser)
 }
 
+const testBinding = "browser-binding"
+
 func TestStartRejectsUnknownProvider(t *testing.T) {
 	env := newOAuthEnv(t)
 
-	_, err := env.oauth.Start("gitlab", "/", 0)
+	_, _, err := env.oauth.Start("gitlab", "/", 0)
 	require.Error(t, err)
 	var domErr *domain.Error
 	require.ErrorAs(t, err, &domErr)
@@ -290,10 +292,10 @@ func TestCallbackCreatesAccountForNewSocialUser(t *testing.T) {
 		Name:          "Alice",
 		AvatarURL:     "https://avatars.example/alice.png",
 	}
-	state, err := env.oauth.states.Sign("/oauth/callback", 0)
+	state, err := env.oauth.states.Sign("/oauth/callback", 0, testBinding)
 	require.NoError(t, err)
 
-	target, err := env.oauth.Callback(context.Background(), ProviderGitHub, "code", state)
+	target, err := env.oauth.Callback(context.Background(), ProviderGitHub, "code", state, testBinding)
 	require.NoError(t, err)
 	query := redirectQuery(t, target)
 	require.Equal(t, "/oauth/callback", strings.Split(target, "?")[0])
@@ -323,10 +325,10 @@ func TestCallbackLogsInExistingIdentity(t *testing.T) {
 	env.repo.identities[identityKey(ProviderGitHub, "1001")] = identity
 	env.repo.byID[9] = identity
 	env.provider.profile = &Profile{AccountID: "1001", Email: user.Email, EmailVerified: true}
-	state, err := env.oauth.states.Sign("/", 0)
+	state, err := env.oauth.states.Sign("/", 0, testBinding)
 	require.NoError(t, err)
 
-	target, err := env.oauth.Callback(context.Background(), ProviderGitHub, "code", state)
+	target, err := env.oauth.Callback(context.Background(), ProviderGitHub, "code", state, testBinding)
 	require.NoError(t, err)
 	query := redirectQuery(t, target)
 	require.Empty(t, query.Get("new"))
@@ -339,10 +341,10 @@ func TestCallbackLinksVerifiedEmailToUnconfirmedAccount(t *testing.T) {
 	user := &domain.User{ID: 42, Email: "alice@example.com", EmailVerified: false}
 	env.users.users = []*domain.User{user}
 	env.provider.profile = &Profile{AccountID: "1001", Email: user.Email, EmailVerified: true}
-	state, err := env.oauth.states.Sign("/", 0)
+	state, err := env.oauth.states.Sign("/", 0, testBinding)
 	require.NoError(t, err)
 
-	target, err := env.oauth.Callback(context.Background(), ProviderGitHub, "code", state)
+	target, err := env.oauth.Callback(context.Background(), ProviderGitHub, "code", state, testBinding)
 	require.NoError(t, err)
 	require.NotEmpty(t, redirectQuery(t, target).Get("code"))
 	require.Equal(t, []snow.ID{42}, env.repo.verified)
@@ -355,10 +357,10 @@ func TestCallbackRejectsUnverifiedProviderEmail(t *testing.T) {
 	env := newOAuthEnv(t)
 	env.users.users = []*domain.User{{ID: 42, Email: "alice@example.com", EmailVerified: true}}
 	env.provider.profile = &Profile{AccountID: "1001", Email: "alice@example.com", EmailVerified: false}
-	state, err := env.oauth.states.Sign("/", 0)
+	state, err := env.oauth.states.Sign("/", 0, testBinding)
 	require.NoError(t, err)
 
-	target, err := env.oauth.Callback(context.Background(), ProviderGitHub, "code", state)
+	target, err := env.oauth.Callback(context.Background(), ProviderGitHub, "code", state, testBinding)
 	require.NoError(t, err)
 	require.Equal(t, "email_required", redirectQuery(t, target).Get("oauth_error"))
 	require.Empty(t, env.repo.identities)
@@ -368,10 +370,10 @@ func TestCallbackRejectsUnverifiedProviderEmail(t *testing.T) {
 func TestCallbackRejectsUnverifiedProviderEmailForNewAccount(t *testing.T) {
 	env := newOAuthEnv(t)
 	env.provider.profile = &Profile{AccountID: "1001", Email: "victim@example.com", EmailVerified: false}
-	state, err := env.oauth.states.Sign("/", 0)
+	state, err := env.oauth.states.Sign("/", 0, testBinding)
 	require.NoError(t, err)
 
-	target, err := env.oauth.Callback(context.Background(), ProviderGitHub, "code", state)
+	target, err := env.oauth.Callback(context.Background(), ProviderGitHub, "code", state, testBinding)
 	require.NoError(t, err)
 	require.Equal(t, "email_required", redirectQuery(t, target).Get("oauth_error"))
 	require.Empty(t, env.users.users, "an unverified provider email must not pre-register (squat) an address")
@@ -382,10 +384,10 @@ func TestCallbackRejectsUnverifiedProviderEmailForNewAccount(t *testing.T) {
 func TestCallbackRequiresAnEmailForNewAccounts(t *testing.T) {
 	env := newOAuthEnv(t)
 	env.provider.profile = &Profile{AccountID: "1001", EmailVerified: false}
-	state, err := env.oauth.states.Sign("/", 0)
+	state, err := env.oauth.states.Sign("/", 0, testBinding)
 	require.NoError(t, err)
 
-	target, err := env.oauth.Callback(context.Background(), ProviderGitHub, "code", state)
+	target, err := env.oauth.Callback(context.Background(), ProviderGitHub, "code", state, testBinding)
 	require.NoError(t, err)
 	require.Equal(t, "email_required", redirectQuery(t, target).Get("oauth_error"))
 	require.Empty(t, env.users.users)
@@ -395,10 +397,10 @@ func TestCallbackLinkModeAttachesIdentity(t *testing.T) {
 	env := newOAuthEnv(t)
 	env.users.users = []*domain.User{{ID: 42, Email: "alice@example.com", EmailVerified: true}}
 	env.provider.profile = &Profile{AccountID: "1001", Email: "alice@example.com", EmailVerified: true}
-	state, err := env.oauth.states.Sign("/settings/profile", 42)
+	state, err := env.oauth.states.Sign("/settings/profile", 42, testBinding)
 	require.NoError(t, err)
 
-	target, err := env.oauth.Callback(context.Background(), ProviderGitHub, "code", state)
+	target, err := env.oauth.Callback(context.Background(), ProviderGitHub, "code", state, testBinding)
 	require.NoError(t, err)
 	query := redirectQuery(t, target)
 	require.Equal(t, "/settings/profile", strings.Split(target, "?")[0])
@@ -415,10 +417,10 @@ func TestCallbackLinkModeRejectsForeignIdentity(t *testing.T) {
 	env.repo.identities[identityKey(ProviderGitHub, "1001")] = identity
 	env.repo.byID[9] = identity
 	env.provider.profile = &Profile{AccountID: "1001", Email: "alice@example.com", EmailVerified: true}
-	state, err := env.oauth.states.Sign("/settings/profile", 42)
+	state, err := env.oauth.states.Sign("/settings/profile", 42, testBinding)
 	require.NoError(t, err)
 
-	target, err := env.oauth.Callback(context.Background(), ProviderGitHub, "code", state)
+	target, err := env.oauth.Callback(context.Background(), ProviderGitHub, "code", state, testBinding)
 	require.NoError(t, err)
 	require.Equal(t, "identity_taken", redirectQuery(t, target).Get("oauth_error"))
 }
@@ -427,7 +429,7 @@ func TestCallbackRejectsTamperedState(t *testing.T) {
 	env := newOAuthEnv(t)
 	env.provider.profile = &Profile{AccountID: "1001", Email: "alice@example.com", EmailVerified: true}
 
-	_, err := env.oauth.Callback(context.Background(), ProviderGitHub, "code", "dGFtcGVyZWQ.c2ln")
+	_, err := env.oauth.Callback(context.Background(), ProviderGitHub, "code", "dGFtcGVyZWQ.c2ln", testBinding)
 	require.Error(t, err)
 	var domErr *domain.Error
 	require.ErrorAs(t, err, &domErr)
@@ -508,7 +510,7 @@ func TestStateRoundTripAndExpiry(t *testing.T) {
 	now := time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC)
 	signer.now = func() time.Time { return now }
 
-	state, err := signer.Sign("/onboarding", 7)
+	state, err := signer.Sign("/onboarding", 7, testBinding)
 	require.NoError(t, err)
 	data, err := signer.Verify(state)
 	require.NoError(t, err)
@@ -527,10 +529,10 @@ func TestCallbackFailsWhenCredentialResetFails(t *testing.T) {
 	env.provider.profile = &Profile{AccountID: "1001", Email: user.Email, EmailVerified: true}
 	wantErr := errors.New("db down")
 	env.repo.resetErr = wantErr
-	state, err := env.oauth.states.Sign("/", 0)
+	state, err := env.oauth.states.Sign("/", 0, testBinding)
 	require.NoError(t, err)
 
-	_, err = env.oauth.Callback(context.Background(), ProviderGitHub, "code", state)
+	_, err = env.oauth.Callback(context.Background(), ProviderGitHub, "code", state, testBinding)
 	require.ErrorIs(t, err, wantErr)
 	require.Empty(t, env.repo.verified, "the account must not be activated")
 	require.Empty(t, env.repo.identities, "the identity must not be linked")
@@ -541,10 +543,10 @@ func TestCallbackKeepsCredentialsOfVerifiedAccount(t *testing.T) {
 	user := &domain.User{ID: 42, Email: "alice@example.com", EmailVerified: true}
 	env.users.users = []*domain.User{user}
 	env.provider.profile = &Profile{AccountID: "1001", Email: user.Email, EmailVerified: true}
-	state, err := env.oauth.states.Sign("/", 0)
+	state, err := env.oauth.states.Sign("/", 0, testBinding)
 	require.NoError(t, err)
 
-	_, err = env.oauth.Callback(context.Background(), ProviderGitHub, "code", state)
+	_, err = env.oauth.Callback(context.Background(), ProviderGitHub, "code", state, testBinding)
 	require.NoError(t, err)
 	require.Empty(t, env.repo.reset)
 }

@@ -80,6 +80,10 @@ func (h *Handler) AddOrgMember(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
+	if err := h.useCase.Org().EnsureOwner(appCtx.Context(), org.ID); err != nil {
+		appCtx.HandleError(err)
+		return
+	}
 	role := strings.TrimSpace(body.Role)
 	if role == "" {
 		role = domain.OrgRoleMember

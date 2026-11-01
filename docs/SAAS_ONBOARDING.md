@@ -32,18 +32,25 @@ callback URLs with the providers:
 
 ## Registration with email confirmation
 
-1. `POST /api/v1/auth/register` `{name, email, password}` — validates the
-   identity and password (≥ 8 chars), rejects duplicate emails (409), creates
-   an **inactive** account (`users.email_verified = false`) plus a one-time
-   verification token (`email_verifications`, sha256 of a 32-byte secret,
-   72 h TTL, one row per user, resending replaces it) and the free-tier
-   `owner_quota` seed, then queues the confirmation email in the existing
-   mail outbox and kicks the dispatcher. Responds `202
-   {status: "pending_verification", email}`; no session is issued.
+1. `POST /api/v1/auth/register` `{name, email}` — validates the identity and
+   creates an **inactive, password-less** account (`users.email_verified =
+   false`) plus a one-time verification token (`email_verifications`, sha256
+   of a 32-byte secret, 72 h TTL, one row per user, resending replaces it) and
+   the free-tier `owner_quota` seed, then queues the confirmation email in the
+   existing mail outbox and kicks the dispatcher. Responds `202
+   {status: "pending_verification", email}`; no session is issued. An address
+   that already has an account answers the same `202` (a confirmed account is
+   left alone, an unconfirmed one gets a fresh token), so sign-up cannot be
+   used to probe for accounts.
 2. The email contains `<EMAIL_BASE_URL>/verify?token=…`; the SPA `/verify`
-   page posts `POST /api/v1/auth/verify {token}` — the account is activated,
-   the token is consumed and the response is the standard login result
-   (access token + HttpOnly refresh cookie), so the SPA lands signed in.
+   page asks the link holder to choose a password (≥ 8 chars) and posts
+   `POST /api/v1/auth/verify {token, password}` — the password is stored, the
+   account is activated, the token is consumed and the response is the
+   standard login result (access token + HttpOnly refresh cookie), so the SPA
+   lands signed in. The password is chosen only by whoever controls the
+   mailbox, so registering (or re-registering) someone else's address can
+   never plant a password the attacker knows. A weak password is rejected
+   without using up the token.
 3. Until confirmation the account cannot log in: password, refresh-token and
    SSH logins all refuse with `403 email not confirmed`. The login page offers
    a resend.

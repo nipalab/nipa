@@ -531,3 +531,23 @@ func TestHandler_AdminHandlers_InvalidIDs(t *testing.T) {
 		})
 	}
 }
+
+func TestHandler_AddOrgMember_NonOwnerCannotProbeAccounts(t *testing.T) {
+	env := newHandlerTestEnv(t)
+	bob := env.createUser(t, "bob", "bob@example.com")
+
+	for _, body := range []string{
+		`{"email":"bob@example.com"}`,
+		`{"email":"ghost@example.com"}`,
+		`{"user_id":"` + bob.ID.Base36() + `"}`,
+		`{"user_id":"` + snow.ID(999999).Base36() + `"}`,
+	} {
+		appCtx := &fakeAppContext{
+			claims:         &domain.Claims{UserID: bob.ID},
+			pathParameters: map[string]string{"org": "default"},
+			body:           []byte(body),
+		}
+		env.handler.AddOrgMember(appCtx)
+		require.Equal(t, http.StatusForbidden, appCtx.statusCode, body)
+	}
+}

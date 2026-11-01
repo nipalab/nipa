@@ -100,22 +100,46 @@ func RegisterRoutes(ws *restful.WebService, h *Handler) {
 			Metadata(restfulspec.KeyOpenAPITags, tags))
 }
 
+const (
+	bindingCookieName = "nipa_oauth_binding"
+	bindingCookiePath = "/api/v1/auth/oauth"
+)
+
+func bindingCookie(value string, maxAge int) *nethttp.Cookie {
+	return &nethttp.Cookie{
+		Name:     bindingCookieName,
+		Value:    value,
+		Path:     bindingCookiePath,
+		MaxAge:   maxAge,
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: nethttp.SameSiteLaxMode,
+	}
+}
+
 func (h *Handler) Start(appCtx httpApp.AppContext) {
-	target, err := h.oauth.Start(appCtx.PathParameter("provider"), appCtx.QueryParameter("redirect"), 0)
+	target, binding, err := h.oauth.Start(appCtx.PathParameter("provider"), appCtx.QueryParameter("redirect"), 0)
 	if err != nil {
 		appCtx.HandleError(err)
 		return
 	}
+	appCtx.SetCookie(bindingCookie(binding, int(stateTTL.Seconds())))
 	nethttp.Redirect(appCtx.ResponseWriter(), appCtx.Request(), target, nethttp.StatusFound)
 }
 
 func (h *Handler) Callback(appCtx httpApp.AppContext) {
+	binding := ""
+	if cookie, err := appCtx.Cookie(bindingCookieName); err == nil {
+		binding = cookie.Value
+	}
 	target, err := h.oauth.Callback(
 		appCtx.Context(),
 		appCtx.PathParameter("provider"),
 		appCtx.QueryParameter("code"),
 		appCtx.QueryParameter("state"),
+		binding,
 	)
+	appCtx.SetCookie(bindingCookie("", -1))
 	if err != nil {
 		appCtx.HandleError(err)
 		return
@@ -176,11 +200,12 @@ func (h *Handler) StartLink(appCtx httpApp.AppContext) {
 		appCtx.HandleError(domain.NewErrorUnauthorized("authentication required"))
 		return
 	}
-	target, err := h.oauth.Start(appCtx.PathParameter("provider"), appCtx.QueryParameter("redirect"), claim.UserID)
+	target, binding, err := h.oauth.Start(appCtx.PathParameter("provider"), appCtx.QueryParameter("redirect"), claim.UserID)
 	if err != nil {
 		appCtx.HandleError(err)
 		return
 	}
+	appCtx.SetCookie(bindingCookie(binding, int(stateTTL.Seconds())))
 	_ = appCtx.WriteJson(nethttp.StatusOK, startResponse{URL: target})
 }
 

@@ -1,41 +1,51 @@
-import { useEffect, useRef, useState } from 'react'
-import { Button, Flash, FormControl, Heading, Link as PrimerLink, Spinner, Stack, TextInput } from '@primer/react'
+import { useState } from 'react'
+import { Button, Flash, FormControl, Heading, Link as PrimerLink, Stack, TextInput } from '@primer/react'
 import { RepoIcon } from '@primer/octicons-react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { establishSession } from '../api/client'
+import { ApiError, establishSession } from '../api/client'
 import { resendVerification } from '../api/endpoints'
 import { useAuth } from '../auth'
+
+const MIN_PASSWORD_LENGTH = 8
 
 export default function VerifyPage() {
   const { signIn } = useAuth()
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const token = params.get('token') ?? ''
+  const [password, setPassword] = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [verifying, setVerifying] = useState(true)
+  const [linkInvalid, setLinkInvalid] = useState(!token)
   const [email, setEmail] = useState('')
   const [resendBusy, setResendBusy] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
-  const started = useRef(false)
 
-  useEffect(() => {
-    if (started.current) return
-    started.current = true
-    if (!token) {
-      setError('This confirmation link is missing its token.')
-      setVerifying(false)
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setError(null)
+    if (password.length < MIN_PASSWORD_LENGTH) {
+      setError(`Choose a password of at least ${MIN_PASSWORD_LENGTH} characters.`)
       return
     }
-    establishSession('/api/v1/auth/verify', { token })
-      .then(() => {
-        signIn()
-        navigate('/onboarding', { replace: true })
-      })
-      .catch((err: unknown) => {
-        setError(err instanceof Error ? err.message : String(err))
-        setVerifying(false)
-      })
-  }, [token, signIn, navigate])
+    if (password !== confirm) {
+      setError('The passwords do not match.')
+      return
+    }
+    setBusy(true)
+    try {
+      await establishSession('/api/v1/auth/verify', { token, password })
+      signIn()
+      navigate('/onboarding', { replace: true })
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 404) {
+        setLinkInvalid(true)
+      }
+      setError(err instanceof Error ? err.message : String(err))
+      setBusy(false)
+    }
+  }
 
   async function handleResend(e: React.FormEvent) {
     e.preventDefault()
@@ -59,17 +69,60 @@ export default function VerifyPage() {
           <RepoIcon size={24} verticalAlign="middle" /> Nipa
         </Heading>
 
-        {verifying && (
-          <Stack direction="vertical" align="center" gap="normal">
-            <Spinner size="large" />
-            <span>Confirming your email…</span>
-          </Stack>
+        {!linkInvalid && (
+          <form
+            onSubmit={handleSubmit}
+            noValidate
+            style={{
+              width: '100%',
+              border: '1px solid var(--borderColor-default)',
+              borderRadius: 6,
+              padding: 24,
+            }}
+          >
+            <Stack direction="vertical" gap="normal">
+              <p style={{ margin: 0 }}>Your email is confirmed once you choose a password.</p>
+
+              <FormControl required>
+                <FormControl.Label>Password</FormControl.Label>
+                <TextInput
+                  block
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  autoComplete="new-password"
+                />
+                <FormControl.Caption>At least {MIN_PASSWORD_LENGTH} characters.</FormControl.Caption>
+              </FormControl>
+
+              <FormControl required>
+                <FormControl.Label>Confirm password</FormControl.Label>
+                <TextInput
+                  block
+                  type="password"
+                  value={confirm}
+                  onChange={(e) => setConfirm(e.target.value)}
+                  autoComplete="new-password"
+                />
+              </FormControl>
+
+              {error && (
+                <Flash variant="danger">
+                  <strong>Confirmation failed.</strong> {error}
+                </Flash>
+              )}
+
+              <Button type="submit" variant="primary" block disabled={busy}>
+                {busy ? 'Confirming…' : 'Confirm and continue'}
+              </Button>
+            </Stack>
+          </form>
         )}
 
-        {!verifying && error && (
+        {linkInvalid && (
           <Stack direction="vertical" gap="normal" style={{ width: '100%' }}>
             <Flash variant="danger">
-              <strong>Confirmation failed.</strong> {error}
+              <strong>Confirmation failed.</strong> {error ?? 'This confirmation link is missing its token.'}
             </Flash>
             {notice && <Flash variant="success">{notice}</Flash>}
             <form

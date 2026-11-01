@@ -107,7 +107,7 @@ func TestRegisterEndpoint(t *testing.T) {
 	server := newRegistrationServer(t, nil)
 
 	resp, body := server.do(t, http.MethodPost, "/api/v1/auth/register",
-		`{"name":"Alice","email":" alice@example.com ","password":"password123"}`)
+		`{"name":"Alice","email":" alice@example.com "}`)
 	require.Equal(t, http.StatusAccepted, resp.StatusCode)
 	require.JSONEq(t, `{"status":"pending_verification","email":"alice@example.com"}`, body)
 
@@ -118,11 +118,11 @@ func TestRegisterEndpoint(t *testing.T) {
 	server.env.users.users = append(server.env.users.users, &created)
 
 	resp, body = server.do(t, http.MethodPost, "/api/v1/auth/register",
-		`{"name":"Alice","email":"alice@example.com","password":"password123"}`)
-	require.Equal(t, http.StatusConflict, resp.StatusCode, body)
+		`{"name":"Alice","email":"alice@example.com"}`)
+	require.Equal(t, http.StatusAccepted, resp.StatusCode, body)
 
 	resp, body = server.do(t, http.MethodPost, "/api/v1/auth/register",
-		`{"name":"Bob","email":"bob@example.com","password":"short"}`)
+		`{"name":"","email":"bob@example.com"}`)
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode, body)
 
 	resp, _ = server.do(t, http.MethodPost, "/api/v1/auth/register", `{"name":`)
@@ -147,10 +147,10 @@ func TestResendVerificationEndpoint(t *testing.T) {
 func TestVerifyEndpoint(t *testing.T) {
 	server := newRegistrationServer(t, nil)
 
-	resp, body := server.do(t, http.MethodPost, "/api/v1/auth/verify", `{"token":"unknown"}`)
+	resp, body := server.do(t, http.MethodPost, "/api/v1/auth/verify", `{"token":"unknown","password":"password123"}`)
 	require.Equal(t, http.StatusNotFound, resp.StatusCode, body)
 
-	resp, body = server.do(t, http.MethodPost, "/api/v1/auth/verify", `{"token":""}`)
+	resp, body = server.do(t, http.MethodPost, "/api/v1/auth/verify", `{"token":"","password":"password123"}`)
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode, body)
 
 	resp, _ = server.do(t, http.MethodPost, "/api/v1/auth/verify", `{"token":`)
@@ -165,8 +165,12 @@ func TestVerifyEndpoint(t *testing.T) {
 		expiresAt: server.env.now.Add(time.Hour),
 	}
 
-	resp, body = server.do(t, http.MethodPost, "/api/v1/auth/verify", `{"token":"`+rawToken+`"}`)
+	resp, body = server.do(t, http.MethodPost, "/api/v1/auth/verify", `{"token":"`+rawToken+`","password":"short"}`)
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode, "a weak password is refused and the link stays usable: %s", body)
+
+	resp, body = server.do(t, http.MethodPost, "/api/v1/auth/verify", `{"token":"`+rawToken+`","password":"password123"}`)
 	require.Equal(t, http.StatusOK, resp.StatusCode, body)
+	require.Equal(t, "hash:password123", server.env.repo.passwords[42])
 
 	var login struct {
 		AccessToken string `json:"access_token"`

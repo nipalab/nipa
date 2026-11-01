@@ -76,6 +76,10 @@ func (r *RegistrationRepository) SetEmailVerified(ctx context.Context, userID sn
 	return handleError(r.queries.UserSetEmailVerified(ctx, userID.Int64()))
 }
 
+func (r *RegistrationRepository) SetPasswordHash(ctx context.Context, userID snow.ID, passwordHash string) error {
+	return handleError(r.queries.UserUpdatePassword(ctx, sqlcPostgres.UserUpdatePasswordParams{Password: passwordHash, ID: userID.Int64()}))
+}
+
 func (r *RegistrationRepository) ResetUnverifiedCredentials(ctx context.Context, userID snow.ID) error {
 	id := userID.Int64()
 	if err := r.queries.UserUpdatePassword(ctx, sqlcPostgres.UserUpdatePasswordParams{Password: "", ID: id}); err != nil {

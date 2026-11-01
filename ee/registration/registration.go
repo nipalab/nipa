@@ -42,6 +42,7 @@ type onboardingRepository interface {
 	DeleteExpiredEmailVerifications(ctx context.Context, before time.Time) error
 	SetEmailVerified(ctx context.Context, userID snow.ID) error
 	SeedOwnerQuota(ctx context.Context, userID snow.ID, quotaBytes int64) error
+	SetPasswordHash(ctx context.Context, userID snow.ID, passwordHash string) error
 }
 
 type passwordHasher interface {
@@ -106,24 +107,23 @@ func (r *Registration) WithMailer(outbox outbox, kicker dispatcherKicker) *Regis
 	return r
 }
 
-// Register creates an inactive account with an email verification token and
-// queues the confirmation email. The account stays unusable until Verify.
-func (r *Registration) Register(ctx context.Context, name, email, password string) error {
+// Register creates an inactive account with no password and queues the
+// confirmation email. The password is chosen at Verify by whoever holds the
+// emailed link, so registering someone else's address (or re-registering it)
+// gains nothing: the account stays unusable until its mailbox owner confirms
+// and sets a password. An address that already has an account looks the same as
+// a new signup.
+func (r *Registration) Register(ctx context.Context, name, email string) error {
 	name, email, err := usecase.ValidateUserIdentity(name, email)
 	if err != nil {
 		return err
 	}
-	if err := usecase.ValidatePassword(password); err != nil {
+	existing, err := r.users.GetByEmail(ctx, email)
+	switch {
+	case err == nil:
+		return r.ResendVerification(ctx, existing.Email)
+	case !domain.IsErrorNotFound(err):
 		return err
-	}
-	if _, err := r.users.GetByEmail(ctx, email); err == nil {
-		return domain.NewErrorConflict("email already in use")
-	} else if !domain.IsErrorNotFound(err) {
-		return err
-	}
-	hash, err := r.hasher.Hash(password)
-	if err != nil {
-		return domain.NewErrorInternalServer(err.Error())
 	}
 	token, tokenHash, err := newVerificationToken()
 	if err != nil {
@@ -132,10 +132,9 @@ func (r *Registration) Register(ctx context.Context, name, email, password strin
 	now := r.now()
 	err = r.tx.WithinTx(ctx, func(ctx context.Context) error {
 		user, err := r.repo.CreateUnverifiedUser(ctx, domain.User{
-			ID:       r.node.Generate(),
-			Name:     name,
-			Email:    email,
-			Password: hash,
+			ID:    r.node.Generate(),
+			Name:  name,
+			Email: email,
 		})
 		if err != nil {
 			return err
@@ -163,12 +162,16 @@ func (r *Registration) Register(ctx context.Context, name, email, password strin
 	return nil
 }
 
-// Verify consumes a verification token, activates the account and returns it
-// for the caller to start a session.
-func (r *Registration) Verify(ctx context.Context, token string) (*domain.User, error) {
+// Verify consumes a verification token, sets the password the token holder
+// chose, activates the account and returns it for the caller to start a
+// session. An invalid password is rejected before the token is used up.
+func (r *Registration) Verify(ctx context.Context, token, password string) (*domain.User, error) {
 	token = strings.TrimSpace(token)
 	if token == "" {
 		return nil, domain.NewErrorUser("verification token is required")
+	}
+	if err := usecase.ValidatePassword(password); err != nil {
+		return nil, err
 	}
 	userID, expiresAt, err := r.repo.EmailVerificationByToken(ctx, hashToken(token))
 	if err != nil {
@@ -181,8 +184,15 @@ func (r *Registration) Verify(ctx context.Context, token string) (*domain.User, 
 		_ = r.repo.DeleteEmailVerification(ctx, userID)
 		return nil, errInvalidVerification()
 	}
+	hash, err := r.hasher.Hash(password)
+	if err != nil {
+		return nil, domain.NewErrorInternalServer(err.Error())
+	}
 	var user *domain.User
 	err = r.tx.WithinTx(ctx, func(ctx context.Context) error {
+		if err := r.repo.SetPasswordHash(ctx, userID, hash); err != nil {
+			return err
+		}
 		if err := r.repo.SetEmailVerified(ctx, userID); err != nil {
 			return err
 		}
@@ -261,8 +271,8 @@ func (r *Registration) kickDispatcher() {
 func (r *Registration) verificationDelivery(user *domain.User, token string, now time.Time) (*domain.EmailDelivery, error) {
 	link := r.verificationURL(token)
 	subject := "Confirm your email address"
-	text := fmt.Sprintf("Hi %s,\n\nConfirm your email address to activate your Nipa account:\n\n%s\n\nThis link expires in 72 hours. If you did not create an account, you can ignore this email.\n", user.Name, link)
-	htmlBody := fmt.Sprintf(`<p>Hi %s,</p><p>Confirm your email address to activate your Nipa account:</p><p><a href="%s">Confirm email address</a></p><p>This link expires in 72 hours. If you did not create an account, you can ignore this email.</p>`,
+	text := fmt.Sprintf("Hi %s,\n\nConfirm your email address and choose a password to activate your Nipa account:\n\n%s\n\nThis link expires in 72 hours. If you did not create an account, you can ignore this email.\n", user.Name, link)
+	htmlBody := fmt.Sprintf(`<p>Hi %s,</p><p>Confirm your email address and choose a password to activate your Nipa account:</p><p><a href="%s">Confirm email address</a></p><p>This link expires in 72 hours. If you did not create an account, you can ignore this email.</p>`,
 		html.EscapeString(user.Name), html.EscapeString(link))
 	deliveryID := r.node.Generate()
 	message := mail.Message{

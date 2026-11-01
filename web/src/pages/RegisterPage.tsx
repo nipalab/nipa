@@ -21,7 +21,6 @@ export default function RegisterPage() {
   const { data: capabilities, loading: loadingCapabilities } = useAsync(getOnboardingCapabilities, [])
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [sentTo, setSentTo] = useState<string | null>(null)
@@ -31,13 +30,13 @@ export default function RegisterPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
-    if (!name.trim() || !email.trim() || password.length < 8) {
-      setError('Enter your name, email and a password of at least 8 characters.')
+    if (!name.trim() || !email.trim()) {
+      setError('Enter your name and email.')
       return
     }
     setBusy(true)
     try {
-      await registerAccount({ name: name.trim(), email: email.trim(), password })
+      await registerAccount({ name: name.trim(), email: email.trim() })
       setSentTo(email.trim())
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -80,7 +79,7 @@ export default function RegisterPage() {
         {sentTo ? (
           <Stack direction="vertical" gap="normal" style={{ width: '100%' }}>
             <Flash variant="success">
-              We sent a confirmation link to <strong>{sentTo}</strong>. Open it to activate your account.
+              We sent a confirmation link to <strong>{sentTo}</strong>. Open it to choose your password and activate your account.
             </Flash>
             <ErrorBanner error={error} />
             {notice && <Flash variant="success">{notice}</Flash>}
@@ -120,17 +119,9 @@ export default function RegisterPage() {
                   />
                 </FormControl>
 
-                <FormControl required>
-                  <FormControl.Label>Password</FormControl.Label>
-                  <TextInput
-                    block
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    autoComplete="new-password"
-                  />
-                  <FormControl.Caption>At least 8 characters.</FormControl.Caption>
-                </FormControl>
+                <p style={{ margin: 0, fontSize: 12, color: 'var(--fgColor-muted)' }}>
+                  You will choose your password when you confirm your email.
+                </p>
 
                 {error && (
                   <Flash variant="danger">

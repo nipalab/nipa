@@ -10,12 +10,26 @@ import (
 	"github.com/nipalab/nipa/internal/snow"
 )
 
+// fileLockAdvisoryNamespace keeps the lock keys apart from the other advisory
+// locks taken with plain row ids (the storage ledger keys by owner id).
+const fileLockAdvisoryNamespace int64 = 0x4e49504c4f434b
+
 type FileLockRepository struct {
 	queries *sqlcPostgres.Queries
+	db      *dbtx.DB
 }
 
 func NewFileLockRepository(db *sql.DB) *FileLockRepository {
-	return &FileLockRepository{queries: sqlcPostgres.New(dbtx.New(db))}
+	wrapped := dbtx.New(db)
+	return &FileLockRepository{queries: sqlcPostgres.New(wrapped), db: wrapped}
+}
+
+// LockProject takes a transaction-scoped advisory lock for the project, so lock
+// grants stay serialized across server processes. It must run inside a
+// transaction carried by ctx; the lock is released on commit or rollback.
+func (r *FileLockRepository) LockProject(ctx context.Context, projectID snow.ID) error {
+	_, err := r.db.ExecContext(ctx, `SELECT pg_advisory_xact_lock($1)`, projectID.Int64()^fileLockAdvisoryNamespace)
+	return handleError(err)
 }
 
 func (r *FileLockRepository) Create(ctx context.Context, lock domain.FileLock) (*domain.FileLock, error) {

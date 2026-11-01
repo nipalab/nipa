@@ -133,3 +133,23 @@ func TestDB_PrepareContext(t *testing.T) {
 		return stmt.Close()
 	}))
 }
+
+func TestTransactor_WithinTx_JoinsTheCallersTransaction(t *testing.T) {
+	db := newTestDB(t)
+	wrapped := New(db)
+	tx := NewTransactor(db)
+	wantErr := errors.New("outer failure")
+
+	err := tx.WithinTx(context.Background(), func(ctx context.Context) error {
+		if err := tx.WithinTx(ctx, func(ctx context.Context) error {
+			_, err := wrapped.ExecContext(ctx, `INSERT INTO items (id, name) VALUES (1, 'inner')`)
+			return err
+		}); err != nil {
+			return err
+		}
+		return wantErr
+	})
+
+	require.ErrorIs(t, err, wantErr)
+	require.Zero(t, countItems(t, db), "the nested call must not commit on its own")
+}

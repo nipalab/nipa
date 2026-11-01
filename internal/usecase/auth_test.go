@@ -396,3 +396,24 @@ func assertInvalidTokenError(t *testing.T, err error) {
 	require.Equal(t, 400, domErr.Code)
 	require.Equal(t, "invalid token", domErr.Message)
 }
+
+type countingHasher struct{ hashes, compares int }
+
+func (c *countingHasher) Hash(_ string) (string, error) { c.hashes++; return "hash", nil }
+func (c *countingHasher) Compare(_, _ string) bool      { c.compares++; return false }
+
+func TestAuth_LoginWithEmailPassword_UnknownUserStillSpendsAHashComparison(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	userRepo := NewMockuserRepository(ctrl)
+	userRepo.EXPECT().GetByEmail(gomock.Any(), "ghost@example.com").Return(nil, domain.NewErrorRecordNotFound()).Times(2)
+	hasher := &countingHasher{}
+	auth := NewAuth("secret", hasher, userRepo, NewMockauthRepository(ctrl))
+
+	for i := 0; i < 2; i++ {
+		_, err := auth.LoginWithEmailPassword(context.Background(), "ghost@example.com", "password")
+		requireUserError(t, err)
+	}
+
+	require.Equal(t, 1, hasher.hashes, "the equalizer hash is computed once")
+	require.Equal(t, 2, hasher.compares)
+}
