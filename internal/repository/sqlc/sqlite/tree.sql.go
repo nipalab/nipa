@@ -11,42 +11,6 @@ import (
 	"time"
 )
 
-const chunkListByFile = `-- name: ChunkListByFile :many
-SELECT chunks.id, chunks.hash, chunks.size_bytes, chunks.created_at
-FROM chunks
-JOIN file_chunks ON file_chunks.chunk_id = chunks.id
-WHERE file_chunks.file_id = ?1
-ORDER BY file_chunks.chunk_index
-`
-
-func (q *Queries) ChunkListByFile(ctx context.Context, fileID int64) ([]Chunk, error) {
-	rows, err := q.db.QueryContext(ctx, chunkListByFile, fileID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []Chunk
-	for rows.Next() {
-		var i Chunk
-		if err := rows.Scan(
-			&i.ID,
-			&i.Hash,
-			&i.SizeBytes,
-			&i.CreatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const chunkListByTree = `-- name: ChunkListByTree :many
 SELECT chunks.id, chunks.hash, chunks.size_bytes, chunks.created_at, file_chunks.file_id
 FROM chunks

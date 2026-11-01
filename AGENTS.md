@@ -15,7 +15,9 @@ gRPC (h2c), the REST API and the embedded SPA on one port through
 `internal/serverapp` (`isAPIPath` routes `/auth`, `/docs`, `/api`; the SaaS
 marketing landing is mirrored at `/` — Caddy proxies it from Netlify, and the
 embedded fallback answers `/` and `/web/*`; everything else falls through to
-the web UI handler); the mains only compose repositories.
+the web UI handler); the mains only compose repositories and call `serverapp.BuildUsecases`
+(`usecase.Repositories` + `UsecaseDeps`), the single place that wires the
+usecase graph, also used by the `internal/e2e` harness.
 Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
 
 ## Architecture

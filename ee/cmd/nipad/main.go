@@ -116,15 +116,7 @@ func main() {
 	}
 	slog.Info("database migration completed")
 
-	orgRepo := postgres.NewOrgRepository(dbConn)
-	projectRepo := postgres.NewProjectRepository(dbConn)
-	authRepo := postgres.NewAuthRepository(dbConn)
 	userRepo := postgres.NewUserRepository(dbConn)
-	branchRepository := postgres.NewBranchRepository(dbConn)
-	pushRepository := postgres.NewPushRepository(dbConn)
-	pbacRepository := postgres.NewPBACRepository(dbConn)
-	groupRepository := postgres.NewGroupRepository(dbConn)
-
 	passwordHasher := hasher.NewHasher(cfg.HasherWorkers)
 
 	snowUser, leaseManager, err := resolveSnowflakeNode(cfg, dbConn)
@@ -134,13 +126,7 @@ func main() {
 	if leaseManager != nil {
 		defer leaseManager.Release(context.Background())
 	}
-	authUsecase := usecase.NewAuth(cfg.JWTKey, passwordHasher, userRepo, authRepo).
-		WithSSHKeys(postgres.NewSSHKeyRepository(dbConn))
-	orgUsecase := usecase.NewOrg(orgRepo, snowUser)
-	commonUsecase := usecase.NewCommon(orgRepo, projectRepo)
-	permissionUsecase := usecase.NewPermission(pbacRepository, userRepo, groupRepository, orgUsecase)
-	orgUsecase.WithPermissionCache(permissionUsecase)
-	projectUsecase := usecase.NewProject(projectRepo, snowUser, permissionUsecase, orgUsecase)
+
 	chunkStore, err := createChunkStore(cfg)
 	if err != nil {
 		panic(fmt.Errorf("create chunk store: %w", err))
@@ -149,61 +135,19 @@ func main() {
 	if cfg.ChunkURLSigningKey == "" {
 		panic("CHUNK_URL_SIGNING_KEY must be set")
 	}
-	branchUsecase := usecase.NewBranchWithChunks(permissionUsecase, branchRepository, snowUser, chunkStore)
-	fileLockRepo := postgres.NewFileLockRepository(dbConn)
-	fileLockUsecase := usecase.NewFileLock(fileLockRepo, branchRepository, permissionUsecase, snowUser).
-		WithSerializer(dbtx.NewTransactor(dbConn), fileLockRepo)
-	branchUsecase = branchUsecase.WithFileLocks(fileLockUsecase)
-	branchUsecase = branchUsecase.WithUsers(userRepo)
-	mergeRequestRepository := postgres.NewMergeRequestRepository(dbConn)
-	mergeRequestReviewRepository := postgres.NewMergeRequestReviewRepository(dbConn)
-	mergeRequestUsecase := usecase.NewMergeRequest(
-		mergeRequestRepository,
-		branchRepository,
-		permissionUsecase,
-		branchUsecase,
-		snowUser,
-		dbtx.NewTransactor(dbConn),
-	).WithFileLocks(fileLockUsecase)
-	pushUsecase := usecase.NewPush(permissionUsecase, branchRepository, pushRepository, snowUser).WithFileLocks(fileLockUsecase).WithMetrics(metrics)
-	tagUsecase := usecase.NewTag(permissionUsecase, postgres.NewTagRepository(dbConn), branchRepository, snowUser)
-	mergeRequestReviewUsecase := usecase.NewMergeRequestReview(
-		mergeRequestReviewRepository,
-		mergeRequestRepository,
-		branchRepository,
-		branchUsecase,
-		permissionUsecase,
-		userRepo,
-		snowUser,
-	)
-	pushUsecase = pushUsecase.WithReviews(mergeRequestReviewUsecase)
-	mergeRequestUsecase = mergeRequestUsecase.WithReview(mergeRequestReviewUsecase)
-	mergeRequestUsecase = mergeRequestUsecase.WithUsers(userRepo)
-	mergeRequestUsecase = mergeRequestUsecase.WithAccessChecker(permissionUsecase)
-	mergeRequestReviewUsecase = mergeRequestReviewUsecase.WithAccessChecker(permissionUsecase)
-	chunkUsecase := usecase.NewChunk(pushRepository, chunkStore, usecase.ChunkTransferConfig{
-		SigningKey:  cfg.ChunkURLSigningKey,
-		PresignTTL:  time.Duration(cfg.ChunkPresignTTLSeconds) * time.Second,
-		MaxPageSize: cfg.ChunkMaxPageSize,
-	}).WithMetrics(metrics)
+
 	storageLedger, err := createStorageLedger(cfg, dbConn)
 	if err != nil {
 		panic(err)
 	}
-	if storageLedger != nil {
-		chunkUsecase = chunkUsecase.WithStorageLedger(storageLedger)
-		slog.Info("storage ledger enabled", "default_quota_bytes", cfg.StorageLedgerDefaultQuotaBytes)
-	}
-	branchUsecase = branchUsecase.WithMergeCommitter(pushRepository).WithChunkUploader(chunkUsecase)
+
 	webhookRepository := postgres.NewWebhookRepository(dbConn)
 	webhookDispatcher := webhook.NewDispatcher(webhookRepository, webhook.NewClient(webhook.ClientConfig{
 		Timeout:         time.Duration(cfg.WebhookTimeoutSeconds) * time.Second,
 		EgressAllowlist: serverapp.SplitAllowlist(cfg.WebhookEgressAllowlist),
 	}), snowUser, webhook.Config{}).WithMetrics(metrics)
-	webhookUsecase := usecase.NewWebhook(webhookRepository, permissionUsecase, userRepo, webhookDispatcher, snowUser)
-	hookEmitter := usecase.NewHookEmitter(webhookRepository, projectRepo, orgRepo, branchRepository, userRepo, webhookDispatcher)
+
 	emailRepository := postgres.NewEmailRepository(dbConn)
-	emailDeliveryUsecase := usecase.NewEmailDelivery(emailRepository, permissionUsecase)
 	emailSender, err := mail.NewFromConfig(cfg.MailSenderConfig())
 	if err != nil {
 		panic(fmt.Errorf("email sender: %w", err))
@@ -211,46 +155,44 @@ func main() {
 	var emailDispatcher *mail.Dispatcher
 	if emailSender != nil {
 		emailDispatcher = mail.NewDispatcher(emailRepository, emailSender, cfg.EmailDispatcherConfig()).WithMetrics(metrics)
-		emailDeliveryUsecase = emailDeliveryUsecase.WithKicker(emailDispatcher)
-		hookEmitter = hookEmitter.WithNotifier(usecase.NewEmailNotifier(
-			emailRepository, userRepo, mergeRequestRepository, mergeRequestReviewRepository, cfg.EmailBaseURL, snowUser,
-		).WithKicker(emailDispatcher))
-		slog.Info("email notifications enabled", "sender", cfg.EmailSender)
 	}
-	branchUsecase = branchUsecase.WithHooks(hookEmitter)
-	tagUsecase = tagUsecase.WithHooks(hookEmitter)
-	mergeRequestUsecase = mergeRequestUsecase.WithHooks(hookEmitter)
-	mergeRequestReviewUsecase = mergeRequestReviewUsecase.WithHooks(hookEmitter)
-	pushUsecase = pushUsecase.WithHooks(hookEmitter)
-	mergeRequestCheckUsecase := usecase.NewMergeRequestCheck(
-		postgres.NewMergeRequestCheckRepository(dbConn),
-		postgres.NewMergeRequestRepository(dbConn),
-		branchRepository,
-		permissionUsecase,
-		snowUser,
-	).WithHooks(hookEmitter)
-	mergeRequestUsecase = mergeRequestUsecase.WithChecks(mergeRequestCheckUsecase)
 
-	reg := serverapp.NewRegistry(serverapp.Usecases{
-		Auth:               authUsecase,
-		User:               usecase.NewUser(snowUser, userRepo, passwordHasher),
-		SSHKey:             usecase.NewSSHKey(snowUser, postgres.NewSSHKeyRepository(dbConn)),
-		Common:             commonUsecase,
-		Branch:             branchUsecase,
-		Tag:                tagUsecase,
-		Push:               pushUsecase,
-		Chunk:              chunkUsecase,
-		Permission:         permissionUsecase,
-		Group:              usecase.NewGroup(groupRepository, snowUser, permissionUsecase, orgUsecase),
-		Org:                orgUsecase,
-		Project:            projectUsecase,
-		MergeRequest:       mergeRequestUsecase,
-		MergeRequestReview: mergeRequestReviewUsecase,
-		MergeRequestCheck:  mergeRequestCheckUsecase,
-		FileLock:           fileLockUsecase,
-		Webhook:            webhookUsecase,
-		EmailDelivery:      emailDeliveryUsecase,
-	})
+	fileLockRepo := postgres.NewFileLockRepository(dbConn)
+	deps := serverapp.UsecaseDeps{
+		Config:            cfg,
+		DB:                dbConn,
+		Snow:              snowUser,
+		Hasher:            passwordHasher,
+		ChunkStore:        chunkStore,
+		Metrics:           metrics,
+		WebhookDispatcher: webhookDispatcher,
+		EmailDispatcher:   emailDispatcher,
+	}
+	if storageLedger != nil {
+		deps.StorageLedger = storageLedger
+		slog.Info("storage ledger enabled", "default_quota_bytes", cfg.StorageLedgerDefaultQuotaBytes)
+	}
+	uc := serverapp.BuildUsecases(usecase.Repositories{
+		Org:                postgres.NewOrgRepository(dbConn),
+		Project:            postgres.NewProjectRepository(dbConn),
+		Auth:               postgres.NewAuthRepository(dbConn),
+		SSHKey:             postgres.NewSSHKeyRepository(dbConn),
+		User:               userRepo,
+		Branch:             postgres.NewBranchRepository(dbConn),
+		Push:               postgres.NewPushRepository(dbConn),
+		PBAC:               postgres.NewPBACRepository(dbConn),
+		Group:              postgres.NewGroupRepository(dbConn),
+		FileLock:           fileLockRepo,
+		FileLockSerializer: fileLockRepo,
+		MergeRequest:       postgres.NewMergeRequestRepository(dbConn),
+		MergeRequestReview: postgres.NewMergeRequestReviewRepository(dbConn),
+		MergeRequestCheck:  postgres.NewMergeRequestCheckRepository(dbConn),
+		Tag:                postgres.NewTagRepository(dbConn),
+		Webhook:            webhookRepository,
+		Email:              emailRepository,
+	}, deps)
+	reg := serverapp.NewRegistry(uc)
+	commonUsecase, orgUsecase, authUsecase := uc.Common, uc.Org, uc.Auth
 
 	dispatchers := []serverapp.Dispatcher{webhookDispatcher}
 	if emailDispatcher != nil {

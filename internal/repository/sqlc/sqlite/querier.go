@@ -33,7 +33,6 @@ type Querier interface {
 	ChunkGetByHash(ctx context.Context, hash []byte) (Chunk, error)
 	ChunkGetByHashForProject(ctx context.Context, arg ChunkGetByHashForProjectParams) (Chunk, error)
 	ChunkInsertOrIgnore(ctx context.Context, arg ChunkInsertOrIgnoreParams) error
-	ChunkListByFile(ctx context.Context, fileID int64) ([]Chunk, error)
 	ChunkListByTree(ctx context.Context, treeID int64) ([]ChunkListByTreeRow, error)
 	CommitGet(ctx context.Context, id int64) (Commit, error)
 	CommitGetByHash(ctx context.Context, hash []byte) (Commit, error)

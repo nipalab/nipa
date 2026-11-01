@@ -101,13 +101,6 @@ WHERE f.tree_id = (
     )
 ORDER BY f.name;
 
--- name: ChunkListByFile :many
-SELECT chunks.id, chunks.hash, chunks.size_bytes, chunks.created_at
-FROM chunks
-JOIN file_chunks ON file_chunks.chunk_id = chunks.id
-WHERE file_chunks.file_id = :file_id
-ORDER BY file_chunks.chunk_index;
-
 -- name: ChunkListByTree :many
 SELECT chunks.id, chunks.hash, chunks.size_bytes, chunks.created_at, file_chunks.file_id
 FROM chunks

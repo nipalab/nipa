@@ -24,16 +24,18 @@ import (
 	clientgrpc "github.com/nipalab/nipa/internal/client/grpc"
 	"github.com/nipalab/nipa/internal/client/localrepo"
 	clientusecase "github.com/nipalab/nipa/internal/client/usecase"
+	"github.com/nipalab/nipa/internal/config"
 	serverDomain "github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/grpc/pb"
 	servergrpc "github.com/nipalab/nipa/internal/grpc/server"
 	"github.com/nipalab/nipa/internal/hasher"
 	"github.com/nipalab/nipa/internal/http/api"
-	"github.com/nipalab/nipa/internal/repository/dbtx"
 	"github.com/nipalab/nipa/internal/repository/sqlite"
+	"github.com/nipalab/nipa/internal/serverapp"
 	"github.com/nipalab/nipa/internal/snow"
 	"github.com/nipalab/nipa/internal/storage"
 	serverusecase "github.com/nipalab/nipa/internal/usecase"
+	"github.com/nipalab/nipa/internal/webhook"
 )
 
 const (
@@ -43,46 +45,6 @@ const (
 	e2eSuperAdminEmail = "nipa"
 	e2eSuperAdminPass  = "nipa"
 )
-
-type testRegistry struct {
-	auth         *serverusecase.Auth
-	user         *serverusecase.User
-	branch       *serverusecase.Branch
-	tag          *serverusecase.Tag
-	common       *serverusecase.Common
-	push         *serverusecase.Push
-	chunk        *serverusecase.Chunk
-	permission   *serverusecase.Permission
-	group        *serverusecase.Group
-	mergeRequest *serverusecase.MergeRequest
-	review       *serverusecase.MergeRequestReview
-	check        *serverusecase.MergeRequestCheck
-	fileLock     *serverusecase.FileLock
-}
-
-func (r *testRegistry) Auth() *serverusecase.Auth     { return r.auth }
-func (r *testRegistry) User() *serverusecase.User     { return r.user }
-func (r *testRegistry) Branch() *serverusecase.Branch { return r.branch }
-func (r *testRegistry) Tag() *serverusecase.Tag       { return r.tag }
-func (r *testRegistry) Common() *serverusecase.Common { return r.common }
-func (r *testRegistry) Push() *serverusecase.Push     { return r.push }
-func (r *testRegistry) Chunk() *serverusecase.Chunk   { return r.chunk }
-func (r *testRegistry) Permission() *serverusecase.Permission {
-	return r.permission
-}
-func (r *testRegistry) Group() *serverusecase.Group { return r.group }
-func (r *testRegistry) MergeRequest() *serverusecase.MergeRequest {
-	return r.mergeRequest
-}
-func (r *testRegistry) MergeRequestReview() *serverusecase.MergeRequestReview {
-	return r.review
-}
-
-func (r *testRegistry) MergeRequestCheck() *serverusecase.MergeRequestCheck {
-	return r.check
-}
-
-func (r *testRegistry) FileLock() *serverusecase.FileLock { return r.fileLock }
 
 type memoryStore struct {
 	mu   sync.Mutex
@@ -143,62 +105,49 @@ func expiredAccessToken(t *testing.T) string {
 func startTestServer(t *testing.T, dbConn *sql.DB) string {
 	t.Helper()
 
-	orgRepo := sqlite.NewOrgRepository(dbConn)
-	projectRepo := sqlite.NewProjectRepository(dbConn)
-	userRepo := sqlite.NewUserRepository(dbConn)
-	authRepo := sqlite.NewAuthRepository(dbConn)
-	branchRepo := sqlite.NewBranchRepository(dbConn)
-	pushRepo := sqlite.NewPushRepository(dbConn)
-	pbacRepo := sqlite.NewPBACRepository(dbConn)
-
 	passwordHasher := hasher.NewHasher(2)
 	t.Cleanup(passwordHasher.Close)
 
 	node, err := snow.NewNode(0)
 	require.NoError(t, err)
 
-	authUc := serverusecase.NewAuth(e2eJWTSecret, passwordHasher, userRepo, authRepo)
-	groupRepo := sqlite.NewGroupRepository(dbConn)
-	orgUc := serverusecase.NewOrg(orgRepo, node)
-	permissionUc := serverusecase.NewPermission(pbacRepo, userRepo, groupRepo, orgUc)
-	commonUc := serverusecase.NewCommon(orgRepo, projectRepo)
 	chunkStore, err := storage.NewLocalStore(t.TempDir())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = chunkStore.Close() })
-	branchUc := serverusecase.NewBranchWithChunks(permissionUc, branchRepo, node, chunkStore)
-	fileLockUc := serverusecase.NewFileLock(sqlite.NewFileLockRepository(dbConn), branchRepo, permissionUc, node)
-	branchUc = branchUc.WithFileLocks(fileLockUc)
 
-	chunkUc := serverusecase.NewChunk(pushRepo, chunkStore, serverusecase.ChunkTransferConfig{
-		SigningKey:  "e2e-chunk-signing-key",
-		PresignTTL:  time.Hour,
-		MaxPageSize: 1000,
+	webhookRepo := sqlite.NewWebhookRepository(dbConn)
+	uc := serverapp.BuildUsecases(serverusecase.Repositories{
+		Org:                sqlite.NewOrgRepository(dbConn),
+		Project:            sqlite.NewProjectRepository(dbConn),
+		Auth:               sqlite.NewAuthRepository(dbConn),
+		SSHKey:             sqlite.NewSSHKeyRepository(dbConn),
+		User:               sqlite.NewUserRepository(dbConn),
+		Branch:             sqlite.NewBranchRepository(dbConn),
+		Push:               sqlite.NewPushRepository(dbConn),
+		PBAC:               sqlite.NewPBACRepository(dbConn),
+		Group:              sqlite.NewGroupRepository(dbConn),
+		FileLock:           sqlite.NewFileLockRepository(dbConn),
+		MergeRequest:       sqlite.NewMergeRequestRepository(dbConn),
+		MergeRequestReview: sqlite.NewMergeRequestReviewRepository(dbConn),
+		MergeRequestCheck:  sqlite.NewMergeRequestCheckRepository(dbConn),
+		Tag:                sqlite.NewTagRepository(dbConn),
+		Webhook:            webhookRepo,
+		Email:              sqlite.NewEmailRepository(dbConn),
+	}, serverapp.UsecaseDeps{
+		Config: &config.Config{
+			JWTKey:                 e2eJWTSecret,
+			ChunkURLSigningKey:     "e2e-chunk-signing-key",
+			ChunkPresignTTLSeconds: 3600,
+			ChunkMaxPageSize:       1000,
+		},
+		DB:                dbConn,
+		Snow:              node,
+		Hasher:            passwordHasher,
+		ChunkStore:        chunkStore,
+		WebhookDispatcher: webhook.NewDispatcher(webhookRepo, webhook.NewClient(webhook.ClientConfig{}), node, webhook.Config{}),
 	})
-	branchUc = branchUc.WithMergeCommitter(pushRepo).WithChunkUploader(chunkUc)
-	mrRepo := sqlite.NewMergeRequestRepository(dbConn)
-	reviewUc := serverusecase.NewMergeRequestReview(
-		sqlite.NewMergeRequestReviewRepository(dbConn), mrRepo, branchRepo, branchUc, permissionUc, userRepo, node,
-	)
-	checkUc := serverusecase.NewMergeRequestCheck(
-		sqlite.NewMergeRequestCheckRepository(dbConn), mrRepo, branchRepo, permissionUc, node,
-	)
-	reg := &testRegistry{
-		auth:       authUc,
-		user:       serverusecase.NewUser(node, userRepo, passwordHasher),
-		branch:     branchUc,
-		tag:        serverusecase.NewTag(permissionUc, sqlite.NewTagRepository(dbConn), branchRepo, node),
-		common:     commonUc,
-		push:       serverusecase.NewPush(permissionUc, branchRepo, pushRepo, node).WithFileLocks(fileLockUc).WithReviews(reviewUc),
-		chunk:      chunkUc,
-		permission: permissionUc,
-		group:      serverusecase.NewGroup(groupRepo, node, permissionUc, orgUc),
-		mergeRequest: serverusecase.NewMergeRequest(
-			mrRepo, branchRepo, permissionUc, branchUc, node, dbtx.NewTransactor(dbConn),
-		).WithFileLocks(fileLockUc).WithReview(reviewUc).WithChecks(checkUc),
-		review:   reviewUc,
-		check:    checkUc,
-		fileLock: fileLockUc,
-	}
+	reg := serverapp.NewRegistry(uc)
+	authUc, chunkUc := uc.Auth, uc.Chunk
 
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
