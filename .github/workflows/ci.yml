@@ -80,6 +80,22 @@ jobs:
       - name: govulncheck
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
 
+  memory-ceiling:
+    name: Memory ceiling (1 GiB file)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      # Pushes and clones one 1 GiB file and fails if peak heap growth reaches
+      # the file size, i.e. if streaming regressed into buffering.
+      - name: Run memory-ceiling check
+        run: NIPA_BENCH_GB=1 go test ./internal/e2e -run TestEndToEnd_GBScaleMemoryCeiling -v -count=1
+
   client-e2e:
     name: Client e2e (${{ matrix.edition }})
     runs-on: ubuntu-latest

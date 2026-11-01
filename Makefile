@@ -13,7 +13,7 @@ REVISION   ?= $(shell git rev-parse --short HEAD 2>/dev/null)
 LDFLAGS    := $(if $(VERSION),-X 'github.com/nipalab/nipa/internal/version.Version=$(VERSION)') \
               $(if $(REVISION),-X 'github.com/nipalab/nipa/internal/version.Revision=$(REVISION)')
 
-.PHONY: sqlc mock migrate-up migrate-down migrate-up-postgres migrate-down-postgres migrate-create build build-all build-server build-server-ee build-client test test-ee test-client test-client-ee test-client-both lint web web-dev web-install marketing-dist bench-upload bench-download bench-scale bench-unit load-test release
+.PHONY: sqlc mock migrate-up migrate-down migrate-up-postgres migrate-down-postgres migrate-create build build-all build-server build-server-ee build-client test test-ee test-client test-client-ee test-client-both lint web web-dev web-install marketing-dist bench-upload bench-download bench-scale bench-scale-files bench-scale-files-ee bench-unit fuzz load-test release
 
 GOLANGCI_LINT_IMAGE ?= docker.io/golangci/golangci-lint:latest
 
@@ -136,9 +136,30 @@ bench-download:
 bench-scale:
 	NIPA_BENCH_GB=$(gb) go test ./internal/e2e -run TestEndToEnd_GBScaleMemoryCeiling -v -count=1
 
+## Wide-tree scale on SQLite: push, manifest, diff, ApplyPush and SaveTree for N files (e.g. make bench-scale-files files=10000).
+bench-scale-files:
+	NIPA_BENCH_FILES=$(files) go test ./internal/e2e -run TestEndToEnd_WideTreeScale -v -count=1
+	NIPA_BENCH_FILES=$(files) go test ./internal/repository/sqlite -run ApplyPushScale -v -count=1
+	go test ./internal/client/localrepo -run '^$$' -bench SaveTree -benchtime=5x -benchmem
+
+## Wide-tree scale on postgres + MinIO (needs Docker): push, manifest, diff and ApplyPush for N files.
+bench-scale-files-ee:
+	NIPA_BENCH_FILES=$(files) go test ./ee/e2e -run TestEnterpriseWideTreeScale -v -count=1
+	NIPA_BENCH_FILES=$(files) go test ./ee/repository/postgres -run 'TestPushRepositorySuite/TestApplyPushScale' -v -count=1
+
 ## Run the package micro-benchmarks (chunker, diff, treehash).
 bench-unit:
 	go test ./internal/chunker ./internal/diff ./internal/treehash -run '^$$' -bench=. -benchmem
+
+FUZZTIME ?= 10s
+
+## Run every fuzz target for FUZZTIME each (e.g. make fuzz FUZZTIME=1m). Seed corpora also run in plain `go test`.
+fuzz:
+	go test ./internal/chunker -run '^$$' -fuzz '^FuzzEncodeDecodeRoundTrip$$' -fuzztime $(FUZZTIME)
+	go test ./internal/diff -run '^$$' -fuzz '^FuzzLinesScript$$' -fuzztime $(FUZZTIME)
+	go test ./internal/merge -run '^$$' -fuzz '^FuzzMergeTextUnchangedSide$$' -fuzztime $(FUZZTIME)
+	go test ./internal/client/ignore -run '^$$' -fuzz '^FuzzCompileAndMatch$$' -fuzztime $(FUZZTIME)
+	go test ./internal/client/domain -run '^$$' -fuzz '^FuzzParseNipaUrl$$' -fuzztime $(FUZZTIME)
 
 ## Run load scenarios against a running server (e.g. make load-test args='-scenario push -clients 16').
 load-test:

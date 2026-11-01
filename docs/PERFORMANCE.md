@@ -29,10 +29,11 @@ release run.
 | Upload bench | `internal/e2e/bench_test.go` `TestEndToEnd_UploadThroughput` — `make bench-upload mb=512`, text/binary/packed, logs MiB/s, encoding, chunk/put counts |
 | Download bench | `TestEndToEnd_CloneThroughput` — `make bench-download mb=512`, times a fresh clone plus a no-op update |
 | GB-scale check | `TestEndToEnd_GBScaleMemoryCeiling` — `make bench-scale gb=2`, pushes + clones one N-GiB file and asserts peak heap growth stays below the file size (streaming, not buffering) |
+| Fuzzing | `make fuzz FUZZTIME=1m` — chunker encode/decode round trip, Myers edit script, text merge identities, ignore matcher, `ParseNipaUrl`; seeds run in every `go test` |
 | Micro-benchmarks | `internal/chunker`, `internal/diff`, `internal/treehash` — `make bench-unit` (encode, Myers diff, tree hashing) |
 | Load scenarios | `tests/load` — `make load-test args='-scenario push|clone|mixed ...'`, see `tests/load/README.md` |
 | Transfer tuning | Client adaptive limiter, concurrency 16 → range [4, 64], pinned by `NIPA_UPLOAD_WORKERS` / `uploadWorkers` (`internal/client/grpc/transfer.go`) |
-| Big-repo hygiene | `SaveTree` upsert + mark-and-sweep (5-row writes for 5 changes), `stat_cache` keeps status/diff off the file system |
+| Big-repo hygiene | `SaveTree` upsert + mark-and-sweep (re-stamps every row each save: ~0.8 s for 10k files, see "Wide-tree scale"), `stat_cache` keeps status/diff off the file system |
 | Metrics | Request-duration histograms, DB-pool gauges/waits, chunk ops/bytes, verify failures (`docs/OBSERVABILITY.md`) |
 | Postgres pool | **Untuned**: no `SetMaxOpenConns`/`ConnMaxLifetime` in production code — Go's unlimited default can exhaust `max_connections` across pods |
 | Rate limiting | Token buckets per IP / account / user, memory or Redis store (`docs/RATE_LIMIT.md`) |
@@ -48,11 +49,36 @@ baseline table. They are skipped unless the env var is set, so CI stays fast.
 | `make bench-download mb=512` | manifest + chunk download + materialization (fresh clone) and a no-op update | release commit |
 | `make bench-scale gb=2` | one 2 GiB binary: push/clone rates + peak heap vs file size | release commit |
 | `make bench-unit` | chunker encode (text/packed/unknown), Myers diff, tree hash throughput | release commit |
+| `make bench-scale-files files=10000` | wide-tree scale on SQLite: initial and one-file push, recursive manifest, commit and merge-request diff, clone, `ApplyPush` alone, `SaveTree` with 5 changes | per change that touches these paths |
+| `make bench-scale-files-ee files=10000` | the same push/manifest/diff scenario and `ApplyPush` on postgres + MinIO (Docker) | per change that touches these paths |
 
 Expected shape (loopback, modern laptop): encode is roughly 0.5–1 GiB/s for
 packed/unknown binaries and BLAKE3 ~4 GiB/s, so network and disk dominate; the
 material numbers to compare across releases are MiB/s and peak heap in
 `bench-scale`. Always re-run with the same `NIPA_BENCH_WORKERS` when comparing.
+
+### Wide-tree scale (10 directories, 10k single-chunk text files)
+
+Baselines recorded 2026-11-02 on a Ryzen 7 6800H laptop, loopback, postgres 17
+and MinIO in local containers. Use them to judge changes to the push write
+path, manifest loading, diffs and `SaveTree`; the scenarios push all files,
+then change one file inside a 1000-file directory.
+
+| Step | SQLite (`nipad`) | Postgres + MinIO (`nipad-ee`) |
+|---|---|---|
+| Initial push | 3.4 s | 30.3 s |
+| `ApplyPush` alone | 0.68 s | 3.05 s |
+| One-file change push | 0.75 s | 0.87 s |
+| Recursive manifest | 42 ms | 44 ms |
+| Commit diff / merge-request diff | 96 ms / 98 ms | 96 ms / 99 ms |
+| Fresh clone | 2.2 s | 3.3 s |
+| `SaveTree`, 5 changed files | 0.78 s (300k allocs) | n/a (client) |
+
+Reading the numbers: the postgres push is dominated by chunk transfer to
+MinIO, `ApplyPush` is about a tenth of it on loopback and grows with network
+latency (one statement per chunk, file and link); the diff steps load both
+full manifests, so they scale with repo size instead of the change; `SaveTree`
+re-stamps every row on each save, so 5 changed files cost as much as 10k.
 
 ## Load scenarios (`tests/load`)
 
