@@ -125,7 +125,7 @@ func TestAPIRoutes(t *testing.T) {
 		SigningKey:  "test-chunk-signing-key",
 		PresignTTL:  time.Hour,
 		MaxPageSize: 1000,
-	}).WithProjectResolver(usecase.NewCommon(sqlite.NewOrgRepository(dbConn), sqlite.NewProjectRepository(dbConn)))
+	})
 	mergeRequestUc := usecase.NewMergeRequest(
 		sqlite.NewMergeRequestRepository(dbConn), branchRepo, permissionUc, branchUc, node, dbtx.NewTransactor(dbConn),
 	).WithReview(reviewUc)

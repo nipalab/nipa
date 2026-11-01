@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -17,8 +18,7 @@ import (
 func newLinkFixture(t *testing.T, store storage.ChunkStore) (*Chunk, *MockchunkRepository) {
 	t.Helper()
 	repo := NewMockchunkRepository(gomock.NewController(t))
-	uc := NewChunk(repo, store, ChunkTransferConfig{SigningKey: "key", PresignTTL: 3600, MaxPageSize: 10}).
-		WithProjectResolver(stubChunkProjects{})
+	uc := NewChunk(repo, store, ChunkTransferConfig{SigningKey: "key", PresignTTL: time.Hour, MaxPageSize: 10})
 	return uc, repo
 }
 
@@ -54,37 +54,50 @@ func TestChunk_Presign_LinkLookupError(t *testing.T) {
 	require.EqualError(t, err, "boom")
 }
 
-func TestChunk_StoreUploaded_Linking(t *testing.T) {
+func TestChunk_StoreUploaded_WritesNothingToTheDatabase(t *testing.T) {
 	ctx := context.Background()
 	data := []byte("payload")
 	hash := chunker.Sum(data)
 
-	t.Run("no resolver refuses", func(t *testing.T) {
-		uc := NewChunk(NewMockchunkRepository(gomock.NewController(t)), newStubChunkStore(), ChunkTransferConfig{})
-		err := uc.StoreUploaded(ctx, "acme", "game", hash, data)
-		require.Error(t, err)
+	t.Run("a stored chunk leaves a proof", func(t *testing.T) {
+		uc, _ := newLinkFixture(t, newStubChunkStore())
+		require.NoError(t, uc.StoreUploaded(ctx, "acme", "game", hash, data))
+		require.True(t, uc.hasUploadProof("acme", "game", hash))
+		require.False(t, uc.hasUploadProof("acme", "other", hash), "proofs are per project")
 	})
 
-	t.Run("resolver error", func(t *testing.T) {
-		repo := NewMockchunkRepository(gomock.NewController(t))
-		uc := NewChunk(repo, newStubChunkStore(), ChunkTransferConfig{}).
-			WithProjectResolver(stubChunkProjects{err: errors.New("gone")})
-		require.EqualError(t, uc.StoreUploaded(ctx, "acme", "game", hash, data), "gone")
-	})
-
-	t.Run("link error after a store", func(t *testing.T) {
-		uc, repo := newLinkFixture(t, newStubChunkStore())
-		repo.EXPECT().LinkProjectChunk(gomock.Any(), testProject.ID, hash).Return(errors.New("boom"))
-		require.EqualError(t, uc.StoreUploaded(ctx, "acme", "game", hash, data), "boom")
-	})
-
-	t.Run("dedup still links the uploader", func(t *testing.T) {
+	t.Run("a dedup hit still leaves a proof", func(t *testing.T) {
 		store := newStubChunkStore()
 		store.data[hash] = data
-		uc, repo := newLinkFixture(t, store)
-		repo.EXPECT().LinkProjectChunk(gomock.Any(), testProject.ID, hash).Return(nil)
+		uc, _ := newLinkFixture(t, store)
 		require.NoError(t, uc.StoreUploaded(ctx, "acme", "game", hash, data))
 		require.Zero(t, store.puts)
+		require.True(t, uc.hasUploadProof("acme", "game", hash))
+	})
+
+	t.Run("proofs expire", func(t *testing.T) {
+		uc, _ := newLinkFixture(t, newStubChunkStore())
+		now := time.Unix(1700000000, 0)
+		uc.now = func() time.Time { return now }
+		require.NoError(t, uc.StoreUploaded(ctx, "acme", "game", hash, data))
+		now = now.Add(2 * time.Hour)
+		require.False(t, uc.hasUploadProof("acme", "game", hash))
+	})
+
+	t.Run("expired proofs are pruned on later uploads", func(t *testing.T) {
+		uc, _ := newLinkFixture(t, newStubChunkStore())
+		now := time.Unix(1700000000, 0)
+		uc.now = func() time.Time { return now }
+		require.NoError(t, uc.StoreUploaded(ctx, "acme", "game", hash, data))
+		now = now.Add(3 * time.Hour)
+		other := []byte("another")
+		require.NoError(t, uc.StoreUploaded(ctx, "acme", "game", chunker.Sum(other), other))
+		require.Len(t, uc.uploaded, 1)
+	})
+
+	t.Run("no preset ttl falls back to an hour", func(t *testing.T) {
+		uc := NewChunk(NewMockchunkRepository(gomock.NewController(t)), newStubChunkStore(), ChunkTransferConfig{})
+		require.Equal(t, time.Hour, uc.uploadProofTTL())
 	})
 }
 
@@ -105,7 +118,47 @@ func TestChunk_ConfirmUploads_RequiresLink(t *testing.T) {
 		require.Equal(t, []domain.Hash{hash}, missing)
 	})
 
-	t.Run("linked content is recorded", func(t *testing.T) {
+	t.Run("content uploaded through this project is linked in one batch", func(t *testing.T) {
+		store := newStubChunkStore()
+		uc, repo := newLinkFixture(t, store)
+		require.NoError(t, uc.StoreUploaded(ctx, "acme", "game", hash, data))
+		repo.EXPECT().LinkedProjectChunks(gomock.Any(), testProject.ID, gomock.Any()).
+			Return(map[domain.Hash]bool{}, nil)
+		repo.EXPECT().InsertChunkIfNotExists(gomock.Any(), hash, int64(len(data))).Return(nil)
+		repo.EXPECT().LinkProjectChunks(gomock.Any(), testProject.ID, []domain.Hash{hash}).Return(nil)
+
+		missing, err := uc.ConfirmUploads(ctx, testOrg, testProject, []domain.Hash{hash})
+		require.NoError(t, err)
+		require.Empty(t, missing)
+		require.False(t, uc.hasUploadProof("acme", "game", hash), "the proof is consumed")
+	})
+
+	t.Run("batch link error", func(t *testing.T) {
+		store := newStubChunkStore()
+		uc, repo := newLinkFixture(t, store)
+		require.NoError(t, uc.StoreUploaded(ctx, "acme", "game", hash, data))
+		repo.EXPECT().LinkedProjectChunks(gomock.Any(), testProject.ID, gomock.Any()).
+			Return(map[domain.Hash]bool{}, nil)
+		repo.EXPECT().InsertChunkIfNotExists(gomock.Any(), hash, int64(len(data))).Return(nil)
+		repo.EXPECT().LinkProjectChunks(gomock.Any(), testProject.ID, gomock.Any()).Return(errors.New("boom"))
+
+		_, err := uc.ConfirmUploads(ctx, testOrg, testProject, []domain.Hash{hash})
+		require.EqualError(t, err, "boom")
+	})
+
+	t.Run("a proof from another project does not link", func(t *testing.T) {
+		store := newStubChunkStore()
+		uc, repo := newLinkFixture(t, store)
+		require.NoError(t, uc.StoreUploaded(ctx, "acme", "elsewhere", hash, data))
+		repo.EXPECT().LinkedProjectChunks(gomock.Any(), testProject.ID, gomock.Any()).
+			Return(map[domain.Hash]bool{}, nil)
+
+		missing, err := uc.ConfirmUploads(ctx, testOrg, testProject, []domain.Hash{hash})
+		require.NoError(t, err)
+		require.Equal(t, []domain.Hash{hash}, missing)
+	})
+
+	t.Run("already linked content is recorded", func(t *testing.T) {
 		store := newStubChunkStore()
 		store.data[hash] = data
 		uc, repo := newLinkFixture(t, store)
@@ -132,8 +185,8 @@ func TestChunk_ConfirmUploads_RequiresLink(t *testing.T) {
 		repo.EXPECT().LinkedProjectChunks(gomock.Any(), testProject.ID, gomock.Any()).
 			Return(map[domain.Hash]bool{}, nil)
 		repo.EXPECT().HasChunk(gomock.Any(), hash).Return(true, nil)
-		repo.EXPECT().LinkProjectChunk(gomock.Any(), testProject.ID, hash).Return(nil)
 		repo.EXPECT().InsertChunkIfNotExists(gomock.Any(), hash, int64(len(data))).Return(nil)
+		repo.EXPECT().LinkProjectChunks(gomock.Any(), testProject.ID, []domain.Hash{hash}).Return(nil)
 
 		missing, err := uc.ConfirmUploads(ctx, testOrg, testProject, []domain.Hash{hash})
 		require.NoError(t, err)
@@ -148,7 +201,8 @@ func TestChunk_ConfirmUploads_RequiresLink(t *testing.T) {
 		repo.EXPECT().LinkedProjectChunks(gomock.Any(), testProject.ID, gomock.Any()).
 			Return(map[domain.Hash]bool{}, nil)
 		repo.EXPECT().HasChunk(gomock.Any(), hash).Return(true, nil)
-		repo.EXPECT().LinkProjectChunk(gomock.Any(), testProject.ID, hash).Return(errors.New("boom"))
+		repo.EXPECT().InsertChunkIfNotExists(gomock.Any(), hash, int64(len(data))).Return(nil)
+		repo.EXPECT().LinkProjectChunks(gomock.Any(), testProject.ID, gomock.Any()).Return(errors.New("boom"))
 
 		_, err := uc.ConfirmUploads(ctx, testOrg, testProject, []domain.Hash{hash})
 		require.EqualError(t, err, "boom")

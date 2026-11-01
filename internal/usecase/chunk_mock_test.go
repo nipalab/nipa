@@ -85,6 +85,20 @@ func (mr *MockchunkRepositoryMockRecorder) LinkProjectChunk(ctx, projectID, hash
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LinkProjectChunk", reflect.TypeOf((*MockchunkRepository)(nil).LinkProjectChunk), ctx, projectID, hash)
 }
 
+// LinkProjectChunks mocks base method.
+func (m *MockchunkRepository) LinkProjectChunks(ctx context.Context, projectID snow.ID, hashes []domain.Hash) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "LinkProjectChunks", ctx, projectID, hashes)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// LinkProjectChunks indicates an expected call of LinkProjectChunks.
+func (mr *MockchunkRepositoryMockRecorder) LinkProjectChunks(ctx, projectID, hashes any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LinkProjectChunks", reflect.TypeOf((*MockchunkRepository)(nil).LinkProjectChunks), ctx, projectID, hashes)
+}
+
 // LinkedProjectChunks mocks base method.
 func (m *MockchunkRepository) LinkedProjectChunks(ctx context.Context, projectID snow.ID, hashes []domain.Hash) (map[domain.Hash]bool, error) {
 	m.ctrl.T.Helper()
@@ -98,44 +112,4 @@ func (m *MockchunkRepository) LinkedProjectChunks(ctx context.Context, projectID
 func (mr *MockchunkRepositoryMockRecorder) LinkedProjectChunks(ctx, projectID, hashes any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LinkedProjectChunks", reflect.TypeOf((*MockchunkRepository)(nil).LinkedProjectChunks), ctx, projectID, hashes)
-}
-
-// MockchunkProjectResolver is a mock of chunkProjectResolver interface.
-type MockchunkProjectResolver struct {
-	ctrl     *gomock.Controller
-	recorder *MockchunkProjectResolverMockRecorder
-	isgomock struct{}
-}
-
-// MockchunkProjectResolverMockRecorder is the mock recorder for MockchunkProjectResolver.
-type MockchunkProjectResolverMockRecorder struct {
-	mock *MockchunkProjectResolver
-}
-
-// NewMockchunkProjectResolver creates a new mock instance.
-func NewMockchunkProjectResolver(ctrl *gomock.Controller) *MockchunkProjectResolver {
-	mock := &MockchunkProjectResolver{ctrl: ctrl}
-	mock.recorder = &MockchunkProjectResolverMockRecorder{mock}
-	return mock
-}
-
-// EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockchunkProjectResolver) EXPECT() *MockchunkProjectResolverMockRecorder {
-	return m.recorder
-}
-
-// ResolveBySlug mocks base method.
-func (m *MockchunkProjectResolver) ResolveBySlug(ctx context.Context, orgSlug, projectSlug string) (*domain.Organization, *domain.Project, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ResolveBySlug", ctx, orgSlug, projectSlug)
-	ret0, _ := ret[0].(*domain.Organization)
-	ret1, _ := ret[1].(*domain.Project)
-	ret2, _ := ret[2].(error)
-	return ret0, ret1, ret2
-}
-
-// ResolveBySlug indicates an expected call of ResolveBySlug.
-func (mr *MockchunkProjectResolverMockRecorder) ResolveBySlug(ctx, orgSlug, projectSlug any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResolveBySlug", reflect.TypeOf((*MockchunkProjectResolver)(nil).ResolveBySlug), ctx, orgSlug, projectSlug)
 }

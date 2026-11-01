@@ -79,6 +79,10 @@ func (stubChunkRepo) LinkProjectChunk(_ context.Context, _ snow.ID, _ domain.Has
 	return nil
 }
 
+func (stubChunkRepo) LinkProjectChunks(_ context.Context, _ snow.ID, _ []domain.Hash) error {
+	return nil
+}
+
 func (stubChunkRepo) LinkedProjectChunks(_ context.Context, _ snow.ID, hashes []domain.Hash) (map[domain.Hash]bool, error) {
 	linked := make(map[domain.Hash]bool, len(hashes))
 	for _, hash := range hashes {

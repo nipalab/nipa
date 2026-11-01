@@ -22,11 +22,8 @@ type chunkRepository interface {
 	InsertChunkIfNotExists(ctx context.Context, hash domain.Hash, sizeBytes int64) error
 	HasChunk(ctx context.Context, hash domain.Hash) (bool, error)
 	LinkProjectChunk(ctx context.Context, projectID snow.ID, hash domain.Hash) error
+	LinkProjectChunks(ctx context.Context, projectID snow.ID, hashes []domain.Hash) error
 	LinkedProjectChunks(ctx context.Context, projectID snow.ID, hashes []domain.Hash) (map[domain.Hash]bool, error)
-}
-
-type chunkProjectResolver interface {
-	ResolveBySlug(ctx context.Context, orgSlug, projectSlug string) (*domain.Organization, *domain.Project, error)
 }
 
 // ChunkRef identifies a chunk and the exact size of its content.
@@ -60,12 +57,12 @@ type Chunk struct {
 	chunkStore storage.ChunkStore
 	transfer   ChunkTransferConfig
 	ledger     StorageLedger
-	projects   chunkProjectResolver
 	metrics    *obs.Metrics
 	now        func() time.Time
 
 	unverifiedMu sync.Mutex
 	unverified   map[domain.Hash]time.Time
+	uploaded     map[uploadProofKey]time.Time
 	lastPrune    time.Time
 }
 
@@ -76,6 +73,7 @@ func NewChunk(chunkRepo chunkRepository, chunkStore storage.ChunkStore, transfer
 		transfer:   transfer,
 		now:        time.Now,
 		unverified: map[domain.Hash]time.Time{},
+		uploaded:   map[uploadProofKey]time.Time{},
 	}
 }
 
@@ -83,13 +81,6 @@ func NewChunk(chunkRepo chunkRepository, chunkStore storage.ChunkStore, transfer
 // usage is tracked and no quota is enforced.
 func (c *Chunk) WithStorageLedger(ledger StorageLedger) *Chunk {
 	c.ledger = ledger
-	return c
-}
-
-// WithProjectResolver lets signed uploads be attributed to the project named in
-// the transfer URL; without one, StoreUploaded refuses to run.
-func (c *Chunk) WithProjectResolver(projects chunkProjectResolver) *Chunk {
-	c.projects = projects
 	return c
 }
 
@@ -165,9 +156,10 @@ func (c *Chunk) UploadForProject(ctx context.Context, projectID snow.ID, hash do
 
 // StoreUploaded verifies and stores chunk content without recording metadata;
 // the metadata row is written by ConfirmUploads once the client reports the
-// transfer done. The project named in the signed URL is linked to the hash,
-// which is what lets its pushes reference the chunk: only a caller that sent
-// the bytes can link them. Content writes are safe to run concurrently.
+// transfer done. The bytes arriving through a URL signed for the project are
+// the proof that it holds the content: it is remembered in memory (no database
+// write on the hot upload path) and turned into a project link at confirm.
+// Content writes are safe to run concurrently.
 func (c *Chunk) StoreUploaded(ctx context.Context, orgSlug, projectSlug string, hash domain.Hash, data []byte) (err error) {
 	ctx, span := obs.StartSpan(ctx, "chunk.store",
 		attribute.String(obs.AttrChunkHash, hash.String()),
@@ -178,13 +170,6 @@ func (c *Chunk) StoreUploaded(ctx context.Context, orgSlug, projectSlug string, 
 		c.metrics.ObserveChunkVerifyFailure("store")
 		return domain.NewErrorUser(fmt.Sprintf("chunk hash mismatch for %s", hash))
 	}
-	if c.projects == nil {
-		return domain.NewErrorInternalServer("chunk uploads are not attributable to a project")
-	}
-	_, project, err := c.projects.ResolveBySlug(ctx, orgSlug, projectSlug)
-	if err != nil {
-		return err
-	}
 	exists, err := c.chunkStore.Exists(ctx, hash)
 	if err != nil {
 		c.metrics.ObserveChunkOp("put", "error")
@@ -192,7 +177,8 @@ func (c *Chunk) StoreUploaded(ctx context.Context, orgSlug, projectSlug string, 
 	}
 	if exists {
 		c.metrics.ObserveChunkOp("put", "dedup")
-		return c.chunkRepo.LinkProjectChunk(ctx, project.ID, hash)
+		c.markUploaded(orgSlug, projectSlug, hash)
+		return nil
 	}
 	if err := c.chunkStore.Put(ctx, hash, data); err != nil {
 		c.metrics.ObserveChunkOp("put", "error")
@@ -200,7 +186,8 @@ func (c *Chunk) StoreUploaded(ctx context.Context, orgSlug, projectSlug string, 
 	}
 	c.metrics.ObserveChunkOp("put", "stored")
 	c.metrics.ObserveChunkBytes("put", int64(len(data)))
-	return c.chunkRepo.LinkProjectChunk(ctx, project.ID, hash)
+	c.markUploaded(orgSlug, projectSlug, hash)
+	return nil
 }
 
 // Download returns the stored content for a chunk hash.
@@ -424,6 +411,7 @@ func (c *Chunk) confirmUploads(ctx context.Context, org *domain.Organization, pr
 	if err != nil {
 		return nil, 0, err
 	}
+	var toLink []domain.Hash
 	for _, hash := range hashes {
 		size, err := c.chunkStore.Size(ctx, hash)
 		if err != nil {
@@ -451,12 +439,14 @@ func (c *Chunk) confirmUploads(ctx context.Context, org *domain.Organization, pr
 					continue
 				}
 				if !proven {
-					if err := c.chunkRepo.LinkProjectChunk(ctx, project.ID, hash); err != nil {
-						return nil, 0, err
-					}
+					toLink = append(toLink, hash)
 					proven = true
 				}
 			}
+		}
+		if !proven && !isDirect && c.hasUploadProof(org.Slug, project.Slug, hash) {
+			toLink = append(toLink, hash)
+			proven = true
 		}
 		if !proven {
 			missing = append(missing, hash)
@@ -469,6 +459,12 @@ func (c *Chunk) confirmUploads(ctx context.Context, org *domain.Organization, pr
 		if c.ledger != nil {
 			attributed = append(attributed, LedgerChunk{Hash: hash, SizeBytes: size})
 		}
+	}
+	if len(toLink) > 0 {
+		if err := c.chunkRepo.LinkProjectChunks(ctx, project.ID, toLink); err != nil {
+			return nil, 0, err
+		}
+		c.clearUploaded(org.Slug, project.Slug, toLink)
 	}
 	if len(attributed) > 0 {
 		if err := c.ledger.Attribute(ctx, org, project, attributed); err != nil {
@@ -545,7 +541,62 @@ func (c *Chunk) clearUnverified(hash domain.Hash) {
 	delete(c.unverified, hash)
 }
 
+type uploadProofKey struct {
+	org, project string
+	hash         domain.Hash
+}
+
+func (c *Chunk) uploadProofTTL() time.Duration {
+	if c.transfer.PresignTTL > 0 {
+		return c.transfer.PresignTTL
+	}
+	return time.Hour
+}
+
+// markUploaded remembers that this process received the bytes for hash through
+// a URL signed for the project. Like the unverified marks it is per process and
+// expires with the presign TTL; a lost mark only makes confirm report the chunk
+// missing so the client uploads it again.
+func (c *Chunk) markUploaded(org, project string, hash domain.Hash) {
+	c.unverifiedMu.Lock()
+	defer c.unverifiedMu.Unlock()
+	now := c.now()
+	if now.Sub(c.lastPrune) >= unverifiedPruneInterval {
+		c.lastPrune = now
+		c.pruneUnverifiedLocked(now)
+	}
+	c.uploaded[uploadProofKey{org: org, project: project, hash: hash}] = now.Add(c.uploadProofTTL())
+}
+
+func (c *Chunk) hasUploadProof(org, project string, hash domain.Hash) bool {
+	c.unverifiedMu.Lock()
+	defer c.unverifiedMu.Unlock()
+	key := uploadProofKey{org: org, project: project, hash: hash}
+	expiry, ok := c.uploaded[key]
+	if !ok {
+		return false
+	}
+	if c.now().After(expiry) {
+		delete(c.uploaded, key)
+		return false
+	}
+	return true
+}
+
+func (c *Chunk) clearUploaded(org, project string, hashes []domain.Hash) {
+	c.unverifiedMu.Lock()
+	defer c.unverifiedMu.Unlock()
+	for _, hash := range hashes {
+		delete(c.uploaded, uploadProofKey{org: org, project: project, hash: hash})
+	}
+}
+
 func (c *Chunk) pruneUnverifiedLocked(now time.Time) {
+	for key, expiry := range c.uploaded {
+		if now.After(expiry) {
+			delete(c.uploaded, key)
+		}
+	}
 	for hash, expiry := range c.unverified {
 		if now.After(expiry) {
 			delete(c.unverified, hash)

@@ -169,12 +169,11 @@ func main() {
 	mergeRequestUsecase = mergeRequestUsecase.WithUsers(userRepo)
 	mergeRequestUsecase = mergeRequestUsecase.WithAccessChecker(permissionUsecase)
 	mergeRequestReviewUsecase = mergeRequestReviewUsecase.WithAccessChecker(permissionUsecase)
-	commonUsecase := usecase.NewCommon(orgRepo, projectRepo)
 	chunkUsecase := usecase.NewChunk(pushRepository, chunkStore, usecase.ChunkTransferConfig{
 		SigningKey:  cfg.ChunkURLSigningKey,
 		PresignTTL:  time.Duration(cfg.ChunkPresignTTLSeconds) * time.Second,
 		MaxPageSize: cfg.ChunkMaxPageSize,
-	}).WithProjectResolver(commonUsecase).WithMetrics(metrics)
+	}).WithMetrics(metrics)
 	branchUsecase = branchUsecase.WithMergeCommitter(pushRepository).WithChunkUploader(chunkUsecase)
 	webhookRepository := sqlite.NewWebhookRepository(dbConn)
 	webhookDispatcher := webhook.NewDispatcher(webhookRepository, webhook.NewClient(webhook.ClientConfig{
@@ -216,7 +215,7 @@ func main() {
 		Auth:               authUsecase,
 		User:               usecase.NewUser(snowUser, userRepo, passwordHasher),
 		SSHKey:             usecase.NewSSHKey(snowUser, sqlite.NewSSHKeyRepository(dbConn)),
-		Common:             commonUsecase,
+		Common:             usecase.NewCommon(orgRepo, projectRepo),
 		Branch:             branchUsecase,
 		Tag:                tagUsecase,
 		Push:               pushUsecase,

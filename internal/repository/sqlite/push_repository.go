@@ -45,6 +45,28 @@ func (p *PushRepository) LinkProjectChunk(ctx context.Context, projectID snow.ID
 	}))
 }
 
+func (p *PushRepository) LinkProjectChunks(ctx context.Context, projectID snow.ID, hashes []domain.Hash) error {
+	if len(hashes) == 0 {
+		return nil
+	}
+	tx, err := p.db.BeginTx(ctx, nil)
+	if err != nil {
+		return handleError(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	q := sqlcSqlite.New(tx)
+	for _, hash := range hashes {
+		if err := q.ProjectChunkUploadInsert(ctx, sqlcSqlite.ProjectChunkUploadInsertParams{
+			ProjectID: projectID.Int64(),
+			Hash:      hash.Bytes(),
+		}); err != nil {
+			return handleError(err)
+		}
+	}
+	return handleError(tx.Commit())
+}
+
 const linkedChunkBatch = 500
 
 func (p *PushRepository) LinkedProjectChunks(ctx context.Context, projectID snow.ID, hashes []domain.Hash) (map[domain.Hash]bool, error) {

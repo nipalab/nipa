@@ -361,3 +361,18 @@ func (s *PushRepositorySuite) TestChunkLinks() {
 	s.Require().Error(err)
 	s.Contains(err.Error(), "missing chunk data")
 }
+
+func (s *PushRepositorySuite) TestLinkProjectChunksBatch() {
+	ctx := context.Background()
+	repo, _, projectID, _ := s.newPushTestEnv()
+
+	first, _, _ := chunkRow(s.T(), "first")
+	second, _, _ := chunkRow(s.T(), "second")
+	s.Require().NoError(repo.LinkProjectChunks(ctx, projectID, nil))
+	s.Require().NoError(repo.LinkProjectChunk(ctx, projectID, first))
+	s.Require().NoError(repo.LinkProjectChunks(ctx, projectID, []domain.Hash{first, second}))
+
+	got, err := repo.LinkedProjectChunks(ctx, projectID, []domain.Hash{first, second})
+	s.Require().NoError(err)
+	s.Equal(map[domain.Hash]bool{first: true, second: true}, got)
+}

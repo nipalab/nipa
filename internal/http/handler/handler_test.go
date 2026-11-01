@@ -221,7 +221,7 @@ func newHandlerTestEnv(t *testing.T) *handlerTestEnv {
 		SigningKey:  "test-chunk-signing-key",
 		PresignTTL:  time.Hour,
 		MaxPageSize: 1000,
-	}).WithProjectResolver(usecase.NewCommon(orgRepo, sqlite.NewProjectRepository(dbConn)))
+	})
 	mergeRequestUc := usecase.NewMergeRequest(
 		sqlite.NewMergeRequestRepository(dbConn), branchRepo, permissionUc, branchUc, node, dbtx.NewTransactor(dbConn),
 	)

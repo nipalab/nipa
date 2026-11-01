@@ -381,3 +381,18 @@ func TestPushRepositorySQLite_ApplyPushRejectsUnlinkedChunk(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "missing chunk data")
 }
+
+func TestPushRepositorySQLite_LinkProjectChunksBatch(t *testing.T) {
+	ctx := context.Background()
+	repo, _, _, projectID, _ := newPushTestEnv(t)
+
+	first, _, _ := chunkRow(t, "first")
+	second, _, _ := chunkRow(t, "second")
+	require.NoError(t, repo.LinkProjectChunks(ctx, projectID, nil), "an empty batch is a no-op")
+	require.NoError(t, repo.LinkProjectChunk(ctx, projectID, first))
+	require.NoError(t, repo.LinkProjectChunks(ctx, projectID, []domain.Hash{first, second}), "already linked hashes are skipped")
+
+	got, err := repo.LinkedProjectChunks(ctx, projectID, []domain.Hash{first, second})
+	require.NoError(t, err)
+	require.Equal(t, map[domain.Hash]bool{first: true, second: true}, got)
+}

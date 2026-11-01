@@ -183,7 +183,7 @@ func main() {
 		SigningKey:  cfg.ChunkURLSigningKey,
 		PresignTTL:  time.Duration(cfg.ChunkPresignTTLSeconds) * time.Second,
 		MaxPageSize: cfg.ChunkMaxPageSize,
-	}).WithProjectResolver(commonUsecase).WithMetrics(metrics)
+	}).WithMetrics(metrics)
 	storageLedger, err := createStorageLedger(cfg, dbConn)
 	if err != nil {
 		panic(err)
