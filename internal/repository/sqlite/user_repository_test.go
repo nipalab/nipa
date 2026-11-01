@@ -211,6 +211,62 @@ func TestUserRepositorySQLite_DeleteRefreshTokens(t *testing.T) {
 	requireRecordNotFound(t, err)
 }
 
+func TestUserRepositorySQLite_UpdateAndRevokeTokens(t *testing.T) {
+	ctx := context.Background()
+	db, q := newSQLiteTestDB(t)
+	users := NewUserRepository(db)
+	auth := NewAuthRepository(db)
+
+	userID := seedUser(t, q, "alice", "alice@example.com", sql.NullString{})
+	expiresAt := time.Now().Add(time.Hour)
+
+	require.NoError(t, auth.SaveRefreshToken(ctx, userID, "email-token", expiresAt))
+	require.NoError(t, users.UpdateEmailAndRevokeTokens(ctx, userID, "Alice2@Example.com"))
+	got, err := users.GetByID(ctx, userID)
+	require.NoError(t, err)
+	require.Equal(t, "alice2@example.com", got.Email)
+	_, err = auth.GetAndDeleteRefreshToken(ctx, "email-token")
+	requireRecordNotFound(t, err)
+
+	require.NoError(t, auth.SaveRefreshToken(ctx, userID, "password-token", expiresAt))
+	require.NoError(t, users.UpdatePasswordAndRevokeTokens(ctx, userID, "new-hash"))
+	got, err = users.GetByID(ctx, userID)
+	require.NoError(t, err)
+	require.Equal(t, "new-hash", got.Password)
+	_, err = auth.GetAndDeleteRefreshToken(ctx, "password-token")
+	requireRecordNotFound(t, err)
+
+	require.NoError(t, auth.SaveRefreshToken(ctx, userID, "deactivate-token", expiresAt))
+	require.NoError(t, users.DeactivateAndRevokeTokens(ctx, userID))
+	_, err = users.GetByID(ctx, userID)
+	requireRecordNotFound(t, err)
+	_, err = auth.GetAndDeleteRefreshToken(ctx, "deactivate-token")
+	requireRecordNotFound(t, err)
+}
+
+func TestUserRepositorySQLite_UpdateEmailAndRevokeTokens_RollsBackOnConflict(t *testing.T) {
+	ctx := context.Background()
+	db, q := newSQLiteTestDB(t)
+	users := NewUserRepository(db)
+	auth := NewAuthRepository(db)
+
+	userID := seedUser(t, q, "alice", "alice@example.com", sql.NullString{})
+	_, err := users.Create(ctx, domain.User{
+		ID: newTestNode(t).Generate(), Name: "bob", Email: "bob@example.com", Password: "hash",
+	})
+	require.NoError(t, err)
+	require.NoError(t, auth.SaveRefreshToken(ctx, userID, "token-1", time.Now().Add(time.Hour)))
+
+	require.Error(t, users.UpdateEmailAndRevokeTokens(ctx, userID, "bob@example.com"))
+
+	got, err := users.GetByID(ctx, userID)
+	require.NoError(t, err)
+	require.Equal(t, "alice@example.com", got.Email)
+	token, err := auth.GetAndDeleteRefreshToken(ctx, "token-1")
+	require.NoError(t, err)
+	require.Equal(t, userID, token.UserID)
+}
+
 func TestUserRepositorySQLite_EmailIsCaseInsensitive(t *testing.T) {
 	ctx := context.Background()
 	db, q := newSQLiteTestDB(t)
