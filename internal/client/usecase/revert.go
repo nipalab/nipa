@@ -2,12 +2,12 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/nipalab/nipa/internal/chunker"
 	"github.com/nipalab/nipa/internal/client/domain"
 	serverDomain "github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/merge"
@@ -610,30 +610,29 @@ func (r *Revert) workingTreeFiles(root string) (map[string]merge.File, error) {
 	}
 	out := make(map[string]merge.File, len(snapshot.Files))
 	for _, f := range snapshot.Files {
-		data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(f.Path)))
-		if os.IsNotExist(err) {
+		abs := filepath.Join(root, filepath.FromSlash(f.Path))
+		info, err := os.Stat(abs)
+		if errors.Is(err, os.ErrNotExist) {
 			continue
 		}
 		if err != nil {
 			return nil, err
 		}
-		hash, chunks, encoding, err := chunkFile(f.Path, data, storedEncoding(f.Encoding))
+		hf, err := hashWorkingFile(abs, f.Path, info.Size(), storedEncoding(f.Encoding))
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
 		if err != nil {
 			return nil, err
 		}
-		hashes := make([]serverDomain.Hash, len(chunks))
-		sizes := make([]int64, len(chunks))
-		for i, c := range chunks {
-			hashes[i] = c.Hash
-			sizes[i] = c.SizeBytes
-		}
+		hashes, sizes := chunkHashesAndSizes(hf.chunks)
 		out[f.Path] = merge.File{
 			Path:        f.Path,
 			Mode:        f.Mode,
-			SizeBytes:   int64(len(data)),
-			IsBinary:    chunker.IsBinary(data),
-			Encoding:    encoding,
-			Hash:        hash,
+			SizeBytes:   hf.size,
+			IsBinary:    hf.isBinary,
+			Encoding:    hf.encoding,
+			Hash:        hf.hash,
 			ChunkHashes: hashes,
 			ChunkSizes:  sizes,
 		}

@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"errors"
 
 	"github.com/nipalab/nipa/internal/domain"
 	sqlcSqlite "github.com/nipalab/nipa/internal/repository/sqlc/sqlite"
@@ -29,7 +30,7 @@ func (p *PushRepository) InsertChunkIfNotExists(ctx context.Context, hash domain
 func (p *PushRepository) HasChunk(ctx context.Context, hash domain.Hash) (bool, error) {
 	q := sqlcSqlite.New(p.db)
 	if _, err := q.ChunkGetByHash(ctx, hash.Bytes()); err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return false, nil
 		}
 		return false, handleError(err)
@@ -129,7 +130,7 @@ func applyPush(ctx context.Context, q *sqlcSqlite.Queries, req usecase.ApplyPush
 		}
 		row, err := q.ChunkGetByHashForProject(ctx, sqlcSqlite.ChunkGetByHashForProjectParams{Hash: hash.Bytes(), ProjectID: req.ProjectID.Int64()})
 		if err != nil {
-			if err == sql.ErrNoRows {
+			if errors.Is(err, sql.ErrNoRows) {
 				return domain.NewErrorUser("missing chunk data for " + hash.String())
 			}
 			return handleError(err)

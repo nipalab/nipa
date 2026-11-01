@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/nipalab/nipa/internal/chunker"
 	clientDomain "github.com/nipalab/nipa/internal/client/domain"
 	"github.com/nipalab/nipa/internal/diff"
 	serverDomain "github.com/nipalab/nipa/internal/domain"
@@ -126,8 +125,8 @@ func (d *Diff) workingDiff(root string, opts DiffOptions) ([]diff.FileDiff, erro
 		return nil, err
 	}
 	changes := diff.Compare(oldMap, newMap)
-	changes = diff.DetectRenames(changes, d.similarityLoader(contents))
-	return diff.AttachContents(changes, d.attachLoader(contents, opts.Binary)), nil
+	changes = diff.DetectRenames(changes, d.similarityLoader(root, contents))
+	return diff.AttachContents(changes, d.attachLoader(root, contents, opts.Binary)), nil
 }
 
 func (d *Diff) workingVsRevision(ctx context.Context, nu *clientDomain.NipaUrl, root string, cfg *clientDomain.Config, token string, opts DiffOptions) ([]diff.FileDiff, error) {
@@ -148,8 +147,8 @@ func (d *Diff) workingVsRevision(ctx context.Context, nu *clientDomain.NipaUrl, 
 	if err := d.ensureContent(ctx, changes, true, false, opts.Binary, scope); err != nil {
 		return nil, err
 	}
-	changes = diff.DetectRenames(changes, d.similarityLoader(contents))
-	return diff.AttachContents(changes, d.attachLoader(contents, opts.Binary)), nil
+	changes = diff.DetectRenames(changes, d.similarityLoader(root, contents))
+	return diff.AttachContents(changes, d.attachLoader(root, contents, opts.Binary)), nil
 }
 
 func (d *Diff) revisionDiff(ctx context.Context, nu *clientDomain.NipaUrl, cfg *clientDomain.Config, revA, revB string, opts DiffOptions) ([]diff.FileDiff, error) {
@@ -174,14 +173,14 @@ func (d *Diff) revisionDiff(ctx context.Context, nu *clientDomain.NipaUrl, cfg *
 	if err := d.ensureContent(ctx, changes, true, true, opts.Binary, scope); err != nil {
 		return nil, err
 	}
-	changes = diff.DetectRenames(changes, d.similarityLoader(nil))
-	return diff.AttachContents(changes, d.attachLoader(nil, opts.Binary)), nil
+	changes = diff.DetectRenames(changes, d.similarityLoader("", nil))
+	return diff.AttachContents(changes, d.attachLoader("", nil, opts.Binary)), nil
 }
 
 // similarityLoader loads text content for rename detection, preferring the
 // working-tree contents map over the local object cache. Binary files never
 // load content; similarity falls back to chunk overlap.
-func (d *Diff) similarityLoader(contents map[string][]byte) func(diff.Entry) ([]byte, bool) {
+func (d *Diff) similarityLoader(root string, contents map[string][]byte) func(diff.Entry) ([]byte, bool) {
 	return func(e diff.Entry) ([]byte, bool) {
 		if e.IsBinary {
 			return nil, false
@@ -190,6 +189,9 @@ func (d *Diff) similarityLoader(contents map[string][]byte) func(diff.Entry) ([]
 			if content, ok := contents[e.Path]; ok {
 				return content, true
 			}
+		}
+		if root != "" && e.SizeBytes > inlineContentMax {
+			return nil, false
 		}
 		content, err := diff.LoadContent(d.localRepo.LoadChunk, e)
 		if err != nil {
@@ -203,12 +205,20 @@ func (d *Diff) similarityLoader(contents map[string][]byte) func(diff.Entry) ([]
 // only used for the new side; the old side always comes from the object cache.
 // Binary content is skipped unless loadBinary is set; skipped binaries stay
 // available as metadata.
-func (d *Diff) attachLoader(contents map[string][]byte, loadBinary bool) func(diff.Entry, bool) ([]byte, bool) {
+func (d *Diff) attachLoader(root string, contents map[string][]byte, loadBinary bool) func(diff.Entry, bool) ([]byte, bool) {
 	return func(e diff.Entry, isNew bool) ([]byte, bool) {
-		if isNew && contents != nil {
+		if isNew && root != "" {
 			if content, ok := contents[e.Path]; ok {
 				return content, true
 			}
+			if e.IsBinary && !loadBinary {
+				return nil, true
+			}
+			content, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(e.Path)))
+			if err != nil {
+				return nil, false
+			}
+			return content, true
 		}
 		if e.IsBinary && !loadBinary {
 			return nil, true
@@ -402,38 +412,31 @@ func (d *Diff) scanWorking(root string, oldMap map[string]diff.Entry, staged map
 				continue
 			}
 		}
-		data, err := os.ReadFile(fp)
+		encoding := ""
+		if tracked {
+			encoding = storedEncoding(old.Encoding)
+		}
+		hf, err := hashWorkingFile(fp, p, info.Size(), encoding)
 		if err != nil {
 			if errors.Is(err, os.ErrNotExist) {
 				continue
 			}
 			return nil, nil, fmt.Errorf("read %s: %w", p, err)
 		}
-		encoding := ""
-		if tracked {
-			encoding = storedEncoding(old.Encoding)
-		}
-		hash, chunks, encoding, err := chunkFile(p, data, encoding)
-		if err != nil {
-			return nil, nil, fmt.Errorf("chunk %s: %w", p, err)
-		}
-		hashes := make([]serverDomain.Hash, len(chunks))
-		sizes := make([]int64, len(chunks))
-		for i, c := range chunks {
-			hashes[i] = c.Hash
-			sizes[i] = c.SizeBytes
-		}
+		hashes, sizes := chunkHashesAndSizes(hf.chunks)
 		newMap[p] = diff.Entry{
 			Path:        p,
 			Mode:        serverModeFromPerm(info.Mode()),
-			SizeBytes:   int64(len(data)),
-			IsBinary:    chunker.IsBinary(data),
-			Encoding:    encoding,
-			Hash:        hash,
+			SizeBytes:   hf.size,
+			IsBinary:    hf.isBinary,
+			Encoding:    hf.encoding,
+			Hash:        hf.hash,
 			ChunkHashes: hashes,
 			ChunkSizes:  sizes,
 		}
-		contents[p] = data
+		if hf.inline != nil {
+			contents[p] = hf.inline
+		}
 	}
 	return newMap, contents, nil
 }
