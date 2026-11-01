@@ -84,6 +84,9 @@ func (p *Project) Create(ctx context.Context, orgID snow.ID, name, description, 
 	if !slugPattern.MatchString(slug) {
 		return nil, domain.NewErrorUser("invalid project slug")
 	}
+	if isReservedProjectSlug(slug) {
+		return nil, domain.NewErrorUser("project slug is reserved")
+	}
 	if _, err := p.repo.GetByOrgIDAndSlug(ctx, orgID, slug); err == nil {
 		return nil, domain.NewErrorConflict("project slug already in use")
 	} else if !domain.IsErrorNotFound(err) {

@@ -4,6 +4,7 @@ import { RepoIcon } from '@primer/octicons-react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { establishSession } from '../api/client'
 import { useAuth } from '../auth'
+import { APP_HOME } from '../routes'
 
 const OAUTH_ERRORS: Record<string, string> = {
   email_conflict:
@@ -20,10 +21,10 @@ export default function OAuthCallbackPage() {
   const code = params.get('code') ?? ''
   const isNew = params.get('new') === '1'
   const oauthError = params.get('oauth_error') ?? ''
-  const fromParam = params.get('from') ?? '/'
+  const fromParam = params.get('from') ?? APP_HOME
   // The destination rides inside the callback URL's query, so only same-origin
   // SPA paths are honored no matter what the browser sends.
-  const from = fromParam.startsWith('/') && !fromParam.startsWith('//') ? fromParam : '/'
+  const from = fromParam.startsWith('/') && !fromParam.startsWith('//') ? fromParam : APP_HOME
   const [error, setError] = useState<string | null>(null)
   const started = useRef(false)
 

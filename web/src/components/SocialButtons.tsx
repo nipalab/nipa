@@ -1,6 +1,7 @@
 import { Button, Stack } from '@primer/react'
 import { MarkGithubIcon } from '@primer/octicons-react'
 import { oauthStartURL } from '../api/endpoints'
+import { APP_HOME } from '../routes'
 
 const PROVIDER_LABEL: Record<string, string> = {
   github: 'GitHub',
@@ -34,7 +35,7 @@ function GoogleIcon() {
 // It must be the SPA callback route that exchanges the one-time code; the
 // post-login destination rides along as its own `from` parameter.
 export function socialRedirect(from: string): string {
-  const destination = from.startsWith('/') && !from.startsWith('//') ? from : '/'
+  const destination = from.startsWith('/') && !from.startsWith('//') ? from : APP_HOME
   return destination === '/' ? '/oauth/callback' : `/oauth/callback?from=${encodeURIComponent(destination)}`
 }
 

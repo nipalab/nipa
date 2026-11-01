@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Button, Dialog, FormControl, Stack, TextInput } from '@primer/react'
 import { ApiError } from '../api/client'
 import { createOrg } from '../api/endpoints'
-import { SLUG_PATTERN, slugify } from '../slug'
+import { RESERVED_ORG_SLUGS, SLUG_PATTERN, slugify } from '../slug'
 import { ErrorBanner } from './ui'
 
 export function CreateOrgDialog({
@@ -20,7 +20,8 @@ export function CreateOrgDialog({
   const [loading, setLoading] = useState(false)
 
   const effectiveSlug = slugEdited ? slug : slugify(name)
-  const slugValid = effectiveSlug !== '' && SLUG_PATTERN.test(effectiveSlug)
+  const slugReserved = effectiveSlug !== '' && SLUG_PATTERN.test(effectiveSlug) && RESERVED_ORG_SLUGS.has(effectiveSlug)
+  const slugValid = effectiveSlug !== '' && SLUG_PATTERN.test(effectiveSlug) && !slugReserved
   const canSubmit = name.trim() !== '' && slugValid && !loading
 
   async function handleCreate() {
@@ -76,7 +77,9 @@ export function CreateOrgDialog({
               <FormControl.Validation variant="error">
                 {effectiveSlug === ''
                   ? 'Slug is required.'
-                  : 'Slug must start with a letter or digit and contain only lowercase letters, digits and dashes.'}
+                  : slugReserved
+                    ? 'This slug is reserved. Choose a different one.'
+                    : 'Slug must start with a letter or digit and contain only lowercase letters, digits and dashes.'}
               </FormControl.Validation>
             )}
             {slugError && <FormControl.Validation variant="error">{slugError}</FormControl.Validation>}

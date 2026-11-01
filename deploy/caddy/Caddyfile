@@ -1,11 +1,20 @@
 # Nipa SaaS edge: terminates TLS for the single h2c nipad-ee port and proxies to
-# the active blue/green color. deploy/upgrade.sh rewrites the reverse_proxy
-# upstream line between flips and reloads Caddy; a reload never drops
-# established connections.
+# the active blue/green color. deploy/upgrade.sh rewrites the nipad-ee upstream
+# line between flips and reloads Caddy; a reload never drops established
+# connections.
 #
-# Keep the reverse_proxy line in the exact
+# The marketing site is a separate Netlify deployment (nipa-web repo): the bare
+# root and its /_astro/* build assets are proxied there, so marketing changes go
+# live with a Netlify deploy instead of a nipad-ee rebuild. Caddy owns
+# nipalab.com, so MARKETING_UPSTREAM must be the Netlify site origin, never
+# https://nipalab.com (that would proxy Caddy back into itself). Configure it
+# with:
+#     MARKETING_UPSTREAM=https://<site>.netlify.app
+#     MARKETING_HOST=nipalab.com
+#
+# Keep the nipad-ee reverse_proxy line in the exact
 #     reverse_proxy 127.0.0.1:<port> {
-# shape: upgrade.sh matches it with sed.
+# shape: upgrade.sh matches it with sed. The marketing upstream never matches.
 {
 	email admin@nipalab.com
 }
@@ -17,6 +26,18 @@ nipalab.com {
 	# ports instead. /debug/pprof only exists when PPROF_ENABLED=true.
 	@internal path /metrics /debug/pprof /debug/pprof/*
 	respond @internal 404
+
+	# Marketing lives on Netlify. Caddy mirrors its landing page, page routes,
+	# and assets; every marketing page link is absolute to nipalab.com. The app
+	# owns every other path. Keep this list in sync with the marketing build and
+	# with the reserved org slugs (internal/usecase/reserved.go, web/src/slug.ts).
+	# MARKETING_UPSTREAM is required and must not be nipalab.com.
+	@marketing path / /_astro/* /screenshots/* /pricing /pricing/* /favicon.svg /apple-touch-icon.png /logo.svg /og.png /robots.txt /sitemap-index.xml /sitemap-0.xml
+	handle @marketing {
+		reverse_proxy {$MARKETING_UPSTREAM} {
+			header_up Host {$MARKETING_HOST:nipalab.com}
+		}
+	}
 
 	reverse_proxy 127.0.0.1:8001 {
 		transport http {

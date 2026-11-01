@@ -5,24 +5,39 @@ into the `nipad` binary (`make web` → `web/server/dist` → `webui.Handler`).
 It talks to the REST API under `/api/v1` (same-origin; the Vite dev server
 proxies `/api` and `/docs` to `NIPA_SERVER_URL`).
 
+In SaaS mode the marketing site is a separate Astro deployment (the `nipa-web`
+repo on Netlify) served on `nipalab.com`; the deploy Caddyfile proxies its
+pages and assets (`/`, `/_astro/*`, `/screenshots/*`, `/pricing` and the root
+assets) from the Netlify origin (`MARKETING_UPSTREAM`), and marketing links
+stay on `nipalab.com`. The same binary also carries an optional embedded
+fallback (`ee/web/marketing`, built under base path `/web` with
+`make marketing-dist`) that serves `/` and `/web/...` when no Caddy proxy is
+configured. Either way the SPA keeps every other non-API path, so organizations
+and projects live at `/{org}` and `/{org}/{project}/...` exactly as in the free
+edition.
+
 ## Auth
 
 - Access token lives in memory only; the refresh token is an `HttpOnly` cookie
   (`web/src/api/client.ts`). `AuthProvider` silently refreshes on load, keeps
   `/me` in context, and reacts to cross-tab login/logout events.
-- `RequireAuth` guards every route except `/login`, `/register`, `/verify` and
-  `/oauth/callback` and redirects back after sign-in.
+- `RequireAuth` guards every route except `/`, `/login`, `/register`, `/verify`
+  and `/oauth/callback` and redirects back after sign-in.
+- `/` is an entry redirect: anonymous visitors go to `/login`, signed-in users
+  to `/dashboard`. On SaaS the server mirrors the marketing site at `/`, so the
+  SPA redirect only applies to the free edition.
 
 ## Routes
 
 | Route | Page | Notes |
 |---|---|---|
+| `/` | entry redirect | anonymous → `/login`, signed in → `/dashboard`; SaaS mirrors the marketing landing from `nipalab.com` instead |
 | `/login` | sign in | password form, "Create an account" link and social buttons when the server reports them |
 | `/register` | sign up | SaaS only (`/api/v1/auth/capabilities`); emails a confirmation link, then offers a resend |
 | `/verify` | email confirmation | consumes `?token=` from the confirmation email and starts the session |
 | `/oauth/callback` | social login handoff | exchanges `?code=` for a session, returns to the `?from=` destination, and shows `email_conflict`/`email_required` guidance |
 | `/onboarding` | first-run setup | names the first workspace and its URL slug (skipped when the user already has an organization) |
-| `/` | repositories | organizations the caller belongs to; "New organization" dialog |
+| `/dashboard` | repositories | organizations the caller belongs to; "New organization" dialog |
 | `/:org` | repositories | project list filtered by PBAC read |
 | `/:org/:project` | tree browser | default branch root; legacy `?rev=&path=` links redirect |
 | `/:org/:project/tree/:rev/*` | tree browser | branch/commit + directory; per-file last commit, README, go-to-file |
@@ -38,6 +53,15 @@ proxies `/api` and `/docs` to `NIPA_SERVER_URL`).
 | `/admin/users/new` | new user | dedicated create page (name, email, password) |
 | `/settings/profile` | public profile | GitHub-style settings layout: avatar preview + photo URL + name, password change with confirmation/validation, connected social accounts (link/unlink; hidden when the server has no social login) and SSH key management (list/add/remove) |
 | `/settings/billing` | billing | the caller's billing-owner aggregate usage, quota and per-org breakdown; super admins can set/clear owner quotas; linked from the header and profile settings, shows an empty state when the server has no ledger |
+
+## Reserved slugs
+
+Organization and project slugs cannot use paths the router already owns.
+Organizations reject `admin, api, assets, auth, dashboard, docs, healthz,
+login, metrics, oauth, onboarding, readyz, register, settings, verify, version
+and web`; projects reject `new` and `settings`. The check lives in
+`internal/usecase/reserved.go` and is mirrored in `web/src/slug.ts`, so the
+forms reject a reserved slug before the request reaches the server.
 
 ## Browse API
 

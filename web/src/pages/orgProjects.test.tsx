@@ -296,7 +296,7 @@ describe('HomePage', () => {
     })
 
     await waitForText('already taken')
-    expect(window.location.pathname).toBe('/')
+    expect(window.location.pathname).toBe('/dashboard')
     expect(document.querySelector('[role="dialog"]')).not.toBeNull()
     act(() => root.unmount())
   })

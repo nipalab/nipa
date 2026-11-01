@@ -6,7 +6,8 @@ import { ApiError } from '../api/client'
 import { createOrg, listOrgs } from '../api/endpoints'
 import { ErrorBanner, Loading } from '../components/ui'
 import { useAsync } from '../hooks'
-import { SLUG_PATTERN, slugify } from '../slug'
+import { RESERVED_ORG_SLUGS, SLUG_PATTERN, slugify } from '../slug'
+import { APP_HOME } from '../routes'
 
 // OnboardingPage is the shared first-run step after registration confirmation
 // and social signup: name the first workspace. Users who already belong to an
@@ -22,7 +23,8 @@ export default function OnboardingPage() {
   const [busy, setBusy] = useState(false)
 
   const effectiveSlug = slugEdited ? slug : slugify(name)
-  const slugValid = effectiveSlug !== '' && SLUG_PATTERN.test(effectiveSlug)
+  const slugReserved = effectiveSlug !== '' && SLUG_PATTERN.test(effectiveSlug) && RESERVED_ORG_SLUGS.has(effectiveSlug)
+  const slugValid = effectiveSlug !== '' && SLUG_PATTERN.test(effectiveSlug) && !slugReserved
 
   if (loading) {
     return (
@@ -39,7 +41,7 @@ export default function OnboardingPage() {
     )
   }
   if (orgs && orgs.length > 0) {
-    return <Navigate to="/" replace />
+    return <Navigate to={APP_HOME} replace />
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -123,7 +125,9 @@ export default function OnboardingPage() {
                 <FormControl.Validation variant="error">
                   {effectiveSlug === ''
                     ? 'Slug is required.'
-                    : 'Slug must start with a letter or digit and contain only lowercase letters, digits and dashes.'}
+                    : slugReserved
+                      ? 'This slug is reserved. Choose a different one.'
+                      : 'Slug must start with a letter or digit and contain only lowercase letters, digits and dashes.'}
                 </FormControl.Validation>
               )}
               {slugError && <FormControl.Validation variant="error">{slugError}</FormControl.Validation>}
