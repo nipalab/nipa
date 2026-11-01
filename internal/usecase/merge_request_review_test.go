@@ -567,6 +567,7 @@ func TestMergeRequestReview_Threads_Outdated(t *testing.T) {
 	}, nil)
 	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").
 		Return(&domain.Branch{ID: 3, ProjectID: 1, CommitID: snowPtr(11)}, nil)
+	permUC.EXPECT().CompileFilter(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(AllowAllFilter(), nil)
 
 	threads, err := review.Threads(permissionCtx(9), snow.ID(1), 5, nil)
 	require.NoError(t, err)
@@ -574,6 +575,41 @@ func TestMergeRequestReview_Threads_Outdated(t *testing.T) {
 	require.True(t, threads[1].Outdated)
 	require.False(t, threads[2].Outdated, "a thread without a head commit cannot be outdated")
 	require.False(t, threads[3].Outdated, "a top-level conversation is not about the diff")
+}
+
+func TestMergeRequestReview_Threads_HidesUnreadablePaths(t *testing.T) {
+	review, repo, mrRepo, branchRepo, permUC, _, _ := newTestMergeRequestReview(t)
+	expectLoad(permUC, mrRepo)
+	repo.EXPECT().ListThreads(gomock.Any(), int64(5), nil).Return([]*domain.MergeRequestThread{
+		{ID: 1, FilePath: "public/a.go"},
+		{ID: 2, FilePath: "secret/b.go"},
+		{ID: 3},
+	}, nil)
+	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").
+		Return(&domain.Branch{ID: 3, ProjectID: 1, CommitID: snowPtr(11)}, nil)
+	restricted := &PathFilter{
+		set:        &permissionSet{rules: []*domain.PBACRule{{PathPrefix: "public", Permission: domain.PermissionRead}}},
+		permission: domain.PermissionRead,
+	}
+	permUC.EXPECT().CompileFilter(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(restricted, nil)
+
+	threads, err := review.Threads(permissionCtx(9), snow.ID(1), 5, nil)
+	require.NoError(t, err)
+	require.Len(t, threads, 2)
+	require.Equal(t, snow.ID(1), threads[0].ID)
+	require.Equal(t, snow.ID(3), threads[1].ID, "top-level conversations stay visible")
+}
+
+func TestMergeRequestReview_Threads_FilterError(t *testing.T) {
+	review, repo, mrRepo, branchRepo, permUC, _, _ := newTestMergeRequestReview(t)
+	expectLoad(permUC, mrRepo)
+	repo.EXPECT().ListThreads(gomock.Any(), int64(5), nil).Return(nil, nil)
+	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").
+		Return(&domain.Branch{ID: 3, ProjectID: 1, CommitID: snowPtr(11)}, nil)
+	permUC.EXPECT().CompileFilter(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(nil, errors.New("boom"))
+
+	_, err := review.Threads(permissionCtx(9), snow.ID(1), 5, nil)
+	require.EqualError(t, err, "boom")
 }
 
 func TestMergeRequestReview_SetThreadResolved(t *testing.T) {
@@ -816,4 +852,14 @@ func TestMergeRequestReview_Load_Rejections(t *testing.T) {
 		_, err := review.Reply(permissionCtx(9), snow.ID(1), 5, snow.ID(1), "hi")
 		require.True(t, domain.IsErrorNotFound(err))
 	})
+}
+
+func TestMergeRequestReview_RequestReview_RequiresProjectAccess(t *testing.T) {
+	review, _, mrRepo, _, perm, _, users := newTestMergeRequestReview(t)
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
+	expectLoad(perm, mrRepo)
+	users.EXPECT().GetByID(gomock.Any(), snow.ID(8)).Return(&domain.User{ID: 8}, nil)
+
+	_, err := review.WithAccessChecker(stubAccessChecker{}).RequestReview(permissionCtx(9), snow.ID(1), 5, snow.ID(8))
+	requireUserError(t, err)
 }

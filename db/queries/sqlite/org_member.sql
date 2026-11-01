@@ -24,3 +24,10 @@ DELETE FROM org_members WHERE org_id = ? AND user_id = ?;
 
 -- name: OrgMemberCountByRole :one
 SELECT COUNT(*) FROM org_members WHERE org_id = ? AND role = ?;
+
+-- name: PBACRuleDeleteByUserOrg :exec
+DELETE FROM pbac_rules WHERE user_id = ? AND org_id = ?;
+
+-- name: GroupMemberDeleteByUserOrg :exec
+DELETE FROM group_members
+WHERE user_id = ? AND group_id IN (SELECT id FROM groups WHERE org_id = ?);

@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -56,6 +57,7 @@ func TestPushRepositorySQLite_FirstPush(t *testing.T) {
 	commitID := snow.ID(12345)
 
 	require.NoError(t, repo.InsertChunkIfNotExists(ctx, chunkHash, size))
+	require.NoError(t, repo.LinkProjectChunk(ctx, projectID, chunkHash))
 	err := repo.ApplyPush(ctx, usecase.ApplyPushRequest{
 		ProjectID:  projectID,
 		BranchID:   branchID,
@@ -102,7 +104,9 @@ func TestPushRepositorySQLite_IncrementalPushKeepsOldCommitReadable(t *testing.T
 	ch1, sz1, fh1 := chunkRow(t, "alpha")
 	ch2, sz2, fh2 := chunkRow(t, "beta")
 	require.NoError(t, repo.InsertChunkIfNotExists(ctx, ch1, sz1))
+	require.NoError(t, repo.LinkProjectChunk(ctx, projectID, ch1))
 	require.NoError(t, repo.InsertChunkIfNotExists(ctx, ch2, sz2))
+	require.NoError(t, repo.LinkProjectChunk(ctx, projectID, ch2))
 
 	d1Hash1 := treehash.TreeHash([]treehash.FileEntry{{Name: "a.txt", Mode: 0o644, Hash: fh1}}, nil)
 	d1Hash2 := treehash.TreeHash([]treehash.FileEntry{{Name: "a.txt", Mode: 0o644, Hash: fh2}}, nil)
@@ -175,6 +179,7 @@ func TestPushRepositorySQLite_RemoveAllFiles(t *testing.T) {
 
 	ch, sz, fh := chunkRow(t, "gone")
 	require.NoError(t, repo.InsertChunkIfNotExists(ctx, ch, sz))
+	require.NoError(t, repo.LinkProjectChunk(ctx, projectID, ch))
 	rootHash1 := treehash.TreeHash([]treehash.FileEntry{{Name: "gone.txt", Mode: 0o644, Hash: fh}}, nil)
 	require.NoError(t, repo.ApplyPush(ctx, usecase.ApplyPushRequest{
 		ProjectID: projectID, BranchID: branchID, CommitID: snow.ID(1), UserID: snow.ID(1), Message: "c1",
@@ -228,6 +233,7 @@ func TestPushRepositorySQLite_MergeCommitWithParent2(t *testing.T) {
 
 	ch, sz, fh := chunkRow(t, "data")
 	require.NoError(t, repo.InsertChunkIfNotExists(ctx, ch, sz))
+	require.NoError(t, repo.LinkProjectChunk(ctx, projectID, ch))
 	rootHashA := treehash.TreeHash([]treehash.FileEntry{{Name: "a.txt", Mode: 0o644, Hash: fh}}, nil)
 	rootHashB := treehash.TreeHash([]treehash.FileEntry{{Name: "b.txt", Mode: 0o644, Hash: fh}}, nil)
 
@@ -312,4 +318,81 @@ func getTreeChildByName(t *testing.T, repo *BranchRepository, parentID int64, na
 	n, err := repo.GetTreeChildByName(context.Background(), parentID, name)
 	require.NoError(t, err)
 	return n
+}
+
+func TestPushRepositorySQLite_ChunkLinks(t *testing.T) {
+	ctx := context.Background()
+	repo, _, _, projectID, _ := newPushTestEnv(t)
+
+	linked, _, _ := chunkRow(t, "linked")
+	other, _, _ := chunkRow(t, "other")
+	require.NoError(t, repo.LinkProjectChunk(ctx, projectID, linked))
+	require.NoError(t, repo.LinkProjectChunk(ctx, projectID, linked), "linking twice is idempotent")
+
+	got, err := repo.LinkedProjectChunks(ctx, projectID, []domain.Hash{linked, other})
+	require.NoError(t, err)
+	require.Equal(t, map[domain.Hash]bool{linked: true}, got)
+
+	got, err = repo.LinkedProjectChunks(ctx, snow.ID(999), []domain.Hash{linked})
+	require.NoError(t, err)
+	require.Empty(t, got, "links are scoped to their project")
+
+	got, err = repo.LinkedProjectChunks(ctx, projectID, nil)
+	require.NoError(t, err)
+	require.Empty(t, got)
+}
+
+func TestPushRepositorySQLite_LinkedProjectChunksBatches(t *testing.T) {
+	ctx := context.Background()
+	repo, _, _, projectID, _ := newPushTestEnv(t)
+
+	hashes := make([]domain.Hash, 0, linkedChunkBatch+10)
+	for i := 0; i < linkedChunkBatch+10; i++ {
+		hash, _, _ := chunkRow(t, fmt.Sprintf("chunk-%d", i))
+		require.NoError(t, repo.LinkProjectChunk(ctx, projectID, hash))
+		hashes = append(hashes, hash)
+	}
+
+	got, err := repo.LinkedProjectChunks(ctx, projectID, hashes)
+	require.NoError(t, err)
+	require.Len(t, got, len(hashes))
+}
+
+func TestPushRepositorySQLite_ApplyPushRejectsUnlinkedChunk(t *testing.T) {
+	ctx := context.Background()
+	repo, _, _, projectID, branchID := newPushTestEnv(t)
+
+	chunkHash, size, fileHash := chunkRow(t, "someone else's content")
+	require.NoError(t, repo.InsertChunkIfNotExists(ctx, chunkHash, size))
+
+	err := repo.ApplyPush(ctx, usecase.ApplyPushRequest{
+		ProjectID:  projectID,
+		BranchID:   branchID,
+		CommitID:   snow.ID(777),
+		CommitHash: treehash.CommitHash(treehash.TreeHash(nil, nil), nil, "first"),
+		UserID:     snow.ID(1),
+		Message:    "first commit",
+		Nodes:      []usecase.PushNodeRow{{ID: 1, Hash: treehash.TreeHash(nil, nil), Name: "root", Mode: 0o444}},
+		Files: []usecase.PushFileRow{
+			{Name: "stolen.bin", Mode: 0o644, SizeBytes: size, IsBinary: true, Hash: fileHash, TreeID: 1, ChunkHashes: []domain.Hash{chunkHash}},
+		},
+	})
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "missing chunk data")
+}
+
+func TestPushRepositorySQLite_LinkProjectChunksBatch(t *testing.T) {
+	ctx := context.Background()
+	repo, _, _, projectID, _ := newPushTestEnv(t)
+
+	first, _, _ := chunkRow(t, "first")
+	second, _, _ := chunkRow(t, "second")
+	require.NoError(t, repo.LinkProjectChunks(ctx, projectID, nil), "an empty batch is a no-op")
+	require.NoError(t, repo.LinkProjectChunk(ctx, projectID, first))
+	require.NoError(t, repo.LinkProjectChunks(ctx, projectID, []domain.Hash{first, second}), "already linked hashes are skipped")
+
+	got, err := repo.LinkedProjectChunks(ctx, projectID, []domain.Hash{first, second})
+	require.NoError(t, err)
+	require.Equal(t, map[domain.Hash]bool{first: true, second: true}, got)
 }

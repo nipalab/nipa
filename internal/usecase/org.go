@@ -28,6 +28,13 @@ type orgAuthorizer interface {
 type Org struct {
 	repo     orgMemberRepository
 	snowNode snow.Node
+	cache    permissionCacheInvalidator
+}
+
+// WithPermissionCache drops cached rule sets after a member loses access.
+func (o *Org) WithPermissionCache(cache permissionCacheInvalidator) *Org {
+	o.cache = cache
+	return o
 }
 
 func NewOrg(repo orgMemberRepository, snowNode snow.Node) *Org {
@@ -117,7 +124,13 @@ func (o *Org) RemoveMember(ctx context.Context, orgID, userID snow.ID) error {
 	if err := o.ensureNotLastOwner(ctx, orgID, userID); err != nil {
 		return err
 	}
-	return o.repo.RemoveMember(ctx, orgID, userID)
+	if err := o.repo.RemoveMember(ctx, orgID, userID); err != nil {
+		return err
+	}
+	if o.cache != nil {
+		o.cache.InvalidateAll()
+	}
+	return nil
 }
 
 func (o *Org) IsOrgOwner(ctx context.Context, orgID snow.ID) (bool, error) {

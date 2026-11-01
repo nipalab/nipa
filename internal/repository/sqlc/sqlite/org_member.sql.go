@@ -11,6 +11,21 @@ import (
 	"time"
 )
 
+const groupMemberDeleteByUserOrg = `-- name: GroupMemberDeleteByUserOrg :exec
+DELETE FROM group_members
+WHERE user_id = ? AND group_id IN (SELECT id FROM groups WHERE org_id = ?)
+`
+
+type GroupMemberDeleteByUserOrgParams struct {
+	UserID int64 `json:"user_id"`
+	OrgID  int64 `json:"org_id"`
+}
+
+func (q *Queries) GroupMemberDeleteByUserOrg(ctx context.Context, arg GroupMemberDeleteByUserOrgParams) error {
+	_, err := q.db.ExecContext(ctx, groupMemberDeleteByUserOrg, arg.UserID, arg.OrgID)
+	return err
+}
+
 const orgMemberCountByRole = `-- name: OrgMemberCountByRole :one
 SELECT COUNT(*) FROM org_members WHERE org_id = ? AND role = ?
 `
@@ -174,5 +189,19 @@ type OrgMemberUpsertParams struct {
 
 func (q *Queries) OrgMemberUpsert(ctx context.Context, arg OrgMemberUpsertParams) error {
 	_, err := q.db.ExecContext(ctx, orgMemberUpsert, arg.OrgID, arg.UserID, arg.Role)
+	return err
+}
+
+const pBACRuleDeleteByUserOrg = `-- name: PBACRuleDeleteByUserOrg :exec
+DELETE FROM pbac_rules WHERE user_id = ? AND org_id = ?
+`
+
+type PBACRuleDeleteByUserOrgParams struct {
+	UserID sql.NullInt64 `json:"user_id"`
+	OrgID  int64         `json:"org_id"`
+}
+
+func (q *Queries) PBACRuleDeleteByUserOrg(ctx context.Context, arg PBACRuleDeleteByUserOrgParams) error {
+	_, err := q.db.ExecContext(ctx, pBACRuleDeleteByUserOrg, arg.UserID, arg.OrgID)
 	return err
 }

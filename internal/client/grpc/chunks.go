@@ -5,10 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"maps"
-	"mime/multipart"
 	"net/http"
-	"slices"
 	"strings"
 	"sync"
 
@@ -16,15 +13,23 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/propagation"
 
+	"github.com/nipalab/nipa/internal/chunkproof"
 	"github.com/nipalab/nipa/internal/client/domain"
 	serverDomain "github.com/nipalab/nipa/internal/domain"
 	pb "github.com/nipalab/nipa/internal/grpc/pb"
 	"github.com/nipalab/nipa/internal/obs"
 )
 
-// UploadChunks sends chunk content to the signed upload URLs returned by the
-// server. Chunks the server already stores are reported as skipped. After the
-// transfer the uploads are confirmed so the server records chunk metadata.
+// maxUploadAttempts bounds how often chunks the server could not confirm are
+// presigned and sent again, e.g. after it deleted garbage planted on their key.
+const maxUploadAttempts = 3
+
+// UploadChunks stores chunk content on the server. Chunks the project is
+// already linked to are skipped. For the rest, the client first proves it holds
+// the bytes (the server links content it already has, with no transfer) and
+// only sends what is not stored yet to the signed upload URLs. Every upload is
+// confirmed with a fresh proof so the server records chunk metadata and links
+// the project.
 func (c *Client) UploadChunks(ctx context.Context, scope domain.ChunkScope, chunks []*serverDomain.ChunkData, onChunk ...func(ch *serverDomain.ChunkData)) (int, int, error) {
 	if len(chunks) == 0 {
 		return 0, 0, nil
@@ -38,73 +43,17 @@ func (c *Client) UploadChunks(ctx context.Context, scope domain.ChunkScope, chun
 		return 0, 0, err
 	}
 
-	refs := make([]*pb.ChunkRef, 0, len(chunks))
-	rawHashes := make([]string, 0, len(chunks))
-	dataByHash := make(map[serverDomain.Hash][]byte, len(chunks))
-	for _, chunk := range chunks {
-		refs = append(refs, &pb.ChunkRef{Hash: chunk.Hash.String(), SizeBytes: int64(len(chunk.Data))})
-		rawHashes = append(rawHashes, chunk.Hash.String())
-		dataByHash[chunk.Hash] = chunk.Data
-	}
-
-	var uploaded, skipped int
-	pageToken := ""
-	for {
-		res, err := client.GetChunkUploadUrls(authedCtx, &pb.GetChunkUploadUrlsRequest{
-			Context:   &pb.ProjectContext{Org: scope.Org, Project: scope.Project},
-			Chunks:    refs,
-			PageSize:  int32(len(refs)),
-			PageToken: pageToken,
-		})
+	uploaded := map[serverDomain.Hash]struct{}{}
+	skipped := map[serverDomain.Hash]struct{}{}
+	remaining := chunks
+	for attempt := 0; attempt < maxUploadAttempts && len(remaining) > 0; attempt++ {
+		remaining, err = c.uploadAttempt(authedCtx, client, scope, remaining, uploaded, skipped)
 		if err != nil {
-			return 0, 0, toDomainError(err)
-		}
-
-		jobs := make([]chunkTransfer, 0, len(res.GetUrls()))
-		for _, u := range res.GetUrls() {
-			hash, err := decodeHash(u.GetHash())
-			if err != nil {
-				return 0, 0, err
-			}
-			if u.GetAlreadyStored() {
-				skipped++
-				continue
-			}
-			data, ok := dataByHash[hash]
-			if !ok {
-				return 0, 0, domain.NewUserError(fmt.Sprintf("server requested unknown chunk %s", hash))
-			}
-			jobs = append(jobs, chunkTransfer{
-				hash:     hash,
-				url:      u.GetUrl(),
-				method:   u.GetMethod(),
-				formData: u.GetFormData(),
-				data:     data,
-			})
-		}
-
-		if err := c.putChunks(authedCtx, jobs); err != nil {
 			return 0, 0, err
 		}
-		uploaded += len(jobs)
-
-		pageToken = res.GetNextPageToken()
-		if pageToken == "" {
-			break
-		}
 	}
-
-	c.confirmMu.Lock()
-	confirm, err := client.ConfirmChunkUploads(authedCtx, &pb.ConfirmChunkUploadsRequest{
-		Context: &pb.ProjectContext{Org: scope.Org, Project: scope.Project},
-		Hashes:  rawHashes,
-	})
-	c.confirmMu.Unlock()
-	if err != nil {
-		return 0, 0, toDomainError(err)
-	}
-	if missing := confirm.GetMissingHashes(); len(missing) > 0 {
-		return 0, 0, domain.NewUserError(fmt.Sprintf("upload incomplete: %d chunk(s) missing on the server", len(missing)))
+	if len(remaining) > 0 {
+		return 0, 0, domain.NewUserError(fmt.Sprintf("upload incomplete: %d chunk(s) missing on the server", len(remaining)))
 	}
 
 	if len(onChunk) > 0 && onChunk[0] != nil {
@@ -112,7 +61,139 @@ func (c *Client) UploadChunks(ctx context.Context, scope domain.ChunkScope, chun
 			onChunk[0](chunk)
 		}
 	}
-	return uploaded, skipped, nil
+	return len(uploaded), len(skipped), nil
+}
+
+// uploadAttempt presigns, claims, uploads and confirms the given chunks once.
+// It returns the chunks that still need another attempt.
+func (c *Client) uploadAttempt(ctx context.Context, client pb.NipaServiceClient, scope domain.ChunkScope, chunks []*serverDomain.ChunkData, uploaded, skipped map[serverDomain.Hash]struct{}) ([]*serverDomain.ChunkData, error) {
+	refs := make([]*pb.ChunkRef, 0, len(chunks))
+	rawHashes := make([]string, 0, len(chunks))
+	dataByHash := make(map[serverDomain.Hash]*serverDomain.ChunkData, len(chunks))
+	for _, chunk := range chunks {
+		refs = append(refs, &pb.ChunkRef{Hash: chunk.Hash.String(), SizeBytes: int64(len(chunk.Data))})
+		rawHashes = append(rawHashes, chunk.Hash.String())
+		dataByHash[chunk.Hash] = chunk
+	}
+
+	retry := map[serverDomain.Hash]struct{}{}
+	var uploadedProofs []*pb.ChunkPossessionProof
+	confirmHashes := make([]string, 0, len(chunks))
+	pageToken := ""
+	for {
+		res, err := client.GetChunkUploadUrls(ctx, &pb.GetChunkUploadUrlsRequest{
+			Context:   &pb.ProjectContext{Org: scope.Org, Project: scope.Project},
+			Chunks:    refs,
+			PageSize:  int32(len(refs)),
+			PageToken: pageToken,
+		})
+		if err != nil {
+			return nil, toDomainError(err)
+		}
+
+		var pending []chunkTransfer
+		var pendingProofs []*pb.ChunkPossessionProof
+		for _, u := range res.GetUrls() {
+			hash, err := decodeHash(u.GetHash())
+			if err != nil {
+				return nil, err
+			}
+			chunk, ok := dataByHash[hash]
+			if !ok {
+				return nil, domain.NewUserError(fmt.Sprintf("server requested unknown chunk %s", hash))
+			}
+			confirmHashes = append(confirmHashes, hash.String())
+			if u.GetAlreadyStored() {
+				skipped[hash] = struct{}{}
+				continue
+			}
+			pending = append(pending, chunkTransfer{hash: hash, url: u.GetUrl(), headers: u.GetHeaders(), data: chunk.Data})
+			pendingProofs = append(pendingProofs, &pb.ChunkPossessionProof{
+				Hash:      hash.String(),
+				Challenge: u.GetProofChallenge(),
+				Proof:     chunkproof.Proof(u.GetProofChallenge(), chunk.Data),
+			})
+		}
+
+		notProven, err := c.confirmChunks(ctx, client, scope, hashStrings(pending), pendingProofs)
+		if err != nil {
+			return nil, err
+		}
+		jobs := make([]chunkTransfer, 0, len(notProven))
+		for i, job := range pending {
+			if _, absent := notProven[job.hash.String()]; !absent {
+				skipped[job.hash] = struct{}{}
+				continue
+			}
+			if job.url == "" {
+				retry[job.hash] = struct{}{}
+				continue
+			}
+			jobs = append(jobs, job)
+			uploadedProofs = append(uploadedProofs, pendingProofs[i])
+		}
+
+		if err := c.putChunks(ctx, jobs); err != nil {
+			return nil, err
+		}
+		for _, job := range jobs {
+			uploaded[job.hash] = struct{}{}
+			delete(skipped, job.hash)
+		}
+
+		pageToken = res.GetNextPageToken()
+		if pageToken == "" {
+			break
+		}
+	}
+
+	notConfirmed, err := c.confirmChunks(ctx, client, scope, confirmHashes, uploadedProofs)
+	if err != nil {
+		return nil, err
+	}
+	var remaining []*serverDomain.ChunkData
+	for _, chunk := range chunks {
+		_, deferred := retry[chunk.Hash]
+		_, failed := notConfirmed[chunk.Hash.String()]
+		if deferred || failed {
+			delete(uploaded, chunk.Hash)
+			delete(skipped, chunk.Hash)
+			remaining = append(remaining, chunk)
+		}
+	}
+	return remaining, nil
+}
+
+// confirmChunks sends hashes with their possession proofs and returns the set
+// of hashes the server could not confirm. Confirmations are serialized so
+// concurrent upload windows never stack SQLite metadata writes.
+func (c *Client) confirmChunks(ctx context.Context, client pb.NipaServiceClient, scope domain.ChunkScope, hashes []string, proofs []*pb.ChunkPossessionProof) (map[string]struct{}, error) {
+	if len(hashes) == 0 {
+		return nil, nil
+	}
+	c.confirmMu.Lock()
+	res, err := client.ConfirmChunkUploads(ctx, &pb.ConfirmChunkUploadsRequest{
+		Context: &pb.ProjectContext{Org: scope.Org, Project: scope.Project},
+		Hashes:  hashes,
+		Proofs:  proofs,
+	})
+	c.confirmMu.Unlock()
+	if err != nil {
+		return nil, toDomainError(err)
+	}
+	missing := make(map[string]struct{}, len(res.GetMissingHashes()))
+	for _, hash := range res.GetMissingHashes() {
+		missing[hash] = struct{}{}
+	}
+	return missing, nil
+}
+
+func hashStrings(jobs []chunkTransfer) []string {
+	hashes := make([]string, 0, len(jobs))
+	for _, job := range jobs {
+		hashes = append(hashes, job.hash.String())
+	}
+	return hashes
 }
 
 // DownloadChunks fetches chunk content through signed download URLs. Callers
@@ -174,26 +255,19 @@ func (c *Client) DownloadChunks(ctx context.Context, scope domain.ChunkScope, ha
 }
 
 type chunkTransfer struct {
-	hash     serverDomain.Hash
-	url      string
-	method   string
-	formData map[string]string
-	data     []byte
+	hash    serverDomain.Hash
+	url     string
+	headers map[string]string
+	data    []byte
 }
 
 func (c *Client) putChunks(ctx context.Context, jobs []chunkTransfer) error {
-	return c.forEachChunk(ctx, jobs, func(ctx context.Context, job chunkTransfer) (int64, error) {
-		switch {
-		case job.method == "" || strings.EqualFold(job.method, http.MethodPut):
-			return c.putChunk(ctx, job)
-		case strings.EqualFold(job.method, http.MethodPost):
-			return c.postChunk(ctx, job)
-		default:
-			return int64(len(job.data)), domain.NewUserError(fmt.Sprintf("unsupported chunk upload method %q", job.method))
-		}
-	})
+	return c.forEachChunk(ctx, jobs, c.putChunk)
 }
 
+// putChunk sends one chunk with a PUT. A direct backend's create-only target
+// answers 412 when the content was stored in the meantime; that is not a
+// failure, the confirmation that follows decides whether the bytes match.
 func (c *Client) putChunk(ctx context.Context, job chunkTransfer) (size int64, err error) {
 	ctx, span := obs.StartSpan(ctx, "chunk.upload.put",
 		attribute.String(obs.AttrChunkHash, job.hash.String()),
@@ -204,7 +278,9 @@ func (c *Client) putChunk(ctx context.Context, job chunkTransfer) (size int64, e
 	if err != nil {
 		return 0, err
 	}
-	request.Header.Set("Content-Type", "application/octet-stream")
+	for name, value := range job.headers {
+		request.Header.Set(name, value)
+	}
 	injectTraceContext(ctx, request.Header)
 	res, err := c.http.Do(request)
 	if err != nil {
@@ -212,50 +288,8 @@ func (c *Client) putChunk(ctx context.Context, job chunkTransfer) (size int64, e
 	}
 	defer func() { _ = res.Body.Close() }()
 	span.SetAttributes(attribute.Int("http.response.status_code", res.StatusCode))
-	if res.StatusCode == http.StatusNoContent || res.StatusCode == http.StatusOK {
-		return int64(len(job.data)), nil
-	}
-	return int64(len(job.data)), chunkHTTPError(res)
-}
-
-// postChunk uploads one chunk through a POST policy where the form fields
-// must precede the file part, which the backend keeps last.
-func (c *Client) postChunk(ctx context.Context, job chunkTransfer) (size int64, err error) {
-	ctx, span := obs.StartSpan(ctx, "chunk.upload.post",
-		attribute.String(obs.AttrChunkHash, job.hash.String()),
-		attribute.Int(obs.AttrChunkSize, len(job.data)))
-	defer func() { obs.FinishSpan(span, err) }()
-
-	var body bytes.Buffer
-	writer := multipart.NewWriter(&body)
-	for _, key := range slices.Sorted(maps.Keys(job.formData)) {
-		if err := writer.WriteField(key, job.formData[key]); err != nil {
-			return 0, err
-		}
-	}
-	part, err := writer.CreateFormFile("file", "chunk")
-	if err != nil {
-		return 0, err
-	}
-	if _, err := part.Write(job.data); err != nil {
-		return 0, err
-	}
-	if err := writer.Close(); err != nil {
-		return 0, err
-	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, c.httpURL(job.url), &body)
-	if err != nil {
-		return 0, err
-	}
-	request.Header.Set("Content-Type", writer.FormDataContentType())
-	injectTraceContext(ctx, request.Header)
-	res, err := c.http.Do(request)
-	if err != nil {
-		return 0, err
-	}
-	defer func() { _ = res.Body.Close() }()
-	span.SetAttributes(attribute.Int("http.response.status_code", res.StatusCode))
-	if res.StatusCode == http.StatusNoContent || res.StatusCode == http.StatusOK {
+	switch res.StatusCode {
+	case http.StatusNoContent, http.StatusOK, http.StatusPreconditionFailed:
 		return int64(len(job.data)), nil
 	}
 	return int64(len(job.data)), chunkHTTPError(res)

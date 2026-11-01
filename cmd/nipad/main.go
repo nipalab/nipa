@@ -129,6 +129,7 @@ func main() {
 		WithSSHKeys(sqlite.NewSSHKeyRepository(dbConn))
 	orgUsecase := usecase.NewOrg(orgRepo, snowUser)
 	permissionUsecase := usecase.NewPermission(pbacRepository, userRepo, groupRepository, orgUsecase)
+	orgUsecase.WithPermissionCache(permissionUsecase)
 	projectUsecase := usecase.NewProject(projectRepo, snowUser, permissionUsecase, orgUsecase)
 	chunkStore, err := createChunkStore(cfg)
 	if err != nil {
@@ -166,6 +167,8 @@ func main() {
 	pushUsecase = pushUsecase.WithReviews(mergeRequestReviewUsecase)
 	mergeRequestUsecase = mergeRequestUsecase.WithReview(mergeRequestReviewUsecase)
 	mergeRequestUsecase = mergeRequestUsecase.WithUsers(userRepo)
+	mergeRequestUsecase = mergeRequestUsecase.WithAccessChecker(permissionUsecase)
+	mergeRequestReviewUsecase = mergeRequestReviewUsecase.WithAccessChecker(permissionUsecase)
 	chunkUsecase := usecase.NewChunk(pushRepository, chunkStore, usecase.ChunkTransferConfig{
 		SigningKey:  cfg.ChunkURLSigningKey,
 		PresignTTL:  time.Duration(cfg.ChunkPresignTTLSeconds) * time.Second,

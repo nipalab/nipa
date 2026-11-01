@@ -256,6 +256,12 @@ type Project struct {
 	DeletedAt   sql.NullTime `json:"deleted_at"`
 }
 
+type ProjectChunkUpload struct {
+	ProjectID int64        `json:"project_id"`
+	Hash      []byte       `json:"hash"`
+	CreatedAt sql.NullTime `json:"created_at"`
+}
+
 type ProjectPathsPermission struct {
 	ID         int64        `json:"id"`
 	ProjectID  int64        `json:"project_id"`

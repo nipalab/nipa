@@ -425,6 +425,14 @@ var _ = Describe("nipa mr", func() {
 
 		assignee := newIdentity("mr-assignee")
 		other := newIdentity("mr-other-user")
+		outsider := api.createUser("mr-outsider", "mr-outsider-"+randSuffix(4)+"@example.com", "identity-password-123")
+		api.createPathRule(orgSlug, project, assignee.userID, "", 1)
+		api.createPathRule(orgSlug, project, other.userID, "", 1)
+
+		code, _ := api.doRaw(http.MethodPost, fmt.Sprintf("/orgs/%s/projects/%s/merge-requests/1/assignees", orgSlug, project),
+			map[string]any{"user_ids": []string{outsider}})
+		Expect(code).To(Equal(http.StatusBadRequest), "accounts without project access cannot be assigned")
+
 		api.setMergeRequestAssignees(orgSlug, project, 1, []string{assignee.userID})
 
 		view := runNipa(dir, "mr", "view", "1")

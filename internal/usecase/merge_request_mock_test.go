@@ -363,3 +363,41 @@ func (mr_2 *MockhookMergeRequestGateMockRecorder) EmitMergeRequest(ctx, event, p
 	mr_2.mock.ctrl.T.Helper()
 	return mr_2.mock.ctrl.RecordCallWithMethodType(mr_2.mock, "EmitMergeRequest", reflect.TypeOf((*MockhookMergeRequestGate)(nil).EmitMergeRequest), ctx, event, projectID, mr, actor)
 }
+
+// MockprojectAccessChecker is a mock of projectAccessChecker interface.
+type MockprojectAccessChecker struct {
+	ctrl     *gomock.Controller
+	recorder *MockprojectAccessCheckerMockRecorder
+	isgomock struct{}
+}
+
+// MockprojectAccessCheckerMockRecorder is the mock recorder for MockprojectAccessChecker.
+type MockprojectAccessCheckerMockRecorder struct {
+	mock *MockprojectAccessChecker
+}
+
+// NewMockprojectAccessChecker creates a new mock instance.
+func NewMockprojectAccessChecker(ctrl *gomock.Controller) *MockprojectAccessChecker {
+	mock := &MockprojectAccessChecker{ctrl: ctrl}
+	mock.recorder = &MockprojectAccessCheckerMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockprojectAccessChecker) EXPECT() *MockprojectAccessCheckerMockRecorder {
+	return m.recorder
+}
+
+// UserHasProjectAccess mocks base method.
+func (m *MockprojectAccessChecker) UserHasProjectAccess(ctx context.Context, projectID, userID snow.ID, permission domain.Permission) bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UserHasProjectAccess", ctx, projectID, userID, permission)
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// UserHasProjectAccess indicates an expected call of UserHasProjectAccess.
+func (mr *MockprojectAccessCheckerMockRecorder) UserHasProjectAccess(ctx, projectID, userID, permission any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UserHasProjectAccess", reflect.TypeOf((*MockprojectAccessChecker)(nil).UserHasProjectAccess), ctx, projectID, userID, permission)
+}

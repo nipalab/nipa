@@ -804,7 +804,7 @@ func TestTag_DeleteTag_Success(t *testing.T) {
 	repo := NewMocktagRepository(ctrl)
 	branchRepo := NewMockbranchRepository(ctrl)
 
-	tag := &domain.Tag{ID: 7, ProjectID: 1, Name: "v1.0.0"}
+	tag := &domain.Tag{ID: 7, ProjectID: 1, Name: "v1.0.0", UserID: 7}
 
 	perm.EXPECT().
 		HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).
@@ -823,7 +823,7 @@ func TestTag_DeleteTag_RepositoryError(t *testing.T) {
 	repo := NewMocktagRepository(ctrl)
 	branchRepo := NewMockbranchRepository(ctrl)
 
-	tag := &domain.Tag{ID: 7, ProjectID: 1, Name: "v1.0.0"}
+	tag := &domain.Tag{ID: 7, ProjectID: 1, Name: "v1.0.0", UserID: 7}
 	wantErr := errors.New("db down")
 
 	perm.EXPECT().
@@ -875,7 +875,7 @@ func TestTag_DeleteEmitsWebhookEvent(t *testing.T) {
 	repo := NewMocktagRepository(ctrl)
 	branchRepo := NewMockbranchRepository(ctrl)
 	ctx := permissionCtx(7)
-	tag := &domain.Tag{ID: 7, ProjectID: 1, Name: "v1.0.0"}
+	tag := &domain.Tag{ID: 7, ProjectID: 1, Name: "v1.0.0", UserID: 7}
 
 	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
 	repo.EXPECT().GetTagByName(gomock.Any(), snow.ID(1), "v1.0.0").Return(tag, nil)
@@ -912,4 +912,29 @@ func TestTag_WebhookHookFailureIsNotFatal(t *testing.T) {
 	created, err := uc.WithHooks(hooks).CreateTag(ctx, snow.ID(1), "v1.0.0", TagTarget{}, "")
 	require.NoError(t, err)
 	require.NotZero(t, created.ID)
+}
+
+func TestTag_DeleteTag_OnlyCreatorOrAdmin(t *testing.T) {
+	setup := func(t *testing.T, admin bool) (*Tag, *MocktagRepository) {
+		ctrl := gomock.NewController(t)
+		perm := NewMockpermissionUsecase(ctrl)
+		repo := NewMocktagRepository(ctrl)
+		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
+		perm.EXPECT().AdminHasProject(gomock.Any(), snow.ID(1)).Return(admin)
+		repo.EXPECT().GetTagByName(gomock.Any(), snow.ID(1), "v1.0.0").
+			Return(&domain.Tag{ID: 7, ProjectID: 1, Name: "v1.0.0", UserID: 99}, nil)
+		return NewTag(perm, repo, NewMockbranchRepository(ctrl), newTestBranchNode(t)), repo
+	}
+
+	t.Run("another writer is refused", func(t *testing.T) {
+		uc, _ := setup(t, false)
+		err := uc.DeleteTag(permissionCtx(7), snow.ID(1), "v1.0.0")
+		require.True(t, domain.IsErrorNoPermission(err))
+	})
+
+	t.Run("a project admin may delete", func(t *testing.T) {
+		uc, repo := setup(t, true)
+		repo.EXPECT().DeleteTag(gomock.Any(), snow.ID(1), snow.ID(7)).Return(nil)
+		require.NoError(t, uc.DeleteTag(permissionCtx(7), snow.ID(1), "v1.0.0"))
+	})
 }

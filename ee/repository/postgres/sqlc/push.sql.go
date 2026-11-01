@@ -8,6 +8,8 @@ package postgres
 import (
 	"context"
 	"database/sql"
+
+	"github.com/lib/pq"
 )
 
 const branchUpdateCommit = `-- name: BranchUpdateCommit :exec
@@ -35,6 +37,31 @@ LIMIT 1
 
 func (q *Queries) ChunkGetByHash(ctx context.Context, hash []byte) (Chunk, error) {
 	row := q.db.QueryRowContext(ctx, chunkGetByHash, hash)
+	var i Chunk
+	err := row.Scan(
+		&i.ID,
+		&i.Hash,
+		&i.SizeBytes,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const chunkGetByHashForProject = `-- name: ChunkGetByHashForProject :one
+SELECT c.id, c.hash, c.size_bytes, c.created_at
+FROM chunks c
+JOIN project_chunk_uploads u ON u.hash = c.hash
+WHERE c.hash = $1 AND u.project_id = $2
+LIMIT 1
+`
+
+type ChunkGetByHashForProjectParams struct {
+	Hash      []byte `json:"hash"`
+	ProjectID int64  `json:"project_id"`
+}
+
+func (q *Queries) ChunkGetByHashForProject(ctx context.Context, arg ChunkGetByHashForProjectParams) (Chunk, error) {
+	row := q.db.QueryRowContext(ctx, chunkGetByHashForProject, arg.Hash, arg.ProjectID)
 	var i Chunk
 	err := row.Scan(
 		&i.ID,
@@ -148,6 +175,54 @@ type FileSetTreeParams struct {
 func (q *Queries) FileSetTree(ctx context.Context, arg FileSetTreeParams) error {
 	_, err := q.db.ExecContext(ctx, fileSetTree, arg.TreeID, arg.ID)
 	return err
+}
+
+const projectChunkUploadInsert = `-- name: ProjectChunkUploadInsert :exec
+INSERT INTO project_chunk_uploads (project_id, hash) VALUES ($1, $2)
+ON CONFLICT (project_id, hash) DO NOTHING
+`
+
+type ProjectChunkUploadInsertParams struct {
+	ProjectID int64  `json:"project_id"`
+	Hash      []byte `json:"hash"`
+}
+
+func (q *Queries) ProjectChunkUploadInsert(ctx context.Context, arg ProjectChunkUploadInsertParams) error {
+	_, err := q.db.ExecContext(ctx, projectChunkUploadInsert, arg.ProjectID, arg.Hash)
+	return err
+}
+
+const projectChunkUploadList = `-- name: ProjectChunkUploadList :many
+SELECT hash FROM project_chunk_uploads
+WHERE project_id = $1 AND hash = ANY($2::bytea[])
+`
+
+type ProjectChunkUploadListParams struct {
+	ProjectID int64    `json:"project_id"`
+	Hashes    [][]byte `json:"hashes"`
+}
+
+func (q *Queries) ProjectChunkUploadList(ctx context.Context, arg ProjectChunkUploadListParams) ([][]byte, error) {
+	rows, err := q.db.QueryContext(ctx, projectChunkUploadList, arg.ProjectID, pq.Array(arg.Hashes))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items [][]byte
+	for rows.Next() {
+		var hash []byte
+		if err := rows.Scan(&hash); err != nil {
+			return nil, err
+		}
+		items = append(items, hash)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const treeNodeInsert = `-- name: TreeNodeInsert :one

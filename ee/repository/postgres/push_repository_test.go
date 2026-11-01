@@ -65,6 +65,7 @@ func (s *PushRepositorySuite) TestFirstPush() {
 	commitID := snow.ID(12345)
 
 	s.Require().NoError(repo.InsertChunkIfNotExists(ctx, chunkHash, size))
+	s.Require().NoError(repo.LinkProjectChunk(ctx, projectID, chunkHash))
 	err := repo.ApplyPush(ctx, usecase.ApplyPushRequest{
 		ProjectID:  projectID,
 		BranchID:   branchID,
@@ -111,7 +112,9 @@ func (s *PushRepositorySuite) TestIncrementalPushKeepsOldCommitReadable() {
 	ch1, sz1, fh1 := chunkRow(s.T(), "alpha")
 	ch2, sz2, fh2 := chunkRow(s.T(), "beta")
 	s.Require().NoError(repo.InsertChunkIfNotExists(ctx, ch1, sz1))
+	s.Require().NoError(repo.LinkProjectChunk(ctx, projectID, ch1))
 	s.Require().NoError(repo.InsertChunkIfNotExists(ctx, ch2, sz2))
+	s.Require().NoError(repo.LinkProjectChunk(ctx, projectID, ch2))
 
 	d1Hash1 := treehash.TreeHash([]treehash.FileEntry{{Name: "a.txt", Mode: 0o644, Hash: fh1}}, nil)
 	d1Hash2 := treehash.TreeHash([]treehash.FileEntry{{Name: "a.txt", Mode: 0o644, Hash: fh2}}, nil)
@@ -184,6 +187,7 @@ func (s *PushRepositorySuite) TestRemoveAllFiles() {
 
 	ch, sz, fh := chunkRow(s.T(), "gone")
 	s.Require().NoError(repo.InsertChunkIfNotExists(ctx, ch, sz))
+	s.Require().NoError(repo.LinkProjectChunk(ctx, projectID, ch))
 	rootHash1 := treehash.TreeHash([]treehash.FileEntry{{Name: "gone.txt", Mode: 0o644, Hash: fh}}, nil)
 	s.Require().NoError(repo.ApplyPush(ctx, usecase.ApplyPushRequest{
 		ProjectID: projectID, BranchID: branchID, CommitID: snow.ID(1), UserID: snow.ID(1), Message: "c1",
@@ -237,6 +241,7 @@ func (s *PushRepositorySuite) TestMergeCommitWithParent2() {
 
 	ch, sz, fh := chunkRow(s.T(), "data")
 	s.Require().NoError(repo.InsertChunkIfNotExists(ctx, ch, sz))
+	s.Require().NoError(repo.LinkProjectChunk(ctx, projectID, ch))
 	rootHashA := treehash.TreeHash([]treehash.FileEntry{{Name: "a.txt", Mode: 0o644, Hash: fh}}, nil)
 	rootHashB := treehash.TreeHash([]treehash.FileEntry{{Name: "b.txt", Mode: 0o644, Hash: fh}}, nil)
 
@@ -321,4 +326,53 @@ func getTreeChildByName(t *testing.T, repo *BranchRepository, parentID int64, na
 	n, err := repo.GetTreeChildByName(context.Background(), parentID, name)
 	require.NoError(t, err)
 	return n
+}
+
+func (s *PushRepositorySuite) TestChunkLinks() {
+	ctx := context.Background()
+	repo, _, projectID, branchID := s.newPushTestEnv()
+
+	linked, size, fileHash := chunkRow(s.T(), "linked")
+	other, _, _ := chunkRow(s.T(), "other")
+	s.Require().NoError(repo.LinkProjectChunk(ctx, projectID, linked))
+	s.Require().NoError(repo.LinkProjectChunk(ctx, projectID, linked))
+
+	got, err := repo.LinkedProjectChunks(ctx, projectID, []domain.Hash{linked, other})
+	s.Require().NoError(err)
+	s.Equal(map[domain.Hash]bool{linked: true}, got)
+
+	got, err = repo.LinkedProjectChunks(ctx, snow.ID(999), []domain.Hash{linked})
+	s.Require().NoError(err)
+	s.Empty(got)
+
+	s.Require().NoError(repo.InsertChunkIfNotExists(ctx, other, size))
+	err = repo.ApplyPush(ctx, usecase.ApplyPushRequest{
+		ProjectID:  projectID,
+		BranchID:   branchID,
+		CommitID:   snow.ID(778),
+		CommitHash: treehash.CommitHash(treehash.TreeHash(nil, nil), nil, "first"),
+		UserID:     snow.ID(1),
+		Message:    "first commit",
+		Nodes:      []usecase.PushNodeRow{{ID: 1, Hash: treehash.TreeHash(nil, nil), Name: "root", Mode: 0o444}},
+		Files: []usecase.PushFileRow{
+			{Name: "stolen.bin", Mode: 0o644, SizeBytes: size, IsBinary: true, Hash: fileHash, TreeID: 1, ChunkHashes: []domain.Hash{other}},
+		},
+	})
+	s.Require().Error(err)
+	s.Contains(err.Error(), "missing chunk data")
+}
+
+func (s *PushRepositorySuite) TestLinkProjectChunksBatch() {
+	ctx := context.Background()
+	repo, _, projectID, _ := s.newPushTestEnv()
+
+	first, _, _ := chunkRow(s.T(), "first")
+	second, _, _ := chunkRow(s.T(), "second")
+	s.Require().NoError(repo.LinkProjectChunks(ctx, projectID, nil))
+	s.Require().NoError(repo.LinkProjectChunk(ctx, projectID, first))
+	s.Require().NoError(repo.LinkProjectChunks(ctx, projectID, []domain.Hash{first, second}))
+
+	got, err := repo.LinkedProjectChunks(ctx, projectID, []domain.Hash{first, second})
+	s.Require().NoError(err)
+	s.Equal(map[domain.Hash]bool{first: true, second: true}, got)
 }

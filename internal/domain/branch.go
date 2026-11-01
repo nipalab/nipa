@@ -17,6 +17,15 @@ func (h Hash) String() string {
 	return hex.EncodeToString(h.Bytes())
 }
 
+func HashFromBytes(b []byte) (Hash, error) {
+	var h Hash
+	if len(b) != len(h) {
+		return h, NewErrorUser("invalid hash length")
+	}
+	copy(h[:], b)
+	return h, nil
+}
+
 func ParseHashHex(s string) (Hash, error) {
 	var h Hash
 	b, err := hex.DecodeString(s)

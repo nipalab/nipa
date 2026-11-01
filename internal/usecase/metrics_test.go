@@ -66,7 +66,7 @@ func TestChunkMetrics(t *testing.T) {
 
 	missing := chunker.Sum([]byte("missing"))
 	repo.EXPECT().InsertChunkIfNotExists(gomock.Any(), hash, int64(len(data))).Return(nil)
-	missingHashes, err := uc.ConfirmUploads(ctx, testOrg, testProject, []domain.Hash{hash, missing})
+	missingHashes, err := uc.ConfirmUploads(ctx, testOrg, testProject, []domain.Hash{hash, missing}, nil)
 	require.NoError(t, err)
 	require.Equal(t, []domain.Hash{missing}, missingHashes)
 

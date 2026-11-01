@@ -19,6 +19,7 @@ func newTestFileLock(t *testing.T) (*FileLock, *MockfileLockRepository, *Mockbra
 	repo := NewMockfileLockRepository(ctrl)
 	branchRepo := NewMockbranchRepository(ctrl)
 	perm := NewMockpermissionUsecase(ctrl)
+	perm.EXPECT().HasPathAccess(gomock.Any(), gomock.Any(), gomock.Any(), domain.PermissionWrite).Return(true).AnyTimes()
 	node, err := snow.NewNode(1)
 	require.NoError(t, err)
 	return NewFileLock(repo, branchRepo, perm, node), repo, branchRepo, perm
@@ -199,11 +200,41 @@ func TestFileLock_List(t *testing.T) {
 	t.Run("lists locks with read access", func(t *testing.T) {
 		uc, repo, _, perm := newTestFileLock(t)
 		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
+		perm.EXPECT().CompileFilter(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(AllowAllFilter(), nil)
 		repo.EXPECT().ListProject(gomock.Any(), snow.ID(1)).Return(nil, nil)
 
 		locks, err := uc.List(permissionCtx(7), snow.ID(1))
 		require.NoError(t, err)
 		require.NotNil(t, locks)
+	})
+
+	t.Run("hides locks on unreadable paths", func(t *testing.T) {
+		uc, repo, _, perm := newTestFileLock(t)
+		restricted := &PathFilter{
+			set:        &permissionSet{rules: []*domain.PBACRule{{PathPrefix: "public", Permission: domain.PermissionRead}}},
+			permission: domain.PermissionRead,
+		}
+		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
+		perm.EXPECT().CompileFilter(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(restricted, nil)
+		repo.EXPECT().ListProject(gomock.Any(), snow.ID(1)).Return([]*domain.FileLock{
+			{ID: 1, Path: "public/a.png"},
+			{ID: 2, Path: "secret/b.psd"},
+		}, nil)
+
+		locks, err := uc.List(permissionCtx(7), snow.ID(1))
+		require.NoError(t, err)
+		require.Len(t, locks, 1)
+		require.Equal(t, "public/a.png", locks[0].Path)
+	})
+
+	t.Run("filter compile error", func(t *testing.T) {
+		uc, repo, _, perm := newTestFileLock(t)
+		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
+		perm.EXPECT().CompileFilter(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(nil, errors.New("boom"))
+		repo.EXPECT().ListProject(gomock.Any(), snow.ID(1)).Return(nil, nil)
+
+		_, err := uc.List(permissionCtx(7), snow.ID(1))
+		require.EqualError(t, err, "boom")
 	})
 
 	t.Run("requires read access", func(t *testing.T) {
@@ -652,4 +683,17 @@ func TestFileLock_EnsureMergeRequestLocks_AuthorAndMRToken(t *testing.T) {
 			[]string{"a.png"}, 7, 7)
 		require.True(t, domain.IsErrorConflict(err))
 	})
+}
+
+func TestFileLock_Acquire_RequiresWriteOnThePath(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := NewMockpermissionUsecase(ctrl)
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
+	perm.EXPECT().HasPathAccess(gomock.Any(), snow.ID(1), "secret", domain.PermissionWrite).Return(false)
+	node, err := snow.NewNode(1)
+	require.NoError(t, err)
+	uc := NewFileLock(NewMockfileLockRepository(ctrl), NewMockbranchRepository(ctrl), perm, node)
+
+	_, err = uc.Acquire(permissionCtx(7), snow.ID(1), "", "secret")
+	require.True(t, domain.IsErrorNoPermission(err))
 }

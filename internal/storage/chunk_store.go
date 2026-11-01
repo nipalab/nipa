@@ -42,20 +42,22 @@ type DirectTransferStore interface {
 	// PresignDownload returns an absolute URL for reading chunk content.
 	PresignDownload(ctx context.Context, hash domain.Hash, expires time.Duration) (string, error)
 
-	// PresignUpload returns an absolute upload target for one chunk of the
-	// given exact size. The backend must pin the size server-side when it can.
+	// PresignUpload returns an absolute PUT target for one chunk of the given
+	// exact size. The target writes the shared content-addressed key, so it
+	// must be create-only: the request is signed with If-None-Match: * (the
+	// backend rejects a write when the object exists, even if the target is
+	// replayed) and with the exact content length.
 	PresignUpload(ctx context.Context, hash domain.Hash, size int64, expires time.Duration) (UploadTarget, error)
 
-	// DeleteChunk removes chunk content, used to drop objects that failed
-	// verification after a direct upload.
+	// DeleteChunk removes chunk content, used to drop an object whose bytes
+	// do not match its hash.
 	DeleteChunk(ctx context.Context, hash domain.Hash) error
 }
 
-// UploadTarget is where and how a client transfers one chunk. When FormData
-// is non-empty the client must POST a multipart/form-data body with those
-// fields before the chunk bytes in a "file" part.
+// UploadTarget is an absolute PUT URL plus the request headers the client must
+// send with it; the backend verifies them because they are part of the
+// signature.
 type UploadTarget struct {
-	URL      string
-	Method   string
-	FormData map[string]string
+	URL     string
+	Headers map[string]string
 }

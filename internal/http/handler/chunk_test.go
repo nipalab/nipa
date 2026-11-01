@@ -28,7 +28,7 @@ func chunkAppContext(request *http.Request, hash string) (*fakeAppContext, *http
 	return &fakeAppContext{
 		request:        request,
 		responseWriter: recorder,
-		pathParameters: map[string]string{"org": "org", "project": "proj", "hash": hash},
+		pathParameters: map[string]string{"org": "default", "project": "default", "hash": hash},
 	}, recorder
 }
 
@@ -39,7 +39,7 @@ func TestChunkHandler_PutChunk(t *testing.T) {
 	data := []byte("chunk payload")
 	hash := chunker.Sum(data)
 	exp := time.Now().Add(time.Hour).Unix()
-	path := chunkurl.UploadPath(testChunkSigningKey, "org", "proj", hash.String(), int64(len(data)), exp)
+	path := chunkurl.UploadPath(testChunkSigningKey, "default", "default", hash.String(), int64(len(data)), exp)
 
 	appCtx, recorder := newChunkAppContext(http.MethodPut, path, data, hash.String())
 	h.PutChunk(appCtx)
@@ -57,7 +57,7 @@ func TestChunkHandler_PutChunkRejectsTamperedURL(t *testing.T) {
 	data := []byte("chunk payload")
 	hash := chunker.Sum(data)
 	exp := time.Now().Add(time.Hour).Unix()
-	path := chunkurl.UploadPath(testChunkSigningKey, "org", "proj", hash.String(), int64(len(data)), exp)
+	path := chunkurl.UploadPath(testChunkSigningKey, "default", "default", hash.String(), int64(len(data)), exp)
 	tampered := path + "0"
 
 	appCtx, _ := newChunkAppContext(http.MethodPut, tampered, data, hash.String())
@@ -73,7 +73,7 @@ func TestChunkHandler_PutChunkRejectsExpiredURL(t *testing.T) {
 	data := []byte("chunk payload")
 	hash := chunker.Sum(data)
 	exp := time.Now().Add(-time.Hour).Unix()
-	path := chunkurl.UploadPath(testChunkSigningKey, "org", "proj", hash.String(), int64(len(data)), exp)
+	path := chunkurl.UploadPath(testChunkSigningKey, "default", "default", hash.String(), int64(len(data)), exp)
 
 	appCtx, _ := newChunkAppContext(http.MethodPut, path, data, hash.String())
 	h.PutChunk(appCtx)
@@ -88,7 +88,7 @@ func TestChunkHandler_PutChunkRejectsWrongOperation(t *testing.T) {
 	data := []byte("chunk payload")
 	hash := chunker.Sum(data)
 	exp := time.Now().Add(time.Hour).Unix()
-	path := chunkurl.DownloadPath(testChunkSigningKey, "org", "proj", hash.String(), exp)
+	path := chunkurl.DownloadPath(testChunkSigningKey, "default", "default", hash.String(), exp)
 
 	appCtx, _ := newChunkAppContext(http.MethodPut, path, data, hash.String())
 	h.PutChunk(appCtx)
@@ -103,7 +103,7 @@ func TestChunkHandler_PutChunkRejectsSizeMismatch(t *testing.T) {
 	data := []byte("chunk payload")
 	hash := chunker.Sum(data)
 	exp := time.Now().Add(time.Hour).Unix()
-	path := chunkurl.UploadPath(testChunkSigningKey, "org", "proj", hash.String(), int64(len(data))+10, exp)
+	path := chunkurl.UploadPath(testChunkSigningKey, "default", "default", hash.String(), int64(len(data))+10, exp)
 
 	appCtx, _ := newChunkAppContext(http.MethodPut, path, data, hash.String())
 	h.PutChunk(appCtx)
@@ -120,7 +120,7 @@ func TestChunkHandler_PutChunkRejectsHashMismatch(t *testing.T) {
 	other := []byte("other bytes!!")
 	require.Len(t, other, len(data))
 	exp := time.Now().Add(time.Hour).Unix()
-	path := chunkurl.UploadPath(testChunkSigningKey, "org", "proj", hash.String(), int64(len(other)), exp)
+	path := chunkurl.UploadPath(testChunkSigningKey, "default", "default", hash.String(), int64(len(other)), exp)
 
 	appCtx, _ := newChunkAppContext(http.MethodPut, path, other, hash.String())
 	h.PutChunk(appCtx)
@@ -144,7 +144,7 @@ func TestChunkHandler_PutChunkRejectsInvalidHash(t *testing.T) {
 
 	data := []byte("chunk payload")
 	exp := time.Now().Add(time.Hour).Unix()
-	path := chunkurl.UploadPath(testChunkSigningKey, "org", "proj", "zz-not-hex", int64(len(data)), exp)
+	path := chunkurl.UploadPath(testChunkSigningKey, "default", "default", "zz-not-hex", int64(len(data)), exp)
 
 	appCtx, _ := newChunkAppContext(http.MethodPut, path, data, "zz-not-hex")
 	h.PutChunk(appCtx)
@@ -159,7 +159,7 @@ func TestChunkHandler_PutChunkRejectsOversizedBody(t *testing.T) {
 	data := []byte("chunk payload")
 	hash := chunker.Sum(data)
 	exp := time.Now().Add(time.Hour).Unix()
-	path := chunkurl.UploadPath(testChunkSigningKey, "org", "proj", hash.String(), int64(len(data)), exp)
+	path := chunkurl.UploadPath(testChunkSigningKey, "default", "default", hash.String(), int64(len(data)), exp)
 
 	request := httptest.NewRequest(http.MethodPut, path, bytes.NewReader([]byte("this body is much longer than the signed size")))
 	request.ContentLength = -1
@@ -176,7 +176,7 @@ func TestChunkHandler_PutChunkRejectsTruncatedBody(t *testing.T) {
 	data := []byte("chunk payload")
 	hash := chunker.Sum(data)
 	exp := time.Now().Add(time.Hour).Unix()
-	path := chunkurl.UploadPath(testChunkSigningKey, "org", "proj", hash.String(), int64(len(data)), exp)
+	path := chunkurl.UploadPath(testChunkSigningKey, "default", "default", hash.String(), int64(len(data)), exp)
 
 	request := httptest.NewRequest(http.MethodPut, path, bytes.NewReader([]byte("short")))
 	request.ContentLength = -1
@@ -201,7 +201,7 @@ func TestChunkHandler_GetChunkRejectsInvalidHash(t *testing.T) {
 	h := NewChunkHandler(env.chunkUc)
 
 	exp := time.Now().Add(time.Hour).Unix()
-	path := chunkurl.DownloadPath(testChunkSigningKey, "org", "proj", "zz-not-hex", exp)
+	path := chunkurl.DownloadPath(testChunkSigningKey, "default", "default", "zz-not-hex", exp)
 
 	appCtx, _ := newChunkAppContext(http.MethodGet, path, nil, "zz-not-hex")
 	h.GetChunk(appCtx)
@@ -217,7 +217,7 @@ func TestChunkHandler_GetChunk(t *testing.T) {
 	hash := chunker.Sum(data)
 	require.NoError(t, env.chunkStore.Put(t.Context(), hash, data))
 	exp := time.Now().Add(time.Hour).Unix()
-	path := chunkurl.DownloadPath(testChunkSigningKey, "org", "proj", hash.String(), exp)
+	path := chunkurl.DownloadPath(testChunkSigningKey, "default", "default", hash.String(), exp)
 
 	appCtx, _ := newChunkAppContext(http.MethodGet, path, nil, hash.String())
 	h.GetChunk(appCtx)
@@ -233,7 +233,7 @@ func TestChunkHandler_GetChunkMissing(t *testing.T) {
 
 	hash := chunker.Sum([]byte("absent"))
 	exp := time.Now().Add(time.Hour).Unix()
-	path := chunkurl.DownloadPath(testChunkSigningKey, "org", "proj", hash.String(), exp)
+	path := chunkurl.DownloadPath(testChunkSigningKey, "default", "default", hash.String(), exp)
 
 	appCtx, _ := newChunkAppContext(http.MethodGet, path, nil, hash.String())
 	h.GetChunk(appCtx)
@@ -249,7 +249,7 @@ func TestChunkHandler_GetChunkRejectsTamperedURL(t *testing.T) {
 	hash := chunker.Sum(data)
 	require.NoError(t, env.chunkStore.Put(t.Context(), hash, data))
 	exp := time.Now().Add(time.Hour).Unix()
-	path := chunkurl.DownloadPath(testChunkSigningKey, "org", "proj", hash.String(), exp) + "0"
+	path := chunkurl.DownloadPath(testChunkSigningKey, "default", "default", hash.String(), exp) + "0"
 
 	appCtx, _ := newChunkAppContext(http.MethodGet, path, nil, hash.String())
 	h.GetChunk(appCtx)
@@ -265,7 +265,7 @@ func TestChunkHandler_GetChunkRejectsWrongOperation(t *testing.T) {
 	hash := chunker.Sum(data)
 	require.NoError(t, env.chunkStore.Put(t.Context(), hash, data))
 	exp := time.Now().Add(time.Hour).Unix()
-	path := chunkurl.UploadPath(testChunkSigningKey, "org", "proj", hash.String(), int64(len(data)), exp)
+	path := chunkurl.UploadPath(testChunkSigningKey, "default", "default", hash.String(), int64(len(data)), exp)
 
 	appCtx, _ := newChunkAppContext(http.MethodGet, path, nil, hash.String())
 	h.GetChunk(appCtx)
