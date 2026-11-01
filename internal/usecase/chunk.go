@@ -10,6 +10,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/nipalab/nipa/internal/chunker"
+	"github.com/nipalab/nipa/internal/chunkproof"
 	"github.com/nipalab/nipa/internal/chunkurl"
 	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/obs"
@@ -41,6 +42,17 @@ type ChunkURL struct {
 	AlreadyStored bool
 	Method        string
 	FormData      map[string]string
+	// ProofChallenge is set for upload URLs of chunks the project is not linked
+	// to yet; ConfirmUploads must be given the matching proof.
+	ProofChallenge string
+}
+
+// ChunkProof is a client's proof of possession for one chunk: Proof answers
+// Challenge (issued by PresignUploadURLs) for the chunk's stored bytes.
+type ChunkProof struct {
+	Hash      domain.Hash
+	Challenge string
+	Proof     string
 }
 
 // ChunkTransferConfig configures presigned chunk transfer.
@@ -62,7 +74,6 @@ type Chunk struct {
 
 	unverifiedMu sync.Mutex
 	unverified   map[domain.Hash]time.Time
-	uploaded     map[uploadProofKey]time.Time
 	lastPrune    time.Time
 }
 
@@ -73,7 +84,6 @@ func NewChunk(chunkRepo chunkRepository, chunkStore storage.ChunkStore, transfer
 		transfer:   transfer,
 		now:        time.Now,
 		unverified: map[domain.Hash]time.Time{},
-		uploaded:   map[uploadProofKey]time.Time{},
 	}
 }
 
@@ -156,11 +166,10 @@ func (c *Chunk) UploadForProject(ctx context.Context, projectID snow.ID, hash do
 
 // StoreUploaded verifies and stores chunk content without recording metadata;
 // the metadata row is written by ConfirmUploads once the client reports the
-// transfer done. The bytes arriving through a URL signed for the project are
-// the proof that it holds the content: it is remembered in memory (no database
-// write on the hot upload path) and turned into a project link at confirm.
+// transfer done. Linking the project to the chunk also waits for confirm, where
+// the client proves it holds the bytes, so this path never touches the database.
 // Content writes are safe to run concurrently.
-func (c *Chunk) StoreUploaded(ctx context.Context, orgSlug, projectSlug string, hash domain.Hash, data []byte) (err error) {
+func (c *Chunk) StoreUploaded(ctx context.Context, hash domain.Hash, data []byte) (err error) {
 	ctx, span := obs.StartSpan(ctx, "chunk.store",
 		attribute.String(obs.AttrChunkHash, hash.String()),
 		attribute.Int(obs.AttrChunkSize, len(data)))
@@ -177,7 +186,6 @@ func (c *Chunk) StoreUploaded(ctx context.Context, orgSlug, projectSlug string, 
 	}
 	if exists {
 		c.metrics.ObserveChunkOp("put", "dedup")
-		c.markUploaded(orgSlug, projectSlug, hash)
 		return nil
 	}
 	if err := c.chunkStore.Put(ctx, hash, data); err != nil {
@@ -186,7 +194,6 @@ func (c *Chunk) StoreUploaded(ctx context.Context, orgSlug, projectSlug string, 
 	}
 	c.metrics.ObserveChunkOp("put", "stored")
 	c.metrics.ObserveChunkBytes("put", int64(len(data)))
-	c.markUploaded(orgSlug, projectSlug, hash)
 	return nil
 }
 
@@ -207,9 +214,10 @@ func (c *Chunk) Download(ctx context.Context, hash domain.Hash) (data []byte, er
 }
 
 // PresignUploadURLs signs one page of upload paths for refs. Chunks the
-// project already uploaded get an empty URL with AlreadyStored set so clients
-// can skip the transfer; content that exists only for other projects is never
-// reported, so the client has to send the bytes itself. When a ledger is attached, refs that would add new bytes
+// project is already linked to get an empty URL with AlreadyStored set so
+// clients can skip the transfer. Every other chunk gets an upload target and a
+// proof challenge, whether or not the content exists for another project, so
+// the response reveals nothing about content the caller has not proven it holds. When a ledger is attached, refs that would add new bytes
 // are checked against the organization's remaining quota first.
 func (c *Chunk) PresignUploadURLs(ctx context.Context, org *domain.Organization, project *domain.Project, refs []ChunkRef, pageSize int, pageToken string) ([]ChunkURL, string, error) {
 	ctx, span := obs.StartSpan(ctx, "chunk.presign_upload",
@@ -263,11 +271,16 @@ func (c *Chunk) presignUploadURLs(ctx context.Context, org *domain.Organization,
 		if err != nil {
 			return nil, "", err
 		}
+		challenge, err := chunkproof.NewChallenge(c.transfer.SigningKey, project.ID, ref.Hash, c.now().Add(c.transfer.PresignTTL))
+		if err != nil {
+			return nil, "", domain.NewErrorInternalServer(err.Error())
+		}
 		urls = append(urls, ChunkURL{
-			Hash:     ref.Hash,
-			URL:      target.URL,
-			Method:   target.Method,
-			FormData: target.FormData,
+			Hash:           ref.Hash,
+			URL:            target.URL,
+			Method:         target.Method,
+			FormData:       target.FormData,
+			ProofChallenge: challenge,
 		})
 	}
 	return urls, next, nil
@@ -377,12 +390,12 @@ func (c *Chunk) downloadPath(ctx context.Context, org, project string, hash doma
 // Hashes still missing are returned so the client can retry them. When a
 // ledger is attached, present chunks are attributed to the project and the
 // organization's quota is enforced.
-func (c *Chunk) ConfirmUploads(ctx context.Context, org *domain.Organization, project *domain.Project, hashes []domain.Hash) ([]domain.Hash, error) {
+func (c *Chunk) ConfirmUploads(ctx context.Context, org *domain.Organization, project *domain.Project, hashes []domain.Hash, proofs []ChunkProof) ([]domain.Hash, error) {
 	ctx, span := obs.StartSpan(ctx, "chunk.confirm",
 		attribute.String(obs.AttrOrg, org.Slug),
 		attribute.String(obs.AttrProject, project.Slug),
 		attribute.Int(obs.AttrChunkCount, len(hashes)))
-	missing, confirmedBytes, err := c.confirmUploads(ctx, org, project, hashes)
+	missing, confirmedBytes, err := c.confirmUploads(ctx, org, project, hashes, proofs)
 	if err == nil {
 		span.SetAttributes(
 			attribute.Int(obs.AttrChunkMissing, len(missing)),
@@ -402,7 +415,7 @@ func (c *Chunk) ConfirmUploads(ctx context.Context, org *domain.Organization, pr
 	return missing, err
 }
 
-func (c *Chunk) confirmUploads(ctx context.Context, org *domain.Organization, project *domain.Project, hashes []domain.Hash) ([]domain.Hash, int64, error) {
+func (c *Chunk) confirmUploads(ctx context.Context, org *domain.Organization, project *domain.Project, hashes []domain.Hash, proofs []ChunkProof) ([]domain.Hash, int64, error) {
 	direct, isDirect := c.chunkStore.(storage.DirectTransferStore)
 	var missing []domain.Hash
 	var attributed []LedgerChunk
@@ -412,6 +425,10 @@ func (c *Chunk) confirmUploads(ctx context.Context, org *domain.Organization, pr
 		return nil, 0, err
 	}
 	var toLink []domain.Hash
+	proofByHash := make(map[domain.Hash]ChunkProof, len(proofs))
+	for _, proof := range proofs {
+		proofByHash[proof.Hash] = proof
+	}
 	for _, hash := range hashes {
 		size, err := c.chunkStore.Size(ctx, hash)
 		if err != nil {
@@ -421,36 +438,36 @@ func (c *Chunk) confirmUploads(ctx context.Context, org *domain.Organization, pr
 			}
 			return nil, 0, domain.NewErrorDatabase(fmt.Sprintf("stat chunk %s: %v", hash, err))
 		}
-		proven := linked[hash]
-		if isDirect {
-			verify, err := c.needsVerification(ctx, hash)
-			if err != nil {
-				return nil, 0, err
-			}
-			if verify || !proven {
-				verified, err := c.verifyChunkContent(ctx, direct, hash, size)
+		if linked[hash] {
+			if isDirect {
+				verify, err := c.needsVerification(ctx, hash)
 				if err != nil {
 					return nil, 0, err
 				}
-				c.clearUnverified(hash)
-				if !verified {
-					c.metrics.ObserveChunkVerifyFailure("confirm")
-					missing = append(missing, hash)
-					continue
-				}
-				if !proven {
-					toLink = append(toLink, hash)
-					proven = true
+				if verify {
+					verified, err := c.verifyChunkContent(ctx, direct, hash, size)
+					if err != nil {
+						return nil, 0, err
+					}
+					c.clearUnverified(hash)
+					if !verified {
+						c.metrics.ObserveChunkVerifyFailure("confirm")
+						missing = append(missing, hash)
+						continue
+					}
 				}
 			}
-		}
-		if !proven && !isDirect && c.hasUploadProof(org.Slug, project.Slug, hash) {
+		} else {
+			proven, err := c.verifyPossession(ctx, project, hash, size, proofByHash[hash])
+			if err != nil {
+				return nil, 0, err
+			}
+			if !proven {
+				missing = append(missing, hash)
+				continue
+			}
+			c.clearUnverified(hash)
 			toLink = append(toLink, hash)
-			proven = true
-		}
-		if !proven {
-			missing = append(missing, hash)
-			continue
 		}
 		if err := c.chunkRepo.InsertChunkIfNotExists(ctx, hash, size); err != nil {
 			return nil, 0, err
@@ -464,7 +481,6 @@ func (c *Chunk) confirmUploads(ctx context.Context, org *domain.Organization, pr
 		if err := c.chunkRepo.LinkProjectChunks(ctx, project.ID, toLink); err != nil {
 			return nil, 0, err
 		}
-		c.clearUploaded(org.Slug, project.Slug, toLink)
 	}
 	if len(attributed) > 0 {
 		if err := c.ledger.Attribute(ctx, org, project, attributed); err != nil {
@@ -541,62 +557,44 @@ func (c *Chunk) clearUnverified(hash domain.Hash) {
 	delete(c.unverified, hash)
 }
 
-type uploadProofKey struct {
-	org, project string
-	hash         domain.Hash
+// verifyPossession decides whether the caller may be linked to a chunk it is
+// not linked to yet: the challenge must be a live one issued for this project
+// and hash, and the proof must equal BLAKE3(challenge || stored bytes). The
+// stored bytes are read back and hashed too, so a direct upload that does not
+// match its key is dropped instead of being linked.
+func (c *Chunk) verifyPossession(ctx context.Context, project *domain.Project, hash domain.Hash, size int64, proof ChunkProof) (bool, error) {
+	if proof.Challenge == "" || proof.Proof == "" {
+		return false, nil
+	}
+	if err := chunkproof.VerifyChallenge(c.transfer.SigningKey, project.ID, hash, proof.Challenge, c.now()); err != nil {
+		return false, nil
+	}
+	direct, isDirect := c.chunkStore.(storage.DirectTransferStore)
+	if size > chunker.MaxChunkSize() {
+		return false, c.dropInvalid(ctx, direct, isDirect, hash)
+	}
+	data, err := c.chunkStore.Get(ctx, hash)
+	if err != nil {
+		if domain.IsErrorNotFound(err) {
+			return false, nil
+		}
+		return false, domain.NewErrorDatabase(fmt.Sprintf("read chunk %s: %v", hash, err))
+	}
+	if chunker.Sum(data) != hash {
+		c.metrics.ObserveChunkVerifyFailure("confirm")
+		return false, c.dropInvalid(ctx, direct, isDirect, hash)
+	}
+	return chunkproof.Equal(chunkproof.Proof(proof.Challenge, data), proof.Proof), nil
 }
 
-func (c *Chunk) uploadProofTTL() time.Duration {
-	if c.transfer.PresignTTL > 0 {
-		return c.transfer.PresignTTL
+func (c *Chunk) dropInvalid(ctx context.Context, direct storage.DirectTransferStore, isDirect bool, hash domain.Hash) error {
+	if !isDirect {
+		return nil
 	}
-	return time.Hour
-}
-
-// markUploaded remembers that this process received the bytes for hash through
-// a URL signed for the project. Like the unverified marks it is per process and
-// expires with the presign TTL; a lost mark only makes confirm report the chunk
-// missing so the client uploads it again.
-func (c *Chunk) markUploaded(org, project string, hash domain.Hash) {
-	c.unverifiedMu.Lock()
-	defer c.unverifiedMu.Unlock()
-	now := c.now()
-	if now.Sub(c.lastPrune) >= unverifiedPruneInterval {
-		c.lastPrune = now
-		c.pruneUnverifiedLocked(now)
-	}
-	c.uploaded[uploadProofKey{org: org, project: project, hash: hash}] = now.Add(c.uploadProofTTL())
-}
-
-func (c *Chunk) hasUploadProof(org, project string, hash domain.Hash) bool {
-	c.unverifiedMu.Lock()
-	defer c.unverifiedMu.Unlock()
-	key := uploadProofKey{org: org, project: project, hash: hash}
-	expiry, ok := c.uploaded[key]
-	if !ok {
-		return false
-	}
-	if c.now().After(expiry) {
-		delete(c.uploaded, key)
-		return false
-	}
-	return true
-}
-
-func (c *Chunk) clearUploaded(org, project string, hashes []domain.Hash) {
-	c.unverifiedMu.Lock()
-	defer c.unverifiedMu.Unlock()
-	for _, hash := range hashes {
-		delete(c.uploaded, uploadProofKey{org: org, project: project, hash: hash})
-	}
+	return c.dropInvalidChunk(ctx, direct, hash)
 }
 
 func (c *Chunk) pruneUnverifiedLocked(now time.Time) {
-	for key, expiry := range c.uploaded {
-		if now.After(expiry) {
-			delete(c.uploaded, key)
-		}
-	}
 	for hash, expiry := range c.unverified {
 		if now.After(expiry) {
 			delete(c.unverified, hash)

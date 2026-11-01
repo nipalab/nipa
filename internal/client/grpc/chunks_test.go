@@ -21,6 +21,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
+	"github.com/nipalab/nipa/internal/chunkproof"
 	"github.com/nipalab/nipa/internal/client/domain"
 	serverDomain "github.com/nipalab/nipa/internal/domain"
 	pb "github.com/nipalab/nipa/internal/grpc/pb"
@@ -31,6 +32,7 @@ type chunkTestServer struct {
 
 	mu              sync.Mutex
 	stored          map[string][]byte
+	linked          map[string]bool
 	uploadErr       error
 	downloadErr     error
 	confirmErr      error
@@ -53,13 +55,25 @@ type chunkTestServer struct {
 }
 
 func newChunkTestServer() *chunkTestServer {
-	return &chunkTestServer{stored: map[string][]byte{}}
+	return &chunkTestServer{stored: map[string][]byte{}, linked: map[string]bool{}}
 }
 
 func (s *chunkTestServer) put(hash string, data []byte) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.stored[hash] = data
+}
+
+func (s *chunkTestServer) link(hash string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.linked[hash] = true
+}
+
+func (s *chunkTestServer) isLinked(hash string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.linked[hash]
 }
 
 func (s *chunkTestServer) storedChunk(hash string) ([]byte, bool) {
@@ -87,11 +101,13 @@ func (s *chunkTestServer) GetChunkUploadUrls(ctx context.Context, req *pb.GetChu
 	}
 	resp := &pb.GetChunkUploadUrlsResponse{}
 	for _, ref := range req.GetChunks() {
-		_, exists := s.storedChunk(ref.GetHash())
+		exists := s.isLinked(ref.GetHash())
 		url := ""
 		method := ""
 		var formData map[string]string
+		challenge := ""
 		if !exists {
+			challenge = "challenge-" + ref.GetHash()
 			url = fmt.Sprintf("/api/chunks/%s/%s/%s?op=put&size=%d&exp=9999999999&sig=test",
 				req.GetContext().GetOrg(), req.GetContext().GetProject(), ref.GetHash(), ref.GetSizeBytes())
 			if s.postUpload {
@@ -104,11 +120,12 @@ func (s *chunkTestServer) GetChunkUploadUrls(ctx context.Context, req *pb.GetChu
 			}
 		}
 		resp.Urls = append(resp.Urls, &pb.PresignedChunkUrl{
-			Hash:          ref.GetHash(),
-			Url:           url,
-			AlreadyStored: exists,
-			Method:        method,
-			FormData:      formData,
+			Hash:           ref.GetHash(),
+			Url:            url,
+			AlreadyStored:  exists,
+			Method:         method,
+			FormData:       formData,
+			ProofChallenge: challenge,
 		})
 	}
 	if s.uploadBadHash {
@@ -152,7 +169,27 @@ func (s *chunkTestServer) ConfirmChunkUploads(_ context.Context, req *pb.Confirm
 	if s.confirmErr != nil {
 		return nil, s.confirmErr
 	}
-	return &pb.ConfirmChunkUploadsResponse{MissingHashes: s.confirmMissing}, nil
+	if s.confirmMissing != nil {
+		return &pb.ConfirmChunkUploadsResponse{MissingHashes: s.confirmMissing}, nil
+	}
+	proofs := map[string]*pb.ChunkPossessionProof{}
+	for _, proof := range req.GetProofs() {
+		proofs[proof.GetHash()] = proof
+	}
+	var missing []string
+	for _, hash := range req.GetHashes() {
+		if s.isLinked(hash) {
+			continue
+		}
+		data, stored := s.storedChunk(hash)
+		proof, proved := proofs[hash]
+		if !stored || !proved || proof.GetChallenge() != "challenge-"+hash || proof.GetProof() != chunkproof.Proof(proof.GetChallenge(), data) {
+			missing = append(missing, hash)
+			continue
+		}
+		s.link(hash)
+	}
+	return &pb.ConfirmChunkUploadsResponse{MissingHashes: missing}, nil
 }
 
 func (s *chunkTestServer) serveChunkHTTP(w http.ResponseWriter, r *http.Request) {
@@ -307,7 +344,9 @@ func TestClient_UploadChunks_Success(t *testing.T) {
 	require.Equal(t, []byte("bbbb"), got2)
 
 	require.NotNil(t, srv.lastConfirm)
-	require.Equal(t, []string{h1.String(), h2.String()}, srv.lastConfirm.GetHashes(), "confirm must send hashes only")
+	require.Equal(t, []string{h1.String(), h2.String()}, srv.lastConfirm.GetHashes())
+	require.Len(t, srv.lastConfirm.GetProofs(), 2, "every uploaded chunk is confirmed with a proof")
+	require.True(t, srv.isLinked(h1.String()))
 }
 
 func TestClient_UploadChunks_DirectPOST(t *testing.T) {
@@ -355,6 +394,7 @@ func TestClient_UploadChunks_SkipsStored(t *testing.T) {
 	h2 := testChunkHash(0x02)
 
 	srv := newChunkTestServer()
+	srv.link(h1.String())
 	srv.put(h1.String(), []byte("aaaa"))
 	addr := startChunkTestServer(t, srv)
 	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
@@ -367,6 +407,41 @@ func TestClient_UploadChunks_SkipsStored(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 1, uploaded)
 	require.Equal(t, 1, skipped)
+}
+
+func TestClient_UploadChunks_ProvesPossessionInsteadOfUploadingSharedContent(t *testing.T) {
+	h1 := testChunkHash(0x01)
+
+	srv := newChunkTestServer()
+	srv.put(h1.String(), []byte("aaaa"))
+	addr := startChunkTestServer(t, srv)
+	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
+	require.NoError(t, c.Connect(context.Background(), addr))
+
+	uploaded, skipped, err := c.UploadChunks(context.Background(), domain.ChunkScope{Org: "org", Project: "proj"}, []*serverDomain.ChunkData{
+		{Hash: h1, Data: []byte("aaaa")},
+	})
+	require.NoError(t, err)
+	require.Equal(t, 0, uploaded, "content another project stored is not sent again")
+	require.Equal(t, 1, skipped)
+	require.True(t, srv.isLinked(h1.String()), "the proof links the project")
+}
+
+func TestClient_UploadChunks_WrongBytesAreUploadedNotLinkedByProof(t *testing.T) {
+	h1 := testChunkHash(0x01)
+
+	srv := newChunkTestServer()
+	srv.put(h1.String(), []byte("stored elsewhere with different bytes"))
+	addr := startChunkTestServer(t, srv)
+	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
+	require.NoError(t, c.Connect(context.Background(), addr))
+
+	uploaded, skipped, err := c.UploadChunks(context.Background(), domain.ChunkScope{Org: "org", Project: "proj"}, []*serverDomain.ChunkData{
+		{Hash: h1, Data: []byte("aaaa")},
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, uploaded, "a proof that does not match falls back to a real upload")
+	require.Equal(t, 0, skipped)
 }
 
 func TestClient_UploadChunks_ReportsEachChunk(t *testing.T) {

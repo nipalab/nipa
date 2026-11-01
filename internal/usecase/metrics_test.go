@@ -57,8 +57,8 @@ func TestChunkMetrics(t *testing.T) {
 	data := []byte("hello chunk")
 	hash := chunker.Sum(data)
 
-	require.NoError(t, uc.StoreUploaded(ctx, "acme", "game", hash, data))
-	require.NoError(t, uc.StoreUploaded(ctx, "acme", "game", hash, data))
+	require.NoError(t, uc.StoreUploaded(ctx, hash, data))
+	require.NoError(t, uc.StoreUploaded(ctx, hash, data))
 
 	got, err := uc.Download(ctx, hash)
 	require.NoError(t, err)
@@ -66,14 +66,14 @@ func TestChunkMetrics(t *testing.T) {
 
 	missing := chunker.Sum([]byte("missing"))
 	repo.EXPECT().InsertChunkIfNotExists(gomock.Any(), hash, int64(len(data))).Return(nil)
-	missingHashes, err := uc.ConfirmUploads(ctx, testOrg, testProject, []domain.Hash{hash, missing})
+	missingHashes, err := uc.ConfirmUploads(ctx, testOrg, testProject, []domain.Hash{hash, missing}, nil)
 	require.NoError(t, err)
 	require.Equal(t, []domain.Hash{missing}, missingHashes)
 
 	_, _, err = uc.PresignUploadURLs(ctx, testOrg, testProject, []ChunkRef{{Hash: hash, SizeBytes: int64(len(data))}}, 10, "")
 	require.NoError(t, err)
 
-	require.Error(t, uc.StoreUploaded(ctx, "acme", "game", hash, []byte("tampered")))
+	require.Error(t, uc.StoreUploaded(ctx, hash, []byte("tampered")))
 
 	body := scrapeUsecaseMetrics(t, metrics)
 	require.Contains(t, body, `nipa_chunk_ops_total{op="put",result="stored"} 1`)

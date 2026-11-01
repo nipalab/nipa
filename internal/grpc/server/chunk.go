@@ -61,7 +61,8 @@ func (n *nipaServer) GetChunkDownloadUrls(ctx context.Context, req *pb.GetChunkD
 }
 
 // ConfirmChunkUploads verifies uploaded content landed in the store and
-// records chunk metadata. The metadata size is measured server-side from the
+// records chunk metadata. Hashes the project is not linked to yet need a
+// possession proof; the ones that fail it come back as missing. The metadata size is measured server-side from the
 // stored content; hashes still missing are returned for retry.
 func (n *nipaServer) ConfirmChunkUploads(ctx context.Context, req *pb.ConfirmChunkUploadsRequest) (*pb.ConfirmChunkUploadsResponse, error) {
 	org, project, err := n.resolveChunkProject(ctx, req.GetContext())
@@ -75,7 +76,11 @@ func (n *nipaServer) ConfirmChunkUploads(ctx context.Context, req *pb.ConfirmChu
 	if err != nil {
 		return nil, handleError(err)
 	}
-	missing, err := n.uc.Chunk().ConfirmUploads(ctx, org, project, hashes)
+	proofs, err := toChunkProofs(req.GetProofs())
+	if err != nil {
+		return nil, handleError(err)
+	}
+	missing, err := n.uc.Chunk().ConfirmUploads(ctx, org, project, hashes, proofs)
 	if err != nil {
 		return nil, handleError(err)
 	}
@@ -121,15 +126,28 @@ func toChunkHashes(raw []string) ([]domain.Hash, error) {
 	return hashes, nil
 }
 
+func toChunkProofs(raw []*pb.ChunkPossessionProof) ([]usecase.ChunkProof, error) {
+	proofs := make([]usecase.ChunkProof, 0, len(raw))
+	for _, item := range raw {
+		hash, err := domain.ParseHashHex(item.GetHash())
+		if err != nil {
+			return nil, domain.NewErrorUser("invalid chunk hash")
+		}
+		proofs = append(proofs, usecase.ChunkProof{Hash: hash, Challenge: item.GetChallenge(), Proof: item.GetProof()})
+	}
+	return proofs, nil
+}
+
 func toPBChunkURLs(urls []usecase.ChunkURL) []*pb.PresignedChunkUrl {
 	out := make([]*pb.PresignedChunkUrl, 0, len(urls))
 	for _, u := range urls {
 		out = append(out, &pb.PresignedChunkUrl{
-			Hash:          u.Hash.String(),
-			Url:           u.URL,
-			AlreadyStored: u.AlreadyStored,
-			Method:        u.Method,
-			FormData:      u.FormData,
+			Hash:           u.Hash.String(),
+			Url:            u.URL,
+			AlreadyStored:  u.AlreadyStored,
+			Method:         u.Method,
+			FormData:       u.FormData,
+			ProofChallenge: u.ProofChallenge,
 		})
 	}
 	return out

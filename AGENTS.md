@@ -865,13 +865,18 @@ compatible for one release.
   serialized client-side under a mutex so concurrent upload windows never stack
   SQLite metadata writes. Chunks already stored for the project come back with `already_stored` so
   clients skip the transfer; content that exists only for other projects is
-  never reported. A project may reference a chunk only after it uploaded it:
-  the signed PUT leaves an in-memory proof (no database write on the hot path),
-  `Confirm` turns proofs (or a verified direct upload, or a server-side merge via
-  `AttributeProjectChunks`) into `project_chunk_uploads` rows in one batch,
-  refuses unlinked hashes, and `ApplyPush` joins through that table. Direct (S3)
-  uploads bypass the server, so there the proof is the read-back verification at
-  confirm, not the PUT itself. `Push` sends `base_commit_id` (base36; preferred over
+  never reported. A project may reference a chunk only after it proved it
+  holds the bytes (`internal/chunkproof`): `GetChunkUploadUrls` hands every
+  chunk the project is not linked to an HMAC-signed, project- and hash-bound
+  `proof_challenge` (identically whether or not the content exists, so it leaks
+  nothing), the client answers with `BLAKE3(challenge || bytes)` in
+  `ConfirmChunkUploads.proofs`, and the server reads the stored object back,
+  checks it against its hash and the proof, and links the project in one batch
+  (`project_chunk_uploads`). The client claims with proofs first, so content the
+  server already holds for another project is linked without being sent again;
+  only chunks reported missing are uploaded and then confirmed with their proofs.
+  Unproven hashes are reported missing, `ApplyPush` joins through the link table,
+  and server-generated merge content is linked via `AttributeProjectChunks`. `Push` sends `base_commit_id` (base36; preferred over
   `base_tree_hash`, so sparse/permission-filtered clones push deltas against the
   full server tree) and `parent_2_commit_hash` for merge commits.
   `Push.pushStaged` scans into 16MB windows handed to
@@ -897,7 +902,8 @@ compatible for one release.
   behind the Bearer filter — the signature is the capability. HTTP PUT pins the
   exact size (Content-Length check + `MaxBytesReader` + BLAKE3 verify) and only
   writes content (`Chunk.StoreUploaded`, no DB writes, avoiding SQLite lock
-  contention from concurrent PUTs); DB metadata and links are written at confirm time.
+  contention from concurrent PUTs); DB metadata and project links are written at
+  confirm time.
   `internal/client/grpc/chunks.go`'s `UploadChunks`/`DownloadChunks` take the
   `ChunkScope{Org, Project, CommitIDs, Paths}` that scopes download visibility;
   download callbacks are

@@ -60,7 +60,7 @@ func (h *ChunkHandler) PutChunk(appCtx httpApp.AppContext) {
 		appCtx.HandleError(domain.NewErrorUser("chunk size mismatch"))
 		return
 	}
-	if err := h.chunks.StoreUploaded(appCtx.Context(), appCtx.PathParameter("org"), appCtx.PathParameter("project"), hash, data); err != nil {
+	if err := h.chunks.StoreUploaded(appCtx.Context(), hash, data); err != nil {
 		appCtx.HandleError(err)
 		return
 	}

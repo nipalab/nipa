@@ -69,6 +69,7 @@ message PresignedChunkUrl {
     bool already_stored = 3; // content is already stored; skip the transfer
     string method = 4; // HTTP method for the transfer; empty means PUT
     map<string, string> form_data = 5; // multipart form fields for POST policy uploads
+    string proof_challenge = 6; // upload URLs only: answer it in ConfirmChunkUploads to link the chunk to the project
 }
 
 message GetChunkUploadUrlsRequest {
@@ -100,6 +101,15 @@ message GetChunkDownloadUrlsResponse {
 message ConfirmChunkUploadsRequest {
     ProjectContext context = 1;
     repeated string hashes = 2; // hex-encoded BLAKE3 hashes
+    repeated ChunkPossessionProof proofs = 3; // required for every hash the project has not been linked to yet
+}
+
+// ChunkPossessionProof shows that the caller holds a chunk's bytes: proof is the
+// hex BLAKE3 of the challenge string followed by the stored chunk bytes.
+message ChunkPossessionProof {
+    string hash = 1; // hex-encoded BLAKE3 hash of the chunk
+    string challenge = 2; // proof_challenge issued for this project and hash
+    string proof = 3; // hex-encoded BLAKE3(challenge || bytes)
 }
 
 message ConfirmChunkUploadsResponse {

@@ -13,6 +13,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/nipalab/nipa/internal/chunker"
+	"github.com/nipalab/nipa/internal/chunkproof"
 	"github.com/nipalab/nipa/internal/chunkurl"
 	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/grpc/pb"
@@ -343,4 +344,83 @@ func TestConfirmChunkUploadsHandler_NoPermission(t *testing.T) {
 		Hashes:  []string{chunker.Sum([]byte("x")).String()},
 	})
 	require.Equal(t, codes.PermissionDenied, status.Code(err))
+}
+
+type linkTrackingRepo struct {
+	stubChunkRepo
+	linked map[domain.Hash]bool
+}
+
+func (r *linkTrackingRepo) LinkProjectChunks(_ context.Context, _ snow.ID, hashes []domain.Hash) error {
+	for _, hash := range hashes {
+		r.linked[hash] = true
+	}
+	return nil
+}
+
+func (r *linkTrackingRepo) LinkedProjectChunks(_ context.Context, _ snow.ID, hashes []domain.Hash) (map[domain.Hash]bool, error) {
+	out := map[domain.Hash]bool{}
+	for _, hash := range hashes {
+		if r.linked[hash] {
+			out[hash] = true
+		}
+	}
+	return out, nil
+}
+
+func TestChunkPossessionProofFlow(t *testing.T) {
+	store, err := storage.NewLocalStore(t.TempDir())
+	require.NoError(t, err)
+	repo := &linkTrackingRepo{linked: map[domain.Hash]bool{}}
+	chunk := usecase.NewChunk(repo, store, usecase.ChunkTransferConfig{SigningKey: testSigningKey, PresignTTL: time.Hour, MaxPageSize: 100})
+	branch, perm, _ := newTestBranchUc(t)
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(42), domain.PermissionWrite).Return(true).Times(3)
+	srv := New(&mockUsecaseContainer{branch: branch, common: newTestCommon(), chunk: chunk})
+
+	data := []byte("content another project already stored")
+	hash := chunker.Sum(data)
+	require.NoError(t, store.Put(context.Background(), hash, data))
+
+	presigned, err := srv.GetChunkUploadUrls(context.Background(), &pb.GetChunkUploadUrlsRequest{
+		Context: testChunkContext(),
+		Chunks:  []*pb.ChunkRef{{Hash: hash.String(), SizeBytes: int64(len(data))}},
+	})
+	require.NoError(t, err)
+	entry := presigned.GetUrls()[0]
+	require.False(t, entry.GetAlreadyStored(), "existing content of another project is not reported")
+	require.NotEmpty(t, entry.GetProofChallenge())
+
+	res, err := srv.ConfirmChunkUploads(context.Background(), &pb.ConfirmChunkUploadsRequest{
+		Context: testChunkContext(),
+		Hashes:  []string{hash.String()},
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{hash.String()}, res.GetMissingHashes(), "the hash alone does not link")
+	require.False(t, repo.linked[hash])
+
+	res, err = srv.ConfirmChunkUploads(context.Background(), &pb.ConfirmChunkUploadsRequest{
+		Context: testChunkContext(),
+		Hashes:  []string{hash.String()},
+		Proofs: []*pb.ChunkPossessionProof{{
+			Hash:      hash.String(),
+			Challenge: entry.GetProofChallenge(),
+			Proof:     chunkproof.Proof(entry.GetProofChallenge(), data),
+		}},
+	})
+	require.NoError(t, err)
+	require.Empty(t, res.GetMissingHashes())
+	require.True(t, repo.linked[hash])
+}
+
+func TestConfirmChunkUploadsHandler_InvalidProofHash(t *testing.T) {
+	chunk, _ := newChunkUsecase(t)
+	branch, perm, _ := newTestBranchUc(t)
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(42), domain.PermissionWrite).Return(true)
+	srv := New(&mockUsecaseContainer{branch: branch, common: newTestCommon(), chunk: chunk})
+
+	_, err := srv.ConfirmChunkUploads(context.Background(), &pb.ConfirmChunkUploadsRequest{
+		Context: testChunkContext(),
+		Proofs:  []*pb.ChunkPossessionProof{{Hash: "zz-not-hex"}},
+	})
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
 }

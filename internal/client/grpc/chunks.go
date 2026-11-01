@@ -16,15 +16,19 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/propagation"
 
+	"github.com/nipalab/nipa/internal/chunkproof"
 	"github.com/nipalab/nipa/internal/client/domain"
 	serverDomain "github.com/nipalab/nipa/internal/domain"
 	pb "github.com/nipalab/nipa/internal/grpc/pb"
 	"github.com/nipalab/nipa/internal/obs"
 )
 
-// UploadChunks sends chunk content to the signed upload URLs returned by the
-// server. Chunks the server already stores are reported as skipped. After the
-// transfer the uploads are confirmed so the server records chunk metadata.
+// UploadChunks stores chunk content on the server. Chunks the project is
+// already linked to are skipped. For the rest, the client first proves it holds
+// the bytes (the server links content it already has, with no transfer) and
+// only sends what the server reports missing to the signed upload URLs. The
+// uploads are confirmed with fresh proofs so the server records chunk metadata
+// and links the project.
 func (c *Client) UploadChunks(ctx context.Context, scope domain.ChunkScope, chunks []*serverDomain.ChunkData, onChunk ...func(ch *serverDomain.ChunkData)) (int, int, error) {
 	if len(chunks) == 0 {
 		return 0, 0, nil
@@ -48,6 +52,7 @@ func (c *Client) UploadChunks(ctx context.Context, scope domain.ChunkScope, chun
 	}
 
 	var uploaded, skipped int
+	var uploadedProofs []*pb.ChunkPossessionProof
 	pageToken := ""
 	for {
 		res, err := client.GetChunkUploadUrls(authedCtx, &pb.GetChunkUploadUrlsRequest{
@@ -60,7 +65,8 @@ func (c *Client) UploadChunks(ctx context.Context, scope domain.ChunkScope, chun
 			return 0, 0, toDomainError(err)
 		}
 
-		jobs := make([]chunkTransfer, 0, len(res.GetUrls()))
+		var pending []chunkTransfer
+		var pendingProofs []*pb.ChunkPossessionProof
 		for _, u := range res.GetUrls() {
 			hash, err := decodeHash(u.GetHash())
 			if err != nil {
@@ -74,14 +80,32 @@ func (c *Client) UploadChunks(ctx context.Context, scope domain.ChunkScope, chun
 			if !ok {
 				return 0, 0, domain.NewUserError(fmt.Sprintf("server requested unknown chunk %s", hash))
 			}
-			jobs = append(jobs, chunkTransfer{
+			pending = append(pending, chunkTransfer{
 				hash:     hash,
 				url:      u.GetUrl(),
 				method:   u.GetMethod(),
 				formData: u.GetFormData(),
 				data:     data,
 			})
+			pendingProofs = append(pendingProofs, &pb.ChunkPossessionProof{
+				Hash:      hash.String(),
+				Challenge: u.GetProofChallenge(),
+				Proof:     chunkproof.Proof(u.GetProofChallenge(), data),
+			})
 		}
+
+		missing, err := c.confirmChunks(authedCtx, client, scope, hashStrings(pending), pendingProofs)
+		if err != nil {
+			return 0, 0, err
+		}
+		jobs := make([]chunkTransfer, 0, len(missing))
+		for i, job := range pending {
+			if _, absent := missing[job.hash.String()]; absent {
+				jobs = append(jobs, job)
+				uploadedProofs = append(uploadedProofs, pendingProofs[i])
+			}
+		}
+		skipped += len(pending) - len(jobs)
 
 		if err := c.putChunks(authedCtx, jobs); err != nil {
 			return 0, 0, err
@@ -94,16 +118,11 @@ func (c *Client) UploadChunks(ctx context.Context, scope domain.ChunkScope, chun
 		}
 	}
 
-	c.confirmMu.Lock()
-	confirm, err := client.ConfirmChunkUploads(authedCtx, &pb.ConfirmChunkUploadsRequest{
-		Context: &pb.ProjectContext{Org: scope.Org, Project: scope.Project},
-		Hashes:  rawHashes,
-	})
-	c.confirmMu.Unlock()
+	missing, err := c.confirmChunks(authedCtx, client, scope, rawHashes, uploadedProofs)
 	if err != nil {
-		return 0, 0, toDomainError(err)
+		return 0, 0, err
 	}
-	if missing := confirm.GetMissingHashes(); len(missing) > 0 {
+	if len(missing) > 0 {
 		return 0, 0, domain.NewUserError(fmt.Sprintf("upload incomplete: %d chunk(s) missing on the server", len(missing)))
 	}
 
@@ -113,6 +132,38 @@ func (c *Client) UploadChunks(ctx context.Context, scope domain.ChunkScope, chun
 		}
 	}
 	return uploaded, skipped, nil
+}
+
+// confirmChunks sends hashes with their possession proofs and returns the set
+// of hashes the server could not confirm. Confirmations are serialized so
+// concurrent upload windows never stack SQLite metadata writes.
+func (c *Client) confirmChunks(ctx context.Context, client pb.NipaServiceClient, scope domain.ChunkScope, hashes []string, proofs []*pb.ChunkPossessionProof) (map[string]struct{}, error) {
+	if len(hashes) == 0 {
+		return nil, nil
+	}
+	c.confirmMu.Lock()
+	res, err := client.ConfirmChunkUploads(ctx, &pb.ConfirmChunkUploadsRequest{
+		Context: &pb.ProjectContext{Org: scope.Org, Project: scope.Project},
+		Hashes:  hashes,
+		Proofs:  proofs,
+	})
+	c.confirmMu.Unlock()
+	if err != nil {
+		return nil, toDomainError(err)
+	}
+	missing := make(map[string]struct{}, len(res.GetMissingHashes()))
+	for _, hash := range res.GetMissingHashes() {
+		missing[hash] = struct{}{}
+	}
+	return missing, nil
+}
+
+func hashStrings(jobs []chunkTransfer) []string {
+	hashes := make([]string, 0, len(jobs))
+	for _, job := range jobs {
+		hashes = append(hashes, job.hash.String())
+	}
+	return hashes
 }
 
 // DownloadChunks fetches chunk content through signed download URLs. Callers
