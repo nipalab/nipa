@@ -35,7 +35,7 @@ release run.
 | Big-repo hygiene | `SaveTree` upsert + mark-and-sweep (5-row writes for 5 changes), `stat_cache` keeps status/diff off the file system |
 | Metrics | Request-duration histograms, DB-pool gauges/waits, chunk ops/bytes, verify failures (`docs/OBSERVABILITY.md`) |
 | Postgres pool | **Untuned**: no `SetMaxOpenConns`/`ConnMaxLifetime` in production code — Go's unlimited default can exhaust `max_connections` across pods |
-| Rate limiting | None (login brute-force throttling still open in `docs/RELEASE_CHECKLIST.md` §3) |
+| Rate limiting | Token buckets per IP / account / user, memory or Redis store (`docs/RATE_LIMIT.md`) |
 
 ## Benchmarks
 

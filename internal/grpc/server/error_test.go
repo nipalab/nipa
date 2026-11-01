@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
@@ -76,4 +77,10 @@ func TestHandleError_WrappedDomainError(t *testing.T) {
 	err := handleError(fmt.Errorf("boom: %w", &domain.Error{Code: 404, Message: "record not found", Cause: errors.New("sql: no rows")}))
 	require.Error(t, err)
 	require.Equal(t, codes.NotFound, status.Code(err))
+}
+
+func TestHandleError_Domain429(t *testing.T) {
+	err := handleError(domain.NewErrorTooManyRequests(2 * time.Second))
+	require.Equal(t, codes.ResourceExhausted, status.Code(err))
+	require.Contains(t, err.Error(), domain.RateLimitMessage)
 }

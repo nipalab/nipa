@@ -119,6 +119,7 @@ made the old `MAX(number)+1` race invisible).
   the lost-lease callback.
 - Overrides for service-container CI: `NIPA_TEST_POSTGRES_DSN`,
   `NIPA_TEST_S3_ENDPOINT`, `NIPA_TEST_S3_IMAGE` (default
-  `docker.io/pgsty/minio:latest`).
+  `docker.io/pgsty/minio:latest`), `NIPA_TEST_REDIS_ADDR` (rate limit store,
+  default a `redis:7` container).
 - `make test-ee` runs the enterprise packages; plain `go test ./...` runs
   everything when Docker is available.

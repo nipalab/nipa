@@ -9,6 +9,7 @@ import (
 	"github.com/nipalab/nipa/internal/hasher"
 	"github.com/nipalab/nipa/internal/mail"
 	"github.com/nipalab/nipa/internal/obs"
+	"github.com/nipalab/nipa/internal/ratelimit"
 	"github.com/nipalab/nipa/internal/repository/dbtx"
 	"github.com/nipalab/nipa/internal/snow"
 	"github.com/nipalab/nipa/internal/storage"
@@ -17,7 +18,7 @@ import (
 )
 
 // UsecaseDeps carries everything the usecase graph needs besides the
-// repositories. StorageLedger and EmailDispatcher are optional.
+// repositories. StorageLedger, EmailDispatcher and RateLimiter are optional.
 type UsecaseDeps struct {
 	Config            *config.Config
 	DB                *sql.DB
@@ -28,6 +29,7 @@ type UsecaseDeps struct {
 	WebhookDispatcher *webhook.Dispatcher
 	EmailDispatcher   *mail.Dispatcher
 	StorageLedger     usecase.StorageLedger
+	RateLimiter       *ratelimit.Limiter
 }
 
 // BuildUsecases wires the whole usecase graph once for every edition and for
@@ -37,7 +39,7 @@ func BuildUsecases(repos usecase.Repositories, deps UsecaseDeps) Usecases {
 	node := deps.Snow
 	transactor := dbtx.NewTransactor(deps.DB)
 
-	authUsecase := usecase.NewAuth(cfg.JWTKey, deps.Hasher, repos.User, repos.Auth).WithSSHKeys(repos.SSHKey)
+	authUsecase := usecase.NewAuth(cfg.JWTKey, deps.Hasher, repos.User, repos.Auth).WithSSHKeys(repos.SSHKey).WithLimiter(deps.RateLimiter)
 	orgUsecase := usecase.NewOrg(repos.Org, node)
 	permissionUsecase := usecase.NewPermission(repos.PBAC, repos.User, repos.Group, orgUsecase)
 	orgUsecase.WithPermissionCache(permissionUsecase)

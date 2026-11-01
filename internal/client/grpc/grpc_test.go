@@ -476,6 +476,7 @@ func TestToDomainError(t *testing.T) {
 		{"permission denied", status.Error(codes.PermissionDenied, "no permission"), 403, "no permission"},
 		{"conflict", status.Error(codes.FailedPrecondition, "branch has moved"), 409, "branch has moved"},
 		{"quota exceeded", status.Error(codes.ResourceExhausted, "storage quota exceeded"), 402, "storage quota exceeded"},
+		{"rate limited", status.Error(codes.ResourceExhausted, "rate limit exceeded, retry in 3s"), 429, "rate limit exceeded, retry in 3s"},
 	}
 
 	for _, tt := range tests {

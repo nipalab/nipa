@@ -189,5 +189,5 @@ drives entitlement updates; nipad-ee stores and enforces them:
   free-tier `owner_quota` baseline. No cron in nipad.
 
 **Other**: device-code `nipa login --web`, password reset, explicit
-"set password" for social accounts, rate limiting on the public endpoints,
-email-change flows.
+"set password" for social accounts, email-change flows. The public endpoints
+are rate limited per IP and per account (`docs/RATE_LIMIT.md`).

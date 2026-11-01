@@ -65,9 +65,10 @@ pre-release step, not a replacement for the automated gates below.
 - [ ] **Admin bootstrap story.** Document how a fresh server gets its first
   admin (config seeding; the manual test plan references the seeded
   super-admin) and whether the password must be rotated on first login.
-- [ ] **Login rate limiting.** Confirm brute-force protection on the password
-  login and the SSH challenge flow (`BeginLoginSSHKey` / `CompleteSSHLogin`),
-  or add a limiter; every failure already returns the generic 400.
+- [x] **Login rate limiting.** Per-IP (`auth_ip`) and per-account (`auth_id`)
+  token buckets cover password login, refresh, the SSH challenge flow and the
+  SaaS registration routes (`docs/RATE_LIMIT.md`). Confirm `RATE_LIMIT_TRUSTED_PROXIES`
+  lists the reverse proxy and use `RATE_LIMIT_STORE=redis` on multi-instance deployments.
 - [ ] **`govulncheck` in CI.** Add `govulncheck ./...` (and keep deps
   updated) to `ci.yml`.
 - [ ] **Secret history scan.** `config.yaml`, `.env*` and `*.db` are

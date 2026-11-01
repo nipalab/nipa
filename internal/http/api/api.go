@@ -35,6 +35,7 @@ type usecaseContainer interface {
 type API struct {
 	useCase      usecaseContainer
 	metrics      *obs.Metrics
+	rateLimit    *RateLimit
 	routes       []func(*restful.WebService)
 	publicRoutes []func(*restful.WebService)
 }
@@ -44,6 +45,7 @@ type Option func(*apiOptions)
 
 type apiOptions struct {
 	metrics      *obs.Metrics
+	rateLimit    *RateLimit
 	routes       []func(*restful.WebService)
 	publicRoutes []func(*restful.WebService)
 }
@@ -52,6 +54,14 @@ type apiOptions struct {
 func WithMetrics(metrics *obs.Metrics) Option {
 	return func(o *apiOptions) {
 		o.metrics = metrics
+	}
+}
+
+// WithRateLimit throttles the public auth routes per IP and the authenticated
+// routes per user. A nil value disables it.
+func WithRateLimit(rl *RateLimit) Option {
+	return func(o *apiOptions) {
+		o.rateLimit = rl
 	}
 }
 
@@ -82,6 +92,7 @@ func NewAPI(useCase usecaseContainer, opts ...Option) *API {
 	return &API{
 		useCase:      useCase,
 		metrics:      options.metrics,
+		rateLimit:    options.rateLimit,
 		routes:       options.routes,
 		publicRoutes: options.publicRoutes,
 	}
@@ -101,6 +112,9 @@ func (a *API) SetupRoute() http.Handler {
 		Filter(sameOriginFilter).
 		Consumes(restful.MIME_JSON).
 		Produces(restful.MIME_JSON)
+	if a.rateLimit.active() {
+		authWs.Filter(a.rateLimit.AuthFilter())
+	}
 	setupAuthRouter(authWs, h)
 	for _, register := range a.publicRoutes {
 		register(authWs)
@@ -114,6 +128,9 @@ func (a *API) SetupRoute() http.Handler {
 		Filter(NewAuthFilter(a.useCase.Auth()).Auth()).
 		Consumes(restful.MIME_JSON).
 		Produces(restful.MIME_JSON)
+	if a.rateLimit.active() {
+		apiWs.Filter(a.rateLimit.UserFilter())
+	}
 	setupUserRouter(apiWs, h)
 	setupSSHKeyRouter(apiWs, h)
 	setupProjectRouter(apiWs, h)

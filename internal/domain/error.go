@@ -3,6 +3,8 @@ package domain
 import (
 	"errors"
 	"fmt"
+	"math"
+	"time"
 )
 
 type Error struct {
@@ -108,6 +110,19 @@ func NewErrorQuotaExceeded(message string) *Error {
 	return &Error{
 		Code:    402,
 		Message: message,
+	}
+}
+
+const RateLimitMessage = "rate limit exceeded"
+
+func NewErrorTooManyRequests(retryAfter time.Duration) *Error {
+	secs := int(math.Ceil(retryAfter.Seconds()))
+	if secs < 1 {
+		secs = 1
+	}
+	return &Error{
+		Code:    429,
+		Message: fmt.Sprintf("%s, retry in %ds", RateLimitMessage, secs),
 	}
 }
 

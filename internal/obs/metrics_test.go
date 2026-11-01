@@ -112,3 +112,14 @@ func TestMetrics_NilSafety(t *testing.T) {
 	m.Handler().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/metrics", nil))
 	require.Equal(t, http.StatusNotFound, rr.Code)
 }
+
+func TestMetrics_ObserveRateLimit(t *testing.T) {
+	m := NewMetrics()
+	m.ObserveRateLimit("auth_ip", "limited")
+	m.ObserveRateLimit("auth_ip", "limited")
+	require.Equal(t, 2.0, testutil.ToFloat64(m.rateLimit.WithLabelValues("auth_ip", "limited")))
+	require.Contains(t, scrapeMetrics(t, m), "nipa_ratelimit_total")
+
+	var nilMetrics *Metrics
+	require.NotPanics(t, func() { nilMetrics.ObserveRateLimit("x", "y") })
+}

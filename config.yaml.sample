@@ -145,3 +145,33 @@ OAUTH_GOOGLE_CLIENT_ID: ''
 OAUTH_GOOGLE_CLIENT_SECRET: ''
 OAUTH_GITHUB_CLIENT_ID: ''
 OAUTH_GITHUB_CLIENT_SECRET: ''
+# Rate limiting (design in docs/RATE_LIMIT.md). Token buckets per scope; rates
+# are tokens per minute. RATE_LIMIT_STORE is `memory` (per process, default) or
+# `redis` (nipad-ee only; shared between instances). On nipad-ee an unset store
+# picks redis when RATE_LIMIT_REDIS_ADDR is set. A store failure never blocks
+# requests (fail open).
+RATE_LIMIT_ENABLED: true
+RATE_LIMIT_STORE: ''
+RATE_LIMIT_REDIS_ADDR: ''
+RATE_LIMIT_REDIS_PASSWORD: ''
+RATE_LIMIT_REDIS_DB: 0
+RATE_LIMIT_REDIS_TLS: false
+RATE_LIMIT_REDIS_PREFIX: 'nipa:rl:'
+# X-Forwarded-For is honoured only from these peers (comma-separated IPs or
+# CIDRs); the reverse proxy in front of nipad must be listed.
+RATE_LIMIT_TRUSTED_PROXIES: '127.0.0.1,::1'
+# Login, refresh, SSH challenge and registration routes, per client IP.
+RATE_LIMIT_AUTH_IP_PER_MINUTE: 10
+RATE_LIMIT_AUTH_IP_BURST: 10
+# Password and SSH logins per account email.
+RATE_LIMIT_AUTH_ID_PER_MINUTE: 0.33
+RATE_LIMIT_AUTH_ID_BURST: 5
+# Authenticated REST and gRPC calls, per user.
+RATE_LIMIT_API_USER_PER_MINUTE: 3000
+RATE_LIMIT_API_USER_BURST: 200
+# Signed chunk transfers, per client IP.
+RATE_LIMIT_CHUNK_IP_PER_MINUTE: 12000
+RATE_LIMIT_CHUNK_IP_BURST: 1000
+# Every other HTTP request (web UI, REST), per client IP.
+RATE_LIMIT_GLOBAL_IP_PER_MINUTE: 6000
+RATE_LIMIT_GLOBAL_IP_BURST: 300

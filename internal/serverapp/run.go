@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/netip"
 	"os"
 	"os/signal"
 	"strings"
@@ -23,6 +24,7 @@ import (
 	grpcserver "github.com/nipalab/nipa/internal/grpc/server"
 	"github.com/nipalab/nipa/internal/http/api"
 	"github.com/nipalab/nipa/internal/obs"
+	"github.com/nipalab/nipa/internal/ratelimit"
 	"github.com/nipalab/nipa/internal/version"
 	webui "github.com/nipalab/nipa/web/server"
 )
@@ -47,6 +49,7 @@ type runOptions struct {
 	tracing      *obs.Tracing
 	logs         *obs.Logs
 	metricsPush  *obs.MetricsPush
+	rateLimit    *api.RateLimit
 	routes       []func(*restful.WebService)
 	publicRoutes []func(*restful.WebService)
 	marketing    http.Handler
@@ -89,6 +92,16 @@ func WithLogs(logs *obs.Logs) Option {
 func WithMetricsPush(metricsPush *obs.MetricsPush) Option {
 	return func(o *runOptions) {
 		o.metricsPush = metricsPush
+	}
+}
+
+// WithRateLimit throttles HTTP and gRPC traffic. Run closes the limiter's
+// store on shutdown. A nil limiter disables throttling.
+func WithRateLimit(limiter *ratelimit.Limiter, proxies []netip.Prefix) Option {
+	return func(o *runOptions) {
+		if limiter != nil {
+			o.rateLimit = &api.RateLimit{Limiter: limiter, Proxies: proxies}
+		}
 	}
 }
 
@@ -137,7 +150,7 @@ func run(cfg *config.Config, reg *Registry, dispatchers []Dispatcher, signals <-
 		opt(&ro)
 	}
 
-	apiOpts := []api.Option{api.WithMetrics(ro.metrics)}
+	apiOpts := []api.Option{api.WithMetrics(ro.metrics), api.WithRateLimit(ro.rateLimit)}
 	for _, register := range ro.routes {
 		apiOpts = append(apiOpts, api.WithRoutes(register))
 	}
@@ -160,10 +173,18 @@ func run(cfg *config.Config, reg *Registry, dispatchers []Dispatcher, signals <-
 
 	grpcInterceptor := grpcserver.NewInterceptor(reg.Auth())
 
+	unaryInterceptors := []grpc.UnaryServerInterceptor{grpcserver.MetricsUnary(ro.metrics), grpcInterceptor.JWTUnary()}
+	streamInterceptors := []grpc.StreamServerInterceptor{grpcserver.MetricsStream(ro.metrics), grpcInterceptor.JWTStream()}
+	if ro.rateLimit != nil {
+		grpcLimiter := grpcserver.NewRateLimiter(ro.rateLimit.Limiter, ro.rateLimit.Proxies)
+		unaryInterceptors = append(unaryInterceptors, grpcLimiter.Unary())
+		streamInterceptors = append(streamInterceptors, grpcLimiter.Stream())
+	}
+
 	grpcRegistrar := grpc.NewServer(
 		ro.tracing.GRPCServerOption(),
-		grpc.ChainUnaryInterceptor(grpcserver.MetricsUnary(ro.metrics), grpcInterceptor.JWTUnary()),
-		grpc.ChainStreamInterceptor(grpcserver.MetricsStream(ro.metrics), grpcInterceptor.JWTStream()),
+		grpc.ChainUnaryInterceptor(unaryInterceptors...),
+		grpc.ChainStreamInterceptor(streamInterceptors...),
 	)
 	nipaServer := grpcserver.New(reg)
 	pb.RegisterNipaServiceServer(grpcRegistrar, nipaServer)
@@ -212,7 +233,7 @@ func run(cfg *config.Config, reg *Registry, dispatchers []Dispatcher, signals <-
 
 	handler := obs.RequestID(ro.tracing.HTTPHandler("nipa", obs.AccessLog(func(r *http.Request) bool {
 		return !isAPIPath(r.URL.Path)
-	}, mainHandler), skipTraceRequest))
+	}, ro.rateLimit.Middleware(mainHandler)), skipTraceRequest))
 
 	protocols := new(http.Protocols)
 	protocols.SetHTTP1(true)
@@ -242,6 +263,11 @@ func run(cfg *config.Config, reg *Registry, dispatchers []Dispatcher, signals <-
 			}
 			if err := dispatcher.Stop(shutdownCtx); err != nil {
 				slog.Warn("background dispatcher shutdown incomplete", "error", err)
+			}
+		}
+		if ro.rateLimit != nil {
+			if err := ro.rateLimit.Limiter.Close(); err != nil {
+				slog.Warn("rate limit store close failed", "error", err)
 			}
 		}
 		if err := ro.tracing.Shutdown(shutdownCtx); err != nil {
