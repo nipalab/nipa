@@ -570,6 +570,7 @@ var _ = Describe("nipa mr", func() {
 		Expect(check.BlockedBy).To(Equal("status_checks"))
 
 		ciDir := cloneRepoAs(ci, workspace(), repoURLFor(orgSlug, project), "ci-work")
+		Expect(runNipaAs(ci, ciDir, "switch", "feature").ExitCode).To(Equal(0))
 		reported := runNipaAs(ci, ciDir, "mr", "check", "1", "--name", "build", "--state", "success")
 		Expect(reported.ExitCode).To(Equal(0), reported.Output())
 

@@ -929,10 +929,10 @@ func TestSetupMrChecksCmd(t *testing.T) {
 }
 
 func TestSetupMrCheckCmd(t *testing.T) {
-	root := setupRepo(t, "feature")
+	root := setupRepoWithCommit(t, "feature", "head1", "hash1")
 	client := &fakeMRClient{
 		reportCheck:     &domain.MergeRequestCheck{Name: "build", State: "success"},
-		getMergeability: &domain.Mergeability{SourceCommitID: "head1"},
+		getMergeability: &domain.Mergeability{SourceCommitID: "server-head"},
 	}
 	cli := newMRCli(t, client)
 
@@ -948,10 +948,14 @@ func TestSetupMrCheckCmd(t *testing.T) {
 	require.Equal(t, "success", client.checkState)
 	require.Equal(t, "https://ci/x", client.checkURL)
 
-	client = &fakeMRClient{reportErr: errors.New("boom"), getMergeability: &domain.Mergeability{SourceCommitID: "head1"}}
+	client = &fakeMRClient{reportErr: errors.New("boom")}
 	cli = newMRCli(t, client)
 	_, err = runCmdInDir(t, root, cli.setupMrCmd(), "check", "7", "--name", "build", "--state", "success")
 	require.EqualError(t, err, "boom")
+
+	unpinned := setupRepo(t, "feature")
+	_, err = runCmdInDir(t, unpinned, newMRCli(t, &fakeMRClient{}).setupMrCmd(), "check", "7", "--name", "build", "--state", "success")
+	require.ErrorContains(t, err, "no pinned commit")
 }
 
 func TestSetupMrViewCmd_Assignees(t *testing.T) {

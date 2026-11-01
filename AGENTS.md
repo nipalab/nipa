@@ -355,8 +355,8 @@ branches (409) until they are unprotected.
 Status checks: `merge_request_checks` rows are keyed by (request, head commit,
 name) and written by `MergeRequestCheck.Report` (`POST .../checks`, gRPC
 `ReportMergeRequestCheck`, `nipa mr check [--commit <id>]`). A report must name
-the source head it was started for (`head_commit_id`, defaulting to the current
-head in the CLI); a moved head is a 409, and the request author cannot report
+the source head it was started for (`head_commit_id`; the CLI defaults to the
+commit the working copy is pinned to, never the server's current head); a moved head is a 409, and the request author cannot report
 when the target requires status checks; a target branch with
 `require_status_checks` blocks merging (`blocked_by: "status_checks"`) until
 every required name succeeded for the current source head — a push starts a

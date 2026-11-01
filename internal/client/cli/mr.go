@@ -332,7 +332,7 @@ func (c *Cli) setupMrCheckCmd() *cobra.Command {
 	cmd.Flags().String("name", "", "Check name, e.g. build (required)")
 	cmd.Flags().String("state", "", "Check state: pending, success or failed (required)")
 	cmd.Flags().String("url", "", "Optional link to the run details")
-	cmd.Flags().String("commit", "", "Source commit id the run was started for (default: current source head)")
+	cmd.Flags().String("commit", "", "Source commit id the run was started for (default: the commit this working copy is on)")
 	return cmd
 }
 

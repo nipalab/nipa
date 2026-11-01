@@ -41,6 +41,7 @@ type mrClient interface {
 type mrLocalRepo interface {
 	Init(target string) error
 	LoadConfig() (*domain.Config, error)
+	LoadCommit() (*domain.LocalCommit, error)
 }
 
 type CreateMergeRequestOptions struct {
@@ -140,8 +141,10 @@ func (m *MergeRequest) Checks(ctx context.Context, root, id string) ([]*domain.M
 	return m.client.ListMergeRequestChecks(ctx, url.Org, url.Project, number)
 }
 
-// ReportCheck records a status check result for the given source commit, or
-// for the request's current head when commit is empty.
+// ReportCheck records a status check result for the given source commit. With
+// no explicit commit it uses the commit the working copy is pinned to, i.e. the
+// content the checks actually ran against, never the server's current head: a
+// head that moved while the checks ran must be refused, not silently adopted.
 func (m *MergeRequest) ReportCheck(ctx context.Context, root, id, name, state, detailsURL, commit string) (*domain.MergeRequestCheck, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
@@ -157,14 +160,14 @@ func (m *MergeRequest) ReportCheck(ctx context.Context, root, id, name, state, d
 	}
 	commit = strings.TrimSpace(commit)
 	if commit == "" {
-		_, info, err := m.client.GetMergeRequest(ctx, url.Org, url.Project, number)
+		pin, err := m.localRepo.LoadCommit()
 		if err != nil {
 			return nil, err
 		}
-		if info == nil || info.SourceCommitID == "" {
-			return nil, domain.NewUserError("the source branch has no commits")
+		if pin == nil || pin.CommitID == "" {
+			return nil, domain.NewUserError("this working copy has no pinned commit; run nipa update or pass --commit")
 		}
-		commit = info.SourceCommitID
+		commit = pin.CommitID
 	}
 	return m.client.ReportMergeRequestCheck(ctx, url.Org, url.Project, number, name, state, detailsURL, commit)
 }

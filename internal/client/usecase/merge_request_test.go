@@ -816,30 +816,35 @@ func TestMergeRequest_ReportCheck(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestMergeRequest_ReportCheck_DefaultsToCurrentHead(t *testing.T) {
+func TestMergeRequest_ReportCheck_DefaultsToThePinnedCommit(t *testing.T) {
 	local := &stubLocalRepo{
 		loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "feature"},
+		loadCommit: &domain.LocalCommit{CommitID: "tested"},
 	}
 	client := &stubMRClient{
 		reportCheck:     &domain.MergeRequestCheck{Name: "build", State: "success"},
 		getResult:       &domain.MergeRequest{Number: 5},
-		getMergeability: &domain.Mergeability{SourceCommitID: "abc"},
+		getMergeability: &domain.Mergeability{SourceCommitID: "moved-on"},
 	}
 	mr := newTestMergeRequest(t, local, client)
 
 	_, err := mr.ReportCheck(context.Background(), t.TempDir(), "5", "build", "success", "", "")
 	require.NoError(t, err)
-	require.Equal(t, "abc", client.checkCommit)
+	require.Equal(t, "tested", client.checkCommit, "the server's newer head must not be adopted")
 
-	client.getMergeability = &domain.Mergeability{}
+	_, err = mr.ReportCheck(context.Background(), t.TempDir(), "5", "build", "success", "", "explicit")
+	require.NoError(t, err)
+	require.Equal(t, "explicit", client.checkCommit, "--commit overrides the pin")
+
+	local.loadCommit = &domain.LocalCommit{}
+	_, err = mr.ReportCheck(context.Background(), t.TempDir(), "5", "build", "success", "", "")
+	require.Error(t, err, "an unpinned working copy must name the commit")
+
+	local.loadCommit = nil
 	_, err = mr.ReportCheck(context.Background(), t.TempDir(), "5", "build", "success", "", "")
 	require.Error(t, err)
 
-	client.getMergeability = nil
-	_, err = mr.ReportCheck(context.Background(), t.TempDir(), "5", "build", "success", "", "")
-	require.Error(t, err)
-
-	client.getErr = errors.New("boom")
+	local.loadCommitErr = errors.New("boom")
 	_, err = mr.ReportCheck(context.Background(), t.TempDir(), "5", "build", "success", "", "")
 	require.EqualError(t, err, "boom")
 }
