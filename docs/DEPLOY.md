@@ -59,19 +59,24 @@ URLs stay valid across restarts; do not rotate those keys during an upgrade.
 ### Marketing site (Netlify)
 
 The marketing site is a separate Astro deployment (the `nipa-web` repo on
-Netlify). Caddy serves both the app and the marketing landing page on
-`nipalab.com`: `/` proxies the Netlify landing page, `/_astro/*` its build
-assets, and every other path goes to `nipad-ee`. Because Caddy owns the apex
-domain, the upstream must be the Netlify site's own origin (its
-`*.netlify.app` hostname), never `https://nipalab.com` — that would proxy Caddy
-back into itself. Every marketing page link is absolute to
-`https://nipalab.com`, so marketing navigation stays on the marketing domain;
-`Sign in` / `Open dashboard` link to `https://nipalab.com`. A marketing change
-only needs a Netlify deploy — no `nipad-ee` rebuild or blue/green flip:
+Netlify). Caddy serves both the app and the marketing site on `nipalab.com`:
+the `@marketing` matcher proxies the landing page, `/_astro/*`,
+`/screenshots/*`, `/pricing`, and the root assets (`favicon.svg`,
+`apple-touch-icon.png`, `logo.svg`, `og.png`, `robots.txt`, `sitemap-*.xml`);
+every other path goes to `nipad-ee`. Because Caddy owns the apex domain, the
+upstream must be the Netlify site's own origin (its `*.netlify.app` hostname),
+never `https://nipalab.com` — that would proxy Caddy back into itself. Every
+marketing page link is absolute to `https://nipalab.com`, so marketing
+navigation stays on the marketing domain; `Sign in` / `Open dashboard` link to
+`https://nipalab.com`. A marketing change only needs a Netlify deploy — no
+`nipad-ee` rebuild or blue/green flip:
 
 - Keep the `@marketing` `handle` block in `deploy/caddy/Caddyfile` ahead of the
   app's `reverse_proxy`. `upgrade.sh` only rewrites the `reverse_proxy
   127.0.0.1:<port>` line, so the marketing upstream is untouched by flips.
+- Add every new marketing page route or root asset to the `@marketing` matcher
+  and to the reserved org slugs (`internal/usecase/reserved.go` and
+  `web/src/slug.ts`), or the app's SPA routes will shadow it.
 - Point it at the Netlify site with `MARKETING_UPSTREAM` (required: the
   Netlify-generated origin, never `https://nipalab.com`) and `MARKETING_HOST`
   (defaults `nipalab.com`; set them in the Caddy service environment or edit

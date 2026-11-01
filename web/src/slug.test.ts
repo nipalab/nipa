@@ -7,7 +7,7 @@ describe('slug', () => {
   })
 
   it('reserves web UI and marketing paths for organizations', () => {
-    for (const slug of ['web', 'login', 'dashboard', 'settings', 'api', 'docs', 'debug', 'version']) {
+    for (const slug of ['web', 'login', 'dashboard', 'settings', 'api', 'docs', 'debug', 'pricing', 'screenshots', 'version']) {
       expect(RESERVED_ORG_SLUGS.has(slug)).toBe(true)
     }
     expect(RESERVED_ORG_SLUGS.has('acme')).toBe(false)

@@ -27,11 +27,12 @@ nipalab.com {
 	@internal path /metrics /debug/pprof /debug/pprof/*
 	respond @internal 404
 
-	# Marketing lives on Netlify. Caddy mirrors its landing page at / plus
-	# that page's build assets; every marketing page link is absolute to
-	# nipalab.com, so navigation stays there. The app owns every other path.
+	# Marketing lives on Netlify. Caddy mirrors its landing page, page routes,
+	# and assets; every marketing page link is absolute to nipalab.com. The app
+	# owns every other path. Keep this list in sync with the marketing build and
+	# with the reserved org slugs (internal/usecase/reserved.go, web/src/slug.ts).
 	# MARKETING_UPSTREAM is required and must not be nipalab.com.
-	@marketing path / /_astro/*
+	@marketing path / /_astro/* /screenshots/* /pricing /pricing/* /favicon.svg /apple-touch-icon.png /logo.svg /og.png /robots.txt /sitemap-index.xml /sitemap-0.xml
 	handle @marketing {
 		reverse_proxy {$MARKETING_UPSTREAM} {
 			header_up Host {$MARKETING_HOST:nipalab.com}

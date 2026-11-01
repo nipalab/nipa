@@ -83,7 +83,7 @@ func TestOrg_Create_InvalidSlug(t *testing.T) {
 func TestOrg_Create_ReservedSlug(t *testing.T) {
 	org, _ := newTestOrg(t)
 
-	for _, slug := range []string{"web", "login", "dashboard", "settings", "api", "docs", "debug", "version"} {
+	for _, slug := range []string{"web", "login", "dashboard", "settings", "api", "docs", "debug", "pricing", "screenshots", "version"} {
 		_, err := org.Create(permissionCtx(42), "Acme", slug)
 		require.Error(t, err, "slug %q must be reserved", slug)
 		requireUserError(t, err)
