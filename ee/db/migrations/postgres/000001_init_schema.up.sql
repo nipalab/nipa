@@ -158,6 +158,8 @@ CREATE TABLE file_chunks (
     PRIMARY KEY (file_id, chunk_index)
 );
 
+CREATE INDEX idx_file_chunks_chunk_id ON file_chunks (chunk_id);
+
 CREATE TABLE commits (
     id BIGINT PRIMARY KEY,
     hash BYTEA NOT NULL UNIQUE,
@@ -169,6 +171,8 @@ CREATE TABLE commits (
     message TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE INDEX idx_commits_tree_id ON commits (tree_id);
 
 CREATE TABLE branches (
     id BIGINT PRIMARY KEY,
