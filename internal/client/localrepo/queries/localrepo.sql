@@ -35,13 +35,21 @@ ON CONFLICT(path) DO UPDATE SET
     chunks = excluded.chunks,
     snapshot_id = excluded.snapshot_id;
 
--- name: StaleFileDelete :exec
-DELETE FROM files
-WHERE snapshot_id <> :snapshot_id;
+-- name: TreeNodeList :many
+SELECT path, parent_path, hash, mode
+FROM tree_nodes;
 
--- name: StaleTreeNodeDelete :exec
+-- name: TreeNodeDelete :exec
 DELETE FROM tree_nodes
-WHERE snapshot_id <> :snapshot_id;
+WHERE path = :path;
+
+-- name: FileList :many
+SELECT path, tree_path, hash, size_bytes, mode, is_binary, encoding, chunks
+FROM files;
+
+-- name: FileDelete :exec
+DELETE FROM files
+WHERE path = :path;
 
 -- name: StagedFileList :many
 SELECT path
@@ -64,7 +72,6 @@ WHERE path IS NOT NULL;
 -- name: SnapshotFileList :many
 SELECT path, hash, size_bytes, mode, is_binary, encoding, chunks
 FROM files
-WHERE snapshot_id = :snapshot_id
 ORDER BY path;
 
 -- name: StatCacheList :many

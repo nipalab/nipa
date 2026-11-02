@@ -33,7 +33,7 @@ release run.
 | Micro-benchmarks | `internal/chunker`, `internal/diff`, `internal/treehash` — `make bench-unit` (encode, Myers diff, tree hashing) |
 | Load scenarios | `tests/load` — `make load-test args='-scenario push|clone|mixed ...'`, see `tests/load/README.md` |
 | Transfer tuning | Client adaptive limiter, concurrency 16 → range [4, 64], pinned by `NIPA_UPLOAD_WORKERS` / `uploadWorkers` (`internal/client/grpc/transfer.go`) |
-| Big-repo hygiene | `SaveTree` upsert + mark-and-sweep (re-stamps every row each save: ~0.8 s for 10k files, see "Wide-tree scale"), `stat_cache` keeps status/diff off the file system |
+| Big-repo hygiene | `SaveTree` diffs against the stored rows and writes only the difference (~20 ms for 10k files and 5 changes, see "Wide-tree scale"), `stat_cache` keeps status/diff off the file system |
 | Metrics | Request-duration histograms, DB-pool gauges/waits, chunk ops/bytes, verify failures (`docs/OBSERVABILITY.md`) |
 | Postgres pool | **Untuned**: no `SetMaxOpenConns`/`ConnMaxLifetime` in production code — Go's unlimited default can exhaust `max_connections` across pods |
 | Rate limiting | Token buckets per IP / account / user, memory or Redis store (`docs/RATE_LIMIT.md`) |
@@ -50,7 +50,7 @@ baseline table. They are skipped unless the env var is set, so CI stays fast.
 | `make bench-scale gb=2` | one 2 GiB binary: push/clone rates + peak heap vs file size | release commit |
 | `make bench-unit` | chunker encode (text/packed/unknown), Myers diff, tree hash throughput | release commit |
 | `make bench-scale-files files=10000` | wide-tree scale on SQLite: initial and one-file push, recursive manifest, commit and merge-request diff, clone, `ApplyPush` alone, `SaveTree` with 5 changes | per change that touches these paths |
-| `make bench-scale-files-ee files=10000` | the same push/manifest/diff scenario and `ApplyPush` on postgres + MinIO (Docker) | per change that touches these paths |
+| `make bench-scale-files-ee files=10000` | the same push/manifest/diff scenario and `ApplyPush` on postgres + MinIO (Docker); `NIPA_BENCH_LATENCY=500us` adds a one-way delay in front of postgres | per change that touches these paths |
 
 Expected shape (loopback, modern laptop): encode is roughly 0.5–1 GiB/s for
 packed/unknown binaries and BLAKE3 ~4 GiB/s, so network and disk dominate; the
@@ -66,18 +66,34 @@ then change one file inside a 1000-file directory.
 
 | Step | SQLite (`nipad`) | Postgres + MinIO (`nipad-ee`) |
 |---|---|---|
-| Initial push | 3.4 s | 30.3 s |
-| `ApplyPush` alone | 0.68 s | 3.05 s |
-| One-file change push | 0.75 s | 0.87 s |
+| Initial push | 2.6 s (was 3.4 s) | 16.2 s (was 30.3 s) |
+| `ApplyPush` alone | 0.19 s (was 0.68 s) | 0.29 s (was 3.05 s) |
+| One-file change push | 0.14 s (was 0.75 s) | 0.15 s (was 0.87 s) |
 | Recursive manifest | 42 ms | 44 ms |
 | Commit diff / merge-request diff | 12 ms / 12 ms (was 96 / 98) | 14 ms / 13 ms (was 96 / 99) |
-| Fresh clone | 2.2 s | 3.3 s |
-| `SaveTree`, 5 changed files | 0.85 s (290k allocs) | n/a (client) |
+| Fresh clone | 2.1 s | 2.6 s (was 3.3 s) |
+| `SaveTree`, 5 changed files | 19 ms (was 0.85 s; 150k allocs) | n/a (client) |
 
-Reading the numbers: the postgres push is dominated by chunk transfer to
-MinIO, `ApplyPush` is about a tenth of it on loopback and grows with network
-latency (one statement per chunk, file and link); `SaveTree` re-stamps every
-row on each save, so 5 changed files cost as much as 10k.
+Reading the numbers: the postgres push is dominated by chunk transfer to MinIO
+on loopback. `ApplyPush` used to cost one statement per chunk, file and link, so
+it was cheap on loopback but grew with every millisecond between the server and
+postgres. It now resolves all chunks in one lookup and inserts files and links
+in bulk (`internal/repository/pushbatch`), so it no longer depends on latency:
+
+| `ApplyPush`, postgres, 2000 files | Before | After |
+|---|---|---|
+| Loopback | 0.47 s | 0.06 s |
+| 0.5 ms round trip | 3.9 s | 0.09 s |
+| 1 ms round trip | 7.0 s | 0.10 s |
+
+`NIPA_BENCH_LATENCY` puts a precise one-way delay in front of postgres. At 10k
+files and a 1 ms round trip `ApplyPush` now takes 0.34 s; the old code issued
+about 30k statements, which extrapolates from the runs above to roughly 35 s of
+apply time inside one transaction.
+
+`SaveTree` compares the new tree with the stored rows in memory and writes only
+the rows that differ, so 5 changed files cost a read of the stored rows plus
+about a dozen writes instead of a rewrite of all 10k.
 
 Commit and merge-request diffs no longer load whole manifests: they walk the
 two trees in lockstep (`Branch.changedTreeEntries`) and skip every directory

@@ -8,6 +8,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 
 	"github.com/lib/pq"
 )
@@ -47,31 +48,6 @@ func (q *Queries) ChunkGetByHash(ctx context.Context, hash []byte) (Chunk, error
 	return i, err
 }
 
-const chunkGetByHashForProject = `-- name: ChunkGetByHashForProject :one
-SELECT c.id, c.hash, c.size_bytes, c.created_at
-FROM chunks c
-JOIN project_chunk_uploads u ON u.hash = c.hash
-WHERE c.hash = $1 AND u.project_id = $2
-LIMIT 1
-`
-
-type ChunkGetByHashForProjectParams struct {
-	Hash      []byte `json:"hash"`
-	ProjectID int64  `json:"project_id"`
-}
-
-func (q *Queries) ChunkGetByHashForProject(ctx context.Context, arg ChunkGetByHashForProjectParams) (Chunk, error) {
-	row := q.db.QueryRowContext(ctx, chunkGetByHashForProject, arg.Hash, arg.ProjectID)
-	var i Chunk
-	err := row.Scan(
-		&i.ID,
-		&i.Hash,
-		&i.SizeBytes,
-		&i.CreatedAt,
-	)
-	return i, err
-}
-
 const chunkInsertOrIgnore = `-- name: ChunkInsertOrIgnore :exec
 INSERT INTO chunks (hash, size_bytes) VALUES ($1, $2) ON CONFLICT(hash) DO NOTHING
 `
@@ -84,6 +60,46 @@ type ChunkInsertOrIgnoreParams struct {
 func (q *Queries) ChunkInsertOrIgnore(ctx context.Context, arg ChunkInsertOrIgnoreParams) error {
 	_, err := q.db.ExecContext(ctx, chunkInsertOrIgnore, arg.Hash, arg.SizeBytes)
 	return err
+}
+
+const chunkListByHashesForProject = `-- name: ChunkListByHashesForProject :many
+SELECT c.id, c.hash
+FROM chunks c
+JOIN project_chunk_uploads u ON u.hash = c.hash
+WHERE u.project_id = $1 AND c.hash = ANY($2::bytea[])
+`
+
+type ChunkListByHashesForProjectParams struct {
+	ProjectID int64    `json:"project_id"`
+	Hashes    [][]byte `json:"hashes"`
+}
+
+type ChunkListByHashesForProjectRow struct {
+	ID   int64  `json:"id"`
+	Hash []byte `json:"hash"`
+}
+
+func (q *Queries) ChunkListByHashesForProject(ctx context.Context, arg ChunkListByHashesForProjectParams) ([]ChunkListByHashesForProjectRow, error) {
+	rows, err := q.db.QueryContext(ctx, chunkListByHashesForProject, arg.ProjectID, pq.Array(arg.Hashes))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ChunkListByHashesForProjectRow
+	for rows.Next() {
+		var i ChunkListByHashesForProjectRow
+		if err := rows.Scan(&i.ID, &i.Hash); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const commitInsert = `-- name: CommitInsert :exec
@@ -115,50 +131,53 @@ func (q *Queries) CommitInsert(ctx context.Context, arg CommitInsertParams) erro
 	return err
 }
 
-const fileChunkInsert = `-- name: FileChunkInsert :exec
-INSERT INTO file_chunks (file_id, chunk_id, chunk_index) VALUES ($1, $2, $3)
-ON CONFLICT(file_id, chunk_index) DO UPDATE SET chunk_id = excluded.chunk_id
+const fileChunkInsertMany = `-- name: FileChunkInsertMany :exec
+INSERT INTO file_chunks (file_id, chunk_id, chunk_index)
+SELECT (r->>0)::bigint, (r->>1)::bigint, (r->>2)::bigint
+FROM jsonb_array_elements($1::jsonb) AS r
+ON CONFLICT (file_id, chunk_index) DO UPDATE SET chunk_id = excluded.chunk_id
 `
 
-type FileChunkInsertParams struct {
-	FileID     int64 `json:"file_id"`
-	ChunkID    int64 `json:"chunk_id"`
-	ChunkIndex int64 `json:"chunk_index"`
-}
-
-func (q *Queries) FileChunkInsert(ctx context.Context, arg FileChunkInsertParams) error {
-	_, err := q.db.ExecContext(ctx, fileChunkInsert, arg.FileID, arg.ChunkID, arg.ChunkIndex)
+func (q *Queries) FileChunkInsertMany(ctx context.Context, links json.RawMessage) error {
+	_, err := q.db.ExecContext(ctx, fileChunkInsertMany, links)
 	return err
 }
 
-const fileInsert = `-- name: FileInsert :one
-INSERT INTO files (name, mode, tree_id, hash, size_bytes, is_binary, encoding) VALUES ($1, $2, $3, $4, $5, $6, $7)
-RETURNING id
+const fileInsertMany = `-- name: FileInsertMany :many
+INSERT INTO files (name, mode, tree_id, hash, size_bytes, is_binary, encoding)
+SELECT r->>'name', (r->>'mode')::bigint, (r->>'tree_id')::bigint, decode(r->>'hash', 'hex'),
+       (r->>'size_bytes')::bigint, (r->>'is_binary')::boolean, r->>'encoding'
+FROM jsonb_array_elements($1::jsonb) AS r
+RETURNING id, tree_id, name
 `
 
-type FileInsertParams struct {
-	Name      string        `json:"name"`
-	Mode      int64         `json:"mode"`
-	TreeID    sql.NullInt64 `json:"tree_id"`
-	Hash      []byte        `json:"hash"`
-	SizeBytes int64         `json:"size_bytes"`
-	IsBinary  bool          `json:"is_binary"`
-	Encoding  string        `json:"encoding"`
+type FileInsertManyRow struct {
+	ID     int64         `json:"id"`
+	TreeID sql.NullInt64 `json:"tree_id"`
+	Name   string        `json:"name"`
 }
 
-func (q *Queries) FileInsert(ctx context.Context, arg FileInsertParams) (int64, error) {
-	row := q.db.QueryRowContext(ctx, fileInsert,
-		arg.Name,
-		arg.Mode,
-		arg.TreeID,
-		arg.Hash,
-		arg.SizeBytes,
-		arg.IsBinary,
-		arg.Encoding,
-	)
-	var id int64
-	err := row.Scan(&id)
-	return id, err
+func (q *Queries) FileInsertMany(ctx context.Context, fileRows json.RawMessage) ([]FileInsertManyRow, error) {
+	rows, err := q.db.QueryContext(ctx, fileInsertMany, fileRows)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []FileInsertManyRow
+	for rows.Next() {
+		var i FileInsertManyRow
+		if err := rows.Scan(&i.ID, &i.TreeID, &i.Name); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const fileSetTree = `-- name: FileSetTree :exec

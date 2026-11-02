@@ -31,8 +31,8 @@ type Querier interface {
 	BranchUpdateCommit(ctx context.Context, arg BranchUpdateCommitParams) error
 	BranchUpdateCommitIf(ctx context.Context, arg BranchUpdateCommitIfParams) (sql.Result, error)
 	ChunkGetByHash(ctx context.Context, hash []byte) (Chunk, error)
-	ChunkGetByHashForProject(ctx context.Context, arg ChunkGetByHashForProjectParams) (Chunk, error)
 	ChunkInsertOrIgnore(ctx context.Context, arg ChunkInsertOrIgnoreParams) error
+	ChunkListByHashesForProject(ctx context.Context, arg ChunkListByHashesForProjectParams) ([]ChunkListByHashesForProjectRow, error)
 	ChunkListByTree(ctx context.Context, treeID int64) ([]ChunkListByTreeRow, error)
 	CommitGet(ctx context.Context, id int64) (Commit, error)
 	CommitGetByHash(ctx context.Context, hash []byte) (Commit, error)
@@ -58,8 +58,8 @@ type Querier interface {
 	EmailDeliveryScheduleRetry(ctx context.Context, arg EmailDeliveryScheduleRetryParams) error
 	EmailDeliverySweep(ctx context.Context, before time.Time) (int64, error)
 	EmailDeliveryThreadRecipients(ctx context.Context, arg EmailDeliveryThreadRecipientsParams) ([]int64, error)
-	FileChunkInsert(ctx context.Context, arg FileChunkInsertParams) error
-	FileInsert(ctx context.Context, arg FileInsertParams) (int64, error)
+	FileChunkInsertMany(ctx context.Context, links interface{}) error
+	FileInsertMany(ctx context.Context, fileRows interface{}) ([]FileInsertManyRow, error)
 	FileListByTree(ctx context.Context, treeID int64) ([]File, error)
 	FileLockCreate(ctx context.Context, arg FileLockCreateParams) (FileLock, error)
 	FileLockDelete(ctx context.Context, id int64) (int64, error)

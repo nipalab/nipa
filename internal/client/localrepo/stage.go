@@ -123,7 +123,7 @@ func (l *LocalRepo) Snapshot() (*domain.Snapshot, error) {
 		}
 		treeHash = ""
 	}
-	rows, err := q.SnapshotFileList(ctx, treeHash)
+	rows, err := q.SnapshotFileList(ctx)
 	if err != nil {
 		return nil, err
 	}

@@ -11,9 +11,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -52,10 +54,36 @@ type chunkTestServer struct {
 	rejectedPuts  int
 	hookBeforePut func()
 	garbageOnce   map[string]bool
+
+	getAttempts      map[string]int
+	failGets         map[string]int
+	failGetStatus    int
+	truncateGets     map[string]int
+	hookBeforeGet    func()
+	downloadSizes    []int
+	downloadErrAfter int
 }
 
 func newChunkTestServer() *chunkTestServer {
-	return &chunkTestServer{stored: map[string][]byte{}, linked: map[string]bool{}}
+	return &chunkTestServer{
+		stored:       map[string][]byte{},
+		linked:       map[string]bool{},
+		getAttempts:  map[string]int{},
+		failGets:     map[string]int{},
+		truncateGets: map[string]int{},
+	}
+}
+
+func (s *chunkTestServer) attemptsFor(hash string) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.getAttempts[hash]
+}
+
+func (s *chunkTestServer) downloadCalls() []int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]int(nil), s.downloadSizes...)
 }
 
 func (s *chunkTestServer) put(hash string, data []byte) {
@@ -123,9 +151,17 @@ func (s *chunkTestServer) GetChunkDownloadUrls(ctx context.Context, req *pb.GetC
 			s.downloadAuth = auth[0]
 		}
 	}
+	s.mu.Lock()
 	s.lastDownload = req
+	s.downloadSizes = append(s.downloadSizes, len(req.GetHashes()))
+	calls := len(s.downloadSizes)
+	afterLimit := s.downloadErrAfter
+	s.mu.Unlock()
 	if s.downloadErr != nil {
 		return nil, s.downloadErr
+	}
+	if afterLimit > 0 && calls > afterLimit {
+		return nil, status.Error(codes.Unavailable, "presign failed")
 	}
 	resp := &pb.GetChunkDownloadUrlsResponse{}
 	for _, hash := range req.GetHashes() {
@@ -217,6 +253,25 @@ func (s *chunkTestServer) serveChunkHTTP(w http.ResponseWriter, r *http.Request)
 		s.put(hash, data)
 		w.WriteHeader(http.StatusNoContent)
 	case "get":
+		if s.hookBeforeGet != nil {
+			s.hookBeforeGet()
+		}
+		s.mu.Lock()
+		s.getAttempts[hash]++
+		failNow := s.failGets[hash] > 0
+		if failNow {
+			s.failGets[hash]--
+		}
+		truncateNow := s.truncateGets[hash] > 0
+		if truncateNow {
+			s.truncateGets[hash]--
+		}
+		failStatus := s.failGetStatus
+		s.mu.Unlock()
+		if failNow {
+			http.Error(w, "get failed", failStatus)
+			return
+		}
 		if s.getStatus != 0 {
 			http.Error(w, "get failed", s.getStatus)
 			return
@@ -227,6 +282,12 @@ func (s *chunkTestServer) serveChunkHTTP(w http.ResponseWriter, r *http.Request)
 			return
 		}
 		w.Header().Set("Content-Type", "application/octet-stream")
+		if truncateNow {
+			w.Header().Set("Content-Length", strconv.Itoa(len(data)))
+			_, _ = w.Write(data[:len(data)/2])
+			w.(http.Flusher).Flush()
+			panic(http.ErrAbortHandler)
+		}
 		_, _ = w.Write(data)
 	default:
 		http.Error(w, "invalid op", http.StatusBadRequest)
@@ -594,6 +655,7 @@ func TestClient_DownloadChunks_HTTPError(t *testing.T) {
 	srv.getStatus = http.StatusInternalServerError
 	addr := startChunkTestServer(t, srv)
 	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
+	c.retry = retryPolicy{attempts: 3, backoff: time.Millisecond}
 	require.NoError(t, c.Connect(context.Background(), addr))
 
 	err := c.DownloadChunks(context.Background(), domain.ChunkScope{Org: "org", Project: "proj", CommitIDs: []string{"1"}}, []serverDomain.Hash{h}, func(serverDomain.Hash, []byte) error {

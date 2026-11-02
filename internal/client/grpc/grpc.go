@@ -224,6 +224,7 @@ type Client struct {
 	limiter       *transferLimiter
 	tuner         *concurrencyTuner
 	uploadWorkers int
+	retry         retryPolicy
 	confirmMu     sync.Mutex
 }
 
@@ -235,6 +236,7 @@ func NewClient(transport *Transport, session tokenSession, opts ...ClientOption)
 		limiter:       newTransferLimiter(defaultUploadWorkers),
 		tuner:         newConcurrencyTuner(minUploadWorkers, maxUploadWorkers, defaultUploadWorkers),
 		uploadWorkers: defaultUploadWorkers,
+		retry:         defaultRetryPolicy,
 	}
 	for _, opt := range opts {
 		opt(c)

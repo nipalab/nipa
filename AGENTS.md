@@ -793,16 +793,19 @@ compatible for one release.
   before sending them. The DB holds metadata only; file→chunk hashes are stored as
   the `files.chunks` blob (no chunk catalog table), which is what lets `nipa diff`
   rebuild the old side offline.
-- `SaveTree` semantics (see `store.go`): one transaction. Token = current tree
-  hash (`""` for empty). Upsert tree nodes/files by `path`
-  (`ON CONFLICT(path) DO UPDATE`, including the encoded `chunks` blob); then
-  **mark-and-sweep**:
-  `DELETE FROM files/tree_nodes WHERE snapshot_id <> :token` removes only rows that
-  were removed/renamed since the last save — never a full-table clear, so saving a
-  10k-file repo with 5 changes touches ~5 rows, not the whole table. The same
-  transaction drops `stat_cache` rows whose path left `files`. `meta_tree_hash`
-  re-set each save. Empty repo: `SaveTree(nil)` sweeps all rows. Cached objects are
-  never touched by `SaveTree`.
+- `SaveTree` semantics (see `store.go`): one transaction. The wanted tree is
+  flattened (nodes parent-first) and diffed in memory against the stored
+  `tree_nodes`/`files` rows (`syncRows`): parent, hash, mode, size, binary flag,
+  encoding and the chunk blob are all compared, never the tree hash alone,
+  because sparse, filtered and locally built trees do not guarantee that equal
+  hashes mean equal rows. Only new or differing rows are upserted and rows that
+  left the tree are deleted one by one, so saving a 10k-file clone with 5
+  changes reads the stored rows and writes ~5 files plus their ancestor nodes
+  (~20 ms), not the whole table. `snapshot_id` is still written so existing
+  clones keep working, but nothing reads it: `Snapshot()` returns every `files`
+  row. The same transaction drops `stat_cache` rows whose path left `files`.
+  `meta_tree_hash` is re-set each save. `SaveTree(nil)` deletes every row.
+  Cached objects are never touched by `SaveTree`.
 - `stat_cache` is what keeps `nipa status`/`nipa diff` cheap on big binaries: a
   tracked file whose `(size, mtime)` match a fresh fingerprint (`mtime < cached_at`)
   is trusted without reading, while misses are rehashed (bounded worker pool in
@@ -941,11 +944,26 @@ compatible for one release.
   exact size (Content-Length check + `MaxBytesReader` + BLAKE3 verify) and only
   writes content (`Chunk.StoreUploaded`, no DB writes, avoiding SQLite lock
   contention from concurrent PUTs); DB metadata and project links are written at
-  confirm time.
+  confirm time. `ApplyPush` (both repositories) resolves every chunk a push
+  references in one project-scoped lookup before it writes anything (a chunk the
+  project is not linked to fails with `missing chunk data for <hash>`), then
+  inserts the files and their chunk links in bulk through
+  `internal/repository/pushbatch`: one JSON document per batch of 5000 files or
+  20000 links, expanded by `json_each` on sqlite and `jsonb_array_elements` on
+  postgres, with ids matched back by `(tree_id, name)`. A 10k-file push is a
+  handful of statements instead of ~30k round trips.
   `internal/client/grpc/chunks.go`'s `UploadChunks`/`DownloadChunks` take the
   `ChunkScope{Org, Project, CommitIDs, Paths}` that scopes download visibility;
   download callbacks are
-  serialized under a mutex because transfers run concurrently. The server only
+  serialized under a mutex because transfers run concurrently. Downloads request
+  signed URLs in windows of 1000 hashes (the server's default page size) and
+  prefetch the next window while the current one transfers, so URLs never wait
+  behind a long clone past their TTL and the worker pool is fed continuously
+  (`runChunks`). A transient per-chunk failure (network error, truncated body,
+  5xx, 408, 429) is retried up to 3 attempts with a 250 ms doubling backoff plus
+  jitter; 4xx answers (expired or unknown URL) fail immediately, and a chunk
+  reaches the callback only after a complete read, so a retry never delivers it
+  twice. The server only
   returns relative paths: the client connects with the address from
   `domain.NipaUrl.Origin` (`scheme://host[:port]`; a bare host keeps cleartext
   h2c, `https://` dials TLS with system roots) and `Client.httpURL` prefixes
@@ -1054,7 +1072,8 @@ compatible for one release.
 ## Things to remember
 
 - Big (10k+ files) manifests are expected on day one — never plan an O(entire repo)
-  DB write for an update path; default to incremental upsert + sweep.
+  DB write for an update path; default to diffing against the stored rows and
+  writing only the difference.
 - Keep the free/enterprise boundary: `internal/` never imports `ee/`, the free
   `cmd/nipad` links no ee package (sqlite + local chunks only), and postgres/S3
   are wired exclusively from `ee/cmd/*`; see `docs/POSTGRES.md`.
