@@ -52,6 +52,15 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   `web/server/dist`, embedded into the `nipad` binary via
   `//go:embed all:dist` in `web/server/webui.go` (package `webui`) and served
   for non-API paths in `internal/serverapp` (`isAPIPath`).
+- **Desktop app** (`desktop/`, nested module `github.com/nipalab/nipa/desktop`,
+  design in `docs/DESKTOP.md`): Wails v3 + React/Vite/Tailwind GUI over the
+  `nipa serve` daemon. `internal/connector` attaches to or starts the daemon
+  (`NIPA_BIN` → binary next to the app → PATH), `internal/workspace` persists
+  opened clones (`<config>/nipa/desktop.json`) and `internal/service` is the
+  Wails-bound API, plain Go behind seams. Generated TS bindings in
+  `desktop/frontend/bindings` are committed. Root `./...` never includes it;
+  use `make desktop`/`desktop-dev`/`desktop-test` (needs the `wails3` CLI;
+  Linux falls back to `-tags gtk3` without WebKitGTK 6.0).
 - **Client** (`internal/client/`): `cli` (cobra commands: login (password or SSH
   key), clone, branch
   (`-a` list, `-c` create+switch, `-d` delete), tag (list, `-c` create, `-d`

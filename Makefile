@@ -13,7 +13,7 @@ REVISION   ?= $(shell git rev-parse --short HEAD 2>/dev/null)
 LDFLAGS    := $(if $(VERSION),-X 'github.com/nipalab/nipa/internal/version.Version=$(VERSION)') \
               $(if $(REVISION),-X 'github.com/nipalab/nipa/internal/version.Revision=$(REVISION)')
 
-.PHONY: sqlc mock migrate-up migrate-down migrate-up-postgres migrate-down-postgres migrate-create build build-all build-server build-server-ee build-client test test-ee test-client test-client-ee test-client-both lint web web-dev web-install marketing-dist bench-upload bench-download bench-scale bench-scale-files bench-scale-files-ee bench-unit fuzz load-test release
+.PHONY: sqlc mock migrate-up migrate-down migrate-up-postgres migrate-down-postgres migrate-create build build-all build-server build-server-ee build-client test test-ee test-client test-client-ee test-client-both lint web web-dev web-install desktop desktop-dev desktop-test marketing-dist bench-upload bench-download bench-scale bench-scale-files bench-scale-files-ee bench-unit fuzz load-test release
 
 GOLANGCI_LINT_IMAGE ?= docker.io/golangci/golangci-lint:latest
 
@@ -81,6 +81,22 @@ web:
 ## (default http://localhost:6745, override with NIPA_SERVER_URL).
 web-dev:
 	cd web && npm run dev
+
+## Desktop app (desktop/, nested Go module). Needs the wails3 CLI:
+## go install github.com/wailsapp/wails/v3/cmd/wails3@v3.1.0 (add -tags gtk3 on
+## Linux hosts that only ship WebKitGTK 4.1). The nipa CLI is copied next to
+## the app binary, which is where the app looks for it to start the daemon.
+desktop: build-client
+	cd desktop && wails3 build
+	cp bin/nipa desktop/bin/nipa
+
+## Run the desktop app with hot reload against the freshly built nipa CLI.
+desktop-dev: build-client
+	cd desktop && NIPA_BIN=$(CURDIR)/bin/nipa wails3 dev
+
+## Desktop Go + frontend tests (typecheck, vitest).
+desktop-test:
+	cd desktop && wails3 task test
 
 ## Build the free server including the web UI.
 build: web build-server build-client
