@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"io"
 	"strings"
 	"sync"
 
@@ -16,6 +17,7 @@ import (
 // DiffRunner compares working-copy and revision states.
 type DiffRunner interface {
 	Run(ctx context.Context, root string, revs []string, opts usecase.DiffOptions) ([]diff.FileDiff, error)
+	ReadBlob(ctx context.Context, root string, req usecase.BlobRequest, fn func(diff.Entry, io.Reader) error) error
 }
 
 // serialDiff serializes calls into one DiffRunner. The daemon admits diffs
@@ -37,6 +39,12 @@ func (s *serialDiff) Run(ctx context.Context, root string, revs []string, opts u
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.runner.Run(ctx, root, revs, opts)
+}
+
+func (s *serialDiff) ReadBlob(ctx context.Context, root string, req usecase.BlobRequest, fn func(diff.Entry, io.Reader) error) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.runner.ReadBlob(ctx, root, req, fn)
 }
 
 const (
@@ -115,23 +123,9 @@ func (s *Server) runDiff(ctx context.Context, req *daemonpb.DiffRequest) ([]diff
 		renderOpts.Context = diff.DefaultContext
 	}
 
-	rp, unref, err := s.repos.ref(req.GetRoot())
+	rp, done, err := s.acquireDiff(ctx, req.GetRoot())
 	if err != nil {
 		return nil, renderOpts, nil, err
-	}
-	release, _, err := rp.coord.Acquire(ctx, false)
-	if err != nil {
-		unref()
-		return nil, renderOpts, nil, err
-	}
-	done := func() {
-		release()
-		unref()
-	}
-
-	if rp.diff == nil {
-		done()
-		return nil, renderOpts, nil, status.Error(codes.FailedPrecondition, "diff is not configured")
 	}
 	files, err := rp.diff.Run(ctx, rp.root, revs, usecase.DiffOptions{
 		Staged:    req.GetStaged(),
@@ -144,6 +138,29 @@ func (s *Server) runDiff(ctx context.Context, req *daemonpb.DiffRequest) ([]diff
 		return nil, renderOpts, nil, err
 	}
 	return diff.FilterIgnored(files, renderOpts), renderOpts, done, nil
+}
+
+// acquireDiff pins the watched root and takes the shared coordinator slot for
+// a read-only diff or blob call. done releases both; it is nil when err is set.
+func (s *Server) acquireDiff(ctx context.Context, root string) (*repo, func(), error) {
+	rp, unref, err := s.repos.ref(root)
+	if err != nil {
+		return nil, nil, err
+	}
+	release, _, err := rp.coord.Acquire(ctx, false)
+	if err != nil {
+		unref()
+		return nil, nil, err
+	}
+	done := func() {
+		release()
+		unref()
+	}
+	if rp.diff == nil {
+		done()
+		return nil, nil, status.Error(codes.FailedPrecondition, "diff is not configured")
+	}
+	return rp, done, nil
 }
 
 func sendDiffLines(stream daemonpb.NipaDaemon_DiffServer, lines []string) error {

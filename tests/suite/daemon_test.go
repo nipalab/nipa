@@ -289,6 +289,73 @@ var _ = Describe("nipa serve", func() {
 		Expect(failure).NotTo(BeNil())
 	})
 
+	It("reads blobs and previews image changes", func() {
+		project := newProject("daemon-blob")
+		seedRepo(orgSlug, project, map[string][]byte{
+			"a.txt":        []byte("v1\n"),
+			"art/hero.png": testPNG(2),
+		}, "seed")
+		parent := workspace()
+		dir := cloneRepo(parent, repoURLFor(orgSlug, project), "work")
+
+		d := startDaemon()
+		d.watch(dir)
+		writeBytes(dir, "art/hero.png", testPNG(3))
+
+		read := func(ref *daemonpb.BlobRef) (*daemonpb.BlobInfo, []byte, *daemonpb.OpFailure) {
+			stream, err := d.client.ReadBlob(d.ctx, &daemonpb.ReadBlobRequest{Root: dir, Blob: ref})
+			Expect(err).NotTo(HaveOccurred())
+			return collectBlob(stream)
+		}
+
+		info, data, failure := read(&daemonpb.BlobRef{Path: "art/hero.png"})
+		Expect(failure).To(BeNil())
+		Expect(info.GetKind()).To(Equal("image"))
+		Expect(data).To(Equal(testPNG(3)))
+
+		info, data, failure = read(&daemonpb.BlobRef{Source: "snapshot", Path: "art/hero.png"})
+		Expect(failure).To(BeNil())
+		Expect(info.GetHash()).NotTo(BeEmpty())
+		Expect(data).To(Equal(testPNG(2)))
+
+		_, data, failure = read(&daemonpb.BlobRef{Source: "revision", Revision: "main", Path: "a.txt"})
+		Expect(failure).To(BeNil())
+		Expect(string(data)).To(Equal("v1\n"))
+
+		_, _, failure = read(&daemonpb.BlobRef{Source: "revision", Revision: "main", Path: "missing.txt"})
+		Expect(failure).NotTo(BeNil())
+		Expect(failure.GetCode()).To(BeEquivalentTo(404))
+
+		_, _, failure = read(&daemonpb.BlobRef{Path: "../outside"})
+		Expect(failure.GetCode()).To(BeEquivalentTo(400))
+
+		previewStream, err := d.client.Preview(d.ctx, &daemonpb.PreviewRequest{
+			Root: dir,
+			Old:  &daemonpb.BlobRef{Source: "snapshot", Path: "art/hero.png"},
+			New:  &daemonpb.BlobRef{Path: "art/hero.png"},
+		})
+		Expect(err).NotTo(HaveOccurred())
+		events, failure := collectPreview(previewStream)
+		Expect(failure).To(BeNil())
+		var stats *daemonpb.ImageDiffStats
+		widths := map[string]int32{}
+		for _, ev := range events {
+			if img := ev.GetImage(); img != nil {
+				widths[img.GetSide()] = img.GetWidth()
+			}
+			if ev.GetDiff() != nil {
+				stats = ev.GetDiff()
+			}
+		}
+		Expect(widths).To(Equal(map[string]int32{"old": 2, "new": 3}))
+		Expect(stats.GetSizeChanged()).To(BeTrue())
+
+		textPreview, err := d.client.Preview(d.ctx, &daemonpb.PreviewRequest{Root: dir, New: &daemonpb.BlobRef{Path: "a.txt"}})
+		Expect(err).NotTo(HaveOccurred())
+		_, failure = collectPreview(textPreview)
+		Expect(failure.GetCode()).To(BeEquivalentTo(415))
+	})
+
 	It("proxies branch and lock calls with the clone context", func() {
 		project := newProject("daemon-proxy")
 		seedRepo(orgSlug, project, map[string][]byte{"a.txt": []byte("a\n")}, "seed")

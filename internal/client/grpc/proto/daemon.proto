@@ -179,6 +179,89 @@ message DiffFileEvent {
     }
 }
 
+// BlobRef names one file version: the working copy (default), the last synced
+// snapshot (the old side of a working-copy diff, offline) or a revision.
+message BlobRef {
+    string source = 1; // working, snapshot, revision
+    string revision = 2; // branch, tag, commit id or HEAD when source is revision
+    string path = 3; // repository-relative
+}
+
+message ReadBlobRequest {
+    string root = 1;
+    BlobRef blob = 2;
+}
+
+message BlobInfo {
+    string path = 1;
+    int64 size_bytes = 2;
+    bool is_binary = 3;
+    string hash = 4; // hex; empty for a working-copy file
+    string kind = 5;
+}
+
+// BlobEvent streams info first, then the decoded content in 64 KiB chunks.
+message BlobEvent {
+    oneof event {
+        BlobInfo info = 1;
+        bytes data = 2;
+        OpFailure failure = 3;
+    }
+}
+
+// PreviewRequest decodes one or both sides of an image change. Unsupported
+// formats fail with code 415 so the GUI can fall back to a metadata view.
+message PreviewRequest {
+    string root = 1;
+    BlobRef old = 2;
+    BlobRef new = 3;
+    int32 max_size = 4; // longest preview side in pixels; 0 = 2048
+    int32 threshold = 5; // per-channel delta ignored by the pixel diff (0-255)
+}
+
+message ImagePreview {
+    string side = 1; // old or new
+    int32 width = 2;
+    int32 height = 3;
+    string format = 4;
+    int32 bit_depth = 5;
+    bool has_alpha = 6;
+    int64 size_bytes = 7;
+    int32 preview_width = 8;
+    int32 preview_height = 9;
+}
+
+message PreviewData {
+    string side = 1;
+    bytes png = 2; // chunk of the downscaled PNG for that side
+}
+
+message ImageDiffStats {
+    int64 changed_pixels = 1;
+    int64 total_pixels = 2;
+    double changed_ratio = 3;
+    int32 max_delta = 4;
+    int32 bounds_x = 5;
+    int32 bounds_y = 6;
+    int32 bounds_width = 7;
+    int32 bounds_height = 8;
+    bool size_changed = 9;
+    bool format_changed = 10;
+    bool bit_depth_changed = 11;
+    bool alpha_changed = 12;
+}
+
+// PreviewEvent order per side: image, then its PNG data chunks; diff stats
+// come last when both sides were requested.
+message PreviewEvent {
+    oneof event {
+        ImagePreview image = 1;
+        PreviewData data = 2;
+        ImageDiffStats diff = 3;
+        OpFailure failure = 4;
+    }
+}
+
 message OpQueued {
     int32 ahead = 1; // exclusive operations ahead of this one
 }
@@ -464,6 +547,8 @@ service NipaDaemon {
     rpc Revert(RevertOpRequest) returns (stream OpEvent);
     rpc Diff(DiffRequest) returns (stream DiffEvent);
     rpc DiffFiles(DiffRequest) returns (stream DiffFileEvent); // structured; format is ignored
+    rpc ReadBlob(ReadBlobRequest) returns (stream BlobEvent);
+    rpc Preview(PreviewRequest) returns (stream PreviewEvent);
 
     rpc ProxyBranchList(ProxyBranchListRequest) returns (ProxyBranchListResponse);
     rpc ProxyBranchCreate(ProxyBranchCreateRequest) returns (ProxyBranchCreateResponse);

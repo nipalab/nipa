@@ -128,6 +128,8 @@ pb goes to `internal/client/grpc/daemonpb`. `make proto` gains a second
 | `Merge`, `Revert` | **server-streaming** | incl. continue/skip/abort variants; conflicts returned as terminal event |
 | `Diff` | **server-streaming** | unified/stat/name output paged as bytes (reuse `usecase.Diff` renderers) |
 | `DiffFiles` | **server-streaming** | same request as `Diff` (format ignored); one structured `DiffFile` per path: status, viewer `kind` (`internal/preview.Classify`), old/new side metadata (mode, size, binary, hex hash), add/remove counts and `greet.DiffHunkDetail` hunks — omitted with `hunks_omitted` above 1 MiB of hunk text per file |
+| `ReadBlob` | **server-streaming** | one file version (`BlobRef`: `working` default, `snapshot` = last synced side of a working diff, offline, or `revision` + branch/tag/commit/HEAD); `BlobInfo` (size, binary, hex hash, kind) then decoded content in 64 KiB chunks; revision chunks are downloaded into `.nipa/objects` first. Paths are repo-relative, `.nipa/` and symlinks leaving the clone are refused |
+| `Preview` | **server-streaming** | `old`/`new` `BlobRef`s → per side `ImagePreview` (dims, format, depth, alpha) + downscaled PNG chunks (`max_size`, default 2048), then `ImageDiffStats` from `preview.CompareImages` when both sides are given; non-image or undecodable formats fail with 415 |
 | `Login` | unary | (host, user, password) → `securestorage`; **no prompts** in daemon |
 | `Shutdown` | unary | drain + exit |
 
@@ -254,6 +256,10 @@ Notes where the implementation settled details the design left open:
 - **The reconciler skips paths whose fingerprint `Status` would already
   trust**, so the accelerator follows Status's trust model exactly instead of
   being stricter (an update/push does not trigger redundant rehashing).
+- **`ReadBlob`/`Preview` run through `DiffRunner.ReadBlob`** (`usecase.Diff.ReadBlob`,
+  callback-style so `SerialDiff` holds its lock for the whole read) under the
+  shared slot; content streams chunk by chunk (`blobReader`) and previews cap
+  encoded input at 512 MiB on top of `preview.MaxPixels`.
 - **`DiffFiles` is the GUI's diff feed** (`docs/DESKTOP.md`): it shares
   `runDiff` (validation, shared slot, `FilterIgnored`) with `Diff`, and reuses
   the server's hunk messages so desktop and web MR diffs share one shape.
