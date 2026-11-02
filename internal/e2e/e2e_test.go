@@ -104,6 +104,12 @@ func expiredAccessToken(t *testing.T) string {
 
 func startTestServer(t *testing.T, dbConn *sql.DB) string {
 	t.Helper()
+	host, _ := startTestServerWithUsecases(t, dbConn)
+	return host
+}
+
+func startTestServerWithUsecases(t *testing.T, dbConn *sql.DB) (string, serverapp.Usecases) {
+	t.Helper()
 
 	passwordHasher := hasher.NewHasher(2)
 	t.Cleanup(passwordHasher.Close)
@@ -179,7 +185,7 @@ func startTestServer(t *testing.T, dbConn *sql.DB) string {
 		grpcServer.Stop()
 	})
 
-	return lis.Addr().String()
+	return lis.Addr().String(), uc
 }
 
 func openTestDB(t *testing.T) *sql.DB {
