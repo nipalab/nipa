@@ -505,7 +505,11 @@ failure; cancelling the stream always terminates it with a failure event).
 patches) under the shared slot; `DiffFiles` runs the same request but streams
 one structured `DiffFile` per path (status, `internal/preview` viewer kind,
 side metadata, counts, `greet.DiffHunkDetail` hunks capped at 1 MiB per file)
-for the desktop GUI. An fsnotify watcher debounces events into
+for the desktop GUI. `ReadBlob` streams one file version (working copy,
+offline `snapshot`, or a `revision` whose chunks are downloaded first) through
+`usecase.Diff.ReadBlob`, and `Preview` decodes old/new images with
+`internal/preview` into downscaled PNG chunks plus pixel-diff stats (415 for
+non-image or unsupported formats). An fsnotify watcher debounces events into
 dirty batches and a background reconciler refreshes `stat_cache` through
 `WorkingCopy.RefreshStatEntries`; watcher failure or event loss is harmless
 (read-through status still stat-detects). `Proxy*` RPCs forward `greet.*`

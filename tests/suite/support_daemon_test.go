@@ -194,6 +194,43 @@ func collectDiffFiles(stream daemonpb.NipaDaemon_DiffFilesClient) ([]*daemonpb.D
 	}
 }
 
+func collectBlob(stream daemonpb.NipaDaemon_ReadBlobClient) (*daemonpb.BlobInfo, []byte, *daemonpb.OpFailure) {
+	GinkgoHelper()
+	var info *daemonpb.BlobInfo
+	var data []byte
+	for {
+		event, err := stream.Recv()
+		if errors.Is(err, io.EOF) {
+			return info, data, nil
+		}
+		Expect(err).NotTo(HaveOccurred())
+		switch {
+		case event.GetFailure() != nil:
+			return info, data, event.GetFailure()
+		case event.GetInfo() != nil:
+			info = event.GetInfo()
+		default:
+			data = append(data, event.GetData()...)
+		}
+	}
+}
+
+func collectPreview(stream daemonpb.NipaDaemon_PreviewClient) ([]*daemonpb.PreviewEvent, *daemonpb.OpFailure) {
+	GinkgoHelper()
+	var events []*daemonpb.PreviewEvent
+	for {
+		event, err := stream.Recv()
+		if errors.Is(err, io.EOF) {
+			return events, nil
+		}
+		Expect(err).NotTo(HaveOccurred())
+		if failure := event.GetFailure(); failure != nil {
+			return events, failure
+		}
+		events = append(events, event)
+	}
+}
+
 func contextWithoutToken() context.Context {
 	return context.Background()
 }

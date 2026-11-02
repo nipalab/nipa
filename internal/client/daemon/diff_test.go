@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"errors"
+	"io"
 	"strings"
 	"sync"
 	"testing"
@@ -18,7 +19,15 @@ import (
 )
 
 type stubDiffRunner struct {
-	run func(ctx context.Context, root string, revs []string, opts usecase.DiffOptions) ([]diff.FileDiff, error)
+	run      func(ctx context.Context, root string, revs []string, opts usecase.DiffOptions) ([]diff.FileDiff, error)
+	readBlob func(ctx context.Context, root string, req usecase.BlobRequest, fn func(diff.Entry, io.Reader) error) error
+}
+
+func (s *stubDiffRunner) ReadBlob(ctx context.Context, root string, req usecase.BlobRequest, fn func(diff.Entry, io.Reader) error) error {
+	if s.readBlob != nil {
+		return s.readBlob(ctx, root, req, fn)
+	}
+	return nil
 }
 
 func (s *stubDiffRunner) Run(ctx context.Context, root string, revs []string, opts usecase.DiffOptions) ([]diff.FileDiff, error) {
