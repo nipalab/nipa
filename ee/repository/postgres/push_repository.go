@@ -7,6 +7,7 @@ import (
 
 	sqlcPostgres "github.com/nipalab/nipa/ee/repository/postgres/sqlc"
 	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/repository/pushbatch"
 	"github.com/nipalab/nipa/internal/snow"
 	"github.com/nipalab/nipa/internal/usecase"
 )
@@ -123,27 +124,10 @@ func (p *PushRepository) ApplyPushAll(ctx context.Context, reqs []usecase.ApplyP
 }
 
 func applyPush(ctx context.Context, q *sqlcPostgres.Queries, req usecase.ApplyPushRequest) error {
-	chunkIDs := map[domain.Hash]int64{}
-	ensureChunk := func(hash domain.Hash) error {
-		if _, ok := chunkIDs[hash]; ok {
-			return nil
-		}
-		row, err := q.ChunkGetByHashForProject(ctx, sqlcPostgres.ChunkGetByHashForProjectParams{Hash: hash.Bytes(), ProjectID: req.ProjectID.Int64()})
-		if err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return domain.NewErrorUser("missing chunk data for " + hash.String())
-			}
-			return handleError(err)
-		}
-		chunkIDs[hash] = row.ID
-		return nil
-	}
-	for _, f := range req.Files {
-		for _, ch := range f.ChunkHashes {
-			if err := ensureChunk(ch); err != nil {
-				return err
-			}
-		}
+	batch := pushBatchStore{q: q, projectID: req.ProjectID.Int64()}
+	chunkIDs, err := pushbatch.ResolveChunks(ctx, batch, req.Files)
+	if err != nil {
+		return err
 	}
 
 	nodeIDs := map[int64]int64{}
@@ -167,28 +151,8 @@ func applyPush(ctx context.Context, q *sqlcPostgres.Queries, req usecase.ApplyPu
 		return domain.NewErrorDatabase("push produced no tree nodes")
 	}
 
-	for _, f := range req.Files {
-		fileID, err := q.FileInsert(ctx, sqlcPostgres.FileInsertParams{
-			Name:      f.Name,
-			Mode:      int64(f.Mode),
-			TreeID:    sql.NullInt64{Int64: nodeIDs[f.TreeID], Valid: true},
-			Hash:      f.Hash.Bytes(),
-			SizeBytes: f.SizeBytes,
-			IsBinary:  f.IsBinary,
-			Encoding:  f.Encoding,
-		})
-		if err != nil {
-			return handleError(err)
-		}
-		for index, ch := range f.ChunkHashes {
-			if err := q.FileChunkInsert(ctx, sqlcPostgres.FileChunkInsertParams{
-				FileID:     fileID,
-				ChunkID:    chunkIDs[ch],
-				ChunkIndex: int64(index),
-			}); err != nil {
-				return handleError(err)
-			}
-		}
+	if err := pushbatch.InsertFiles(ctx, batch, req.Files, nodeIDs, chunkIDs); err != nil {
+		return err
 	}
 
 	rootID := nodeIDs[req.Nodes[0].ID]
@@ -212,4 +176,45 @@ func applyPush(ctx context.Context, q *sqlcPostgres.Queries, req usecase.ApplyPu
 		return handleError(err)
 	}
 	return nil
+}
+
+// pushBatchStore runs the bulk statements of pushbatch against postgres.
+type pushBatchStore struct {
+	q         *sqlcPostgres.Queries
+	projectID int64
+}
+
+func (s pushBatchStore) ChunkIDs(ctx context.Context, hashes [][]byte) (map[domain.Hash]int64, error) {
+	rows, err := s.q.ChunkListByHashesForProject(ctx, sqlcPostgres.ChunkListByHashesForProjectParams{
+		ProjectID: s.projectID,
+		Hashes:    hashes,
+	})
+	if err != nil {
+		return nil, handleError(err)
+	}
+	ids := make(map[domain.Hash]int64, len(rows))
+	for _, row := range rows {
+		hash, err := domain.HashFromBytes(row.Hash)
+		if err != nil {
+			return nil, domain.NewErrorDatabase(err.Error())
+		}
+		ids[hash] = row.ID
+	}
+	return ids, nil
+}
+
+func (s pushBatchStore) InsertFiles(ctx context.Context, payload []byte) (map[pushbatch.FileKey]int64, error) {
+	rows, err := s.q.FileInsertMany(ctx, payload)
+	if err != nil {
+		return nil, handleError(err)
+	}
+	ids := make(map[pushbatch.FileKey]int64, len(rows))
+	for _, row := range rows {
+		ids[pushbatch.FileKey{TreeID: row.TreeID.Int64, Name: row.Name}] = row.ID
+	}
+	return ids, nil
+}
+
+func (s pushBatchStore) InsertLinks(ctx context.Context, payload []byte) error {
+	return handleError(s.q.FileChunkInsertMany(ctx, payload))
 }

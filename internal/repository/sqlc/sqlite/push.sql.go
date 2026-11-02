@@ -46,31 +46,6 @@ func (q *Queries) ChunkGetByHash(ctx context.Context, hash []byte) (Chunk, error
 	return i, err
 }
 
-const chunkGetByHashForProject = `-- name: ChunkGetByHashForProject :one
-SELECT c.id, c.hash, c.size_bytes, c.created_at
-FROM chunks c
-JOIN project_chunk_uploads u ON u.hash = c.hash
-WHERE c.hash = ?1 AND u.project_id = ?2
-LIMIT 1
-`
-
-type ChunkGetByHashForProjectParams struct {
-	Hash      []byte `json:"hash"`
-	ProjectID int64  `json:"project_id"`
-}
-
-func (q *Queries) ChunkGetByHashForProject(ctx context.Context, arg ChunkGetByHashForProjectParams) (Chunk, error) {
-	row := q.db.QueryRowContext(ctx, chunkGetByHashForProject, arg.Hash, arg.ProjectID)
-	var i Chunk
-	err := row.Scan(
-		&i.ID,
-		&i.Hash,
-		&i.SizeBytes,
-		&i.CreatedAt,
-	)
-	return i, err
-}
-
 const chunkInsertOrIgnore = `-- name: ChunkInsertOrIgnore :exec
 INSERT INTO chunks (hash, size_bytes) VALUES (?, ?) ON CONFLICT(hash) DO NOTHING
 `
@@ -83,6 +58,57 @@ type ChunkInsertOrIgnoreParams struct {
 func (q *Queries) ChunkInsertOrIgnore(ctx context.Context, arg ChunkInsertOrIgnoreParams) error {
 	_, err := q.db.ExecContext(ctx, chunkInsertOrIgnore, arg.Hash, arg.SizeBytes)
 	return err
+}
+
+const chunkListByHashesForProject = `-- name: ChunkListByHashesForProject :many
+SELECT c.id, c.hash
+FROM chunks c
+JOIN project_chunk_uploads u ON u.hash = c.hash
+WHERE u.project_id = ?1 AND c.hash IN (/*SLICE:hashes*/?)
+`
+
+type ChunkListByHashesForProjectParams struct {
+	ProjectID int64    `json:"project_id"`
+	Hashes    [][]byte `json:"hashes"`
+}
+
+type ChunkListByHashesForProjectRow struct {
+	ID   int64  `json:"id"`
+	Hash []byte `json:"hash"`
+}
+
+func (q *Queries) ChunkListByHashesForProject(ctx context.Context, arg ChunkListByHashesForProjectParams) ([]ChunkListByHashesForProjectRow, error) {
+	query := chunkListByHashesForProject
+	var queryParams []interface{}
+	queryParams = append(queryParams, arg.ProjectID)
+	if len(arg.Hashes) > 0 {
+		for _, v := range arg.Hashes {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:hashes*/?", strings.Repeat(",?", len(arg.Hashes))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:hashes*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ChunkListByHashesForProjectRow
+	for rows.Next() {
+		var i ChunkListByHashesForProjectRow
+		if err := rows.Scan(&i.ID, &i.Hash); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const commitInsert = `-- name: CommitInsert :exec
@@ -114,50 +140,56 @@ func (q *Queries) CommitInsert(ctx context.Context, arg CommitInsertParams) erro
 	return err
 }
 
-const fileChunkInsert = `-- name: FileChunkInsert :exec
-INSERT INTO file_chunks (file_id, chunk_id, chunk_index) VALUES (?, ?, ?)
+const fileChunkInsertMany = `-- name: FileChunkInsertMany :exec
+INSERT INTO file_chunks (file_id, chunk_id, chunk_index)
+SELECT json_extract(value, '$[0]'), json_extract(value, '$[1]'), json_extract(value, '$[2]')
+FROM json_each(?1)
+WHERE true
 ON CONFLICT(file_id, chunk_index) DO UPDATE SET chunk_id = excluded.chunk_id
 `
 
-type FileChunkInsertParams struct {
-	FileID     int64 `json:"file_id"`
-	ChunkID    int64 `json:"chunk_id"`
-	ChunkIndex int64 `json:"chunk_index"`
-}
-
-func (q *Queries) FileChunkInsert(ctx context.Context, arg FileChunkInsertParams) error {
-	_, err := q.db.ExecContext(ctx, fileChunkInsert, arg.FileID, arg.ChunkID, arg.ChunkIndex)
+func (q *Queries) FileChunkInsertMany(ctx context.Context, links interface{}) error {
+	_, err := q.db.ExecContext(ctx, fileChunkInsertMany, links)
 	return err
 }
 
-const fileInsert = `-- name: FileInsert :one
-INSERT INTO files (name, mode, tree_id, hash, size_bytes, is_binary, encoding) VALUES (?, ?, ?, ?, ?, ?, ?)
-RETURNING id
+const fileInsertMany = `-- name: FileInsertMany :many
+INSERT INTO files (name, mode, tree_id, hash, size_bytes, is_binary, encoding)
+SELECT json_extract(value, '$.name'), json_extract(value, '$.mode'), json_extract(value, '$.tree_id'),
+       unhex(json_extract(value, '$.hash')), json_extract(value, '$.size_bytes'),
+       json_extract(value, '$.is_binary'), json_extract(value, '$.encoding')
+FROM json_each(?1)
+WHERE true
+RETURNING id, tree_id, name
 `
 
-type FileInsertParams struct {
-	Name      string        `json:"name"`
-	Mode      int64         `json:"mode"`
-	TreeID    sql.NullInt64 `json:"tree_id"`
-	Hash      []byte        `json:"hash"`
-	SizeBytes int64         `json:"size_bytes"`
-	IsBinary  bool          `json:"is_binary"`
-	Encoding  string        `json:"encoding"`
+type FileInsertManyRow struct {
+	ID     int64         `json:"id"`
+	TreeID sql.NullInt64 `json:"tree_id"`
+	Name   string        `json:"name"`
 }
 
-func (q *Queries) FileInsert(ctx context.Context, arg FileInsertParams) (int64, error) {
-	row := q.db.QueryRowContext(ctx, fileInsert,
-		arg.Name,
-		arg.Mode,
-		arg.TreeID,
-		arg.Hash,
-		arg.SizeBytes,
-		arg.IsBinary,
-		arg.Encoding,
-	)
-	var id int64
-	err := row.Scan(&id)
-	return id, err
+func (q *Queries) FileInsertMany(ctx context.Context, fileRows interface{}) ([]FileInsertManyRow, error) {
+	rows, err := q.db.QueryContext(ctx, fileInsertMany, fileRows)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []FileInsertManyRow
+	for rows.Next() {
+		var i FileInsertManyRow
+		if err := rows.Scan(&i.ID, &i.TreeID, &i.Name); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const fileSetTree = `-- name: FileSetTree :exec

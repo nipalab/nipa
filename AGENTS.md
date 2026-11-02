@@ -944,7 +944,14 @@ compatible for one release.
   exact size (Content-Length check + `MaxBytesReader` + BLAKE3 verify) and only
   writes content (`Chunk.StoreUploaded`, no DB writes, avoiding SQLite lock
   contention from concurrent PUTs); DB metadata and project links are written at
-  confirm time.
+  confirm time. `ApplyPush` (both repositories) resolves every chunk a push
+  references in one project-scoped lookup before it writes anything (a chunk the
+  project is not linked to fails with `missing chunk data for <hash>`), then
+  inserts the files and their chunk links in bulk through
+  `internal/repository/pushbatch`: one JSON document per batch of 5000 files or
+  20000 links, expanded by `json_each` on sqlite and `jsonb_array_elements` on
+  postgres, with ids matched back by `(tree_id, name)`. A 10k-file push is a
+  handful of statements instead of ~30k round trips.
   `internal/client/grpc/chunks.go`'s `UploadChunks`/`DownloadChunks` take the
   `ChunkScope{Org, Project, CommitIDs, Paths}` that scopes download visibility;
   download callbacks are
