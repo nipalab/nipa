@@ -50,6 +50,7 @@ func expectTreeManifest(repo *MockbranchRepository, spec *testTreeSpec) {
 		files = append(files, &domain.File{ID: spec.id, Name: name, Hash: hash})
 	}
 	repo.EXPECT().ListFilesByTree(gomock.Any(), spec.id).Return(files, nil).AnyTimes()
+	repo.EXPECT().ListFileMetaByTree(gomock.Any(), spec.id).Return(files, nil).AnyTimes()
 	children := make([]*domain.TreeNode, 0, len(spec.children))
 	for _, child := range spec.children {
 		children = append(children, &domain.TreeNode{ID: child.id, Name: child.name, Hash: specHash(child)})

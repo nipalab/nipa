@@ -408,7 +408,7 @@ func (p *Push) headBinaryPaths(ctx context.Context, headCommit *domain.Commit, p
 	for len(queue) > 0 {
 		current := queue[0]
 		queue = queue[1:]
-		files, err := p.branchRepo.ListFilesByTree(ctx, current.tree.ID)
+		files, err := p.branchRepo.ListFileMetaByTree(ctx, current.tree.ID)
 		if err != nil {
 			return nil, err
 		}

@@ -236,24 +236,12 @@ func (b *Branch) BinaryLockPlan(ctx context.Context, projectID snow.ID, fromComm
 }
 
 func (b *Branch) binaryChanges(ctx context.Context, projectID snow.ID, fromCommitID, toCommitID *snow.ID) ([]diff.Change, error) {
-	fromEntries := map[string]diff.Entry{}
-	if fromCommitID != nil {
-		entries, err := b.treeEntries(ctx, projectID, *fromCommitID)
-		if err != nil {
-			return nil, err
-		}
-		fromEntries = entries
-	}
-	toEntries := map[string]diff.Entry{}
-	if toCommitID != nil {
-		entries, err := b.treeEntries(ctx, projectID, *toCommitID)
-		if err != nil {
-			return nil, err
-		}
-		toEntries = entries
+	all, err := b.commitChanges(ctx, projectID, fromCommitID, toCommitID)
+	if err != nil {
+		return nil, err
 	}
 	var changes []diff.Change
-	for _, change := range diff.Compare(fromEntries, toEntries) {
+	for _, change := range all {
 		if !change.Old.IsBinary && !change.New.IsBinary {
 			continue
 		}
@@ -350,15 +338,11 @@ func (b *Branch) commitTreeManifest(ctx context.Context, projectID snow.ID, comm
 // ensureTreeWrites rejects a tree move that touches paths the caller may not
 // write, regardless of read permission.
 func (b *Branch) ensureTreeWrites(ctx context.Context, projectID snow.ID, fromCommitID, toCommitID snow.ID) error {
-	fromEntries, err := b.treeEntries(ctx, projectID, fromCommitID)
+	changes, err := b.commitChanges(ctx, projectID, &fromCommitID, &toCommitID)
 	if err != nil {
 		return err
 	}
-	toEntries, err := b.treeEntries(ctx, projectID, toCommitID)
-	if err != nil {
-		return err
-	}
-	for _, change := range diff.Compare(fromEntries, toEntries) {
+	for _, change := range changes {
 		if !b.permUc.HasPathAccess(ctx, projectID, change.Path, domain.PermissionWrite) {
 			return domain.NewErrorNoPermission()
 		}
@@ -366,17 +350,32 @@ func (b *Branch) ensureTreeWrites(ctx context.Context, projectID snow.ID, fromCo
 	return nil
 }
 
-func (b *Branch) treeEntries(ctx context.Context, projectID snow.ID, commitID snow.ID) (map[string]diff.Entry, error) {
-	commit, err := b.commitByIDInProject(ctx, projectID, commitID)
+// commitChanges compares two commits of the project over the unfiltered trees;
+// a nil commit stands for the empty tree. Only the directories whose stored
+// hashes differ are loaded.
+func (b *Branch) commitChanges(ctx context.Context, projectID snow.ID, fromCommitID, toCommitID *snow.ID) ([]diff.Change, error) {
+	fromRoot, err := b.commitRootNode(ctx, projectID, fromCommitID)
 	if err != nil {
 		return nil, err
 	}
-	root, err := b.branchRepo.GetTreeNode(ctx, commit.TreeID)
+	toRoot, err := b.commitRootNode(ctx, projectID, toCommitID)
 	if err != nil {
 		return nil, err
 	}
-	if err := b.loadTreeManifest(ctx, root, "", true, AllowAllFilter(), nil); err != nil {
+	fromEntries, toEntries, err := b.changedTreeEntries(ctx, fromRoot, toRoot, AllowAllFilter())
+	if err != nil {
 		return nil, err
 	}
-	return diff.FromTree(root), nil
+	return diff.Compare(fromEntries, toEntries), nil
+}
+
+func (b *Branch) commitRootNode(ctx context.Context, projectID snow.ID, commitID *snow.ID) (*domain.TreeNode, error) {
+	if commitID == nil {
+		return nil, nil
+	}
+	commit, err := b.commitByIDInProject(ctx, projectID, *commitID)
+	if err != nil {
+		return nil, err
+	}
+	return b.branchRepo.GetTreeNode(ctx, commit.TreeID)
 }

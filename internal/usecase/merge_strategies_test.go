@@ -440,6 +440,7 @@ func TestMergeForMergeRequest_RebaseAttributionError(t *testing.T) {
 		return &domain.TreeNode{ID: id}, nil
 	}).AnyTimes()
 	repo.EXPECT().ListFilesByTree(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
+	repo.EXPECT().ListFileMetaByTree(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 	repo.EXPECT().ListTreeChildren(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 
 	_, err := uc.MergeForMergeRequest(context.Background(), snow.ID(1), "main", "feature", MergeCommitOptions{Strategy: domain.MergeStrategyRebase})

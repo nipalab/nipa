@@ -839,8 +839,6 @@ func TestBranch_EnsureTreeWrites_Errors(t *testing.T) {
 		repo.EXPECT().GetCommit(gomock.Any(), from).
 			Return(&domain.Commit{ID: from, ProjectID: projectID, TreeID: 101}, nil)
 		repo.EXPECT().GetTreeNode(gomock.Any(), int64(101)).Return(&domain.TreeNode{ID: 101, Name: "root"}, nil)
-		repo.EXPECT().ListFilesByTree(gomock.Any(), int64(101)).Return(nil, nil)
-		repo.EXPECT().ListTreeChildren(gomock.Any(), int64(101)).Return(nil, nil)
 		repo.EXPECT().GetCommit(gomock.Any(), to).Return(nil, wantErr)
 
 		uc := NewBranch(perm, repo, newTestBranchNode(t))
@@ -849,7 +847,7 @@ func TestBranch_EnsureTreeWrites_Errors(t *testing.T) {
 	})
 }
 
-func TestBranch_TreeEntries_Errors(t *testing.T) {
+func TestBranch_CommitChanges_Errors(t *testing.T) {
 	ctx := context.Background()
 	projectID := snow.ID(1)
 	commitID := snow.ID(51)
@@ -863,7 +861,7 @@ func TestBranch_TreeEntries_Errors(t *testing.T) {
 			Return(&domain.Commit{ID: commitID, ProjectID: 2, TreeID: 101}, nil)
 
 		uc := NewBranch(perm, repo, newTestBranchNode(t))
-		_, err := uc.treeEntries(ctx, projectID, commitID)
+		_, err := uc.commitChanges(ctx, projectID, nil, &commitID)
 		require.True(t, domain.IsErrorNotFound(err))
 	})
 
@@ -876,7 +874,7 @@ func TestBranch_TreeEntries_Errors(t *testing.T) {
 		repo.EXPECT().GetTreeNode(gomock.Any(), int64(101)).Return(nil, wantErr)
 
 		uc := NewBranch(perm, repo, newTestBranchNode(t))
-		_, err := uc.treeEntries(ctx, projectID, commitID)
+		_, err := uc.commitChanges(ctx, projectID, nil, &commitID)
 		require.ErrorIs(t, err, wantErr)
 	})
 
@@ -891,7 +889,7 @@ func TestBranch_TreeEntries_Errors(t *testing.T) {
 		repo.EXPECT().ListTreeChildren(gomock.Any(), int64(101)).Return(nil, wantErr)
 
 		uc := NewBranch(perm, repo, newTestBranchNode(t))
-		_, err := uc.treeEntries(ctx, projectID, commitID)
+		_, err := uc.commitChanges(ctx, projectID, nil, &commitID)
 		require.ErrorIs(t, err, wantErr)
 	})
 }

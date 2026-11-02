@@ -90,11 +90,23 @@ func flattenTree(node *serverDomain.TreeNode, prefix string, out map[string]Entr
 	if node == nil {
 		return
 	}
-	for _, f := range node.FileChildren {
+	AddFileEntries(out, prefix, node.FileChildren)
+	for _, child := range node.TreeChildren {
+		if child == nil {
+			continue
+		}
+		flattenTree(child, prefix+"/"+child.Name, out)
+	}
+}
+
+// AddFileEntries adds the files of one directory to out, keyed by their path
+// below dir ("" for the repository root).
+func AddFileEntries(out map[string]Entry, dir string, files []*serverDomain.File) {
+	for _, f := range files {
 		if f == nil {
 			continue
 		}
-		path := strings.TrimPrefix(prefix+"/"+f.Name, "/")
+		path := strings.TrimPrefix(dir+"/"+f.Name, "/")
 		hashes := make([]serverDomain.Hash, len(f.Chunks))
 		sizes := make([]int64, len(f.Chunks))
 		for i, c := range f.Chunks {
@@ -111,12 +123,6 @@ func flattenTree(node *serverDomain.TreeNode, prefix string, out map[string]Entr
 			ChunkHashes: hashes,
 			ChunkSizes:  sizes,
 		}
-	}
-	for _, child := range node.TreeChildren {
-		if child == nil {
-			continue
-		}
-		flattenTree(child, prefix+"/"+child.Name, out)
 	}
 }
 

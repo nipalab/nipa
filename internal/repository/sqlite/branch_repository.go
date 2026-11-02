@@ -270,6 +270,19 @@ func (b *BranchRepository) ListTreeChildren(ctx context.Context, parentID int64)
 	}), nil
 }
 
+// ListFileMetaByTree returns the files of one directory without their chunks.
+func (b *BranchRepository) ListFileMetaByTree(ctx context.Context, treeID int64) ([]*domain.File, error) {
+	rows, err := b.queries.FileListByTree(ctx, treeID)
+	if err != nil {
+		return nil, handleError(err)
+	}
+	files := make([]*domain.File, 0, len(rows))
+	for _, row := range rows {
+		files = append(files, fileToDomain(row))
+	}
+	return files, nil
+}
+
 func (b *BranchRepository) ListFilesByTree(ctx context.Context, treeID int64) ([]*domain.File, error) {
 	rows, err := b.queries.FileListByTree(ctx, treeID)
 	if err != nil {

@@ -149,3 +149,43 @@ func TestAttachContents_Unavailable(t *testing.T) {
 	require.True(t, files[0].NewUnavailable)
 	require.False(t, files[0].OldUnavailable)
 }
+
+func TestAddFileEntries_PathsAndNilFiles(t *testing.T) {
+	chunk := serverDomain.Hash{5}
+	files := []*serverDomain.File{
+		nil,
+		{Name: "a.txt", Mode: 2, SizeBytes: 3, Chunks: []serverDomain.Chunk{{Hash: chunk, SizeBytes: 3}}},
+	}
+
+	root := map[string]Entry{}
+	AddFileEntries(root, "", files)
+	require.Len(t, root, 1)
+	require.Equal(t, "a.txt", root["a.txt"].Path)
+	require.Equal(t, []serverDomain.Hash{chunk}, root["a.txt"].ChunkHashes)
+	require.Equal(t, []int64{3}, root["a.txt"].ChunkSizes)
+	require.Equal(t, chunker.FileHash([]serverDomain.Hash{chunk}), root["a.txt"].Hash)
+
+	nested := map[string]Entry{}
+	AddFileEntries(nested, "dir/sub", files)
+	require.Contains(t, nested, "dir/sub/a.txt")
+}
+
+func TestTreeDiffEntries_IgnoresFilesIdenticalOnBothSides(t *testing.T) {
+	baseTree, chunks := manifest(t, map[string]string{"same.txt": "same", "edit.txt": "before"})
+	headTree, headChunks := manifest(t, map[string]string{"same.txt": "same", "edit.txt": "after"})
+	for h, data := range headChunks {
+		chunks[h] = data
+	}
+	load := func(h serverDomain.Hash) ([]byte, error) { return chunks[h], nil }
+
+	full := TreeDiff(baseTree, headTree, load)
+
+	baseMap, headMap := FromTree(baseTree), FromTree(headTree)
+	delete(baseMap, "same.txt")
+	delete(headMap, "same.txt")
+	pruned := TreeDiffEntries(baseMap, headMap, load)
+
+	require.Len(t, full, 1)
+	require.Equal(t, full, pruned)
+	require.Equal(t, "edit.txt", pruned[0].Change.Path)
+}

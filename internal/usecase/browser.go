@@ -266,22 +266,26 @@ func (b *Branch) CommitDiff(ctx context.Context, projectID snow.ID, commitID sno
 		resolvedBase = commit.Parent1ID
 	}
 
-	headTree, err := b.commitTreeManifest(ctx, projectID, commitID, true)
+	headRoot, err := b.branchRepo.GetTreeNode(ctx, commit.TreeID)
 	if err != nil {
 		return nil, nil, err
 	}
-	var baseTree *domain.TreeNode
+	var baseRoot *domain.TreeNode
 	if resolvedBase != nil {
 		baseCommit, err := b.commitByIDInProject(ctx, projectID, *resolvedBase)
 		if err != nil {
 			return nil, nil, err
 		}
-		baseTree, err = b.commitTreeManifest(ctx, projectID, baseCommit.ID, true)
+		baseRoot, err = b.branchRepo.GetTreeNode(ctx, baseCommit.TreeID)
 		if err != nil {
 			return nil, nil, err
 		}
 	}
-	return diff.TreeDiff(baseTree, headTree, b.loadChunk(ctx)), resolvedBase, nil
+	files, err := b.diffRoots(ctx, projectID, baseRoot, headRoot)
+	if err != nil {
+		return nil, nil, err
+	}
+	return files, resolvedBase, nil
 }
 
 func (b *Branch) resolveRevision(ctx context.Context, projectID snow.ID, rev string) (*snow.ID, error) {
@@ -349,20 +353,38 @@ func (b *Branch) TreeDiffBetween(ctx context.Context, projectID snow.ID, baseID 
 	if !b.permUc.HasProjectAccess(ctx, projectID, domain.PermissionRead) {
 		return nil, domain.NewErrorNoPermission()
 	}
-	var baseTree *domain.TreeNode
+	var baseRoot *domain.TreeNode
 	if baseID != nil {
 		baseCommit, err := b.commitByIDInProject(ctx, projectID, *baseID)
 		if err != nil {
 			return nil, err
 		}
-		baseTree, err = b.commitTreeManifest(ctx, projectID, baseCommit.ID, true)
+		baseRoot, err = b.branchRepo.GetTreeNode(ctx, baseCommit.TreeID)
 		if err != nil {
 			return nil, err
 		}
 	}
-	headTree, err := b.commitTreeManifest(ctx, projectID, headID, true)
+	headCommit, err := b.branchRepo.GetCommit(ctx, headID)
 	if err != nil {
 		return nil, err
 	}
-	return diff.TreeDiff(baseTree, headTree, b.loadChunk(ctx)), nil
+	headRoot, err := b.branchRepo.GetTreeNode(ctx, headCommit.TreeID)
+	if err != nil {
+		return nil, err
+	}
+	return b.diffRoots(ctx, projectID, baseRoot, headRoot)
+}
+
+// diffRoots diffs two commit roots with both sides pruned by the caller's read
+// filter, loading only the directories that differ.
+func (b *Branch) diffRoots(ctx context.Context, projectID snow.ID, baseRoot, headRoot *domain.TreeNode) ([]diff.FileDiff, error) {
+	filter, err := b.permUc.CompileFilter(ctx, projectID, domain.PermissionRead)
+	if err != nil {
+		return nil, err
+	}
+	baseEntries, headEntries, err := b.changedTreeEntries(ctx, baseRoot, headRoot, filter)
+	if err != nil {
+		return nil, err
+	}
+	return diff.TreeDiffEntries(baseEntries, headEntries, b.loadChunk(ctx)), nil
 }
