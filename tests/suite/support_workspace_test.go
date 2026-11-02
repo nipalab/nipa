@@ -1,8 +1,12 @@
 package suite_test
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/json"
+	"image"
+	"image/color"
+	"image/png"
 	"os"
 	"path/filepath"
 
@@ -25,6 +29,17 @@ func writeBytes(dir, path string, data []byte) {
 	full := filepath.Join(dir, filepath.FromSlash(path))
 	Expect(os.MkdirAll(filepath.Dir(full), 0o755)).To(Succeed())
 	Expect(os.WriteFile(full, data, 0o644)).To(Succeed())
+}
+
+func testPNG(side int) []byte {
+	GinkgoHelper()
+	img := image.NewNRGBA(image.Rect(0, 0, side, side))
+	for i := range side {
+		img.SetNRGBA(i, i, color.NRGBA{R: uint8(40 * i), A: 0xff})
+	}
+	var buf bytes.Buffer
+	Expect(png.Encode(&buf, img)).To(Succeed())
+	return buf.Bytes()
 }
 
 func readText(dir, path string) string {

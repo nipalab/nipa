@@ -34,6 +34,7 @@ const (
 	NipaDaemon_Merge_FullMethodName                         = "/nipadaemon.NipaDaemon/Merge"
 	NipaDaemon_Revert_FullMethodName                        = "/nipadaemon.NipaDaemon/Revert"
 	NipaDaemon_Diff_FullMethodName                          = "/nipadaemon.NipaDaemon/Diff"
+	NipaDaemon_DiffFiles_FullMethodName                     = "/nipadaemon.NipaDaemon/DiffFiles"
 	NipaDaemon_ProxyBranchList_FullMethodName               = "/nipadaemon.NipaDaemon/ProxyBranchList"
 	NipaDaemon_ProxyBranchCreate_FullMethodName             = "/nipadaemon.NipaDaemon/ProxyBranchCreate"
 	NipaDaemon_ProxyBranchDelete_FullMethodName             = "/nipadaemon.NipaDaemon/ProxyBranchDelete"
@@ -77,6 +78,7 @@ type NipaDaemonClient interface {
 	Merge(ctx context.Context, in *MergeOpRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[OpEvent], error)
 	Revert(ctx context.Context, in *RevertOpRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[OpEvent], error)
 	Diff(ctx context.Context, in *DiffRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[DiffEvent], error)
+	DiffFiles(ctx context.Context, in *DiffRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[DiffFileEvent], error)
 	ProxyBranchList(ctx context.Context, in *ProxyBranchListRequest, opts ...grpc.CallOption) (*ProxyBranchListResponse, error)
 	ProxyBranchCreate(ctx context.Context, in *ProxyBranchCreateRequest, opts ...grpc.CallOption) (*ProxyBranchCreateResponse, error)
 	ProxyBranchDelete(ctx context.Context, in *ProxyBranchDeleteRequest, opts ...grpc.CallOption) (*ProxyBranchDeleteResponse, error)
@@ -312,6 +314,25 @@ func (c *nipaDaemonClient) Diff(ctx context.Context, in *DiffRequest, opts ...gr
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type NipaDaemon_DiffClient = grpc.ServerStreamingClient[DiffEvent]
+
+func (c *nipaDaemonClient) DiffFiles(ctx context.Context, in *DiffRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[DiffFileEvent], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &NipaDaemon_ServiceDesc.Streams[6], NipaDaemon_DiffFiles_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[DiffRequest, DiffFileEvent]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type NipaDaemon_DiffFilesClient = grpc.ServerStreamingClient[DiffFileEvent]
 
 func (c *nipaDaemonClient) ProxyBranchList(ctx context.Context, in *ProxyBranchListRequest, opts ...grpc.CallOption) (*ProxyBranchListResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
@@ -552,6 +573,7 @@ type NipaDaemonServer interface {
 	Merge(*MergeOpRequest, grpc.ServerStreamingServer[OpEvent]) error
 	Revert(*RevertOpRequest, grpc.ServerStreamingServer[OpEvent]) error
 	Diff(*DiffRequest, grpc.ServerStreamingServer[DiffEvent]) error
+	DiffFiles(*DiffRequest, grpc.ServerStreamingServer[DiffFileEvent]) error
 	ProxyBranchList(context.Context, *ProxyBranchListRequest) (*ProxyBranchListResponse, error)
 	ProxyBranchCreate(context.Context, *ProxyBranchCreateRequest) (*ProxyBranchCreateResponse, error)
 	ProxyBranchDelete(context.Context, *ProxyBranchDeleteRequest) (*ProxyBranchDeleteResponse, error)
@@ -628,6 +650,9 @@ func (UnimplementedNipaDaemonServer) Revert(*RevertOpRequest, grpc.ServerStreami
 }
 func (UnimplementedNipaDaemonServer) Diff(*DiffRequest, grpc.ServerStreamingServer[DiffEvent]) error {
 	return status.Errorf(codes.Unimplemented, "method Diff not implemented")
+}
+func (UnimplementedNipaDaemonServer) DiffFiles(*DiffRequest, grpc.ServerStreamingServer[DiffFileEvent]) error {
+	return status.Errorf(codes.Unimplemented, "method DiffFiles not implemented")
 }
 func (UnimplementedNipaDaemonServer) ProxyBranchList(context.Context, *ProxyBranchListRequest) (*ProxyBranchListResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ProxyBranchList not implemented")
@@ -943,6 +968,17 @@ func _NipaDaemon_Diff_Handler(srv interface{}, stream grpc.ServerStream) error {
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type NipaDaemon_DiffServer = grpc.ServerStreamingServer[DiffEvent]
+
+func _NipaDaemon_DiffFiles_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(DiffRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(NipaDaemonServer).DiffFiles(m, &grpc.GenericServerStream[DiffRequest, DiffFileEvent]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type NipaDaemon_DiffFilesServer = grpc.ServerStreamingServer[DiffFileEvent]
 
 func _NipaDaemon_ProxyBranchList_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ProxyBranchListRequest)
@@ -1501,6 +1537,11 @@ var NipaDaemon_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "Diff",
 			Handler:       _NipaDaemon_Diff_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "DiffFiles",
+			Handler:       _NipaDaemon_DiffFiles_Handler,
 			ServerStreams: true,
 		},
 	},

@@ -59,7 +59,7 @@ Pure package (no client imports), shared by the daemon and later the server.
 ## Roadmap (one PR each)
 
 1. `internal/preview`: classification, common images, TGA, compare. **(done)**
-2. Daemon `DiffFiles`: structured diff stream (paths, status, kind, hunks).
+2. Daemon `DiffFiles`: structured diff stream (paths, status, kind, hunks). **(done)**
 3. Daemon `ReadBlob` + `Preview` for images.
 4. `desktop/` Wails scaffold + daemon connector.
 5. Changes screen + text diff.

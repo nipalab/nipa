@@ -52,18 +52,6 @@ const (
 // always plain text: color and pagination belong to the client.
 func (s *Server) Diff(req *daemonpb.DiffRequest, stream daemonpb.NipaDaemon_DiffServer) error {
 	ctx := stream.Context()
-
-	revs, rangeMergeBase, err := expandDiffRevisions(req.GetRevisions())
-	if err != nil {
-		return stream.Send(diffFailureEvent(err))
-	}
-	mergeBase := req.GetMergeBase() || rangeMergeBase
-	if mergeBase && len(revs) != 2 {
-		return stream.Send(diffFailureEvent(clientDomain.NewUserError("a three-dot diff requires two revisions")))
-	}
-	if len(revs) > 0 && req.GetStaged() {
-		return stream.Send(diffFailureEvent(clientDomain.NewUserError("staged cannot be combined with revisions")))
-	}
 	format := req.GetFormat()
 	if format == "" {
 		format = diffFormatPatch
@@ -73,42 +61,12 @@ func (s *Server) Diff(req *daemonpb.DiffRequest, stream daemonpb.NipaDaemon_Diff
 	default:
 		return stream.Send(diffFailureEvent(clientDomain.NewUserError("unknown diff format " + format)))
 	}
-	if req.GetContext() < 0 {
-		return stream.Send(diffFailureEvent(clientDomain.NewUserError("context must not be negative")))
-	}
-	renderOpts := diff.Options{
-		Context:           int(req.GetContext()),
-		IgnoreAllSpace:    req.GetIgnoreAllSpace(),
-		IgnoreSpaceChange: req.GetIgnoreSpaceChange(),
-	}
-	if renderOpts.Context == 0 {
-		renderOpts.Context = diff.DefaultContext
-	}
 
-	rp, unref, err := s.repos.ref(req.GetRoot())
+	files, renderOpts, done, err := s.runDiff(ctx, req)
 	if err != nil {
 		return stream.Send(diffFailureEvent(err))
 	}
-	defer unref()
-	release, _, err := rp.coord.Acquire(ctx, false)
-	if err != nil {
-		return stream.Send(diffFailureEvent(err))
-	}
-	defer release()
-
-	if rp.diff == nil {
-		return stream.Send(diffFailureEvent(status.Error(codes.FailedPrecondition, "diff is not configured")))
-	}
-	files, err := rp.diff.Run(ctx, rp.root, revs, usecase.DiffOptions{
-		Staged:    req.GetStaged(),
-		Paths:     req.GetPaths(),
-		MergeBase: mergeBase,
-		NoCache:   req.GetNoCache(),
-	})
-	if err != nil {
-		return stream.Send(diffFailureEvent(err))
-	}
-	files = diff.FilterIgnored(files, renderOpts)
+	defer done()
 
 	switch format {
 	case diffFormatStat:
@@ -128,6 +86,64 @@ func (s *Server) Diff(req *daemonpb.DiffRequest, stream daemonpb.NipaDaemon_Diff
 		}
 		return nil
 	}
+}
+
+// runDiff validates a diff request, runs it under the shared coordinator slot
+// and returns the files with whitespace-ignored ones filtered out. done
+// releases the slot and the repo reference; it is nil when err is set.
+func (s *Server) runDiff(ctx context.Context, req *daemonpb.DiffRequest) ([]diff.FileDiff, diff.Options, func(), error) {
+	renderOpts := diff.Options{
+		Context:           int(req.GetContext()),
+		IgnoreAllSpace:    req.GetIgnoreAllSpace(),
+		IgnoreSpaceChange: req.GetIgnoreSpaceChange(),
+	}
+	revs, rangeMergeBase, err := expandDiffRevisions(req.GetRevisions())
+	if err != nil {
+		return nil, renderOpts, nil, err
+	}
+	mergeBase := req.GetMergeBase() || rangeMergeBase
+	if mergeBase && len(revs) != 2 {
+		return nil, renderOpts, nil, clientDomain.NewUserError("a three-dot diff requires two revisions")
+	}
+	if len(revs) > 0 && req.GetStaged() {
+		return nil, renderOpts, nil, clientDomain.NewUserError("staged cannot be combined with revisions")
+	}
+	if renderOpts.Context < 0 {
+		return nil, renderOpts, nil, clientDomain.NewUserError("context must not be negative")
+	}
+	if renderOpts.Context == 0 {
+		renderOpts.Context = diff.DefaultContext
+	}
+
+	rp, unref, err := s.repos.ref(req.GetRoot())
+	if err != nil {
+		return nil, renderOpts, nil, err
+	}
+	release, _, err := rp.coord.Acquire(ctx, false)
+	if err != nil {
+		unref()
+		return nil, renderOpts, nil, err
+	}
+	done := func() {
+		release()
+		unref()
+	}
+
+	if rp.diff == nil {
+		done()
+		return nil, renderOpts, nil, status.Error(codes.FailedPrecondition, "diff is not configured")
+	}
+	files, err := rp.diff.Run(ctx, rp.root, revs, usecase.DiffOptions{
+		Staged:    req.GetStaged(),
+		Paths:     req.GetPaths(),
+		MergeBase: mergeBase,
+		NoCache:   req.GetNoCache(),
+	})
+	if err != nil {
+		done()
+		return nil, renderOpts, nil, err
+	}
+	return diff.FilterIgnored(files, renderOpts), renderOpts, done, nil
 }
 
 func sendDiffLines(stream daemonpb.NipaDaemon_DiffServer, lines []string) error {

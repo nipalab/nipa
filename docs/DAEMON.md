@@ -127,6 +127,7 @@ pb goes to `internal/client/grpc/daemonpb`. `make proto` gains a second
 | `Push` | **server-streaming** | message → progress → result (commit id/tree hash) |
 | `Merge`, `Revert` | **server-streaming** | incl. continue/skip/abort variants; conflicts returned as terminal event |
 | `Diff` | **server-streaming** | unified/stat/name output paged as bytes (reuse `usecase.Diff` renderers) |
+| `DiffFiles` | **server-streaming** | same request as `Diff` (format ignored); one structured `DiffFile` per path: status, viewer `kind` (`internal/preview.Classify`), old/new side metadata (mode, size, binary, hex hash), add/remove counts and `greet.DiffHunkDetail` hunks — omitted with `hunks_omitted` above 1 MiB of hunk text per file |
 | `Login` | unary | (host, user, password) → `securestorage`; **no prompts** in daemon |
 | `Shutdown` | unary | drain + exit |
 
@@ -253,6 +254,9 @@ Notes where the implementation settled details the design left open:
 - **The reconciler skips paths whose fingerprint `Status` would already
   trust**, so the accelerator follows Status's trust model exactly instead of
   being stricter (an update/push does not trigger redundant rehashing).
+- **`DiffFiles` is the GUI's diff feed** (`docs/DESKTOP.md`): it shares
+  `runDiff` (validation, shared slot, `FilterIgnored`) with `Diff`, and reuses
+  the server's hunk messages so desktop and web MR diffs share one shape.
 - **`Diff` gained a `context` field** (hunk context, 0 = default) and accepts
   `<a>..<b>` / `<a>...<b>` ranges daemon-side, matching the CLI.
 - **Proxy requests are forwarded as-is** (e.g. `limit` is the caller's), with

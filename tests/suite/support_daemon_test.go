@@ -178,6 +178,22 @@ func collectDiff(stream daemonpb.NipaDaemon_DiffClient) (string, *daemonpb.OpFai
 	}
 }
 
+func collectDiffFiles(stream daemonpb.NipaDaemon_DiffFilesClient) ([]*daemonpb.DiffFile, *daemonpb.OpFailure) {
+	GinkgoHelper()
+	var files []*daemonpb.DiffFile
+	for {
+		event, err := stream.Recv()
+		if errors.Is(err, io.EOF) {
+			return files, nil
+		}
+		Expect(err).NotTo(HaveOccurred())
+		if failure := event.GetFailure(); failure != nil {
+			return files, failure
+		}
+		files = append(files, event.GetFile())
+	}
+}
+
 func contextWithoutToken() context.Context {
 	return context.Background()
 }
