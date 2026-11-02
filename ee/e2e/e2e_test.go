@@ -295,7 +295,7 @@ func stagePath(t *testing.T, target, path string) {
 	t.Helper()
 	lr := localrepo.NewLocalRepo()
 	require.NoError(t, lr.Init(target))
-	defer lr.Close()
+	defer func() { _ = lr.Close() }()
 	require.NoError(t, lr.StageAdd(path))
 }
 

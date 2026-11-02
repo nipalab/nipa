@@ -42,7 +42,7 @@ func setupRepoWithTree(t *testing.T, branch string, tree *serverDomain.TreeNode)
 	target := t.TempDir()
 	lr := localrepo.NewLocalRepo()
 	require.NoError(t, lr.Init(target))
-	defer lr.Close()
+	defer func() { _ = lr.Close() }()
 	require.NoError(t, lr.SaveConfig(domain.Config{Url: "http://example.com/org/project", Branch: branch}))
 	require.NoError(t, lr.SaveTree(tree))
 	return target
@@ -52,7 +52,7 @@ func stagedPathsAt(t *testing.T, root string) []string {
 	t.Helper()
 	lr := localrepo.NewLocalRepo()
 	require.NoError(t, lr.Init(root))
-	defer lr.Close()
+	defer func() { _ = lr.Close() }()
 	paths, err := lr.ListStaged()
 	require.NoError(t, err)
 	return paths
@@ -62,7 +62,7 @@ func stagePath(t *testing.T, root, path string) {
 	t.Helper()
 	lr := localrepo.NewLocalRepo()
 	require.NoError(t, lr.Init(root))
-	defer lr.Close()
+	defer func() { _ = lr.Close() }()
 	require.NoError(t, lr.StageAdd(path))
 }
 

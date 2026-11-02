@@ -17,7 +17,7 @@ func setupSparseRepo(t *testing.T, sparse []string) string {
 	root := t.TempDir()
 	lr := localrepo.NewLocalRepo()
 	require.NoError(t, lr.Init(root))
-	defer lr.Close()
+	defer func() { _ = lr.Close() }()
 	require.NoError(t, lr.SaveConfig(domain.Config{
 		Url:    "http://example.com/org/project",
 		Branch: "main",

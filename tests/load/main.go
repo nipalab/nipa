@@ -577,7 +577,7 @@ func stageFile(root, path string) error {
 	if err := lr.Init(root); err != nil {
 		return err
 	}
-	defer lr.Close()
+	defer func() { _ = lr.Close() }()
 	return lr.StageAdd(path)
 }
 

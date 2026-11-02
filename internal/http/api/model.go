@@ -88,8 +88,8 @@ func (a *appContext) HandleError(err error) {
 			"path", a.req.Request.URL.Path,
 			"error", err,
 		)
-		a.resp.WriteHeaderAndJson(http.StatusInternalServerError, model.NewAPIError("internal unknown error"), restful.MIME_JSON)
+		_ = a.resp.WriteHeaderAndJson(http.StatusInternalServerError, model.NewAPIError("internal unknown error"), restful.MIME_JSON)
 	} else {
-		a.resp.WriteHeaderAndJson(apiErr.Code, model.NewAPIError(apiErr.Message), restful.MIME_JSON)
+		_ = a.resp.WriteHeaderAndJson(apiErr.Code, model.NewAPIError(apiErr.Message), restful.MIME_JSON)
 	}
 }

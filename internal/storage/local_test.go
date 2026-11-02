@@ -16,7 +16,7 @@ func TestLocalStore_PutGet(t *testing.T) {
 	ctx := context.Background()
 	store, err := NewLocalStore(t.TempDir())
 	require.NoError(t, err)
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	hash := chunker.Sum([]byte("hello storage"))
 	require.NoError(t, store.Put(ctx, hash, []byte("hello storage")))
@@ -30,7 +30,7 @@ func TestLocalStore_PutIsIdempotent(t *testing.T) {
 	ctx := context.Background()
 	store, err := NewLocalStore(t.TempDir())
 	require.NoError(t, err)
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	hash := chunker.Sum([]byte("same content"))
 	for i := 0; i < 3; i++ {
@@ -45,7 +45,7 @@ func TestLocalStore_Exists(t *testing.T) {
 	ctx := context.Background()
 	store, err := NewLocalStore(t.TempDir())
 	require.NoError(t, err)
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	present := chunker.Sum([]byte("present"))
 	missing := chunker.Sum([]byte("missing"))
@@ -64,7 +64,7 @@ func TestLocalStore_Size(t *testing.T) {
 	ctx := context.Background()
 	store, err := NewLocalStore(t.TempDir())
 	require.NoError(t, err)
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	data := []byte("size me")
 	hash := chunker.Sum(data)
@@ -83,7 +83,7 @@ func TestLocalStore_GetMissingReturnsNotFound(t *testing.T) {
 	ctx := context.Background()
 	store, err := NewLocalStore(t.TempDir())
 	require.NoError(t, err)
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	hash := chunker.Sum([]byte("nope"))
 	_, err = store.Get(ctx, hash)
@@ -94,7 +94,7 @@ func TestLocalStore_GetMissingReturnsNotFound(t *testing.T) {
 func TestLocalStore_DefaultRoot(t *testing.T) {
 	store, err := NewLocalStore("")
 	require.NoError(t, err)
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 	require.Equal(t, "./chunks", store.root)
 
 	hash := chunker.Sum([]byte("x"))

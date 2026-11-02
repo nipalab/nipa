@@ -19,7 +19,7 @@ func (h *Handler) Me(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, toUserResponse(user))
+	_ = appCtx.WriteJson(nethttp.StatusOK, toUserResponse(user))
 }
 
 func (h *Handler) UpdateMyProfile(appCtx http.AppContext) {
@@ -38,7 +38,7 @@ func (h *Handler) UpdateMyProfile(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, toUserResponse(user))
+	_ = appCtx.WriteJson(nethttp.StatusOK, toUserResponse(user))
 }
 
 func (h *Handler) ChangeMyPassword(appCtx http.AppContext) {
@@ -56,7 +56,7 @@ func (h *Handler) ChangeMyPassword(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, model.MessageResponse{Message: "password updated"})
+	_ = appCtx.WriteJson(nethttp.StatusOK, model.MessageResponse{Message: "password updated"})
 }
 
 func (h *Handler) ListUsers(appCtx http.AppContext) {
@@ -69,7 +69,7 @@ func (h *Handler) ListUsers(appCtx http.AppContext) {
 	for _, user := range users {
 		resp = append(resp, toUserResponse(user))
 	}
-	appCtx.WriteJson(nethttp.StatusOK, resp)
+	_ = appCtx.WriteJson(nethttp.StatusOK, resp)
 }
 
 func (h *Handler) CreateUser(appCtx http.AppContext) {
@@ -83,7 +83,7 @@ func (h *Handler) CreateUser(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, toUserResponse(user))
+	_ = appCtx.WriteJson(nethttp.StatusOK, toUserResponse(user))
 }
 
 func (h *Handler) UpdateUser(appCtx http.AppContext) {
@@ -102,7 +102,7 @@ func (h *Handler) UpdateUser(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, toUserResponse(user))
+	_ = appCtx.WriteJson(nethttp.StatusOK, toUserResponse(user))
 }
 
 func (h *Handler) DeleteUser(appCtx http.AppContext) {
@@ -115,7 +115,7 @@ func (h *Handler) DeleteUser(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, model.MessageResponse{Message: "user deactivated"})
+	_ = appCtx.WriteJson(nethttp.StatusOK, model.MessageResponse{Message: "user deactivated"})
 }
 
 func (h *Handler) ResetUserPassword(appCtx http.AppContext) {
@@ -133,7 +133,7 @@ func (h *Handler) ResetUserPassword(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, model.MessageResponse{Message: "password reset"})
+	_ = appCtx.WriteJson(nethttp.StatusOK, model.MessageResponse{Message: "password reset"})
 }
 
 func (h *Handler) UpdateUserFlags(appCtx http.AppContext) {
@@ -152,5 +152,5 @@ func (h *Handler) UpdateUserFlags(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, toUserResponse(user))
+	_ = appCtx.WriteJson(nethttp.StatusOK, toUserResponse(user))
 }

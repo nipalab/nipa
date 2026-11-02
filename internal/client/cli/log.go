@@ -68,7 +68,7 @@ func runInteractivePager(out io.Writer, in *os.File, lines []string, footer func
 	if err != nil {
 		return err
 	}
-	defer term.Restore(fd, state)
+	defer func() { _ = term.Restore(fd, state) }()
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGWINCH)
 	defer signal.Stop(sigs)

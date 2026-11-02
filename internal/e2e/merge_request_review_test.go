@@ -92,7 +92,7 @@ func TestEndToEnd_MergeRequestReviewRPCs(t *testing.T) {
 
 	conn, err := grpc.NewClient(host, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	rpc := pb.NewNipaServiceClient(conn)
 	adminCtx := metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+login.AccessToken)
 	projectCtx := &pb.ProjectContext{Org: e2eOrgSlug, Project: e2eProjectSlug}

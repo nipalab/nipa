@@ -22,7 +22,7 @@ func statEntry(seed byte, size int64) domain.StatEntry {
 func TestStatCache_RoundTrip(t *testing.T) {
 	lr := NewLocalRepo()
 	require.NoError(t, lr.Init(t.TempDir()))
-	defer lr.Close()
+	defer func() { _ = lr.Close() }()
 
 	require.NoError(t, lr.SaveStatEntries(map[string]domain.StatEntry{
 		"assets/logo.png": statEntry(0xaa, 10),
@@ -41,7 +41,7 @@ func TestStatCache_RoundTrip(t *testing.T) {
 func TestStatCache_UpsertOverwrites(t *testing.T) {
 	lr := NewLocalRepo()
 	require.NoError(t, lr.Init(t.TempDir()))
-	defer lr.Close()
+	defer func() { _ = lr.Close() }()
 
 	require.NoError(t, lr.SaveStatEntries(map[string]domain.StatEntry{"a.txt": statEntry(0x01, 1)}))
 	require.NoError(t, lr.SaveStatEntries(map[string]domain.StatEntry{"a.txt": statEntry(0x02, 2)}))
@@ -55,7 +55,7 @@ func TestStatCache_UpsertOverwrites(t *testing.T) {
 func TestStatCache_Empty(t *testing.T) {
 	lr := NewLocalRepo()
 	require.NoError(t, lr.Init(t.TempDir()))
-	defer lr.Close()
+	defer func() { _ = lr.Close() }()
 
 	got, err := lr.LoadStatCache()
 	require.NoError(t, err)
@@ -69,7 +69,7 @@ func TestStatCache_Empty(t *testing.T) {
 func TestStatCache_SweepKeepsTrackedFiles(t *testing.T) {
 	lr := NewLocalRepo()
 	require.NoError(t, lr.Init(t.TempDir()))
-	defer lr.Close()
+	defer func() { _ = lr.Close() }()
 
 	require.NoError(t, lr.SaveTree(treeFixture()))
 	require.NoError(t, lr.SaveStatEntries(map[string]domain.StatEntry{
@@ -88,7 +88,7 @@ func TestStatCache_SweepKeepsTrackedFiles(t *testing.T) {
 func TestSaveTree_SweepsStatCache(t *testing.T) {
 	lr := NewLocalRepo()
 	require.NoError(t, lr.Init(t.TempDir()))
-	defer lr.Close()
+	defer func() { _ = lr.Close() }()
 
 	require.NoError(t, lr.SaveTree(treeFixture()))
 	require.NoError(t, lr.SaveStatEntries(map[string]domain.StatEntry{

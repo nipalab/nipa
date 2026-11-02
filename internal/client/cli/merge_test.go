@@ -252,7 +252,7 @@ func storeLocalChunks(t *testing.T, root string, contents ...string) {
 	t.Helper()
 	lr := localrepo.NewLocalRepo()
 	require.NoError(t, lr.Init(root))
-	defer lr.Close()
+	defer func() { _ = lr.Close() }()
 	for _, c := range contents {
 		chunks, err := chunker.ChunkAll([]byte(c))
 		require.NoError(t, err)

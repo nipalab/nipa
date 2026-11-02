@@ -35,7 +35,7 @@ func TestEndToEnd_AddDeletedFilesPush(t *testing.T) {
 	require.NoError(t, repo.Clone(ctx, url, host, e2eOrgSlug, e2eProjectSlug, "", nil, target))
 
 	lr := localrepo.NewLocalRepo()
-	defer lr.Close()
+	defer func() { _ = lr.Close() }()
 	wc, err := clientusecase.NewWorkingCopy(lr, target)
 	require.NoError(t, err)
 

@@ -87,7 +87,7 @@ func (s *fakeSMTP) serve(listener net.Listener) {
 }
 
 func (s *fakeSMTP) handle(raw net.Conn) {
-	defer raw.Close()
+	defer func() { _ = raw.Close() }()
 	conn := raw
 	if s.mode == smtpTLSSSL {
 		tlsConn := tls.Server(conn, s.tls)
@@ -164,9 +164,7 @@ func readSMTPData(reader *bufio.Reader) (string, error) {
 		if line == ".\r\n" {
 			return buf.String(), nil
 		}
-		if strings.HasPrefix(line, ".") {
-			line = line[1:]
-		}
+		line = strings.TrimPrefix(line, ".")
 		buf.WriteString(line)
 	}
 }

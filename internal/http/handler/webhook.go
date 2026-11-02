@@ -25,7 +25,7 @@ func (h *Handler) ListWebhooks(appCtx http.AppContext) {
 	for _, webhook := range webhooks {
 		resp = append(resp, toWebhookResponse(webhook, false))
 	}
-	appCtx.WriteJson(nethttp.StatusOK, resp)
+	_ = appCtx.WriteJson(nethttp.StatusOK, resp)
 }
 
 func (h *Handler) CreateWebhook(appCtx http.AppContext) {
@@ -55,7 +55,7 @@ func (h *Handler) CreateWebhook(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, toWebhookResponse(created, true))
+	_ = appCtx.WriteJson(nethttp.StatusOK, toWebhookResponse(created, true))
 }
 
 func (h *Handler) GetWebhook(appCtx http.AppContext) {
@@ -74,7 +74,7 @@ func (h *Handler) GetWebhook(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, toWebhookResponse(webhook, false))
+	_ = appCtx.WriteJson(nethttp.StatusOK, toWebhookResponse(webhook, false))
 }
 
 func (h *Handler) UpdateWebhook(appCtx http.AppContext) {
@@ -105,7 +105,7 @@ func (h *Handler) UpdateWebhook(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, toWebhookResponse(updated, false))
+	_ = appCtx.WriteJson(nethttp.StatusOK, toWebhookResponse(updated, false))
 }
 
 func (h *Handler) DeleteWebhook(appCtx http.AppContext) {
@@ -123,7 +123,7 @@ func (h *Handler) DeleteWebhook(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, model.MessageResponse{Message: "webhook deleted"})
+	_ = appCtx.WriteJson(nethttp.StatusOK, model.MessageResponse{Message: "webhook deleted"})
 }
 
 func (h *Handler) RotateWebhookSecret(appCtx http.AppContext) {
@@ -142,7 +142,7 @@ func (h *Handler) RotateWebhookSecret(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, toWebhookResponse(rotated, true))
+	_ = appCtx.WriteJson(nethttp.StatusOK, toWebhookResponse(rotated, true))
 }
 
 func (h *Handler) TestWebhook(appCtx http.AppContext) {
@@ -161,7 +161,7 @@ func (h *Handler) TestWebhook(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, toWebhookDeliveryResponse(delivery))
+	_ = appCtx.WriteJson(nethttp.StatusOK, toWebhookDeliveryResponse(delivery))
 }
 
 func (h *Handler) ListWebhookDeliveries(appCtx http.AppContext) {
@@ -194,7 +194,7 @@ func (h *Handler) ListWebhookDeliveries(appCtx http.AppContext) {
 	for _, delivery := range deliveries {
 		resp = append(resp, toWebhookDeliveryResponse(delivery))
 	}
-	appCtx.WriteJson(nethttp.StatusOK, resp)
+	_ = appCtx.WriteJson(nethttp.StatusOK, resp)
 }
 
 func (h *Handler) RedeliverWebhookDelivery(appCtx http.AppContext) {
@@ -218,7 +218,7 @@ func (h *Handler) RedeliverWebhookDelivery(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, toWebhookDeliveryResponse(delivery))
+	_ = appCtx.WriteJson(nethttp.StatusOK, toWebhookDeliveryResponse(delivery))
 }
 
 func webhookPageParam(appCtx http.AppContext, name string, fallback int64) (int64, error) {

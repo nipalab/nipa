@@ -41,5 +41,5 @@ func (h *Handler) MyProjectPermissions(appCtx http.AppContext) {
 			Permission: uint64(def.Permission),
 		})
 	}
-	appCtx.WriteJson(nethttp.StatusOK, resp)
+	_ = appCtx.WriteJson(nethttp.StatusOK, resp)
 }

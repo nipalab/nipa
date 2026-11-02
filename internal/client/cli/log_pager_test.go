@@ -26,15 +26,6 @@ func (r *chanReader) Read(p []byte) (int, error) {
 	return copy(p, b), nil
 }
 
-func runPagerAsync(t *testing.T, out *bytes.Buffer, in io.Reader, getSize func() (int, int), sigs <-chan os.Signal) (chan error, func()) {
-	t.Helper()
-	done := make(chan error, 1)
-	go func() {
-		done <- runLogPager(out, in, testEntries(), false, getSize, sigs)
-	}()
-	return done, func() {}
-}
-
 func TestRunLogPager_Quit(t *testing.T) {
 	var out bytes.Buffer
 	sigs := make(chan os.Signal, 1)

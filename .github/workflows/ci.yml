@@ -60,12 +60,9 @@ jobs:
         with:
           go-version-file: go.mod
 
-      # The existing code base still carries findings; only issues introduced
-      # by the change under review fail the job.
       - uses: golangci/golangci-lint-action@v8
         with:
           version: v2.14.0
-          only-new-issues: true
 
   govulncheck:
     name: Vulnerability scan

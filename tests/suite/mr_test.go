@@ -609,7 +609,7 @@ var _ = Describe("nipa mr", func() {
 
 	It("releases merge-request locks on merge", func() {
 		project := newProject("mr-binary-locks")
-		seedRepo(orgSlug, project, map[string][]byte{"blob.bin": []byte{0x00, 0x01, 0x02}}, "seed")
+		seedRepo(orgSlug, project, map[string][]byte{"blob.bin": {0x00, 0x01, 0x02}}, "seed")
 		url := repoURLFor(orgSlug, project)
 		writer := newIdentity("mr-writer").promote()
 

@@ -31,27 +31,27 @@ func writePlan(cmd *cobra.Command, plan *domain.Plan) error {
 	}
 	out := cmd.OutOrStdout()
 	if plan.UpToDate {
-		fmt.Fprintln(out, "up to date")
+		_, _ = fmt.Fprintln(out, "up to date")
 		return nil
 	}
 	if plan.Kind == "merge" && plan.FastForward {
-		fmt.Fprintf(out, "fast-forward %s\n", plan.SourceBranch)
+		_, _ = fmt.Fprintf(out, "fast-forward %s\n", plan.SourceBranch)
 	}
 	for _, c := range plan.Changes {
-		fmt.Fprintf(out, "%s  %s\n", c.Status, c.Path)
+		_, _ = fmt.Fprintf(out, "%s  %s\n", c.Status, c.Path)
 	}
 	for _, p := range plan.Conflicts {
-		fmt.Fprintf(out, "C  %s\n", p)
+		_, _ = fmt.Fprintf(out, "C  %s\n", p)
 	}
 	switch plan.Kind {
 	case "push":
-		fmt.Fprintf(out, "would push %d file(s), %d object(s), %s\n", len(plan.Changes), plan.UploadObjects, humanBytes(plan.UploadBytes))
+		_, _ = fmt.Fprintf(out, "would push %d file(s), %d object(s), %s\n", len(plan.Changes), plan.UploadObjects, humanBytes(plan.UploadBytes))
 	case "merge":
 		if !plan.FastForward {
-			fmt.Fprintf(out, "would merge %d file(s), %d conflict(s)\n", len(plan.Changes), len(plan.Conflicts))
+			_, _ = fmt.Fprintf(out, "would merge %d file(s), %d conflict(s)\n", len(plan.Changes), len(plan.Conflicts))
 		}
 	case "revert":
-		fmt.Fprintf(out, "would revert %d file(s), %d conflict(s)\n", len(plan.Changes), len(plan.Conflicts))
+		_, _ = fmt.Fprintf(out, "would revert %d file(s), %d conflict(s)\n", len(plan.Changes), len(plan.Conflicts))
 	}
 	return nil
 }

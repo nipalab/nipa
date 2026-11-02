@@ -29,7 +29,7 @@ func (h *Handler) ListMyOrgs(appCtx http.AppContext) {
 			Role: membership.Role,
 		})
 	}
-	appCtx.WriteJson(nethttp.StatusOK, resp)
+	_ = appCtx.WriteJson(nethttp.StatusOK, resp)
 }
 
 func (h *Handler) ListOrgMembers(appCtx http.AppContext) {
@@ -47,7 +47,7 @@ func (h *Handler) ListOrgMembers(appCtx http.AppContext) {
 	for _, member := range members {
 		resp = append(resp, toOrgMemberResponse(member))
 	}
-	appCtx.WriteJson(nethttp.StatusOK, resp)
+	_ = appCtx.WriteJson(nethttp.StatusOK, resp)
 }
 
 func (h *Handler) CreateOrg(appCtx http.AppContext) {
@@ -61,7 +61,7 @@ func (h *Handler) CreateOrg(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, model.OrgResponse{
+	_ = appCtx.WriteJson(nethttp.StatusOK, model.OrgResponse{
 		ID:   org.ID.Base36(),
 		Slug: org.Slug,
 		Name: org.Name,
@@ -120,7 +120,7 @@ func (h *Handler) AddOrgMember(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, toOrgMemberResponse(&domain.OrgMember{User: *user, Role: role}))
+	_ = appCtx.WriteJson(nethttp.StatusOK, toOrgMemberResponse(&domain.OrgMember{User: *user, Role: role}))
 }
 
 func (h *Handler) UpdateOrgMember(appCtx http.AppContext) {
@@ -148,7 +148,7 @@ func (h *Handler) UpdateOrgMember(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, toOrgMemberResponse(&domain.OrgMember{User: *user, Role: strings.TrimSpace(body.Role)}))
+	_ = appCtx.WriteJson(nethttp.StatusOK, toOrgMemberResponse(&domain.OrgMember{User: *user, Role: strings.TrimSpace(body.Role)}))
 }
 
 func (h *Handler) RemoveOrgMember(appCtx http.AppContext) {
@@ -166,5 +166,5 @@ func (h *Handler) RemoveOrgMember(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, model.MessageResponse{Message: "member removed"})
+	_ = appCtx.WriteJson(nethttp.StatusOK, model.MessageResponse{Message: "member removed"})
 }

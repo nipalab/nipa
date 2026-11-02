@@ -242,7 +242,7 @@ func saasOptions(cfg *config.Config, snowUser snow.Node, hasher *hasher.Hasher, 
 	})
 	registrationHandler := registration.NewHandler(registrationUsecase, authUsecase)
 	if emailDispatcher != nil {
-		registrationUsecase = registrationUsecase.WithMailer(emailRepository, emailDispatcher)
+		registrationUsecase.WithMailer(emailRepository, emailDispatcher)
 	} else {
 		slog.Warn("SAAS_MODE with EMAIL_SENDER=off: confirmation emails will not be sent")
 	}

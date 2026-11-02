@@ -23,7 +23,7 @@ func (h *Handler) ListMySSHKeys(appCtx http.AppContext) {
 	for _, key := range keys {
 		resp = append(resp, toSSHKeyResponse(key))
 	}
-	appCtx.WriteJson(nethttp.StatusOK, resp)
+	_ = appCtx.WriteJson(nethttp.StatusOK, resp)
 }
 
 func (h *Handler) AddMySSHKey(appCtx http.AppContext) {
@@ -42,7 +42,7 @@ func (h *Handler) AddMySSHKey(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, toSSHKeyResponse(key))
+	_ = appCtx.WriteJson(nethttp.StatusOK, toSSHKeyResponse(key))
 }
 
 func (h *Handler) RemoveMySSHKey(appCtx http.AppContext) {
@@ -60,7 +60,7 @@ func (h *Handler) RemoveMySSHKey(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, model.MessageResponse{Message: "SSH key removed"})
+	_ = appCtx.WriteJson(nethttp.StatusOK, model.MessageResponse{Message: "SSH key removed"})
 }
 
 func toSSHKeyResponse(key *domain.SSHPublicKey) model.SSHKeyResponse {

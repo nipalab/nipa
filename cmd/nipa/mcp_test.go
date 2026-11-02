@@ -40,11 +40,11 @@ func TestMCPCommand_EndsOnEOFStdin(t *testing.T) {
 	require.NoError(t, empty.Close())
 	in, err := os.Open(empty.Name())
 	require.NoError(t, err)
-	defer in.Close()
+	defer func() { _ = in.Close() }()
 
 	out, err := os.CreateTemp(t.TempDir(), "stdout")
 	require.NoError(t, err)
-	defer out.Close()
+	defer func() { _ = out.Close() }()
 
 	oldStdin, oldStdout := os.Stdin, os.Stdout
 	os.Stdin, os.Stdout = in, out

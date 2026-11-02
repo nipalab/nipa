@@ -84,7 +84,7 @@ func TestSaveTree_Error_UpsertTrigger(t *testing.T) {
 			target := t.TempDir()
 			lr := NewLocalRepo()
 			require.NoError(t, lr.Init(target))
-			defer lr.Close()
+			defer func() { _ = lr.Close() }()
 
 			createTrigger(t, lr.db, "fail_upsert_"+tc.name, tc.name, "BEFORE INSERT", "")
 
@@ -107,7 +107,7 @@ func TestSaveTree_Error_SweepDeleteTrigger(t *testing.T) {
 			target := t.TempDir()
 			lr := NewLocalRepo()
 			require.NoError(t, lr.Init(target))
-			defer lr.Close()
+			defer func() { _ = lr.Close() }()
 
 			require.NoError(t, lr.SaveTree(treeFixture()))
 			require.Equal(t, 2, countRows(t, lr.db, "tree_nodes"))
@@ -126,7 +126,7 @@ func TestSaveTree_RollsBackPreviousTree_OnUpsertError(t *testing.T) {
 	target := t.TempDir()
 	lr := NewLocalRepo()
 	require.NoError(t, lr.Init(target))
-	defer lr.Close()
+	defer func() { _ = lr.Close() }()
 
 	require.NoError(t, lr.SaveTree(treeFixture()))
 	require.Equal(t, 2, countRows(t, lr.db, "tree_nodes"))
@@ -160,7 +160,7 @@ func TestLoadConfig_MissingFile(t *testing.T) {
 	target := t.TempDir()
 	lr := NewLocalRepo()
 	require.NoError(t, lr.Init(target))
-	defer lr.Close()
+	defer func() { _ = lr.Close() }()
 
 	_, err := lr.LoadConfig()
 	require.Error(t, err)
@@ -177,7 +177,7 @@ func TestSaveTree_BinaryFileWithManyChunks(t *testing.T) {
 	target := t.TempDir()
 	lr := NewLocalRepo()
 	require.NoError(t, lr.Init(target))
-	defer lr.Close()
+	defer func() { _ = lr.Close() }()
 
 	rootHash := serverDomain.Hash{0x11}
 	fileHash := serverDomain.Hash{0x12}
@@ -208,7 +208,7 @@ func TestSaveTree_TreeWithFilesAtRootAndChild(t *testing.T) {
 	target := t.TempDir()
 	lr := NewLocalRepo()
 	require.NoError(t, lr.Init(target))
-	defer lr.Close()
+	defer func() { _ = lr.Close() }()
 
 	chunk := serverDomain.Chunk{Hash: serverDomain.Hash{0x25}, SizeBytes: 3}
 	root := &serverDomain.TreeNode{

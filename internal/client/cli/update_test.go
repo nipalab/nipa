@@ -182,7 +182,7 @@ func TestSetupUpdateCmd_StoresChunksInCache(t *testing.T) {
 
 	lr := localrepo.NewLocalRepo()
 	require.NoError(t, lr.Init(root))
-	defer lr.Close()
+	defer func() { _ = lr.Close() }()
 	data, err := lr.LoadChunk(chunks[0].Hash)
 	require.NoError(t, err)
 	require.Equal(t, content, string(data))

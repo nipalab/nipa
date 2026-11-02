@@ -13,7 +13,7 @@ func sameOriginFilter(req *restful.Request, resp *restful.Response, chain *restf
 	case http.MethodGet, http.MethodHead, http.MethodOptions:
 	default:
 		if origin := req.HeaderParameter("Origin"); origin != "" && !sameHost(origin, req.Request.Host) {
-			resp.WriteHeaderAndJson(http.StatusForbidden, model.NewAPIError("cross-origin request rejected"), restful.MIME_JSON)
+			_ = resp.WriteHeaderAndJson(http.StatusForbidden, model.NewAPIError("cross-origin request rejected"), restful.MIME_JSON)
 			return
 		}
 	}

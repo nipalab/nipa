@@ -23,7 +23,7 @@ func (h *Handler) ListProjects(appCtx http.AppContext) {
 	for _, project := range projects {
 		resp = append(resp, toProjectResponse(project))
 	}
-	appCtx.WriteJson(nethttp.StatusOK, resp)
+	_ = appCtx.WriteJson(nethttp.StatusOK, resp)
 }
 
 func (h *Handler) CreateProject(appCtx http.AppContext) {
@@ -44,7 +44,7 @@ func (h *Handler) CreateProject(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, toProjectResponse(project))
+	_ = appCtx.WriteJson(nethttp.StatusOK, toProjectResponse(project))
 }
 
 func (h *Handler) GetProject(appCtx http.AppContext) {
@@ -58,7 +58,7 @@ func (h *Handler) GetProject(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, toProjectResponse(got))
+	_ = appCtx.WriteJson(nethttp.StatusOK, toProjectResponse(got))
 }
 
 func (h *Handler) UpdateProject(appCtx http.AppContext) {
@@ -77,7 +77,7 @@ func (h *Handler) UpdateProject(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, toProjectResponse(updated))
+	_ = appCtx.WriteJson(nethttp.StatusOK, toProjectResponse(updated))
 }
 
 func (h *Handler) DeleteProject(appCtx http.AppContext) {
@@ -90,7 +90,7 @@ func (h *Handler) DeleteProject(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, model.MessageResponse{Message: "project deleted"})
+	_ = appCtx.WriteJson(nethttp.StatusOK, model.MessageResponse{Message: "project deleted"})
 }
 
 func (h *Handler) resolveProject(appCtx http.AppContext) (*domain.Organization, *domain.Project, error) {

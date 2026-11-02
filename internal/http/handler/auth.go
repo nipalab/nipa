@@ -26,7 +26,7 @@ func (h *Handler) AuthLogin(appCtx http.AppContext) {
 		return
 	}
 	appCtx.SetCookie(RefreshCookie(result.RefreshToken, result.RefreshExpiresIn))
-	appCtx.WriteJson(nethttp.StatusOK, model.LoginResponse{
+	_ = appCtx.WriteJson(nethttp.StatusOK, model.LoginResponse{
 		AccessToken: result.AccessToken,
 		TokenType:   result.TokenType,
 		ExpiresIn:   result.ExpiresIn,
@@ -50,7 +50,7 @@ func (h *Handler) AuthRefreshToken(appCtx http.AppContext) {
 		return
 	}
 	appCtx.SetCookie(RefreshCookie(result.RefreshToken, result.RefreshExpiresIn))
-	appCtx.WriteJson(nethttp.StatusOK, model.LoginResponse{
+	_ = appCtx.WriteJson(nethttp.StatusOK, model.LoginResponse{
 		AccessToken: result.AccessToken,
 		TokenType:   result.TokenType,
 		ExpiresIn:   result.ExpiresIn,
@@ -62,7 +62,7 @@ func (h *Handler) AuthLogout(appCtx http.AppContext) {
 		_ = h.useCase.Auth().Logout(appCtx.Context(), cookie.Value)
 	}
 	ClearRefreshCookie(appCtx)
-	appCtx.WriteJson(nethttp.StatusOK, model.MessageResponse{Message: "logged out"})
+	_ = appCtx.WriteJson(nethttp.StatusOK, model.MessageResponse{Message: "logged out"})
 }
 
 // RefreshCookie builds the HttpOnly refresh cookie shared by every login surface

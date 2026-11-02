@@ -51,7 +51,7 @@ func (p *progressRenderer) begin(verb string, objects int, bytes int64) {
 	p.totalBytes = bytes
 	p.reported = false
 	p.lineLen = 0
-	fmt.Fprintf(p.w, "%s %d objects (%s)...\n", verb, objects, humanBytes(bytes))
+	_, _ = fmt.Fprintf(p.w, "%s %d objects (%s)...\n", verb, objects, humanBytes(bytes))
 }
 
 func (p *progressRenderer) update(objectsDone int, bytesDone int64) {
@@ -77,7 +77,7 @@ func (p *progressRenderer) finish(verb string) {
 		objects, bytes = p.doneObjects, p.doneBytes
 	}
 	p.writeLine(fmt.Sprintf("  %s %d objects (%s)", verb, objects, humanBytes(bytes)))
-	fmt.Fprint(p.w, "\n")
+	_, _ = fmt.Fprint(p.w, "\n")
 	p.lineLen = 0
 }
 
@@ -89,7 +89,7 @@ func (p *progressRenderer) writeLine(line string) {
 	} else {
 		p.lineLen = len(line)
 	}
-	fmt.Fprintf(p.w, "\r%s", line)
+	_, _ = fmt.Fprintf(p.w, "\r%s", line)
 }
 
 func pastTense(verb string) string {

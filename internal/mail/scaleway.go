@@ -157,7 +157,7 @@ func (s *scalewaySender) Send(ctx context.Context, msg Message) error {
 	if err != nil {
 		return fmt.Errorf("scaleway send: %w", err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode < 200 || response.StatusCode > 299 {
 		return fmt.Errorf("scaleway response %s%s", response.Status, responseSnippet(response.Body))
 	}

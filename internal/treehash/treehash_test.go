@@ -59,7 +59,7 @@ func TestCommitHash_Deterministic(t *testing.T) {
 	require.Equal(t, c1, c2)
 	require.NotEqual(t, c1, CommitHash(tree, nil, "hi"))
 	require.NotEqual(t, c1, CommitHash(tree, []domain.Hash{parent}, "hi2"))
-	require.NotEqual(t, c1, CommitHash(tree, []domain.Hash{domain.Hash{0x09}}, "hi"))
+	require.NotEqual(t, c1, CommitHash(tree, []domain.Hash{{0x09}}, "hi"))
 }
 
 func TestCommitHash_FirstCommit(t *testing.T) {

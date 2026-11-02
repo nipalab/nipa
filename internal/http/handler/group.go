@@ -29,7 +29,7 @@ func (h *Handler) ListGroups(appCtx http.AppContext) {
 		item.MemberCount = counts[group.ID]
 		resp = append(resp, item)
 	}
-	appCtx.WriteJson(nethttp.StatusOK, resp)
+	_ = appCtx.WriteJson(nethttp.StatusOK, resp)
 }
 
 func (h *Handler) CreateGroup(appCtx http.AppContext) {
@@ -48,7 +48,7 @@ func (h *Handler) CreateGroup(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, toGroupResponse(group, nil))
+	_ = appCtx.WriteJson(nethttp.StatusOK, toGroupResponse(group, nil))
 }
 
 func (h *Handler) GetGroup(appCtx http.AppContext) {
@@ -72,7 +72,7 @@ func (h *Handler) GetGroup(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, toGroupResponse(group, members))
+	_ = appCtx.WriteJson(nethttp.StatusOK, toGroupResponse(group, members))
 }
 
 func (h *Handler) AddGroupMember(appCtx http.AppContext) {
@@ -100,7 +100,7 @@ func (h *Handler) AddGroupMember(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, model.MessageResponse{Message: "member added"})
+	_ = appCtx.WriteJson(nethttp.StatusOK, model.MessageResponse{Message: "member added"})
 }
 
 func (h *Handler) RemoveGroupMember(appCtx http.AppContext) {
@@ -123,5 +123,5 @@ func (h *Handler) RemoveGroupMember(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, model.MessageResponse{Message: "member removed"})
+	_ = appCtx.WriteJson(nethttp.StatusOK, model.MessageResponse{Message: "member removed"})
 }

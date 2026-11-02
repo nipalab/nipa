@@ -257,6 +257,6 @@ func TestIsTTY_NonTerminal(t *testing.T) {
 
 	f, err := os.CreateTemp(t.TempDir(), "out")
 	require.NoError(t, err)
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	require.False(t, isTTY(f))
 }

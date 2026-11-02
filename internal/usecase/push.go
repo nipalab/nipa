@@ -607,11 +607,6 @@ type pushTreeNode struct {
 	KeepDirs []*pushTreeNode
 }
 
-type pushTreeEntry struct {
-	Name string
-	Hash domain.Hash
-}
-
 type pushFile struct {
 	Name        string
 	Mode        int

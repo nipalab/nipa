@@ -51,7 +51,6 @@ type chunkTestServer struct {
 	putHeaders    http.Header
 	rejectedPuts  int
 	hookBeforePut func()
-	raceWinner    map[string][]byte
 	garbageOnce   map[string]bool
 }
 

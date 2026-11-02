@@ -18,7 +18,7 @@ func setupRepoWithStoredTree(t *testing.T, branch string, files map[string]strin
 	target := t.TempDir()
 	lr := localrepo.NewLocalRepo()
 	require.NoError(t, lr.Init(target))
-	defer lr.Close()
+	defer func() { _ = lr.Close() }()
 	require.NoError(t, lr.SaveConfig(domain.Config{Url: "http://example.com/org/project", Branch: branch}))
 
 	tree := &serverDomain.TreeNode{Hash: serverDomain.Hash{0x01}, Name: "root"}

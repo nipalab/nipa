@@ -50,7 +50,7 @@ func pinnedCommit(t *testing.T, target string) (commitID, commitHash string) {
 	t.Helper()
 	lr := localrepo.NewLocalRepo()
 	require.NoError(t, lr.Init(target))
-	defer lr.Close()
+	defer func() { _ = lr.Close() }()
 	c, err := lr.LoadCommit()
 	require.NoError(t, err)
 	return c.CommitID, c.CommitHash
@@ -75,7 +75,7 @@ func loadMergeState(t *testing.T, target string) *domain.MergeState {
 	t.Helper()
 	lr := localrepo.NewLocalRepo()
 	require.NoError(t, lr.Init(target))
-	defer lr.Close()
+	defer func() { _ = lr.Close() }()
 	state, err := lr.LoadMergeState()
 	require.NoError(t, err)
 	return state

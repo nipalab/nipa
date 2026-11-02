@@ -38,7 +38,7 @@ func (h *Handler) CreateProjectBranch(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, toBranchResponse(branch))
+	_ = appCtx.WriteJson(nethttp.StatusOK, toBranchResponse(branch))
 }
 
 func (h *Handler) RenameProjectBranch(appCtx http.AppContext) {
@@ -57,7 +57,7 @@ func (h *Handler) RenameProjectBranch(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, toBranchResponse(branch))
+	_ = appCtx.WriteJson(nethttp.StatusOK, toBranchResponse(branch))
 }
 
 func (h *Handler) DeleteProjectBranch(appCtx http.AppContext) {
@@ -70,7 +70,7 @@ func (h *Handler) DeleteProjectBranch(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, model.MessageResponse{Message: "branch deleted"})
+	_ = appCtx.WriteJson(nethttp.StatusOK, model.MessageResponse{Message: "branch deleted"})
 }
 
 func (h *Handler) SetProjectBranchDefault(appCtx http.AppContext) {
@@ -84,7 +84,7 @@ func (h *Handler) SetProjectBranchDefault(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, toBranchResponse(branch))
+	_ = appCtx.WriteJson(nethttp.StatusOK, toBranchResponse(branch))
 }
 
 func (h *Handler) SetProjectBranchProtection(appCtx http.AppContext) {
@@ -127,5 +127,5 @@ func (h *Handler) SetProjectBranchProtection(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, toBranchResponse(branch))
+	_ = appCtx.WriteJson(nethttp.StatusOK, toBranchResponse(branch))
 }

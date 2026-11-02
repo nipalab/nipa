@@ -172,7 +172,7 @@ func Wrap(fn func(httpApp.AppContext)) restful.RouteFunction {
 	return func(req *restful.Request, resp *restful.Response) {
 		ctx, err := newAppContext(req, resp)
 		if err != nil {
-			resp.WriteHeaderAndJson(http.StatusInternalServerError, model.NewAPIError(err.Error()), restful.MIME_JSON)
+			_ = resp.WriteHeaderAndJson(http.StatusInternalServerError, model.NewAPIError(err.Error()), restful.MIME_JSON)
 			return
 		}
 		fn(ctx)
