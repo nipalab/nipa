@@ -169,7 +169,7 @@ func (s *httpSender) Send(ctx context.Context, msg Message) error {
 	if err != nil {
 		return fmt.Errorf("http sender: send: %w", err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode < 200 || response.StatusCode > 299 {
 		return fmt.Errorf("http sender: response %s%s", response.Status, responseSnippet(response.Body))
 	}

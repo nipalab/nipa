@@ -19,8 +19,8 @@ func TestNewPrompter(t *testing.T) {
 func TestPrompter_PromptUsernameAndPassword(t *testing.T) {
 	ptmx, tty, err := pty.Open()
 	require.NoError(t, err)
-	defer ptmx.Close()
-	defer tty.Close()
+	defer func() { _ = ptmx.Close() }()
+	defer func() { _ = tty.Close() }()
 
 	oldStdin := os.Stdin
 	os.Stdin = tty
@@ -38,8 +38,8 @@ func TestPrompter_PromptUsernameAndPassword(t *testing.T) {
 func TestPrompter_PromptTrimsUsernameWhitespace(t *testing.T) {
 	ptmx, tty, err := pty.Open()
 	require.NoError(t, err)
-	defer ptmx.Close()
-	defer tty.Close()
+	defer func() { _ = ptmx.Close() }()
+	defer func() { _ = tty.Close() }()
 
 	oldStdin := os.Stdin
 	os.Stdin = tty

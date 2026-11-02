@@ -18,7 +18,7 @@ func loadRevertState(t *testing.T, target string) *domain.RevertState {
 	t.Helper()
 	lr := localrepo.NewLocalRepo()
 	require.NoError(t, lr.Init(target))
-	defer lr.Close()
+	defer func() { _ = lr.Close() }()
 	state, err := lr.LoadRevertState()
 	require.NoError(t, err)
 	return state

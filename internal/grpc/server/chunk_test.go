@@ -67,14 +67,6 @@ func newDirectChunkUsecase(t *testing.T) (*usecase.Chunk, *storage.LocalStore) {
 	return uc, store
 }
 
-type usecaseChunkRepo interface {
-	InsertChunkIfNotExists(ctx context.Context, hash domain.Hash, sizeBytes int64) error
-	HasChunk(ctx context.Context, hash domain.Hash) (bool, error)
-	LinkProjectChunk(ctx context.Context, projectID snow.ID, hash domain.Hash) error
-	LinkProjectChunks(ctx context.Context, projectID snow.ID, hashes []domain.Hash) error
-	LinkedProjectChunks(ctx context.Context, projectID snow.ID, hashes []domain.Hash) (map[domain.Hash]bool, error)
-}
-
 type stubChunkRepo struct{}
 
 func (stubChunkRepo) InsertChunkIfNotExists(_ context.Context, _ domain.Hash, _ int64) error {

@@ -17,7 +17,7 @@ func TestFindRepoRoot(t *testing.T) {
 	lr := NewLocalRepo()
 	require.NoError(t, lr.Init(target))
 	require.NoError(t, lr.SaveConfig(domain.Config{Url: "http://example.com/org/project", Branch: "main"}))
-	lr.Close()
+	_ = lr.Close()
 
 	withWD(t, target, func() {
 		root, err := FindRepoRoot()
@@ -31,7 +31,7 @@ func TestFindRepoRoot_AtChildDir(t *testing.T) {
 	lr := NewLocalRepo()
 	require.NoError(t, lr.Init(target))
 	require.NoError(t, lr.SaveConfig(domain.Config{Url: "http://example.com/org/project", Branch: "main"}))
-	lr.Close()
+	_ = lr.Close()
 
 	child := filepath.Join(target, "a", "b", "c")
 	require.NoError(t, os.MkdirAll(child, 0o755))
@@ -56,7 +56,7 @@ func TestFindRepoRootFrom(t *testing.T) {
 	lr := NewLocalRepo()
 	require.NoError(t, lr.Init(target))
 	require.NoError(t, lr.SaveConfig(domain.Config{Url: "http://example.com/org/project", Branch: "main"}))
-	lr.Close()
+	_ = lr.Close()
 
 	child := filepath.Join(target, "a", "b")
 	require.NoError(t, os.MkdirAll(child, 0o755))
@@ -86,7 +86,7 @@ func TestFindRepoRoot_MaxDepth(t *testing.T) {
 	lr := NewLocalRepo()
 	require.NoError(t, lr.Init(target))
 	require.NoError(t, lr.SaveConfig(domain.Config{Url: "http://example.com/org/project", Branch: "main"}))
-	lr.Close()
+	_ = lr.Close()
 
 	deep := target
 	for i := 0; i < MaxSearchDepth+1; i++ {
@@ -122,7 +122,7 @@ func TestNewLocalRepoWithTarget_LoadConfig(t *testing.T) {
 	require.NoError(t, init.Init(target))
 	cfg := domain.Config{Url: "http://example.com/org/project", Branch: "main"}
 	require.NoError(t, init.SaveConfig(cfg))
-	init.Close()
+	_ = init.Close()
 
 	lr := NewLocalRepoWithTarget(target)
 	got, err := lr.LoadConfig()
@@ -134,7 +134,7 @@ func TestSaveConfig_LoadConfig(t *testing.T) {
 	target := t.TempDir()
 	lr := NewLocalRepo()
 	require.NoError(t, lr.Init(target))
-	defer lr.Close()
+	defer func() { _ = lr.Close() }()
 
 	cfg := domain.Config{Url: "http://example.com/org/project", Branch: "main"}
 	require.NoError(t, lr.SaveConfig(cfg))
@@ -162,19 +162,19 @@ func TestInit_Idempotent(t *testing.T) {
 	require.NoError(t, lr.Init(target))
 	require.NoError(t, lr.Init(target))
 	require.NoError(t, lr.Init(target))
-	lr.Close()
+	_ = lr.Close()
 
 	again := NewLocalRepo()
 	require.NoError(t, again.Init(target))
 	require.NoError(t, again.SaveTree(nil))
-	again.Close()
+	_ = again.Close()
 }
 
 func TestSaveTree_Flattens(t *testing.T) {
 	target := t.TempDir()
 	lr := NewLocalRepo()
 	require.NoError(t, lr.Init(target))
-	defer lr.Close()
+	defer func() { _ = lr.Close() }()
 
 	root := treeFixture()
 	require.NoError(t, lr.SaveTree(root))
@@ -200,7 +200,7 @@ func TestSaveTree_ReplacesPrevious(t *testing.T) {
 	target := t.TempDir()
 	lr := NewLocalRepo()
 	require.NoError(t, lr.Init(target))
-	defer lr.Close()
+	defer func() { _ = lr.Close() }()
 
 	require.NoError(t, lr.SaveTree(treeFixture()))
 	require.NoError(t, lr.SaveTree(treeFixture()))
@@ -213,7 +213,7 @@ func TestSaveTree_KeepsCachedObjects(t *testing.T) {
 	target := t.TempDir()
 	lr := NewLocalRepo()
 	require.NoError(t, lr.Init(target))
-	defer lr.Close()
+	defer func() { _ = lr.Close() }()
 
 	firstHash := serverDomain.Hash{0x70}
 	secondHash := serverDomain.Hash{0x71}
@@ -243,7 +243,7 @@ func TestSaveTree_Empty(t *testing.T) {
 	target := t.TempDir()
 	lr := NewLocalRepo()
 	require.NoError(t, lr.Init(target))
-	defer lr.Close()
+	defer func() { _ = lr.Close() }()
 
 	require.NoError(t, lr.SaveTree(nil))
 
@@ -259,7 +259,7 @@ func TestSaveTree_EmptyClearsPreviousSnapshot(t *testing.T) {
 	target := t.TempDir()
 	lr := NewLocalRepo()
 	require.NoError(t, lr.Init(target))
-	defer lr.Close()
+	defer func() { _ = lr.Close() }()
 
 	require.NoError(t, lr.SaveTree(treeFixture()))
 	require.Equal(t, 2, countRows(t, lr.db, "tree_nodes"))
@@ -277,7 +277,7 @@ func TestSaveTree_NoDeletesWhenUnchanged(t *testing.T) {
 	target := t.TempDir()
 	lr := NewLocalRepo()
 	require.NoError(t, lr.Init(target))
-	defer lr.Close()
+	defer func() { _ = lr.Close() }()
 
 	require.NoError(t, lr.SaveTree(treeFixture()))
 
@@ -298,7 +298,7 @@ func TestSaveTree_IncrementalUpdate(t *testing.T) {
 	target := t.TempDir()
 	lr := NewLocalRepo()
 	require.NoError(t, lr.Init(target))
-	defer lr.Close()
+	defer func() { _ = lr.Close() }()
 
 	require.NoError(t, lr.SaveTree(treeFixture()))
 	require.Equal(t, 2, countRows(t, lr.db, "tree_nodes"))
@@ -365,7 +365,7 @@ func treeFixture() *serverDomain.TreeNode {
 func TestSaveCommit_LoadCommit(t *testing.T) {
 	lr := NewLocalRepo()
 	require.NoError(t, lr.Init(t.TempDir()))
-	defer lr.Close()
+	defer func() { _ = lr.Close() }()
 
 	require.NoError(t, lr.SaveCommit("zzz123", "beefcafe"))
 	got, err := lr.LoadCommit()
@@ -377,7 +377,7 @@ func TestSaveCommit_LoadCommit(t *testing.T) {
 func TestSaveCommit_UpdatesExisting(t *testing.T) {
 	lr := NewLocalRepo()
 	require.NoError(t, lr.Init(t.TempDir()))
-	defer lr.Close()
+	defer func() { _ = lr.Close() }()
 
 	require.NoError(t, lr.SaveCommit("old", "oldhash"))
 	require.NoError(t, lr.SaveCommit("new", "newhash"))
@@ -390,7 +390,7 @@ func TestSaveCommit_UpdatesExisting(t *testing.T) {
 func TestLoadCommit_NeverPushed(t *testing.T) {
 	lr := NewLocalRepo()
 	require.NoError(t, lr.Init(t.TempDir()))
-	defer lr.Close()
+	defer func() { _ = lr.Close() }()
 
 	got, err := lr.LoadCommit()
 	require.NoError(t, err)
@@ -407,7 +407,7 @@ func TestSaveCommit_NotInitialized(t *testing.T) {
 func TestMergeState_RoundTrip(t *testing.T) {
 	lr := NewLocalRepo()
 	require.NoError(t, lr.Init(t.TempDir()))
-	defer lr.Close()
+	defer func() { _ = lr.Close() }()
 
 	state := &domain.MergeState{
 		SourceBranch:     "feature",
@@ -427,7 +427,7 @@ func TestMergeState_RoundTrip(t *testing.T) {
 func TestMergeState_NoConflicts(t *testing.T) {
 	lr := NewLocalRepo()
 	require.NoError(t, lr.Init(t.TempDir()))
-	defer lr.Close()
+	defer func() { _ = lr.Close() }()
 
 	state := &domain.MergeState{
 		SourceBranch:     "feature",
@@ -446,7 +446,7 @@ func TestMergeState_NoConflicts(t *testing.T) {
 func TestMergeState_OverwritesPrevious(t *testing.T) {
 	lr := NewLocalRepo()
 	require.NoError(t, lr.Init(t.TempDir()))
-	defer lr.Close()
+	defer func() { _ = lr.Close() }()
 
 	require.NoError(t, lr.SaveMergeState(&domain.MergeState{SourceBranch: "old"}))
 	require.NoError(t, lr.SaveMergeState(&domain.MergeState{SourceBranch: "feature", SourceCommitHash: "src-hash"}))
@@ -460,7 +460,7 @@ func TestMergeState_OverwritesPrevious(t *testing.T) {
 func TestMergeState_LoadEmpty(t *testing.T) {
 	lr := NewLocalRepo()
 	require.NoError(t, lr.Init(t.TempDir()))
-	defer lr.Close()
+	defer func() { _ = lr.Close() }()
 
 	got, err := lr.LoadMergeState()
 	require.NoError(t, err)
@@ -470,7 +470,7 @@ func TestMergeState_LoadEmpty(t *testing.T) {
 func TestMergeState_Clear(t *testing.T) {
 	lr := NewLocalRepo()
 	require.NoError(t, lr.Init(t.TempDir()))
-	defer lr.Close()
+	defer func() { _ = lr.Close() }()
 
 	require.NoError(t, lr.SaveMergeState(&domain.MergeState{SourceBranch: "feature"}))
 	require.NoError(t, lr.ClearMergeState())
@@ -483,7 +483,7 @@ func TestMergeState_Clear(t *testing.T) {
 func TestMergeState_ClearWhenEmpty(t *testing.T) {
 	lr := NewLocalRepo()
 	require.NoError(t, lr.Init(t.TempDir()))
-	defer lr.Close()
+	defer func() { _ = lr.Close() }()
 
 	require.NoError(t, lr.ClearMergeState())
 	got, err := lr.LoadMergeState()

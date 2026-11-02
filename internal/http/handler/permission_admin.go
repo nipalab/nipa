@@ -24,7 +24,7 @@ func (h *Handler) ListProjectRules(appCtx http.AppContext) {
 	for _, rule := range rules {
 		resp = append(resp, toPBACRuleResponse(rule))
 	}
-	appCtx.WriteJson(nethttp.StatusOK, resp)
+	_ = appCtx.WriteJson(nethttp.StatusOK, resp)
 }
 
 func (h *Handler) CreateProjectRule(appCtx http.AppContext) {
@@ -65,7 +65,7 @@ func (h *Handler) CreateProjectRule(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, toPBACRuleResponse(created))
+	_ = appCtx.WriteJson(nethttp.StatusOK, toPBACRuleResponse(created))
 }
 
 func (h *Handler) DeleteProjectRule(appCtx http.AppContext) {
@@ -83,7 +83,7 @@ func (h *Handler) DeleteProjectRule(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, model.MessageResponse{Message: "rule deleted"})
+	_ = appCtx.WriteJson(nethttp.StatusOK, model.MessageResponse{Message: "rule deleted"})
 }
 
 func (h *Handler) ListProjectDefaults(appCtx http.AppContext) {
@@ -104,7 +104,7 @@ func (h *Handler) ListProjectDefaults(appCtx http.AppContext) {
 			Permission: uint64(entry.Permission),
 		})
 	}
-	appCtx.WriteJson(nethttp.StatusOK, resp)
+	_ = appCtx.WriteJson(nethttp.StatusOK, resp)
 }
 
 func (h *Handler) SetProjectDefault(appCtx http.AppContext) {
@@ -125,7 +125,7 @@ func (h *Handler) SetProjectDefault(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, model.PermissionEntry{
+	_ = appCtx.WriteJson(nethttp.StatusOK, model.PermissionEntry{
 		PathPrefix: entry.PathPrefix,
 		Permission: uint64(entry.Permission),
 	})
@@ -142,7 +142,7 @@ func (h *Handler) DeleteProjectDefault(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, model.MessageResponse{Message: "default removed"})
+	_ = appCtx.WriteJson(nethttp.StatusOK, model.MessageResponse{Message: "default removed"})
 }
 
 func toPBACRuleResponse(rule *domain.PBACRule) model.PBACRuleResponse {

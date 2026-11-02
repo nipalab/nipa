@@ -133,7 +133,7 @@ func (c *Client) Post(ctx context.Context, req PostRequest) Result {
 	if err != nil {
 		return fail(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		return Result{

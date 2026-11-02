@@ -34,12 +34,12 @@ func (f *AuthFilter) Auth() restful.FilterFunction {
 	return func(req *restful.Request, resp *restful.Response, chain *restful.FilterChain) {
 		tokenString, err := f.getToken(req)
 		if err != nil || tokenString == "" {
-			resp.WriteHeaderAndJson(http.StatusUnauthorized, model.NewAPIError("unauthorized access"), restful.MIME_JSON)
+			_ = resp.WriteHeaderAndJson(http.StatusUnauthorized, model.NewAPIError("unauthorized access"), restful.MIME_JSON)
 			return
 		}
 		claim, er := f.tokenValidator.ValidateToken(req.Request.Context(), tokenString)
 		if er != nil {
-			resp.WriteHeaderAndJson(http.StatusUnauthorized, model.NewAPIError("unauthorized access, token not valid"), restful.MIME_JSON)
+			_ = resp.WriteHeaderAndJson(http.StatusUnauthorized, model.NewAPIError("unauthorized access, token not valid"), restful.MIME_JSON)
 			return
 		}
 		ctx := domain.ContextWithClaim(req.Request.Context(), *claim)

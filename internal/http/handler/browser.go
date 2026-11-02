@@ -54,7 +54,7 @@ func (h *Handler) ListProjectBranches(appCtx http.AppContext) {
 	for _, branch := range branches {
 		resp = append(resp, toBranchResponse(branch))
 	}
-	appCtx.WriteJson(nethttp.StatusOK, resp)
+	_ = appCtx.WriteJson(nethttp.StatusOK, resp)
 }
 
 func (h *Handler) ListCommits(appCtx http.AppContext) {
@@ -97,7 +97,7 @@ func (h *Handler) ListCommits(appCtx http.AppContext) {
 	for _, entry := range entries {
 		resp = append(resp, toCommitResponse(entry))
 	}
-	appCtx.WriteJson(nethttp.StatusOK, resp)
+	_ = appCtx.WriteJson(nethttp.StatusOK, resp)
 }
 
 func (h *Handler) GetCommitDiff(appCtx http.AppContext) {
@@ -135,7 +135,7 @@ func (h *Handler) GetCommitDiff(appCtx http.AppContext) {
 	for _, file := range files {
 		resp.Files = append(resp.Files, toDiffFileResponse(file))
 	}
-	appCtx.WriteJson(nethttp.StatusOK, resp)
+	_ = appCtx.WriteJson(nethttp.StatusOK, resp)
 }
 
 func (h *Handler) GetTree(appCtx http.AppContext) {
@@ -168,7 +168,7 @@ func (h *Handler) GetTree(appCtx http.AppContext) {
 				Hash:      file.Hash.String(),
 			})
 		}
-		appCtx.WriteJson(nethttp.StatusOK, resp)
+		_ = appCtx.WriteJson(nethttp.StatusOK, resp)
 		return
 	}
 	if appCtx.QueryParameter("history") == "1" {
@@ -190,7 +190,7 @@ func (h *Handler) GetTree(appCtx http.AppContext) {
 				}
 			}
 		}
-		appCtx.WriteJson(nethttp.StatusOK, resp)
+		_ = appCtx.WriteJson(nethttp.StatusOK, resp)
 		return
 	}
 	node, err := h.useCase.Branch().TreeAt(appCtx.Context(), project.ID, rev, path)
@@ -198,7 +198,7 @@ func (h *Handler) GetTree(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, toTreeResponse(path, node))
+	_ = appCtx.WriteJson(nethttp.StatusOK, toTreeResponse(path, node))
 }
 
 func (h *Handler) GetBlob(appCtx http.AppContext) {
@@ -214,7 +214,7 @@ func (h *Handler) GetBlob(appCtx http.AppContext) {
 		return
 	}
 	if entry.SizeBytes > maxBlobBytes {
-		appCtx.WriteJson(nethttp.StatusRequestEntityTooLarge, model.NewAPIError("file is too large for the web viewer"))
+		_ = appCtx.WriteJson(nethttp.StatusRequestEntityTooLarge, model.NewAPIError("file is too large for the web viewer"))
 		return
 	}
 	etag := `"` + entry.Hash.String() + `"`

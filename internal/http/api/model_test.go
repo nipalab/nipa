@@ -11,7 +11,6 @@ import (
 	"github.com/emicklei/go-restful/v3"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/nipalab/nipa/internal/domain"
-	httpApp "github.com/nipalab/nipa/internal/http"
 	"github.com/stretchr/testify/require"
 )
 
@@ -30,8 +29,7 @@ func TestNewAppContext(t *testing.T) {
 	ctx, err := newAppContext(req, resp)
 	require.NoError(t, err)
 
-	appCtx, ok := ctx.(httpApp.AppContext)
-	require.True(t, ok)
+	appCtx := ctx
 	require.Nil(t, appCtx.Claims())
 	require.Equal(t, req.Request.Context(), appCtx.Context())
 }

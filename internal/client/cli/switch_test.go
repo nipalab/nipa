@@ -87,7 +87,7 @@ func loadRepoConfig(t *testing.T, root string) domain.Config {
 	t.Helper()
 	lr := localrepo.NewLocalRepo()
 	require.NoError(t, lr.Init(root))
-	defer lr.Close()
+	defer func() { _ = lr.Close() }()
 	cfg, err := lr.LoadConfig()
 	require.NoError(t, err)
 	return *cfg

@@ -30,8 +30,8 @@ func openPty(t *testing.T) (*os.File, *os.File) {
 
 func TestRunLogInteractive(t *testing.T) {
 	master, slave := openPty(t)
-	defer master.Close()
-	defer slave.Close()
+	defer func() { _ = master.Close() }()
+	defer func() { _ = slave.Close() }()
 
 	var out bytes.Buffer
 	cli := newLogCli(testEntries(), nil)
@@ -52,8 +52,8 @@ func TestRunLogInteractive(t *testing.T) {
 
 func TestRunLogInteractive_Oneline(t *testing.T) {
 	master, slave := openPty(t)
-	defer master.Close()
-	defer slave.Close()
+	defer func() { _ = master.Close() }()
+	defer func() { _ = slave.Close() }()
 
 	var out bytes.Buffer
 	cli := newLogCli(testEntries(), nil)
@@ -75,7 +75,7 @@ func TestRunLogInteractive_NonTerminalInput(t *testing.T) {
 	// a non-terminal input must make MakeRaw fail without hanging
 	f, err := os.CreateTemp(t.TempDir(), "in")
 	require.NoError(t, err)
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	var out bytes.Buffer
 	cli := newLogCli(testEntries(), nil)
@@ -87,8 +87,8 @@ func TestSetupLogCmd_InteractiveBranch(t *testing.T) {
 	// stdout on a real terminal routes through runLogInteractive; os.Stdin is
 	// not a terminal under `go test`, so MakeRaw fails and the command returns.
 	master, slave := openPty(t)
-	defer master.Close()
-	defer slave.Close()
+	defer func() { _ = master.Close() }()
+	defer func() { _ = slave.Close() }()
 
 	root := setupRepo(t, "main")
 	cli := newLogCli(testEntries(), nil)

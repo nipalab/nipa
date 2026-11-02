@@ -124,7 +124,7 @@ func setupRepoWithURL(t *testing.T, url string) string {
 	root := t.TempDir()
 	lr := localrepo.NewLocalRepo()
 	require.NoError(t, lr.Init(root))
-	defer lr.Close()
+	defer func() { _ = lr.Close() }()
 	require.NoError(t, lr.SaveConfig(domain.Config{Url: url, Branch: "main"}))
 	return root
 }

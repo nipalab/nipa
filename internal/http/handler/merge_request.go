@@ -81,7 +81,7 @@ func (h *Handler) ListMergeRequests(appCtx http.AppContext) {
 	if hasMore {
 		resp.NextCursor = strconv.FormatInt(requests[len(requests)-1].Number, 10)
 	}
-	appCtx.WriteJson(nethttp.StatusOK, resp)
+	_ = appCtx.WriteJson(nethttp.StatusOK, resp)
 }
 
 func (h *Handler) CreateMergeRequest(appCtx http.AppContext) {
@@ -102,7 +102,7 @@ func (h *Handler) CreateMergeRequest(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, toMergeRequestResponse(request, nil))
+	_ = appCtx.WriteJson(nethttp.StatusOK, toMergeRequestResponse(request, nil))
 }
 
 func (h *Handler) UpdateMergeRequest(appCtx http.AppContext) {
@@ -138,14 +138,14 @@ func (h *Handler) UpdateMergeRequest(appCtx http.AppContext) {
 			appCtx.HandleError(err)
 			return
 		}
-		appCtx.WriteJson(nethttp.StatusOK, toMergeRequestResponse(request, nil))
+		_ = appCtx.WriteJson(nethttp.StatusOK, toMergeRequestResponse(request, nil))
 		return
 	}
 	if toggled == nil {
 		appCtx.HandleError(domain.NewErrorUser("title or description is required"))
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, toMergeRequestResponse(toggled, nil))
+	_ = appCtx.WriteJson(nethttp.StatusOK, toMergeRequestResponse(toggled, nil))
 }
 
 func (h *Handler) ReportMergeRequestCheck(appCtx http.AppContext) {
@@ -174,7 +174,7 @@ func (h *Handler) ReportMergeRequestCheck(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, toMergeRequestCheckResponse(check))
+	_ = appCtx.WriteJson(nethttp.StatusOK, toMergeRequestCheckResponse(check))
 }
 
 func (h *Handler) ListMergeRequestChecks(appCtx http.AppContext) {
@@ -202,7 +202,7 @@ func (h *Handler) ListMergeRequestChecks(appCtx http.AppContext) {
 	for _, check := range list {
 		resp = append(resp, toMergeRequestCheckResponse(check))
 	}
-	appCtx.WriteJson(nethttp.StatusOK, resp)
+	_ = appCtx.WriteJson(nethttp.StatusOK, resp)
 }
 
 func toMergeRequestCheckResponse(check *domain.MergeRequestCheck) model.MergeRequestCheckResponse {
@@ -247,7 +247,7 @@ func (h *Handler) SetMergeRequestAssignees(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, toMergeRequestResponse(request, nil))
+	_ = appCtx.WriteJson(nethttp.StatusOK, toMergeRequestResponse(request, nil))
 }
 
 func (h *Handler) GetMergeRequest(appCtx http.AppContext) {
@@ -276,7 +276,7 @@ func (h *Handler) GetMergeRequest(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, toMergeRequestResponse(request, info))
+	_ = appCtx.WriteJson(nethttp.StatusOK, toMergeRequestResponse(request, info))
 }
 
 func (h *Handler) CheckMergeRequest(appCtx http.AppContext) {
@@ -295,7 +295,7 @@ func (h *Handler) CheckMergeRequest(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, toMergeabilityResponse(info))
+	_ = appCtx.WriteJson(nethttp.StatusOK, toMergeabilityResponse(info))
 }
 
 func (h *Handler) MergeMergeRequest(appCtx http.AppContext) {
@@ -321,7 +321,7 @@ func (h *Handler) MergeMergeRequest(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, toMergeRequestResponse(request, info))
+	_ = appCtx.WriteJson(nethttp.StatusOK, toMergeRequestResponse(request, info))
 }
 
 func (h *Handler) CloseMergeRequest(appCtx http.AppContext) {
@@ -364,7 +364,7 @@ func (h *Handler) MergeRequestDiff(appCtx http.AppContext) {
 	for _, file := range files {
 		resp.Files = append(resp.Files, toDiffFileResponse(file))
 	}
-	appCtx.WriteJson(nethttp.StatusOK, resp)
+	_ = appCtx.WriteJson(nethttp.StatusOK, resp)
 }
 
 func (h *Handler) ListMergeRequestCommits(appCtx http.AppContext) {
@@ -381,7 +381,7 @@ func (h *Handler) ListMergeRequestCommits(appCtx http.AppContext) {
 	for _, commit := range commits {
 		resp = append(resp, toCommitResponse(commit))
 	}
-	appCtx.WriteJson(nethttp.StatusOK, resp)
+	_ = appCtx.WriteJson(nethttp.StatusOK, resp)
 }
 
 func (h *Handler) setMergeRequestStatus(appCtx http.AppContext, set func(number int64) (*domain.MergeRequest, error)) {
@@ -399,7 +399,7 @@ func (h *Handler) setMergeRequestStatus(appCtx http.AppContext, set func(number 
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, toMergeRequestResponse(request, nil))
+	_ = appCtx.WriteJson(nethttp.StatusOK, toMergeRequestResponse(request, nil))
 }
 
 func parseMergeRequestNumber(appCtx http.AppContext) (int64, error) {

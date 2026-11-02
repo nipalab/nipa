@@ -124,7 +124,7 @@ func TestMergeText_EmptyBase(t *testing.T) {
 	require.False(t, conflicted)
 	require.Equal(t, "only ours\n", string(merged))
 
-	merged, conflicted = MergeText(nil, []byte("a\n"), []byte("b\n"))
+	_, conflicted = MergeText(nil, []byte("a\n"), []byte("b\n"))
 	require.True(t, conflicted)
 }
 

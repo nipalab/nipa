@@ -708,7 +708,7 @@ func stageFile(t *testing.T, root, path string) {
 	t.Helper()
 	lr := localrepo.NewLocalRepo()
 	require.NoError(t, lr.Init(root))
-	defer lr.Close()
+	defer func() { _ = lr.Close() }()
 	require.NoError(t, lr.StageAdd(path))
 }
 

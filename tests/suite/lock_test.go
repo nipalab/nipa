@@ -8,7 +8,7 @@ import (
 var _ = Describe("nipa lock", func() {
 	It("locks a path on the default branch and lists it", func() {
 		project := newProject("lock-basic")
-		seedRepo(orgSlug, project, map[string][]byte{"assets/hero.png": []byte{0x00, 0x01, 0x02}}, "seed")
+		seedRepo(orgSlug, project, map[string][]byte{"assets/hero.png": {0x00, 0x01, 0x02}}, "seed")
 		parent := workspace()
 		dir := cloneRepo(parent, repoURLFor(orgSlug, project), "work")
 
@@ -108,7 +108,7 @@ var _ = Describe("nipa lock", func() {
 
 	It("requires a lock before pushing a tracked binary change", func() {
 		project := newProject("lock-tracked-binary")
-		seedRepo(orgSlug, project, map[string][]byte{"blob.bin": []byte{0x00, 0x01, 0x02}}, "seed")
+		seedRepo(orgSlug, project, map[string][]byte{"blob.bin": {0x00, 0x01, 0x02}}, "seed")
 		url := repoURLFor(orgSlug, project)
 		writer := newIdentity("lock-binary-writer").promote()
 		dir := cloneRepo(workspace(), url, "writer")

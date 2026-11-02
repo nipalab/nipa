@@ -67,7 +67,7 @@ func TestSetupStatusCmd_ShowsMergeConflicts(t *testing.T) {
 	root := setupRepo(t, "main")
 	lr := localrepo.NewLocalRepo()
 	require.NoError(t, lr.Init(root))
-	defer lr.Close()
+	defer func() { _ = lr.Close() }()
 	require.NoError(t, lr.SaveMergeState(&domain.MergeState{
 		SourceBranch:     "feature",
 		SourceCommitID:   "f1",

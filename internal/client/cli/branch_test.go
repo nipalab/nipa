@@ -80,7 +80,7 @@ func setupRepoURL(t *testing.T, branch, rawURL string) string {
 	target := t.TempDir()
 	lr := localrepo.NewLocalRepo()
 	require.NoError(t, lr.Init(target))
-	defer lr.Close()
+	defer func() { _ = lr.Close() }()
 	require.NoError(t, lr.SaveConfig(domain.Config{Url: rawURL, Branch: branch}))
 	return target
 }

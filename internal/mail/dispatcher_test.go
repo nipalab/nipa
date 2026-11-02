@@ -34,12 +34,6 @@ func (s *fakeSender) Send(_ context.Context, msg Message) error {
 
 func (s *fakeSender) Close() error { return nil }
 
-func (s *fakeSender) stats() (int, int) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.calls, len(s.sent)
-}
-
 type stubStore struct {
 	DispatcherStore
 	claimErr         error

@@ -383,7 +383,7 @@ func TestPush_IncrementalWithRemoval(t *testing.T) {
 		[]treehash.FileEntry{{Name: "x.txt", Mode: 0o644, Hash: domain.Hash{7}},
 			{Name: "y.txt", Mode: 0o644, Hash: fhY}}, nil)
 	newRootHash := treehash.TreeHash(nil, []treehash.TreeEntry{{Name: "d", Hash: newDHash}})
-	wantCommit := treehash.CommitHash(newRootHash, []domain.Hash{domain.Hash{5}}, "msg")
+	wantCommit := treehash.CommitHash(newRootHash, []domain.Hash{{5}}, "msg")
 
 	var got ApplyPushRequest
 	pushRepo.EXPECT().ApplyPush(gomock.Any(), gomock.Any()).DoAndReturn(
@@ -408,7 +408,7 @@ func TestPush_IncrementalWithRemoval(t *testing.T) {
 	for _, f := range got.Files {
 		if f.Name == "x.txt" {
 			found["x"] = true
-			require.Equal(t, []domain.Hash{domain.Hash{8}}, f.ChunkHashes)
+			require.Equal(t, []domain.Hash{{8}}, f.ChunkHashes)
 			require.Equal(t, int64(2), f.TreeID)
 		}
 		if f.Name == "y.txt" {

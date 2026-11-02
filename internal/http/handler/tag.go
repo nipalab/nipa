@@ -47,7 +47,7 @@ func (h *Handler) ListProjectTags(appCtx http.AppContext) {
 	for _, tag := range tags {
 		resp = append(resp, toTagResponse(tag))
 	}
-	appCtx.WriteJson(nethttp.StatusOK, resp)
+	_ = appCtx.WriteJson(nethttp.StatusOK, resp)
 }
 
 func (h *Handler) CreateProjectTag(appCtx http.AppContext) {
@@ -78,7 +78,7 @@ func (h *Handler) CreateProjectTag(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, toTagResponse(tag))
+	_ = appCtx.WriteJson(nethttp.StatusOK, toTagResponse(tag))
 }
 
 func (h *Handler) GetProjectTag(appCtx http.AppContext) {
@@ -92,7 +92,7 @@ func (h *Handler) GetProjectTag(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, toTagResponse(tag))
+	_ = appCtx.WriteJson(nethttp.StatusOK, toTagResponse(tag))
 }
 
 func (h *Handler) DeleteProjectTag(appCtx http.AppContext) {
@@ -105,7 +105,7 @@ func (h *Handler) DeleteProjectTag(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, model.MessageResponse{Message: "tag deleted"})
+	_ = appCtx.WriteJson(nethttp.StatusOK, model.MessageResponse{Message: "tag deleted"})
 }
 
 func toTagResponse(tag *domain.Tag) model.TagResponse {

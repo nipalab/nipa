@@ -253,8 +253,8 @@ func runLogPager(out io.Writer, in io.Reader, entries []*serverDomain.CommitLogE
 }
 
 func runViewportPager(out io.Writer, in io.Reader, lines []string, footer func(*logViewport) string, getSize func() (int, int), sigs <-chan os.Signal) error {
-	io.WriteString(out, "\x1b[?1049h\x1b[?25l")
-	defer io.WriteString(out, "\x1b[?25h\x1b[?1049l")
+	_, _ = io.WriteString(out, "\x1b[?1049h\x1b[?25l")
+	defer func() { _, _ = io.WriteString(out, "\x1b[?25h\x1b[?1049l") }()
 
 	_, height := getSize()
 	vp := newLogViewport(lines, heightRows(height))
@@ -301,7 +301,7 @@ func drawLog(out io.Writer, vp *logViewport, footer string) {
 		b.WriteString("\x1b[K\r\n")
 	}
 	b.WriteString("\x1b[K" + footer)
-	io.WriteString(out, b.String())
+	_, _ = io.WriteString(out, b.String())
 }
 
 func logFooter(vp *logViewport) string {

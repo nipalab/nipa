@@ -56,7 +56,7 @@ func (c *Cli) setupLoginCmd() *cobra.Command {
 				if sshKey != "" || os.Getenv(sshkey.EnvSSHKey) != "" {
 					return err
 				}
-				fmt.Fprintf(cmd.ErrOrStderr(), "SSH key login failed: %v\n", err)
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "SSH key login failed: %v\n", err)
 			}
 
 			if username == "" {

@@ -179,24 +179,6 @@ func (r *emailReceiver) countFor(address string) int {
 	return count
 }
 
-func (r *emailReceiver) waitFor(address string) receivedEmail {
-	GinkgoHelper()
-
-	var found receivedEmail
-	Eventually(func() bool {
-		for _, email := range r.all() {
-			for _, to := range email.To {
-				if to == address {
-					found = email
-					return true
-				}
-			}
-		}
-		return false
-	}, "15s", "50ms").Should(BeTrue(), "no email for %s; got %v", address, r.recipients())
-	return found
-}
-
 func (r *emailReceiver) waitForSubject(address, subject string) receivedEmail {
 	GinkgoHelper()
 
@@ -212,14 +194,6 @@ func (r *emailReceiver) waitForSubject(address, subject string) receivedEmail {
 		return false
 	}, "15s", "50ms").Should(BeTrue(), "no %q email for %s; got %v", subject, address, r.subjects())
 	return found
-}
-
-func (r *emailReceiver) recipients() []string {
-	recipients := []string{}
-	for _, email := range r.all() {
-		recipients = append(recipients, email.To...)
-	}
-	return recipients
 }
 
 func (r *emailReceiver) subjects() []string {

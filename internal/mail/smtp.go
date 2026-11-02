@@ -94,7 +94,7 @@ func (s *smtpSender) Send(ctx context.Context, msg Message) error {
 	if err != nil {
 		return fmt.Errorf("smtp dial: %w", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	if deadline, ok := ctx.Deadline(); ok {
 		_ = conn.SetDeadline(deadline)
 	} else {
@@ -105,7 +105,7 @@ func (s *smtpSender) Send(ctx context.Context, msg Message) error {
 	if err != nil {
 		return fmt.Errorf("smtp handshake: %w", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	if s.cfg.TLS == smtpTLSStartTLS {
 		if err := client.StartTLS(s.tlsConfig()); err != nil {

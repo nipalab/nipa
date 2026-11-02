@@ -68,11 +68,9 @@ func (c *Client) UploadChunks(ctx context.Context, scope domain.ChunkScope, chun
 // It returns the chunks that still need another attempt.
 func (c *Client) uploadAttempt(ctx context.Context, client pb.NipaServiceClient, scope domain.ChunkScope, chunks []*serverDomain.ChunkData, uploaded, skipped map[serverDomain.Hash]struct{}) ([]*serverDomain.ChunkData, error) {
 	refs := make([]*pb.ChunkRef, 0, len(chunks))
-	rawHashes := make([]string, 0, len(chunks))
 	dataByHash := make(map[serverDomain.Hash]*serverDomain.ChunkData, len(chunks))
 	for _, chunk := range chunks {
 		refs = append(refs, &pb.ChunkRef{Hash: chunk.Hash.String(), SizeBytes: int64(len(chunk.Data))})
-		rawHashes = append(rawHashes, chunk.Hash.String())
 		dataByHash[chunk.Hash] = chunk
 	}
 

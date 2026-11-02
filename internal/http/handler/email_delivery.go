@@ -46,7 +46,7 @@ func (h *Handler) ListEmailDeliveries(appCtx http.AppContext) {
 	for _, delivery := range deliveries {
 		resp.Deliveries = append(resp.Deliveries, toEmailDeliveryResponse(delivery))
 	}
-	appCtx.WriteJson(nethttp.StatusOK, resp)
+	_ = appCtx.WriteJson(nethttp.StatusOK, resp)
 }
 
 func (h *Handler) RedeliverEmailDelivery(appCtx http.AppContext) {
@@ -65,7 +65,7 @@ func (h *Handler) RedeliverEmailDelivery(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, toEmailDeliveryResponse(delivery))
+	_ = appCtx.WriteJson(nethttp.StatusOK, toEmailDeliveryResponse(delivery))
 }
 
 func toEmailDeliveryResponse(delivery *domain.EmailDelivery) model.EmailDeliveryResponse {

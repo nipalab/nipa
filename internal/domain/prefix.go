@@ -17,7 +17,7 @@ func NormalizePathPrefix(prefix string) (string, error) {
 		case "", ".":
 			continue
 		case "..":
-			return "", fmt.Errorf("invalid path prefix %q: must not contain ..", prefix)
+			return "", fmt.Errorf("invalid path prefix %q: must not contain a .. segment", prefix)
 		default:
 			segments = append(segments, segment)
 		}

@@ -456,10 +456,6 @@ func TestMerge_Error_SubpathClone(t *testing.T) {
 	require.Contains(t, err.Error(), "subdirectory")
 }
 
-func idBase36(id snow.ID) string {
-	return id.Base36()
-}
-
 func TestMerge_Run_UnrelatedError(t *testing.T) {
 	wantErr := errors.New("base lookup failed")
 	local := &stubLocalRepo{loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "main"}}

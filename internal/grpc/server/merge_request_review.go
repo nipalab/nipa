@@ -268,7 +268,7 @@ func (n *nipaServer) ListMergeRequestTimeline(ctx context.Context, req *pb.ListM
 	resp := &pb.ListMergeRequestTimelineResponse{Items: make([]*pb.MergeRequestTimelineItem, 0, len(items))}
 	for _, item := range items {
 		entry := &pb.MergeRequestTimelineItem{
-			Id:         snow.ID(item.ID).Base36(),
+			Id:         item.ID.Base36(),
 			Kind:       item.Kind,
 			Actor:      domainReviewActorToPB(&item.Actor),
 			Subject:    domainReviewActorToPB(item.Subject),
@@ -289,7 +289,7 @@ func domainReviewToPB(review *domain.MergeRequestReview) *pb.MergeRequestReviewD
 		return nil
 	}
 	detail := &pb.MergeRequestReviewDetail{
-		Id:              snow.ID(review.ID).Base36(),
+		Id:              review.ID.Base36(),
 		MergeRequestId:  review.MergeRequestID,
 		Reviewer:        domainReviewActorToPB(&review.Reviewer),
 		State:           review.State,
@@ -320,7 +320,7 @@ func domainReviewStateToPB(state *domain.MergeRequestReviewState) *pb.MergeReque
 		ChangesRequested:     int32(state.ChangesRequested),
 		DismissedApprovals:   int32(state.DismissedApprovals),
 		OutstandingReviewers: outstanding,
-		HeadCommitId:         snow.ID(state.HeadCommitID).Base36(),
+		HeadCommitId:         state.HeadCommitID.Base36(),
 	}
 }
 
@@ -329,7 +329,7 @@ func domainReviewRequestToPB(request *domain.MergeRequestReviewRequest) *pb.Revi
 		return nil
 	}
 	return &pb.ReviewRequestDetail{
-		Id:             snow.ID(request.ID).Base36(),
+		Id:             request.ID.Base36(),
 		MergeRequestId: request.MergeRequestID,
 		Reviewer:       domainReviewActorToPB(&request.Reviewer),
 		RequestedBy:    domainReviewActorToPB(&request.RequestedBy),
@@ -350,7 +350,7 @@ func domainThreadToPB(thread *domain.MergeRequestThread) *pb.MergeRequestThreadD
 		return nil
 	}
 	detail := &pb.MergeRequestThreadDetail{
-		Id:             snow.ID(thread.ID).Base36(),
+		Id:             thread.ID.Base36(),
 		MergeRequestId: thread.MergeRequestID,
 		FilePath:       thread.FilePath,
 		OldLine:        intToInt64Ptr(thread.OldLine),
@@ -382,7 +382,7 @@ func domainReviewCommentToPB(comment *domain.MergeRequestComment) *pb.ReviewComm
 		return nil
 	}
 	return &pb.ReviewCommentDetail{
-		Id:        snow.ID(comment.ID).Base36(),
+		Id:        comment.ID.Base36(),
 		ThreadId:  comment.ThreadID.Base36(),
 		User:      domainReviewActorToPB(&comment.User),
 		Body:      comment.Body,

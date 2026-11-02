@@ -23,7 +23,7 @@ func (h *Handler) ListFileLocks(appCtx http.AppContext) {
 	for _, lock := range locks {
 		resp = append(resp, toFileLockResponse(lock))
 	}
-	appCtx.WriteJson(nethttp.StatusOK, resp)
+	_ = appCtx.WriteJson(nethttp.StatusOK, resp)
 }
 
 func (h *Handler) LockFile(appCtx http.AppContext) {
@@ -42,7 +42,7 @@ func (h *Handler) LockFile(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, toFileLockResponse(lock))
+	_ = appCtx.WriteJson(nethttp.StatusOK, toFileLockResponse(lock))
 }
 
 func (h *Handler) UnlockFile(appCtx http.AppContext) {
@@ -60,7 +60,7 @@ func (h *Handler) UnlockFile(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, map[string]bool{"ok": true})
+	_ = appCtx.WriteJson(nethttp.StatusOK, map[string]bool{"ok": true})
 }
 
 func toFileLockResponse(lock *domain.FileLock) model.FileLockResponse {

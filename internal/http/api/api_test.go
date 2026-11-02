@@ -231,7 +231,7 @@ func TestAPIRoutes(t *testing.T) {
 		t.Helper()
 
 		resp := doJSON(t, server.URL+"/api/v1/auth/login", `{"email":"`+email+`","password":"whatever"}`, nil, "")
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		require.Equal(t, http.StatusOK, resp.StatusCode)
 
 		var loginResponse model.LoginResponse
@@ -273,21 +273,21 @@ func TestAPIRoutes(t *testing.T) {
 		loginResponse, _ := login(t)
 
 		resp := doGet(t, server.URL+"/api/v1/ping", loginResponse.AccessToken)
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		require.Equal(t, http.StatusNoContent, resp.StatusCode)
 
 		unauthorized := doGet(t, server.URL+"/api/v1/ping", "")
-		defer unauthorized.Body.Close()
+		defer func() { _ = unauthorized.Body.Close() }()
 		require.Equal(t, http.StatusUnauthorized, unauthorized.StatusCode)
 	})
 
 	t.Run("public extension routes skip authentication", func(t *testing.T) {
 		resp := doGet(t, server.URL+"/api/v1/auth/ping-public", "")
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		require.Equal(t, http.StatusNoContent, resp.StatusCode)
 
 		missing := doGet(t, server.URL+"/api/v1/auth/capabilities", "")
-		defer missing.Body.Close()
+		defer func() { _ = missing.Body.Close() }()
 		require.Equal(t, http.StatusNotFound, missing.StatusCode)
 	})
 
@@ -295,7 +295,7 @@ func TestAPIRoutes(t *testing.T) {
 		_, refresh := login(t)
 
 		resp := doJSON(t, server.URL+"/api/v1/auth/refresh", `{}`, []*http.Cookie{refresh}, "")
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		require.Equal(t, http.StatusOK, resp.StatusCode)
 
 		var refreshed model.LoginResponse
@@ -319,7 +319,7 @@ func TestAPIRoutes(t *testing.T) {
 
 	t.Run("refresh without a cookie is unauthorized", func(t *testing.T) {
 		resp := doJSON(t, server.URL+"/api/v1/auth/refresh", `{}`, nil, "")
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 
 		var apiErr model.APIError
@@ -331,7 +331,7 @@ func TestAPIRoutes(t *testing.T) {
 		_, refresh := login(t)
 
 		resp := doJSON(t, server.URL+"/api/v1/auth/logout", `{}`, []*http.Cookie{refresh}, "")
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		require.Equal(t, http.StatusOK, resp.StatusCode)
 
 		var cleared *http.Cookie
@@ -344,7 +344,7 @@ func TestAPIRoutes(t *testing.T) {
 		require.Equal(t, -1, cleared.MaxAge)
 
 		replay := doJSON(t, server.URL+"/api/v1/auth/refresh", `{}`, []*http.Cookie{refresh}, "")
-		defer replay.Body.Close()
+		defer func() { _ = replay.Body.Close() }()
 		require.Equal(t, http.StatusNotFound, replay.StatusCode)
 	})
 
@@ -352,7 +352,7 @@ func TestAPIRoutes(t *testing.T) {
 		_, first := login(t)
 
 		rotatedResp := doJSON(t, server.URL+"/api/v1/auth/refresh", `{}`, []*http.Cookie{first}, "")
-		defer rotatedResp.Body.Close()
+		defer func() { _ = rotatedResp.Body.Close() }()
 		require.Equal(t, http.StatusOK, rotatedResp.StatusCode)
 
 		var second *http.Cookie
@@ -364,7 +364,7 @@ func TestAPIRoutes(t *testing.T) {
 		require.NotNil(t, second)
 
 		staleResp := doJSON(t, server.URL+"/api/v1/auth/refresh", `{}`, []*http.Cookie{first}, "")
-		defer staleResp.Body.Close()
+		defer func() { _ = staleResp.Body.Close() }()
 		require.Equal(t, http.StatusNotFound, staleResp.StatusCode)
 		for _, cookie := range staleResp.Cookies() {
 			if cookie.Name == "nipa_refresh" {
@@ -373,7 +373,7 @@ func TestAPIRoutes(t *testing.T) {
 		}
 
 		okResp := doJSON(t, server.URL+"/api/v1/auth/refresh", `{}`, []*http.Cookie{second}, "")
-		defer okResp.Body.Close()
+		defer func() { _ = okResp.Body.Close() }()
 		require.Equal(t, http.StatusOK, okResp.StatusCode)
 	})
 
@@ -399,7 +399,7 @@ func TestAPIRoutes(t *testing.T) {
 
 	t.Run("login unknown user", func(t *testing.T) {
 		resp := doJSON(t, server.URL+"/api/v1/auth/login", `{"email":"ghost@example.com","password":"whatever"}`, nil, "")
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 		var apiErr model.APIError
@@ -409,7 +409,7 @@ func TestAPIRoutes(t *testing.T) {
 
 	t.Run("login invalid json", func(t *testing.T) {
 		resp := doJSON(t, server.URL+"/api/v1/auth/login", `{"email":`, nil, "")
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		require.Equal(t, http.StatusInternalServerError, resp.StatusCode)
 		var apiErr model.APIError
@@ -419,7 +419,7 @@ func TestAPIRoutes(t *testing.T) {
 
 	t.Run("cross-origin writes are rejected", func(t *testing.T) {
 		resp := doJSON(t, server.URL+"/api/v1/auth/login", `{"email":"alice@example.com","password":"whatever"}`, nil, "http://evil.example")
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		require.Equal(t, http.StatusForbidden, resp.StatusCode)
 		var apiErr model.APIError
@@ -429,7 +429,7 @@ func TestAPIRoutes(t *testing.T) {
 
 	t.Run("same-origin writes are allowed", func(t *testing.T) {
 		resp := doJSON(t, server.URL+"/api/v1/auth/login", `{"email":"alice@example.com","password":"whatever"}`, nil, server.URL)
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		require.Equal(t, http.StatusOK, resp.StatusCode)
 	})
@@ -438,7 +438,7 @@ func TestAPIRoutes(t *testing.T) {
 		loginResponse, _ := login(t)
 
 		resp := doGet(t, server.URL+"/api/v1/me", loginResponse.AccessToken)
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		require.Equal(t, http.StatusOK, resp.StatusCode)
 
 		var me model.UserResponse
@@ -451,13 +451,13 @@ func TestAPIRoutes(t *testing.T) {
 
 	t.Run("me requires a token", func(t *testing.T) {
 		resp := doGet(t, server.URL+"/api/v1/me", "")
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 	})
 
 	t.Run("me rejects an invalid token", func(t *testing.T) {
 		resp := doGet(t, server.URL+"/api/v1/me", "not-a-token")
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 	})
 
@@ -465,7 +465,7 @@ func TestAPIRoutes(t *testing.T) {
 		loginResponse, _ := login(t)
 
 		resp := doGet(t, server.URL+"/api/v1/orgs/default/projects/default/permissions/me", loginResponse.AccessToken)
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		require.Equal(t, http.StatusOK, resp.StatusCode)
 
 		var perms model.ProjectPermissionResponse
@@ -477,13 +477,13 @@ func TestAPIRoutes(t *testing.T) {
 		loginResponse, _ := login(t)
 
 		resp := doGet(t, server.URL+"/api/v1/orgs/default/projects/missing/permissions/me", loginResponse.AccessToken)
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		require.Equal(t, http.StatusNotFound, resp.StatusCode)
 	})
 
 	t.Run("project permissions require a token", func(t *testing.T) {
 		resp := doGet(t, server.URL+"/api/v1/orgs/default/projects/default/permissions/me", "")
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 	})
 
@@ -521,12 +521,12 @@ func TestAPIRoutes(t *testing.T) {
 		duplicateOrg := doMethod(t, http.MethodPost, server.URL+"/api/v1/orgs",
 			`{"name":"Acme","slug":"acme-corp"}`, aliceLogin.AccessToken)
 		require.Equal(t, http.StatusConflict, duplicateOrg.StatusCode)
-		duplicateOrg.Body.Close()
+		_ = duplicateOrg.Body.Close()
 
 		unauthenticatedOrg := doMethod(t, http.MethodPost, server.URL+"/api/v1/orgs",
 			`{"name":"Anon"}`, "")
 		require.Equal(t, http.StatusUnauthorized, unauthenticatedOrg.StatusCode)
-		unauthenticatedOrg.Body.Close()
+		_ = unauthenticatedOrg.Body.Close()
 
 		orgs = decodeBody[[]model.OrgResponse](t, doGet(t, server.URL+"/api/v1/orgs", aliceLogin.AccessToken))
 		require.Len(t, orgs, 2)
@@ -540,12 +540,12 @@ func TestAPIRoutes(t *testing.T) {
 		duplicate := doMethod(t, http.MethodPost, server.URL+"/api/v1/users",
 			`{"name":"bob2","email":"bob@example.com","password":"password123"}`, aliceLogin.AccessToken)
 		require.Equal(t, http.StatusConflict, duplicate.StatusCode)
-		duplicate.Body.Close()
+		_ = duplicate.Body.Close()
 
 		addBob := doMethod(t, http.MethodPost, base+"/members",
 			`{"email":"bob@example.com","role":"member"}`, superLogin.AccessToken)
 		require.Equal(t, http.StatusOK, addBob.StatusCode)
-		addBob.Body.Close()
+		_ = addBob.Body.Close()
 
 		members := decodeBody[[]model.OrgMemberResponse](t, doGet(t, base+"/members", aliceLogin.AccessToken))
 		require.Len(t, members, 3, "seeded super admin, alice and bob")
@@ -553,23 +553,23 @@ func TestAPIRoutes(t *testing.T) {
 		bobLogin, _ := loginAs(t, "bob@example.com")
 		denied := doGet(t, base+"/members", bobLogin.AccessToken)
 		require.Equal(t, http.StatusForbidden, denied.StatusCode)
-		denied.Body.Close()
+		_ = denied.Body.Close()
 		deniedUsers := doGet(t, server.URL+"/api/v1/users", bobLogin.AccessToken)
 		require.Equal(t, http.StatusForbidden, deniedUsers.StatusCode)
-		deniedUsers.Body.Close()
+		_ = deniedUsers.Body.Close()
 		bobOrgs := decodeBody[[]model.OrgResponse](t, doGet(t, server.URL+"/api/v1/orgs", bobLogin.AccessToken))
 		require.Len(t, bobOrgs, 1)
 		require.Equal(t, "member", bobOrgs[0].Role)
 
 		promote := doMethod(t, http.MethodPatch, base+"/members/"+bob.ID, `{"role":"owner"}`, aliceLogin.AccessToken)
 		require.Equal(t, http.StatusOK, promote.StatusCode)
-		promote.Body.Close()
+		_ = promote.Body.Close()
 		ownerView := doGet(t, base+"/members", bobLogin.AccessToken)
 		require.Equal(t, http.StatusOK, ownerView.StatusCode)
-		ownerView.Body.Close()
+		_ = ownerView.Body.Close()
 		demote := doMethod(t, http.MethodPatch, base+"/members/"+bob.ID, `{"role":"member"}`, aliceLogin.AccessToken)
 		require.Equal(t, http.StatusOK, demote.StatusCode)
-		demote.Body.Close()
+		_ = demote.Body.Close()
 
 		createGroup := doMethod(t, http.MethodPost, base+"/groups",
 			`{"name":"artists","description":"2d team"}`, aliceLogin.AccessToken)
@@ -583,12 +583,12 @@ func TestAPIRoutes(t *testing.T) {
 
 		deniedGroups := doGet(t, base+"/groups", bobLogin.AccessToken)
 		require.Equal(t, http.StatusForbidden, deniedGroups.StatusCode)
-		deniedGroups.Body.Close()
+		_ = deniedGroups.Body.Close()
 
 		addMember := doMethod(t, http.MethodPost, base+"/groups/"+group.ID+"/members",
 			`{"user_id":"`+bob.ID+`"}`, aliceLogin.AccessToken)
 		require.Equal(t, http.StatusOK, addMember.StatusCode)
-		addMember.Body.Close()
+		_ = addMember.Body.Close()
 
 		groups = decodeBody[[]model.GroupResponse](t, doGet(t, base+"/groups", aliceLogin.AccessToken))
 		require.Len(t, groups, 1)
@@ -604,7 +604,7 @@ func TestAPIRoutes(t *testing.T) {
 
 		removeMember := doMethod(t, http.MethodDelete, base+"/groups/"+group.ID+"/members/"+bob.ID, "", aliceLogin.AccessToken)
 		require.Equal(t, http.StatusOK, removeMember.StatusCode)
-		removeMember.Body.Close()
+		_ = removeMember.Body.Close()
 
 		groups = decodeBody[[]model.GroupResponse](t, doGet(t, base+"/groups", aliceLogin.AccessToken))
 		require.Len(t, groups, 1)
@@ -612,7 +612,7 @@ func TestAPIRoutes(t *testing.T) {
 
 		removeBob := doMethod(t, http.MethodDelete, base+"/members/"+bob.ID, "", aliceLogin.AccessToken)
 		require.Equal(t, http.StatusOK, removeBob.StatusCode)
-		removeBob.Body.Close()
+		_ = removeBob.Body.Close()
 		bobOrgs = decodeBody[[]model.OrgResponse](t, doGet(t, server.URL+"/api/v1/orgs", bobLogin.AccessToken))
 		require.Empty(t, bobOrgs)
 	})
@@ -640,20 +640,20 @@ func TestAPIRoutes(t *testing.T) {
 		reset := doMethod(t, http.MethodPost, server.URL+"/api/v1/users/"+carol.ID+"/password",
 			`{"password":"newpassword123"}`, superLogin.AccessToken)
 		require.Equal(t, http.StatusOK, reset.StatusCode)
-		reset.Body.Close()
+		_ = reset.Body.Close()
 
 		selfDemote := doMethod(t, http.MethodPatch, server.URL+"/api/v1/users/1/admin",
 			`{"is_admin":true,"is_super_admin":false}`, superLogin.AccessToken)
 		require.Equal(t, http.StatusBadRequest, selfDemote.StatusCode)
-		selfDemote.Body.Close()
+		_ = selfDemote.Body.Close()
 
 		selfDelete := doMethod(t, http.MethodDelete, server.URL+"/api/v1/users/1", "", superLogin.AccessToken)
 		require.Equal(t, http.StatusBadRequest, selfDelete.StatusCode)
-		selfDelete.Body.Close()
+		_ = selfDelete.Body.Close()
 
 		deactivate := doMethod(t, http.MethodDelete, server.URL+"/api/v1/users/"+carol.ID, "", superLogin.AccessToken)
 		require.Equal(t, http.StatusOK, deactivate.StatusCode)
-		deactivate.Body.Close()
+		_ = deactivate.Body.Close()
 
 		users := decodeBody[[]model.UserResponse](t, doGet(t, server.URL+"/api/v1/users", superLogin.AccessToken))
 		for _, user := range users {
@@ -661,7 +661,7 @@ func TestAPIRoutes(t *testing.T) {
 		}
 
 		reactivate := doPostJSON(t, server.URL+"/api/v1/auth/login", `{"email":"alice@example.com","password":"whatever"}`)
-		defer reactivate.Body.Close()
+		defer func() { _ = reactivate.Body.Close() }()
 		require.Equal(t, http.StatusOK, reactivate.StatusCode)
 	})
 
@@ -687,12 +687,12 @@ func TestAPIRoutes(t *testing.T) {
 		short := doMethod(t, http.MethodPost, server.URL+"/api/v1/me/password",
 			`{"old_password":"whatever","new_password":"short"}`, aliceLogin.AccessToken)
 		require.Equal(t, http.StatusBadRequest, short.StatusCode)
-		short.Body.Close()
+		_ = short.Body.Close()
 
 		change := doMethod(t, http.MethodPost, server.URL+"/api/v1/me/password",
 			`{"old_password":"whatever","new_password":"longenough1"}`, aliceLogin.AccessToken)
 		require.Equal(t, http.StatusOK, change.StatusCode)
-		change.Body.Close()
+		_ = change.Body.Close()
 	})
 
 	t.Run("project lifecycle", func(t *testing.T) {
@@ -712,7 +712,7 @@ func TestAPIRoutes(t *testing.T) {
 
 		hidden := doGet(t, base+"/my-game", bobLogin.AccessToken)
 		require.Equal(t, http.StatusNotFound, hidden.StatusCode, "projects without read access look missing")
-		hidden.Body.Close()
+		_ = hidden.Body.Close()
 
 		bobProjects := decodeBody[[]model.ProjectResponse](t, doGet(t, base, bobLogin.AccessToken))
 		require.Empty(t, bobProjects)
@@ -726,15 +726,15 @@ func TestAPIRoutes(t *testing.T) {
 
 		denied := doMethod(t, http.MethodPost, base, `{"name":"Nope"}`, bobLogin.AccessToken)
 		require.Equal(t, http.StatusForbidden, denied.StatusCode)
-		denied.Body.Close()
+		_ = denied.Body.Close()
 
 		remove := doMethod(t, http.MethodDelete, base+"/my-game", "", aliceLogin.AccessToken)
 		require.Equal(t, http.StatusOK, remove.StatusCode)
-		remove.Body.Close()
+		_ = remove.Body.Close()
 
 		gone := doGet(t, base+"/my-game", aliceLogin.AccessToken)
 		require.Equal(t, http.StatusNotFound, gone.StatusCode)
-		gone.Body.Close()
+		_ = gone.Body.Close()
 	})
 
 	t.Run("org owner has full project access", func(t *testing.T) {
@@ -750,7 +750,7 @@ func TestAPIRoutes(t *testing.T) {
 		createOrg := doMethod(t, http.MethodPost, server.URL+"/api/v1/orgs",
 			`{"name":"Dave Studio","slug":"dave-studio"}`, daveLogin.AccessToken)
 		require.Equal(t, http.StatusOK, createOrg.StatusCode)
-		createOrg.Body.Close()
+		_ = createOrg.Body.Close()
 
 		base := server.URL + "/api/v1/orgs/dave-studio/projects"
 		create := doMethod(t, http.MethodPost, base, `{"name":"Game","slug":"game"}`, daveLogin.AccessToken)
@@ -760,7 +760,7 @@ func TestAPIRoutes(t *testing.T) {
 
 		got := doGet(t, base+"/game", daveLogin.AccessToken)
 		require.Equal(t, http.StatusOK, got.StatusCode)
-		got.Body.Close()
+		_ = got.Body.Close()
 
 		projects := decodeBody[[]model.ProjectResponse](t, doGet(t, base, daveLogin.AccessToken))
 		require.Len(t, projects, 1)
@@ -771,12 +771,12 @@ func TestAPIRoutes(t *testing.T) {
 		addBob := doMethod(t, http.MethodPost, server.URL+"/api/v1/orgs/dave-studio/members",
 			`{"email":"bob@example.com","role":"member"}`, daveLogin.AccessToken)
 		require.Equal(t, http.StatusOK, addBob.StatusCode)
-		addBob.Body.Close()
+		_ = addBob.Body.Close()
 
 		bobLogin, _ := loginAs(t, "bob@example.com")
 		hidden := doGet(t, base+"/game", bobLogin.AccessToken)
 		require.Equal(t, http.StatusNotFound, hidden.StatusCode, "org members without rules stay denied")
-		hidden.Body.Close()
+		_ = hidden.Body.Close()
 	})
 
 	t.Run("repository browser", func(t *testing.T) {
@@ -797,7 +797,7 @@ func TestAPIRoutes(t *testing.T) {
 		blob := doGet(t, base+"/blob?rev=main&path=public/a.txt", aliceLogin.AccessToken)
 		require.Equal(t, http.StatusOK, blob.StatusCode)
 		raw, err := io.ReadAll(blob.Body)
-		blob.Body.Close()
+		_ = blob.Body.Close()
 		require.NoError(t, err)
 		require.Equal(t, "hello", string(raw))
 
@@ -834,7 +834,7 @@ func TestAPIRoutes(t *testing.T) {
 
 		hidden := doGet(t, base+"/blob?rev=main&path=secret/key.bin", readerLogin.AccessToken)
 		require.Equal(t, http.StatusNotFound, hidden.StatusCode)
-		hidden.Body.Close()
+		_ = hidden.Body.Close()
 	})
 
 	t.Run("branch management", func(t *testing.T) {
@@ -860,7 +860,7 @@ func TestAPIRoutes(t *testing.T) {
 
 		denied := doMethod(t, http.MethodPost, base, `{"name":"nope"}`, bobLogin.AccessToken)
 		require.Equal(t, http.StatusForbidden, denied.StatusCode)
-		denied.Body.Close()
+		_ = denied.Body.Close()
 
 		makeDefault := doMethod(t, http.MethodPost, base+"/renamed/default", "", aliceLogin.AccessToken)
 		require.Equal(t, http.StatusOK, makeDefault.StatusCode)
@@ -868,15 +868,15 @@ func TestAPIRoutes(t *testing.T) {
 
 		blocked := doMethod(t, http.MethodDelete, base+"/renamed", "", aliceLogin.AccessToken)
 		require.Equal(t, http.StatusConflict, blocked.StatusCode)
-		blocked.Body.Close()
+		_ = blocked.Body.Close()
 
 		restore := doMethod(t, http.MethodPost, base+"/main/default", "", aliceLogin.AccessToken)
 		require.Equal(t, http.StatusOK, restore.StatusCode)
-		restore.Body.Close()
+		_ = restore.Body.Close()
 
 		stillProtected := doMethod(t, http.MethodDelete, base+"/renamed", "", aliceLogin.AccessToken)
 		require.Equal(t, http.StatusConflict, stillProtected.StatusCode)
-		stillProtected.Body.Close()
+		_ = stillProtected.Body.Close()
 
 		unprotect := doMethod(t, http.MethodPut, base+"/renamed/protection", `{"protected":false}`, aliceLogin.AccessToken)
 		require.Equal(t, http.StatusOK, unprotect.StatusCode)
@@ -884,7 +884,7 @@ func TestAPIRoutes(t *testing.T) {
 
 		remove := doMethod(t, http.MethodDelete, base+"/renamed", "", aliceLogin.AccessToken)
 		require.Equal(t, http.StatusOK, remove.StatusCode)
-		remove.Body.Close()
+		_ = remove.Body.Close()
 
 		branches := decodeBody[[]model.BranchResponse](t, doGet(t, base, aliceLogin.AccessToken))
 		require.Len(t, branches, 1)
@@ -956,7 +956,7 @@ func TestAPIRoutes(t *testing.T) {
 
 		createBranch := doMethod(t, http.MethodPost, base+"/branches", `{"name":"feature","from":"main"}`, aliceLogin.AccessToken)
 		require.Equal(t, http.StatusOK, createBranch.StatusCode)
-		createBranch.Body.Close()
+		_ = createBranch.Body.Close()
 
 		branches := decodeBody[[]model.BranchResponse](t, doGet(t, base+"/branches", aliceLogin.AccessToken))
 		var mainHead string
@@ -991,7 +991,7 @@ func TestAPIRoutes(t *testing.T) {
 
 		draftBlocked := doMethod(t, http.MethodPost, mrURL+"/merge", `{}`, aliceLogin.AccessToken)
 		require.Equal(t, http.StatusConflict, draftBlocked.StatusCode)
-		draftBlocked.Body.Close()
+		_ = draftBlocked.Body.Close()
 
 		drafts := decodeBody[model.MergeRequestListResponse](t, doGet(t, base+"/merge-requests?draft=true", aliceLogin.AccessToken))
 		require.Len(t, drafts.MergeRequests, 1)
@@ -1019,12 +1019,12 @@ func TestAPIRoutes(t *testing.T) {
 
 		again := doMethod(t, http.MethodPost, mrURL+"/merge", `{}`, aliceLogin.AccessToken)
 		require.Equal(t, http.StatusConflict, again.StatusCode)
-		again.Body.Close()
+		_ = again.Body.Close()
 
 		// Diverged: lagging branch created before the merge, then main advances.
 		createBranch = doMethod(t, http.MethodPost, base+"/branches", `{"name":"lagging","from":"feature"}`, aliceLogin.AccessToken)
 		require.Equal(t, http.StatusOK, createBranch.StatusCode)
-		createBranch.Body.Close()
+		_ = createBranch.Body.Close()
 		seedPushTo(t, "lagging", featurePush.CommitID.Base36(), map[string]string{"lagging.txt": "lag"})
 		seedPushTo(t, "main", featurePush.CommitID.Base36(), map[string]string{"after.txt": "after"})
 
@@ -1039,7 +1039,7 @@ func TestAPIRoutes(t *testing.T) {
 
 		blocked := doMethod(t, http.MethodPost, laggingURL+"/merge", `{}`, aliceLogin.AccessToken)
 		require.Equal(t, http.StatusConflict, blocked.StatusCode)
-		blocked.Body.Close()
+		_ = blocked.Body.Close()
 
 		closed := decodeBody[model.MergeRequestResponse](t,
 			doMethod(t, http.MethodPost, laggingURL+"/close", "", aliceLogin.AccessToken))
@@ -1072,11 +1072,11 @@ func TestAPIRoutes(t *testing.T) {
 
 		badAfter := doMethod(t, http.MethodGet, base+"/merge-requests?after=nope", "", aliceLogin.AccessToken)
 		require.Equal(t, http.StatusBadRequest, badAfter.StatusCode)
-		badAfter.Body.Close()
+		_ = badAfter.Body.Close()
 
 		badAuthor := doMethod(t, http.MethodGet, base+"/merge-requests?author=!!", "", aliceLogin.AccessToken)
 		require.Equal(t, http.StatusBadRequest, badAuthor.StatusCode)
-		badAuthor.Body.Close()
+		_ = badAuthor.Body.Close()
 
 		// a non-positive limit falls back to the default page size
 		zeroLimit := decodeBody[model.MergeRequestListResponse](t, doGet(t, base+"/merge-requests?limit=0", aliceLogin.AccessToken))
@@ -1085,7 +1085,7 @@ func TestAPIRoutes(t *testing.T) {
 		// Protected targets can only be moved by merging a merge request.
 		createBranch = doMethod(t, http.MethodPost, base+"/branches", `{"name":"protected-fix","from":"main"}`, aliceLogin.AccessToken)
 		require.Equal(t, http.StatusOK, createBranch.StatusCode)
-		createBranch.Body.Close()
+		_ = createBranch.Body.Close()
 		branches = decodeBody[[]model.BranchResponse](t, doGet(t, base+"/branches", aliceLogin.AccessToken))
 		var currentMain string
 		for _, branch := range branches {
@@ -1098,7 +1098,7 @@ func TestAPIRoutes(t *testing.T) {
 
 		protect := doMethod(t, http.MethodPut, base+"/branches/main/protection", `{"protected":true}`, aliceLogin.AccessToken)
 		require.Equal(t, http.StatusOK, protect.StatusCode)
-		protect.Body.Close()
+		_ = protect.Body.Close()
 
 		createMR = doMethod(t, http.MethodPost, base+"/merge-requests",
 			`{"title":"Fix","source_branch":"protected-fix","target_branch":"main"}`, aliceLogin.AccessToken)
@@ -1111,7 +1111,7 @@ func TestAPIRoutes(t *testing.T) {
 
 		unprotect := doMethod(t, http.MethodPut, base+"/branches/main/protection", `{"protected":false}`, aliceLogin.AccessToken)
 		require.Equal(t, http.StatusOK, unprotect.StatusCode)
-		unprotect.Body.Close()
+		_ = unprotect.Body.Close()
 	})
 
 	t.Run("project ACL admin", func(t *testing.T) {
@@ -1157,30 +1157,30 @@ func TestAPIRoutes(t *testing.T) {
 
 		denied := doMethod(t, http.MethodPost, base+"/rules", `{"user_id":"1","permission":1}`, viewerLogin.AccessToken)
 		require.Equal(t, http.StatusForbidden, denied.StatusCode)
-		denied.Body.Close()
+		_ = denied.Body.Close()
 
 		badRule := doMethod(t, http.MethodPost, base+"/rules", `{"user_id":"1","permission":1048576}`, aliceLogin.AccessToken)
 		require.Equal(t, http.StatusBadRequest, badRule.StatusCode)
-		badRule.Body.Close()
+		_ = badRule.Body.Close()
 
 		badDefault := doMethod(t, http.MethodPut, base+"/defaults", `{"path_prefix":"docs","permission":1048576}`, aliceLogin.AccessToken)
 		require.Equal(t, http.StatusBadRequest, badDefault.StatusCode)
-		badDefault.Body.Close()
+		_ = badDefault.Body.Close()
 
 		setDefault := doMethod(t, http.MethodPut, base+"/defaults", `{"path_prefix":"docs","permission":1}`, aliceLogin.AccessToken)
 		require.Equal(t, http.StatusOK, setDefault.StatusCode)
-		setDefault.Body.Close()
+		_ = setDefault.Body.Close()
 
 		defaults := decodeBody[[]model.PermissionEntry](t, doGet(t, base+"/defaults", aliceLogin.AccessToken))
 		require.Len(t, defaults, 1)
 
 		removeDefault := doMethod(t, http.MethodDelete, base+"/defaults?path=docs", "", aliceLogin.AccessToken)
 		require.Equal(t, http.StatusOK, removeDefault.StatusCode)
-		removeDefault.Body.Close()
+		_ = removeDefault.Body.Close()
 
 		removeRule := doMethod(t, http.MethodDelete, base+"/rules/"+strconv.FormatInt(rule.ID, 10), "", aliceLogin.AccessToken)
 		require.Equal(t, http.StatusOK, removeRule.StatusCode)
-		removeRule.Body.Close()
+		_ = removeRule.Body.Close()
 
 		rules = decodeBody[[]model.PBACRuleResponse](t, doGet(t, base+"/rules", aliceLogin.AccessToken))
 		require.Len(t, rules, 1)
@@ -1220,7 +1220,7 @@ func TestAPIRoutes(t *testing.T) {
 
 		badURL := doMethod(t, http.MethodPost, base, `{"url":"not-a-url","events":["push"]}`, aliceLogin.AccessToken)
 		require.Equal(t, http.StatusBadRequest, badURL.StatusCode)
-		badURL.Body.Close()
+		_ = badURL.Body.Close()
 
 		testDelivery := doMethod(t, http.MethodPost, base+"/"+webhook.ID+"/test", `{}`, aliceLogin.AccessToken)
 		require.Equal(t, http.StatusOK, testDelivery.StatusCode)
@@ -1239,15 +1239,15 @@ func TestAPIRoutes(t *testing.T) {
 
 		badLimit := doGet(t, base+"/"+webhook.ID+"/deliveries?limit=nope", aliceLogin.AccessToken)
 		require.Equal(t, http.StatusBadRequest, badLimit.StatusCode)
-		badLimit.Body.Close()
+		_ = badLimit.Body.Close()
 
 		deleted := doMethod(t, http.MethodDelete, base+"/"+webhook.ID, "", aliceLogin.AccessToken)
 		require.Equal(t, http.StatusOK, deleted.StatusCode)
-		deleted.Body.Close()
+		_ = deleted.Body.Close()
 
 		missing := doMethod(t, http.MethodGet, base+"/"+webhook.ID, "", aliceLogin.AccessToken)
 		require.Equal(t, http.StatusNotFound, missing.StatusCode)
-		missing.Body.Close()
+		_ = missing.Body.Close()
 	})
 
 	t.Run("email deliveries admin", func(t *testing.T) {
@@ -1298,41 +1298,41 @@ func TestAPIRoutes(t *testing.T) {
 
 		pending := doMethod(t, http.MethodPost, base+"/"+snow.ID(9003).Base36()+"/redeliver", "{}", aliceLogin.AccessToken)
 		require.Equal(t, http.StatusConflict, pending.StatusCode)
-		pending.Body.Close()
+		_ = pending.Body.Close()
 
 		invalidState := doGet(t, base+"?state=bogus", aliceLogin.AccessToken)
 		require.Equal(t, http.StatusBadRequest, invalidState.StatusCode)
-		invalidState.Body.Close()
+		_ = invalidState.Body.Close()
 
 		invalidAfter := doGet(t, base+"?after=!!!", aliceLogin.AccessToken)
 		require.Equal(t, http.StatusBadRequest, invalidAfter.StatusCode)
-		invalidAfter.Body.Close()
+		_ = invalidAfter.Body.Close()
 
 		invalidLimit := doGet(t, base+"?limit=abc", aliceLogin.AccessToken)
 		require.Equal(t, http.StatusBadRequest, invalidLimit.StatusCode)
-		invalidLimit.Body.Close()
+		_ = invalidLimit.Body.Close()
 
 		missing := doMethod(t, http.MethodPost, base+"/1/redeliver", "{}", aliceLogin.AccessToken)
 		require.Equal(t, http.StatusNotFound, missing.StatusCode)
-		missing.Body.Close()
+		_ = missing.Body.Close()
 
 		badID := doMethod(t, http.MethodPost, base+"/!!!/redeliver", "{}", aliceLogin.AccessToken)
 		require.Equal(t, http.StatusBadRequest, badID.StatusCode)
-		badID.Body.Close()
+		_ = badID.Body.Close()
 
 		unknownProject := doGet(t, server.URL+"/api/v1/orgs/default/projects/missing/emails/deliveries", aliceLogin.AccessToken)
 		require.Equal(t, http.StatusNotFound, unknownProject.StatusCode)
-		unknownProject.Body.Close()
+		_ = unknownProject.Body.Close()
 
 		superLogin, _ := loginAs(t, "nipa")
 		createdOutsider := doMethod(t, http.MethodPost, server.URL+"/api/v1/users",
 			`{"name":"outsider","email":"outsider@example.com","password":"password123"}`, superLogin.AccessToken)
 		require.Equal(t, http.StatusOK, createdOutsider.StatusCode)
-		createdOutsider.Body.Close()
+		_ = createdOutsider.Body.Close()
 		outsiderLogin, _ := loginAs(t, "outsider@example.com")
 		forbidden := doGet(t, base, outsiderLogin.AccessToken)
 		require.Equal(t, http.StatusForbidden, forbidden.StatusCode)
-		forbidden.Body.Close()
+		_ = forbidden.Body.Close()
 	})
 
 	t.Run("webhook delivery", func(t *testing.T) {
@@ -1362,7 +1362,7 @@ func TestAPIRoutes(t *testing.T) {
 		hook := decodeBody[model.WebhookResponse](t, created)
 		t.Cleanup(func() {
 			resp := doMethod(t, http.MethodDelete, base+"/webhooks/"+hook.ID, "", aliceLogin.AccessToken)
-			resp.Body.Close()
+			_ = resp.Body.Close()
 		})
 
 		branches := decodeBody[[]model.BranchResponse](t, doGet(t, base+"/branches", aliceLogin.AccessToken))
@@ -1377,7 +1377,7 @@ func TestAPIRoutes(t *testing.T) {
 
 		createBranch := doMethod(t, http.MethodPost, base+"/branches", `{"name":"hook-branch","from":"main"}`, aliceLogin.AccessToken)
 		require.Equal(t, http.StatusOK, createBranch.StatusCode)
-		createBranch.Body.Close()
+		_ = createBranch.Body.Close()
 
 		var inbox []received
 		waitForEvent := func(event string) received {
@@ -1465,7 +1465,7 @@ func TestAPIRoutes(t *testing.T) {
 				strconv.FormatUint(uint64(domain.PermissionRead|domain.PermissionWrite), 10)+`}`,
 			aliceLogin.AccessToken)
 		require.Equal(t, http.StatusOK, grant.StatusCode)
-		grant.Body.Close()
+		_ = grant.Body.Close()
 
 		branches := decodeBody[[]model.BranchResponse](t, doGet(t, base+"/branches", aliceLogin.AccessToken))
 		var mainHead string
@@ -1476,7 +1476,7 @@ func TestAPIRoutes(t *testing.T) {
 		}
 		createBranch := doMethod(t, http.MethodPost, base+"/branches", `{"name":"reviewed","from":"main"}`, aliceLogin.AccessToken)
 		require.Equal(t, http.StatusOK, createBranch.StatusCode)
-		createBranch.Body.Close()
+		_ = createBranch.Body.Close()
 		head := seedPushTo(t, "reviewed", mainHead, map[string]string{"code.txt": "one\ntwo\nthree\n"})
 
 		createMR := doMethod(t, http.MethodPost, base+"/merge-requests",
@@ -1500,7 +1500,7 @@ func TestAPIRoutes(t *testing.T) {
 		// the author cannot approve their own change
 		selfApprove := doMethod(t, http.MethodPost, mrURL+"/reviews", `{"state":"approved","body":"self"}`, aliceLogin.AccessToken)
 		require.Equal(t, http.StatusBadRequest, selfApprove.StatusCode)
-		selfApprove.Body.Close()
+		_ = selfApprove.Body.Close()
 
 		// a decision with an inline comment and a top-level comment
 		submit := doMethod(t, http.MethodPost, mrURL+"/reviews",
@@ -1552,7 +1552,7 @@ func TestAPIRoutes(t *testing.T) {
 		badAnchor := doMethod(t, http.MethodPost, mrURL+"/threads",
 			`{"file_path":"code.txt","new_line":99,"body":"nowhere"}`, reviewerLogin.AccessToken)
 		require.Equal(t, http.StatusBadRequest, badAnchor.StatusCode)
-		badAnchor.Body.Close()
+		_ = badAnchor.Body.Close()
 
 		// a new push to the source branch makes the decision stale
 		seedPushTo(t, "reviewed", head.CommitID.Base36(), map[string]string{"code.txt": "one\nTWO\nthree\n"})
@@ -1631,15 +1631,15 @@ func TestAPIRoutes(t *testing.T) {
 				strconv.FormatUint(uint64(domain.PermissionRead|domain.PermissionWrite), 10)+`}`,
 			aliceLogin.AccessToken)
 		require.Equal(t, http.StatusOK, peerGrant.StatusCode)
-		peerGrant.Body.Close()
+		_ = peerGrant.Body.Close()
 
 		notYours := doMethod(t, http.MethodDelete, mrURL+"/reviews/"+approval.ID, "", peerLogin.AccessToken)
 		require.Equal(t, http.StatusForbidden, notYours.StatusCode)
-		notYours.Body.Close()
+		_ = notYours.Body.Close()
 
 		withdraw := doMethod(t, http.MethodDelete, mrURL+"/reviews/"+approval.ID, "", reviewerLogin.AccessToken)
 		require.Equal(t, http.StatusOK, withdraw.StatusCode)
-		withdraw.Body.Close()
+		_ = withdraw.Body.Close()
 		state = decodeBody[model.ReviewStateResponse](t, doGet(t, mrURL+"/review-state", aliceLogin.AccessToken))
 		require.Zero(t, state.Approvals)
 
@@ -1685,12 +1685,12 @@ func TestAPIRoutes(t *testing.T) {
 		} {
 			resp := doMethod(t, tc.method, tc.url, tc.body, aliceLogin.AccessToken)
 			require.Equal(t, tc.want, resp.StatusCode, "%s %s", tc.method, tc.url)
-			resp.Body.Close()
+			_ = resp.Body.Close()
 		}
 
 		unauthenticated := doMethod(t, http.MethodGet, mrURL+"/reviews", "", "")
 		require.Equal(t, http.StatusUnauthorized, unauthenticated.StatusCode)
-		unauthenticated.Body.Close()
+		_ = unauthenticated.Body.Close()
 	})
 
 	t.Run("merge request approval gate", func(t *testing.T) {
@@ -1707,7 +1707,7 @@ func TestAPIRoutes(t *testing.T) {
 				strconv.FormatUint(uint64(domain.PermissionRead|domain.PermissionWrite), 10)+`}`,
 			aliceLogin.AccessToken)
 		require.Equal(t, http.StatusOK, grant.StatusCode)
-		grant.Body.Close()
+		_ = grant.Body.Close()
 
 		branches := decodeBody[[]model.BranchResponse](t, doGet(t, base+"/branches", aliceLogin.AccessToken))
 		var mainHead string
@@ -1719,7 +1719,7 @@ func TestAPIRoutes(t *testing.T) {
 		require.NotEmpty(t, mainHead)
 		createBranch := doMethod(t, http.MethodPost, base+"/branches", `{"name":"gated","from":"main"}`, aliceLogin.AccessToken)
 		require.Equal(t, http.StatusOK, createBranch.StatusCode)
-		createBranch.Body.Close()
+		_ = createBranch.Body.Close()
 		seedPushTo(t, "gated", mainHead, map[string]string{"gated.txt": "gated content\n"})
 
 		createMR := doMethod(t, http.MethodPost, base+"/merge-requests",
@@ -1740,13 +1740,13 @@ func TestAPIRoutes(t *testing.T) {
 
 		blocked := doMethod(t, http.MethodPost, mrURL+"/merge", "", aliceLogin.AccessToken)
 		require.Equal(t, http.StatusConflict, blocked.StatusCode)
-		blocked.Body.Close()
+		_ = blocked.Body.Close()
 
 		// a live objection blocks even when the approval count is met
 		object := doMethod(t, http.MethodPost, mrURL+"/reviews",
 			`{"state":"changes_requested","body":"not yet"}`, reviewerLogin.AccessToken)
 		require.Equal(t, http.StatusOK, object.StatusCode)
-		object.Body.Close()
+		_ = object.Body.Close()
 		check = decodeBody[model.MergeabilityResponse](t, doGet(t, mrURL+"/check", aliceLogin.AccessToken))
 		require.Equal(t, domain.MergeabilityBlockedChangesRequested, check.BlockedBy)
 
@@ -1754,7 +1754,7 @@ func TestAPIRoutes(t *testing.T) {
 		approve := doMethod(t, http.MethodPost, mrURL+"/reviews",
 			`{"state":"approved","body":"looks good"}`, reviewerLogin.AccessToken)
 		require.Equal(t, http.StatusOK, approve.StatusCode)
-		approve.Body.Close()
+		_ = approve.Body.Close()
 		check = decodeBody[model.MergeabilityResponse](t, doGet(t, mrURL+"/check", aliceLogin.AccessToken))
 		require.Empty(t, check.BlockedBy)
 
@@ -1777,13 +1777,13 @@ func TestAPIRoutes(t *testing.T) {
 		unprotect := doMethod(t, http.MethodPut, base+"/branches/main/protection",
 			`{"protected":false,"required_approvals":0}`, aliceLogin.AccessToken)
 		require.Equal(t, http.StatusOK, unprotect.StatusCode)
-		unprotect.Body.Close()
+		_ = unprotect.Body.Close()
 	})
 
 	t.Run("openapi doc is served", func(t *testing.T) {
 		resp, err := http.Get(server.URL + "/docs/api.json")
 		require.NoError(t, err)
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		require.Equal(t, http.StatusOK, resp.StatusCode)
 	})
@@ -1845,7 +1845,7 @@ func doMethodCookies(t *testing.T, method, url, body string, cookies []*http.Coo
 
 func decodeBody[T any](t *testing.T, resp *http.Response) T {
 	t.Helper()
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	var out T
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&out))
 	return out

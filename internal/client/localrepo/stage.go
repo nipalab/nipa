@@ -71,9 +71,7 @@ func (l *LocalRepo) ListStaged() ([]string, error) {
 		return nil, err
 	}
 	paths := make([]string, len(files))
-	for i, path := range files {
-		paths[i] = path
-	}
+	copy(paths, files)
 	return paths, nil
 }
 

@@ -24,7 +24,7 @@ func (h *Handler) ListMergeRequestReviews(appCtx http.AppContext) {
 	for _, review := range reviews {
 		resp = append(resp, toReviewResponse(review))
 	}
-	appCtx.WriteJson(nethttp.StatusOK, resp)
+	_ = appCtx.WriteJson(nethttp.StatusOK, resp)
 }
 
 func (h *Handler) GetMergeRequestReviewState(appCtx http.AppContext) {
@@ -37,7 +37,7 @@ func (h *Handler) GetMergeRequestReviewState(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, toReviewStateResponse(state))
+	_ = appCtx.WriteJson(nethttp.StatusOK, toReviewStateResponse(state))
 }
 
 func (h *Handler) SubmitMergeRequestReview(appCtx http.AppContext) {
@@ -66,7 +66,7 @@ func (h *Handler) SubmitMergeRequestReview(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, toReviewResponse(review))
+	_ = appCtx.WriteJson(nethttp.StatusOK, toReviewResponse(review))
 }
 
 func (h *Handler) WithdrawMergeRequestReview(appCtx http.AppContext) {
@@ -83,7 +83,7 @@ func (h *Handler) WithdrawMergeRequestReview(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, map[string]bool{"ok": true})
+	_ = appCtx.WriteJson(nethttp.StatusOK, map[string]bool{"ok": true})
 }
 
 func (h *Handler) DismissMergeRequestReview(appCtx http.AppContext) {
@@ -101,7 +101,7 @@ func (h *Handler) DismissMergeRequestReview(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, toReviewResponse(review))
+	_ = appCtx.WriteJson(nethttp.StatusOK, toReviewResponse(review))
 }
 
 func (h *Handler) ListMergeRequestThreads(appCtx http.AppContext) {
@@ -114,7 +114,7 @@ func (h *Handler) ListMergeRequestThreads(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, toThreadResponses(threads))
+	_ = appCtx.WriteJson(nethttp.StatusOK, toThreadResponses(threads))
 }
 
 func (h *Handler) AddMergeRequestComment(appCtx http.AppContext) {
@@ -137,7 +137,7 @@ func (h *Handler) AddMergeRequestComment(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, toThreadResponse(thread))
+	_ = appCtx.WriteJson(nethttp.StatusOK, toThreadResponse(thread))
 }
 
 func (h *Handler) ReplyMergeRequestThread(appCtx http.AppContext) {
@@ -160,7 +160,7 @@ func (h *Handler) ReplyMergeRequestThread(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, toCommentResponse(comment))
+	_ = appCtx.WriteJson(nethttp.StatusOK, toCommentResponse(comment))
 }
 
 func (h *Handler) UpdateMergeRequestComment(appCtx http.AppContext) {
@@ -183,7 +183,7 @@ func (h *Handler) UpdateMergeRequestComment(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, toCommentResponse(comment))
+	_ = appCtx.WriteJson(nethttp.StatusOK, toCommentResponse(comment))
 }
 
 func (h *Handler) DeleteMergeRequestComment(appCtx http.AppContext) {
@@ -200,7 +200,7 @@ func (h *Handler) DeleteMergeRequestComment(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, map[string]bool{"ok": true})
+	_ = appCtx.WriteJson(nethttp.StatusOK, map[string]bool{"ok": true})
 }
 
 func (h *Handler) ResolveMergeRequestThread(appCtx http.AppContext) {
@@ -223,7 +223,7 @@ func (h *Handler) ResolveMergeRequestThread(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, toThreadResponse(thread))
+	_ = appCtx.WriteJson(nethttp.StatusOK, toThreadResponse(thread))
 }
 
 func (h *Handler) DeleteMergeRequestThread(appCtx http.AppContext) {
@@ -240,7 +240,7 @@ func (h *Handler) DeleteMergeRequestThread(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, map[string]bool{"ok": true})
+	_ = appCtx.WriteJson(nethttp.StatusOK, map[string]bool{"ok": true})
 }
 
 func (h *Handler) ListMergeRequestReviewRequests(appCtx http.AppContext) {
@@ -263,7 +263,7 @@ func (h *Handler) ListMergeRequestReviewRequests(appCtx http.AppContext) {
 			CreatedAt:      request.CreatedAt,
 		})
 	}
-	appCtx.WriteJson(nethttp.StatusOK, resp)
+	_ = appCtx.WriteJson(nethttp.StatusOK, resp)
 }
 
 func (h *Handler) RequestMergeRequestReview(appCtx http.AppContext) {
@@ -286,7 +286,7 @@ func (h *Handler) RequestMergeRequestReview(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, model.ReviewRequestResponse{
+	_ = appCtx.WriteJson(nethttp.StatusOK, model.ReviewRequestResponse{
 		ID:             request.ID.Base36(),
 		MergeRequestID: request.MergeRequestID,
 		Reviewer:       toReviewActorResponse(request.Reviewer),
@@ -314,7 +314,7 @@ func (h *Handler) RemoveMergeRequestReviewRequest(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	appCtx.WriteJson(nethttp.StatusOK, map[string]bool{"ok": true})
+	_ = appCtx.WriteJson(nethttp.StatusOK, map[string]bool{"ok": true})
 }
 
 func (h *Handler) MergeRequestTimeline(appCtx http.AppContext) {
@@ -346,7 +346,7 @@ func (h *Handler) MergeRequestTimeline(appCtx http.AppContext) {
 		}
 		resp = append(resp, entry)
 	}
-	appCtx.WriteJson(nethttp.StatusOK, resp)
+	_ = appCtx.WriteJson(nethttp.StatusOK, resp)
 }
 
 // resolveMergeRequest resolves the project and merge request number every review

@@ -201,7 +201,7 @@ func snapshotOf(t *testing.T, target string) *domain.Snapshot {
 	t.Helper()
 	lr := localrepo.NewLocalRepo()
 	require.NoError(t, lr.Init(target))
-	defer lr.Close()
+	defer func() { _ = lr.Close() }()
 	snap, err := lr.Snapshot()
 	require.NoError(t, err)
 	return snap
@@ -211,7 +211,7 @@ func assertStagedEmpty(t *testing.T, target string) {
 	t.Helper()
 	lr := localrepo.NewLocalRepo()
 	require.NoError(t, lr.Init(target))
-	defer lr.Close()
+	defer func() { _ = lr.Close() }()
 	paths, err := lr.ListStaged()
 	require.NoError(t, err)
 	require.Empty(t, paths)
@@ -221,7 +221,7 @@ func stagePath(t *testing.T, target, path string) {
 	t.Helper()
 	lr := localrepo.NewLocalRepo()
 	require.NoError(t, lr.Init(target))
-	defer lr.Close()
+	defer func() { _ = lr.Close() }()
 	require.NoError(t, lr.StageAdd(path))
 }
 
@@ -421,7 +421,7 @@ func TestEndToEnd_CreateBranch(t *testing.T) {
 
 	pinned := localrepo.NewLocalRepo()
 	require.NoError(t, pinned.Init(target))
-	defer pinned.Close()
+	defer func() { _ = pinned.Close() }()
 	localCommit, err := pinned.LoadCommit()
 	require.NoError(t, err)
 	require.NotEmpty(t, localCommit.CommitID, "the push must pin the created commit locally")
@@ -521,7 +521,7 @@ func TestEndToEnd_SwitchBranch(t *testing.T) {
 
 	pinned := localrepo.NewLocalRepo()
 	require.NoError(t, pinned.Init(checkout))
-	defer pinned.Close()
+	defer func() { _ = pinned.Close() }()
 	featureBranch, err := grpcClient.GetBranchByName(ctx, e2eOrgSlug, e2eProjectSlug, "feature")
 	require.NoError(t, err)
 	require.NotNil(t, featureBranch.CommitID)
@@ -542,7 +542,7 @@ func loadBranchConfig(t *testing.T, target string) string {
 	t.Helper()
 	lr := localrepo.NewLocalRepo()
 	require.NoError(t, lr.Init(target))
-	defer lr.Close()
+	defer func() { _ = lr.Close() }()
 	cfg, err := lr.LoadConfig()
 	require.NoError(t, err)
 	return cfg.Branch

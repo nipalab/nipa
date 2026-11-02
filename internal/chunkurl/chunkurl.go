@@ -67,7 +67,7 @@ func Verify(key, org, project, hash string, p Params, now time.Time) error {
 
 func Sign(key, org, project, hash, op string, size, exp int64) string {
 	mac := hmac.New(sha256.New, []byte(key))
-	fmt.Fprintf(mac, "%s\n%s\n%s\n%s\n%d\n%d", op, org, project, hash, size, exp)
+	_, _ = fmt.Fprintf(mac, "%s\n%s\n%s\n%s\n%d\n%d", op, org, project, hash, size, exp)
 	return hex.EncodeToString(mac.Sum(nil))
 }
 
