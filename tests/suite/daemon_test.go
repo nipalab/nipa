@@ -237,6 +237,58 @@ var _ = Describe("nipa serve", func() {
 		Expect(failure.GetMessage()).NotTo(BeEmpty())
 	})
 
+	It("streams structured diffs with asset kinds", func() {
+		project := newProject("daemon-diff-files")
+		seedRepo(orgSlug, project, map[string][]byte{
+			"a.txt":        []byte("v1\n"),
+			"art/hero.png": testPNG(2),
+		}, "seed")
+		parent := workspace()
+		dir := cloneRepo(parent, repoURLFor(orgSlug, project), "work")
+
+		d := startDaemon()
+		d.watch(dir)
+		writeText(dir, "a.txt", "v2\n")
+		writeBytes(dir, "art/hero.png", testPNG(3))
+		writeText(dir, "loc/en.csv", "key,value\n")
+		Expect(runNipa(dir, "add", "loc/en.csv").ExitCode).To(Equal(0))
+
+		stream, err := d.client.DiffFiles(d.ctx, &daemonpb.DiffRequest{Root: dir})
+		Expect(err).NotTo(HaveOccurred())
+		files, failure := collectDiffFiles(stream)
+		Expect(failure).To(BeNil())
+
+		byPath := map[string]*daemonpb.DiffFile{}
+		for _, f := range files {
+			byPath[f.GetPath()] = f
+		}
+		Expect(byPath).To(HaveLen(3))
+
+		text := byPath["a.txt"]
+		Expect(text.GetKind()).To(Equal("text"))
+		Expect(text.GetStatus()).To(Equal("modified"))
+		Expect(text.GetAdditions()).To(BeEquivalentTo(1))
+		Expect(text.GetDeletions()).To(BeEquivalentTo(1))
+		Expect(text.GetHunks()).NotTo(BeEmpty())
+
+		png := byPath["art/hero.png"]
+		Expect(png.GetKind()).To(Equal("image"))
+		Expect(png.GetOld().GetIsBinary()).To(BeTrue())
+		Expect(png.GetOld().GetHash()).NotTo(BeEmpty())
+		Expect(png.GetNew().GetSizeBytes()).To(BeNumerically(">", 0))
+		Expect(png.GetHunks()).To(BeEmpty())
+
+		csv := byPath["loc/en.csv"]
+		Expect(csv.GetKind()).To(Equal("table"))
+		Expect(csv.GetStatus()).To(Equal("added"))
+		Expect(csv.GetOld()).To(BeNil())
+
+		badStream, err := d.client.DiffFiles(d.ctx, &daemonpb.DiffRequest{Root: dir, Revisions: []string{"no-such-revision"}})
+		Expect(err).NotTo(HaveOccurred())
+		_, failure = collectDiffFiles(badStream)
+		Expect(failure).NotTo(BeNil())
+	})
+
 	It("proxies branch and lock calls with the clone context", func() {
 		project := newProject("daemon-proxy")
 		seedRepo(orgSlug, project, map[string][]byte{"a.txt": []byte("a\n")}, "seed")

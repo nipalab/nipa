@@ -502,7 +502,10 @@ failure; cancelling the stream always terminates it with a failure event).
 `Switch` detaches at a tag when its request carries `tag`
 (`UpdateRunner.SwitchTag`), otherwise switches branch.
 `Diff` streams rendered patch/stat/name output (64 KiB chunks, file-by-file for
-patches) under the shared slot. An fsnotify watcher debounces events into
+patches) under the shared slot; `DiffFiles` runs the same request but streams
+one structured `DiffFile` per path (status, `internal/preview` viewer kind,
+side metadata, counts, `greet.DiffHunkDetail` hunks capped at 1 MiB per file)
+for the desktop GUI. An fsnotify watcher debounces events into
 dirty batches and a background reconciler refreshes `stat_cache` through
 `WorkingCopy.RefreshStatEntries`; watcher failure or event loss is harmless
 (read-through status still stat-detects). `Proxy*` RPCs forward `greet.*`

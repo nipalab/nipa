@@ -145,6 +145,40 @@ message DiffEvent {
     }
 }
 
+// DiffFileSide describes one side of a changed file; absent for the missing
+// side of an addition or deletion.
+message DiffFileSide {
+    string path = 1;
+    int32 mode = 2;
+    int64 size_bytes = 3;
+    bool is_binary = 4;
+    string hash = 5; // hex file hash; empty for an untracked working file
+}
+
+// DiffFile is one changed path. Text files carry their hunks unless the
+// rendered hunks exceed the per-file budget (hunks_omitted); binary files only
+// carry metadata and a viewer kind for the GUI to fetch previews.
+message DiffFile {
+    string path = 1;
+    string status = 2; // added, modified, deleted, renamed
+    string kind = 3; // text, image, model, audio, video, font, table, opaque
+    int32 similarity = 4; // rename similarity percentage
+    DiffFileSide old = 5;
+    DiffFileSide new = 6;
+    int64 additions = 7;
+    int64 deletions = 8;
+    repeated greet.DiffHunkDetail hunks = 9;
+    bool hunks_omitted = 10;
+    bool content_unavailable = 11;
+}
+
+message DiffFileEvent {
+    oneof event {
+        DiffFile file = 1;
+        OpFailure failure = 2;
+    }
+}
+
 message OpQueued {
     int32 ahead = 1; // exclusive operations ahead of this one
 }
@@ -429,6 +463,7 @@ service NipaDaemon {
     rpc Merge(MergeOpRequest) returns (stream OpEvent);
     rpc Revert(RevertOpRequest) returns (stream OpEvent);
     rpc Diff(DiffRequest) returns (stream DiffEvent);
+    rpc DiffFiles(DiffRequest) returns (stream DiffFileEvent); // structured; format is ignored
 
     rpc ProxyBranchList(ProxyBranchListRequest) returns (ProxyBranchListResponse);
     rpc ProxyBranchCreate(ProxyBranchCreateRequest) returns (ProxyBranchCreateResponse);
