@@ -95,6 +95,18 @@ func TestPushRepositorySQLite_FirstPush(t *testing.T) {
 	require.Len(t, files[0].Chunks, 1)
 	require.Equal(t, chunkHash, files[0].Chunks[0].Hash)
 	require.True(t, files[0].IsBinary)
+
+	meta, err := branchRepo.ListFileMetaByTree(ctx, children[0].ID)
+	require.NoError(t, err)
+	require.Len(t, meta, 1)
+	require.Equal(t, "logo.bin", meta[0].Name)
+	require.Equal(t, fileHash, meta[0].Hash)
+	require.True(t, meta[0].IsBinary)
+	require.Empty(t, meta[0].Chunks, "the metadata listing must not load chunks")
+
+	none, err := branchRepo.ListFileMetaByTree(ctx, 999999)
+	require.NoError(t, err)
+	require.Empty(t, none)
 }
 
 func TestPushRepositorySQLite_IncrementalPushKeepsOldCommitReadable(t *testing.T) {

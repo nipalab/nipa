@@ -103,6 +103,18 @@ func (s *PushRepositorySuite) TestFirstPush() {
 	s.Len(files[0].Chunks, 1)
 	s.Equal(chunkHash, files[0].Chunks[0].Hash)
 	s.True(files[0].IsBinary)
+
+	meta, err := branchRepo.ListFileMetaByTree(ctx, children[0].ID)
+	s.Require().NoError(err)
+	s.Require().Len(meta, 1)
+	s.Equal("logo.bin", meta[0].Name)
+	s.Equal(fileHash, meta[0].Hash)
+	s.True(meta[0].IsBinary)
+	s.Empty(meta[0].Chunks, "the metadata listing must not load chunks")
+
+	none, err := branchRepo.ListFileMetaByTree(ctx, 999999)
+	s.Require().NoError(err)
+	s.Empty(none)
 }
 
 func (s *PushRepositorySuite) TestIncrementalPushKeepsOldCommitReadable() {

@@ -163,7 +163,7 @@ func (b *Branch) pathHashAtCommit(ctx context.Context, projectID snow.ID, commit
 	}
 	if len(segments) > 0 {
 		last := segments[len(segments)-1]
-		files, err := b.branchRepo.ListFilesByTree(ctx, node.ID)
+		files, err := b.branchRepo.ListFileMetaByTree(ctx, node.ID)
 		if err != nil {
 			return domain.Hash{}, false, err
 		}

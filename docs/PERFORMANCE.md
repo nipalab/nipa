@@ -70,15 +70,23 @@ then change one file inside a 1000-file directory.
 | `ApplyPush` alone | 0.68 s | 3.05 s |
 | One-file change push | 0.75 s | 0.87 s |
 | Recursive manifest | 42 ms | 44 ms |
-| Commit diff / merge-request diff | 96 ms / 98 ms | 96 ms / 99 ms |
+| Commit diff / merge-request diff | 12 ms / 12 ms (was 96 / 98) | 14 ms / 13 ms (was 96 / 99) |
 | Fresh clone | 2.2 s | 3.3 s |
 | `SaveTree`, 5 changed files | 0.85 s (290k allocs) | n/a (client) |
 
 Reading the numbers: the postgres push is dominated by chunk transfer to
 MinIO, `ApplyPush` is about a tenth of it on loopback and grows with network
-latency (one statement per chunk, file and link); the diff steps load both
-full manifests, so they scale with repo size instead of the change; `SaveTree`
-re-stamps every row on each save, so 5 changed files cost as much as 10k.
+latency (one statement per chunk, file and link); `SaveTree` re-stamps every
+row on each save, so 5 changed files cost as much as 10k.
+
+Commit and merge-request diffs no longer load whole manifests: they walk the
+two trees in lockstep (`Branch.changedTreeEntries`) and skip every directory
+pair whose stored hash is equal, so they cost the changed directories (here one
+1000-file directory per side) instead of the repository. Merge and fast-forward
+write checks and binary-lock planning (`commitChanges`) use the same walk, and
+`VisibleChunks` skips directories it has already visited across the requested
+commits. The stored hash is compared before permission filtering; both sides
+use the same filter, so equal hashes stay equal after it.
 
 ## Load scenarios (`tests/load`)
 

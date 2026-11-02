@@ -35,10 +35,14 @@ func TestBranch_FastForward_FileLocks(t *testing.T) {
 		Return(&domain.TreeNode{ID: 101, Name: "root"}, nil).AnyTimes()
 	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(101)).
 		Return([]*domain.File{{ID: 1, Name: "a.txt", TreeID: 101}}, nil).AnyTimes()
+	repo.EXPECT().ListFileMetaByTree(gomock.Any(), int64(101)).
+		Return([]*domain.File{{ID: 1, Name: "a.txt", TreeID: 101}}, nil).AnyTimes()
 	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(101)).Return(nil, nil).AnyTimes()
 	repo.EXPECT().GetTreeNode(gomock.Any(), int64(102)).
 		Return(&domain.TreeNode{ID: 102, Name: "root"}, nil).AnyTimes()
 	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(102)).
+		Return([]*domain.File{{ID: 2, Name: "tex.png", TreeID: 102, IsBinary: true}}, nil).AnyTimes()
+	repo.EXPECT().ListFileMetaByTree(gomock.Any(), int64(102)).
 		Return([]*domain.File{{ID: 2, Name: "tex.png", TreeID: 102, IsBinary: true}}, nil).AnyTimes()
 	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(102)).Return(nil, nil).AnyTimes()
 
@@ -76,10 +80,13 @@ func TestBranch_FastForward_FileLocksReject(t *testing.T) {
 	repo.EXPECT().GetTreeNode(gomock.Any(), int64(101)).
 		Return(&domain.TreeNode{ID: 101, Name: "root"}, nil).AnyTimes()
 	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(101)).Return(nil, nil).AnyTimes()
+	repo.EXPECT().ListFileMetaByTree(gomock.Any(), int64(101)).Return(nil, nil).AnyTimes()
 	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(101)).Return(nil, nil).AnyTimes()
 	repo.EXPECT().GetTreeNode(gomock.Any(), int64(102)).
 		Return(&domain.TreeNode{ID: 102, Name: "root"}, nil).AnyTimes()
 	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(102)).
+		Return([]*domain.File{{ID: 2, Name: "tex.png", TreeID: 102, IsBinary: true}}, nil).AnyTimes()
+	repo.EXPECT().ListFileMetaByTree(gomock.Any(), int64(102)).
 		Return([]*domain.File{{ID: 2, Name: "tex.png", TreeID: 102, IsBinary: true}}, nil).AnyTimes()
 	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(102)).Return(nil, nil).AnyTimes()
 
@@ -460,6 +467,7 @@ func TestBranch_FastForward_FileLocksNoClaim(t *testing.T) {
 	repo.EXPECT().GetTreeNode(gomock.Any(), int64(101)).
 		Return(&domain.TreeNode{ID: 101, Name: "root"}, nil).AnyTimes()
 	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(101)).Return(nil, nil).AnyTimes()
+	repo.EXPECT().ListFileMetaByTree(gomock.Any(), int64(101)).Return(nil, nil).AnyTimes()
 	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(101)).Return(nil, nil).AnyTimes()
 
 	uc := NewBranch(perm, repo, newTestBranchNode(t)).WithFileLocks(gate)
@@ -488,10 +496,13 @@ func TestBranch_FastForward_FileLocksReleaseError(t *testing.T) {
 	repo.EXPECT().GetTreeNode(gomock.Any(), int64(101)).
 		Return(&domain.TreeNode{ID: 101, Name: "root"}, nil).AnyTimes()
 	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(101)).Return(nil, nil).AnyTimes()
+	repo.EXPECT().ListFileMetaByTree(gomock.Any(), int64(101)).Return(nil, nil).AnyTimes()
 	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(101)).Return(nil, nil).AnyTimes()
 	repo.EXPECT().GetTreeNode(gomock.Any(), int64(102)).
 		Return(&domain.TreeNode{ID: 102, Name: "root"}, nil).AnyTimes()
 	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(102)).
+		Return([]*domain.File{{ID: 2, Name: "tex.png", TreeID: 102, IsBinary: true}}, nil).AnyTimes()
+	repo.EXPECT().ListFileMetaByTree(gomock.Any(), int64(102)).
 		Return([]*domain.File{{ID: 2, Name: "tex.png", TreeID: 102, IsBinary: true}}, nil).AnyTimes()
 	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(102)).Return(nil, nil).AnyTimes()
 
@@ -545,10 +556,22 @@ func binaryTreeFixture(t *testing.T, repo *MockbranchRepository, fromHead, toHea
 		{ID: 3, Name: "gone.bin", TreeID: 101, Mode: 0o644, IsBinary: true, Chunks: []domain.Chunk{{Hash: domain.Hash{3}}}},
 		{ID: 4, Name: "old.png", TreeID: 101, Mode: 0o644, IsBinary: true, Chunks: []domain.Chunk{{Hash: domain.Hash{2}}}},
 	}, nil).AnyTimes()
+	repo.EXPECT().ListFileMetaByTree(gomock.Any(), int64(101)).Return([]*domain.File{
+		{ID: 1, Name: "a.txt", TreeID: 101, Mode: 0o644, Chunks: []domain.Chunk{{Hash: domain.Hash{1}}}},
+		{ID: 2, Name: "conv.txt", TreeID: 101, Mode: 0o644, Chunks: []domain.Chunk{{Hash: domain.Hash{4}}}},
+		{ID: 3, Name: "gone.bin", TreeID: 101, Mode: 0o644, IsBinary: true, Chunks: []domain.Chunk{{Hash: domain.Hash{3}}}},
+		{ID: 4, Name: "old.png", TreeID: 101, Mode: 0o644, IsBinary: true, Chunks: []domain.Chunk{{Hash: domain.Hash{2}}}},
+	}, nil).AnyTimes()
 	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(101)).Return(nil, nil).AnyTimes()
 	repo.EXPECT().GetTreeNode(gomock.Any(), int64(102)).
 		Return(&domain.TreeNode{ID: 102, Name: "root"}, nil).AnyTimes()
 	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(102)).Return([]*domain.File{
+		{ID: 5, Name: "a.txt", TreeID: 102, Mode: 0o644, Chunks: []domain.Chunk{{Hash: domain.Hash{1}}}},
+		{ID: 6, Name: "conv.txt", TreeID: 102, Mode: 0o644, IsBinary: true, Chunks: []domain.Chunk{{Hash: domain.Hash{7}}}},
+		{ID: 7, Name: "new.png", TreeID: 102, Mode: 0o644, IsBinary: true, Chunks: []domain.Chunk{{Hash: domain.Hash{6}}}},
+		{ID: 8, Name: "old.png", TreeID: 102, Mode: 0o644, IsBinary: true, Chunks: []domain.Chunk{{Hash: domain.Hash{5}}}},
+	}, nil).AnyTimes()
+	repo.EXPECT().ListFileMetaByTree(gomock.Any(), int64(102)).Return([]*domain.File{
 		{ID: 5, Name: "a.txt", TreeID: 102, Mode: 0o644, Chunks: []domain.Chunk{{Hash: domain.Hash{1}}}},
 		{ID: 6, Name: "conv.txt", TreeID: 102, Mode: 0o644, IsBinary: true, Chunks: []domain.Chunk{{Hash: domain.Hash{7}}}},
 		{ID: 7, Name: "new.png", TreeID: 102, Mode: 0o644, IsBinary: true, Chunks: []domain.Chunk{{Hash: domain.Hash{6}}}},

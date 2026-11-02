@@ -594,13 +594,18 @@ cadence), flushed via `serverapp.WithMetricsPush` — no collector required
 
 Server merge-request diffs reuse the same engine: `usecase.MergeRequest.Diff`
 resolves the source and target heads, `GetMergeBase`, and calls
-`Branch.TreeDiffBetween` (`internal/usecase/browser.go`), which loads both
-manifests with `commitTreeManifest` (each side pruned by the caller's read
-filter) and calls `diff.TreeDiff(baseTree, sourceTree, chunkStore.Get)` — a
-three-dot diff like GitHub/GitLab, exposed at
+`Branch.TreeDiffBetween` (`internal/usecase/browser.go`), which walks the two
+commit trees in lockstep (`Branch.changedTreeEntries`, `tree_walk.go`): a pair
+of directories with the same stored hash is skipped without a query, the others
+are loaded with each side pruned by the caller's read filter, and the flattened
+entries go to `diff.TreeDiffEntries(baseEntries, headEntries, chunkStore.Get)`
+— a three-dot diff like GitHub/GitLab, exposed at
 `GET /api/v1/orgs/{org}/projects/{project}/merge-requests/{id}/diff`. The web
 UI commit pages diff a commit against its first parent through the same
-`commitTreeManifest` + `diff.TreeDiff` path (`?path=` filters to a file/dir).
+`CommitDiff` walk (`?path=` filters to a file/dir). A zero hash counts as
+"unknown" and is never skipped. `commitChanges` (merge/fast-forward write
+checks, binary lock planning) and `VisibleChunks` (which also skips directories
+already visited for an earlier commit, keyed by path and hash) share the idea.
 
 ## Commands
 

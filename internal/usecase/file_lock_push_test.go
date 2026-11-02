@@ -19,11 +19,16 @@ func trackedBinaryTree(repo *MockbranchRepository, rootID, dirID int64) {
 	repo.EXPECT().GetTreeNode(gomock.Any(), rootID).
 		Return(&domain.TreeNode{ID: rootID, Name: "root"}, nil).AnyTimes()
 	repo.EXPECT().ListFilesByTree(gomock.Any(), rootID).Return(nil, nil).AnyTimes()
+	repo.EXPECT().ListFileMetaByTree(gomock.Any(), rootID).Return(nil, nil).AnyTimes()
 	repo.EXPECT().ListTreeChildren(gomock.Any(), rootID).
 		Return([]*domain.TreeNode{{ID: dirID, Name: "assets", Hash: domain.Hash{4}}}, nil).AnyTimes()
 	repo.EXPECT().GetTreeChildByName(gomock.Any(), rootID, "assets").
 		Return(&domain.TreeNode{ID: dirID, Name: "assets"}, nil).AnyTimes()
 	repo.EXPECT().ListFilesByTree(gomock.Any(), dirID).Return([]*domain.File{{
+		ID: 7, Name: "tex.png", TreeID: dirID, Mode: 0o644, IsBinary: true,
+		Hash: domain.Hash{7}, Chunks: []domain.Chunk{{Hash: domain.Hash{8}}},
+	}}, nil).AnyTimes()
+	repo.EXPECT().ListFileMetaByTree(gomock.Any(), dirID).Return([]*domain.File{{
 		ID: 7, Name: "tex.png", TreeID: dirID, Mode: 0o644, IsBinary: true,
 		Hash: domain.Hash{7}, Chunks: []domain.Chunk{{Hash: domain.Hash{8}}},
 	}}, nil).AnyTimes()
@@ -77,6 +82,10 @@ func TestPush_FileLocks_RemovedUnknownBinary(t *testing.T) {
 	repo.EXPECT().GetTreeNode(gomock.Any(), int64(100)).
 		Return(&domain.TreeNode{ID: 100, Name: "root"}, nil).AnyTimes()
 	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(100)).Return([]*domain.File{{
+		ID: 3, Name: "scene.bin", TreeID: 100, Mode: 0o644, IsBinary: true,
+		Hash: domain.Hash{3}, Chunks: []domain.Chunk{{Hash: domain.Hash{2}}},
+	}}, nil).AnyTimes()
+	repo.EXPECT().ListFileMetaByTree(gomock.Any(), int64(100)).Return([]*domain.File{{
 		ID: 3, Name: "scene.bin", TreeID: 100, Mode: 0o644, IsBinary: true,
 		Hash: domain.Hash{3}, Chunks: []domain.Chunk{{Hash: domain.Hash{2}}},
 	}}, nil).AnyTimes()

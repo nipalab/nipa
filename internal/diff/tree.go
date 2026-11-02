@@ -8,8 +8,13 @@ import serverDomain "github.com/nipalab/nipa/internal/domain"
 // "Binary files ... differ". This is the shared entry point for server-side
 // merge-request diffs and for callers whose chunks are already local.
 func TreeDiff(base, head *serverDomain.TreeNode, loadChunk func(serverDomain.Hash) ([]byte, error)) []FileDiff {
-	baseMap := FromTree(base)
-	headMap := FromTree(head)
+	return TreeDiffEntries(FromTree(base), FromTree(head), loadChunk)
+}
+
+// TreeDiffEntries is TreeDiff over already flattened sides. Callers may omit
+// files that are identical on both sides; the result is the same as with the
+// full maps.
+func TreeDiffEntries(baseMap, headMap map[string]Entry, loadChunk func(serverDomain.Hash) ([]byte, error)) []FileDiff {
 	changes := Compare(baseMap, headMap)
 	loader := treeLoader(loadChunk)
 	changes = DetectRenames(changes, loader)

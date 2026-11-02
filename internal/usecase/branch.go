@@ -43,6 +43,7 @@ type branchRepository interface {
 	GetTreeChildByName(ctx context.Context, parentID int64, name string) (*domain.TreeNode, error)
 	ListTreeChildren(ctx context.Context, parentID int64) ([]*domain.TreeNode, error)
 	ListFilesByTree(ctx context.Context, treeID int64) ([]*domain.File, error)
+	ListFileMetaByTree(ctx context.Context, treeID int64) ([]*domain.File, error)
 	CommitLog(ctx context.Context, projectID snow.ID, startCommitID snow.ID, limit int) ([]*domain.CommitLogEntry, error)
 	CommitLogUntil(ctx context.Context, projectID snow.ID, startCommitID, stopCommitID snow.ID, limit int) ([]*domain.CommitLogEntry, error)
 }
@@ -729,6 +730,7 @@ func (b *Branch) VisibleChunks(ctx context.Context, projectID snow.ID, commitIDs
 	}
 
 	seen := map[domain.Hash]struct{}{}
+	visited := map[treeVisit]struct{}{}
 	for _, raw := range commitIDs {
 		commitID, err := snow.ParseBase36(raw)
 		if err != nil {
@@ -742,10 +744,9 @@ func (b *Branch) VisibleChunks(ctx context.Context, projectID snow.ID, commitIDs
 		if err != nil {
 			return nil, err
 		}
-		if err := b.loadTreeManifest(ctx, root, "", true, filter, sparse); err != nil {
+		if err := b.collectVisibleChunks(ctx, root, "", filter, sparse, visited, seen); err != nil {
 			return nil, err
 		}
-		collectChunkHashes(root, seen)
 	}
 
 	out := make([]domain.Hash, 0, len(seen))
@@ -754,17 +755,6 @@ func (b *Branch) VisibleChunks(ctx context.Context, projectID snow.ID, commitIDs
 	}
 	sort.Slice(out, func(i, j int) bool { return bytes.Compare(out[i][:], out[j][:]) < 0 })
 	return out, nil
-}
-
-func collectChunkHashes(node *domain.TreeNode, seen map[domain.Hash]struct{}) {
-	for _, file := range node.FileChildren {
-		for _, chunk := range file.Chunks {
-			seen[chunk.Hash] = struct{}{}
-		}
-	}
-	for _, child := range node.TreeChildren {
-		collectChunkHashes(child, seen)
-	}
 }
 
 func rehashTree(node *domain.TreeNode) domain.Hash {

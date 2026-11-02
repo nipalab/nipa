@@ -143,6 +143,9 @@ func TestBranch_FileContent(t *testing.T) {
 	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(101)).Return([]*domain.File{
 		{ID: 1, Name: "a.txt", Hash: domain.Hash{9}, SizeBytes: 5, Chunks: []domain.Chunk{{Hash: domain.Hash{1}, SizeBytes: 5}}},
 	}, nil).AnyTimes()
+	repo.EXPECT().ListFileMetaByTree(gomock.Any(), int64(101)).Return([]*domain.File{
+		{ID: 1, Name: "a.txt", Hash: domain.Hash{9}, SizeBytes: 5, Chunks: []domain.Chunk{{Hash: domain.Hash{1}, SizeBytes: 5}}},
+	}, nil).AnyTimes()
 	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(101)).Return(nil, nil).AnyTimes()
 
 	content, entry, err := uc.FileContent(context.Background(), snow.ID(1), "main", "a.txt")
@@ -199,7 +202,7 @@ func TestBranch_CommitDiff_RootCommit(t *testing.T) {
 	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
 	perm.EXPECT().CompileFilter(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(AllowAllFilter(), nil).AnyTimes()
 	repo.EXPECT().GetCommit(gomock.Any(), commitID).
-		Return(&domain.Commit{ID: commitID, ProjectID: 1, TreeID: 101}, nil).Times(2)
+		Return(&domain.Commit{ID: commitID, ProjectID: 1, TreeID: 101}, nil)
 	repo.EXPECT().GetTreeNode(gomock.Any(), int64(101)).Return(&domain.TreeNode{ID: 101, Name: "root"}, nil)
 	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(101)).Return([]*domain.File{
 		{ID: 1, Name: "a.txt", Hash: domain.Hash{9}, SizeBytes: 5, Chunks: []domain.Chunk{{Hash: domain.Hash{1}, SizeBytes: 5}}},
@@ -225,9 +228,9 @@ func TestBranch_CommitDiff_ExplicitBase(t *testing.T) {
 	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
 	perm.EXPECT().CompileFilter(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(AllowAllFilter(), nil).AnyTimes()
 	repo.EXPECT().GetCommit(gomock.Any(), headID).
-		Return(&domain.Commit{ID: headID, ProjectID: 1, TreeID: 101}, nil).Times(2)
+		Return(&domain.Commit{ID: headID, ProjectID: 1, TreeID: 101}, nil)
 	repo.EXPECT().GetCommit(gomock.Any(), baseID).
-		Return(&domain.Commit{ID: baseID, ProjectID: 1, TreeID: 100}, nil).Times(2)
+		Return(&domain.Commit{ID: baseID, ProjectID: 1, TreeID: 100}, nil)
 	repo.EXPECT().GetTreeNode(gomock.Any(), int64(101)).Return(&domain.TreeNode{ID: 101, Name: "root"}, nil)
 	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(101)).Return([]*domain.File{
 		{ID: 1, Name: "a.txt", Hash: domain.Hash{9}, SizeBytes: 5, Chunks: []domain.Chunk{{Hash: domain.Hash{1}, SizeBytes: 5}}},
@@ -414,9 +417,9 @@ func TestBranch_CommitDiff_DefaultParent(t *testing.T) {
 	headCommit := &domain.Commit{ID: headID, ProjectID: 1, TreeID: 101, Parent1ID: &baseID}
 	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
 	perm.EXPECT().CompileFilter(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(AllowAllFilter(), nil).AnyTimes()
-	repo.EXPECT().GetCommit(gomock.Any(), headID).Return(headCommit, nil).Times(2)
+	repo.EXPECT().GetCommit(gomock.Any(), headID).Return(headCommit, nil)
 	repo.EXPECT().GetCommit(gomock.Any(), baseID).
-		Return(&domain.Commit{ID: baseID, ProjectID: 1, TreeID: 100}, nil).Times(2)
+		Return(&domain.Commit{ID: baseID, ProjectID: 1, TreeID: 100}, nil)
 	repo.EXPECT().GetTreeNode(gomock.Any(), int64(101)).Return(&domain.TreeNode{ID: 101, Name: "root"}, nil)
 	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(101)).Return([]*domain.File{
 		{ID: 1, Name: "a.txt", Hash: domain.Hash{9}, SizeBytes: 5, Chunks: []domain.Chunk{{Hash: domain.Hash{1}, SizeBytes: 5}}},
@@ -445,10 +448,8 @@ func TestBranch_CommitDiff_BaseNotInProject(t *testing.T) {
 	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
 	perm.EXPECT().CompileFilter(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(AllowAllFilter(), nil).AnyTimes()
 	repo.EXPECT().GetCommit(gomock.Any(), headID).
-		Return(&domain.Commit{ID: headID, ProjectID: 1, TreeID: 101}, nil).Times(2)
+		Return(&domain.Commit{ID: headID, ProjectID: 1, TreeID: 101}, nil)
 	repo.EXPECT().GetTreeNode(gomock.Any(), int64(101)).Return(&domain.TreeNode{ID: 101, Name: "root"}, nil)
-	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(101)).Return(nil, nil)
-	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(101)).Return(nil, nil)
 	repo.EXPECT().GetCommit(gomock.Any(), baseID).Return(nil, domain.NewErrorRecordNotFound())
 
 	_, _, err := uc.CommitDiff(context.Background(), snow.ID(1), headID, &baseID)
@@ -466,7 +467,7 @@ func TestBranch_TreeDiffBetween(t *testing.T) {
 		headID := snow.ID(11)
 		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
 		perm.EXPECT().CompileFilter(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(AllowAllFilter(), nil).AnyTimes()
-		repo.EXPECT().GetCommit(gomock.Any(), baseID).Return(&domain.Commit{ID: baseID, ProjectID: 1, TreeID: 100}, nil).Times(2)
+		repo.EXPECT().GetCommit(gomock.Any(), baseID).Return(&domain.Commit{ID: baseID, ProjectID: 1, TreeID: 100}, nil)
 		repo.EXPECT().GetCommit(gomock.Any(), headID).Return(&domain.Commit{ID: headID, ProjectID: 1, TreeID: 101}, nil)
 		repo.EXPECT().GetTreeNode(gomock.Any(), int64(100)).Return(&domain.TreeNode{ID: 100, Name: "root"}, nil)
 		repo.EXPECT().ListFilesByTree(gomock.Any(), int64(100)).Return(nil, nil)
