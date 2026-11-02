@@ -246,3 +246,18 @@ func TestBlobReaderSmallBuffer(t *testing.T) {
 	}
 	require.Equal(t, "abcdef", out.String())
 }
+
+func TestReadBlob_WorkingRefusesMetadataAlias(t *testing.T) {
+	root := t.TempDir()
+	writeRepoFile(t, root, ".nipa/config", "{}")
+	if err := os.Symlink(filepath.Join(root, ".nipa", "config"), filepath.Join(root, "evil")); err != nil {
+		t.Skip("symlinks unsupported")
+	}
+	d := NewDiff(nil, nil, newDiffStub())
+
+	_, err := readBlob(t, d, root, BlobRequest{Path: "evil"})
+	requireCode(t, err, 400)
+
+	_, err = readBlob(t, d, root, BlobRequest{Path: ".NIPA/config"})
+	requireCode(t, err, 400)
+}

@@ -102,6 +102,16 @@ func readWorkingBlob(root, p string, fn func(diff.Entry, io.Reader) error) error
 	if err != nil {
 		return err
 	}
+	pre, err := os.Stat(full)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return clientDomain.NewNotFoundError(fmt.Sprintf("%s does not exist", p))
+		}
+		return err
+	}
+	if !pre.Mode().IsRegular() {
+		return clientDomain.NewUserError(fmt.Sprintf("%s is not a file", p))
+	}
 	f, err := os.Open(full)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -143,6 +153,9 @@ func resolveInsideRoot(root, p string) (string, error) {
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return "", clientDomain.NewUserError(fmt.Sprintf("%s resolves outside the repository", p))
 	}
+	if isMetadataPath(filepath.ToSlash(rel)) {
+		return "", clientDomain.NewUserError("repository metadata cannot be read")
+	}
 	return full, nil
 }
 
@@ -155,10 +168,15 @@ func cleanBlobPath(p string) (string, error) {
 	if p == "." || p == ".." || strings.HasPrefix(p, "../") {
 		return "", clientDomain.NewUserError("a repository-relative path is required")
 	}
-	if p == ".nipa" || strings.HasPrefix(p, ".nipa/") {
+	if isMetadataPath(p) {
 		return "", clientDomain.NewUserError("repository metadata cannot be read")
 	}
 	return p, nil
+}
+
+func isMetadataPath(p string) bool {
+	p = strings.ToLower(p)
+	return p == ".nipa" || strings.HasPrefix(p, ".nipa/")
 }
 
 // blobReader streams a stored file by loading and decoding one chunk at a
