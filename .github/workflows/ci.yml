@@ -38,6 +38,22 @@ jobs:
           echo "total coverage: ${total}% (minimum ${MIN_COVERAGE}%)"
           awk -v t="$total" -v m="$MIN_COVERAGE" 'BEGIN { exit !(t+0 >= m+0) }'
 
+      - name: Desktop Go coverage
+        working-directory: desktop
+        run: go test -race -covermode=atomic -coverprofile=coverage.out ./internal/...
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: desktop/frontend/package-lock.json
+
+      - name: Desktop frontend coverage
+        working-directory: desktop/frontend
+        run: |
+          npm ci --ignore-scripts
+          npx vitest run --coverage --coverage.reporter=lcov
+
       - name: Upload Test and Coverage Reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -46,6 +62,8 @@ jobs:
           path: |
             coverage.out
             report.json
+            desktop/coverage.out
+            desktop/frontend/coverage/lcov.info
           retention-days: 1
 
   lint:

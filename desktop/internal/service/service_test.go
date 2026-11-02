@@ -156,9 +156,18 @@ func TestService_ReposErrors(t *testing.T) {
 	h = newHarness()
 	h.store.repos = []string{"/a"}
 	h.dialErr = errors.New("no daemon")
-	repos, err := h.svc.Repos(ctx)
-	require.NoError(t, err)
-	require.Equal(t, "no daemon", repos[0].Error)
+	_, err = h.svc.Repos(ctx)
+	require.EqualError(t, err, "no daemon")
+}
+
+func TestService_ReposDialsOnceWhenDaemonCannotStart(t *testing.T) {
+	h := newHarness()
+	h.store.repos = []string{"/a", "/b", "/c"}
+	h.dialErr = errors.New("nipa daemon did not start")
+
+	_, err := h.svc.Repos(ctx)
+	require.EqualError(t, err, "nipa daemon did not start")
+	require.Equal(t, 1, h.dials)
 }
 
 func TestService_AddAndPickRepo(t *testing.T) {

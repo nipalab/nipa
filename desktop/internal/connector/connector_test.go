@@ -35,8 +35,8 @@ func serveDaemon(t *testing.T, endpoint string) *daemon.Server {
 	return srv
 }
 
-func noStart(t *testing.T) func(string, string) error {
-	return func(string, string) error {
+func noStart(t *testing.T) func(string, string, string) error {
+	return func(string, string, string) error {
 		t.Fatal("daemon must not be started")
 		return nil
 	}
@@ -60,9 +60,9 @@ func TestConnect_AttachesToRunningDaemon(t *testing.T) {
 
 func TestConnect_StartsDaemonWhenNoneIsPublished(t *testing.T) {
 	endpoint := filepath.Join(t.TempDir(), "daemon.json")
-	var gotBin, gotLog string
-	start := func(bin, logPath string) error {
-		gotBin, gotLog = bin, logPath
+	var gotBin, gotLog, gotEndpoint string
+	start := func(bin, logPath, endpoint string) error {
+		gotBin, gotLog, gotEndpoint = bin, logPath, endpoint
 		go func() {
 			time.Sleep(150 * time.Millisecond)
 			serveDaemon(t, endpoint)
@@ -76,6 +76,7 @@ func TestConnect_StartsDaemonWhenNoneIsPublished(t *testing.T) {
 	require.True(t, conn.Started)
 	require.Equal(t, "/opt/nipa", gotBin)
 	require.Equal(t, "/tmp/d.log", gotLog)
+	require.Equal(t, endpoint, gotEndpoint)
 }
 
 func TestConnect_RestartsWhenEndpointIsStale(t *testing.T) {
@@ -87,7 +88,7 @@ func TestConnect_RestartsWhenEndpointIsStale(t *testing.T) {
 		Binary:       "nipa",
 		StartTimeout: 200 * time.Millisecond,
 		alive:        func(int) bool { return false },
-		start:        func(string, string) error { started = true; return nil },
+		start:        func(string, string, string) error { started = true; return nil },
 	})
 	require.True(t, started)
 	require.ErrorContains(t, err, "did not start")
@@ -105,7 +106,7 @@ func TestConnect_UnreachableDaemonTriggersStart(t *testing.T) {
 		EndpointPath: endpoint,
 		Binary:       "nipa",
 		StartTimeout: 150 * time.Millisecond,
-		start:        func(string, string) error { return errors.New("exec failed") },
+		start:        func(string, string, string) error { return errors.New("exec failed") },
 	})
 	require.ErrorContains(t, err, "exec failed")
 }
@@ -128,7 +129,7 @@ func TestConnect_CancelledWhileWaiting(t *testing.T) {
 	_, err := Connect(ctx, Options{
 		EndpointPath: filepath.Join(t.TempDir(), "daemon.json"),
 		Binary:       "nipa",
-		start:        func(string, string) error { cancel(); return nil },
+		start:        func(string, string, string) error { cancel(); return nil },
 	})
 	require.ErrorContains(t, err, "did not start")
 }
@@ -175,17 +176,23 @@ func TestStartDetachedRunsServe(t *testing.T) {
 	require.NoError(t, os.WriteFile(bin, []byte("#!/bin/sh\necho \"args:$*\"\n"), 0o755))
 	logPath := filepath.Join(dir, "logs", "daemon.log")
 
-	require.NoError(t, startDetached(bin, logPath))
+	require.NoError(t, startDetached(bin, logPath, ""))
 	require.Eventually(t, func() bool {
 		data, err := os.ReadFile(logPath)
 		return err == nil && strings.Contains(string(data), "args:serve")
 	}, 5*time.Second, 20*time.Millisecond)
 
-	require.NoError(t, startDetached(bin, ""))
-	require.Error(t, startDetached(filepath.Join(dir, "missing"), ""))
+	require.NoError(t, startDetached(bin, "", ""))
+	customLog := filepath.Join(dir, "custom.log")
+	require.NoError(t, startDetached(bin, customLog, "/x/daemon.json"))
+	require.Eventually(t, func() bool {
+		data, err := os.ReadFile(customLog)
+		return err == nil && strings.Contains(string(data), "args:serve --endpoint /x/daemon.json")
+	}, 5*time.Second, 20*time.Millisecond)
+	require.Error(t, startDetached(filepath.Join(dir, "missing"), "", ""))
 
 	blocker := filepath.Join(dir, "file")
 	require.NoError(t, os.WriteFile(blocker, nil, 0o600))
-	require.Error(t, startDetached(bin, filepath.Join(blocker, "sub", "d.log")))
-	require.Error(t, startDetached(bin, filepath.Join(dir, "logs")))
+	require.Error(t, startDetached(bin, filepath.Join(blocker, "sub", "d.log"), ""))
+	require.Error(t, startDetached(bin, filepath.Join(dir, "logs"), ""))
 }

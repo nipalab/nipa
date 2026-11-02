@@ -77,6 +77,17 @@ describe("App", () => {
     expect(within(nav).getAllByRole("button")).toHaveLength(2);
   });
 
+  it("replaces a stale entry when a broken clone is opened again", async () => {
+    api.repos.mockResolvedValue([{ ...game, error: "This clone is unavailable" }, tools]);
+    api.pickRepo.mockResolvedValue(game);
+    renderWithProviders(<App />);
+    expect((await screen.findAllByText("This clone is unavailable")).length).toBeGreaterThan(0);
+
+    await userEvent.click(screen.getByRole("button", { name: "Open a clone" }));
+    expect(await screen.findByText("https://nipa.test/studio/game")).toBeInTheDocument();
+    expect(screen.queryAllByText("This clone is unavailable")).toHaveLength(0);
+  });
+
   it("reports a failed open in a dismissible toast", async () => {
     api.pickRepo.mockRejectedValue(new Error("/tmp is not inside a nipa clone"));
     renderWithProviders(<App />);
@@ -112,7 +123,7 @@ describe("App", () => {
   it("shows unavailable clones with their error", async () => {
     api.repos.mockResolvedValue([{ ...game, error: "/work/game is not a nipa clone" }]);
     renderWithProviders(<App />);
-    expect(await screen.findByText("This clone is unavailable")).toBeInTheDocument();
+    expect((await screen.findAllByText("This clone is unavailable")).length).toBeGreaterThan(0);
     expect(screen.getByText("/work/game is not a nipa clone")).toBeInTheDocument();
     expect(screen.getByLabelText("Unavailable")).toBeInTheDocument();
   });

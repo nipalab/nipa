@@ -27,7 +27,7 @@ export default function App() {
     mutationFn: desktop.pickRepo,
     onSuccess: (repo) => {
       if (!repo) return;
-      queryClient.setQueryData<Repo[]>(["repos"], (old = []) => (old.some((r) => r.root === repo.root) ? old : [...old, repo]));
+      queryClient.setQueryData<Repo[]>(["repos"], (old = []) => (old.some((r) => r.root === repo.root) ? old.map((r) => (r.root === repo.root ? repo : r)) : [...old, repo]));
       select(repo.root);
     },
     onError: (err) => setToast(errorMessage(err)),

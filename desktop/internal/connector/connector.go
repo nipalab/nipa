@@ -41,7 +41,7 @@ type Options struct {
 	LogPath      string
 	StartTimeout time.Duration
 
-	start      func(bin, logPath string) error
+	start      func(bin, logPath, endpoint string) error
 	lookPath   func(string) (string, error)
 	executable func() (string, error)
 	alive      func(pid int) bool
@@ -78,7 +78,7 @@ func Connect(ctx context.Context, opts Options) (*Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := opts.start(bin, opts.LogPath); err != nil {
+	if err := opts.start(bin, opts.LogPath, opts.EndpointPath); err != nil {
 		return nil, fmt.Errorf("start %s serve: %w", bin, err)
 	}
 
@@ -169,8 +169,12 @@ func resolveBinary(opts Options) (string, error) {
 	return "", ErrBinaryNotFound
 }
 
-func startDetached(bin, logPath string) error {
-	cmd := exec.Command(bin, "serve")
+func startDetached(bin, logPath, endpoint string) error {
+	args := []string{"serve"}
+	if endpoint != "" {
+		args = append(args, "--endpoint", endpoint)
+	}
+	cmd := exec.Command(bin, args...)
 	detach(cmd)
 	if logPath != "" {
 		if err := os.MkdirAll(filepath.Dir(logPath), 0o700); err != nil {

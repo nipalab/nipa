@@ -102,6 +102,11 @@ func (s *Service) Repos(ctx context.Context) ([]Repo, error) {
 	if err != nil {
 		return nil, err
 	}
+	if len(roots) > 0 {
+		if _, err := s.session(ctx); err != nil {
+			return nil, err
+		}
+	}
 	out := make([]Repo, 0, len(roots))
 	for _, root := range roots {
 		repo, err := s.watch(ctx, root)
