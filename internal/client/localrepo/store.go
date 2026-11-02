@@ -1,6 +1,7 @@
 package localrepo
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"errors"
@@ -96,19 +97,8 @@ func (l *LocalRepo) SaveTree(root *domain.TreeNode) error {
 		return err
 	}
 
-	if root != nil {
-		if err := l.insertTreeNode(ctx, q, root, "", "", token); err != nil {
-			return err
-		}
-	}
-
-	// Mark-and-sweep: only rows not stamped with the current snapshot are
-	// stale (files removed or renamed since the last save), so the DELETE
-	// here is bounded by the size of the change, not the whole repo.
-	if err := q.StaleFileDelete(ctx, token); err != nil {
-		return err
-	}
-	if err := q.StaleTreeNodeDelete(ctx, token); err != nil {
+	nodes, files := flattenTree(root, token)
+	if err := l.syncRows(ctx, q, nodes, files); err != nil {
 		return err
 	}
 	// Stat rows follow the tracked set: paths gone from the snapshot are no
@@ -119,46 +109,116 @@ func (l *LocalRepo) SaveTree(root *domain.TreeNode) error {
 	return tx.Commit()
 }
 
-func (l *LocalRepo) insertTreeNode(ctx context.Context, q *sqlcLocalrepo.Queries, node *domain.TreeNode, parentPath, path, token string) error {
-	if err := q.TreeNodeUpsert(ctx, sqlcLocalrepo.TreeNodeUpsertParams{
-		Path:       path,
-		ParentPath: parentPath,
-		Hash:       node.Hash.Bytes(),
-		Mode:       int64(node.Mode),
-		SnapshotID: token,
-	}); err != nil {
+func flattenTree(root *domain.TreeNode, token string) ([]sqlcLocalrepo.TreeNodeUpsertParams, []sqlcLocalrepo.FileUpsertParams) {
+	var (
+		nodes []sqlcLocalrepo.TreeNodeUpsertParams
+		files []sqlcLocalrepo.FileUpsertParams
+	)
+	var walk func(node *domain.TreeNode, parentPath, path string)
+	walk = func(node *domain.TreeNode, parentPath, path string) {
+		nodes = append(nodes, sqlcLocalrepo.TreeNodeUpsertParams{
+			Path:       path,
+			ParentPath: parentPath,
+			Hash:       node.Hash.Bytes(),
+			Mode:       int64(node.Mode),
+			SnapshotID: token,
+		})
+		for _, file := range node.FileChildren {
+			hashes := make([]domain.Hash, 0, len(file.Chunks))
+			for _, c := range file.Chunks {
+				hashes = append(hashes, c.Hash)
+			}
+			files = append(files, sqlcLocalrepo.FileUpsertParams{
+				Path:       path + "/" + file.Name,
+				TreePath:   path,
+				Hash:       file.Hash.Bytes(),
+				SizeBytes:  file.SizeBytes,
+				Mode:       int64(file.Mode),
+				IsBinary:   file.IsBinary,
+				Encoding:   file.Encoding,
+				Chunks:     encodeChunkHashes(hashes),
+				SnapshotID: token,
+			})
+		}
+		for _, child := range node.TreeChildren {
+			walk(child, path, path+"/"+child.Name)
+		}
+	}
+	if root != nil {
+		walk(root, "", "")
+	}
+	return nodes, files
+}
+
+// syncRows makes the stored tree equal to the wanted one while writing only the
+// rows that differ: a save after a small change costs a read of the stored rows
+// and a handful of writes, not a rewrite of the whole tree. Nodes are listed
+// parent-first, so upserting them in order satisfies the files' foreign key.
+func (l *LocalRepo) syncRows(ctx context.Context, q *sqlcLocalrepo.Queries, nodes []sqlcLocalrepo.TreeNodeUpsertParams, files []sqlcLocalrepo.FileUpsertParams) error {
+	storedNodes, err := q.TreeNodeList(ctx)
+	if err != nil {
+		return err
+	}
+	storedFiles, err := q.FileList(ctx)
+	if err != nil {
 		return err
 	}
 
-	for _, file := range node.FileChildren {
-		if err := l.insertFile(ctx, q, path, token, file); err != nil {
+	nodeByPath := make(map[string]sqlcLocalrepo.TreeNodeListRow, len(storedNodes))
+	for _, n := range storedNodes {
+		nodeByPath[n.Path] = n
+	}
+	fileByPath := make(map[string]sqlcLocalrepo.FileListRow, len(storedFiles))
+	for _, f := range storedFiles {
+		fileByPath[f.Path] = f
+	}
+
+	for _, want := range nodes {
+		stored, ok := nodeByPath[want.Path]
+		delete(nodeByPath, want.Path)
+		if ok && sameNode(stored, want) {
+			continue
+		}
+		if err := q.TreeNodeUpsert(ctx, want); err != nil {
 			return err
 		}
 	}
-	for _, child := range node.TreeChildren {
-		childPath := path + "/" + child.Name
-		if err := l.insertTreeNode(ctx, q, child, path, childPath, token); err != nil {
+	for _, want := range files {
+		stored, ok := fileByPath[want.Path]
+		delete(fileByPath, want.Path)
+		if ok && sameFile(stored, want) {
+			continue
+		}
+		if err := q.FileUpsert(ctx, want); err != nil {
+			return err
+		}
+	}
+
+	for path := range fileByPath {
+		if err := q.FileDelete(ctx, path); err != nil {
+			return err
+		}
+	}
+	for path := range nodeByPath {
+		if err := q.TreeNodeDelete(ctx, path); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (l *LocalRepo) insertFile(ctx context.Context, q *sqlcLocalrepo.Queries, treePath, token string, file *domain.File) error {
-	filePath := treePath + "/" + file.Name
-	hashes := make([]domain.Hash, 0, len(file.Chunks))
-	for _, c := range file.Chunks {
-		hashes = append(hashes, c.Hash)
-	}
-	return q.FileUpsert(ctx, sqlcLocalrepo.FileUpsertParams{
-		Path:       filePath,
-		TreePath:   treePath,
-		Hash:       file.Hash.Bytes(),
-		SizeBytes:  file.SizeBytes,
-		Mode:       int64(file.Mode),
-		IsBinary:   file.IsBinary,
-		Encoding:   file.Encoding,
-		Chunks:     encodeChunkHashes(hashes),
-		SnapshotID: token,
-	})
+func sameNode(stored sqlcLocalrepo.TreeNodeListRow, want sqlcLocalrepo.TreeNodeUpsertParams) bool {
+	return stored.ParentPath == want.ParentPath &&
+		stored.Mode == want.Mode &&
+		bytes.Equal(stored.Hash, want.Hash)
+}
+
+func sameFile(stored sqlcLocalrepo.FileListRow, want sqlcLocalrepo.FileUpsertParams) bool {
+	return stored.TreePath == want.TreePath &&
+		stored.SizeBytes == want.SizeBytes &&
+		stored.Mode == want.Mode &&
+		stored.IsBinary == want.IsBinary &&
+		stored.Encoding == want.Encoding &&
+		bytes.Equal(stored.Hash, want.Hash) &&
+		bytes.Equal(stored.Chunks, want.Chunks)
 }

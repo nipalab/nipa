@@ -33,7 +33,7 @@ release run.
 | Micro-benchmarks | `internal/chunker`, `internal/diff`, `internal/treehash` — `make bench-unit` (encode, Myers diff, tree hashing) |
 | Load scenarios | `tests/load` — `make load-test args='-scenario push|clone|mixed ...'`, see `tests/load/README.md` |
 | Transfer tuning | Client adaptive limiter, concurrency 16 → range [4, 64], pinned by `NIPA_UPLOAD_WORKERS` / `uploadWorkers` (`internal/client/grpc/transfer.go`) |
-| Big-repo hygiene | `SaveTree` upsert + mark-and-sweep (re-stamps every row each save: ~0.8 s for 10k files, see "Wide-tree scale"), `stat_cache` keeps status/diff off the file system |
+| Big-repo hygiene | `SaveTree` diffs against the stored rows and writes only the difference (~20 ms for 10k files and 5 changes, see "Wide-tree scale"), `stat_cache` keeps status/diff off the file system |
 | Metrics | Request-duration histograms, DB-pool gauges/waits, chunk ops/bytes, verify failures (`docs/OBSERVABILITY.md`) |
 | Postgres pool | **Untuned**: no `SetMaxOpenConns`/`ConnMaxLifetime` in production code — Go's unlimited default can exhaust `max_connections` across pods |
 | Rate limiting | Token buckets per IP / account / user, memory or Redis store (`docs/RATE_LIMIT.md`) |
@@ -72,12 +72,15 @@ then change one file inside a 1000-file directory.
 | Recursive manifest | 42 ms | 44 ms |
 | Commit diff / merge-request diff | 12 ms / 12 ms (was 96 / 98) | 14 ms / 13 ms (was 96 / 99) |
 | Fresh clone | 2.2 s | 3.3 s |
-| `SaveTree`, 5 changed files | 0.85 s (290k allocs) | n/a (client) |
+| `SaveTree`, 5 changed files | 19 ms (was 0.85 s; 150k allocs) | n/a (client) |
 
 Reading the numbers: the postgres push is dominated by chunk transfer to
 MinIO, `ApplyPush` is about a tenth of it on loopback and grows with network
-latency (one statement per chunk, file and link); `SaveTree` re-stamps every
-row on each save, so 5 changed files cost as much as 10k.
+latency (one statement per chunk, file and link).
+
+`SaveTree` compares the new tree with the stored rows in memory and writes only
+the rows that differ, so 5 changed files cost a read of the stored rows plus
+about a dozen writes instead of a rewrite of all 10k.
 
 Commit and merge-request diffs no longer load whole manifests: they walk the
 two trees in lockstep (`Branch.changedTreeEntries`) and skip every directory

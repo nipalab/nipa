@@ -5,9 +5,11 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -194,6 +196,12 @@ func hashStrings(jobs []chunkTransfer) []string {
 	return hashes
 }
 
+// downloadWindow is how many chunks are presigned per round of download URLs.
+// URLs are requested a window ahead of the transfers instead of all at once, so
+// a long clone never holds URLs that outlive their lifetime, and it matches the
+// server's default page size so no extra requests are made.
+const downloadWindow = 1000
+
 // DownloadChunks fetches chunk content through signed download URLs. Callers
 // receive each chunk through onChunk and are responsible for hash verification.
 func (c *Client) DownloadChunks(ctx context.Context, scope domain.ChunkScope, hashes []serverDomain.Hash, onChunk func(h serverDomain.Hash, data []byte) error) error {
@@ -209,6 +217,45 @@ func (c *Client) DownloadChunks(ctx context.Context, scope domain.ChunkScope, ha
 		return err
 	}
 
+	type urlWindow struct {
+		jobs []chunkTransfer
+		err  error
+	}
+	sink := &chunkSink{fn: onChunk}
+	return c.runChunks(authedCtx, func(ctx context.Context, emit func(chunkTransfer) bool) error {
+		fetch := func(start int) <-chan urlWindow {
+			out := make(chan urlWindow, 1)
+			end := min(start+downloadWindow, len(hashes))
+			go func() {
+				jobs, err := c.downloadURLs(ctx, client, scope, hashes[start:end])
+				out <- urlWindow{jobs: jobs, err: err}
+			}()
+			return out
+		}
+		next := fetch(0)
+		for start := 0; start < len(hashes); start += downloadWindow {
+			window := <-next
+			if window.err != nil {
+				return window.err
+			}
+			if start+downloadWindow < len(hashes) {
+				next = fetch(start + downloadWindow)
+			}
+			for _, job := range window.jobs {
+				if !emit(job) {
+					return nil
+				}
+			}
+		}
+		return nil
+	}, func(ctx context.Context, job chunkTransfer) (int64, error) {
+		return c.downloadChunk(ctx, sink, job)
+	})
+}
+
+// downloadURLs presigns one window of hashes, following the server's pages, and
+// fails when the server does not know one of them.
+func (c *Client) downloadURLs(ctx context.Context, client pb.NipaServiceClient, scope domain.ChunkScope, hashes []serverDomain.Hash) ([]chunkTransfer, error) {
 	rawHashes := make([]string, 0, len(hashes))
 	for _, hash := range hashes {
 		rawHashes = append(rawHashes, hash.String())
@@ -218,7 +265,7 @@ func (c *Client) DownloadChunks(ctx context.Context, scope domain.ChunkScope, ha
 	found := make(map[serverDomain.Hash]struct{}, len(hashes))
 	pageToken := ""
 	for {
-		res, err := client.GetChunkDownloadUrls(authedCtx, &pb.GetChunkDownloadUrlsRequest{
+		res, err := client.GetChunkDownloadUrls(ctx, &pb.GetChunkDownloadUrlsRequest{
 			Context:   &pb.ProjectContext{Org: scope.Org, Project: scope.Project},
 			CommitIds: scope.CommitIDs,
 			Paths:     scope.Paths,
@@ -227,12 +274,12 @@ func (c *Client) DownloadChunks(ctx context.Context, scope domain.ChunkScope, ha
 			PageToken: pageToken,
 		})
 		if err != nil {
-			return toDomainError(err)
+			return nil, toDomainError(err)
 		}
 		for _, u := range res.GetUrls() {
 			hash, err := decodeHash(u.GetHash())
 			if err != nil {
-				return err
+				return nil, err
 			}
 			found[hash] = struct{}{}
 			jobs = append(jobs, chunkTransfer{hash: hash, url: u.GetUrl()})
@@ -245,11 +292,10 @@ func (c *Client) DownloadChunks(ctx context.Context, scope domain.ChunkScope, ha
 
 	for _, hash := range hashes {
 		if _, ok := found[hash]; !ok {
-			return domain.NewNotFoundError(fmt.Sprintf("chunk %s not found", hash))
+			return nil, domain.NewNotFoundError(fmt.Sprintf("chunk %s not found", hash))
 		}
 	}
-
-	return c.getChunks(authedCtx, jobs, onChunk)
+	return jobs, nil
 }
 
 type chunkTransfer struct {
@@ -316,35 +362,93 @@ func (s *chunkSink) deliver(hash serverDomain.Hash, data []byte) error {
 
 func (c *Client) getChunks(ctx context.Context, jobs []chunkTransfer, onChunk func(h serverDomain.Hash, data []byte) error) error {
 	sink := &chunkSink{fn: onChunk}
-	return c.forEachChunk(ctx, jobs, func(ctx context.Context, job chunkTransfer) (size int64, err error) {
-		ctx, span := obs.StartSpan(ctx, "chunk.download.get",
-			attribute.String(obs.AttrChunkHash, job.hash.String()))
-		defer func() { obs.FinishSpan(span, err) }()
-
-		request, err := http.NewRequestWithContext(ctx, http.MethodGet, c.httpURL(job.url), nil)
-		if err != nil {
-			return 0, err
-		}
-		injectTraceContext(ctx, request.Header)
-		res, err := c.http.Do(request)
-		if err != nil {
-			return 0, err
-		}
-		defer func() { _ = res.Body.Close() }()
-		span.SetAttributes(attribute.Int("http.response.status_code", res.StatusCode))
-		if res.StatusCode != http.StatusOK {
-			return 0, chunkHTTPError(res)
-		}
-		data, err := io.ReadAll(res.Body)
-		if err != nil {
-			return 0, err
-		}
-		span.SetAttributes(attribute.Int(obs.AttrChunkSize, len(data)))
-		if err := sink.deliver(job.hash, data); err != nil {
-			return int64(len(data)), err
-		}
-		return int64(len(data)), nil
+	return c.forEachChunk(ctx, jobs, func(ctx context.Context, job chunkTransfer) (int64, error) {
+		return c.downloadChunk(ctx, sink, job)
 	})
+}
+
+// downloadChunk fetches one chunk and hands it to the sink. Transient failures
+// (network errors, truncated bodies, 5xx, 408 and 429) are retried with a
+// growing pause; anything else, such as an expired or unknown URL, fails right
+// away. The sink only sees a chunk after a complete, successful read, so a
+// retry can never deliver one twice.
+func (c *Client) downloadChunk(ctx context.Context, sink *chunkSink, job chunkTransfer) (int64, error) {
+	for attempt := 0; ; attempt++ {
+		data, retryable, err := c.fetchChunk(ctx, job)
+		if err == nil {
+			if err := sink.deliver(job.hash, data); err != nil {
+				return int64(len(data)), err
+			}
+			return int64(len(data)), nil
+		}
+		if !retryable || attempt+1 >= c.retry.attempts {
+			return 0, err
+		}
+		if err := sleepContext(ctx, c.retry.delay(attempt)); err != nil {
+			return 0, err
+		}
+	}
+}
+
+// fetchChunk downloads one chunk once. retryable reports whether trying again
+// could succeed; a cancelled context never is.
+func (c *Client) fetchChunk(ctx context.Context, job chunkTransfer) (data []byte, retryable bool, err error) {
+	ctx, span := obs.StartSpan(ctx, "chunk.download.get",
+		attribute.String(obs.AttrChunkHash, job.hash.String()))
+	defer func() { obs.FinishSpan(span, err) }()
+
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, c.httpURL(job.url), nil)
+	if err != nil {
+		return nil, false, err
+	}
+	injectTraceContext(ctx, request.Header)
+	res, err := c.http.Do(request)
+	if err != nil {
+		return nil, ctx.Err() == nil, err
+	}
+	defer func() { _ = res.Body.Close() }()
+	span.SetAttributes(attribute.Int("http.response.status_code", res.StatusCode))
+	if res.StatusCode != http.StatusOK {
+		return nil, retryableStatus(res.StatusCode), chunkHTTPError(res)
+	}
+	data, err = io.ReadAll(res.Body)
+	if err != nil {
+		return nil, ctx.Err() == nil, err
+	}
+	span.SetAttributes(attribute.Int(obs.AttrChunkSize, len(data)))
+	return data, false, nil
+}
+
+func retryableStatus(status int) bool {
+	return status >= http.StatusInternalServerError ||
+		status == http.StatusTooManyRequests ||
+		status == http.StatusRequestTimeout
+}
+
+// retryPolicy bounds and paces repeated attempts of one transfer.
+type retryPolicy struct {
+	attempts int
+	backoff  time.Duration
+}
+
+var defaultRetryPolicy = retryPolicy{attempts: 3, backoff: 250 * time.Millisecond}
+
+// delay is the pause after the given failed attempt: the backoff doubled per
+// attempt plus up to a quarter of jitter so parallel workers do not retry in step.
+func (p retryPolicy) delay(attempt int) time.Duration {
+	d := p.backoff << attempt
+	return d + rand.N(d/4+1)
+}
+
+func sleepContext(ctx context.Context, d time.Duration) error {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 // injectTraceContext propagates the current span to the receiving HTTP
@@ -359,6 +463,20 @@ func (c *Client) forEachChunk(ctx context.Context, jobs []chunkTransfer, fn func
 	if len(jobs) == 0 {
 		return nil
 	}
+	return c.runChunks(ctx, func(_ context.Context, emit func(chunkTransfer) bool) error {
+		for _, job := range jobs {
+			if !emit(job) {
+				return nil
+			}
+		}
+		return nil
+	}, fn)
+}
+
+// runChunks runs fn for every job the feed emits on a pool of workers. The feed
+// returns when it has no more jobs or when emit reports false because the
+// transfer was cancelled; a feed error stops the transfer like a failed job.
+func (c *Client) runChunks(ctx context.Context, feed func(ctx context.Context, emit func(chunkTransfer) bool) error, fn func(ctx context.Context, job chunkTransfer) (int64, error)) error {
 	workCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -368,36 +486,41 @@ func (c *Client) forEachChunk(ctx context.Context, jobs []chunkTransfer, fn func
 		once     sync.Once
 		firstErr error
 	)
+	fail := func(err error) {
+		once.Do(func() {
+			firstErr = err
+			cancel()
+		})
+	}
 	for i := 0; i < maxUploadWorkers; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for job := range work {
 				if err := c.limiter.acquire(workCtx); err != nil {
-					once.Do(func() {
-						firstErr = err
-						cancel()
-					})
+					fail(err)
 					return
 				}
 				bytes, err := fn(workCtx, job)
 				c.limiter.release()
 				c.recordTransfer(bytes, err)
 				if err != nil {
-					once.Do(func() {
-						firstErr = err
-						cancel()
-					})
+					fail(err)
 					return
 				}
 			}
 		}()
 	}
-	for _, job := range jobs {
+	feedErr := feed(workCtx, func(job chunkTransfer) bool {
 		select {
 		case work <- job:
+			return true
 		case <-workCtx.Done():
+			return false
 		}
+	})
+	if feedErr != nil {
+		fail(feedErr)
 	}
 	close(work)
 	wg.Wait()

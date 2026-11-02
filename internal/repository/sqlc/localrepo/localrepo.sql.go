@@ -9,6 +9,64 @@ import (
 	"context"
 )
 
+const fileDelete = `-- name: FileDelete :exec
+DELETE FROM files
+WHERE path = ?1
+`
+
+func (q *Queries) FileDelete(ctx context.Context, path string) error {
+	_, err := q.db.ExecContext(ctx, fileDelete, path)
+	return err
+}
+
+const fileList = `-- name: FileList :many
+SELECT path, tree_path, hash, size_bytes, mode, is_binary, encoding, chunks
+FROM files
+`
+
+type FileListRow struct {
+	Path      string `json:"path"`
+	TreePath  string `json:"tree_path"`
+	Hash      []byte `json:"hash"`
+	SizeBytes int64  `json:"size_bytes"`
+	Mode      int64  `json:"mode"`
+	IsBinary  bool   `json:"is_binary"`
+	Encoding  string `json:"encoding"`
+	Chunks    []byte `json:"chunks"`
+}
+
+func (q *Queries) FileList(ctx context.Context) ([]FileListRow, error) {
+	rows, err := q.db.QueryContext(ctx, fileList)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []FileListRow
+	for rows.Next() {
+		var i FileListRow
+		if err := rows.Scan(
+			&i.Path,
+			&i.TreePath,
+			&i.Hash,
+			&i.SizeBytes,
+			&i.Mode,
+			&i.IsBinary,
+			&i.Encoding,
+			&i.Chunks,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const fileUpsert = `-- name: FileUpsert :exec
 INSERT INTO files (path, tree_path, hash, size_bytes, mode, is_binary, encoding, chunks, snapshot_id)
 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
@@ -93,7 +151,6 @@ func (q *Queries) MetaSet(ctx context.Context, arg MetaSetParams) error {
 const snapshotFileList = `-- name: SnapshotFileList :many
 SELECT path, hash, size_bytes, mode, is_binary, encoding, chunks
 FROM files
-WHERE snapshot_id = ?1
 ORDER BY path
 `
 
@@ -107,8 +164,8 @@ type SnapshotFileListRow struct {
 	Chunks    []byte `json:"chunks"`
 }
 
-func (q *Queries) SnapshotFileList(ctx context.Context, snapshotID string) ([]SnapshotFileListRow, error) {
-	rows, err := q.db.QueryContext(ctx, snapshotFileList, snapshotID)
+func (q *Queries) SnapshotFileList(ctx context.Context) ([]SnapshotFileListRow, error) {
+	rows, err := q.db.QueryContext(ctx, snapshotFileList)
 	if err != nil {
 		return nil, err
 	}
@@ -198,26 +255,6 @@ func (q *Queries) StagedFileList(ctx context.Context) ([]string, error) {
 	return items, nil
 }
 
-const staleFileDelete = `-- name: StaleFileDelete :exec
-DELETE FROM files
-WHERE snapshot_id <> ?1
-`
-
-func (q *Queries) StaleFileDelete(ctx context.Context, snapshotID string) error {
-	_, err := q.db.ExecContext(ctx, staleFileDelete, snapshotID)
-	return err
-}
-
-const staleTreeNodeDelete = `-- name: StaleTreeNodeDelete :exec
-DELETE FROM tree_nodes
-WHERE snapshot_id <> ?1
-`
-
-func (q *Queries) StaleTreeNodeDelete(ctx context.Context, snapshotID string) error {
-	_, err := q.db.ExecContext(ctx, staleTreeNodeDelete, snapshotID)
-	return err
-}
-
 const statCacheList = `-- name: StatCacheList :many
 SELECT path, size_bytes, mtime_ns, mode, hash, cached_at
 FROM stat_cache
@@ -294,6 +331,56 @@ func (q *Queries) StatCacheUpsert(ctx context.Context, arg StatCacheUpsertParams
 		arg.CachedAt,
 	)
 	return err
+}
+
+const treeNodeDelete = `-- name: TreeNodeDelete :exec
+DELETE FROM tree_nodes
+WHERE path = ?1
+`
+
+func (q *Queries) TreeNodeDelete(ctx context.Context, path string) error {
+	_, err := q.db.ExecContext(ctx, treeNodeDelete, path)
+	return err
+}
+
+const treeNodeList = `-- name: TreeNodeList :many
+SELECT path, parent_path, hash, mode
+FROM tree_nodes
+`
+
+type TreeNodeListRow struct {
+	Path       string `json:"path"`
+	ParentPath string `json:"parent_path"`
+	Hash       []byte `json:"hash"`
+	Mode       int64  `json:"mode"`
+}
+
+func (q *Queries) TreeNodeList(ctx context.Context) ([]TreeNodeListRow, error) {
+	rows, err := q.db.QueryContext(ctx, treeNodeList)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []TreeNodeListRow
+	for rows.Next() {
+		var i TreeNodeListRow
+		if err := rows.Scan(
+			&i.Path,
+			&i.ParentPath,
+			&i.Hash,
+			&i.Mode,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const treeNodeUpsert = `-- name: TreeNodeUpsert :exec

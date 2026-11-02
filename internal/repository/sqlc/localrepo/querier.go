@@ -9,20 +9,22 @@ import (
 )
 
 type Querier interface {
+	FileDelete(ctx context.Context, path string) error
+	FileList(ctx context.Context) ([]FileListRow, error)
 	FileUpsert(ctx context.Context, arg FileUpsertParams) error
 	MetaDelete(ctx context.Context, key string) error
 	MetaGet(ctx context.Context, key string) (string, error)
 	MetaSet(ctx context.Context, arg MetaSetParams) error
-	SnapshotFileList(ctx context.Context, snapshotID string) ([]SnapshotFileListRow, error)
+	SnapshotFileList(ctx context.Context) ([]SnapshotFileListRow, error)
 	StagedFileDelete(ctx context.Context, path string) error
 	StagedFileDeleteAll(ctx context.Context) error
 	StagedFileInsert(ctx context.Context, path string) error
 	StagedFileList(ctx context.Context) ([]string, error)
-	StaleFileDelete(ctx context.Context, snapshotID string) error
-	StaleTreeNodeDelete(ctx context.Context, snapshotID string) error
 	StatCacheList(ctx context.Context) ([]StatCache, error)
 	StatCacheSweep(ctx context.Context) error
 	StatCacheUpsert(ctx context.Context, arg StatCacheUpsertParams) error
+	TreeNodeDelete(ctx context.Context, path string) error
+	TreeNodeList(ctx context.Context) ([]TreeNodeListRow, error)
 	TreeNodeUpsert(ctx context.Context, arg TreeNodeUpsertParams) error
 }
 
