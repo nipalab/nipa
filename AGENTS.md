@@ -81,6 +81,13 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   tree-vs-tree entry point (`TreeDiff`) and unified/stat/name rendering.
   `internal/client/merge` delegates its line diff to `diff.Lines`. Keep this
   package free of client imports: the server merge-request diff reuses it.
+- **Asset previews** (`internal/preview/`): pure package for the desktop GUI's
+  visual diffs (design and PR roadmap in `docs/DESKTOP.md`) — `Classify`
+  (viewer kind by extension + binary flag), `DecodeImage` (PNG/JPEG/GIF/BMP/
+  TIFF/WebP via stdlib + `golang.org/x/image`, own TGA decoder; `MaxPixels`
+  checked before allocating), `Downscale` and `CompareImages` (changed
+  pixels/ratio/max delta/bbox; transparent pixels compare equal). Fuzzed; keep
+  it free of client imports like `internal/diff`.
 
 Flow for `nipa clone <url> <target>`: `cli/clone.go` parses the URL →
 `usecase.Repo.Clone` → ensure empty target → login → resolve default branch (or
