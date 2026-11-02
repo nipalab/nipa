@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Name=Nipa
+Comment=Version control for game teams
+# The Exec line includes %u to pass the URL to the application
+Exec=/usr/local/bin/nipa-desktop %u
+Terminal=false
+Type=Application
+Icon=nipa-desktop
+Categories=Utility;
+StartupWMClass=nipa-desktop
+
+ 

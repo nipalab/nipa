@@ -1,0 +1,7 @@
+.task
+.wails
+bin
+frontend/dist
+frontend/node_modules
+frontend/coverage
+build/linux/nipa-desktop.desktop

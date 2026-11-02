@@ -1,0 +1,105 @@
+name: Desktop
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'desktop/**'
+      - 'internal/client/**'
+      - 'internal/preview/**'
+      - 'internal/diff/**'
+      - 'go.mod'
+      - '.github/workflows/desktop.yml'
+  pull_request:
+    paths:
+      - 'desktop/**'
+      - 'internal/client/**'
+      - 'internal/preview/**'
+      - 'internal/diff/**'
+      - 'go.mod'
+      - '.github/workflows/desktop.yml'
+    types: [opened, synchronize, reopened]
+
+defaults:
+  run:
+    working-directory: desktop
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: desktop/go.mod
+          cache-dependency-path: desktop/go.sum
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: desktop/frontend/package-lock.json
+
+      - name: Go vet
+        run: go vet ./internal/...
+
+      - name: Go tests
+        run: go test -race -cover ./internal/...
+
+      - name: Install frontend dependencies
+        working-directory: desktop/frontend
+        run: npm ci --ignore-scripts
+
+      - name: Typecheck
+        working-directory: desktop/frontend
+        run: npm run lint
+
+      - name: Frontend tests
+        working-directory: desktop/frontend
+        run: npm run test:coverage
+
+  build:
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: desktop/go.mod
+          cache-dependency-path: desktop/go.sum
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: desktop/frontend/package-lock.json
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y build-essential pkg-config libgtk-4-dev libwebkitgtk-6.0-dev
+
+      - name: Install wails3
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@v3.1.0
+
+      - name: Bindings are up to date
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          wails3 generate bindings -clean=true -ts -i
+          git diff --exit-code -- frontend/bindings
+
+      - name: Build
+        run: wails3 build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nipa-desktop-${{ runner.os }}
+          path: desktop/bin/
+          retention-days: 7

@@ -6,7 +6,7 @@ on binary-heavy projects.
 
 ## Decisions
 
-- **Framework: Wails (Go) + React/TypeScript.** Visual asset diffs are the core
+- **Framework: Wails v3 (Go) + React/TypeScript.** Visual asset diffs are the core
   feature, and the web platform already provides what they need: WebGL2 for
   image compare modes and float textures, three.js for glTF/OBJ/FBX/USDZ,
   WebAudio for waveforms and playback. The Go side talks to `nipa serve`
@@ -24,6 +24,46 @@ on binary-heavy projects.
   WebKitGTK dependencies stay out of `go test ./...` and the server builds.
 - **UI stack:** React 18, Vite, Tailwind + shadcn/ui, lucide icons, TanStack
   Query/Virtual, CodeMirror 6, three.js.
+
+## The app (`desktop/`)
+
+Wails v3.1.0 project, nested Go module `github.com/nipalab/nipa/desktop`
+(`replace github.com/nipalab/nipa => ../`), so root `go test ./...`, vet and
+Sonar never compile it.
+
+- `main.go` wires one bound service and the window (binary `nipa-desktop`;
+  it must not be called `nipa`, the app looks for the CLI next to itself).
+- `internal/connector`: reads `daemon.json` (`daemon.ReadEndpoint`), checks the
+  pid, dials loopback gRPC with the token as per-RPC credentials and `Ping`s.
+  When no live daemon answers it starts `nipa serve` detached (own session /
+  process group, output in the user cache dir `nipa/daemon.log`) and polls
+  until it answers (10 s). The CLI is resolved from `NIPA_BIN`, next to the
+  app binary, then `PATH`. The daemon outlives the app on purpose: Explorer
+  and engine plugins share it.
+- `internal/workspace`: the opened clones in `<config dir>/nipa/desktop.json`
+  (atomic write, 0600). The daemon only keeps watched roots in memory, so the
+  app re-watches them on start; a clone that fails to watch stays listed with
+  its error.
+- `internal/service`: the Wails-bound API (`Connect`, `Repos`, `PickRepo`,
+  `AddRepo`, `RemoveRepo`). Plain Go behind `Dialer`/`RepoStore`/
+  `FolderPicker` seams, so it is unit-tested without a webview; an
+  `Unavailable` error drops the session so the next call reconnects (and
+  restarts the daemon).
+- `frontend/`: React 18, Vite 8, Tailwind 4 (tokens in `src/index.css`,
+  light/dark/system theme in `src/lib/theme.tsx`), TanStack Query, lucide.
+  Generated bindings live in `frontend/bindings` and are committed (CI fails
+  when they are stale). `src/api/desktop.ts` is the only module importing them,
+  which keeps tests mockable.
+- Linux uses GTK4/WebKitGTK 6.0; the Taskfile falls back to `-tags gtk3` when
+  `pkg-config webkitgtk-6.0` is missing (`wails3 build EXTRA_TAGS=...`
+  overrides).
+
+Commands: `make desktop` (app + bundled `nipa` in `desktop/bin`),
+`make desktop-dev` (hot reload, `NIPA_BIN` = `bin/nipa`), `make desktop-test`.
+They need the `wails3` CLI (`go install
+github.com/wailsapp/wails/v3/cmd/wails3@v3.1.0`, plus `-tags gtk3` on hosts
+with WebKitGTK 4.1 only). CI: `.github/workflows/desktop.yml` (tests, then a
+Linux/macOS/Windows build matrix with a bindings freshness check).
 
 ## Asset diff coverage
 
@@ -61,7 +101,7 @@ Pure package (no client imports), shared by the daemon and later the server.
 1. `internal/preview`: classification, common images, TGA, compare. **(done)**
 2. Daemon `DiffFiles`: structured diff stream (paths, status, kind, hunks). **(done)**
 3. Daemon `ReadBlob` + `Preview` for images. **(done)**
-4. `desktop/` Wails scaffold + daemon connector.
+4. `desktop/` Wails scaffold + daemon connector. **(done)**
 5. Changes screen + text diff.
 6. Image compare viewer.
 7. DDS/KTX2/EXR/HDR/PSD decoders + viewer controls.

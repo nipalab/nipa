@@ -1,0 +1,54 @@
+version: '3'
+
+vars:
+  APP_NAME: "nipa-desktop"
+  BIN_DIR: "bin"
+  PACKAGE_MANAGER: '{{.PACKAGE_MANAGER | default "npm"}}'
+  VITE_PORT: '{{.WAILS_VITE_PORT | default 9245}}'
+  GOOS: '{{.GOOS | default OS}}'
+  # Linux builds use GTK4/WebKitGTK 6.0; hosts that only ship WebKitGTK 4.1
+  # fall back to the legacy GTK3 backend. `wails3 build EXTRA_TAGS=...` wins.
+  EXTRA_TAGS:
+    sh: '{{if eq OS "linux"}}pkg-config --exists webkitgtk-6.0 2>/dev/null || echo gtk3{{else}}true{{end}}'
+
+includes:
+  common: ./build/Taskfile.yml
+  windows: ./build/windows/Taskfile.yml
+  darwin: ./build/darwin/Taskfile.yml
+  linux: ./build/linux/Taskfile.yml
+
+tasks:
+  build:
+    summary: Builds the application
+    cmds:
+      - task: "{{.GOOS}}:build"
+
+  package:
+    summary: Packages a production build of the application
+    cmds:
+      - task: "{{.GOOS}}:package"
+
+  run:
+    summary: Runs the application
+    cmds:
+      - task: "{{.GOOS}}:run"
+
+  dev:
+    summary: Runs the application in development mode
+    cmds:
+      - wails3 dev -config ./build/config.yml -port {{.VITE_PORT}}
+
+  test:
+    summary: Runs the Go and frontend tests
+    cmds:
+      - go test {{if .EXTRA_TAGS}}-tags {{.EXTRA_TAGS}}{{end}} -cover ./internal/...
+      - task: common:install:frontend:deps
+      - task: common:frontend:run
+        vars: { SCRIPT: "lint" }
+      - task: common:frontend:run
+        vars: { SCRIPT: "test" }
+
+  install:msix:tools:
+    summary: Installs tools required for Windows MSIX packaging
+    cmds:
+      - task: windows:install:msix:tools
