@@ -72,7 +72,7 @@ then change one file inside a 1000-file directory.
 | Recursive manifest | 42 ms | 44 ms |
 | Commit diff / merge-request diff | 96 ms / 98 ms | 96 ms / 99 ms |
 | Fresh clone | 2.2 s | 3.3 s |
-| `SaveTree`, 5 changed files | 0.78 s (300k allocs) | n/a (client) |
+| `SaveTree`, 5 changed files | 0.85 s (290k allocs) | n/a (client) |
 
 Reading the numbers: the postgres push is dominated by chunk transfer to
 MinIO, `ApplyPush` is about a tenth of it on loopback and grows with network

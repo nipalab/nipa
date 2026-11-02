@@ -57,6 +57,7 @@ func BenchmarkSaveTree_TenKFiles_FiveChanges(b *testing.B) {
 	require.NoError(b, lr.SaveTree(benchTree(0)))
 
 	b.ResetTimer()
+	b.StopTimer()
 	for i := 1; i <= b.N; i++ {
 		tree := benchTree(uint32(i))
 		b.StartTimer()
