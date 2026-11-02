@@ -15,6 +15,10 @@ import (
 // set hunks_omitted.
 const maxFileHunkBytes = 1 << 20
 
+// hunkLineOverhead approximates the encoded framing of one line (kind, line
+// numbers, flags) so many short lines cannot exceed the message limit.
+const hunkLineOverhead = 32
+
 var diffStatusNames = map[diff.Status]string{
 	diff.Added:    "added",
 	diff.Modified: "modified",
@@ -66,7 +70,7 @@ func diffFileToPB(f diff.FileDiff, opts diff.Options) *daemonpb.DiffFile {
 	size := 0
 	for _, hunk := range hunks {
 		for _, line := range hunk.Lines {
-			size += len(line.Text)
+			size += len(line.Text) + hunkLineOverhead
 			switch line.Kind {
 			case '+':
 				out.Additions++

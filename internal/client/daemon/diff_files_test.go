@@ -197,6 +197,16 @@ func TestServer_DiffFilesOmitsOversizedHunks(t *testing.T) {
 	require.EqualValues(t, 1100, got[0].GetAdditions())
 }
 
+func TestServer_DiffFilesOmitsManyShortLines(t *testing.T) {
+	many := strings.Repeat("x\n", 100000)
+	srv, root, _ := diffFilesServer(t, addedFileDiff("data/many.txt", many))
+
+	got := runDiffFiles(t, srv, &daemonpb.DiffRequest{Root: root}).files()
+	require.Len(t, got, 1)
+	require.True(t, got[0].GetHunksOmitted())
+	require.EqualValues(t, 100000, got[0].GetAdditions())
+}
+
 func TestServer_DiffFilesIgnoresWhitespaceOnlyChanges(t *testing.T) {
 	ws := diff.FileDiff{
 		Change: diff.Change{
