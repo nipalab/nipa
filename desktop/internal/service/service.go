@@ -276,6 +276,7 @@ func (s *Service) follow(sess Session, root string) {
 	ctx, cancel := context.WithCancel(context.Background())
 	s.watched[root] = cancel
 	go func() {
+		defer s.unfollow(ctx, sess, root)
 		stream, err := sess.Client().WatchChanges(ctx, &daemonpb.WatchChangesRequest{Root: root})
 		if err != nil {
 			return
@@ -288,6 +289,16 @@ func (s *Service) follow(sess Session, root string) {
 			s.emit(EventRepoChanged, RepoChanged{Root: root, Paths: change.GetPaths()})
 		}
 	}()
+}
+
+// unfollow forgets a follower that ended on its own, so the next call to the
+// clone watches it again. A cancelled follower was already replaced or removed.
+func (s *Service) unfollow(ctx context.Context, sess Session, root string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if ctx.Err() == nil && s.active == sess {
+		delete(s.watched, root)
+	}
 }
 
 // dropIfDisconnected forgets a session whose daemon went away, so the next

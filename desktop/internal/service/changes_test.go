@@ -140,7 +140,7 @@ func (r *recorder) snapshot() []any {
 
 func newOps(t *testing.T) (*Service, *opsDaemon, *recorder, *int) {
 	t.Helper()
-	d := &opsDaemon{fakeDaemon: &fakeDaemon{watchErr: map[string]error{}}}
+	d := &opsDaemon{fakeDaemon: &fakeDaemon{watchErr: map[string]error{}, changes: make(chan *daemonpb.RepoChange, 4)}}
 	rec := &recorder{}
 	dials := 0
 	svc := New(func(context.Context) (Session, error) {
@@ -458,4 +458,29 @@ func TestService_StreamErrorsMidway(t *testing.T) {
 	d.err = errors.New("stream cancelled")
 	_, err = svc.Push(cancelled, "/work/game", "m")
 	require.ErrorIs(t, err, context.Canceled)
+}
+
+func TestService_FollowerEndForgetsRoot(t *testing.T) {
+	svc, d, _, _ := newOps(t)
+	d.changes = nil
+	d.status = &daemonpb.StatusResponse{}
+	_, err := svc.Changes(ctx, "/work/game")
+	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		svc.mu.Lock()
+		defer svc.mu.Unlock()
+		_, ok := svc.watched["/work/game"]
+		return !ok
+	}, 2*time.Second, 5*time.Millisecond, "a follower that ended must not keep the root marked as watched")
+
+	d.changes = make(chan *daemonpb.RepoChange, 1)
+	_, err = svc.Changes(ctx, "/work/game")
+	require.NoError(t, err)
+	d.changes <- &daemonpb.RepoChange{}
+	require.Eventually(t, func() bool {
+		svc.mu.Lock()
+		defer svc.mu.Unlock()
+		_, ok := svc.watched["/work/game"]
+		return ok && len(d.changes) == 0
+	}, 2*time.Second, 5*time.Millisecond, "the next call follows the clone again")
 }
