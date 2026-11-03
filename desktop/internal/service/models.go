@@ -109,11 +109,14 @@ func (s *Service) loadModel(ctx context.Context, client daemonpb.NipaDaemonClien
 	}
 	budget := maxRenderBytes - len(data)
 	files := map[string][]byte{}
-	for i := 0; i < len(deps) && budget >= 0 && len(files)+len(side.Missing) < maxModelFiles; i++ {
+	seen := map[string]bool{}
+	i := 0
+	for ; i < len(deps) && budget >= 0 && len(files)+len(side.Missing) < maxModelFiles; i++ {
 		dep := deps[i]
-		if _, done := files[dep]; done {
+		if seen[dep] {
 			continue
 		}
+		seen[dep] = true
 		full, ok := resolveModelPath(ref.Path, dep)
 		if !ok {
 			side.Missing = append(side.Missing, dep)
@@ -142,6 +145,12 @@ func (s *Service) loadModel(ctx context.Context, client daemonpb.NipaDaemonClien
 	if budget < 0 {
 		side.TooLarge = true
 		return side, nil
+	}
+	for _, dep := range deps[i:] {
+		if !seen[dep] {
+			seen[dep] = true
+			side.Missing = append(side.Missing, dep)
+		}
 	}
 	side.Data = base64.StdEncoding.EncodeToString(data)
 	for name, content := range files {

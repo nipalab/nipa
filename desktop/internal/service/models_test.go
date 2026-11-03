@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/base64"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -161,6 +162,30 @@ func TestService_ModelDiffFailures(t *testing.T) {
 	e := &erroringOps{opsDaemon: d.opsDaemon, err: status.Error(codes.Unavailable, "daemon gone")}
 	_, _, err = svc.readBlob(ctx, e, "/w", &daemonpb.BlobRef{Path: "a"}, 10)
 	require.EqualError(t, err, "daemon gone")
+}
+
+func TestService_ModelDiffReportsFilesBeyondCap(t *testing.T) {
+	files := map[string]string{}
+	var lines []string
+	for i := range maxModelFiles + 3 {
+		name := fmt.Sprintf("m%02d.mtl", i)
+		lines = append(lines, "mtllib "+name)
+		if i != 1 {
+			files["art/"+name] = "newmtl X\n"
+		}
+		if i == 0 || i == 2 {
+			files["art/"+name] = "newmtl X\nmap_Kd skin.png\n"
+		}
+	}
+	files["art/ship.obj"] = strings.Join(lines, "\n") + "\nv 0 0 0\n"
+	svc, d := newModels(t, files)
+	out, err := svc.ModelDiff(ctx, "/work/game", nil, &ImageRef{Source: "working", Path: "art/ship.obj"})
+	require.NoError(t, err)
+	n := out.New
+	require.False(t, n.TooLarge)
+	require.Len(t, n.Files, maxModelFiles-1)
+	require.Equal(t, []string{"m01.mtl", "m64.mtl", "m65.mtl", "m66.mtl", "skin.png"}, n.Missing)
+	require.Len(t, d.reads, maxModelFiles+1)
 }
 
 func TestResolveModelPath(t *testing.T) {
