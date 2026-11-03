@@ -134,6 +134,17 @@ export function createStage(container: HTMLElement, makeRenderer: () => Renderer
   };
   renderer.setAnimationLoop(frame);
 
+  let clipPlaying: string | null = null;
+  const play = () => {
+    for (const s of sides) {
+      if (!s.mixer || !s.model) continue;
+      s.mixer.stopAllAction();
+      const clip = clipPlaying === null ? undefined : s.model.animations.find((a, i) => clipName(a, i) === clipPlaying);
+      if (clip) s.mixer.clipAction(clip).reset().play();
+    }
+    clock.getDelta();
+  };
+
   return {
     setModels(old, next) {
       [old, next].forEach((model, i) => {
@@ -147,6 +158,7 @@ export function createStage(container: HTMLElement, makeRenderer: () => Renderer
         side.mixer = model && model.animations.length ? new AnimationMixer(model.object) : null;
         if (model) side.scene.add(model.object);
       });
+      play();
       fit();
     },
     setMode(m) {
@@ -156,13 +168,8 @@ export function createStage(container: HTMLElement, makeRenderer: () => Renderer
       shading = s;
     },
     playAnimation(name) {
-      for (const s of sides) {
-        if (!s.mixer || !s.model) continue;
-        s.mixer.stopAllAction();
-        const clip = name === null ? undefined : s.model.animations.find((a, i) => clipName(a, i) === name);
-        if (clip) s.mixer.clipAction(clip).reset().play();
-      }
-      clock.getDelta();
+      clipPlaying = name;
+      play();
     },
     resetView: fit,
     resize(w, h) {

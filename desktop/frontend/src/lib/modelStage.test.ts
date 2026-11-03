@@ -108,8 +108,18 @@ describe("createStage", () => {
     fake.frame();
     expect(a.object.position.x).toBeGreaterThan(0);
     expect(b.object.position.x).toBeCloseTo(a.object.position.x);
+    const c = model(1, [clip()]);
+    stage.setModels(c, b);
+    vi.spyOn(performance, "now").mockReturnValue(now + 1000);
+    fake.frame();
+    expect(c.object.position.x).toBeGreaterThan(0);
+
     stage.playAnimation(null);
-    stage.setModels(model(), null);
+    const d = model(1, [clip()]);
+    stage.setModels(d, null);
+    vi.spyOn(performance, "now").mockReturnValue(now + 1500);
+    fake.frame();
+    expect(d.object.position.x).toBe(0);
     vi.restoreAllMocks();
   });
 
