@@ -16,7 +16,7 @@ import {
   type Material,
 } from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import { clipName, type LoadedModel } from "@/lib/modelLoad";
+import { clipName, disposeModel, type LoadedModel } from "@/lib/modelLoad";
 
 export type StageMode = "side" | "overlay";
 export type Shading = "shaded" | "wireframe" | "both";
@@ -110,6 +110,7 @@ export function createStage(container: HTMLElement, makeRenderer: () => Renderer
     for (const s of sides) s.mixer?.update(dt);
     controls.update();
     renderer.setScissorTest(true);
+    renderer.setScissor(0, 0, width, height);
     renderer.clear();
     const [old, next] = sides;
     const split = mode === "side" && old.model && next.model;
@@ -138,7 +139,10 @@ export function createStage(container: HTMLElement, makeRenderer: () => Renderer
       [old, next].forEach((model, i) => {
         const side = sides[i];
         side.mixer?.stopAllAction();
-        if (side.model) side.scene.remove(side.model.object);
+        if (side.model && side.model !== model) {
+          side.scene.remove(side.model.object);
+          disposeModel(side.model);
+        }
         side.model = model;
         side.mixer = model && model.animations.length ? new AnimationMixer(model.object) : null;
         if (model) side.scene.add(model.object);
@@ -168,6 +172,7 @@ export function createStage(container: HTMLElement, makeRenderer: () => Renderer
     },
     dispose() {
       renderer.setAnimationLoop(null);
+      for (const s of sides) if (s.model) disposeModel(s.model);
       controls.dispose();
       renderer.dispose();
       renderer.domElement.remove();

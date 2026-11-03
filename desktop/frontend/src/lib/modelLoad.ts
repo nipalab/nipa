@@ -1,4 +1,4 @@
-import { AnimationClip, Box3, LoadingManager, Object3D, type BufferGeometry, type Material, type Mesh } from "three";
+import { AnimationClip, Box3, LoadingManager, Object3D, type BufferGeometry, type Material, type Mesh, type Texture } from "three";
 import { FBXLoader } from "three/examples/jsm/loaders/FBXLoader.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { MTLLoader } from "three/examples/jsm/loaders/MTLLoader.js";
@@ -73,7 +73,7 @@ export async function loadModel(side: ModelSide): Promise<LoadedModel> {
       const loader = new OBJLoader(manager);
       const lib = /^mtllib\s+(\S+)/m.exec(source)?.[1];
       if (lib && files[lib]) {
-        const materials = new MTLLoader(manager).parse(text(base64ToBytes(files[lib])), "");
+        const materials = new MTLLoader(manager).parse(text(base64ToBytes(files[lib])), lib.slice(0, lib.lastIndexOf("/") + 1));
         materials.preload();
         loader.setMaterials(materials);
       }
@@ -91,6 +91,21 @@ export async function loadModel(side: ModelSide): Promise<LoadedModel> {
       return { object: new USDLoader(manager).parse(arrayBuffer(bytes), ""), animations: [] };
   }
   throw new Error(`${side.format.toUpperCase()} models cannot be shown yet`);
+}
+
+const textureValues = (m: Material) => Object.values(m).filter((v) => (v as { isTexture?: boolean } | null)?.isTexture) as Texture[];
+
+export function disposeModel(model: LoadedModel): void {
+  model.object.traverse((o) => {
+    const mesh = o as Mesh;
+    if (!mesh.isMesh) return;
+    mesh.geometry.dispose();
+    const list: Material[] = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    for (const m of list) {
+      for (const t of textureValues(m)) t.dispose();
+      m.dispose();
+    }
+  });
 }
 
 // sceneStats counts what a loaded scene contains, for formats the daemon
@@ -119,9 +134,7 @@ export function sceneStats(model: LoadedModel): ModelStats {
     for (const m of list) materials.add(m);
   });
   for (const m of materials) {
-    for (const value of Object.values(m)) {
-      if ((value as { isTexture?: boolean } | null)?.isTexture) textures.add(value);
-    }
+    for (const t of textureValues(m)) textures.add(t);
   }
   const box = new Box3().setFromObject(model.object);
   const empty = box.isEmpty();
@@ -136,7 +149,7 @@ export function sceneStats(model: LoadedModel): ModelStats {
     nodes,
     skins: 0,
     joints: bones.size,
-    animations: model.animations.map(clipName),
+    animations: model.animations.map((clip, i) => clipName(clip, i)),
     morphTargets,
     min: empty ? null : box.min.toArray(),
     max: empty ? null : box.max.toArray(),

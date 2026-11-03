@@ -68,7 +68,7 @@ export function ModelCompareView({ compare }: { compare: ModelCompare }) {
   const oldStats = useMemo(() => old?.stats ?? (oldState.model ? sceneStats(oldState.model) : null), [old, oldState.model]);
   const newStats = useMemo(() => next?.stats ?? (newState.model ? sceneStats(newState.model) : null), [next, newState.model]);
   const clips = useMemo(
-    () => [...new Set([oldState.model, newState.model].flatMap((m) => m?.animations.map(clipName) ?? []))],
+    () => [...new Set([oldState.model, newState.model].flatMap((m) => m?.animations.map((clip, i) => clipName(clip, i)) ?? []))],
     [oldState.model, newState.model],
   );
 

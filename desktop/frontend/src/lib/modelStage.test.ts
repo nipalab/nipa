@@ -1,4 +1,4 @@
-import { AnimationClip, BoxGeometry, Group, Mesh, MeshStandardMaterial, NumberKeyframeTrack, type Material, type Scene } from "three";
+import { AnimationClip, BoxGeometry, Group, Mesh, MeshStandardMaterial, NumberKeyframeTrack, Texture, type Material, type Scene } from "three";
 import { describe, expect, it, vi } from "vitest";
 import type { LoadedModel } from "./modelLoad";
 import { createStage, type RendererLike } from "./modelStage";
@@ -46,6 +46,12 @@ describe("createStage", () => {
     expect(fake.raw.setSize).toHaveBeenCalledWith(800, 400);
 
     stage.setModels(model(1), model(2));
+    fake.calls.length = 0;
+    fake.frame();
+    fake.frame();
+    const clearAt = fake.raw.clear.mock.invocationCallOrder.at(-1)!;
+    const lastScissor = fake.raw.setScissor.mock.invocationCallOrder.filter((n) => n < clearAt).length - 1;
+    expect(fake.raw.setScissor.mock.calls[lastScissor]).toEqual([0, 0, 800, 400]);
     fake.calls.length = 0;
     fake.frame();
     expect(fake.calls.map((c) => c.viewport)).toEqual([
@@ -105,6 +111,31 @@ describe("createStage", () => {
     stage.playAnimation(null);
     stage.setModels(model(), null);
     vi.restoreAllMocks();
+  });
+
+  it("disposes models it replaces and holds on dispose", () => {
+    const fake = fakeRenderer();
+    const stage = createStage(document.createElement("div"), () => fake.renderer);
+    const a = model();
+    const b = model();
+    const c = model();
+    const geometry = (m: LoadedModel) => (m.object.children[0] as Mesh).geometry;
+    const material = (m: LoadedModel) => (m.object.children[0] as Mesh).material as MeshStandardMaterial;
+    const texture = new Texture();
+    material(a).map = texture;
+    const spies = [a, b, c].map((m) => ({ g: vi.spyOn(geometry(m), "dispose"), m: vi.spyOn(material(m), "dispose") }));
+    const tex = vi.spyOn(texture, "dispose");
+
+    stage.setModels(a, b);
+    stage.setModels(c, b);
+    expect(spies[0].g).toHaveBeenCalled();
+    expect(spies[0].m).toHaveBeenCalled();
+    expect(tex).toHaveBeenCalled();
+    expect(spies[1].g).not.toHaveBeenCalled();
+
+    stage.dispose();
+    expect(spies[1].g).toHaveBeenCalled();
+    expect(spies[2].m).toHaveBeenCalled();
   });
 
   it("defaults to a WebGL renderer", () => {

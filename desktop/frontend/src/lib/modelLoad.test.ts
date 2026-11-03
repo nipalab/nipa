@@ -1,5 +1,6 @@
 import { AnimationClip, Bone, BoxGeometry, BufferAttribute, Group, Mesh, MeshStandardMaterial, Texture } from "three";
 import { FBXLoader } from "three/examples/jsm/loaders/FBXLoader.js";
+import { MTLLoader } from "three/examples/jsm/loaders/MTLLoader.js";
 import { USDLoader } from "three/examples/jsm/loaders/USDLoader.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ModelSide } from "@/api/desktop";
@@ -93,6 +94,10 @@ describe("loadModel", () => {
     const stats = sceneStats(model);
     expect(stats.materials).toEqual(["Hull"]);
     expect(stats.triangles).toBe(1);
+    const parse = vi.spyOn(MTLLoader.prototype, "parse");
+    const nested = obj.replace("ship.mtl", "materials/ship.mtl");
+    await loadModel(side({ format: "obj", data: textB64(nested), files: { "materials/ship.mtl": textB64("newmtl Hull\nKd 1 0 0\n") } }));
+    expect(parse).toHaveBeenLastCalledWith(expect.any(String), "materials/");
     const plain = await loadModel(side({ format: "obj", data: textB64("v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n") }));
     expect(sceneStats(plain).vertices).toBe(3);
   });
