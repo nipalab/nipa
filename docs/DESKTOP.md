@@ -46,7 +46,7 @@ Sonar never compile it.
   its error.
 - `internal/service`: the Wails-bound API (`Connect`, `Repos`, `PickRepo`,
   `AddRepo`, `RemoveRepo`; Changes screen: `Changes`, `Stage`, `Unstage`,
-  `Discard`, `FileDiff`, `Push`, `Update`). Plain Go behind `Dialer`/
+  `Discard`, `FileDiff`, `ImageDiff`, `Push`, `Update`). Plain Go behind `Dialer`/
   `RepoStore`/`FolderPicker` seams, so it is unit-tested without a webview; an
   `Unavailable` error drops the session so the next call reconnects (and
   restarts the daemon) and re-watches each clone on first use. Every watched
@@ -61,9 +61,21 @@ Sonar never compile it.
   (line kinds `added`/`removed`/`context`); an untracked text file is read
   with `ReadBlob` and shown as a full addition. `DiffViewer.viewerFor` is the
   viewer registry: text diffs (unified/split, virtualized, per-line
-  highlight.js), notices (too large, mode-only, empty) and a metadata card for
-  binaries until the visual viewers land. The list refreshes on
-  `repo:changed`, window focus and a 30 s poll.
+  highlight.js), notices (too large, mode-only, empty), the image viewer and
+  a metadata card for other binaries. The list refreshes on `repo:changed`,
+  window focus and a 30 s poll.
+- Image viewer (`ImageDiff.tsx`, `src/lib/imageCompare.ts`): `ImageDiff`
+  calls the daemon's `Preview` (snapshot before, working file after; previews
+  capped at 2048 px) and returns the PNGs as data URLs plus the pixel-diff
+  stats; a 415 from the daemon (format without a decoder yet, too large)
+  becomes `unsupported` and the metadata card. The frontend decodes the PNGs
+  through a canvas and renders side by side, swipe, onion skin, a difference
+  heatmap (client-side with a tolerance slider, changed region from the
+  daemon's stats) and blink, with R/G/B/A channel isolation, synced zoom/pan
+  (wheel, drag, 1:1, fit; fit enlarges small sprites up to 800% with
+  pixelated rendering) and a before/after metadata table. Canvas 2D is enough
+  at the preview size, so there is no WebGL path; the mode is remembered in
+  `nipa.imageMode`.
 - `frontend/`: React 18, Vite 8, Tailwind 4 (tokens in `src/index.css`,
   light/dark/system theme in `src/lib/theme.tsx`), TanStack Query, lucide.
   Generated bindings live in `frontend/bindings` and are committed (CI fails
@@ -118,7 +130,7 @@ Pure package (no client imports), shared by the daemon and later the server.
 3. Daemon `ReadBlob` + `Preview` for images. **(done)**
 4. `desktop/` Wails scaffold + daemon connector. **(done)**
 5. Changes screen + text diff, daemon `WatchChanges`. **(done)**
-6. Image compare viewer.
+6. Image compare viewer. **(done)**
 7. DDS/KTX2/EXR/HDR/PSD decoders + viewer controls.
 8. 3D model viewer.
 9. Audio viewer, CSV table diff, Unity `.meta` lint.

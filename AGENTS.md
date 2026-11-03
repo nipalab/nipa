@@ -58,7 +58,8 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   (`NIPA_BIN` → binary next to the app → PATH), `internal/workspace` persists
   opened clones (`<config>/nipa/desktop.json`) and `internal/service` is the
   Wails-bound API, plain Go behind seams (Changes screen: status/stage/
-  discard/`FileDiff`/push/update, `repo:changed` + `op:progress` events fed by
+  discard/`FileDiff`/push/update, image compare via `ImageDiff` over the daemon
+  `Preview` stream, `repo:changed` + `op:progress` events fed by
   the daemon's `WatchChanges` and `OpEvent` streams). Generated TS bindings in
   `desktop/frontend/bindings` are committed. Root `./...` never includes it;
   use `make desktop`/`desktop-dev`/`desktop-test` (needs the `wails3` CLI;

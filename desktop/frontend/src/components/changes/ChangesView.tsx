@@ -141,7 +141,7 @@ export function ChangesView({ root, op, message, onMessage, onPush, onCancelOp, 
         ) : diff.isError ? (
           <Centered icon={<AlertTriangle className="size-5 text-danger" />} title="Could not load the diff" detail={errorMessage(diff.error)} />
         ) : diff.data ? (
-          <DiffViewer diff={diff.data} layout={layout} onLayout={setLayout} />
+          <DiffViewer root={root} diff={diff.data} layout={layout} onLayout={setLayout} />
         ) : (
           <Centered icon={<CheckCircle2 className="size-6 text-success" />} title="No changes" detail="This file matches the last synced version." />
         )}

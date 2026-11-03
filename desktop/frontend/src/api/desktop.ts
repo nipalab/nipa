@@ -8,13 +8,17 @@ import type {
   FileChange,
   FileDiff,
   FileSide,
+  ImageCompare,
+  ImageInfo,
+  ImageRef,
+  ImageStats,
   OpOutcome,
   OpProgress,
   Repo,
   RepoChanged,
 } from "../../bindings/github.com/nipalab/nipa/desktop/internal/service/models";
 
-export type { DaemonInfo, DiffHunk, DiffLine, FileChange, FileDiff, FileSide, OpOutcome, OpProgress, Repo, RepoChanged };
+export type { DaemonInfo, DiffHunk, DiffLine, FileChange, FileDiff, FileSide, ImageCompare, ImageInfo, ImageRef, ImageStats, OpOutcome, OpProgress, Repo, RepoChanged };
 
 export type ChangeSet = {
   branch: string;
@@ -48,6 +52,8 @@ export const desktop = {
   unstage: async (root: string, paths: string[]): Promise<ChangeSet> => changeSet(await Service.Unstage(root, paths)),
   discard: async (root: string, paths: string[]): Promise<ChangeSet> => changeSet(await Service.Discard(root, paths)),
   fileDiff: (root: string, path: string): Promise<FileDiff | null> => Service.FileDiff(root, path),
+  imageDiff: (root: string, old: ImageRef | null, next: ImageRef | null, maxSize = 2048): Cancellable<ImageCompare | null> =>
+    Service.ImageDiff(root, old, next, maxSize),
   push: (root: string, message: string): Cancellable<OpOutcome> => Service.Push(root, message),
   update: (root: string): Cancellable<OpOutcome> => Service.Update(root),
 

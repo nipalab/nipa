@@ -85,6 +85,62 @@ export interface FileSide {
     "hash": string;
 }
 
+export interface ImageCompare {
+    "old": ImageInfo | null;
+    "new": ImageInfo | null;
+    "stats": ImageStats | null;
+
+    /**
+     * Unsupported explains why no preview could be made (unknown format, too
+     * large); the frontend then falls back to the metadata view.
+     */
+    "unsupported"?: string;
+}
+
+export interface ImageInfo {
+    "width": number;
+    "height": number;
+    "format": string;
+    "bitDepth": number;
+    "hasAlpha": boolean;
+    "size": number;
+    "previewWidth": number;
+    "previewHeight": number;
+
+    /**
+     * data:image/png;base64 URL of the downscaled preview
+     */
+    "src": string;
+}
+
+/**
+ * ImageRef names one version of an image: the working file, the last synced
+ * snapshot or a revision.
+ */
+export interface ImageRef {
+    /**
+     * working, snapshot, revision
+     */
+    "source": string;
+    "revision"?: string;
+    "path": string;
+}
+
+export interface ImageStats {
+    "changedPixels": number;
+    "totalPixels": number;
+    "changedRatio": number;
+    "maxDelta": number;
+    "boundsX": number;
+    "boundsY": number;
+    "boundsWidth": number;
+    "boundsHeight": number;
+    "sizeChanged": boolean;
+    "formatChanged": boolean;
+    "bitDepthChanged": boolean;
+    "alphaChanged": boolean;
+}
+
 export interface OpOutcome {
     "branch"?: string;
     "commitId"?: string;

@@ -17,7 +17,7 @@ const diff = (over: Partial<FileDiff>): FileDiff => ({
   ...over,
 });
 
-const show = (d: FileDiff) => render(<DiffViewer diff={d} layout="unified" onLayout={vi.fn()} />);
+const show = (d: FileDiff) => render(<DiffViewer root="/r" diff={d} layout="unified" onLayout={vi.fn()} />);
 
 describe("DiffViewer notices", () => {
   it.each([
