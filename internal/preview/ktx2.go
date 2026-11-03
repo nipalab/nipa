@@ -121,14 +121,14 @@ func parseKTX2(data []byte) (*texture, error) {
 				return nil, errTruncatedTexture
 			}
 			raw := data[r.offset : r.offset+r.length]
-			var err error
+			size := format.surfaceSize(mipSize(width, level), mipSize(height, level))
+			start := face * size
 			if scheme != ktx2SuperNone {
-				if raw, err = inflateLevel(raw, scheme, r.uncompressed); err != nil {
+				var err error
+				if raw, err = inflateLevel(raw, scheme, r.uncompressed, uint64(start+size)); err != nil {
 					return nil, err
 				}
 			}
-			size := format.surfaceSize(mipSize(width, level), mipSize(height, level))
-			start := face * size
 			if start+size > len(raw) {
 				return nil, errTruncatedTexture
 			}
@@ -137,7 +137,7 @@ func parseKTX2(data []byte) (*texture, error) {
 	}, nil
 }
 
-func inflateLevel(raw []byte, scheme int, uncompressed uint64) ([]byte, error) {
+func inflateLevel(raw []byte, scheme int, uncompressed, need uint64) ([]byte, error) {
 	if uncompressed > ktx2MaxLevelBytes {
 		return nil, ErrTooLarge
 	}
@@ -156,7 +156,7 @@ func inflateLevel(raw []byte, scheme int, uncompressed uint64) ([]byte, error) {
 		}
 		r = zr
 	}
-	out, err := io.ReadAll(io.LimitReader(r, int64(uncompressed)))
+	out, err := io.ReadAll(io.LimitReader(r, int64(min(uncompressed, need))))
 	if err != nil {
 		return nil, fmt.Errorf("preview: ktx2 supercompression: %w", err)
 	}

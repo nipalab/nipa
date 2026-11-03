@@ -240,7 +240,14 @@ func readPSDPlanes(r *psdReader, h psdHeader) ([][]byte, error) {
 			}
 		}
 	case psdCompressRLE:
-		counts := make([]int, h.channels*h.height)
+		entry := 2
+		if r.big {
+			entry = 4
+		}
+		if err := r.need(h.channels * h.height * entry); err != nil {
+			return nil, err
+		}
+		counts := make([]int, n*h.height)
 		for i := range counts {
 			if r.big {
 				counts[i], err = r.u32()
@@ -251,6 +258,7 @@ func readPSDPlanes(r *psdReader, h psdHeader) ([][]byte, error) {
 				return nil, err
 			}
 		}
+		r.pos += (h.channels - n) * h.height * entry
 		for c := range n {
 			var plane []byte
 			for y := range h.height {

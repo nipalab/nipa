@@ -20,5 +20,5 @@ int main(int argc, char **argv) {
     else if (!strcmp(f,"bc6h")) { float o[48]; bcdec_bc6h_float(blk,o,12,0); fwrite(o,4,48,out); }
     else if (!strcmp(f,"bc6hs")) { float o[48]; bcdec_bc6h_float(blk,o,12,1); fwrite(o,4,48,out); }
   }
-  fclose(out); return 0;
+  fclose(in); fclose(out); return 0;
 }

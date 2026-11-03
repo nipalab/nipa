@@ -24,6 +24,8 @@ const (
 
 var exrCompressions = []string{"NONE", "RLE", "ZIPS", "ZIP", "PIZ", "PXR24", "B44", "B44A", "DWAA", "DWAB", "HTJ2K256", "HTJ2K32"}
 
+const exrMaxBlockBytes = 256 << 20
+
 var exrLinesPerBlock = map[int]int{0: 1, 1: 1, 2: 1, 3: 16, 5: 16}
 
 var (
@@ -370,6 +372,9 @@ func exrSample(b []byte, kind int) float32 {
 
 func (h *exrHeader) uncompress(src []byte, width, lines int) ([]byte, error) {
 	want := h.lineBytes(width) * lines
+	if want > exrMaxBlockBytes {
+		return nil, ErrTooLarge
+	}
 	if len(src) >= want || h.compression == 0 {
 		if len(src) < want {
 			return nil, errEXRTruncated
@@ -402,7 +407,7 @@ func exrInflate(src []byte, limit int) ([]byte, error) {
 }
 
 func exrRLE(src []byte, limit int) []byte {
-	out := make([]byte, 0, limit)
+	out := make([]byte, 0, min(limit, 2*len(src)))
 	for len(src) > 0 && len(out) < limit {
 		n := int(int8(src[0]))
 		src = src[1:]
