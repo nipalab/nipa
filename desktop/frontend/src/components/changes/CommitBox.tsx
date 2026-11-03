@@ -6,15 +6,16 @@ type CommitBoxProps = {
   stagedCount: number;
   blockedReason?: string;
   op: OpState | null;
+  busy?: boolean;
   message: string;
   onMessage: (message: string) => void;
   onPush: (message: string) => void;
   onCancel: () => void;
 };
 
-export function CommitBox({ stagedCount, blockedReason, op, message, onMessage, onPush, onCancel }: CommitBoxProps) {
+export function CommitBox({ stagedCount, blockedReason, op, busy, message, onMessage, onPush, onCancel }: CommitBoxProps) {
   const trimmed = message.trim();
-  const canPush = stagedCount > 0 && trimmed !== "" && !op && !blockedReason;
+  const canPush = stagedCount > 0 && trimmed !== "" && !op && !busy && !blockedReason;
 
   const submit = () => {
     if (!canPush) return;

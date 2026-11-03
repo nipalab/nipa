@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"slices"
 	"sort"
 	"strings"
 
@@ -189,6 +190,14 @@ func (s *Service) FileDiff(ctx context.Context, root, path string) (*FileDiff, e
 	}
 	if found != nil {
 		return found, nil
+	}
+	resp, err := client.Status(ctx, &daemonpb.StatusRequest{Root: root})
+	if err != nil {
+		s.dropIfDisconnected(err)
+		return nil, cleanError(err)
+	}
+	if !slices.Contains(resp.GetUntracked(), path) {
+		return nil, nil
 	}
 	return s.untrackedDiff(ctx, client, root, path)
 }

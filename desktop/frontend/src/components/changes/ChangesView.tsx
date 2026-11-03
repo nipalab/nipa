@@ -125,6 +125,7 @@ export function ChangesView({ root, op, message, onMessage, onPush, onCancelOp, 
           stagedCount={c.staged.length}
           blockedReason={blocked}
           op={op?.op === "push" ? op : null}
+          busy={busy}
           message={message}
           onMessage={onMessage}
           onPush={onPush}

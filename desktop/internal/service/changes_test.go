@@ -306,6 +306,7 @@ func TestService_FileDiffErrors(t *testing.T) {
 	require.EqualError(t, err, "boom")
 
 	d.diff = nil
+	d.status = &daemonpb.StatusResponse{Untracked: []string{"a"}}
 	d.blobErr = status.Error(codes.Internal, "blob down")
 	_, err = svc.FileDiff(ctx, "/work/game", "a")
 	require.EqualError(t, err, "blob down")
@@ -324,6 +325,16 @@ func TestService_FileDiffErrors(t *testing.T) {
 	diff, err = svc.FileDiff(ctx, "/work/game", "a")
 	require.NoError(t, err)
 	require.Nil(t, diff)
+
+	d.status = &daemonpb.StatusResponse{Staged: []string{"a"}}
+	d.blob = []*daemonpb.BlobEvent{blobInfo("a", 3, false), blobData("abc")}
+	diff, err = svc.FileDiff(ctx, "/work/game", "a")
+	require.NoError(t, err)
+	require.Nil(t, diff, "a tracked file matching the snapshot is not an addition")
+
+	d.callErr = status.Error(codes.InvalidArgument, "status failed")
+	_, err = svc.FileDiff(ctx, "/work/game", "a")
+	require.EqualError(t, err, "status failed")
 }
 
 func blobInfo(path string, size int64, binary bool) *daemonpb.BlobEvent {
@@ -336,6 +347,7 @@ func blobData(data string) *daemonpb.BlobEvent {
 
 func TestService_FileDiffUntracked(t *testing.T) {
 	svc, d, _, _ := newOps(t)
+	d.status = &daemonpb.StatusResponse{Untracked: []string{"new.txt", "empty.txt", "big.txt", "hero.png"}}
 	d.blob = []*daemonpb.BlobEvent{blobInfo("new.txt", 7, false), blobData("one\n"), blobData("two")}
 	diff, err := svc.FileDiff(ctx, "/work/game", "new.txt")
 	require.NoError(t, err)
