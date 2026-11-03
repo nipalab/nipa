@@ -220,6 +220,11 @@ func (s *ModelStats) addDependency(uri string) {
 }
 
 func (s *ModelStats) include(p [3]float64) {
+	for _, v := range p {
+		if math.IsNaN(v) || math.IsInf(v, 0) {
+			return
+		}
+	}
 	if !s.HasBounds {
 		s.Min, s.Max, s.HasBounds = p, p, true
 		return
@@ -359,7 +364,7 @@ func decodeOBJ(data []byte) (*ModelStats, error) {
 			var p [3]float64
 			for i := range 3 {
 				v, err := strconv.ParseFloat(f[i], 64)
-				if err != nil {
+				if err != nil || math.IsNaN(v) || math.IsInf(v, 0) {
 					return nil, fmt.Errorf("%w: vertex %q", errModel, line)
 				}
 				p[i] = v

@@ -2,6 +2,7 @@ package preview
 
 import (
 	"encoding/binary"
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -139,12 +140,23 @@ func TestDecodeOBJ(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 0, s.Meshes)
 
-	for _, bad := range []string{"v 1 2\n", "v 1 x 3\n"} {
+	for _, bad := range []string{"v 1 2\n", "v 1 x 3\n", "v NaN 0 0\n", "v 0 Inf 0\n", "v 0 0 -infinity\n"} {
 		_, err := DecodeModel("a.obj", []byte(bad))
 		require.Error(t, err)
 	}
 	_, err = DecodeModel("a.obj", append([]byte("v "), make([]byte, 17<<20)...))
 	require.Error(t, err)
+}
+
+func TestIncludeSkipsNonFinitePoints(t *testing.T) {
+	s := &ModelStats{}
+	s.include([3]float64{math.Inf(1), 0, 0})
+	require.False(t, s.HasBounds)
+	s.include([3]float64{1, 2, 3})
+	s.include([3]float64{0, math.NaN(), 0})
+	s.include([3]float64{0, 0, math.Inf(-1)})
+	require.Equal(t, [3]float64{1, 2, 3}, s.Min)
+	require.Equal(t, [3]float64{1, 2, 3}, s.Max)
 }
 
 func TestMaterialLibraryDependencies(t *testing.T) {
