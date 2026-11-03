@@ -70,7 +70,10 @@ describe("helpers", () => {
     expect(m.resolveURL("tex/a%20b.png")).toBe("data:image/png;base64,QQ==");
     expect(m.resolveURL("./x.bin")).toBe("data:application/octet-stream;base64,Qg==");
     expect(m.resolveURL("sub/../x.bin")).toBe("data:application/octet-stream;base64,Qg==");
-    const dotted = fileManager({ "./hero.bin": "SA==", "materials/wood.png": "Vw==" });
+    const dotted = fileManager({ "./hero.bin": "SA==", "materials/wood.png": "Vw==", "./buffers/scene.bin": "Uw==" });
+    for (const url of ["./buffers/scene.bin", "buffers/scene.bin", "buffers/./scene.bin"]) {
+      expect(dotted.resolveURL(url)).toBe("data:application/octet-stream;base64,Uw==");
+    }
     expect(dotted.resolveURL("hero.bin")).toBe("data:application/octet-stream;base64,SA==");
     expect(dotted.resolveURL("materials/./wood.png")).toBe("data:image/png;base64,Vw==");
     expect(m.resolveURL("data:image/png;base64,AA==")).toBe("data:image/png;base64,AA==");
@@ -148,6 +151,14 @@ describe("loadModel", () => {
       ["B", "00ff00"],
       ["C", "0000ff"],
     ]);
+  });
+
+  it("finds OBJ material libraries the way the daemon keys them", async () => {
+    const obj = "mtllib ./sub%20dir/a.mtl\nv 0 0 0\nv 1 0 0\nv 0 1 0\nusemtl A\nf 1 2 3\n";
+    const parse = vi.spyOn(MTLLoader.prototype, "parse");
+    const model = await loadModel(side({ format: "obj", data: textB64(obj), files: { "sub dir/a.mtl": textB64("newmtl A\nKd 1 0 0\n") } }));
+    expect(((model.object.children[0] as Mesh).material as MeshPhongMaterial).color.getHexString()).toBe("ff0000");
+    expect(parse).toHaveBeenLastCalledWith(expect.any(String), "sub dir/");
   });
 
   it("hands FBX and USD to their loaders", async () => {

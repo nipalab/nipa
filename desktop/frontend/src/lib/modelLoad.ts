@@ -45,22 +45,30 @@ export function cleanPath(p: string): string {
 
 const blankPNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
 
+const decode = (url: string) => {
+  try {
+    return decodeURIComponent(url);
+  } catch {
+    return url;
+  }
+};
+
+// fileKey matches a loader URL to a key of the model's files the way the
+// daemon writes them: path-cleaned and URL-decoded.
+export function fileKey(files: Record<string, string>): (url: string) => string | undefined {
+  const keys = new Map<string, string>();
+  for (const key of Object.keys(files)) if (!keys.has(cleanPath(key))) keys.set(cleanPath(key), key);
+  return (url) => keys.get(cleanPath(url)) ?? keys.get(cleanPath(decode(url)));
+}
+
 // fileManager serves the model's referenced files from memory and never lets
 // a loader reach the network: unknown URLs get an empty placeholder.
 export function fileManager(files: Record<string, string>): LoadingManager {
-  const keys = new Map<string, string>();
-  for (const key of Object.keys(files)) if (!keys.has(cleanPath(key))) keys.set(cleanPath(key), key);
-  const decode = (url: string) => {
-    try {
-      return decodeURIComponent(url);
-    } catch {
-      return url;
-    }
-  };
+  const lookup = fileKey(files);
   const manager = new LoadingManager();
   manager.setURLModifier((url) => {
     if (/^(data|blob):/i.test(url)) return url;
-    const key = keys.get(cleanPath(url)) ?? keys.get(cleanPath(decode(url)));
+    const key = lookup(url);
     if (key) return `data:${mimeFor(key)};base64,${files[key]}`;
     return mimeFor(url).startsWith("image/") && !url.toLowerCase().endsWith(".ktx2") ? blankPNG : "data:application/octet-stream;base64,";
   });
@@ -87,9 +95,11 @@ export async function loadModel(side: ModelSide): Promise<LoadedModel> {
       const loader = new OBJLoader(manager);
       const libs = new Set([...source.matchAll(/^mtllib\s+(.+)$/gm)].flatMap((m) => m[1].trim().split(/\s+/)));
       let merged: MTLLoader.MaterialCreator | undefined;
+      const lookup = fileKey(files);
       for (const lib of libs) {
-        if (!files[lib]) continue;
-        const materials = new MTLLoader(manager).parse(text(base64ToBytes(files[lib])), lib.slice(0, lib.lastIndexOf("/") + 1));
+        const key = lookup(lib);
+        if (!key) continue;
+        const materials = new MTLLoader(manager).parse(text(base64ToBytes(files[key])), key.slice(0, key.lastIndexOf("/") + 1));
         materials.preload();
         if (!merged) merged = materials;
         else for (const [name, m] of Object.entries(materials.materials)) merged.materials[name] ??= m;
