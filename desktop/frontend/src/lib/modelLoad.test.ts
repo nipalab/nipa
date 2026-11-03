@@ -132,7 +132,7 @@ describe("loadModel", () => {
   });
 
   it("applies every OBJ material library", async () => {
-    const obj = "mtllib a.mtl b.mtl\nmtllib sub/c.mtl absent.mtl\nv 0 0 0\nv 1 0 0\nv 0 1 0\nusemtl A\nf 1 2 3\nusemtl B\nf 1 2 3\nusemtl C\nf 1 2 3\n";
+    const obj = "mtllib a.mtl b.mtl\r\n  mtllib\tsub/c.mtl absent.mtl \nmtllib\nmtllibx d.mtl\nv 0 0 0\nv 1 0 0\nv 0 1 0\nusemtl A\nf 1 2 3\nusemtl B\nf 1 2 3\nusemtl C\nf 1 2 3\n";
     const model = await loadModel(
       side({
         format: "obj",

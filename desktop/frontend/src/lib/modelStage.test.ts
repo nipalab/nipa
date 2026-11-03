@@ -148,6 +148,35 @@ describe("createStage", () => {
     expect(spies[2].m).toHaveBeenCalled();
   });
 
+  it("pauses and resumes a clip in place, and returns to the bind pose", () => {
+    const fake = fakeRenderer();
+    const stage = createStage(document.createElement("div"), () => fake.renderer);
+    const a = model(1, [new AnimationClip("Walk", 2, [new NumberKeyframeTrack(".position[x]", [0, 2], [0, 10])])]);
+    stage.setModels(a, null);
+    let t = performance.now();
+    const tick = (ms: number) => {
+      t += ms;
+      vi.spyOn(performance, "now").mockReturnValue(t);
+      fake.frame();
+    };
+    stage.playAnimation("Walk");
+    tick(500);
+    const mid = a.object.position.x;
+    expect(mid).toBeGreaterThan(0);
+
+    stage.setPaused(true);
+    tick(500);
+    expect(a.object.position.x).toBe(mid);
+    stage.setPaused(false);
+    tick(500);
+    expect(a.object.position.x).toBeGreaterThan(mid);
+
+    stage.setPaused(true);
+    stage.playAnimation(null);
+    expect(a.object.position.x).toBe(0);
+    vi.restoreAllMocks();
+  });
+
   it("defaults to a WebGL renderer", () => {
     expect(() => createStage(document.createElement("div"))).toThrow();
   });

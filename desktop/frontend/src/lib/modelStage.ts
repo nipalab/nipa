@@ -33,6 +33,7 @@ export type Stage = {
   setMode(mode: StageMode): void;
   setShading(shading: Shading): void;
   playAnimation(name: string | null): void;
+  setPaused(paused: boolean): void;
   resetView(): void;
   resize(width: number, height: number): void;
   dispose(): void;
@@ -107,7 +108,7 @@ export function createStage(container: HTMLElement, makeRenderer: () => Renderer
 
   const frame = () => {
     const dt = clock.getDelta();
-    for (const s of sides) s.mixer?.update(dt);
+    if (!paused) for (const s of sides) s.mixer?.update(dt);
     controls.update();
     renderer.setScissorTest(true);
     renderer.setScissor(0, 0, width, height);
@@ -135,6 +136,7 @@ export function createStage(container: HTMLElement, makeRenderer: () => Renderer
   renderer.setAnimationLoop(frame);
 
   let clipPlaying: string | null = null;
+  let paused = false;
   const play = () => {
     for (const s of sides) {
       if (!s.mixer || !s.model) continue;
@@ -170,6 +172,10 @@ export function createStage(container: HTMLElement, makeRenderer: () => Renderer
     playAnimation(name) {
       clipPlaying = name;
       play();
+    },
+    setPaused(p) {
+      paused = p;
+      clock.getDelta();
     },
     resetView: fit,
     resize(w, h) {

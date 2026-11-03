@@ -14,6 +14,7 @@ const stage = vi.hoisted(() => ({
   setMode: vi.fn(),
   setShading: vi.fn(),
   playAnimation: vi.fn(),
+  setPaused: vi.fn(),
   resetView: vi.fn(),
   resize: vi.fn(),
   dispose: vi.fn(),
@@ -91,10 +92,15 @@ describe("ModelDiff", () => {
     await user.click(screen.getByRole("button", { name: "Side by side" }));
     expect(stage.setMode).toHaveBeenLastCalledWith("side");
 
+    expect(stage.setPaused).toHaveBeenLastCalledWith(true);
     await user.selectOptions(screen.getByLabelText("Animation"), "Run");
-    await user.click(screen.getByRole("button", { name: "Play" }));
     expect(stage.playAnimation).toHaveBeenLastCalledWith("Run");
+    await user.click(screen.getByRole("button", { name: "Play" }));
+    expect(stage.setPaused).toHaveBeenLastCalledWith(false);
     await user.click(screen.getByRole("button", { name: "Pause" }));
+    expect(stage.setPaused).toHaveBeenLastCalledWith(true);
+    expect(stage.playAnimation).toHaveBeenLastCalledWith("Run");
+    await user.selectOptions(screen.getByLabelText("Animation"), "Bind pose");
     expect(stage.playAnimation).toHaveBeenLastCalledWith(null);
     await user.click(screen.getByRole("button", { name: "Reset view" }));
     expect(stage.resetView).toHaveBeenCalled();

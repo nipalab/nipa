@@ -97,7 +97,8 @@ export function ModelCompareView({ compare }: { compare: ModelCompare }) {
   useEffect(() => stageRef.current?.setModels(oldState.model, newState.model), [oldState.model, newState.model]);
   useEffect(() => stageRef.current?.setMode(mode), [mode]);
   useEffect(() => stageRef.current?.setShading(shading), [shading]);
-  useEffect(() => stageRef.current?.playAnimation(playing && animation ? animation : null), [playing, animation]);
+  useEffect(() => stageRef.current?.playAnimation(animation || null), [animation]);
+  useEffect(() => stageRef.current?.setPaused(!playing), [playing]);
 
   const anyRenderable = renderable(old) || renderable(next);
   const notices: ReactNode[] = [];

@@ -93,7 +93,11 @@ export async function loadModel(side: ModelSide): Promise<LoadedModel> {
     case "obj": {
       const source = text(bytes);
       const loader = new OBJLoader(manager);
-      const libs = new Set([...source.matchAll(/^mtllib\s+(.+)$/gm)].flatMap((m) => m[1].trim().split(/\s+/)));
+      const libs = new Set<string>();
+      for (const line of source.split("\n")) {
+        const [keyword, ...names] = line.trim().split(/\s+/);
+        if (keyword === "mtllib") for (const name of names) libs.add(name);
+      }
       let merged: MTLLoader.MaterialCreator | undefined;
       const lookup = fileKey(files);
       for (const lib of libs) {
