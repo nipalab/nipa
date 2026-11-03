@@ -214,6 +214,9 @@ func (w *WorkingCopy) Status(ctx context.Context, opts ...StatusOptions) (*domai
 		switch {
 		case err == nil:
 			st.Staged = append(st.Staged, p)
+			if _, tracked := baseByPath[p]; !tracked {
+				st.Added = append(st.Added, p)
+			}
 		case errors.Is(err, fs.ErrNotExist):
 			st.Deleted = append(st.Deleted, p)
 		default:

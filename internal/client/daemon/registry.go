@@ -35,6 +35,7 @@ type repo struct {
 
 	watcher    *watcher
 	reconciler *reconciler
+	changes    *changeHub
 
 	refs int
 }
@@ -49,6 +50,7 @@ func (r *repo) close() error {
 	if r.proxy != nil {
 		_ = r.proxy.Close()
 	}
+	r.changes.close()
 	return r.localRepo.Close()
 }
 
@@ -153,6 +155,7 @@ func openRepo(root string, runners Runners) (*repo, error) {
 		localRepo: lr,
 		wc:        wc,
 		coord:     newCoordinator(),
+		changes:   newChangeHub(),
 	}
 	if runners.New != nil {
 		ops := runners.New(root)

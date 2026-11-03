@@ -71,6 +71,35 @@ var _ = Describe("nipa serve", func() {
 		Expect(cli.Output()).NotTo(ContainSubstring("A  b.txt"))
 	})
 
+	It("streams working-copy changes and marks staged additions", func() {
+		project := newProject("daemon-changes")
+		seedRepo(orgSlug, project, map[string][]byte{"a.txt": []byte("a\n")}, "seed")
+		parent := workspace()
+		dir := cloneRepo(parent, repoURLFor(orgSlug, project), "work")
+
+		d := startDaemon()
+		d.watch(dir)
+		stream, err := d.client.WatchChanges(d.ctx, &daemonpb.WatchChangesRequest{Root: dir})
+		Expect(err).NotTo(HaveOccurred())
+		_, err = stream.Header()
+		Expect(err).NotTo(HaveOccurred())
+
+		writeText(dir, "b.txt", "b\n")
+		change, err := stream.Recv()
+		Expect(err).NotTo(HaveOccurred())
+		Expect(change.GetPaths()).To(ContainElement("b.txt"))
+
+		writeText(dir, "a.txt", "edited\n")
+		staged := d.stage(dir, []string{"a.txt", "b.txt"}, nil)
+		Expect(staged.GetStaged()).To(ConsistOf("a.txt", "b.txt"))
+		Expect(staged.GetAdded()).To(ConsistOf("b.txt"))
+		Eventually(func() []string {
+			change, err := stream.Recv()
+			Expect(err).NotTo(HaveOccurred())
+			return change.GetPaths()
+		}).Should(BeEmpty(), "staging asks for a full refresh")
+	})
+
 	It("restores changes through the daemon", func() {
 		project := newProject("daemon-restore")
 		seedRepo(orgSlug, project, map[string][]byte{"a.txt": []byte("v1\n")}, "seed")

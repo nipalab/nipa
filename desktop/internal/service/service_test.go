@@ -21,12 +21,15 @@ type fakeDaemon struct {
 	daemonpb.NipaDaemonClient
 	watchErr  map[string]error
 	unwatched []string
+	watches   int
+	changes   chan *daemonpb.RepoChange
 }
 
 func (f *fakeDaemon) WatchRepo(_ context.Context, req *daemonpb.WatchRepoRequest, _ ...grpc.CallOption) (*daemonpb.WatchRepoResponse, error) {
 	if err := f.watchErr[req.GetRoot()]; err != nil {
 		return nil, err
 	}
+	f.watches++
 	root := filepath.Clean(req.GetRoot())
 	if filepath.Base(root) == "sub" {
 		root = filepath.Dir(root)
@@ -34,6 +37,13 @@ func (f *fakeDaemon) WatchRepo(_ context.Context, req *daemonpb.WatchRepoRequest
 	return &daemonpb.WatchRepoResponse{Repo: &daemonpb.RepoInfo{
 		Root: root, Url: "https://nipa.test/org/" + filepath.Base(root), Branch: "main", Sparse: []string{"art"},
 	}}, nil
+}
+
+func (f *fakeDaemon) WatchChanges(ctx context.Context, _ *daemonpb.WatchChangesRequest, _ ...grpc.CallOption) (grpc.ServerStreamingClient[daemonpb.RepoChange], error) {
+	if f.changes == nil {
+		return nil, status.Error(codes.Unimplemented, "no changes")
+	}
+	return &chanStream[daemonpb.RepoChange]{ctx: ctx, ch: f.changes}, nil
 }
 
 func (f *fakeDaemon) UnwatchRepo(_ context.Context, req *daemonpb.UnwatchRepoRequest, _ ...grpc.CallOption) (*daemonpb.UnwatchRepoResponse, error) {
