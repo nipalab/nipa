@@ -48,7 +48,8 @@ func seedClone(t *testing.T, rel, content string) string {
 	return root
 }
 
-func TestChangesWithRealDaemon(t *testing.T) {
+func startRealDaemon(t *testing.T) string {
+	t.Helper()
 	endpoint := filepath.Join(t.TempDir(), "daemon.json")
 	srv, err := daemon.NewServer(daemon.Options{EndpointPath: endpoint, Runners: daemon.Runners{New: func(string) daemon.RepoOps {
 		return daemon.RepoOps{Diff: daemon.SerialDiff(usecase.NewDiff(nil, nil, localrepo.NewLocalRepo()))}
@@ -57,12 +58,20 @@ func TestChangesWithRealDaemon(t *testing.T) {
 	serveCtx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() { defer close(done); _ = srv.Serve(serveCtx) }()
-	defer func() { cancel(); <-done }()
+	t.Cleanup(func() { cancel(); <-done })
 	<-srv.Ready()
+	return endpoint
+}
 
+func newRealService(endpoint string) *Service {
+	return New(ConnectorDialer(connector.Options{EndpointPath: endpoint}), &memStore{}, nil)
+}
+
+func TestChangesWithRealDaemon(t *testing.T) {
+	endpoint := startRealDaemon(t)
 	root := seedClone(t, "notes.txt", "one\ntwo\n")
 	rec := &recorder{}
-	svc := New(ConnectorDialer(connector.Options{EndpointPath: endpoint}), &memStore{}, nil)
+	svc := newRealService(endpoint)
 	svc.Events = rec.emit
 	defer func() { _ = svc.ServiceShutdown() }()
 

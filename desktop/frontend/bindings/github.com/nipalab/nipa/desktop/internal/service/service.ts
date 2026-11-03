@@ -48,6 +48,14 @@ export function FileDiff(root: string, path: string): $CancellablePromise<$model
 }
 
 /**
+ * ImageDiff decodes the old and/or new version of an image into previews no
+ * larger than maxSize pixels, plus pixel-diff statistics when both exist.
+ */
+export function ImageDiff(root: string, old: $models.ImageRef | null, $new: $models.ImageRef | null, maxSize: number): $CancellablePromise<$models.ImageCompare | null> {
+    return $Call.ByID(2294302882, root, old, $new, maxSize);
+}
+
+/**
  * PickRepo lets the user choose a folder inside a clone and adds it. A nil
  * repo means the dialog was cancelled.
  */

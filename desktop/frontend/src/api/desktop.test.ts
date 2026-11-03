@@ -11,6 +11,7 @@ const service = vi.hoisted(() => ({
   Unstage: vi.fn(),
   Discard: vi.fn(),
   FileDiff: vi.fn(),
+  ImageDiff: vi.fn(),
   Push: vi.fn(),
   Update: vi.fn(),
 }));
@@ -69,6 +70,13 @@ describe("desktop api", () => {
     expect(await desktop.push("/a", "msg")).toEqual({ commitId: "c1" });
     expect(await desktop.update("/a")).toEqual({ branch: "main" });
     expect(service.Push).toHaveBeenCalledWith("/a", "msg");
+  });
+
+  it("asks for image previews at 2048 px by default", async () => {
+    service.ImageDiff.mockResolvedValue({ old: null, new: null, stats: null });
+    const ref = { source: "working", path: "a.png" };
+    await desktop.imageDiff("/a", null, ref);
+    expect(service.ImageDiff).toHaveBeenCalledWith("/a", null, ref, 2048);
   });
 
   it("subscribes to change and progress events", () => {
