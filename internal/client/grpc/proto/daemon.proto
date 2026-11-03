@@ -218,6 +218,23 @@ message PreviewRequest {
     BlobRef new = 3;
     int32 max_size = 4; // longest preview side in pixels; 0 = 2048
     int32 threshold = 5; // per-channel delta ignored by the pixel diff (0-255)
+    int32 level = 6; // mip level of textures; clamped to the last level
+    int32 face = 7; // cube face or array layer of textures; clamped
+}
+
+// ImageLayer is one Photoshop layer or group, top-most first.
+message ImageLayer {
+    string name = 1;
+    string kind = 2; // layer or group
+    int32 depth = 3; // group nesting
+    bool visible = 4;
+    int32 opacity = 5; // 0-255
+    string blend = 6; // Photoshop blend key, e.g. norm, mul
+    int32 x = 7;
+    int32 y = 8;
+    int32 width = 9;
+    int32 height = 10;
+    string hash = 11; // fingerprint of the layer's pixel data
 }
 
 message ImagePreview {
@@ -230,6 +247,17 @@ message ImagePreview {
     int64 size_bytes = 7;
     int32 preview_width = 8;
     int32 preview_height = 9;
+    string encoding = 10; // pixel format or compression, e.g. BC7_UNORM, ZIP
+    int32 levels = 11;
+    int32 faces = 12;
+    bool cube = 13;
+    int32 level = 14; // the surface actually decoded
+    int32 face = 15;
+    // hdr marks a float source: the PNG is twice preview_width wide, RGBE
+    // mantissas on the left and exponent (red) plus alpha (green) on the
+    // right, so the GUI can apply its own exposure.
+    bool hdr = 16;
+    repeated ImageLayer layers = 17;
 }
 
 message PreviewData {

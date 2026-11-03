@@ -1,7 +1,8 @@
+import { useState } from "react";
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { FileDiff, ImageCompare, ImageInfo } from "@/api/desktop";
+import type { FileDiff, ImageCompare, ImageInfo, ImageLayer } from "@/api/desktop";
 import { renderWithProviders } from "@/test/render";
 
 const api = vi.hoisted(() => ({ imageDiff: vi.fn() }));
@@ -22,6 +23,14 @@ const info = (over: Partial<ImageInfo> = {}): ImageInfo => ({
   previewWidth: 4,
   previewHeight: 2,
   src: "data:old",
+  encoding: "",
+  levels: 1,
+  faces: 1,
+  cube: false,
+  level: 0,
+  face: 0,
+  hdr: false,
+  layers: null,
   ...over,
 });
 
@@ -88,7 +97,7 @@ describe("ImageDiff in the viewer registry", () => {
     renderWithProviders(<DiffViewer root="/r" diff={imageDiff()} layout="unified" onLayout={vi.fn()} />);
     expect(screen.getByText("Decoding image…")).toBeInTheDocument();
     expect(await screen.findByText("25.0% changed")).toBeInTheDocument();
-    expect(api.imageDiff).toHaveBeenCalledWith("/r", { source: "snapshot", path: "art/hero.png" }, { source: "working", path: "art/hero.png" });
+    expect(api.imageDiff).toHaveBeenCalledWith("/r", { source: "snapshot", path: "art/hero.png" }, { source: "working", path: "art/hero.png" }, { level: 0, face: 0 });
     const table = screen.getByRole("table", { name: "Image details" });
     expect(within(table).getByText("TGA")).toHaveClass("text-warning");
     expect(within(table).getByText("2.0 KB")).toBeInTheDocument();
@@ -256,5 +265,110 @@ describe("ImageCompareView", () => {
     expect(modeButton("Onion skin")).toHaveAttribute("aria-pressed", "true");
     get.mockRestore();
     set.mockRestore();
+  });
+});
+
+describe("texture surfaces, HDR and layers", () => {
+  const texture = (over: Partial<ImageInfo> = {}) => info({ format: "dds", encoding: "BC7_UNORM", levels: 3, faces: 6, cube: true, width: 4, height: 2, ...over });
+
+  it("picks mip levels and cube faces and keeps the last preview while loading", async () => {
+    const user = userEvent.setup();
+    api.imageDiff.mockImplementation(async (_root, _old, _next, opts: { level: number; face: number }) => ({
+      old: texture({ level: opts.level, width: 4 >> opts.level || 1, height: 2 >> opts.level || 1 }),
+      new: texture({ src: "data:new", level: opts.level, width: 4 >> opts.level || 1, height: 2 >> opts.level || 1, face: opts.face }),
+      stats: null,
+    }));
+    function Switcher() {
+      const [path, setPath] = useState("sky.dds");
+      return (
+        <>
+          <button type="button" onClick={() => setPath("other.dds")}>
+            switch
+          </button>
+          <DiffViewer root="/r" diff={imageDiff({ path })} layout="unified" onLayout={vi.fn()} />
+        </>
+      );
+    }
+    renderWithProviders(<Switcher />);
+    const mip = await screen.findByLabelText("Mip level");
+    expect(within(mip).getAllByRole("option").map((o) => o.textContent)).toEqual(["Mip 0 · 4×2", "Mip 1 · 2×1", "Mip 2 · 1×1"]);
+    expect(screen.getByRole("table", { name: "Image details" })).toHaveTextContent("BC7_UNORM");
+    expect(screen.getByRole("table", { name: "Image details" })).toHaveTextContent("Mip levels");
+
+    await user.selectOptions(mip, "1");
+    await waitFor(() => expect(api.imageDiff).toHaveBeenLastCalledWith("/r", expect.anything(), expect.anything(), { level: 1, face: 0 }));
+    expect(screen.queryByText("Decoding image…")).not.toBeInTheDocument();
+    const face = screen.getByLabelText("Face");
+    expect(within(face).getAllByRole("option")[1]).toHaveTextContent("−X");
+    await user.selectOptions(face, "4");
+    await waitFor(() => expect(api.imageDiff).toHaveBeenLastCalledWith("/r", expect.anything(), expect.anything(), { level: 1, face: 4 }));
+    expect(await screen.findByDisplayValue("+Z")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "switch" }));
+    await waitFor(() => expect(api.imageDiff).toHaveBeenLastCalledWith("/r", expect.anything(), expect.anything(), { level: 0, face: 0 }));
+  });
+
+  it("labels texture array layers", () => {
+    const onSurface = vi.fn();
+    renderWithProviders(<ImageCompareView compare={{ old: null, new: texture({ cube: false, faces: 3, levels: 1 }), stats: null }} onSurface={onSurface} />);
+    const layer = screen.getByLabelText("Layer");
+    expect(within(layer).getAllByRole("option").map((o) => o.textContent)).toEqual(["Layer 0", "Layer 1", "Layer 2"]);
+    fireEvent.change(layer, { target: { value: "2" } });
+    expect(onSurface).toHaveBeenCalledWith({ level: 0, face: 2 });
+  });
+
+  it("names faces of cube arrays", () => {
+    renderWithProviders(<ImageCompareView compare={{ old: null, new: texture({ faces: 12, levels: 1 }), stats: null }} />);
+    expect(within(screen.getByLabelText("Face")).getAllByRole("option")[7]).toHaveTextContent("Layer 1 −X");
+  });
+
+  it("tone maps HDR previews with exposure", async () => {
+    const user = userEvent.setup();
+    pixels.loadPixels.mockResolvedValue({ width: 2, height: 1, data: new Uint8ClampedArray([128, 128, 128, 255, 129, 255, 0, 255]) });
+    renderWithProviders(<ImageCompareView compare={{ old: null, new: info({ hdr: true, width: 1, height: 1, previewWidth: 1, previewHeight: 1 }), stats: null }} />);
+    await waitFor(() => expect(pixels.drawPixels).toHaveBeenCalled());
+    const first = pixels.drawPixels.mock.calls.at(-1)![1];
+    expect(first.width).toBe(1);
+    expect(first.data[0]).toBe(255);
+
+    fireEvent.change(screen.getByLabelText("Exposure"), { target: { value: "-2" } });
+    await waitFor(() => expect(pixels.drawPixels.mock.calls.at(-1)![1].data[0]).toBeLessThan(255));
+    const reset = screen.getByRole("button", { name: "-2.00 EV" });
+    await user.click(reset);
+    expect(screen.getByRole("button", { name: "0.00 EV" })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Exposure"), { target: { value: "1.5" } });
+    expect(screen.getByRole("button", { name: "+1.50 EV" })).toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText("Tone map"), "aces");
+    expect(screen.getByLabelText("Tone map")).toHaveValue("aces");
+  });
+
+  it("lists layer changes for Photoshop files", () => {
+    const layer = (name: string, over: Partial<ImageLayer> = {}): ImageLayer => ({
+      name, kind: "layer", depth: 0, visible: true, opacity: 255, blend: "norm", x: 0, y: 0, width: 4, height: 2, hash: name, ...over,
+    });
+    renderWithProviders(
+      <ImageCompareView
+        compare={{
+          old: info({ layers: [layer("Hero"), layer("Old")] }),
+          new: info({ layers: [layer("Group", { kind: "group" }), layer("Hero", { hash: "x", depth: 1, visible: false }), layer("New")] }),
+          stats: null,
+        }}
+      />,
+    );
+    const list = screen.getByRole("list", { name: "Layers" });
+    expect(screen.getByText("Layers · 4 changed")).toBeInTheDocument();
+    const items = within(list).getAllByRole("listitem");
+    expect(items.map((i) => i.textContent)).toEqual(["AGroup", "MHeropixels, hidden, moved", "DOld", "ANew"]);
+    expect(items[1]).toHaveStyle({ paddingLeft: "12px" });
+    expect(within(items[1]).getByLabelText("Hidden")).toBeInTheDocument();
+    expect(items[2]).toHaveClass("line-through");
+  });
+
+  it("says when no layer changed", () => {
+    const l: ImageLayer = { name: "A", kind: "layer", depth: 0, visible: true, opacity: 255, blend: "norm", x: 0, y: 0, width: 1, height: 1, hash: "h" };
+    renderWithProviders(<ImageCompareView compare={{ old: info({ layers: [l] }), new: null, stats: null }} />);
+    expect(screen.getByText("Layers · 1 changed")).toBeInTheDocument();
+    renderWithProviders(<ImageCompareView compare={{ old: info({ layers: [l] }), new: info({ layers: [l] }), stats: null }} />);
+    expect(screen.getByText("Layers · no layer changes")).toBeInTheDocument();
   });
 });

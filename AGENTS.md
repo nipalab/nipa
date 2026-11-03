@@ -95,11 +95,15 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   package free of client imports: the server merge-request diff reuses it.
 - **Asset previews** (`internal/preview/`): pure package for the desktop GUI's
   visual diffs (design and PR roadmap in `docs/DESKTOP.md`) — `Classify`
-  (viewer kind by extension + binary flag), `DecodeImage` (PNG/JPEG/GIF/BMP/
-  TIFF/WebP via stdlib + `golang.org/x/image`, own TGA decoder; `MaxPixels`
-  checked before allocating), `Downscale` and `CompareImages` (changed
-  pixels/ratio/max delta/bbox; transparent pixels compare equal). Fuzzed; keep
-  it free of client imports like `internal/diff`.
+  (viewer kind by extension + binary flag), `DecodeImage`/`DecodeImageAt`
+  (PNG/JPEG/GIF/BMP/TIFF/WebP via stdlib + `golang.org/x/image`; own decoders
+  for TGA, DDS and KTX2 with BC1–BC7/BC6H and mip/face `Select`, EXR, Radiance
+  HDR and PSD/PSB composite + layer list; float sources keep `Image.HDR`;
+  `MaxPixels` checked before allocating, half of it for float), `Downscale`/
+  `DownscaleFloat`/`PackHDR` and `CompareImages` (changed pixels/ratio/max
+  delta/bbox; transparent pixels compare equal). Block decoders are checked
+  against bcdec goldens (`testdata/bcn`, generators in `testdata/gen`).
+  Fuzzed; keep it free of client imports like `internal/diff`.
 
 Flow for `nipa clone <url> <target>`: `cli/clone.go` parses the URL →
 `usecase.Repo.Clone` → ensure empty target → login → resolve default branch (or

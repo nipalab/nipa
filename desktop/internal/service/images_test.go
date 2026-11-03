@@ -66,17 +66,29 @@ func TestService_ImageDiffCollectsBothSides(t *testing.T) {
 		&daemonpb.ImagePreview{Side: "old", Width: 4, Height: 2, Format: "png", BitDepth: 8, SizeBytes: 90, PreviewWidth: 4, PreviewHeight: 2},
 		&daemonpb.PreviewData{Side: "old", Png: []byte("ab")},
 		&daemonpb.PreviewData{Side: "old", Png: []byte("c")},
-		&daemonpb.ImagePreview{Side: "new", Width: 8, Height: 4, Format: "tga", BitDepth: 8, HasAlpha: true, SizeBytes: 120, PreviewWidth: 8, PreviewHeight: 4},
+		&daemonpb.ImagePreview{Side: "new", Width: 8, Height: 4, Format: "dds", BitDepth: 8, HasAlpha: true, SizeBytes: 120, PreviewWidth: 8, PreviewHeight: 4,
+			Encoding: "BC7_UNORM", Levels: 4, Faces: 6, Cube: true, Level: 1, Face: 2, Hdr: true,
+			Layers: []*daemonpb.ImageLayer{{Name: "Hero", Kind: "layer", Depth: 1, Visible: true, Opacity: 200, Blend: "norm", X: 1, Y: 2, Width: 3, Height: 4, Hash: "ab"}}},
 		&daemonpb.PreviewData{Side: "new", Png: []byte("xyz")},
 		&daemonpb.PreviewData{Side: "stray", Png: []byte("ignored")},
 		&daemonpb.ImageDiffStats{ChangedPixels: 3, TotalPixels: 32, ChangedRatio: 0.09375, MaxDelta: 255, BoundsX: 1, BoundsY: 2, BoundsWidth: 3, BoundsHeight: 1, SizeChanged: true, FormatChanged: true, AlphaChanged: true},
 	)
-	out, err := svc.ImageDiff(ctx, "/work/game", &ImageRef{Source: "snapshot", Path: "a.png"}, &ImageRef{Source: "working", Path: "a.tga"}, 1024)
+	out, err := svc.ImageDiff(ctx, "/work/game", &ImageRef{Source: "snapshot", Path: "a.png"}, &ImageRef{Source: "working", Path: "a.tga"}, ImageOptions{MaxSize: 1024, Level: 1, Face: 2})
 	require.NoError(t, err)
 	require.Equal(t, "snapshot", d.last.GetOld().GetSource())
 	require.Equal(t, "a.tga", d.last.GetNew().GetPath())
 	require.EqualValues(t, 1024, d.last.GetMaxSize())
-	require.Equal(t, &ImageInfo{Width: 4, Height: 2, Format: "png", BitDepth: 8, Size: 90, PreviewWidth: 4, PreviewHeight: 2, Src: "data:image/png;base64," + base64.StdEncoding.EncodeToString([]byte("abc"))}, out.Old)
+	require.EqualValues(t, 1, d.last.GetLevel())
+	require.EqualValues(t, 2, d.last.GetFace())
+	require.Equal(t, &ImageInfo{Width: 4, Height: 2, Format: "png", BitDepth: 8, Size: 90, PreviewWidth: 4, PreviewHeight: 2, Levels: 1, Faces: 1, Layers: []ImageLayer{}, Src: "data:image/png;base64," + base64.StdEncoding.EncodeToString([]byte("abc"))}, out.Old)
+	require.Equal(t, "BC7_UNORM", out.New.Encoding)
+	require.Equal(t, 4, out.New.Levels)
+	require.Equal(t, 6, out.New.Faces)
+	require.True(t, out.New.Cube)
+	require.Equal(t, 1, out.New.Level)
+	require.Equal(t, 2, out.New.Face)
+	require.True(t, out.New.HDR)
+	require.Equal(t, []ImageLayer{{Name: "Hero", Kind: "layer", Depth: 1, Visible: true, Opacity: 200, Blend: "norm", X: 1, Y: 2, Width: 3, Height: 4, Hash: "ab"}}, out.New.Layers)
 	require.Equal(t, "data:image/png;base64,"+base64.StdEncoding.EncodeToString([]byte("xyz")), out.New.Src)
 	require.True(t, out.New.HasAlpha)
 	require.Equal(t, &ImageStats{ChangedPixels: 3, TotalPixels: 32, ChangedRatio: 0.09375, MaxDelta: 255, BoundsX: 1, BoundsY: 2, BoundsWidth: 3, BoundsHeight: 1, SizeChanged: true, FormatChanged: true, AlphaChanged: true}, out.Stats)
@@ -85,7 +97,7 @@ func TestService_ImageDiffCollectsBothSides(t *testing.T) {
 func TestService_ImageDiffOneSide(t *testing.T) {
 	svc, d := newPreview(t)
 	d.events = previewEvents(&daemonpb.ImagePreview{Side: "new", Width: 1, Height: 1, Format: "png"}, &daemonpb.PreviewData{Side: "new", Png: []byte("p")})
-	out, err := svc.ImageDiff(ctx, "/work/game", nil, &ImageRef{Source: "working", Path: "a.png"}, 0)
+	out, err := svc.ImageDiff(ctx, "/work/game", nil, &ImageRef{Source: "working", Path: "a.png"}, ImageOptions{})
 	require.NoError(t, err)
 	require.Nil(t, d.last.GetOld())
 	require.Nil(t, out.Old)
@@ -95,26 +107,26 @@ func TestService_ImageDiffOneSide(t *testing.T) {
 
 func TestService_ImageDiffFailures(t *testing.T) {
 	svc, d := newPreview(t)
-	_, err := svc.ImageDiff(ctx, "/work/game", nil, nil, 0)
+	_, err := svc.ImageDiff(ctx, "/work/game", nil, nil, ImageOptions{})
 	require.EqualError(t, err, "nothing to compare")
 
 	ref := &ImageRef{Source: "working", Path: "a.dds"}
 	d.events = previewEvents(&daemonpb.OpFailure{Code: 415, Message: "a.dds: unsupported image format"})
-	out, err := svc.ImageDiff(ctx, "/work/game", nil, ref, 0)
+	out, err := svc.ImageDiff(ctx, "/work/game", nil, ref, ImageOptions{})
 	require.NoError(t, err)
 	require.Equal(t, &ImageCompare{Unsupported: "a.dds: unsupported image format"}, out)
 
 	d.events = previewEvents(&daemonpb.OpFailure{Code: 404, Message: "not found"})
-	_, err = svc.ImageDiff(ctx, "/work/game", nil, ref, 0)
+	_, err = svc.ImageDiff(ctx, "/work/game", nil, ref, ImageOptions{})
 	require.EqualError(t, err, "not found")
 
 	d.err = status.Error(codes.Internal, "no stream")
-	_, err = svc.ImageDiff(ctx, "/work/game", nil, ref, 0)
+	_, err = svc.ImageDiff(ctx, "/work/game", nil, ref, ImageOptions{})
 	require.EqualError(t, err, "no stream")
 
 	d.err = nil
 	d.watchErr["/work/lost"] = status.Error(codes.InvalidArgument, "not a clone")
-	_, err = svc.ImageDiff(ctx, "/work/lost", nil, ref, 0)
+	_, err = svc.ImageDiff(ctx, "/work/lost", nil, ref, ImageOptions{})
 	require.EqualError(t, err, "not a clone")
 }
 
@@ -131,7 +143,7 @@ func TestService_ImageDiffStreamError(t *testing.T) {
 	d := &erroringPreview{previewDaemon: inner}
 	svc := New(func(context.Context) (Session, error) { return &opsSession{client: d}, nil }, &memStore{}, nil)
 	defer func() { _ = svc.ServiceShutdown() }()
-	_, err := svc.ImageDiff(ctx, "/work/game", nil, &ImageRef{Source: "working", Path: "a.png"}, 0)
+	_, err := svc.ImageDiff(ctx, "/work/game", nil, &ImageRef{Source: "working", Path: "a.png"}, ImageOptions{})
 	require.EqualError(t, err, "daemon gone")
 }
 
@@ -159,7 +171,7 @@ func TestImageDiffWithRealDaemon(t *testing.T) {
 
 	svc := newRealService(endpoint)
 	defer func() { _ = svc.ServiceShutdown() }()
-	out, err := svc.ImageDiff(ctx, root, &ImageRef{Source: "snapshot", Path: "hero.png"}, &ImageRef{Source: "working", Path: "hero.png"}, 0)
+	out, err := svc.ImageDiff(ctx, root, &ImageRef{Source: "snapshot", Path: "hero.png"}, &ImageRef{Source: "working", Path: "hero.png"}, ImageOptions{})
 	require.NoError(t, err)
 	require.Equal(t, 4, out.Old.Width)
 	require.Equal(t, "png", out.New.Format)
@@ -168,7 +180,7 @@ func TestImageDiffWithRealDaemon(t *testing.T) {
 	require.Equal(t, 2, out.Stats.BoundsX)
 
 	require.NoError(t, os.WriteFile(filepath.Join(root, "notes.txt"), []byte("hi"), 0o644))
-	out, err = svc.ImageDiff(ctx, root, nil, &ImageRef{Source: "working", Path: "notes.txt"}, 0)
+	out, err = svc.ImageDiff(ctx, root, nil, &ImageRef{Source: "working", Path: "notes.txt"}, ImageOptions{})
 	require.NoError(t, err)
 	require.NotEmpty(t, out.Unsupported)
 }

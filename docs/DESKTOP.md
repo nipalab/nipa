@@ -76,6 +76,16 @@ Sonar never compile it.
   pixelated rendering) and a before/after metadata table. Canvas 2D is enough
   at the preview size, so there is no WebGL path; the mode is remembered in
   `nipa.imageMode`.
+- Texture and layer controls: when either side has mips, faces or float
+  data a second toolbar offers a mip picker (sizes from the level-0
+  dimensions), a face picker (`+X…−Z`, `Layer n` for arrays) and, for HDR
+  sides, exposure (±8 EV) and a tone curve (clamp, Reinhard, ACES) applied
+  client-side by `src/lib/hdr.ts` after unpacking the RGBE preview. Picking a
+  surface refetches `ImageDiff` with `ImageOptions{Level, Face}` while the
+  previous preview stays on screen; the choice resets per file. PSD/PSB
+  sides list their layers (`src/lib/layers.ts` pairs them by kind, name and
+  duplicate index) with added/removed/changed status and what changed
+  (pixels, bounds, visibility, opacity, blend mode, nesting).
 - `frontend/`: React 18, Vite 8, Tailwind 4 (tokens in `src/index.css`,
   light/dark/system theme in `src/lib/theme.tsx`), TanStack Query, lucide.
   Generated bindings live in `frontend/bindings` and are committed (CI fails
@@ -115,13 +125,43 @@ Pure package (no client imports), shared by the daemon and later the server.
 - `DecodeImage(name, data)` decodes PNG/JPEG/GIF/BMP/TIFF/WebP (stdlib +
   `golang.org/x/image`) and TGA (own decoder: true-color, gray, color-mapped,
   RLE, 15/16/24/32 bpp, any origin) into `*image.NRGBA`, with format, bit
-  depth and alpha. `MaxPixels` (8192²) bounds every decode before allocation.
+  depth and alpha. `MaxPixels` (8192²) bounds every decode before allocation;
+  float sources get half of it (`checkFloatSize`, 16 bytes per pixel).
+- `DecodeImageAt(name, data, Select{Level, Face})` adds the game formats,
+  chosen by extension, and picks one surface of a texture (out-of-range values
+  clamp; `Image.Levels/Faces/Cube/Level/Face` describe the texture):
+  - DDS: legacy FourCC/D3DFMT/bit-mask headers and DX10 (DXGI) headers,
+    mipmaps, cube maps and arrays; BC1–BC7 incl. BC6H (UF16/SF16), 8-bit
+    RGBA/BGRA/R/RG/A, R10G10B10A2, RGBA16, half/float formats, R11G11B10 and
+    RGB9E5. Volume textures are refused.
+  - KTX2: the same pixel formats by `vkFormat`, levels/faces/layers, Zstandard
+    or zlib supercompression. Basis Universal (BasisLZ/UASTC) is refused.
+  - EXR: single-part scanline and tiled (level 0) images, NONE/RLE/ZIPS/ZIP/
+    PXR24, half/float/uint channels; RGBA of the unnamed layer, else the first
+    named layer with colour, Y as gray, or the first channel as gray. PIZ,
+    B44, DWA, multi-part and deep files are refused.
+  - Radiance HDR: adaptive RLE, old runs and flat scanlines, `-Y`/`+Y`.
+  - PSD/PSB: the merged image (raw or PackBits; 1/8/16/32-bit; RGB, gray,
+    indexed, CMYK, bitmap, duotone, multichannel; merged transparency when
+    the layer count is negative) plus `Layers` top-most first with group
+    nesting, visibility, opacity, blend key, bounds and an FNV hash of each
+    layer's channel data (also read from `Lr16`/`Lr32`).
+  Block decoders are checked bit-for-bit against bcdec goldens
+  (`testdata/bcn`, generators in `testdata/gen`). Refusals wrap
+  `ErrUnsupported` with a reason ("EXR PIZ compression") that the daemon
+  forwards in its 415.
+- Float sources keep linear samples in `Image.HDR` (`FloatImage`) while
+  `Pixels` is their clamped sRGB rendering, used for `CompareImages`.
+  `DownscaleFloat` box-filters them and `PackHDR` packs them into an opaque
+  8-bit PNG twice as wide (RGBE mantissas left, exponent + alpha right) so a
+  browser canvas does not premultiply them away.
 - `Downscale(img, maxSide)` fits a preview box with bilinear scaling.
 - `CompareImages(old, new, threshold)` returns changed pixel count/ratio, max
   channel delta, the changed bounding box and size/format/depth/alpha changes;
   fully transparent pixels compare equal.
-- Decoders are fuzzed (`FuzzDecodeTGA`, `FuzzDecodeImage`); crashers found by
-  the fuzzer are kept as seeds in `testdata/fuzz`.
+- Decoders are fuzzed (`FuzzDecodeTGA`, `FuzzDecodeImage`, `FuzzDecodeDDS`,
+  `FuzzDecodeKTX2`, `FuzzDecodeEXR`, `FuzzDecodeHDR`, `FuzzDecodePSD`);
+  crashers found by the fuzzer are kept as seeds in `testdata/fuzz`.
 
 ## Roadmap (one PR each)
 
@@ -131,7 +171,7 @@ Pure package (no client imports), shared by the daemon and later the server.
 4. `desktop/` Wails scaffold + daemon connector. **(done)**
 5. Changes screen + text diff, daemon `WatchChanges`. **(done)**
 6. Image compare viewer. **(done)**
-7. DDS/KTX2/EXR/HDR/PSD decoders + viewer controls.
+7. DDS/KTX2/EXR/HDR/PSD decoders + viewer controls. **(done)**
 8. 3D model viewer.
 9. Audio viewer, CSV table diff, Unity `.meta` lint.
 10. Locks (lock-aware status, Lock & edit, Locks page).

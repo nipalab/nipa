@@ -111,6 +111,47 @@ export interface ImageInfo {
      * data:image/png;base64 URL of the downscaled preview
      */
     "src": string;
+    "encoding": string;
+    "levels": number;
+    "faces": number;
+    "cube": boolean;
+    "level": number;
+    "face": number;
+
+    /**
+     * HDR marks a float image: Src is twice PreviewWidth wide and packs RGBE
+     * mantissas (left) with the exponent and alpha (right).
+     */
+    "hdr": boolean;
+    "layers": ImageLayer[] | null;
+}
+
+export interface ImageLayer {
+    "name": string;
+
+    /**
+     * layer, group
+     */
+    "kind": string;
+    "depth": number;
+    "visible": boolean;
+    "opacity": number;
+    "blend": string;
+    "x": number;
+    "y": number;
+    "width": number;
+    "height": number;
+    "hash": string;
+}
+
+/**
+ * ImageOptions sizes the previews and picks the mip level and cube face or
+ * array layer of textures.
+ */
+export interface ImageOptions {
+    "maxSize": number;
+    "level": number;
+    "face": number;
 }
 
 /**

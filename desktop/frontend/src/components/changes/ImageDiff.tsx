@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode, type RefObject, type WheelEvent } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Columns2, Flame, Layers, Loader2, Maximize, Repeat, SquareSplitHorizontal, ZoomIn, ZoomOut } from "lucide-react";
-import { desktop, type FileDiff, type ImageCompare, type ImageInfo, type ImageRef, type ImageStats } from "@/api/desktop";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { Columns2, EyeOff, Flame, Folder, Layers, Loader2, Maximize, Repeat, SquareSplitHorizontal, ZoomIn, ZoomOut } from "lucide-react";
+import { desktop, type FileDiff, type ImageCompare, type ImageInfo, type ImageLayer, type ImageRef, type ImageStats } from "@/api/desktop";
 import { MetaDiff } from "@/components/changes/Notices";
 import { formatBytes } from "@/lib/diff";
 import { allChannels, clampZoom, fitZoom, formatPercent, heatmap, isolateChannels, stepZoom, type Channels, type Pixels } from "@/lib/imageCompare";
+import { tonemap, unpackHdr, type ToneMap } from "@/lib/hdr";
+import { diffLayers, type LayerStatus } from "@/lib/layers";
 import { drawPixels, loadPixels } from "@/lib/pixels";
 import { cn } from "@/lib/utils";
 
@@ -30,11 +32,16 @@ export function imageRefs(diff: FileDiff): { old: ImageRef | null; next: ImageRe
   };
 }
 
+export type Surface = { level: number; face: number };
+
 export function ImageDiff({ root, diff }: { root: string; diff: FileDiff }) {
   const { old, next } = imageRefs(diff);
+  const [picked, setPicked] = useState({ path: diff.path, level: 0, face: 0 });
+  const surface = picked.path === diff.path ? picked : { level: 0, face: 0 };
   const query = useQuery({
-    queryKey: ["diff", root, diff.path, "image"],
-    queryFn: () => desktop.imageDiff(root, old, next),
+    queryKey: ["diff", root, diff.path, "image", surface.level, surface.face],
+    queryFn: () => desktop.imageDiff(root, old, next, { level: surface.level, face: surface.face }),
+    placeholderData: (prev, prevQuery) => (prevQuery?.queryKey[2] === diff.path ? keepPreviousData(prev) : undefined),
     staleTime: 30_000,
   });
   if (query.isPending) {
@@ -49,7 +56,7 @@ export function ImageDiff({ root, diff }: { root: string; diff: FileDiff }) {
   if (!data || data.unsupported || (!data.old && !data.new)) {
     return <MetaDiff diff={diff} detail={data?.unsupported || "There is no preview for this image."} />;
   }
-  return <ImageCompareView compare={data} />;
+  return <ImageCompareView compare={data} surface={surface} onSurface={(sel) => setPicked({ path: diff.path, ...sel })} />;
 }
 
 function usePixels(src: string | undefined): Pixels | null {
@@ -93,7 +100,17 @@ function readMode(): CompareMode {
   }
 }
 
-export function ImageCompareView({ compare }: { compare: ImageCompare }) {
+const faceNames = ["+X", "−X", "+Y", "−Y", "+Z", "−Z"];
+
+function faceLabel(face: number, cube: boolean): string {
+  if (!cube) return `Layer ${face}`;
+  const name = faceNames[face % 6];
+  return face >= 6 ? `Layer ${Math.floor(face / 6)} ${name}` : name;
+}
+
+type CompareProps = { compare: ImageCompare; surface?: Surface; onSurface?: (s: Surface) => void };
+
+export function ImageCompareView({ compare, surface = { level: 0, face: 0 }, onSurface }: CompareProps) {
   const { old, new: next, stats } = compare;
   const both = !!old && !!next;
   const [storedMode, setStoredMode] = useState<CompareMode>(readMode);
@@ -106,10 +123,19 @@ export function ImageCompareView({ compare }: { compare: ImageCompare }) {
   const [tolerance, setTolerance] = useState(0);
   const [blinkNew, setBlinkNew] = useState(true);
 
-  const oldPixels = usePixels(old?.src);
-  const newPixels = usePixels(next?.src);
+  const [exposure, setExposure] = useState(0);
+  const [curve, setCurve] = useState<ToneMap>("clamp");
+
+  const oldPixels = useDisplayPixels(old, exposure, curve);
+  const newPixels = useDisplayPixels(next, exposure, curve);
   const oldView = useMemo(() => oldPixels && isolateChannels(oldPixels, channels), [oldPixels, channels]);
   const newView = useMemo(() => newPixels && isolateChannels(newPixels, channels), [newPixels, channels]);
+  const levels = Math.max(old?.levels ?? 1, next?.levels ?? 1);
+  const faces = Math.max(old?.faces ?? 1, next?.faces ?? 1);
+  const cube = !!(old?.cube || next?.cube);
+  const hdr = !!(old?.hdr || next?.hdr);
+  const baseWidth = Math.max(old ? old.width << old.level : 0, next ? next.width << next.level : 0);
+  const baseHeight = Math.max(old ? old.height << old.level : 0, next ? next.height << next.level : 0);
   const heat = useMemo(
     () => (mode === "difference" && oldView && newView ? heatmap(oldView, newView, tolerance) : null),
     [mode, oldView, newView, tolerance],
@@ -270,6 +296,45 @@ export function ImageCompareView({ compare }: { compare: ImageCompare }) {
           </ToolButton>
         </div>
       </div>
+      {(levels > 1 || faces > 1 || hdr) && (
+        <div className="flex h-9 shrink-0 items-center gap-4 overflow-x-auto border-b border-border px-3 text-xs" role="toolbar" aria-label="Texture">
+          {levels > 1 && (
+            <Picker
+              label="Mip level"
+              value={surface.level}
+              onChange={(level) => onSurface?.({ ...surface, level })}
+              options={Array.from({ length: levels }, (_, l) => [l, `Mip ${l} · ${Math.max(1, baseWidth >> l)}×${Math.max(1, baseHeight >> l)}`])}
+            />
+          )}
+          {faces > 1 && (
+            <Picker
+              label={cube ? "Face" : "Layer"}
+              value={surface.face}
+              onChange={(face) => onSurface?.({ ...surface, face })}
+              options={Array.from({ length: faces }, (_, f) => [f, faceLabel(f, cube)])}
+            />
+          )}
+          {hdr && (
+            <>
+              <Slider label="Exposure" value={exposure} min={-8} max={8} step={0.25} onChange={setExposure} />
+              <button type="button" className="w-16 whitespace-nowrap font-mono tabular-nums text-muted-foreground hover:text-foreground" title="Reset exposure" onClick={() => setExposure(0)}>
+                {exposure > 0 ? "+" : ""}
+                {exposure.toFixed(2)} EV
+              </button>
+              <Picker
+                label="Tone map"
+                value={curve}
+                onChange={setCurve}
+                options={[
+                  ["clamp", "Clamp"],
+                  ["reinhard", "Reinhard"],
+                  ["aces", "ACES"],
+                ]}
+              />
+            </>
+          )}
+        </div>
+      )}
       <div ref={stageRef} className="min-h-0 flex-1">
         {stage}
       </div>
@@ -340,20 +405,51 @@ function ToolButton({ active, label, onClick, children }: { active?: boolean; la
   );
 }
 
-function Slider({ label, value, max = 100, onChange }: { label: string; value: number; max?: number; onChange: (v: number) => void }) {
+type SliderProps = { label: string; value: number; min?: number; max?: number; step?: number; onChange: (v: number) => void };
+
+function Slider({ label, value, min = 0, max = 100, step = 1, onChange }: SliderProps) {
   return (
     <label className="flex items-center gap-2 whitespace-nowrap text-muted-foreground">
       {label}
-      <input type="range" min={0} max={max} value={value} onChange={(e) => onChange(Number(e.target.value))} className="w-28 accent-[var(--accent)]" />
+      <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(Number(e.target.value))} className="w-28 accent-[var(--accent)]" />
     </label>
   );
 }
 
-type Row = { label: string; value: (i: ImageInfo) => string };
+function Picker<T extends string | number>({ label, value, options, onChange }: { label: string; value: T; options: [T, string][]; onChange: (v: T) => void }) {
+  return (
+    <label className="flex items-center gap-2 whitespace-nowrap text-muted-foreground">
+      {label}
+      <select
+        value={String(value)}
+        onChange={(e) => onChange(options.find(([v]) => String(v) === e.target.value)![0])}
+        className="h-6 rounded border border-border bg-card px-1 text-foreground"
+      >
+        {options.map(([v, text]) => (
+          <option key={String(v)} value={String(v)}>
+            {text}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function useDisplayPixels(info: ImageInfo | null, exposure: number, curve: ToneMap): Pixels | null {
+  const raw = usePixels(info?.src);
+  const hdr = !!info?.hdr;
+  const floats = useMemo(() => (hdr && raw ? unpackHdr(raw) : null), [hdr, raw]);
+  return useMemo(() => (floats ? tonemap(floats, exposure, curve) : hdr ? null : raw), [floats, exposure, curve, hdr, raw]);
+}
+
+type Row = { label: string; value: (i: ImageInfo) => string; show?: (i: ImageInfo) => boolean };
 
 const rows: Row[] = [
   { label: "Dimensions", value: (i) => `${i.width} × ${i.height}` },
   { label: "Format", value: (i) => i.format.toUpperCase() },
+  { label: "Encoding", value: (i) => i.encoding || "—", show: (i) => !!i.encoding },
+  { label: "Mip levels", value: (i) => String(i.levels), show: (i) => i.levels > 1 },
+  { label: "Faces", value: (i) => String(i.faces), show: (i) => i.faces > 1 },
   { label: "Bit depth", value: (i) => (i.bitDepth ? `${i.bitDepth}-bit` : "—") },
   { label: "Alpha", value: (i) => (i.hasAlpha ? "Yes" : "No") },
   { label: "File size", value: (i) => formatBytes(i.size) },
@@ -371,7 +467,7 @@ function MetaTable({ old, next, stats }: { old: ImageInfo | null; next: ImageInf
           </tr>
         </thead>
         <tbody>
-          {rows.map((r) => {
+          {rows.filter((r) => !r.show || [old, next].some((i) => i && r.show!(i))).map((r) => {
             const a = old ? r.value(old) : "—";
             const b = next ? r.value(next) : "—";
             return (
@@ -384,6 +480,7 @@ function MetaTable({ old, next, stats }: { old: ImageInfo | null; next: ImageInf
           })}
         </tbody>
       </table>
+      {(!!old?.layers?.length || !!next?.layers?.length) && <LayerList old={old?.layers ?? []} next={next?.layers ?? []} />}
       {stats && stats.sizeChanged && <p className="text-muted-foreground">Dimensions changed, so pixels are not compared.</p>}
       {stats && !stats.sizeChanged && (
         <dl className="grid grid-cols-[auto_auto] gap-x-3 gap-y-0.5">
@@ -399,6 +496,41 @@ function MetaTable({ old, next, stats }: { old: ImageInfo | null; next: ImageInf
           </dd>
         </dl>
       )}
+    </div>
+  );
+}
+
+const statusStyle: Record<LayerStatus, { letter: string; className: string; label: string }> = {
+  added: { letter: "A", className: "text-success", label: "Added" },
+  removed: { letter: "D", className: "text-danger", label: "Removed" },
+  changed: { letter: "M", className: "text-warning", label: "Changed" },
+  unchanged: { letter: "", className: "", label: "Unchanged" },
+};
+
+function LayerList({ old, next }: { old: ImageLayer[]; next: ImageLayer[] }) {
+  const rows = diffLayers(old, next);
+  const changed = rows.filter((r) => r.status !== "unchanged").length;
+  return (
+    <div className="min-w-56 max-w-md">
+      <p className="mb-1 text-muted-foreground">
+        Layers · {changed === 0 ? "no layer changes" : `${changed} changed`}
+      </p>
+      <ul aria-label="Layers" className="max-h-28 overflow-auto">
+        {rows.map((r, i) => {
+          const style = statusStyle[r.status];
+          return (
+            <li key={i} className={cn("flex items-center gap-1.5 py-px", r.status === "removed" && "line-through opacity-70")} style={{ paddingLeft: r.layer.depth * 12 }}>
+              <span className={cn("w-3 shrink-0 font-mono font-semibold", style.className)} aria-label={style.label}>
+                {style.letter}
+              </span>
+              {r.layer.kind === "group" ? <Folder className="size-3 shrink-0 text-muted-foreground" /> : null}
+              <span className="truncate">{r.layer.name}</span>
+              {!r.layer.visible && <EyeOff className="size-3 shrink-0 text-muted-foreground" aria-label="Hidden" />}
+              {r.changes.length > 0 && <span className="truncate text-muted-foreground">{r.changes.join(", ")}</span>}
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }

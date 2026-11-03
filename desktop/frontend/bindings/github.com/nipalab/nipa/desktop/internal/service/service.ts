@@ -49,10 +49,10 @@ export function FileDiff(root: string, path: string): $CancellablePromise<$model
 
 /**
  * ImageDiff decodes the old and/or new version of an image into previews no
- * larger than maxSize pixels, plus pixel-diff statistics when both exist.
+ * larger than opts.MaxSize pixels, plus pixel-diff statistics when both exist.
  */
-export function ImageDiff(root: string, old: $models.ImageRef | null, $new: $models.ImageRef | null, maxSize: number): $CancellablePromise<$models.ImageCompare | null> {
-    return $Call.ByID(2294302882, root, old, $new, maxSize);
+export function ImageDiff(root: string, old: $models.ImageRef | null, $new: $models.ImageRef | null, opts: $models.ImageOptions): $CancellablePromise<$models.ImageCompare | null> {
+    return $Call.ByID(2294302882, root, old, $new, opts);
 }
 
 /**

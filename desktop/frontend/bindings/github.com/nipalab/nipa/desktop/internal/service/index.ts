@@ -16,6 +16,8 @@ export type {
     FileSide,
     ImageCompare,
     ImageInfo,
+    ImageLayer,
+    ImageOptions,
     ImageRef,
     ImageStats,
     OpOutcome,
