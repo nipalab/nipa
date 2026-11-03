@@ -41,18 +41,22 @@ const pixelAt = (p: Pixels, x: number, y: number): number => (x < p.width && y <
 // heatmap marks every pixel whose largest channel delta exceeds tolerance,
 // yellow for small deltas through red for large ones, over a dimmed grayscale
 // of the new image. The two sides are aligned at the top-left corner; a pixel
-// only one side has always counts as changed, and two fully transparent
-// pixels are equal whatever their colour, like the daemon's statistics.
+// only one side has always counts as changed, a pixel neither side has stays
+// transparent and is not counted, and two fully transparent pixels are equal
+// whatever their colour, like the daemon's statistics.
 export function heatmap(a: Pixels, b: Pixels, tolerance: number): Heatmap {
   const width = Math.max(a.width, b.width);
   const height = Math.max(a.height, b.height);
   const out = new Uint8ClampedArray(width * height * 4);
   let changed = 0;
+  let total = 0;
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const o = (y * width + x) * 4;
       const ia = pixelAt(a, x, y);
       const ib = pixelAt(b, x, y);
+      if (ia < 0 && ib < 0) continue;
+      total++;
       let delta = 255;
       if (ia >= 0 && ib >= 0) {
         const ad = a.data;
@@ -80,7 +84,7 @@ export function heatmap(a: Pixels, b: Pixels, tolerance: number): Heatmap {
       out[o + 3] = 255;
     }
   }
-  return { pixels: { width, height, data: out }, changed, total: width * height };
+  return { pixels: { width, height, data: out }, changed, total };
 }
 
 export const minZoom = 0.02;

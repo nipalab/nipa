@@ -201,7 +201,7 @@ export function ImageCompareView({ compare }: { compare: ImageCompare }) {
     stage = (
       <Pane frame={frame} pan={pan}>
         <PixelCanvas pixels={heat?.pixels ?? null} label="Difference" className="absolute inset-0 size-full" pixelated={scale * width > 1.5 * (heat?.pixels.width ?? width)} />
-        {stats && stats.boundsWidth > 0 && <Bounds stats={stats} width={width} height={height} />}
+        {stats && !stats.sizeChanged && stats.boundsWidth > 0 && <Bounds stats={stats} width={width} height={height} />}
       </Pane>
     );
   } else if (mode === "blink") {
@@ -241,15 +241,18 @@ export function ImageCompareView({ compare }: { compare: ImageCompare }) {
         {mode === "swipe" && <Slider label="Swipe position" value={swipe} onChange={setSwipe} />}
         {mode === "onion" && <Slider label="After opacity" value={opacity} onChange={setOpacity} />}
         {mode === "difference" && <Slider label="Tolerance" value={tolerance} max={255} onChange={setTolerance} />}
-        {mode === "difference" && heat && (
+        {mode === "difference" && heat && heat.total > 0 && (
           <span className="whitespace-nowrap text-muted-foreground">{formatPercent(heat.changed / heat.total)} above tolerance</span>
         )}
         <div className="ml-auto flex items-center gap-0.5">
-          {stats && (
-            <span className="mr-2 whitespace-nowrap rounded-full bg-muted px-2 py-0.5 font-medium" title={`${stats.changedPixels.toLocaleString()} of ${stats.totalPixels.toLocaleString()} pixels`}>
-              {formatPercent(stats.changedRatio)} changed
-            </span>
-          )}
+          {stats &&
+            (stats.sizeChanged ? (
+              <span className="mr-2 whitespace-nowrap rounded-full bg-muted px-2 py-0.5 font-medium">Resized</span>
+            ) : (
+              <span className="mr-2 whitespace-nowrap rounded-full bg-muted px-2 py-0.5 font-medium" title={`${stats.changedPixels.toLocaleString()} of ${stats.totalPixels.toLocaleString()} pixels`}>
+                {formatPercent(stats.changedRatio)} changed
+              </span>
+            ))}
           <ToolButton label="Zoom out" onClick={() => zoomTo(stepZoom(scale, -1))}>
             <ZoomOut className="size-3.5" />
           </ToolButton>
@@ -381,7 +384,8 @@ function MetaTable({ old, next, stats }: { old: ImageInfo | null; next: ImageInf
           })}
         </tbody>
       </table>
-      {stats && (
+      {stats && stats.sizeChanged && <p className="text-muted-foreground">Dimensions changed, so pixels are not compared.</p>}
+      {stats && !stats.sizeChanged && (
         <dl className="grid grid-cols-[auto_auto] gap-x-3 gap-y-0.5">
           <dt className="text-muted-foreground">Changed pixels</dt>
           <dd className="font-mono">

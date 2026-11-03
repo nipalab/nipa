@@ -227,6 +227,22 @@ describe("ImageCompareView", () => {
     expect(screen.getByText("none")).toBeInTheDocument();
   });
 
+  it("reports a resize instead of zeroed pixel statistics", async () => {
+    const user = userEvent.setup();
+    const resized: ImageCompare = {
+      old: info(),
+      new: info({ src: "data:new", width: 8 }),
+      stats: { ...compare.stats!, changedPixels: 0, changedRatio: 0, boundsWidth: 0, sizeChanged: true },
+    };
+    renderWithProviders(<ImageCompareView compare={resized} />);
+    expect(screen.getByText("Resized")).toBeInTheDocument();
+    expect(screen.queryByText("0% changed")).not.toBeInTheDocument();
+    expect(screen.queryByText("Changed pixels")).not.toBeInTheDocument();
+    expect(screen.getByText("Dimensions changed, so pixels are not compared.")).toBeInTheDocument();
+    await user.click(modeButton("Difference"));
+    expect(screen.queryByLabelText("Changed region")).not.toBeInTheDocument();
+  });
+
   it("survives storage failures", async () => {
     const user = userEvent.setup();
     const get = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {

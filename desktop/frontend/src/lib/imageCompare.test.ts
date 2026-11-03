@@ -46,6 +46,15 @@ describe("heatmap", () => {
     expect([...wide.pixels.data.slice(4, 8)]).toEqual([255, 0, 0, 255]);
   });
 
+  it("skips pixels neither side has", () => {
+    const h = heatmap(px(2, 1, [5, 5, 5, 255], [5, 5, 5, 255]), px(1, 2, [5, 5, 5, 255], [5, 5, 5, 255]), 0);
+    expect(h.pixels.width).toBe(2);
+    expect(h.pixels.height).toBe(2);
+    expect(h.total).toBe(3);
+    expect(h.changed).toBe(2);
+    expect([...h.pixels.data.slice(12, 16)]).toEqual([0, 0, 0, 0]);
+  });
+
   it("dims an unchanged pixel from the old side when only it has one", () => {
     const h = heatmap(px(2, 1, [200, 200, 200, 255], [0, 0, 0, 0]), px(1, 1, [200, 200, 200, 255]), 255);
     expect(h.changed).toBe(0);
