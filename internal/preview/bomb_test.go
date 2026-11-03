@@ -79,3 +79,40 @@ func TestKTX2InflatesOnlySelectedSurface(t *testing.T) {
 	require.Less(t, alloc, uint64(16<<20))
 	require.False(t, errors.Is(err, ErrTooLarge))
 }
+
+func radianceSolid(w, h int, header string) []byte {
+	b := []byte("#?RADIANCE\nFORMAT=32-bit_rle_rgbe\n\n" + header + "\n")
+	for range h {
+		b = append(b, 2, 2, byte(w>>8), byte(w))
+		for c := range 4 {
+			for x := 0; x < w; {
+				n := min(127, w-x)
+				b = append(b, byte(128+n), byte(100+c))
+				x += n
+			}
+		}
+	}
+	return b
+}
+
+func TestRadianceDecodesScanlinesInPlace(t *testing.T) {
+	const w, h = 1024, 512
+	data := radianceSolid(w, h, fmt.Sprintf("-Y %d +X %d", h, w))
+	var (
+		img *Image
+		err error
+	)
+	alloc := allocatedBy(func() { img, err = DecodeImage("a.hdr", data) })
+	require.NoError(t, err)
+	require.Equal(t, w, img.Width())
+	require.Equal(t, img.HDR.Pix[:4], img.HDR.Pix[len(img.HDR.Pix)-4:])
+	require.Less(t, alloc, uint64(w*h*20+1<<20))
+}
+
+func TestRadianceRejectsShortDataBeforeAllocating(t *testing.T) {
+	data := radianceSolid(8, 1, fmt.Sprintf("-Y %d +X %d", MaxPixels/16, 8))
+	var err error
+	alloc := allocatedBy(func() { _, err = DecodeImage("a.hdr", data) })
+	require.ErrorIs(t, err, errHDRTruncated)
+	require.Less(t, alloc, uint64(1<<20))
+}

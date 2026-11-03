@@ -53,25 +53,24 @@ func decodeRadiance(data []byte) (*Image, error) {
 	if err := checkFloatSize(width, height); err != nil {
 		return nil, err
 	}
-	var rgbe []byte
+	if len(data)-pos < 4*height {
+		return nil, errHDRTruncated
+	}
+	img := newFloatImage(width, height)
 	scan := make([]byte, width*4)
-	for range height {
+	for y := range height {
 		n, err := readRGBEScanline(data[pos:], scan)
 		if err != nil {
 			return nil, err
 		}
 		pos += n
-		rgbe = append(rgbe, scan...)
-	}
-	img := newFloatImage(width, height)
-	for y := range height {
 		row := y
 		if fields[0] == "+Y" {
 			row = height - 1 - y
 		}
 		for x := range width {
 			px := img.Pix[(row*width+x)*4:]
-			s := rgbe[(y*width+x)*4:]
+			s := scan[x*4:]
 			px[3] = 1
 			if s[3] == 0 {
 				continue
