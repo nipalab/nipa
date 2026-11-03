@@ -147,6 +147,9 @@ func (s *Service) loadModel(ctx context.Context, client daemonpb.NipaDaemonClien
 		return side, nil
 	}
 	for _, dep := range deps[i:] {
+		if len(side.Missing) >= maxModelFiles {
+			break
+		}
 		if !seen[dep] {
 			seen[dep] = true
 			side.Missing = append(side.Missing, dep)

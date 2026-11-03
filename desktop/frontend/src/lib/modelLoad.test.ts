@@ -4,7 +4,7 @@ import { MTLLoader } from "three/examples/jsm/loaders/MTLLoader.js";
 import { USDLoader } from "three/examples/jsm/loaders/USDLoader.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ModelSide } from "@/api/desktop";
-import { base64ToBytes, clipName, fileManager, loadModel, mimeFor, sceneStats } from "./modelLoad";
+import { base64ToBytes, cleanPath, clipName, fileManager, loadModel, mimeFor, sceneStats } from "./modelLoad";
 
 const toB64 = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes));
 const textB64 = (s: string) => toB64(new TextEncoder().encode(s));
@@ -69,8 +69,24 @@ describe("helpers", () => {
     const m = fileManager({ "tex/a b.png": "QQ==", "x.bin": "Qg==" });
     expect(m.resolveURL("tex/a%20b.png")).toBe("data:image/png;base64,QQ==");
     expect(m.resolveURL("./x.bin")).toBe("data:application/octet-stream;base64,Qg==");
-    expect(m.resolveURL("other.png")).toBe("other.png");
-    expect(m.resolveURL("bad%zz")).toBe("bad%zz");
+    expect(m.resolveURL("sub/../x.bin")).toBe("data:application/octet-stream;base64,Qg==");
+    const dotted = fileManager({ "./hero.bin": "SA==", "materials/wood.png": "Vw==" });
+    expect(dotted.resolveURL("hero.bin")).toBe("data:application/octet-stream;base64,SA==");
+    expect(dotted.resolveURL("materials/./wood.png")).toBe("data:image/png;base64,Vw==");
+    expect(m.resolveURL("data:image/png;base64,AA==")).toBe("data:image/png;base64,AA==");
+    expect(m.resolveURL("blob:http://app/1")).toBe("blob:http://app/1");
+    for (const url of ["other.png", "https://attacker.example/beacon.png", "//attacker.example/a.jpg"]) {
+      expect(m.resolveURL(url)).toMatch(/^data:image\/png;base64,iVBOR/);
+    }
+    expect(m.resolveURL("bad%zz")).toBe("data:application/octet-stream;base64,");
+    expect(m.resolveURL("https://attacker.example/buf.bin")).toBe("data:application/octet-stream;base64,");
+    expect(m.resolveURL("a.ktx2")).toBe("data:application/octet-stream;base64,");
+  });
+
+  it("cleans relative paths", () => {
+    expect(cleanPath("./a/./b//c")).toBe("a/b/c");
+    expect(cleanPath("a/../../b")).toBe("../b");
+    expect(cleanPath("../../x")).toBe("../../x");
   });
 });
 
@@ -86,6 +102,16 @@ describe("loadModel", () => {
 
     const bin = await loadModel(side({ format: "glb", data: toB64(glb(gltfJSON(""), triangle)) }));
     expect(sceneStats(bin).meshes).toBe(1);
+  });
+
+  it("loads a glTF whose buffer path starts with ./ and never fetches unknown files", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const model = await loadModel(side({ data: textB64(gltfJSON("./hero.bin")), files: { "./hero.bin": toB64(triangle) } }));
+    expect(sceneStats(model).vertices).toBe(3);
+    await expect(loadModel(side({ data: textB64(gltfJSON("https://attacker.example/hero.bin")) }))).rejects.toThrow();
+    const urls = fetchSpy.mock.calls.map(([req]) => (req instanceof Request ? req.url : String(req)));
+    expect(urls.length).toBeGreaterThan(0);
+    expect(urls.every((u) => u.startsWith("data:"))).toBe(true);
   });
 
   it("loads OBJ with its material library", async () => {

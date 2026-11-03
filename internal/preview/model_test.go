@@ -2,7 +2,9 @@ package preview
 
 import (
 	"encoding/binary"
+	"fmt"
 	"math"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -146,6 +148,17 @@ func TestDecodeOBJ(t *testing.T) {
 	}
 	_, err = DecodeModel("a.obj", append([]byte("v "), make([]byte, 17<<20)...))
 	require.Error(t, err)
+}
+
+func TestDecodeOBJDeduplicatesManyDependencies(t *testing.T) {
+	var b strings.Builder
+	for i := range 50000 {
+		fmt.Fprintf(&b, "mtllib m%d.mtl m%d.mtl\n", i, i/2)
+	}
+	s, err := DecodeModel("big.obj", []byte(b.String()))
+	require.NoError(t, err)
+	require.Len(t, s.Dependencies, 50000)
+	require.Equal(t, []string{"m0.mtl", "m1.mtl", "m2.mtl"}, s.Dependencies[:3])
 }
 
 func TestIncludeSkipsNonFinitePoints(t *testing.T) {

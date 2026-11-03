@@ -33,22 +33,36 @@ export function mimeFor(path: string): string {
   return mimeTypes[path.split(".").pop()?.toLowerCase() ?? ""] ?? "application/octet-stream";
 }
 
-// fileManager serves the model's referenced files from memory: loaders ask
-// for relative URLs, which are matched as written or URL-decoded.
+export function cleanPath(p: string): string {
+  const out: string[] = [];
+  for (const part of p.split("/")) {
+    if (part === "" || part === ".") continue;
+    if (part === ".." && out.length && out[out.length - 1] !== "..") out.pop();
+    else out.push(part);
+  }
+  return out.join("/");
+}
+
+const blankPNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
+
+// fileManager serves the model's referenced files from memory and never lets
+// a loader reach the network: unknown URLs get an empty placeholder.
 export function fileManager(files: Record<string, string>): LoadingManager {
+  const keys = new Map<string, string>();
+  for (const key of Object.keys(files)) if (!keys.has(cleanPath(key))) keys.set(cleanPath(key), key);
+  const decode = (url: string) => {
+    try {
+      return decodeURIComponent(url);
+    } catch {
+      return url;
+    }
+  };
   const manager = new LoadingManager();
   manager.setURLModifier((url) => {
-    const clean = url.replace(/^\.\//, "");
-    let key = clean in files ? clean : undefined;
-    if (!key) {
-      try {
-        const decoded = decodeURIComponent(clean);
-        if (decoded in files) key = decoded;
-      } catch {
-        key = undefined;
-      }
-    }
-    return key ? `data:${mimeFor(key)};base64,${files[key]}` : url;
+    if (/^(data|blob):/i.test(url)) return url;
+    const key = keys.get(cleanPath(url)) ?? keys.get(cleanPath(decode(url)));
+    if (key) return `data:${mimeFor(key)};base64,${files[key]}`;
+    return mimeFor(url).startsWith("image/") && !url.toLowerCase().endsWith(".ktx2") ? blankPNG : "data:application/octet-stream;base64,";
   });
   return manager;
 }

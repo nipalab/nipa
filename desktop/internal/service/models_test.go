@@ -188,6 +188,25 @@ func TestService_ModelDiffReportsFilesBeyondCap(t *testing.T) {
 	require.Len(t, d.reads, maxModelFiles+1)
 }
 
+func TestService_ModelDiffCapsMissingList(t *testing.T) {
+	files := map[string]string{}
+	var lines []string
+	for i := range maxModelFiles * 4 {
+		name := fmt.Sprintf("m%03d.mtl", i)
+		lines = append(lines, "mtllib "+name)
+		if i < maxModelFiles-1 {
+			files["art/"+name] = "newmtl X\n"
+		}
+	}
+	files["art/ship.obj"] = strings.Join(lines, "\n") + "\n"
+	svc, _ := newModels(t, files)
+	out, err := svc.ModelDiff(ctx, "/work/game", nil, &ImageRef{Source: "working", Path: "art/ship.obj"})
+	require.NoError(t, err)
+	require.Len(t, out.New.Files, maxModelFiles-1)
+	require.Len(t, out.New.Missing, maxModelFiles)
+	require.Equal(t, fmt.Sprintf("m%03d.mtl", 2*maxModelFiles-2), out.New.Missing[maxModelFiles-1])
+}
+
 func TestResolveModelPath(t *testing.T) {
 	for dep, want := range map[string]string{"a.bin": "art/a.bin", "../shared/t.png": "shared/t.png", "x/../y.png": "art/y.png"} {
 		got, ok := resolveModelPath("art/m.gltf", dep)

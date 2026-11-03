@@ -35,6 +35,7 @@ type ModelStats struct {
 	// Dependencies are the files the model loads next to itself (glTF buffers
 	// and images, OBJ material libraries), relative to the model's folder.
 	Dependencies []string
+	seenDeps     map[string]struct{}
 }
 
 var errModel = errors.New("preview: invalid model")
@@ -211,11 +212,13 @@ func (s *ModelStats) addDependency(uri string) {
 	if decoded, err := url.PathUnescape(uri); err == nil {
 		uri = decoded
 	}
-	for _, d := range s.Dependencies {
-		if d == uri {
-			return
-		}
+	if _, ok := s.seenDeps[uri]; ok {
+		return
 	}
+	if s.seenDeps == nil {
+		s.seenDeps = map[string]struct{}{}
+	}
+	s.seenDeps[uri] = struct{}{}
 	s.Dependencies = append(s.Dependencies, uri)
 }
 
