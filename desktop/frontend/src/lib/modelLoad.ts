@@ -71,12 +71,16 @@ export async function loadModel(side: ModelSide): Promise<LoadedModel> {
     case "obj": {
       const source = text(bytes);
       const loader = new OBJLoader(manager);
-      const lib = /^mtllib\s+(\S+)/m.exec(source)?.[1];
-      if (lib && files[lib]) {
+      const libs = new Set([...source.matchAll(/^mtllib\s+(.+)$/gm)].flatMap((m) => m[1].trim().split(/\s+/)));
+      let merged: MTLLoader.MaterialCreator | undefined;
+      for (const lib of libs) {
+        if (!files[lib]) continue;
         const materials = new MTLLoader(manager).parse(text(base64ToBytes(files[lib])), lib.slice(0, lib.lastIndexOf("/") + 1));
         materials.preload();
-        loader.setMaterials(materials);
+        if (!merged) merged = materials;
+        else for (const [name, m] of Object.entries(materials.materials)) merged.materials[name] ??= m;
       }
+      if (merged) loader.setMaterials(merged);
       return { object: loader.parse(source), animations: [] };
     }
     case "fbx": {

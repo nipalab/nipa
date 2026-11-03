@@ -1,4 +1,4 @@
-import { AnimationClip, Bone, BoxGeometry, BufferAttribute, Group, Mesh, MeshStandardMaterial, Texture } from "three";
+import { AnimationClip, Bone, BoxGeometry, BufferAttribute, Group, Mesh, MeshPhongMaterial, MeshStandardMaterial, Texture } from "three";
 import { FBXLoader } from "three/examples/jsm/loaders/FBXLoader.js";
 import { MTLLoader } from "three/examples/jsm/loaders/MTLLoader.js";
 import { USDLoader } from "three/examples/jsm/loaders/USDLoader.js";
@@ -100,6 +100,28 @@ describe("loadModel", () => {
     expect(parse).toHaveBeenLastCalledWith(expect.any(String), "materials/");
     const plain = await loadModel(side({ format: "obj", data: textB64("v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n") }));
     expect(sceneStats(plain).vertices).toBe(3);
+  });
+
+  it("applies every OBJ material library", async () => {
+    const obj = "mtllib a.mtl b.mtl\nmtllib sub/c.mtl absent.mtl\nv 0 0 0\nv 1 0 0\nv 0 1 0\nusemtl A\nf 1 2 3\nusemtl B\nf 1 2 3\nusemtl C\nf 1 2 3\n";
+    const model = await loadModel(
+      side({
+        format: "obj",
+        data: textB64(obj),
+        files: {
+          "a.mtl": textB64("newmtl A\nKd 1 0 0\n"),
+          "b.mtl": textB64("newmtl B\nKd 0 1 0\nnewmtl A\nKd 0 0 1\n"),
+          "sub/c.mtl": textB64("newmtl C\nKd 0 0 1\n"),
+        },
+      }),
+    );
+    const mesh = model.object.children[0] as Mesh;
+    const colors = (mesh.material as MeshPhongMaterial[]).map((m) => [m.name, m.color.getHexString()]);
+    expect(colors).toEqual([
+      ["A", "ff0000"],
+      ["B", "00ff00"],
+      ["C", "0000ff"],
+    ]);
   });
 
   it("hands FBX and USD to their loaders", async () => {
