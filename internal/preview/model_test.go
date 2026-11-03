@@ -150,6 +150,18 @@ func TestDecodeOBJ(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestDecodeOBJTabSeparated(t *testing.T) {
+	obj := "mtllib\tmaterials/a.mtl\tb.mtl\no\tShip\nv\t0 0 0\nv\t1\t2\t3\nv 0\t1 0\nusemtl\tHull\nf\t1 2 3\r\nvt\t0 0\n"
+	s, err := DecodeModel("ship.obj", []byte(obj))
+	require.NoError(t, err)
+	require.Equal(t, []string{"materials/a.mtl", "b.mtl"}, s.Dependencies)
+	require.Equal(t, 3, s.Vertices)
+	require.Equal(t, 1, s.Triangles)
+	require.Equal(t, 1, s.Meshes)
+	require.Equal(t, []string{"Hull"}, s.Materials)
+	require.Equal(t, [3]float64{1, 2, 3}, s.Max)
+}
+
 func TestDecodeOBJDeduplicatesManyDependencies(t *testing.T) {
 	var b strings.Builder
 	for i := range 50000 {

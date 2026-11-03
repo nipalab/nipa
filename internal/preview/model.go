@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"unicode"
 )
 
 // ModelStats summarizes a 3D model for review: what it contains and where it
@@ -356,8 +357,10 @@ func decodeOBJ(data []byte) (*ModelStats, error) {
 	sc.Buffer(make([]byte, 64<<10), 16<<20)
 	for sc.Scan() {
 		line := strings.TrimSpace(sc.Text())
-		key, rest, _ := strings.Cut(line, " ")
-		rest = strings.TrimSpace(rest)
+		key, rest := line, ""
+		if i := strings.IndexFunc(line, unicode.IsSpace); i >= 0 {
+			key, rest = line[:i], strings.TrimSpace(line[i:])
+		}
 		switch key {
 		case "v":
 			f := strings.Fields(rest)
