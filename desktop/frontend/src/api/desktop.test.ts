@@ -72,11 +72,13 @@ describe("desktop api", () => {
     expect(service.Push).toHaveBeenCalledWith("/a", "msg");
   });
 
-  it("asks for image previews at 2048 px by default", async () => {
+  it("asks for image previews at 2048 px and the first surface by default", async () => {
     service.ImageDiff.mockResolvedValue({ old: null, new: null, stats: null });
     const ref = { source: "working", path: "a.png" };
     await desktop.imageDiff("/a", null, ref);
-    expect(service.ImageDiff).toHaveBeenCalledWith("/a", null, ref, 2048);
+    expect(service.ImageDiff).toHaveBeenCalledWith("/a", null, ref, { maxSize: 2048, level: 0, face: 0 });
+    await desktop.imageDiff("/a", ref, null, { level: 2, face: 1 });
+    expect(service.ImageDiff).toHaveBeenLastCalledWith("/a", ref, null, { maxSize: 2048, level: 2, face: 1 });
   });
 
   it("subscribes to change and progress events", () => {

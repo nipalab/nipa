@@ -9,6 +9,8 @@ import (
 	"image/png"
 	"io"
 	"math/rand/v2"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 
@@ -337,6 +339,7 @@ func TestServer_PreviewDecodeFailures(t *testing.T) {
 		":cut.png":     {entry: diff.Entry{Path: "cut.png"}, data: valid[:40]},
 		":big.png":     {entry: diff.Entry{Path: "big.png"}, data: valid},
 		":hero.psd":    {entry: diff.Entry{Path: "hero.psd"}, data: []byte("8BPS")},
+		":sky.exr":     {entry: diff.Entry{Path: "sky.exr"}, data: fixtureBytes(t, "exr_piz.exr")},
 		":missing.png": {},
 	}, nil)
 
@@ -344,7 +347,8 @@ func TestServer_PreviewDecodeFailures(t *testing.T) {
 		"notes.txt": 415,
 		"fake.png":  415,
 		"cut.png":   400,
-		"hero.psd":  415,
+		"hero.psd":  400,
+		"sky.exr":   415,
 		"gone.png":  404,
 	}
 	for path, code := range cases {
@@ -352,13 +356,66 @@ func TestServer_PreviewDecodeFailures(t *testing.T) {
 		require.NoError(t, srv.Preview(&daemonpb.PreviewRequest{Root: root, New: &daemonpb.BlobRef{Path: path}}, stream))
 		require.Equal(t, code, collectPreview(stream.all()).failure.GetCode(), path)
 	}
+	stream := previewStream()
+	require.NoError(t, srv.Preview(&daemonpb.PreviewRequest{Root: root, New: &daemonpb.BlobRef{Path: "sky.exr"}}, stream))
+	require.Equal(t, "sky.exr: EXR PIZ compression not supported yet", collectPreview(stream.all()).failure.GetMessage())
+	stream = previewStream()
+	require.NoError(t, srv.Preview(&daemonpb.PreviewRequest{Root: root, New: &daemonpb.BlobRef{Path: "fake.png"}}, stream))
+	require.Equal(t, "fake.png: unsupported image format", collectPreview(stream.all()).failure.GetMessage())
 
 	old := preview.MaxPixels
 	preview.MaxPixels = 4
 	defer func() { preview.MaxPixels = old }()
-	stream := previewStream()
+	stream = previewStream()
 	require.NoError(t, srv.Preview(&daemonpb.PreviewRequest{Root: root, Old: &daemonpb.BlobRef{Path: "big.png"}}, stream))
 	require.EqualValues(t, 415, collectPreview(stream.all()).failure.GetCode())
+}
+
+func fixtureBytes(t *testing.T, name string) []byte {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join("..", "..", "preview", "testdata", name))
+	require.NoError(t, err)
+	return data
+}
+
+func TestServer_PreviewTexturesAndLayers(t *testing.T) {
+	srv, root := blobServer(t, map[string]blobFile{
+		":cube.dds":   {entry: diff.Entry{Path: "cube.dds"}, data: fixtureBytes(t, "dds_cube.dds")},
+		":sky.exr":    {entry: diff.Entry{Path: "sky.exr"}, data: fixtureBytes(t, "exr_tiled.exr")},
+		":layers.psd": {entry: diff.Entry{Path: "layers.psd"}, data: fixtureBytes(t, "psd_layers.psd")},
+	}, nil)
+
+	stream := previewStream()
+	require.NoError(t, srv.Preview(&daemonpb.PreviewRequest{Root: root, New: &daemonpb.BlobRef{Path: "cube.dds"}, Level: 1, Face: 2}, stream))
+	res := collectPreview(stream.all())
+	img := res.images["new"]
+	require.Equal(t, "R8G8B8A8_UNORM", img.GetEncoding())
+	require.EqualValues(t, 2, img.GetLevels())
+	require.EqualValues(t, 6, img.GetFaces())
+	require.True(t, img.GetCube())
+	require.EqualValues(t, 1, img.GetLevel())
+	require.EqualValues(t, 2, img.GetFace())
+	require.EqualValues(t, 2, img.GetWidth())
+	require.False(t, img.GetHdr())
+
+	stream = previewStream()
+	require.NoError(t, srv.Preview(&daemonpb.PreviewRequest{Root: root, New: &daemonpb.BlobRef{Path: "sky.exr"}}, stream))
+	res = collectPreview(stream.all())
+	img = res.images["new"]
+	require.True(t, img.GetHdr())
+	require.EqualValues(t, 5, img.GetPreviewWidth())
+	decoded, err := png.Decode(bytes.NewReader(res.pngs["new"]))
+	require.NoError(t, err)
+	require.Equal(t, 10, decoded.Bounds().Dx())
+
+	stream = previewStream()
+	require.NoError(t, srv.Preview(&daemonpb.PreviewRequest{Root: root, Old: &daemonpb.BlobRef{Path: "layers.psd"}}, stream))
+	layers := collectPreview(stream.all()).images["old"].GetLayers()
+	require.Len(t, layers, 2)
+	require.Equal(t, "Spark", layers[0].GetName())
+	require.Equal(t, "layer", layers[0].GetKind())
+	require.EqualValues(t, 16, layers[0].GetWidth())
+	require.NotEmpty(t, layers[0].GetHash())
 }
 
 func TestServer_PreviewSendFailures(t *testing.T) {

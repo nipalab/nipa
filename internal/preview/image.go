@@ -29,21 +29,65 @@ var (
 	ErrTooLarge    = errors.New("preview: image too large")
 )
 
+// Image is one decoded surface. Pixels is always 8-bit sRGB for display and
+// comparison; HDR additionally keeps the linear samples of float sources.
+// Levels and Faces describe the whole texture the surface was taken from.
 type Image struct {
 	Pixels   *image.NRGBA
+	HDR      *FloatImage
 	Format   string
+	Encoding string
 	BitDepth int
 	HasAlpha bool
+	Levels   int
+	Faces    int
+	Cube     bool
+	Level    int
+	Face     int
+	Layers   []Layer
+}
+
+func (i *Image) setHDR(f *FloatImage) {
+	i.HDR = f
+	i.Pixels = f.display()
+	i.HasAlpha = f.hasAlpha()
 }
 
 func (i *Image) Width() int  { return i.Pixels.Rect.Dx() }
 func (i *Image) Height() int { return i.Pixels.Rect.Dy() }
 
-// DecodeImage decodes PNG, JPEG, GIF, BMP, TIFF, WebP and TGA content into
-// non-premultiplied RGBA. TGA has no magic number, so it is chosen by name.
+// DecodeImage decodes the first surface of an image; see DecodeImageAt.
 func DecodeImage(name string, data []byte) (*Image, error) {
-	if strings.EqualFold(filepath.Ext(name), ".tga") {
+	return DecodeImageAt(name, data, Select{})
+}
+
+// DecodeImageAt decodes PNG, JPEG, GIF, BMP, TIFF, WebP and TGA content and
+// the game formats DDS, KTX2, EXR, Radiance HDR and PSD/PSB. Formats without
+// a reliable magic number are chosen by extension; sel picks the mip level
+// and cube face or array layer of textures.
+func DecodeImageAt(name string, data []byte, sel Select) (*Image, error) {
+	img, err := decodeByExtension(name, data, sel)
+	if err != nil || img == nil {
+		return img, err
+	}
+	img.Levels, img.Faces = max(img.Levels, 1), max(img.Faces, 1)
+	return img, nil
+}
+
+func decodeByExtension(name string, data []byte, sel Select) (*Image, error) {
+	switch strings.ToLower(filepath.Ext(name)) {
+	case ".tga":
 		return decodeTGA(data)
+	case ".dds":
+		return decodeDDS(data, sel)
+	case ".ktx2":
+		return decodeKTX2(data, sel)
+	case ".exr":
+		return decodeEXR(data)
+	case ".hdr":
+		return decodeRadiance(data)
+	case ".psd", ".psb":
+		return decodePSD(data)
 	}
 	cfg, format, err := image.DecodeConfig(bytes.NewReader(data))
 	if err != nil {
@@ -66,6 +110,18 @@ func DecodeImage(name string, data []byte) (*Image, error) {
 		BitDepth: bitDepth(cfg.ColorModel),
 		HasAlpha: hasAlpha(pixels),
 	}, nil
+}
+
+// checkFloatSize applies half the pixel budget to float sources, which cost
+// 16 bytes per pixel while decoding.
+func checkFloatSize(w, h int) error {
+	if err := checkSize(w, h); err != nil {
+		return err
+	}
+	if w > MaxPixels/2/h {
+		return ErrTooLarge
+	}
+	return nil
 }
 
 func checkSize(w, h int) error {

@@ -30,6 +30,38 @@ type ImageInfo struct {
 	PreviewWidth  int    `json:"previewWidth"`
 	PreviewHeight int    `json:"previewHeight"`
 	Src           string `json:"src"` // data:image/png;base64 URL of the downscaled preview
+	Encoding      string `json:"encoding"`
+	Levels        int    `json:"levels"`
+	Faces         int    `json:"faces"`
+	Cube          bool   `json:"cube"`
+	Level         int    `json:"level"`
+	Face          int    `json:"face"`
+	// HDR marks a float image: Src is twice PreviewWidth wide and packs RGBE
+	// mantissas (left) with the exponent and alpha (right).
+	HDR    bool         `json:"hdr"`
+	Layers []ImageLayer `json:"layers"`
+}
+
+type ImageLayer struct {
+	Name    string `json:"name"`
+	Kind    string `json:"kind"` // layer, group
+	Depth   int    `json:"depth"`
+	Visible bool   `json:"visible"`
+	Opacity int    `json:"opacity"`
+	Blend   string `json:"blend"`
+	X       int    `json:"x"`
+	Y       int    `json:"y"`
+	Width   int    `json:"width"`
+	Height  int    `json:"height"`
+	Hash    string `json:"hash"`
+}
+
+// ImageOptions sizes the previews and picks the mip level and cube face or
+// array layer of textures.
+type ImageOptions struct {
+	MaxSize int `json:"maxSize"`
+	Level   int `json:"level"`
+	Face    int `json:"face"`
 }
 
 type ImageStats struct {
@@ -57,8 +89,8 @@ type ImageCompare struct {
 }
 
 // ImageDiff decodes the old and/or new version of an image into previews no
-// larger than maxSize pixels, plus pixel-diff statistics when both exist.
-func (s *Service) ImageDiff(ctx context.Context, root string, old, new *ImageRef, maxSize int) (*ImageCompare, error) {
+// larger than opts.MaxSize pixels, plus pixel-diff statistics when both exist.
+func (s *Service) ImageDiff(ctx context.Context, root string, old, new *ImageRef, opts ImageOptions) (*ImageCompare, error) {
 	if old == nil && new == nil {
 		return nil, errors.New("nothing to compare")
 	}
@@ -70,7 +102,9 @@ func (s *Service) ImageDiff(ctx context.Context, root string, old, new *ImageRef
 		Root:    root,
 		Old:     blobRef(old),
 		New:     blobRef(new),
-		MaxSize: int32(maxSize),
+		MaxSize: int32(opts.MaxSize),
+		Level:   int32(opts.Level),
+		Face:    int32(opts.Face),
 	})
 	if err != nil {
 		s.dropIfDisconnected(err)
@@ -135,7 +169,26 @@ func toImageInfo(img *daemonpb.ImagePreview) *ImageInfo {
 		Size:          img.GetSizeBytes(),
 		PreviewWidth:  int(img.GetPreviewWidth()),
 		PreviewHeight: int(img.GetPreviewHeight()),
+		Encoding:      img.GetEncoding(),
+		Levels:        max(int(img.GetLevels()), 1),
+		Faces:         max(int(img.GetFaces()), 1),
+		Cube:          img.GetCube(),
+		Level:         int(img.GetLevel()),
+		Face:          int(img.GetFace()),
+		HDR:           img.GetHdr(),
+		Layers:        toImageLayers(img.GetLayers()),
 	}
+}
+
+func toImageLayers(layers []*daemonpb.ImageLayer) []ImageLayer {
+	out := make([]ImageLayer, 0, len(layers))
+	for _, l := range layers {
+		out = append(out, ImageLayer{
+			Name: l.GetName(), Kind: l.GetKind(), Depth: int(l.GetDepth()), Visible: l.GetVisible(), Opacity: int(l.GetOpacity()),
+			Blend: l.GetBlend(), X: int(l.GetX()), Y: int(l.GetY()), Width: int(l.GetWidth()), Height: int(l.GetHeight()), Hash: l.GetHash(),
+		})
+	}
+	return out
 }
 
 func toImageStats(d *daemonpb.ImageDiffStats) *ImageStats {

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"image/png"
 	"io"
+	"strings"
 
 	clientDomain "github.com/nipalab/nipa/internal/client/domain"
 	"github.com/nipalab/nipa/internal/client/grpc/daemonpb"
@@ -110,6 +111,7 @@ func (s *Server) Preview(req *daemonpb.PreviewRequest, stream daemonpb.NipaDaemo
 	}
 	defer done()
 
+	sel := preview.Select{Level: int(req.GetLevel()), Face: int(req.GetFace())}
 	var sides []decodedSide
 	for _, ref := range []struct {
 		side string
@@ -118,7 +120,7 @@ func (s *Server) Preview(req *daemonpb.PreviewRequest, stream daemonpb.NipaDaemo
 		if ref.ref == nil {
 			continue
 		}
-		decoded, err := decodePreviewSide(ctx, rp.diff, rp.root, ref.side, ref.ref)
+		decoded, err := decodePreviewSide(ctx, rp.diff, rp.root, ref.side, ref.ref, sel)
 		if err != nil {
 			return stream.Send(previewFailureEvent(err))
 		}
@@ -155,7 +157,7 @@ func previewOptions(req *daemonpb.PreviewRequest) (int, uint8, error) {
 	return maxSize, uint8(threshold), nil
 }
 
-func decodePreviewSide(ctx context.Context, runner DiffRunner, root, side string, ref *daemonpb.BlobRef) (decodedSide, error) {
+func decodePreviewSide(ctx context.Context, runner DiffRunner, root, side string, ref *daemonpb.BlobRef, sel preview.Select) (decodedSide, error) {
 	out := decodedSide{side: side}
 	err := runner.ReadBlob(ctx, root, blobRequest(ref), func(e diff.Entry, r io.Reader) error {
 		out.entry = e
@@ -169,10 +171,10 @@ func decodePreviewSide(ctx context.Context, runner DiffRunner, root, side string
 		if len(data) > maxPreviewInputBytes {
 			return unsupportedPreview(fmt.Sprintf("%s is too large to preview", e.Path))
 		}
-		img, err := preview.DecodeImage(e.Path, data)
+		img, err := preview.DecodeImageAt(e.Path, data, sel)
 		switch {
 		case errors.Is(err, preview.ErrUnsupported):
-			return unsupportedPreview(fmt.Sprintf("%s: unsupported image format", e.Path))
+			return unsupportedPreview(fmt.Sprintf("%s: %s", e.Path, unsupportedReason(err)))
 		case errors.Is(err, preview.ErrTooLarge):
 			return unsupportedPreview(fmt.Sprintf("%s is too large to preview", e.Path))
 		case err != nil:
@@ -184,23 +186,46 @@ func decodePreviewSide(ctx context.Context, runner DiffRunner, root, side string
 	return out, err
 }
 
+func unsupportedReason(err error) string {
+	if msg := strings.TrimPrefix(err.Error(), preview.ErrUnsupported.Error()+": "); msg != err.Error() {
+		return msg + " not supported yet"
+	}
+	return "unsupported image format"
+}
+
 func sendPreviewSide(stream daemonpb.NipaDaemon_PreviewServer, side decodedSide, maxSize int) error {
-	scaled := preview.Downscale(side.image.Pixels, maxSize)
+	img := side.image
+	scaled := preview.Downscale(img.Pixels, maxSize)
+	previewW, previewH := scaled.Rect.Dx(), scaled.Rect.Dy()
+	encoded := scaled
+	if img.HDR != nil {
+		f := preview.DownscaleFloat(img.HDR, maxSize)
+		previewW, previewH = f.Width, f.Height
+		encoded = preview.PackHDR(f)
+	}
 	var buf bytes.Buffer
 	enc := png.Encoder{CompressionLevel: png.BestSpeed}
-	if err := enc.Encode(&buf, scaled); err != nil {
+	if err := enc.Encode(&buf, encoded); err != nil {
 		return err
 	}
 	info := &daemonpb.ImagePreview{
 		Side:          side.side,
-		Width:         int32(side.image.Width()),
-		Height:        int32(side.image.Height()),
-		Format:        side.image.Format,
-		BitDepth:      int32(side.image.BitDepth),
-		HasAlpha:      side.image.HasAlpha,
+		Width:         int32(img.Width()),
+		Height:        int32(img.Height()),
+		Format:        img.Format,
+		BitDepth:      int32(img.BitDepth),
+		HasAlpha:      img.HasAlpha,
 		SizeBytes:     side.entry.SizeBytes,
-		PreviewWidth:  int32(scaled.Rect.Dx()),
-		PreviewHeight: int32(scaled.Rect.Dy()),
+		PreviewWidth:  int32(previewW),
+		PreviewHeight: int32(previewH),
+		Encoding:      img.Encoding,
+		Levels:        int32(img.Levels),
+		Faces:         int32(img.Faces),
+		Cube:          img.Cube,
+		Level:         int32(img.Level),
+		Face:          int32(img.Face),
+		Hdr:           img.HDR != nil,
+		Layers:        layersToPB(img.Layers),
 	}
 	if err := stream.Send(&daemonpb.PreviewEvent{Event: &daemonpb.PreviewEvent_Image{Image: info}}); err != nil {
 		return err
@@ -215,6 +240,17 @@ func sendPreviewSide(stream daemonpb.NipaDaemon_PreviewServer, side decodedSide,
 		data = data[n:]
 	}
 	return nil
+}
+
+func layersToPB(layers []preview.Layer) []*daemonpb.ImageLayer {
+	out := make([]*daemonpb.ImageLayer, 0, len(layers))
+	for _, l := range layers {
+		out = append(out, &daemonpb.ImageLayer{
+			Name: l.Name, Kind: l.Kind, Depth: int32(l.Depth), Visible: l.Visible, Opacity: int32(l.Opacity),
+			Blend: l.Blend, X: int32(l.X), Y: int32(l.Y), Width: int32(l.Width), Height: int32(l.Height), Hash: l.Hash,
+		})
+	}
+	return out
 }
 
 func imageDiffToPB(d preview.ImageDiff) *daemonpb.ImageDiffStats {
