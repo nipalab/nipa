@@ -33,6 +33,7 @@ type Status struct {
 	Branch    string
 	Head      *HeadRef
 	Staged    []string
+	Added     []string
 	Deleted   []string
 	Modified  []string
 	Untracked []string

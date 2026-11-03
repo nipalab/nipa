@@ -58,6 +58,7 @@ func (s *Server) Status(ctx context.Context, req *daemonpb.StatusRequest) (*daem
 func (s *Server) Stage(ctx context.Context, req *daemonpb.StageRequest) (*daemonpb.StatusResponse, error) {
 	var status *clientDomain.Status
 	err := s.repos.withRepo(ctx, req.GetRoot(), false, func(rp *repo) error {
+		defer rp.changes.publish(nil)
 		if adds := req.GetAdd(); len(adds) > 0 {
 			if err := rp.wc.Add(ctx, adds); err != nil {
 				return err
@@ -86,6 +87,7 @@ func (s *Server) Stage(ctx context.Context, req *daemonpb.StageRequest) (*daemon
 func (s *Server) Restore(ctx context.Context, req *daemonpb.RestoreRequest) (*daemonpb.StatusResponse, error) {
 	var status *clientDomain.Status
 	err := s.repos.withRepo(ctx, req.GetRoot(), false, func(rp *repo) error {
+		defer rp.changes.publish(nil)
 		if err := rp.wc.Restore(ctx, req.GetPaths()); err != nil {
 			return err
 		}
@@ -106,6 +108,7 @@ func statusToPB(st *clientDomain.Status) *daemonpb.StatusResponse {
 	resp := &daemonpb.StatusResponse{
 		Branch:    st.Branch,
 		Staged:    st.Staged,
+		Added:     st.Added,
 		Deleted:   st.Deleted,
 		Modified:  st.Modified,
 		Untracked: st.Untracked,

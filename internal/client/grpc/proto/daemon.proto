@@ -72,6 +72,7 @@ message StatusResponse {
     repeated string conflicts = 6;
     string branch = 7;
     StatusHead head = 8; // set when HEAD is detached
+    repeated string added = 9; // subset of staged: paths the synced snapshot does not track yet
 }
 
 message StatusHead {
@@ -260,6 +261,17 @@ message PreviewEvent {
         ImageDiffStats diff = 3;
         OpFailure failure = 4;
     }
+}
+
+message WatchChangesRequest {
+    string root = 1;
+}
+
+// RepoChange tells a subscriber the working copy may have changed. paths lists
+// the files the watcher saw; it is empty when the whole clone should be
+// refreshed (after an operation, a stage/restore, or a very large batch).
+message RepoChange {
+    repeated string paths = 1;
 }
 
 message OpQueued {
@@ -549,6 +561,7 @@ service NipaDaemon {
     rpc DiffFiles(DiffRequest) returns (stream DiffFileEvent); // structured; format is ignored
     rpc ReadBlob(ReadBlobRequest) returns (stream BlobEvent);
     rpc Preview(PreviewRequest) returns (stream PreviewEvent);
+    rpc WatchChanges(WatchChangesRequest) returns (stream RepoChange);
 
     rpc ProxyBranchList(ProxyBranchListRequest) returns (ProxyBranchListResponse);
     rpc ProxyBranchCreate(ProxyBranchCreateRequest) returns (ProxyBranchCreateResponse);

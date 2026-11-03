@@ -45,10 +45,25 @@ Sonar never compile it.
   app re-watches them on start; a clone that fails to watch stays listed with
   its error.
 - `internal/service`: the Wails-bound API (`Connect`, `Repos`, `PickRepo`,
-  `AddRepo`, `RemoveRepo`). Plain Go behind `Dialer`/`RepoStore`/
-  `FolderPicker` seams, so it is unit-tested without a webview; an
+  `AddRepo`, `RemoveRepo`; Changes screen: `Changes`, `Stage`, `Unstage`,
+  `Discard`, `FileDiff`, `Push`, `Update`). Plain Go behind `Dialer`/
+  `RepoStore`/`FolderPicker` seams, so it is unit-tested without a webview; an
   `Unavailable` error drops the session so the next call reconnects (and
-  restarts the daemon).
+  restarts the daemon) and re-watches each clone on first use. Every watched
+  clone gets a follower on the daemon's `WatchChanges` stream, relayed as the
+  `repo:changed` event; `Push`/`Update` relay `OpEvent`s as `op:progress` and
+  stop the daemon operation when the frontend cancels the call. Events are
+  registered in `main.go`, so the bindings carry their types.
+- Changes screen (`frontend/src/components/changes`): staged and unstaged
+  groups in a virtualized list (checkbox = stage, discard with confirm,
+  arrow-key navigation), push message + Push with progress/cancel, Update in
+  the header. `FileDiff` turns one `DiffFiles` entry into the viewer model
+  (line kinds `added`/`removed`/`context`); an untracked text file is read
+  with `ReadBlob` and shown as a full addition. `DiffViewer.viewerFor` is the
+  viewer registry: text diffs (unified/split, virtualized, per-line
+  highlight.js), notices (too large, mode-only, empty) and a metadata card for
+  binaries until the visual viewers land. The list refreshes on
+  `repo:changed`, window focus and a 30 s poll.
 - `frontend/`: React 18, Vite 8, Tailwind 4 (tokens in `src/index.css`,
   light/dark/system theme in `src/lib/theme.tsx`), TanStack Query, lucide.
   Generated bindings live in `frontend/bindings` and are committed (CI fails
@@ -102,7 +117,7 @@ Pure package (no client imports), shared by the daemon and later the server.
 2. Daemon `DiffFiles`: structured diff stream (paths, status, kind, hunks). **(done)**
 3. Daemon `ReadBlob` + `Preview` for images. **(done)**
 4. `desktop/` Wails scaffold + daemon connector. **(done)**
-5. Changes screen + text diff.
+5. Changes screen + text diff, daemon `WatchChanges`. **(done)**
 6. Image compare viewer.
 7. DDS/KTX2/EXR/HDR/PSD decoders + viewer controls.
 8. 3D model viewer.

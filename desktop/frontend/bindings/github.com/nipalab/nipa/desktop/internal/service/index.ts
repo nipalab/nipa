@@ -7,6 +7,15 @@ export {
 };
 
 export type {
+    Changes,
     DaemonInfo,
-    Repo
+    DiffHunk,
+    DiffLine,
+    FileChange,
+    FileDiff,
+    FileSide,
+    OpOutcome,
+    OpProgress,
+    Repo,
+    RepoChanged
 } from "./models.js";

@@ -17,10 +17,34 @@ export function AddRepo(path: string): $CancellablePromise<$models.Repo> {
 }
 
 /**
+ * Changes returns the working-copy status of a clone, grouped the way the
+ * Changes screen shows it.
+ */
+export function Changes(root: string): $CancellablePromise<$models.Changes> {
+    return $Call.ByID(3050126129, root);
+}
+
+/**
  * Connect attaches to the daemon, starting it when needed.
  */
 export function Connect(): $CancellablePromise<$models.DaemonInfo> {
     return $Call.ByID(1199806166);
+}
+
+/**
+ * Discard restores tracked files to the last synced version.
+ */
+export function Discard(root: string, paths: string[] | null): $CancellablePromise<$models.Changes> {
+    return $Call.ByID(4030220442, root, paths);
+}
+
+/**
+ * FileDiff diffs one working-copy file against the last synced version. A new
+ * untracked file is shown as a full addition; nil means the file has no
+ * change anymore.
+ */
+export function FileDiff(root: string, path: string): $CancellablePromise<$models.FileDiff | null> {
+    return $Call.ByID(546872149, root, path);
 }
 
 /**
@@ -29,6 +53,14 @@ export function Connect(): $CancellablePromise<$models.DaemonInfo> {
  */
 export function PickRepo(): $CancellablePromise<$models.Repo | null> {
     return $Call.ByID(766486257);
+}
+
+/**
+ * Push uploads the staged files and commits them with message. Cancelling the
+ * call stops the push.
+ */
+export function Push(root: string, message: string): $CancellablePromise<$models.OpOutcome> {
+    return $Call.ByID(1543879524, root, message);
 }
 
 /**
@@ -43,4 +75,25 @@ export function RemoveRepo(root: string): $CancellablePromise<void> {
  */
 export function Repos(): $CancellablePromise<$models.Repo[] | null> {
     return $Call.ByID(3963752509);
+}
+
+/**
+ * Stage adds files (including deletions) to the next push.
+ */
+export function Stage(root: string, paths: string[] | null): $CancellablePromise<$models.Changes> {
+    return $Call.ByID(742824190, root, paths);
+}
+
+/**
+ * Unstage drops files from the next push; their edits stay on disk.
+ */
+export function Unstage(root: string, paths: string[] | null): $CancellablePromise<$models.Changes> {
+    return $Call.ByID(1730317183, root, paths);
+}
+
+/**
+ * Update gets the latest version of the branch into the working copy.
+ */
+export function Update(root: string): $CancellablePromise<$models.OpOutcome> {
+    return $Call.ByID(2237493537, root);
 }

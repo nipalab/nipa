@@ -6,8 +6,18 @@ const service = vi.hoisted(() => ({
   PickRepo: vi.fn(),
   AddRepo: vi.fn(),
   RemoveRepo: vi.fn(),
+  Changes: vi.fn(),
+  Stage: vi.fn(),
+  Unstage: vi.fn(),
+  Discard: vi.fn(),
+  FileDiff: vi.fn(),
+  Push: vi.fn(),
+  Update: vi.fn(),
 }));
 vi.mock("../../bindings/github.com/nipalab/nipa/desktop/internal/service", () => ({ Service: service }));
+
+const events = vi.hoisted(() => ({ On: vi.fn() }));
+vi.mock("@wailsio/runtime", () => ({ Events: events }));
 
 import { desktop } from "./desktop";
 
@@ -32,5 +42,47 @@ describe("desktop api", () => {
     service.Repos.mockResolvedValueOnce(null).mockResolvedValueOnce([{ root: "/a" }]);
     expect(await desktop.repos()).toEqual([]);
     expect(await desktop.repos()).toEqual([{ root: "/a" }]);
+  });
+
+  it("fills missing change lists", async () => {
+    service.Changes.mockResolvedValue({ branch: "main", detached: "", staged: null, unstaged: null, conflicts: null });
+    const empty = { branch: "main", detached: undefined, staged: [], unstaged: [], conflicts: [] };
+    expect(await desktop.changes("/a")).toEqual(empty);
+
+    const full = { branch: "dev", detached: "v1", staged: [{ path: "x" }], unstaged: [{ path: "y" }], conflicts: ["z"] };
+    service.Stage.mockResolvedValue(full);
+    service.Unstage.mockResolvedValue(full);
+    service.Discard.mockResolvedValue(full);
+    expect(await desktop.stage("/a", ["y"])).toEqual(full);
+    expect(await desktop.unstage("/a", ["x"])).toEqual(full);
+    expect(await desktop.discard("/a", ["y"])).toEqual(full);
+    expect(service.Stage).toHaveBeenCalledWith("/a", ["y"]);
+    expect(service.Unstage).toHaveBeenCalledWith("/a", ["x"]);
+    expect(service.Discard).toHaveBeenCalledWith("/a", ["y"]);
+  });
+
+  it("forwards diffs and operations", async () => {
+    service.FileDiff.mockResolvedValue(null);
+    service.Push.mockResolvedValue({ commitId: "c1" });
+    service.Update.mockResolvedValue({ branch: "main" });
+    expect(await desktop.fileDiff("/a", "x")).toBeNull();
+    expect(await desktop.push("/a", "msg")).toEqual({ commitId: "c1" });
+    expect(await desktop.update("/a")).toEqual({ branch: "main" });
+    expect(service.Push).toHaveBeenCalledWith("/a", "msg");
+  });
+
+  it("subscribes to change and progress events", () => {
+    const off = vi.fn();
+    events.On.mockReturnValue(off);
+    const changed = vi.fn();
+    const progress = vi.fn();
+    expect(desktop.onRepoChanged(changed)).toBe(off);
+    desktop.onOpProgress(progress);
+
+    expect(events.On.mock.calls.map((c) => c[0])).toEqual(["repo:changed", "op:progress"]);
+    events.On.mock.calls[0][1]({ data: { root: "/a", paths: null } });
+    events.On.mock.calls[1][1]({ data: { root: "/a", op: "push" } });
+    expect(changed).toHaveBeenCalledWith({ root: "/a", paths: null });
+    expect(progress).toHaveBeenCalledWith({ root: "/a", op: "push" });
   });
 });

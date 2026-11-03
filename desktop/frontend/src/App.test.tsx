@@ -11,6 +11,10 @@ const api = vi.hoisted(() => ({
   pickRepo: vi.fn(),
   addRepo: vi.fn(),
   removeRepo: vi.fn(),
+  changes: vi.fn(),
+  fileDiff: vi.fn(),
+  onRepoChanged: vi.fn(),
+  onOpProgress: vi.fn(),
 }));
 vi.mock("./api/desktop", () => ({ desktop: api }));
 
@@ -22,7 +26,12 @@ beforeEach(() => {
   vi.resetAllMocks();
   api.connect.mockResolvedValue(daemon);
   api.repos.mockResolvedValue([game, tools]);
+  api.changes.mockResolvedValue({ branch: "main", staged: [], unstaged: [], conflicts: [] });
+  api.onRepoChanged.mockReturnValue(() => {});
+  api.onOpProgress.mockReturnValue(() => {});
 });
+
+const openDetails = () => userEvent.click(screen.getByRole("tab", { name: /Details/ }));
 
 describe("App", () => {
   it("shows the splash, then the first repository", async () => {
@@ -31,6 +40,8 @@ describe("App", () => {
 
     expect(await screen.findByRole("heading", { name: "game" })).toBeInTheDocument();
     expect(screen.getByText("Daemon v0.9.0")).toBeInTheDocument();
+    expect(await screen.findByText("No local changes")).toBeInTheDocument();
+    await openDetails();
     expect(screen.getByText("https://nipa.test/studio/game")).toBeInTheDocument();
     expect(screen.getByText("art")).toBeInTheDocument();
     const nav = screen.getByRole("navigation", { name: "Repositories" });
@@ -43,6 +54,7 @@ describe("App", () => {
     await userEvent.click(within(nav).getByRole("button", { name: /tools/ }));
 
     expect(screen.getByRole("heading", { name: "tools" })).toBeInTheDocument();
+    await openDetails();
     expect(screen.getByText("Full checkout")).toBeInTheDocument();
     expect(localStorage.getItem("nipa.selectedRepo")).toBe("/work/tools");
   });
@@ -84,6 +96,7 @@ describe("App", () => {
     expect((await screen.findAllByText("This clone is unavailable")).length).toBeGreaterThan(0);
 
     await userEvent.click(screen.getByRole("button", { name: "Open a clone" }));
+    await openDetails();
     expect(await screen.findByText("https://nipa.test/studio/game")).toBeInTheDocument();
     expect(screen.queryAllByText("This clone is unavailable")).toHaveLength(0);
   });

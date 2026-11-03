@@ -52,6 +52,7 @@ func (r *reconciler) refresh(ctx context.Context, paths []string) {
 	if err := r.rp.wc.RefreshStatEntries(paths); err != nil {
 		slog.Warn("daemon stat refresh failed", "root", r.root, "error", err)
 	}
+	r.rp.changes.publish(paths)
 }
 
 // stop cancels a queued refresh and waits for the loop to exit.

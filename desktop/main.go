@@ -16,6 +16,11 @@ import (
 //go:embed all:frontend/dist
 var assets embed.FS
 
+func init() {
+	application.RegisterEvent[service.RepoChanged](service.EventRepoChanged)
+	application.RegisterEvent[service.OpProgress](service.EventOpProgress)
+}
+
 func main() {
 	storePath, err := workspace.DefaultPath()
 	if err != nil {
@@ -33,6 +38,7 @@ func main() {
 				PromptForSingleSelection()
 		},
 	)
+	svc.Events = func(name string, data any) { app.Event.Emit(name, data) }
 
 	app = application.New(application.Options{
 		Name:        "Nipa",

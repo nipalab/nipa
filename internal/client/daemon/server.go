@@ -146,6 +146,7 @@ func (s *Server) Serve(ctx context.Context) error {
 		return err
 	}
 
+	s.Stop()
 	s.grpc.GracefulStop()
 	<-serveErr
 	s.repos.closeAll()

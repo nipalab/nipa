@@ -120,7 +120,7 @@ pb goes to `internal/client/grpc/daemonpb`. `make proto` gains a second
 |-----|-------|-------|
 | `Ping` | unary | readiness + version; discovery handshake |
 | `WatchRepo` / `UnwatchRepo` / `ListRepos` | unary | validate + register; returns config (url, branch, sparse) |
-| `Status` | unary | full `WorkingCopy.Status` result (configured branch + detached `head` marker, staged/deleted/modified/untracked/missing/conflicts); `no_cache` passthrough |
+| `Status` | unary | full `WorkingCopy.Status` result (configured branch + detached `head` marker, staged/deleted/modified/untracked/missing/conflicts, and `added`: the staged paths the snapshot does not track yet); `no_cache` passthrough |
 | `Stage` | unary | add/remove path lists → returns fresh status |
 | `Restore` | unary | discard unpushed changes for files/dirs → returns fresh status; staged paths refused |
 | `Update`, `Switch` | **server-streaming** | progress events → terminal result; `Switch` takes an optional `tag` to detach HEAD at a release tag instead of switching branches |
@@ -130,6 +130,7 @@ pb goes to `internal/client/grpc/daemonpb`. `make proto` gains a second
 | `DiffFiles` | **server-streaming** | same request as `Diff` (format ignored); one structured `DiffFile` per path: status, viewer `kind` (`internal/preview.Classify`), old/new side metadata (mode, size, binary, hex hash), add/remove counts and `greet.DiffHunkDetail` hunks — omitted with `hunks_omitted` above 1 MiB of hunk text per file |
 | `ReadBlob` | **server-streaming** | one file version (`BlobRef`: `working` default, `snapshot` = last synced side of a working diff, offline, or `revision` + branch/tag/commit/HEAD); `BlobInfo` (size, binary, hex hash, kind) then decoded content in 64 KiB chunks; revision chunks are downloaded into `.nipa/objects` first. Paths are repo-relative, `.nipa/` and symlinks leaving the clone are refused |
 | `Preview` | **server-streaming** | `old`/`new` `BlobRef`s → per side `ImagePreview` (dims, format, depth, alpha) + downscaled PNG chunks (`max_size`, default 2048), then `ImageDiffStats` from `preview.CompareImages` when both sides are given; non-image or undecodable formats fail with 415 |
+| `WatchChanges` | **server-streaming** | change notices for one watched root: the watcher batch's paths after the stat-cache refresh, or no paths (= refresh everything) after an operation, a stage/restore, or more than 512 coalesced paths. Headers are sent once subscribed; never pins the repo, ends on unwatch or shutdown |
 | `Login` | unary | (host, user, password) → `securestorage`; **no prompts** in daemon |
 | `Shutdown` | unary | drain + exit |
 
@@ -263,6 +264,11 @@ Notes where the implementation settled details the design left open:
 - **`DiffFiles` is the GUI's diff feed** (`docs/DESKTOP.md`): it shares
   `runDiff` (validation, shared slot, `FilterIgnored`) with `Diff`, and reuses
   the server's hunk messages so desktop and web MR diffs share one shape.
+- **`WatchChanges` is the GUI's live feed**: each repo owns a `changeHub`;
+  publishing never blocks (each subscriber coalesces until it reads), the
+  reconciler publishes its batch, `runOp` and `Stage`/`Restore` publish a full
+  refresh. `Serve` now closes the stop channel before `GracefulStop`, so open
+  streams end instead of blocking shutdown.
 - **`Diff` gained a `context` field** (hunk context, 0 = default) and accepts
   `<a>..<b>` / `<a>...<b>` ranges daemon-side, matching the CLI.
 - **Proxy requests are forwarded as-is** (e.g. `limit` is the caller's), with
@@ -279,8 +285,7 @@ Notes where the implementation settled details the design left open:
   (project-scoped), so a sparse clone only receives the tagged set.
 
 Not yet implemented: Phase B proxies (PBAC/path permissions, groups, review
-submission/thread writes, branch protection/default changes), idle-exit,
-`StatusStream`, CLI passthrough via the daemon, and socket/named-pipe transport.
+submission/thread writes, branch protection/default changes), idle-exit, CLI passthrough via the daemon, and socket/named-pipe transport.
 
 ## Later
 

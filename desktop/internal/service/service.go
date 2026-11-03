@@ -51,16 +51,42 @@ type Dialer func(ctx context.Context) (Session, error)
 // FolderPicker asks the user for a directory; an empty path means cancelled.
 type FolderPicker func() (string, error)
 
+// Emitter pushes an event to the frontend.
+type Emitter func(name string, data any)
+
+const EventRepoChanged = "repo:changed"
+
+// RepoChanged tells the frontend a watched clone may have changed; no paths
+// means refresh everything.
+type RepoChanged struct {
+	Root  string   `json:"root"`
+	Paths []string `json:"paths"`
+}
+
 type Service struct {
-	dial   Dialer
-	store  RepoStore
-	pick   FolderPicker
+	// Events receives change and progress events; nil drops them.
+	Events Emitter
+
+	dial  Dialer
+	store RepoStore
+	pick  FolderPicker
+
 	mu     sync.Mutex
 	active Session
+	// watched holds the roots registered with the active session and the
+	// cancel func of their change follower; it is reset with the session
+	// because a restarted daemon forgets every watch.
+	watched map[string]context.CancelFunc
 }
 
 func New(dial Dialer, store RepoStore, pick FolderPicker) *Service {
-	return &Service{dial: dial, store: store, pick: pick}
+	return &Service{dial: dial, store: store, pick: pick, watched: map[string]context.CancelFunc{}}
+}
+
+func (s *Service) emit(name string, data any) {
+	if s.Events != nil {
+		s.Events(name, data)
+	}
 }
 
 // ConnectorDialer dials the daemon through the connector package.
@@ -149,6 +175,12 @@ func (s *Service) AddRepo(ctx context.Context, path string) (Repo, error) {
 
 // RemoveRepo forgets a clone; it is never deleted from disk.
 func (s *Service) RemoveRepo(ctx context.Context, root string) error {
+	s.mu.Lock()
+	if cancel, ok := s.watched[root]; ok {
+		cancel()
+		delete(s.watched, root)
+	}
+	s.mu.Unlock()
 	if sess, err := s.session(ctx); err == nil {
 		_, err := sess.Client().UnwatchRepo(ctx, &daemonpb.UnwatchRepoRequest{Root: root})
 		s.dropIfDisconnected(err)
@@ -162,6 +194,14 @@ func (s *Service) ServiceShutdown() error {
 	if s.active == nil {
 		return nil
 	}
+	return s.resetLocked()
+}
+
+func (s *Service) resetLocked() error {
+	for _, cancel := range s.watched {
+		cancel()
+	}
+	s.watched = map[string]context.CancelFunc{}
 	err := s.active.Close()
 	s.active = nil
 	return err
@@ -178,6 +218,7 @@ func (s *Service) watch(ctx context.Context, path string) (Repo, error) {
 		return Repo{}, err
 	}
 	info := resp.GetRepo()
+	s.follow(sess, info.GetRoot())
 	return Repo{
 		Root:   info.GetRoot(),
 		Name:   filepath.Base(info.GetRoot()),
@@ -201,6 +242,54 @@ func (s *Service) session(ctx context.Context) (Session, error) {
 	return sess, nil
 }
 
+// client returns a daemon client for which root is watched, re-watching it
+// after a reconnect.
+func (s *Service) client(ctx context.Context, root string) (daemonpb.NipaDaemonClient, error) {
+	s.mu.Lock()
+	sess := s.active
+	_, watched := s.watched[root]
+	s.mu.Unlock()
+	if sess != nil && watched {
+		return sess.Client(), nil
+	}
+	if _, err := s.watch(ctx, root); err != nil {
+		return nil, cleanError(err)
+	}
+	sess, err := s.session(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return sess.Client(), nil
+}
+
+// follow relays the daemon's change notices for root as frontend events
+// until the stream ends or the session is reset.
+func (s *Service) follow(sess Session, root string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.active != sess {
+		return
+	}
+	if _, ok := s.watched[root]; ok {
+		return
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	s.watched[root] = cancel
+	go func() {
+		stream, err := sess.Client().WatchChanges(ctx, &daemonpb.WatchChangesRequest{Root: root})
+		if err != nil {
+			return
+		}
+		for {
+			change, err := stream.Recv()
+			if err != nil {
+				return
+			}
+			s.emit(EventRepoChanged, RepoChanged{Root: root, Paths: change.GetPaths()})
+		}
+	}()
+}
+
 // dropIfDisconnected forgets a session whose daemon went away, so the next
 // call reconnects (and restarts the daemon when needed).
 func (s *Service) dropIfDisconnected(err error) {
@@ -210,8 +299,7 @@ func (s *Service) dropIfDisconnected(err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.active != nil {
-		_ = s.active.Close()
-		s.active = nil
+		_ = s.resetLocked()
 	}
 }
 

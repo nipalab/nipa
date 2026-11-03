@@ -332,14 +332,15 @@ func TestWorkingCopy_Status(t *testing.T) {
 			{Path: "modified.txt", Hash: contentHash(t, "original")},
 			{Path: "missing.txt", Hash: contentHash(t, "whatever")},
 		}},
-		staged: []string{"staged.txt"},
+		staged: []string{"staged.txt", "tracked.txt"},
 	}
 	wc := newWorkingCopy(t, local, root)
 
 	st, err := wc.Status(context.Background())
 	require.NoError(t, err)
 
-	require.Equal(t, []string{"staged.txt"}, st.Staged)
+	require.Equal(t, []string{"staged.txt", "tracked.txt"}, st.Staged)
+	require.Equal(t, []string{"staged.txt"}, st.Added, "only staged paths the snapshot does not track are additions")
 	require.Equal(t, []string{"missing.txt"}, st.Missing)
 	require.Equal(t, []string{"modified.txt"}, st.Modified)
 	require.Equal(t, []string{"new.txt"}, st.Untracked)

@@ -69,6 +69,7 @@ func (s *Server) runOp(ctx context.Context, root, phase string, send func(*daemo
 		return send(opFailureEvent(err))
 	}
 	defer release()
+	defer rp.changes.publish(nil)
 
 	if err := send(opStartedEvent(phase)); err != nil {
 		return err

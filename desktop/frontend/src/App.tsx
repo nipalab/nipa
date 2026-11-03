@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { desktop, type Repo } from "@/api/desktop";
-import { RepoView } from "@/components/RepoView";
+import { RepoView, type Notify } from "@/components/RepoView";
 import { Sidebar } from "@/components/Sidebar";
 import { DaemonError, Splash } from "@/components/StatusScreens";
 import { Toast } from "@/components/Toast";
@@ -13,7 +13,10 @@ const SELECTED_KEY = "nipa.selectedRepo";
 export default function App() {
   const queryClient = useQueryClient();
   const [selected, setSelectedState] = useState<string | null>(() => readSetting(SELECTED_KEY));
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToastState] = useState<{ message: string; tone: "error" | "success" } | null>(null);
+  const notify = useCallback<Notify>((message, tone = "error") => setToastState({ message, tone }), []);
+  const dismiss = useCallback(() => setToastState(null), []);
+  const setToast = (message: string) => notify(message);
 
   const daemon = useQuery({ queryKey: ["daemon"], queryFn: desktop.connect, retry: false });
   const repos = useQuery({ queryKey: ["repos"], queryFn: desktop.repos, enabled: daemon.isSuccess });
@@ -66,12 +69,12 @@ export default function App() {
       />
       <main className="min-w-0 flex-1">
         {current ? (
-          <RepoView key={current.root} repo={current} removing={remove.isPending} onRemove={(root) => remove.mutate(root)} />
+          <RepoView key={current.root} repo={current} removing={remove.isPending} onRemove={(root) => remove.mutate(root)} notify={notify} />
         ) : (
           <Welcome adding={add.isPending} onAdd={() => add.mutate()} />
         )}
       </main>
-      {toast && <Toast message={toast} onDismiss={() => setToast(null)} />}
+      {toast && <Toast message={toast.message} tone={toast.tone} onDismiss={dismiss} />}
     </div>
   );
 }

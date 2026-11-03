@@ -57,7 +57,9 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   `nipa serve` daemon. `internal/connector` attaches to or starts the daemon
   (`NIPA_BIN` → binary next to the app → PATH), `internal/workspace` persists
   opened clones (`<config>/nipa/desktop.json`) and `internal/service` is the
-  Wails-bound API, plain Go behind seams. Generated TS bindings in
+  Wails-bound API, plain Go behind seams (Changes screen: status/stage/
+  discard/`FileDiff`/push/update, `repo:changed` + `op:progress` events fed by
+  the daemon's `WatchChanges` and `OpEvent` streams). Generated TS bindings in
   `desktop/frontend/bindings` are committed. Root `./...` never includes it;
   use `make desktop`/`desktop-dev`/`desktop-test` (needs the `wails3` CLI;
   Linux falls back to `-tags gtk3` without WebKitGTK 6.0).
@@ -518,7 +520,10 @@ for the desktop GUI. `ReadBlob` streams one file version (working copy,
 offline `snapshot`, or a `revision` whose chunks are downloaded first) through
 `usecase.Diff.ReadBlob`, and `Preview` decodes old/new images with
 `internal/preview` into downscaled PNG chunks plus pixel-diff stats (415 for
-non-image or unsupported formats). An fsnotify watcher debounces events into
+non-image or unsupported formats). `WatchChanges` streams coalesced change
+notices per root (watcher batch paths after the stat refresh; empty = refresh
+all after ops and stage/restore) for the GUI, and `Status` reports `added`
+(staged paths the snapshot does not track). An fsnotify watcher debounces events into
 dirty batches and a background reconciler refreshes `stat_cache` through
 `WorkingCopy.RefreshStatEntries`; watcher failure or event loss is harmless
 (read-through status still stat-detects). `Proxy*` RPCs forward `greet.*`
