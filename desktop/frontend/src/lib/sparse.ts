@@ -1,10 +1,18 @@
 // A sparse selection is a set of folder prefixes; a folder is covered when it
 // or one of its ancestors is selected.
 
+const trimSlashes = (p: string) => {
+  let start = 0;
+  let end = p.length;
+  while (start < end && p[start] === "/") start++;
+  while (end > start && p[end - 1] === "/") end--;
+  return p.slice(start, end);
+};
+
 const within = (path: string, prefix: string) => path === prefix || path.startsWith(`${prefix}/`);
 
 export function normalizeSelection(paths: string[]): string[] {
-  const clean = [...new Set(paths.map((p) => p.replace(/^\/+|\/+$/g, "")).filter(Boolean))].sort();
+  const clean = [...new Set(paths.map(trimSlashes).filter(Boolean))].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
   return clean.filter((p) => !clean.some((q) => q !== p && within(p, q)));
 }
 
@@ -30,5 +38,7 @@ export function parseRepoUrl(url: string): RepoAddress | null {
 
 export function joinPath(parent: string, name: string): string {
   const sep = parent.includes("\\") && !parent.includes("/") ? "\\" : "/";
-  return parent.replace(/[\\/]+$/, "") + sep + name;
+  let end = parent.length;
+  while (end > 0 && (parent[end - 1] === "/" || parent[end - 1] === "\\")) end--;
+  return parent.slice(0, end) + sep + name;
 }

@@ -17,6 +17,12 @@ type CloneDialogProps = { onClose: () => void; onCloned: (repo: Repo) => void };
 
 export function CloneDialog({ onClose, onCloned }: CloneDialogProps) {
   const [step, setStep] = useState<Step>("server");
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && step !== "cloning" && onClose();
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [step, onClose]);
   const [server, setServer] = useState(() => readSetting(SERVER_KEY) ?? "");
   const [account, setAccount] = useState<Account | null>(null);
   const [project, setProject] = useState<RemoteProject | null>(null);
@@ -36,7 +42,7 @@ export function CloneDialog({ onClose, onCloned }: CloneDialogProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4" onKeyDown={(e) => e.key === "Escape" && step !== "cloning" && onClose()}>
+    <div role="presentation" className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4">
       <div role="dialog" aria-modal="true" aria-labelledby="clone-title" className="flex max-h-[85vh] w-full max-w-xl flex-col rounded-lg border border-border bg-card shadow-xl">
         <header className="flex items-center gap-2 border-b border-border px-5 py-3">
           {(step === "project" || step === "options" || step === "signin") && (
@@ -73,7 +79,7 @@ export function CloneDialog({ onClose, onCloned }: CloneDialogProps) {
             />
           )}
           {(step === "options" || step === "cloning") && account && project && (
-            <OptionsStep server={account.address} project={project} cloning={step === "cloning"} onCloning={(busy) => setStep(busy ? "cloning" : "options")} onCloned={onCloned} />
+            <OptionsStep server={account.address} project={project} onSignIn={() => setStep("signin")} cloning={step === "cloning"} onCloning={(busy) => setStep(busy ? "cloning" : "options")} onCloned={onCloned} />
           )}
         </div>
       </div>
@@ -112,7 +118,7 @@ function ServerStep({ server, onServer, onReady }: { server: string; onServer: (
       <Field label="Server">
         <div className="flex items-center gap-2">
           <Server className="size-4 shrink-0 text-muted-foreground" />
-          <input autoFocus value={server} onChange={(e) => onServer(e.target.value)} placeholder="https://nipa.example.com" aria-label="Server" className={inputClass} />
+          <input value={server} onChange={(e) => onServer(e.target.value)} placeholder="https://nipa.example.com" aria-label="Server" className={inputClass} />
         </div>
       </Field>
       <p className="text-[11px] text-muted-foreground">The address of your team's Nipa server, as used in clone URLs.</p>
@@ -213,7 +219,7 @@ function ProjectStep({ server, onPick, onSignIn }: { server: string; onPick: (p:
     <div className="space-y-3">
       <label className="flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1.5 text-[12px]">
         <Search className="size-3.5 text-muted-foreground" />
-        <input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filter projects" aria-label="Filter projects" className="flex-1 bg-transparent outline-none" />
+        <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filter projects" aria-label="Filter projects" className="flex-1 bg-transparent outline-none" />
       </label>
       {groups.length === 0 && <p className="text-[12px] text-muted-foreground">No project matches.</p>}
       {groups.map(([org, list]) => (
@@ -238,9 +244,9 @@ function ProjectStep({ server, onPick, onSignIn }: { server: string; onPick: (p:
   );
 }
 
-type OptionsProps = { server: string; project: RemoteProject; cloning: boolean; onCloning: (busy: boolean) => void; onCloned: (repo: Repo) => void };
+type OptionsProps = { server: string; onSignIn: () => void; project: RemoteProject; cloning: boolean; onCloning: (busy: boolean) => void; onCloned: (repo: Repo) => void };
 
-function OptionsStep({ server, project, cloning, onCloning, onCloned }: OptionsProps) {
+function OptionsStep({ server, onSignIn, project, cloning, onCloning, onCloned }: OptionsProps) {
   const branches = useQuery({ queryKey: ["remote", server, project.org, project.project, "branches"], queryFn: () => desktop.remoteBranches(server, project.org, project.project) });
   const [branch, setBranch] = useState("");
   const chosen = branch || branches.data?.find((b) => b.isDefault)?.name || "";
@@ -296,6 +302,22 @@ function OptionsStep({ server, project, cloning, onCloning, onCloned }: OptionsP
         <div className="flex justify-end">
           <Button size="sm" onClick={() => call.current?.cancel?.()}>
             Cancel
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (branches.isError || (branches.data && branches.data.length === 0)) {
+    return (
+      <div className="space-y-3">
+        {branches.isError ? <ErrorText error={branches.error} /> : <p className="text-[12px] text-muted-foreground">This project has no branches to clone.</p>}
+        <div className="flex gap-2">
+          <Button size="sm" onClick={() => void branches.refetch()}>
+            Retry
+          </Button>
+          <Button size="sm" onClick={onSignIn}>
+            Sign in again
           </Button>
         </div>
       </div>

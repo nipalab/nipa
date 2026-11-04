@@ -103,6 +103,19 @@ describe("CloneDialog", () => {
     expect(onCloned).toHaveBeenCalledWith(repo);
   });
 
+  it("offers retry and sign-in when branches fail or are missing", async () => {
+    api.remoteBranches.mockRejectedValueOnce(new Error("session expired")).mockResolvedValueOnce([]);
+    show();
+    await userEvent.type(screen.getByRole("textbox", { name: "Server" }), "https://nipa.studio.test");
+    await userEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await userEvent.click(await screen.findByRole("button", { name: /Game/ }));
+    expect(await screen.findByText(/session expired/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(await screen.findByText("This project has no branches to clone.")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Sign in again" }));
+    expect(await screen.findByRole("heading", { name: "Sign in" })).toBeInTheDocument();
+  });
+
   it("signs in with an SSH key first and falls back to a password", async () => {
     api.accountStatus.mockResolvedValueOnce(account({ signedIn: false, email: "" })).mockResolvedValue(account({ email: "" }));
     api.signInSSH.mockRejectedValueOnce(new Error("invalid email or SSH key"));

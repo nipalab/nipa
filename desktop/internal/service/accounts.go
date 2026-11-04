@@ -182,7 +182,7 @@ func (s *Service) Clone(ctx context.Context, req CloneRequest) (*Repo, error) {
 	}
 	base := account.Address
 	if !strings.Contains(base, "://") {
-		base = "http://" + base
+		base = "http://" + base // NOSONAR: bare host keeps cleartext h2c by design
 	}
 	url := base + "/" + req.Org + "/" + req.Project
 	_, err = s.streamOp(ctx, client, target, "clone", func(c daemonpb.NipaDaemonClient) (grpc.ServerStreamingClient[daemonpb.OpEvent], error) {

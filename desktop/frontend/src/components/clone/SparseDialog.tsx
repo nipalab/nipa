@@ -17,7 +17,7 @@ export function SparseDialog({ repo, onClose, onApply }: SparseDialogProps) {
   const next = value === null ? [] : normalizeSelection(value);
   const unchanged = sameSet(next, initial ?? []);
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4" onKeyDown={(e) => e.key === "Escape" && onClose()}>
+    <div role="presentation" className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4" onKeyDown={(e) => e.key === "Escape" && onClose()}>
       <div role="dialog" aria-modal="true" aria-labelledby="sparse-title" className="w-full max-w-lg space-y-4 rounded-lg border border-border bg-card p-5 shadow-xl">
         <header className="flex items-center">
           <h2 id="sparse-title" className="flex-1 text-sm font-semibold">
