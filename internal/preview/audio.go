@@ -443,17 +443,43 @@ func pcm16(v float64) uint16 {
 	return uint16(int16(math.Round(max(-1, min(1, v)) * 32767)))
 }
 
+const (
+	sideLeft  = 0
+	sideRight = 1
+	sideBoth  = 2
+)
+
+var channelSides = map[int][]uint8{
+	3: {sideLeft, sideRight, sideBoth},
+	4: {sideLeft, sideRight, sideLeft, sideRight},
+	5: {sideLeft, sideRight, sideBoth, sideLeft, sideRight},
+	6: {sideLeft, sideRight, sideBoth, sideBoth, sideLeft, sideRight},
+	7: {sideLeft, sideRight, sideBoth, sideBoth, sideBoth, sideLeft, sideRight},
+	8: {sideLeft, sideRight, sideBoth, sideBoth, sideLeft, sideRight, sideLeft, sideRight},
+}
+
 func downmix(s []float32) (float64, float64) {
 	if len(s) == 2 {
 		return float64(s[0]), float64(s[1])
 	}
-	var sum [2]float64
-	var count [2]int
+	sides := channelSides[len(s)]
+	var sum, weight [2]float64
 	for i, v := range s {
-		sum[i&1] += float64(v)
-		count[i&1]++
+		side, w := uint8(i&1), 1.0
+		if sides != nil {
+			side = sides[i]
+		}
+		if i >= 2 {
+			w = math.Sqrt2 / 2
+		}
+		for k := 0; k < 2; k++ {
+			if side == uint8(k) || side == sideBoth {
+				sum[k] += w * float64(v)
+				weight[k] += w
+			}
+		}
 	}
-	return sum[0] / float64(count[0]), sum[1] / float64(count[1])
+	return sum[0] / weight[0], sum[1] / weight[1]
 }
 
 func (p *playback) add(s []float32) {

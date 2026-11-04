@@ -39,6 +39,8 @@ describe("audio helpers", () => {
     expect(formatTime(0)).toBe("0:00.00");
     expect(formatTime(65.256)).toBe("1:05.26");
     expect(formatTime(-3)).toBe("0:00.00");
+    expect(formatTime(59.999)).toBe("1:00.00");
+    expect(formatTime(3599.999)).toBe("60:00.00");
     expect(formatDb(-6.02)).toBe("-6.0 dBFS");
     expect(formatDb(null)).toBe("−∞");
     expect(formatDb(-14, "LUFS")).toBe("-14.0 LUFS");

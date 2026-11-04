@@ -63,9 +63,9 @@ export function drawWaveform(ctx: WaveformTarget, peaks: number[], width: number
 }
 
 export function formatTime(seconds: number): string {
-  const s = Math.max(0, seconds);
-  const m = Math.floor(s / 60);
-  const rest = s - m * 60;
+  const cs = Math.round(Math.max(0, seconds) * 100);
+  const m = Math.floor(cs / 6000);
+  const rest = (cs - m * 6000) / 100;
   return `${m}:${rest.toFixed(2).padStart(5, "0")}`;
 }
 

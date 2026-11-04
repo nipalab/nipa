@@ -460,8 +460,24 @@ func TestPlaybackDownmixesSurroundChannels(t *testing.T) {
 	p.add([]float32{0, 0, 0.5, 0, 0, 0})
 	require.Equal(t, 2, p.outCh)
 	l, r := downmix([]float32{0, 0, 0.6, 0, 0, 0})
-	assert.InDelta(t, 0.2, l, 1e-6)
-	assert.InDelta(t, 0.0, r, 1e-6)
+	want := 0.6 * math.Sqrt2 / 2 / (1 + 3*math.Sqrt2/2)
+	assert.InDelta(t, want, l, 1e-6)
+	assert.InDelta(t, want, r, 1e-6)
 	wav, _ := p.wav()
 	assert.NotEqual(t, make([]byte, 4), wav[44:48])
+}
+
+func TestDownmixKeepsSurroundSides(t *testing.T) {
+	l, r := downmix([]float32{0, 0, 0, 0.8, 0})
+	assert.InDelta(t, 0.8*0.707/(1+0.707+0.707), l, 1e-3)
+	assert.Zero(t, r)
+	l, r = downmix([]float32{0, 0, 0, 0, 0.8})
+	assert.Zero(t, l)
+	assert.Greater(t, r, 0.0)
+	l, r = downmix([]float32{1, 1, 1})
+	assert.InDelta(t, 1.0, l, 1e-9)
+	assert.InDelta(t, 1.0, r, 1e-9)
+	l, r = downmix([]float32{0.5, 0.25, 0, 0, 0, 0, 0, 0, 0})
+	assert.InDelta(t, 0.5/(1+4*0.707), l, 1e-3)
+	assert.Greater(t, r, 0.0)
 }
