@@ -14,8 +14,6 @@ import (
 	"github.com/nipalab/nipa/internal/grpc/pb"
 )
 
-const permissionAdmin = 65536
-
 // Identity names the signed-in account of a proxy connection.
 type Identity interface {
 	UserID(ctx context.Context) (string, error)
@@ -64,7 +62,7 @@ func (s *Server) LockStatus(ctx context.Context, req *daemonpb.LockStatusRequest
 		if err != nil {
 			return err
 		}
-		res.CanReleaseAny = perms.GetProjectPermission()&permissionAdmin != 0
+		res.CanReleaseAny = perms.GetProjectPermission()&uint64(domain.PermissionAdmin) != 0
 		res.UserId, err = ident.UserID(ctx)
 		return err
 	})

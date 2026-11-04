@@ -109,7 +109,7 @@ func states(res *daemonpb.LockStatusResponse) map[string]string {
 func TestServer_LockStatusOnDefaultBranch(t *testing.T) {
 	svc := &lockService{
 		branch: &pb.Branch{Name: "main", IsDefault: true},
-		perm:   1 | 2 | permissionAdmin,
+		perm:   1 | 2 | uint64(serverDomain.PermissionAdmin),
 		locks: []*pb.FileLockDetail{
 			{Path: "hero.psd", Global: true, HeldBy: "me", HeldByName: "Me"},
 			{Path: "props", Global: true, HeldBy: "bob", HeldByName: "Bob"},

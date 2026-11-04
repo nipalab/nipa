@@ -101,8 +101,9 @@ func TestService_LockAndUnlock(t *testing.T) {
 	assert.Equal(t, "main", d.locked[0].GetBranch())
 
 	d.lockErr["art/hero.psd"] = status.Error(codes.Unavailable, "daemon gone")
-	_, err = svc.Lock(ctx, "/work/game", "main", []string{"art/hero.psd"})
-	assert.EqualError(t, err, "daemon gone")
+	out, err = svc.Lock(ctx, "/work/game", "main", []string{"art/hero.psd"})
+	require.NoError(t, err)
+	assert.Equal(t, []LockFailure{{Path: "art/hero.psd", Message: "daemon gone"}}, out.Failed)
 
 	require.NoError(t, svc.Unlock(ctx, "/work/game", "", "art/hero.psd"))
 	assert.Equal(t, "art/hero.psd", d.unlocked[0].GetPath())

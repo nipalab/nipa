@@ -109,7 +109,8 @@ func (s *Service) Lock(ctx context.Context, root, branch string, paths []string)
 		if err != nil {
 			if isConnectionError(err) {
 				s.dropIfDisconnected(err)
-				return nil, cleanError(err)
+				out.Failed = append(out.Failed, LockFailure{Path: p, Message: cleanError(err).Error()})
+				return out, nil
 			}
 			out.Failed = append(out.Failed, LockFailure{Path: p, Message: cleanError(err).Error()})
 			continue
