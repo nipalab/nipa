@@ -20,8 +20,8 @@ export function threadAt(thread: Thread, anchor: LineAnchor): boolean {
   return !thread.newLine && thread.oldLine === anchor.oldLine;
 }
 
-export function fileThreads(threads: Thread[], path: string): { inline: Thread[]; outdated: Thread[] } {
-  const mine = threads.filter((t) => t.path === path);
+export function fileThreads(threads: Thread[], path: string, oldPath = ""): { inline: Thread[]; outdated: Thread[] } {
+  const mine = threads.filter((t) => t.path === path || (!!oldPath && t.path === oldPath));
   return { inline: mine.filter((t) => !t.outdated), outdated: mine.filter((t) => t.outdated) };
 }
 

@@ -25,6 +25,8 @@ describe("merge request helpers", () => {
     const split = fileThreads([thread({ id: "a", path: "x" }), thread({ id: "b", path: "x", outdated: true }), thread({ id: "c", path: "y" })], "x");
     expect(split.inline.map((t) => t.id)).toEqual(["a"]);
     expect(split.outdated.map((t) => t.id)).toEqual(["b"]);
+    const renamed = fileThreads([thread({ id: "a", path: "old" }), thread({ id: "b", path: "new" })], "new", "old");
+    expect(renamed.inline.map((t) => t.id)).toEqual(["a", "b"]);
   });
 
   it("explains blockers, mergeability and events", () => {

@@ -10,6 +10,7 @@ const api = vi.hoisted(() => ({
   mergeRequestActivity: vi.fn(),
   mergeRequestCommits: vi.fn(),
   revisionFiles: vi.fn(),
+  lockStatus: vi.fn(),
   branches: vi.fn(),
   createMergeRequest: vi.fn(),
   editMergeRequest: vi.fn(),
@@ -111,6 +112,7 @@ beforeEach(() => {
   api.mergeRequestActivity.mockResolvedValue(activity());
   api.mergeRequestCommits.mockResolvedValue([{ id: "s2", hash: "h", parents: ["b1"], author: "Ana", email: "", message: "Speed tweak\n\nbody", date: "2026-11-05T09:00:00Z" }]);
   api.revisionFiles.mockResolvedValue([textFile, imageFile]);
+  api.lockStatus.mockResolvedValue({ userId: "me", branch: "main", defaultBranch: true, canReleaseAny: false, locks: [], files: [] });
   api.branches.mockResolvedValue([
     { name: "main", commitId: "t1", default: true, protected: true },
     { name: "art", commitId: "s2", default: false, protected: false },
@@ -199,6 +201,16 @@ describe("MergeRequestDetail", () => {
     expect(screen.getByRole("region", { name: "Merge" })).toHaveTextContent("Ready to merge");
   });
 
+  it("blocks approving your own request", async () => {
+    api.lockStatus.mockResolvedValue({ userId: "u1", branch: "main", defaultBranch: true, canReleaseAny: false, locks: [], files: [] });
+    view();
+    const review = await screen.findByRole("region", { name: "Review" });
+    await userEvent.type(within(review).getByRole("textbox", { name: "Review comment" }), "ok");
+    await waitFor(() => expect(within(review).getByRole("button", { name: "Approve" })).toBeDisabled());
+    expect(within(review).getByRole("button", { name: "Request changes" })).toBeDisabled();
+    expect(within(review).getByRole("button", { name: "Comment" })).toBeEnabled();
+  });
+
   it("submits reviews, comments, replies and resolves threads", async () => {
     api.submitReview.mockResolvedValue(undefined);
     api.comment.mockResolvedValue(thread({ id: "t2" }));
@@ -206,8 +218,10 @@ describe("MergeRequestDetail", () => {
     api.resolveThread.mockResolvedValue(undefined);
     view();
     const review = await screen.findByRole("region", { name: "Review" });
+    expect(within(review).getByRole("button", { name: "Approve" })).toBeDisabled();
+    await userEvent.type(within(review).getByRole("textbox", { name: "Review comment" }), "Looks good");
     await userEvent.click(within(review).getByRole("button", { name: "Approve" }));
-    expect(api.submitReview).toHaveBeenCalledWith("/work/game", 12, "approved", "");
+    expect(api.submitReview).toHaveBeenCalledWith("/work/game", 12, "approved", "Looks good");
     await waitFor(() => expect(notify).toHaveBeenCalledWith("Approved", "success"));
     await userEvent.type(within(review).getByRole("textbox", { name: "Review comment" }), "Too dark");
     await userEvent.click(within(review).getByRole("button", { name: "Request changes" }));

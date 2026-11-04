@@ -24,6 +24,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm";
 import type { Notify } from "@/hooks/useLocks";
+import { useLockStatus } from "@/hooks/useLocks";
 import { useMergeRequest, type ReviewState } from "@/hooks/useMergeRequest";
 import { commitTitle, shortId } from "@/lib/history";
 import { blockedReason, conversation, eventText, mergeabilityText, reviewText, strategies, type Strategy } from "@/lib/mergeRequests";
@@ -133,7 +134,7 @@ export function MergeRequestDetail({ root, number, notify }: DetailProps) {
       </nav>
       <div className="min-h-0 flex-1">
         {tab === "conversation" ? (
-          <Conversation detail={mr.detail.data} activity={activity} activityError={mr.activity.error} mr={mr} />
+          <Conversation root={root} detail={mr.detail.data} activity={activity} activityError={mr.activity.error} mr={mr} />
         ) : tab === "commits" ? (
           <Commits root={root} number={number} />
         ) : (
@@ -211,9 +212,10 @@ function TitleRow({ request, busy, onSave }: { request: MergeRequest; busy: bool
 
 type Actions = ReturnType<typeof useMergeRequest>;
 
-function Conversation({ detail, activity, activityError, mr }: { detail: Detail; activity?: Activity; activityError: unknown; mr: Actions }) {
+function Conversation({ root, detail, activity, activityError, mr }: { root: string; detail: Detail; activity?: Activity; activityError: unknown; mr: Actions }) {
   const { request } = detail;
   const open = request.status === "open";
+  const me = useLockStatus(root).data?.userId;
   return (
     <div className="h-full overflow-auto">
       <div className="mx-auto max-w-3xl space-y-3 p-4">
@@ -262,7 +264,7 @@ function Conversation({ detail, activity, activityError, mr }: { detail: Detail;
           </ol>
         )}
         {activity && activity.checks.length > 0 && <Checks checks={activity.checks} />}
-        {open && <ReviewBox busy={mr.busy} onSubmit={(state, body) => mr.review.mutateAsync({ state, body })} />}
+        {open && <ReviewBox busy={mr.busy} isAuthor={!!me && me === request.authorId} onSubmit={(state, body) => mr.review.mutateAsync({ state, body })} />}
         {open && <CommentBox label="Comment" placeholder="Add to the conversation" busy={mr.busy} onSubmit={(body) => mr.comment.mutateAsync({ body })} />}
         <MergeBox detail={detail} mr={mr} />
       </div>
@@ -293,7 +295,7 @@ function Checks({ checks }: { checks: Check[] }) {
   );
 }
 
-function ReviewBox({ busy, onSubmit }: { busy: boolean; onSubmit: (state: ReviewState, body: string) => Promise<unknown> }) {
+function ReviewBox({ busy, isAuthor, onSubmit }: { busy: boolean; isAuthor: boolean; onSubmit: (state: ReviewState, body: string) => Promise<unknown> }) {
   const [body, setBody] = useState("");
   const send = (state: ReviewState) =>
     void onSubmit(state, body).then(
@@ -303,11 +305,12 @@ function ReviewBox({ busy, onSubmit }: { busy: boolean; onSubmit: (state: Review
   return (
     <section className="space-y-2 rounded-md border border-border bg-card p-3" aria-label="Review">
       <h3 className="text-[11px] font-semibold">Your review</h3>
+      {isAuthor && <p className="text-[11px] text-muted-foreground">You cannot approve or request changes on your own merge request.</p>}
       <textarea
         value={body}
         onChange={(e) => setBody(e.target.value)}
         aria-label="Review comment"
-        placeholder="Summarize your review (optional for approvals)"
+        placeholder="Summarize your review"
         rows={2}
         className="w-full resize-y rounded-md border border-border bg-background px-2 py-1.5 text-[12px] outline-none focus:border-accent"
       />
@@ -315,11 +318,11 @@ function ReviewBox({ busy, onSubmit }: { busy: boolean; onSubmit: (state: Review
         <Button size="sm" disabled={busy || !body.trim()} onClick={() => send("commented")}>
           Comment
         </Button>
-        <Button size="sm" disabled={busy} onClick={() => send("changes_requested")}>
+        <Button size="sm" disabled={busy || !body.trim() || isAuthor} onClick={() => send("changes_requested")}>
           <XCircle />
           Request changes
         </Button>
-        <Button size="sm" variant="primary" disabled={busy} onClick={() => send("approved")}>
+        <Button size="sm" variant="primary" disabled={busy || !body.trim() || isAuthor} onClick={() => send("approved")}>
           <CheckCircle2 />
           Approve
         </Button>

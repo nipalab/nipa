@@ -304,6 +304,8 @@ func TestService_ReviewsAndComments(t *testing.T) {
 	assert.Equal(t, "looks good", d.review.GetBody())
 	require.EqualError(t, svc.SubmitReview(ctx, "/work/game", 7, "maybe", ""), "unknown review decision maybe")
 	require.EqualError(t, svc.SubmitReview(ctx, "/work/game", 7, "commented", " "), "write a comment")
+	require.EqualError(t, svc.SubmitReview(ctx, "/work/game", 7, "approved", " "), "write a comment")
+	require.EqualError(t, svc.SubmitReview(ctx, "/work/game", 7, "changes_requested", ""), "write a comment")
 
 	thread, err := svc.Comment(ctx, "/work/game", 7, CommentInput{Path: "a.go", NewLine: 12, OldLine: 11, Body: " fix "})
 	require.NoError(t, err)
@@ -335,7 +337,7 @@ func TestService_ReviewsAndComments(t *testing.T) {
 		var err error
 		switch step {
 		case "review":
-			err = svc.SubmitReview(ctx, "/work/game", 7, "approved", "")
+			err = svc.SubmitReview(ctx, "/work/game", 7, "approved", "ok")
 		case "comment":
 			_, err = svc.Comment(ctx, "/work/game", 7, CommentInput{Body: "x"})
 		case "reply":

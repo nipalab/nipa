@@ -396,7 +396,7 @@ func (s *Service) SubmitReview(ctx context.Context, root string, number int64, s
 		return errors.New("unknown review decision " + state)
 	}
 	body = strings.TrimSpace(body)
-	if state == "commented" && body == "" {
+	if body == "" {
 		return errors.New("write a comment")
 	}
 	return s.call(ctx, root, func(c daemonpb.NipaDaemonClient) error {

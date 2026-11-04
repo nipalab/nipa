@@ -38,8 +38,9 @@ export function MergeRequestFiles({ root, base, head, threads, busy, canComment,
   const counts = useMemo(() => {
     const out = new Map<string, number>();
     for (const t of threads) if (t.path) out.set(t.path, (out.get(t.path) ?? 0) + 1);
+    for (const f of files.data ?? []) if (f.oldPath) out.set(f.path, (out.get(f.path) ?? 0) + (out.get(f.oldPath) ?? 0));
     return out;
-  }, [threads]);
+  }, [threads, files.data]);
 
   if (!base || !head) return <Centered>The branches of this request are gone, so its changes cannot be shown.</Centered>;
   if (files.isPending) {
@@ -58,7 +59,7 @@ export function MergeRequestFiles({ root, base, head, threads, busy, canComment,
   }
   if (list.length === 0) return <Centered>No file changes.</Centered>;
 
-  const { inline, outdated } = selected ? fileThreads(threads, selected.path) : { inline: [], outdated: [] };
+  const { inline, outdated } = selected ? fileThreads(threads, selected.path, selected.oldPath) : { inline: [], outdated: [] };
   const comments: LineComments | undefined = selected && {
     render: (anchor) => {
       const here = inline.filter((t) => threadAt(t, anchor));
