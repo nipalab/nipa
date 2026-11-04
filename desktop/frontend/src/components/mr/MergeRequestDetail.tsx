@@ -92,7 +92,8 @@ export function MergeRequestDetail({ root, number, notify }: DetailProps) {
   const { request, mergeability } = mr.detail.data;
   const activity = mr.activity.data;
   const base = mergeability.mergeBaseId || request.mergeBaseId;
-  const head = mergeability.sourceCommitId || (branches.data ?? []).find((b) => b.name === request.source)?.commitId || "";
+  const sourceHead = mergeability.sourceCommitId || (branches.data ?? []).find((b) => b.name === request.source)?.commitId || "";
+  const head = sourceHead || (request.status === "merged" && branches.isSuccess ? request.mergeCommitId : "");
   const threads = activity?.threads ?? [];
 
   return (

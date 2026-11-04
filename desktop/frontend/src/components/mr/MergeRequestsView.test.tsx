@@ -325,6 +325,14 @@ describe("MergeRequestDetail", () => {
     expect(api.revisionFiles).not.toHaveBeenCalledWith("/work/game", "b1", "m9");
   });
 
+  it("falls back to the merge commit when the merged source branch is deleted", async () => {
+    api.branches.mockResolvedValue([]);
+    api.mergeRequest.mockResolvedValue(detail({ status: "merged", mergeCommitId: "m9", mergeBaseId: "b1" }, { status: "merged", sourceCommitId: "", mergeBaseId: "" }));
+    view();
+    await userEvent.click(await screen.findByRole("tab", { name: /File changes/ }));
+    await waitFor(() => expect(api.revisionFiles).toHaveBeenCalledWith("/work/game", "b1", "m9"));
+  });
+
   it("edits the title and description", async () => {
     api.editMergeRequest.mockResolvedValue(mr({ title: "Hero pass v2" }));
     view();
