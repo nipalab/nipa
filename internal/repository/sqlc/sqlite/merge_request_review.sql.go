@@ -281,7 +281,7 @@ func (q *Queries) MergeRequestEventList(ctx context.Context, mergeRequestID int6
 }
 
 const mergeRequestListOpenBySourceBranch = `-- name: MergeRequestListOpenBySourceBranch :many
-SELECT id, number, project_id, source_branch_id, target_branch_id, source_branch_name, target_branch_name, title, description, status, is_draft, merge_commit_id, merge_base_commit_id, created_by, created_at, updated_at FROM merge_requests
+SELECT id, number, project_id, source_branch_id, target_branch_id, source_branch_name, target_branch_name, title, description, status, is_draft, merge_commit_id, merge_base_commit_id, merged_source_commit_id, created_by, created_at, updated_at FROM merge_requests
 WHERE project_id = ?1
   AND status = ?2
   AND source_branch_id = ?3
@@ -316,6 +316,7 @@ func (q *Queries) MergeRequestListOpenBySourceBranch(ctx context.Context, arg Me
 			&i.IsDraft,
 			&i.MergeCommitID,
 			&i.MergeBaseCommitID,
+			&i.MergedSourceCommitID,
 			&i.CreatedBy,
 			&i.CreatedAt,
 			&i.UpdatedAt,

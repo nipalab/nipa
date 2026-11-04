@@ -2,7 +2,20 @@ import { Events } from "@wailsio/runtime";
 import { Service } from "../../bindings/github.com/nipalab/nipa/desktop/internal/service";
 import type {
   Account,
+  Activity as RawActivity,
   AudioCompare,
+  Check,
+  Comment,
+  CommentInput,
+  MergeRequest as RawMergeRequest,
+  MergeRequestDetail as RawMergeRequestDetail,
+  MergeRequestFilter,
+  Mergeability,
+  NewMergeRequest,
+  Person,
+  Review,
+  Thread as RawThread,
+  TimelineEvent,
   Branch,
   Commit as RawCommit,
   HistoryQuery,
@@ -48,6 +61,23 @@ import type {
 
 export type { FileLock, FileLockState, LockFailure };
 export type { Branch, HistoryQuery, RevertOutcome, RevertRequest, Tag };
+export type { Check, Comment, CommentInput, MergeRequestFilter, Mergeability, NewMergeRequest, Person, Review, TimelineEvent };
+export type MergeRequest = Omit<RawMergeRequest, "assignees"> & { assignees: Person[] };
+export type MergeRequestDetail = { request: MergeRequest; mergeability: Mergeability; outstanding: string[] };
+export type Thread = Omit<RawThread, "comments"> & { comments: Comment[] };
+export type Activity = { reviews: Review[]; threads: Thread[]; timeline: TimelineEvent[]; checks: Check[] };
+export type MergeRequestPage = { items: MergeRequest[]; next: number };
+
+const mergeRequest = (m: RawMergeRequest): MergeRequest => ({ ...m, assignees: m.assignees ?? [] });
+const thread = (t: RawThread): Thread => ({ ...t, comments: t.comments ?? [] });
+const detail = (d: RawMergeRequestDetail | null): MergeRequestDetail => {
+  if (!d) throw new Error("The merge request was not found");
+  return { request: mergeRequest(d.request), mergeability: d.mergeability, outstanding: d.outstanding ?? [] };
+};
+const required = <T>(v: T | null, what: string): T => {
+  if (!v) throw new Error(`No ${what} was returned`);
+  return v;
+};
 export type Commit = Omit<RawCommit, "parents"> & { parents: string[] };
 export type HistoryPage = { commits: Commit[]; next: string };
 export type { Account, CloneRequest, RemoteBranch, RemoteDir, RemoteProject };
@@ -150,6 +180,30 @@ export const desktop = {
   },
   deleteTag: (root: string, name: string): Promise<void> => Service.DeleteTag(root, name),
   checkoutTag: (root: string, tag: string): Cancellable<OpOutcome> => Service.CheckoutTag(root, tag),
+  mergeRequests: async (root: string, f: Partial<MergeRequestFilter>): Promise<MergeRequestPage> => {
+    const page = await Service.MergeRequests(root, { status: "", search: "", author: "", after: 0, ...f });
+    return { next: page?.next ?? 0, items: (page?.items ?? []).map(mergeRequest) };
+  },
+  mergeRequest: async (root: string, number: number): Promise<MergeRequestDetail> => detail(await Service.MergeRequest(root, number)),
+  mergeRequestActivity: async (root: string, number: number): Promise<Activity> => {
+    const a: RawActivity | null = await Service.MergeRequestActivity(root, number);
+    return { reviews: a?.reviews ?? [], threads: (a?.threads ?? []).map(thread), timeline: a?.timeline ?? [], checks: a?.checks ?? [] };
+  },
+  mergeRequestCommits: async (root: string, number: number): Promise<Commit[]> => ((await Service.MergeRequestCommits(root, number)) ?? []).map((c) => ({ ...c, parents: c.parents ?? [] })),
+  revisionFiles: async (root: string, oldRev: string, newRev: string): Promise<FileDiff[]> => (await Service.RevisionFiles(root, oldRev, newRev)) ?? [],
+  createMergeRequest: async (root: string, req: NewMergeRequest): Promise<MergeRequest> => mergeRequest(required(await Service.CreateMergeRequest(root, req), "merge request")),
+  editMergeRequest: async (root: string, number: number, title: string, description: string): Promise<MergeRequest> =>
+    mergeRequest(required(await Service.EditMergeRequest(root, number, title, description), "merge request")),
+  setDraft: async (root: string, number: number, draft: boolean): Promise<MergeRequest> => mergeRequest(required(await Service.SetDraft(root, number, draft), "merge request")),
+  mergeMergeRequest: async (root: string, number: number, strategy: string, deleteSource: boolean): Promise<MergeRequestDetail> =>
+    detail(await Service.MergeMergeRequest(root, number, strategy, deleteSource)),
+  closeMergeRequest: (root: string, number: number): Promise<void> => Service.CloseMergeRequest(root, number),
+  reopenMergeRequest: (root: string, number: number): Promise<void> => Service.ReopenMergeRequest(root, number),
+  submitReview: (root: string, number: number, state: "approved" | "changes_requested" | "commented", body: string): Promise<void> => Service.SubmitReview(root, number, state, body),
+  comment: async (root: string, number: number, input: Partial<CommentInput> & { body: string }): Promise<Thread> =>
+    thread(required(await Service.Comment(root, number, { path: "", oldLine: 0, newLine: 0, ...input }), "comment")),
+  reply: async (root: string, number: number, threadId: string, body: string): Promise<Comment> => required(await Service.Reply(root, number, threadId, body), "reply"),
+  resolveThread: (root: string, number: number, threadId: string, resolved: boolean): Promise<void> => Service.ResolveThread(root, number, threadId, resolved),
   revert: (root: string, req: Partial<RevertRequest>): Cancellable<OpOutcome> => Service.Revert(root, { target: "", mode: "", ...req }),
 
   onRepoChanged: (fn: (change: RepoChanged) => void): (() => void) => Events.On("repo:changed", (ev) => fn(ev.data)),

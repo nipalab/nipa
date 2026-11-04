@@ -49,6 +49,10 @@ WHERE project_id = sqlc.arg(project_id)
 UPDATE merge_requests SET status = sqlc.arg(status), merge_commit_id = sqlc.arg(merge_commit_id), updated_at = now()
 WHERE project_id = sqlc.arg(project_id) AND number = sqlc.arg(number);
 
+-- name: MergeRequestRecordMerge :exec
+UPDATE merge_requests SET merged_source_commit_id = sqlc.arg(merged_source_commit_id), merge_base_commit_id = sqlc.arg(merge_base_commit_id)
+WHERE project_id = sqlc.arg(project_id) AND number = sqlc.arg(number);
+
 -- name: MergeRequestUpdate :one
 UPDATE merge_requests SET title = sqlc.arg(title), description = sqlc.arg(description), updated_at = now()
 WHERE project_id = sqlc.arg(project_id) AND number = sqlc.arg(number)

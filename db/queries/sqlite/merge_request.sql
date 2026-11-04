@@ -44,6 +44,10 @@ WHERE project_id = :project_id
 UPDATE merge_requests SET status = ?, merge_commit_id = ?, updated_at = CURRENT_TIMESTAMP
 WHERE project_id = ? AND number = ?;
 
+-- name: MergeRequestRecordMerge :exec
+UPDATE merge_requests SET merged_source_commit_id = ?, merge_base_commit_id = ?
+WHERE project_id = ? AND number = ?;
+
 -- name: MergeRequestUpdate :one
 UPDATE merge_requests SET title = ?, description = ?, updated_at = CURRENT_TIMESTAMP
 WHERE project_id = ? AND number = ?

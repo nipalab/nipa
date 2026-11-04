@@ -5,15 +5,15 @@ import { ArrowDownUp, FileText, Loader2, Table2 } from "lucide-react";
 import { desktop, type FileDiff, type TableColumn, type TableCompare, type TableRow } from "@/api/desktop";
 import { imageRefs, viewerKey } from "@/components/changes/ImageDiff";
 import { MetaDiff } from "@/components/changes/Notices";
-import { TextDiff, type DiffLayout } from "@/components/changes/TextDiff";
+import { TextDiff, type DiffLayout, type LineComments } from "@/components/changes/TextDiff";
 import { Group, Notice, ToolButton } from "@/components/changes/Toolbar";
 import { cn } from "@/lib/utils";
 
 type Mode = "table" | "text";
 
-export function TableDiff({ root, diff, layout }: { root: string; diff: FileDiff; layout: DiffLayout }) {
+export function TableDiff({ root, diff, layout, comments }: { root: string; diff: FileDiff; layout: DiffLayout; comments?: LineComments }) {
   const hasText = (diff.hunks ?? []).length > 0;
-  const [mode, setMode] = useState<Mode>("table");
+  const [mode, setMode] = useState<Mode>(comments && hasText ? "text" : "table");
   const { old, next } = imageRefs(diff);
   const query = useQuery({
     queryKey: viewerKey(root, diff, "table"),
@@ -36,7 +36,7 @@ export function TableDiff({ root, diff, layout }: { root: string; diff: FileDiff
       <div className="flex h-full min-h-0 flex-col">
         <div className="flex shrink-0 items-center border-b border-border px-3 py-1.5">{switcher}</div>
         <div className="min-h-0 flex-1">
-          <TextDiff diff={diff} layout={layout} />
+          <TextDiff diff={diff} layout={layout} comments={comments} />
         </div>
       </div>
     );

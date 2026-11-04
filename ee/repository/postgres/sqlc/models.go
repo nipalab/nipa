@@ -126,22 +126,23 @@ type GroupMember struct {
 }
 
 type MergeRequest struct {
-	ID                int64         `json:"id"`
-	Number            int64         `json:"number"`
-	ProjectID         int64         `json:"project_id"`
-	SourceBranchID    int64         `json:"source_branch_id"`
-	TargetBranchID    int64         `json:"target_branch_id"`
-	SourceBranchName  string        `json:"source_branch_name"`
-	TargetBranchName  string        `json:"target_branch_name"`
-	Title             string        `json:"title"`
-	Description       string        `json:"description"`
-	Status            string        `json:"status"`
-	IsDraft           bool          `json:"is_draft"`
-	MergeCommitID     sql.NullInt64 `json:"merge_commit_id"`
-	MergeBaseCommitID sql.NullInt64 `json:"merge_base_commit_id"`
-	CreatedBy         int64         `json:"created_by"`
-	CreatedAt         time.Time     `json:"created_at"`
-	UpdatedAt         time.Time     `json:"updated_at"`
+	ID                   int64         `json:"id"`
+	Number               int64         `json:"number"`
+	ProjectID            int64         `json:"project_id"`
+	SourceBranchID       int64         `json:"source_branch_id"`
+	TargetBranchID       int64         `json:"target_branch_id"`
+	SourceBranchName     string        `json:"source_branch_name"`
+	TargetBranchName     string        `json:"target_branch_name"`
+	Title                string        `json:"title"`
+	Description          string        `json:"description"`
+	Status               string        `json:"status"`
+	IsDraft              bool          `json:"is_draft"`
+	MergeCommitID        sql.NullInt64 `json:"merge_commit_id"`
+	MergeBaseCommitID    sql.NullInt64 `json:"merge_base_commit_id"`
+	MergedSourceCommitID sql.NullInt64 `json:"merged_source_commit_id"`
+	CreatedBy            int64         `json:"created_by"`
+	CreatedAt            time.Time     `json:"created_at"`
+	UpdatedAt            time.Time     `json:"updated_at"`
 }
 
 type MergeRequestAssignee struct {

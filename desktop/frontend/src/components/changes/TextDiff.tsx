@@ -1,11 +1,37 @@
-import { useMemo, useRef } from "react";
+import { useMemo, useRef, type ReactNode } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { MessageSquarePlus } from "lucide-react";
 import type { FileDiff } from "@/api/desktop";
 import { splitRows, unifiedRows, type SplitCell, type SplitRow, type UnifiedRow } from "@/lib/diff";
 import { highlightLine, languageFor } from "@/lib/highlight";
 import { cn } from "@/lib/utils";
 
 export type DiffLayout = "unified" | "split";
+
+// LineAnchor names a diff line the way the server anchors review comments:
+// removed lines by their old number, every other line by its new number.
+export type LineAnchor = { oldLine: number; newLine: number };
+
+// LineComments lets a caller show threads under diff lines and start new
+// ones; render returns null for lines without anything to show.
+export type LineComments = { render: (anchor: LineAnchor) => ReactNode; onAdd?: (anchor: LineAnchor) => void };
+
+const anchorOf = (kind: string, oldLine: number, newLine: number): LineAnchor => (kind === "removed" ? { oldLine, newLine: 0 } : { oldLine: 0, newLine });
+
+function AddComment({ anchor, comments }: { anchor: LineAnchor; comments?: LineComments }) {
+  if (!comments?.onAdd) return null;
+  return (
+    <button
+      type="button"
+      aria-label={anchor.newLine ? `Comment on line ${anchor.newLine}` : `Comment on removed line ${anchor.oldLine}`}
+      title="Comment on this line"
+      onClick={() => comments.onAdd?.(anchor)}
+      className="absolute left-0.5 top-0.5 hidden rounded bg-accent p-0.5 text-white group-hover:block focus:block"
+    >
+      <MessageSquarePlus className="size-3" />
+    </button>
+  );
+}
 
 const ROW_HEIGHT = 20;
 
@@ -38,38 +64,57 @@ function HunkRow({ header }: { header: string }) {
   return <div className="flex h-full items-center bg-accent-soft/60 px-3 font-mono text-[11px] text-muted-foreground">{header}</div>;
 }
 
-function UnifiedLine({ row, language }: { row: Extract<UnifiedRow, { type: "line" }>; language?: string }) {
+function UnifiedLine({ row, language, comments }: { row: Extract<UnifiedRow, { type: "line" }>; language?: string; comments?: LineComments }) {
   const sign = row.kind === "added" ? "+" : row.kind === "removed" ? "−" : " ";
+  const anchor = anchorOf(row.kind, row.old, row.new);
   return (
-    <div className={cn("flex min-h-full", lineTone[row.kind])}>
-      <span className={cn("w-12 shrink-0 select-none pr-2 text-right", gutterTone[row.kind])}>{row.old || ""}</span>
-      <span className={cn("w-12 shrink-0 select-none pr-2 text-right", gutterTone[row.kind])}>{row.new || ""}</span>
-      <span className={cn("w-4 shrink-0 select-none text-center", gutterTone[row.kind])}>{sign}</span>
-      <Code text={row.text} language={language} noNewline={row.noNewline} />
-    </div>
+    <>
+      <div className={cn("group relative flex min-h-full", lineTone[row.kind])}>
+        <AddComment anchor={anchor} comments={comments} />
+        <span className={cn("w-12 shrink-0 select-none pr-2 text-right", gutterTone[row.kind])}>{row.old || ""}</span>
+        <span className={cn("w-12 shrink-0 select-none pr-2 text-right", gutterTone[row.kind])}>{row.new || ""}</span>
+        <span className={cn("w-4 shrink-0 select-none text-center", gutterTone[row.kind])}>{sign}</span>
+        <Code text={row.text} language={language} noNewline={row.noNewline} />
+      </div>
+      {comments?.render(anchor)}
+    </>
   );
 }
 
-function SplitHalf({ cell, language, side }: { cell: SplitCell; language?: string; side: "old" | "new" }) {
+const splitAnchor = (cell: SplitCell, side: "old" | "new"): LineAnchor | null => {
+  if (!cell) return null;
+  if (side === "old") return cell.kind === "removed" ? { oldLine: cell.line, newLine: 0 } : null;
+  return { oldLine: 0, newLine: cell.line };
+};
+
+function SplitHalf({ cell, language, side, comments }: { cell: SplitCell; language?: string; side: "old" | "new"; comments?: LineComments }) {
   if (!cell) return <div className={cn("flex w-1/2 min-w-0 bg-muted/50", side === "old" && "border-r border-border")} />;
+  const anchor = splitAnchor(cell, side);
   return (
-    <div className={cn("flex w-1/2 min-w-0", lineTone[cell.kind], side === "old" && "border-r border-border")}>
+    <div className={cn("group relative flex w-1/2 min-w-0", lineTone[cell.kind], side === "old" && "border-r border-border")}>
+      {anchor && <AddComment anchor={anchor} comments={comments} />}
       <span className={cn("w-12 shrink-0 select-none pr-2 text-right", gutterTone[cell.kind])}>{cell.line || ""}</span>
       <Code text={cell.text} language={language} noNewline={cell.noNewline} />
     </div>
   );
 }
 
-function SplitLine({ row, language }: { row: Extract<SplitRow, { type: "pair" }>; language?: string }) {
+function SplitLine({ row, language, comments }: { row: Extract<SplitRow, { type: "pair" }>; language?: string; comments?: LineComments }) {
+  const left = splitAnchor(row.left, "old");
+  const right = splitAnchor(row.right, "new");
   return (
-    <div className="flex min-h-full">
-      <SplitHalf cell={row.left} language={language} side="old" />
-      <SplitHalf cell={row.right} language={language} side="new" />
-    </div>
+    <>
+      <div className="flex min-h-full">
+        <SplitHalf cell={row.left} language={language} side="old" comments={comments} />
+        <SplitHalf cell={row.right} language={language} side="new" comments={comments} />
+      </div>
+      {left && comments?.render(left)}
+      {right && comments?.render(right)}
+    </>
   );
 }
 
-export function TextDiff({ diff, layout }: { diff: FileDiff; layout: DiffLayout }) {
+export function TextDiff({ diff, layout, comments }: { diff: FileDiff; layout: DiffLayout; comments?: LineComments }) {
   const hunks = diff.hunks ?? [];
   const rows = useMemo(() => (layout === "split" ? splitRows(hunks) : unifiedRows(hunks)), [hunks, layout]);
   const language = languageFor(diff.path);
@@ -98,9 +143,9 @@ export function TextDiff({ diff, layout }: { diff: FileDiff; layout: DiffLayout 
               {row.type === "hunk" ? (
                 <HunkRow header={row.header} />
               ) : row.type === "line" ? (
-                <UnifiedLine row={row} language={language} />
+                <UnifiedLine row={row} language={language} comments={comments} />
               ) : (
-                <SplitLine row={row} language={language} />
+                <SplitLine row={row} language={language} comments={comments} />
               )}
             </div>
           );

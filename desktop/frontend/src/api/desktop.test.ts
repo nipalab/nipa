@@ -43,6 +43,21 @@ const service = vi.hoisted(() => ({
   DeleteTag: vi.fn(),
   CheckoutTag: vi.fn(),
   Revert: vi.fn(),
+  MergeRequests: vi.fn(),
+  MergeRequest: vi.fn(),
+  MergeRequestActivity: vi.fn(),
+  MergeRequestCommits: vi.fn(),
+  RevisionFiles: vi.fn(),
+  CreateMergeRequest: vi.fn(),
+  EditMergeRequest: vi.fn(),
+  SetDraft: vi.fn(),
+  MergeMergeRequest: vi.fn(),
+  CloseMergeRequest: vi.fn(),
+  ReopenMergeRequest: vi.fn(),
+  SubmitReview: vi.fn(),
+  Comment: vi.fn(),
+  Reply: vi.fn(),
+  ResolveThread: vi.fn(),
 }));
 vi.mock("../../bindings/github.com/nipalab/nipa/desktop/internal/service", () => ({ Service: service }));
 
@@ -239,5 +254,51 @@ describe("desktop api", () => {
     expect(await desktop.changes("/a")).toMatchObject({ pending: "revert", pendingRemaining: 2, conflicts: [] });
     service.Changes.mockResolvedValue({ branch: "main", pending: "other" });
     expect(await desktop.changes("/a")).toMatchObject({ pending: undefined, pendingRemaining: 0 });
+  });
+
+  it("normalises merge requests and their activity", async () => {
+    service.MergeRequests.mockResolvedValueOnce({ next: 4, items: [{ number: 5, assignees: null }] }).mockResolvedValueOnce(null);
+    expect(await desktop.mergeRequests("/a", { status: "open" })).toEqual({ next: 4, items: [{ number: 5, assignees: [] }] });
+    expect(service.MergeRequests).toHaveBeenCalledWith("/a", { status: "open", search: "", author: "", after: 0 });
+    expect(await desktop.mergeRequests("/a", {})).toEqual({ next: 0, items: [] });
+
+    service.MergeRequest.mockResolvedValueOnce({ request: { number: 5, assignees: null }, mergeability: { status: "mergeable" }, outstanding: null }).mockResolvedValueOnce(null);
+    expect(await desktop.mergeRequest("/a", 5)).toEqual({ request: { number: 5, assignees: [] }, mergeability: { status: "mergeable" }, outstanding: [] });
+    await expect(desktop.mergeRequest("/a", 6)).rejects.toThrow("not found");
+
+    service.MergeRequestActivity.mockResolvedValueOnce({ reviews: null, threads: [{ id: "t", comments: null }], timeline: null, checks: null }).mockResolvedValueOnce(null);
+    expect(await desktop.mergeRequestActivity("/a", 5)).toEqual({ reviews: [], threads: [{ id: "t", comments: [] }], timeline: [], checks: [] });
+    expect(await desktop.mergeRequestActivity("/a", 5)).toEqual({ reviews: [], threads: [], timeline: [], checks: [] });
+
+    service.MergeRequestCommits.mockResolvedValueOnce([{ id: "c", parents: null }]).mockResolvedValueOnce(null);
+    expect(await desktop.mergeRequestCommits("/a", 5)).toEqual([{ id: "c", parents: [] }]);
+    expect(await desktop.mergeRequestCommits("/a", 5)).toEqual([]);
+    service.RevisionFiles.mockResolvedValue(null);
+    expect(await desktop.revisionFiles("/a", "b", "s")).toEqual([]);
+  });
+
+  it("forwards merge request actions", async () => {
+    service.CreateMergeRequest.mockResolvedValueOnce({ number: 7, assignees: null }).mockResolvedValueOnce(null);
+    expect(await desktop.createMergeRequest("/a", { title: "t", description: "", source: "a", target: "b", draft: false })).toEqual({ number: 7, assignees: [] });
+    await expect(desktop.createMergeRequest("/a", { title: "t", description: "", source: "a", target: "b", draft: false })).rejects.toThrow("No merge request");
+    service.EditMergeRequest.mockResolvedValue({ number: 7 });
+    service.SetDraft.mockResolvedValue({ number: 7 });
+    service.MergeMergeRequest.mockResolvedValue({ request: { number: 7 }, mergeability: {}, outstanding: [] });
+    expect((await desktop.editMergeRequest("/a", 7, "t", "d")).number).toBe(7);
+    expect((await desktop.setDraft("/a", 7, true)).number).toBe(7);
+    expect((await desktop.mergeMergeRequest("/a", 7, "ff", false)).request.number).toBe(7);
+    await desktop.closeMergeRequest("/a", 7);
+    await desktop.reopenMergeRequest("/a", 7);
+    await desktop.submitReview("/a", 7, "approved", "");
+    await desktop.resolveThread("/a", 7, "t", true);
+    expect(service.MergeMergeRequest).toHaveBeenCalledWith("/a", 7, "ff", false);
+    expect(service.ResolveThread).toHaveBeenCalledWith("/a", 7, "t", true);
+
+    service.Comment.mockResolvedValue({ id: "t", comments: null });
+    expect(await desktop.comment("/a", 7, { body: "hi" })).toEqual({ id: "t", comments: [] });
+    expect(service.Comment).toHaveBeenCalledWith("/a", 7, { path: "", oldLine: 0, newLine: 0, body: "hi" });
+    service.Reply.mockResolvedValueOnce({ id: "c" }).mockResolvedValueOnce(null);
+    expect(await desktop.reply("/a", 7, "t", "ok")).toEqual({ id: "c" });
+    await expect(desktop.reply("/a", 7, "t", "ok")).rejects.toThrow("No reply");
   });
 });

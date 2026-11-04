@@ -27,6 +27,7 @@ const api = vi.hoisted(() => ({
   switchBranch: vi.fn(),
   checkoutTag: vi.fn(),
   revert: vi.fn(),
+  mergeRequests: vi.fn(),
   onRepoChanged: vi.fn(),
   onOpProgress: vi.fn(),
 }));
@@ -557,6 +558,14 @@ describe("history, branches and pending operations", () => {
     api.changes.mockResolvedValue(changeSet({ pending: "revert", pendingRemaining: 2 }));
     view();
     expect(await screen.findByRole("status")).toHaveTextContent("A revert is waiting to be continued. 1 more commit to revert after this one.");
+  });
+
+  it("opens the merge requests tab", async () => {
+    api.mergeRequests.mockResolvedValue({ items: [], next: 0 });
+    view();
+    await userEvent.click(await screen.findByRole("tab", { name: /Merge requests/ }));
+    expect(await screen.findByText("No merge requests here yet")).toBeInTheDocument();
+    expect(api.mergeRequests).toHaveBeenCalledWith("/work/game", { status: "open", search: "", after: 0 });
   });
 
   it("describes every revert outcome", () => {

@@ -254,10 +254,31 @@ func TestMergeRequest_Merge(t *testing.T) {
 	merger.EXPECT().MergeForMergeRequest(gomock.Any(), snow.ID(1), "main", "feature", gomock.Any()).
 		Return(&domain.Branch{ID: 2, ProjectID: 1, Name: "main", CommitID: &sourceHead}, nil)
 	repo.EXPECT().UpdateStatus(gomock.Any(), snow.ID(1), int64(5), domain.MergeRequestMerged, &sourceHead).Return(nil)
+	repo.EXPECT().RecordMerge(gomock.Any(), snow.ID(1), int64(5), &sourceHead, &targetHead).Return(nil)
 
 	merged, _, err := mr.Merge(permissionCtx(7), snow.ID(1), 5, "", false)
 	require.NoError(t, err)
 	require.Equal(t, openMergeRequest().ID, merged.ID)
+}
+
+func TestMergeRequest_Merge_RecordMergeFailureIsNotFatal(t *testing.T) {
+	mr, repo, branchRepo, perm, merger := newTestMergeRequest(t)
+	sourceHead := snow.ID(11)
+	targetHead := snow.ID(12)
+
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true).AnyTimes()
+	repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(openMergeRequest(), nil).Times(2)
+	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "feature").Return(branchWithHead(3, sourceHead), nil)
+	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(branchWithHead(2, targetHead), nil)
+	merger.EXPECT().GetMergeBase(gomock.Any(), snow.ID(1), gomock.Any(), gomock.Any()).
+		Return(&MergeBaseInfo{MergeBaseCommitID: &targetHead}, nil)
+	merger.EXPECT().MergeForMergeRequest(gomock.Any(), snow.ID(1), "main", "feature", gomock.Any()).
+		Return(&domain.Branch{ID: 2, ProjectID: 1, Name: "main", CommitID: &sourceHead}, nil)
+	repo.EXPECT().UpdateStatus(gomock.Any(), snow.ID(1), int64(5), domain.MergeRequestMerged, &sourceHead).Return(nil)
+	repo.EXPECT().RecordMerge(gomock.Any(), snow.ID(1), int64(5), gomock.Any(), gomock.Any()).Return(errors.New("boom"))
+
+	_, _, err := mr.Merge(permissionCtx(7), snow.ID(1), 5, "", false)
+	require.NoError(t, err)
 }
 
 func TestMergeRequest_Merge_BehindTarget(t *testing.T) {
@@ -885,6 +906,7 @@ func TestMergeRequest_Merge_RecordsLifecycleEvents(t *testing.T) {
 	merger.EXPECT().MergeForMergeRequest(gomock.Any(), snow.ID(1), "main", "feature", gomock.Any()).
 		Return(&domain.Branch{ID: 2, ProjectID: 1, Name: "main", CommitID: &sourceHead}, nil)
 	repo.EXPECT().UpdateStatus(gomock.Any(), snow.ID(1), int64(5), domain.MergeRequestMerged, &sourceHead).Return(nil)
+	repo.EXPECT().RecordMerge(gomock.Any(), snow.ID(1), int64(5), gomock.Any(), gomock.Any()).Return(nil)
 	branchRepo.EXPECT().GetCommit(gomock.Any(), sourceHead).Return(&domain.Commit{ID: sourceHead, Hash: hash}, nil)
 
 	var events []domain.MergeRequestTimelineItem
@@ -1146,6 +1168,7 @@ func TestMergeRequest_Merge_SquashStrategy(t *testing.T) {
 		SourceCommitID: &sourceHead,
 	}).Return(&domain.Branch{ID: 2, ProjectID: 1, Name: "main", CommitID: &sourceHead}, nil)
 	repo.EXPECT().UpdateStatus(gomock.Any(), snow.ID(1), int64(5), domain.MergeRequestMerged, &sourceHead).Return(nil)
+	repo.EXPECT().RecordMerge(gomock.Any(), snow.ID(1), int64(5), gomock.Any(), gomock.Any()).Return(nil)
 
 	_, _, err := mr.Merge(permissionCtx(7), snow.ID(1), 5, "squash", false)
 	require.NoError(t, err)
@@ -1166,6 +1189,7 @@ func TestMergeRequest_Merge_BehindAllowedForNonFF(t *testing.T) {
 	merger.EXPECT().MergeForMergeRequest(gomock.Any(), snow.ID(1), "main", "feature", gomock.Any()).
 		Return(&domain.Branch{ID: 2, ProjectID: 1, Name: "main", CommitID: &sourceHead}, nil)
 	repo.EXPECT().UpdateStatus(gomock.Any(), snow.ID(1), int64(5), domain.MergeRequestMerged, &sourceHead).Return(nil)
+	repo.EXPECT().RecordMerge(gomock.Any(), snow.ID(1), int64(5), gomock.Any(), gomock.Any()).Return(nil)
 
 	_, info, err := mr.Merge(permissionCtx(7), snow.ID(1), 5, "merge", false)
 	require.NoError(t, err)
@@ -1186,6 +1210,7 @@ func TestMergeRequest_Merge_DeleteSourceFailureIsNotFatal(t *testing.T) {
 	merger.EXPECT().MergeForMergeRequest(gomock.Any(), snow.ID(1), "main", "feature", gomock.Any()).
 		Return(&domain.Branch{ID: 2, ProjectID: 1, Name: "main", CommitID: &sourceHead}, nil)
 	repo.EXPECT().UpdateStatus(gomock.Any(), snow.ID(1), int64(5), domain.MergeRequestMerged, &sourceHead).Return(nil)
+	repo.EXPECT().RecordMerge(gomock.Any(), snow.ID(1), int64(5), gomock.Any(), gomock.Any()).Return(nil)
 	merger.EXPECT().Delete(gomock.Any(), snow.ID(1), "feature").Return(errors.New("protected"))
 
 	merged, _, err := mr.Merge(permissionCtx(7), snow.ID(1), 5, "", true)

@@ -71,6 +71,20 @@ export function Clone(req: $models.CloneRequest): $CancellablePromise<$models.Re
 }
 
 /**
+ * CloseMergeRequest closes a request without merging; Reopen undoes it.
+ */
+export function CloseMergeRequest(root: string, $number: number): $CancellablePromise<void> {
+    return $Call.ByID(524711353, root, $number);
+}
+
+/**
+ * Comment starts a thread in the conversation or on a diff line.
+ */
+export function Comment(root: string, $number: number, $in: $models.CommentInput): $CancellablePromise<$models.Thread | null> {
+    return $Call.ByID(2279986949, root, $number, $in);
+}
+
+/**
  * CommitFiles lists what a commit changed against its first parent (parent
  * is empty for a root commit). Each file carries both revisions so the asset
  * viewers load the right versions.
@@ -92,6 +106,13 @@ export function Connect(): $CancellablePromise<$models.DaemonInfo> {
  */
 export function CreateBranch(root: string, name: string, fromBranch: string, fromCommit: string): $CancellablePromise<$models.Branch | null> {
     return $Call.ByID(2968796748, root, name, fromBranch, fromCommit);
+}
+
+/**
+ * CreateMergeRequest opens a request from one branch into another.
+ */
+export function CreateMergeRequest(root: string, $in: $models.NewMergeRequest): $CancellablePromise<$models.MergeRequest | null> {
+    return $Call.ByID(2342402457, root, $in);
 }
 
 /**
@@ -120,6 +141,13 @@ export function DeleteTag(root: string, name: string): $CancellablePromise<void>
  */
 export function Discard(root: string, paths: string[] | null): $CancellablePromise<$models.Changes> {
     return $Call.ByID(4030220442, root, paths);
+}
+
+/**
+ * EditMergeRequest changes the title and description; empty keeps a field.
+ */
+export function EditMergeRequest(root: string, $number: number, title: string, description: string): $CancellablePromise<$models.MergeRequest | null> {
+    return $Call.ByID(303320665, root, $number, title, description);
 }
 
 /**
@@ -166,6 +194,43 @@ export function Lock(root: string, branch: string, paths: string[] | null): $Can
  */
 export function LockStatus(root: string): $CancellablePromise<$models.LockStatus | null> {
     return $Call.ByID(3463155089, root);
+}
+
+/**
+ * MergeMergeRequest lands a request with a strategy: ff, merge, squash or
+ * rebase.
+ */
+export function MergeMergeRequest(root: string, $number: number, strategy: string, deleteSource: boolean): $CancellablePromise<$models.MergeRequestDetail | null> {
+    return $Call.ByID(109856929, root, $number, strategy, deleteSource);
+}
+
+/**
+ * MergeRequest returns one request with its mergeability.
+ */
+export function MergeRequest(root: string, $number: number): $CancellablePromise<$models.MergeRequestDetail | null> {
+    return $Call.ByID(1631193253, root, $number);
+}
+
+/**
+ * MergeRequestActivity loads reviews, comment threads, the timeline and the
+ * status checks of a request.
+ */
+export function MergeRequestActivity(root: string, $number: number): $CancellablePromise<$models.Activity | null> {
+    return $Call.ByID(615338412, root, $number);
+}
+
+/**
+ * MergeRequestCommits lists the commits the request brings in.
+ */
+export function MergeRequestCommits(root: string, $number: number): $CancellablePromise<$models.Commit[] | null> {
+    return $Call.ByID(487309277, root, $number);
+}
+
+/**
+ * MergeRequests lists the project's merge requests, newest first.
+ */
+export function MergeRequests(root: string, f: $models.MergeRequestFilter): $CancellablePromise<$models.MergeRequestPage | null> {
+    return $Call.ByID(3831228642, root, f);
 }
 
 /**
@@ -236,10 +301,31 @@ export function RemoveRepo(root: string): $CancellablePromise<void> {
 }
 
 /**
+ * ReopenMergeRequest reopens a closed request.
+ */
+export function ReopenMergeRequest(root: string, $number: number): $CancellablePromise<void> {
+    return $Call.ByID(870479912, root, $number);
+}
+
+/**
+ * Reply answers a thread.
+ */
+export function Reply(root: string, $number: number, threadID: string, body: string): $CancellablePromise<$models.Comment | null> {
+    return $Call.ByID(3796417604, root, $number, threadID, body);
+}
+
+/**
  * Repos returns the saved clones, watching each one with the daemon.
  */
 export function Repos(): $CancellablePromise<$models.Repo[] | null> {
     return $Call.ByID(3963752509);
+}
+
+/**
+ * ResolveThread resolves a thread, or reopens it with resolved false.
+ */
+export function ResolveThread(root: string, $number: number, threadID: string, resolved: boolean): $CancellablePromise<void> {
+    return $Call.ByID(48624308, root, $number, threadID, resolved);
 }
 
 /**
@@ -248,6 +334,22 @@ export function Repos(): $CancellablePromise<$models.Repo[] | null> {
  */
 export function Revert(root: string, req: $models.RevertRequest): $CancellablePromise<$models.OpOutcome> {
     return $Call.ByID(1832166846, root, req);
+}
+
+/**
+ * RevisionFiles lists what changed between two commits, with both revisions
+ * on every file so the asset viewers load the right versions. A merge
+ * request's changes are its merge base against the source head.
+ */
+export function RevisionFiles(root: string, oldRev: string, newRev: string): $CancellablePromise<$models.FileDiff[] | null> {
+    return $Call.ByID(2666180448, root, oldRev, newRev);
+}
+
+/**
+ * SetDraft marks a request as a draft or ready for review.
+ */
+export function SetDraft(root: string, $number: number, draft: boolean): $CancellablePromise<$models.MergeRequest | null> {
+    return $Call.ByID(2888872339, root, $number, draft);
 }
 
 /**
@@ -276,6 +378,13 @@ export function SignInSSH(server: string, email: string): $CancellablePromise<vo
  */
 export function Stage(root: string, paths: string[] | null): $CancellablePromise<$models.Changes> {
     return $Call.ByID(742824190, root, paths);
+}
+
+/**
+ * SubmitReview approves, requests changes or comments on a request.
+ */
+export function SubmitReview(root: string, $number: number, state: string, body: string): $CancellablePromise<void> {
+    return $Call.ByID(3366865276, root, $number, state, body);
 }
 
 /**

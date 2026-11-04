@@ -12,6 +12,7 @@ CREATE TABLE merge_requests (
     is_draft BOOLEAN NOT NULL DEFAULT FALSE,
     merge_commit_id INTEGER REFERENCES commits(id),
     merge_base_commit_id INTEGER REFERENCES commits(id),
+    merged_source_commit_id INTEGER REFERENCES commits(id),
     created_by INTEGER NOT NULL REFERENCES users(id),
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,

@@ -6,12 +6,12 @@ import { FileIcon, StatusLetter } from "@/components/changes/FileIcon";
 import { ImageDiff } from "@/components/changes/ImageDiff";
 import { MetaDiff, Notice } from "@/components/changes/Notices";
 import { TableDiff } from "@/components/changes/TableDiff";
-import { TextDiff, type DiffLayout } from "@/components/changes/TextDiff";
+import { TextDiff, type DiffLayout, type LineComments } from "@/components/changes/TextDiff";
 import { cn } from "@/lib/utils";
 
 const ModelDiff = lazy(() => import("@/components/changes/ModelDiff").then((m) => ({ default: m.ModelDiff })));
 
-type ViewerProps = { root: string; diff: FileDiff; layout: DiffLayout };
+type ViewerProps = { root: string; diff: FileDiff; layout: DiffLayout; comments?: LineComments };
 
 const isText = (d: FileDiff) => !d.old?.binary && !d.new?.binary;
 
@@ -34,9 +34,10 @@ type DiffViewerProps = {
   diff: FileDiff;
   layout: DiffLayout;
   onLayout: (layout: DiffLayout) => void;
+  comments?: LineComments;
 };
 
-export function DiffViewer({ root, diff, layout, onLayout }: DiffViewerProps) {
+export function DiffViewer({ root, diff, layout, onLayout, comments }: DiffViewerProps) {
   const Viewer = viewerFor(diff);
   return (
     <div className="flex h-full min-w-0 flex-col">
@@ -67,7 +68,7 @@ export function DiffViewer({ root, diff, layout, onLayout }: DiffViewerProps) {
       </div>
       <div className="min-h-0 flex-1">
         <Suspense fallback={null}>
-          <Viewer root={root} diff={diff} layout={layout} />
+          <Viewer root={root} diff={diff} layout={layout} comments={comments} />
         </Suspense>
       </div>
     </div>

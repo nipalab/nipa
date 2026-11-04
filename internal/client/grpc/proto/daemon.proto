@@ -543,6 +543,69 @@ message ProxyMergeRequestSubmitReviewResponse {
     greet.SubmitMergeRequestReviewResponse response = 1;
 }
 
+message ProxyMergeRequestUpdateRequest {
+    string root = 1;
+    greet.UpdateMergeRequestRequest request = 2;
+}
+
+message ProxyMergeRequestUpdateResponse {
+    greet.UpdateMergeRequestResponse response = 1;
+}
+
+message ProxyMergeRequestCommitsRequest {
+    string root = 1;
+    greet.ListMergeRequestCommitsRequest request = 2;
+}
+
+message ProxyMergeRequestCommitsResponse {
+    greet.ListMergeRequestCommitsResponse response = 1;
+}
+
+message ProxyMergeRequestChecksRequest {
+    string root = 1;
+    greet.ListMergeRequestChecksRequest request = 2;
+}
+
+message ProxyMergeRequestChecksResponse {
+    greet.ListMergeRequestChecksResponse response = 1;
+}
+
+message ProxyMergeRequestTimelineRequest {
+    string root = 1;
+    greet.ListMergeRequestTimelineRequest request = 2;
+}
+
+message ProxyMergeRequestTimelineResponse {
+    greet.ListMergeRequestTimelineResponse response = 1;
+}
+
+message ProxyMergeRequestAddCommentRequest {
+    string root = 1;
+    greet.AddMergeRequestCommentRequest request = 2;
+}
+
+message ProxyMergeRequestAddCommentResponse {
+    greet.AddMergeRequestCommentResponse response = 1;
+}
+
+message ProxyMergeRequestReplyRequest {
+    string root = 1;
+    greet.ReplyMergeRequestThreadRequest request = 2;
+}
+
+message ProxyMergeRequestReplyResponse {
+    greet.ReplyMergeRequestThreadResponse response = 1;
+}
+
+message ProxyMergeRequestResolveRequest {
+    string root = 1;
+    greet.ResolveMergeRequestThreadRequest request = 2;
+}
+
+message ProxyMergeRequestResolveResponse {
+    greet.ResolveMergeRequestThreadResponse response = 1;
+}
+
 message ProxyLockFileRequest {
     string root = 1;
     greet.LockFileRequest request = 2;
@@ -731,6 +794,13 @@ service NipaDaemon {
     rpc ProxyMergeRequestCheck(ProxyMergeRequestCheckRequest) returns (ProxyMergeRequestCheckResponse);
     rpc ProxyMergeRequestReopen(ProxyMergeRequestReopenRequest) returns (ProxyMergeRequestReopenResponse);
     rpc ProxyMergeRequestSubmitReview(ProxyMergeRequestSubmitReviewRequest) returns (ProxyMergeRequestSubmitReviewResponse);
+    rpc ProxyMergeRequestUpdate(ProxyMergeRequestUpdateRequest) returns (ProxyMergeRequestUpdateResponse);
+    rpc ProxyMergeRequestCommits(ProxyMergeRequestCommitsRequest) returns (ProxyMergeRequestCommitsResponse);
+    rpc ProxyMergeRequestChecks(ProxyMergeRequestChecksRequest) returns (ProxyMergeRequestChecksResponse);
+    rpc ProxyMergeRequestTimeline(ProxyMergeRequestTimelineRequest) returns (ProxyMergeRequestTimelineResponse);
+    rpc ProxyMergeRequestAddComment(ProxyMergeRequestAddCommentRequest) returns (ProxyMergeRequestAddCommentResponse);
+    rpc ProxyMergeRequestReply(ProxyMergeRequestReplyRequest) returns (ProxyMergeRequestReplyResponse);
+    rpc ProxyMergeRequestResolve(ProxyMergeRequestResolveRequest) returns (ProxyMergeRequestResolveResponse);
     rpc ProxyLockFile(ProxyLockFileRequest) returns (ProxyLockFileResponse);
     rpc ProxyUnlockFile(ProxyUnlockFileRequest) returns (ProxyUnlockFileResponse);
     rpc ProxyListFileLocks(ProxyListFileLocksRequest) returns (ProxyListFileLocksResponse);

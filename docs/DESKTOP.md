@@ -52,7 +52,11 @@ Sonar never compile it.
   `ListProjects`, `RemoteBranches`, `RemoteTree`, `ChooseFolder`, `Clone`,
   `SetSparse`; History: `History`, `CommitFiles`, `Branches`, `CreateBranch`,
   `DeleteBranch`, `SwitchBranch`, `Tags`, `CreateTag`, `DeleteTag`,
-  `CheckoutTag`, `Revert`). Plain Go behind `Dialer`/
+  `CheckoutTag`, `Revert`; Merge requests: `MergeRequests`, `MergeRequest`,
+  `MergeRequestActivity`, `MergeRequestCommits`, `RevisionFiles`,
+  `CreateMergeRequest`, `EditMergeRequest`, `SetDraft`, `MergeMergeRequest`,
+  `CloseMergeRequest`, `ReopenMergeRequest`, `SubmitReview`, `Comment`,
+  `Reply`, `ResolveThread`). Plain Go behind `Dialer`/
   `RepoStore`/`FolderPicker` seams, so it is unit-tested without a webview; an
   `Unavailable` error drops the session so the next call reconnects (and
   restarts the daemon) and re-watches each clone on first use. Every watched
@@ -173,6 +177,25 @@ Sonar never compile it.
   `pending` = `revert`, with the conflicting files and the commits left)
   shows a banner with Continue, Skip and Abort; a pending merge only points
   to the CLI until the conflict screen (PR 14).
+- Merge requests tab: the list (Open/Drafts/Merged/Closed/All, server-side
+  search, 50 per page) with status, branches, approvals and changes
+  requested, and "New" (source = the clone's branch, target = the default
+  branch, title, description, draft). A request opens in three tabs.
+  Conversation: description, the timeline merged with review decisions and
+  top-level threads in time order (review events are shown through their
+  review, stale and dismissed ones dimmed), status checks with links, a
+  review box (Comment, Request changes, Approve), a comment box and the
+  merge box: mergeability and the blocker in words (draft, changes
+  requested, approvals, required reviewers, checks), strategy (merge,
+  squash, rebase, fast-forward; remembered), delete source, Mark ready/
+  Mark as draft, Close with confirmation, Reopen for closed requests.
+  Commits: the request's commits. File changes: `RevisionFiles` (daemon
+  `DiffFiles` of the merge base against the source head, or the merge
+  commit once merged) in the same viewers as History; text diffs show
+  threads under their line (`TextDiff` `comments`: removed lines anchor by
+  old number, others by new) and a hover button starts a new one, outdated
+  threads collapse above the diff, binaries point to the conversation.
+  Threads collapse once resolved and take replies and resolve/reopen.
 - Locks: `LockStatus` asks the daemon's `LockStatus` RPC for every visible
   lock plus the state of each changed binary (a tracked file stored as
   binary, or a known asset extension) in the lock scope of the clone's
@@ -309,7 +332,7 @@ Pure package (no client imports), shared by the daemon and later the server.
 10. Locks (lock-aware status, Lock & edit, Locks page). **(done)**
 11. Sign in, clone, sparse checkout. **(done)**
 12. History, branches, tags, revert. **(done)**
-13. Merge requests with asset viewers.
+13. Merge requests with asset viewers. **(done)**
 14. Conflict resolution.
 15. Tray, notifications, deep links, settings.
 16. Packaging and auto-update.

@@ -140,7 +140,9 @@ Phase A scope: branches (list/create/delete/protect info), release tags
 (`ProxyTagList`/`ProxyTagCreate`/`ProxyTagDelete`), `GetTreeManifest`,
 `GetCommitLog` (with `path`: only the commits that changed a file or folder)/
 `GetCommit`/`WalkCommits`/`GetMergeBase`, MR
-list/create/merge/close + detail incl. review summary and threads, file locks
+list/create/update/merge/close/reopen + detail incl. review summary, reviews,
+threads, commits, checks and timeline, comments (`ProxyMergeRequestAddComment`/
+`Reply`/`Resolve`) and review submission, file locks
 (lock/unlock/list). Phase B: PBAC/path permissions, groups, admin.
 
 All proxy calls take the repo `root`, resolve `.nipa/config` → host/org/project,

@@ -724,6 +724,78 @@ var _ = Describe("nipa serve", func() {
 		Expect(readText(dir, "art/hero.txt")).To(Equal("v3\n"))
 	})
 
+	It("drives a merge request conversation through the daemon", func() {
+		project := newProject("daemon-mr-review")
+		seedRepo(orgSlug, project, map[string][]byte{"a.txt": []byte("a\n")}, "seed")
+		dir := cloneRepo(workspace(), repoURLFor(orgSlug, project), "work")
+		Expect(runNipa(dir, "branch", "-c", "feature").ExitCode).To(Equal(0))
+		writeText(dir, "feature.txt", "one\ntwo\n")
+		Expect(runNipa(dir, "add", "feature.txt").ExitCode).To(Equal(0))
+		Expect(pushRepo(dir, "feature work").ExitCode).To(Equal(0))
+
+		d := startDaemon()
+		d.watch(dir)
+
+		created, err := d.client.ProxyMergeRequestCreate(d.ctx, &daemonpb.ProxyMergeRequestCreateRequest{Root: dir, Request: &pb.CreateMergeRequestRequest{Title: "Feature", SourceBranch: "feature", TargetBranch: "main", Draft: true}})
+		Expect(err).NotTo(HaveOccurred())
+		number := created.GetResponse().GetMergeRequest().GetNumber()
+		Expect(created.GetResponse().GetMergeRequest().GetDraft()).To(BeTrue())
+
+		ready := false
+		updated, err := d.client.ProxyMergeRequestUpdate(d.ctx, &daemonpb.ProxyMergeRequestUpdateRequest{Root: dir, Request: &pb.UpdateMergeRequestRequest{Number: number, Description: "Adds feature.txt", Draft: &ready}})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(updated.GetResponse().GetMergeRequest().GetDraft()).To(BeFalse())
+		Expect(updated.GetResponse().GetMergeRequest().GetDescription()).To(Equal("Adds feature.txt"))
+
+		commits, err := d.client.ProxyMergeRequestCommits(d.ctx, &daemonpb.ProxyMergeRequestCommitsRequest{Root: dir, Request: &pb.ListMergeRequestCommitsRequest{Number: number}})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(commits.GetResponse().GetCommits()).To(HaveLen(1))
+
+		got, err := d.client.ProxyMergeRequestGet(d.ctx, &daemonpb.ProxyMergeRequestGetRequest{Root: dir, Request: &pb.GetMergeRequestRequest{Number: number}})
+		Expect(err).NotTo(HaveOccurred())
+		m := got.GetResponse().GetMergeability()
+		filesStream, err := d.client.DiffFiles(d.ctx, &daemonpb.DiffRequest{Root: dir, Revisions: []string{m.GetMergeBaseCommitId(), m.GetSourceCommitId()}})
+		Expect(err).NotTo(HaveOccurred())
+		files, failure := collectDiffFiles(filesStream)
+		Expect(failure).To(BeNil())
+		Expect(files).To(HaveLen(1))
+		Expect(files[0].GetPath()).To(Equal("feature.txt"))
+		Expect(files[0].GetStatus()).To(Equal("added"))
+
+		line := int64(2)
+		inline, err := d.client.ProxyMergeRequestAddComment(d.ctx, &daemonpb.ProxyMergeRequestAddCommentRequest{Root: dir, Request: &pb.AddMergeRequestCommentRequest{Number: number, FilePath: "feature.txt", NewLine: &line, Body: "why two?"}})
+		Expect(err).NotTo(HaveOccurred())
+		threadID := inline.GetResponse().GetThread().GetId()
+		Expect(inline.GetResponse().GetThread().GetNewLine()).To(Equal(int64(2)))
+		_, err = d.client.ProxyMergeRequestAddComment(d.ctx, &daemonpb.ProxyMergeRequestAddCommentRequest{Root: dir, Request: &pb.AddMergeRequestCommentRequest{Number: number, Body: "overall fine"}})
+		Expect(err).NotTo(HaveOccurred())
+
+		reply, err := d.client.ProxyMergeRequestReply(d.ctx, &daemonpb.ProxyMergeRequestReplyRequest{Root: dir, Request: &pb.ReplyMergeRequestThreadRequest{Number: number, ThreadId: threadID, Body: "because"}})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(reply.GetResponse().GetComment().GetBody()).To(Equal("because"))
+		resolved, err := d.client.ProxyMergeRequestResolve(d.ctx, &daemonpb.ProxyMergeRequestResolveRequest{Root: dir, Request: &pb.ResolveMergeRequestThreadRequest{Number: number, ThreadId: threadID, Resolved: true}})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(resolved.GetResponse().GetThread().GetResolved()).To(BeTrue())
+
+		threads, err := d.client.ProxyMergeRequestThreads(d.ctx, &daemonpb.ProxyMergeRequestThreadsRequest{Root: dir, Request: &pb.ListMergeRequestThreadsRequest{Number: number}})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(threads.GetResponse().GetThreads()).To(HaveLen(2))
+
+		Expect(runNipa(dir, "mr", "check", "1", "--name", "build", "--state", "success").ExitCode).To(Equal(0))
+		checks, err := d.client.ProxyMergeRequestChecks(d.ctx, &daemonpb.ProxyMergeRequestChecksRequest{Root: dir, Request: &pb.ListMergeRequestChecksRequest{Number: number}})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(checks.GetResponse().GetChecks()).To(HaveLen(1))
+		Expect(checks.GetResponse().GetChecks()[0].GetState()).To(Equal("success"))
+
+		timeline, err := d.client.ProxyMergeRequestTimeline(d.ctx, &daemonpb.ProxyMergeRequestTimelineRequest{Root: dir, Request: &pb.ListMergeRequestTimelineRequest{Number: number}})
+		Expect(err).NotTo(HaveOccurred())
+		kinds := []string{}
+		for _, e := range timeline.GetResponse().GetItems() {
+			kinds = append(kinds, e.GetKind())
+		}
+		Expect(kinds).To(ContainElements("opened", "ready_for_review"))
+	})
+
 	It("unwatches a repository", func() {
 		project := newProject("daemon-unwatch")
 		seedRepo(orgSlug, project, map[string][]byte{"a.txt": []byte("a\n")}, "seed")

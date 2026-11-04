@@ -119,6 +119,15 @@ func (s *MergeRequestRepositorySuite) TestCRUD() {
 	got, err = repo.Get(ctx, projectID, 1)
 	s.Require().NoError(err)
 	s.Equal(domain.MergeRequestMerged, got.Status)
+	s.Nil(got.MergedSourceCommitID)
+
+	treeID := seedTreeNode(s.T(), s.db, "root", sql.NullInt64{})
+	head := seedCommit(s.T(), s.db, s.q, projectID, treeID)
+	s.Require().NoError(repo.RecordMerge(ctx, projectID, 1, &head, &head))
+	got, err = repo.Get(ctx, projectID, 1)
+	s.Require().NoError(err)
+	s.Equal(&head, got.MergedSourceCommitID)
+	s.Equal(&head, got.MergeBaseCommitID)
 
 	_, err = repo.Get(ctx, projectID, 9999)
 	requireRecordNotFound(s.T(), err)

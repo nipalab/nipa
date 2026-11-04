@@ -5361,25 +5361,26 @@ func (x *MergeabilityDetail) GetBlockedBy() string {
 }
 
 type MergeRequestDetail struct {
-	state             protoimpl.MessageState   `protogen:"open.v1"`
-	Id                string                   `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`                                // base36 snow ID
-	Number            int64                    `protobuf:"varint,2,opt,name=number,proto3" json:"number,omitempty"`                       // sequential per-project number
-	ProjectId         string                   `protobuf:"bytes,3,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"` // base36 snow ID
-	SourceBranch      string                   `protobuf:"bytes,4,opt,name=source_branch,json=sourceBranch,proto3" json:"source_branch,omitempty"`
-	TargetBranch      string                   `protobuf:"bytes,5,opt,name=target_branch,json=targetBranch,proto3" json:"target_branch,omitempty"`
-	Title             string                   `protobuf:"bytes,6,opt,name=title,proto3" json:"title,omitempty"`
-	Description       string                   `protobuf:"bytes,7,opt,name=description,proto3" json:"description,omitempty"`
-	Status            string                   `protobuf:"bytes,8,opt,name=status,proto3" json:"status,omitempty"`                                                           // open, merged, closed
-	MergeCommitId     *string                  `protobuf:"bytes,9,opt,name=merge_commit_id,json=mergeCommitId,proto3,oneof" json:"merge_commit_id,omitempty"`                // base36 snow ID
-	MergeBaseCommitId *string                  `protobuf:"bytes,10,opt,name=merge_base_commit_id,json=mergeBaseCommitId,proto3,oneof" json:"merge_base_commit_id,omitempty"` // base36 snow ID
-	CreatedBy         string                   `protobuf:"bytes,11,opt,name=created_by,json=createdBy,proto3" json:"created_by,omitempty"`                                   // base36 snow ID
-	CreatedAt         *timestamppb.Timestamp   `protobuf:"bytes,12,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	UpdatedAt         *timestamppb.Timestamp   `protobuf:"bytes,13,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
-	Review            *MergeRequestReviewState `protobuf:"bytes,14,opt,name=review,proto3" json:"review,omitempty"`       // live review summary, when resolved
-	Draft             bool                     `protobuf:"varint,15,opt,name=draft,proto3" json:"draft,omitempty"`        // draft requests cannot be merged until marked ready
-	Assignees         []*ReviewActor           `protobuf:"bytes,16,rep,name=assignees,proto3" json:"assignees,omitempty"` // resolved per request
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	state                protoimpl.MessageState   `protogen:"open.v1"`
+	Id                   string                   `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`                                // base36 snow ID
+	Number               int64                    `protobuf:"varint,2,opt,name=number,proto3" json:"number,omitempty"`                       // sequential per-project number
+	ProjectId            string                   `protobuf:"bytes,3,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"` // base36 snow ID
+	SourceBranch         string                   `protobuf:"bytes,4,opt,name=source_branch,json=sourceBranch,proto3" json:"source_branch,omitempty"`
+	TargetBranch         string                   `protobuf:"bytes,5,opt,name=target_branch,json=targetBranch,proto3" json:"target_branch,omitempty"`
+	Title                string                   `protobuf:"bytes,6,opt,name=title,proto3" json:"title,omitempty"`
+	Description          string                   `protobuf:"bytes,7,opt,name=description,proto3" json:"description,omitempty"`
+	Status               string                   `protobuf:"bytes,8,opt,name=status,proto3" json:"status,omitempty"`                                                           // open, merged, closed
+	MergeCommitId        *string                  `protobuf:"bytes,9,opt,name=merge_commit_id,json=mergeCommitId,proto3,oneof" json:"merge_commit_id,omitempty"`                // base36 snow ID
+	MergeBaseCommitId    *string                  `protobuf:"bytes,10,opt,name=merge_base_commit_id,json=mergeBaseCommitId,proto3,oneof" json:"merge_base_commit_id,omitempty"` // base36 snow ID
+	CreatedBy            string                   `protobuf:"bytes,11,opt,name=created_by,json=createdBy,proto3" json:"created_by,omitempty"`                                   // base36 snow ID
+	CreatedAt            *timestamppb.Timestamp   `protobuf:"bytes,12,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	UpdatedAt            *timestamppb.Timestamp   `protobuf:"bytes,13,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	Review               *MergeRequestReviewState `protobuf:"bytes,14,opt,name=review,proto3" json:"review,omitempty"`                                                                   // live review summary, when resolved
+	Draft                bool                     `protobuf:"varint,15,opt,name=draft,proto3" json:"draft,omitempty"`                                                                    // draft requests cannot be merged until marked ready
+	Assignees            []*ReviewActor           `protobuf:"bytes,16,rep,name=assignees,proto3" json:"assignees,omitempty"`                                                             // resolved per request
+	MergedSourceCommitId *string                  `protobuf:"bytes,17,opt,name=merged_source_commit_id,json=mergedSourceCommitId,proto3,oneof" json:"merged_source_commit_id,omitempty"` // source head that was merged (base36), set for merged requests
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *MergeRequestDetail) Reset() {
@@ -5522,6 +5523,13 @@ func (x *MergeRequestDetail) GetAssignees() []*ReviewActor {
 		return x.Assignees
 	}
 	return nil
+}
+
+func (x *MergeRequestDetail) GetMergedSourceCommitId() string {
+	if x != nil && x.MergedSourceCommitId != nil {
+		return *x.MergedSourceCommitId
+	}
+	return ""
 }
 
 type CreateMergeRequestRequest struct {
@@ -10999,7 +11007,7 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"blocked_by\x18\x05 \x01(\tR\tblockedByB\x13\n" +
 	"\x11_source_commit_idB\x13\n" +
 	"\x11_target_commit_idB\x17\n" +
-	"\x15_merge_base_commit_id\"\x9a\x05\n" +
+	"\x15_merge_base_commit_id\"\xf2\x05\n" +
 	"\x12MergeRequestDetail\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x16\n" +
 	"\x06number\x18\x02 \x01(\x03R\x06number\x12\x1d\n" +
@@ -11021,9 +11029,11 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"updated_at\x18\r \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x126\n" +
 	"\x06review\x18\x0e \x01(\v2\x1e.greet.MergeRequestReviewStateR\x06review\x12\x14\n" +
 	"\x05draft\x18\x0f \x01(\bR\x05draft\x120\n" +
-	"\tassignees\x18\x10 \x03(\v2\x12.greet.ReviewActorR\tassigneesB\x12\n" +
+	"\tassignees\x18\x10 \x03(\v2\x12.greet.ReviewActorR\tassignees\x12:\n" +
+	"\x17merged_source_commit_id\x18\x11 \x01(\tH\x02R\x14mergedSourceCommitId\x88\x01\x01B\x12\n" +
 	"\x10_merge_commit_idB\x17\n" +
-	"\x15_merge_base_commit_id\"\xe4\x01\n" +
+	"\x15_merge_base_commit_idB\x1a\n" +
+	"\x18_merged_source_commit_id\"\xe4\x01\n" +
 	"\x19CreateMergeRequestRequest\x12/\n" +
 	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12\x14\n" +
 	"\x05title\x18\x02 \x01(\tR\x05title\x12 \n" +

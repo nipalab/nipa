@@ -239,20 +239,21 @@ func (n *nipaServer) GetMergeRequestDiff(ctx context.Context, req *pb.GetMergeRe
 
 func domainMergeRequestToPB(request *domain.MergeRequest) *pb.MergeRequestDetail {
 	detail := &pb.MergeRequestDetail{
-		Id:                snow.ID(request.ID).Base36(),
-		Number:            request.Number,
-		ProjectId:         request.ProjectID.Base36(),
-		SourceBranch:      request.SourceBranch,
-		TargetBranch:      request.TargetBranch,
-		Title:             request.Title,
-		Description:       request.Description,
-		Status:            request.Status,
-		Draft:             request.Draft,
-		MergeCommitId:     snowPtrToStringPtr(request.MergeCommitID),
-		MergeBaseCommitId: snowPtrToStringPtr(request.MergeBaseCommitID),
-		CreatedBy:         request.CreatedBy.Base36(),
-		CreatedAt:         timestamppb.New(request.CreatedAt),
-		UpdatedAt:         timestamppb.New(request.UpdatedAt),
+		Id:                   snow.ID(request.ID).Base36(),
+		Number:               request.Number,
+		ProjectId:            request.ProjectID.Base36(),
+		SourceBranch:         request.SourceBranch,
+		TargetBranch:         request.TargetBranch,
+		Title:                request.Title,
+		Description:          request.Description,
+		Status:               request.Status,
+		Draft:                request.Draft,
+		MergeCommitId:        snowPtrToStringPtr(request.MergeCommitID),
+		MergeBaseCommitId:    snowPtrToStringPtr(request.MergeBaseCommitID),
+		MergedSourceCommitId: snowPtrToStringPtr(request.MergedSourceCommitID),
+		CreatedBy:            request.CreatedBy.Base36(),
+		CreatedAt:            timestamppb.New(request.CreatedAt),
+		UpdatedAt:            timestamppb.New(request.UpdatedAt),
 	}
 	if request.Review != nil {
 		detail.Review = domainReviewStateToPB(request.Review)

@@ -60,22 +60,23 @@ type Mergeability struct {
 }
 
 type MergeRequest struct {
-	ID                int64     `json:"id"`
-	Number            int64     `json:"number"`
-	ProjectID         snow.ID   `json:"project_id"`
-	SourceBranchID    snow.ID   `json:"source_branch_id"`
-	TargetBranchID    snow.ID   `json:"target_branch_id"`
-	SourceBranch      string    `json:"source_branch"`
-	TargetBranch      string    `json:"target_branch"`
-	Title             string    `json:"title"`
-	Description       string    `json:"description"`
-	Status            string    `json:"status"`
-	Draft             bool      `json:"draft"`
-	MergeCommitID     *snow.ID  `json:"merge_commit_id,omitempty"`
-	MergeBaseCommitID *snow.ID  `json:"merge_base_commit_id,omitempty"`
-	CreatedBy         snow.ID   `json:"created_by"`
-	CreatedAt         time.Time `json:"created_at"`
-	UpdatedAt         time.Time `json:"updated_at"`
+	ID                   int64     `json:"id"`
+	Number               int64     `json:"number"`
+	ProjectID            snow.ID   `json:"project_id"`
+	SourceBranchID       snow.ID   `json:"source_branch_id"`
+	TargetBranchID       snow.ID   `json:"target_branch_id"`
+	SourceBranch         string    `json:"source_branch"`
+	TargetBranch         string    `json:"target_branch"`
+	Title                string    `json:"title"`
+	Description          string    `json:"description"`
+	Status               string    `json:"status"`
+	Draft                bool      `json:"draft"`
+	MergeCommitID        *snow.ID  `json:"merge_commit_id,omitempty"`
+	MergeBaseCommitID    *snow.ID  `json:"merge_base_commit_id,omitempty"`
+	MergedSourceCommitID *snow.ID  `json:"merged_source_commit_id,omitempty"`
+	CreatedBy            snow.ID   `json:"created_by"`
+	CreatedAt            time.Time `json:"created_at"`
+	UpdatedAt            time.Time `json:"updated_at"`
 	// Assignees are resolved per request, not stored on the row.
 	Assignees []ReviewActor `json:"assignees,omitempty"`
 	// Review is resolved per request, not stored: it counts only the reviews
