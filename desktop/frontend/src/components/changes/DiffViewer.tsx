@@ -1,9 +1,11 @@
 import { lazy, Suspense, type ComponentType } from "react";
 import { ArrowRight, Columns2, Rows3 } from "lucide-react";
 import type { FileDiff } from "@/api/desktop";
+import { AudioDiff } from "@/components/changes/AudioDiff";
 import { FileIcon, StatusLetter } from "@/components/changes/FileIcon";
 import { ImageDiff } from "@/components/changes/ImageDiff";
 import { MetaDiff, Notice } from "@/components/changes/Notices";
+import { TableDiff } from "@/components/changes/TableDiff";
 import { TextDiff, type DiffLayout } from "@/components/changes/TextDiff";
 import { cn } from "@/lib/utils";
 
@@ -13,12 +15,14 @@ type ViewerProps = { root: string; diff: FileDiff; layout: DiffLayout };
 
 const isText = (d: FileDiff) => !d.old?.binary && !d.new?.binary;
 
-// viewerFor picks the viewer for a change. Visual viewers for images, models
-// and audio register here as they land; anything without one gets metadata.
+// viewerFor picks the viewer for a change: visual viewers for images, models,
+// audio and tables, the text diff, or metadata for anything else.
 export function viewerFor(diff: FileDiff): ComponentType<ViewerProps> {
   if (diff.contentUnavailable) return Notice;
   if (diff.kind === "image" && (diff.old || diff.new)) return ImageDiff;
   if (diff.kind === "model" && (diff.old || diff.new)) return ModelDiff;
+  if (diff.kind === "audio" && (diff.old || diff.new)) return AudioDiff;
+  if (diff.kind === "table" && (diff.old?.size || diff.new?.size)) return TableDiff;
   if (diff.hunksOmitted) return Notice;
   if (isText(diff) && (diff.hunks ?? []).length > 0) return TextDiff;
   if (isText(diff)) return Notice;
@@ -54,7 +58,7 @@ export function DiffViewer({ root, diff, layout, onLayout }: DiffViewerProps) {
           </span>
         )}
         <StatusLetter status={diff.untracked ? "untracked" : diff.status} />
-        {Viewer === TextDiff && (
+        {(Viewer === TextDiff || (Viewer === TableDiff && (diff.hunks ?? []).length > 0)) && (
           <div className="ml-1 flex rounded-md border border-border p-0.5" role="group" aria-label="Diff layout">
             <LayoutButton active={layout === "unified"} label="Unified" onClick={() => onLayout("unified")} Icon={Rows3} />
             <LayoutButton active={layout === "split"} label="Split" onClick={() => onLayout("split")} Icon={Columns2} />

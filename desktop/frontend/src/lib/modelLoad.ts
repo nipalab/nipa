@@ -5,6 +5,7 @@ import { MTLLoader } from "three/examples/jsm/loaders/MTLLoader.js";
 import { OBJLoader } from "three/examples/jsm/loaders/OBJLoader.js";
 import { USDLoader } from "three/examples/jsm/loaders/USDLoader.js";
 import type { ModelSide, ModelStats } from "@/api/desktop";
+import { base64ToBytes } from "@/lib/utils";
 
 export type LoadedModel = { object: Object3D; animations: AnimationClip[] };
 
@@ -12,12 +13,7 @@ export const clipName = (clip: AnimationClip, i: number): string => clip.name ||
 
 export const renderableFormats = ["glb", "gltf", "obj", "fbx", "usd", "usda", "usdc", "usdz"];
 
-export function base64ToBytes(b64: string): Uint8Array {
-  const bin = atob(b64);
-  const out = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
-  return out;
-}
+export { base64ToBytes };
 
 const mimeTypes: Record<string, string> = {
   png: "image/png",

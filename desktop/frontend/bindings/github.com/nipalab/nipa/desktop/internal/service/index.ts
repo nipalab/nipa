@@ -7,6 +7,9 @@ export {
 };
 
 export type {
+    AudioCompare,
+    AudioSide,
+    AudioStats,
     Changes,
     DaemonInfo,
     DiffHunk,
@@ -20,11 +23,15 @@ export type {
     ImageOptions,
     ImageRef,
     ImageStats,
+    MetaWarning,
     ModelCompare,
     ModelSide,
     ModelStats,
     OpOutcome,
     OpProgress,
     Repo,
-    RepoChanged
+    RepoChanged,
+    TableColumn,
+    TableCompare,
+    TableRow
 } from "./models.js";

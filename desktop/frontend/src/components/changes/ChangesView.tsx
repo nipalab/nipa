@@ -1,7 +1,7 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, CheckCircle2, FileDiff as FileDiffIcon, Loader2, Tag } from "lucide-react";
-import { desktop, type ChangeSet, type FileChange } from "@/api/desktop";
+import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, FileDiff as FileDiffIcon, Loader2, Tag } from "lucide-react";
+import { desktop, type ChangeSet, type FileChange, type MetaWarning } from "@/api/desktop";
 import { CommitBox } from "@/components/changes/CommitBox";
 import { DiffViewer } from "@/components/changes/DiffViewer";
 import { FileList, type Selection } from "@/components/changes/FileList";
@@ -69,6 +69,19 @@ export function ChangesView({ root, op, message, onMessage, onPush, onCancelOp, 
   const discard = useMutation({ mutationFn: (paths: string[]) => desktop.discard(root, paths), ...applyChanges });
 
   const data = changes.data;
+  const meta = useQuery({
+    queryKey: ["meta", root, changes.dataUpdatedAt],
+    queryFn: () => desktop.metaWarnings(root),
+    enabled: !!data && data.staged.length + data.unstaged.length > 0,
+    placeholderData: (prev) => prev,
+  });
+  const warnings = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const w of meta.data ?? []) {
+      for (const p of [w.path, w.related]) if (!map.has(p)) map.set(p, `${w.path}: ${w.message}`);
+    }
+    return map;
+  }, [meta.data]);
   const selected = data ? (stillListed(data, picked) ?? firstFile(data)) : null;
 
   const diff = useQuery({
@@ -104,6 +117,17 @@ export function ChangesView({ root, op, message, onMessage, onPush, onCancelOp, 
             text={`${c.conflicts.length} conflicted file${c.conflicts.length === 1 ? "" : "s"}: resolve, stage, then push.`}
           />
         )}
+        {!empty && (meta.data ?? []).length > 0 && (
+          <MetaWarnings
+            warnings={meta.data!}
+            onSelect={(w) => {
+              for (const path of [w.path, w.related]) {
+                const staged = c.staged.some((f) => f.path === path);
+                if (staged || c.unstaged.some((f) => f.path === path)) return setPicked({ path, staged });
+              }
+            }}
+          />
+        )}
         {empty ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
             <CheckCircle2 className="size-6 text-success" />
@@ -119,6 +143,7 @@ export function ChangesView({ root, op, message, onMessage, onPush, onCancelOp, 
             onStage={(paths) => stage.mutate(paths)}
             onUnstage={(paths) => unstage.mutate(paths)}
             onDiscard={setDiscarding}
+            warnings={warnings}
           />
         )}
         <CommitBox
@@ -158,6 +183,41 @@ export function ChangesView({ root, op, message, onMessage, onPush, onCancelOp, 
             setDiscarding(null);
           }}
         />
+      )}
+    </div>
+  );
+}
+
+const metaKinds: Record<string, string> = {
+  "missing-meta": "Missing .meta",
+  "orphan-meta": "Orphan .meta",
+  "meta-not-staged": ".meta not staged",
+  "guid-changed": "GUID changed",
+};
+
+function MetaWarnings({ warnings, onSelect }: { warnings: MetaWarning[]; onSelect: (warning: MetaWarning) => void }) {
+  const [open, setOpen] = useState(warnings.length <= 3);
+  const Chevron = open ? ChevronDown : ChevronRight;
+  return (
+    <div className="border-b border-border bg-muted text-[11px]">
+      <button type="button" aria-expanded={open} onClick={() => setOpen(!open)} className="flex w-full items-center gap-2 px-3 py-2 text-left">
+        <AlertTriangle className="size-3.5 shrink-0 text-warning" />
+        <span className="flex-1">
+          {warnings.length} Unity .meta warning{warnings.length === 1 ? "" : "s"}
+        </span>
+        <Chevron className="size-3.5 text-muted-foreground" />
+      </button>
+      {open && (
+        <ul className="max-h-40 overflow-y-auto px-3 pb-2" aria-label="Unity .meta warnings">
+          {warnings.map((w) => (
+            <li key={`${w.kind}:${w.path}`}>
+              <button type="button" onClick={() => onSelect(w)} className="w-full rounded px-1 py-0.5 text-left hover:bg-background" title={w.path}>
+                <span className="font-medium text-warning">{metaKinds[w.kind] ?? w.kind}</span> <span className="font-mono">{w.path}</span>
+                <span className="block text-muted-foreground">{w.message}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );

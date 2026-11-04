@@ -22,7 +22,7 @@ func TestClassify(t *testing.T) {
 		{"video/intro.mp4", true, KindVideo},
 		{"fonts/ui.ttf", true, KindFont},
 		{"loc/en.csv", false, KindTable},
-		{"loc/broken.csv", true, KindOpaque},
+		{"loc/utf16.csv", true, KindTable},
 		{"src/main.go", false, KindText},
 		{"Assets/Hero.prefab", false, KindText},
 		{"src/hero.blend", true, KindOpaque},

@@ -71,3 +71,39 @@ func FuzzDecodeModel(f *testing.F) {
 		MaterialLibraryDependencies(data)
 	})
 }
+
+func FuzzDecodeAudio(f *testing.F) {
+	addFixtureSeeds(f, "audio/*")
+	f.Add(makeWAV(wavSpec{tag: 1, channels: 2, rate: 8000, bits: 16, width: 2}, sine(8000, 2, 0.05, 300, 0.5)))
+	f.Add(makeAIFF("AIFC", "sowt", 1, 1, 8000, 16, sine(8000, 1, 0.05, 300, 0.5)))
+	names := []string{"f.wav", "f.aiff", "f.flac", "f.ogg", "f.mp3"}
+	f.Fuzz(func(t *testing.T, data []byte) {
+		for _, name := range names {
+			a, err := DecodeAudio(name, data, AudioOptions{Buckets: 64, SpecColumns: 16, SpecRows: 16, PlaybackBytes: 1 << 16})
+			if err != nil {
+				continue
+			}
+			if a.Stats.Channels <= 0 || len(a.Peaks) != a.Stats.Channels || len(a.Spectrogram) != a.SpecColumns*a.SpecRows {
+				t.Fatalf("%s: inconsistent analysis", name)
+			}
+		}
+	})
+}
+
+func FuzzParseTable(f *testing.F) {
+	f.Add([]byte("key,text\nhello,\"Hi, there\"\n"))
+	f.Add([]byte("a;b\n1;2\n1;2\n"))
+	f.Fuzz(func(t *testing.T, data []byte) {
+		tb, err := ParseTable("f.csv", data)
+		if err != nil {
+			return
+		}
+		d := DiffTables(tb, tb)
+		if d.RowsAdded+d.RowsRemoved+d.RowsChanged+d.ColumnsAdded+d.ColumnsRemoved != 0 {
+			t.Fatalf("table differs from itself")
+		}
+		if e := DiffTables(nil, tb); e.RowsAdded != max(len(tb.Rows)-1, 0) {
+			t.Fatalf("added %d rows from %d", e.RowsAdded, len(tb.Rows))
+		}
+	})
+}

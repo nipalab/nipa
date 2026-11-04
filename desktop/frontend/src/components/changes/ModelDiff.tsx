@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Box, Columns2, Grid3x3, Layers, Loader2, Pause, Play, RotateCcw, TriangleAlert } from "lucide-react";
+import { Box, Columns2, Grid3x3, Layers, Loader2, Pause, Play, RotateCcw } from "lucide-react";
 import { desktop, type FileDiff, type ModelCompare, type ModelSide, type ModelStats } from "@/api/desktop";
 import { imageRefs } from "@/components/changes/ImageDiff";
 import { MetaDiff } from "@/components/changes/Notices";
 import { formatBytes } from "@/lib/diff";
 import { clipName, loadModel, renderableFormats, sceneStats, type LoadedModel } from "@/lib/modelLoad";
 import { createStage, type Shading, type Stage, type StageMode } from "@/lib/modelStage";
+import { Group, Notice, ToolButton } from "@/components/changes/Toolbar";
 import { cn } from "@/lib/utils";
 
 export function ModelDiff({ root, diff }: { root: string; diff: FileDiff }) {
@@ -187,40 +188,8 @@ export function ModelCompareView({ compare }: { compare: ModelCompare }) {
   );
 }
 
-function Notice({ children }: { children: ReactNode }) {
-  return (
-    <p className="flex items-start gap-1.5 text-warning">
-      <TriangleAlert className="mt-px size-3 shrink-0" />
-      <span>{children}</span>
-    </p>
-  );
-}
-
 function PaneLabel({ className, children }: { className: string; children: ReactNode }) {
   return <span className={cn("pointer-events-none absolute top-2 rounded bg-background/80 px-1.5 py-0.5 text-[11px] font-medium shadow-sm", className)}>{children}</span>;
-}
-
-function Group({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="flex rounded-md border border-border p-0.5" role="group" aria-label={label}>
-      {children}
-    </div>
-  );
-}
-
-function ToolButton({ active, label, onClick, children }: { active?: boolean; label: string; onClick: () => void; children: ReactNode }) {
-  return (
-    <button
-      type="button"
-      aria-pressed={active}
-      aria-label={label}
-      title={label}
-      onClick={onClick}
-      className={cn("flex h-6 min-w-6 items-center justify-center rounded px-1 text-muted-foreground hover:text-foreground", active && "bg-muted text-foreground")}
-    >
-      {children}
-    </button>
-  );
 }
 
 type StatRow = { label: string; value: (s: ModelStats) => number };

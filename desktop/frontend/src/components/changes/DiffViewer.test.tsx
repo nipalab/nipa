@@ -40,8 +40,8 @@ describe("DiffViewer notices", () => {
   });
 
   it("describes binary kinds and missing sides", () => {
-    show(diff({ kind: "audio", status: "added", untracked: true, old: null, new: side({ binary: true, size: 2048 }) }));
-    expect(screen.getByText("Audio file")).toBeInTheDocument();
+    show(diff({ kind: "video", status: "added", untracked: true, old: null, new: side({ binary: true, size: 2048 }) }));
+    expect(screen.getByText("Video file")).toBeInTheDocument();
     expect(screen.getByText("—")).toBeInTheDocument();
     expect(screen.getByLabelText("New, not tracked yet")).toBeInTheDocument();
   });

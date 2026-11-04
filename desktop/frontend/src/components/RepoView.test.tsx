@@ -10,6 +10,7 @@ const api = vi.hoisted(() => ({
   unstage: vi.fn(),
   discard: vi.fn(),
   fileDiff: vi.fn(),
+  metaWarnings: vi.fn(),
   push: vi.fn(),
   update: vi.fn(),
   onRepoChanged: vi.fn(),
@@ -74,6 +75,7 @@ const notify = vi.fn();
 beforeEach(() => {
   vi.resetAllMocks();
   api.changes.mockResolvedValue(changeSet());
+  api.metaWarnings.mockResolvedValue([]);
   api.fileDiff.mockImplementation(async (_root: string, path: string) => (path === "art/hero.png" ? imageDiff : path === "src/player.go" ? textDiff : null));
   api.onRepoChanged.mockImplementation((fn: (c: RepoChanged) => void) => {
     changed = fn;
@@ -127,6 +129,47 @@ describe("Changes view", () => {
 
     await userEvent.click(within(list).getByTitle("notes.txt"));
     expect(await screen.findByText("This file matches the last synced version.")).toBeInTheDocument();
+  });
+
+  it("lists Unity .meta warnings and jumps to the file", async () => {
+    api.changes.mockResolvedValue(
+      changeSet({
+        staged: [{ path: "Assets/hero.png", status: "added", kind: "image" }],
+        unstaged: [
+          { path: "Assets/hero.png.meta", status: "untracked", kind: "text" },
+          { path: "Assets/old.png", status: "deleted", kind: "image" },
+          { path: "Assets/x.mat.meta", status: "modified", kind: "text" },
+        ],
+      }),
+    );
+    api.metaWarnings.mockResolvedValue([
+      { path: "Assets/hero.png.meta", kind: "meta-not-staged", related: "Assets/hero.png", message: "is not staged; push it together with its asset" },
+      { path: "Assets/old.png.meta", kind: "orphan-meta", related: "Assets/old.png", message: "left behind after its asset was deleted; delete it too" },
+      { path: "Assets/x.mat.meta", kind: "guid-changed", related: "Assets/x.mat", message: "GUID changed from a to b" },
+      { path: "Assets/Props", kind: "missing-meta", related: "Assets/Props.meta", message: "folder has no .meta file" },
+      { path: "Assets/y", kind: "custom", related: "Assets/z", message: "other" },
+    ]);
+    view();
+    const toggle = await screen.findByRole("button", { name: /5 Unity .meta warnings/ });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    const list = await fileList();
+    expect(within(list).getAllByLabelText(/is not staged/)).toHaveLength(2);
+    await userEvent.click(toggle);
+    const warnings = screen.getByRole("list", { name: "Unity .meta warnings" });
+    expect(within(warnings).getByText(".meta not staged")).toBeInTheDocument();
+    expect(within(warnings).getByText("Orphan .meta")).toBeInTheDocument();
+    expect(within(warnings).getByText("GUID changed")).toBeInTheDocument();
+    expect(within(warnings).getByText("Missing .meta")).toBeInTheDocument();
+    expect(within(warnings).getByText("custom")).toBeInTheDocument();
+
+    await userEvent.click(within(warnings).getByTitle("Assets/hero.png.meta"));
+    expect(within(list).getByRole("option", { selected: true })).toHaveAttribute("title", "Assets/hero.png.meta");
+    await userEvent.click(within(warnings).getByTitle("Assets/old.png.meta"));
+    expect(within(list).getByRole("option", { selected: true })).toHaveAttribute("title", "Assets/old.png");
+    await userEvent.click(within(warnings).getByTitle("Assets/Props"));
+    expect(within(list).getByRole("option", { selected: true })).toHaveAttribute("title", "Assets/old.png");
+    await userEvent.click(toggle);
+    expect(screen.queryByRole("list", { name: "Unity .meta warnings" })).not.toBeInTheDocument();
   });
 
   it("moves the selection with the arrow keys", async () => {
