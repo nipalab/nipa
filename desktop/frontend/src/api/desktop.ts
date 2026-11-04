@@ -1,6 +1,9 @@
 import { Events } from "@wailsio/runtime";
 import { Service } from "../../bindings/github.com/nipalab/nipa/desktop/internal/service";
 import type {
+  AudioCompare,
+  AudioSide,
+  AudioStats,
   Changes,
   DaemonInfo,
   DiffHunk,
@@ -14,6 +17,7 @@ import type {
   ImageOptions,
   ImageRef,
   ImageStats,
+  MetaWarning,
   ModelCompare,
   ModelSide,
   ModelStats,
@@ -21,8 +25,12 @@ import type {
   OpProgress,
   Repo,
   RepoChanged,
+  TableColumn,
+  TableCompare,
+  TableRow,
 } from "../../bindings/github.com/nipalab/nipa/desktop/internal/service/models";
 
+export type { AudioCompare, AudioSide, AudioStats, MetaWarning, TableColumn, TableCompare, TableRow };
 export type { DaemonInfo, DiffHunk, DiffLine, FileChange, FileDiff, FileSide, ImageCompare, ImageInfo, ImageLayer, ImageOptions, ImageRef, ImageStats, ModelCompare, ModelSide, ModelStats, OpOutcome, OpProgress, Repo, RepoChanged };
 
 export type ChangeSet = {
@@ -60,6 +68,9 @@ export const desktop = {
   imageDiff: (root: string, old: ImageRef | null, next: ImageRef | null, opts: Partial<ImageOptions> = {}): Cancellable<ImageCompare | null> =>
     Service.ImageDiff(root, old, next, { maxSize: 2048, level: 0, face: 0, ...opts }),
   modelDiff: (root: string, old: ImageRef | null, next: ImageRef | null): Cancellable<ModelCompare | null> => Service.ModelDiff(root, old, next),
+  audioDiff: (root: string, old: ImageRef | null, next: ImageRef | null): Cancellable<AudioCompare | null> => Service.AudioDiff(root, old, next),
+  tableDiff: (root: string, old: ImageRef | null, next: ImageRef | null): Cancellable<TableCompare | null> => Service.TableDiff(root, old, next),
+  metaWarnings: async (root: string): Promise<MetaWarning[]> => (await Service.MetaWarnings(root)) ?? [],
   push: (root: string, message: string): Cancellable<OpOutcome> => Service.Push(root, message),
   update: (root: string): Cancellable<OpOutcome> => Service.Update(root),
 

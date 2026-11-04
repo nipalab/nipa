@@ -13,6 +13,9 @@ const service = vi.hoisted(() => ({
   FileDiff: vi.fn(),
   ImageDiff: vi.fn(),
   ModelDiff: vi.fn(),
+  AudioDiff: vi.fn(),
+  TableDiff: vi.fn(),
+  MetaWarnings: vi.fn(),
   Push: vi.fn(),
   Update: vi.fn(),
 }));
@@ -78,6 +81,19 @@ describe("desktop api", () => {
     const ref = { source: "working", path: "a.glb" };
     expect(await desktop.modelDiff("/a", null, ref)).toEqual({ old: null, new: null });
     expect(service.ModelDiff).toHaveBeenCalledWith("/a", null, ref);
+  });
+
+  it("loads audio, tables and Unity warnings", async () => {
+    const ref = { source: "working", path: "a.wav" };
+    service.AudioDiff.mockResolvedValue({ old: null, new: null });
+    service.TableDiff.mockResolvedValue({ rows: [] });
+    service.MetaWarnings.mockResolvedValueOnce(null).mockResolvedValueOnce([{ path: "Assets/a" }]);
+    expect(await desktop.audioDiff("/a", ref, null)).toEqual({ old: null, new: null });
+    expect(await desktop.tableDiff("/a", null, ref)).toEqual({ rows: [] });
+    expect(await desktop.metaWarnings("/a")).toEqual([]);
+    expect(await desktop.metaWarnings("/a")).toEqual([{ path: "Assets/a" }]);
+    expect(service.AudioDiff).toHaveBeenCalledWith("/a", ref, null);
+    expect(service.TableDiff).toHaveBeenCalledWith("/a", null, ref);
   });
 
   it("asks for image previews at 2048 px and the first surface by default", async () => {

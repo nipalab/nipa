@@ -1,6 +1,6 @@
 import { useMemo, useRef, type KeyboardEvent } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { Undo2 } from "lucide-react";
+import { TriangleAlert, Undo2 } from "lucide-react";
 import type { ChangeSet, FileChange } from "@/api/desktop";
 import { FileIcon, StatusLetter } from "@/components/changes/FileIcon";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,7 @@ type FileListProps = {
   onStage: (paths: string[]) => void;
   onUnstage: (paths: string[]) => void;
   onDiscard: (file: FileChange) => void;
+  warnings?: Map<string, string>;
 };
 
 export function buildRows(changes: ChangeSet): Row[] {
@@ -38,7 +39,7 @@ export function buildRows(changes: ChangeSet): Row[] {
   return rows;
 }
 
-export function FileList({ changes, selected, busy, onSelect, onStage, onUnstage, onDiscard }: FileListProps) {
+export function FileList({ changes, selected, busy, onSelect, onStage, onUnstage, onDiscard, warnings }: FileListProps) {
   const rows = useMemo(() => buildRows(changes), [changes]);
   const parent = useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({
@@ -87,6 +88,7 @@ export function FileList({ changes, selected, busy, onSelect, onStage, onUnstage
                   file={row.file}
                   staged={row.staged}
                   active={item.index === selectedIndex}
+                  warning={warnings?.get(row.file.path)}
                   busy={busy}
                   onSelect={() => onSelect({ path: row.file.path, staged: row.staged })}
                   onToggle={() => (row.staged ? onUnstage([row.file.path]) : onStage([row.file.path]))}
@@ -118,13 +120,14 @@ type FileRowProps = {
   file: FileChange;
   staged: boolean;
   active: boolean;
+  warning?: string;
   busy: boolean;
   onSelect: () => void;
   onToggle: () => void;
   onDiscard: () => void;
 };
 
-function FileRow({ file, staged, active, busy, onSelect, onToggle, onDiscard }: FileRowProps) {
+function FileRow({ file, staged, active, warning, busy, onSelect, onToggle, onDiscard }: FileRowProps) {
   const { dir, name } = splitPath(file.path);
   const discardable = !staged && file.status !== "untracked";
   return (
@@ -149,6 +152,7 @@ function FileRow({ file, staged, active, busy, onSelect, onToggle, onDiscard }: 
         <span className={cn(file.status === "deleted" && "line-through decoration-muted-foreground/60")}>{name}</span>
         {dir && <span className="ml-1.5 text-[11px] text-muted-foreground">{dir.slice(0, -1)}</span>}
       </span>
+      {warning && <TriangleAlert className="size-3 shrink-0 text-warning" aria-label={warning} />}
       {discardable && (
         <Button
           variant="ghost"

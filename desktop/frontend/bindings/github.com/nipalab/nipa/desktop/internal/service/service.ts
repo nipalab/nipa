@@ -17,6 +17,14 @@ export function AddRepo(path: string): $CancellablePromise<$models.Repo> {
 }
 
 /**
+ * AudioDiff decodes the old and/or new version of an audio file into
+ * waveforms, spectrograms, loudness stats and playable WAV copies.
+ */
+export function AudioDiff(root: string, old: $models.ImageRef | null, $new: $models.ImageRef | null): $CancellablePromise<$models.AudioCompare | null> {
+    return $Call.ByID(1531093345, root, old, $new);
+}
+
+/**
  * Changes returns the working-copy status of a clone, grouped the way the
  * Changes screen shows it.
  */
@@ -53,6 +61,14 @@ export function FileDiff(root: string, path: string): $CancellablePromise<$model
  */
 export function ImageDiff(root: string, old: $models.ImageRef | null, $new: $models.ImageRef | null, opts: $models.ImageOptions): $CancellablePromise<$models.ImageCompare | null> {
     return $Call.ByID(2294302882, root, old, $new, opts);
+}
+
+/**
+ * MetaWarnings checks the pending changes of Unity projects inside the clone
+ * for .meta sidecar mistakes.
+ */
+export function MetaWarnings(root: string): $CancellablePromise<$models.MetaWarning[] | null> {
+    return $Call.ByID(1341820532, root);
 }
 
 /**
@@ -97,6 +113,13 @@ export function Repos(): $CancellablePromise<$models.Repo[] | null> {
  */
 export function Stage(root: string, paths: string[] | null): $CancellablePromise<$models.Changes> {
     return $Call.ByID(742824190, root, paths);
+}
+
+/**
+ * TableDiff compares two versions of a CSV/TSV file cell by cell.
+ */
+export function TableDiff(root: string, old: $models.ImageRef | null, $new: $models.ImageRef | null): $CancellablePromise<$models.TableCompare | null> {
+    return $Call.ByID(1291294083, root, old, $new);
 }
 
 /**

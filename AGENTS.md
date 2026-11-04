@@ -60,7 +60,11 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   Wails-bound API, plain Go behind seams (Changes screen: status/stage/
   discard/`FileDiff`/push/update, image compare via `ImageDiff` over the daemon
   `Preview` stream, 3D model compare via `ModelDiff` over `ReadBlob` +
-  `preview.DecodeModel` rendered with three.js, `repo:changed` + `op:progress` events fed by
+  `preview.DecodeModel` rendered with three.js, audio compare via `AudioDiff`
+  (`preview.DecodeAudio` waveforms/spectrograms/LUFS + WAV playback through
+  WebAudio), CSV/TSV cell diffs via `TableDiff` (`preview.DiffTables`),
+  Unity `.meta` warnings via `MetaWarnings` (`internal/unitymeta`),
+  `repo:changed` + `op:progress` events fed by
   the daemon's `WatchChanges` and `OpEvent` streams). Generated TS bindings in
   `desktop/frontend/bindings` are committed. Root `./...` never includes it;
   use `make desktop`/`desktop-dev`/`desktop-test` (needs the `wails3` CLI;
@@ -101,11 +105,16 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   for TGA, DDS and KTX2 with BC1–BC7/BC6H and mip/face `Select`, EXR, Radiance
   HDR and PSD/PSB composite + layer list; float sources keep `Image.HDR`;
   `DecodeModel` glTF/GLB/OBJ stats with world bounds and referenced files;
+  `DecodeAudio` WAV/AIFF/FLAC/Vorbis/MP3 analysis (peaks, spectrogram,
+  BS.1770 loudness, playback WAV); `ParseTable`/`DiffTables` CSV/TSV cell
+  diffs;
   `MaxPixels` checked before allocating, half of it for float), `Downscale`/
   `DownscaleFloat`/`PackHDR` and `CompareImages` (changed pixels/ratio/max
   delta/bbox; transparent pixels compare equal). Block decoders are checked
   against bcdec goldens (`testdata/bcn`, generators in `testdata/gen`).
   Fuzzed; keep it free of client imports like `internal/diff`.
+  `internal/unitymeta` (pure, `fs.FS` based) lints Unity `.meta` sidecars
+  for pending changes: missing, orphaned, not staged, GUID changed.
 
 Flow for `nipa clone <url> <target>`: `cli/clone.go` parses the URL →
 `usecase.Repo.Clone` → ensure empty target → login → resolve default branch (or

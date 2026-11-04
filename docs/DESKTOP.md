@@ -104,6 +104,31 @@ Sonar never compile it.
   to the union of both bounds. The panel diffs vertices, triangles, meshes,
   materials, textures, bones, animations, morph targets, bounds and the
   exporter, and lists added/removed material and animation names.
+- Audio viewer (`AudioDiff.tsx`): `AudioDiff` in the service reads each side
+  (up to 256 MiB) and runs `preview.DecodeAudio` in the app process, so the
+  webview never needs OGG/FLAC/MP3 codecs: per-channel min/max waveform
+  peaks, a log-frequency spectrogram, stats and a 16-bit WAV copy for
+  playback (at most 48 MiB: stereo, then mono, then cut short). Both sides
+  stack on one time axis (shorter files draw shorter) with a shared playhead;
+  click to seek. `src/lib/audio.ts` plays both versions through WebAudio in
+  lockstep and only changes which one is audible (A/B), so switching never
+  loses the position. The panel diffs duration, rate, channels, encoding,
+  sample peak, RMS and integrated loudness (LUFS) and flags clipping,
+  truncated analysis and shortened playback.
+- Table viewer (`TableDiff.tsx`): `TableDiff` in the service parses both
+  sides with `preview.ParseTable` (16 MiB each) and returns
+  `preview.DiffTables`: columns matched by header name, rows matched by the
+  first shared column when its values are unique (an id or localization
+  key), otherwise by content. Changed cells show old and new value, added
+  and removed rows/columns are tinted, moved rows marked; long tables start
+  on "Only changed rows". A switch shows the plain text diff instead.
+- Unity `.meta` checks: `MetaWarnings` runs `unitymeta.Lint` over the
+  status of every Unity project in the clone (an `Assets/` folder next to
+  `ProjectSettings/`) and the Changes screen lists the warnings above the
+  file list, marks affected rows and jumps to the file on click: assets and
+  new folders without a `.meta`, `.meta` files left without their asset or
+  deleted while the asset stays, a `.meta` not staged with its staged asset,
+  and a changed GUID (old content read from the snapshot, 256 checks max).
 - `frontend/`: React 18, Vite 8, Tailwind 4 (tokens in `src/index.css`,
   light/dark/system theme in `src/lib/theme.tsx`), TanStack Query, lucide.
   Generated bindings live in `frontend/bindings` and are committed (CI fails
@@ -176,6 +201,23 @@ Pure package (no client imports), shared by the daemon and later the server.
   objects/groups, `usemtl` names, `mtllib` files, bounds);
   `MaterialLibraryDependencies` lists an `.mtl` file's textures. Other model
   formats return `ErrUnsupported`.
+- `DecodeAudio(name, data, AudioOptions)` decodes WAV (PCM 8–32-bit, float,
+  extensible), AIFF/AIFC (big/little-endian PCM, float), FLAC
+  (`mewkiz/flac`), Ogg Vorbis (`jfreymuth/oggvorbis`) and MP3
+  (`hajimehoshi/go-mp3`, mono detected from the frame header), all pure Go,
+  and streams the samples once through the analysers: waveform buckets,
+  sample peak, RMS, clipped samples (at the format's full scale), integrated
+  loudness per ITU-R BS.1770 (K-weighting for any rate, 400 ms blocks with
+  absolute and relative gates, 5.1 surround weights), a 2048-point Hann
+  spectrogram on log-spaced rows and an optional playback WAV. When the
+  header's length is missing or off by more than 1 % it decodes again with
+  the real length. `MaxAudioFrames` (one hour at 48 kHz) cuts longer audio
+  and sets `Truncated`; decoder panics become errors.
+- `ParseTable(name, data)` reads CSV/TSV (delimiter sniffed among `,` `;`
+  tab; UTF-8 with or without BOM, UTF-16 with BOM; lazy quotes; ragged rows;
+  `MaxTableCells`), and `DiffTables(old, new)` aligns columns and rows with
+  a longest-increasing-subsequence match on unique keys (content rows get an
+  occurrence number), so it stays O(n log n) on large localization tables.
 - Float sources keep linear samples in `Image.HDR` (`FloatImage`) while
   `Pixels` is their clamped sRGB rendering, used for `CompareImages`.
   `DownscaleFloat` box-filters them and `PackHDR` packs them into an opaque
@@ -187,7 +229,8 @@ Pure package (no client imports), shared by the daemon and later the server.
   fully transparent pixels compare equal.
 - Decoders are fuzzed (`FuzzDecodeTGA`, `FuzzDecodeImage`, `FuzzDecodeDDS`,
   `FuzzDecodeKTX2`, `FuzzDecodeEXR`, `FuzzDecodeHDR`, `FuzzDecodePSD`,
-  `FuzzDecodeModel`);
+  `FuzzDecodeModel`, `FuzzDecodeAudio`, `FuzzParseTable`); encoded audio
+  fixtures come from `testdata/gen/audio.sh` (GStreamer);
   crashers found by the fuzzer are kept as seeds in `testdata/fuzz`.
 
 ## Roadmap (one PR each)
@@ -200,7 +243,7 @@ Pure package (no client imports), shared by the daemon and later the server.
 6. Image compare viewer. **(done)**
 7. DDS/KTX2/EXR/HDR/PSD decoders + viewer controls. **(done)**
 8. 3D model viewer. **(done)**
-9. Audio viewer, CSV table diff, Unity `.meta` lint.
+9. Audio viewer, CSV table diff, Unity `.meta` lint. **(done)**
 10. Locks (lock-aware status, Lock & edit, Locks page).
 11. Sign in, clone, sparse checkout.
 12. History, branches, tags, revert.
