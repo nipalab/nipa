@@ -9,7 +9,7 @@ import {
   FileRemovedIcon,
 } from '@primer/octicons-react'
 import type { DiffFileResponse, DiffHunkResponse, DiffLineResponse, ThreadResponse } from '../../api/models'
-import { Mono, PRIMARY_BUTTON_STYLE } from '../ui'
+import { Mono } from '../ui'
 import { ThreadCard } from './ThreadCard'
 
 export interface DiffAnchor {
@@ -292,7 +292,6 @@ function DraftComment({
             <Button
               size="small"
               variant="primary"
-              style={PRIMARY_BUTTON_STYLE}
               disabled={busy || !body.trim()}
               onClick={() => onSubmit(anchor, body.trim())}
             >

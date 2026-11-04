@@ -1,12 +1,8 @@
 import { Button, Stack } from '@primer/react'
 import { MarkGithubIcon } from '@primer/octicons-react'
 import { oauthStartURL } from '../api/endpoints'
+import { providerLabel } from '../oauth'
 import { APP_HOME } from '../routes'
-
-const PROVIDER_LABEL: Record<string, string> = {
-  github: 'GitHub',
-  google: 'Google',
-}
 
 function GoogleIcon() {
   return (
@@ -53,7 +49,7 @@ export function SocialButtons({ providers, from }: { providers: string[]; from: 
             window.location.href = oauthStartURL(provider, redirect)
           }}
         >
-          Continue with {PROVIDER_LABEL[provider] ?? provider}
+          Continue with {providerLabel(provider)}
         </Button>
       ))}
     </Stack>

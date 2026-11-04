@@ -10,6 +10,7 @@ import {
 } from '../api/endpoints'
 import type { IdentityResponse } from '../api/models'
 import { useAsync } from '../hooks'
+import { OAUTH_LINK_ERRORS, providerLabel } from '../oauth'
 import { EmptyState, ErrorBanner, Loading } from './ui'
 
 const ROW: CSSProperties = {
@@ -19,17 +20,6 @@ const ROW: CSSProperties = {
   gap: 16,
   padding: '12px 0',
   borderTop: '1px solid var(--borderColor-muted)',
-}
-
-const PROVIDER_LABEL: Record<string, string> = {
-  github: 'GitHub',
-  google: 'Google',
-}
-
-const LINK_ERRORS: Record<string, string> = {
-  email_conflict: 'An account with this email already exists.',
-  email_required: 'The provider did not share a verified email address.',
-  identity_taken: 'This provider account is already linked to another Nipa account.',
 }
 
 export function IdentitiesCard() {
@@ -45,7 +35,7 @@ export function IdentitiesCard() {
   const banner = linkedParam === 'linked'
     ? { variant: 'success' as const, text: 'Account connected.' }
     : errorParam
-      ? { variant: 'danger' as const, text: LINK_ERRORS[errorParam] ?? `Connecting failed (${errorParam}).` }
+      ? { variant: 'danger' as const, text: OAUTH_LINK_ERRORS[errorParam] ?? `Connecting failed (${errorParam}).` }
       : null
   const connected = new Set((identities ?? []).map((identity) => identity.provider))
   const available = (capabilities?.providers ?? []).filter((provider) => !connected.has(provider))
@@ -111,7 +101,7 @@ export function IdentitiesCard() {
             <div key={identity.id} style={ROW}>
               <div>
                 <Text as="p" style={{ margin: 0, fontWeight: 600 }}>
-                  {PROVIDER_LABEL[identity.provider] ?? identity.provider}
+                  {providerLabel(identity.provider)}
                 </Text>
                 <Text as="p" style={{ margin: '2px 0 0', color: 'var(--fgColor-muted)', fontSize: 12 }}>
                   {identity.email || 'no email shared'} · connected{' '}
@@ -134,7 +124,7 @@ export function IdentitiesCard() {
         <Stack direction="horizontal" gap="condensed">
           {available.map((provider) => (
             <Button key={provider} disabled={linking === provider} onClick={() => void connect(provider)}>
-              {linking === provider ? 'Redirecting…' : `Connect ${PROVIDER_LABEL[provider] ?? provider}`}
+              {linking === provider ? 'Redirecting…' : `Connect ${providerLabel(provider)}`}
             </Button>
           ))}
         </Stack>

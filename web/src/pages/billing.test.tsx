@@ -96,9 +96,9 @@ describe('BillingPage', () => {
     })
     await waitForText('Organizations')
 
-    expect(document.body.textContent).toContain('2.0 KiB used · unlimited quota')
+    expect(document.body.textContent).toContain('2 KiB used · unlimited quota')
     const row = Array.from(document.querySelectorAll('tr')).find((item) => item.textContent?.includes('Sticker'))
-    expect(row?.textContent).toContain('2.0 KiB')
+    expect(row?.textContent).toContain('2 KiB')
     expect(document.body.textContent).not.toContain('Set owner quota')
     const navLink = Array.from(document.querySelectorAll('a')).find((a) => a.textContent?.trim() === 'Billing')
     expect(navLink).toBeDefined()

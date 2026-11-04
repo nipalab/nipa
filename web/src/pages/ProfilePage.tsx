@@ -4,10 +4,10 @@ import { Button, Checkbox, Flash, FormControl, Heading, Stack, TextInput } from 
 import { Link } from 'react-router-dom'
 import { changeMyPassword, updateMyProfile } from '../api/endpoints'
 import { useAuth } from '../auth'
-import { ActorAvatar } from '../components/repo/ActorAvatar'
+import { ActorAvatar } from '../components/ActorAvatar'
 import { IdentitiesCard } from '../components/IdentitiesCard'
 import { SSHKeysCard } from '../components/SSHKeysCard'
-import { ErrorBanner, Page, PRIMARY_BUTTON_STYLE } from '../components/ui'
+import { ErrorBanner, Page } from '../components/ui'
 
 const CARD: CSSProperties = {
   border: '1px solid var(--borderColor-default)',
@@ -133,7 +133,6 @@ export default function ProfilePage() {
                 <Button
                   type="submit"
                   variant="primary"
-                  style={PRIMARY_BUTTON_STYLE}
                   loading={savingProfile}
                   disabled={name.trim() === '' || savingProfile}
                 >
@@ -188,7 +187,6 @@ export default function ProfilePage() {
                 <Button
                   type="submit"
                   variant="primary"
-                  style={PRIMARY_BUTTON_STYLE}
                   loading={savingPassword}
                   disabled={!canSavePassword}
                 >

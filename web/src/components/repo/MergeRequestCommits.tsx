@@ -4,7 +4,7 @@ import { CheckIcon, CodeIcon, CopyIcon } from '@primer/octicons-react'
 import { Link } from 'react-router-dom'
 import type { CommitResponse } from '../../api/models'
 import { EmptyState, Mono } from '../ui'
-import { ActorAvatar, type ActorLike } from './ActorAvatar'
+import { ActorAvatar, type ActorLike } from '../ActorAvatar'
 import { absoluteTime, commitTitle, shortSha } from './format'
 
 function commitAuthor(commit: CommitResponse): ActorLike {

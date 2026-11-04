@@ -3,7 +3,7 @@ import { Button, Stack, Text, TextInput } from '@primer/react'
 import { SearchIcon } from '@primer/octicons-react'
 import { listGroups, listOrgMembers, listUsers } from '../api/endpoints'
 import type { OrgMemberResponse } from '../api/models'
-import { ActorAvatar } from './repo/ActorAvatar'
+import { ActorAvatar } from './ActorAvatar'
 
 type PickerKind = 'user' | 'group' | 'user-or-group'
 

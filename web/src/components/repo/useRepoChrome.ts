@@ -11,7 +11,7 @@ export function useRepoChrome(org: string, project: string) {
     loading: branchesLoading,
     reload: reloadBranches,
   } = useAsync(() => listBranches(org, project), [org, project])
-  const { data: permissions } = useAsync(
+  const { data: permissions, loading: permissionsLoading } = useAsync(
     () => getMyProjectPermissions(org, project),
     [org, project],
   )
@@ -28,6 +28,7 @@ export function useRepoChrome(org: string, project: string) {
     branchesError,
     branchesLoading,
     reloadBranches,
+    permissionsLoading,
     canWrite,
     canAdmin,
     defaultBranch,
