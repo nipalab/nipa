@@ -10,6 +10,8 @@ import type {
   DiffLine,
   FileChange,
   FileDiff,
+  FileLock,
+  FileLockState,
   FileSide,
   ImageCompare,
   ImageInfo,
@@ -17,6 +19,8 @@ import type {
   ImageOptions,
   ImageRef,
   ImageStats,
+  LockFailure,
+  LockStatus as RawLockStatus,
   MetaWarning,
   ModelCompare,
   ModelSide,
@@ -30,6 +34,9 @@ import type {
   TableRow,
 } from "../../bindings/github.com/nipalab/nipa/desktop/internal/service/models";
 
+export type { FileLock, FileLockState, LockFailure };
+export type LockStatus = Omit<RawLockStatus, "locks" | "files"> & { locks: FileLock[]; files: FileLockState[] };
+export type LockResult = { locked: string[]; failed: LockFailure[] };
 export type { AudioCompare, AudioSide, AudioStats, MetaWarning, TableColumn, TableCompare, TableRow };
 export type { DaemonInfo, DiffHunk, DiffLine, FileChange, FileDiff, FileSide, ImageCompare, ImageInfo, ImageLayer, ImageOptions, ImageRef, ImageStats, ModelCompare, ModelSide, ModelStats, OpOutcome, OpProgress, Repo, RepoChanged };
 
@@ -71,6 +78,18 @@ export const desktop = {
   audioDiff: (root: string, old: ImageRef | null, next: ImageRef | null): Cancellable<AudioCompare | null> => Service.AudioDiff(root, old, next),
   tableDiff: (root: string, old: ImageRef | null, next: ImageRef | null): Cancellable<TableCompare | null> => Service.TableDiff(root, old, next),
   metaWarnings: async (root: string): Promise<MetaWarning[]> => (await Service.MetaWarnings(root)) ?? [],
+  lockStatus: async (root: string): Promise<LockStatus> => {
+    const s = await Service.LockStatus(root);
+    if (!s) throw new Error("No lock information");
+    return { ...s, locks: s.locks ?? [], files: s.files ?? [] };
+  },
+  lock: async (root: string, branch: string, paths: string[]): Promise<LockResult> => {
+    const r = await Service.Lock(root, branch, paths);
+    return { locked: r?.locked ?? [], failed: r?.failed ?? [] };
+  },
+  unlock: (root: string, branch: string, path: string): Promise<void> => Service.Unlock(root, branch, path),
+  pickFile: (root: string): Promise<string> => Service.PickFile(root),
+  openFile: (root: string, path: string): Promise<void> => Service.OpenFile(root, path),
   push: (root: string, message: string): Cancellable<OpOutcome> => Service.Push(root, message),
   update: (root: string): Cancellable<OpOutcome> => Service.Update(root),
 

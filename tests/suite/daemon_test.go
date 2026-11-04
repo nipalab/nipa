@@ -427,6 +427,46 @@ var _ = Describe("nipa serve", func() {
 		Expect(after.GetResponse().GetLocks()).To(BeEmpty())
 	})
 
+	It("reports the lock state of changed binaries", func() {
+		project := newProject("daemon-lock-status")
+		seedRepo(orgSlug, project, map[string][]byte{
+			"a.txt":           []byte("a\n"),
+			"assets/hero.png": {0x00, 0x01, 0x02},
+			"assets/sky.psd":  {0x03, 0x04, 0x05},
+		}, "seed")
+		url := repoURLFor(orgSlug, project)
+		writer := newIdentity("daemon-lock-writer").promote()
+		writerDir := cloneRepo(workspace(), url, "writer")
+		Expect(runNipaAs(writer, writerDir, "lock", "assets/sky.psd").ExitCode).To(Equal(0))
+
+		dir := cloneRepo(workspace(), url, "work")
+		writeText(dir, "assets/hero.png", "changed hero")
+		writeText(dir, "assets/sky.psd", "changed sky")
+		writeText(dir, "assets/new.fbx", "new mesh")
+		writeText(dir, "a.txt", "b\n")
+
+		d := startDaemon()
+		d.watch(dir)
+		locked, err := d.client.ProxyLockFile(d.ctx, &daemonpb.ProxyLockFileRequest{Root: dir, Request: &pb.LockFileRequest{Path: "assets/hero.png"}})
+		Expect(err).NotTo(HaveOccurred())
+
+		res, err := d.client.LockStatus(d.ctx, &daemonpb.LockStatusRequest{Root: dir})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.GetUserId()).To(Equal(locked.GetResponse().GetLock().GetHeldBy()))
+		Expect(res.GetBranch()).To(Equal("main"))
+		Expect(res.GetDefaultBranch()).To(BeTrue())
+		Expect(res.GetLocks()).To(HaveLen(2))
+		states := map[string]string{}
+		for _, f := range res.GetFiles() {
+			states[f.GetPath()] = f.GetState()
+		}
+		Expect(states).To(Equal(map[string]string{
+			"assets/hero.png": "mine",
+			"assets/sky.psd":  "theirs",
+			"assets/new.fbx":  "free",
+		}))
+	})
+
 	It("proxies merge request calls with the clone context", func() {
 		project := newProject("daemon-mr-proxy")
 		seedRepo(orgSlug, project, map[string][]byte{"a.txt": []byte("a\n")}, "seed")

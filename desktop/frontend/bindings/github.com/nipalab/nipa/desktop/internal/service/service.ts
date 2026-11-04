@@ -64,6 +64,21 @@ export function ImageDiff(root: string, old: $models.ImageRef | null, $new: $mod
 }
 
 /**
+ * Lock takes a lock on each path in the branch's scope (mainline for the
+ * default branch). Paths that cannot be locked are reported, not fatal.
+ */
+export function Lock(root: string, branch: string, paths: string[] | null): $CancellablePromise<$models.LockResult | null> {
+    return $Call.ByID(3433276999, root, branch, paths);
+}
+
+/**
+ * LockStatus lists the project's locks and the lock state of changed binaries.
+ */
+export function LockStatus(root: string): $CancellablePromise<$models.LockStatus | null> {
+    return $Call.ByID(3463155089, root);
+}
+
+/**
  * MetaWarnings checks the pending changes of Unity projects inside the clone
  * for .meta sidecar mistakes.
  */
@@ -76,6 +91,21 @@ export function MetaWarnings(root: string): $CancellablePromise<$models.MetaWarn
  */
 export function ModelDiff(root: string, old: $models.ImageRef | null, $new: $models.ImageRef | null): $CancellablePromise<$models.ModelCompare | null> {
     return $Call.ByID(2021065394, root, old, $new);
+}
+
+/**
+ * OpenFile opens a clone file with the system's default application.
+ */
+export function OpenFile(root: string, path: string): $CancellablePromise<void> {
+    return $Call.ByID(3101717086, root, path);
+}
+
+/**
+ * PickFile asks for a file inside the clone and returns its clone-relative
+ * path, or "" when cancelled.
+ */
+export function PickFile(root: string): $CancellablePromise<string> {
+    return $Call.ByID(2458010751, root);
 }
 
 /**
@@ -120,6 +150,13 @@ export function Stage(root: string, paths: string[] | null): $CancellablePromise
  */
 export function TableDiff(root: string, old: $models.ImageRef | null, $new: $models.ImageRef | null): $CancellablePromise<$models.TableCompare | null> {
     return $Call.ByID(1291294083, root, old, $new);
+}
+
+/**
+ * Unlock releases a lock. An empty branch addresses the mainline scope.
+ */
+export function Unlock(root: string, branch: string, path: string): $CancellablePromise<void> {
+    return $Call.ByID(4285180956, root, branch, path);
 }
 
 /**

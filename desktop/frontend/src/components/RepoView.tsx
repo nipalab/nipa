@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, ArrowDownToLine, FileDiff, GitBranch, History, Info, Lock, Trash2 } from "lucide-react";
 import { desktop, type Repo } from "@/api/desktop";
 import { ChangesView } from "@/components/changes/ChangesView";
+import { LocksView } from "@/components/locks/LocksView";
 import { Progress } from "@/components/changes/CommitBox";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,12 +12,12 @@ import { cn, errorMessage } from "@/lib/utils";
 
 export type Notify = (message: string, tone?: "error" | "success") => void;
 
-type TabId = "changes" | "details";
+type TabId = "changes" | "locks" | "details";
 
-const tabs: { id: TabId | "history" | "locks"; label: string; Icon: typeof FileDiff; soon?: boolean }[] = [
+const tabs: { id: TabId | "history"; label: string; Icon: typeof FileDiff; soon?: boolean }[] = [
   { id: "changes", label: "Changes", Icon: FileDiff },
   { id: "history", label: "History", Icon: History, soon: true },
-  { id: "locks", label: "Locks", Icon: Lock, soon: true },
+  { id: "locks", label: "Locks", Icon: Lock },
   { id: "details", label: "Details", Icon: Info },
 ];
 
@@ -30,6 +31,7 @@ export function RepoView({ repo, removing, onRemove, notify }: RepoViewProps) {
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: ["changes", repo.root] });
     void queryClient.invalidateQueries({ queryKey: ["diff", repo.root] });
+    void queryClient.invalidateQueries({ queryKey: ["locks", repo.root] });
   };
   const operation = useRepoOperation(repo.root, {
     onDone: (op, outcome) => {
@@ -130,7 +132,10 @@ export function RepoView({ repo, removing, onRemove, notify }: RepoViewProps) {
                 onPush={(msg) => operation.run("push", () => desktop.push(repo.root, msg))}
                 onCancelOp={operation.cancel}
                 onError={(msg) => notify(msg)}
+                notify={notify}
               />
+            ) : tab === "locks" ? (
+              <LocksView root={repo.root} notify={notify} />
             ) : (
               <Details repo={repo} />
             )}

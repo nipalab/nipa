@@ -144,6 +144,17 @@ list/create/merge/close + detail incl. review summary and threads, file locks
 All proxy calls take the repo `root`, resolve `.nipa/config` → host/org/project,
 and run on the daemon's warm, auto-refreshing client.
 
+`LockStatus(root)` combines proxy calls with the local status: it lists the
+project's locks (`ListFileLocks`), resolves whether the configured branch is
+the default (`GetBranchByName`: mainline locks apply, otherwise that branch's
+locks), checks admin rights (`GetMyPermissions`) and reads the caller's
+account id from the session's access token (JWT `sub`, unverified, used only
+to tell "mine" from "theirs"). Each changed path that is a tracked binary or
+has a lockable asset extension (`chunker.IsLockablePath`) gets a state:
+`mine`, `theirs` (covered by someone else's file or directory lock),
+`needed` (tracked, uncovered: the server's push gate would refuse it) or
+`free`.
+
 ---
 
 ## Progress streaming (`OpEvent`)

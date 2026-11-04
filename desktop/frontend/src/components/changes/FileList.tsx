@@ -1,7 +1,7 @@
 import { useMemo, useRef, type KeyboardEvent } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { TriangleAlert, Undo2 } from "lucide-react";
-import type { ChangeSet, FileChange } from "@/api/desktop";
+import { Lock, LockOpen, TriangleAlert, Undo2 } from "lucide-react";
+import type { ChangeSet, FileChange, FileLockState } from "@/api/desktop";
 import { FileIcon, StatusLetter } from "@/components/changes/FileIcon";
 import { Button } from "@/components/ui/button";
 import { splitPath } from "@/lib/diff";
@@ -24,6 +24,8 @@ type FileListProps = {
   onUnstage: (paths: string[]) => void;
   onDiscard: (file: FileChange) => void;
   warnings?: Map<string, string>;
+  locks?: Map<string, FileLockState>;
+  onLock?: (path: string) => void;
 };
 
 export function buildRows(changes: ChangeSet): Row[] {
@@ -39,7 +41,7 @@ export function buildRows(changes: ChangeSet): Row[] {
   return rows;
 }
 
-export function FileList({ changes, selected, busy, onSelect, onStage, onUnstage, onDiscard, warnings }: FileListProps) {
+export function FileList({ changes, selected, busy, onSelect, onStage, onUnstage, onDiscard, warnings, locks, onLock }: FileListProps) {
   const rows = useMemo(() => buildRows(changes), [changes]);
   const parent = useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({
@@ -89,6 +91,8 @@ export function FileList({ changes, selected, busy, onSelect, onStage, onUnstage
                   staged={row.staged}
                   active={item.index === selectedIndex}
                   warning={warnings?.get(row.file.path)}
+                  lock={locks?.get(row.file.path)}
+                  onLock={onLock ? () => onLock(row.file.path) : undefined}
                   busy={busy}
                   onSelect={() => onSelect({ path: row.file.path, staged: row.staged })}
                   onToggle={() => (row.staged ? onUnstage([row.file.path]) : onStage([row.file.path]))}
@@ -121,13 +125,15 @@ type FileRowProps = {
   staged: boolean;
   active: boolean;
   warning?: string;
+  lock?: FileLockState;
+  onLock?: () => void;
   busy: boolean;
   onSelect: () => void;
   onToggle: () => void;
   onDiscard: () => void;
 };
 
-function FileRow({ file, staged, active, warning, busy, onSelect, onToggle, onDiscard }: FileRowProps) {
+function FileRow({ file, staged, active, warning, lock, onLock, busy, onSelect, onToggle, onDiscard }: FileRowProps) {
   const { dir, name } = splitPath(file.path);
   const discardable = !staged && file.status !== "untracked";
   return (
@@ -153,6 +159,7 @@ function FileRow({ file, staged, active, warning, busy, onSelect, onToggle, onDi
         {dir && <span className="ml-1.5 text-[11px] text-muted-foreground">{dir.slice(0, -1)}</span>}
       </span>
       {warning && <TriangleAlert className="size-3 shrink-0 text-warning" aria-label={warning} />}
+      {lock && <LockBadge lock={lock} busy={busy} onLock={onLock} />}
       {discardable && (
         <Button
           variant="ghost"
@@ -171,5 +178,29 @@ function FileRow({ file, staged, active, warning, busy, onSelect, onToggle, onDi
       )}
       <StatusLetter status={file.status} />
     </div>
+  );
+}
+
+function LockBadge({ lock, busy, onLock }: { lock: FileLockState; busy: boolean; onLock?: () => void }) {
+  if (lock.state === "mine") return <Lock className="size-3 shrink-0 text-accent" aria-label="Locked by you" />;
+  if (lock.state === "theirs") {
+    return <Lock className="size-3 shrink-0 text-danger" aria-label={`Locked by ${lock.heldByName || "someone else"}${lock.lockPath !== lock.path ? ` (folder ${lock.lockPath})` : ""}`} />;
+  }
+  const needed = lock.state === "needed";
+  if (!onLock) return needed ? <LockOpen className="size-3 shrink-0 text-warning" aria-label="Needs a lock to push" /> : null;
+  return (
+    <button
+      type="button"
+      disabled={busy}
+      onClick={(e) => {
+        e.stopPropagation();
+        onLock();
+      }}
+      aria-label={needed ? "Needs a lock to push: lock it" : "Lock this file"}
+      title={needed ? "Needs a lock to push. Click to lock it." : "Lock this file"}
+      className={cn("shrink-0 disabled:opacity-50", needed ? "text-warning" : "text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100")}
+    >
+      <LockOpen className="size-3" />
+    </button>
   );
 }

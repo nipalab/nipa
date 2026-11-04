@@ -1,0 +1,156 @@
+import { screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { FileLock, LockStatus } from "@/api/desktop";
+import { renderWithProviders } from "@/test/render";
+
+const api = vi.hoisted(() => ({ lockStatus: vi.fn(), lock: vi.fn(), unlock: vi.fn(), pickFile: vi.fn(), openFile: vi.fn() }));
+vi.mock("@/api/desktop", () => ({ desktop: api }));
+
+import { LocksView } from "./LocksView";
+
+const lock = (over: Partial<FileLock>): FileLock => ({
+  id: over.path ?? "x",
+  path: "art/hero.psd",
+  branch: "",
+  global: true,
+  heldBy: "me",
+  heldByName: "Me",
+  mine: true,
+  mergeRequest: 0,
+  acquiredAt: new Date(Date.now() - 5 * 60_000).toISOString(),
+  inScope: true,
+  ...over,
+});
+
+const status = (over: Partial<LockStatus> = {}): LockStatus => ({
+  userId: "me",
+  branch: "main",
+  defaultBranch: true,
+  canReleaseAny: false,
+  locks: [
+    lock({ path: "art/hero.psd" }),
+    lock({ path: "audio", heldBy: "bob", heldByName: "Bob", mine: false }),
+    lock({ path: "maps/level1.umap", heldBy: "ann", heldByName: "", mine: false, mergeRequest: 7, acquiredAt: "" }),
+    lock({ path: "ui/old.png", global: false, branch: "feature", inScope: false }),
+  ],
+  files: [],
+  ...over,
+});
+
+const notify = vi.fn();
+const view = () => renderWithProviders(<LocksView root="/work/game" notify={notify} />);
+const rows = () => within(screen.getByRole("table", { name: "File locks" })).getAllByRole("row").slice(1);
+
+beforeEach(() => {
+  vi.resetAllMocks();
+  api.lockStatus.mockResolvedValue(status());
+  api.unlock.mockResolvedValue(undefined);
+  api.openFile.mockResolvedValue(undefined);
+});
+
+describe("LocksView", () => {
+  it("lists locks in scope first, mine before the team's", async () => {
+    view();
+    expect(screen.getByText("Loading locks…")).toBeInTheDocument();
+    await screen.findByRole("table", { name: "File locks" });
+    expect(screen.getByText(/check locks on the/)).toHaveTextContent("Pushes to main check locks on the mainline (main).");
+    expect(rows().map((r) => (r as HTMLTableRowElement).cells[0].textContent)).toEqual(["art/hero.psd", "audio", "maps/level1.umap!7", "ui/old.png"]);
+    expect(within(rows()[0]).getByText("You")).toBeInTheDocument();
+    expect(within(rows()[0]).getByText("5 min ago")).toBeInTheDocument();
+    expect(within(rows()[1]).getByLabelText("Folder lock")).toBeInTheDocument();
+    expect(within(rows()[1]).queryByRole("button", { name: /Release/ })).not.toBeInTheDocument();
+    expect(within(rows()[2]).getByText("ann")).toBeInTheDocument();
+    expect(within(rows()[3]).getByText("feature")).toBeInTheDocument();
+    expect(within(rows()[3]).getByRole("button", { name: "Release ui/old.png" })).toBeInTheDocument();
+  });
+
+  it("filters by owner and text", async () => {
+    view();
+    await screen.findByRole("table", { name: "File locks" });
+    await userEvent.click(screen.getByRole("button", { name: "Mine (2)" }));
+    expect(rows()).toHaveLength(2);
+    await userEvent.click(screen.getByRole("button", { name: "Team (2)" }));
+    expect(rows().map((r) => (r as HTMLTableRowElement).cells[0].textContent)).toEqual(["audio", "maps/level1.umap!7"]);
+    await userEvent.type(screen.getByRole("textbox", { name: "Filter locks" }), "bob");
+    expect(rows()).toHaveLength(1);
+    await userEvent.type(screen.getByRole("textbox", { name: "Filter locks" }), "zzz");
+    expect(screen.getByText("No locks match")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "All (4)" }));
+  });
+
+  it("releases my locks directly and others' after confirming", async () => {
+    api.lockStatus.mockResolvedValue(status({ canReleaseAny: true }));
+    view();
+    await screen.findByRole("table", { name: "File locks" });
+    await userEvent.click(screen.getByRole("button", { name: "Release art/hero.psd" }));
+    await waitFor(() => expect(api.unlock).toHaveBeenCalledWith("/work/game", "", "art/hero.psd"));
+    expect(notify).toHaveBeenCalledWith("Released art/hero.psd", "success");
+
+    await userEvent.click(screen.getByRole("button", { name: "Release audio" }));
+    const dialog = screen.getByRole("alertdialog");
+    expect(dialog).toHaveTextContent("Bob holds audio.");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(api.unlock).toHaveBeenCalledTimes(1);
+
+    await userEvent.click(screen.getByRole("button", { name: "Release ui/old.png" }));
+    await waitFor(() => expect(api.unlock).toHaveBeenLastCalledWith("/work/game", "feature", "ui/old.png"));
+
+    await userEvent.click(screen.getByRole("button", { name: "Release audio" }));
+    await userEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Release" }));
+    await waitFor(() => expect(api.unlock).toHaveBeenLastCalledWith("/work/game", "", "audio"));
+
+    api.unlock.mockRejectedValueOnce(new Error("no permission"));
+    await userEvent.click(screen.getByRole("button", { name: "Release art/hero.psd" }));
+    await waitFor(() => expect(notify).toHaveBeenCalledWith("Releasing failed: no permission"));
+  });
+
+  it("opens my locked files", async () => {
+    view();
+    await screen.findByRole("table", { name: "File locks" });
+    await userEvent.click(screen.getByRole("button", { name: "Open art/hero.psd" }));
+    expect(api.openFile).toHaveBeenCalledWith("/work/game", "art/hero.psd");
+    api.openFile.mockRejectedValueOnce(new Error("no app"));
+    await userEvent.click(screen.getByRole("button", { name: "Open art/hero.psd" }));
+    await waitFor(() => expect(notify).toHaveBeenCalledWith("Could not open art/hero.psd: no app"));
+  });
+
+  it("locks a picked file and opens it", async () => {
+    api.pickFile.mockResolvedValueOnce("art/sky.psd").mockResolvedValueOnce("").mockResolvedValueOnce("art/taken.psd").mockRejectedValueOnce(new Error("dialog broke"));
+    api.lock.mockResolvedValueOnce({ locked: ["art/sky.psd"], failed: [] }).mockResolvedValueOnce({ locked: [], failed: [{ path: "art/taken.psd", message: "locked by Bob" }] });
+    view();
+    const button = await screen.findByRole("button", { name: /Lock & edit a file/ });
+    await userEvent.click(button);
+    await waitFor(() => expect(api.openFile).toHaveBeenCalledWith("/work/game", "art/sky.psd"));
+    expect(api.lock).toHaveBeenCalledWith("/work/game", "main", ["art/sky.psd"]);
+    expect(notify).toHaveBeenCalledWith("Locked art/sky.psd", "success");
+
+    await userEvent.click(button);
+    await waitFor(() => expect(button).toBeEnabled());
+    expect(api.lock).toHaveBeenCalledTimes(1);
+
+    await userEvent.click(button);
+    await waitFor(() => expect(notify).toHaveBeenCalledWith("Could not lock art/taken.psd: locked by Bob"));
+    expect(api.openFile).toHaveBeenCalledTimes(1);
+
+    await userEvent.click(button);
+    await waitFor(() => expect(notify).toHaveBeenCalledWith("dialog broke"));
+  });
+
+  it("explains empty lists, branch scopes and failures", async () => {
+    api.lockStatus.mockResolvedValueOnce(status({ locks: [], defaultBranch: false, branch: "feature" }));
+    const { unmount } = view();
+    expect(await screen.findByText("Nothing is locked")).toBeInTheDocument();
+    expect(screen.getByText(/check locks on the/)).toHaveTextContent("on the branch feature.");
+    unmount();
+
+    api.lockStatus.mockRejectedValueOnce(new Error("server unreachable"));
+    view();
+    expect(await screen.findByText("server unreachable")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(await screen.findByRole("table", { name: "File locks" })).toBeInTheDocument();
+    const before = api.lockStatus.mock.calls.length;
+    await userEvent.click(screen.getByRole("button", { name: "Refresh locks" }));
+    await waitFor(() => expect(api.lockStatus.mock.calls.length).toBeGreaterThan(before));
+  });
+});

@@ -16,6 +16,11 @@ const service = vi.hoisted(() => ({
   AudioDiff: vi.fn(),
   TableDiff: vi.fn(),
   MetaWarnings: vi.fn(),
+  LockStatus: vi.fn(),
+  Lock: vi.fn(),
+  Unlock: vi.fn(),
+  PickFile: vi.fn(),
+  OpenFile: vi.fn(),
   Push: vi.fn(),
   Update: vi.fn(),
 }));
@@ -94,6 +99,24 @@ describe("desktop api", () => {
     expect(await desktop.metaWarnings("/a")).toEqual([{ path: "Assets/a" }]);
     expect(service.AudioDiff).toHaveBeenCalledWith("/a", ref, null);
     expect(service.TableDiff).toHaveBeenCalledWith("/a", null, ref);
+  });
+
+  it("locks, releases and opens files", async () => {
+    service.LockStatus.mockResolvedValueOnce({ userId: "me", branch: "main", locks: null, files: null }).mockResolvedValueOnce(null);
+    expect(await desktop.lockStatus("/a")).toEqual({ userId: "me", branch: "main", locks: [], files: [] });
+    await expect(desktop.lockStatus("/a")).rejects.toThrow("No lock information");
+    service.Lock.mockResolvedValueOnce({ locked: null, failed: null }).mockResolvedValueOnce({ locked: ["x"], failed: [] });
+    expect(await desktop.lock("/a", "main", ["x"])).toEqual({ locked: [], failed: [] });
+    expect(await desktop.lock("/a", "main", ["x"])).toEqual({ locked: ["x"], failed: [] });
+    expect(service.Lock).toHaveBeenCalledWith("/a", "main", ["x"]);
+    service.Unlock.mockResolvedValue(undefined);
+    await desktop.unlock("/a", "", "x");
+    expect(service.Unlock).toHaveBeenCalledWith("/a", "", "x");
+    service.PickFile.mockResolvedValue("art/a.psd");
+    expect(await desktop.pickFile("/a")).toBe("art/a.psd");
+    service.OpenFile.mockResolvedValue(undefined);
+    await desktop.openFile("/a", "art/a.psd");
+    expect(service.OpenFile).toHaveBeenCalledWith("/a", "art/a.psd");
   });
 
   it("asks for image previews at 2048 px and the first surface by default", async () => {
