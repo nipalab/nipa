@@ -66,6 +66,10 @@ type RepoChanged struct {
 type Service struct {
 	// Events receives change and progress events; nil drops them.
 	Events Emitter
+	// PickFileFunc and OpenFunc back the native file dialog and opening a
+	// file in its default application; nil disables them.
+	PickFileFunc FilePicker
+	OpenFunc     Opener
 
 	dial  Dialer
 	store RepoStore

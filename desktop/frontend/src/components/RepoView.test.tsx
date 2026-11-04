@@ -11,6 +11,11 @@ const api = vi.hoisted(() => ({
   discard: vi.fn(),
   fileDiff: vi.fn(),
   metaWarnings: vi.fn(),
+  lockStatus: vi.fn(),
+  lock: vi.fn(),
+  unlock: vi.fn(),
+  pickFile: vi.fn(),
+  openFile: vi.fn(),
   push: vi.fn(),
   update: vi.fn(),
   onRepoChanged: vi.fn(),
@@ -76,6 +81,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   api.changes.mockResolvedValue(changeSet());
   api.metaWarnings.mockResolvedValue([]);
+  api.lockStatus.mockResolvedValue({ userId: "me", branch: "main", defaultBranch: true, canReleaseAny: false, locks: [], files: [] });
   api.fileDiff.mockImplementation(async (_root: string, path: string) => (path === "art/hero.png" ? imageDiff : path === "src/player.go" ? textDiff : null));
   api.onRepoChanged.mockImplementation((fn: (c: RepoChanged) => void) => {
     changed = fn;
@@ -264,6 +270,95 @@ describe("Changes view", () => {
     api.fileDiff.mockRejectedValue(new Error("diff is not configured"));
     view();
     expect(await screen.findByText("diff is not configured")).toBeInTheDocument();
+  });
+});
+
+describe("locks on the Changes screen", () => {
+  const lockSet = changeSet({
+    staged: [
+      { path: "art/hero.png", status: "modified", kind: "image" },
+      { path: "art/sky.psd", status: "modified", kind: "image" },
+    ],
+    unstaged: [
+      { path: "art/rock.fbx", status: "modified", kind: "model" },
+      { path: "art/new.png", status: "untracked", kind: "image" },
+      { path: "maps/level.umap", status: "modified", kind: "opaque" },
+    ],
+  });
+  const files = [
+    { path: "art/hero.png", state: "needed", lockPath: "", heldByName: "", tracked: true },
+    { path: "art/sky.psd", state: "needed", lockPath: "", heldByName: "", tracked: true },
+    { path: "art/rock.fbx", state: "mine", lockPath: "art/rock.fbx", heldByName: "Me", tracked: true },
+    { path: "art/new.png", state: "free", lockPath: "", heldByName: "", tracked: false },
+    { path: "maps/level.umap", state: "theirs", lockPath: "maps", heldByName: "Bob", tracked: true },
+  ];
+
+  it("marks rows and asks for locks before pushing", async () => {
+    api.changes.mockResolvedValue(lockSet);
+    api.lockStatus.mockResolvedValue({ userId: "me", branch: "main", defaultBranch: true, canReleaseAny: false, locks: [], files });
+    api.lock.mockResolvedValue({ locked: ["art/hero.png", "art/sky.psd"], failed: [] });
+    view();
+    const list = await fileList();
+    expect(await within(list).findByLabelText("Locked by you")).toBeInTheDocument();
+    expect(within(list).getByLabelText("Locked by Bob (folder maps)")).toBeInTheDocument();
+    expect(within(list).getByRole("button", { name: "Lock this file" })).toBeInTheDocument();
+    expect(within(list).getAllByRole("button", { name: "Needs a lock to push: lock it" })).toHaveLength(2);
+
+    expect(screen.getByRole("alert")).toHaveTextContent("2 staged files need a lock before you can push.");
+    await userEvent.type(screen.getByRole("textbox", { name: "Push message" }), "art");
+    expect(screen.getByRole("button", { name: "Push 2 files" })).toBeDisabled();
+
+    await userEvent.click(screen.getByRole("button", { name: "Lock 2 files" }));
+    await waitFor(() => expect(api.lock).toHaveBeenCalledWith("/work/game", "main", ["art/hero.png", "art/sky.psd"]));
+    expect(notify).toHaveBeenCalledWith("Locked 2 files", "success");
+
+    await userEvent.click(within(list).getByRole("button", { name: "Lock this file" }));
+    await waitFor(() => expect(api.lock).toHaveBeenLastCalledWith("/work/game", "main", ["art/new.png"]));
+  });
+
+  it("blocks pushing files someone else holds", async () => {
+    api.changes.mockResolvedValue(changeSet({ staged: [{ path: "maps/level.umap", status: "modified", kind: "opaque" }, { path: "art/a.psd", status: "modified", kind: "image" }], unstaged: [] }));
+    api.lockStatus.mockResolvedValue({
+      userId: "me",
+      branch: "main",
+      defaultBranch: true,
+      canReleaseAny: false,
+      locks: [],
+      files: [files[4], { path: "art/a.psd", state: "theirs", lockPath: "art/a.psd", heldByName: "", tracked: true }],
+    });
+    view();
+    expect(await screen.findByRole("alert")).toHaveTextContent("maps/level.umap is locked by Bob (+1 more). Unstage it or ask them to release the lock.");
+    expect(screen.queryByRole("button", { name: /Lock \d file/ })).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Locked by someone else")).toBeInTheDocument();
+  });
+
+  it("reports files that could not be locked and keeps working offline", async () => {
+    api.changes.mockResolvedValue(changeSet({ staged: [{ path: "art/hero.png", status: "modified", kind: "image" }], unstaged: [] }));
+    api.lockStatus.mockResolvedValue({ userId: "me", branch: "feature", defaultBranch: false, canReleaseAny: false, locks: [], files: [files[0]] });
+    api.lock.mockResolvedValueOnce({ locked: [], failed: [{ path: "art/hero.png", message: "locked by Bob" }, { path: "x", message: "y" }] });
+    view();
+    await userEvent.click(await screen.findByRole("button", { name: "Lock 1 file" }));
+    await waitFor(() => expect(notify).toHaveBeenCalledWith("Could not lock art/hero.png: locked by Bob (+1 more)"));
+    expect(api.lock).toHaveBeenCalledWith("/work/game", "feature", ["art/hero.png"]);
+
+    api.lock.mockRejectedValueOnce(new Error("offline"));
+    await userEvent.click(screen.getByRole("button", { name: "Lock 1 file" }));
+    await waitFor(() => expect(notify).toHaveBeenCalledWith("Locking failed: offline"));
+  });
+
+  it("does not block pushes when locks cannot be read", async () => {
+    api.lockStatus.mockRejectedValue(new Error("offline"));
+    view();
+    await fileList();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/lock/i, { selector: "svg" })).not.toBeInTheDocument();
+  });
+
+  it("opens the Locks tab", async () => {
+    api.lockStatus.mockResolvedValue({ userId: "me", branch: "main", defaultBranch: true, canReleaseAny: false, locks: [], files: [] });
+    view();
+    await userEvent.click(screen.getByRole("tab", { name: /Locks/ }));
+    expect(await screen.findByText("Nothing is locked")).toBeInTheDocument();
   });
 });
 

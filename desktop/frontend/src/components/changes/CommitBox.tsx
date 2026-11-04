@@ -1,10 +1,13 @@
-import { ArrowUpFromLine, X } from "lucide-react";
+import { ArrowUpFromLine, Lock, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { describeProgress, type OpState } from "@/hooks/useRepoOperation";
+
+export type LockIssue = { message: string; action?: { label: string; onClick: () => void; busy?: boolean } };
 
 type CommitBoxProps = {
   stagedCount: number;
   blockedReason?: string;
+  lockIssue?: LockIssue;
   op: OpState | null;
   busy?: boolean;
   message: string;
@@ -13,9 +16,9 @@ type CommitBoxProps = {
   onCancel: () => void;
 };
 
-export function CommitBox({ stagedCount, blockedReason, op, busy, message, onMessage, onPush, onCancel }: CommitBoxProps) {
+export function CommitBox({ stagedCount, blockedReason, lockIssue, op, busy, message, onMessage, onPush, onCancel }: CommitBoxProps) {
   const trimmed = message.trim();
-  const canPush = stagedCount > 0 && trimmed !== "" && !op && !busy && !blockedReason;
+  const canPush = stagedCount > 0 && trimmed !== "" && !op && !busy && !blockedReason && !lockIssue;
 
   const submit = () => {
     if (!canPush) return;
@@ -41,12 +44,26 @@ export function CommitBox({ stagedCount, blockedReason, op, busy, message, onMes
       />
       {op ? <Progress op={op} onCancel={onCancel} /> : null}
       {!op && (
-        <Button variant="primary" className="w-full" disabled={!canPush} onClick={submit} title={blockedReason}>
+        <Button variant="primary" className="w-full" disabled={!canPush} onClick={submit} title={blockedReason ?? lockIssue?.message}>
           <ArrowUpFromLine />
           {stagedCount > 0 ? `Push ${stagedCount} file${stagedCount === 1 ? "" : "s"}` : "Push"}
         </Button>
       )}
       {!op && blockedReason && <p className="text-[11px] text-muted-foreground">{blockedReason}</p>}
+      {!op && lockIssue && (
+        <div className="space-y-1.5 rounded-md border border-warning/40 bg-warning/10 p-2 text-[11px]" role="alert">
+          <p className="flex items-start gap-1.5">
+            <Lock className="mt-px size-3 shrink-0 text-warning" />
+            <span>{lockIssue.message}</span>
+          </p>
+          {lockIssue.action && (
+            <Button size="sm" className="w-full" onClick={lockIssue.action.onClick} disabled={lockIssue.action.busy || busy}>
+              <Lock />
+              {lockIssue.action.label}
+            </Button>
+          )}
+        </div>
+      )}
       {!op && !blockedReason && stagedCount === 0 && <p className="text-[11px] text-muted-foreground">Tick the files you want to push.</p>}
     </div>
   );

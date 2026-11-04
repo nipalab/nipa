@@ -64,6 +64,9 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   (`preview.DecodeAudio` waveforms/spectrograms/LUFS + WAV playback through
   WebAudio), CSV/TSV cell diffs via `TableDiff` (`preview.DiffTables`),
   Unity `.meta` warnings via `MetaWarnings` (`internal/unitymeta`),
+  file locks via `LockStatus`/`Lock`/`Unlock` (row lock badges, push box
+  blocks on someone else's lock and offers "Lock N files", Locks tab with
+  release and "Lock & edit" through `PickFile`/`OpenFile`),
   `repo:changed` + `op:progress` events fed by
   the daemon's `WatchChanges` and `OpEvent` streams). Generated TS bindings in
   `desktop/frontend/bindings` are committed. Root `./...` never includes it;
@@ -544,7 +547,10 @@ dirty batches and a background reconciler refreshes `stat_cache` through
 `WorkingCopy.RefreshStatEntries`; watcher failure or event loss is harmless
 (read-through status still stat-detects). `Proxy*` RPCs forward `greet.*`
 messages verbatim over `Client.ServiceClient()`, filling the clone's
-org/project context from `.nipa/config`; `UnwatchRepo` waits for in-flight refs
+org/project context from `.nipa/config`; `LockStatus` joins the lock list,
+the branch scope (default branch = mainline locks), admin rights and the
+caller id (`Client.UserID`, the access token's JWT `sub`) with the status into
+per-file `mine`/`theirs`/`needed`/`free` states for changed binaries; `UnwatchRepo` waits for in-flight refs
 before closing handles.
 
 Flow for storage quota (design in `docs/CLOUD_STORAGE_QUOTA.md`):

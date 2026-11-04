@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, FileDiff as FileDiffIcon, Loader2, Tag } from "lucide-react";
-import { desktop, type ChangeSet, type FileChange, type MetaWarning } from "@/api/desktop";
-import { CommitBox } from "@/components/changes/CommitBox";
+import { desktop, type ChangeSet, type FileChange, type FileLockState, type MetaWarning } from "@/api/desktop";
+import { CommitBox, type LockIssue } from "@/components/changes/CommitBox";
 import { DiffViewer } from "@/components/changes/DiffViewer";
 import { FileList, type Selection } from "@/components/changes/FileList";
 import type { DiffLayout } from "@/components/changes/TextDiff";
 import { ConfirmDialog } from "@/components/ui/confirm";
+import { lockStateMap, useLockActions, useLockStatus, type Notify } from "@/hooks/useLocks";
 import type { OpState } from "@/hooks/useRepoOperation";
 import { errorMessage, readSetting, writeSetting } from "@/lib/utils";
 
@@ -21,6 +22,7 @@ type ChangesViewProps = {
   onPush: (message: string) => void;
   onCancelOp: () => void;
   onError: (message: string) => void;
+  notify: Notify;
 };
 
 function firstFile(c: ChangeSet): Selection | null {
@@ -37,7 +39,7 @@ function stillListed(c: ChangeSet, sel: Selection | null): Selection | null {
   return other.some((f) => f.path === sel.path) ? { path: sel.path, staged: !sel.staged } : null;
 }
 
-export function ChangesView({ root, op, message, onMessage, onPush, onCancelOp, onError }: ChangesViewProps) {
+export function ChangesView({ root, op, message, onMessage, onPush, onCancelOp, onError, notify }: ChangesViewProps) {
   const queryClient = useQueryClient();
   const [picked, setPicked] = useState<Selection | null>(null);
   const [discarding, setDiscarding] = useState<FileChange | null>(null);
@@ -50,6 +52,7 @@ export function ChangesView({ root, op, message, onMessage, onPush, onCancelOp, 
       desktop.onRepoChanged((change) => {
         if (change.root !== root) return;
         void queryClient.invalidateQueries({ queryKey: ["changes", root] });
+        void queryClient.invalidateQueries({ queryKey: ["locks", root] });
         const paths = change.paths ?? [];
         if (paths.length === 0) void queryClient.invalidateQueries({ queryKey: ["diff", root] });
         for (const path of paths) void queryClient.invalidateQueries({ queryKey: ["diff", root, path] });
@@ -61,6 +64,7 @@ export function ChangesView({ root, op, message, onMessage, onPush, onCancelOp, 
     onSuccess: (next: ChangeSet) => {
       queryClient.setQueryData(["changes", root], next);
       void queryClient.invalidateQueries({ queryKey: ["diff", root] });
+      void queryClient.invalidateQueries({ queryKey: ["locks", root] });
     },
     onError: (err: unknown) => onError(errorMessage(err)),
   };
@@ -82,6 +86,11 @@ export function ChangesView({ root, op, message, onMessage, onPush, onCancelOp, 
     }
     return map;
   }, [meta.data]);
+  const lockStatus = useLockStatus(root);
+  const lockStates = useMemo(() => lockStateMap(lockStatus.data), [lockStatus.data]);
+  const { lock } = useLockActions(root, notify);
+  const lockBranch = lockStatus.data?.branch ?? "";
+  const lockPaths = (paths: string[]) => lock.mutate({ branch: lockBranch, paths });
   const selected = data ? (stillListed(data, picked) ?? firstFile(data)) : null;
 
   const diff = useQuery({
@@ -104,6 +113,7 @@ export function ChangesView({ root, op, message, onMessage, onPush, onCancelOp, 
   const busy = stage.isPending || unstage.isPending || discard.isPending || !!op;
   const empty = c.staged.length === 0 && c.unstaged.length === 0;
   const blocked = c.detached ? `HEAD is at tag ${c.detached}. Switch to a branch to push.` : undefined;
+  const lockIssue = stagedLockIssue(c, lockStates, lockPaths, lock.isPending);
 
   return (
     <div className="flex h-full min-h-0">
@@ -144,11 +154,14 @@ export function ChangesView({ root, op, message, onMessage, onPush, onCancelOp, 
             onUnstage={(paths) => unstage.mutate(paths)}
             onDiscard={setDiscarding}
             warnings={warnings}
+            locks={lockStates}
+            onLock={lockStatus.data ? (path) => lockPaths([path]) : undefined}
           />
         )}
         <CommitBox
           stagedCount={c.staged.length}
           blockedReason={blocked}
+          lockIssue={blocked ? undefined : lockIssue}
           op={op?.op === "push" ? op : null}
           busy={busy}
           message={message}
@@ -186,6 +199,24 @@ export function ChangesView({ root, op, message, onMessage, onPush, onCancelOp, 
       )}
     </div>
   );
+}
+
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+function stagedLockIssue(c: ChangeSet, states: Map<string, FileLockState>, lockPaths: (paths: string[]) => void, busy: boolean): LockIssue | undefined {
+  const staged = c.staged.flatMap((f) => states.get(f.path) ?? []);
+  const theirs = staged.filter((s) => s.state === "theirs");
+  if (theirs.length > 0) {
+    const [first] = theirs;
+    const more = theirs.length > 1 ? ` (+${theirs.length - 1} more)` : "";
+    return { message: `${first.path} is locked by ${first.heldByName || "someone else"}${more}. Unstage it or ask them to release the lock.` };
+  }
+  const needed = staged.filter((s) => s.state === "needed");
+  if (needed.length === 0) return undefined;
+  return {
+    message: `${plural(needed.length, "staged file")} ${needed.length === 1 ? "needs" : "need"} a lock before you can push.`,
+    action: { label: `Lock ${plural(needed.length, "file")}`, onClick: () => lockPaths(needed.map((s) => s.path)), busy },
+  };
 }
 
 const metaKinds: Record<string, string> = {

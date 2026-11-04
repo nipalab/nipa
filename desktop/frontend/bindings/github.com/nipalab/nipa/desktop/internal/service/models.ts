@@ -126,6 +126,51 @@ export interface FileDiff {
     "untracked"?: boolean;
 }
 
+export interface FileLock {
+    "id": string;
+
+    /**
+     * file or directory prefix
+     */
+    "path": string;
+    "branch": string;
+
+    /**
+     * mainline lock of the default branch
+     */
+    "global": boolean;
+    "heldBy": string;
+    "heldByName": string;
+    "mine": boolean;
+
+    /**
+     * 0 when not held for a merge request
+     */
+    "mergeRequest": number;
+
+    /**
+     * RFC 3339, empty when unknown
+     */
+    "acquiredAt": string;
+
+    /**
+     * applies to the clone's branch
+     */
+    "inScope": boolean;
+}
+
+export interface FileLockState {
+    "path": string;
+
+    /**
+     * mine, theirs, needed, free
+     */
+    "state": string;
+    "lockPath": string;
+    "heldByName": string;
+    "tracked": boolean;
+}
+
 export interface FileSide {
     "path": string;
     "mode": number;
@@ -229,6 +274,29 @@ export interface ImageStats {
     "formatChanged": boolean;
     "bitDepthChanged": boolean;
     "alphaChanged": boolean;
+}
+
+export interface LockFailure {
+    "path": string;
+    "message": string;
+}
+
+export interface LockResult {
+    "locked": string[] | null;
+    "failed": LockFailure[] | null;
+}
+
+/**
+ * LockStatus is the clone's lock picture: every visible lock, and the lock
+ * state of each changed binary in the branch's scope.
+ */
+export interface LockStatus {
+    "userId": string;
+    "branch": string;
+    "defaultBranch": boolean;
+    "canReleaseAny": boolean;
+    "locks": FileLock[] | null;
+    "files": FileLockState[] | null;
 }
 
 export interface MetaWarning {

@@ -46,7 +46,9 @@ Sonar never compile it.
   its error.
 - `internal/service`: the Wails-bound API (`Connect`, `Repos`, `PickRepo`,
   `AddRepo`, `RemoveRepo`; Changes screen: `Changes`, `Stage`, `Unstage`,
-  `Discard`, `FileDiff`, `ImageDiff`, `Push`, `Update`). Plain Go behind `Dialer`/
+  `Discard`, `FileDiff`, `ImageDiff`, `ModelDiff`, `AudioDiff`, `TableDiff`,
+  `MetaWarnings`, `Push`, `Update`; Locks: `LockStatus`, `Lock`, `Unlock`,
+  `PickFile`, `OpenFile`). Plain Go behind `Dialer`/
   `RepoStore`/`FolderPicker` seams, so it is unit-tested without a webview; an
   `Unavailable` error drops the session so the next call reconnects (and
   restarts the daemon) and re-watches each clone on first use. Every watched
@@ -129,6 +131,24 @@ Sonar never compile it.
   new folders without a `.meta`, `.meta` files left without their asset or
   deleted while the asset stays, a `.meta` not staged with its staged asset,
   and a changed GUID (old content read from the snapshot, 256 checks max).
+- Locks: `LockStatus` asks the daemon's `LockStatus` RPC for every visible
+  lock plus the state of each changed binary (a tracked file stored as
+  binary, or a known asset extension) in the lock scope of the clone's
+  branch (mainline locks on the default branch, that branch's locks
+  otherwise): `mine`, `theirs` (someone else's file or folder lock),
+  `needed` (a tracked binary the server will refuse to push without the
+  caller's lock) or `free`. The file list marks each row (blue: yours, red:
+  held by someone, amber: needs a lock, click to lock; hover to lock a free
+  one) and the push box refuses to push while a staged file is held by
+  someone else, or offers "Lock N files" when staged files only need locks.
+  The Locks tab lists all locks (in scope first; mine/team filter and text
+  search; branch, holder, age, merge request) with Release for your own locks
+  and, for project admins, anyone's after a confirmation, plus "Lock & edit a
+  file…": the native file dialog (`PickFile`, refuses paths outside the
+  clone or in `.nipa/`) picks a file, `Lock` locks it and `OpenFile` opens it
+  in its default application. Lock status refreshes on change events, after
+  operations and every 30 s; when it cannot be read (offline) nothing is
+  blocked and the server stays the gate.
 - `frontend/`: React 18, Vite 8, Tailwind 4 (tokens in `src/index.css`,
   light/dark/system theme in `src/lib/theme.tsx`), TanStack Query, lucide.
   Generated bindings live in `frontend/bindings` and are committed (CI fails
@@ -244,7 +264,7 @@ Pure package (no client imports), shared by the daemon and later the server.
 7. DDS/KTX2/EXR/HDR/PSD decoders + viewer controls. **(done)**
 8. 3D model viewer. **(done)**
 9. Audio viewer, CSV table diff, Unity `.meta` lint. **(done)**
-10. Locks (lock-aware status, Lock & edit, Locks page).
+10. Locks (lock-aware status, Lock & edit, Locks page). **(done)**
 11. Sign in, clone, sparse checkout.
 12. History, branches, tags, revert.
 13. Merge requests with asset viewers.

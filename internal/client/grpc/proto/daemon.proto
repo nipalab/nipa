@@ -567,6 +567,28 @@ message ProxyListFileLocksResponse {
     greet.ListFileLocksResponse response = 1;
 }
 
+message LockStatusRequest {
+    string root = 1;
+}
+
+message LockStatusResponse {
+    string user_id = 1; // the signed-in account (base36), from the session's access token
+    string branch = 2; // the configured branch the locks are scoped to
+    bool default_branch = 3; // the branch is the default: project-global (mainline) locks apply
+    bool can_release_any = 4; // the caller administers the project and may release anyone's lock
+    repeated greet.FileLockDetail locks = 5; // every lock the caller can see, in any scope
+    repeated FileLockState files = 6; // changed binary files and their lock state in the branch scope
+}
+
+message FileLockState {
+    string path = 1;
+    string state = 2; // mine, theirs, needed (tracked binary without a lock), free
+    string lock_path = 3; // covering lock: the file or a directory prefix
+    string held_by = 4;
+    string held_by_name = 5;
+    bool tracked = 6;
+}
+
 service NipaDaemon {
     rpc Ping(PingRequest) returns (PingResponse);
     rpc Shutdown(ShutdownRequest) returns (ShutdownResponse);
@@ -613,4 +635,5 @@ service NipaDaemon {
     rpc ProxyLockFile(ProxyLockFileRequest) returns (ProxyLockFileResponse);
     rpc ProxyUnlockFile(ProxyUnlockFileRequest) returns (ProxyUnlockFileResponse);
     rpc ProxyListFileLocks(ProxyListFileLocksRequest) returns (ProxyListFileLocksResponse);
+    rpc LockStatus(LockStatusRequest) returns (LockStatusResponse);
 }

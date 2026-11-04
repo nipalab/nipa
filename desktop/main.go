@@ -39,6 +39,15 @@ func main() {
 		},
 	)
 	svc.Events = func(name string, data any) { app.Event.Emit(name, data) }
+	svc.PickFileFunc = func(dir string) (string, error) {
+		return app.Dialog.OpenFile().
+			SetTitle("Choose a file to lock").
+			SetDirectory(dir).
+			CanChooseFiles(true).
+			CanChooseDirectories(false).
+			PromptForSingleSelection()
+	}
+	svc.OpenFunc = func(path string) error { return app.Browser.OpenFile(path) }
 
 	app = application.New(application.Options{
 		Name:        "Nipa",

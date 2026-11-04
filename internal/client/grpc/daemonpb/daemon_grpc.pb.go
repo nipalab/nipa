@@ -60,6 +60,7 @@ const (
 	NipaDaemon_ProxyLockFile_FullMethodName                 = "/nipadaemon.NipaDaemon/ProxyLockFile"
 	NipaDaemon_ProxyUnlockFile_FullMethodName               = "/nipadaemon.NipaDaemon/ProxyUnlockFile"
 	NipaDaemon_ProxyListFileLocks_FullMethodName            = "/nipadaemon.NipaDaemon/ProxyListFileLocks"
+	NipaDaemon_LockStatus_FullMethodName                    = "/nipadaemon.NipaDaemon/LockStatus"
 )
 
 // NipaDaemonClient is the client API for NipaDaemon service.
@@ -107,6 +108,7 @@ type NipaDaemonClient interface {
 	ProxyLockFile(ctx context.Context, in *ProxyLockFileRequest, opts ...grpc.CallOption) (*ProxyLockFileResponse, error)
 	ProxyUnlockFile(ctx context.Context, in *ProxyUnlockFileRequest, opts ...grpc.CallOption) (*ProxyUnlockFileResponse, error)
 	ProxyListFileLocks(ctx context.Context, in *ProxyListFileLocksRequest, opts ...grpc.CallOption) (*ProxyListFileLocksResponse, error)
+	LockStatus(ctx context.Context, in *LockStatusRequest, opts ...grpc.CallOption) (*LockStatusResponse, error)
 }
 
 type nipaDaemonClient struct {
@@ -617,6 +619,16 @@ func (c *nipaDaemonClient) ProxyListFileLocks(ctx context.Context, in *ProxyList
 	return out, nil
 }
 
+func (c *nipaDaemonClient) LockStatus(ctx context.Context, in *LockStatusRequest, opts ...grpc.CallOption) (*LockStatusResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(LockStatusResponse)
+	err := c.cc.Invoke(ctx, NipaDaemon_LockStatus_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // NipaDaemonServer is the server API for NipaDaemon service.
 // All implementations must embed UnimplementedNipaDaemonServer
 // for forward compatibility.
@@ -662,6 +674,7 @@ type NipaDaemonServer interface {
 	ProxyLockFile(context.Context, *ProxyLockFileRequest) (*ProxyLockFileResponse, error)
 	ProxyUnlockFile(context.Context, *ProxyUnlockFileRequest) (*ProxyUnlockFileResponse, error)
 	ProxyListFileLocks(context.Context, *ProxyListFileLocksRequest) (*ProxyListFileLocksResponse, error)
+	LockStatus(context.Context, *LockStatusRequest) (*LockStatusResponse, error)
 	mustEmbedUnimplementedNipaDaemonServer()
 }
 
@@ -794,6 +807,9 @@ func (UnimplementedNipaDaemonServer) ProxyUnlockFile(context.Context, *ProxyUnlo
 }
 func (UnimplementedNipaDaemonServer) ProxyListFileLocks(context.Context, *ProxyListFileLocksRequest) (*ProxyListFileLocksResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ProxyListFileLocks not implemented")
+}
+func (UnimplementedNipaDaemonServer) LockStatus(context.Context, *LockStatusRequest) (*LockStatusResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method LockStatus not implemented")
 }
 func (UnimplementedNipaDaemonServer) mustEmbedUnimplementedNipaDaemonServer() {}
 func (UnimplementedNipaDaemonServer) testEmbeddedByValue()                    {}
@@ -1484,6 +1500,24 @@ func _NipaDaemon_ProxyListFileLocks_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _NipaDaemon_LockStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(LockStatusRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaDaemonServer).LockStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaDaemon_LockStatus_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaDaemonServer).LockStatus(ctx, req.(*LockStatusRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // NipaDaemon_ServiceDesc is the grpc.ServiceDesc for NipaDaemon service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1614,6 +1648,10 @@ var NipaDaemon_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ProxyListFileLocks",
 			Handler:    _NipaDaemon_ProxyListFileLocks_Handler,
+		},
+		{
+			MethodName: "LockStatus",
+			Handler:    _NipaDaemon_LockStatus_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
