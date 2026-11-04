@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AudioLines, Loader2, Pause, Play, Square } from "lucide-react";
 import { desktop, type AudioCompare, type AudioSide, type AudioStats, type FileDiff } from "@/api/desktop";
-import { imageRefs } from "@/components/changes/ImageDiff";
+import { imageRefs, viewerKey } from "@/components/changes/ImageDiff";
 import { MetaDiff } from "@/components/changes/Notices";
 import { Group, Notice, ToolButton } from "@/components/changes/Toolbar";
 import { createPlayer, drawWaveform, formatDb, formatTime, spectrogramPixels, type AudioContextLike, type Player, type Side } from "@/lib/audio";
@@ -12,7 +12,7 @@ import { base64ToBytes, cn } from "@/lib/utils";
 export function AudioDiff({ root, diff }: { root: string; diff: FileDiff }) {
   const { old, next } = imageRefs(diff);
   const query = useQuery({
-    queryKey: ["diff", root, diff.path, "audio"],
+    queryKey: viewerKey(root, diff, "audio"),
     queryFn: () => desktop.audioDiff(root, old, next),
     staleTime: 30_000,
   });

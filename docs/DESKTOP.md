@@ -50,7 +50,9 @@ Sonar never compile it.
   `MetaWarnings`, `Push`, `Update`; Locks: `LockStatus`, `Lock`, `Unlock`,
   `PickFile`, `OpenFile`; Clone: `AccountStatus`, `SignIn`, `SignInSSH`,
   `ListProjects`, `RemoteBranches`, `RemoteTree`, `ChooseFolder`, `Clone`,
-  `SetSparse`). Plain Go behind `Dialer`/
+  `SetSparse`; History: `History`, `CommitFiles`, `Branches`, `CreateBranch`,
+  `DeleteBranch`, `SwitchBranch`, `Tags`, `CreateTag`, `DeleteTag`,
+  `CheckoutTag`, `Revert`). Plain Go behind `Dialer`/
   `RepoStore`/`FolderPicker` seams, so it is unit-tested without a webview; an
   `Unavailable` error drops the session so the next call reconnects (and
   restarts the daemon) and re-watches each clone on first use. Every watched
@@ -146,6 +148,31 @@ Sonar never compile it.
   then opens the clone like `AddRepo`. The Details tab's "Change folders…"
   reuses the folder tree for an existing clone and applies it with
   `SetSparse` (sparse prefixes + update, progress in the header).
+- History: the History tab pages the branch log (`History` over
+  `ProxyCommitLog`, 50 per page, "Load older commits") with a lane marker
+  per commit (merge commits marked), tag badges and a client-side
+  author/message filter. "History of a file or folder" sends the path to the
+  server (`GetCommitLog.path`, the web UI's per-path history), and for an
+  image path a thumbnail strip shows each version (`ImageDiff` of that
+  revision alone, 128 px). Selecting a commit lists what it changed against
+  its first parent (`CommitFiles` = daemon `DiffFiles` with `show`; a root
+  commit compares with an empty tree) and opens the same text, image, model,
+  audio and table viewers as the Changes screen: each file carries
+  `oldRevision`/`newRevision`, so the viewers read both sides from the server
+  (`BlobRef` revision) and cache them under a separate `commit` query key.
+  Parent links jump to commits outside the loaded page. Actions: Branch…
+  (create at this commit), Tag… (name + message) and Revert… (confirmation,
+  then the daemon `Revert` stream; merge commits stay CLI-only because they
+  need `--mainline`).
+- Branches & tags tab: branches (default first, current/default/protected
+  badges, Switch, Delete with confirmation; "New branch" starts from the
+  clone's branch head) and tags (message, age, commit; Check out, Delete,
+  "New tag" on the branch head). Check out is the CLI's `switch --tag`: the
+  header shows the tag instead of the branch, Update is disabled and a
+  banner offers "Back to <branch>". A revert stopped on conflicts (status
+  `pending` = `revert`, with the conflicting files and the commits left)
+  shows a banner with Continue, Skip and Abort; a pending merge only points
+  to the CLI until the conflict screen (PR 14).
 - Locks: `LockStatus` asks the daemon's `LockStatus` RPC for every visible
   lock plus the state of each changed binary (a tracked file stored as
   binary, or a known asset extension) in the lock scope of the clone's
@@ -281,7 +308,7 @@ Pure package (no client imports), shared by the daemon and later the server.
 9. Audio viewer, CSV table diff, Unity `.meta` lint. **(done)**
 10. Locks (lock-aware status, Lock & edit, Locks page). **(done)**
 11. Sign in, clone, sparse checkout. **(done)**
-12. History, branches, tags, revert.
+12. History, branches, tags, revert. **(done)**
 13. Merge requests with asset viewers.
 14. Conflict resolution.
 15. Tray, notifications, deep links, settings.

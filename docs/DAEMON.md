@@ -120,14 +120,14 @@ pb goes to `internal/client/grpc/daemonpb`. `make proto` gains a second
 |-----|-------|-------|
 | `Ping` | unary | readiness + version; discovery handshake |
 | `WatchRepo` / `UnwatchRepo` / `ListRepos` | unary | validate + register; returns config (url, branch, sparse) |
-| `Status` | unary | full `WorkingCopy.Status` result (configured branch + detached `head` marker, staged/deleted/modified/untracked/missing/conflicts, and `added`: the staged paths the snapshot does not track yet); `no_cache` passthrough |
+| `Status` | unary | full `WorkingCopy.Status` result (configured branch + detached `head` marker, staged/deleted/modified/untracked/missing/conflicts, and `added`: the staged paths the snapshot does not track yet); `pending` is `merge` or `revert` while one waits for continue/abort, `pending_remaining` the revert targets left (current one included); `no_cache` passthrough |
 | `Stage` | unary | add/remove path lists → returns fresh status |
 | `Restore` | unary | discard unpushed changes for files/dirs → returns fresh status; staged paths refused |
 | `Update`, `Switch` | **server-streaming** | progress events → terminal result; `Switch` takes an optional `tag` to detach HEAD at a release tag instead of switching branches |
 | `Push` | **server-streaming** | message → progress → result (commit id/tree hash) |
 | `Merge`, `Revert` | **server-streaming** | incl. continue/skip/abort variants; conflicts returned as terminal event |
 | `Diff` | **server-streaming** | unified/stat/name output paged as bytes (reuse `usecase.Diff` renderers) |
-| `DiffFiles` | **server-streaming** | same request as `Diff` (format ignored); one structured `DiffFile` per path: status, viewer `kind` (`internal/preview.Classify`), old/new side metadata (mode, size, binary, hex hash), add/remove counts and `greet.DiffHunkDetail` hunks — omitted with `hunks_omitted` above 1 MiB of hunk text per file |
+| `DiffFiles` | **server-streaming** | same request as `Diff` (format ignored; `show` with one revision compares it with its first parent, or an empty tree for a root commit — the GUI's commit view); one structured `DiffFile` per path: status, viewer `kind` (`internal/preview.Classify`), old/new side metadata (mode, size, binary, hex hash), add/remove counts and `greet.DiffHunkDetail` hunks — omitted with `hunks_omitted` above 1 MiB of hunk text per file |
 | `ReadBlob` | **server-streaming** | one file version (`BlobRef`: `working` default, `snapshot` = last synced side of a working diff, offline, or `revision` + branch/tag/commit/HEAD); `BlobInfo` (size, binary, hex hash, kind) then decoded content in 64 KiB chunks; revision chunks are downloaded into `.nipa/objects` first. Paths are repo-relative, `.nipa/` and symlinks leaving the clone are refused |
 | `Preview` | **server-streaming** | `old`/`new` `BlobRef`s + optional texture `level`/`face` → per side `ImagePreview` (dims, format, encoding, depth, alpha, levels/faces/cube and the decoded level/face, PSD `layers`, `hdr`) + downscaled PNG chunks (`max_size`, default 2048; HDR sides are `preview.PackHDR` RGBE PNGs twice as wide), then `ImageDiffStats` from `preview.CompareImages` when both sides are given; non-image or unsupported formats fail with 415 and the decoder's reason |
 | `WatchChanges` | **server-streaming** | change notices for one watched root: the watcher batch's paths after the stat-cache refresh, or no paths (= refresh everything) after an operation, a stage/restore, or more than 512 coalesced paths. Headers are sent once subscribed; never pins the repo, ends on unwatch or shutdown |
@@ -136,8 +136,10 @@ pb goes to `internal/client/grpc/daemonpb`. `make proto` gains a second
 
 ### Proxy ops (unary pass-through to the server)
 
-Phase A scope: branches (list/create/delete/protect info), `GetTreeManifest`,
-`GetCommitLog`/`GetCommit`/`WalkCommits`/`GetMergeBase`, MR
+Phase A scope: branches (list/create/delete/protect info), release tags
+(`ProxyTagList`/`ProxyTagCreate`/`ProxyTagDelete`), `GetTreeManifest`,
+`GetCommitLog` (with `path`: only the commits that changed a file or folder)/
+`GetCommit`/`WalkCommits`/`GetMergeBase`, MR
 list/create/merge/close + detail incl. review summary and threads, file locks
 (lock/unlock/list). Phase B: PBAC/path permissions, groups, admin.
 

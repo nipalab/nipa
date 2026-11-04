@@ -3166,6 +3166,7 @@ type GetCommitLogRequest struct {
 	Branch        string                 `protobuf:"bytes,2,opt,name=branch,proto3" json:"branch,omitempty"`                                            // empty to use the default branch
 	StartCommitId *string                `protobuf:"bytes,3,opt,name=start_commit_id,json=startCommitId,proto3,oneof" json:"start_commit_id,omitempty"` // base36 snow ID; empty to start from the branch head
 	Limit         int32                  `protobuf:"varint,4,opt,name=limit,proto3" json:"limit,omitempty"`
+	Path          string                 `protobuf:"bytes,5,opt,name=path,proto3" json:"path,omitempty"` // file or directory; when set only commits that changed it are listed
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3226,6 +3227,13 @@ func (x *GetCommitLogRequest) GetLimit() int32 {
 		return x.Limit
 	}
 	return 0
+}
+
+func (x *GetCommitLogRequest) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
 }
 
 type GetCommitLogResponse struct {
@@ -10815,12 +10823,13 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAtB\x0e\n" +
 	"\f_parent_1_idB\x0e\n" +
-	"\f_parent_2_id\"\xb5\x01\n" +
+	"\f_parent_2_id\"\xc9\x01\n" +
 	"\x13GetCommitLogRequest\x12/\n" +
 	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12\x16\n" +
 	"\x06branch\x18\x02 \x01(\tR\x06branch\x12+\n" +
 	"\x0fstart_commit_id\x18\x03 \x01(\tH\x00R\rstartCommitId\x88\x01\x01\x12\x14\n" +
-	"\x05limit\x18\x04 \x01(\x05R\x05limitB\x12\n" +
+	"\x05limit\x18\x04 \x01(\x05R\x05limit\x12\x12\n" +
+	"\x04path\x18\x05 \x01(\tR\x04pathB\x12\n" +
 	"\x10_start_commit_id\"_\n" +
 	"\x14GetCommitLogResponse\x12\x16\n" +
 	"\x06branch\x18\x01 \x01(\tR\x06branch\x12/\n" +

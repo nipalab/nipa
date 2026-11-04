@@ -73,6 +73,8 @@ message StatusResponse {
     string branch = 7;
     StatusHead head = 8; // set when HEAD is detached
     repeated string added = 9; // subset of staged: paths the synced snapshot does not track yet
+    string pending = 10; // merge or revert while it waits for continue/abort
+    int32 pending_remaining = 11; // revert targets still to apply, the current one included
 }
 
 message StatusHead {
@@ -137,6 +139,7 @@ message DiffRequest {
     bool ignore_all_space = 8; // -w
     bool ignore_space_change = 9; // -b
     int32 context = 10; // context lines for the patch format; 0 uses the default
+    bool show = 11; // with one revision: compare it with its first parent (empty tree for a root commit)
 }
 
 message DiffEvent {
@@ -567,6 +570,33 @@ message ProxyListFileLocksResponse {
     greet.ListFileLocksResponse response = 1;
 }
 
+message ProxyTagListRequest {
+    string root = 1;
+    greet.ListTagsRequest request = 2;
+}
+
+message ProxyTagListResponse {
+    greet.ListTagsResponse response = 1;
+}
+
+message ProxyTagCreateRequest {
+    string root = 1;
+    greet.CreateTagRequest request = 2;
+}
+
+message ProxyTagCreateResponse {
+    greet.CreateTagResponse response = 1;
+}
+
+message ProxyTagDeleteRequest {
+    string root = 1;
+    greet.DeleteTagRequest request = 2;
+}
+
+message ProxyTagDeleteResponse {
+    greet.DeleteTagResponse response = 1;
+}
+
 message LockStatusRequest {
     string root = 1;
 }
@@ -682,6 +712,9 @@ service NipaDaemon {
     rpc ProxyBranchList(ProxyBranchListRequest) returns (ProxyBranchListResponse);
     rpc ProxyBranchCreate(ProxyBranchCreateRequest) returns (ProxyBranchCreateResponse);
     rpc ProxyBranchDelete(ProxyBranchDeleteRequest) returns (ProxyBranchDeleteResponse);
+    rpc ProxyTagList(ProxyTagListRequest) returns (ProxyTagListResponse);
+    rpc ProxyTagCreate(ProxyTagCreateRequest) returns (ProxyTagCreateResponse);
+    rpc ProxyTagDelete(ProxyTagDeleteRequest) returns (ProxyTagDeleteResponse);
     rpc ProxyTreeManifest(ProxyTreeManifestRequest) returns (ProxyTreeManifestResponse);
     rpc ProxyCommitLog(ProxyCommitLogRequest) returns (ProxyCommitLogResponse);
     rpc ProxyCommitGet(ProxyCommitGetRequest) returns (ProxyCommitGetResponse);

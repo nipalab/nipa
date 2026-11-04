@@ -418,13 +418,15 @@ func TestWorkingCopy_Status_ReportsRevertConflicts(t *testing.T) {
 	root := t.TempDir()
 	local := &stubLocalRepo{
 		snapshot:    &domain.Snapshot{},
-		revertState: &domain.RevertState{Conflicts: []string{"a.txt"}},
+		revertState: &domain.RevertState{Conflicts: []string{"a.txt"}, Targets: []domain.CommitRef{{}, {}}},
 	}
 	wc := newWorkingCopy(t, local, root)
 
 	st, err := wc.Status(context.Background())
 	require.NoError(t, err)
 	require.Equal(t, []string{"a.txt"}, st.Conflicts)
+	require.Equal(t, "revert", st.Pending)
+	require.Equal(t, 2, st.PendingRemaining)
 }
 
 func contentHash(t *testing.T, content string) serverDomain.Hash {
@@ -439,4 +441,15 @@ func writeRepoFile(t *testing.T, root, path, content string) {
 	fp := filepath.Join(root, filepath.FromSlash(path))
 	require.NoError(t, os.MkdirAll(filepath.Dir(fp), 0o755))
 	require.NoError(t, os.WriteFile(fp, []byte(content), 0o644))
+}
+
+func TestWorkingCopy_Status_ReportsPendingMerge(t *testing.T) {
+	local := &stubLocalRepo{
+		snapshot:   &domain.Snapshot{},
+		mergeState: &domain.MergeState{SourceBranch: "feature", Conflicts: []string{"a.txt"}},
+	}
+	st, err := newWorkingCopy(t, local, t.TempDir()).Status(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, "merge", st.Pending)
+	require.Equal(t, []string{"a.txt"}, st.Conflicts)
 }

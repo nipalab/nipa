@@ -306,3 +306,10 @@ func TestServer_ListRepos(t *testing.T) {
 	require.Len(t, res.GetRepos(), 2)
 	require.Less(t, res.GetRepos()[0].GetRoot(), res.GetRepos()[1].GetRoot())
 }
+
+func TestStatusToPB_CarriesPendingOperation(t *testing.T) {
+	res := statusToPB(&clientDomain.Status{Branch: "main", Conflicts: []string{"a.txt"}, Pending: "revert", PendingRemaining: 2})
+	require.Equal(t, "revert", res.GetPending())
+	require.Equal(t, int32(2), res.GetPendingRemaining())
+	require.Equal(t, []string{"a.txt"}, res.GetConflicts())
+}

@@ -229,6 +229,7 @@ func (w *WorkingCopy) Status(ctx context.Context, opts ...StatusOptions) (*domai
 	}
 	if mergeState != nil {
 		st.Conflicts = append([]string(nil), mergeState.Conflicts...)
+		st.Pending = "merge"
 	}
 	revertState, err := w.localRepo.LoadRevertState()
 	if err != nil {
@@ -236,6 +237,7 @@ func (w *WorkingCopy) Status(ctx context.Context, opts ...StatusOptions) (*domai
 	}
 	if revertState != nil {
 		st.Conflicts = append(st.Conflicts, revertState.Conflicts...)
+		st.Pending, st.PendingRemaining = "revert", len(revertState.Targets)
 	}
 
 	observedAt := time.Now().UnixNano()

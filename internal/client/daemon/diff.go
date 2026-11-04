@@ -132,6 +132,7 @@ func (s *Server) runDiff(ctx context.Context, req *daemonpb.DiffRequest) ([]diff
 		Paths:     req.GetPaths(),
 		MergeBase: mergeBase,
 		NoCache:   req.GetNoCache(),
+		Show:      req.GetShow(),
 	})
 	if err != nil {
 		done()

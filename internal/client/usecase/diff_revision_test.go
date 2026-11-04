@@ -469,3 +469,55 @@ func TestDiff_BinaryOptionLoadsContent(t *testing.T) {
 	require.Equal(t, []byte(newContent), files[0].New)
 	require.NotEmpty(t, client.downloaded)
 }
+
+func TestDiff_ShowComparesWithParent(t *testing.T) {
+	oldContent := "one\n"
+	newContent := "one\ntwo\n"
+	parentID := snow.ID(5).Base36()
+	childID := snow.ID(6).Base36()
+	client := &stubDiffClient{
+		commits: map[string]*clientDomain.CommitDetail{
+			parentID: {ID: parentID, Tree: fileTree(t, "a.txt", oldContent)},
+			childID:  {ID: childID, Parent1ID: parentID, Tree: fileTree(t, "a.txt", newContent)},
+		},
+		download: contentChunks(t, oldContent, newContent),
+	}
+
+	files, err := NewDiff(diffAuth(t), client, newDiffStub()).Run(context.Background(), t.TempDir(), []string{childID}, DiffOptions{Show: true})
+	require.NoError(t, err)
+	require.Len(t, files, 1)
+	require.Equal(t, diff.Modified, files[0].Change.Status)
+	require.Equal(t, []byte(oldContent), files[0].Old)
+	require.Equal(t, []byte(newContent), files[0].New)
+	require.Equal(t, []string{childID, parentID}, client.commitLookups)
+}
+
+func TestDiff_ShowRootCommitAddsEverything(t *testing.T) {
+	content := "hello\n"
+	rootID := snow.ID(5).Base36()
+	client := &stubDiffClient{
+		commits:  map[string]*clientDomain.CommitDetail{rootID: {ID: rootID, Tree: fileTree(t, "a.txt", content)}},
+		download: contentChunks(t, content),
+	}
+
+	files, err := NewDiff(diffAuth(t), client, newDiffStub()).Run(context.Background(), t.TempDir(), []string{rootID}, DiffOptions{Show: true})
+	require.NoError(t, err)
+	require.Len(t, files, 1)
+	require.Equal(t, diff.Added, files[0].Change.Status)
+	require.Equal(t, []byte(content), files[0].New)
+}
+
+func TestDiff_ShowErrors(t *testing.T) {
+	childID := snow.ID(6).Base36()
+	client := &stubDiffClient{commits: map[string]*clientDomain.CommitDetail{childID: {ID: childID, Parent1ID: snow.ID(5).Base36()}}}
+	d := NewDiff(diffAuth(t), client, newDiffStub())
+
+	_, err := d.Run(context.Background(), t.TempDir(), []string{"a", "b"}, DiffOptions{Show: true})
+	require.ErrorContains(t, err, "exactly one revision")
+	_, err = d.Run(context.Background(), t.TempDir(), nil, DiffOptions{Show: true})
+	require.ErrorContains(t, err, "exactly one revision")
+	_, err = d.Run(context.Background(), t.TempDir(), []string{"nope"}, DiffOptions{Show: true})
+	require.ErrorContains(t, err, `revision "nope" not found`)
+	_, err = d.Run(context.Background(), t.TempDir(), []string{childID}, DiffOptions{Show: true})
+	require.ErrorContains(t, err, "not found")
+}

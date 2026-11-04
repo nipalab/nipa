@@ -368,3 +368,18 @@ func TestSerialDiff_SerializesRuns(t *testing.T) {
 	wg.Wait()
 	require.Equal(t, 1, maxActive, "only one diff may run at a time")
 }
+
+func TestServer_DiffPassesShow(t *testing.T) {
+	root := newTestClone(t)
+	var gotOpts usecase.DiffOptions
+	srv := newOpServer(t, RepoOps{Diff: &stubDiffRunner{run: func(_ context.Context, _ string, _ []string, opts usecase.DiffOptions) ([]diff.FileDiff, error) {
+		gotOpts = opts
+		return nil, nil
+	}}})
+	_, err := srv.repos.watch(root)
+	require.NoError(t, err)
+
+	stream := runDiff(t, srv, &daemonpb.DiffRequest{Root: root, Revisions: []string{"5"}, Show: true})
+	require.Nil(t, stream.failure())
+	require.True(t, gotOpts.Show)
+}

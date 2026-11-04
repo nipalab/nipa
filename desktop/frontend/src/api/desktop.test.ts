@@ -32,6 +32,17 @@ const service = vi.hoisted(() => ({
   SetSparse: vi.fn(),
   Push: vi.fn(),
   Update: vi.fn(),
+  History: vi.fn(),
+  CommitFiles: vi.fn(),
+  Branches: vi.fn(),
+  CreateBranch: vi.fn(),
+  DeleteBranch: vi.fn(),
+  SwitchBranch: vi.fn(),
+  Tags: vi.fn(),
+  CreateTag: vi.fn(),
+  DeleteTag: vi.fn(),
+  CheckoutTag: vi.fn(),
+  Revert: vi.fn(),
 }));
 vi.mock("../../bindings/github.com/nipalab/nipa/desktop/internal/service", () => ({ Service: service }));
 
@@ -65,10 +76,10 @@ describe("desktop api", () => {
 
   it("fills missing change lists", async () => {
     service.Changes.mockResolvedValue({ branch: "main", detached: "", staged: null, unstaged: null, conflicts: null });
-    const empty = { branch: "main", detached: undefined, staged: [], unstaged: [], conflicts: [] };
+    const empty = { branch: "main", detached: undefined, pending: undefined, pendingRemaining: 0, staged: [], unstaged: [], conflicts: [] };
     expect(await desktop.changes("/a")).toEqual(empty);
 
-    const full = { branch: "dev", detached: "v1", staged: [{ path: "x" }], unstaged: [{ path: "y" }], conflicts: ["z"] };
+    const full = { branch: "dev", detached: "v1", pending: "merge", pendingRemaining: 0, staged: [{ path: "x" }], unstaged: [{ path: "y" }], conflicts: ["z"] };
     service.Stage.mockResolvedValue(full);
     service.Unstage.mockResolvedValue(full);
     service.Discard.mockResolvedValue(full);
@@ -178,5 +189,55 @@ describe("desktop api", () => {
     events.On.mock.calls[1][1]({ data: { root: "/a", op: "push" } });
     expect(changed).toHaveBeenCalledWith({ root: "/a", paths: null });
     expect(progress).toHaveBeenCalledWith({ root: "/a", op: "push" });
+  });
+
+  it("pages history and normalises missing lists", async () => {
+    service.History.mockResolvedValueOnce({ next: "c1", commits: [{ id: "c2", parents: null }] }).mockResolvedValueOnce(null);
+    expect(await desktop.history("/a", { path: "art" })).toEqual({ next: "c1", commits: [{ id: "c2", parents: [] }] });
+    expect(service.History).toHaveBeenCalledWith("/a", { branch: "", path: "art", start: "", limit: 0 });
+    expect(await desktop.history("/a", {})).toEqual({ next: "", commits: [] });
+
+    service.CommitFiles.mockResolvedValue(null);
+    service.Branches.mockResolvedValue(null);
+    service.Tags.mockResolvedValue(null);
+    expect(await desktop.commitFiles("/a", "c2", "c1")).toEqual([]);
+    expect(await desktop.branches("/a")).toEqual([]);
+    expect(await desktop.tags("/a")).toEqual([]);
+    expect(service.CommitFiles).toHaveBeenCalledWith("/a", "c2", "c1");
+  });
+
+  it("creates and deletes branches and tags", async () => {
+    service.CreateBranch.mockResolvedValueOnce({ name: "fix" }).mockResolvedValueOnce(null);
+    service.CreateTag.mockResolvedValueOnce({ name: "v1" }).mockResolvedValueOnce(null);
+    expect(await desktop.createBranch("/a", "fix", { commit: "c2" })).toEqual({ name: "fix" });
+    expect(service.CreateBranch).toHaveBeenLastCalledWith("/a", "fix", "", "c2");
+    await expect(desktop.createBranch("/a", "fix")).rejects.toThrow("not created");
+    expect(service.CreateBranch).toHaveBeenLastCalledWith("/a", "fix", "", "");
+    expect(await desktop.createTag("/a", "v1", { branch: "main" }, "ship")).toEqual({ name: "v1" });
+    expect(service.CreateTag).toHaveBeenLastCalledWith("/a", "v1", "main", "", "ship");
+    await expect(desktop.createTag("/a", "v1")).rejects.toThrow("not created");
+    expect(service.CreateTag).toHaveBeenLastCalledWith("/a", "v1", "", "", "");
+
+    await desktop.deleteBranch("/a", "fix");
+    await desktop.deleteTag("/a", "v1");
+    expect(service.DeleteBranch).toHaveBeenCalledWith("/a", "fix");
+    expect(service.DeleteTag).toHaveBeenCalledWith("/a", "v1");
+  });
+
+  it("starts switch, tag checkout and revert operations", async () => {
+    service.SwitchBranch.mockResolvedValue({ branch: "fix" });
+    service.CheckoutTag.mockResolvedValue({ branch: "main" });
+    service.Revert.mockResolvedValue({ revert: { committed: true } });
+    expect(await desktop.switchBranch("/a", "fix")).toEqual({ branch: "fix" });
+    expect(await desktop.checkoutTag("/a", "v1")).toEqual({ branch: "main" });
+    expect(await desktop.revert("/a", { mode: "abort" })).toEqual({ revert: { committed: true } });
+    expect(service.Revert).toHaveBeenCalledWith("/a", { target: "", mode: "abort" });
+  });
+
+  it("reports a pending revert in the change set", async () => {
+    service.Changes.mockResolvedValue({ branch: "main", pending: "revert", pendingRemaining: 2, staged: null, unstaged: null, conflicts: null });
+    expect(await desktop.changes("/a")).toMatchObject({ pending: "revert", pendingRemaining: 2, conflicts: [] });
+    service.Changes.mockResolvedValue({ branch: "main", pending: "other" });
+    expect(await desktop.changes("/a")).toMatchObject({ pending: undefined, pendingRemaining: 0 });
   });
 });

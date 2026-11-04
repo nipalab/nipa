@@ -41,6 +41,9 @@ const (
 	NipaDaemon_ProxyBranchList_FullMethodName               = "/nipadaemon.NipaDaemon/ProxyBranchList"
 	NipaDaemon_ProxyBranchCreate_FullMethodName             = "/nipadaemon.NipaDaemon/ProxyBranchCreate"
 	NipaDaemon_ProxyBranchDelete_FullMethodName             = "/nipadaemon.NipaDaemon/ProxyBranchDelete"
+	NipaDaemon_ProxyTagList_FullMethodName                  = "/nipadaemon.NipaDaemon/ProxyTagList"
+	NipaDaemon_ProxyTagCreate_FullMethodName                = "/nipadaemon.NipaDaemon/ProxyTagCreate"
+	NipaDaemon_ProxyTagDelete_FullMethodName                = "/nipadaemon.NipaDaemon/ProxyTagDelete"
 	NipaDaemon_ProxyTreeManifest_FullMethodName             = "/nipadaemon.NipaDaemon/ProxyTreeManifest"
 	NipaDaemon_ProxyCommitLog_FullMethodName                = "/nipadaemon.NipaDaemon/ProxyCommitLog"
 	NipaDaemon_ProxyCommitGet_FullMethodName                = "/nipadaemon.NipaDaemon/ProxyCommitGet"
@@ -96,6 +99,9 @@ type NipaDaemonClient interface {
 	ProxyBranchList(ctx context.Context, in *ProxyBranchListRequest, opts ...grpc.CallOption) (*ProxyBranchListResponse, error)
 	ProxyBranchCreate(ctx context.Context, in *ProxyBranchCreateRequest, opts ...grpc.CallOption) (*ProxyBranchCreateResponse, error)
 	ProxyBranchDelete(ctx context.Context, in *ProxyBranchDeleteRequest, opts ...grpc.CallOption) (*ProxyBranchDeleteResponse, error)
+	ProxyTagList(ctx context.Context, in *ProxyTagListRequest, opts ...grpc.CallOption) (*ProxyTagListResponse, error)
+	ProxyTagCreate(ctx context.Context, in *ProxyTagCreateRequest, opts ...grpc.CallOption) (*ProxyTagCreateResponse, error)
+	ProxyTagDelete(ctx context.Context, in *ProxyTagDeleteRequest, opts ...grpc.CallOption) (*ProxyTagDeleteResponse, error)
 	ProxyTreeManifest(ctx context.Context, in *ProxyTreeManifestRequest, opts ...grpc.CallOption) (*ProxyTreeManifestResponse, error)
 	ProxyCommitLog(ctx context.Context, in *ProxyCommitLogRequest, opts ...grpc.CallOption) (*ProxyCommitLogResponse, error)
 	ProxyCommitGet(ctx context.Context, in *ProxyCommitGetRequest, opts ...grpc.CallOption) (*ProxyCommitGetResponse, error)
@@ -443,6 +449,36 @@ func (c *nipaDaemonClient) ProxyBranchDelete(ctx context.Context, in *ProxyBranc
 	return out, nil
 }
 
+func (c *nipaDaemonClient) ProxyTagList(ctx context.Context, in *ProxyTagListRequest, opts ...grpc.CallOption) (*ProxyTagListResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ProxyTagListResponse)
+	err := c.cc.Invoke(ctx, NipaDaemon_ProxyTagList_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nipaDaemonClient) ProxyTagCreate(ctx context.Context, in *ProxyTagCreateRequest, opts ...grpc.CallOption) (*ProxyTagCreateResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ProxyTagCreateResponse)
+	err := c.cc.Invoke(ctx, NipaDaemon_ProxyTagCreate_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nipaDaemonClient) ProxyTagDelete(ctx context.Context, in *ProxyTagDeleteRequest, opts ...grpc.CallOption) (*ProxyTagDeleteResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ProxyTagDeleteResponse)
+	err := c.cc.Invoke(ctx, NipaDaemon_ProxyTagDelete_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *nipaDaemonClient) ProxyTreeManifest(ctx context.Context, in *ProxyTreeManifestRequest, opts ...grpc.CallOption) (*ProxyTreeManifestResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ProxyTreeManifestResponse)
@@ -757,6 +793,9 @@ type NipaDaemonServer interface {
 	ProxyBranchList(context.Context, *ProxyBranchListRequest) (*ProxyBranchListResponse, error)
 	ProxyBranchCreate(context.Context, *ProxyBranchCreateRequest) (*ProxyBranchCreateResponse, error)
 	ProxyBranchDelete(context.Context, *ProxyBranchDeleteRequest) (*ProxyBranchDeleteResponse, error)
+	ProxyTagList(context.Context, *ProxyTagListRequest) (*ProxyTagListResponse, error)
+	ProxyTagCreate(context.Context, *ProxyTagCreateRequest) (*ProxyTagCreateResponse, error)
+	ProxyTagDelete(context.Context, *ProxyTagDeleteRequest) (*ProxyTagDeleteResponse, error)
 	ProxyTreeManifest(context.Context, *ProxyTreeManifestRequest) (*ProxyTreeManifestResponse, error)
 	ProxyCommitLog(context.Context, *ProxyCommitLogRequest) (*ProxyCommitLogResponse, error)
 	ProxyCommitGet(context.Context, *ProxyCommitGetRequest) (*ProxyCommitGetResponse, error)
@@ -859,6 +898,15 @@ func (UnimplementedNipaDaemonServer) ProxyBranchCreate(context.Context, *ProxyBr
 }
 func (UnimplementedNipaDaemonServer) ProxyBranchDelete(context.Context, *ProxyBranchDeleteRequest) (*ProxyBranchDeleteResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ProxyBranchDelete not implemented")
+}
+func (UnimplementedNipaDaemonServer) ProxyTagList(context.Context, *ProxyTagListRequest) (*ProxyTagListResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ProxyTagList not implemented")
+}
+func (UnimplementedNipaDaemonServer) ProxyTagCreate(context.Context, *ProxyTagCreateRequest) (*ProxyTagCreateResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ProxyTagCreate not implemented")
+}
+func (UnimplementedNipaDaemonServer) ProxyTagDelete(context.Context, *ProxyTagDeleteRequest) (*ProxyTagDeleteResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ProxyTagDelete not implemented")
 }
 func (UnimplementedNipaDaemonServer) ProxyTreeManifest(context.Context, *ProxyTreeManifestRequest) (*ProxyTreeManifestResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ProxyTreeManifest not implemented")
@@ -1284,6 +1332,60 @@ func _NipaDaemon_ProxyBranchDelete_Handler(srv interface{}, ctx context.Context,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(NipaDaemonServer).ProxyBranchDelete(ctx, req.(*ProxyBranchDeleteRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NipaDaemon_ProxyTagList_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ProxyTagListRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaDaemonServer).ProxyTagList(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaDaemon_ProxyTagList_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaDaemonServer).ProxyTagList(ctx, req.(*ProxyTagListRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NipaDaemon_ProxyTagCreate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ProxyTagCreateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaDaemonServer).ProxyTagCreate(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaDaemon_ProxyTagCreate_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaDaemonServer).ProxyTagCreate(ctx, req.(*ProxyTagCreateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NipaDaemon_ProxyTagDelete_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ProxyTagDeleteRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaDaemonServer).ProxyTagDelete(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaDaemon_ProxyTagDelete_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaDaemonServer).ProxyTagDelete(ctx, req.(*ProxyTagDeleteRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1814,6 +1916,18 @@ var NipaDaemon_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ProxyBranchDelete",
 			Handler:    _NipaDaemon_ProxyBranchDelete_Handler,
+		},
+		{
+			MethodName: "ProxyTagList",
+			Handler:    _NipaDaemon_ProxyTagList_Handler,
+		},
+		{
+			MethodName: "ProxyTagCreate",
+			Handler:    _NipaDaemon_ProxyTagCreate_Handler,
+		},
+		{
+			MethodName: "ProxyTagDelete",
+			Handler:    _NipaDaemon_ProxyTagDelete_Handler,
 		},
 		{
 			MethodName: "ProxyTreeManifest",

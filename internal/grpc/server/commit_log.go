@@ -23,7 +23,12 @@ func (n *nipaServer) GetCommitLog(ctx context.Context, req *pb.GetCommitLogReque
 		}
 		startID = &id
 	}
-	entries, err := n.uc.Branch().GetCommitLog(ctx, project.ID, req.Branch, startID, int(req.Limit))
+	var entries []*domain.CommitLogEntry
+	if req.GetPath() != "" {
+		entries, err = n.uc.Branch().PathCommitLog(ctx, project.ID, req.Branch, req.GetPath(), startID, int(req.Limit))
+	} else {
+		entries, err = n.uc.Branch().GetCommitLog(ctx, project.ID, req.Branch, startID, int(req.Limit))
+	}
 	if err != nil {
 		return nil, handleError(err)
 	}

@@ -3,6 +3,12 @@ import { Service } from "../../bindings/github.com/nipalab/nipa/desktop/internal
 import type {
   Account,
   AudioCompare,
+  Branch,
+  Commit as RawCommit,
+  HistoryQuery,
+  RevertOutcome,
+  RevertRequest,
+  Tag,
   AudioSide,
   AudioStats,
   Changes,
@@ -41,6 +47,9 @@ import type {
 } from "../../bindings/github.com/nipalab/nipa/desktop/internal/service/models";
 
 export type { FileLock, FileLockState, LockFailure };
+export type { Branch, HistoryQuery, RevertOutcome, RevertRequest, Tag };
+export type Commit = Omit<RawCommit, "parents"> & { parents: string[] };
+export type HistoryPage = { commits: Commit[]; next: string };
 export type { Account, CloneRequest, RemoteBranch, RemoteDir, RemoteProject };
 export type RemoteListing = Omit<RawRemoteListing, "dirs"> & { dirs: RemoteDir[] };
 export type LockStatus = Omit<RawLockStatus, "locks" | "files"> & { locks: FileLock[]; files: FileLockState[] };
@@ -51,6 +60,8 @@ export type { DaemonInfo, DiffHunk, DiffLine, FileChange, FileDiff, FileSide, Im
 export type ChangeSet = {
   branch: string;
   detached?: string;
+  pending?: "merge" | "revert";
+  pendingRemaining?: number;
   staged: FileChange[];
   unstaged: FileChange[];
   conflicts: string[];
@@ -63,6 +74,8 @@ export type Cancellable<T> = Promise<T> & { cancel?: () => void };
 const changeSet = (c: Changes): ChangeSet => ({
   branch: c.branch,
   detached: c.detached || undefined,
+  pending: c.pending === "merge" || c.pending === "revert" ? c.pending : undefined,
+  pendingRemaining: c.pendingRemaining ?? 0,
   staged: c.staged ?? [],
   unstaged: c.unstaged ?? [],
   conflicts: c.conflicts ?? [],
@@ -116,6 +129,28 @@ export const desktop = {
   setSparse: (root: string, paths: string[]): Cancellable<OpOutcome> => Service.SetSparse(root, paths),
   push: (root: string, message: string): Cancellable<OpOutcome> => Service.Push(root, message),
   update: (root: string): Cancellable<OpOutcome> => Service.Update(root),
+  history: async (root: string, q: Partial<HistoryQuery>): Promise<HistoryPage> => {
+    const page = await Service.History(root, { branch: "", path: "", start: "", limit: 0, ...q });
+    return { next: page?.next ?? "", commits: (page?.commits ?? []).map((c) => ({ ...c, parents: c.parents ?? [] })) };
+  },
+  commitFiles: async (root: string, commitId: string, parent: string): Promise<FileDiff[]> => (await Service.CommitFiles(root, commitId, parent)) ?? [],
+  branches: async (root: string): Promise<Branch[]> => (await Service.Branches(root)) ?? [],
+  createBranch: async (root: string, name: string, from: { branch?: string; commit?: string } = {}): Promise<Branch> => {
+    const b = await Service.CreateBranch(root, name, from.branch ?? "", from.commit ?? "");
+    if (!b) throw new Error("The branch was not created");
+    return b;
+  },
+  deleteBranch: (root: string, name: string): Promise<void> => Service.DeleteBranch(root, name),
+  switchBranch: (root: string, branch: string): Cancellable<OpOutcome> => Service.SwitchBranch(root, branch),
+  tags: async (root: string): Promise<Tag[]> => (await Service.Tags(root)) ?? [],
+  createTag: async (root: string, name: string, from: { branch?: string; commit?: string } = {}, message = ""): Promise<Tag> => {
+    const t = await Service.CreateTag(root, name, from.branch ?? "", from.commit ?? "", message);
+    if (!t) throw new Error("The tag was not created");
+    return t;
+  },
+  deleteTag: (root: string, name: string): Promise<void> => Service.DeleteTag(root, name),
+  checkoutTag: (root: string, tag: string): Cancellable<OpOutcome> => Service.CheckoutTag(root, tag),
+  revert: (root: string, req: Partial<RevertRequest>): Cancellable<OpOutcome> => Service.Revert(root, { target: "", mode: "", ...req }),
 
   onRepoChanged: (fn: (change: RepoChanged) => void): (() => void) => Events.On("repo:changed", (ev) => fn(ev.data)),
   onOpProgress: (fn: (progress: OpProgress) => void): (() => void) => Events.On("op:progress", (ev) => fn(ev.data)),

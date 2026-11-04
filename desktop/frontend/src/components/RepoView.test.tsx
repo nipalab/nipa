@@ -20,12 +20,19 @@ const api = vi.hoisted(() => ({
   setSparse: vi.fn(),
   push: vi.fn(),
   update: vi.fn(),
+  history: vi.fn(),
+  commitFiles: vi.fn(),
+  tags: vi.fn(),
+  branches: vi.fn(),
+  switchBranch: vi.fn(),
+  checkoutTag: vi.fn(),
+  revert: vi.fn(),
   onRepoChanged: vi.fn(),
   onOpProgress: vi.fn(),
 }));
 vi.mock("@/api/desktop", () => ({ desktop: api }));
 
-import { RepoView } from "./RepoView";
+import { describeRevert, RepoView } from "./RepoView";
 
 const repo: Repo = { root: "/work/game", name: "game", url: "https://nipa.test/studio/game", branch: "main", sparse: null };
 
@@ -425,7 +432,7 @@ describe("push and update", () => {
     await userEvent.click(await screen.findByRole("tab", { name: /Details/ }));
     expect(screen.getByText("https://nipa.test/studio/game")).toBeInTheDocument();
     expect(screen.getByText("art")).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: /History/ })).toBeDisabled();
+    expect(screen.getByRole("tab", { name: /History/ })).toBeEnabled();
     await userEvent.click(screen.getByRole("tab", { name: /Changes/ }));
     expect(await fileList()).toBeInTheDocument();
   });
@@ -477,5 +484,87 @@ describe("push and update", () => {
     expect(screen.getByRole("button", { name: "Apply" })).toBeDisabled();
     await userEvent.keyboard("{Escape}");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+});
+
+describe("history, branches and pending operations", () => {
+  const commit = { id: "c2", hash: "h2", parents: ["c1"], author: "Ana", email: "ana@studio.dev", message: "Paint hero", date: "2026-11-04T09:00:00Z" };
+
+  beforeEach(() => {
+    api.history.mockResolvedValue({ commits: [commit], next: "" });
+    api.commitFiles.mockResolvedValue([textDiff]);
+    api.tags.mockResolvedValue([{ name: "v1", commitId: "c1", message: "", createdAt: "", createdBy: "" }]);
+    api.branches.mockResolvedValue([
+      { name: "main", commitId: "c2", default: true, protected: false },
+      { name: "feature", commitId: "c3", default: false, protected: false },
+    ]);
+  });
+
+  it("reverts a commit from History and reports conflicts", async () => {
+    api.revert.mockResolvedValue({ revert: { committed: false, noChange: false, skipped: false, aborted: false, conflicts: ["a.txt"] } });
+    view();
+    await userEvent.click(await screen.findByRole("tab", { name: /History/ }));
+    await userEvent.click(await screen.findByRole("button", { name: /Revert/ }));
+    await userEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Revert" }));
+    expect(api.revert).toHaveBeenCalledWith("/work/game", { target: "c2" });
+    await waitFor(() => expect(notify).toHaveBeenCalledWith("Revert stopped: 1 file conflict. Resolve them, then continue.", "error"));
+  });
+
+  it("switches branches and checks out tags", async () => {
+    api.switchBranch.mockResolvedValue({ branch: "feature", commitId: "c3" });
+    api.checkoutTag.mockResolvedValue({ branch: "main", commitId: "c1" });
+    view();
+    await userEvent.click(await screen.findByRole("tab", { name: /Branches/ }));
+    await userEvent.click(await screen.findByRole("button", { name: "Switch" }));
+    expect(api.switchBranch).toHaveBeenCalledWith("/work/game", "feature");
+    await waitFor(() => expect(notify).toHaveBeenCalledWith("Switched to feature", "success"));
+    await userEvent.click(screen.getByRole("button", { name: "Check out" }));
+    expect(api.checkoutTag).toHaveBeenCalledWith("/work/game", "v1");
+    await waitFor(() => expect(notify).toHaveBeenCalledWith("Checked out tag v1", "success"));
+  });
+
+  it("shows the detached banner and switches back", async () => {
+    api.changes.mockResolvedValue(changeSet({ detached: "v1" }));
+    api.switchBranch.mockResolvedValue({ branch: "main" });
+    view();
+    const banner = await screen.findByRole("status");
+    expect(banner).toHaveTextContent("Checked out at tag v1");
+    expect(screen.getByRole("button", { name: "Update" })).toBeDisabled();
+    expect(screen.getByTitle(/Checked out at tag v1/)).toBeInTheDocument();
+    await userEvent.click(within(banner).getByRole("button", { name: /Back to main/ }));
+    expect(api.switchBranch).toHaveBeenCalledWith("/work/game", "main");
+  });
+
+  it("continues, skips or aborts a waiting revert", async () => {
+    api.changes.mockResolvedValue(changeSet({ pending: "revert", pendingRemaining: 3, conflicts: ["a.txt", "b.txt"] }));
+    api.revert.mockResolvedValue({ revert: { committed: false, noChange: false, skipped: false, aborted: true, conflicts: [] } });
+    view();
+    const banner = await screen.findByRole("status");
+    expect(banner).toHaveTextContent("2 conflicting files. Fix them, then continue. 2 more commits to revert after this one.");
+    for (const mode of ["Continue", "Skip", "Abort"]) {
+      await userEvent.click(within(banner).getByRole("button", { name: mode }));
+      expect(api.revert).toHaveBeenLastCalledWith("/work/game", { mode: mode.toLowerCase() });
+      await waitFor(() => expect(within(banner).getByRole("button", { name: mode })).toBeEnabled());
+    }
+    expect(notify).toHaveBeenCalledWith("Revert aborted; the clone is back where it was", "success");
+  });
+
+  it("explains a waiting merge and a waiting revert without conflicts", async () => {
+    api.changes.mockResolvedValueOnce(changeSet({ pending: "merge" }));
+    const first = view();
+    expect(await screen.findByRole("status")).toHaveTextContent("A merge is in progress");
+    first.unmount();
+    api.changes.mockResolvedValue(changeSet({ pending: "revert", pendingRemaining: 2 }));
+    view();
+    expect(await screen.findByRole("status")).toHaveTextContent("A revert is waiting to be continued. 1 more commit to revert after this one.");
+  });
+
+  it("describes every revert outcome", () => {
+    const base = { committed: false, noChange: false, skipped: false, aborted: false, conflicts: [] as string[] };
+    expect(describeRevert({ revert: { ...base, conflicts: ["a", "b"] } })[0]).toContain("2 files conflict");
+    expect(describeRevert({ revert: { ...base, skipped: true } })[0]).toBe("Skipped that commit");
+    expect(describeRevert({ revert: { ...base, noChange: true } })[0]).toContain("Nothing to revert");
+    expect(describeRevert({ revert: { ...base, committed: true } })[0]).toBe("Reverted and pushed");
+    expect(describeRevert({})[0]).toBe("Reverted and pushed");
   });
 });

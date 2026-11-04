@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Box, Columns2, Grid3x3, Layers, Loader2, Pause, Play, RotateCcw } from "lucide-react";
 import { desktop, type FileDiff, type ModelCompare, type ModelSide, type ModelStats } from "@/api/desktop";
-import { imageRefs } from "@/components/changes/ImageDiff";
+import { imageRefs, viewerKey } from "@/components/changes/ImageDiff";
 import { MetaDiff } from "@/components/changes/Notices";
 import { formatBytes } from "@/lib/diff";
 import { clipName, loadModel, renderableFormats, sceneStats, type LoadedModel } from "@/lib/modelLoad";
@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils";
 export function ModelDiff({ root, diff }: { root: string; diff: FileDiff }) {
   const { old, next } = imageRefs(diff);
   const query = useQuery({
-    queryKey: ["diff", root, diff.path, "model"],
+    queryKey: viewerKey(root, diff, "model"),
     queryFn: () => desktop.modelDiff(root, old, next),
     staleTime: 30_000,
   });

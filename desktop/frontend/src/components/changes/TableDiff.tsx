@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ArrowDownUp, FileText, Loader2, Table2 } from "lucide-react";
 import { desktop, type FileDiff, type TableColumn, type TableCompare, type TableRow } from "@/api/desktop";
-import { imageRefs } from "@/components/changes/ImageDiff";
+import { imageRefs, viewerKey } from "@/components/changes/ImageDiff";
 import { MetaDiff } from "@/components/changes/Notices";
 import { TextDiff, type DiffLayout } from "@/components/changes/TextDiff";
 import { Group, Notice, ToolButton } from "@/components/changes/Toolbar";
@@ -16,7 +16,7 @@ export function TableDiff({ root, diff, layout }: { root: string; diff: FileDiff
   const [mode, setMode] = useState<Mode>("table");
   const { old, next } = imageRefs(diff);
   const query = useQuery({
-    queryKey: ["diff", root, diff.path, "table"],
+    queryKey: viewerKey(root, diff, "table"),
     queryFn: () => desktop.tableDiff(root, old, next),
     staleTime: 30_000,
     enabled: mode === "table",

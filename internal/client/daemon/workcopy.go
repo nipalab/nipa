@@ -106,14 +106,16 @@ func (s *Server) Restore(ctx context.Context, req *daemonpb.RestoreRequest) (*da
 
 func statusToPB(st *clientDomain.Status) *daemonpb.StatusResponse {
 	resp := &daemonpb.StatusResponse{
-		Branch:    st.Branch,
-		Staged:    st.Staged,
-		Added:     st.Added,
-		Deleted:   st.Deleted,
-		Modified:  st.Modified,
-		Untracked: st.Untracked,
-		Missing:   st.Missing,
-		Conflicts: st.Conflicts,
+		Branch:           st.Branch,
+		Staged:           st.Staged,
+		Added:            st.Added,
+		Deleted:          st.Deleted,
+		Modified:         st.Modified,
+		Untracked:        st.Untracked,
+		Missing:          st.Missing,
+		Conflicts:        st.Conflicts,
+		Pending:          st.Pending,
+		PendingRemaining: int32(st.PendingRemaining),
 	}
 	if st.Head != nil {
 		resp.Head = &daemonpb.StatusHead{Kind: st.Head.Kind, Name: st.Head.Name}
