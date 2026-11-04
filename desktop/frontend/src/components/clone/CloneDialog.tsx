@@ -145,7 +145,8 @@ function SignInStep({ account, onSignedIn }: { account: Account; onSignedIn: () 
       <div className="flex items-center gap-2 rounded-md border border-border bg-background p-3 text-[12px]">
         <KeyRound className="size-4 shrink-0 text-muted-foreground" />
         <span className="flex-1">
-          {ssh.isPending ? "Trying your SSH keys…" : ssh.isError ? "No registered SSH key was accepted." : "Signed in with your SSH key."}
+          {ssh.isPending ? "Trying your SSH keys…" : ssh.isError ? "SSH key sign-in failed." : "Signed in with your SSH key."}
+          {ssh.isError && <span className="mt-0.5 block text-[11px] text-muted-foreground">{errorMessage(ssh.error)}</span>}
         </span>
         <Button size="sm" onClick={() => ssh.mutate()} disabled={busy}>
           Use SSH key

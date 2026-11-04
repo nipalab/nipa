@@ -109,7 +109,8 @@ describe("CloneDialog", () => {
     api.signIn.mockRejectedValueOnce(new Error("invalid credentials")).mockResolvedValueOnce(undefined);
     show();
     await userEvent.type(screen.getByRole("textbox", { name: "Server" }), "nipa.studio.test{Enter}");
-    expect(await screen.findByText("No registered SSH key was accepted.")).toBeInTheDocument();
+    expect(await screen.findByText("SSH key sign-in failed.")).toBeInTheDocument();
+    expect(screen.getByText("invalid email or SSH key")).toBeInTheDocument();
     expect(api.signInSSH).toHaveBeenCalledWith("https://nipa.studio.test", "");
 
     await userEvent.type(screen.getByRole("textbox", { name: "Email" }), "ann@studio.test");
