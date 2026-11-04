@@ -10,6 +10,13 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as $models from "./models.js";
 
 /**
+ * AccountStatus reports whether the daemon holds a session for a server.
+ */
+export function AccountStatus(server: string): $CancellablePromise<$models.Account | null> {
+    return $Call.ByID(281571113, server);
+}
+
+/**
  * AddRepo watches the clone containing path and remembers its root.
  */
 export function AddRepo(path: string): $CancellablePromise<$models.Repo> {
@@ -30,6 +37,22 @@ export function AudioDiff(root: string, old: $models.ImageRef | null, $new: $mod
  */
 export function Changes(root: string): $CancellablePromise<$models.Changes> {
     return $Call.ByID(3050126129, root);
+}
+
+/**
+ * ChooseFolder asks for a folder (for example where a clone goes); an empty
+ * path means cancelled.
+ */
+export function ChooseFolder(title: string): $CancellablePromise<string> {
+    return $Call.ByID(45898873, title);
+}
+
+/**
+ * Clone checks a project out into a new folder, reporting progress as
+ * op:progress events for the target folder, then opens it like AddRepo.
+ */
+export function Clone(req: $models.CloneRequest): $CancellablePromise<$models.Repo | null> {
+    return $Call.ByID(1415474973, req);
 }
 
 /**
@@ -61,6 +84,13 @@ export function FileDiff(root: string, path: string): $CancellablePromise<$model
  */
 export function ImageDiff(root: string, old: $models.ImageRef | null, $new: $models.ImageRef | null, opts: $models.ImageOptions): $CancellablePromise<$models.ImageCompare | null> {
     return $Call.ByID(2294302882, root, old, $new, opts);
+}
+
+/**
+ * ListProjects lists the projects the signed-in account can read.
+ */
+export function ListProjects(server: string): $CancellablePromise<$models.RemoteProject[] | null> {
+    return $Call.ByID(1954310762, server);
 }
 
 /**
@@ -125,6 +155,20 @@ export function Push(root: string, message: string): $CancellablePromise<$models
 }
 
 /**
+ * RemoteBranches lists a project's branches.
+ */
+export function RemoteBranches(server: string, org: string, project: string): $CancellablePromise<$models.RemoteBranch[] | null> {
+    return $Call.ByID(2612479582, server, org, project);
+}
+
+/**
+ * RemoteTree lists the folders of one directory on the server.
+ */
+export function RemoteTree(server: string, org: string, project: string, branch: string, path: string): $CancellablePromise<$models.RemoteListing | null> {
+    return $Call.ByID(1680807034, server, org, project, branch, path);
+}
+
+/**
  * RemoveRepo forgets a clone; it is never deleted from disk.
  */
 export function RemoveRepo(root: string): $CancellablePromise<void> {
@@ -136,6 +180,27 @@ export function RemoveRepo(root: string): $CancellablePromise<void> {
  */
 export function Repos(): $CancellablePromise<$models.Repo[] | null> {
     return $Call.ByID(3963752509);
+}
+
+/**
+ * SetSparse changes which folders the clone downloads and updates it.
+ */
+export function SetSparse(root: string, paths: string[] | null): $CancellablePromise<$models.OpOutcome> {
+    return $Call.ByID(4162667504, root, paths);
+}
+
+/**
+ * SignIn logs in with an email and password; the daemon stores the session.
+ */
+export function SignIn(server: string, email: string, password: string): $CancellablePromise<void> {
+    return $Call.ByID(1917223218, server, email, password);
+}
+
+/**
+ * SignInSSH logs in with a registered SSH key from the agent or ~/.ssh.
+ */
+export function SignInSSH(server: string, email: string): $CancellablePromise<void> {
+    return $Call.ByID(2025107512, server, email);
 }
 
 /**

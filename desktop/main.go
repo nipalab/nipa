@@ -48,6 +48,14 @@ func main() {
 			PromptForSingleSelection()
 	}
 	svc.OpenFunc = func(path string) error { return app.Browser.OpenFile(path) }
+	svc.ChooseFolderFunc = func(title string) (string, error) {
+		return app.Dialog.OpenFile().
+			SetTitle(title).
+			CanChooseDirectories(true).
+			CanChooseFiles(false).
+			CanCreateDirectories(true).
+			PromptForSingleSelection()
+	}
 
 	app = application.New(application.Options{
 		Name:        "Nipa",

@@ -21,6 +21,15 @@ const service = vi.hoisted(() => ({
   Unlock: vi.fn(),
   PickFile: vi.fn(),
   OpenFile: vi.fn(),
+  AccountStatus: vi.fn(),
+  SignIn: vi.fn(),
+  SignInSSH: vi.fn(),
+  ListProjects: vi.fn(),
+  RemoteBranches: vi.fn(),
+  RemoteTree: vi.fn(),
+  ChooseFolder: vi.fn(),
+  Clone: vi.fn(),
+  SetSparse: vi.fn(),
   Push: vi.fn(),
   Update: vi.fn(),
 }));
@@ -117,6 +126,34 @@ describe("desktop api", () => {
     service.OpenFile.mockResolvedValue(undefined);
     await desktop.openFile("/a", "art/a.psd");
     expect(service.OpenFile).toHaveBeenCalledWith("/a", "art/a.psd");
+  });
+
+  it("signs in, browses servers and clones", async () => {
+    service.AccountStatus.mockResolvedValueOnce({ signedIn: true }).mockResolvedValueOnce(null);
+    expect(await desktop.accountStatus("h")).toEqual({ signedIn: true });
+    await expect(desktop.accountStatus("h")).rejects.toThrow("No account information");
+    service.SignIn.mockResolvedValue(undefined);
+    service.SignInSSH.mockResolvedValue(undefined);
+    await desktop.signIn("h", "a", "p");
+    await desktop.signInSSH("h");
+    expect(service.SignIn).toHaveBeenCalledWith("h", "a", "p");
+    expect(service.SignInSSH).toHaveBeenCalledWith("h", "");
+    service.ListProjects.mockResolvedValueOnce(null);
+    service.RemoteBranches.mockResolvedValueOnce(null);
+    expect(await desktop.listProjects("h")).toEqual([]);
+    expect(await desktop.remoteBranches("h", "o", "p")).toEqual([]);
+    service.RemoteTree.mockResolvedValueOnce(null).mockResolvedValueOnce({ dirs: [{ name: "a", path: "a" }], files: 1, fileBytes: 2 });
+    expect(await desktop.remoteTree("h", "o", "p", "", "")).toEqual({ dirs: [], files: 0, fileBytes: 0 });
+    expect(await desktop.remoteTree("h", "o", "p", "main", "a")).toEqual({ dirs: [{ name: "a", path: "a" }], files: 1, fileBytes: 2 });
+    expect(service.RemoteTree).toHaveBeenLastCalledWith("h", "o", "p", "main", "a");
+    service.ChooseFolder.mockResolvedValue("/x");
+    expect(await desktop.chooseFolder("t")).toBe("/x");
+    const req = { server: "h", org: "o", project: "p", branch: "", sparse: [], target: "/t" };
+    service.Clone.mockResolvedValue({ root: "/t" });
+    expect(await desktop.clone(req)).toEqual({ root: "/t" });
+    service.SetSparse.mockResolvedValue({ branch: "main" });
+    expect(await desktop.setSparse("/t", ["a"])).toEqual({ branch: "main" });
+    expect(service.SetSparse).toHaveBeenCalledWith("/t", ["a"]);
   });
 
   it("asks for image previews at 2048 px and the first surface by default", async () => {

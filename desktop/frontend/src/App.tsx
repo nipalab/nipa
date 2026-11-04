@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { desktop, type Repo } from "@/api/desktop";
+import { CloneDialog } from "@/components/clone/CloneDialog";
 import { RepoView, type Notify } from "@/components/RepoView";
 import { Sidebar } from "@/components/Sidebar";
 import { DaemonError, Splash } from "@/components/StatusScreens";
@@ -13,6 +14,7 @@ const SELECTED_KEY = "nipa.selectedRepo";
 export default function App() {
   const queryClient = useQueryClient();
   const [selected, setSelectedState] = useState<string | null>(() => readSetting(SELECTED_KEY));
+  const [cloning, setCloning] = useState(false);
   const [toast, setToastState] = useState<{ message: string; tone: "error" | "success" } | null>(null);
   const notify = useCallback<Notify>((message, tone = "error") => setToastState({ message, tone }), []);
   const dismiss = useCallback(() => setToastState(null), []);
@@ -26,12 +28,15 @@ export default function App() {
     setSelectedState(root);
   };
 
+  const remember = (repo: Repo) => {
+    queryClient.setQueryData<Repo[]>(["repos"], (old = []) => (old.some((r) => r.root === repo.root) ? old.map((r) => (r.root === repo.root ? repo : r)) : [...old, repo]));
+    select(repo.root);
+  };
+
   const add = useMutation({
     mutationFn: desktop.pickRepo,
     onSuccess: (repo) => {
-      if (!repo) return;
-      queryClient.setQueryData<Repo[]>(["repos"], (old = []) => (old.some((r) => r.root === repo.root) ? old.map((r) => (r.root === repo.root ? repo : r)) : [...old, repo]));
-      select(repo.root);
+      if (repo) remember(repo);
     },
     onError: (err) => setToast(errorMessage(err)),
   });
@@ -66,14 +71,25 @@ export default function App() {
         adding={add.isPending}
         onSelect={select}
         onAdd={() => add.mutate()}
+        onClone={() => setCloning(true)}
       />
       <main className="min-w-0 flex-1">
         {current ? (
           <RepoView key={current.root} repo={current} removing={remove.isPending} onRemove={(root) => remove.mutate(root)} notify={notify} />
         ) : (
-          <Welcome adding={add.isPending} onAdd={() => add.mutate()} />
+          <Welcome adding={add.isPending} onAdd={() => add.mutate()} onClone={() => setCloning(true)} />
         )}
       </main>
+      {cloning && (
+        <CloneDialog
+          onClose={() => setCloning(false)}
+          onCloned={(repo) => {
+            setCloning(false);
+            remember(repo);
+            notify(`Cloned ${repo.name}`, "success");
+          }}
+        />
+      )}
       {toast && <Toast message={toast.message} tone={toast.tone} onDismiss={dismiss} />}
     </div>
   );

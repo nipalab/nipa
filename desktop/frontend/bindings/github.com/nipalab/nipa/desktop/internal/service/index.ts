@@ -7,10 +7,12 @@ export {
 };
 
 export type {
+    Account,
     AudioCompare,
     AudioSide,
     AudioStats,
     Changes,
+    CloneRequest,
     DaemonInfo,
     DiffHunk,
     DiffLine,
@@ -34,6 +36,10 @@ export type {
     ModelStats,
     OpOutcome,
     OpProgress,
+    RemoteBranch,
+    RemoteDir,
+    RemoteListing,
+    RemoteProject,
     Repo,
     RepoChanged,
     TableColumn,

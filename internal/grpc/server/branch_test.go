@@ -33,6 +33,8 @@ type mockUsecaseContainer struct {
 	review       *usecase.MergeRequestReview
 	fileLock     *usecase.FileLock
 	mergeCheck   *usecase.MergeRequestCheck
+	org          *usecase.Org
+	project      *usecase.Project
 }
 
 func (m *mockUsecaseContainer) Auth() *usecase.Auth     { return nil }
@@ -58,6 +60,8 @@ func (m *mockUsecaseContainer) MergeRequestCheck() *usecase.MergeRequestCheck {
 }
 
 func (m *mockUsecaseContainer) FileLock() *usecase.FileLock { return m.fileLock }
+func (m *mockUsecaseContainer) Org() *usecase.Org           { return m.org }
+func (m *mockUsecaseContainer) Project() *usecase.Project   { return m.project }
 
 func newMockUsecaseContainer(t *testing.T, branch *usecase.Branch) *mockUsecaseContainer {
 	t.Helper()

@@ -61,6 +61,13 @@ const (
 	NipaDaemon_ProxyUnlockFile_FullMethodName               = "/nipadaemon.NipaDaemon/ProxyUnlockFile"
 	NipaDaemon_ProxyListFileLocks_FullMethodName            = "/nipadaemon.NipaDaemon/ProxyListFileLocks"
 	NipaDaemon_LockStatus_FullMethodName                    = "/nipadaemon.NipaDaemon/LockStatus"
+	NipaDaemon_AccountStatus_FullMethodName                 = "/nipadaemon.NipaDaemon/AccountStatus"
+	NipaDaemon_LoginSSH_FullMethodName                      = "/nipadaemon.NipaDaemon/LoginSSH"
+	NipaDaemon_ListProjects_FullMethodName                  = "/nipadaemon.NipaDaemon/ListProjects"
+	NipaDaemon_RemoteBranches_FullMethodName                = "/nipadaemon.NipaDaemon/RemoteBranches"
+	NipaDaemon_RemoteTree_FullMethodName                    = "/nipadaemon.NipaDaemon/RemoteTree"
+	NipaDaemon_Clone_FullMethodName                         = "/nipadaemon.NipaDaemon/Clone"
+	NipaDaemon_SetSparse_FullMethodName                     = "/nipadaemon.NipaDaemon/SetSparse"
 )
 
 // NipaDaemonClient is the client API for NipaDaemon service.
@@ -109,6 +116,13 @@ type NipaDaemonClient interface {
 	ProxyUnlockFile(ctx context.Context, in *ProxyUnlockFileRequest, opts ...grpc.CallOption) (*ProxyUnlockFileResponse, error)
 	ProxyListFileLocks(ctx context.Context, in *ProxyListFileLocksRequest, opts ...grpc.CallOption) (*ProxyListFileLocksResponse, error)
 	LockStatus(ctx context.Context, in *LockStatusRequest, opts ...grpc.CallOption) (*LockStatusResponse, error)
+	AccountStatus(ctx context.Context, in *AccountStatusRequest, opts ...grpc.CallOption) (*AccountStatusResponse, error)
+	LoginSSH(ctx context.Context, in *LoginSSHRequest, opts ...grpc.CallOption) (*LoginResponse, error)
+	ListProjects(ctx context.Context, in *ListProjectsRequest, opts ...grpc.CallOption) (*ListProjectsResponse, error)
+	RemoteBranches(ctx context.Context, in *RemoteBranchesRequest, opts ...grpc.CallOption) (*RemoteBranchesResponse, error)
+	RemoteTree(ctx context.Context, in *RemoteTreeRequest, opts ...grpc.CallOption) (*RemoteTreeResponse, error)
+	Clone(ctx context.Context, in *CloneRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[OpEvent], error)
+	SetSparse(ctx context.Context, in *SetSparseRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[OpEvent], error)
 }
 
 type nipaDaemonClient struct {
@@ -629,6 +643,94 @@ func (c *nipaDaemonClient) LockStatus(ctx context.Context, in *LockStatusRequest
 	return out, nil
 }
 
+func (c *nipaDaemonClient) AccountStatus(ctx context.Context, in *AccountStatusRequest, opts ...grpc.CallOption) (*AccountStatusResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AccountStatusResponse)
+	err := c.cc.Invoke(ctx, NipaDaemon_AccountStatus_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nipaDaemonClient) LoginSSH(ctx context.Context, in *LoginSSHRequest, opts ...grpc.CallOption) (*LoginResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(LoginResponse)
+	err := c.cc.Invoke(ctx, NipaDaemon_LoginSSH_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nipaDaemonClient) ListProjects(ctx context.Context, in *ListProjectsRequest, opts ...grpc.CallOption) (*ListProjectsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListProjectsResponse)
+	err := c.cc.Invoke(ctx, NipaDaemon_ListProjects_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nipaDaemonClient) RemoteBranches(ctx context.Context, in *RemoteBranchesRequest, opts ...grpc.CallOption) (*RemoteBranchesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RemoteBranchesResponse)
+	err := c.cc.Invoke(ctx, NipaDaemon_RemoteBranches_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nipaDaemonClient) RemoteTree(ctx context.Context, in *RemoteTreeRequest, opts ...grpc.CallOption) (*RemoteTreeResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RemoteTreeResponse)
+	err := c.cc.Invoke(ctx, NipaDaemon_RemoteTree_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nipaDaemonClient) Clone(ctx context.Context, in *CloneRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[OpEvent], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &NipaDaemon_ServiceDesc.Streams[10], NipaDaemon_Clone_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[CloneRequest, OpEvent]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type NipaDaemon_CloneClient = grpc.ServerStreamingClient[OpEvent]
+
+func (c *nipaDaemonClient) SetSparse(ctx context.Context, in *SetSparseRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[OpEvent], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &NipaDaemon_ServiceDesc.Streams[11], NipaDaemon_SetSparse_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[SetSparseRequest, OpEvent]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type NipaDaemon_SetSparseClient = grpc.ServerStreamingClient[OpEvent]
+
 // NipaDaemonServer is the server API for NipaDaemon service.
 // All implementations must embed UnimplementedNipaDaemonServer
 // for forward compatibility.
@@ -675,6 +777,13 @@ type NipaDaemonServer interface {
 	ProxyUnlockFile(context.Context, *ProxyUnlockFileRequest) (*ProxyUnlockFileResponse, error)
 	ProxyListFileLocks(context.Context, *ProxyListFileLocksRequest) (*ProxyListFileLocksResponse, error)
 	LockStatus(context.Context, *LockStatusRequest) (*LockStatusResponse, error)
+	AccountStatus(context.Context, *AccountStatusRequest) (*AccountStatusResponse, error)
+	LoginSSH(context.Context, *LoginSSHRequest) (*LoginResponse, error)
+	ListProjects(context.Context, *ListProjectsRequest) (*ListProjectsResponse, error)
+	RemoteBranches(context.Context, *RemoteBranchesRequest) (*RemoteBranchesResponse, error)
+	RemoteTree(context.Context, *RemoteTreeRequest) (*RemoteTreeResponse, error)
+	Clone(*CloneRequest, grpc.ServerStreamingServer[OpEvent]) error
+	SetSparse(*SetSparseRequest, grpc.ServerStreamingServer[OpEvent]) error
 	mustEmbedUnimplementedNipaDaemonServer()
 }
 
@@ -810,6 +919,27 @@ func (UnimplementedNipaDaemonServer) ProxyListFileLocks(context.Context, *ProxyL
 }
 func (UnimplementedNipaDaemonServer) LockStatus(context.Context, *LockStatusRequest) (*LockStatusResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method LockStatus not implemented")
+}
+func (UnimplementedNipaDaemonServer) AccountStatus(context.Context, *AccountStatusRequest) (*AccountStatusResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method AccountStatus not implemented")
+}
+func (UnimplementedNipaDaemonServer) LoginSSH(context.Context, *LoginSSHRequest) (*LoginResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method LoginSSH not implemented")
+}
+func (UnimplementedNipaDaemonServer) ListProjects(context.Context, *ListProjectsRequest) (*ListProjectsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListProjects not implemented")
+}
+func (UnimplementedNipaDaemonServer) RemoteBranches(context.Context, *RemoteBranchesRequest) (*RemoteBranchesResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RemoteBranches not implemented")
+}
+func (UnimplementedNipaDaemonServer) RemoteTree(context.Context, *RemoteTreeRequest) (*RemoteTreeResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RemoteTree not implemented")
+}
+func (UnimplementedNipaDaemonServer) Clone(*CloneRequest, grpc.ServerStreamingServer[OpEvent]) error {
+	return status.Errorf(codes.Unimplemented, "method Clone not implemented")
+}
+func (UnimplementedNipaDaemonServer) SetSparse(*SetSparseRequest, grpc.ServerStreamingServer[OpEvent]) error {
+	return status.Errorf(codes.Unimplemented, "method SetSparse not implemented")
 }
 func (UnimplementedNipaDaemonServer) mustEmbedUnimplementedNipaDaemonServer() {}
 func (UnimplementedNipaDaemonServer) testEmbeddedByValue()                    {}
@@ -1518,6 +1648,118 @@ func _NipaDaemon_LockStatus_Handler(srv interface{}, ctx context.Context, dec fu
 	return interceptor(ctx, in, info, handler)
 }
 
+func _NipaDaemon_AccountStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AccountStatusRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaDaemonServer).AccountStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaDaemon_AccountStatus_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaDaemonServer).AccountStatus(ctx, req.(*AccountStatusRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NipaDaemon_LoginSSH_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(LoginSSHRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaDaemonServer).LoginSSH(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaDaemon_LoginSSH_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaDaemonServer).LoginSSH(ctx, req.(*LoginSSHRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NipaDaemon_ListProjects_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListProjectsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaDaemonServer).ListProjects(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaDaemon_ListProjects_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaDaemonServer).ListProjects(ctx, req.(*ListProjectsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NipaDaemon_RemoteBranches_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RemoteBranchesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaDaemonServer).RemoteBranches(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaDaemon_RemoteBranches_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaDaemonServer).RemoteBranches(ctx, req.(*RemoteBranchesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NipaDaemon_RemoteTree_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RemoteTreeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaDaemonServer).RemoteTree(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaDaemon_RemoteTree_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaDaemonServer).RemoteTree(ctx, req.(*RemoteTreeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NipaDaemon_Clone_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(CloneRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(NipaDaemonServer).Clone(m, &grpc.GenericServerStream[CloneRequest, OpEvent]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type NipaDaemon_CloneServer = grpc.ServerStreamingServer[OpEvent]
+
+func _NipaDaemon_SetSparse_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(SetSparseRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(NipaDaemonServer).SetSparse(m, &grpc.GenericServerStream[SetSparseRequest, OpEvent]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type NipaDaemon_SetSparseServer = grpc.ServerStreamingServer[OpEvent]
+
 // NipaDaemon_ServiceDesc is the grpc.ServiceDesc for NipaDaemon service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1653,6 +1895,26 @@ var NipaDaemon_ServiceDesc = grpc.ServiceDesc{
 			MethodName: "LockStatus",
 			Handler:    _NipaDaemon_LockStatus_Handler,
 		},
+		{
+			MethodName: "AccountStatus",
+			Handler:    _NipaDaemon_AccountStatus_Handler,
+		},
+		{
+			MethodName: "LoginSSH",
+			Handler:    _NipaDaemon_LoginSSH_Handler,
+		},
+		{
+			MethodName: "ListProjects",
+			Handler:    _NipaDaemon_ListProjects_Handler,
+		},
+		{
+			MethodName: "RemoteBranches",
+			Handler:    _NipaDaemon_RemoteBranches_Handler,
+		},
+		{
+			MethodName: "RemoteTree",
+			Handler:    _NipaDaemon_RemoteTree_Handler,
+		},
 	},
 	Streams: []grpc.StreamDesc{
 		{
@@ -1703,6 +1965,16 @@ var NipaDaemon_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "WatchChanges",
 			Handler:       _NipaDaemon_WatchChanges_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "Clone",
+			Handler:       _NipaDaemon_Clone_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "SetSparse",
+			Handler:       _NipaDaemon_SetSparse_Handler,
 			ServerStreams: true,
 		},
 	},

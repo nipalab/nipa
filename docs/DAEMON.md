@@ -144,6 +144,22 @@ list/create/merge/close + detail incl. review summary and threads, file locks
 All proxy calls take the repo `root`, resolve `.nipa/config` → host/org/project,
 and run on the daemon's warm, auto-refreshing client.
 
+Server-scoped calls work before any clone exists. They take a `server`
+(host, host:port or http/https URL, normalized by `ParseEndpoint`) and run on
+a fresh connection per call (`Options.Accounts.Connect`): `AccountStatus`
+(is a session stored for the host; email and account id from the token),
+`Login` (password; the connection to the server is opened first, the session
+is stored under the host), `LoginSSH` (registered key from ssh-agent or
+`~/.ssh`, no passphrase prompt), `ListProjects` (server `ListMyProjects`),
+`RemoteBranches` and `RemoteTree` (server `ListDirectory`: one directory's
+subfolders plus its file count and bytes). `Clone(url, branch, sparse,
+target)` streams `OpEvent`s like the long operations but outside any repo
+slot (target must be absolute and empty) and ends with a sync result read
+from the new clone; `SetSparse(root, paths)` takes the root's exclusive slot,
+stores the prefixes and runs an update so the working copy matches. The
+daemon never prompts: a missing session fails with "sign in to this server
+first".
+
 `LockStatus(root)` combines proxy calls with the local status: it lists the
 project's locks (`ListFileLocks`), resolves whether the configured branch is
 the default (`GetBranchByName`: mainline locks apply, otherwise that branch's

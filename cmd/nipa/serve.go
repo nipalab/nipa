@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"os"
 	"os/signal"
 	"syscall"
@@ -8,12 +9,14 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/nipalab/nipa/internal/client/daemon"
+	"github.com/nipalab/nipa/internal/client/domain"
 	clientgrpc "github.com/nipalab/nipa/internal/client/grpc"
 	"github.com/nipalab/nipa/internal/client/localrepo"
+	"github.com/nipalab/nipa/internal/client/sshkey"
 	"github.com/nipalab/nipa/internal/client/usecase"
 )
 
-func newServeCommand(auth *usecase.Auth, newClient func() *clientgrpc.Client) *cobra.Command {
+func newServeCommand(auth *usecase.Auth, newClient func() *clientgrpc.Client, storage tokenStorage, signers func() ([]sshkey.Signer, error)) *cobra.Command {
 	var port int
 	var endpoint string
 	cmd := &cobra.Command{
@@ -29,10 +32,11 @@ func newServeCommand(auth *usecase.Auth, newClient func() *clientgrpc.Client) *c
 			srv, err := daemon.NewServer(daemon.Options{
 				EndpointPath: endpoint,
 				Port:         port,
-				Login:        auth.LoginWithUsernamePassword,
+				Login:        serveLogin(newClient, storage),
 				Runners: daemon.Runners{New: func(string) daemon.RepoOps {
 					return serveRepoOps(auth, newClient())
 				}},
+				Accounts: serveAccounts(newClient, storage, signers),
 			})
 			if err != nil {
 				return err
@@ -61,5 +65,87 @@ func serveRepoOps(auth *usecase.Auth, client *clientgrpc.Client) daemon.RepoOps 
 		Revert: usecase.NewRevert(auth, client, localrepo.NewLocalRepo(), push),
 		Diff:   daemon.SerialDiff(usecase.NewDiff(auth, client, localrepo.NewLocalRepo())),
 		Proxy:  client,
+	}
+}
+
+// daemonInput replaces the terminal prompter in the daemon: it has no
+// terminal, so a missing session must be fixed by signing in from the app.
+type daemonInput struct{}
+
+func (daemonInput) PromptUsernameAndPassword() (string, string, error) {
+	return "", "", domain.NewTokenError("sign in to this server first")
+}
+
+func connectClient(ctx context.Context, newClient func() *clientgrpc.Client, address string) (*clientgrpc.Client, error) {
+	c := newClient()
+	if err := c.Connect(ctx, address); err != nil {
+		_ = c.Close()
+		return nil, err
+	}
+	return c, nil
+}
+
+// serveLogin signs in over a fresh connection to the server being logged into.
+func serveLogin(newClient func() *clientgrpc.Client, storage tokenStorage) daemon.LoginFunc {
+	return func(ctx context.Context, address, username, password string) error {
+		ep, err := domain.ParseEndpoint(address)
+		if err != nil {
+			return err
+		}
+		c, err := connectClient(ctx, newClient, ep.Address)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = c.Close() }()
+		return usecase.NewAuth(c, storage, daemonInput{}).LoginWithUsernamePassword(ctx, ep.Address, username, password)
+	}
+}
+
+func serveAccounts(newClient func() *clientgrpc.Client, storage tokenStorage, signers func() ([]sshkey.Signer, error)) daemon.Accounts {
+	auth := func(c *clientgrpc.Client) *usecase.Auth {
+		return usecase.NewAuth(c, storage, daemonInput{}).WithSSHLogin(signers)
+	}
+	return daemon.Accounts{
+		Session: func(host string) (daemon.Session, bool) {
+			token, err := storage.LoadToken(host)
+			if err != nil || token == nil || token.AccessToken == "" {
+				return daemon.Session{}, false
+			}
+			id, _ := clientgrpc.TokenSubject(token.AccessToken)
+			return daemon.Session{Email: token.Email, UserID: id}, true
+		},
+		LoginSSH: func(ctx context.Context, address, email string) error {
+			keys, err := signers()
+			if err != nil {
+				return err
+			}
+			c, err := connectClient(ctx, newClient, address)
+			if err != nil {
+				return err
+			}
+			defer func() { _ = c.Close() }()
+			return auth(c).LoginWithSSHKey(ctx, address, email, keys)
+		},
+		Connect: func(ctx context.Context, address string) (daemon.RemoteConn, error) {
+			return connectClient(ctx, newClient, address)
+		},
+		Clone: func(ctx context.Context, rawURL, branch string, sparse []string, target string, progress usecase.DownloadProgress) error {
+			nu, err := domain.ParseNipaUrl(rawURL)
+			if err != nil {
+				return err
+			}
+			c, err := connectClient(ctx, newClient, nu.Origin)
+			if err != nil {
+				return err
+			}
+			defer func() { _ = c.Close() }()
+			paths := append([]string{}, sparse...)
+			if nu.Path != "" {
+				paths = append(paths, nu.Path)
+			}
+			lr := localrepo.NewLocalRepo()
+			defer func() { _ = lr.Close() }()
+			return usecase.NewRepo(auth(c), c, lr).Clone(ctx, nu.Url, nu.Host, nu.Org, nu.Project, branch, paths, target, progress)
+		},
 	}
 }

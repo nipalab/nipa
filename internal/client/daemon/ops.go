@@ -32,6 +32,7 @@ type UpdateRunner interface {
 	Run(ctx context.Context, root string, progress ...usecase.DownloadProgress) error
 	Switch(ctx context.Context, root, branch string, progress ...usecase.DownloadProgress) error
 	SwitchTag(ctx context.Context, root, tagName string, progress ...usecase.DownloadProgress) error
+	SetSparse(root string, paths []string) error
 }
 
 type PushRunner interface {
@@ -71,6 +72,14 @@ func (s *Server) runOp(ctx context.Context, root, phase string, send func(*daemo
 	defer release()
 	defer rp.changes.publish(nil)
 
+	return streamOp(ctx, phase, send, func(progress *progressAdapter) (*daemonpb.OpEvent, error) {
+		return fn(rp, progress)
+	})
+}
+
+// streamOp runs fn and streams its progress: started, progress events, then
+// exactly one terminal result or failure event.
+func streamOp(ctx context.Context, phase string, send func(*daemonpb.OpEvent) error, fn func(*progressAdapter) (*daemonpb.OpEvent, error)) error {
 	if err := send(opStartedEvent(phase)); err != nil {
 		return err
 	}
@@ -78,7 +87,7 @@ func (s *Server) runOp(ctx context.Context, root, phase string, send func(*daemo
 	progress := newProgressAdapter()
 	done := make(chan *daemonpb.OpEvent, 1)
 	go func() {
-		result, err := fn(rp, progress)
+		result, err := fn(progress)
 		if err != nil {
 			done <- opFailureEvent(err)
 			return

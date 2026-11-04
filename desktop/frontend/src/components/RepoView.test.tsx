@@ -16,6 +16,8 @@ const api = vi.hoisted(() => ({
   unlock: vi.fn(),
   pickFile: vi.fn(),
   openFile: vi.fn(),
+  remoteTree: vi.fn(),
+  setSparse: vi.fn(),
   push: vi.fn(),
   update: vi.fn(),
   onRepoChanged: vi.fn(),
@@ -426,5 +428,54 @@ describe("push and update", () => {
     expect(screen.getByRole("tab", { name: /History/ })).toBeDisabled();
     await userEvent.click(screen.getByRole("tab", { name: /Changes/ }));
     expect(await fileList()).toBeInTheDocument();
+  });
+
+  it("changes which folders the clone downloads", async () => {
+    let finish!: (v: unknown) => void;
+    api.setSparse.mockReturnValue(new Promise((resolve) => (finish = resolve)));
+    api.remoteTree.mockResolvedValue({ dirs: [{ name: "art", path: "art" }, { name: "audio", path: "audio" }], files: 0, fileBytes: 0 });
+    view({ ...repo, sparse: ["art"] });
+    await userEvent.click(await screen.findByRole("tab", { name: /Details/ }));
+    await userEvent.click(screen.getByRole("button", { name: /Change folders/ }));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByRole("radio", { name: "Only some folders" })).toBeChecked();
+    expect(await within(dialog).findByRole("checkbox", { name: "art" })).toBeChecked();
+    expect(api.remoteTree).toHaveBeenCalledWith("https://nipa.test", "studio", "game", "main", "");
+    const apply = within(dialog).getByRole("button", { name: "Apply" });
+    expect(apply).toBeDisabled();
+    await userEvent.click(within(dialog).getByRole("checkbox", { name: "art" }));
+    expect(apply).toBeDisabled();
+    await userEvent.click(within(dialog).getByRole("checkbox", { name: "audio" }));
+    await userEvent.click(apply);
+    expect(api.setSparse).toHaveBeenCalledWith("/work/game", ["audio"]);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Change folders/ })).toBeDisabled();
+    act(() => progressed({ root: "/work/game", op: "sparse", phase: "download", ahead: 0, objectsDone: 1, objectsTotal: 3, bytesDone: 0, bytesTotal: 0 }));
+    expect(screen.getByText("Downloading 1/3")).toBeInTheDocument();
+    await act(async () => finish({ branch: "main" }));
+    expect(notify).toHaveBeenCalledWith("Checkout updated", "success");
+
+    api.setSparse.mockRejectedValueOnce(new Error("offline"));
+    await userEvent.click(screen.getByRole("button", { name: /Change folders/ }));
+    await userEvent.click(within(screen.getByRole("dialog")).getByRole("radio", { name: "Everything" }));
+    await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Apply" }));
+    expect(api.setSparse).toHaveBeenLastCalledWith("/work/game", []);
+    await waitFor(() => expect(notify).toHaveBeenCalledWith("Checkout change failed: offline"));
+
+    await userEvent.click(screen.getByRole("button", { name: /Change folders/ }));
+    await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Cancel" }));
+    await userEvent.click(screen.getByRole("button", { name: /Change folders/ }));
+    await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("cannot edit folders of a clone with an unreadable URL", async () => {
+    view({ ...repo, url: "weird", sparse: null });
+    await userEvent.click(await screen.findByRole("tab", { name: /Details/ }));
+    await userEvent.click(screen.getByRole("button", { name: /Change folders/ }));
+    expect(screen.getByText(/server address cannot be read/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Apply" })).toBeDisabled();
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 });

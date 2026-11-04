@@ -17,10 +17,12 @@ func (c *Client) UserID(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return tokenSubject(token)
+	return TokenSubject(token)
 }
 
-func tokenSubject(token string) (string, error) {
+// TokenSubject reads the JWT subject (the account id) of an access token
+// without verifying it.
+func TokenSubject(token string) (string, error) {
 	parts := strings.Split(token, ".")
 	if len(parts) != 3 {
 		return "", domain.NewTokenError("the stored access token is not a JWT")

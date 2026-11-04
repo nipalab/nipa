@@ -1,4 +1,4 @@
-import { AlertTriangle, FolderGit2, GitBranch, Plus } from "lucide-react";
+import { AlertTriangle, CloudDownload, FolderGit2, FolderOpen, GitBranch } from "lucide-react";
 import type { DaemonInfo, Repo } from "@/api/desktop";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/Logo";
@@ -12,9 +12,10 @@ type SidebarProps = {
   adding: boolean;
   onSelect: (root: string) => void;
   onAdd: () => void;
+  onClone: () => void;
 };
 
-export function Sidebar({ repos, selected, daemon, adding, onSelect, onAdd }: SidebarProps) {
+export function Sidebar({ repos, selected, daemon, adding, onSelect, onAdd, onClone }: SidebarProps) {
   return (
     <aside className="flex w-64 shrink-0 flex-col border-r border-border bg-sidebar">
       <div className="drag-region flex h-12 items-center gap-2 px-4 pt-1">
@@ -24,9 +25,14 @@ export function Sidebar({ repos, selected, daemon, adding, onSelect, onAdd }: Si
 
       <div className="flex items-center justify-between px-4 pb-1 pt-3">
         <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Repositories</span>
-        <Button variant="ghost" size="icon" onClick={onAdd} disabled={adding} aria-label="Open a clone" title="Open a clone">
-          <Plus />
-        </Button>
+        <span className="flex">
+          <Button variant="ghost" size="icon" onClick={onClone} aria-label="Clone a repository" title="Clone a repository">
+            <CloudDownload />
+          </Button>
+          <Button variant="ghost" size="icon" onClick={onAdd} disabled={adding} aria-label="Open a clone" title="Open a clone">
+            <FolderOpen />
+          </Button>
+        </span>
       </div>
 
       <nav aria-label="Repositories" className="flex-1 space-y-0.5 overflow-y-auto px-2 pb-2">

@@ -48,7 +48,9 @@ Sonar never compile it.
   `AddRepo`, `RemoveRepo`; Changes screen: `Changes`, `Stage`, `Unstage`,
   `Discard`, `FileDiff`, `ImageDiff`, `ModelDiff`, `AudioDiff`, `TableDiff`,
   `MetaWarnings`, `Push`, `Update`; Locks: `LockStatus`, `Lock`, `Unlock`,
-  `PickFile`, `OpenFile`). Plain Go behind `Dialer`/
+  `PickFile`, `OpenFile`; Clone: `AccountStatus`, `SignIn`, `SignInSSH`,
+  `ListProjects`, `RemoteBranches`, `RemoteTree`, `ChooseFolder`, `Clone`,
+  `SetSparse`). Plain Go behind `Dialer`/
   `RepoStore`/`FolderPicker` seams, so it is unit-tested without a webview; an
   `Unavailable` error drops the session so the next call reconnects (and
   restarts the daemon) and re-watches each clone on first use. Every watched
@@ -131,6 +133,19 @@ Sonar never compile it.
   new folders without a `.meta`, `.meta` files left without their asset or
   deleted while the asset stays, a `.meta` not staged with its staged asset,
   and a changed GUID (old content read from the snapshot, 256 checks max).
+- Clone and sign in: "Clone a repository…" (welcome screen and the sidebar)
+  opens a dialog: server address (remembered) → `AccountStatus` tells
+  whether the daemon holds a session for it; without one the dialog tries
+  `SignInSSH` (registered key from ssh-agent or `~/.ssh`) first and offers
+  email + password (`SignIn`) → `ListProjects` (readable projects of every
+  organization the account belongs to, filterable) → branch
+  (`RemoteBranches`, default preselected), folders (Everything, or a lazy
+  folder tree from `RemoteTree` where ticking a folder takes its whole
+  subtree) and location (`ChooseFolder` + folder name) → `Clone` streams
+  download progress as `op:progress` for the target folder (cancellable),
+  then opens the clone like `AddRepo`. The Details tab's "Change folders…"
+  reuses the folder tree for an existing clone and applies it with
+  `SetSparse` (sparse prefixes + update, progress in the header).
 - Locks: `LockStatus` asks the daemon's `LockStatus` RPC for every visible
   lock plus the state of each changed binary (a tracked file stored as
   binary, or a known asset extension) in the lock scope of the clone's
@@ -265,7 +280,7 @@ Pure package (no client imports), shared by the daemon and later the server.
 8. 3D model viewer. **(done)**
 9. Audio viewer, CSV table diff, Unity `.meta` lint. **(done)**
 10. Locks (lock-aware status, Lock & edit, Locks page). **(done)**
-11. Sign in, clone, sparse checkout.
+11. Sign in, clone, sparse checkout. **(done)**
 12. History, branches, tags, revert.
 13. Merge requests with asset viewers.
 14. Conflict resolution.

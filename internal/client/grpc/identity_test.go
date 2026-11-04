@@ -26,12 +26,12 @@ func TestClient_UserID(t *testing.T) {
 
 func TestTokenSubject(t *testing.T) {
 	padded := "h." + base64.URLEncoding.EncodeToString([]byte(`{"sub":"ab"}`)) + ".s"
-	id, err := tokenSubject(padded)
+	id, err := TokenSubject(padded)
 	require.NoError(t, err)
 	require.Equal(t, "ab", id)
 
 	for _, bad := range []string{"opaque", "a.!!!.c", jwtWith("not json"), jwtWith(`{"user_id":1}`)} {
-		_, err := tokenSubject(bad)
+		_, err := TokenSubject(bad)
 		require.Error(t, err, bad)
 	}
 }
