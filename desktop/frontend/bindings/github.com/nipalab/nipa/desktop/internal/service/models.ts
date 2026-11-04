@@ -9,6 +9,16 @@ export interface Account {
     "userId": string;
 }
 
+/**
+ * Activity is everything the conversation shows besides the request itself.
+ */
+export interface Activity {
+    "reviews": Review[] | null;
+    "threads": Thread[] | null;
+    "timeline": TimelineEvent[] | null;
+    "checks": Check[] | null;
+}
+
 export interface AudioCompare {
     "old": AudioSide | null;
     "new": AudioSide | null;
@@ -83,6 +93,18 @@ export interface Changes {
     "pendingRemaining"?: number;
 }
 
+export interface Check {
+    "name": string;
+
+    /**
+     * pending, success, failed
+     */
+    "state": string;
+    "url": string;
+    "reporter": string;
+    "updatedAt": string;
+}
+
 /**
  * CloneRequest describes a checkout: Target is the new folder, Sparse the
  * folders to download (empty for everything).
@@ -94,6 +116,25 @@ export interface CloneRequest {
     "branch": string;
     "sparse": string[] | null;
     "target": string;
+}
+
+export interface Comment {
+    "id": string;
+    "author": Person;
+    "body": string;
+    "createdAt": string;
+    "edited": boolean;
+}
+
+/**
+ * CommentInput starts a thread; Path empty is a conversation comment,
+ * otherwise OldLine or NewLine anchors it to a line the diff shows.
+ */
+export interface CommentInput {
+    "path": string;
+    "oldLine": number;
+    "newLine": number;
+    "body": string;
 }
 
 export interface Commit {
@@ -374,6 +415,68 @@ export interface LockStatus {
     "files": FileLockState[] | null;
 }
 
+export interface MergeRequest {
+    "number": number;
+    "title": string;
+    "description": string;
+
+    /**
+     * open, merged, closed
+     */
+    "status": string;
+    "draft": boolean;
+    "source": string;
+    "target": string;
+    "authorId": string;
+    "createdAt": string;
+    "updatedAt": string;
+    "mergeCommitId": string;
+    "mergeBaseId": string;
+    "approvals": number;
+    "changesRequested": number;
+    "assignees": Person[] | null;
+}
+
+export interface MergeRequestDetail {
+    "request": MergeRequest;
+    "mergeability": Mergeability;
+
+    /**
+     * reviewer ids still asked to review
+     */
+    "outstanding": string[] | null;
+}
+
+/**
+ * MergeRequestFilter narrows the list; Status draft means open drafts.
+ */
+export interface MergeRequestFilter {
+    "status": string;
+    "search": string;
+    "author": string;
+    "after": number;
+}
+
+export interface MergeRequestPage {
+    "items": MergeRequest[] | null;
+
+    /**
+     * 0 on the last page
+     */
+    "next": number;
+}
+
+export interface Mergeability {
+    /**
+     * mergeable, behind_target, up_to_date, invalid, merged, closed
+     */
+    "status": string;
+    "blockedBy": string;
+    "sourceCommitId": string;
+    "targetCommitId": string;
+    "mergeBaseId": string;
+}
+
 export interface MetaWarning {
     "path": string;
 
@@ -441,6 +544,14 @@ export interface ModelStats {
     "max": number[] | null;
 }
 
+export interface NewMergeRequest {
+    "title": string;
+    "description": string;
+    "source": string;
+    "target": string;
+    "draft": boolean;
+}
+
 export interface OpOutcome {
     "branch"?: string;
     "commitId"?: string;
@@ -462,6 +573,11 @@ export interface OpProgress {
     "objectsTotal": number;
     "bytesDone": number;
     "bytesTotal": number;
+}
+
+export interface Person {
+    "id": string;
+    "name": string;
 }
 
 export interface RemoteBranch {
@@ -530,6 +646,20 @@ export interface RevertRequest {
     "mode": string;
 }
 
+export interface Review {
+    "id": string;
+    "reviewer": Person;
+
+    /**
+     * approved, changes_requested, commented
+     */
+    "state": string;
+    "body": string;
+    "stale": boolean;
+    "dismissed": boolean;
+    "createdAt": string;
+}
+
 export interface TableColumn {
     "name": string;
     "oldName": string;
@@ -591,4 +721,30 @@ export interface Tag {
     "message": string;
     "createdAt": string;
     "createdBy": string;
+}
+
+export interface Thread {
+    "id": string;
+
+    /**
+     * empty for the conversation
+     */
+    "path": string;
+    "oldLine": number;
+    "newLine": number;
+    "outdated": boolean;
+    "resolved": boolean;
+    "resolvedBy": string;
+    "createdAt": string;
+    "comments": Comment[] | null;
+}
+
+export interface TimelineEvent {
+    "id": string;
+    "kind": string;
+    "actor": Person;
+    "subject": Person;
+    "body": string;
+    "commitId": string;
+    "createdAt": string;
 }

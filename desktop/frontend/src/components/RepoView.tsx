@@ -1,12 +1,13 @@
 import { useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ArrowDownToLine, FileDiff, FolderTree, GitBranch, History, Info, Lock, Tag, Tags, Trash2 } from "lucide-react";
+import { AlertTriangle, ArrowDownToLine, FileDiff, FolderTree, GitBranch, GitPullRequest, History, Info, Lock, Tag, Tags, Trash2 } from "lucide-react";
 import { desktop, type ChangeSet, type OpOutcome, type Repo } from "@/api/desktop";
 import { BranchesView } from "@/components/branches/BranchesView";
 import { ChangesView } from "@/components/changes/ChangesView";
 import { SparseDialog } from "@/components/clone/SparseDialog";
 import { HistoryView } from "@/components/history/HistoryView";
 import { LocksView } from "@/components/locks/LocksView";
+import { MergeRequestsView } from "@/components/mr/MergeRequestsView";
 import { Progress } from "@/components/changes/CommitBox";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,12 +16,13 @@ import { cn, errorMessage } from "@/lib/utils";
 
 export type Notify = (message: string, tone?: "error" | "success") => void;
 
-type TabId = "changes" | "history" | "branches" | "locks" | "details";
+type TabId = "changes" | "history" | "branches" | "mrs" | "locks" | "details";
 
 const tabs: { id: TabId; label: string; Icon: typeof FileDiff }[] = [
   { id: "changes", label: "Changes", Icon: FileDiff },
   { id: "history", label: "History", Icon: History },
   { id: "branches", label: "Branches & tags", Icon: Tags },
+  { id: "mrs", label: "Merge requests", Icon: GitPullRequest },
   { id: "locks", label: "Locks", Icon: Lock },
   { id: "details", label: "Details", Icon: Info },
 ];
@@ -177,6 +179,8 @@ export function RepoView({ repo, removing, onRemove, notify }: RepoViewProps) {
                   operation.run("switch", () => desktop.checkoutTag(repo.root, name));
                 }}
               />
+            ) : tab === "mrs" ? (
+              <MergeRequestsView root={repo.root} branch={repo.branch} notify={notify} />
             ) : tab === "locks" ? (
               <LocksView root={repo.root} notify={notify} />
             ) : (

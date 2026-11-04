@@ -73,7 +73,12 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   `oldRevision`/`newRevision`, Branch…/Tag…/Revert…), Branches & tags tab via
   `Branches`/`CreateBranch`/`DeleteBranch`/`SwitchBranch`/`Tags`/
   `CreateTag`/`DeleteTag`/`CheckoutTag`, detached-tag and pending-revert
-  banners (`Revert` continue/skip/abort),
+  banners (`Revert` continue/skip/abort), Merge requests tab via
+  `MergeRequests`/`MergeRequest`/`MergeRequestActivity`/`MergeRequestCommits`/
+  `RevisionFiles` (merge base vs source head in the asset viewers) and the
+  `CreateMergeRequest`/`EditMergeRequest`/`SetDraft`/`MergeMergeRequest`/
+  `Close`/`Reopen`/`SubmitReview`/`Comment`/`Reply`/`ResolveThread` actions
+  (inline line threads through `TextDiff`'s `comments` prop),
   file locks via `LockStatus`/`Lock`/`Unlock` (row lock badges, push box
   blocks on someone else's lock and offers "Lock N files", Locks tab with
   release and "Lock & edit" through `PickFile`/`OpenFile`),
@@ -561,7 +566,9 @@ messages verbatim over `Client.ServiceClient()`, filling the clone's
 org/project context from `.nipa/config`; server-scoped `AccountStatus`/`Login`/`LoginSSH`/`ListProjects`/
 `RemoteBranches`/`RemoteTree` run on a fresh connection per call
 (`Options.Accounts`, wired in `cmd/nipa/serve.go`; the daemon never prompts),
-`ProxyTagList`/`ProxyTagCreate`/`ProxyTagDelete` forward the tag RPCs, `Status`
+`ProxyTagList`/`ProxyTagCreate`/`ProxyTagDelete` forward the tag RPCs,
+`ProxyMergeRequestUpdate`/`Commits`/`Checks`/`Timeline`/`AddComment`/`Reply`/
+`Resolve` complete the merge-request surface, `Status`
 reports a waiting merge/revert as `pending` (+ `pending_remaining`),
 `Clone` streams `OpEvent`s outside any repo slot and `SetSparse` stores the
 prefixes then updates under the exclusive slot; `LockStatus` joins the lock list,

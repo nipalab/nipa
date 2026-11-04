@@ -145,6 +145,34 @@ func (emptyService) DeleteBranch(context.Context, *pb.DeleteBranchRequest, ...gr
 	return &pb.DeleteBranchResponse{}, nil
 }
 
+func (emptyService) UpdateMergeRequest(context.Context, *pb.UpdateMergeRequestRequest, ...grpc.CallOption) (*pb.UpdateMergeRequestResponse, error) {
+	return &pb.UpdateMergeRequestResponse{}, nil
+}
+
+func (emptyService) ListMergeRequestCommits(context.Context, *pb.ListMergeRequestCommitsRequest, ...grpc.CallOption) (*pb.ListMergeRequestCommitsResponse, error) {
+	return &pb.ListMergeRequestCommitsResponse{}, nil
+}
+
+func (emptyService) ListMergeRequestChecks(context.Context, *pb.ListMergeRequestChecksRequest, ...grpc.CallOption) (*pb.ListMergeRequestChecksResponse, error) {
+	return &pb.ListMergeRequestChecksResponse{}, nil
+}
+
+func (emptyService) ListMergeRequestTimeline(context.Context, *pb.ListMergeRequestTimelineRequest, ...grpc.CallOption) (*pb.ListMergeRequestTimelineResponse, error) {
+	return &pb.ListMergeRequestTimelineResponse{}, nil
+}
+
+func (emptyService) AddMergeRequestComment(context.Context, *pb.AddMergeRequestCommentRequest, ...grpc.CallOption) (*pb.AddMergeRequestCommentResponse, error) {
+	return &pb.AddMergeRequestCommentResponse{}, nil
+}
+
+func (emptyService) ReplyMergeRequestThread(context.Context, *pb.ReplyMergeRequestThreadRequest, ...grpc.CallOption) (*pb.ReplyMergeRequestThreadResponse, error) {
+	return &pb.ReplyMergeRequestThreadResponse{}, nil
+}
+
+func (emptyService) ResolveMergeRequestThread(context.Context, *pb.ResolveMergeRequestThreadRequest, ...grpc.CallOption) (*pb.ResolveMergeRequestThreadResponse, error) {
+	return &pb.ResolveMergeRequestThreadResponse{}, nil
+}
+
 func (emptyService) ListTags(context.Context, *pb.ListTagsRequest, ...grpc.CallOption) (*pb.ListTagsResponse, error) {
 	return &pb.ListTagsResponse{}, nil
 }
@@ -328,6 +356,34 @@ func proxyCalls(srv *Server, ctx context.Context, root string) []struct {
 		}},
 		{"MergeRequestSubmitReview", func() error {
 			_, err := srv.ProxyMergeRequestSubmitReview(ctx, &daemonpb.ProxyMergeRequestSubmitReviewRequest{Root: root})
+			return err
+		}},
+		{"MergeRequestUpdate", func() error {
+			_, err := srv.ProxyMergeRequestUpdate(ctx, &daemonpb.ProxyMergeRequestUpdateRequest{Root: root})
+			return err
+		}},
+		{"MergeRequestCommits", func() error {
+			_, err := srv.ProxyMergeRequestCommits(ctx, &daemonpb.ProxyMergeRequestCommitsRequest{Root: root})
+			return err
+		}},
+		{"MergeRequestChecks", func() error {
+			_, err := srv.ProxyMergeRequestChecks(ctx, &daemonpb.ProxyMergeRequestChecksRequest{Root: root})
+			return err
+		}},
+		{"MergeRequestTimeline", func() error {
+			_, err := srv.ProxyMergeRequestTimeline(ctx, &daemonpb.ProxyMergeRequestTimelineRequest{Root: root})
+			return err
+		}},
+		{"MergeRequestAddComment", func() error {
+			_, err := srv.ProxyMergeRequestAddComment(ctx, &daemonpb.ProxyMergeRequestAddCommentRequest{Root: root})
+			return err
+		}},
+		{"MergeRequestReply", func() error {
+			_, err := srv.ProxyMergeRequestReply(ctx, &daemonpb.ProxyMergeRequestReplyRequest{Root: root})
+			return err
+		}},
+		{"MergeRequestResolve", func() error {
+			_, err := srv.ProxyMergeRequestResolve(ctx, &daemonpb.ProxyMergeRequestResolveRequest{Root: root})
 			return err
 		}},
 		{"LockFile", func() error {
