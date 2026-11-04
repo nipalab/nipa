@@ -11,5 +11,6 @@ export default defineConfig({
     port: Number(process.env.WAILS_VITE_PORT) || 9245,
     strictPort: true,
   },
+  build: { chunkSizeWarningLimit: 1024 },
   plugins: [react(), tailwindcss(), wails("./bindings")],
 });

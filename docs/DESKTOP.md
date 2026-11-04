@@ -86,6 +86,24 @@ Sonar never compile it.
   sides list their layers (`src/lib/layers.ts` pairs them by kind, name and
   duplicate index) with added/removed/changed status and what changed
   (pixels, bounds, visibility, opacity, blend mode, nesting).
+- Model viewer (`ModelDiff.tsx`, lazily loaded with three.js 0.186):
+  `ModelDiff` in the service reads each side through `ReadBlob` (snapshot
+  before, working file after, or a revision) plus the files it references —
+  glTF buffers and images, OBJ `mtllib` libraries and their `map_*` textures —
+  resolved next to the model and refused when they leave the repository;
+  absent files are listed as `missing`. Stats come from
+  `preview.DecodeModel`; the model is read up to 256 MiB and returned
+  base64 only while it and its files fit 64 MiB (`tooLarge` otherwise, stats
+  still shown). `src/lib/modelLoad.ts` parses glTF/GLB, OBJ+MTL, FBX and
+  USD/USDA/USDC/USDZ from memory (a `LoadingManager` URL modifier serves the
+  referenced files as data URLs) and counts the scene itself for formats
+  without Go stats. `src/lib/modelStage.ts` drives one WebGL renderer with a
+  shared camera and `OrbitControls`: side by side (two scissored viewports)
+  or overlay (the old model as an orange wireframe on top of the new one),
+  shaded/wireframe/both, synced animation playback by clip name, camera fit
+  to the union of both bounds. The panel diffs vertices, triangles, meshes,
+  materials, textures, bones, animations, morph targets, bounds and the
+  exporter, and lists added/removed material and animation names.
 - `frontend/`: React 18, Vite 8, Tailwind 4 (tokens in `src/index.css`,
   light/dark/system theme in `src/lib/theme.tsx`), TanStack Query, lucide.
   Generated bindings live in `frontend/bindings` and are committed (CI fails
@@ -150,6 +168,14 @@ Pure package (no client imports), shared by the daemon and later the server.
   (`testdata/bcn`, generators in `testdata/gen`). Refusals wrap
   `ErrUnsupported` with a reason ("EXR PIZ compression") that the daemon
   forwards in its 415.
+- `DecodeModel(name, data)` reads `ModelStats` from glTF/GLB (JSON only:
+  accessor counts, triangles by primitive mode, materials, textures, skins and
+  unique joints, animations, morph targets, world-space bounds from the
+  POSITION min/max boxes through the node transforms of the default scene,
+  external buffer/image URIs) and OBJ (vertices, fan-triangulated faces,
+  objects/groups, `usemtl` names, `mtllib` files, bounds);
+  `MaterialLibraryDependencies` lists an `.mtl` file's textures. Other model
+  formats return `ErrUnsupported`.
 - Float sources keep linear samples in `Image.HDR` (`FloatImage`) while
   `Pixels` is their clamped sRGB rendering, used for `CompareImages`.
   `DownscaleFloat` box-filters them and `PackHDR` packs them into an opaque
@@ -160,7 +186,8 @@ Pure package (no client imports), shared by the daemon and later the server.
   channel delta, the changed bounding box and size/format/depth/alpha changes;
   fully transparent pixels compare equal.
 - Decoders are fuzzed (`FuzzDecodeTGA`, `FuzzDecodeImage`, `FuzzDecodeDDS`,
-  `FuzzDecodeKTX2`, `FuzzDecodeEXR`, `FuzzDecodeHDR`, `FuzzDecodePSD`);
+  `FuzzDecodeKTX2`, `FuzzDecodeEXR`, `FuzzDecodeHDR`, `FuzzDecodePSD`,
+  `FuzzDecodeModel`);
   crashers found by the fuzzer are kept as seeds in `testdata/fuzz`.
 
 ## Roadmap (one PR each)
@@ -172,7 +199,7 @@ Pure package (no client imports), shared by the daemon and later the server.
 5. Changes screen + text diff, daemon `WatchChanges`. **(done)**
 6. Image compare viewer. **(done)**
 7. DDS/KTX2/EXR/HDR/PSD decoders + viewer controls. **(done)**
-8. 3D model viewer.
+8. 3D model viewer. **(done)**
 9. Audio viewer, CSV table diff, Unity `.meta` lint.
 10. Locks (lock-aware status, Lock & edit, Locks page).
 11. Sign in, clone, sparse checkout.

@@ -56,6 +56,13 @@ export function ImageDiff(root: string, old: $models.ImageRef | null, $new: $mod
 }
 
 /**
+ * ModelDiff loads the old and/or new version of a 3D model for the viewer.
+ */
+export function ModelDiff(root: string, old: $models.ImageRef | null, $new: $models.ImageRef | null): $CancellablePromise<$models.ModelCompare | null> {
+    return $Call.ByID(2021065394, root, old, $new);
+}
+
+/**
  * PickRepo lets the user choose a folder inside a clone and adds it. A nil
  * repo means the dialog was cancelled.
  */

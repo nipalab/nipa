@@ -59,7 +59,8 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   opened clones (`<config>/nipa/desktop.json`) and `internal/service` is the
   Wails-bound API, plain Go behind seams (Changes screen: status/stage/
   discard/`FileDiff`/push/update, image compare via `ImageDiff` over the daemon
-  `Preview` stream, `repo:changed` + `op:progress` events fed by
+  `Preview` stream, 3D model compare via `ModelDiff` over `ReadBlob` +
+  `preview.DecodeModel` rendered with three.js, `repo:changed` + `op:progress` events fed by
   the daemon's `WatchChanges` and `OpEvent` streams). Generated TS bindings in
   `desktop/frontend/bindings` are committed. Root `./...` never includes it;
   use `make desktop`/`desktop-dev`/`desktop-test` (needs the `wails3` CLI;
@@ -99,6 +100,7 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   (PNG/JPEG/GIF/BMP/TIFF/WebP via stdlib + `golang.org/x/image`; own decoders
   for TGA, DDS and KTX2 with BC1–BC7/BC6H and mip/face `Select`, EXR, Radiance
   HDR and PSD/PSB composite + layer list; float sources keep `Image.HDR`;
+  `DecodeModel` glTF/GLB/OBJ stats with world bounds and referenced files;
   `MaxPixels` checked before allocating, half of it for float), `Downscale`/
   `DownscaleFloat`/`PackHDR` and `CompareImages` (changed pixels/ratio/max
   delta/bbox; transparent pixels compare equal). Block decoders are checked

@@ -12,6 +12,7 @@ const service = vi.hoisted(() => ({
   Discard: vi.fn(),
   FileDiff: vi.fn(),
   ImageDiff: vi.fn(),
+  ModelDiff: vi.fn(),
   Push: vi.fn(),
   Update: vi.fn(),
 }));
@@ -70,6 +71,13 @@ describe("desktop api", () => {
     expect(await desktop.push("/a", "msg")).toEqual({ commitId: "c1" });
     expect(await desktop.update("/a")).toEqual({ branch: "main" });
     expect(service.Push).toHaveBeenCalledWith("/a", "msg");
+  });
+
+  it("loads models", async () => {
+    service.ModelDiff.mockResolvedValue({ old: null, new: null });
+    const ref = { source: "working", path: "a.glb" };
+    expect(await desktop.modelDiff("/a", null, ref)).toEqual({ old: null, new: null });
+    expect(service.ModelDiff).toHaveBeenCalledWith("/a", null, ref);
   });
 
   it("asks for image previews at 2048 px and the first surface by default", async () => {

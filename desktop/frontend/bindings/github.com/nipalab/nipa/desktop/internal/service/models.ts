@@ -182,6 +182,62 @@ export interface ImageStats {
     "alphaChanged": boolean;
 }
 
+export interface ModelCompare {
+    "old": ModelSide | null;
+    "new": ModelSide | null;
+}
+
+/**
+ * ModelSide is one version of a model with what the viewer needs to render
+ * it: its bytes and the files it references, all base64.
+ */
+export interface ModelSide {
+    "path": string;
+
+    /**
+     * extension without the dot
+     */
+    "format": string;
+    "size": number;
+
+    /**
+     * Stats is nil for formats without a Go parser (FBX, USD); the viewer
+     * then counts from the loaded scene. StatsError says why.
+     */
+    "stats": ModelStats | null;
+    "statsError"?: string;
+    "data": string;
+    "files": { [_ in string]?: string } | null;
+    "missing": string[] | null;
+
+    /**
+     * TooLarge means the model and its files exceed the render budget; only
+     * the stats are returned.
+     */
+    "tooLarge"?: boolean;
+}
+
+export interface ModelStats {
+    "generator": string;
+    "meshes": number;
+    "primitives": number;
+    "vertices": number;
+    "triangles": number;
+    "materials": string[] | null;
+    "textures": number;
+    "nodes": number;
+    "skins": number;
+    "joints": number;
+    "animations": string[] | null;
+    "morphTargets": number;
+
+    /**
+     * nil when the model has no bounds
+     */
+    "min": number[] | null;
+    "max": number[] | null;
+}
+
 export interface OpOutcome {
     "branch"?: string;
     "commitId"?: string;

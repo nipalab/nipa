@@ -1,4 +1,4 @@
-import type { ComponentType } from "react";
+import { lazy, Suspense, type ComponentType } from "react";
 import { ArrowRight, Columns2, Rows3 } from "lucide-react";
 import type { FileDiff } from "@/api/desktop";
 import { FileIcon, StatusLetter } from "@/components/changes/FileIcon";
@@ -6,6 +6,8 @@ import { ImageDiff } from "@/components/changes/ImageDiff";
 import { MetaDiff, Notice } from "@/components/changes/Notices";
 import { TextDiff, type DiffLayout } from "@/components/changes/TextDiff";
 import { cn } from "@/lib/utils";
+
+const ModelDiff = lazy(() => import("@/components/changes/ModelDiff").then((m) => ({ default: m.ModelDiff })));
 
 type ViewerProps = { root: string; diff: FileDiff; layout: DiffLayout };
 
@@ -16,6 +18,7 @@ const isText = (d: FileDiff) => !d.old?.binary && !d.new?.binary;
 export function viewerFor(diff: FileDiff): ComponentType<ViewerProps> {
   if (diff.contentUnavailable) return Notice;
   if (diff.kind === "image" && (diff.old || diff.new)) return ImageDiff;
+  if (diff.kind === "model" && (diff.old || diff.new)) return ModelDiff;
   if (diff.hunksOmitted) return Notice;
   if (isText(diff) && (diff.hunks ?? []).length > 0) return TextDiff;
   if (isText(diff)) return Notice;
@@ -59,7 +62,9 @@ export function DiffViewer({ root, diff, layout, onLayout }: DiffViewerProps) {
         )}
       </div>
       <div className="min-h-0 flex-1">
-        <Viewer root={root} diff={diff} layout={layout} />
+        <Suspense fallback={null}>
+          <Viewer root={root} diff={diff} layout={layout} />
+        </Suspense>
       </div>
     </div>
   );

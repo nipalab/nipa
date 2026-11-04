@@ -57,3 +57,17 @@ func FuzzDecodeKTX2(f *testing.F) { fuzzFormat(f, ".ktx2", "*.ktx2") }
 func FuzzDecodeEXR(f *testing.F)  { fuzzFormat(f, ".exr", "*.exr") }
 func FuzzDecodeHDR(f *testing.F)  { fuzzFormat(f, ".hdr", "*.hdr") }
 func FuzzDecodePSD(f *testing.F)  { fuzzFormat(f, ".psd", "*.ps[db]") }
+
+func FuzzDecodeModel(f *testing.F) {
+	f.Add([]byte(sampleGLTF), 0)
+	f.Add(glbFile(sampleGLTF), 1)
+	f.Add([]byte("mtllib a.mtl\nv 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n"), 2)
+	f.Fuzz(func(t *testing.T, data []byte, kind int) {
+		name := []string{"m.gltf", "m.glb", "m.obj"}[uint(kind)%3]
+		s, err := DecodeModel(name, data)
+		if err == nil && (s.Vertices < 0 || s.Triangles < 0) {
+			t.Fatalf("negative counts")
+		}
+		MaterialLibraryDependencies(data)
+	})
+}
