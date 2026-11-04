@@ -115,6 +115,14 @@ describe("BranchesView", () => {
     expect(within(section("Branches")).queryByText("Current")).not.toBeInTheDocument();
   });
 
+  it("keeps the configured branch undeletable while detached", async () => {
+    view({ detached: "v1.0", branch: "art-pass" });
+    await screen.findByText("Checked out");
+    const branches = section("Branches");
+    expect(within(branches).queryByRole("button", { name: "Delete branch art-pass" })).not.toBeInTheDocument();
+    expect(within(branches).getByRole("button", { name: "Delete branch empty" })).toBeInTheDocument();
+  });
+
   it("shows empty lists, errors and refreshes", async () => {
     api.branches.mockRejectedValueOnce(new Error("offline")).mockResolvedValue([]);
     api.tags.mockResolvedValue([]);

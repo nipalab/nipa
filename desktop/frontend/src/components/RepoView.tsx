@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, ArrowDownToLine, FileDiff, FolderTree, GitBranch, History, Info, Lock, Tag, Tags, Trash2 } from "lucide-react";
 import { desktop, type ChangeSet, type OpOutcome, type Repo } from "@/api/desktop";
@@ -37,6 +37,7 @@ export function RepoView({ repo, removing, onRemove, notify }: RepoViewProps) {
   const refresh = () => {
     for (const key of ["changes", "diff", "locks", "history", "branches", "tags"]) void queryClient.invalidateQueries({ queryKey: [key, repo.root] });
   };
+  const tagCheckout = useRef("");
   const operation = useRepoOperation(repo.root, {
     onDone: (op, outcome) => {
       refresh();
@@ -51,7 +52,7 @@ export function RepoView({ repo, removing, onRemove, notify }: RepoViewProps) {
       }
       void queryClient.invalidateQueries({ queryKey: ["repos"] });
       if (op === "sparse") notify("Checkout updated", "success");
-      else if (op === "switch") notify(`Switched to ${outcome.branch || repo.branch}`, "success");
+      else if (op === "switch") notify(tagCheckout.current ? `Checked out tag ${tagCheckout.current}` : `Switched to ${outcome.branch || repo.branch}`, "success");
       else notify(`Up to date with ${outcome.branch || repo.branch}`, "success");
     },
     onError: (op, err) => {
@@ -65,7 +66,10 @@ export function RepoView({ repo, removing, onRemove, notify }: RepoViewProps) {
   });
   const op = operation.state;
   const detached = changes.data?.detached;
-  const switchTo = (branch: string) => operation.run("switch", () => desktop.switchBranch(repo.root, branch));
+  const switchTo = (branch: string) => {
+    tagCheckout.current = "";
+    operation.run("switch", () => desktop.switchBranch(repo.root, branch));
+  };
   const revert = (mode: "continue" | "skip" | "abort") => operation.run("revert", () => desktop.revert(repo.root, { mode }));
 
   return (
@@ -168,7 +172,10 @@ export function RepoView({ repo, removing, onRemove, notify }: RepoViewProps) {
                 busy={!!op}
                 notify={notify}
                 onSwitch={switchTo}
-                onCheckoutTag={(name) => operation.run("switch", () => desktop.checkoutTag(repo.root, name))}
+                onCheckoutTag={(name) => {
+                  tagCheckout.current = name;
+                  operation.run("switch", () => desktop.checkoutTag(repo.root, name));
+                }}
               />
             ) : tab === "locks" ? (
               <LocksView root={repo.root} notify={notify} />

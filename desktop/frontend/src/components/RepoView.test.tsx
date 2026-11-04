@@ -520,6 +520,7 @@ describe("history, branches and pending operations", () => {
     await waitFor(() => expect(notify).toHaveBeenCalledWith("Switched to feature", "success"));
     await userEvent.click(screen.getByRole("button", { name: "Check out" }));
     expect(api.checkoutTag).toHaveBeenCalledWith("/work/game", "v1");
+    await waitFor(() => expect(notify).toHaveBeenCalledWith("Checked out tag v1", "success"));
   });
 
   it("shows the detached banner and switches back", async () => {

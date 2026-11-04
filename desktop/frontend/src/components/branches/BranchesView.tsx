@@ -94,7 +94,7 @@ export function BranchesView({ root, branch, detached, busy, notify, onSwitch, o
                         Switch
                       </Button>
                     )}
-                    {!b.default && !current && (
+                    {!b.default && b.name !== branch && (
                       <Button size="sm" variant="ghost" disabled={busy || deleteBranch.isPending} aria-label={`Delete branch ${b.name}`} onClick={() => setDialog({ kind: "delete-branch", name: b.name })}>
                         <Trash2 />
                       </Button>
