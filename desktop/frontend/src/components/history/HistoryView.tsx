@@ -121,7 +121,15 @@ export function HistoryView({ root, branch, detached, busy, notify, onRevert, pa
               </Button>
             </Centered>
           ) : shown.length === 0 ? (
-            <Centered>{commits.length === 0 ? (path ? `No commits changed ${path}` : "No commits yet") : "No commits match"}</Centered>
+            <Centered>
+              <span>{commits.length === 0 ? (path ? `No commits changed ${path}` : "No commits yet") : "No commits match the loaded history"}</span>
+              {log.hasNextPage && (
+                <Button size="sm" disabled={log.isFetchingNextPage} onClick={() => void log.fetchNextPage()}>
+                  {log.isFetchingNextPage && <Loader2 className="animate-spin" />}
+                  Load older commits
+                </Button>
+              )}
+            </Centered>
           ) : (
             <ol className="min-h-0 flex-1 overflow-auto py-1" aria-label="Commits">
               {shown.map((c, i) => (

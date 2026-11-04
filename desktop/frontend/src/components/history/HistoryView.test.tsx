@@ -129,7 +129,9 @@ describe("HistoryView", () => {
     expect(within(list).queryByText("Paint hero")).not.toBeInTheDocument();
     await userEvent.clear(screen.getByRole("textbox", { name: "Filter commits" }));
     await userEvent.type(screen.getByRole("textbox", { name: "Filter commits" }), "nobody");
-    expect(screen.getByText("No commits match")).toBeInTheDocument();
+    expect(screen.getByText("No commits match the loaded history")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Load older commits" }));
+    await waitFor(() => expect(api.history).toHaveBeenCalledTimes(2));
   });
 
   it("shows the history of one image with a thumbnail strip", async () => {
