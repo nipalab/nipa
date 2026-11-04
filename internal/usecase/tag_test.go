@@ -938,3 +938,21 @@ func TestTag_DeleteTag_OnlyCreatorOrAdmin(t *testing.T) {
 		require.NoError(t, uc.DeleteTag(permissionCtx(7), snow.ID(1), "v1.0.0"))
 	})
 }
+
+func TestTag_ListTags_DefaultsMissingLimit(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := NewMockpermissionUsecase(ctrl)
+	repo := NewMocktagRepository(ctrl)
+
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).
+		Return(true)
+	repo.EXPECT().
+		ListTags(gomock.Any(), snow.ID(1), defaultTagListLimit, gomock.Nil(), snow.ID(0)).
+		Return([]*domain.Tag{}, nil)
+
+	uc := NewTag(perm, repo, NewMockbranchRepository(ctrl), newTestBranchNode(t))
+	got, err := uc.ListTags(context.Background(), snow.ID(1), 0, nil, 0)
+	require.NoError(t, err)
+	require.Empty(t, got)
+}

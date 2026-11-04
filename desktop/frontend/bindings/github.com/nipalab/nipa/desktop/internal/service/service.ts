@@ -32,11 +32,26 @@ export function AudioDiff(root: string, old: $models.ImageRef | null, $new: $mod
 }
 
 /**
+ * Branches lists the project's branches, the default one first.
+ */
+export function Branches(root: string): $CancellablePromise<$models.Branch[] | null> {
+    return $Call.ByID(3835456308, root);
+}
+
+/**
  * Changes returns the working-copy status of a clone, grouped the way the
  * Changes screen shows it.
  */
 export function Changes(root: string): $CancellablePromise<$models.Changes> {
     return $Call.ByID(3050126129, root);
+}
+
+/**
+ * CheckoutTag checks the tagged files out read-only (detached) until the
+ * clone switches back to a branch.
+ */
+export function CheckoutTag(root: string, tag: string): $CancellablePromise<$models.OpOutcome> {
+    return $Call.ByID(1096823316, root, tag);
 }
 
 /**
@@ -56,10 +71,48 @@ export function Clone(req: $models.CloneRequest): $CancellablePromise<$models.Re
 }
 
 /**
+ * CommitFiles lists what a commit changed against its first parent (parent
+ * is empty for a root commit). Each file carries both revisions so the asset
+ * viewers load the right versions.
+ */
+export function CommitFiles(root: string, commitID: string, parent: string): $CancellablePromise<$models.FileDiff[] | null> {
+    return $Call.ByID(873613144, root, commitID, parent);
+}
+
+/**
  * Connect attaches to the daemon, starting it when needed.
  */
 export function Connect(): $CancellablePromise<$models.DaemonInfo> {
     return $Call.ByID(1199806166);
+}
+
+/**
+ * CreateBranch creates a branch at a commit, else at a branch head, else at
+ * the default branch head.
+ */
+export function CreateBranch(root: string, name: string, fromBranch: string, fromCommit: string): $CancellablePromise<$models.Branch | null> {
+    return $Call.ByID(2968796748, root, name, fromBranch, fromCommit);
+}
+
+/**
+ * CreateTag tags a commit, else a branch head, else the default branch head.
+ */
+export function CreateTag(root: string, name: string, fromBranch: string, fromCommit: string, message: string): $CancellablePromise<$models.Tag | null> {
+    return $Call.ByID(1672893836, root, name, fromBranch, fromCommit, message);
+}
+
+/**
+ * DeleteBranch deletes a branch on the server.
+ */
+export function DeleteBranch(root: string, name: string): $CancellablePromise<void> {
+    return $Call.ByID(1239035635, root, name);
+}
+
+/**
+ * DeleteTag deletes a tag; clones checked out at it keep their files.
+ */
+export function DeleteTag(root: string, name: string): $CancellablePromise<void> {
+    return $Call.ByID(3095476201, root, name);
 }
 
 /**
@@ -76,6 +129,13 @@ export function Discard(root: string, paths: string[] | null): $CancellablePromi
  */
 export function FileDiff(root: string, path: string): $CancellablePromise<$models.FileDiff | null> {
     return $Call.ByID(546872149, root, path);
+}
+
+/**
+ * History lists commits newest first.
+ */
+export function History(root: string, q: $models.HistoryQuery): $CancellablePromise<$models.HistoryPage | null> {
+    return $Call.ByID(750957240, root, q);
 }
 
 /**
@@ -183,6 +243,14 @@ export function Repos(): $CancellablePromise<$models.Repo[] | null> {
 }
 
 /**
+ * Revert undoes a commit with a new commit on the clone's branch, or resumes
+ * a revert stopped on conflicts.
+ */
+export function Revert(root: string, req: $models.RevertRequest): $CancellablePromise<$models.OpOutcome> {
+    return $Call.ByID(1832166846, root, req);
+}
+
+/**
  * SetSparse changes which folders the clone downloads and updates it.
  */
 export function SetSparse(root: string, paths: string[] | null): $CancellablePromise<$models.OpOutcome> {
@@ -211,10 +279,24 @@ export function Stage(root: string, paths: string[] | null): $CancellablePromise
 }
 
 /**
+ * SwitchBranch moves the clone to another branch.
+ */
+export function SwitchBranch(root: string, branch: string): $CancellablePromise<$models.OpOutcome> {
+    return $Call.ByID(1378127380, root, branch);
+}
+
+/**
  * TableDiff compares two versions of a CSV/TSV file cell by cell.
  */
 export function TableDiff(root: string, old: $models.ImageRef | null, $new: $models.ImageRef | null): $CancellablePromise<$models.TableCompare | null> {
     return $Call.ByID(1291294083, root, old, $new);
+}
+
+/**
+ * Tags lists the project's release tags, newest first.
+ */
+export function Tags(root: string): $CancellablePromise<$models.Tag[] | null> {
+    return $Call.ByID(4045922345, root);
 }
 
 /**

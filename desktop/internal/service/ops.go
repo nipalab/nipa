@@ -27,9 +27,10 @@ type OpProgress struct {
 }
 
 type OpOutcome struct {
-	Branch     string `json:"branch,omitempty"`
-	CommitID   string `json:"commitId,omitempty"`
-	CommitHash string `json:"commitHash,omitempty"`
+	Branch     string         `json:"branch,omitempty"`
+	CommitID   string         `json:"commitId,omitempty"`
+	CommitHash string         `json:"commitHash,omitempty"`
+	Revert     *RevertOutcome `json:"revert,omitempty"`
 }
 
 // Push uploads the staged files and commits them with message. Cancelling the
@@ -97,6 +98,9 @@ func (s *Service) streamOp(ctx context.Context, client daemonpb.NipaDaemonClient
 func toOutcome(result *daemonpb.OpResult) OpOutcome {
 	if push := result.GetPush(); push != nil {
 		return OpOutcome{CommitID: push.GetCommitId(), CommitHash: push.GetCommitHash()}
+	}
+	if r := result.GetRevert(); r != nil {
+		return OpOutcome{Revert: &RevertOutcome{Committed: r.GetCommitted(), NoChange: r.GetNoChange(), Skipped: r.GetSkipped(), Aborted: r.GetAborted(), Conflicts: append([]string{}, r.GetConflicts()...)}}
 	}
 	sync := result.GetSync()
 	return OpOutcome{Branch: sync.GetBranch(), CommitID: sync.GetCommitId()}

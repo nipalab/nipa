@@ -145,6 +145,18 @@ func (emptyService) DeleteBranch(context.Context, *pb.DeleteBranchRequest, ...gr
 	return &pb.DeleteBranchResponse{}, nil
 }
 
+func (emptyService) ListTags(context.Context, *pb.ListTagsRequest, ...grpc.CallOption) (*pb.ListTagsResponse, error) {
+	return &pb.ListTagsResponse{}, nil
+}
+
+func (emptyService) CreateTag(context.Context, *pb.CreateTagRequest, ...grpc.CallOption) (*pb.CreateTagResponse, error) {
+	return &pb.CreateTagResponse{}, nil
+}
+
+func (emptyService) DeleteTag(context.Context, *pb.DeleteTagRequest, ...grpc.CallOption) (*pb.DeleteTagResponse, error) {
+	return &pb.DeleteTagResponse{}, nil
+}
+
 func (emptyService) GetTreeManifest(context.Context, *pb.GetTreeManifestRequest, ...grpc.CallOption) (*pb.GetTreeManifestResponse, error) {
 	return &pb.GetTreeManifestResponse{}, nil
 }
@@ -240,6 +252,18 @@ func proxyCalls(srv *Server, ctx context.Context, root string) []struct {
 		}},
 		{"BranchDelete", func() error {
 			_, err := srv.ProxyBranchDelete(ctx, &daemonpb.ProxyBranchDeleteRequest{Root: root})
+			return err
+		}},
+		{"TagList", func() error {
+			_, err := srv.ProxyTagList(ctx, &daemonpb.ProxyTagListRequest{Root: root})
+			return err
+		}},
+		{"TagCreate", func() error {
+			_, err := srv.ProxyTagCreate(ctx, &daemonpb.ProxyTagCreateRequest{Root: root})
+			return err
+		}},
+		{"TagDelete", func() error {
+			_, err := srv.ProxyTagDelete(ctx, &daemonpb.ProxyTagDeleteRequest{Root: root})
 			return err
 		}},
 		{"TreeManifest", func() error {

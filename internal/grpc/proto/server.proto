@@ -329,6 +329,7 @@ message GetCommitLogRequest {
     string branch = 2; // empty to use the default branch
     optional string start_commit_id = 3; // base36 snow ID; empty to start from the branch head
     int32 limit = 4;
+    string path = 5; // file or directory; when set only commits that changed it are listed
 }
 
 message GetCommitLogResponse {

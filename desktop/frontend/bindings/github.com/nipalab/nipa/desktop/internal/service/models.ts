@@ -58,6 +58,13 @@ export interface AudioStats {
     "truncated": boolean;
 }
 
+export interface Branch {
+    "name": string;
+    "commitId": string;
+    "default": boolean;
+    "protected": boolean;
+}
+
 export interface Changes {
     "branch": string;
 
@@ -68,6 +75,12 @@ export interface Changes {
     "staged": FileChange[] | null;
     "unstaged": FileChange[] | null;
     "conflicts": string[] | null;
+
+    /**
+     * Pending is merge or revert while one waits for continue or abort.
+     */
+    "pending"?: string;
+    "pendingRemaining"?: number;
 }
 
 /**
@@ -81,6 +94,20 @@ export interface CloneRequest {
     "branch": string;
     "sparse": string[] | null;
     "target": string;
+}
+
+export interface Commit {
+    "id": string;
+    "hash": string;
+    "parents": string[] | null;
+    "author": string;
+    "email": string;
+    "message": string;
+
+    /**
+     * RFC 3339
+     */
+    "date": string;
 }
 
 export interface DaemonInfo {
@@ -145,6 +172,13 @@ export interface FileDiff {
     "hunksOmitted"?: boolean;
     "contentUnavailable"?: boolean;
     "untracked"?: boolean;
+
+    /**
+     * OldRevision and NewRevision are set for a commit's changes; the working
+     * copy diff leaves them empty.
+     */
+    "oldRevision"?: string;
+    "newRevision"?: string;
 }
 
 export interface FileLock {
@@ -198,6 +232,26 @@ export interface FileSide {
     "size": number;
     "binary": boolean;
     "hash": string;
+}
+
+export interface HistoryPage {
+    "commits": Commit[] | null;
+
+    /**
+     * empty on the last page
+     */
+    "next": string;
+}
+
+/**
+ * HistoryQuery pages through a branch's commits; Path narrows them to the
+ * commits that changed a file or folder, Start continues from a Next cursor.
+ */
+export interface HistoryQuery {
+    "branch": string;
+    "path": string;
+    "start": string;
+    "limit": number;
 }
 
 export interface ImageCompare {
@@ -391,6 +445,7 @@ export interface OpOutcome {
     "branch"?: string;
     "commitId"?: string;
     "commitHash"?: string;
+    "revert"?: RevertOutcome | null;
 }
 
 /**
@@ -458,6 +513,23 @@ export interface RepoChanged {
     "paths": string[] | null;
 }
 
+export interface RevertOutcome {
+    "committed": boolean;
+    "noChange": boolean;
+    "skipped": boolean;
+    "aborted": boolean;
+    "conflicts": string[] | null;
+}
+
+/**
+ * RevertRequest reverts Target (a commit id) or, with Mode continue, skip or
+ * abort, resumes the revert waiting on conflicts.
+ */
+export interface RevertRequest {
+    "target": string;
+    "mode": string;
+}
+
 export interface TableColumn {
     "name": string;
     "oldName": string;
@@ -511,4 +583,12 @@ export interface TableRow {
      */
     "changed": number[] | null;
     "moved"?: boolean;
+}
+
+export interface Tag {
+    "name": string;
+    "commitId": string;
+    "message": string;
+    "createdAt": string;
+    "createdBy": string;
 }

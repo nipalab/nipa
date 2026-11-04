@@ -174,3 +174,38 @@ func TestCommitLogEntryToPB_RootCommit(t *testing.T) {
 	require.Nil(t, c.Parent_2Id)
 	require.Equal(t, timestamppb.New(now), c.CreatedAt)
 }
+
+func TestGetCommitLog_PathUsesPathHistory(t *testing.T) {
+	branch, perm, repo := newTestBranchUc(t)
+	srv := New(newMockUsecaseContainer(t, branch))
+
+	projectID := snow.ID(42)
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), projectID, domain.PermissionRead).
+		Return(true)
+	repo.EXPECT().
+		GetDefaultBranch(gomock.Any(), projectID).
+		Return(&domain.Branch{ID: 2, ProjectID: projectID, Name: "main"}, nil)
+
+	resp, err := srv.GetCommitLog(context.Background(), &pb.GetCommitLogRequest{
+		Context: &pb.ProjectContext{Org: "org", Project: "proj"},
+		Path:    "art/hero.png",
+	})
+	require.NoError(t, err)
+	require.Empty(t, resp.Commits)
+}
+
+func TestGetCommitLog_PathDenied(t *testing.T) {
+	branch, perm, _ := newTestBranchUc(t)
+	srv := New(newMockUsecaseContainer(t, branch))
+
+	perm.EXPECT().
+		HasProjectAccess(gomock.Any(), snow.ID(42), domain.PermissionRead).
+		Return(false)
+
+	_, err := srv.GetCommitLog(context.Background(), &pb.GetCommitLogRequest{
+		Context: &pb.ProjectContext{Org: "org", Project: "proj"},
+		Path:    "art",
+	})
+	require.Error(t, err)
+}

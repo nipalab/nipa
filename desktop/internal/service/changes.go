@@ -29,6 +29,9 @@ type Changes struct {
 	Staged    []FileChange `json:"staged"`
 	Unstaged  []FileChange `json:"unstaged"`
 	Conflicts []string     `json:"conflicts"`
+	// Pending is merge or revert while one waits for continue or abort.
+	Pending          string `json:"pending,omitempty"`
+	PendingRemaining int    `json:"pendingRemaining,omitempty"`
 }
 
 type FileSide struct {
@@ -69,6 +72,10 @@ type FileDiff struct {
 	HunksOmitted       bool       `json:"hunksOmitted,omitempty"`
 	ContentUnavailable bool       `json:"contentUnavailable,omitempty"`
 	Untracked          bool       `json:"untracked,omitempty"`
+	// OldRevision and NewRevision are set for a commit's changes; the working
+	// copy diff leaves them empty.
+	OldRevision string `json:"oldRevision,omitempty"`
+	NewRevision string `json:"newRevision,omitempty"`
 }
 
 // Changes returns the working-copy status of a clone, grouped the way the
@@ -119,10 +126,12 @@ func toChanges(resp *daemonpb.StatusResponse) Changes {
 		added[p] = true
 	}
 	out := Changes{
-		Branch:    resp.GetBranch(),
-		Staged:    []FileChange{},
-		Unstaged:  []FileChange{},
-		Conflicts: append([]string{}, resp.GetConflicts()...),
+		Branch:           resp.GetBranch(),
+		Staged:           []FileChange{},
+		Unstaged:         []FileChange{},
+		Conflicts:        append([]string{}, resp.GetConflicts()...),
+		Pending:          resp.GetPending(),
+		PendingRemaining: int(resp.GetPendingRemaining()),
 	}
 	if head := resp.GetHead(); head != nil {
 		out.Detached = head.GetName()

@@ -68,6 +68,12 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   `ListProjects`/`RemoteBranches`/`RemoteTree`/`Clone` (dialog: server →
   SSH key or password → project → branch, folder tree, location) and sparse
   editing via `SetSparse` (Details tab),
+  History tab via `History`/`CommitFiles` (path-filtered log, image
+  thumbnail strip, commit detail with the asset viewers on
+  `oldRevision`/`newRevision`, Branch…/Tag…/Revert…), Branches & tags tab via
+  `Branches`/`CreateBranch`/`DeleteBranch`/`SwitchBranch`/`Tags`/
+  `CreateTag`/`DeleteTag`/`CheckoutTag`, detached-tag and pending-revert
+  banners (`Revert` continue/skip/abort),
   file locks via `LockStatus`/`Lock`/`Unlock` (row lock badges, push box
   blocks on someone else's lock and offers "Lock N files", Locks tab with
   release and "Lock & edit" through `PickFile`/`OpenFile`),
@@ -536,7 +542,8 @@ failure; cancelling the stream always terminates it with a failure event).
 `Switch` detaches at a tag when its request carries `tag`
 (`UpdateRunner.SwitchTag`), otherwise switches branch.
 `Diff` streams rendered patch/stat/name output (64 KiB chunks, file-by-file for
-patches) under the shared slot; `DiffFiles` runs the same request but streams
+patches) under the shared slot (`show` + one revision diffs a commit against
+its first parent, `DiffOptions.Show`); `DiffFiles` runs the same request but streams
 one structured `DiffFile` per path (status, `internal/preview` viewer kind,
 side metadata, counts, `greet.DiffHunkDetail` hunks capped at 1 MiB per file)
 for the desktop GUI. `ReadBlob` streams one file version (working copy,
@@ -554,6 +561,8 @@ messages verbatim over `Client.ServiceClient()`, filling the clone's
 org/project context from `.nipa/config`; server-scoped `AccountStatus`/`Login`/`LoginSSH`/`ListProjects`/
 `RemoteBranches`/`RemoteTree` run on a fresh connection per call
 (`Options.Accounts`, wired in `cmd/nipa/serve.go`; the daemon never prompts),
+`ProxyTagList`/`ProxyTagCreate`/`ProxyTagDelete` forward the tag RPCs, `Status`
+reports a waiting merge/revert as `pending` (+ `pending_remaining`),
 `Clone` streams `OpEvent`s outside any repo slot and `SetSparse` stores the
 prefixes then updates under the exclusive slot; `LockStatus` joins the lock list,
 the branch scope (default branch = mainline locks), admin rights and the
@@ -937,7 +946,10 @@ compatible for one release.
   `branch_id` (base36) and `GetBranchByName` takes `name`; both return the branch
   with its head `commit_id`. `CreateBranch` takes `from_branch` and/or
   `from_commit_id`/`from_commit_hash` (exact fork point, base36/hex).
-  `GetCommitLog` takes `{context, branch, start_commit_id?, limit}`.
+  `GetCommitLog` takes `{context, branch, start_commit_id?, limit, path?}`
+  (`path` switches to `Branch.PathCommitLog`: only commits that changed that
+  file or folder, scan capped at 500 commits); `ListTags` defaults a missing
+  limit to 100.
   `GetCommit` takes
   `{context, commit_id}` (base36; **ID only**, no hash alias) and returns the
   commit detail plus its recursive tree manifest; `WalkCommits` takes

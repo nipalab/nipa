@@ -49,6 +49,9 @@ type DiffOptions struct {
 	Binary bool
 	// NoCache reads every working file instead of trusting fingerprints.
 	NoCache bool
+	// Show compares the single revision against its first parent, or an
+	// empty tree for a root commit.
+	Show bool
 }
 
 type Diff struct {
@@ -64,6 +67,7 @@ func NewDiff(auth *Auth, client diffClient, localRepo diffLocalRepo) *Diff {
 type revision struct {
 	token    string
 	commitID string
+	parentID string
 	entries  map[string]diff.Entry
 }
 
@@ -82,6 +86,9 @@ func (d *Diff) Run(ctx context.Context, root string, revs []string, opts DiffOpt
 }
 
 func (d *Diff) dispatch(ctx context.Context, root string, revs []string, cfg *clientDomain.Config, opts DiffOptions) ([]diff.FileDiff, error) {
+	if opts.Show && (len(revs) != 1 || opts.MergeBase || opts.Staged) {
+		return nil, clientDomain.NewUserError("show compares exactly one revision with its parent")
+	}
 	if len(revs) == 0 {
 		if opts.MergeBase {
 			return nil, clientDomain.NewUserError("--merge-base requires two revisions")
@@ -104,6 +111,9 @@ func (d *Diff) dispatch(ctx context.Context, root string, revs []string, cfg *cl
 	if len(revs) == 1 {
 		if opts.MergeBase {
 			return nil, clientDomain.NewUserError("--merge-base requires two revisions")
+		}
+		if opts.Show {
+			return d.showDiff(ctx, nu, cfg, revs[0], opts)
 		}
 		return d.workingVsRevision(ctx, nu, root, cfg, revs[0], opts)
 	}
@@ -160,6 +170,25 @@ func (d *Diff) revisionDiff(ctx context.Context, nu *clientDomain.NipaUrl, cfg *
 	if err != nil {
 		return nil, err
 	}
+	return d.compareRevisions(ctx, nu, base, head, opts)
+}
+
+func (d *Diff) showDiff(ctx context.Context, nu *clientDomain.NipaUrl, cfg *clientDomain.Config, token string, opts DiffOptions) ([]diff.FileDiff, error) {
+	head, err := d.resolveRevision(ctx, nu, cfg, token)
+	if err != nil {
+		return nil, err
+	}
+	base := &revision{entries: map[string]diff.Entry{}}
+	if head.parentID != "" {
+		if base, err = d.revisionByCommit(ctx, nu, head.parentID); err != nil {
+			return nil, err
+		}
+	}
+	return d.compareRevisions(ctx, nu, base, head, opts)
+}
+
+func (d *Diff) compareRevisions(ctx context.Context, nu *clientDomain.NipaUrl, base, head *revision, opts DiffOptions) ([]diff.FileDiff, error) {
+	var err error
 	baseEntries := base.entries
 	baseCommitID := base.commitID
 	if opts.MergeBase {
@@ -287,7 +316,7 @@ func (d *Diff) revisionByCommit(ctx context.Context, nu *clientDomain.NipaUrl, c
 	if detail == nil {
 		return nil, clientDomain.NewUserError(fmt.Sprintf("revision %q not found", commitID))
 	}
-	return &revision{token: commitID, commitID: detail.ID, entries: diff.FromTree(detail.Tree)}, nil
+	return &revision{token: commitID, commitID: detail.ID, parentID: detail.Parent1ID, entries: diff.FromTree(detail.Tree)}, nil
 }
 
 func (d *Diff) mergeBaseEntries(ctx context.Context, nu *clientDomain.NipaUrl, base, head *revision) (map[string]diff.Entry, string, error) {

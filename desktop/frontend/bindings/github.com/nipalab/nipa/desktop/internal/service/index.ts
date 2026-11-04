@@ -11,8 +11,10 @@ export type {
     AudioCompare,
     AudioSide,
     AudioStats,
+    Branch,
     Changes,
     CloneRequest,
+    Commit,
     DaemonInfo,
     DiffHunk,
     DiffLine,
@@ -21,6 +23,8 @@ export type {
     FileLock,
     FileLockState,
     FileSide,
+    HistoryPage,
+    HistoryQuery,
     ImageCompare,
     ImageInfo,
     ImageLayer,
@@ -42,7 +46,10 @@ export type {
     RemoteProject,
     Repo,
     RepoChanged,
+    RevertOutcome,
+    RevertRequest,
     TableColumn,
     TableCompare,
-    TableRow
+    TableRow,
+    Tag
 } from "./models.js";

@@ -155,15 +155,17 @@ func newOps(t *testing.T) (*Service, *opsDaemon, *recorder, *int) {
 func TestService_ChangesGroupsStatus(t *testing.T) {
 	svc, d, _, _ := newOps(t)
 	d.status = &daemonpb.StatusResponse{
-		Branch:    "main",
-		Head:      &daemonpb.StatusHead{Kind: "tag", Name: "v1"},
-		Staged:    []string{"src/b.go", "art/hero.png"},
-		Added:     []string{"art/hero.png"},
-		Deleted:   []string{"old.txt"},
-		Modified:  []string{"z.txt"},
-		Missing:   []string{"gone.wav"},
-		Untracked: []string{"new.csv"},
-		Conflicts: []string{"c.txt"},
+		Branch:           "main",
+		Head:             &daemonpb.StatusHead{Kind: "tag", Name: "v1"},
+		Staged:           []string{"src/b.go", "art/hero.png"},
+		Added:            []string{"art/hero.png"},
+		Deleted:          []string{"old.txt"},
+		Modified:         []string{"z.txt"},
+		Missing:          []string{"gone.wav"},
+		Untracked:        []string{"new.csv"},
+		Conflicts:        []string{"c.txt"},
+		Pending:          "revert",
+		PendingRemaining: 2,
 	}
 	changes, err := svc.Changes(ctx, "/work/game")
 	require.NoError(t, err)
@@ -180,7 +182,9 @@ func TestService_ChangesGroupsStatus(t *testing.T) {
 			{Path: "new.csv", Status: "untracked", Kind: "table"},
 			{Path: "z.txt", Status: "modified", Kind: "text"},
 		},
-		Conflicts: []string{"c.txt"},
+		Conflicts:        []string{"c.txt"},
+		Pending:          "revert",
+		PendingRemaining: 2,
 	}, changes)
 	require.Equal(t, 1, d.watches, "the clone is watched once per session")
 

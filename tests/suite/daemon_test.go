@@ -641,6 +641,89 @@ var _ = Describe("nipa serve", func() {
 		Expect(merged.GetResponse().GetMergeRequest().GetStatus()).To(Equal("merged"))
 	})
 
+	It("browses history by path, shows commits, manages tags and resumes a revert", func() {
+		project := newProject("daemon-history")
+		seedRepo(orgSlug, project, map[string][]byte{"base.txt": []byte("base\n"), "art/hero.txt": []byte("v1\n")}, "seed")
+		url := repoURLFor(orgSlug, project)
+		dir := cloneRepo(workspace(), url, "work")
+
+		d := startDaemon()
+		d.watch(dir)
+
+		writeText(dir, "art/hero.txt", "v2\n")
+		Expect(runNipa(dir, "add", "art/hero.txt").ExitCode).To(Equal(0))
+		Expect(pushRepo(dir, "art pass").ExitCode).To(Equal(0))
+		writeText(dir, "notes.txt", "notes\n")
+		Expect(runNipa(dir, "add", "notes.txt").ExitCode).To(Equal(0))
+		Expect(pushRepo(dir, "notes").ExitCode).To(Equal(0))
+
+		all, err := d.client.ProxyCommitLog(d.ctx, &daemonpb.ProxyCommitLogRequest{Root: dir, Request: &pb.GetCommitLogRequest{Limit: 10}})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(all.GetResponse().GetCommits()).To(HaveLen(3))
+		hero, err := d.client.ProxyCommitLog(d.ctx, &daemonpb.ProxyCommitLogRequest{Root: dir, Request: &pb.GetCommitLogRequest{Limit: 10, Path: "art/hero.txt"}})
+		Expect(err).NotTo(HaveOccurred())
+		heroCommits := hero.GetResponse().GetCommits()
+		Expect(heroCommits).To(HaveLen(2))
+		artPass, seed := heroCommits[0], heroCommits[1]
+		Expect(artPass.GetMessage()).To(ContainSubstring("art pass"))
+		Expect(seed.GetParent_1Id()).To(BeEmpty())
+
+		showStream, err := d.client.DiffFiles(d.ctx, &daemonpb.DiffRequest{Root: dir, Revisions: []string{artPass.GetCommitId()}, Show: true})
+		Expect(err).NotTo(HaveOccurred())
+		shown, failure := collectDiffFiles(showStream)
+		Expect(failure).To(BeNil())
+		Expect(shown).To(HaveLen(1))
+		Expect(shown[0].GetPath()).To(Equal("art/hero.txt"))
+		Expect(shown[0].GetStatus()).To(Equal("modified"))
+
+		rootStream, err := d.client.DiffFiles(d.ctx, &daemonpb.DiffRequest{Root: dir, Revisions: []string{seed.GetCommitId()}, Show: true})
+		Expect(err).NotTo(HaveOccurred())
+		rootFiles, failure := collectDiffFiles(rootStream)
+		Expect(failure).To(BeNil())
+		Expect(rootFiles).To(HaveLen(2))
+		for _, f := range rootFiles {
+			Expect(f.GetStatus()).To(Equal("added"))
+		}
+
+		created, err := d.client.ProxyTagCreate(d.ctx, &daemonpb.ProxyTagCreateRequest{Root: dir, Request: &pb.CreateTagRequest{Name: "art-v2", FromCommitId: artPass.GetCommitId(), Message: "approved"}})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(created.GetResponse().GetTag().GetCommitId()).To(Equal(artPass.GetCommitId()))
+		tags, err := d.client.ProxyTagList(d.ctx, &daemonpb.ProxyTagListRequest{Root: dir})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(tags.GetResponse().GetTags()).To(HaveLen(1))
+		Expect(tags.GetResponse().GetTags()[0].GetMessage()).To(Equal("approved"))
+		_, err = d.client.ProxyTagDelete(d.ctx, &daemonpb.ProxyTagDeleteRequest{Root: dir, Request: &pb.DeleteTagRequest{Name: "art-v2"}})
+		Expect(err).NotTo(HaveOccurred())
+		tags, err = d.client.ProxyTagList(d.ctx, &daemonpb.ProxyTagListRequest{Root: dir})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(tags.GetResponse().GetTags()).To(BeEmpty())
+
+		writeText(dir, "art/hero.txt", "v3\n")
+		Expect(runNipa(dir, "add", "art/hero.txt").ExitCode).To(Equal(0))
+		Expect(pushRepo(dir, "art polish").ExitCode).To(Equal(0))
+
+		revertStream, err := d.client.Revert(d.ctx, &daemonpb.RevertOpRequest{Root: dir, Target: artPass.GetCommitId()})
+		Expect(err).NotTo(HaveOccurred())
+		revertEvents := collectOpEvents(revertStream)
+		Expect(opFailure(revertEvents)).To(BeNil())
+		Expect(opResult(revertEvents).GetRevert().GetConflicts()).To(ConsistOf("art/hero.txt"))
+
+		st := d.status(dir)
+		Expect(st.GetPending()).To(Equal("revert"))
+		Expect(st.GetPendingRemaining()).To(Equal(int32(1)))
+		Expect(st.GetConflicts()).To(ConsistOf("art/hero.txt"))
+
+		abortStream, err := d.client.Revert(d.ctx, &daemonpb.RevertOpRequest{Root: dir, Abort: true})
+		Expect(err).NotTo(HaveOccurred())
+		abortEvents := collectOpEvents(abortStream)
+		Expect(opFailure(abortEvents)).To(BeNil())
+		Expect(opResult(abortEvents).GetRevert().GetAborted()).To(BeTrue())
+		st = d.status(dir)
+		Expect(st.GetPending()).To(BeEmpty())
+		Expect(st.GetConflicts()).To(BeEmpty())
+		Expect(readText(dir, "art/hero.txt")).To(Equal("v3\n"))
+	})
+
 	It("unwatches a repository", func() {
 		project := newProject("daemon-unwatch")
 		seedRepo(orgSlug, project, map[string][]byte{"a.txt": []byte("a\n")}, "seed")
