@@ -130,3 +130,12 @@ func TestLintOutsideUnity(t *testing.T) {
 	fsys := fstest.MapFS{"Assets/x.png": {}, "ProjectSettings": {Data: []byte("file, not a folder")}}
 	assert.Empty(t, Lint(fsys, []Change{{Path: "Assets/x.png", Status: "untracked"}, {Path: "README.md", Status: "modified"}}, nil))
 }
+
+func TestLintStagedAssetDeletionWithUnstagedMeta(t *testing.T) {
+	fsys := project(map[string]*fstest.MapFile{})
+	ws := Lint(fsys, []Change{
+		{Path: "game/Assets/old.png", Status: "deleted", Staged: true},
+		{Path: "game/Assets/old.png.meta", Status: "deleted"},
+	}, nil)
+	assert.Equal(t, []string{"meta-not-staged game/Assets/old.png.meta"}, summary(ws))
+}

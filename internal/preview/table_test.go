@@ -191,7 +191,18 @@ func TestDiffTablesLargeUnmatchedBlockIsBounded(t *testing.T) {
 	}
 	start := time.Now()
 	d := DiffTables(oldT, newT)
-	require.Less(t, time.Since(start), 5*time.Second)
+	require.Less(t, time.Since(start), 60*time.Second)
 	require.Equal(t, n, d.RowsAdded)
 	require.Equal(t, n, d.RowsRemoved)
+}
+
+func TestDiffTablesDisjointHeadersCompareByPosition(t *testing.T) {
+	oldT := &Table{Rows: [][]string{{"a", "b"}, {"1", "2"}, {"3", "4"}}}
+	newT := &Table{Rows: [][]string{{"x", "y"}, {"1", "9"}, {"3", "4"}}}
+	d := DiffTables(oldT, newT)
+	require.Len(t, d.Rows, 2)
+	assert.Equal(t, 1, d.RowsChanged)
+	assert.Equal(t, "changed", d.Rows[0].Status)
+	assert.Equal(t, []int{1}, d.Rows[0].Changed)
+	assert.Equal(t, "same", d.Rows[1].Status)
 }

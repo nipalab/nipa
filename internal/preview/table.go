@@ -256,15 +256,20 @@ func alignColumns(oh, nh []string, oldRows, newRows [][]string) []TableColumn {
 	ow, nw := widest(oh, oldRows), widest(nh, newRows)
 	var cols []TableColumn
 	if uniqueNonEmpty(oh) && uniqueNonEmpty(nh) && ow == len(oh) && nw == len(nh) {
+		matched := false
 		for _, p := range alignUnique(oh, nh) {
+			matched = matched || (p.old >= 0 && p.new >= 0)
 			cols = append(cols, TableColumn{Name: cell(nh, p.new), OldName: cell(oh, p.old), Old: p.old, New: p.new})
 		}
-		for i := range cols {
-			if cols[i].Name == "" {
-				cols[i].Name = cols[i].OldName
+		if matched || len(oh) == 0 || len(nh) == 0 {
+			for i := range cols {
+				if cols[i].Name == "" {
+					cols[i].Name = cols[i].OldName
+				}
 			}
+			return cols
 		}
-		return cols
+		cols = nil
 	}
 	for i := 0; i < max(ow, nw); i++ {
 		c := TableColumn{Name: cell(nh, i), OldName: cell(oh, i), Old: -1, New: -1}

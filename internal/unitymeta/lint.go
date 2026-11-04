@@ -149,6 +149,8 @@ func (l *linter) check(p, assets string) {
 	case s.deleted:
 		if l.exists(meta) && !l.states[meta].deleted {
 			l.warn(meta, OrphanMeta, p, "left behind after its asset was deleted; delete it too")
+		} else if ms := l.states[meta]; s.staged && ms.deleted && !ms.staged {
+			l.warn(meta, MetaNotStaged, p, "deletion is not staged; push it together with its asset")
 		}
 	case s.isNew():
 		if !l.exists(meta) {

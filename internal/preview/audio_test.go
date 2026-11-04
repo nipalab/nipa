@@ -454,3 +454,14 @@ func TestFFTMatchesDFT(t *testing.T) {
 		assert.InDelta(t, wantIm[k], im[k], 1e-9)
 	}
 }
+
+func TestPlaybackDownmixesSurroundChannels(t *testing.T) {
+	p := newPlayback(8000, 6, 1, 1<<20)
+	p.add([]float32{0, 0, 0.5, 0, 0, 0})
+	require.Equal(t, 2, p.outCh)
+	l, r := downmix([]float32{0, 0, 0.6, 0, 0, 0})
+	assert.InDelta(t, 0.2, l, 1e-6)
+	assert.InDelta(t, 0.0, r, 1e-6)
+	wav, _ := p.wav()
+	assert.NotEqual(t, make([]byte, 4), wav[44:48])
+}
