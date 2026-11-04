@@ -315,12 +315,14 @@ describe("MergeRequestDetail", () => {
   });
 
   it("shows a merged request", async () => {
+    api.branches.mockResolvedValue([{ name: "art", commitId: "s2", default: false, protected: false }]);
     api.mergeRequest.mockResolvedValue(detail({ status: "merged", mergeCommitId: "m9", mergeBaseId: "b1" }, { status: "merged", sourceCommitId: "", mergeBaseId: "" }));
     view();
     expect(await screen.findByText(/Merged into/)).toBeInTheDocument();
     expect(screen.getAllByText("m9").length).toBeGreaterThan(0);
     await userEvent.click(screen.getByRole("tab", { name: /File changes/ }));
-    await waitFor(() => expect(api.revisionFiles).toHaveBeenCalledWith("/work/game", "b1", "m9"));
+    await waitFor(() => expect(api.revisionFiles).toHaveBeenCalledWith("/work/game", "b1", "s2"));
+    expect(api.revisionFiles).not.toHaveBeenCalledWith("/work/game", "b1", "m9");
   });
 
   it("edits the title and description", async () => {
