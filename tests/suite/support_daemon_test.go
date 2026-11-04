@@ -43,6 +43,11 @@ type daemonProc struct {
 
 func startDaemon() *daemonProc {
 	GinkgoHelper()
+	return startDaemonWithTokens(cli.tokenFile)
+}
+
+func startDaemonWithTokens(tokenFile string) *daemonProc {
+	GinkgoHelper()
 
 	dir := GinkgoT().TempDir()
 	endpoint := filepath.Join(dir, "daemon.json")
@@ -52,7 +57,7 @@ func startDaemon() *daemonProc {
 
 	cmd := exec.Command(cli.binary, "serve", "--port", "0", "--endpoint", endpoint)
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "NIPA_TOKEN_FILE="+cli.tokenFile)
+	cmd.Env = append(os.Environ(), "NIPA_TOKEN_FILE="+tokenFile)
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
 	Expect(cmd.Start()).To(Succeed())
@@ -142,6 +147,13 @@ func collectOpEvents(stream daemonOpStream) []*daemonpb.OpEvent {
 		Expect(err).NotTo(HaveOccurred())
 		events = append(events, event)
 	}
+}
+
+func lastOpEvent(stream daemonOpStream) *daemonpb.OpEvent {
+	GinkgoHelper()
+	events := collectOpEvents(stream)
+	Expect(events).NotTo(BeEmpty())
+	return events[len(events)-1]
 }
 
 func opResult(events []*daemonpb.OpEvent) *daemonpb.OpResult {

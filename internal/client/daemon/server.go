@@ -29,6 +29,7 @@ type Options struct {
 	Version      string // defaults to Version
 	Login        LoginFunc
 	Runners      Runners // per-root long-operation usecase factories
+	Accounts     Accounts
 }
 
 // Server hosts the loopback gRPC API for GUI clients. It owns no working-copy
@@ -41,6 +42,7 @@ type Server struct {
 	token        string
 	pid          int
 	login        LoginFunc
+	accounts     Accounts
 
 	listener net.Listener
 	grpc     *grpc.Server
@@ -93,6 +95,7 @@ func NewServer(opts Options) (*Server, error) {
 		token:        token,
 		pid:          os.Getpid(),
 		login:        opts.Login,
+		accounts:     opts.Accounts,
 		listener:     listener,
 		repos:        newRegistry(opts.Runners),
 		ready:        make(chan struct{}),

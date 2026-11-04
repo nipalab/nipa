@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { desktop, type Cancellable, type OpOutcome, type OpProgress } from "@/api/desktop";
 import { formatBytes } from "@/lib/diff";
 
-export type OpName = "push" | "update";
+export type OpName = "push" | "update" | "sparse" | "clone";
 
 export type OpState = { op: OpName; progress?: OpProgress; cancelling: boolean };
 
@@ -56,7 +56,7 @@ export function useRepoOperation(root: string, handlers: Handlers) {
   return { state, run, cancel };
 }
 
-const verbs: Record<OpName, string> = { push: "Pushing", update: "Updating" };
+const verbs: Record<OpName, string> = { push: "Pushing", update: "Updating", sparse: "Updating checkout", clone: "Cloning" };
 
 export function describeProgress(state: OpState): { label: string; percent?: number } {
   const p = state.progress;

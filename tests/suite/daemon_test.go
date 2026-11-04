@@ -2,6 +2,7 @@ package suite_test
 
 import (
 	"os"
+	"path/filepath"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -465,6 +466,86 @@ var _ = Describe("nipa serve", func() {
 			"assets/sky.psd":  "theirs",
 			"assets/new.fbx":  "free",
 		}))
+	})
+
+	It("signs in, browses a project and clones a sparse checkout", func() {
+		project := newProject("daemon-clone")
+		seedRepo(orgSlug, project, map[string][]byte{
+			"readme.md":           []byte("hi\n"),
+			"art/hero.png":        {0x00, 0x01},
+			"art/props/crate.fbx": {0x02, 0x03},
+			"audio/hit.wav":       {0x04, 0x05},
+		}, "seed")
+
+		d := startDaemonWithTokens(filepath.Join(GinkgoT().TempDir(), "tokens.json"))
+		status, err := d.client.AccountStatus(d.ctx, &daemonpb.AccountStatusRequest{Server: cli.host})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(status.GetSignedIn()).To(BeFalse())
+		_, err = d.client.ListProjects(d.ctx, &daemonpb.ListProjectsRequest{Server: cli.host})
+		Expect(err).To(HaveOccurred())
+
+		_, err = d.client.Login(d.ctx, &daemonpb.LoginRequest{Host: cli.host, Username: cli.user, Password: "wrong-password"})
+		Expect(err).To(HaveOccurred())
+		_, err = d.client.Login(d.ctx, &daemonpb.LoginRequest{Host: cli.host, Username: cli.user, Password: cli.password})
+		Expect(err).NotTo(HaveOccurred())
+		status, err = d.client.AccountStatus(d.ctx, &daemonpb.AccountStatusRequest{Server: cli.host})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(status.GetSignedIn()).To(BeTrue())
+		Expect(status.GetEmail()).To(Equal(cli.user))
+		Expect(status.GetUserId()).NotTo(BeEmpty())
+
+		projects, err := d.client.ListProjects(d.ctx, &daemonpb.ListProjectsRequest{Server: cli.host})
+		Expect(err).NotTo(HaveOccurred())
+		found := false
+		for _, p := range projects.GetProjects() {
+			found = found || p.GetOrg() == orgSlug && p.GetProject() == project
+		}
+		Expect(found).To(BeTrue())
+
+		branches, err := d.client.RemoteBranches(d.ctx, &daemonpb.RemoteBranchesRequest{Server: cli.host, Org: orgSlug, Project: project})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(branches.GetBranches()).NotTo(BeEmpty())
+
+		root, err := d.client.RemoteTree(d.ctx, &daemonpb.RemoteTreeRequest{Server: cli.host, Org: orgSlug, Project: project})
+		Expect(err).NotTo(HaveOccurred())
+		dirs := []string{}
+		for _, dir := range root.GetDirs() {
+			dirs = append(dirs, dir.GetPath())
+		}
+		Expect(dirs).To(Equal([]string{"art", "audio"}))
+		Expect(root.GetFiles()).To(BeEquivalentTo(1))
+		art, err := d.client.RemoteTree(d.ctx, &daemonpb.RemoteTreeRequest{Server: cli.host, Org: orgSlug, Project: project, Path: "art"})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(art.GetDirs()).To(HaveLen(1))
+		Expect(art.GetDirs()[0].GetPath()).To(Equal("art/props"))
+		Expect(art.GetFiles()).To(BeEquivalentTo(1))
+
+		target := filepath.Join(workspace(), "clone")
+		stream, err := d.client.Clone(d.ctx, &daemonpb.CloneRequest{Url: repoURLFor(orgSlug, project), Sparse: []string{"art"}, Target: target})
+		Expect(err).NotTo(HaveOccurred())
+		last := lastOpEvent(stream)
+		Expect(last.GetFailure()).To(BeNil(), "%v", last)
+		Expect(last.GetResult().GetSync().GetBranch()).To(Equal("main"))
+		Expect(fileExists(target, "art/props/crate.fbx")).To(BeTrue())
+		Expect(fileExists(target, "audio/hit.wav")).To(BeFalse())
+
+		info := d.watch(target)
+		Expect(info.GetSparse()).To(Equal([]string{"art"}))
+		sparse, err := d.client.SetSparse(d.ctx, &daemonpb.SetSparseRequest{Root: target, Paths: []string{"art", "audio"}})
+		Expect(err).NotTo(HaveOccurred())
+		last = lastOpEvent(sparse)
+		Expect(last.GetFailure()).To(BeNil(), "%v", last)
+		Expect(fileExists(target, "audio/hit.wav")).To(BeTrue())
+		Expect(d.watch(target).GetSparse()).To(Equal([]string{"art", "audio"}))
+
+		full, err := d.client.SetSparse(d.ctx, &daemonpb.SetSparseRequest{Root: target})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(lastOpEvent(full).GetFailure()).To(BeNil())
+		Expect(fileExists(target, "readme.md")).To(BeTrue())
+
+		again, err := d.client.Clone(d.ctx, &daemonpb.CloneRequest{Url: repoURLFor(orgSlug, project), Target: target})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(lastOpEvent(again).GetFailure()).NotTo(BeNil())
 	})
 
 	It("proxies merge request calls with the clone context", func() {

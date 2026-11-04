@@ -64,6 +64,10 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   (`preview.DecodeAudio` waveforms/spectrograms/LUFS + WAV playback through
   WebAudio), CSV/TSV cell diffs via `TableDiff` (`preview.DiffTables`),
   Unity `.meta` warnings via `MetaWarnings` (`internal/unitymeta`),
+  clone with sign-in via `AccountStatus`/`SignIn`/`SignInSSH`/
+  `ListProjects`/`RemoteBranches`/`RemoteTree`/`Clone` (dialog: server →
+  SSH key or password → project → branch, folder tree, location) and sparse
+  editing via `SetSparse` (Details tab),
   file locks via `LockStatus`/`Lock`/`Unlock` (row lock badges, push box
   blocks on someone else's lock and offers "Lock N files", Locks tab with
   release and "Lock & edit" through `PickFile`/`OpenFile`),
@@ -547,7 +551,11 @@ dirty batches and a background reconciler refreshes `stat_cache` through
 `WorkingCopy.RefreshStatEntries`; watcher failure or event loss is harmless
 (read-through status still stat-detects). `Proxy*` RPCs forward `greet.*`
 messages verbatim over `Client.ServiceClient()`, filling the clone's
-org/project context from `.nipa/config`; `LockStatus` joins the lock list,
+org/project context from `.nipa/config`; server-scoped `AccountStatus`/`Login`/`LoginSSH`/`ListProjects`/
+`RemoteBranches`/`RemoteTree` run on a fresh connection per call
+(`Options.Accounts`, wired in `cmd/nipa/serve.go`; the daemon never prompts),
+`Clone` streams `OpEvent`s outside any repo slot and `SetSparse` stores the
+prefixes then updates under the exclusive slot; `LockStatus` joins the lock list,
 the branch scope (default branch = mainline locks), admin rights and the
 caller id (`Client.UserID`, the access token's JWT `sub`) with the status into
 per-file `mine`/`theirs`/`needed`/`free` states for changed binaries; `UnwatchRepo` waits for in-flight refs
@@ -910,7 +918,10 @@ compatible for one release.
   `ListMergeRequestReviewRequests`, `RequestMergeRequestReview`,
   `RemoveMergeRequestReviewRequest`, `ListMergeRequestTimeline`; transfer RPCs `Push`,
   `GetChunkUploadUrls`, `GetChunkDownloadUrls`, `ConfirmChunkUploads`; file-lock
-  RPCs `LockFile`, `UnlockFile`, `ListFileLocks`; PBAC
+  RPCs `LockFile`, `UnlockFile`, `ListFileLocks`; browsing RPCs
+  `ListMyProjects` (readable projects of the caller's orgs) and
+  `ListDirectory` (one directory of a branch or commit, via `Branch.TreeAt`);
+  PBAC
   RPCs `GetMyPermissions`, `CreatePBACRule`, `ListPBACRules`, `DeletePBACRule`,
   `ListProjectPathPermissions`, `SetProjectPathPermission`,
   `DeleteProjectPathPermission`; group RPCs `CreateGroup`, `ListGroups`,

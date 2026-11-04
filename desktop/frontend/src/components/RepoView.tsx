@@ -1,13 +1,14 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ArrowDownToLine, FileDiff, GitBranch, History, Info, Lock, Trash2 } from "lucide-react";
+import { AlertTriangle, ArrowDownToLine, FileDiff, FolderTree, GitBranch, History, Info, Lock, Trash2 } from "lucide-react";
 import { desktop, type Repo } from "@/api/desktop";
 import { ChangesView } from "@/components/changes/ChangesView";
+import { SparseDialog } from "@/components/clone/SparseDialog";
 import { LocksView } from "@/components/locks/LocksView";
 import { Progress } from "@/components/changes/CommitBox";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { useRepoOperation } from "@/hooks/useRepoOperation";
+import { useRepoOperation, type OpName } from "@/hooks/useRepoOperation";
 import { cn, errorMessage } from "@/lib/utils";
 
 export type Notify = (message: string, tone?: "error" | "success") => void;
@@ -27,6 +28,7 @@ export function RepoView({ repo, removing, onRemove, notify }: RepoViewProps) {
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<TabId>("changes");
   const [message, setMessage] = useState("");
+  const [editingSparse, setEditingSparse] = useState(false);
 
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: ["changes", repo.root] });
@@ -39,6 +41,9 @@ export function RepoView({ repo, removing, onRemove, notify }: RepoViewProps) {
       if (op === "push") {
         setMessage("");
         notify(`Pushed to ${repo.branch}${outcome.commitId ? ` (${outcome.commitId})` : ""}`, "success");
+      } else if (op === "sparse") {
+        void queryClient.invalidateQueries({ queryKey: ["repos"] });
+        notify("Checkout updated", "success");
       } else {
         void queryClient.invalidateQueries({ queryKey: ["repos"] });
         notify(`Up to date with ${outcome.branch || repo.branch}`, "success");
@@ -46,11 +51,11 @@ export function RepoView({ repo, removing, onRemove, notify }: RepoViewProps) {
     },
     onError: (op, err) => {
       refresh();
-      notify(`${op === "push" ? "Push" : "Update"} failed: ${errorMessage(err)}`);
+      notify(`${opLabel[op]} failed: ${errorMessage(err)}`);
     },
     onCancelled: (op) => {
       refresh();
-      notify(`${op === "push" ? "Push" : "Update"} cancelled`);
+      notify(`${opLabel[op]} cancelled`);
     },
   });
   const op = operation.state;
@@ -69,7 +74,7 @@ export function RepoView({ repo, removing, onRemove, notify }: RepoViewProps) {
           {repo.root}
         </span>
         {!repo.error &&
-          (op?.op === "update" ? (
+          (op && op.op !== "push" ? (
             <div className="no-drag w-64">
               <Progress op={op} onCancel={operation.cancel} />
             </div>
@@ -137,16 +142,28 @@ export function RepoView({ repo, removing, onRemove, notify }: RepoViewProps) {
             ) : tab === "locks" ? (
               <LocksView root={repo.root} notify={notify} />
             ) : (
-              <Details repo={repo} />
+              <Details repo={repo} busy={!!op} onEditSparse={() => setEditingSparse(true)} />
             )}
           </div>
         </>
+      )}
+      {editingSparse && (
+        <SparseDialog
+          repo={repo}
+          onClose={() => setEditingSparse(false)}
+          onApply={(paths) => {
+            setEditingSparse(false);
+            operation.run("sparse", () => desktop.setSparse(repo.root, paths));
+          }}
+        />
       )}
     </div>
   );
 }
 
-function Details({ repo }: { repo: Repo }) {
+const opLabel: Record<OpName, string> = { push: "Push", update: "Update", sparse: "Checkout change", clone: "Clone" };
+
+function Details({ repo, busy, onEditSparse }: { repo: Repo; busy: boolean; onEditSparse: () => void }) {
   return (
     <dl className="m-5 max-w-xl space-y-3 rounded-lg border border-border bg-card p-4 text-xs">
       <Detail label="Server" value={repo.url} />
@@ -157,6 +174,10 @@ function Details({ repo }: { repo: Repo }) {
         <dd className="flex flex-wrap gap-1">
           {repo.sparse && repo.sparse.length > 0 ? repo.sparse.map((p) => <Badge key={p}>{p}</Badge>) : <span>Full checkout</span>}
         </dd>
+        <Button size="sm" className="mt-2" onClick={onEditSparse} disabled={busy}>
+          <FolderTree />
+          Change folders…
+        </Button>
       </div>
     </dl>
   );

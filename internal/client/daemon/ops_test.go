@@ -25,6 +25,14 @@ type stubUpdateRunner struct {
 	run         func(ctx context.Context, root string, progress ...usecase.DownloadProgress) error
 	switchFn    func(ctx context.Context, root, branch string, progress ...usecase.DownloadProgress) error
 	switchTagFn func(ctx context.Context, root, tagName string, progress ...usecase.DownloadProgress) error
+	sparseFn    func(root string, paths []string) error
+}
+
+func (s *stubUpdateRunner) SetSparse(root string, paths []string) error {
+	if s.sparseFn != nil {
+		return s.sparseFn(root, paths)
+	}
+	return nil
 }
 
 func (s *stubUpdateRunner) Run(ctx context.Context, root string, progress ...usecase.DownloadProgress) error {

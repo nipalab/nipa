@@ -19,6 +19,8 @@ type usecaseContainer interface {
 	MergeRequestReview() *usecase.MergeRequestReview
 	MergeRequestCheck() *usecase.MergeRequestCheck
 	FileLock() *usecase.FileLock
+	Org() *usecase.Org
+	Project() *usecase.Project
 }
 
 type nipaServer struct {

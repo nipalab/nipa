@@ -98,6 +98,8 @@ func (m *loginMockContainer) MergeRequestReview() *usecase.MergeRequestReview {
 }
 func (m *loginMockContainer) MergeRequestCheck() *usecase.MergeRequestCheck { return nil }
 func (m *loginMockContainer) FileLock() *usecase.FileLock                   { return nil }
+func (m *loginMockContainer) Org() *usecase.Org                             { return nil }
+func (m *loginMockContainer) Project() *usecase.Project                     { return nil }
 
 func newLoginServer(t *testing.T, userRepo *stubUserRepo, authRepo *stubAuthRepo) *nipaServer {
 	t.Helper()

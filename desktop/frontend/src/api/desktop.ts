@@ -1,10 +1,12 @@
 import { Events } from "@wailsio/runtime";
 import { Service } from "../../bindings/github.com/nipalab/nipa/desktop/internal/service";
 import type {
+  Account,
   AudioCompare,
   AudioSide,
   AudioStats,
   Changes,
+  CloneRequest,
   DaemonInfo,
   DiffHunk,
   DiffLine,
@@ -27,6 +29,10 @@ import type {
   ModelStats,
   OpOutcome,
   OpProgress,
+  RemoteBranch,
+  RemoteDir,
+  RemoteListing as RawRemoteListing,
+  RemoteProject,
   Repo,
   RepoChanged,
   TableColumn,
@@ -35,6 +41,8 @@ import type {
 } from "../../bindings/github.com/nipalab/nipa/desktop/internal/service/models";
 
 export type { FileLock, FileLockState, LockFailure };
+export type { Account, CloneRequest, RemoteBranch, RemoteDir, RemoteProject };
+export type RemoteListing = Omit<RawRemoteListing, "dirs"> & { dirs: RemoteDir[] };
 export type LockStatus = Omit<RawLockStatus, "locks" | "files"> & { locks: FileLock[]; files: FileLockState[] };
 export type LockResult = { locked: string[]; failed: LockFailure[] };
 export type { AudioCompare, AudioSide, AudioStats, MetaWarning, TableColumn, TableCompare, TableRow };
@@ -90,6 +98,22 @@ export const desktop = {
   unlock: (root: string, branch: string, path: string): Promise<void> => Service.Unlock(root, branch, path),
   pickFile: (root: string): Promise<string> => Service.PickFile(root),
   openFile: (root: string, path: string): Promise<void> => Service.OpenFile(root, path),
+  accountStatus: async (server: string): Promise<Account> => {
+    const a = await Service.AccountStatus(server);
+    if (!a) throw new Error("No account information");
+    return a;
+  },
+  signIn: (server: string, email: string, password: string): Promise<void> => Service.SignIn(server, email, password),
+  signInSSH: (server: string, email = ""): Promise<void> => Service.SignInSSH(server, email),
+  listProjects: async (server: string): Promise<RemoteProject[]> => (await Service.ListProjects(server)) ?? [],
+  remoteBranches: async (server: string, org: string, project: string): Promise<RemoteBranch[]> => (await Service.RemoteBranches(server, org, project)) ?? [],
+  remoteTree: async (server: string, org: string, project: string, branch: string, path: string): Promise<RemoteListing> => {
+    const l = await Service.RemoteTree(server, org, project, branch, path);
+    return { files: l?.files ?? 0, fileBytes: l?.fileBytes ?? 0, dirs: l?.dirs ?? [] };
+  },
+  chooseFolder: (title: string): Promise<string> => Service.ChooseFolder(title),
+  clone: (req: CloneRequest): Cancellable<Repo | null> => Service.Clone(req),
+  setSparse: (root: string, paths: string[]): Cancellable<OpOutcome> => Service.SetSparse(root, paths),
   push: (root: string, message: string): Cancellable<OpOutcome> => Service.Push(root, message),
   update: (root: string): Cancellable<OpOutcome> => Service.Update(root),
 

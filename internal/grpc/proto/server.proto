@@ -1014,6 +1014,38 @@ message ListFileLocksResponse {
     repeated FileLockDetail locks = 1;
 }
 
+message ListMyProjectsRequest {
+}
+
+message ProjectSummary {
+    string org = 1; // organization slug
+    string org_name = 2;
+    string org_role = 3; // the caller's role in the organization
+    string project = 4; // project slug
+    string name = 5;
+    string description = 6;
+}
+
+message ListMyProjectsResponse {
+    repeated ProjectSummary projects = 1; // readable projects of every organization the caller belongs to
+}
+
+message ListDirectoryRequest {
+    ProjectContext context = 1;
+    string revision = 2; // branch name or commit id (base36); empty: the default branch
+    string path = 3; // directory; empty is the root
+}
+
+message DirectoryEntry {
+    string name = 1;
+    bool is_dir = 2;
+    int64 size_bytes = 3; // files only
+}
+
+message ListDirectoryResponse {
+    repeated DirectoryEntry entries = 1; // readable direct children
+}
+
 message GetServerVersionRequest {
 }
 
@@ -1029,6 +1061,8 @@ service NipaService {
     rpc BeginLoginSSHKey(BeginLoginSSHKeyRequest) returns (BeginLoginSSHKeyResponse);
     rpc CompleteLoginSSHKey(CompleteLoginSSHKeyRequest) returns (LoginResponse);
     rpc GetServerVersion(GetServerVersionRequest) returns (GetServerVersionResponse);
+    rpc ListMyProjects(ListMyProjectsRequest) returns (ListMyProjectsResponse);
+    rpc ListDirectory(ListDirectoryRequest) returns (ListDirectoryResponse);
 
     rpc GetListBranch(GetListBranchRequest) returns (GetListBranchResponse);
     rpc GetBranch(GetBranchRequest) returns (GetBranchResponse);

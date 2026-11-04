@@ -52,6 +52,10 @@ func (s *Service) runOp(ctx context.Context, root, op string, open func(daemonpb
 	if err != nil {
 		return OpOutcome{}, err
 	}
+	return s.streamOp(ctx, client, root, op, open)
+}
+
+func (s *Service) streamOp(ctx context.Context, client daemonpb.NipaDaemonClient, root, op string, open func(daemonpb.NipaDaemonClient) (grpc.ServerStreamingClient[daemonpb.OpEvent], error)) (OpOutcome, error) {
 	stream, err := open(client)
 	if err != nil {
 		s.dropIfDisconnected(err)

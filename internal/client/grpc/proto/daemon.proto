@@ -589,6 +589,72 @@ message FileLockState {
     bool tracked = 6;
 }
 
+message AccountStatusRequest {
+    string server = 1; // host, host:port or http(s) URL
+}
+
+message AccountStatusResponse {
+    string host = 1; // the host sessions are stored under
+    string address = 2; // what the daemon dials (keeps an http/https scheme)
+    bool signed_in = 3;
+    string email = 4; // empty for SSH-key sessions
+    string user_id = 5;
+}
+
+message LoginSSHRequest {
+    string server = 1;
+    string email = 2; // optional: must own the key when set
+}
+
+message ListProjectsRequest {
+    string server = 1;
+}
+
+message ListProjectsResponse {
+    repeated greet.ProjectSummary projects = 1;
+}
+
+message RemoteBranchesRequest {
+    string server = 1;
+    string org = 2;
+    string project = 3;
+}
+
+message RemoteBranchesResponse {
+    repeated greet.Branch branches = 1;
+}
+
+message RemoteTreeRequest {
+    string server = 1;
+    string org = 2;
+    string project = 3;
+    string branch = 4; // empty: the default branch
+    string path = 5; // directory to list; empty is the root
+}
+
+message RemoteTreeDir {
+    string name = 1;
+    string path = 2;
+}
+
+message RemoteTreeResponse {
+    repeated RemoteTreeDir dirs = 1;
+    int64 files = 2; // files directly in the directory
+    int64 file_bytes = 3;
+}
+
+message CloneRequest {
+    string url = 1; // repository URL: <server>/<org>/<project>
+    string branch = 2; // empty: the default branch
+    repeated string sparse = 3; // directory prefixes; empty: full checkout
+    string target = 4; // empty or missing directory to clone into
+}
+
+message SetSparseRequest {
+    string root = 1;
+    repeated string paths = 2; // empty: full checkout
+}
+
 service NipaDaemon {
     rpc Ping(PingRequest) returns (PingResponse);
     rpc Shutdown(ShutdownRequest) returns (ShutdownResponse);
@@ -636,4 +702,12 @@ service NipaDaemon {
     rpc ProxyUnlockFile(ProxyUnlockFileRequest) returns (ProxyUnlockFileResponse);
     rpc ProxyListFileLocks(ProxyListFileLocksRequest) returns (ProxyListFileLocksResponse);
     rpc LockStatus(LockStatusRequest) returns (LockStatusResponse);
+
+    rpc AccountStatus(AccountStatusRequest) returns (AccountStatusResponse);
+    rpc LoginSSH(LoginSSHRequest) returns (LoginResponse);
+    rpc ListProjects(ListProjectsRequest) returns (ListProjectsResponse);
+    rpc RemoteBranches(RemoteBranchesRequest) returns (RemoteBranchesResponse);
+    rpc RemoteTree(RemoteTreeRequest) returns (RemoteTreeResponse);
+    rpc Clone(CloneRequest) returns (stream OpEvent);
+    rpc SetSparse(SetSparseRequest) returns (stream OpEvent);
 }

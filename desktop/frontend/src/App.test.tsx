@@ -15,6 +15,11 @@ const api = vi.hoisted(() => ({
   fileDiff: vi.fn(),
   onRepoChanged: vi.fn(),
   onOpProgress: vi.fn(),
+  accountStatus: vi.fn(),
+  listProjects: vi.fn(),
+  remoteBranches: vi.fn(),
+  remoteTree: vi.fn(),
+  clone: vi.fn(),
 }));
 vi.mock("./api/desktop", () => ({ desktop: api }));
 
@@ -77,6 +82,28 @@ describe("App", () => {
     await userEvent.click(open);
     expect(await screen.findByRole("heading", { name: "tools" })).toBeInTheDocument();
     expect(localStorage.getItem("nipa.selectedRepo")).toBe("/work/tools");
+  });
+
+  it("clones a repository and opens it", async () => {
+    api.repos.mockResolvedValue([]);
+    api.accountStatus.mockResolvedValue({ host: "nipa.test", address: "https://nipa.test", signedIn: true, email: "", userId: "u" });
+    api.listProjects.mockResolvedValue([{ org: "studio", orgName: "Studio", orgRole: "owner", project: "game", name: "Game", description: "" }]);
+    api.remoteBranches.mockResolvedValue([{ name: "main", isDefault: true, protected: false }]);
+    api.clone.mockResolvedValue(game);
+    renderWithProviders(<App />);
+    await userEvent.click(await screen.findByRole("button", { name: /Clone a repository…/ }));
+    await userEvent.type(screen.getByRole("textbox", { name: "Server" }), "https://nipa.test{Enter}");
+    await userEvent.click(await screen.findByRole("button", { name: /Game/ }));
+    await screen.findByRole("option", { name: "main (default)" });
+    await userEvent.type(screen.getByRole("textbox", { name: "Location" }), "/work");
+    await userEvent.click(screen.getByRole("button", { name: "Clone" }));
+    expect(await screen.findByRole("heading", { name: "game" })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByText("Cloned game")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Clone a repository" }));
+    await userEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   it("does not duplicate a clone that is opened twice", async () => {
