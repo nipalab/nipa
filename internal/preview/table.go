@@ -359,6 +359,8 @@ func similar(a, b []string, cols []TableColumn, common []int) bool {
 	return 2*same >= len(common)
 }
 
+const similarWindow = 64
+
 func pairChanged(pairs []pair, oldRows, newRows [][]string, cols []TableColumn, common []int) []pair {
 	var out []pair
 	for start := 0; start < len(pairs); {
@@ -380,7 +382,7 @@ func pairChanged(pairs []pair, oldRows, newRows [][]string, cols []TableColumn, 
 		var rest []pair
 		for _, j := range added {
 			match := -1
-			for x := k; x < len(removed) && match < 0; x++ {
+			for x := k; x < min(len(removed), k+similarWindow) && match < 0; x++ {
 				if similar(oldRows[removed[x]], newRows[j], cols, common) {
 					match = x
 				}

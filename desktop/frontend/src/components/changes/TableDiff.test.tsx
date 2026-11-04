@@ -129,6 +129,6 @@ describe("TableDiff", () => {
     expect(viewerFor(diff())).toBe(TableDiff);
     expect(viewerFor(diff({ hunksOmitted: true }))).toBe(TableDiff);
     expect(viewerFor(diff({ old: null, new: { path: "a.csv", mode: 420, size: 0, binary: false, hash: "" } }))).not.toBe(TableDiff);
-    expect(viewerFor(diff({ new: { path: "a.csv", mode: 420, size: 9, binary: true, hash: "" } }))).not.toBe(TableDiff);
+    expect(viewerFor(diff({ new: { path: "a.csv", mode: 420, size: 9, binary: true, hash: "" } }))).toBe(TableDiff);
   });
 });

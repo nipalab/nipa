@@ -22,7 +22,7 @@ export function viewerFor(diff: FileDiff): ComponentType<ViewerProps> {
   if (diff.kind === "image" && (diff.old || diff.new)) return ImageDiff;
   if (diff.kind === "model" && (diff.old || diff.new)) return ModelDiff;
   if (diff.kind === "audio" && (diff.old || diff.new)) return AudioDiff;
-  if (diff.kind === "table" && isText(diff) && (diff.old?.size || diff.new?.size)) return TableDiff;
+  if (diff.kind === "table" && (diff.old?.size || diff.new?.size)) return TableDiff;
   if (diff.hunksOmitted) return Notice;
   if (isText(diff) && (diff.hunks ?? []).length > 0) return TextDiff;
   if (isText(diff)) return Notice;

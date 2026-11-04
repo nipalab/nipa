@@ -93,11 +93,18 @@ func intDecoder(width int, order binary.ByteOrder, unsigned8 bool) sampleDecoder
 	return func(b []byte) float32 { return float32(float64(int32(order.Uint32(b))) / 2147483648) }
 }
 
+func finite(v float32) float32 {
+	if math.IsNaN(float64(v)) || math.IsInf(float64(v), 0) {
+		return 0
+	}
+	return v
+}
+
 func floatDecoder(width int, order binary.ByteOrder) sampleDecoder {
 	if width == 8 {
-		return func(b []byte) float32 { return float32(math.Float64frombits(order.Uint64(b))) }
+		return func(b []byte) float32 { return finite(float32(math.Float64frombits(order.Uint64(b)))) }
 	}
-	return func(b []byte) float32 { return math.Float32frombits(order.Uint32(b)) }
+	return func(b []byte) float32 { return finite(math.Float32frombits(order.Uint32(b))) }
 }
 
 func openWAV(data []byte) (*audioSource, error) {

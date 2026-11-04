@@ -49,6 +49,8 @@ export function AudioCompareView({ compare, makeContext = defaultContext }: { co
   const [playError, setPlayError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
   const player = useRef<Player | null>(null);
+  const listenRef = useRef(listen);
+  listenRef.current = listen;
   const span = Math.max(old?.stats?.duration ?? 0, next?.stats?.duration ?? 0);
 
   useEffect(() => {
@@ -60,8 +62,15 @@ export function AudioCompareView({ compare, makeContext = defaultContext }: { co
     player.current = p;
     let live = true;
     setReady(false);
+    setPlaying(false);
+    setPosition(0);
+    setPlayError(null);
     p.load(old?.playback ? base64ToBytes(old.playback) : null, next?.playback ? base64ToBytes(next.playback) : null).then(
-      () => live && setReady(true),
+      () => {
+        if (!live) return;
+        p.setSide(listenRef.current);
+        setReady(true);
+      },
       (err: unknown) => live && setPlayError(err instanceof Error ? err.message : String(err)),
     );
     return () => {

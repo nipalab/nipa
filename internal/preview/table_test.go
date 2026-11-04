@@ -1,8 +1,10 @@
 package preview
 
 import (
+	"fmt"
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf16"
 
 	"github.com/stretchr/testify/assert"
@@ -177,4 +179,19 @@ func TestLongestIncreasing(t *testing.T) {
 		assert.Less(t, value[got[i-1]], value[got[i]])
 	}
 	assert.Empty(t, longestIncreasing(nil, nil))
+}
+
+func TestDiffTablesLargeUnmatchedBlockIsBounded(t *testing.T) {
+	const n = 20000
+	oldT := &Table{Rows: [][]string{{"x", "key", "a", "b", "c"}}}
+	newT := &Table{Rows: [][]string{{"x", "key", "a", "b", "c"}}}
+	for i := 0; i < n; i++ {
+		oldT.Rows = append(oldT.Rows, []string{"o", "k", fmt.Sprint("a", i), fmt.Sprint("b", i), fmt.Sprint("c", i)})
+		newT.Rows = append(newT.Rows, []string{"n", "k", fmt.Sprint("p", i), fmt.Sprint("q", i), fmt.Sprint("r", i)})
+	}
+	start := time.Now()
+	d := DiffTables(oldT, newT)
+	require.Less(t, time.Since(start), 5*time.Second)
+	require.Equal(t, n, d.RowsAdded)
+	require.Equal(t, n, d.RowsRemoved)
 }

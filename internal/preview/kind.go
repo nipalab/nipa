@@ -45,9 +45,6 @@ var kindByExtension = map[string]Kind{
 // text or opaque depending on the stored binary flag.
 func Classify(path string, isBinary bool) Kind {
 	if kind, ok := kindByExtension[strings.ToLower(filepath.Ext(path))]; ok {
-		if kind == KindTable && isBinary {
-			return KindOpaque
-		}
 		return kind
 	}
 	if isBinary {
