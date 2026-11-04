@@ -131,6 +131,20 @@ func (mr *MockmergeRequestRepositoryMockRecorder) ListAssignees(ctx, projectID a
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListAssignees", reflect.TypeOf((*MockmergeRequestRepository)(nil).ListAssignees), ctx, projectID)
 }
 
+// RecordMerge mocks base method.
+func (m *MockmergeRequestRepository) RecordMerge(ctx context.Context, projectID snow.ID, number int64, sourceCommitID, mergeBaseID *snow.ID) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RecordMerge", ctx, projectID, number, sourceCommitID, mergeBaseID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// RecordMerge indicates an expected call of RecordMerge.
+func (mr *MockmergeRequestRepositoryMockRecorder) RecordMerge(ctx, projectID, number, sourceCommitID, mergeBaseID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RecordMerge", reflect.TypeOf((*MockmergeRequestRepository)(nil).RecordMerge), ctx, projectID, number, sourceCommitID, mergeBaseID)
+}
+
 // SetDraft mocks base method.
 func (m *MockmergeRequestRepository) SetDraft(ctx context.Context, projectID snow.ID, number int64, draft bool) (*domain.MergeRequest, error) {
 	m.ctrl.T.Helper()

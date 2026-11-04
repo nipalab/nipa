@@ -19,6 +19,7 @@ type mergeRequestRepository interface {
 	Update(ctx context.Context, projectID snow.ID, number int64, title, description string) (*domain.MergeRequest, error)
 	SetDraft(ctx context.Context, projectID snow.ID, number int64, draft bool) (*domain.MergeRequest, error)
 	UpdateStatus(ctx context.Context, projectID snow.ID, number int64, status string, mergeCommitID *snow.ID) error
+	RecordMerge(ctx context.Context, projectID snow.ID, number int64, sourceCommitID, mergeBaseID *snow.ID) error
 	ListAssignees(ctx context.Context, projectID snow.ID) (map[int64][]domain.ReviewActor, error)
 	ClearAssignees(ctx context.Context, mergeRequestID int64) error
 	AddAssignee(ctx context.Context, mergeRequestID int64, userID snow.ID) error
@@ -502,6 +503,9 @@ func (m *MergeRequest) Merge(ctx context.Context, projectID snow.ID, number int6
 	}
 	if err := m.repo.UpdateStatus(ctx, projectID, mr.Number, domain.MergeRequestMerged, updated.CommitID); err != nil {
 		return nil, info, err
+	}
+	if err := m.repo.RecordMerge(ctx, projectID, mr.Number, sourceHead, info.MergeBaseCommitID); err != nil {
+		slog.Warn("recording merged source head failed", "merge_request", mr.Number, "error", err)
 	}
 	if m.fileLocks != nil {
 		if err := m.fileLocks.ReleaseForMergeRequest(ctx, projectID, snow.ID(mr.ID)); err != nil {

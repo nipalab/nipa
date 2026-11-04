@@ -190,6 +190,7 @@ func TestMergeRequest_Merge_FileLocks(t *testing.T) {
 		Return(&domain.Branch{ID: 2, ProjectID: 1, Name: "main", CommitID: &sourceHead}, nil)
 	gomock.InOrder(
 		repo.EXPECT().UpdateStatus(gomock.Any(), snow.ID(1), int64(5), domain.MergeRequestMerged, &sourceHead).Return(nil),
+		repo.EXPECT().RecordMerge(gomock.Any(), snow.ID(1), int64(5), gomock.Any(), gomock.Any()).Return(nil),
 		gate.EXPECT().ReleaseForMergeRequest(gomock.Any(), snow.ID(1), snow.ID(5)).Return(nil),
 	)
 
@@ -313,6 +314,7 @@ func TestMergeRequest_Merge_FileLocksReleaseError(t *testing.T) {
 	merger.EXPECT().MergeForMergeRequest(gomock.Any(), snow.ID(1), "main", "feature", gomock.Any()).
 		Return(&domain.Branch{ID: 2, ProjectID: 1, Name: "main", CommitID: &sourceHead}, nil)
 	repo.EXPECT().UpdateStatus(gomock.Any(), snow.ID(1), int64(5), domain.MergeRequestMerged, &sourceHead).Return(nil)
+	repo.EXPECT().RecordMerge(gomock.Any(), snow.ID(1), int64(5), gomock.Any(), gomock.Any()).Return(nil)
 	wantErr := errors.New("db down")
 	gate.EXPECT().ReleaseForMergeRequest(gomock.Any(), snow.ID(1), snow.ID(5)).Return(wantErr)
 
@@ -534,6 +536,7 @@ func TestMergeRequest_Merge_AdminMergesAuthorRequest(t *testing.T) {
 	gomock.InOrder(
 		gate.EXPECT().EnsureMergeRequestLocks(gomock.Any(), snow.ID(1), snow.ID(5), gomock.Any(), []string{"tex.png"}, snow.ID(99), snow.ID(7)).Return(nil),
 		repo.EXPECT().UpdateStatus(gomock.Any(), snow.ID(1), int64(5), domain.MergeRequestMerged, &sourceHead).Return(nil),
+		repo.EXPECT().RecordMerge(gomock.Any(), snow.ID(1), int64(5), gomock.Any(), gomock.Any()).Return(nil),
 		gate.EXPECT().ReleaseForMergeRequest(gomock.Any(), snow.ID(1), snow.ID(5)).Return(nil),
 	)
 

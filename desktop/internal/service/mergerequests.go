@@ -30,6 +30,7 @@ type MergeRequest struct {
 	UpdatedAt        string   `json:"updatedAt"`
 	MergeCommitID    string   `json:"mergeCommitId"`
 	MergeBaseID      string   `json:"mergeBaseId"`
+	MergedSourceID   string   `json:"mergedSourceId"`
 	Approvals        int      `json:"approvals"`
 	ChangesRequested int      `json:"changesRequested"`
 	Assignees        []Person `json:"assignees"`
@@ -164,7 +165,7 @@ func toMergeRequest(mr *pb.MergeRequestDetail) MergeRequest {
 	out := MergeRequest{
 		Number: mr.GetNumber(), Title: mr.GetTitle(), Description: mr.GetDescription(), Status: mr.GetStatus(), Draft: mr.GetDraft(),
 		Source: mr.GetSourceBranch(), Target: mr.GetTargetBranch(), AuthorID: mr.GetCreatedBy(),
-		CreatedAt: rfc3339(mr.GetCreatedAt()), UpdatedAt: rfc3339(mr.GetUpdatedAt()), MergeCommitID: mr.GetMergeCommitId(), MergeBaseID: mr.GetMergeBaseCommitId(),
+		CreatedAt: rfc3339(mr.GetCreatedAt()), UpdatedAt: rfc3339(mr.GetUpdatedAt()), MergeCommitID: mr.GetMergeCommitId(), MergeBaseID: mr.GetMergeBaseCommitId(), MergedSourceID: mr.GetMergedSourceCommitId(),
 		Approvals: int(mr.GetReview().GetApprovals()), ChangesRequested: int(mr.GetReview().GetChangesRequested()), Assignees: []Person{},
 	}
 	for _, a := range mr.GetAssignees() {

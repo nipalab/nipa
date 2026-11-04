@@ -41,6 +41,7 @@ const mr = (over: Partial<MergeRequest> = {}): MergeRequest => ({
   updatedAt: "2026-11-05T10:00:00Z",
   mergeCommitId: "",
   mergeBaseId: "",
+  mergedSourceId: "",
   approvals: 1,
   changesRequested: 0,
   assignees: [],
@@ -315,22 +316,22 @@ describe("MergeRequestDetail", () => {
   });
 
   it("shows a merged request", async () => {
-    api.branches.mockResolvedValue([{ name: "art", commitId: "s2", default: false, protected: false }]);
-    api.mergeRequest.mockResolvedValue(detail({ status: "merged", mergeCommitId: "m9", mergeBaseId: "b1" }, { status: "merged", sourceCommitId: "", mergeBaseId: "" }));
+    api.mergeRequest.mockResolvedValue(detail({ status: "merged", mergeCommitId: "m9", mergeBaseId: "b1", mergedSourceId: "s7" }, { status: "merged", sourceCommitId: "", mergeBaseId: "" }));
     view();
     expect(await screen.findByText(/Merged into/)).toBeInTheDocument();
     expect(screen.getAllByText("m9").length).toBeGreaterThan(0);
     await userEvent.click(screen.getByRole("tab", { name: /File changes/ }));
-    await waitFor(() => expect(api.revisionFiles).toHaveBeenCalledWith("/work/game", "b1", "s2"));
+    await waitFor(() => expect(api.revisionFiles).toHaveBeenCalledWith("/work/game", "b1", "s7"));
     expect(api.revisionFiles).not.toHaveBeenCalledWith("/work/game", "b1", "m9");
+    expect(api.branches).not.toHaveBeenCalled();
   });
 
-  it("falls back to the merge commit when the merged source branch is deleted", async () => {
-    api.branches.mockResolvedValue([]);
-    api.mergeRequest.mockResolvedValue(detail({ status: "merged", mergeCommitId: "m9", mergeBaseId: "b1" }, { status: "merged", sourceCommitId: "", mergeBaseId: "" }));
+  it("uses the live source branch head for a closed request", async () => {
+    api.branches.mockResolvedValue([{ name: "art", commitId: "s3", default: false, protected: false }]);
+    api.mergeRequest.mockResolvedValue(detail({ status: "closed", mergeBaseId: "b1" }, { status: "closed", sourceCommitId: "", mergeBaseId: "" }));
     view();
     await userEvent.click(await screen.findByRole("tab", { name: /File changes/ }));
-    await waitFor(() => expect(api.revisionFiles).toHaveBeenCalledWith("/work/game", "b1", "m9"));
+    await waitFor(() => expect(api.revisionFiles).toHaveBeenCalledWith("/work/game", "b1", "s3"));
   });
 
   it("edits the title and description", async () => {

@@ -267,7 +267,7 @@ SELECT
     ?10, ?11
 FROM merge_requests
 WHERE project_id = ?2
-RETURNING id, number, project_id, source_branch_id, target_branch_id, source_branch_name, target_branch_name, title, description, status, is_draft, merge_commit_id, merge_base_commit_id, created_by, created_at, updated_at
+RETURNING id, number, project_id, source_branch_id, target_branch_id, source_branch_name, target_branch_name, title, description, status, is_draft, merge_commit_id, merge_base_commit_id, merged_source_commit_id, created_by, created_at, updated_at
 `
 
 type MergeRequestCreateParams struct {
@@ -313,6 +313,7 @@ func (q *Queries) MergeRequestCreate(ctx context.Context, arg MergeRequestCreate
 		&i.IsDraft,
 		&i.MergeCommitID,
 		&i.MergeBaseCommitID,
+		&i.MergedSourceCommitID,
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -321,7 +322,7 @@ func (q *Queries) MergeRequestCreate(ctx context.Context, arg MergeRequestCreate
 }
 
 const mergeRequestGet = `-- name: MergeRequestGet :one
-SELECT id, number, project_id, source_branch_id, target_branch_id, source_branch_name, target_branch_name, title, description, status, is_draft, merge_commit_id, merge_base_commit_id, created_by, created_at, updated_at FROM merge_requests WHERE project_id = ? AND number = ?
+SELECT id, number, project_id, source_branch_id, target_branch_id, source_branch_name, target_branch_name, title, description, status, is_draft, merge_commit_id, merge_base_commit_id, merged_source_commit_id, created_by, created_at, updated_at FROM merge_requests WHERE project_id = ? AND number = ?
 `
 
 type MergeRequestGetParams struct {
@@ -346,6 +347,7 @@ func (q *Queries) MergeRequestGet(ctx context.Context, arg MergeRequestGetParams
 		&i.IsDraft,
 		&i.MergeCommitID,
 		&i.MergeBaseCommitID,
+		&i.MergedSourceCommitID,
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -354,7 +356,7 @@ func (q *Queries) MergeRequestGet(ctx context.Context, arg MergeRequestGetParams
 }
 
 const mergeRequestList = `-- name: MergeRequestList :many
-SELECT id, number, project_id, source_branch_id, target_branch_id, source_branch_name, target_branch_name, title, description, status, is_draft, merge_commit_id, merge_base_commit_id, created_by, created_at, updated_at FROM merge_requests
+SELECT id, number, project_id, source_branch_id, target_branch_id, source_branch_name, target_branch_name, title, description, status, is_draft, merge_commit_id, merge_base_commit_id, merged_source_commit_id, created_by, created_at, updated_at FROM merge_requests
 WHERE project_id = ?1
   AND (?2 IS NULL OR status = ?2)
   AND (?3 IS NULL OR created_by = ?3)
@@ -418,6 +420,7 @@ func (q *Queries) MergeRequestList(ctx context.Context, arg MergeRequestListPara
 			&i.IsDraft,
 			&i.MergeCommitID,
 			&i.MergeBaseCommitID,
+			&i.MergedSourceCommitID,
 			&i.CreatedBy,
 			&i.CreatedAt,
 			&i.UpdatedAt,
@@ -435,10 +438,32 @@ func (q *Queries) MergeRequestList(ctx context.Context, arg MergeRequestListPara
 	return items, nil
 }
 
+const mergeRequestRecordMerge = `-- name: MergeRequestRecordMerge :exec
+UPDATE merge_requests SET merged_source_commit_id = ?, merge_base_commit_id = ?
+WHERE project_id = ? AND number = ?
+`
+
+type MergeRequestRecordMergeParams struct {
+	MergedSourceCommitID sql.NullInt64 `json:"merged_source_commit_id"`
+	MergeBaseCommitID    sql.NullInt64 `json:"merge_base_commit_id"`
+	ProjectID            int64         `json:"project_id"`
+	Number               int64         `json:"number"`
+}
+
+func (q *Queries) MergeRequestRecordMerge(ctx context.Context, arg MergeRequestRecordMergeParams) error {
+	_, err := q.db.ExecContext(ctx, mergeRequestRecordMerge,
+		arg.MergedSourceCommitID,
+		arg.MergeBaseCommitID,
+		arg.ProjectID,
+		arg.Number,
+	)
+	return err
+}
+
 const mergeRequestSetDraft = `-- name: MergeRequestSetDraft :one
 UPDATE merge_requests SET is_draft = ?, updated_at = CURRENT_TIMESTAMP
 WHERE project_id = ? AND number = ?
-RETURNING id, number, project_id, source_branch_id, target_branch_id, source_branch_name, target_branch_name, title, description, status, is_draft, merge_commit_id, merge_base_commit_id, created_by, created_at, updated_at
+RETURNING id, number, project_id, source_branch_id, target_branch_id, source_branch_name, target_branch_name, title, description, status, is_draft, merge_commit_id, merge_base_commit_id, merged_source_commit_id, created_by, created_at, updated_at
 `
 
 type MergeRequestSetDraftParams struct {
@@ -464,6 +489,7 @@ func (q *Queries) MergeRequestSetDraft(ctx context.Context, arg MergeRequestSetD
 		&i.IsDraft,
 		&i.MergeCommitID,
 		&i.MergeBaseCommitID,
+		&i.MergedSourceCommitID,
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -474,7 +500,7 @@ func (q *Queries) MergeRequestSetDraft(ctx context.Context, arg MergeRequestSetD
 const mergeRequestUpdate = `-- name: MergeRequestUpdate :one
 UPDATE merge_requests SET title = ?, description = ?, updated_at = CURRENT_TIMESTAMP
 WHERE project_id = ? AND number = ?
-RETURNING id, number, project_id, source_branch_id, target_branch_id, source_branch_name, target_branch_name, title, description, status, is_draft, merge_commit_id, merge_base_commit_id, created_by, created_at, updated_at
+RETURNING id, number, project_id, source_branch_id, target_branch_id, source_branch_name, target_branch_name, title, description, status, is_draft, merge_commit_id, merge_base_commit_id, merged_source_commit_id, created_by, created_at, updated_at
 `
 
 type MergeRequestUpdateParams struct {
@@ -506,6 +532,7 @@ func (q *Queries) MergeRequestUpdate(ctx context.Context, arg MergeRequestUpdate
 		&i.IsDraft,
 		&i.MergeCommitID,
 		&i.MergeBaseCommitID,
+		&i.MergedSourceCommitID,
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,

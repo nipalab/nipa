@@ -432,6 +432,7 @@ export interface MergeRequest {
     "updatedAt": string;
     "mergeCommitId": string;
     "mergeBaseId": string;
+    "mergedSourceId": string;
     "approvals": number;
     "changesRequested": number;
     "assignees": Person[] | null;

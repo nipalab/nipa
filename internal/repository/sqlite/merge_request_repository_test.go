@@ -113,6 +113,16 @@ func TestMergeRequestRepositorySQLite_CRUD(t *testing.T) {
 	got, err = repo.Get(ctx, projectID, 1)
 	require.NoError(t, err)
 	require.Equal(t, domain.MergeRequestMerged, got.Status)
+	require.Nil(t, got.MergedSourceCommitID)
+
+	treeID := seedTreeNode(t, db, "root", sql.NullInt64{})
+	head := seedCommit(t, db, q, projectID, treeID)
+	require.NoError(t, repo.RecordMerge(ctx, projectID, 1, &head, &head))
+	got, err = repo.Get(ctx, projectID, 1)
+	require.NoError(t, err)
+	require.Equal(t, &head, got.MergedSourceCommitID)
+	require.Equal(t, &head, got.MergeBaseCommitID)
+	require.Equal(t, domain.MergeRequestMerged, got.Status)
 
 	_, err = repo.Get(ctx, projectID, 9999)
 	requireRecordNotFound(t, err)

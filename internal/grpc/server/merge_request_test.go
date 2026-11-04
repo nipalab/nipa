@@ -85,6 +85,10 @@ func (s *stubMergeRequestRepository) UpdateStatus(_ context.Context, _ snow.ID, 
 	return nil
 }
 
+func (s *stubMergeRequestRepository) RecordMerge(_ context.Context, _ snow.ID, _ int64, _, _ *snow.ID) error {
+	return nil
+}
+
 func (s *stubMergeRequestRepository) Delete(_ context.Context, _ snow.ID, _ int64) error {
 	s.created = nil
 	return nil
@@ -673,4 +677,11 @@ func TestDiffFileToPB(t *testing.T) {
 	require.True(t, binary.Binary)
 	require.Empty(t, binary.Patch)
 	require.Empty(t, binary.Hunks)
+}
+
+func TestDomainMergeRequestToPB_MergedSourceCommit(t *testing.T) {
+	head := snow.ID(31)
+	detail := domainMergeRequestToPB(&domain.MergeRequest{MergedSourceCommitID: &head})
+	require.Equal(t, head.Base36(), detail.GetMergedSourceCommitId())
+	require.Empty(t, domainMergeRequestToPB(&domain.MergeRequest{}).GetMergedSourceCommitId())
 }

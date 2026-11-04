@@ -124,6 +124,16 @@ func (r *MergeRequestRepository) UpdateStatus(ctx context.Context, projectID sno
 	return handleError(err)
 }
 
+func (r *MergeRequestRepository) RecordMerge(ctx context.Context, projectID snow.ID, number int64, sourceCommitID, mergeBaseID *snow.ID) error {
+	err := r.queries.MergeRequestRecordMerge(ctx, sqlcPostgres.MergeRequestRecordMergeParams{
+		MergedSourceCommitID: nullSnowID(sourceCommitID),
+		MergeBaseCommitID:    nullSnowID(mergeBaseID),
+		ProjectID:            projectID.Int64(),
+		Number:               number,
+	})
+	return handleError(err)
+}
+
 func (r *MergeRequestRepository) ListAssignees(ctx context.Context, projectID snow.ID) (map[int64][]domain.ReviewActor, error) {
 	rows, err := r.queries.MergeRequestAssigneeList(ctx, projectID.Int64())
 	if err != nil {
@@ -169,21 +179,22 @@ func (r *MergeRequestRepository) AddAssignee(ctx context.Context, mergeRequestID
 
 func mergeRequestToDomain(row sqlcPostgres.MergeRequest) *domain.MergeRequest {
 	return &domain.MergeRequest{
-		ID:                row.ID,
-		Number:            row.Number,
-		ProjectID:         snow.ID(row.ProjectID),
-		SourceBranchID:    snow.ID(row.SourceBranchID),
-		TargetBranchID:    snow.ID(row.TargetBranchID),
-		SourceBranch:      row.SourceBranchName,
-		TargetBranch:      row.TargetBranchName,
-		Title:             row.Title,
-		Description:       row.Description,
-		Status:            row.Status,
-		Draft:             row.IsDraft,
-		MergeCommitID:     nullInt64SnowIDPtr(row.MergeCommitID),
-		MergeBaseCommitID: nullInt64SnowIDPtr(row.MergeBaseCommitID),
-		CreatedBy:         snow.ID(row.CreatedBy),
-		CreatedAt:         row.CreatedAt,
-		UpdatedAt:         row.UpdatedAt,
+		ID:                   row.ID,
+		Number:               row.Number,
+		ProjectID:            snow.ID(row.ProjectID),
+		SourceBranchID:       snow.ID(row.SourceBranchID),
+		TargetBranchID:       snow.ID(row.TargetBranchID),
+		SourceBranch:         row.SourceBranchName,
+		TargetBranch:         row.TargetBranchName,
+		Title:                row.Title,
+		Description:          row.Description,
+		Status:               row.Status,
+		Draft:                row.IsDraft,
+		MergeCommitID:        nullInt64SnowIDPtr(row.MergeCommitID),
+		MergeBaseCommitID:    nullInt64SnowIDPtr(row.MergeBaseCommitID),
+		MergedSourceCommitID: nullInt64SnowIDPtr(row.MergedSourceCommitID),
+		CreatedBy:            snow.ID(row.CreatedBy),
+		CreatedAt:            row.CreatedAt,
+		UpdatedAt:            row.UpdatedAt,
 	}
 }

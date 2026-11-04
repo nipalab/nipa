@@ -72,7 +72,7 @@ type DetailProps = { root: string; number: number; notify: Notify };
 export function MergeRequestDetail({ root, number, notify }: DetailProps) {
   const mr = useMergeRequest(root, number, notify);
   const [tab, setTab] = useState<Tab>("conversation");
-  const needsSourceHead = !!mr.detail.data && !mr.detail.data.mergeability.sourceCommitId;
+  const needsSourceHead = !!mr.detail.data && !mr.detail.data.mergeability.sourceCommitId && !mr.detail.data.request.mergedSourceId;
   const branches = useQuery({ queryKey: ["branches", root], queryFn: () => desktop.branches(root), enabled: needsSourceHead });
 
   if (mr.detail.isPending) {
@@ -93,7 +93,7 @@ export function MergeRequestDetail({ root, number, notify }: DetailProps) {
   const activity = mr.activity.data;
   const base = mergeability.mergeBaseId || request.mergeBaseId;
   const sourceHead = mergeability.sourceCommitId || (branches.data ?? []).find((b) => b.name === request.source)?.commitId || "";
-  const head = sourceHead || (request.status === "merged" && branches.isSuccess ? request.mergeCommitId : "");
+  const head = request.mergedSourceId || sourceHead;
   const threads = activity?.threads ?? [];
 
   return (

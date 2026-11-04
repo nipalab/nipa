@@ -232,6 +232,7 @@ CREATE TABLE merge_requests (
     is_draft BOOLEAN NOT NULL DEFAULT FALSE,
     merge_commit_id BIGINT REFERENCES commits(id),
     merge_base_commit_id BIGINT REFERENCES commits(id),
+    merged_source_commit_id BIGINT REFERENCES commits(id),
     created_by BIGINT NOT NULL REFERENCES users(id),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),

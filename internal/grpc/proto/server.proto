@@ -552,6 +552,7 @@ message MergeRequestDetail {
     MergeRequestReviewState review = 14; // live review summary, when resolved
     bool draft = 15; // draft requests cannot be merged until marked ready
     repeated ReviewActor assignees = 16; // resolved per request
+    optional string merged_source_commit_id = 17; // source head that was merged (base36), set for merged requests
 }
 
 message CreateMergeRequestRequest {
