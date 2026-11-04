@@ -139,3 +139,12 @@ func TestLintStagedAssetDeletionWithUnstagedMeta(t *testing.T) {
 	}, nil)
 	assert.Equal(t, []string{"meta-not-staged game/Assets/old.png.meta"}, summary(ws))
 }
+
+func TestLintStagedMetaDeletionWithUnstagedAsset(t *testing.T) {
+	fsys := project(map[string]*fstest.MapFile{})
+	ws := Lint(fsys, []Change{
+		{Path: "game/Assets/old.png", Status: "deleted"},
+		{Path: "game/Assets/old.png.meta", Status: "deleted", Staged: true},
+	}, nil)
+	assert.Equal(t, []string{"meta-not-staged game/Assets/old.png"}, summary(ws))
+}

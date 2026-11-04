@@ -172,6 +172,8 @@ func (l *linter) checkMeta(p string, s state) {
 	case s.deleted:
 		if l.exists(asset) && !l.states[asset].deleted {
 			l.warn(asset, MissingMeta, p, "lost its .meta file; Unity will give it a new GUID and break references to it")
+		} else if as := l.states[asset]; s.staged && as.deleted && !as.staged {
+			l.warn(asset, MetaNotStaged, p, "deletion is not staged; push it together with its .meta deletion")
 		}
 	case s.isNew():
 		if !l.exists(asset) {
