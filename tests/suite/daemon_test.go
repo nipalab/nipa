@@ -876,6 +876,79 @@ var _ = Describe("nipa serve", func() {
 		Expect(readBytes(check, "art/hero.png")).To(Equal(testPNG(2)))
 	})
 
+	It("streams teammate pushes, released locks and review requests", func() {
+		project := newProject("daemon-events")
+		seedRepo(orgSlug, project, map[string][]byte{"a.txt": []byte("a\n"), "assets/sky.psd": {0x01, 0x02}}, "seed")
+		url := repoURLFor(orgSlug, project)
+		mate := newIdentity("daemon-events-mate").promote()
+		mateDir := cloneRepo(workspace(), url, "mate")
+		Expect(runNipaAs(mate, mateDir, "lock", "assets/sky.psd").ExitCode).To(Equal(0))
+		dir := cloneRepo(workspace(), url, "work")
+
+		d := startDaemon()
+		d.watch(dir)
+		me, err := d.client.LockStatus(d.ctx, &daemonpb.LockStatusRequest{Root: dir})
+		Expect(err).NotTo(HaveOccurred())
+
+		stream, err := d.client.WatchEvents(d.ctx, &daemonpb.WatchEventsRequest{Root: dir})
+		Expect(err).NotTo(HaveOccurred())
+		activity := make(chan *daemonpb.RepoActivity, 64)
+		go func() {
+			defer GinkgoRecover()
+			for {
+				a, err := stream.Recv()
+				if err != nil {
+					close(activity)
+					return
+				}
+				activity <- a
+			}
+		}()
+		var first *daemonpb.RepoActivity
+		Eventually(activity, "10s").Should(Receive(&first))
+		Expect(first.GetEvents()).To(BeEmpty())
+		Expect(first.GetError()).To(BeEmpty())
+		Expect(first.GetIncoming()).To(BeZero())
+
+		writeText(mateDir, "a.txt", "b\n")
+		Expect(runNipaAs(mate, mateDir, "add", "a.txt").ExitCode).To(Equal(0))
+		Expect(runNipaAs(mate, mateDir, "push", "-m", "Teammate edit").ExitCode).To(Equal(0))
+		Expect(runNipaAs(mate, mateDir, "unlock", "assets/sky.psd").ExitCode).To(Equal(0))
+		Expect(runNipaAs(mate, mateDir, "branch", "-c", "hero").ExitCode).To(Equal(0))
+		writeText(mateDir, "hero.txt", "hero\n")
+		Expect(runNipaAs(mate, mateDir, "add", "hero.txt").ExitCode).To(Equal(0))
+		Expect(runNipaAs(mate, mateDir, "push", "-m", "Hero work").ExitCode).To(Equal(0))
+		Expect(runNipaAs(mate, mateDir, "mr", "create", "--title", "Hero pass").ExitCode).To(Equal(0))
+		Expect(runNipaAs(mate, mateDir, "mr", "request-review", "1", me.GetUserId()).ExitCode).To(Equal(0))
+
+		seen := map[string]*daemonpb.TeamEvent{}
+		var last *daemonpb.RepoActivity
+		Eventually(func() int {
+			for {
+				select {
+				case a, ok := <-activity:
+					if !ok {
+						return len(seen)
+					}
+					last = a
+					for _, e := range a.GetEvents() {
+						seen[e.GetKind()] = e
+					}
+				default:
+					return len(seen)
+				}
+			}
+		}, "30s", "200ms").Should(Equal(3))
+		Expect(seen["pushed"].GetMessage()).To(Equal("Teammate edit"))
+		Expect(seen["pushed"].GetBranch()).To(Equal("main"))
+		Expect(seen["pushed"].GetCount()).To(Equal(int32(1)))
+		Expect(seen["lock_released"].GetPath()).To(Equal("assets/sky.psd"))
+		Expect(seen["review_requested"].GetNumber()).To(Equal(int64(1)))
+		Expect(seen["review_requested"].GetMessage()).To(Equal("Hero pass"))
+		Expect(last.GetIncoming()).To(Equal(int32(1)))
+		Expect(last.GetReviewRequests()).To(Equal(int32(1)))
+	})
+
 	It("unwatches a repository", func() {
 		project := newProject("daemon-unwatch")
 		seedRepo(orgSlug, project, map[string][]byte{"a.txt": []byte("a\n")}, "seed")

@@ -83,6 +83,14 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   `ResolveConflict` (three-way text editor over the marker blocks, take
   mine/theirs with the asset viewers for binaries, merge banner with Finish
   merge/Abort),
+  team activity via the daemon `WatchEvents` poll (`Activity`, sidebar and
+  Update badges, desktop notifications through the Wails notifications
+  service, `internal/tray` menu/tooltip), `nipa://` deep links
+  (`OpenLink`/`TakeNavigation`, `app:navigate`, single instance), settings
+  in `desktop.json` (`Settings`/`SaveSettings`: keep in tray, start at login
+  via `internal/autostart`, notification kinds, poll interval, external
+  tools per extension used by `OpenFile`; `SetUploadWorkers` writes the
+  shared client config, `RestartDaemon`; `IgnoreRules`/`SaveIgnoreRules`),
   file locks via `LockStatus`/`Lock`/`Unlock` (row lock badges, push box
   blocks on someone else's lock and offers "Lock N files", Locks tab with
   release and "Lock & edit" through `PickFile`/`OpenFile`),
@@ -572,7 +580,10 @@ org/project context from `.nipa/config`; server-scoped `AccountStatus`/`Login`/`
 (`Options.Accounts`, wired in `cmd/nipa/serve.go`; the daemon never prompts),
 `ProxyTagList`/`ProxyTagCreate`/`ProxyTagDelete` forward the tag RPCs,
 `ProxyMergeRequestUpdate`/`Commits`/`Checks`/`Timeline`/`AddComment`/`Reply`/
-`Resolve` complete the merge-request surface, `Conflicts`/`ResolveConflict`
+`Resolve` complete the merge-request surface, `WatchEvents` polls the server per root (branch log vs the pinned commit,
+lock list, open merge requests' review requests) and streams `RepoActivity`
+with teammate `pushed`/`lock_released`/`review_requested` events,
+`Conflicts`/`ResolveConflict`
 (`usecase.Conflicts` over the merge/revert state's `conflict_kinds`,
 `conflict_binary` and `resolved` fields, filled by `applyThreeWay`) list and
 settle conflicted files for the GUI, `Status`

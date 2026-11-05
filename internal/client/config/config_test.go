@@ -158,3 +158,54 @@ func TestResolveTracing_InvalidRatio(t *testing.T) {
 	_, err = ResolveTracing()
 	require.ErrorContains(t, err, EnvTracingSampleRatio)
 }
+
+func TestSetUploadWorkers(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	t.Setenv(EnvUploadWorkers, "")
+	require.NoError(t, SetUploadWorkers(0), "clearing a missing file is fine")
+	require.NoError(t, SetUploadWorkers(8))
+	workers, pinned, err := ResolveUploadWorkers()
+	require.NoError(t, err)
+	require.True(t, pinned)
+	require.Equal(t, 8, workers)
+
+	path := filepath.Join(dir, "nipa", "config.json")
+	require.NoError(t, os.WriteFile(path, []byte(`{"diffExternal":"meld","uploadWorkers":4,"future":{"a":1}}`), 0o600))
+	require.NoError(t, SetUploadWorkers(0))
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	require.NotContains(t, string(data), "uploadWorkers")
+	require.Contains(t, string(data), `"future"`)
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, "meld", cfg.DiffExternal)
+
+	require.Error(t, SetUploadWorkers(-1))
+	require.NoError(t, os.WriteFile(path, []byte("{"), 0o600))
+	require.ErrorContains(t, SetUploadWorkers(2), "parse")
+	require.NoError(t, os.Remove(path))
+	require.NoError(t, os.Mkdir(path, 0o700))
+	require.Error(t, SetUploadWorkers(2))
+}
+
+func TestSetUploadWorkersUnwritableDir(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "nipa"), nil, 0o600))
+	require.Error(t, SetUploadWorkers(2))
+}
+
+func TestSetUploadWorkers_NullFile(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	t.Setenv(EnvUploadWorkers, "")
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "nipa"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "nipa", "config.json"), []byte("null"), 0o644))
+
+	require.NoError(t, SetUploadWorkers(8))
+	workers, pinned, err := ResolveUploadWorkers()
+	require.NoError(t, err)
+	require.True(t, pinned)
+	require.Equal(t, 8, workers)
+}

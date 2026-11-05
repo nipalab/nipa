@@ -12,7 +12,9 @@ import type * as service$0 from "../../../../nipalab/nipa/desktop/internal/servi
 declare module "@wailsio/runtime" {
     namespace Events {
         interface CustomEvents {
+            "app:navigate": service$0.Navigation;
             "op:progress": service$0.OpProgress;
+            "repo:activity": service$0.RepoActivity;
             "repo:changed": service$0.RepoChanged;
         }
     }

@@ -428,4 +428,11 @@ describe("MergeRequestDetail", () => {
     await userEvent.click(screen.getByRole("tab", { name: /Commits/ }));
     expect(await screen.findByText("commits offline")).toBeInTheDocument();
   });
+
+  it("opens the merge request a link or notification points at", async () => {
+    const { rerender } = renderWithProviders(<MergeRequestsView root="/work/game" branch="art" notify={notify} open={{ number: 11, seq: 1 }} />);
+    await waitFor(() => expect(api.mergeRequest).toHaveBeenCalledWith("/work/game", 11));
+    rerender(<MergeRequestsView root="/work/game" branch="art" notify={notify} open={{ number: 12, seq: 2 }} />);
+    await waitFor(() => expect(api.mergeRequest).toHaveBeenCalledWith("/work/game", 12));
+  });
 });

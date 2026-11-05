@@ -22,6 +22,19 @@ type ProxyConn interface {
 // server host and hands the caller the raw typed client plus the project
 // context derived from .nipa/config. Proxy requests carry the wrapped server
 // message; any context the caller set is overwritten with the clone's.
+// withMutation is withProxy for calls that change server state the activity
+// poll reports, so a successful one refreshes the repo's activity.
+func (s *Server) withMutation(ctx context.Context, root string, fn func(pb.NipaServiceClient, *pb.ProjectContext) error) error {
+	if err := s.withProxy(ctx, root, fn); err != nil {
+		return err
+	}
+	if rp, unref, err := s.repos.ref(root); err == nil {
+		rp.changes.publish(nil)
+		unref()
+	}
+	return nil
+}
+
 func (s *Server) withProxy(ctx context.Context, root string, fn func(pb.NipaServiceClient, *pb.ProjectContext) error) error {
 	rp, unref, err := s.repos.ref(root)
 	if err != nil {
@@ -200,7 +213,7 @@ func (s *Server) ProxyMergeBase(ctx context.Context, req *daemonpb.ProxyMergeBas
 // ProxyLockFile acquires a binary file lock (branch empty = mainline lock).
 func (s *Server) ProxyLockFile(ctx context.Context, req *daemonpb.ProxyLockFileRequest) (*daemonpb.ProxyLockFileResponse, error) {
 	var res *pb.LockFileResponse
-	err := s.withProxy(ctx, req.GetRoot(), func(client pb.NipaServiceClient, project *pb.ProjectContext) error {
+	err := s.withMutation(ctx, req.GetRoot(), func(client pb.NipaServiceClient, project *pb.ProjectContext) error {
 		request := req.GetRequest()
 		if request == nil {
 			request = &pb.LockFileRequest{}
@@ -219,7 +232,7 @@ func (s *Server) ProxyLockFile(ctx context.Context, req *daemonpb.ProxyLockFileR
 // ProxyUnlockFile releases a file lock.
 func (s *Server) ProxyUnlockFile(ctx context.Context, req *daemonpb.ProxyUnlockFileRequest) (*daemonpb.ProxyUnlockFileResponse, error) {
 	var res *pb.UnlockFileResponse
-	err := s.withProxy(ctx, req.GetRoot(), func(client pb.NipaServiceClient, project *pb.ProjectContext) error {
+	err := s.withMutation(ctx, req.GetRoot(), func(client pb.NipaServiceClient, project *pb.ProjectContext) error {
 		request := req.GetRequest()
 		if request == nil {
 			request = &pb.UnlockFileRequest{}

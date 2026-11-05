@@ -29,7 +29,7 @@ func (s *Server) ProxyMergeRequestList(ctx context.Context, req *daemonpb.ProxyM
 // ProxyMergeRequestCreate opens a merge request.
 func (s *Server) ProxyMergeRequestCreate(ctx context.Context, req *daemonpb.ProxyMergeRequestCreateRequest) (*daemonpb.ProxyMergeRequestCreateResponse, error) {
 	var res *pb.CreateMergeRequestResponse
-	err := s.withProxy(ctx, req.GetRoot(), func(client pb.NipaServiceClient, project *pb.ProjectContext) error {
+	err := s.withMutation(ctx, req.GetRoot(), func(client pb.NipaServiceClient, project *pb.ProjectContext) error {
 		request := req.GetRequest()
 		if request == nil {
 			request = &pb.CreateMergeRequestRequest{}
@@ -48,7 +48,7 @@ func (s *Server) ProxyMergeRequestCreate(ctx context.Context, req *daemonpb.Prox
 // ProxyMergeRequestMerge merges a merge request.
 func (s *Server) ProxyMergeRequestMerge(ctx context.Context, req *daemonpb.ProxyMergeRequestMergeRequest) (*daemonpb.ProxyMergeRequestMergeResponse, error) {
 	var res *pb.MergeMergeRequestResponse
-	err := s.withProxy(ctx, req.GetRoot(), func(client pb.NipaServiceClient, project *pb.ProjectContext) error {
+	err := s.withMutation(ctx, req.GetRoot(), func(client pb.NipaServiceClient, project *pb.ProjectContext) error {
 		request := req.GetRequest()
 		if request == nil {
 			request = &pb.MergeMergeRequestRequest{}
@@ -67,7 +67,7 @@ func (s *Server) ProxyMergeRequestMerge(ctx context.Context, req *daemonpb.Proxy
 // ProxyMergeRequestClose closes a merge request.
 func (s *Server) ProxyMergeRequestClose(ctx context.Context, req *daemonpb.ProxyMergeRequestCloseRequest) (*daemonpb.ProxyMergeRequestCloseResponse, error) {
 	var res *pb.CloseMergeRequestResponse
-	err := s.withProxy(ctx, req.GetRoot(), func(client pb.NipaServiceClient, project *pb.ProjectContext) error {
+	err := s.withMutation(ctx, req.GetRoot(), func(client pb.NipaServiceClient, project *pb.ProjectContext) error {
 		request := req.GetRequest()
 		if request == nil {
 			request = &pb.CloseMergeRequestRequest{}
@@ -181,7 +181,7 @@ func (s *Server) ProxyMergeRequestCheck(ctx context.Context, req *daemonpb.Proxy
 // ProxyMergeRequestReopen reopens a closed merge request.
 func (s *Server) ProxyMergeRequestReopen(ctx context.Context, req *daemonpb.ProxyMergeRequestReopenRequest) (*daemonpb.ProxyMergeRequestReopenResponse, error) {
 	var res *pb.ReopenMergeRequestResponse
-	err := s.withProxy(ctx, req.GetRoot(), func(client pb.NipaServiceClient, project *pb.ProjectContext) error {
+	err := s.withMutation(ctx, req.GetRoot(), func(client pb.NipaServiceClient, project *pb.ProjectContext) error {
 		request := req.GetRequest()
 		if request == nil {
 			request = &pb.ReopenMergeRequestRequest{}
@@ -200,7 +200,7 @@ func (s *Server) ProxyMergeRequestReopen(ctx context.Context, req *daemonpb.Prox
 // ProxyMergeRequestSubmitReview records a review decision.
 func (s *Server) ProxyMergeRequestSubmitReview(ctx context.Context, req *daemonpb.ProxyMergeRequestSubmitReviewRequest) (*daemonpb.ProxyMergeRequestSubmitReviewResponse, error) {
 	var res *pb.SubmitMergeRequestReviewResponse
-	err := s.withProxy(ctx, req.GetRoot(), func(client pb.NipaServiceClient, project *pb.ProjectContext) error {
+	err := s.withMutation(ctx, req.GetRoot(), func(client pb.NipaServiceClient, project *pb.ProjectContext) error {
 		request := req.GetRequest()
 		if request == nil {
 			request = &pb.SubmitMergeRequestReviewRequest{}

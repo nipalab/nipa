@@ -19,10 +19,45 @@ import (
 
 type fakeDaemon struct {
 	daemonpb.NipaDaemonClient
-	watchErr  map[string]error
-	unwatched []string
-	watches   int
-	changes   chan *daemonpb.RepoChange
+	watchErr   map[string]error
+	unwatched  []string
+	watches    int
+	changes    chan *daemonpb.RepoChange
+	events     chan *daemonpb.RepoActivity
+	eventReqs  chan *daemonpb.WatchEventsRequest
+	pings      int
+	pingErr    error
+	shutdowns  int
+	stopErr    error
+	badURL     bool
+	failEvents int
+}
+
+func (f *fakeDaemon) WatchEvents(ctx context.Context, req *daemonpb.WatchEventsRequest, _ ...grpc.CallOption) (grpc.ServerStreamingClient[daemonpb.RepoActivity], error) {
+	if f.eventReqs != nil {
+		f.eventReqs <- req
+	}
+	if f.failEvents > 0 {
+		f.failEvents--
+		return nil, status.Error(codes.Unavailable, "flaky")
+	}
+	if f.events == nil {
+		return nil, status.Error(codes.Unimplemented, "no events")
+	}
+	return &chanStream[daemonpb.RepoActivity]{ctx: ctx, ch: f.events}, nil
+}
+
+func (f *fakeDaemon) Ping(context.Context, *daemonpb.PingRequest, ...grpc.CallOption) (*daemonpb.PingResponse, error) {
+	f.pings++
+	if f.pings > 2 {
+		return nil, status.Error(codes.Unavailable, "gone")
+	}
+	return &daemonpb.PingResponse{}, f.pingErr
+}
+
+func (f *fakeDaemon) Shutdown(context.Context, *daemonpb.ShutdownRequest, ...grpc.CallOption) (*daemonpb.ShutdownResponse, error) {
+	f.shutdowns++
+	return &daemonpb.ShutdownResponse{}, f.stopErr
 }
 
 func (f *fakeDaemon) WatchRepo(_ context.Context, req *daemonpb.WatchRepoRequest, _ ...grpc.CallOption) (*daemonpb.WatchRepoResponse, error) {
@@ -34,8 +69,12 @@ func (f *fakeDaemon) WatchRepo(_ context.Context, req *daemonpb.WatchRepoRequest
 	if filepath.Base(root) == "sub" {
 		root = filepath.Dir(root)
 	}
+	url := "https://nipa.test/org/" + filepath.Base(root)
+	if f.badURL {
+		url = "nipa.test"
+	}
 	return &daemonpb.WatchRepoResponse{Repo: &daemonpb.RepoInfo{
-		Root: root, Url: "https://nipa.test/org/" + filepath.Base(root), Branch: "main", Sparse: []string{"art"},
+		Root: root, Url: url, Branch: "main", Sparse: []string{"art"},
 	}}, nil
 }
 

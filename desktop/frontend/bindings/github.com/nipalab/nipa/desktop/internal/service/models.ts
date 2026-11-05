@@ -337,6 +337,14 @@ export interface HistoryQuery {
     "limit": number;
 }
 
+/**
+ * IgnoreRules are the clone's shared .nipaignore and its local .nipa/ignore.
+ */
+export interface IgnoreRules {
+    "shared": string;
+    "local": string;
+}
+
 export interface ImageCompare {
     "old": ImageInfo | null;
     "new": ImageInfo | null;
@@ -595,6 +603,20 @@ export interface ModelStats {
     "max": number[] | null;
 }
 
+/**
+ * Navigation tells the frontend what to show. Root is empty when no opened
+ * clone matches the link; Server, Org and Project then let it offer a clone.
+ */
+export interface Navigation {
+    "root": string;
+    "tab": string;
+    "number": number;
+    "commit": string;
+    "server": string;
+    "org": string;
+    "project": string;
+}
+
 export interface NewMergeRequest {
     "title": string;
     "description": string;
@@ -670,6 +692,19 @@ export interface Repo {
      * clone anymore); the app keeps showing it so the user can remove it.
      */
     "error"?: string;
+}
+
+/**
+ * RepoActivity is the latest server-side state of one clone. Events only
+ * carries what is new in this update; the copy kept for Activity has none.
+ */
+export interface RepoActivity {
+    "root": string;
+    "name": string;
+    "incoming": number;
+    "reviewRequests": number;
+    "error": string;
+    "events": TeamEvent[] | null;
 }
 
 /**
@@ -783,6 +818,20 @@ export interface Tag {
     "message": string;
     "createdAt": string;
     "createdBy": string;
+}
+
+/**
+ * TeamEvent is something a teammate did that concerns a clone.
+ */
+export interface TeamEvent {
+    "kind": string;
+    "actor": string;
+    "branch": string;
+    "commitId": string;
+    "message": string;
+    "count": number;
+    "path": string;
+    "number": number;
 }
 
 export interface Thread {

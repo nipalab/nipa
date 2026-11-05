@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, FileClock, GitMerge, Image as ImageIcon, Loader2, RefreshCw, Search, Tag as TagIcon, X } from "lucide-react";
 import { desktop, type Commit, type Tag } from "@/api/desktop";
@@ -19,16 +19,20 @@ type HistoryViewProps = {
   notify: Notify;
   onRevert: (commit: Commit) => void;
   path?: string;
+  open?: { id: string; seq: number };
 };
 
 type Dialog = { kind: "revert" | "tag" | "branch"; commit: Commit } | null;
 
-export function HistoryView({ root, branch, detached, busy, notify, onRevert, path: initialPath = "" }: HistoryViewProps) {
+export function HistoryView({ root, branch, detached, busy, notify, onRevert, path: initialPath = "", open }: HistoryViewProps) {
   const queryClient = useQueryClient();
   const [path, setPath] = useState(initialPath);
   const [pathInput, setPathInput] = useState(initialPath);
   const [search, setSearch] = useState("");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(open?.id ?? null);
+  useEffect(() => {
+    if (open) setSelectedId(open.id);
+  }, [open?.id, open?.seq]);
   const [dialog, setDialog] = useState<Dialog>(null);
 
   const log = useInfiniteQuery({

@@ -9,9 +9,19 @@ import type {} from "../github.com/wailsapp/wails/v3/internal/eventdata.js";
 import "../github.com/wailsapp/wails/v3/internal/eventcreate.js";
 
 /**
+ * Name of the custom event "app:navigate".
+ */
+export const AppNavigate = "app:navigate";
+
+/**
  * Name of the custom event "op:progress".
  */
 export const OpProgress = "op:progress";
+
+/**
+ * Name of the custom event "repo:activity".
+ */
+export const RepoActivity = "repo:activity";
 
 /**
  * Name of the custom event "repo:changed".

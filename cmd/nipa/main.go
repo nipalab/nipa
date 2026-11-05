@@ -33,11 +33,9 @@ func main() {
 	transport := grpc.NewTransport()
 	session := usecase.NewSession(secureStorage, transport, prompter).
 		WithSSHLogin(resolveSigners(prompter.PromptPassphrase))
-	var clientOpts []grpc.ClientOption
-	if workers, pinned, err := config.ResolveUploadWorkers(); err != nil {
+	clientOpts, err := uploadOptions()
+	if err != nil {
 		handleError(err)
-	} else if pinned {
-		clientOpts = append(clientOpts, grpc.WithUploadWorkers(workers))
 	}
 	grpcClient := grpc.NewClient(transport, session, clientOpts...)
 
@@ -73,7 +71,11 @@ func main() {
 		transport := grpc.NewTransport()
 		session := usecase.NewSession(secureStorage, transport).
 			WithSSHLogin(resolveSigners(nil))
-		return grpc.NewClient(transport, session, clientOpts...)
+		opts, err := uploadOptions()
+		if err != nil {
+			opts = clientOpts
+		}
+		return grpc.NewClient(transport, session, opts...)
 	}
 
 	cliClient := cli.NewCli(registry, grpcClient)
@@ -118,4 +120,12 @@ func handleError(err error) {
 		fmt.Fprintln(os.Stderr, err)
 	}
 	os.Exit(cli.ExitCode(err))
+}
+
+func uploadOptions() ([]grpc.ClientOption, error) {
+	workers, pinned, err := config.ResolveUploadWorkers()
+	if err != nil || !pinned {
+		return nil, err
+	}
+	return []grpc.ClientOption{grpc.WithUploadWorkers(workers)}, nil
 }

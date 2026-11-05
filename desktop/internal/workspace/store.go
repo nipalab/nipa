@@ -13,7 +13,47 @@ import (
 )
 
 type state struct {
-	Repos []string `json:"repos"`
+	Repos    []string  `json:"repos"`
+	Settings *Settings `json:"settings,omitempty"`
+}
+
+// Settings are the app preferences kept next to the clone list.
+type Settings struct {
+	// KeepInTray hides the window on close; the app keeps watching from the
+	// tray until quit from its menu.
+	KeepInTray   bool           `json:"keepInTray"`
+	StartAtLogin bool           `json:"startAtLogin"`
+	PollSeconds  int            `json:"pollSeconds"`
+	Notify       NotifySettings `json:"notify"`
+	Tools        []Tool         `json:"tools"`
+}
+
+type NotifySettings struct {
+	Pushes  bool `json:"pushes"`
+	Locks   bool `json:"locks"`
+	Reviews bool `json:"reviews"`
+}
+
+// Tool opens files with one extension (".blend") in a program instead of the
+// system default.
+type Tool struct {
+	Extension string `json:"extension"`
+	Command   string `json:"command"`
+}
+
+const (
+	DefaultPollSeconds = 60
+	MinPollSeconds     = 15
+	MaxPollSeconds     = 3600
+)
+
+func DefaultSettings() Settings {
+	return Settings{
+		KeepInTray:  true,
+		PollSeconds: DefaultPollSeconds,
+		Notify:      NotifySettings{Pushes: true, Locks: true, Reviews: true},
+		Tools:       []Tool{},
+	}
 }
 
 type Store struct {
@@ -70,6 +110,34 @@ func (s *Store) Remove(root string) error {
 		return nil
 	}
 	st.Repos = kept
+	return s.save(st)
+}
+
+func (s *Store) Settings() (Settings, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	st, err := s.load()
+	if err != nil {
+		return Settings{}, err
+	}
+	if st.Settings == nil {
+		return DefaultSettings(), nil
+	}
+	out := *st.Settings
+	if out.Tools == nil {
+		out.Tools = []Tool{}
+	}
+	return out, nil
+}
+
+func (s *Store) SaveSettings(settings Settings) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	st, err := s.load()
+	if err != nil {
+		return err
+	}
+	st.Settings = &settings
 	return s.save(st)
 }
 

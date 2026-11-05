@@ -1,4 +1,4 @@
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, ArrowRight, CheckCircle2, GitPullRequest, Loader2, Plus, RefreshCw, Search, XCircle } from "lucide-react";
 import { desktop, type MergeRequest } from "@/api/desktop";
@@ -18,13 +18,16 @@ const filters = [
 
 type Filter = (typeof filters)[number][0];
 
-type MergeRequestsViewProps = { root: string; branch: string; notify: Notify };
+type MergeRequestsViewProps = { root: string; branch: string; notify: Notify; open?: { number: number; seq: number } };
 
-export function MergeRequestsView({ root, branch, notify }: MergeRequestsViewProps) {
+export function MergeRequestsView({ root, branch, notify, open }: MergeRequestsViewProps) {
   const [status, setStatus] = useState<Filter>("open");
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
-  const [selected, setSelected] = useState<number | null>(null);
+  const [selected, setSelected] = useState<number | null>(open?.number ?? null);
+  useEffect(() => {
+    if (open) setSelected(open.number);
+  }, [open?.number, open?.seq]);
   const [creating, setCreating] = useState(false);
 
   const list = useInfiniteQuery({

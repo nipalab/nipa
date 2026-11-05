@@ -57,7 +57,7 @@ func startDaemonWithTokens(tokenFile string) *daemonProc {
 
 	cmd := exec.Command(cli.binary, "serve", "--port", "0", "--endpoint", endpoint)
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "NIPA_TOKEN_FILE="+tokenFile)
+	cmd.Env = append(os.Environ(), "NIPA_TOKEN_FILE="+tokenFile, "NIPA_DAEMON_EVENT_INTERVAL=1s")
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
 	Expect(cmd.Start()).To(Succeed())

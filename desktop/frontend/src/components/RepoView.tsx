@@ -1,7 +1,7 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, ArrowDownToLine, FileDiff, FolderTree, GitBranch, GitMerge, GitPullRequest, History, Info, Lock, Tag, Tags, Trash2 } from "lucide-react";
-import { desktop, type ChangeSet, type ConflictSet, type OpOutcome, type Repo } from "@/api/desktop";
+import { desktop, type ChangeSet, type ConflictSet, type OpOutcome, type Repo, type RepoActivity } from "@/api/desktop";
 import { BranchesView } from "@/components/branches/BranchesView";
 import { ChangesView } from "@/components/changes/ChangesView";
 import { SparseDialog } from "@/components/clone/SparseDialog";
@@ -10,6 +10,7 @@ import { HistoryView } from "@/components/history/HistoryView";
 import { LocksView } from "@/components/locks/LocksView";
 import { MergeRequestsView } from "@/components/mr/MergeRequestsView";
 import { Progress } from "@/components/changes/CommitBox";
+import { IgnoreRulesEditor } from "@/components/settings/IgnoreRulesEditor";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useRepoOperation, type OpName } from "@/hooks/useRepoOperation";
@@ -17,7 +18,11 @@ import { cn, errorMessage } from "@/lib/utils";
 
 export type Notify = (message: string, tone?: "error" | "success") => void;
 
-type TabId = "changes" | "conflicts" | "history" | "branches" | "mrs" | "locks" | "details";
+export type TabId = "changes" | "conflicts" | "history" | "branches" | "mrs" | "locks" | "details";
+
+// Intent asks the view to show a tab (and a merge request or commit); seq
+// changes for every request so the same target can be opened twice.
+export type Intent = { tab: string; number?: number; commit?: string; seq: number };
 
 const tabs: { id: TabId; label: string; Icon: typeof FileDiff }[] = [
   { id: "changes", label: "Changes", Icon: FileDiff },
@@ -29,11 +34,18 @@ const tabs: { id: TabId; label: string; Icon: typeof FileDiff }[] = [
   { id: "details", label: "Details", Icon: Info },
 ];
 
-type RepoViewProps = { repo: Repo; removing: boolean; onRemove: (root: string) => void; notify: Notify };
+type RepoViewProps = { repo: Repo; removing: boolean; onRemove: (root: string) => void; notify: Notify; activity?: RepoActivity; intent?: Intent };
 
-export function RepoView({ repo, removing, onRemove, notify }: RepoViewProps) {
+export function RepoView({ repo, removing, onRemove, notify, activity, intent }: RepoViewProps) {
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<TabId>("changes");
+  const [updated, setUpdated] = useState(false);
+  useEffect(() => setUpdated(false), [activity]);
+  useEffect(() => {
+    if (intent && tabs.some((t) => t.id === intent.tab)) setTab(intent.tab as TabId);
+  }, [intent]);
+  const openNumber = intent?.tab === "mrs" && intent.number ? { number: intent.number, seq: intent.seq } : undefined;
+  const openCommit = intent?.tab === "history" && intent.commit ? { id: intent.commit, seq: intent.seq } : undefined;
   const [message, setMessage] = useState("");
   const [editingSparse, setEditingSparse] = useState(false);
 
@@ -66,6 +78,7 @@ export function RepoView({ repo, removing, onRemove, notify }: RepoViewProps) {
         return;
       }
       void queryClient.invalidateQueries({ queryKey: ["repos"] });
+      setUpdated(true);
       if (op === "sparse") notify("Checkout updated", "success");
       else if (op === "switch") notify(tagCheckout.current ? `Checked out tag ${tagCheckout.current}` : `Switched to ${outcome.branch || repo.branch}`, "success");
       else notify(`Up to date with ${outcome.branch || repo.branch}`, "success");
@@ -98,6 +111,8 @@ export function RepoView({ repo, removing, onRemove, notify }: RepoViewProps) {
   const openConflicts = changes.data ? changes.data.conflicts.filter((p) => !changes.data.resolved.includes(p)).length : 0;
   const shownTabs = tabs.filter((t) => t.id !== "conflicts" || hasConflicts);
   const current = tab === "conflicts" && !hasConflicts ? "changes" : tab;
+  const incoming = updated || detached ? 0 : (activity?.incoming ?? 0);
+  const incomingLabel = incoming >= 100 ? "100+" : String(incoming);
 
   return (
     <div className="flex h-full flex-col">
@@ -128,10 +143,11 @@ export function RepoView({ repo, removing, onRemove, notify }: RepoViewProps) {
               size="sm"
               onClick={() => operation.run("update", () => desktop.update(repo.root))}
               disabled={!!op || !!detached}
-              title="Get the latest version of the branch"
+              title={incoming > 0 ? `${incomingLabel} new commit${incoming === 1 ? "" : "s"} on ${repo.branch}` : "Get the latest version of the branch"}
             >
               <ArrowDownToLine />
               Update
+              {incoming > 0 && <span className="rounded-full bg-accent px-1.5 text-[10px] text-accent-foreground">{incomingLabel}</span>}
             </Button>
           ))}
         <Button variant="danger" size="sm" onClick={() => onRemove(repo.root)} disabled={removing || !!op} title="Remove from list (files stay on disk)">
@@ -205,6 +221,7 @@ export function RepoView({ repo, removing, onRemove, notify }: RepoViewProps) {
                 busy={!!op}
                 notify={notify}
                 onRevert={(commit) => operation.run("revert", () => desktop.revert(repo.root, { target: commit.id }))}
+                open={openCommit}
               />
             ) : current === "branches" ? (
               <BranchesView
@@ -221,11 +238,11 @@ export function RepoView({ repo, removing, onRemove, notify }: RepoViewProps) {
                 }}
               />
             ) : current === "mrs" ? (
-              <MergeRequestsView root={repo.root} branch={repo.branch} notify={notify} />
+              <MergeRequestsView root={repo.root} branch={repo.branch} notify={notify} open={openNumber} />
             ) : current === "locks" ? (
               <LocksView root={repo.root} notify={notify} />
             ) : (
-              <Details repo={repo} busy={!!op} onEditSparse={() => setEditingSparse(true)} />
+              <Details repo={repo} busy={!!op} notify={notify} onEditSparse={() => setEditingSparse(true)} />
             )}
           </div>
         </>
@@ -347,23 +364,28 @@ function Banners({ changes, conflicts: set, branch, busy, onSwitch, onRevert, on
   return null;
 }
 
-function Details({ repo, busy, onEditSparse }: { repo: Repo; busy: boolean; onEditSparse: () => void }) {
+function Details({ repo, busy, notify, onEditSparse }: { repo: Repo; busy: boolean; notify: Notify; onEditSparse: () => void }) {
   return (
-    <dl className="m-5 max-w-xl space-y-3 rounded-lg border border-border bg-card p-4 text-xs">
-      <Detail label="Server" value={repo.url} />
-      <Detail label="Branch" value={repo.branch} />
-      <Detail label="Location" value={repo.root} />
-      <div>
-        <dt className="mb-1 text-muted-foreground">Checkout</dt>
-        <dd className="flex flex-wrap gap-1">
-          {repo.sparse && repo.sparse.length > 0 ? repo.sparse.map((p) => <Badge key={p}>{p}</Badge>) : <span>Full checkout</span>}
-        </dd>
-        <Button size="sm" className="mt-2" onClick={onEditSparse} disabled={busy}>
-          <FolderTree />
-          Change folders…
-        </Button>
-      </div>
-    </dl>
+    <div className="h-full overflow-y-auto">
+      <dl className="m-5 max-w-xl space-y-3 rounded-lg border border-border bg-card p-4 text-xs">
+        <Detail label="Server" value={repo.url} />
+        <Detail label="Branch" value={repo.branch} />
+        <Detail label="Location" value={repo.root} />
+        <div>
+          <dt className="mb-1 text-muted-foreground">Checkout</dt>
+          <dd className="flex flex-wrap gap-1">
+            {repo.sparse && repo.sparse.length > 0 ? repo.sparse.map((p) => <Badge key={p}>{p}</Badge>) : <span>Full checkout</span>}
+          </dd>
+          <Button size="sm" className="mt-2" onClick={onEditSparse} disabled={busy}>
+            <FolderTree />
+            Change folders…
+          </Button>
+        </div>
+      </dl>
+      <section aria-label="Ignore rules" className="m-5 max-w-xl rounded-lg border border-border bg-card p-4 text-xs">
+        <IgnoreRulesEditor root={repo.root} notify={notify} />
+      </section>
+    </div>
   );
 }
 

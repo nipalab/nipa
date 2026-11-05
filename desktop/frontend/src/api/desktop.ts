@@ -64,7 +64,18 @@ import type {
   TableColumn,
   TableCompare,
   TableRow,
+  IgnoreRules,
+  Navigation,
+  RepoActivity as RawRepoActivity,
+  TeamEvent,
 } from "../../bindings/github.com/nipalab/nipa/desktop/internal/service/models";
+import type { NotifySettings, Settings as RawSettings, Tool } from "../../bindings/github.com/nipalab/nipa/desktop/internal/workspace/models";
+
+export type { IgnoreRules, Navigation, NotifySettings, TeamEvent, Tool };
+export type Settings = Omit<RawSettings, "tools"> & { tools: Tool[] };
+export type RepoActivity = Omit<RawRepoActivity, "events"> & { events: TeamEvent[] };
+const settings = (s: RawSettings): Settings => ({ ...s, tools: s.tools ?? [] });
+const activity = (a: RawRepoActivity): RepoActivity => ({ ...a, events: a.events ?? [] });
 
 export type { FileLock, FileLockState, LockFailure };
 export type { Branch, HistoryQuery, RevertOutcome, RevertRequest, Tag };
@@ -230,6 +241,20 @@ export const desktop = {
   resolveConflict: async (root: string, path: string, choice: ResolveChoice, content = ""): Promise<ChangeSet> =>
     changeSet(await Service.ResolveConflict(root, { path, choice, content })),
 
+  activity: async (): Promise<RepoActivity[]> => ((await Service.Activity()) ?? []).map(activity),
+  settings: async (): Promise<Settings> => settings(await Service.Settings()),
+  saveSettings: async (s: Settings): Promise<Settings> => settings(await Service.SaveSettings(s)),
+  uploadWorkers: (): Promise<number> => Service.UploadWorkers(),
+  setUploadWorkers: (n: number): Promise<void> => Service.SetUploadWorkers(n),
+  restartDaemon: (): Promise<DaemonInfo> => Service.RestartDaemon(),
+  chooseProgram: (): Promise<string> => Service.ChooseProgram(),
+  ignoreRules: (root: string): Promise<IgnoreRules> => Service.IgnoreRules(root),
+  saveIgnoreRules: (root: string, rules: IgnoreRules): Promise<void> => Service.SaveIgnoreRules(root, rules),
+  openLink: (raw: string): Promise<Navigation> => Service.OpenLink(raw),
+  takeNavigation: (): Promise<Navigation | null> => Service.TakeNavigation(),
+
+  onRepoActivity: (fn: (a: RepoActivity) => void): (() => void) => Events.On("repo:activity", (ev) => fn(activity(ev.data))),
+  onNavigate: (fn: () => void): (() => void) => Events.On("app:navigate", () => fn()),
   onRepoChanged: (fn: (change: RepoChanged) => void): (() => void) => Events.On("repo:changed", (ev) => fn(ev.data)),
   onOpProgress: (fn: (progress: OpProgress) => void): (() => void) => Events.On("op:progress", (ev) => fn(ev.data)),
 };

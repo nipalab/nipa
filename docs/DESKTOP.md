@@ -31,8 +31,18 @@ Wails v3.1.0 project, nested Go module `github.com/nipalab/nipa/desktop`
 (`replace github.com/nipalab/nipa => ../`), so root `go test ./...`, vet and
 Sonar never compile it.
 
-- `main.go` wires one bound service and the window (binary `nipa-desktop`;
-  it must not be called `nipa`, the app looks for the CLI next to itself).
+- `main.go` wires the bound service, the Wails notifications service, the
+  window, the tray and the single-instance lock (binary `nipa-desktop`; it
+  must not be called `nipa`, the app looks for the CLI next to itself).
+  Closing the window hides it while "Keep in tray" is on (the default) and
+  quits otherwise; `--background` (passed by the login item) starts hidden.
+  A second launch focuses the first one and hands it its `nipa://` argument.
+- `internal/tray`: pure tooltip and menu model from every clone's activity
+  ("game · 3 new commits · 1 review", Open Nipa, Settings…, Quit Nipa); the
+  tray icon is `build/trayicon.png`.
+- `internal/autostart`: the login item (XDG `autostart/nipa-desktop.desktop`,
+  macOS LaunchAgent `com.nipalab.nipa`, Windows `HKCU\…\Run`), started with
+  `--background`.
 - `internal/connector`: reads `daemon.json` (`daemon.ReadEndpoint`), checks the
   pid, dials loopback gRPC with the token as per-RPC credentials and `Ping`s.
   When no live daemon answers it starts `nipa serve` detached (own session /
@@ -40,8 +50,8 @@ Sonar never compile it.
   until it answers (10 s). The CLI is resolved from `NIPA_BIN`, next to the
   app binary, then `PATH`. The daemon outlives the app on purpose: Explorer
   and engine plugins share it.
-- `internal/workspace`: the opened clones in `<config dir>/nipa/desktop.json`
-  (atomic write, 0600). The daemon only keeps watched roots in memory, so the
+- `internal/workspace`: the opened clones and the app settings in
+  `<config dir>/nipa/desktop.json` (atomic write, 0600). The daemon only keeps watched roots in memory, so the
   app re-watches them on start; a clone that fails to watch stays listed with
   its error.
 - `internal/service`: the Wails-bound API (`Connect`, `Repos`, `PickRepo`,
@@ -57,7 +67,10 @@ Sonar never compile it.
   `CreateMergeRequest`, `EditMergeRequest`, `SetDraft`, `MergeMergeRequest`,
   `CloseMergeRequest`, `ReopenMergeRequest`, `SubmitReview`, `Comment`,
   `Reply`, `ResolveThread`; Conflicts: `Merge`, `AbortMerge`, `Conflicts`,
-  `ConflictTexts`, `ConflictDiff`, `ResolveConflict`). Plain Go behind `Dialer`/
+  `ConflictTexts`, `ConflictDiff`, `ResolveConflict`; Activity and links:
+  `Activity`, `OpenLink`, `Navigate`, `TakeNavigation`; Settings:
+  `Settings`, `SaveSettings`, `UploadWorkers`, `SetUploadWorkers`,
+  `RestartDaemon`, `ChooseProgram`, `IgnoreRules`, `SaveIgnoreRules`). Plain Go behind `Dialer`/
   `RepoStore`/`FolderPicker` seams, so it is unit-tested without a webview; an
   `Unavailable` error drops the session so the next call reconnects (and
   restarts the daemon) and re-watches each clone on first use. Every watched
@@ -194,6 +207,29 @@ Sonar never compile it.
   with ours and theirs compared in the asset viewers (`ConflictDiff`).
   Resolving writes the file, stages it and records it in the pending state
   (`resolved`), so the choice survives restarts.
+- Team activity: every watched clone also follows the daemon's
+  `WatchEvents` stream (poll interval from settings). The sidebar shows new
+  commits (↓N), reviews waiting and an unreachable server per clone, the
+  Update button counts the new commits, and the matching views refresh.
+  Teammate pushes, released locks and review requests raise desktop
+  notifications (each kind can be switched off); clicking one opens the
+  History, Locks or Merge requests tab (`Navigation`, `app:navigate`).
+- Deep links: `nipa://<server>/<org>/<project>[/merge-requests/<n>|
+  /commits/<id>|/history|/branches|/locks|/changes|/settings]` (a `server`
+  query parameter overrides the address; localhost defaults to http, other
+  hosts to https). A link to an opened clone selects it and opens the tab,
+  request or commit; a link to a project not cloned yet opens the clone
+  dialog with the server and project filled in. The scheme is registered by
+  the build assets (`build/config.yml` `protocols`, Info.plist, the Linux
+  `.desktop` file, the NSIS installer).
+- Settings (gear in the sidebar): theme, keep in tray, start at login,
+  notifications per kind, server check interval (30 s to 1 h, the daemon
+  clamps to at least 15 s), uploads at once (the shared `uploadWorkers` in
+  `~/.config/nipa/config.json`, applied after "Restart" of the background
+  service) and external tools per extension (`.blend` → Blender), which
+  `OpenFile` uses instead of the system default (`open -a` for macOS app
+  bundles). The Details tab edits the clone's `.nipaignore` (versioned) and
+  `.nipa/ignore` (local).
 - Merge requests tab: the list (Open/Drafts/Merged/Closed/All, server-side
   search, 50 per page) with status, branches, approvals and changes
   requested, and "New" (source = the clone's branch, target = the default
@@ -351,5 +387,5 @@ Pure package (no client imports), shared by the daemon and later the server.
 12. History, branches, tags, revert. **(done)**
 13. Merge requests with asset viewers. **(done)**
 14. Conflict resolution. **(done)**
-15. Tray, notifications, deep links, settings.
+15. Tray, notifications, deep links, settings. **(done)**
 16. Packaging and auto-update.

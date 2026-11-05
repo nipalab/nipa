@@ -67,6 +67,11 @@ fileAssociations:
 #    role: Editor
 #    mimeType: image/jpeg  # (optional)
 
+# Custom URL schemes: nipa://<server>/<org>/<project>[/merge-requests/<n>|/commits/<id>|...]
+protocols:
+  - scheme: nipa
+    description: Nipa link
+
 # Other data
 other:
   - name: My Other Data

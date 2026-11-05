@@ -11,3 +11,4 @@ Categories=Utility;
 StartupWMClass=nipa-desktop
 
  
+MimeType=x-scheme-handler/nipa;

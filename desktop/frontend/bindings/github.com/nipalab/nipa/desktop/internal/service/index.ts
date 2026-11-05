@@ -34,6 +34,7 @@ export type {
     FileSide,
     HistoryPage,
     HistoryQuery,
+    IgnoreRules,
     ImageCompare,
     ImageInfo,
     ImageLayer,
@@ -53,6 +54,7 @@ export type {
     ModelCompare,
     ModelSide,
     ModelStats,
+    Navigation,
     NewMergeRequest,
     OpOutcome,
     OpProgress,
@@ -62,6 +64,7 @@ export type {
     RemoteListing,
     RemoteProject,
     Repo,
+    RepoActivity,
     RepoChanged,
     ResolveInput,
     RevertOutcome,
@@ -71,6 +74,7 @@ export type {
     TableCompare,
     TableRow,
     Tag,
+    TeamEvent,
     Thread,
     TimelineEvent
 } from "./models.js";
