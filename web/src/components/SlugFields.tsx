@@ -26,7 +26,7 @@ export function useSlugFields(reserved: ReadonlySet<string>) {
     name,
     slug,
     message,
-    valid: message === null && name.trim() !== '',
+    valid: message === null && !taken && name.trim() !== '',
     taken,
     setName(value: string) {
       setNameState(value)

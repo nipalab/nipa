@@ -2,6 +2,9 @@ import { listOrgMembers, listOrgs } from './api/endpoints'
 import type { OrgMemberResponse } from './api/models'
 import { useAuth } from './auth'
 import { useAsync } from './hooks'
+import { MEMBERS_TTL_MS, memberCache } from './orgMembersCache'
+
+export { clearOrgMembersCache } from './orgMembersCache'
 
 export function useOrgRole(org: string) {
   const { me } = useAuth()
@@ -10,9 +13,6 @@ export function useOrgRole(org: string) {
   const canManage = Boolean(me?.is_admin || me?.is_super_admin || role === 'owner')
   return { role, canManage, loading, error }
 }
-
-const MEMBERS_TTL_MS = 30_000
-const memberCache = new Map<string, { at: number; request: Promise<OrgMemberResponse[]> }>()
 
 export function fetchOrgMembers(org: string, force = false): Promise<OrgMemberResponse[]> {
   const cached = memberCache.get(org)
@@ -23,10 +23,6 @@ export function fetchOrgMembers(org: string, force = false): Promise<OrgMemberRe
     if (memberCache.get(org)?.request === request) memberCache.delete(org)
   })
   return request
-}
-
-export function clearOrgMembersCache() {
-  memberCache.clear()
 }
 
 export function useOrgMembers(org: string) {

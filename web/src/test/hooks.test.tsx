@@ -177,6 +177,14 @@ describe('org members cache', () => {
     expect(endpoints.listOrgMembers).toHaveBeenCalledTimes(2)
   })
 
+  it('refetches after the cache is cleared', async () => {
+    endpoints.listOrgMembers.mockResolvedValue([])
+    await fetchOrgMembers('acme')
+    clearOrgMembersCache()
+    await fetchOrgMembers('acme')
+    expect(endpoints.listOrgMembers).toHaveBeenCalledTimes(2)
+  })
+
   it('expires cached entries', async () => {
     vi.useFakeTimers()
     endpoints.listOrgMembers.mockResolvedValue([])

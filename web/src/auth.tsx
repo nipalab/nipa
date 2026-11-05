@@ -4,6 +4,7 @@ import { Spinner, Stack } from '@primer/react'
 import { bootstrap, clearSession, logout as apiLogout, subscribeSession } from './api/client'
 import { getMe } from './api/endpoints'
 import type { UserResponse } from './api/models'
+import { clearOrgMembersCache } from './orgMembersCache'
 
 type Status = 'loading' | 'authenticated' | 'anonymous'
 
@@ -67,8 +68,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [],
   )
 
+  useEffect(() => {
+    if (status === 'anonymous') clearOrgMembersCache()
+  }, [status])
+
   async function signOut() {
     await apiLogout()
+    clearOrgMembersCache()
     setMe(null)
     setStatus('anonymous')
   }
