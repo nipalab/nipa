@@ -91,7 +91,7 @@ describe('App', () => {
     )
 
     const { container, root } = await renderApp()
-    await waitForText(container, 'Repositories')
+    await waitForText(container, 'Organizations')
     expect(window.location.pathname).toBe('/dashboard')
     act(() => root.unmount())
   })
@@ -142,7 +142,7 @@ describe('LoginPage', () => {
     await act(async () => {
       ;(container.querySelector('button[type="submit"]') as HTMLButtonElement).click()
     })
-    await waitForText(container, 'Repositories')
+    await waitForText(container, 'Organizations')
     expect(calls.some((url) => url.includes('/auth/login'))).toBe(true)
     act(() => root.unmount())
   })

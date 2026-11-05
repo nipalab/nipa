@@ -1,19 +1,13 @@
 import { useState } from 'react'
-import {
-  Button,
-  Flash,
-  FormControl,
-  Heading,
-  Link as PrimerLink,
-  Stack,
-  TextInput,
-} from '@primer/react'
-import { PersonAddIcon, RepoIcon } from '@primer/octicons-react'
+import { Banner, Button, FormControl, Link as PrimerLink, Stack, TextInput } from '@primer/react'
+import { PersonAddIcon } from '@primer/octicons-react'
 import { Link, useLocation } from 'react-router-dom'
-import { getOnboardingCapabilities, registerAccount, resendVerification } from '../api/endpoints'
+import { getOnboardingCapabilities, registerAccount } from '../api/endpoints'
+import { AuthCard, AuthLayout } from '../components/AuthLayout'
 import { SocialButtons } from '../components/SocialButtons'
 import { ErrorBanner } from '../components/ui'
-import { useAsync } from '../hooks'
+import { errorMessage, useAsync } from '../hooks'
+import { useResendVerification } from '../useResendVerification'
 
 export default function RegisterPage() {
   const location = useLocation()
@@ -24,8 +18,7 @@ export default function RegisterPage() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [sentTo, setSentTo] = useState<string | null>(null)
-  const [resendBusy, setResendBusy] = useState(false)
-  const [notice, setNotice] = useState<string | null>(null)
+  const { resend, busy: resendBusy, notice, error: resendError } = useResendVerification()
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -39,126 +32,90 @@ export default function RegisterPage() {
       await registerAccount({ name: name.trim(), email: email.trim() })
       setSentTo(email.trim())
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      setError(errorMessage(err))
     } finally {
       setBusy(false)
     }
   }
 
-  async function handleResend() {
-    if (!sentTo) return
-    setResendBusy(true)
-    setNotice(null)
-    setError(null)
-    try {
-      await resendVerification(sentTo)
-      setNotice('If the account is unconfirmed, a new email is on its way.')
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setResendBusy(false)
-    }
-  }
-
   return (
-    <div style={{ maxWidth: 360, margin: '48px auto 0', padding: '0 16px' }}>
-      <Stack direction="vertical" gap="spacious" align="center">
-        <Heading as="h1">
-          <RepoIcon size={24} verticalAlign="middle" /> Nipa
-        </Heading>
+    <AuthLayout>
+      {!loadingCapabilities && capabilities === null && (
+        <Banner variant="info" title="Registration is not enabled on this server.">
+          <PrimerLink as={Link} to="/login">
+            Sign in instead
+          </PrimerLink>
+        </Banner>
+      )}
 
-        {!loadingCapabilities && capabilities === null && (
-          <Flash>
-            Registration is not enabled on this server.{' '}
-            <PrimerLink as={Link} to="/login">
-              Sign in instead
-            </PrimerLink>
-          </Flash>
-        )}
+      {sentTo ? (
+        <Stack direction="vertical" gap="normal" style={{ width: '100%' }}>
+          <Banner variant="success" title="Check your email">
+            We sent a confirmation link to <strong>{sentTo}</strong>. Open it to choose your password and activate
+            your account.
+          </Banner>
+          <ErrorBanner error={resendError} />
+          {notice && <Banner variant="success" title={notice} />}
+          <Button block onClick={() => void resend(sentTo)} loading={resendBusy}>
+            Resend confirmation email
+          </Button>
+          <PrimerLink as={Link} to="/login">
+            Back to sign in
+          </PrimerLink>
+        </Stack>
+      ) : (
+        capabilities?.registration && (
+          <AuthCard onSubmit={handleSubmit}>
+            <FormControl required>
+              <FormControl.Label>Name</FormControl.Label>
+              <TextInput block value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" />
+            </FormControl>
 
-        {sentTo ? (
-          <Stack direction="vertical" gap="normal" style={{ width: '100%' }}>
-            <Flash variant="success">
-              We sent a confirmation link to <strong>{sentTo}</strong>. Open it to choose your password and activate your account.
-            </Flash>
-            <ErrorBanner error={error} />
-            {notice && <Flash variant="success">{notice}</Flash>}
-            <Button block onClick={() => void handleResend()} disabled={resendBusy}>
-              {resendBusy ? 'Sending…' : 'Resend confirmation email'}
-            </Button>
-            <PrimerLink as={Link} to="/login">
-              Back to sign in
-            </PrimerLink>
-          </Stack>
-        ) : (
-          capabilities?.registration && (
-            <form
-              onSubmit={handleSubmit}
-              noValidate
-              style={{
-                width: '100%',
-                border: '1px solid var(--borderColor-default)',
-                borderRadius: 6,
-                padding: 24,
-              }}
+            <FormControl required>
+              <FormControl.Label>Email</FormControl.Label>
+              <TextInput
+                block
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                autoComplete="email"
+              />
+            </FormControl>
+
+            <p style={{ margin: 0, fontSize: 12, color: 'var(--fgColor-muted)' }}>
+              You will choose your password when you confirm your email.
+            </p>
+
+            <ErrorBanner error={error} title="Registration failed" />
+
+            <Button
+              type="submit"
+              variant="primary"
+              block
+              loading={busy}
+              leadingVisual={busy ? undefined : <PersonAddIcon />}
             >
-              <Stack direction="vertical" gap="normal">
-                <FormControl required>
-                  <FormControl.Label>Name</FormControl.Label>
-                  <TextInput block value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" />
-                </FormControl>
+              {busy ? 'Creating account…' : 'Create account'}
+            </Button>
 
-                <FormControl required>
-                  <FormControl.Label>Email</FormControl.Label>
-                  <TextInput
-                    block
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    autoComplete="email"
-                  />
-                </FormControl>
+            {capabilities.providers.length > 0 && (
+              <>
+                <div style={{ textAlign: 'center', color: 'var(--fgColor-muted)', fontSize: 12 }}>or</div>
+                <SocialButtons providers={capabilities.providers} from={from} />
+              </>
+            )}
+          </AuthCard>
+        )
+      )}
 
-                <p style={{ margin: 0, fontSize: 12, color: 'var(--fgColor-muted)' }}>
-                  You will choose your password when you confirm your email.
-                </p>
-
-                {error && (
-                  <Flash variant="danger">
-                    <strong>Registration failed.</strong> {error}
-                  </Flash>
-                )}
-
-                <Button
-                  type="submit"
-                  variant="primary"
-                  block
-                  disabled={busy}
-                  leadingVisual={busy ? undefined : <PersonAddIcon />}
-                >
-                  {busy ? 'Creating account…' : 'Create account'}
-                </Button>
-
-                {capabilities.providers.length > 0 && (
-                  <>
-                    <div style={{ textAlign: 'center', color: 'var(--fgColor-muted)', fontSize: 12 }}>or</div>
-                    <SocialButtons providers={capabilities.providers} from={from} />
-                  </>
-                )}
-              </Stack>
-            </form>
-          )
-        )}
-
-        {!sentTo && (
-          <p style={{ fontSize: 14, color: 'var(--fgColor-muted)' }}>
-            Already have an account?{' '}
-            <PrimerLink as={Link} to="/login">
-              Sign in
-            </PrimerLink>
-          </p>
-        )}
-      </Stack>
-    </div>
+      {!sentTo && (
+        <p style={{ fontSize: 14, color: 'var(--fgColor-muted)' }}>
+          Already have an account?{' '}
+          <PrimerLink as={Link} to="/login">
+            Sign in
+          </PrimerLink>
+        </p>
+      )}
+    </AuthLayout>
   )
 }

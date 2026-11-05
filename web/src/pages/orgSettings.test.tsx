@@ -103,7 +103,7 @@ afterEach(() => {
 describe('OrgSettingsPage storage', () => {
   it('hides the storage card when the ledger is disabled', async () => {
     stubOrgSettings()
-    window.history.pushState({}, '', '/sticker/settings')
+    window.history.pushState({}, '', '/sticker/settings?tab=groups')
     const container = document.createElement('div')
     container.id = 'root'
     document.body.appendChild(container)
@@ -141,7 +141,7 @@ describe('OrgSettingsPage storage', () => {
         return jsonResponse({ error: 'not found' }, 404)
       }),
     )
-    window.history.pushState({}, '', '/sticker/settings')
+    window.history.pushState({}, '', '/sticker/settings?tab=storage')
     const container = document.createElement('div')
     container.id = 'root'
     document.body.appendChild(container)
@@ -161,7 +161,7 @@ describe('OrgSettingsPage storage', () => {
 describe('OrgSettingsPage groups', () => {
   it('shows the server-resolved member count in the groups table', async () => {
     stubOrgSettings()
-    window.history.pushState({}, '', '/sticker/settings')
+    window.history.pushState({}, '', '/sticker/settings?tab=groups')
     const container = document.createElement('div')
     container.id = 'root'
     document.body.appendChild(container)
@@ -178,7 +178,7 @@ describe('OrgSettingsPage groups', () => {
 
   it('shows the email of a group member that is not an organization member', async () => {
     stubOrgSettings()
-    window.history.pushState({}, '', '/sticker/settings')
+    window.history.pushState({}, '', '/sticker/settings?tab=groups')
     const container = document.createElement('div')
     container.id = 'root'
     document.body.appendChild(container)
@@ -238,7 +238,7 @@ describe('OrgSettingsPage groups', () => {
         return jsonResponse({ error: 'not found' }, 404)
       }),
     )
-    window.history.pushState({}, '', '/sticker/settings')
+    window.history.pushState({}, '', '/sticker/settings?tab=groups')
     const container = document.createElement('div')
     container.id = 'root'
     document.body.appendChild(container)
@@ -261,9 +261,9 @@ describe('OrgSettingsPage groups', () => {
     await act(async () => {
       removeButton?.click()
     })
-    await waitFor(() => document.querySelector('[role="dialog"]') !== null)
+    await waitFor(() => document.querySelector('[role="alertdialog"]') !== null)
 
-    const dialog = document.querySelector('[role="dialog"]') as HTMLElement
+    const dialog = document.querySelector('[role="alertdialog"]') as HTMLElement
     const confirm = Array.from(dialog.querySelectorAll('button')).find(
       (button) => button.textContent?.trim() === 'Remove',
     )

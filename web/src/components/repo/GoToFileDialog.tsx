@@ -1,9 +1,10 @@
-import { Dialog, Spinner, Text, TextInput } from '@primer/react'
+import { Button, Dialog, TextInput } from '@primer/react'
 import { SearchIcon } from '@primer/octicons-react'
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getTree } from '../../api/endpoints'
 import { useAsync } from '../../hooks'
+import { EmptyState, ErrorBanner, Loading } from '../ui'
 import { fileIcon } from './fileIcon'
 import { blobUrl } from './repoPaths'
 
@@ -56,46 +57,30 @@ export function GoToFileDialog({
           value={query}
           onChange={(event) => setQuery(event.target.value)}
         />
-        <div style={{ marginTop: 12, maxHeight: 400, overflowY: 'auto' }}>
-          {loading && <Spinner />}
-          {error && <Text style={{ color: 'var(--fgColor-danger)' }}>{error}</Text>}
+        <div style={{ marginTop: 'var(--base-size-12)', maxHeight: 400, overflowY: 'auto' }}>
+          {loading && <Loading />}
+          <ErrorBanner error={error} />
           {!loading &&
             filtered.map((file) => {
               const { Icon, color } = fileIcon(file.name, 'file')
               return (
-                <button
+                <Button
                   key={file.path}
-                  type="button"
+                  variant="invisible"
+                  block
+                  alignContent="start"
+                  leadingVisual={() => (
+                    <span style={{ color, display: 'inline-flex' }}>
+                      <Icon size={16} />
+                    </span>
+                  )}
                   onClick={() => openFile(file.path)}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    width: '100%',
-                    padding: '6px 8px',
-                    background: 'transparent',
-                    border: 0,
-                    borderRadius: 6,
-                    color: 'var(--fgColor-default)',
-                    cursor: 'pointer',
-                    textAlign: 'left',
-                    font: 'inherit',
-                  }}
                 >
-                  <span style={{ color, flexShrink: 0, display: 'inline-flex' }}>
-                    <Icon size={16} />
-                  </span>
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {file.path}
-                  </span>
-                </button>
+                  {file.path}
+                </Button>
               )
             })}
-          {!loading && !error && filtered.length === 0 && (
-            <Text as="p" style={{ color: 'var(--fgColor-muted)', padding: 8 }}>
-              No files found.
-            </Text>
-          )}
+          {!loading && !error && filtered.length === 0 && <EmptyState bordered={false}>No files found.</EmptyState>}
         </div>
       </Dialog.Body>
     </Dialog>

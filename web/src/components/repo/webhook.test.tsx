@@ -64,6 +64,12 @@ function button(container: HTMLElement, text: string): HTMLElement {
   return found
 }
 
+async function confirmDialog(label: string) {
+  await waitFor(() => document.querySelector('[role="alertdialog"]') !== null)
+  const dialog = document.querySelector('[role="alertdialog"]') as HTMLElement
+  click(button(dialog, label))
+}
+
 function hook(overrides: Partial<WebhookResponse> = {}): WebhookResponse {
   return {
     id: 'h1',
@@ -128,11 +134,11 @@ describe('WebhookSettings', () => {
     await waitFor(() => container.textContent?.includes('No webhooks') ?? false)
 
     click(button(container, 'Create webhook'))
-    expect(container.textContent).toContain('Merge request synchronized')
-    const textInputs = container.querySelectorAll<HTMLInputElement>('input:not([type="checkbox"])')
+    await waitFor(() => document.body.textContent?.includes('Merge request synchronized') ?? false)
+    const textInputs = document.body.querySelectorAll<HTMLInputElement>('input:not([type="checkbox"])')
     type(textInputs[0], 'ci')
     type(textInputs[1], 'https://ci.example.com/hooks/nipa')
-    click(button(container, 'Create'))
+    click(button(document.body, 'Create'))
 
     await waitFor(() => container.textContent?.includes('deadbeef') ?? false)
     expect(endpoints.createWebhook).toHaveBeenCalledWith('acme', 'game', {
@@ -145,7 +151,7 @@ describe('WebhookSettings', () => {
     })
     expect(container.textContent).toContain('Signing secret for ci')
 
-    click(button(container, 'Dismiss'))
+    click(container.querySelector('button[class*="BannerDismiss"]'))
     await waitFor(() => !(container.textContent?.includes('deadbeef') ?? false))
     act(() => root.unmount())
   })
@@ -163,8 +169,8 @@ describe('WebhookSettings', () => {
 
     click(button(container, 'Deliveries'))
     await waitFor(() => container.textContent?.includes('receiver exploded') ?? false)
-    expect(container.textContent).toContain('delivered')
-    expect(container.textContent).toContain('failed')
+    expect(container.textContent).toContain('Delivered')
+    expect(container.textContent).toContain('Failed')
 
     const failedRow = [...container.querySelectorAll('tr')].find(
       (row) => row.textContent?.includes('receiver exploded') && !row.querySelector('tr'),
@@ -187,7 +193,7 @@ describe('WebhookSettings', () => {
     await waitFor(() => container.textContent?.includes('Send test') ?? false)
 
     click(button(container, 'Send test'))
-    await waitFor(() => container.textContent?.includes('pending') ?? false)
+    await waitFor(() => container.textContent?.includes('Pending') ?? false)
     expect(endpoints.testWebhook).toHaveBeenCalledWith('acme', 'game', 'h1')
     expect(endpoints.listWebhookDeliveries).toHaveBeenCalledWith('acme', 'game', 'h1')
     act(() => root.unmount())
@@ -202,10 +208,12 @@ describe('WebhookSettings', () => {
     await waitFor(() => container.textContent?.includes('Rotate secret') ?? false)
 
     click(button(container, 'Rotate secret'))
+    await confirmDialog('Rotate secret')
     await waitFor(() => container.textContent?.includes('rotated-secret') ?? false)
     expect(endpoints.rotateWebhookSecret).toHaveBeenCalledWith('acme', 'game', 'h1')
 
     click(button(container, 'Delete'))
+    await confirmDialog('Delete')
     await waitFor(() => vi.mocked(endpoints.deleteWebhook).mock.calls.length > 0)
     expect(endpoints.deleteWebhook).toHaveBeenCalledWith('acme', 'game', 'h1')
     await waitFor(() => container.textContent?.includes('No webhooks') ?? false)

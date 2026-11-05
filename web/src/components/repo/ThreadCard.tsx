@@ -5,12 +5,8 @@ import { PencilIcon, TrashIcon } from '@primer/octicons-react'
 import type { ThreadResponse } from '../../api/models'
 import { Mono } from '../ui'
 import { ActorAvatar, actorName } from '../ActorAvatar'
-
-function timestamp(value: string | undefined): string {
-  if (!value) return ''
-  const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? '' : date.toLocaleString()
-}
+import { useConfirmAction } from '../confirm'
+import { Timestamp } from '../Timestamp'
 
 export function ThreadCard({
   thread,
@@ -39,6 +35,7 @@ export function ThreadCard({
   onEditComment?: (threadId: string, commentId: string, body: string) => void
   onDeleteComment?: (threadId: string, commentId: string) => void
 }) {
+  const confirm = useConfirmAction()
   const [replyOpen, setReplyOpen] = useState(false)
   const [replyBody, setReplyBody] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -68,7 +65,7 @@ export function ThreadCard({
             color: 'var(--fgColor-muted)',
           }}
         >
-          <Mono>{label}</Mono> · {actorName(thread.created_by)} · {timestamp(thread.created_at)}
+          <Mono>{label}</Mono> · {actorName(thread.created_by)} · <Timestamp value={thread.created_at} mode="absolute" />
           {thread.outdated && ' · outdated'}
           {thread.resolved && ` · resolved by ${actorName(thread.resolved_by)}`}
         </div>
@@ -101,7 +98,7 @@ export function ThreadCard({
               >
                 commented on
                 {context}
-                <span>{timestamp(comment.created_at)}</span>
+                <span><Timestamp value={comment.created_at} mode="absolute" /></span>
               </span>
               {comment.updated_at !== comment.created_at && (
                 <span style={{ color: 'var(--fgColor-muted)', fontSize: 12 }}>· edited</span>
@@ -118,7 +115,7 @@ export function ThreadCard({
           <div style={{ padding: conversation ? '10px 12px' : '6px 10px' }}>
             {!conversation && (
               <Text as="p" style={{ fontSize: 12, color: 'var(--fgColor-muted)' }}>
-                <strong>{actorName(comment.user)}</strong> · {timestamp(comment.created_at)}
+                <strong>{actorName(comment.user)}</strong> · <Timestamp value={comment.created_at} mode="absolute" />
                 {comment.updated_at !== comment.created_at && ' · edited'}
               </Text>
             )}
@@ -168,7 +165,14 @@ export function ThreadCard({
                       aria-label="Delete comment"
                       size="small"
                       disabled={busy}
-                      onClick={() => onDeleteComment?.(thread.id, comment.id)}
+                      onClick={async () => {
+                        const ok = await confirm({
+                          title: 'Delete comment?',
+                          content: 'This comment will be permanently removed.',
+                          confirmLabel: 'Delete',
+                        })
+                        if (ok) onDeleteComment?.(thread.id, comment.id)
+                      }}
                     />
                   </Stack>
                 )}

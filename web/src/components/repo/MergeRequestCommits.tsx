@@ -1,11 +1,13 @@
 import { useState } from 'react'
-import { Button, Link as PrimerLink, Stack, Text } from '@primer/react'
+import { Button, IconButton, Link as PrimerLink, Stack, Text } from '@primer/react'
 import { CheckIcon, CodeIcon, CopyIcon } from '@primer/octicons-react'
 import { Link } from 'react-router-dom'
 import type { CommitResponse } from '../../api/models'
+import { useClipboard } from '../../hooks'
+import { Timestamp } from '../Timestamp'
 import { EmptyState, Mono } from '../ui'
 import { ActorAvatar, type ActorLike } from '../ActorAvatar'
-import { absoluteTime, commitTitle, shortSha } from './format'
+import { commitTitle, shortSha } from './format'
 
 function commitAuthor(commit: CommitResponse): ActorLike {
   return {
@@ -23,7 +25,8 @@ export function MergeRequestCommits({
   project: string
   commits: CommitResponse[]
 }) {
-  const [copied, setCopied] = useState<string | null>(null)
+  const { copied, copy } = useClipboard(1500)
+  const [copiedId, setCopiedId] = useState<string | null>(null)
 
   if (commits.length === 0) {
     return <EmptyState>No commits on this request.</EmptyState>
@@ -34,13 +37,7 @@ export function MergeRequestCommits({
   const ordered = [...commits].reverse()
 
   async function copyId(id: string) {
-    try {
-      await navigator.clipboard?.writeText(id)
-      setCopied(id)
-      window.setTimeout(() => setCopied((current) => (current === id ? null : current)), 1500)
-    } catch {
-      // Clipboard access can be denied; copying is a convenience only.
-    }
+    if (await copy(id)) setCopiedId(id)
   }
 
   return (
@@ -95,7 +92,7 @@ export function MergeRequestCommits({
                     {commitTitle(commit.message)}
                   </PrimerLink>
                   <div style={{ color: 'var(--fgColor-muted)', fontSize: 12, marginTop: 2 }}>
-                    <strong>{author.name}</strong> authored on {absoluteTime(commit.created_at)}
+                    <strong>{author.name}</strong> authored on <Timestamp value={commit.created_at} mode="absolute" />
                   </div>
                 </div>
                 <Stack direction="horizontal" gap="condensed" align="center">
@@ -104,17 +101,16 @@ export function MergeRequestCommits({
                     aria-label={`Copy commit ${shortSha(commit.id)}`}
                     onClick={() => copyId(commit.id)}
                   >
-                    {copied === commit.id ? <CheckIcon /> : <CopyIcon />}{' '}
+                    {copied && copiedId === commit.id ? <CheckIcon /> : <CopyIcon />}{' '}
                     <Mono>{shortSha(commit.id)}</Mono>
                   </Button>
-                  <Button
+                  <IconButton
                     size="small"
                     as={Link}
                     to={`/${org}/${project}/tree/${commit.id}`}
+                    icon={CodeIcon}
                     aria-label="Browse repository at this point"
-                  >
-                    <CodeIcon />
-                  </Button>
+                  />
                 </Stack>
               </div>
             </div>

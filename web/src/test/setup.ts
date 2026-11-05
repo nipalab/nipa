@@ -1,3 +1,10 @@
+import { beforeEach } from 'vitest'
+import { clearOrgMembersCache } from '../orgMembersCache'
+
+beforeEach(() => {
+  clearOrgMembersCache()
+})
+
 const mediaQuery = (query: string) => ({
   matches: false,
   media: query,

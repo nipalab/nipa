@@ -1,38 +1,31 @@
 import { useEffect, useState } from 'react'
-import {
-  Button,
-  Dialog,
-  FormControl,
-  NavList,
-  Select,
-  Stack,
-  Text,
-  TextInput,
-  ToggleSwitch,
-} from '@primer/react'
+import { Button, Checkbox, FormControl, IconButton, Select, Stack, Text, TextInput, ToggleSwitch } from '@primer/react'
 import { XIcon } from '@primer/octicons-react'
-import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { useParams, useSearchParams } from 'react-router-dom'
 import {
   createProjectRule,
   deleteProjectDefault,
   deleteProjectRule,
-  listOrgMembers,
   listProjectDefaults,
   listProjectRules,
   setBranchProtection,
   setProjectDefault,
 } from '../api/endpoints'
 import type { BranchResponse, OrgMemberResponse, PBACRuleResponse, PermissionEntry } from '../api/models'
+import { useConfirmAction } from '../components/confirm'
+import { FormDialog } from '../components/FormDialog'
+import { PermissionBadge } from '../components/PermissionBadge'
+import { PermissionCheckboxes } from '../components/PermissionCheckboxes'
+import { EmailSettings } from '../components/repo/EmailSettings'
 import { RepoPageShell } from '../components/repo/RepoPageShell'
 import { useRepoChrome } from '../components/repo/useRepoChrome'
 import { WebhookSettings } from '../components/repo/WebhookSettings'
-import { EmailSettings } from '../components/repo/EmailSettings'
-import { PermissionBadge } from '../components/PermissionBadge'
-import { PermissionCheckboxes } from '../components/PermissionCheckboxes'
-import { UserGroupPicker } from '../components/UserGroupPicker'
 import { SettingsCard, SettingsRow } from '../components/SettingsCard'
-import { ErrorBanner, Loading, Mono } from '../components/ui'
-import { useAsync } from '../hooks'
+import { SettingsLayout } from '../components/SettingsLayout'
+import { UserGroupPicker } from '../components/UserGroupPicker'
+import { EmptyState, ErrorBanner, Loading, Mono, NoPermission } from '../components/ui'
+import { useAction, useAsync } from '../hooks'
+import { useOrgMembers } from '../orgHooks'
 
 const SETTINGS_TABS = [
   { key: 'access', label: 'Access' },
@@ -49,104 +42,145 @@ function isSettingsTab(value: string | null): value is SettingsTab {
 
 export default function ProjectSettingsPage() {
   const { org = '', project = '' } = useParams()
-  const { branches, reloadBranches, canWrite, canAdmin, defaultBranch } = useRepoChrome(org, project)
+  const confirm = useConfirmAction()
+  const { branches, reloadBranches, canWrite, canAdmin, defaultBranch, permissionsLoading } = useRepoChrome(
+    org,
+    project,
+  )
 
   const { data: rules, error: rulesError, loading: rulesLoading, reload: reloadRules } = useAsync(
     () => listProjectRules(org, project),
     [org, project],
   )
-  const { data: defaults, reload: reloadDefaults } = useAsync(
+  const { data: defaults, error: defaultsError, reload: reloadDefaults } = useAsync(
     () => listProjectDefaults(org, project),
     [org, project],
   )
-  const { data: members } = useAsync(() => listOrgMembers(org), [org])
+  const { data: members, error: membersError } = useOrgMembers(org)
+  const { run, error: actionError, clearError } = useAction()
 
-  const [actionError, setActionError] = useState<string | null>(null)
   const [showAddRule, setShowAddRule] = useState(false)
-  const [showAddDefault, setShowAddDefault] = useState(false)
-  const [editingDefault, setEditingDefault] = useState<PermissionEntry | null>(null)
-  const [confirmDeleteRule, setConfirmDeleteRule] = useState<PBACRuleResponse | null>(null)
-  const [confirmDeleteDefault, setConfirmDeleteDefault] = useState<PermissionEntry | null>(null)
+  const [defaultDialog, setDefaultDialog] = useState<{ editing: PermissionEntry | null } | null>(null)
   const [searchParams] = useSearchParams()
 
   const requestedTab = searchParams.get('tab')
   const tab: SettingsTab = isSettingsTab(requestedTab) ? requestedTab : 'access'
+  const base = `/${org}/${project}/settings`
 
-  async function run(action: () => Promise<unknown>) {
-    setActionError(null)
-    try {
-      await action()
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : String(err))
-    }
-  }
+  const shell = { org, project, active: 'settings' as const, rev: defaultBranch, canAdmin, canWrite, heading: 'Settings' }
 
-  if (!canAdmin) {
+  if (permissionsLoading || !canAdmin) {
     return (
-      <RepoPageShell
-        org={org}
-        project={project}
-        active="settings"
-        rev={defaultBranch}
-        canAdmin={canAdmin}
-        canWrite={canWrite}
-        heading="Settings"
-      >
+      <RepoPageShell {...shell}>
         <ErrorBanner error={rulesError} />
-        <Text>You need project admin permission to manage this repository.</Text>
+        <NoPermission loading={permissionsLoading}>
+          You need project admin permission to manage this repository.
+        </NoPermission>
       </RepoPageShell>
     )
   }
 
+  async function revokeRule(rule: PBACRuleResponse) {
+    const subject = ruleSubject(rule)
+    const who = rule.user_id
+      ? `user: ${subject ? `${subject.name}${subject.email ? ` (${subject.email})` : ''}` : rule.user_id}`
+      : `group: ${subject?.name ?? rule.group_id}`
+    const ok = await confirm({
+      title: 'Revoke access rule',
+      content: (
+        <>
+          Revoke access for <strong>{who}</strong> on path <Mono>{rule.path_prefix || '/'}</Mono>?
+        </>
+      ),
+      confirmLabel: 'Revoke',
+    })
+    if (ok) {
+      await run(async () => {
+        await deleteProjectRule(org, project, rule.id)
+        reloadRules()
+      })
+    }
+  }
+
+  async function removeDefault(entry: PermissionEntry) {
+    const ok = await confirm({
+      title: 'Remove path default',
+      content: (
+        <>
+          Remove default permissions for path <Mono>{entry.path_prefix || '/'}</Mono>?
+        </>
+      ),
+      confirmLabel: 'Remove',
+    })
+    if (ok) {
+      await run(async () => {
+        await deleteProjectDefault(org, project, entry.path_prefix)
+        reloadDefaults()
+      })
+    }
+  }
+
+  async function changeProtection(
+    branch: BranchResponse,
+    change: Partial<{
+      protect: boolean
+      approvals: number
+      dismissStale: boolean
+      requireChecks: boolean
+      reviewers: string[]
+      checks: string[]
+    }>,
+  ) {
+    if (change.protect === false && branch.is_protected) {
+      const ok = await confirm({
+        title: `Unprotect ${branch.name}?`,
+        content: 'Anyone with write access will be able to push to and delete this branch.',
+        confirmLabel: 'Unprotect',
+      })
+      if (!ok) return
+    }
+    await run(async () => {
+      await setBranchProtection(
+        org,
+        project,
+        branch.name,
+        change.protect ?? branch.is_protected,
+        change.approvals,
+        change.dismissStale,
+        change.requireChecks,
+        change.reviewers,
+        change.checks,
+      )
+      reloadBranches()
+    })
+  }
+
   return (
-    <RepoPageShell
-      org={org}
-      project={project}
-      active="settings"
-      rev={defaultBranch}
-      canAdmin={canAdmin}
-      canWrite={canWrite}
-      heading="Settings"
-    >
-      <ErrorBanner error={actionError ?? rulesError} />
+    <RepoPageShell {...shell}>
+      <ErrorBanner
+        error={actionError ?? rulesError ?? defaultsError ?? membersError}
+        onDismiss={actionError ? clearError : undefined}
+      />
 
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 32, marginTop: 24 }}>
-        <div style={{ flex: '0 0 200px', minWidth: 0 }}>
-          <NavList aria-label="Repository settings">
-            {SETTINGS_TABS.map((item) => (
-              <NavList.Item
-                key={item.key}
-                as={Link}
-                to={`/${org}/${project}/settings?tab=${item.key}`}
-                aria-current={item.key === tab ? 'page' : undefined}
-              >
-                {item.label}
-              </NavList.Item>
-            ))}
-          </NavList>
-        </div>
-
-        <div style={{ flex: '1 1 0', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 24 }}>
+      <SettingsLayout
+        label="Repository settings"
+        active={tab}
+        items={SETTINGS_TABS.map((item) => ({ key: item.key, label: item.label, to: `${base}?tab=${item.key}` }))}
+      >
+        <Stack direction="vertical" gap="spacious">
           {tab === 'access' && (
             <>
               <AccessRulesSection
                 rules={rules ?? []}
                 loading={rulesLoading}
                 onAdd={() => setShowAddRule(true)}
-                onDelete={(rule) => setConfirmDeleteRule(rule)}
+                onDelete={(rule) => void revokeRule(rule)}
               />
-
               <PathDefaultsSection
                 defaults={defaults ?? []}
-                onAdd={() => {
-                  setEditingDefault(null)
-                  setShowAddDefault(true)
-                }}
-                onEdit={(entry) => {
-                  setEditingDefault(entry)
-                  setShowAddDefault(true)
-                }}
-                onDelete={(entry) => setConfirmDeleteDefault(entry)}
+                onAdd={() => setDefaultDialog({ editing: null })}
+                onEdit={(entry) => setDefaultDialog({ editing: entry })}
+                onDelete={(entry) => void removeDefault(entry)}
               />
             </>
           )}
@@ -154,125 +188,34 @@ export default function ProjectSettingsPage() {
           {tab === 'branches' && (
             <BranchProtectionCard
               branches={branches ?? []}
-              onToggle={(branch, protect) =>
-                run(async () => {
-                  await setBranchProtection(org, project, branch.name, protect)
-                  reloadBranches()
-                })
-              }
-              onApprovals={(branch, approvals) =>
-                run(async () => {
-                  await setBranchProtection(org, project, branch.name, branch.is_protected, approvals)
-                  reloadBranches()
-                })
-              }
-              onDismissStale={(branch, dismiss) =>
-                run(async () => {
-                  await setBranchProtection(org, project, branch.name, branch.is_protected, undefined, dismiss)
-                  reloadBranches()
-                })
-              }
-              onRequireChecks={(branch, require) =>
-                run(async () => {
-                  await setBranchProtection(
-                    org,
-                    project,
-                    branch.name,
-                    branch.is_protected,
-                    undefined,
-                    undefined,
-                    require,
-                  )
-                  reloadBranches()
-                })
-              }
-              onRequiredReviewers={(branch, reviewerIDs) =>
-                run(async () => {
-                  await setBranchProtection(
-                    org,
-                    project,
-                    branch.name,
-                    branch.is_protected,
-                    undefined,
-                    undefined,
-                    undefined,
-                    reviewerIDs,
-                  )
-                  reloadBranches()
-                })
-              }
-              onRequiredChecks={(branch, checks) =>
-                run(async () => {
-                  await setBranchProtection(
-                    org,
-                    project,
-                    branch.name,
-                    branch.is_protected,
-                    undefined,
-                    undefined,
-                    undefined,
-                    undefined,
-                    checks,
-                  )
-                  reloadBranches()
-                })
-              }
               members={members ?? []}
+              onChange={(branch, change) => void changeProtection(branch, change)}
             />
           )}
 
           {tab === 'webhooks' && <WebhookSettings org={org} project={project} />}
-
           {tab === 'email' && <EmailSettings org={org} project={project} />}
-        </div>
-      </div>
+        </Stack>
+      </SettingsLayout>
 
       {showAddRule && (
         <AddRuleDialog
           org={org}
           project={project}
           onClose={() => setShowAddRule(false)}
-          onCreated={() => {
-            setShowAddRule(false)
-            reloadRules()
-          }}
-          onError={setActionError}
+          onCreated={reloadRules}
         />
       )}
 
-      {showAddDefault && (
+      {defaultDialog && (
         <AddDefaultDialog
           org={org}
           project={project}
-          editing={editingDefault}
-          onClose={() => setShowAddDefault(false)}
-          onSaved={() => {
-            setShowAddDefault(false)
-            reloadDefaults()
-          }}
-          onError={setActionError}
+          editing={defaultDialog.editing}
+          onClose={() => setDefaultDialog(null)}
+          onSaved={reloadDefaults}
         />
       )}
-
-      <ConfirmDeleteRuleDialog
-        rule={confirmDeleteRule}
-        onClose={() => setConfirmDeleteRule(null)}
-        onDeleted={() => {
-          setConfirmDeleteRule(null)
-          reloadRules()
-        }}
-        onError={setActionError}
-      />
-
-      <ConfirmDeleteDefaultDialog
-        entry={confirmDeleteDefault}
-        onClose={() => setConfirmDeleteDefault(null)}
-        onDeleted={() => {
-          setConfirmDeleteDefault(null)
-          reloadDefaults()
-        }}
-        onError={setActionError}
-      />
     </RepoPageShell>
   )
 }
@@ -284,61 +227,57 @@ function ruleSubject(rule: PBACRuleResponse): { name: string; email?: string } |
   return rule.group_name ? { name: rule.group_name } : null
 }
 
+type ProtectionChange = Partial<{
+  protect: boolean
+  approvals: number
+  dismissStale: boolean
+  requireChecks: boolean
+  reviewers: string[]
+  checks: string[]
+}>
+
 function BranchProtectionCard({
   branches,
   members,
-  onToggle,
-  onApprovals,
-  onDismissStale,
-  onRequireChecks,
-  onRequiredReviewers,
-  onRequiredChecks,
+  onChange,
 }: {
   branches: BranchResponse[]
   members: OrgMemberResponse[]
-  onToggle: (branch: BranchResponse, protect: boolean) => void
-  onApprovals: (branch: BranchResponse, approvals: number) => void
-  onDismissStale: (branch: BranchResponse, dismiss: boolean) => void
-  onRequireChecks: (branch: BranchResponse, require: boolean) => void
-  onRequiredReviewers: (branch: BranchResponse, reviewerIDs: string[]) => void
-  onRequiredChecks: (branch: BranchResponse, checks: string[]) => void
+  onChange: (branch: BranchResponse, change: ProtectionChange) => void
 }) {
   return (
     <SettingsCard
       title="Protected branches"
       description="Branch protection blocks force pushes and deletions, and can require approvals before a merge request lands."
     >
-      {branches.length === 0 && <div style={{ padding: 16, color: 'var(--fgColor-muted)' }}>No branches yet.</div>}
+      {branches.length === 0 && <EmptyState bordered={false}>No branches yet.</EmptyState>}
       {branches.map((branch, index) => (
         <SettingsRow
           key={branch.id}
           label={<span id={`branch-protection-${index}`}>{branch.name}</span>}
           subtext={branch.is_default ? 'Default branch' : undefined}
         >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--base-size-16)' }}>
             <Text style={{ color: 'var(--fgColor-muted)', fontSize: 12, margin: 0 }}>
               {branch.is_protected
                 ? 'Protected — pushes and deletions are restricted.'
                 : 'Not protected — anyone with write access can push.'}
             </Text>
             <Stack direction="horizontal" gap="condensed" align="center">
-              <Text style={{ color: 'var(--fgColor-muted)', fontSize: 12, whiteSpace: 'nowrap' }}>
-                Required approvals
-              </Text>
-              <ApprovalsInput branch={branch} onCommit={(value) => onApprovals(branch, value)} />
+              <Text style={{ color: 'var(--fgColor-muted)', fontSize: 12, whiteSpace: 'nowrap' }}>Required approvals</Text>
+              <ApprovalsInput branch={branch} onCommit={(approvals) => onChange(branch, { approvals })} />
               <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, whiteSpace: 'nowrap' }}>
-                <input
-                  type="checkbox"
+                <Checkbox
                   aria-label={`Dismiss stale approvals on push for ${branch.name}`}
                   checked={branch.dismiss_stale_approvals}
-                  onChange={(event) => onDismissStale(branch, event.target.checked)}
+                  onChange={(event) => onChange(branch, { dismissStale: event.target.checked })}
                 />
                 Dismiss stale approvals on push
               </label>
               <ToggleSwitch
                 aria-labelledby={`branch-protection-${index}`}
                 checked={Boolean(branch.is_protected)}
-                onChange={(value) => onToggle(branch, value)}
+                onChange={(value) => onChange(branch, { protect: value })}
               />
             </Stack>
           </div>
@@ -347,25 +286,24 @@ function BranchProtectionCard({
               display: 'flex',
               flexWrap: 'wrap',
               alignItems: 'center',
-              gap: 12,
-              marginTop: 8,
+              gap: 'var(--base-size-12)',
+              marginTop: 'var(--base-size-8)',
               fontSize: 12,
             }}
           >
             <label style={{ display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
-              <input
-                type="checkbox"
+              <Checkbox
                 aria-label={`Require status checks for ${branch.name}`}
                 checked={branch.require_status_checks}
-                onChange={(event) => onRequireChecks(branch, event.target.checked)}
+                onChange={(event) => onChange(branch, { requireChecks: event.target.checked })}
               />
               Require status checks
             </label>
-            <RequiredChecksInput branch={branch} onCommit={(checks) => onRequiredChecks(branch, checks)} />
+            <RequiredChecksInput branch={branch} onCommit={(checks) => onChange(branch, { checks })} />
             <RequiredReviewersPicker
               branch={branch}
               members={members}
-              onCommit={(reviewerIDs) => onRequiredReviewers(branch, reviewerIDs)}
+              onCommit={(reviewers) => onChange(branch, { reviewers })}
             />
           </div>
         </SettingsRow>
@@ -374,13 +312,7 @@ function BranchProtectionCard({
   )
 }
 
-function RequiredChecksInput({
-  branch,
-  onCommit,
-}: {
-  branch: BranchResponse
-  onCommit: (checks: string[]) => void
-}) {
+function RequiredChecksInput({ branch, onCommit }: { branch: BranchResponse; onCommit: (checks: string[]) => void }) {
   const [value, setValue] = useState((branch.required_checks ?? []).join(', '))
 
   useEffect(() => {
@@ -427,29 +359,21 @@ function RequiredReviewersPicker({
 }) {
   const [pick, setPick] = useState('')
   const required = branch.required_reviewers ?? []
-  const candidates = members.filter(
-    (member) => !required.some((reviewer) => reviewer.user_id === member.user_id),
-  )
+  const candidates = members.filter((member) => !required.some((reviewer) => reviewer.user_id === member.user_id))
 
   return (
     <Stack direction="horizontal" gap="condensed" align="center">
       {required.map((reviewer) => (
-        <span
-          key={reviewer.user_id}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}
-        >
+        <span key={reviewer.user_id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
           {reviewer.name || reviewer.user_id}
-          <Button
+          <IconButton
             size="small"
+            icon={XIcon}
             aria-label={`remove required reviewer ${reviewer.name || reviewer.user_id}`}
             onClick={() =>
-              onCommit(
-                required.filter((entry) => entry.user_id !== reviewer.user_id).map((entry) => entry.user_id),
-              )
+              onCommit(required.filter((entry) => entry.user_id !== reviewer.user_id).map((entry) => entry.user_id))
             }
-          >
-            <XIcon />
-          </Button>
+          />
         </span>
       ))}
       {candidates.length > 0 && (
@@ -460,11 +384,11 @@ function RequiredReviewersPicker({
             onChange={(event) => setPick(event.target.value)}
             size="small"
           >
-            <option value="">add required reviewer…</option>
+            <Select.Option value="">add required reviewer…</Select.Option>
             {candidates.map((member) => (
-              <option key={member.user_id} value={member.user_id}>
+              <Select.Option key={member.user_id} value={member.user_id}>
                 {member.name || member.email}
-              </option>
+              </Select.Option>
             ))}
           </Select>
           <Button
@@ -535,15 +459,11 @@ function AccessRulesSection({
         </Button>
       }
     >
-      {loading && (
-        <div style={{ padding: 16 }}>
-          <Loading />
-        </div>
-      )}
+      {loading && <Loading variant="skeleton" />}
       {!loading && rules.length === 0 && (
-        <div style={{ padding: 16, color: 'var(--fgColor-muted)' }}>
+        <EmptyState bordered={false}>
           No access rules. Everyone with write access can reach the whole repository.
-        </div>
+        </EmptyState>
       )}
       {rules.map((rule) => {
         const subject = ruleSubject(rule)
@@ -554,16 +474,8 @@ function AccessRulesSection({
             label={subject?.name ?? fallbackId}
             subtext={subject?.email ?? (subject ? undefined : fallbackId)}
           >
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                flexWrap: 'wrap',
-                gap: 16,
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 'var(--base-size-16)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--base-size-8)' }}>
                 <Mono>{rule.path_prefix || '/'}</Mono>
                 <PermissionBadge permission={rule.permission} />
               </div>
@@ -600,13 +512,11 @@ function PathDefaultsSection({
       }
     >
       {defaults.length === 0 && (
-        <div style={{ padding: 16, color: 'var(--fgColor-muted)' }}>
-          No path defaults. The repository is accessible to all members by default.
-        </div>
+        <EmptyState bordered={false}>No path defaults. The repository is accessible to all members by default.</EmptyState>
       )}
       {defaults.map((entry) => (
         <SettingsRow key={entry.path_prefix} label={<Mono>{entry.path_prefix || '/'}</Mono>}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--base-size-16)' }}>
             <PermissionBadge permission={entry.permission} />
             <Stack direction="horizontal" gap="condensed">
               <Button size="small" onClick={() => onEdit(entry)}>
@@ -628,94 +538,64 @@ function AddRuleDialog({
   project,
   onClose,
   onCreated,
-  onError,
 }: {
   org: string
   project: string
   onClose: () => void
   onCreated: () => void
-  onError: (msg: string) => void
 }) {
   const [subject, setSubject] = useState<{ id: string; label: string; isGroup: boolean } | null>(null)
   const [prefix, setPrefix] = useState('')
   const [permission, setPermission] = useState(0)
-  const [saving, setSaving] = useState(false)
-
-  function reset() {
-    setSubject(null)
-    setPrefix('')
-    setPermission(0)
-  }
-
-  async function handleSubmit(event: React.FormEvent) {
-    event.preventDefault()
-    if (!subject || permission === 0) return
-    setSaving(true)
-    try {
-      await createProjectRule(
-        org,
-        project,
-        subject.isGroup ? '' : subject.id,
-        subject.isGroup ? subject.id : '',
-        prefix,
-        permission,
-      )
-      reset()
-      onCreated()
-    } catch (err) {
-      onError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setSaving(false)
-    }
-  }
 
   return (
-    <Dialog title="Add access rule" onClose={onClose} width="medium">
-      <Dialog.Body>
-        <form onSubmit={handleSubmit}>
-          <Stack direction="vertical" gap="normal">
-            <FormControl required>
-              <FormControl.Label>User or group</FormControl.Label>
-              <UserGroupPicker
-                org={org}
-                kind="user-or-group"
-                onSelect={(entry) => setSubject({ id: entry.id, label: entry.label, isGroup: entry.isGroup })}
-                placeholder="Search users or groups…"
-              />
-              {subject && (
-                <Text as="p" style={{ color: 'var(--fgColor-muted)', fontSize: 12 }}>
-                  Selected: {subject.label} · {subject.isGroup ? 'group' : 'user'} · <Mono>{subject.id}</Mono>
-                </Text>
-              )}
-            </FormControl>
-            <FormControl>
-              <FormControl.Label>Path prefix</FormControl.Label>
-              <TextInput
-                block
-                placeholder="e.g. assets/textures (empty = whole repository)"
-                value={prefix}
-                onChange={(e) => setPrefix(e.target.value)}
-              />
-              <FormControl.Caption>Leave empty to apply to the entire repository.</FormControl.Caption>
-            </FormControl>
-            <FormControl required>
-              <FormControl.Label>Permissions</FormControl.Label>
-              <PermissionCheckboxes value={permission} onChange={setPermission} />
-            </FormControl>
-          </Stack>
-        </form>
-      </Dialog.Body>
-      <Dialog.Footer>
-        <Button onClick={onClose}>Cancel</Button>
-        <Button
-          variant="primary"
-          disabled={!subject || permission === 0 || saving}
-          onClick={handleSubmit}
-        >
-          {saving ? 'Adding…' : 'Add rule'}
-        </Button>
-      </Dialog.Footer>
-    </Dialog>
+    <FormDialog
+      title="Add access rule"
+      submitLabel="Add rule"
+      submitDisabled={!subject || permission === 0}
+      onClose={onClose}
+      onSubmit={async () => {
+        if (!subject) return
+        await createProjectRule(
+          org,
+          project,
+          subject.isGroup ? '' : subject.id,
+          subject.isGroup ? subject.id : '',
+          prefix,
+          permission,
+        )
+        onCreated()
+      }}
+    >
+      <FormControl required>
+        <FormControl.Label>User or group</FormControl.Label>
+        <UserGroupPicker
+          org={org}
+          kind="user-or-group"
+          onSelect={(entry) => setSubject({ id: entry.id, label: entry.label, isGroup: entry.isGroup })}
+          placeholder="Search users or groups…"
+        />
+        {subject && (
+          <Text as="p" style={{ color: 'var(--fgColor-muted)', fontSize: 12 }}>
+            Selected: {subject.label} · {subject.isGroup ? 'group' : 'user'} · <Mono>{subject.id}</Mono>
+          </Text>
+        )}
+      </FormControl>
+      <FormControl>
+        <FormControl.Label>Path prefix</FormControl.Label>
+        <TextInput
+          block
+          placeholder="e.g. assets/textures (empty = whole repository)"
+          value={prefix}
+          onChange={(e) => setPrefix(e.target.value)}
+        />
+        <FormControl.Caption>Leave empty to apply to the entire repository.</FormControl.Caption>
+      </FormControl>
+      <FormControl required>
+        <FormControl.Label>Permissions</FormControl.Label>
+        <PermissionCheckboxes value={permission} onChange={setPermission} />
+      </FormControl>
+    </FormDialog>
   )
 }
 
@@ -725,162 +605,45 @@ function AddDefaultDialog({
   editing,
   onClose,
   onSaved,
-  onError,
 }: {
   org: string
   project: string
   editing: PermissionEntry | null
   onClose: () => void
   onSaved: () => void
-  onError: (msg: string) => void
 }) {
   const [prefix, setPrefix] = useState(editing?.path_prefix ?? '')
   const [permission, setPermission] = useState(editing?.permission ?? 0)
-  const [saving, setSaving] = useState(false)
-
-  async function handleSubmit(event: React.FormEvent) {
-    event.preventDefault()
-    if (permission === 0) return
-    setSaving(true)
-    try {
-      await setProjectDefault(org, project, prefix, permission)
-      onSaved()
-    } catch (err) {
-      onError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setSaving(false)
-    }
-  }
 
   return (
-    <Dialog title={editing ? 'Edit path default' : 'Add path default'} onClose={onClose} width="medium">
-      <Dialog.Body>
-        <form onSubmit={handleSubmit}>
-          <Stack direction="vertical" gap="normal">
-            <FormControl disabled={editing !== null}>
-              <FormControl.Label>Path prefix</FormControl.Label>
-              <TextInput
-                block
-                placeholder="e.g. assets/textures (empty = whole repository)"
-                value={prefix}
-                onChange={(e) => setPrefix(e.target.value)}
-              />
-              <FormControl.Caption>
-                {editing
-                  ? 'The path prefix identifies this default and cannot be changed. Delete it and add a new one to move it.'
-                  : 'Leave empty to apply to the entire repository.'}
-              </FormControl.Caption>
-            </FormControl>
-            <FormControl required>
-              <FormControl.Label>Permissions</FormControl.Label>
-              <PermissionCheckboxes value={permission} onChange={setPermission} />
-            </FormControl>
-          </Stack>
-        </form>
-      </Dialog.Body>
-      <Dialog.Footer>
-        <Button onClick={onClose}>Cancel</Button>
-        <Button variant="primary" disabled={permission === 0 || saving} onClick={handleSubmit}>
-          {saving ? 'Saving…' : editing ? 'Save' : 'Add default'}
-        </Button>
-      </Dialog.Footer>
-    </Dialog>
-  )
-}
-
-function ConfirmDeleteRuleDialog({
-  rule,
-  onClose,
-  onDeleted,
-  onError,
-}: {
-  rule: PBACRuleResponse | null
-  onClose: () => void
-  onDeleted: () => void
-  onError: (msg: string) => void
-}) {
-  const [deleting, setDeleting] = useState(false)
-  const { org = '', project = '' } = useParams()
-
-  async function handleDelete() {
-    if (!rule) return
-    setDeleting(true)
-    try {
-      await deleteProjectRule(org, project, rule.id)
-      onDeleted()
-    } catch (err) {
-      onError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setDeleting(false)
-    }
-  }
-
-  if (!rule) return null
-  const subject = ruleSubject(rule)
-  return (
-    <Dialog title="Revoke access rule" onClose={onClose} width="medium">
-      <Dialog.Body>
-        <Text as="p">
-          Revoke access for{' '}
-          <strong>
-            {rule.user_id
-              ? `user: ${subject ? `${subject.name}${subject.email ? ` (${subject.email})` : ''}` : rule.user_id}`
-              : `group: ${subject?.name ?? rule.group_id}`}
-          </strong>{' '}
-          on path <Mono>{rule.path_prefix || '/'}</Mono>?
-        </Text>
-      </Dialog.Body>
-      <Dialog.Footer>
-        <Button onClick={onClose}>Cancel</Button>
-        <Button variant="danger" disabled={deleting} onClick={handleDelete}>
-          {deleting ? 'Revoking…' : 'Revoke'}
-        </Button>
-      </Dialog.Footer>
-    </Dialog>
-  )
-}
-
-function ConfirmDeleteDefaultDialog({
-  entry,
-  onClose,
-  onDeleted,
-  onError,
-}: {
-  entry: PermissionEntry | null
-  onClose: () => void
-  onDeleted: () => void
-  onError: (msg: string) => void
-}) {
-  const [deleting, setDeleting] = useState(false)
-  const { org = '', project = '' } = useParams()
-
-  async function handleDelete() {
-    if (!entry) return
-    setDeleting(true)
-    try {
-      await deleteProjectDefault(org, project, entry.path_prefix)
-      onDeleted()
-    } catch (err) {
-      onError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setDeleting(false)
-    }
-  }
-
-  if (!entry) return null
-  return (
-    <Dialog title="Remove path default" onClose={onClose} width="medium">
-      <Dialog.Body>
-        <Text as="p">
-          Remove default permissions for path <Mono>{entry.path_prefix || '/'}</Mono>?
-        </Text>
-      </Dialog.Body>
-      <Dialog.Footer>
-        <Button onClick={onClose}>Cancel</Button>
-        <Button variant="danger" disabled={deleting} onClick={handleDelete}>
-          {deleting ? 'Removing…' : 'Remove'}
-        </Button>
-      </Dialog.Footer>
-    </Dialog>
+    <FormDialog
+      title={editing ? 'Edit path default' : 'Add path default'}
+      submitLabel={editing ? 'Save' : 'Add default'}
+      submitDisabled={permission === 0}
+      onClose={onClose}
+      onSubmit={async () => {
+        await setProjectDefault(org, project, prefix, permission)
+        onSaved()
+      }}
+    >
+      <FormControl disabled={editing !== null}>
+        <FormControl.Label>Path prefix</FormControl.Label>
+        <TextInput
+          block
+          placeholder="e.g. assets/textures (empty = whole repository)"
+          value={prefix}
+          onChange={(e) => setPrefix(e.target.value)}
+        />
+        <FormControl.Caption>
+          {editing
+            ? 'The path prefix identifies this default and cannot be changed. Delete it and add a new one to move it.'
+            : 'Leave empty to apply to the entire repository.'}
+        </FormControl.Caption>
+      </FormControl>
+      <FormControl required>
+        <FormControl.Label>Permissions</FormControl.Label>
+        <PermissionCheckboxes value={permission} onChange={setPermission} />
+      </FormControl>
+    </FormDialog>
   )
 }

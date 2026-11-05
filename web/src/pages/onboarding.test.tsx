@@ -435,12 +435,19 @@ describe('IdentitiesCard', () => {
       return null
     })
 
-    const { container } = await renderApp('/settings/profile')
+    const { container } = await renderApp('/settings/profile?tab=accounts')
     await waitForText(container, 'Connected accounts')
     await waitForText(container, 'GitHub')
 
     await act(async () => {
       findButton('Disconnect').click()
+    })
+    await waitFor(() => document.querySelector('[role="alertdialog"]') !== null)
+    await act(async () => {
+      const confirmButton = Array.from(
+        (document.querySelector('[role="alertdialog"]') as HTMLElement).querySelectorAll('button'),
+      ).find((item) => item.textContent?.trim() === 'Disconnect')
+      confirmButton?.click()
     })
     await waitFor(() => calls.length > 0)
     expect(calls[0]?.method).toBe('DELETE')

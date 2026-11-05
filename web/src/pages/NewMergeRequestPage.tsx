@@ -1,15 +1,17 @@
 import { useState } from 'react'
-import { Button, FormControl, Link as PrimerLink, Stack, Text, TextInput } from '@primer/react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Button, Checkbox, FormControl, Select, Textarea, TextInput } from '@primer/react'
+import { useNavigate, useParams } from 'react-router-dom'
 import { createMergeRequest } from '../api/endpoints'
 import { RepoPageShell } from '../components/repo/RepoPageShell'
 import { useRepoChrome } from '../components/repo/useRepoChrome'
-import { ErrorBanner, Loading } from '../components/ui'
+import { FormCard } from '../components/SettingsCard'
+import { ErrorBanner, NoPermission } from '../components/ui'
+import { errorMessage } from '../hooks'
 
 export default function NewMergeRequestPage() {
   const { org = '', project = '' } = useParams()
   const navigate = useNavigate()
-  const { branches, branchesLoading, canWrite, canAdmin, defaultBranch } = useRepoChrome(org, project)
+  const { branches, branchesLoading, permissionsLoading, canWrite, canAdmin, defaultBranch } = useRepoChrome(org, project)
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [source, setSource] = useState('')
@@ -19,41 +21,23 @@ export default function NewMergeRequestPage() {
   const [actionError, setActionError] = useState<string | null>(null)
 
   const canSubmit = title.trim() !== '' && source !== '' && target !== '' && !saving
-  const backLink = (
-    <PrimerLink as={Link} to={`/${org}/${project}/merges`}>
-      back to merge requests
-    </PrimerLink>
-  )
-
-  if (branchesLoading) {
-    return (
-      <RepoPageShell
-        org={org}
-        project={project}
-        active="merges"
-        rev={defaultBranch}
-        canAdmin={canAdmin}
-        canWrite={canWrite}
-        heading="New merge request"
-      >
-        <Loading />
-      </RepoPageShell>
-    )
+  const shell = {
+    org,
+    project,
+    active: 'merges' as const,
+    rev: defaultBranch,
+    canAdmin,
+    canWrite,
+    heading: 'New merge request',
+    crumbs: [{ label: 'Merge requests', to: `/${org}/${project}/merges` }, { label: 'New merge request' }],
   }
 
-  if (!canWrite) {
+  if (branchesLoading || permissionsLoading || !canWrite) {
     return (
-      <RepoPageShell
-        org={org}
-        project={project}
-        active="merges"
-        rev={defaultBranch}
-        canAdmin={canAdmin}
-        canWrite={canWrite}
-        heading="New merge request"
-      >
-        <Text>You need project write permission to create merge requests.</Text>
-        {backLink}
+      <RepoPageShell {...shell}>
+        <NoPermission loading={branchesLoading || permissionsLoading}>
+          You need project write permission to create merge requests.
+        </NoPermission>
       </RepoPageShell>
     )
   }
@@ -67,84 +51,54 @@ export default function NewMergeRequestPage() {
       const request = await createMergeRequest(org, project, title.trim(), description, source, target, draft)
       navigate(`/${org}/${project}/merges/${request.number}`)
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : String(err))
+      setActionError(errorMessage(err))
       setSaving(false)
     }
   }
 
   return (
-    <RepoPageShell
-      org={org}
-      project={project}
-      active="merges"
-      rev={defaultBranch}
-      canAdmin={canAdmin}
-      canWrite={canWrite}
-      heading="New merge request"
-      actions={backLink}
-    >
+    <RepoPageShell {...shell}>
       <ErrorBanner error={actionError} />
-      <form
-        onSubmit={handleSubmit}
-        style={{ border: '1px solid var(--borderColor-default)', borderRadius: 6, padding: 16 }}
-      >
-        <Stack direction="vertical" gap="normal">
-          <FormControl required>
-            <FormControl.Label>Title</FormControl.Label>
-            <TextInput block autoFocus value={title} onChange={(event) => setTitle(event.target.value)} />
-          </FormControl>
-          <FormControl>
-            <FormControl.Label>Description</FormControl.Label>
-            <TextInput block value={description} onChange={(event) => setDescription(event.target.value)} />
-          </FormControl>
-          <FormControl required>
-            <FormControl.Label>Source branch</FormControl.Label>
-            <select
-              value={source}
-              onChange={(event) => setSource(event.target.value)}
-              style={{ padding: 6 }}
-            >
-              <option value="">select a branch</option>
-              {branches?.map((branch) => (
-                <option key={branch.id} value={branch.name}>
-                  {branch.name}
-                </option>
-              ))}
-            </select>
-          </FormControl>
-          <FormControl required>
-            <FormControl.Label>Target branch</FormControl.Label>
-            <select
-              value={target}
-              onChange={(event) => setTarget(event.target.value)}
-              style={{ padding: 6 }}
-            >
-              <option value="">select a branch</option>
-              {branches?.map((branch) => (
-                <option key={branch.id} value={branch.name}>
-                  {branch.name}
-                  {branch.is_default ? ' (default)' : ''}
-                </option>
-              ))}
-            </select>
-          </FormControl>
-          <FormControl>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <input type="checkbox" checked={draft} onChange={(event) => setDraft(event.target.checked)} />
-              Create as draft (cannot be merged until marked ready)
-            </label>
-          </FormControl>
-          <Button
-            type="submit"
-            variant="primary"
-            disabled={!canSubmit}
-            loading={saving}
-            style={{ alignSelf: 'flex-start' }}
-          >
-            Create merge request
-          </Button>
-        </Stack>
-      </form>
+      <FormCard onSubmit={handleSubmit}>
+        <FormControl required>
+          <FormControl.Label>Title</FormControl.Label>
+          <TextInput block autoFocus value={title} onChange={(event) => setTitle(event.target.value)} />
+        </FormControl>
+        <FormControl>
+          <FormControl.Label>Description</FormControl.Label>
+          <Textarea block rows={4} value={description} onChange={(event) => setDescription(event.target.value)} />
+        </FormControl>
+        <FormControl required>
+          <FormControl.Label>Source branch</FormControl.Label>
+          <Select block value={source} onChange={(event) => setSource(event.target.value)}>
+            <Select.Option value="">select a branch</Select.Option>
+            {branches?.map((branch) => (
+              <Select.Option key={branch.id} value={branch.name}>
+                {branch.name}
+              </Select.Option>
+            ))}
+          </Select>
+        </FormControl>
+        <FormControl required>
+          <FormControl.Label>Target branch</FormControl.Label>
+          <Select block value={target} onChange={(event) => setTarget(event.target.value)}>
+            <Select.Option value="">select a branch</Select.Option>
+            {branches?.map((branch) => (
+              <Select.Option key={branch.id} value={branch.name}>
+                {branch.name}
+                {branch.is_default ? ' (default)' : ''}
+              </Select.Option>
+            ))}
+          </Select>
+        </FormControl>
+        <FormControl>
+          <Checkbox checked={draft} onChange={(event) => setDraft(event.target.checked)} />
+          <FormControl.Label>Create as draft (cannot be merged until marked ready)</FormControl.Label>
+        </FormControl>
+        <Button type="submit" variant="primary" disabled={!canSubmit} loading={saving} style={{ alignSelf: 'flex-start' }}>
+          Create merge request
+        </Button>
+      </FormCard>
     </RepoPageShell>
   )
 }

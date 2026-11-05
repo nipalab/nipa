@@ -1,4 +1,5 @@
-import type { CSSProperties, ReactNode } from 'react'
+import type { CSSProperties, FormEventHandler, ReactNode } from 'react'
+import { Stack } from '@primer/react'
 import { SectionHeading } from './ui'
 
 export function Card({ children, style }: { children: ReactNode; style?: CSSProperties }) {
@@ -83,5 +84,31 @@ export function SettingsRow({
       </div>
       {children !== undefined && <div style={{ flex: '1 1 300px', minWidth: 0 }}>{children}</div>}
     </div>
+  )
+}
+
+export function FormCard({
+  onSubmit,
+  maxWidth,
+  children,
+}: {
+  onSubmit: FormEventHandler<HTMLFormElement>
+  maxWidth?: number
+  children: ReactNode
+}) {
+  return (
+    <form
+      onSubmit={onSubmit}
+      style={{
+        border: '1px solid var(--borderColor-default)',
+        borderRadius: 'var(--borderRadius-medium)',
+        padding: 'var(--base-size-16)',
+        maxWidth,
+      }}
+    >
+      <Stack direction="vertical" gap="normal">
+        {children}
+      </Stack>
+    </form>
   )
 }

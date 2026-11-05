@@ -9,7 +9,7 @@ import {
   FileRemovedIcon,
 } from '@primer/octicons-react'
 import type { DiffFileResponse, DiffHunkResponse, DiffLineResponse, ThreadResponse } from '../../api/models'
-import { Mono } from '../ui'
+import { ErrorBanner, Mono } from '../ui'
 import { ThreadCard } from './ThreadCard'
 
 export interface DiffAnchor {
@@ -279,11 +279,7 @@ function DraftComment({
           aria-label="New inline comment"
           onChange={(event) => setBody(event.target.value)}
         />
-        {error && (
-          <Text as="p" style={{ color: 'var(--fgColor-danger)', fontSize: 12, margin: '4px 0 0' }}>
-            {error}
-          </Text>
-        )}
+        <ErrorBanner error={error} title="Could not post comment" />
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
           <Button size="small" onClick={onCancel}>
             Cancel
@@ -317,7 +313,7 @@ function CommentButton({ onClick, label }: { onClick: () => void; label: string 
         background: 'var(--bgColor-default)',
         color: 'var(--fgColor-muted)',
         cursor: 'pointer',
-        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+        fontFamily: 'var(--fontStack-monospace)',
         lineHeight: '16px',
         padding: '0 4px',
       }}
@@ -577,7 +573,7 @@ export function DiffFile({
               background: 'var(--bgColor-inset)',
               color: 'var(--fgColor-muted)',
               padding: '2px 8px',
-              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+              fontFamily: 'var(--fontStack-monospace)',
             }}
           >
             @@ -{row.hunk.old_start},{row.hunk.old_lines} +{row.hunk.new_start},{row.hunk.new_lines} @@
@@ -623,7 +619,7 @@ export function DiffFile({
               background: 'var(--bgColor-inset)',
               color: 'var(--fgColor-muted)',
               padding: '2px 8px',
-              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+              fontFamily: 'var(--fontStack-monospace)',
             }}
           >
             @@ -{row.hunk.old_start},{row.hunk.old_lines} +{row.hunk.new_start},{row.hunk.new_lines} @@

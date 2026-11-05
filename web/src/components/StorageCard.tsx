@@ -1,115 +1,86 @@
 import { useState } from 'react'
-import { Button, Dialog, FormControl, ProgressBar, Stack, Text } from '@primer/react'
-import { getOrgStorage, recountOrgStorage, setOrgBillingOwner } from '../api/endpoints'
+import { Button, FormControl, ProgressBar, Text } from '@primer/react'
+import { recountOrgStorage, setOrgBillingOwner } from '../api/endpoints'
+import type { OrgStorageResponse } from '../api/models'
 import { useAuth } from '../auth'
-import { useAsync } from '../hooks'
-import { UserGroupPicker } from './UserGroupPicker'
+import { useAction } from '../hooks'
+import { DataTable, type Column } from './DataTable'
+import { FormDialog } from './FormDialog'
 import { formatBytes } from './repo/format'
-import { EmptyState, Mono } from './ui'
+import { SettingsCard, SettingsRow } from './SettingsCard'
+import { UserGroupPicker } from './UserGroupPicker'
+import { ErrorBanner, Mono } from './ui'
 
-const CELL = { padding: '8px 12px' }
-const HEADER_CELL = { ...CELL, fontWeight: 600, textAlign: 'left' as const, fontSize: 12, color: 'var(--fgColor-muted)' }
+type ProjectUsage = OrgStorageResponse['projects'][number]
 
-export default function StorageCard({ org, onError }: { org: string; onError: (message: string) => void }) {
+export default function StorageCard({
+  org,
+  data,
+  reload,
+}: {
+  org: string
+  data: OrgStorageResponse
+  reload: () => void
+}) {
   const { me } = useAuth()
-  const { data, loading, reload } = useAsync(() => getOrgStorage(org), [org])
+  const { run, busy, error, clearError } = useAction(reload)
   const [showTransfer, setShowTransfer] = useState(false)
-  const [recounting, setRecounting] = useState(false)
-
-  if (loading || data === null) return null
 
   const quota = data.quota_bytes
   const percent = quota !== null && quota > 0 ? Math.min(100, Math.round((data.used_bytes / quota) * 100)) : 0
 
-  async function handleRecount() {
-    setRecounting(true)
-    try {
-      await recountOrgStorage(org)
-      reload()
-    } catch (err) {
-      onError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setRecounting(false)
-    }
-  }
+  const columns: Column<ProjectUsage>[] = [
+    {
+      id: 'project',
+      header: 'Project',
+      rowHeader: true,
+      renderCell: (project) => (
+        <>
+          {project.name}
+          {project.deleted && <Text style={{ color: 'var(--fgColor-muted)' }}> (deleted)</Text>}
+        </>
+      ),
+    },
+    { id: 'used', header: 'Used', align: 'end', renderCell: (project) => <Mono>{formatBytes(project.used_bytes)}</Mono> },
+  ]
 
   return (
-    <div style={{ border: '1px solid var(--borderColor-default)', borderRadius: 6, padding: 16 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Text as="h3">Storage</Text>
-        {me?.is_super_admin && (
-          <Stack direction="horizontal" gap="condensed">
-            <Button size="small" onClick={handleRecount} disabled={recounting}>
-              {recounting ? 'Recounting…' : 'Recount'}
-            </Button>
-            <Button size="small" onClick={() => setShowTransfer(true)}>
-              Transfer billing owner
-            </Button>
-          </Stack>
-        )}
-      </div>
-      <Text as="p" style={{ color: 'var(--fgColor-muted)' }}>
-        {quota === null
-          ? `${formatBytes(data.used_bytes)} used · unlimited quota`
-          : `${formatBytes(data.used_bytes)} of ${formatBytes(quota)} used`}
-      </Text>
-      {quota !== null && (
-        <div style={{ marginBottom: 8 }}>
-          <ProgressBar progress={percent} />
-        </div>
-      )}
-      <Text as="p" style={{ color: 'var(--fgColor-muted)', fontSize: 12 }}>
-        Billed to user <Mono>{data.owner_id}</Mono>
-      </Text>
-      {data.projects.length === 0 ? (
-        <EmptyState>No projects yet.</EmptyState>
-      ) : (
-        <div
-          style={{
-            border: '1px solid var(--borderColor-default)',
-            borderRadius: 6,
-            overflow: 'hidden',
-            marginTop: 8,
-          }}
-        >
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ background: 'var(--bgColor-muted)' }}>
-                <th style={HEADER_CELL}>Project</th>
-                <th style={{ ...HEADER_CELL, textAlign: 'right' }}>Used</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.projects.map((project) => (
-                <tr key={project.id} style={{ borderTop: '1px solid var(--borderColor-muted)' }}>
-                  <td style={CELL}>
-                    {project.name}
-                    {project.deleted && (
-                      <Text style={{ color: 'var(--fgColor-muted)' }}> (deleted)</Text>
-                    )}
-                  </td>
-                  <td style={{ ...CELL, textAlign: 'right' }}>
-                    <Mono>{formatBytes(project.used_bytes)}</Mono>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {showTransfer && (
-        <TransferOwnerDialog
-          org={org}
-          onClose={() => setShowTransfer(false)}
-          onTransferred={() => {
-            setShowTransfer(false)
-            reload()
-          }}
-          onError={onError}
-        />
-      )}
-    </div>
+    <>
+      <SettingsCard
+        title="Storage"
+        actions={
+          me?.is_super_admin && (
+            <div style={{ display: 'flex', gap: 'var(--base-size-8)' }}>
+              <Button size="small" onClick={() => void run(() => recountOrgStorage(org))} disabled={busy}>
+                {busy ? 'Recounting…' : 'Recount'}
+              </Button>
+              <Button size="small" onClick={() => setShowTransfer(true)}>
+                Transfer billing owner
+              </Button>
+            </div>
+          )
+        }
+      >
+        <ErrorBanner error={error} onDismiss={clearError} />
+        <SettingsRow label="Usage">
+          <Text as="p" style={{ margin: 0 }}>
+            {quota === null
+              ? `${formatBytes(data.used_bytes)} used · unlimited quota`
+              : `${formatBytes(data.used_bytes)} of ${formatBytes(quota)} used`}
+          </Text>
+          {quota !== null && (
+            <div style={{ marginTop: 'var(--base-size-8)', maxWidth: 480 }}>
+              <ProgressBar progress={percent} />
+            </div>
+          )}
+        </SettingsRow>
+        <SettingsRow label="Billed to">
+          <Mono>{data.owner_id}</Mono>
+        </SettingsRow>
+      </SettingsCard>
+      <DataTable label="Storage by project" data={data.projects} columns={columns} empty="No projects yet." />
+      {showTransfer && <TransferOwnerDialog org={org} onClose={() => setShowTransfer(false)} onTransferred={reload} />}
+    </>
   )
 }
 
@@ -117,54 +88,33 @@ function TransferOwnerDialog({
   org,
   onClose,
   onTransferred,
-  onError,
 }: {
   org: string
   onClose: () => void
   onTransferred: () => void
-  onError: (message: string) => void
 }) {
   const [userId, setUserId] = useState('')
-  const [saving, setSaving] = useState(false)
-
-  async function handleSubmit(event: React.FormEvent) {
-    event.preventDefault()
-    if (!userId) return
-    setSaving(true)
-    try {
-      await setOrgBillingOwner(org, userId)
-      onTransferred()
-    } catch (err) {
-      onError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setSaving(false)
-    }
-  }
-
   return (
-    <Dialog title="Transfer billing owner" onClose={onClose} width="medium">
-      <Dialog.Body>
-        <Text as="p">
-          Usage stays with the organization; the new owner's quota covers it from now on.
-        </Text>
-        <form onSubmit={handleSubmit}>
-          <FormControl required>
-            <FormControl.Label>New owner</FormControl.Label>
-            <UserGroupPicker
-              org={org}
-              kind="user"
-              onSelect={(entry) => setUserId(entry.id)}
-              placeholder="Search users by name or email…"
-            />
-          </FormControl>
-        </form>
-      </Dialog.Body>
-      <Dialog.Footer>
-        <Button onClick={onClose}>Cancel</Button>
-        <Button variant="primary" disabled={!userId || saving} onClick={handleSubmit}>
-          {saving ? 'Transferring…' : 'Transfer'}
-        </Button>
-      </Dialog.Footer>
-    </Dialog>
+    <FormDialog
+      title="Transfer billing owner"
+      submitLabel="Transfer"
+      submitDisabled={!userId}
+      onClose={onClose}
+      onSubmit={async () => {
+        await setOrgBillingOwner(org, userId)
+        onTransferred()
+      }}
+    >
+      <Text as="p">Usage stays with the organization; the new owner&apos;s quota covers it from now on.</Text>
+      <FormControl required>
+        <FormControl.Label>New owner</FormControl.Label>
+        <UserGroupPicker
+          org={org}
+          kind="user"
+          onSelect={(entry) => setUserId(entry.id)}
+          placeholder="Search users by name or email…"
+        />
+      </FormControl>
+    </FormDialog>
   )
 }

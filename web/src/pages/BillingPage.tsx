@@ -2,14 +2,14 @@ import { useState } from 'react'
 import { Button, FormControl, ProgressBar, Stack, Text, TextInput } from '@primer/react'
 import { Link } from 'react-router-dom'
 import { getMyBilling, setOwnerQuota } from '../api/endpoints'
+import type { OwnerOrgStorageResponse } from '../api/models'
 import { useAuth } from '../auth'
+import { DataTable, type Column } from '../components/DataTable'
 import { formatBytes } from '../components/repo/format'
-import { EmptyState, ErrorBanner, Loading, Mono, Page } from '../components/ui'
-import { useAsync } from '../hooks'
-import { APP_HOME } from '../routes'
-
-const CELL = { padding: '8px 12px' }
-const HEADER_CELL = { ...CELL, fontWeight: 600, textAlign: 'left' as const, fontSize: 12, color: 'var(--fgColor-muted)' }
+import { FormCard, SettingsCard, SettingsRow } from '../components/SettingsCard'
+import { UserSettingsLayout } from '../components/UserSettingsLayout'
+import { EmptyState, ErrorBanner, Loading, Mono, SectionHeading } from '../components/ui'
+import { errorMessage, useAsync } from '../hooks'
 
 export default function BillingPage() {
   const { me } = useAuth()
@@ -19,81 +19,65 @@ export default function BillingPage() {
   const quota = data?.quota_bytes ?? null
   const percent = quota !== null && quota > 0 && data ? Math.min(100, Math.round((data.used_bytes / quota) * 100)) : 0
 
+  const columns: Column<OwnerOrgStorageResponse>[] = [
+    {
+      id: 'org',
+      header: 'Organization',
+      rowHeader: true,
+      renderCell: (org) => <Link to={`/${org.slug}`}>{org.name}</Link>,
+    },
+    { id: 'used', header: 'Used', align: 'end', renderCell: (org) => <Mono>{formatBytes(org.used_bytes)}</Mono> },
+  ]
+
   return (
-    <Page
-      title="Billing"
-      subtitle="Storage quota and usage for the organizations you own"
-      actions={<Link to={APP_HOME}>back to home</Link>}
-    >
-      <ErrorBanner error={actionError ?? error} />
-      {loading && <Loading />}
+    <UserSettingsLayout active="billing">
+      <Stack direction="vertical" gap="normal">
+        <ErrorBanner error={actionError ?? error} onDismiss={actionError ? () => setActionError(null) : undefined} />
+        {loading && <Loading />}
 
-      {!loading && !error && data === null && (
-        <EmptyState>Storage billing is not enabled on this server.</EmptyState>
-      )}
+        {!loading && !error && data === null && <EmptyState>Storage billing is not enabled on this server.</EmptyState>}
 
-      {data && (
-        <>
-          <Text as="p">
-            {quota === null
-              ? `${formatBytes(data.used_bytes)} used · unlimited quota`
-              : `${formatBytes(data.used_bytes)} of ${formatBytes(quota)} used`}
-          </Text>
-          {quota !== null && (
-            <div style={{ maxWidth: 480 }}>
-              <ProgressBar progress={percent} />
-            </div>
-          )}
-          <Text as="p" style={{ color: 'var(--fgColor-muted)', fontSize: 12 }}>
-            Billing owner <Mono>{data.user_id}</Mono>
-          </Text>
+        {data && (
+          <>
+            <SettingsCard title="Storage" description="Storage quota and usage for the organizations you own">
+              <SettingsRow label="Usage">
+                <Text as="p" style={{ margin: 0 }}>
+                  {quota === null
+                    ? `${formatBytes(data.used_bytes)} used · unlimited quota`
+                    : `${formatBytes(data.used_bytes)} of ${formatBytes(quota)} used`}
+                </Text>
+                {quota !== null && (
+                  <div style={{ maxWidth: 480, marginTop: 'var(--base-size-8)' }}>
+                    <ProgressBar progress={percent} />
+                  </div>
+                )}
+              </SettingsRow>
+              <SettingsRow label="Billing owner">
+                <Mono>{data.user_id}</Mono>
+              </SettingsRow>
+            </SettingsCard>
 
-          <Text as="h3">Organizations</Text>
-          {data.orgs.length === 0 ? (
-            <EmptyState>You are not the billing owner of any organization.</EmptyState>
-          ) : (
-            <div style={{ border: '1px solid var(--borderColor-default)', borderRadius: 6, overflow: 'hidden' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ background: 'var(--bgColor-muted)' }}>
-                    <th style={HEADER_CELL}>Organization</th>
-                    <th style={{ ...HEADER_CELL, textAlign: 'right' }}>Used</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.orgs.map((org) => (
-                    <tr key={org.id} style={{ borderTop: '1px solid var(--borderColor-muted)' }}>
-                      <td style={CELL}>
-                        <Link to={`/${org.slug}`}>{org.name}</Link>
-                      </td>
-                      <td style={{ ...CELL, textAlign: 'right' }}>
-                        <Mono>{formatBytes(org.used_bytes)}</Mono>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+            <SectionHeading>Organizations</SectionHeading>
+            <DataTable
+              label="Organizations"
+              data={data.orgs}
+              columns={columns}
+              empty="You are not the billing owner of any organization."
+            />
 
-          <Text as="p" style={{ color: 'var(--fgColor-muted)' }}>
-            Need more storage? Contact your administrator to raise the quota.
-          </Text>
-        </>
-      )}
+            <Text as="p" style={{ color: 'var(--fgColor-muted)' }}>
+              Need more storage? Contact your administrator to raise the quota.
+            </Text>
+          </>
+        )}
 
-      {me?.is_super_admin && <AdminQuotaCard onChanged={reload} onError={setActionError} />}
-    </Page>
+        {me?.is_super_admin && <AdminQuotaCard onChanged={reload} onError={setActionError} />}
+      </Stack>
+    </UserSettingsLayout>
   )
 }
 
-function AdminQuotaCard({
-  onChanged,
-  onError,
-}: {
-  onChanged: () => void
-  onError: (message: string) => void
-}) {
+function AdminQuotaCard({ onChanged, onError }: { onChanged: () => void; onError: (message: string) => void }) {
   const [userId, setUserId] = useState('')
   const [quotaMiB, setQuotaMiB] = useState('')
   const [saving, setSaving] = useState(false)
@@ -106,7 +90,7 @@ function AdminQuotaCard({
       setQuotaMiB('')
       onChanged()
     } catch (err) {
-      onError(err instanceof Error ? err.message : String(err))
+      onError(errorMessage(err))
     } finally {
       setSaving(false)
     }
@@ -123,38 +107,33 @@ function AdminQuotaCard({
   }
 
   return (
-    <div style={{ border: '1px solid var(--borderColor-default)', borderRadius: 6, padding: 16 }}>
-      <Text as="h3">Set owner quota (super admin)</Text>
-      <Text as="p" style={{ color: 'var(--fgColor-muted)' }}>
-        A cleared quota is unlimited; a quota applies to all organizations of the owner.
-      </Text>
-      <form onSubmit={handleSet}>
-        <Stack direction="vertical" gap="normal" style={{ maxWidth: 480 }}>
-          <FormControl required>
-            <FormControl.Label>Owner user id</FormControl.Label>
-            <TextInput block value={userId} onChange={(e) => setUserId(e.target.value)} placeholder="e.g. 73" />
-          </FormControl>
-          <FormControl>
-            <FormControl.Label>Quota (MiB)</FormControl.Label>
-            <TextInput
-              block
-              type="number"
-              min="1"
-              value={quotaMiB}
-              onChange={(e) => setQuotaMiB(e.target.value)}
-              placeholder="e.g. 1024"
-            />
-          </FormControl>
-          <Stack direction="horizontal" gap="condensed">
-            <Button variant="primary" type="submit" disabled={saving || !userId.trim()}>
-              {saving ? 'Saving…' : 'Set quota'}
-            </Button>
-            <Button type="button" disabled={saving || !userId.trim()} onClick={() => void apply(null)}>
-              Clear (unlimited)
-            </Button>
-          </Stack>
-        </Stack>
-      </form>
-    </div>
+    <FormCard onSubmit={handleSet} maxWidth={560}>
+      <SectionHeading description="A cleared quota is unlimited; a quota applies to all organizations of the owner.">
+        Set owner quota (super admin)
+      </SectionHeading>
+      <FormControl required>
+        <FormControl.Label>Owner user id</FormControl.Label>
+        <TextInput block value={userId} onChange={(e) => setUserId(e.target.value)} placeholder="e.g. 73" />
+      </FormControl>
+      <FormControl>
+        <FormControl.Label>Quota (MiB)</FormControl.Label>
+        <TextInput
+          block
+          type="number"
+          min="1"
+          value={quotaMiB}
+          onChange={(e) => setQuotaMiB(e.target.value)}
+          placeholder="e.g. 1024"
+        />
+      </FormControl>
+      <Stack direction="horizontal" gap="condensed">
+        <Button variant="primary" type="submit" loading={saving} disabled={saving || !userId.trim()}>
+          Set quota
+        </Button>
+        <Button type="button" disabled={saving || !userId.trim()} onClick={() => void apply(null)}>
+          Clear (unlimited)
+        </Button>
+      </Stack>
+    </FormCard>
   )
 }

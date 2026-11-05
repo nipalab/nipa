@@ -33,16 +33,31 @@ vi.mock('../../api/endpoints', async (importOriginal) => {
 
 const endpoints = await import('../../api/endpoints')
 
+const mounted: Array<ReturnType<typeof createRoot>> = []
+
 async function render(node: ReactNode) {
   const container = document.createElement('div')
   document.body.appendChild(container)
   const root = createRoot(container)
+  mounted.push(root)
   await act(async () => {
     root.render(
       <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>{node}</MemoryRouter>,
     )
   })
   return { container, root }
+}
+
+function byLabel(root: ParentNode, label: string): HTMLElement | null {
+  const direct = root.querySelector<HTMLElement>(`[aria-label="${label}"]`)
+  if (direct) return direct
+  return (
+    [...root.querySelectorAll<HTMLElement>('[aria-labelledby]')].find((element) =>
+      (element.getAttribute('aria-labelledby') ?? '')
+        .split(' ')
+        .some((id) => document.getElementById(id)?.textContent === label),
+    ) ?? null
+  )
 }
 
 function click(el: Element | null | undefined) {
@@ -150,7 +165,10 @@ const mr = {
   updated_at: '2024-01-01T00:00:00Z',
 }
 
-afterEach(() => {
+afterEach(async () => {
+  await act(async () => {
+    for (const root of mounted.splice(0)) root.unmount()
+  })
   vi.clearAllMocks()
   document.body.innerHTML = ''
 })
@@ -282,6 +300,15 @@ describe('ThreadCard', () => {
     click([...container.querySelectorAll('button')].find((button) => button.textContent === 'Save'))
     expect(edited).toEqual([{ threadId: 't1', commentId: 'c1', body: 'rename it' }])
     click(iconButtons()[1])
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    })
+    const dialog = document.querySelector('[role="alertdialog"]') as HTMLElement
+    expect(dialog).not.toBeNull()
+    click([...dialog.querySelectorAll('button')].find((button) => button.textContent === 'Delete'))
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    })
     expect(deleted).toEqual([{ threadId: 't1', commentId: 'c1' }])
   })
 
@@ -448,6 +475,80 @@ describe('MergeRequestOverview', () => {
     expect([...container.querySelectorAll('button')].some((button) => button.textContent === 'Dismiss')).toBe(false)
   })
 
+  const liveReview = (reviewer: { user_id: string; name: string }): ReviewResponse => ({
+    id: 'r5',
+    merge_request_id: 1,
+    reviewer,
+    state: 'approved',
+    body: 'ok',
+    head_commit_id: 'c1',
+    stale: false,
+    created_at: '2024-01-01T00:00:00Z',
+    updated_at: '2024-01-01T00:00:00Z',
+  })
+
+  async function confirmInDialog(label: string) {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    })
+    const dialog = document.querySelector('[role="alertdialog"]') as HTMLElement
+    expect(dialog).not.toBeNull()
+    click([...dialog.querySelectorAll('button')].find((button) => button.textContent === label))
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    })
+  }
+
+  it('lets the reviewer withdraw their own review after confirmation', async () => {
+    const changed = vi.fn()
+    const { container } = await render(
+      <MergeRequestOverview {...base} me="u2" onChanged={changed} reviews={[liveReview({ user_id: 'u2', name: 'Me' })]} />,
+    )
+    click([...container.querySelectorAll('button')].find((button) => button.textContent === 'Withdraw'))
+    await confirmInDialog('Withdraw')
+    expect(endpoints.withdrawMergeRequestReview).toHaveBeenCalledWith('acme', 'game', '7', 'r5')
+    expect(changed).toHaveBeenCalled()
+  })
+
+  it('dismisses someone elses review after confirmation and keeps it when cancelled', async () => {
+    vi.mocked(endpoints.dismissMergeRequestReview).mockClear()
+    const { container } = await render(
+      <MergeRequestOverview {...base} me="u2" reviews={[liveReview({ user_id: 'u3', name: 'Peer' })]} />,
+    )
+    click([...container.querySelectorAll('button')].find((button) => button.textContent === 'Dismiss'))
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    })
+    click(
+      [...(document.querySelector('[role="alertdialog"]') as HTMLElement).querySelectorAll('button')].find(
+        (button) => button.textContent === 'Cancel',
+      ),
+    )
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    })
+    expect(endpoints.dismissMergeRequestReview).not.toHaveBeenCalled()
+
+    click([...container.querySelectorAll('button')].find((button) => button.textContent === 'Dismiss'))
+    await confirmInDialog('Dismiss')
+    expect(endpoints.dismissMergeRequestReview).toHaveBeenCalledWith('acme', 'game', '7', 'r5')
+  })
+
+  it('shows a dismissible banner when a review action fails', async () => {
+    vi.mocked(endpoints.withdrawMergeRequestReview).mockRejectedValueOnce(new Error('review is locked'))
+    const { container } = await render(
+      <MergeRequestOverview {...base} me="u2" reviews={[liveReview({ user_id: 'u2', name: 'Me' })]} />,
+    )
+    click([...container.querySelectorAll('button')].find((button) => button.textContent === 'Withdraw'))
+    await confirmInDialog('Withdraw')
+    expect(container.textContent).toContain('review is locked')
+    click(container.querySelector('button[class*="BannerDismiss"]'))
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(container.textContent).not.toContain('review is locked')
+  })
+
   it('shows inline code threads with a link to the file', async () => {
     const inlineThread: ThreadResponse = { ...thread, id: 't2', file_path: 'code.txt', new_line: 2 }
     const { container } = await render(
@@ -470,7 +571,7 @@ describe('MergeRequestOverview', () => {
     const { container } = await render(<MergeRequestOverview {...base} request={request} />)
     expect(container.textContent).toContain(expected)
     const mergeButton = [...container.querySelectorAll('button')].find(
-      (button) => button.textContent === 'Merge pull request',
+      (button) => button.textContent === 'Merge request',
     ) as HTMLButtonElement
     expect(mergeButton.disabled).toBe(status !== 'mergeable')
   })
@@ -483,7 +584,7 @@ describe('MergeRequestOverview', () => {
     const { container } = await render(<MergeRequestOverview {...base} request={request} />)
     expect(container.textContent).toContain(expected)
     const mergeButton = [...container.querySelectorAll('button')].find(
-      (button) => button.textContent === 'Merge pull request',
+      (button) => button.textContent === 'Merge request',
     ) as HTMLButtonElement
     expect(mergeButton.disabled).toBe(true)
   })
@@ -493,7 +594,7 @@ describe('MergeRequestOverview', () => {
     const request = { ...base.request, mergeability: { status: 'behind_target' } }
     const { container } = await render(<MergeRequestOverview {...base} request={request} onMerge={onMerge} />)
     const mergeButton = [...container.querySelectorAll('button')].find(
-      (button) => button.textContent === 'Merge pull request',
+      (button) => button.textContent === 'Merge request',
     ) as HTMLButtonElement
     expect(mergeButton.disabled).toBe(true)
 
@@ -514,7 +615,7 @@ describe('MergeRequestOverview', () => {
     expect(container.textContent).toContain('Assignees')
     expect(container.textContent).toContain('Dana')
     expect(container.querySelector('[aria-label="Add assignee"]')).not.toBeNull()
-    expect(container.querySelector('[aria-label="unassign Dana"]')).not.toBeNull()
+    expect(byLabel(container, 'unassign Dana')).not.toBeNull()
   })
 
   it('attaches inline comments to a review decision', async () => {
@@ -548,7 +649,7 @@ describe('MergeRequestOverview', () => {
     click([...container.querySelectorAll('button')].find((button) => button.textContent === 'Add inline comment'))
     expect(container.textContent).toContain('drop me')
 
-    click(container.querySelector('[aria-label="Remove inline comment on code.txt"]'))
+    click(byLabel(container, 'Remove inline comment on code.txt'))
     expect(container.textContent).not.toContain('drop me')
   })
 })

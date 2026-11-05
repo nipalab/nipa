@@ -1,9 +1,10 @@
 import { BookIcon } from '@primer/octicons-react'
-import { Spinner, Text } from '@primer/react'
+import { Spinner } from '@primer/react'
 import { Suspense, lazy } from 'react'
 import { fetchBlob } from '../../api/endpoints'
 import type { TreeEntryResponse } from '../../api/models'
 import { useAsync } from '../../hooks'
+import { ErrorBanner } from '../ui'
 
 const Markdown = lazy(() => import('./Markdown').then((module) => ({ default: module.Markdown })))
 
@@ -43,7 +44,7 @@ export function Readme({
       </div>
       <div style={{ padding: '16px 24px 24px' }}>
         {loading && <Spinner />}
-        {error && <Text style={{ color: 'var(--fgColor-danger)' }}>{error}</Text>}
+        <ErrorBanner error={error} />
         {content !== null && !error && (
           isMarkdown ? (
             <Suspense fallback={<Spinner />}>
