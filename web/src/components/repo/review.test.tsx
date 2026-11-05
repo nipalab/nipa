@@ -33,10 +33,13 @@ vi.mock('../../api/endpoints', async (importOriginal) => {
 
 const endpoints = await import('../../api/endpoints')
 
+const mounted: Array<ReturnType<typeof createRoot>> = []
+
 async function render(node: ReactNode) {
   const container = document.createElement('div')
   document.body.appendChild(container)
   const root = createRoot(container)
+  mounted.push(root)
   await act(async () => {
     root.render(
       <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>{node}</MemoryRouter>,
@@ -162,7 +165,10 @@ const mr = {
   updated_at: '2024-01-01T00:00:00Z',
 }
 
-afterEach(() => {
+afterEach(async () => {
+  await act(async () => {
+    for (const root of mounted.splice(0)) root.unmount()
+  })
   vi.clearAllMocks()
   document.body.innerHTML = ''
 })

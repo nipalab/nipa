@@ -58,7 +58,7 @@ export default function LoginPage() {
     await resend(email)
   }
 
-  const shownError = error ?? resendError
+  const shownError = resendError ?? error
 
   return (
     <AuthLayout>
