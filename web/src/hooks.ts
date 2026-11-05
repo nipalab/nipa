@@ -105,6 +105,13 @@ export function usePaged<T, C>(fetchPage: (cursor: C | undefined) => Promise<Pag
   const [more, setMore] = useState<PageResult<T, C> | null>(null)
   const [loadingMore, setLoadingMore] = useState(false)
   const [moreError, setMoreError] = useState<string | null>(null)
+  const generation = useRef(0)
+
+  useEffect(() => {
+    generation.current += 1
+    setLoadingMore(false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps)
 
   useEffect(() => {
     setMore(null)
@@ -118,13 +125,15 @@ export function usePaged<T, C>(fetchPage: (cursor: C | undefined) => Promise<Pag
     if (next === undefined || loadingMore) return
     setLoadingMore(true)
     setMoreError(null)
+    const current = generation.current
     try {
       const page = await fetchPage(next)
+      if (generation.current !== current) return
       setMore((current) => ({ items: [...(current?.items ?? []), ...page.items], next: page.next }))
     } catch (err) {
-      setMoreError(errorMessage(err))
+      if (generation.current === current) setMoreError(errorMessage(err))
     } finally {
-      setLoadingMore(false)
+      if (generation.current === current) setLoadingMore(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [next, loadingMore, ...deps])

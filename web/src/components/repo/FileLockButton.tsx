@@ -31,7 +31,7 @@ export function FileLockButton({
   const { data: locks, error, reload } = useAsync(() => listFileLocks(org, project), [org, project])
   const { run, busy, error: actionError } = useAction(reload)
 
-  const lock = locks ? coveringLock(locks, path) : undefined
+  const lock = locks ? coveringLock(locks.filter((item) => (branch === '' ? item.global : item.branch === branch)), path) : undefined
   const shownError = actionError ?? error
   useEffect(() => {
     onError(shownError)

@@ -103,6 +103,29 @@ describe('usePaged', () => {
     expect(result.current.items).toEqual(['x'])
   })
 
+  it('drops a late page from previous deps', async () => {
+    let resolveOld: (value: { items: string[] }) => void = () => undefined
+    const fetchPage = vi.fn(async (cursor: number | undefined, key = scope.key) => {
+      if (cursor === undefined) return { items: [key], next: 1 }
+      return new Promise<{ items: string[] }>((resolve) => (resolveOld = resolve))
+    })
+    const scope = { key: 'a' }
+    const bump = { fn: () => undefined as void }
+    const { result } = await renderHook(() => {
+      const [, setN] = useState(0)
+      bump.fn = () => setN((n) => n + 1)
+      return usePaged<string, number>((cursor) => fetchPage(cursor, scope.key), [scope.key])
+    })
+    await flush()
+    await act(async () => void result.current.loadMore())
+    scope.key = 'b'
+    await act(async () => bump.fn())
+    await flush()
+    await act(async () => resolveOld({ items: ['stale'] }))
+    expect(result.current.items).toEqual(['b'])
+    expect(result.current.loadingMore).toBe(false)
+  })
+
   it('reports a failure while loading more', async () => {
     const fetchPage = vi.fn().mockResolvedValueOnce({ items: ['a'], next: 1 }).mockRejectedValueOnce(new Error('page failed'))
     const { result } = await renderHook(() => usePaged<string, number>(fetchPage, []))
@@ -586,11 +609,18 @@ describe('FileLockButton', () => {
   it('lets the holder unlock after confirmation, with branch scope', async () => {
     api.listFileLocks.mockResolvedValue([lock({ global: false, branch: 'feature' })])
     api.unlockFile.mockResolvedValue(undefined as never)
-    const { container } = await render(<FileLockButton {...props} />)
+    const { container } = await render(<FileLockButton {...props} branch="feature" />)
     await waitFor(() => buttonByText(container, 'Unlock') !== null)
     await click(buttonByText(container, 'Unlock'))
     await confirmDialog('Unlock')
     expect(api.unlockFile).toHaveBeenCalledWith('acme', 'game', 'assets/orc.png', 'feature')
+  })
+
+  it('ignores locks held on another branch', async () => {
+    api.listFileLocks.mockResolvedValue([lock({ global: false, branch: 'feature', held_by: '2', held_by_name: 'Dana' })])
+    const { container } = await render(<FileLockButton {...props} />)
+    await waitFor(() => buttonByText(container, 'Lock') !== null)
+    expect(container.textContent).not.toContain('Dana')
   })
 
   it('names another holder and notes a covering directory lock', async () => {
