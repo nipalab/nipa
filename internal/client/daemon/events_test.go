@@ -340,3 +340,54 @@ func TestServer_PollEventsWithoutProxyOrRepo(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, act, "a cancelled poll reports nothing")
 }
+
+func TestServer_WatchEventsRepollsOnWholeRepoChange(t *testing.T) {
+	svc := &teamService{commits: []*pb.CommitLogEntry{commit("c1", "Me", "base")}}
+	srv, root, _ := eventServer(t, svc, "me", nil)
+	srv.eventEvery = time.Hour
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	stream := &activityStream{ctx: ctx, sent: make(chan *daemonpb.RepoActivity, 8)}
+	done := make(chan error, 1)
+	go func() { done <- srv.WatchEvents(&daemonpb.WatchEventsRequest{Root: root, IntervalSeconds: 1}, stream) }()
+	recvActivity(t, stream)
+
+	rp, unref, err := srv.repos.ref(root)
+	require.NoError(t, err)
+	defer unref()
+
+	svc.set(func(s *teamService) {
+		s.commits = append([]*pb.CommitLogEntry{commit("c2", "Alice", "art")}, s.commits...)
+	})
+	rp.changes.publish([]string{"a.txt"})
+	select {
+	case <-stream.sent:
+		t.Fatal("path changes must not trigger a poll")
+	case <-time.After(300 * time.Millisecond):
+	}
+
+	rp.changes.publish(nil)
+	rp.changes.publish(nil)
+	pushed := recvActivity(t, stream)
+	require.Equal(t, EventPushed, pushed.GetEvents()[0].GetKind())
+
+	cancel()
+	require.NoError(t, <-done)
+}
+
+func TestServer_WithMutationPublishesChange(t *testing.T) {
+	svc := &teamService{}
+	srv, root, _ := eventServer(t, svc, "me", nil)
+	rp, unref, err := srv.repos.ref(root)
+	require.NoError(t, err)
+	defer unref()
+	sub, unsubscribe := rp.changes.subscribe()
+	defer unsubscribe()
+
+	require.NoError(t, srv.withMutation(context.Background(), root, func(pb.NipaServiceClient, *pb.ProjectContext) error { return nil }))
+	require.NotNil(t, sub.take())
+
+	failure := errors.New("boom")
+	require.ErrorIs(t, srv.withMutation(context.Background(), root, func(pb.NipaServiceClient, *pb.ProjectContext) error { return failure }), failure)
+	require.Nil(t, sub.take())
+}

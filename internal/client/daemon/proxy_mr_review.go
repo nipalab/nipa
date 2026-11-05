@@ -10,7 +10,7 @@ import (
 // ProxyMergeRequestUpdate edits the title, description or draft state of a merge request.
 func (s *Server) ProxyMergeRequestUpdate(ctx context.Context, req *daemonpb.ProxyMergeRequestUpdateRequest) (*daemonpb.ProxyMergeRequestUpdateResponse, error) {
 	var res *pb.UpdateMergeRequestResponse
-	err := s.withProxy(ctx, req.GetRoot(), func(client pb.NipaServiceClient, project *pb.ProjectContext) error {
+	err := s.withMutation(ctx, req.GetRoot(), func(client pb.NipaServiceClient, project *pb.ProjectContext) error {
 		request := req.GetRequest()
 		if request == nil {
 			request = &pb.UpdateMergeRequestRequest{}
