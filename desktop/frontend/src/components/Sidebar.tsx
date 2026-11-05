@@ -1,5 +1,5 @@
-import { AlertTriangle, CloudDownload, FolderGit2, FolderOpen, GitBranch } from "lucide-react";
-import type { DaemonInfo, Repo } from "@/api/desktop";
+import { AlertTriangle, ArrowDown, CloudDownload, Eye, FolderGit2, FolderOpen, GitBranch, Settings, WifiOff } from "lucide-react";
+import type { DaemonInfo, Repo, RepoActivity } from "@/api/desktop";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/Logo";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -13,9 +13,11 @@ type SidebarProps = {
   onSelect: (root: string) => void;
   onAdd: () => void;
   onClone: () => void;
+  onSettings: () => void;
+  activity: RepoActivity[];
 };
 
-export function Sidebar({ repos, selected, daemon, adding, onSelect, onAdd, onClone }: SidebarProps) {
+export function Sidebar({ repos, selected, daemon, adding, onSelect, onAdd, onClone, onSettings, activity }: SidebarProps) {
   return (
     <aside className="flex w-64 shrink-0 flex-col border-r border-border bg-sidebar">
       <div className="drag-region flex h-12 items-center gap-2 px-4 pt-1">
@@ -67,6 +69,7 @@ export function Sidebar({ repos, selected, daemon, adding, onSelect, onAdd, onCl
                 )}
               </span>
             </span>
+            <ActivityBadges activity={repo.error ? undefined : activity.find((a) => a.root === repo.root)} />
           </button>
         ))}
       </nav>
@@ -79,8 +82,35 @@ export function Sidebar({ repos, selected, daemon, adding, onSelect, onAdd, onCl
           <span className="size-1.5 shrink-0 rounded-full bg-success" />
           <span className="truncate">Daemon {shortVersion(daemon.version)}</span>
         </span>
-        <ThemeToggle />
+        <span className="flex items-center gap-1">
+          <ThemeToggle />
+          <Button variant="ghost" size="icon" onClick={onSettings} aria-label="Settings" title="Settings">
+            <Settings />
+          </Button>
+        </span>
       </div>
     </aside>
+  );
+}
+
+function ActivityBadges({ activity }: { activity?: RepoActivity }) {
+  if (!activity) return null;
+  const incoming = activity.incoming >= 100 ? "100+" : String(activity.incoming);
+  return (
+    <span className="flex shrink-0 items-center gap-1 text-[10px]">
+      {activity.error && <WifiOff className="size-3 text-warning" aria-label={`Server unreachable: ${activity.error}`} />}
+      {activity.incoming > 0 && (
+        <span className="flex items-center rounded-full bg-accent-soft px-1.5 text-accent" title={`${incoming} new commit${activity.incoming === 1 ? "" : "s"} to get`}>
+          <ArrowDown className="size-3" />
+          {incoming}
+        </span>
+      )}
+      {activity.reviewRequests > 0 && (
+        <span className="flex items-center gap-0.5 rounded-full bg-warning/20 px-1.5 text-warning" title={`${activity.reviewRequests} merge request${activity.reviewRequests === 1 ? "" : "s"} waiting for your review`}>
+          <Eye className="size-3" />
+          {activity.reviewRequests}
+        </span>
+      )}
+    </span>
   );
 }

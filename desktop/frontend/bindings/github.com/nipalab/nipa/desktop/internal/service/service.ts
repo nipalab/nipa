@@ -7,6 +7,10 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as workspace$0 from "../workspace/models.js";
+
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as $models from "./models.js";
 
 /**
@@ -21,6 +25,13 @@ export function AbortMerge(root: string): $CancellablePromise<$models.OpOutcome>
  */
 export function AccountStatus(server: string): $CancellablePromise<$models.Account | null> {
     return $Call.ByID(281571113, server);
+}
+
+/**
+ * Activity returns the latest activity of every followed clone.
+ */
+export function Activity(): $CancellablePromise<$models.RepoActivity[] | null> {
+    return $Call.ByID(3793922685);
 }
 
 /**
@@ -67,6 +78,14 @@ export function CheckoutTag(root: string, tag: string): $CancellablePromise<$mod
  */
 export function ChooseFolder(title: string): $CancellablePromise<string> {
     return $Call.ByID(45898873, title);
+}
+
+/**
+ * ChooseProgram asks for an application to open files with; empty means
+ * cancelled.
+ */
+export function ChooseProgram(): $CancellablePromise<string> {
+    return $Call.ByID(2906686191);
 }
 
 /**
@@ -197,6 +216,13 @@ export function History(root: string, q: $models.HistoryQuery): $CancellableProm
 }
 
 /**
+ * IgnoreRules reads the clone's ignore files; missing files are empty.
+ */
+export function IgnoreRules(root: string): $CancellablePromise<$models.IgnoreRules> {
+    return $Call.ByID(1199055333, root);
+}
+
+/**
  * ImageDiff decodes the old and/or new version of an image into previews no
  * larger than opts.MaxSize pixels, plus pixel-diff statistics when both exist.
  */
@@ -287,10 +313,27 @@ export function ModelDiff(root: string, old: $models.ImageRef | null, $new: $mod
 }
 
 /**
- * OpenFile opens a clone file with the system's default application.
+ * Navigate tells the frontend to show nav; it is also kept until the
+ * frontend takes it, for links that started the app.
+ */
+export function Navigate(nav: $models.Navigation): $CancellablePromise<void> {
+    return $Call.ByID(3037647619, nav);
+}
+
+/**
+ * OpenFile opens a clone file with the program set for its extension, or the
+ * system's default application.
  */
 export function OpenFile(root: string, path: string): $CancellablePromise<void> {
     return $Call.ByID(3101717086, root, path);
+}
+
+/**
+ * OpenLink resolves a nipa:// link against the opened clones and navigates
+ * there.
+ */
+export function OpenLink(raw: string): $CancellablePromise<$models.Navigation> {
+    return $Call.ByID(4065448792, raw);
 }
 
 /**
@@ -375,6 +418,14 @@ export function ResolveThread(root: string, $number: number, threadID: string, r
 }
 
 /**
+ * RestartDaemon stops the background service and starts a fresh one, so
+ * changed settings apply to every clone.
+ */
+export function RestartDaemon(): $CancellablePromise<$models.DaemonInfo> {
+    return $Call.ByID(1686683011);
+}
+
+/**
  * Revert undoes a commit with a new commit on the clone's branch, or resumes
  * a revert stopped on conflicts.
  */
@@ -392,6 +443,22 @@ export function RevisionFiles(root: string, oldRev: string, newRev: string): $Ca
 }
 
 /**
+ * SaveIgnoreRules writes both ignore files. An empty rule set leaves a
+ * missing file missing; .nipaignore is versioned, so saving it shows up as a
+ * change to push.
+ */
+export function SaveIgnoreRules(root: string, rules: $models.IgnoreRules): $CancellablePromise<void> {
+    return $Call.ByID(3164512178, root, rules);
+}
+
+/**
+ * SaveSettings validates and stores the preferences, then applies them.
+ */
+export function SaveSettings($in: workspace$0.Settings): $CancellablePromise<workspace$0.Settings> {
+    return $Call.ByID(3035590848, $in);
+}
+
+/**
  * SetDraft marks a request as a draft or ready for review.
  */
 export function SetDraft(root: string, $number: number, draft: boolean): $CancellablePromise<$models.MergeRequest | null> {
@@ -403,6 +470,21 @@ export function SetDraft(root: string, $number: number, draft: boolean): $Cancel
  */
 export function SetSparse(root: string, paths: string[] | null): $CancellablePromise<$models.OpOutcome> {
     return $Call.ByID(4162667504, root, paths);
+}
+
+/**
+ * SetUploadWorkers pins the upload concurrency (0 = automatic) in the shared
+ * nipa config, used by the CLI and by clones the daemon opens next.
+ */
+export function SetUploadWorkers(workers: number): $CancellablePromise<void> {
+    return $Call.ByID(527135944, workers);
+}
+
+/**
+ * Settings returns the app preferences.
+ */
+export function Settings(): $CancellablePromise<workspace$0.Settings> {
+    return $Call.ByID(2871780589);
 }
 
 /**
@@ -455,6 +537,14 @@ export function Tags(root: string): $CancellablePromise<$models.Tag[] | null> {
 }
 
 /**
+ * TakeNavigation returns and clears the last navigation the frontend has not
+ * handled yet.
+ */
+export function TakeNavigation(): $CancellablePromise<$models.Navigation | null> {
+    return $Call.ByID(198429045);
+}
+
+/**
  * Unlock releases a lock. An empty branch addresses the mainline scope.
  */
 export function Unlock(root: string, branch: string, path: string): $CancellablePromise<void> {
@@ -473,4 +563,11 @@ export function Unstage(root: string, paths: string[] | null): $CancellablePromi
  */
 export function Update(root: string): $CancellablePromise<$models.OpOutcome> {
     return $Call.ByID(2237493537, root);
+}
+
+/**
+ * UploadWorkers returns the pinned upload concurrency; 0 means automatic.
+ */
+export function UploadWorkers(): $CancellablePromise<number> {
+    return $Call.ByID(574941112);
 }

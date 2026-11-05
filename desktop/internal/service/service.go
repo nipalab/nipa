@@ -12,6 +12,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/nipalab/nipa/desktop/internal/connector"
+	"github.com/nipalab/nipa/desktop/internal/workspace"
 	"github.com/nipalab/nipa/internal/client/grpc/daemonpb"
 )
 
@@ -71,6 +72,20 @@ type Service struct {
 	PickFileFunc     FilePicker
 	OpenFunc         Opener
 	ChooseFolderFunc func(title string) (string, error)
+	// ChooseProgramFunc picks an application for an external tool.
+	ChooseProgramFunc func() (string, error)
+	// LaunchFunc starts a program with a file; nil uses launch.
+	LaunchFunc func(command, path string) error
+	// Notifier shows a desktop notification; nil disables them.
+	Notifier func(Notification) error
+	// ActivityHook receives every clone's latest activity (for the tray).
+	ActivityHook func([]RepoActivity)
+	// SettingsHook is called after settings are saved.
+	SettingsHook func(workspace.Settings)
+	// Autostart enables or disables starting at login; nil disables the option.
+	Autostart func(enabled bool) error
+	// Prefs stores the settings; nil uses the defaults.
+	Prefs SettingsStore
 
 	dial  Dialer
 	store RepoStore
@@ -82,10 +97,22 @@ type Service struct {
 	// cancel func of their change follower; it is reset with the session
 	// because a restarted daemon forgets every watch.
 	watched map[string]context.CancelFunc
+	// followers cancel the team-activity streams; activity is their latest
+	// report per root.
+	followers map[string]context.CancelFunc
+	activity  map[string]RepoActivity
+	pending   *Navigation
 }
 
 func New(dial Dialer, store RepoStore, pick FolderPicker) *Service {
-	return &Service{dial: dial, store: store, pick: pick, watched: map[string]context.CancelFunc{}}
+	return &Service{
+		dial:      dial,
+		store:     store,
+		pick:      pick,
+		watched:   map[string]context.CancelFunc{},
+		followers: map[string]context.CancelFunc{},
+		activity:  map[string]RepoActivity{},
+	}
 }
 
 func (s *Service) emit(name string, data any) {
@@ -185,7 +212,12 @@ func (s *Service) RemoveRepo(ctx context.Context, root string) error {
 		cancel()
 		delete(s.watched, root)
 	}
+	s.stopActivityLocked(root)
+	list := s.activityListLocked()
 	s.mu.Unlock()
+	if s.ActivityHook != nil {
+		s.ActivityHook(list)
+	}
 	if sess, err := s.session(ctx); err == nil {
 		_, err := sess.Client().UnwatchRepo(ctx, &daemonpb.UnwatchRepoRequest{Root: root})
 		s.dropIfDisconnected(err)
@@ -206,7 +238,11 @@ func (s *Service) resetLocked() error {
 	for _, cancel := range s.watched {
 		cancel()
 	}
+	for _, cancel := range s.followers {
+		cancel()
+	}
 	s.watched = map[string]context.CancelFunc{}
+	s.followers = map[string]context.CancelFunc{}
 	err := s.active.Close()
 	s.active = nil
 	return err
@@ -280,6 +316,9 @@ func (s *Service) follow(sess Session, root string) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	s.watched[root] = cancel
+	if _, ok := s.followers[root]; !ok {
+		s.startActivityLocked(sess, root)
+	}
 	go func() {
 		defer s.unfollow(ctx, sess, root)
 		stream, err := sess.Client().WatchChanges(ctx, &daemonpb.WatchChangesRequest{Root: root})

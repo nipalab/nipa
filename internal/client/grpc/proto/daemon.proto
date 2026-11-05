@@ -338,6 +338,32 @@ message RepoChange {
     repeated string paths = 1;
 }
 
+message WatchEventsRequest {
+    string root = 1;
+    int32 interval_seconds = 2; // poll interval; 0 uses the default (60), clamped to [15, 3600]
+}
+
+// TeamEvent is something a teammate did on the server since the last poll.
+message TeamEvent {
+    string kind = 1; // pushed, lock_released, review_requested
+    string actor = 2; // pushed: newest author; lock_released: former holder
+    string branch = 3; // pushed: the clone's branch
+    string commit_id = 4; // pushed: the new head (base36)
+    string message = 5; // pushed: first line of the newest commit; review_requested: request title
+    int32 count = 6; // pushed: number of new commits
+    string path = 7; // lock_released: the released path
+    int64 number = 8; // review_requested: merge request number
+}
+
+// RepoActivity is one poll of the clone's server state. It is sent after the
+// first poll and whenever events arrive or a count changes.
+message RepoActivity {
+    repeated TeamEvent events = 1;
+    int32 incoming = 2; // commits on the branch the clone does not have yet (capped at 100)
+    int32 review_requests = 3; // open merge requests waiting on the caller's review
+    string error = 4; // set when the last poll failed; counts keep their previous values
+}
+
 message OpQueued {
     int32 ahead = 1; // exclusive operations ahead of this one
 }
@@ -806,6 +832,7 @@ service NipaDaemon {
     rpc ReadBlob(ReadBlobRequest) returns (stream BlobEvent);
     rpc Preview(PreviewRequest) returns (stream PreviewEvent);
     rpc WatchChanges(WatchChangesRequest) returns (stream RepoChange);
+    rpc WatchEvents(WatchEventsRequest) returns (stream RepoActivity);
 
     rpc ProxyBranchList(ProxyBranchListRequest) returns (ProxyBranchListResponse);
     rpc ProxyBranchCreate(ProxyBranchCreateRequest) returns (ProxyBranchCreateResponse);

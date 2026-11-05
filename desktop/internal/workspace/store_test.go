@@ -82,3 +82,31 @@ func TestDefaultPath(t *testing.T) {
 	require.Equal(t, "desktop.json", filepath.Base(path))
 	require.Equal(t, "nipa", filepath.Base(filepath.Dir(path)))
 }
+
+func TestStore_Settings(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "desktop.json")
+	s := NewStore(path)
+	got, err := s.Settings()
+	require.NoError(t, err)
+	require.Equal(t, DefaultSettings(), got)
+
+	require.NoError(t, s.Add("/work/a"))
+	want := Settings{PollSeconds: 120, Notify: NotifySettings{Reviews: true}, Tools: []Tool{{Extension: ".blend", Command: "blender"}}}
+	require.NoError(t, s.SaveSettings(want))
+	got, err = NewStore(path).Settings()
+	require.NoError(t, err)
+	require.Equal(t, want, got)
+	repos, err := s.Repos()
+	require.NoError(t, err)
+	require.Equal(t, []string{"/work/a"}, repos, "saving settings keeps the clone list")
+
+	require.NoError(t, os.WriteFile(path, []byte(`{"repos":[],"settings":{"pollSeconds":30}}`), 0o600))
+	got, err = s.Settings()
+	require.NoError(t, err)
+	require.NotNil(t, got.Tools)
+
+	require.NoError(t, os.WriteFile(path, []byte("{"), 0o600))
+	_, err = s.Settings()
+	require.Error(t, err)
+	require.Error(t, s.SaveSettings(want))
+}

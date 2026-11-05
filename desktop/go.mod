@@ -6,11 +6,13 @@ require (
 	github.com/nipalab/nipa v0.0.0
 	github.com/stretchr/testify v1.12.1
 	github.com/wailsapp/wails/v3 v3.1.0
+	golang.org/x/sys v0.49.0
 	google.golang.org/grpc v1.83.2
 	google.golang.org/protobuf v1.36.12
 )
 
 require (
+	git.sr.ht/~jackmordaunt/go-toast/v2 v2.0.3 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
@@ -68,7 +70,6 @@ require (
 	golang.org/x/crypto v0.57.0 // indirect
 	golang.org/x/image v0.47.0 // indirect
 	golang.org/x/net v0.60.0 // indirect
-	golang.org/x/sys v0.49.0 // indirect
 	golang.org/x/term v0.46.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260803160001-6ac0973c030d // indirect

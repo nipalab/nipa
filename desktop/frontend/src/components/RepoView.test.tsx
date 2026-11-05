@@ -667,3 +667,37 @@ describe("history, branches and pending operations", () => {
     expect(describeRevert({})[0]).toBe("Reverted and pushed");
   });
 });
+
+describe("Activity and navigation", () => {
+  const activity = { root: "/work/game", name: "game", incoming: 2, reviewRequests: 0, error: "", events: [] };
+
+  it("counts incoming commits on Update until the clone is updated", async () => {
+    api.update.mockResolvedValue({ branch: "main", commitId: "c7" });
+    const { rerender } = renderWithProviders(<RepoView repo={repo} removing={false} onRemove={() => {}} notify={notify} activity={activity} />);
+    const update = await screen.findByRole("button", { name: /Update/ });
+    expect(update).toHaveTextContent("2");
+    expect(update).toHaveAttribute("title", "2 new commits on main");
+    await userEvent.click(update);
+    await waitFor(() => expect(notify).toHaveBeenCalledWith("Up to date with main", "success"));
+    expect(screen.getByRole("button", { name: /Update/ })).toHaveAttribute("title", "Get the latest version of the branch");
+
+    rerender(<RepoView repo={repo} removing={false} onRemove={() => {}} notify={notify} activity={{ ...activity, incoming: 1 }} />);
+    expect(screen.getByRole("button", { name: /Update/ })).toHaveAttribute("title", "1 new commit on main");
+    rerender(<RepoView repo={repo} removing={false} onRemove={() => {}} notify={notify} activity={{ ...activity, incoming: 100 }} />);
+    expect(screen.getByRole("button", { name: /Update/ })).toHaveTextContent("100+");
+  });
+
+  it("opens the tab and commit an intent asks for", async () => {
+    const commit = { id: "c1", hash: "h1", message: "Paint hero", author: "Alice", email: "", createdAt: "", parents: [] };
+    api.history.mockResolvedValue({ commits: [commit], next: "" });
+    api.commitFiles.mockResolvedValue([]);
+    const { rerender } = renderWithProviders(<RepoView repo={repo} removing={false} onRemove={() => {}} notify={notify} intent={{ tab: "history", commit: "c9", seq: 1 }} />);
+    expect(await screen.findByRole("tab", { name: /History/ })).toHaveAttribute("aria-selected", "true");
+    await waitFor(() => expect(api.history).toHaveBeenCalledWith("/work/game", expect.objectContaining({ start: "c9", limit: 1 })));
+
+    rerender(<RepoView repo={repo} removing={false} onRemove={() => {}} notify={notify} intent={{ tab: "nowhere", seq: 2 }} />);
+    expect(screen.getByRole("tab", { name: /History/ })).toHaveAttribute("aria-selected", "true");
+    rerender(<RepoView repo={repo} removing={false} onRemove={() => {}} notify={notify} intent={{ tab: "history", commit: "c1", seq: 3 }} />);
+    expect(await screen.findAllByText("Paint hero")).not.toHaveLength(0);
+  });
+});

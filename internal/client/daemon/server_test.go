@@ -225,3 +225,16 @@ func TestNewServer_InvalidEnvPort(t *testing.T) {
 	_, err = NewServer(Options{EndpointPath: filepath.Join(t.TempDir(), "daemon.json")})
 	require.ErrorContains(t, err, EnvPort)
 }
+
+func TestNewServer_EventIntervalEnv(t *testing.T) {
+	for _, raw := range []string{"soon", "-1s"} {
+		t.Setenv(EnvEventInterval, raw)
+		_, err := NewServer(Options{EndpointPath: filepath.Join(t.TempDir(), "daemon.json")})
+		require.ErrorContains(t, err, EnvEventInterval)
+	}
+	t.Setenv(EnvEventInterval, "250ms")
+	srv, err := NewServer(Options{EndpointPath: filepath.Join(t.TempDir(), "daemon.json")})
+	require.NoError(t, err)
+	require.Equal(t, 250*time.Millisecond, srv.eventEvery)
+	require.NoError(t, srv.listener.Close())
+}

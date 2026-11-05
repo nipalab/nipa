@@ -64,6 +64,17 @@ const service = vi.hoisted(() => ({
   Comment: vi.fn(),
   Reply: vi.fn(),
   ResolveThread: vi.fn(),
+  Activity: vi.fn(),
+  Settings: vi.fn(),
+  SaveSettings: vi.fn(),
+  UploadWorkers: vi.fn(),
+  SetUploadWorkers: vi.fn(),
+  RestartDaemon: vi.fn(),
+  ChooseProgram: vi.fn(),
+  IgnoreRules: vi.fn(),
+  SaveIgnoreRules: vi.fn(),
+  OpenLink: vi.fn(),
+  TakeNavigation: vi.fn(),
 }));
 vi.mock("../../bindings/github.com/nipalab/nipa/desktop/internal/service", () => ({ Service: service }));
 
@@ -334,5 +345,47 @@ describe("desktop api", () => {
     expect(service.ResolveConflict).toHaveBeenCalledWith("/a", { path: "f", choice: "content", content: "x" });
     await desktop.resolveConflict("/a", "f", "ours");
     expect(service.ResolveConflict).toHaveBeenLastCalledWith("/a", { path: "f", choice: "ours", content: "" });
+  });
+
+  it("forwards settings, activity and navigation calls", async () => {
+    const st = { keepInTray: true, startAtLogin: false, pollSeconds: 60, notify: { pushes: true, locks: true, reviews: true }, tools: null };
+    service.Settings.mockResolvedValue(st);
+    service.SaveSettings.mockResolvedValue({ ...st, tools: [{ extension: ".blend", command: "blender" }] });
+    expect(await desktop.settings()).toEqual({ ...st, tools: [] });
+    expect((await desktop.saveSettings({ ...st, tools: [] })).tools).toEqual([{ extension: ".blend", command: "blender" }]);
+    expect(service.SaveSettings).toHaveBeenCalledWith({ ...st, tools: [] });
+
+    service.Activity.mockResolvedValueOnce(null).mockResolvedValueOnce([{ root: "/a", events: null }]);
+    expect(await desktop.activity()).toEqual([]);
+    expect(await desktop.activity()).toEqual([{ root: "/a", events: [] }]);
+
+    service.UploadWorkers.mockResolvedValue(4);
+    expect(await desktop.uploadWorkers()).toBe(4);
+    await desktop.setUploadWorkers(8);
+    expect(service.SetUploadWorkers).toHaveBeenCalledWith(8);
+    await desktop.restartDaemon();
+    await desktop.chooseProgram();
+    expect(service.RestartDaemon).toHaveBeenCalled();
+    expect(service.ChooseProgram).toHaveBeenCalled();
+    await desktop.ignoreRules("/a");
+    await desktop.saveIgnoreRules("/a", { shared: "x", local: "" });
+    expect(service.IgnoreRules).toHaveBeenCalledWith("/a");
+    expect(service.SaveIgnoreRules).toHaveBeenCalledWith("/a", { shared: "x", local: "" });
+    await desktop.openLink("nipa://h/o/p");
+    await desktop.takeNavigation();
+    expect(service.OpenLink).toHaveBeenCalledWith("nipa://h/o/p");
+    expect(service.TakeNavigation).toHaveBeenCalled();
+  });
+
+  it("subscribes to activity and navigation events", () => {
+    const activity = vi.fn();
+    const navigate = vi.fn();
+    desktop.onRepoActivity(activity);
+    desktop.onNavigate(navigate);
+    expect(events.On.mock.calls.map((c) => c[0])).toEqual(["repo:activity", "app:navigate"]);
+    events.On.mock.calls[0][1]({ data: { root: "/a", events: null } });
+    events.On.mock.calls[1][1]({ data: { root: "/a" } });
+    expect(activity).toHaveBeenCalledWith({ root: "/a", events: [] });
+    expect(navigate).toHaveBeenCalledWith();
   });
 });

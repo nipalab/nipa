@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
@@ -20,6 +20,13 @@ const api = vi.hoisted(() => ({
   remoteBranches: vi.fn(),
   remoteTree: vi.fn(),
   clone: vi.fn(),
+  activity: vi.fn(),
+  onRepoActivity: vi.fn(),
+  takeNavigation: vi.fn(),
+  onNavigate: vi.fn(),
+  ignoreRules: vi.fn(),
+  settings: vi.fn(),
+  uploadWorkers: vi.fn(),
 }));
 vi.mock("./api/desktop", () => ({ desktop: api }));
 
@@ -34,6 +41,11 @@ beforeEach(() => {
   api.changes.mockResolvedValue({ branch: "main", staged: [], unstaged: [], conflicts: [] });
   api.onRepoChanged.mockReturnValue(() => {});
   api.onOpProgress.mockReturnValue(() => {});
+  api.activity.mockResolvedValue([]);
+  api.onRepoActivity.mockReturnValue(() => {});
+  api.takeNavigation.mockResolvedValue(null);
+  api.onNavigate.mockReturnValue(() => {});
+  api.ignoreRules.mockResolvedValue({ shared: "", local: "" });
 });
 
 const openDetails = () => userEvent.click(screen.getByRole("tab", { name: /Details/ }));
@@ -191,5 +203,65 @@ describe("App", () => {
     expect(await screen.findByText("connection refused")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: /Try again/ }));
     expect(await screen.findByRole("heading", { name: "game" })).toBeInTheDocument();
+  });
+
+  it("shows teammate activity in the sidebar and on the Update button", async () => {
+    let push: ((a: unknown) => void) | undefined;
+    api.onRepoActivity.mockImplementation((fn: (a: unknown) => void) => {
+      push = fn;
+      return () => {};
+    });
+    api.activity.mockResolvedValue([{ root: "/work/tools", name: "tools", incoming: 0, reviewRequests: 2, error: "", events: [] }]);
+    renderWithProviders(<App />);
+    expect(await screen.findByTitle("2 merge requests waiting for your review")).toBeInTheDocument();
+
+    act(() => push?.({ root: "/work/game", name: "game", incoming: 3, reviewRequests: 0, error: "offline", events: [{ kind: "pushed" }, { kind: "other" }] }));
+    expect(await screen.findByTitle("3 new commits to get")).toBeInTheDocument();
+    expect(screen.getByLabelText("Server unreachable: offline")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Update/ })).toHaveAttribute("title", "3 new commits on main");
+    act(() => push?.({ root: "/work/game", name: "game", incoming: 120, reviewRequests: 1, error: "", events: [] }));
+    expect(await screen.findByTitle("100+ new commits to get")).toBeInTheDocument();
+    expect(screen.getByTitle("1 merge request waiting for your review")).toBeInTheDocument();
+  });
+
+  it("follows a navigation request to a clone and tab", async () => {
+    api.takeNavigation.mockResolvedValueOnce({ root: "/work/tools", tab: "details", number: 0, commit: "", server: "", org: "", project: "" });
+    renderWithProviders(<App />);
+    expect(await screen.findByRole("heading", { name: "tools" })).toBeInTheDocument();
+    expect(await screen.findByRole("tab", { name: /Details/ })).toHaveAttribute("aria-selected", "true");
+    expect(await screen.findByLabelText("Shared rules (.nipaignore)")).toBeInTheDocument();
+  });
+
+  it("opens settings and the clone dialog from navigation events", async () => {
+    let fire: (() => void) | undefined;
+    api.onNavigate.mockImplementation((fn: () => void) => {
+      fire = fn;
+      return () => {};
+    });
+    api.settings.mockReturnValue(new Promise(() => {}));
+    api.uploadWorkers.mockResolvedValue(0);
+    api.accountStatus.mockReturnValue(new Promise(() => {}));
+    renderWithProviders(<App />);
+    await screen.findByRole("heading", { name: "game" });
+
+    api.takeNavigation.mockResolvedValueOnce({ root: "", tab: "settings", number: 0, commit: "", server: "", org: "", project: "" });
+    act(() => fire?.());
+    expect(await screen.findByRole("dialog", { name: "Settings" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Close settings" }));
+    expect(screen.queryByRole("dialog", { name: "Settings" })).not.toBeInTheDocument();
+
+    api.takeNavigation.mockResolvedValueOnce({ root: "", tab: "changes", number: 0, commit: "", server: "https://nipa.test", org: "studio", project: "art" });
+    act(() => fire?.());
+    expect(await screen.findByText("studio/art is not cloned on this computer yet")).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Server" })).toHaveValue("https://nipa.test");
+    await userEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog", { name: /Clone/ })).not.toBeInTheDocument();
+
+    api.takeNavigation.mockResolvedValueOnce({ root: "", tab: "changes", number: 0, commit: "", server: "", org: "", project: "" });
+    act(() => fire?.());
+    api.takeNavigation.mockRejectedValueOnce(new Error("gone"));
+    act(() => fire?.());
+    await userEvent.click(screen.getByRole("button", { name: "Settings" }));
+    expect(await screen.findByRole("dialog", { name: "Settings" })).toBeInTheDocument();
   });
 });

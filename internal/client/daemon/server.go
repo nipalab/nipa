@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 	"sync"
+	"time"
 
 	clientDomain "github.com/nipalab/nipa/internal/client/domain"
 	"github.com/nipalab/nipa/internal/client/grpc/daemonpb"
@@ -18,6 +19,10 @@ import (
 
 // EnvPort pins the daemon loopback port; 0 picks a free port.
 const EnvPort = "NIPA_DAEMON_PORT"
+
+// EnvEventInterval overrides the WatchEvents poll interval (a Go duration),
+// for tests that cannot wait for the 15 s minimum.
+const EnvEventInterval = "NIPA_DAEMON_EVENT_INTERVAL"
 
 const maxRecvMsgSize = 32 << 20
 
@@ -52,6 +57,8 @@ type Server struct {
 	ready    chan struct{}
 	stop     chan struct{}
 	stopOnce sync.Once
+
+	eventEvery time.Duration
 }
 
 var _ daemonpb.NipaDaemonServer = (*Server)(nil)
@@ -82,6 +89,14 @@ func NewServer(opts Options) (*Server, error) {
 	if version == "" {
 		version = Version
 	}
+	var eventEvery time.Duration
+	if raw := os.Getenv(EnvEventInterval); raw != "" {
+		parsed, err := time.ParseDuration(raw)
+		if err != nil || parsed <= 0 {
+			return nil, clientDomain.NewUserError(fmt.Sprintf("invalid %s %q", EnvEventInterval, raw))
+		}
+		eventEvery = parsed
+	}
 	token, err := newToken()
 	if err != nil {
 		return nil, err
@@ -102,6 +117,7 @@ func NewServer(opts Options) (*Server, error) {
 		repos:        newRegistry(opts.Runners),
 		ready:        make(chan struct{}),
 		stop:         make(chan struct{}),
+		eventEvery:   eventEvery,
 	}
 	s.grpc = grpc.NewServer(
 		grpc.MaxRecvMsgSize(maxRecvMsgSize),

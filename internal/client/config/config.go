@@ -132,3 +132,51 @@ func ResolveUploadWorkers() (int, bool, error) {
 	}
 	return 0, false, nil
 }
+
+// SetUploadWorkers pins the upload worker count in the user configuration; 0
+// removes the pin so concurrency is tuned automatically. Other keys are kept.
+func SetUploadWorkers(workers int) error {
+	if workers < 0 {
+		return fmt.Errorf("upload workers must not be negative")
+	}
+	path, err := Path()
+	if err != nil {
+		return err
+	}
+	raw := map[string]json.RawMessage{}
+	data, err := os.ReadFile(path)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	if len(data) > 0 {
+		if err := json.Unmarshal(data, &raw); err != nil {
+			return fmt.Errorf("parse %s: %w", path, err)
+		}
+	}
+	if workers == 0 {
+		delete(raw, "uploadWorkers")
+	} else {
+		raw["uploadWorkers"] = json.RawMessage(strconv.Itoa(workers))
+	}
+	out, err := json.MarshalIndent(raw, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".config-*.json")
+	if err != nil {
+		return err
+	}
+	if _, err := tmp.Write(append(out, '\n')); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(tmp.Name())
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(tmp.Name())
+		return err
+	}
+	return os.Rename(tmp.Name(), path)
+}

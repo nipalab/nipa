@@ -13,9 +13,13 @@ const PARENT_KEY = "nipa.cloneParent";
 
 type Step = "server" | "signin" | "project" | "options" | "cloning";
 
-type CloneDialogProps = { onClose: () => void; onCloned: (repo: Repo) => void };
+// CloneHint prefills the dialog, e.g. from a nipa:// link to a project that is
+// not cloned yet.
+export type CloneHint = { server: string; project: string };
 
-export function CloneDialog({ onClose, onCloned }: CloneDialogProps) {
+type CloneDialogProps = { onClose: () => void; onCloned: (repo: Repo) => void; hint?: CloneHint };
+
+export function CloneDialog({ onClose, onCloned, hint }: CloneDialogProps) {
   const [step, setStep] = useState<Step>("server");
 
   useEffect(() => {
@@ -23,7 +27,7 @@ export function CloneDialog({ onClose, onCloned }: CloneDialogProps) {
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [step, onClose]);
-  const [server, setServer] = useState(() => readSetting(SERVER_KEY) ?? "");
+  const [server, setServer] = useState(() => hint?.server || (readSetting(SERVER_KEY) ?? ""));
   const [account, setAccount] = useState<Account | null>(null);
   const [project, setProject] = useState<RemoteProject | null>(null);
 
@@ -71,6 +75,7 @@ export function CloneDialog({ onClose, onCloned }: CloneDialogProps) {
           {step === "project" && account && (
             <ProjectStep
               server={account.address}
+              initialQuery={hint?.project}
               onPick={(p) => {
                 setProject(p);
                 setStep("options");
@@ -184,8 +189,8 @@ function SignInStep({ account, onSignedIn }: { account: Account; onSignedIn: () 
   );
 }
 
-function ProjectStep({ server, onPick, onSignIn }: { server: string; onPick: (p: RemoteProject) => void; onSignIn: () => void }) {
-  const [query, setQuery] = useState("");
+function ProjectStep({ server, initialQuery = "", onPick, onSignIn }: { server: string; initialQuery?: string; onPick: (p: RemoteProject) => void; onSignIn: () => void }) {
+  const [query, setQuery] = useState(initialQuery);
   const projects = useQuery({ queryKey: ["remote", server, "projects"], queryFn: () => desktop.listProjects(server), retry: false });
   const groups = useMemo(() => {
     const q = query.trim().toLowerCase();

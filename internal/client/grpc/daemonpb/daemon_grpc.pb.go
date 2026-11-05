@@ -40,6 +40,7 @@ const (
 	NipaDaemon_ReadBlob_FullMethodName                      = "/nipadaemon.NipaDaemon/ReadBlob"
 	NipaDaemon_Preview_FullMethodName                       = "/nipadaemon.NipaDaemon/Preview"
 	NipaDaemon_WatchChanges_FullMethodName                  = "/nipadaemon.NipaDaemon/WatchChanges"
+	NipaDaemon_WatchEvents_FullMethodName                   = "/nipadaemon.NipaDaemon/WatchEvents"
 	NipaDaemon_ProxyBranchList_FullMethodName               = "/nipadaemon.NipaDaemon/ProxyBranchList"
 	NipaDaemon_ProxyBranchCreate_FullMethodName             = "/nipadaemon.NipaDaemon/ProxyBranchCreate"
 	NipaDaemon_ProxyBranchDelete_FullMethodName             = "/nipadaemon.NipaDaemon/ProxyBranchDelete"
@@ -107,6 +108,7 @@ type NipaDaemonClient interface {
 	ReadBlob(ctx context.Context, in *ReadBlobRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[BlobEvent], error)
 	Preview(ctx context.Context, in *PreviewRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[PreviewEvent], error)
 	WatchChanges(ctx context.Context, in *WatchChangesRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[RepoChange], error)
+	WatchEvents(ctx context.Context, in *WatchEventsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[RepoActivity], error)
 	ProxyBranchList(ctx context.Context, in *ProxyBranchListRequest, opts ...grpc.CallOption) (*ProxyBranchListResponse, error)
 	ProxyBranchCreate(ctx context.Context, in *ProxyBranchCreateRequest, opts ...grpc.CallOption) (*ProxyBranchCreateResponse, error)
 	ProxyBranchDelete(ctx context.Context, in *ProxyBranchDeleteRequest, opts ...grpc.CallOption) (*ProxyBranchDeleteResponse, error)
@@ -456,6 +458,25 @@ func (c *nipaDaemonClient) WatchChanges(ctx context.Context, in *WatchChangesReq
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type NipaDaemon_WatchChangesClient = grpc.ServerStreamingClient[RepoChange]
+
+func (c *nipaDaemonClient) WatchEvents(ctx context.Context, in *WatchEventsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[RepoActivity], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &NipaDaemon_ServiceDesc.Streams[10], NipaDaemon_WatchEvents_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[WatchEventsRequest, RepoActivity]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type NipaDaemon_WatchEventsClient = grpc.ServerStreamingClient[RepoActivity]
 
 func (c *nipaDaemonClient) ProxyBranchList(ctx context.Context, in *ProxyBranchListRequest, opts ...grpc.CallOption) (*ProxyBranchListResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
@@ -839,7 +860,7 @@ func (c *nipaDaemonClient) RemoteTree(ctx context.Context, in *RemoteTreeRequest
 
 func (c *nipaDaemonClient) Clone(ctx context.Context, in *CloneRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[OpEvent], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &NipaDaemon_ServiceDesc.Streams[10], NipaDaemon_Clone_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &NipaDaemon_ServiceDesc.Streams[11], NipaDaemon_Clone_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -858,7 +879,7 @@ type NipaDaemon_CloneClient = grpc.ServerStreamingClient[OpEvent]
 
 func (c *nipaDaemonClient) SetSparse(ctx context.Context, in *SetSparseRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[OpEvent], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &NipaDaemon_ServiceDesc.Streams[11], NipaDaemon_SetSparse_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &NipaDaemon_ServiceDesc.Streams[12], NipaDaemon_SetSparse_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -900,6 +921,7 @@ type NipaDaemonServer interface {
 	ReadBlob(*ReadBlobRequest, grpc.ServerStreamingServer[BlobEvent]) error
 	Preview(*PreviewRequest, grpc.ServerStreamingServer[PreviewEvent]) error
 	WatchChanges(*WatchChangesRequest, grpc.ServerStreamingServer[RepoChange]) error
+	WatchEvents(*WatchEventsRequest, grpc.ServerStreamingServer[RepoActivity]) error
 	ProxyBranchList(context.Context, *ProxyBranchListRequest) (*ProxyBranchListResponse, error)
 	ProxyBranchCreate(context.Context, *ProxyBranchCreateRequest) (*ProxyBranchCreateResponse, error)
 	ProxyBranchDelete(context.Context, *ProxyBranchDeleteRequest) (*ProxyBranchDeleteResponse, error)
@@ -1012,6 +1034,9 @@ func (UnimplementedNipaDaemonServer) Preview(*PreviewRequest, grpc.ServerStreami
 }
 func (UnimplementedNipaDaemonServer) WatchChanges(*WatchChangesRequest, grpc.ServerStreamingServer[RepoChange]) error {
 	return status.Errorf(codes.Unimplemented, "method WatchChanges not implemented")
+}
+func (UnimplementedNipaDaemonServer) WatchEvents(*WatchEventsRequest, grpc.ServerStreamingServer[RepoActivity]) error {
+	return status.Errorf(codes.Unimplemented, "method WatchEvents not implemented")
 }
 func (UnimplementedNipaDaemonServer) ProxyBranchList(context.Context, *ProxyBranchListRequest) (*ProxyBranchListResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ProxyBranchList not implemented")
@@ -1461,6 +1486,17 @@ func _NipaDaemon_WatchChanges_Handler(srv interface{}, stream grpc.ServerStream)
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type NipaDaemon_WatchChangesServer = grpc.ServerStreamingServer[RepoChange]
+
+func _NipaDaemon_WatchEvents_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(WatchEventsRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(NipaDaemonServer).WatchEvents(m, &grpc.GenericServerStream[WatchEventsRequest, RepoActivity]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type NipaDaemon_WatchEventsServer = grpc.ServerStreamingServer[RepoActivity]
 
 func _NipaDaemon_ProxyBranchList_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ProxyBranchListRequest)
@@ -2421,6 +2457,11 @@ var NipaDaemon_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "WatchChanges",
 			Handler:       _NipaDaemon_WatchChanges_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "WatchEvents",
+			Handler:       _NipaDaemon_WatchEvents_Handler,
 			ServerStreams: true,
 		},
 		{
