@@ -60,29 +60,46 @@ URLs stay valid across restarts; do not rotate those keys during an upgrade.
 
 The marketing site is a separate Astro deployment (the `nipa-web` repo on
 Netlify). Caddy serves both the app and the marketing site on `nipalab.com`:
-the `@marketing` matcher proxies the landing page, `/_astro/*`,
-`/screenshots/*`, `/pricing`, and the root assets (`favicon.svg`,
-`apple-touch-icon.png`, `logo.svg`, `og.png`, `robots.txt`, `sitemap-*.xml`);
-every other path goes to `nipad-ee`. Because Caddy owns the apex domain, the
-upstream must be the Netlify site's own origin (its `*.netlify.app` hostname),
-never `https://nipalab.com` — that would proxy Caddy back into itself. Every
-marketing page link is absolute to `https://nipalab.com`, so marketing
-navigation stays on the marketing domain; `Sign in` / `Open dashboard` link to
-`https://nipalab.com`. A marketing change only needs a Netlify deploy — no
-`nipad-ee` rebuild or blue/green flip:
+the `@marketing` matcher proxies the landing page, `/pricing`, `/download`,
+`/support`, `/contact`, `/privacy`, `/terms`, the guides at `/guides`,
+`/_astro/*`, `/screenshots/*` and the root assets (`favicon.svg`,
+`apple-touch-icon.png`, `logo.svg`, `og.png`, `robots.txt`, `site.webmanifest`,
+`sitemap-*.xml`); every other path goes to `nipad-ee`. The product's REST API
+docs stay at `/docs`, which is why the marketing guides live at `/guides`.
+Because Caddy owns the apex domain, the upstream must be the Netlify site's
+own origin (its `*.netlify.app` hostname), never `https://nipalab.com` — that
+would proxy Caddy back into itself. Caddy sends the upstream's own host
+(`{upstream_hostport}`), so the Netlify site does not need `nipalab.com` as a
+domain alias. Marketing links are root-relative, so navigation stays on the
+domain; `Sign in` / `Open dashboard` / `/register` link to the app on the same
+origin. A marketing change only needs a Netlify deploy — no `nipad-ee`
+rebuild or blue/green flip:
 
 - Keep the `@marketing` `handle` block in `deploy/caddy/Caddyfile` ahead of the
   app's `reverse_proxy`. `upgrade.sh` only rewrites the `reverse_proxy
   127.0.0.1:<port>` line, so the marketing upstream is untouched by flips.
 - Add every new marketing page route or root asset to the `@marketing` matcher
   and to the reserved org slugs (`internal/usecase/reserved.go` and
-  `web/src/slug.ts`), or the app's SPA routes will shadow it.
+  `web/src/slug.ts`), or the app's SPA routes will shadow it. Run
+  `npm run build && npm run routes` in `nipa-web` to print the matcher for the
+  current build and fail when the Caddyfile misses a route;
+  `TestMarketingRoutesAreReservedOrgSlugs` fails when a matcher path is not a
+  reserved org slug.
+- Before deploying a Caddyfile that adds a path, make sure no organization
+  already uses that slug (it would become unreachable), for example
+  `SELECT slug FROM organizations WHERE slug IN ('contact','download','guides','privacy','support','terms');`
+  and rename any hit.
+- `nipa-web` builds flat files (`pricing.html`) with `trailingSlash: 'never'`,
+  so Netlify serves pages without redirects. After the first deploy check
+  `curl -sI https://nipalab.com/pricing` (200, no `netlify.app` in `Location`),
+  `/guides/cli` (marketing) and `/docs` (REST API docs).
 - Point it at the Netlify site with `MARKETING_UPSTREAM` (required: the
-  Netlify-generated origin, never `https://nipalab.com`) and `MARKETING_HOST`
-  (defaults `nipalab.com`; set them in the Caddy service environment or edit
-  the Caddyfile).
+  Netlify-generated origin, never `https://nipalab.com`); set it in the Caddy
+  service environment or edit the Caddyfile.
 - Build `nipa-web` with the default base `/` (`netlify.toml` carries the build
-  command); `site` and `APP_SITE` in `src/consts.ts` decide the two origins.
+  command and cache headers); `site` in `astro.config.mjs` sets the canonical
+  origin. The `*.netlify.app` hostname stays reachable, but canonical tags point
+  to `nipalab.com`.
 
 `make marketing-dist` remains an optional fallback that builds the site with
 base `/web/` and embeds a copy into `nipad-ee` (for a SaaS host without the
