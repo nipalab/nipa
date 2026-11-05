@@ -188,6 +188,31 @@ func TestDiff_RevisionVsRevision(t *testing.T) {
 	require.Equal(t, []byte(newContent), files[0].New)
 }
 
+func TestDiff_RevisionVsRevisionHonorsPaths(t *testing.T) {
+	mainID := snow.ID(5).Base36()
+	featureID := snow.ID(6).Base36()
+	client := &stubDiffClient{
+		branches: map[string]*serverDomain.Branch{
+			"main":    {Name: "main", CommitID: ptrID(snow.ID(5))},
+			"feature": {Name: "feature", CommitID: ptrID(snow.ID(6))},
+		},
+		commits: map[string]*clientDomain.CommitDetail{
+			mainID:    {ID: mainID, Tree: fileTree(t, "a.txt", "one\n")},
+			featureID: {ID: featureID, Tree: fileTree(t, "a.txt", "one\ntwo\n")},
+		},
+		download: contentChunks(t, "one\n", "one\ntwo\n"),
+	}
+	d := NewDiff(diffAuth(t), client, newDiffStub())
+
+	files, err := d.Run(context.Background(), t.TempDir(), []string{"main", "feature"}, DiffOptions{Paths: []string{"other.txt"}})
+	require.NoError(t, err)
+	require.Empty(t, files)
+
+	files, err = d.Run(context.Background(), t.TempDir(), []string{"main", "feature"}, DiffOptions{Paths: []string{"a.txt"}})
+	require.NoError(t, err)
+	require.Len(t, files, 1)
+}
+
 func TestDiff_CommitIDRevision(t *testing.T) {
 	root := t.TempDir()
 	content := "hello\n"

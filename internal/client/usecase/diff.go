@@ -197,8 +197,8 @@ func (d *Diff) compareRevisions(ctx context.Context, nu *clientDomain.NipaUrl, b
 			return nil, err
 		}
 	}
-	changes := diff.Compare(baseEntries, head.entries)
-	scope := clientDomain.ChunkScope{Org: nu.Org, Project: nu.Project, CommitIDs: commitIDs(baseCommitID, head.commitID)}
+	changes := diff.Compare(filterEntries(baseEntries, opts.Paths), filterEntries(head.entries, opts.Paths))
+	scope := clientDomain.ChunkScope{Org: nu.Org, Project: nu.Project, CommitIDs: commitIDs(baseCommitID, head.commitID), Paths: opts.Paths}
 	if err := d.ensureContent(ctx, changes, true, true, opts.Binary, scope); err != nil {
 		return nil, err
 	}
@@ -491,6 +491,19 @@ func snapshotEntries(snapshot *clientDomain.Snapshot, opts DiffOptions, staged m
 			Encoding:    f.Encoding,
 			Hash:        f.Hash,
 			ChunkHashes: f.Chunks,
+		}
+	}
+	return out
+}
+
+func filterEntries(entries map[string]diff.Entry, filters []string) map[string]diff.Entry {
+	if len(filters) == 0 {
+		return entries
+	}
+	out := make(map[string]diff.Entry)
+	for p, e := range entries {
+		if pathMatches(p, filters) {
+			out[p] = e
 		}
 	}
 	return out
