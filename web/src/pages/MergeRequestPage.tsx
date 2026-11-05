@@ -25,7 +25,7 @@ import {
 import type { MergeRequestResponse } from '../api/models'
 import { useAuth } from '../auth'
 import { DiffAnchor } from '../components/repo/DiffView'
-import { ActorAvatar, actorName, actorsFrom, type ActorLike } from '../components/repo/ActorAvatar'
+import { ActorAvatar, actorName, actorsFrom, type ActorLike } from '../components/ActorAvatar'
 import { ChangesView } from '../components/repo/ChangesView'
 import { MergeRequestCommits } from '../components/repo/MergeRequestCommits'
 import { MergeRequestOverview } from '../components/repo/MergeRequestOverview'

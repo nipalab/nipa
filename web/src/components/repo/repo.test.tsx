@@ -57,9 +57,9 @@ describe('format', () => {
   it('formats byte sizes', () => {
     expect(formatBytes(0)).toBe('0 B')
     expect(formatBytes(1023)).toBe('1023 B')
-    expect(formatBytes(1024)).toBe('1 KB')
-    expect(formatBytes(1536)).toBe('1.5 KB')
-    expect(formatBytes(10 * 1024 * 1024)).toBe('10 MB')
+    expect(formatBytes(1024)).toBe('1 KiB')
+    expect(formatBytes(1536)).toBe('1.5 KiB')
+    expect(formatBytes(10 * 1024 * 1024)).toBe('10 MiB')
     expect(formatBytes(undefined)).toBe('')
   })
 

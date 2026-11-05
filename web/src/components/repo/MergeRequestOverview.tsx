@@ -36,8 +36,8 @@ import type {
   ThreadResponse,
   TimelineItemResponse,
 } from '../../api/models'
-import { Mono, PRIMARY_BUTTON_STYLE } from '../ui'
-import { ActorAvatar, actorName, actorsFrom, type ActorLike } from './ActorAvatar'
+import { Mono } from '../ui'
+import { ActorAvatar, actorName, actorsFrom, type ActorLike } from '../ActorAvatar'
 import { ThreadCodeContext } from './DiffView'
 import { ThreadCard } from './ThreadCard'
 
@@ -705,7 +705,6 @@ export function MergeRequestOverview({
                   </Button>
                   <Button
                     disabled={pending || (!body.trim() && inlineDrafts.length === 0)}
-                    style={PRIMARY_BUTTON_STYLE}
                     variant="primary"
                     onClick={() => submitDecision('approved')}
                   >
@@ -1079,7 +1078,6 @@ export function MergeRequestOverview({
               <Button
                 block
                 variant="primary"
-                style={PRIMARY_BUTTON_STYLE}
                 disabled={!mergeable || pending}
                 onClick={() => onMerge(strategy, deleteSource)}
               >

@@ -151,7 +151,7 @@ describe('OrgSettingsPage storage', () => {
     })
     await waitForText('Storage')
 
-    expect(document.body.textContent).toContain('1.5 KiB of 4.0 KiB used')
+    expect(document.body.textContent).toContain('1.5 KiB of 4 KiB used')
     const row = Array.from(document.querySelectorAll('tr')).find((item) => item.textContent?.includes('Demo'))
     expect(row?.textContent).toContain('1.5 KiB')
     act(() => root.unmount())

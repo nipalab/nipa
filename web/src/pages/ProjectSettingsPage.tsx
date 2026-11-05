@@ -1,10 +1,8 @@
 import { useEffect, useState } from 'react'
-import type { CSSProperties, ReactNode } from 'react'
 import {
   Button,
   Dialog,
   FormControl,
-  Heading,
   NavList,
   Select,
   Stack,
@@ -32,6 +30,7 @@ import { EmailSettings } from '../components/repo/EmailSettings'
 import { PermissionBadge } from '../components/PermissionBadge'
 import { PermissionCheckboxes } from '../components/PermissionCheckboxes'
 import { UserGroupPicker } from '../components/UserGroupPicker'
+import { SettingsCard, SettingsRow } from '../components/SettingsCard'
 import { ErrorBanner, Loading, Mono } from '../components/ui'
 import { useAsync } from '../hooks'
 
@@ -46,108 +45,6 @@ type SettingsTab = (typeof SETTINGS_TABS)[number]['key']
 
 function isSettingsTab(value: string | null): value is SettingsTab {
   return SETTINGS_TABS.some((tab) => tab.key === value)
-}
-
-function Box({ children, style }: { children: ReactNode; style?: CSSProperties }) {
-  return (
-    <div
-      style={{
-        border: '1px solid var(--borderColor-default)',
-        borderRadius: 6,
-        overflow: 'hidden',
-        ...style,
-      }}
-    >
-      {children}
-    </div>
-  )
-}
-
-function SettingsCard({
-  title,
-  description,
-  actions,
-  footer,
-  children,
-}: {
-  title: string
-  description?: ReactNode
-  actions?: ReactNode
-  footer?: ReactNode
-  children: ReactNode
-}) {
-  return (
-    <Box>
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: 16,
-          padding: '12px 16px',
-          background: 'var(--bgColor-muted)',
-        }}
-      >
-        <div style={{ minWidth: 0 }}>
-          <Heading as="h2" style={{ margin: 0, fontSize: 16 }}>
-            {title}
-          </Heading>
-          {description && (
-            <Text as="p" style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--fgColor-muted)' }}>
-              {description}
-            </Text>
-          )}
-        </div>
-        {actions}
-      </div>
-      {children}
-      {footer && (
-        <div
-          style={{
-            borderTop: '1px solid var(--borderColor-default)',
-            background: 'var(--bgColor-muted)',
-            padding: '12px 16px',
-            display: 'flex',
-            justifyContent: 'flex-end',
-            gap: 8,
-          }}
-        >
-          {footer}
-        </div>
-      )}
-    </Box>
-  )
-}
-
-function SettingsRow({
-  label,
-  subtext,
-  children,
-}: {
-  label: ReactNode
-  subtext?: ReactNode
-  children?: ReactNode
-}) {
-  return (
-    <div
-      style={{
-        display: 'flex',
-        flexWrap: 'wrap',
-        alignItems: 'flex-start',
-        gap: 16,
-        padding: 16,
-        borderTop: '1px solid var(--borderColor-muted)',
-      }}
-    >
-      <div style={{ flex: '0 0 220px', minWidth: 0 }}>
-        <div style={{ fontWeight: 600, overflowWrap: 'anywhere' }}>{label}</div>
-        {subtext && (
-          <div style={{ color: 'var(--fgColor-muted)', fontSize: 12, overflowWrap: 'anywhere' }}>{subtext}</div>
-        )}
-      </div>
-      {children !== undefined && <div style={{ flex: '1 1 300px', minWidth: 0 }}>{children}</div>}
-    </div>
-  )
 }
 
 export default function ProjectSettingsPage() {

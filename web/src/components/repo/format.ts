@@ -34,7 +34,7 @@ export function absoluteTime(iso?: string): string {
 export function formatBytes(bytes?: number): string {
   if (bytes === undefined || !Number.isFinite(bytes) || bytes < 0) return ''
   if (bytes < 1024) return `${bytes} B`
-  const units = ['KB', 'MB', 'GB', 'TB']
+  const units = ['KiB', 'MiB', 'GiB', 'TiB']
   let value = bytes / 1024
   let unit = 0
   while (value >= 1024 && unit < units.length - 1) {

@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom'
 import { deactivateUser, listUsers, resetUserPassword, updateUserFlags } from '../api/endpoints'
 import type { UserResponse } from '../api/models'
 import { useAuth } from '../auth'
-import { ActorAvatar } from '../components/repo/ActorAvatar'
+import { ActorAvatar } from '../components/ActorAvatar'
 import { EmptyState, ErrorBanner, Loading, Page } from '../components/ui'
 import { useAsync } from '../hooks'
 

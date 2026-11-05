@@ -4,7 +4,7 @@ import { Button, IconButton, Stack, Text, Textarea } from '@primer/react'
 import { PencilIcon, TrashIcon } from '@primer/octicons-react'
 import type { ThreadResponse } from '../../api/models'
 import { Mono } from '../ui'
-import { ActorAvatar, actorName } from './ActorAvatar'
+import { ActorAvatar, actorName } from '../ActorAvatar'
 
 function timestamp(value: string | undefined): string {
   if (!value) return ''

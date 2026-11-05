@@ -15,7 +15,7 @@ import {
 } from '../api/endpoints'
 import type { GroupResponse, OrgMemberResponse } from '../api/models'
 import { useAuth } from '../auth'
-import { ActorAvatar } from '../components/repo/ActorAvatar'
+import { ActorAvatar } from '../components/ActorAvatar'
 import StorageCard from '../components/StorageCard'
 import { UserGroupPicker } from '../components/UserGroupPicker'
 import { EmptyState, ErrorBanner, Loading, Mono, Page } from '../components/ui'

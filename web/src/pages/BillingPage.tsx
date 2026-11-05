@@ -3,7 +3,7 @@ import { Button, FormControl, ProgressBar, Stack, Text, TextInput } from '@prime
 import { Link } from 'react-router-dom'
 import { getMyBilling, setOwnerQuota } from '../api/endpoints'
 import { useAuth } from '../auth'
-import { formatBytes } from '../components/StorageCard'
+import { formatBytes } from '../components/repo/format'
 import { EmptyState, ErrorBanner, Loading, Mono, Page } from '../components/ui'
 import { useAsync } from '../hooks'
 import { APP_HOME } from '../routes'
