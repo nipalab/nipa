@@ -580,6 +580,80 @@ describe('MergeRequestPage', () => {
     act(() => root.unmount())
   })
 
+  it('closes the request only after confirmation', async () => {
+    let closed = 0
+    stubRepoRoutes((url, init) => {
+      const method = init?.method ?? 'GET'
+      if (url.endsWith('/merge-requests/7/close') && method === 'POST') {
+        closed += 1
+        return jsonResponse({ ...MR, status: 'closed' })
+      }
+      if (url.includes('/merge-requests/7/diff') && method === 'GET') return jsonResponse({ files: [] })
+      if (url.includes('/merge-requests/7/commits') && method === 'GET') return jsonResponse([])
+      if (url.includes('/merge-requests/7/review-state') && method === 'GET') {
+        return jsonResponse({ approvals: 0, changes_requested: 0, dismissed_approvals: 0, outstanding_reviewers: [] })
+      }
+      if (url.includes('/merge-requests/7/') && method === 'GET') return jsonResponse([])
+      if (url.endsWith('/merge-requests/7') && method === 'GET') return jsonResponse(MR)
+      if (url.includes('/branches') && method === 'GET') return jsonResponse(BRANCHES)
+      return null
+    })
+
+    const { container, root } = await renderApp('/acme/game/merges/7')
+    await waitForText(container, 'Close merge request')
+    await act(async () => {
+      findButton('Close merge request').click()
+    })
+    await waitFor(() => document.querySelector('[role="alertdialog"]') !== null)
+    const dialog = () => document.querySelector('[role="alertdialog"]') as HTMLElement
+    const inDialog = (text: string) =>
+      Array.from(dialog().querySelectorAll('button')).find((button) => button.textContent?.trim() === text) as HTMLButtonElement
+    await act(async () => {
+      inDialog('Cancel').click()
+    })
+    expect(closed).toBe(0)
+
+    await act(async () => {
+      findButton('Close merge request').click()
+    })
+    await waitFor(() => document.querySelector('[role="alertdialog"]') !== null)
+    await act(async () => {
+      inDialog('Close merge request').click()
+    })
+    await waitFor(() => closed === 1)
+    act(() => root.unmount())
+  })
+
+  it('marks a draft ready for review', async () => {
+    let patched: unknown = null
+    const draft = { ...MR, draft: true }
+    stubRepoRoutes((url, init) => {
+      const method = init?.method ?? 'GET'
+      if (url.endsWith('/merge-requests/7') && method === 'PATCH') {
+        patched = JSON.parse(String(init?.body ?? '{}'))
+        return jsonResponse({ ...MR, draft: false })
+      }
+      if (url.includes('/merge-requests/7/diff') && method === 'GET') return jsonResponse({ files: [] })
+      if (url.includes('/merge-requests/7/commits') && method === 'GET') return jsonResponse([])
+      if (url.includes('/merge-requests/7/review-state') && method === 'GET') {
+        return jsonResponse({ approvals: 0, changes_requested: 0, dismissed_approvals: 0, outstanding_reviewers: [] })
+      }
+      if (url.includes('/merge-requests/7/') && method === 'GET') return jsonResponse([])
+      if (url.endsWith('/merge-requests/7') && method === 'GET') return jsonResponse(draft)
+      if (url.includes('/branches') && method === 'GET') return jsonResponse(BRANCHES)
+      return null
+    })
+
+    const { container, root } = await renderApp('/acme/game/merges/7')
+    await waitForText(container, 'Ready for review')
+    await act(async () => {
+      findButton('Ready for review').click()
+    })
+    await waitFor(() => patched !== null)
+    expect(patched).toEqual({ title: '', description: '', draft: false })
+    act(() => root.unmount())
+  })
+
   it('edits the title and description from the dialog', async () => {
     let patched: unknown = null
     stubRepoRoutes((url, init) => {

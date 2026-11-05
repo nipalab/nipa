@@ -1,11 +1,14 @@
-import { Link as PrimerLink, Stack, Text } from '@primer/react'
+import { Link as PrimerLink } from '@primer/react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { getCommitDiff, listCommits } from '../api/endpoints'
+import type { CommitResponse } from '../api/models'
+import { DataTable, type Column } from '../components/DataTable'
 import { DiffView } from '../components/repo/DiffView'
 import { parentPath, treeUrl } from '../components/repo/repoPaths'
 import { RepoPageShell } from '../components/repo/RepoPageShell'
 import { useRepoChrome } from '../components/repo/useRepoChrome'
-import { EmptyState, ErrorBanner, Loading, Mono } from '../components/ui'
+import { Timestamp } from '../components/Timestamp'
+import { EmptyState, ErrorBanner, Loading, Mono, SectionHeading } from '../components/ui'
 import { useAsync } from '../hooks'
 
 export default function CommitsPage() {
@@ -31,6 +34,25 @@ export default function CommitsPage() {
   if (path) commitQuery.set('path', path)
   const commitQueryString = commitQuery.toString()
 
+  const columns: Column<CommitResponse>[] = [
+    {
+      id: 'message',
+      header: 'Commit',
+      rowHeader: true,
+      renderCell: (entry) => (
+        <PrimerLink
+          as={Link}
+          to={`/${org}/${project}/commits/${entry.id}${commitQueryString ? `?${commitQueryString}` : ''}`}
+        >
+          {entry.message}
+        </PrimerLink>
+      ),
+    },
+    { id: 'author', header: 'Author', renderCell: (entry) => entry.author_name ?? entry.author_email ?? '' },
+    { id: 'id', header: 'ID', renderCell: (entry) => <Mono>{entry.id.slice(0, 10)}</Mono> },
+    { id: 'created', header: 'Date', renderCell: (entry) => <Timestamp value={entry.created_at} /> },
+  ]
+
   return (
     <RepoPageShell
       org={org}
@@ -43,52 +65,25 @@ export default function CommitsPage() {
     >
       {path && (
         <PrimerLink as={Link} to={backTarget}>
-          back to files
+          Back to files
         </PrimerLink>
       )}
       {!emptyProject && <ErrorBanner error={error} />}
       {loading && <Loading />}
-      {emptyProject && (
-        <EmptyState>This repository is empty. Push your first commit to get started.</EmptyState>
-      )}
-      {!loading && commits && commits.length === 0 && <EmptyState>No commits yet.</EmptyState>}
-      {commits && commits.length > 0 && (
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <tbody>
-            {commits.map((entry) => (
-              <tr key={entry.id} style={{ borderBottom: '1px solid var(--borderColor-muted)' }}>
-                <td style={{ padding: '6px 4px' }}>
-                  <PrimerLink
-                    as={Link}
-                    to={`/${org}/${project}/commits/${entry.id}${commitQueryString ? `?${commitQueryString}` : ''}`}
-                  >
-                    {entry.message}
-                  </PrimerLink>
-                </td>
-                <td style={{ padding: '6px 4px', color: 'var(--fgColor-muted)' }}>
-                  {entry.author_name ?? entry.author_email ?? ''}
-                </td>
-                <td style={{ padding: '6px 4px', color: 'var(--fgColor-muted)' }}>
-                  <Mono>{entry.id.slice(0, 10)}</Mono>
-                </td>
-                <td style={{ padding: '6px 4px', color: 'var(--fgColor-muted)' }}>
-                  {new Date(entry.created_at).toLocaleString()}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      {emptyProject && <EmptyState>This repository is empty. Push your first commit to get started.</EmptyState>}
+      {!loading && commits && (
+        <DataTable label="Commits" data={commits} columns={columns} empty="No commits yet." />
       )}
 
       {commit && (
-        <Stack direction="vertical" gap="normal">
-          <Text as="h4">
+        <>
+          <SectionHeading>
             Diff of <Mono>{commit}</Mono>
-          </Text>
+          </SectionHeading>
           <ErrorBanner error={diffError} />
           {diffLoading && <Loading />}
           {diff && <DiffView files={diff.files} />}
-        </Stack>
+        </>
       )}
     </RepoPageShell>
   )

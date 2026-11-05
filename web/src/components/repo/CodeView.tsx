@@ -15,7 +15,7 @@ export function CodeView({ code, path }: { code: string; path: string }) {
             overflowX: 'auto',
             fontSize: 12.5,
             lineHeight: '20px',
-            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+            fontFamily: 'var(--fontStack-monospace)',
             background: 'transparent',
           }}
         >

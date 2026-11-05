@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { FormControl, TextInput } from '@primer/react'
 import { SLUG_PATTERN, slugify } from '../slug'
 
@@ -33,8 +33,8 @@ export function useSlugFields(reserved: ReadonlySet<string>) {
       setTaken(false)
     },
     setSlug(value: string) {
-      setEdited(true)
-      setRawSlug(value)
+      setEdited(value.trim() !== '')
+      setRawSlug(value.trim() === '' ? '' : value)
       setTaken(false)
     },
     markTaken() {
@@ -49,23 +49,41 @@ export function SlugFields({
   state,
   nameLabel = 'Name',
   autoFocus = false,
+  namePlaceholder,
+  slugPlaceholder,
+  nameCaption,
+  slugCaption = 'Used in URLs. Lowercase letters, digits and dashes; defaults to the name.',
 }: {
   state: SlugFieldsState
   nameLabel?: string
   autoFocus?: boolean
+  namePlaceholder?: string
+  slugPlaceholder?: string
+  nameCaption?: ReactNode
+  slugCaption?: ReactNode
 }) {
   return (
     <>
       <FormControl required>
         <FormControl.Label>{nameLabel}</FormControl.Label>
-        <TextInput block autoFocus={autoFocus} value={state.name} onChange={(event) => state.setName(event.target.value)} />
+        <TextInput
+          block
+          autoFocus={autoFocus}
+          placeholder={namePlaceholder}
+          value={state.name}
+          onChange={(event) => state.setName(event.target.value)}
+        />
+        {nameCaption && <FormControl.Caption>{nameCaption}</FormControl.Caption>}
       </FormControl>
       <FormControl required>
         <FormControl.Label>Slug</FormControl.Label>
-        <TextInput block value={state.slug} onChange={(event) => state.setSlug(event.target.value)} />
-        <FormControl.Caption>
-          Used in URLs. Lowercase letters, digits and dashes; defaults to the name.
-        </FormControl.Caption>
+        <TextInput
+          block
+          placeholder={slugPlaceholder}
+          value={state.slug}
+          onChange={(event) => state.setSlug(event.target.value)}
+        />
+        <FormControl.Caption>{slugCaption}</FormControl.Caption>
         {state.message && <FormControl.Validation variant="error">{state.message}</FormControl.Validation>}
         {state.taken && <FormControl.Validation variant="error">{SLUG_TAKEN_MESSAGE}</FormControl.Validation>}
       </FormControl>

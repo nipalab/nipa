@@ -129,9 +129,8 @@ describe('ProfilePage', () => {
     await waitFor(() => (container.querySelectorAll('input')[1] as HTMLInputElement)?.value === 'Alice')
     expect(container.textContent).toContain('Public profile')
     expect(container.textContent).toContain('Email notifications')
-    expect(container.textContent).toContain('Change password')
 
-    const settingsNav = container.querySelector('.nipa-settings-nav')
+    const settingsNav = container.querySelector('nav[aria-label="User settings"]')
     const billingLink = Array.from(settingsNav?.querySelectorAll('a') ?? []).find(
       (item) => item.textContent?.trim() === 'Billing',
     )
@@ -170,24 +169,25 @@ describe('ProfilePage', () => {
       return null
     })
 
-    const { container, root } = await renderApp('/settings/profile')
-    await waitFor(() => container.querySelectorAll('input').length === 6)
+    const { container, root } = await renderApp('/settings/profile?tab=password')
+    await waitFor(() => container.querySelectorAll('input').length === 3)
     const inputs = container.querySelectorAll('input')
+    expect(container.textContent).toContain('Change password')
 
     await act(async () => {
-      setInputValue(inputs[3] as HTMLInputElement, 'oldpass')
-      setInputValue(inputs[4] as HTMLInputElement, 'short')
+      setInputValue(inputs[0] as HTMLInputElement, 'oldpass')
+      setInputValue(inputs[1] as HTMLInputElement, 'short')
     })
     await waitForText(container, 'at least 8 characters')
 
     await act(async () => {
-      setInputValue(inputs[4] as HTMLInputElement, 'secret123')
-      setInputValue(inputs[5] as HTMLInputElement, 'different')
+      setInputValue(inputs[1] as HTMLInputElement, 'secret123')
+      setInputValue(inputs[2] as HTMLInputElement, 'different')
     })
     await waitForText(container, 'Passwords do not match.')
 
     await act(async () => {
-      setInputValue(inputs[5] as HTMLInputElement, 'secret123')
+      setInputValue(inputs[2] as HTMLInputElement, 'secret123')
     })
     await act(async () => {
       findButton('Update password').click()
@@ -226,7 +226,7 @@ describe('ProfilePage', () => {
       return null
     })
 
-    const { container, root } = await renderApp('/settings/profile')
+    const { container, root } = await renderApp('/settings/profile?tab=keys')
     await waitForText(container, 'SHA256:abc123')
     expect(container.textContent).toContain('work laptop')
     expect(container.textContent).not.toContain('No SSH keys yet.')
@@ -256,8 +256,8 @@ describe('ProfilePage', () => {
     await act(async () => {
       findButtonIn(container, 'Remove').click()
     })
-    await waitFor(() => document.querySelector('[role="dialog"]') !== null)
-    const removeDialog = document.querySelector('[role="dialog"]') as HTMLElement
+    await waitFor(() => document.querySelector('[role="alertdialog"]') !== null)
+    const removeDialog = document.querySelector('[role="alertdialog"]') as HTMLElement
     await act(async () => {
       findButtonIn(removeDialog, 'Remove key').click()
     })

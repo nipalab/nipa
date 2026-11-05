@@ -1,12 +1,15 @@
 import { useState } from 'react'
-import { Button, Link as PrimerLink, TextInput } from '@primer/react'
+import { Button, Link as PrimerLink, Select, TextInput } from '@primer/react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { listMergeRequests, listOrgMembers } from '../api/endpoints'
+import { listMergeRequests } from '../api/endpoints'
 import type { MergeRequestResponse } from '../api/models'
 import { RepoPageShell } from '../components/repo/RepoPageShell'
 import { useRepoChrome } from '../components/repo/useRepoChrome'
-import { EmptyState, ErrorBanner, Loading, StatusLabel } from '../components/ui'
-import { useAsync } from '../hooks'
+import { Row, RowList } from '../components/RowList'
+import { StateBadge } from '../components/StateBadge'
+import { EmptyState, ErrorBanner, Loading } from '../components/ui'
+import { errorMessage, useAsync } from '../hooks'
+import { useOrgMembers } from '../orgHooks'
 
 export default function MergeRequestsPage() {
   const { org = '', project = '' } = useParams()
@@ -36,7 +39,7 @@ export default function MergeRequestsPage() {
     () => listMergeRequests(org, project, listParams()),
     [org, project, status, author, source, target, search, assignee],
   )
-  const { data: members } = useAsync(() => listOrgMembers(org), [org])
+  const { data: members } = useOrgMembers(org)
 
   const requests = [...(data?.merge_requests ?? []), ...extra]
   const nextCursor = extraCursor ?? data?.next_cursor ?? ''
@@ -56,7 +59,7 @@ export default function MergeRequestsPage() {
       setExtra((current) => [...current, ...page.merge_requests])
       setExtraCursor(page.next_cursor ?? '')
     } catch (err) {
-      setMoreError(err instanceof Error ? err.message : String(err))
+      setMoreError(errorMessage(err))
     } finally {
       setLoadingMore(false)
     }
@@ -79,15 +82,7 @@ export default function MergeRequestsPage() {
         )
       }
     >
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'flex-end',
-          gap: 8,
-          flexWrap: 'wrap',
-        }}
-      >
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 'var(--base-size-8)', flexWrap: 'wrap' }}>
         <TextInput
           aria-label="Search merge requests"
           placeholder="search title or description"
@@ -106,74 +101,66 @@ export default function MergeRequestsPage() {
           value={target}
           onChange={(event) => changeFilter(() => setTarget(event.target.value))}
         />
-        <select
-          aria-label="Filter by author"
-          value={author}
-          onChange={(event) => changeFilter(() => setAuthor(event.target.value))}
-          style={{ padding: 4 }}
-        >
-          <option value="">any author</option>
+        <Select aria-label="Filter by author" value={author} onChange={(event) => changeFilter(() => setAuthor(event.target.value))}>
+          <Select.Option value="">any author</Select.Option>
           {(members ?? []).map((member) => (
-            <option key={member.user_id} value={member.user_id}>
+            <Select.Option key={member.user_id} value={member.user_id}>
               {member.name}
-            </option>
+            </Select.Option>
           ))}
-        </select>
-        <select
-          aria-label="Filter by assignee"
-          value={assignee}
-          onChange={(event) => changeFilter(() => setAssignee(event.target.value))}
-          style={{ padding: 4 }}
-        >
-          <option value="">any assignee</option>
+        </Select>
+        <Select aria-label="Filter by assignee" value={assignee} onChange={(event) => changeFilter(() => setAssignee(event.target.value))}>
+          <Select.Option value="">any assignee</Select.Option>
           {(members ?? []).map((member) => (
-            <option key={member.user_id} value={member.user_id}>
+            <Select.Option key={member.user_id} value={member.user_id}>
               {member.name}
-            </option>
+            </Select.Option>
           ))}
-        </select>
-        <select
-          aria-label="Filter by status"
-          value={status}
-          onChange={(event) => changeFilter(() => setStatus(event.target.value))}
-          style={{ padding: 4 }}
-        >
-          <option value="open">open</option>
-          <option value="draft">draft</option>
-          <option value="merged">merged</option>
-          <option value="closed">closed</option>
-          <option value="">all</option>
-        </select>
+        </Select>
+        <Select aria-label="Filter by status" value={status} onChange={(event) => changeFilter(() => setStatus(event.target.value))}>
+          <Select.Option value="open">open</Select.Option>
+          <Select.Option value="draft">draft</Select.Option>
+          <Select.Option value="merged">merged</Select.Option>
+          <Select.Option value="closed">closed</Select.Option>
+          <Select.Option value="">all</Select.Option>
+        </Select>
       </div>
       <ErrorBanner error={error ?? moreError} />
       {loading && <Loading />}
       {!loading && requests.length === 0 && <EmptyState>No merge requests.</EmptyState>}
-      {requests.map((request) => (
-        <div
-          key={request.id}
-          style={{ border: '1px solid var(--borderColor-default)', borderRadius: 6, padding: 16 }}
-        >
-          <PrimerLink as={Link} to={`/${org}/${project}/merges/${request.number}`} style={{ fontWeight: 600 }}>
-            #{request.number} {request.title}
-          </PrimerLink>
-          <div style={{ color: 'var(--fgColor-muted)', fontSize: 13 }}>
-            {request.source_branch} → {request.target_branch} ·{' '}
-            <StatusLabel status={request.draft ? 'draft' : request.status} />
-            {request.review && (
-              <>
-                {' · '}
-                <span style={{ color: 'var(--fgColor-success)' }}>{request.review.approvals} approved</span>
-                {request.review.changes_requested > 0 && (
-                  <span style={{ color: 'var(--fgColor-danger)' }}>
-                    {' '}
-                    · {request.review.changes_requested} changes requested
-                  </span>
-                )}
-              </>
-            )}
-          </div>
-        </div>
-      ))}
+      {requests.length > 0 && (
+        <RowList>
+          {requests.map((request, index) => (
+            <Row
+              key={request.id}
+              first={index === 0}
+              title={
+                <PrimerLink as={Link} to={`/${org}/${project}/merges/${request.number}`}>
+                  #{request.number} {request.title}
+                </PrimerLink>
+              }
+              meta={
+                <>
+                  {request.source_branch} → {request.target_branch} ·{' '}
+                  <StateBadge status={request.draft ? 'draft' : request.status} />
+                  {request.review && (
+                    <>
+                      {' · '}
+                      <span style={{ color: 'var(--fgColor-success)' }}>{request.review.approvals} approved</span>
+                      {request.review.changes_requested > 0 && (
+                        <span style={{ color: 'var(--fgColor-danger)' }}>
+                          {' '}
+                          · {request.review.changes_requested} changes requested
+                        </span>
+                      )}
+                    </>
+                  )}
+                </>
+              }
+            />
+          ))}
+        </RowList>
+      )}
       {nextCursor && !loading && (
         <div style={{ display: 'flex', justifyContent: 'center' }}>
           <Button onClick={loadMore} loading={loadingMore}>

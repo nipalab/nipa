@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Button, Dialog, FormControl, Heading, Stack, StateLabel, TextInput } from '@primer/react'
+import { Button, Checkbox, FormControl, Stack, StateLabel, Textarea, TextInput } from '@primer/react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import {
   addMergeRequestComment,
@@ -13,7 +13,6 @@ import {
   listMergeRequestReviewRequests,
   listMergeRequestReviews,
   listMergeRequestThreads,
-  listOrgMembers,
   mergeMergeRequest,
   closeMergeRequest,
   reopenMergeRequest,
@@ -26,19 +25,24 @@ import type { MergeRequestResponse } from '../api/models'
 import { useAuth } from '../auth'
 import { DiffAnchor } from '../components/repo/DiffView'
 import { ActorAvatar, actorName, actorsFrom, type ActorLike } from '../components/ActorAvatar'
+import { useConfirmAction } from '../components/confirm'
+import { FormDialog } from '../components/FormDialog'
+import { StateBadge } from '../components/StateBadge'
 import { ChangesView } from '../components/repo/ChangesView'
 import { MergeRequestCommits } from '../components/repo/MergeRequestCommits'
 import { MergeRequestOverview } from '../components/repo/MergeRequestOverview'
 import { RepoPageShell } from '../components/repo/RepoPageShell'
-import { Tabs } from '../components/repo/Tabs'
+import { MergeRequestTabs } from '../components/repo/MergeRequestTabs'
 import { useRepoChrome } from '../components/repo/useRepoChrome'
-import { ErrorBanner, Loading, Mono, StatusLabel } from '../components/ui'
-import { useAsync } from '../hooks'
+import { ErrorBanner, Loading, Mono } from '../components/ui'
+import { errorMessage, useAsync } from '../hooks'
+import { useOrgMembers } from '../orgHooks'
 
 export default function MergeRequestPage() {
   const { org = '', project = '', id = '' } = useParams()
   const [params, setParams] = useSearchParams()
   const { me } = useAuth()
+  const confirm = useConfirmAction()
   const { canWrite, canAdmin, defaultBranch } = useRepoChrome(org, project)
   const { data: request, error, loading, reload } = useAsync(
     () => getMergeRequest(org, project, id),
@@ -52,28 +56,28 @@ export default function MergeRequestPage() {
     () => listMergeRequestCommits(org, project, id),
     [org, project, id],
   )
-  const { data: state, reload: reloadState } = useAsync(
+  const { data: state, error: stateError, reload: reloadState } = useAsync(
     () => getMergeRequestReviewState(org, project, id),
     [org, project, id],
   )
-  const { data: reviews, reload: reloadReviewList } = useAsync(
+  const { data: reviews, error: reviewsError, reload: reloadReviewList } = useAsync(
     () => listMergeRequestReviews(org, project, id),
     [org, project, id],
   )
-  const { data: threads, reload: reloadThreads } = useAsync(
+  const { data: threads, error: threadsError, reload: reloadThreads } = useAsync(
     () => listMergeRequestThreads(org, project, id),
     [org, project, id],
   )
-  const { data: reviewRequests, reload: reloadReviewRequests } = useAsync(
+  const { data: reviewRequests, error: reviewRequestsError, reload: reloadReviewRequests } = useAsync(
     () => listMergeRequestReviewRequests(org, project, id),
     [org, project, id],
   )
-  const { data: timeline, reload: reloadTimeline } = useAsync(
+  const { data: timeline, error: timelineError, reload: reloadTimeline } = useAsync(
     () => getMergeRequestTimeline(org, project, id),
     [org, project, id],
   )
-  const { data: members } = useAsync(() => listOrgMembers(org), [org])
-  const { data: checks, reload: reloadChecks } = useAsync(
+  const { data: members, error: membersError } = useOrgMembers(org)
+  const { data: checks, error: checksError, reload: reloadChecks } = useAsync(
     () => listMergeRequestChecks(org, project, id),
     [org, project, id],
   )
@@ -124,8 +128,17 @@ export default function MergeRequestPage() {
       await action()
       reloadAll()
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : String(err))
+      setActionError(errorMessage(err))
     }
+  }
+
+  async function closeRequest() {
+    const ok = await confirm({
+      title: 'Close merge request?',
+      content: 'The request can be reopened later.',
+      confirmLabel: 'Close merge request',
+    })
+    if (ok) await run(() => closeMergeRequest(org, project, id))
   }
 
   async function runComment(action: () => Promise<unknown>, inline = false) {
@@ -136,7 +149,7 @@ export default function MergeRequestPage() {
       reloadThreads()
       return true
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
+      const message = errorMessage(err)
       if (inline) {
         setCommentError(message)
       } else {
@@ -183,27 +196,31 @@ export default function MergeRequestPage() {
       rev={defaultBranch}
       canAdmin={canAdmin}
       canWrite={canWrite}
+      crumbs={[{ label: 'Merge requests', to: `/${org}/${project}/merges` }, { label: `#${id}` }]}
+      heading={
+        request && (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--base-size-8)', flexWrap: 'wrap' }}>
+            #{request.number} {request.title}
+            <StateLabel status={stateLabelStatus(request.status)}>{stateLabelText(request.status)}</StateLabel>
+            {request.draft && <StateBadge status="draft" />}
+          </span>
+        )
+      }
+      actions={
+        <>
+          {canEdit && request?.draft && (
+            <Button size="small" onClick={() => void run(() => updateMergeRequest(org, project, id, '', '', false))}>
+              Ready for review
+            </Button>
+          )}
+          {canEdit && (
+            <Button size="small" onClick={() => setEditOpen(true)}>
+              Edit
+            </Button>
+          )}
+        </>
+      }
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        <Heading as="h2" style={{ margin: 0 }}>
-          #{request?.number} {request?.title}
-        </Heading>
-        {request && <StateLabel status={stateLabelStatus(request.status)}>{stateLabelText(request.status)}</StateLabel>}
-        {request?.draft && <StatusLabel status="draft" />}
-        {canEdit && request?.draft && (
-          <Button
-            size="small"
-            onClick={() => run(() => updateMergeRequest(org, project, id, '', '', false))}
-          >
-            Ready for review
-          </Button>
-        )}
-        {canEdit && (
-          <Button size="small" style={{ marginLeft: 'auto' }} onClick={() => setEditOpen(true)}>
-            Edit
-          </Button>
-        )}
-      </div>
       {request && (
         <div
           style={{
@@ -224,10 +241,25 @@ export default function MergeRequestPage() {
           </span>
         </div>
       )}
-      <ErrorBanner error={actionError ?? error ?? diffError ?? commitsError} />
+      <ErrorBanner
+        error={
+          actionError ??
+          error ??
+          diffError ??
+          commitsError ??
+          stateError ??
+          reviewsError ??
+          threadsError ??
+          reviewRequestsError ??
+          timelineError ??
+          checksError ??
+          membersError
+        }
+        onDismiss={actionError ? () => setActionError(null) : undefined}
+      />
       {loading && <Loading />}
 
-      <Tabs
+      <MergeRequestTabs
         tabs={[
           { id: 'overview', label: 'Conversation' },
           { id: 'commits', label: 'Commits', count: commits?.length },
@@ -258,7 +290,7 @@ export default function MergeRequestPage() {
           onMerge={(strategy, deleteSource) =>
             run(() => mergeMergeRequest(org, project, id, strategy, deleteSource))
           }
-          onClose={() => run(() => closeMergeRequest(org, project, id))}
+          onClose={closeRequest}
           onReopen={() => run(() => reopenMergeRequest(org, project, id))}
           {...threadActions()}
         />
@@ -304,10 +336,7 @@ export default function MergeRequestPage() {
           id={id}
           request={request}
           onClose={() => setEditOpen(false)}
-          onSaved={() => {
-            setEditOpen(false)
-            reloadAll()
-          }}
+          onSaved={reloadAll}
         />
       )}
     </RepoPageShell>
@@ -332,55 +361,32 @@ function EditMergeRequestDialog({
   const [title, setTitle] = useState(request.title)
   const [description, setDescription] = useState(request.description)
   const [draft, setDraft] = useState(request.draft)
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  const canSubmit = title.trim() !== '' && !saving
-
-  async function handleSubmit(event: React.FormEvent) {
-    event.preventDefault()
-    if (!canSubmit) return
-    setSaving(true)
-    setError(null)
-    try {
-      await updateMergeRequest(org, project, id, title.trim(), description, draft)
-      onSaved()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-      setSaving(false)
-    }
-  }
 
   return (
-    <Dialog title={`Edit merge request #${request.number}`} onClose={onClose} width="large">
-      <Dialog.Body>
-        <ErrorBanner error={error} />
-        <form onSubmit={handleSubmit}>
-          <Stack direction="vertical" gap="normal">
-            <FormControl required>
-              <FormControl.Label>Title</FormControl.Label>
-              <TextInput block autoFocus value={title} onChange={(event) => setTitle(event.target.value)} />
-            </FormControl>
-            <FormControl>
-              <FormControl.Label>Description</FormControl.Label>
-              <TextInput block value={description} onChange={(event) => setDescription(event.target.value)} />
-            </FormControl>
-            <FormControl>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <input type="checkbox" checked={draft} onChange={(event) => setDraft(event.target.checked)} />
-                Draft (cannot be merged until marked ready)
-              </label>
-            </FormControl>
-          </Stack>
-        </form>
-      </Dialog.Body>
-      <Dialog.Footer>
-        <Button onClick={onClose}>Cancel</Button>
-        <Button variant="primary" disabled={!canSubmit} onClick={handleSubmit}>
-          {saving ? 'Saving…' : 'Save changes'}
-        </Button>
-      </Dialog.Footer>
-    </Dialog>
+    <FormDialog
+      title={`Edit merge request #${request.number}`}
+      width="large"
+      submitLabel="Save changes"
+      submitDisabled={title.trim() === ''}
+      onClose={onClose}
+      onSubmit={async () => {
+        await updateMergeRequest(org, project, id, title.trim(), description, draft)
+        onSaved()
+      }}
+    >
+      <FormControl required>
+        <FormControl.Label>Title</FormControl.Label>
+        <TextInput block autoFocus value={title} onChange={(event) => setTitle(event.target.value)} />
+      </FormControl>
+      <FormControl>
+        <FormControl.Label>Description</FormControl.Label>
+        <Textarea block rows={4} value={description} onChange={(event) => setDescription(event.target.value)} />
+      </FormControl>
+      <FormControl>
+        <Checkbox checked={draft} onChange={(event) => setDraft(event.target.checked)} />
+        <FormControl.Label>Draft (cannot be merged until marked ready)</FormControl.Label>
+      </FormControl>
+    </FormDialog>
   )
 }
 

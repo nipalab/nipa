@@ -1,6 +1,6 @@
-import { Heading, Stack, Text } from '@primer/react'
+import { Stack, Text } from '@primer/react'
 import type { ReactNode } from 'react'
-import { Page } from '../ui'
+import { Page, SectionHeading, type Crumb } from '../ui'
 import { RepoNav, type RepoTab } from './RepoNav'
 
 export function RepoPageShell({
@@ -12,6 +12,7 @@ export function RepoPageShell({
   canWrite = false,
   heading,
   actions,
+  crumbs,
   children,
 }: {
   org: string
@@ -22,10 +23,12 @@ export function RepoPageShell({
   canWrite?: boolean
   heading?: ReactNode
   actions?: ReactNode
+  crumbs?: Crumb[]
   children: ReactNode
 }) {
   return (
     <Page
+      breadcrumbs={crumbs}
       title={
         <>
           <span style={{ color: 'var(--fgColor-muted)', fontWeight: 400 }}>{org} /</span> {project}
@@ -39,11 +42,7 @@ export function RepoPageShell({
       }
     >
       <RepoNav org={org} project={project} active={active} rev={rev} canAdmin={canAdmin} />
-      {heading && (
-        <Heading as="h3" style={{ margin: 0 }}>
-          {heading}
-        </Heading>
-      )}
+      {heading && <SectionHeading>{heading}</SectionHeading>}
       {children}
     </Page>
   )

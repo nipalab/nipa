@@ -137,14 +137,16 @@ export function EmptyState({
   description,
   icon: Icon,
   action,
+  bordered = true,
 }: {
   children: ReactNode
   description?: ReactNode
   icon?: ElementType
   action?: ReactNode
+  bordered?: boolean
 }) {
   return (
-    <Blankslate border>
+    <Blankslate border={bordered}>
       {Icon && (
         <Blankslate.Visual>
           <Icon size="medium" />

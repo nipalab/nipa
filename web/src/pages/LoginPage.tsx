@@ -1,22 +1,14 @@
 import { useState } from 'react'
-import {
-  Banner,
-  Button,
-  Flash,
-  FormControl,
-  Heading,
-  Link as PrimerLink,
-  Spinner,
-  Stack,
-  TextInput,
-} from '@primer/react'
-import { RepoIcon, SignInIcon } from '@primer/octicons-react'
+import { Banner, Button, FormControl, Link as PrimerLink, Stack, TextInput } from '@primer/react'
+import { SignInIcon } from '@primer/octicons-react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { login } from '../api/client'
-import { getOnboardingCapabilities, resendVerification } from '../api/endpoints'
+import { getOnboardingCapabilities } from '../api/endpoints'
 import { useAuth } from '../auth'
+import { AuthCard, AuthLayout } from '../components/AuthLayout'
 import { SocialButtons } from '../components/SocialButtons'
-import { useAsync } from '../hooks'
+import { errorMessage, useAsync } from '../hooks'
+import { useResendVerification } from '../useResendVerification'
 import { APP_HOME } from '../routes'
 
 export default function LoginPage() {
@@ -30,13 +22,11 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null)
   const [unconfirmed, setUnconfirmed] = useState(false)
   const [busy, setBusy] = useState(false)
-  const [resendBusy, setResendBusy] = useState(false)
-  const [notice, setNotice] = useState<string | null>(null)
+  const { resend, busy: resendBusy, notice, error: resendError } = useResendVerification()
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
-    setNotice(null)
     setUnconfirmed(false)
     if (!email.trim() || !password) {
       setError('Enter your username/email and password.')
@@ -48,7 +38,7 @@ export default function LoginPage() {
       signIn()
       navigate(from, { replace: true })
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
+      const message = errorMessage(err)
       if (message === 'email not confirmed') {
         setUnconfirmed(true)
         setError('Your email address has not been confirmed yet. Open the confirmation link we sent you.')
@@ -65,100 +55,70 @@ export default function LoginPage() {
       setError('Enter your email address first, then resend the confirmation email.')
       return
     }
-    setResendBusy(true)
-    setNotice(null)
-    try {
-      await resendVerification(email.trim())
-      setNotice('If the account is unconfirmed, a new email is on its way.')
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setResendBusy(false)
-    }
+    await resend(email)
   }
 
+  const shownError = error ?? resendError
+
   return (
-    <div style={{ maxWidth: 360, margin: '48px auto 0', padding: '0 16px' }}>
-      <Stack direction="vertical" gap="spacious" align="center">
-        <Heading as="h1">
-          <RepoIcon size={24} verticalAlign="middle" /> Nipa
-        </Heading>
+    <AuthLayout>
+      <AuthCard onSubmit={handleSubmit}>
+        <FormControl required>
+          <FormControl.Label>Username/Email</FormControl.Label>
+          <TextInput
+            block
+            type="text"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            autoComplete="username"
+          />
+        </FormControl>
 
-        <form
-          onSubmit={handleSubmit}
-          noValidate
-          style={{
-            width: '100%',
-            border: '1px solid var(--borderColor-default)',
-            borderRadius: 6,
-            padding: 24,
-          }}
-        >
-          <Stack direction="vertical" gap="normal">
-            <FormControl required>
-              <FormControl.Label>Username/Email</FormControl.Label>
-              <TextInput
-                block
-                type="text"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                autoComplete="username"
-              />
-            </FormControl>
+        <FormControl required>
+          <FormControl.Label>Password</FormControl.Label>
+          <TextInput
+            block
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            autoComplete="current-password"
+          />
+        </FormControl>
 
-            <FormControl required>
-              <FormControl.Label>Password</FormControl.Label>
-              <TextInput
-                block
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                autoComplete="current-password"
-              />
-            </FormControl>
-
-            {error && (
-              <Banner variant={unconfirmed ? 'warning' : 'critical'} title="Sign in failed">
-                <Stack direction="vertical" gap="condensed">
-                  <span>{error}</span>
-                  {unconfirmed && (
-                    <Button size="small" onClick={() => void handleResend()} disabled={resendBusy}>
-                      {resendBusy ? 'Sending…' : 'Resend confirmation email'}
-                    </Button>
-                  )}
-                </Stack>
-              </Banner>
-            )}
-            {notice && <Flash variant="success">{notice}</Flash>}
-
-            <Button
-              type="submit"
-              variant="primary"
-              block
-              disabled={busy}
-              trailingVisual={busy ? <Spinner size="small" /> : <SignInIcon />}
-            >
-              {busy ? 'Signing in…' : 'Sign in'}
-            </Button>
-
-            {capabilities && capabilities.providers.length > 0 && (
-              <>
-                <div style={{ textAlign: 'center', color: 'var(--fgColor-muted)', fontSize: 12 }}>or</div>
-                <SocialButtons providers={capabilities.providers} from={from} />
-              </>
-            )}
-          </Stack>
-        </form>
-
-        {capabilities?.registration && (
-          <p style={{ fontSize: 14, color: 'var(--fgColor-muted)', margin: 0 }}>
-            New to Nipa?{' '}
-            <PrimerLink as={Link} to="/register" state={{ from }}>
-              Create an account
-            </PrimerLink>
-          </p>
+        {shownError && (
+          <Banner variant={unconfirmed ? 'warning' : 'critical'} title="Sign in failed">
+            <Stack direction="vertical" gap="condensed">
+              <span>{shownError}</span>
+              {unconfirmed && (
+                <Button size="small" onClick={() => void handleResend()} loading={resendBusy}>
+                  Resend confirmation email
+                </Button>
+              )}
+            </Stack>
+          </Banner>
         )}
-      </Stack>
-    </div>
+        {notice && <Banner variant="success" title={notice} />}
+
+        <Button type="submit" variant="primary" block loading={busy} trailingVisual={<SignInIcon />}>
+          {busy ? 'Signing in…' : 'Sign in'}
+        </Button>
+
+        {capabilities && capabilities.providers.length > 0 && (
+          <>
+            <div style={{ textAlign: 'center', color: 'var(--fgColor-muted)', fontSize: 12 }}>or</div>
+            <SocialButtons providers={capabilities.providers} from={from} />
+          </>
+        )}
+      </AuthCard>
+
+      {capabilities?.registration && (
+        <p style={{ fontSize: 14, color: 'var(--fgColor-muted)', margin: 0 }}>
+          New to Nipa?{' '}
+          <PrimerLink as={Link} to="/register" state={{ from }}>
+            Create an account
+          </PrimerLink>
+        </p>
+      )}
+    </AuthLayout>
   )
 }

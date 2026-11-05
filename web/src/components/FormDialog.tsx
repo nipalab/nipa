@@ -15,7 +15,7 @@ export function FormDialog({
 }: {
   title: string
   onClose: () => void
-  onSubmit: () => Promise<unknown>
+  onSubmit: () => Promise<unknown | false>
   submitLabel?: string
   submitVariant?: 'primary' | 'danger'
   submitDisabled?: boolean
@@ -32,7 +32,11 @@ export function FormDialog({
     setBusy(true)
     setError(null)
     try {
-      await onSubmit()
+      const result = await onSubmit()
+      if (result === false) {
+        setBusy(false)
+        return
+      }
       onClose()
     } catch (err) {
       setError(errorMessage(err))

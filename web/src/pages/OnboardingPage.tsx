@@ -1,12 +1,13 @@
 import { useState } from 'react'
-import { Button, FormControl, Heading, Stack, TextInput } from '@primer/react'
-import { RepoIcon } from '@primer/octicons-react'
+import { Button } from '@primer/react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { ApiError } from '../api/client'
 import { createOrg, listOrgs } from '../api/endpoints'
-import { ErrorBanner, Loading } from '../components/ui'
-import { useAsync } from '../hooks'
-import { RESERVED_ORG_SLUGS, SLUG_PATTERN, slugify } from '../slug'
+import { AuthCard, AuthLayout } from '../components/AuthLayout'
+import { SlugFields, useSlugFields } from '../components/SlugFields'
+import { ErrorBanner, Loading, SectionHeading } from '../components/ui'
+import { errorMessage, useAsync } from '../hooks'
+import { RESERVED_ORG_SLUGS } from '../slug'
 import { APP_HOME } from '../routes'
 
 // OnboardingPage is the shared first-run step after registration confirmation
@@ -15,29 +16,22 @@ import { APP_HOME } from '../routes'
 export default function OnboardingPage() {
   const navigate = useNavigate()
   const { data: orgs, error: loadError, loading } = useAsync(listOrgs, [])
-  const [name, setName] = useState('')
-  const [slug, setSlug] = useState('')
-  const [slugEdited, setSlugEdited] = useState(false)
-  const [slugError, setSlugError] = useState<string | null>(null)
+  const slugFields = useSlugFields(RESERVED_ORG_SLUGS)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
-  const effectiveSlug = slugEdited ? slug : slugify(name)
-  const slugReserved = effectiveSlug !== '' && SLUG_PATTERN.test(effectiveSlug) && RESERVED_ORG_SLUGS.has(effectiveSlug)
-  const slugValid = effectiveSlug !== '' && SLUG_PATTERN.test(effectiveSlug) && !slugReserved
-
   if (loading) {
     return (
-      <div style={{ maxWidth: 420, margin: '48px auto 0', padding: '0 16px' }}>
+      <AuthLayout title="Welcome to Nipa" width={420}>
         <Loading />
-      </div>
+      </AuthLayout>
     )
   }
   if (loadError) {
     return (
-      <div style={{ maxWidth: 420, margin: '48px auto 0', padding: '0 16px' }}>
+      <AuthLayout title="Welcome to Nipa" width={420}>
         <ErrorBanner error={loadError} />
-      </div>
+      </AuthLayout>
     )
   }
   if (orgs && orgs.length > 0) {
@@ -46,106 +40,42 @@ export default function OnboardingPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!name.trim() || !slugValid || busy) return
+    if (!slugFields.valid || busy) return
     setBusy(true)
     setError(null)
-    setSlugError(null)
     try {
-      const org = await createOrg(name.trim(), effectiveSlug)
+      const org = await createOrg(slugFields.name.trim(), slugFields.slug)
       navigate(`/${org.slug}`, { replace: true })
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
-        setSlugError('This slug is already taken. Choose a different one.')
+        slugFields.markTaken()
       } else {
-        setError(err instanceof Error ? err.message : String(err))
+        setError(errorMessage(err))
       }
       setBusy(false)
     }
   }
 
   return (
-    <div style={{ maxWidth: 420, margin: '48px auto 0', padding: '0 16px' }}>
-      <Stack direction="vertical" gap="spacious" align="center">
-        <Heading as="h1">
-          <RepoIcon size={24} verticalAlign="middle" /> Welcome to Nipa
-        </Heading>
+    <AuthLayout title="Welcome to Nipa" width={420}>
+      <AuthCard onSubmit={handleSubmit} noValidate={false}>
+        <SectionHeading>Name your workspace</SectionHeading>
+        <SlugFields
+          state={slugFields}
+          nameLabel="Organization name"
+          namePlaceholder="e.g. Acme Game Studio"
+          nameCaption="You become its owner and can invite members and create projects afterwards."
+          slugPlaceholder="acme-game-studio"
+          slugCaption={`Your workspace URL: /${slugFields.slug || '…'}`}
+          autoFocus
+        />
 
-        <form
-          onSubmit={handleSubmit}
-          style={{
-            width: '100%',
-            border: '1px solid var(--borderColor-default)',
-            borderRadius: 6,
-            padding: 24,
-          }}
-        >
-          <Stack direction="vertical" gap="normal">
-            <Heading as="h3" style={{ margin: 0, fontSize: 16 }}>
-              Name your workspace
-            </Heading>
-            <FormControl required>
-              <FormControl.Label>Organization name</FormControl.Label>
-              <TextInput
-                block
-                value={name}
-                onChange={(e) => {
-                  setName(e.target.value)
-                  setSlugError(null)
-                }}
-                placeholder="e.g. Acme Game Studio"
-                autoFocus
-              />
-              <FormControl.Caption>
-                You become its owner and can invite members and create projects afterwards.
-              </FormControl.Caption>
-            </FormControl>
+        <ErrorBanner error={error} />
 
-            <FormControl required>
-              <FormControl.Label>Slug</FormControl.Label>
-              <TextInput
-                block
-                value={effectiveSlug}
-                onChange={(e) => {
-                  const value = e.target.value
-                  setSlugError(null)
-                  if (value.trim() === '') {
-                    setSlugEdited(false)
-                    setSlug('')
-                    return
-                  }
-                  setSlugEdited(true)
-                  setSlug(value)
-                }}
-                placeholder="acme-game-studio"
-              />
-              <FormControl.Caption>
-                Your workspace URL: /{effectiveSlug || '…'}
-              </FormControl.Caption>
-              {!slugValid && (
-                <FormControl.Validation variant="error">
-                  {effectiveSlug === ''
-                    ? 'Slug is required.'
-                    : slugReserved
-                      ? 'This slug is reserved. Choose a different one.'
-                      : 'Slug must start with a letter or digit and contain only lowercase letters, digits and dashes.'}
-                </FormControl.Validation>
-              )}
-              {slugError && <FormControl.Validation variant="error">{slugError}</FormControl.Validation>}
-            </FormControl>
-
-            <ErrorBanner error={error} />
-
-            <Button
-              type="submit"
-              variant="primary"
-              block
-              disabled={busy || !name.trim() || !slugValid}
-            >
-              {busy ? 'Creating…' : 'Create workspace'}
-            </Button>
-          </Stack>
-        </form>
-      </Stack>
-    </div>
+        <Button type="submit" variant="primary" block loading={busy} disabled={busy || !slugFields.valid}>
+          {busy ? 'Creating…' : 'Create workspace'}
+        </Button>
+      </AuthCard>
+    </AuthLayout>
   )
 }

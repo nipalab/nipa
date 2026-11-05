@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { Flash, Heading, Link as PrimerLink, Spinner, Stack } from '@primer/react'
-import { RepoIcon } from '@primer/octicons-react'
+import { Link as PrimerLink, Spinner, Stack } from '@primer/react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { establishSession } from '../api/client'
 import { useAuth } from '../auth'
+import { AuthLayout } from '../components/AuthLayout'
+import { ErrorBanner } from '../components/ui'
+import { errorMessage } from '../hooks'
 import { OAUTH_SIGNIN_ERRORS } from '../oauth'
 import { APP_HOME } from '../routes'
 
@@ -38,35 +40,27 @@ export default function OAuthCallbackPage() {
         navigate(isNew ? '/onboarding' : from, { replace: true })
       })
       .catch((err: unknown) => {
-        setError(err instanceof Error ? err.message : String(err))
+        setError(errorMessage(err))
       })
   }, [code, isNew, oauthError, from, signIn, navigate])
 
   return (
-    <div style={{ maxWidth: 420, margin: '48px auto 0', padding: '0 16px' }}>
-      <Stack direction="vertical" gap="spacious" align="center">
-        <Heading as="h1">
-          <RepoIcon size={24} verticalAlign="middle" /> Nipa
-        </Heading>
+    <AuthLayout width={420}>
+      {!error && (
+        <Stack direction="vertical" align="center" gap="normal">
+          <Spinner size="large" />
+          <span>Completing sign-in…</span>
+        </Stack>
+      )}
 
-        {!error && (
-          <Stack direction="vertical" align="center" gap="normal">
-            <Spinner size="large" />
-            <span>Completing sign-in…</span>
-          </Stack>
-        )}
-
-        {error && (
-          <Stack direction="vertical" gap="normal" style={{ width: '100%' }}>
-            <Flash variant="danger">
-              <strong>Sign-in failed.</strong> {error}
-            </Flash>
-            <PrimerLink as={Link} to="/login">
-              Back to sign in
-            </PrimerLink>
-          </Stack>
-        )}
-      </Stack>
-    </div>
+      {error && (
+        <Stack direction="vertical" gap="normal" style={{ width: '100%' }}>
+          <ErrorBanner error={error} title="Sign-in failed" />
+          <PrimerLink as={Link} to="/login">
+            Back to sign in
+          </PrimerLink>
+        </Stack>
+      )}
+    </AuthLayout>
   )
 }

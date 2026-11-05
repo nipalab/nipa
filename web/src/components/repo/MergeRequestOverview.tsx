@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState } from 'react'
-import { Button, Link as PrimerLink, Select, Stack, Text, Textarea, TextInput } from '@primer/react'
+import { Button, Checkbox, IconButton, Link as PrimerLink, Select, Stack, Text, Textarea, TextInput } from '@primer/react'
 import {
   CheckCircleFillIcon,
   CheckIcon,
@@ -36,8 +36,12 @@ import type {
   ThreadResponse,
   TimelineItemResponse,
 } from '../../api/models'
-import { Mono } from '../ui'
+import { Mono, ErrorBanner } from '../ui'
 import { ActorAvatar, actorName, actorsFrom, type ActorLike } from '../ActorAvatar'
+import { useConfirmAction } from '../confirm'
+import { Card } from '../SettingsCard'
+import { Timestamp } from '../Timestamp'
+import { errorMessage } from '../../hooks'
 import { ThreadCodeContext } from './DiffView'
 import { ThreadCard } from './ThreadCard'
 
@@ -59,18 +63,12 @@ interface InlineDraft {
   body: string
 }
 
-function timestamp(value: string | undefined): string {
-  if (!value) return ''
-  const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? '' : date.toLocaleString()
-}
-
 function sidebarBox(title: string, children: React.ReactNode, action?: React.ReactNode) {
   return (
-    <div style={{ border: '1px solid var(--borderColor-default)', borderRadius: 6 }}>
+    <Card>
       <div
         style={{
-          padding: '8px 12px',
+          padding: 'var(--base-size-8) var(--base-size-12)',
           borderBottom: '1px solid var(--borderColor-muted)',
           background: 'var(--bgColor-muted)',
           fontSize: 12,
@@ -78,14 +76,16 @@ function sidebarBox(title: string, children: React.ReactNode, action?: React.Rea
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          gap: 8,
+          gap: 'var(--base-size-8)',
         }}
       >
         <span>{title}</span>
         {action}
       </div>
-      <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>{children}</div>
-    </div>
+      <div style={{ padding: 'var(--base-size-12)', display: 'flex', flexDirection: 'column', gap: 'var(--base-size-8)' }}>
+        {children}
+      </div>
+    </Card>
   )
 }
 
@@ -319,6 +319,12 @@ export function MergeRequestOverview({
       .map((item) => ({ kind: 'event' as const, at: item.created_at, item })),
   ].sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime())
 
+  const confirm = useConfirmAction()
+
+  async function confirmThen(options: Parameters<typeof confirm>[0], action: () => Promise<unknown>) {
+    if (await confirm(options)) await run(action)
+  }
+
   async function run(action: () => Promise<unknown>) {
     setError(null)
     setSending(true)
@@ -326,7 +332,7 @@ export function MergeRequestOverview({
       await action()
       onChanged()
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      setError(errorMessage(err))
     } finally {
       setSending(false)
     }
@@ -382,11 +388,7 @@ export function MergeRequestOverview({
   return (
     <div className="nipa-mr-layout">
       <div className="nipa-mr-main">
-        {error && (
-          <Text as="p" style={{ color: 'var(--fgColor-danger)' }}>
-            {error}
-          </Text>
-        )}
+        <ErrorBanner error={error} onDismiss={() => setError(null)} />
 
         {request && (
           <div
@@ -409,7 +411,7 @@ export function MergeRequestOverview({
               <ActorAvatar actor={author} size={20} />
               <strong>{actorName(author)}</strong>
               <span style={{ color: 'var(--fgColor-muted)', fontSize: 12 }}>
-                opened this merge request on {timestamp(request.created_at)}
+                opened this merge request on <Timestamp value={request.created_at} mode="absolute" />
               </span>
             </div>
             <div style={{ padding: '10px 12px' }}>
@@ -453,7 +455,7 @@ export function MergeRequestOverview({
                   {eventIcon(entry.item.kind)}
                 </span>
                 <span>{eventLabel(entry.item, org, project)}</span>
-                <span style={{ fontSize: 12 }}>{timestamp(entry.item.created_at)}</span>
+                <span style={{ fontSize: 12 }}><Timestamp value={entry.item.created_at} mode="absolute" /></span>
               </div>
             )
           }
@@ -483,7 +485,7 @@ export function MergeRequestOverview({
                   <ActorAvatar actor={review.reviewer} size={20} />
                   <strong>{actorName(review.reviewer)}</strong>
                   <Text style={{ fontSize: 12, color: 'var(--fgColor-muted)' }}>{reviewVerb(review)}</Text>
-                  <Text style={{ fontSize: 12, color: 'var(--fgColor-muted)' }}>{timestamp(review.created_at)}</Text>
+                  <Text style={{ fontSize: 12, color: 'var(--fgColor-muted)' }}><Timestamp value={review.created_at} mode="absolute" /></Text>
                 </div>
                 <div style={{ padding: '10px 12px' }}>
                   {review.body ? (
@@ -498,7 +500,7 @@ export function MergeRequestOverview({
                   {review.dismissed_at && (
                     <Text as="p" style={{ color: 'var(--fgColor-muted)', fontSize: 12, marginBottom: 0 }}>
                       {review.dismissed_reason === 'new_commits' ? 'Dismissed by new commits' : 'Dismissed'} by{' '}
-                      {actorName(review.dismissed_by)} · {timestamp(review.dismissed_at)}
+                      {actorName(review.dismissed_by)} · <Timestamp value={review.dismissed_at} mode="absolute" />
                     </Text>
                   )}
                   {canWrite && !review.dismissed_at && (
@@ -507,7 +509,7 @@ export function MergeRequestOverview({
                         <Button
                           size="small"
                           disabled={pending}
-                          onClick={() => run(() => withdrawMergeRequestReview(org, project, id, review.id))}
+                          onClick={() => confirmThen({ title: 'Withdraw review?', content: 'Your review will be removed from this merge request.', confirmLabel: 'Withdraw' }, () => withdrawMergeRequestReview(org, project, id, review.id))}
                         >
                           Withdraw
                         </Button>
@@ -516,7 +518,7 @@ export function MergeRequestOverview({
                         <Button
                           size="small"
                           disabled={pending}
-                          onClick={() => run(() => dismissMergeRequestReview(org, project, id, review.id))}
+                          onClick={() => confirmThen({ title: 'Dismiss review?', content: 'The review stays in the history but no longer counts.', confirmLabel: 'Dismiss' }, () => dismissMergeRequestReview(org, project, id, review.id))}
                         >
                           Dismiss
                         </Button>
@@ -604,14 +606,13 @@ export function MergeRequestOverview({
                     <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {draft.body}
                     </span>
-                    <Button
+                    <IconButton
                       size="small"
                       variant="invisible"
                       aria-label={`Remove inline comment on ${draft.filePath}`}
                       onClick={() => removeInlineDraft(index)}
-                    >
-                      <XIcon />
-                    </Button>
+                      icon={XIcon}
+                    />
                   </div>
                 ))}
                 {inlineOpen ? (
@@ -788,7 +789,7 @@ export function MergeRequestOverview({
                   {actorName(assignee)}
                 </span>
                 {canWrite && request?.status === 'open' && (
-                  <Button
+                  <IconButton
                     size="small"
                     aria-label={`unassign ${actorName(assignee)}`}
                     disabled={pending}
@@ -804,9 +805,8 @@ export function MergeRequestOverview({
                         ),
                       )
                     }
-                  >
-                    <XIcon />
-                  </Button>
+                    icon={XIcon}
+                  />
                 )}
               </div>
             ))}
@@ -870,7 +870,7 @@ export function MergeRequestOverview({
                     {actorName(entry.user)}
                   </span>
                   {canWrite && entry.requestId && (
-                    <Button
+                    <IconButton
                       size="small"
                       aria-label={`cancel review request for ${actorName(entry.user)}`}
                       disabled={pending}
@@ -879,9 +879,8 @@ export function MergeRequestOverview({
                           removeMergeRequestReviewRequest(org, project, id, entry.user.user_id),
                         )
                       }
-                    >
-                      <XIcon />
-                    </Button>
+                      icon={XIcon}
+                    />
                   )}
                 </div>
               )
@@ -1054,20 +1053,18 @@ export function MergeRequestOverview({
           <div style={{ padding: 12, borderTop: '1px solid var(--borderColor-muted)' }}>
             <Stack direction="vertical" gap="condensed">
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <select
+                <Select
                   aria-label="Merge strategy"
                   value={strategy}
                   onChange={(event) => setStrategy(event.target.value)}
-                  style={{ padding: 4 }}
                 >
-                  <option value="ff">Fast-forward</option>
-                  <option value="merge">Merge commit</option>
-                  <option value="squash">Squash</option>
-                  <option value="rebase">Rebase</option>
-                </select>
+                  <Select.Option value="ff">Fast-forward</Select.Option>
+                  <Select.Option value="merge">Merge commit</Select.Option>
+                  <Select.Option value="squash">Squash</Select.Option>
+                  <Select.Option value="rebase">Rebase</Select.Option>
+                </Select>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     aria-label="Delete source branch"
                     checked={deleteSource}
                     onChange={(event) => setDeleteSource(event.target.checked)}
@@ -1081,7 +1078,7 @@ export function MergeRequestOverview({
                 disabled={!mergeable || pending}
                 onClick={() => onMerge(strategy, deleteSource)}
               >
-                Merge pull request
+                Merge request
               </Button>
               <Button block disabled={pending} onClick={onClose}>
                 Close merge request

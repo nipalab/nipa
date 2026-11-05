@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { BookIcon, FileBinaryIcon, FileCodeIcon, FileDirectoryFillIcon, FileIcon, FileMediaIcon } from '@primer/octicons-react'
 import { BranchSelector } from './BranchSelector'
 import { MergeRequestCommits } from './MergeRequestCommits'
-import { Tabs } from './Tabs'
+import { MergeRequestTabs } from './MergeRequestTabs'
 import { RepoBreadcrumb } from './RepoBreadcrumb'
 import { RepoNav } from './RepoNav'
 import { fileIcon } from './fileIcon'
@@ -113,11 +113,11 @@ describe('RepoNav', () => {
   })
 })
 
-describe('Tabs', () => {
+describe('MergeRequestTabs', () => {
   it('renders counts and reports the selected tab', async () => {
     const selected: string[] = []
     const { container, root } = await render(
-      <Tabs
+      <MergeRequestTabs
         tabs={[
           { id: 'overview', label: 'Overview' },
           { id: 'commits', label: 'Commits', count: 3 },

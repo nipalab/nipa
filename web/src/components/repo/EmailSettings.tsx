@@ -1,11 +1,13 @@
 import { useState } from 'react'
-import { Button, FormControl, Stack, Text } from '@primer/react'
+import { Button, FormControl, Select, Stack } from '@primer/react'
 import { listEmailDeliveries, redeliverEmailDelivery } from '../../api/endpoints'
 import type { EmailDeliveryResponse } from '../../api/models'
-import { useAsync } from '../../hooks'
-import { EmptyState, ErrorBanner, Loading } from '../ui'
-
-const cell = { padding: '6px 4px' }
+import { useAction, useAsync } from '../../hooks'
+import { DataTable, type Column } from '../DataTable'
+import { SettingsCard } from '../SettingsCard'
+import { StateBadge } from '../StateBadge'
+import { Timestamp } from '../Timestamp'
+import { ErrorBanner } from '../ui'
 
 const STATE_OPTIONS = [
   { value: '', label: 'All states' },
@@ -14,11 +16,14 @@ const STATE_OPTIONS = [
   { value: 'delivered', label: 'Delivered' },
 ]
 
-function stateColor(state: string): string {
-  if (state === 'delivered') return 'var(--fgColor-success)'
-  if (state === 'failed') return 'var(--fgColor-danger)'
-  return 'var(--fgColor-attention)'
-}
+const ellipsis = {
+  display: 'inline-block',
+  maxWidth: 260,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+  verticalAlign: 'bottom',
+} as const
 
 export function EmailSettings({ org, project }: { org: string; project: string }) {
   const [state, setState] = useState('')
@@ -26,118 +31,78 @@ export function EmailSettings({ org, project }: { org: string; project: string }
     () => listEmailDeliveries(org, project, state),
     [org, project, state],
   )
+  const { run, error: actionError, clearError } = useAction(reload)
   const [redelivering, setRedelivering] = useState<string | null>(null)
-  const [actionError, setActionError] = useState<string | null>(null)
 
   async function redeliver(delivery: EmailDeliveryResponse) {
     setRedelivering(delivery.id)
-    setActionError(null)
-    try {
-      await redeliverEmailDelivery(org, project, delivery.id)
-      reload()
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setRedelivering(null)
-    }
+    await run(() => redeliverEmailDelivery(org, project, delivery.id))
+    setRedelivering(null)
   }
+
+  const columns: Column<EmailDeliveryResponse>[] = [
+    { id: 'email', header: 'Recipient', rowHeader: true, renderCell: (delivery) => delivery.email },
+    { id: 'event', header: 'Event', renderCell: (delivery) => delivery.event },
+    {
+      id: 'subject',
+      header: 'Subject',
+      renderCell: (delivery) => (
+        <span style={ellipsis} title={delivery.subject}>
+          {delivery.subject}
+        </span>
+      ),
+    },
+    { id: 'state', header: 'State', renderCell: (delivery) => <StateBadge status={delivery.state} /> },
+    { id: 'attempts', header: 'Attempts', renderCell: (delivery) => delivery.attempts },
+    {
+      id: 'error',
+      header: 'Last error',
+      renderCell: (delivery) => (
+        <span style={ellipsis} title={delivery.last_error}>
+          {delivery.last_error || '—'}
+        </span>
+      ),
+    },
+    { id: 'created', header: 'Created', renderCell: (delivery) => <Timestamp value={delivery.created_at} /> },
+    {
+      id: 'actions',
+      header: '',
+      align: 'end',
+      renderCell: (delivery) => (
+        <Button size="small" disabled={redelivering === delivery.id} onClick={() => void redeliver(delivery)}>
+          Redeliver
+        </Button>
+      ),
+    },
+  ]
 
   return (
     <Stack direction="vertical" gap="normal">
-      <Text as="p" style={{ color: 'var(--fgColor-muted)' }}>
-        Notification emails queued for this project, newest first. Failed deliveries retry automatically;
-        redelivering re-queues a delivered or failed notification.
-      </Text>
-      <ErrorBanner error={actionError ?? error} />
-      <FormControl>
-        <FormControl.Label>State</FormControl.Label>
-        <select
-          aria-label="Delivery state"
-          value={state}
-          onChange={(event) => setState(event.target.value)}
-          style={{
-            padding: '5px 8px',
-            borderRadius: 6,
-            border: '1px solid var(--borderColor-default)',
-            background: 'var(--bgColor-default)',
-            color: 'inherit',
-          }}
-        >
-          {STATE_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-      </FormControl>
-      {loading ? (
-        <Loading />
-      ) : !data || data.deliveries.length === 0 ? (
-        <EmptyState>No email deliveries.</EmptyState>
-      ) : (
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr style={{ color: 'var(--fgColor-muted)', textAlign: 'left' }}>
-              <th style={cell}>Recipient</th>
-              <th style={cell}>Event</th>
-              <th style={cell}>Subject</th>
-              <th style={cell}>State</th>
-              <th style={cell}>Attempts</th>
-              <th style={cell}>Last error</th>
-              <th style={cell}>Created</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {data.deliveries.map((delivery) => (
-              <tr key={delivery.id} style={{ borderBottom: '1px solid var(--borderColor-muted)' }}>
-                <td style={cell}>{delivery.email}</td>
-                <td style={cell}>{delivery.event}</td>
-                <td
-                  style={{
-                    ...cell,
-                    maxWidth: 260,
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}
-                  title={delivery.subject}
-                >
-                  {delivery.subject}
-                </td>
-                <td style={{ ...cell, fontWeight: 600, color: stateColor(delivery.state) }}>
-                  {delivery.state}
-                </td>
-                <td style={cell}>{delivery.attempts}</td>
-                <td
-                  style={{
-                    ...cell,
-                    maxWidth: 260,
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}
-                  title={delivery.last_error}
-                >
-                  {delivery.last_error || '—'}
-                </td>
-                <td style={{ ...cell, color: 'var(--fgColor-muted)' }}>
-                  {new Date(delivery.created_at).toLocaleString()}
-                </td>
-                <td style={{ ...cell, textAlign: 'right' }}>
-                  <Button
-                    size="small"
-                    disabled={redelivering === delivery.id}
-                    onClick={() => redeliver(delivery)}
-                  >
-                    Redeliver
-                  </Button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      <SettingsCard
+        title="Email deliveries"
+        description="Notification emails queued for this project, newest first. Failed deliveries retry automatically; redelivering re-queues a delivered or failed notification."
+        actions={
+          <FormControl>
+            <FormControl.Label visuallyHidden>State</FormControl.Label>
+            <Select aria-label="Delivery state" value={state} onChange={(event) => setState(event.target.value)}>
+              {STATE_OPTIONS.map((option) => (
+                <Select.Option key={option.value} value={option.value}>
+                  {option.label}
+                </Select.Option>
+              ))}
+            </Select>
+          </FormControl>
+        }
+      >
+        <ErrorBanner error={actionError ?? error} onDismiss={actionError ? clearError : undefined} />
+      </SettingsCard>
+      <DataTable
+        label="Email deliveries"
+        loading={loading}
+        data={data?.deliveries ?? []}
+        columns={columns}
+        empty="No email deliveries."
+      />
     </Stack>
   )
 }

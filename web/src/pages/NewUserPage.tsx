@@ -1,9 +1,11 @@
 import { useState } from 'react'
-import { Button, FormControl, Link as PrimerLink, Stack, Text, TextInput } from '@primer/react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Button, FormControl, TextInput } from '@primer/react'
+import { useNavigate } from 'react-router-dom'
 import { createUser } from '../api/endpoints'
 import { useAuth } from '../auth'
-import { ErrorBanner, Page } from '../components/ui'
+import { FormCard } from '../components/SettingsCard'
+import { ErrorBanner, NoPermission, Page } from '../components/ui'
+import { errorMessage } from '../hooks'
 
 export default function NewUserPage() {
   const { me } = useAuth()
@@ -16,17 +18,12 @@ export default function NewUserPage() {
 
   const isAdmin = Boolean(me?.is_admin || me?.is_super_admin)
   const canSubmit = name.trim() !== '' && email.trim() !== '' && password !== '' && !saving
-  const backLink = (
-    <PrimerLink as={Link} to="/admin/users">
-      back to users
-    </PrimerLink>
-  )
+  const crumbs = [{ label: 'Users', to: '/admin/users' }, { label: 'New user' }]
 
   if (!isAdmin) {
     return (
-      <Page title="New user" subtitle="Global administration">
-        <Text>You need global admin permission to create users.</Text>
-        {backLink}
+      <Page title="New user" subtitle="Global administration" breadcrumbs={crumbs}>
+        <NoPermission>You need global admin permission to create users.</NoPermission>
       </Page>
     )
   }
@@ -40,57 +37,31 @@ export default function NewUserPage() {
       await createUser(name.trim(), email.trim(), password)
       navigate('/admin/users')
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : String(err))
+      setActionError(errorMessage(err))
       setSaving(false)
     }
   }
 
   return (
-    <Page title="New user" subtitle="Global administration" actions={backLink}>
+    <Page title="New user" subtitle="Global administration" breadcrumbs={crumbs}>
       <ErrorBanner error={actionError} />
-      <form
-        onSubmit={handleSubmit}
-        style={{
-          border: '1px solid var(--borderColor-default)',
-          borderRadius: 6,
-          padding: 16,
-          maxWidth: 560,
-        }}
-      >
-        <Stack direction="vertical" gap="normal">
-          <FormControl required>
-            <FormControl.Label>Name</FormControl.Label>
-            <TextInput block autoFocus value={name} onChange={(event) => setName(event.target.value)} />
-          </FormControl>
-          <FormControl required>
-            <FormControl.Label>Email</FormControl.Label>
-            <TextInput
-              block
-              type="email"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-            />
-          </FormControl>
-          <FormControl required>
-            <FormControl.Label>Password</FormControl.Label>
-            <TextInput
-              block
-              type="password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-            />
-          </FormControl>
-          <Button
-            type="submit"
-            variant="primary"
-            disabled={!canSubmit}
-            loading={saving}
-            style={{ alignSelf: 'flex-start' }}
-          >
-            Create user
-          </Button>
-        </Stack>
-      </form>
+      <FormCard onSubmit={handleSubmit} maxWidth={560}>
+        <FormControl required>
+          <FormControl.Label>Name</FormControl.Label>
+          <TextInput block autoFocus value={name} onChange={(event) => setName(event.target.value)} />
+        </FormControl>
+        <FormControl required>
+          <FormControl.Label>Email</FormControl.Label>
+          <TextInput block type="email" value={email} onChange={(event) => setEmail(event.target.value)} />
+        </FormControl>
+        <FormControl required>
+          <FormControl.Label>Password</FormControl.Label>
+          <TextInput block type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
+        </FormControl>
+        <Button type="submit" variant="primary" disabled={!canSubmit} loading={saving} style={{ alignSelf: 'flex-start' }}>
+          Create user
+        </Button>
+      </FormCard>
     </Page>
   )
 }

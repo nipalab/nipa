@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { Button, Stack, Text, TextInput } from '@primer/react'
+import { Button, Select, Stack, Text, TextInput } from '@primer/react'
 import { SearchIcon } from '@primer/octicons-react'
-import { listGroups, listOrgMembers, listUsers } from '../api/endpoints'
-import type { OrgMemberResponse } from '../api/models'
+import { listGroups, listUsers } from '../api/endpoints'
+import type { GroupResponse, OrgMemberResponse, UserResponse } from '../api/models'
+import { fetchOrgMembers } from '../orgHooks'
 import { ActorAvatar } from './ActorAvatar'
 
 type PickerKind = 'user' | 'group' | 'user-or-group'
@@ -13,6 +14,61 @@ export interface PickerEntry {
   sublabel: string
   avatarUrl?: string
   isGroup: boolean
+}
+
+interface Directory {
+  users: UserResponse[] | null
+  members: OrgMemberResponse[] | null
+  groups: GroupResponse[] | null
+  searchable: boolean
+}
+
+async function loadDirectory(org: string, kind: PickerKind): Promise<Directory> {
+  const wantsUsers = kind === 'user' || kind === 'user-or-group'
+  const wantsGroups = kind === 'group' || kind === 'user-or-group'
+  const [users, members, groups] = await Promise.allSettled([
+    wantsUsers ? listUsers() : Promise.resolve(null),
+    wantsUsers ? fetchOrgMembers(org) : Promise.resolve(null),
+    wantsGroups ? listGroups(org) : Promise.resolve(null),
+  ])
+  const usersOk = users.status === 'fulfilled' && users.value !== null
+  const membersOk = members.status === 'fulfilled' && members.value !== null
+  const groupsOk = groups.status === 'fulfilled' && groups.value !== null
+  return {
+    users: users.status === 'fulfilled' ? users.value : null,
+    members: members.status === 'fulfilled' ? members.value : null,
+    groups: groups.status === 'fulfilled' ? groups.value : null,
+    searchable: usersOk || membersOk || groupsOk,
+  }
+}
+
+function filterDirectory(directory: Directory, query: string): PickerEntry[] {
+  const q = query.toLowerCase()
+  const results: PickerEntry[] = []
+  const seen = new Set<string>()
+  const memberMap = new Map<string, OrgMemberResponse>()
+  for (const m of directory.members ?? []) {
+    memberMap.set(m.user_id, m)
+    if (m.name.toLowerCase().includes(q) || m.email.toLowerCase().includes(q) || m.user_id.includes(q)) {
+      seen.add(m.user_id)
+      results.push({ id: m.user_id, label: m.name, sublabel: m.email, avatarUrl: m.photo_url, isGroup: false })
+    }
+  }
+  for (const u of directory.users ?? []) {
+    if (seen.has(u.id)) continue
+    const m = memberMap.get(u.id)
+    const name = m?.name || u.name
+    const email = m?.email || u.email
+    if (name.toLowerCase().includes(q) || email.toLowerCase().includes(q) || u.id.includes(q)) {
+      results.push({ id: u.id, label: name, sublabel: email, avatarUrl: u.photo_url, isGroup: false })
+    }
+  }
+  for (const g of directory.groups ?? []) {
+    if (g.name.toLowerCase().includes(q) || g.id.includes(q)) {
+      results.push({ id: g.id, label: g.name, sublabel: g.description || 'Group', isGroup: true })
+    }
+  }
+  return results.slice(0, 10)
 }
 
 export function UserGroupPicker({
@@ -36,6 +92,7 @@ export function UserGroupPicker({
   const [manualId, setManualId] = useState('')
   const [manualIsGroup, setManualIsGroup] = useState(kind === 'group')
   const containerRef = useRef<HTMLDivElement>(null)
+  const directoryRef = useRef<Directory | null>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout>>()
 
   useEffect(() => {
@@ -49,6 +106,10 @@ export function UserGroupPicker({
   }, [])
 
   useEffect(() => {
+    directoryRef.current = null
+  }, [org, kind])
+
+  useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
     if (!query.trim()) {
       setEntries([])
@@ -58,71 +119,11 @@ export function UserGroupPicker({
     debounceRef.current = setTimeout(async () => {
       setLoading(true)
       try {
-        const q = query.toLowerCase()
-        const results: PickerEntry[] = []
-
-        if (kind === 'user' || kind === 'user-or-group') {
-          const [usersResult, membersResult] = await Promise.allSettled([listUsers(), listOrgMembers(org)])
-          if (!active) return
-          setSearchable(usersResult.status === 'fulfilled' || membersResult.status === 'fulfilled')
-          const seen = new Set<string>()
-          const members = membersResult.status === 'fulfilled' ? membersResult.value : []
-          const memberMap = new Map<string, OrgMemberResponse>()
-          for (const m of members) {
-            memberMap.set(m.user_id, m)
-            if (
-              m.name.toLowerCase().includes(q) ||
-              m.email.toLowerCase().includes(q) ||
-              m.user_id.includes(q)
-            ) {
-              seen.add(m.user_id)
-              results.push({
-                id: m.user_id,
-                label: m.name,
-                sublabel: m.email,
-                avatarUrl: m.photo_url,
-                isGroup: false,
-              })
-            }
-          }
-          if (usersResult.status === 'fulfilled') {
-            for (const u of usersResult.value) {
-              if (seen.has(u.id)) continue
-              const m = memberMap.get(u.id)
-              const name = m?.name || u.name
-              const email = m?.email || u.email
-              if (name.toLowerCase().includes(q) || email.toLowerCase().includes(q) || u.id.includes(q)) {
-                results.push({
-                  id: u.id,
-                  label: name,
-                  sublabel: email,
-                  avatarUrl: u.photo_url,
-                  isGroup: false,
-                })
-              }
-            }
-          }
-        }
-
-        if (kind === 'group' || kind === 'user-or-group') {
-          const groupsResult = await Promise.allSettled([listGroups(org)])
-          if (!active) return
-          const groups = groupsResult[0].status === 'fulfilled' ? groupsResult[0].value : []
-          if (groupsResult[0].status === 'fulfilled') setSearchable(true)
-          else if (kind === 'group') setSearchable(false)
-          for (const g of groups) {
-            if (g.name.toLowerCase().includes(q) || g.id.includes(q)) {
-              results.push({
-                id: g.id,
-                label: g.name,
-                sublabel: g.description || 'Group',
-                isGroup: true,
-              })
-            }
-          }
-        }
-
-        setEntries(results.slice(0, 10))
+        const directory = directoryRef.current ?? (await loadDirectory(org, kind))
+        if (!active) return
+        if (directory.searchable) directoryRef.current = directory
+        setSearchable(directory.searchable)
+        setEntries(filterDirectory(directory, query.trim()))
         setHighlight(0)
       } finally {
         if (active) setLoading(false)
@@ -179,15 +180,14 @@ export function UserGroupPicker({
           style={{ display: 'flex', gap: 8, alignItems: 'center' }}
         >
           {kind === 'user-or-group' && (
-            <select
+            <Select
               value={manualIsGroup ? 'group' : 'user'}
               onChange={(e) => setManualIsGroup(e.target.value === 'group')}
               aria-label="Subject type"
-              style={{ padding: 6 }}
             >
-              <option value="user">User</option>
-              <option value="group">Group</option>
-            </select>
+              <Select.Option value="user">User</Select.Option>
+              <Select.Option value="group">Group</Select.Option>
+            </Select>
           )}
           <TextInput
             block
@@ -201,13 +201,9 @@ export function UserGroupPicker({
             Use ID
           </Button>
         </form>
-        <button
-          type="button"
-          onClick={() => setManual(false)}
-          style={{ background: 'none', border: 'none', padding: 0, color: 'var(--fgColor-accent)', cursor: 'pointer', alignSelf: 'flex-start' }}
-        >
+        <Button variant="link" onClick={() => setManual(false)} style={{ alignSelf: 'flex-start' }}>
           Back to search
-        </button>
+        </Button>
       </Stack>
     )
   }
@@ -236,8 +232,8 @@ export function UserGroupPicker({
             marginTop: 4,
             background: 'var(--bgColor-default)',
             border: '1px solid var(--borderColor-default)',
-            borderRadius: 6,
-            boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+            borderRadius: 'var(--borderRadius-medium)',
+            boxShadow: 'var(--shadow-floating-medium)',
             zIndex: 100,
             maxHeight: 280,
             overflowY: 'auto',
@@ -255,16 +251,15 @@ export function UserGroupPicker({
               <Text as="p" style={{ color: 'var(--fgColor-muted)' }}>
                 Search is unavailable with your permissions.
               </Text>
-              <button
-                type="button"
+              <Button
+                variant="link"
                 onClick={() => {
                   setManual(true)
                   setOpen(false)
                 }}
-                style={{ background: 'none', border: 'none', padding: 0, color: 'var(--fgColor-accent)', cursor: 'pointer' }}
               >
                 Enter an ID manually
-              </button>
+              </Button>
             </div>
           )}
           {!loading && searchable !== false && entries.length === 0 && (
@@ -276,49 +271,32 @@ export function UserGroupPicker({
           )}
           {!loading &&
             entries.map((entry, i) => (
-              <button
+              <Button
                 key={`${entry.isGroup ? 'g' : 'u'}-${entry.id}`}
-                type="button"
+                variant="invisible"
+                block
+                alignContent="start"
                 onClick={() => select(entry)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 10,
-                  width: '100%',
-                  padding: '8px 12px',
-                  background: i === highlight ? 'var(--bgColor-muted)' : 'transparent',
-                  border: 'none',
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                }}
+                style={{ height: 'auto', padding: 'var(--base-size-8) var(--base-size-12)', background: i === highlight ? 'var(--bgColor-muted)' : undefined }}
               >
-                <ActorAvatar
-                  actor={{ user_id: entry.id, name: entry.label, photo_url: entry.avatarUrl }}
-                  size={24}
-                />
-                <div>
-                  <div style={{ fontWeight: 600, fontSize: 14 }}>{entry.label}</div>
-                  <div style={{ color: 'var(--fgColor-muted)', fontSize: 12 }}>{entry.sublabel}</div>
-                </div>
-              </button>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 'var(--base-size-12)', textAlign: 'left' }}>
+                  <ActorAvatar actor={{ user_id: entry.id, name: entry.label, photo_url: entry.avatarUrl }} size={24} />
+                  <span>
+                    <span style={{ display: 'block', fontWeight: 600, fontSize: 14 }}>{entry.label}</span>
+                    <span style={{ display: 'block', color: 'var(--fgColor-muted)', fontSize: 12, fontWeight: 400 }}>
+                      {entry.sublabel}
+                    </span>
+                  </span>
+                </span>
+              </Button>
             ))}
         </div>
       )}
-      <button
-        type="button"
-        onClick={() => setManual(true)}
-        style={{
-          background: 'none',
-          border: 'none',
-          padding: 0,
-          marginTop: 4,
-          color: 'var(--fgColor-accent)',
-          cursor: 'pointer',
-          fontSize: 12,
-        }}
-      >
-        Enter an ID manually
-      </button>
+      <div style={{ marginTop: 'var(--base-size-4)' }}>
+        <Button variant="link" size="small" onClick={() => setManual(true)}>
+          Enter an ID manually
+        </Button>
+      </div>
     </div>
   )
 }

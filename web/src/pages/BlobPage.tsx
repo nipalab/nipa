@@ -10,7 +10,7 @@ import { RepoPageShell } from '../components/repo/RepoPageShell'
 import { blobUrl, commitsUrl } from '../components/repo/repoPaths'
 import { useRepoChrome } from '../components/repo/useRepoChrome'
 import { ErrorBanner, Loading } from '../components/ui'
-import { useAsync } from '../hooks'
+import { useAsync, useClipboard } from '../hooks'
 
 const CodeView = lazy(() => import('../components/repo/CodeView').then((module) => ({ default: module.CodeView })))
 
@@ -48,7 +48,7 @@ export default function BlobPage() {
 
   const [text, setText] = useState<string | null>(null)
   const [imageUrl, setImageUrl] = useState<string | null>(null)
-  const [copied, setCopied] = useState(false)
+  const { copied, copy: copyToClipboard } = useClipboard(1500)
 
   useEffect(() => {
     let active = true
@@ -82,14 +82,7 @@ export default function BlobPage() {
   const lines = text === null ? 0 : countLines(text)
 
   const copy = async () => {
-    if (text === null) return
-    try {
-      await navigator.clipboard.writeText(text)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
-    } catch {
-      setCopied(false)
-    }
+    if (text !== null) await copyToClipboard(text)
   }
 
   const download = () => {

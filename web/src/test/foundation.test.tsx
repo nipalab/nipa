@@ -388,6 +388,22 @@ describe('FormDialog', () => {
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 
+  it('stays open without an error when onSubmit resolves to false', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(false)
+    const onClose = vi.fn()
+    await render(
+      <FormDialog title="Keep open" onSubmit={onSubmit} onClose={onClose}>
+        <span>x</span>
+      </FormDialog>,
+    )
+    await click(buttonByText(document.body, 'Save'))
+    await flush()
+    expect(onSubmit).toHaveBeenCalledTimes(1)
+    expect(onClose).not.toHaveBeenCalled()
+    expect(document.body.textContent).not.toContain('Could not save')
+    expect(buttonByText(document.body, 'Save')?.disabled).toBe(false)
+  })
+
   it('ignores submit while a request is in flight', async () => {
     let release: () => void = () => undefined
     const onSubmit = vi.fn(() => new Promise<void>((resolve) => (release = resolve)))

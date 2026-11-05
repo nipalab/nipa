@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Button, Stack, Text, TextInput } from '@primer/react'
+import { SegmentedControl, Text, TextInput } from '@primer/react'
 import { SearchIcon } from '@primer/octicons-react'
 import type { DiffFileResponse, ThreadResponse } from '../../api/models'
 import { EmptyState } from '../ui'
@@ -181,18 +181,12 @@ export function ChangesView({
               onChange={(event) => setFilter(event.target.value)}
             />
           </div>
-          <Stack direction="horizontal" gap="condensed" style={{ marginLeft: 'auto' }}>
-            <Button
-              size="small"
-              variant={mode === 'unified' ? 'primary' : 'default'}
-              onClick={() => setMode('unified')}
-            >
-              Unified
-            </Button>
-            <Button size="small" variant={mode === 'split' ? 'primary' : 'default'} onClick={() => setMode('split')}>
-              Split
-            </Button>
-          </Stack>
+          <div style={{ marginLeft: 'auto' }}>
+            <SegmentedControl aria-label="Diff view" size="small" onChange={(index) => setMode(index === 0 ? 'unified' : 'split')}>
+              <SegmentedControl.Button selected={mode === 'unified'}>Unified</SegmentedControl.Button>
+              <SegmentedControl.Button selected={mode === 'split'}>Split</SegmentedControl.Button>
+            </SegmentedControl>
+          </div>
         </div>
 
         {visible.length === 0 ? (

@@ -1,7 +1,7 @@
 import { act } from 'react'
 import type { ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 
 export async function render(node: ReactNode, route = '/') {
   const container = document.createElement('div')
@@ -59,4 +59,62 @@ export async function flush() {
   await act(async () => {
     await Promise.resolve()
   })
+}
+
+function LocationProbe() {
+  const location = useLocation()
+  return <div data-testid="location">{`${location.pathname}${location.search}`}</div>
+}
+
+export async function renderRoute(pattern: string, url: string, element: ReactNode) {
+  const view = await render(
+    <Routes>
+      <Route path={pattern} element={element} />
+      <Route path="*" element={<LocationProbe />} />
+    </Routes>,
+    url,
+  )
+  return { ...view, location: () => view.container.querySelector('[data-testid="location"]')?.textContent ?? null }
+}
+
+export async function waitFor(predicate: () => boolean, timeoutMs = 2000) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (predicate()) return
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    })
+  }
+  throw new Error('timed out waiting for the UI to settle')
+}
+
+export function buttonsByText(root: ParentNode, text: string): HTMLButtonElement[] {
+  return Array.from(root.querySelectorAll('button')).filter((button) => button.textContent?.trim() === text)
+}
+
+export async function confirmDialog(label: string) {
+  await waitFor(() => document.querySelector('[role="alertdialog"]') !== null)
+  const dialog = document.querySelector('[role="alertdialog"]') as HTMLElement
+  await click(buttonByText(dialog, label))
+  await flush()
+}
+
+export async function cancelDialog() {
+  await waitFor(() => document.querySelector('[role="alertdialog"]') !== null)
+  const dialog = document.querySelector('[role="alertdialog"]') as HTMLElement
+  await click(buttonByText(dialog, 'Cancel'))
+  await flush()
+}
+
+export async function choose(select: HTMLSelectElement | null | undefined, value: string) {
+  if (!select) throw new Error('select not found')
+  await act(async () => {
+    const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set
+    setter?.call(select, value)
+    select.dispatchEvent(new Event('change', { bubbles: true }))
+  })
+}
+
+export async function typeInto(root: ParentNode, selector: string, value: string) {
+  await type(root.querySelector<HTMLInputElement>(selector), value)
 }

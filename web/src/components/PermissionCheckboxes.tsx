@@ -1,4 +1,4 @@
-import { Stack, Text } from '@primer/react'
+import { Checkbox, Stack, Text } from '@primer/react'
 import { PERMISSION_ADMIN, PERMISSION_LOCK, PERMISSION_READ, PERMISSION_WRITE } from '../api/models'
 
 const PERMISSION_OPTIONS = [
@@ -30,12 +30,7 @@ export function PermissionCheckboxes({
           key={option.bit}
           style={{ display: 'flex', gap: 8, alignItems: 'flex-start', cursor: 'pointer' }}
         >
-          <input
-            type="checkbox"
-            checked={(value & option.bit) !== 0}
-            onChange={() => toggle(option.bit)}
-            style={{ marginTop: 2 }}
-          />
+          <Checkbox checked={(value & option.bit) !== 0} onChange={() => toggle(option.bit)} />
           <span>
             <span style={{ fontWeight: 600 }}>{option.label}</span>
             <Text as="span" style={{ color: 'var(--fgColor-muted)' }}>

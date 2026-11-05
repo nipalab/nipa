@@ -1,556 +1,367 @@
 import { useState } from 'react'
-import { Button, Dialog, FormControl, Label, Stack, Text, TextInput } from '@primer/react'
-import { Link, useParams } from 'react-router-dom'
+import { Button, FormControl, Label, Select, Stack, TextInput } from '@primer/react'
+import { PeopleIcon, PersonIcon, DatabaseIcon } from '@primer/octicons-react'
+import { useParams, useSearchParams } from 'react-router-dom'
 import {
   addGroupMember,
   addOrgMember,
   createGroup,
   getGroup,
+  getOrgStorage,
   listGroups,
-  listOrgMembers,
-  listOrgs,
   removeGroupMember,
   removeOrgMember,
   updateOrgMember,
 } from '../api/endpoints'
 import type { GroupResponse, OrgMemberResponse } from '../api/models'
-import { useAuth } from '../auth'
 import { ActorAvatar } from '../components/ActorAvatar'
+import { useConfirmAction } from '../components/confirm'
+import { DataTable, type Column } from '../components/DataTable'
+import { FormDialog } from '../components/FormDialog'
+import { OrgNav } from '../components/OrgNav'
+import { Row } from '../components/RowList'
+import { SettingsCard } from '../components/SettingsCard'
+import { SettingsLayout, type SettingsNavItem } from '../components/SettingsLayout'
 import StorageCard from '../components/StorageCard'
 import { UserGroupPicker } from '../components/UserGroupPicker'
-import { EmptyState, ErrorBanner, Loading, Mono, Page } from '../components/ui'
-import { useAsync } from '../hooks'
+import { EmptyState, ErrorBanner, Loading, Mono, NoPermission, Page } from '../components/ui'
+import { useAction, useAsync } from '../hooks'
+import { useOrgMembers, useOrgRole } from '../orgHooks'
 
-const CELL = { padding: '8px 12px' }
-const HEADER_CELL = { ...CELL, fontWeight: 600, textAlign: 'left' as const, fontSize: 12, color: 'var(--fgColor-muted)' }
+type OrgTab = 'members' | 'groups' | 'storage'
+
+function isOrgTab(value: string | null): value is OrgTab {
+  return value === 'members' || value === 'groups' || value === 'storage'
+}
 
 export default function OrgSettingsPage() {
   const { org = '' } = useParams()
-  const { me } = useAuth()
-  const { data: orgs } = useAsync(listOrgs, [])
-  const { data: members, error, loading, reload } = useAsync(() => listOrgMembers(org), [org])
-  const { data: groups, reload: reloadGroups } = useAsync(() => listGroups(org), [org])
-  const [selectedGroup, setSelectedGroup] = useState<string | null>(null)
-  const { data: groupDetail, reload: reloadGroup } = useAsync(
-    () => (selectedGroup ? getGroup(org, selectedGroup) : Promise.resolve(null)),
-    [org, selectedGroup],
-  )
-  const [actionError, setActionError] = useState<string | null>(null)
-  const [showAddMember, setShowAddMember] = useState(false)
-  const [showCreateGroup, setShowCreateGroup] = useState(false)
-  const [confirmRemoveMember, setConfirmRemoveMember] = useState<OrgMemberResponse | null>(null)
-  const [confirmRemoveGroupMember, setConfirmRemoveGroupMember] = useState<string | null>(null)
+  const [params] = useSearchParams()
+  const { canManage, loading: roleLoading } = useOrgRole(org)
+  const { data: storage, reload: reloadStorage } = useAsync(() => getOrgStorage(org), [org])
 
-  const myRole = orgs?.find((item) => item.slug === org)?.role
-  const canManage = Boolean(me?.is_admin || me?.is_super_admin || myRole === 'owner')
+  const requested = params.get('tab')
+  const tab: OrgTab = isOrgTab(requested) && (requested !== 'storage' || storage !== null) ? requested : 'members'
+  const base = `/${org}/settings`
+  const items: SettingsNavItem[] = [
+    { key: 'members', label: 'Members', to: base, icon: PersonIcon },
+    { key: 'groups', label: 'Groups', to: `${base}?tab=groups`, icon: PeopleIcon },
+    { key: 'storage', label: 'Storage', to: `${base}?tab=storage`, icon: DatabaseIcon, hidden: storage === null },
+  ]
+  const title = `${org} settings`
 
-  async function run(action: () => Promise<unknown>) {
-    setActionError(null)
-    try {
-      await action()
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : String(err))
-    }
-  }
-
-  if (!canManage) {
+  if (roleLoading || !canManage) {
     return (
-      <Page title={`${org} settings`} subtitle="Organization members and groups">
-        <ErrorBanner error={error} />
-        <Text>Only organization owners can manage members and groups.</Text>
-        <Link to={`/${org}`}>back to repositories</Link>
+      <Page title={title} breadcrumbs={[{ label: org, to: `/${org}` }, { label: 'Settings' }]}>
+        <NoPermission loading={roleLoading}>Only organization owners can manage members and groups.</NoPermission>
       </Page>
     )
   }
 
   return (
-    <Page
-      title={`${org} settings`}
-      subtitle="Organization members and groups"
-      actions={<Link to={`/${org}`}>back to repositories</Link>}
-    >
-      <ErrorBanner error={actionError ?? error} />
-
-      <MembersSection
-        members={members ?? []}
-        loading={loading}
-        onAdd={() => setShowAddMember(true)}
-        onRemove={(m) => setConfirmRemoveMember(m)}
-        onToggleRole={(m) =>
-          run(async () => {
-            await updateOrgMember(org, m.user_id, m.role === 'owner' ? 'member' : 'owner')
-            reload()
-          })
-        }
-      />
-
-      <GroupsSection
-        org={org}
-        groups={groups ?? []}
-        members={members ?? []}
-        selectedGroup={selectedGroup}
-        groupDetail={groupDetail}
-        onSelectGroup={setSelectedGroup}
-        onCreate={() => setShowCreateGroup(true)}
-        onAddMember={(userId) =>
-          run(async () => {
-            if (selectedGroup) {
-              await addGroupMember(org, selectedGroup, userId)
-              reloadGroup()
-              reloadGroups()
-            }
-          })
-        }
-        onRemoveMember={(userId) => setConfirmRemoveGroupMember(userId)}
-      />
-
-      <StorageCard org={org} onError={setActionError} />
-
-      {showAddMember && (
-        <AddMemberDialog
-          org={org}
-          onClose={() => setShowAddMember(false)}
-          onAdded={() => {
-            setShowAddMember(false)
-            reload()
-          }}
-          onError={setActionError}
-        />
-      )}
-
-      {showCreateGroup && (
-        <CreateGroupDialog
-          org={org}
-          onClose={() => setShowCreateGroup(false)}
-          onCreated={() => {
-            setShowCreateGroup(false)
-            reloadGroups()
-          }}
-          onError={setActionError}
-        />
-      )}
-
-      <ConfirmRemoveMemberDialog
-        member={confirmRemoveMember}
-        onClose={() => setConfirmRemoveMember(null)}
-        onRemoved={() => {
-          setConfirmRemoveMember(null)
-          reload()
-        }}
-        onError={setActionError}
-      />
-
-      <ConfirmRemoveGroupMemberDialog
-        userId={confirmRemoveGroupMember}
-        groupId={selectedGroup}
-        label={
-          (groupDetail?.members ?? []).find((m) => m.user_id === confirmRemoveGroupMember)?.name ??
-          (members ?? []).find((m) => m.user_id === confirmRemoveGroupMember)?.name
-        }
-        onClose={() => setConfirmRemoveGroupMember(null)}
-        onRemoved={() => {
-          setConfirmRemoveGroupMember(null)
-          reloadGroup()
-          reloadGroups()
-        }}
-        onError={setActionError}
-      />
+    <Page title={title} subtitle="Organization members, groups and storage">
+      <OrgNav org={org} active="settings" canManage />
+      <SettingsLayout items={items} active={tab} label="Organization settings">
+        {tab === 'members' && <MembersTab org={org} />}
+        {tab === 'groups' && <GroupsTab org={org} />}
+        {tab === 'storage' && storage && <StorageCard org={org} data={storage} reload={reloadStorage} />}
+      </SettingsLayout>
     </Page>
   )
 }
 
-function MembersSection({
-  members,
-  loading,
-  onAdd,
-  onRemove,
-  onToggleRole,
-}: {
-  members: OrgMemberResponse[]
-  loading: boolean
-  onAdd: () => void
-  onRemove: (member: OrgMemberResponse) => void
-  onToggleRole: (member: OrgMemberResponse) => void
-}) {
-  return (
-    <>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Text as="h3">Members</Text>
-        <Button size="small" variant="primary" onClick={onAdd}>
-          Add member
-        </Button>
-      </div>
-      <Text as="p" style={{ color: 'var(--fgColor-muted)' }}>
-        Manage who has access to this organization and their roles.
-      </Text>
-      {loading && <Loading />}
-      {!loading && members.length === 0 && <EmptyState>No members.</EmptyState>}
-      {!loading && members.length > 0 && (
-        <div style={{ border: '1px solid var(--borderColor-default)', borderRadius: 6, overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ background: 'var(--bgColor-muted)' }}>
-                <th style={HEADER_CELL}>Member</th>
-                <th style={HEADER_CELL}>Role</th>
-                <th style={{ ...HEADER_CELL, textAlign: 'right' }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {members.map((member) => (
-                <tr key={member.user_id} style={{ borderTop: '1px solid var(--borderColor-muted)' }}>
-                  <td style={CELL}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <ActorAvatar
-                        actor={{ user_id: member.user_id, name: member.name, photo_url: member.photo_url }}
-                        size={28}
-                      />
-                      <div>
-                        <div style={{ fontWeight: 600 }}>{member.name}</div>
-                        <div style={{ color: 'var(--fgColor-muted)', fontSize: 12 }}>{member.email}</div>
-                      </div>
-                    </div>
-                  </td>
-                  <td style={CELL}>
-                    {member.role === 'owner' ? (
-                      <Label variant="danger">Owner</Label>
-                    ) : (
-                      <Label>Member</Label>
-                    )}
-                    {member.is_super_admin && (
-                      <div style={{ marginTop: 4 }}>
-                        <Label variant="attention">Super admin</Label>
-                      </div>
-                    )}
-                    {member.is_admin && !member.is_super_admin && (
-                      <div style={{ marginTop: 4 }}>
-                        <Label variant="attention">Admin</Label>
-                      </div>
-                    )}
-                  </td>
-                  <td style={{ ...CELL, textAlign: 'right' }}>
-                    <Stack direction="horizontal" gap="condensed" justify="end">
-                      <Button size="small" onClick={() => onToggleRole(member)}>
-                        {member.role === 'owner' ? 'Make member' : 'Make owner'}
-                      </Button>
-                      <Button size="small" variant="danger" onClick={() => onRemove(member)}>
-                        Remove
-                      </Button>
-                    </Stack>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </>
-  )
-}
+function MembersTab({ org }: { org: string }) {
+  const confirm = useConfirmAction()
+  const { data: members, error, loading, reload } = useOrgMembers(org)
+  const { run, error: actionError, clearError } = useAction(reload)
+  const [adding, setAdding] = useState(false)
 
-function GroupsSection({
-  org,
-  groups,
-  members,
-  selectedGroup,
-  groupDetail,
-  onSelectGroup,
-  onCreate,
-  onAddMember,
-  onRemoveMember,
-}: {
-  org: string
-  groups: GroupResponse[]
-  members: OrgMemberResponse[]
-  selectedGroup: string | null
-  groupDetail: GroupResponse | null
-  onSelectGroup: (id: string | null) => void
-  onCreate: () => void
-  onAddMember: (userId: string) => void
-  onRemoveMember: (userId: string) => void
-}) {
-  return (
-    <>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Text as="h3">Groups</Text>
-        <Button size="small" variant="primary" onClick={onCreate}>
-          Create group
-        </Button>
-      </div>
-      <Text as="p" style={{ color: 'var(--fgColor-muted)' }}>
-        Organize members into groups for easier access management.
-      </Text>
-      {groups.length === 0 && <EmptyState>No groups. Create one to organize members.</EmptyState>}
-      {groups.length > 0 && (
-        <div style={{ border: '1px solid var(--borderColor-default)', borderRadius: 6, overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ background: 'var(--bgColor-muted)' }}>
-                <th style={HEADER_CELL}>Group</th>
-                <th style={HEADER_CELL}>Members</th>
-                <th style={{ ...HEADER_CELL, textAlign: 'right' }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {groups.map((group) => (
-                <tr
-                  key={group.id}
-                  style={{
-                    borderTop: '1px solid var(--borderColor-muted)',
-                    background: selectedGroup === group.id ? 'var(--bgColor-muted)' : 'transparent',
-                  }}
-                >
-                  <td style={CELL}>
-                    <button
-                      type="button"
-                      onClick={() => onSelectGroup(selectedGroup === group.id ? null : group.id)}
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        padding: 0,
-                        color: 'var(--fgColor-accent)',
-                        cursor: 'pointer',
-                        fontWeight: 600,
-                        fontSize: 14,
-                      }}
-                    >
-                      {group.name}
-                    </button>
-                    {group.description && (
-                      <div style={{ color: 'var(--fgColor-muted)', fontSize: 12 }}>{group.description}</div>
-                    )}
-                  </td>
-                  <td style={CELL}>
-                    <Mono>{group.member_count}</Mono>
-                  </td>
-                  <td style={{ ...CELL, textAlign: 'right' }}>
-                    <Button size="small" onClick={() => onSelectGroup(selectedGroup === group.id ? null : group.id)}>
-                      {selectedGroup === group.id ? 'Hide' : 'View'}
-                    </Button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+  async function toggleRole(member: OrgMemberResponse) {
+    const next = member.role === 'owner' ? 'member' : 'owner'
+    const ok = await confirm({
+      title: `Make ${member.name} ${next === 'owner' ? 'an owner' : 'a member'}?`,
+      content:
+        next === 'owner'
+          ? 'Owners can manage members, groups and every repository in this organization.'
+          : 'They will lose owner access to this organization.',
+      confirmLabel: next === 'owner' ? 'Make owner' : 'Make member',
+      danger: false,
+    })
+    if (ok) await run(() => updateOrgMember(org, member.user_id, next))
+  }
 
-      {selectedGroup && groupDetail && groupDetail.id === selectedGroup && (
-        <GroupDetailPanel
-          org={org}
-          group={groupDetail}
-          members={members}
-          onAddMember={onAddMember}
-          onRemoveMember={onRemoveMember}
-        />
-      )}
-    </>
-  )
-}
+  async function remove(member: OrgMemberResponse) {
+    const ok = await confirm({
+      title: 'Remove member',
+      content: `Remove ${member.name} (${member.email}) from this organization?`,
+      confirmLabel: 'Remove',
+    })
+    if (ok) await run(() => removeOrgMember(org, member.user_id))
+  }
 
-function GroupDetailPanel({
-  org,
-  group,
-  members,
-  onAddMember,
-  onRemoveMember,
-}: {
-  org: string
-  group: GroupResponse
-  members: OrgMemberResponse[]
-  onAddMember: (userId: string) => void
-  onRemoveMember: (userId: string) => void
-}) {
-  const [showAddMember, setShowAddMember] = useState(false)
-  const membersById = new Map(members.map((member) => [member.user_id, member]))
-
-  return (
-    <div style={{ border: '1px solid var(--borderColor-default)', borderRadius: 6, padding: 16 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Text as="h4">{group.name} members</Text>
-        <Button size="small" variant="primary" onClick={() => setShowAddMember(true)}>
-          Add member
-        </Button>
-      </div>
-      <div style={{ margin: '12px 0' }}>
-        {(group.members ?? []).map((member) => (
-          <div
-            key={member.user_id}
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              padding: '6px 0',
-              borderBottom: '1px solid var(--borderColor-muted)',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <ActorAvatar
-                actor={{ user_id: member.user_id, name: member.name, photo_url: membersById.get(member.user_id)?.photo_url }}
-                size={28}
-              />
-              <div>
-                <div style={{ fontWeight: 600 }}>{member.name}</div>
-                <div style={{ color: 'var(--fgColor-muted)', fontSize: 12 }}>{member.email}</div>
-              </div>
-            </div>
-            <Button size="small" variant="danger" onClick={() => onRemoveMember(member.user_id)}>
-              Remove
-            </Button>
+  const columns: Column<OrgMemberResponse & { id: string }>[] = [
+    {
+      id: 'member',
+      header: 'Member',
+      rowHeader: true,
+      renderCell: (member) => (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--base-size-12)' }}>
+          <ActorAvatar actor={{ user_id: member.user_id, name: member.name, photo_url: member.photo_url }} size={28} />
+          <div>
+            <div style={{ fontWeight: 600 }}>{member.name}</div>
+            <div style={{ color: 'var(--fgColor-muted)', fontSize: 12 }}>{member.email}</div>
           </div>
-        ))}
-        {(group.members ?? []).length === 0 && <Text>No members.</Text>}
-      </div>
+        </div>
+      ),
+    },
+    {
+      id: 'role',
+      header: 'Role',
+      renderCell: (member) => (
+        <Stack direction="horizontal" gap="condensed" wrap="wrap">
+          {member.role === 'owner' ? <Label variant="danger">Owner</Label> : <Label>Member</Label>}
+          {member.is_super_admin && <Label variant="attention">Super admin</Label>}
+          {member.is_admin && !member.is_super_admin && <Label variant="attention">Admin</Label>}
+        </Stack>
+      ),
+    },
+    {
+      id: 'actions',
+      header: 'Actions',
+      align: 'end',
+      renderCell: (member) => (
+        <Stack direction="horizontal" gap="condensed" justify="end">
+          <Button size="small" onClick={() => void toggleRole(member)}>
+            {member.role === 'owner' ? 'Make member' : 'Make owner'}
+          </Button>
+          <Button size="small" variant="danger" onClick={() => void remove(member)}>
+            Remove
+          </Button>
+        </Stack>
+      ),
+    },
+  ]
 
-      {showAddMember && (
+  return (
+    <Stack direction="vertical" gap="normal">
+      <SettingsCard
+        title="Members"
+        description="Manage who has access to this organization and their roles."
+        actions={
+          <Button size="small" variant="primary" onClick={() => setAdding(true)}>
+            Add member
+          </Button>
+        }
+      >
+        <ErrorBanner error={actionError ?? error} onDismiss={actionError ? clearError : undefined} />
+      </SettingsCard>
+      <DataTable
+        label="Members"
+        loading={loading}
+        data={(members ?? []).map((member) => ({ ...member, id: member.user_id }))}
+        columns={columns}
+        empty="No members."
+      />
+      {adding && <AddMemberDialog org={org} onClose={() => setAdding(false)} onAdded={reload} />}
+    </Stack>
+  )
+}
+
+function GroupsTab({ org }: { org: string }) {
+  const confirm = useConfirmAction()
+  const { data: groups, error, loading, reload: reloadGroups } = useAsync(() => listGroups(org), [org])
+  const { data: members } = useOrgMembers(org)
+  const [selected, setSelected] = useState<string | null>(null)
+  const {
+    data: detail,
+    error: detailError,
+    reload: reloadDetail,
+  } = useAsync(() => (selected ? getGroup(org, selected) : Promise.resolve(null)), [org, selected])
+  const { run, error: actionError, clearError } = useAction(() => {
+    reloadDetail()
+    reloadGroups()
+  })
+  const [creating, setCreating] = useState(false)
+  const [addingMember, setAddingMember] = useState(false)
+
+  const membersById = new Map((members ?? []).map((member) => [member.user_id, member]))
+
+  async function removeMember(userId: string) {
+    if (!selected) return
+    const label = (detail?.members ?? []).find((m) => m.user_id === userId)?.name ?? membersById.get(userId)?.name
+    const ok = await confirm({
+      title: 'Remove group member',
+      content: `Remove ${label ?? `user ${userId}`} from this group?`,
+      confirmLabel: 'Remove',
+    })
+    if (ok) await run(() => removeGroupMember(org, selected, userId))
+  }
+
+  const columns: Column<GroupResponse>[] = [
+    {
+      id: 'group',
+      header: 'Group',
+      rowHeader: true,
+      renderCell: (group) => (
+        <div>
+          <div style={{ fontWeight: 600 }}>{group.name}</div>
+          {group.description && <div style={{ color: 'var(--fgColor-muted)', fontSize: 12 }}>{group.description}</div>}
+        </div>
+      ),
+    },
+    { id: 'members', header: 'Members', renderCell: (group) => <Mono>{group.member_count}</Mono> },
+    {
+      id: 'actions',
+      header: 'Actions',
+      align: 'end',
+      renderCell: (group) => (
+        <Button size="small" onClick={() => setSelected(selected === group.id ? null : group.id)}>
+          {selected === group.id ? 'Hide' : 'View'}
+        </Button>
+      ),
+    },
+  ]
+
+  return (
+    <Stack direction="vertical" gap="normal">
+      <SettingsCard
+        title="Groups"
+        description="Organize members into groups for easier access management."
+        actions={
+          <Button size="small" variant="primary" onClick={() => setCreating(true)}>
+            Create group
+          </Button>
+        }
+      >
+        <ErrorBanner
+          error={actionError ?? error ?? detailError}
+          onDismiss={actionError ? clearError : undefined}
+        />
+      </SettingsCard>
+      <DataTable
+        label="Groups"
+        loading={loading}
+        data={groups ?? []}
+        columns={columns}
+        empty="No groups. Create one to organize members."
+      />
+
+      {selected && detail && detail.id === selected && (
+        <SettingsCard
+          title={`${detail.name} members`}
+          actions={
+            <Button size="small" variant="primary" onClick={() => setAddingMember(true)}>
+              Add member
+            </Button>
+          }
+        >
+          {(detail.members ?? []).length === 0 && <EmptyState>No members.</EmptyState>}
+          {(detail.members ?? []).map((member, index) => (
+            <Row
+              key={member.user_id}
+              first={index === 0}
+              title={
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--base-size-12)' }}>
+                  <ActorAvatar
+                    actor={{
+                      user_id: member.user_id,
+                      name: member.name,
+                      photo_url: membersById.get(member.user_id)?.photo_url,
+                    }}
+                    size={28}
+                  />
+                  {member.name}
+                </span>
+              }
+              meta={member.email}
+              actions={
+                <Button size="small" variant="danger" onClick={() => void removeMember(member.user_id)}>
+                  Remove
+                </Button>
+              }
+            />
+          ))}
+        </SettingsCard>
+      )}
+      {selected && !detail && <Loading variant="skeleton" />}
+
+      {creating && <CreateGroupDialog org={org} onClose={() => setCreating(false)} onCreated={reloadGroups} />}
+      {addingMember && selected && (
         <AddGroupMemberDialog
           org={org}
-          onClose={() => setShowAddMember(false)}
-          onAdded={(userId) => {
-            onAddMember(userId)
-            setShowAddMember(false)
-          }}
+          onClose={() => setAddingMember(false)}
+          onAdded={(userId) => addGroupMember(org, selected, userId).then(() => {
+            reloadDetail()
+            reloadGroups()
+          })}
         />
       )}
-    </div>
+    </Stack>
   )
 }
 
-function AddMemberDialog({
-  org,
-  onClose,
-  onAdded,
-  onError,
-}: {
-  org: string
-  onClose: () => void
-  onAdded: () => void
-  onError: (msg: string) => void
-}) {
+function AddMemberDialog({ org, onClose, onAdded }: { org: string; onClose: () => void; onAdded: () => void }) {
   const [userId, setUserId] = useState('')
   const [role, setRole] = useState('member')
-  const [saving, setSaving] = useState(false)
-
-  async function handleSubmit(event: React.FormEvent) {
-    event.preventDefault()
-    if (!userId) return
-    setSaving(true)
-    try {
-      await addOrgMember(org, userId, role)
-      setUserId('')
-      onAdded()
-    } catch (err) {
-      onError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setSaving(false)
-    }
-  }
-
   return (
-    <Dialog title="Add member" onClose={onClose} width="medium">
-      <Dialog.Body>
-        <form onSubmit={handleSubmit}>
-          <Stack direction="vertical" gap="normal">
-            <FormControl required>
-              <FormControl.Label>User</FormControl.Label>
-              <UserGroupPicker
-                org={org}
-                kind="user"
-                onSelect={(entry) => setUserId(entry.id)}
-                placeholder="Search users by name or email…"
-              />
-            </FormControl>
-            <FormControl required>
-              <FormControl.Label>Role</FormControl.Label>
-              <select
-                value={role}
-                onChange={(e) => setRole(e.target.value)}
-                style={{ padding: 6, width: '100%' }}
-              >
-                <option value="member">Member</option>
-                <option value="owner">Owner</option>
-              </select>
-            </FormControl>
-          </Stack>
-        </form>
-      </Dialog.Body>
-      <Dialog.Footer>
-        <Button onClick={onClose}>Cancel</Button>
-        <Button variant="primary" disabled={!userId || saving} onClick={handleSubmit}>
-          {saving ? 'Adding…' : 'Add member'}
-        </Button>
-      </Dialog.Footer>
-    </Dialog>
+    <FormDialog
+      title="Add member"
+      submitLabel="Add member"
+      submitDisabled={!userId}
+      onClose={onClose}
+      onSubmit={async () => {
+        await addOrgMember(org, userId, role)
+        onAdded()
+      }}
+    >
+      <FormControl required>
+        <FormControl.Label>User</FormControl.Label>
+        <UserGroupPicker
+          org={org}
+          kind="user"
+          onSelect={(entry) => setUserId(entry.id)}
+          placeholder="Search users by name or email…"
+        />
+      </FormControl>
+      <FormControl required>
+        <FormControl.Label>Role</FormControl.Label>
+        <Select block value={role} onChange={(event) => setRole(event.target.value)}>
+          <Select.Option value="member">Member</Select.Option>
+          <Select.Option value="owner">Owner</Select.Option>
+        </Select>
+      </FormControl>
+    </FormDialog>
   )
 }
 
-function CreateGroupDialog({
-  org,
-  onClose,
-  onCreated,
-  onError,
-}: {
-  org: string
-  onClose: () => void
-  onCreated: () => void
-  onError: (msg: string) => void
-}) {
+function CreateGroupDialog({ org, onClose, onCreated }: { org: string; onClose: () => void; onCreated: () => void }) {
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
-  const [saving, setSaving] = useState(false)
-
-  function reset() {
-    setName('')
-    setDescription('')
-  }
-
-  async function handleSubmit(event: React.FormEvent) {
-    event.preventDefault()
-    if (!name.trim()) return
-    setSaving(true)
-    try {
-      await createGroup(org, name.trim(), description.trim())
-      reset()
-      onCreated()
-    } catch (err) {
-      onError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setSaving(false)
-    }
-  }
-
   return (
-    <Dialog title="Create group" onClose={onClose} width="medium">
-      <Dialog.Body>
-        <form onSubmit={handleSubmit}>
-          <Stack direction="vertical" gap="normal">
-            <FormControl required>
-              <FormControl.Label>Group name</FormControl.Label>
-              <TextInput
-                block
-                placeholder="e.g. texture-artists"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-              />
-            </FormControl>
-            <FormControl>
-              <FormControl.Label>Description</FormControl.Label>
-              <TextInput
-                block
-                placeholder="Optional description"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-              />
-            </FormControl>
-          </Stack>
-        </form>
-      </Dialog.Body>
-      <Dialog.Footer>
-        <Button onClick={onClose}>Cancel</Button>
-        <Button variant="primary" disabled={!name.trim() || saving} onClick={handleSubmit}>
-          {saving ? 'Creating…' : 'Create group'}
-        </Button>
-      </Dialog.Footer>
-    </Dialog>
+    <FormDialog
+      title="Create group"
+      submitLabel="Create group"
+      submitDisabled={!name.trim()}
+      onClose={onClose}
+      onSubmit={async () => {
+        await createGroup(org, name.trim(), description.trim())
+        onCreated()
+      }}
+    >
+      <FormControl required>
+        <FormControl.Label>Group name</FormControl.Label>
+        <TextInput block autoFocus placeholder="e.g. texture-artists" value={name} onChange={(e) => setName(e.target.value)} />
+      </FormControl>
+      <FormControl>
+        <FormControl.Label>Description</FormControl.Label>
+        <TextInput
+          block
+          placeholder="Optional description"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+        />
+      </FormControl>
+    </FormDialog>
   )
 }
 
@@ -561,133 +372,26 @@ function AddGroupMemberDialog({
 }: {
   org: string
   onClose: () => void
-  onAdded: (userId: string) => void
+  onAdded: (userId: string) => Promise<unknown>
 }) {
   const [userId, setUserId] = useState('')
-
-  function handleSubmit(event: React.FormEvent) {
-    event.preventDefault()
-    if (!userId) return
-    onAdded(userId)
-  }
-
   return (
-    <Dialog title="Add group member" onClose={onClose} width="medium">
-      <Dialog.Body>
-        <form onSubmit={handleSubmit}>
-          <Stack direction="vertical" gap="normal">
-            <FormControl required>
-              <FormControl.Label>User</FormControl.Label>
-              <UserGroupPicker
-                org={org}
-                kind="user"
-                onSelect={(entry) => setUserId(entry.id)}
-                placeholder="Search users by name or email…"
-              />
-            </FormControl>
-          </Stack>
-        </form>
-      </Dialog.Body>
-      <Dialog.Footer>
-        <Button onClick={onClose}>Cancel</Button>
-        <Button variant="primary" disabled={!userId} onClick={handleSubmit}>
-          Add member
-        </Button>
-      </Dialog.Footer>
-    </Dialog>
-  )
-}
-
-function ConfirmRemoveMemberDialog({
-  member,
-  onClose,
-  onRemoved,
-  onError,
-}: {
-  member: OrgMemberResponse | null
-  onClose: () => void
-  onRemoved: () => void
-  onError: (msg: string) => void
-}) {
-  const [removing, setRemoving] = useState(false)
-  const { org = '' } = useParams()
-
-  async function handleRemove() {
-    if (!member) return
-    setRemoving(true)
-    try {
-      await removeOrgMember(org, member.user_id)
-      onRemoved()
-    } catch (err) {
-      onError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setRemoving(false)
-    }
-  }
-
-  if (!member) return null
-  return (
-    <Dialog title="Remove member" onClose={onClose} width="medium">
-      <Dialog.Body>
-        <Text as="p">
-          Remove <strong>{member.name}</strong> ({member.email}) from this organization?
-        </Text>
-      </Dialog.Body>
-      <Dialog.Footer>
-        <Button onClick={onClose}>Cancel</Button>
-        <Button variant="danger" disabled={removing} onClick={handleRemove}>
-          {removing ? 'Removing…' : 'Remove'}
-        </Button>
-      </Dialog.Footer>
-    </Dialog>
-  )
-}
-
-function ConfirmRemoveGroupMemberDialog({
-  userId,
-  groupId,
-  label,
-  onClose,
-  onRemoved,
-  onError,
-}: {
-  userId: string | null
-  groupId: string | null
-  label?: string
-  onClose: () => void
-  onRemoved: () => void
-  onError: (msg: string) => void
-}) {
-  const [removing, setRemoving] = useState(false)
-  const { org = '' } = useParams()
-
-  async function handleRemove() {
-    if (!userId || !groupId) return
-    setRemoving(true)
-    try {
-      await removeGroupMember(org, groupId, userId)
-      onRemoved()
-    } catch (err) {
-      onError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setRemoving(false)
-    }
-  }
-
-  if (!userId) return null
-  return (
-    <Dialog title="Remove group member" onClose={onClose} width="medium">
-      <Dialog.Body>
-        <Text as="p">
-          Remove {label ? <strong>{label}</strong> : 'user'} <Mono>{userId}</Mono> from this group?
-        </Text>
-      </Dialog.Body>
-      <Dialog.Footer>
-        <Button onClick={onClose}>Cancel</Button>
-        <Button variant="danger" disabled={removing} onClick={handleRemove}>
-          {removing ? 'Removing…' : 'Remove'}
-        </Button>
-      </Dialog.Footer>
-    </Dialog>
+    <FormDialog
+      title="Add group member"
+      submitLabel="Add member"
+      submitDisabled={!userId}
+      onClose={onClose}
+      onSubmit={() => onAdded(userId)}
+    >
+      <FormControl required>
+        <FormControl.Label>User</FormControl.Label>
+        <UserGroupPicker
+          org={org}
+          kind="user"
+          onSelect={(entry) => setUserId(entry.id)}
+          placeholder="Search users by name or email…"
+        />
+      </FormControl>
+    </FormDialog>
   )
 }
