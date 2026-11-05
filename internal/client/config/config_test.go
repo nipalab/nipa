@@ -195,3 +195,17 @@ func TestSetUploadWorkersUnwritableDir(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "nipa"), nil, 0o600))
 	require.Error(t, SetUploadWorkers(2))
 }
+
+func TestSetUploadWorkers_NullFile(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	t.Setenv(EnvUploadWorkers, "")
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "nipa"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "nipa", "config.json"), []byte("null"), 0o644))
+
+	require.NoError(t, SetUploadWorkers(8))
+	workers, pinned, err := ResolveUploadWorkers()
+	require.NoError(t, err)
+	require.True(t, pinned)
+	require.Equal(t, 8, workers)
+}

@@ -153,6 +153,9 @@ func SetUploadWorkers(workers int) error {
 			return fmt.Errorf("parse %s: %w", path, err)
 		}
 	}
+	if raw == nil {
+		raw = map[string]json.RawMessage{}
+	}
 	if workers == 0 {
 		delete(raw, "uploadWorkers")
 	} else {

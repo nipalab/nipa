@@ -124,8 +124,14 @@ func (s *Service) recordActivity(ctx context.Context, root string, pb *daemonpb.
 			Number:   e.GetNumber(),
 		})
 	}
+	s.emitMu.Lock()
+	defer s.emitMu.Unlock()
 	s.mu.Lock()
 	if ctx.Err() != nil {
+		s.mu.Unlock()
+		return
+	}
+	if _, followed := s.followers[root]; !followed {
 		s.mu.Unlock()
 		return
 	}

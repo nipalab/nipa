@@ -192,3 +192,9 @@ func TestNotificationData(t *testing.T) {
 	require.Equal(t, Navigation{Tab: "changes", Number: 6}, NavigationFromData(map[string]any{"number": 6}))
 	require.Equal(t, Navigation{Tab: "changes"}, NavigationFromData(nil))
 }
+
+func TestService_ActivityIgnoredForUnfollowedRoot(t *testing.T) {
+	h := newHarness()
+	h.svc.recordActivity(ctx, "/work/removed", &daemonpb.RepoActivity{Incoming: 1})
+	require.Empty(t, h.svc.Activity())
+}

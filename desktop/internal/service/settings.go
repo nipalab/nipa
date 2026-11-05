@@ -64,16 +64,18 @@ func (s *Service) SaveSettings(in workspace.Settings) (workspace.Settings, error
 	if err != nil {
 		return workspace.Settings{}, err
 	}
-	if next.StartAtLogin != old.StartAtLogin {
-		if s.Autostart == nil {
-			return workspace.Settings{}, errors.New("starting at login is not available")
-		}
-		if err := s.Autostart(next.StartAtLogin); err != nil {
-			return workspace.Settings{}, fmt.Errorf("could not change starting at login: %w", err)
-		}
+	changeLogin := next.StartAtLogin != old.StartAtLogin
+	if changeLogin && s.Autostart == nil {
+		return workspace.Settings{}, errors.New("starting at login is not available")
 	}
 	if err := s.Prefs.SaveSettings(next); err != nil {
 		return workspace.Settings{}, err
+	}
+	if changeLogin {
+		if err := s.Autostart(next.StartAtLogin); err != nil {
+			_ = s.Prefs.SaveSettings(old)
+			return workspace.Settings{}, fmt.Errorf("could not change starting at login: %w", err)
+		}
 	}
 	if next.PollSeconds != old.PollSeconds {
 		s.restartActivity()

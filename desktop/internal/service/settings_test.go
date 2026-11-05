@@ -61,6 +61,9 @@ func TestService_SaveSettingsAppliesChanges(t *testing.T) {
 	got.StartAtLogin = false
 	_, err = h.svc.SaveSettings(got)
 	require.ErrorContains(t, err, "denied")
+	kept, err := h.svc.Settings()
+	require.NoError(t, err)
+	require.True(t, kept.StartAtLogin, "failed login item change is rolled back")
 	h.svc.Autostart = nil
 	_, err = h.svc.SaveSettings(got)
 	require.ErrorContains(t, err, "not available")

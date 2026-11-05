@@ -92,6 +92,7 @@ type Service struct {
 	pick  FolderPicker
 
 	mu     sync.Mutex
+	emitMu sync.Mutex
 	active Session
 	// watched holds the roots registered with the active session and the
 	// cancel func of their change follower; it is reset with the session
@@ -207,6 +208,7 @@ func (s *Service) AddRepo(ctx context.Context, path string) (Repo, error) {
 
 // RemoveRepo forgets a clone; it is never deleted from disk.
 func (s *Service) RemoveRepo(ctx context.Context, root string) error {
+	s.emitMu.Lock()
 	s.mu.Lock()
 	if cancel, ok := s.watched[root]; ok {
 		cancel()
@@ -218,6 +220,7 @@ func (s *Service) RemoveRepo(ctx context.Context, root string) error {
 	if s.ActivityHook != nil {
 		s.ActivityHook(list)
 	}
+	s.emitMu.Unlock()
 	if sess, err := s.session(ctx); err == nil {
 		_, err := sess.Client().UnwatchRepo(ctx, &daemonpb.UnwatchRepoRequest{Root: root})
 		s.dropIfDisconnected(err)

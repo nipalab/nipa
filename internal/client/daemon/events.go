@@ -70,6 +70,18 @@ func (s *Server) WatchEvents(req *daemonpb.WatchEventsRequest, stream daemonpb.N
 			return nil
 		case <-sub.done:
 			return nil
+		case <-sub.signal:
+			if c := sub.take(); c == nil || len(c.GetPaths()) > 0 {
+				continue
+			}
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+			timer.Reset(time.Second)
+			continue
 		case <-timer.C:
 		}
 		act, err := s.pollEvents(ctx, req.GetRoot(), w)

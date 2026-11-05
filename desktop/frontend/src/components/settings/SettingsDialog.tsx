@@ -1,4 +1,4 @@
-import { useId, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useId, useState, type FormEvent, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FolderOpen, Plus, RotateCw, X } from "lucide-react";
 import { desktop, type Settings, type Tool } from "@/api/desktop";
@@ -20,6 +20,11 @@ type SettingsDialogProps = {
 };
 
 export function SettingsDialog({ onClose, notify }: SettingsDialogProps) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
   const settings = useQuery({
     queryKey: ["settings"],
     queryFn: desktop.settings,
@@ -29,7 +34,7 @@ export function SettingsDialog({ onClose, notify }: SettingsDialogProps) {
     queryFn: desktop.uploadWorkers,
   });
   return (
-    <div role="presentation" className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4" onKeyDown={(e) => e.key === "Escape" && onClose()}>
+    <div role="presentation" className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4">
       <div role="dialog" aria-modal="true" aria-labelledby="settings-title" className="flex max-h-full w-full max-w-lg flex-col rounded-lg border border-border bg-card shadow-xl">
         <div className="flex items-center justify-between border-b border-border px-5 py-3">
           <h2 id="settings-title" className="text-sm font-semibold">
