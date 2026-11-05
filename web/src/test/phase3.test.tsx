@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { act } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import * as endpoints from '../api/endpoints'
@@ -269,6 +270,23 @@ describe('useTags', () => {
     await flush()
     expect(failing.result.current.tags).toEqual([tag(2)])
   })
+
+  it('ignores a late response from a previous project', async () => {
+    let resolveA: (value: TagResponse[]) => void = () => undefined
+    api.listTags.mockReturnValueOnce(new Promise<TagResponse[]>((resolve) => (resolveA = resolve)))
+    const scope = { project: 'a' }
+    const bump = { fn: () => undefined as void }
+    const { result } = await renderHook(() => {
+      const [, setN] = useState(0)
+      bump.fn = () => setN((n) => n + 1)
+      return useTags('acme', scope.project)
+    })
+    await act(async () => result.current.load())
+    scope.project = 'b'
+    await act(async () => bump.fn())
+    await act(async () => resolveA([tag(1)]))
+    expect(result.current.tags).toBeNull()
+  })
 })
 
 describe('ComparePage', () => {
@@ -338,6 +356,14 @@ describe('ComparePage', () => {
     await click(Array.from(document.body.querySelectorAll('li')).find((item) => item.textContent?.includes('v2')))
     await waitFor(() => api.getCommitDiff.mock.calls.length > 1)
     expect(api.getCommitDiff).toHaveBeenLastCalledWith('acme', 'game', 'cf', 'c2')
+  })
+
+  it('resolves tag names from shared links', async () => {
+    api.getTag.mockImplementation(async (_o, _p, name) => (name === 'v1.0.0' ? ({ ...tag(1), commit_id: 'ct' } as never) : Promise.reject(new Error('nf'))))
+    api.getCommitDiff.mockResolvedValue({ files: [] } as never)
+    await renderRoute(pattern, `${url}?base=v1.0.0&head=feature`, <ComparePage />)
+    await waitFor(() => api.getCommitDiff.mock.calls.length > 0)
+    expect(api.getCommitDiff).toHaveBeenLastCalledWith('acme', 'game', 'cf', 'ct')
   })
 
   it('shows diff errors', async () => {
@@ -538,6 +564,16 @@ describe('FileLockButton', () => {
     await click(buttonByText(container, 'Lock'))
     await flush()
     expect(api.lockFile).toHaveBeenCalledWith('acme', 'game', 'assets/orc.png', '')
+  })
+
+  it('locks on the given branch', async () => {
+    api.listFileLocks.mockResolvedValue([])
+    api.lockFile.mockResolvedValue(lock())
+    const { container } = await render(<FileLockButton {...props} branch="feature" />)
+    await waitFor(() => buttonByText(container, 'Lock') !== null)
+    await click(buttonByText(container, 'Lock'))
+    await flush()
+    expect(api.lockFile).toHaveBeenCalledWith('acme', 'game', 'assets/orc.png', 'feature')
   })
 
   it('shows nothing to read-only users on a free file', async () => {

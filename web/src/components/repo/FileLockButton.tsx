@@ -14,6 +14,7 @@ export function FileLockButton({
   org,
   project,
   path,
+  branch = '',
   me,
   canWrite,
   onError,
@@ -21,6 +22,7 @@ export function FileLockButton({
   org: string
   project: string
   path: string
+  branch?: string
   me?: string
   canWrite: boolean
   onError: (message: string | null) => void
@@ -40,7 +42,7 @@ export function FileLockButton({
   if (!lock) {
     if (!canWrite) return null
     return (
-      <Button size="small" leadingVisual={LockIcon} disabled={busy} onClick={() => void run(() => lockFile(org, project, path, ''))}>
+      <Button size="small" leadingVisual={LockIcon} disabled={busy} onClick={() => void run(() => lockFile(org, project, path, branch))}>
         Lock
       </Button>
     )

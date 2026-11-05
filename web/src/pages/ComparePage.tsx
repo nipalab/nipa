@@ -1,7 +1,7 @@
 import { Stack, Text } from '@primer/react'
 import { ArrowRightIcon } from '@primer/octicons-react'
 import { useParams, useSearchParams } from 'react-router-dom'
-import { getCommitDiff } from '../api/endpoints'
+import { getCommitDiff, getTag } from '../api/endpoints'
 import { BranchSelector } from '../components/repo/BranchSelector'
 import { DiffView } from '../components/repo/DiffView'
 import { RepoPageShell } from '../components/repo/RepoPageShell'
@@ -18,10 +18,23 @@ export default function ComparePage() {
 
   const base = params.get('base') ?? defaultBranch
   const head = params.get('head') ?? ''
-  const resolve = (ref: string) => branches?.find((branch) => branch.name === ref)?.commit_id ?? ref
-  const baseId = base ? resolve(base) : ''
-  const headId = head ? resolve(head) : ''
-  const ready = !branchesLoading && baseId !== '' && headId !== ''
+  const { data: resolved } = useAsync(async () => {
+    if (branchesLoading) return null
+    const resolve = async (ref: string) => {
+      if (!ref) return ''
+      const branch = branches?.find((item) => item.name === ref)
+      if (branch) return branch.commit_id
+      try {
+        return (await getTag(org, project, ref))?.commit_id ?? ref
+      } catch {
+        return ref
+      }
+    }
+    return { baseId: await resolve(base), headId: await resolve(head) }
+  }, [org, project, base, head, branches, branchesLoading])
+  const baseId = resolved?.baseId ?? ''
+  const headId = resolved?.headId ?? ''
+  const ready = resolved !== null && baseId !== '' && headId !== ''
   const same = ready && baseId === headId
 
   const { data: diff, error, loading } = useAsync(

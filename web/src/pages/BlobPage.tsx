@@ -84,6 +84,7 @@ export default function BlobPage() {
   }
 
   const linkRev = rev || defaultBranch
+  const lockBranch = branches?.some((branch) => branch.name === linkRev && branch.name !== defaultBranch) ? linkRev : ''
   const name = path.split('/').pop() || path
   const lines = text === null ? 0 : countLines(text)
 
@@ -143,7 +144,7 @@ export default function BlobPage() {
             </Button>
           )}
           {file?.isBinary && (
-            <FileLockButton org={org} project={project} path={path} me={me?.id} canWrite={canWrite} onError={setLockError} />
+            <FileLockButton org={org} project={project} path={path} branch={lockBranch} me={me?.id} canWrite={canWrite} onError={setLockError} />
           )}
           {file && (
             <Button size="small" leadingVisual={DownloadIcon} onClick={download}>
