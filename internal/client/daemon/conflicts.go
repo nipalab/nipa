@@ -115,7 +115,7 @@ func takeVersion(ctx context.Context, rp *repo, c *usecase.Conflicts, path, rev 
 	err := rp.diff.ReadBlob(ctx, rp.root, req, func(entry diff.Entry, r io.Reader) error {
 		return c.Resolve(ctx, path, usecase.Resolution{Content: r, AllowMarkers: true, Mode: entry.Mode})
 	})
-	if errors.Is(err, usecase.ErrPathNotInRevision) {
+	if errors.Is(err, usecase.ErrFileMissing) {
 		return c.Resolve(ctx, path, usecase.Resolution{Delete: true})
 	}
 	return err

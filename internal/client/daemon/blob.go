@@ -275,8 +275,12 @@ func unsupportedPreview(message string) error {
 }
 
 func blobFailureEvent(err error) *daemonpb.BlobEvent {
+	code := failureCode(err)
+	if code == 404 && !errors.Is(err, usecase.ErrFileMissing) {
+		code = 502
+	}
 	return &daemonpb.BlobEvent{Event: &daemonpb.BlobEvent_Failure{
-		Failure: &daemonpb.OpFailure{Code: failureCode(err), Message: err.Error()},
+		Failure: &daemonpb.OpFailure{Code: code, Message: err.Error()},
 	}}
 }
 

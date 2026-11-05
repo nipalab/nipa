@@ -51,7 +51,7 @@ func conflictServer(t *testing.T, root string, versions map[string]string) *Serv
 		data, ok := versions[req.Revision+":"+req.Path]
 		if !ok {
 			missing := clientDomain.NewNotFoundError(req.Path + " not found")
-			missing.Cause = usecase.ErrPathNotInRevision
+			missing.Cause = usecase.ErrFileMissing
 			return missing
 		}
 		return fn(diff.Entry{Path: req.Path, Mode: 3}, strings.NewReader(data))

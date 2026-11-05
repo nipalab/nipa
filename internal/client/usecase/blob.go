@@ -32,7 +32,7 @@ type BlobRequest struct {
 	Path     string
 }
 
-var ErrPathNotInRevision = errors.New("path does not exist in revision")
+var ErrFileMissing = errors.New("file does not exist")
 
 // ReadBlob resolves one file version and hands its entry and decoded content
 // to fn. The content is streamed chunk by chunk; missing revision chunks are
@@ -55,7 +55,7 @@ func (d *Diff) ReadBlob(ctx context.Context, root string, req BlobRequest, fn fu
 		}
 		entry, ok := snapshotEntries(snapshot, DiffOptions{Paths: []string{p}}, nil)[p]
 		if !ok {
-			return clientDomain.NewNotFoundError(fmt.Sprintf("%s is not tracked", p))
+			return missingFile(fmt.Sprintf("%s is not tracked", p))
 		}
 		return fn(entry, &blobReader{load: d.localRepo.LoadChunk, entry: entry})
 	case BlobRevision:
@@ -86,9 +86,7 @@ func (d *Diff) readRevisionBlob(ctx context.Context, token, p string, fn func(di
 	}
 	entry, ok := rev.entries[p]
 	if !ok {
-		notFound := clientDomain.NewNotFoundError(fmt.Sprintf("%s does not exist in %s", p, token))
-		notFound.Cause = ErrPathNotInRevision
-		return notFound
+		return missingFile(fmt.Sprintf("%s does not exist in %s", p, token))
 	}
 	missing, err := d.localRepo.MissingChunks(entry.ChunkHashes)
 	if err != nil {
@@ -101,6 +99,12 @@ func (d *Diff) readRevisionBlob(ctx context.Context, token, p string, fn func(di
 	return fn(entry, &blobReader{load: d.localRepo.LoadChunk, entry: entry})
 }
 
+func missingFile(msg string) error {
+	e := clientDomain.NewNotFoundError(msg)
+	e.Cause = ErrFileMissing
+	return e
+}
+
 func readWorkingBlob(root, p string, fn func(diff.Entry, io.Reader) error) error {
 	full, err := resolveInsideRoot(root, p)
 	if err != nil {
@@ -109,7 +113,7 @@ func readWorkingBlob(root, p string, fn func(diff.Entry, io.Reader) error) error
 	pre, err := os.Stat(full)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return clientDomain.NewNotFoundError(fmt.Sprintf("%s does not exist", p))
+			return missingFile(fmt.Sprintf("%s does not exist", p))
 		}
 		return err
 	}
@@ -119,7 +123,7 @@ func readWorkingBlob(root, p string, fn func(diff.Entry, io.Reader) error) error
 	f, err := os.Open(full)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return clientDomain.NewNotFoundError(fmt.Sprintf("%s does not exist", p))
+			return missingFile(fmt.Sprintf("%s does not exist", p))
 		}
 		return err
 	}
@@ -149,7 +153,7 @@ func resolveInsideRoot(root, p string) (string, error) {
 	full, err := filepath.EvalSymlinks(filepath.Join(root, filepath.FromSlash(p)))
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return "", clientDomain.NewNotFoundError(fmt.Sprintf("%s does not exist", p))
+			return "", missingFile(fmt.Sprintf("%s does not exist", p))
 		}
 		return "", err
 	}

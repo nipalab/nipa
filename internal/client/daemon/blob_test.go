@@ -11,6 +11,7 @@ import (
 	"math/rand/v2"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
@@ -74,7 +75,12 @@ func blobServer(t *testing.T, files map[string]blobFile, seen *[]usecase.BlobReq
 		}
 		f, ok := files[string(req.Source)+":"+req.Path]
 		if !ok {
-			return clientDomain.NewNotFoundError(req.Path + " not found")
+			if strings.HasPrefix(req.Path, "chunk:") {
+				return clientDomain.NewNotFoundError("chunk not found on the server")
+			}
+			missing := clientDomain.NewNotFoundError(req.Path + " not found")
+			missing.Cause = usecase.ErrFileMissing
+			return missing
 		}
 		return fn(f.entry, bytes.NewReader(f.data))
 	}}})
@@ -141,6 +147,11 @@ func TestServer_ReadBlobFailures(t *testing.T) {
 	require.NoError(t, srv.ReadBlob(&daemonpb.ReadBlobRequest{Root: root, Blob: &daemonpb.BlobRef{Path: "nope"}}, stream))
 	_, _, failure := blobContent(stream.all())
 	require.EqualValues(t, 404, failure.GetCode())
+
+	stream = blobStream()
+	require.NoError(t, srv.ReadBlob(&daemonpb.ReadBlobRequest{Root: root, Blob: &daemonpb.BlobRef{Path: "chunk:x"}}, stream))
+	_, _, failure = blobContent(stream.all())
+	require.EqualValues(t, 502, failure.GetCode(), "a failed transfer is not a missing file")
 
 	stream = blobStream()
 	require.NoError(t, srv.ReadBlob(&daemonpb.ReadBlobRequest{Root: newTestClone(t)}, stream))
