@@ -6,7 +6,6 @@ import (
 	"os"
 	"strings"
 	"sync/atomic"
-	"syscall"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -79,7 +78,7 @@ func TestRunLogPager_Resize(t *testing.T) {
 	go func() {
 		done <- runLogPager(&out, in, testEntries(), false, getSize, sigs)
 	}()
-	sigs <- syscall.SIGWINCH
+	sigs <- os.Interrupt
 	height.Store(10)
 	<-sawResize
 	in.ch <- []byte("q")

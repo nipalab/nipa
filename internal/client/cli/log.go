@@ -5,7 +5,6 @@ import (
 	"io"
 	"os"
 	"os/signal"
-	"syscall"
 
 	"github.com/nipalab/nipa/internal/client/domain"
 	"github.com/nipalab/nipa/internal/client/localrepo"
@@ -70,7 +69,7 @@ func runInteractivePager(out io.Writer, in *os.File, lines []string, footer func
 	}
 	defer func() { _ = term.Restore(fd, state) }()
 	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGWINCH)
+	notifyResize(sigs)
 	defer signal.Stop(sigs)
 	return runViewportPager(out, in, lines, footer, func() (int, int) {
 		w, h, err := term.GetSize(fd)

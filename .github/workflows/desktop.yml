@@ -34,7 +34,9 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: desktop/go.mod
-          cache-dependency-path: desktop/go.sum
+          cache-dependency-path: |
+            desktop/go.sum
+            desktop/build/tools/go.sum
 
       - uses: actions/setup-node@v4
         with:
@@ -43,7 +45,7 @@ jobs:
           cache-dependency-path: desktop/frontend/package-lock.json
 
       - name: Go vet
-        run: go vet ./internal/...
+        run: go vet ./internal/... ./tools/...
 
       - name: Go tests
         run: go test -race -cover ./internal/...
@@ -73,7 +75,9 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: desktop/go.mod
-          cache-dependency-path: desktop/go.sum
+          cache-dependency-path: |
+            desktop/go.sum
+            desktop/build/tools/go.sum
 
       - uses: actions/setup-node@v4
         with:
@@ -86,7 +90,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y build-essential pkg-config libgtk-4-dev libwebkitgtk-6.0-dev
 
       - name: Install wails3
-        run: go install github.com/wailsapp/wails/v3/cmd/wails3@v3.1.0
+        run: go -C build/tools install tool
 
       - name: Bindings are up to date
         if: runner.os == 'Linux'

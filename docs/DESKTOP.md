@@ -70,7 +70,9 @@ Sonar never compile it.
   `ConflictTexts`, `ConflictDiff`, `ResolveConflict`; Activity and links:
   `Activity`, `OpenLink`, `Navigate`, `TakeNavigation`; Settings:
   `Settings`, `SaveSettings`, `UploadWorkers`, `SetUploadWorkers`,
-  `RestartDaemon`, `ChooseProgram`, `IgnoreRules`, `SaveIgnoreRules`). Plain Go behind `Dialer`/
+  `RestartDaemon`, `ChooseProgram`, `IgnoreRules`, `SaveIgnoreRules`; Updates:
+  `UpdateStatus`, `CheckForUpdate`, `InstallUpdate`, `RestartToUpdate`,
+  `OpenUpdatePage`). Plain Go behind `Dialer`/
   `RepoStore`/`FolderPicker` seams, so it is unit-tested without a webview; an
   `Unavailable` error drops the session so the next call reconnects (and
   restarts the daemon) and re-watches each clone on first use. Every watched
@@ -371,6 +373,58 @@ Pure package (no client imports), shared by the daemon and later the server.
   fixtures come from `testdata/gen/audio.sh` (GStreamer);
   crashers found by the fuzzer are kept as seeds in `testdata/fuzz`.
 
+## Packaging and updates
+
+- **Version.** Release builds take their version from the tag
+  (`wails3 task release VERSION=v1.2.3`, `NIPA_RELEASE_VERSION`, or
+  `git describe`) through `internal/version` (`VERSION_LDFLAGS` in
+  `desktop/Taskfile.yml`), so the app and its bundled CLI report the same
+  version; the Info.plist, NSIS and nfpm versions follow. Builds whose version
+  is not a release (`dev-…`, dirty) or that carry no update key never update.
+- **Bundled CLI.** The app starts the daemon from the `nipa` next to its
+  binary, and an update must move both. macOS ships it inside the `.app`
+  (`Contents/MacOS/nipa`, universal), so the bundle swap carries it. Windows
+  and Linux production builds embed it (`internal/companion`, `companion`
+  tag, built by `common:build:companion`) and write it next to the app at
+  start when it differs (a running `nipa.exe` is moved to `nipa.exe.old`).
+  The connector's `MinVersion` then retires a daemon older than the app
+  (`Shutdown`, wait, start the new CLI); newer or dev daemons are kept.
+- **Artifacts** (`wails3 task release`, `make desktop-release`,
+  `bin/release/`): macOS `nipa-desktop-macos-universal.zip` (update) and
+  `.dmg`, signed and notarized when `MACOS_SIGN_IDENTITY` (+
+  `MACOS_NOTARY_KEY`/`_KEY_ID`/`_ISSUER_ID`) is set; Windows
+  `nipa-desktop-windows-amd64.zip` (update) and `-setup.exe` (per-user NSIS
+  install in `%LOCALAPPDATA%\Programs\Nipa`, Authenticode-signed with
+  `SIGN_CERTIFICATE`/`SIGN_THUMBPRINT`); Linux
+  `nipa-desktop-linux-amd64.tar.gz` (update / portable) plus `.deb`/`.rpm`
+  installing `nipa-desktop` and `nipa` into `/usr/local/bin`.
+- **Toolchain.** CI installs `wails3` from `desktop/build/tools` (a tools
+  module pinning it with a `tool` directive and `go.sum`):
+  `go -C build/tools install tool`.
+- **Feed.** `.github/workflows/desktop-release.yml` runs on `v*` tags: it
+  builds the three OSes, signs `update.json` with
+  `tools/updatemanifest` (`NIPA_UPDATE_SIGNING_KEY` secret; the public half
+  is the `NIPA_UPDATE_PUBLIC_KEY` variable, created with `-genkey`) and
+  attaches everything to the GitHub release (`-` tags are prereleases).
+  The manifest is the Wails update manifest (schema 1): per-artifact
+  SHA-256 digest plus a raw ed25519 signature of that digest, the release
+  page in `metadata.page`. Apps read
+  `releases/latest/download/update.json` (`update.FeedURL`, build-time
+  `UPDATE_FEED`, runtime `NIPA_UPDATE_URL`), which never serves
+  prereleases.
+- **In the app.** `main.go` initializes the Wails updater (endpoint
+  provider, pinned key, no updater window) behind the `service.Updater`
+  seam. `WatchUpdates` checks a minute after start and every 6 h unless
+  Settings → Updates turns it off (`manualUpdates`); when the install can
+  replace itself (`update.Replaceable`: the `.app` or binary directory is
+  writable) it downloads and verifies in the background and notifies
+  "ready, restart"; otherwise (deb/rpm, machine-wide installs, a mounted
+  AppImage or DMG) it notifies and offers the release page. The state
+  (`UpdateStatus`, `update:state` event) drives the Settings section
+  (Check now / Download / Restart to update, progress, notes) and a banner
+  above the main view. `RestartToUpdate` hands over to the Wails helper,
+  which swaps the target after the app exits and relaunches it.
+
 ## Roadmap (one PR each)
 
 1. `internal/preview`: classification, common images, TGA, compare. **(done)**
@@ -388,4 +442,4 @@ Pure package (no client imports), shared by the daemon and later the server.
 13. Merge requests with asset viewers. **(done)**
 14. Conflict resolution. **(done)**
 15. Tray, notifications, deep links, settings. **(done)**
-16. Packaging and auto-update.
+16. Packaging and auto-update. **(done)**

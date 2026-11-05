@@ -16,6 +16,7 @@ declare module "@wailsio/runtime" {
             "op:progress": service$0.OpProgress;
             "repo:activity": service$0.RepoActivity;
             "repo:changed": service$0.RepoChanged;
+            "update:state": service$0.UpdateState;
         }
     }
 }

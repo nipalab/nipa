@@ -15,6 +15,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
+	"github.com/nipalab/nipa/desktop/internal/update"
 	"github.com/nipalab/nipa/internal/client/daemon"
 	"github.com/nipalab/nipa/internal/client/grpc/daemonpb"
 )
@@ -29,6 +30,7 @@ const (
 var (
 	ErrBinaryNotFound = errors.New("nipa CLI not found: install it next to the app, on PATH, or set NIPA_BIN")
 	errStaleEndpoint  = errors.New("daemon endpoint is stale")
+	errOutdated       = errors.New("only an outdated daemon answers")
 )
 
 type Options struct {
@@ -40,6 +42,9 @@ type Options struct {
 	// LogPath receives the started daemon's output; empty discards it.
 	LogPath      string
 	StartTimeout time.Duration
+	// MinVersion retires a daemon reporting an older release (the app was
+	// updated while the previous daemon kept running) and starts a new one.
+	MinVersion string
 
 	start      func(bin, logPath, endpoint string) error
 	lookPath   func(string) (string, error)
@@ -71,7 +76,14 @@ func Connect(ctx context.Context, opts Options) (*Conn, error) {
 		}
 	}
 	if conn, err := attach(ctx, path, opts.alive); err == nil {
-		return conn, nil
+		if !update.Older(conn.Version, opts.MinVersion) {
+			return conn, nil
+		}
+		if _, err := conn.Client.Shutdown(ctx, &daemonpb.ShutdownRequest{}); err != nil {
+			return conn, nil
+		}
+		waitStopped(ctx, conn, opts.StartTimeout)
+		_ = conn.Close()
 	}
 
 	bin, err := resolveBinary(opts)
@@ -87,15 +99,27 @@ func Connect(ctx context.Context, opts Options) (*Conn, error) {
 	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
 	var lastErr error
+	outdated := false
 	for {
 		conn, err := attach(waitCtx, path, opts.alive)
-		if err == nil {
+		if err == nil && !update.Older(conn.Version, opts.MinVersion) {
 			conn.Started = true
 			return conn, nil
+		}
+		if err == nil {
+			// The retired daemon is still draining and published.
+			_ = conn.Close()
+			outdated = true
+			err = errOutdated
 		}
 		lastErr = err
 		select {
 		case <-waitCtx.Done():
+			if outdated {
+				if conn, err := attach(ctx, path, opts.alive); err == nil {
+					return conn, nil
+				}
+			}
 			return nil, fmt.Errorf("nipa daemon did not start: %w", lastErr)
 		case <-ticker.C:
 		}
@@ -144,6 +168,28 @@ func attach(ctx context.Context, path string, alive func(int) bool) (*Conn, erro
 		return nil, err
 	}
 	return &Conn{Client: client, Endpoint: *ep, Version: pong.GetVersion(), cc: cc}, nil
+}
+
+// waitStopped waits until a daemon asked to shut down stops answering; a
+// slow drain is not an error, the new daemon replaces the endpoint anyway.
+func waitStopped(ctx context.Context, conn *Conn, timeout time.Duration) {
+	waitCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	ticker := time.NewTicker(pollInterval)
+	defer ticker.Stop()
+	for {
+		pingCtx, stop := context.WithTimeout(waitCtx, pingTimeout)
+		_, err := conn.Client.Ping(pingCtx, &daemonpb.PingRequest{})
+		stop()
+		if err != nil {
+			return
+		}
+		select {
+		case <-waitCtx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
 }
 
 func resolveBinary(opts Options) (string, error) {

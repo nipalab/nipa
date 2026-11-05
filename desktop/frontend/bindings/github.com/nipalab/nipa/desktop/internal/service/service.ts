@@ -65,6 +65,13 @@ export function Changes(root: string): $CancellablePromise<$models.Changes> {
 }
 
 /**
+ * CheckForUpdate asks the release feed for a newer version.
+ */
+export function CheckForUpdate(): $CancellablePromise<$models.UpdateState> {
+    return $Call.ByID(1371120150);
+}
+
+/**
  * CheckoutTag checks the tagged files out read-only (detached) until the
  * clone switches back to a branch.
  */
@@ -231,6 +238,15 @@ export function ImageDiff(root: string, old: $models.ImageRef | null, $new: $mod
 }
 
 /**
+ * InstallUpdate downloads and verifies the available release; the new
+ * version runs after RestartToUpdate. Installs that cannot replace
+ * themselves open the release page instead.
+ */
+export function InstallUpdate(): $CancellablePromise<$models.UpdateState> {
+    return $Call.ByID(3246874434);
+}
+
+/**
  * ListProjects lists the projects the signed-in account can read.
  */
 export function ListProjects(server: string): $CancellablePromise<$models.RemoteProject[] | null> {
@@ -337,6 +353,13 @@ export function OpenLink(raw: string): $CancellablePromise<$models.Navigation> {
 }
 
 /**
+ * OpenUpdatePage opens the available release's page in the browser.
+ */
+export function OpenUpdatePage(): $CancellablePromise<void> {
+    return $Call.ByID(744458090);
+}
+
+/**
  * PickFile asks for a file inside the clone and returns its clone-relative
  * path, or "" when cancelled.
  */
@@ -423,6 +446,13 @@ export function ResolveThread(root: string, $number: number, threadID: string, r
  */
 export function RestartDaemon(): $CancellablePromise<$models.DaemonInfo> {
     return $Call.ByID(1686683011);
+}
+
+/**
+ * RestartToUpdate quits and relaunches the app on the downloaded version.
+ */
+export function RestartToUpdate(): $CancellablePromise<void> {
+    return $Call.ByID(260610607);
 }
 
 /**
@@ -563,6 +593,13 @@ export function Unstage(root: string, paths: string[] | null): $CancellablePromi
  */
 export function Update(root: string): $CancellablePromise<$models.OpOutcome> {
     return $Call.ByID(2237493537, root);
+}
+
+/**
+ * UpdateStatus returns the current update state.
+ */
+export function UpdateStatus(): $CancellablePromise<$models.UpdateState> {
+    return $Call.ByID(1821496387);
 }
 
 /**

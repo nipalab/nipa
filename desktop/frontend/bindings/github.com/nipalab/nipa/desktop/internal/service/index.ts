@@ -59,6 +59,7 @@ export type {
     OpOutcome,
     OpProgress,
     Person,
+    Release,
     RemoteBranch,
     RemoteDir,
     RemoteListing,
@@ -76,5 +77,6 @@ export type {
     Tag,
     TeamEvent,
     Thread,
-    TimelineEvent
+    TimelineEvent,
+    UpdateState
 } from "./models.js";

@@ -28,3 +28,8 @@ export const RepoActivity = "repo:activity";
  */
 export const RepoChanged = "repo:changed";
 
+/**
+ * Name of the custom event "update:state".
+ */
+export const UpdateState = "update:state";
+

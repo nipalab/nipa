@@ -27,6 +27,11 @@ const api = vi.hoisted(() => ({
   ignoreRules: vi.fn(),
   settings: vi.fn(),
   uploadWorkers: vi.fn(),
+  updateStatus: vi.fn(),
+  onUpdate: vi.fn(),
+  installUpdate: vi.fn(),
+  restartToUpdate: vi.fn(),
+  openUpdatePage: vi.fn(),
 }));
 vi.mock("./api/desktop", () => ({ desktop: api }));
 
@@ -46,6 +51,8 @@ beforeEach(() => {
   api.takeNavigation.mockResolvedValue(null);
   api.onNavigate.mockReturnValue(() => {});
   api.ignoreRules.mockResolvedValue({ shared: "", local: "" });
+  api.updateStatus.mockResolvedValue({ current: "1.0.0", enabled: true, inPlace: true, phase: "idle", release: null, written: 0, total: 0, error: "", checkedAt: "" });
+  api.onUpdate.mockReturnValue(() => {});
 });
 
 const openDetails = () => userEvent.click(screen.getByRole("tab", { name: /Details/ }));

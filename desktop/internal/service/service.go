@@ -106,6 +106,7 @@ type Service struct {
 	followers map[string]context.CancelFunc
 	activity  map[string]RepoActivity
 	pending   *Navigation
+	upd       *updates
 }
 
 func New(dial Dialer, store RepoStore, pick FolderPicker) *Service {

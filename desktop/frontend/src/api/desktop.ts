@@ -68,6 +68,8 @@ import type {
   Navigation,
   RepoActivity as RawRepoActivity,
   TeamEvent,
+  Release,
+  UpdateState as RawUpdateState,
 } from "../../bindings/github.com/nipalab/nipa/desktop/internal/service/models";
 import type { NotifySettings, Settings as RawSettings, Tool } from "../../bindings/github.com/nipalab/nipa/desktop/internal/workspace/models";
 
@@ -76,6 +78,22 @@ export type Settings = Omit<RawSettings, "tools"> & { tools: Tool[] };
 export type RepoActivity = Omit<RawRepoActivity, "events"> & { events: TeamEvent[] };
 const settings = (s: RawSettings): Settings => ({ ...s, tools: s.tools ?? [] });
 const activity = (a: RawRepoActivity): RepoActivity => ({ ...a, events: a.events ?? [] });
+
+export type UpdatePhase = "idle" | "checking" | "upToDate" | "available" | "downloading" | "ready" | "error";
+export type UpdateState = Omit<RawUpdateState, "phase" | "release" | "error"> & { phase: UpdatePhase; release: Release | null; error: string };
+const updatePhases: UpdatePhase[] = ["idle", "checking", "upToDate", "available", "downloading", "ready", "error"];
+export const updateState = (u: RawUpdateState | null): UpdateState => ({
+  current: u?.current ?? "",
+  enabled: u?.enabled ?? false,
+  inPlace: u?.inPlace ?? false,
+  phase: updatePhases.find((p) => p === u?.phase) ?? "idle",
+  release: u?.release ?? null,
+  written: u?.written ?? 0,
+  total: u?.total ?? 0,
+  error: u?.error ?? "",
+  checkedAt: u?.checkedAt ?? "",
+});
+export type { Release };
 
 export type { FileLock, FileLockState, LockFailure };
 export type { Branch, HistoryQuery, RevertOutcome, RevertRequest, Tag };
@@ -252,9 +270,15 @@ export const desktop = {
   saveIgnoreRules: (root: string, rules: IgnoreRules): Promise<void> => Service.SaveIgnoreRules(root, rules),
   openLink: (raw: string): Promise<Navigation> => Service.OpenLink(raw),
   takeNavigation: (): Promise<Navigation | null> => Service.TakeNavigation(),
+  updateStatus: async (): Promise<UpdateState> => updateState(await Service.UpdateStatus()),
+  checkForUpdate: async (): Promise<UpdateState> => updateState(await Service.CheckForUpdate()),
+  installUpdate: async (): Promise<UpdateState> => updateState(await Service.InstallUpdate()),
+  restartToUpdate: (): Promise<void> => Service.RestartToUpdate(),
+  openUpdatePage: (): Promise<void> => Service.OpenUpdatePage(),
 
   onRepoActivity: (fn: (a: RepoActivity) => void): (() => void) => Events.On("repo:activity", (ev) => fn(activity(ev.data))),
   onNavigate: (fn: () => void): (() => void) => Events.On("app:navigate", () => fn()),
   onRepoChanged: (fn: (change: RepoChanged) => void): (() => void) => Events.On("repo:changed", (ev) => fn(ev.data)),
   onOpProgress: (fn: (progress: OpProgress) => void): (() => void) => Events.On("op:progress", (ev) => fn(ev.data)),
+  onUpdate: (fn: (state: UpdateState) => void): (() => void) => Events.On("update:state", (ev) => fn(updateState(ev.data))),
 };

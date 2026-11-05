@@ -153,6 +153,30 @@ tasks:
     cmds:
       - wails3 generate bindings -f '{{.BUILD_FLAGS}}' -clean=true{{if eq .OBFUSCATED "true"}} -obfuscated{{end}} -ts -i
 
+  build:companion:
+    summary: Builds the nipa CLI shipped with the app (skipped for dev builds)
+    cmds:
+      - task: 'build:companion:{{if eq .DEV "true"}}skip{{else}}go{{end}}'
+        vars:
+          OUTPUT: '{{.OUTPUT}}'
+          TARGET_OS: '{{.TARGET_OS}}'
+          ARCH: '{{.ARCH}}'
+
+  build:companion:skip:
+    internal: true
+    cmds:
+      - 'echo "Development build: the nipa CLI is not bundled."'
+
+  build:companion:go:
+    internal: true
+    dir: '{{.ROOT_DIR}}/..'
+    cmds:
+      - go build -trimpath -buildvcs=false -ldflags="-w -s -X github.com/nipalab/nipa/internal/version.Version={{.VERSION}}" -o "{{.ROOT_DIR}}/{{.OUTPUT}}" ./cmd/nipa
+    env:
+      GOOS: '{{.TARGET_OS}}'
+      GOARCH: '{{.ARCH | default ARCH}}'
+      CGO_ENABLED: "0"
+
   generate:icons:
     summary: Generates Windows `.ico` and Mac `.icns` from an image; on macOS, `-iconcomposerinput appicon.icon -macassetdir darwin` also produces `Assets.car` from a `.icon` file (skipped on other platforms).
     run: once

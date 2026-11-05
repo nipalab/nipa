@@ -26,6 +26,8 @@ type Settings struct {
 	PollSeconds  int            `json:"pollSeconds"`
 	Notify       NotifySettings `json:"notify"`
 	Tools        []Tool         `json:"tools"`
+	// ManualUpdates turns off the background update check and download.
+	ManualUpdates bool `json:"manualUpdates"`
 }
 
 type NotifySettings struct {
