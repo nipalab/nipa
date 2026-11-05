@@ -75,13 +75,18 @@ const service = vi.hoisted(() => ({
   SaveIgnoreRules: vi.fn(),
   OpenLink: vi.fn(),
   TakeNavigation: vi.fn(),
+  UpdateStatus: vi.fn(),
+  CheckForUpdate: vi.fn(),
+  InstallUpdate: vi.fn(),
+  RestartToUpdate: vi.fn(),
+  OpenUpdatePage: vi.fn(),
 }));
 vi.mock("../../bindings/github.com/nipalab/nipa/desktop/internal/service", () => ({ Service: service }));
 
 const events = vi.hoisted(() => ({ On: vi.fn() }));
 vi.mock("@wailsio/runtime", () => ({ Events: events }));
 
-import { desktop } from "./desktop";
+import { desktop, updateState } from "./desktop";
 
 beforeEach(() => vi.resetAllMocks());
 
@@ -348,7 +353,7 @@ describe("desktop api", () => {
   });
 
   it("forwards settings, activity and navigation calls", async () => {
-    const st = { keepInTray: true, startAtLogin: false, pollSeconds: 60, notify: { pushes: true, locks: true, reviews: true }, tools: null };
+    const st = { keepInTray: true, startAtLogin: false, pollSeconds: 60, notify: { pushes: true, locks: true, reviews: true }, tools: null, manualUpdates: false };
     service.Settings.mockResolvedValue(st);
     service.SaveSettings.mockResolvedValue({ ...st, tools: [{ extension: ".blend", command: "blender" }] });
     expect(await desktop.settings()).toEqual({ ...st, tools: [] });
@@ -387,5 +392,36 @@ describe("desktop api", () => {
     events.On.mock.calls[1][1]({ data: { root: "/a" } });
     expect(activity).toHaveBeenCalledWith({ root: "/a", events: [] });
     expect(navigate).toHaveBeenCalledWith();
+  });
+
+  it("normalizes and forwards update calls", async () => {
+    const empty = { current: "", enabled: false, inPlace: false, phase: "idle", release: null, written: 0, total: 0, error: "", checkedAt: "" };
+    expect(updateState(null)).toEqual(empty);
+    expect(updateState({ current: "1.0.0", enabled: true, inPlace: true, phase: "bogus", written: 1, total: 2 })).toEqual({
+      ...empty,
+      current: "1.0.0",
+      enabled: true,
+      inPlace: true,
+      written: 1,
+      total: 2,
+    });
+    const release = { version: "1.1.0", notes: "", publishedAt: "", page: "" };
+    service.UpdateStatus.mockResolvedValue({ ...empty, phase: "available", release });
+    service.CheckForUpdate.mockResolvedValue({ ...empty, phase: "upToDate" });
+    service.InstallUpdate.mockResolvedValue({ ...empty, phase: "ready", release, error: "x" });
+    expect((await desktop.updateStatus()).release).toEqual(release);
+    expect((await desktop.checkForUpdate()).phase).toBe("upToDate");
+    expect(await desktop.installUpdate()).toMatchObject({ phase: "ready", error: "x" });
+    await desktop.restartToUpdate();
+    await desktop.openUpdatePage();
+    expect(service.RestartToUpdate).toHaveBeenCalled();
+    expect(service.OpenUpdatePage).toHaveBeenCalled();
+
+    const fn = vi.fn();
+    events.On.mockClear();
+    desktop.onUpdate(fn);
+    expect(events.On.mock.calls[0][0]).toBe("update:state");
+    events.On.mock.calls[0][1]({ data: { phase: "ready", current: "1.0.0" } });
+    expect(fn).toHaveBeenCalledWith({ ...empty, phase: "ready", current: "1.0.0" });
   });
 });

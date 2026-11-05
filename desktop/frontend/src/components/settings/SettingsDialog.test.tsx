@@ -1,9 +1,9 @@
-import { screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SettingsDialog, pollChoices } from "./SettingsDialog";
 import { renderWithProviders } from "@/test/render";
-import type { Settings } from "@/api/desktop";
+import type { Settings, UpdateState } from "@/api/desktop";
 
 const api = vi.hoisted(() => ({
   settings: vi.fn(),
@@ -12,10 +12,18 @@ const api = vi.hoisted(() => ({
   setUploadWorkers: vi.fn(),
   restartDaemon: vi.fn(),
   chooseProgram: vi.fn(),
+  updateStatus: vi.fn(),
+  checkForUpdate: vi.fn(),
+  installUpdate: vi.fn(),
+  restartToUpdate: vi.fn(),
+  openUpdatePage: vi.fn(),
+  onUpdate: vi.fn(),
 }));
 vi.mock("@/api/desktop", () => ({ desktop: api }));
 
-const base: Settings = { keepInTray: true, startAtLogin: false, pollSeconds: 60, notify: { pushes: true, locks: true, reviews: true }, tools: [] };
+const base: Settings = { keepInTray: true, startAtLogin: false, pollSeconds: 60, notify: { pushes: true, locks: true, reviews: true }, tools: [], manualUpdates: false };
+
+const idle: UpdateState = { current: "1.0.0", enabled: true, inPlace: true, phase: "idle", release: null, written: 0, total: 0, error: "", checkedAt: "" };
 
 const notify = vi.fn();
 const onClose = vi.fn();
@@ -26,6 +34,8 @@ beforeEach(() => {
   api.uploadWorkers.mockResolvedValue(0);
   api.saveSettings.mockImplementation(async (s: Settings) => s);
   api.setUploadWorkers.mockResolvedValue(undefined);
+  api.updateStatus.mockResolvedValue(idle);
+  api.onUpdate.mockReturnValue(() => {});
 });
 
 const render = () => renderWithProviders(<SettingsDialog onClose={onClose} notify={notify} />);
@@ -43,7 +53,7 @@ describe("SettingsDialog", () => {
     await userEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() => expect(onClose).toHaveBeenCalled());
-    expect(api.saveSettings).toHaveBeenCalledWith({ keepInTray: false, startAtLogin: true, pollSeconds: 300, notify: { pushes: false, locks: false, reviews: false }, tools: [] });
+    expect(api.saveSettings).toHaveBeenCalledWith({ keepInTray: false, startAtLogin: true, pollSeconds: 300, notify: { pushes: false, locks: false, reviews: false }, tools: [], manualUpdates: false });
     expect(api.setUploadWorkers).not.toHaveBeenCalled();
     expect(notify).toHaveBeenCalledWith("Settings saved", "success");
   });
@@ -122,5 +132,56 @@ describe("SettingsDialog", () => {
     expect(pollChoices(60).map((o) => o.seconds)).toEqual([30, 60, 300, 900, 3600]);
     expect(pollChoices(120).find((o) => o.seconds === 120)?.label).toBe("120 seconds");
     expect(pollChoices(120).map((o) => o.seconds)).toEqual([30, 60, 120, 300, 900, 3600]);
+  });
+
+  it("turns automatic updates off and checks for updates", async () => {
+    api.checkForUpdate.mockResolvedValue({ ...idle, phase: "upToDate" });
+    render();
+    expect(await screen.findByText("Nipa 1.0.0")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Check now" }));
+    expect(await screen.findByText("Nipa 1.0.0 is up to date.")).toBeInTheDocument();
+    await userEvent.click(screen.getByLabelText("Download updates automatically"));
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(api.saveSettings).toHaveBeenCalledWith({ ...base, manualUpdates: true }));
+  });
+
+  it("downloads, shows progress and restarts", async () => {
+    const release = { version: "1.1.0", notes: "Faster clones", publishedAt: "", page: "https://example/r" };
+    api.updateStatus.mockResolvedValue({ ...idle, phase: "available", release });
+    api.installUpdate.mockResolvedValue({ ...idle, phase: "ready", release });
+    api.restartToUpdate.mockRejectedValue(new Error("helper did not start"));
+    let push: (s: UpdateState) => void = () => {};
+    api.onUpdate.mockImplementation((fn: (s: UpdateState) => void) => {
+      push = fn;
+      return () => {};
+    });
+    render();
+    expect(await screen.findByText("Nipa 1.1.0 is available.")).toBeInTheDocument();
+    expect(screen.getByText("Faster clones")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Download" }));
+    expect(await screen.findByText("Nipa 1.1.0 is ready.")).toBeInTheDocument();
+
+    act(() => push({ ...idle, phase: "downloading", release, written: 5, total: 10 }));
+    expect(await screen.findByText("Downloading Nipa 1.1.0… 50%")).toBeInTheDocument();
+    act(() => push({ ...idle, phase: "ready", release }));
+    await userEvent.click(await screen.findByRole("button", { name: "Restart to update" }));
+    await waitFor(() => expect(notify).toHaveBeenCalledWith("helper did not start"));
+  });
+
+  it("opens the release page for package-managed installs", async () => {
+    const release = { version: "1.1.0", notes: "", publishedAt: "", page: "https://example/r" };
+    api.updateStatus.mockResolvedValue({ ...idle, inPlace: false, phase: "available", release });
+    api.openUpdatePage.mockRejectedValue(new Error("no browser"));
+    render();
+    expect(await screen.findByLabelText("Check for updates automatically")).toBeChecked();
+    await userEvent.click(screen.getByRole("button", { name: "Get it from the website" }));
+    await waitFor(() => expect(notify).toHaveBeenCalledWith("no browser"));
+  });
+
+  it("explains that development builds do not update", async () => {
+    api.updateStatus.mockResolvedValue({ ...idle, enabled: false, current: "" });
+    render();
+    expect(await screen.findByText("This is a development build; it does not update itself.")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Download updates automatically")).toBeNull();
   });
 });

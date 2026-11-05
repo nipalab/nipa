@@ -654,6 +654,17 @@ export interface Person {
     "name": string;
 }
 
+export interface Release {
+    "version": string;
+    "notes": string;
+    "publishedAt": string;
+
+    /**
+     * Page is the release page, opened when the app cannot update itself.
+     */
+    "page": string;
+}
+
 export interface RemoteBranch {
     "name": string;
     "isDefault": boolean;
@@ -858,4 +869,25 @@ export interface TimelineEvent {
     "body": string;
     "commitId": string;
     "createdAt": string;
+}
+
+export interface UpdateState {
+    "current": string;
+
+    /**
+     * Enabled is false for development builds and builds without a feed key.
+     */
+    "enabled": boolean;
+
+    /**
+     * InPlace is false for package-managed installs, which download the
+     * release instead of replacing themselves.
+     */
+    "inPlace": boolean;
+    "phase": string;
+    "release"?: Release | null;
+    "written": number;
+    "total": number;
+    "error"?: string;
+    "checkedAt"?: string;
 }

@@ -1,0 +1,159 @@
+name: Desktop release
+
+# Builds the desktop app for every OS on a version tag, signs the update
+# manifest and attaches everything to the GitHub release. Installed apps poll
+# releases/latest/download/update.json, so prerelease tags never reach them.
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to (re)build, e.g. v0.2.0
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
+
+defaults:
+  run:
+    working-directory: desktop
+    shell: bash
+
+jobs:
+  build:
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - os: macos-latest
+            task: darwin:release
+          - os: windows-latest
+            task: windows:release
+          - os: ubuntu-24.04
+            task: linux:release
+    runs-on: ${{ matrix.os }}
+    env:
+      MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+      WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: desktop/go.mod
+          cache-dependency-path: desktop/go.sum
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: desktop/frontend/package-lock.json
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y build-essential pkg-config libgtk-4-dev libwebkitgtk-6.0-dev
+
+      - name: Install wails3
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@v3.1.0
+
+      - name: Put NSIS on PATH
+        if: runner.os == 'Windows'
+        run: command -v makensis || echo "C:\Program Files (x86)\NSIS" >> "$GITHUB_PATH"
+
+      - name: Import the macOS signing certificate
+        if: runner.os == 'macOS' && env.MACOS_CERTIFICATE != ''
+        env:
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          MACOS_NOTARY_KEY_P8: ${{ secrets.MACOS_NOTARY_KEY_P8 }}
+        run: |
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          pass="$(openssl rand -hex 16)"
+          echo "$MACOS_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$pass" "$keychain"
+          security set-keychain-settings -lut 3600 "$keychain"
+          security unlock-keychain -p "$pass" "$keychain"
+          security import "$RUNNER_TEMP/cert.p12" -P "$MACOS_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
+          security set-key-partition-list -S apple-tool:,apple: -k "$pass" "$keychain"
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          if [ -n "$MACOS_NOTARY_KEY_P8" ]; then
+            echo "$MACOS_NOTARY_KEY_P8" > "$RUNNER_TEMP/notary.p8"
+            echo "MACOS_NOTARY_KEY=$RUNNER_TEMP/notary.p8" >> "$GITHUB_ENV"
+          fi
+
+      - name: Write the Windows signing certificate
+        if: runner.os == 'Windows' && env.WINDOWS_CERTIFICATE != ''
+        run: |
+          echo "$WINDOWS_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/cert.pfx"
+          echo "SIGN_CERTIFICATE=$RUNNER_TEMP/cert.pfx" >> "$GITHUB_ENV"
+
+      - name: Build release artifacts
+        env:
+          NIPA_RELEASE_VERSION: ${{ env.TAG }}
+          NIPA_UPDATE_PUBLIC_KEY: ${{ vars.NIPA_UPDATE_PUBLIC_KEY }}
+          MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+          MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+          MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
+          SIGN_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          if [ -z "$NIPA_UPDATE_PUBLIC_KEY" ]; then
+            echo "::error::Set the NIPA_UPDATE_PUBLIC_KEY repository variable (cd desktop && go run ./tools/updatemanifest -genkey)"
+            exit 1
+          fi
+          wails3 task ${{ matrix.task }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ runner.os }}
+          path: desktop/bin/release/
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: desktop/go.mod
+          cache-dependency-path: desktop/go.sum
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: desktop/dist
+          merge-multiple: true
+
+      - name: Sign the update manifest
+        env:
+          NIPA_UPDATE_SIGNING_KEY: ${{ secrets.NIPA_UPDATE_SIGNING_KEY }}
+        run: |
+          repo="https://github.com/${{ github.repository }}"
+          go run ./tools/updatemanifest \
+            -version "$TAG" \
+            -base "$repo/releases/download/$TAG" \
+            -page "$repo/releases/tag/$TAG" \
+            -out dist/update.json \
+            darwin=dist/nipa-desktop-macos-universal.zip \
+            windows/amd64=dist/nipa-desktop-windows-amd64.zip \
+            linux/amd64=dist/nipa-desktop-linux-amd64.tar.gz
+          (cd dist && sha256sum * > SHA256SUMS)
+
+      - name: Attach to the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prerelease=""
+          case "$TAG" in *-*) prerelease="--prerelease" ;; esac
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --verify-tag --generate-notes $prerelease
+          fi
+          gh release upload "$TAG" dist/* --clobber

@@ -15,6 +15,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
+	"github.com/nipalab/nipa/desktop/internal/update"
 	"github.com/nipalab/nipa/internal/client/daemon"
 	"github.com/nipalab/nipa/internal/client/grpc/daemonpb"
 )
@@ -40,6 +41,9 @@ type Options struct {
 	// LogPath receives the started daemon's output; empty discards it.
 	LogPath      string
 	StartTimeout time.Duration
+	// MinVersion retires a daemon reporting an older release (the app was
+	// updated while the previous daemon kept running) and starts a new one.
+	MinVersion string
 
 	start      func(bin, logPath, endpoint string) error
 	lookPath   func(string) (string, error)
@@ -71,7 +75,9 @@ func Connect(ctx context.Context, opts Options) (*Conn, error) {
 		}
 	}
 	if conn, err := attach(ctx, path, opts.alive); err == nil {
-		return conn, nil
+		if !update.Older(conn.Version, opts.MinVersion) || retire(ctx, conn, opts.StartTimeout) != nil {
+			return conn, nil
+		}
 	}
 
 	bin, err := resolveBinary(opts)
@@ -144,6 +150,31 @@ func attach(ctx context.Context, path string, alive func(int) bool) (*Conn, erro
 		return nil, err
 	}
 	return &Conn{Client: client, Endpoint: *ep, Version: pong.GetVersion(), cc: cc}, nil
+}
+
+// retire shuts an outdated daemon down and waits until it stops answering.
+func retire(ctx context.Context, conn *Conn, timeout time.Duration) error {
+	defer func() { _ = conn.Close() }()
+	if _, err := conn.Client.Shutdown(ctx, &daemonpb.ShutdownRequest{}); err != nil {
+		return err
+	}
+	waitCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	ticker := time.NewTicker(pollInterval)
+	defer ticker.Stop()
+	for {
+		pingCtx, stop := context.WithTimeout(waitCtx, pingTimeout)
+		_, err := conn.Client.Ping(pingCtx, &daemonpb.PingRequest{})
+		stop()
+		if err != nil {
+			return nil
+		}
+		select {
+		case <-waitCtx.Done():
+			return waitCtx.Err()
+		case <-ticker.C:
+		}
+	}
 }
 
 func resolveBinary(opts Options) (string, error) {

@@ -13,10 +13,13 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/services/notifications"
 
 	"github.com/nipalab/nipa/desktop/internal/autostart"
+	"github.com/nipalab/nipa/desktop/internal/companion"
 	"github.com/nipalab/nipa/desktop/internal/connector"
 	"github.com/nipalab/nipa/desktop/internal/service"
 	"github.com/nipalab/nipa/desktop/internal/tray"
+	"github.com/nipalab/nipa/desktop/internal/update"
 	"github.com/nipalab/nipa/desktop/internal/workspace"
+	"github.com/nipalab/nipa/internal/version"
 )
 
 //go:embed all:frontend/dist
@@ -30,6 +33,7 @@ func init() {
 	application.RegisterEvent[service.OpProgress](service.EventOpProgress)
 	application.RegisterEvent[service.RepoActivity](service.EventRepoActivity)
 	application.RegisterEvent[service.Navigation](service.EventNavigate)
+	application.RegisterEvent[service.UpdateState](service.EventUpdate)
 }
 
 func main() {
@@ -38,6 +42,7 @@ func main() {
 		log.Fatal(err)
 	}
 	store := workspace.NewStore(storePath)
+	appVersion := update.Canonical(version.Resolve().Version)
 	var app *application.App
 	var window *application.WebviewWindow
 	show := func() {
@@ -47,7 +52,7 @@ func main() {
 		}
 	}
 	svc := service.New(
-		service.ConnectorDialer(connector.Options{LogPath: daemonLogPath()}),
+		service.ConnectorDialer(connector.Options{LogPath: daemonLogPath(), MinVersion: appVersion}),
 		store,
 		func() (string, error) {
 			return app.Dialog.OpenFile().
@@ -128,6 +133,9 @@ func main() {
 		},
 	})
 
+	installCompanion()
+	setupUpdates(app, svc, appVersion)
+
 	prefs, _ := store.Settings()
 	background := slices.Contains(os.Args[1:], autostart.Arg) && prefs.KeepInTray
 	window = app.Window.NewWithOptions(application.WebviewWindowOptions{
@@ -196,6 +204,21 @@ func trayMenu(entries []tray.Entry, act func(tray.Entry)) *application.Menu {
 		menu.Add(e.Label).OnClick(func(*application.Context) { act(e) })
 	}
 	return menu
+}
+
+// installCompanion puts the CLI carried by Windows/Linux builds next to the
+// app, where the connector starts the daemon from.
+func installCompanion() {
+	if !companion.Bundled() {
+		return
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return
+	}
+	if _, err := companion.Install(filepath.Dir(exe)); err != nil {
+		log.Printf("install the nipa CLI next to the app: %v", err)
+	}
 }
 
 func daemonLogPath() string {

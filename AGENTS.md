@@ -95,7 +95,13 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   blocks on someone else's lock and offers "Lock N files", Locks tab with
   release and "Lock & edit" through `PickFile`/`OpenFile`),
   `repo:changed` + `op:progress` events fed by
-  the daemon's `WatchChanges` and `OpEvent` streams). Generated TS bindings in
+  the daemon's `WatchChanges` and `OpEvent` streams), packaging and in-app
+  updates (`internal/update`: release version + signed Wails update manifest
+  via `tools/updatemanifest`; `internal/companion` embeds the `nipa` CLI in
+  Windows/Linux builds, the `.app` carries it on macOS; connector
+  `MinVersion` retires an older daemon; `UpdateStatus`/`CheckForUpdate`/
+  `InstallUpdate`/`RestartToUpdate`, `update:state`; `wails3 task release`
+  and `.github/workflows/desktop-release.yml`). Generated TS bindings in
   `desktop/frontend/bindings` are committed. Root `./...` never includes it;
   use `make desktop`/`desktop-dev`/`desktop-test` (needs the `wails3` CLI;
   Linux falls back to `-tags gtk3` without WebKitGTK 6.0).

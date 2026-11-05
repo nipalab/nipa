@@ -47,7 +47,7 @@ tasks:
       - wails3 tool prepare-macos-output --dir "{{.BIN_DIR}}"
       - '{{if eq .OBFUSCATED "true"}}garble {{.GARBLE_ARGS}} build{{else}}go build{{end}} {{.BUILD_FLAGS}} -o "{{.OUTPUT}}"'
     vars:
-      BUILD_FLAGS: '{{if eq .DEV "true"}}{{if or .EXTRA_TAGS (eq .OBFUSCATED "true")}}-tags {{if eq .OBFUSCATED "true"}}wails_obfuscated{{if .EXTRA_TAGS}},{{end}}{{end}}{{.EXTRA_TAGS}} {{end}}-buildvcs=false -gcflags=all="-l"{{else}}-tags production{{if eq .OBFUSCATED "true"}},wails_obfuscated{{end}}{{if .EXTRA_TAGS}},{{.EXTRA_TAGS}}{{end}} -trimpath -buildvcs=false -ldflags="-w -s"{{end}}'
+      BUILD_FLAGS: '{{if eq .DEV "true"}}{{if or .EXTRA_TAGS (eq .OBFUSCATED "true")}}-tags {{if eq .OBFUSCATED "true"}}wails_obfuscated{{if .EXTRA_TAGS}},{{end}}{{end}}{{.EXTRA_TAGS}} {{end}}-buildvcs=false -gcflags=all="-l"{{else}}-tags production{{if eq .OBFUSCATED "true"}},wails_obfuscated{{end}}{{if .EXTRA_TAGS}},{{.EXTRA_TAGS}}{{end}} -trimpath -buildvcs=false -ldflags="-w -s {{.VERSION_LDFLAGS}}"{{end}}'
       DEFAULT_OUTPUT: '{{.BIN_DIR}}/{{.APP_NAME}}'
       OUTPUT: '{{ .OUTPUT | default .DEFAULT_OUTPUT }}'
     env:
@@ -121,6 +121,8 @@ tasks:
     summary: Packages the application into a `.app` bundle
     deps:
       - task: build
+      - task: common:build:companion
+        vars: { DEV: '{{.DEV}}', OUTPUT: '{{.BIN_DIR}}/nipa', TARGET_OS: darwin, ARCH: '{{.ARCH}}' }
     cmds:
       - task: create:app:bundle
 
@@ -128,8 +130,48 @@ tasks:
     summary: Packages darwin universal binary (arm64 + amd64)
     deps:
       - task: build:universal
+      - task: build:cli:universal
     cmds:
       - task: create:app:bundle
+
+  build:cli:universal:
+    summary: Builds the bundled nipa CLI for arm64 + amd64
+    deps:
+      - task: common:build:companion
+        vars: { OUTPUT: '{{.BIN_DIR}}/nipa-amd64', TARGET_OS: darwin, ARCH: amd64 }
+      - task: common:build:companion
+        vars: { OUTPUT: '{{.BIN_DIR}}/nipa-arm64', TARGET_OS: darwin, ARCH: arm64 }
+    cmds:
+      - cmd: lipo -create -output "{{.BIN_DIR}}/nipa" "{{.BIN_DIR}}/nipa-amd64" "{{.BIN_DIR}}/nipa-arm64"
+        platforms: [darwin]
+      - cmd: wails3 tool lipo -output "{{.BIN_DIR}}/nipa" -input "{{.BIN_DIR}}/nipa-amd64" -input "{{.BIN_DIR}}/nipa-arm64"
+        platforms: [linux, windows]
+      - rm -f "{{.BIN_DIR}}/nipa-amd64" "{{.BIN_DIR}}/nipa-arm64"
+
+  release:
+    summary: Builds the universal .app, signs and notarizes it when MACOS_SIGN_IDENTITY is set, then writes the update zip and the .dmg into bin/release
+    platforms: [darwin]
+    deps:
+      - task: package:universal
+    cmds:
+      - task: '{{if .MACOS_SIGN_IDENTITY}}sign:release{{else}}sign:none{{end}}'
+      - mkdir -p "{{.BIN_DIR}}/release"
+      - ditto -c -k --keepParent "{{.BIN_DIR}}/{{.APP_NAME}}.app" "{{.BIN_DIR}}/release/{{.APP_NAME}}-macos-universal.zip"
+      - task: create:dmg
+      - mv "{{.BIN_DIR}}/{{.APP_NAME}}.dmg" "{{.BIN_DIR}}/release/{{.APP_NAME}}-macos-universal.dmg"
+
+  sign:release:
+    internal: true
+    silent: true
+    cmds:
+      - >-
+        wails3 tool sign --input "{{.BIN_DIR}}/{{.APP_NAME}}.app" --identity "{{.MACOS_SIGN_IDENTITY}}"
+        {{if .MACOS_NOTARY_KEY}}--notarize --notary-key "{{.MACOS_NOTARY_KEY}}" --notary-key-id "{{.MACOS_NOTARY_KEY_ID}}" --notary-issuer-id "{{.MACOS_NOTARY_ISSUER_ID}}"{{end}}
+
+  sign:none:
+    internal: true
+    cmds:
+      - 'echo "No MACOS_SIGN_IDENTITY: the .app keeps its ad-hoc signature and Gatekeeper will warn."'
 
   package:dmg:
     summary: Packages the application into a styled `.dmg`
@@ -173,7 +215,19 @@ tasks:
           cp build/darwin/Assets.car "{{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/Resources"
         fi
       - cp "{{.BIN_DIR}}/{{.APP_NAME}}" "{{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/MacOS"
+      # The connector starts the daemon from the CLI next to the app binary,
+      # so the bundle (and every update of it) carries its own nipa.
+      - |
+        if [ -f "{{.BIN_DIR}}/nipa" ]; then
+          cp "{{.BIN_DIR}}/nipa" "{{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/MacOS/nipa"
+        fi
       - cp build/darwin/Info.plist "{{.BIN_DIR}}/{{.APP_NAME}}.app/Contents"
+      - cmd: |
+          if [ "{{.NUMERIC_VERSION}}" != "0.0.0" ]; then
+            plutil -replace CFBundleShortVersionString -string "{{.NUMERIC_VERSION}}" "{{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/Info.plist"
+            plutil -replace CFBundleVersion -string "{{.NUMERIC_VERSION}}" "{{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/Info.plist"
+          fi
+        platforms: [darwin]
       - task: '{{if eq OS "darwin"}}codesign:adhoc{{else}}codesign:skip{{end}}'
 
   codesign:adhoc:

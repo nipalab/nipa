@@ -19,7 +19,12 @@ import (
 
 func serveDaemon(t *testing.T, endpoint string) *daemon.Server {
 	t.Helper()
-	srv, err := daemon.NewServer(daemon.Options{EndpointPath: endpoint, Version: "test-1"})
+	return serveDaemonVersion(t, endpoint, "test-1")
+}
+
+func serveDaemonVersion(t *testing.T, endpoint, version string) *daemon.Server {
+	t.Helper()
+	srv, err := daemon.NewServer(daemon.Options{EndpointPath: endpoint, Version: version})
 	require.NoError(t, err)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
@@ -77,6 +82,37 @@ func TestConnect_StartsDaemonWhenNoneIsPublished(t *testing.T) {
 	require.Equal(t, "/opt/nipa", gotBin)
 	require.Equal(t, "/tmp/d.log", gotLog)
 	require.Equal(t, endpoint, gotEndpoint)
+}
+
+func TestConnect_RetiresOutdatedDaemon(t *testing.T) {
+	endpoint := filepath.Join(t.TempDir(), "daemon.json")
+	serveDaemonVersion(t, endpoint, "v0.1.0")
+	started := 0
+	start := func(_, _, endpoint string) error {
+		started++
+		go serveDaemonVersion(t, endpoint, "v0.2.0")
+		return nil
+	}
+
+	conn, err := Connect(context.Background(), Options{EndpointPath: endpoint, Binary: "nipa", MinVersion: "0.2.0", start: start})
+	require.NoError(t, err)
+	defer func() { _ = conn.Close() }()
+	require.Equal(t, 1, started)
+	require.True(t, conn.Started)
+	require.Equal(t, "v0.2.0", conn.Version)
+}
+
+func TestConnect_KeepsCurrentOrUnversionedDaemon(t *testing.T) {
+	for _, have := range []string{"v0.3.0", "v0.2.0", "dev-abc"} {
+		t.Run(have, func(t *testing.T) {
+			endpoint := filepath.Join(t.TempDir(), "daemon.json")
+			serveDaemonVersion(t, endpoint, have)
+			conn, err := Connect(context.Background(), Options{EndpointPath: endpoint, MinVersion: "0.2.0", start: noStart(t)})
+			require.NoError(t, err)
+			defer func() { _ = conn.Close() }()
+			require.Equal(t, have, conn.Version)
+		})
+	}
 }
 
 func TestConnect_RestartsWhenEndpointIsStale(t *testing.T) {

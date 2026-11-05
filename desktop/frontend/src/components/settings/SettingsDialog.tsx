@@ -4,6 +4,7 @@ import { FolderOpen, Plus, RotateCw, X } from "lucide-react";
 import { desktop, type Settings, type Tool } from "@/api/desktop";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { UpdatesSection } from "@/components/settings/UpdatesSection";
 import { errorMessage } from "@/lib/utils";
 
 export const pollOptions: { seconds: number; label: string }[] = [
@@ -185,6 +186,10 @@ function SettingsForm({ initial, initialWorkers, onClose, notify }: FormProps) {
               </Button>
             </div>
           )}
+        </Section>
+
+        <Section title="Updates">
+          <UpdatesSection auto={!draft.manualUpdates} onAuto={(v) => set({ manualUpdates: !v })} notify={notify} />
         </Section>
 
         <Section title="External tools">

@@ -20,6 +20,11 @@ export interface Settings {
     "pollSeconds": number;
     "notify": NotifySettings;
     "tools": Tool[] | null;
+
+    /**
+     * ManualUpdates turns off the background update check and download.
+     */
+    "manualUpdates": boolean;
 }
 
 /**

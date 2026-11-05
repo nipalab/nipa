@@ -7,6 +7,7 @@ import { SettingsDialog } from "@/components/settings/SettingsDialog";
 import { Sidebar } from "@/components/Sidebar";
 import { DaemonError, Splash } from "@/components/StatusScreens";
 import { Toast } from "@/components/Toast";
+import { UpdateBanner } from "@/components/UpdateBanner";
 import { Welcome } from "@/components/Welcome";
 import { errorMessage, readSetting, writeSetting } from "@/lib/utils";
 
@@ -128,20 +129,23 @@ export default function App() {
         onSettings={() => setSettingsOpen(true)}
         activity={activity.data ?? []}
       />
-      <main className="min-w-0 flex-1">
-        {current ? (
-          <RepoView
-            key={current.root}
-            repo={current}
-            removing={remove.isPending}
-            onRemove={(root) => remove.mutate(root)}
-            notify={notify}
-            activity={activity.data?.find((a) => a.root === current.root)}
-            intent={intent?.root === current.root ? intent : undefined}
-          />
-        ) : (
-          <Welcome adding={add.isPending} onAdd={() => add.mutate()} onClone={() => setCloning(true)} />
-        )}
+      <main className="flex min-w-0 flex-1 flex-col">
+        <UpdateBanner notify={notify} />
+        <div className="min-h-0 flex-1">
+          {current ? (
+            <RepoView
+              key={current.root}
+              repo={current}
+              removing={remove.isPending}
+              onRemove={(root) => remove.mutate(root)}
+              notify={notify}
+              activity={activity.data?.find((a) => a.root === current.root)}
+              intent={intent?.root === current.root ? intent : undefined}
+            />
+          ) : (
+            <Welcome adding={add.isPending} onAdd={() => add.mutate()} onClone={() => setCloning(true)} />
+          )}
+        </div>
       </main>
       {cloning && (
         <CloneDialog
