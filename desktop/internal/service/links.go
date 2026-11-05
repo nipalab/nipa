@@ -87,7 +87,7 @@ func linkServer(u *url.URL) string {
 	}
 	host := u.Hostname()
 	if host == "localhost" || net.ParseIP(host).IsLoopback() {
-		return "http://" + u.Host
+		return "http://" + u.Host // NOSONAR loopback only
 	}
 	return "https://" + u.Host
 }

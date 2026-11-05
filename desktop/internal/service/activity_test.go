@@ -198,3 +198,36 @@ func TestService_ActivityIgnoredForUnfollowedRoot(t *testing.T) {
 	h.svc.recordActivity(ctx, "/work/removed", &daemonpb.RepoActivity{Incoming: 1})
 	require.Empty(t, h.svc.Activity())
 }
+
+func TestService_ActivityFollowerRetriesAfterStreamFailure(t *testing.T) {
+	h := newHarness()
+	h.daemon.events = make(chan *daemonpb.RepoActivity, 4)
+	h.daemon.eventReqs = make(chan *daemonpb.WatchEventsRequest, 8)
+	h.daemon.failEvents = 1
+	h.svc.FollowRetry = time.Millisecond
+	rec := newActivityRecorder()
+	rec.attach(h.svc)
+
+	_, err := h.svc.AddRepo(ctx, "/work/game")
+	require.NoError(t, err)
+	waitFor(t, h.daemon.eventReqs)
+	waitFor(t, h.daemon.eventReqs)
+	h.daemon.events <- &daemonpb.RepoActivity{Incoming: 2}
+	require.Equal(t, 2, waitFor(t, rec.lists)[0].Incoming)
+}
+
+func TestService_ResetClearsActivity(t *testing.T) {
+	h := newHarness()
+	h.daemon.events = make(chan *daemonpb.RepoActivity, 4)
+	rec := newActivityRecorder()
+	rec.attach(h.svc)
+
+	_, err := h.svc.AddRepo(ctx, "/work/game")
+	require.NoError(t, err)
+	h.daemon.events <- &daemonpb.RepoActivity{Incoming: 2}
+	waitFor(t, rec.lists)
+
+	require.NoError(t, h.svc.ServiceShutdown())
+	require.Empty(t, waitFor(t, rec.lists))
+	require.Empty(t, h.svc.Activity())
+}

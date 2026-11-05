@@ -273,5 +273,5 @@ func launchCommand(goos, command, path string) *exec.Cmd {
 	if goos == "darwin" && strings.HasSuffix(strings.ToLower(strings.TrimRight(command, "/")), ".app") {
 		return exec.Command("open", "-a", command, path)
 	}
-	return exec.Command(command, path)
+	return exec.Command(command, path) // NOSONAR user-configured tool
 }

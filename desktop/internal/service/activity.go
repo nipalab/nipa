@@ -5,6 +5,10 @@ import (
 	"fmt"
 	"path/filepath"
 	"sort"
+	"time"
+
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/nipalab/nipa/internal/client/daemon"
 	"github.com/nipalab/nipa/internal/client/grpc/daemonpb"
@@ -68,19 +72,36 @@ func (s *Service) startActivityLocked(sess Session, root string) {
 	ctx, cancel := context.WithCancel(context.Background())
 	s.followers[root] = cancel
 	interval := int32(s.prefs().PollSeconds)
-	go func() {
+	go s.followEvents(ctx, sess, root, interval)
+}
+
+func (s *Service) followEvents(ctx context.Context, sess Session, root string, interval int32) {
+	for ctx.Err() == nil {
 		stream, err := sess.Client().WatchEvents(ctx, &daemonpb.WatchEventsRequest{Root: root, IntervalSeconds: interval})
-		if err != nil {
+		if err == nil {
+			for {
+				act, err := stream.Recv()
+				if err != nil {
+					break
+				}
+				s.recordActivity(ctx, root, act)
+			}
+		}
+		if status.Code(err) == codes.Unimplemented {
 			return
 		}
-		for {
-			act, err := stream.Recv()
-			if err != nil {
-				return
-			}
-			s.recordActivity(ctx, root, act)
+		select {
+		case <-ctx.Done():
+		case <-time.After(s.followRetry()):
 		}
-	}()
+	}
+}
+
+func (s *Service) followRetry() time.Duration {
+	if s.FollowRetry > 0 {
+		return s.FollowRetry
+	}
+	return 30 * time.Second
 }
 
 func (s *Service) stopActivityLocked(root string) {

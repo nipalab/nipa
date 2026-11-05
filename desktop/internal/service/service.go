@@ -7,6 +7,7 @@ import (
 	"errors"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -93,7 +94,9 @@ type Service struct {
 
 	mu     sync.Mutex
 	emitMu sync.Mutex
-	active Session
+
+	FollowRetry time.Duration
+	active      Session
 	// watched holds the roots registered with the active session and the
 	// cancel func of their change follower; it is reset with the session
 	// because a restarted daemon forgets every watch.
@@ -246,6 +249,10 @@ func (s *Service) resetLocked() error {
 	}
 	s.watched = map[string]context.CancelFunc{}
 	s.followers = map[string]context.CancelFunc{}
+	if len(s.activity) > 0 {
+		s.activity = map[string]RepoActivity{}
+		go s.publishActivity()
+	}
 	err := s.active.Close()
 	s.active = nil
 	return err
@@ -371,4 +378,15 @@ func cleanError(err error) error {
 		return errors.New(st.Message())
 	}
 	return err
+}
+
+func (s *Service) publishActivity() {
+	s.emitMu.Lock()
+	defer s.emitMu.Unlock()
+	s.mu.Lock()
+	list := s.activityListLocked()
+	s.mu.Unlock()
+	if s.ActivityHook != nil {
+		s.ActivityHook(list)
+	}
 }

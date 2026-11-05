@@ -19,22 +19,27 @@ import (
 
 type fakeDaemon struct {
 	daemonpb.NipaDaemonClient
-	watchErr  map[string]error
-	unwatched []string
-	watches   int
-	changes   chan *daemonpb.RepoChange
-	events    chan *daemonpb.RepoActivity
-	eventReqs chan *daemonpb.WatchEventsRequest
-	pings     int
-	pingErr   error
-	shutdowns int
-	stopErr   error
-	badURL    bool
+	watchErr   map[string]error
+	unwatched  []string
+	watches    int
+	changes    chan *daemonpb.RepoChange
+	events     chan *daemonpb.RepoActivity
+	eventReqs  chan *daemonpb.WatchEventsRequest
+	pings      int
+	pingErr    error
+	shutdowns  int
+	stopErr    error
+	badURL     bool
+	failEvents int
 }
 
 func (f *fakeDaemon) WatchEvents(ctx context.Context, req *daemonpb.WatchEventsRequest, _ ...grpc.CallOption) (grpc.ServerStreamingClient[daemonpb.RepoActivity], error) {
 	if f.eventReqs != nil {
 		f.eventReqs <- req
+	}
+	if f.failEvents > 0 {
+		f.failEvents--
+		return nil, status.Error(codes.Unavailable, "flaky")
 	}
 	if f.events == nil {
 		return nil, status.Error(codes.Unimplemented, "no events")
