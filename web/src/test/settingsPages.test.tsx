@@ -234,7 +234,8 @@ describe('OrgSettingsPage', () => {
 
 describe('ProjectSettingsPage', () => {
   const pattern = '/:org/:project/settings'
-  const url = '/acme/game/settings'
+  const base = '/acme/game/settings'
+  const url = `${base}?tab=access`
 
   function allow(mask: number) {
     api.getMyProjectPermissions.mockResolvedValue({ project_permission: mask, rules: [], defaults: [] })
@@ -346,7 +347,7 @@ describe('ProjectSettingsPage', () => {
         required_reviewers: [{ user_id: '2', name: 'Dana' }],
       }),
     ])
-    const { container } = await renderRoute(pattern, `${url}?tab=branches`, <ProjectSettingsPage />)
+    const { container } = await renderRoute(pattern, `${base}?tab=branches`, <ProjectSettingsPage />)
     await waitFor(() => container.querySelector('input[aria-label="Required approvals for main"]') !== null)
     const lastCall = () => api.setBranchProtection.mock.calls[api.setBranchProtection.mock.calls.length - 1]
 
@@ -391,7 +392,7 @@ describe('ProjectSettingsPage', () => {
 
   it('keeps unchanged approval and check values without saving', async () => {
     api.listBranches.mockResolvedValue([branch({ required_approvals: 2, required_checks: ['ci'] })])
-    const { container } = await renderRoute(pattern, `${url}?tab=branches`, <ProjectSettingsPage />)
+    const { container } = await renderRoute(pattern, `${base}?tab=branches`, <ProjectSettingsPage />)
     await waitFor(() => container.querySelector('input[aria-label="Required approvals for main"]') !== null)
     const approvals = container.querySelector<HTMLInputElement>('input[aria-label="Required approvals for main"]')
     await act(async () => {
@@ -410,7 +411,7 @@ describe('ProjectSettingsPage', () => {
 
   it('confirms before unprotecting a branch from the toggle and shows empty branches', async () => {
     api.listBranches.mockResolvedValue([branch({ is_protected: true })])
-    const { container } = await renderRoute(pattern, `${url}?tab=branches`, <ProjectSettingsPage />)
+    const { container } = await renderRoute(pattern, `${base}?tab=branches`, <ProjectSettingsPage />)
     await waitFor(() => container.querySelector('button[aria-labelledby="branch-protection-0"]') !== null)
     await click(container.querySelector('button[aria-labelledby="branch-protection-0"]'))
     await cancelDialog()
@@ -420,14 +421,14 @@ describe('ProjectSettingsPage', () => {
     expect(api.setBranchProtection.mock.calls[0]?.[3]).toBe(false)
 
     api.listBranches.mockResolvedValue([])
-    const empty = await renderRoute(pattern, `${url}?tab=branches`, <ProjectSettingsPage />)
+    const empty = await renderRoute(pattern, `${base}?tab=branches`, <ProjectSettingsPage />)
     await waitFor(() => (empty.container.textContent ?? '').includes('No branches yet.'))
   })
 
   it('renders the webhooks and email tabs', async () => {
-    const hooks = await renderRoute(pattern, `${url}?tab=webhooks`, <ProjectSettingsPage />)
+    const hooks = await renderRoute(pattern, `${base}?tab=webhooks`, <ProjectSettingsPage />)
     await waitFor(() => (hooks.container.textContent ?? '').includes('Create webhook'))
-    const email = await renderRoute(pattern, `${url}?tab=email`, <ProjectSettingsPage />)
+    const email = await renderRoute(pattern, `${base}?tab=email`, <ProjectSettingsPage />)
     await waitFor(() => (email.container.textContent ?? '').includes('No email deliveries.'))
   })
 })

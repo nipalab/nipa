@@ -406,6 +406,8 @@ export function DiffFile({
   onResolveThread,
   onEditComment,
   onDeleteComment,
+  onDeleteThread,
+  canAdmin,
 }: {
   file: DiffFileResponse
   threads: ThreadResponse[]
@@ -427,6 +429,8 @@ export function DiffFile({
   onResolveThread?: (threadId: string, resolved: boolean) => void
   onEditComment?: (threadId: string, commentId: string, body: string) => void
   onDeleteComment?: (threadId: string, commentId: string) => void
+  onDeleteThread?: (threadId: string) => void
+  canAdmin?: boolean
 }) {
   const [onlyOpenThreads, setOnlyOpenThreads] = useState(false)
   const fileThreads = threads.filter((thread) => threadMatchesFile(thread, file))
@@ -548,6 +552,8 @@ export function DiffFile({
             onResolve={onResolveThread}
             onEditComment={onEditComment}
             onDeleteComment={onDeleteComment}
+            onDeleteThread={onDeleteThread}
+            canAdmin={canAdmin}
           />
         ))}
         {draft && (
@@ -752,6 +758,8 @@ export function DiffView({
   onResolveThread,
   onEditComment,
   onDeleteComment,
+  onDeleteThread,
+  canAdmin,
 }: {
   files: DiffFileResponse[]
   threads?: ThreadResponse[]
@@ -768,6 +776,8 @@ export function DiffView({
   onResolveThread?: (threadId: string, resolved: boolean) => void
   onEditComment?: (threadId: string, commentId: string, body: string) => void
   onDeleteComment?: (threadId: string, commentId: string) => void
+  onDeleteThread?: (threadId: string) => void
+  canAdmin?: boolean
 }) {
   const [mode, setMode] = useState<ViewMode>('split')
 
@@ -812,6 +822,8 @@ export function DiffView({
           onResolveThread={onResolveThread}
           onEditComment={onEditComment}
           onDeleteComment={onDeleteComment}
+          onDeleteThread={onDeleteThread}
+          canAdmin={canAdmin}
         />
       ))}
     </Stack>

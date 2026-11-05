@@ -21,6 +21,8 @@ export function ThreadCard({
   onResolve,
   onEditComment,
   onDeleteComment,
+  onDeleteThread,
+  canAdmin,
 }: {
   thread: ThreadResponse
   me?: string
@@ -34,6 +36,8 @@ export function ThreadCard({
   onResolve?: (threadId: string, resolved: boolean) => void
   onEditComment?: (threadId: string, commentId: string, body: string) => void
   onDeleteComment?: (threadId: string, commentId: string) => void
+  onDeleteThread?: (threadId: string) => void
+  canAdmin?: boolean
 }) {
   const confirm = useConfirmAction()
   const [replyOpen, setReplyOpen] = useState(false)
@@ -221,6 +225,23 @@ export function ThreadCard({
                   onClick={() => onResolve(thread.id, !thread.resolved)}
                 >
                   {thread.resolved ? 'Reopen' : 'Resolve'}
+                </Button>
+              )}
+              {onDeleteThread && canWrite && (me === thread.created_by.user_id || canAdmin) && (
+                <Button
+                  size="small"
+                  variant="danger"
+                  disabled={busy}
+                  onClick={async () => {
+                    const ok = await confirm({
+                      title: 'Delete thread?',
+                      content: 'The whole thread and all of its comments will be permanently removed.',
+                      confirmLabel: 'Delete thread',
+                    })
+                    if (ok) onDeleteThread(thread.id)
+                  }}
+                >
+                  Delete thread
                 </Button>
               )}
             </Stack>

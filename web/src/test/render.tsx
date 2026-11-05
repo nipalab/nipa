@@ -40,10 +40,11 @@ export async function click(element: Element | null | undefined) {
   })
 }
 
-export async function type(input: HTMLInputElement | null | undefined, value: string) {
+export async function type(input: HTMLInputElement | HTMLTextAreaElement | null | undefined, value: string) {
   if (!input) throw new Error('input not found')
   await act(async () => {
-    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+    const prototype = input instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype
+    const setter = Object.getOwnPropertyDescriptor(prototype, 'value')?.set
     setter?.call(input, value)
     input.dispatchEvent(new Event('input', { bubbles: true }))
   })

@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState } from 'react'
-import { Button, Checkbox, IconButton, Link as PrimerLink, Select, Stack, Text, Textarea, TextInput } from '@primer/react'
+import { Button, Checkbox, IconButton, Link as PrimerLink, SegmentedControl, Select, Stack, Text, Textarea, TextInput } from '@primer/react'
 import {
   CheckCircleFillIcon,
   CheckIcon,
@@ -207,6 +207,8 @@ export function MergeRequestOverview({
   onResolveThread,
   onEditComment,
   onDeleteComment,
+  onDeleteThread,
+  canAdmin,
   onMerge,
   onClose,
   onReopen,
@@ -231,6 +233,8 @@ export function MergeRequestOverview({
   onResolveThread: (threadId: string, resolved: boolean) => void
   onEditComment: (threadId: string, commentId: string, body: string) => void
   onDeleteComment: (threadId: string, commentId: string) => void
+  onDeleteThread?: (threadId: string) => void
+  canAdmin?: boolean
   onMerge: (strategy: string, deleteSource: boolean) => void
   onClose: () => void
   onReopen: () => void
@@ -239,6 +243,7 @@ export function MergeRequestOverview({
   const [reviewer, setReviewer] = useState('')
   const [assignee, setAssignee] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [threadFilter, setThreadFilter] = useState<'all' | 'unresolved' | 'resolved'>('all')
   const [sending, setSending] = useState(false)
   const [strategy, setStrategy] = useState('ff')
   const [deleteSource, setDeleteSource] = useState(false)
@@ -318,6 +323,10 @@ export function MergeRequestOverview({
       .filter((item) => item.kind !== 'review_submitted' && item.kind !== 'opened')
       .map((item) => ({ kind: 'event' as const, at: item.created_at, item })),
   ].sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime())
+
+  const visibleEntries = entries.filter(
+    (entry) => entry.kind !== 'thread' || threadFilter === 'all' || entry.thread.resolved === (threadFilter === 'resolved'),
+  )
 
   const confirm = useConfirmAction()
 
@@ -434,7 +443,21 @@ export function MergeRequestOverview({
           </div>
         )}
 
-        {entries.map((entry) => {
+        {threads.length > 0 && (
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <SegmentedControl
+              aria-label="Filter threads"
+              size="small"
+              onChange={(index) => setThreadFilter(index === 0 ? 'all' : index === 1 ? 'unresolved' : 'resolved')}
+            >
+              <SegmentedControl.Button selected={threadFilter === 'all'}>All threads</SegmentedControl.Button>
+              <SegmentedControl.Button selected={threadFilter === 'unresolved'}>Unresolved</SegmentedControl.Button>
+              <SegmentedControl.Button selected={threadFilter === 'resolved'}>Resolved</SegmentedControl.Button>
+            </SegmentedControl>
+          </div>
+        )}
+
+        {visibleEntries.map((entry) => {
           if (entry.kind === 'event') {
             return (
               <div
@@ -570,6 +593,8 @@ export function MergeRequestOverview({
               onResolve={onResolveThread}
               onEditComment={onEditComment}
               onDeleteComment={onDeleteComment}
+              onDeleteThread={onDeleteThread}
+              canAdmin={canAdmin}
             />
           )
         })}

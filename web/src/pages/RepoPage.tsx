@@ -13,6 +13,7 @@ import { RepoPageShell } from '../components/repo/RepoPageShell'
 import { RepoTree } from '../components/repo/RepoTree'
 import { treeUrl } from '../components/repo/repoPaths'
 import { useRepoChrome } from '../components/repo/useRepoChrome'
+import { useTags } from '../components/repo/useTags'
 import { EmptyState, ErrorBanner, Loading } from '../components/ui'
 import { useAsync } from '../hooks'
 
@@ -37,6 +38,7 @@ export default function RepoPage() {
   const navigate = useNavigate()
   const [findOpen, setFindOpen] = useState(false)
   const { branches, branchesLoading, emptyProject, canWrite, canAdmin, defaultBranch } = useRepoChrome(org, project)
+  const { tags, load: loadTags } = useTags(org, project)
 
   const legacyRev = searchParams.get('rev') ?? ''
   const path = splat || searchParams.get('path') || ''
@@ -72,6 +74,9 @@ export default function RepoPage() {
             branches={branches}
             rev={linkRev}
             onSelect={(nextRev) => navigate(treeUrl(org, project, nextRev, path))}
+            tags={tags}
+            onOpen={loadTags}
+            onSelectTag={(tag) => navigate(treeUrl(org, project, tag.commit_id, path))}
           />
           {path && <RepoBreadcrumb org={org} project={project} rev={linkRev} path={path} />}
         </Stack>

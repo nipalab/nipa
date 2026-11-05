@@ -6,11 +6,12 @@ import {
   GitPullRequestIcon,
   HistoryIcon,
   LockIcon,
+  TagIcon,
 } from '@primer/octicons-react'
 import { Link } from 'react-router-dom'
 import { commitsUrl, repoUrl, treeUrl } from './repoPaths'
 
-export type RepoTab = 'code' | 'commits' | 'branches' | 'merges' | 'locks' | 'settings'
+export type RepoTab = 'code' | 'commits' | 'branches' | 'tags' | 'merges' | 'locks' | 'settings'
 
 function itemProps(to: string, current: boolean) {
   return { as: Link, to, 'aria-current': current ? ('page' as const) : undefined }
@@ -48,6 +49,12 @@ export function RepoNav({
         leadingVisual={<GitBranchIcon />}
       >
         Branches
+      </UnderlineNav.Item>
+      <UnderlineNav.Item
+        {...itemProps(`${repoUrl(org, project)}/tags`, active === 'tags')}
+        leadingVisual={<TagIcon />}
+      >
+        Tags
       </UnderlineNav.Item>
       <UnderlineNav.Item
         {...itemProps(`${repoUrl(org, project)}/merges`, active === 'merges')}

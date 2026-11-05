@@ -3,13 +3,16 @@ import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { getCommitDiff, listCommits } from '../api/endpoints'
 import type { CommitResponse } from '../api/models'
 import { DataTable, type Column } from '../components/DataTable'
+import { LoadMore } from '../components/LoadMore'
 import { DiffView } from '../components/repo/DiffView'
 import { parentPath, treeUrl } from '../components/repo/repoPaths'
 import { RepoPageShell } from '../components/repo/RepoPageShell'
 import { useRepoChrome } from '../components/repo/useRepoChrome'
 import { Timestamp } from '../components/Timestamp'
 import { EmptyState, ErrorBanner, Loading, Mono, SectionHeading } from '../components/ui'
-import { useAsync } from '../hooks'
+import { sliceCursorPage, useAsync, usePaged } from '../hooks'
+
+const PAGE_SIZE = 50
 
 export default function CommitsPage() {
   const { org = '', project = '', commit } = useParams()
@@ -18,8 +21,22 @@ export default function CommitsPage() {
   const path = params.get('path') ?? ''
   const { canWrite, canAdmin, defaultBranch, branchesLoading, emptyProject } = useRepoChrome(org, project)
   const skipCommits = branchesLoading || emptyProject
-  const { data: commits, error, loading } = useAsync(
-    () => (skipCommits ? Promise.resolve(null) : listCommits(org, project, branch, path)),
+  const {
+    items: commits,
+    error,
+    loading,
+    hasMore,
+    loadingMore,
+    loadMore,
+  } = usePaged<CommitResponse, string>(
+    async (start) =>
+      skipCommits
+        ? { items: [] }
+        : sliceCursorPage(
+            await listCommits(org, project, branch, path, { start, limit: PAGE_SIZE + 1 }),
+            PAGE_SIZE,
+            (rows) => rows[PAGE_SIZE].id,
+          ),
     [org, project, branch, path, skipCommits],
   )
   const { data: diff, error: diffError, loading: diffLoading } = useAsync(
@@ -71,9 +88,10 @@ export default function CommitsPage() {
       {!emptyProject && <ErrorBanner error={error} />}
       {loading && <Loading />}
       {emptyProject && <EmptyState>This repository is empty. Push your first commit to get started.</EmptyState>}
-      {!loading && commits && (
+      {!loading && !emptyProject && (
         <DataTable label="Commits" data={commits} columns={columns} empty="No commits yet." />
       )}
+      <LoadMore hasMore={hasMore} loading={loadingMore} onClick={() => void loadMore()} />
 
       {commit && (
         <>
