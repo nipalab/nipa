@@ -50,7 +50,7 @@ func install(dir string, data []byte) (bool, error) {
 	tmpName := tmp.Name()
 	_, werr := tmp.Write(data)
 	cerr := tmp.Close()
-	if err := firstErr(werr, cerr, os.Chmod(tmpName, 0o755)); err != nil {
+	if err := firstErr(werr, cerr, os.Chmod(tmpName, 0o700)); err != nil {
 		_ = os.Remove(tmpName)
 		return false, err
 	}

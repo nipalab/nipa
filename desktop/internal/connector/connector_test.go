@@ -12,6 +12,9 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/nipalab/nipa/internal/client/daemon"
 	"github.com/nipalab/nipa/internal/client/grpc/daemonpb"
@@ -100,6 +103,72 @@ func TestConnect_RetiresOutdatedDaemon(t *testing.T) {
 	require.Equal(t, 1, started)
 	require.True(t, conn.Started)
 	require.Equal(t, "v0.2.0", conn.Version)
+}
+
+type stubbornDaemon struct {
+	daemonpb.UnimplementedNipaDaemonServer
+	shutdownErr error
+}
+
+func (d *stubbornDaemon) Ping(context.Context, *daemonpb.PingRequest) (*daemonpb.PingResponse, error) {
+	return &daemonpb.PingResponse{Version: "v0.1.0"}, nil
+}
+
+func (d *stubbornDaemon) Shutdown(context.Context, *daemonpb.ShutdownRequest) (*daemonpb.ShutdownResponse, error) {
+	return &daemonpb.ShutdownResponse{}, d.shutdownErr
+}
+
+// serveStubborn publishes an old daemon that never stops.
+func serveStubborn(t *testing.T, endpoint string, shutdownErr error) {
+	t.Helper()
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	srv := grpc.NewServer()
+	daemonpb.RegisterNipaDaemonServer(srv, &stubbornDaemon{shutdownErr: shutdownErr})
+	go func() { _ = srv.Serve(l) }()
+	t.Cleanup(srv.Stop)
+	require.NoError(t, daemon.WriteEndpoint(endpoint, daemon.Endpoint{PID: os.Getpid(), Port: l.Addr().(*net.TCPAddr).Port, Token: "t", Version: "v0.1.0"}))
+}
+
+func TestConnect_KeepsOutdatedDaemonThatRefusesShutdown(t *testing.T) {
+	endpoint := filepath.Join(t.TempDir(), "daemon.json")
+	serveStubborn(t, endpoint, status.Error(codes.PermissionDenied, "busy"))
+
+	conn, err := Connect(context.Background(), Options{EndpointPath: endpoint, MinVersion: "0.2.0", start: noStart(t)})
+	require.NoError(t, err)
+	defer func() { _ = conn.Close() }()
+	require.Equal(t, "v0.1.0", conn.Version)
+	_, err = conn.Client.Ping(context.Background(), &daemonpb.PingRequest{})
+	require.NoError(t, err, "the returned connection is still open")
+}
+
+func TestConnect_StartsNewDaemonWhenOldOneDrainsSlowly(t *testing.T) {
+	endpoint := filepath.Join(t.TempDir(), "daemon.json")
+	serveStubborn(t, endpoint, nil)
+	start := func(_, _, endpoint string) error {
+		go serveDaemonVersion(t, endpoint, "v0.2.0")
+		return nil
+	}
+
+	conn, err := Connect(context.Background(), Options{EndpointPath: endpoint, Binary: "nipa", MinVersion: "0.2.0", StartTimeout: time.Second, start: start})
+	require.NoError(t, err)
+	defer func() { _ = conn.Close() }()
+	require.True(t, conn.Started)
+	require.Equal(t, "v0.2.0", conn.Version)
+}
+
+func TestConnect_FallsBackToOutdatedDaemonWhenNoneStarts(t *testing.T) {
+	endpoint := filepath.Join(t.TempDir(), "daemon.json")
+	serveStubborn(t, endpoint, nil)
+	started := false
+	start := func(string, string, string) error { started = true; return nil }
+
+	conn, err := Connect(context.Background(), Options{EndpointPath: endpoint, Binary: "nipa", MinVersion: "0.2.0", StartTimeout: 300 * time.Millisecond, start: start})
+	require.NoError(t, err)
+	defer func() { _ = conn.Close() }()
+	require.True(t, started)
+	require.False(t, conn.Started)
+	require.Equal(t, "v0.1.0", conn.Version)
 }
 
 func TestConnect_KeepsCurrentOrUnversionedDaemon(t *testing.T) {

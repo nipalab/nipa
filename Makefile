@@ -83,7 +83,7 @@ web-dev:
 	cd web && npm run dev
 
 ## Desktop app (desktop/, nested Go module). Needs the wails3 CLI:
-## go install github.com/wailsapp/wails/v3/cmd/wails3@v3.1.0 (add -tags gtk3 on
+## cd desktop && go -C build/tools install tool (add -tags gtk3 on
 ## Linux hosts that only ship WebKitGTK 4.1). The nipa CLI is copied next to
 ## the app binary, which is where the app looks for it to start the daemon.
 desktop: build-client

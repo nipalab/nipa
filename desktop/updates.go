@@ -87,7 +87,9 @@ func progressOf(data any) (updater.Progress, bool) {
 	case updater.Progress:
 		return p, true
 	case *updater.Progress:
-		return *p, p != nil
+		if p != nil {
+			return *p, true
+		}
 	case []any:
 		if len(p) == 1 {
 			return progressOf(p[0])

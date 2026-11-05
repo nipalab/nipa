@@ -40,7 +40,7 @@ func TestInstallWritesAndSkipsIdentical(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		info, err := os.Stat(target)
 		require.NoError(t, err)
-		require.Equal(t, os.FileMode(0o755), info.Mode().Perm())
+		require.Equal(t, os.FileMode(0o700), info.Mode().Perm())
 	}
 
 	changed, err = install(dir, []byte("v1"))

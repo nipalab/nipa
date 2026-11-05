@@ -398,6 +398,9 @@ Pure package (no client imports), shared by the daemon and later the server.
   `SIGN_CERTIFICATE`/`SIGN_THUMBPRINT`); Linux
   `nipa-desktop-linux-amd64.tar.gz` (update / portable) plus `.deb`/`.rpm`
   installing `nipa-desktop` and `nipa` into `/usr/local/bin`.
+- **Toolchain.** CI installs `wails3` from `desktop/build/tools` (a tools
+  module pinning it with a `tool` directive and `go.sum`):
+  `go -C build/tools install tool`.
 - **Feed.** `.github/workflows/desktop-release.yml` runs on `v*` tags: it
   builds the three OSes, signs `update.json` with
   `tools/updatemanifest` (`NIPA_UPDATE_SIGNING_KEY` secret; the public half

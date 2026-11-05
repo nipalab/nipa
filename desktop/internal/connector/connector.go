@@ -30,6 +30,7 @@ const (
 var (
 	ErrBinaryNotFound = errors.New("nipa CLI not found: install it next to the app, on PATH, or set NIPA_BIN")
 	errStaleEndpoint  = errors.New("daemon endpoint is stale")
+	errOutdated       = errors.New("only an outdated daemon answers")
 )
 
 type Options struct {
@@ -75,9 +76,14 @@ func Connect(ctx context.Context, opts Options) (*Conn, error) {
 		}
 	}
 	if conn, err := attach(ctx, path, opts.alive); err == nil {
-		if !update.Older(conn.Version, opts.MinVersion) || retire(ctx, conn, opts.StartTimeout) != nil {
+		if !update.Older(conn.Version, opts.MinVersion) {
 			return conn, nil
 		}
+		if _, err := conn.Client.Shutdown(ctx, &daemonpb.ShutdownRequest{}); err != nil {
+			return conn, nil
+		}
+		waitStopped(ctx, conn, opts.StartTimeout)
+		_ = conn.Close()
 	}
 
 	bin, err := resolveBinary(opts)
@@ -93,15 +99,27 @@ func Connect(ctx context.Context, opts Options) (*Conn, error) {
 	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
 	var lastErr error
+	outdated := false
 	for {
 		conn, err := attach(waitCtx, path, opts.alive)
-		if err == nil {
+		if err == nil && !update.Older(conn.Version, opts.MinVersion) {
 			conn.Started = true
 			return conn, nil
+		}
+		if err == nil {
+			// The retired daemon is still draining and published.
+			_ = conn.Close()
+			outdated = true
+			err = errOutdated
 		}
 		lastErr = err
 		select {
 		case <-waitCtx.Done():
+			if outdated {
+				if conn, err := attach(ctx, path, opts.alive); err == nil {
+					return conn, nil
+				}
+			}
 			return nil, fmt.Errorf("nipa daemon did not start: %w", lastErr)
 		case <-ticker.C:
 		}
@@ -152,12 +170,9 @@ func attach(ctx context.Context, path string, alive func(int) bool) (*Conn, erro
 	return &Conn{Client: client, Endpoint: *ep, Version: pong.GetVersion(), cc: cc}, nil
 }
 
-// retire shuts an outdated daemon down and waits until it stops answering.
-func retire(ctx context.Context, conn *Conn, timeout time.Duration) error {
-	defer func() { _ = conn.Close() }()
-	if _, err := conn.Client.Shutdown(ctx, &daemonpb.ShutdownRequest{}); err != nil {
-		return err
-	}
+// waitStopped waits until a daemon asked to shut down stops answering; a
+// slow drain is not an error, the new daemon replaces the endpoint anyway.
+func waitStopped(ctx context.Context, conn *Conn, timeout time.Duration) {
 	waitCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	ticker := time.NewTicker(pollInterval)
@@ -167,11 +182,11 @@ func retire(ctx context.Context, conn *Conn, timeout time.Duration) error {
 		_, err := conn.Client.Ping(pingCtx, &daemonpb.PingRequest{})
 		stop()
 		if err != nil {
-			return nil
+			return
 		}
 		select {
 		case <-waitCtx.Done():
-			return waitCtx.Err()
+			return
 		case <-ticker.C:
 		}
 	}

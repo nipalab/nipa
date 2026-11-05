@@ -13,8 +13,7 @@ on:
         description: Existing tag to (re)build, e.g. v0.2.0
         required: true
 
-permissions:
-  contents: write
+permissions: {}
 
 env:
   TAG: ${{ inputs.tag || github.ref_name }}
@@ -37,6 +36,8 @@ jobs:
           - os: ubuntu-24.04
             task: linux:release
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
     env:
       MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
       WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
@@ -48,7 +49,9 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: desktop/go.mod
-          cache-dependency-path: desktop/go.sum
+          cache-dependency-path: |
+            desktop/go.sum
+            desktop/build/tools/go.sum
 
       - uses: actions/setup-node@v4
         with:
@@ -61,7 +64,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y build-essential pkg-config libgtk-4-dev libwebkitgtk-6.0-dev
 
       - name: Install wails3
-        run: go install github.com/wailsapp/wails/v3/cmd/wails3@v3.1.0
+        run: go -C build/tools install tool
 
       - name: Put NSIS on PATH
         if: runner.os == 'Windows'
@@ -117,6 +120,8 @@ jobs:
   publish:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -125,7 +130,9 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: desktop/go.mod
-          cache-dependency-path: desktop/go.sum
+          cache-dependency-path: |
+            desktop/go.sum
+            desktop/build/tools/go.sum
 
       - uses: actions/download-artifact@v4
         with:
