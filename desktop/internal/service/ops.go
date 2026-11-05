@@ -31,6 +31,7 @@ type OpOutcome struct {
 	CommitID   string         `json:"commitId,omitempty"`
 	CommitHash string         `json:"commitHash,omitempty"`
 	Revert     *RevertOutcome `json:"revert,omitempty"`
+	Merge      *MergeOutcome  `json:"merge,omitempty"`
 }
 
 // Push uploads the staged files and commits them with message. Cancelling the
@@ -101,6 +102,9 @@ func toOutcome(result *daemonpb.OpResult) OpOutcome {
 	}
 	if r := result.GetRevert(); r != nil {
 		return OpOutcome{Revert: &RevertOutcome{Committed: r.GetCommitted(), NoChange: r.GetNoChange(), Skipped: r.GetSkipped(), Aborted: r.GetAborted(), Conflicts: append([]string{}, r.GetConflicts()...)}}
+	}
+	if m := result.GetMerge(); m != nil {
+		return OpOutcome{Merge: &MergeOutcome{UpToDate: m.GetUpToDate(), FastForwarded: m.GetFastForwarded(), MergeCommitted: m.GetMergeCommitted(), Aborted: m.GetAborted(), Conflicts: append([]string{}, m.GetConflicts()...)}}
 	}
 	sync := result.GetSync()
 	return OpOutcome{Branch: sync.GetBranch(), CommitID: sync.GetCommitId()}

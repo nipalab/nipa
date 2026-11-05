@@ -280,11 +280,15 @@ func (s *Service) RevisionFiles(ctx context.Context, root, oldRev, newRev string
 	if oldRev == "" || newRev == "" {
 		return nil, errors.New("both revisions are needed")
 	}
+	return s.revisionFiles(ctx, root, oldRev, newRev, nil)
+}
+
+func (s *Service) revisionFiles(ctx context.Context, root, oldRev, newRev string, paths []string) ([]FileDiff, error) {
 	client, err := s.client(ctx, root)
 	if err != nil {
 		return nil, err
 	}
-	stream, err := client.DiffFiles(ctx, &daemonpb.DiffRequest{Root: root, Revisions: []string{oldRev, newRev}})
+	stream, err := client.DiffFiles(ctx, &daemonpb.DiffRequest{Root: root, Revisions: []string{oldRev, newRev}, Paths: paths})
 	if err != nil {
 		s.dropIfDisconnected(err)
 		return nil, cleanError(err)

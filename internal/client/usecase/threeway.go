@@ -20,6 +20,16 @@ type threeWayResult struct {
 	Staged     []string
 	Deleted    []string
 	Conflicted []string
+	Kinds      map[string]string
+	Binary     []string
+}
+
+func (r *threeWayResult) conflict(p, kind string, binary bool) {
+	r.Conflicted = append(r.Conflicted, p)
+	r.Kinds[p] = kind
+	if binary {
+		r.Binary = append(r.Binary, p)
+	}
 }
 
 // applyThreeWay decides and (when write is true) materializes the merge
@@ -48,7 +58,7 @@ func applyThreeWay(ctx context.Context, client chunkDownloader, local threeWayLo
 		return nil, err
 	}
 
-	out := &threeWayResult{Files: make(map[string]merge.File, len(ours))}
+	out := &threeWayResult{Files: make(map[string]merge.File, len(ours)), Kinds: map[string]string{}}
 	for p, f := range ours {
 		out.Files[p] = f
 	}
@@ -114,19 +124,23 @@ func applyThreeWay(ctx context.Context, client chunkDownloader, local threeWayLo
 			out.Files[p] = mf
 			out.Staged = append(out.Staged, p)
 			if wasConflict {
-				out.Conflicted = append(out.Conflicted, p)
+				out.conflict(p, domain.ConflictText, false)
 			}
 
-		case merge.BinaryConflict, merge.AddAddConflict:
+		case merge.BinaryConflict:
 			out.Files[p] = e.Ours
-			out.Conflicted = append(out.Conflicted, p)
+			out.conflict(p, domain.ConflictBinary, true)
+
+		case merge.AddAddConflict:
+			out.Files[p] = e.Ours
+			out.conflict(p, domain.ConflictAddAdd, e.Ours.IsBinary || e.Theirs.IsBinary)
 
 		case merge.ModifyDeleteConflict:
 			out.Files[p] = e.Ours
-			out.Conflicted = append(out.Conflicted, p)
+			out.conflict(p, domain.ConflictModifyDelete, e.Ours.IsBinary)
 
 		case merge.DeleteModifyConflict:
-			out.Conflicted = append(out.Conflicted, p)
+			out.conflict(p, domain.ConflictDeleteModify, e.Theirs.IsBinary)
 		}
 	}
 

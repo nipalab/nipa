@@ -222,6 +222,8 @@ func TestRevert_SingleCommit_ConflictAndContinue(t *testing.T) {
 	require.False(t, local.clearedRevert)
 	require.NotNil(t, local.savedRevert)
 	require.Equal(t, head.Hash.String(), local.savedRevert.CurrentTreeHash)
+	require.Equal(t, "1", local.savedRevert.TheirsCommitID)
+	require.Equal(t, map[string]string{"a.txt": domain.ConflictText}, local.savedRevert.ConflictKinds)
 
 	writeRepoFile(t, root, "a.txt", "resolved")
 	require.NoError(t, local.StageAdd("a.txt"))

@@ -284,6 +284,10 @@ func (r *Revert) process(ctx context.Context, root string, url *domain.NipaUrl, 
 
 		if len(applied.Conflicted) > 0 {
 			state.Conflicts = append([]string(nil), applied.Conflicted...)
+			state.ConflictKinds = applied.Kinds
+			state.ConflictBinary = applied.Binary
+			state.Resolved = nil
+			state.TheirsCommitID = parentIDOf(detail, state.Mainline)
 			if err := r.localRepo.SaveTree(treeFromFiles(applied.Files)); err != nil {
 				return nil, err
 			}
@@ -295,7 +299,7 @@ func (r *Revert) process(ctx context.Context, root string, url *domain.NipaUrl, 
 
 		ours = applied.Files
 		state.Targets = state.Targets[1:]
-		state.Conflicts = nil
+		state.ClearConflicts()
 
 		if len(applied.Staged) == 0 {
 			if err := r.localRepo.SaveRevertState(state); err != nil {
@@ -445,7 +449,7 @@ func (r *Revert) resume(ctx context.Context, root string, url *domain.NipaUrl, b
 	}
 
 	state.Targets = state.Targets[1:]
-	state.Conflicts = nil
+	state.ClearConflicts()
 	if err := r.localRepo.SaveRevertState(state); err != nil {
 		return nil, err
 	}
@@ -552,7 +556,7 @@ func (r *Revert) skip(ctx context.Context, root string, url *domain.NipaUrl, bra
 	}
 
 	state.Targets = state.Targets[1:]
-	state.Conflicts = nil
+	state.ClearConflicts()
 	state.CurrentTreeHash = headTree.Hash.String()
 	if err := r.localRepo.SaveRevertState(state); err != nil {
 		return nil, err

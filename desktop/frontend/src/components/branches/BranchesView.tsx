@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ArrowRightLeft, GitBranch, GitBranchPlus, Loader2, Plus, RefreshCw, Shield, Tag as TagIcon, Trash2 } from "lucide-react";
+import { AlertTriangle, ArrowRightLeft, GitBranch, GitMerge, GitBranchPlus, Loader2, Plus, RefreshCw, Shield, Tag as TagIcon, Trash2 } from "lucide-react";
 import { desktop, type Branch, type Tag } from "@/api/desktop";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,12 +18,13 @@ type BranchesViewProps = {
   busy: boolean;
   notify: Notify;
   onSwitch: (branch: string) => void;
+  onMerge: (branch: string) => void;
   onCheckoutTag: (tag: string) => void;
 };
 
-type Dialog = { kind: "new-branch" } | { kind: "new-tag" } | { kind: "delete-branch"; name: string } | { kind: "delete-tag"; name: string } | null;
+type Dialog = { kind: "new-branch" } | { kind: "merge"; name: string } | { kind: "new-tag" } | { kind: "delete-branch"; name: string } | { kind: "delete-tag"; name: string } | null;
 
-export function BranchesView({ root, branch, detached, busy, notify, onSwitch, onCheckoutTag }: BranchesViewProps) {
+export function BranchesView({ root, branch, detached, busy, notify, onSwitch, onMerge, onCheckoutTag }: BranchesViewProps) {
   const queryClient = useQueryClient();
   const [dialog, setDialog] = useState<Dialog>(null);
   const branches = useQuery({ queryKey: ["branches", root], queryFn: () => desktop.branches(root) });
@@ -88,6 +89,12 @@ export function BranchesView({ root, branch, detached, busy, notify, onSwitch, o
                       </Badge>
                     )}
                     <span className="ml-auto font-mono text-[11px] text-muted-foreground">{b.commitId ? shortId(b.commitId) : "empty"}</span>
+                    {!current && !detached && b.commitId && (
+                      <Button size="sm" disabled={busy} onClick={() => setDialog({ kind: "merge", name: b.name })} title={`Bring the changes of ${b.name} into ${branch}`}>
+                        <GitMerge />
+                        Merge into {branch}
+                      </Button>
+                    )}
                     {!current && (
                       <Button size="sm" disabled={busy} onClick={() => onSwitch(b.name)} title={`Check out ${b.name} in this clone`}>
                         <ArrowRightLeft />
@@ -167,6 +174,18 @@ export function BranchesView({ root, branch, detached, busy, notify, onSwitch, o
           busy={createTag.isPending}
           onCancel={() => setDialog(null)}
           onConfirm={(name, message) => createTag.mutate({ name, message })}
+        />
+      )}
+      {dialog?.kind === "merge" && (
+        <ConfirmDialog
+          title={`Merge ${dialog.name} into ${branch}?`}
+          message={`The merge runs in this clone and needs no staged changes. Without conflicts the merge commit is pushed to ${branch} right away; with conflicts it waits until you resolve them.`}
+          confirmLabel="Merge"
+          onCancel={() => setDialog(null)}
+          onConfirm={() => {
+            setDialog(null);
+            onMerge(dialog.name);
+          }}
         />
       )}
       {dialog?.kind === "delete-branch" && (

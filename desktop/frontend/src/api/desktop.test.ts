@@ -32,6 +32,12 @@ const service = vi.hoisted(() => ({
   SetSparse: vi.fn(),
   Push: vi.fn(),
   Update: vi.fn(),
+  Merge: vi.fn(),
+  AbortMerge: vi.fn(),
+  Conflicts: vi.fn(),
+  ConflictTexts: vi.fn(),
+  ConflictDiff: vi.fn(),
+  ResolveConflict: vi.fn(),
   History: vi.fn(),
   CommitFiles: vi.fn(),
   Branches: vi.fn(),
@@ -91,10 +97,10 @@ describe("desktop api", () => {
 
   it("fills missing change lists", async () => {
     service.Changes.mockResolvedValue({ branch: "main", detached: "", staged: null, unstaged: null, conflicts: null });
-    const empty = { branch: "main", detached: undefined, pending: undefined, pendingRemaining: 0, staged: [], unstaged: [], conflicts: [] };
+    const empty = { branch: "main", detached: undefined, pending: undefined, pendingRemaining: 0, staged: [], unstaged: [], conflicts: [], resolved: [] };
     expect(await desktop.changes("/a")).toEqual(empty);
 
-    const full = { branch: "dev", detached: "v1", pending: "merge", pendingRemaining: 0, staged: [{ path: "x" }], unstaged: [{ path: "y" }], conflicts: ["z"] };
+    const full = { branch: "dev", detached: "v1", pending: "merge", pendingRemaining: 0, staged: [{ path: "x" }], unstaged: [{ path: "y" }], conflicts: ["z"], resolved: ["z"] };
     service.Stage.mockResolvedValue(full);
     service.Unstage.mockResolvedValue(full);
     service.Discard.mockResolvedValue(full);
@@ -300,5 +306,33 @@ describe("desktop api", () => {
     service.Reply.mockResolvedValueOnce({ id: "c" }).mockResolvedValueOnce(null);
     expect(await desktop.reply("/a", 7, "t", "ok")).toEqual({ id: "c" });
     await expect(desktop.reply("/a", 7, "t", "ok")).rejects.toThrow("No reply");
+  });
+
+  it("merges and resolves conflicts", async () => {
+    service.Merge.mockResolvedValue({ merge: { conflicts: ["a"] } });
+    service.AbortMerge.mockResolvedValue({ merge: { aborted: true } });
+    expect(await desktop.merge("/a", "feature")).toEqual({ merge: { conflicts: ["a"] } });
+    expect(service.Merge).toHaveBeenCalledWith("/a", "feature");
+    expect(await desktop.abortMerge("/a")).toEqual({ merge: { aborted: true } });
+
+    service.Conflicts.mockResolvedValueOnce(null);
+    expect(await desktop.conflicts("/a")).toEqual({ op: "", base: { id: "", label: "" }, ours: { id: "", label: "" }, theirs: { id: "", label: "" }, files: [] });
+    const full = { op: "revert", base: { id: "b", label: "x" }, ours: { id: "o", label: "main" }, theirs: { id: "t", label: "y" }, files: [{ path: "a" }] };
+    service.Conflicts.mockResolvedValueOnce(full);
+    expect(await desktop.conflicts("/a")).toEqual(full);
+    service.Conflicts.mockResolvedValueOnce({ op: "other", files: null });
+    expect((await desktop.conflicts("/a")).op).toBe("");
+
+    service.ConflictTexts.mockResolvedValueOnce({ base: {} }).mockResolvedValueOnce(null);
+    expect(await desktop.conflictTexts("/a", "f")).toEqual({ base: {} });
+    await expect(desktop.conflictTexts("/a", "f")).rejects.toThrow("No file versions");
+    service.ConflictDiff.mockResolvedValue(null);
+    expect(await desktop.conflictDiff("/a", "f")).toBeNull();
+
+    service.ResolveConflict.mockResolvedValue({ branch: "main", conflicts: ["f"], resolved: ["f"] });
+    expect((await desktop.resolveConflict("/a", "f", "content", "x")).resolved).toEqual(["f"]);
+    expect(service.ResolveConflict).toHaveBeenCalledWith("/a", { path: "f", choice: "content", content: "x" });
+    await desktop.resolveConflict("/a", "f", "ours");
+    expect(service.ResolveConflict).toHaveBeenLastCalledWith("/a", { path: "f", choice: "ours", content: "" });
   });
 });

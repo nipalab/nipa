@@ -463,6 +463,8 @@ func TestMerge_Run_BinaryConflictNested(t *testing.T) {
 	require.Equal(t, []string{"assets/logo.bin"}, outcome.Conflicts)
 	require.False(t, client.pushCalled)
 	require.Equal(t, []string{"assets/logo.bin"}, local.savedMerge.Conflicts)
+	require.Equal(t, map[string]string{"assets/logo.bin": domain.ConflictBinary}, local.savedMerge.ConflictKinds)
+	require.Equal(t, []string{"assets/logo.bin"}, local.savedMerge.ConflictBinary)
 	require.NotNil(t, local.tree)
 	require.Len(t, local.tree.TreeChildren, 1)
 	require.Equal(t, "assets", local.tree.TreeChildren[0].Name)
@@ -482,6 +484,7 @@ func TestMerge_Run_AddAddConflict_NilBaseTree(t *testing.T) {
 	require.Equal(t, []string{"f.txt"}, outcome.Conflicts)
 	require.False(t, client.pushCalled)
 	require.Equal(t, "", local.savedMerge.BaseTreeHash)
+	require.Equal(t, map[string]string{"f.txt": domain.ConflictAddAdd}, local.savedMerge.ConflictKinds)
 }
 
 func TestMerge_Run_ModifyDeleteConflict(t *testing.T) {
@@ -496,6 +499,7 @@ func TestMerge_Run_ModifyDeleteConflict(t *testing.T) {
 	require.Equal(t, []string{"f.txt"}, outcome.Conflicts)
 	require.False(t, client.pushCalled)
 	require.Equal(t, []string{"f.txt"}, local.savedMerge.Conflicts)
+	require.Equal(t, map[string]string{"f.txt": domain.ConflictModifyDelete}, local.savedMerge.ConflictKinds)
 }
 
 func TestMerge_Run_DeleteModifyConflict(t *testing.T) {
@@ -512,6 +516,7 @@ func TestMerge_Run_DeleteModifyConflict(t *testing.T) {
 	require.Equal(t, []string{"f.txt"}, local.savedMerge.Conflicts)
 	require.NotNil(t, local.tree)
 	require.Empty(t, local.tree.FileChildren, "deleted-modify file must not be in the conflicted snapshot")
+	require.Equal(t, map[string]string{"f.txt": domain.ConflictDeleteModify}, local.savedMerge.ConflictKinds)
 }
 
 // --- deletion handling ---

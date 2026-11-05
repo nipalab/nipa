@@ -796,6 +796,86 @@ var _ = Describe("nipa serve", func() {
 		Expect(kinds).To(ContainElements("opened", "ready_for_review"))
 	})
 
+	It("resolves text and binary merge conflicts through the daemon", func() {
+		project := newProject("daemon-conflicts")
+		seedRepo(orgSlug, project, map[string][]byte{"notes.txt": []byte("one\ntwo\nthree\n"), "art/hero.png": testPNG(1)}, "seed")
+		url := repoURLFor(orgSlug, project)
+		dir := cloneRepo(workspace(), url, "work")
+
+		d := startDaemon()
+		d.watch(dir)
+
+		Expect(runNipa(dir, "branch", "-c", "feature").ExitCode).To(Equal(0))
+		writeText(dir, "notes.txt", "one\nTWO feature\nthree\n")
+		writeBytes(dir, "art/hero.png", testPNG(2))
+		Expect(runNipa(dir, "lock", "art/hero.png").ExitCode).To(Equal(0))
+		Expect(runNipa(dir, "add", "notes.txt", "art/hero.png").ExitCode).To(Equal(0))
+		Expect(pushRepo(dir, "feature edits").ExitCode).To(Equal(0))
+
+		Expect(runNipa(dir, "switch", "main").ExitCode).To(Equal(0))
+		writeText(dir, "notes.txt", "one\nTWO main\nthree\n")
+		writeBytes(dir, "art/hero.png", testPNG(3))
+		Expect(runNipa(dir, "lock", "art/hero.png").ExitCode).To(Equal(0))
+		Expect(runNipa(dir, "add", "notes.txt", "art/hero.png").ExitCode).To(Equal(0))
+		Expect(pushRepo(dir, "main edits").ExitCode).To(Equal(0))
+
+		mergeStream, err := d.client.Merge(d.ctx, &daemonpb.MergeOpRequest{Root: dir, SourceBranch: "feature"})
+		Expect(err).NotTo(HaveOccurred())
+		mergeEvents := collectOpEvents(mergeStream)
+		Expect(opFailure(mergeEvents)).To(BeNil())
+		Expect(opResult(mergeEvents).GetMerge().GetConflicts()).To(ConsistOf("notes.txt", "art/hero.png"))
+
+		set, err := d.client.Conflicts(d.ctx, &daemonpb.ConflictsRequest{Root: dir})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(set.GetOp()).To(Equal("merge"))
+		Expect(set.GetOurs().GetLabel()).To(Equal("main"))
+		Expect(set.GetTheirs().GetLabel()).To(Equal("feature"))
+		kinds := map[string]*daemonpb.ConflictFile{}
+		for _, f := range set.GetFiles() {
+			kinds[f.GetPath()] = f
+		}
+		Expect(kinds["notes.txt"].GetKind()).To(Equal("text"))
+		Expect(kinds["art/hero.png"].GetKind()).To(Equal("binary"))
+		Expect(kinds["art/hero.png"].GetViewer()).To(Equal("image"))
+		Expect(readText(dir, "notes.txt")).To(ContainSubstring("<<<<<<< ours"))
+
+		theirsBlob, err := d.client.ReadBlob(d.ctx, &daemonpb.ReadBlobRequest{Root: dir, Blob: &daemonpb.BlobRef{Source: "revision", Revision: set.GetTheirs().GetId(), Path: "notes.txt"}})
+		Expect(err).NotTo(HaveOccurred())
+		_, theirsText, failure := collectBlob(theirsBlob)
+		Expect(failure).To(BeNil())
+		Expect(string(theirsText)).To(Equal("one\nTWO feature\nthree\n"))
+
+		_, err = d.client.ResolveConflict(d.ctx, &daemonpb.ResolveConflictRequest{Root: dir, Path: "notes.txt", Choice: "working"})
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("conflict markers"))
+
+		st, err := d.client.ResolveConflict(d.ctx, &daemonpb.ResolveConflictRequest{Root: dir, Path: "notes.txt", Choice: "content", Content: []byte("one\nTWO both\nthree\n")})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(st.GetResolved()).To(ConsistOf("notes.txt"))
+		st, err = d.client.ResolveConflict(d.ctx, &daemonpb.ResolveConflictRequest{Root: dir, Path: "art/hero.png", Choice: "theirs"})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(st.GetResolved()).To(ConsistOf("notes.txt", "art/hero.png"))
+		Expect(st.GetStaged()).To(ContainElements("notes.txt", "art/hero.png"))
+		Expect(readBytes(dir, "art/hero.png")).To(Equal(testPNG(2)))
+
+		Expect(runNipa(dir, "lock", "art/hero.png").ExitCode).To(Equal(0))
+		pushStream, err := d.client.Push(d.ctx, &daemonpb.PushRequest{Root: dir, Message: "Merge branch 'feature' into 'main'"})
+		Expect(err).NotTo(HaveOccurred())
+		pushEvents := collectOpEvents(pushStream)
+		Expect(opFailure(pushEvents)).To(BeNil())
+
+		st = d.status(dir)
+		Expect(st.GetPending()).To(BeEmpty())
+		Expect(st.GetConflicts()).To(BeEmpty())
+		empty, err := d.client.Conflicts(d.ctx, &daemonpb.ConflictsRequest{Root: dir})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(empty.GetOp()).To(BeEmpty())
+
+		check := cloneRepo(workspace(), url, "check")
+		Expect(readText(check, "notes.txt")).To(Equal("one\nTWO both\nthree\n"))
+		Expect(readBytes(check, "art/hero.png")).To(Equal(testPNG(2)))
+	})
+
 	It("unwatches a repository", func() {
 		project := newProject("daemon-unwatch")
 		seedRepo(orgSlug, project, map[string][]byte{"a.txt": []byte("a\n")}, "seed")

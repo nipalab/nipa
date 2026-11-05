@@ -26,6 +26,13 @@ import type {
   AudioStats,
   Changes,
   CloneRequest,
+  ConflictFile,
+  ConflictRevision,
+  ConflictSet as RawConflictSet,
+  ConflictText,
+  ConflictTexts,
+  MergeOutcome,
+  ResolveInput,
   DaemonInfo,
   DiffHunk,
   DiffLine,
@@ -78,6 +85,9 @@ const required = <T>(v: T | null, what: string): T => {
   if (!v) throw new Error(`No ${what} was returned`);
   return v;
 };
+export type { ConflictFile, ConflictRevision, ConflictText, ConflictTexts, MergeOutcome, ResolveInput };
+export type ConflictSet = Omit<RawConflictSet, "files" | "op"> & { op: "merge" | "revert" | ""; files: ConflictFile[] };
+export type ResolveChoice = "ours" | "theirs" | "content" | "working" | "delete";
 export type Commit = Omit<RawCommit, "parents"> & { parents: string[] };
 export type HistoryPage = { commits: Commit[]; next: string };
 export type { Account, CloneRequest, RemoteBranch, RemoteDir, RemoteProject };
@@ -95,6 +105,7 @@ export type ChangeSet = {
   staged: FileChange[];
   unstaged: FileChange[];
   conflicts: string[];
+  resolved: string[];
 };
 
 // Cancellable is a pending call the UI can abort; Wails cancels the Go
@@ -109,6 +120,7 @@ const changeSet = (c: Changes): ChangeSet => ({
   staged: c.staged ?? [],
   unstaged: c.unstaged ?? [],
   conflicts: c.conflicts ?? [],
+  resolved: c.resolved ?? [],
 });
 
 export const desktop = {
@@ -205,6 +217,18 @@ export const desktop = {
   reply: async (root: string, number: number, threadId: string, body: string): Promise<Comment> => required(await Service.Reply(root, number, threadId, body), "reply"),
   resolveThread: (root: string, number: number, threadId: string, resolved: boolean): Promise<void> => Service.ResolveThread(root, number, threadId, resolved),
   revert: (root: string, req: Partial<RevertRequest>): Cancellable<OpOutcome> => Service.Revert(root, { target: "", mode: "", ...req }),
+  merge: (root: string, source: string): Cancellable<OpOutcome> => Service.Merge(root, source),
+  abortMerge: (root: string): Cancellable<OpOutcome> => Service.AbortMerge(root),
+  conflicts: async (root: string): Promise<ConflictSet> => {
+    const set = await Service.Conflicts(root);
+    const op = set?.op === "merge" || set?.op === "revert" ? set.op : "";
+    const none = { id: "", label: "" };
+    return { base: set?.base ?? none, ours: set?.ours ?? none, theirs: set?.theirs ?? none, op, files: set?.files ?? [] };
+  },
+  conflictTexts: async (root: string, path: string): Promise<ConflictTexts> => required(await Service.ConflictTexts(root, path), "file versions"),
+  conflictDiff: (root: string, path: string): Promise<FileDiff | null> => Service.ConflictDiff(root, path),
+  resolveConflict: async (root: string, path: string, choice: ResolveChoice, content = ""): Promise<ChangeSet> =>
+    changeSet(await Service.ResolveConflict(root, { path, choice, content })),
 
   onRepoChanged: (fn: (change: RepoChanged) => void): (() => void) => Events.On("repo:changed", (ev) => fn(ev.data)),
   onOpProgress: (fn: (progress: OpProgress) => void): (() => void) => Events.On("op:progress", (ev) => fn(ev.data)),

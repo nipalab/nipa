@@ -85,6 +85,7 @@ export interface Changes {
     "staged": FileChange[] | null;
     "unstaged": FileChange[] | null;
     "conflicts": string[] | null;
+    "resolved": string[] | null;
 
     /**
      * Pending is merge or revert while one waits for continue or abort.
@@ -149,6 +150,47 @@ export interface Commit {
      * RFC 3339
      */
     "date": string;
+}
+
+export interface ConflictFile {
+    "path": string;
+    "kind": string;
+    "binary": boolean;
+    "resolved": boolean;
+    "viewer": string;
+}
+
+export interface ConflictRevision {
+    "id": string;
+    "label": string;
+}
+
+/**
+ * ConflictSet is the merge or revert waiting in a clone. Op is empty when
+ * nothing waits.
+ */
+export interface ConflictSet {
+    "op": string;
+    "base": ConflictRevision;
+    "ours": ConflictRevision;
+    "theirs": ConflictRevision;
+    "files": ConflictFile[] | null;
+}
+
+/**
+ * ConflictText is one version of a conflicted text file. Missing means the
+ * file does not exist in that version.
+ */
+export interface ConflictText {
+    "text": string;
+    "missing": boolean;
+}
+
+export interface ConflictTexts {
+    "base": ConflictText;
+    "ours": ConflictText;
+    "theirs": ConflictText;
+    "working": ConflictText;
 }
 
 export interface DaemonInfo {
@@ -415,6 +457,14 @@ export interface LockStatus {
     "files": FileLockState[] | null;
 }
 
+export interface MergeOutcome {
+    "upToDate": boolean;
+    "fastForwarded": boolean;
+    "mergeCommitted": boolean;
+    "aborted": boolean;
+    "conflicts": string[] | null;
+}
+
 export interface MergeRequest {
     "number": number;
     "title": string;
@@ -558,6 +608,7 @@ export interface OpOutcome {
     "commitId"?: string;
     "commitHash"?: string;
     "revert"?: RevertOutcome | null;
+    "merge"?: MergeOutcome | null;
 }
 
 /**
@@ -628,6 +679,16 @@ export interface Repo {
 export interface RepoChanged {
     "root": string;
     "paths": string[] | null;
+}
+
+export interface ResolveInput {
+    "path": string;
+
+    /**
+     * ours, theirs, content, working, delete
+     */
+    "choice": string;
+    "content": string;
 }
 
 export interface RevertOutcome {

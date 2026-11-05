@@ -27,13 +27,19 @@ const api = vi.hoisted(() => ({
   switchBranch: vi.fn(),
   checkoutTag: vi.fn(),
   revert: vi.fn(),
+  merge: vi.fn(),
+  abortMerge: vi.fn(),
+  conflicts: vi.fn(),
+  conflictTexts: vi.fn(),
+  conflictDiff: vi.fn(),
+  resolveConflict: vi.fn(),
   mergeRequests: vi.fn(),
   onRepoChanged: vi.fn(),
   onOpProgress: vi.fn(),
 }));
 vi.mock("@/api/desktop", () => ({ desktop: api }));
 
-import { describeRevert, RepoView } from "./RepoView";
+import { describeMerge, describeRevert, RepoView } from "./RepoView";
 
 const repo: Repo = { root: "/work/game", name: "game", url: "https://nipa.test/studio/game", branch: "main", sparse: null };
 
@@ -46,7 +52,19 @@ const changeSet = (over: Partial<ChangeSet> = {}): ChangeSet => ({
     { path: "old.wav", status: "deleted", kind: "audio" },
   ],
   conflicts: [],
+  resolved: [],
   ...over,
+});
+
+const conflictSet = (op: "merge" | "revert") => ({
+  op,
+  base: { id: "b1", label: op === "merge" ? "merge base" : "Add hero" },
+  ours: { id: "o1", label: "main" },
+  theirs: { id: "t1", label: op === "merge" ? "feature" : "before Add hero" },
+  files: [
+    { path: "a.txt", kind: "text", binary: false, resolved: true, viewer: "text" },
+    { path: "hero.png", kind: "binary", binary: true, resolved: false, viewer: "image" },
+  ],
 });
 
 const textDiff: FileDiff = {
@@ -266,7 +284,7 @@ describe("Changes view", () => {
     view();
     expect(await screen.findByText("No local changes")).toBeInTheDocument();
     expect(screen.getByText("Viewing tag v1.0")).toBeInTheDocument();
-    expect(screen.getByText("2 conflicted files: resolve, stage, then push.")).toBeInTheDocument();
+    expect(screen.getByText("2 conflicted files: resolve them in the Conflicts tab.")).toBeInTheDocument();
     expect(screen.getByText("HEAD is at tag v1.0. Switch to a branch to push.")).toBeInTheDocument();
     expect(screen.getByText("Select a changed file to see what changed.")).toBeInTheDocument();
   });
@@ -537,11 +555,19 @@ describe("history, branches and pending operations", () => {
   });
 
   it("continues, skips or aborts a waiting revert", async () => {
-    api.changes.mockResolvedValue(changeSet({ pending: "revert", pendingRemaining: 3, conflicts: ["a.txt", "b.txt"] }));
+    api.changes.mockResolvedValue(changeSet({ pending: "revert", pendingRemaining: 3, conflicts: ["a.txt", "b.txt", "c.txt"], resolved: ["c.txt"] }));
+    api.conflicts.mockResolvedValue(conflictSet("revert"));
     api.revert.mockResolvedValue({ revert: { committed: false, noChange: false, skipped: false, aborted: true, conflicts: [] } });
-    view();
-    const banner = await screen.findByRole("status");
+    const first = view();
+    let banner = await screen.findByRole("status");
     expect(banner).toHaveTextContent("2 conflicting files. Fix them, then continue. 2 more commits to revert after this one.");
+    expect(within(banner).getByRole("button", { name: "Continue" })).toBeDisabled();
+    first.unmount();
+
+    api.changes.mockResolvedValue(changeSet({ pending: "revert", pendingRemaining: 3, conflicts: ["a.txt"], resolved: ["a.txt"] }));
+    view();
+    banner = await screen.findByRole("status");
+    expect(within(banner).queryByRole("button", { name: /Resolve conflicts/ })).not.toBeInTheDocument();
     for (const mode of ["Continue", "Skip", "Abort"]) {
       await userEvent.click(within(banner).getByRole("button", { name: mode }));
       expect(api.revert).toHaveBeenLastCalledWith("/work/game", { mode: mode.toLowerCase() });
@@ -553,7 +579,7 @@ describe("history, branches and pending operations", () => {
   it("explains a waiting merge and a waiting revert without conflicts", async () => {
     api.changes.mockResolvedValueOnce(changeSet({ pending: "merge" }));
     const first = view();
-    expect(await screen.findByRole("status")).toHaveTextContent("A merge is in progress");
+    expect(await screen.findByRole("status")).toHaveTextContent("A merge is waiting: everything is resolved.");
     first.unmount();
     api.changes.mockResolvedValue(changeSet({ pending: "revert", pendingRemaining: 2 }));
     view();
@@ -566,6 +592,70 @@ describe("history, branches and pending operations", () => {
     await userEvent.click(await screen.findByRole("tab", { name: /Merge requests/ }));
     expect(await screen.findByText("No merge requests here yet")).toBeInTheDocument();
     expect(api.mergeRequests).toHaveBeenCalledWith("/work/game", { status: "open", search: "", after: 0 });
+  });
+
+  it("resolves a waiting merge, then finishes it", async () => {
+    api.changes.mockResolvedValue(changeSet({ pending: "merge", conflicts: ["a.txt", "hero.png"], resolved: ["a.txt"] }));
+    api.conflicts.mockResolvedValue(conflictSet("merge"));
+    api.conflictDiff.mockResolvedValue(null);
+    view();
+    const banner = await screen.findByRole("status");
+    await waitFor(() => expect(banner).toHaveTextContent("Merging feature into main: 1 conflicting file left to resolve."));
+    expect(within(banner).getByRole("button", { name: "Finish merge" })).toBeDisabled();
+    expect(screen.getByRole("tab", { name: /Conflicts/ })).toHaveTextContent("1");
+    await userEvent.click(within(banner).getByRole("button", { name: /Resolve conflicts/ }));
+    expect(screen.getByRole("tab", { name: /Conflicts/ })).toHaveAttribute("aria-selected", "true");
+    expect(await screen.findByRole("list", { name: "Conflicted files" })).toBeInTheDocument();
+
+    api.abortMerge.mockResolvedValue({ merge: { upToDate: false, fastForwarded: false, mergeCommitted: false, aborted: true, conflicts: [] } });
+    await userEvent.click(within(banner).getByRole("button", { name: "Abort" }));
+    expect(api.abortMerge).toHaveBeenCalledWith("/work/game");
+    await waitFor(() => expect(notify).toHaveBeenCalledWith("Merge aborted; the clone is back at the branch head", "success"));
+  });
+
+  it("finishes a resolved merge with a merge commit message", async () => {
+    api.changes.mockResolvedValue(changeSet({ pending: "merge", conflicts: ["a.txt"], resolved: ["a.txt"] }));
+    api.conflicts.mockResolvedValue(conflictSet("merge"));
+    api.push.mockResolvedValue({ commitId: "c9" });
+    view();
+    const banner = await screen.findByRole("status");
+    await waitFor(() => expect(within(banner).getByRole("button", { name: "Finish merge" })).toBeEnabled());
+    expect(screen.queryByRole("tab", { name: /Conflicts/ })).toHaveTextContent(/^Conflicts$/);
+    await userEvent.click(within(banner).getByRole("button", { name: "Finish merge" }));
+    expect(api.push).toHaveBeenCalledWith("/work/game", "Merge branch 'feature' into 'main'");
+    await waitFor(() => expect(notify).toHaveBeenCalledWith("Merged and pushed to main (c9)", "success"));
+    api.push.mockRejectedValueOnce(new Error("offline"));
+    await userEvent.click(within(banner).getByRole("button", { name: "Finish merge" }));
+    await waitFor(() => expect(notify).toHaveBeenCalledWith("Push failed: offline"));
+  });
+
+  it("merges a branch from the Branches tab and opens the conflicts", async () => {
+    api.branches.mockResolvedValue([
+      { name: "main", commitId: "c2", default: true, protected: false },
+      { name: "feature", commitId: "c3", default: false, protected: false },
+    ]);
+    api.tags.mockResolvedValue([]);
+    api.merge.mockResolvedValue({ merge: { upToDate: false, fastForwarded: false, mergeCommitted: false, aborted: false, conflicts: ["a.txt"] } });
+    view();
+    await userEvent.click(await screen.findByRole("tab", { name: /Branches/ }));
+    await userEvent.click(await screen.findByRole("button", { name: "Merge into main" }));
+    api.changes.mockResolvedValue(changeSet({ pending: "merge", conflicts: ["a.txt"] }));
+    api.conflicts.mockResolvedValue({ ...conflictSet("merge"), files: [{ path: "a.txt", kind: "text", binary: false, resolved: false, viewer: "text" }] });
+    api.conflictTexts.mockResolvedValue({ base: { text: "a\n", missing: false }, ours: { text: "b\n", missing: false }, theirs: { text: "c\n", missing: false }, working: { text: "<<<<<<< ours\nb\n=======\nc\n>>>>>>> theirs\n", missing: false } });
+    await userEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Merge" }));
+    expect(api.merge).toHaveBeenCalledWith("/work/game", "feature");
+    await waitFor(() => expect(notify).toHaveBeenCalledWith("The merge stopped: 1 file conflict. Resolve them, then finish the merge.", "error"));
+    await waitFor(() => expect(screen.getByRole("tab", { name: /Conflicts/ })).toHaveAttribute("aria-selected", "true"));
+    expect(await screen.findByRole("region", { name: "Conflict 1" })).toBeInTheDocument();
+  });
+
+  it("describes every merge outcome", () => {
+    const base = { upToDate: false, fastForwarded: false, mergeCommitted: false, aborted: false, conflicts: [] as string[] };
+    expect(describeMerge({ merge: { ...base, conflicts: ["a", "b"] } }, "main")[0]).toContain("2 files conflict");
+    expect(describeMerge({ merge: { ...base, upToDate: true } }, "main")[0]).toBe("main already has those changes");
+    expect(describeMerge({ merge: { ...base, fastForwarded: true } }, "main")[0]).toBe("Fast-forwarded main");
+    expect(describeMerge({ merge: { ...base, mergeCommitted: true } }, "main")[0]).toBe("Merged and pushed to main");
+    expect(describeMerge({}, "main")[0]).toBe("Merged and pushed to main");
   });
 
   it("describes every revert outcome", () => {

@@ -56,7 +56,8 @@ Sonar never compile it.
   `MergeRequestActivity`, `MergeRequestCommits`, `RevisionFiles`,
   `CreateMergeRequest`, `EditMergeRequest`, `SetDraft`, `MergeMergeRequest`,
   `CloseMergeRequest`, `ReopenMergeRequest`, `SubmitReview`, `Comment`,
-  `Reply`, `ResolveThread`). Plain Go behind `Dialer`/
+  `Reply`, `ResolveThread`; Conflicts: `Merge`, `AbortMerge`, `Conflicts`,
+  `ConflictTexts`, `ConflictDiff`, `ResolveConflict`). Plain Go behind `Dialer`/
   `RepoStore`/`FolderPicker` seams, so it is unit-tested without a webview; an
   `Unavailable` error drops the session so the next call reconnects (and
   restarts the daemon) and re-watches each clone on first use. Every watched
@@ -175,8 +176,24 @@ Sonar never compile it.
   header shows the tag instead of the branch, Update is disabled and a
   banner offers "Back to <branch>". A revert stopped on conflicts (status
   `pending` = `revert`, with the conflicting files and the commits left)
-  shows a banner with Continue, Skip and Abort; a pending merge only points
-  to the CLI until the conflict screen (PR 14).
+  shows a banner with Resolve conflicts, Continue (enabled once every file
+  is resolved), Skip and Abort. Each other branch offers "Merge into
+  <branch>" (confirmation, then the daemon `Merge`); a merge without
+  conflicts is pushed right away.
+- Conflicts tab (shown while a merge or revert waits with conflicts, with
+  the open count): the conflicted files with their kind (both changed, both
+  added, deleted on one side) and resolved state; the merge banner reads
+  "Merging <source> into <branch>" with Resolve conflicts, Finish merge (a
+  push with `Merge branch '<source>' into '<branch>'`, enabled once all are
+  resolved) and Abort. Text files open a three-way editor: each marker
+  block shows mine and theirs side by side with Mine / Theirs / Both (either
+  order), the common ancestor on demand, and an editable result that is
+  saved with Mark resolved (refused while markers remain). Binary and
+  deleted-on-one-side files offer Take mine / Take theirs (Keep the file /
+  Delete it, Keep it deleted / Restore theirs) and "Use the file on disk",
+  with ours and theirs compared in the asset viewers (`ConflictDiff`).
+  Resolving writes the file, stages it and records it in the pending state
+  (`resolved`), so the choice survives restarts.
 - Merge requests tab: the list (Open/Drafts/Merged/Closed/All, server-side
   search, 50 per page) with status, branches, approvals and changes
   requested, and "New" (source = the clone's branch, target = the default
@@ -333,6 +350,6 @@ Pure package (no client imports), shared by the daemon and later the server.
 11. Sign in, clone, sparse checkout. **(done)**
 12. History, branches, tags, revert. **(done)**
 13. Merge requests with asset viewers. **(done)**
-14. Conflict resolution.
+14. Conflict resolution. **(done)**
 15. Tray, notifications, deep links, settings.
 16. Packaging and auto-update.
