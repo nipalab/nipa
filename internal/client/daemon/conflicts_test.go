@@ -50,9 +50,11 @@ func conflictServer(t *testing.T, root string, versions map[string]string) *Serv
 	srv := newOpServer(t, RepoOps{Diff: &stubDiffRunner{readBlob: func(_ context.Context, _ string, req usecase.BlobRequest, fn func(diff.Entry, io.Reader) error) error {
 		data, ok := versions[req.Revision+":"+req.Path]
 		if !ok {
-			return clientDomain.NewNotFoundError(req.Path + " not found")
+			missing := clientDomain.NewNotFoundError(req.Path + " not found")
+			missing.Cause = usecase.ErrPathNotInRevision
+			return missing
 		}
-		return fn(diff.Entry{Path: req.Path}, strings.NewReader(data))
+		return fn(diff.Entry{Path: req.Path, Mode: 3}, strings.NewReader(data))
 	}}})
 	_, err := srv.repos.watch(root)
 	require.NoError(t, err)
@@ -131,6 +133,19 @@ func TestServer_ResolveConflictChoices(t *testing.T) {
 
 	_, err = srv.ResolveConflict(ctx, &daemonpb.ResolveConflictRequest{Root: root, Path: "art/hero.png", Choice: "mine"})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
+}
+
+func TestServer_ResolveConflictKeepsFileOnTransferNotFound(t *testing.T) {
+	root := conflictedClone(t)
+	srv := newOpServer(t, RepoOps{Diff: &stubDiffRunner{readBlob: func(context.Context, string, usecase.BlobRequest, func(diff.Entry, io.Reader) error) error {
+		return clientDomain.NewNotFoundError("chunk not found on the server")
+	}}})
+	_, err := srv.repos.watch(root)
+	require.NoError(t, err)
+
+	_, err = srv.ResolveConflict(context.Background(), &daemonpb.ResolveConflictRequest{Root: root, Path: "art/hero.png", Choice: "theirs"})
+	require.Equal(t, codes.NotFound, status.Code(err))
+	require.Equal(t, "ours-png", readWorkingFile(t, root, "art/hero.png"))
 }
 
 func TestServer_ResolveConflictReadFailures(t *testing.T) {

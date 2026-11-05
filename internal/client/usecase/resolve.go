@@ -35,6 +35,7 @@ type Resolution struct {
 	Delete       bool
 	Content      io.Reader
 	AllowMarkers bool
+	Mode         int
 }
 
 type Conflicts struct {
@@ -132,7 +133,7 @@ func (c *Conflicts) Resolve(ctx context.Context, path string, res Resolution) er
 			return err
 		}
 	case res.Content != nil:
-		if err := c.write(abs, res.Content, !file.Binary && !res.AllowMarkers, p); err != nil {
+		if err := c.write(abs, res.Content, !file.Binary && !res.AllowMarkers, p, res.Mode); err != nil {
 			return err
 		}
 	case !file.Binary:
@@ -146,7 +147,7 @@ func (c *Conflicts) Resolve(ctx context.Context, path string, res Resolution) er
 	return c.markResolved(p)
 }
 
-func (c *Conflicts) write(abs string, content io.Reader, checkMarkers bool, p string) error {
+func (c *Conflicts) write(abs string, content io.Reader, checkMarkers bool, p string, mode int) error {
 	if checkMarkers {
 		data, err := io.ReadAll(content)
 		if err != nil {
@@ -158,7 +159,9 @@ func (c *Conflicts) write(abs string, content io.Reader, checkMarkers bool, p st
 		content = bytes.NewReader(data)
 	}
 	perm := os.FileMode(0o644)
-	if info, err := os.Stat(abs); err == nil {
+	if mode != 0 {
+		perm = materializedMode(mode)
+	} else if info, err := os.Stat(abs); err == nil {
 		perm = info.Mode().Perm()
 	}
 	dir := filepath.Dir(abs)

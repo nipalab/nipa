@@ -227,6 +227,12 @@ func TestReadBlob_RevisionErrors(t *testing.T) {
 	client.downloadErr = errors.New("download failed")
 	_, err = readBlob(t, NewDiff(diffAuth(t), client, repo), t.TempDir(), req)
 	require.ErrorContains(t, err, "download failed")
+	require.NotErrorIs(t, err, ErrPathNotInRevision)
+
+	repo, client = revisionBlobFixture(t, "data")
+	_, err = readBlob(t, NewDiff(diffAuth(t), client, repo), t.TempDir(), BlobRequest{Source: BlobRevision, Revision: "main", Path: "absent.png"})
+	require.ErrorIs(t, err, ErrPathNotInRevision)
+	requireCode(t, err, 404)
 }
 
 func TestBlobReaderSmallBuffer(t *testing.T) {

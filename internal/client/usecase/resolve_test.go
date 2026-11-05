@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -121,6 +122,22 @@ func TestConflicts_ResolveWithContent(t *testing.T) {
 
 	require.NoError(t, c.Resolve(context.Background(), "./a.txt", Resolution{Content: strings.NewReader(">>>>>>> theirs\n"), AllowMarkers: true}))
 	require.Equal(t, []string{"a.txt"}, local.savedMerge.Resolved, "resolving twice records the path once")
+}
+
+func TestConflicts_ResolveAppliesChosenMode(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("permission bits are not preserved on windows")
+	}
+	root := t.TempDir()
+	writeRepoFile(t, root, "a.txt", "old\n")
+	require.NoError(t, os.Chmod(filepath.Join(root, "a.txt"), 0o644))
+	local := &stubLocalRepo{mergeState: pendingMerge(), snapshot: &domain.Snapshot{}}
+	c := newConflicts(t, local, root)
+
+	require.NoError(t, c.Resolve(context.Background(), "a.txt", Resolution{Content: strings.NewReader("run\n"), Mode: 3}))
+	info, err := os.Stat(filepath.Join(root, "a.txt"))
+	require.NoError(t, err)
+	require.Equal(t, os.FileMode(0o755), info.Mode().Perm())
 }
 
 func TestConflicts_ResolveKeepsWorkingFile(t *testing.T) {

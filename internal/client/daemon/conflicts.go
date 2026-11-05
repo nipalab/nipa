@@ -112,11 +112,10 @@ func takeVersion(ctx context.Context, rp *repo, c *usecase.Conflicts, path, rev 
 		return status.Error(codes.FailedPrecondition, "diff is not configured")
 	}
 	req := usecase.BlobRequest{Source: usecase.BlobRevision, Revision: rev, Path: path}
-	err := rp.diff.ReadBlob(ctx, rp.root, req, func(_ diff.Entry, r io.Reader) error {
-		return c.Resolve(ctx, path, usecase.Resolution{Content: r, AllowMarkers: true})
+	err := rp.diff.ReadBlob(ctx, rp.root, req, func(entry diff.Entry, r io.Reader) error {
+		return c.Resolve(ctx, path, usecase.Resolution{Content: r, AllowMarkers: true, Mode: entry.Mode})
 	})
-	var de *clientDomain.Error
-	if errors.As(err, &de) && de.Code == 404 {
+	if errors.Is(err, usecase.ErrPathNotInRevision) {
 		return c.Resolve(ctx, path, usecase.Resolution{Delete: true})
 	}
 	return err

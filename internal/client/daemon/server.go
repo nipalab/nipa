@@ -19,6 +19,8 @@ import (
 // EnvPort pins the daemon loopback port; 0 picks a free port.
 const EnvPort = "NIPA_DAEMON_PORT"
 
+const maxRecvMsgSize = 32 << 20
+
 // LoginFunc stores credentials for host so the daemon owns the session.
 type LoginFunc func(ctx context.Context, host, username, password string) error
 
@@ -102,6 +104,7 @@ func NewServer(opts Options) (*Server, error) {
 		stop:         make(chan struct{}),
 	}
 	s.grpc = grpc.NewServer(
+		grpc.MaxRecvMsgSize(maxRecvMsgSize),
 		grpc.UnaryInterceptor(s.unaryAuth),
 		grpc.StreamInterceptor(s.streamAuth),
 	)

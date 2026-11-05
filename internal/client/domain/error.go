@@ -7,6 +7,11 @@ type Error struct {
 	Message string
 	Hint    string
 	Action  string
+	Cause   error
+}
+
+func (e *Error) Unwrap() error {
+	return e.Cause
 }
 
 func (e *Error) WithHint(hint, action string) *Error {

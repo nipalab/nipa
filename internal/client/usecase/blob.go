@@ -32,6 +32,8 @@ type BlobRequest struct {
 	Path     string
 }
 
+var ErrPathNotInRevision = errors.New("path does not exist in revision")
+
 // ReadBlob resolves one file version and hands its entry and decoded content
 // to fn. The content is streamed chunk by chunk; missing revision chunks are
 // downloaded into the local object store first.
@@ -84,7 +86,9 @@ func (d *Diff) readRevisionBlob(ctx context.Context, token, p string, fn func(di
 	}
 	entry, ok := rev.entries[p]
 	if !ok {
-		return clientDomain.NewNotFoundError(fmt.Sprintf("%s does not exist in %s", p, token))
+		notFound := clientDomain.NewNotFoundError(fmt.Sprintf("%s does not exist in %s", p, token))
+		notFound.Cause = ErrPathNotInRevision
+		return notFound
 	}
 	missing, err := d.localRepo.MissingChunks(entry.ChunkHashes)
 	if err != nil {
