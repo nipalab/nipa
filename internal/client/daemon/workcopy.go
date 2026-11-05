@@ -114,6 +114,7 @@ func statusToPB(st *clientDomain.Status) *daemonpb.StatusResponse {
 		Untracked:        st.Untracked,
 		Missing:          st.Missing,
 		Conflicts:        st.Conflicts,
+		Resolved:         st.Resolved,
 		Pending:          st.Pending,
 		PendingRemaining: int32(st.PendingRemaining),
 	}

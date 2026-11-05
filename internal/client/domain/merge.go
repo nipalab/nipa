@@ -43,5 +43,8 @@ type MergeState struct {
 	TargetCommitID string `json:"target_commit_id,omitempty"`
 	// Conflicts is the list of paths that were left with merge markers for the
 	// user to resolve before the merge commit is pushed.
-	Conflicts []string `json:"conflicts,omitempty"`
+	Conflicts      []string          `json:"conflicts,omitempty"`
+	ConflictKinds  map[string]string `json:"conflict_kinds,omitempty"`
+	ConflictBinary []string          `json:"conflict_binary,omitempty"`
+	Resolved       []string          `json:"resolved,omitempty"`
 }

@@ -10,6 +10,13 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as $models from "./models.js";
 
 /**
+ * AbortMerge drops a waiting merge and restores the branch head.
+ */
+export function AbortMerge(root: string): $CancellablePromise<$models.OpOutcome> {
+    return $Call.ByID(593526730, root);
+}
+
+/**
  * AccountStatus reports whether the daemon holds a session for a server.
  */
 export function AccountStatus(server: string): $CancellablePromise<$models.Account | null> {
@@ -91,6 +98,29 @@ export function Comment(root: string, $number: number, $in: $models.CommentInput
  */
 export function CommitFiles(root: string, commitID: string, parent: string): $CancellablePromise<$models.FileDiff[] | null> {
     return $Call.ByID(873613144, root, commitID, parent);
+}
+
+/**
+ * ConflictDiff compares the two sides of a conflicted file, ours as the old
+ * side and theirs as the new, for the asset viewers.
+ */
+export function ConflictDiff(root: string, path: string): $CancellablePromise<$models.FileDiff | null> {
+    return $Call.ByID(3866103609, root, path);
+}
+
+/**
+ * ConflictTexts reads the base, ours, theirs and working versions of a
+ * conflicted text file for the three-way editor.
+ */
+export function ConflictTexts(root: string, path: string): $CancellablePromise<$models.ConflictTexts | null> {
+    return $Call.ByID(1952408398, root, path);
+}
+
+/**
+ * Conflicts describes the waiting merge or revert and its conflicted files.
+ */
+export function Conflicts(root: string): $CancellablePromise<$models.ConflictSet | null> {
+    return $Call.ByID(2616723811, root);
 }
 
 /**
@@ -194,6 +224,14 @@ export function Lock(root: string, branch: string, paths: string[] | null): $Can
  */
 export function LockStatus(root: string): $CancellablePromise<$models.LockStatus | null> {
     return $Call.ByID(3463155089, root);
+}
+
+/**
+ * Merge merges a branch into the clone's branch. Conflicts stop the merge and
+ * leave it waiting for ResolveConflict and a push, or AbortMerge.
+ */
+export function Merge(root: string, source: string): $CancellablePromise<$models.OpOutcome> {
+    return $Call.ByID(3103744124, root, source);
 }
 
 /**
@@ -319,6 +357,14 @@ export function Reply(root: string, $number: number, threadID: string, body: str
  */
 export function Repos(): $CancellablePromise<$models.Repo[] | null> {
     return $Call.ByID(3963752509);
+}
+
+/**
+ * ResolveConflict settles one conflicted file and returns the refreshed
+ * changes.
+ */
+export function ResolveConflict(root: string, $in: $models.ResolveInput): $CancellablePromise<$models.Changes> {
+    return $Call.ByID(1554234326, root, $in);
 }
 
 /**

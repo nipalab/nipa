@@ -18,6 +18,7 @@ import { BranchesView } from "./BranchesView";
 const notify = vi.fn();
 const onSwitch = vi.fn();
 const onCheckoutTag = vi.fn();
+const onMerge = vi.fn();
 
 beforeEach(() => {
   vi.resetAllMocks();
@@ -33,7 +34,7 @@ beforeEach(() => {
 });
 
 const view = (props: Partial<Parameters<typeof BranchesView>[0]> = {}) =>
-  renderWithProviders(<BranchesView root="/work/game" branch="main" busy={false} notify={notify} onSwitch={onSwitch} onCheckoutTag={onCheckoutTag} {...props} />);
+  renderWithProviders(<BranchesView root="/work/game" branch="main" busy={false} notify={notify} onSwitch={onSwitch} onMerge={onMerge} onCheckoutTag={onCheckoutTag} {...props} />);
 
 const section = (name: string) => screen.getByRole("heading", { name }).closest("section") as HTMLElement;
 
@@ -131,5 +132,27 @@ describe("BranchesView", () => {
     expect(await screen.findByText(/No tags yet/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Refresh branches" }));
     expect(await screen.findByText("No branches")).toBeInTheDocument();
+  });
+
+  it("merges another branch into the current one after confirming", async () => {
+    const user = userEvent.setup();
+    view();
+    await screen.findByText("art-pass");
+    expect(screen.queryByRole("button", { name: "Merge into main" })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Merge into main" })).toHaveLength(1);
+    await user.click(screen.getByRole("button", { name: "Merge into main" }));
+    expect(screen.getByRole("alertdialog", { name: "Merge art-pass into main?" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(onMerge).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Merge into main" }));
+    await user.click(screen.getByRole("button", { name: "Merge" }));
+    expect(onMerge).toHaveBeenCalledWith("art-pass");
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+
+  it("offers no merge while HEAD is detached", async () => {
+    view({ detached: "v1.0" });
+    await screen.findByText("art-pass");
+    expect(screen.queryByRole("button", { name: /Merge into/ })).not.toBeInTheDocument();
   });
 });

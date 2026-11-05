@@ -29,6 +29,7 @@ type Changes struct {
 	Staged    []FileChange `json:"staged"`
 	Unstaged  []FileChange `json:"unstaged"`
 	Conflicts []string     `json:"conflicts"`
+	Resolved  []string     `json:"resolved"`
 	// Pending is merge or revert while one waits for continue or abort.
 	Pending          string `json:"pending,omitempty"`
 	PendingRemaining int    `json:"pendingRemaining,omitempty"`
@@ -130,6 +131,7 @@ func toChanges(resp *daemonpb.StatusResponse) Changes {
 		Staged:           []FileChange{},
 		Unstaged:         []FileChange{},
 		Conflicts:        append([]string{}, resp.GetConflicts()...),
+		Resolved:         append([]string{}, resp.GetResolved()...),
 		Pending:          resp.GetPending(),
 		PendingRemaining: int(resp.GetPendingRemaining()),
 	}

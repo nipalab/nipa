@@ -39,6 +39,7 @@ type Status struct {
 	Untracked []string
 	Missing   []string
 	Conflicts []string
+	Resolved  []string
 	// Pending names an operation waiting for continue or abort: merge or
 	// revert. PendingRemaining counts the revert targets still to apply.
 	Pending          string

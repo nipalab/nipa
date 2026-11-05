@@ -113,6 +113,7 @@ export function ChangesView({ root, op, message, onMessage, onPush, onCancelOp, 
   const busy = stage.isPending || unstage.isPending || discard.isPending || !!op;
   const empty = c.staged.length === 0 && c.unstaged.length === 0;
   const blocked = c.detached ? `HEAD is at tag ${c.detached}. Switch to a branch to push.` : undefined;
+  const openConflicts = c.conflicts.filter((p) => !c.resolved.includes(p)).length;
   const lockIssue = stagedLockIssue(c, lockStates, lockPaths, lock.isPending);
 
   return (
@@ -121,10 +122,10 @@ export function ChangesView({ root, op, message, onMessage, onPush, onCancelOp, 
         {c.detached && (
           <Banner icon={<Tag className="size-3.5 text-accent" />} text={`Viewing tag ${c.detached}`} />
         )}
-        {c.conflicts.length > 0 && (
+        {openConflicts > 0 && (
           <Banner
             icon={<AlertTriangle className="size-3.5 text-warning" />}
-            text={`${c.conflicts.length} conflicted file${c.conflicts.length === 1 ? "" : "s"}: resolve, stage, then push.`}
+            text={`${openConflicts} conflicted file${openConflicts === 1 ? "" : "s"}: resolve them in the Conflicts tab.`}
           />
         )}
         {!empty && (meta.data ?? []).length > 0 && (

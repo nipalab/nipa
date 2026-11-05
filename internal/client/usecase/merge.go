@@ -262,6 +262,8 @@ func (m *Merge) trueMerge(ctx context.Context, root string, url *domain.NipaUrl,
 		Conflicts:        applied.Conflicted,
 	}
 	if len(applied.Conflicted) > 0 {
+		state.ConflictKinds = applied.Kinds
+		state.ConflictBinary = applied.Binary
 		if err := m.localRepo.SaveTree(treeFromFiles(applied.Files)); err != nil {
 			return nil, err
 		}

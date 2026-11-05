@@ -1,10 +1,11 @@
 import { useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ArrowDownToLine, FileDiff, FolderTree, GitBranch, GitPullRequest, History, Info, Lock, Tag, Tags, Trash2 } from "lucide-react";
-import { desktop, type ChangeSet, type OpOutcome, type Repo } from "@/api/desktop";
+import { AlertTriangle, ArrowDownToLine, FileDiff, FolderTree, GitBranch, GitMerge, GitPullRequest, History, Info, Lock, Tag, Tags, Trash2 } from "lucide-react";
+import { desktop, type ChangeSet, type ConflictSet, type OpOutcome, type Repo } from "@/api/desktop";
 import { BranchesView } from "@/components/branches/BranchesView";
 import { ChangesView } from "@/components/changes/ChangesView";
 import { SparseDialog } from "@/components/clone/SparseDialog";
+import { ConflictsView } from "@/components/conflicts/ConflictsView";
 import { HistoryView } from "@/components/history/HistoryView";
 import { LocksView } from "@/components/locks/LocksView";
 import { MergeRequestsView } from "@/components/mr/MergeRequestsView";
@@ -16,10 +17,11 @@ import { cn, errorMessage } from "@/lib/utils";
 
 export type Notify = (message: string, tone?: "error" | "success") => void;
 
-type TabId = "changes" | "history" | "branches" | "mrs" | "locks" | "details";
+type TabId = "changes" | "conflicts" | "history" | "branches" | "mrs" | "locks" | "details";
 
 const tabs: { id: TabId; label: string; Icon: typeof FileDiff }[] = [
   { id: "changes", label: "Changes", Icon: FileDiff },
+  { id: "conflicts", label: "Conflicts", Icon: GitMerge },
   { id: "history", label: "History", Icon: History },
   { id: "branches", label: "Branches & tags", Icon: Tags },
   { id: "mrs", label: "Merge requests", Icon: GitPullRequest },
@@ -36,20 +38,31 @@ export function RepoView({ repo, removing, onRemove, notify }: RepoViewProps) {
   const [editingSparse, setEditingSparse] = useState(false);
 
   const changes = useQuery({ queryKey: ["changes", repo.root], queryFn: () => desktop.changes(repo.root), enabled: !repo.error });
+  const pending = changes.data?.pending;
+  const conflicts = useQuery({ queryKey: ["conflicts", repo.root], queryFn: () => desktop.conflicts(repo.root), enabled: !repo.error && !!pending });
   const refresh = () => {
-    for (const key of ["changes", "diff", "locks", "history", "branches", "tags"]) void queryClient.invalidateQueries({ queryKey: [key, repo.root] });
+    for (const key of ["changes", "diff", "locks", "history", "branches", "tags", "conflicts", "conflict-texts", "conflict-diff"]) void queryClient.invalidateQueries({ queryKey: [key, repo.root] });
   };
+  const finishing = useRef(false);
   const tagCheckout = useRef("");
   const operation = useRepoOperation(repo.root, {
     onDone: (op, outcome) => {
       refresh();
       if (op === "push") {
         setMessage("");
-        notify(`Pushed to ${repo.branch}${outcome.commitId ? ` (${outcome.commitId})` : ""}`, "success");
+        const what = finishing.current ? "Merged and pushed" : "Pushed";
+        finishing.current = false;
+        notify(`${what} to ${repo.branch}${outcome.commitId ? ` (${outcome.commitId})` : ""}`, "success");
         return;
       }
       if (op === "revert") {
         notify(...describeRevert(outcome));
+        if (outcome.revert?.conflicts?.length) setTab("conflicts");
+        return;
+      }
+      if (op === "merge") {
+        notify(...describeMerge(outcome, repo.branch));
+        if (outcome.merge?.conflicts?.length) setTab("conflicts");
         return;
       }
       void queryClient.invalidateQueries({ queryKey: ["repos"] });
@@ -58,6 +71,7 @@ export function RepoView({ repo, removing, onRemove, notify }: RepoViewProps) {
       else notify(`Up to date with ${outcome.branch || repo.branch}`, "success");
     },
     onError: (op, err) => {
+      finishing.current = false;
       refresh();
       notify(`${opLabel[op]} failed: ${errorMessage(err)}`);
     },
@@ -73,6 +87,17 @@ export function RepoView({ repo, removing, onRemove, notify }: RepoViewProps) {
     operation.run("switch", () => desktop.switchBranch(repo.root, branch));
   };
   const revert = (mode: "continue" | "skip" | "abort") => operation.run("revert", () => desktop.revert(repo.root, { mode }));
+  const merge = (source: string) => operation.run("merge", () => desktop.merge(repo.root, source));
+  const abortMerge = () => operation.run("merge", () => desktop.abortMerge(repo.root));
+  const finishMerge = () => {
+    finishing.current = true;
+    const source = conflicts.data?.theirs.label;
+    operation.run("push", () => desktop.push(repo.root, source ? `Merge branch '${source}' into '${repo.branch}'` : `Merge into '${repo.branch}'`));
+  };
+  const hasConflicts = !!pending && (changes.data?.conflicts.length ?? 0) > 0;
+  const openConflicts = changes.data ? changes.data.conflicts.filter((p) => !changes.data.resolved.includes(p)).length : 0;
+  const shownTabs = tabs.filter((t) => t.id !== "conflicts" || hasConflicts);
+  const current = tab === "conflicts" && !hasConflicts ? "changes" : tab;
 
   return (
     <div className="flex h-full flex-col">
@@ -126,27 +151,42 @@ export function RepoView({ repo, removing, onRemove, notify }: RepoViewProps) {
         </div>
       ) : (
         <>
-          {changes.data && <Banners changes={changes.data} branch={repo.branch} busy={!!op} onSwitch={switchTo} onRevert={revert} />}
+          {changes.data && (
+            <Banners
+              changes={changes.data}
+              conflicts={conflicts.data}
+              branch={repo.branch}
+              busy={!!op}
+              onSwitch={switchTo}
+              onRevert={revert}
+              onResolve={() => setTab("conflicts")}
+              onFinishMerge={finishMerge}
+              onAbortMerge={abortMerge}
+            />
+          )}
           <nav aria-label="Views" role="tablist" className="flex shrink-0 gap-1 border-b border-border px-4">
-            {tabs.map(({ id, label, Icon }) => (
+            {shownTabs.map(({ id, label, Icon }) => (
               <button
                 key={id}
                 type="button"
                 role="tab"
-                aria-selected={tab === id}
+                aria-selected={current === id}
                 onClick={() => setTab(id)}
                 className={cn(
                   "flex items-center gap-1.5 border-b-2 px-2 py-2 text-[13px]",
-                  tab === id ? "border-accent font-medium" : "border-transparent text-muted-foreground hover:text-foreground",
+                  current === id ? "border-accent font-medium" : "border-transparent text-muted-foreground hover:text-foreground",
                 )}
               >
                 <Icon className="size-3.5" />
                 {label}
+                {id === "conflicts" && openConflicts > 0 && <span className="rounded-full bg-warning/20 px-1.5 text-[10px] text-warning">{openConflicts}</span>}
               </button>
             ))}
           </nav>
           <div className="min-h-0 flex-1">
-            {tab === "changes" ? (
+            {current === "conflicts" ? (
+              <ConflictsView root={repo.root} busy={!!op} notify={notify} />
+            ) : current === "changes" ? (
               <ChangesView
                 root={repo.root}
                 op={op}
@@ -157,7 +197,7 @@ export function RepoView({ repo, removing, onRemove, notify }: RepoViewProps) {
                 onError={(msg) => notify(msg)}
                 notify={notify}
               />
-            ) : tab === "history" ? (
+            ) : current === "history" ? (
               <HistoryView
                 root={repo.root}
                 branch={repo.branch}
@@ -166,7 +206,7 @@ export function RepoView({ repo, removing, onRemove, notify }: RepoViewProps) {
                 notify={notify}
                 onRevert={(commit) => operation.run("revert", () => desktop.revert(repo.root, { target: commit.id }))}
               />
-            ) : tab === "branches" ? (
+            ) : current === "branches" ? (
               <BranchesView
                 root={repo.root}
                 branch={repo.branch}
@@ -174,14 +214,15 @@ export function RepoView({ repo, removing, onRemove, notify }: RepoViewProps) {
                 busy={!!op}
                 notify={notify}
                 onSwitch={switchTo}
+                onMerge={merge}
                 onCheckoutTag={(name) => {
                   tagCheckout.current = name;
                   operation.run("switch", () => desktop.checkoutTag(repo.root, name));
                 }}
               />
-            ) : tab === "mrs" ? (
+            ) : current === "mrs" ? (
               <MergeRequestsView root={repo.root} branch={repo.branch} notify={notify} />
-            ) : tab === "locks" ? (
+            ) : current === "locks" ? (
               <LocksView root={repo.root} notify={notify} />
             ) : (
               <Details repo={repo} busy={!!op} onEditSparse={() => setEditingSparse(true)} />
@@ -203,7 +244,17 @@ export function RepoView({ repo, removing, onRemove, notify }: RepoViewProps) {
   );
 }
 
-const opLabel: Record<OpName, string> = { push: "Push", update: "Update", sparse: "Checkout change", clone: "Clone", switch: "Switch", revert: "Revert" };
+const opLabel: Record<OpName, string> = { push: "Push", update: "Update", sparse: "Checkout change", clone: "Clone", switch: "Switch", revert: "Revert", merge: "Merge" };
+
+export function describeMerge(outcome: OpOutcome, branch: string): [string, "error" | "success" | undefined] {
+  const m = outcome.merge;
+  const conflicts = m?.conflicts ?? [];
+  if (conflicts.length > 0) return [`The merge stopped: ${conflicts.length} file${conflicts.length === 1 ? "" : "s"} conflict. Resolve them, then finish the merge.`, "error"];
+  if (m?.aborted) return ["Merge aborted; the clone is back at the branch head", "success"];
+  if (m?.upToDate) return [`${branch} already has those changes`, "success"];
+  if (m?.fastForwarded) return [`Fast-forwarded ${branch}`, "success"];
+  return [`Merged and pushed to ${branch}`, "success"];
+}
 
 export function describeRevert(outcome: OpOutcome): [string, "error" | "success" | undefined] {
   const r = outcome.revert;
@@ -215,11 +266,28 @@ export function describeRevert(outcome: OpOutcome): [string, "error" | "success"
   return ["Reverted and pushed", "success"];
 }
 
-type BannersProps = { changes: ChangeSet; branch: string; busy: boolean; onSwitch: (branch: string) => void; onRevert: (mode: "continue" | "skip" | "abort") => void };
+type BannersProps = {
+  changes: ChangeSet;
+  conflicts?: ConflictSet;
+  branch: string;
+  busy: boolean;
+  onSwitch: (branch: string) => void;
+  onRevert: (mode: "continue" | "skip" | "abort") => void;
+  onResolve: () => void;
+  onFinishMerge: () => void;
+  onAbortMerge: () => void;
+};
 
-function Banners({ changes, branch, busy, onSwitch, onRevert }: BannersProps) {
+function Banners({ changes, conflicts: set, branch, busy, onSwitch, onRevert, onResolve, onFinishMerge, onAbortMerge }: BannersProps) {
+  const open = changes.conflicts.filter((p) => !changes.resolved.includes(p)).length;
+  const resolveButton = open > 0 && (
+    <Button size="sm" disabled={busy} onClick={onResolve}>
+      <GitMerge />
+      Resolve conflicts
+    </Button>
+  );
   if (changes.pending === "revert") {
-    const conflicts = changes.conflicts.length;
+    const conflicts = open;
     const remaining = changes.pendingRemaining ?? 0;
     return (
       <div role="status" className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border bg-danger-soft px-5 py-2 text-[12px]">
@@ -230,7 +298,8 @@ function Banners({ changes, branch, busy, onSwitch, onRevert }: BannersProps) {
             : "A revert is waiting to be continued."}
           {remaining > 1 && ` ${remaining - 1} more commit${remaining === 2 ? "" : "s"} to revert after this one.`}
         </span>
-        <Button size="sm" variant="primary" disabled={busy} onClick={() => onRevert("continue")}>
+        {resolveButton}
+        <Button size="sm" variant="primary" disabled={busy || open > 0} title={open > 0 ? "Resolve every conflict first" : undefined} onClick={() => onRevert("continue")}>
           Continue
         </Button>
         <Button size="sm" disabled={busy} onClick={() => onRevert("skip")} title="Leave this commit as it is and go on with the next">
@@ -243,9 +312,21 @@ function Banners({ changes, branch, busy, onSwitch, onRevert }: BannersProps) {
     );
   }
   if (changes.pending === "merge") {
+    const source = set?.theirs.label;
     return (
-      <div role="status" className="flex shrink-0 items-center gap-2 border-b border-border bg-danger-soft px-5 py-2 text-[12px]">
-        <AlertTriangle className="size-3.5 text-danger" />A merge is in progress in this clone. Push to finish it, or run nipa merge --abort.
+      <div role="status" className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border bg-danger-soft px-5 py-2 text-[12px]">
+        <AlertTriangle className="size-3.5 text-danger" />
+        <span className="mr-auto">
+          {source ? `Merging ${source} into ${branch}: ` : "A merge is waiting: "}
+          {open > 0 ? `${open} conflicting file${open === 1 ? "" : "s"} left to resolve.` : "everything is resolved. Finish to push the merge commit."}
+        </span>
+        {resolveButton}
+        <Button size="sm" variant="primary" disabled={busy || open > 0} title={open > 0 ? "Resolve every conflict first" : "Push the merge commit"} onClick={onFinishMerge}>
+          Finish merge
+        </Button>
+        <Button size="sm" disabled={busy} onClick={onAbortMerge} title="Drop the merge and restore the branch head">
+          Abort
+        </Button>
       </div>
     );
   }

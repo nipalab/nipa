@@ -164,6 +164,7 @@ func TestService_ChangesGroupsStatus(t *testing.T) {
 		Missing:          []string{"gone.wav"},
 		Untracked:        []string{"new.csv"},
 		Conflicts:        []string{"c.txt"},
+		Resolved:         []string{"c.txt"},
 		Pending:          "revert",
 		PendingRemaining: 2,
 	}
@@ -183,6 +184,7 @@ func TestService_ChangesGroupsStatus(t *testing.T) {
 			{Path: "z.txt", Status: "modified", Kind: "text"},
 		},
 		Conflicts:        []string{"c.txt"},
+		Resolved:         []string{"c.txt"},
 		Pending:          "revert",
 		PendingRemaining: 2,
 	}, changes)

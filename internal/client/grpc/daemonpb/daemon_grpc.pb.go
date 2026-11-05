@@ -33,6 +33,8 @@ const (
 	NipaDaemon_Push_FullMethodName                          = "/nipadaemon.NipaDaemon/Push"
 	NipaDaemon_Merge_FullMethodName                         = "/nipadaemon.NipaDaemon/Merge"
 	NipaDaemon_Revert_FullMethodName                        = "/nipadaemon.NipaDaemon/Revert"
+	NipaDaemon_Conflicts_FullMethodName                     = "/nipadaemon.NipaDaemon/Conflicts"
+	NipaDaemon_ResolveConflict_FullMethodName               = "/nipadaemon.NipaDaemon/ResolveConflict"
 	NipaDaemon_Diff_FullMethodName                          = "/nipadaemon.NipaDaemon/Diff"
 	NipaDaemon_DiffFiles_FullMethodName                     = "/nipadaemon.NipaDaemon/DiffFiles"
 	NipaDaemon_ReadBlob_FullMethodName                      = "/nipadaemon.NipaDaemon/ReadBlob"
@@ -98,6 +100,8 @@ type NipaDaemonClient interface {
 	Push(ctx context.Context, in *PushRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[OpEvent], error)
 	Merge(ctx context.Context, in *MergeOpRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[OpEvent], error)
 	Revert(ctx context.Context, in *RevertOpRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[OpEvent], error)
+	Conflicts(ctx context.Context, in *ConflictsRequest, opts ...grpc.CallOption) (*ConflictsResponse, error)
+	ResolveConflict(ctx context.Context, in *ResolveConflictRequest, opts ...grpc.CallOption) (*StatusResponse, error)
 	Diff(ctx context.Context, in *DiffRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[DiffEvent], error)
 	DiffFiles(ctx context.Context, in *DiffRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[DiffFileEvent], error)
 	ReadBlob(ctx context.Context, in *ReadBlobRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[BlobEvent], error)
@@ -337,6 +341,26 @@ func (c *nipaDaemonClient) Revert(ctx context.Context, in *RevertOpRequest, opts
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type NipaDaemon_RevertClient = grpc.ServerStreamingClient[OpEvent]
+
+func (c *nipaDaemonClient) Conflicts(ctx context.Context, in *ConflictsRequest, opts ...grpc.CallOption) (*ConflictsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ConflictsResponse)
+	err := c.cc.Invoke(ctx, NipaDaemon_Conflicts_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nipaDaemonClient) ResolveConflict(ctx context.Context, in *ResolveConflictRequest, opts ...grpc.CallOption) (*StatusResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StatusResponse)
+	err := c.cc.Invoke(ctx, NipaDaemon_ResolveConflict_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
 
 func (c *nipaDaemonClient) Diff(ctx context.Context, in *DiffRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[DiffEvent], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
@@ -869,6 +893,8 @@ type NipaDaemonServer interface {
 	Push(*PushRequest, grpc.ServerStreamingServer[OpEvent]) error
 	Merge(*MergeOpRequest, grpc.ServerStreamingServer[OpEvent]) error
 	Revert(*RevertOpRequest, grpc.ServerStreamingServer[OpEvent]) error
+	Conflicts(context.Context, *ConflictsRequest) (*ConflictsResponse, error)
+	ResolveConflict(context.Context, *ResolveConflictRequest) (*StatusResponse, error)
 	Diff(*DiffRequest, grpc.ServerStreamingServer[DiffEvent]) error
 	DiffFiles(*DiffRequest, grpc.ServerStreamingServer[DiffFileEvent]) error
 	ReadBlob(*ReadBlobRequest, grpc.ServerStreamingServer[BlobEvent]) error
@@ -965,6 +991,12 @@ func (UnimplementedNipaDaemonServer) Merge(*MergeOpRequest, grpc.ServerStreaming
 }
 func (UnimplementedNipaDaemonServer) Revert(*RevertOpRequest, grpc.ServerStreamingServer[OpEvent]) error {
 	return status.Errorf(codes.Unimplemented, "method Revert not implemented")
+}
+func (UnimplementedNipaDaemonServer) Conflicts(context.Context, *ConflictsRequest) (*ConflictsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Conflicts not implemented")
+}
+func (UnimplementedNipaDaemonServer) ResolveConflict(context.Context, *ResolveConflictRequest) (*StatusResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ResolveConflict not implemented")
 }
 func (UnimplementedNipaDaemonServer) Diff(*DiffRequest, grpc.ServerStreamingServer[DiffEvent]) error {
 	return status.Errorf(codes.Unimplemented, "method Diff not implemented")
@@ -1338,6 +1370,42 @@ func _NipaDaemon_Revert_Handler(srv interface{}, stream grpc.ServerStream) error
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type NipaDaemon_RevertServer = grpc.ServerStreamingServer[OpEvent]
+
+func _NipaDaemon_Conflicts_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ConflictsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaDaemonServer).Conflicts(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaDaemon_Conflicts_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaDaemonServer).Conflicts(ctx, req.(*ConflictsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NipaDaemon_ResolveConflict_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ResolveConflictRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaDaemonServer).ResolveConflict(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaDaemon_ResolveConflict_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaDaemonServer).ResolveConflict(ctx, req.(*ResolveConflictRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
 
 func _NipaDaemon_Diff_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(DiffRequest)
@@ -2142,6 +2210,14 @@ var NipaDaemon_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Restore",
 			Handler:    _NipaDaemon_Restore_Handler,
+		},
+		{
+			MethodName: "Conflicts",
+			Handler:    _NipaDaemon_Conflicts_Handler,
+		},
+		{
+			MethodName: "ResolveConflict",
+			Handler:    _NipaDaemon_ResolveConflict_Handler,
 		},
 		{
 			MethodName: "ProxyBranchList",

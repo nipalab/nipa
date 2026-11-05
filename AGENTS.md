@@ -78,7 +78,11 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   `RevisionFiles` (merge base vs source head in the asset viewers) and the
   `CreateMergeRequest`/`EditMergeRequest`/`SetDraft`/`MergeMergeRequest`/
   `Close`/`Reopen`/`SubmitReview`/`Comment`/`Reply`/`ResolveThread` actions
-  (inline line threads through `TextDiff`'s `comments` prop),
+  (inline line threads through `TextDiff`'s `comments` prop), Conflicts tab
+  via `Merge`/`AbortMerge`/`Conflicts`/`ConflictTexts`/`ConflictDiff`/
+  `ResolveConflict` (three-way text editor over the marker blocks, take
+  mine/theirs with the asset viewers for binaries, merge banner with Finish
+  merge/Abort),
   file locks via `LockStatus`/`Lock`/`Unlock` (row lock badges, push box
   blocks on someone else's lock and offers "Lock N files", Locks tab with
   release and "Lock & edit" through `PickFile`/`OpenFile`),
@@ -568,7 +572,10 @@ org/project context from `.nipa/config`; server-scoped `AccountStatus`/`Login`/`
 (`Options.Accounts`, wired in `cmd/nipa/serve.go`; the daemon never prompts),
 `ProxyTagList`/`ProxyTagCreate`/`ProxyTagDelete` forward the tag RPCs,
 `ProxyMergeRequestUpdate`/`Commits`/`Checks`/`Timeline`/`AddComment`/`Reply`/
-`Resolve` complete the merge-request surface, `Status`
+`Resolve` complete the merge-request surface, `Conflicts`/`ResolveConflict`
+(`usecase.Conflicts` over the merge/revert state's `conflict_kinds`,
+`conflict_binary` and `resolved` fields, filled by `applyThreeWay`) list and
+settle conflicted files for the GUI, `Status`
 reports a waiting merge/revert as `pending` (+ `pending_remaining`),
 `Clone` streams `OpEvent`s outside any repo slot and `SetSparse` stores the
 prefixes then updates under the exclusive slot; `LockStatus` joins the lock list,

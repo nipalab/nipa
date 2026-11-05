@@ -75,6 +75,7 @@ message StatusResponse {
     repeated string added = 9; // subset of staged: paths the synced snapshot does not track yet
     string pending = 10; // merge or revert while it waits for continue/abort
     int32 pending_remaining = 11; // revert targets still to apply, the current one included
+    repeated string resolved = 12; // conflicts already settled through ResolveConflict
 }
 
 message StatusHead {
@@ -126,6 +127,38 @@ message RevertOpRequest {
     bool no_commit = 6;
     int32 mainline = 7;
     string message = 8;
+}
+
+message ConflictsRequest {
+    string root = 1;
+}
+
+message ConflictRevision {
+    string id = 1; // base36 commit ID; empty when that side has no commit
+    string label = 2;
+}
+
+message ConflictFile {
+    string path = 1;
+    string kind = 2; // text, binary, add_add, modify_delete, delete_modify
+    bool binary = 3;
+    bool resolved = 4;
+    string viewer = 5; // internal/preview kind used to compare the versions
+}
+
+message ConflictsResponse {
+    string op = 1; // merge or revert; empty when nothing is pending
+    ConflictRevision base = 2;
+    ConflictRevision ours = 3;
+    ConflictRevision theirs = 4;
+    repeated ConflictFile files = 5;
+}
+
+message ResolveConflictRequest {
+    string root = 1;
+    string path = 2;
+    string choice = 3; // ours, theirs, content, working, delete
+    bytes content = 4; // the resolved file when choice is content
 }
 
 message DiffRequest {
@@ -766,6 +799,8 @@ service NipaDaemon {
     rpc Push(PushRequest) returns (stream OpEvent);
     rpc Merge(MergeOpRequest) returns (stream OpEvent);
     rpc Revert(RevertOpRequest) returns (stream OpEvent);
+    rpc Conflicts(ConflictsRequest) returns (ConflictsResponse);
+    rpc ResolveConflict(ResolveConflictRequest) returns (StatusResponse);
     rpc Diff(DiffRequest) returns (stream DiffEvent);
     rpc DiffFiles(DiffRequest) returns (stream DiffFileEvent); // structured; format is ignored
     rpc ReadBlob(ReadBlobRequest) returns (stream BlobEvent);
