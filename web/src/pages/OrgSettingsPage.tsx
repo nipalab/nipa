@@ -175,6 +175,7 @@ function GroupsTab({ org }: { org: string }) {
   const {
     data: detail,
     error: detailError,
+    loading: detailLoading,
     reload: reloadDetail,
   } = useAsync(() => (selected ? getGroup(org, selected) : Promise.resolve(null)), [org, selected])
   const { run, error: actionError, clearError } = useAction(() => {
@@ -283,7 +284,7 @@ function GroupsTab({ org }: { org: string }) {
           ))}
         </SettingsCard>
       )}
-      {selected && !detail && <Loading variant="skeleton" />}
+      {selected && !detail && detailLoading && <Loading variant="skeleton" />}
 
       {creating && <CreateGroupDialog org={org} onClose={() => setCreating(false)} onCreated={reloadGroups} />}
       {addingMember && selected && (

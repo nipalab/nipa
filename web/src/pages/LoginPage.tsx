@@ -22,12 +22,13 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null)
   const [unconfirmed, setUnconfirmed] = useState(false)
   const [busy, setBusy] = useState(false)
-  const { resend, busy: resendBusy, notice, error: resendError } = useResendVerification()
+  const { resend, busy: resendBusy, notice, error: resendError, reset: resetResend } = useResendVerification()
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
     setUnconfirmed(false)
+    resetResend()
     if (!email.trim() || !password) {
       setError('Enter your username/email and password.')
       return

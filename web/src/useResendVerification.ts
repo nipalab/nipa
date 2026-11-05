@@ -27,5 +27,10 @@ export function useResendVerification() {
     }
   }, [])
 
-  return { resend, busy, notice, error }
+  const reset = useCallback(() => {
+    setNotice(null)
+    setError(null)
+  }, [])
+
+  return { resend, busy, notice, error, reset }
 }
