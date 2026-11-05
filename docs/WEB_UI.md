@@ -38,28 +38,33 @@ edition.
 | `/oauth/callback` | social login handoff | exchanges `?code=` for a session, returns to the `?from=` destination, and shows `email_conflict`/`email_required` guidance |
 | `/onboarding` | first-run setup | names the first workspace and its URL slug (skipped when the user already has an organization) |
 | `/dashboard` | repositories | organizations the caller belongs to; "New organization" dialog |
-| `/:org` | repositories | project list filtered by PBAC read |
+| `/:org` | repositories | project list filtered by PBAC read; org owners also get a Repositories / Settings tab bar |
+| `/:org/new` | new repository | org owners only; name + slug + description |
 | `/:org/:project` | tree browser | default branch root; legacy `?rev=&path=` links redirect |
 | `/:org/:project/tree/:rev/*` | tree browser | branch/commit + directory; per-file last commit, README, go-to-file |
-| `/:org/:project/blob/:rev/*` | file viewer | line numbers + syntax highlighting, image preview, raw/copy/download |
-| `/:org/:project/commits[/:commit]` | history + diff | commit diff against its parent; `?path=` filters by file/dir |
-| `/:org/:project/branches` | branches | create; default/protect/rename/delete for project admins |
+| `/:org/:project/tree` | tree browser | rev-less form of the tree route (`?path=`) |
+| `/:org/:project/blob`, `/blob/:rev/*` | file viewer | line numbers + syntax highlighting, image preview, raw/copy/download; binary files get a Lock/Unlock button (holder, branch scope and covering directory locks are shown) |
+| `/:org/:project/commits[/:commit]` | history + diff | commit diff against its parent; `?path=` filters by file/dir; "Load more" pages 50 commits at a time (`start`/`limit`) |
+| `/:org/:project/compare` | compare | `?base=&head=` take branches, tags or commit ids; renders the diff of `head` against `base` (`GET …/commits/{commit}/diff?base=`) |
+| `/:org/:project/branches` | branches | "Load more" paging (keyset cursor); default/protect/rename/delete for project admins, delete and unprotect ask for confirmation; links to Compare |
+| `/:org/:project/branches/new` | new branch | name + optional fork point (branch or commit id) |
+| `/:org/:project/tags` | tags | list with "Load more" paging, create (name, target branch/commit, message) and delete (confirmed) for writers |
 | `/:org/:project/merges[/new]` | merge requests | list with status/author/source/target/assignee filters plus free-text search (status includes a `draft` pseudo-filter) and "Load more" pagination; dedicated create page with a "create as draft" checkbox |
 | `/:org/:project/merges/:id` | merge request detail | GitHub-style conversation (description, timeline, comments, reviewers/participants sidebar, merge box) plus Commits and File changes tabs; author/admin can edit title/description |
 | `/:org/:project/locks` | file locks | list binary asset locks, lock/unlock |
-| `/:org/:project/settings` | project settings | branch protection + ACL rules/defaults + webhooks + email deliveries |
-| `/:org/settings` | organization settings | members and groups (org owner or global admin) + storage card (usage, quota, per-project breakdown; hidden when the server has no ledger) |
-| `/admin/users` | user administration | GitHub-style list with filter, avatar/role labels and row actions |
+| `/:org/:project/settings` | project settings | tabs via `?tab=`: General (rename, description, delete for org owners), Access (ACL rules/defaults), Branches (protection), Webhooks, Email deliveries |
+| `/:org/settings` | organization settings | tabs via `?tab=`: Members, Groups and Storage (usage, quota, per-project breakdown; the tab is hidden when the server has no ledger); org owner or global admin |
+| `/admin/users` | user administration | list with filter, avatar/role labels and row actions: make/remove admin, edit email, reset password (dialog), deactivate (confirmed) |
 | `/admin/users/new` | new user | dedicated create page (name, email, password) |
-| `/settings/profile` | public profile | GitHub-style settings layout: avatar preview + photo URL + name, password change with confirmation/validation, connected social accounts (link/unlink; hidden when the server has no social login) and SSH key management (list/add/remove) |
-| `/settings/billing` | billing | the caller's billing-owner aggregate usage, quota and per-org breakdown; super admins can set/clear owner quotas; linked from the header and profile settings, shows an empty state when the server has no ledger |
+| `/settings/profile` | account settings | tabs via `?tab=`: Public profile, Password, Connected accounts (link/unlink; hidden when the server has no social login) and SSH keys (list/add/remove); Billing shares the same sidebar |
+| `/settings/billing` | billing | account settings tab: the caller's billing-owner aggregate usage, quota and per-org breakdown; super admins can set/clear owner quotas; linked from the header and profile settings, shows an empty state when the server has no ledger |
 
 ## Reserved slugs
 
 Organization and project slugs cannot use paths the router already owns.
-Organizations reject `admin, api, assets, auth, dashboard, docs, healthz,
-login, metrics, oauth, onboarding, readyz, register, settings, verify, version
-and web`; projects reject `new` and `settings`. The check lives in
+Organizations reject `admin, api, assets, auth, dashboard, debug, docs,
+healthz, login, metrics, oauth, onboarding, pricing, readyz, register,
+screenshots, settings, verify, version and web`; projects reject `new` and `settings`. The check lives in
 `internal/usecase/reserved.go` and is mirrored in `web/src/slug.ts`, so the
 forms reject a reserved slug before the request reaches the server.
 
@@ -72,15 +77,45 @@ paths (used for "go to file" search). History walks at most 50 first-parent
 commits, comparing subtree hashes, and stops once every entry is resolved.
 
 `GET …/commits?path=` keeps only the commits that touched a file or directory
-(scan capped at 500 commits). Hidden paths return 404, like the tree and blob
+(scan capped at 500 commits). `start` (inclusive commit id) and `limit` page the
+list, and `GET …/commits/{commit}/diff?base=` diffs against any base commit
+(the compare view). Hidden paths return 404, like the tree and blob
 endpoints.
 
 ## Tags API
 
 Release tags are exposed at `GET/POST …/tags` and `GET/DELETE …/tags/{name}`
-(`internal/http/api/tag.go`); the web API client already provides
-`listTags`/`createTag`/`deleteTag` in `web/src/api/endpoints.ts`. There is no
-Tags page in the SPA yet.
+(`internal/http/api/tag.go`). The SPA Tags page (`/:org/:project/tags`) uses
+`listTags` (keyset cursor `last_id` + `last_created_at`; the page over-fetches
+one row to know whether a next page exists), `createTag` and `deleteTag` in
+`web/src/api/endpoints.ts`; `getTag` is available for a single tag. The tree,
+blob and compare ref pickers have a Tags tab that loads the first 100 tags when
+opened. The server resolves tree/blob/diff revisions as branch names or commit
+ids, so choosing a tag navigates with the tag's commit id and the picker shows
+the tag name while that commit is selected.
+
+## UI conventions
+
+Pages share a small set of building blocks (`web/src/components/` and
+`web/src/hooks.ts`) instead of hand-rolled markup:
+
+- `Page` / `RepoPageShell` (Primer `PageHeader`, breadcrumbs), `SectionHeading`,
+  `SettingsCard` / `SettingsRow` / `SettingsLayout` (sidebar + `?tab=`),
+  `FormCard`, `RowList` / `Row`, `DataTable` (loading/empty states included),
+  `EmptyState` (Blankslate), `NoPermission`, `ErrorBanner`, `Loading`,
+  `LoadMore`.
+- Dialogs: `FormDialog` (errors inside the dialog; return `false` from
+  `onSubmit` to stay open) and `useConfirmAction()` for destructive actions;
+  nothing uses `window.prompt`/`confirm`.
+- Data: `useAsync`, `usePaged` + `sliceCursorPage` (first page + load more),
+  `useAction` (busy/error/reload), `useOrgRole`, `useOrgMembers` (shared
+  30 s cache cleared on sign-out), `useClipboard`.
+- Display: `Timestamp`, `StateBadge`, `ActorAvatar`; `formatBytes` uses binary
+  units.
+- Design tokens: `main.tsx` imports the base size/typography and functional
+  radius/typography stylesheets next to `dark.css`; `src/test/tokens.test.ts`
+  fails when a component uses a size/typography token that is not loaded (an
+  undefined `var()` invalidates the whole declaration, e.g. margin `auto`).
 
 ## SSH keys API
 

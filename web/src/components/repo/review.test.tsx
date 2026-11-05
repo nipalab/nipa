@@ -549,6 +549,24 @@ describe('MergeRequestOverview', () => {
     expect(container.textContent).not.toContain('review is locked')
   })
 
+  it('filters conversation threads by resolved state', async () => {
+    const open: ThreadResponse = { ...thread, id: 'ta', resolved: false, comments: [{ ...thread.comments[0], id: 'ca', body: 'still open body' }] }
+    const done: ThreadResponse = { ...thread, id: 'tb', resolved: true, comments: [{ ...thread.comments[0], id: 'cb', body: 'already fixed body' }] }
+    const { container } = await render(<MergeRequestOverview {...base} threads={[open, done]} />)
+    const choose = (label: string) =>
+      click([...container.querySelectorAll('button')].find((button) => button.textContent === label))
+    expect(container.textContent).toContain('still open body')
+    expect(container.textContent).toContain('already fixed body')
+    choose('Unresolved')
+    expect(container.textContent).toContain('still open body')
+    expect(container.textContent).not.toContain('already fixed body')
+    choose('Resolved')
+    expect(container.textContent).not.toContain('still open body')
+    expect(container.textContent).toContain('already fixed body')
+    choose('All threads')
+    expect(container.textContent).toContain('still open body')
+  })
+
   it('shows inline code threads with a link to the file', async () => {
     const inlineThread: ThreadResponse = { ...thread, id: 't2', file_path: 'code.txt', new_line: 2 }
     const { container } = await render(

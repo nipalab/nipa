@@ -9,7 +9,10 @@ import { RepoBreadcrumb } from '../components/repo/RepoBreadcrumb'
 import { RepoPageShell } from '../components/repo/RepoPageShell'
 import { blobUrl, commitsUrl } from '../components/repo/repoPaths'
 import { useRepoChrome } from '../components/repo/useRepoChrome'
+import { FileLockButton } from '../components/repo/FileLockButton'
+import { useTags } from '../components/repo/useTags'
 import { ErrorBanner, Loading } from '../components/ui'
+import { useAuth } from '../auth'
 import { useAsync, useClipboard } from '../hooks'
 
 const CodeView = lazy(() => import('../components/repo/CodeView').then((module) => ({ default: module.CodeView })))
@@ -36,6 +39,9 @@ export default function BlobPage() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const { branches, canWrite, canAdmin, defaultBranch } = useRepoChrome(org, project)
+  const { tags, load: loadTags } = useTags(org, project)
+  const { me } = useAuth()
+  const [lockError, setLockError] = useState<string | null>(null)
 
   const legacyRev = searchParams.get('rev') ?? ''
   const path = splat || searchParams.get('path') || ''
@@ -78,6 +84,9 @@ export default function BlobPage() {
   }
 
   const linkRev = rev || defaultBranch
+  const onDefaultBranch = linkRev === defaultBranch
+  const lockBranch = onDefaultBranch ? '' : linkRev
+  const lockable = onDefaultBranch || (branches?.some((branch) => branch.name === linkRev) ?? false)
   const name = path.split('/').pop() || path
   const lines = text === null ? 0 : countLines(text)
 
@@ -117,6 +126,9 @@ export default function BlobPage() {
             branches={branches}
             rev={linkRev}
             onSelect={(nextRev) => navigate(blobUrl(org, project, nextRev, path))}
+            tags={tags}
+            onOpen={loadTags}
+            onSelectTag={(tag) => navigate(blobUrl(org, project, tag.commit_id, path))}
           />
           <RepoBreadcrumb org={org} project={project} rev={linkRev} path={path} leafIsFile />
         </Stack>
@@ -133,6 +145,9 @@ export default function BlobPage() {
               {copied ? 'Copied' : 'Copy'}
             </Button>
           )}
+          {file?.isBinary && (
+            <FileLockButton org={org} project={project} path={path} branch={lockBranch} me={me?.id} canWrite={canWrite && lockable} onError={setLockError} />
+          )}
           {file && (
             <Button size="small" leadingVisual={DownloadIcon} onClick={download}>
               Download
@@ -146,7 +161,7 @@ export default function BlobPage() {
         </Stack>
       </Stack>
 
-      <ErrorBanner error={error} />
+      <ErrorBanner error={error ?? lockError} />
       {loading && <Loading />}
       {!loading && file && (
         <div

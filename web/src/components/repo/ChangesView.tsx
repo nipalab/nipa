@@ -51,6 +51,8 @@ export function ChangesView({
   onResolveThread,
   onEditComment,
   onDeleteComment,
+  onDeleteThread,
+  canAdmin,
 }: {
   files: DiffFileResponse[]
   threads?: ThreadResponse[]
@@ -67,6 +69,8 @@ export function ChangesView({
   onResolveThread?: (threadId: string, resolved: boolean) => void
   onEditComment?: (threadId: string, commentId: string, body: string) => void
   onDeleteComment?: (threadId: string, commentId: string) => void
+  onDeleteThread?: (threadId: string) => void
+  canAdmin?: boolean
 }) {
   const [mode, setMode] = useState<ViewMode>('split')
   const [filter, setFilter] = useState('')
@@ -217,6 +221,8 @@ export function ChangesView({
               onResolveThread={onResolveThread}
               onEditComment={onEditComment}
               onDeleteComment={onDeleteComment}
+              onDeleteThread={onDeleteThread}
+              canAdmin={canAdmin}
             />
           ))
         )}

@@ -195,8 +195,19 @@ export async function fetchBlob(
   }
 }
 
-export function listBranches(org: string, project: string): Promise<BranchResponse[]> {
-  return apiJson(`${projectBase(org, project)}/branches`)
+export function listBranches(
+  org: string,
+  project: string,
+  options: { limit?: number; after?: Pick<BranchResponse, 'id' | 'updated_at'> } = {},
+): Promise<BranchResponse[]> {
+  const params = new URLSearchParams()
+  if (options.limit) params.set('limit', String(options.limit))
+  if (options.after) {
+    params.set('last_id', options.after.id)
+    params.set('last_updated_at', options.after.updated_at)
+  }
+  const query = params.toString()
+  return apiJson(`${projectBase(org, project)}/branches${query ? `?${query}` : ''}`)
 }
 
 export function createBranch(org: string, project: string, name: string, from: string): Promise<BranchResponse> {
@@ -254,8 +265,23 @@ export function setBranchProtection(
   })
 }
 
-export function listTags(org: string, project: string): Promise<TagResponse[]> {
-  return apiJson(`${projectBase(org, project)}/tags`)
+export function listTags(
+  org: string,
+  project: string,
+  options: { limit?: number; after?: Pick<TagResponse, 'id' | 'created_at'> } = {},
+): Promise<TagResponse[]> {
+  const params = new URLSearchParams()
+  if (options.limit) params.set('limit', String(options.limit))
+  if (options.after) {
+    params.set('last_id', options.after.id)
+    params.set('last_created_at', options.after.created_at)
+  }
+  const query = params.toString()
+  return apiJson(`${projectBase(org, project)}/tags${query ? `?${query}` : ''}`)
+}
+
+export function getTag(org: string, project: string, name: string): Promise<TagResponse> {
+  return apiJson(`${projectBase(org, project)}/tags/${encodeURIComponent(name)}`)
 }
 
 export function createTag(org: string, project: string, name: string, from: string, message = ''): Promise<TagResponse> {
@@ -269,16 +295,30 @@ export function deleteTag(org: string, project: string, name: string): Promise<M
   return apiJson(`${projectBase(org, project)}/tags/${encodeURIComponent(name)}`, { method: 'DELETE' })
 }
 
-export function listCommits(org: string, project: string, branch: string, path = ''): Promise<CommitResponse[]> {
+export function listCommits(
+  org: string,
+  project: string,
+  branch: string,
+  path = '',
+  options: { start?: string; limit?: number } = {},
+): Promise<CommitResponse[]> {
   const params = new URLSearchParams()
   if (branch) params.set('branch', branch)
   if (path) params.set('path', path)
+  if (options.start) params.set('start', options.start)
+  if (options.limit) params.set('limit', String(options.limit))
   const query = params.toString()
   return apiJson(`${projectBase(org, project)}/commits${query ? `?${query}` : ''}`)
 }
 
-export function getCommitDiff(org: string, project: string, commit: string): Promise<CommitDiffResponse> {
-  return apiJson(`${projectBase(org, project)}/commits/${encodeURIComponent(commit)}/diff`)
+export function getCommitDiff(
+  org: string,
+  project: string,
+  commit: string,
+  base?: string,
+): Promise<CommitDiffResponse> {
+  const query = base ? `?base=${encodeURIComponent(base)}` : ''
+  return apiJson(`${projectBase(org, project)}/commits/${encodeURIComponent(commit)}/diff${query}`)
 }
 
 export function listMergeRequests(

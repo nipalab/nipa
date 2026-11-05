@@ -4,6 +4,7 @@ import { useParams, useSearchParams } from 'react-router-dom'
 import {
   addMergeRequestComment,
   deleteMergeRequestComment,
+  deleteMergeRequestThread,
   getMergeRequest,
   getMergeRequestDiff,
   getMergeRequestReviewState,
@@ -185,6 +186,8 @@ export default function MergeRequestPage() {
         runComment(() => updateMergeRequestComment(org, project, id, threadId, commentId, body)),
       onDeleteComment: (threadId: string, commentId: string) =>
         runComment(() => deleteMergeRequestComment(org, project, id, threadId, commentId)),
+      onDeleteThread: (threadId: string) => runComment(() => deleteMergeRequestThread(org, project, id, threadId)),
+      canAdmin,
     }
   }
 

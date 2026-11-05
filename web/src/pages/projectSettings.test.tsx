@@ -109,7 +109,7 @@ afterEach(() => {
 describe('ProjectSettingsPage access rules', () => {
   it('shows the subject name and email instead of the raw ids', async () => {
     stubSettingsRoutes()
-    window.history.pushState({}, '', '/sticker/backend/settings')
+    window.history.pushState({}, '', '/sticker/backend/settings?tab=access')
     const container = document.createElement('div')
     container.id = 'root'
     document.body.appendChild(container)
@@ -154,7 +154,7 @@ describe('ProjectSettingsPage path defaults', () => {
   const defaults = [{ path_prefix: 'assets/textures', permission: 3 }]
 
   it('locks the path prefix when editing an existing default', async () => {
-    const root = await renderSettings('/sticker/backend/settings', defaults)
+    const root = await renderSettings('/sticker/backend/settings?tab=access', defaults)
     await waitForText('assets/textures')
 
     await act(async () => {
@@ -173,7 +173,7 @@ describe('ProjectSettingsPage path defaults', () => {
   })
 
   it('keeps the path prefix editable when adding a default', async () => {
-    const root = await renderSettings('/sticker/backend/settings', defaults)
+    const root = await renderSettings('/sticker/backend/settings?tab=access', defaults)
     await waitForText('assets/textures')
 
     await act(async () => {
@@ -190,14 +190,14 @@ describe('ProjectSettingsPage path defaults', () => {
 })
 
 describe('ProjectSettingsPage github-style navigation', () => {
-  it('renders a settings sidebar with access, branches, webhooks and email', async () => {
-    const root = await renderSettings('/sticker/backend/settings')
+  it('renders a settings sidebar with general, access, branches, webhooks and email', async () => {
+    const root = await renderSettings('/sticker/backend/settings?tab=access')
     await waitForText('Access rules')
 
     const nav = settingsNav()
     expect(nav).not.toBeNull()
     const labels = Array.from(nav?.querySelectorAll('a') ?? []).map((link) => link.textContent)
-    expect(labels).toEqual(['Access', 'Branches', 'Webhooks', 'Email deliveries'])
+    expect(labels).toEqual(['General', 'Access', 'Branches', 'Webhooks', 'Email deliveries'])
     expect(nav?.querySelector('a[aria-current="page"]')?.textContent).toBe('Access')
     expect(document.body.textContent).not.toContain('Protected branches')
 

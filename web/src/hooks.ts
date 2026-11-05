@@ -94,3 +94,62 @@ export function useClipboard(resetMs = 2000) {
 
   return { copied, copy }
 }
+
+export interface PageResult<T, C> {
+  items: T[]
+  next?: C
+}
+
+export function usePaged<T, C>(fetchPage: (cursor: C | undefined) => Promise<PageResult<T, C>>, deps: unknown[]) {
+  const first = useAsync(() => fetchPage(undefined), deps)
+  const [more, setMore] = useState<PageResult<T, C> | null>(null)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [moreError, setMoreError] = useState<string | null>(null)
+  const generation = useRef(0)
+
+  useEffect(() => {
+    generation.current += 1
+    setLoadingMore(false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps)
+
+  useEffect(() => {
+    setMore(null)
+    setMoreError(null)
+  }, [first.data])
+
+  const next = more ? more.next : first.data?.next
+  const items = [...(first.data?.items ?? []), ...(more?.items ?? [])]
+
+  const loadMore = useCallback(async () => {
+    if (next === undefined || loadingMore) return
+    setLoadingMore(true)
+    setMoreError(null)
+    const current = generation.current
+    try {
+      const page = await fetchPage(next)
+      if (generation.current !== current) return
+      setMore((current) => ({ items: [...(current?.items ?? []), ...page.items], next: page.next }))
+    } catch (err) {
+      if (generation.current === current) setMoreError(errorMessage(err))
+    } finally {
+      if (generation.current === current) setLoadingMore(false)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [next, loadingMore, ...deps])
+
+  return {
+    items,
+    loading: first.loading,
+    error: first.error ?? moreError,
+    hasMore: next !== undefined,
+    loadingMore,
+    loadMore,
+    reload: first.reload,
+  }
+}
+
+export function sliceCursorPage<T, C>(rows: T[], limit: number, cursorOf: (rows: T[]) => C): PageResult<T, C> {
+  if (rows.length <= limit) return { items: rows }
+  return { items: rows.slice(0, limit), next: cursorOf(rows) }
+}

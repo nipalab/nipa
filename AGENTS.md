@@ -213,7 +213,7 @@ accepts tag names as revisions, and push/merge/revert refuse with a
 routes (`internal/http/api/tag.go`, handlers/DTOs in
 `internal/http/{handler,model}/tag.go`) mirror list/create/get/delete, and the
 web API client (`web/src/api/endpoints.ts`) already exposes
-`listTags`/`createTag`/`deleteTag` (no SPA page yet).
+`listTags`/`createTag`/`deleteTag`/`getTag`; the SPA Tags page is `/:org/:project/tags`.
 
 Flow for SSH key login (design in `docs/SSH.md`: `nipa login`, the implicit
 login behind every command, the profile page card): an SSH key is an alternate
@@ -1162,7 +1162,8 @@ compatible for one release.
   and profile; the browse endpoints are served by `internal/usecase/browser.go`
   (+ `browser_history.go` for per-file/per-dir last-commit info) under
   `internal/http/api/`. Release tags have REST routes (`/tags`,
-  `/tags/{name}`) and `endpoints.ts` helpers, but no SPA page yet.
+  `/tags/{name}`) and `endpoints.ts` helpers; the SPA has a Tags page (list, create,
+  delete, ref-picker tab).
 - Keep `web/src/api/endpoints.ts` in sync with the REST handlers under
   `internal/http/`. `npm run lint` (tsc), `npm test` (vitest) and `make web`
   must stay green; the built SPA is embedded via `web/server/webui.go`.

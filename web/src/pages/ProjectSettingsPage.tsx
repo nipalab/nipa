@@ -17,6 +17,7 @@ import { FormDialog } from '../components/FormDialog'
 import { PermissionBadge } from '../components/PermissionBadge'
 import { PermissionCheckboxes } from '../components/PermissionCheckboxes'
 import { EmailSettings } from '../components/repo/EmailSettings'
+import { ProjectGeneralSettings } from '../components/repo/ProjectGeneralSettings'
 import { RepoPageShell } from '../components/repo/RepoPageShell'
 import { useRepoChrome } from '../components/repo/useRepoChrome'
 import { WebhookSettings } from '../components/repo/WebhookSettings'
@@ -28,6 +29,7 @@ import { useAction, useAsync } from '../hooks'
 import { useOrgMembers } from '../orgHooks'
 
 const SETTINGS_TABS = [
+  { key: 'general', label: 'General' },
   { key: 'access', label: 'Access' },
   { key: 'branches', label: 'Branches' },
   { key: 'webhooks', label: 'Webhooks' },
@@ -64,7 +66,7 @@ export default function ProjectSettingsPage() {
   const [searchParams] = useSearchParams()
 
   const requestedTab = searchParams.get('tab')
-  const tab: SettingsTab = isSettingsTab(requestedTab) ? requestedTab : 'access'
+  const tab: SettingsTab = isSettingsTab(requestedTab) ? requestedTab : 'general'
   const base = `/${org}/${project}/settings`
 
   const shell = { org, project, active: 'settings' as const, rev: defaultBranch, canAdmin, canWrite, heading: 'Settings' }
@@ -168,6 +170,8 @@ export default function ProjectSettingsPage() {
         items={SETTINGS_TABS.map((item) => ({ key: item.key, label: item.label, to: `${base}?tab=${item.key}` }))}
       >
         <Stack direction="vertical" gap="spacious">
+          {tab === 'general' && <ProjectGeneralSettings org={org} project={project} />}
+
           {tab === 'access' && (
             <>
               <AccessRulesSection

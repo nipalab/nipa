@@ -18,6 +18,8 @@ const BlobPage = lazy(() => import('./pages/BlobPage'))
 const CommitsPage = lazy(() => import('./pages/CommitsPage'))
 const BranchesPage = lazy(() => import('./pages/BranchesPage'))
 const NewBranchPage = lazy(() => import('./pages/NewBranchPage'))
+const ComparePage = lazy(() => import('./pages/ComparePage'))
+const TagsPage = lazy(() => import('./pages/TagsPage'))
 const MergeRequestsPage = lazy(() => import('./pages/MergeRequestsPage'))
 const MergeRequestPage = lazy(() => import('./pages/MergeRequestPage'))
 const NewMergeRequestPage = lazy(() => import('./pages/NewMergeRequestPage'))
@@ -60,6 +62,8 @@ export default function App() {
                 <Route path="/:org/:project/commits/:commit" element={<CommitsPage />} />
                 <Route path="/:org/:project/branches" element={<BranchesPage />} />
                 <Route path="/:org/:project/branches/new" element={<NewBranchPage />} />
+                <Route path="/:org/:project/compare" element={<ComparePage />} />
+                <Route path="/:org/:project/tags" element={<TagsPage />} />
                 <Route path="/:org/:project/merges" element={<MergeRequestsPage />} />
                 <Route path="/:org/:project/merges/new" element={<NewMergeRequestPage />} />
                 <Route path="/:org/:project/merges/:id" element={<MergeRequestPage />} />

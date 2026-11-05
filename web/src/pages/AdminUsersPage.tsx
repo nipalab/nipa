@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Button, FormControl, Label, Stack, TextInput } from '@primer/react'
 import { SearchIcon } from '@primer/octicons-react'
 import { useNavigate } from 'react-router-dom'
-import { deactivateUser, listUsers, resetUserPassword, updateUserFlags } from '../api/endpoints'
+import { deactivateUser, listUsers, resetUserPassword, updateUserEmail, updateUserFlags } from '../api/endpoints'
 import type { UserResponse } from '../api/models'
 import { useAuth } from '../auth'
 import { ActorAvatar } from '../components/ActorAvatar'
@@ -36,6 +36,28 @@ function ResetPasswordDialog({ user, onClose }: { user: UserResponse; onClose: (
   )
 }
 
+function EditEmailDialog({ user, onClose, onSaved }: { user: UserResponse; onClose: () => void; onSaved: () => void }) {
+  const [email, setEmail] = useState(user.email)
+  const next = email.trim()
+  return (
+    <FormDialog
+      title={`Change email for ${user.name}`}
+      submitLabel="Save email"
+      submitDisabled={next === '' || next === user.email}
+      onClose={onClose}
+      onSubmit={async () => {
+        await updateUserEmail(user.id, next)
+        onSaved()
+      }}
+    >
+      <FormControl required>
+        <FormControl.Label>Email</FormControl.Label>
+        <TextInput block autoFocus type="email" value={email} onChange={(event) => setEmail(event.target.value)} />
+      </FormControl>
+    </FormDialog>
+  )
+}
+
 export default function AdminUsersPage() {
   const { me } = useAuth()
   const navigate = useNavigate()
@@ -44,6 +66,7 @@ export default function AdminUsersPage() {
   const { run, error: actionError, clearError } = useAction(reload)
   const [filter, setFilter] = useState('')
   const [resetting, setResetting] = useState<UserResponse | null>(null)
+  const [editing, setEditing] = useState<UserResponse | null>(null)
 
   const query = filter.trim().toLowerCase()
   const visible = (users ?? []).filter(
@@ -93,6 +116,9 @@ export default function AdminUsersPage() {
               {user.is_admin ? 'Remove admin' : 'Make admin'}
             </Button>
           )}
+          <Button size="small" onClick={() => setEditing(user)}>
+            Edit email
+          </Button>
           <Button size="small" onClick={() => setResetting(user)}>
             Reset password
           </Button>
@@ -132,6 +158,7 @@ export default function AdminUsersPage() {
         empty={query ? 'No users match the filter.' : 'No users.'}
       />
       {resetting && <ResetPasswordDialog user={resetting} onClose={() => setResetting(null)} />}
+      {editing && <EditEmailDialog user={editing} onClose={() => setEditing(null)} onSaved={reload} />}
     </Page>
   )
 }
