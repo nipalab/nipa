@@ -96,7 +96,7 @@ export function MergeRequestFiles({ root, base, head, threads, busy, canComment,
 
   return (
     <div className="flex h-full min-h-0">
-      <div className="relative shrink-0" style={{ width: filesSize.width }}>
+      <div className="relative shrink-0" ref={filesSize.ref} style={{ width: filesSize.width }}>
         <ul className="h-full overflow-auto border-r border-border py-1" aria-label="Changed files">
           {list.map((f) => (
             <li key={f.path}>

@@ -1,5 +1,6 @@
-import { act, renderHook } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { createElement } from "react";
+import { act, render, renderHook, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { clampWidth, useResizableWidth } from "./useResizableWidth";
 
 const bounds = { initial: 300, min: 200, max: 500 };
@@ -63,6 +64,44 @@ describe("useResizableWidth", () => {
       resizeTo(1200);
       expect(result.current.width).toBe(480);
       expect(result.current.max).toBe(500);
+    });
+  });
+
+  describe("inside a container", () => {
+    afterEach(() => vi.unstubAllGlobals());
+
+    function Pane() {
+      const size = useResizableWidth("nested", { initial: 300, min: 200, max: 600 });
+      return createElement("div", { ref: size.ref, "data-testid": "pane", "data-width": size.width, "data-max": size.max });
+    }
+
+    it("clamps against the parent width, not the window", () => {
+      let notify = () => {};
+      vi.stubGlobal(
+        "ResizeObserver",
+        class {
+          constructor(cb: () => void) {
+            notify = cb;
+          }
+          observe() {}
+          disconnect() {}
+        },
+      );
+      localStorage.setItem("nipa.layout.nested", "580");
+      const parent = document.createElement("div");
+      let parentWidth = 700;
+      Object.defineProperty(parent, "clientWidth", { configurable: true, get: () => parentWidth });
+      document.body.appendChild(parent);
+      render(createElement(Pane), { container: parent });
+      const pane = screen.getByTestId("pane");
+      expect(pane).toHaveAttribute("data-width", "380");
+      expect(pane).toHaveAttribute("data-max", "380");
+
+      parentWidth = 1000;
+      act(() => notify());
+      expect(pane).toHaveAttribute("data-width", "580");
+      expect(pane).toHaveAttribute("data-max", "600");
+      parent.remove();
     });
   });
 });

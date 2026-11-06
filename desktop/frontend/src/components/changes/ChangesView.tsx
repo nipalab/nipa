@@ -121,7 +121,7 @@ export function ChangesView({ root, op, message, onMessage, onPush, onCancelOp, 
 
   return (
     <div className="flex h-full min-h-0">
-      <div className="relative flex shrink-0 flex-col border-r border-border" style={{ width: listSize.width }}>
+      <div className="relative flex shrink-0 flex-col border-r border-border" ref={listSize.ref} style={{ width: listSize.width }}>
         {c.detached && (
           <Banner icon={<Tag className="size-3.5 text-accent" />} text={`Viewing tag ${c.detached}`} />
         )}

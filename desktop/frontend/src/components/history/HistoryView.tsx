@@ -94,7 +94,7 @@ export function HistoryView({ root, branch, detached, busy, notify, onRevert, pa
         <AssetStrip root={root} path={path} commits={commits} selected={selected?.id} onSelect={setSelectedId} />
       )}
       <div className="flex min-h-0 flex-1">
-        <aside className="relative flex shrink-0 flex-col border-r border-border" style={{ width: listSize.width }}>
+        <aside className="relative flex shrink-0 flex-col border-r border-border" ref={listSize.ref} style={{ width: listSize.width }}>
           <form onSubmit={applyPath} className="flex shrink-0 items-center gap-1.5 border-b border-border px-3 py-2">
             <FileClock className="size-3.5 shrink-0 text-muted-foreground" />
             <input

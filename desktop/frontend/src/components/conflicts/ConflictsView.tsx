@@ -65,7 +65,7 @@ export function ConflictsView({ root, busy, notify }: ConflictsViewProps) {
 
   return (
     <div className="flex h-full min-h-0">
-      <aside className="relative flex shrink-0 flex-col border-r border-border" style={{ width: listSize.width }}>
+      <aside className="relative flex shrink-0 flex-col border-r border-border" ref={listSize.ref} style={{ width: listSize.width }}>
         <div className="shrink-0 space-y-1 border-b border-border px-3 py-2 text-[12px]">
           <p className="flex items-center gap-1.5 font-medium">
             <GitMerge className="size-3.5 text-muted-foreground" />

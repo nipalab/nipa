@@ -98,7 +98,7 @@ export function CommitDetail({ root, commit, tags, focusPath, busy, revertBlocke
         <Centered>This commit changed no files you can see.</Centered>
       ) : (
         <div className="flex min-h-0 flex-1">
-          <div className="relative shrink-0" style={{ width: filesSize.width }}>
+          <div className="relative shrink-0" ref={filesSize.ref} style={{ width: filesSize.width }}>
             <ul className="h-full overflow-auto border-r border-border py-1" aria-label="Changed files">
               {list.map((f) => (
                 <li key={f.path}>
