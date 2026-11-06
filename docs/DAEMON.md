@@ -58,12 +58,39 @@ tests; `NIPA_DAEMON_EVENT_INTERVAL` shortens the `WatchEvents` poll) and
 atomically writes:
 
 ```
-~/.config/nipa/daemon.json   // {pid, port, token, version}   perms 0600
+~/.config/nipa/daemon.json   // {pid, port, json_port, token, version}   perms 0600
 ```
 
 Client discovery: read file → check `pid` alive → dial → `Ping`. A stale file
 (pid gone or dial refused) means "no daemon"; the GUI auto-spawns
 `nipa serve` and waits for `Ping` readiness before showing any workspace.
+
+### JSON bridge (`json_port`)
+
+Clients that cannot speak gRPC over h2c (Unity's Mono `HttpClient`, Godot,
+Unreal) use a second loopback listener, `127.0.0.1:<json_port>`
+(`nipa serve --json-port`, `NIPA_DAEMON_JSON_PORT`; 0 picks a free port).
+Older readers ignore the new `json_port` field.
+
+The bridge (`internal/client/daemon/jsonbridge.go`) is generic: routes come
+from the `NipaDaemon` service descriptor, so every RPC, including future
+ones, is exposed without per-method code. `POST /v1/<Method>` takes the
+request message as `protojson` (empty body = empty message) and invokes the
+daemon's own gRPC listener, forwarding `x-nipa-daemon-token` so the gRPC
+interceptors stay the single auth point.
+
+- Unary RPCs answer `200 application/json`; server streams answer
+  `200 application/x-ndjson`, one message per line flushed per event. A client
+  disconnect cancels the RPC (and so a running `Update`/`Push`). A stream
+  failing after the first message ends with a `{"error":{"code","message"}}`
+  line. Client-streaming RPCs are not exposed.
+- Messages use proto field names (`UseProtoNames`) and emit unpopulated fields.
+- Errors map the gRPC code to an HTTP status (`InvalidArgument` 400,
+  `Unauthenticated` 401, `PermissionDenied` 403, `NotFound` 404,
+  `FailedPrecondition`/`Aborted`/`AlreadyExists` 409, `ResourceExhausted` 429,
+  `Unimplemented` 501, `Unavailable` 503) with body `{"code","message"}`.
+- A non-loopback `Host` or `Origin` is rejected with 403 (DNS-rebinding
+  guard); non-POST is 405, an unknown method 404.
 
 ### Auth
 
@@ -318,6 +345,11 @@ Notes where the implementation settled details the design left open:
   (`branch` + `head{kind,name}`), and `Update` while detached re-syncs the
   pinned commit. The manifest fetch uses `GetTreeManifest` with `commit_id`
   (project-scoped), so a sparse clone only receives the tagged set.
+
+`MetaWarnings` lints the pending changes of Unity projects in the clone
+(`internal/unitymeta`: missing, orphaned, unstaged and GUID-changed `.meta`
+files) from the daemon's own status plus snapshot blob reads, for the desktop
+app and the Unity plugin.
 
 Not yet implemented: Phase B proxies (PBAC/path permissions, groups, review
 submission/thread writes, branch protection/default changes), idle-exit, CLI passthrough via the daemon, and socket/named-pipe transport.

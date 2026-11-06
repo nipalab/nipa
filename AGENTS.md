@@ -601,6 +601,17 @@ caller id (`Client.UserID`, the access token's JWT `sub`) with the status into
 per-file `mine`/`theirs`/`needed`/`free` states for changed binaries; `UnwatchRepo` waits for in-flight refs
 before closing handles.
 
+JSON bridge (design in `docs/DAEMON.md`): `Server` also binds a second loopback
+listener (`--json-port` / `NIPA_DAEMON_JSON_PORT`, published as `json_port` in
+`daemon.json`) served by `jsonbridge.go`, a reflection-driven HTTP/1.1 adapter
+for engine plugins that cannot speak gRPC (Unity first, plan in
+`docs/plans/UNITY_PLUGIN.md`): `POST /v1/<Method>` protojson-decodes the body
+and invokes the daemon's own gRPC listener with the forwarded
+`x-nipa-daemon-token` (unary = JSON, server streams = NDJSON, errors mapped to
+HTTP statuses, non-loopback `Host`/`Origin` refused). `MetaWarnings`
+(`daemon/unitymeta.go` over `internal/unitymeta`) is the Unity `.meta` lint RPC
+the desktop service now calls.
+
 Flow for storage quota (design in `docs/CLOUD_STORAGE_QUOTA.md`):
 `internal/usecase.StorageLedger` is attached with `Chunk.WithStorageLedger`;
 nil (the free default) skips all accounting. `PresignUploadURLs` calls

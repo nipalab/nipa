@@ -33,6 +33,7 @@ type LoginFunc func(ctx context.Context, host, username, password string) error
 type Options struct {
 	EndpointPath string // discovery file; defaults to EndpointPath()
 	Port         int    // loopback port; 0 uses NIPA_DAEMON_PORT or a free port
+	JSONPort     int    // JSON bridge port; 0 uses NIPA_DAEMON_JSON_PORT or a free port
 	Version      string // defaults to Version
 	Login        LoginFunc
 	Runners      Runners // per-root long-operation usecase factories
@@ -53,6 +54,7 @@ type Server struct {
 
 	listener net.Listener
 	grpc     *grpc.Server
+	bridge   *jsonBridge
 	repos    *registry
 	ready    chan struct{}
 	stop     chan struct{}
@@ -75,15 +77,13 @@ func NewServer(opts Options) (*Server, error) {
 		}
 		endpointPath = path
 	}
-	port := opts.Port
-	if port == 0 {
-		if raw := os.Getenv(EnvPort); raw != "" {
-			parsed, err := strconv.Atoi(raw)
-			if err != nil || parsed < 0 || parsed > 65535 {
-				return nil, clientDomain.NewUserError(fmt.Sprintf("invalid %s %q", EnvPort, raw))
-			}
-			port = parsed
-		}
+	port, err := resolvePort(opts.Port, EnvPort)
+	if err != nil {
+		return nil, err
+	}
+	jsonPort, err := resolvePort(opts.JSONPort, EnvJSONPort)
+	if err != nil {
+		return nil, err
 	}
 	version := opts.Version
 	if version == "" {
@@ -103,6 +103,11 @@ func NewServer(opts Options) (*Server, error) {
 	}
 	listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
 	if err != nil {
+		return nil, err
+	}
+	jsonListener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", jsonPort))
+	if err != nil {
+		_ = listener.Close()
 		return nil, err
 	}
 
@@ -125,7 +130,28 @@ func NewServer(opts Options) (*Server, error) {
 		grpc.StreamInterceptor(s.streamAuth),
 	)
 	daemonpb.RegisterNipaDaemonServer(s.grpc, s)
+	s.bridge, err = newJSONBridge(jsonListener, listener.Addr().String())
+	if err != nil {
+		_ = listener.Close()
+		_ = jsonListener.Close()
+		return nil, err
+	}
 	return s, nil
+}
+
+func resolvePort(explicit int, env string) (int, error) {
+	if explicit != 0 {
+		return explicit, nil
+	}
+	raw := os.Getenv(env)
+	if raw == "" {
+		return 0, nil
+	}
+	parsed, err := strconv.Atoi(raw)
+	if err != nil || parsed < 0 || parsed > 65535 {
+		return 0, clientDomain.NewUserError(fmt.Sprintf("invalid %s %q", env, raw))
+	}
+	return parsed, nil
 }
 
 // Endpoint describes the bound loopback endpoint.
@@ -134,7 +160,7 @@ func (s *Server) Endpoint() Endpoint {
 	if addr, ok := s.listener.Addr().(*net.TCPAddr); ok {
 		port = addr.Port
 	}
-	return Endpoint{PID: s.pid, Port: port, Token: s.token, Version: s.version}
+	return Endpoint{PID: s.pid, Port: port, JSONPort: s.bridge.port(), Token: s.token, Version: s.version}
 }
 
 // Ready is closed once the endpoint file is published and gRPC is serving.
@@ -158,17 +184,30 @@ func (s *Server) Serve(ctx context.Context) error {
 
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- s.grpc.Serve(s.listener) }()
+	bridgeErr := make(chan error, 1)
+	go func() { bridgeErr <- s.bridge.serve() }()
 
 	select {
 	case <-ctx.Done():
 	case <-s.stop:
 	case err := <-serveErr:
+		s.bridge.close()
 		_ = RemoveEndpoint(s.endpointPath, s.token)
 		s.repos.closeAll()
 		return err
+	case err := <-bridgeErr:
+		if err != nil {
+			s.bridge.close()
+			s.grpc.GracefulStop()
+			<-serveErr
+			s.repos.closeAll()
+			_ = RemoveEndpoint(s.endpointPath, s.token)
+			return fmt.Errorf("json bridge: %w", err)
+		}
 	}
 
 	s.Stop()
+	s.bridge.close()
 	s.grpc.GracefulStop()
 	<-serveErr
 	s.repos.closeAll()

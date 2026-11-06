@@ -74,6 +74,7 @@ const (
 	NipaDaemon_ProxyUnlockFile_FullMethodName               = "/nipadaemon.NipaDaemon/ProxyUnlockFile"
 	NipaDaemon_ProxyListFileLocks_FullMethodName            = "/nipadaemon.NipaDaemon/ProxyListFileLocks"
 	NipaDaemon_LockStatus_FullMethodName                    = "/nipadaemon.NipaDaemon/LockStatus"
+	NipaDaemon_MetaWarnings_FullMethodName                  = "/nipadaemon.NipaDaemon/MetaWarnings"
 	NipaDaemon_AccountStatus_FullMethodName                 = "/nipadaemon.NipaDaemon/AccountStatus"
 	NipaDaemon_LoginSSH_FullMethodName                      = "/nipadaemon.NipaDaemon/LoginSSH"
 	NipaDaemon_ListProjects_FullMethodName                  = "/nipadaemon.NipaDaemon/ListProjects"
@@ -142,6 +143,7 @@ type NipaDaemonClient interface {
 	ProxyUnlockFile(ctx context.Context, in *ProxyUnlockFileRequest, opts ...grpc.CallOption) (*ProxyUnlockFileResponse, error)
 	ProxyListFileLocks(ctx context.Context, in *ProxyListFileLocksRequest, opts ...grpc.CallOption) (*ProxyListFileLocksResponse, error)
 	LockStatus(ctx context.Context, in *LockStatusRequest, opts ...grpc.CallOption) (*LockStatusResponse, error)
+	MetaWarnings(ctx context.Context, in *MetaWarningsRequest, opts ...grpc.CallOption) (*MetaWarningsResponse, error)
 	AccountStatus(ctx context.Context, in *AccountStatusRequest, opts ...grpc.CallOption) (*AccountStatusResponse, error)
 	LoginSSH(ctx context.Context, in *LoginSSHRequest, opts ...grpc.CallOption) (*LoginResponse, error)
 	ListProjects(ctx context.Context, in *ListProjectsRequest, opts ...grpc.CallOption) (*ListProjectsResponse, error)
@@ -808,6 +810,16 @@ func (c *nipaDaemonClient) LockStatus(ctx context.Context, in *LockStatusRequest
 	return out, nil
 }
 
+func (c *nipaDaemonClient) MetaWarnings(ctx context.Context, in *MetaWarningsRequest, opts ...grpc.CallOption) (*MetaWarningsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(MetaWarningsResponse)
+	err := c.cc.Invoke(ctx, NipaDaemon_MetaWarnings_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *nipaDaemonClient) AccountStatus(ctx context.Context, in *AccountStatusRequest, opts ...grpc.CallOption) (*AccountStatusResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(AccountStatusResponse)
@@ -955,6 +967,7 @@ type NipaDaemonServer interface {
 	ProxyUnlockFile(context.Context, *ProxyUnlockFileRequest) (*ProxyUnlockFileResponse, error)
 	ProxyListFileLocks(context.Context, *ProxyListFileLocksRequest) (*ProxyListFileLocksResponse, error)
 	LockStatus(context.Context, *LockStatusRequest) (*LockStatusResponse, error)
+	MetaWarnings(context.Context, *MetaWarningsRequest) (*MetaWarningsResponse, error)
 	AccountStatus(context.Context, *AccountStatusRequest) (*AccountStatusResponse, error)
 	LoginSSH(context.Context, *LoginSSHRequest) (*LoginResponse, error)
 	ListProjects(context.Context, *ListProjectsRequest) (*ListProjectsResponse, error)
@@ -1136,6 +1149,9 @@ func (UnimplementedNipaDaemonServer) ProxyListFileLocks(context.Context, *ProxyL
 }
 func (UnimplementedNipaDaemonServer) LockStatus(context.Context, *LockStatusRequest) (*LockStatusResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method LockStatus not implemented")
+}
+func (UnimplementedNipaDaemonServer) MetaWarnings(context.Context, *MetaWarningsRequest) (*MetaWarningsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method MetaWarnings not implemented")
 }
 func (UnimplementedNipaDaemonServer) AccountStatus(context.Context, *AccountStatusRequest) (*AccountStatusResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method AccountStatus not implemented")
@@ -2092,6 +2108,24 @@ func _NipaDaemon_LockStatus_Handler(srv interface{}, ctx context.Context, dec fu
 	return interceptor(ctx, in, info, handler)
 }
 
+func _NipaDaemon_MetaWarnings_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MetaWarningsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaDaemonServer).MetaWarnings(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaDaemon_MetaWarnings_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaDaemonServer).MetaWarnings(ctx, req.(*MetaWarningsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _NipaDaemon_AccountStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(AccountStatusRequest)
 	if err := dec(in); err != nil {
@@ -2386,6 +2420,10 @@ var NipaDaemon_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "LockStatus",
 			Handler:    _NipaDaemon_LockStatus_Handler,
+		},
+		{
+			MethodName: "MetaWarnings",
+			Handler:    _NipaDaemon_MetaWarnings_Handler,
 		},
 		{
 			MethodName: "AccountStatus",

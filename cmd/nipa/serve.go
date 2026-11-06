@@ -17,7 +17,7 @@ import (
 )
 
 func newServeCommand(auth *usecase.Auth, newClient func() *clientgrpc.Client, storage tokenStorage, signers func() ([]sshkey.Signer, error)) *cobra.Command {
-	var port int
+	var port, jsonPort int
 	var endpoint string
 	cmd := &cobra.Command{
 		Use:   "serve",
@@ -32,6 +32,7 @@ func newServeCommand(auth *usecase.Auth, newClient func() *clientgrpc.Client, st
 			srv, err := daemon.NewServer(daemon.Options{
 				EndpointPath: endpoint,
 				Port:         port,
+				JSONPort:     jsonPort,
 				Login:        serveLogin(newClient, storage),
 				Runners: daemon.Runners{New: func(string) daemon.RepoOps {
 					return serveRepoOps(auth, newClient())
@@ -42,7 +43,7 @@ func newServeCommand(auth *usecase.Auth, newClient func() *clientgrpc.Client, st
 				return err
 			}
 			ep := srv.Endpoint()
-			cmd.Printf("nipa daemon listening on 127.0.0.1:%d (pid %d)\n", ep.Port, ep.PID)
+			cmd.Printf("nipa daemon listening on 127.0.0.1:%d, JSON bridge on 127.0.0.1:%d (pid %d)\n", ep.Port, ep.JSONPort, ep.PID)
 
 			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
@@ -50,6 +51,7 @@ func newServeCommand(auth *usecase.Auth, newClient func() *clientgrpc.Client, st
 		},
 	}
 	cmd.Flags().IntVar(&port, "port", 0, "loopback port to bind (0 picks a free port)")
+	cmd.Flags().IntVar(&jsonPort, "json-port", 0, "loopback port of the JSON/HTTP bridge (0 picks a free port; env NIPA_DAEMON_JSON_PORT)")
 	cmd.Flags().StringVar(&endpoint, "endpoint", "", "discovery file path (default ~/.config/nipa/daemon.json)")
 	return cmd
 }

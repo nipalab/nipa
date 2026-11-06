@@ -719,6 +719,21 @@ message ProxyTagDeleteResponse {
     greet.DeleteTagResponse response = 1;
 }
 
+message MetaWarningsRequest {
+    string root = 1;
+}
+
+message MetaWarning {
+    string path = 1;
+    string kind = 2; // missing-meta, orphan-meta, meta-not-staged, guid-changed
+    string related = 3;
+    string message = 4;
+}
+
+message MetaWarningsResponse {
+    repeated MetaWarning warnings = 1;
+}
+
 message LockStatusRequest {
     string root = 1;
 }
@@ -867,6 +882,7 @@ service NipaDaemon {
     rpc ProxyUnlockFile(ProxyUnlockFileRequest) returns (ProxyUnlockFileResponse);
     rpc ProxyListFileLocks(ProxyListFileLocksRequest) returns (ProxyListFileLocksResponse);
     rpc LockStatus(LockStatusRequest) returns (LockStatusResponse);
+    rpc MetaWarnings(MetaWarningsRequest) returns (MetaWarningsResponse);
 
     rpc AccountStatus(AccountStatusRequest) returns (AccountStatusResponse);
     rpc LoginSSH(LoginSSHRequest) returns (LoginResponse);
