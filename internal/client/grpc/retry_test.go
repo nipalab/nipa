@@ -156,6 +156,11 @@ func TestRateLimitWait(t *testing.T) {
 
 func interceptorCalls(t *testing.T, policy retryPolicy, results ...error) (int, error) {
 	t.Helper()
+	return interceptorMethodCalls(t, "/greet.NipaService/GetChunkUploadUrls", policy, results...)
+}
+
+func interceptorMethodCalls(t *testing.T, method string, policy retryPolicy, results ...error) (int, error) {
+	t.Helper()
 	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
 	c.retry = policy
 	calls := 0
@@ -164,7 +169,7 @@ func interceptorCalls(t *testing.T, policy retryPolicy, results ...error) (int, 
 		calls++
 		return err
 	}
-	err := c.unaryAuthInterceptor()(context.Background(), "/greet.NipaService/GetChunkUploadUrls", nil, nil, nil, invoker)
+	err := c.unaryAuthInterceptor()(context.Background(), method, nil, nil, nil, invoker)
 	return calls, err
 }
 
@@ -214,4 +219,24 @@ func (s *chunkTestServer) putAttemptsFor(hash string) int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.putAttempts[hash]
+}
+
+func TestUnaryInterceptor_RetriesThrottledTokenRefresh(t *testing.T) {
+	limited := status.Error(codes.ResourceExhausted, "rate limit exceeded, retry in 1s")
+	calls, err := interceptorMethodCalls(t, "/greet.NipaService/LoginWithRefreshToken", throttleOnly(5), limited, nil)
+	require.NoError(t, err)
+	require.Equal(t, 2, calls)
+}
+
+func TestUnaryInterceptor_DoesNotRetryThrottledCredentialLogins(t *testing.T) {
+	limited := status.Error(codes.ResourceExhausted, "rate limit exceeded, retry in 1s")
+	for _, method := range []string{
+		"/greet.NipaService/LoginWithUsernamePassword",
+		"/greet.NipaService/BeginLoginSSHKey",
+		"/greet.NipaService/CompleteLoginSSHKey",
+	} {
+		calls, err := interceptorMethodCalls(t, method, throttleOnly(5), limited, nil)
+		require.Equal(t, codes.ResourceExhausted, status.Code(err), method)
+		require.Equal(t, 1, calls, method)
+	}
 }

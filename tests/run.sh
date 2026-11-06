@@ -250,7 +250,7 @@ start_compose() {
 
 	log "waiting for postgres"
 	local tries=0
-	until "$DOCKER" compose -f "$COMPOSE_FILE" exec -T postgres pg_isready -U nipa -d nipa >/dev/null 2>&1; do
+	until "$DOCKER" compose -f "$COMPOSE_FILE" exec -T -e PGPASSWORD=nipa postgres pg_isready -h 127.0.0.1 -U nipa -d nipa >/dev/null 2>&1; do
 		tries=$((tries + 1))
 		if [[ $tries -gt 60 ]]; then
 			echo "postgres did not become ready" >&2
@@ -263,8 +263,8 @@ start_compose() {
 	# anonymous volumes on every runtime (rootless podman leaves them behind),
 	# and the consolidated migration is edited in place during development.
 	log "resetting postgres schema"
-	"$DOCKER" compose -f "$COMPOSE_FILE" exec -T postgres \
-		psql -U nipa -d nipa -q -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public;' >/dev/null
+	"$DOCKER" compose -f "$COMPOSE_FILE" exec -T -e PGPASSWORD=nipa postgres \
+		psql -h 127.0.0.1 -U nipa -d nipa -q -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public;' >/dev/null
 
 	log "waiting for redis"
 	tries=0

@@ -302,8 +302,12 @@ func (c *Client) unaryAuthInterceptor() grpc.UnaryClientInterceptor {
 		invoker grpc.UnaryInvoker,
 		opts ...grpc.CallOption,
 	) error {
+		if method == "/greet.NipaService/LoginWithRefreshToken" {
+			return c.invokeWithThrottleRetry(ctx, func() error {
+				return invoker(ctx, method, req, reply, cc, opts...)
+			})
+		}
 		if method == "/greet.NipaService/LoginWithUsernamePassword" ||
-			method == "/greet.NipaService/LoginWithRefreshToken" ||
 			method == "/greet.NipaService/BeginLoginSSHKey" ||
 			method == "/greet.NipaService/CompleteLoginSSHKey" ||
 			method == "/greet.NipaService/GetServerVersion" {

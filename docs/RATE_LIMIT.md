@@ -71,6 +71,10 @@ The `nipa` client treats throttling as backpressure instead of a failure:
   after the requested wait under the same budget. The server interceptor rejects
   before any handler runs, so this is safe for every method, `Push` included.
   Quota errors (`ResourceExhausted` without the prefix) are not retried.
+  Token refresh (`LoginWithRefreshToken`) is retried too, so a long push or
+  clone survives an `auth_ip` rejection; password and SSH logins fail fast,
+  because their `auth_id` check runs inside the usecase and is a deliberate
+  slowdown.
 
 ## Metrics
 
