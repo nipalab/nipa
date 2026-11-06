@@ -14,7 +14,7 @@ require (
 	github.com/hajimehoshi/go-mp3 v0.3.4
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/jfreymuth/oggvorbis v1.0.5
-	github.com/klauspost/compress v1.20.1
+	github.com/klauspost/compress v1.20.2
 	github.com/lib/pq v1.10.9
 	github.com/mewkiz/flac v1.0.14
 	github.com/minio/minio-go/v7 v7.3.0

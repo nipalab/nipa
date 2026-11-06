@@ -425,6 +425,22 @@ Pure package (no client imports), shared by the daemon and later the server.
   above the main view. `RestartToUpdate` hands over to the Wails helper,
   which swaps the target after the app exits and relaunches it.
 
+## Demo mode and marketing screenshots
+
+`NIPA_DEMO=1 npm run demo` (in `desktop/frontend`) serves the UI in a plain
+browser: Vite aliases the generated `Service` binding and `@wailsio/runtime`
+to `src/demo/` (`service.ts` is typed `typeof Service`, so API drift fails
+`npm run lint`). Fixtures live in `src/demo/data.ts` (a game-studio repo with
+image, 3D, audio, CSV and text changes, merge requests, locks and a conflicted
+merge); `?scenario=conflicts` switches to the merge-in-progress state.
+`make desktop-screenshots` runs `scripts/screenshots.ts` (`playwright-core`
+driving the system Chromium, `CHROMIUM_BIN` overrides `/snap/bin/chromium`)
+for every screen in `src/demo/screens.ts` at 1440x900 @2x. The make target
+captures both themes, converts them to WebP (ImageMagick) and writes
+`name.webp` (dark) and `name-light.webp` to `../nipa-web/public/screenshots`
+(`SCREENSHOTS_OUT`); `npm run screenshots` alone writes PNGs. Options:
+`--screen <name>`, `--theme dark|light`, `--out`, `--base`.
+
 ## Roadmap (one PR each)
 
 1. `internal/preview`: classification, common images, TGA, compare. **(done)**

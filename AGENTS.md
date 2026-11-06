@@ -1145,11 +1145,12 @@ compatible for one release.
   `/dashboard`, the app home; `APP_HOME` in `web/src/routes.ts`). The SaaS
   marketing site is a separate Astro deployment (the `nipa-web` repo on
   Netlify) served at `https://nipalab.com`; `deploy/caddy/Caddyfile`
-  mirrors its pages and assets on the app domain by proxying `/`, `/_astro/*`,
-  `/screenshots/*`, `/pricing` and the root assets (`MARKETING_UPSTREAM`
-  required, the Netlify origin; `MARKETING_HOST` defaults `nipalab.com`).
-  Marketing links are absolute to `nipalab.com`, app
-  links to `nipalab.com` (`siteUrl`/`appUrl` in `web/src/consts.ts`), so
+  mirrors its pages and assets on the app domain with the `@marketing` path
+  matcher (`/`, `/pricing`, `/download`, `/support`, `/contact`, `/privacy`,
+  `/terms`, `/guides*`, `/_astro/*`, `/screenshots/*`, root assets;
+  `MARKETING_UPSTREAM` required, the Netlify origin, sent its own Host).
+  `/docs` stays the REST API docs. Marketing links are root-relative
+  (`siteUrl`/`appUrl` in nipa-web `src/consts.ts`), so
   marketing changes ship without rebuilding `nipad-ee`; `upgrade.sh` only
   rewrites the `reverse_proxy 127.0.0.1` line. The optional embedded fallback
   (`ee/web/marketing`, base `/web`, placeholder committed,
@@ -1158,7 +1159,9 @@ compatible for one release.
   [MARKETING_DIR=../nipa-web]` builds with `MARKETING_BASE=/web/` and syncs the
   result into it. Organization/project slugs reject the paths owned by the
   router, marketing and fixed endpoints (`internal/usecase/reserved.go`,
-  mirrored in `web/src/slug.ts`).
+  mirrored in `web/src/slug.ts`; a test checks every `@marketing` path is
+  reserved, and `npm run routes` in nipa-web checks the Caddyfile covers the
+  build).
   Pages cover repository/org lists, tree browser, blob viewer, commit history
   + diffs, branch management, merge requests (list/create; detail tabs for
   overview, commits and file changes; merge/reviews with decisions, inline

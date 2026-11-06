@@ -13,7 +13,7 @@ REVISION   ?= $(shell git rev-parse --short HEAD 2>/dev/null)
 LDFLAGS    := $(if $(VERSION),-X 'github.com/nipalab/nipa/internal/version.Version=$(VERSION)') \
               $(if $(REVISION),-X 'github.com/nipalab/nipa/internal/version.Revision=$(REVISION)')
 
-.PHONY: sqlc mock migrate-up migrate-down migrate-up-postgres migrate-down-postgres migrate-create build build-all build-server build-server-ee build-client test test-ee test-client test-client-ee test-client-both lint web web-dev web-install desktop desktop-dev desktop-release desktop-test marketing-dist bench-upload bench-download bench-scale bench-scale-files bench-scale-files-ee bench-unit fuzz load-test release
+.PHONY: sqlc mock migrate-up migrate-down migrate-up-postgres migrate-down-postgres migrate-create build build-all build-server build-server-ee build-client test test-ee test-client test-client-ee test-client-both lint web web-dev web-install desktop desktop-dev desktop-release desktop-test desktop-screenshots marketing-dist bench-upload bench-download bench-scale bench-scale-files bench-scale-files-ee bench-unit fuzz load-test release
 
 GOLANGCI_LINT_IMAGE ?= docker.io/golangci/golangci-lint:latest
 
@@ -102,6 +102,22 @@ desktop-release:
 ## Desktop Go + frontend tests (typecheck, vitest).
 desktop-test:
 	cd desktop && wails3 task test
+
+## Capture the desktop GUI against fixture data into the marketing site
+## (both themes, converted to WebP with ImageMagick: `name.webp` is dark and
+## `name-light.webp` is light; SCREENSHOTS_OUT, default ../nipa-web/public/screenshots;
+## needs Chromium, see docs/DESKTOP.md).
+SCREENSHOTS_OUT ?= ../../../nipa-web/public/screenshots
+desktop-screenshots:
+	cd desktop/frontend && (NIPA_DEMO=1 npx vite & echo $$! > .demo.pid); \
+	until curl -sf http://127.0.0.1:9245 >/dev/null; do sleep 0.5; done; \
+	npm run screenshots -- --out $(SCREENSHOTS_OUT); status=$$?; \
+	kill `cat .demo.pid`; rm -f .demo.pid; \
+	if [ $$status -eq 0 ]; then \
+	  for f in $(SCREENSHOTS_OUT)/*-dark.png; do magick "$$f" -resize 2400x -quality 82 "$${f%-dark.png}.webp" && rm "$$f"; done; \
+	  for f in $(SCREENSHOTS_OUT)/*-light.png; do magick "$$f" -resize 2400x -quality 82 "$${f%.png}.webp" && rm "$$f"; done; \
+	fi; \
+	exit $$status
 
 ## Build the free server including the web UI.
 build: web build-server build-client

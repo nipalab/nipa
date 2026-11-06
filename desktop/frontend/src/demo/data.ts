@@ -1,0 +1,410 @@
+import type {
+  Activity,
+  AudioSide,
+  Branch,
+  Changes,
+  Commit,
+  ConflictSet,
+  ConflictTexts,
+  DiffHunk,
+  FileChange,
+  FileDiff,
+  FileSide,
+  ImageInfo,
+  LockStatus,
+  MergeRequest,
+  RemoteProject,
+  Repo,
+  Tag,
+  TableCompare,
+} from "../../bindings/github.com/nipalab/nipa/desktop/internal/service/models";
+import { spectrogramBytes, textureSvg, waveformPeaks } from "./media";
+
+export const ROOT = "/home/alex/studio/starfall";
+export const SERVER = "nipalab.com";
+
+const now = Date.now();
+export const ago = (minutes: number): string => new Date(now - minutes * 60_000).toISOString();
+
+export const people = {
+  me: { id: "u-alex", name: "Alex Rivera" },
+  mina: { id: "u-mina", name: "Mina Okafor" },
+  jon: { id: "u-jon", name: "Jon Backstrom" },
+  sam: { id: "u-sam", name: "Sam Patel" },
+};
+
+export const repos: Repo[] = [
+  { root: ROOT, name: "starfall", url: `${SERVER}/acme/starfall`, branch: "feature/hero-rework", sparse: null },
+  { root: "/home/alex/studio/starfall-audio", name: "starfall-audio", url: `${SERVER}/acme/starfall-audio`, branch: "main", sparse: ["Music", "Sfx"] },
+  { root: "/home/alex/studio/launcher", name: "launcher", url: `${SERVER}/acme/launcher`, branch: "main", sparse: null },
+];
+
+const side = (path: string, size: number, binary: boolean): FileSide => ({ path, mode: 420, size, binary, hash: "" });
+
+export const HERO = "Assets/Characters/Hero/hero_albedo.png";
+export const MODEL = "Assets/Characters/Hero/ring_of_dawn.glb";
+export const MUSIC = "Assets/Audio/Music/theme_main.wav";
+export const ITEMS = "Assets/Data/items.csv";
+export const MOVE = "Source/Player/Movement.cs";
+export const ICON = "Assets/UI/icon_sword.png";
+export const SCENE = "Assets/Levels/Forest.unity";
+export const ROCK = "Assets/Textures/Environment/rock_albedo.png";
+export const DAMAGE = "Source/Combat/Damage.cs";
+
+export type DemoChanges = Omit<Changes, "staged" | "unstaged" | "conflicts" | "resolved"> & { staged: FileChange[]; unstaged: FileChange[]; conflicts: string[]; resolved: string[] };
+
+export const changes = (scenario: string): DemoChanges => {
+  if (scenario === "conflicts") {
+    return {
+      branch: "feature/hero-rework",
+      staged: [],
+      unstaged: [
+        { path: DAMAGE, status: "modified", kind: "text" },
+        { path: ROCK, status: "modified", kind: "image" },
+        { path: ITEMS, status: "modified", kind: "table" },
+      ],
+      conflicts: [DAMAGE, ROCK],
+      resolved: [],
+      pending: "merge",
+    };
+  }
+  return {
+    branch: "feature/hero-rework",
+    staged: [
+      { path: HERO, status: "modified", kind: "image" },
+      { path: MODEL, status: "modified", kind: "model" },
+    ],
+    unstaged: [
+      { path: MUSIC, status: "modified", kind: "audio" },
+      { path: ITEMS, status: "modified", kind: "table" },
+      { path: MOVE, status: "modified", kind: "text" },
+      { path: SCENE, status: "modified", kind: "text" },
+      { path: ICON, status: "untracked", kind: "image" },
+    ],
+    conflicts: [],
+    resolved: [],
+  };
+};
+
+const L = (kind: "context" | "added" | "removed", o: number, n: number, text: string) => ({ kind, old: o, new: n, text });
+
+const moveHunks: DiffHunk[] = [
+  {
+    oldStart: 18,
+    oldLines: 11,
+    newStart: 18,
+    newLines: 17,
+    lines: [
+      L("context", 18, 18, "    void Update()"),
+      L("context", 19, 19, "    {"),
+      L("context", 20, 20, "        var input = ReadInput();"),
+      L("removed", 21, 0, "        velocity = input * speed;"),
+      L("removed", 22, 0, "        controller.Move(velocity * Time.deltaTime);"),
+      L("added", 0, 21, "        var target = input * speed;"),
+      L("added", 0, 22, "        velocity = Vector3.MoveTowards(velocity, target, acceleration * Time.deltaTime);"),
+      L("added", 0, 23, "        if (IsDashing)"),
+      L("added", 0, 24, "        {"),
+      L("added", 0, 25, "            velocity += dashDirection * dashForce;"),
+      L("added", 0, 26, "            dashTimer -= Time.deltaTime;"),
+      L("added", 0, 27, "        }"),
+      L("added", 0, 28, "        controller.Move(velocity * Time.deltaTime);"),
+      L("context", 23, 29, "    }"),
+      L("context", 24, 30, ""),
+      L("context", 25, 31, "    bool IsDashing => dashTimer > 0f;"),
+      L("context", 26, 32, "}"),
+    ],
+  },
+];
+
+const sceneHunks: DiffHunk[] = [
+  {
+    oldStart: 112,
+    oldLines: 6,
+    newStart: 112,
+    newLines: 6,
+    lines: [
+      L("context", 112, 112, "  m_Name: Lantern"),
+      L("removed", 113, 0, "  m_LocalPosition: {x: 4.2, y: 1.1, z: -2}"),
+      L("added", 0, 113, "  m_LocalPosition: {x: 4.2, y: 1.4, z: -2.5}"),
+      L("context", 114, 114, "  m_LocalScale: {x: 1, y: 1, z: 1}"),
+      L("context", 115, 115, "  m_Layer: 0"),
+      L("context", 116, 116, "  m_IsActive: 1"),
+    ],
+  },
+];
+
+const diffOf = (path: string, kind: string, status: string, oldSize: number, newSize: number, hunks: DiffHunk[] | null, extra: Partial<FileDiff> = {}): FileDiff => {
+  const binary = kind !== "text" && kind !== "table";
+  const lines = hunks?.flatMap((h) => h.lines ?? []) ?? [];
+  return {
+    path,
+    status,
+    kind,
+    old: status === "added" || status === "untracked" ? null : side(path, oldSize, binary),
+    new: status === "deleted" ? null : side(path, newSize, binary),
+    additions: lines.filter((l) => l.kind === "added").length,
+    deletions: lines.filter((l) => l.kind === "removed").length,
+    hunks,
+    ...extra,
+  };
+};
+
+export const diffs: Record<string, FileDiff> = {
+  [HERO]: diffOf(HERO, "image", "modified", 3_410_222, 3_602_118, null),
+  [MODEL]: diffOf(MODEL, "model", "modified", 812_400, 958_660, null),
+  [MUSIC]: diffOf(MUSIC, "audio", "modified", 28_450_000, 29_804_000, null),
+  [ITEMS]: diffOf(ITEMS, "table", "modified", 4_820, 5_330, []),
+  [MOVE]: diffOf(MOVE, "text", "modified", 1_204, 1_618, moveHunks),
+  [SCENE]: diffOf(SCENE, "text", "modified", 88_104, 88_130, sceneHunks),
+  [ICON]: diffOf(ICON, "image", "untracked", 0, 18_220, null, { untracked: true }),
+  [ROCK]: diffOf(ROCK, "image", "modified", 1_905_000, 2_040_000, null),
+  [DAMAGE]: diffOf(DAMAGE, "text", "modified", 2_204, 2_390, moveHunks),
+};
+
+const imageInfo = (palette: [string, string, string], accent: string, size: number): ImageInfo => ({
+  width: 512,
+  height: 512,
+  format: "png",
+  bitDepth: 8,
+  hasAlpha: true,
+  size,
+  previewWidth: 512,
+  previewHeight: 512,
+  src: textureSvg(palette, accent),
+  encoding: "",
+  levels: 1,
+  faces: 1,
+  cube: false,
+  level: 0,
+  face: 0,
+  hdr: false,
+  layers: null,
+});
+
+export const images: Record<string, { old: ImageInfo | null; new: ImageInfo | null }> = {
+  [HERO]: {
+    old: imageInfo(["#1e3a8a", "#312e81", "#3b82f6"], "#e0e7ff", 3_410_222),
+    new: imageInfo(["#6d28d9", "#be185d", "#f59e0b"], "#fff7ed", 3_602_118),
+  },
+  [ICON]: { old: null, new: imageInfo(["#0f766e", "#164e63", "#2dd4bf"], "#ecfeff", 18_220) },
+  [ROCK]: {
+    old: imageInfo(["#3f3f46", "#27272a", "#a1a1aa"], "#e4e4e7", 1_905_000),
+    new: imageInfo(["#52525b", "#44403c", "#d6d3d1"], "#fafaf9", 2_040_000),
+  },
+};
+
+const audioSide = (path: string, seed: number, loud: number, size: number, rms: number, lufs: number): AudioSide => ({
+  path,
+  format: "wav",
+  size,
+  stats: { codec: "PCM 16-bit", sampleRate: 48000, channels: 2, bitDepth: 16, frames: 48000 * 142, duration: 142, peakDb: -0.4 - seed * 0.2, rmsDb: rms, loudness: lufs, clipped: 0, truncated: false },
+  peaks: [waveformPeaks(seed, 900, loud), waveformPeaks(seed + 1.3, 900, loud)],
+  spectrogram: spectrogramBytes(seed, 480, 128, loud),
+  specColumns: 480,
+  specRows: 128,
+  specMinHz: 0,
+  specMaxHz: 24000,
+  playback: "",
+});
+
+export const audio = {
+  old: audioSide(MUSIC, 1, 0.85, 28_450_000, -16.2, -14.8),
+  new: audioSide(MUSIC, 2, 1, 29_804_000, -12.9, -11.6),
+};
+
+export const table: TableCompare = {
+  columns: [
+    { name: "id", oldName: "id", old: 0, new: 0 },
+    { name: "name", oldName: "name", old: 1, new: 1 },
+    { name: "damage", oldName: "damage", old: 2, new: 2 },
+    { name: "weight", oldName: "weight", old: 3, new: 3 },
+    { name: "rarity", oldName: "", old: -1, new: 4 },
+  ],
+  rows: [
+    { status: "same", oldLine: 2, newLine: 2, cells: ["1001", "Iron Sword", "12", "3.5", "common"], old: null, changed: null },
+    { status: "changed", oldLine: 3, newLine: 3, cells: ["1002", "Ring of Dawn", "18", "0.2", "rare"], old: ["1002", "Ring of Dawn", "14", "0.2", ""], changed: [2, 4] },
+    { status: "changed", oldLine: 4, newLine: 4, cells: ["1003", "Storm Bow", "22", "2.1", "epic"], old: ["1003", "Storm Bow", "20", "2.4", ""], changed: [2, 3, 4] },
+    { status: "added", oldLine: 0, newLine: 5, cells: ["1004", "Lantern of Echoes", "0", "1.0", "rare"], old: null, changed: null },
+    { status: "removed", oldLine: 5, newLine: 0, cells: ["0999", "Debug Hammer", "999", "0", ""], old: null, changed: null },
+    { status: "same", oldLine: 6, newLine: 6, cells: ["1005", "Healing Draught", "0", "0.4", "common"], old: null, changed: null },
+  ],
+  keyColumn: 0,
+  delimiter: ",",
+  rowsAdded: 1,
+  rowsRemoved: 1,
+  rowsChanged: 2,
+  rowsMoved: 0,
+  cellsChanged: 5,
+  columnsAdded: 1,
+  columnsRemoved: 0,
+};
+
+const commit = (n: number, minutes: number, author: string, message: string): Commit => ({
+  id: `c${n}`,
+  hash: `${(n * 2654435761).toString(16).padStart(8, "0")}a1b2c3d4e5f6`.slice(0, 40),
+  parents: n > 1 ? [`c${n - 1}`] : [],
+  author,
+  email: `${author.split(" ")[0].toLowerCase()}@acme.dev`,
+  message,
+  date: ago(minutes),
+});
+
+export const commits: Commit[] = [
+  commit(12, 42, "Alex Rivera", "Rebuild hero armor albedo with the new dawn palette"),
+  commit(11, 180, "Mina Okafor", "Add dash ability to player movement"),
+  commit(10, 420, "Jon Backstrom", "Rework forest level lighting and lantern placement"),
+  commit(9, 1_300, "Alex Rivera", "Replace ring of dawn mesh with the higher-poly version"),
+  commit(8, 1_900, "Sam Patel", "Normalize loudness of the main theme (-14 LUFS)"),
+  commit(7, 3_100, "Mina Okafor", "Balance weapon damage values in items.csv"),
+  commit(6, 4_800, "Jon Backstrom", "Bake lightmaps for the cave level"),
+  commit(5, 7_200, "Alex Rivera", "Import enemy skeleton rig and animations"),
+  commit(4, 10_000, "Sam Patel", "Add footstep sound set for stone and grass"),
+  commit(3, 14_400, "Mina Okafor", "Fix camera jitter when climbing ledges"),
+  commit(2, 20_000, "Jon Backstrom", "Set up Unity project layout"),
+  commit(1, 30_000, "Alex Rivera", "Initial import"),
+];
+
+export const commitDiffs = (): FileDiff[] => [diffs[HERO], diffs[MODEL], diffs[ITEMS], diffs[MOVE]];
+
+export const branches: Branch[] = [
+  { name: "main", commitId: "c11", default: true, protected: true },
+  { name: "feature/hero-rework", commitId: "c12", default: false, protected: false },
+  { name: "feature/dash-ability", commitId: "c11", default: false, protected: false },
+  { name: "level/forest-lighting", commitId: "c10", default: false, protected: false },
+  { name: "audio/loudness-pass", commitId: "c8", default: false, protected: false },
+];
+
+export const tags: Tag[] = [
+  { name: "v0.9.0-alpha", commitId: "c8", message: "Vertical slice for the publisher demo", createdAt: ago(9_000), createdBy: "Mina Okafor" },
+  { name: "v0.8.2", commitId: "c5", message: "Playtest build", createdAt: ago(18_000), createdBy: "Alex Rivera" },
+  { name: "v0.8.0", commitId: "c2", message: "First internal build", createdAt: ago(30_000), createdBy: "Alex Rivera" },
+];
+
+const mr = (number: number, title: string, source: string, status: string, author: string, minutes: number, approvals: number, changesRequested: number, draft = false): MergeRequest => ({
+  number,
+  title,
+  description: "",
+  status,
+  draft,
+  source,
+  target: "main",
+  authorId: author,
+  createdAt: ago(minutes + 400),
+  updatedAt: ago(minutes),
+  mergeCommitId: status === "merged" ? "c11" : "",
+  mergeBaseId: "c8",
+  mergedSourceId: status === "merged" ? "c11" : "",
+  approvals,
+  changesRequested,
+  assignees: [],
+});
+
+export const mergeRequests: MergeRequest[] = [
+  {
+    ...mr(42, "Rework hero armor textures and ring mesh", "feature/hero-rework", "open", people.me.id, 38, 1, 0),
+    description: "New dawn palette for the hero, replaces the ring mesh with the high-poly version and adds a dash to the movement controller.\n\nTested on PC and Steam Deck.",
+    assignees: [people.mina],
+  },
+  mr(41, "Add dash ability", "feature/dash-ability", "open", people.mina.id, 210, 0, 1),
+  mr(40, "Forest level lighting pass", "level/forest-lighting", "open", people.jon.id, 500, 2, 0),
+  mr(39, "Loudness pass on music", "audio/loudness-pass", "merged", people.sam.id, 1_800, 1, 0),
+  mr(38, "WIP: Cave lightmaps", "level/cave-bake", "open", people.jon.id, 3_000, 0, 0, true),
+];
+
+export const activityFor = (n: number): Activity => ({
+  reviews: [
+    { id: "r1", reviewer: people.mina, state: "approved", body: "The new palette reads much better in the dark areas. Nice work.", stale: false, dismissed: false, createdAt: ago(25) },
+  ],
+  threads: [
+    {
+      id: "t1",
+      path: MOVE,
+      oldLine: 0,
+      newLine: 25,
+      outdated: false,
+      resolved: false,
+      resolvedBy: "",
+      createdAt: ago(30),
+      comments: [
+        { id: "k1", author: people.mina, body: "Should the dash force be scaled by `Time.deltaTime` too? It will feel different at 30 vs 144 fps.", createdAt: ago(30), edited: false },
+        { id: "k2", author: people.me, body: "Good catch, I'll apply it to the velocity instead and add a test.", createdAt: ago(22), edited: false },
+      ],
+    },
+  ],
+  timeline: [
+    { id: "e1", kind: "opened", actor: people.me, subject: { id: "", name: "" }, body: "", commitId: "", createdAt: ago(400 + n) },
+    { id: "e2", kind: "review_requested", actor: people.me, subject: people.mina, body: "", commitId: "", createdAt: ago(390 + n) },
+    { id: "e3", kind: "pushed", actor: people.me, subject: { id: "", name: "" }, body: "", commitId: "c12", createdAt: ago(60) },
+  ],
+  checks: [
+    { name: "build-windows", state: "success", url: "", reporter: "ci", updatedAt: ago(50) },
+    { name: "asset-validation", state: "success", url: "", reporter: "ci", updatedAt: ago(48) },
+    { name: "unit-tests", state: "success", url: "", reporter: "ci", updatedAt: ago(45) },
+  ],
+});
+
+export const locks = (): LockStatus => ({
+  userId: people.me.id,
+  branch: "feature/hero-rework",
+  defaultBranch: false,
+  canReleaseAny: true,
+  locks: [
+    { id: "l1", path: MUSIC, branch: "feature/hero-rework", global: false, heldBy: people.me.id, heldByName: people.me.name, mine: true, mergeRequest: 0, acquiredAt: ago(50), inScope: true },
+    { id: "l2", path: "Assets/Characters/Hero/hero_rig.blend", branch: "", global: true, heldBy: people.jon.id, heldByName: people.jon.name, mine: false, mergeRequest: 0, acquiredAt: ago(240), inScope: true },
+    { id: "l3", path: "Assets/Levels/Cave/", branch: "", global: true, heldBy: people.sam.id, heldByName: people.sam.name, mine: false, mergeRequest: 41, acquiredAt: ago(1_500), inScope: true },
+    { id: "l4", path: "Assets/Textures/Environment/rock_albedo.png", branch: "feature/hero-rework", global: false, heldBy: people.me.id, heldByName: people.me.name, mine: true, mergeRequest: 0, acquiredAt: ago(130), inScope: true },
+  ],
+  files: [
+    { path: HERO, state: "needed", lockPath: "", heldByName: "", tracked: true },
+    { path: MODEL, state: "needed", lockPath: "", heldByName: "", tracked: true },
+    { path: MUSIC, state: "mine", lockPath: MUSIC, heldByName: people.me.name, tracked: true },
+    { path: ICON, state: "free", lockPath: "", heldByName: "", tracked: false },
+  ],
+});
+
+export const projects: RemoteProject[] = [
+  { org: "acme", orgName: "Acme Games", orgRole: "owner", project: "starfall", name: "Starfall", description: "Action RPG, Unity 6" },
+  { org: "acme", orgName: "Acme Games", orgRole: "owner", project: "starfall-audio", name: "Starfall Audio", description: "Music, sfx and voice-over" },
+  { org: "acme", orgName: "Acme Games", orgRole: "owner", project: "launcher", name: "Launcher", description: "Desktop launcher and patcher" },
+  { org: "pixelforge", orgName: "Pixel Forge", orgRole: "member", project: "tiny-tactics", name: "Tiny Tactics", description: "Turn-based tactics, art pipeline" },
+];
+
+export const conflictSet: ConflictSet = {
+  op: "merge",
+  base: { id: "c8", label: "Common ancestor" },
+  ours: { id: "c12", label: "feature/hero-rework" },
+  theirs: { id: "c11", label: "main" },
+  files: [
+    { path: DAMAGE, kind: "text", binary: false, resolved: false, viewer: "text" },
+    { path: ROCK, kind: "binary", binary: true, resolved: false, viewer: "image" },
+  ],
+};
+
+const damageBase = `public static class Damage
+{
+    public static int Compute(Attack attack, Defense defense)
+    {
+        var raw = attack.Power - defense.Armor;
+        return Mathf.Max(1, raw);
+    }
+}
+`;
+
+export const conflictTexts: ConflictTexts = {
+  base: { text: damageBase, missing: false },
+  ours: {
+    text: damageBase.replace("var raw = attack.Power - defense.Armor;", "var raw = attack.Power * attack.Crit - defense.Armor;"),
+    missing: false,
+  },
+  theirs: {
+    text: damageBase.replace("var raw = attack.Power - defense.Armor;", "var raw = attack.Power - defense.Armor * defense.Resist;"),
+    missing: false,
+  },
+  working: {
+    text: damageBase.replace(
+      "        var raw = attack.Power - defense.Armor;\n",
+      "<<<<<<< ours\n        var raw = attack.Power * attack.Crit - defense.Armor;\n=======\n        var raw = attack.Power - defense.Armor * defense.Resist;\n>>>>>>> theirs\n",
+    ),
+    missing: false,
+  },
+};

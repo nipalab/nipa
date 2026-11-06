@@ -10,7 +10,9 @@
 # https://nipalab.com (that would proxy Caddy back into itself). Configure it
 # with:
 #     MARKETING_UPSTREAM=https://<site>.netlify.app
-#     MARKETING_HOST=nipalab.com
+#
+# The marketing build lists its routes with `npm run routes` (nipa-web); keep
+# @marketing in sync with it and with the reserved org slugs.
 #
 # Keep the nipad-ee reverse_proxy line in the exact
 #     reverse_proxy 127.0.0.1:<port> {
@@ -32,10 +34,12 @@ nipalab.com {
 	# owns every other path. Keep this list in sync with the marketing build and
 	# with the reserved org slugs (internal/usecase/reserved.go, web/src/slug.ts).
 	# MARKETING_UPSTREAM is required and must not be nipalab.com.
-	@marketing path / /_astro/* /screenshots/* /pricing /pricing/* /favicon.svg /apple-touch-icon.png /logo.svg /og.png /robots.txt /sitemap-index.xml /sitemap-0.xml
+	@marketing path / /_astro/* /screenshots/* /pricing /pricing/* /guides /guides/* /download /download/* /support /support/* /contact /contact/* /privacy /privacy/* /terms /terms/* /favicon.svg /apple-touch-icon.png /logo.svg /og.png /robots.txt /site.webmanifest /sitemap-index.xml /sitemap-0.xml
 	handle @marketing {
+		# Netlify routes by Host, so send the upstream's own host: the site
+		# needs no nipalab.com alias.
 		reverse_proxy {$MARKETING_UPSTREAM} {
-			header_up Host {$MARKETING_HOST:nipalab.com}
+			header_up Host {upstream_hostport}
 		}
 	}
 
