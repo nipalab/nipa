@@ -15,7 +15,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -62,6 +61,11 @@ type chunkTestServer struct {
 	hookBeforeGet    func()
 	downloadSizes    []int
 	downloadErrAfter int
+
+	putAttempts   map[string]int
+	failPuts      map[string]int
+	failPutStatus int
+	retryAfter    string
 }
 
 func newChunkTestServer() *chunkTestServer {
@@ -71,6 +75,8 @@ func newChunkTestServer() *chunkTestServer {
 		getAttempts:  map[string]int{},
 		failGets:     map[string]int{},
 		truncateGets: map[string]int{},
+		putAttempts:  map[string]int{},
+		failPuts:     map[string]int{},
 	}
 }
 
@@ -227,6 +233,20 @@ func (s *chunkTestServer) serveChunkHTTP(w http.ResponseWriter, r *http.Request)
 	hash := path.Base(r.URL.Path)
 	switch r.URL.Query().Get("op") {
 	case "put":
+		s.mu.Lock()
+		s.putAttempts[hash]++
+		failPut := s.failPuts[hash] > 0
+		if failPut {
+			s.failPuts[hash]--
+		}
+		s.mu.Unlock()
+		if failPut {
+			if s.retryAfter != "" {
+				w.Header().Set("Retry-After", s.retryAfter)
+			}
+			http.Error(w, "put failed", s.failPutStatus)
+			return
+		}
 		if s.putStatus != 0 {
 			http.Error(w, "put failed", s.putStatus)
 			return
@@ -269,6 +289,9 @@ func (s *chunkTestServer) serveChunkHTTP(w http.ResponseWriter, r *http.Request)
 		failStatus := s.failGetStatus
 		s.mu.Unlock()
 		if failNow {
+			if s.retryAfter != "" {
+				w.Header().Set("Retry-After", s.retryAfter)
+			}
 			http.Error(w, "get failed", failStatus)
 			return
 		}
@@ -594,6 +617,7 @@ func TestClient_UploadChunks_HTTPError(t *testing.T) {
 	srv.putStatus = http.StatusInternalServerError
 	addr := startChunkTestServer(t, srv)
 	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
+	c.retry = fastRetry(3)
 	require.NoError(t, c.Connect(context.Background(), addr))
 
 	_, _, err := c.UploadChunks(context.Background(), domain.ChunkScope{Org: "org", Project: "proj"}, []*serverDomain.ChunkData{
@@ -655,7 +679,7 @@ func TestClient_DownloadChunks_HTTPError(t *testing.T) {
 	srv.getStatus = http.StatusInternalServerError
 	addr := startChunkTestServer(t, srv)
 	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
-	c.retry = retryPolicy{attempts: 3, backoff: time.Millisecond}
+	c.retry = fastRetry(3)
 	require.NoError(t, c.Connect(context.Background(), addr))
 
 	err := c.DownloadChunks(context.Background(), domain.ChunkScope{Org: "org", Project: "proj", CommitIDs: []string{"1"}}, []serverDomain.Hash{h}, func(serverDomain.Hash, []byte) error {

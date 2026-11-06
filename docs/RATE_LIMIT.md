@@ -31,7 +31,7 @@ incremented.
 | `auth_ip` | `/api/v1/auth/*` (login, refresh, register, resend, verify, OAuth) and the public login RPCs | client IP | 10 / 10 |
 | `auth_id` | password login, SSH begin/complete login with an email | SHA-256 of the lower-cased email | 0.33 / 5 |
 | `api_user` | authenticated REST (`/api/v1`) and gRPC | user id | 3000 / 200 |
-| `chunk_ip` | signed `/api/chunks/*` transfers | client IP | 12000 / 1000 |
+| `chunk_ip` | signed `/api/chunks/*` transfers | client IP | 60000 / 5000 |
 | `global_ip` | every other HTTP request | client IP | 6000 / 300 |
 
 Exempt: `/healthz`, `/readyz`, `/metrics`, `/version`, pprof, gRPC health and
@@ -57,6 +57,20 @@ Add the proxy's address (or CIDR) when it is not on loopback.
 - gRPC: `ResourceExhausted` with the same message. The client maps it to a 429
   domain error (quota failures keep mapping to 402).
 - `auth_id` rejections surface as the same 429 from the usecase.
+
+## Client behaviour
+
+The `nipa` client treats throttling as backpressure instead of a failure:
+
+- Chunk PUTs and GETs that answer 429 wait for `Retry-After` (capped at 30 s,
+  plus jitter) and retry up to 10 times. That budget is separate from the 3
+  attempts allowed for network errors, 5xx and 408. Each throttled transfer also
+  halves the adaptive transfer concurrency (minimum 4). A pinned
+  `NIPA_UPLOAD_WORKERS` is not tuned.
+- Unary gRPC calls rejected with `rate limit exceeded, retry in Ns` are repeated
+  after the requested wait under the same budget. The server interceptor rejects
+  before any handler runs, so this is safe for every method, `Push` included.
+  Quota errors (`ResourceExhausted` without the prefix) are not retried.
 
 ## Metrics
 

@@ -1065,7 +1065,10 @@ compatible for one release.
   behind a long clone past their TTL and the worker pool is fed continuously
   (`runChunks`). A transient per-chunk failure (network error, truncated body,
   5xx, 408, 429) is retried up to 3 attempts with a 250 ms doubling backoff plus
-  jitter; 4xx answers (expired or unknown URL) fail immediately, and a chunk
+  jitter (uploads too: PUTs are content-addressed and idempotent); a 429 has its
+  own budget (10 retries honouring `Retry-After`, capped at 30 s) and halves the
+  transfer concurrency, and unary RPCs rejected by the server rate limiter are
+  repeated the same way (`internal/client/grpc/retry.go`); 4xx answers (expired or unknown URL) fail immediately, and a chunk
   reaches the callback only after a complete read, so a retry never delivers it
   twice. The server only
   returns relative paths: the client connects with the address from
