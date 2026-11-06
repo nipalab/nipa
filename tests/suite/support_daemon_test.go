@@ -7,9 +7,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -23,10 +25,11 @@ import (
 )
 
 type daemonEndpoint struct {
-	PID     int    `json:"pid"`
-	Port    int    `json:"port"`
-	Token   string `json:"token"`
-	Version string `json:"version"`
+	PID      int    `json:"pid"`
+	Port     int    `json:"port"`
+	JSONPort int    `json:"json_port"`
+	Token    string `json:"token"`
+	Version  string `json:"version"`
 }
 
 type daemonProc struct {
@@ -55,7 +58,7 @@ func startDaemonWithTokens(tokenFile string) *daemonProc {
 	logFile, err := os.Create(logPath)
 	Expect(err).NotTo(HaveOccurred())
 
-	cmd := exec.Command(cli.binary, "serve", "--port", "0", "--endpoint", endpoint)
+	cmd := exec.Command(cli.binary, "serve", "--port", "0", "--json-port", "0", "--endpoint", endpoint)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "NIPA_TOKEN_FILE="+tokenFile, "NIPA_DAEMON_EVENT_INTERVAL=1s")
 	cmd.Stdout = logFile
@@ -249,4 +252,17 @@ func contextWithoutToken() context.Context {
 
 func metadataAppend(_ context.Context, token string) context.Context {
 	return metadata.AppendToOutgoingContext(context.Background(), daemon.TokenHeader, token)
+}
+
+func (d *daemonProc) jsonPost(path, body string) (*http.Response, []byte) {
+	GinkgoHelper()
+	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("http://127.0.0.1:%d%s", d.info.JSONPort, path), strings.NewReader(body))
+	Expect(err).NotTo(HaveOccurred())
+	req.Header.Set(daemon.TokenHeader, d.info.Token)
+	resp, err := http.DefaultClient.Do(req)
+	Expect(err).NotTo(HaveOccurred())
+	defer func() { _ = resp.Body.Close() }()
+	data, err := io.ReadAll(resp.Body)
+	Expect(err).NotTo(HaveOccurred())
+	return resp, data
 }

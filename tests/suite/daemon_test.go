@@ -1,8 +1,11 @@
 package suite_test
 
 import (
+	"encoding/json"
+	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -24,6 +27,46 @@ var _ = Describe("nipa serve", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(int(ping.GetPid())).To(Equal(d.info.PID))
 		Expect(ping.GetVersion()).To(Equal(d.info.Version))
+	})
+
+	It("serves the JSON bridge for watch, status and push", func() {
+		project := newProject("daemon-json")
+		url := repoURLFor(orgSlug, project)
+		parent := workspace()
+		dir := cloneRepo(parent, url, "work")
+
+		d := startDaemon()
+		Expect(d.info.JSONPort).To(BeNumerically(">", 0))
+		Expect(d.info.JSONPort).NotTo(Equal(d.info.Port))
+
+		root, err := json.Marshal(map[string]string{"root": dir})
+		Expect(err).NotTo(HaveOccurred())
+		resp, _ := d.jsonPost("/v1/WatchRepo", string(root))
+		Expect(resp.StatusCode).To(Equal(http.StatusOK))
+
+		writeText(dir, "b.txt", "from json\n")
+		resp, body := d.jsonPost("/v1/Status", string(root))
+		Expect(resp.StatusCode).To(Equal(http.StatusOK))
+		var status struct {
+			Branch    string   `json:"branch"`
+			Untracked []string `json:"untracked"`
+		}
+		Expect(json.Unmarshal(body, &status)).To(Succeed())
+		Expect(status.Branch).To(Equal("main"))
+		Expect(status.Untracked).To(ContainElement("b.txt"))
+
+		d.stage(dir, []string{"b.txt"}, nil)
+		push, err := json.Marshal(map[string]string{"root": dir, "message": uniqueMessage("json push")})
+		Expect(err).NotTo(HaveOccurred())
+		resp, body = d.jsonPost("/v1/Push", string(push))
+		Expect(resp.StatusCode).To(Equal(http.StatusOK))
+		Expect(resp.Header.Get("Content-Type")).To(Equal("application/x-ndjson"))
+		lines := strings.Split(strings.TrimSpace(string(body)), "\n")
+		Expect(lines).NotTo(BeEmpty())
+		Expect(lines[len(lines)-1]).To(ContainSubstring(`"result"`))
+
+		fresh := cloneRepo(parent, url, "fresh")
+		Expect(readText(fresh, "b.txt")).To(Equal("from json\n"))
 	})
 
 	It("watches a repository and lists it", func() {

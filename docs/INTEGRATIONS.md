@@ -93,10 +93,13 @@ All three engines load assets from files on disk — the materialized working co
 
 ### Unity
 
-**No standard VCS provider API** — Plastic and Git integrations are closed implementations.
+Unity 2021.2+ has a managed VCS API: `UnityEditor.VersionControl.VersionControlObject` with `[VersionControl("Nipa")]` registers a provider in Project Settings › Editor › Version Control. Its extensions (`IIconOverlayExtension`, `IPopupMenuExtension`, `IInspectorWindowExtension`, `ISettingsInspectorExtension`) give overlay icons, context menus, an inspector bar and settings, and `AssetModificationProcessor` (`IsOpenForEdit`, `MakeEditable`, `OnWillSaveAssets`, ...) enforces the checkout model.
 
-- Build a custom **Editor extension (C#):** menu items, toolbar, an EditorWindow replacing `nipa status`, Project-view context menus, `AssetDatabase`-driven refresh after `update`/`switch`, and an import-time on-demand fetch hook for missing binary assets.
-- Straightforward, self-contained, no ABI coupling.
+- **Package:** `plugins/unity/com.nipalab.nipa` (`com.nipalab.nipa`, Apache 2.0), minimum Unity 2022.3 LTS, also tested on Unity 6. Plan: `docs/plans/UNITY_PLUGIN.md`.
+- **Transport:** the daemon's loopback **JSON/HTTP bridge** (`json_port` in `daemon.json`, `POST /v1/<Method>`, NDJSON for server streams; see `docs/DAEMON.md`). Unity's Mono `HttpClient` cannot speak gRPC over h2c, so the plugin never talks to gRPC; Godot and Unreal reuse the same bridge.
+- **Checkout = Nipa binary file lock** (Perforce-style): someone else's covering lock makes an asset read-only; `MakeEditable` locks the asset and its `.meta`.
+- **Meta hygiene:** the `MetaWarnings` RPC (`internal/unitymeta`) reports missing, orphaned, unstaged and GUID-changed `.meta` files.
+- All daemon I/O is async off the main thread; an asset and its `.meta` are always staged, locked and restored together.
 
 ### Unreal Engine
 
@@ -139,9 +142,9 @@ Godot's built-in VCS abstraction `EditorVCSInterface` gives exactly the methods 
 |------|-------------|-------|
 | 1 | `nipa serve` daemon — loopback gRPC service, status watcher + cache, token-based auth, remote-op proxy | Enables everything else |
 | 2 | `nipa-gui` MVP (Phase A) — tree browser, status, stage/submit/update, history/diff, locks | Flagship UX, ships early |
-| 3 | Godot `EditorVCSInterface` plugin (calls daemon) | Proves the daemon API including binary asset workflows |
-| 4 | Explorer registry-menu MVP → COM context menu + overlay icon | Windows dev UX |
-| 5 | Unity C# Editor extension | Main game studio UX |
+| 3 | Unity C# Editor extension (`VersionControlObject` over the daemon JSON bridge) | Main game studio UX |
+| 4 | Godot `EditorVCSInterface` plugin (calls daemon) | Proves the daemon API including binary asset workflows |
+| 5 | Explorer registry-menu MVP → COM context menu + overlay icon | Windows dev UX |
 | 6 | Unreal utility plugin → full `ISourceControlProvider` | AAA studios |
 | (ongoing) | `nipa-gui` Phase B parity — MR lifecycle, revision graph, branches, pending controls, sparse editor, ACL admin | P4V-level feature coverage |
 

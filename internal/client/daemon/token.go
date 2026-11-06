@@ -25,10 +25,11 @@ var Version = version.Resolve().Version
 
 // Endpoint is the discovery record stored in ~/.config/nipa/daemon.json.
 type Endpoint struct {
-	PID     int    `json:"pid"`
-	Port    int    `json:"port"`
-	Token   string `json:"token"`
-	Version string `json:"version"`
+	PID      int    `json:"pid"`
+	Port     int    `json:"port"`
+	JSONPort int    `json:"json_port,omitempty"`
+	Token    string `json:"token"`
+	Version  string `json:"version"`
 }
 
 // EndpointPath returns the daemon discovery file location.

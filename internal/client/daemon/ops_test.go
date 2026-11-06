@@ -131,6 +131,7 @@ func newOpServer(t *testing.T, ops RepoOps) *Server {
 		srv.Stop()
 		srv.repos.closeAll()
 		_ = srv.listener.Close()
+		srv.bridge.close()
 	})
 	return srv
 }
