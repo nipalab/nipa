@@ -10,6 +10,8 @@ import { ConfirmDialog } from "@/components/ui/confirm";
 import { lockStateMap, useLockActions, useLockStatus, type Notify } from "@/hooks/useLocks";
 import type { OpState } from "@/hooks/useRepoOperation";
 import { errorMessage, readSetting, writeSetting } from "@/lib/utils";
+import { PaneResizer } from "@/components/ui/resize-handle";
+import { useResizableWidth } from "@/hooks/useResizableWidth";
 
 const LAYOUT_KEY = "nipa.diffLayout";
 const POLL_MS = 30_000;
@@ -40,6 +42,7 @@ function stillListed(c: ChangeSet, sel: Selection | null): Selection | null {
 }
 
 export function ChangesView({ root, op, message, onMessage, onPush, onCancelOp, onError, notify }: ChangesViewProps) {
+  const listSize = useResizableWidth("changes", { initial: 320, min: 220, max: 640 });
   const queryClient = useQueryClient();
   const [picked, setPicked] = useState<Selection | null>(null);
   const [discarding, setDiscarding] = useState<FileChange | null>(null);
@@ -118,7 +121,7 @@ export function ChangesView({ root, op, message, onMessage, onPush, onCancelOp, 
 
   return (
     <div className="flex h-full min-h-0">
-      <div className="flex w-80 shrink-0 flex-col border-r border-border">
+      <div className="relative flex shrink-0 flex-col border-r border-border" style={{ width: listSize.width }}>
         {c.detached && (
           <Banner icon={<Tag className="size-3.5 text-accent" />} text={`Viewing tag ${c.detached}`} />
         )}
@@ -170,6 +173,7 @@ export function ChangesView({ root, op, message, onMessage, onPush, onCancelOp, 
           onPush={onPush}
           onCancel={onCancelOp}
         />
+        <PaneResizer size={listSize} label="Resize file list" />
       </div>
 
       <div className="min-w-0 flex-1">

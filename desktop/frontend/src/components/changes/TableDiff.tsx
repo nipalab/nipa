@@ -7,6 +7,8 @@ import { imageRefs, viewerKey } from "@/components/changes/ImageDiff";
 import { MetaDiff } from "@/components/changes/Notices";
 import { TextDiff, type DiffLayout, type LineComments } from "@/components/changes/TextDiff";
 import { Group, Notice, ToolButton } from "@/components/changes/Toolbar";
+import { ColumnResizer } from "@/components/ui/resize-handle";
+import { useColumnWidths } from "@/hooks/useColumnWidths";
 import { cn } from "@/lib/utils";
 
 type Mode = "table" | "text";
@@ -50,18 +52,21 @@ export function TableDiff({ root, diff, layout, comments }: { root: string; diff
   }
   if (query.isError) return <MetaDiff diff={diff} detail={`The table could not be read: ${String((query.error as Error)?.message ?? query.error)}`} />;
   if (!query.data) return <MetaDiff diff={diff} detail="There is no table preview for this file." />;
-  return <TableCompareView compare={query.data} toolbar={switcher || null} />;
+  return <TableCompareView compare={query.data} toolbar={switcher || null} storageKey={`table:${diff.path}`} />;
 }
 
 const ROW = 26;
 const CHANGED_ROW = 42;
 const COL_WIDTH = 160;
+const NO_DEFAULTS: Record<string, number> = {};
 const GUTTER = 88;
 
 const hasChanges = (c: TableCompare) => c.rowsAdded + c.rowsRemoved + c.rowsChanged + c.rowsMoved + c.columnsAdded + c.columnsRemoved > 0;
 
-export function TableCompareView({ compare, toolbar = null }: { compare: TableCompare; toolbar?: ReactNode }) {
+export function TableCompareView({ compare, toolbar = null, storageKey = "table" }: { compare: TableCompare; toolbar?: ReactNode; storageKey?: string }) {
   const columns = compare.columns ?? [];
+  const sizes = useColumnWidths(storageKey, NO_DEFAULTS, 48);
+  const widths = columns.map((c, i) => sizes.width(columnId(c, i), COL_WIDTH));
   const all = compare.rows ?? [];
   const [onlyChanges, setOnlyChanges] = useState(() => hasChanges(compare) && all.length > 50);
   const rows = useMemo(() => (onlyChanges ? all.filter((r) => r.status !== "same" || r.moved) : all), [all, onlyChanges]);
@@ -73,7 +78,7 @@ export function TableCompareView({ compare, toolbar = null }: { compare: TableCo
     overscan: 16,
     initialRect: { width: 800, height: 600 },
   });
-  const width = GUTTER + columns.length * COL_WIDTH;
+  const width = widths.reduce((sum, w) => sum + w, GUTTER);
   const key = compare.keyColumn >= 0 ? columns[compare.keyColumn] : null;
 
   return (
@@ -100,7 +105,7 @@ export function TableCompareView({ compare, toolbar = null }: { compare: TableCo
               Row
             </div>
             {columns.map((c, i) => (
-              <ColumnHeader key={i} column={c} index={i} />
+              <ColumnHeader key={i} column={c} index={i} width={widths[i]} sizes={sizes} />
             ))}
           </div>
           {rows.length === 0 ? (
@@ -108,7 +113,7 @@ export function TableCompareView({ compare, toolbar = null }: { compare: TableCo
           ) : (
             <div style={{ height: virtualizer.getTotalSize(), width, position: "relative" }}>
               {virtualizer.getVirtualItems().map((item) => (
-                <Row key={item.key} row={rows[item.index]} columns={columns} top={item.start} height={item.size} />
+                <Row key={item.key} row={rows[item.index]} columns={columns} widths={widths} total={width} top={item.start} height={item.size} />
               ))}
             </div>
           )}
@@ -120,20 +125,23 @@ export function TableCompareView({ compare, toolbar = null }: { compare: TableCo
 
 const letters = (i: number): string => (i < 26 ? String.fromCharCode(65 + i) : letters(Math.floor(i / 26) - 1) + letters(i % 26));
 const columnLabel = (c: TableColumn, i: number) => c.name || `column ${letters(i)}`;
+const columnId = (c: TableColumn, i: number) => c.name || letters(i);
 
-function ColumnHeader({ column, index }: { column: TableColumn; index: number }) {
+function ColumnHeader({ column, index, width, sizes }: { column: TableColumn; index: number; width: number; sizes: ReturnType<typeof useColumnWidths> }) {
   const added = column.old < 0;
   const removed = column.new < 0;
   const renamed = !added && !removed && column.oldName !== column.name && column.oldName !== "";
   return (
-    <div
-      role="columnheader"
-      title={renamed ? `${column.oldName} → ${column.name}` : column.name}
-      className={cn("shrink-0 truncate border-l border-border px-2 py-1", added && "bg-success/15 text-success", removed && "bg-danger/15 text-danger line-through")}
-      style={{ width: COL_WIDTH }}
-    >
-      {column.name || <span className="text-muted-foreground">{letters(index)}</span>}
-      {renamed && <span className="ml-1 font-normal text-warning">(was {column.oldName})</span>}
+    <div className="relative shrink-0" style={{ width }}>
+      <div
+        role="columnheader"
+        title={renamed ? `${column.oldName} → ${column.name}` : column.name}
+        className={cn("truncate border-l border-border px-2 py-1", added && "bg-success/15 text-success", removed && "bg-danger/15 text-danger line-through")}
+      >
+        {column.name || <span className="text-muted-foreground">{letters(index)}</span>}
+        {renamed && <span className="ml-1 font-normal text-warning">(was {column.oldName})</span>}
+      </div>
+      <ColumnResizer sizes={sizes} id={columnId(column, index)} label={columnLabel(column, index)} />
     </div>
   );
 }
@@ -145,14 +153,14 @@ const rowTone: Record<string, string> = {
   same: "",
 };
 
-function Row({ row, columns, top, height }: { row: TableRow; columns: TableColumn[]; top: number; height: number }) {
+function Row({ row, columns, widths, total, top, height }: { row: TableRow; columns: TableColumn[]; widths: number[]; total: number; top: number; height: number }) {
   const changed = new Set(row.changed ?? []);
   return (
     <div
       role="row"
       data-status={row.status}
       className={cn("absolute left-0 flex border-b border-border/60", rowTone[row.status])}
-      style={{ top, height, width: GUTTER + columns.length * COL_WIDTH }}
+      style={{ top, height, width: total }}
     >
       <div className="flex shrink-0 items-center gap-1 px-2 font-mono text-[10px] text-muted-foreground no-underline" style={{ width: GUTTER }} role="rowheader">
         <span>{row.oldLine || "·"}</span>
@@ -174,7 +182,7 @@ function Row({ row, columns, top, height }: { row: TableRow; columns: TableColum
               c.old < 0 && row.status !== "added" && "text-success",
               c.new < 0 && row.status !== "removed" && "text-muted-foreground line-through",
             )}
-            style={{ width: COL_WIDTH }}
+            style={{ width: widths[i] }}
           >
             {isChanged && <span className="truncate text-[11px] text-danger line-through">{row.old?.[i] ?? ""}</span>}
             <span className="truncate">{value}</span>

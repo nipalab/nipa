@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import type { Notify } from "@/hooks/useLocks";
 import { timeAgo } from "@/lib/time";
 import { cn, errorMessage } from "@/lib/utils";
+import { PaneResizer } from "@/components/ui/resize-handle";
+import { useResizableWidth } from "@/hooks/useResizableWidth";
 
 const filters = [
   ["open", "Open"],
@@ -21,6 +23,7 @@ type Filter = (typeof filters)[number][0];
 type MergeRequestsViewProps = { root: string; branch: string; notify: Notify; open?: { number: number; seq: number } };
 
 export function MergeRequestsView({ root, branch, notify, open }: MergeRequestsViewProps) {
+  const listSize = useResizableWidth("mr", { initial: 340, min: 240, max: 720 });
   const [status, setStatus] = useState<Filter>("open");
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
@@ -47,7 +50,7 @@ export function MergeRequestsView({ root, branch, notify, open }: MergeRequestsV
 
   return (
     <div className="flex h-full min-h-0">
-      <aside className="flex w-[340px] shrink-0 flex-col border-r border-border">
+      <aside className="relative flex shrink-0 flex-col border-r border-border" style={{ width: listSize.width }}>
         <div className="flex shrink-0 items-center gap-1 border-b border-border px-3 py-2">
           <div className="flex rounded-md border border-border p-0.5 text-[11px]" role="group" aria-label="Status">
             {filters.map(([id, label]) => (
@@ -106,6 +109,7 @@ export function MergeRequestsView({ root, branch, notify, open }: MergeRequestsV
             )}
           </ol>
         )}
+        <PaneResizer size={listSize} label="Resize merge request list" />
       </aside>
       <section className="min-w-0 flex-1">
         {current !== null ? <MergeRequestDetail key={current} root={root} number={current} notify={notify} /> : <Centered>Select a merge request</Centered>}

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, ArrowDownToLine, FileDiff, FolderTree, GitBranch, GitMerge, GitPullRequest, History, Info, Lock, Tag, Tags, Trash2 } from "lucide-react";
 import { desktop, type ChangeSet, type ConflictSet, type OpOutcome, type Repo, type RepoActivity } from "@/api/desktop";
@@ -34,9 +34,9 @@ const tabs: { id: TabId; label: string; Icon: typeof FileDiff }[] = [
   { id: "details", label: "Details", Icon: Info },
 ];
 
-type RepoViewProps = { repo: Repo; removing: boolean; onRemove: (root: string) => void; notify: Notify; activity?: RepoActivity; intent?: Intent };
+type RepoViewProps = { repo: Repo; removing: boolean; onRemove: (root: string) => void; notify: Notify; activity?: RepoActivity; intent?: Intent; leading?: ReactNode };
 
-export function RepoView({ repo, removing, onRemove, notify, activity, intent }: RepoViewProps) {
+export function RepoView({ repo, removing, onRemove, notify, activity, intent, leading }: RepoViewProps) {
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<TabId>("changes");
   const [updated, setUpdated] = useState(false);
@@ -116,7 +116,8 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent }:
 
   return (
     <div className="flex h-full flex-col">
-      <header className="drag-region flex h-12 shrink-0 items-center gap-3 border-b border-border px-5">
+      <header className={cn("drag-region flex h-12 shrink-0 items-center gap-3 border-b border-border px-5", leading && "pl-2")}>
+        {leading}
         <h1 className="truncate text-sm font-semibold">{repo.name}</h1>
         {!repo.error &&
           (detached ? (

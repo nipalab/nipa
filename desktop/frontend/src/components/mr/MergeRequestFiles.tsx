@@ -8,6 +8,8 @@ import type { DiffLayout, LineAnchor, LineComments } from "@/components/changes/
 import { CommentBox, ThreadCard } from "@/components/mr/ThreadCard";
 import { fileThreads, threadAt } from "@/lib/mergeRequests";
 import { cn, errorMessage, readSetting, writeSetting } from "@/lib/utils";
+import { PaneResizer } from "@/components/ui/resize-handle";
+import { useResizableWidth } from "@/hooks/useResizableWidth";
 
 const LAYOUT_KEY = "nipa.diffLayout";
 
@@ -24,6 +26,7 @@ type MergeRequestFilesProps = {
 };
 
 export function MergeRequestFiles({ root, base, head, threads, busy, canComment, onComment, onReply, onResolve }: MergeRequestFilesProps) {
+  const filesSize = useResizableWidth("mr-files", { initial: 256, min: 160, max: 560 });
   const files = useQuery({ queryKey: ["commit", root, head, "vs", base], queryFn: () => desktop.revisionFiles(root, base, head), enabled: !!base && !!head, staleTime: Infinity });
   const [picked, setPicked] = useState("");
   const [drafting, setDrafting] = useState<LineAnchor | null>(null);
@@ -93,32 +96,35 @@ export function MergeRequestFiles({ root, base, head, threads, busy, canComment,
 
   return (
     <div className="flex h-full min-h-0">
-      <ul className="w-64 shrink-0 overflow-auto border-r border-border py-1" aria-label="Changed files">
-        {list.map((f) => (
-          <li key={f.path}>
-            <button
-              type="button"
-              aria-current={f === selected}
-              onClick={() => {
-                setPicked(f.path);
-                setDrafting(null);
-              }}
-              title={f.path}
-              className={cn("flex w-full items-center gap-1.5 px-3 py-1 text-left text-[12px] hover:bg-muted", f === selected && "bg-muted font-medium")}
-            >
-              <FileIcon kind={f.kind} />
-              <span className="min-w-0 flex-1 truncate">{f.path}</span>
-              {counts.get(f.path) ? (
-                <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground" aria-label={`${counts.get(f.path)} threads`}>
-                  <MessageSquare className="size-3" />
-                  {counts.get(f.path)}
-                </span>
-              ) : null}
-              <StatusLetter status={f.status} />
-            </button>
-          </li>
-        ))}
-      </ul>
+      <div className="relative shrink-0" style={{ width: filesSize.width }}>
+        <ul className="h-full overflow-auto border-r border-border py-1" aria-label="Changed files">
+          {list.map((f) => (
+            <li key={f.path}>
+              <button
+                type="button"
+                aria-current={f === selected}
+                onClick={() => {
+                  setPicked(f.path);
+                  setDrafting(null);
+                }}
+                title={f.path}
+                className={cn("flex w-full items-center gap-1.5 px-3 py-1 text-left text-[12px] hover:bg-muted", f === selected && "bg-muted font-medium")}
+              >
+                <FileIcon kind={f.kind} />
+                <span className="min-w-0 flex-1 truncate">{f.path}</span>
+                {counts.get(f.path) ? (
+                  <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground" aria-label={`${counts.get(f.path)} threads`}>
+                    <MessageSquare className="size-3" />
+                    {counts.get(f.path)}
+                  </span>
+                ) : null}
+                <StatusLetter status={f.status} />
+              </button>
+            </li>
+          ))}
+        </ul>
+        <PaneResizer size={filesSize} label="Resize file list" />
+      </div>
       {selected && (
         <div className="flex min-w-0 flex-1 flex-col">
           {outdated.length > 0 && (

@@ -11,12 +11,15 @@ import { Button } from "@/components/ui/button";
 import type { Notify } from "@/hooks/useLocks";
 import { editsText, kindLabel, unresolved } from "@/lib/conflicts";
 import { cn, errorMessage, readSetting, writeSetting } from "@/lib/utils";
+import { PaneResizer } from "@/components/ui/resize-handle";
+import { useResizableWidth } from "@/hooks/useResizableWidth";
 
 const LAYOUT_KEY = "nipa.diffLayout";
 
 type ConflictsViewProps = { root: string; busy: boolean; notify: Notify };
 
 export function ConflictsView({ root, busy, notify }: ConflictsViewProps) {
+  const listSize = useResizableWidth("conflicts", { initial: 288, min: 200, max: 560 });
   const queryClient = useQueryClient();
   const conflicts = useQuery({ queryKey: ["conflicts", root], queryFn: () => desktop.conflicts(root) });
   const [picked, setPicked] = useState("");
@@ -62,7 +65,7 @@ export function ConflictsView({ root, busy, notify }: ConflictsViewProps) {
 
   return (
     <div className="flex h-full min-h-0">
-      <aside className="flex w-72 shrink-0 flex-col border-r border-border">
+      <aside className="relative flex shrink-0 flex-col border-r border-border" style={{ width: listSize.width }}>
         <div className="shrink-0 space-y-1 border-b border-border px-3 py-2 text-[12px]">
           <p className="flex items-center gap-1.5 font-medium">
             <GitMerge className="size-3.5 text-muted-foreground" />
@@ -98,6 +101,7 @@ export function ConflictsView({ root, busy, notify }: ConflictsViewProps) {
             </li>
           ))}
         </ul>
+        <PaneResizer size={listSize} label="Resize file list" />
       </aside>
       <section className="flex min-w-0 flex-1 flex-col">
         {editsText(file) ? (

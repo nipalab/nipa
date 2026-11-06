@@ -4,6 +4,8 @@ import { desktop, type FileLock } from "@/api/desktop";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm";
+import { ColumnResizer } from "@/components/ui/resize-handle";
+import { useColumnWidths } from "@/hooks/useColumnWidths";
 import { describeLockResult, useLockActions, useLockStatus, type Notify } from "@/hooks/useLocks";
 import { timeAgo } from "@/lib/time";
 import { cn, errorMessage } from "@/lib/utils";
@@ -12,8 +14,18 @@ type Filter = "mine" | "team" | "all";
 
 const isDirectory = (path: string) => !/\.[^/]+$/.test(path);
 
+const COLUMNS = [
+  { id: "path", label: "Path", width: 420 },
+  { id: "scope", label: "Scope", width: 120 },
+  { id: "holder", label: "Held by", width: 160 },
+  { id: "since", label: "Since", width: 110 },
+];
+const COLUMN_DEFAULTS = Object.fromEntries(COLUMNS.map((c) => [c.id, c.width]));
+const ACTIONS_WIDTH = 180;
+
 export function LocksView({ root, notify }: { root: string; notify: Notify }) {
   const status = useLockStatus(root);
+  const columns = useColumnWidths("locks", COLUMN_DEFAULTS, 64);
   const { lock, unlock, refresh } = useLockActions(root, notify);
   const [filter, setFilter] = useState<Filter>("all");
   const [query, setQuery] = useState("");
@@ -120,20 +132,32 @@ export function LocksView({ root, notify }: { root: string; notify: Notify }) {
         </Centered>
       ) : (
         <div className="min-h-0 flex-1 overflow-auto">
-          <table className="w-full text-[12px]" aria-label="File locks">
-            <thead className="sticky top-0 bg-sidebar text-left text-[11px] text-muted-foreground">
+          <table
+            className="w-full table-fixed text-[12px]"
+            style={{ minWidth: COLUMNS.reduce((sum, c) => sum + columns.width(c.id), ACTIONS_WIDTH) }}
+            aria-label="File locks"
+          >
+            <colgroup>
+              {COLUMNS.map((c) => (
+                <col key={c.id} style={{ width: columns.width(c.id) }} />
+              ))}
+              <col />
+            </colgroup>
+            <thead className="sticky top-0 z-10 bg-sidebar text-left text-[11px] text-muted-foreground">
               <tr>
-                <th className="px-4 py-1.5 font-medium">Path</th>
-                <th className="px-2 py-1.5 font-medium">Scope</th>
-                <th className="px-2 py-1.5 font-medium">Held by</th>
-                <th className="px-2 py-1.5 font-medium">Since</th>
+                {COLUMNS.map((c, i) => (
+                  <th key={c.id} aria-label={c.label} className={cn("relative truncate py-1.5 font-medium", i === 0 ? "px-4" : "px-2")}>
+                    {c.label}
+                    <ColumnResizer sizes={columns} id={c.id} label={c.label} />
+                  </th>
+                ))}
                 <th className="px-4 py-1.5" />
               </tr>
             </thead>
             <tbody>
               {rows.map((l) => (
                 <tr key={l.id || `${l.branch}:${l.path}`} className={cn("border-b border-border/60 hover:bg-muted", !l.inScope && "text-muted-foreground")}>
-                  <td className="max-w-0 px-4 py-1.5">
+                  <td className="px-4 py-1.5">
                     <span className="flex items-center gap-1.5" title={l.path}>
                       {isDirectory(l.path) ? <FolderLock className="size-3.5 shrink-0" aria-label="Folder lock" /> : <Lock className="size-3.5 shrink-0" />}
                       <span className="truncate font-mono text-[11px]">{l.path}</span>
@@ -144,9 +168,9 @@ export function LocksView({ root, notify }: { root: string; notify: Notify }) {
                       )}
                     </span>
                   </td>
-                  <td className="whitespace-nowrap px-2 py-1.5">{l.global ? "Mainline" : l.branch}</td>
-                  <td className={cn("whitespace-nowrap px-2 py-1.5", l.mine && "font-medium text-accent")}>{l.mine ? "You" : l.heldByName || l.heldBy}</td>
-                  <td className="whitespace-nowrap px-2 py-1.5 text-muted-foreground" title={l.acquiredAt}>
+                  <td className="truncate px-2 py-1.5">{l.global ? "Mainline" : l.branch}</td>
+                  <td className={cn("truncate px-2 py-1.5", l.mine && "font-medium text-accent")}>{l.mine ? "You" : l.heldByName || l.heldBy}</td>
+                  <td className="truncate px-2 py-1.5 text-muted-foreground" title={l.acquiredAt}>
                     {timeAgo(l.acquiredAt)}
                   </td>
                   <td className="whitespace-nowrap px-4 py-1.5 text-right">

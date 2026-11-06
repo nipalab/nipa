@@ -10,6 +10,8 @@ import { Button } from "@/components/ui/button";
 import { commitBody, commitTitle, shortId } from "@/lib/history";
 import { timeAgo } from "@/lib/time";
 import { cn, errorMessage, readSetting, writeSetting } from "@/lib/utils";
+import { PaneResizer } from "@/components/ui/resize-handle";
+import { useResizableWidth } from "@/hooks/useResizableWidth";
 
 const LAYOUT_KEY = "nipa.diffLayout";
 
@@ -24,6 +26,7 @@ export type CommitActions = {
 type CommitDetailProps = CommitActions & { root: string; commit: Commit; tags: Tag[]; focusPath: string; busy: boolean };
 
 export function CommitDetail({ root, commit, tags, focusPath, busy, revertBlocked, onRevert, onTag, onBranch, onSelectCommit }: CommitDetailProps) {
+  const filesSize = useResizableWidth("commit-files", { initial: 256, min: 160, max: 560 });
   const files = useQuery({
     queryKey: ["commit", root, commit.id, "files"],
     queryFn: () => desktop.commitFiles(root, commit.id, commit.parents[0] ?? ""),
@@ -95,23 +98,26 @@ export function CommitDetail({ root, commit, tags, focusPath, busy, revertBlocke
         <Centered>This commit changed no files you can see.</Centered>
       ) : (
         <div className="flex min-h-0 flex-1">
-          <ul className="w-64 shrink-0 overflow-auto border-r border-border py-1" aria-label="Changed files">
-            {list.map((f) => (
-              <li key={f.path}>
-                <button
-                  type="button"
-                  aria-current={f === selected}
-                  onClick={() => setPicked({ commit: commit.id, path: f.path })}
-                  title={f.path}
-                  className={cn("flex w-full items-center gap-1.5 px-3 py-1 text-left text-[12px] hover:bg-muted", f === selected && "bg-muted font-medium")}
-                >
-                  <FileIcon kind={f.kind} />
-                  <span className="min-w-0 flex-1 truncate">{f.path}</span>
-                  <StatusLetter status={f.status} />
-                </button>
-              </li>
-            ))}
-          </ul>
+          <div className="relative shrink-0" style={{ width: filesSize.width }}>
+            <ul className="h-full overflow-auto border-r border-border py-1" aria-label="Changed files">
+              {list.map((f) => (
+                <li key={f.path}>
+                  <button
+                    type="button"
+                    aria-current={f === selected}
+                    onClick={() => setPicked({ commit: commit.id, path: f.path })}
+                    title={f.path}
+                    className={cn("flex w-full items-center gap-1.5 px-3 py-1 text-left text-[12px] hover:bg-muted", f === selected && "bg-muted font-medium")}
+                  >
+                    <FileIcon kind={f.kind} />
+                    <span className="min-w-0 flex-1 truncate">{f.path}</span>
+                    <StatusLetter status={f.status} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <PaneResizer size={filesSize} label="Resize file list" />
+          </div>
           <div className="min-w-0 flex-1">{selected && <DiffViewer root={root} diff={selected} layout={layout} onLayout={setLayout} />}</div>
         </div>
       )}

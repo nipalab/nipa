@@ -131,4 +131,18 @@ describe("TableDiff", () => {
     expect(viewerFor(diff({ old: null, new: { path: "a.csv", mode: 420, size: 0, binary: false, hash: "" } }))).not.toBe(TableDiff);
     expect(viewerFor(diff({ new: { path: "a.csv", mode: 420, size: 9, binary: true, hash: "" } }))).toBe(TableDiff);
   });
+
+  it("resizes columns per file and keeps rows aligned", async () => {
+    localStorage.setItem("nipa.layout.cols.table:data/a.csv", JSON.stringify({ en: 240 }));
+    renderWithProviders(<TableCompareView compare={compare()} storageKey="table:data/a.csv" />);
+    const header = screen.getByRole("columnheader", { name: /^en/ }).parentElement!;
+    expect(header).toHaveStyle({ width: "240px" });
+    const firstRow = screen.getAllByRole("row")[1];
+    expect(within(firstRow).getAllByRole("cell")[1]).toHaveStyle({ width: "240px" });
+
+    screen.getByRole("separator", { name: "Resize key column" }).focus();
+    await userEvent.keyboard("{ArrowLeft}");
+    expect(screen.getByRole("columnheader", { name: "key" }).parentElement).toHaveStyle({ width: "144px" });
+    expect(JSON.parse(localStorage.getItem("nipa.layout.cols.table:data/a.csv")!)).toEqual({ en: 240, key: 144 });
+  });
 });

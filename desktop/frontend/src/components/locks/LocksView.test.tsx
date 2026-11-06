@@ -153,4 +153,19 @@ describe("LocksView", () => {
     await userEvent.click(screen.getByRole("button", { name: "Refresh locks" }));
     await waitFor(() => expect(api.lockStatus.mock.calls.length).toBeGreaterThan(before));
   });
+
+  it("resizes columns and restores their widths", async () => {
+    localStorage.setItem("nipa.layout.cols.locks", JSON.stringify({ scope: 200 }));
+    view();
+    const table = await screen.findByRole("table", { name: "File locks" });
+    const cols = table.querySelectorAll("col");
+    expect(cols[0]).toHaveStyle({ width: "420px" });
+    expect(cols[1]).toHaveStyle({ width: "200px" });
+    expect(screen.getByRole("columnheader", { name: "Path" })).toBeInTheDocument();
+
+    screen.getByRole("separator", { name: "Resize Path column" }).focus();
+    await userEvent.keyboard("{ArrowRight}");
+    expect(cols[0]).toHaveStyle({ width: "436px" });
+    expect(JSON.parse(localStorage.getItem("nipa.layout.cols.locks")!)).toEqual({ scope: 200, path: 436 });
+  });
 });
