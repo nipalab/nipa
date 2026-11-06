@@ -1,5 +1,5 @@
 import { act, renderHook } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { clampWidth, useResizableWidth } from "./useResizableWidth";
 
 const bounds = { initial: 300, min: 200, max: 500 };
@@ -39,5 +39,30 @@ describe("useResizableWidth", () => {
   it("leaves room for the main pane on small windows", () => {
     expect(clampWidth(900, 200, 2000)).toBe(window.innerWidth - 320);
     expect(clampWidth(100, 200, 300)).toBe(200);
+  });
+
+  describe("when the window resizes", () => {
+    const original = window.innerWidth;
+    const resizeTo = (w: number) =>
+      act(() => {
+        Object.defineProperty(window, "innerWidth", { configurable: true, value: w });
+        window.dispatchEvent(new Event("resize"));
+      });
+    afterEach(() => resizeTo(original));
+
+    it("shrinks the pane and grows it back to the saved width", () => {
+      localStorage.setItem("nipa.layout.pane", "480");
+      const { result } = renderHook(() => useResizableWidth("pane", bounds));
+      expect(result.current.width).toBe(480);
+
+      resizeTo(700);
+      expect(result.current.width).toBe(380);
+      expect(result.current.max).toBe(380);
+      expect(localStorage.getItem("nipa.layout.pane")).toBe("480");
+
+      resizeTo(1200);
+      expect(result.current.width).toBe(480);
+      expect(result.current.max).toBe(500);
+    });
   });
 });

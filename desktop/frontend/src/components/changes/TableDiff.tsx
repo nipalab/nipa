@@ -66,7 +66,8 @@ const hasChanges = (c: TableCompare) => c.rowsAdded + c.rowsRemoved + c.rowsChan
 export function TableCompareView({ compare, toolbar = null, storageKey = "table" }: { compare: TableCompare; toolbar?: ReactNode; storageKey?: string }) {
   const columns = compare.columns ?? [];
   const sizes = useColumnWidths(storageKey, NO_DEFAULTS, 48);
-  const widths = columns.map((c, i) => sizes.width(columnId(c, i), COL_WIDTH));
+  const ids = useMemo(() => columnIds(columns), [columns]);
+  const widths = ids.map((id) => sizes.width(id, COL_WIDTH));
   const all = compare.rows ?? [];
   const [onlyChanges, setOnlyChanges] = useState(() => hasChanges(compare) && all.length > 50);
   const rows = useMemo(() => (onlyChanges ? all.filter((r) => r.status !== "same" || r.moved) : all), [all, onlyChanges]);
@@ -105,7 +106,7 @@ export function TableCompareView({ compare, toolbar = null, storageKey = "table"
               Row
             </div>
             {columns.map((c, i) => (
-              <ColumnHeader key={i} column={c} index={i} width={widths[i]} sizes={sizes} />
+              <ColumnHeader key={i} column={c} index={i} id={ids[i]} width={widths[i]} sizes={sizes} />
             ))}
           </div>
           {rows.length === 0 ? (
@@ -125,9 +126,18 @@ export function TableCompareView({ compare, toolbar = null, storageKey = "table"
 
 const letters = (i: number): string => (i < 26 ? String.fromCharCode(65 + i) : letters(Math.floor(i / 26) - 1) + letters(i % 26));
 const columnLabel = (c: TableColumn, i: number) => c.name || `column ${letters(i)}`;
-const columnId = (c: TableColumn, i: number) => c.name || letters(i);
 
-function ColumnHeader({ column, index, width, sizes }: { column: TableColumn; index: number; width: number; sizes: ReturnType<typeof useColumnWidths> }) {
+export function columnIds(columns: TableColumn[]): string[] {
+  const seen = new Map<string, number>();
+  return columns.map((c, i) => {
+    const base = c.name || letters(i);
+    const n = (seen.get(base) ?? 0) + 1;
+    seen.set(base, n);
+    return n === 1 ? base : `${base} #${n}`;
+  });
+}
+
+function ColumnHeader({ column, index, id, width, sizes }: { column: TableColumn; index: number; id: string; width: number; sizes: ReturnType<typeof useColumnWidths> }) {
   const added = column.old < 0;
   const removed = column.new < 0;
   const renamed = !added && !removed && column.oldName !== column.name && column.oldName !== "";
@@ -141,7 +151,7 @@ function ColumnHeader({ column, index, width, sizes }: { column: TableColumn; in
         {column.name || <span className="text-muted-foreground">{letters(index)}</span>}
         {renamed && <span className="ml-1 font-normal text-warning">(was {column.oldName})</span>}
       </div>
-      <ColumnResizer sizes={sizes} id={columnId(column, index)} label={columnLabel(column, index)} />
+      <ColumnResizer sizes={sizes} id={id} label={column.name ? id : columnLabel(column, index)} />
     </div>
   );
 }
