@@ -5,11 +5,9 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"math/rand/v2"
 	"net/http"
 	"strings"
 	"sync"
-	"time"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -309,10 +307,18 @@ func (c *Client) putChunks(ctx context.Context, jobs []chunkTransfer) error {
 	return c.forEachChunk(ctx, jobs, c.putChunk)
 }
 
-// putChunk sends one chunk with a PUT. A direct backend's create-only target
-// answers 412 when the content was stored in the meantime; that is not a
-// failure, the confirmation that follows decides whether the bytes match.
-func (c *Client) putChunk(ctx context.Context, job chunkTransfer) (size int64, err error) {
+// putChunk sends one chunk with a PUT, retrying transient failures and
+// throttling. A direct backend's create-only target answers 412 when the
+// content was stored in the meantime; that is not a failure, the confirmation
+// that follows decides whether the bytes match.
+func (c *Client) putChunk(ctx context.Context, job chunkTransfer) (int64, error) {
+	err := c.retryTransfer(ctx, func() (retryHint, error) {
+		return c.putChunkOnce(ctx, job)
+	})
+	return int64(len(job.data)), err
+}
+
+func (c *Client) putChunkOnce(ctx context.Context, job chunkTransfer) (hint retryHint, err error) {
 	ctx, span := obs.StartSpan(ctx, "chunk.upload.put",
 		attribute.String(obs.AttrChunkHash, job.hash.String()),
 		attribute.Int(obs.AttrChunkSize, len(job.data)))
@@ -320,7 +326,7 @@ func (c *Client) putChunk(ctx context.Context, job chunkTransfer) (size int64, e
 
 	request, err := http.NewRequestWithContext(ctx, http.MethodPut, c.httpURL(job.url), bytes.NewReader(job.data))
 	if err != nil {
-		return 0, err
+		return retryHint{}, err
 	}
 	for name, value := range job.headers {
 		request.Header.Set(name, value)
@@ -328,15 +334,16 @@ func (c *Client) putChunk(ctx context.Context, job chunkTransfer) (size int64, e
 	injectTraceContext(ctx, request.Header)
 	res, err := c.http.Do(request)
 	if err != nil {
-		return 0, err
+		return retryHint{retryable: ctx.Err() == nil}, err
 	}
 	defer func() { _ = res.Body.Close() }()
+	_, _ = io.Copy(io.Discard, io.LimitReader(res.Body, 4096))
 	span.SetAttributes(attribute.Int("http.response.status_code", res.StatusCode))
 	switch res.StatusCode {
 	case http.StatusNoContent, http.StatusOK, http.StatusPreconditionFailed:
-		return int64(len(job.data)), nil
+		return retryHint{}, nil
 	}
-	return int64(len(job.data)), chunkHTTPError(res)
+	return httpRetryHint(res), chunkHTTPError(res)
 }
 
 // chunkSink serializes chunk delivery to the caller's callback and remembers
@@ -368,87 +375,53 @@ func (c *Client) getChunks(ctx context.Context, jobs []chunkTransfer, onChunk fu
 }
 
 // downloadChunk fetches one chunk and hands it to the sink. Transient failures
-// (network errors, truncated bodies, 5xx, 408 and 429) are retried with a
-// growing pause; anything else, such as an expired or unknown URL, fails right
-// away. The sink only sees a chunk after a complete, successful read, so a
-// retry can never deliver one twice.
+// (network errors, truncated bodies, 5xx, 408) and throttling (429) are retried;
+// anything else, such as an expired or unknown URL, fails right away. The sink
+// only sees a chunk after a complete, successful read, so a retry can never
+// deliver one twice.
 func (c *Client) downloadChunk(ctx context.Context, sink *chunkSink, job chunkTransfer) (int64, error) {
-	for attempt := 0; ; attempt++ {
-		data, retryable, err := c.fetchChunk(ctx, job)
-		if err == nil {
-			if err := sink.deliver(job.hash, data); err != nil {
-				return int64(len(data)), err
-			}
-			return int64(len(data)), nil
-		}
-		if !retryable || attempt+1 >= c.retry.attempts {
-			return 0, err
-		}
-		if err := sleepContext(ctx, c.retry.delay(attempt)); err != nil {
-			return 0, err
-		}
+	var data []byte
+	err := c.retryTransfer(ctx, func() (retryHint, error) {
+		var (
+			hint retryHint
+			err  error
+		)
+		data, hint, err = c.fetchChunk(ctx, job)
+		return hint, err
+	})
+	if err != nil {
+		return 0, err
 	}
+	return int64(len(data)), sink.deliver(job.hash, data)
 }
 
-// fetchChunk downloads one chunk once. retryable reports whether trying again
-// could succeed; a cancelled context never is.
-func (c *Client) fetchChunk(ctx context.Context, job chunkTransfer) (data []byte, retryable bool, err error) {
+// fetchChunk downloads one chunk once; the hint says whether trying again
+// could succeed. A cancelled context never is.
+func (c *Client) fetchChunk(ctx context.Context, job chunkTransfer) (data []byte, hint retryHint, err error) {
 	ctx, span := obs.StartSpan(ctx, "chunk.download.get",
 		attribute.String(obs.AttrChunkHash, job.hash.String()))
 	defer func() { obs.FinishSpan(span, err) }()
 
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, c.httpURL(job.url), nil)
 	if err != nil {
-		return nil, false, err
+		return nil, retryHint{}, err
 	}
 	injectTraceContext(ctx, request.Header)
 	res, err := c.http.Do(request)
 	if err != nil {
-		return nil, ctx.Err() == nil, err
+		return nil, retryHint{retryable: ctx.Err() == nil}, err
 	}
 	defer func() { _ = res.Body.Close() }()
 	span.SetAttributes(attribute.Int("http.response.status_code", res.StatusCode))
 	if res.StatusCode != http.StatusOK {
-		return nil, retryableStatus(res.StatusCode), chunkHTTPError(res)
+		return nil, httpRetryHint(res), chunkHTTPError(res)
 	}
 	data, err = io.ReadAll(res.Body)
 	if err != nil {
-		return nil, ctx.Err() == nil, err
+		return nil, retryHint{retryable: ctx.Err() == nil}, err
 	}
 	span.SetAttributes(attribute.Int(obs.AttrChunkSize, len(data)))
-	return data, false, nil
-}
-
-func retryableStatus(status int) bool {
-	return status >= http.StatusInternalServerError ||
-		status == http.StatusTooManyRequests ||
-		status == http.StatusRequestTimeout
-}
-
-// retryPolicy bounds and paces repeated attempts of one transfer.
-type retryPolicy struct {
-	attempts int
-	backoff  time.Duration
-}
-
-var defaultRetryPolicy = retryPolicy{attempts: 3, backoff: 250 * time.Millisecond}
-
-// delay is the pause after the given failed attempt: the backoff doubled per
-// attempt plus up to a quarter of jitter so parallel workers do not retry in step.
-func (p retryPolicy) delay(attempt int) time.Duration {
-	d := p.backoff << attempt
-	return d + rand.N(d/4+1)
-}
-
-func sleepContext(ctx context.Context, d time.Duration) error {
-	timer := time.NewTimer(d)
-	defer timer.Stop()
-	select {
-	case <-timer.C:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
+	return data, retryHint{}, nil
 }
 
 // injectTraceContext propagates the current span to the receiving HTTP

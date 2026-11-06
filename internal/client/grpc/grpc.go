@@ -302,32 +302,42 @@ func (c *Client) unaryAuthInterceptor() grpc.UnaryClientInterceptor {
 		invoker grpc.UnaryInvoker,
 		opts ...grpc.CallOption,
 	) error {
+		if method == "/greet.NipaService/LoginWithRefreshToken" {
+			return c.invokeWithThrottleRetry(ctx, func() error {
+				return invoker(ctx, method, req, reply, cc, opts...)
+			})
+		}
 		if method == "/greet.NipaService/LoginWithUsernamePassword" ||
-			method == "/greet.NipaService/LoginWithRefreshToken" ||
 			method == "/greet.NipaService/BeginLoginSSHKey" ||
 			method == "/greet.NipaService/CompleteLoginSSHKey" ||
 			method == "/greet.NipaService/GetServerVersion" {
 			return invoker(ctx, method, req, reply, cc, opts...)
 		}
 
-		accToken, err := c.session.AccessToken(ctx, c.transport.URL())
-		if err != nil {
-			return status.Error(codes.Unauthenticated, "unable to get access token")
-		}
-		authCtx := withBearerToken(ctx, accToken)
-
-		err = invoker(authCtx, method, req, reply, cc, opts...)
-		if status.Code(err) != codes.Unauthenticated {
-			return err
-		}
-
-		accToken, err = c.session.Refresh(ctx, c.transport.URL())
-		if err != nil {
-			return err
-		}
-		retryCtx := withBearerToken(ctx, accToken)
-		return invoker(retryCtx, method, req, reply, cc, opts...)
+		return c.invokeWithThrottleRetry(ctx, func() error {
+			return c.invokeAuthed(ctx, method, req, reply, cc, invoker, opts...)
+		})
 	}
+}
+
+func (c *Client) invokeAuthed(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+	accToken, err := c.session.AccessToken(ctx, c.transport.URL())
+	if err != nil {
+		return status.Error(codes.Unauthenticated, "unable to get access token")
+	}
+	authCtx := withBearerToken(ctx, accToken)
+
+	err = invoker(authCtx, method, req, reply, cc, opts...)
+	if status.Code(err) != codes.Unauthenticated {
+		return err
+	}
+
+	accToken, err = c.session.Refresh(ctx, c.transport.URL())
+	if err != nil {
+		return err
+	}
+	retryCtx := withBearerToken(ctx, accToken)
+	return invoker(retryCtx, method, req, reply, cc, opts...)
 }
 
 func (c *Client) GetDefaultBranch(ctx context.Context, org, project string) (*serverDomain.Branch, error) {

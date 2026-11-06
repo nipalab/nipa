@@ -47,7 +47,7 @@ func (d *deliveries) sink(h serverDomain.Hash, data []byte) error {
 }
 
 func fastRetry(attempts int) retryPolicy {
-	return retryPolicy{attempts: attempts, backoff: time.Millisecond}
+	return retryPolicy{attempts: attempts, backoff: time.Millisecond, throttleAttempts: attempts - 1, maxThrottleWait: time.Millisecond}
 }
 
 func TestDownloadChunks_RetriesTransientStatuses(t *testing.T) {
