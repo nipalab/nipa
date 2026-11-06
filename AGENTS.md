@@ -151,6 +151,16 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   Fuzzed; keep it free of client imports like `internal/diff`.
   `internal/unitymeta` (pure, `fs.FS` based) lints Unity `.meta` sidecars
   for pending changes: missing, orphaned, not staged, GUID changed.
+- **Unity plugin** (`plugins/unity/com.nipalab.nipa`, Apache 2.0, design in
+  `docs/UNITY_PLUGIN.md`, plan in `docs/plans/UNITY_PLUGIN.md`): UPM package
+  over the daemon JSON bridge. `Editor/Core` is engine-free C# (`DaemonClient`
+  JSON/NDJSON over `HttpClient`, `Connector` attach-or-spawn, `StatusCache`,
+  `ProjectPaths`, `NipaSession`) compiled as `netstandard2.1` by
+  `plugins/unity/dotnet/Core` and tested there (`make unity-test`, NUnit +
+  coverlet, fake daemon over `HttpListener`); `Editor/` holds the thin Unity
+  glue (`[VersionControl("Nipa")]` provider with overlays/menus/settings,
+  `NipaHost`, `NipaWindow`). Keep Core free of `UnityEngine`/`UnityEditor`
+  and C# 9 compatible.
 
 Flow for `nipa clone <url> <target>`: `cli/clone.go` parses the URL →
 `usecase.Repo.Clone` → ensure empty target → login → resolve default branch (or

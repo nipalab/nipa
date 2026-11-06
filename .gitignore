@@ -51,3 +51,8 @@ internal/storage/chunks/3a/e7d805f6789a6402acb70ad4096a85a56bf6804eaf25c0493ac69
 # SaaS marketing build (committed placeholder index.html, real build copied in)
 ee/web/marketing/dist/*
 !ee/web/marketing/dist/index.html
+
+# Unity plugin dotnet test harness
+plugins/unity/dotnet/**/bin/
+plugins/unity/dotnet/**/obj/
+plugins/unity/dotnet/TestResults/
