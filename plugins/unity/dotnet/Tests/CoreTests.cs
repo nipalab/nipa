@@ -388,12 +388,13 @@ namespace Nipa.Core.Tests
         [Test]
         public async Task RestorableExpandsDirectoriesAroundStagedChildren()
         {
-            fake.On("Status", "{\"modified\":[\"d/a.png\",\"d/sub/b.png\",\"d/sub/b.png.meta\",\"e/x\"],"
-                + "\"staged\":[\"d/staged.png\"],\"untracked\":[\"d/new.png\"]}");
+            fake.On("Status", "{\"modified\":[\"d/a.png\",\"d/sub/b.png\",\"d/sub/b.png.meta\",\"e/x\",\"d.meta\"],"
+                + "\"staged\":[\"d/staged.png\",\"e.meta\"],\"untracked\":[\"d/new.png\"]}");
             await session.RefreshAsync();
-            Assert.That(session.Restorable(new[] { "d" }), Is.EqualTo(new[] { "d/a.png", "d/sub/b.png", "d/sub/b.png.meta" }));
+            Assert.That(session.Restorable(new[] { "d" }), Is.EqualTo(new[] { "d.meta", "d/a.png", "d/sub/b.png", "d/sub/b.png.meta" }));
             Assert.That(session.Restorable(new[] { "d/sub", "d/sub/b.png" }), Is.EqualTo(new[] { "d/sub/b.png", "d/sub/b.png.meta" }));
             Assert.That(session.Restorable(new[] { "e", "e/x", "nothing" }), Is.EqualTo(new[] { "e/x" }));
+            Assert.That(session.Restorable(new[] { "e" }), Is.EqualTo(new[] { "e/x" }));
             Assert.That(session.Restorable(new[] { "d/new.png" }), Is.Empty);
         }
 

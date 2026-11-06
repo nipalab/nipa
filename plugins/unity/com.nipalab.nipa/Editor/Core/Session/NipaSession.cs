@@ -83,6 +83,9 @@ namespace Nipa.Editor.Core.Session
                         result.Add(p);
                     continue;
                 }
+                var folderMeta = ProjectPaths.MetaOf(p);
+                if (Cache.Has(folderMeta) && IsRestorable(folderMeta) && seen.Add(folderMeta))
+                    result.Add(folderMeta);
                 files = files ?? Cache.Snapshot().ToDictionary(kv => kv.Key, kv => kv.Value);
                 var prefix = p + "/";
                 foreach (var child in files.Keys.Where(k => k.StartsWith(prefix, StringComparison.Ordinal)).OrderBy(k => k, StringComparer.Ordinal))
