@@ -11,7 +11,8 @@ namespace Nipa.Editor.Core.Session
 {
     public sealed class NipaSession : IDisposable
     {
-        readonly DaemonClient client;
+        readonly Func<CancellationToken, Task<DaemonClient>> reconnect;
+        DaemonClient client;
         readonly CancellationTokenSource cts = new CancellationTokenSource();
         Task watcher;
 
@@ -23,19 +24,53 @@ namespace Nipa.Editor.Core.Session
 
         public event Action<Exception> WatchFailed;
 
-        public NipaSession(DaemonClient client, ProjectPaths paths)
+        public NipaSession(DaemonClient client, ProjectPaths paths,
+            Func<CancellationToken, Task<DaemonClient>> reconnect = null)
         {
             this.client = client;
+            this.reconnect = reconnect;
             Paths = paths;
         }
 
         public async Task StartAsync(CancellationToken ct = default)
         {
+            await WatchRepoAsync(ct).ConfigureAwait(false);
+            watcher = Task.Run(() => WatchLoopAsync(cts.Token));
+        }
+
+        async Task WatchRepoAsync(CancellationToken ct)
+        {
             var watched = await client.CallAsync<WatchRepoRequest, WatchRepoResponse>(
                 "WatchRepo", new WatchRepoRequest { Root = Root }, ct).ConfigureAwait(false);
             Repo = watched.Repo;
             await RefreshAsync(ct).ConfigureAwait(false);
-            watcher = Task.Run(() => WatchLoopAsync(cts.Token));
+        }
+
+        async Task ReconnectAsync(CancellationToken ct)
+        {
+            var fresh = await reconnect(ct).ConfigureAwait(false);
+            var old = Interlocked.Exchange(ref client, fresh);
+            old.Dispose();
+            await WatchRepoAsync(ct).ConfigureAwait(false);
+        }
+
+        public List<string> Restorable(IEnumerable<string> clonePaths)
+        {
+            const FileState Changed = FileState.Modified | FileState.Deleted | FileState.Missing;
+            const FileState Blocked = FileState.Staged | FileState.Added | FileState.Untracked;
+            var result = new List<string>();
+            foreach (var raw in clonePaths)
+            {
+                var p = ProjectPaths.Normalize(raw).Trim('/');
+                if (p.Length == 0)
+                    continue;
+                var own = Cache.Get(p);
+                if (Cache.Has(p) && (own & Blocked) != 0)
+                    continue;
+                if (((own | Cache.Get(ProjectPaths.MetaOf(p))) & Changed) != 0)
+                    result.Add(p);
+            }
+            return result;
         }
 
         public async Task RefreshAsync(CancellationToken ct = default)
@@ -143,10 +178,16 @@ namespace Nipa.Editor.Core.Session
                 try
                 {
                     await Task.Delay(ReconnectDelay, ct).ConfigureAwait(false);
+                    if (reconnect != null)
+                        await ReconnectAsync(ct).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException)
                 {
                     return;
+                }
+                catch (Exception e)
+                {
+                    WatchFailed?.Invoke(e);
                 }
             }
         }

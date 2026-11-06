@@ -57,9 +57,15 @@ namespace Nipa.Editor
 
         internal static void Restore()
         {
-            var paths = NipaHost.SelectedClonePaths();
-            if (paths.Count == 0)
+            var session = NipaHost.Session;
+            if (session == null)
                 return;
+            var paths = session.Restorable(NipaHost.SelectedClonePaths());
+            if (paths.Count == 0)
+            {
+                EditorUtility.DisplayDialog("Nipa: Restore", "Nothing to restore: the selection has no modified, deleted or missing tracked files (staged files must be unstaged first).", "OK");
+                return;
+            }
             if (!EditorUtility.DisplayDialog("Nipa: Restore", "Discard local changes to " + paths.Count + " selected path(s)?", "Restore", "Cancel"))
                 return;
             NipaHost.Run("Restore", async (s, _) =>

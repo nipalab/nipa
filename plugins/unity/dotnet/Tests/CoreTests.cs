@@ -318,6 +318,71 @@ namespace Nipa.Core.Tests
         }
 
         [Test]
+        public async Task WatchLoopReconnectsToRestartedDaemon()
+        {
+            fake.On("WatchRepo", "{}");
+            fake.On("Status", "{\"branch\":\"old\"}");
+            fake.On("WatchChanges", new Reply { Status = 500, Body = "{\"message\":\"gone\"}" });
+            using var second = new FakeDaemon();
+            second.On("WatchRepo", "{}");
+            second.On("Status", "{\"branch\":\"new\"}");
+            second.On("WatchChanges", new Reply { Lines = new string[0], Hold = true });
+            var calls = 0;
+            var resilient = new NipaSession(new DaemonClient(fake.Endpoint()), session.Paths, _ =>
+            {
+                Interlocked.Increment(ref calls);
+                return Task.FromResult(new DaemonClient(second.Endpoint("fresh")));
+            }) { ReconnectDelay = TimeSpan.FromMilliseconds(20) };
+            try
+            {
+                await resilient.StartAsync();
+                Assert.That(SpinWait.SpinUntil(() => resilient.Cache.Branch == "new", 3000), Is.True);
+                Assert.That(second.Requests.Any(r => r.Method == "WatchRepo" && r.Token == "fresh"), Is.True);
+                Assert.That(calls, Is.EqualTo(1));
+            }
+            finally
+            {
+                resilient.Dispose();
+            }
+        }
+
+        [Test]
+        public async Task ReconnectFailureIsReportedAndRetried()
+        {
+            fake.On("WatchRepo", "{}");
+            fake.On("Status", "{}");
+            fake.On("WatchChanges", new Reply { Status = 500, Body = "{}" });
+            var calls = 0;
+            var failures = 0;
+            var s = new NipaSession(new DaemonClient(fake.Endpoint()), session.Paths, _ =>
+            {
+                Interlocked.Increment(ref calls);
+                throw new DaemonException(503, "daemon unavailable");
+            }) { ReconnectDelay = TimeSpan.FromMilliseconds(10) };
+            s.WatchFailed += _ => Interlocked.Increment(ref failures);
+            try
+            {
+                await s.StartAsync();
+                Assert.That(SpinWait.SpinUntil(() => Volatile.Read(ref calls) >= 2, 3000), Is.True);
+                Assert.That(failures, Is.GreaterThanOrEqualTo(3));
+            }
+            finally
+            {
+                s.Dispose();
+            }
+        }
+
+        [Test]
+        public async Task RestorableSkipsUntrackedStagedAndUnchanged()
+        {
+            fake.On("Status", "{\"modified\":[\"a/mod.png\",\"a/metaonly.png.meta\",\"a/dir/x\"],\"deleted\":[\"a/del.png\"],"
+                + "\"untracked\":[\"a/new.png\"],\"staged\":[\"a/stg.png\"],\"added\":[\"a/add.png\"],\"missing\":[\"a/miss.png\"]}");
+            await session.RefreshAsync();
+            var got = session.Restorable(new[] { "a/mod.png", "a/metaonly.png", "a/del.png", "a/new.png", "a/stg.png", "a/add.png", "a/miss.png", "a/clean.png", "a/dir", "" });
+            Assert.That(got, Is.EqualTo(new[] { "a/mod.png", "a/metaonly.png", "a/del.png", "a/miss.png", "a/dir" }));
+        }
+
+        [Test]
         public void StopWithoutStartIsSafe()
         {
             session.Stop();

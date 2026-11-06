@@ -132,7 +132,8 @@ namespace Nipa.Editor
         void DrawList(string title, List<Row> rows, HashSet<string> selected, string actionLabel, string allLabel,
             System.Action<List<string>> run)
         {
-            selected.RemoveWhere(p => rows.All(r => r.Path != p));
+            var visible = new HashSet<string>(rows.Select(r => r.Path));
+            selected.RemoveWhere(p => !visible.Contains(p));
             EditorGUILayout.LabelField(title + " (" + rows.Count + ")", EditorStyles.boldLabel);
             foreach (var row in rows)
             {

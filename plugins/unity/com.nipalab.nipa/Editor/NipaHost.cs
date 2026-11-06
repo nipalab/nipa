@@ -61,7 +61,9 @@ namespace Nipa.Editor
                 {
                     var conn = await Connector.ConnectAsync(
                         new ConnectorOptions { Binary = binary }, token).ConfigureAwait(false);
-                    session = new NipaSession(conn.Client, paths);
+                    var options = new ConnectorOptions { Binary = binary };
+                    session = new NipaSession(conn.Client, paths, async c =>
+                        (await Connector.ConnectAsync(options, c).ConfigureAwait(false)).Client);
                     session.Cache.Changed += _ => MainThread.Post(OnCacheChanged);
                     session.WatchFailed += e => MainThread.Post(() => { Error = e.Message; Changed?.Invoke(); });
                     await session.StartAsync(token).ConfigureAwait(false);
