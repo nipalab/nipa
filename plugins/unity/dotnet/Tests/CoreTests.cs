@@ -114,6 +114,7 @@ namespace Nipa.Core.Tests
             }));
             Assert.That(c.Get("Assets/a.png"), Is.EqualTo(FileState.Staged | FileState.Added));
             Assert.That(c.Get("Assets/u.txt"), Is.EqualTo(FileState.Untracked));
+            Assert.That(c.Get("Assets/c"), Is.EqualTo(FileState.Deleted | FileState.Staged));
             Assert.That(c.Get("Assets/x"), Is.EqualTo(FileState.Conflict | FileState.Resolved));
             Assert.That(c.Get("Assets/Sub"), Is.EqualTo(FileState.Modified));
             Assert.That(c.Get("Assets").HasFlag(FileState.Modified | FileState.Staged | FileState.Conflict), Is.True);
@@ -381,7 +382,7 @@ namespace Nipa.Core.Tests
                 + "\"untracked\":[\"a/new.png\"],\"staged\":[\"a/stg.png\"],\"added\":[\"a/add.png\"],\"missing\":[\"a/miss.png\"]}");
             await session.RefreshAsync();
             var got = session.Restorable(new[] { "a/mod.png", "a/metaonly.png", "a/del.png", "a/new.png", "a/stg.png", "a/add.png", "a/miss.png", "a/clean.png", "a/dir", "" });
-            Assert.That(got, Is.EqualTo(new[] { "a/mod.png", "a/metaonly.png", "a/del.png", "a/miss.png", "a/dir/x" }));
+            Assert.That(got, Is.EqualTo(new[] { "a/mod.png", "a/metaonly.png", "a/miss.png", "a/dir/x" }));
         }
 
         [Test]
@@ -394,6 +395,48 @@ namespace Nipa.Core.Tests
             Assert.That(session.Restorable(new[] { "d/sub", "d/sub/b.png" }), Is.EqualTo(new[] { "d/sub/b.png", "d/sub/b.png.meta" }));
             Assert.That(session.Restorable(new[] { "e", "e/x", "nothing" }), Is.EqualTo(new[] { "e/x" }));
             Assert.That(session.Restorable(new[] { "d/new.png" }), Is.Empty);
+        }
+
+        [Test]
+        public async Task InFlightOperationSurvivesReconnect()
+        {
+            fake.On("WatchRepo", "{}");
+            fake.On("Status", "{}");
+            using var pushGate = new ManualResetEventSlim();
+            fake.On("Push", new Reply { Lines = new[] { "{\"result\":{\"push\":{\"commit_id\":\"kept\"}}}" }, Gate = pushGate });
+            using var watchGate = new ManualResetEventSlim();
+            fake.On("WatchChanges", new Reply { Status = 503, Body = "{}" });
+            using var second = new FakeDaemon();
+            second.On("WatchRepo", "{}");
+            second.On("Status", "{}");
+            second.On("WatchChanges", new Reply { Lines = new string[0], Hold = true });
+            var swapped = new NipaSession(new DaemonClient(fake.Endpoint()), session.Paths, _ => Task.FromResult(new DaemonClient(second.Endpoint())))
+            {
+                ReconnectDelay = TimeSpan.FromMilliseconds(20),
+            };
+            try
+            {
+                var push = swapped.PushAsync("m", null);
+                Assert.That(SpinWait.SpinUntil(() => fake.Requests.Any(r => r.Method == "Push"), 3000), Is.True);
+                await swapped.StartAsync();
+                Assert.That(SpinWait.SpinUntil(() => second.Requests.Any(r => r.Method == "WatchRepo"), 3000), Is.True);
+                pushGate.Set();
+                Assert.That((await push).Push.CommitId, Is.EqualTo("kept"));
+            }
+            finally
+            {
+                swapped.Dispose();
+            }
+        }
+
+        [Test]
+        public async Task RefreshRaisesHealthy()
+        {
+            fake.On("Status", "{}");
+            var healthy = 0;
+            session.Healthy += () => healthy++;
+            await session.RefreshAsync();
+            Assert.That(healthy, Is.EqualTo(1));
         }
 
         [Test]

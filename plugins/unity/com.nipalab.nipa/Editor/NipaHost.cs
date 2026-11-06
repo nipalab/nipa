@@ -65,6 +65,7 @@ namespace Nipa.Editor
                     session = new NipaSession(conn.Client, paths, async c =>
                         (await Connector.ConnectAsync(options, c).ConfigureAwait(false)).Client);
                     session.Cache.Changed += _ => MainThread.Post(OnCacheChanged);
+                    session.Healthy += () => MainThread.Post(ClearError);
                     session.WatchFailed += e => MainThread.Post(() => { Error = e.Message; Changed?.Invoke(); });
                     await session.StartAsync(token).ConfigureAwait(false);
                     MainThread.Post(() =>
@@ -176,6 +177,14 @@ namespace Nipa.Editor
                     OnCacheChanged();
                 });
             });
+        }
+
+        static void ClearError()
+        {
+            if (Error == null)
+                return;
+            Error = null;
+            Changed?.Invoke();
         }
 
         static void OnOpEvent(OpEvent ev)

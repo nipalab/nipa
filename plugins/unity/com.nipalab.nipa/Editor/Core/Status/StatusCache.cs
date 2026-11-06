@@ -60,7 +60,7 @@ namespace Nipa.Editor.Core.Status
             Add(next, status.Staged, FileState.Staged);
             Add(next, status.Added, FileState.Added);
             Add(next, status.Modified, FileState.Modified);
-            Add(next, status.Deleted, FileState.Deleted);
+            Add(next, status.Deleted, FileState.Deleted | FileState.Staged);
             Add(next, status.Untracked, FileState.Untracked);
             Add(next, status.Missing, FileState.Missing);
             Add(next, status.Conflicts, FileState.Conflict);

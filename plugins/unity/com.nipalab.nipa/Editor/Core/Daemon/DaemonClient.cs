@@ -92,6 +92,9 @@ namespace Nipa.Editor.Core.Daemon
                         if (line.Length == 0)
                             continue;
                         ct.ThrowIfCancellationRequested();
+                        var failure = StreamFailure(line);
+                        if (failure != null)
+                            throw failure;
                         yield return JsonConvert.DeserializeObject<T>(line, JsonSettings);
                     }
                 }
@@ -107,6 +110,55 @@ namespace Nipa.Editor.Core.Daemon
             };
             msg.Headers.TryAddWithoutValidation(TokenHeader, token);
             return msg;
+        }
+
+        static DaemonException StreamFailure(string line)
+        {
+            if (!line.StartsWith("{\"error\"", StringComparison.Ordinal))
+                return null;
+            try
+            {
+                var env = JsonConvert.DeserializeObject<StreamErrorEnvelope>(line, JsonSettings);
+                if (env?.Error == null)
+                    return null;
+                return new DaemonException(StatusFor(env.Error.Code), env.Error.Message ?? env.Error.Code ?? "stream failed");
+            }
+            catch (JsonException)
+            {
+                return null;
+            }
+        }
+
+        static int StatusFor(string code)
+        {
+            switch (code)
+            {
+                case "InvalidArgument":
+                case "OutOfRange":
+                    return 400;
+                case "Unauthenticated":
+                    return 401;
+                case "PermissionDenied":
+                    return 403;
+                case "NotFound":
+                    return 404;
+                case "AlreadyExists":
+                case "Aborted":
+                case "FailedPrecondition":
+                    return 409;
+                case "ResourceExhausted":
+                    return 429;
+                case "Canceled":
+                    return 499;
+                case "Unimplemented":
+                    return 501;
+                case "Unavailable":
+                    return 503;
+                case "DeadlineExceeded":
+                    return 504;
+                default:
+                    return 500;
+            }
         }
 
         static DaemonException ToException(HttpStatusCode status, string body)
@@ -126,6 +178,11 @@ namespace Nipa.Editor.Core.Daemon
         public void Dispose()
         {
             http.Dispose();
+        }
+
+        sealed class StreamErrorEnvelope
+        {
+            public ErrorBody Error { get; set; }
         }
 
         sealed class ErrorBody

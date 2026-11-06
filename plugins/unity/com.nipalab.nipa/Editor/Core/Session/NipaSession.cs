@@ -12,7 +12,8 @@ namespace Nipa.Editor.Core.Session
     public sealed class NipaSession : IDisposable
     {
         readonly Func<CancellationToken, Task<DaemonClient>> reconnect;
-        DaemonClient client;
+        readonly object gate = new object();
+        Lease lease;
         readonly CancellationTokenSource cts = new CancellationTokenSource();
         Task watcher;
 
@@ -23,11 +24,12 @@ namespace Nipa.Editor.Core.Session
         public TimeSpan ReconnectDelay { get; set; } = TimeSpan.FromSeconds(2);
 
         public event Action<Exception> WatchFailed;
+        public event Action Healthy;
 
         public NipaSession(DaemonClient client, ProjectPaths paths,
             Func<CancellationToken, Task<DaemonClient>> reconnect = null)
         {
-            this.client = client;
+            lease = new Lease { Client = client };
             this.reconnect = reconnect;
             Paths = paths;
         }
@@ -40,7 +42,7 @@ namespace Nipa.Editor.Core.Session
 
         async Task WatchRepoAsync(CancellationToken ct)
         {
-            var watched = await client.CallAsync<WatchRepoRequest, WatchRepoResponse>(
+            var watched = await Call<WatchRepoRequest, WatchRepoResponse>(
                 "WatchRepo", new WatchRepoRequest { Root = Root }, ct).ConfigureAwait(false);
             Repo = watched.Repo;
             await RefreshAsync(ct).ConfigureAwait(false);
@@ -49,8 +51,13 @@ namespace Nipa.Editor.Core.Session
         async Task ReconnectAsync(CancellationToken ct)
         {
             var fresh = await reconnect(ct).ConfigureAwait(false);
-            var old = Interlocked.Exchange(ref client, fresh);
-            old.Dispose();
+            Lease old;
+            lock (gate)
+            {
+                old = lease;
+                lease = new Lease { Client = fresh };
+            }
+            Retire(old);
             await WatchRepoAsync(ct).ConfigureAwait(false);
         }
 
@@ -99,28 +106,29 @@ namespace Nipa.Editor.Core.Session
 
         public async Task RefreshAsync(CancellationToken ct = default)
         {
-            var status = await client.CallAsync<StatusRequest, StatusResponse>(
+            var status = await Call<StatusRequest, StatusResponse>(
                 "Status", new StatusRequest { Root = Root }, ct).ConfigureAwait(false);
             Cache.Apply(status);
+            Healthy?.Invoke();
         }
 
         public async Task StageAsync(IEnumerable<string> clonePaths, CancellationToken ct = default)
         {
-            var status = await client.CallAsync<StageRequest, StatusResponse>(
+            var status = await Call<StageRequest, StatusResponse>(
                 "Stage", new StageRequest { Root = Root, Add = Expand(clonePaths) }, ct).ConfigureAwait(false);
             Cache.Apply(status);
         }
 
         public async Task UnstageAsync(IEnumerable<string> clonePaths, CancellationToken ct = default)
         {
-            var status = await client.CallAsync<StageRequest, StatusResponse>(
+            var status = await Call<StageRequest, StatusResponse>(
                 "Stage", new StageRequest { Root = Root, Unstage = Expand(clonePaths) }, ct).ConfigureAwait(false);
             Cache.Apply(status);
         }
 
         public async Task RestoreAsync(IEnumerable<string> clonePaths, CancellationToken ct = default)
         {
-            var status = await client.CallAsync<RestoreRequest, StatusResponse>(
+            var status = await Call<RestoreRequest, StatusResponse>(
                 "Restore", new RestoreRequest { Root = Root, Paths = Expand(clonePaths) }, ct).ConfigureAwait(false);
             Cache.Apply(status);
         }
@@ -142,7 +150,7 @@ namespace Nipa.Editor.Core.Session
 
         public async Task<List<MetaWarning>> MetaWarningsAsync(CancellationToken ct = default)
         {
-            var res = await client.CallAsync<MetaWarningsRequest, MetaWarningsResponse>(
+            var res = await Call<MetaWarningsRequest, MetaWarningsResponse>(
                 "MetaWarnings", new MetaWarningsRequest { Root = Root }, ct).ConfigureAwait(false);
             return res.Warnings ?? new List<MetaWarning>();
         }
@@ -175,7 +183,16 @@ namespace Nipa.Editor.Core.Session
 
         async Task<OpResult> RunOp<TReq>(string method, TReq req, Action<OpEvent> onEvent, CancellationToken ct)
         {
-            var result = await Ops.RunAsync(client, method, req, onEvent, ct).ConfigureAwait(false);
+            var l = Acquire();
+            OpResult result;
+            try
+            {
+                result = await Ops.RunAsync(l.Client, method, req, onEvent, ct).ConfigureAwait(false);
+            }
+            finally
+            {
+                Release(l);
+            }
             await RefreshAsync(ct).ConfigureAwait(false);
             return result;
         }
@@ -186,10 +203,18 @@ namespace Nipa.Editor.Core.Session
             {
                 try
                 {
-                    var stream = client.StreamAsync<WatchChangesRequest, RepoChange>(
-                        "WatchChanges", new WatchChangesRequest { Root = Root }, ct);
-                    await foreach (var _ in stream.ConfigureAwait(false))
-                        await RefreshAsync(ct).ConfigureAwait(false);
+                    var l = Acquire();
+                    try
+                    {
+                        var stream = l.Client.StreamAsync<WatchChangesRequest, RepoChange>(
+                            "WatchChanges", new WatchChangesRequest { Root = Root }, ct);
+                        await foreach (var _ in stream.ConfigureAwait(false))
+                            await RefreshAsync(ct).ConfigureAwait(false);
+                    }
+                    finally
+                    {
+                        Release(l);
+                    }
                 }
                 catch (OperationCanceledException)
                 {
@@ -232,7 +257,68 @@ namespace Nipa.Editor.Core.Session
         {
             Stop();
             cts.Dispose();
-            client.Dispose();
+            Lease current;
+            lock (gate)
+                current = lease;
+            Retire(current);
+        }
+
+        Task<TRes> Call<TReq, TRes>(string method, TReq request, CancellationToken ct)
+        {
+            return CallLeased<TReq, TRes>(method, request, ct);
+        }
+
+        async Task<TRes> CallLeased<TReq, TRes>(string method, TReq request, CancellationToken ct)
+        {
+            var l = Acquire();
+            try
+            {
+                return await l.Client.CallAsync<TReq, TRes>(method, request, ct).ConfigureAwait(false);
+            }
+            finally
+            {
+                Release(l);
+            }
+        }
+
+        Lease Acquire()
+        {
+            lock (gate)
+            {
+                lease.Users++;
+                return lease;
+            }
+        }
+
+        void Release(Lease l)
+        {
+            bool dispose;
+            lock (gate)
+            {
+                l.Users--;
+                dispose = l.Retired && l.Users == 0;
+            }
+            if (dispose)
+                l.Client.Dispose();
+        }
+
+        void Retire(Lease l)
+        {
+            bool dispose;
+            lock (gate)
+            {
+                l.Retired = true;
+                dispose = l.Users == 0;
+            }
+            if (dispose)
+                l.Client.Dispose();
+        }
+
+        sealed class Lease
+        {
+            public DaemonClient Client;
+            public int Users;
+            public bool Retired;
         }
     }
 }

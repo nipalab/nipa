@@ -161,6 +161,50 @@ namespace Nipa.Core.Tests
             Assert.That(ex.Code, Is.EqualTo(403));
         }
 
+        [TestCase("InvalidArgument", 400)]
+        [TestCase("OutOfRange", 400)]
+        [TestCase("Unauthenticated", 401)]
+        [TestCase("PermissionDenied", 403)]
+        [TestCase("NotFound", 404)]
+        [TestCase("AlreadyExists", 409)]
+        [TestCase("Aborted", 409)]
+        [TestCase("FailedPrecondition", 409)]
+        [TestCase("ResourceExhausted", 429)]
+        [TestCase("Canceled", 499)]
+        [TestCase("Unimplemented", 501)]
+        [TestCase("Unavailable", 503)]
+        [TestCase("DeadlineExceeded", 504)]
+        [TestCase("Internal", 500)]
+        public void StreamErrorEnvelopeSurfacesAfterEvents(string code, int http)
+        {
+            fake.On("Push", new Reply { Lines = new[] { "{\"started\":{\"phase\":\"scan\"}}", "{\"error\":{\"code\":\"" + code + "\",\"message\":\"daemon said no\"}}" } });
+            using var c = new DaemonClient(fake.Endpoint());
+            var seen = new List<OpEvent>();
+            var ex = Assert.ThrowsAsync<DaemonException>(() => Ops.RunAsync<PushRequest>(c, "Push", new PushRequest(), seen.Add, CancellationToken.None));
+            Assert.That((ex.Code, ex.Message), Is.EqualTo((http, "daemon said no")));
+            Assert.That(seen.Count, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void StreamErrorEnvelopeWithoutMessageUsesCode()
+        {
+            fake.On("Push", new Reply { Lines = new[] { "{\"error\":{\"code\":\"Unavailable\"}}" } });
+            using var c = new DaemonClient(fake.Endpoint());
+            var ex = Assert.ThrowsAsync<DaemonException>(() => Ops.RunAsync<PushRequest>(c, "Push", new PushRequest(), null, CancellationToken.None));
+            Assert.That((ex.Code, ex.Message), Is.EqualTo((503, "Unavailable")));
+        }
+
+        [Test]
+        public async Task MalformedErrorLinesAreTreatedAsEvents()
+        {
+            fake.On("WatchChanges", new Reply { Lines = new[] { "{\"error\":\"plain\"}", "{\"error\":null}", "{\"paths\":[\"a\"]}" } });
+            using var c = new DaemonClient(fake.Endpoint());
+            var n = 0;
+            await foreach (var _ in c.StreamAsync<WatchChangesRequest, RepoChange>("WatchChanges", new WatchChangesRequest()))
+                n++;
+            Assert.That(n, Is.EqualTo(3));
+        }
+
         [Test]
         public async Task StreamCancelStopsIteration()
         {
