@@ -224,11 +224,13 @@ namespace Nipa.Core.Tests
             var status = "{\"modified\":[\"game/Assets/a.png\"],\"branch\":\"main\"}";
             fake.On("WatchRepo", "{}");
             fake.Handlers["Status"] = _ => new Reply { Body = status };
-            fake.On("WatchChanges", new Reply { Lines = new[] { "{\"paths\":[]}" }, Hold = true });
+            using var gate = new ManualResetEventSlim();
+            fake.On("WatchChanges", new Reply { Lines = new[] { "{\"paths\":[]}" }, Hold = true, Gate = gate });
             await session.StartAsync();
             Assert.That(session.Cache.Get("game/Assets/a.png"), Is.EqualTo(FileState.Modified));
             Assert.That(fake.Requests.First().Body, Does.Contain(root.Replace("\\", "\\\\")));
             status = "{\"staged\":[\"game/Assets/a.png\"],\"branch\":\"main\"}";
+            gate.Set();
             Assert.That(SpinWait.SpinUntil(() => session.Cache.Get("game/Assets/a.png") == FileState.Staged, 3000), Is.True);
         }
 
@@ -379,7 +381,19 @@ namespace Nipa.Core.Tests
                 + "\"untracked\":[\"a/new.png\"],\"staged\":[\"a/stg.png\"],\"added\":[\"a/add.png\"],\"missing\":[\"a/miss.png\"]}");
             await session.RefreshAsync();
             var got = session.Restorable(new[] { "a/mod.png", "a/metaonly.png", "a/del.png", "a/new.png", "a/stg.png", "a/add.png", "a/miss.png", "a/clean.png", "a/dir", "" });
-            Assert.That(got, Is.EqualTo(new[] { "a/mod.png", "a/metaonly.png", "a/del.png", "a/miss.png", "a/dir" }));
+            Assert.That(got, Is.EqualTo(new[] { "a/mod.png", "a/metaonly.png", "a/del.png", "a/miss.png", "a/dir/x" }));
+        }
+
+        [Test]
+        public async Task RestorableExpandsDirectoriesAroundStagedChildren()
+        {
+            fake.On("Status", "{\"modified\":[\"d/a.png\",\"d/sub/b.png\",\"d/sub/b.png.meta\",\"e/x\"],"
+                + "\"staged\":[\"d/staged.png\"],\"untracked\":[\"d/new.png\"]}");
+            await session.RefreshAsync();
+            Assert.That(session.Restorable(new[] { "d" }), Is.EqualTo(new[] { "d/a.png", "d/sub/b.png", "d/sub/b.png.meta" }));
+            Assert.That(session.Restorable(new[] { "d/sub", "d/sub/b.png" }), Is.EqualTo(new[] { "d/sub/b.png", "d/sub/b.png.meta" }));
+            Assert.That(session.Restorable(new[] { "e", "e/x", "nothing" }), Is.EqualTo(new[] { "e/x" }));
+            Assert.That(session.Restorable(new[] { "d/new.png" }), Is.Empty);
         }
 
         [Test]

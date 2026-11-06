@@ -56,21 +56,45 @@ namespace Nipa.Editor.Core.Session
 
         public List<string> Restorable(IEnumerable<string> clonePaths)
         {
-            const FileState Changed = FileState.Modified | FileState.Deleted | FileState.Missing;
-            const FileState Blocked = FileState.Staged | FileState.Added | FileState.Untracked;
             var result = new List<string>();
+            var seen = new HashSet<string>();
+            Dictionary<string, FileState> files = null;
             foreach (var raw in clonePaths)
             {
                 var p = ProjectPaths.Normalize(raw).Trim('/');
                 if (p.Length == 0)
                     continue;
-                var own = Cache.Get(p);
-                if (Cache.Has(p) && (own & Blocked) != 0)
+                if (Cache.Has(p))
+                {
+                    if (IsRestorable(p) && seen.Add(p))
+                        result.Add(p);
                     continue;
-                if (((own | Cache.Get(ProjectPaths.MetaOf(p))) & Changed) != 0)
-                    result.Add(p);
+                }
+                if (Cache.Get(p) == FileState.None)
+                {
+                    if (IsRestorable(p) && seen.Add(p))
+                        result.Add(p);
+                    continue;
+                }
+                files = files ?? Cache.Snapshot().ToDictionary(kv => kv.Key, kv => kv.Value);
+                var prefix = p + "/";
+                foreach (var child in files.Keys.Where(k => k.StartsWith(prefix, StringComparison.Ordinal)).OrderBy(k => k, StringComparer.Ordinal))
+                {
+                    if (IsRestorable(child) && seen.Add(child))
+                        result.Add(child);
+                }
             }
             return result;
+        }
+
+        bool IsRestorable(string path)
+        {
+            const FileState Changed = FileState.Modified | FileState.Deleted | FileState.Missing;
+            const FileState Blocked = FileState.Staged | FileState.Added | FileState.Untracked;
+            var own = Cache.Get(path);
+            if ((own & Blocked) != 0)
+                return false;
+            return ((own | Cache.Get(ProjectPaths.MetaOf(path))) & Changed) != 0;
         }
 
         public async Task RefreshAsync(CancellationToken ct = default)

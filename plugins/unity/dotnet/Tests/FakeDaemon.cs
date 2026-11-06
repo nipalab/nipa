@@ -17,6 +17,7 @@ namespace Nipa.Core.Tests
         public string[] Lines;
         public bool Hold;
         public int DelayMs;
+        public ManualResetEventSlim Gate;
     }
 
     public sealed class Req
@@ -90,6 +91,7 @@ namespace Nipa.Core.Tests
                 ctx.Response.StatusCode = reply.Status;
                 if (reply.Lines != null)
                 {
+                    reply.Gate?.Wait(5000);
                     ctx.Response.ContentType = "application/x-ndjson";
                     ctx.Response.SendChunked = true;
                     var w = new StreamWriter(ctx.Response.OutputStream, new UTF8Encoding(false)) { AutoFlush = true };
