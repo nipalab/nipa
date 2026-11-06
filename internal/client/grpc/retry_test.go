@@ -154,7 +154,7 @@ func TestRateLimitWait(t *testing.T) {
 	require.False(t, ok)
 }
 
-func interceptorCalls(t *testing.T, policy retryPolicy, results ...error) (error, int) {
+func interceptorCalls(t *testing.T, policy retryPolicy, results ...error) (int, error) {
 	t.Helper()
 	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
 	c.retry = policy
@@ -165,26 +165,26 @@ func interceptorCalls(t *testing.T, policy retryPolicy, results ...error) (error
 		return err
 	}
 	err := c.unaryAuthInterceptor()(context.Background(), "/greet.NipaService/GetChunkUploadUrls", nil, nil, nil, invoker)
-	return err, calls
+	return calls, err
 }
 
 func TestUnaryInterceptor_RetriesRateLimitedCalls(t *testing.T) {
 	limited := status.Error(codes.ResourceExhausted, "rate limit exceeded, retry in 1s")
-	err, calls := interceptorCalls(t, throttleOnly(5), limited, limited, nil)
+	calls, err := interceptorCalls(t, throttleOnly(5), limited, limited, nil)
 	require.NoError(t, err)
 	require.Equal(t, 3, calls)
 }
 
 func TestUnaryInterceptor_GivesUpAfterThrottleBudget(t *testing.T) {
 	limited := status.Error(codes.ResourceExhausted, "rate limit exceeded, retry in 1s")
-	err, calls := interceptorCalls(t, throttleOnly(2), limited)
+	calls, err := interceptorCalls(t, throttleOnly(2), limited)
 	require.Equal(t, codes.ResourceExhausted, status.Code(err))
 	require.Equal(t, 3, calls)
 }
 
 func TestUnaryInterceptor_DoesNotRetryQuota(t *testing.T) {
 	quota := status.Error(codes.ResourceExhausted, "storage quota exceeded")
-	err, calls := interceptorCalls(t, throttleOnly(5), quota, nil)
+	calls, err := interceptorCalls(t, throttleOnly(5), quota, nil)
 	require.Equal(t, codes.ResourceExhausted, status.Code(err))
 	require.Equal(t, 1, calls)
 }
