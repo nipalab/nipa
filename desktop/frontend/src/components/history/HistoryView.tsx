@@ -10,6 +10,8 @@ import type { Notify } from "@/hooks/useLocks";
 import { commitTitle, filterCommits, isImagePath, shortId, tagsByCommit } from "@/lib/history";
 import { timeAgo } from "@/lib/time";
 import { cn, errorMessage } from "@/lib/utils";
+import { PaneResizer } from "@/components/ui/resize-handle";
+import { useResizableWidth } from "@/hooks/useResizableWidth";
 
 type HistoryViewProps = {
   root: string;
@@ -25,6 +27,7 @@ type HistoryViewProps = {
 type Dialog = { kind: "revert" | "tag" | "branch"; commit: Commit } | null;
 
 export function HistoryView({ root, branch, detached, busy, notify, onRevert, path: initialPath = "", open }: HistoryViewProps) {
+  const listSize = useResizableWidth("history", { initial: 340, min: 240, max: 720 });
   const queryClient = useQueryClient();
   const [path, setPath] = useState(initialPath);
   const [pathInput, setPathInput] = useState(initialPath);
@@ -91,7 +94,7 @@ export function HistoryView({ root, branch, detached, busy, notify, onRevert, pa
         <AssetStrip root={root} path={path} commits={commits} selected={selected?.id} onSelect={setSelectedId} />
       )}
       <div className="flex min-h-0 flex-1">
-        <aside className="flex w-[340px] shrink-0 flex-col border-r border-border">
+        <aside className="relative flex shrink-0 flex-col border-r border-border" ref={listSize.ref} style={{ width: listSize.width }}>
           <form onSubmit={applyPath} className="flex shrink-0 items-center gap-1.5 border-b border-border px-3 py-2">
             <FileClock className="size-3.5 shrink-0 text-muted-foreground" />
             <input
@@ -149,6 +152,7 @@ export function HistoryView({ root, branch, detached, busy, notify, onRevert, pa
               )}
             </ol>
           )}
+          <PaneResizer size={listSize} label="Resize commit list" />
         </aside>
         <section className="min-w-0 flex-1">
           {selected ? (

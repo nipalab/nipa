@@ -1,8 +1,10 @@
-import { AlertTriangle, ArrowDown, CloudDownload, Eye, FolderGit2, FolderOpen, GitBranch, Settings, WifiOff } from "lucide-react";
+import { AlertTriangle, ArrowDown, CloudDownload, Eye, FolderGit2, FolderOpen, GitBranch, PanelLeftClose, Settings, WifiOff } from "lucide-react";
 import type { DaemonInfo, Repo, RepoActivity } from "@/api/desktop";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/Logo";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { PaneResizer } from "@/components/ui/resize-handle";
+import { useResizableWidth } from "@/hooks/useResizableWidth";
 import { cn, shortVersion } from "@/lib/utils";
 
 type SidebarProps = {
@@ -15,14 +17,21 @@ type SidebarProps = {
   onClone: () => void;
   onSettings: () => void;
   activity: RepoActivity[];
+  onHide?: () => void;
 };
 
-export function Sidebar({ repos, selected, daemon, adding, onSelect, onAdd, onClone, onSettings, activity }: SidebarProps) {
+export function Sidebar({ repos, selected, daemon, adding, onSelect, onAdd, onClone, onSettings, activity, onHide }: SidebarProps) {
+  const size = useResizableWidth("sidebar", { initial: 256, min: 180, max: 480 });
   return (
-    <aside className="flex w-64 shrink-0 flex-col border-r border-border bg-sidebar">
-      <div className="drag-region flex h-12 items-center gap-2 px-4 pt-1">
+    <aside className="relative flex shrink-0 flex-col border-r border-border bg-sidebar" ref={size.ref} style={{ width: size.width }}>
+      <div className="drag-region flex h-12 items-center gap-2 pl-4 pr-2 pt-1">
         <Logo className="size-5" />
-        <span className="text-sm font-semibold tracking-tight">Nipa</span>
+        <span className="flex-1 text-sm font-semibold tracking-tight">Nipa</span>
+        {onHide && (
+          <Button variant="ghost" size="icon" onClick={onHide} aria-label="Hide sidebar" title="Hide sidebar (Ctrl+B)">
+            <PanelLeftClose />
+          </Button>
+        )}
       </div>
 
       <div className="flex items-center justify-between px-4 pb-1 pt-3">
@@ -89,6 +98,7 @@ export function Sidebar({ repos, selected, daemon, adding, onSelect, onAdd, onCl
           </Button>
         </span>
       </div>
+      <PaneResizer size={size} label="Resize sidebar" />
     </aside>
   );
 }

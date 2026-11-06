@@ -8,7 +8,7 @@ const api = vi.hoisted(() => ({ tableDiff: vi.fn() }));
 vi.mock("@/api/desktop", () => ({ desktop: api }));
 
 import { DiffViewer, viewerFor } from "./DiffViewer";
-import { TableCompareView, TableDiff } from "./TableDiff";
+import { columnIds, TableCompareView, TableDiff } from "./TableDiff";
 
 const row = (over: Partial<TableRow>): TableRow => ({ status: "same", oldLine: 2, newLine: 2, cells: ["a", "b", "c"], old: null, changed: null, ...over });
 
@@ -130,5 +130,36 @@ describe("TableDiff", () => {
     expect(viewerFor(diff({ hunksOmitted: true }))).toBe(TableDiff);
     expect(viewerFor(diff({ old: null, new: { path: "a.csv", mode: 420, size: 0, binary: false, hash: "" } }))).not.toBe(TableDiff);
     expect(viewerFor(diff({ new: { path: "a.csv", mode: 420, size: 9, binary: true, hash: "" } }))).toBe(TableDiff);
+  });
+
+  it("resizes columns per file and keeps rows aligned", async () => {
+    localStorage.setItem("nipa.layout.cols.table:data/a.csv", JSON.stringify({ en: 240 }));
+    renderWithProviders(<TableCompareView compare={compare()} storageKey="table:data/a.csv" />);
+    const header = screen.getByRole("columnheader", { name: /^en/ }).parentElement!;
+    expect(header).toHaveStyle({ width: "240px" });
+    const firstRow = screen.getAllByRole("row")[1];
+    expect(within(firstRow).getAllByRole("cell")[1]).toHaveStyle({ width: "240px" });
+
+    screen.getByRole("separator", { name: "Resize key column" }).focus();
+    await userEvent.keyboard("{ArrowLeft}");
+    expect(screen.getByRole("columnheader", { name: "key" }).parentElement).toHaveStyle({ width: "144px" });
+    expect(JSON.parse(localStorage.getItem("nipa.layout.cols.table:data/a.csv")!)).toEqual({ en: 240, key: 144 });
+  });
+
+  it("keeps duplicate header names apart", async () => {
+    const columns = [
+      { name: "value", oldName: "value", old: 0, new: 0 },
+      { name: "value", oldName: "value", old: 1, new: 1 },
+      { name: "", oldName: "", old: 2, new: 2 },
+    ];
+    expect(columnIds(columns)).toEqual(["value", "value #2", "C"]);
+    renderWithProviders(<TableCompareView compare={compare({ columns, rows: [row({ cells: ["1", "2", "3"] })], keyColumn: -1 })} storageKey="table:dup.csv" />);
+    screen.getByRole("separator", { name: "Resize value #2 column" }).focus();
+    await userEvent.keyboard("{ArrowRight}");
+    const [first, second] = screen.getAllByRole("columnheader", { name: "value" }).map((h) => h.parentElement);
+    expect(first).toHaveStyle({ width: "160px" });
+    expect(second).toHaveStyle({ width: "176px" });
+    expect(screen.getByRole("separator", { name: "Resize value column" })).toBeInTheDocument();
+    expect(JSON.parse(localStorage.getItem("nipa.layout.cols.table:dup.csv")!)).toEqual({ "value #2": 176 });
   });
 });

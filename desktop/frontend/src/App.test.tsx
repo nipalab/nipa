@@ -83,6 +83,46 @@ describe("App", () => {
     expect(localStorage.getItem("nipa.selectedRepo")).toBe("/work/tools");
   });
 
+  it("hides and shows the sidebar and remembers it", async () => {
+    api.activity.mockResolvedValue([{ root: game.root, incoming: 2, reviewRequests: 0, error: "", events: [] }]);
+    const first = renderWithProviders(<App />);
+    await screen.findByRole("heading", { name: "game" });
+    expect(screen.getByRole("separator", { name: "Resize sidebar" })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Hide sidebar" }));
+    expect(screen.queryByRole("navigation", { name: "Repositories" })).not.toBeInTheDocument();
+    expect(localStorage.getItem("nipa.layout.sidebar-hidden")).toBe("1");
+    expect(await screen.findByLabelText("New activity")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /Show sidebar/ }));
+    expect(screen.getByRole("navigation", { name: "Repositories" })).toBeInTheDocument();
+    expect(localStorage.getItem("nipa.layout.sidebar-hidden")).toBeNull();
+
+    await userEvent.keyboard("{Control>}b{/Control}");
+    expect(screen.queryByRole("navigation", { name: "Repositories" })).not.toBeInTheDocument();
+    first.unmount();
+
+    renderWithProviders(<App />);
+    await screen.findByRole("heading", { name: "game" });
+    expect(screen.queryByRole("navigation", { name: "Repositories" })).not.toBeInTheDocument();
+    await userEvent.keyboard("{Meta>}b{/Meta}");
+    expect(screen.getByRole("navigation", { name: "Repositories" })).toBeInTheDocument();
+  });
+
+  it("keeps the show button on the welcome screen", async () => {
+    localStorage.setItem("nipa.layout.sidebar-hidden", "1");
+    api.repos.mockResolvedValue([]);
+    renderWithProviders(<App />);
+    await userEvent.click(await screen.findByRole("button", { name: "Show sidebar" }));
+    expect(screen.getByRole("navigation", { name: "Repositories" })).toBeInTheDocument();
+  });
+
+  it("restores the sidebar width", async () => {
+    localStorage.setItem("nipa.layout.sidebar", "300");
+    renderWithProviders(<App />);
+    expect(await screen.findByRole("separator", { name: "Resize sidebar" })).toHaveAttribute("aria-valuenow", "300");
+  });
+
   it("restores the remembered repository", async () => {
     localStorage.setItem("nipa.selectedRepo", "/work/tools");
     renderWithProviders(<App />);
