@@ -34,7 +34,7 @@ nipalab.com {
 	# owns every other path. Keep this list in sync with the marketing build and
 	# with the reserved org slugs (internal/usecase/reserved.go, web/src/slug.ts).
 	# MARKETING_UPSTREAM is required and must not be nipalab.com.
-	@marketing path / /_astro/* /screenshots/* /pricing /guides /guides/* /download /support /contact /privacy /terms /favicon.svg /apple-touch-icon.png /logo.svg /og.png /robots.txt /site.webmanifest /sitemap-index.xml /sitemap-0.xml
+	@marketing path / /_astro/* /screenshots/* /pricing /pricing/* /guides /guides/* /download /download/* /support /support/* /contact /contact/* /privacy /privacy/* /terms /terms/* /favicon.svg /apple-touch-icon.png /logo.svg /og.png /robots.txt /site.webmanifest /sitemap-index.xml /sitemap-0.xml
 	handle @marketing {
 		# Netlify routes by Host, so send the upstream's own host: the site
 		# needs no nipalab.com alias.
