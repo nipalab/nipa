@@ -184,7 +184,8 @@ func (s *Server) Serve(ctx context.Context) error {
 
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- s.grpc.Serve(s.listener) }()
-	go func() { _ = s.bridge.serve() }()
+	bridgeErr := make(chan error, 1)
+	go func() { bridgeErr <- s.bridge.serve() }()
 
 	select {
 	case <-ctx.Done():
@@ -194,6 +195,15 @@ func (s *Server) Serve(ctx context.Context) error {
 		_ = RemoveEndpoint(s.endpointPath, s.token)
 		s.repos.closeAll()
 		return err
+	case err := <-bridgeErr:
+		if err != nil {
+			s.bridge.close()
+			s.grpc.GracefulStop()
+			<-serveErr
+			s.repos.closeAll()
+			_ = RemoveEndpoint(s.endpointPath, s.token)
+			return fmt.Errorf("json bridge: %w", err)
+		}
 	}
 
 	s.Stop()

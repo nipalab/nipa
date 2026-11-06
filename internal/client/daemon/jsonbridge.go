@@ -212,7 +212,10 @@ func (b *jsonBridge) stream(ctx context.Context, w http.ResponseWriter, method b
 	// after the headers, so wait briefly for it before committing to 200.
 	var first *streamItem
 	select {
-	case item := <-items:
+	case item, ok := <-items:
+		if !ok {
+			return
+		}
 		if item.err != nil && !errors.Is(item.err, io.EOF) {
 			writeGRPCError(w, item.err)
 			return

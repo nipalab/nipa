@@ -301,3 +301,44 @@ func TestServer_JSONPortEnv(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 4321, port)
 }
+
+func TestServer_ServeFailsWhenBridgeDies(t *testing.T) {
+	srv, err := NewServer(Options{EndpointPath: filepath.Join(t.TempDir(), "daemon.json")})
+	require.NoError(t, err)
+	require.NoError(t, srv.bridge.listener.Close())
+
+	done := make(chan error, 1)
+	go func() { done <- srv.Serve(context.Background()) }()
+	select {
+	case err := <-done:
+		require.ErrorContains(t, err, "json bridge")
+	case <-time.After(5 * time.Second):
+		t.Fatal("Serve kept running with a dead JSON bridge")
+	}
+	_, statErr := os.Stat(srv.endpointPath)
+	assert.True(t, os.IsNotExist(statErr), "endpoint must not stay advertised")
+}
+
+func TestJSONBridge_CancelledStreamDoesNotPanic(t *testing.T) {
+	root := newTestClone(t)
+	_, c := newBridgeClient(t, Options{Runners: Runners{New: func(string) RepoOps {
+		return RepoOps{Update: &stubUpdateRunner{run: func(ctx context.Context, _ string, _ ...usecase.DownloadProgress) error {
+			<-ctx.Done()
+			return ctx.Err()
+		}}}
+	}}})
+	code, _ := c.call(t, "/v1/WatchRepo", fmt.Sprintf(`{"root":%q}`, root))
+	require.Equal(t, http.StatusOK, code)
+	for i := 0; i < 20; i++ {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(i)*20*time.Millisecond)
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+"/v1/Update", strings.NewReader(fmt.Sprintf(`{"root":%q}`, root)))
+		require.NoError(t, err)
+		req.Header.Set(TokenHeader, c.token)
+		if resp, err := http.DefaultClient.Do(req); err == nil {
+			_ = resp.Body.Close()
+		}
+		cancel()
+	}
+	code, _ = c.call(t, "/v1/Ping", "")
+	assert.Equal(t, http.StatusOK, code)
+}
