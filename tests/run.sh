@@ -200,12 +200,12 @@ OAUTH_BASE_URL: 'http://127.0.0.1:$port'"
 SERVER_ADDRESS: 127.0.0.1
 SERVER_PORT: $port
 DATABASE_DSN: '$db_dsn'
-JWT_KEY: 'client-e2e-secret'
+JWT_KEY: 'client-e2e-jwt-secret-0123456789abcdef'
 LOG_LEVEL: info
 SNOWFLAKE_NODE_ID: 0
 HASHER_WORKERS: 2
 $chunk_lines
-CHUNK_URL_SIGNING_KEY: 'client-e2e-chunk-signing-key'
+CHUNK_URL_SIGNING_KEY: 'client-e2e-chunk-signing-key-0123456789'
 CHUNK_PRESIGN_TTL_SECONDS: 3600
 CHUNK_MAX_PAGE_SIZE: 1000
 WEBHOOK_EGRESS_ALLOWLIST: '127.0.0.1'

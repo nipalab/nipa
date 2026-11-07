@@ -13,6 +13,7 @@
 #   NIPA_CONFIG_DIR      /etc/nipa          config.yaml, .env, <color>.env
 #   NIPA_STATE_DIR       /var/lib/nipa      active-color state file
 #   NIPA_CADDYFILE       /etc/caddy/Caddyfile
+#   NIPA_CADDY_ENV       /etc/caddy/caddy.env   Caddy env (MARKETING_UPSTREAM)
 #   NIPA_BLUE_PORT       8001
 #   NIPA_GREEN_PORT      8002
 #   NIPA_READY_TIMEOUT   90                 seconds to wait for /readyz
@@ -24,6 +25,7 @@ NIPA_BASE="${NIPA_BASE:-/opt/nipa}"
 NIPA_CONFIG_DIR="${NIPA_CONFIG_DIR:-/etc/nipa}"
 NIPA_STATE_DIR="${NIPA_STATE_DIR:-/var/lib/nipa}"
 CADDYFILE="${NIPA_CADDYFILE:-/etc/caddy/Caddyfile}"
+CADDY_ENV="${NIPA_CADDY_ENV:-/etc/caddy/caddy.env}"
 BLUE_PORT="${NIPA_BLUE_PORT:-8001}"
 GREEN_PORT="${NIPA_GREEN_PORT:-8002}"
 READY_TIMEOUT="${NIPA_READY_TIMEOUT:-90}"
@@ -37,7 +39,7 @@ fail() {
 }
 
 usage() {
-	sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'
+	sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 rollback=false
@@ -112,8 +114,16 @@ env_file="$NIPA_CONFIG_DIR/$idle_color.env"
 [[ -f "$env_file" ]] || fail "missing $env_file (see deploy/nipad-ee.env.sample)"
 grep -qE "^SERVER_PORT=$idle_port\$" "$env_file" || fail "$env_file must set SERVER_PORT=$idle_port"
 [[ -f "$CADDYFILE" ]] || fail "missing $CADDYFILE (see deploy/caddy/Caddyfile)"
+if grep -q '{\$MARKETING_UPSTREAM}' "$CADDYFILE"; then
+	marketing="${MARKETING_UPSTREAM:-}"
+	if [[ -z "$marketing" && -f "$CADDY_ENV" ]]; then
+		marketing="$(grep -E '^MARKETING_UPSTREAM=' "$CADDY_ENV" | tail -1 | cut -d= -f2- || true)"
+	fi
+	[[ -n "$marketing" ]] || fail "MARKETING_UPSTREAM is empty: set it in $CADDY_ENV (see deploy/caddy/caddy.env.sample)"
+fi
 
 idle_started=false
+idle_enabled=false
 caddy_dirty=false
 flipped=false
 cleanup() {
@@ -127,6 +137,9 @@ cleanup() {
 		if [[ "$idle_started" == true && "$flipped" == false ]]; then
 			log "stopping the idle color $idle_color; production stays on $active_color"
 			systemctl stop "$idle_unit" || true
+			if [[ "$idle_enabled" == true ]]; then
+				systemctl disable --quiet "$idle_unit" || true
+			fi
 		fi
 		exit "$status"
 	fi
@@ -171,6 +184,11 @@ done
 curl -fsS --max-time 5 "http://127.0.0.1:$idle_port/version" >/dev/null || fail "$idle_color /version smoke check failed"
 log "$idle_color is ready"
 
+# Boot must start the color Caddy points at: enable it before the flip so a
+# failure aborts with production untouched.
+systemctl enable --quiet "$idle_unit" || fail "failed to enable $idle_unit at boot"
+idle_enabled=true
+
 log "flipping Caddy to $idle_color (port $idle_port)"
 cp -a "$CADDYFILE" "$CADDYFILE.bak"
 sed -i -E "s#^([[:space:]]*reverse_proxy 127\.0\.0\.1:)[0-9]+#\1$idle_port#" "$CADDYFILE"
@@ -179,7 +197,11 @@ if ! grep -qE "^[[:space:]]*reverse_proxy 127\.0\.0\.1:$idle_port " "$CADDYFILE"
 	fail "failed to update the reverse_proxy line in $CADDYFILE"
 fi
 if command -v caddy >/dev/null; then
-	caddy validate --config "$CADDYFILE" >/dev/null 2>&1 || fail "invalid Caddyfile after the flip"
+	validate_args=(validate --config "$CADDYFILE" --adapter caddyfile)
+	if [[ -f "$CADDY_ENV" ]]; then
+		validate_args+=(--envfile "$CADDY_ENV")
+	fi
+	caddy "${validate_args[@]}" >/dev/null 2>&1 || fail "invalid Caddyfile after the flip (caddy ${validate_args[*]})"
 fi
 systemctl reload caddy
 flipped=true
@@ -204,6 +226,7 @@ fi
 
 log "stopping $active_color (graceful, SIGTERM)"
 systemctl stop "$active_unit"
+systemctl disable --quiet "$active_unit" || log "WARNING: failed to disable $active_unit at boot"
 
 action="upgrade"
 if [[ "$rollback" == true ]]; then

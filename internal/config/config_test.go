@@ -286,3 +286,30 @@ func TestLoadConfig_MissingConfigFile(t *testing.T) {
 	require.Error(t, err)
 	require.Nil(t, cfg)
 }
+
+func TestValidateSecrets(t *testing.T) {
+	strong := "0123456789abcdef0123456789abcdef"
+	other := "fedcba9876543210fedcba9876543210"
+	cases := []struct {
+		name, jwt, chunk, want string
+	}{
+		{"valid", strong, other, ""},
+		{"missing jwt", "", other, "JWT_KEY must be set"},
+		{"sample jwt", "secret", other, "JWT_KEY still has the sample value"},
+		{"short jwt", "short", other, "JWT_KEY must be at least 32"},
+		{"missing chunk", strong, "", "CHUNK_URL_SIGNING_KEY must be set"},
+		{"sample chunk", strong, "change-me", "CHUNK_URL_SIGNING_KEY still has the sample value"},
+		{"short chunk", strong, "short", "CHUNK_URL_SIGNING_KEY must be at least 32"},
+		{"identical", strong, strong, "must differ"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := (&Config{JWTKey: tc.jwt, ChunkURLSigningKey: tc.chunk}).ValidateSecrets()
+			if tc.want == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.ErrorContains(t, err, tc.want)
+		})
+	}
+}

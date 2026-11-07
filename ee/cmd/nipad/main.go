@@ -44,6 +44,9 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	if err := cfg.ValidateSecrets(); err != nil {
+		panic(err)
+	}
 
 	serviceName := cfg.TracingServiceName
 	if serviceName == "" {
@@ -134,9 +137,6 @@ func main() {
 		panic(fmt.Errorf("create chunk store: %w", err))
 	}
 	defer func() { _ = chunkStore.Close() }()
-	if cfg.ChunkURLSigningKey == "" {
-		panic("CHUNK_URL_SIGNING_KEY must be set")
-	}
 
 	storageLedger, err := createStorageLedger(cfg, dbConn)
 	if err != nil {
