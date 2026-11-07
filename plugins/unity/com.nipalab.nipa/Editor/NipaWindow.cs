@@ -3,6 +3,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Nipa.Editor.Core.Daemon;
 using Nipa.Editor.Core.Locks;
+using Nipa.Editor.Core.Merge;
 using Nipa.Editor.Core.Paths;
 using Nipa.Editor.Core.Status;
 using UnityEditor;
@@ -27,6 +28,15 @@ namespace Nipa.Editor
         string message = string.Empty;
         Vector2 scroll;
         int tab;
+        ConflictsResponse conflictSet;
+        bool conflictsLoading;
+        object conflictsSession;
+        int conflictsVersion = -1;
+        List<CommitLogEntry> history = new List<CommitLogEntry>();
+        string historyPath;
+        string historyKey;
+        bool historyLoading;
+        string historyError;
 
         public static void Open()
         {
@@ -52,9 +62,15 @@ namespace Nipa.Editor
             Repaint();
         }
 
+        void OnSelectionChange()
+        {
+            Repaint();
+        }
+
         void OnFocus()
         {
             NipaHost.Refresh();
+            NipaBranches.Load(true);
         }
 
         void OnGUI()
@@ -67,7 +83,15 @@ namespace Nipa.Editor
             LoadWarnings(session);
             DrawBanners();
 
-            tab = GUILayout.Toolbar(tab, new[] { "Changes", "Locks (" + session.Locks.Mine.Count() + ")" });
+            tab = GUILayout.Toolbar(tab, new[]
+            {
+                "Changes",
+                "Locks (" + session.Locks.Mine.Count() + ")",
+                "Conflicts" + (conflictCount > 0 ? " (" + conflictCount + ")" : string.Empty),
+                "History",
+            });
+            if (tab == 2)
+                LoadConflicts(session);
             scroll = EditorGUILayout.BeginScrollView(scroll);
             if (tab == 0)
             {
@@ -76,9 +100,17 @@ namespace Nipa.Editor
                 DrawList("Staged", stagedRows, selectedStaged, "Unstage", "Unstage all", paths =>
                     NipaHost.Run("Unstage", (s, _) => s.UnstageAsync(paths)));
             }
-            else
+            else if (tab == 1)
             {
                 DrawLocks(session);
+            }
+            else if (tab == 2)
+            {
+                DrawConflicts(session);
+            }
+            else
+            {
+                DrawHistory(session);
             }
             EditorGUILayout.EndScrollView();
 
@@ -106,9 +138,11 @@ namespace Nipa.Editor
             using (new EditorGUILayout.HorizontalScope(EditorStyles.toolbar))
             {
                 if (session != null)
-                    GUILayout.Label(session.Cache.Head != null
-                        ? "tag " + session.Cache.Head.Name
-                        : session.Cache.Branch ?? "?", EditorStyles.boldLabel);
+                {
+                    NipaBranches.Load();
+                    if (EditorGUILayout.DropdownButton(new GUIContent(NipaBranches.Label(), "Switch branch or tag"), FocusType.Passive, EditorStyles.toolbarDropDown, GUILayout.MinWidth(80)))
+                        NipaBranches.ShowMenu();
+                }
                 else
                     GUILayout.Label(NipaHost.Connecting ? "Connecting..." : "Disconnected");
                 GUILayout.FlexibleSpace();
@@ -143,9 +177,9 @@ namespace Nipa.Editor
             if (cache.Head != null)
                 EditorGUILayout.HelpBox("HEAD is detached at " + cache.Head.Kind + " \"" + cache.Head.Name + "\". Switch to a branch to push.", MessageType.Warning);
             if (!string.IsNullOrEmpty(cache.Pending))
-                EditorGUILayout.HelpBox("A " + cache.Pending + " is waiting. Finish it in Nipa Desktop.", MessageType.Warning);
+                DrawPending(cache);
             if (conflictCount > 0)
-                EditorGUILayout.HelpBox(conflictCount + " file(s) in conflict. Resolve them in Nipa Desktop.", MessageType.Error);
+                EditorGUILayout.HelpBox(conflictCount + " file(s) in conflict. Resolve them in the Conflicts tab.", MessageType.Error);
             if (NipaHost.Error != null)
                 EditorGUILayout.HelpBox(NipaHost.Error, MessageType.Warning);
             DrawActivity();
@@ -156,6 +190,200 @@ namespace Nipa.Editor
                     text += "\n… and " + (warnings.Count - 6) + " more";
                 EditorGUILayout.HelpBox(".meta warnings:\n" + text, MessageType.Warning);
             }
+        }
+
+        void DrawPending(StatusCache cache)
+        {
+            var text = "A " + cache.Pending + " is waiting"
+                + (cache.Pending == "revert" && cache.PendingRemaining > 1 ? " (" + cache.PendingRemaining + " steps left)" : string.Empty) + ".";
+            EditorGUILayout.HelpBox(text, MessageType.Warning);
+            using (new EditorGUILayout.HorizontalScope())
+            using (new EditorGUI.DisabledScope(NipaHost.Busy != null))
+            {
+                if (cache.Pending == "revert")
+                {
+                    using (new EditorGUI.DisabledScope(conflictCount > 0))
+                    {
+                        if (GUILayout.Button("Continue"))
+                            RunRevert("continue");
+                    }
+                    if (GUILayout.Button("Skip"))
+                        RunRevert("skip");
+                    if (GUILayout.Button("Abort") && EditorUtility.DisplayDialog("Nipa: Abort revert", "Abort the revert and restore the original state?", "Abort", "Cancel"))
+                        RunRevert("abort");
+                }
+                else
+                {
+                    using (new EditorGUI.DisabledScope(conflictCount > 0))
+                    {
+                        if (GUILayout.Button("Finish (push)"))
+                            PushWithLockCheck(string.IsNullOrWhiteSpace(message) ? "Merge" : message);
+                    }
+                    if (GUILayout.Button("Abort") && EditorUtility.DisplayDialog("Nipa: Abort merge", "Abort the merge and restore the original state?", "Abort", "Cancel"))
+                        NipaHost.Run("Abort merge", (s, on) => s.AbortMergeAsync(on), refreshAssets: true);
+                }
+            }
+        }
+
+        static void RunRevert(string step)
+        {
+            NipaHost.Run("Revert", (s, on) => s.RevertStepAsync(step, on), refreshAssets: true);
+        }
+
+        void LoadConflicts(Core.Session.NipaSession session)
+        {
+            if (conflictsLoading)
+                return;
+            if (ReferenceEquals(conflictsSession, session) && conflictsVersion == session.Cache.Version)
+                return;
+            conflictsSession = session;
+            conflictsVersion = session.Cache.Version;
+            conflictsLoading = true;
+            Task.Run(async () =>
+            {
+                ConflictsResponse set = null;
+                try
+                {
+                    set = await session.ConflictsAsync().ConfigureAwait(false);
+                }
+                catch (System.Exception)
+                {
+                }
+                MainThread.Post(() =>
+                {
+                    conflictsLoading = false;
+                    if (set != null)
+                        conflictSet = set;
+                    Repaint();
+                });
+            });
+        }
+
+        void DrawConflicts(Core.Session.NipaSession session)
+        {
+            if (conflictSet == null || string.IsNullOrEmpty(conflictSet.Op) || conflictSet.Files.Count == 0)
+            {
+                EditorGUILayout.HelpBox("No conflicts.", MessageType.None);
+                return;
+            }
+            var tool = MergeTool.ToolPath(EditorApplication.applicationContentsPath);
+            var toolFound = System.IO.File.Exists(tool);
+            EditorGUILayout.LabelField(conflictSet.Op + " conflicts (" + conflictSet.Files.Count(f => !f.Resolved) + " open)", EditorStyles.boldLabel);
+            foreach (var f in conflictSet.Files)
+            {
+                var action = MergeTool.Classify(f.Kind, f.Binary, f.Resolved, f.Path);
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    GUILayout.Label(new GUIContent(f.Path + "  [" + (f.Resolved ? "resolved" : f.Kind) + "]", f.Path), GUILayout.MinWidth(80));
+                    GUILayout.FlexibleSpace();
+                    using (new EditorGUI.DisabledScope(NipaHost.Busy != null))
+                    {
+                        if (action == ConflictAction.MergeTool)
+                        {
+                            using (new EditorGUI.DisabledScope(!toolFound))
+                            {
+                                if (GUILayout.Button(new GUIContent("Merge", toolFound ? "Run UnityYAMLMerge" : "UnityYAMLMerge not found"), GUILayout.Width(56)))
+                                    RunMergeTool(f.Path, tool);
+                            }
+                        }
+                        if (GUILayout.Button("Mine", GUILayout.Width(48)))
+                            Resolve(f.Path, "ours");
+                        if (GUILayout.Button("Theirs", GUILayout.Width(56)))
+                            Resolve(f.Path, "theirs");
+                    }
+                }
+            }
+        }
+
+        static void Resolve(string path, string choice)
+        {
+            NipaHost.Run("Resolve", (s, _) => s.ResolveAsync(path, choice), refreshAssets: true);
+        }
+
+        void RunMergeTool(string path, string tool)
+        {
+            var set = conflictSet;
+            var work = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "nipa-merge-" + System.Guid.NewGuid().ToString("N"));
+            var merged = false;
+            NipaHost.Run("Merge " + System.IO.Path.GetFileName(path), async (s, _) =>
+            {
+                try
+                {
+                    merged = await s.MergeToolResolveAsync(set, path, tool, new SystemMergeProcess(), work);
+                }
+                finally
+                {
+                    if (System.IO.Directory.Exists(work))
+                        System.IO.Directory.Delete(work, true);
+                }
+            }, refreshAssets: true, onSuccess: () =>
+            {
+                if (!merged)
+                    EditorUtility.DisplayDialog("Nipa: Merge", "UnityYAMLMerge could not merge " + path + " cleanly. Pick Mine or Theirs, or resolve it in Nipa Desktop.", "OK");
+            });
+        }
+
+        void DrawHistory(Core.Session.NipaSession session)
+        {
+            var selected = NipaHost.SelectedClonePaths().FirstOrDefault();
+            var key = session.Root + "|" + session.Cache.Branch + "|" + session.Cache.Head?.Name + "|" + session.Cache.Version;
+            if (selected != historyPath || key != historyKey)
+            {
+                historyPath = selected;
+                historyKey = key;
+                LoadHistory(session, selected, key);
+            }
+            EditorGUILayout.LabelField(string.IsNullOrEmpty(historyPath) ? "Project history" : "History of " + historyPath, EditorStyles.boldLabel);
+            foreach (var c in history)
+            {
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    var first = (c.Message ?? string.Empty).Split('\n')[0];
+                    GUILayout.Label(new GUIContent(first, c.Message), GUILayout.MinWidth(80));
+                    GUILayout.FlexibleSpace();
+                    GUILayout.Label(c.AuthorName, EditorStyles.miniLabel, GUILayout.Width(90));
+                    var link = session.DesktopLink("commits/" + c.CommitId);
+                    using (new EditorGUI.DisabledScope(link == null))
+                    {
+                        if (GUILayout.Button("Diff", GUILayout.Width(40)))
+                            Application.OpenURL(link);
+                    }
+                }
+            }
+            if (historyError != null)
+                EditorGUILayout.HelpBox("Could not load history: " + historyError, MessageType.Warning);
+            else if (history.Count == 0)
+                EditorGUILayout.HelpBox(historyLoading ? "Loading..." : "No commits.", MessageType.None);
+        }
+
+        void LoadHistory(Core.Session.NipaSession session, string path, string key)
+        {
+            historyLoading = true;
+            historyError = null;
+            history = new List<CommitLogEntry>();
+            Task.Run(async () =>
+            {
+                List<CommitLogEntry> result = null;
+                string error = null;
+                try
+                {
+                    result = await session.HistoryAsync(path).ConfigureAwait(false);
+                }
+                catch (System.Exception e)
+                {
+                    error = e.Message;
+                }
+                MainThread.Post(() =>
+                {
+                    if (key != historyKey || path != historyPath)
+                        return;
+                    historyLoading = false;
+                    historyError = error;
+                    if (result != null)
+                        history = result;
+                    Repaint();
+                });
+            });
         }
 
         void DrawActivity()

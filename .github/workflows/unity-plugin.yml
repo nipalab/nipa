@@ -1,0 +1,41 @@
+name: Unity plugin
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'plugins/unity/**'
+      - '.github/workflows/unity-plugin.yml'
+  pull_request:
+    paths:
+      - 'plugins/unity/**'
+      - '.github/workflows/unity-plugin.yml'
+    types: [opened, synchronize, reopened]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Test
+        run: make unity-test
+
+      - name: Coverage gate
+        run: |
+          report=$(ls -t plugins/unity/dotnet/TestResults/*/coverage.cobertura.xml | head -1)
+          rate=$(sed -n 's/.*<coverage line-rate="\([0-9.]*\)".*/\1/p' "$report" | head -1)
+          echo "line coverage: $rate"
+          awk -v r="$rate" 'BEGIN { exit (r >= 0.8) ? 0 : 1 }' || { echo "Editor/Core coverage below 80%"; exit 1; }
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unity-coverage
+          path: plugins/unity/dotnet/TestResults/**/coverage.cobertura.xml

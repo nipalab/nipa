@@ -72,6 +72,26 @@ checkout model:
   Desktop; a released lock refreshes the lock cache. The lock cache also
   refreshes on window focus, after lock/unlock and on every poll tick.
 
+## Branches, conflicts and history
+
+- **Switcher:** a dropdown in the window toolbar and a Scene view overlay
+  ("Nipa") list branches (`ProxyBranchList`) and tags (`ProxyTagList`).
+  Choosing one runs `Switch` (`tag` set for tags) and refreshes the
+  AssetDatabase. A detached tag shows a banner (`Status.head`) and blocks push.
+- **Pending merge/revert banner:** a waiting merge offers Finish (push) and
+  Abort; a waiting revert offers Continue, Skip and Abort. Both stay disabled
+  for Finish/Continue while conflicts are open.
+- **Conflicts tab** (`Conflicts` / `ResolveConflict`): Mine and Theirs for any
+  file. `.unity`, `.prefab`, `.asset`, `.controller`, `.mat` and `.anim` text
+  conflicts also get **Merge**, which fetches base/ours/theirs with `ReadBlob`
+  (`revision` source, ids from `Conflicts`) into a temp folder and runs
+  `<Unity>/Tools/UnityYAMLMerge merge -p <base> <theirs> <ours> <out>`. A clean
+  result is submitted with `choice=content`; a non-zero exit or leftover
+  conflict markers fall back to a manual Mine/Theirs pick.
+- **History tab:** `ProxyCommitLog` for the selected asset (or the whole
+  project); **Diff** opens `nipa://<server>/<org>/<project>/commits/<id>` in
+  Nipa Desktop.
+
 ## Settings
 
 In **Project Settings › Editor › Version Control** (Nipa section):
@@ -94,10 +114,12 @@ plugins/unity/com.nipalab.nipa/
     Paths/       ProjectPaths (project <-> clone paths, .meta pairing)
     Locks/       LockPolicy (covering-lock lookup, scope, strict mode,
                  push pre-check)
+    Merge/       MergeTool (UnityYAMLMerge command, marker check, conflict
+                 classification), SystemMergeProcess
     Session/     NipaSession (WatchRepo, Status, WatchChanges + WatchEvents
                  loops, ops, lock/unlock), NipaSettings
   Editor/        Unity glue: NipaVersionControl, NipaHost, NipaWindow,
-                 NipaMenus, NipaIcons, MainThread, NipaAssetProcessor,
+                 NipaMenus, NipaIcons, NipaBranches, NipaSceneOverlay, MainThread, NipaAssetProcessor,
                  NipaInspectorBar, NipaLocks
   Tests/Editor/  EditMode smoke tests
 plugins/unity/dotnet/   Core/Nipa.Core.csproj (netstandard2.1 build of Editor/Core)
@@ -127,3 +149,7 @@ plugins/unity/dotnet/   Core/Nipa.Core.csproj (netstandard2.1 build of Editor/Co
 `make unity-test` runs `dotnet test plugins/unity/dotnet` (NUnit, coverlet,
 needs the .NET 8 SDK) over `Editor/Core`. The Unity glue is covered by the
 EditMode tests in `Tests/Editor` (Window › General › Test Runner).
+
+CI: `.github/workflows/unity-plugin.yml` runs `make unity-test` on every PR and
+main push that touches `plugins/unity/**` and fails when `Editor/Core` line
+coverage drops below 80%. The EditMode tests are not run in CI yet.

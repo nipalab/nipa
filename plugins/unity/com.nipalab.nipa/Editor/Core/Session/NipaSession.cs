@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nipa.Editor.Core.Daemon;
 using Nipa.Editor.Core.Locks;
+using Nipa.Editor.Core.Merge;
 using Nipa.Editor.Core.Paths;
 using Nipa.Editor.Core.Status;
 
@@ -363,6 +365,151 @@ namespace Nipa.Editor.Core.Session
         public Task<OpResult> SwitchAsync(string branch, string tag, Action<OpEvent> onEvent, CancellationToken ct = default)
         {
             return RunOp("Switch", new SwitchRequest { Root = Root, Branch = branch, Tag = tag }, onEvent, ct);
+        }
+
+        public async Task<List<Branch>> BranchesAsync(CancellationToken ct = default)
+        {
+            const int page = 200;
+            const int maxPages = 50;
+            var all = new List<Branch>();
+            var request = new ListBranchesRequest { Limit = page };
+            for (var i = 0; i < maxPages; i++)
+            {
+                var res = await Call<ProxyBranchListRequest, ProxyBranchListResponse>("ProxyBranchList",
+                    new ProxyBranchListRequest { Root = Root, Request = request }, ct).ConfigureAwait(false);
+                var branches = res.Response?.Branches ?? new List<Branch>();
+                all.AddRange(branches);
+                if (branches.Count < page)
+                    break;
+                var last = branches[branches.Count - 1];
+                request = new ListBranchesRequest { Limit = page, LastUpdatedAt = last.UpdatedAt, LastId = last.Id };
+            }
+            return all;
+        }
+
+        public async Task<List<Tag>> TagsAsync(CancellationToken ct = default)
+        {
+            var res = await Call<ProxyTagListRequest, ProxyTagListResponse>("ProxyTagList",
+                new ProxyTagListRequest { Root = Root, Request = new ListTagsRequest { Limit = 200 } }, ct).ConfigureAwait(false);
+            return res.Response?.Tags ?? new List<Tag>();
+        }
+
+        public async Task<Tag> FindTagAsync(string name, CancellationToken ct = default)
+        {
+            const int page = 200;
+            const int maxPages = 50;
+            var request = new ListTagsRequest { Limit = page };
+            for (var i = 0; i < maxPages; i++)
+            {
+                var res = await Call<ProxyTagListRequest, ProxyTagListResponse>("ProxyTagList",
+                    new ProxyTagListRequest { Root = Root, Request = request }, ct).ConfigureAwait(false);
+                var tags = res.Response?.Tags ?? new List<Tag>();
+                var hit = tags.FirstOrDefault(t => t.Name == name);
+                if (hit != null)
+                    return hit;
+                if (tags.Count < page)
+                    return null;
+                var last = tags[tags.Count - 1];
+                request = new ListTagsRequest { Limit = page, LastCreatedAt = last.CreatedAt, LastId = last.Id };
+            }
+            return null;
+        }
+
+        public async Task<List<CommitLogEntry>> HistoryAsync(string clonePath, int limit = 50, CancellationToken ct = default)
+        {
+            var request = new CommitLogRequest { Path = Trim(clonePath ?? string.Empty), Limit = limit, Branch = Cache.Branch };
+            var head = Cache.Head;
+            if (head != null && head.Kind == "tag")
+            {
+                var tag = await FindTagAsync(head.Name, ct).ConfigureAwait(false);
+                if (tag == null)
+                    throw new DaemonException(404, "tag " + head.Name + " not found");
+                request.StartCommitId = tag.CommitId;
+            }
+            var res = await Call<ProxyCommitLogRequest, ProxyCommitLogResponse>("ProxyCommitLog",
+                new ProxyCommitLogRequest { Root = Root, Request = request }, ct).ConfigureAwait(false);
+            return res.Response?.Commits ?? new List<CommitLogEntry>();
+        }
+
+        public async Task<ConflictsResponse> ConflictsAsync(CancellationToken ct = default)
+        {
+            var res = await Call<ConflictsRequest, ConflictsResponse>(
+                "Conflicts", new ConflictsRequest { Root = Root }, ct).ConfigureAwait(false);
+            res.Files = res.Files ?? new List<ConflictFile>();
+            return res;
+        }
+
+        public async Task ResolveAsync(string path, string choice, byte[] content = null, CancellationToken ct = default)
+        {
+            var status = await Call<ResolveConflictRequest, StatusResponse>("ResolveConflict",
+                new ResolveConflictRequest { Root = Root, Path = path, Choice = choice, Content = content }, ct).ConfigureAwait(false);
+            Cache.Apply(status);
+        }
+
+        public async Task<byte[]> ReadRevisionAsync(string revision, string path, CancellationToken ct = default)
+        {
+            if (string.IsNullOrEmpty(revision))
+                return null;
+            var l = Acquire();
+            try
+            {
+                var req = new ReadBlobRequest { Root = Root, Blob = new BlobRef { Source = "revision", Revision = revision, Path = path } };
+                using (var buffer = new MemoryStream())
+                {
+                    await foreach (var ev in l.Client.StreamAsync<ReadBlobRequest, BlobEvent>("ReadBlob", req, ct).ConfigureAwait(false))
+                    {
+                        if (ev.Failure != null)
+                        {
+                            if (ev.Failure.Code == 404)
+                                return null;
+                            throw new DaemonException(ev.Failure.Code, ev.Failure.Message);
+                        }
+                        if (ev.Data != null)
+                            buffer.Write(ev.Data, 0, ev.Data.Length);
+                    }
+                    return buffer.ToArray();
+                }
+            }
+            catch (DaemonException e) when (e.Code == 404)
+            {
+                return null;
+            }
+            finally
+            {
+                Release(l);
+            }
+        }
+
+        public async Task<bool> MergeToolResolveAsync(ConflictsResponse set, string path, string toolPath,
+            IMergeProcess process, string workDir, CancellationToken ct = default)
+        {
+            var baseData = await ReadRevisionAsync(set.Base?.Id, path, ct).ConfigureAwait(false);
+            var theirs = await ReadRevisionAsync(set.Theirs?.Id, path, ct).ConfigureAwait(false);
+            var ours = await ReadRevisionAsync(set.Ours?.Id, path, ct).ConfigureAwait(false);
+            if (theirs == null || ours == null)
+                return false;
+            var merged = await MergeTool.RunAsync(process, toolPath, workDir, baseData, theirs, ours, path, ct).ConfigureAwait(false);
+            if (merged == null)
+                return false;
+            await ResolveAsync(path, "content", merged, ct).ConfigureAwait(false);
+            return true;
+        }
+
+        public Task<OpResult> AbortMergeAsync(Action<OpEvent> onEvent, CancellationToken ct = default)
+        {
+            return RunOp("Merge", new MergeOpRequest { Root = Root, Abort = true }, onEvent, ct);
+        }
+
+        public Task<OpResult> RevertStepAsync(string step, Action<OpEvent> onEvent, CancellationToken ct = default)
+        {
+            var req = new RevertOpRequest
+            {
+                Root = Root,
+                Abort = step == "abort",
+                Continue = step == "continue",
+                Skip = step == "skip",
+            };
+            return RunOp("Revert", req, onEvent, ct);
         }
 
         public async Task<List<MetaWarning>> MetaWarningsAsync(CancellationToken ct = default)
