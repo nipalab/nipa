@@ -54,7 +54,7 @@ build-server:
 	go build -ldflags "$(LDFLAGS)" -o bin/nipad ./cmd/nipad
 
 build-server-ee:
-	go build -ldflags "$(LDFLAGS)" -o bin/nipad-ee ./ee/cmd/nipad
+	CGO_ENABLED=0 go build -trimpath -ldflags "$(LDFLAGS)" -o bin/nipad-ee ./ee/cmd/nipad
 
 build-client:
 	go build -ldflags "$(LDFLAGS)" -o bin/nipa ./cmd/nipa

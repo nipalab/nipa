@@ -857,6 +857,9 @@ Direct: `go build ./...`, `go vet ./...`, `go test ./...`.
 two `nipad-ee` colors (`nipad-ee@blue`/`@green`) behind Caddy, which terminates
 TLS for the single h2c port and proxies to the active color. Assets live in
 `deploy/` (`nipad-ee@.service` template, `nipad-ee.env.sample`, `caddy/Caddyfile`,
+`caddy/caddy.env.sample` + `caddy/caddy.service.d/nipa.conf` for `MARKETING_UPSTREAM`,
+`ci-deploy.sh` driven by `.github/workflows/server-deploy.yml` for the dev (main) and
+production (`v*` tag) GitHub environments,
 `upgrade.sh`). The upgrade script installs the new binary into the idle color,
 waits for `/readyz`, rewrites the Caddyfile upstream + `systemctl reload caddy`
 (a reload never drops connections), waits for the old color to drain, then
