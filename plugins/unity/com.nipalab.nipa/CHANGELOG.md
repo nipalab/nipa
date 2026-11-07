@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Setup tab: checks Force Text, visible meta files and `.nipaignore`, with Fix buttons
+  and the Unity `.nipaignore` template.
+- Install from a git URL or tarball (`make unity-pack`).
+
 - Branch/tag switcher in the window and as a Scene view overlay.
 - Conflicts tab with Mine/Theirs and UnityYAMLMerge for Unity YAML assets.
 - Merge/revert pending banner (Finish, Abort, Continue, Skip).

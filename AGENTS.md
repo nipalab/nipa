@@ -157,7 +157,8 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   JSON/NDJSON over `HttpClient`, `Connector` attach-or-spawn, `StatusCache`,
   `ProjectPaths`, `NipaSession`, `LockPolicy` for covering-lock checks,
   strict mode and the push pre-check, `MergeTool` for UnityYAMLMerge conflict
-  merges, branch/tag/history/conflict calls on `NipaSession`; locks surface through
+  merges, `SetupChecker` (Force Text, visible meta, `.nipaignore` template;
+  Setup tab), `make unity-pack` tarball + `.github/workflows/unity-plugin.yml`, branch/tag/history/conflict calls on `NipaSession`; locks surface through
   `AssetModificationProcessor`, overlays, the Inspector header and a Locks
   tab, fed by `LockStatus`/`ProxyLockFile`/`ProxyUnlockFile`/`WatchEvents`) compiled as `netstandard2.1` by
   `plugins/unity/dotnet/Core` and tested there (`make unity-test`, NUnit +

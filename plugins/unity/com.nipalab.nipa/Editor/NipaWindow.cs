@@ -28,6 +28,7 @@ namespace Nipa.Editor
         string message = string.Empty;
         Vector2 scroll;
         int tab;
+        int setupCount;
         ConflictsResponse conflictSet;
         bool conflictsLoading;
         object conflictsSession;
@@ -82,6 +83,8 @@ namespace Nipa.Editor
             RebuildRows(session);
             LoadWarnings(session);
             DrawBanners();
+            if (Event.current.type == EventType.Layout)
+                setupCount = NipaSetup.Check(session).Count;
 
             tab = GUILayout.Toolbar(tab, new[]
             {
@@ -89,6 +92,7 @@ namespace Nipa.Editor
                 "Locks (" + session.Locks.Mine.Count() + ")",
                 "Conflicts" + (conflictCount > 0 ? " (" + conflictCount + ")" : string.Empty),
                 "History",
+                "Setup" + (setupCount > 0 ? " (" + setupCount + ")" : string.Empty),
             });
             if (tab == 2)
                 LoadConflicts(session);
@@ -108,9 +112,13 @@ namespace Nipa.Editor
             {
                 DrawConflicts(session);
             }
-            else
+            else if (tab == 3)
             {
                 DrawHistory(session);
+            }
+            else
+            {
+                NipaSetup.Draw(session);
             }
             EditorGUILayout.EndScrollView();
 

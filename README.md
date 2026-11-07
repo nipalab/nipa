@@ -187,7 +187,10 @@ The full agent-facing reference lives in [`docs/AI.md`](docs/AI.md).
   connect to the local `nipa serve` daemon and consume the same API the CLI
   does. Design notes live in
   [`docs/INTEGRATIONS.md`](docs/INTEGRATIONS.md) and
-  [`docs/DAEMON.md`](docs/DAEMON.md).
+  [`docs/DAEMON.md`](docs/DAEMON.md). The Unity Editor plugin
+  (`plugins/unity/com.nipalab.nipa`, install from a git URL or tarball, setup
+  checker included) is documented in
+  [`docs/UNITY_PLUGIN.md`](docs/UNITY_PLUGIN.md).
 - Local state lives in `.nipa/` inside the clone target: a JSON `config` with
   the repository URL, current branch, sparse prefixes and (while detached at a
   tag) the head marker, and a SQLite database tracking the tree
