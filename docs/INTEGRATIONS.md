@@ -95,7 +95,7 @@ All three engines load assets from files on disk — the materialized working co
 
 Unity 2021.2+ has a managed VCS API: `UnityEditor.VersionControl.VersionControlObject` with `[VersionControl("Nipa")]` registers a provider in Project Settings › Editor › Version Control. Its extensions (`IIconOverlayExtension`, `IPopupMenuExtension`, `IInspectorWindowExtension`, `ISettingsInspectorExtension`) give overlay icons, context menus, an inspector bar and settings, and `AssetModificationProcessor` (`IsOpenForEdit`, `MakeEditable`, `OnWillSaveAssets`, ...) enforces the checkout model.
 
-- **Package:** `plugins/unity/com.nipalab.nipa` (`com.nipalab.nipa`, Apache 2.0), minimum Unity 2022.3 LTS, also tested on Unity 6. Plan: `docs/plans/UNITY_PLUGIN.md`.
+- **Package:** `plugins/unity/com.nipalab.nipa` (`com.nipalab.nipa`, Apache 2.0), minimum Unity 2022.3 LTS, also tested on Unity 6. Plan: `docs/plans/UNITY_PLUGIN.md`; install, settings and architecture: `docs/UNITY_PLUGIN.md`.
 - **Transport:** the daemon's loopback **JSON/HTTP bridge** (`json_port` in `daemon.json`, `POST /v1/<Method>`, NDJSON for server streams; see `docs/DAEMON.md`). Unity's Mono `HttpClient` cannot speak gRPC over h2c, so the plugin never talks to gRPC; Godot and Unreal reuse the same bridge.
 - **Checkout = Nipa binary file lock** (Perforce-style): someone else's covering lock makes an asset read-only; `MakeEditable` locks the asset and its `.meta`.
 - **Meta hygiene:** the `MetaWarnings` RPC (`internal/unitymeta`) reports missing, orphaned, unstaged and GUID-changed `.meta` files.

@@ -1,0 +1,14 @@
+{
+  "name": "com.nipalab.nipa",
+  "displayName": "Nipa Version Control",
+  "version": "0.1.0",
+  "unity": "2022.3",
+  "description": "Nipa version control for the Unity Editor: status overlays, pending changes, push and update through the local nipa daemon.",
+  "keywords": ["version control", "nipa", "vcs"],
+  "documentationUrl": "https://github.com/nipalab/nipa/blob/main/docs/UNITY_PLUGIN.md",
+  "license": "Apache-2.0",
+  "author": { "name": "Nipa Lab" },
+  "dependencies": {
+    "com.unity.nuget.newtonsoft-json": "3.2.1"
+  }
+}
