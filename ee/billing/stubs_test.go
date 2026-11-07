@@ -21,6 +21,7 @@ type stubRepo struct {
 	countErr  error
 	liveErr   error
 	upsertErr error
+	stale     bool
 
 	accounts     map[snow.ID]*domain.BillingAccount
 	accountErr   error
@@ -156,6 +157,9 @@ func (r *stubRepo) UpsertSubscription(_ context.Context, sub domain.BillingSubsc
 	if r.upsertErr != nil {
 		return false, r.upsertErr
 	}
+	if r.stale {
+		return false, nil
+	}
 	r.upserted = append(r.upserted, sub)
 	return true, nil
 }
@@ -167,6 +171,12 @@ type stubLedger struct {
 	quotaErr error
 	used     int64
 	usageErr error
+	computed *int64
+	compErr  error
+}
+
+func (l *stubLedger) ComputedQuota(context.Context, snow.ID) (*int64, error) {
+	return l.computed, l.compErr
 }
 
 func (l *stubLedger) OwnerStorage(_ context.Context, userID snow.ID) (*storageusage.OwnerStorage, error) {

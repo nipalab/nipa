@@ -34,6 +34,16 @@ const (
 	AuditWebhookUpdated       = "webhook.updated"
 	AuditWebhookDeleted       = "webhook.deleted"
 	AuditWebhookSecretRotated = "webhook.secret_rotated"
+
+	AuditBillingQuotaOverrideSet     = "billing.quota_override.set"
+	AuditBillingQuotaOverrideCleared = "billing.quota_override.cleared"
+	AuditBillingOwnerTransferred     = "billing.owner.transferred"
+	AuditBillingCheckoutStarted      = "billing.checkout.started"
+	AuditBillingSubscriptionChanged  = "billing.subscription.changed"
+	AuditBillingSubscriptionApplied  = "billing.subscription.applied"
+	AuditBillingSync                 = "billing.sync"
+	AuditBillingEventReplayed        = "billing.event.replayed"
+	AuditBillingSeatDenied           = "billing.seat.denied"
 )
 
 // Audit target types.
@@ -47,4 +57,6 @@ const (
 	AuditTargetLock           = "lock"
 	AuditTargetProject        = "project"
 	AuditTargetWebhook        = "webhook"
+	AuditTargetSubscription   = "subscription"
+	AuditTargetBillingEvent   = "billing_event"
 )
