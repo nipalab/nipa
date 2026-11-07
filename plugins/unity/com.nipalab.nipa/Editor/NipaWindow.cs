@@ -34,7 +34,7 @@ namespace Nipa.Editor
         int conflictsVersion = -1;
         List<CommitLogEntry> history = new List<CommitLogEntry>();
         string historyPath;
-        string historyFor;
+        string historyKey;
         bool historyLoading;
 
         public static void Open()
@@ -319,10 +319,11 @@ namespace Nipa.Editor
         void DrawHistory(Core.Session.NipaSession session)
         {
             var selected = NipaHost.SelectedClonePaths().FirstOrDefault();
-            if (selected != historyPath || session.Root != historyFor)
+            var key = session.Root + "|" + session.Cache.Branch + "|" + session.Cache.Head?.Name + "|" + session.Cache.Version;
+            if (selected != historyPath || key != historyKey)
             {
                 historyPath = selected;
-                historyFor = session.Root;
+                historyKey = key;
                 LoadHistory(session, selected);
             }
             EditorGUILayout.LabelField(string.IsNullOrEmpty(historyPath) ? "Project history" : "History of " + historyPath, EditorStyles.boldLabel);

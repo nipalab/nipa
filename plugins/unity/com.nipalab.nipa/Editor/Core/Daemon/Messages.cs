@@ -400,6 +400,7 @@ namespace Nipa.Editor.Core.Daemon
     public sealed class CommitLogRequest
     {
         public string Branch { get; set; }
+        public string StartCommitId { get; set; }
         public int Limit { get; set; }
         public string Path { get; set; }
     }

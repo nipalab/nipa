@@ -383,12 +383,16 @@ namespace Nipa.Editor.Core.Session
 
         public async Task<List<CommitLogEntry>> HistoryAsync(string clonePath, int limit = 50, CancellationToken ct = default)
         {
+            var request = new CommitLogRequest { Path = Trim(clonePath ?? string.Empty), Limit = limit, Branch = Cache.Branch };
+            var head = Cache.Head;
+            if (head != null && head.Kind == "tag")
+            {
+                var tag = (await TagsAsync(ct).ConfigureAwait(false)).FirstOrDefault(t => t.Name == head.Name);
+                if (tag != null)
+                    request.StartCommitId = tag.CommitId;
+            }
             var res = await Call<ProxyCommitLogRequest, ProxyCommitLogResponse>("ProxyCommitLog",
-                new ProxyCommitLogRequest
-                {
-                    Root = Root,
-                    Request = new CommitLogRequest { Path = Trim(clonePath ?? string.Empty), Limit = limit },
-                }, ct).ConfigureAwait(false);
+                new ProxyCommitLogRequest { Root = Root, Request = request }, ct).ConfigureAwait(false);
             return res.Response?.Commits ?? new List<CommitLogEntry>();
         }
 

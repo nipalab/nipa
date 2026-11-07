@@ -13,6 +13,8 @@ namespace Nipa.Editor
         static List<Tag> tags = new List<Tag>();
         static bool loading;
         static object loadedFor;
+        static DateTime failedAt = DateTime.MinValue;
+        static readonly TimeSpan RetryAfter = TimeSpan.FromSeconds(30);
 
         public static string Label()
         {
@@ -26,6 +28,8 @@ namespace Nipa.Editor
         {
             var session = NipaHost.Session;
             if (session == null || loading || (!force && ReferenceEquals(loadedFor, session)))
+                return;
+            if (!force && DateTime.UtcNow - failedAt < RetryAfter)
                 return;
             loading = true;
             Task.Run(async () =>
@@ -44,7 +48,11 @@ namespace Nipa.Editor
                 {
                     loading = false;
                     if (b == null)
+                    {
+                        failedAt = DateTime.UtcNow;
                         return;
+                    }
+                    failedAt = DateTime.MinValue;
                     branches = b;
                     tags = t ?? new List<Tag>();
                     loadedFor = session;

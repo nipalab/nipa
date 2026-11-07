@@ -187,6 +187,30 @@ namespace Nipa.Core.Tests
         }
 
         [Test]
+        public async Task HistoryUsesCheckedOutBranch()
+        {
+            fake.On("Status", "{\"branch\":\"feat\"}");
+            fake.On("ProxyCommitLog", "{}");
+            await session.RefreshAsync();
+            await session.HistoryAsync(null);
+            Assert.That(fake.Requests.Last(r => r.Method == "ProxyCommitLog").Body, Does.Contain("\"branch\":\"feat\""));
+        }
+
+        [Test]
+        public async Task HistoryOnDetachedTagStartsAtTagCommit()
+        {
+            fake.On("Status", "{\"branch\":\"main\",\"head\":{\"kind\":\"tag\",\"name\":\"v1\"}}");
+            fake.On("ProxyTagList", "{\"response\":{\"tags\":[{\"name\":\"v0\",\"commit_id\":\"c0\"},{\"name\":\"v1\",\"commit_id\":\"c1\"}]}}");
+            fake.On("ProxyCommitLog", "{}");
+            await session.RefreshAsync();
+            await session.HistoryAsync(null);
+            Assert.That(fake.Requests.Last(r => r.Method == "ProxyCommitLog").Body, Does.Contain("\"start_commit_id\":\"c1\""));
+            fake.On("ProxyTagList", "{}");
+            await session.HistoryAsync(null);
+            Assert.That(fake.Requests.Last(r => r.Method == "ProxyCommitLog").Body, Does.Not.Contain("start_commit_id"));
+        }
+
+        [Test]
         public async Task EmptyResponsesGiveEmptyLists()
         {
             fake.On("ProxyBranchList", "{}");
