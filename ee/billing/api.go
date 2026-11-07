@@ -80,7 +80,7 @@ func readItems(req *restful.Request) (Items, error) {
 	if err := req.ReadEntity(&body); err != nil {
 		return Items{}, domain.NewErrorUser("invalid request body")
 	}
-	return Items{Seats: body.Seats, StoragePacks: body.StoragePacks, Interval: body.Interval}, nil
+	return Items(body), nil
 }
 
 func caller(req *restful.Request, resp *restful.Response) (snow.ID, bool) {
