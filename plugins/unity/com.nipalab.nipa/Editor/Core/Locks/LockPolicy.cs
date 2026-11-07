@@ -148,8 +148,23 @@ namespace Nipa.Editor.Core.Locks
         public bool CanChange(string clonePath, out string message)
         {
             var info = Lookup(clonePath);
-            message = info.State == LockState.Theirs ? Trim(clonePath) + " is locked by " + info.Holder : null;
-            return info.State != LockState.Theirs;
+            var p = Trim(clonePath);
+            message = null;
+            if (info.State == LockState.Theirs)
+            {
+                message = p + " is locked by " + info.Holder;
+                return false;
+            }
+            if (p.Length == 0)
+                return true;
+            foreach (var l in scoped)
+            {
+                if (IsMine(l) || Trim(l.Path) == p || !Covers(p, l.Path))
+                    continue;
+                message = Trim(l.Path) + " inside " + p + " is locked by " + (string.IsNullOrEmpty(l.HeldByName) ? l.HeldBy : l.HeldByName);
+                return false;
+            }
+            return true;
         }
 
         public PushCheck CheckPush()

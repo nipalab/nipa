@@ -115,6 +115,23 @@ namespace Nipa.Core.Tests
         }
 
         [Test]
+        public void CanChangeFolderBlockedByLockedDescendant()
+        {
+            var p = Policy(true, "main", false,
+                L("Assets/Models/hero.fbx", "bob", "Bob"),
+                L("Assets/Props/a.png.meta", "bob", ""),
+                L("Assets/Mine/x.png", "me", "Me"));
+            Assert.That(p.CanChange("Assets/Models", out var msg), Is.False);
+            Assert.That(msg, Does.Contain("hero.fbx").And.Contain("Bob"));
+            Assert.That(p.CanChange("Assets", out msg), Is.False);
+            Assert.That(p.CanChange("Assets/Props", out msg), Is.False);
+            Assert.That(msg, Does.Contain("bob"));
+            Assert.That(p.CanChange("Assets/Mine", out msg), Is.True);
+            Assert.That(p.CanChange("Assets/Models2", out _), Is.True);
+            Assert.That(p.CanChange("", out _), Is.True);
+        }
+
+        [Test]
         public void ReleaseRights()
         {
             var bob = L("a", "bob", "Bob");
