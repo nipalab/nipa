@@ -38,6 +38,7 @@ type API struct {
 	rateLimit    *RateLimit
 	routes       []func(*restful.WebService)
 	publicRoutes []func(*restful.WebService)
+	webServices  []*restful.WebService
 }
 
 // Option tunes optional API behavior.
@@ -48,6 +49,7 @@ type apiOptions struct {
 	rateLimit    *RateLimit
 	routes       []func(*restful.WebService)
 	publicRoutes []func(*restful.WebService)
+	webServices  []*restful.WebService
 }
 
 // WithMetrics enables per-route HTTP metrics on the REST container.
@@ -84,6 +86,15 @@ func WithPublicRoutes(register func(*restful.WebService)) Option {
 	}
 }
 
+// WithWebService adds a WebService with its own root path, e.g. a provider
+// webhook that authenticates by signature. No bearer or origin filter is
+// attached: the WebService owns its authentication.
+func WithWebService(ws *restful.WebService) Option {
+	return func(o *apiOptions) {
+		o.webServices = append(o.webServices, ws)
+	}
+}
+
 func NewAPI(useCase usecaseContainer, opts ...Option) *API {
 	var options apiOptions
 	for _, opt := range opts {
@@ -95,6 +106,7 @@ func NewAPI(useCase usecaseContainer, opts ...Option) *API {
 		rateLimit:    options.rateLimit,
 		routes:       options.routes,
 		publicRoutes: options.publicRoutes,
+		webServices:  options.webServices,
 	}
 }
 
@@ -155,6 +167,10 @@ func (a *API) SetupRoute() http.Handler {
 		Filter(sameOriginFilter)
 	setupChunkRouter(chunkWs, handler.NewChunkHandler(a.useCase.Chunk()))
 	restful.Add(chunkWs)
+
+	for _, ws := range a.webServices {
+		restful.Add(ws)
+	}
 
 	swagger.SetupSwagger()
 

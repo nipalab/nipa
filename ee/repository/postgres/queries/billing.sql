@@ -78,3 +78,32 @@ ON CONFLICT (provider_subscription_id) DO UPDATE SET
     provider_updated_at = EXCLUDED.provider_updated_at,
     updated_at = now()
 WHERE billing_subscriptions.provider_updated_at < EXCLUDED.provider_updated_at;
+
+-- name: GetBillingAccount :one
+SELECT * FROM billing_accounts WHERE user_id = sqlc.arg(user_id);
+
+-- name: GetBillingAccountByCustomer :one
+SELECT * FROM billing_accounts
+WHERE provider = sqlc.arg(provider) AND provider_customer_id = sqlc.arg(provider_customer_id);
+
+-- name: InsertBillingAccount :exec
+INSERT INTO billing_accounts (user_id, provider, provider_customer_id)
+VALUES (sqlc.arg(user_id), sqlc.arg(provider), sqlc.arg(provider_customer_id))
+ON CONFLICT DO NOTHING;
+
+-- name: GetBillingUser :one
+SELECT id, name, email, deleted FROM users WHERE id = sqlc.arg(id);
+
+-- name: InsertBillingEvent :execrows
+INSERT INTO billing_events (event_id, type, occurred_at, payload)
+VALUES (sqlc.arg(event_id), sqlc.arg(type), sqlc.arg(occurred_at), sqlc.arg(payload))
+ON CONFLICT (event_id) DO NOTHING;
+
+-- name: GetBillingEvent :one
+SELECT * FROM billing_events WHERE event_id = sqlc.arg(event_id);
+
+-- name: MarkBillingEventProcessed :exec
+UPDATE billing_events SET processed_at = now(), error = NULL WHERE event_id = sqlc.arg(event_id);
+
+-- name: MarkBillingEventFailed :exec
+UPDATE billing_events SET processed_at = NULL, error = sqlc.arg(error) WHERE event_id = sqlc.arg(event_id);

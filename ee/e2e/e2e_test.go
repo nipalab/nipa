@@ -166,6 +166,20 @@ func startEnterpriseServer(t *testing.T, dbConn *sql.DB, chunkStore storage.Chun
 
 func startEnterpriseServerWithUsecases(t *testing.T, dbConn *sql.DB, chunkStore storage.ChunkStore, node snow.Node, ledger *storageusage.Ledger) (string, serverapp.Usecases) {
 	t.Helper()
+	return startEnterpriseServerWith(t, dbConn, chunkStore, node, serverOptions{ledger: ledger})
+}
+
+// serverOptions extends the smoke server: rest replaces the chunk-only HTTP
+// handler with a full REST container built from the registry.
+type serverOptions struct {
+	ledger   *storageusage.Ledger
+	seatGate serverusecase.SeatGate
+	rest     func(reg *serverapp.Registry) http.Handler
+}
+
+func startEnterpriseServerWith(t *testing.T, dbConn *sql.DB, chunkStore storage.ChunkStore, node snow.Node, opts serverOptions) (string, serverapp.Usecases) {
+	t.Helper()
+	ledger := opts.ledger
 
 	passwordHasher := hasher.NewHasher(2)
 	t.Cleanup(passwordHasher.Close)
@@ -188,6 +202,7 @@ func startEnterpriseServerWithUsecases(t *testing.T, dbConn *sql.DB, chunkStore 
 	if ledger != nil {
 		deps.StorageLedger = ledger
 	}
+	deps.SeatGate = opts.seatGate
 	uc := serverapp.BuildUsecases(serverusecase.Repositories{
 		Org:                postgres.NewOrgRepository(dbConn),
 		Project:            postgres.NewProjectRepository(dbConn),
@@ -219,7 +234,12 @@ func startEnterpriseServerWithUsecases(t *testing.T, dbConn *sql.DB, chunkStore 
 	)
 	pb.RegisterNipaServiceServer(grpcServer, servergrpc.New(reg))
 
-	chunkHandler := api.NewChunkTransferHandler(uc.Chunk)
+	var chunkHandler http.Handler
+	if opts.rest != nil {
+		chunkHandler = opts.rest(reg)
+	} else {
+		chunkHandler = api.NewChunkTransferHandler(uc.Chunk)
+	}
 	protocols := new(http.Protocols)
 	protocols.SetHTTP1(true)
 	protocols.SetUnencryptedHTTP2(true)

@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/emicklei/go-restful/v3"
 	"github.com/stretchr/testify/require"
@@ -43,6 +44,11 @@ type apiHarness struct {
 
 func newAPIHarness(t *testing.T) *apiHarness {
 	t.Helper()
+	return newAPIHarnessWith(t, nil)
+}
+
+func newAPIHarnessWith(t *testing.T, configure func(*RoutesConfig)) *apiHarness {
+	t.Helper()
 	db := newTestDB(t)
 	ledger := NewLedger(db, Config{})
 
@@ -61,7 +67,11 @@ func newAPIHarness(t *testing.T) *apiHarness {
 		Filter(api.NewAuthFilter(validate).Auth()).
 		Consumes(restful.MIME_JSON).
 		Produces(restful.MIME_JSON)
-	RegisterRoutes(ws, RoutesConfig{Ledger: ledger, Common: commonUc, Orgs: orgUc})
+	routes := RoutesConfig{Ledger: ledger, Common: commonUc, Orgs: orgUc}
+	if configure != nil {
+		configure(&routes)
+	}
+	RegisterRoutes(ws, routes)
 
 	container := restful.NewContainer()
 	container.Add(ws)
@@ -238,6 +248,49 @@ func TestAPI_OwnerStorage(t *testing.T) {
 	require.Equal(t, "2", billing.UserID)
 	require.Zero(t, billing.UsedBytes)
 	require.Empty(t, billing.Orgs)
+}
+
+func TestAPI_OwnerStorageBillingFields(t *testing.T) {
+	end := time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC)
+	var asked snow.ID
+	h := newAPIHarnessWith(t, func(cfg *RoutesConfig) {
+		cfg.Billing = func(_ context.Context, userID snow.ID) (*BillingSummary, error) {
+			asked = userID
+			if userID == 2 {
+				return nil, domain.NewErrorConflict("nope")
+			}
+			return &BillingSummary{Plan: "team", Status: "active", Interval: "month", SeatsUsed: 2, SeatLimit: 5,
+				StoragePacks: 1, CurrentPeriodEnd: &end, CancelAtPeriodEnd: true}, nil
+		}
+	})
+
+	status, body := h.do(http.MethodGet, "/api/v1/billing/me", "super", nil)
+	require.Equal(t, http.StatusOK, status)
+	require.Equal(t, snow.ID(1), asked)
+	var got map[string]any
+	require.NoError(t, json.Unmarshal(body, &got))
+	require.Equal(t, "1", got["user_id"])
+	require.Equal(t, "team", got["plan"])
+	require.Equal(t, "active", got["status"])
+	require.Equal(t, "month", got["interval"])
+	require.Equal(t, float64(2), got["seats_used"])
+	require.Equal(t, float64(5), got["seat_limit"])
+	require.Equal(t, float64(1), got["storage_packs"])
+	require.Equal(t, "2027-01-01T00:00:00Z", got["current_period_end"])
+	require.Equal(t, true, got["cancel_at_period_end"])
+
+	status, _ = h.do(http.MethodGet, "/api/v1/billing/me", "user", nil)
+	require.Equal(t, http.StatusConflict, status)
+}
+
+func TestAPI_OwnerStorageWithoutBillingOmitsFields(t *testing.T) {
+	h := newAPIHarness(t)
+	status, body := h.do(http.MethodGet, "/api/v1/billing/me", "super", nil)
+	require.Equal(t, http.StatusOK, status)
+	var got map[string]any
+	require.NoError(t, json.Unmarshal(body, &got))
+	require.NotContains(t, got, "plan")
+	require.NotContains(t, got, "seat_limit")
 }
 
 func TestAPI_OwnerStorageDatabaseError(t *testing.T) {

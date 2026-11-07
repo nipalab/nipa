@@ -1,8 +1,10 @@
 package storageusage
 
 import (
+	"context"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/emicklei/go-restful/v3"
 
@@ -13,10 +15,25 @@ import (
 )
 
 // RoutesConfig carries the dependencies of the storage quota REST routes.
+// Billing, when set, adds the subscription fields to GET /billing/me.
 type RoutesConfig struct {
-	Ledger *Ledger
-	Common *usecase.Common
-	Orgs   *usecase.Org
+	Ledger  *Ledger
+	Common  *usecase.Common
+	Orgs    *usecase.Org
+	Billing func(ctx context.Context, userID snow.ID) (*BillingSummary, error)
+}
+
+// BillingSummary is the subscription part of GET /billing/me, filled by the
+// billing module.
+type BillingSummary struct {
+	Plan              string     `json:"plan"`
+	Status            string     `json:"status"`
+	Interval          string     `json:"interval"`
+	SeatsUsed         int64      `json:"seats_used"`
+	SeatLimit         int64      `json:"seat_limit"`
+	StoragePacks      int64      `json:"storage_packs"`
+	CurrentPeriodEnd  *time.Time `json:"current_period_end"`
+	CancelAtPeriodEnd bool       `json:"cancel_at_period_end"`
 }
 
 // RegisterRoutes adds the storage quota routes to the authenticated /api/v1
@@ -105,6 +122,7 @@ type ownerStorageResponse struct {
 	UsedBytes  int64              `json:"used_bytes"`
 	QuotaBytes *int64             `json:"quota_bytes"`
 	Orgs       []ownerOrgResponse `json:"orgs"`
+	*BillingSummary
 }
 
 func (h *handlers) orgStorage(req *restful.Request, resp *restful.Response) {
@@ -141,7 +159,15 @@ func (h *handlers) ownerStorage(req *restful.Request, resp *restful.Response) {
 		writeError(resp, err)
 		return
 	}
-	writeJSON(resp, http.StatusOK, toOwnerStorageResponse(summary))
+	body := toOwnerStorageResponse(summary)
+	if h.cfg.Billing != nil {
+		body.BillingSummary, err = h.cfg.Billing(req.Request.Context(), claim.UserID)
+		if err != nil {
+			writeError(resp, err)
+			return
+		}
+	}
+	writeJSON(resp, http.StatusOK, body)
 }
 
 func (h *handlers) setOwnerQuota(req *restful.Request, resp *restful.Response) {

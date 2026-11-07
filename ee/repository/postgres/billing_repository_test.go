@@ -275,3 +275,86 @@ func requireDatabaseError(t *testing.T, err error) {
 	require.ErrorAs(t, err, &domErr)
 	require.Equal(t, 500, domErr.Code)
 }
+
+func (s *BillingRepositorySuite) TestAccounts() {
+	ctx := context.Background()
+	owner := s.user("owner")
+	other := s.user("other")
+
+	account, err := s.repo.Account(ctx, owner)
+	s.Require().NoError(err)
+	s.Nil(account)
+
+	s.Require().NoError(s.repo.InsertAccount(ctx, domain.BillingAccount{UserID: owner, Provider: "paddle", ProviderCustomerID: "ctm_1"}))
+	s.Require().NoError(s.repo.InsertAccount(ctx, domain.BillingAccount{UserID: owner, Provider: "paddle", ProviderCustomerID: "ctm_2"}),
+		"a second customer for the same user is ignored")
+	s.Require().NoError(s.repo.InsertAccount(ctx, domain.BillingAccount{UserID: other, Provider: "paddle", ProviderCustomerID: "ctm_1"}),
+		"a customer linked to another user is ignored")
+
+	account, err = s.repo.Account(ctx, owner)
+	s.Require().NoError(err)
+	s.Equal(&domain.BillingAccount{UserID: owner, Provider: "paddle", ProviderCustomerID: "ctm_1"}, account)
+	account, err = s.repo.Account(ctx, other)
+	s.Require().NoError(err)
+	s.Nil(account)
+
+	account, err = s.repo.AccountByCustomer(ctx, "paddle", "ctm_1")
+	s.Require().NoError(err)
+	s.Require().NotNil(account)
+	s.Equal(owner, account.UserID)
+	account, err = s.repo.AccountByCustomer(ctx, "paddle", "ctm_missing")
+	s.Require().NoError(err)
+	s.Nil(account)
+}
+
+func (s *BillingRepositorySuite) TestUser() {
+	ctx := context.Background()
+	id := s.user("payer")
+	s.exec(`UPDATE users SET deleted = true WHERE id = $1`, id.Int64())
+
+	user, err := s.repo.User(ctx, id)
+	s.Require().NoError(err)
+	s.Equal(id, user.ID)
+	s.Equal("payer", user.Name)
+	s.Contains(user.Email, "payer-")
+	s.True(user.Deleted)
+
+	_, err = s.repo.User(ctx, s.nextID())
+	s.True(domain.IsErrorNotFound(err))
+}
+
+func (s *BillingRepositorySuite) TestEvents() {
+	ctx := context.Background()
+	occurred := time.Date(2026, 11, 7, 12, 0, 0, 0, time.UTC)
+	event := domain.BillingEvent{EventID: "evt_1", Type: "subscription.activated", OccurredAt: occurred, Payload: []byte(`{"a":1}`)}
+
+	inserted, err := s.repo.InsertEvent(ctx, event)
+	s.Require().NoError(err)
+	s.True(inserted)
+	inserted, err = s.repo.InsertEvent(ctx, event)
+	s.Require().NoError(err)
+	s.False(inserted, "a duplicate delivery is not stored twice")
+
+	stored, err := s.repo.Event(ctx, "evt_1")
+	s.Require().NoError(err)
+	s.Equal("subscription.activated", stored.Type)
+	s.True(occurred.Equal(stored.OccurredAt))
+	s.JSONEq(`{"a":1}`, string(stored.Payload))
+	s.Nil(stored.ProcessedAt)
+	s.Empty(stored.Error)
+
+	s.Require().NoError(s.repo.MarkEventFailed(ctx, "evt_1", "unknown user"))
+	stored, err = s.repo.Event(ctx, "evt_1")
+	s.Require().NoError(err)
+	s.Equal("unknown user", stored.Error)
+	s.Nil(stored.ProcessedAt)
+
+	s.Require().NoError(s.repo.MarkEventProcessed(ctx, "evt_1"))
+	stored, err = s.repo.Event(ctx, "evt_1")
+	s.Require().NoError(err)
+	s.NotNil(stored.ProcessedAt)
+	s.Empty(stored.Error, "a successful replay clears the error")
+
+	_, err = s.repo.Event(ctx, "evt_missing")
+	s.True(domain.IsErrorNotFound(err))
+}
