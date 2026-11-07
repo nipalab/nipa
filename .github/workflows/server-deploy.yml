@@ -26,15 +26,20 @@ on:
         options: [deploy, rollback]
         default: deploy
 
-permissions:
-  contents: read
-  actions: read
+permissions: {}
 
 jobs:
   resolve:
     name: Resolve target
-    if: github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    if: >-
+      github.event_name != 'workflow_run' || (
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_repository.full_name == github.repository
+      )
     runs-on: ubuntu-latest
+    permissions:
+      actions: read
     outputs:
       environment: ${{ steps.target.outputs.environment }}
       action: ${{ steps.target.outputs.action }}
@@ -85,14 +90,25 @@ jobs:
     needs: resolve
     if: needs.resolve.outputs.action == 'deploy'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     outputs:
       version: ${{ steps.version.outputs.version }}
       sha256: ${{ steps.checksum.outputs.sha256 }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.resolve.outputs.sha }}
           fetch-depth: 0
+          persist-credentials: false
+
+      # The checkout is the workflow's own ref (main for dev, the tag for
+      # production); only move to the CI-tested commit when that ref contains it.
+      - name: Select the tested commit
+        env:
+          SHA: ${{ needs.resolve.outputs.sha }}
+        run: |
+          git merge-base --is-ancestor "$SHA" HEAD || { echo "::error::$SHA is not on $GITHUB_REF"; exit 1; }
+          git checkout --detach "$SHA"
 
       - uses: actions/setup-go@v5
         with:
@@ -132,6 +148,8 @@ jobs:
     name: Deploy to ${{ needs.resolve.outputs.environment }}
     needs: [resolve, build]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     environment:
       name: ${{ needs.resolve.outputs.environment }}
       url: ${{ vars.DEPLOY_URL }}
@@ -141,8 +159,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.resolve.outputs.sha }}
           sparse-checkout: deploy
+          persist-credentials: false
 
       - uses: actions/download-artifact@v4
         with:
@@ -166,6 +184,8 @@ jobs:
     needs: resolve
     if: needs.resolve.outputs.action == 'rollback'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     environment:
       name: ${{ needs.resolve.outputs.environment }}
       url: ${{ vars.DEPLOY_URL }}
@@ -176,6 +196,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           sparse-checkout: deploy
+          persist-credentials: false
 
       - name: Flip back to the previous color
         env:
