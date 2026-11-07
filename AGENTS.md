@@ -151,6 +151,8 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   Fuzzed; keep it free of client imports like `internal/diff`.
   `internal/unitymeta` (pure, `fs.FS` based) lints Unity `.meta` sidecars
   for pending changes: missing, orphaned, not staged, GUID changed.
+  `internal/godotmeta` is its Godot twin for `.import`/`.uid` sidecars
+  (nearest `project.godot`, `.gdignore`/hidden dirs skipped, `UID` parser).
 - **Unity plugin** (`plugins/unity/com.nipalab.nipa`, Apache 2.0, design in
   `docs/UNITY_PLUGIN.md`, plan in `docs/plans/UNITY_PLUGIN.md`): UPM package
   over the daemon JSON bridge. `Editor/Core` is engine-free C# (`DaemonClient`
@@ -165,6 +167,14 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   glue (`[VersionControl("Nipa")]` provider with overlays/menus/settings,
   `NipaHost`, `NipaWindow`). Keep Core free of `UnityEngine`/`UnityEditor`
   and C# 9 compatible.
+- **Godot plugin** (planned, `plugins/godot`, Apache 2.0, design in
+  `docs/GODOT_PLUGIN.md`, plan in `docs/plans/GODOT_PLUGIN.md`): Godot 4.4+
+  add-on `addons/nipa`. `NipaVCSInterface` must be a godot-cpp GDExtension
+  class (Godot lists VCS plugins from `ClassDB` only) over an engine-free
+  C++ core (JSON bridge, caches, `LockPolicy` port); GDScript `EditorPlugin`
+  glue adds docks, context menus, inspector lock bar and toasts. Asset +
+  `.import` + `.uid` sidecars move as one unit (`internal/godotmeta`), and
+  `.tscn`/`.tres` conflicts merge via `internal/godotres`.
 
 Flow for `nipa clone <url> <target>`: `cli/clone.go` parses the URL →
 `usecase.Repo.Clone` → ensure empty target → login → resolve default branch (or
@@ -526,7 +536,11 @@ over tracked paths (unknown paths error `not tracked`), refuses any target with
 staged changes ("push or reset them first" — staged content is not stored
 separately), then re-materializes the rest from the local object store through
 `materializeFile`, skipping files whose working hash already matches so mtimes
-stay stable; refreshed fingerprints are batched into `stat_cache`. Fully
+stay stable; refreshed fingerprints are batched into `stat_cache`.
+`materializeFile` and conflict resolution go through `replaceFile`
+(`materialize_other.go` / `materialize_windows.go`, which clears
+`FILE_ATTRIBUTE_READONLY` for the rename): a read-only working file is
+replaced and stays read-only, since engine plugins own that state. Fully
 offline (chunks are cached in `.nipa/objects`); the daemon exposes it as the
 unary `Restore` RPC returning the refreshed status.
 
@@ -621,8 +635,11 @@ for engine plugins that cannot speak gRPC (Unity first, plan in
 and invokes the daemon's own gRPC listener with the forwarded
 `x-nipa-daemon-token` (unary = JSON, server streams = NDJSON, errors mapped to
 HTTP statuses, non-loopback `Host`/`Origin` refused). `MetaWarnings`
-(`daemon/unitymeta.go` over `internal/unitymeta`) is the Unity `.meta` lint RPC
-the desktop service now calls.
+(`daemon/metawarnings.go` over `internal/unitymeta` / `internal/godotmeta`,
+`engine` = `unity|godot`, empty detects `project.godot` then
+`ProjectSettings/ProjectVersion.txt`) is the sidecar lint RPC the desktop
+service and engine plugins call. `LoginSSH` takes an optional `key_path` +
+`passphrase` (exactly that key, no fallback, never logged).
 
 Flow for storage quota (design in `docs/CLOUD_STORAGE_QUOTA.md`):
 `internal/usecase.StorageLedger` is attached with `Chunk.WithStorageLedger`;

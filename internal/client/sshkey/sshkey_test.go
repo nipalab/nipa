@@ -299,3 +299,32 @@ func TestAgentSigner_Sign_SocketUnavailable(t *testing.T) {
 	_, err = signer.Sign(rand.Reader, []byte("payload"))
 	require.Error(t, err)
 }
+
+func TestLoad(t *testing.T) {
+	dir := t.TempDir()
+	priv := generateKey(t)
+	encrypted := writePrivateKey(t, dir, "id_locked", priv, "correct horse")
+	plain := writePrivateKey(t, dir, "id_plain", generateKey(t), "")
+
+	signer, err := Load(" "+encrypted+" ", "correct horse")
+	require.NoError(t, err)
+	require.Equal(t, encrypted, signer.Name)
+	pub, err := ssh.NewPublicKey(priv.Public())
+	require.NoError(t, err)
+	require.Equal(t, pub.Marshal(), signer.PublicKey().Marshal())
+
+	_, err = Load(encrypted, "wrong horse")
+	require.Error(t, err)
+	require.NotContains(t, err.Error(), "wrong horse")
+
+	_, err = Load(encrypted, "")
+	require.ErrorContains(t, err, "passphrase")
+
+	_, err = Load(filepath.Join(dir, "absent"), "correct horse")
+	require.ErrorIs(t, err, os.ErrNotExist)
+	require.NotContains(t, err.Error(), "correct horse")
+
+	signer, err = Load(plain, "ignored")
+	require.NoError(t, err)
+	require.Equal(t, plain, signer.Name)
+}

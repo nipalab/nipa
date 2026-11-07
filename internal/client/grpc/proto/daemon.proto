@@ -721,11 +721,12 @@ message ProxyTagDeleteResponse {
 
 message MetaWarningsRequest {
     string root = 1;
+    string engine = 2; // unity or godot; empty detects project.godot, then ProjectSettings/ProjectVersion.txt
 }
 
 message MetaWarning {
     string path = 1;
-    string kind = 2; // missing-meta, orphan-meta, meta-not-staged, guid-changed
+    string kind = 2; // unity: missing-meta, orphan-meta, meta-not-staged, guid-changed; godot: missing-sidecar, orphan-sidecar, sidecar-not-staged, uid-changed
     string related = 3;
     string message = 4;
 }
@@ -771,6 +772,8 @@ message AccountStatusResponse {
 message LoginSSHRequest {
     string server = 1;
     string email = 2; // optional: must own the key when set
+    string key_path = 3; // optional: use exactly this private key, no fallback
+    string passphrase = 4; // optional: unlocks key_path
 }
 
 message ListProjectsRequest {

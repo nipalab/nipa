@@ -98,7 +98,7 @@ Unity 2021.2+ has a managed VCS API: `UnityEditor.VersionControl.VersionControlO
 - **Package:** `plugins/unity/com.nipalab.nipa` (`com.nipalab.nipa`, Apache 2.0), minimum Unity 2022.3 LTS, also tested on Unity 6. Plan: `docs/plans/UNITY_PLUGIN.md`; install, settings and architecture: `docs/UNITY_PLUGIN.md`.
 - **Transport:** the daemon's loopback **JSON/HTTP bridge** (`json_port` in `daemon.json`, `POST /v1/<Method>`, NDJSON for server streams; see `docs/DAEMON.md`). Unity's Mono `HttpClient` cannot speak gRPC over h2c, so the plugin never talks to gRPC; Godot and Unreal reuse the same bridge.
 - **Checkout = Nipa binary file lock** (Perforce-style): someone else's covering lock makes an asset read-only; `MakeEditable` locks the asset and its `.meta`.
-- **Meta hygiene:** the `MetaWarnings` RPC (`internal/unitymeta`) reports missing, orphaned, unstaged and GUID-changed `.meta` files.
+- **Meta hygiene:** the `MetaWarnings` RPC (`engine: "unity"`, `internal/unitymeta`) reports missing, orphaned, unstaged and GUID-changed `.meta` files.
 - All daemon I/O is async off the main thread; an asset and its `.meta` are always staged, locked and restored together.
 
 ### Unreal Engine
@@ -111,10 +111,14 @@ Unreal has a real abstraction: `ISourceControlProvider` + `FSourceControlOperati
 
 ### Godot (first engine plugin)
 
-Godot's built-in VCS abstraction `EditorVCSInterface` gives exactly the methods needed: `get_status`, `get_modified_files`, `stage_file`, `commit`, `push`, etc.
+Design: `docs/GODOT_PLUGIN.md`; phased plan: `docs/plans/GODOT_PLUGIN.md`.
 
-- Implement it in GDScript or C++ as an `EditorPlugin` that calls the daemon.
-- Clean, documented, testable headless — proves the daemon API incl. binary assets.
+- **Add-on:** `plugins/godot` (`addons/nipa`, Apache 2.0), Godot 4.4+.
+- **Native VCS class:** Godot only lists `EditorVCSInterface` subclasses registered in `ClassDB`, so `NipaVCSInterface` is a godot-cpp GDExtension. It sits on an engine-free C++ core that talks to the JSON bridge.
+- **Nipa features:** the GDScript `EditorPlugin` adds locks, conflicts, tags and activity through a dock, a bottom panel, context menus, an inspector plugin and toasts.
+- **Mapping:** Commit = push to the server, Pull = update, and the main thread never waits on the network.
+- **Sidecars:** an asset and its `.import`/`.uid` sidecars are staged, locked and restored together.
+- **Godot-specific Go code:** `internal/godotmeta` (sidecar lint) and `internal/godotres` (a `.tscn`/`.tres` three-way merge, since Godot ships no merge tool).
 
 ---
 

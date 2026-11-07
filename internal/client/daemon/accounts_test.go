@@ -1,8 +1,11 @@
 package daemon
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
@@ -112,22 +115,45 @@ func TestServer_LoginSSH(t *testing.T) {
 	_, err := accountServer(t, Accounts{}, RepoOps{}).LoginSSH(ctx, &daemonpb.LoginSSHRequest{Server: "host"})
 	require.Equal(t, codes.FailedPrecondition, status.Code(err))
 
-	var got [2]string
-	srv := accountServer(t, Accounts{LoginSSH: func(_ context.Context, address, email string) error {
-		got = [2]string{address, email}
-		if email == "bad@studio.test" {
+	var got SSHLogin
+	var gotAddress string
+	srv := accountServer(t, Accounts{LoginSSH: func(_ context.Context, address string, login SSHLogin) error {
+		got, gotAddress = login, address
+		if login.Email == "bad@studio.test" || login.KeyPath == "/keys/unregistered" {
 			return clientDomain.NewUserError("invalid email or SSH key")
 		}
 		return nil
 	}}, RepoOps{})
 	_, err = srv.LoginSSH(ctx, &daemonpb.LoginSSHRequest{Server: "http://127.0.0.1:6799", Email: " ann@studio.test "})
 	require.NoError(t, err)
-	require.Equal(t, [2]string{"http://127.0.0.1:6799", "ann@studio.test"}, got)
+	require.Equal(t, "http://127.0.0.1:6799", gotAddress)
+	require.Equal(t, SSHLogin{Email: "ann@studio.test"}, got)
 
+	_, err = srv.LoginSSH(ctx, &daemonpb.LoginSSHRequest{Server: "h", KeyPath: " /keys/id_ed25519 ", Passphrase: " secret "})
+	require.NoError(t, err)
+	require.Equal(t, SSHLogin{KeyPath: "/keys/id_ed25519", Passphrase: " secret "}, got)
+
+	_, err = srv.LoginSSH(ctx, &daemonpb.LoginSSHRequest{Server: "h", KeyPath: "/keys/unregistered"})
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+	require.Contains(t, err.Error(), "invalid email or SSH key")
+
+	_, err = srv.LoginSSH(ctx, &daemonpb.LoginSSHRequest{Server: "h", Passphrase: "orphan"})
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
 	_, err = srv.LoginSSH(ctx, &daemonpb.LoginSSHRequest{Server: "h", Email: "bad@studio.test"})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 	_, err = srv.LoginSSH(ctx, &daemonpb.LoginSSHRequest{Server: "ftp://h"})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
+}
+
+func TestSSHLogin_NeverPrintsThePassphrase(t *testing.T) {
+	login := SSHLogin{Email: "ann@studio.test", KeyPath: "/keys/id", Passphrase: "hunter2-secret"}
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&buf, nil))
+	logger.Info("login", "login", login)
+	slog.New(slog.NewJSONHandler(&buf, nil)).Info("login", "login", login)
+	buf.WriteString(fmt.Sprint(login) + fmt.Sprintf("%v %+v %s %#v", login, login, login, login))
+	require.NotContains(t, buf.String(), "hunter2-secret")
+	require.Contains(t, buf.String(), "/keys/id")
 }
 
 func TestServer_RemoteBrowsing(t *testing.T) {

@@ -628,7 +628,12 @@ func materializeFile(root string, f materializedFile, openChunk func(domain.Hash
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	return os.Rename(tmpName, fp)
+	return replaceFile(tmpName, fp)
+}
+
+func isReadOnlyFile(p string) bool {
+	info, err := os.Lstat(p)
+	return err == nil && info.Mode().IsRegular() && info.Mode().Perm()&0o200 == 0
 }
 
 func materializedMode(mode int) os.FileMode {
