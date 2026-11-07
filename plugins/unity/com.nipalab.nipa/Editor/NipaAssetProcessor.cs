@@ -15,24 +15,54 @@ namespace Nipa.Editor
             return session.IsOpenForEdit(session.Paths.ToClonePath(assetPath), out message);
         }
 
-        static bool MakeEditable(string[] paths)
+        static bool IsOpenForEdit(string assetPath, out string message, StatusQueryOptions statusOptions)
+        {
+            return IsOpenForEdit(assetPath, out message);
+        }
+
+        static bool CanOpenForEdit(string[] paths, List<string> outNotEditablePaths, StatusQueryOptions statusQueryOptions)
         {
             var session = NipaHost.Session;
             if (session == null)
                 return true;
-            var clone = paths.Where(NipaHost.IsManaged).Select(session.Paths.ToClonePath).ToList();
-            if (clone.Count == 0)
-                return true;
-            if (clone.Any(p => !session.Locks.CanChange(p, out _)))
+            foreach (var p in paths.Where(NipaHost.IsManaged))
             {
-                NipaLocks.Tell("Nipa: Lock", string.Join("\n", Blocked(clone)));
+                if (!session.Locks.CanChange(session.Paths.ToClonePath(p), out _))
+                    outNotEditablePaths.Add(p);
+            }
+            return !paths.Any(outNotEditablePaths.Contains);
+        }
+
+        static bool MakeEditable(string[] paths)
+        {
+            return MakeEditable(paths, null, new List<string>());
+        }
+
+        static bool MakeEditable(string[] paths, string prompt, List<string> outNotEditablePaths)
+        {
+            var session = NipaHost.Session;
+            if (session == null)
+                return true;
+            var managed = paths.Where(NipaHost.IsManaged).ToList();
+            if (managed.Count == 0)
+                return true;
+            var blocked = managed.Where(p => !session.Locks.CanChange(session.Paths.ToClonePath(p), out _)).ToList();
+            if (blocked.Count > 0)
+            {
+                outNotEditablePaths?.AddRange(blocked);
+                NipaLocks.Tell("Nipa: Lock", string.Join("\n", blocked.Select(p =>
+                {
+                    session.Locks.CanChange(session.Paths.ToClonePath(p), out var message);
+                    return message;
+                })));
                 return false;
             }
-            var locked = clone.Where(p => !session.IsOpenForEdit(p, out _)).ToList();
-            if (locked.Count == 0)
+            var needLock = managed.Where(p => !session.IsOpenForEdit(session.Paths.ToClonePath(p), out _)).ToList();
+            if (needLock.Count == 0)
                 return true;
-            if (NipaLocks.LockBlocking(session, locked, out var error))
+            if (NipaLocks.LockBlocking(session, needLock.Select(session.Paths.ToClonePath).ToList(), out var error))
                 return true;
+            outNotEditablePaths?.AddRange(needLock);
             NipaLocks.Tell("Nipa: Lock", error);
             return false;
         }
@@ -76,16 +106,6 @@ namespace Nipa.Editor
                 return true;
             NipaLocks.Tell("Nipa: locked", message);
             return false;
-        }
-
-        static IEnumerable<string> Blocked(List<string> clone)
-        {
-            var session = NipaHost.Session;
-            foreach (var p in clone)
-            {
-                if (!session.Locks.CanChange(p, out var message))
-                    yield return message;
-            }
         }
     }
 }
