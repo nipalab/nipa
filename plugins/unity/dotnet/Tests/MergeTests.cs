@@ -236,6 +236,29 @@ namespace Nipa.Core.Tests
         }
 
         [Test]
+        public async Task BranchesPageUntilShortPage()
+        {
+            string Page(int from, int count) => "{\"response\":{\"branches\":[" + string.Join(",",
+                Enumerable.Range(from, count).Select(i => "{\"name\":\"b" + i + "\",\"id\":\"id" + i + "\",\"updated_at\":\"ts" + i + "\"}")) + "]}}";
+            fake.Handlers["ProxyBranchList"] = r => new Reply
+            {
+                Body = r.Body.Contains("\"last_id\":\"id199\"") ? Page(200, 3) : Page(0, 200),
+            };
+            var all = await session.BranchesAsync();
+            Assert.That(all.Count, Is.EqualTo(203));
+            Assert.That(fake.Requests.Count(r => r.Method == "ProxyBranchList"), Is.EqualTo(2));
+            Assert.That(fake.Requests.Last(r => r.Method == "ProxyBranchList").Body, Does.Contain("\"last_updated_at\":\"ts199\""));
+        }
+
+        [Test]
+        public async Task BranchPagingStopsAtLimit()
+        {
+            fake.On("ProxyBranchList", "{\"response\":{\"branches\":[" + string.Join(",",
+                Enumerable.Range(0, 200).Select(i => "{\"name\":\"b" + i + "\",\"id\":\"i\"}")) + "]}}");
+            Assert.That((await session.BranchesAsync()).Count, Is.EqualTo(200 * 50));
+        }
+
+        [Test]
         public async Task EmptyResponsesGiveEmptyLists()
         {
             fake.On("ProxyBranchList", "{}");

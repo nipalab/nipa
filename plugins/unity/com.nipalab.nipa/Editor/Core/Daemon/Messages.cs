@@ -345,11 +345,14 @@ namespace Nipa.Editor.Core.Daemon
         public string Name { get; set; }
         public bool IsDefault { get; set; }
         public bool IsProtected { get; set; }
+        public string UpdatedAt { get; set; }
     }
 
     public sealed class ListBranchesRequest
     {
         public int Limit { get; set; }
+        public string LastUpdatedAt { get; set; }
+        public string LastId { get; set; }
     }
 
     public sealed class ListBranchesResponse

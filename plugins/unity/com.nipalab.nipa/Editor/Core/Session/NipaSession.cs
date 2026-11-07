@@ -369,9 +369,22 @@ namespace Nipa.Editor.Core.Session
 
         public async Task<List<Branch>> BranchesAsync(CancellationToken ct = default)
         {
-            var res = await Call<ProxyBranchListRequest, ProxyBranchListResponse>("ProxyBranchList",
-                new ProxyBranchListRequest { Root = Root, Request = new ListBranchesRequest { Limit = 200 } }, ct).ConfigureAwait(false);
-            return res.Response?.Branches ?? new List<Branch>();
+            const int page = 200;
+            const int maxPages = 50;
+            var all = new List<Branch>();
+            var request = new ListBranchesRequest { Limit = page };
+            for (var i = 0; i < maxPages; i++)
+            {
+                var res = await Call<ProxyBranchListRequest, ProxyBranchListResponse>("ProxyBranchList",
+                    new ProxyBranchListRequest { Root = Root, Request = request }, ct).ConfigureAwait(false);
+                var branches = res.Response?.Branches ?? new List<Branch>();
+                all.AddRange(branches);
+                if (branches.Count < page)
+                    break;
+                var last = branches[branches.Count - 1];
+                request = new ListBranchesRequest { Limit = page, LastUpdatedAt = last.UpdatedAt, LastId = last.Id };
+            }
+            return all;
         }
 
         public async Task<List<Tag>> TagsAsync(CancellationToken ct = default)

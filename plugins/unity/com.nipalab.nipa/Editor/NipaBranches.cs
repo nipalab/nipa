@@ -95,6 +95,11 @@ namespace Nipa.Editor
             var session = NipaHost.Session;
             if (session == null || NipaHost.Busy != null)
                 return;
+            if (!string.IsNullOrEmpty(session.Cache.Pending))
+            {
+                EditorUtility.DisplayDialog("Nipa: Switch", "A " + session.Cache.Pending + " is waiting. Finish or abort it before switching.", "OK");
+                return;
+            }
             var target = tag != null ? "tag " + tag : branch;
             var dirty = session.Cache.Snapshot().Count(kv => (kv.Value & Core.Status.FileState.Untracked) == 0);
             var warning = dirty > 0 ? "\n\nYou have " + dirty + " uncommitted path(s); the switch can overwrite them." : string.Empty;
