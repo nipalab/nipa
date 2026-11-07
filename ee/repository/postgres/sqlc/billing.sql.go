@@ -8,6 +8,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"time"
 )
 
@@ -43,6 +44,86 @@ func (q *Queries) CountOwnerSeats(ctx context.Context, ownerID int64) (int64, er
 	return seats, err
 }
 
+const getBillingAccount = `-- name: GetBillingAccount :one
+SELECT user_id, provider, provider_customer_id, created_at FROM billing_accounts WHERE user_id = $1
+`
+
+func (q *Queries) GetBillingAccount(ctx context.Context, userID int64) (BillingAccount, error) {
+	row := q.db.QueryRowContext(ctx, getBillingAccount, userID)
+	var i BillingAccount
+	err := row.Scan(
+		&i.UserID,
+		&i.Provider,
+		&i.ProviderCustomerID,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getBillingAccountByCustomer = `-- name: GetBillingAccountByCustomer :one
+SELECT user_id, provider, provider_customer_id, created_at FROM billing_accounts
+WHERE provider = $1 AND provider_customer_id = $2
+`
+
+type GetBillingAccountByCustomerParams struct {
+	Provider           string `json:"provider"`
+	ProviderCustomerID string `json:"provider_customer_id"`
+}
+
+func (q *Queries) GetBillingAccountByCustomer(ctx context.Context, arg GetBillingAccountByCustomerParams) (BillingAccount, error) {
+	row := q.db.QueryRowContext(ctx, getBillingAccountByCustomer, arg.Provider, arg.ProviderCustomerID)
+	var i BillingAccount
+	err := row.Scan(
+		&i.UserID,
+		&i.Provider,
+		&i.ProviderCustomerID,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getBillingEvent = `-- name: GetBillingEvent :one
+SELECT event_id, type, occurred_at, payload, processed_at, error, received_at FROM billing_events WHERE event_id = $1
+`
+
+func (q *Queries) GetBillingEvent(ctx context.Context, eventID string) (BillingEvent, error) {
+	row := q.db.QueryRowContext(ctx, getBillingEvent, eventID)
+	var i BillingEvent
+	err := row.Scan(
+		&i.EventID,
+		&i.Type,
+		&i.OccurredAt,
+		&i.Payload,
+		&i.ProcessedAt,
+		&i.Error,
+		&i.ReceivedAt,
+	)
+	return i, err
+}
+
+const getBillingUser = `-- name: GetBillingUser :one
+SELECT id, name, email, deleted FROM users WHERE id = $1
+`
+
+type GetBillingUserRow struct {
+	ID      int64  `json:"id"`
+	Name    string `json:"name"`
+	Email   string `json:"email"`
+	Deleted bool   `json:"deleted"`
+}
+
+func (q *Queries) GetBillingUser(ctx context.Context, id int64) (GetBillingUserRow, error) {
+	row := q.db.QueryRowContext(ctx, getBillingUser, id)
+	var i GetBillingUserRow
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Email,
+		&i.Deleted,
+	)
+	return i, err
+}
+
 const getLiveSubscription = `-- name: GetLiveSubscription :one
 SELECT provider_subscription_id, user_id, plan, status, interval, seats, storage_packs, current_period_end, cancel_at_period_end, provider_updated_at, updated_at FROM billing_subscriptions
 WHERE user_id = $1
@@ -68,6 +149,49 @@ func (q *Queries) GetLiveSubscription(ctx context.Context, userID int64) (Billin
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const insertBillingAccount = `-- name: InsertBillingAccount :exec
+INSERT INTO billing_accounts (user_id, provider, provider_customer_id)
+VALUES ($1, $2, $3)
+ON CONFLICT DO NOTHING
+`
+
+type InsertBillingAccountParams struct {
+	UserID             int64  `json:"user_id"`
+	Provider           string `json:"provider"`
+	ProviderCustomerID string `json:"provider_customer_id"`
+}
+
+func (q *Queries) InsertBillingAccount(ctx context.Context, arg InsertBillingAccountParams) error {
+	_, err := q.db.ExecContext(ctx, insertBillingAccount, arg.UserID, arg.Provider, arg.ProviderCustomerID)
+	return err
+}
+
+const insertBillingEvent = `-- name: InsertBillingEvent :execrows
+INSERT INTO billing_events (event_id, type, occurred_at, payload)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (event_id) DO NOTHING
+`
+
+type InsertBillingEventParams struct {
+	EventID    string          `json:"event_id"`
+	Type       string          `json:"type"`
+	OccurredAt time.Time       `json:"occurred_at"`
+	Payload    json.RawMessage `json:"payload"`
+}
+
+func (q *Queries) InsertBillingEvent(ctx context.Context, arg InsertBillingEventParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, insertBillingEvent,
+		arg.EventID,
+		arg.Type,
+		arg.OccurredAt,
+		arg.Payload,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const isOwnerSeat = `-- name: IsOwnerSeat :one
@@ -113,6 +237,29 @@ SELECT pg_advisory_xact_lock($1::bigint)
 
 func (q *Queries) LockSeatOwner(ctx context.Context, lockKey int64) error {
 	_, err := q.db.ExecContext(ctx, lockSeatOwner, lockKey)
+	return err
+}
+
+const markBillingEventFailed = `-- name: MarkBillingEventFailed :exec
+UPDATE billing_events SET processed_at = NULL, error = $1 WHERE event_id = $2
+`
+
+type MarkBillingEventFailedParams struct {
+	Error   sql.NullString `json:"error"`
+	EventID string         `json:"event_id"`
+}
+
+func (q *Queries) MarkBillingEventFailed(ctx context.Context, arg MarkBillingEventFailedParams) error {
+	_, err := q.db.ExecContext(ctx, markBillingEventFailed, arg.Error, arg.EventID)
+	return err
+}
+
+const markBillingEventProcessed = `-- name: MarkBillingEventProcessed :exec
+UPDATE billing_events SET processed_at = now(), error = NULL WHERE event_id = $1
+`
+
+func (q *Queries) MarkBillingEventProcessed(ctx context.Context, eventID string) error {
+	_, err := q.db.ExecContext(ctx, markBillingEventProcessed, eventID)
 	return err
 }
 

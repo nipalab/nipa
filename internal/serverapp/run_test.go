@@ -204,5 +204,6 @@ func TestRunReturnsListenError(t *testing.T) {
 				resp.WriteHeader(204)
 			}))
 		}),
+		WithWebService(new(restful.WebService).Path("/api/webhooks/extra")),
 	))
 }

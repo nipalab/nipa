@@ -18,6 +18,26 @@ type Handler struct {
 	reg       *Registration
 	auth      *usecase.Auth
 	providers func() []string
+	billing   *BillingCapabilities
+}
+
+// BillingCapabilities tells the SPA which billing provider runs and which
+// prices it may preview. Price ids and the client token are public by design.
+type BillingCapabilities struct {
+	Provider    string        `json:"provider"`
+	Environment string        `json:"environment"`
+	ClientToken string        `json:"client_token"`
+	Prices      BillingPrices `json:"prices"`
+}
+
+type BillingPrices struct {
+	Seat    IntervalPrices `json:"seat"`
+	Storage IntervalPrices `json:"storage"`
+}
+
+type IntervalPrices struct {
+	Monthly string `json:"monthly"`
+	Yearly  string `json:"yearly"`
 }
 
 func NewHandler(reg *Registration, auth *usecase.Auth) *Handler {
@@ -31,9 +51,17 @@ func (h *Handler) WithProviders(providers func() []string) *Handler {
 	return h
 }
 
+// WithBilling adds the billing block to the capabilities endpoint; without it
+// the block is omitted and the SPA hides billing.
+func (h *Handler) WithBilling(billing *BillingCapabilities) *Handler {
+	h.billing = billing
+	return h
+}
+
 type capabilitiesResponse struct {
-	Registration bool     `json:"registration"`
-	Providers    []string `json:"providers"`
+	Registration bool                 `json:"registration"`
+	Providers    []string             `json:"providers"`
+	Billing      *BillingCapabilities `json:"billing,omitempty"`
 }
 
 type registerRequest struct {
@@ -108,7 +136,7 @@ func (h *Handler) Capabilities(appCtx httpApp.AppContext) {
 	if providers == nil {
 		providers = []string{}
 	}
-	_ = appCtx.WriteJson(nethttp.StatusOK, capabilitiesResponse{Registration: true, Providers: providers})
+	_ = appCtx.WriteJson(nethttp.StatusOK, capabilitiesResponse{Registration: true, Providers: providers, Billing: h.billing})
 }
 
 func (h *Handler) Register(appCtx httpApp.AppContext) {

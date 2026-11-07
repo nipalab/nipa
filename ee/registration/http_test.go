@@ -49,6 +49,11 @@ type registrationServer struct {
 
 func newRegistrationServer(t *testing.T, providers func() []string) *registrationServer {
 	t.Helper()
+	return newRegistrationServerWith(t, providers, nil)
+}
+
+func newRegistrationServerWith(t *testing.T, providers func() []string, billing *BillingCapabilities) *registrationServer {
+	t.Helper()
 
 	env := newRegistrationEnv(t)
 	var handler *Handler
@@ -57,6 +62,9 @@ func newRegistrationServer(t *testing.T, providers func() []string) *registratio
 			WithProviders(providers)
 	} else {
 		handler = NewHandler(env.registration, usecase.NewAuth("test-secret", stubHasher{}, env.users, stubSessionStore{}))
+	}
+	if billing != nil {
+		handler = handler.WithBilling(billing)
 	}
 
 	ws := new(restful.WebService)
@@ -101,6 +109,21 @@ func TestCapabilitiesReportsProviders(t *testing.T) {
 	resp, body = withProviders.do(t, http.MethodGet, "/api/v1/auth/capabilities", "")
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.JSONEq(t, `{"registration": true, "providers": ["github", "google"]}`, body)
+}
+
+func TestCapabilitiesReportsBilling(t *testing.T) {
+	server := newRegistrationServerWith(t, nil, &BillingCapabilities{
+		Provider: "paddle", Environment: "sandbox", ClientToken: "test_token",
+		Prices: BillingPrices{
+			Seat:    IntervalPrices{Monthly: "pri_sm", Yearly: "pri_sy"},
+			Storage: IntervalPrices{Monthly: "pri_stm", Yearly: "pri_sty"},
+		},
+	})
+	resp, body := server.do(t, http.MethodGet, "/api/v1/auth/capabilities", "")
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.JSONEq(t, `{"registration": true, "providers": [], "billing": {
+		"provider": "paddle", "environment": "sandbox", "client_token": "test_token",
+		"prices": {"seat": {"monthly": "pri_sm", "yearly": "pri_sy"}, "storage": {"monthly": "pri_stm", "yearly": "pri_sty"}}}}`, body)
 }
 
 func TestRegisterEndpoint(t *testing.T) {

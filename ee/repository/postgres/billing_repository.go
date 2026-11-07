@@ -98,3 +98,95 @@ func (r *BillingRepository) UpsertSubscription(ctx context.Context, sub domain.B
 	}
 	return rows > 0, nil
 }
+
+// Account returns the user's billing account, or nil when there is none.
+func (r *BillingRepository) Account(ctx context.Context, user snow.ID) (*domain.BillingAccount, error) {
+	row, err := r.queries.GetBillingAccount(ctx, user.Int64())
+	return toBillingAccount(row, err)
+}
+
+// AccountByCustomer returns the account holding a provider customer id, or
+// nil when no user has it.
+func (r *BillingRepository) AccountByCustomer(ctx context.Context, provider, customerID string) (*domain.BillingAccount, error) {
+	row, err := r.queries.GetBillingAccountByCustomer(ctx, sqlcPostgres.GetBillingAccountByCustomerParams{
+		Provider:           provider,
+		ProviderCustomerID: customerID,
+	})
+	return toBillingAccount(row, err)
+}
+
+// InsertAccount stores the account unless the user or the customer id is
+// already linked; the caller reads the account back to see which won.
+func (r *BillingRepository) InsertAccount(ctx context.Context, account domain.BillingAccount) error {
+	return handleError(r.queries.InsertBillingAccount(ctx, sqlcPostgres.InsertBillingAccountParams{
+		UserID:             account.UserID.Int64(),
+		Provider:           account.Provider,
+		ProviderCustomerID: account.ProviderCustomerID,
+	}))
+}
+
+// User returns the account data billing needs; a missing user is a 404.
+func (r *BillingRepository) User(ctx context.Context, id snow.ID) (*domain.BillingUser, error) {
+	row, err := r.queries.GetBillingUser(ctx, id.Int64())
+	if err != nil {
+		return nil, handleError(err)
+	}
+	return &domain.BillingUser{ID: snow.ID(row.ID), Name: row.Name, Email: row.Email, Deleted: row.Deleted}, nil
+}
+
+// InsertEvent stores a provider event and reports whether it was new.
+func (r *BillingRepository) InsertEvent(ctx context.Context, event domain.BillingEvent) (bool, error) {
+	rows, err := r.queries.InsertBillingEvent(ctx, sqlcPostgres.InsertBillingEventParams{
+		EventID:    event.EventID,
+		Type:       event.Type,
+		OccurredAt: event.OccurredAt,
+		Payload:    event.Payload,
+	})
+	if err != nil {
+		return false, handleError(err)
+	}
+	return rows > 0, nil
+}
+
+// Event returns a stored event; a missing one is a 404.
+func (r *BillingRepository) Event(ctx context.Context, eventID string) (*domain.BillingEvent, error) {
+	row, err := r.queries.GetBillingEvent(ctx, eventID)
+	if err != nil {
+		return nil, handleError(err)
+	}
+	return &domain.BillingEvent{
+		EventID:     row.EventID,
+		Type:        row.Type,
+		OccurredAt:  row.OccurredAt,
+		Payload:     row.Payload,
+		ProcessedAt: nullTimePtr(row.ProcessedAt),
+		Error:       row.Error.String,
+	}, nil
+}
+
+// MarkEventProcessed records a successful run and clears an earlier error.
+func (r *BillingRepository) MarkEventProcessed(ctx context.Context, eventID string) error {
+	return handleError(r.queries.MarkBillingEventProcessed(ctx, eventID))
+}
+
+// MarkEventFailed records why an event could not be applied.
+func (r *BillingRepository) MarkEventFailed(ctx context.Context, eventID, reason string) error {
+	return handleError(r.queries.MarkBillingEventFailed(ctx, sqlcPostgres.MarkBillingEventFailedParams{
+		Error:   sql.NullString{String: reason, Valid: true},
+		EventID: eventID,
+	}))
+}
+
+func toBillingAccount(row sqlcPostgres.BillingAccount, err error) (*domain.BillingAccount, error) {
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, handleError(err)
+	}
+	return &domain.BillingAccount{
+		UserID:             snow.ID(row.UserID),
+		Provider:           row.Provider,
+		ProviderCustomerID: row.ProviderCustomerID,
+	}, nil
+}

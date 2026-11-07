@@ -142,7 +142,8 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	if err := checkBilling(cfg); err != nil {
+	billingSetup, err := buildBilling(cfg, dbConn, storageLedger)
+	if err != nil {
 		panic(err)
 	}
 
@@ -183,6 +184,9 @@ func main() {
 		deps.StorageLedger = storageLedger
 		slog.Info("storage ledger enabled", "default_quota_bytes", cfg.StorageLedgerDefaultQuotaBytes)
 	}
+	if billingSetup != nil {
+		deps.SeatGate = billingSetup.service
+	}
 	uc := serverapp.BuildUsecases(usecase.Repositories{
 		Org:                postgres.NewOrgRepository(dbConn),
 		Project:            postgres.NewProjectRepository(dbConn),
@@ -211,16 +215,21 @@ func main() {
 	}
 	runOpts := []serverapp.Option{serverapp.WithReadiness(dbConn.PingContext), serverapp.WithMetrics(metrics), serverapp.WithTracing(tracing), serverapp.WithLogs(logs), serverapp.WithMetricsPush(metricsPush), serverapp.WithRateLimit(rateLimiter, trustedProxies)}
 	if storageLedger != nil {
+		storageRoutes := storageusage.RoutesConfig{
+			Ledger: storageLedger,
+			Common: commonUsecase,
+			Orgs:   orgUsecase,
+		}
+		if billingSetup != nil {
+			storageRoutes.Billing = billingSetup.service.Summary
+		}
 		runOpts = append(runOpts, serverapp.WithRoutes(func(ws *restful.WebService) {
-			storageusage.RegisterRoutes(ws, storageusage.RoutesConfig{
-				Ledger: storageLedger,
-				Common: commonUsecase,
-				Orgs:   orgUsecase,
-			})
+			storageusage.RegisterRoutes(ws, storageRoutes)
 		}))
 	}
+	runOpts = append(runOpts, billingSetup.runOptions()...)
 	if cfg.SaaSMode {
-		runOpts = append(runOpts, saasOptions(cfg, snowUser, passwordHasher, userRepo, authUsecase, emailRepository, emailDispatcher, dbConn)...)
+		runOpts = append(runOpts, saasOptions(cfg, snowUser, passwordHasher, userRepo, authUsecase, emailRepository, emailDispatcher, dbConn, billingSetup.capabilitiesOrNil())...)
 	}
 	if err := serverapp.Run(cfg, reg, dispatchers, runOpts...); err != nil {
 		panic(err)
@@ -232,6 +241,7 @@ func main() {
 // the caller's transaction.
 func saasOptions(cfg *config.Config, snowUser snow.Node, hasher *hasher.Hasher, userRepo *postgres.User,
 	authUsecase *usecase.Auth, emailRepository *postgres.EmailRepository, emailDispatcher *mail.Dispatcher, dbConn *sql.DB,
+	billingCapabilities *registration.BillingCapabilities,
 ) []serverapp.Option {
 	if strings.TrimSpace(cfg.EmailBaseURL) == "" {
 		panic("SAAS_MODE requires EMAIL_BASE_URL: the confirmation link has no public base URL")
@@ -243,7 +253,7 @@ func saasOptions(cfg *config.Config, snowUser snow.Node, hasher *hasher.Hasher, 
 		FreeQuotaBytes: cfg.SaasFreeQuotaBytes,
 		BaseURL:        cfg.EmailBaseURL,
 	})
-	registrationHandler := registration.NewHandler(registrationUsecase, authUsecase)
+	registrationHandler := registration.NewHandler(registrationUsecase, authUsecase).WithBilling(billingCapabilities)
 	if emailDispatcher != nil {
 		registrationUsecase.WithMailer(emailRepository, emailDispatcher)
 	} else {
@@ -331,18 +341,6 @@ func createStorageLedger(cfg *config.Config, dbConn *sql.DB) (*storageusage.Ledg
 	default:
 		return nil, fmt.Errorf("unknown STORAGE_LEDGER %q", cfg.StorageLedger)
 	}
-}
-
-// checkBilling validates the billing settings. No provider is wired yet, so
-// anything but off is refused and the seat gate stays unwired.
-func checkBilling(cfg *config.Config) error {
-	if err := cfg.ValidateBilling(); err != nil {
-		return err
-	}
-	if provider := cfg.BillingProviderName(); provider != config.BillingProviderOff {
-		return fmt.Errorf("billing provider not supported yet: BILLING_PROVIDER=%s", provider)
-	}
-	return nil
 }
 
 func createChunkStore(cfg *config.Config) (storage.ChunkStore, error) {

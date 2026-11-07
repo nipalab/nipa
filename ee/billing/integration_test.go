@@ -155,3 +155,36 @@ func (s *billingSuite) TestApply_KeepsOverride() {
 	s.Require().NotNil(summary.QuotaBytes)
 	s.Equal(int64(42), *summary.QuotaBytes)
 }
+
+func (s *billingSuite) TestHandleEvent_DedupAndCustomerFallback() {
+	ctx := context.Background()
+	owner := s.seedUser("owner")
+	provider := &stubProvider{carried: &EventSubscription{
+		Subscription: Subscription{ProviderSubscriptionID: "sub_pg", Status: StatusActive, Seats: 5, ProviderUpdatedAt: at(1)},
+		CustomerID:   "ctm_pg",
+	}}
+	s.service.WithProvider(provider)
+	event := Event{ID: "evt_pg", Type: "subscription.activated", OccurredAt: at(0), Payload: []byte(`{"id":"evt_pg","type":"subscription.activated"}`)}
+
+	s.NoError(s.service.HandleEvent(ctx, event), "an unknown customer is a permanent failure")
+	stored, err := s.repo.Event(ctx, "evt_pg")
+	s.Require().NoError(err)
+	s.Equal("event names no known user", stored.Error)
+
+	s.Require().NoError(s.repo.InsertAccount(ctx, domain.BillingAccount{UserID: owner, Provider: "stub", ProviderCustomerID: "ctm_pg"}))
+	s.NoError(s.service.HandleEvent(ctx, event))
+	entitlement, err := s.service.Entitlement(ctx, owner)
+	s.Require().NoError(err)
+	s.False(entitlement.Paid, "a failed delivery is not re-run on redelivery")
+
+	stored, err = s.service.Replay(ctx, "evt_pg")
+	s.Require().NoError(err)
+	s.NotNil(stored.ProcessedAt)
+	s.Empty(stored.Error)
+	entitlement, err = s.service.Entitlement(ctx, owner)
+	s.Require().NoError(err)
+	s.True(entitlement.Paid)
+	s.Equal(int64(5), entitlement.SeatLimit)
+	quota, _ := s.quota(owner)
+	s.Equal(testConfig.Entitlement(&Subscription{Status: StatusActive, Seats: 5}).QuotaBytes, quota.Int64)
+}
