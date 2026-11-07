@@ -27,6 +27,8 @@ in-flight operations keep running until the server's drain window ends.
 | `/etc/nipa/blue.env`, `/etc/nipa/green.env` | per-color `SERVER_ADDRESS`/`SERVER_PORT`/`SHUTDOWN_TIMEOUT_SECONDS` (templates in `deploy/nipad-ee.env.sample`) |
 | `/etc/systemd/system/nipad-ee@.service` | template unit (`deploy/nipad-ee@.service`) |
 | `/etc/caddy/Caddyfile` | TLS edge (`deploy/caddy/Caddyfile`) |
+| `/etc/caddy/caddy.env` | Caddy env, `MARKETING_UPSTREAM` (`deploy/caddy/caddy.env.sample`) |
+| `/etc/systemd/system/caddy.service.d/nipa.conf` | drop-in loading `caddy.env` (`deploy/caddy/caddy.service.d/nipa.conf`) |
 | `/var/lib/nipa/active-color` | which color receives traffic (written by `deploy/upgrade.sh`) |
 | `journalctl -u nipad-ee@blue` / `@green` | server logs |
 
@@ -52,7 +54,7 @@ URLs stay valid across restarts; do not rotate those keys during an upgrade.
 1. **Build the release.** From a checkout on the build machine:
 
    ```
-   make web build-server-ee      # produces bin/nipad-ee with the embedded SPA
+   make web build-server-ee      # static (CGO_ENABLED=0) bin/nipad-ee with the embedded SPA
    sha256sum bin/nipad-ee        # ship this checksum with the binary
    ```
 
@@ -94,8 +96,8 @@ rebuild or blue/green flip:
   `curl -sI https://nipalab.com/pricing` (200, no `netlify.app` in `Location`),
   `/guides/cli` (marketing) and `/docs` (REST API docs).
 - Point it at the Netlify site with `MARKETING_UPSTREAM` (required: the
-  Netlify-generated origin, never `https://nipalab.com`); set it in the Caddy
-  service environment or edit the Caddyfile.
+  Netlify-generated origin, never `https://nipalab.com`) in
+  `/etc/caddy/caddy.env` (step 6).
 - Build `nipa-web` with the default base `/` (`netlify.toml` carries the build
   command and cache headers); `site` in `astro.config.mjs` sets the canonical
   origin. The `*.netlify.app` hostname stays reachable, but canonical tags point
@@ -112,7 +114,7 @@ Caddy proxy); it is not part of the Netlify deployment.
    sudo install -d -o root -g root -m 0755 /opt/nipa/blue /opt/nipa/green
    sudo install -d -o root -g nipa -m 0750 /etc/nipa
    sudo install -d -o root -g root -m 0755 /var/lib/nipa
-   sudo install -m 0555 bin/nipad-ee /opt/nipa/blue/nipad-ee
+   sudo install -m 0755 bin/nipad-ee /opt/nipa/blue/nipad-ee
    ```
 
 3. **Write `/etc/nipa/config.yaml`** (start from `config.yaml.sample`). The
@@ -128,10 +130,14 @@ Caddy proxy); it is not part of the Netlify deployment.
    | `CHUNK_S3_ACCESS_KEY_ID` / `CHUNK_S3_SECRET_ACCESS_KEY` | leave empty to use the AWS env/instance providers |
    | `SAAS_MODE` | `1` (enables registration, social login and the storage ledger; the marketing site is served by Caddy from Netlify) |
    | `SAAS_FREE_QUOTA_BYTES` | free-tier quota per new account |
-   | `EMAIL_BASE_URL` | `https://nipa.example.com` (required in SaaS mode) |
+   | `EMAIL_BASE_URL` | `https://nipalab.com` (required in SaaS mode) |
    | `EMAIL_SENDER` + provider keys | e.g. `sendgrid`/`scaleway`/`smtp`; `off` logs a warning and registration emails are not delivered |
    | `OAUTH_BASE_URL`, `OAUTH_*` | optional, enable Google/GitHub sign-in |
    | `LOG_FORMAT` | `json` |
+
+   `nipad-ee` refuses to start when `JWT_KEY` or `CHUNK_URL_SIGNING_KEY` is
+   empty, still the sample value, shorter than 32 characters, or when both
+   are the same.
 
    Keep the file `0640 root:nipa`. Do **not** set `SNOWFLAKE_NODE_ID`: the
    colors run concurrently during a flip and lease distinct node ids from
@@ -162,28 +168,36 @@ Caddy proxy); it is not part of the Netlify deployment.
 
    `nipad-ee` applies pending postgres migrations at startup before listening;
    the unit's `ExecStartPost` fails the start if `/readyz` never turns green.
+   Only the active color is enabled at boot: `upgrade.sh` enables the new color
+   and disables the old one on every flip and rollback, so a reboot starts the
+   color Caddy points at.
 
 6. **Caddy.**
 
    ```
    sudo install -m 0644 deploy/caddy/Caddyfile /etc/caddy/Caddyfile
-   sudo sed -i \
-     -e 's/admin@nipalab\.com/you@example.com/' \
-     -e 's/^nipalab\.com {/your.host.example {/' \
-     /etc/caddy/Caddyfile
+   sudo install -m 0640 -g caddy deploy/caddy/caddy.env.sample /etc/caddy/caddy.env
+   sudoedit /etc/caddy/caddy.env           # MARKETING_UPSTREAM=https://<site>.netlify.app
+   sudo install -D -m 0644 deploy/caddy/caddy.service.d/nipa.conf \
+     /etc/systemd/system/caddy.service.d/nipa.conf
+   sudo systemctl daemon-reload
    sudo systemctl enable --now caddy
+   sudo systemctl restart caddy            # pick up the drop-in if caddy was running
    echo blue | sudo tee /var/lib/nipa/active-color
    ```
 
-   The Caddyfile already points at `127.0.0.1:8001` (blue) and answers 404 for
-   `/metrics` and `/debug/pprof`; remove that matcher (or restrict it to a
-   private scraper) if you intentionally expose them. Keep the
+   On a host other than `nipalab.com`, change the site address and the ACME
+   `email` in `/etc/caddy/Caddyfile` first.
+
+   The Caddyfile already points at `127.0.0.1:8001` (blue), sets HSTS and the
+   basic security headers, logs requests as JSON to the journal, and answers
+   404 for `/metrics`, `/readyz` and `/debug/pprof` (probe them on the
+   loopback port; `/healthz` and `/version` stay public). Keep the
    `reverse_proxy 127.0.0.1:<port> {` line shape: `upgrade.sh` rewrites it.
 
-   Caddy will not load the config until `MARKETING_UPSTREAM` points at the
-   Netlify site origin (see [Marketing site](#marketing-site-netlify)). Export
-   the same value when running `deploy/upgrade.sh`, whose `caddy validate`
-   expands the same placeholders.
+   `upgrade.sh` refuses to run while `MARKETING_UPSTREAM` is empty and passes
+   `/etc/caddy/caddy.env` to `caddy validate --envfile`, so the check sees
+   the same values as the running Caddy (`NIPA_CADDY_ENV` overrides the path).
 
 7. **First admin.** Register the first account through the web UI (SaaS mode),
    confirm the email, then promote it directly in postgres:
@@ -197,10 +211,28 @@ Caddy proxy); it is not part of the Netlify deployment.
    supports `https://` URLs):
 
    ```
-   nipa login --host https://nipa.example.com
-   nipa version --server https://nipa.example.com/org/project
-   curl -fsS https://nipa.example.com/healthz
+   nipa login --host https://nipalab.com
+   nipa version --server https://nipalab.com/org/project
+   curl -fsS https://nipalab.com/healthz
+   curl -sI https://nipalab.com/ | grep -i strict-transport-security
    ```
+
+## Pre-launch checklist
+
+- [ ] DNS `A`/`AAAA` for the host point at the VPS; firewall allows only 22/80/443.
+- [ ] Postgres reachable with `sslmode=require` (or stricter); connection limit
+      sized for `2 × pool + headroom`; automated backups/PITR on.
+- [ ] S3 bucket versioning on; credentials scoped to the bucket/prefix.
+- [ ] `JWT_KEY` and `CHUNK_URL_SIGNING_KEY` generated with `openssl rand -base64 48`
+      (the server refuses weak values); `config.yaml` is `0640 root:nipa`.
+- [ ] `SAAS_MODE=1`, `EMAIL_BASE_URL`, `EMAIL_SENDER` + provider keys set, and a
+      registration email actually arrives.
+- [ ] `/etc/caddy/caddy.env` has the Netlify origin; `curl -sI https://<host>/pricing`
+      is 200 and `/docs` is the API docs.
+- [ ] First admin registered and promoted.
+- [ ] One full `upgrade.sh` run and one `--rollback` done on the host.
+- [ ] A reboot after a flip brings back the active color only
+      (`systemctl is-enabled nipad-ee@blue nipad-ee@green`).
 
 ## Upgrades (zero downtime)
 
@@ -216,14 +248,14 @@ What the script does:
    (`install` + atomic rename).
 3. Starts the idle color and waits for `/readyz` (postgres ping) plus a
    `/version` smoke check.
-4. Rewrites the `reverse_proxy` upstream, validates the Caddyfile and reloads
-   Caddy. Reloads never drop established connections; new traffic goes to the
-   new color.
+4. Rewrites the `reverse_proxy` upstream, validates the Caddyfile (with
+   `/etc/caddy/caddy.env`) and reloads Caddy. Reloads never drop established
+   connections; new traffic goes to the new color, which is now enabled at boot.
 5. Waits for the old color's connections to drain (`ss`, bounded by
    `NIPA_DRAIN_TIMEOUT`), then `systemctl stop` → SIGTERM → graceful shutdown:
    `/readyz` answers 503 while draining, in-flight requests get the
    `SHUTDOWN_TIMEOUT_SECONDS` budget (shared with the dispatcher and exporter
-   drain), then the process exits.
+   drain), then the process exits, and the old color is disabled at boot.
 6. Writes the new active color.
 
 Failure behavior: every failure before the Caddy reload stops the idle color,

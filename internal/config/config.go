@@ -164,3 +164,29 @@ func LoadConfig() (*Config, error) {
 
 	return &cfg, nil
 }
+
+const minSecretLength = 32
+
+var sampleSecrets = map[string]bool{"secret": true, "change-me": true, "changeme": true}
+
+// ValidateSecrets rejects missing, sample or short signing keys so a production
+// server never starts with forgeable sessions or chunk URLs.
+func (c *Config) ValidateSecrets() error {
+	for _, s := range []struct{ name, value string }{
+		{"JWT_KEY", c.JWTKey},
+		{"CHUNK_URL_SIGNING_KEY", c.ChunkURLSigningKey},
+	} {
+		switch {
+		case s.value == "":
+			return fmt.Errorf("%s must be set", s.name)
+		case sampleSecrets[s.value]:
+			return fmt.Errorf("%s still has the sample value; generate one with `openssl rand -base64 48`", s.name)
+		case len(s.value) < minSecretLength:
+			return fmt.Errorf("%s must be at least %d characters", s.name, minSecretLength)
+		}
+	}
+	if c.JWTKey == c.ChunkURLSigningKey {
+		return fmt.Errorf("JWT_KEY and CHUNK_URL_SIGNING_KEY must differ")
+	}
+	return nil
+}

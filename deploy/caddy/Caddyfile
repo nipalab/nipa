@@ -8,7 +8,9 @@
 # live with a Netlify deploy instead of a nipad-ee rebuild. Caddy owns
 # nipalab.com, so MARKETING_UPSTREAM must be the Netlify site origin, never
 # https://nipalab.com (that would proxy Caddy back into itself). Configure it
-# with:
+# in /etc/caddy/caddy.env (deploy/caddy/caddy.env.sample), loaded by the
+# caddy.service drop-in (deploy/caddy/caddy.service.d/nipa.conf) and by
+# upgrade.sh's `caddy validate --envfile`:
 #     MARKETING_UPSTREAM=https://<site>.netlify.app
 #
 # The marketing build lists its routes with `npm run routes` (nipa-web); keep
@@ -24,9 +26,22 @@
 nipalab.com {
 	encode zstd gzip
 
+	log {
+		output stdout
+		format json
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		X-Frame-Options DENY
+		-Server
+	}
+
 	# Keep the observability endpoints off the public edge: probe the loopback
 	# ports instead. /debug/pprof only exists when PPROF_ENABLED=true.
-	@internal path /metrics /debug/pprof /debug/pprof/*
+	@internal path /metrics /readyz /debug/pprof /debug/pprof/*
 	respond @internal 404
 
 	# Marketing lives on Netlify. Caddy mirrors its landing page, page routes,
@@ -56,8 +71,8 @@ nipalab.com {
 		health_uri /readyz
 		health_interval 5s
 		health_timeout 2s
-		# Retry a request against the other upstream when the selected one is
-		# mid-restart; safe for the idempotent API surface.
+		# Hold a request for up to 5s while the upstream is briefly unavailable
+		# (restart or failed health check) instead of failing it immediately.
 		lb_try_duration 5s
 	}
 }
