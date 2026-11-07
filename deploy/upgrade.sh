@@ -201,7 +201,11 @@ caddy_dirty=false
 printf '%s\n' "$idle_color" >"$NIPA_STATE_DIR/active-color"
 log "traffic now goes to $idle_color"
 # Boot must start the color Caddy points at.
-systemctl enable --quiet "$idle_unit" || log "WARNING: failed to enable $idle_unit at boot"
+idle_enabled=true
+systemctl enable --quiet "$idle_unit" || {
+	idle_enabled=false
+	log "WARNING: failed to enable $idle_unit at boot; keeping $active_unit enabled"
+}
 
 if command -v ss >/dev/null; then
 	log "waiting for $active_color connections to drain (timeout ${DRAIN_TIMEOUT}s)"
@@ -219,7 +223,9 @@ fi
 
 log "stopping $active_color (graceful, SIGTERM)"
 systemctl stop "$active_unit"
-systemctl disable --quiet "$active_unit" || log "WARNING: failed to disable $active_unit at boot"
+if [[ "$idle_enabled" == true ]]; then
+	systemctl disable --quiet "$active_unit" || log "WARNING: failed to disable $active_unit at boot"
+fi
 
 action="upgrade"
 if [[ "$rollback" == true ]]; then

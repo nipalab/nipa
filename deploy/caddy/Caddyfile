@@ -26,9 +26,22 @@
 nipalab.com {
 	encode zstd gzip
 
+	# Caddy already redacts Authorization/Cookie headers; also drop the
+	# secrets carried in query strings: email confirmation tokens, OAuth
+	# codes/state and presigned chunk URL signatures.
 	log {
 		output stdout
-		format json
+		format filter {
+			wrap json
+			fields {
+				request>uri query {
+					delete token
+					delete code
+					delete state
+					delete sig
+				}
+			}
+		}
 	}
 
 	header {
