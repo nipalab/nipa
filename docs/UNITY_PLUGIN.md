@@ -4,8 +4,8 @@
 control provider: status overlays in the Project window, a Pending Changes
 window and stage/restore/push/update from the editor. It talks to the local
 `nipa serve` daemon through its JSON/HTTP bridge (`docs/DAEMON.md`), never to
-the server or the CLI directly. Plan and later phases (locking, branches,
-conflicts, setup checker): `docs/plans/UNITY_PLUGIN.md`.
+the server or the CLI directly. Plan and later phases (branches, conflicts,
+setup checker): `docs/plans/UNITY_PLUGIN.md`.
 
 Requires Unity 2022.3 LTS or newer (also targeted at Unity 6), the `nipa` CLI
 (0.1+ with the JSON bridge) and a Unity project inside a Nipa clone. The
@@ -40,6 +40,38 @@ Git URL, tarball and OpenUPM installs arrive with Phase 4.
 - Staging or restoring an asset always includes its `.meta`; update and restore
   call `AssetDatabase.Refresh()` when they finish.
 
+## Locking (Perforce-style checkout)
+
+Binary changes need a Nipa file lock. The plugin maps it onto Unity's
+checkout model:
+
+- A path covered by someone else's lock (exact path or directory prefix, in
+  the current branch's scope: global locks on the default branch, branch locks
+  on their branch) is **read-only**: `IsOpenForEdit` is false, saving it is
+  dropped with a dialog, and moving or deleting it is refused.
+- **Strict locking** (setting, off by default): assets whose extension is in the
+  list (default: binaries plus `.unity`, `.prefab`, `.anim`, `.controller`,
+  `.asset`, `.mat`) are read-only until you lock them. New (untracked or just
+  added) files are exempt. When Unity asks to make such an asset editable
+  (`MakeEditable`), the plugin locks it and its `.meta`; if that fails the
+  dialog names the holder.
+- An asset and its `.meta` are always locked and released together.
+- Overlays: a teal square (top right) = locked by you, a red square = locked by
+  someone else, a cyan triangle on the `Assets` folder = new commits upstream.
+- The Inspector header shows the lock state with Lock / Unlock buttons.
+- **Assets › Nipa › Lock / Unlock** and the icon menu do the same for the
+  selection.
+- **Window › Nipa › Pending Changes › Locks** tab lists the locks in scope;
+  Release is enabled for your own locks, and for anyone's when you administer
+  the project (`can_release_any`).
+- **Push** first refreshes `LockStatus`: changed binaries locked by someone
+  else block the push (holders are named); binaries that still need a lock
+  trigger a "Lock N files" prompt and the push continues once they are locked.
+- Teammate events (`WatchEvents`): a push marks the clone out of date and
+  shows an Update button; a review request shows a notice and a link to Nipa
+  Desktop; a released lock refreshes the lock cache. The lock cache also
+  refreshes on window focus, after lock/unlock and on every poll tick.
+
 ## Settings
 
 In **Project Settings › Editor › Version Control** (Nipa section):
@@ -47,7 +79,9 @@ In **Project Settings › Editor › Version Control** (Nipa section):
 | Setting | Stored in | Notes |
 |---|---|---|
 | nipa binary | `EditorUserSettings` (per user) | Empty = `NIPA_BIN`, then `PATH` |
-| Poll interval | `ProjectSettings/NipaSettings.json` (shared) | Safety-net `Status` refresh when no file events arrive (e.g. a missed watcher event). Clamped to 15–3600 s, default 60; applies on reconnect |
+| Poll interval | `ProjectSettings/NipaSettings.json` (shared) | Safety-net `Status` refresh when no file events arrive (e.g. a missed watcher event); also the `WatchEvents` server poll. Clamped to 15–3600 s, default 60; applies on reconnect |
+| Strict locking | `ProjectSettings/NipaSettings.json` (shared) | Listed extensions are read-only until locked. Applies immediately |
+| Locked extensions | `ProjectSettings/NipaSettings.json` (shared) | Comma separated list used by strict locking |
 
 ## Architecture
 
@@ -58,10 +92,13 @@ plugins/unity/com.nipalab.nipa/
                  Connector (attach, version check, spawn, poll), Messages
     Status/      StatusCache (path -> flags, folder aggregates, deltas)
     Paths/       ProjectPaths (project <-> clone paths, .meta pairing)
-    Session/     NipaSession (WatchRepo, Status, WatchChanges loop, ops),
-                 NipaSettings
+    Locks/       LockPolicy (covering-lock lookup, scope, strict mode,
+                 push pre-check)
+    Session/     NipaSession (WatchRepo, Status, WatchChanges + WatchEvents
+                 loops, ops, lock/unlock), NipaSettings
   Editor/        Unity glue: NipaVersionControl, NipaHost, NipaWindow,
-                 NipaMenus, NipaIcons, MainThread
+                 NipaMenus, NipaIcons, MainThread, NipaAssetProcessor,
+                 NipaInspectorBar, NipaLocks
   Tests/Editor/  EditMode smoke tests
 plugins/unity/dotnet/   Core/Nipa.Core.csproj (netstandard2.1 build of Editor/Core)
                         + NUnit tests with a fake daemon over HttpListener
@@ -75,6 +112,13 @@ plugins/unity/dotnet/   Core/Nipa.Core.csproj (netstandard2.1 build of Editor/Co
 - A running daemon from before the JSON bridge cannot be attached; the connector reports its pid and asks for a restart/update instead of spawning a second daemon.
 - `WatchChanges` drives status: every notice triggers a `Status` call (cheap,
   read-through) and the cache reports exactly which paths changed.
+- Lock decisions live in Core (`LockPolicy`, `NipaSession.IsOpenForEdit` /
+  `WritablePaths`); `NipaAssetProcessor` only translates Unity paths and
+  callbacks. It never touches `AssetDatabase`; `MakeEditable` blocks (20 s max)
+  on the lock RPC because Unity expects a synchronous answer.
+- The Inspector bar is drawn from `Editor.finishedDefaultHeaderGUI` rather than
+  `IInspectorWindowExtension`, which keeps it independent of that interface's
+  signature across Unity versions.
 - `VersionControlObject` is never serialized and holds no state; everything
   lives in `NipaHost`.
 

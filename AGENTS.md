@@ -155,7 +155,10 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   `docs/UNITY_PLUGIN.md`, plan in `docs/plans/UNITY_PLUGIN.md`): UPM package
   over the daemon JSON bridge. `Editor/Core` is engine-free C# (`DaemonClient`
   JSON/NDJSON over `HttpClient`, `Connector` attach-or-spawn, `StatusCache`,
-  `ProjectPaths`, `NipaSession`) compiled as `netstandard2.1` by
+  `ProjectPaths`, `NipaSession`, `LockPolicy` for covering-lock checks,
+  strict mode and the push pre-check; locks surface through
+  `AssetModificationProcessor`, overlays, the Inspector header and a Locks
+  tab, fed by `LockStatus`/`ProxyLockFile`/`ProxyUnlockFile`/`WatchEvents`) compiled as `netstandard2.1` by
   `plugins/unity/dotnet/Core` and tested there (`make unity-test`, NUnit +
   coverlet, fake daemon over `HttpListener`); `Editor/` holds the thin Unity
   glue (`[VersionControl("Nipa")]` provider with overlays/menus/settings,

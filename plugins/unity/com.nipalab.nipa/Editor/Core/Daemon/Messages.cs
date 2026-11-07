@@ -167,4 +167,97 @@ namespace Nipa.Editor.Core.Daemon
         public OpResult Result { get; set; }
         public OpFailure Failure { get; set; }
     }
+
+    public sealed class FileLockDetail
+    {
+        public string Id { get; set; }
+        public string Path { get; set; }
+        public string Branch { get; set; }
+        public bool Global { get; set; }
+        public string HeldBy { get; set; }
+        public string HeldByName { get; set; }
+    }
+
+    public sealed class FileLockState
+    {
+        public string Path { get; set; }
+        public string State { get; set; }
+        public string LockPath { get; set; }
+        public string HeldBy { get; set; }
+        public string HeldByName { get; set; }
+        public bool Tracked { get; set; }
+    }
+
+    public sealed class LockStatusRequest
+    {
+        public string Root { get; set; }
+    }
+
+    public sealed class LockStatusResponse
+    {
+        public string UserId { get; set; }
+        public string Branch { get; set; }
+        public bool DefaultBranch { get; set; }
+        public bool CanReleaseAny { get; set; }
+        public List<FileLockDetail> Locks { get; set; }
+        public List<FileLockState> Files { get; set; }
+    }
+
+    public sealed class LockFileRequest
+    {
+        public string Path { get; set; }
+        public string Branch { get; set; }
+    }
+
+    public sealed class ProxyLockFileRequest
+    {
+        public string Root { get; set; }
+        public LockFileRequest Request { get; set; }
+    }
+
+    public sealed class ProxyLockFileResponse
+    {
+    }
+
+    public sealed class UnlockFileRequest
+    {
+        public string Path { get; set; }
+        public string Branch { get; set; }
+    }
+
+    public sealed class ProxyUnlockFileRequest
+    {
+        public string Root { get; set; }
+        public UnlockFileRequest Request { get; set; }
+    }
+
+    public sealed class ProxyUnlockFileResponse
+    {
+    }
+
+    public sealed class WatchEventsRequest
+    {
+        public string Root { get; set; }
+        public int IntervalSeconds { get; set; }
+    }
+
+    public sealed class TeamEvent
+    {
+        public string Kind { get; set; }
+        public string Actor { get; set; }
+        public string Branch { get; set; }
+        public string CommitId { get; set; }
+        public string Message { get; set; }
+        public int Count { get; set; }
+        public string Path { get; set; }
+        public long Number { get; set; }
+    }
+
+    public sealed class RepoActivity
+    {
+        public List<TeamEvent> Events { get; set; }
+        public int Incoming { get; set; }
+        public int ReviewRequests { get; set; }
+        public string Error { get; set; }
+    }
 }

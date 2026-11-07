@@ -1,3 +1,5 @@
+using System.Linq;
+using Nipa.Editor.Core.Locks;
 using Nipa.Editor.Core.Paths;
 using Nipa.Editor.Core.Status;
 using UnityEditor;
@@ -37,11 +39,18 @@ namespace Nipa.Editor
                 return;
             var clone = session.Paths.ToClonePath(assetPath);
             var state = session.Cache.Get(clone) | session.Cache.Get(ProjectPaths.MetaOf(clone));
-            var icon = NipaIcons.For(state);
-            if (icon == null)
-                return;
             var size = Mathf.Min(IconSize, rect.height * 0.5f);
-            GUI.DrawTexture(new Rect(rect.x, rect.y, size, size), icon);
+            var icon = NipaIcons.For(state);
+            if (icon != null)
+                GUI.DrawTexture(new Rect(rect.x, rect.y, size, size), icon);
+            var info = session.Locks.Lookup(clone);
+            if (info.State != LockState.Free)
+            {
+                var tex = info.State == LockState.Mine ? NipaIcons.LockMine : NipaIcons.LockTheirs;
+                GUI.DrawTexture(new Rect(rect.xMax - size, rect.y, size, size), tex);
+            }
+            if (assetPath == "Assets" && session.Incoming > 0)
+                GUI.DrawTexture(new Rect(rect.xMax - size, rect.yMax - size, size, size), NipaIcons.Behind);
         }
 
         public void DisplayPopupMenu(Rect position)
@@ -78,6 +87,21 @@ namespace Nipa.Editor
             {
                 settings.PollIntervalSeconds = poll;
                 NipaSettingsStore.SaveProject(settings);
+            }
+
+            EditorGUI.BeginChangeCheck();
+            var strict = EditorGUILayout.Toggle(
+                new GUIContent("Strict locking", "Files with a listed extension are read-only until locked by you."),
+                settings.LockStrict);
+            var extensions = EditorGUILayout.TextField(
+                new GUIContent("Locked extensions", "Comma separated. Only used by strict locking."),
+                string.Join(", ", settings.LockExtensions));
+            if (EditorGUI.EndChangeCheck())
+            {
+                settings.LockStrict = strict;
+                settings.LockExtensions = extensions.Split(',').Select(e => e.Trim()).Where(e => e.Length > 0).ToList();
+                NipaSettingsStore.SaveProject(settings);
+                NipaHost.ApplySettings();
             }
 
             if (GUILayout.Button("Reconnect"))

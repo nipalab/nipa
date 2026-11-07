@@ -4,11 +4,32 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nipa.Editor.Core.Daemon;
+using Nipa.Editor.Core.Locks;
 using Nipa.Editor.Core.Paths;
 using Nipa.Editor.Core.Status;
 
 namespace Nipa.Editor.Core.Session
 {
+    public sealed class LockFailure
+    {
+        public string Path { get; }
+        public string Message { get; }
+        public string Holder { get; }
+
+        public LockFailure(string path, string message, string holder = null)
+        {
+            Path = path;
+            Message = message;
+            Holder = holder;
+        }
+    }
+
+    public sealed class LockResult
+    {
+        public List<string> Locked { get; } = new List<string>();
+        public List<LockFailure> Failed { get; } = new List<LockFailure>();
+    }
+
     public sealed class NipaSession : IDisposable
     {
         readonly Func<CancellationToken, Task<DaemonClient>> reconnect;
@@ -17,6 +38,10 @@ namespace Nipa.Editor.Core.Session
         readonly CancellationTokenSource cts = new CancellationTokenSource();
         Task watcher;
         Task poller;
+        Task activity;
+        LockStatusResponse lastLocks;
+        volatile LockPolicy locks = LockPolicy.Empty;
+        NipaSettings settings = new NipaSettings();
 
         public ProjectPaths Paths { get; }
         public StatusCache Cache { get; } = new StatusCache();
@@ -25,8 +50,14 @@ namespace Nipa.Editor.Core.Session
         public TimeSpan ReconnectDelay { get; set; } = TimeSpan.FromSeconds(2);
         public TimeSpan PollInterval { get; set; } = TimeSpan.Zero;
 
+        public LockPolicy Locks => locks;
+        public int Incoming { get; private set; }
+        public int ReviewRequests { get; private set; }
+
         public event Action<Exception> WatchFailed;
         public event Action Healthy;
+        public event Action LocksChanged;
+        public event Action<RepoActivity> Activity;
 
         public NipaSession(DaemonClient client, ProjectPaths paths,
             Func<CancellationToken, Task<DaemonClient>> reconnect = null)
@@ -40,6 +71,7 @@ namespace Nipa.Editor.Core.Session
         {
             await WatchRepoAsync(ct).ConfigureAwait(false);
             watcher = Task.Run(() => WatchLoopAsync(cts.Token));
+            activity = Task.Run(() => ActivityLoopAsync(cts.Token));
             if (PollInterval > TimeSpan.Zero)
                 poller = Task.Run(() => PollLoopAsync(cts.Token));
         }
@@ -50,6 +82,184 @@ namespace Nipa.Editor.Core.Session
                 "WatchRepo", new WatchRepoRequest { Root = Root }, ct).ConfigureAwait(false);
             Repo = watched.Repo;
             await RefreshAsync(ct).ConfigureAwait(false);
+            await TryRefreshLocksAsync(ct).ConfigureAwait(false);
+        }
+
+        public void ApplySettings(NipaSettings next)
+        {
+            settings = next ?? new NipaSettings();
+            LockStatusResponse last;
+            lock (gate)
+                last = lastLocks;
+            if (last != null)
+                SetLocks(last);
+        }
+
+        void SetLocks(LockStatusResponse status)
+        {
+            lock (gate)
+                lastLocks = status;
+            locks = new LockPolicy(status, settings.LockStrict, settings.LockExtensions);
+            LocksChanged?.Invoke();
+        }
+
+        public async Task RefreshLocksAsync(CancellationToken ct = default)
+        {
+            var status = await Call<LockStatusRequest, LockStatusResponse>(
+                "LockStatus", new LockStatusRequest { Root = Root }, ct).ConfigureAwait(false);
+            SetLocks(status);
+        }
+
+        async Task TryRefreshLocksAsync(CancellationToken ct)
+        {
+            try
+            {
+                await RefreshLocksAsync(ct).ConfigureAwait(false);
+            }
+            catch (Exception e) when (!(e is OperationCanceledException))
+            {
+                WatchFailed?.Invoke(e);
+            }
+        }
+
+        public async Task<LockResult> LockAsync(IEnumerable<string> clonePaths, CancellationToken ct = default)
+        {
+            var result = new LockResult();
+            try
+            {
+                foreach (var asset in Assets(clonePaths))
+                {
+                    if (locks.Lookup(asset).State == LockState.Theirs)
+                    {
+                        result.Failed.Add(new LockFailure(asset, "locked by someone else"));
+                        continue;
+                    }
+                    var failed = false;
+                    foreach (var p in ProjectPaths.Pair(asset))
+                    {
+                        if (locks.HeldByMe(p))
+                            continue;
+                        try
+                        {
+                            await Call<ProxyLockFileRequest, ProxyLockFileResponse>("ProxyLockFile",
+                                new ProxyLockFileRequest { Root = Root, Request = new LockFileRequest { Path = p, Branch = locks.LockBranch } },
+                                ct).ConfigureAwait(false);
+                        }
+                        catch (DaemonException e)
+                        {
+                            result.Failed.Add(new LockFailure(asset, e.Message));
+                            failed = true;
+                            break;
+                        }
+                    }
+                    if (!failed)
+                        result.Locked.Add(asset);
+                }
+            }
+            finally
+            {
+                await TryRefreshLocksAsync(CancellationToken.None).ConfigureAwait(false);
+            }
+            for (var i = 0; i < result.Failed.Count; i++)
+            {
+                var info = locks.Lookup(result.Failed[i].Path);
+                if (info.State == LockState.Theirs)
+                    result.Failed[i] = new LockFailure(result.Failed[i].Path, result.Failed[i].Message, info.Holder);
+            }
+            return result;
+        }
+
+        public async Task UnlockAsync(IEnumerable<string> clonePaths, CancellationToken ct = default)
+        {
+            try
+            {
+                foreach (var asset in Assets(clonePaths))
+                {
+                    foreach (var l in locks.Mine.Where(l => ProjectPaths.AssetOf(Trim(l.Path)) == asset).ToList())
+                        await ReleaseOneAsync(l, ct).ConfigureAwait(false);
+                }
+            }
+            finally
+            {
+                await TryRefreshLocksAsync(CancellationToken.None).ConfigureAwait(false);
+            }
+        }
+
+        public async Task ReleaseAsync(FileLockDetail l, CancellationToken ct = default)
+        {
+            var asset = ProjectPaths.AssetOf(Trim(l.Path));
+            var pair = locks.Locks.Where(x => locks.InScope(x) && locks.CanRelease(x) && ProjectPaths.AssetOf(Trim(x.Path)) == asset).ToList();
+            if (!pair.Contains(l))
+                pair.Add(l);
+            try
+            {
+                foreach (var x in pair)
+                    await ReleaseOneAsync(x, ct).ConfigureAwait(false);
+            }
+            finally
+            {
+                await TryRefreshLocksAsync(CancellationToken.None).ConfigureAwait(false);
+            }
+        }
+
+        async Task ReleaseOneAsync(FileLockDetail l, CancellationToken ct)
+        {
+            try
+            {
+                await Call<ProxyUnlockFileRequest, ProxyUnlockFileResponse>("ProxyUnlockFile",
+                    new ProxyUnlockFileRequest { Root = Root, Request = new UnlockFileRequest { Path = l.Path, Branch = l.Global ? string.Empty : l.Branch } },
+                    ct).ConfigureAwait(false);
+            }
+            catch (DaemonException e) when (e.Code == 404)
+            {
+            }
+        }
+
+        public async Task<PushCheck> CheckPushAsync(CancellationToken ct = default)
+        {
+            await RefreshLocksAsync(ct).ConfigureAwait(false);
+            return locks.CheckPush();
+        }
+
+        public bool IsOpenForEdit(string clonePath, out string message)
+        {
+            var state = Cache.Get(ProjectPaths.AssetOf(clonePath));
+            var isNew = (state & (FileState.Untracked | FileState.Added)) != 0;
+            return locks.IsOpenForEdit(clonePath, isNew, out message);
+        }
+
+        public List<string> WritablePaths(IEnumerable<string> clonePaths, out List<string> rejected)
+        {
+            var allowed = new List<string>();
+            rejected = new List<string>();
+            foreach (var p in clonePaths)
+            {
+                if (IsOpenForEdit(p, out var message))
+                    allowed.Add(p);
+                else if (locks.Lookup(p).State == LockState.Theirs)
+                    rejected.Add(message);
+                else
+                    allowed.Add(p);
+            }
+            return allowed;
+        }
+
+        static List<string> Assets(IEnumerable<string> clonePaths)
+        {
+            var seen = new HashSet<string>();
+            var result = new List<string>();
+            foreach (var raw in clonePaths)
+            {
+                var p = ProjectPaths.AssetOf(Trim(raw));
+                if (p.Length > 0 && seen.Add(p))
+                    result.Add(p);
+            }
+            return result;
+        }
+
+        static string Trim(string p)
+        {
+            return ProjectPaths.Normalize(p).Trim('/');
         }
 
         async Task ReconnectAsync(CancellationToken ct)
@@ -201,6 +411,7 @@ namespace Nipa.Editor.Core.Session
                 Release(l);
             }
             await RefreshAsync(ct).ConfigureAwait(false);
+            await TryRefreshLocksAsync(ct).ConfigureAwait(false);
             return result;
         }
 
@@ -248,6 +459,52 @@ namespace Nipa.Editor.Core.Session
             }
         }
 
+        async Task ActivityLoopAsync(CancellationToken ct)
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                try
+                {
+                    var l = Acquire();
+                    try
+                    {
+                        var req = new WatchEventsRequest { Root = Root, IntervalSeconds = (int)PollInterval.TotalSeconds };
+                        await foreach (var a in l.Client.StreamAsync<WatchEventsRequest, RepoActivity>("WatchEvents", req, ct).ConfigureAwait(false))
+                            await OnActivityAsync(a, ct).ConfigureAwait(false);
+                    }
+                    finally
+                    {
+                        Release(l);
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+                catch (Exception e)
+                {
+                    WatchFailed?.Invoke(e);
+                }
+                try
+                {
+                    await Task.Delay(ReconnectDelay, ct).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+            }
+        }
+
+        async Task OnActivityAsync(RepoActivity a, CancellationToken ct)
+        {
+            Incoming = a.Incoming;
+            ReviewRequests = a.ReviewRequests;
+            if (a.Events != null && a.Events.Any(e => e.Kind == "lock_released"))
+                await TryRefreshLocksAsync(ct).ConfigureAwait(false);
+            Activity?.Invoke(a);
+        }
+
         async Task PollLoopAsync(CancellationToken ct)
         {
             while (!ct.IsCancellationRequested)
@@ -256,6 +513,7 @@ namespace Nipa.Editor.Core.Session
                 {
                     await Task.Delay(PollInterval, ct).ConfigureAwait(false);
                     await RefreshAsync(ct).ConfigureAwait(false);
+                    await TryRefreshLocksAsync(ct).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException)
                 {
@@ -273,7 +531,7 @@ namespace Nipa.Editor.Core.Session
             cts.Cancel();
             try
             {
-                Task.WaitAll(new[] { watcher, poller }.Where(t => t != null).ToArray(), TimeSpan.FromSeconds(2));
+                Task.WaitAll(new[] { watcher, poller, activity }.Where(t => t != null).ToArray(), TimeSpan.FromSeconds(2));
             }
             catch (AggregateException)
             {

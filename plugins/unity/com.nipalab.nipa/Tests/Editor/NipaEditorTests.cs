@@ -62,5 +62,30 @@ namespace Nipa.Editor.Tests
             Assert.That(w, Is.Not.Null);
             w.Close();
         }
+
+        static object Call(string method, params object[] args)
+        {
+            var m = typeof(NipaAssetProcessor).GetMethods(System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)
+                .FirstOrDefault(x => x.Name == method && x.GetParameters().Length == args.Length);
+            Assert.That(m, Is.Not.Null, method);
+            return m.Invoke(null, args);
+        }
+
+        [Test]
+        public void AssetProcessorAllowsEverythingWithoutSession()
+        {
+            var args = new object[] { "Assets/a.prefab", null };
+            Assert.That((bool)Call("IsOpenForEdit", args), Is.True);
+            Assert.That((bool)Call("MakeEditable", new object[] { new[] { "Assets/a.prefab" } }), Is.True);
+            var notEditable = new System.Collections.Generic.List<string>();
+            Assert.That((bool)Call("MakeEditable", new object[] { new[] { "Assets/a.prefab" }, "", notEditable }), Is.True);
+            Assert.That((bool)Call("CanOpenForEdit", new object[] { new[] { "Assets/a.prefab" }, notEditable, StatusQueryOptions.UseCachedIfPossible }), Is.True);
+            Assert.That((bool)Call("IsOpenForEdit", new object[] { "Assets/a.prefab", null, StatusQueryOptions.UseCachedIfPossible }), Is.True);
+            Assert.That(notEditable, Is.Empty);
+            var paths = new[] { "Assets/a.prefab" };
+            Assert.That((string[])Call("OnWillSaveAssets", new object[] { paths }), Is.EqualTo(paths));
+            Assert.That(Call("OnWillMoveAsset", "Assets/a", "Assets/b"), Is.EqualTo(AssetMoveResult.DidNotMove));
+            Assert.That(Call("OnWillDeleteAsset", "Assets/a", RemoveAssetOptions.MoveAssetToTrash), Is.EqualTo(AssetDeleteResult.DidNotDelete));
+        }
     }
 }

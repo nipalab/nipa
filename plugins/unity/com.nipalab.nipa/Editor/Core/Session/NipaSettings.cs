@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using Newtonsoft.Json;
 
@@ -7,6 +8,8 @@ namespace Nipa.Editor.Core.Session
     public sealed class NipaSettings
     {
         public int PollIntervalSeconds { get; set; } = 60;
+        public bool LockStrict { get; set; }
+        public List<string> LockExtensions { get; set; } = new List<string>(Locks.LockPolicy.DefaultExtensions);
 
         public static NipaSettings Load(string path)
         {
@@ -33,6 +36,8 @@ namespace Nipa.Editor.Core.Session
                 s.PollIntervalSeconds = 15;
             if (s.PollIntervalSeconds > 3600)
                 s.PollIntervalSeconds = 3600;
+            if (s.LockExtensions == null)
+                s.LockExtensions = new List<string>(Locks.LockPolicy.DefaultExtensions);
             return s;
         }
     }
