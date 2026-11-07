@@ -8,6 +8,7 @@ import (
 
 	sqlcPostgres "github.com/nipalab/nipa/ee/repository/postgres/sqlc"
 	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/repository/dbtx"
 	"github.com/nipalab/nipa/internal/snow"
 )
 
@@ -15,12 +16,12 @@ import (
 // that tracks every attempt, so failed deliveries survive a restart and can be
 // replayed.
 type WebhookRepository struct {
-	db      *sql.DB
+	tx      *dbtx.Transactor
 	queries *sqlcPostgres.Queries
 }
 
 func NewWebhookRepository(db *sql.DB) *WebhookRepository {
-	return &WebhookRepository{db: db, queries: sqlcPostgres.New(db)}
+	return &WebhookRepository{tx: dbtx.NewTransactor(db), queries: sqlcPostgres.New(dbtx.New(db))}
 }
 
 func (r *WebhookRepository) Create(ctx context.Context, webhook domain.Webhook) (*domain.Webhook, error) {
@@ -108,27 +109,23 @@ func (r *WebhookRepository) RotateSecret(ctx context.Context, projectID, id snow
 }
 
 func (r *WebhookRepository) Delete(ctx context.Context, projectID, id snow.ID) error {
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return handleError(err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	q := sqlcPostgres.New(tx)
-	if _, err := q.WebhookDeliveryDeleteByWebhook(ctx, id.Int64()); err != nil {
-		return handleError(err)
-	}
-	rows, err := q.WebhookDelete(ctx, sqlcPostgres.WebhookDeleteParams{
-		ProjectID: projectID.Int64(),
-		ID:        id.Int64(),
+	return r.tx.WithinTx(ctx, func(ctx context.Context) error {
+		q := r.queries
+		if _, err := q.WebhookDeliveryDeleteByWebhook(ctx, id.Int64()); err != nil {
+			return handleError(err)
+		}
+		rows, err := q.WebhookDelete(ctx, sqlcPostgres.WebhookDeleteParams{
+			ProjectID: projectID.Int64(),
+			ID:        id.Int64(),
+		})
+		if err != nil {
+			return handleError(err)
+		}
+		if rows == 0 {
+			return domain.NewErrorRecordNotFound()
+		}
+		return nil
 	})
-	if err != nil {
-		return handleError(err)
-	}
-	if rows == 0 {
-		return domain.NewErrorRecordNotFound()
-	}
-	return handleError(tx.Commit())
 }
 
 func (r *WebhookRepository) CreateDelivery(ctx context.Context, delivery domain.WebhookDelivery) (*domain.WebhookDelivery, error) {

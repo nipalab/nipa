@@ -131,6 +131,7 @@ type handlerRegistry struct {
 	fileLock      *usecase.FileLock
 	webhook       *usecase.Webhook
 	emailDelivery *usecase.EmailDelivery
+	audit         *usecase.Audit
 }
 
 func (r *handlerRegistry) Auth() *usecase.Auth             { return r.auth }
@@ -160,6 +161,7 @@ func (r *handlerRegistry) FileLock() *usecase.FileLock { return r.fileLock }
 func (r *handlerRegistry) Webhook() *usecase.Webhook { return r.webhook }
 
 func (r *handlerRegistry) EmailDelivery() *usecase.EmailDelivery { return r.emailDelivery }
+func (r *handlerRegistry) Audit() *usecase.Audit                 { return r.audit }
 
 type stubPasswordHasher struct{}
 

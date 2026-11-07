@@ -41,20 +41,21 @@ func BuildUsecases(repos usecase.Repositories, deps UsecaseDeps) Usecases {
 	node := deps.Snow
 	transactor := dbtx.NewTransactor(deps.DB)
 
+	auditUsecase := usecase.NewAudit(repos.Audit, node, transactor).WithProjectOrgs(repos.PBAC)
 	authUsecase := usecase.NewAuth(cfg.JWTKey, deps.Hasher, repos.User, repos.Auth).WithSSHKeys(repos.SSHKey).WithLimiter(deps.RateLimiter)
-	orgUsecase := usecase.NewOrg(repos.Org, node)
-	permissionUsecase := usecase.NewPermission(repos.PBAC, repos.User, repos.Group, orgUsecase)
+	orgUsecase := usecase.NewOrg(repos.Org, node).WithAudit(auditUsecase)
+	permissionUsecase := usecase.NewPermission(repos.PBAC, repos.User, repos.Group, orgUsecase).WithAudit(auditUsecase)
 	orgUsecase.WithPermissionCache(permissionUsecase)
-	groupUsecase := usecase.NewGroup(repos.Group, node, permissionUsecase, orgUsecase)
+	groupUsecase := usecase.NewGroup(repos.Group, node, permissionUsecase, orgUsecase).WithAudit(auditUsecase)
 	if deps.SeatGate != nil {
 		orgUsecase.WithSeatGate(deps.SeatGate)
 		groupUsecase.WithSeatGate(deps.SeatGate)
 		permissionUsecase.WithSeatGate(deps.SeatGate)
 	}
-	projectUsecase := usecase.NewProject(repos.Project, node, permissionUsecase, orgUsecase)
+	projectUsecase := usecase.NewProject(repos.Project, node, permissionUsecase, orgUsecase).WithAudit(auditUsecase)
 
-	branchUsecase := usecase.NewBranchWithChunks(permissionUsecase, repos.Branch, node, deps.ChunkStore).WithUsers(repos.User)
-	fileLockUsecase := usecase.NewFileLock(repos.FileLock, repos.Branch, permissionUsecase, node)
+	branchUsecase := usecase.NewBranchWithChunks(permissionUsecase, repos.Branch, node, deps.ChunkStore).WithUsers(repos.User).WithAudit(auditUsecase)
+	fileLockUsecase := usecase.NewFileLock(repos.FileLock, repos.Branch, permissionUsecase, node).WithAudit(auditUsecase)
 	if repos.FileLockSerializer != nil {
 		fileLockUsecase = fileLockUsecase.WithSerializer(transactor, repos.FileLockSerializer)
 	}
@@ -84,7 +85,7 @@ func BuildUsecases(repos usecase.Repositories, deps UsecaseDeps) Usecases {
 	}
 	branchUsecase = branchUsecase.WithMergeCommitter(repos.Push).WithChunkUploader(chunkUsecase)
 
-	webhookUsecase := usecase.NewWebhook(repos.Webhook, permissionUsecase, repos.User, deps.WebhookDispatcher, node)
+	webhookUsecase := usecase.NewWebhook(repos.Webhook, permissionUsecase, repos.User, deps.WebhookDispatcher, node).WithAudit(auditUsecase)
 	hookEmitter := usecase.NewHookEmitter(repos.Webhook, repos.Project, repos.Org, repos.Branch, repos.User, deps.WebhookDispatcher)
 	emailDeliveryUsecase := usecase.NewEmailDelivery(repos.Email, permissionUsecase)
 	if deps.EmailDispatcher != nil {
@@ -106,7 +107,7 @@ func BuildUsecases(repos usecase.Repositories, deps UsecaseDeps) Usecases {
 
 	return Usecases{
 		Auth:               authUsecase,
-		User:               usecase.NewUser(node, repos.User, deps.Hasher),
+		User:               usecase.NewUser(node, repos.User, deps.Hasher).WithAudit(auditUsecase),
 		SSHKey:             usecase.NewSSHKey(node, repos.SSHKey),
 		Common:             usecase.NewCommon(repos.Org, repos.Project),
 		Branch:             branchUsecase,
@@ -123,5 +124,6 @@ func BuildUsecases(repos usecase.Repositories, deps UsecaseDeps) Usecases {
 		FileLock:           fileLockUsecase,
 		Webhook:            webhookUsecase,
 		EmailDelivery:      emailDeliveryUsecase,
+		Audit:              auditUsecase,
 	}
 }

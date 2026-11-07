@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/netip"
 	"strings"
 
 	"github.com/emicklei/go-restful/v3"
 	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/http/model"
+	"github.com/nipalab/nipa/internal/ratelimit"
 )
 
 const (
@@ -22,12 +24,20 @@ type tokenValidator interface {
 
 type AuthFilter struct {
 	tokenValidator tokenValidator
+	proxies        []netip.Prefix
 }
 
 func NewAuthFilter(tv tokenValidator) *AuthFilter {
 	return &AuthFilter{
 		tokenValidator: tv,
 	}
+}
+
+// WithTrustedProxies sets the proxies whose X-Forwarded-For is honoured for
+// the client IP attached to the request.
+func (f *AuthFilter) WithTrustedProxies(proxies []netip.Prefix) *AuthFilter {
+	f.proxies = proxies
+	return f
 }
 
 func (f *AuthFilter) Auth() restful.FilterFunction {
@@ -43,6 +53,7 @@ func (f *AuthFilter) Auth() restful.FilterFunction {
 			return
 		}
 		ctx := domain.ContextWithClaim(req.Request.Context(), *claim)
+		ctx = domain.ContextWithRequestMeta(ctx, RequestMeta(req.Request, f.proxies))
 		req.Request = req.Request.WithContext(ctx)
 		req.SetAttribute(AttributeClaims, claim)
 		req.SetAttribute(AttributeToken, tokenString)
@@ -60,4 +71,12 @@ func (f *AuthFilter) getToken(req *restful.Request) (string, error) {
 		return "", errors.New("auth token wrong format")
 	}
 	return tokens[1], nil
+}
+
+// RequestMeta resolves the caller's client IP and user agent.
+func RequestMeta(r *http.Request, proxies []netip.Prefix) domain.RequestMeta {
+	return domain.RequestMeta{
+		ClientIP:  ratelimit.ClientIP(r.RemoteAddr, r.Header.Get("X-Forwarded-For"), proxies),
+		UserAgent: r.UserAgent(),
+	}
 }

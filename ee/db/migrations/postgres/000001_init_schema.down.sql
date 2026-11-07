@@ -1,3 +1,4 @@
+DROP TABLE IF EXISTS audit_log;
 DROP TABLE IF EXISTS email_deliveries;
 DROP TABLE IF EXISTS oauth_login_codes;
 DROP TABLE IF EXISTS user_identities;

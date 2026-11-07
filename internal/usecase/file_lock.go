@@ -44,6 +44,7 @@ type FileLock struct {
 	branchRepo branchRepository
 	perm       permissionUsecase
 	snowNode   snow.Node
+	audit      AuditRecorder
 
 	// acquireMu serializes overlap check + insert. The unique indexes only
 	// catch identical (project, branch, path) rows, so distinct-but-overlapping
@@ -59,6 +60,12 @@ func NewFileLock(repo fileLockRepository, branchRepo branchRepository, perm perm
 		perm:       perm,
 		snowNode:   snowNode,
 	}
+}
+
+// WithAudit records locks released by someone other than their holder.
+func (f *FileLock) WithAudit(rec AuditRecorder) *FileLock {
+	f.audit = rec
+	return f
 }
 
 // WithSerializer makes Acquire run its overlap check and insert inside one
@@ -186,10 +193,24 @@ func (f *FileLock) Release(ctx context.Context, projectID snow.ID, branchName, p
 	if err != nil {
 		return err
 	}
-	if lock.HeldBy != claim.UserID && !f.perm.AdminHasProject(ctx, projectID) {
+	if lock.HeldBy == claim.UserID {
+		return f.repo.Delete(ctx, lock.ID)
+	}
+	if !f.perm.AdminHasProject(ctx, projectID) {
 		return domain.NewErrorNoPermission()
 	}
-	return f.repo.Delete(ctx, lock.ID)
+	return auditedWrite(ctx, f.audit, func(ctx context.Context) error {
+		return f.repo.Delete(ctx, lock.ID)
+	}, func() *domain.AuditEntry {
+		metadata := map[string]any{
+			"path":      lock.Path,
+			"holder_id": lock.HeldBy,
+		}
+		if scope.branchID != nil {
+			metadata["branch"] = scope.branchName
+		}
+		return projectAudit(domain.AuditLockForceReleased, projectID, domain.AuditTargetLock, lock.ID.Base36(), metadata)
+	})
 }
 
 func (f *FileLock) List(ctx context.Context, projectID snow.ID) ([]*domain.FileLock, error) {

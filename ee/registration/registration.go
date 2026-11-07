@@ -80,6 +80,7 @@ type Registration struct {
 	tx     transactor
 	outbox outbox
 	kick   dispatcherKicker
+	audit  usecase.AuditRecorder
 	cfg    Config
 	now    func() time.Time
 }
@@ -96,6 +97,12 @@ func New(node snow.Node, hasher passwordHasher, users userRepository, repo onboa
 		cfg:    cfg,
 		now:    time.Now,
 	}
+}
+
+// WithAudit records the accounts created by self-registration.
+func (r *Registration) WithAudit(rec usecase.AuditRecorder) *Registration {
+	r.audit = rec
+	return r
 }
 
 // WithMailer enables verification emails through the durable outbox; the
@@ -137,6 +144,9 @@ func (r *Registration) Register(ctx context.Context, name, email string) error {
 			Email: email,
 		})
 		if err != nil {
+			return err
+		}
+		if err := recordSignup(ctx, r.audit, user, "registration"); err != nil {
 			return err
 		}
 		if err := r.repo.DeleteExpiredEmailVerifications(ctx, now); err != nil {
@@ -331,4 +341,13 @@ func hashToken(token string) string {
 
 func errInvalidVerification() error {
 	return domain.NewErrorNotFound("invalid or expired verification link")
+}
+
+func recordSignup(ctx context.Context, rec usecase.AuditRecorder, user *domain.User, source string) error {
+	if rec == nil {
+		return nil
+	}
+	entry := usecase.UserCreatedAudit(user, source)
+	entry.ActorType = domain.AuditActorSystem
+	return rec.Record(ctx, entry)
 }

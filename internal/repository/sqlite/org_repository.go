@@ -5,49 +5,44 @@ import (
 	"database/sql"
 
 	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/repository/dbtx"
 	sqlcSqlite "github.com/nipalab/nipa/internal/repository/sqlc/sqlite"
 	"github.com/nipalab/nipa/internal/snow"
 )
 
 type OrgRepository struct {
-	db      *sql.DB
+	tx      *dbtx.Transactor
 	queries *sqlcSqlite.Queries
 }
 
 func NewOrgRepository(db *sql.DB) *OrgRepository {
 	return &OrgRepository{
-		db:      db,
-		queries: sqlcSqlite.New(db),
+		tx:      dbtx.NewTransactor(db),
+		queries: sqlcSqlite.New(dbtx.New(db)),
 	}
 }
 
 func (r *OrgRepository) CreateWithOwner(ctx context.Context, org domain.Organization, ownerID snow.ID) (*domain.Organization, error) {
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, handleError(err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	q := sqlcSqlite.New(tx)
-	row, err := q.CreateOrganization(ctx, sqlcSqlite.CreateOrganizationParams{
-		ID:              org.ID.Int64(),
-		Name:            org.Name,
-		Slug:            org.Slug,
-		CreatedByUserID: ownerID.Int64(),
+	var row sqlcSqlite.Organization
+	err := r.tx.WithinTx(ctx, func(ctx context.Context) error {
+		var err error
+		row, err = r.queries.CreateOrganization(ctx, sqlcSqlite.CreateOrganizationParams{
+			ID:              org.ID.Int64(),
+			Name:            org.Name,
+			Slug:            org.Slug,
+			CreatedByUserID: ownerID.Int64(),
+		})
+		if err != nil {
+			return handleError(err)
+		}
+		return handleError(r.queries.OrgMemberUpsert(ctx, sqlcSqlite.OrgMemberUpsertParams{
+			OrgID:  org.ID.Int64(),
+			UserID: ownerID.Int64(),
+			Role:   domain.OrgRoleOwner,
+		}))
 	})
 	if err != nil {
-		return nil, handleError(err)
-	}
-	err = q.OrgMemberUpsert(ctx, sqlcSqlite.OrgMemberUpsertParams{
-		OrgID:  org.ID.Int64(),
-		UserID: ownerID.Int64(),
-		Role:   domain.OrgRoleOwner,
-	})
-	if err != nil {
-		return nil, handleError(err)
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, handleError(err)
+		return nil, err
 	}
 	return toDomainOrganization(row), nil
 }
@@ -136,32 +131,28 @@ func (r *OrgRepository) UpsertMember(ctx context.Context, orgID, userID snow.ID,
 }
 
 func (r *OrgRepository) RemoveMember(ctx context.Context, orgID, userID snow.ID) error {
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return handleError(err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	q := sqlcSqlite.New(tx)
-	if err := q.OrgMemberDelete(ctx, sqlcSqlite.OrgMemberDeleteParams{
-		OrgID:  orgID.Int64(),
-		UserID: userID.Int64(),
-	}); err != nil {
-		return handleError(err)
-	}
-	if err := q.PBACRuleDeleteByUserOrg(ctx, sqlcSqlite.PBACRuleDeleteByUserOrgParams{
-		UserID: sql.NullInt64{Int64: userID.Int64(), Valid: true},
-		OrgID:  orgID.Int64(),
-	}); err != nil {
-		return handleError(err)
-	}
-	if err := q.GroupMemberDeleteByUserOrg(ctx, sqlcSqlite.GroupMemberDeleteByUserOrgParams{
-		UserID: userID.Int64(),
-		OrgID:  orgID.Int64(),
-	}); err != nil {
-		return handleError(err)
-	}
-	return handleError(tx.Commit())
+	return r.tx.WithinTx(ctx, func(ctx context.Context) error {
+		q := r.queries
+		if err := q.OrgMemberDelete(ctx, sqlcSqlite.OrgMemberDeleteParams{
+			OrgID:  orgID.Int64(),
+			UserID: userID.Int64(),
+		}); err != nil {
+			return handleError(err)
+		}
+		if err := q.PBACRuleDeleteByUserOrg(ctx, sqlcSqlite.PBACRuleDeleteByUserOrgParams{
+			UserID: sql.NullInt64{Int64: userID.Int64(), Valid: true},
+			OrgID:  orgID.Int64(),
+		}); err != nil {
+			return handleError(err)
+		}
+		if err := q.GroupMemberDeleteByUserOrg(ctx, sqlcSqlite.GroupMemberDeleteByUserOrgParams{
+			UserID: userID.Int64(),
+			OrgID:  orgID.Int64(),
+		}); err != nil {
+			return handleError(err)
+		}
+		return nil
+	})
 }
 
 func (r *OrgRepository) CountMembersByRole(ctx context.Context, orgID snow.ID, role string) (int, error) {

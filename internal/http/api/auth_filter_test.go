@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"testing"
 
 	"github.com/emicklei/go-restful/v3"
@@ -101,4 +102,31 @@ func TestAuthFilter_ValidTokenSetsAttributesAndContinuesChain(t *testing.T) {
 	require.NotNil(t, gotContextClaims, "usecases read claims from the request context")
 	require.Equal(t, snow.ID(42), gotContextClaims.UserID)
 	require.Equal(t, http.StatusOK, resp.StatusCode())
+}
+
+func TestAuthFilter_RequestMeta(t *testing.T) {
+	proxies := []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")}
+	filter := NewAuthFilter(&stubTokenValidator{claims: &domain.Claims{UserID: 1}}).WithTrustedProxies(proxies).Auth()
+
+	meta := func(remote string) domain.RequestMeta {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodGet, "/protected", nil)
+		req.RemoteAddr = remote
+		req.Header.Set("Authorization", "Bearer valid-token")
+		req.Header.Set("X-Forwarded-For", "203.0.113.9")
+		req.Header.Set("User-Agent", "nipa-web/2")
+		var got domain.RequestMeta
+		chain := &restful.FilterChain{Filters: []restful.FilterFunction{
+			func(r *restful.Request, _ *restful.Response, _ *restful.FilterChain) {
+				got, _ = domain.RequestMetaFromContext(r.Request.Context())
+			},
+		}}
+		filter(restful.NewRequest(req), restful.NewResponse(httptest.NewRecorder()), chain)
+		return got
+	}
+
+	trusted := meta("10.1.2.3:5000")
+	require.Equal(t, "203.0.113.9", trusted.ClientIP)
+	require.Equal(t, "nipa-web/2", trusted.UserAgent)
+	require.Equal(t, "192.0.2.4", meta("192.0.2.4:5000").ClientIP, "an untrusted peer's forwarded header is ignored")
 }

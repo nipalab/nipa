@@ -50,6 +50,7 @@ type runOptions struct {
 	logs         *obs.Logs
 	metricsPush  *obs.MetricsPush
 	rateLimit    *api.RateLimit
+	proxies      []netip.Prefix
 	routes       []func(*restful.WebService)
 	publicRoutes []func(*restful.WebService)
 	webServices  []*restful.WebService
@@ -97,9 +98,11 @@ func WithMetricsPush(metricsPush *obs.MetricsPush) Option {
 }
 
 // WithRateLimit throttles HTTP and gRPC traffic. Run closes the limiter's
-// store on shutdown. A nil limiter disables throttling.
+// store on shutdown. A nil limiter disables throttling; the trusted proxies
+// still resolve the client IP recorded in the audit log.
 func WithRateLimit(limiter *ratelimit.Limiter, proxies []netip.Prefix) Option {
 	return func(o *runOptions) {
+		o.proxies = proxies
 		if limiter != nil {
 			o.rateLimit = &api.RateLimit{Limiter: limiter, Proxies: proxies}
 		}
@@ -159,7 +162,7 @@ func run(cfg *config.Config, reg *Registry, dispatchers []Dispatcher, signals <-
 		opt(&ro)
 	}
 
-	apiOpts := []api.Option{api.WithMetrics(ro.metrics), api.WithRateLimit(ro.rateLimit)}
+	apiOpts := []api.Option{api.WithMetrics(ro.metrics), api.WithRateLimit(ro.rateLimit), api.WithTrustedProxies(ro.proxies)}
 	for _, register := range ro.routes {
 		apiOpts = append(apiOpts, api.WithRoutes(register))
 	}
@@ -183,7 +186,7 @@ func run(cfg *config.Config, reg *Registry, dispatchers []Dispatcher, signals <-
 		shutdownTimeout = time.Duration(cfg.ShutdownTimeoutSeconds) * time.Second
 	}
 
-	grpcInterceptor := grpcserver.NewInterceptor(reg.Auth())
+	grpcInterceptor := grpcserver.NewInterceptor(reg.Auth()).WithTrustedProxies(ro.proxies)
 
 	unaryInterceptors := []grpc.UnaryServerInterceptor{grpcserver.MetricsUnary(ro.metrics), grpcInterceptor.JWTUnary()}
 	streamInterceptors := []grpc.StreamServerInterceptor{grpcserver.MetricsStream(ro.metrics), grpcInterceptor.JWTStream()}

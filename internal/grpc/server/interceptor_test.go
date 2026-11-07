@@ -3,6 +3,8 @@ package server
 import (
 	"context"
 	"errors"
+	"net"
+	"net/netip"
 	"testing"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -10,6 +12,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 
 	"github.com/nipalab/nipa/internal/domain"
@@ -239,4 +242,42 @@ func TestStreamInterceptor_ValidToken(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, wantClaims.UserID, gotClaims.UserID)
 	require.True(t, gotClaims.IsAdmin)
+}
+
+func TestInterceptor_RequestMeta(t *testing.T) {
+	proxies := []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")}
+	interceptor := NewInterceptor(&mockTokenValidator{claims: &domain.Claims{UserID: 1}}).WithTrustedProxies(proxies)
+	info := &grpc.UnaryServerInfo{FullMethod: "/greet.NipaService/GetBranch"}
+
+	call := func(peerAddr string) domain.RequestMeta {
+		t.Helper()
+		ctx := peer.NewContext(context.Background(), &peer.Peer{Addr: &net.TCPAddr{IP: net.ParseIP(peerAddr), Port: 4000}})
+		ctx = metadata.NewIncomingContext(ctx, metadata.Pairs(
+			"authorization", "Bearer token", "x-forwarded-for", "203.0.113.9", "user-agent", "nipa-cli/1.0"))
+		var meta domain.RequestMeta
+		_, err := interceptor.JWTUnary()(ctx, nil, info, func(ctx context.Context, _ interface{}) (interface{}, error) {
+			var ok bool
+			meta, ok = domain.RequestMetaFromContext(ctx)
+			require.True(t, ok)
+			return nil, nil
+		})
+		require.NoError(t, err)
+		return meta
+	}
+
+	trusted := call("10.1.2.3")
+	require.Equal(t, "203.0.113.9", trusted.ClientIP)
+	require.Equal(t, "nipa-cli/1.0", trusted.UserAgent)
+	require.Equal(t, "192.0.2.4", call("192.0.2.4").ClientIP, "an untrusted peer's forwarded header is ignored")
+
+	ctx := peer.NewContext(context.Background(), &peer.Peer{Addr: &net.TCPAddr{IP: net.ParseIP("10.1.2.3"), Port: 4000}})
+	ctx = metadata.NewIncomingContext(ctx, metadata.Pairs("authorization", "Bearer token", "x-forwarded-for", "203.0.113.9"))
+	err := interceptor.JWTStream()(nil, &fakeServerStream{ctx: ctx}, &grpc.StreamServerInfo{FullMethod: "/greet.NipaService/Push"},
+		func(_ interface{}, ss grpc.ServerStream) error {
+			meta, ok := domain.RequestMetaFromContext(ss.Context())
+			require.True(t, ok)
+			require.Equal(t, "203.0.113.9", meta.ClientIP)
+			return nil
+		})
+	require.NoError(t, err)
 }

@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"net/netip"
 
 	"github.com/emicklei/go-restful/v3"
 	httpApp "github.com/nipalab/nipa/internal/http"
@@ -30,11 +31,13 @@ type usecaseContainer interface {
 	FileLock() *usecase.FileLock
 	Webhook() *usecase.Webhook
 	EmailDelivery() *usecase.EmailDelivery
+	Audit() *usecase.Audit
 }
 
 type API struct {
 	useCase      usecaseContainer
 	metrics      *obs.Metrics
+	proxies      []netip.Prefix
 	rateLimit    *RateLimit
 	routes       []func(*restful.WebService)
 	publicRoutes []func(*restful.WebService)
@@ -46,6 +49,7 @@ type Option func(*apiOptions)
 
 type apiOptions struct {
 	metrics      *obs.Metrics
+	proxies      []netip.Prefix
 	rateLimit    *RateLimit
 	routes       []func(*restful.WebService)
 	publicRoutes []func(*restful.WebService)
@@ -56,6 +60,14 @@ type apiOptions struct {
 func WithMetrics(metrics *obs.Metrics) Option {
 	return func(o *apiOptions) {
 		o.metrics = metrics
+	}
+}
+
+// WithTrustedProxies sets the proxies whose X-Forwarded-For is honoured for
+// the client IP recorded on audited requests.
+func WithTrustedProxies(proxies []netip.Prefix) Option {
+	return func(o *apiOptions) {
+		o.proxies = proxies
 	}
 }
 
@@ -103,6 +115,7 @@ func NewAPI(useCase usecaseContainer, opts ...Option) *API {
 	return &API{
 		useCase:      useCase,
 		metrics:      options.metrics,
+		proxies:      options.proxies,
 		rateLimit:    options.rateLimit,
 		routes:       options.routes,
 		publicRoutes: options.publicRoutes,
@@ -137,7 +150,7 @@ func (a *API) SetupRoute() http.Handler {
 	apiWs.Path("/api/v1").
 		Filter(cors.Filter).
 		Filter(sameOriginFilter).
-		Filter(NewAuthFilter(a.useCase.Auth()).Auth()).
+		Filter(NewAuthFilter(a.useCase.Auth()).WithTrustedProxies(a.proxies).Auth()).
 		Consumes(restful.MIME_JSON).
 		Produces(restful.MIME_JSON)
 	if a.rateLimit.active() {
@@ -156,6 +169,7 @@ func (a *API) SetupRoute() http.Handler {
 	setupPermissionRouter(apiWs, h)
 	setupWebhookRouter(apiWs, h)
 	setupEmailDeliveryRouter(apiWs, h)
+	setupAuditRouter(apiWs, h)
 	for _, register := range a.routes {
 		register(apiWs)
 	}

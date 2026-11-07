@@ -550,3 +550,38 @@ func TestCallbackKeepsCredentialsOfVerifiedAccount(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, env.repo.reset)
 }
+
+type recordedAudit struct {
+	entries []domain.AuditEntry
+	err     error
+}
+
+func (r *recordedAudit) Record(_ context.Context, entry domain.AuditEntry) error {
+	if r.err != nil {
+		return r.err
+	}
+	r.entries = append(r.entries, entry)
+	return nil
+}
+
+func TestCallbackRecordsASystemAuditForNewAccounts(t *testing.T) {
+	for _, recErr := range []error{nil, errors.New("audit down")} {
+		env := newOAuthEnv(t)
+		rec := &recordedAudit{err: recErr}
+		env.oauth.WithAudit(rec)
+		env.provider.profile = &Profile{AccountID: "1001", Email: "alice@example.com", EmailVerified: true, Name: "Alice"}
+		state, err := env.oauth.states.Sign("/oauth/callback", 0, testBinding)
+		require.NoError(t, err)
+
+		_, err = env.oauth.Callback(context.Background(), ProviderGitHub, "code", state, testBinding)
+		if recErr != nil {
+			require.Error(t, err)
+			continue
+		}
+		require.NoError(t, err)
+		require.Len(t, rec.entries, 1)
+		require.Equal(t, domain.AuditUserCreated, rec.entries[0].Action)
+		require.Equal(t, domain.AuditActorSystem, rec.entries[0].ActorType)
+		require.Equal(t, "oauth:"+ProviderGitHub, rec.entries[0].Metadata["source"])
+	}
+}

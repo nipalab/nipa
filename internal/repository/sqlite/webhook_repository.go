@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/repository/dbtx"
 	sqlcSqlite "github.com/nipalab/nipa/internal/repository/sqlc/sqlite"
 	"github.com/nipalab/nipa/internal/snow"
 )
@@ -15,12 +16,12 @@ import (
 // that tracks every attempt, so failed deliveries survive a restart and can be
 // replayed.
 type WebhookRepository struct {
-	db      *sql.DB
+	tx      *dbtx.Transactor
 	queries *sqlcSqlite.Queries
 }
 
 func NewWebhookRepository(db *sql.DB) *WebhookRepository {
-	return &WebhookRepository{db: db, queries: sqlcSqlite.New(db)}
+	return &WebhookRepository{tx: dbtx.NewTransactor(db), queries: sqlcSqlite.New(dbtx.New(db))}
 }
 
 func (r *WebhookRepository) Create(ctx context.Context, webhook domain.Webhook) (*domain.Webhook, error) {
@@ -110,27 +111,23 @@ func (r *WebhookRepository) RotateSecret(ctx context.Context, projectID, id snow
 // Delete removes the webhook and its delivery log. The log is dropped first
 // because the server's SQLite connections do not enforce foreign keys.
 func (r *WebhookRepository) Delete(ctx context.Context, projectID, id snow.ID) error {
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return handleError(err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	q := sqlcSqlite.New(tx)
-	if _, err := q.WebhookDeliveryDeleteByWebhook(ctx, id.Int64()); err != nil {
-		return handleError(err)
-	}
-	rows, err := q.WebhookDelete(ctx, sqlcSqlite.WebhookDeleteParams{
-		ProjectID: projectID.Int64(),
-		ID:        id.Int64(),
+	return r.tx.WithinTx(ctx, func(ctx context.Context) error {
+		q := r.queries
+		if _, err := q.WebhookDeliveryDeleteByWebhook(ctx, id.Int64()); err != nil {
+			return handleError(err)
+		}
+		rows, err := q.WebhookDelete(ctx, sqlcSqlite.WebhookDeleteParams{
+			ProjectID: projectID.Int64(),
+			ID:        id.Int64(),
+		})
+		if err != nil {
+			return handleError(err)
+		}
+		if rows == 0 {
+			return domain.NewErrorRecordNotFound()
+		}
+		return nil
 	})
-	if err != nil {
-		return handleError(err)
-	}
-	if rows == 0 {
-		return domain.NewErrorRecordNotFound()
-	}
-	return handleError(tx.Commit())
 }
 
 func (r *WebhookRepository) CreateDelivery(ctx context.Context, delivery domain.WebhookDelivery) (*domain.WebhookDelivery, error) {

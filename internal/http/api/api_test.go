@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -47,6 +48,7 @@ type testRegistry struct {
 	fileLock      *usecase.FileLock
 	webhook       *usecase.Webhook
 	emailDelivery *usecase.EmailDelivery
+	audit         *usecase.Audit
 }
 
 func (r *testRegistry) Auth() *usecase.Auth             { return r.auth }
@@ -76,6 +78,7 @@ func (r *testRegistry) FileLock() *usecase.FileLock { return r.fileLock }
 func (r *testRegistry) Webhook() *usecase.Webhook { return r.webhook }
 
 func (r *testRegistry) EmailDelivery() *usecase.EmailDelivery { return r.emailDelivery }
+func (r *testRegistry) Audit() *usecase.Audit                 { return r.audit }
 
 type stubPasswordHasher struct{}
 
@@ -106,15 +109,16 @@ func TestAPIRoutes(t *testing.T) {
 	userRepo := sqlite.NewUserRepository(dbConn)
 	groupRepo := sqlite.NewGroupRepository(dbConn)
 	pbacRepo := sqlite.NewPBACRepository(dbConn)
-	orgUc := usecase.NewOrg(sqlite.NewOrgRepository(dbConn), node)
-	permissionUc := usecase.NewPermission(pbacRepo, userRepo, groupRepo, orgUc)
-	projectUc := usecase.NewProject(sqlite.NewProjectRepository(dbConn), node, permissionUc, orgUc)
+	auditUc := usecase.NewAudit(sqlite.NewAuditRepository(dbConn), node, dbtx.NewTransactor(dbConn)).WithProjectOrgs(pbacRepo)
+	orgUc := usecase.NewOrg(sqlite.NewOrgRepository(dbConn), node).WithAudit(auditUc)
+	permissionUc := usecase.NewPermission(pbacRepo, userRepo, groupRepo, orgUc).WithAudit(auditUc)
+	projectUc := usecase.NewProject(sqlite.NewProjectRepository(dbConn), node, permissionUc, orgUc).WithAudit(auditUc)
 	branchRepo := sqlite.NewBranchRepository(dbConn)
 	pushRepo := sqlite.NewPushRepository(dbConn)
 	chunkStore, err := storage.NewLocalStore(t.TempDir())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = chunkStore.Close() })
-	branchUc := usecase.NewBranchWithChunks(permissionUc, branchRepo, node, chunkStore)
+	branchUc := usecase.NewBranchWithChunks(permissionUc, branchRepo, node, chunkStore).WithAudit(auditUc)
 	reviewUc := usecase.NewMergeRequestReview(
 		sqlite.NewMergeRequestReviewRepository(dbConn),
 		sqlite.NewMergeRequestRepository(dbConn),
@@ -129,7 +133,7 @@ func TestAPIRoutes(t *testing.T) {
 	mergeRequestUc := usecase.NewMergeRequest(
 		sqlite.NewMergeRequestRepository(dbConn), branchRepo, permissionUc, branchUc, node, dbtx.NewTransactor(dbConn),
 	).WithReview(reviewUc)
-	fileLockUc := usecase.NewFileLock(sqlite.NewFileLockRepository(dbConn), branchRepo, permissionUc, node)
+	fileLockUc := usecase.NewFileLock(sqlite.NewFileLockRepository(dbConn), branchRepo, permissionUc, node).WithAudit(auditUc)
 	webhookRepo := sqlite.NewWebhookRepository(dbConn)
 	webhookDispatcher := webhook.NewDispatcher(webhookRepo, webhook.NewClient(webhook.ClientConfig{
 		EgressAllowlist: []string{"127.0.0.1"},
@@ -163,12 +167,12 @@ func TestAPIRoutes(t *testing.T) {
 	tagUc := usecase.NewTag(permissionUc, sqlite.NewTagRepository(dbConn), branchRepo, node).WithHooks(hookEmitter)
 	reg := &testRegistry{
 		auth:          usecase.NewAuth("test-secret", stubPasswordHasher{}, userRepo, sqlite.NewAuthRepository(dbConn)),
-		user:          usecase.NewUser(node, userRepo, stubPasswordHasher{}),
+		user:          usecase.NewUser(node, userRepo, stubPasswordHasher{}).WithAudit(auditUc),
 		sshKey:        usecase.NewSSHKey(node, sqlite.NewSSHKeyRepository(dbConn)),
 		common:        usecase.NewCommon(sqlite.NewOrgRepository(dbConn), sqlite.NewProjectRepository(dbConn)),
 		permission:    permissionUc,
 		org:           orgUc,
-		group:         usecase.NewGroup(groupRepo, node, permissionUc, orgUc),
+		group:         usecase.NewGroup(groupRepo, node, permissionUc, orgUc).WithAudit(auditUc),
 		project:       projectUc,
 		branch:        branchUc,
 		tag:           tagUc,
@@ -177,8 +181,9 @@ func TestAPIRoutes(t *testing.T) {
 		review:        reviewUc,
 		check:         checkUc,
 		fileLock:      fileLockUc,
-		webhook:       usecase.NewWebhook(webhookRepo, permissionUc, userRepo, webhookDispatcher, node),
+		webhook:       usecase.NewWebhook(webhookRepo, permissionUc, userRepo, webhookDispatcher, node).WithAudit(auditUc),
 		emailDelivery: usecase.NewEmailDelivery(sqlite.NewEmailRepository(dbConn), permissionUc),
+		audit:         auditUc,
 	}
 
 	seedPushTo := func(t *testing.T, branch, baseCommitID string, files map[string]string) *domain.PushResult {
@@ -1791,6 +1796,45 @@ func TestAPIRoutes(t *testing.T) {
 			`{"protected":false,"required_approvals":0}`, aliceLogin.AccessToken)
 		require.Equal(t, http.StatusOK, unprotect.StatusCode)
 		_ = unprotect.Body.Close()
+	})
+
+	t.Run("admin audit lists recorded actions for super admins", func(t *testing.T) {
+		aliceLogin, _ := login(t)
+		denied := doGet(t, server.URL+"/api/v1/admin/audit", aliceLogin.AccessToken)
+		require.Equal(t, http.StatusForbidden, denied.StatusCode)
+		_ = denied.Body.Close()
+
+		superLogin, _ := loginAs(t, "nipa")
+		superID := parseLoginAccessToken(t, superLogin.AccessToken, "test-secret").UserID
+		page := decodeBody[model.AuditListResponse](t, doGet(t, server.URL+"/api/v1/admin/audit?action=org.member", superLogin.AccessToken))
+		require.NotEmpty(t, page.Entries)
+		var added *model.AuditEntryResponse
+		for i, entry := range page.Entries {
+			require.True(t, strings.HasPrefix(entry.Action, "org.member"))
+			if entry.Action == domain.AuditOrgMemberAdded && entry.ActorUserID == superID.Base36() {
+				added = &page.Entries[i]
+			}
+		}
+		require.NotNil(t, added)
+		require.Equal(t, "user", added.ActorType)
+		require.Equal(t, "127.0.0.1", added.ClientIP)
+		require.NotEmpty(t, added.UserAgent)
+		require.NotEmpty(t, added.OrgID)
+
+		first := decodeBody[model.AuditListResponse](t, doGet(t, server.URL+"/api/v1/admin/audit?limit=1", superLogin.AccessToken))
+		require.Len(t, first.Entries, 1)
+		require.NotEmpty(t, first.NextCursor)
+		second := decodeBody[model.AuditListResponse](t, doGet(t, server.URL+"/api/v1/admin/audit?limit=1&after="+first.NextCursor, superLogin.AccessToken))
+		require.Len(t, second.Entries, 1)
+		require.NotEqual(t, first.Entries[0].ID, second.Entries[0].ID)
+
+		for _, query := range []string{"since=yesterday", "actor=!", "limit=x"} {
+			bad := doGet(t, server.URL+"/api/v1/admin/audit?"+query, superLogin.AccessToken)
+			require.Equal(t, http.StatusBadRequest, bad.StatusCode, query)
+			_ = bad.Body.Close()
+		}
+		ranged := decodeBody[model.AuditListResponse](t, doGet(t, server.URL+"/api/v1/admin/audit?since=2000-01-01T00:00:00Z&until=2999-01-01T00:00:00Z&actor="+superID.Base36(), superLogin.AccessToken))
+		require.NotEmpty(t, ranged.Entries)
 	})
 
 	t.Run("openapi doc is served", func(t *testing.T) {

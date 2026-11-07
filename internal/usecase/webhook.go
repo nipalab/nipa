@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"reflect"
 	"sort"
 	"strings"
 	"time"
@@ -94,6 +95,13 @@ type Webhook struct {
 	users      userLookup
 	dispatcher webhookDispatcher
 	snowNode   snow.Node
+	audit      AuditRecorder
+}
+
+// WithAudit records webhook configuration changes. Secrets are never recorded.
+func (w *Webhook) WithAudit(rec AuditRecorder) *Webhook {
+	w.audit = rec
+	return w
 }
 
 func NewWebhook(repo webhookRepository, perm permissionUsecase, users userLookup, dispatcher webhookDispatcher, snowNode snow.Node) *Webhook {
@@ -130,16 +138,23 @@ func (w *Webhook) Create(ctx context.Context, projectID snow.ID, input WebhookIn
 	if err != nil {
 		return nil, domain.NewErrorInternalServer("generate webhook secret: " + err.Error())
 	}
-	created, err := w.repo.Create(ctx, domain.Webhook{
-		ID:          w.snowNode.Generate(),
-		ProjectID:   projectID,
-		Name:        name,
-		URL:         normalizedURL,
-		Secret:      secret,
-		Events:      events,
-		PathPrefix:  prefix,
-		IsActive:    input.IsActive,
-		InsecureTLS: input.InsecureTLS,
+	var created *domain.Webhook
+	err = auditedWrite(ctx, w.audit, func(ctx context.Context) error {
+		var err error
+		created, err = w.repo.Create(ctx, domain.Webhook{
+			ID:          w.snowNode.Generate(),
+			ProjectID:   projectID,
+			Name:        name,
+			URL:         normalizedURL,
+			Secret:      secret,
+			Events:      events,
+			PathPrefix:  prefix,
+			IsActive:    input.IsActive,
+			InsecureTLS: input.InsecureTLS,
+		})
+		return err
+	}, func() *domain.AuditEntry {
+		return webhookAudit(domain.AuditWebhookCreated, created, webhookAuditValue(created))
 	})
 	if err != nil {
 		return nil, err
@@ -176,6 +191,7 @@ func (w *Webhook) Update(ctx context.Context, projectID, id snow.ID, patch Webho
 	if err != nil {
 		return nil, err
 	}
+	old := webhookAuditValue(current)
 	if patch.Name != nil {
 		name, err := normalizeWebhookName(*patch.Name)
 		if err != nil {
@@ -210,14 +226,40 @@ func (w *Webhook) Update(ctx context.Context, projectID, id snow.ID, patch Webho
 	if patch.InsecureTLS != nil {
 		current.InsecureTLS = *patch.InsecureTLS
 	}
-	return w.repo.Update(ctx, *current)
+	var updated *domain.Webhook
+	err = auditedWrite(ctx, w.audit, func(ctx context.Context) error {
+		var err error
+		updated, err = w.repo.Update(ctx, *current)
+		return err
+	}, func() *domain.AuditEntry {
+		next := webhookAuditValue(updated)
+		if reflect.DeepEqual(old, next) {
+			return nil
+		}
+		return webhookAudit(domain.AuditWebhookUpdated, updated, map[string]any{"old": old, "new": next})
+	})
+	if err != nil {
+		return nil, err
+	}
+	return updated, nil
 }
 
 func (w *Webhook) Delete(ctx context.Context, projectID, id snow.ID) error {
 	if err := w.requireAdmin(ctx, projectID); err != nil {
 		return err
 	}
-	return w.repo.Delete(ctx, projectID, id)
+	if w.audit == nil {
+		return w.repo.Delete(ctx, projectID, id)
+	}
+	current, err := w.repo.Get(ctx, projectID, id)
+	if err != nil {
+		return err
+	}
+	return auditedWrite(ctx, w.audit, func(ctx context.Context) error {
+		return w.repo.Delete(ctx, projectID, id)
+	}, func() *domain.AuditEntry {
+		return webhookAudit(domain.AuditWebhookDeleted, current, webhookAuditValue(current))
+	})
 }
 
 // RotateSecret replaces the signing secret and returns the webhook with the
@@ -230,7 +272,56 @@ func (w *Webhook) RotateSecret(ctx context.Context, projectID, id snow.ID) (*dom
 	if err != nil {
 		return nil, domain.NewErrorInternalServer("generate webhook secret: " + err.Error())
 	}
-	return w.repo.RotateSecret(ctx, projectID, id, secret)
+	var rotated *domain.Webhook
+	err = auditedWrite(ctx, w.audit, func(ctx context.Context) error {
+		var err error
+		rotated, err = w.repo.RotateSecret(ctx, projectID, id, secret)
+		return err
+	}, func() *domain.AuditEntry {
+		return webhookAudit(domain.AuditWebhookSecretRotated, rotated, map[string]any{
+			"url":    auditWebhookURL(rotated.URL),
+			"events": rotated.Events,
+		})
+	})
+	if err != nil {
+		return nil, err
+	}
+	return rotated, nil
+}
+
+func webhookAudit(action string, hook *domain.Webhook, metadata map[string]any) *domain.AuditEntry {
+	return projectAudit(action, hook.ProjectID, domain.AuditTargetWebhook, hook.ID.Base36(), metadata)
+}
+
+// webhookAuditValue is the recorded view of a webhook: never the secret.
+func webhookAuditValue(hook *domain.Webhook) map[string]any {
+	events := hook.Events
+	if events == nil {
+		events = []string{}
+	}
+	return map[string]any{
+		"name":         hook.Name,
+		"url":          auditWebhookURL(hook.URL),
+		"events":       events,
+		"path_prefix":  hook.PathPrefix,
+		"is_active":    hook.IsActive,
+		"insecure_tls": hook.InsecureTLS,
+	}
+}
+
+// auditWebhookURL drops credentials, the query and the fragment, which may
+// carry tokens.
+func auditWebhookURL(raw string) string {
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	parsed.User = nil
+	parsed.RawQuery = ""
+	parsed.ForceQuery = false
+	parsed.Fragment = ""
+	parsed.RawFragment = ""
+	return parsed.String()
 }
 
 func (w *Webhook) requireAdmin(ctx context.Context, projectID snow.ID) error {

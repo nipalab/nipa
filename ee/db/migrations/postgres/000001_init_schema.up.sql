@@ -444,6 +444,35 @@ CREATE INDEX idx_email_deliveries_due ON email_deliveries (state, next_attempt_a
 
 CREATE INDEX idx_email_deliveries_project ON email_deliveries (project_id, id DESC);
 
+-- Audit log: who changed what. No foreign keys, so entries outlive the users,
+-- organizations and projects they mention.
+CREATE TABLE audit_log (
+    id            BIGINT PRIMARY KEY,
+    occurred_at   TIMESTAMPTZ NOT NULL,
+    actor_type    TEXT NOT NULL,
+    actor_user_id BIGINT,
+    actor_label   TEXT NOT NULL DEFAULT '',
+    action        TEXT NOT NULL,
+    org_id        BIGINT,
+    project_id    BIGINT,
+    target_type   TEXT NOT NULL DEFAULT '',
+    target_id     TEXT NOT NULL DEFAULT '',
+    metadata      JSONB NOT NULL DEFAULT '{}'::jsonb,
+    request_id    TEXT NOT NULL DEFAULT '',
+    client_ip     TEXT NOT NULL DEFAULT '',
+    user_agent    TEXT NOT NULL DEFAULT ''
+);
+
+CREATE INDEX idx_audit_log_id ON audit_log (id DESC);
+
+CREATE INDEX idx_audit_log_actor ON audit_log (actor_user_id, id DESC);
+
+CREATE INDEX idx_audit_log_org ON audit_log (org_id, id DESC);
+
+CREATE INDEX idx_audit_log_project ON audit_log (project_id, id DESC);
+
+CREATE INDEX idx_audit_log_action ON audit_log (action, id DESC);
+
 -- Snowflake node leases: when SNOWFLAKE_NODE_ID is not set, each server
 -- instance claims a free (or expired) node id here and renews it until
 -- shutdown, so every instance of a multi-pod deployment generates ids with a

@@ -6,6 +6,7 @@ import (
 	"errors"
 
 	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/repository/dbtx"
 	sqlcSqlite "github.com/nipalab/nipa/internal/repository/sqlc/sqlite"
 	"github.com/nipalab/nipa/internal/snow"
 )
@@ -15,7 +16,7 @@ type Group struct {
 }
 
 func NewGroupRepository(db *sql.DB) *Group {
-	return &Group{queries: sqlcSqlite.New(db)}
+	return &Group{queries: sqlcSqlite.New(dbtx.New(db))}
 }
 
 func (g *Group) Create(ctx context.Context, group domain.Group) (*domain.Group, error) {

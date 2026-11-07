@@ -30,6 +30,13 @@ type Org struct {
 	snowNode snow.Node
 	cache    permissionCacheInvalidator
 	seats    SeatGate
+	audit    AuditRecorder
+}
+
+// WithAudit records org and membership changes.
+func (o *Org) WithAudit(rec AuditRecorder) *Org {
+	o.audit = rec
+	return o
 }
 
 // WithSeatGate gates new members on the org owner's seat limit.
@@ -72,11 +79,21 @@ func (o *Org) Create(ctx context.Context, name, slug string) (*domain.Organizati
 	} else if !domain.IsErrorNotFound(err) {
 		return nil, err
 	}
-	org, err := o.repo.CreateWithOwner(ctx, domain.Organization{
-		ID:   o.snowNode.Generate(),
-		Name: name,
-		Slug: slug,
-	}, claim.UserID)
+	var org *domain.Organization
+	err := auditedWrite(ctx, o.audit, func(ctx context.Context) error {
+		var err error
+		org, err = o.repo.CreateWithOwner(ctx, domain.Organization{
+			ID:   o.snowNode.Generate(),
+			Name: name,
+			Slug: slug,
+		}, claim.UserID)
+		return err
+	}, func() *domain.AuditEntry {
+		return orgAudit(domain.AuditOrgCreated, org.ID, domain.AuditTargetOrg, org.ID.Base36(), map[string]any{
+			"name": org.Name,
+			"slug": org.Slug,
+		})
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -111,8 +128,42 @@ func (o *Org) AddMember(ctx context.Context, orgID, userID snow.ID, role string)
 			return err
 		}
 	}
-	return admitSeat(ctx, o.seats, orgID, userID, func(ctx context.Context) error {
-		return o.repo.UpsertMember(ctx, orgID, userID, role)
+	oldRole, err := o.auditedRole(ctx, orgID, userID)
+	if err != nil {
+		return err
+	}
+	return auditedWrite(ctx, o.audit, func(ctx context.Context) error {
+		return admitSeat(ctx, o.seats, orgID, userID, func(ctx context.Context) error {
+			return o.repo.UpsertMember(ctx, orgID, userID, role)
+		})
+	}, func() *domain.AuditEntry {
+		return o.memberAudit(orgID, userID, oldRole, role)
+	})
+}
+
+// auditedRole reads the member's current role for the audit entry; "" when
+// not a member or when auditing is off.
+func (o *Org) auditedRole(ctx context.Context, orgID, userID snow.ID) (string, error) {
+	if o.audit == nil {
+		return "", nil
+	}
+	role, err := o.repo.MemberRole(ctx, orgID, userID)
+	if domain.IsErrorNotFound(err) {
+		return "", nil
+	}
+	return role, err
+}
+
+func (o *Org) memberAudit(orgID, userID snow.ID, oldRole, role string) *domain.AuditEntry {
+	if oldRole == role {
+		return nil
+	}
+	if oldRole == "" {
+		return orgAudit(domain.AuditOrgMemberAdded, orgID, domain.AuditTargetUser, userID.Base36(), map[string]any{"role": role})
+	}
+	return orgAudit(domain.AuditOrgMemberRoleChanged, orgID, domain.AuditTargetUser, userID.Base36(), map[string]any{
+		"old_role": oldRole,
+		"new_role": role,
 	})
 }
 
@@ -128,7 +179,15 @@ func (o *Org) UpdateMemberRole(ctx context.Context, orgID, userID snow.ID, role 
 			return err
 		}
 	}
-	return o.repo.UpsertMember(ctx, orgID, userID, role)
+	oldRole, err := o.auditedRole(ctx, orgID, userID)
+	if err != nil {
+		return err
+	}
+	return auditedWrite(ctx, o.audit, func(ctx context.Context) error {
+		return o.repo.UpsertMember(ctx, orgID, userID, role)
+	}, func() *domain.AuditEntry {
+		return o.memberAudit(orgID, userID, oldRole, role)
+	})
 }
 
 func (o *Org) RemoveMember(ctx context.Context, orgID, userID snow.ID) error {
@@ -138,7 +197,15 @@ func (o *Org) RemoveMember(ctx context.Context, orgID, userID snow.ID) error {
 	if err := o.ensureNotLastOwner(ctx, orgID, userID); err != nil {
 		return err
 	}
-	if err := o.repo.RemoveMember(ctx, orgID, userID); err != nil {
+	oldRole, err := o.auditedRole(ctx, orgID, userID)
+	if err != nil {
+		return err
+	}
+	if err := auditedWrite(ctx, o.audit, func(ctx context.Context) error {
+		return o.repo.RemoveMember(ctx, orgID, userID)
+	}, func() *domain.AuditEntry {
+		return orgAudit(domain.AuditOrgMemberRemoved, orgID, domain.AuditTargetUser, userID.Base36(), map[string]any{"role": oldRole})
+	}); err != nil {
 		return err
 	}
 	if o.cache != nil {

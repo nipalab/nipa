@@ -9,6 +9,23 @@ import (
 	"time"
 )
 
+type AuditLog struct {
+	ID          int64         `json:"id"`
+	OccurredAt  time.Time     `json:"occurred_at"`
+	ActorType   string        `json:"actor_type"`
+	ActorUserID sql.NullInt64 `json:"actor_user_id"`
+	ActorLabel  string        `json:"actor_label"`
+	Action      string        `json:"action"`
+	OrgID       sql.NullInt64 `json:"org_id"`
+	ProjectID   sql.NullInt64 `json:"project_id"`
+	TargetType  string        `json:"target_type"`
+	TargetID    string        `json:"target_id"`
+	Metadata    string        `json:"metadata"`
+	RequestID   string        `json:"request_id"`
+	ClientIp    string        `json:"client_ip"`
+	UserAgent   string        `json:"user_agent"`
+}
+
 type Branch struct {
 	ID                    int64         `json:"id"`
 	ProjectID             int64         `json:"project_id"`

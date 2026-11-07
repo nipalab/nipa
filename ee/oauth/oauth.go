@@ -9,6 +9,7 @@ import (
 
 	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/snow"
+	"github.com/nipalab/nipa/internal/usecase"
 )
 
 const (
@@ -58,8 +59,15 @@ type OAuth struct {
 	repo      identityRepository
 	tx        transactor
 	node      snow.Node
+	audit     usecase.AuditRecorder
 	cfg       Config
 	now       func() time.Time
+}
+
+// WithAudit records the accounts created by social signup.
+func (o *OAuth) WithAudit(rec usecase.AuditRecorder) *OAuth {
+	o.audit = rec
+	return o
 }
 
 func New(providers map[string]Provider, jwtKey string, users userRepository, repo identityRepository,
@@ -265,6 +273,13 @@ func (o *OAuth) createAccount(ctx context.Context, provider string, profile *Pro
 			return err
 		}
 		userID = user.ID
+		if o.audit != nil {
+			entry := usecase.UserCreatedAudit(user, "oauth:"+provider)
+			entry.ActorType = domain.AuditActorSystem
+			if err := o.audit.Record(ctx, entry); err != nil {
+				return err
+			}
+		}
 		if o.cfg.FreeQuotaBytes > 0 {
 			if err := o.repo.SeedOwnerQuota(ctx, user.ID, o.cfg.FreeQuotaBytes); err != nil {
 				return err

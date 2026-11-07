@@ -66,6 +66,13 @@ type Branch struct {
 	// strategies; both are wired by the server mains.
 	mergeCommitter mergeCommitter
 	chunkUploads   chunkUploader
+	audit          AuditRecorder
+}
+
+// WithAudit records branch protection changes.
+func (b *Branch) WithAudit(rec AuditRecorder) *Branch {
+	b.audit = rec
+	return b
 }
 
 // hookBranchGate is the subset of the webhook emitter used by branch
@@ -329,13 +336,22 @@ func (b *Branch) SetProtection(ctx context.Context, projectID snow.ID, name stri
 		sameIDs(reviewers, branch.RequiredReviewers) && sameStrings(checks, branch.RequiredChecks) {
 		return branch, nil
 	}
-	if err := b.branchRepo.SetBranchProtection(ctx, projectID, branch.ID, domain.BranchProtection{
+	protection := domain.BranchProtection{
 		Protected:             opts.Protected,
 		RequiredApprovals:     approvals,
 		DismissStaleApprovals: dismissStale,
 		RequireStatusChecks:   requireChecks,
 		RequiredReviewers:     reviewers,
 		RequiredChecks:        checks,
+	}
+	if err := auditedWrite(ctx, b.audit, func(ctx context.Context) error {
+		return b.branchRepo.SetBranchProtection(ctx, projectID, branch.ID, protection)
+	}, func() *domain.AuditEntry {
+		return projectAudit(domain.AuditBranchProtectionChanged, projectID, domain.AuditTargetBranch, branch.ID.Base36(), map[string]any{
+			"branch": branch.Name,
+			"old":    protectionAuditValue(branchProtection(branch)),
+			"new":    protectionAuditValue(protection),
+		})
 	}); err != nil {
 		return nil, err
 	}
@@ -803,4 +819,38 @@ func (b *Branch) GetCommitLog(ctx context.Context, projectID snow.ID, branchName
 		startID = *startCommitID
 	}
 	return b.branchRepo.CommitLog(ctx, projectID, startID, limit)
+}
+
+func branchProtection(branch *domain.Branch) domain.BranchProtection {
+	reviewers := make([]snow.ID, 0, len(branch.RequiredReviewers))
+	for _, reviewer := range branch.RequiredReviewers {
+		reviewers = append(reviewers, reviewer.UserID)
+	}
+	return domain.BranchProtection{
+		Protected:             branch.IsProtected,
+		RequiredApprovals:     branch.RequiredApprovals,
+		DismissStaleApprovals: branch.DismissStaleApprovals,
+		RequireStatusChecks:   branch.RequireStatusChecks,
+		RequiredReviewers:     reviewers,
+		RequiredChecks:        branch.RequiredChecks,
+	}
+}
+
+func protectionAuditValue(p domain.BranchProtection) map[string]any {
+	reviewers := p.RequiredReviewers
+	if reviewers == nil {
+		reviewers = []snow.ID{}
+	}
+	checks := p.RequiredChecks
+	if checks == nil {
+		checks = []string{}
+	}
+	return map[string]any{
+		"protected":               p.Protected,
+		"required_approvals":      p.RequiredApprovals,
+		"dismiss_stale_approvals": p.DismissStaleApprovals,
+		"require_status_checks":   p.RequireStatusChecks,
+		"required_reviewers":      reviewers,
+		"required_checks":         checks,
+	}
 }

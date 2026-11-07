@@ -14,6 +14,8 @@ import (
 type Querier interface {
 	AddOrgUsage(ctx context.Context, arg AddOrgUsageParams) error
 	AddProjectUsage(ctx context.Context, arg AddProjectUsageParams) error
+	AuditLogInsert(ctx context.Context, arg AuditLogInsertParams) error
+	AuditLogList(ctx context.Context, arg AuditLogListParams) ([]AuditLog, error)
 	BranchCreate(ctx context.Context, arg BranchCreateParams) error
 	BranchGet(ctx context.Context, arg BranchGetParams) (Branch, error)
 	BranchGetByName(ctx context.Context, arg BranchGetByNameParams) (Branch, error)

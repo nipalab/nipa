@@ -8,18 +8,19 @@ import (
 
 	sqlcPostgres "github.com/nipalab/nipa/ee/repository/postgres/sqlc"
 	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/repository/dbtx"
 	"github.com/nipalab/nipa/internal/snow"
 )
 
 var nonAlphaNum = regexp.MustCompile(`[^a-z0-9]+`)
 
 type ProjectRepository struct {
-	db      *sql.DB
+	tx      *dbtx.Transactor
 	queries *sqlcPostgres.Queries
 }
 
 func NewProjectRepository(db *sql.DB) *ProjectRepository {
-	return &ProjectRepository{db: db, queries: sqlcPostgres.New(db)}
+	return &ProjectRepository{tx: dbtx.NewTransactor(db), queries: sqlcPostgres.New(dbtx.New(db))}
 }
 
 func (r *ProjectRepository) Create(ctx context.Context, project domain.Project) (*domain.Project, error) {
@@ -47,42 +48,41 @@ func (r *ProjectRepository) CreateWithDefaultBranch(ctx context.Context, project
 	if slug == "" {
 		slug = slugify(project.Name)
 	}
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, handleError(err)
-	}
-	defer func() { _ = tx.Rollback() }()
+	var row sqlcPostgres.Project
+	err := r.tx.WithinTx(ctx, func(ctx context.Context) error {
+		q := r.queries
+		var err error
+		row, err = q.CreateProject(ctx, sqlcPostgres.CreateProjectParams{
+			ID:          project.ID.Int64(),
+			OrgID:       project.OrgID.Int64(),
+			Slug:        slug,
+			Name:        project.Name,
+			Description: project.Description,
+		})
+		if err != nil {
+			return handleError(err)
+		}
 
-	q := sqlcPostgres.New(tx)
-	row, err := q.CreateProject(ctx, sqlcPostgres.CreateProjectParams{
-		ID:          project.ID.Int64(),
-		OrgID:       project.OrgID.Int64(),
-		Slug:        slug,
-		Name:        project.Name,
-		Description: project.Description,
+		var commitID sql.NullInt64
+		if defaultBranch.CommitID != nil {
+			commitID = sql.NullInt64{Int64: defaultBranch.CommitID.Int64(), Valid: true}
+		}
+		if err := q.BranchCreate(ctx, sqlcPostgres.BranchCreateParams{
+			ID:          defaultBranch.ID.Int64(),
+			ProjectID:   defaultBranch.ProjectID.Int64(),
+			Name:        defaultBranch.Name,
+			Key:         defaultBranch.Name,
+			CommitID:    commitID,
+			IsDefault:   defaultBranch.IsDefault,
+			IsProtected: defaultBranch.IsProtected,
+		}); err != nil {
+			return handleError(err)
+		}
+
+		return nil
 	})
 	if err != nil {
-		return nil, handleError(err)
-	}
-
-	var commitID sql.NullInt64
-	if defaultBranch.CommitID != nil {
-		commitID = sql.NullInt64{Int64: defaultBranch.CommitID.Int64(), Valid: true}
-	}
-	if err := q.BranchCreate(ctx, sqlcPostgres.BranchCreateParams{
-		ID:          defaultBranch.ID.Int64(),
-		ProjectID:   defaultBranch.ProjectID.Int64(),
-		Name:        defaultBranch.Name,
-		Key:         defaultBranch.Name,
-		CommitID:    commitID,
-		IsDefault:   defaultBranch.IsDefault,
-		IsProtected: defaultBranch.IsProtected,
-	}); err != nil {
-		return nil, handleError(err)
-	}
-
-	if err := tx.Commit(); err != nil {
-		return nil, handleError(err)
+		return nil, err
 	}
 	return toDomainProject(row), nil
 }

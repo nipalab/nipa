@@ -2,11 +2,15 @@ package server
 
 import (
 	"context"
+	"net/netip"
+	"strings"
 
 	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/ratelimit"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 )
 
@@ -33,11 +37,32 @@ type tokenValidator interface {
 
 type Interceptor struct {
 	tokenValidator tokenValidator
+	proxies        []netip.Prefix
 }
 
 func NewInterceptor(tokenValidator tokenValidator) *Interceptor {
 	return &Interceptor{
 		tokenValidator: tokenValidator,
+	}
+}
+
+// WithTrustedProxies sets the proxies whose x-forwarded-for is honoured for
+// the client IP attached to the call.
+func (i *Interceptor) WithTrustedProxies(proxies []netip.Prefix) *Interceptor {
+	i.proxies = proxies
+	return i
+}
+
+// requestMeta resolves the caller's client IP and user agent from the peer
+// address and the incoming metadata.
+func requestMeta(ctx context.Context, md metadata.MD, proxies []netip.Prefix) domain.RequestMeta {
+	var remote string
+	if p, ok := peer.FromContext(ctx); ok && p.Addr != nil {
+		remote = p.Addr.String()
+	}
+	return domain.RequestMeta{
+		ClientIP:  ratelimit.ClientIP(remote, strings.Join(md.Get("x-forwarded-for"), ","), proxies),
+		UserAgent: strings.Join(md.Get("user-agent"), " "),
 	}
 }
 
@@ -69,6 +94,7 @@ func (i *Interceptor) JWTUnary() func(ctx context.Context, req interface{}, info
 		}
 
 		ctx = domain.ContextWithClaim(ctx, *claims)
+		ctx = domain.ContextWithRequestMeta(ctx, requestMeta(ctx, md, i.proxies))
 
 		return handler(ctx, req)
 	}
@@ -111,6 +137,7 @@ func (i *Interceptor) JWTStream() grpc.StreamServerInterceptor {
 		}
 
 		ctx := domain.ContextWithClaim(ss.Context(), *claims)
+		ctx = domain.ContextWithRequestMeta(ctx, requestMeta(ctx, md, i.proxies))
 
 		return handler(srv, &wrappedStream{ServerStream: ss, ctx: ctx})
 	}
