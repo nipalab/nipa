@@ -77,8 +77,11 @@ namespace Nipa.Editor.Core.Daemon
             {
                 return null;
             }
-            if (ep.JsonPort <= 0 || !alive(ep.Pid))
+            if (!alive(ep.Pid))
                 return null;
+            if (ep.JsonPort <= 0)
+                throw new InvalidOperationException("The running nipa daemon (pid " + ep.Pid + ", version " + ep.Version
+                    + ") predates the JSON bridge. Stop it and update the nipa CLI, then reconnect.");
             var client = new DaemonClient(ep) { UnaryTimeout = TimeSpan.FromSeconds(2) };
             try
             {

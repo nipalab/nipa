@@ -15,14 +15,17 @@ namespace Nipa.Editor
             set => EditorUserSettings.SetConfigValue(BinaryKey, value);
         }
 
+        static NipaSettings cached;
+
         public static NipaSettings LoadProject()
         {
-            return NipaSettings.Load(ProjectFile);
+            return cached ?? (cached = NipaSettings.Load(ProjectFile));
         }
 
         public static void SaveProject(NipaSettings settings)
         {
             settings.Save(ProjectFile);
+            cached = NipaSettings.Load(ProjectFile);
         }
 
         public static string ProjectDir => Directory.GetParent(UnityEngine.Application.dataPath).FullName;

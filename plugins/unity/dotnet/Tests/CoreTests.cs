@@ -126,6 +126,19 @@ namespace Nipa.Core.Tests
         }
 
         [Test]
+        public void VersionAdvancesOnlyOnChange()
+        {
+            var c = new StatusCache();
+            Assert.That(c.Version, Is.EqualTo(0));
+            c.Apply(S(s => s.Modified = new List<string> { "a" }));
+            Assert.That(c.Version, Is.EqualTo(1));
+            c.Apply(S(s => s.Modified = new List<string> { "a" }));
+            Assert.That(c.Version, Is.EqualTo(1));
+            c.Apply(S(_ => { }));
+            Assert.That(c.Version, Is.EqualTo(2));
+        }
+
+        [Test]
         public void ReportsOnlyChangedPaths()
         {
             var c = new StatusCache();
@@ -438,6 +451,48 @@ namespace Nipa.Core.Tests
             session.Healthy += () => healthy++;
             await session.RefreshAsync();
             Assert.That(healthy, Is.EqualTo(1));
+        }
+
+        [Test]
+        public async Task PollLoopRefreshesWithoutWatchEvents()
+        {
+            var branch = "one";
+            fake.On("WatchRepo", "{}");
+            fake.Handlers["Status"] = _ => new Reply { Body = "{\"branch\":\"" + branch + "\"}" };
+            fake.On("WatchChanges", new Reply { Lines = new string[0], Hold = true });
+            var polled = new NipaSession(new DaemonClient(fake.Endpoint()), session.Paths) { PollInterval = TimeSpan.FromMilliseconds(30) };
+            try
+            {
+                await polled.StartAsync();
+                branch = "two";
+                Assert.That(SpinWait.SpinUntil(() => polled.Cache.Branch == "two", 3000), Is.True);
+            }
+            finally
+            {
+                polled.Dispose();
+            }
+        }
+
+        [Test]
+        public async Task PollFailuresAreReported()
+        {
+            fake.On("WatchRepo", "{}");
+            var fail = false;
+            fake.Handlers["Status"] = _ => fail ? new Reply { Status = 500, Body = "{\"message\":\"down\"}" } : new Reply();
+            fake.On("WatchChanges", new Reply { Lines = new string[0], Hold = true });
+            Exception seen = null;
+            var polled = new NipaSession(new DaemonClient(fake.Endpoint()), session.Paths) { PollInterval = TimeSpan.FromMilliseconds(20) };
+            polled.WatchFailed += e => seen = e;
+            try
+            {
+                await polled.StartAsync();
+                fail = true;
+                Assert.That(SpinWait.SpinUntil(() => seen != null, 3000), Is.True);
+            }
+            finally
+            {
+                polled.Dispose();
+            }
         }
 
         [Test]

@@ -53,6 +53,7 @@ namespace Nipa.Editor
             cts = new CancellationTokenSource();
             var token = cts.Token;
             var binary = NipaSettingsStore.BinaryPath;
+            var poll = TimeSpan.FromSeconds(NipaSettingsStore.LoadProject().PollIntervalSeconds);
             Changed?.Invoke();
             Task.Run(async () =>
             {
@@ -63,7 +64,10 @@ namespace Nipa.Editor
                         new ConnectorOptions { Binary = binary }, token).ConfigureAwait(false);
                     var options = new ConnectorOptions { Binary = binary };
                     session = new NipaSession(conn.Client, paths, async c =>
-                        (await Connector.ConnectAsync(options, c).ConfigureAwait(false)).Client);
+                        (await Connector.ConnectAsync(options, c).ConfigureAwait(false)).Client)
+                    {
+                        PollInterval = poll,
+                    };
                     session.Cache.Changed += _ => MainThread.Post(OnCacheChanged);
                     session.Healthy += () => MainThread.Post(ClearError);
                     session.WatchFailed += e => MainThread.Post(() => { Error = e.Message; Changed?.Invoke(); });
@@ -72,7 +76,7 @@ namespace Nipa.Editor
                     {
                         if (gen != generation)
                         {
-                            session.Dispose();
+                            Task.Run(session.Dispose);
                             return;
                         }
                         Session = session;

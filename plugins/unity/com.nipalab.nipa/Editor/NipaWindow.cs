@@ -15,7 +15,14 @@ namespace Nipa.Editor
         readonly HashSet<string> selectedStaged = new HashSet<string>();
         List<MetaWarning> warnings = new List<MetaWarning>();
         bool warningsLoading;
-        bool warningsStale = true;
+        object warningsSession;
+        int warningsVersion = -1;
+        object rowsSession;
+        int rowsVersion = -1;
+        List<Row> changeRows = new List<Row>();
+        List<Row> stagedRows = new List<Row>();
+        int conflictCount;
+        bool blocked;
         string message = string.Empty;
         Vector2 scroll;
 
@@ -26,10 +33,11 @@ namespace Nipa.Editor
             w.Show();
         }
 
+        const int MaxRows = 500;
+
         void OnEnable()
         {
             NipaHost.Changed += OnHostChanged;
-            warningsStale = true;
         }
 
         void OnDisable()
@@ -39,7 +47,6 @@ namespace Nipa.Editor
 
         void OnHostChanged()
         {
-            warningsStale = true;
             Repaint();
         }
 
@@ -54,21 +61,32 @@ namespace Nipa.Editor
             var session = NipaHost.Session;
             if (session == null)
                 return;
-            LoadWarnings();
+            RebuildRows(session);
+            LoadWarnings(session);
             DrawBanners();
-            var snapshot = session.Cache.Snapshot();
-            var staged = Rows(snapshot, s => s.HasFlag(FileState.Staged) || s.HasFlag(FileState.Added));
-            var changes = Rows(snapshot, s => !s.HasFlag(FileState.Staged) && !s.HasFlag(FileState.Added)
-                && (s & (FileState.Modified | FileState.Deleted | FileState.Missing | FileState.Untracked)) != 0);
 
             scroll = EditorGUILayout.BeginScrollView(scroll);
-            DrawList("Changes", changes, selectedChanges, "Stage", "Stage all", paths =>
+            DrawList("Changes", changeRows, selectedChanges, "Stage", "Stage all", paths =>
                 NipaHost.Run("Stage", (s, _) => s.StageAsync(paths)));
-            DrawList("Staged", staged, selectedStaged, "Unstage", "Unstage all", paths =>
+            DrawList("Staged", stagedRows, selectedStaged, "Unstage", "Unstage all", paths =>
                 NipaHost.Run("Unstage", (s, _) => s.UnstageAsync(paths)));
             EditorGUILayout.EndScrollView();
 
-            DrawFooter(staged.Count, snapshot);
+            DrawFooter(stagedRows.Count);
+        }
+
+        void RebuildRows(Core.Session.NipaSession session)
+        {
+            if (ReferenceEquals(rowsSession, session) && rowsVersion == session.Cache.Version)
+                return;
+            rowsSession = session;
+            rowsVersion = session.Cache.Version;
+            var snapshot = session.Cache.Snapshot();
+            stagedRows = Rows(snapshot, s => s.HasFlag(FileState.Staged) || s.HasFlag(FileState.Added));
+            changeRows = Rows(snapshot, s => !s.HasFlag(FileState.Staged) && !s.HasFlag(FileState.Added)
+                && (s & (FileState.Modified | FileState.Deleted | FileState.Missing | FileState.Untracked)) != 0);
+            conflictCount = snapshot.Count(kv => kv.Value.HasFlag(FileState.Conflict) && !kv.Value.HasFlag(FileState.Resolved));
+            blocked = session.Cache.Head != null || conflictCount > 0;
         }
 
         void DrawHeader()
@@ -115,9 +133,8 @@ namespace Nipa.Editor
                 EditorGUILayout.HelpBox("HEAD is detached at " + cache.Head.Kind + " \"" + cache.Head.Name + "\". Switch to a branch to push.", MessageType.Warning);
             if (!string.IsNullOrEmpty(cache.Pending))
                 EditorGUILayout.HelpBox("A " + cache.Pending + " is waiting. Finish it in Nipa Desktop.", MessageType.Warning);
-            var conflicts = cache.Snapshot().Count(kv => kv.Value.HasFlag(FileState.Conflict) && !kv.Value.HasFlag(FileState.Resolved));
-            if (conflicts > 0)
-                EditorGUILayout.HelpBox(conflicts + " file(s) in conflict. Resolve them in Nipa Desktop.", MessageType.Error);
+            if (conflictCount > 0)
+                EditorGUILayout.HelpBox(conflictCount + " file(s) in conflict. Resolve them in Nipa Desktop.", MessageType.Error);
             if (NipaHost.Error != null)
                 EditorGUILayout.HelpBox(NipaHost.Error, MessageType.Warning);
             if (warnings.Count > 0)
@@ -132,10 +149,10 @@ namespace Nipa.Editor
         void DrawList(string title, List<Row> rows, HashSet<string> selected, string actionLabel, string allLabel,
             System.Action<List<string>> run)
         {
-            var visible = new HashSet<string>(rows.Select(r => r.Path));
+            var visible = new HashSet<string>(rows.Take(MaxRows).Select(r => r.Path));
             selected.RemoveWhere(p => !visible.Contains(p));
             EditorGUILayout.LabelField(title + " (" + rows.Count + ")", EditorStyles.boldLabel);
-            foreach (var row in rows)
+            foreach (var row in rows.Take(MaxRows))
             {
                 using (new EditorGUILayout.HorizontalScope())
                 {
@@ -149,6 +166,8 @@ namespace Nipa.Editor
             }
             if (rows.Count == 0)
                 return;
+            if (rows.Count > MaxRows)
+                EditorGUILayout.HelpBox("Showing the first " + MaxRows + " of " + rows.Count + ". \"" + allLabel + "\" applies to all of them.", MessageType.None);
             using (new EditorGUILayout.HorizontalScope())
             using (new EditorGUI.DisabledScope(NipaHost.Busy != null))
             {
@@ -178,7 +197,7 @@ namespace Nipa.Editor
             NipaHost.Run("Restore", async (s, _) => { await s.RestoreAsync(paths); }, refreshAssets: true);
         }
 
-        void DrawFooter(int stagedCount, IReadOnlyDictionary<string, FileState> snapshot)
+        void DrawFooter(int stagedCount)
         {
             if (NipaHost.Busy != null)
             {
@@ -188,7 +207,6 @@ namespace Nipa.Editor
             }
             EditorGUILayout.LabelField("Message");
             message = EditorGUILayout.TextArea(message, GUILayout.MinHeight(48));
-            var blocked = NipaHost.Session.Cache.Head != null || snapshot.Values.Any(s => s.HasFlag(FileState.Conflict) && !s.HasFlag(FileState.Resolved));
             using (new EditorGUI.DisabledScope(stagedCount == 0 || string.IsNullOrWhiteSpace(message) || blocked))
             {
                 if (GUILayout.Button("Push"))
@@ -200,13 +218,16 @@ namespace Nipa.Editor
             }
         }
 
-        void LoadWarnings()
+        void LoadWarnings(Core.Session.NipaSession session)
         {
-            if (!warningsStale || warningsLoading)
+            if (warningsLoading)
                 return;
-            warningsStale = false;
+            var version = session.Cache.Version;
+            if (ReferenceEquals(warningsSession, session) && warningsVersion == version)
+                return;
+            warningsSession = session;
+            warningsVersion = version;
             warningsLoading = true;
-            var session = NipaHost.Session;
             Task.Run(async () =>
             {
                 List<MetaWarning> result = null;

@@ -16,12 +16,14 @@ namespace Nipa.Editor.Core.Session
         Lease lease;
         readonly CancellationTokenSource cts = new CancellationTokenSource();
         Task watcher;
+        Task poller;
 
         public ProjectPaths Paths { get; }
         public StatusCache Cache { get; } = new StatusCache();
         public string Root => Paths.CloneRoot;
         public RepoInfo Repo { get; private set; }
         public TimeSpan ReconnectDelay { get; set; } = TimeSpan.FromSeconds(2);
+        public TimeSpan PollInterval { get; set; } = TimeSpan.Zero;
 
         public event Action<Exception> WatchFailed;
         public event Action Healthy;
@@ -38,6 +40,8 @@ namespace Nipa.Editor.Core.Session
         {
             await WatchRepoAsync(ct).ConfigureAwait(false);
             watcher = Task.Run(() => WatchLoopAsync(cts.Token));
+            if (PollInterval > TimeSpan.Zero)
+                poller = Task.Run(() => PollLoopAsync(cts.Token));
         }
 
         async Task WatchRepoAsync(CancellationToken ct)
@@ -244,12 +248,32 @@ namespace Nipa.Editor.Core.Session
             }
         }
 
+        async Task PollLoopAsync(CancellationToken ct)
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                try
+                {
+                    await Task.Delay(PollInterval, ct).ConfigureAwait(false);
+                    await RefreshAsync(ct).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+                catch (Exception e)
+                {
+                    WatchFailed?.Invoke(e);
+                }
+            }
+        }
+
         public void Stop()
         {
             cts.Cancel();
             try
             {
-                watcher?.Wait(TimeSpan.FromSeconds(2));
+                Task.WaitAll(new[] { watcher, poller }.Where(t => t != null).ToArray(), TimeSpan.FromSeconds(2));
             }
             catch (AggregateException)
             {

@@ -72,7 +72,7 @@ namespace Nipa.Editor
             var settings = NipaSettingsStore.LoadProject();
             EditorGUI.BeginChangeCheck();
             var poll = EditorGUILayout.IntField(
-                new GUIContent("Poll interval (s)", "Shared in ProjectSettings/NipaSettings.json."),
+                new GUIContent("Poll interval (s)", "Safety-net status refresh when no file events arrive. Shared in ProjectSettings/NipaSettings.json; applies on reconnect."),
                 settings.PollIntervalSeconds);
             if (EditorGUI.EndChangeCheck())
             {

@@ -47,7 +47,7 @@ In **Project Settings › Editor › Version Control** (Nipa section):
 | Setting | Stored in | Notes |
 |---|---|---|
 | nipa binary | `EditorUserSettings` (per user) | Empty = `NIPA_BIN`, then `PATH` |
-| Poll interval | `ProjectSettings/NipaSettings.json` (shared) | Clamped to 15–3600 s |
+| Poll interval | `ProjectSettings/NipaSettings.json` (shared) | Safety-net `Status` refresh when no file events arrive (e.g. a missed watcher event). Clamped to 15–3600 s, default 60; applies on reconnect |
 
 ## Architecture
 
@@ -71,6 +71,8 @@ plugins/unity/dotnet/   Core/Nipa.Core.csproj (netstandard2.1 build of Editor/Co
   `MainThread.Post`. Streams are cancelled in
   `AssemblyReloadEvents.beforeAssemblyReload` and restarted by
   `[InitializeOnLoad]` when Nipa is the active provider.
+- The Pending Changes window caches its rows per status version and renders at most 500 rows per list (the Stage all / Unstage all buttons still apply to every row).
+- A running daemon from before the JSON bridge cannot be attached; the connector reports its pid and asks for a restart/update instead of spawning a second daemon.
 - `WatchChanges` drives status: every notice triggers a `Status` call (cheap,
   read-through) and the cache reports exactly which paths changed.
 - `VersionControlObject` is never serialized and holds no state; everything

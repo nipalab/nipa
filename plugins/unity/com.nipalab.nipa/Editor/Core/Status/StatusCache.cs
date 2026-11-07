@@ -28,6 +28,7 @@ namespace Nipa.Editor.Core.Status
         public StatusHead Head { get; private set; }
         public string Pending { get; private set; }
         public int PendingRemaining { get; private set; }
+        public int Version { get; private set; }
 
         public event Action<IReadOnlyCollection<string>> Changed;
 
@@ -81,6 +82,8 @@ namespace Nipa.Editor.Core.Status
                 Head = status.Head;
                 Pending = status.Pending;
                 PendingRemaining = status.PendingRemaining;
+                if (changed.Count > 0)
+                    Version++;
             }
             if (changed.Count > 0)
                 Changed?.Invoke(changed);

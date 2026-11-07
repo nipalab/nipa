@@ -359,6 +359,15 @@ namespace Nipa.Core.Tests
         }
 
         [Test]
+        public void DaemonWithoutJsonBridgeGetsActionableError()
+        {
+            File.WriteAllText(path, "{\"pid\":4242,\"port\":1,\"token\":\"t\",\"version\":\"v0.0.1\"}");
+            var opts = new ConnectorOptions { EndpointPath = path, Binary = "nipa", Alive = _ => true, Start = (_, __) => throw new Exception("must not start") };
+            var ex = Assert.ThrowsAsync<InvalidOperationException>(() => Connector.ConnectAsync(opts, CancellationToken.None));
+            Assert.That(ex.Message, Does.Contain("predates the JSON bridge").And.Contain("4242"));
+        }
+
+        [Test]
         public void TimesOutWhenDaemonNeverAppears()
         {
             var opts = new ConnectorOptions
