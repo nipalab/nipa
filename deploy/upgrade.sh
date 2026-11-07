@@ -123,6 +123,7 @@ if grep -q '{\$MARKETING_UPSTREAM}' "$CADDYFILE"; then
 fi
 
 idle_started=false
+idle_enabled=false
 caddy_dirty=false
 flipped=false
 cleanup() {
@@ -136,6 +137,9 @@ cleanup() {
 		if [[ "$idle_started" == true && "$flipped" == false ]]; then
 			log "stopping the idle color $idle_color; production stays on $active_color"
 			systemctl stop "$idle_unit" || true
+			if [[ "$idle_enabled" == true ]]; then
+				systemctl disable --quiet "$idle_unit" || true
+			fi
 		fi
 		exit "$status"
 	fi
@@ -180,6 +184,11 @@ done
 curl -fsS --max-time 5 "http://127.0.0.1:$idle_port/version" >/dev/null || fail "$idle_color /version smoke check failed"
 log "$idle_color is ready"
 
+# Boot must start the color Caddy points at: enable it before the flip so a
+# failure aborts with production untouched.
+systemctl enable --quiet "$idle_unit" || fail "failed to enable $idle_unit at boot"
+idle_enabled=true
+
 log "flipping Caddy to $idle_color (port $idle_port)"
 cp -a "$CADDYFILE" "$CADDYFILE.bak"
 sed -i -E "s#^([[:space:]]*reverse_proxy 127\.0\.0\.1:)[0-9]+#\1$idle_port#" "$CADDYFILE"
@@ -200,12 +209,6 @@ rm -f "$CADDYFILE.bak"
 caddy_dirty=false
 printf '%s\n' "$idle_color" >"$NIPA_STATE_DIR/active-color"
 log "traffic now goes to $idle_color"
-# Boot must start the color Caddy points at.
-idle_enabled=true
-systemctl enable --quiet "$idle_unit" || {
-	idle_enabled=false
-	log "WARNING: failed to enable $idle_unit at boot; keeping $active_unit enabled"
-}
 
 if command -v ss >/dev/null; then
 	log "waiting for $active_color connections to drain (timeout ${DRAIN_TIMEOUT}s)"
@@ -223,9 +226,7 @@ fi
 
 log "stopping $active_color (graceful, SIGTERM)"
 systemctl stop "$active_unit"
-if [[ "$idle_enabled" == true ]]; then
-	systemctl disable --quiet "$active_unit" || log "WARNING: failed to disable $active_unit at boot"
-fi
+systemctl disable --quiet "$active_unit" || log "WARNING: failed to disable $active_unit at boot"
 
 action="upgrade"
 if [[ "$rollback" == true ]]; then

@@ -27,8 +27,9 @@ nipalab.com {
 	encode zstd gzip
 
 	# Caddy already redacts Authorization/Cookie headers; also drop the
-	# secrets carried in query strings: email confirmation tokens, OAuth
-	# codes/state and presigned chunk URL signatures.
+	# secrets carried in query strings (email confirmation tokens, OAuth
+	# codes/state, presigned chunk URL signatures) and the Referer header,
+	# which repeats the page URL on same-origin subrequests.
 	log {
 		output stdout
 		format filter {
@@ -40,6 +41,7 @@ nipalab.com {
 					delete state
 					delete sig
 				}
+				request>headers>Referer delete
 			}
 		}
 	}
