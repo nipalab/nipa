@@ -294,6 +294,70 @@ release). A rollback across a migration that dropped or renamed something may
 be incompatible; when in doubt, upgrade forward and roll the code back only to
 releases that share the current schema.
 
+## CI deploys (dev + production)
+
+`.github/workflows/server-deploy.yml` builds `nipad-ee` on GitHub Actions and
+runs `upgrade.sh` on the target host over SSH (`deploy/ci-deploy.sh`), so a CI
+deploy is the same blue/green flip as a manual one. Each environment is its own
+VPS set up with the steps above (its own domain in the Caddyfile, its own
+`config.yaml`, database and bucket).
+
+| Environment | Trigger | Gate |
+|---|---|---|
+| `dev` | every green `Build and Test` run on `main` | none |
+| `production` | pushing a `v*` tag | the tagged commit must have a green `Build and Test` run, then the environment's required reviewers approve |
+| either | **Actions → Server deploy → Run workflow** (`deploy` or `rollback`) | production `deploy` only from a `v*` tag |
+
+Deploys of one environment never overlap (`concurrency: deploy-<env>`). After
+the flip the job polls `<DEPLOY_URL>/version` until it reports the built
+version (`git describe --tags --always`) and fails otherwise. **Rollback** runs
+`upgrade.sh --rollback` (flip back to the previous color's binary) without
+building.
+
+### On each host (once)
+
+```
+sudo useradd --create-home --shell /bin/bash deploy
+sudo install -d -o deploy -g deploy -m 0700 ~deploy/.ssh
+sudo tee ~deploy/.ssh/authorized_keys <<<'ssh-ed25519 AAAA... github-deploy-<env>'
+sudo chown deploy:deploy ~deploy/.ssh/authorized_keys && sudo chmod 0600 ~deploy/.ssh/authorized_keys
+
+# upgrade.sh lives outside the repo checkout, owned by root so the CI key
+# cannot change what runs as root.
+sudo install -o root -g root -m 0755 deploy/upgrade.sh /opt/nipa/upgrade.sh
+echo 'deploy ALL=(root) NOPASSWD: /opt/nipa/upgrade.sh *' | sudo tee /etc/sudoers.d/nipa-deploy
+sudo chmod 0440 /etc/sudoers.d/nipa-deploy && sudo visudo -c
+```
+
+The CI key can only upload binaries into `~deploy/releases` (the last 5 are
+kept) and run `upgrade.sh`; sudo's `env_reset` drops any `NIPA_*` overrides.
+Re-install `/opt/nipa/upgrade.sh` by hand when `deploy/upgrade.sh` changes.
+Generate one key pair per environment (`ssh-keygen -t ed25519 -N '' -f
+deploy-<env>`) and record the host key with `ssh-keyscan -p <port> <host>`
+(verify the fingerprint against the server console).
+
+### In GitHub (once)
+
+**Settings → Environments**, create `dev` and `production`:
+
+| Kind | Name | Value |
+|---|---|---|
+| variable | `DEPLOY_HOST` | host name or IP |
+| variable | `DEPLOY_USER` | `deploy` |
+| variable | `DEPLOY_PORT` | SSH port (optional, default 22) |
+| variable | `DEPLOY_URL` | public origin, e.g. `https://dev.nipalab.com` / `https://nipalab.com` |
+| secret | `DEPLOY_SSH_KEY` | that environment's private key |
+| secret | `DEPLOY_KNOWN_HOSTS` | the `ssh-keyscan` line(s) |
+
+For `production` also enable **Required reviewers** and set **Deployment
+branches and tags** to the tag pattern `v*` only; for `dev` restrict it to
+`main`. Runners connect from GitHub's IP ranges, so SSH must be reachable from
+them (or front it with Tailscale / a self-hosted runner and point
+`DEPLOY_HOST` at that address).
+
+Release flow: merge to `main` (dev updates), then `make release
+version=vX.Y.Z && git push origin vX.Y.Z` and approve the production run.
+
 ## Day-2 operations
 
 - **Logs:** `journalctl -u nipad-ee@blue -f` (JSON with `LOG_FORMAT=json`).

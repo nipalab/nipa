@@ -1,0 +1,188 @@
+name: Server deploy
+
+# dev:        every green "Build and Test" run on main deploys automatically.
+# production: pushing a v* tag whose commit passed CI deploys after the
+#             production environment's required reviewers approve.
+# Manual:     "Run workflow" picks the environment and deploy or rollback;
+#             production deploys must be started from a v* tag.
+# Setup (hosts, sudoers, environments, secrets): docs/DEPLOY.md, "CI deploys".
+on:
+  workflow_run:
+    workflows: ["Build and Test"]
+    types: [completed]
+    branches: [main]
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        type: choice
+        options: [dev, production]
+        default: dev
+      action:
+        description: Deploy the selected ref, or flip back to the previous color
+        type: choice
+        options: [deploy, rollback]
+        default: deploy
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  resolve:
+    name: Resolve target
+    if: github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.target.outputs.environment }}
+      action: ${{ steps.target.outputs.action }}
+      sha: ${{ steps.target.outputs.sha }}
+    steps:
+      - id: target
+        env:
+          EVENT: ${{ github.event_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+          INPUT_ENVIRONMENT: ${{ inputs.environment }}
+          INPUT_ACTION: ${{ inputs.action }}
+        run: |
+          case "$EVENT" in
+            workflow_run) environment=dev; action=deploy; sha="$RUN_SHA" ;;
+            push) environment=production; action=deploy; sha="$GITHUB_SHA" ;;
+            workflow_dispatch) environment="$INPUT_ENVIRONMENT"; action="$INPUT_ACTION"; sha="$GITHUB_SHA" ;;
+            *) echo "::error::unsupported event $EVENT"; exit 1 ;;
+          esac
+          if [[ "$environment" == production && "$action" == deploy ]]; then
+            if [[ "$REF_TYPE" != tag || "$REF_NAME" != v* ]]; then
+              echo "::error::production deploys only from a v* tag (got $REF_TYPE $REF_NAME)"
+              exit 1
+            fi
+          fi
+          {
+            echo "environment=$environment"
+            echo "action=$action"
+            echo "sha=$sha"
+          } >>"$GITHUB_OUTPUT"
+          echo "### $action → $environment @ ${sha:0:12}" >>"$GITHUB_STEP_SUMMARY"
+
+      - name: Require a green CI run for the commit
+        if: steps.target.outputs.action == 'deploy' && github.event_name != 'workflow_run'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ steps.target.outputs.sha }}
+        run: |
+          count="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$SHA&status=success&per_page=1" --jq '.total_count')"
+          if [[ "${count:-0}" -eq 0 ]]; then
+            echo "::error::no successful 'Build and Test' run for $SHA; deploy a commit that passed CI"
+            exit 1
+          fi
+
+  build:
+    name: Build nipad-ee
+    needs: resolve
+    if: needs.resolve.outputs.action == 'deploy'
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      sha256: ${{ steps.checksum.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install web dependencies
+        working-directory: web
+        run: npm ci --ignore-scripts
+
+      - id: version
+        run: echo "version=$(git describe --tags --always)" >>"$GITHUB_OUTPUT"
+
+      - name: Build
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          REVISION: ${{ needs.resolve.outputs.sha }}
+        run: make web build-server-ee VERSION="$VERSION" REVISION="${REVISION:0:12}"
+
+      - id: checksum
+        run: |
+          ./bin/nipad-ee -version
+          echo "sha256=$(sha256sum bin/nipad-ee | cut -d' ' -f1)" >>"$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nipad-ee-${{ needs.resolve.outputs.environment }}-${{ steps.version.outputs.version }}
+          path: bin/nipad-ee
+          retention-days: 7
+
+  deploy:
+    name: Deploy to ${{ needs.resolve.outputs.environment }}
+    needs: [resolve, build]
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ needs.resolve.outputs.environment }}
+      url: ${{ vars.DEPLOY_URL }}
+    concurrency:
+      group: deploy-${{ needs.resolve.outputs.environment }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+          sparse-checkout: deploy
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: nipad-ee-${{ needs.resolve.outputs.environment }}-${{ needs.build.outputs.version }}
+          path: dist
+
+      - name: Ship and flip
+        env:
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+          DEPLOY_PORT: ${{ vars.DEPLOY_PORT }}
+          DEPLOY_URL: ${{ vars.DEPLOY_URL }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          SHA256: ${{ needs.build.outputs.sha256 }}
+          VERSION: ${{ needs.build.outputs.version }}
+        run: deploy/ci-deploy.sh deploy dist/nipad-ee "$SHA256" "$VERSION"
+
+  rollback:
+    name: Roll back ${{ needs.resolve.outputs.environment }}
+    needs: resolve
+    if: needs.resolve.outputs.action == 'rollback'
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ needs.resolve.outputs.environment }}
+      url: ${{ vars.DEPLOY_URL }}
+    concurrency:
+      group: deploy-${{ needs.resolve.outputs.environment }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: deploy
+
+      - name: Flip back to the previous color
+        env:
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+          DEPLOY_PORT: ${{ vars.DEPLOY_PORT }}
+          DEPLOY_URL: ${{ vars.DEPLOY_URL }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: deploy/ci-deploy.sh rollback
