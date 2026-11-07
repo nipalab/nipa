@@ -208,6 +208,7 @@ namespace Nipa.Editor
 
         void PushWithLockCheck(string msg)
         {
+            List<string> needed = null;
             NipaHost.Run("Push", async (s, on) =>
             {
                 var check = await s.CheckPushAsync();
@@ -218,10 +219,14 @@ namespace Nipa.Editor
                 }
                 if (check.Needed.Count > 0)
                 {
-                    MainThread.Post(() => PromptLock(check.Needed, msg));
+                    needed = check.Needed;
                     return;
                 }
                 await s.PushAsync(msg, on);
+            }, onSuccess: () =>
+            {
+                if (needed != null)
+                    PromptLock(needed, msg);
             });
         }
 

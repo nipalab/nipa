@@ -263,12 +263,49 @@ namespace Nipa.Core.Tests
         {
             await session.StartAsync();
             fake.On("ProxyLockFile", new Reply { Status = 409, Body = "{\"code\":\"AlreadyExists\",\"message\":\"locked by Bob\"}" });
-            var result = await session.LockAsync(new[] { "game/Assets/b.prefab" });
+            lockJson = lockJson.Replace("\"locks\":[", "\"locks\":[{\"path\":\"game/Assets/c.png\",\"held_by\":\"bob\",\"held_by_name\":\"Bob\",\"global\":true},");
+            var result = await session.LockAsync(new[] { "game/Assets/c.png" });
             Assert.That(result.Locked, Is.Empty);
             var f = result.Failed.Single();
             Assert.That(f.Holder, Is.EqualTo("Bob"));
             Assert.That(f.Message, Does.Contain("locked by Bob"));
             Assert.That(Calls("ProxyLockFile"), Is.EqualTo(1));
+        }
+
+        [Test]
+        public async Task LockKnownTheirsFailsWithoutCallingServer()
+        {
+            await session.StartAsync();
+            var result = await session.LockAsync(new[] { "game/Assets/b.prefab" });
+            Assert.That(result.Failed.Single().Holder, Is.EqualTo("Bob"));
+            Assert.That(Calls("ProxyLockFile"), Is.EqualTo(0));
+        }
+
+        [Test]
+        public async Task LockRepairsHalfLockedPair()
+        {
+            lockJson = "{\"user_id\":\"me\",\"default_branch\":true,\"locks\":[{\"path\":\"game/Assets/a.png\",\"held_by\":\"me\",\"global\":true}]}";
+            await session.StartAsync();
+            fake.On("ProxyLockFile", "{}");
+            var result = await session.LockAsync(new[] { "game/Assets/a.png" });
+            Assert.That(result.Locked, Is.EqualTo(new[] { "game/Assets/a.png" }));
+            var bodies = fake.Requests.Where(r => r.Method == "ProxyLockFile").Select(r => r.Body).ToList();
+            Assert.That(bodies.Single(), Does.Contain("a.png.meta"));
+        }
+
+        [Test]
+        public async Task ReleaseDropsBothHalvesOfPair()
+        {
+            lockJson = "{\"user_id\":\"me\",\"default_branch\":true,\"locks\":["
+                + "{\"path\":\"game/Assets/a.png\",\"held_by\":\"me\",\"global\":true},"
+                + "{\"path\":\"game/Assets/a.png.meta\",\"held_by\":\"me\",\"global\":true},"
+                + "{\"path\":\"game/Assets/b.png\",\"held_by\":\"me\",\"global\":true}]}";
+            await session.StartAsync();
+            fake.On("ProxyUnlockFile", "{}");
+            await session.ReleaseAsync(session.Locks.Locks.First(l => l.Path.EndsWith(".meta")));
+            var bodies = fake.Requests.Where(r => r.Method == "ProxyUnlockFile").Select(r => r.Body).ToList();
+            Assert.That(bodies, Has.Count.EqualTo(2));
+            Assert.That(bodies.Any(b => b.Contains("b.png")), Is.False);
         }
 
         [Test]

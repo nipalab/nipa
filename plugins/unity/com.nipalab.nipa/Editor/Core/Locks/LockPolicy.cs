@@ -118,6 +118,11 @@ namespace Nipa.Editor.Core.Locks
             return mine ?? LockInfo.Free;
         }
 
+        public bool HeldByMe(string clonePath)
+        {
+            return scoped.Any(l => IsMine(l) && Covers(l.Path, clonePath));
+        }
+
         public bool RequiresLock(string clonePath)
         {
             return Strict && strictExtensions.Contains(Extension(ProjectPaths.AssetOf(Trim(clonePath))));

@@ -59,7 +59,7 @@ namespace Nipa.Editor
 
         static AssetMoveResult OnWillMoveAsset(string sourcePath, string destinationPath)
         {
-            return Guard(sourcePath) ? AssetMoveResult.DidNotMove : AssetMoveResult.FailedMove;
+            return Guard(sourcePath) && Guard(destinationPath) ? AssetMoveResult.DidNotMove : AssetMoveResult.FailedMove;
         }
 
         static AssetDeleteResult OnWillDeleteAsset(string assetPath, RemoveAssetOptions options)

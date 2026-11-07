@@ -129,10 +129,16 @@ namespace Nipa.Editor.Core.Session
             {
                 foreach (var asset in Assets(clonePaths))
                 {
-                    if (locks.Lookup(asset).State == LockState.Mine)
+                    if (locks.Lookup(asset).State == LockState.Theirs)
+                    {
+                        result.Failed.Add(new LockFailure(asset, "locked by someone else"));
                         continue;
+                    }
+                    var failed = false;
                     foreach (var p in ProjectPaths.Pair(asset))
                     {
+                        if (locks.HeldByMe(p))
+                            continue;
                         try
                         {
                             await Call<ProxyLockFileRequest, ProxyLockFileResponse>("ProxyLockFile",
@@ -142,11 +148,12 @@ namespace Nipa.Editor.Core.Session
                         catch (DaemonException e)
                         {
                             result.Failed.Add(new LockFailure(asset, e.Message));
+                            failed = true;
                             break;
                         }
-                        if (p == asset)
-                            result.Locked.Add(asset);
                     }
+                    if (!failed)
+                        result.Locked.Add(asset);
                 }
             }
             finally
@@ -180,9 +187,14 @@ namespace Nipa.Editor.Core.Session
 
         public async Task ReleaseAsync(FileLockDetail l, CancellationToken ct = default)
         {
+            var asset = ProjectPaths.AssetOf(Trim(l.Path));
+            var pair = locks.Locks.Where(x => locks.InScope(x) && locks.CanRelease(x) && ProjectPaths.AssetOf(Trim(x.Path)) == asset).ToList();
+            if (!pair.Contains(l))
+                pair.Add(l);
             try
             {
-                await ReleaseOneAsync(l, ct).ConfigureAwait(false);
+                foreach (var x in pair)
+                    await ReleaseOneAsync(x, ct).ConfigureAwait(false);
             }
             finally
             {
