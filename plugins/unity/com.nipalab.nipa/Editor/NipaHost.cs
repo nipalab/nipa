@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nipa.Editor.Core.Daemon;
+using Nipa.Editor.Core.Locks;
 using Nipa.Editor.Core.Paths;
 using Nipa.Editor.Core.Session;
 using UnityEditor;
@@ -25,6 +26,27 @@ namespace Nipa.Editor
         public static float BusyProgress { get; private set; } = -1f;
 
         public static event Action Changed;
+
+        public static List<string> Notices { get; } = new List<string>();
+
+        public static void DismissNotices()
+        {
+            Notices.Clear();
+            Changed?.Invoke();
+        }
+
+        public static void ApplySettings()
+        {
+            Session?.ApplySettings(NipaSettingsStore.LoadProject());
+            OnCacheChanged();
+        }
+
+        public static bool IsManaged(string unityPath)
+        {
+            return !string.IsNullOrEmpty(unityPath)
+                && (unityPath == "Assets" || unityPath.StartsWith("Assets/", StringComparison.Ordinal)
+                    || unityPath.StartsWith("Packages/", StringComparison.Ordinal));
+        }
 
         static NipaHost()
         {
@@ -68,7 +90,10 @@ namespace Nipa.Editor
                     {
                         PollInterval = poll,
                     };
+                    session.ApplySettings(NipaSettingsStore.LoadProject());
                     session.Cache.Changed += _ => MainThread.Post(OnCacheChanged);
+                    session.LocksChanged += () => MainThread.Post(OnCacheChanged);
+                    session.Activity += a => MainThread.Post(() => OnActivity(a));
                     session.Healthy += () => MainThread.Post(ClearError);
                     session.WatchFailed += e => MainThread.Post(() => { Error = e.Message; Changed?.Invoke(); });
                     await session.StartAsync(token).ConfigureAwait(false);
@@ -131,6 +156,7 @@ namespace Nipa.Editor
                 try
                 {
                     await session.RefreshAsync().ConfigureAwait(false);
+                    await session.RefreshLocksAsync().ConfigureAwait(false);
                 }
                 catch (Exception e)
                 {
@@ -151,7 +177,7 @@ namespace Nipa.Editor
                 .ToList();
         }
 
-        public static void Run(string title, Func<NipaSession, Action<OpEvent>, Task> op, bool refreshAssets = false)
+        public static void Run(string title, Func<NipaSession, Action<OpEvent>, Task> op, bool refreshAssets = false, Action onSuccess = null)
         {
             var session = Session;
             if (session == null || Busy != null)
@@ -179,8 +205,43 @@ namespace Nipa.Editor
                     else if (refreshAssets)
                         AssetDatabase.Refresh();
                     OnCacheChanged();
+                    if (error == null)
+                        onSuccess?.Invoke();
                 });
             });
+        }
+
+        static void OnActivity(RepoActivity a)
+        {
+            if (a.Events != null)
+            {
+                foreach (var e in a.Events)
+                {
+                    var text = Describe(e);
+                    if (text == null)
+                        continue;
+                    Notices.Add(text);
+                    UnityEngine.Debug.Log("[Nipa] " + text);
+                }
+                while (Notices.Count > 20)
+                    Notices.RemoveAt(0);
+            }
+            OnCacheChanged();
+        }
+
+        static string Describe(TeamEvent e)
+        {
+            switch (e.Kind)
+            {
+                case "pushed":
+                    return e.Actor + " pushed " + e.Count + " commit(s) to " + e.Branch + ": " + e.Message;
+                case "review_requested":
+                    return e.Actor + " requested your review on !" + e.Number + " " + e.Message;
+                case "lock_released":
+                    return e.Path + " is no longer locked by " + e.Actor;
+                default:
+                    return null;
+            }
         }
 
         static void ClearError()
@@ -211,6 +272,7 @@ namespace Nipa.Editor
                 Changed?.Invoke();
                 EditorApplication.RepaintProjectWindow();
                 EditorApplication.RepaintHierarchyWindow();
+                UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
             };
         }
     }

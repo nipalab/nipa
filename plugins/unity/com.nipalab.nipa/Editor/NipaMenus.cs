@@ -22,6 +22,18 @@ namespace Nipa.Editor
         [MenuItem("Assets/Nipa/Restore", true)]
         static bool AssetsRestoreValid() => HasSelection();
 
+        [MenuItem("Assets/Nipa/Lock")]
+        static void AssetsLock() => Lock();
+
+        [MenuItem("Assets/Nipa/Lock", true)]
+        static bool AssetsLockValid() => HasSelection();
+
+        [MenuItem("Assets/Nipa/Unlock")]
+        static void AssetsUnlock() => Unlock();
+
+        [MenuItem("Assets/Nipa/Unlock", true)]
+        static bool AssetsUnlockValid() => HasSelection();
+
         [MenuItem("Assets/Nipa/Refresh")]
         static void AssetsRefresh() => NipaHost.Refresh();
 
@@ -40,6 +52,18 @@ namespace Nipa.Editor
         [MenuItem("CONTEXT/Nipa/Restore", true)]
         static bool ContextRestoreValid() => HasSelection();
 
+        [MenuItem("CONTEXT/Nipa/Lock")]
+        static void ContextLock() => Lock();
+
+        [MenuItem("CONTEXT/Nipa/Lock", true)]
+        static bool ContextLockValid() => HasSelection();
+
+        [MenuItem("CONTEXT/Nipa/Unlock")]
+        static void ContextUnlock() => Unlock();
+
+        [MenuItem("CONTEXT/Nipa/Unlock", true)]
+        static bool ContextUnlockValid() => HasSelection();
+
         [MenuItem("CONTEXT/Nipa/Refresh")]
         static void ContextRefresh() => NipaHost.Refresh();
 
@@ -54,6 +78,10 @@ namespace Nipa.Editor
             if (paths.Count > 0)
                 NipaHost.Run("Stage", (s, _) => s.StageAsync(paths));
         }
+
+        internal static void Lock() => NipaLocks.Lock(NipaHost.SelectedClonePaths());
+
+        internal static void Unlock() => NipaLocks.Unlock(NipaHost.SelectedClonePaths());
 
         internal static void Restore()
         {

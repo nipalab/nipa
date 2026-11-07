@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Nipa.Editor.Core.Daemon;
+using Nipa.Editor.Core.Locks;
 using Nipa.Editor.Core.Paths;
 using Nipa.Editor.Core.Status;
 using UnityEditor;
@@ -25,6 +26,7 @@ namespace Nipa.Editor
         bool blocked;
         string message = string.Empty;
         Vector2 scroll;
+        int tab;
 
         public static void Open()
         {
@@ -65,14 +67,23 @@ namespace Nipa.Editor
             LoadWarnings(session);
             DrawBanners();
 
+            tab = GUILayout.Toolbar(tab, new[] { "Changes", "Locks (" + session.Locks.Mine.Count() + ")" });
             scroll = EditorGUILayout.BeginScrollView(scroll);
-            DrawList("Changes", changeRows, selectedChanges, "Stage", "Stage all", paths =>
-                NipaHost.Run("Stage", (s, _) => s.StageAsync(paths)));
-            DrawList("Staged", stagedRows, selectedStaged, "Unstage", "Unstage all", paths =>
-                NipaHost.Run("Unstage", (s, _) => s.UnstageAsync(paths)));
+            if (tab == 0)
+            {
+                DrawList("Changes", changeRows, selectedChanges, "Stage", "Stage all", paths =>
+                    NipaHost.Run("Stage", (s, _) => s.StageAsync(paths)));
+                DrawList("Staged", stagedRows, selectedStaged, "Unstage", "Unstage all", paths =>
+                    NipaHost.Run("Unstage", (s, _) => s.UnstageAsync(paths)));
+            }
+            else
+            {
+                DrawLocks(session);
+            }
             EditorGUILayout.EndScrollView();
 
-            DrawFooter(stagedRows.Count);
+            if (tab == 0)
+                DrawFooter(stagedRows.Count);
         }
 
         void RebuildRows(Core.Session.NipaSession session)
@@ -137,6 +148,7 @@ namespace Nipa.Editor
                 EditorGUILayout.HelpBox(conflictCount + " file(s) in conflict. Resolve them in Nipa Desktop.", MessageType.Error);
             if (NipaHost.Error != null)
                 EditorGUILayout.HelpBox(NipaHost.Error, MessageType.Warning);
+            DrawActivity();
             if (warnings.Count > 0)
             {
                 var text = string.Join("\n", warnings.Take(6).Select(w => "• " + w.Message));
@@ -144,6 +156,85 @@ namespace Nipa.Editor
                     text += "\n… and " + (warnings.Count - 6) + " more";
                 EditorGUILayout.HelpBox(".meta warnings:\n" + text, MessageType.Warning);
             }
+        }
+
+        void DrawActivity()
+        {
+            var session = NipaHost.Session;
+            if (session.Incoming > 0)
+            {
+                EditorGUILayout.HelpBox("Out of date: " + session.Incoming + " new commit(s) on " + session.Cache.Branch + ".", MessageType.Info);
+                using (new EditorGUI.DisabledScope(NipaHost.Busy != null))
+                {
+                    if (GUILayout.Button("Update"))
+                        NipaHost.Run("Update", (s, on) => s.UpdateAsync(on), refreshAssets: true);
+                }
+            }
+            if (session.ReviewRequests > 0)
+            {
+                EditorGUILayout.HelpBox(session.ReviewRequests + " merge request(s) waiting for your review.", MessageType.Info);
+                if (session.DesktopLink("merge-requests") != null && GUILayout.Button("Open in Nipa Desktop"))
+                    Application.OpenURL(session.DesktopLink("merge-requests"));
+            }
+            if (NipaHost.Notices.Count == 0)
+                return;
+            EditorGUILayout.HelpBox(string.Join("\n", NipaHost.Notices.Skip(NipaHost.Notices.Count - 5)), MessageType.None);
+            if (GUILayout.Button("Dismiss"))
+                NipaHost.DismissNotices();
+        }
+
+        void DrawLocks(Core.Session.NipaSession session)
+        {
+            var policy = session.Locks;
+            var locks = policy.Locks.Where(policy.InScope).OrderBy(l => l.Path, System.StringComparer.Ordinal).ToList();
+            EditorGUILayout.LabelField("Locks on " + (policy.DefaultBranch ? "the default branch" : policy.Branch) + " (" + locks.Count + ")", EditorStyles.boldLabel);
+            foreach (var l in locks)
+            {
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    GUILayout.Label(new GUIContent(l.Path, l.Path), GUILayout.MinWidth(80));
+                    GUILayout.FlexibleSpace();
+                    GUILayout.Label(policy.IsMine(l) ? "you" : l.HeldByName, EditorStyles.miniLabel, GUILayout.Width(80));
+                    using (new EditorGUI.DisabledScope(!policy.CanRelease(l) || NipaHost.Busy != null))
+                    {
+                        if (GUILayout.Button("Release", GUILayout.Width(64)))
+                            NipaHost.Run("Release", (s, _) => s.ReleaseAsync(l));
+                    }
+                }
+            }
+            if (locks.Count == 0)
+                EditorGUILayout.HelpBox("No locks.", MessageType.None);
+        }
+
+        void PushWithLockCheck(string msg)
+        {
+            NipaHost.Run("Push", async (s, on) =>
+            {
+                var check = await s.CheckPushAsync();
+                if (check.Theirs.Count > 0)
+                {
+                    var lines = check.Theirs.Select(f => "• " + f.Path + " — locked by " + (string.IsNullOrEmpty(f.HeldByName) ? f.HeldBy : f.HeldByName));
+                    throw new System.InvalidOperationException("Locked by someone else:\n" + string.Join("\n", lines));
+                }
+                if (check.Needed.Count > 0)
+                {
+                    MainThread.Post(() => PromptLock(check.Needed, msg));
+                    return;
+                }
+                await s.PushAsync(msg, on);
+            });
+        }
+
+        void PromptLock(List<string> needed, string msg)
+        {
+            var list = string.Join("\n", needed.Take(10).Select(p => "• " + p)) + (needed.Count > 10 ? "\n…" : string.Empty);
+            if (!EditorUtility.DisplayDialog("Nipa: lock required",
+                "These changed binary files need a lock before they can be pushed:\n" + list, "Lock " + needed.Count + " files", "Cancel"))
+            {
+                message = msg;
+                return;
+            }
+            NipaLocks.Lock(needed, () => PushWithLockCheck(msg));
         }
 
         void DrawList(string title, List<Row> rows, HashSet<string> selected, string actionLabel, string allLabel,
@@ -213,7 +304,7 @@ namespace Nipa.Editor
                 {
                     var msg = message;
                     message = string.Empty;
-                    NipaHost.Run("Push", (s, on) => s.PushAsync(msg, on));
+                    PushWithLockCheck(msg);
                 }
             }
         }

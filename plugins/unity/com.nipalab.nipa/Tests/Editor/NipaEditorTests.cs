@@ -62,5 +62,24 @@ namespace Nipa.Editor.Tests
             Assert.That(w, Is.Not.Null);
             w.Close();
         }
+
+        static object Call(string method, params object[] args)
+        {
+            var m = typeof(NipaAssetProcessor).GetMethod(method, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+            Assert.That(m, Is.Not.Null, method);
+            return m.Invoke(null, args);
+        }
+
+        [Test]
+        public void AssetProcessorAllowsEverythingWithoutSession()
+        {
+            var args = new object[] { "Assets/a.prefab", null };
+            Assert.That((bool)Call("IsOpenForEdit", args), Is.True);
+            Assert.That((bool)Call("MakeEditable", new object[] { new[] { "Assets/a.prefab" } }), Is.True);
+            var paths = new[] { "Assets/a.prefab" };
+            Assert.That((string[])Call("OnWillSaveAssets", new object[] { paths }), Is.EqualTo(paths));
+            Assert.That(Call("OnWillMoveAsset", "Assets/a", "Assets/b"), Is.EqualTo(AssetMoveResult.DidNotMove));
+            Assert.That(Call("OnWillDeleteAsset", "Assets/a", RemoveAssetOptions.MoveAssetToTrash), Is.EqualTo(AssetDeleteResult.DidNotDelete));
+        }
     }
 }

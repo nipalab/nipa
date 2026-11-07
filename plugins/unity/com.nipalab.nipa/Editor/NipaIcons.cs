@@ -7,7 +7,7 @@ namespace Nipa.Editor
     {
         const int Size = 16;
 
-        static Texture2D conflict, modified, removed, staged, untracked;
+        static Texture2D conflict, modified, removed, staged, untracked, lockMine, lockTheirs, behind;
 
         public static Texture2D For(FileState state)
         {
@@ -24,7 +24,29 @@ namespace Nipa.Editor
             return null;
         }
 
+        public static Texture2D LockMine => lockMine = lockMine != null ? lockMine : Shape(new Color32(0x14, 0xB8, 0xA6, 0xFF), Square);
+
+        public static Texture2D LockTheirs => lockTheirs = lockTheirs != null ? lockTheirs : Shape(new Color32(0xEF, 0x44, 0x44, 0xFF), Square);
+
+        public static Texture2D Behind => behind = behind != null ? behind : Shape(new Color32(0x06, 0xB6, 0xD4, 0xFF), Triangle);
+
+        static float Square(float x, float y, float c)
+        {
+            return Mathf.Clamp01(c - Mathf.Max(Mathf.Abs(x - c), Mathf.Abs(y - c)) + 0.5f);
+        }
+
+        static float Triangle(float x, float y, float c)
+        {
+            var half = y / 2f;
+            return Mathf.Clamp01(half - Mathf.Abs(x - c) + 0.5f);
+        }
+
         static Texture2D Dot(Color color)
+        {
+            return Shape(color, (x, y, c) => Mathf.Clamp01(c + 0.5f - Mathf.Sqrt((x - c) * (x - c) + (y - c) * (y - c))));
+        }
+
+        static Texture2D Shape(Color color, System.Func<float, float, float, float> coverage)
         {
             var tex = new Texture2D(Size, Size, TextureFormat.RGBA32, false)
             {
@@ -36,9 +58,8 @@ namespace Nipa.Editor
             {
                 for (var x = 0; x < Size; x++)
                 {
-                    var d = Mathf.Sqrt((x - c) * (x - c) + (y - c) * (y - c));
-                    var alpha = Mathf.Clamp01(c + 0.5f - d);
-                    var edge = d > c - 1.5f ? 0.55f : 1f;
+                    var alpha = coverage(x, y, c);
+                    var edge = alpha < 1f ? 0.55f : 1f;
                     tex.SetPixel(x, y, new Color(color.r * edge, color.g * edge, color.b * edge, alpha));
                 }
             }
