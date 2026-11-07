@@ -260,4 +260,173 @@ namespace Nipa.Editor.Core.Daemon
         public int ReviewRequests { get; set; }
         public string Error { get; set; }
     }
+
+    public sealed class ConflictsRequest
+    {
+        public string Root { get; set; }
+    }
+
+    public sealed class ConflictRevision
+    {
+        public string Id { get; set; }
+        public string Label { get; set; }
+    }
+
+    public sealed class ConflictFile
+    {
+        public string Path { get; set; }
+        public string Kind { get; set; }
+        public bool Binary { get; set; }
+        public bool Resolved { get; set; }
+        public string Viewer { get; set; }
+    }
+
+    public sealed class ConflictsResponse
+    {
+        public string Op { get; set; }
+        public ConflictRevision Base { get; set; }
+        public ConflictRevision Ours { get; set; }
+        public ConflictRevision Theirs { get; set; }
+        public List<ConflictFile> Files { get; set; }
+    }
+
+    public sealed class ResolveConflictRequest
+    {
+        public string Root { get; set; }
+        public string Path { get; set; }
+        public string Choice { get; set; }
+        public byte[] Content { get; set; }
+    }
+
+    public sealed class BlobRef
+    {
+        public string Source { get; set; }
+        public string Revision { get; set; }
+        public string Path { get; set; }
+    }
+
+    public sealed class ReadBlobRequest
+    {
+        public string Root { get; set; }
+        public BlobRef Blob { get; set; }
+    }
+
+    public sealed class BlobInfo
+    {
+        public string Path { get; set; }
+        public long SizeBytes { get; set; }
+        public bool IsBinary { get; set; }
+    }
+
+    public sealed class BlobEvent
+    {
+        public BlobInfo Info { get; set; }
+        public byte[] Data { get; set; }
+        public OpFailure Failure { get; set; }
+    }
+
+    public sealed class RevertOpRequest
+    {
+        public string Root { get; set; }
+        public bool Abort { get; set; }
+        public bool Continue { get; set; }
+        public bool Skip { get; set; }
+    }
+
+    public sealed class MergeOpRequest
+    {
+        public string Root { get; set; }
+        public bool Abort { get; set; }
+    }
+
+    public sealed class Branch
+    {
+        public string Id { get; set; }
+        public string Name { get; set; }
+        public bool IsDefault { get; set; }
+        public bool IsProtected { get; set; }
+    }
+
+    public sealed class ListBranchesRequest
+    {
+        public int Limit { get; set; }
+    }
+
+    public sealed class ListBranchesResponse
+    {
+        public List<Branch> Branches { get; set; }
+    }
+
+    public sealed class ProxyBranchListRequest
+    {
+        public string Root { get; set; }
+        public ListBranchesRequest Request { get; set; }
+    }
+
+    public sealed class ProxyBranchListResponse
+    {
+        public ListBranchesResponse Response { get; set; }
+    }
+
+    public sealed class Tag
+    {
+        public string Id { get; set; }
+        public string Name { get; set; }
+        public string CommitId { get; set; }
+        public string Message { get; set; }
+    }
+
+    public sealed class ListTagsRequest
+    {
+        public int Limit { get; set; }
+    }
+
+    public sealed class ListTagsResponse
+    {
+        public List<Tag> Tags { get; set; }
+    }
+
+    public sealed class ProxyTagListRequest
+    {
+        public string Root { get; set; }
+        public ListTagsRequest Request { get; set; }
+    }
+
+    public sealed class ProxyTagListResponse
+    {
+        public ListTagsResponse Response { get; set; }
+    }
+
+    public sealed class CommitLogRequest
+    {
+        public string Branch { get; set; }
+        public int Limit { get; set; }
+        public string Path { get; set; }
+    }
+
+    public sealed class CommitLogEntry
+    {
+        public string CommitId { get; set; }
+        public string CommitHash { get; set; }
+        public string AuthorName { get; set; }
+        public string Message { get; set; }
+        public string CreatedAt { get; set; }
+    }
+
+    public sealed class CommitLogResponse
+    {
+        public string Branch { get; set; }
+        public List<CommitLogEntry> Commits { get; set; }
+    }
+
+    public sealed class ProxyCommitLogRequest
+    {
+        public string Root { get; set; }
+        public CommitLogRequest Request { get; set; }
+    }
+
+    public sealed class ProxyCommitLogResponse
+    {
+        public CommitLogResponse Response { get; set; }
+    }
 }
