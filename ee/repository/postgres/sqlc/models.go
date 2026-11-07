@@ -6,8 +6,40 @@ package postgres
 
 import (
 	"database/sql"
+	"encoding/json"
 	"time"
 )
+
+type BillingAccount struct {
+	UserID             int64     `json:"user_id"`
+	Provider           string    `json:"provider"`
+	ProviderCustomerID string    `json:"provider_customer_id"`
+	CreatedAt          time.Time `json:"created_at"`
+}
+
+type BillingEvent struct {
+	EventID     string          `json:"event_id"`
+	Type        string          `json:"type"`
+	OccurredAt  time.Time       `json:"occurred_at"`
+	Payload     json.RawMessage `json:"payload"`
+	ProcessedAt sql.NullTime    `json:"processed_at"`
+	Error       sql.NullString  `json:"error"`
+	ReceivedAt  time.Time       `json:"received_at"`
+}
+
+type BillingSubscription struct {
+	ProviderSubscriptionID string       `json:"provider_subscription_id"`
+	UserID                 int64        `json:"user_id"`
+	Plan                   string       `json:"plan"`
+	Status                 string       `json:"status"`
+	Interval               string       `json:"interval"`
+	Seats                  int64        `json:"seats"`
+	StoragePacks           int64        `json:"storage_packs"`
+	CurrentPeriodEnd       sql.NullTime `json:"current_period_end"`
+	CancelAtPeriodEnd      bool         `json:"cancel_at_period_end"`
+	ProviderUpdatedAt      time.Time    `json:"provider_updated_at"`
+	UpdatedAt              time.Time    `json:"updated_at"`
+}
 
 type Branch struct {
 	ID                    int64         `json:"id"`
@@ -260,9 +292,10 @@ type Organization struct {
 }
 
 type OwnerQuotum struct {
-	UserID     int64         `json:"user_id"`
-	QuotaBytes sql.NullInt64 `json:"quota_bytes"`
-	UpdatedAt  time.Time     `json:"updated_at"`
+	UserID        int64         `json:"user_id"`
+	QuotaBytes    sql.NullInt64 `json:"quota_bytes"`
+	OverrideBytes sql.NullInt64 `json:"override_bytes"`
+	UpdatedAt     time.Time     `json:"updated_at"`
 }
 
 type PbacRule struct {

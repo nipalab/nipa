@@ -142,6 +142,9 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	if err := checkBilling(cfg); err != nil {
+		panic(err)
+	}
 
 	webhookRepository := postgres.NewWebhookRepository(dbConn)
 	webhookDispatcher := webhook.NewDispatcher(webhookRepository, webhook.NewClient(webhook.ClientConfig{
@@ -328,6 +331,18 @@ func createStorageLedger(cfg *config.Config, dbConn *sql.DB) (*storageusage.Ledg
 	default:
 		return nil, fmt.Errorf("unknown STORAGE_LEDGER %q", cfg.StorageLedger)
 	}
+}
+
+// checkBilling validates the billing settings. No provider is wired yet, so
+// anything but off is refused and the seat gate stays unwired.
+func checkBilling(cfg *config.Config) error {
+	if err := cfg.ValidateBilling(); err != nil {
+		return err
+	}
+	if provider := cfg.BillingProviderName(); provider != config.BillingProviderOff {
+		return fmt.Errorf("billing provider not supported yet: BILLING_PROVIDER=%s", provider)
+	}
+	return nil
 }
 
 func createChunkStore(cfg *config.Config) (storage.ChunkStore, error) {

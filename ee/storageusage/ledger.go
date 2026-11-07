@@ -289,9 +289,10 @@ func (l *Ledger) OwnerStorage(ctx context.Context, userID snow.ID) (*OwnerStorag
 	}, nil
 }
 
-// SetOwnerQuota sets or clears an owner's quota. A nil quota means unlimited.
-func (l *Ledger) SetOwnerQuota(ctx context.Context, userID snow.ID, quota *int64) error {
-	if quota != nil && *quota < 0 {
+// SetComputedQuota writes the owner's computed (billing) quota. Zero means
+// unlimited. An admin override, when set, still wins.
+func (l *Ledger) SetComputedQuota(ctx context.Context, userID snow.ID, quota int64) error {
+	if quota < 0 {
 		return domain.NewErrorUser("quota_bytes must be zero or positive")
 	}
 	if err := l.ensureActiveUser(ctx, userID); err != nil {
@@ -299,8 +300,36 @@ func (l *Ledger) SetOwnerQuota(ctx context.Context, userID snow.ID, quota *int64
 	}
 	return dbError(l.queries.SetOwnerQuota(ctx, sqlcPostgres.SetOwnerQuotaParams{
 		UserID:     userID.Int64(),
-		QuotaBytes: nullQuota(quota),
+		QuotaBytes: sql.NullInt64{Int64: quota, Valid: true},
 	}))
+}
+
+// SetQuotaOverride sets the admin override of an owner's quota. A nil quota
+// overrides to unlimited.
+func (l *Ledger) SetQuotaOverride(ctx context.Context, userID snow.ID, quota *int64) error {
+	var override int64
+	if quota != nil {
+		override = *quota
+	}
+	if override < 0 {
+		return domain.NewErrorUser("quota_bytes must be zero or positive")
+	}
+	if err := l.ensureActiveUser(ctx, userID); err != nil {
+		return err
+	}
+	return dbError(l.queries.SetOwnerQuotaOverride(ctx, sqlcPostgres.SetOwnerQuotaOverrideParams{
+		UserID:            userID.Int64(),
+		DefaultQuotaBytes: l.defaultQuota,
+		OverrideBytes:     override,
+	}))
+}
+
+// ClearQuotaOverride drops the admin override so the computed quota applies.
+func (l *Ledger) ClearQuotaOverride(ctx context.Context, userID snow.ID) error {
+	if err := l.ensureActiveUser(ctx, userID); err != nil {
+		return err
+	}
+	return dbError(l.queries.ClearOwnerQuotaOverride(ctx, userID.Int64()))
 }
 
 // SetBillingOwner transfers an organization to another billing owner.
@@ -330,8 +359,10 @@ func (l *Ledger) ensureActiveUser(ctx context.Context, userID snow.ID) error {
 func (l *Ledger) ownerQuotaBytes(ctx context.Context, userID snow.ID) (int64, error) {
 	row, err := l.queries.GetOwnerQuota(ctx, userID.Int64())
 	switch {
-	case err == nil && row.Valid:
-		return row.Int64, nil
+	case err == nil && row.OverrideBytes.Valid:
+		return row.OverrideBytes.Int64, nil
+	case err == nil && row.QuotaBytes.Valid:
+		return row.QuotaBytes.Int64, nil
 	case err == nil:
 		return 0, nil
 	case errors.Is(err, sql.ErrNoRows):
@@ -346,13 +377,6 @@ func quotaPtr(quota int64) *int64 {
 		return nil
 	}
 	return &quota
-}
-
-func nullQuota(quota *int64) sql.NullInt64 {
-	if quota == nil {
-		return sql.NullInt64{}
-	}
-	return sql.NullInt64{Int64: *quota, Valid: true}
 }
 
 func quotaExceeded(used, quota, needed int64) error {

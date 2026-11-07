@@ -467,10 +467,46 @@ CREATE TABLE org_billing_owner (
 
 CREATE INDEX idx_org_billing_owner_user ON org_billing_owner (user_id);
 
+-- quota_bytes is the computed (billing) quota; override_bytes is the admin
+-- override and wins when set (0 = unlimited).
 CREATE TABLE owner_quota (
-    user_id     BIGINT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-    quota_bytes BIGINT,
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+    user_id        BIGINT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    quota_bytes    BIGINT,
+    override_bytes BIGINT,
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE billing_accounts (
+    user_id              BIGINT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    provider             TEXT NOT NULL,
+    provider_customer_id TEXT NOT NULL UNIQUE,
+    created_at           TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE billing_subscriptions (
+    provider_subscription_id TEXT PRIMARY KEY,
+    user_id                  BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    plan                     TEXT NOT NULL DEFAULT '',
+    status                   TEXT NOT NULL,
+    interval                 TEXT NOT NULL DEFAULT '',
+    seats                    BIGINT NOT NULL DEFAULT 0,
+    storage_packs            BIGINT NOT NULL DEFAULT 0,
+    current_period_end       TIMESTAMPTZ,
+    cancel_at_period_end     BOOLEAN NOT NULL DEFAULT false,
+    provider_updated_at      TIMESTAMPTZ NOT NULL,
+    updated_at               TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_billing_subscriptions_user ON billing_subscriptions (user_id);
+
+CREATE TABLE billing_events (
+    event_id     TEXT PRIMARY KEY,
+    type         TEXT NOT NULL,
+    occurred_at  TIMESTAMPTZ NOT NULL,
+    payload      JSONB NOT NULL,
+    processed_at TIMESTAMPTZ,
+    error        TEXT,
+    received_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE project_chunks (

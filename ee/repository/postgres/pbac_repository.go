@@ -7,6 +7,7 @@ import (
 
 	sqlcPostgres "github.com/nipalab/nipa/ee/repository/postgres/sqlc"
 	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/repository/dbtx"
 	"github.com/nipalab/nipa/internal/snow"
 )
 
@@ -15,7 +16,7 @@ type PBAC struct {
 }
 
 func NewPBACRepository(db *sql.DB) *PBAC {
-	return &PBAC{queries: sqlcPostgres.New(db)}
+	return &PBAC{queries: sqlcPostgres.New(dbtx.New(db))}
 }
 
 func (p *PBAC) ProjectOrgID(ctx context.Context, projectID snow.ID) (snow.ID, error) {

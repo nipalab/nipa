@@ -54,6 +54,7 @@ type Permission struct {
 	users  userLookup
 	groups groupLookup
 	orgs   orgAuthorizer
+	seats  SeatGate
 
 	mu       sync.Mutex
 	cache    map[permissionCacheKey]permissionCacheEntry
@@ -69,6 +70,12 @@ func NewPermission(repo pbacRepository, users userLookup, groups groupLookup, or
 		cache:    map[permissionCacheKey]permissionCacheEntry{},
 		versions: map[snow.ID]uint64{},
 	}
+}
+
+// WithSeatGate gates user-subject rules on the org owner's seat limit.
+func (p *Permission) WithSeatGate(gate SeatGate) *Permission {
+	p.seats = gate
+	return p
 }
 
 // HasProjectAccess reports whether the caller holds permission on any path of
@@ -286,7 +293,17 @@ func (p *Permission) CreateRule(ctx context.Context, rule domain.PBACRule) (*dom
 		}
 	}
 
-	created, err := p.repo.CreateRule(ctx, rule)
+	var created *domain.PBACRule
+	insert := func(ctx context.Context) error {
+		var err error
+		created, err = p.repo.CreateRule(ctx, rule)
+		return err
+	}
+	if rule.UserID != nil {
+		err = admitSeat(ctx, p.seats, rule.OrgID, *rule.UserID, insert)
+	} else {
+		err = insert(ctx)
+	}
 	if err != nil {
 		return nil, err
 	}

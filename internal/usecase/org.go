@@ -29,6 +29,13 @@ type Org struct {
 	repo     orgMemberRepository
 	snowNode snow.Node
 	cache    permissionCacheInvalidator
+	seats    SeatGate
+}
+
+// WithSeatGate gates new members on the org owner's seat limit.
+func (o *Org) WithSeatGate(gate SeatGate) *Org {
+	o.seats = gate
+	return o
 }
 
 // WithPermissionCache drops cached rule sets after a member loses access.
@@ -104,7 +111,9 @@ func (o *Org) AddMember(ctx context.Context, orgID, userID snow.ID, role string)
 			return err
 		}
 	}
-	return o.repo.UpsertMember(ctx, orgID, userID, role)
+	return admitSeat(ctx, o.seats, orgID, userID, func(ctx context.Context) error {
+		return o.repo.UpsertMember(ctx, orgID, userID, role)
+	})
 }
 
 func (o *Org) UpdateMemberRole(ctx context.Context, orgID, userID snow.ID, role string) error {

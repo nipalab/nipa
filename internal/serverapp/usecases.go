@@ -18,7 +18,8 @@ import (
 )
 
 // UsecaseDeps carries everything the usecase graph needs besides the
-// repositories. StorageLedger, EmailDispatcher and RateLimiter are optional.
+// repositories. StorageLedger, SeatGate, EmailDispatcher and RateLimiter are
+// optional.
 type UsecaseDeps struct {
 	Config            *config.Config
 	DB                *sql.DB
@@ -29,6 +30,7 @@ type UsecaseDeps struct {
 	WebhookDispatcher *webhook.Dispatcher
 	EmailDispatcher   *mail.Dispatcher
 	StorageLedger     usecase.StorageLedger
+	SeatGate          usecase.SeatGate
 	RateLimiter       *ratelimit.Limiter
 }
 
@@ -43,6 +45,12 @@ func BuildUsecases(repos usecase.Repositories, deps UsecaseDeps) Usecases {
 	orgUsecase := usecase.NewOrg(repos.Org, node)
 	permissionUsecase := usecase.NewPermission(repos.PBAC, repos.User, repos.Group, orgUsecase)
 	orgUsecase.WithPermissionCache(permissionUsecase)
+	groupUsecase := usecase.NewGroup(repos.Group, node, permissionUsecase, orgUsecase)
+	if deps.SeatGate != nil {
+		orgUsecase.WithSeatGate(deps.SeatGate)
+		groupUsecase.WithSeatGate(deps.SeatGate)
+		permissionUsecase.WithSeatGate(deps.SeatGate)
+	}
 	projectUsecase := usecase.NewProject(repos.Project, node, permissionUsecase, orgUsecase)
 
 	branchUsecase := usecase.NewBranchWithChunks(permissionUsecase, repos.Branch, node, deps.ChunkStore).WithUsers(repos.User)
@@ -106,7 +114,7 @@ func BuildUsecases(repos usecase.Repositories, deps UsecaseDeps) Usecases {
 		Push:               pushUsecase,
 		Chunk:              chunkUsecase,
 		Permission:         permissionUsecase,
-		Group:              usecase.NewGroup(repos.Group, node, permissionUsecase, orgUsecase),
+		Group:              groupUsecase,
 		Org:                orgUsecase,
 		Project:            projectUsecase,
 		MergeRequest:       mergeRequestUsecase,

@@ -6,6 +6,7 @@ import (
 
 	sqlcPostgres "github.com/nipalab/nipa/ee/repository/postgres/sqlc"
 	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/repository/dbtx"
 	"github.com/nipalab/nipa/internal/snow"
 )
 
@@ -17,7 +18,7 @@ type OrgRepository struct {
 func NewOrgRepository(db *sql.DB) *OrgRepository {
 	return &OrgRepository{
 		db:      db,
-		queries: sqlcPostgres.New(db),
+		queries: sqlcPostgres.New(dbtx.New(db)),
 	}
 }
 

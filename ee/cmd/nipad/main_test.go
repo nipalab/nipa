@@ -24,3 +24,19 @@ func TestCreateStorageLedger(t *testing.T) {
 	_, err = createStorageLedger(&config.Config{StorageLedger: "bogus"}, nil)
 	require.Error(t, err)
 }
+
+func TestCheckBilling(t *testing.T) {
+	require.NoError(t, checkBilling(&config.Config{}))
+	require.NoError(t, checkBilling(&config.Config{BillingProvider: "off"}))
+
+	err := checkBilling(&config.Config{BillingProvider: "paddle"})
+	require.ErrorContains(t, err, "SAAS_MODE", "validation runs before the support check")
+
+	err = checkBilling(&config.Config{
+		BillingProvider: "paddle", SaaSMode: true, PaddleEnvironment: "sandbox",
+		PaddleAPIKey: "k", PaddleWebhookSecret: "s", PaddleClientToken: "t",
+		PaddlePriceSeatMonthly: "a", PaddlePriceSeatYearly: "b", PaddlePriceStorageMonthly: "c", PaddlePriceStorageYearly: "d",
+		BillingFreeSeats: 1, BillingSeatIncludedBytes: 1, BillingStoragePackBytes: 1,
+	})
+	require.ErrorContains(t, err, "billing provider not supported yet")
+}

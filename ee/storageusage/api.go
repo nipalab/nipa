@@ -47,9 +47,17 @@ func RegisterRoutes(ws *restful.WebService, cfg RoutesConfig) {
 		ws.PUT("/admin/billing/owners/{user}/quota").
 			To(h.setOwnerQuota).
 			Param(ws.PathParameter("user", "user id (base36)")).
-			Doc("Set or clear an owner's storage quota (super admin)").
+			Doc("Override an owner's storage quota; a null quota_bytes overrides to unlimited (super admin)").
 			Returns(http.StatusOK, "billing summary", ownerStorageResponse{}).
 			Operation("setOwnerQuota"))
+
+	ws.Route(
+		ws.DELETE("/admin/billing/owners/{user}/quota").
+			To(h.clearOwnerQuota).
+			Param(ws.PathParameter("user", "user id (base36)")).
+			Doc("Clear an owner's storage quota override (super admin)").
+			Returns(http.StatusOK, "billing summary", ownerStorageResponse{}).
+			Operation("clearOwnerQuota"))
 
 	ws.Route(org(
 		ws.PUT("/admin/orgs/{org}/billing-owner").
@@ -138,14 +146,8 @@ func (h *handlers) ownerStorage(req *restful.Request, resp *restful.Response) {
 
 func (h *handlers) setOwnerQuota(req *restful.Request, resp *restful.Response) {
 	ctx := req.Request.Context()
-	claim, ok := domain.ClaimFromContext(ctx)
-	if !ok || !claim.IsSuperAdmin {
-		writeError(resp, domain.NewErrorNoPermission())
-		return
-	}
-	userID, err := snow.ParseBase36(req.PathParameter("user"))
-	if err != nil {
-		writeError(resp, domain.NewErrorUser("invalid user id"))
+	userID, ok := h.adminOwner(req, resp)
+	if !ok {
 		return
 	}
 	var body struct {
@@ -155,11 +157,41 @@ func (h *handlers) setOwnerQuota(req *restful.Request, resp *restful.Response) {
 		writeError(resp, domain.NewErrorUser("invalid request body"))
 		return
 	}
-	if err := h.cfg.Ledger.SetOwnerQuota(ctx, userID, body.QuotaBytes); err != nil {
+	if err := h.cfg.Ledger.SetQuotaOverride(ctx, userID, body.QuotaBytes); err != nil {
 		writeError(resp, err)
 		return
 	}
-	summary, err := h.cfg.Ledger.OwnerStorage(ctx, userID)
+	h.writeOwnerStorage(req, resp, userID)
+}
+
+func (h *handlers) clearOwnerQuota(req *restful.Request, resp *restful.Response) {
+	userID, ok := h.adminOwner(req, resp)
+	if !ok {
+		return
+	}
+	if err := h.cfg.Ledger.ClearQuotaOverride(req.Request.Context(), userID); err != nil {
+		writeError(resp, err)
+		return
+	}
+	h.writeOwnerStorage(req, resp, userID)
+}
+
+func (h *handlers) adminOwner(req *restful.Request, resp *restful.Response) (snow.ID, bool) {
+	claim, ok := domain.ClaimFromContext(req.Request.Context())
+	if !ok || !claim.IsSuperAdmin {
+		writeError(resp, domain.NewErrorNoPermission())
+		return 0, false
+	}
+	userID, err := snow.ParseBase36(req.PathParameter("user"))
+	if err != nil {
+		writeError(resp, domain.NewErrorUser("invalid user id"))
+		return 0, false
+	}
+	return userID, true
+}
+
+func (h *handlers) writeOwnerStorage(req *restful.Request, resp *restful.Response, userID snow.ID) {
+	summary, err := h.cfg.Ledger.OwnerStorage(req.Request.Context(), userID)
 	if err != nil {
 		writeError(resp, err)
 		return

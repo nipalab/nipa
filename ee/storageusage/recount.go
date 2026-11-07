@@ -14,7 +14,7 @@ import (
 // the links.
 func (l *Ledger) RecountOrg(ctx context.Context, orgID snow.ID) error {
 	return l.transactor.WithinTx(ctx, func(ctx context.Context) error {
-		owner, err := l.billingOwner(ctx, orgID)
+		owner, err := l.BillingOwner(ctx, orgID)
 		if err != nil {
 			return err
 		}

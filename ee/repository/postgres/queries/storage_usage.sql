@@ -16,7 +16,15 @@ VALUES (sqlc.arg(org_id), sqlc.arg(user_id))
 ON CONFLICT (org_id) DO UPDATE SET user_id = EXCLUDED.user_id;
 
 -- name: GetOwnerQuota :one
-SELECT quota_bytes FROM owner_quota WHERE user_id = sqlc.arg(user_id);
+SELECT quota_bytes, override_bytes FROM owner_quota WHERE user_id = sqlc.arg(user_id);
+
+-- name: SetOwnerQuotaOverride :exec
+INSERT INTO owner_quota (user_id, quota_bytes, override_bytes, updated_at)
+VALUES (sqlc.arg(user_id), sqlc.arg(default_quota_bytes)::bigint, sqlc.arg(override_bytes)::bigint, now())
+ON CONFLICT (user_id) DO UPDATE SET override_bytes = EXCLUDED.override_bytes, updated_at = now();
+
+-- name: ClearOwnerQuotaOverride :exec
+UPDATE owner_quota SET override_bytes = NULL, updated_at = now() WHERE user_id = sqlc.arg(user_id);
 
 -- name: SetOwnerQuota :exec
 INSERT INTO owner_quota (user_id, quota_bytes, updated_at)

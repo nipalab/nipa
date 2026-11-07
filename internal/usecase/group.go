@@ -28,6 +28,13 @@ type Group struct {
 	snowNode snow.Node
 	permUc   permissionCacheInvalidator
 	orgs     orgAuthorizer
+	seats    SeatGate
+}
+
+// WithSeatGate gates new group members on the org owner's seat limit.
+func (g *Group) WithSeatGate(gate SeatGate) *Group {
+	g.seats = gate
+	return g
 }
 
 func NewGroup(repo groupRepository, snowNode snow.Node, permUc permissionCacheInvalidator, orgs orgAuthorizer) *Group {
@@ -76,7 +83,9 @@ func (g *Group) AddMember(ctx context.Context, orgID, groupID, userID snow.ID) e
 	if _, err := g.groupInOrg(ctx, orgID, groupID); err != nil {
 		return err
 	}
-	if err := g.repo.AddMember(ctx, groupID, userID); err != nil {
+	if err := admitSeat(ctx, g.seats, orgID, userID, func(ctx context.Context) error {
+		return g.repo.AddMember(ctx, groupID, userID)
+	}); err != nil {
 		return err
 	}
 	g.permUc.InvalidateAll()

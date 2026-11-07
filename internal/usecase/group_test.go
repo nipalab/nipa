@@ -229,3 +229,34 @@ func TestGroup_Members_GroupNotFound(t *testing.T) {
 	_, err := group.Members(ctx, 1, 7)
 	require.True(t, domain.IsErrorNotFound(err))
 }
+
+func TestGroup_AddMember_SeatGate(t *testing.T) {
+	ctx := permissionCtx(42, withAdmin())
+
+	t.Run("refuses", func(t *testing.T) {
+		group, repo, invalidator, _ := newTestGroup(t)
+		gate := NewMockSeatGate(gomock.NewController(t))
+		group.WithSeatGate(gate)
+		repo.EXPECT().GetByID(gomock.Any(), snow.ID(7)).Return(&domain.Group{ID: 7, OrgID: 1}, nil)
+		wantErr := domain.NewErrorQuotaExceeded("seat limit reached")
+		gate.EXPECT().Admit(gomock.Any(), snow.ID(1), snow.ID(9), gomock.Any()).Return(wantErr)
+
+		require.ErrorIs(t, group.AddMember(ctx, 1, 7, 9), wantErr)
+		require.Zero(t, invalidator.calls)
+	})
+
+	t.Run("admits", func(t *testing.T) {
+		group, repo, invalidator, _ := newTestGroup(t)
+		gate := NewMockSeatGate(gomock.NewController(t))
+		group.WithSeatGate(gate)
+		repo.EXPECT().GetByID(gomock.Any(), snow.ID(7)).Return(&domain.Group{ID: 7, OrgID: 1}, nil)
+		gate.EXPECT().Admit(gomock.Any(), snow.ID(1), snow.ID(9), gomock.Any()).DoAndReturn(
+			func(ctx context.Context, _, _ snow.ID, insert func(context.Context) error) error {
+				return insert(ctx)
+			})
+		repo.EXPECT().AddMember(gomock.Any(), snow.ID(7), snow.ID(9)).Return(nil)
+
+		require.NoError(t, group.AddMember(ctx, 1, 7, 9))
+		require.Equal(t, 1, invalidator.calls)
+	})
+}
