@@ -185,6 +185,6 @@ CI: `.github/workflows/unity-plugin.yml` runs `make unity-test` on every PR and
 main push that touches `plugins/unity/**` and fails when `Editor/Core` line
 coverage drops below 80%, then builds the tarball (`make unity-pack`) and
 uploads it. The `editmode` job runs the EditMode tests through game-ci in a
-generated project; it only runs when the repository variable
+generated project; it only runs for pushes and same-repo PRs (forks get no secrets), and only when the repository variable
 `UNITY_LICENSE_ENABLED` is `true` and the `UNITY_LICENSE`, `UNITY_EMAIL` and
 `UNITY_PASSWORD` secrets are set.
