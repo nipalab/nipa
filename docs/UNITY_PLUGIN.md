@@ -11,20 +11,50 @@ Requires Unity 2022.3 LTS or newer (also targeted at Unity 6), the `nipa` CLI
 (0.1+ with the JSON bridge) and a Unity project inside a Nipa clone. The
 project may be a subfolder of the clone.
 
-## Install (Phase 1: local path)
+## Install
 
-1. Open **Window › Package Manager › + › Add package from disk** and pick
-   `plugins/unity/com.nipalab.nipa/package.json` (or add
-   `"com.nipalab.nipa": "file:../../plugins/unity/com.nipalab.nipa"` to
-   `Packages/manifest.json`). `com.unity.nuget.newtonsoft-json` is pulled in
-   as a dependency.
-2. Open **Project Settings › Editor › Version Control** and set **Mode** to
-   **Nipa**.
-3. Make sure `nipa` is installed. The plugin starts the daemon when none is
-   running; the binary is resolved from the setting below, `NIPA_BIN`, then
-   `PATH`.
+Pick one. Whichever you use, afterwards open **Project Settings › Editor ›
+Version Control** and set **Mode** to **Nipa**, and make sure `nipa` is
+installed (the plugin starts the daemon when none is running; the binary is
+resolved from the setting below, `NIPA_BIN`, then `PATH`).
+`com.unity.nuget.newtonsoft-json` is pulled in as a dependency.
 
-Git URL, tarball and OpenUPM installs arrive with Phase 4.
+**Git URL** (recommended): **Window › Package Manager › + › Add package from
+git URL**, or in `Packages/manifest.json`:
+
+```json
+"com.nipalab.nipa": "https://github.com/nipalab/nipa.git?path=/plugins/unity/com.nipalab.nipa#unity-v0.1.0"
+```
+
+Replace `unity-v0.1.0` with the release tag (`unity-vX.Y.Z`, matching
+`package.json`). Without a `#tag` Unity tracks the default branch.
+
+**Tarball:** `make unity-pack` (needs npm) writes
+`bin/com.nipalab.nipa-<version>.tgz`; CI uploads the same file as the
+`unity-package` artifact. Add it with **Package Manager › + › Add package from
+tarball**.
+
+**Local path** (development): **Add package from disk** and pick
+`plugins/unity/com.nipalab.nipa/package.json`, or
+`"com.nipalab.nipa": "file:../../plugins/unity/com.nipalab.nipa"`.
+
+**OpenUPM:** not published yet.
+
+## Project setup checker
+
+**Window › Nipa › Pending Changes › Setup** (the tab shows the number of open
+issues) checks the project and offers a **Fix** button for each:
+
+- **Asset Serialization** must be *Force Text* (diffable, mergeable scenes and
+  prefabs).
+- **Meta files** must be visible (`Hidden Meta Files` is not allowed).
+- **`.nipaignore`** at the clone root must exist and ignore `Library/`. When it
+  is missing, Fix writes the Unity template (`Library/ Temp/ Logs/ Obj/
+  Build/ Builds/ UserSettings/ MemoryCaptures/ *.csproj *.sln .vs/ .idea/`);
+  when it exists without `Library/`, the missing template lines are appended.
+  For a project in a clone subfolder the directory rules are prefixed with the
+  subfolder (`games/hero/Library/`), because `.nipaignore` is rooted at the
+  clone.
 
 ## Using it
 
@@ -114,13 +144,14 @@ plugins/unity/com.nipalab.nipa/
     Paths/       ProjectPaths (project <-> clone paths, .meta pairing)
     Locks/       LockPolicy (covering-lock lookup, scope, strict mode,
                  push pre-check)
+    Setup/       SetupChecker (Force Text, visible meta, .nipaignore template)
     Merge/       MergeTool (UnityYAMLMerge command, marker check, conflict
                  classification), SystemMergeProcess
     Session/     NipaSession (WatchRepo, Status, WatchChanges + WatchEvents
                  loops, ops, lock/unlock), NipaSettings
   Editor/        Unity glue: NipaVersionControl, NipaHost, NipaWindow,
                  NipaMenus, NipaIcons, NipaBranches, NipaSceneOverlay, MainThread, NipaAssetProcessor,
-                 NipaInspectorBar, NipaLocks
+                 NipaInspectorBar, NipaLocks, NipaSetup
   Tests/Editor/  EditMode smoke tests
 plugins/unity/dotnet/   Core/Nipa.Core.csproj (netstandard2.1 build of Editor/Core)
                         + NUnit tests with a fake daemon over HttpListener
@@ -152,4 +183,8 @@ EditMode tests in `Tests/Editor` (Window › General › Test Runner).
 
 CI: `.github/workflows/unity-plugin.yml` runs `make unity-test` on every PR and
 main push that touches `plugins/unity/**` and fails when `Editor/Core` line
-coverage drops below 80%. The EditMode tests are not run in CI yet.
+coverage drops below 80%, then builds the tarball (`make unity-pack`) and
+uploads it. The `editmode` job runs the EditMode tests through game-ci in a
+generated project; it only runs for pushes and same-repo PRs (forks get no secrets), and only when the repository variable
+`UNITY_LICENSE_ENABLED` is `true` and the `UNITY_LICENSE`, `UNITY_EMAIL` and
+`UNITY_PASSWORD` secrets are set.
