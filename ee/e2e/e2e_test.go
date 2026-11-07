@@ -471,7 +471,7 @@ func TestEnterpriseStorageQuota(t *testing.T) {
 
 	ledger := storageusage.NewLedger(dbConn, storageusage.Config{})
 	quota := int64(64)
-	require.NoError(t, ledger.SetOwnerQuota(ctx, snow.ID(1), &quota))
+	require.NoError(t, ledger.SetComputedQuota(ctx, snow.ID(1), quota))
 
 	host := startEnterpriseServer(t, dbConn, newS3ChunkStore(t), mustSnowNode(t, 0), ledger)
 
@@ -494,7 +494,7 @@ func TestEnterpriseStorageQuota(t *testing.T) {
 	require.Equal(t, 402, clientErr.Code, "push over quota: %v", err)
 
 	bigger := int64(1 << 20)
-	require.NoError(t, ledger.SetOwnerQuota(ctx, snow.ID(1), &bigger))
+	require.NoError(t, ledger.SetComputedQuota(ctx, snow.ID(1), bigger))
 	require.NoError(t, pusher.Run(ctx, target, "add big"))
 
 	summary, err := ledger.OrgStorage(ctx, snow.ID(1))

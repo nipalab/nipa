@@ -7,6 +7,7 @@ import (
 
 	sqlcPostgres "github.com/nipalab/nipa/ee/repository/postgres/sqlc"
 	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/repository/dbtx"
 	"github.com/nipalab/nipa/internal/snow"
 )
 
@@ -15,7 +16,7 @@ type Group struct {
 }
 
 func NewGroupRepository(db *sql.DB) *Group {
-	return &Group{queries: sqlcPostgres.New(db)}
+	return &Group{queries: sqlcPostgres.New(dbtx.New(db))}
 }
 
 func (g *Group) Create(ctx context.Context, group domain.Group) (*domain.Group, error) {

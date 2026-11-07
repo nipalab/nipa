@@ -37,6 +37,7 @@ type Querier interface {
 	ChunkInsertOrIgnore(ctx context.Context, arg ChunkInsertOrIgnoreParams) error
 	ChunkListByHashesForProject(ctx context.Context, arg ChunkListByHashesForProjectParams) ([]ChunkListByHashesForProjectRow, error)
 	ChunkListByTree(ctx context.Context, treeID int64) ([]ChunkListByTreeRow, error)
+	ClearOwnerQuotaOverride(ctx context.Context, userID int64) error
 	CommitGet(ctx context.Context, id int64) (Commit, error)
 	CommitGetByHash(ctx context.Context, hash []byte) (Commit, error)
 	CommitInsert(ctx context.Context, arg CommitInsertParams) error
@@ -46,6 +47,7 @@ type Querier interface {
 	// means "no stop". It is a separate query from CommitLog so the recursive stop
 	// stays out of the plain branch history.
 	CommitLogUntil(ctx context.Context, arg CommitLogUntilParams) ([]CommitLogUntilRow, error)
+	CountOwnerSeats(ctx context.Context, ownerID int64) (int64, error)
 	CreateOrganization(ctx context.Context, arg CreateOrganizationParams) (Organization, error)
 	CreateProject(ctx context.Context, arg CreateProjectParams) (Project, error)
 	DeleteOrganization(ctx context.Context, id int64) error
@@ -81,11 +83,12 @@ type Querier interface {
 	GetAttributedSizes(ctx context.Context, arg GetAttributedSizesParams) ([]GetAttributedSizesRow, error)
 	GetBillingOwner(ctx context.Context, orgID int64) (int64, error)
 	GetChunkIDsByHashes(ctx context.Context, hashes [][]byte) ([]GetChunkIDsByHashesRow, error)
+	GetLiveSubscription(ctx context.Context, userID int64) (BillingSubscription, error)
 	GetOrgCreatedBy(ctx context.Context, orgID int64) (int64, error)
 	GetOrgUsage(ctx context.Context, orgID int64) (int64, error)
 	GetOrganization(ctx context.Context, id int64) (Organization, error)
 	GetOrganizationBySlug(ctx context.Context, slug string) (Organization, error)
-	GetOwnerQuota(ctx context.Context, userID int64) (sql.NullInt64, error)
+	GetOwnerQuota(ctx context.Context, userID int64) (GetOwnerQuotaRow, error)
 	GetOwnerUsage(ctx context.Context, userID int64) (int64, error)
 	GetProject(ctx context.Context, id int64) (Project, error)
 	GetProjectByOrgIDAndID(ctx context.Context, arg GetProjectByOrgIDAndIDParams) (Project, error)
@@ -101,12 +104,14 @@ type Querier interface {
 	GroupMemberList(ctx context.Context, groupID int64) ([]GroupMemberListRow, error)
 	GroupMemberRemove(ctx context.Context, arg GroupMemberRemoveParams) error
 	InsertProjectChunks(ctx context.Context, arg InsertProjectChunksParams) ([]int64, error)
+	IsOwnerSeat(ctx context.Context, arg IsOwnerSeatParams) (bool, error)
 	ListOrganizations(ctx context.Context) ([]Organization, error)
 	ListOwnerOrgUsage(ctx context.Context, userID int64) ([]ListOwnerOrgUsageRow, error)
 	ListProjectIDsByOrg(ctx context.Context, orgID int64) ([]int64, error)
 	ListProjectUsage(ctx context.Context, orgID int64) ([]ListProjectUsageRow, error)
 	ListProjectsByOrgId(ctx context.Context, orgID int64) ([]Project, error)
 	LockBillingOwner(ctx context.Context, ownerID int64) error
+	LockSeatOwner(ctx context.Context, lockKey int64) error
 	MergeRequestAssigneeAdd(ctx context.Context, arg MergeRequestAssigneeAddParams) error
 	MergeRequestAssigneeClear(ctx context.Context, mergeRequestID int64) error
 	MergeRequestAssigneeList(ctx context.Context, projectID int64) ([]MergeRequestAssigneeListRow, error)
@@ -195,6 +200,7 @@ type Querier interface {
 	SSHLoginChallengeDeleteExpired(ctx context.Context, expiresAt time.Time) (int64, error)
 	SetOrgUsageFromProjects(ctx context.Context, orgID int64) error
 	SetOwnerQuota(ctx context.Context, arg SetOwnerQuotaParams) error
+	SetOwnerQuotaOverride(ctx context.Context, arg SetOwnerQuotaOverrideParams) error
 	SetProjectUsage(ctx context.Context, projectID int64) error
 	TagCreate(ctx context.Context, arg TagCreateParams) (Tag, error)
 	TagDelete(ctx context.Context, arg TagDeleteParams) (int64, error)
@@ -207,6 +213,7 @@ type Querier interface {
 	TreeNodeSetParent(ctx context.Context, arg TreeNodeSetParentParams) error
 	UpdateProject(ctx context.Context, arg UpdateProjectParams) (Project, error)
 	UpsertBillingOwner(ctx context.Context, arg UpsertBillingOwnerParams) error
+	UpsertSubscription(ctx context.Context, arg UpsertSubscriptionParams) (int64, error)
 	UserCreate(ctx context.Context, arg UserCreateParams) (int64, error)
 	UserCreateUnverified(ctx context.Context, arg UserCreateUnverifiedParams) (int64, error)
 	UserDeleteByID(ctx context.Context, id int64) error

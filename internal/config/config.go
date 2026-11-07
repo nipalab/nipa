@@ -49,6 +49,18 @@ type Config struct {
 	StorageLedgerDefaultQuotaBytes int64   `mapstructure:"STORAGE_LEDGER_DEFAULT_QUOTA_BYTES"`
 	SaaSMode                       bool    `mapstructure:"SAAS_MODE"`
 	SaasFreeQuotaBytes             int64   `mapstructure:"SAAS_FREE_QUOTA_BYTES"`
+	BillingProvider                string  `mapstructure:"BILLING_PROVIDER"`
+	BillingFreeSeats               int64   `mapstructure:"BILLING_FREE_SEATS"`
+	BillingSeatIncludedBytes       int64   `mapstructure:"BILLING_SEAT_INCLUDED_BYTES"`
+	BillingStoragePackBytes        int64   `mapstructure:"BILLING_STORAGE_PACK_BYTES"`
+	PaddleEnvironment              string  `mapstructure:"PADDLE_ENVIRONMENT"`
+	PaddleAPIKey                   string  `mapstructure:"PADDLE_API_KEY"`
+	PaddleWebhookSecret            string  `mapstructure:"PADDLE_WEBHOOK_SECRET"`
+	PaddleClientToken              string  `mapstructure:"PADDLE_CLIENT_TOKEN"`
+	PaddlePriceSeatMonthly         string  `mapstructure:"PADDLE_PRICE_SEAT_MONTHLY"`
+	PaddlePriceSeatYearly          string  `mapstructure:"PADDLE_PRICE_SEAT_YEARLY"`
+	PaddlePriceStorageMonthly      string  `mapstructure:"PADDLE_PRICE_STORAGE_MONTHLY"`
+	PaddlePriceStorageYearly       string  `mapstructure:"PADDLE_PRICE_STORAGE_YEARLY"`
 	OAuthBaseURL                   string  `mapstructure:"OAUTH_BASE_URL"`
 	OAuthGoogleClientID            string  `mapstructure:"OAUTH_GOOGLE_CLIENT_ID"`
 	OAuthGoogleClientSecret        string  `mapstructure:"OAUTH_GOOGLE_CLIENT_SECRET"`
@@ -114,6 +126,7 @@ func LoadConfig() (*Config, error) {
 	v.SetDefault("STORAGE_LEDGER_DEFAULT_QUOTA_BYTES", int64(15*1024*1024*1024))
 	v.SetDefault("SAAS_MODE", false)
 	v.SetDefault("SAAS_FREE_QUOTA_BYTES", int64(15*1024*1024*1024))
+	v.SetDefault("BILLING_PROVIDER", BillingProviderOff)
 	v.SetDefault("LOG_LEVEL", "info")
 	v.SetDefault("LOG_FORMAT", "console")
 	v.SetDefault("PPROF_ENABLED", false)
@@ -150,7 +163,10 @@ func LoadConfig() (*Config, error) {
 	// AutomaticEnv alone does not feed Unmarshal for keys missing from the
 	// config file, so the per-color systemd env files must bind explicitly.
 	for _, key := range []string{"SERVER_ADDRESS", "SERVER_PORT", "SHUTDOWN_TIMEOUT_SECONDS", "SNOWFLAKE_NODE_ID",
-		"RATE_LIMIT_STORE", "RATE_LIMIT_REDIS_ADDR", "RATE_LIMIT_REDIS_PASSWORD", "RATE_LIMIT_REDIS_DB", "RATE_LIMIT_REDIS_TLS"} {
+		"RATE_LIMIT_STORE", "RATE_LIMIT_REDIS_ADDR", "RATE_LIMIT_REDIS_PASSWORD", "RATE_LIMIT_REDIS_DB", "RATE_LIMIT_REDIS_TLS",
+		"BILLING_FREE_SEATS", "BILLING_SEAT_INCLUDED_BYTES", "BILLING_STORAGE_PACK_BYTES", "PADDLE_ENVIRONMENT",
+		"PADDLE_API_KEY", "PADDLE_WEBHOOK_SECRET", "PADDLE_CLIENT_TOKEN", "PADDLE_PRICE_SEAT_MONTHLY",
+		"PADDLE_PRICE_SEAT_YEARLY", "PADDLE_PRICE_STORAGE_MONTHLY", "PADDLE_PRICE_STORAGE_YEARLY"} {
 		if err := v.BindEnv(key); err != nil {
 			return nil, fmt.Errorf("bind %s: %w", key, err)
 		}

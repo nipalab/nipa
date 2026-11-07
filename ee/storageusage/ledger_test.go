@@ -59,7 +59,7 @@ func (s *ledgerSuite) TestAttribute_QuotaRejectsAndRollsBack() {
 	s.Equal(int64(0), s.projectUsed(project))
 
 	quota := int64(1000)
-	s.NoError(ledger.SetOwnerQuota(ctx, snow.ID(1), &quota))
+	s.NoError(ledger.SetComputedQuota(ctx, snow.ID(1), quota))
 	s.NoError(ledger.Attribute(ctx, &domain.Organization{ID: org}, &domain.Project{ID: project}, []usecase.LedgerChunk{{Hash: hash, SizeBytes: 100}}))
 	s.Equal(int64(100), s.orgUsed(org))
 	s.Equal(int64(100), s.projectUsed(project))
@@ -89,15 +89,15 @@ func (s *ledgerSuite) TestHeadroom_QuotaSemantics() {
 	s.NoError(ledger.Headroom(ctx, org, project, 50))
 	s.True(isQuotaExceeded(ledger.Headroom(ctx, org, project, 150)))
 
-	s.NoError(ledger.SetOwnerQuota(ctx, snow.ID(1), nil))
+	s.NoError(ledger.SetComputedQuota(ctx, snow.ID(1), 0))
 	s.NoError(ledger.Headroom(ctx, org, project, 1_000_000))
 
 	zero := int64(0)
-	s.NoError(ledger.SetOwnerQuota(ctx, snow.ID(1), &zero))
+	s.NoError(ledger.SetComputedQuota(ctx, snow.ID(1), zero))
 	s.NoError(ledger.Headroom(ctx, org, project, 1_000_000))
 
 	small := int64(10)
-	s.NoError(ledger.SetOwnerQuota(ctx, snow.ID(1), &small))
+	s.NoError(ledger.SetComputedQuota(ctx, snow.ID(1), small))
 	s.True(isQuotaExceeded(ledger.Headroom(ctx, org, project, 11)))
 }
 
@@ -149,10 +149,50 @@ func (s *ledgerSuite) TestSetBillingOwner_TransfersAggregate() {
 	s.True(domain.IsErrorNotFound(s.ledger.SetBillingOwner(ctx, org, snow.ID(999999))))
 }
 
-func (s *ledgerSuite) TestSetOwnerQuota_RejectsNegative() {
-	negative := int64(-1)
-	err := s.ledger.SetOwnerQuota(context.Background(), snow.ID(1), &negative)
+func (s *ledgerSuite) TestSetComputedQuota_RejectsNegative() {
+	err := s.ledger.SetComputedQuota(context.Background(), snow.ID(1), -1)
 	s.Equal(400, errorCode(err))
+	negative := int64(-1)
+	s.Equal(400, errorCode(s.ledger.SetQuotaOverride(context.Background(), snow.ID(1), &negative)))
+}
+
+func (s *ledgerSuite) TestQuotaOverride_Precedence() {
+	ctx := context.Background()
+	ledger := NewLedger(s.db, Config{DefaultQuotaBytes: 100})
+	owner := s.seedUser("override-owner")
+
+	effective := func() *int64 {
+		summary, err := ledger.OwnerStorage(ctx, owner)
+		s.Require().NoError(err)
+		return summary.QuotaBytes
+	}
+	s.Equal(int64(100), *effective(), "missing row uses the default")
+
+	override := int64(1000)
+	s.NoError(ledger.SetQuotaOverride(ctx, owner, &override))
+	s.Equal(int64(1000), *effective())
+
+	s.NoError(ledger.ClearQuotaOverride(ctx, owner))
+	s.Equal(int64(100), *effective(), "clearing an override seeded from a missing row keeps the default")
+
+	s.NoError(ledger.SetComputedQuota(ctx, owner, 500))
+	s.Equal(int64(500), *effective())
+
+	s.NoError(ledger.SetQuotaOverride(ctx, owner, &override))
+	s.NoError(ledger.SetComputedQuota(ctx, owner, 700))
+	s.Equal(int64(1000), *effective(), "the override wins over a later computed quota")
+
+	s.NoError(ledger.SetQuotaOverride(ctx, owner, nil))
+	s.Nil(effective(), "a nil override is unlimited")
+	zero := int64(0)
+	s.NoError(ledger.SetQuotaOverride(ctx, owner, &zero))
+	s.Nil(effective(), "a zero override is unlimited")
+
+	s.NoError(ledger.ClearQuotaOverride(ctx, owner))
+	s.Equal(int64(700), *effective(), "clearing restores the computed quota")
+
+	s.True(domain.IsErrorNotFound(ledger.SetQuotaOverride(ctx, snow.ID(999999), &override)))
+	s.True(domain.IsErrorNotFound(ledger.ClearQuotaOverride(ctx, snow.ID(999999))))
 }
 
 func (s *ledgerSuite) TestOrgStorage_ReportsQuotaAndBreakdown() {
@@ -162,7 +202,7 @@ func (s *ledgerSuite) TestOrgStorage_ReportsQuotaAndBreakdown() {
 	hash, _ := s.seedChunk(100)
 
 	quota := int64(500)
-	s.NoError(s.ledger.SetOwnerQuota(ctx, snow.ID(1), &quota))
+	s.NoError(s.ledger.SetComputedQuota(ctx, snow.ID(1), quota))
 	s.NoError(s.ledger.Attribute(ctx, &domain.Organization{ID: org}, &domain.Project{ID: project}, []usecase.LedgerChunk{{Hash: hash, SizeBytes: 100}}))
 
 	summary, err := s.ledger.OrgStorage(ctx, org)
@@ -175,7 +215,7 @@ func (s *ledgerSuite) TestOrgStorage_ReportsQuotaAndBreakdown() {
 	s.Equal(project, summary.Projects[0].ProjectID)
 	s.Equal(int64(100), summary.Projects[0].UsedBytes)
 
-	s.NoError(s.ledger.SetOwnerQuota(ctx, snow.ID(1), nil))
+	s.NoError(s.ledger.SetComputedQuota(ctx, snow.ID(1), 0))
 	summary, err = s.ledger.OrgStorage(ctx, org)
 	s.NoError(err)
 	s.Nil(summary.QuotaBytes, "a cleared quota is unlimited")

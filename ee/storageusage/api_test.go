@@ -276,7 +276,46 @@ func TestAPI_SetOwnerQuota(t *testing.T) {
 
 	status, body = h.do(http.MethodPut, "/api/v1/admin/billing/owners/1/quota", "super", map[string]any{"quota_bytes": nil})
 	h.decode(status, body, &billing)
-	require.Nil(t, billing.QuotaBytes)
+	require.Nil(t, billing.QuotaBytes, "a null override is unlimited")
+
+	var stored sql.NullInt64
+	require.NoError(t, h.db.QueryRowContext(context.Background(),
+		`SELECT override_bytes FROM owner_quota WHERE user_id = 1`).Scan(&stored))
+	require.True(t, stored.Valid)
+	require.Zero(t, stored.Int64, "the unlimited override is stored as 0")
+}
+
+func TestAPI_ClearOwnerQuota(t *testing.T) {
+	h := newAPIHarness(t)
+	require.NoError(t, h.ledger.SetComputedQuota(context.Background(), snow.ID(1), 2048))
+
+	status, _ := h.do(http.MethodDelete, "/api/v1/admin/billing/owners/1/quota", "user", nil)
+	require.Equal(t, http.StatusForbidden, status)
+
+	status, _ = h.do(http.MethodDelete, "/api/v1/admin/billing/owners/bad_id/quota", "super", nil)
+	require.Equal(t, http.StatusBadRequest, status)
+
+	status, _ = h.do(http.MethodDelete, "/api/v1/admin/billing/owners/999999/quota", "super", nil)
+	require.Equal(t, http.StatusNotFound, status)
+
+	status, body := h.do(http.MethodPut, "/api/v1/admin/billing/owners/1/quota", "super", map[string]any{"quota_bytes": 10})
+	var billing ownerStorageJSON
+	h.decode(status, body, &billing)
+	require.Equal(t, int64(10), *billing.QuotaBytes, "the override wins over the computed quota")
+
+	status, body = h.do(http.MethodDelete, "/api/v1/admin/billing/owners/1/quota", "super", nil)
+	h.decode(status, body, &billing)
+	require.NotNil(t, billing.QuotaBytes)
+	require.Equal(t, int64(2048), *billing.QuotaBytes, "clearing the override restores the computed quota")
+}
+
+func TestAPI_ClearOwnerQuotaDatabaseError(t *testing.T) {
+	h := newAPIHarness(t)
+	_, err := h.db.ExecContext(context.Background(), `DROP TABLE owner_quota`)
+	require.NoError(t, err)
+
+	status, body := h.do(http.MethodDelete, "/api/v1/admin/billing/owners/1/quota", "super", nil)
+	require.Equal(t, http.StatusInternalServerError, status, "body: %s", body)
 }
 
 func TestAPI_SetOwnerQuotaDatabaseError(t *testing.T) {

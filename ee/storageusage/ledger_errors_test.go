@@ -49,7 +49,7 @@ func TestLedger_Headroom_ErrorPaths(t *testing.T) {
 
 	_, ledger = newErrorLedger(t, "org_usage")
 	quota := int64(100)
-	require.NoError(t, ledger.SetOwnerQuota(ctx, snow.ID(1), &quota))
+	require.NoError(t, ledger.SetComputedQuota(ctx, snow.ID(1), quota))
 	require.Equal(t, 500, errorCode(ledger.Headroom(ctx, org, project, 10)), "usage lookup error")
 
 	_, ledger = newErrorLedger(t, "owner_quota")
@@ -68,7 +68,7 @@ func TestLedger_Attribute_ErrorPaths(t *testing.T) {
 
 	_, ledger = newErrorLedger(t, "org_usage")
 	quota := int64(1000)
-	require.NoError(t, ledger.SetOwnerQuota(ctx, snow.ID(1), &quota))
+	require.NoError(t, ledger.SetComputedQuota(ctx, snow.ID(1), quota))
 	require.Equal(t, 500, errorCode(ledger.Attribute(ctx, org, project, []usecase.LedgerChunk{chunk})), "usage lookup error")
 
 	_, ledger = newErrorLedger(t, "chunks")
@@ -157,11 +157,11 @@ func TestLedger_SetOwnerQuota_UserLookupError(t *testing.T) {
 	quota := int64(1)
 
 	_, ledger := newErrorLedger(t)
-	require.True(t, domain.IsErrorNotFound(ledger.SetOwnerQuota(ctx, snow.ID(999999), &quota)),
+	require.True(t, domain.IsErrorNotFound(ledger.SetComputedQuota(ctx, snow.ID(999999), quota)),
 		"an unknown owner must be a 404, not an FK failure")
 
 	_, ledger = newErrorLedger(t, "users")
-	require.Equal(t, 500, errorCode(ledger.SetOwnerQuota(ctx, snow.ID(1), &quota)))
+	require.Equal(t, 500, errorCode(ledger.SetComputedQuota(ctx, snow.ID(1), quota)))
 }
 
 func TestLedger_RecountOrg_SerializesWithAttribution(t *testing.T) {
@@ -189,7 +189,7 @@ func TestLedger_Attribute_ConcurrentQuota(t *testing.T) {
 	ledger := NewLedger(db, Config{})
 
 	quota := int64(150)
-	require.NoError(t, ledger.SetOwnerQuota(ctx, snow.ID(1), &quota))
+	require.NoError(t, ledger.SetComputedQuota(ctx, snow.ID(1), quota))
 
 	projectA := snow.ID(1)
 	projectB := snow.ID(testIDCounter.Add(1) + 60000)

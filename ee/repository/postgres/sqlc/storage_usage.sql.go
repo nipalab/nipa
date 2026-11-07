@@ -44,6 +44,15 @@ func (q *Queries) AddProjectUsage(ctx context.Context, arg AddProjectUsageParams
 	return err
 }
 
+const clearOwnerQuotaOverride = `-- name: ClearOwnerQuotaOverride :exec
+UPDATE owner_quota SET override_bytes = NULL, updated_at = now() WHERE user_id = $1
+`
+
+func (q *Queries) ClearOwnerQuotaOverride(ctx context.Context, userID int64) error {
+	_, err := q.db.ExecContext(ctx, clearOwnerQuotaOverride, userID)
+	return err
+}
+
 const deleteProjectChunks = `-- name: DeleteProjectChunks :exec
 DELETE FROM project_chunks WHERE project_id = $1
 `
@@ -190,14 +199,19 @@ func (q *Queries) GetOrgUsage(ctx context.Context, orgID int64) (int64, error) {
 }
 
 const getOwnerQuota = `-- name: GetOwnerQuota :one
-SELECT quota_bytes FROM owner_quota WHERE user_id = $1
+SELECT quota_bytes, override_bytes FROM owner_quota WHERE user_id = $1
 `
 
-func (q *Queries) GetOwnerQuota(ctx context.Context, userID int64) (sql.NullInt64, error) {
+type GetOwnerQuotaRow struct {
+	QuotaBytes    sql.NullInt64 `json:"quota_bytes"`
+	OverrideBytes sql.NullInt64 `json:"override_bytes"`
+}
+
+func (q *Queries) GetOwnerQuota(ctx context.Context, userID int64) (GetOwnerQuotaRow, error) {
 	row := q.db.QueryRowContext(ctx, getOwnerQuota, userID)
-	var quota_bytes sql.NullInt64
-	err := row.Scan(&quota_bytes)
-	return quota_bytes, err
+	var i GetOwnerQuotaRow
+	err := row.Scan(&i.QuotaBytes, &i.OverrideBytes)
+	return i, err
 }
 
 const getOwnerUsage = `-- name: GetOwnerUsage :one
@@ -436,6 +450,23 @@ type SetOwnerQuotaParams struct {
 
 func (q *Queries) SetOwnerQuota(ctx context.Context, arg SetOwnerQuotaParams) error {
 	_, err := q.db.ExecContext(ctx, setOwnerQuota, arg.UserID, arg.QuotaBytes)
+	return err
+}
+
+const setOwnerQuotaOverride = `-- name: SetOwnerQuotaOverride :exec
+INSERT INTO owner_quota (user_id, quota_bytes, override_bytes, updated_at)
+VALUES ($1, $2::bigint, $3::bigint, now())
+ON CONFLICT (user_id) DO UPDATE SET override_bytes = EXCLUDED.override_bytes, updated_at = now()
+`
+
+type SetOwnerQuotaOverrideParams struct {
+	UserID            int64 `json:"user_id"`
+	DefaultQuotaBytes int64 `json:"default_quota_bytes"`
+	OverrideBytes     int64 `json:"override_bytes"`
+}
+
+func (q *Queries) SetOwnerQuotaOverride(ctx context.Context, arg SetOwnerQuotaOverrideParams) error {
+	_, err := q.db.ExecContext(ctx, setOwnerQuotaOverride, arg.UserID, arg.DefaultQuotaBytes, arg.OverrideBytes)
 	return err
 }
 

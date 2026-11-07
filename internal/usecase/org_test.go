@@ -356,3 +356,43 @@ func TestOrg_EnsureOwner(t *testing.T) {
 	repo.EXPECT().MemberRole(gomock.Any(), snow.ID(1), snow.ID(8)).Return(domain.OrgRoleOwner, nil)
 	require.NoError(t, org.EnsureOwner(permissionCtx(8), snow.ID(1)))
 }
+
+func TestOrg_AddMember_SeatGate(t *testing.T) {
+	ctx := permissionCtx(42, withAdmin())
+	member := func(repo *MockorgMemberRepository) {
+		repo.EXPECT().MemberRole(gomock.Any(), snow.ID(1), snow.ID(7)).Return("", domain.NewErrorNotFound("member not found"))
+	}
+
+	t.Run("refuses", func(t *testing.T) {
+		org, repo := newTestOrg(t)
+		gate := NewMockSeatGate(gomock.NewController(t))
+		org.WithSeatGate(gate)
+		member(repo)
+		wantErr := domain.NewErrorQuotaExceeded("seat limit reached")
+		gate.EXPECT().Admit(gomock.Any(), snow.ID(1), snow.ID(7), gomock.Any()).Return(wantErr)
+
+		require.ErrorIs(t, org.AddMember(ctx, 1, 7, domain.OrgRoleMember), wantErr)
+	})
+
+	t.Run("admits", func(t *testing.T) {
+		org, repo := newTestOrg(t)
+		gate := NewMockSeatGate(gomock.NewController(t))
+		org.WithSeatGate(gate)
+		member(repo)
+		gate.EXPECT().Admit(gomock.Any(), snow.ID(1), snow.ID(7), gomock.Any()).DoAndReturn(
+			func(ctx context.Context, _, _ snow.ID, insert func(context.Context) error) error {
+				return insert(ctx)
+			})
+		repo.EXPECT().UpsertMember(gomock.Any(), snow.ID(1), snow.ID(7), domain.OrgRoleMember).Return(nil)
+
+		require.NoError(t, org.AddMember(ctx, 1, 7, domain.OrgRoleMember))
+	})
+
+	t.Run("role update is not gated", func(t *testing.T) {
+		org, repo := newTestOrg(t)
+		org.WithSeatGate(NewMockSeatGate(gomock.NewController(t)))
+		repo.EXPECT().UpsertMember(gomock.Any(), snow.ID(1), snow.ID(7), domain.OrgRoleOwner).Return(nil)
+
+		require.NoError(t, org.UpdateMemberRole(ctx, 1, 7, domain.OrgRoleOwner))
+	})
+}

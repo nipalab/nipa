@@ -345,10 +345,8 @@ entry points on servers without SaaS mode. Registration/social write through
 transaction); the public routes attach to the unfiltered `/api/v1/auth`
 WebService through `api.WithPublicRoutes`/`serverapp.WithPublicRoutes`, and
 `api.Wrap` is the exported AppContext route adapter. Monthly/yearly billing
-stays external (agreed design in docs/SAAS_ONBOARDING.md, not built): a
-billing service account uses nipad access tokens and the existing
-`GET /api/v1/me` to validate tokens and updates `billing_subscriptions`
-entitlements, enforced lazily at the storage-ledger gates.
+lives in `ee/billing` inside `nipad-ee` (plan in `docs/plans/BILLING.md`; see
+the billing flow below).
 
 Flow for binary file locks (`nipa lock <path> [--branch]`, `nipa unlock <path>`,
 `nipa lock list`): binary changes are mandatory-lock gated. `FileLock.Acquire`
@@ -649,6 +647,42 @@ when the ledger is enabled, so they 404 otherwise; the SPA hides the org
 storage card on 404, while the `/settings/billing` page is always linked from
 the header and the profile settings nav (it shows an empty state when the
 ledger is off).
+`owner_quota` has two columns: `quota_bytes` is the computed (billing)
+quota written by `Ledger.SetComputedQuota`, `override_bytes` the super-admin
+override (`PUT /admin/billing/owners/{user}/quota` → `SetQuotaOverride`, a
+null body overrides to unlimited = 0; `DELETE` → `ClearQuotaOverride`). The
+effective quota is `COALESCE(override_bytes, quota_bytes)`, with the same
+NULL/0/missing-row semantics; `Ledger.BillingOwner` is the exported org →
+owner resolution.
+
+Flow for billing (plan in `docs/plans/BILLING.md`; PR 1 of 3, no provider
+yet): the only free-side change is the nil-able `usecase.SeatGate` seam
+(`Admit(ctx, orgID, userID, insert)`), attached through
+`UsecaseDeps.SeatGate` to `Org.AddMember` (not role updates or org
+creation), `Group.AddMember` and user-subject `Permission.CreateRule` (group
+rules add no seat); a nil gate runs `insert` directly. The postgres Org,
+Group and PBAC repositories resolve the transaction from the context
+(`dbtx.New`) so the insert joins the gate's transaction. `ee/billing.Service`
+implements it over small interfaces (repository, ledger, transactor; like
+`ee/registration`, unit-tested with stubs), while the SQL lives in
+`postgres.BillingRepository` (`ee/repository/postgres/billing_repository.go`).
+`Admit` runs one transaction: resolve the org's billing owner, take the
+per-owner `pg_advisory_xact_lock` (`LockOwner`, own key namespace), admit
+users that already hold a seat (`IsSeat`), otherwise count seats
+(`CountSeats`: distinct non-deleted users reached through `org_members`,
+`group_members` of non-deleted groups and user `pbac_rules` of the owner's
+non-deleted orgs, owner included) against the live subscription's seat
+limit or `BILLING_FREE_SEATS`, and refuse with a 402 `seat limit reached`.
+`Service.Apply` takes a provider-neutral `domain.BillingSubscription`,
+upserts it by `provider_subscription_id` only when `provider_updated_at` is
+newer, and recomputes `quota_bytes` from the live subscription
+(`active|trialing|past_due`, newest update) with
+`entitlement.go` (`max(free, seats*seat_bytes + packs*pack_bytes)`,
+saturating); it never touches `override_bytes`. `internal/config` carries
+`BILLING_PROVIDER` (`off` default), `PADDLE_*` and `BILLING_*` keys with
+`ValidateBilling` (every key, `SAAS_MODE=1`, the ledger, free seats ≥ 1,
+bytes > 0); `nipad-ee` still refuses any provider other than `off`, so the
+gate stays unwired in production until the Paddle PR.
 
 Flow for rate limiting (design in `docs/RATE_LIMIT.md`): `internal/ratelimit`
 holds the `Store` seam (atomic token-bucket `Take`), the `Limiter` (named scope

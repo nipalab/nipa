@@ -124,14 +124,16 @@ func (s *RegistrationRepositorySuite) TestSeedOwnerQuota() {
 	s.Require().NoError(repo.SeedOwnerQuota(ctx, user.ID, 15*1024*1024*1024))
 	quota, err := s.q.GetOwnerQuota(ctx, user.ID.Int64())
 	s.Require().NoError(err)
-	s.True(quota.Valid)
-	s.Equal(int64(15*1024*1024*1024), quota.Int64)
+	s.True(quota.QuotaBytes.Valid)
+	s.False(quota.OverrideBytes.Valid)
+	s.Equal(int64(15*1024*1024*1024), quota.QuotaBytes.Int64)
 
 	s.Require().NoError(repo.SeedOwnerQuota(ctx, user.ID, 1024))
 	quota, err = s.q.GetOwnerQuota(ctx, user.ID.Int64())
 	s.Require().NoError(err)
-	s.True(quota.Valid)
-	s.Equal(int64(1024), quota.Int64)
+	s.True(quota.QuotaBytes.Valid)
+	s.False(quota.OverrideBytes.Valid)
+	s.Equal(int64(1024), quota.QuotaBytes.Int64)
 }
 
 func (s *RegistrationRepositorySuite) TestIdentityLifecycle() {

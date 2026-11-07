@@ -695,3 +695,71 @@ func TestPermission_UserHasProjectAccess(t *testing.T) {
 			UserHasProjectAccess(ctx, 1, 9, domain.PermissionRead))
 	})
 }
+
+func TestPermission_CreateRule_SeatGate(t *testing.T) {
+	userID := snow.ID(9)
+	groupID := snow.ID(7)
+	ctx := permissionCtx(42, withAdmin())
+
+	setup := func(t *testing.T) (*Permission, *MockpbacRepository, *MockSeatGate) {
+		ctrl := gomock.NewController(t)
+		repo := NewMockpbacRepository(ctrl)
+		users := NewMockuserLookup(ctrl)
+		users.EXPECT().GetByID(gomock.Any(), userID).Return(&domain.User{ID: userID}, nil).AnyTimes()
+		groups := NewMockgroupLookup(ctrl)
+		groups.EXPECT().GetByID(gomock.Any(), groupID).Return(&domain.Group{ID: groupID, OrgID: 1}, nil).AnyTimes()
+		gate := NewMockSeatGate(ctrl)
+		perm := NewPermission(repo, users, groups, NewMockorgAuthorizer(ctrl)).WithSeatGate(gate)
+		return perm, repo, gate
+	}
+
+	t.Run("refuses user rule", func(t *testing.T) {
+		perm, _, gate := setup(t)
+		wantErr := domain.NewErrorQuotaExceeded("seat limit reached")
+		gate.EXPECT().Admit(gomock.Any(), snow.ID(1), userID, gomock.Any()).Return(wantErr)
+
+		_, err := perm.CreateRule(ctx, domain.PBACRule{UserID: &userID, OrgID: 1, Permission: domain.PermissionRead})
+		require.ErrorIs(t, err, wantErr)
+	})
+
+	t.Run("admits user rule", func(t *testing.T) {
+		perm, repo, gate := setup(t)
+		gate.EXPECT().Admit(gomock.Any(), snow.ID(1), userID, gomock.Any()).DoAndReturn(
+			func(ctx context.Context, _, _ snow.ID, insert func(context.Context) error) error {
+				return insert(ctx)
+			})
+		repo.EXPECT().CreateRule(gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, rule domain.PBACRule) (*domain.PBACRule, error) {
+				rule.ID = 3
+				return &rule, nil
+			})
+
+		created, err := perm.CreateRule(ctx, domain.PBACRule{UserID: &userID, OrgID: 1, Permission: domain.PermissionRead})
+		require.NoError(t, err)
+		require.Equal(t, int64(3), created.ID)
+	})
+
+	t.Run("group rule bypasses the gate", func(t *testing.T) {
+		perm, repo, _ := setup(t)
+		repo.EXPECT().CreateRule(gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, rule domain.PBACRule) (*domain.PBACRule, error) {
+				return &rule, nil
+			})
+
+		_, err := perm.CreateRule(ctx, domain.PBACRule{GroupID: &groupID, OrgID: 1, Permission: domain.PermissionRead})
+		require.NoError(t, err)
+	})
+
+	t.Run("insert failure inside the gate", func(t *testing.T) {
+		perm, repo, gate := setup(t)
+		wantErr := errors.New("db down")
+		gate.EXPECT().Admit(gomock.Any(), snow.ID(1), userID, gomock.Any()).DoAndReturn(
+			func(ctx context.Context, _, _ snow.ID, insert func(context.Context) error) error {
+				return insert(ctx)
+			})
+		repo.EXPECT().CreateRule(gomock.Any(), gomock.Any()).Return(nil, wantErr)
+
+		_, err := perm.CreateRule(ctx, domain.PBACRule{UserID: &userID, OrgID: 1, Permission: domain.PermissionRead})
+		require.ErrorIs(t, err, wantErr)
+	})
+}
