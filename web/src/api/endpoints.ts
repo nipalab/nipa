@@ -1,5 +1,7 @@
 import { apiFetch, apiJson, errorFromResponse } from './client'
 import type {
+  AuditListFilters,
+  AuditListResponse,
   BillingItemsRequest,
   BillingSummary,
   BlobResponse,
@@ -922,4 +924,13 @@ export function recountOrgStorage(org: string): Promise<OrgStorageResponse> {
     method: 'POST',
     body: JSON.stringify({}),
   })
+}
+
+export function listAuditEntries(filters: AuditListFilters = {}): Promise<AuditListResponse> {
+  const params = new URLSearchParams()
+  for (const [key, value] of Object.entries(filters)) {
+    if (value !== undefined && value !== '') params.set(key, String(value))
+  }
+  const query = params.toString()
+  return apiJson(`/api/v1/admin/audit${query ? `?${query}` : ''}`)
 }

@@ -7,17 +7,19 @@ import (
 
 	sqlcPostgres "github.com/nipalab/nipa/ee/repository/postgres/sqlc"
 	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/repository/dbtx"
 	"github.com/nipalab/nipa/internal/snow"
 	"gopkg.in/typ.v4/slices"
 )
 
 type BranchRepository struct {
 	db      *sql.DB
+	tx      *dbtx.Transactor
 	queries *sqlcPostgres.Queries
 }
 
 func NewBranchRepository(db *sql.DB) *BranchRepository {
-	return &BranchRepository{db: db, queries: sqlcPostgres.New(db)}
+	return &BranchRepository{db: db, tx: dbtx.NewTransactor(db), queries: sqlcPostgres.New(dbtx.New(db))}
 }
 
 func (b *BranchRepository) ListBranches(ctx context.Context, projectID snow.ID, limit int, updatedAfter *time.Time, lastID snow.ID) ([]*domain.Branch, error) {
@@ -120,46 +122,42 @@ func (b *BranchRepository) HasOpenMergeRequests(ctx context.Context, projectID, 
 }
 
 func (b *BranchRepository) SetBranchProtection(ctx context.Context, projectID, branchID snow.ID, protection domain.BranchProtection) error {
-	tx, err := b.db.BeginTx(ctx, nil)
-	if err != nil {
-		return handleError(err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	q := sqlcPostgres.New(tx)
-	if err := q.BranchSetProtection(ctx, sqlcPostgres.BranchSetProtectionParams{
-		IsProtected:           protection.Protected,
-		RequiredApprovals:     protection.RequiredApprovals,
-		DismissStaleApprovals: protection.DismissStaleApprovals,
-		RequireStatusChecks:   protection.RequireStatusChecks,
-		ProjectID:             projectID.Int64(),
-		ID:                    branchID.Int64(),
-	}); err != nil {
-		return handleError(err)
-	}
-	if err := q.BranchRequiredReviewerClear(ctx, branchID.Int64()); err != nil {
-		return handleError(err)
-	}
-	for _, reviewer := range protection.RequiredReviewers {
-		if err := q.BranchRequiredReviewerAdd(ctx, sqlcPostgres.BranchRequiredReviewerAddParams{
-			BranchID: branchID.Int64(),
-			UserID:   reviewer.Int64(),
+	return b.tx.WithinTx(ctx, func(ctx context.Context) error {
+		q := b.queries
+		if err := q.BranchSetProtection(ctx, sqlcPostgres.BranchSetProtectionParams{
+			IsProtected:           protection.Protected,
+			RequiredApprovals:     protection.RequiredApprovals,
+			DismissStaleApprovals: protection.DismissStaleApprovals,
+			RequireStatusChecks:   protection.RequireStatusChecks,
+			ProjectID:             projectID.Int64(),
+			ID:                    branchID.Int64(),
 		}); err != nil {
 			return handleError(err)
 		}
-	}
-	if err := q.BranchRequiredCheckClear(ctx, branchID.Int64()); err != nil {
-		return handleError(err)
-	}
-	for _, name := range protection.RequiredChecks {
-		if err := q.BranchRequiredCheckAdd(ctx, sqlcPostgres.BranchRequiredCheckAddParams{
-			BranchID: branchID.Int64(),
-			Name:     name,
-		}); err != nil {
+		if err := q.BranchRequiredReviewerClear(ctx, branchID.Int64()); err != nil {
 			return handleError(err)
 		}
-	}
-	return handleError(tx.Commit())
+		for _, reviewer := range protection.RequiredReviewers {
+			if err := q.BranchRequiredReviewerAdd(ctx, sqlcPostgres.BranchRequiredReviewerAddParams{
+				BranchID: branchID.Int64(),
+				UserID:   reviewer.Int64(),
+			}); err != nil {
+				return handleError(err)
+			}
+		}
+		if err := q.BranchRequiredCheckClear(ctx, branchID.Int64()); err != nil {
+			return handleError(err)
+		}
+		for _, name := range protection.RequiredChecks {
+			if err := q.BranchRequiredCheckAdd(ctx, sqlcPostgres.BranchRequiredCheckAddParams{
+				BranchID: branchID.Int64(),
+				Name:     name,
+			}); err != nil {
+				return handleError(err)
+			}
+		}
+		return nil
+	})
 }
 
 func (b *BranchRepository) RequiredReviewers(ctx context.Context, branchID snow.ID) ([]domain.ReviewActor, error) {

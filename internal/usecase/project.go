@@ -37,6 +37,13 @@ type Project struct {
 	snowNode snow.Node
 	perm     projectAccess
 	orgs     orgAuthorizer
+	audit    AuditRecorder
+}
+
+// WithAudit records project creation, edits and deletion.
+func (p *Project) WithAudit(rec AuditRecorder) *Project {
+	p.audit = rec
+	return p
 }
 
 func NewProject(repo projectRepository, snowNode snow.Node, perm projectAccess, orgs orgAuthorizer) *Project {
@@ -93,17 +100,28 @@ func (p *Project) Create(ctx context.Context, orgID snow.ID, name, description, 
 		return nil, err
 	}
 	projectID := p.snowNode.Generate()
-	created, err := p.repo.CreateWithDefaultBranch(ctx, domain.Project{
-		ID:          projectID,
-		OrgID:       orgID,
-		Name:        name,
-		Description: strings.TrimSpace(description),
-		Slug:        slug,
-	}, domain.Branch{
-		ID:        p.snowNode.Generate(),
-		ProjectID: projectID,
-		Name:      defaultBranchName,
-		IsDefault: true,
+	var created *domain.Project
+	err := auditedWrite(ctx, p.audit, func(ctx context.Context) error {
+		var err error
+		created, err = p.repo.CreateWithDefaultBranch(ctx, domain.Project{
+			ID:          projectID,
+			OrgID:       orgID,
+			Name:        name,
+			Description: strings.TrimSpace(description),
+			Slug:        slug,
+		}, domain.Branch{
+			ID:        p.snowNode.Generate(),
+			ProjectID: projectID,
+			Name:      defaultBranchName,
+			IsDefault: true,
+		})
+		return err
+	}, func() *domain.AuditEntry {
+		return projectEntityAudit(domain.AuditProjectCreated, created, map[string]any{
+			"name":        created.Name,
+			"slug":        created.Slug,
+			"description": created.Description,
+		})
 	})
 	if err != nil {
 		return nil, err
@@ -123,11 +141,28 @@ func (p *Project) Update(ctx context.Context, projectID snow.ID, name, descripti
 	if name == "" {
 		return nil, domain.NewErrorUser("project name is required")
 	}
-	return p.repo.Update(ctx, domain.Project{
-		ID:          projectID,
-		Name:        name,
-		Description: strings.TrimSpace(description),
+	var updated *domain.Project
+	err = auditedWrite(ctx, p.audit, func(ctx context.Context) error {
+		var err error
+		updated, err = p.repo.Update(ctx, domain.Project{
+			ID:          projectID,
+			Name:        name,
+			Description: strings.TrimSpace(description),
+		})
+		return err
+	}, func() *domain.AuditEntry {
+		if project.Name == updated.Name && project.Description == updated.Description {
+			return nil
+		}
+		return projectEntityAudit(domain.AuditProjectUpdated, project, map[string]any{
+			"old": map[string]any{"name": project.Name, "description": project.Description},
+			"new": map[string]any{"name": updated.Name, "description": updated.Description},
+		})
 	})
+	if err != nil {
+		return nil, err
+	}
+	return updated, nil
 }
 
 func (p *Project) Delete(ctx context.Context, projectID snow.ID) error {
@@ -138,7 +173,20 @@ func (p *Project) Delete(ctx context.Context, projectID snow.ID) error {
 	if err := p.requireOrgAdmin(ctx, project.OrgID); err != nil {
 		return err
 	}
-	return p.repo.Delete(ctx, projectID)
+	return auditedWrite(ctx, p.audit, func(ctx context.Context) error {
+		return p.repo.Delete(ctx, projectID)
+	}, func() *domain.AuditEntry {
+		return projectEntityAudit(domain.AuditProjectDeleted, project, map[string]any{
+			"name": project.Name,
+			"slug": project.Slug,
+		})
+	})
+}
+
+func projectEntityAudit(action string, project *domain.Project, metadata map[string]any) *domain.AuditEntry {
+	entry := projectAudit(action, project.ID, domain.AuditTargetProject, project.ID.Base36(), metadata)
+	entry.OrgID = domain.IDPtr(project.OrgID)
+	return entry
 }
 
 func (p *Project) requireOrgAdmin(ctx context.Context, orgID snow.ID) error {

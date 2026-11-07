@@ -751,6 +751,22 @@ the rest per user). REST answers 429 with `Retry-After`; gRPC answers
 `client/grpc.toDomainError` maps back to 429 (other `ResourceExhausted` stays
 402). Metric: `nipa_ratelimit_total{scope,result}`.
 
+Flow for the audit log (design in `docs/AUDIT_LOG.md`, both editions): an
+append-only `audit_log` table (no foreign keys, metadata JSON TEXT on sqlite /
+JSONB on postgres) written by `usecase.Audit` (`AuditRecorder`), wired in
+`serverapp.BuildUsecases` and attached to the org, group, permission, branch
+protection, file lock (force release only), user, project and webhook
+usecases through `WithAudit` (nil = off). Each audited write and its record run
+in one `WithinTx` via `auditedWrite`, so a failed record rolls the change back;
+repositories touched by audited writes must be `dbtx`-aware (no private
+`BeginTx`). Action names live in `internal/domain/audit_actions.go`; reads are
+never audited and metadata never carries secrets. The REST auth filter and the
+gRPC interceptors attach `domain.RequestMeta` (client IP through
+`ratelimit.ClientIP` + `RATE_LIMIT_TRUSTED_PROXIES`, user agent); entries
+without a claim are `system` (SaaS signup/OAuth). Super admins read it at
+`GET /api/v1/admin/audit` (actor/org/project/action prefix/target/since/until,
+keyset `after`, `next_cursor`).
+
 Flow for tracing (design in `docs/TRACING.md`): `internal/obs/tracing.go`
 builds an OTLP gRPC tracer provider (`SetupTracing`), installed globally with
 the W3C propagator only when enabled — otherwise every path stays on the OTel

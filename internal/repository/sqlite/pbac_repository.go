@@ -6,6 +6,7 @@ import (
 	"errors"
 
 	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/repository/dbtx"
 	sqlcSqlite "github.com/nipalab/nipa/internal/repository/sqlc/sqlite"
 	"github.com/nipalab/nipa/internal/snow"
 )
@@ -15,7 +16,7 @@ type PBAC struct {
 }
 
 func NewPBACRepository(db *sql.DB) *PBAC {
-	return &PBAC{queries: sqlcSqlite.New(db)}
+	return &PBAC{queries: sqlcSqlite.New(dbtx.New(db))}
 }
 
 func (p *PBAC) ProjectOrgID(ctx context.Context, projectID snow.ID) (snow.ID, error) {

@@ -163,7 +163,7 @@ nipa update                            # locked paths become read-only on disk
 | Owner deletes the file | `remove` cleans up orphaned lock rows for the path. |
 | MR touches a locked path | Blocked at `MergeFastForward` until released or forced. |
 | Lock on a path since renamed | Rename = delete+add; old lock swept, new path needs its own lock. |
-| Force unlock | ACL role (`write`-admin equivalent) + `force` on `UnlockFile`; logged for audit. |
+| Force unlock | Project admin releasing someone else's lock through `UnlockFile`; recorded in the audit log as `lock.force_released` (holder and path, see `docs/AUDIT_LOG.md`). |
 | Lock + dirty local copy conflict | `update` refuses to overwrite locally-modified files as today; lock state shows first. |
 
 ---
@@ -212,7 +212,9 @@ check rides the same merge path once MRs land server-side.
 
 ## Notes for Later
 
-- Audit: log acquire/release/force; surface via a future `nipa history`/web audit view.
+- Audit: force releases are recorded as `lock.force_released` in the audit log
+  (`GET /api/v1/admin/audit`, `docs/AUDIT_LOG.md`); ordinary acquire/release by
+  the holder is not audited. A web audit view is future work.
 - Lock **wildcards** (`models/**`) — explicit P4-style directory leases, if single-path proves
   noisy at scale. Keep the `UNIQUE(project_id, path)` storage and index-prefix matching for these.
 - Alternative scope worth `ee/` (enterprise) gating: **streams** (locked mainline, instreams

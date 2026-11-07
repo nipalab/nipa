@@ -29,6 +29,13 @@ type Group struct {
 	permUc   permissionCacheInvalidator
 	orgs     orgAuthorizer
 	seats    SeatGate
+	audit    AuditRecorder
+}
+
+// WithAudit records group and group membership changes.
+func (g *Group) WithAudit(rec AuditRecorder) *Group {
+	g.audit = rec
+	return g
 }
 
 // WithSeatGate gates new group members on the org owner's seat limit.
@@ -54,12 +61,23 @@ func (g *Group) Create(ctx context.Context, orgID snow.ID, name, description str
 	if name == "" {
 		return nil, domain.NewErrorUser("group name is required")
 	}
-	return g.repo.Create(ctx, domain.Group{
-		ID:          g.snowNode.Generate(),
-		OrgID:       orgID,
-		Name:        name,
-		Description: strings.TrimSpace(description),
+	var group *domain.Group
+	err := auditedWrite(ctx, g.audit, func(ctx context.Context) error {
+		var err error
+		group, err = g.repo.Create(ctx, domain.Group{
+			ID:          g.snowNode.Generate(),
+			OrgID:       orgID,
+			Name:        name,
+			Description: strings.TrimSpace(description),
+		})
+		return err
+	}, func() *domain.AuditEntry {
+		return orgAudit(domain.AuditGroupCreated, orgID, domain.AuditTargetGroup, group.ID.Base36(), map[string]any{"name": group.Name})
 	})
+	if err != nil {
+		return nil, err
+	}
+	return group, nil
 }
 
 func (g *Group) Get(ctx context.Context, orgID, groupID snow.ID) (*domain.Group, error) {
@@ -80,11 +98,16 @@ func (g *Group) AddMember(ctx context.Context, orgID, groupID, userID snow.ID) e
 	if err := g.requireGroupAdmin(ctx, orgID); err != nil {
 		return err
 	}
-	if _, err := g.groupInOrg(ctx, orgID, groupID); err != nil {
+	group, err := g.groupInOrg(ctx, orgID, groupID)
+	if err != nil {
 		return err
 	}
-	if err := admitSeat(ctx, g.seats, orgID, userID, func(ctx context.Context) error {
-		return g.repo.AddMember(ctx, groupID, userID)
+	if err := auditedWrite(ctx, g.audit, func(ctx context.Context) error {
+		return admitSeat(ctx, g.seats, orgID, userID, func(ctx context.Context) error {
+			return g.repo.AddMember(ctx, groupID, userID)
+		})
+	}, func() *domain.AuditEntry {
+		return groupMemberAudit(domain.AuditGroupMemberAdded, group, userID)
 	}); err != nil {
 		return err
 	}
@@ -96,10 +119,15 @@ func (g *Group) RemoveMember(ctx context.Context, orgID, groupID, userID snow.ID
 	if err := g.requireGroupAdmin(ctx, orgID); err != nil {
 		return err
 	}
-	if _, err := g.groupInOrg(ctx, orgID, groupID); err != nil {
+	group, err := g.groupInOrg(ctx, orgID, groupID)
+	if err != nil {
 		return err
 	}
-	if err := g.repo.RemoveMember(ctx, groupID, userID); err != nil {
+	if err := auditedWrite(ctx, g.audit, func(ctx context.Context) error {
+		return g.repo.RemoveMember(ctx, groupID, userID)
+	}, func() *domain.AuditEntry {
+		return groupMemberAudit(domain.AuditGroupMemberRemoved, group, userID)
+	}); err != nil {
 		return err
 	}
 	g.permUc.InvalidateAll()
@@ -153,4 +181,11 @@ func (g *Group) requireGroupAdmin(ctx context.Context, orgID snow.ID) error {
 		return domain.NewErrorNoPermission()
 	}
 	return nil
+}
+
+func groupMemberAudit(action string, group *domain.Group, userID snow.ID) *domain.AuditEntry {
+	return orgAudit(action, group.OrgID, domain.AuditTargetGroup, group.ID.Base36(), map[string]any{
+		"group_name": group.Name,
+		"user_id":    userID,
+	})
 }

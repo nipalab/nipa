@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/repository/dbtx"
 	sqlcSqlite "github.com/nipalab/nipa/internal/repository/sqlc/sqlite"
 	"github.com/nipalab/nipa/internal/snow"
 )
@@ -14,12 +15,12 @@ import (
 var nonAlphaNum = regexp.MustCompile(`[^a-z0-9]+`)
 
 type ProjectRepository struct {
-	db      *sql.DB
+	tx      *dbtx.Transactor
 	queries *sqlcSqlite.Queries
 }
 
 func NewProjectRepository(db *sql.DB) *ProjectRepository {
-	return &ProjectRepository{db: db, queries: sqlcSqlite.New(db)}
+	return &ProjectRepository{tx: dbtx.NewTransactor(db), queries: sqlcSqlite.New(dbtx.New(db))}
 }
 
 func (r *ProjectRepository) Create(ctx context.Context, project domain.Project) (*domain.Project, error) {
@@ -47,42 +48,41 @@ func (r *ProjectRepository) CreateWithDefaultBranch(ctx context.Context, project
 	if slug == "" {
 		slug = slugify(project.Name)
 	}
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, handleError(err)
-	}
-	defer func() { _ = tx.Rollback() }()
+	var row sqlcSqlite.Project
+	err := r.tx.WithinTx(ctx, func(ctx context.Context) error {
+		q := r.queries
+		var err error
+		row, err = q.CreateProject(ctx, sqlcSqlite.CreateProjectParams{
+			ID:          project.ID.Int64(),
+			OrgID:       project.OrgID.Int64(),
+			Slug:        slug,
+			Name:        project.Name,
+			Description: project.Description,
+		})
+		if err != nil {
+			return handleError(err)
+		}
 
-	q := sqlcSqlite.New(tx)
-	row, err := q.CreateProject(ctx, sqlcSqlite.CreateProjectParams{
-		ID:          project.ID.Int64(),
-		OrgID:       project.OrgID.Int64(),
-		Slug:        slug,
-		Name:        project.Name,
-		Description: project.Description,
+		var commitID sql.NullInt64
+		if defaultBranch.CommitID != nil {
+			commitID = sql.NullInt64{Int64: defaultBranch.CommitID.Int64(), Valid: true}
+		}
+		if err := q.BranchCreate(ctx, sqlcSqlite.BranchCreateParams{
+			ID:          defaultBranch.ID.Int64(),
+			ProjectID:   defaultBranch.ProjectID.Int64(),
+			Name:        defaultBranch.Name,
+			Key:         defaultBranch.Name,
+			CommitID:    commitID,
+			IsDefault:   defaultBranch.IsDefault,
+			IsProtected: defaultBranch.IsProtected,
+		}); err != nil {
+			return handleError(err)
+		}
+
+		return nil
 	})
 	if err != nil {
-		return nil, handleError(err)
-	}
-
-	var commitID sql.NullInt64
-	if defaultBranch.CommitID != nil {
-		commitID = sql.NullInt64{Int64: defaultBranch.CommitID.Int64(), Valid: true}
-	}
-	if err := q.BranchCreate(ctx, sqlcSqlite.BranchCreateParams{
-		ID:          defaultBranch.ID.Int64(),
-		ProjectID:   defaultBranch.ProjectID.Int64(),
-		Name:        defaultBranch.Name,
-		Key:         defaultBranch.Name,
-		CommitID:    commitID,
-		IsDefault:   defaultBranch.IsDefault,
-		IsProtected: defaultBranch.IsProtected,
-	}); err != nil {
-		return nil, handleError(err)
-	}
-
-	if err := tx.Commit(); err != nil {
-		return nil, handleError(err)
+		return nil, err
 	}
 	return toDomainProject(row), nil
 }

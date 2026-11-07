@@ -21,6 +21,7 @@ type usecaseContainer interface {
 	FileLock() *usecase.FileLock
 	Webhook() *usecase.Webhook
 	EmailDelivery() *usecase.EmailDelivery
+	Audit() *usecase.Audit
 }
 
 type Handler struct {

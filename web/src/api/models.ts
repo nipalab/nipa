@@ -437,6 +437,40 @@ export interface EmailDeliveryListResponse {
   next_cursor?: string
 }
 
+export interface AuditEntryResponse {
+  id: string
+  occurred_at: string
+  actor_type: 'user' | 'provider' | 'system'
+  actor_user_id?: string
+  actor_label?: string
+  action: string
+  org_id?: string
+  project_id?: string
+  target_type?: string
+  target_id?: string
+  metadata: Record<string, unknown>
+  request_id?: string
+  client_ip?: string
+  user_agent?: string
+}
+
+export interface AuditListResponse {
+  entries: AuditEntryResponse[]
+  next_cursor?: string
+}
+
+export interface AuditListFilters {
+  actor?: string
+  org?: string
+  project?: string
+  action?: string
+  target?: string
+  since?: string
+  until?: string
+  after?: string
+  limit?: number
+}
+
 export interface ProjectStorageResponse {
   id: string
   slug: string

@@ -26,6 +26,13 @@ type User struct {
 	snowNode snow.Node
 	repo     userAdminRepository
 	hasher   passwordHasher
+	audit    AuditRecorder
+}
+
+// WithAudit records account administration.
+func (u *User) WithAudit(rec AuditRecorder) *User {
+	u.audit = rec
+	return u
 }
 
 func NewUser(snowNode snow.Node, repo userAdminRepository, hasher passwordHasher) *User {
@@ -78,13 +85,39 @@ func (u *User) CreateAccount(ctx context.Context, name, email, password string) 
 	if err != nil {
 		return nil, domain.NewErrorInternalServer(err.Error())
 	}
-	return u.repo.Create(ctx, domain.User{
-		ID:            u.snowNode.Generate(),
-		Name:          name,
-		Email:         email,
-		Password:      hash,
-		EmailVerified: true,
+	var created *domain.User
+	err = auditedWrite(ctx, u.audit, func(ctx context.Context) error {
+		var err error
+		created, err = u.repo.Create(ctx, domain.User{
+			ID:            u.snowNode.Generate(),
+			Name:          name,
+			Email:         email,
+			Password:      hash,
+			EmailVerified: true,
+		})
+		return err
+	}, func() *domain.AuditEntry {
+		entry := UserCreatedAudit(created, "admin")
+		return &entry
 	})
+	if err != nil {
+		return nil, err
+	}
+	return created, nil
+}
+
+// UserCreatedAudit describes a new account; source says which flow created it.
+func UserCreatedAudit(user *domain.User, source string) domain.AuditEntry {
+	return domain.AuditEntry{
+		Action:     domain.AuditUserCreated,
+		TargetType: domain.AuditTargetUser,
+		TargetID:   user.ID.Base36(),
+		Metadata: map[string]any{
+			"name":   user.Name,
+			"email":  user.Email,
+			"source": source,
+		},
+	}
 }
 
 func (u *User) UpdateProfile(ctx context.Context, userID snow.ID, name, photoUrl string, notifyEmail *bool) (*domain.User, error) {
@@ -120,7 +153,22 @@ func (u *User) UpdateEmail(ctx context.Context, userID snow.ID, email string) (*
 	} else if err != nil && !domain.IsErrorNotFound(err) {
 		return nil, err
 	}
-	if err := u.repo.UpdateEmailAndRevokeTokens(ctx, userID, email); err != nil {
+	oldEmail := ""
+	if u.audit != nil {
+		current, err := u.repo.GetByID(ctx, userID)
+		if err != nil {
+			return nil, err
+		}
+		oldEmail = current.Email
+	}
+	if err := auditedWrite(ctx, u.audit, func(ctx context.Context) error {
+		return u.repo.UpdateEmailAndRevokeTokens(ctx, userID, email)
+	}, func() *domain.AuditEntry {
+		if oldEmail == email {
+			return nil
+		}
+		return userAudit(domain.AuditUserEmailChanged, userID, map[string]any{"old_email": oldEmail, "new_email": email})
+	}); err != nil {
 		return nil, err
 	}
 	return u.repo.GetByID(ctx, userID)
@@ -159,7 +207,11 @@ func (u *User) ResetPassword(ctx context.Context, userID snow.ID, newPassword st
 	if err != nil {
 		return domain.NewErrorInternalServer(err.Error())
 	}
-	return u.repo.UpdatePasswordAndRevokeTokens(ctx, userID, hash)
+	return auditedWrite(ctx, u.audit, func(ctx context.Context) error {
+		return u.repo.UpdatePasswordAndRevokeTokens(ctx, userID, hash)
+	}, func() *domain.AuditEntry {
+		return userAudit(domain.AuditUserPasswordResetByAdmin, userID, nil)
+	})
 }
 
 func (u *User) SetAdminFlags(ctx context.Context, userID snow.ID, isAdmin, isSuperAdmin bool) (*domain.User, error) {
@@ -170,7 +222,24 @@ func (u *User) SetAdminFlags(ctx context.Context, userID snow.ID, isAdmin, isSup
 	if claim.UserID == userID && !isSuperAdmin {
 		return nil, domain.NewErrorUser("cannot remove your own super admin flag")
 	}
-	if err := u.repo.UpdateAdminFlags(ctx, userID, isAdmin, isSuperAdmin); err != nil {
+	var old *domain.User
+	if u.audit != nil {
+		var err error
+		if old, err = u.repo.GetByID(ctx, userID); err != nil {
+			return nil, err
+		}
+	}
+	if err := auditedWrite(ctx, u.audit, func(ctx context.Context) error {
+		return u.repo.UpdateAdminFlags(ctx, userID, isAdmin, isSuperAdmin)
+	}, func() *domain.AuditEntry {
+		if old.IsAdmin == isAdmin && old.IsSuperAdmin == isSuperAdmin {
+			return nil
+		}
+		return userAudit(domain.AuditUserAdminFlagsChanged, userID, map[string]any{
+			"old": map[string]any{"is_admin": old.IsAdmin, "is_superadmin": old.IsSuperAdmin},
+			"new": map[string]any{"is_admin": isAdmin, "is_superadmin": isSuperAdmin},
+		})
+	}); err != nil {
 		return nil, err
 	}
 	return u.repo.GetByID(ctx, userID)
@@ -187,7 +256,20 @@ func (u *User) Deactivate(ctx context.Context, userID snow.ID) error {
 	if err := u.requireCanManage(ctx, userID); err != nil {
 		return err
 	}
-	return u.repo.DeactivateAndRevokeTokens(ctx, userID)
+	return auditedWrite(ctx, u.audit, func(ctx context.Context) error {
+		return u.repo.DeactivateAndRevokeTokens(ctx, userID)
+	}, func() *domain.AuditEntry {
+		return userAudit(domain.AuditUserDeactivated, userID, nil)
+	})
+}
+
+func userAudit(action string, userID snow.ID, metadata map[string]any) *domain.AuditEntry {
+	return &domain.AuditEntry{
+		Action:     action,
+		TargetType: domain.AuditTargetUser,
+		TargetID:   userID.Base36(),
+		Metadata:   metadata,
+	}
 }
 
 func (u *User) requireCanManage(ctx context.Context, targetID snow.ID) error {

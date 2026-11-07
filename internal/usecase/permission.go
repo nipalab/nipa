@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"strconv"
 	"sync"
 	"time"
 
@@ -55,6 +56,7 @@ type Permission struct {
 	groups groupLookup
 	orgs   orgAuthorizer
 	seats  SeatGate
+	audit  AuditRecorder
 
 	mu       sync.Mutex
 	cache    map[permissionCacheKey]permissionCacheEntry
@@ -75,6 +77,12 @@ func NewPermission(repo pbacRepository, users userLookup, groups groupLookup, or
 // WithSeatGate gates user-subject rules on the org owner's seat limit.
 func (p *Permission) WithSeatGate(gate SeatGate) *Permission {
 	p.seats = gate
+	return p
+}
+
+// WithAudit records access rule and path permission changes.
+func (p *Permission) WithAudit(rec AuditRecorder) *Permission {
+	p.audit = rec
 	return p
 }
 
@@ -299,11 +307,14 @@ func (p *Permission) CreateRule(ctx context.Context, rule domain.PBACRule) (*dom
 		created, err = p.repo.CreateRule(ctx, rule)
 		return err
 	}
-	if rule.UserID != nil {
-		err = admitSeat(ctx, p.seats, rule.OrgID, *rule.UserID, insert)
-	} else {
-		err = insert(ctx)
-	}
+	err = auditedWrite(ctx, p.audit, func(ctx context.Context) error {
+		if rule.UserID != nil {
+			return admitSeat(ctx, p.seats, rule.OrgID, *rule.UserID, insert)
+		}
+		return insert(ctx)
+	}, func() *domain.AuditEntry {
+		return ruleAudit(domain.AuditAccessRuleCreated, created)
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -324,7 +335,11 @@ func (p *Permission) DeleteRule(ctx context.Context, projectID snow.ID, ruleID i
 			return err
 		}
 	}
-	if err := p.repo.DeleteRuleForProject(ctx, projectID, ruleID); err != nil {
+	if err := auditedWrite(ctx, p.audit, func(ctx context.Context) error {
+		return p.repo.DeleteRuleForProject(ctx, projectID, ruleID)
+	}, func() *domain.AuditEntry {
+		return ruleAudit(domain.AuditAccessRuleDeleted, rule)
+	}); err != nil {
 		return err
 	}
 	p.invalidateAll()
@@ -396,10 +411,25 @@ func (p *Permission) SetPathPermission(ctx context.Context, projectID snow.ID, p
 	if err != nil {
 		return nil, domain.NewErrorUser(err.Error())
 	}
-	perm, err := p.repo.UpsertPathPermission(ctx, domain.ProjectPathPermission{
-		ProjectID:  projectID,
-		PathPrefix: prefix,
-		Permission: permission,
+	old, err := p.auditedPathPermission(ctx, projectID, prefix)
+	if err != nil {
+		return nil, err
+	}
+	var perm *domain.ProjectPathPermission
+	err = auditedWrite(ctx, p.audit, func(ctx context.Context) error {
+		var err error
+		perm, err = p.repo.UpsertPathPermission(ctx, domain.ProjectPathPermission{
+			ProjectID:  projectID,
+			PathPrefix: prefix,
+			Permission: permission,
+		})
+		return err
+	}, func() *domain.AuditEntry {
+		metadata := map[string]any{"path_prefix": prefix, "new_permission": int64(permission)}
+		if old != nil {
+			metadata["old_permission"] = int64(old.Permission)
+		}
+		return projectAudit(domain.AuditAccessPathPermissionSet, projectID, domain.AuditTargetPathPermission, prefix, metadata)
 	})
 	if err != nil {
 		return nil, err
@@ -416,7 +446,19 @@ func (p *Permission) DeletePathPermission(ctx context.Context, projectID snow.ID
 	if err != nil {
 		return domain.NewErrorUser(err.Error())
 	}
-	if err := p.repo.DeletePathPermission(ctx, projectID, prefix); err != nil {
+	old, err := p.auditedPathPermission(ctx, projectID, prefix)
+	if err != nil {
+		return err
+	}
+	if err := auditedWrite(ctx, p.audit, func(ctx context.Context) error {
+		return p.repo.DeletePathPermission(ctx, projectID, prefix)
+	}, func() *domain.AuditEntry {
+		metadata := map[string]any{"path_prefix": prefix}
+		if old != nil {
+			metadata["old_permission"] = int64(old.Permission)
+		}
+		return projectAudit(domain.AuditAccessPathPermissionDeleted, projectID, domain.AuditTargetPathPermission, prefix, metadata)
+	}); err != nil {
 		return err
 	}
 	p.invalidateAll()
@@ -527,4 +569,41 @@ func (s *permissionSet) effective(path string) domain.Permission {
 		mask |= deepest.Permission
 	}
 	return mask
+}
+
+// auditedPathPermission returns the current default for prefix, or nil when
+// none is set or auditing is off.
+func (p *Permission) auditedPathPermission(ctx context.Context, projectID snow.ID, prefix string) (*domain.ProjectPathPermission, error) {
+	if p.audit == nil {
+		return nil, nil
+	}
+	perms, err := p.repo.ListPathPermissions(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	for _, perm := range perms {
+		if perm.PathPrefix == prefix {
+			return perm, nil
+		}
+	}
+	return nil, nil
+}
+
+func ruleAudit(action string, rule *domain.PBACRule) *domain.AuditEntry {
+	metadata := map[string]any{
+		"rule_id":     rule.ID,
+		"path_prefix": rule.PathPrefix,
+		"permission":  int64(rule.Permission),
+	}
+	if rule.UserID != nil {
+		metadata["user_id"] = *rule.UserID
+	}
+	if rule.GroupID != nil {
+		metadata["group_id"] = *rule.GroupID
+	}
+	entry := orgAudit(action, rule.OrgID, domain.AuditTargetAccessRule, strconv.FormatInt(rule.ID, 10), metadata)
+	if rule.ProjectID != nil {
+		entry.ProjectID = domain.IDPtr(*rule.ProjectID)
+	}
+	return entry
 }

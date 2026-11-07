@@ -40,6 +40,7 @@ func TestBuildUsecases_WiresSeatGate(t *testing.T) {
 		User:    sqlite.NewUserRepository(database),
 		PBAC:    sqlite.NewPBACRepository(database),
 		Group:   sqlite.NewGroupRepository(database),
+		Audit:   sqlite.NewAuditRepository(database),
 	}, UsecaseDeps{Config: &config.Config{}, DB: database, Snow: node, SeatGate: gate})
 
 	ctx := domain.ContextWithClaim(context.Background(), domain.Claims{UserID: 1, IsSuperAdmin: true})

@@ -205,6 +205,7 @@ func main() {
 		Tag:                postgres.NewTagRepository(dbConn),
 		Webhook:            webhookRepository,
 		Email:              emailRepository,
+		Audit:              postgres.NewAuditRepository(dbConn),
 	}, deps)
 	reg := serverapp.NewRegistry(uc)
 	commonUsecase, orgUsecase, authUsecase := uc.Common, uc.Org, uc.Auth
@@ -229,7 +230,7 @@ func main() {
 	}
 	runOpts = append(runOpts, billingSetup.runOptions()...)
 	if cfg.SaaSMode {
-		runOpts = append(runOpts, saasOptions(cfg, snowUser, passwordHasher, userRepo, authUsecase, emailRepository, emailDispatcher, dbConn, billingSetup.capabilitiesOrNil())...)
+		runOpts = append(runOpts, saasOptions(cfg, snowUser, passwordHasher, userRepo, authUsecase, uc.Audit, emailRepository, emailDispatcher, dbConn, billingSetup.capabilitiesOrNil())...)
 	}
 	if err := serverapp.Run(cfg, reg, dispatchers, runOpts...); err != nil {
 		panic(err)
@@ -240,7 +241,7 @@ func main() {
 // SaaS deployment. Both use the same onboarding repository, which runs inside
 // the caller's transaction.
 func saasOptions(cfg *config.Config, snowUser snow.Node, hasher *hasher.Hasher, userRepo *postgres.User,
-	authUsecase *usecase.Auth, emailRepository *postgres.EmailRepository, emailDispatcher *mail.Dispatcher, dbConn *sql.DB,
+	authUsecase *usecase.Auth, audit usecase.AuditRecorder, emailRepository *postgres.EmailRepository, emailDispatcher *mail.Dispatcher, dbConn *sql.DB,
 	billingCapabilities *registration.BillingCapabilities,
 ) []serverapp.Option {
 	if strings.TrimSpace(cfg.EmailBaseURL) == "" {
@@ -252,7 +253,7 @@ func saasOptions(cfg *config.Config, snowUser snow.Node, hasher *hasher.Hasher, 
 	registrationUsecase := registration.New(snowUser, hasher, userRepo, registrationRepo, transactor, registration.Config{
 		FreeQuotaBytes: cfg.SaasFreeQuotaBytes,
 		BaseURL:        cfg.EmailBaseURL,
-	})
+	}).WithAudit(audit)
 	registrationHandler := registration.NewHandler(registrationUsecase, authUsecase).WithBilling(billingCapabilities)
 	if emailDispatcher != nil {
 		registrationUsecase.WithMailer(emailRepository, emailDispatcher)
@@ -277,7 +278,7 @@ func saasOptions(cfg *config.Config, snowUser snow.Node, hasher *hasher.Hasher, 
 	})
 	oauthUsecase := oauth.New(providers, cfg.JWTKey, userRepo, registrationRepo, transactor, snowUser, oauth.Config{
 		FreeQuotaBytes: cfg.SaasFreeQuotaBytes,
-	})
+	}).WithAudit(audit)
 	registrationHandler = registrationHandler.WithProviders(oauthUsecase.Providers)
 	oauthHandler := oauth.NewHandler(oauthUsecase, authUsecase)
 	options = append(options,

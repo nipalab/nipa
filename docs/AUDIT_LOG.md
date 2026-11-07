@@ -1,0 +1,117 @@
+# Audit log
+
+Both editions (`nipad` on SQLite, `nipad-ee` on PostgreSQL) record who changed
+what in an append-only `audit_log` table, readable by super admins over REST.
+Reads are never audited.
+
+## Entry model
+
+`domain.AuditEntry` (`internal/domain/audit.go`):
+
+| Field | Meaning |
+| --- | --- |
+| `id` | snowflake id; also the keyset cursor (newest first) |
+| `occurred_at` | server time (UTC) |
+| `actor_type` | `user` (an authenticated caller), `provider` (e.g. a billing provider webhook) or `system` (no caller: SaaS signup, OAuth signup) |
+| `actor_user_id` | the caller's user id for `user` entries |
+| `actor_label` | free label for non-user actors (e.g. `paddle`) |
+| `action` | dotted action name from the catalog below |
+| `org_id`, `project_id` | scope; project-scoped entries get their `org_id` resolved from the project |
+| `target_type`, `target_id` | what was changed (`user`, `org`, `group`, `access_rule`, `path_permission`, `branch`, `lock`, `project`, `webhook`) |
+| `metadata` | JSON object with the old/new values of the change |
+| `request_id`, `client_ip`, `user_agent` | request correlation and caller network identity |
+
+The table has **no foreign keys**: entries outlive the users, organizations
+and projects they mention. Indexes: `(id DESC)`, `(actor_user_id, id DESC)`,
+`(org_id, id DESC)`, `(project_id, id DESC)`, `(action, id DESC)`.
+
+Metadata never holds secrets: no passwords or password hashes, no tokens, no
+webhook secrets. Webhook URLs are recorded without query string, fragment or
+credentials, since those can carry tokens.
+
+## Action catalog
+
+Constants live in `internal/domain/audit_actions.go`.
+
+| Action | Recorded by | Metadata |
+| --- | --- | --- |
+| `org.created` | `Org.Create` | `name`, `slug` |
+| `org.member.added` | `Org.AddMember` / `UpdateMemberRole` for a new member | `role` |
+| `org.member.role_changed` | `Org.AddMember` / `UpdateMemberRole` | `old_role`, `new_role` (skipped when unchanged) |
+| `org.member.removed` | `Org.RemoveMember` | `role` (the role before removal) |
+| `group.created` | `Group.Create` | `name` |
+| `group.member.added` / `group.member.removed` | `Group.AddMember` / `RemoveMember` | `group_name`, `user_id` |
+| `access.rule.created` / `access.rule.deleted` | `Permission.CreateRule` / `DeleteRule` | the full rule: `rule_id`, `user_id` or `group_id`, `path_prefix`, `permission` |
+| `access.path_permission.set` | `Permission.SetPathPermission` | `path_prefix`, `old_permission` (absent when new), `new_permission` |
+| `access.path_permission.deleted` | `Permission.DeletePathPermission` | `path_prefix`, `old_permission` |
+| `branch.protection.changed` | `Branch.SetProtection` (skipped on the no-change return) | `branch`, `old`, `new` (protected, approvals, stale dismissal, status checks, reviewers, checks) |
+| `lock.force_released` | `FileLock.Release` when the caller is not the holder | `path`, `holder_id`, `branch` (absent for mainline locks) |
+| `user.created` | `User.Create` (admin), `ee/registration`, `ee/oauth` (actor `system`) | `name`, `email`, `source` (`admin`, `registration`, `oauth:<provider>`) |
+| `user.admin_flags.changed` | `User.SetAdminFlags` (skipped when unchanged) | `old`, `new` (`is_admin`, `is_superadmin`) |
+| `user.deactivated` | `User.Deactivate` | none |
+| `user.password.reset_by_admin` | `User.ResetPassword` | none |
+| `user.email.changed` | `User.UpdateEmail` | `old_email`, `new_email` |
+| `project.created` | `Project.Create` | `name`, `slug`, `description` |
+| `project.updated` | `Project.Update` (skipped when unchanged) | `old`, `new` (`name`, `description`) |
+| `project.deleted` | `Project.Delete` | `name`, `slug` |
+| `webhook.created` / `webhook.deleted` | `Webhook.Create` / `Delete` | `name`, `url`, `events`, `path_prefix`, `is_active`, `insecure_tls` |
+| `webhook.updated` | `Webhook.Update` (skipped when unchanged) | `old`, `new` with the fields above |
+| `webhook.secret_rotated` | `Webhook.RotateSecret` | `url`, `events` (never the secret) |
+
+Billing actions (`billing.*`) are added by the billing audit follow-up.
+
+## Atomicity
+
+An audit row commits with the change it describes. Each audited usecase holds
+an optional `usecase.AuditRecorder` (`WithAudit`, nil = auditing off) and runs
+its write through `auditedWrite`: the write and `Record` share one
+`dbtx.Transactor.WithinTx` transaction, and a failed record fails the action and
+rolls the write back. Repositories therefore join the transaction carried in the
+context: every repository an audited write touches is built on
+`sqlcX.New(dbtx.New(db))`, and the multi-statement writes
+(`OrgRepository.CreateWithOwner`/`RemoveMember`,
+`BranchRepository.SetBranchProtection`,
+`ProjectRepository.CreateWithDefaultBranch`, `WebhookRepository.Delete`) use
+`WithinTx` instead of their own `BeginTx`. The enterprise seat gate joins the
+same transaction.
+
+`usecase.Audit` is the recorder: it fills the actor from the JWT claim (or
+`system` without one), the request id (`obs.RequestIDFromContext`), the client
+IP and user agent, the snowflake id and the timestamp, then inserts through
+`AuditRepository` (`internal/repository/sqlite`, `ee/repository/postgres`).
+It is wired in `serverapp.BuildUsecases` for both editions; `ee/cmd/nipad`
+passes it to the SaaS registration and OAuth flows.
+
+## Request metadata
+
+`domain.ContextWithRequestMeta` carries `{ClientIP, UserAgent}`. The REST auth
+filter (`internal/http/api/auth_filter.go`) and both gRPC JWT interceptors
+(`internal/grpc/server/interceptor.go`) set it on authenticated calls. The
+client IP comes from `ratelimit.ClientIP`: `X-Forwarded-For` (gRPC
+`x-forwarded-for` metadata) is honoured only when the direct peer is in
+`RATE_LIMIT_TRUSTED_PROXIES`, the right-most untrusted hop wins; otherwise the
+peer address is used. The trusted proxies apply even when rate limiting is
+disabled. Unauthenticated routes carry no request meta.
+
+## API
+
+`GET /api/v1/admin/audit` (both editions, super admins only; others get 403):
+
+| Query | Meaning |
+| --- | --- |
+| `actor` | acting user id (base36) |
+| `org`, `project` | organization / project id (base36) |
+| `action` | action prefix, e.g. `org.member` or `webhook` |
+| `target` | target id |
+| `since`, `until` | RFC 3339 bounds on `occurred_at` (inclusive / exclusive) |
+| `after` | keyset cursor: the last id of the previous page |
+| `limit` | page size, default 50, max 200 |
+
+Response: `{entries: [...], next_cursor}`; `next_cursor` is present only when
+another page exists. The SPA has a typed helper (`listAuditEntries` in
+`web/src/api/endpoints.ts`) but no page yet.
+
+## Retention
+
+Entries are kept forever in v1. A future `AUDIT_RETENTION_DAYS` sweeper can
+delete rows older than the window (keyed by `occurred_at`).

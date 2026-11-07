@@ -412,3 +412,35 @@ func TestRegisterCreateError(t *testing.T) {
 	require.Empty(t, env.outbox.deliveries)
 	require.Zero(t, env.kicker.kicks)
 }
+
+type recordedAudit struct {
+	entries []domain.AuditEntry
+	err     error
+}
+
+func (r *recordedAudit) Record(_ context.Context, entry domain.AuditEntry) error {
+	if r.err != nil {
+		return r.err
+	}
+	r.entries = append(r.entries, entry)
+	return nil
+}
+
+func TestRegisterRecordsASystemAudit(t *testing.T) {
+	env := newRegistrationEnv(t)
+	rec := &recordedAudit{}
+	env.registration.WithAudit(rec)
+
+	require.NoError(t, env.registration.Register(context.Background(), "Alice", "alice@example.com"))
+	require.Len(t, rec.entries, 1)
+	entry := rec.entries[0]
+	require.Equal(t, domain.AuditUserCreated, entry.Action)
+	require.Equal(t, domain.AuditActorSystem, entry.ActorType)
+	require.Equal(t, "registration", entry.Metadata["source"])
+	require.Equal(t, env.repo.created[0].ID.Base36(), entry.TargetID)
+
+	failing := newRegistrationEnv(t)
+	failing.registration.WithAudit(&recordedAudit{err: errors.New("audit down")})
+	require.EqualError(t, failing.registration.Register(context.Background(), "Bob", "bob@example.com"), "audit down")
+	require.Empty(t, failing.outbox.deliveries)
+}

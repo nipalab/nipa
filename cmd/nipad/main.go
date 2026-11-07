@@ -163,6 +163,7 @@ func main() {
 		Tag:                sqlite.NewTagRepository(dbConn),
 		Webhook:            webhookRepository,
 		Email:              emailRepository,
+		Audit:              sqlite.NewAuditRepository(dbConn),
 	}, serverapp.UsecaseDeps{
 		Config:            cfg,
 		DB:                dbConn,
