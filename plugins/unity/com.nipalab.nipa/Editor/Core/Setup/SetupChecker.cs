@@ -107,8 +107,15 @@ namespace Nipa.Editor.Core.Setup
 
         static bool IgnoresLibrary(IEnumerable<string> lines, string projectPrefix)
         {
-            var wanted = Norm(IgnoreTemplate(projectPrefix)[0]);
-            return lines.Select(Norm).Any(l => l == wanted || l == "Library" || l == "Library/**");
+            var prefix = (projectPrefix ?? string.Empty).Trim('/');
+            var basePath = prefix.Length == 0 ? "Library" : prefix + "/Library";
+            var accepted = new HashSet<string> { "Library", "Library/", "**/Library", "**/Library/" };
+            foreach (var form in new[] { basePath, basePath + "/", basePath + "/**" })
+            {
+                accepted.Add(form);
+                accepted.Add("/" + form);
+            }
+            return lines.Select(l => l.Trim()).Any(accepted.Contains);
         }
 
         static string Norm(string line)

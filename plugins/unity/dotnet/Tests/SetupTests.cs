@@ -94,5 +94,27 @@ namespace Nipa.Core.Tests
             Assert.That(SetupChecker.Check(Inputs(prefix: "games/hero")), Is.Empty);
             Assert.That(SetupChecker.Check(Inputs(prefix: "other")).Count, Is.EqualTo(1));
         }
+
+        [Test]
+        public void RootOnlyRulesDoNotCoverSubfolderProject()
+        {
+            var path = Path.Combine(root, ".nipaignore");
+            foreach (var rule in new[] { "/Library", "Library/**", "Library/" + "**" })
+            {
+                File.WriteAllText(path, rule + "\n");
+                Assert.That(SetupChecker.Check(Inputs(prefix: "games/hero")), Has.Count.EqualTo(1), rule);
+            }
+        }
+
+        [Test]
+        public void UnanchoredAndPrefixedRulesCoverSubfolderProject()
+        {
+            var path = Path.Combine(root, ".nipaignore");
+            foreach (var rule in new[] { "Library", "Library/", "**/Library/", "games/hero/Library", "/games/hero/Library/", "games/hero/Library/**" })
+            {
+                File.WriteAllText(path, rule + "\n");
+                Assert.That(SetupChecker.Check(Inputs(prefix: "games/hero")), Is.Empty, rule);
+            }
+        }
     }
 }
