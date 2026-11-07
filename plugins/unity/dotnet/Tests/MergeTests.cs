@@ -206,8 +206,33 @@ namespace Nipa.Core.Tests
             await session.HistoryAsync(null);
             Assert.That(fake.Requests.Last(r => r.Method == "ProxyCommitLog").Body, Does.Contain("\"start_commit_id\":\"c1\""));
             fake.On("ProxyTagList", "{}");
-            await session.HistoryAsync(null);
-            Assert.That(fake.Requests.Last(r => r.Method == "ProxyCommitLog").Body, Does.Not.Contain("start_commit_id"));
+            var ex = Assert.ThrowsAsync<DaemonException>(() => session.HistoryAsync(null));
+            Assert.That(ex.Code, Is.EqualTo(404));
+        }
+
+        [Test]
+        public async Task FindTagPagesPastTheFirstPage()
+        {
+            string Page(int from, int count) => "{\"response\":{\"tags\":[" + string.Join(",",
+                Enumerable.Range(from, count).Select(i => "{\"name\":\"t" + i + "\",\"id\":\"id" + i + "\",\"created_at\":\"ts" + i + "\",\"commit_id\":\"c" + i + "\"}")) + "]}}";
+            fake.Handlers["ProxyTagList"] = r => new Reply
+            {
+                Body = r.Body.Contains("\"last_id\":\"id199\"") ? Page(200, 5) : Page(0, 200),
+            };
+            var tag = await session.FindTagAsync("t203");
+            Assert.That(tag.CommitId, Is.EqualTo("c203"));
+            Assert.That(fake.Requests.Last(r => r.Method == "ProxyTagList").Body, Does.Contain("\"last_created_at\":\"ts199\""));
+            Assert.That(await session.FindTagAsync("missing"), Is.Null);
+        }
+
+        [Test]
+        public async Task FindTagStopsAtPageLimit()
+        {
+            string Page() => "{\"response\":{\"tags\":[" + string.Join(",",
+                Enumerable.Range(0, 200).Select(i => "{\"name\":\"t" + i + "\",\"id\":\"i\"}")) + "]}}";
+            fake.On("ProxyTagList", Page());
+            Assert.That(await session.FindTagAsync("nope"), Is.Null);
+            Assert.That(fake.Requests.Count(r => r.Method == "ProxyTagList"), Is.EqualTo(50));
         }
 
         [Test]

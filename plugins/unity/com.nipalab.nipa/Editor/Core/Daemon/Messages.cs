@@ -374,11 +374,14 @@ namespace Nipa.Editor.Core.Daemon
         public string Name { get; set; }
         public string CommitId { get; set; }
         public string Message { get; set; }
+        public string CreatedAt { get; set; }
     }
 
     public sealed class ListTagsRequest
     {
         public int Limit { get; set; }
+        public string LastCreatedAt { get; set; }
+        public string LastId { get; set; }
     }
 
     public sealed class ListTagsResponse

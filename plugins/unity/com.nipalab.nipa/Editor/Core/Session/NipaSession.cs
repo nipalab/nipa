@@ -381,15 +381,37 @@ namespace Nipa.Editor.Core.Session
             return res.Response?.Tags ?? new List<Tag>();
         }
 
+        public async Task<Tag> FindTagAsync(string name, CancellationToken ct = default)
+        {
+            const int page = 200;
+            const int maxPages = 50;
+            var request = new ListTagsRequest { Limit = page };
+            for (var i = 0; i < maxPages; i++)
+            {
+                var res = await Call<ProxyTagListRequest, ProxyTagListResponse>("ProxyTagList",
+                    new ProxyTagListRequest { Root = Root, Request = request }, ct).ConfigureAwait(false);
+                var tags = res.Response?.Tags ?? new List<Tag>();
+                var hit = tags.FirstOrDefault(t => t.Name == name);
+                if (hit != null)
+                    return hit;
+                if (tags.Count < page)
+                    return null;
+                var last = tags[tags.Count - 1];
+                request = new ListTagsRequest { Limit = page, LastCreatedAt = last.CreatedAt, LastId = last.Id };
+            }
+            return null;
+        }
+
         public async Task<List<CommitLogEntry>> HistoryAsync(string clonePath, int limit = 50, CancellationToken ct = default)
         {
             var request = new CommitLogRequest { Path = Trim(clonePath ?? string.Empty), Limit = limit, Branch = Cache.Branch };
             var head = Cache.Head;
             if (head != null && head.Kind == "tag")
             {
-                var tag = (await TagsAsync(ct).ConfigureAwait(false)).FirstOrDefault(t => t.Name == head.Name);
-                if (tag != null)
-                    request.StartCommitId = tag.CommitId;
+                var tag = await FindTagAsync(head.Name, ct).ConfigureAwait(false);
+                if (tag == null)
+                    throw new DaemonException(404, "tag " + head.Name + " not found");
+                request.StartCommitId = tag.CommitId;
             }
             var res = await Call<ProxyCommitLogRequest, ProxyCommitLogResponse>("ProxyCommitLog",
                 new ProxyCommitLogRequest { Root = Root, Request = request }, ct).ConfigureAwait(false);
