@@ -3,8 +3,8 @@
 Design and implementation notes for the enterprise SaaS deployment
 (`nipad-ee` with `SAAS_MODE=1`). Two flows are implemented: self-registration
 with email confirmation and social login/signup (Google + GitHub). Both end in
-the same first-run onboarding step. Billing/subscription is planned but not
-built yet; the agreed design is recorded at the end.
+the same first-run onboarding step. Paid seats and storage (Paddle) are
+described in `docs/BILLING.md`.
 
 The free `nipad` never registers these routes, so every endpoint below answers
 404 there — clients feature-detect by calling `GET /api/v1/auth/capabilities`.
@@ -170,23 +170,9 @@ both dialects because the login gate lives in shared `internal/usecase/auth.go`.
 
 ## Future work (agreed, not built)
 
-**Monthly/yearly billing.** The external billing service keeps charging and
-drives entitlement updates; nipad-ee stores and enforces them:
-
-- `billing_subscriptions (user_id PK, plan, quota_bytes, current_period_end,
-  status)` — monthly vs yearly is just how far `current_period_end` reaches;
-  pricing, invoices, proration, dunning and reminder emails stay external.
-- The billing service is a nipad super-admin service account (created by ops
-  through the existing admin API); it authenticates with normal nipad access
-  tokens (gRPC login keeps the refresh token client-side) and updates the
-  entitlement through `PUT /api/v1/billing/owners/{user}/subscription`
-  `{plan, quota_bytes, current_period_end, status}` after each successful
-  renewal. It identifies the customer from the user's access token validated
-  through the existing `GET /api/v1/me`; a reconciler can use `user_id`.
-- Enforcement is lazy at the storage-ledger gates: expired/canceled
-  subscriptions return 402 (read-only lock) at presign/confirm/merge and at
-  secondary writes (project/branch/MR creation), and fall back to the
-  free-tier `owner_quota` baseline. No cron in nipad.
+**Billing** is built: seats and storage are sold through Paddle inside
+`nipad-ee` (`ee/billing`), see `docs/BILLING.md`. The external billing service
+sketched here earlier was dropped.
 
 **Other**: device-code `nipa login --web`, password reset, explicit
 "set password" for social accounts, email-change flows. The public endpoints

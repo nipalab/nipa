@@ -219,6 +219,7 @@ func TestSummary(t *testing.T) {
 	require.Empty(t, summary.Status)
 	require.Equal(t, int64(2), summary.SeatsUsed)
 	require.Equal(t, testConfig.FreeSeats, summary.SeatLimit)
+	require.Zero(t, summary.Seats)
 
 	repo.live = liveSub()
 	repo.live.CancelAtPeriodEnd = true
@@ -228,6 +229,7 @@ func TestSummary(t *testing.T) {
 	require.Equal(t, StatusActive, summary.Status)
 	require.Equal(t, IntervalYear, summary.Interval)
 	require.Equal(t, int64(4), summary.SeatLimit)
+	require.Equal(t, repo.live.Seats, summary.Seats)
 	require.Equal(t, int64(1), summary.StoragePacks)
 	require.Equal(t, repo.live.CurrentPeriodEnd, summary.CurrentPeriodEnd)
 	require.True(t, summary.CancelAtPeriodEnd)

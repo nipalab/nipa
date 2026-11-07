@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { Button, FormControl, ProgressBar, Stack, Text, TextInput } from '@primer/react'
 import { Link } from 'react-router-dom'
-import { getMyBilling, setOwnerQuota } from '../api/endpoints'
-import type { OwnerOrgStorageResponse } from '../api/models'
+import { clearOwnerQuota, getMyBilling, getOnboardingCapabilities, setOwnerQuota } from '../api/endpoints'
+import type { BillingSummary, OwnerOrgStorageResponse, OwnerStorageResponse } from '../api/models'
 import { useAuth } from '../auth'
+import { PlanCard, PlanEditor } from '../components/BillingPlan'
 import { DataTable, type Column } from '../components/DataTable'
 import { formatBytes } from '../components/repo/format'
 import { FormCard, SettingsCard, SettingsRow } from '../components/SettingsCard'
@@ -14,6 +15,9 @@ import { errorMessage, useAsync } from '../hooks'
 export default function BillingPage() {
   const { me } = useAuth()
   const { data, error, loading, reload } = useAsync(getMyBilling, [])
+  const { data: capabilities } = useAsync(getOnboardingCapabilities, [])
+  const billingConfig = capabilities?.billing ?? null
+  const summary = data && billingConfig ? billingSummary(data) : null
   const [actionError, setActionError] = useState<string | null>(null)
 
   const quota = data?.quota_bytes ?? null
@@ -36,6 +40,13 @@ export default function BillingPage() {
         {loading && <Loading />}
 
         {!loading && !error && data === null && <EmptyState>Storage billing is not enabled on this server.</EmptyState>}
+
+        {summary && billingConfig && (
+          <>
+            <PlanCard summary={summary} />
+            <PlanEditor key={planKey(summary)} summary={summary} config={billingConfig} onChanged={reload} />
+          </>
+        )}
 
         {data && (
           <>
@@ -65,9 +76,11 @@ export default function BillingPage() {
               empty="You are not the billing owner of any organization."
             />
 
-            <Text as="p" style={{ color: 'var(--fgColor-muted)' }}>
-              Need more storage? Contact your administrator to raise the quota.
-            </Text>
+            {!summary && (
+              <Text as="p" style={{ color: 'var(--fgColor-muted)' }}>
+                Need more storage? Contact your administrator to raise the quota.
+              </Text>
+            )}
           </>
         )}
 
@@ -77,16 +90,36 @@ export default function BillingPage() {
   )
 }
 
+function billingSummary(data: OwnerStorageResponse): BillingSummary | null {
+  if (data.plan === undefined) return null
+  return {
+    plan: data.plan,
+    status: data.status ?? '',
+    interval: data.interval ?? '',
+    seats: data.seats ?? 0,
+    seats_used: data.seats_used ?? 0,
+    seat_limit: data.seat_limit ?? 0,
+    storage_packs: data.storage_packs ?? 0,
+    current_period_end: data.current_period_end ?? null,
+    cancel_at_period_end: data.cancel_at_period_end ?? false,
+  }
+}
+
+function planKey(summary: BillingSummary): string {
+  return [summary.plan, summary.status, summary.interval, summary.seats, summary.storage_packs, summary.seats_used].join(':')
+}
+
 function AdminQuotaCard({ onChanged, onError }: { onChanged: () => void; onError: (message: string) => void }) {
   const [userId, setUserId] = useState('')
   const [quotaMiB, setQuotaMiB] = useState('')
   const [saving, setSaving] = useState(false)
 
-  async function apply(quotaBytes: number | null) {
+  async function apply(quotaBytes: number | null | 'clear') {
     if (!userId.trim()) return
     setSaving(true)
     try {
-      await setOwnerQuota(userId.trim(), quotaBytes)
+      if (quotaBytes === 'clear') await clearOwnerQuota(userId.trim())
+      else await setOwnerQuota(userId.trim(), quotaBytes)
       setQuotaMiB('')
       onChanged()
     } catch (err) {
@@ -108,7 +141,7 @@ function AdminQuotaCard({ onChanged, onError }: { onChanged: () => void; onError
 
   return (
     <FormCard onSubmit={handleSet} maxWidth={560}>
-      <SectionHeading description="A cleared quota is unlimited; a quota applies to all organizations of the owner.">
+      <SectionHeading description="The override wins over the plan quota for all organizations of the owner. Removing it restores the plan quota.">
         Set owner quota (super admin)
       </SectionHeading>
       <FormControl required>
@@ -132,6 +165,9 @@ function AdminQuotaCard({ onChanged, onError }: { onChanged: () => void; onError
         </Button>
         <Button type="button" disabled={saving || !userId.trim()} onClick={() => void apply(null)}>
           Clear (unlimited)
+        </Button>
+        <Button type="button" disabled={saving || !userId.trim()} onClick={() => void apply('clear')}>
+          Remove override
         </Button>
       </Stack>
     </FormCard>

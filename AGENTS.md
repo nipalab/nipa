@@ -346,7 +346,7 @@ entry points on servers without SaaS mode. Registration/social write through
 transaction); the public routes attach to the unfiltered `/api/v1/auth`
 WebService through `api.WithPublicRoutes`/`serverapp.WithPublicRoutes`, and
 `api.Wrap` is the exported AppContext route adapter. Monthly/yearly billing
-lives in `ee/billing` inside `nipad-ee` (plan in `docs/plans/BILLING.md`; see
+lives in `ee/billing` inside `nipad-ee` (design in `docs/BILLING.md`; see
 the billing flow below).
 
 Flow for binary file locks (`nipa lock <path> [--branch]`, `nipa unlock <path>`,
@@ -656,8 +656,8 @@ effective quota is `COALESCE(override_bytes, quota_bytes)`, with the same
 NULL/0/missing-row semantics; `Ledger.BillingOwner` is the exported org →
 owner resolution.
 
-Flow for billing (plan in `docs/plans/BILLING.md`; PRs 1–2 of 3, SPA
-pending): the only free-side change is the nil-able `usecase.SeatGate` seam
+Flow for billing (design in `docs/BILLING.md`, plan in
+`docs/plans/BILLING.md`): the only free-side change is the nil-able `usecase.SeatGate` seam
 (`Admit(ctx, orgID, userID, insert)`), attached through
 `UsecaseDeps.SeatGate` to `Org.AddMember` (not role updates or org
 creation), `Group.AddMember` and user-subject `Permission.CreateRule` (group
@@ -723,12 +723,13 @@ is its own WebService (`billing.WebhookService` through
 /admin/billing/owners/{user}/sync` and `POST
 /admin/billing/events/{id}/replay`; `GET /billing/me` stays in
 `ee/storageusage` and merges `storageusage.BillingSummary` (plan, status,
-interval, seats_used, seat_limit, storage_packs, current_period_end,
-cancel_at_period_end) through `RoutesConfig.Billing` only when set;
+interval, seats (subscribed quantity), seats_used, seat_limit, storage_packs,
+current_period_end, cancel_at_period_end) through `RoutesConfig.Billing` only when set;
 `registration.WithBilling` adds `billing: {provider, environment,
 client_token, prices}` to `GET /api/v1/auth/capabilities`. The `ee/e2e`
 smoke (`TestEnterpriseBillingPaddleSmoke`) drives signed fake events against a
-fake Paddle.
+fake Paddle. The SPA side is the `/settings/billing` plan card and editor (see
+Web UI below).
 
 Flow for rate limiting (design in `docs/RATE_LIMIT.md`): `internal/ratelimit`
 holds the `Store` seam (atomic token-bucket `Take`), the `Limiter` (named scope
@@ -1280,6 +1281,16 @@ compatible for one release.
   `internal/http/api/`. Release tags have REST routes (`/tags`,
   `/tags/{name}`) and `endpoints.ts` helpers; the SPA has a Tags page (list, create,
   delete, ref-picker tab).
+- Billing (`docs/BILLING.md`): `BillingPage` + `components/BillingPlan.tsx`
+  show the plan card and editor only when `GET /auth/capabilities` carries
+  `billing`; `web/src/billing/paddle.ts` injects Paddle.js v2 from
+  `cdn.paddle.com` on demand (once per page, `Environment.set("sandbox")`
+  before `Initialize`, events fanned out through `subscribePaddleEvents`,
+  `previewPrices` over `PricePreview`) and is mocked in tests. Checkout opens
+  `Paddle.Checkout.open({ transactionId })` from `createCheckout`, never with
+  client-side price ids. `FormDialog` renders a seat-limit 402 as
+  `SeatLimitBanner` (link to `/settings/billing`). The app has no CSP; adding
+  one must allow Paddle.js and its checkout frames.
 - Keep `web/src/api/endpoints.ts` in sync with the REST handlers under
   `internal/http/`. `npm run lint` (tsc), `npm test` (vitest) and `make web`
   must stay green; the built SPA is embedded via `web/server/webui.go`.

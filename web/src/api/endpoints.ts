@@ -1,5 +1,7 @@
 import { apiFetch, apiJson, errorFromResponse } from './client'
 import type {
+  BillingItemsRequest,
+  BillingSummary,
   BlobResponse,
   BranchResponse,
   CommitDiffResponse,
@@ -885,11 +887,27 @@ export async function getMyBilling(): Promise<OwnerStorageResponse | null> {
   return (await res.json()) as OwnerStorageResponse
 }
 
+export function createCheckout(items: BillingItemsRequest): Promise<{ transaction_id: string }> {
+  return apiJson('/api/v1/billing/checkout', { method: 'POST', body: JSON.stringify(items) })
+}
+
+export function updateSubscription(items: BillingItemsRequest): Promise<BillingSummary> {
+  return apiJson('/api/v1/billing/subscription', { method: 'PATCH', body: JSON.stringify(items) })
+}
+
+export function openBillingPortal(): Promise<{ url: string }> {
+  return apiJson('/api/v1/billing/portal', { method: 'POST', body: JSON.stringify({}) })
+}
+
 export function setOwnerQuota(userId: string, quotaBytes: number | null): Promise<OwnerStorageResponse> {
   return apiJson(`/api/v1/admin/billing/owners/${encodeURIComponent(userId)}/quota`, {
     method: 'PUT',
     body: JSON.stringify({ quota_bytes: quotaBytes }),
   })
+}
+
+export function clearOwnerQuota(userId: string): Promise<OwnerStorageResponse> {
+  return apiJson(`/api/v1/admin/billing/owners/${encodeURIComponent(userId)}/quota`, { method: 'DELETE' })
 }
 
 export function setOrgBillingOwner(org: string, userId: string): Promise<OrgStorageResponse> {

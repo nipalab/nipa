@@ -111,6 +111,7 @@ func (s *Service) Summary(ctx context.Context, userID snow.ID) (*storageusage.Bi
 		summary.Plan = live.Plan
 		summary.Status = live.Status
 		summary.Interval = live.Interval
+		summary.Seats = live.Seats
 		summary.StoragePacks = live.StoragePacks
 		summary.CurrentPeriodEnd = live.CurrentPeriodEnd
 		summary.CancelAtPeriodEnd = live.CancelAtPeriodEnd

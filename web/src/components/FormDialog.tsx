@@ -1,6 +1,7 @@
 import { useId, useState, type FormEvent, type ReactNode } from 'react'
 import { Button, Dialog, Stack } from '@primer/react'
 import { errorMessage } from '../hooks'
+import { isSeatLimitError, SeatLimitBanner } from './SeatLimitBanner'
 import { ErrorBanner } from './ui'
 
 export function FormDialog({
@@ -25,12 +26,14 @@ export function FormDialog({
   const formId = useId()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [seatLimit, setSeatLimit] = useState(false)
 
   async function submit(event: FormEvent) {
     event.preventDefault()
     if (busy || submitDisabled) return
     setBusy(true)
     setError(null)
+    setSeatLimit(false)
     try {
       const result = await onSubmit()
       if (result === false) {
@@ -40,6 +43,7 @@ export function FormDialog({
       onClose()
     } catch (err) {
       setError(errorMessage(err))
+      setSeatLimit(isSeatLimitError(err))
       setBusy(false)
     }
   }
@@ -49,7 +53,11 @@ export function FormDialog({
       <Dialog.Body>
         <form id={formId} onSubmit={(event) => void submit(event)}>
           <Stack direction="vertical" gap="normal">
-            <ErrorBanner error={error} title="Could not save" />
+            {error && seatLimit ? (
+              <SeatLimitBanner message={error} />
+            ) : (
+              <ErrorBanner error={error} title="Could not save" />
+            )}
             {children}
           </Stack>
         </form>
