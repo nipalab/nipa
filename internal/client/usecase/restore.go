@@ -44,7 +44,7 @@ func (w *WorkingCopy) Restore(_ context.Context, targets []string) error {
 		if w.matchesSnapshot(p, f) {
 			continue
 		}
-		if err := materializeFile(w.root, snapshotMaterialized(f), w.localRepo.OpenChunk); err != nil {
+		if err := materializeFile(w.root, snapshotMaterialized(f), f.Mode, w.localRepo.OpenChunk); err != nil {
 			return fmt.Errorf("restore %s: %w", p, err)
 		}
 		if entry, err := statEntryFor(w.root, p, f.Hash); err == nil {

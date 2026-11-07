@@ -72,7 +72,7 @@ func applyThreeWay(ctx context.Context, client chunkDownloader, local threeWayLo
 
 		case merge.KeepTheirs:
 			if write {
-				if err := materializeFile(root, toMaterialized(e.Theirs), local.OpenChunk); err != nil {
+				if err := materializeFile(root, toMaterialized(e.Theirs), e.Ours.Mode, local.OpenChunk); err != nil {
 					return nil, err
 				}
 				if entry, err := statEntryFor(root, p, e.Theirs.Hash); err == nil {
@@ -102,7 +102,7 @@ func applyThreeWay(ctx context.Context, client chunkDownloader, local threeWayLo
 				if err != nil {
 					return nil, err
 				}
-				if err := materializeFile(root, toMaterialized(mf), local.OpenChunk); err != nil {
+				if err := materializeFile(root, toMaterialized(mf), e.Ours.Mode, local.OpenChunk); err != nil {
 					return nil, err
 				}
 				if entry, err := statEntryFor(root, p, mf.Hash); err == nil {

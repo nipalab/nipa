@@ -394,13 +394,14 @@ func syncWorkingCopy(ctx context.Context, client chunkDownloader, lr workingCopy
 
 	statEntries := make(map[string]clientDomain.StatEntry)
 	for _, f := range newFiles {
-		if base, ok := baseByPath[f.Path]; ok && base.Hash == f.FileHash && base.Mode == f.Mode && fileExists(root, f.Path) {
+		base := baseByPath[f.Path]
+		if base.Hash == f.FileHash && base.Mode == f.Mode && fileExists(root, f.Path) {
 			// The file was not rewritten and its content was not verified, so
 			// leave any existing fingerprint untouched and let status hash-verify
 			// it once if it has none.
 			continue
 		}
-		if err := materializeFile(root, f, lr.OpenChunk); err != nil {
+		if err := materializeFile(root, f, base.Mode, lr.OpenChunk); err != nil {
 			return err
 		}
 		if entry, err := statEntryFor(root, f.Path, f.FileHash); err == nil {
@@ -576,7 +577,10 @@ func fileExists(root, path string) bool {
 	return err == nil
 }
 
-func materializeFile(root string, f materializedFile, openChunk func(domain.Hash) (io.ReadCloser, error)) error {
+// materializeFile writes f over its working file. prevMode is the mode the file
+// was tracked with before (0 when unknown): a read-only file that the previous
+// tracked mode does not explain is a local lock, so it stays read-only.
+func materializeFile(root string, f materializedFile, prevMode int, openChunk func(domain.Hash) (io.ReadCloser, error)) error {
 	fp := filepath.Join(root, filepath.FromSlash(f.Path))
 	dir := filepath.Dir(fp)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -621,7 +625,11 @@ func materializeFile(root string, f materializedFile, openChunk func(domain.Hash
 		_ = tmp.Close()
 		return fmt.Errorf("content length mismatch for %s: got %d want %d", f.Path, written, f.SizeBytes)
 	}
-	if err := tmp.Chmod(materializedMode(f.Mode)); err != nil {
+	mode := materializedMode(f.Mode)
+	if prevMode != 1 && isReadOnlyFile(fp) {
+		mode &^= 0o222
+	}
+	if err := tmp.Chmod(mode); err != nil {
 		_ = tmp.Close()
 		return err
 	}

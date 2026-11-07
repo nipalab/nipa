@@ -4,19 +4,29 @@ package usecase
 
 import "os"
 
+const windowsOwnerWrite os.FileMode = 0o200
+
 // replaceFile renames src over dst. Windows refuses to replace a file with
-// FILE_ATTRIBUTE_READONLY, so the attribute is cleared for the rename and set
-// again on the new file: the editor plugin that locked it owns that state.
+// FILE_ATTRIBUTE_READONLY, so the attribute is cleared for the rename and the
+// source's final mode is applied afterwards.
 func replaceFile(src, dst string) error {
 	if !isReadOnlyFile(dst) {
 		return os.Rename(src, dst)
 	}
-	if err := os.Chmod(dst, 0o666); err != nil {
+	dstInfo, err := os.Stat(dst)
+	if err != nil {
+		return err
+	}
+	srcInfo, err := os.Stat(src)
+	if err != nil {
+		return err
+	}
+	if err := os.Chmod(dst, dstInfo.Mode().Perm()|windowsOwnerWrite); err != nil {
 		return err
 	}
 	if err := os.Rename(src, dst); err != nil {
-		_ = os.Chmod(dst, 0o444)
+		_ = os.Chmod(dst, dstInfo.Mode().Perm())
 		return err
 	}
-	return os.Chmod(dst, 0o444)
+	return os.Chmod(dst, srcInfo.Mode().Perm())
 }

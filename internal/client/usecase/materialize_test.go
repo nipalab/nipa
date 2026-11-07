@@ -89,12 +89,12 @@ func TestMaterializeFile_ReadOnlyDestination(t *testing.T) {
 	fp := filepath.Join(root, "x.bin")
 	require.NoError(t, os.WriteFile(fp, []byte("old"), 0o644))
 	makeReadOnly(t, fp)
-	require.NoError(t, materializeFile(root, file, open))
+	require.NoError(t, materializeFile(root, file, 0, open))
 	require.Equal(t, data, readRepoFile(t, root, "x.bin"))
 	requireReadOnly(t, fp, true)
 
 	require.NoError(t, os.Chmod(fp, 0o644))
-	require.NoError(t, materializeFile(root, file, open))
+	require.NoError(t, materializeFile(root, file, 0, open))
 	requireReadOnly(t, fp, false)
 }
 
@@ -117,4 +117,22 @@ func TestIsReadOnlyFile(t *testing.T) {
 	require.False(t, isReadOnlyFile(fp))
 	makeReadOnly(t, fp)
 	require.True(t, isReadOnlyFile(fp))
+}
+
+func TestMaterializeFile_TrackedModeTransitions(t *testing.T) {
+	data := []byte("payload")
+	open := func(serverDomain.Hash) (io.ReadCloser, error) { return io.NopCloser(bytes.NewReader(data)), nil }
+	hash := chunker.Sum(data)
+	root := t.TempDir()
+	fp := filepath.Join(root, "run.py")
+
+	require.NoError(t, os.WriteFile(fp, []byte("old"), 0o444))
+	t.Cleanup(func() { _ = os.Chmod(fp, 0o644) })
+	file := materializedFile{Path: "run.py", Mode: 2, SizeBytes: int64(len(data)), ChunkHashes: []serverDomain.Hash{hash}}
+	require.NoError(t, materializeFile(root, file, 1, open))
+	requireReadOnly(t, fp, false)
+
+	file.Mode = 1
+	require.NoError(t, materializeFile(root, file, 2, open))
+	requireReadOnly(t, fp, true)
 }
