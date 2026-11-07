@@ -38,6 +38,7 @@ function user(overrides: Partial<UserResponse> = {}): UserResponse {
 
 beforeEach(() => {
   auth.me = { id: '1', name: 'Root', email: 'root@example.com', is_admin: true, is_super_admin: true }
+  api.getOnboardingCapabilities.mockResolvedValue(null)
 })
 
 afterEach(() => {
@@ -164,6 +165,11 @@ describe('BillingPage', () => {
     await click(buttonByText(container, 'Clear (unlimited)'))
     await flush()
     expect(api.setOwnerQuota).toHaveBeenCalledWith('73', null)
+
+    api.clearOwnerQuota.mockResolvedValue(billing)
+    await click(buttonByText(container, 'Remove override'))
+    await flush()
+    expect(api.clearOwnerQuota).toHaveBeenCalledWith('73')
   })
 
   it('reports quota failures and explains a disabled ledger', async () => {

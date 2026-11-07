@@ -86,9 +86,10 @@ CREATE TABLE org_billing_owner (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE TABLE owner_quota (
-    user_id     BIGINT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-    quota_bytes BIGINT,               -- NULL = unlimited
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+    user_id        BIGINT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    quota_bytes    BIGINT,            -- computed quota; NULL/0 = unlimited
+    override_bytes BIGINT,            -- admin override; NULL = none, 0 = unlimited
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE TABLE project_chunks (
     project_id BIGINT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -155,22 +156,31 @@ COMMIT
 
 ## Buying additional storage
 
-Purchasing does not need new seam methods: it changes
-`owner_quota.quota_bytes`, which presign/confirm read on every operation.
-
-- `ee/` owns quota values and enforcement.
-- Billing/payment (e.g. Stripe) is an external service that calls the admin
-  quota endpoint after a successful purchase; cloud can also run it as a
-  periodic sync job.
-- A `plan`/`purchased_bytes` model can be added later; with one explicit
-  `quota_bytes` column any plan math is just how the value is produced.
+Storage is bought through the SaaS billing module (`ee/billing`, Paddle); see
+`docs/BILLING.md` for the plans, flows and webhooks. Billing never adds seam
+methods: it writes the computed quota to `owner_quota.quota_bytes`, which
+presign/confirm/merge read on every operation.
 
 SaaS self-registration seeds every new account with the free-tier baseline
 (`SAAS_FREE_QUOTA_BYTES`, default 15 GiB) through the same `owner_quota` row;
-see docs/SAAS_ONBOARDING.md for that flow and for the planned
-monthly/yearly subscription integration (an external billing service driving
-`billing_subscriptions` with nipad access tokens, enforced lazily at the
-presign/confirm gates).
+see docs/SAAS_ONBOARDING.md.
+
+### Admin override (`override_bytes`)
+
+`owner_quota` has two quota columns:
+
+- `quota_bytes`: the computed quota, written by the billing module
+  (`Ledger.SetComputedQuota`) or seeded at registration. NULL or 0 is
+  unlimited.
+- `override_bytes`: the super-admin override. NULL means no override; any
+  value, including 0 (unlimited), wins over `quota_bytes`.
+
+The effective quota is `COALESCE(override_bytes, quota_bytes)`; a missing row
+falls back to `STORAGE_LEDGER_DEFAULT_QUOTA_BYTES`. `PUT
+/api/v1/admin/billing/owners/{user}/quota` sets the override (a null
+`quota_bytes` overrides to unlimited) and `DELETE` on the same path clears it,
+so the computed quota applies again. Billing never touches the override, and
+the override never changes what billing computes.
 
 ## REST API
 
@@ -184,7 +194,8 @@ feature-detect the capability.
 |---|---|---|
 | `GET /api/v1/orgs/{org}/storage` | org owner or global admin | usage, quota, per-project breakdown for one org |
 | `GET /api/v1/billing/me` | authenticated | owner quota, aggregate usage, per-org breakdown |
-| `PUT /api/v1/admin/billing/owners/{user}/quota` | super admin | set/clear an owner's quota (`quota_bytes` null = unlimited) |
+| `PUT /api/v1/admin/billing/owners/{user}/quota` | super admin | set an owner's quota override (`quota_bytes` null = unlimited) |
+| `DELETE /api/v1/admin/billing/owners/{user}/quota` | super admin | clear the override so the computed quota applies |
 | `PUT /api/v1/admin/orgs/{org}/billing-owner` | super admin | transfer an org's billing owner |
 | `POST /api/v1/admin/orgs/{org}/storage/recount` | super admin | rebuild ledger + counters for one org |
 
@@ -210,12 +221,13 @@ feature-detect the capability.
 ## Web UI
 
 - `web/src/api/endpoints.ts`: `getOrgStorage` (returns null on 404 for feature
-  detection), `getMyBilling`, `setOwnerQuota`, `setOrgBillingOwner`,
-  `recountOrgStorage`.
+  detection), `getMyBilling`, `setOwnerQuota`, `clearOwnerQuota`,
+  `setOrgBillingOwner`, `recountOrgStorage`.
 - `OrgSettingsPage`: storage card (used/quota progress, per-project table,
   super-admin recount and billing-owner transfer), hidden when the API 404s.
 - `/settings/billing`: the owner's aggregate usage, per-org table and quota,
-  plus a super-admin quota editor. The page is always linked from the header
+  plus a super-admin quota override editor (set, set unlimited, remove), and
+  the plan and checkout controls when billing is on (`docs/BILLING.md`). The page is always linked from the header
   and the profile settings nav (no feature detection); when the server has no
   ledger it shows the "Storage billing is not enabled on this server." empty
   state.

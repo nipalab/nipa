@@ -196,6 +196,7 @@ func TestEnterpriseBillingPaddleSmoke(t *testing.T) {
 	require.Equal(t, "active", me["status"])
 	require.Equal(t, "month", me["interval"])
 	require.Equal(t, float64(paidSeats), me["seat_limit"])
+	require.Equal(t, float64(paidSeats), me["seats"])
 	require.Equal(t, float64(1), me["storage_packs"])
 	require.Equal(t, float64(paidSeats*billingSeatBytes+billingPackBytes), me["quota_bytes"])
 

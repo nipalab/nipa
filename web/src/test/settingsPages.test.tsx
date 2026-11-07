@@ -1,5 +1,6 @@
 import { act } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { ApiError } from '../api/client'
 import * as endpoints from '../api/endpoints'
 import type { BranchResponse, GroupResponse, OrgMemberResponse } from '../api/models'
 import { PERMISSION_ADMIN, PERMISSION_READ, PERMISSION_WRITE } from '../api/models'
@@ -46,6 +47,19 @@ const auth = vi.hoisted(() => ({ me: null as Record<string, unknown> | null }))
 vi.mock('../auth', () => ({ useAuth: () => ({ me: auth.me }) }))
 
 const api = vi.mocked(endpoints)
+
+const SEAT_LIMIT = new ApiError('seat limit reached: 3 of 3 seats in use; upgrade the plan to add more people', 402)
+
+async function expectSeatLimitBanner(location: () => string | null) {
+  await waitFor(() => document.body.textContent?.includes('Seat limit reached') ?? false)
+  const dialog = document.querySelector('[role="dialog"]') as HTMLElement
+  expect(dialog.textContent).toContain('3 of 3 seats in use')
+  expect(dialog.textContent).not.toContain('Could not save')
+  const link = dialog.querySelector<HTMLAnchorElement>('a[href="/settings/billing"]')
+  expect(link).not.toBeNull()
+  await click(link)
+  await waitFor(() => location() === '/settings/billing')
+}
 
 function member(overrides: Partial<OrgMemberResponse> = {}): OrgMemberResponse {
   return {
@@ -162,6 +176,43 @@ describe('OrgSettingsPage', () => {
     await click(submit())
     await flush()
     expect(api.addOrgMember).toHaveBeenCalledWith('sticker', '9', 'owner')
+  })
+
+  it('explains a seat-limit 402 when adding a member', async () => {
+    api.addOrgMember.mockRejectedValue(SEAT_LIMIT)
+    const { container, location } = await renderRoute(pattern, url, <OrgSettingsPage />)
+    await waitFor(() => buttonByText(container, 'Add member') !== null)
+    await click(buttonByText(container, 'Add member'))
+    await waitFor(() => document.body.textContent?.includes('Role') ?? false)
+    await click(buttonByText(document.body, 'pick subject'))
+    await click(document.body.querySelector('button[type="submit"]'))
+    await expectSeatLimitBanner(location)
+  })
+
+  it('explains a seat-limit 402 when adding a group member', async () => {
+    api.addGroupMember.mockRejectedValue(SEAT_LIMIT)
+    const { container, location } = await renderRoute(pattern, `${url}?tab=groups`, <OrgSettingsPage />)
+    await waitFor(() => buttonByText(container, 'View') !== null)
+    await click(buttonByText(container, 'View'))
+    await waitFor(() => (container.textContent ?? '').includes('Coder members'))
+    const addButtons = buttonsByText(container, 'Add member')
+    await click(addButtons[addButtons.length - 1])
+    await waitFor(() => document.body.textContent?.includes('Add group member') ?? false)
+    await click(buttonByText(document.body, 'pick subject'))
+    await click(document.body.querySelector('button[type="submit"]'))
+    await expectSeatLimitBanner(location)
+  })
+
+  it('keeps other 402s as a plain error', async () => {
+    api.addOrgMember.mockRejectedValue(new ApiError('storage quota exceeded', 402))
+    const { container } = await renderRoute(pattern, url, <OrgSettingsPage />)
+    await waitFor(() => buttonByText(container, 'Add member') !== null)
+    await click(buttonByText(container, 'Add member'))
+    await waitFor(() => document.body.textContent?.includes('Role') ?? false)
+    await click(buttonByText(document.body, 'pick subject'))
+    await click(document.body.querySelector('button[type="submit"]'))
+    await waitFor(() => document.body.textContent?.includes('Could not save') ?? false)
+    expect(document.body.textContent).not.toContain('Seat limit reached')
   })
 
   it('manages groups: create, view, add and remove a member', async () => {
@@ -423,6 +474,18 @@ describe('ProjectSettingsPage', () => {
     api.listBranches.mockResolvedValue([])
     const empty = await renderRoute(pattern, `${base}?tab=branches`, <ProjectSettingsPage />)
     await waitFor(() => (empty.container.textContent ?? '').includes('No branches yet.'))
+  })
+
+  it('explains a seat-limit 402 when a new rule would add a user', async () => {
+    api.createProjectRule.mockRejectedValue(SEAT_LIMIT)
+    const { container, location } = await renderRoute(pattern, url, <ProjectSettingsPage />)
+    await waitFor(() => buttonByText(container, 'Add access rule') !== null)
+    await click(buttonByText(container, 'Add access rule'))
+    await waitFor(() => document.body.textContent?.includes('User or group') ?? false)
+    await click(buttonByText(document.body, 'pick subject'))
+    await click(document.body.querySelector('[role="dialog"] input[type="checkbox"]'))
+    await click(document.body.querySelector('button[type="submit"]'))
+    await expectSeatLimitBanner(location)
   })
 
   it('renders the webhooks and email tabs', async () => {

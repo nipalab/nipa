@@ -6,7 +6,7 @@ vi.mock('../api/client', async (importOriginal) => ({
   apiJson,
 }))
 
-const { getCommitDiff, getTag, listBranches, listCommits, listTags } = await import('../api/endpoints')
+const { clearOwnerQuota, getCommitDiff, getTag, listBranches, listCommits, listTags } = await import('../api/endpoints')
 
 afterEach(() => apiJson.mockClear())
 
@@ -45,5 +45,12 @@ describe('paged endpoint helpers', () => {
     expect(lastPath()).toBe('/api/v1/orgs/acme/projects/game/commits/c2/diff')
     await getCommitDiff('acme', 'game', 'c2', 'c1')
     expect(lastPath()).toBe('/api/v1/orgs/acme/projects/game/commits/c2/diff?base=c1')
+  })
+})
+
+describe('billing endpoint helpers', () => {
+  it('clears an owner quota override with DELETE', async () => {
+    await clearOwnerQuota('7 3')
+    expect(apiJson).toHaveBeenLastCalledWith('/api/v1/admin/billing/owners/7%203/quota', { method: 'DELETE' })
   })
 })

@@ -20,9 +20,25 @@ export interface UserResponse {
   deleted: boolean
 }
 
+export interface BillingIntervalPrices {
+  monthly: string
+  yearly: string
+}
+
+export interface BillingCapabilities {
+  provider: string
+  environment: 'sandbox' | 'production'
+  client_token: string
+  prices: {
+    seat: BillingIntervalPrices
+    storage: BillingIntervalPrices
+  }
+}
+
 export interface OnboardingCapabilities {
   registration: boolean
   providers: string[]
+  billing?: BillingCapabilities
 }
 
 export interface RegisterResponse {
@@ -443,11 +459,31 @@ export interface OwnerOrgStorageResponse {
   used_bytes: number
 }
 
-export interface OwnerStorageResponse {
+export type BillingInterval = 'month' | 'year'
+
+export interface BillingSummary {
+  plan: string
+  status: string
+  interval: BillingInterval | ''
+  seats: number
+  seats_used: number
+  seat_limit: number
+  storage_packs: number
+  current_period_end: string | null
+  cancel_at_period_end: boolean
+}
+
+export interface OwnerStorageResponse extends Partial<BillingSummary> {
   user_id: string
   used_bytes: number
   quota_bytes: number | null
   orgs: OwnerOrgStorageResponse[]
+}
+
+export interface BillingItemsRequest {
+  seats: number
+  storage_packs: number
+  interval?: BillingInterval
 }
 
 export const PERMISSION_READ = 1

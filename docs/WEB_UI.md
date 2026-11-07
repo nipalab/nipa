@@ -57,7 +57,7 @@ edition.
 | `/admin/users` | user administration | list with filter, avatar/role labels and row actions: make/remove admin, edit email, reset password (dialog), deactivate (confirmed) |
 | `/admin/users/new` | new user | dedicated create page (name, email, password) |
 | `/settings/profile` | account settings | tabs via `?tab=`: Public profile, Password, Connected accounts (link/unlink; hidden when the server has no social login) and SSH keys (list/add/remove); Billing shares the same sidebar |
-| `/settings/billing` | billing | account settings tab: the caller's billing-owner aggregate usage, quota and per-org breakdown; super admins can set/clear owner quotas; linked from the header and profile settings, shows an empty state when the server has no ledger |
+| `/settings/billing` | billing | account settings tab: the caller's billing-owner aggregate usage, quota and per-org breakdown; super admins can set an owner quota override, set it to unlimited or remove it; when capabilities carries `billing`, also the plan card (plan, status, interval, renewal/cancel date, seats used/limit, storage packs, past-due warning) and the plan editor (seat and storage-pack steppers, monthly/yearly toggle, Paddle.js price preview, Upgrade → checkout overlay on the free plan, Update plan + Manage billing on a paid plan); linked from the header and profile settings, shows an empty state when the server has no ledger |
 
 ## Reserved slugs
 
@@ -161,7 +161,35 @@ The enterprise storage ledger exposes `GET /orgs/{org}/storage`,
 settings storage card hides itself when the server runs without a ledger; the
 `/settings/billing` page shows the owner aggregate and the super-admin quota
 editor, and is always linked (header + profile settings) — on servers without a
-ledger it explains that storage billing is not enabled.
+ledger it explains that storage billing is not enabled. `clearOwnerQuota`
+(`DELETE /admin/billing/owners/{user}/quota`) removes the override.
+
+## Billing API
+
+With `BILLING_PROVIDER=paddle` (`docs/BILLING.md`), `GET /auth/capabilities`
+adds `billing: {provider, environment, client_token, prices}` (typed as
+`OnboardingCapabilities.billing`) and `GET /billing/me` adds the
+`BillingSummary` fields (`plan`, `status`, `interval`, `seats`, `seats_used`,
+`seat_limit`, `storage_packs`, `current_period_end`, `cancel_at_period_end`).
+The SPA helpers are `createCheckout` (`POST /billing/checkout` →
+`{transaction_id}`), `updateSubscription` (`PATCH /billing/subscription` →
+summary) and `openBillingPortal` (`POST /billing/portal` → `{url}`). The
+super-admin `POST /admin/billing/owners/{user}/sync` and
+`POST /admin/billing/events/{id}/replay` routes have no SPA helper or UI.
+
+The billing page shows plan controls only when capabilities carries `billing`
+and `/billing/me` carries `plan`. Paddle.js is loaded on demand by
+`web/src/billing/paddle.ts` (`loadPaddle`, once per page, sandbox through
+`Paddle.Environment.set`; `subscribePaddleEvents`; `previewPrices` over
+`Paddle.PricePreview`); tests mock that module. The upgrade flow is
+`createCheckout` → `Paddle.Checkout.open({ transactionId })` → on
+`checkout.completed`, poll `/billing/me` until the plan leaves `free`. Server
+409s are shown inline.
+
+A 402 whose message names the seat limit (adding an org member, a group member
+or a user access rule) is rendered by `FormDialog` as `SeatLimitBanner`
+("Seat limit reached", link to `/settings/billing`) instead of the generic
+error banner.
 
 ## Merge request reviews
 

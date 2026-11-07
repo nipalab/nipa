@@ -29,6 +29,7 @@ type BillingSummary struct {
 	Plan              string     `json:"plan"`
 	Status            string     `json:"status"`
 	Interval          string     `json:"interval"`
+	Seats             int64      `json:"seats"`
 	SeatsUsed         int64      `json:"seats_used"`
 	SeatLimit         int64      `json:"seat_limit"`
 	StoragePacks      int64      `json:"storage_packs"`
