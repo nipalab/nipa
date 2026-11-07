@@ -29,6 +29,8 @@ namespace Nipa.Editor
 
         public static List<string> Notices { get; } = new List<string>();
 
+        public static void NotifyChanged() => Changed?.Invoke();
+
         public static void DismissNotices()
         {
             Notices.Clear();

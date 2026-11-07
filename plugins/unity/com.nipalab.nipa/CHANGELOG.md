@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Branch/tag switcher in the window and as a Scene view overlay.
+- Conflicts tab with Mine/Theirs and UnityYAMLMerge for Unity YAML assets.
+- Merge/revert pending banner (Finish, Abort, Continue, Skip).
+- History tab with Open diff in Nipa Desktop.
+
 - File locking: assets locked by others are read-only, optional strict mode,
   `MakeEditable` locks the asset and its `.meta`, saves/moves/deletes of
   locked assets are refused.

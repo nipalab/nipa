@@ -156,7 +156,8 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   over the daemon JSON bridge. `Editor/Core` is engine-free C# (`DaemonClient`
   JSON/NDJSON over `HttpClient`, `Connector` attach-or-spawn, `StatusCache`,
   `ProjectPaths`, `NipaSession`, `LockPolicy` for covering-lock checks,
-  strict mode and the push pre-check; locks surface through
+  strict mode and the push pre-check, `MergeTool` for UnityYAMLMerge conflict
+  merges, branch/tag/history/conflict calls on `NipaSession`; locks surface through
   `AssetModificationProcessor`, overlays, the Inspector header and a Locks
   tab, fed by `LockStatus`/`ProxyLockFile`/`ProxyUnlockFile`/`WatchEvents`) compiled as `netstandard2.1` by
   `plugins/unity/dotnet/Core` and tested there (`make unity-test`, NUnit +
