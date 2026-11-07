@@ -324,7 +324,7 @@ namespace Nipa.Editor
             {
                 historyPath = selected;
                 historyKey = key;
-                LoadHistory(session, selected);
+                LoadHistory(session, selected, key);
             }
             EditorGUILayout.LabelField(string.IsNullOrEmpty(historyPath) ? "Project history" : "History of " + historyPath, EditorStyles.boldLabel);
             foreach (var c in history)
@@ -347,7 +347,7 @@ namespace Nipa.Editor
                 EditorGUILayout.HelpBox(historyLoading ? "Loading..." : "No commits.", MessageType.None);
         }
 
-        void LoadHistory(Core.Session.NipaSession session, string path)
+        void LoadHistory(Core.Session.NipaSession session, string path, string key)
         {
             historyLoading = true;
             history = new List<CommitLogEntry>();
@@ -364,7 +364,7 @@ namespace Nipa.Editor
                 MainThread.Post(() =>
                 {
                     historyLoading = false;
-                    if (result != null && path == historyPath)
+                    if (result != null && path == historyPath && key == historyKey)
                         history = result;
                     Repaint();
                 });
