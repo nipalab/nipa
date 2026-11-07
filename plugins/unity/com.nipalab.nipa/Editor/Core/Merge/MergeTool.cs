@@ -61,6 +61,8 @@ namespace Nipa.Editor.Core.Merge
 
     public static class MergeTool
     {
+        public static TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(60);
+
         static readonly HashSet<string> YamlExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             ".unity", ".prefab", ".asset", ".controller", ".mat", ".anim",
@@ -107,19 +109,32 @@ namespace Nipa.Editor.Core.Merge
         }
 
         public static async Task<byte[]> RunAsync(IMergeProcess process, string exe, string workDir,
-            byte[] baseData, byte[] theirs, byte[] ours, CancellationToken ct)
+            byte[] baseData, byte[] theirs, byte[] ours, string assetPath, CancellationToken ct)
         {
+            var ext = Path.GetExtension(assetPath ?? string.Empty);
             Directory.CreateDirectory(workDir);
-            var b = Path.Combine(workDir, "base");
-            var t = Path.Combine(workDir, "theirs");
-            var o = Path.Combine(workDir, "ours");
-            var r = Path.Combine(workDir, "merged");
+            var b = Path.Combine(workDir, "base" + ext);
+            var t = Path.Combine(workDir, "theirs" + ext);
+            var o = Path.Combine(workDir, "ours" + ext);
+            var r = Path.Combine(workDir, "merged" + ext);
             try
             {
                 File.WriteAllBytes(b, baseData ?? new byte[0]);
                 File.WriteAllBytes(t, theirs ?? new byte[0]);
                 File.WriteAllBytes(o, ours ?? new byte[0]);
-                var code = await process.RunAsync(exe, BuildArgs(b, t, o, r), ct).ConfigureAwait(false);
+                int code;
+                using (var limit = CancellationTokenSource.CreateLinkedTokenSource(ct))
+                {
+                    limit.CancelAfter(Timeout);
+                    try
+                    {
+                        code = await process.RunAsync(exe, BuildArgs(b, t, o, r), limit.Token).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+                    {
+                        return null;
+                    }
+                }
                 if (code != 0 || !File.Exists(r))
                     return null;
                 var merged = File.ReadAllBytes(r);

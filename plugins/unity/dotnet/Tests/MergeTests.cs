@@ -27,6 +27,15 @@ namespace Nipa.Core.Tests
         }
     }
 
+    sealed class HangingProcess : IMergeProcess
+    {
+        public async Task<int> RunAsync(string exe, IReadOnlyList<string> args, CancellationToken ct)
+        {
+            await Task.Delay(Timeout.Infinite, ct);
+            return 0;
+        }
+    }
+
     [TestFixture]
     public class MergeToolTests
     {
@@ -99,7 +108,8 @@ namespace Nipa.Core.Tests
             {
                 Run = args => { File.WriteAllText(args.Last(), "merged: true\n"); return 0; },
             };
-            var merged = await MergeTool.RunAsync(proc, "tool", dir, new byte[] { 1 }, new byte[] { 2 }, new byte[] { 3 }, default);
+            var merged = await MergeTool.RunAsync(proc, "tool", dir, new byte[] { 1 }, new byte[] { 2 }, new byte[] { 3 }, "Assets/a.prefab", default);
+            Assert.That(proc.Args.Skip(2).All(a => a.EndsWith(".prefab")), Is.True);
             Assert.That(Encoding.UTF8.GetString(merged), Is.EqualTo("merged: true\n"));
             Assert.That(proc.Exe, Is.EqualTo("tool"));
             Assert.That(proc.Args[0], Is.EqualTo("merge"));
@@ -110,9 +120,28 @@ namespace Nipa.Core.Tests
         public async Task RunHandlesMissingBaseAndFailureCodes()
         {
             var proc = new FakeProcess { Run = _ => 1 };
-            Assert.That(await MergeTool.RunAsync(proc, "t", dir, null, new byte[] { 2 }, new byte[] { 3 }, default), Is.Null);
+            Assert.That(await MergeTool.RunAsync(proc, "t", dir, null, new byte[] { 2 }, new byte[] { 3 }, "a.unity", default), Is.Null);
             proc.Run = _ => 0;
-            Assert.That(await MergeTool.RunAsync(proc, "t", dir, null, null, null, default), Is.Null);
+            Assert.That(await MergeTool.RunAsync(proc, "t", dir, null, null, null, null, default), Is.Null);
+        }
+
+        [Test]
+        public async Task RunTimesOutHungTool()
+        {
+            var old = MergeTool.Timeout;
+            MergeTool.Timeout = TimeSpan.FromMilliseconds(100);
+            try
+            {
+                var proc = new HangingProcess();
+                Assert.That(await MergeTool.RunAsync(proc, "t", dir, null, new byte[] { 1 }, new byte[] { 2 }, "a.prefab", default), Is.Null);
+                using var cts = new CancellationTokenSource(50);
+                Assert.CatchAsync<OperationCanceledException>(() =>
+                    MergeTool.RunAsync(proc, "t", dir, null, new byte[] { 1 }, new byte[] { 2 }, "a.prefab", cts.Token));
+            }
+            finally
+            {
+                MergeTool.Timeout = old;
+            }
         }
 
         [Test]
@@ -122,7 +151,7 @@ namespace Nipa.Core.Tests
             {
                 Run = args => { File.WriteAllText(args.Last(), "<<<<<<< a\nx\n=======\ny\n>>>>>>> b\n"); return 0; },
             };
-            Assert.That(await MergeTool.RunAsync(proc, "t", dir, new byte[0], new byte[] { 1 }, new byte[] { 2 }, default), Is.Null);
+            Assert.That(await MergeTool.RunAsync(proc, "t", dir, new byte[0], new byte[] { 1 }, new byte[] { 2 }, "a.unity", default), Is.Null);
         }
 
         [Test]

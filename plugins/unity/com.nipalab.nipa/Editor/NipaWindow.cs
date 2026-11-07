@@ -36,6 +36,7 @@ namespace Nipa.Editor
         string historyPath;
         string historyKey;
         bool historyLoading;
+        string historyError;
 
         public static void Open()
         {
@@ -277,8 +278,14 @@ namespace Nipa.Editor
                     GUILayout.FlexibleSpace();
                     using (new EditorGUI.DisabledScope(NipaHost.Busy != null))
                     {
-                        if (action == ConflictAction.MergeTool && GUILayout.Button(new GUIContent("Merge", toolFound ? "Run UnityYAMLMerge" : "UnityYAMLMerge not found"), GUILayout.Width(56)) && toolFound)
-                            RunMergeTool(f.Path, tool);
+                        if (action == ConflictAction.MergeTool)
+                        {
+                            using (new EditorGUI.DisabledScope(!toolFound))
+                            {
+                                if (GUILayout.Button(new GUIContent("Merge", toolFound ? "Run UnityYAMLMerge" : "UnityYAMLMerge not found"), GUILayout.Width(56)))
+                                    RunMergeTool(f.Path, tool);
+                            }
+                        }
                         if (GUILayout.Button("Mine", GUILayout.Width(48)))
                             Resolve(f.Path, "ours");
                         if (GUILayout.Button("Theirs", GUILayout.Width(56)))
@@ -343,28 +350,36 @@ namespace Nipa.Editor
                     }
                 }
             }
-            if (history.Count == 0)
+            if (historyError != null)
+                EditorGUILayout.HelpBox("Could not load history: " + historyError, MessageType.Warning);
+            else if (history.Count == 0)
                 EditorGUILayout.HelpBox(historyLoading ? "Loading..." : "No commits.", MessageType.None);
         }
 
         void LoadHistory(Core.Session.NipaSession session, string path, string key)
         {
             historyLoading = true;
+            historyError = null;
             history = new List<CommitLogEntry>();
             Task.Run(async () =>
             {
                 List<CommitLogEntry> result = null;
+                string error = null;
                 try
                 {
                     result = await session.HistoryAsync(path).ConfigureAwait(false);
                 }
-                catch (System.Exception)
+                catch (System.Exception e)
                 {
+                    error = e.Message;
                 }
                 MainThread.Post(() =>
                 {
+                    if (key != historyKey || path != historyPath)
+                        return;
                     historyLoading = false;
-                    if (result != null && path == historyPath && key == historyKey)
+                    historyError = error;
+                    if (result != null)
                         history = result;
                     Repaint();
                 });

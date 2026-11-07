@@ -488,7 +488,7 @@ namespace Nipa.Editor.Core.Session
             var ours = await ReadRevisionAsync(set.Ours?.Id, path, ct).ConfigureAwait(false);
             if (theirs == null || ours == null)
                 return false;
-            var merged = await MergeTool.RunAsync(process, toolPath, workDir, baseData, theirs, ours, ct).ConfigureAwait(false);
+            var merged = await MergeTool.RunAsync(process, toolPath, workDir, baseData, theirs, ours, path, ct).ConfigureAwait(false);
             if (merged == null)
                 return false;
             await ResolveAsync(path, "content", merged, ct).ConfigureAwait(false);
