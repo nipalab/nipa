@@ -63,6 +63,9 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   `preview.DecodeModel` rendered with three.js, audio compare via `AudioDiff`
   (`preview.DecodeAudio` waveforms/spectrograms/LUFS + WAV playback through
   WebAudio), CSV/TSV cell diffs via `TableDiff` (`preview.DiffTables`),
+  Unity YAML scene/prefab/asset structural diffs via `SceneDiff`
+  (`preview.ParseUnityYAML` + `DiffScenes`, GUIDs resolved from a cached
+  per-clone `.meta` index dropped on `.meta` change notices),
   Unity `.meta` warnings via `MetaWarnings` (`internal/unitymeta`),
   clone with sign-in via `AccountStatus`/`SignIn`/`SignInSSH`/
   `ListProjects`/`RemoteBranches`/`RemoteTree`/`Clone` (dialog: server →
@@ -143,7 +146,9 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   `DecodeModel` glTF/GLB/OBJ stats with world bounds and referenced files;
   `DecodeAudio` WAV/AIFF/FLAC/Vorbis/MP3 analysis (peaks, spectrogram,
   BS.1770 loudness, playback WAV); `ParseTable`/`DiffTables` CSV/TSV cell
-  diffs;
+  diffs; `ParseUnityYAML` (Force Text Unity files → `Scene` objects with
+  flattened props, GUIDs through a caller-supplied resolver) and
+  `DiffScenes` (fileID-matched object/prop/dependency changes, `KindScene`);
   `MaxPixels` checked before allocating, half of it for float), `Downscale`/
   `DownscaleFloat`/`PackHDR` and `CompareImages` (changed pixels/ratio/max
   delta/bbox; transparent pixels compare equal). Block decoders are checked

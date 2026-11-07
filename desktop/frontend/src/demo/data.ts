@@ -15,6 +15,7 @@ import type {
   MergeRequest,
   RemoteProject,
   Repo,
+  SceneCompare,
   Tag,
   TableCompare,
 } from "../../bindings/github.com/nipalab/nipa/desktop/internal/service/models";
@@ -78,7 +79,7 @@ export const changes = (scenario: string): DemoChanges => {
       { path: MUSIC, status: "modified", kind: "audio" },
       { path: ITEMS, status: "modified", kind: "table" },
       { path: MOVE, status: "modified", kind: "text" },
-      { path: SCENE, status: "modified", kind: "text" },
+      { path: SCENE, status: "modified", kind: "scene" },
       { path: ICON, status: "untracked", kind: "image" },
     ],
     conflicts: [],
@@ -134,7 +135,7 @@ const sceneHunks: DiffHunk[] = [
 ];
 
 const diffOf = (path: string, kind: string, status: string, oldSize: number, newSize: number, hunks: DiffHunk[] | null, extra: Partial<FileDiff> = {}): FileDiff => {
-  const binary = kind !== "text" && kind !== "table";
+  const binary = kind !== "text" && kind !== "table" && kind !== "scene";
   const lines = hunks?.flatMap((h) => h.lines ?? []) ?? [];
   return {
     path,
@@ -155,7 +156,7 @@ export const diffs: Record<string, FileDiff> = {
   [MUSIC]: diffOf(MUSIC, "audio", "modified", 28_450_000, 29_804_000, null),
   [ITEMS]: diffOf(ITEMS, "table", "modified", 4_820, 5_330, []),
   [MOVE]: diffOf(MOVE, "text", "modified", 1_204, 1_618, moveHunks),
-  [SCENE]: diffOf(SCENE, "text", "modified", 88_104, 88_130, sceneHunks),
+  [SCENE]: diffOf(SCENE, "scene", "modified", 88_104, 88_130, sceneHunks),
   [ICON]: diffOf(ICON, "image", "untracked", 0, 18_220, null, { untracked: true }),
   [ROCK]: diffOf(ROCK, "image", "modified", 1_905_000, 2_040_000, null),
   [DAMAGE]: diffOf(DAMAGE, "text", "modified", 2_204, 2_390, moveHunks),
@@ -237,6 +238,37 @@ export const table: TableCompare = {
   cellsChanged: 5,
   columnsAdded: 1,
   columnsRemoved: 0,
+};
+
+export const scene: SceneCompare = {
+  engine: "unity",
+  objects: [
+    { id: "100", path: "Forest", type: "GameObject", parent: "" },
+    { id: "210", path: "Forest/Lantern", type: "GameObject", parent: "100" },
+    { id: "211", path: "Forest/Lantern > Transform", type: "Transform", parent: "210" },
+    { id: "212", path: "Forest/Lantern > Light", type: "Light", parent: "210" },
+    { id: "300", path: "Forest/Firefly Swarm", type: "GameObject", parent: "100" },
+    { id: "400", path: "Forest/Old Signpost", type: "GameObject", parent: "100" },
+  ],
+  changes: [
+    { status: "changed", id: "211", path: "Forest/Lantern > Transform", type: "Transform", props: [{ key: "m_LocalPosition", old: "{x: 4.2, y: 1.1, z: -2}", new: "{x: 4.2, y: 1.4, z: -2.5}" }] },
+    {
+      status: "changed",
+      id: "212",
+      path: "Forest/Lantern > Light",
+      type: "Light",
+      props: [
+        { key: "m_Color", old: "{r: 1, g: 0.8, b: 0.5, a: 1}", new: "{r: 1, g: 0.7, b: 0.4, a: 1}" },
+        { key: "m_Intensity", old: "1.2", new: "1.6" },
+      ],
+    },
+    { status: "added", id: "300", path: "Forest/Firefly Swarm", type: "GameObject", props: [{ key: "m_Name", old: "", new: "Firefly Swarm" }] },
+    { status: "removed", id: "400", path: "Forest/Old Signpost", type: "GameObject", props: [{ key: "m_Name", old: "Old Signpost", new: "" }] },
+  ],
+  added: 1,
+  removed: 1,
+  changed: 2,
+  refs: [{ path: "Assets/VFX/Fireflies.prefab", status: "added" }],
 };
 
 const commit = (n: number, minutes: number, author: string, message: string): Commit => ({

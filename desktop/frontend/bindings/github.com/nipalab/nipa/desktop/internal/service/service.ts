@@ -489,6 +489,15 @@ export function SaveSettings($in: workspace$0.Settings): $CancellablePromise<wor
 }
 
 /**
+ * SceneDiff compares two versions of a Unity YAML scene, prefab or asset
+ * object by object, resolving asset GUIDs through the working copy's .meta
+ * files.
+ */
+export function SceneDiff(root: string, old: $models.ImageRef | null, $new: $models.ImageRef | null): $CancellablePromise<$models.SceneCompare | null> {
+    return $Call.ByID(3568982367, root, old, $new);
+}
+
+/**
  * SetDraft marks a request as a draft or ready for review.
  */
 export function SetDraft(root: string, $number: number, draft: boolean): $CancellablePromise<$models.MergeRequest | null> {
