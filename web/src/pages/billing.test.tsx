@@ -411,6 +411,15 @@ describe('BillingPage', () => {
     expect(tab.opener).toBeNull()
   })
 
+  it('keeps the editor clean when the free-seat floor covers more seats than the subscription', async () => {
+    const calls = stubServer({ capabilities: CAPABILITIES, billing: () => ({ ...TEAM, seats: 2, seats_used: 3, seat_limit: 5 }) })
+    await renderBilling()
+    await waitForText('Renews on')
+    expect(input('seats')?.value).toBe('3')
+    expect(disabled(button('Update plan'))).toBe(true)
+    expect(calls.some((call) => call.url.endsWith('/api/v1/billing/subscription'))).toBe(false)
+  })
+
   it('reports a failed portal request and closes the blank tab', async () => {
     stubServer({
       capabilities: CAPABILITIES,

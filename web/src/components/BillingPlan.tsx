@@ -180,11 +180,11 @@ export function PlanEditor({
 }) {
   const paid = isPaidPlan(summary)
   const minSeats = Math.max(summary.seats_used, 1)
-  const initialSeats = paid ? summary.seats || summary.seat_limit : minSeats
+  const initialSeats = Math.max(paid ? summary.seats || summary.seat_limit : minSeats, minSeats)
   const initialPacks = paid ? summary.storage_packs : 0
   const initialInterval: BillingInterval = summary.interval === 'year' ? 'year' : 'month'
 
-  const [seats, setSeats] = useState(Math.max(initialSeats, minSeats))
+  const [seats, setSeats] = useState(initialSeats)
   const [packs, setPacks] = useState(initialPacks)
   const [interval, setBillingInterval] = useState<BillingInterval>(initialInterval)
   const [busy, setBusy] = useState(false)
