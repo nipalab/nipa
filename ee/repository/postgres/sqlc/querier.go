@@ -81,7 +81,11 @@ type Querier interface {
 	FileSetTree(ctx context.Context, arg FileSetTreeParams) error
 	GetActiveUserID(ctx context.Context, id int64) (int64, error)
 	GetAttributedSizes(ctx context.Context, arg GetAttributedSizesParams) ([]GetAttributedSizesRow, error)
+	GetBillingAccount(ctx context.Context, userID int64) (BillingAccount, error)
+	GetBillingAccountByCustomer(ctx context.Context, arg GetBillingAccountByCustomerParams) (BillingAccount, error)
+	GetBillingEvent(ctx context.Context, eventID string) (BillingEvent, error)
 	GetBillingOwner(ctx context.Context, orgID int64) (int64, error)
+	GetBillingUser(ctx context.Context, id int64) (GetBillingUserRow, error)
 	GetChunkIDsByHashes(ctx context.Context, hashes [][]byte) ([]GetChunkIDsByHashesRow, error)
 	GetLiveSubscription(ctx context.Context, userID int64) (BillingSubscription, error)
 	GetOrgCreatedBy(ctx context.Context, orgID int64) (int64, error)
@@ -103,6 +107,8 @@ type Querier interface {
 	GroupMemberDeleteByUserOrg(ctx context.Context, arg GroupMemberDeleteByUserOrgParams) error
 	GroupMemberList(ctx context.Context, groupID int64) ([]GroupMemberListRow, error)
 	GroupMemberRemove(ctx context.Context, arg GroupMemberRemoveParams) error
+	InsertBillingAccount(ctx context.Context, arg InsertBillingAccountParams) error
+	InsertBillingEvent(ctx context.Context, arg InsertBillingEventParams) (int64, error)
 	InsertProjectChunks(ctx context.Context, arg InsertProjectChunksParams) ([]int64, error)
 	IsOwnerSeat(ctx context.Context, arg IsOwnerSeatParams) (bool, error)
 	ListOrganizations(ctx context.Context) ([]Organization, error)
@@ -112,6 +118,8 @@ type Querier interface {
 	ListProjectsByOrgId(ctx context.Context, orgID int64) ([]Project, error)
 	LockBillingOwner(ctx context.Context, ownerID int64) error
 	LockSeatOwner(ctx context.Context, lockKey int64) error
+	MarkBillingEventFailed(ctx context.Context, arg MarkBillingEventFailedParams) error
+	MarkBillingEventProcessed(ctx context.Context, eventID string) error
 	MergeRequestAssigneeAdd(ctx context.Context, arg MergeRequestAssigneeAddParams) error
 	MergeRequestAssigneeClear(ctx context.Context, mergeRequestID int64) error
 	MergeRequestAssigneeList(ctx context.Context, projectID int64) ([]MergeRequestAssigneeListRow, error)

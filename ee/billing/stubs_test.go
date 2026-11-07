@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/nipalab/nipa/ee/storageusage"
 	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/snow"
 )
@@ -20,6 +21,113 @@ type stubRepo struct {
 	countErr  error
 	liveErr   error
 	upsertErr error
+
+	accounts     map[snow.ID]*domain.BillingAccount
+	accountErr   error
+	insertAccErr error
+	users        map[snow.ID]*domain.BillingUser
+	userErr      error
+	events       map[string]*domain.BillingEvent
+	eventErr     error
+	markErr      error
+}
+
+func (r *stubRepo) Account(_ context.Context, user snow.ID) (*domain.BillingAccount, error) {
+	r.calls = append(r.calls, "account")
+	if r.accountErr != nil {
+		return nil, r.accountErr
+	}
+	return r.accounts[user], nil
+}
+
+func (r *stubRepo) AccountByCustomer(_ context.Context, provider, customerID string) (*domain.BillingAccount, error) {
+	r.calls = append(r.calls, "account_by_customer")
+	if r.accountErr != nil {
+		return nil, r.accountErr
+	}
+	for _, account := range r.accounts {
+		if account.Provider == provider && account.ProviderCustomerID == customerID {
+			return account, nil
+		}
+	}
+	return nil, nil
+}
+
+func (r *stubRepo) InsertAccount(_ context.Context, account domain.BillingAccount) error {
+	r.calls = append(r.calls, "insert_account")
+	if r.insertAccErr != nil {
+		return r.insertAccErr
+	}
+	if r.accounts == nil {
+		r.accounts = map[snow.ID]*domain.BillingAccount{}
+	}
+	for _, existing := range r.accounts {
+		if existing.ProviderCustomerID == account.ProviderCustomerID {
+			return nil
+		}
+	}
+	if _, ok := r.accounts[account.UserID]; !ok {
+		r.accounts[account.UserID] = &account
+	}
+	return nil
+}
+
+func (r *stubRepo) User(_ context.Context, id snow.ID) (*domain.BillingUser, error) {
+	r.calls = append(r.calls, "user")
+	if r.userErr != nil {
+		return nil, r.userErr
+	}
+	user, ok := r.users[id]
+	if !ok {
+		return nil, domain.NewErrorNotFound("record not found")
+	}
+	return user, nil
+}
+
+func (r *stubRepo) InsertEvent(_ context.Context, event domain.BillingEvent) (bool, error) {
+	r.calls = append(r.calls, "insert_event")
+	if r.eventErr != nil {
+		return false, r.eventErr
+	}
+	if r.events == nil {
+		r.events = map[string]*domain.BillingEvent{}
+	}
+	if _, ok := r.events[event.EventID]; ok {
+		return false, nil
+	}
+	r.events[event.EventID] = &event
+	return true, nil
+}
+
+func (r *stubRepo) Event(_ context.Context, eventID string) (*domain.BillingEvent, error) {
+	r.calls = append(r.calls, "event")
+	event, ok := r.events[eventID]
+	if !ok {
+		return nil, domain.NewErrorNotFound("record not found")
+	}
+	copied := *event
+	return &copied, nil
+}
+
+func (r *stubRepo) MarkEventProcessed(_ context.Context, eventID string) error {
+	r.calls = append(r.calls, "processed")
+	if r.markErr != nil {
+		return r.markErr
+	}
+	now := time.Now()
+	r.events[eventID].ProcessedAt = &now
+	r.events[eventID].Error = ""
+	return nil
+}
+
+func (r *stubRepo) MarkEventFailed(_ context.Context, eventID, reason string) error {
+	r.calls = append(r.calls, "failed")
+	if r.markErr != nil {
+		return r.markErr
+	}
+	r.events[eventID].ProcessedAt = nil
+	r.events[eventID].Error = reason
+	return nil
 }
 
 func (r *stubRepo) LockOwner(_ context.Context, owner snow.ID) error {
@@ -57,6 +165,15 @@ type stubLedger struct {
 	ownerErr error
 	quotas   map[snow.ID]int64
 	quotaErr error
+	used     int64
+	usageErr error
+}
+
+func (l *stubLedger) OwnerStorage(_ context.Context, userID snow.ID) (*storageusage.OwnerStorage, error) {
+	if l.usageErr != nil {
+		return nil, l.usageErr
+	}
+	return &storageusage.OwnerStorage{UserID: userID, UsedBytes: l.used}, nil
 }
 
 func (l *stubLedger) BillingOwner(context.Context, snow.ID) (snow.ID, error) {

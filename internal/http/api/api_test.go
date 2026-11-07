@@ -223,6 +223,13 @@ func TestAPIRoutes(t *testing.T) {
 				resp.WriteHeader(http.StatusNoContent)
 			}))
 		}),
+		WithWebService(func() *restful.WebService {
+			ws := new(restful.WebService).Path("/api/webhooks/test")
+			ws.Route(ws.POST("").To(func(_ *restful.Request, resp *restful.Response) {
+				resp.WriteHeader(http.StatusAccepted)
+			}))
+			return ws
+		}()),
 	).SetupRoute()
 	server := httptest.NewServer(container)
 	t.Cleanup(server.Close)
@@ -289,6 +296,12 @@ func TestAPIRoutes(t *testing.T) {
 		missing := doGet(t, server.URL+"/api/v1/auth/capabilities", "")
 		defer func() { _ = missing.Body.Close() }()
 		require.Equal(t, http.StatusNotFound, missing.StatusCode)
+	})
+
+	t.Run("extra webservices are served without authentication", func(t *testing.T) {
+		resp := doJSON(t, server.URL+"/api/webhooks/test", `{}`, nil, "")
+		defer func() { _ = resp.Body.Close() }()
+		require.Equal(t, http.StatusAccepted, resp.StatusCode)
 	})
 
 	t.Run("refresh rotates the cookie", func(t *testing.T) {

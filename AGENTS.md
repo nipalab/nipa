@@ -655,8 +655,8 @@ effective quota is `COALESCE(override_bytes, quota_bytes)`, with the same
 NULL/0/missing-row semantics; `Ledger.BillingOwner` is the exported org →
 owner resolution.
 
-Flow for billing (plan in `docs/plans/BILLING.md`; PR 1 of 3, no provider
-yet): the only free-side change is the nil-able `usecase.SeatGate` seam
+Flow for billing (plan in `docs/plans/BILLING.md`; PRs 1–2 of 3, SPA
+pending): the only free-side change is the nil-able `usecase.SeatGate` seam
 (`Admit(ctx, orgID, userID, insert)`), attached through
 `UsecaseDeps.SeatGate` to `Org.AddMember` (not role updates or org
 creation), `Group.AddMember` and user-subject `Permission.CreateRule` (group
@@ -681,8 +681,53 @@ newer, and recomputes `quota_bytes` from the live subscription
 saturating); it never touches `override_bytes`. `internal/config` carries
 `BILLING_PROVIDER` (`off` default), `PADDLE_*` and `BILLING_*` keys with
 `ValidateBilling` (every key, `SAAS_MODE=1`, the ledger, free seats ≥ 1,
-bytes > 0); `nipad-ee` still refuses any provider other than `off`, so the
-gate stays unwired in production until the Paddle PR.
+bytes > 0); `ee/cmd/nipad/billing.go` (`buildBilling`) wires nothing with
+`off`, otherwise builds the Paddle client and the service, passes it as
+`UsecaseDeps.SeatGate`, registers the routes, the webhook root and the
+`/billing/me` hook. The provider seam is `billing.Provider`
+(`ee/billing/provider.go`: `EnsureCustomer`, `CreateCheckout`,
+`UpdateSubscription`, `Get/ListSubscriptions`, `PortalURL`, `ParseWebhook`,
+`DecodeEvent`, `EventSubscription`; `Items{seats, storage_packs, interval
+month|year}`, price ids always come from config). `ee/billing/paddle`
+implements it over the Paddle Billing REST API (`sandbox-api.paddle.com` /
+`api.paddle.com` by `PADDLE_ENVIRONMENT`, bearer key, 15 s timeout):
+`POST /customers` (a `customer_already_exists` 409 adopts the `ctm_` id from
+the error detail, else `GET /customers?email=`), `POST /transactions` with
+`custom_data.user_id` (base36), `PATCH /subscriptions/{id}`
+(`prorated_immediately`, `on_payment_failure: prevent_change`, full item list),
+`GET /subscriptions?customer_id=` (cursor `after`), `POST
+/customers/{id}/portal-sessions` (`urls.general.overview`). Mapping: seats and
+packs are the quantities of the configured seat/storage prices, the interval
+is the matched price's, an unknown price or mixed intervals is an error,
+`cancel_at_period_end` = `scheduled_change.action == "cancel"`. Paddle 409s and
+`subscription_locked*`/`subscription_update_when*` codes become 409, the rest
+502 (detail internal, never the key). Webhooks verify `Paddle-Signature`
+(`ts=…;h1=…`, HMAC-SHA256 over `ts:rawBody`, any `h1`, 5 min tolerance;
+`paddle.Sign` builds one for tests). `Service`: `Checkout` (409 with a live
+subscription or fewer seats than used; customer stored in `billing_accounts`
+once), `ChangeSubscription` (404 without a live subscription, 409 below seats
+used or used bytes, applies the PATCH answer immediately), `Portal`,
+`Summary`, `Sync`, `HandleEvent` (stores `billing_events` first, a
+processed/failed duplicate is a no-op, an unfinished one is retried; user from
+`custom_data`, else `billing_accounts.provider_customer_id`; 4xx outcomes such
+as unknown/deleted users or unmappable data are marked failed and answered
+200, everything else returns the error), `Replay`; only
+`subscription.created|updated|trialing|activated|past_due|paused|resumed|canceled`
+apply, other types are stored as processed. HTTP: `POST /api/webhooks/paddle`
+is its own WebService (`billing.WebhookService` through
+`serverapp.WithWebService` / `api.WithWebService`, no bearer or origin filter,
+1 MiB raw body cap, 401 bad signature, 500 only for transient errors);
+`/api/v1` gains `POST /billing/checkout` → `{transaction_id}`, `PATCH
+/billing/subscription`, `POST /billing/portal` → `{url}`, super-admin `POST
+/admin/billing/owners/{user}/sync` and `POST
+/admin/billing/events/{id}/replay`; `GET /billing/me` stays in
+`ee/storageusage` and merges `storageusage.BillingSummary` (plan, status,
+interval, seats_used, seat_limit, storage_packs, current_period_end,
+cancel_at_period_end) through `RoutesConfig.Billing` only when set;
+`registration.WithBilling` adds `billing: {provider, environment,
+client_token, prices}` to `GET /api/v1/auth/capabilities`. The `ee/e2e`
+smoke (`TestEnterpriseBillingPaddleSmoke`) drives signed fake events against a
+fake Paddle.
 
 Flow for rate limiting (design in `docs/RATE_LIMIT.md`): `internal/ratelimit`
 holds the `Store` seam (atomic token-bucket `Take`), the `Limiter` (named scope

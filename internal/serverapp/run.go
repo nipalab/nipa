@@ -52,6 +52,7 @@ type runOptions struct {
 	rateLimit    *api.RateLimit
 	routes       []func(*restful.WebService)
 	publicRoutes []func(*restful.WebService)
+	webServices  []*restful.WebService
 	marketing    http.Handler
 }
 
@@ -123,6 +124,14 @@ func WithPublicRoutes(register func(*restful.WebService)) Option {
 	}
 }
 
+// WithWebService serves an extra WebService under its own /api root, outside
+// the bearer filter, e.g. a billing provider webhook verified by signature.
+func WithWebService(ws *restful.WebService) Option {
+	return func(o *runOptions) {
+		o.webServices = append(o.webServices, ws)
+	}
+}
+
 // WithMarketingUI serves an embedded marketing site at / and /web on the SaaS
 // deployment. Without it / falls through to the SPA (the auth redirect).
 func WithMarketingUI(handler http.Handler) Option {
@@ -156,6 +165,9 @@ func run(cfg *config.Config, reg *Registry, dispatchers []Dispatcher, signals <-
 	}
 	for _, register := range ro.publicRoutes {
 		apiOpts = append(apiOpts, api.WithPublicRoutes(register))
+	}
+	for _, ws := range ro.webServices {
+		apiOpts = append(apiOpts, api.WithWebService(ws))
 	}
 	apiApp := api.NewAPI(reg, apiOpts...)
 	container := apiApp.SetupRoute()
