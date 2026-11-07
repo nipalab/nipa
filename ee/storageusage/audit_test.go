@@ -115,6 +115,25 @@ func (s *ledgerSuite) TestAudit_BillingOwnerTransfer() {
 	s.Equal(ownerB, mappedOwner)
 }
 
+func (s *ledgerSuite) TestAudit_TransferLocksTheOrgUntilCommit() {
+	ctx := adminCtx()
+	ownerA := s.seedUser("lock-a")
+	ownerB := s.seedUser("lock-b")
+	org := s.seedOrg(ownerA)
+	ledger := NewLedger(s.db, Config{}).WithAudit(s.newAudit())
+	errHold := errors.New("hold")
+
+	err := dbtx.NewTransactor(s.db).WithinTx(ctx, func(txCtx context.Context) error {
+		s.Require().NoError(ledger.SetBillingOwner(txCtx, org, ownerB))
+		_, lockErr := s.db.ExecContext(ctx, `SELECT id FROM organizations WHERE id = $1 FOR NO KEY UPDATE NOWAIT`, org.Int64())
+		s.Require().Error(lockErr, "a concurrent transfer must wait until this one commits")
+		s.Contains(lockErr.Error(), "55P03")
+		return errHold
+	})
+	s.ErrorIs(err, errHold)
+	s.Empty(s.auditEntries(domain.AuditBillingOwnerTransferred), "the held transfer rolled back")
+}
+
 func (s *ledgerSuite) TestComputedQuota() {
 	ctx := context.Background()
 	owner := s.seedUser("computed")

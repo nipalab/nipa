@@ -72,7 +72,7 @@ customer, subscription and transaction ids and item quantities are recorded.
 | `billing.quota_override.cleared` | `Ledger.ClearQuotaOverride` (admin `DELETE`; skipped without an override) | super admin | target = owner; `old_override_bytes` |
 | `billing.owner.transferred` | `Ledger.SetBillingOwner` (admin `PUT .../billing-owner`; skipped when unchanged) | super admin | `org_id`; `old_owner_id`, `new_owner_id` |
 | `billing.checkout.started` | `Service.Checkout`, after the provider created the transaction | user | `seats`, `storage_packs`, `interval`, `transaction_id`, `customer_id` |
-| `billing.subscription.changed` | `Service.ChangeSubscription` | user | target = subscription; `owner_id`, `old`/`new` (`seats`, `storage_packs`, `interval`) |
+| `billing.subscription.changed` | `Service.ChangeSubscription` | user | target = subscription; `owner_id`, `old`/`new` (`seats`, `storage_packs`, `interval`). `old` is the plan the user changed from, read before the provider call; `new` is the provider's answer. It records who asked for the change even when a webhook applied it first (then `subscription.applied` is attributed to the provider) |
 | `billing.subscription.applied` | `Service.Apply`, only when the upsert stored the update | provider, or the caller (see below) | target = subscription; `owner_id`, `old`/`new` (`subscription_id`, `status`, `seats`, `storage_packs`, `interval`, `quota_bytes`), `event_id`/`event_type` when an event carried it |
 | `billing.sync` | `Service.Sync` (admin sync route) | super admin | target = owner; `synced` |
 | `billing.event.replayed` | `Service.Replay` (admin replay route) | super admin | target = event; `event_id`, `event_type`, `outcome` (`processed`/`failed`), `error` |

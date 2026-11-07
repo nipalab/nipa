@@ -147,7 +147,7 @@ func TestAudit_Checkout(t *testing.T) {
 func TestAudit_ChangeSubscription(t *testing.T) {
 	svc, repo, _, provider, rec := audited()
 	repo.live = liveSub()
-	provider.updated = Subscription{ProviderSubscriptionID: "sub_live", Status: StatusActive, Interval: IntervalMonth, Seats: 6, StoragePacks: 2, ProviderUpdatedAt: at(2)}
+	provider.updated = Subscription{ProviderSubscriptionID: "sub_live", Status: StatusActive, Interval: IntervalMonth, Seats: 6, StoragePacks: 3, ProviderUpdatedAt: at(2)}
 
 	_, err := svc.ChangeSubscription(claimCtx(payer), payer, Items{Seats: 6, StoragePacks: 2, Interval: "month"})
 	require.NoError(t, err)
@@ -156,7 +156,7 @@ func TestAudit_ChangeSubscription(t *testing.T) {
 	require.True(t, rec.inTx[1])
 	require.Equal(t, "sub_live", changed.TargetID)
 	require.Equal(t, map[string]any{"seats": int64(4), "storage_packs": int64(1), "interval": IntervalYear}, changed.Metadata["old"])
-	require.Equal(t, map[string]any{"seats": int64(6), "storage_packs": int64(2), "interval": IntervalMonth}, changed.Metadata["new"])
+	require.Equal(t, map[string]any{"seats": int64(6), "storage_packs": int64(3), "interval": IntervalMonth}, changed.Metadata["new"], "new comes from the provider's answer, not the request")
 	require.Empty(t, rec.entries[0].ActorType, "the user who changed the plan is the actor of the apply")
 
 	rec.err = errAudit

@@ -403,6 +403,17 @@ func (q *Queries) LockBillingOwner(ctx context.Context, ownerID int64) error {
 	return err
 }
 
+const lockOrgForBillingOwner = `-- name: LockOrgForBillingOwner :one
+SELECT id FROM organizations WHERE id = $1 FOR NO KEY UPDATE
+`
+
+func (q *Queries) LockOrgForBillingOwner(ctx context.Context, orgID int64) (int64, error) {
+	row := q.db.QueryRowContext(ctx, lockOrgForBillingOwner, orgID)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
 const rebuildProjectChunks = `-- name: RebuildProjectChunks :exec
 WITH RECURSIVE tree_ids(id) AS (
     SELECT tree_id FROM commits WHERE project_id = $1

@@ -389,6 +389,9 @@ func (l *Ledger) SetBillingOwner(ctx context.Context, orgID, userID snow.ID) err
 	var old snow.ID
 	return usecase.AuditedWrite(ctx, l.audit, func(ctx context.Context) error {
 		if l.audit != nil {
+			if _, err := l.queries.LockOrgForBillingOwner(ctx, orgID.Int64()); err != nil {
+				return dbError(err)
+			}
 			var err error
 			if old, err = l.BillingOwner(ctx, orgID); err != nil {
 				return err

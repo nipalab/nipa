@@ -98,7 +98,7 @@ func (s *Service) ChangeSubscription(ctx context.Context, userID snow.ID, items 
 			Metadata: map[string]any{
 				"owner_id": userID.Base36(),
 				"old":      map[string]any{"seats": live.Seats, "storage_packs": live.StoragePacks, "interval": live.Interval},
-				"new":      map[string]any{"seats": items.Seats, "storage_packs": items.StoragePacks, "interval": items.Interval},
+				"new":      map[string]any{"seats": sub.Seats, "storage_packs": sub.StoragePacks, "interval": sub.Interval},
 			},
 		})
 	}); err != nil {
