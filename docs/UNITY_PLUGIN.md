@@ -149,3 +149,7 @@ plugins/unity/dotnet/   Core/Nipa.Core.csproj (netstandard2.1 build of Editor/Co
 `make unity-test` runs `dotnet test plugins/unity/dotnet` (NUnit, coverlet,
 needs the .NET 8 SDK) over `Editor/Core`. The Unity glue is covered by the
 EditMode tests in `Tests/Editor` (Window › General › Test Runner).
+
+CI: `.github/workflows/unity-plugin.yml` runs `make unity-test` on every PR and
+main push that touches `plugins/unity/**` and fails when `Editor/Core` line
+coverage drops below 80%. The EditMode tests are not run in CI yet.
