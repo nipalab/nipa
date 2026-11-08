@@ -10,7 +10,7 @@ import (
 
 type Querier interface {
 	FileDelete(ctx context.Context, path string) error
-	FileList(ctx context.Context) ([]FileListRow, error)
+	FileList(ctx context.Context) ([]File, error)
 	FileUpsert(ctx context.Context, arg FileUpsertParams) error
 	MetaDelete(ctx context.Context, key string) error
 	MetaGet(ctx context.Context, key string) (string, error)
@@ -24,7 +24,7 @@ type Querier interface {
 	StatCacheSweep(ctx context.Context) error
 	StatCacheUpsert(ctx context.Context, arg StatCacheUpsertParams) error
 	TreeNodeDelete(ctx context.Context, path string) error
-	TreeNodeList(ctx context.Context) ([]TreeNodeListRow, error)
+	TreeNodeList(ctx context.Context) ([]TreeNode, error)
 	TreeNodeUpsert(ctx context.Context, arg TreeNodeUpsertParams) error
 }
 

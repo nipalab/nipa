@@ -9,20 +9,24 @@ import (
 )
 
 type File struct {
-	Path       string `json:"path"`
-	TreePath   string `json:"tree_path"`
-	Hash       []byte `json:"hash"`
-	SizeBytes  int64  `json:"size_bytes"`
-	Mode       int64  `json:"mode"`
-	IsBinary   bool   `json:"is_binary"`
-	Encoding   string `json:"encoding"`
-	Chunks     []byte `json:"chunks"`
-	SnapshotID string `json:"snapshot_id"`
+	Path      string `json:"path"`
+	TreePath  string `json:"tree_path"`
+	Hash      []byte `json:"hash"`
+	SizeBytes int64  `json:"size_bytes"`
+	Mode      int64  `json:"mode"`
+	IsBinary  bool   `json:"is_binary"`
+	Encoding  string `json:"encoding"`
+	Chunks    []byte `json:"chunks"`
 }
 
 type Meta struct {
 	Key   string `json:"key"`
 	Value string `json:"value"`
+}
+
+type PinnedPath struct {
+	Path     string `json:"path"`
+	PinnedAt int64  `json:"pinned_at"`
 }
 
 type StagedFile struct {
@@ -44,5 +48,4 @@ type TreeNode struct {
 	ParentPath string `json:"parent_path"`
 	Hash       []byte `json:"hash"`
 	Mode       int64  `json:"mode"`
-	SnapshotID string `json:"snapshot_id"`
 }

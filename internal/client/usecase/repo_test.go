@@ -154,6 +154,11 @@ type stubLocalRepo struct {
 	statCacheErr error
 	savedStats   map[string]domain.StatEntry
 	saveStatsErr error
+	lockErr      error
+}
+
+func (s *stubLocalRepo) LockShared() (func(), error) {
+	return func() {}, s.lockErr
 }
 
 func (s *stubLocalRepo) Init(target string) error {

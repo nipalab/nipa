@@ -77,6 +77,11 @@ func (m *Merge) Run(ctx context.Context, root, sourceBranch string, opts MergeOp
 	if err := m.localRepo.Init(root); err != nil {
 		return nil, err
 	}
+	unlock, err := lockShared(m.localRepo)
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
 	cfg, err := m.localRepo.LoadConfig()
 	if err != nil {
 		return nil, err

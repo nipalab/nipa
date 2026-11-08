@@ -24,26 +24,15 @@ SELECT path, tree_path, hash, size_bytes, mode, is_binary, encoding, chunks
 FROM files
 `
 
-type FileListRow struct {
-	Path      string `json:"path"`
-	TreePath  string `json:"tree_path"`
-	Hash      []byte `json:"hash"`
-	SizeBytes int64  `json:"size_bytes"`
-	Mode      int64  `json:"mode"`
-	IsBinary  bool   `json:"is_binary"`
-	Encoding  string `json:"encoding"`
-	Chunks    []byte `json:"chunks"`
-}
-
-func (q *Queries) FileList(ctx context.Context) ([]FileListRow, error) {
+func (q *Queries) FileList(ctx context.Context) ([]File, error) {
 	rows, err := q.db.QueryContext(ctx, fileList)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []FileListRow
+	var items []File
 	for rows.Next() {
-		var i FileListRow
+		var i File
 		if err := rows.Scan(
 			&i.Path,
 			&i.TreePath,
@@ -68,8 +57,8 @@ func (q *Queries) FileList(ctx context.Context) ([]FileListRow, error) {
 }
 
 const fileUpsert = `-- name: FileUpsert :exec
-INSERT INTO files (path, tree_path, hash, size_bytes, mode, is_binary, encoding, chunks, snapshot_id)
-VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+INSERT INTO files (path, tree_path, hash, size_bytes, mode, is_binary, encoding, chunks)
+VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
 ON CONFLICT(path) DO UPDATE SET
     tree_path = excluded.tree_path,
     hash = excluded.hash,
@@ -77,20 +66,18 @@ ON CONFLICT(path) DO UPDATE SET
     mode = excluded.mode,
     is_binary = excluded.is_binary,
     encoding = excluded.encoding,
-    chunks = excluded.chunks,
-    snapshot_id = excluded.snapshot_id
+    chunks = excluded.chunks
 `
 
 type FileUpsertParams struct {
-	Path       string `json:"path"`
-	TreePath   string `json:"tree_path"`
-	Hash       []byte `json:"hash"`
-	SizeBytes  int64  `json:"size_bytes"`
-	Mode       int64  `json:"mode"`
-	IsBinary   bool   `json:"is_binary"`
-	Encoding   string `json:"encoding"`
-	Chunks     []byte `json:"chunks"`
-	SnapshotID string `json:"snapshot_id"`
+	Path      string `json:"path"`
+	TreePath  string `json:"tree_path"`
+	Hash      []byte `json:"hash"`
+	SizeBytes int64  `json:"size_bytes"`
+	Mode      int64  `json:"mode"`
+	IsBinary  bool   `json:"is_binary"`
+	Encoding  string `json:"encoding"`
+	Chunks    []byte `json:"chunks"`
 }
 
 func (q *Queries) FileUpsert(ctx context.Context, arg FileUpsertParams) error {
@@ -103,7 +90,6 @@ func (q *Queries) FileUpsert(ctx context.Context, arg FileUpsertParams) error {
 		arg.IsBinary,
 		arg.Encoding,
 		arg.Chunks,
-		arg.SnapshotID,
 	)
 	return err
 }
@@ -348,22 +334,15 @@ SELECT path, parent_path, hash, mode
 FROM tree_nodes
 `
 
-type TreeNodeListRow struct {
-	Path       string `json:"path"`
-	ParentPath string `json:"parent_path"`
-	Hash       []byte `json:"hash"`
-	Mode       int64  `json:"mode"`
-}
-
-func (q *Queries) TreeNodeList(ctx context.Context) ([]TreeNodeListRow, error) {
+func (q *Queries) TreeNodeList(ctx context.Context) ([]TreeNode, error) {
 	rows, err := q.db.QueryContext(ctx, treeNodeList)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []TreeNodeListRow
+	var items []TreeNode
 	for rows.Next() {
-		var i TreeNodeListRow
+		var i TreeNode
 		if err := rows.Scan(
 			&i.Path,
 			&i.ParentPath,
@@ -384,13 +363,12 @@ func (q *Queries) TreeNodeList(ctx context.Context) ([]TreeNodeListRow, error) {
 }
 
 const treeNodeUpsert = `-- name: TreeNodeUpsert :exec
-INSERT INTO tree_nodes (path, parent_path, hash, mode, snapshot_id)
-VALUES (?1, ?2, ?3, ?4, ?5)
+INSERT INTO tree_nodes (path, parent_path, hash, mode)
+VALUES (?1, ?2, ?3, ?4)
 ON CONFLICT(path) DO UPDATE SET
     parent_path = excluded.parent_path,
     hash = excluded.hash,
-    mode = excluded.mode,
-    snapshot_id = excluded.snapshot_id
+    mode = excluded.mode
 `
 
 type TreeNodeUpsertParams struct {
@@ -398,7 +376,6 @@ type TreeNodeUpsertParams struct {
 	ParentPath string `json:"parent_path"`
 	Hash       []byte `json:"hash"`
 	Mode       int64  `json:"mode"`
-	SnapshotID string `json:"snapshot_id"`
 }
 
 func (q *Queries) TreeNodeUpsert(ctx context.Context, arg TreeNodeUpsertParams) error {
@@ -407,7 +384,6 @@ func (q *Queries) TreeNodeUpsert(ctx context.Context, arg TreeNodeUpsertParams) 
 		arg.ParentPath,
 		arg.Hash,
 		arg.Mode,
-		arg.SnapshotID,
 	)
 	return err
 }

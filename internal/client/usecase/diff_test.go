@@ -37,6 +37,7 @@ type stubDiffRepo struct {
 	storeErr    error
 	statErr     error
 	initTarget  string
+	lockErr     error
 }
 
 func newDiffStub() *stubDiffRepo {
@@ -44,6 +45,10 @@ func newDiffStub() *stubDiffRepo {
 		snapshot: &domain.Snapshot{},
 		chunks:   make(map[serverDomain.Hash][]byte),
 	}
+}
+
+func (s *stubDiffRepo) LockShared() (func(), error) {
+	return func() {}, s.lockErr
 }
 
 func (s *stubDiffRepo) Init(target string) error {

@@ -86,10 +86,16 @@ func NewUpdate(auth *Auth, client updateClient, localRepo updateLocalRepo) *Upda
 func (u *Update) Run(ctx context.Context, root string, progress ...DownloadProgress) (err error) {
 	ctx, span := obs.StartSpan(ctx, "nipa.update")
 	defer func() { obs.FinishSpan(span, err) }()
+	defer func() { pruneAfterSuccess(u.localRepo, err) }()
 
 	if err := u.localRepo.Init(root); err != nil {
 		return err
 	}
+	unlock, err := lockShared(u.localRepo)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	cfg, err := u.localRepo.LoadConfig()
 	if err != nil {
 		return err
@@ -241,10 +247,16 @@ func (u *Update) Switch(ctx context.Context, root, branch string, progress ...Do
 	ctx, span := obs.StartSpan(ctx, "nipa.switch",
 		attribute.String(obs.AttrBranch, branch))
 	defer func() { obs.FinishSpan(span, err) }()
+	defer func() { pruneAfterSuccess(u.localRepo, err) }()
 
 	if err := u.localRepo.Init(root); err != nil {
 		return err
 	}
+	unlock, err := lockShared(u.localRepo)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	cfg, err := u.localRepo.LoadConfig()
 	if err != nil {
 		return err
@@ -306,10 +318,16 @@ func (u *Update) SwitchTag(ctx context.Context, root, tagName string, progress .
 	ctx, span := obs.StartSpan(ctx, "nipa.switch",
 		attribute.String("nipa.tag", tagName))
 	defer func() { obs.FinishSpan(span, err) }()
+	defer func() { pruneAfterSuccess(u.localRepo, err) }()
 
 	if err := u.localRepo.Init(root); err != nil {
 		return err
 	}
+	unlock, err := lockShared(u.localRepo)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	cfg, err := u.localRepo.LoadConfig()
 	if err != nil {
 		return err
