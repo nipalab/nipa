@@ -77,6 +77,11 @@ func (r *Revert) Run(ctx context.Context, root, target string, opts RevertOption
 	if err := r.localRepo.Init(root); err != nil {
 		return nil, err
 	}
+	unlock, err := lockShared(r.localRepo)
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
 	cfg, err := r.localRepo.LoadConfig()
 	if err != nil {
 		return nil, err

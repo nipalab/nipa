@@ -78,6 +78,11 @@ func (d *Diff) Run(ctx context.Context, root string, revs []string, opts DiffOpt
 	if err := d.localRepo.Init(root); err != nil {
 		return nil, err
 	}
+	unlock, err := lockShared(d.localRepo)
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
 	cfg, err := d.localRepo.LoadConfig()
 	if err != nil {
 		return nil, err

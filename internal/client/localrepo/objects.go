@@ -80,6 +80,10 @@ func (l *LocalRepo) PruneObjects(keep map[serverDomain.Hash]struct{}) (int, int6
 			if entry.IsDir() {
 				continue
 			}
+			candidate, temp := pruneCandidate(dir.Name(), entry.Name(), keep)
+			if !candidate {
+				continue
+			}
 			info, err := entry.Info()
 			if errors.Is(err, fs.ErrNotExist) {
 				continue
@@ -87,7 +91,7 @@ func (l *LocalRepo) PruneObjects(keep map[serverDomain.Hash]struct{}) (int, int6
 			if err != nil {
 				return files, freed, err
 			}
-			if !prunable(dir.Name(), entry.Name(), info, keep, cutoff) {
+			if temp && !info.ModTime().Before(cutoff) {
 				continue
 			}
 			if err := os.Remove(filepath.Join(dirPath, entry.Name())); err != nil {
@@ -103,14 +107,14 @@ func (l *LocalRepo) PruneObjects(keep map[serverDomain.Hash]struct{}) (int, int6
 	return files, freed, nil
 }
 
-func prunable(prefix, name string, info fs.FileInfo, keep map[serverDomain.Hash]struct{}, cutoff time.Time) bool {
+func pruneCandidate(prefix, name string, keep map[serverDomain.Hash]struct{}) (candidate, temp bool) {
 	if strings.HasPrefix(name, tempFilePrefix) {
-		return info.ModTime().Before(cutoff)
+		return true, true
 	}
 	hash, err := serverDomain.ParseHashHex(prefix + name)
 	if err != nil {
-		return false
+		return false, false
 	}
 	_, ok := keep[hash]
-	return !ok
+	return !ok, false
 }

@@ -29,7 +29,7 @@ func (c *Cli) setupGCCmd() *cobra.Command {
 			}
 			out := cmd.OutOrStdout()
 			if res.Skipped {
-				_, _ = fmt.Fprintln(out, "skipped: a merge or revert is in progress")
+				_, _ = fmt.Fprintf(out, "skipped: %s\n", res.SkipReason)
 				return nil
 			}
 			_, _ = fmt.Fprintf(out, "removed %d object(s), freed %s\n", res.Objects, humanBytes(res.Bytes))

@@ -1152,7 +1152,16 @@ compatible for one release.
   tag switch and `Push.Run` (deferred `pruneAfterSuccess`: skipped for repos
   without `PruneObjects`, failures only `slog.Warn`, never fail the operation),
   and on demand through `nipa gc` (`usecase.GC`), which prints the objects and
-  bytes freed.
+  bytes freed. Processes coordinate through `.nipa/lock` (`localrepo/lock.go`,
+  `flock` on Unix, `LockFileEx` on Windows, a fresh handle per acquisition so
+  holders in one process conflict like separate processes): clone, update,
+  switch, tag switch, push (and `Plan`), merge, revert, restore, diff and
+  `ReadBlob` hold it shared for the whole call (`lockShared` right after
+  `Init`; the daemon gets it per operation through the same usecases, never
+  per watched root), and prune takes it exclusive without waiting, returning
+  `Skipped` with `repository busy` (`nipa gc` prints `skipped: repository
+  busy`). The automatic prune runs after the operation released its shared
+  lock (defer order), so it never upgrades in place.
 - `SaveTree` semantics (see `store.go`): one transaction. The wanted tree is
   flattened (nodes parent-first) and diffed in memory against the stored
   `tree_nodes`/`files` rows (`syncRows`): parent, hash, mode, size, binary flag,

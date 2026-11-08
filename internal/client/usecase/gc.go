@@ -19,10 +19,24 @@ type gcLocalRepo interface {
 	cacheLocalRepo
 }
 
+type sharedLocker interface {
+	LockShared() (func(), error)
+}
+
+type exclusiveLocker interface {
+	TryLockExclusive() (func(), bool, error)
+}
+
+const (
+	pruneSkipBusy    = "repository busy"
+	pruneSkipPending = "a merge or revert is in progress"
+)
+
 type PruneResult struct {
-	Objects int
-	Bytes   int64
-	Skipped bool
+	Objects    int
+	Bytes      int64
+	Skipped    bool
+	SkipReason string
 }
 
 type GC struct {
@@ -40,7 +54,24 @@ func (g *GC) Run(root string) (PruneResult, error) {
 	return pruneCache(g.localRepo)
 }
 
+func lockShared(lr any) (func(), error) {
+	if locker, ok := lr.(sharedLocker); ok {
+		return locker.LockShared()
+	}
+	return func() {}, nil
+}
+
 func pruneCache(lr cacheLocalRepo) (PruneResult, error) {
+	if locker, ok := lr.(exclusiveLocker); ok {
+		release, acquired, err := locker.TryLockExclusive()
+		if err != nil {
+			return PruneResult{}, err
+		}
+		if !acquired {
+			return PruneResult{Skipped: true, SkipReason: pruneSkipBusy}, nil
+		}
+		defer release()
+	}
 	merge, err := lr.LoadMergeState()
 	if err != nil {
 		return PruneResult{}, err
@@ -50,7 +81,7 @@ func pruneCache(lr cacheLocalRepo) (PruneResult, error) {
 		return PruneResult{}, err
 	}
 	if merge != nil || revert != nil {
-		return PruneResult{Skipped: true}, nil
+		return PruneResult{Skipped: true, SkipReason: pruneSkipPending}, nil
 	}
 	snapshot, err := lr.Snapshot()
 	if err != nil {

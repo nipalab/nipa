@@ -70,6 +70,11 @@ func (p *Push) Run(ctx context.Context, root, message string, progress ...Upload
 	if err := p.localRepo.Init(root); err != nil {
 		return err
 	}
+	unlock, err := lockShared(p.localRepo)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	cfg, err := p.localRepo.LoadConfig()
 	if err != nil {
 		return err
@@ -138,6 +143,11 @@ func (p *Push) Plan(ctx context.Context, root string) (*domain.Plan, error) {
 	if err := p.localRepo.Init(root); err != nil {
 		return nil, err
 	}
+	unlock, err := lockShared(p.localRepo)
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
 	cfg, err := p.localRepo.LoadConfig()
 	if err != nil {
 		return nil, err
