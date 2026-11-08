@@ -131,6 +131,33 @@ describe("SceneDiff", () => {
     expect(await screen.findByText("There is no scene preview for this file.")).toBeInTheDocument();
   });
 
+  it("renders a Godot scene diff", async () => {
+    api.sceneDiff.mockResolvedValue(
+      compare({
+        engine: "godot",
+        objects: [
+          { id: ".", path: "Main", type: "Node2D", parent: "" },
+          { id: "Player", path: "Main/Player", type: "CharacterBody2D", parent: "." },
+        ],
+        changes: [{ status: "changed", id: "Player", path: "Main/Player", type: "CharacterBody2D", props: [{ key: "speed", old: "5", new: "7" }] }],
+        added: 0,
+        removed: 0,
+        changed: 1,
+        refs: [{ path: "res://sword.tscn", status: "added" }],
+      }),
+    );
+    const tscn = { path: "scenes/main.tscn", mode: 420, size: 120, binary: false, hash: "cc" };
+    const d = diff({ path: "scenes/main.tscn", old: tscn, new: { ...tscn, hash: "dd" } });
+    expect(viewerFor(d)).toBe(SceneDiff);
+    renderWithProviders(<DiffViewer root="/work/game" diff={d} layout="unified" onLayout={() => {}} />);
+    const tree = await screen.findByRole("tree", { name: "Scene changes" });
+    expect(screen.getByText("Godot")).toBeInTheDocument();
+    expect(api.sceneDiff).toHaveBeenCalledWith("/work/game", { source: "snapshot", path: "scenes/main.tscn" }, { source: "working", path: "scenes/main.tscn" });
+    const player = within(tree).getByRole("treeitem", { name: "Main/Player" });
+    expect(within(player).getByRole("table", { name: "Properties of Main/Player" })).toHaveTextContent("speed5→7");
+    expect(screen.getByRole("region", { name: "Dependency changes" })).toHaveTextContent("+ res://sword.tscn");
+  });
+
   it("is picked for non-empty scenes only", () => {
     expect(viewerFor(diff())).toBe(SceneDiff);
     expect(viewerFor(diff({ hunksOmitted: true }))).toBe(SceneDiff);

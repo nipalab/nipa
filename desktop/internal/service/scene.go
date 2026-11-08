@@ -73,8 +73,8 @@ type guidIndex struct {
 }
 
 // SceneDiff compares two versions of a Unity YAML scene, prefab or asset
-// object by object, resolving asset GUIDs through the working copy's .meta
-// files.
+// (resolving asset GUIDs through the working copy's .meta files) or of a
+// Godot text resource, object by object.
 func (s *Service) SceneDiff(ctx context.Context, root string, old, new *ImageRef) (*SceneCompare, error) {
 	if old == nil && new == nil {
 		return nil, errors.New("nothing to compare")
@@ -93,7 +93,7 @@ func (s *Service) SceneDiff(ctx context.Context, root string, old, new *ImageRef
 			return nil, err
 		}
 		if msg != "" {
-			return &SceneCompare{Engine: "unity", Objects: []SceneObject{}, Changes: []SceneChange{}, Refs: []RefChange{}, Error: msg}, nil
+			return &SceneCompare{Engine: sceneEngine(ref.Path), Objects: []SceneObject{}, Changes: []SceneChange{}, Refs: []RefChange{}, Error: msg}, nil
 		}
 		scenes[i] = sc
 	}
@@ -123,18 +123,33 @@ func (s *Service) loadScene(ctx context.Context, client daemonpb.NipaDaemonClien
 	if errors.Is(err, errBlobTooLarge) {
 		return nil, "the file is too large to compare as a scene", nil
 	}
+	engine := sceneEngine(ref.Path)
 	if errors.Is(err, errBlobMissing) {
-		return &preview.Scene{Engine: "unity"}, "", nil
+		return &preview.Scene{Engine: engine}, "", nil
 	}
 	if err != nil {
 		return nil, "", err
 	}
-	index := s.guidIndex(root, unityProject(ref.Path))
-	sc, err := preview.ParseUnityYAML(data, func(guid string) string { return index[guid] })
+	var sc *preview.Scene
+	if engine == "godot" {
+		sc, err = preview.ParseGodotResource(data)
+	} else {
+		index := s.guidIndex(root, unityProject(ref.Path))
+		sc, err = preview.ParseUnityYAML(data, func(guid string) string { return index[guid] })
+	}
 	if err != nil {
 		return nil, strings.TrimPrefix(err.Error(), "preview: "), nil
 	}
 	return sc, "", nil
+}
+
+var godotSceneExts = map[string]bool{".tscn": true, ".tres": true, ".godot": true, ".import": true}
+
+func sceneEngine(p string) string {
+	if godotSceneExts[strings.ToLower(path.Ext(p))] {
+		return "godot"
+	}
+	return "unity"
 }
 
 // unityProject returns the clone-relative folder holding the Unity project a

@@ -168,3 +168,75 @@ func TestGUIDIndexDropsBuildRacingInvalidation(t *testing.T) {
 	svc.guidIndex("/r", "")
 	assert.Equal(t, 2, builds)
 }
+
+const oldGodotScene = `[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://player.gd" id="1_aaaa"]
+
+[node name="Main" type="Node2D"]
+script = ExtResource("1_aaaa")
+
+[node name="Player" type="CharacterBody2D" parent="."]
+speed = 5
+`
+
+const newGodotScene = `[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://player.gd" id="1_bbbb"]
+[ext_resource type="PackedScene" path="res://sword.tscn" id="2_cccc"]
+
+[node name="Main" type="Node2D"]
+script = ExtResource("1_bbbb")
+
+[node name="Player" type="CharacterBody2D" parent="."]
+speed = 7
+
+[node name="Sword" parent="Player" instance=ExtResource("2_cccc")]
+
+[connection signal="hit" from="Player" to="." method="_on_hit"]
+`
+
+func TestService_SceneDiffGodot(t *testing.T) {
+	svc, _ := newModels(t, map[string]string{
+		"game/main.tscn":     newGodotScene,
+		"game/old/main.tscn": oldGodotScene,
+		"game/broken.tres":   "[resource\n",
+		"game/binary.tres":   "RSRC\x00\x00",
+	})
+	svc.guids.build = func(string) map[string]string {
+		t.Fatal("godot scenes need no GUID index")
+		return nil
+	}
+	out, err := svc.SceneDiff(ctx, "/work", &ImageRef{Source: "snapshot", Path: "game/old/main.tscn"}, &ImageRef{Source: "working", Path: "game/main.tscn"})
+	require.NoError(t, err)
+	assert.Equal(t, "godot", out.Engine)
+	assert.Equal(t, 2, out.Added)
+	assert.Equal(t, 1, out.Changed)
+	assert.Equal(t, []RefChange{{Path: "res://sword.tscn", Status: "added"}}, out.Refs)
+	assert.Contains(t, out.Changes, SceneChange{Status: "changed", ID: "Player", Path: "Main/Player", Type: "CharacterBody2D", Props: []PropChange{{Key: "speed", Old: "5", New: "7"}}})
+	assert.Contains(t, out.Changes, SceneChange{Status: "added", ID: "Player/Sword", Path: "Main/Player/Sword", Type: "res://sword.tscn", Props: []PropChange{}})
+	assert.Contains(t, out.Objects, SceneObject{ID: ".", Path: "Main", Type: "Node2D"})
+
+	out, err = svc.SceneDiff(ctx, "/work", &ImageRef{Source: "snapshot", Path: "game/gone.tscn"}, &ImageRef{Source: "working", Path: "game/main.tscn"})
+	require.NoError(t, err)
+	assert.Equal(t, "godot", out.Engine)
+	assert.Equal(t, 4, out.Added)
+
+	out, err = svc.SceneDiff(ctx, "/work", nil, &ImageRef{Source: "working", Path: "game/broken.tres"})
+	require.NoError(t, err)
+	assert.Equal(t, "godot", out.Engine)
+	assert.Contains(t, out.Error, "invalid scene")
+
+	out, err = svc.SceneDiff(ctx, "/work", nil, &ImageRef{Source: "working", Path: "game/binary.tres"})
+	require.NoError(t, err)
+	assert.Contains(t, out.Error, "binary Godot resource")
+}
+
+func TestSceneEngine(t *testing.T) {
+	for p, want := range map[string]string{
+		"a/level.tscn": "godot", "a/mat.TRES": "godot", "project.godot": "godot", "icon.svg.import": "godot",
+		"Assets/Level.unity": "unity", "Assets/Hero.prefab": "unity",
+	} {
+		assert.Equal(t, want, sceneEngine(p), p)
+	}
+}

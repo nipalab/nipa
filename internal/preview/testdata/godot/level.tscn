@@ -1,0 +1,46 @@
+[gd_scene load_steps=6 format=3 uid="uid://c4k2v8d1h7xqa"]
+
+[ext_resource type="Script" uid="uid://b2x7mfr0q1yna" path="res://scripts/level.gd" id="1_lvl8k"]
+[ext_resource type="PackedScene" uid="uid://dq3w1e5r8t0yu" path="res://actors/enemy.tscn" id="2_en3my"]
+[ext_resource type="Texture2D" path="res://art/tiles.png" id="3_t1les"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_ab12c"]
+size = Vector2(32, 48)
+
+[sub_resource type="Curve2D" id="Curve2D_p4th0"]
+_data = {
+"points": PackedVector2Array(0, 0, 0, 0, 10, 20,
+0, 0, 0, 0, 100, 40),
+"tilts": PackedFloat32Array(0, 0)
+}
+point_count = 2
+
+[node name="Level" type="Node2D"]
+script = ExtResource("1_lvl8k")
+metadata/_edit_lock_ = true
+
+[node name="Floor" type="Sprite2D" parent="." groups=["solid", "ground"]]
+position = Vector2(0, 240)
+texture = ExtResource("3_t1les")
+
+[node name="Body" type="StaticBody2D" parent="Floor"]
+
+[node name="Shape" type="CollisionShape2D" parent="Floor/Body"]
+shape = SubResource("RectangleShape2D_ab12c")
+
+[node name="Path" type="Path2D" parent="."]
+curve = SubResource("Curve2D_p4th0")
+
+[node name="Enemy" parent="." instance=ExtResource("2_en3my")]
+position = Vector2(120, 200)
+speed = 4.5
+
+[node name="Label" type="Label" parent="."]
+text = "Hello \"world\"
+second line ; not a comment"
+theme_override_colors/font_color = Color(1, 0.5, 0, 1)
+
+[connection signal="body_entered" from="Enemy" to="." method="_on_enemy_hit" flags=3]
+[connection signal="ready" from="." to="Floor" method="_on_ready" binds=[1, "a"]]
+
+[editable path="Enemy"]
