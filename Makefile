@@ -13,7 +13,7 @@ REVISION   ?= $(shell git rev-parse --short HEAD 2>/dev/null)
 LDFLAGS    := $(if $(VERSION),-X 'github.com/nipalab/nipa/internal/version.Version=$(VERSION)') \
               $(if $(REVISION),-X 'github.com/nipalab/nipa/internal/version.Revision=$(REVISION)')
 
-.PHONY: sqlc mock migrate-up migrate-down migrate-up-postgres migrate-down-postgres migrate-create build build-all build-server build-server-ee build-client test test-ee test-client test-client-ee test-client-both unity-test unity-pack godot-test godot-build godot-pack lint web web-dev web-install desktop desktop-dev desktop-release desktop-test desktop-screenshots marketing-dist bench-upload bench-download bench-scale bench-scale-files bench-scale-files-ee bench-unit fuzz load-test release
+.PHONY: sqlc mock migrate-up migrate-down migrate-up-postgres migrate-down-postgres migrate-create build build-all build-server build-server-ee build-client test test-ee test-client test-client-ee test-client-both unity-test unity-pack godot-test godot-build godot-pack lint web web-dev web-install desktop desktop-dev desktop-release desktop-test desktop-screenshots marketing-dist bench-upload bench-delta bench-download bench-scale bench-scale-files bench-scale-files-ee bench-unit fuzz load-test release
 
 GOLANGCI_LINT_IMAGE ?= docker.io/golangci/golangci-lint:latest
 GCOVR ?= gcovr
@@ -192,6 +192,10 @@ test-client-both:
 ## Measure upload throughput with NIPA_BENCH_MB MiB files (e.g. make bench-upload mb=512).
 bench-upload:
 	NIPA_BENCH_MB=$(mb) go test ./internal/e2e -run TestEndToEnd_UploadThroughput -v -count=1
+
+## Re-push a NIPA_BENCH_MB MiB binary after a 64 KiB edit and report the delta traffic (e.g. make bench-delta mb=512).
+bench-delta:
+	NIPA_BENCH_MB=$(mb) go test ./internal/e2e -run TestEndToEnd_DeltaPush -v -count=1
 
 ## Measure clone/download throughput with NIPA_BENCH_MB MiB files (e.g. make bench-download mb=512).
 bench-download:

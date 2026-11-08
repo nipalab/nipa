@@ -162,8 +162,8 @@ type Querier interface {
 	PBACRuleGetForProject(ctx context.Context, arg PBACRuleGetForProjectParams) (PbacRule, error)
 	PBACRuleListByProject(ctx context.Context, projectID sql.NullInt64) ([]PBACRuleListByProjectRow, error)
 	PBACRuleListEffective(ctx context.Context, arg PBACRuleListEffectiveParams) ([]PbacRule, error)
+	ProjectChunkLinkedSizes(ctx context.Context, arg ProjectChunkLinkedSizesParams) ([]ProjectChunkLinkedSizesRow, error)
 	ProjectChunkUploadInsert(ctx context.Context, arg ProjectChunkUploadInsertParams) error
-	ProjectChunkUploadList(ctx context.Context, arg ProjectChunkUploadListParams) ([][]byte, error)
 	ProjectPathPermissionDelete(ctx context.Context, arg ProjectPathPermissionDeleteParams) error
 	ProjectPathPermissionList(ctx context.Context, projectID int64) ([]ProjectPathsPermission, error)
 	ProjectPathPermissionUpsert(ctx context.Context, arg ProjectPathPermissionUpsertParams) (ProjectPathsPermission, error)

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/nipalab/nipa/internal/chunker"
 	"github.com/nipalab/nipa/internal/chunkproof"
@@ -23,8 +24,10 @@ type chunkRepository interface {
 	HasChunk(ctx context.Context, hash domain.Hash) (bool, error)
 	LinkProjectChunk(ctx context.Context, projectID snow.ID, hash domain.Hash) error
 	LinkProjectChunks(ctx context.Context, projectID snow.ID, hashes []domain.Hash) error
-	LinkedProjectChunks(ctx context.Context, projectID snow.ID, hashes []domain.Hash) (map[domain.Hash]bool, error)
+	LinkedProjectChunkSizes(ctx context.Context, projectID snow.ID, hashes []domain.Hash) (map[domain.Hash]int64, error)
 }
+
+var presignExistsConcurrency = 16
 
 // ChunkRef identifies a chunk and the exact size of its content.
 type ChunkRef struct {
@@ -247,17 +250,17 @@ func (c *Chunk) presignUploadURLs(ctx context.Context, org *domain.Organization,
 	for _, ref := range page {
 		pageHashes = append(pageHashes, ref.Hash)
 	}
-	linked, err := c.chunkRepo.LinkedProjectChunks(ctx, project.ID, pageHashes)
+	linked, err := c.chunkRepo.LinkedProjectChunkSizes(ctx, project.ID, pageHashes)
+	if err != nil {
+		return nil, "", err
+	}
+	exists, err := c.existsAll(ctx, page)
 	if err != nil {
 		return nil, "", err
 	}
 	urls := make([]ChunkURL, 0, len(page))
-	for _, ref := range page {
-		exists, err := c.chunkStore.Exists(ctx, ref.Hash)
-		if err != nil {
-			return nil, "", domain.NewErrorDatabase(fmt.Sprintf("check chunk %s: %v", ref.Hash, err))
-		}
-		if exists && linked[ref.Hash] {
+	for i, ref := range page {
+		if _, ok := linked[ref.Hash]; ok && exists[i] {
 			urls = append(urls, ChunkURL{Hash: ref.Hash, AlreadyStored: true})
 			continue
 		}
@@ -266,7 +269,7 @@ func (c *Chunk) presignUploadURLs(ctx context.Context, org *domain.Organization,
 			return nil, "", domain.NewErrorInternalServer(err.Error())
 		}
 		entry := ChunkURL{Hash: ref.Hash, ProofChallenge: challenge}
-		if !exists {
+		if !exists[i] {
 			target, err := c.uploadTarget(ctx, org, project, ref, expiry)
 			if err != nil {
 				return nil, "", err
@@ -276,6 +279,26 @@ func (c *Chunk) presignUploadURLs(ctx context.Context, org *domain.Organization,
 		urls = append(urls, entry)
 	}
 	return urls, next, nil
+}
+
+func (c *Chunk) existsAll(ctx context.Context, page []ChunkRef) ([]bool, error) {
+	exists := make([]bool, len(page))
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(presignExistsConcurrency)
+	for i, ref := range page {
+		g.Go(func() error {
+			ok, err := c.chunkStore.Exists(gctx, ref.Hash)
+			if err != nil {
+				return domain.NewErrorDatabase(fmt.Sprintf("check chunk %s: %v", ref.Hash, err))
+			}
+			exists[i] = ok
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+	return exists, nil
 }
 
 // checkHeadroom projects the bytes the unlinked refs would add and asks the
@@ -399,7 +422,7 @@ func (c *Chunk) confirmUploads(ctx context.Context, org *domain.Organization, pr
 	var missing []domain.Hash
 	var attributed []LedgerChunk
 	var confirmedBytes int64
-	linked, err := c.chunkRepo.LinkedProjectChunks(ctx, project.ID, hashes)
+	linked, err := c.chunkRepo.LinkedProjectChunkSizes(ctx, project.ID, hashes)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -409,29 +432,21 @@ func (c *Chunk) confirmUploads(ctx context.Context, org *domain.Organization, pr
 		proofByHash[proof.Hash] = proof
 	}
 	for _, hash := range hashes {
-		var size int64
-		var present bool
-		if proof, supplied := proofByHash[hash]; linked[hash] && !supplied {
-			size, err = c.chunkStore.Size(ctx, hash)
-			switch {
-			case err == nil:
-				present = true
-			case !domain.IsErrorNotFound(err):
-				return nil, 0, domain.NewErrorDatabase(fmt.Sprintf("stat chunk %s: %v", hash, err))
+		linkedSize, isLinked := linked[hash]
+		proof, supplied := proofByHash[hash]
+		if isLinked && !supplied {
+			confirmedBytes += linkedSize
+			if c.ledger != nil {
+				attributed = append(attributed, LedgerChunk{Hash: hash, SizeBytes: linkedSize})
 			}
-		} else if linked[hash] {
-			size, present, err = c.verifyPossession(ctx, project, hash, proof)
-			if err != nil {
-				return nil, 0, err
-			}
-		} else {
-			size, present, err = c.verifyPossession(ctx, project, hash, proofByHash[hash])
-			if err != nil {
-				return nil, 0, err
-			}
-			if present {
-				toLink = append(toLink, hash)
-			}
+			continue
+		}
+		size, present, err := c.verifyPossession(ctx, project, hash, proof)
+		if err != nil {
+			return nil, 0, err
+		}
+		if present && !isLinked {
+			toLink = append(toLink, hash)
 		}
 		if !present {
 			missing = append(missing, hash)

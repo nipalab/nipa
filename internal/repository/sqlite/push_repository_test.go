@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -337,38 +338,52 @@ func TestPushRepositorySQLite_ChunkLinks(t *testing.T) {
 	ctx := context.Background()
 	repo, _, _, projectID, _ := newPushTestEnv(t)
 
-	linked, _, _ := chunkRow(t, "linked")
-	other, _, _ := chunkRow(t, "other")
+	linked, linkedSize, _ := chunkRow(t, "linked")
+	other, otherSize, _ := chunkRow(t, "other")
+	rowless, _, _ := chunkRow(t, "rowless")
+	require.NoError(t, repo.InsertChunkIfNotExists(ctx, linked, linkedSize))
+	require.NoError(t, repo.InsertChunkIfNotExists(ctx, other, otherSize))
 	require.NoError(t, repo.LinkProjectChunk(ctx, projectID, linked))
 	require.NoError(t, repo.LinkProjectChunk(ctx, projectID, linked), "linking twice is idempotent")
+	require.NoError(t, repo.LinkProjectChunk(ctx, projectID, rowless))
 
-	got, err := repo.LinkedProjectChunks(ctx, projectID, []domain.Hash{linked, other})
+	got, err := repo.LinkedProjectChunkSizes(ctx, projectID, []domain.Hash{linked, other, rowless})
 	require.NoError(t, err)
-	require.Equal(t, map[domain.Hash]bool{linked: true}, got)
+	require.Equal(t, map[domain.Hash]int64{linked: linkedSize}, got)
 
-	got, err = repo.LinkedProjectChunks(ctx, snow.ID(999), []domain.Hash{linked})
+	got, err = repo.LinkedProjectChunkSizes(ctx, snow.ID(999), []domain.Hash{linked})
 	require.NoError(t, err)
 	require.Empty(t, got, "links are scoped to their project")
 
-	got, err = repo.LinkedProjectChunks(ctx, projectID, nil)
+	got, err = repo.LinkedProjectChunkSizes(ctx, projectID, nil)
 	require.NoError(t, err)
 	require.Empty(t, got)
 }
 
-func TestPushRepositorySQLite_LinkedProjectChunksBatches(t *testing.T) {
+func TestPushRepositorySQLite_LinkedProjectChunkSizesBatches(t *testing.T) {
 	ctx := context.Background()
 	repo, _, _, projectID, _ := newPushTestEnv(t)
 
-	hashes := make([]domain.Hash, 0, linkedChunkBatch+10)
-	for i := 0; i < linkedChunkBatch+10; i++ {
-		hash, _, _ := chunkRow(t, fmt.Sprintf("chunk-%d", i))
+	total := 2*linkedChunkBatch + 10
+	hashes := make([]domain.Hash, 0, total+1)
+	want := make(map[domain.Hash]int64, total)
+	for i := 0; i < total; i++ {
+		hash, size, _ := chunkRow(t, fmt.Sprintf("chunk-%d-%s", i, strings.Repeat("x", i%7)))
+		require.NoError(t, repo.InsertChunkIfNotExists(ctx, hash, size))
+		if i%5 == 0 {
+			hashes = append(hashes, hash)
+			continue
+		}
 		require.NoError(t, repo.LinkProjectChunk(ctx, projectID, hash))
 		hashes = append(hashes, hash)
+		want[hash] = size
 	}
+	unknown, _, _ := chunkRow(t, "unknown")
+	hashes = append(hashes, unknown)
 
-	got, err := repo.LinkedProjectChunks(ctx, projectID, hashes)
+	got, err := repo.LinkedProjectChunkSizes(ctx, projectID, hashes)
 	require.NoError(t, err)
-	require.Len(t, got, len(hashes))
+	require.Equal(t, want, got)
 }
 
 func TestPushRepositorySQLite_ApplyPushRejectsUnlinkedChunk(t *testing.T) {
@@ -399,15 +414,17 @@ func TestPushRepositorySQLite_LinkProjectChunksBatch(t *testing.T) {
 	ctx := context.Background()
 	repo, _, _, projectID, _ := newPushTestEnv(t)
 
-	first, _, _ := chunkRow(t, "first")
-	second, _, _ := chunkRow(t, "second")
+	first, firstSize, _ := chunkRow(t, "first")
+	second, secondSize, _ := chunkRow(t, "second")
+	require.NoError(t, repo.InsertChunkIfNotExists(ctx, first, firstSize))
+	require.NoError(t, repo.InsertChunkIfNotExists(ctx, second, secondSize))
 	require.NoError(t, repo.LinkProjectChunks(ctx, projectID, nil), "an empty batch is a no-op")
 	require.NoError(t, repo.LinkProjectChunk(ctx, projectID, first))
 	require.NoError(t, repo.LinkProjectChunks(ctx, projectID, []domain.Hash{first, second}), "already linked hashes are skipped")
 
-	got, err := repo.LinkedProjectChunks(ctx, projectID, []domain.Hash{first, second})
+	got, err := repo.LinkedProjectChunkSizes(ctx, projectID, []domain.Hash{first, second})
 	require.NoError(t, err)
-	require.Equal(t, map[domain.Hash]bool{first: true, second: true}, got)
+	require.Equal(t, map[domain.Hash]int64{first: firstSize, second: secondSize}, got)
 }
 
 func TestPushRepositorySQLite_IdenticalRootCommitInTwoProjects(t *testing.T) {

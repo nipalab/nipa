@@ -28,7 +28,7 @@ func newChunkUsecase(t *testing.T) (*usecase.Chunk, *storage.LocalStore) {
 	t.Helper()
 	store, err := storage.NewLocalStore(t.TempDir())
 	require.NoError(t, err)
-	uc := usecase.NewChunk(stubChunkRepo{}, store, usecase.ChunkTransferConfig{
+	uc := usecase.NewChunk(stubChunkRepo{store: store}, store, usecase.ChunkTransferConfig{
 		SigningKey:  testSigningKey,
 		PresignTTL:  time.Hour,
 		MaxPageSize: 100,
@@ -59,7 +59,7 @@ func newDirectChunkUsecase(t *testing.T) (*usecase.Chunk, *storage.LocalStore) {
 	t.Helper()
 	store, err := storage.NewLocalStore(t.TempDir())
 	require.NoError(t, err)
-	uc := usecase.NewChunk(stubChunkRepo{}, directStubStore{ChunkStore: store}, usecase.ChunkTransferConfig{
+	uc := usecase.NewChunk(stubChunkRepo{store: store}, directStubStore{ChunkStore: store}, usecase.ChunkTransferConfig{
 		SigningKey:  testSigningKey,
 		PresignTTL:  time.Hour,
 		MaxPageSize: 100,
@@ -67,7 +67,9 @@ func newDirectChunkUsecase(t *testing.T) (*usecase.Chunk, *storage.LocalStore) {
 	return uc, store
 }
 
-type stubChunkRepo struct{}
+type stubChunkRepo struct {
+	store storage.ChunkStore
+}
 
 func (stubChunkRepo) InsertChunkIfNotExists(_ context.Context, _ domain.Hash, _ int64) error {
 	return nil
@@ -85,10 +87,12 @@ func (stubChunkRepo) LinkProjectChunks(_ context.Context, _ snow.ID, _ []domain.
 	return nil
 }
 
-func (stubChunkRepo) LinkedProjectChunks(_ context.Context, _ snow.ID, hashes []domain.Hash) (map[domain.Hash]bool, error) {
-	linked := make(map[domain.Hash]bool, len(hashes))
+func (r stubChunkRepo) LinkedProjectChunkSizes(ctx context.Context, _ snow.ID, hashes []domain.Hash) (map[domain.Hash]int64, error) {
+	linked := make(map[domain.Hash]int64, len(hashes))
 	for _, hash := range hashes {
-		linked[hash] = true
+		if size, err := r.store.Size(ctx, hash); err == nil {
+			linked[hash] = size
+		}
 	}
 	return linked, nil
 }
@@ -375,11 +379,11 @@ func (r *linkTrackingRepo) LinkProjectChunks(_ context.Context, _ snow.ID, hashe
 	return nil
 }
 
-func (r *linkTrackingRepo) LinkedProjectChunks(_ context.Context, _ snow.ID, hashes []domain.Hash) (map[domain.Hash]bool, error) {
-	out := map[domain.Hash]bool{}
+func (r *linkTrackingRepo) LinkedProjectChunkSizes(_ context.Context, _ snow.ID, hashes []domain.Hash) (map[domain.Hash]int64, error) {
+	out := map[domain.Hash]int64{}
 	for _, hash := range hashes {
 		if r.linked[hash] {
-			out[hash] = true
+			out[hash] = 1
 		}
 	}
 	return out, nil
