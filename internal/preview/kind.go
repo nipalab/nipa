@@ -44,6 +44,8 @@ var kindByExtension = map[string]Kind{
 	".unity": KindScene, ".prefab": KindScene, ".asset": KindScene, ".mat": KindScene,
 	".anim": KindScene, ".controller": KindScene, ".overridecontroller": KindScene,
 	".physicmaterial": KindScene,
+
+	".tscn": KindScene, ".tres": KindScene, ".godot": KindScene, ".import": KindScene,
 }
 
 // Classify picks the viewer kind for a path. Unknown extensions fall back to

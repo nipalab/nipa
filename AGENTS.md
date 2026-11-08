@@ -65,7 +65,9 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   WebAudio), CSV/TSV cell diffs via `TableDiff` (`preview.DiffTables`),
   Unity YAML scene/prefab/asset structural diffs via `SceneDiff`
   (`preview.ParseUnityYAML` + `DiffScenes`, GUIDs resolved from a cached
-  per-clone `.meta` index dropped on `.meta` change notices),
+  per-clone `.meta` index dropped on `.meta` change notices; Godot
+  `.tscn`/`.tres`/`project.godot`/`.import` through
+  `preview.ParseGodotResource`),
   Unity `.meta` warnings via `MetaWarnings` (`internal/unitymeta`),
   clone with sign-in via `AccountStatus`/`SignIn`/`SignInSSH`/
   `ListProjects`/`RemoteBranches`/`RemoteTree`/`Clone` (dialog: server →
@@ -148,7 +150,9 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   BS.1770 loudness, playback WAV); `ParseTable`/`DiffTables` CSV/TSV cell
   diffs; `ParseUnityYAML` (Force Text Unity files → `Scene` objects with
   flattened props, GUIDs through a caller-supplied resolver) and
-  `DiffScenes` (fileID-matched object/prop/dependency changes, `KindScene`);
+  `DiffScenes` (ID-matched object/prop/dependency changes, `KindScene`);
+  `ParseGodotResource` (Godot text resources over `internal/godotres`,
+  nodes keyed by path, ext/sub resource references rendered);
   `MaxPixels` checked before allocating, half of it for float), `Downscale`/
   `DownscaleFloat`/`PackHDR` and `CompareImages` (changed pixels/ratio/max
   delta/bbox; transparent pixels compare equal). Block decoders are checked
@@ -158,6 +162,10 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   for pending changes: missing, orphaned, not staged, GUID changed.
   `internal/godotmeta` is its Godot twin for `.import`/`.uid` sidecars
   (nearest `project.godot`, `.gdignore`/hidden dirs skipped, `UID` parser).
+  `internal/godotres` (pure) parses `.tscn`/`.tres`/`project.godot`/
+  `.import` into header, ordered sections (attrs + raw multi-line props) and
+  `Section.Identity()`, and `Write` round-trips the input byte for byte
+  (fuzzed); the planned `Merge3` builds on it.
 - **Unity plugin** (`plugins/unity/com.nipalab.nipa`, Apache 2.0, design in
   `docs/UNITY_PLUGIN.md`, plan in `docs/plans/UNITY_PLUGIN.md`): UPM package
   over the daemon JSON bridge. `Editor/Core` is engine-free C# (`DaemonClient`
@@ -180,7 +188,8 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   C++ core (JSON bridge, caches, `LockPolicy` port); GDScript `EditorPlugin`
   glue adds docks, context menus, inspector lock bar and toasts. Asset +
   `.import` + `.uid` sidecars move as one unit (`internal/godotmeta`), and
-  `.tscn`/`.tres` conflicts merge via `internal/godotres`.
+  `.tscn`/`.tres` conflicts merge via `internal/godotres` (parse/write now,
+  `Merge3` planned).
 
 Flow for `nipa clone <url> <target>`: `cli/clone.go` parses the URL →
 `usecase.Repo.Clone` → ensure empty target → login → resolve default branch (or

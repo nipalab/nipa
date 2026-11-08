@@ -490,8 +490,8 @@ export function SaveSettings($in: workspace$0.Settings): $CancellablePromise<wor
 
 /**
  * SceneDiff compares two versions of a Unity YAML scene, prefab or asset
- * object by object, resolving asset GUIDs through the working copy's .meta
- * files.
+ * (resolving asset GUIDs through the working copy's .meta files) or of a
+ * Godot text resource, object by object.
  */
 export function SceneDiff(root: string, old: $models.ImageRef | null, $new: $models.ImageRef | null): $CancellablePromise<$models.SceneCompare | null> {
     return $Call.ByID(3568982367, root, old, $new);
