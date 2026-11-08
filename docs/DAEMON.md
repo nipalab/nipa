@@ -185,7 +185,9 @@ a fresh connection per call (`Options.Accounts.Connect`): `AccountStatus`
 (is a session stored for the host; email and account id from the token),
 `Login` (password; the connection to the server is opened first, the session
 is stored under the host), `LoginSSH` (registered key from ssh-agent or
-`~/.ssh`, no passphrase prompt), `ListProjects` (server `ListMyProjects`),
+`~/.ssh`, no passphrase prompt; an optional `key_path` pins exactly that key,
+unlocked with the optional `passphrase`, with no fallback to other keys — the
+passphrase lives only in the request and is never logged), `ListProjects` (server `ListMyProjects`),
 `RemoteBranches` and `RemoteTree` (server `ListDirectory`: one directory's
 subfolders plus its file count and bytes). `Clone(url, branch, sparse,
 target)` streams `OpEvent`s like the long operations but outside any repo
@@ -346,10 +348,16 @@ Notes where the implementation settled details the design left open:
   pinned commit. The manifest fetch uses `GetTreeManifest` with `commit_id`
   (project-scoped), so a sparse clone only receives the tagged set.
 
-`MetaWarnings` lints the pending changes of Unity projects in the clone
-(`internal/unitymeta`: missing, orphaned, unstaged and GUID-changed `.meta`
-files) from the daemon's own status plus snapshot blob reads, for the desktop
-app and the Unity plugin.
+`MetaWarnings` lints the pending changes of Unity or Godot projects in the
+clone from the daemon's own status plus snapshot blob reads (at most 256
+sidecar reads per call), for the desktop app and the engine plugins.
+`engine` picks the linter: `unity` (`internal/unitymeta`: `missing-meta`,
+`orphan-meta`, `meta-not-staged`, `guid-changed`) or `godot`
+(`internal/godotmeta`: `missing-sidecar`, `orphan-sidecar`,
+`sidecar-not-staged`, `uid-changed` for `.import`/`.uid` files). Empty
+detects `project.godot`, then `ProjectSettings/ProjectVersion.txt`, at the
+clone root; with neither, both run and each only reports inside its own
+projects. Paths are clone-relative; an unknown engine is `InvalidArgument`.
 
 Not yet implemented: Phase B proxies (PBAC/path permissions, groups, review
 submission/thread writes, branch protection/default changes), idle-exit, CLI passthrough via the daemon, and socket/named-pipe transport.

@@ -21,7 +21,12 @@ import (
 
 func metaServer(t *testing.T, snapshot map[string]string, seen *[]string) (*Server, string) {
 	t.Helper()
-	root := newTestCloneWithContent(t, "Assets/crate.fbx.meta", snapshot["Assets/crate.fbx.meta"])
+	return sidecarServer(t, "Assets/crate.fbx.meta", snapshot, seen)
+}
+
+func sidecarServer(t *testing.T, tracked string, snapshot map[string]string, seen *[]string) (*Server, string) {
+	t.Helper()
+	root := newTestCloneWithContent(t, tracked, snapshot[tracked])
 	srv := newOpServer(t, RepoOps{Diff: &stubDiffRunner{readBlob: func(_ context.Context, _ string, req usecase.BlobRequest, fn func(diff.Entry, io.Reader) error) error {
 		if seen != nil {
 			*seen = append(*seen, req.Path)
@@ -138,4 +143,73 @@ func TestServer_MetaWarningsGUIDBudget(t *testing.T) {
 	_, err := srv.MetaWarnings(context.Background(), &daemonpb.MetaWarningsRequest{Root: root})
 	require.NoError(t, err)
 	assert.LessOrEqual(t, len(seen), maxGUIDChecks)
+}
+
+func warningKinds(res *daemonpb.MetaWarningsResponse) map[string]string {
+	kinds := map[string]string{}
+	for _, w := range res.GetWarnings() {
+		kinds[w.GetPath()] = w.GetKind()
+	}
+	return kinds
+}
+
+func TestServer_MetaWarningsGodot(t *testing.T) {
+	var seen []string
+	old := "[remap]\n\nimporter=\"texture\"\ntype=\"CompressedTexture2D\"\nuid=\"uid://cvdk8a1nd4yxb\"\n"
+	srv, root := sidecarServer(t, "game/icon.png.import", map[string]string{"game/icon.png.import": old}, &seen)
+	writeNested(t, root, "game/project.godot", "config_version=5\n")
+	writeNested(t, root, "game/icon.png", "PNG")
+	writeNested(t, root, "game/icon.png.import", strings.Replace(old, "cvdk8a1nd4yxb", "b2q9m4x7c1v0z", 1))
+	writeNested(t, root, "game/player.gd", "extends Node\n")
+	writeNested(t, root, "Assets/hero.png", "PNG")
+	writeNested(t, root, "ProjectSettings/ProjectVersion.txt", "m_EditorVersion: 6000.0.1f1")
+
+	res, err := srv.MetaWarnings(context.Background(), &daemonpb.MetaWarningsRequest{Root: root, Engine: "Godot"})
+	require.NoError(t, err)
+	kinds := warningKinds(res)
+	assert.Equal(t, map[string]string{"game/icon.png.import": "uid-changed", "game/player.gd": "missing-sidecar"}, kinds)
+	assert.Contains(t, seen, "game/icon.png.import")
+
+	res, err = srv.MetaWarnings(context.Background(), &daemonpb.MetaWarningsRequest{Root: root})
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{"Assets/hero.png": "missing-meta"}, warningKinds(res), "unity marker at the root")
+
+	writeNested(t, root, "project.godot", "config_version=5\n")
+	res, err = srv.MetaWarnings(context.Background(), &daemonpb.MetaWarningsRequest{Root: root})
+	require.NoError(t, err)
+	kinds = warningKinds(res)
+	assert.Equal(t, "missing-sidecar", kinds["Assets/hero.png"], "project.godot wins and the root project covers Assets/")
+	assert.Equal(t, "missing-sidecar", kinds["game/player.gd"])
+
+	res, err = srv.MetaWarnings(context.Background(), &daemonpb.MetaWarningsRequest{Root: root, Engine: "unity"})
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{"Assets/hero.png": "missing-meta"}, warningKinds(res), "an explicit engine wins")
+
+	_, err = srv.MetaWarnings(context.Background(), &daemonpb.MetaWarningsRequest{Root: root, Engine: "unreal"})
+	assert.Equal(t, codes.InvalidArgument, status.Code(err))
+}
+
+func TestServer_MetaWarningsWithoutMarkers(t *testing.T) {
+	srv, root := sidecarServer(t, "README.md", nil, nil)
+	writeNested(t, root, "unity/ProjectSettings/ProjectVersion.txt", "m_EditorVersion: 6000.0.1f1")
+	writeNested(t, root, "unity/Assets/hero.png", "PNG")
+	writeNested(t, root, "godot/project.godot", "config_version=5\n")
+	writeNested(t, root, "godot/hero.png", "PNG")
+	res, err := srv.MetaWarnings(context.Background(), &daemonpb.MetaWarningsRequest{Root: root})
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{"unity/Assets/hero.png": "missing-meta", "godot/hero.png": "missing-sidecar"}, warningKinds(res))
+}
+
+func TestDetectEngine(t *testing.T) {
+	root := t.TempDir()
+	assert.Equal(t, "", detectEngine(root))
+	writeNested(t, root, "ProjectSettings/ProjectVersion.txt", "m_EditorVersion: 6000.0.1f1")
+	assert.Equal(t, engineUnity, detectEngine(root))
+	writeNested(t, root, "project.godot", "config_version=5\n")
+	assert.Equal(t, engineGodot, detectEngine(root))
+
+	dirs := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dirs, "project.godot"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(dirs, "ProjectSettings", "ProjectVersion.txt"), 0o755))
+	assert.Equal(t, "", detectEngine(dirs))
 }

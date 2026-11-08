@@ -5,27 +5,39 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
+
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/nipalab/nipa/internal/client/grpc/daemonpb"
 	"github.com/nipalab/nipa/internal/client/usecase"
 	"github.com/nipalab/nipa/internal/diff"
+	"github.com/nipalab/nipa/internal/godotmeta"
 	"github.com/nipalab/nipa/internal/unitymeta"
 )
 
 const (
 	maxGUIDChecks = 256
 	maxMetaBytes  = 1 << 20
+
+	engineUnity = "unity"
+	engineGodot = "godot"
 )
 
 var (
-	errMetaBudget   = errors.New("too many .meta files to compare")
-	errMetaTooLarge = errors.New(".meta file too large")
+	errMetaBudget   = errors.New("too many sidecar files to compare")
+	errMetaTooLarge = errors.New("sidecar file too large")
 )
 
-// MetaWarnings checks the pending changes of Unity projects inside the clone
-// for .meta sidecar mistakes.
+// MetaWarnings checks the pending changes of Unity or Godot projects inside
+// the clone for sidecar mistakes (.meta, .import, .uid).
 func (s *Server) MetaWarnings(ctx context.Context, req *daemonpb.MetaWarningsRequest) (*daemonpb.MetaWarningsResponse, error) {
+	engine := strings.ToLower(strings.TrimSpace(req.GetEngine()))
+	if engine != "" && engine != engineUnity && engine != engineGodot {
+		return nil, status.Errorf(codes.InvalidArgument, "unknown engine %q", req.GetEngine())
+	}
 	rp, done, err := s.acquireDiff(ctx, req.GetRoot())
 	if err != nil {
 		return nil, toStatusError(err)
@@ -35,22 +47,50 @@ func (s *Server) MetaWarnings(ctx context.Context, req *daemonpb.MetaWarningsReq
 	if err != nil {
 		return nil, toStatusError(err)
 	}
+	if engine == "" {
+		engine = detectEngine(rp.root)
+	}
 	res := &daemonpb.MetaWarningsResponse{Warnings: []*daemonpb.MetaWarning{}}
 	changes, unity := metaChanges(statusToPB(st))
-	if !unity {
-		return res, nil
-	}
 	checks := 0
-	oldMeta := func(path string) ([]byte, error) {
+	oldSidecar := func(path string) ([]byte, error) {
 		if checks++; checks > maxGUIDChecks {
 			return nil, errMetaBudget
 		}
 		return readSnapshotSmall(ctx, rp.diff, rp.root, path)
 	}
-	for _, w := range unitymeta.Lint(os.DirFS(rp.root), changes, oldMeta) {
-		res.Warnings = append(res.Warnings, &daemonpb.MetaWarning{Path: w.Path, Kind: string(w.Kind), Related: w.Related, Message: w.Message})
+	fsys := os.DirFS(rp.root)
+	if engine != engineGodot && unity {
+		for _, w := range unitymeta.Lint(fsys, changes, oldSidecar) {
+			res.Warnings = append(res.Warnings, &daemonpb.MetaWarning{Path: w.Path, Kind: string(w.Kind), Related: w.Related, Message: w.Message})
+		}
+	}
+	if engine != engineUnity {
+		for _, w := range godotmeta.Lint(fsys, godotChanges(changes), oldSidecar) {
+			res.Warnings = append(res.Warnings, &daemonpb.MetaWarning{Path: w.Path, Kind: string(w.Kind), Related: w.Related, Message: w.Message})
+		}
 	}
 	return res, nil
+}
+
+// detectEngine picks the engine from the markers at the clone root; with
+// neither, both linters run and each only reports inside its own projects.
+func detectEngine(root string) string {
+	if info, err := os.Stat(filepath.Join(root, "project.godot")); err == nil && info.Mode().IsRegular() {
+		return engineGodot
+	}
+	if info, err := os.Stat(filepath.Join(root, "ProjectSettings", "ProjectVersion.txt")); err == nil && info.Mode().IsRegular() {
+		return engineUnity
+	}
+	return ""
+}
+
+func godotChanges(changes []unitymeta.Change) []godotmeta.Change {
+	out := make([]godotmeta.Change, len(changes))
+	for i, c := range changes {
+		out[i] = godotmeta.Change{Path: c.Path, Status: c.Status, Staged: c.Staged}
+	}
+	return out
 }
 
 func metaChanges(st *daemonpb.StatusResponse) ([]unitymeta.Change, bool) {

@@ -116,8 +116,8 @@ func serveAccounts(newClient func() *clientgrpc.Client, storage tokenStorage, si
 			id, _ := clientgrpc.TokenSubject(token.AccessToken)
 			return daemon.Session{Email: token.Email, UserID: id}, true
 		},
-		LoginSSH: func(ctx context.Context, address, email string) error {
-			keys, err := signers()
+		LoginSSH: func(ctx context.Context, address string, login daemon.SSHLogin) error {
+			keys, err := loginSigners(signers, login)
 			if err != nil {
 				return err
 			}
@@ -126,7 +126,7 @@ func serveAccounts(newClient func() *clientgrpc.Client, storage tokenStorage, si
 				return err
 			}
 			defer func() { _ = c.Close() }()
-			return auth(c).LoginWithSSHKey(ctx, address, email, keys)
+			return auth(c).LoginWithSSHKey(ctx, address, login.Email, keys)
 		},
 		Connect: func(ctx context.Context, address string) (daemon.RemoteConn, error) {
 			return connectClient(ctx, newClient, address)
@@ -150,4 +150,15 @@ func serveAccounts(newClient func() *clientgrpc.Client, storage tokenStorage, si
 			return usecase.NewRepo(auth(c), c, lr).Clone(ctx, nu.Url, nu.Host, nu.Org, nu.Project, branch, paths, target, progress)
 		},
 	}
+}
+
+func loginSigners(signers func() ([]sshkey.Signer, error), login daemon.SSHLogin) ([]sshkey.Signer, error) {
+	if login.KeyPath == "" {
+		return signers()
+	}
+	signer, err := sshkey.Load(login.KeyPath, login.Passphrase)
+	if err != nil {
+		return nil, err
+	}
+	return []sshkey.Signer{signer}, nil
 }

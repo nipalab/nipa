@@ -105,6 +105,12 @@ resolved by `internal/client/sshkey.Resolve` in this order:
 4. every key of a running ssh-agent (`SSH_AUTH_SOCK`)
 5. `~/.ssh/id_ed25519`, `id_ecdsa`, `id_rsa`
 
+The daemon's `LoginSSH` (`nipa serve`) never prompts: it uses the same order
+from step 2, unless the request carries `key_path`, which pins exactly that
+key (`sshkey.Load`) with the optional `passphrase` and fails loudly like
+`--ssh-key` (missing file, wrong or missing passphrase), never falling back
+to other keys. The passphrase stays in request memory and is never logged.
+
 A configured key (1–3) that cannot be loaded is a hard error — including
 encrypted keys, which prompt for the passphrase. Auto-detected keys (4–5)
 that cannot be loaded are skipped silently. Multiple candidates are tried in

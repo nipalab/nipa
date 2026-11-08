@@ -1,20 +1,32 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"encoding/base64"
+	"encoding/pem"
 	"errors"
 	"io"
+	"log/slog"
+	"net"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"golang.org/x/crypto/ssh"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
+	"github.com/nipalab/nipa/internal/client/daemon"
 	"github.com/nipalab/nipa/internal/client/domain"
 	clientgrpc "github.com/nipalab/nipa/internal/client/grpc"
 	"github.com/nipalab/nipa/internal/client/sshkey"
 	"github.com/nipalab/nipa/internal/client/usecase"
+	"github.com/nipalab/nipa/internal/grpc/pb"
 )
 
 type fakeLoginExecutor struct{}
@@ -118,10 +130,10 @@ func TestServeAccounts_Session(t *testing.T) {
 func TestServeAccounts_FailuresBeforeTheServer(t *testing.T) {
 	ctx := context.Background()
 	accounts := serveAccounts(newServeTestClient, fakeStorage{}, func() ([]sshkey.Signer, error) { return nil, errors.New("agent locked") })
-	require.EqualError(t, accounts.LoginSSH(ctx, "127.0.0.1:1", ""), "agent locked")
+	require.EqualError(t, accounts.LoginSSH(ctx, "127.0.0.1:1", daemon.SSHLogin{}), "agent locked")
 
 	accounts = serveAccounts(newServeTestClient, fakeStorage{}, noSigners)
-	require.ErrorContains(t, accounts.LoginSSH(ctx, "127.0.0.1:1", ""), "no SSH key available")
+	require.ErrorContains(t, accounts.LoginSSH(ctx, "127.0.0.1:1", daemon.SSHLogin{}), "no SSH key available")
 	require.Error(t, accounts.Clone(ctx, "not a url", "", nil, t.TempDir(), nil))
 	conn, err := accounts.Connect(ctx, "127.0.0.1:1")
 	require.NoError(t, err)
@@ -140,4 +152,92 @@ func TestServeAccounts_FailuresBeforeTheServer(t *testing.T) {
 func TestDaemonInput(t *testing.T) {
 	_, _, err := daemonInput{}.PromptUsernameAndPassword()
 	require.ErrorContains(t, err, "sign in")
+}
+
+type sshLoginServer struct {
+	pb.UnimplementedNipaServiceServer
+	registered ssh.PublicKey
+	seen       [][]byte
+}
+
+func (s *sshLoginServer) BeginLoginSSHKey(context.Context, *pb.BeginLoginSSHKeyRequest) (*pb.BeginLoginSSHKeyResponse, error) {
+	return &pb.BeginLoginSSHKeyResponse{Nonce: "n1", ExpiresIn: 60}, nil
+}
+
+func (s *sshLoginServer) CompleteLoginSSHKey(_ context.Context, req *pb.CompleteLoginSSHKeyRequest) (*pb.LoginResponse, error) {
+	s.seen = append(s.seen, req.GetPublicKey())
+	if !bytes.Equal(req.GetPublicKey(), s.registered.Marshal()) {
+		return nil, status.Error(codes.InvalidArgument, "invalid email or SSH key")
+	}
+	return &pb.LoginResponse{AccessToken: "a", RefreshToken: "r", ExpiresIn: 60}, nil
+}
+
+func startSSHLoginServer(t *testing.T, registered ssh.PublicKey) (*sshLoginServer, string) {
+	t.Helper()
+	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	fake := &sshLoginServer{registered: registered}
+	srv := grpc.NewServer()
+	pb.RegisterNipaServiceServer(srv, fake)
+	go func() { _ = srv.Serve(lis) }()
+	t.Cleanup(srv.Stop)
+	return fake, lis.Addr().String()
+}
+
+func writeTestKey(t *testing.T, dir, name, passphrase string) (string, ssh.PublicKey) {
+	t.Helper()
+	pubKey, priv, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	block, err := ssh.MarshalPrivateKeyWithPassphrase(priv, "", []byte(passphrase))
+	require.NoError(t, err)
+	p := filepath.Join(dir, name)
+	require.NoError(t, os.WriteFile(p, pem.EncodeToMemory(block), 0o600))
+	pub, err := ssh.NewPublicKey(pubKey)
+	require.NoError(t, err)
+	return p, pub
+}
+
+func TestServeAccounts_LoginSSHExplicitKey(t *testing.T) {
+	var logs bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	dir := t.TempDir()
+	const secret = "open-sesame-42"
+	keyPath, pub := writeTestKey(t, dir, "id_ed25519", secret)
+	strayPath, _ := writeTestKey(t, dir, "id_stray", secret)
+	fake, address := startSSHLoginServer(t, pub)
+	fallback := func() ([]sshkey.Signer, error) {
+		t.Fatal("key_path must not fall back to other keys")
+		return nil, nil
+	}
+	accounts := serveAccounts(newServeTestClient, fakeStorage{}, fallback)
+	ctx := context.Background()
+
+	require.NoError(t, accounts.LoginSSH(ctx, address, daemon.SSHLogin{KeyPath: keyPath, Passphrase: secret}))
+	require.Len(t, fake.seen, 1)
+
+	err := accounts.LoginSSH(ctx, address, daemon.SSHLogin{KeyPath: keyPath, Passphrase: "wrong-" + secret})
+	require.Error(t, err)
+	require.NotContains(t, err.Error(), secret)
+
+	err = accounts.LoginSSH(ctx, address, daemon.SSHLogin{KeyPath: keyPath})
+	require.ErrorContains(t, err, "passphrase")
+
+	err = accounts.LoginSSH(ctx, address, daemon.SSHLogin{KeyPath: filepath.Join(dir, "missing"), Passphrase: secret})
+	require.ErrorIs(t, err, os.ErrNotExist)
+
+	err = accounts.LoginSSH(ctx, address, daemon.SSHLogin{KeyPath: strayPath, Passphrase: secret})
+	require.ErrorContains(t, err, "invalid email or SSH key")
+	require.Len(t, fake.seen, 2, "only the explicit key is offered")
+
+	require.NotContains(t, logs.String(), secret)
+}
+
+func TestLoginSigners_DefaultOrder(t *testing.T) {
+	called := false
+	_, err := loginSigners(func() ([]sshkey.Signer, error) { called = true; return nil, nil }, daemon.SSHLogin{Email: "ann@studio.test"})
+	require.NoError(t, err)
+	require.True(t, called)
 }

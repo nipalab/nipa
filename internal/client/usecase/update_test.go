@@ -961,7 +961,7 @@ func TestMaterializeFile_KeepsExistingFileOnFailure(t *testing.T) {
 		Path:        "a.txt",
 		SizeBytes:   100,
 		ChunkHashes: []serverDomain.Hash{first, second},
-	}, open)
+	}, 0, open)
 	require.Error(t, err)
 
 	got, err := os.ReadFile(fp)
@@ -985,7 +985,7 @@ func TestMaterializeFile_AppliesMode(t *testing.T) {
 		Mode:        3,
 		SizeBytes:   int64(len(data)),
 		ChunkHashes: []serverDomain.Hash{hash},
-	}, func(serverDomain.Hash) (io.ReadCloser, error) {
+	}, 0, func(serverDomain.Hash) (io.ReadCloser, error) {
 		return io.NopCloser(bytes.NewReader(data)), nil
 	})
 	require.NoError(t, err)

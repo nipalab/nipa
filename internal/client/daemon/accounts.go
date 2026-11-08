@@ -2,6 +2,8 @@ package daemon
 
 import (
 	"context"
+	"fmt"
+	"log/slog"
 	"path"
 	"path/filepath"
 	"sort"
@@ -29,11 +31,29 @@ type RemoteConn interface {
 	Close() error
 }
 
+// SSHLogin selects the key for an SSH login. KeyPath pins exactly one key
+// file; the passphrase only lives for the duration of the request.
+type SSHLogin struct {
+	Email      string
+	KeyPath    string
+	Passphrase string
+}
+
+func (l SSHLogin) String() string {
+	return fmt.Sprintf("SSHLogin{Email:%q KeyPath:%q}", l.Email, l.KeyPath)
+}
+
+func (l SSHLogin) GoString() string { return l.String() }
+
+func (l SSHLogin) LogValue() slog.Value {
+	return slog.GroupValue(slog.String("email", l.Email), slog.String("key_path", l.KeyPath))
+}
+
 // Accounts reaches servers before any clone exists: stored sessions, SSH key
 // login, fresh connections for browsing, and cloning.
 type Accounts struct {
 	Session  func(host string) (Session, bool)
-	LoginSSH func(ctx context.Context, address, email string) error
+	LoginSSH func(ctx context.Context, address string, login SSHLogin) error
 	Connect  func(ctx context.Context, address string) (RemoteConn, error)
 	Clone    func(ctx context.Context, url, branch string, sparse []string, target string, progress usecase.DownloadProgress) error
 }
@@ -53,7 +73,8 @@ func (s *Server) AccountStatus(_ context.Context, req *daemonpb.AccountStatusReq
 	return res, nil
 }
 
-// LoginSSH signs in with a registered SSH key from the agent or ~/.ssh.
+// LoginSSH signs in with a registered SSH key: the explicit key_path when
+// set, otherwise the usual order (configured key, agent, ~/.ssh).
 func (s *Server) LoginSSH(ctx context.Context, req *daemonpb.LoginSSHRequest) (*daemonpb.LoginResponse, error) {
 	if s.accounts.LoginSSH == nil {
 		return nil, status.Error(codes.FailedPrecondition, "SSH login is not configured")
@@ -62,7 +83,11 @@ func (s *Server) LoginSSH(ctx context.Context, req *daemonpb.LoginSSHRequest) (*
 	if err != nil {
 		return nil, toStatusError(err)
 	}
-	if err := s.accounts.LoginSSH(ctx, ep.Address, strings.TrimSpace(req.GetEmail())); err != nil {
+	login := SSHLogin{Email: strings.TrimSpace(req.GetEmail()), KeyPath: strings.TrimSpace(req.GetKeyPath()), Passphrase: req.GetPassphrase()}
+	if login.Passphrase != "" && login.KeyPath == "" {
+		return nil, status.Error(codes.InvalidArgument, "a passphrase needs key_path")
+	}
+	if err := s.accounts.LoginSSH(ctx, ep.Address, login); err != nil {
 		return nil, toStatusError(err)
 	}
 	return &daemonpb.LoginResponse{}, nil

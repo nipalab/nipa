@@ -7187,6 +7187,7 @@ func (x *ProxyTagDeleteResponse) GetResponse() *pb.DeleteTagResponse {
 type MetaWarningsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Root          string                 `protobuf:"bytes,1,opt,name=root,proto3" json:"root,omitempty"`
+	Engine        string                 `protobuf:"bytes,2,opt,name=engine,proto3" json:"engine,omitempty"` // unity or godot; empty detects project.godot, then ProjectSettings/ProjectVersion.txt
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -7228,10 +7229,17 @@ func (x *MetaWarningsRequest) GetRoot() string {
 	return ""
 }
 
+func (x *MetaWarningsRequest) GetEngine() string {
+	if x != nil {
+		return x.Engine
+	}
+	return ""
+}
+
 type MetaWarning struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Path          string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
-	Kind          string                 `protobuf:"bytes,2,opt,name=kind,proto3" json:"kind,omitempty"` // missing-meta, orphan-meta, meta-not-staged, guid-changed
+	Kind          string                 `protobuf:"bytes,2,opt,name=kind,proto3" json:"kind,omitempty"` // unity: missing-meta, orphan-meta, meta-not-staged, guid-changed; godot: missing-sidecar, orphan-sidecar, sidecar-not-staged, uid-changed
 	Related       string                 `protobuf:"bytes,3,opt,name=related,proto3" json:"related,omitempty"`
 	Message       string                 `protobuf:"bytes,4,opt,name=message,proto3" json:"message,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -7675,7 +7683,9 @@ func (x *AccountStatusResponse) GetUserId() string {
 type LoginSSHRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Server        string                 `protobuf:"bytes,1,opt,name=server,proto3" json:"server,omitempty"`
-	Email         string                 `protobuf:"bytes,2,opt,name=email,proto3" json:"email,omitempty"` // optional: must own the key when set
+	Email         string                 `protobuf:"bytes,2,opt,name=email,proto3" json:"email,omitempty"`                    // optional: must own the key when set
+	KeyPath       string                 `protobuf:"bytes,3,opt,name=key_path,json=keyPath,proto3" json:"key_path,omitempty"` // optional: use exactly this private key, no fallback
+	Passphrase    string                 `protobuf:"bytes,4,opt,name=passphrase,proto3" json:"passphrase,omitempty"`          // optional: unlocks key_path
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -7720,6 +7730,20 @@ func (x *LoginSSHRequest) GetServer() string {
 func (x *LoginSSHRequest) GetEmail() string {
 	if x != nil {
 		return x.Email
+	}
+	return ""
+}
+
+func (x *LoginSSHRequest) GetKeyPath() string {
+	if x != nil {
+		return x.KeyPath
+	}
+	return ""
+}
+
+func (x *LoginSSHRequest) GetPassphrase() string {
+	if x != nil {
+		return x.Passphrase
 	}
 	return ""
 }
@@ -8692,9 +8716,10 @@ const file_internal_client_grpc_proto_daemon_proto_rawDesc = "" +
 	"\x04root\x18\x01 \x01(\tR\x04root\x121\n" +
 	"\arequest\x18\x02 \x01(\v2\x17.greet.DeleteTagRequestR\arequest\"N\n" +
 	"\x16ProxyTagDeleteResponse\x124\n" +
-	"\bresponse\x18\x01 \x01(\v2\x18.greet.DeleteTagResponseR\bresponse\")\n" +
+	"\bresponse\x18\x01 \x01(\v2\x18.greet.DeleteTagResponseR\bresponse\"A\n" +
 	"\x13MetaWarningsRequest\x12\x12\n" +
-	"\x04root\x18\x01 \x01(\tR\x04root\"i\n" +
+	"\x04root\x18\x01 \x01(\tR\x04root\x12\x16\n" +
+	"\x06engine\x18\x02 \x01(\tR\x06engine\"i\n" +
 	"\vMetaWarning\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12\x12\n" +
 	"\x04kind\x18\x02 \x01(\tR\x04kind\x12\x18\n" +
@@ -8726,10 +8751,14 @@ const file_internal_client_grpc_proto_daemon_proto_rawDesc = "" +
 	"\aaddress\x18\x02 \x01(\tR\aaddress\x12\x1b\n" +
 	"\tsigned_in\x18\x03 \x01(\bR\bsignedIn\x12\x14\n" +
 	"\x05email\x18\x04 \x01(\tR\x05email\x12\x17\n" +
-	"\auser_id\x18\x05 \x01(\tR\x06userId\"?\n" +
+	"\auser_id\x18\x05 \x01(\tR\x06userId\"z\n" +
 	"\x0fLoginSSHRequest\x12\x16\n" +
 	"\x06server\x18\x01 \x01(\tR\x06server\x12\x14\n" +
-	"\x05email\x18\x02 \x01(\tR\x05email\"-\n" +
+	"\x05email\x18\x02 \x01(\tR\x05email\x12\x19\n" +
+	"\bkey_path\x18\x03 \x01(\tR\akeyPath\x12\x1e\n" +
+	"\n" +
+	"passphrase\x18\x04 \x01(\tR\n" +
+	"passphrase\"-\n" +
 	"\x13ListProjectsRequest\x12\x16\n" +
 	"\x06server\x18\x01 \x01(\tR\x06server\"I\n" +
 	"\x14ListProjectsResponse\x121\n" +

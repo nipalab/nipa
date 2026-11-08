@@ -183,7 +183,7 @@ func (c *Conflicts) write(abs string, content io.Reader, checkMarkers bool, p st
 	if err := os.Chmod(tmp.Name(), perm); err != nil {
 		return err
 	}
-	return os.Rename(tmp.Name(), abs)
+	return replaceFile(tmp.Name(), abs)
 }
 
 func checkWorkingMarkers(abs, p string) error {

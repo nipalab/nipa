@@ -69,6 +69,58 @@ var _ = Describe("nipa serve", func() {
 		Expect(readText(fresh, "b.txt")).To(Equal("from json\n"))
 	})
 
+	It("reports Godot sidecar warnings over the JSON bridge", func() {
+		project := newProject("daemon-godot-meta")
+		importFile := func(uid string) []byte {
+			return []byte("[remap]\n\nimporter=\"texture\"\ntype=\"CompressedTexture2D\"\nuid=\"" + uid + "\"\npath=\"res://.godot/imported/icon.png-0a1b2c3d.ctex\"\n\n[deps]\n\nsource_file=\"res://game/icon.png\"\n")
+		}
+		seedRepo(orgSlug, project, map[string][]byte{
+			"game/project.godot":   []byte("config_version=5\n\n[application]\n\nconfig/name=\"Fixture\"\n"),
+			"game/icon.png":        {0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a, 0x00},
+			"game/icon.png.import": importFile("uid://cvdk8a1nd4yxb"),
+			"game/player.gd":       []byte("extends Node\n"),
+			"game/player.gd.uid":   []byte("uid://bq4m1x7c2v8kd\n"),
+		}, "godot fixture")
+		parent := workspace()
+		dir := cloneRepo(parent, repoURLFor(orgSlug, project), "work")
+		writeBytes(dir, "game/icon.png.import", importFile("uid://b2q9m4x7c1v0z"))
+		writeText(dir, "game/enemy.gd", "extends Node\n")
+
+		d := startDaemon()
+		root, err := json.Marshal(map[string]string{"root": dir})
+		Expect(err).NotTo(HaveOccurred())
+		resp, _ := d.jsonPost("/v1/WatchRepo", string(root))
+		Expect(resp.StatusCode).To(Equal(http.StatusOK))
+
+		for _, engine := range []string{"godot", ""} {
+			req, err := json.Marshal(map[string]string{"root": dir, "engine": engine})
+			Expect(err).NotTo(HaveOccurred())
+			resp, body := d.jsonPost("/v1/MetaWarnings", string(req))
+			Expect(resp.StatusCode).To(Equal(http.StatusOK), string(body))
+			var out struct {
+				Warnings []struct {
+					Path    string `json:"path"`
+					Kind    string `json:"kind"`
+					Related string `json:"related"`
+				} `json:"warnings"`
+			}
+			Expect(json.Unmarshal(body, &out)).To(Succeed())
+			kinds := map[string]string{}
+			for _, w := range out.Warnings {
+				kinds[w.Path] = w.Kind
+			}
+			Expect(kinds).To(Equal(map[string]string{
+				"game/icon.png.import": "uid-changed",
+				"game/enemy.gd":        "missing-sidecar",
+			}), "engine %q", engine)
+		}
+
+		bad, err := json.Marshal(map[string]string{"root": dir, "engine": "unreal"})
+		Expect(err).NotTo(HaveOccurred())
+		resp, _ = d.jsonPost("/v1/MetaWarnings", string(bad))
+		Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
+	})
+
 	It("watches a repository and lists it", func() {
 		project := newProject("daemon-watch")
 		seedRepo(orgSlug, project, map[string][]byte{"a.txt": []byte("a\n")}, "seed")

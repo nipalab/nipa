@@ -65,6 +65,16 @@ func Resolve(explicitPath string, promptPassphrase func(keyPath string) (string,
 	return signers, nil
 }
 
+// Load reads exactly one private key file, unlocking it with passphrase when
+// the key is encrypted.
+func Load(path, passphrase string) (Signer, error) {
+	var unlock func(string) (string, error)
+	if passphrase != "" {
+		unlock = func(string) (string, error) { return passphrase, nil }
+	}
+	return loadSignerFile(strings.TrimSpace(path), unlock)
+}
+
 func resolveConfiguredPath(explicitPath string) (string, error) {
 	if path := strings.TrimSpace(explicitPath); path != "" {
 		return path, nil
