@@ -5,6 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/nipalab/nipa/internal/assetbudget"
 	"github.com/nipalab/nipa/internal/client/domain"
 	"github.com/nipalab/nipa/internal/client/output"
 )
@@ -23,11 +24,17 @@ func dryRunRequested(cmd *cobra.Command) (bool, error) {
 }
 
 func writePlan(cmd *cobra.Command, plan *domain.Plan) error {
+	return writePlanWithBudget(cmd, plan, nil)
+}
+
+func writePlanWithBudget(cmd *cobra.Command, plan *domain.Plan, violations []assetbudget.Violation) error {
 	if plan == nil {
 		return domain.NewUserError("nothing to report")
 	}
 	if jsonRequested(cmd) {
-		return output.WriteJSON(cmd.OutOrStdout(), output.NewPlan(plan))
+		out := output.NewPlan(plan)
+		out.AssetViolations = violations
+		return output.WriteJSON(cmd.OutOrStdout(), out)
 	}
 	out := cmd.OutOrStdout()
 	if plan.UpToDate {
@@ -52,6 +59,10 @@ func writePlan(cmd *cobra.Command, plan *domain.Plan) error {
 		}
 	case "revert":
 		_, _ = fmt.Fprintf(out, "would revert %d file(s), %d conflict(s)\n", len(plan.Changes), len(plan.Conflicts))
+	}
+	if len(violations) > 0 {
+		_, _ = fmt.Fprintf(out, "warning: %d asset budget violation(s) (see nipa assets check --staged):\n", len(violations))
+		writeViolations(out, "  ", violations)
 	}
 	return nil
 }

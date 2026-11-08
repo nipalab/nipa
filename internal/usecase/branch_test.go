@@ -564,7 +564,7 @@ func TestBranch_GetTreeManifest_WithPath(t *testing.T) {
 	require.Equal(t, []*domain.File{shaderFile}, gotShaders.FileChildren)
 }
 
-func TestBranch_GetTreeManifest_SparseKeepsRootIgnoreFile(t *testing.T) {
+func TestBranch_GetTreeManifest_SparseKeepsRootTeamFiles(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	perm := newAllowAllPerm(ctrl)
 	repo := NewMockbranchRepository(ctrl)
@@ -575,6 +575,7 @@ func TestBranch_GetTreeManifest_SparseKeepsRootIgnoreFile(t *testing.T) {
 	root := &domain.TreeNode{ID: 100, Name: "root"}
 	ignoreFile := &domain.File{ID: 1, Name: ".nipaignore", TreeID: 100}
 	readmeFile := &domain.File{ID: 2, Name: "README.md", TreeID: 100}
+	budgetFile := &domain.File{ID: 4, Name: ".nipaassets.yml", TreeID: 100}
 	docs := &domain.TreeNode{ID: 200, Name: "docs"}
 	docsFile := &domain.File{ID: 3, Name: "guide.md", TreeID: 200}
 	src := &domain.TreeNode{ID: 300, Name: "src"}
@@ -587,7 +588,7 @@ func TestBranch_GetTreeManifest_SparseKeepsRootIgnoreFile(t *testing.T) {
 	repo.EXPECT().GetCommit(gomock.Any(), commitID).Return(commit, nil)
 	repo.EXPECT().GetTreeNode(gomock.Any(), int64(100)).Return(root, nil)
 	repo.EXPECT().GetTreeChildByName(gomock.Any(), int64(100), "docs").Return(docs, nil)
-	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(100)).Return([]*domain.File{ignoreFile, readmeFile}, nil)
+	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(100)).Return([]*domain.File{ignoreFile, readmeFile, budgetFile}, nil)
 	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(100)).Return([]*domain.TreeNode{docs, src}, nil)
 	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(200)).Return([]*domain.File{docsFile}, nil)
 	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(200)).Return(nil, nil)
@@ -595,7 +596,7 @@ func TestBranch_GetTreeManifest_SparseKeepsRootIgnoreFile(t *testing.T) {
 	uc := NewBranch(perm, repo, newTestBranchNode(t))
 	got, err := uc.GetTreeManifest(context.Background(), snow.ID(1), "main", []string{"docs"}, "", true)
 	require.NoError(t, err)
-	require.Equal(t, []*domain.File{ignoreFile}, got.FileChildren, "sparse manifests keep the root ignore file")
+	require.Equal(t, []*domain.File{ignoreFile, budgetFile}, got.FileChildren, "sparse manifests keep the root team files")
 	require.Len(t, got.TreeChildren, 1)
 	require.Equal(t, docs, got.TreeChildren[0])
 	require.Equal(t, []*domain.File{docsFile}, got.TreeChildren[0].FileChildren)

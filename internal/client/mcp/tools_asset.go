@@ -16,6 +16,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/nipalab/nipa/internal/assetdiff"
+	"github.com/nipalab/nipa/internal/client/assetscan"
 	"github.com/nipalab/nipa/internal/client/domain"
 	"github.com/nipalab/nipa/internal/client/output"
 	"github.com/nipalab/nipa/internal/client/usecase"
@@ -38,8 +39,8 @@ const (
 	engineUnity = "unity"
 	engineGodot = "godot"
 
-	sideWorking  = "working"
-	sideSnapshot = "snapshot"
+	sideWorking  = assetscan.SideWorking
+	sideSnapshot = assetscan.SideSnapshot
 )
 
 var (
@@ -61,6 +62,11 @@ func addAssetTools(srv *mcp.Server, s *server) {
 		Annotations: readOnly(),
 	}, s.describeChanges)
 	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "nipa_asset_check",
+		Description: "Check changed files against the repository's .nipaassets.yml asset budgets (texture size, power of two, triangles, vertices, audio length and peak, file size, naming), with the same arguments as nipa_describe_changes. Only the new side of each change is checked. config is false when the working copy has no .nipaassets.yml.",
+		Annotations: readOnly(),
+	}, s.assetCheck)
+	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "nipa_mr_describe_changes",
 		Description: "Summarize the files a merge request changes, one asset-aware headline per file, comparing the merge base (or the target head when the merge base is unknown, see base.kind) with the source head.",
 		Annotations: readOnly(),
@@ -76,37 +82,6 @@ func addAssetTools(srv *mcp.Server, s *server) {
 			Description: "Structurally three-way merge one conflicted Godot text scene or resource (.tscn, .tres) of the pending merge or revert. A clean merge is written to the working file and staged as resolved; otherwise nothing is written and the conflicts are listed for nipa_resolve_conflict.",
 			Annotations: destructive(),
 		}, s.godotMerge)
-	}
-}
-
-// blobLoader reads file versions of the clone at root for assetdiff.
-func blobLoader(d *usecase.Diff, root string) assetdiff.Loader {
-	return func(ctx context.Context, ref assetdiff.Ref, limit int64) ([]byte, error) {
-		var data []byte
-		req := usecase.BlobRequest{Source: usecase.BlobSource(ref.Source), Revision: ref.Revision, Path: ref.Path}
-		err := d.ReadBlob(ctx, root, req, func(_ diff.Entry, r io.Reader) error {
-			var err error
-			data, err = io.ReadAll(io.LimitReader(r, limit+1))
-			if err == nil && int64(len(data)) > limit {
-				err = assetdiff.ErrTooLarge
-			}
-			return err
-		})
-		if errors.Is(err, usecase.ErrFileMissing) {
-			return nil, assetdiff.ErrMissing
-		}
-		return data, err
-	}
-}
-
-// sideRef maps a side name to a file version: working, snapshot, or any
-// other token as a revision.
-func sideRef(side, p string) *assetdiff.Ref {
-	switch side = strings.TrimSpace(side); side {
-	case sideWorking, sideSnapshot:
-		return &assetdiff.Ref{Source: side, Path: p}
-	default:
-		return &assetdiff.Ref{Source: string(usecase.BlobRevision), Revision: side, Path: p}
 	}
 }
 
@@ -162,7 +137,7 @@ func (s *server) assetDiff(ctx context.Context, _ *mcp.CallToolRequest, in asset
 		return nil, nil, err
 	}
 	defer uc.close()
-	res, err := assetdiff.Compare(ctx, blobLoader(uc.Diff, root), sideRef(oldSide, oldPath), sideRef(newSide, p), assetdiff.Options{
+	res, err := assetdiff.Compare(ctx, assetscan.BlobLoader(uc.Diff, root), assetscan.SideRef(oldSide, oldPath), assetscan.SideRef(newSide, p), assetdiff.Options{
 		Images:     in.IncludeImages,
 		MaxRows:    clampLimit(in.MaxRows, defaultAssetRows, maxAssetRows),
 		MaxChanges: clampLimit(in.MaxChanges, defaultAssetChanges, maxAssetChanges),
@@ -217,6 +192,10 @@ type describeInput struct {
 	MaxFiles  int      `json:"max_files,omitempty" jsonschema:"Maximum number of files described (default 50, at most 200)"`
 }
 
+func (in describeInput) request() assetscan.Request {
+	return assetscan.Request{Revisions: in.Revisions, Paths: in.Paths, Staged: in.Staged, MergeBase: in.MergeBase, NoCache: in.NoCache}
+}
+
 type describeOutput struct {
 	Old     string              `json:"old"`
 	New     string              `json:"new"`
@@ -234,31 +213,14 @@ func (s *server) describeChanges(ctx context.Context, _ *mcp.CallToolRequest, in
 		return nil, zero, err
 	}
 	defer uc.close()
-	files, err := uc.Diff.Run(ctx, root, in.Revisions, usecase.DiffOptions{
-		Staged:    in.Staged,
-		Paths:     in.Paths,
-		MergeBase: in.MergeBase,
-		NoCache:   in.NoCache,
-	})
+	changes, err := assetscan.Enumerate(ctx, uc.Diff, root, in.request())
 	if err != nil {
 		return nil, zero, toolError(err)
 	}
-	oldSide, newSide := sideSnapshot, sideWorking
-	switch len(in.Revisions) {
-	case 1:
-		oldSide = in.Revisions[0]
-	case 2:
-		oldSide, newSide = in.Revisions[0], in.Revisions[1]
-	}
-	if in.MergeBase {
-		if oldSide, err = uc.Diff.MergeBaseCommit(ctx, root, in.Revisions[0], in.Revisions[1]); err != nil {
-			return nil, zero, toolError(err)
-		}
-	}
-	items := make([]assetdiff.Item, 0, len(files))
-	for _, f := range files {
-		c := f.Change
-		items = append(items, changeItem(c.Path, c.Old.Path, c.Status.String(), oldSide, newSide))
+	oldSide, newSide := changes.Old, changes.New
+	items := make([]assetdiff.Item, 0, len(changes.Files))
+	for _, c := range changes.Files {
+		items = append(items, c.Item)
 	}
 	out, err := s.summarize(ctx, uc, root, items, in.MaxFiles)
 	if err != nil {
@@ -267,35 +229,35 @@ func (s *server) describeChanges(ctx context.Context, _ *mcp.CallToolRequest, in
 	return nil, describeOutput{Old: oldSide, New: newSide, Files: out.Files, Omitted: out.Omitted}, nil
 }
 
-// changeItem builds the summary item of one changed path. An empty oldSide
-// (no merge base) makes every file an addition.
-func changeItem(p, oldPath, status, oldSide, newSide string) assetdiff.Item {
-	it := assetdiff.Item{Path: p}
-	if oldPath == "" {
-		oldPath = p
+type assetCheckInput struct {
+	Repo      string   `json:"repo,omitempty" jsonschema:"Path inside a nipa working copy (defaults to the server working directory)"`
+	Revisions []string `json:"revisions,omitempty" jsonschema:"Up to two revisions: branch name, tag, base36 commit id or HEAD/@; omit to check the working tree against the last synced snapshot"`
+	Paths     []string `json:"paths,omitempty" jsonschema:"Limit to these repo-relative file or directory paths"`
+	Staged    bool     `json:"staged,omitempty" jsonschema:"Only check changes staged for the next push"`
+	MergeBase bool     `json:"merge_base,omitempty" jsonschema:"Compare the merge base of two revisions against the second (three-dot diff)"`
+	NoCache   bool     `json:"no_cache,omitempty" jsonschema:"Read every working file instead of trusting the stat cache"`
+}
+
+func (s *server) assetCheck(ctx context.Context, _ *mcp.CallToolRequest, in assetCheckInput) (*mcp.CallToolResult, *assetscan.Report, error) {
+	if err := validateRevisions(in.Revisions, in.Staged, in.MergeBase); err != nil {
+		return nil, nil, err
 	}
-	switch strings.ToUpper(status) {
-	case "A", "ADDED":
-		it.Status = assetdiff.StatusAdded
-	case "D", "DELETED", "REMOVED":
-		it.Status = assetdiff.StatusRemoved
-	case "R", "RENAMED":
-		it.Status = "renamed"
-		it.OldPath = oldPath
-	default:
-		it.Status = assetdiff.StatusModified
+	root, uc, err := s.openDiff(in.Repo)
+	if err != nil {
+		return nil, nil, err
 	}
-	if it.Status != assetdiff.StatusAdded && oldSide != "" {
-		it.Old = sideRef(oldSide, oldPath)
+	defer uc.close()
+	report, err := assetscan.Check(ctx, uc.Diff, root, assetscan.Request{
+		Revisions: in.Revisions, Paths: in.Paths, Staged: in.Staged, MergeBase: in.MergeBase, NoCache: in.NoCache,
+	})
+	if err != nil {
+		return nil, nil, toolError(err)
 	}
-	if it.Status != assetdiff.StatusRemoved {
-		it.New = sideRef(newSide, p)
-	}
-	return it
+	return nil, report, nil
 }
 
 func (s *server) summarize(ctx context.Context, uc UseCases, root string, items []assetdiff.Item, maxFiles int) (*assetdiff.Summaries, error) {
-	out, err := assetdiff.Summarize(ctx, blobLoader(uc.Diff, root), items, assetdiff.Options{
+	out, err := assetdiff.Summarize(ctx, assetscan.BlobLoader(uc.Diff, root), items, assetdiff.Options{
 		MaxFiles: clampLimit(maxFiles, defaultSummaryFiles, maxSummaryFiles),
 		GUIDs:    assetdiff.WorkingGUIDs(root),
 	})
@@ -346,7 +308,7 @@ func (s *server) mrDescribeChanges(ctx context.Context, _ *mcp.CallToolRequest, 
 	items := make([]assetdiff.Item, 0, len(files))
 	for _, f := range files {
 		if f != nil {
-			items = append(items, changeItem(f.Path, f.OldPath, f.Status, base.Revision, head.Revision))
+			items = append(items, assetscan.ChangeItem(f.Path, f.OldPath, f.Status, base.Revision, head.Revision))
 		}
 	}
 	out, err := s.summarize(ctx, uc, root, items, in.MaxFiles)
@@ -537,7 +499,7 @@ func (s *server) godotMerge(ctx context.Context, _ *mcp.CallToolRequest, in godo
 			refs[i] = &assetdiff.Ref{Source: string(usecase.BlobRevision), Revision: rev, Path: p}
 		}
 	}
-	m, err := assetdiff.MergeGodot(ctx, blobLoader(uc.Diff, root), refs[0], refs[1], refs[2])
+	m, err := assetdiff.MergeGodot(ctx, assetscan.BlobLoader(uc.Diff, root), refs[0], refs[1], refs[2])
 	var mergeErr *assetdiff.MergeError
 	switch {
 	case errors.Is(err, assetdiff.ErrTooLarge):

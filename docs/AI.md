@@ -42,6 +42,7 @@ Read-only tools (always available):
 | `nipa_mr_timeline` | activity timeline |
 | `nipa_asset_diff` | structured comparison of one asset (`path`, `old_path` for renames, `old` default `snapshot`, `new` default `working`, `max_rows`, `max_changes`); `include_images` attaches old/new PNG thumbnails as MCP image content |
 | `nipa_describe_changes` | one asset-aware headline per changed file, same `revisions`/`paths`/`staged`/`merge_base` arguments as `nipa_diff`; `max_files` default 50, at most 200, the rest counted in `omitted` |
+| `nipa_asset_check` | check changed files against the root `.nipaassets.yml` budgets (see [Asset budgets](#asset-budgets)), same `revisions`/`paths`/`staged`/`merge_base`/`no_cache` arguments as `nipa_describe_changes`; returns `{config, old, new, violations, checked, skipped}` |
 | `nipa_mr_describe_changes` | the same headlines for a merge request (merge base vs source head; `base.kind` says when the target head or branch stood in for an unknown merge base) |
 | `nipa_meta_warnings` | Unity `.meta` / Godot `.import`/`.uid` sidecar lint of pending changes (`engine` `unity`, `godot`, or detected; offline) |
 
@@ -105,6 +106,7 @@ Read commands accept `--json`, and `NIPA_OUTPUT=json` enables it globally:
 - `nipa tag --json` (listing; `-c`/`-d` reject `--json`)
 - `nipa lock list --json`
 - `nipa mr list --json`
+- `nipa assets check --json`
 
 Payloads are emitted on stdout as one JSON object with a trailing newline.
 Errors are emitted on stderr as a single envelope:
@@ -127,7 +129,11 @@ saves pending state.
 
 - `nipa push --dry-run [--json]` is fully offline. `upload_objects` /
   `upload_bytes` count chunks missing from the local object cache, so they are
-  an upper bound of the actual transfer.
+  an upper bound of the actual transfer. With a root `.nipaassets.yml`, the
+  staged files are checked against it: JSON gains `asset_violations`
+  (omitted when empty, same objects as `nipa assets check`) and the text
+  output ends with a warning block. The push itself does not enforce budgets
+  yet.
 - `nipa merge <branch> --dry-run [--json]` contacts the server to resolve the
   merge base and both trees. It reports `up_to_date`, `fast_forward` and the
   would-land changes; conflicts are reported without failing the command.
@@ -139,6 +145,64 @@ saves pending state.
 Merge and revert dry runs may download missing content and cache intermediate
 merge results in the local object cache to detect text conflicts; the working
 copy, staging state and metadata are untouched.
+
+## Asset budgets
+
+`.nipaassets.yml` at the repository root is a versioned, team-wide budget
+file (like `.nipaignore`; sparse manifests always include it). Example:
+
+```yaml
+version: 1            # optional; only 1 is accepted
+rules:
+  - name: textures
+    paths: ["Assets/Textures/**", "*.png"]
+    max_texture_size: 2048   # longest side in pixels
+    power_of_two: true       # width and height
+    max_bytes: 8MiB
+  - name: ui
+    paths: ["Assets/Textures/UI/**"]
+    power_of_two: false      # overrides the textures rule for UI art
+  - name: characters
+    paths: ["Assets/Characters/**/*.glb", "**/*.gltf"]
+    max_triangles: 50000
+    max_vertices: 80000
+  - name: audio
+    paths: ["Assets/Audio/**"]
+    max_audio_seconds: 120
+    max_peak_dbfs: -1.0
+  - name: naming
+    paths: ["Assets/**"]
+    name_pattern: "^[A-Za-z0-9_\\-.]+$"   # Go regexp on the file name
+```
+
+- `paths` use the `.nipaignore` pattern syntax (`*`, `?`, `**`, `!`
+  negation, leading/embedded `/` anchors to the root, a bare name matches at
+  any depth, a matching directory covers everything below it).
+- Every rule whose `paths` match a file applies, in file order; a later rule
+  overrides only the keys it sets, and a violation names the rule that set
+  the limit. `name` defaults to `rules[<index>]`.
+- `max_bytes` takes an integer or a size with `B`, `KB`/`MB`/`GB` (decimal)
+  or `K`/`M`/`G`/`KiB`/`MiB`/`GiB` (binary). Limits must be positive (except
+  `max_peak_dbfs`), `name_pattern` must compile, unknown keys are errors with
+  the line number.
+- Only the new side of each change is checked; removed files are skipped.
+  Image, model and audio limits decode the file with `internal/assetdiff`
+  (images: PNG, JPEG, TGA, DDS, KTX2, EXR, HDR, PSD...; models: glTF/GLB/OBJ;
+  audio: WAV/AIFF/FLAC/Vorbis/MP3). A covered file that cannot be decoded
+  (unsupported such as FBX, too large, corrupt) is listed in `skipped` and
+  only checked for `max_bytes` and `name_pattern`.
+- The budget is always read from the working copy, also when two revisions
+  are compared.
+
+`nipa assets check [<rev1> [<rev2>]] [--staged] [--no-cache] [--json] [-- <path>...]`
+selects the compared sides like `nipa diff` (no revision: working tree vs
+the last synced snapshot, offline; `<a>..<b>` and `<a>...<b>` work). Text
+output prints `path: limit: message (rule name)` per violation, skipped files
+and a summary; `--json` prints
+`{"config":true,"violations":[{"path","rule","limit","actual","max","message"}],"checked":N,"skipped":[{"path","reason"}]}`.
+Exit code `2` when a budget is exceeded, `0` otherwise. Without the file it
+prints `no .nipaassets.yml` (JSON `{"config":false,"violations":[],"checked":0}`)
+and exits `0`. The MCP tool `nipa_asset_check` returns the same report.
 
 ## REST API
 
@@ -209,9 +273,9 @@ never in the push request path.
   extractors (png/exif, fbx, gltf, blend, psd, ...) run asynchronously at
   confirm time into a sidecar table. This is the backbone powering linting
   budgets (2), summaries (3) and search (4).
-- **Asset budget file** (`.nipaassets.yml` at the repo root, versioned like
-  `.nipaignore`): polycount, texture resolution and naming rules per path.
-  The linter enforces them deterministically; AI only explains failures.
+- **Asset budget file** (shipped client-side, see [Asset budgets](#asset-budgets)):
+  `nipa assets check`, `nipa_asset_check` and the push dry run. A webhook
+  worker can run the same check as a status check; AI only explains failures.
 - **Reference webhook worker**: a small first-party example (`nipa-bot`)
   demonstrating sections 2 and 3 end to end, kept out of the server binaries.
 - **Server-side MCP** (streamable HTTP on `nipad`): optional later phase so

@@ -94,6 +94,7 @@ and flag.
 | `nipa revert <commit>`      | Create new commits that undo a commit or a range (`<from>..<to>`, up to 16 commits) without rewriting history. `--mainline 1\|2`, `--no-commit`, `--continue`/`--skip`/`--abort` and `--dry-run` are supported. |
 | `nipa log`                  | Show the commit history, scrollable in a terminal. `-n` limits, `--oneline` prints one line per commit. |
 | `nipa diff [<rev1> [<rev2>]]` | Show changes as a unified patch: working tree vs the last synced snapshot (offline), a revision vs the working tree, or two revisions. Revisions are branch names, tag names, base36 commit IDs or `HEAD`/`@`; `<a>..<b>` and `<a>...<b>` (merge base) are supported. Renames are detected; `--staged`, `--stat`, `--name-only`, `--name-status`, `-w`/`-b`, `--ext-diff` and `-- <path>` are supported. |
+| `nipa assets check [<rev1> [<rev2>]]` | Check changed files against the root `.nipaassets.yml` asset budgets (texture size, power of two, triangles, vertices, audio length/peak, file size, naming). `--staged`, `--json` and `-- <path>` are supported; exits 2 on violations. See [`docs/AI.md`](docs/AI.md#asset-budgets). |
 | `nipa lock <path> [--branch]` | Lock a binary file or a directory prefix. `nipa lock list` shows active locks. |
 | `nipa unlock <path> [--branch]` | Release a lock you hold.                                                  |
 | `nipa mr ...`               | Merge requests: `create [--draft]`, `list`, `view`, `update`, `ready`, `assign`, `review --approve\|--request-changes`, `comment`, `reply`, `resolve`, `request-review`, `timeline`, `diff`, `check`/`checks`, `merge --strategy <ff\|merge\|squash\|rebase> [--delete-source]`, `close`, `reopen`. |
@@ -194,7 +195,7 @@ Nipa can be driven by scripts and AI agents as well as by people:
   requests with their diff, threads, commits and timeline) and asset-aware
   tools (structured asset diffs with image thumbnails, per-file change
   summaries for the working copy, revisions or a merge request, Unity/Godot
-  sidecar warnings) are always registered; write tools are grouped by capability (`stage`, `push`, `sync`,
+  sidecar warnings, `.nipaassets.yml` budget checks) are always registered; write tools are grouped by capability (`stage`, `push`, `sync`,
   `branch`, `lock`, `mr`, `merge`) and enabled with `--allow` (or all with
   `--allow-write`). Diffs are capped by `max_bytes`, and text written through
   MCP carries a `Nipa-Agent: <client>/<version>` trailer (`--no-agent-trailer`
@@ -208,8 +209,12 @@ Nipa can be driven by scripts and AI agents as well as by people:
   exit codes are stable: `0` success, `1` generic failure, `2`
   locked/precondition, `127` not found.
 - **Dry runs** — `nipa push|merge|revert --dry-run [--json]` report the
-  file-level changes, conflicts and (for push) the upload estimate without
-  staging, committing, pushing or rewriting the working copy.
+  file-level changes, conflicts and (for push) the upload estimate and
+  `asset_violations` without staging, committing, pushing or rewriting the
+  working copy.
+- **Asset budgets** — a versioned `.nipaassets.yml` sets per-path texture,
+  mesh, audio, size and naming limits; `nipa assets check [--json]` (exit 2 on
+  violations) and the `nipa_asset_check` MCP tool report breaches.
 - **REST API** — the server publishes its OpenAPI document at
   `/docs/api.json` (Swagger UI at `/docs/`), covering browsing, merge
   requests, reviews, file locks, permissions and groups.

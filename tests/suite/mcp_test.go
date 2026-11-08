@@ -36,6 +36,7 @@ var _ = Describe("nipa mcp", func() {
 			"nipa_mr_timeline",
 			"nipa_asset_diff",
 			"nipa_describe_changes",
+			"nipa_asset_check",
 			"nipa_mr_describe_changes",
 			"nipa_meta_warnings",
 		))
@@ -66,6 +67,7 @@ var _ = Describe("nipa mcp", func() {
 			"nipa_mr_timeline",
 			"nipa_asset_diff",
 			"nipa_describe_changes",
+			"nipa_asset_check",
 			"nipa_mr_describe_changes",
 			"nipa_meta_warnings",
 			"nipa_add",

@@ -1,6 +1,9 @@
 package output
 
-import clientDomain "github.com/nipalab/nipa/internal/client/domain"
+import (
+	"github.com/nipalab/nipa/internal/assetbudget"
+	clientDomain "github.com/nipalab/nipa/internal/client/domain"
+)
 
 type Plan struct {
 	Kind          string       `json:"kind"`
@@ -12,6 +15,8 @@ type Plan struct {
 	Changes       []PlanChange `json:"changes"`
 	UploadObjects int          `json:"upload_objects,omitempty"`
 	UploadBytes   int64        `json:"upload_bytes,omitempty"`
+
+	AssetViolations []assetbudget.Violation `json:"asset_violations,omitempty"`
 }
 
 type PlanChange struct {

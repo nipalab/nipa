@@ -120,7 +120,7 @@ func (b *Branch) collectVisibleChunks(ctx context.Context, node *domain.TreeNode
 		if !filter.Allow(filePath) {
 			continue
 		}
-		if !sparse.Covers(filePath) && !keepRootIgnoreFile(path, file.Name, sparse) {
+		if !sparse.Covers(filePath) && !keepRootTeamFile(path, file.Name, sparse) {
 			continue
 		}
 		for _, chunk := range file.Chunks {
