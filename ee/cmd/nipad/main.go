@@ -206,6 +206,7 @@ func main() {
 		Webhook:            webhookRepository,
 		Email:              emailRepository,
 		Audit:              postgres.NewAuditRepository(dbConn),
+		ServiceToken:       postgres.NewServiceTokenRepository(dbConn),
 	}, deps)
 	reg := serverapp.NewRegistry(uc)
 	if storageLedger != nil {

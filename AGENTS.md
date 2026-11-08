@@ -271,6 +271,24 @@ routes (`internal/http/api/tag.go`, handlers/DTOs in
 web API client (`web/src/api/endpoints.ts`) already exposes
 `listTags`/`createTag`/`deleteTag`/`getTag`; the SPA Tags page is `/:org/:project/tags`.
 
+Flow for project service tokens and commit ancestry (payloads and scopes in
+`docs/WEBHOOKS.md`): `project_service_tokens` rows (name, SHA-256 `token_hash`,
+`hint`, comma-joined `scopes` `read`/`checks:write`/`webhooks:write`,
+`created_by`, optional `expires_at`, `last_used_at`, `revoked_at`) are managed
+by `usecase.ServiceToken` (project admin, audited as
+`service_token.created`/`revoked`) over `GET/POST
+/orgs/{org}/projects/{project}/service-tokens` and `DELETE .../{id}`; the
+plaintext `nipa_st_...` is returned once. The REST `AuthFilter` sends
+`Bearer nipa_st_...` to `ServiceToken.Authenticate` only for the
+`serviceTokenRoutes` allowlist (method + selected route path → scope; every
+other route is 403), which checks the token is active, the `{org}/{project}`
+path names its project and the scope matches, touches `last_used_at` at most
+once a minute and returns the creator's claims, so the usual usecase permission
+checks still apply. `GET .../commits/{commit}/contains?ref=` (`Tag.Contains`)
+resolves `ref` as tag, branch, base36 commit id or hash and walks the ref's
+parents (skipping commits with a smaller snowflake id than the target) to
+answer `{contains}`; read permission required. Service tokens are REST only.
+
 Flow for SSH key login (design in `docs/SSH.md`: `nipa login`, the implicit
 login behind every command, the profile page card): an SSH key is an alternate
 credential that bootstraps the normal JWT session over the same gRPC transport;

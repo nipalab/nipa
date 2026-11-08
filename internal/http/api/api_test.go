@@ -47,9 +47,12 @@ type testRegistry struct {
 	check         *usecase.MergeRequestCheck
 	fileLock      *usecase.FileLock
 	webhook       *usecase.Webhook
+	serviceToken  *usecase.ServiceToken
 	emailDelivery *usecase.EmailDelivery
 	audit         *usecase.Audit
 }
+
+func (r *testRegistry) ServiceToken() *usecase.ServiceToken { return r.serviceToken }
 
 func (r *testRegistry) Auth() *usecase.Auth             { return r.auth }
 func (r *testRegistry) User() *usecase.User             { return r.user }
@@ -166,22 +169,24 @@ func TestAPIRoutes(t *testing.T) {
 	pusher = pusher.WithHooks(hookEmitter)
 	tagUc := usecase.NewTag(permissionUc, sqlite.NewTagRepository(dbConn), branchRepo, node).WithHooks(hookEmitter)
 	reg := &testRegistry{
-		auth:          usecase.NewAuth("test-secret", stubPasswordHasher{}, userRepo, sqlite.NewAuthRepository(dbConn)),
-		user:          usecase.NewUser(node, userRepo, stubPasswordHasher{}).WithAudit(auditUc),
-		sshKey:        usecase.NewSSHKey(node, sqlite.NewSSHKeyRepository(dbConn)),
-		common:        usecase.NewCommon(sqlite.NewOrgRepository(dbConn), sqlite.NewProjectRepository(dbConn)),
-		permission:    permissionUc,
-		org:           orgUc,
-		group:         usecase.NewGroup(groupRepo, node, permissionUc, orgUc).WithAudit(auditUc),
-		project:       projectUc,
-		branch:        branchUc,
-		tag:           tagUc,
-		chunk:         chunkUc,
-		mergeRequest:  mergeRequestUc,
-		review:        reviewUc,
-		check:         checkUc,
-		fileLock:      fileLockUc,
-		webhook:       usecase.NewWebhook(webhookRepo, permissionUc, userRepo, webhookDispatcher, node).WithAudit(auditUc),
+		auth:         usecase.NewAuth("test-secret", stubPasswordHasher{}, userRepo, sqlite.NewAuthRepository(dbConn)),
+		user:         usecase.NewUser(node, userRepo, stubPasswordHasher{}).WithAudit(auditUc),
+		sshKey:       usecase.NewSSHKey(node, sqlite.NewSSHKeyRepository(dbConn)),
+		common:       usecase.NewCommon(sqlite.NewOrgRepository(dbConn), sqlite.NewProjectRepository(dbConn)),
+		permission:   permissionUc,
+		org:          orgUc,
+		group:        usecase.NewGroup(groupRepo, node, permissionUc, orgUc).WithAudit(auditUc),
+		project:      projectUc,
+		branch:       branchUc,
+		tag:          tagUc,
+		chunk:        chunkUc,
+		mergeRequest: mergeRequestUc,
+		review:       reviewUc,
+		check:        checkUc,
+		fileLock:     fileLockUc,
+		webhook:      usecase.NewWebhook(webhookRepo, permissionUc, userRepo, webhookDispatcher, node).WithAudit(auditUc),
+		serviceToken: usecase.NewServiceToken(sqlite.NewServiceTokenRepository(dbConn), permissionUc, userRepo,
+			usecase.NewCommon(sqlite.NewOrgRepository(dbConn), sqlite.NewProjectRepository(dbConn)), node).WithAudit(auditUc),
 		emailDelivery: usecase.NewEmailDelivery(sqlite.NewEmailRepository(dbConn), permissionUc),
 		audit:         auditUc,
 	}
@@ -1835,6 +1840,70 @@ func TestAPIRoutes(t *testing.T) {
 		}
 		ranged := decodeBody[model.AuditListResponse](t, doGet(t, server.URL+"/api/v1/admin/audit?since=2000-01-01T00:00:00Z&until=2999-01-01T00:00:00Z&actor="+superID.Base36(), superLogin.AccessToken))
 		require.NotEmpty(t, ranged.Entries)
+	})
+
+	t.Run("service tokens and commit ancestry", func(t *testing.T) {
+		aliceLogin, _ := login(t)
+		base := server.URL + "/api/v1/orgs/default/projects/default"
+
+		createBranch := doMethod(t, http.MethodPost, base+"/branches", `{"name":"st-line","from":"main"}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, createBranch.StatusCode)
+		branch := decodeBody[model.BranchResponse](t, createBranch)
+		first := seedPushTo(t, "st-line", branch.CommitID, map[string]string{"st/one.txt": "one"})
+		second := seedPushTo(t, "st-line", first.CommitID.Base36(), map[string]string{"st/two.txt": "two"})
+
+		created := decodeBody[model.ServiceTokenResponse](t, doMethod(t, http.MethodPost, base+"/service-tokens",
+			`{"name":"BugBase","scopes":["read","checks:write"]}`, aliceLogin.AccessToken))
+		require.True(t, strings.HasPrefix(created.Token, domain.ServiceTokenPrefix))
+		require.Equal(t, []string{"read", "checks:write"}, created.Scopes)
+		token := created.Token
+
+		listed := decodeBody[[]model.ServiceTokenResponse](t, doGet(t, base+"/service-tokens", aliceLogin.AccessToken))
+		require.NotEmpty(t, listed)
+		require.Empty(t, listed[0].Token, "the token is shown once")
+		require.Equal(t, created.Hint, listed[0].Hint)
+
+		bad := doMethod(t, http.MethodPost, base+"/service-tokens", `{"name":"x","scopes":["root"]}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusBadRequest, bad.StatusCode)
+		_ = bad.Body.Close()
+
+		status := func(method, url, body, bearer string) int {
+			resp := doMethod(t, method, url, body, bearer)
+			_ = resp.Body.Close()
+			return resp.StatusCode
+		}
+		require.Equal(t, http.StatusOK, status(http.MethodGet, base+"/branches", "", token))
+		require.Equal(t, http.StatusOK, status(http.MethodGet, base+"/tags", "", token))
+		require.Equal(t, http.StatusForbidden, status(http.MethodGet, base+"/webhooks", "", token), "missing webhooks:write")
+		require.Equal(t, http.StatusForbidden, status(http.MethodGet, server.URL+"/api/v1/me", "", token), "not a service token route")
+		require.Equal(t, http.StatusForbidden, status(http.MethodGet, base+"/service-tokens", "", token), "tokens cannot manage tokens")
+		require.Equal(t, http.StatusForbidden, status(http.MethodGet, server.URL+"/api/v1/orgs/default/projects/missing/branches", "", token))
+		require.Equal(t, http.StatusUnauthorized, status(http.MethodGet, base+"/branches", "", domain.ServiceTokenPrefix+"bogus"))
+
+		contains := func(commit, ref string) model.CommitContainsResponse {
+			resp := doGet(t, base+"/commits/"+commit+"/contains?ref="+ref, token)
+			require.Equal(t, http.StatusOK, resp.StatusCode)
+			return decodeBody[model.CommitContainsResponse](t, resp)
+		}
+		got := contains(first.CommitID.Base36(), "st-line")
+		require.True(t, got.Contains)
+		require.Equal(t, second.CommitID.Base36(), got.RefCommit)
+		require.False(t, contains(second.CommitID.Base36(), first.CommitID.Base36()).Contains)
+		require.True(t, contains(first.CommitID.Base36(), second.CommitHash.String()).Contains)
+
+		tag := doMethod(t, http.MethodPost, base+"/tags", `{"name":"st-v1","from":"st-line"}`, aliceLogin.AccessToken)
+		require.Equal(t, http.StatusOK, tag.StatusCode)
+		_ = tag.Body.Close()
+		require.True(t, contains(first.CommitID.Base36(), "st-v1").Contains)
+		require.Equal(t, http.StatusNotFound, status(http.MethodGet, base+"/commits/"+first.CommitID.Base36()+"/contains?ref=nope", "", token))
+		require.Equal(t, http.StatusBadRequest, status(http.MethodGet, base+"/commits/!!/contains?ref=main", "", token))
+
+		revoked := decodeBody[model.ServiceTokenResponse](t, doMethod(t, http.MethodDelete, base+"/service-tokens/"+created.ID, "", aliceLogin.AccessToken))
+		require.NotNil(t, revoked.RevokedAt)
+		require.Equal(t, http.StatusUnauthorized, status(http.MethodGet, base+"/branches", "", token))
+		require.Equal(t, http.StatusNotFound, status(http.MethodDelete, base+"/service-tokens/"+created.ID, "", aliceLogin.AccessToken))
+		require.Equal(t, http.StatusBadRequest, status(http.MethodDelete, base+"/service-tokens/!!", "", aliceLogin.AccessToken))
+		require.Equal(t, http.StatusNotFound, status(http.MethodGet, server.URL+"/api/v1/orgs/default/projects/missing/service-tokens", "", aliceLogin.AccessToken))
 	})
 
 	t.Run("openapi doc is served", func(t *testing.T) {

@@ -20,6 +20,7 @@ type usecaseContainer interface {
 	MergeRequestCheck() *usecase.MergeRequestCheck
 	FileLock() *usecase.FileLock
 	Webhook() *usecase.Webhook
+	ServiceToken() *usecase.ServiceToken
 	EmailDelivery() *usecase.EmailDelivery
 	Audit() *usecase.Audit
 }

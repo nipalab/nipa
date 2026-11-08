@@ -35,6 +35,9 @@ const (
 	AuditWebhookDeleted       = "webhook.deleted"
 	AuditWebhookSecretRotated = "webhook.secret_rotated"
 
+	AuditServiceTokenCreated = "service_token.created"
+	AuditServiceTokenRevoked = "service_token.revoked"
+
 	AuditBillingQuotaOverrideSet     = "billing.quota_override.set"
 	AuditBillingQuotaOverrideCleared = "billing.quota_override.cleared"
 	AuditBillingOwnerTransferred     = "billing.owner.transferred"
@@ -57,6 +60,7 @@ const (
 	AuditTargetLock           = "lock"
 	AuditTargetProject        = "project"
 	AuditTargetWebhook        = "webhook"
+	AuditTargetServiceToken   = "service_token"
 	AuditTargetSubscription   = "subscription"
 	AuditTargetBillingEvent   = "billing_event"
 )

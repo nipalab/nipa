@@ -130,9 +130,12 @@ type handlerRegistry struct {
 	mergeCheck    *usecase.MergeRequestCheck
 	fileLock      *usecase.FileLock
 	webhook       *usecase.Webhook
+	serviceToken  *usecase.ServiceToken
 	emailDelivery *usecase.EmailDelivery
 	audit         *usecase.Audit
 }
+
+func (r *handlerRegistry) ServiceToken() *usecase.ServiceToken { return r.serviceToken }
 
 func (r *handlerRegistry) Auth() *usecase.Auth             { return r.auth }
 func (r *handlerRegistry) User() *usecase.User             { return r.user }

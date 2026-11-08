@@ -83,6 +83,7 @@ function stubSettingsRoutes(initialProtected = false, defaults: unknown[] = [], 
       if (path.endsWith('/branches')) {
         return jsonResponse(BRANCHES.map((branch) => ({ ...branch, is_protected: isProtected })))
       }
+      if (path.endsWith('/service-tokens')) return jsonResponse([])
       if (path.endsWith('/emails/deliveries')) {
         return jsonResponse({ deliveries, next_cursor: '' })
       }
@@ -197,7 +198,7 @@ describe('ProjectSettingsPage github-style navigation', () => {
     const nav = settingsNav()
     expect(nav).not.toBeNull()
     const labels = Array.from(nav?.querySelectorAll('a') ?? []).map((link) => link.textContent)
-    expect(labels).toEqual(['General', 'Access', 'Branches', 'Webhooks', 'Email deliveries'])
+    expect(labels).toEqual(['General', 'Access', 'Branches', 'Webhooks', 'Service tokens', 'Email deliveries'])
     expect(nav?.querySelector('a[aria-current="page"]')?.textContent).toBe('Access')
     expect(document.body.textContent).not.toContain('Protected branches')
 
@@ -222,6 +223,16 @@ describe('ProjectSettingsPage github-style navigation', () => {
 
     expect(settingsNav()?.querySelector('a[aria-current="page"]')?.textContent).toBe('Webhooks')
     expect(document.body.textContent).not.toContain('Protected branches')
+
+    act(() => root.unmount())
+  })
+
+  it('shows the service tokens section for ?tab=tokens', async () => {
+    const root = await renderSettings('/sticker/backend/settings?tab=tokens')
+    await waitForText('No service tokens')
+
+    expect(settingsNav()?.querySelector('a[aria-current="page"]')?.textContent).toBe('Service tokens')
+    expect(document.body.textContent).not.toContain('Create webhook')
 
     act(() => root.unmount())
   })

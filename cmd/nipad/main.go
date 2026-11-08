@@ -171,6 +171,7 @@ func main() {
 		Webhook:            webhookRepository,
 		Email:              emailRepository,
 		Audit:              sqlite.NewAuditRepository(dbConn),
+		ServiceToken:       sqlite.NewServiceTokenRepository(dbConn),
 	}, serverapp.UsecaseDeps{
 		Config:            cfg,
 		DB:                dbConn,

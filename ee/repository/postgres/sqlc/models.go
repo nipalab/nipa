@@ -358,6 +358,20 @@ type ProjectPathsPermission struct {
 	CreatedAt  sql.NullTime `json:"created_at"`
 }
 
+type ProjectServiceToken struct {
+	ID         int64        `json:"id"`
+	ProjectID  int64        `json:"project_id"`
+	Name       string       `json:"name"`
+	TokenHash  string       `json:"token_hash"`
+	Hint       string       `json:"hint"`
+	Scopes     string       `json:"scopes"`
+	CreatedBy  int64        `json:"created_by"`
+	ExpiresAt  sql.NullTime `json:"expires_at"`
+	LastUsedAt sql.NullTime `json:"last_used_at"`
+	RevokedAt  sql.NullTime `json:"revoked_at"`
+	CreatedAt  time.Time    `json:"created_at"`
+}
+
 type ProjectUsage struct {
 	ProjectID int64 `json:"project_id"`
 	UsedBytes int64 `json:"used_bytes"`

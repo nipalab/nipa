@@ -21,6 +21,7 @@ import { ProjectGeneralSettings } from '../components/repo/ProjectGeneralSetting
 import { RepoPageShell } from '../components/repo/RepoPageShell'
 import { useRepoChrome } from '../components/repo/useRepoChrome'
 import { WebhookSettings } from '../components/repo/WebhookSettings'
+import { ServiceTokenSettings } from '../components/repo/ServiceTokenSettings'
 import { SettingsCard, SettingsRow } from '../components/SettingsCard'
 import { SettingsLayout } from '../components/SettingsLayout'
 import { UserGroupPicker } from '../components/UserGroupPicker'
@@ -33,6 +34,7 @@ const SETTINGS_TABS = [
   { key: 'access', label: 'Access' },
   { key: 'branches', label: 'Branches' },
   { key: 'webhooks', label: 'Webhooks' },
+  { key: 'tokens', label: 'Service tokens' },
   { key: 'email', label: 'Email deliveries' },
 ] as const
 
@@ -198,6 +200,7 @@ export default function ProjectSettingsPage() {
           )}
 
           {tab === 'webhooks' && <WebhookSettings org={org} project={project} />}
+          {tab === 'tokens' && <ServiceTokenSettings org={org} project={project} />}
           {tab === 'email' && <EmailSettings org={org} project={project} />}
         </Stack>
       </SettingsLayout>

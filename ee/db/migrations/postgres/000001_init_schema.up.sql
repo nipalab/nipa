@@ -474,6 +474,22 @@ CREATE INDEX idx_audit_log_project ON audit_log (project_id, id DESC);
 
 CREATE INDEX idx_audit_log_action ON audit_log (action, id DESC);
 
+CREATE TABLE project_service_tokens (
+    id           BIGINT PRIMARY KEY,
+    project_id   BIGINT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    name         TEXT NOT NULL,
+    token_hash   TEXT NOT NULL UNIQUE,
+    hint         TEXT NOT NULL DEFAULT '',
+    scopes       TEXT NOT NULL,
+    created_by   BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    expires_at   TIMESTAMPTZ,
+    last_used_at TIMESTAMPTZ,
+    revoked_at   TIMESTAMPTZ,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_project_service_tokens_project ON project_service_tokens (project_id, id);
+
 -- Snowflake node leases: when SNOWFLAKE_NODE_ID is not set, each server
 -- instance claims a free (or expired) node id here and renews it until
 -- shutdown, so every instance of a multi-pod deployment generates ids with a
