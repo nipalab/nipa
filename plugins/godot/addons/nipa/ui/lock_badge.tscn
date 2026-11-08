@@ -1,0 +1,16 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://addons/nipa/ui/lock_badge.gd" id="1"]
+
+[node name="NipaLockBadge" type="HBoxContainer"]
+visible = false
+script = ExtResource("1")
+
+[node name="StateLabel" type="Label" parent="."]
+layout_mode = 2
+text = "Not locked"
+
+[node name="ActionButton" type="Button" parent="."]
+layout_mode = 2
+flat = true
+text = "Lock"

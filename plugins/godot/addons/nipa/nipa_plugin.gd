@@ -2,12 +2,36 @@
 extends EditorPlugin
 
 const DOCK_SCENE := preload("res://addons/nipa/ui/dock.tscn")
+const BOTTOM_PANEL_SCENE := preload("res://addons/nipa/ui/bottom_panel.tscn")
+const BADGE_SCENE := preload("res://addons/nipa/ui/lock_badge.tscn")
+const ContextMenu := preload("res://addons/nipa/context_menu.gd")
+const InspectorPlugin := preload("res://addons/nipa/inspector_plugin.gd")
 const RECONNECT_ITEM := "Nipa: Reconnect"
+const QUIET_OPS := ["lock", "unlock"]
 
 var dock: Control
+var bottom_panel: Control
 var _op_kinds := {}
 var _scene_hashes := {}
 var _connected_session: Object
+var _context_menus: Array[EditorContextMenuPlugin] = []
+var _inspector_plugin: EditorInspectorPlugin
+var _badges: Array = []
+var _lock_timer: Timer
+var _lock_requested := {}
+var _warned := {}
+
+
+# What an edit of a file does: "lock" it, "warn" that someone else holds it, or nothing.
+static func edit_action(info: Dictionary, auto_lock: bool) -> String:
+	if not info.get("relevant", false):
+		return ""
+	match info.get("state", "free"):
+		"theirs":
+			return "warn"
+		"free":
+			return "lock" if auto_lock else ""
+	return ""
 
 
 func _enter_tree() -> void:
@@ -15,30 +39,83 @@ func _enter_tree() -> void:
 	dock = DOCK_SCENE.instantiate()
 	add_control_to_dock(DOCK_SLOT_RIGHT_UL, dock)
 	dock.reconnect_requested.connect(reconnect)
+	bottom_panel = BOTTOM_PANEL_SCENE.instantiate()
+	add_control_to_bottom_panel(bottom_panel, "Nipa")
 	add_tool_menu_item(RECONNECT_ITEM, reconnect)
+	for slot in [EditorContextMenuPlugin.CONTEXT_SLOT_FILESYSTEM, EditorContextMenuPlugin.CONTEXT_SLOT_SCENE_TABS]:
+		var menu := ContextMenu.new()
+		add_context_menu_plugin(slot, menu)
+		_context_menus.append(menu)
+	_inspector_plugin = InspectorPlugin.new()
+	add_inspector_plugin(_inspector_plugin)
+	for container in [CONTAINER_CANVAS_EDITOR_MENU, CONTAINER_SPATIAL_EDITOR_MENU]:
+		var badge: Control = BADGE_SCENE.instantiate()
+		add_control_to_container(container, badge)
+		_badges.append([container, badge])
+	_lock_timer = Timer.new()
+	_lock_timer.wait_time = NipaSettings.poll_interval()
+	_lock_timer.timeout.connect(_on_lock_timer)
+	add_child(_lock_timer)
+	_lock_timer.start()
+
 	var session := _session()
 	if session:
 		_connected_session = session
 		session.op_queued.connect(_on_op_queued)
 		session.op_finished.connect(_on_op_finished)
-	scene_saved.connect(_remember_scene)
+		session.locks_changed.connect(_on_locks_changed)
+	scene_saved.connect(_on_scene_saved)
 	scene_changed.connect(_on_scene_changed)
+	resource_saved.connect(_on_resource_saved)
+	get_undo_redo().history_changed.connect(_on_history_changed)
+	EditorInterface.get_inspector().property_edited.connect(_on_property_edited)
+	ProjectSettings.settings_changed.connect(_apply_lock_settings)
 	_remember_open_scenes()
 	_connect_open_project()
+	_apply_lock_settings()
+	_refresh_badges()
 
 
 func _exit_tree() -> void:
-	if scene_saved.is_connected(_remember_scene):
-		scene_saved.disconnect(_remember_scene)
-	if scene_changed.is_connected(_on_scene_changed):
-		scene_changed.disconnect(_on_scene_changed)
+	for pair in [
+		[scene_saved, _on_scene_saved],
+		[scene_changed, _on_scene_changed],
+		[resource_saved, _on_resource_saved],
+		[get_undo_redo().history_changed, _on_history_changed],
+		[EditorInterface.get_inspector().property_edited, _on_property_edited],
+		[ProjectSettings.settings_changed, _apply_lock_settings],
+	]:
+		if pair[0].is_connected(pair[1]):
+			pair[0].disconnect(pair[1])
 	if _connected_session:
-		if _connected_session.op_queued.is_connected(_on_op_queued):
-			_connected_session.op_queued.disconnect(_on_op_queued)
-		if _connected_session.op_finished.is_connected(_on_op_finished):
-			_connected_session.op_finished.disconnect(_on_op_finished)
+		for pair in [
+			[_connected_session.op_queued, _on_op_queued],
+			[_connected_session.op_finished, _on_op_finished],
+			[_connected_session.locks_changed, _on_locks_changed],
+		]:
+			if pair[0].is_connected(pair[1]):
+				pair[0].disconnect(pair[1])
 		_connected_session = null
+	if _lock_timer:
+		_lock_timer.stop()
+		remove_child(_lock_timer)
+		_lock_timer.queue_free()
+		_lock_timer = null
+	for pair in _badges:
+		remove_control_from_container(pair[0], pair[1])
+		pair[1].queue_free()
+	_badges.clear()
+	if _inspector_plugin:
+		remove_inspector_plugin(_inspector_plugin)
+		_inspector_plugin = null
+	for menu in _context_menus:
+		remove_context_menu_plugin(menu)
+	_context_menus.clear()
 	remove_tool_menu_item(RECONNECT_ITEM)
+	if bottom_panel:
+		remove_control_from_bottom_panel(bottom_panel)
+		bottom_panel.queue_free()
+		bottom_panel = null
 	if dock:
 		dock.reconnect_requested.disconnect(reconnect)
 		remove_control_from_docks(dock)
@@ -46,6 +123,15 @@ func _exit_tree() -> void:
 		dock = null
 	_op_kinds.clear()
 	_scene_hashes.clear()
+	_lock_requested.clear()
+	_warned.clear()
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_APPLICATION_FOCUS_IN:
+		var session := _session()
+		if session and session.is_open():
+			session.request_lock_refresh()
 
 
 func reconnect() -> void:
@@ -64,6 +150,14 @@ func _connect_open_project() -> void:
 	session.open_project(root.trim_suffix("/"), NipaSettings.binary_path(), NipaSettings.poll_interval())
 
 
+func _apply_lock_settings() -> void:
+	var session := _session()
+	if session:
+		session.configure_locks(NipaSettings.lock_extensions(), NipaSettings.strict_read_only())
+	if _lock_timer:
+		_lock_timer.wait_time = NipaSettings.poll_interval()
+
+
 func _session() -> Object:
 	return Engine.get_singleton("Nipa") if Engine.has_singleton("Nipa") else null
 
@@ -75,11 +169,98 @@ func _on_op_queued(id: int, kind: String) -> void:
 func _on_op_finished(id: int, ok: bool, message: String, changed_paths: PackedStringArray) -> void:
 	var kind: String = _op_kinds.get(id, "operation")
 	_op_kinds.erase(id)
-	EditorInterface.get_resource_filesystem().scan()
-	_reload_changed_scenes(changed_paths)
+	if not QUIET_OPS.has(kind):
+		EditorInterface.get_resource_filesystem().scan()
+		_reload_changed_scenes(changed_paths)
 	var severity := EditorToaster.SEVERITY_INFO if ok else EditorToaster.SEVERITY_ERROR
 	var text := "Nipa %s: %s" % [kind, message if not message.is_empty() else ("done" if ok else "failed")]
 	EditorInterface.get_editor_toaster().push_toast(text, severity)
+
+
+func _on_lock_timer() -> void:
+	var session := _session()
+	if session and session.is_open():
+		session.request_lock_refresh()
+
+
+func _on_locks_changed(_paths: PackedStringArray) -> void:
+	_lock_requested.clear()
+	var session := _session()
+	for clone_path in _warned.keys():
+		if session == null or session.get_lock_info(clone_path).get("state", "free") != "theirs":
+			_warned.erase(clone_path)
+	_refresh_badges()
+
+
+func _edited_scene_path() -> String:
+	var root := EditorInterface.get_edited_scene_root()
+	return root.scene_file_path if root else ""
+
+
+func _refresh_badges() -> void:
+	var path := _edited_scene_path()
+	for pair in _badges:
+		pair[1].set_res_path(path)
+
+
+# Fires on commits and on cleared histories (opening a scene), so only a scene
+# with something to undo counts as edited.
+func _on_history_changed() -> void:
+	var root := EditorInterface.get_edited_scene_root()
+	if root == null:
+		return
+	var manager := get_undo_redo()
+	var history := manager.get_history_undo_redo(manager.get_object_history_id(root))
+	if history and history.has_undo():
+		_on_file_edited(root.scene_file_path)
+
+
+func _on_property_edited(_property: String) -> void:
+	var edited := EditorInterface.get_inspector().get_edited_object()
+	var path := InspectorPlugin.file_of(edited) if edited else ""
+	_on_file_edited(path)
+
+
+func _on_file_edited(res_path: String) -> void:
+	var session := _session()
+	if res_path.is_empty() or session == null or not session.is_open():
+		return
+	var clone_path: String = session.to_clone_path(res_path)
+	var info: Dictionary = session.get_lock_info(clone_path)
+	match edit_action(info, NipaSettings.auto_lock()):
+		"lock":
+			if not _lock_requested.has(clone_path):
+				_lock_requested[clone_path] = true
+				session.request_lock(PackedStringArray([clone_path]))
+		"warn":
+			if not _warned.has(clone_path):
+				_warned[clone_path] = true
+				var holder: String = info.get("holder", "")
+				EditorInterface.get_editor_toaster().push_toast(
+					"%s is locked by %s: changes cannot be pushed." % [res_path.get_file(), holder],
+					EditorToaster.SEVERITY_WARNING)
+				if res_path.get_extension() in ["tscn", "scn"] and dock:
+					dock.offer_reload(res_path, holder)
+
+
+func _check_saved(res_path: String) -> void:
+	var session := _session()
+	if res_path.is_empty() or session == null or not session.is_open():
+		return
+	var info: Dictionary = session.get_lock_info(session.to_clone_path(res_path))
+	if edit_action(info, false) == "warn":
+		EditorInterface.get_editor_toaster().push_toast(
+			"Saved %s, but it is locked by %s: the change cannot be pushed." % [res_path.get_file(), info.get("holder", "")],
+			EditorToaster.SEVERITY_ERROR)
+
+
+func _on_scene_saved(path: String) -> void:
+	_remember_scene(path)
+	_check_saved(path)
+
+
+func _on_resource_saved(resource: Resource) -> void:
+	_check_saved(InspectorPlugin.file_of(resource))
 
 
 # The on-disk content of each open scene as the editor last loaded or saved it.
@@ -96,6 +277,7 @@ func _remember_open_scenes() -> void:
 
 func _on_scene_changed(_scene_root: Node) -> void:
 	_remember_open_scenes()
+	_refresh_badges()
 
 
 # Ops report no per-file list, so an open scene counts as changed when its file

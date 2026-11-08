@@ -144,6 +144,12 @@ nipa update                            # locked paths become read-only on disk
 - **Read-only working copy:** paths listed in the `<Update>/<Manifest>` response are chmod'd
   read-only (000444) locally, so even the tools silently refuse to save over a foreign lock
   (`p4 opened` lease behaviour).
+- **Read-only is not a mode change:** a file tracked read-write (or executable) whose write
+  bits were removed still counts as unchanged in `status`, `add`, `diff` and `restore`, and
+  `push` records its tracked mode (`trackedModeFromPerm`/`pushPerm` in
+  `internal/client/usecase`). Engine plugins (the Godot add-on's strict mode) can therefore
+  guard foreign-locked files read-only without the guard showing up as a change or reaching
+  the server. Making a tracked read-only file writable is still a mode change.
 - **Switch while holding locks:** locks are global and server-side; they survive branch
   switches. The worked-copy re-marking follows the new branch's manifest.
 - **Web UI:** `ListLocks` feeds the repository browse page (`Locked by X` badges), reusing

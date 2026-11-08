@@ -23,6 +23,7 @@ namespace nipa::glue {
 namespace {
 
 constexpr std::chrono::milliseconds kDiffBudget{1000};
+constexpr std::chrono::milliseconds kCommitBudget{2000};
 constexpr const char* kBinarySetting = "nipa/binary_path";
 constexpr const char* kPollSetting = "nipa/poll_interval_sec";
 
@@ -203,6 +204,17 @@ void NipaVCSInterface::_commit(const String& p_msg) {
     NipaSession* node = session_node();
     if (node == nullptr || !node->is_open()) {
         popup_error("Nipa is not connected to a clone of this project.");
+        return;
+    }
+    auto check = node->session()->push_check_blocking(kCommitBudget);
+    if (check && !check->theirs.empty()) {
+        popup_error(to_godot("Cannot commit, locked by someone else: " + check->theirs_summary()));
+        return;
+    }
+    if (check && !check->needed.empty()) {
+        PackedStringArray needed;
+        for (const auto& path : check->needed) needed.push_back(to_godot(path));
+        node->emit_signal("commit_locks_needed", p_msg, needed);
         return;
     }
     node->request_push(p_msg);

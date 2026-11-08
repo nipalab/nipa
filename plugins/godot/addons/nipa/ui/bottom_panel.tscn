@@ -1,0 +1,36 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://addons/nipa/ui/bottom_panel.gd" id="1"]
+
+[node name="Nipa" type="TabContainer"]
+custom_minimum_size = Vector2(0, 160)
+current_tab = 0
+script = ExtResource("1")
+
+[node name="Locks" type="VBoxContainer" parent="."]
+layout_mode = 2
+metadata/_tab_index = 0
+
+[node name="Toolbar" type="HBoxContainer" parent="Locks"]
+layout_mode = 2
+
+[node name="Summary" type="Label" parent="Locks/Toolbar"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "0 lock(s)"
+
+[node name="RefreshButton" type="Button" parent="Locks/Toolbar"]
+layout_mode = 2
+text = "Refresh"
+
+[node name="ReleaseButton" type="Button" parent="Locks/Toolbar"]
+layout_mode = 2
+disabled = true
+text = "Release"
+
+[node name="LockTree" type="Tree" parent="Locks"]
+layout_mode = 2
+size_flags_vertical = 3
+columns = 3
+column_titles_visible = true
+hide_root = true

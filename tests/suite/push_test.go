@@ -1,6 +1,8 @@
 package suite_test
 
 import (
+	"os"
+	"path/filepath"
 	"sort"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -8,6 +10,33 @@ import (
 )
 
 var _ = Describe("nipa push", func() {
+	It("keeps a plugin's read-only guard out of status and pushes", func() {
+		project := newProject("push-readonly-guard")
+		url := repoURLFor(orgSlug, project)
+		seedRepo(orgSlug, project, map[string][]byte{"level.tscn": []byte("v1\n")}, "seed")
+
+		parent := workspace()
+		dir := cloneRepo(parent, url, "work")
+		file := filepath.Join(dir, "level.tscn")
+		Expect(os.Chmod(file, 0o444)).To(Succeed())
+		assertCleanStatus(dir)
+
+		Expect(os.Chmod(file, 0o644)).To(Succeed())
+		writeText(dir, "level.tscn", "v2\n")
+		Expect(os.Chmod(file, 0o444)).To(Succeed())
+		res := runNipa(dir, "add", "level.tscn")
+		Expect(res.ExitCode).To(Equal(0), res.Stderr)
+		push := pushRepo(dir, "edit while guarded")
+		Expect(push.ExitCode).To(Equal(0), push.Stderr)
+		assertCleanStatus(dir)
+
+		fresh := cloneRepo(parent, url, "fresh")
+		Expect(readText(fresh, "level.tscn")).To(Equal("v2\n"))
+		info, err := os.Stat(filepath.Join(fresh, "level.tscn"))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(info.Mode().Perm()).To(Equal(os.FileMode(0o644)), "the guard must not be recorded on the server")
+	})
+
 	It("pushes a new text file", func() {
 		project := newProject("push-new")
 		url := repoURLFor(orgSlug, project)

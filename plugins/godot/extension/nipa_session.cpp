@@ -76,6 +76,12 @@ void NipaSession::_bind_methods() {
                          &NipaSession::request_sign_in);
     ClassDB::bind_method(D_METHOD("request_refresh"), &NipaSession::request_refresh);
     ClassDB::bind_method(D_METHOD("expand_sidecars", "clone_paths"), &NipaSession::expand_sidecars);
+    ClassDB::bind_method(D_METHOD("configure_locks", "extensions", "strict_read_only"), &NipaSession::configure_locks);
+    ClassDB::bind_method(D_METHOD("get_lock_info", "clone_path"), &NipaSession::get_lock_info);
+    ClassDB::bind_method(D_METHOD("get_locks"), &NipaSession::get_locks);
+    ClassDB::bind_method(D_METHOD("request_lock", "clone_paths"), &NipaSession::request_lock);
+    ClassDB::bind_method(D_METHOD("request_unlock", "clone_paths", "any_holder"), &NipaSession::request_unlock);
+    ClassDB::bind_method(D_METHOD("request_lock_refresh"), &NipaSession::request_lock_refresh);
     ClassDB::bind_method(D_METHOD("drain_events"), &NipaSession::drain_events);
 
     ADD_SIGNAL(MethodInfo("connected", PropertyInfo(Variant::STRING, "version")));
@@ -98,6 +104,9 @@ void NipaSession::_bind_methods() {
     ADD_SIGNAL(MethodInfo("activity_summary", PropertyInfo(Variant::INT, "incoming"),
                           PropertyInfo(Variant::INT, "review_requests"), PropertyInfo(Variant::STRING, "error")));
     ADD_SIGNAL(MethodInfo("notice", PropertyInfo(Variant::STRING, "text")));
+    ADD_SIGNAL(MethodInfo("locks_changed", PropertyInfo(Variant::PACKED_STRING_ARRAY, "guarded_paths")));
+    ADD_SIGNAL(MethodInfo("commit_locks_needed", PropertyInfo(Variant::STRING, "message"),
+                          PropertyInfo(Variant::PACKED_STRING_ARRAY, "clone_paths")));
 }
 
 NipaSession::~NipaSession() {
@@ -111,6 +120,7 @@ bool NipaSession::open_project(const String& project_dir, const String& binary_p
         return false;
     }
     paths_ = located;
+    project_dir_ = paths::normalize(from_godot(project_dir));
 
     session::SessionOptions options;
     options.connect.binary_setting = from_godot(binary_path);
@@ -127,6 +137,7 @@ bool NipaSession::open_project(const String& project_dir, const String& binary_p
     options.activity_interval = std::chrono::seconds(seconds);
 
     session_ = std::make_unique<session::Session>(options);
+    apply_lock_options();
     if (auto* tree = Object::cast_to<SceneTree>(Engine::get_singleton()->get_main_loop())) {
         drain_callable_ = Callable(this, "drain_events");
         tree->connect("process_frame", drain_callable_);
@@ -443,7 +454,97 @@ void NipaSession::dispatch(const session::Event& event) {
             emit_signal("activity_summary", static_cast<int64_t>(event.done), static_cast<int64_t>(event.total),
                         to_godot(event.message));
             break;
+        case EventKind::LocksChanged: {
+            PackedStringArray paths;
+            for (const auto& p : event.paths) paths.push_back(to_godot(p));
+            emit_signal("locks_changed", paths);
+            break;
+        }
     }
+}
+
+void NipaSession::configure_locks(const PackedStringArray& extensions, bool strict_read_only) {
+    lock_extensions_.clear();
+    for (int i = 0; i < extensions.size(); ++i) {
+        lock_extensions_.push_back(from_godot(extensions[i]));
+    }
+    strict_read_only_ = strict_read_only;
+    lock_options_set_ = true;
+    apply_lock_options();
+}
+
+void NipaSession::apply_lock_options() {
+    if (!session_ || !lock_options_set_) {
+        return;
+    }
+    session_->set_lock_options(lock_extensions_, strict_read_only_, project_dir_ + "/.godot/nipa/readonly.json");
+}
+
+Dictionary NipaSession::get_lock_info(const String& clone_path) const {
+    Dictionary out;
+    out["state"] = "free";
+    out["holder"] = "";
+    out["lock_path"] = "";
+    out["relevant"] = false;
+    if (!session_) {
+        return out;
+    }
+    auto policy = session_->locks();
+    std::string path = from_godot(clone_path);
+    auto info = policy.lookup(path);
+    out["state"] = locks::state_name(info.state);
+    out["holder"] = to_godot(info.holder);
+    out["lock_path"] = to_godot(info.lock_path);
+    out["relevant"] = policy.lock_relevant(path);
+    return out;
+}
+
+Array NipaSession::get_locks() const {
+    Array out;
+    if (!session_) {
+        return out;
+    }
+    auto policy = session_->locks();
+    for (const auto& l : policy.scoped()) {
+        Dictionary item;
+        item["id"] = to_godot(l.id);
+        item["path"] = to_godot(l.path);
+        item["project_path"] = to_project_path(to_godot(l.path));
+        item["branch"] = to_godot(l.branch);
+        item["global"] = l.global;
+        item["holder"] = to_godot(l.holder());
+        item["mine"] = policy.is_mine(l);
+        item["can_release"] = policy.can_release(l);
+        out.push_back(item);
+    }
+    return out;
+}
+
+Ref<NipaRequest> NipaSession::request_lock(const PackedStringArray& clone_paths) {
+    if (!session_) {
+        return done_request(false, "session is not open");
+    }
+    std::vector<std::string> list;
+    PackedStringArray expanded = expand_sidecars(clone_paths);
+    for (int i = 0; i < expanded.size(); ++i) list.push_back(from_godot(expanded[i]));
+    return track(session_->submit_lock(std::move(list)));
+}
+
+Ref<NipaRequest> NipaSession::request_unlock(const PackedStringArray& clone_paths, bool any_holder) {
+    if (!session_) {
+        return done_request(false, "session is not open");
+    }
+    std::vector<std::string> list;
+    for (int i = 0; i < clone_paths.size(); ++i) list.push_back(from_godot(clone_paths[i]));
+    return track(session_->submit_unlock(std::move(list), any_holder));
+}
+
+Ref<NipaRequest> NipaSession::request_lock_refresh() {
+    if (!session_) {
+        return done_request(false, "session is not open");
+    }
+    session_->submit_locks();
+    return done_request(true, "refreshing locks");
 }
 
 }  // namespace nipa::glue

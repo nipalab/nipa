@@ -108,7 +108,7 @@ func (w *WorkingCopy) withoutUnchanged(snapshot *domain.Snapshot, paths []string
 			return nil, err
 		}
 		entry, cached := statCache[path]
-		if cached && statMatches(entry, info) && entry.Hash == base.Hash && serverModeFromPerm(info.Mode()) == normalizedMode(base.Mode) {
+		if cached && statMatches(entry, info) && entry.Hash == base.Hash && trackedModeFromPerm(info.Mode(), base.Mode) == normalizedMode(base.Mode) {
 			continue
 		}
 		kept = append(kept, path)
@@ -266,7 +266,7 @@ func (w *WorkingCopy) Status(ctx context.Context, opts ...StatusOptions) (*domai
 			jobs = append(jobs, statusHashJob{path: path, encoding: base.Encoding, info: info})
 			continue
 		}
-		if entry.Hash != base.Hash || serverModeFromPerm(info.Mode()) != normalizedMode(base.Mode) {
+		if entry.Hash != base.Hash || trackedModeFromPerm(info.Mode(), base.Mode) != normalizedMode(base.Mode) {
 			st.Modified = append(st.Modified, path)
 		}
 	}
@@ -281,7 +281,8 @@ func (w *WorkingCopy) Status(ctx context.Context, opts ...StatusOptions) (*domai
 			}
 			return nil, fmt.Errorf("hash %q: %w", job.path, result.err)
 		}
-		mode := serverModeFromPerm(job.info.Mode())
+		base := baseByPath[job.path]
+		mode := trackedModeFromPerm(job.info.Mode(), base.Mode)
 		updates[job.path] = domain.StatEntry{
 			SizeBytes: job.info.Size(),
 			MtimeNS:   job.info.ModTime().UnixNano(),
@@ -289,7 +290,6 @@ func (w *WorkingCopy) Status(ctx context.Context, opts ...StatusOptions) (*domai
 			Hash:      result.hash,
 			CachedAt:  observedAt,
 		}
-		base := baseByPath[job.path]
 		if result.hash != base.Hash || mode != normalizedMode(base.Mode) {
 			st.Modified = append(st.Modified, job.path)
 		}

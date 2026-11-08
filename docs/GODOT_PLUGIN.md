@@ -42,6 +42,9 @@ Settings:
 |---|---|---|
 | `nipa/binary_path` | Editor Settings (per user) | empty, which means `NIPA_BIN`, then the library folder, then `PATH` |
 | `nipa/poll_interval_sec` | Project Settings (shared) | 60, clamped to 15–3600 |
+| `nipa/locking/auto_lock_on_edit` | Project Settings (shared) | true |
+| `nipa/locking/strict_read_only` | Project Settings (shared) | false |
+| `nipa/locking/extensions` | Project Settings (shared) | `tscn,tres,scn,res,glb,gltf,blend,fbx,png,jpg,exr,wav,ogg` |
 
 ## Using
 
@@ -62,8 +65,15 @@ Settings:
   editor never waits on the network beyond a 2 s start-up budget (diffs and
   line diffs wait at most 1 s).
 
-Not in Phase 1: locks, conflicts, tags, previews, and the bottom panels (see
-the phased plan).
+- **Locks** (Phase 2): FileSystem and scene-tab context menus (Nipa: Lock,
+  Nipa: Unlock, Nipa: Locked by X), a lock badge in the 2D/3D toolbars and the
+  Inspector header, the Nipa bottom panel's Locks tab (Refresh, Release) and a
+  lock count in the dock. Editing a lock-relevant file locks it in the
+  background; a file locked by someone else gets a warning and, for scenes, an
+  offer to reload. Commit checks locks first (see Locks below).
+
+Not yet: conflicts, tags, previews, and the other bottom panel tabs (see the
+phased plan).
 
 ## How Godot's VCS integration works (research)
 
@@ -286,7 +296,8 @@ branch. `core/locks` ports `LockPolicy`, and an asset and its sidecars are
 one lock unit.
 
 - **Checkout on first edit.** `EditorUndoRedoManager.history_changed` (scene
-  history) and `EditorInspector.property_edited` (resources) resolve the
+  history, only when the scene has something to undo, so opening a scene is not
+  an edit) and `EditorInspector.property_edited` (resources) resolve the
   edited file (`scene_file_path` / `resource_path`). If the file is
   lock-relevant and not locked by me, the plugin acts on its state:
   - **free:** `ProxyLockFile` runs in the background, and the toolbar badge
@@ -294,9 +305,10 @@ one lock unit.
   - **theirs:** a warning toast and badge name the holder ("changes cannot be
     pushed"), with an offer to reload the scene from disk.
 
-  Lock-relevant means the file is binary, or its extension is in the strict
-  list (default `.tscn .tres .scn .res .glb .blend .png .wav` plus every
-  binary). Auto-lock is on by default and is a project setting.
+  Lock-relevant means the extension is in `nipa/locking/extensions`, or
+  `LockStatus` reports the file as a changed binary. Auto-lock is on by
+  default and is a project setting. A lock covers the asset plus its existing
+  `.import`/`.uid` sidecars.
 - **After save** (`resource_saved` / `scene_saved`): saving a file that is
   locked by someone else shows an error toast.
 - **Strict read-only (opt-in):** files covered by someone else's lock get
@@ -304,13 +316,25 @@ one lock unit.
   Windows, `set_unix_permissions` without the write bits elsewhere. The
   permission comes back when the lock is released or the clone is switched.
   Godot then fails the save itself, which is the closest it gets to
-  `IsOpenForEdit`. This needs the daemon to replace read-only files during
-  update (Phase 0).
-- **Commit pre-check:** `LockStatus.files`:
+  `IsOpenForEdit`. `core/locks/readonly_guard` does it with
+  `std::filesystem::permissions` (the read-only attribute on Windows) after
+  every lock refresh, expands directory locks to their files, never touches
+  `.nipa/` or files that were already read-only, and restores the original
+  permission when the lock goes away, strict mode is turned off or the editor
+  closes. The guarded set is kept in `.godot/nipa/readonly.json`, so a crashed
+  editor gives the permission back on the next start. Update/restore keep a
+  guarded file read-only, and the client ignores a removed write bit on a
+  file tracked writable, so the guard never shows in status or reaches the
+  server (`docs/LOCKING.md`).
+- **Commit pre-check:** `_commit` refreshes `LockStatus` within a 2 s budget
+  (on timeout it pushes and the server stays authoritative), then:
   - `theirs` blocks the commit and names the holders (`popup_error`).
-  - `needed` opens a `ConfirmationDialog` "Lock N files and commit".
-- **Lock cache refresh:** on window focus (`NOTIFICATION_APPLICATION_FOCUS_IN`),
-  after lock/unlock, on `lock_released` events and on every poll tick.
+  - `needed` emits `commit_locks_needed`; the dock opens a `ConfirmationDialog`
+    "Lock N files and commit", which locks them and then pushes.
+- **Lock cache refresh:** on connect, on window focus
+  (`NOTIFICATION_APPLICATION_FOCUS_IN`), after lock/unlock, push, update and
+  switch, on every `WatchEvents` reply (including `lock_released`) and on a
+  timer at the poll interval.
 
 ### Update, switch and open scenes
 
@@ -414,7 +438,8 @@ streams, so hot reload is safe.
 - `status_changed(paths: PackedStringArray)`
 - `op_queued(id, kind)`, `op_progress(id, phase, done, total)`,
   `op_finished(id, ok, message, changed_paths)`
-- `locks_changed()`
+- `locks_changed(guarded_paths)` (files strict mode just made read-only or writable)
+- `commit_locks_needed(message, clone_paths)`
 - `activity(kind, actor, detail)`
 - `warnings_changed()`
 

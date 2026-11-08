@@ -48,6 +48,11 @@ layout_mode = 2
 max_value = 1.0
 show_percentage = false
 
+[node name="LocksLabel" type="Label" parent="."]
+layout_mode = 2
+text = "Locks: -"
+autowrap_mode = 3
+
 [node name="OutsideNote" type="Label" parent="."]
 visible = false
 layout_mode = 2
@@ -62,3 +67,15 @@ title = "Save all and continue?"
 initial_position = 1
 size = Vector2i(420, 120)
 dialog_text = "Save all open scenes before this operation rewrites the working copy."
+
+[node name="LockCommitDialog" type="ConfirmationDialog" parent="."]
+title = "Lock files and commit?"
+initial_position = 1
+size = Vector2i(420, 160)
+ok_button_text = "Lock and commit"
+
+[node name="ReloadDialog" type="ConfirmationDialog" parent="."]
+title = "Locked by someone else"
+initial_position = 1
+size = Vector2i(420, 140)
+ok_button_text = "Reload from disk"

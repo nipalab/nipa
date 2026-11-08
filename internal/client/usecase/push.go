@@ -186,7 +186,7 @@ func (p *Push) Plan(ctx context.Context, root string) (*domain.Plan, error) {
 		switch {
 		case !ok:
 			changes = append(changes, domain.PlanChange{Path: sf.path, Status: "A", Binary: file.IsBinary, SizeBytes: file.SizeBytes})
-		case base.Hash != file.FileHash || normalizedMode(base.Mode) != serverModeFromPerm(sf.info.Mode()):
+		case base.Hash != file.FileHash || normalizedMode(base.Mode) != trackedModeFromPerm(sf.info.Mode(), base.Mode):
 			changes = append(changes, domain.PlanChange{Path: sf.path, Status: "M", Binary: file.IsBinary, SizeBytes: file.SizeBytes})
 		}
 	}
@@ -472,6 +472,7 @@ type stagedFile struct {
 	abs      string
 	cfg      chunker.Config
 	isBinary bool
+	baseMode int
 }
 
 // classifyStaged splits the staged paths into files to read and removals,
@@ -491,7 +492,11 @@ func classifyStaged(root string, staged []string, baseByPath map[string]domain.S
 				return nil, nil, domain.NewUserError(fmt.Sprintf("%q is not a regular file", path))
 			}
 			cfg, isBinary := profileForFile(path, abs)
-			toRead = append(toRead, stagedFile{path: path, info: info, abs: abs, cfg: cfg, isBinary: isBinary})
+			sf := stagedFile{path: path, info: info, abs: abs, cfg: cfg, isBinary: isBinary}
+			if base, inBase := baseByPath[path]; inBase {
+				sf.baseMode = normalizedMode(base.Mode)
+			}
+			toRead = append(toRead, sf)
 		case os.IsNotExist(err):
 			if _, inBase := baseByPath[path]; !inBase {
 				return nil, nil, domain.NewUserError(fmt.Sprintf("staged file %q does not exist", path))
@@ -581,7 +586,7 @@ func scanPushFile(sf stagedFile, sink chunkSink) (*serverDomain.PushFile, error)
 	}
 	return &serverDomain.PushFile{
 		Path:        sf.path,
-		Mode:        int(sf.info.Mode().Perm()),
+		Mode:        int(pushPerm(sf.info.Mode().Perm(), sf.baseMode)),
 		SizeBytes:   rawSize,
 		IsBinary:    sf.isBinary,
 		Encoding:    encoding,

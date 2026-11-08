@@ -10,6 +10,7 @@
 #include <godot_cpp/classes/object.hpp>
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/variant/array.hpp>
+#include <godot_cpp/variant/dictionary.hpp>
 #include <godot_cpp/variant/packed_string_array.hpp>
 #include <godot_cpp/variant/string.hpp>
 
@@ -29,6 +30,10 @@ class NipaSession : public godot::Object {
     std::optional<paths::ProjectPaths> paths_;
     std::map<std::int64_t, godot::Ref<NipaRequest>> requests_;
     godot::Callable drain_callable_;
+    std::string project_dir_;
+    std::vector<std::string> lock_extensions_;
+    bool strict_read_only_ = false;
+    bool lock_options_set_ = false;
 
 protected:
     static void _bind_methods();
@@ -66,6 +71,13 @@ public:
                                             const godot::String& passphrase);
     godot::Ref<NipaRequest> request_refresh();
 
+    void configure_locks(const godot::PackedStringArray& extensions, bool strict_read_only);
+    godot::Dictionary get_lock_info(const godot::String& clone_path) const;
+    godot::Array get_locks() const;
+    godot::Ref<NipaRequest> request_lock(const godot::PackedStringArray& clone_paths);
+    godot::Ref<NipaRequest> request_unlock(const godot::PackedStringArray& clone_paths, bool any_holder);
+    godot::Ref<NipaRequest> request_lock_refresh();
+
     void drain_events();
 
     session::Session* session() const { return session_.get(); }
@@ -75,6 +87,7 @@ public:
 private:
     godot::Ref<NipaRequest> track(std::int64_t id);
     void dispatch(const session::Event& event);
+    void apply_lock_options();
 };
 
 }  // namespace nipa::glue
