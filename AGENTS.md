@@ -158,6 +158,18 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   delta/bbox; transparent pixels compare equal). Block decoders are checked
   against bcdec goldens (`testdata/bcn`, generators in `testdata/gen`).
   Fuzzed; keep it free of client imports like `internal/diff`.
+  `internal/assetdiff` (pure, same rule) builds on it: `Compare(ctx, Loader,
+  old, new *Ref, Options)` loads both versions through a caller `Loader`
+  (`ErrMissing` = added/removed side, `ErrTooLarge` per-kind limits) and
+  returns a JSON-friendly `Result` per kind (scene changes capped by
+  `MaxChanges`, image stats + optional PNG thumbnails, model/audio stats and
+  deltas, table rows capped by `MaxRows`, text line counts, sizes otherwise);
+  `Summarize` turns items into sorted one-line `Headline`s capped by
+  `MaxFiles`. It also owns `SceneEngine`/`UnityProject`/`BuildGUIDIndex`/
+  `ReadGUID`/`WorkingGUIDs` (the desktop keeps its cached index) and
+  `MergeGodot` (the daemon's `MergeGodotResource` core over `godotres.Merge3`);
+  `unitymeta.ChangesFromStatus` is the status → lint change adapter behind
+  `MetaWarnings`.
   `internal/unitymeta` (pure, `fs.FS` based) lints Unity `.meta` sidecars
   for pending changes: missing, orphaned, not staged, GUID changed.
   `internal/godotmeta` is its Godot twin for `.import`/`.uid` sidecars

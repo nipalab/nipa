@@ -94,30 +94,10 @@ func godotChanges(changes []unitymeta.Change) []godotmeta.Change {
 }
 
 func metaChanges(st *daemonpb.StatusResponse) ([]unitymeta.Change, bool) {
-	added := map[string]bool{}
-	for _, p := range st.GetAdded() {
-		added[p] = true
-	}
-	var changes []unitymeta.Change
-	unity := false
-	add := func(paths []string, staged bool, statusOf func(string) string) {
-		for _, p := range paths {
-			changes = append(changes, unitymeta.Change{Path: p, Status: statusOf(p), Staged: staged})
-			unity = unity || strings.HasPrefix(p, "Assets/") || strings.Contains(p, "/Assets/")
-		}
-	}
-	constant := func(v string) func(string) string { return func(string) string { return v } }
-	add(st.GetStaged(), true, func(p string) string {
-		if added[p] {
-			return "added"
-		}
-		return "modified"
+	return unitymeta.ChangesFromStatus(unitymeta.StatusPaths{
+		Staged: st.GetStaged(), Added: st.GetAdded(), Deleted: st.GetDeleted(),
+		Modified: st.GetModified(), Missing: st.GetMissing(), Untracked: st.GetUntracked(),
 	})
-	add(st.GetDeleted(), true, constant("deleted"))
-	add(st.GetModified(), false, constant("modified"))
-	add(st.GetMissing(), false, constant("deleted"))
-	add(st.GetUntracked(), false, constant("untracked"))
-	return changes, unity
 }
 
 func readSnapshotSmall(ctx context.Context, runner DiffRunner, root, path string) ([]byte, error) {

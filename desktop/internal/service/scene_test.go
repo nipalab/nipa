@@ -11,6 +11,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/nipalab/nipa/internal/assetdiff"
 	"github.com/nipalab/nipa/internal/client/grpc/daemonpb"
 )
 
@@ -138,9 +139,9 @@ func TestService_SceneDiff(t *testing.T) {
 }
 
 func TestUnityProjectAndInvalidate(t *testing.T) {
-	assert.Equal(t, "game", unityProject("game/Assets/Level.unity"))
-	assert.Equal(t, "", unityProject("Packages/com.acme/Thing.asset"))
-	assert.Equal(t, "", unityProject("Level.unity"))
+	assert.Equal(t, "game", assetdiff.UnityProject("game/Assets/Level.unity"))
+	assert.Equal(t, "", assetdiff.UnityProject("Packages/com.acme/Thing.asset"))
+	assert.Equal(t, "", assetdiff.UnityProject("Level.unity"))
 
 	svc := New(nil, &memStore{}, nil)
 	svc.guidIndex("/missing", "")
@@ -149,7 +150,7 @@ func TestUnityProjectAndInvalidate(t *testing.T) {
 	assert.Len(t, svc.guids.cache, 2)
 	svc.invalidateGUIDs("/missing", nil)
 	assert.Len(t, svc.guids.cache, 1)
-	assert.Equal(t, "", readGUID("/missing/file.meta"))
+	assert.Equal(t, "", assetdiff.ReadGUID("/missing/file.meta"))
 }
 
 func TestGUIDIndexDropsBuildRacingInvalidation(t *testing.T) {
@@ -237,6 +238,6 @@ func TestSceneEngine(t *testing.T) {
 		"a/level.tscn": "godot", "a/mat.TRES": "godot", "project.godot": "godot", "icon.svg.import": "godot",
 		"Assets/Level.unity": "unity", "Assets/Hero.prefab": "unity",
 	} {
-		assert.Equal(t, want, sceneEngine(p), p)
+		assert.Equal(t, want, assetdiff.SceneEngine(p), p)
 	}
 }
