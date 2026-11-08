@@ -231,8 +231,8 @@ func (b *BranchRepository) GetCommit(ctx context.Context, commitID snow.ID) (*do
 	return commitToDomain(row), nil
 }
 
-func (b *BranchRepository) GetCommitByHash(ctx context.Context, hash domain.Hash) (*domain.Commit, error) {
-	row, err := b.queries.CommitGetByHash(ctx, hash.Bytes())
+func (b *BranchRepository) GetCommitByHash(ctx context.Context, projectID snow.ID, hash domain.Hash) (*domain.Commit, error) {
+	row, err := b.queries.CommitGetByHash(ctx, sqlcPostgres.CommitGetByHashParams{ProjectID: projectID.Int64(), Hash: hash.Bytes()})
 	if err != nil {
 		return nil, handleError(err)
 	}

@@ -37,7 +37,7 @@ type Querier interface {
 	ChunkListByHashesForProject(ctx context.Context, arg ChunkListByHashesForProjectParams) ([]ChunkListByHashesForProjectRow, error)
 	ChunkListByTree(ctx context.Context, treeID int64) ([]ChunkListByTreeRow, error)
 	CommitGet(ctx context.Context, id int64) (Commit, error)
-	CommitGetByHash(ctx context.Context, hash []byte) (Commit, error)
+	CommitGetByHash(ctx context.Context, arg CommitGetByHashParams) (Commit, error)
 	CommitInsert(ctx context.Context, arg CommitInsertParams) error
 	CommitLog(ctx context.Context, arg CommitLogParams) ([]CommitLogRow, error)
 	// CommitLogUntil walks the first-parent chain from start_commit_id and stops

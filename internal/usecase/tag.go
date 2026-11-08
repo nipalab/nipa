@@ -170,15 +170,12 @@ func (t *Tag) resolveTarget(ctx context.Context, projectID snow.ID, target TagTa
 	}
 
 	if target.CommitHash != nil {
-		commit, err := t.branchRepo.GetCommitByHash(ctx, *target.CommitHash)
+		commit, err := t.branchRepo.GetCommitByHash(ctx, projectID, *target.CommitHash)
 		if err != nil {
 			if domain.IsErrorNotFound(err) {
 				return nil, domain.NewErrorNotFound(fmt.Sprintf("commit %s not found", target.CommitHash.String()))
 			}
 			return nil, err
-		}
-		if commit.ProjectID != projectID {
-			return nil, domain.NewErrorNotFound(fmt.Sprintf("commit %s not found", target.CommitHash.String()))
 		}
 		id := commit.ID
 		return &id, nil

@@ -229,18 +229,18 @@ func (mr *MockbranchRepositoryMockRecorder) GetCommit(ctx, commitID any) *gomock
 }
 
 // GetCommitByHash mocks base method.
-func (m *MockbranchRepository) GetCommitByHash(ctx context.Context, hash domain.Hash) (*domain.Commit, error) {
+func (m *MockbranchRepository) GetCommitByHash(ctx context.Context, projectID snow.ID, hash domain.Hash) (*domain.Commit, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetCommitByHash", ctx, hash)
+	ret := m.ctrl.Call(m, "GetCommitByHash", ctx, projectID, hash)
 	ret0, _ := ret[0].(*domain.Commit)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetCommitByHash indicates an expected call of GetCommitByHash.
-func (mr *MockbranchRepositoryMockRecorder) GetCommitByHash(ctx, hash any) *gomock.Call {
+func (mr *MockbranchRepositoryMockRecorder) GetCommitByHash(ctx, projectID, hash any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetCommitByHash", reflect.TypeOf((*MockbranchRepository)(nil).GetCommitByHash), ctx, hash)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetCommitByHash", reflect.TypeOf((*MockbranchRepository)(nil).GetCommitByHash), ctx, projectID, hash)
 }
 
 // GetDefaultBranch mocks base method.

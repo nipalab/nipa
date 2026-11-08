@@ -162,14 +162,15 @@ CREATE INDEX idx_file_chunks_chunk_id ON file_chunks (chunk_id);
 
 CREATE TABLE commits (
     id BIGINT PRIMARY KEY,
-    hash BYTEA NOT NULL UNIQUE,
+    hash BYTEA NOT NULL,
     project_id BIGINT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     tree_id BIGINT NOT NULL REFERENCES tree_nodes(id),
     parent_1_id BIGINT REFERENCES commits(id),
     parent_2_id BIGINT REFERENCES commits(id),
     user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     message TEXT NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (project_id, hash)
 );
 
 CREATE INDEX idx_commits_tree_id ON commits (tree_id);

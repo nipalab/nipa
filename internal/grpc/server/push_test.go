@@ -152,7 +152,7 @@ func TestPushHandler_MergeWithParent2(t *testing.T) {
 		Return(&domain.Commit{ID: headCommitID, TreeID: 100, Hash: domain.Hash{1}, ProjectID: 42}, nil)
 
 	parent2Hash := domain.Hash{2}
-	repo.EXPECT().GetCommitByHash(gomock.Any(), parent2Hash).
+	repo.EXPECT().GetCommitByHash(gomock.Any(), gomock.Any(), parent2Hash).
 		Return(&domain.Commit{ID: parent2ID, TreeID: 200, Hash: parent2Hash, ProjectID: 42}, nil)
 	repo.EXPECT().GetTreeNode(gomock.Any(), int64(100)).
 		Return(&domain.TreeNode{ID: 100, Hash: hdHash, Name: "root"}, nil).
