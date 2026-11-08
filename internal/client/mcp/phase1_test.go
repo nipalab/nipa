@@ -756,39 +756,74 @@ func TestRestoreTool(t *testing.T) {
 	require.True(t, res.IsError)
 }
 
+func lockQueryUseCases(locks fakeLockClient, repo fakeRepoClient) func() UseCases {
+	return func() UseCases {
+		return UseCases{
+			Repo:      usecase.NewRepo(loggedInAuth(), repo, localrepo.NewLocalRepo()),
+			Lock:      usecase.NewFileLock(loggedInAuth(), locks, localrepo.NewLocalRepo()),
+			Connector: fakeConnector{},
+		}
+	}
+}
+
 func TestLockQuery(t *testing.T) {
 	root := setupRepo(t, nil)
 	client := fakeLockClient{locks: []*domain.FileLock{
 		{Path: "art", Global: true, HeldByName: "bob"},
 		{Path: "art/tex.png", Branch: "dev", HeldByName: "alice"},
-		{Path: "audio/loop.wav", HeldByName: "carol"},
+		{Path: "audio/loop.wav", Global: true, HeldByName: "carol"},
 		nil,
 	}}
-	session := connect(t, Options{NewUseCases: func() UseCases {
-		return UseCases{Lock: usecase.NewFileLock(loggedInAuth(), client, localrepo.NewLocalRepo())}
-	}})
+	repo := fakeRepoClient{branches: []*serverDomain.Branch{{Name: "main", IsDefault: true}, {Name: "dev"}, nil}}
+	session := connect(t, Options{NewUseCases: lockQueryUseCases(client, repo)})
 
 	out := decode[lockQueryOutput](t, call(t, session, "nipa_lock_query", map[string]any{"repo": root, "path": "/art/tex.png"}))
 	require.True(t, out.Locked)
 	require.Equal(t, "art/tex.png", out.Path)
-	require.Len(t, out.Locks, 2)
+	require.Equal(t, "main", out.Branch)
+	require.Equal(t, "mainline", out.Scope)
+	require.Len(t, out.Locks, 1)
 	require.Equal(t, "bob", out.Locks[0].HeldByName)
-	require.Equal(t, "mainline", out.Locks[0].Scope)
+	require.Len(t, out.OtherScopes, 1)
+	require.Equal(t, "alice", out.OtherScopes[0].HeldByName)
+
+	out = decode[lockQueryOutput](t, call(t, session, "nipa_lock_query", map[string]any{"repo": root, "path": "art/tex.png", "branch": "dev"}))
+	require.True(t, out.Locked)
+	require.Equal(t, "branch", out.Scope)
+	require.Len(t, out.Locks, 1)
+	require.Equal(t, "alice", out.Locks[0].HeldByName)
+	require.Equal(t, "bob", out.OtherScopes[0].HeldByName)
+
+	out = decode[lockQueryOutput](t, call(t, session, "nipa_lock_query", map[string]any{"repo": root, "path": "audio/loop.wav", "branch": "dev"}))
+	require.False(t, out.Locked)
+	require.Empty(t, out.Locks)
+	require.Len(t, out.OtherScopes, 1)
 
 	out = decode[lockQueryOutput](t, call(t, session, "nipa_lock_query", map[string]any{"repo": root, "path": "artwork.png"}))
 	require.False(t, out.Locked)
 	require.Empty(t, out.Locks)
+	require.Empty(t, out.OtherScopes)
 
 	res := call(t, session, "nipa_lock_query", map[string]any{"repo": root, "path": " / "})
 	require.True(t, res.IsError)
 	require.Contains(t, toolText(t, res), "a path is required")
 
-	failing := connect(t, Options{NewUseCases: func() UseCases {
-		return UseCases{Lock: usecase.NewFileLock(loggedInAuth(), fakeLockClient{listErr: errors.New("server exploded")}, localrepo.NewLocalRepo())}
-	}})
+	failing := connect(t, Options{NewUseCases: lockQueryUseCases(fakeLockClient{listErr: errors.New("server exploded")}, repo)})
 	res = call(t, failing, "nipa_lock_query", map[string]any{"repo": root, "path": "a"})
 	require.True(t, res.IsError)
 	require.Contains(t, toolText(t, res), "server exploded")
+
+	branchFail := connect(t, Options{NewUseCases: lockQueryUseCases(client, fakeRepoClient{err: errors.New("branches exploded")})})
+	res = call(t, branchFail, "nipa_lock_query", map[string]any{"repo": root, "path": "a"})
+	require.True(t, res.IsError)
+	require.Contains(t, toolText(t, res), "branches exploded")
+
+	noLocks := connect(t, Options{NewUseCases: func() UseCases {
+		return UseCases{Repo: usecase.NewRepo(loggedInAuth(), repo, localrepo.NewLocalRepo()), Connector: fakeConnector{}}
+	}})
+	res = call(t, noLocks, "nipa_lock_query", map[string]any{"repo": root, "path": "a"})
+	require.True(t, res.IsError)
+	require.Contains(t, toolText(t, res), "locks are not configured")
 }
 
 func TestNewTools_NotConfigured(t *testing.T) {
@@ -799,7 +834,7 @@ func TestNewTools_NotConfigured(t *testing.T) {
 		args map[string]any
 		want string
 	}{
-		{"nipa_lock_query", map[string]any{"path": "a"}, "locks are not configured"},
+		{"nipa_lock_query", map[string]any{"path": "a"}, "server connection is not configured"},
 		{"nipa_tag_list", map[string]any{}, "tags are not configured"},
 		{"nipa_tag_create", map[string]any{"name": "v1"}, "tags are not configured"},
 		{"nipa_update", map[string]any{}, "update is not configured"},

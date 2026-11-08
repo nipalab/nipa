@@ -46,7 +46,7 @@ func addReadTools(srv *mcp.Server, s *server) {
 	}, s.lockList)
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "nipa_lock_query",
-		Description: "Tell whether a file or directory is covered by a binary lock (exact path or a locking directory prefix) and who holds it.",
+		Description: "Tell whether a file or directory is covered by a binary lock (exact path or a locking directory prefix) in the lock scope of the working copy branch (or the given branch), and who holds it. The default branch is guarded by mainline locks, other branches by their own locks; covering locks of other scopes are listed in other_scopes.",
 		Annotations: readOnly(),
 	}, s.lockQuery)
 	mcp.AddTool(srv, &mcp.Tool{
@@ -269,14 +269,18 @@ func (s *server) connectContext(ctx context.Context, repo string) (string, *doma
 }
 
 type lockQueryInput struct {
-	Repo string `json:"repo,omitempty" jsonschema:"Path inside a nipa working copy (defaults to the server working directory)"`
-	Path string `json:"path" jsonschema:"Repo-relative file or directory path to check"`
+	Repo   string `json:"repo,omitempty" jsonschema:"Path inside a nipa working copy (defaults to the server working directory)"`
+	Path   string `json:"path" jsonschema:"Repo-relative file or directory path to check"`
+	Branch string `json:"branch,omitempty" jsonschema:"Branch whose lock scope to check (defaults to the working copy branch)"`
 }
 
 type lockQueryOutput struct {
-	Path   string        `json:"path"`
-	Locked bool          `json:"locked"`
-	Locks  []output.Lock `json:"locks"`
+	Path        string        `json:"path"`
+	Branch      string        `json:"branch"`
+	Scope       string        `json:"scope"`
+	Locked      bool          `json:"locked"`
+	Locks       []output.Lock `json:"locks"`
+	OtherScopes []output.Lock `json:"other_scopes,omitempty"`
 }
 
 func (s *server) lockQuery(ctx context.Context, _ *mcp.CallToolRequest, in lockQueryInput) (*mcp.CallToolResult, lockQueryOutput, error) {
@@ -285,7 +289,7 @@ func (s *server) lockQuery(ctx context.Context, _ *mcp.CallToolRequest, in lockQ
 	if path == "" {
 		return nil, zero, toolError(domain.NewUserError("a path is required"))
 	}
-	root, uc, err := s.open(in.Repo)
+	root, cfg, url, uc, err := s.connectContext(ctx, in.Repo)
 	if err != nil {
 		return nil, zero, toolError(err)
 	}
@@ -293,19 +297,49 @@ func (s *server) lockQuery(ctx context.Context, _ *mcp.CallToolRequest, in lockQ
 	if uc.Lock == nil {
 		return nil, zero, notConfigured("locks are")
 	}
+	branch := strings.TrimSpace(in.Branch)
+	if branch == "" {
+		branch = cfg.Branch
+	}
+	branches, err := uc.Repo.ListBranches(ctx, url.Host, url.Org, url.Project)
+	if err != nil {
+		return nil, zero, toolError(err)
+	}
+	mainline := false
+	for _, b := range branches {
+		if b != nil && b.Name == branch {
+			mainline = b.IsDefault
+		}
+	}
 	locks, err := uc.Lock.List(ctx, root)
 	if err != nil {
 		return nil, zero, toolError(err)
 	}
-	out := lockQueryOutput{Path: path, Locks: []output.Lock{}}
+	out := lockQueryOutput{Path: path, Branch: branch, Scope: "branch", Locks: []output.Lock{}}
+	if mainline {
+		out.Scope = "mainline"
+	}
 	for _, lock := range locks {
 		if lock == nil || !serverDomain.PrefixCovers(strings.Trim(lock.Path, "/"), path) {
 			continue
 		}
-		out.Locks = append(out.Locks, output.NewLock(lock))
+		if lockInScope(lock, branch, mainline) {
+			out.Locks = append(out.Locks, output.NewLock(lock))
+		} else {
+			out.OtherScopes = append(out.OtherScopes, output.NewLock(lock))
+		}
 	}
 	out.Locked = len(out.Locks) > 0
 	return nil, out, nil
+}
+
+// lockInScope mirrors the server rule: the default branch is guarded by the
+// project-global (mainline) locks, any other branch only by its own locks.
+func lockInScope(lock *domain.FileLock, branch string, mainline bool) bool {
+	if mainline {
+		return lock.Global
+	}
+	return !lock.Global && lock.Branch == branch
 }
 
 type tagListInput struct {

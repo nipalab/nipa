@@ -32,7 +32,7 @@ Read-only tools (always available):
 | `nipa_branch_list` | branches with head commit and protection state |
 | `nipa_tag_list` | release tags and the commit each points at |
 | `nipa_lock_list` | active binary file locks |
-| `nipa_lock_query` | locks covering a path (exact or directory prefix) and who holds them |
+| `nipa_lock_query` | locks covering a path (exact or directory prefix) in the branch's lock scope (default branch: mainline locks, other branches: their own), with other scopes' covering locks in `other_scopes` |
 | `nipa_conflicts` | pending merge/revert: base/ours/theirs revisions and conflicted files (offline) |
 | `nipa_mr_list` | merge requests, optionally filtered by status (`limit` at most 200) |
 | `nipa_mr_view` | one merge request with mergeability (`blocked_by`), reviews and status checks |
