@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
 	"fmt"
 	"log/slog"
@@ -32,6 +33,12 @@ func main() {
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		panic(err)
+	}
+
+	if err := guardSecrets(cfg); err != nil {
+		fmt.Fprintln(os.Stderr, "nipad: "+err.Error())
+		fmt.Fprintln(os.Stderr, "set strong values in config.yaml (openssl rand -base64 48) or ALLOW_INSECURE_DEV_SECRETS=true for local development only")
+		os.Exit(1)
 	}
 
 	serviceName := cfg.TracingServiceName
@@ -203,4 +210,21 @@ func createChunkStore(cfg *config.Config) (storage.ChunkStore, error) {
 
 func createDatabaseConnection(dsn string) (*sql.DB, error) {
 	return db.OpenSQLite(dsn)
+}
+
+func guardSecrets(cfg *config.Config) error {
+	err := cfg.ValidateSecretsOrWarn(func(msg string, err error) {
+		slog.Warn(msg, "problem", err.Error())
+	})
+	if err != nil {
+		return err
+	}
+	if cfg.AllowInsecureDevSecrets {
+		for _, key := range []*string{&cfg.JWTKey, &cfg.ChunkURLSigningKey} {
+			if *key == "" {
+				*key = rand.Text() + rand.Text()
+			}
+		}
+	}
+	return nil
 }
