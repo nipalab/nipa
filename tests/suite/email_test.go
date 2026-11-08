@@ -58,6 +58,87 @@ var _ = Describe("email notifications", func() {
 		Consistently(func() int { return email.countFor(author.email) }, "2s", "100ms").Should(Equal(1))
 	})
 
+	It("emails lifecycle events to participants except the actor, threaded per recipient", func() {
+		project := newProject("email-lifecycle")
+		seedRepo(orgSlug, project, map[string][]byte{"base.txt": []byte("base\n")}, "seed")
+
+		author := newIdentity("email-life-author").promote()
+		reviewer := newIdentity("email-life-reviewer").promote()
+		assignee := newIdentity("email-life-assignee").promote()
+		root := func(id *identity) string { return "-mr1-" + id.userID + "@" }
+		expectRoot := func(msg receivedEmail, id *identity) {
+			GinkgoHelper()
+			Expect(msg.MessageID).To(ContainSubstring(root(id)), "first contact opens the recipient's thread")
+			Expect(msg.InReplyTo).To(BeEmpty())
+			Expect(msg.References).To(BeEmpty())
+		}
+		expectReply := func(msg, first receivedEmail) {
+			GinkgoHelper()
+			Expect(msg.InReplyTo).To(Equal(first.MessageID))
+			Expect(msg.References).To(Equal(first.MessageID))
+			Expect(msg.MessageID).NotTo(Equal(first.MessageID))
+		}
+
+		parent := workspace()
+		dir := cloneRepoAs(author, parent, repoURLFor(orgSlug, project), "work")
+		Expect(runNipaAs(author, dir, "branch", "-c", "feature").ExitCode).To(Equal(0))
+		writeText(dir, "feature.txt", "feature\n")
+		Expect(runNipaAs(author, dir, "add", "feature.txt").ExitCode).To(Equal(0))
+		push := runNipaAs(author, dir, "push", "-m", uniqueMessage("email lifecycle work"))
+		Expect(push.ExitCode).To(Equal(0), push.Output())
+		create := runNipaAs(author, dir, "mr", "create", "--draft", "--title", uniqueMessage("Email lifecycle MR"))
+		Expect(create.ExitCode).To(Equal(0), create.Output())
+
+		request := runNipaAs(author, dir, "mr", "request-review", "1", reviewer.userID)
+		Expect(request.ExitCode).To(Equal(0), request.Output())
+		reviewerFirst := email.waitForSubject(reviewer.email, "Review requested")
+		expectRoot(reviewerFirst, reviewer)
+		assign := runNipaAs(author, dir, "mr", "assign", "1", assignee.userID)
+		Expect(assign.ExitCode).To(Equal(0), assign.Output())
+
+		ready := runNipaAs(author, dir, "mr", "ready", "1")
+		Expect(ready.ExitCode).To(Equal(0), ready.Output())
+		assigneeFirst := email.waitForSubject(assignee.email, "Merge request ready for review")
+		Expect(assigneeFirst.Subject).To(ContainSubstring("[" + project + "]"))
+		Expect(assigneeFirst.Text).To(ContainSubstring("marked ready for review merge request !1"))
+		expectRoot(assigneeFirst, assignee)
+		expectReply(email.waitForSubject(reviewer.email, "Merge request ready for review"), reviewerFirst)
+
+		review := runNipaAs(reviewer, dir, "mr", "review", "1", "--approve", "-m", "lgtm")
+		Expect(review.ExitCode).To(Equal(0), review.Output())
+		authorFirst := email.waitForSubject(author.email, "Review submitted")
+		Expect(authorFirst.Text).To(ContainSubstring("reviewed merge request !1"))
+		expectRoot(authorFirst, author)
+		expectReply(email.waitForSubject(assignee.email, "Review submitted"), assigneeFirst)
+
+		closeMR := runNipaAs(reviewer, dir, "mr", "close", "1")
+		Expect(closeMR.ExitCode).To(Equal(0), closeMR.Output())
+		closed := email.waitForSubject(author.email, "Merge request closed")
+		Expect(closed.Text).To(ContainSubstring("closed merge request !1"))
+		expectReply(closed, authorFirst)
+		expectReply(email.waitForSubject(assignee.email, "Merge request closed"), assigneeFirst)
+
+		reopen := runNipaAs(author, dir, "mr", "reopen", "1")
+		Expect(reopen.ExitCode).To(Equal(0), reopen.Output())
+		reopened := email.waitForSubject(assignee.email, "Merge request reopened")
+		Expect(reopened.Text).To(ContainSubstring("reopened merge request !1"))
+		expectReply(reopened, assigneeFirst)
+
+		Consistently(func() []int {
+			return []int{
+				email.countSubject(author.email, "Merge request opened"),
+				email.countSubject(author.email, "Merge request ready for review"),
+				email.countSubject(author.email, "Merge request reopened"),
+				email.countSubject(reviewer.email, "Review submitted"),
+				email.countSubject(reviewer.email, "Merge request closed"),
+				email.countSubject(reviewer.email, "Merge request opened"),
+				email.countSubject(assignee.email, "Merge request opened"),
+			}
+		}, "2s", "100ms").Should(Equal([]int{0, 0, 0, 0, 0, 0, 0}), "actors are skipped and opening has no other participant yet")
+		Expect(email.countSubject(reviewer.email, "Merge request ready for review")).To(Equal(1))
+		Expect(email.countSubject(assignee.email, "Merge request ready for review")).To(Equal(1))
+	})
+
 	It("retries failed deliveries and redelivers them from the admin surface", func() {
 		project := newProject("email-retry")
 		seedRepo(orgSlug, project, map[string][]byte{"base.txt": []byte("base\n")}, "seed")

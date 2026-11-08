@@ -17,13 +17,28 @@ import (
 // path plus the authorized_keys line to register.
 func newSSHKeyPair(dir string) (keyPath, publicKey string) {
 	GinkgoHelper()
+	return writeSSHKeyPair(dir, "id_ed25519", "")
+}
+
+func newEncryptedSSHKeyPair(dir, passphrase string) (keyPath, publicKey string) {
+	GinkgoHelper()
+	return writeSSHKeyPair(dir, "id_ed25519_enc", passphrase)
+}
+
+func writeSSHKeyPair(dir, name, passphrase string) (keyPath, publicKey string) {
+	GinkgoHelper()
 
 	_, priv, err := ed25519.GenerateKey(rand.Reader)
 	Expect(err).NotTo(HaveOccurred())
 
-	block, err := ssh.MarshalPrivateKey(priv, "")
+	var block *pem.Block
+	if passphrase == "" {
+		block, err = ssh.MarshalPrivateKey(priv, "")
+	} else {
+		block, err = ssh.MarshalPrivateKeyWithPassphrase(priv, "", []byte(passphrase))
+	}
 	Expect(err).NotTo(HaveOccurred())
-	keyPath = filepath.Join(dir, "id_ed25519")
+	keyPath = filepath.Join(dir, name)
 	Expect(os.WriteFile(keyPath, pem.EncodeToMemory(block), 0o600)).To(Succeed())
 
 	signer, err := ssh.NewSignerFromKey(priv)

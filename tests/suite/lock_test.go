@@ -186,6 +186,54 @@ var _ = Describe("nipa lock", func() {
 		Expect(remaining.Locks[0].Scope).To(Equal("mainline"))
 	})
 
+	It("releases branch-scoped locks when the branch is deleted", func() {
+		project := newProject("lock-branch-delete")
+		seedRepo(orgSlug, project, map[string][]byte{"a.txt": []byte("a\n")}, "seed")
+		url := repoURLFor(orgSlug, project)
+		writer := newIdentity("lock-delete-writer").promote()
+		other := newIdentity("lock-delete-other").promote()
+
+		dir := cloneRepo(workspace(), url, "writer")
+		Expect(runNipaAs(writer, dir, "branch", "-c", "feature").ExitCode).To(Equal(0))
+		res := runNipaAs(writer, dir, "lock", "assets/hero.png")
+		Expect(res.ExitCode).To(Equal(0), res.Output())
+		Expect(res.Output()).To(ContainSubstring(`branch "feature"`))
+
+		adminDir := cloneRepo(workspace(), url, "admin")
+		mainline := runNipa(adminDir, "lock", "assets/hero.png")
+		Expect(mainline.ExitCode).To(Equal(0), mainline.Output())
+
+		var both locksJSON
+		runJSONInto(adminDir, &both, "lock", "list", "--json")
+		Expect(both.Locks).To(HaveLen(2))
+
+		del := runNipa(adminDir, "branch", "-d", "feature")
+		Expect(del.ExitCode).To(Equal(0), del.Output())
+
+		var remaining locksJSON
+		runJSONInto(adminDir, &remaining, "lock", "list", "--json")
+		Expect(remaining.Locks).To(HaveLen(1), "the deleted branch's lock is released")
+		Expect(remaining.Locks[0].Scope).To(Equal("mainline"))
+		Expect(remaining.Locks[0].Path).To(Equal("assets/hero.png"))
+		Expect(remaining.Locks[0].HeldByName).To(Equal("Super Admin"))
+
+		otherDir := cloneRepoAs(other, workspace(), url, "other")
+		Expect(runNipaAs(other, otherDir, "branch", "-c", "feature").ExitCode).To(Equal(0))
+		relock := runNipaAs(other, otherDir, "lock", "assets/hero.png")
+		Expect(relock.ExitCode).To(Equal(0), relock.Output())
+		Expect(relock.Output()).To(ContainSubstring(`branch "feature"`))
+
+		var after locksJSON
+		runJSONInto(adminDir, &after, "lock", "list", "--json")
+		Expect(after.Locks).To(HaveLen(2))
+		scopes := map[string]string{}
+		for _, lock := range after.Locks {
+			scopes[lock.Scope] = lock.HeldByName
+		}
+		Expect(scopes).To(HaveKeyWithValue("mainline", "Super Admin"))
+		Expect(scopes).To(HaveKeyWithValue("branch", other.name))
+	})
+
 	It("lists no locks for a clean project", func() {
 		project := newProject("lock-empty")
 		seedRepo(orgSlug, project, map[string][]byte{"a.txt": []byte("a\n")}, "seed")

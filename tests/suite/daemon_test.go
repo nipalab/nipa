@@ -10,7 +10,10 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
+	"github.com/nipalab/nipa/internal/client/daemon"
 	"github.com/nipalab/nipa/internal/client/grpc/daemonpb"
 	"github.com/nipalab/nipa/internal/grpc/pb"
 )
@@ -1139,6 +1142,165 @@ var _ = Describe("nipa serve", func() {
 		wrong := metadataAppend(d.ctx, "wrong-token")
 		_, err = d.client.Ping(wrong, &daemonpb.PingRequest{})
 		Expect(err).To(HaveOccurred())
+	})
+
+	It("signs in with an explicit SSH key path", func() {
+		dir := workspace()
+		keyPath, publicKey := newSSHKeyPair(dir)
+		key := api.addSSHKey("daemon key", publicKey)
+		DeferCleanup(func() { api.removeSSHKey(key.ID) })
+
+		d := startDaemonWithTokens(filepath.Join(GinkgoT().TempDir(), "tokens.json"))
+		_, err := d.client.LoginSSH(d.ctx, &daemonpb.LoginSSHRequest{Server: cli.host, KeyPath: keyPath})
+		Expect(err).NotTo(HaveOccurred())
+
+		account, err := d.client.AccountStatus(d.ctx, &daemonpb.AccountStatusRequest{Server: cli.host})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(account.GetSignedIn()).To(BeTrue())
+		Expect(account.GetUserId()).NotTo(BeEmpty())
+
+		projects, err := d.client.ListProjects(d.ctx, &daemonpb.ListProjectsRequest{Server: cli.host})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(projects.GetProjects()).NotTo(BeEmpty())
+	})
+
+	It("unlocks an encrypted SSH key only with the right passphrase", func() {
+		dir := workspace()
+		keyPath, publicKey := newEncryptedSSHKeyPair(dir, "correct horse")
+		key := api.addSSHKey("daemon encrypted key", publicKey)
+		DeferCleanup(func() { api.removeSSHKey(key.ID) })
+
+		d := startDaemonWithTokens(filepath.Join(GinkgoT().TempDir(), "tokens.json"))
+		_, err := d.client.LoginSSH(d.ctx, &daemonpb.LoginSSHRequest{Server: cli.host, KeyPath: keyPath, Passphrase: "wrong"})
+		Expect(err).To(HaveOccurred())
+		Expect(status.Convert(err).Message()).To(ContainSubstring("load SSH key"))
+
+		_, err = d.client.LoginSSH(d.ctx, &daemonpb.LoginSSHRequest{Server: cli.host, KeyPath: keyPath})
+		Expect(err).To(HaveOccurred())
+
+		_, err = d.client.LoginSSH(d.ctx, &daemonpb.LoginSSHRequest{Server: cli.host, Passphrase: "correct horse"})
+		Expect(status.Code(err)).To(Equal(codes.InvalidArgument))
+
+		account, err := d.client.AccountStatus(d.ctx, &daemonpb.AccountStatusRequest{Server: cli.host})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(account.GetSignedIn()).To(BeFalse())
+
+		_, err = d.client.LoginSSH(d.ctx, &daemonpb.LoginSSHRequest{Server: cli.host, KeyPath: keyPath, Passphrase: "correct horse"})
+		Expect(err).NotTo(HaveOccurred())
+		account, err = d.client.AccountStatus(d.ctx, &daemonpb.AccountStatusRequest{Server: cli.host})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(account.GetSignedIn()).To(BeTrue())
+	})
+
+	It("rejects an unregistered SSH key", func() {
+		keyPath, _ := newSSHKeyPair(workspace())
+
+		d := startDaemonWithTokens(filepath.Join(GinkgoT().TempDir(), "tokens.json"))
+		_, err := d.client.LoginSSH(d.ctx, &daemonpb.LoginSSHRequest{Server: cli.host, KeyPath: keyPath})
+		Expect(err).To(HaveOccurred())
+		Expect(status.Convert(err).Message()).To(ContainSubstring("invalid email or SSH key"))
+
+		account, err := d.client.AccountStatus(d.ctx, &daemonpb.AccountStatusRequest{Server: cli.host})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(account.GetSignedIn()).To(BeFalse())
+	})
+
+	It("rejects JSON bridge calls without a valid token", func() {
+		d := startDaemon()
+
+		resp, body := d.jsonDo(http.MethodPost, "/v1/Ping", "{}", func(r *http.Request) { r.Header.Del(daemon.TokenHeader) })
+		Expect(resp.StatusCode).To(Equal(http.StatusUnauthorized), string(body))
+		Expect(string(body)).To(ContainSubstring("Unauthenticated"))
+
+		resp, body = d.jsonDo(http.MethodPost, "/v1/Ping", "{}", func(r *http.Request) { r.Header.Set(daemon.TokenHeader, "wrong-token") })
+		Expect(resp.StatusCode).To(Equal(http.StatusUnauthorized), string(body))
+
+		resp, body = d.jsonDo(http.MethodPost, "/v1/Status", "{}", func(r *http.Request) { r.Header.Del(daemon.TokenHeader) })
+		Expect(resp.StatusCode).To(Equal(http.StatusUnauthorized), string(body))
+
+		resp, body = d.jsonPost("/v1/Ping", "{}")
+		Expect(resp.StatusCode).To(Equal(http.StatusOK), string(body))
+	})
+
+	It("maps JSON bridge failures onto HTTP statuses", func() {
+		project := newProject("daemon-json-errors")
+		seedRepo(orgSlug, project, map[string][]byte{"a.txt": []byte("a\n")}, "seed")
+		parent := workspace()
+		dir := cloneRepo(parent, repoURLFor(orgSlug, project), "work")
+
+		d := startDaemon()
+		rootOf := func(path string) string {
+			data, err := json.Marshal(map[string]string{"root": path})
+			Expect(err).NotTo(HaveOccurred())
+			return string(data)
+		}
+		decodeErr := func(body []byte) string {
+			var out struct {
+				Code string `json:"code"`
+			}
+			Expect(json.Unmarshal(body, &out)).To(Succeed(), string(body))
+			return out.Code
+		}
+
+		resp, body := d.jsonPost("/v1/NoSuchMethod", "{}")
+		Expect(resp.StatusCode).To(Equal(http.StatusNotFound), string(body))
+		Expect(decodeErr(body)).To(Equal("Unimplemented"))
+
+		resp, body = d.jsonDo(http.MethodGet, "/v1/Ping", "", nil)
+		Expect(resp.StatusCode).To(Equal(http.StatusMethodNotAllowed), string(body))
+		Expect(resp.Header.Get("Allow")).To(Equal(http.MethodPost))
+
+		resp, body = d.jsonPost("/v1/WatchRepo", "{not json")
+		Expect(resp.StatusCode).To(Equal(http.StatusBadRequest), string(body))
+		Expect(decodeErr(body)).To(Equal("InvalidArgument"))
+
+		resp, body = d.jsonPost("/v1/WatchRepo", rootOf(filepath.Join(parent, "not-a-clone")))
+		Expect(resp.StatusCode).To(Equal(http.StatusBadRequest), string(body))
+		Expect(string(body)).To(ContainSubstring("not a nipa working copy"))
+
+		resp, body = d.jsonPost("/v1/Status", rootOf(dir))
+		Expect(resp.StatusCode).To(Equal(http.StatusBadRequest), string(body))
+		Expect(string(body)).To(ContainSubstring("is not watched"))
+
+		resp, body = d.jsonPost("/v1/WatchRepo", rootOf(dir))
+		Expect(resp.StatusCode).To(Equal(http.StatusOK), string(body))
+
+		missingTag, err := json.Marshal(map[string]any{"root": dir, "request": map[string]string{"name": "no-such-tag"}})
+		Expect(err).NotTo(HaveOccurred())
+		resp, body = d.jsonPost("/v1/ProxyTagDelete", string(missingTag))
+		Expect(resp.StatusCode).To(Equal(http.StatusNotFound), string(body))
+		Expect(decodeErr(body)).To(Equal("NotFound"))
+
+		preview, err := json.Marshal(map[string]any{"root": dir, "new": map[string]string{"path": "a.txt"}})
+		Expect(err).NotTo(HaveOccurred())
+		resp, body = d.jsonPost("/v1/Preview", string(preview))
+		Expect(resp.StatusCode).To(Equal(http.StatusOK), string(body))
+		Expect(resp.Header.Get("Content-Type")).To(Equal("application/x-ndjson"))
+		lines := strings.Split(strings.TrimSpace(string(body)), "\n")
+		var last struct {
+			Failure struct {
+				Code int `json:"code"`
+			} `json:"failure"`
+		}
+		Expect(json.Unmarshal([]byte(lines[len(lines)-1]), &last)).To(Succeed())
+		Expect(last.Failure.Code).To(Equal(http.StatusUnsupportedMediaType))
+	})
+
+	It("refuses JSON bridge requests from non-loopback hosts or origins", func() {
+		d := startDaemon()
+
+		resp, body := d.jsonDo(http.MethodPost, "/v1/Ping", "{}", func(r *http.Request) { r.Host = "evil.example.com" })
+		Expect(resp.StatusCode).To(Equal(http.StatusForbidden), string(body))
+		Expect(string(body)).To(ContainSubstring("PermissionDenied"))
+
+		resp, body = d.jsonDo(http.MethodPost, "/v1/Ping", "{}", func(r *http.Request) { r.Header.Set("Origin", "https://evil.example.com") })
+		Expect(resp.StatusCode).To(Equal(http.StatusForbidden), string(body))
+
+		resp, body = d.jsonDo(http.MethodPost, "/v1/Ping", "{}", func(r *http.Request) {
+			r.Host = "localhost"
+			r.Header.Set("Origin", "http://127.0.0.1:1234")
+		})
+		Expect(resp.StatusCode).To(Equal(http.StatusOK), string(body))
 	})
 
 	It("shuts down and removes the endpoint file", func() {

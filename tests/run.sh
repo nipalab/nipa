@@ -11,6 +11,7 @@ FREE_PORT="${NIPA_TEST_PORT:-6745}"
 EE_PORT="${NIPA_TEST_EE_PORT:-6747}"
 PG_PORT="${NIPA_TEST_PG_PORT:-55432}"
 S3_PORT="${NIPA_TEST_S3_PORT:-55900}"
+RATELIMIT_PORT="${NIPA_TEST_RATELIMIT_PORT:-6749}"
 REDIS_PORT="${NIPA_TEST_REDIS_PORT:-6379}"
 REDIS_ADDR="${NIPA_TEST_REDIS_ADDR:-}"
 S3_BUCKET="${NIPA_TEST_S3_BUCKET:-nipa}"
@@ -21,7 +22,10 @@ DOCKER="${NIPA_TEST_DOCKER:-docker}"
 EMAIL_TRANSPORT="${NIPA_TEST_EMAIL_TRANSPORT:-sendgrid}"
 STORAGE_LEDGER="${NIPA_TEST_STORAGE_LEDGER-cloud}"
 SAAS_MODE="${NIPA_TEST_SAAS-1}"
+RATELIMIT_PROFILE="${NIPA_TEST_RATELIMIT:-0}"
 SERVER_PID=""
+RATELIMIT_PID=""
+RATELIMIT_HOST=""
 COMPOSE_STARTED=0
 PG_DSN=""
 S3_ENDPOINT=""
@@ -54,6 +58,11 @@ Environment:
   NIPA_TEST_POSTGRES_DSN    External postgres DSN (with NIPA_TEST_S3_ENDPOINT)
   NIPA_TEST_S3_ENDPOINT     External S3 endpoint (with NIPA_TEST_POSTGRES_DSN)
   NIPA_TEST_USER/PASS       Seeded super admin credentials
+  NIPA_TEST_RATELIMIT=1     Rate-limit profile (free only): also start a free
+                            server with low per-scope limits on
+                            NIPA_TEST_RATELIMIT_PORT (default 6749) and focus
+                            the run on the rate limiting specs unless --filter
+                            is given
 EOF
 }
 
@@ -65,6 +74,12 @@ stop_server() {
 		wait "$SERVER_PID" 2>/dev/null || true
 	fi
 	SERVER_PID=""
+	if [[ -n "$RATELIMIT_PID" ]] && kill -0 "$RATELIMIT_PID" 2>/dev/null; then
+		kill "$RATELIMIT_PID" 2>/dev/null || true
+		wait "$RATELIMIT_PID" 2>/dev/null || true
+	fi
+	RATELIMIT_PID=""
+	RATELIMIT_HOST=""
 }
 
 stop_compose() {
@@ -96,7 +111,7 @@ email_port_for() {
 }
 
 write_config() {
-	local edition="$1" port="$2" dir="$3"
+	local edition="$1" port="$2" dir="$3" profile="${4:-}"
 	mkdir -p "$dir"
 
 	local email_port
@@ -128,7 +143,7 @@ EOF
 		email_lines=$(cat <<EOF
 EMAIL_SENDER: http
 EMAIL_HTTP_ENDPOINT: 'http://127.0.0.1:$email_port/email'
-EMAIL_HTTP_BODY_TEMPLATE: '{"personalizations":[{"to":[{"email":{{json (index .To 0)}}}],"headers":{"Message-ID":{{json .MessageID}},"In-Reply-To":{{json .InReplyTo}}}}],"from":{"email":{{json .FromEmail}}},"subject":{{json .Subject}},"content":[{"type":"text/plain","value":{{json .Text}}},{"type":"text/html","value":{{json .HTML}}}]}'
+EMAIL_HTTP_BODY_TEMPLATE: '{"personalizations":[{"to":[{"email":{{json (index .To 0)}}}],"headers":{"Message-ID":{{json .MessageID}},"In-Reply-To":{{json .InReplyTo}}}}],"references":{{json .References}},"from":{"email":{{json .FromEmail}}},"subject":{{json .Subject}},"content":[{"type":"text/plain","value":{{json .Text}}},{"type":"text/html","value":{{json .HTML}}}]}'
 EOF
 )
 		;;
@@ -184,6 +199,22 @@ RATE_LIMIT_INVITE_EMAIL_PER_MINUTE: 600000
 RATE_LIMIT_INVITE_EMAIL_BURST: 100000
 RATE_LIMIT_INVITE_TOKEN_PER_MINUTE: 600000
 RATE_LIMIT_INVITE_TOKEN_BURST: 100000"
+	if [[ "$profile" == "ratelimit" ]]; then
+		# Distinct bursts let the specs tell the scopes apart through
+		# X-RateLimit-Limit; only 127.0.0.1 is trusted, so a 127.0.0.2 source
+		# exercises the untrusted-peer path.
+		rate_limit_lines="RATE_LIMIT_TRUSTED_PROXIES: '127.0.0.1/32'
+RATE_LIMIT_AUTH_IP_PER_MINUTE: 4
+RATE_LIMIT_AUTH_IP_BURST: 4
+RATE_LIMIT_AUTH_ID_PER_MINUTE: 600000
+RATE_LIMIT_AUTH_ID_BURST: 100000
+RATE_LIMIT_API_USER_PER_MINUTE: 6
+RATE_LIMIT_API_USER_BURST: 6
+RATE_LIMIT_CHUNK_IP_PER_MINUTE: 3
+RATE_LIMIT_CHUNK_IP_BURST: 3
+RATE_LIMIT_GLOBAL_IP_PER_MINUTE: 10
+RATE_LIMIT_GLOBAL_IP_BURST: 10"
+	fi
 	if [[ "$edition" == "ee" && -n "$REDIS_ADDR" ]]; then
 		rate_limit_lines="$rate_limit_lines
 RATE_LIMIT_STORE: redis
@@ -310,7 +341,7 @@ check_port_free() {
 }
 
 start_server() {
-	local edition="$1" port="$2" binary dir
+	local edition="$1" port="$2" profile="${3:-}" binary dir name pid
 	check_port_free "$port"
 	check_port_free "$(email_port_for "$port")"
 	if [[ "$edition" == "ee" ]]; then
@@ -318,36 +349,45 @@ start_server() {
 	else
 		binary="$ROOT_DIR/bin/nipad"
 	fi
-	dir="$TMP_DIR/server-$edition"
-	write_config "$edition" "$port" "$dir"
+	name="$edition${profile:+-$profile}"
+	dir="$TMP_DIR/server-$name"
+	write_config "$edition" "$port" "$dir" "$profile"
 
-	log "starting $edition server on 127.0.0.1:$port"
+	log "starting $name server on 127.0.0.1:$port"
 	(
 		cd "$dir"
 		exec "$binary"
-	) >"$LOG_DIR/$edition.log" 2>&1 &
-	SERVER_PID=$!
+	) >"$LOG_DIR/$name.log" 2>&1 &
+	pid=$!
+	if [[ "$profile" == "ratelimit" ]]; then
+		RATELIMIT_PID=$pid
+	else
+		SERVER_PID=$pid
+	fi
 
 	local tries=0
 	until curl -s -o /dev/null --max-time 2 "http://127.0.0.1:$port/api/v1/orgs"; do
-		if ! kill -0 "$SERVER_PID" 2>/dev/null; then
-			echo "$edition server exited during startup; log tail:" >&2
-			tail -n 40 "$LOG_DIR/$edition.log" >&2 || true
+		if ! kill -0 "$pid" 2>/dev/null; then
+			echo "$name server exited during startup; log tail:" >&2
+			tail -n 40 "$LOG_DIR/$name.log" >&2 || true
 			exit 1
 		fi
 		tries=$((tries + 1))
 		if [[ $tries -gt 60 ]]; then
-			echo "$edition server did not become ready; log tail:" >&2
-			tail -n 40 "$LOG_DIR/$edition.log" >&2 || true
+			echo "$name server did not become ready; log tail:" >&2
+			tail -n 40 "$LOG_DIR/$name.log" >&2 || true
 			exit 1
 		fi
 		sleep 1
 	done
-	log "$edition server is ready"
+	if [[ "$profile" == "ratelimit" ]]; then
+		RATELIMIT_HOST="127.0.0.1:$port"
+	fi
+	log "$name server is ready"
 }
 
 run_suite() {
-	local edition="$1" port="$2"
+	local edition="$1" port="$2" focus="${3-$FOCUS}"
 	export NIPA_TEST_HOST="127.0.0.1:$port"
 	export NIPA_TEST_EDITION="$edition"
 	export NIPA_TEST_EMAIL_PORT="$(email_port_for "$port")"
@@ -360,14 +400,15 @@ run_suite() {
 	# social login); they exist on ee only.
 	export NIPA_TEST_SAAS="$SAAS_MODE"
 	export NIPA_TEST_RATELIMIT=1
+	export NIPA_TEST_RATELIMIT_HOST="$RATELIMIT_HOST"
 	export NIPA_TEST_USER="${NIPA_TEST_USER:-nipa}"
 	export NIPA_TEST_PASS="${NIPA_TEST_PASS:-nipa}"
 	export NIPA_TOKEN_FILE="$TMP_DIR/tokens-$edition.json"
 	rm -f "$NIPA_TOKEN_FILE"
 
 	local args=(./tests/... -count=1 -v -timeout 20m)
-	if [[ -n "$FOCUS" ]]; then
-		args+=(-args "--ginkgo.focus=$FOCUS")
+	if [[ -n "$focus" ]]; then
+		args+=(-args "--ginkgo.focus=$focus")
 	fi
 
 	log "running client e2e suite against $edition"
@@ -410,7 +451,7 @@ main() {
 	}
 
 	mkdir -p "$LOG_DIR"
-	rm -rf "$TMP_DIR/server-free" "$TMP_DIR/server-ee"
+	rm -rf "$TMP_DIR/server-free" "$TMP_DIR/server-ee" "$TMP_DIR/server-free-ratelimit"
 
 	local editions=()
 	case "$edition" in
@@ -443,8 +484,13 @@ main() {
 			stop_server
 			stop_compose
 		else
+			local free_focus="$FOCUS"
 			start_server free "$FREE_PORT"
-			run_suite free "$FREE_PORT"
+			if [[ "$RATELIMIT_PROFILE" == "1" ]]; then
+				start_server free "$RATELIMIT_PORT" ratelimit
+				[[ -n "$free_focus" ]] || free_focus="rate limiting"
+			fi
+			run_suite free "$FREE_PORT" "$free_focus"
 			stop_server
 		fi
 	done

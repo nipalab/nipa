@@ -306,6 +306,52 @@ var _ = Describe("webhook deliveries", func() {
 		Expect(reopened.MergeRequest.State).To(Equal("open"))
 	})
 
+	It("delivers a merge request ready_for_review event from mr ready and a dropped WIP prefix", func() {
+		project := newProject("hook-mr-ready")
+		seedRepo(orgSlug, project, map[string][]byte{"base.txt": []byte("base\n")}, "seed")
+		fixture := newWebhook(project, []string{"mr.ready_for_review"}, nil)
+
+		parent := workspace()
+		dir := cloneRepo(parent, repoURLFor(orgSlug, project), "work")
+		Expect(runNipa(dir, "branch", "-c", "feature").ExitCode).To(Equal(0))
+		writeText(dir, "feature.txt", "feature\n")
+		Expect(runNipa(dir, "add", "feature.txt").ExitCode).To(Equal(0))
+		Expect(pushRepo(dir, "feature work").ExitCode).To(Equal(0))
+		create := runNipa(dir, "mr", "create", "--title", "Ready hook", "--draft")
+		Expect(create.ExitCode).To(Equal(0), create.Output())
+		Consistently(fixture.receiver.events, "1s", "100ms").Should(BeEmpty(), "opening a draft is not ready")
+
+		ready := runNipa(dir, "mr", "ready", "1")
+		Expect(ready.ExitCode).To(Equal(0), ready.Output())
+		delivery := fixture.receiver.wait("mr.ready_for_review")
+		Expect(delivery.verifySignature(fixture.hook.Secret)).To(BeTrue(), delivery.Signature)
+		Expect(delivery.HookID).To(Equal(fixture.hook.ID))
+		payload := delivery.mrPayload()
+		Expect(payload.Event).To(Equal("mr.ready_for_review"))
+		Expect(payload.MergeRequest.Number).To(Equal(int64(1)))
+		Expect(payload.MergeRequest.Title).To(Equal("Ready hook"))
+		Expect(payload.MergeRequest.State).To(Equal("open"))
+		Expect(payload.Actor.ID).NotTo(BeEmpty())
+
+		view := runNipa(dir, "mr", "view", "1")
+		Expect(view.ExitCode).To(Equal(0), view.Output())
+		Expect(view.Output()).NotTo(ContainSubstring("(draft)"))
+
+		Expect(runNipa(dir, "branch", "-c", "wip").ExitCode).To(Equal(0))
+		writeText(dir, "wip.txt", "wip\n")
+		Expect(runNipa(dir, "add", "wip.txt").ExitCode).To(Equal(0))
+		Expect(pushRepo(dir, "wip work").ExitCode).To(Equal(0))
+		wip := runNipa(dir, "mr", "create", "--title", "WIP: Prefixed")
+		Expect(wip.ExitCode).To(Equal(0), wip.Output())
+		Consistently(func() int { return fixture.receiver.count("mr.ready_for_review") }, "1s", "100ms").Should(Equal(1))
+
+		rename := runNipa(dir, "mr", "update", "2", "--title", "Prefixed")
+		Expect(rename.ExitCode).To(Equal(0), rename.Output())
+		renamed := fixture.receiver.waitCount("mr.ready_for_review", 2).mrPayload()
+		Expect(renamed.MergeRequest.Number).To(Equal(int64(2)))
+		Expect(renamed.MergeRequest.Title).To(Equal("Prefixed"))
+	})
+
 	It("delivers merge request review and comment events", func() {
 		project := newProject("hook-mr-review")
 		seedRepo(orgSlug, project, map[string][]byte{"base.txt": []byte("base\n")}, "seed")

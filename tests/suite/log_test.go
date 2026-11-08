@@ -2,6 +2,7 @@ package suite_test
 
 import (
 	"strings"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -99,5 +100,29 @@ var _ = Describe("nipa log", func() {
 		runJSONInto(dir, &out, "log", "--json")
 		Expect(out.Commits).To(HaveLen(1))
 		Expect(out.Commits[0].Message).To(Equal(firstMsg))
+	})
+
+	It("prints plain history with --no-pager and pages only on a terminal", func() {
+		project := newProject("log-no-pager")
+		message := seedRepo(orgSlug, project, map[string][]byte{"a.txt": []byte("a\n")}, "pager commit")
+		dir := cloneRepo(workspace(), repoURLFor(orgSlug, project), "work")
+
+		for _, args := range [][]string{{"log"}, {"log", "--no-pager"}, {"log", "--no-pager", "--oneline"}} {
+			piped := runNipaPiped(dir, args...)
+			Expect(piped.ExitCode).To(Equal(0), piped.Output())
+			Expect(piped.Stdout).To(ContainSubstring(message))
+			Expect(piped.Stdout).NotTo(ContainSubstring(ansiEscape), "piped %v output carries ANSI codes", args)
+		}
+
+		plain := runNipaPTY(dir, nil, "log", "--no-pager")
+		Expect(plain).To(ContainSubstring(message))
+		Expect(plain).NotTo(ContainSubstring(ansiEscape), "--no-pager prints without the pager or colors")
+
+		paged := startNipaPTY(dir, nil, "log")
+		Eventually(paged.out.String, "20s", "50ms").Should(ContainSubstring(message))
+		Expect(paged.out.String()).To(ContainSubstring(ansiEscape), "the interactive pager colors commit ids")
+		_, err := paged.master.Write([]byte("q"))
+		Expect(err).NotTo(HaveOccurred())
+		paged.wait(10 * time.Second)
 	})
 })
