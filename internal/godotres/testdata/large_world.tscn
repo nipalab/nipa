@@ -1,0 +1,4232 @@
+[gd_scene load_steps=5 format=3 uid="uid://b0l4rg3w0r1dq"]
+
+[ext_resource type="Script" uid="uid://dkx3w0v2r7nq1" path="res://world/world.gd" id="1_w0rld"]
+[ext_resource type="PackedScene" uid="uid://ce0k7y1q2b3n4" path="res://props/crate.tscn" id="2_cr4te"]
+[ext_resource type="PackedScene" uid="uid://bt8m5p6n2v0cx" path="res://props/torch.tscn" id="3_t0rch"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_fl00r"]
+size = Vector3(400, 1, 400)
+
+[node name="World" type="Node3D"]
+script = ExtResource("1_w0rld")
+
+[node name="Floor" type="StaticBody3D" parent="."]
+
+[node name="Shape" type="CollisionShape3D" parent="Floor"]
+shape = SubResource("BoxShape3D_fl00r")
+
+[node name="Props" type="Node3D" parent="."]
+
+[node name="Torch0" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -80, 0.5, -60)
+rotation_degrees = Vector3(0, 0, 0)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate1" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -76, 0.5, -60)
+
+[node name="Crate2" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -72, 0.5, -60)
+
+[node name="Torch3" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -68, 0.5, -60)
+
+[node name="Crate4" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0.5, -60)
+
+[node name="Crate5" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -60, 0.5, -60)
+
+[node name="Torch6" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -56, 0.5, -60)
+
+[node name="Crate7" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -52, 0.5, -60)
+rotation_degrees = Vector3(0, 259, 0)
+
+[node name="Crate8" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -48, 0.5, -60)
+
+[node name="Torch9" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -44, 0.5, -60)
+
+[node name="Crate10" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -40, 0.5, -60)
+
+[node name="Crate11" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -36, 0.5, -60)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Torch12" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -32, 0.5, -60)
+
+[node name="Crate13" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -28, 0.5, -60)
+
+[node name="Crate14" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -24, 0.5, -60)
+rotation_degrees = Vector3(0, 158, 0)
+
+[node name="Torch15" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -20, 0.5, -60)
+
+[node name="Crate16" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -16, 0.5, -60)
+
+[node name="Crate17" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12, 0.5, -60)
+
+[node name="Torch18" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 0.5, -60)
+
+[node name="Crate19" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4, 0.5, -60)
+
+[node name="Crate20" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, -60)
+
+[node name="Torch21" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4, 0.5, -60)
+rotation_degrees = Vector3(0, 57, 0)
+
+[node name="Crate22" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 0.5, -60)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate23" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12, 0.5, -60)
+
+[node name="Torch24" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 16, 0.5, -60)
+
+[node name="Crate25" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 0.5, -60)
+
+[node name="Crate26" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 24, 0.5, -60)
+
+[node name="Torch27" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 28, 0.5, -60)
+
+[node name="Crate28" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 32, 0.5, -60)
+rotation_degrees = Vector3(0, 316, 0)
+
+[node name="Crate29" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 36, 0.5, -60)
+
+[node name="Torch30" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 40, 0.5, -60)
+
+[node name="Crate31" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 44, 0.5, -60)
+
+[node name="Crate32" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 48, 0.5, -60)
+
+[node name="Torch33" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 52, 0.5, -60)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate34" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 56, 0.5, -60)
+
+[node name="Crate35" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 60, 0.5, -60)
+rotation_degrees = Vector3(0, 215, 0)
+
+[node name="Torch36" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 64, 0.5, -60)
+
+[node name="Crate37" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 68, 0.5, -60)
+
+[node name="Crate38" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 72, 0.5, -60)
+
+[node name="Torch39" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 76, 0.5, -60)
+
+[node name="Crate40" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -80, 0.5, -56)
+
+[node name="Crate41" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -76, 0.5, -56)
+
+[node name="Torch42" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -72, 0.5, -56)
+rotation_degrees = Vector3(0, 114, 0)
+
+[node name="Crate43" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -68, 0.5, -56)
+
+[node name="Crate44" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0.5, -56)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Torch45" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -60, 0.5, -56)
+
+[node name="Crate46" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -56, 0.5, -56)
+
+[node name="Crate47" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -52, 0.5, -56)
+
+[node name="Torch48" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -48, 0.5, -56)
+
+[node name="Crate49" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -44, 0.5, -56)
+rotation_degrees = Vector3(0, 13, 0)
+
+[node name="Crate50" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -40, 0.5, -56)
+
+[node name="Torch51" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -36, 0.5, -56)
+
+[node name="Crate52" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -32, 0.5, -56)
+
+[node name="Crate53" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -28, 0.5, -56)
+
+[node name="Torch54" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -24, 0.5, -56)
+
+[node name="Crate55" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -20, 0.5, -56)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate56" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -16, 0.5, -56)
+rotation_degrees = Vector3(0, 272, 0)
+
+[node name="Torch57" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12, 0.5, -56)
+
+[node name="Crate58" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 0.5, -56)
+
+[node name="Crate59" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4, 0.5, -56)
+
+[node name="Torch60" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, -56)
+
+[node name="Crate61" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4, 0.5, -56)
+
+[node name="Crate62" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 0.5, -56)
+
+[node name="Torch63" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12, 0.5, -56)
+rotation_degrees = Vector3(0, 171, 0)
+
+[node name="Crate64" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 16, 0.5, -56)
+
+[node name="Crate65" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 0.5, -56)
+
+[node name="Torch66" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 24, 0.5, -56)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate67" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 28, 0.5, -56)
+
+[node name="Crate68" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 32, 0.5, -56)
+
+[node name="Torch69" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 36, 0.5, -56)
+
+[node name="Crate70" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 40, 0.5, -56)
+rotation_degrees = Vector3(0, 70, 0)
+
+[node name="Crate71" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 44, 0.5, -56)
+
+[node name="Torch72" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 48, 0.5, -56)
+
+[node name="Crate73" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 52, 0.5, -56)
+
+[node name="Crate74" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 56, 0.5, -56)
+
+[node name="Torch75" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 60, 0.5, -56)
+
+[node name="Crate76" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 64, 0.5, -56)
+
+[node name="Crate77" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 68, 0.5, -56)
+rotation_degrees = Vector3(0, 329, 0)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Torch78" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 72, 0.5, -56)
+
+[node name="Crate79" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 76, 0.5, -56)
+
+[node name="Crate80" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -80, 0.5, -52)
+
+[node name="Torch81" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -76, 0.5, -52)
+
+[node name="Crate82" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -72, 0.5, -52)
+
+[node name="Crate83" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -68, 0.5, -52)
+
+[node name="Torch84" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0.5, -52)
+rotation_degrees = Vector3(0, 228, 0)
+
+[node name="Crate85" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -60, 0.5, -52)
+
+[node name="Crate86" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -56, 0.5, -52)
+
+[node name="Torch87" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -52, 0.5, -52)
+
+[node name="Crate88" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -48, 0.5, -52)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate89" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -44, 0.5, -52)
+
+[node name="Torch90" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -40, 0.5, -52)
+
+[node name="Crate91" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -36, 0.5, -52)
+rotation_degrees = Vector3(0, 127, 0)
+
+[node name="Crate92" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -32, 0.5, -52)
+
+[node name="Torch93" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -28, 0.5, -52)
+
+[node name="Crate94" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -24, 0.5, -52)
+
+[node name="Crate95" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -20, 0.5, -52)
+
+[node name="Torch96" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -16, 0.5, -52)
+
+[node name="Crate97" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12, 0.5, -52)
+
+[node name="Crate98" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 0.5, -52)
+rotation_degrees = Vector3(0, 26, 0)
+
+[node name="Torch99" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4, 0.5, -52)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate100" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, -52)
+
+[node name="Crate101" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4, 0.5, -52)
+
+[node name="Torch102" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 0.5, -52)
+
+[node name="Crate103" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12, 0.5, -52)
+
+[node name="Crate104" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 16, 0.5, -52)
+
+[node name="Torch105" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 0.5, -52)
+rotation_degrees = Vector3(0, 285, 0)
+
+[node name="Crate106" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 24, 0.5, -52)
+
+[node name="Crate107" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 28, 0.5, -52)
+
+[node name="Torch108" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 32, 0.5, -52)
+
+[node name="Crate109" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 36, 0.5, -52)
+
+[node name="Crate110" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 40, 0.5, -52)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Torch111" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 44, 0.5, -52)
+
+[node name="Crate112" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 48, 0.5, -52)
+rotation_degrees = Vector3(0, 184, 0)
+
+[node name="Crate113" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 52, 0.5, -52)
+
+[node name="Torch114" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 56, 0.5, -52)
+
+[node name="Crate115" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 60, 0.5, -52)
+
+[node name="Crate116" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 64, 0.5, -52)
+
+[node name="Torch117" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 68, 0.5, -52)
+
+[node name="Crate118" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 72, 0.5, -52)
+
+[node name="Crate119" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 76, 0.5, -52)
+rotation_degrees = Vector3(0, 83, 0)
+
+[node name="Torch120" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -80, 0.5, -48)
+
+[node name="Crate121" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -76, 0.5, -48)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate122" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -72, 0.5, -48)
+
+[node name="Torch123" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -68, 0.5, -48)
+
+[node name="Crate124" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0.5, -48)
+
+[node name="Crate125" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -60, 0.5, -48)
+
+[node name="Torch126" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -56, 0.5, -48)
+rotation_degrees = Vector3(0, 342, 0)
+
+[node name="Crate127" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -52, 0.5, -48)
+
+[node name="Crate128" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -48, 0.5, -48)
+
+[node name="Torch129" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -44, 0.5, -48)
+
+[node name="Crate130" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -40, 0.5, -48)
+
+[node name="Crate131" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -36, 0.5, -48)
+
+[node name="Torch132" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -32, 0.5, -48)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate133" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -28, 0.5, -48)
+rotation_degrees = Vector3(0, 241, 0)
+
+[node name="Crate134" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -24, 0.5, -48)
+
+[node name="Torch135" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -20, 0.5, -48)
+
+[node name="Crate136" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -16, 0.5, -48)
+
+[node name="Crate137" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12, 0.5, -48)
+
+[node name="Torch138" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 0.5, -48)
+
+[node name="Crate139" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4, 0.5, -48)
+
+[node name="Crate140" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, -48)
+rotation_degrees = Vector3(0, 140, 0)
+
+[node name="Torch141" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4, 0.5, -48)
+
+[node name="Crate142" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 0.5, -48)
+
+[node name="Crate143" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12, 0.5, -48)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Torch144" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 16, 0.5, -48)
+
+[node name="Crate145" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 0.5, -48)
+
+[node name="Crate146" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 24, 0.5, -48)
+
+[node name="Torch147" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 28, 0.5, -48)
+rotation_degrees = Vector3(0, 39, 0)
+
+[node name="Crate148" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 32, 0.5, -48)
+
+[node name="Crate149" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 36, 0.5, -48)
+
+[node name="Torch150" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 40, 0.5, -48)
+
+[node name="Crate151" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 44, 0.5, -48)
+
+[node name="Crate152" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 48, 0.5, -48)
+
+[node name="Torch153" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 52, 0.5, -48)
+
+[node name="Crate154" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 56, 0.5, -48)
+rotation_degrees = Vector3(0, 298, 0)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate155" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 60, 0.5, -48)
+
+[node name="Torch156" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 64, 0.5, -48)
+
+[node name="Crate157" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 68, 0.5, -48)
+
+[node name="Crate158" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 72, 0.5, -48)
+
+[node name="Torch159" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 76, 0.5, -48)
+
+[node name="Crate160" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -80, 0.5, -44)
+
+[node name="Crate161" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -76, 0.5, -44)
+rotation_degrees = Vector3(0, 197, 0)
+
+[node name="Torch162" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -72, 0.5, -44)
+
+[node name="Crate163" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -68, 0.5, -44)
+
+[node name="Crate164" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0.5, -44)
+
+[node name="Torch165" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -60, 0.5, -44)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate166" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -56, 0.5, -44)
+
+[node name="Crate167" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -52, 0.5, -44)
+
+[node name="Torch168" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -48, 0.5, -44)
+rotation_degrees = Vector3(0, 96, 0)
+
+[node name="Crate169" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -44, 0.5, -44)
+
+[node name="Crate170" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -40, 0.5, -44)
+
+[node name="Torch171" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -36, 0.5, -44)
+
+[node name="Crate172" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -32, 0.5, -44)
+
+[node name="Crate173" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -28, 0.5, -44)
+
+[node name="Torch174" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -24, 0.5, -44)
+
+[node name="Crate175" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -20, 0.5, -44)
+rotation_degrees = Vector3(0, 355, 0)
+
+[node name="Crate176" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -16, 0.5, -44)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Torch177" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12, 0.5, -44)
+
+[node name="Crate178" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 0.5, -44)
+
+[node name="Crate179" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4, 0.5, -44)
+
+[node name="Torch180" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, -44)
+
+[node name="Crate181" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4, 0.5, -44)
+
+[node name="Crate182" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 0.5, -44)
+rotation_degrees = Vector3(0, 254, 0)
+
+[node name="Torch183" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12, 0.5, -44)
+
+[node name="Crate184" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 16, 0.5, -44)
+
+[node name="Crate185" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 0.5, -44)
+
+[node name="Torch186" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 24, 0.5, -44)
+
+[node name="Crate187" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 28, 0.5, -44)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate188" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 32, 0.5, -44)
+
+[node name="Torch189" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 36, 0.5, -44)
+rotation_degrees = Vector3(0, 153, 0)
+
+[node name="Crate190" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 40, 0.5, -44)
+
+[node name="Crate191" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 44, 0.5, -44)
+
+[node name="Torch192" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 48, 0.5, -44)
+
+[node name="Crate193" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 52, 0.5, -44)
+
+[node name="Crate194" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 56, 0.5, -44)
+
+[node name="Torch195" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 60, 0.5, -44)
+
+[node name="Crate196" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 64, 0.5, -44)
+rotation_degrees = Vector3(0, 52, 0)
+
+[node name="Crate197" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 68, 0.5, -44)
+
+[node name="Torch198" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 72, 0.5, -44)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate199" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 76, 0.5, -44)
+
+[node name="Crate200" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -80, 0.5, -40)
+
+[node name="Torch201" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -76, 0.5, -40)
+
+[node name="Crate202" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -72, 0.5, -40)
+
+[node name="Crate203" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -68, 0.5, -40)
+rotation_degrees = Vector3(0, 311, 0)
+
+[node name="Torch204" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0.5, -40)
+
+[node name="Crate205" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -60, 0.5, -40)
+
+[node name="Crate206" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -56, 0.5, -40)
+
+[node name="Torch207" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -52, 0.5, -40)
+
+[node name="Crate208" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -48, 0.5, -40)
+
+[node name="Crate209" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -44, 0.5, -40)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Torch210" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -40, 0.5, -40)
+rotation_degrees = Vector3(0, 210, 0)
+
+[node name="Crate211" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -36, 0.5, -40)
+
+[node name="Crate212" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -32, 0.5, -40)
+
+[node name="Torch213" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -28, 0.5, -40)
+
+[node name="Crate214" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -24, 0.5, -40)
+
+[node name="Crate215" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -20, 0.5, -40)
+
+[node name="Torch216" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -16, 0.5, -40)
+
+[node name="Crate217" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12, 0.5, -40)
+rotation_degrees = Vector3(0, 109, 0)
+
+[node name="Crate218" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 0.5, -40)
+
+[node name="Torch219" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4, 0.5, -40)
+
+[node name="Crate220" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, -40)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate221" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4, 0.5, -40)
+
+[node name="Torch222" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 0.5, -40)
+
+[node name="Crate223" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12, 0.5, -40)
+
+[node name="Crate224" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 16, 0.5, -40)
+rotation_degrees = Vector3(0, 8, 0)
+
+[node name="Torch225" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 0.5, -40)
+
+[node name="Crate226" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 24, 0.5, -40)
+
+[node name="Crate227" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 28, 0.5, -40)
+
+[node name="Torch228" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 32, 0.5, -40)
+
+[node name="Crate229" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 36, 0.5, -40)
+
+[node name="Crate230" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 40, 0.5, -40)
+
+[node name="Torch231" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 44, 0.5, -40)
+rotation_degrees = Vector3(0, 267, 0)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate232" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 48, 0.5, -40)
+
+[node name="Crate233" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 52, 0.5, -40)
+
+[node name="Torch234" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 56, 0.5, -40)
+
+[node name="Crate235" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 60, 0.5, -40)
+
+[node name="Crate236" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 64, 0.5, -40)
+
+[node name="Torch237" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 68, 0.5, -40)
+
+[node name="Crate238" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 72, 0.5, -40)
+rotation_degrees = Vector3(0, 166, 0)
+
+[node name="Crate239" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 76, 0.5, -40)
+
+[node name="Torch240" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -80, 0.5, -36)
+
+[node name="Crate241" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -76, 0.5, -36)
+
+[node name="Crate242" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -72, 0.5, -36)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Torch243" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -68, 0.5, -36)
+
+[node name="Crate244" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0.5, -36)
+
+[node name="Crate245" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -60, 0.5, -36)
+rotation_degrees = Vector3(0, 65, 0)
+
+[node name="Torch246" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -56, 0.5, -36)
+
+[node name="Crate247" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -52, 0.5, -36)
+
+[node name="Crate248" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -48, 0.5, -36)
+
+[node name="Torch249" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -44, 0.5, -36)
+
+[node name="Crate250" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -40, 0.5, -36)
+
+[node name="Crate251" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -36, 0.5, -36)
+
+[node name="Torch252" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -32, 0.5, -36)
+rotation_degrees = Vector3(0, 324, 0)
+
+[node name="Crate253" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -28, 0.5, -36)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate254" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -24, 0.5, -36)
+
+[node name="Torch255" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -20, 0.5, -36)
+
+[node name="Crate256" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -16, 0.5, -36)
+
+[node name="Crate257" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12, 0.5, -36)
+
+[node name="Torch258" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 0.5, -36)
+
+[node name="Crate259" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4, 0.5, -36)
+rotation_degrees = Vector3(0, 223, 0)
+
+[node name="Crate260" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, -36)
+
+[node name="Torch261" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4, 0.5, -36)
+
+[node name="Crate262" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 0.5, -36)
+
+[node name="Crate263" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12, 0.5, -36)
+
+[node name="Torch264" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 16, 0.5, -36)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate265" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 0.5, -36)
+
+[node name="Crate266" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 24, 0.5, -36)
+rotation_degrees = Vector3(0, 122, 0)
+
+[node name="Torch267" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 28, 0.5, -36)
+
+[node name="Crate268" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 32, 0.5, -36)
+
+[node name="Crate269" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 36, 0.5, -36)
+
+[node name="Torch270" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 40, 0.5, -36)
+
+[node name="Crate271" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 44, 0.5, -36)
+
+[node name="Crate272" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 48, 0.5, -36)
+
+[node name="Torch273" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 52, 0.5, -36)
+rotation_degrees = Vector3(0, 21, 0)
+
+[node name="Crate274" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 56, 0.5, -36)
+
+[node name="Crate275" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 60, 0.5, -36)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Torch276" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 64, 0.5, -36)
+
+[node name="Crate277" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 68, 0.5, -36)
+
+[node name="Crate278" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 72, 0.5, -36)
+
+[node name="Torch279" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 76, 0.5, -36)
+
+[node name="Crate280" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -80, 0.5, -32)
+rotation_degrees = Vector3(0, 280, 0)
+
+[node name="Crate281" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -76, 0.5, -32)
+
+[node name="Torch282" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -72, 0.5, -32)
+
+[node name="Crate283" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -68, 0.5, -32)
+
+[node name="Crate284" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0.5, -32)
+
+[node name="Torch285" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -60, 0.5, -32)
+
+[node name="Crate286" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -56, 0.5, -32)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate287" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -52, 0.5, -32)
+rotation_degrees = Vector3(0, 179, 0)
+
+[node name="Torch288" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -48, 0.5, -32)
+
+[node name="Crate289" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -44, 0.5, -32)
+
+[node name="Crate290" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -40, 0.5, -32)
+
+[node name="Torch291" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -36, 0.5, -32)
+
+[node name="Crate292" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -32, 0.5, -32)
+
+[node name="Crate293" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -28, 0.5, -32)
+
+[node name="Torch294" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -24, 0.5, -32)
+rotation_degrees = Vector3(0, 78, 0)
+
+[node name="Crate295" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -20, 0.5, -32)
+
+[node name="Crate296" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -16, 0.5, -32)
+
+[node name="Torch297" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12, 0.5, -32)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate298" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 0.5, -32)
+
+[node name="Crate299" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4, 0.5, -32)
+
+[node name="Torch300" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, -32)
+
+[node name="Crate301" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4, 0.5, -32)
+rotation_degrees = Vector3(0, 337, 0)
+
+[node name="Crate302" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 0.5, -32)
+
+[node name="Torch303" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12, 0.5, -32)
+
+[node name="Crate304" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 16, 0.5, -32)
+
+[node name="Crate305" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 0.5, -32)
+
+[node name="Torch306" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 24, 0.5, -32)
+
+[node name="Crate307" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 28, 0.5, -32)
+
+[node name="Crate308" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 32, 0.5, -32)
+rotation_degrees = Vector3(0, 236, 0)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Torch309" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 36, 0.5, -32)
+
+[node name="Crate310" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 40, 0.5, -32)
+
+[node name="Crate311" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 44, 0.5, -32)
+
+[node name="Torch312" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 48, 0.5, -32)
+
+[node name="Crate313" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 52, 0.5, -32)
+
+[node name="Crate314" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 56, 0.5, -32)
+
+[node name="Torch315" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 60, 0.5, -32)
+rotation_degrees = Vector3(0, 135, 0)
+
+[node name="Crate316" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 64, 0.5, -32)
+
+[node name="Crate317" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 68, 0.5, -32)
+
+[node name="Torch318" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 72, 0.5, -32)
+
+[node name="Crate319" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 76, 0.5, -32)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate320" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -80, 0.5, -28)
+
+[node name="Torch321" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -76, 0.5, -28)
+
+[node name="Crate322" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -72, 0.5, -28)
+rotation_degrees = Vector3(0, 34, 0)
+
+[node name="Crate323" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -68, 0.5, -28)
+
+[node name="Torch324" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0.5, -28)
+
+[node name="Crate325" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -60, 0.5, -28)
+
+[node name="Crate326" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -56, 0.5, -28)
+
+[node name="Torch327" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -52, 0.5, -28)
+
+[node name="Crate328" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -48, 0.5, -28)
+
+[node name="Crate329" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -44, 0.5, -28)
+rotation_degrees = Vector3(0, 293, 0)
+
+[node name="Torch330" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -40, 0.5, -28)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate331" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -36, 0.5, -28)
+
+[node name="Crate332" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -32, 0.5, -28)
+
+[node name="Torch333" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -28, 0.5, -28)
+
+[node name="Crate334" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -24, 0.5, -28)
+
+[node name="Crate335" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -20, 0.5, -28)
+
+[node name="Torch336" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -16, 0.5, -28)
+rotation_degrees = Vector3(0, 192, 0)
+
+[node name="Crate337" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12, 0.5, -28)
+
+[node name="Crate338" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 0.5, -28)
+
+[node name="Torch339" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4, 0.5, -28)
+
+[node name="Crate340" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, -28)
+
+[node name="Crate341" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4, 0.5, -28)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Torch342" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 0.5, -28)
+
+[node name="Crate343" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12, 0.5, -28)
+rotation_degrees = Vector3(0, 91, 0)
+
+[node name="Crate344" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 16, 0.5, -28)
+
+[node name="Torch345" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 0.5, -28)
+
+[node name="Crate346" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 24, 0.5, -28)
+
+[node name="Crate347" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 28, 0.5, -28)
+
+[node name="Torch348" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 32, 0.5, -28)
+
+[node name="Crate349" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 36, 0.5, -28)
+
+[node name="Crate350" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 40, 0.5, -28)
+rotation_degrees = Vector3(0, 350, 0)
+
+[node name="Torch351" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 44, 0.5, -28)
+
+[node name="Crate352" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 48, 0.5, -28)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate353" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 52, 0.5, -28)
+
+[node name="Torch354" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 56, 0.5, -28)
+
+[node name="Crate355" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 60, 0.5, -28)
+
+[node name="Crate356" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 64, 0.5, -28)
+
+[node name="Torch357" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 68, 0.5, -28)
+rotation_degrees = Vector3(0, 249, 0)
+
+[node name="Crate358" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 72, 0.5, -28)
+
+[node name="Crate359" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 76, 0.5, -28)
+
+[node name="Torch360" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -80, 0.5, -24)
+
+[node name="Crate361" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -76, 0.5, -24)
+
+[node name="Crate362" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -72, 0.5, -24)
+
+[node name="Torch363" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -68, 0.5, -24)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate364" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0.5, -24)
+rotation_degrees = Vector3(0, 148, 0)
+
+[node name="Crate365" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -60, 0.5, -24)
+
+[node name="Torch366" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -56, 0.5, -24)
+
+[node name="Crate367" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -52, 0.5, -24)
+
+[node name="Crate368" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -48, 0.5, -24)
+
+[node name="Torch369" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -44, 0.5, -24)
+
+[node name="Crate370" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -40, 0.5, -24)
+
+[node name="Crate371" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -36, 0.5, -24)
+rotation_degrees = Vector3(0, 47, 0)
+
+[node name="Torch372" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -32, 0.5, -24)
+
+[node name="Crate373" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -28, 0.5, -24)
+
+[node name="Crate374" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -24, 0.5, -24)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Torch375" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -20, 0.5, -24)
+
+[node name="Crate376" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -16, 0.5, -24)
+
+[node name="Crate377" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12, 0.5, -24)
+
+[node name="Torch378" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 0.5, -24)
+rotation_degrees = Vector3(0, 306, 0)
+
+[node name="Crate379" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4, 0.5, -24)
+
+[node name="Crate380" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, -24)
+
+[node name="Torch381" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4, 0.5, -24)
+
+[node name="Crate382" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 0.5, -24)
+
+[node name="Crate383" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12, 0.5, -24)
+
+[node name="Torch384" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 16, 0.5, -24)
+
+[node name="Crate385" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 0.5, -24)
+rotation_degrees = Vector3(0, 205, 0)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate386" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 24, 0.5, -24)
+
+[node name="Torch387" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 28, 0.5, -24)
+
+[node name="Crate388" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 32, 0.5, -24)
+
+[node name="Crate389" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 36, 0.5, -24)
+
+[node name="Torch390" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 40, 0.5, -24)
+
+[node name="Crate391" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 44, 0.5, -24)
+
+[node name="Crate392" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 48, 0.5, -24)
+rotation_degrees = Vector3(0, 104, 0)
+
+[node name="Torch393" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 52, 0.5, -24)
+
+[node name="Crate394" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 56, 0.5, -24)
+
+[node name="Crate395" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 60, 0.5, -24)
+
+[node name="Torch396" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 64, 0.5, -24)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate397" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 68, 0.5, -24)
+
+[node name="Crate398" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 72, 0.5, -24)
+
+[node name="Torch399" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 76, 0.5, -24)
+rotation_degrees = Vector3(0, 3, 0)
+
+[node name="Crate400" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -80, 0.5, -20)
+
+[node name="Crate401" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -76, 0.5, -20)
+
+[node name="Torch402" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -72, 0.5, -20)
+
+[node name="Crate403" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -68, 0.5, -20)
+
+[node name="Crate404" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0.5, -20)
+
+[node name="Torch405" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -60, 0.5, -20)
+
+[node name="Crate406" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -56, 0.5, -20)
+rotation_degrees = Vector3(0, 262, 0)
+
+[node name="Crate407" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -52, 0.5, -20)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Torch408" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -48, 0.5, -20)
+
+[node name="Crate409" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -44, 0.5, -20)
+
+[node name="Crate410" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -40, 0.5, -20)
+
+[node name="Torch411" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -36, 0.5, -20)
+
+[node name="Crate412" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -32, 0.5, -20)
+
+[node name="Crate413" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -28, 0.5, -20)
+rotation_degrees = Vector3(0, 161, 0)
+
+[node name="Torch414" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -24, 0.5, -20)
+
+[node name="Crate415" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -20, 0.5, -20)
+
+[node name="Crate416" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -16, 0.5, -20)
+
+[node name="Torch417" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12, 0.5, -20)
+
+[node name="Crate418" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 0.5, -20)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate419" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4, 0.5, -20)
+
+[node name="Torch420" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, -20)
+rotation_degrees = Vector3(0, 60, 0)
+
+[node name="Crate421" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4, 0.5, -20)
+
+[node name="Crate422" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 0.5, -20)
+
+[node name="Torch423" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12, 0.5, -20)
+
+[node name="Crate424" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 16, 0.5, -20)
+
+[node name="Crate425" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 0.5, -20)
+
+[node name="Torch426" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 24, 0.5, -20)
+
+[node name="Crate427" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 28, 0.5, -20)
+rotation_degrees = Vector3(0, 319, 0)
+
+[node name="Crate428" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 32, 0.5, -20)
+
+[node name="Torch429" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 36, 0.5, -20)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate430" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 40, 0.5, -20)
+
+[node name="Crate431" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 44, 0.5, -20)
+
+[node name="Torch432" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 48, 0.5, -20)
+
+[node name="Crate433" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 52, 0.5, -20)
+
+[node name="Crate434" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 56, 0.5, -20)
+rotation_degrees = Vector3(0, 218, 0)
+
+[node name="Torch435" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 60, 0.5, -20)
+
+[node name="Crate436" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 64, 0.5, -20)
+
+[node name="Crate437" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 68, 0.5, -20)
+
+[node name="Torch438" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 72, 0.5, -20)
+
+[node name="Crate439" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 76, 0.5, -20)
+
+[node name="Crate440" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -80, 0.5, -16)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Torch441" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -76, 0.5, -16)
+rotation_degrees = Vector3(0, 117, 0)
+
+[node name="Crate442" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -72, 0.5, -16)
+
+[node name="Crate443" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -68, 0.5, -16)
+
+[node name="Torch444" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0.5, -16)
+
+[node name="Crate445" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -60, 0.5, -16)
+
+[node name="Crate446" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -56, 0.5, -16)
+
+[node name="Torch447" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -52, 0.5, -16)
+
+[node name="Crate448" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -48, 0.5, -16)
+rotation_degrees = Vector3(0, 16, 0)
+
+[node name="Crate449" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -44, 0.5, -16)
+
+[node name="Torch450" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -40, 0.5, -16)
+
+[node name="Crate451" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -36, 0.5, -16)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate452" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -32, 0.5, -16)
+
+[node name="Torch453" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -28, 0.5, -16)
+
+[node name="Crate454" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -24, 0.5, -16)
+
+[node name="Crate455" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -20, 0.5, -16)
+rotation_degrees = Vector3(0, 275, 0)
+
+[node name="Torch456" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -16, 0.5, -16)
+
+[node name="Crate457" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12, 0.5, -16)
+
+[node name="Crate458" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 0.5, -16)
+
+[node name="Torch459" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4, 0.5, -16)
+
+[node name="Crate460" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, -16)
+
+[node name="Crate461" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4, 0.5, -16)
+
+[node name="Torch462" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 0.5, -16)
+rotation_degrees = Vector3(0, 174, 0)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate463" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12, 0.5, -16)
+
+[node name="Crate464" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 16, 0.5, -16)
+
+[node name="Torch465" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 0.5, -16)
+
+[node name="Crate466" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 24, 0.5, -16)
+
+[node name="Crate467" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 28, 0.5, -16)
+
+[node name="Torch468" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 32, 0.5, -16)
+
+[node name="Crate469" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 36, 0.5, -16)
+rotation_degrees = Vector3(0, 73, 0)
+
+[node name="Crate470" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 40, 0.5, -16)
+
+[node name="Torch471" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 44, 0.5, -16)
+
+[node name="Crate472" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 48, 0.5, -16)
+
+[node name="Crate473" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 52, 0.5, -16)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Torch474" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 56, 0.5, -16)
+
+[node name="Crate475" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 60, 0.5, -16)
+
+[node name="Crate476" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 64, 0.5, -16)
+rotation_degrees = Vector3(0, 332, 0)
+
+[node name="Torch477" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 68, 0.5, -16)
+
+[node name="Crate478" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 72, 0.5, -16)
+
+[node name="Crate479" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 76, 0.5, -16)
+
+[node name="Torch480" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -80, 0.5, -12)
+
+[node name="Crate481" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -76, 0.5, -12)
+
+[node name="Crate482" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -72, 0.5, -12)
+
+[node name="Torch483" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -68, 0.5, -12)
+rotation_degrees = Vector3(0, 231, 0)
+
+[node name="Crate484" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0.5, -12)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate485" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -60, 0.5, -12)
+
+[node name="Torch486" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -56, 0.5, -12)
+
+[node name="Crate487" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -52, 0.5, -12)
+
+[node name="Crate488" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -48, 0.5, -12)
+
+[node name="Torch489" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -44, 0.5, -12)
+
+[node name="Crate490" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -40, 0.5, -12)
+rotation_degrees = Vector3(0, 130, 0)
+
+[node name="Crate491" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -36, 0.5, -12)
+
+[node name="Torch492" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -32, 0.5, -12)
+
+[node name="Crate493" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -28, 0.5, -12)
+
+[node name="Crate494" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -24, 0.5, -12)
+
+[node name="Torch495" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -20, 0.5, -12)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate496" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -16, 0.5, -12)
+
+[node name="Crate497" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12, 0.5, -12)
+rotation_degrees = Vector3(0, 29, 0)
+
+[node name="Torch498" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 0.5, -12)
+
+[node name="Crate499" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4, 0.5, -12)
+
+[node name="Crate500" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, -12)
+
+[node name="Torch501" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4, 0.5, -12)
+
+[node name="Crate502" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 0.5, -12)
+
+[node name="Crate503" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12, 0.5, -12)
+
+[node name="Torch504" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 16, 0.5, -12)
+rotation_degrees = Vector3(0, 288, 0)
+
+[node name="Crate505" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 0.5, -12)
+
+[node name="Crate506" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 24, 0.5, -12)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Torch507" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 28, 0.5, -12)
+
+[node name="Crate508" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 32, 0.5, -12)
+
+[node name="Crate509" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 36, 0.5, -12)
+
+[node name="Torch510" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 40, 0.5, -12)
+
+[node name="Crate511" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 44, 0.5, -12)
+rotation_degrees = Vector3(0, 187, 0)
+
+[node name="Crate512" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 48, 0.5, -12)
+
+[node name="Torch513" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 52, 0.5, -12)
+
+[node name="Crate514" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 56, 0.5, -12)
+
+[node name="Crate515" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 60, 0.5, -12)
+
+[node name="Torch516" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 64, 0.5, -12)
+
+[node name="Crate517" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 68, 0.5, -12)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate518" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 72, 0.5, -12)
+rotation_degrees = Vector3(0, 86, 0)
+
+[node name="Torch519" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 76, 0.5, -12)
+
+[node name="Crate520" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -80, 0.5, -8)
+
+[node name="Crate521" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -76, 0.5, -8)
+
+[node name="Torch522" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -72, 0.5, -8)
+
+[node name="Crate523" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -68, 0.5, -8)
+
+[node name="Crate524" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0.5, -8)
+
+[node name="Torch525" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -60, 0.5, -8)
+rotation_degrees = Vector3(0, 345, 0)
+
+[node name="Crate526" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -56, 0.5, -8)
+
+[node name="Crate527" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -52, 0.5, -8)
+
+[node name="Torch528" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -48, 0.5, -8)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate529" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -44, 0.5, -8)
+
+[node name="Crate530" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -40, 0.5, -8)
+
+[node name="Torch531" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -36, 0.5, -8)
+
+[node name="Crate532" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -32, 0.5, -8)
+rotation_degrees = Vector3(0, 244, 0)
+
+[node name="Crate533" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -28, 0.5, -8)
+
+[node name="Torch534" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -24, 0.5, -8)
+
+[node name="Crate535" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -20, 0.5, -8)
+
+[node name="Crate536" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -16, 0.5, -8)
+
+[node name="Torch537" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12, 0.5, -8)
+
+[node name="Crate538" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 0.5, -8)
+
+[node name="Crate539" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4, 0.5, -8)
+rotation_degrees = Vector3(0, 143, 0)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Torch540" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, -8)
+
+[node name="Crate541" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4, 0.5, -8)
+
+[node name="Crate542" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 0.5, -8)
+
+[node name="Torch543" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12, 0.5, -8)
+
+[node name="Crate544" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 16, 0.5, -8)
+
+[node name="Crate545" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 0.5, -8)
+
+[node name="Torch546" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 24, 0.5, -8)
+rotation_degrees = Vector3(0, 42, 0)
+
+[node name="Crate547" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 28, 0.5, -8)
+
+[node name="Crate548" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 32, 0.5, -8)
+
+[node name="Torch549" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 36, 0.5, -8)
+
+[node name="Crate550" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 40, 0.5, -8)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate551" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 44, 0.5, -8)
+
+[node name="Torch552" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 48, 0.5, -8)
+
+[node name="Crate553" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 52, 0.5, -8)
+rotation_degrees = Vector3(0, 301, 0)
+
+[node name="Crate554" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 56, 0.5, -8)
+
+[node name="Torch555" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 60, 0.5, -8)
+
+[node name="Crate556" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 64, 0.5, -8)
+
+[node name="Crate557" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 68, 0.5, -8)
+
+[node name="Torch558" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 72, 0.5, -8)
+
+[node name="Crate559" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 76, 0.5, -8)
+
+[node name="Crate560" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -80, 0.5, -4)
+rotation_degrees = Vector3(0, 200, 0)
+
+[node name="Torch561" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -76, 0.5, -4)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate562" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -72, 0.5, -4)
+
+[node name="Crate563" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -68, 0.5, -4)
+
+[node name="Torch564" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0.5, -4)
+
+[node name="Crate565" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -60, 0.5, -4)
+
+[node name="Crate566" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -56, 0.5, -4)
+
+[node name="Torch567" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -52, 0.5, -4)
+rotation_degrees = Vector3(0, 99, 0)
+
+[node name="Crate568" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -48, 0.5, -4)
+
+[node name="Crate569" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -44, 0.5, -4)
+
+[node name="Torch570" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -40, 0.5, -4)
+
+[node name="Crate571" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -36, 0.5, -4)
+
+[node name="Crate572" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -32, 0.5, -4)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Torch573" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -28, 0.5, -4)
+
+[node name="Crate574" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -24, 0.5, -4)
+rotation_degrees = Vector3(0, 358, 0)
+
+[node name="Crate575" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -20, 0.5, -4)
+
+[node name="Torch576" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -16, 0.5, -4)
+
+[node name="Crate577" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12, 0.5, -4)
+
+[node name="Crate578" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 0.5, -4)
+
+[node name="Torch579" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4, 0.5, -4)
+
+[node name="Crate580" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, -4)
+
+[node name="Crate581" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4, 0.5, -4)
+rotation_degrees = Vector3(0, 257, 0)
+
+[node name="Torch582" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 0.5, -4)
+
+[node name="Crate583" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12, 0.5, -4)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate584" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 16, 0.5, -4)
+
+[node name="Torch585" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 0.5, -4)
+
+[node name="Crate586" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 24, 0.5, -4)
+
+[node name="Crate587" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 28, 0.5, -4)
+
+[node name="Torch588" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 32, 0.5, -4)
+rotation_degrees = Vector3(0, 156, 0)
+
+[node name="Crate589" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 36, 0.5, -4)
+
+[node name="Crate590" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 40, 0.5, -4)
+
+[node name="Torch591" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 44, 0.5, -4)
+
+[node name="Crate592" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 48, 0.5, -4)
+
+[node name="Crate593" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 52, 0.5, -4)
+
+[node name="Torch594" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 56, 0.5, -4)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate595" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 60, 0.5, -4)
+rotation_degrees = Vector3(0, 55, 0)
+
+[node name="Crate596" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 64, 0.5, -4)
+
+[node name="Torch597" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 68, 0.5, -4)
+
+[node name="Crate598" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 72, 0.5, -4)
+
+[node name="Crate599" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 76, 0.5, -4)
+
+[node name="Torch600" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -80, 0.5, 0)
+
+[node name="Crate601" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -76, 0.5, 0)
+
+[node name="Crate602" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -72, 0.5, 0)
+rotation_degrees = Vector3(0, 314, 0)
+
+[node name="Torch603" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -68, 0.5, 0)
+
+[node name="Crate604" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0.5, 0)
+
+[node name="Crate605" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -60, 0.5, 0)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Torch606" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -56, 0.5, 0)
+
+[node name="Crate607" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -52, 0.5, 0)
+
+[node name="Crate608" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -48, 0.5, 0)
+
+[node name="Torch609" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -44, 0.5, 0)
+rotation_degrees = Vector3(0, 213, 0)
+
+[node name="Crate610" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -40, 0.5, 0)
+
+[node name="Crate611" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -36, 0.5, 0)
+
+[node name="Torch612" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -32, 0.5, 0)
+
+[node name="Crate613" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -28, 0.5, 0)
+
+[node name="Crate614" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -24, 0.5, 0)
+
+[node name="Torch615" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -20, 0.5, 0)
+
+[node name="Crate616" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -16, 0.5, 0)
+rotation_degrees = Vector3(0, 112, 0)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate617" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12, 0.5, 0)
+
+[node name="Torch618" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 0.5, 0)
+
+[node name="Crate619" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4, 0.5, 0)
+
+[node name="Crate620" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 0)
+
+[node name="Torch621" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4, 0.5, 0)
+
+[node name="Crate622" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 0.5, 0)
+
+[node name="Crate623" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12, 0.5, 0)
+rotation_degrees = Vector3(0, 11, 0)
+
+[node name="Torch624" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 16, 0.5, 0)
+
+[node name="Crate625" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 0.5, 0)
+
+[node name="Crate626" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 24, 0.5, 0)
+
+[node name="Torch627" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 28, 0.5, 0)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate628" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 32, 0.5, 0)
+
+[node name="Crate629" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 36, 0.5, 0)
+
+[node name="Torch630" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 40, 0.5, 0)
+rotation_degrees = Vector3(0, 270, 0)
+
+[node name="Crate631" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 44, 0.5, 0)
+
+[node name="Crate632" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 48, 0.5, 0)
+
+[node name="Torch633" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 52, 0.5, 0)
+
+[node name="Crate634" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 56, 0.5, 0)
+
+[node name="Crate635" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 60, 0.5, 0)
+
+[node name="Torch636" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 64, 0.5, 0)
+
+[node name="Crate637" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 68, 0.5, 0)
+rotation_degrees = Vector3(0, 169, 0)
+
+[node name="Crate638" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 72, 0.5, 0)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Torch639" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 76, 0.5, 0)
+
+[node name="Crate640" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -80, 0.5, 4)
+
+[node name="Crate641" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -76, 0.5, 4)
+
+[node name="Torch642" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -72, 0.5, 4)
+
+[node name="Crate643" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -68, 0.5, 4)
+
+[node name="Crate644" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0.5, 4)
+rotation_degrees = Vector3(0, 68, 0)
+
+[node name="Torch645" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -60, 0.5, 4)
+
+[node name="Crate646" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -56, 0.5, 4)
+
+[node name="Crate647" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -52, 0.5, 4)
+
+[node name="Torch648" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -48, 0.5, 4)
+
+[node name="Crate649" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -44, 0.5, 4)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate650" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -40, 0.5, 4)
+
+[node name="Torch651" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -36, 0.5, 4)
+rotation_degrees = Vector3(0, 327, 0)
+
+[node name="Crate652" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -32, 0.5, 4)
+
+[node name="Crate653" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -28, 0.5, 4)
+
+[node name="Torch654" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -24, 0.5, 4)
+
+[node name="Crate655" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -20, 0.5, 4)
+
+[node name="Crate656" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -16, 0.5, 4)
+
+[node name="Torch657" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12, 0.5, 4)
+
+[node name="Crate658" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 0.5, 4)
+rotation_degrees = Vector3(0, 226, 0)
+
+[node name="Crate659" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4, 0.5, 4)
+
+[node name="Torch660" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 4)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate661" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4, 0.5, 4)
+
+[node name="Crate662" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 0.5, 4)
+
+[node name="Torch663" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12, 0.5, 4)
+
+[node name="Crate664" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 16, 0.5, 4)
+
+[node name="Crate665" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 0.5, 4)
+rotation_degrees = Vector3(0, 125, 0)
+
+[node name="Torch666" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 24, 0.5, 4)
+
+[node name="Crate667" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 28, 0.5, 4)
+
+[node name="Crate668" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 32, 0.5, 4)
+
+[node name="Torch669" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 36, 0.5, 4)
+
+[node name="Crate670" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 40, 0.5, 4)
+
+[node name="Crate671" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 44, 0.5, 4)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Torch672" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 48, 0.5, 4)
+rotation_degrees = Vector3(0, 24, 0)
+
+[node name="Crate673" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 52, 0.5, 4)
+
+[node name="Crate674" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 56, 0.5, 4)
+
+[node name="Torch675" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 60, 0.5, 4)
+
+[node name="Crate676" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 64, 0.5, 4)
+
+[node name="Crate677" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 68, 0.5, 4)
+
+[node name="Torch678" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 72, 0.5, 4)
+
+[node name="Crate679" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 76, 0.5, 4)
+rotation_degrees = Vector3(0, 283, 0)
+
+[node name="Crate680" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -80, 0.5, 8)
+
+[node name="Torch681" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -76, 0.5, 8)
+
+[node name="Crate682" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -72, 0.5, 8)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate683" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -68, 0.5, 8)
+
+[node name="Torch684" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0.5, 8)
+
+[node name="Crate685" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -60, 0.5, 8)
+
+[node name="Crate686" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -56, 0.5, 8)
+rotation_degrees = Vector3(0, 182, 0)
+
+[node name="Torch687" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -52, 0.5, 8)
+
+[node name="Crate688" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -48, 0.5, 8)
+
+[node name="Crate689" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -44, 0.5, 8)
+
+[node name="Torch690" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -40, 0.5, 8)
+
+[node name="Crate691" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -36, 0.5, 8)
+
+[node name="Crate692" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -32, 0.5, 8)
+
+[node name="Torch693" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -28, 0.5, 8)
+rotation_degrees = Vector3(0, 81, 0)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate694" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -24, 0.5, 8)
+
+[node name="Crate695" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -20, 0.5, 8)
+
+[node name="Torch696" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -16, 0.5, 8)
+
+[node name="Crate697" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12, 0.5, 8)
+
+[node name="Crate698" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 0.5, 8)
+
+[node name="Torch699" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4, 0.5, 8)
+
+[node name="Crate700" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 8)
+rotation_degrees = Vector3(0, 340, 0)
+
+[node name="Crate701" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4, 0.5, 8)
+
+[node name="Torch702" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 0.5, 8)
+
+[node name="Crate703" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12, 0.5, 8)
+
+[node name="Crate704" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 16, 0.5, 8)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Torch705" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 0.5, 8)
+
+[node name="Crate706" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 24, 0.5, 8)
+
+[node name="Crate707" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 28, 0.5, 8)
+rotation_degrees = Vector3(0, 239, 0)
+
+[node name="Torch708" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 32, 0.5, 8)
+
+[node name="Crate709" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 36, 0.5, 8)
+
+[node name="Crate710" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 40, 0.5, 8)
+
+[node name="Torch711" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 44, 0.5, 8)
+
+[node name="Crate712" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 48, 0.5, 8)
+
+[node name="Crate713" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 52, 0.5, 8)
+
+[node name="Torch714" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 56, 0.5, 8)
+rotation_degrees = Vector3(0, 138, 0)
+
+[node name="Crate715" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 60, 0.5, 8)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate716" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 64, 0.5, 8)
+
+[node name="Torch717" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 68, 0.5, 8)
+
+[node name="Crate718" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 72, 0.5, 8)
+
+[node name="Crate719" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 76, 0.5, 8)
+
+[node name="Torch720" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -80, 0.5, 12)
+
+[node name="Crate721" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -76, 0.5, 12)
+rotation_degrees = Vector3(0, 37, 0)
+
+[node name="Crate722" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -72, 0.5, 12)
+
+[node name="Torch723" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -68, 0.5, 12)
+
+[node name="Crate724" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0.5, 12)
+
+[node name="Crate725" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -60, 0.5, 12)
+
+[node name="Torch726" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -56, 0.5, 12)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate727" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -52, 0.5, 12)
+
+[node name="Crate728" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -48, 0.5, 12)
+rotation_degrees = Vector3(0, 296, 0)
+
+[node name="Torch729" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -44, 0.5, 12)
+
+[node name="Crate730" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -40, 0.5, 12)
+
+[node name="Crate731" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -36, 0.5, 12)
+
+[node name="Torch732" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -32, 0.5, 12)
+
+[node name="Crate733" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -28, 0.5, 12)
+
+[node name="Crate734" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -24, 0.5, 12)
+
+[node name="Torch735" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -20, 0.5, 12)
+rotation_degrees = Vector3(0, 195, 0)
+
+[node name="Crate736" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -16, 0.5, 12)
+
+[node name="Crate737" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12, 0.5, 12)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Torch738" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 0.5, 12)
+
+[node name="Crate739" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4, 0.5, 12)
+
+[node name="Crate740" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 12)
+
+[node name="Torch741" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4, 0.5, 12)
+
+[node name="Crate742" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 0.5, 12)
+rotation_degrees = Vector3(0, 94, 0)
+
+[node name="Crate743" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12, 0.5, 12)
+
+[node name="Torch744" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 16, 0.5, 12)
+
+[node name="Crate745" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 0.5, 12)
+
+[node name="Crate746" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 24, 0.5, 12)
+
+[node name="Torch747" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 28, 0.5, 12)
+
+[node name="Crate748" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 32, 0.5, 12)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate749" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 36, 0.5, 12)
+rotation_degrees = Vector3(0, 353, 0)
+
+[node name="Torch750" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 40, 0.5, 12)
+
+[node name="Crate751" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 44, 0.5, 12)
+
+[node name="Crate752" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 48, 0.5, 12)
+
+[node name="Torch753" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 52, 0.5, 12)
+
+[node name="Crate754" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 56, 0.5, 12)
+
+[node name="Crate755" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 60, 0.5, 12)
+
+[node name="Torch756" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 64, 0.5, 12)
+rotation_degrees = Vector3(0, 252, 0)
+
+[node name="Crate757" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 68, 0.5, 12)
+
+[node name="Crate758" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 72, 0.5, 12)
+
+[node name="Torch759" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 76, 0.5, 12)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate760" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -80, 0.5, 16)
+
+[node name="Crate761" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -76, 0.5, 16)
+
+[node name="Torch762" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -72, 0.5, 16)
+
+[node name="Crate763" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -68, 0.5, 16)
+rotation_degrees = Vector3(0, 151, 0)
+
+[node name="Crate764" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0.5, 16)
+
+[node name="Torch765" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -60, 0.5, 16)
+
+[node name="Crate766" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -56, 0.5, 16)
+
+[node name="Crate767" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -52, 0.5, 16)
+
+[node name="Torch768" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -48, 0.5, 16)
+
+[node name="Crate769" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -44, 0.5, 16)
+
+[node name="Crate770" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -40, 0.5, 16)
+rotation_degrees = Vector3(0, 50, 0)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Torch771" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -36, 0.5, 16)
+
+[node name="Crate772" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -32, 0.5, 16)
+
+[node name="Crate773" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -28, 0.5, 16)
+
+[node name="Torch774" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -24, 0.5, 16)
+
+[node name="Crate775" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -20, 0.5, 16)
+
+[node name="Crate776" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -16, 0.5, 16)
+
+[node name="Torch777" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12, 0.5, 16)
+rotation_degrees = Vector3(0, 309, 0)
+
+[node name="Crate778" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 0.5, 16)
+
+[node name="Crate779" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4, 0.5, 16)
+
+[node name="Torch780" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 16)
+
+[node name="Crate781" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4, 0.5, 16)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate782" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 0.5, 16)
+
+[node name="Torch783" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12, 0.5, 16)
+
+[node name="Crate784" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 16, 0.5, 16)
+rotation_degrees = Vector3(0, 208, 0)
+
+[node name="Crate785" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 0.5, 16)
+
+[node name="Torch786" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 24, 0.5, 16)
+
+[node name="Crate787" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 28, 0.5, 16)
+
+[node name="Crate788" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 32, 0.5, 16)
+
+[node name="Torch789" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 36, 0.5, 16)
+
+[node name="Crate790" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 40, 0.5, 16)
+
+[node name="Crate791" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 44, 0.5, 16)
+rotation_degrees = Vector3(0, 107, 0)
+
+[node name="Torch792" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 48, 0.5, 16)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate793" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 52, 0.5, 16)
+
+[node name="Crate794" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 56, 0.5, 16)
+
+[node name="Torch795" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 60, 0.5, 16)
+
+[node name="Crate796" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 64, 0.5, 16)
+
+[node name="Crate797" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 68, 0.5, 16)
+
+[node name="Torch798" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 72, 0.5, 16)
+rotation_degrees = Vector3(0, 6, 0)
+
+[node name="Crate799" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 76, 0.5, 16)
+
+[node name="Crate800" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -80, 0.5, 20)
+
+[node name="Torch801" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -76, 0.5, 20)
+
+[node name="Crate802" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -72, 0.5, 20)
+
+[node name="Crate803" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -68, 0.5, 20)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Torch804" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0.5, 20)
+
+[node name="Crate805" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -60, 0.5, 20)
+rotation_degrees = Vector3(0, 265, 0)
+
+[node name="Crate806" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -56, 0.5, 20)
+
+[node name="Torch807" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -52, 0.5, 20)
+
+[node name="Crate808" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -48, 0.5, 20)
+
+[node name="Crate809" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -44, 0.5, 20)
+
+[node name="Torch810" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -40, 0.5, 20)
+
+[node name="Crate811" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -36, 0.5, 20)
+
+[node name="Crate812" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -32, 0.5, 20)
+rotation_degrees = Vector3(0, 164, 0)
+
+[node name="Torch813" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -28, 0.5, 20)
+
+[node name="Crate814" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -24, 0.5, 20)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate815" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -20, 0.5, 20)
+
+[node name="Torch816" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -16, 0.5, 20)
+
+[node name="Crate817" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12, 0.5, 20)
+
+[node name="Crate818" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 0.5, 20)
+
+[node name="Torch819" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4, 0.5, 20)
+rotation_degrees = Vector3(0, 63, 0)
+
+[node name="Crate820" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 20)
+
+[node name="Crate821" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4, 0.5, 20)
+
+[node name="Torch822" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 0.5, 20)
+
+[node name="Crate823" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12, 0.5, 20)
+
+[node name="Crate824" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 16, 0.5, 20)
+
+[node name="Torch825" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 0.5, 20)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate826" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 24, 0.5, 20)
+rotation_degrees = Vector3(0, 322, 0)
+
+[node name="Crate827" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 28, 0.5, 20)
+
+[node name="Torch828" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 32, 0.5, 20)
+
+[node name="Crate829" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 36, 0.5, 20)
+
+[node name="Crate830" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 40, 0.5, 20)
+
+[node name="Torch831" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 44, 0.5, 20)
+
+[node name="Crate832" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 48, 0.5, 20)
+
+[node name="Crate833" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 52, 0.5, 20)
+rotation_degrees = Vector3(0, 221, 0)
+
+[node name="Torch834" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 56, 0.5, 20)
+
+[node name="Crate835" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 60, 0.5, 20)
+
+[node name="Crate836" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 64, 0.5, 20)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Torch837" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 68, 0.5, 20)
+
+[node name="Crate838" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 72, 0.5, 20)
+
+[node name="Crate839" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 76, 0.5, 20)
+
+[node name="Torch840" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -80, 0.5, 24)
+rotation_degrees = Vector3(0, 120, 0)
+
+[node name="Crate841" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -76, 0.5, 24)
+
+[node name="Crate842" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -72, 0.5, 24)
+
+[node name="Torch843" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -68, 0.5, 24)
+
+[node name="Crate844" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0.5, 24)
+
+[node name="Crate845" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -60, 0.5, 24)
+
+[node name="Torch846" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -56, 0.5, 24)
+
+[node name="Crate847" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -52, 0.5, 24)
+rotation_degrees = Vector3(0, 19, 0)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate848" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -48, 0.5, 24)
+
+[node name="Torch849" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -44, 0.5, 24)
+
+[node name="Crate850" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -40, 0.5, 24)
+
+[node name="Crate851" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -36, 0.5, 24)
+
+[node name="Torch852" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -32, 0.5, 24)
+
+[node name="Crate853" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -28, 0.5, 24)
+
+[node name="Crate854" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -24, 0.5, 24)
+rotation_degrees = Vector3(0, 278, 0)
+
+[node name="Torch855" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -20, 0.5, 24)
+
+[node name="Crate856" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -16, 0.5, 24)
+
+[node name="Crate857" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12, 0.5, 24)
+
+[node name="Torch858" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 0.5, 24)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate859" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4, 0.5, 24)
+
+[node name="Crate860" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 24)
+
+[node name="Torch861" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4, 0.5, 24)
+rotation_degrees = Vector3(0, 177, 0)
+
+[node name="Crate862" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 0.5, 24)
+
+[node name="Crate863" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12, 0.5, 24)
+
+[node name="Torch864" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 16, 0.5, 24)
+
+[node name="Crate865" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 0.5, 24)
+
+[node name="Crate866" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 24, 0.5, 24)
+
+[node name="Torch867" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 28, 0.5, 24)
+
+[node name="Crate868" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 32, 0.5, 24)
+rotation_degrees = Vector3(0, 76, 0)
+
+[node name="Crate869" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 36, 0.5, 24)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Torch870" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 40, 0.5, 24)
+
+[node name="Crate871" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 44, 0.5, 24)
+
+[node name="Crate872" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 48, 0.5, 24)
+
+[node name="Torch873" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 52, 0.5, 24)
+
+[node name="Crate874" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 56, 0.5, 24)
+
+[node name="Crate875" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 60, 0.5, 24)
+rotation_degrees = Vector3(0, 335, 0)
+
+[node name="Torch876" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 64, 0.5, 24)
+
+[node name="Crate877" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 68, 0.5, 24)
+
+[node name="Crate878" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 72, 0.5, 24)
+
+[node name="Torch879" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 76, 0.5, 24)
+
+[node name="Crate880" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -80, 0.5, 28)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate881" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -76, 0.5, 28)
+
+[node name="Torch882" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -72, 0.5, 28)
+rotation_degrees = Vector3(0, 234, 0)
+
+[node name="Crate883" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -68, 0.5, 28)
+
+[node name="Crate884" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0.5, 28)
+
+[node name="Torch885" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -60, 0.5, 28)
+
+[node name="Crate886" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -56, 0.5, 28)
+
+[node name="Crate887" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -52, 0.5, 28)
+
+[node name="Torch888" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -48, 0.5, 28)
+
+[node name="Crate889" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -44, 0.5, 28)
+rotation_degrees = Vector3(0, 133, 0)
+
+[node name="Crate890" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -40, 0.5, 28)
+
+[node name="Torch891" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -36, 0.5, 28)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate892" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -32, 0.5, 28)
+
+[node name="Crate893" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -28, 0.5, 28)
+
+[node name="Torch894" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -24, 0.5, 28)
+
+[node name="Crate895" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -20, 0.5, 28)
+
+[node name="Crate896" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -16, 0.5, 28)
+rotation_degrees = Vector3(0, 32, 0)
+
+[node name="Torch897" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12, 0.5, 28)
+
+[node name="Crate898" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 0.5, 28)
+
+[node name="Crate899" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4, 0.5, 28)
+
+[node name="Torch900" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 28)
+
+[node name="Crate901" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4, 0.5, 28)
+
+[node name="Crate902" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 0.5, 28)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Torch903" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12, 0.5, 28)
+rotation_degrees = Vector3(0, 291, 0)
+
+[node name="Crate904" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 16, 0.5, 28)
+
+[node name="Crate905" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 0.5, 28)
+
+[node name="Torch906" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 24, 0.5, 28)
+
+[node name="Crate907" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 28, 0.5, 28)
+
+[node name="Crate908" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 32, 0.5, 28)
+
+[node name="Torch909" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 36, 0.5, 28)
+
+[node name="Crate910" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 40, 0.5, 28)
+rotation_degrees = Vector3(0, 190, 0)
+
+[node name="Crate911" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 44, 0.5, 28)
+
+[node name="Torch912" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 48, 0.5, 28)
+
+[node name="Crate913" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 52, 0.5, 28)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate914" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 56, 0.5, 28)
+
+[node name="Torch915" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 60, 0.5, 28)
+
+[node name="Crate916" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 64, 0.5, 28)
+
+[node name="Crate917" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 68, 0.5, 28)
+rotation_degrees = Vector3(0, 89, 0)
+
+[node name="Torch918" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 72, 0.5, 28)
+
+[node name="Crate919" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 76, 0.5, 28)
+
+[node name="Crate920" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -80, 0.5, 32)
+
+[node name="Torch921" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -76, 0.5, 32)
+
+[node name="Crate922" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -72, 0.5, 32)
+
+[node name="Crate923" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -68, 0.5, 32)
+
+[node name="Torch924" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0.5, 32)
+rotation_degrees = Vector3(0, 348, 0)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate925" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -60, 0.5, 32)
+
+[node name="Crate926" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -56, 0.5, 32)
+
+[node name="Torch927" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -52, 0.5, 32)
+
+[node name="Crate928" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -48, 0.5, 32)
+
+[node name="Crate929" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -44, 0.5, 32)
+
+[node name="Torch930" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -40, 0.5, 32)
+
+[node name="Crate931" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -36, 0.5, 32)
+rotation_degrees = Vector3(0, 247, 0)
+
+[node name="Crate932" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -32, 0.5, 32)
+
+[node name="Torch933" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -28, 0.5, 32)
+
+[node name="Crate934" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -24, 0.5, 32)
+
+[node name="Crate935" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -20, 0.5, 32)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Torch936" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -16, 0.5, 32)
+
+[node name="Crate937" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12, 0.5, 32)
+
+[node name="Crate938" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 0.5, 32)
+rotation_degrees = Vector3(0, 146, 0)
+
+[node name="Torch939" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4, 0.5, 32)
+
+[node name="Crate940" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 32)
+
+[node name="Crate941" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4, 0.5, 32)
+
+[node name="Torch942" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 0.5, 32)
+
+[node name="Crate943" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12, 0.5, 32)
+
+[node name="Crate944" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 16, 0.5, 32)
+
+[node name="Torch945" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 0.5, 32)
+rotation_degrees = Vector3(0, 45, 0)
+
+[node name="Crate946" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 24, 0.5, 32)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate947" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 28, 0.5, 32)
+
+[node name="Torch948" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 32, 0.5, 32)
+
+[node name="Crate949" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 36, 0.5, 32)
+
+[node name="Crate950" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 40, 0.5, 32)
+
+[node name="Torch951" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 44, 0.5, 32)
+
+[node name="Crate952" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 48, 0.5, 32)
+rotation_degrees = Vector3(0, 304, 0)
+
+[node name="Crate953" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 52, 0.5, 32)
+
+[node name="Torch954" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 56, 0.5, 32)
+
+[node name="Crate955" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 60, 0.5, 32)
+
+[node name="Crate956" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 64, 0.5, 32)
+
+[node name="Torch957" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 68, 0.5, 32)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate958" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 72, 0.5, 32)
+
+[node name="Crate959" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 76, 0.5, 32)
+rotation_degrees = Vector3(0, 203, 0)
+
+[node name="Torch960" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -80, 0.5, 36)
+
+[node name="Crate961" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -76, 0.5, 36)
+
+[node name="Crate962" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -72, 0.5, 36)
+
+[node name="Torch963" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -68, 0.5, 36)
+
+[node name="Crate964" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0.5, 36)
+
+[node name="Crate965" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -60, 0.5, 36)
+
+[node name="Torch966" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -56, 0.5, 36)
+rotation_degrees = Vector3(0, 102, 0)
+
+[node name="Crate967" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -52, 0.5, 36)
+
+[node name="Crate968" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -48, 0.5, 36)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Torch969" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -44, 0.5, 36)
+
+[node name="Crate970" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -40, 0.5, 36)
+
+[node name="Crate971" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -36, 0.5, 36)
+
+[node name="Torch972" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -32, 0.5, 36)
+
+[node name="Crate973" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -28, 0.5, 36)
+rotation_degrees = Vector3(0, 1, 0)
+
+[node name="Crate974" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -24, 0.5, 36)
+
+[node name="Torch975" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -20, 0.5, 36)
+
+[node name="Crate976" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -16, 0.5, 36)
+
+[node name="Crate977" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12, 0.5, 36)
+
+[node name="Torch978" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 0.5, 36)
+
+[node name="Crate979" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4, 0.5, 36)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate980" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 36)
+rotation_degrees = Vector3(0, 260, 0)
+
+[node name="Torch981" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4, 0.5, 36)
+
+[node name="Crate982" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 0.5, 36)
+
+[node name="Crate983" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12, 0.5, 36)
+
+[node name="Torch984" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 16, 0.5, 36)
+
+[node name="Crate985" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 0.5, 36)
+
+[node name="Crate986" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 24, 0.5, 36)
+
+[node name="Torch987" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 28, 0.5, 36)
+rotation_degrees = Vector3(0, 159, 0)
+
+[node name="Crate988" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 32, 0.5, 36)
+
+[node name="Crate989" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 36, 0.5, 36)
+
+[node name="Torch990" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 40, 0.5, 36)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate991" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 44, 0.5, 36)
+
+[node name="Crate992" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 48, 0.5, 36)
+
+[node name="Torch993" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 52, 0.5, 36)
+
+[node name="Crate994" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 56, 0.5, 36)
+rotation_degrees = Vector3(0, 58, 0)
+
+[node name="Crate995" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 60, 0.5, 36)
+
+[node name="Torch996" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 64, 0.5, 36)
+
+[node name="Crate997" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 68, 0.5, 36)
+
+[node name="Crate998" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 72, 0.5, 36)
+
+[node name="Torch999" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 76, 0.5, 36)
+
+[node name="Crate1000" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -80, 0.5, 40)
+
+[node name="Crate1001" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -76, 0.5, 40)
+rotation_degrees = Vector3(0, 317, 0)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Torch1002" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -72, 0.5, 40)
+
+[node name="Crate1003" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -68, 0.5, 40)
+
+[node name="Crate1004" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0.5, 40)
+
+[node name="Torch1005" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -60, 0.5, 40)
+
+[node name="Crate1006" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -56, 0.5, 40)
+
+[node name="Crate1007" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -52, 0.5, 40)
+
+[node name="Torch1008" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -48, 0.5, 40)
+rotation_degrees = Vector3(0, 216, 0)
+
+[node name="Crate1009" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -44, 0.5, 40)
+
+[node name="Crate1010" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -40, 0.5, 40)
+
+[node name="Torch1011" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -36, 0.5, 40)
+
+[node name="Crate1012" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -32, 0.5, 40)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate1013" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -28, 0.5, 40)
+
+[node name="Torch1014" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -24, 0.5, 40)
+
+[node name="Crate1015" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -20, 0.5, 40)
+rotation_degrees = Vector3(0, 115, 0)
+
+[node name="Crate1016" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -16, 0.5, 40)
+
+[node name="Torch1017" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12, 0.5, 40)
+
+[node name="Crate1018" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 0.5, 40)
+
+[node name="Crate1019" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4, 0.5, 40)
+
+[node name="Torch1020" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 40)
+
+[node name="Crate1021" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4, 0.5, 40)
+
+[node name="Crate1022" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 0.5, 40)
+rotation_degrees = Vector3(0, 14, 0)
+
+[node name="Torch1023" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12, 0.5, 40)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate1024" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 16, 0.5, 40)
+
+[node name="Crate1025" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 0.5, 40)
+
+[node name="Torch1026" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 24, 0.5, 40)
+
+[node name="Crate1027" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 28, 0.5, 40)
+
+[node name="Crate1028" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 32, 0.5, 40)
+
+[node name="Torch1029" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 36, 0.5, 40)
+rotation_degrees = Vector3(0, 273, 0)
+
+[node name="Crate1030" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 40, 0.5, 40)
+
+[node name="Crate1031" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 44, 0.5, 40)
+
+[node name="Torch1032" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 48, 0.5, 40)
+
+[node name="Crate1033" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 52, 0.5, 40)
+
+[node name="Crate1034" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 56, 0.5, 40)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Torch1035" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 60, 0.5, 40)
+
+[node name="Crate1036" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 64, 0.5, 40)
+rotation_degrees = Vector3(0, 172, 0)
+
+[node name="Crate1037" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 68, 0.5, 40)
+
+[node name="Torch1038" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 72, 0.5, 40)
+
+[node name="Crate1039" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 76, 0.5, 40)
+
+[node name="Crate1040" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -80, 0.5, 44)
+
+[node name="Torch1041" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -76, 0.5, 44)
+
+[node name="Crate1042" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -72, 0.5, 44)
+
+[node name="Crate1043" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -68, 0.5, 44)
+rotation_degrees = Vector3(0, 71, 0)
+
+[node name="Torch1044" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0.5, 44)
+
+[node name="Crate1045" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -60, 0.5, 44)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate1046" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -56, 0.5, 44)
+
+[node name="Torch1047" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -52, 0.5, 44)
+
+[node name="Crate1048" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -48, 0.5, 44)
+
+[node name="Crate1049" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -44, 0.5, 44)
+
+[node name="Torch1050" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -40, 0.5, 44)
+rotation_degrees = Vector3(0, 330, 0)
+
+[node name="Crate1051" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -36, 0.5, 44)
+
+[node name="Crate1052" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -32, 0.5, 44)
+
+[node name="Torch1053" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -28, 0.5, 44)
+
+[node name="Crate1054" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -24, 0.5, 44)
+
+[node name="Crate1055" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -20, 0.5, 44)
+
+[node name="Torch1056" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -16, 0.5, 44)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate1057" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12, 0.5, 44)
+rotation_degrees = Vector3(0, 229, 0)
+
+[node name="Crate1058" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 0.5, 44)
+
+[node name="Torch1059" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4, 0.5, 44)
+
+[node name="Crate1060" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 44)
+
+[node name="Crate1061" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4, 0.5, 44)
+
+[node name="Torch1062" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 0.5, 44)
+
+[node name="Crate1063" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12, 0.5, 44)
+
+[node name="Crate1064" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 16, 0.5, 44)
+rotation_degrees = Vector3(0, 128, 0)
+
+[node name="Torch1065" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 0.5, 44)
+
+[node name="Crate1066" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 24, 0.5, 44)
+
+[node name="Crate1067" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 28, 0.5, 44)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Torch1068" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 32, 0.5, 44)
+
+[node name="Crate1069" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 36, 0.5, 44)
+
+[node name="Crate1070" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 40, 0.5, 44)
+
+[node name="Torch1071" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 44, 0.5, 44)
+rotation_degrees = Vector3(0, 27, 0)
+
+[node name="Crate1072" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 48, 0.5, 44)
+
+[node name="Crate1073" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 52, 0.5, 44)
+
+[node name="Torch1074" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 56, 0.5, 44)
+
+[node name="Crate1075" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 60, 0.5, 44)
+
+[node name="Crate1076" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 64, 0.5, 44)
+
+[node name="Torch1077" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 68, 0.5, 44)
+
+[node name="Crate1078" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 72, 0.5, 44)
+rotation_degrees = Vector3(0, 286, 0)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate1079" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 76, 0.5, 44)
+
+[node name="Torch1080" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -80, 0.5, 48)
+
+[node name="Crate1081" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -76, 0.5, 48)
+
+[node name="Crate1082" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -72, 0.5, 48)
+
+[node name="Torch1083" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -68, 0.5, 48)
+
+[node name="Crate1084" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0.5, 48)
+
+[node name="Crate1085" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -60, 0.5, 48)
+rotation_degrees = Vector3(0, 185, 0)
+
+[node name="Torch1086" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -56, 0.5, 48)
+
+[node name="Crate1087" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -52, 0.5, 48)
+
+[node name="Crate1088" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -48, 0.5, 48)
+
+[node name="Torch1089" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -44, 0.5, 48)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate1090" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -40, 0.5, 48)
+
+[node name="Crate1091" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -36, 0.5, 48)
+
+[node name="Torch1092" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -32, 0.5, 48)
+rotation_degrees = Vector3(0, 84, 0)
+
+[node name="Crate1093" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -28, 0.5, 48)
+
+[node name="Crate1094" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -24, 0.5, 48)
+
+[node name="Torch1095" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -20, 0.5, 48)
+
+[node name="Crate1096" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -16, 0.5, 48)
+
+[node name="Crate1097" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12, 0.5, 48)
+
+[node name="Torch1098" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 0.5, 48)
+
+[node name="Crate1099" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4, 0.5, 48)
+rotation_degrees = Vector3(0, 343, 0)
+
+[node name="Crate1100" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 48)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Torch1101" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4, 0.5, 48)
+
+[node name="Crate1102" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 0.5, 48)
+
+[node name="Crate1103" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12, 0.5, 48)
+
+[node name="Torch1104" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 16, 0.5, 48)
+
+[node name="Crate1105" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 0.5, 48)
+
+[node name="Crate1106" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 24, 0.5, 48)
+rotation_degrees = Vector3(0, 242, 0)
+
+[node name="Torch1107" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 28, 0.5, 48)
+
+[node name="Crate1108" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 32, 0.5, 48)
+
+[node name="Crate1109" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 36, 0.5, 48)
+
+[node name="Torch1110" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 40, 0.5, 48)
+
+[node name="Crate1111" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 44, 0.5, 48)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate1112" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 48, 0.5, 48)
+
+[node name="Torch1113" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 52, 0.5, 48)
+rotation_degrees = Vector3(0, 141, 0)
+
+[node name="Crate1114" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 56, 0.5, 48)
+
+[node name="Crate1115" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 60, 0.5, 48)
+
+[node name="Torch1116" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 64, 0.5, 48)
+
+[node name="Crate1117" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 68, 0.5, 48)
+
+[node name="Crate1118" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 72, 0.5, 48)
+
+[node name="Torch1119" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 76, 0.5, 48)
+
+[node name="Crate1120" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -80, 0.5, 52)
+rotation_degrees = Vector3(0, 40, 0)
+
+[node name="Crate1121" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -76, 0.5, 52)
+
+[node name="Torch1122" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -72, 0.5, 52)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate1123" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -68, 0.5, 52)
+
+[node name="Crate1124" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0.5, 52)
+
+[node name="Torch1125" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -60, 0.5, 52)
+
+[node name="Crate1126" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -56, 0.5, 52)
+
+[node name="Crate1127" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -52, 0.5, 52)
+rotation_degrees = Vector3(0, 299, 0)
+
+[node name="Torch1128" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -48, 0.5, 52)
+
+[node name="Crate1129" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -44, 0.5, 52)
+
+[node name="Crate1130" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -40, 0.5, 52)
+
+[node name="Torch1131" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -36, 0.5, 52)
+
+[node name="Crate1132" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -32, 0.5, 52)
+
+[node name="Crate1133" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -28, 0.5, 52)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Torch1134" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -24, 0.5, 52)
+rotation_degrees = Vector3(0, 198, 0)
+
+[node name="Crate1135" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -20, 0.5, 52)
+
+[node name="Crate1136" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -16, 0.5, 52)
+
+[node name="Torch1137" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12, 0.5, 52)
+
+[node name="Crate1138" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 0.5, 52)
+
+[node name="Crate1139" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4, 0.5, 52)
+
+[node name="Torch1140" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 52)
+
+[node name="Crate1141" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4, 0.5, 52)
+rotation_degrees = Vector3(0, 97, 0)
+
+[node name="Crate1142" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 0.5, 52)
+
+[node name="Torch1143" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12, 0.5, 52)
+
+[node name="Crate1144" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 16, 0.5, 52)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate1145" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 0.5, 52)
+
+[node name="Torch1146" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 24, 0.5, 52)
+
+[node name="Crate1147" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 28, 0.5, 52)
+
+[node name="Crate1148" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 32, 0.5, 52)
+rotation_degrees = Vector3(0, 356, 0)
+
+[node name="Torch1149" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 36, 0.5, 52)
+
+[node name="Crate1150" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 40, 0.5, 52)
+
+[node name="Crate1151" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 44, 0.5, 52)
+
+[node name="Torch1152" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 48, 0.5, 52)
+
+[node name="Crate1153" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 52, 0.5, 52)
+
+[node name="Crate1154" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 56, 0.5, 52)
+
+[node name="Torch1155" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 60, 0.5, 52)
+rotation_degrees = Vector3(0, 255, 0)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate1156" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 64, 0.5, 52)
+
+[node name="Crate1157" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 68, 0.5, 52)
+
+[node name="Torch1158" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 72, 0.5, 52)
+
+[node name="Crate1159" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 76, 0.5, 52)
+
+[node name="Crate1160" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -80, 0.5, 56)
+
+[node name="Torch1161" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -76, 0.5, 56)
+
+[node name="Crate1162" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -72, 0.5, 56)
+rotation_degrees = Vector3(0, 154, 0)
+
+[node name="Crate1163" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -68, 0.5, 56)
+
+[node name="Torch1164" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0.5, 56)
+
+[node name="Crate1165" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -60, 0.5, 56)
+
+[node name="Crate1166" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -56, 0.5, 56)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Torch1167" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -52, 0.5, 56)
+
+[node name="Crate1168" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -48, 0.5, 56)
+
+[node name="Crate1169" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -44, 0.5, 56)
+rotation_degrees = Vector3(0, 53, 0)
+
+[node name="Torch1170" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -40, 0.5, 56)
+
+[node name="Crate1171" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -36, 0.5, 56)
+
+[node name="Crate1172" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -32, 0.5, 56)
+
+[node name="Torch1173" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -28, 0.5, 56)
+
+[node name="Crate1174" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -24, 0.5, 56)
+
+[node name="Crate1175" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -20, 0.5, 56)
+
+[node name="Torch1176" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -16, 0.5, 56)
+rotation_degrees = Vector3(0, 312, 0)
+
+[node name="Crate1177" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12, 0.5, 56)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate1178" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 0.5, 56)
+
+[node name="Torch1179" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4, 0.5, 56)
+
+[node name="Crate1180" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 56)
+
+[node name="Crate1181" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4, 0.5, 56)
+
+[node name="Torch1182" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8, 0.5, 56)
+
+[node name="Crate1183" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12, 0.5, 56)
+rotation_degrees = Vector3(0, 211, 0)
+
+[node name="Crate1184" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 16, 0.5, 56)
+
+[node name="Torch1185" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 20, 0.5, 56)
+
+[node name="Crate1186" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 24, 0.5, 56)
+
+[node name="Crate1187" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 28, 0.5, 56)
+
+[node name="Torch1188" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 32, 0.5, 56)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[node name="Crate1189" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 36, 0.5, 56)
+
+[node name="Crate1190" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 40, 0.5, 56)
+rotation_degrees = Vector3(0, 110, 0)
+
+[node name="Torch1191" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 44, 0.5, 56)
+
+[node name="Crate1192" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 48, 0.5, 56)
+
+[node name="Crate1193" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 52, 0.5, 56)
+
+[node name="Torch1194" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 56, 0.5, 56)
+
+[node name="Crate1195" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 60, 0.5, 56)
+
+[node name="Crate1196" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 64, 0.5, 56)
+
+[node name="Torch1197" parent="Props" instance=ExtResource("3_t0rch")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 68, 0.5, 56)
+rotation_degrees = Vector3(0, 9, 0)
+
+[node name="Crate1198" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 72, 0.5, 56)
+
+[node name="Crate1199" parent="Props" instance=ExtResource("2_cr4te")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 76, 0.5, 56)
+metadata/_loot_table = {
+"coins": [1, 2, 3],
+"rare": false
+}
+
+[connection signal="ready" from="." to="Props" method="_on_world_ready"]

@@ -45,6 +45,7 @@ struct OpEvent {
     int failure_code = 0;
     std::string message;
     std::string result_commit_id;
+    nlohmann::json result;  // the raw OpResult of a Result event
 };
 
 // Protojson writes int64 as a JSON string; both forms are accepted.
@@ -62,6 +63,10 @@ diff::File parse_diff_file(const nlohmann::json& j);
 
 // Standard base64 (protojson `bytes`); invalid characters end the input.
 std::string base64_decode(const std::string& encoded);
+std::string base64_encode(const std::string& data);
+
+// Short text for a merge or revert OpResult, e.g. "2 conflict(s) to resolve".
+std::string result_summary(const nlohmann::json& result);
 
 // Strips the reply wrapper of the Proxy* responses (`{"response": {...}}`).
 nlohmann::json proxy_payload(const nlohmann::json& j);

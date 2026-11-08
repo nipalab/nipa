@@ -35,6 +35,7 @@ const (
 	NipaDaemon_Revert_FullMethodName                        = "/nipadaemon.NipaDaemon/Revert"
 	NipaDaemon_Conflicts_FullMethodName                     = "/nipadaemon.NipaDaemon/Conflicts"
 	NipaDaemon_ResolveConflict_FullMethodName               = "/nipadaemon.NipaDaemon/ResolveConflict"
+	NipaDaemon_MergeGodotResource_FullMethodName            = "/nipadaemon.NipaDaemon/MergeGodotResource"
 	NipaDaemon_Diff_FullMethodName                          = "/nipadaemon.NipaDaemon/Diff"
 	NipaDaemon_DiffFiles_FullMethodName                     = "/nipadaemon.NipaDaemon/DiffFiles"
 	NipaDaemon_ReadBlob_FullMethodName                      = "/nipadaemon.NipaDaemon/ReadBlob"
@@ -104,6 +105,7 @@ type NipaDaemonClient interface {
 	Revert(ctx context.Context, in *RevertOpRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[OpEvent], error)
 	Conflicts(ctx context.Context, in *ConflictsRequest, opts ...grpc.CallOption) (*ConflictsResponse, error)
 	ResolveConflict(ctx context.Context, in *ResolveConflictRequest, opts ...grpc.CallOption) (*StatusResponse, error)
+	MergeGodotResource(ctx context.Context, in *MergeGodotResourceRequest, opts ...grpc.CallOption) (*MergeGodotResourceResponse, error)
 	Diff(ctx context.Context, in *DiffRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[DiffEvent], error)
 	DiffFiles(ctx context.Context, in *DiffRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[DiffFileEvent], error)
 	ReadBlob(ctx context.Context, in *ReadBlobRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[BlobEvent], error)
@@ -360,6 +362,16 @@ func (c *nipaDaemonClient) ResolveConflict(ctx context.Context, in *ResolveConfl
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(StatusResponse)
 	err := c.cc.Invoke(ctx, NipaDaemon_ResolveConflict_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nipaDaemonClient) MergeGodotResource(ctx context.Context, in *MergeGodotResourceRequest, opts ...grpc.CallOption) (*MergeGodotResourceResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(MergeGodotResourceResponse)
+	err := c.cc.Invoke(ctx, NipaDaemon_MergeGodotResource_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -928,6 +940,7 @@ type NipaDaemonServer interface {
 	Revert(*RevertOpRequest, grpc.ServerStreamingServer[OpEvent]) error
 	Conflicts(context.Context, *ConflictsRequest) (*ConflictsResponse, error)
 	ResolveConflict(context.Context, *ResolveConflictRequest) (*StatusResponse, error)
+	MergeGodotResource(context.Context, *MergeGodotResourceRequest) (*MergeGodotResourceResponse, error)
 	Diff(*DiffRequest, grpc.ServerStreamingServer[DiffEvent]) error
 	DiffFiles(*DiffRequest, grpc.ServerStreamingServer[DiffFileEvent]) error
 	ReadBlob(*ReadBlobRequest, grpc.ServerStreamingServer[BlobEvent]) error
@@ -1032,6 +1045,9 @@ func (UnimplementedNipaDaemonServer) Conflicts(context.Context, *ConflictsReques
 }
 func (UnimplementedNipaDaemonServer) ResolveConflict(context.Context, *ResolveConflictRequest) (*StatusResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ResolveConflict not implemented")
+}
+func (UnimplementedNipaDaemonServer) MergeGodotResource(context.Context, *MergeGodotResourceRequest) (*MergeGodotResourceResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method MergeGodotResource not implemented")
 }
 func (UnimplementedNipaDaemonServer) Diff(*DiffRequest, grpc.ServerStreamingServer[DiffEvent]) error {
 	return status.Errorf(codes.Unimplemented, "method Diff not implemented")
@@ -1444,6 +1460,24 @@ func _NipaDaemon_ResolveConflict_Handler(srv interface{}, ctx context.Context, d
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(NipaDaemonServer).ResolveConflict(ctx, req.(*ResolveConflictRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NipaDaemon_MergeGodotResource_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MergeGodotResourceRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NipaDaemonServer).MergeGodotResource(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NipaDaemon_MergeGodotResource_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NipaDaemonServer).MergeGodotResource(ctx, req.(*MergeGodotResourceRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -2288,6 +2322,10 @@ var NipaDaemon_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ResolveConflict",
 			Handler:    _NipaDaemon_ResolveConflict_Handler,
+		},
+		{
+			MethodName: "MergeGodotResource",
+			Handler:    _NipaDaemon_MergeGodotResource_Handler,
 		},
 		{
 			MethodName: "ProxyBranchList",

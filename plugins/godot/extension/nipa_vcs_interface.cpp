@@ -206,6 +206,12 @@ void NipaVCSInterface::_commit(const String& p_msg) {
         popup_error("Nipa is not connected to a clone of this project.");
         return;
     }
+    auto snapshot = node->session()->status_cache().snapshot();
+    if (snapshot.detached()) {
+        popup_error(to_godot("HEAD is detached at tag \"" + snapshot.head_name +
+                             "\": switch to a branch first (nipa switch <branch>, or the Nipa dock)."));
+        return;
+    }
     auto check = node->session()->push_check_blocking(kCommitBudget);
     if (check && !check->theirs.empty()) {
         popup_error(to_godot("Cannot commit, locked by someone else: " + check->theirs_summary()));

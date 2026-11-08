@@ -144,6 +144,7 @@ OpEvent parse_op_event(const nlohmann::json& j) {
     } else {
         e.kind = OpEvent::Kind::Result;
         const auto& r = field(j, "result");
+        e.result = r;
         if (r.contains("push")) {
             e.result_commit_id = json_string(r["push"], "commit_id");
         } else if (r.contains("sync")) {
@@ -215,6 +216,64 @@ std::string base64_decode(const std::string& encoded) {
         }
     }
     return out;
+}
+
+std::string base64_encode(const std::string& data) {
+    static const char* kAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    std::string out;
+    out.reserve((data.size() + 2) / 3 * 4);
+    std::size_t i = 0;
+    for (; i + 2 < data.size(); i += 3) {
+        unsigned int n = (static_cast<unsigned char>(data[i]) << 16) | (static_cast<unsigned char>(data[i + 1]) << 8) |
+                         static_cast<unsigned char>(data[i + 2]);
+        out += kAlphabet[(n >> 18) & 63];
+        out += kAlphabet[(n >> 12) & 63];
+        out += kAlphabet[(n >> 6) & 63];
+        out += kAlphabet[n & 63];
+    }
+    if (i < data.size()) {
+        unsigned int n = static_cast<unsigned char>(data[i]) << 16;
+        bool two = i + 1 < data.size();
+        if (two) {
+            n |= static_cast<unsigned char>(data[i + 1]) << 8;
+        }
+        out += kAlphabet[(n >> 18) & 63];
+        out += kAlphabet[(n >> 12) & 63];
+        out += two ? kAlphabet[(n >> 6) & 63] : '=';
+        out += '=';
+    }
+    return out;
+}
+
+std::string result_summary(const nlohmann::json& result) {
+    for (const char* kind : {"merge", "revert"}) {
+        const auto& r = field(result, kind);
+        if (!r.is_object()) {
+            continue;
+        }
+        auto conflicts = json_strings(r, "conflicts");
+        auto is = [&](const char* key) { return field(r, key).is_boolean() && field(r, key).get<bool>(); };
+        if (!conflicts.empty()) {
+            return std::to_string(conflicts.size()) + " conflict(s) to resolve";
+        }
+        if (is("aborted")) {
+            return std::string(kind) + " aborted";
+        }
+        if (is("up_to_date")) {
+            return "already up to date";
+        }
+        if (is("fast_forwarded")) {
+            return "fast-forwarded";
+        }
+        if (is("no_change")) {
+            return "nothing to revert";
+        }
+        if (is("skipped")) {
+            return "skipped";
+        }
+        return std::string(kind == std::string("merge") ? "merged" : "reverted");
+    }
+    return {};
 }
 
 nlohmann::json proxy_payload(const nlohmann::json& j) {

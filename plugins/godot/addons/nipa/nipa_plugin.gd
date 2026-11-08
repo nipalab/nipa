@@ -7,7 +7,8 @@ const BADGE_SCENE := preload("res://addons/nipa/ui/lock_badge.tscn")
 const ContextMenu := preload("res://addons/nipa/context_menu.gd")
 const InspectorPlugin := preload("res://addons/nipa/inspector_plugin.gd")
 const RECONNECT_ITEM := "Nipa: Reconnect"
-const QUIET_OPS := ["lock", "unlock"]
+const QUIET_OPS := ["lock", "unlock", "conflicts", "merge-godot", "merge-tool", "history", "preview"]
+const SILENT_OPS := ["conflicts", "merge-godot", "merge-tool", "history", "preview"]
 
 var dock: Control
 var bottom_panel: Control
@@ -41,9 +42,13 @@ func _enter_tree() -> void:
 	dock.reconnect_requested.connect(reconnect)
 	bottom_panel = BOTTOM_PANEL_SCENE.instantiate()
 	add_control_to_bottom_panel(bottom_panel, "Nipa")
+	dock.conflicts_requested.connect(_show_conflicts)
 	add_tool_menu_item(RECONNECT_ITEM, reconnect)
 	for slot in [EditorContextMenuPlugin.CONTEXT_SLOT_FILESYSTEM, EditorContextMenuPlugin.CONTEXT_SLOT_SCENE_TABS]:
 		var menu := ContextMenu.new()
+		menu.slot = slot
+		menu.history_requested.connect(_show_history)
+		menu.compare_requested.connect(_show_image_diff)
 		add_context_menu_plugin(slot, menu)
 		_context_menus.append(menu)
 	_inspector_plugin = InspectorPlugin.new()
@@ -109,6 +114,8 @@ func _exit_tree() -> void:
 		remove_inspector_plugin(_inspector_plugin)
 		_inspector_plugin = null
 	for menu in _context_menus:
+		menu.history_requested.disconnect(_show_history)
+		menu.compare_requested.disconnect(_show_image_diff)
 		remove_context_menu_plugin(menu)
 	_context_menus.clear()
 	remove_tool_menu_item(RECONNECT_ITEM)
@@ -118,6 +125,7 @@ func _exit_tree() -> void:
 		bottom_panel = null
 	if dock:
 		dock.reconnect_requested.disconnect(reconnect)
+		dock.conflicts_requested.disconnect(_show_conflicts)
 		remove_control_from_docks(dock)
 		dock.queue_free()
 		dock = null
@@ -169,12 +177,32 @@ func _on_op_queued(id: int, kind: String) -> void:
 func _on_op_finished(id: int, ok: bool, message: String, changed_paths: PackedStringArray) -> void:
 	var kind: String = _op_kinds.get(id, "operation")
 	_op_kinds.erase(id)
+	if SILENT_OPS.has(kind):
+		return
 	if not QUIET_OPS.has(kind):
 		EditorInterface.get_resource_filesystem().scan()
 		_reload_changed_scenes(changed_paths)
 	var severity := EditorToaster.SEVERITY_INFO if ok else EditorToaster.SEVERITY_ERROR
 	var text := "Nipa %s: %s" % [kind, message if not message.is_empty() else ("done" if ok else "failed")]
 	EditorInterface.get_editor_toaster().push_toast(text, severity)
+
+
+func _show_conflicts() -> void:
+	if bottom_panel:
+		make_bottom_panel_item_visible(bottom_panel)
+		bottom_panel.show_conflicts()
+
+
+func _show_history(clone_path: String) -> void:
+	if bottom_panel:
+		make_bottom_panel_item_visible(bottom_panel)
+		bottom_panel.show_history(clone_path)
+
+
+func _show_image_diff(old_ref: Dictionary, new_ref: Dictionary, title: String) -> void:
+	if bottom_panel:
+		make_bottom_panel_item_visible(bottom_panel)
+		bottom_panel.show_image_diff(old_ref, new_ref, title)
 
 
 func _on_lock_timer() -> void:

@@ -202,6 +202,8 @@ void Session::worker_loop() {
             e.ok = outcome.ok;
             e.message = outcome.message;
             e.paths = outcome.paths;
+            e.data = std::move(outcome.data);
+            e.bytes = std::move(outcome.bytes);
             events_.push(std::move(e));
         }
     }
@@ -248,6 +250,7 @@ Session::Link Session::ensure_connected() {
     submit_status();
     submit_branches();
     submit_commits();
+    submit_tags();
     submit_locks();
     return link;
 }
@@ -363,12 +366,23 @@ void Session::watch_activity_body(const daemon::Client& client) {
 void Session::apply_status(const json& reply) {
     auto snapshot = daemon::parse_status(reply);
     std::vector<std::string> changed;
+    bool meta = false;
+    bool conflicts = false;
     {
         std::lock_guard<std::mutex> guard(mu_);
+        const auto& old = status_.snapshot();
+        meta = status_.loaded() && (old.branch != snapshot.branch || old.head_kind != snapshot.head_kind ||
+                                    old.head_name != snapshot.head_name || old.pending != snapshot.pending ||
+                                    old.pending_remaining != snapshot.pending_remaining);
+        conflicts = old.pending != snapshot.pending || old.conflicts != snapshot.conflicts ||
+                    old.resolved != snapshot.resolved;
         changed = status_.apply(std::move(snapshot));
     }
     cache_cv_.notify_all();
-    if (!changed.empty()) {
+    if (conflicts) {
+        refresh_conflicts_async();
+    }
+    if (!changed.empty() || meta) {
         Event e;
         e.kind = EventKind::StatusChanged;
         e.paths = changed;
@@ -442,6 +456,11 @@ void Session::refresh_after_op(const std::string& name) {
         submit_commits();
         submit_branches();
         submit_locks();
+    } else if (name == "merge" || name == "merge-abort" || name == "revert") {
+        submit_status();
+        submit_commits();
+        submit_locks();
+        refresh_conflicts_async();
     } else if (name == "push" || name == "update") {
         submit_status();
         submit_commits();
@@ -456,6 +475,7 @@ Session::Outcome Session::run_stream_op(std::int64_t id, const std::string& name
     Outcome outcome;
     run_on_link([&](const daemon::Client& client) {
         std::string result;
+        json data;
         std::optional<std::string> failure;
         client.stream(
             method, body,
@@ -483,7 +503,9 @@ Session::Outcome Session::run_stream_op(std::int64_t id, const std::string& name
                         break;
                     }
                     case daemon::OpEvent::Kind::Result:
-                        result = event.result_commit_id;
+                        result = event.result_commit_id.empty() ? daemon::result_summary(event.result)
+                                                                : event.result_commit_id;
+                        data = event.result;
                         break;
                     case daemon::OpEvent::Kind::Failure:
                         failure = event.message;
@@ -495,6 +517,7 @@ Session::Outcome Session::run_stream_op(std::int64_t id, const std::string& name
             },
             options_.stream_timeout, &cancel_);
         outcome = failure ? Outcome{false, *failure, {}} : Outcome{true, result, {}};
+        outcome.data = std::move(data);
     });
     refresh_after_op(name);
     return outcome;

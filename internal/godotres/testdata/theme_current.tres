@@ -1,0 +1,25 @@
+[gd_resource type="Theme" format=3 uid="uid://c0x4mc8b2w6ty"]
+
+[ext_resource type="FontFile" uid="uid://cy7wq2mm0r3ka" path="res://ui/fonts/inter.ttf" id="1_f0nt1"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn01"]
+bg_color = Color(0.2, 0.25, 0.32, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn02"]
+bg_color = Color(0.28, 0.34, 0.44, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[resource]
+default_font = ExtResource("1_f0nt1")
+default_font_size = 16
+Button/colors/font_color = Color(0.92, 0.94, 0.97, 1)
+Button/styles/hover = SubResource("StyleBoxFlat_btn02")
+Button/styles/normal = SubResource("StyleBoxFlat_btn01")
+Label/constants/line_spacing = 2

@@ -2,6 +2,9 @@
 extends VBoxContainer
 
 signal reconnect_requested
+signal conflicts_requested
+
+const DATA_OPS := ["conflicts", "merge-godot", "merge-tool", "history", "preview", "resolve"]
 
 var _pending_action: Callable
 var _commit_message := ""
@@ -22,6 +25,20 @@ var _reload_path := ""
 @onready var _locks_label: Label = $LocksLabel
 @onready var _lock_commit_dialog: ConfirmationDialog = $LockCommitDialog
 @onready var _reload_dialog: ConfirmationDialog = $ReloadDialog
+@onready var _ref_picker: OptionButton = $Refs/RefPicker
+@onready var _merge_button: Button = $Refs/MergeButton
+@onready var _detached_banner: HBoxContainer = $DetachedBanner
+@onready var _detached_label: Label = $DetachedBanner/DetachedLabel
+@onready var _back_button: Button = $DetachedBanner/BackButton
+@onready var _pending_banner: VBoxContainer = $PendingBanner
+@onready var _pending_label: Label = $PendingBanner/PendingLabel
+@onready var _conflicts_button: Button = $PendingBanner/Buttons/ConflictsButton
+@onready var _finish_button: Button = $PendingBanner/Buttons/FinishButton
+@onready var _continue_button: Button = $PendingBanner/Buttons/ContinueButton
+@onready var _skip_button: Button = $PendingBanner/Buttons/SkipButton
+@onready var _abort_button: Button = $PendingBanner/Buttons/AbortButton
+@onready var _merge_dialog: ConfirmationDialog = $MergeDialog
+@onready var _branch_picker: OptionButton = $MergeDialog/Body/BranchPicker
 
 var _session: Object
 
@@ -33,6 +50,15 @@ func _ready() -> void:
 	_save_dialog.confirmed.connect(_on_save_confirmed)
 	_lock_commit_dialog.confirmed.connect(_on_lock_commit_confirmed)
 	_reload_dialog.confirmed.connect(_on_reload_confirmed)
+	_ref_picker.item_selected.connect(_on_ref_selected)
+	_merge_button.pressed.connect(_on_merge_pressed)
+	_merge_dialog.confirmed.connect(_on_merge_confirmed)
+	_back_button.pressed.connect(_on_back_pressed)
+	_conflicts_button.pressed.connect(func(): conflicts_requested.emit())
+	_finish_button.pressed.connect(_on_finish_pressed)
+	_continue_button.pressed.connect(_on_revert_step.bind("continue"))
+	_skip_button.pressed.connect(_on_revert_step.bind("skip"))
+	_abort_button.pressed.connect(_on_abort_pressed)
 	_session = Engine.get_singleton("Nipa") if Engine.has_singleton("Nipa") else null
 	if _session:
 		_session.connected.connect(_on_connected)
@@ -46,6 +72,8 @@ func _ready() -> void:
 		_session.notice.connect(_on_notice)
 		_session.locks_changed.connect(_on_locks_changed)
 		_session.commit_locks_needed.connect(_on_commit_locks_needed)
+		_session.tags_changed.connect(_refresh_refs)
+		_session.conflicts_changed.connect(_refresh_banners)
 	_refresh_branch()
 	_refresh_locks()
 
@@ -65,6 +93,8 @@ func _exit_tree() -> void:
 		[_session.notice, _on_notice],
 		[_session.locks_changed, _on_locks_changed],
 		[_session.commit_locks_needed, _on_commit_locks_needed],
+		[_session.tags_changed, _refresh_refs],
+		[_session.conflicts_changed, _refresh_banners],
 	]:
 		if pair[0].is_connected(pair[1]):
 			pair[0].disconnect(pair[1])
@@ -118,9 +148,143 @@ func _on_status_changed(_paths: PackedStringArray) -> void:
 
 func _refresh_branch() -> void:
 	_branch_label.text = "Branch: %s" % (_session.get_branch_name() if _session and _session.is_open() else "-")
+	_refresh_refs()
+	_refresh_banners()
+
+
+# Switcher entries: branches, then tags ("Tag: v1.0"), each {text, kind, name}.
+static func ref_items(branches: PackedStringArray, tags: PackedStringArray) -> Array:
+	var out := []
+	for branch in branches:
+		out.append({"text": branch, "kind": "branch", "name": branch})
+	for tag in tags:
+		out.append({"text": "Tag: %s" % tag, "kind": "tag", "name": tag})
+	return out
+
+
+# What the banners show for a head (get_head) and the conflict set (get_conflicts).
+static func banner_state(head: Dictionary, conflicts: Dictionary) -> Dictionary:
+	var state := {"detached": head.get("detached", false), "detached_text": "", "pending": head.get("pending", ""),
+		"pending_text": "", "can_finish": false}
+	if state.detached:
+		state.detached_text = "Detached at tag %s. Commits are disabled; switch to a branch to work." % head.get("head_name", "")
+	var open: int = conflicts.get("open", 0)
+	var conflict_text := "%d conflict(s) left." % open if open > 0 else "All conflicts resolved."
+	match state.pending:
+		"merge":
+			state.pending_text = "Merging %s into %s. %s" % [
+				conflicts.get("theirs", {}).get("label", "a branch"), head.get("branch", ""), conflict_text]
+		"revert":
+			var remaining: int = head.get("pending_remaining", 0)
+			state.pending_text = "Revert in progress (%d step(s) left). %s" % [remaining, conflict_text]
+	state.can_finish = state.pending != "" and open == 0
+	return state
+
+
+func _refresh_refs() -> void:
+	if _ref_picker == null:
+		return
+	_ref_picker.clear()
+	var open: bool = _session != null and _session.is_open()
+	_merge_button.disabled = not open
+	if not open:
+		return
+	var head: Dictionary = _session.get_head()
+	var current: String = head.get("head_name", "") if head.get("detached", false) else head.get("branch", "")
+	var items := ref_items(_session.get_branch_names(), _session.get_tag_names())
+	for i in items.size():
+		_ref_picker.add_item(items[i].text)
+		_ref_picker.set_item_metadata(i, items[i])
+		var kind := "tag" if head.get("detached", false) else "branch"
+		if items[i].name == current and items[i].kind == kind:
+			_ref_picker.select(i)
+
+
+func _refresh_banners() -> void:
+	if _pending_banner == null:
+		return
+	var open: bool = _session != null and _session.is_open()
+	var state := banner_state(_session.get_head() if open else {}, _session.get_conflicts() if open else {})
+	_detached_banner.visible = state.detached
+	_detached_label.text = state.detached_text
+	_pending_banner.visible = state.pending != ""
+	_pending_label.text = state.pending_text
+	_finish_button.visible = state.pending == "merge"
+	_continue_button.visible = state.pending == "revert"
+	_skip_button.visible = state.pending == "revert"
+	_finish_button.disabled = not state.can_finish
+	_continue_button.disabled = not state.can_finish
+
+
+func _on_ref_selected(index: int) -> void:
+	var item: Dictionary = _ref_picker.get_item_metadata(index)
+	var head: Dictionary = _session.get_head() if _session else {}
+	if item.kind == "tag":
+		if head.get("detached", false) and head.get("head_name", "") == item.name:
+			return
+		_ask_save_then(func(): _session.request_switch_tag(item.name))
+	elif head.get("detached", false) or head.get("branch", "") != item.name:
+		request_switch(item.name)
+
+
+func _on_merge_pressed() -> void:
+	_branch_picker.clear()
+	var current: String = _session.get_head().get("branch", "") if _session else ""
+	for branch in (_session.get_branch_names() if _session else PackedStringArray()):
+		if branch != current:
+			_branch_picker.add_item(branch)
+	_merge_dialog.get_ok_button().disabled = _branch_picker.item_count == 0
+	_merge_dialog.popup_centered()
+
+
+func _on_merge_confirmed() -> void:
+	if _branch_picker.selected < 0:
+		return
+	var source := _branch_picker.get_item_text(_branch_picker.selected)
+	_ask_save_then(func(): _merge(source))
+
+
+func _merge(source: String) -> void:
+	var request: RefCounted = _session.request_merge(source)
+	await request.completed
+	if request.is_ok() and not request.get_result().get("merge", {}).get("conflicts", []).is_empty():
+		conflicts_requested.emit()
+
+
+func _on_back_pressed() -> void:
+	if _session:
+		request_switch(_session.get_head().get("branch", ""))
+
+
+func _on_finish_pressed() -> void:
+	if _session == null:
+		return
+	var conflicts: Dictionary = _session.get_conflicts()
+	_session.request_push("Merge branch '%s' into '%s'" % [
+		conflicts.get("theirs", {}).get("label", ""), _session.get_head().get("branch", "")])
+
+
+func _on_revert_step(step: String) -> void:
+	if _session == null:
+		return
+	if step == "continue":
+		_ask_save_then(func(): _session.request_revert_continue())
+	else:
+		_ask_save_then(func(): _session.request_revert_skip())
+
+
+func _on_abort_pressed() -> void:
+	if _session == null:
+		return
+	if _session.get_head().get("pending", "") == "revert":
+		_ask_save_then(func(): _session.request_revert_abort())
+	else:
+		_ask_save_then(func(): _session.request_merge_abort())
 
 
 func _on_op_queued(_id: int, kind: String) -> void:
+	if DATA_OPS.has(kind):
+		return
 	_op_label.visible = true
 	_op_label.text = "Queued: %s" % kind
 	_op_progress.visible = false

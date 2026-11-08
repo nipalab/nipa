@@ -29,6 +29,11 @@ add_library(nipa_core STATIC
   core/diff/diff.cpp
   core/session/event_queue.cpp
   core/session/session.cpp
+  core/session/session_ops.cpp
+  core/conflicts/conflicts.cpp
+  core/conflicts/merge_tool.cpp
+  core/history/history.cpp
+  core/preview/preview.cpp
 )
 set_target_properties(nipa_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_include_directories(nipa_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
@@ -67,6 +72,9 @@ if(NIPA_BUILD_TESTS)
     core/tests/test_session.cpp
     core/tests/test_locks.cpp
     core/tests/test_readonly_guard.cpp
+    core/tests/test_conflicts.cpp
+    core/tests/test_merge_tool.cpp
+    core/tests/test_history.cpp
   )
   target_include_directories(nipa_core_tests SYSTEM PRIVATE ${NIPA_THIRDPARTY}/doctest)
   target_link_libraries(nipa_core_tests PRIVATE nipa_core)

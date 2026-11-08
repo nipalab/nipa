@@ -1,0 +1,85 @@
+[gd_scene format=3 uid="uid://d1fr2q5a7hsb4"]
+
+[ext_resource type="Script" uid="uid://bkq0sn5c3p1d2" path="res://ui/hud.gd" id="1_hud01"]
+[ext_resource type="Theme" uid="uid://c0x4mc8b2w6ty" path="res://ui/theme.tres" id="2_th3me"]
+[ext_resource type="Texture2D" uid="uid://bn3c1oi2l5v7e" path="res://ui/icons/coin.svg" id="3_c01n5"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_p4n3l"]
+bg_color = Color(0.0784314, 0.0862745, 0.117647, 0.85)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+content_margin_left = 8.0
+content_margin_right = 8.0
+
+[sub_resource type="LabelSettings" id="LabelSettings_t1tle"]
+font_size = 22
+outline_size = 4
+outline_color = Color(0, 0, 0, 1)
+
+[node name="HUD" type="Control" unique_id=1953125]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme = ExtResource("2_th3me")
+script = ExtResource("1_hud01")
+
+[node name="TopBar" type="PanelContainer" parent="." unique_id=40271813]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_bottom = 48.0
+grow_horizontal = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_p4n3l")
+
+[node name="Row" type="HBoxContainer" parent="TopBar" unique_id=1708926290]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Title" type="Label" parent="TopBar/Row" unique_id=905126134]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Level 1 — \"The Caves\""
+label_settings = SubResource("LabelSettings_t1tle")
+
+[node name="CoinIcon" type="TextureRect" parent="TopBar/Row" unique_id=335781230]
+custom_minimum_size = Vector2(24, 24)
+layout_mode = 2
+texture = ExtResource("3_c01n5")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Coins" type="Label" parent="TopBar/Row" unique_id=2002313437]
+unique_name_in_owner = true
+layout_mode = 2
+text = "0"
+horizontal_alignment = 2
+
+[node name="Pause" type="Button" parent="TopBar/Row" unique_id=1174417201]
+layout_mode = 2
+tooltip_text = "Pause the game
+(Esc)"
+text = "II"
+
+[node name="Toast" type="Label" parent="." unique_id=1440219787]
+visible = false
+layout_mode = 1
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -120.0
+offset_top = -64.0
+offset_right = 120.0
+offset_bottom = -32.0
+horizontal_alignment = 1
+metadata/_edit_use_anchors_ = true
+
+[connection signal="pressed" from="TopBar/Row/Pause" to="." method="_on_pause_pressed"]

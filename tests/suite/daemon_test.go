@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -969,6 +970,71 @@ var _ = Describe("nipa serve", func() {
 		check := cloneRepo(workspace(), url, "check")
 		Expect(readText(check, "notes.txt")).To(Equal("one\nTWO both\nthree\n"))
 		Expect(readBytes(check, "art/hero.png")).To(Equal(testPNG(2)))
+	})
+
+	It("merges a conflicted Godot scene over the JSON bridge", func() {
+		base := "[gd_scene load_steps=2 format=3]\n\n[ext_resource type=\"Script\" path=\"res://level.gd\" id=\"1_lvl\"]\n\n[node name=\"Level\" type=\"Node2D\"]\nscript = ExtResource(\"1_lvl\")\n\n[node name=\"A\" type=\"Sprite2D\" parent=\".\"]\nposition = Vector2(0, 0)\n\n[node name=\"B\" type=\"Sprite2D\" parent=\".\"]\nposition = Vector2(0, 0)\n\n[node name=\"Camera\" type=\"Camera2D\" parent=\".\"]\n"
+		project := newProject("daemon-godot-merge")
+		seedRepo(orgSlug, project, map[string][]byte{"level.tscn": []byte(base)}, "seed")
+		url := repoURLFor(orgSlug, project)
+		dir := cloneRepo(workspace(), url, "work")
+
+		d := startDaemon()
+		d.watch(dir)
+
+		Expect(runNipa(dir, "branch", "-c", "feature").ExitCode).To(Equal(0))
+		feature := strings.Replace(base, "[node name=\"A\" type=\"Sprite2D\" parent=\".\"]\nposition = Vector2(0, 0)", "[node name=\"A\" type=\"Sprite2D\" parent=\".\"]\nposition = Vector2(16, 0)", 1)
+		writeText(dir, "level.tscn", feature+"\n[node name=\"Coin\" type=\"Area2D\" parent=\".\"]\n")
+		Expect(runNipa(dir, "add", "level.tscn").ExitCode).To(Equal(0))
+		Expect(pushRepo(dir, "feature moves A").ExitCode).To(Equal(0))
+
+		Expect(runNipa(dir, "switch", "main").ExitCode).To(Equal(0))
+		main := strings.Replace(base, "[node name=\"B\" type=\"Sprite2D\" parent=\".\"]\nposition = Vector2(0, 0)", "[node name=\"B\" type=\"Sprite2D\" parent=\".\"]\nposition = Vector2(0, 32)", 1)
+		writeText(dir, "level.tscn", main+"\n[node name=\"Door\" type=\"Area2D\" parent=\".\"]\n")
+		Expect(runNipa(dir, "add", "level.tscn").ExitCode).To(Equal(0))
+		Expect(pushRepo(dir, "main moves B").ExitCode).To(Equal(0))
+
+		mergeStream, err := d.client.Merge(d.ctx, &daemonpb.MergeOpRequest{Root: dir, SourceBranch: "feature"})
+		Expect(err).NotTo(HaveOccurred())
+		mergeEvents := collectOpEvents(mergeStream)
+		Expect(opFailure(mergeEvents)).To(BeNil())
+		Expect(opResult(mergeEvents).GetMerge().GetConflicts()).To(ConsistOf("level.tscn"))
+
+		req, err := json.Marshal(map[string]string{"root": dir, "path": "level.tscn"})
+		Expect(err).NotTo(HaveOccurred())
+		resp, body := d.jsonPost("/v1/MergeGodotResource", string(req))
+		Expect(resp.StatusCode).To(Equal(http.StatusOK), string(body))
+		var merged struct {
+			Merged    []byte `json:"merged"`
+			Clean     bool   `json:"clean"`
+			Conflicts []any  `json:"conflicts"`
+		}
+		Expect(json.Unmarshal(body, &merged)).To(Succeed())
+		Expect(merged.Clean).To(BeTrue(), string(body))
+		Expect(merged.Conflicts).To(BeEmpty())
+		text := string(merged.Merged)
+		Expect(text).To(ContainSubstring("position = Vector2(16, 0)"))
+		Expect(text).To(ContainSubstring("position = Vector2(0, 32)"))
+		Expect(text).To(ContainSubstring(`[node name="Coin"`))
+		Expect(text).To(ContainSubstring(`[node name="Door"`))
+		Expect(text).NotTo(ContainSubstring("<<<<<<<"))
+		Expect(readText(dir, "level.tscn")).To(ContainSubstring("<<<<<<<"), "the RPC only reads")
+
+		resp, body = d.jsonPost("/v1/MergeGodotResource", `{"root":`+strconv.Quote(dir)+`,"path":"notes.txt"}`)
+		Expect(resp.StatusCode).To(Equal(http.StatusBadRequest), string(body))
+
+		resolve, err := json.Marshal(map[string]any{"root": dir, "path": "level.tscn", "choice": "content", "content": merged.Merged})
+		Expect(err).NotTo(HaveOccurred())
+		resp, body = d.jsonPost("/v1/ResolveConflict", string(resolve))
+		Expect(resp.StatusCode).To(Equal(http.StatusOK), string(body))
+
+		pushStream, err := d.client.Push(d.ctx, &daemonpb.PushRequest{Root: dir, Message: "Merge branch 'feature' into 'main'"})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(opFailure(collectOpEvents(pushStream))).To(BeNil())
+		Expect(d.status(dir).GetPending()).To(BeEmpty())
+
+		check := cloneRepo(workspace(), url, "check")
+		Expect(readText(check, "level.tscn")).To(Equal(text))
 	})
 
 	It("streams teammate pushes, released locks and review requests", func() {
