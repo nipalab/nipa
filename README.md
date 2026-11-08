@@ -100,7 +100,7 @@ and flag.
 | `nipa acl ...`              | Manage path-based permission rules (`grant`, `revoke`, `list`, `my`, and `permission list\|set\|remove` for project path permissions). |
 | `nipa group ...`            | Manage groups and their members (`create`, `list`, `add-member`, `remove-member`). |
 | `nipa serve`                | Run the local daemon that GUI clients and engine plugins connect to. See [`docs/DAEMON.md`](docs/DAEMON.md). |
-| `nipa mcp [--repo <dir>] [--allow-write]` | Serve the working copy as a Model Context Protocol server over stdio. See [AI agents and automation](#ai-agents-and-automation). |
+| `nipa mcp [--repo <dir>] [--allow <caps>] [--allow-write] [--no-agent-trailer]` | Serve the working copy as a Model Context Protocol server over stdio so AI agents can inspect and change it directly. Read-only tools by default; mutating tools are enabled per capability (`stage`, `push`, `sync`, `branch`, `lock`, `mr`, `merge`) with `--allow`, or all with `--allow-write`. See [AI agents and automation](#ai-agents-and-automation). |
 | `nipa version [--server] [url]` | Print the client version and, with `--server`, the server's version.     |
 
 ### Branches and tags
@@ -187,24 +187,30 @@ nipa serve   # publishes its endpoint and token in ~/.config/nipa/daemon.json
 
 Nipa can be driven by scripts and AI agents as well as by people:
 
-- **MCP server.** `nipa mcp [--repo <dir>] [--allow-write]` serves the clone
-  over stdio so agents such as Claude Code, Cursor or Copilot can work with a
-  working copy directly. Read-only tools (`nipa_status`, `nipa_diff`,
-  `nipa_log`, `nipa_branch_list`, `nipa_mr_list`, `nipa_lock_list`) are always
-  registered; `nipa_add`, `nipa_push`, `nipa_branch_create`,
-  `nipa_lock`/`nipa_unlock` and `nipa_mr_create` require `--allow-write`. It
-  never prompts for credentials, so log in with a normal CLI command first.
-- **Machine-readable output.** Read commands accept `--json` (`status`, `diff`,
-  `log`, `branch`, `tag`, `lock list`, `mr list`), and `NIPA_OUTPUT=json`
-  enables it globally. Failures are a single
-  `{"error":{"code","message","hint","action"}}` envelope on stderr with stable
-  exit codes: `0` success, `1` generic failure, `2` locked/precondition, `127`
-  not found.
-- **Dry runs.** `nipa push|merge|revert --dry-run [--json]` report file-level
-  changes, conflicts and (for push) the upload estimate without changing
-  anything.
-- **REST API.** The server publishes its OpenAPI document at `/docs/api.json`
-  (Swagger UI at `/docs/`).
+- **MCP server** — `nipa mcp [--repo <dir>] [--allow <caps>]` serves the
+  clone over stdio (Model Context Protocol) so agents such as Claude Code,
+  Cursor or Copilot can work with a working copy directly. Read-only tools
+  (status, diff, log, branches, tags, locks and lock queries, conflicts, merge
+  requests with their diff, threads, commits and timeline) are always
+  registered; write tools are grouped by capability (`stage`, `push`, `sync`,
+  `branch`, `lock`, `mr`, `merge`) and enabled with `--allow` (or all with
+  `--allow-write`). Diffs are capped by `max_bytes`, and text written through
+  MCP carries a `Nipa-Agent: <client>/<version>` trailer (`--no-agent-trailer`
+  disables it). Authentication never prompts (a prompt would corrupt the
+  JSON-RPC stream), so log in with a normal CLI command in the clone first.
+- **Machine-readable output** — read commands accept `--json` (`nipa status`,
+  `nipa diff`, `nipa log`, `nipa branch`, `nipa tag`, `nipa lock list`,
+  `nipa mr list`);
+  `NIPA_OUTPUT=json` enables it globally. Payloads go to stdout; failures are a
+  single `{"error":{"code","message","hint","action"}}` envelope on stderr, and
+  exit codes are stable: `0` success, `1` generic failure, `2`
+  locked/precondition, `127` not found.
+- **Dry runs** — `nipa push|merge|revert --dry-run [--json]` report the
+  file-level changes, conflicts and (for push) the upload estimate without
+  staging, committing, pushing or rewriting the working copy.
+- **REST API** — the server publishes its OpenAPI document at
+  `/docs/api.json` (Swagger UI at `/docs/`), covering browsing, merge
+  requests, reviews, file locks, permissions and groups.
 
 The full agent-facing reference lives in [`docs/AI.md`](docs/AI.md).
 

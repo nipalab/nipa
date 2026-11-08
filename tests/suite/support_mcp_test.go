@@ -76,11 +76,17 @@ func startMCP(repoDir string, allowWrite bool) *mcpProc {
 
 func startMCPWithTokenFile(repoDir string, allowWrite bool, tokenFile string) *mcpProc {
 	GinkgoHelper()
-
-	args := []string{"mcp", "--repo", repoDir}
+	var extra []string
 	if allowWrite {
-		args = append(args, "--allow-write")
+		extra = append(extra, "--allow-write")
 	}
+	return startMCPWithArgs(repoDir, tokenFile, extra...)
+}
+
+func startMCPWithArgs(repoDir, tokenFile string, extra ...string) *mcpProc {
+	GinkgoHelper()
+
+	args := append([]string{"mcp", "--repo", repoDir}, extra...)
 
 	logPath := filepath.Join(GinkgoT().TempDir(), "mcp.log")
 	logFile, err := os.Create(logPath)

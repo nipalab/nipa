@@ -26,6 +26,14 @@ var _ = Describe("nipa mcp", func() {
 			"nipa_branch_list",
 			"nipa_mr_list",
 			"nipa_lock_list",
+			"nipa_lock_query",
+			"nipa_tag_list",
+			"nipa_conflicts",
+			"nipa_mr_view",
+			"nipa_mr_diff",
+			"nipa_mr_threads",
+			"nipa_mr_commits",
+			"nipa_mr_timeline",
 		))
 	})
 
@@ -44,13 +52,79 @@ var _ = Describe("nipa mcp", func() {
 			"nipa_branch_list",
 			"nipa_mr_list",
 			"nipa_lock_list",
+			"nipa_lock_query",
+			"nipa_tag_list",
+			"nipa_conflicts",
+			"nipa_mr_view",
+			"nipa_mr_diff",
+			"nipa_mr_threads",
+			"nipa_mr_commits",
+			"nipa_mr_timeline",
 			"nipa_add",
+			"nipa_restore",
 			"nipa_push",
+			"nipa_update",
+			"nipa_switch",
 			"nipa_branch_create",
+			"nipa_tag_create",
 			"nipa_lock",
 			"nipa_unlock",
+			"nipa_merge",
+			"nipa_resolve_conflict",
 			"nipa_mr_create",
+			"nipa_mr_update",
+			"nipa_mr_comment",
+			"nipa_mr_reply",
+			"nipa_mr_resolve",
+			"nipa_mr_review",
+			"nipa_mr_request_review",
+			"nipa_mr_check",
+			"nipa_mr_merge",
 		))
+	})
+
+	It("scopes write tools with --allow and answers tag and lock queries", func() {
+		project := newProject("mcp-allow")
+		seedRepo(orgSlug, project, map[string][]byte{"a.txt": []byte("a\n")}, "seed")
+		parent := workspace()
+		dir := cloneRepo(parent, repoURLFor(orgSlug, project), "work")
+		Expect(runNipa(dir, "tag", "-c", "v1.0.0").ExitCode).To(Equal(0))
+
+		m := startMCPWithArgs(dir, cli.tokenFile, "--allow", "branch,lock")
+		names := m.toolNames()
+		Expect(names).To(ContainElements("nipa_tag_create", "nipa_lock", "nipa_unlock", "nipa_branch_create"))
+		Expect(names).NotTo(ContainElements("nipa_push", "nipa_add", "nipa_merge", "nipa_mr_create"))
+
+		tagResult := m.callTool("nipa_tag_list", map[string]any{"repo": dir})
+		Expect(tagResult.IsError).To(BeFalse(), tagResult.text())
+		var tags struct {
+			Tags []struct {
+				Name string `json:"name"`
+			} `json:"tags"`
+		}
+		tagResult.decode(&tags)
+		Expect(tags.Tags).To(HaveLen(1))
+		Expect(tags.Tags[0].Name).To(Equal("v1.0.0"))
+
+		lockResult := m.callTool("nipa_lock", map[string]any{"repo": dir, "path": "assets"})
+		Expect(lockResult.IsError).To(BeFalse(), lockResult.text())
+		queryResult := m.callTool("nipa_lock_query", map[string]any{"repo": dir, "path": "assets/hero.png"})
+		Expect(queryResult.IsError).To(BeFalse(), queryResult.text())
+		var query struct {
+			Locked bool `json:"locked"`
+			Locks  []struct {
+				Path string `json:"path"`
+			} `json:"locks"`
+		}
+		queryResult.decode(&query)
+		Expect(query.Locked).To(BeTrue())
+		Expect(query.Locks[0].Path).To(Equal("assets"))
+	})
+
+	It("rejects unknown capabilities", func() {
+		res := runNipa(workspace(), "mcp", "--allow", "admin")
+		Expect(res.ExitCode).NotTo(Equal(0))
+		Expect(res.Output()).To(ContainSubstring("unknown capability"))
 	})
 
 	It("returns status and log", func() {
@@ -141,6 +215,9 @@ var _ = Describe("nipa mcp", func() {
 
 		fresh := cloneRepo(parent, url, "fresh")
 		Expect(readText(fresh, "b.txt")).To(Equal("from mcp\n"))
+		var log logJSON
+		runJSONInto(fresh, &log, "log", "--json")
+		Expect(log.Commits[0].Message).To(HaveSuffix("Nipa-Agent: nipa-e2e/0.0.1"))
 	})
 
 	It("creates branches, locks and merge requests through tools", func() {
