@@ -1,0 +1,18 @@
+; Engine configuration file.
+; Headless smoke project for the Nipa add-on (see docs/GODOT_PLUGIN.md, Testing).
+
+config_version=5
+
+[application]
+
+config/name="Nipa smoke"
+config/features=PackedStringArray("4.4")
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/gdUnit4/plugin.cfg", "res://addons/nipa/plugin.cfg")
+
+[editor]
+
+version_control/plugin_name="NipaVCSInterface"
+version_control/autoload_on_startup=true

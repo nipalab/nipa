@@ -16,6 +16,55 @@ the `.uid` sidecar files that the plugin must track. Godot 3 is out of scope.
 
 ---
 
+## Install
+
+Phase 1 is a local copy. Nothing is published to the Asset Library yet.
+
+1. Install the `nipa` CLI (`make build-client`, or a release build) and make
+   sure the clone you work in was made with it (`nipa clone`).
+2. Get the add-on folder: `addons/nipa/` from this repository, with the
+   editor library in `addons/nipa/bin/<platform>/`. Build it from a checkout
+   with `make godot-build` (CMake ≥ 3.24, a C++17 compiler; godot-cpp 4.4 is
+   fetched), or copy a prebuilt library into place.
+3. Copy `addons/nipa/` into your Godot project's `addons/` folder, or link it
+   (`ln -s`), then restart the editor.
+4. Enable it in **Project › Project Settings › Plugins** ("Nipa").
+5. Pick the native VCS in **Project › Version Control › Plugin Name**:
+   `NipaVCSInterface`, and enable autoload on startup. The Nipa dock appears on
+   the right-hand side.
+
+The project folder can be the clone root or a subfolder of it (the folder that
+holds `project.godot`). The add-on looks up `.nipa/config` up to 32 parents.
+
+Settings:
+
+| Setting | Where | Default |
+|---|---|---|
+| `nipa/binary_path` | Editor Settings (per user) | empty, which means `NIPA_BIN`, then the library folder, then `PATH` |
+| `nipa/poll_interval_sec` | Project Settings (shared) | 60, clamped to 15–3600 |
+
+## Using
+
+- **Commit** (Version Control dock) stages the selected files and pushes them
+  as one Nipa commit. Sidecars (`.import`, `.uid`) are staged with their asset.
+- **Pull** runs `Update`. The Nipa dock's Update button asks to save all open
+  scenes first; the native Pull and branch switch run without that prompt in
+  Phase 1, so save before using them. Afterwards the filesystem is rescanned and
+  changed scenes that are open are reloaded.
+- **Push** only shows a notice: Nipa commits go to the server on Commit.
+- **Remotes** are read-only; the clone's server is the only remote.
+- **Branches**: the list comes from the server. Creating a branch forks from the
+  current branch, then the dock switches to it.
+- **Nipa dock**: connection state with Reconnect, the branch, operation
+  progress, an out-of-date banner with Update, a note for staged files outside
+  the project, and "Open in Nipa Desktop".
+- Operations run in the background. Results appear as editor toasts; the
+  editor never waits on the network beyond a 2 s start-up budget (diffs and
+  line diffs wait at most 1 s).
+
+Not in Phase 1: locks, conflicts, tags, previews, and the bottom panels (see
+the phased plan).
+
 ## How Godot's VCS integration works (research)
 
 Source: `editor/version_control/version_control_editor_plugin.cpp` and the
@@ -373,6 +422,10 @@ Its methods return `NipaRequest` handles (`RefCounted` with a `completed(ok,
 result)` signal), so GDScript uses `await`.
 
 ## Testing
+
+Build prerequisites: CMake ≥ 3.24, a C++17 compiler, Python 3 (godot-cpp's
+binding generator), git (FetchContent). `gcovr` for the coverage gate
+(`pip install gcovr`).
 
 - `make godot-test`: CMake + ctest over `core/` with a fake daemon, gcovr
   fails below 80% line coverage.
