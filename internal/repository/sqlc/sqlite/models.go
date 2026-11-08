@@ -232,6 +232,21 @@ type MergeRequestThread struct {
 	ReviewID       sql.NullInt64  `json:"review_id"`
 }
 
+type OrgInvitation struct {
+	ID         int64         `json:"id"`
+	OrgID      int64         `json:"org_id"`
+	InvitedBy  int64         `json:"invited_by"`
+	Email      string        `json:"email"`
+	Role       string        `json:"role"`
+	TokenHash  []byte        `json:"token_hash"`
+	Status     string        `json:"status"`
+	ExpiresAt  time.Time     `json:"expires_at"`
+	AcceptedBy sql.NullInt64 `json:"accepted_by"`
+	AcceptedAt sql.NullTime  `json:"accepted_at"`
+	CreatedAt  time.Time     `json:"created_at"`
+	UpdatedAt  time.Time     `json:"updated_at"`
+}
+
 type OrgMember struct {
 	OrgID     int64     `json:"org_id"`
 	UserID    int64     `json:"user_id"`

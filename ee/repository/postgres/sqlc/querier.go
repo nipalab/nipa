@@ -178,6 +178,16 @@ type Querier interface {
 	OAuthLoginCodeCreate(ctx context.Context, arg OAuthLoginCodeCreateParams) error
 	OAuthLoginCodeDeleteExpired(ctx context.Context, before time.Time) (int64, error)
 	OAuthLoginCodeGetAndDelete(ctx context.Context, code string) (OauthLoginCode, error)
+	OrgInvitationAccept(ctx context.Context, arg OrgInvitationAcceptParams) (int64, error)
+	OrgInvitationExpireStale(ctx context.Context, arg OrgInvitationExpireStaleParams) error
+	OrgInvitationFindPending(ctx context.Context, arg OrgInvitationFindPendingParams) (OrgInvitationFindPendingRow, error)
+	OrgInvitationGet(ctx context.Context, id int64) (OrgInvitationGetRow, error)
+	OrgInvitationGetByTokenHash(ctx context.Context, tokenHash []byte) (OrgInvitationGetByTokenHashRow, error)
+	OrgInvitationInsert(ctx context.Context, arg OrgInvitationInsertParams) error
+	OrgInvitationListByOrg(ctx context.Context, arg OrgInvitationListByOrgParams) ([]OrgInvitationListByOrgRow, error)
+	OrgInvitationListPendingByEmail(ctx context.Context, arg OrgInvitationListPendingByEmailParams) ([]OrgInvitationListPendingByEmailRow, error)
+	OrgInvitationResolve(ctx context.Context, arg OrgInvitationResolveParams) (int64, error)
+	OrgInvitationRotate(ctx context.Context, arg OrgInvitationRotateParams) (int64, error)
 	OrgMemberCountByRole(ctx context.Context, arg OrgMemberCountByRoleParams) (int64, error)
 	OrgMemberDelete(ctx context.Context, arg OrgMemberDeleteParams) error
 	OrgMemberGet(ctx context.Context, arg OrgMemberGetParams) (string, error)

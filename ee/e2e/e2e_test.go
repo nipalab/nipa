@@ -205,6 +205,7 @@ func startEnterpriseServerWith(t *testing.T, dbConn *sql.DB, chunkStore storage.
 	deps.SeatGate = opts.seatGate
 	uc := serverapp.BuildUsecases(serverusecase.Repositories{
 		Org:                postgres.NewOrgRepository(dbConn),
+		OrgInvitation:      postgres.NewOrgInvitationRepository(dbConn),
 		Project:            postgres.NewProjectRepository(dbConn),
 		Auth:               postgres.NewAuthRepository(dbConn),
 		SSHKey:             postgres.NewSSHKeyRepository(dbConn),

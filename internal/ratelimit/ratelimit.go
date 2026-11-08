@@ -13,6 +13,10 @@ const (
 	ScopeAPIUser  = "api_user"
 	ScopeChunkIP  = "chunk_ip"
 	ScopeGlobalIP = "global_ip"
+
+	ScopeInviteUser  = "invite_user"
+	ScopeInviteEmail = "invite_email"
+	ScopeInviteToken = "invite_token"
 )
 
 const (

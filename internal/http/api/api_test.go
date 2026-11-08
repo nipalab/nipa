@@ -19,6 +19,7 @@ import (
 	"github.com/nipalab/nipa/internal/chunker"
 	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/http/model"
+	"github.com/nipalab/nipa/internal/mail"
 	"github.com/nipalab/nipa/internal/repository/dbtx"
 	sqlcSqlite "github.com/nipalab/nipa/internal/repository/sqlc/sqlite"
 	"github.com/nipalab/nipa/internal/repository/sqlite"
@@ -37,6 +38,7 @@ type testRegistry struct {
 	common        *usecase.Common
 	permission    *usecase.Permission
 	org           *usecase.Org
+	orgInvitation *usecase.OrgInvitation
 	group         *usecase.Group
 	project       *usecase.Project
 	branch        *usecase.Branch
@@ -77,6 +79,7 @@ func (r *testRegistry) FileLock() *usecase.FileLock { return r.fileLock }
 
 func (r *testRegistry) Webhook() *usecase.Webhook { return r.webhook }
 
+func (r *testRegistry) OrgInvitation() *usecase.OrgInvitation { return r.orgInvitation }
 func (r *testRegistry) EmailDelivery() *usecase.EmailDelivery { return r.emailDelivery }
 func (r *testRegistry) Audit() *usecase.Audit                 { return r.audit }
 
@@ -172,6 +175,7 @@ func TestAPIRoutes(t *testing.T) {
 		common:        usecase.NewCommon(sqlite.NewOrgRepository(dbConn), sqlite.NewProjectRepository(dbConn)),
 		permission:    permissionUc,
 		org:           orgUc,
+		orgInvitation: usecase.NewOrgInvitation(sqlite.NewOrgInvitationRepository(dbConn), orgUc, userRepo, node).WithOutbox(sqlite.NewEmailRepository(dbConn), "https://nipa.test"),
 		group:         usecase.NewGroup(groupRepo, node, permissionUc, orgUc).WithAudit(auditUc),
 		project:       projectUc,
 		branch:        branchUc,
@@ -786,15 +790,190 @@ func TestAPIRoutes(t *testing.T) {
 		perms := decodeBody[model.ProjectPermissionResponse](t, doGet(t, base+"/game/permissions/me", daveLogin.AccessToken))
 		require.Equal(t, uint64(domain.PermissionAll), perms.ProjectPermission)
 
-		addBob := doMethod(t, http.MethodPost, server.URL+"/api/v1/orgs/dave-studio/members",
+		byID := doMethod(t, http.MethodPost, server.URL+"/api/v1/orgs/dave-studio/members",
+			`{"user_id":"1","role":"member"}`, daveLogin.AccessToken)
+		require.Equal(t, http.StatusBadRequest, byID.StatusCode, "owners cannot add by id")
+		_ = byID.Body.Close()
+
+		inviteBob := doMethod(t, http.MethodPost, server.URL+"/api/v1/orgs/dave-studio/members",
 			`{"email":"bob@example.com","role":"member"}`, daveLogin.AccessToken)
-		require.Equal(t, http.StatusOK, addBob.StatusCode)
-		_ = addBob.Body.Close()
+		require.Equal(t, http.StatusAccepted, inviteBob.StatusCode)
+		_ = inviteBob.Body.Close()
 
 		bobLogin, _ := loginAs(t, "bob@example.com")
+		mine := decodeBody[[]model.OrgInvitationResponse](t, doGet(t, server.URL+"/api/v1/me/invitations", bobLogin.AccessToken))
+		require.NotEmpty(t, mine)
+		var inviteID string
+		for _, inv := range mine {
+			if inv.OrgSlug == "dave-studio" {
+				inviteID = inv.ID
+			}
+		}
+		require.NotEmpty(t, inviteID)
+		accept := doMethod(t, http.MethodPost, server.URL+"/api/v1/me/invitations/"+inviteID+"/accept", "{}", bobLogin.AccessToken)
+		require.Equal(t, http.StatusOK, accept.StatusCode)
+		_ = accept.Body.Close()
+
 		hidden := doGet(t, base+"/game", bobLogin.AccessToken)
 		require.Equal(t, http.StatusNotFound, hidden.StatusCode, "org members without rules stay denied")
 		_ = hidden.Body.Close()
+	})
+
+	t.Run("org invitations", func(t *testing.T) {
+		superLogin, _ := loginAs(t, "nipa")
+		for _, u := range []string{"erin", "frank"} {
+			created := doMethod(t, http.MethodPost, server.URL+"/api/v1/users",
+				`{"name":"`+u+`","email":"`+u+`@example.com","password":"password123"}`, superLogin.AccessToken)
+			require.Equal(t, http.StatusOK, created.StatusCode)
+			_ = created.Body.Close()
+		}
+		erinLogin, _ := loginAs(t, "erin@example.com")
+		frankLogin, _ := loginAs(t, "frank@example.com")
+		orgBase := server.URL + "/api/v1/orgs/erin-studio"
+		created := doMethod(t, http.MethodPost, server.URL+"/api/v1/orgs", `{"name":"Erin Studio","slug":"erin-studio"}`, erinLogin.AccessToken)
+		require.Equal(t, http.StatusOK, created.StatusCode)
+		_ = created.Body.Close()
+
+		invite := func(email string) []byte {
+			resp := doMethod(t, http.MethodPost, orgBase+"/invitations", `{"email":"`+email+`"}`, erinLogin.AccessToken)
+			defer func() { _ = resp.Body.Close() }()
+			require.Equal(t, http.StatusAccepted, resp.StatusCode)
+			raw, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			return raw
+		}
+		known := invite("frank@example.com")
+		unknown := invite("nobody@example.com")
+		require.JSONEq(t, string(known), string(unknown), "same answer for known and unknown addresses")
+
+		nonOwner := doMethod(t, http.MethodPost, orgBase+"/invitations", `{"email":"x@example.com"}`, frankLogin.AccessToken)
+		require.Equal(t, http.StatusForbidden, nonOwner.StatusCode)
+		_ = nonOwner.Body.Close()
+		badEmail := doMethod(t, http.MethodPost, orgBase+"/invitations", `{"email":"nope"}`, erinLogin.AccessToken)
+		require.Equal(t, http.StatusBadRequest, badEmail.StatusCode)
+		_ = badEmail.Body.Close()
+		listDenied := doGet(t, orgBase+"/invitations", frankLogin.AccessToken)
+		require.Equal(t, http.StatusForbidden, listDenied.StatusCode)
+		_ = listDenied.Body.Close()
+
+		invs := decodeBody[[]model.OrgInvitationResponse](t, doGet(t, orgBase+"/invitations?status=pending", erinLogin.AccessToken))
+		require.Len(t, invs, 2)
+		var frankInv, nobodyInv model.OrgInvitationResponse
+		for _, inv := range invs {
+			if inv.Email == "frank@example.com" {
+				frankInv = inv
+			} else {
+				nobodyInv = inv
+			}
+		}
+
+		resend := doMethod(t, http.MethodPost, orgBase+"/invitations/"+nobodyInv.ID+"/resend", "{}", erinLogin.AccessToken)
+		require.Equal(t, http.StatusAccepted, resend.StatusCode)
+		_ = resend.Body.Close()
+		revoke := doMethod(t, http.MethodDelete, orgBase+"/invitations/"+nobodyInv.ID, "", erinLogin.AccessToken)
+		require.Equal(t, http.StatusOK, revoke.StatusCode)
+		_ = revoke.Body.Close()
+		again := doMethod(t, http.MethodDelete, orgBase+"/invitations/"+nobodyInv.ID, "", erinLogin.AccessToken)
+		require.Equal(t, http.StatusConflict, again.StatusCode)
+		_ = again.Body.Close()
+
+		badToken := doGet(t, server.URL+"/api/v1/invitations/not-a-token", frankLogin.AccessToken)
+		require.Equal(t, http.StatusNotFound, badToken.StatusCode)
+		_ = badToken.Body.Close()
+		wrongUser := doMethod(t, http.MethodPost, server.URL+"/api/v1/me/invitations/"+frankInv.ID+"/accept", "{}", erinLogin.AccessToken)
+		require.Equal(t, http.StatusNotFound, wrongUser.StatusCode, "email mismatch looks like a missing invitation")
+		_ = wrongUser.Body.Close()
+		unauth := doMethod(t, http.MethodPost, server.URL+"/api/v1/me/invitations/"+frankInv.ID+"/accept", "{}", "")
+		require.Equal(t, http.StatusUnauthorized, unauth.StatusCode)
+		_ = unauth.Body.Close()
+
+		decline := doMethod(t, http.MethodPost, server.URL+"/api/v1/me/invitations/"+frankInv.ID+"/decline", "{}", frankLogin.AccessToken)
+		require.Equal(t, http.StatusOK, decline.StatusCode)
+		_ = decline.Body.Close()
+		declined := decodeBody[[]model.OrgInvitationResponse](t, doGet(t, orgBase+"/invitations?status=declined", erinLogin.AccessToken))
+		require.Len(t, declined, 1)
+
+		invite("frank@example.com")
+		token := func(email string) string {
+			var body []byte
+			require.NoError(t, dbConn.QueryRow("SELECT body FROM email_deliveries WHERE email = ? AND event = 'org.invitation' ORDER BY id DESC LIMIT 1", email).Scan(&body))
+			msg, err := mail.DecodeMessage(body)
+			require.NoError(t, err)
+			_, tok, ok := strings.Cut(msg.Text, "https://nipa.test/invitations/")
+			require.True(t, ok)
+			return strings.Fields(tok)[0]
+		}
+		tok := token("frank@example.com")
+		preview := decodeBody[model.OrgInvitationResponse](t, doGet(t, server.URL+"/api/v1/invitations/"+tok, frankLogin.AccessToken))
+		require.Equal(t, "erin-studio", preview.OrgSlug)
+		require.Equal(t, "frank@example.com", preview.Email)
+		stolen := doGet(t, server.URL+"/api/v1/invitations/"+tok, erinLogin.AccessToken)
+		require.Equal(t, http.StatusNotFound, stolen.StatusCode, "a leaked token is useless to another account")
+		_ = stolen.Body.Close()
+		viaToken := doMethod(t, http.MethodPost, server.URL+"/api/v1/invitations/"+tok+"/decline", "{}", frankLogin.AccessToken)
+		require.Equal(t, http.StatusOK, viaToken.StatusCode)
+		_ = viaToken.Body.Close()
+		replay := doMethod(t, http.MethodPost, server.URL+"/api/v1/invitations/"+tok+"/accept", "{}", frankLogin.AccessToken)
+		require.Equal(t, http.StatusNotFound, replay.StatusCode, "a declined invitation cannot be accepted")
+		_ = replay.Body.Close()
+
+		invite("frank@example.com")
+		tok = token("frank@example.com")
+		byToken := doMethod(t, http.MethodPost, server.URL+"/api/v1/invitations/"+tok+"/accept", "{}", frankLogin.AccessToken)
+		require.Equal(t, http.StatusOK, byToken.StatusCode)
+		accepted := decodeBody[model.OrgInvitationResponse](t, byToken)
+		require.Equal(t, "accepted", accepted.Status)
+		invite("frank2@example.com")
+		mine := decodeBody[[]model.OrgInvitationResponse](t, doGet(t, server.URL+"/api/v1/me/invitations", frankLogin.AccessToken))
+		require.Empty(t, mine, "the accepted invitation is gone from the list")
+		members := decodeBody[[]model.OrgMemberResponse](t, doGet(t, orgBase+"/members", erinLogin.AccessToken))
+		require.Len(t, members, 2)
+
+		for _, path := range []string{"/invitations/%21/resend", "/invitations/%21"} {
+			method := http.MethodPost
+			if path == "/invitations/%21" {
+				method = http.MethodDelete
+			}
+			bad := doMethod(t, method, orgBase+path, "{}", erinLogin.AccessToken)
+			require.Equal(t, http.StatusBadRequest, bad.StatusCode)
+			_ = bad.Body.Close()
+		}
+		for _, action := range []string{"accept", "decline"} {
+			bad := doMethod(t, http.MethodPost, server.URL+"/api/v1/me/invitations/%21/"+action, "{}", frankLogin.AccessToken)
+			require.Equal(t, http.StatusBadRequest, bad.StatusCode)
+			_ = bad.Body.Close()
+		}
+		members0 := orgBase + "/members"
+		unknownEmail := doMethod(t, http.MethodPost, members0, `{"email":"ghost@example.com"}`, superLogin.AccessToken)
+		require.Equal(t, http.StatusNotFound, unknownEmail.StatusCode)
+		unknownEmailMsg := decodeBody[model.APIError](t, unknownEmail)
+		unknownID := doMethod(t, http.MethodPost, members0, `{"user_id":"zzzzzz"}`, superLogin.AccessToken)
+		require.Equal(t, http.StatusNotFound, unknownID.StatusCode)
+		unknownIDMsg := decodeBody[model.APIError](t, unknownID)
+		require.Equal(t, unknownEmailMsg, unknownIDMsg, "admins get one generic answer for every missing account")
+		both := doMethod(t, http.MethodPost, members0, `{"user_id":"1","email":"a@b.co"}`, erinLogin.AccessToken)
+		require.Equal(t, http.StatusBadRequest, both.StatusCode)
+		_ = both.Body.Close()
+		neither := doMethod(t, http.MethodPost, members0, `{}`, superLogin.AccessToken)
+		require.Equal(t, http.StatusBadRequest, neither.StatusCode)
+		_ = neither.Body.Close()
+		badID := doMethod(t, http.MethodPost, members0, `{"user_id":"!"}`, superLogin.AccessToken)
+		require.Equal(t, http.StatusBadRequest, badID.StatusCode)
+		_ = badID.Body.Close()
+		direct := doMethod(t, http.MethodPost, members0, `{"email":"alice@example.com","role":"owner"}`, superLogin.AccessToken)
+		require.Equal(t, http.StatusOK, direct.StatusCode, "global admins still add directly")
+		_ = direct.Body.Close()
+
+		missingOrg := doMethod(t, http.MethodPost, server.URL+"/api/v1/orgs/missing/invitations", `{"email":"a@b.co"}`, erinLogin.AccessToken)
+		require.Equal(t, http.StatusNotFound, missingOrg.StatusCode)
+		_ = missingOrg.Body.Close()
+
+		alreadyMember := doMethod(t, http.MethodPost, orgBase+"/invitations", `{"email":"frank@example.com"}`, erinLogin.AccessToken)
+		require.Equal(t, http.StatusConflict, alreadyMember.StatusCode)
+		_ = alreadyMember.Body.Close()
+		notMember := doMethod(t, http.MethodPatch, orgBase+"/members/1", `{"role":"owner"}`, erinLogin.AccessToken)
+		require.Equal(t, http.StatusNotFound, notMember.StatusCode, "a role update never adds a user")
+		_ = notMember.Body.Close()
 	})
 
 	t.Run("repository browser", func(t *testing.T) {

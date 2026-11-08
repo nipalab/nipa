@@ -176,9 +176,8 @@ func TestOrg_ListMembers_AuthorizerError(t *testing.T) {
 
 func TestOrg_AddMember(t *testing.T) {
 	org, repo := newTestOrg(t)
-	ctx := permissionCtx(42)
+	ctx := permissionCtx(42, withAdmin())
 
-	repo.EXPECT().MemberRole(gomock.Any(), snow.ID(1), snow.ID(42)).Return(domain.OrgRoleOwner, nil)
 	repo.EXPECT().MemberRole(gomock.Any(), snow.ID(1), snow.ID(7)).Return("", domain.NewErrorNotFound("member not found"))
 	repo.EXPECT().UpsertMember(gomock.Any(), snow.ID(1), snow.ID(7), domain.OrgRoleMember).Return(nil)
 
@@ -208,20 +207,17 @@ func TestOrg_AddMember_DemoteWithAnotherOwner(t *testing.T) {
 }
 
 func TestOrg_AddMember_InvalidRole(t *testing.T) {
-	org, repo := newTestOrg(t)
+	org, _ := newTestOrg(t)
 
-	repo.EXPECT().MemberRole(gomock.Any(), snow.ID(1), snow.ID(42)).Return(domain.OrgRoleOwner, nil)
-
-	err := org.AddMember(permissionCtx(42), snow.ID(1), snow.ID(7), "viewer")
+	err := org.AddMember(permissionCtx(42, withAdmin()), snow.ID(1), snow.ID(7), "viewer")
 	requireUserError(t, err)
 }
 
 func TestOrg_AddMember_NoPermission(t *testing.T) {
-	org, repo := newTestOrg(t)
-	repo.EXPECT().MemberRole(gomock.Any(), snow.ID(1), snow.ID(42)).Return(domain.OrgRoleMember, nil)
+	org, _ := newTestOrg(t)
 
 	err := org.AddMember(permissionCtx(42), snow.ID(1), snow.ID(7), domain.OrgRoleMember)
-	require.True(t, domain.IsErrorNoPermission(err))
+	require.True(t, domain.IsErrorNoPermission(err), "org owners invite instead of adding directly")
 }
 
 func TestOrg_UpdateMemberRole_DemoteLastOwner(t *testing.T) {
@@ -250,9 +246,29 @@ func TestOrg_UpdateMemberRole_Promote(t *testing.T) {
 	org, repo := newTestOrg(t)
 	ctx := permissionCtx(42, withAdmin())
 
+	repo.EXPECT().MemberRole(gomock.Any(), snow.ID(1), snow.ID(7)).Return(domain.OrgRoleMember, nil)
 	repo.EXPECT().UpsertMember(gomock.Any(), snow.ID(1), snow.ID(7), domain.OrgRoleOwner).Return(nil)
 
 	require.NoError(t, org.UpdateMemberRole(ctx, snow.ID(1), snow.ID(7), domain.OrgRoleOwner))
+}
+
+func TestOrg_UpdateMemberRole_NotAMember(t *testing.T) {
+	org, repo := newTestOrg(t)
+	ctx := permissionCtx(42, withAdmin())
+
+	repo.EXPECT().MemberRole(gomock.Any(), snow.ID(1), snow.ID(7)).Return("", domain.NewErrorNotFound("x"))
+
+	err := org.UpdateMemberRole(ctx, snow.ID(1), snow.ID(7), domain.OrgRoleOwner)
+	require.True(t, domain.IsErrorNotFound(err), "a role update must never add a user")
+}
+
+func TestOrg_UpdateMemberRole_LookupError(t *testing.T) {
+	org, repo := newTestOrg(t)
+	ctx := permissionCtx(42, withAdmin())
+
+	repo.EXPECT().MemberRole(gomock.Any(), snow.ID(1), snow.ID(7)).Return("", errors.New("boom"))
+
+	require.Error(t, org.UpdateMemberRole(ctx, snow.ID(1), snow.ID(7), domain.OrgRoleOwner))
 }
 
 func TestOrg_RemoveMember(t *testing.T) {
@@ -391,6 +407,7 @@ func TestOrg_AddMember_SeatGate(t *testing.T) {
 	t.Run("role update is not gated", func(t *testing.T) {
 		org, repo := newTestOrg(t)
 		org.WithSeatGate(NewMockSeatGate(gomock.NewController(t)))
+		repo.EXPECT().MemberRole(gomock.Any(), snow.ID(1), snow.ID(7)).Return(domain.OrgRoleMember, nil)
 		repo.EXPECT().UpsertMember(gomock.Any(), snow.ID(1), snow.ID(7), domain.OrgRoleOwner).Return(nil)
 
 		require.NoError(t, org.UpdateMemberRole(ctx, 1, 7, domain.OrgRoleOwner))

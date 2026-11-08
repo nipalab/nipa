@@ -31,6 +31,7 @@ type usecaseContainer interface {
 	FileLock() *usecase.FileLock
 	Webhook() *usecase.Webhook
 	EmailDelivery() *usecase.EmailDelivery
+	OrgInvitation() *usecase.OrgInvitation
 	Audit() *usecase.Audit
 }
 
@@ -165,6 +166,7 @@ func (a *API) SetupRoute() http.Handler {
 	setupMergeRequestReviewRouter(apiWs, h)
 	setupFileLockRouter(apiWs, h)
 	setupOrgRouter(apiWs, h)
+	setupOrgInvitationRouter(apiWs, h)
 	setupGroupRouter(apiWs, h)
 	setupPermissionRouter(apiWs, h)
 	setupWebhookRouter(apiWs, h)
