@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/nipalab/nipa/internal/client/domain"
@@ -80,7 +81,9 @@ func (f *FileLock) Unlock(ctx context.Context, root, path, branch string) error 
 		return err
 	}
 	if pins := f.pins(); pins != nil {
-		return pins.Unpin(ctx, root, path)
+		if err := pins.Unpin(ctx, root, path); err != nil {
+			slog.Warn("unlocked, but unpinning the local copy failed", "path", path, "error", err)
+		}
 	}
 	return nil
 }

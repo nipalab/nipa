@@ -338,14 +338,35 @@ func (p *Push) pushStaged(ctx context.Context, root string, nipaUrl *domain.Nipa
 	if err := p.localRepo.ClearStaged(); err != nil {
 		return nil, err
 	}
-	landed := append([]string(nil), removed...)
-	for _, f := range files {
-		landed = append(landed, f.Path)
-	}
-	if err := p.localRepo.UnpinPaths(landed); err != nil {
-		slog.Warn("unpin pushed paths failed", "error", err)
+	if landed := landedPins(pins, files, removed); len(landed) > 0 {
+		if err := p.localRepo.UnpinPaths(landed); err != nil {
+			slog.Warn("unpin pushed paths failed", "error", err)
+		}
 	}
 	return result, nil
+}
+
+// landedPins returns the exact-path pins a push landed; directory pins stay.
+func landedPins(pins []string, files []*serverDomain.PushFile, removed []string) []string {
+	if len(pins) == 0 {
+		return nil
+	}
+	pinned := make(map[string]bool, len(pins))
+	for _, pin := range pins {
+		pinned[pin] = true
+	}
+	var out []string
+	for _, path := range removed {
+		if pinned[path] {
+			out = append(out, path)
+		}
+	}
+	for _, f := range files {
+		if pinned[f.Path] {
+			out = append(out, f.Path)
+		}
+	}
+	return out
 }
 
 // uploadWindowBytes is the chunk data buffered before a window is handed to

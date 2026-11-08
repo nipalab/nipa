@@ -23,7 +23,7 @@ func TestPush_Run_CachesTextAndPinnedRawOnlyAndUnpinsExactPaths(t *testing.T) {
 			{Path: "gone.bin", Encoding: "raw"},
 		}},
 		staged: []string{"notes.txt", "loose.bin", "keep/hero.bin", "gone.bin"},
-		pins:   []string{"keep", "loose.bin.meta"},
+		pins:   []string{"keep", "loose.bin.meta", "gone.bin", "notes.txt"},
 	}
 	client := &stubPushClient{manifest: &serverDomain.TreeNode{Name: "root"}}
 
@@ -45,8 +45,7 @@ func TestPush_Run_CachesTextAndPinnedRawOnlyAndUnpinsExactPaths(t *testing.T) {
 	require.True(t, cached("notes.txt"))
 	require.True(t, cached("keep/hero.bin"))
 	require.False(t, cached("loose.bin"), "raw content of an unpinned file is not cached")
-	require.ElementsMatch(t, []string{"gone.bin", "notes.txt", "loose.bin", "keep/hero.bin"}, local.unpinned)
-	require.NotContains(t, local.unpinned, "keep", "directory pins span the editing pass")
+	require.ElementsMatch(t, []string{"gone.bin", "notes.txt"}, local.unpinned, "only exact pins of landed paths are dropped; directory pins span the editing pass")
 }
 
 func TestPush_Run_PinListFailureStopsBeforeUpload(t *testing.T) {
@@ -70,8 +69,27 @@ func TestPush_Run_UnpinFailureOnlyWarns(t *testing.T) {
 		loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "main"},
 		snapshot:   &domain.Snapshot{},
 		staged:     []string{"a.txt"},
+		pins:       []string{"a.txt"},
 		unpinErr:   errors.New("db"),
 	}
 	client := &stubPushClient{manifest: &serverDomain.TreeNode{Name: "root"}}
 	require.NoError(t, newTestPush(t, local, client).Run(context.Background(), root, "msg"))
+}
+
+func TestPush_Run_SkipsUnpinWithoutMatchingPins(t *testing.T) {
+	root := t.TempDir()
+	writeRepoFile(t, root, "a.txt", "hello")
+	local := &stubLocalRepo{
+		loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "main"},
+		snapshot:   &domain.Snapshot{},
+		staged:     []string{"a.txt"},
+		unpinErr:   errors.New("must not be called"),
+	}
+	client := &stubPushClient{manifest: &serverDomain.TreeNode{Name: "root"}}
+	require.NoError(t, newTestPush(t, local, client).Run(context.Background(), root, "msg"))
+	require.Nil(t, local.unpinned)
+
+	local.staged, local.pins = []string{"a.txt"}, []string{"other"}
+	require.NoError(t, newTestPush(t, local, client).Run(context.Background(), root, "msg"))
+	require.Nil(t, local.unpinned)
 }

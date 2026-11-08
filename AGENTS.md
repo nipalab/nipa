@@ -513,8 +513,10 @@ captured with `ensureSnapshotContent`, so offline compare and restore keep the
 old version while the file is edited; a pin or capture failure is a
 `FileLock.Warning` (`nipa lock` prints `warning: ...`, the daemon fills
 `ProxyLockFileResponse.warning`) and never undoes the lock. Unlock unpins and
-prunes; a successful push unpins the exact pushed and removed paths
-(directory pins stay, like `ReleaseLanded`). Locks taken elsewhere are not
+prunes (a local unpin failure is only logged: the server lock is already
+gone); a successful push drops the exact-path pins among the pushed and
+removed paths (`landedPins`, no DB write without one; directory pins stay,
+like `ReleaseLanded`). Locks taken elsewhere are not
 pinned and their reads use the missing-content fallback. Merge requests acquire locks for their changed binary
 paths at creation (re-checked and topped up at merge — `branchMerger.
 BinaryChangesBetween` is the permission-filter-free three-dot enumeration —

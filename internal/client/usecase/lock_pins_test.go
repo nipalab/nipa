@@ -157,3 +157,11 @@ func (lockOnlyRepo) Init(string) error { return nil }
 func (lockOnlyRepo) LoadConfig() (*clientDomain.Config, error) {
 	return &clientDomain.Config{Url: "http://example.com/org/project", Branch: "main"}, nil
 }
+
+func TestFileLock_UnlockUnpinFailureOnlyWarns(t *testing.T) {
+	local := lockTestLocalRepo()
+	local.unpinErr = errors.New("db")
+	client := &stubLockClient{}
+	require.NoError(t, newTestFileLockUsecase(t, local, client).Unlock(context.Background(), t.TempDir(), "a.bin", ""))
+	require.Equal(t, "a.bin", client.unlockPath)
+}
