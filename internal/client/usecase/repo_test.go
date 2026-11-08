@@ -387,14 +387,16 @@ func TestRepo_Clone_Success_DefaultBranch(t *testing.T) {
 	storage := &stubSecureStorage{loadResult: &domain.LoginResult{AccessToken: token}}
 	auth := NewAuth(nil, storage, nil)
 	local := &stubLocalRepo{}
-	repo := NewRepo(auth, &stubRepoInterface{
+	remote := &stubRepoInterface{
 		defaultBranch: &serverDomain.Branch{Name: "dev"},
 		manifest:      &serverDomain.TreeNode{},
-	}, local)
+	}
+	repo := NewRepo(auth, remote, local)
 
 	err := repo.Clone(context.Background(), "http://example.com/org/project", "example.com", "org", "project", "", []string{"/src"}, t.TempDir())
 	require.NoError(t, err)
 	require.Equal(t, domain.Config{Url: "http://example.com/org/project", Branch: "dev", Sparse: []string{"src"}}, local.config)
+	require.Empty(t, remote.branchName, "an empty branch must resolve through GetDefaultBranch")
 }
 
 func TestRepo_Clone_Success_NeedLogin(t *testing.T) {

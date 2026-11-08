@@ -197,3 +197,59 @@ func TestSetupCloneCmd_ConnectError(t *testing.T) {
 	require.ErrorIs(t, err, wantErr)
 	require.Equal(t, "http://example.com", connector.lastHost)
 }
+
+type recordingRepoInterface struct {
+	fakeRepoInterface
+	defaultCalls int
+	byName       []string
+	manifest     []string
+}
+
+func (r *recordingRepoInterface) GetDefaultBranch(_ context.Context, _, _ string) (*serverDomain.Branch, error) {
+	r.defaultCalls++
+	return &serverDomain.Branch{Name: "trunk"}, nil
+}
+
+func (r *recordingRepoInterface) GetBranchByName(_ context.Context, _, _, name string) (*serverDomain.Branch, error) {
+	r.byName = append(r.byName, name)
+	return &serverDomain.Branch{Name: name}, nil
+}
+
+func (r *recordingRepoInterface) GetTreeNodeManifest(_ context.Context, _, _, branch string, _ []string) (*serverDomain.TreeNode, error) {
+	r.manifest = append(r.manifest, branch)
+	return &serverDomain.TreeNode{}, nil
+}
+
+func runCloneWithBranchFlag(t *testing.T, extra ...string) *recordingRepoInterface {
+	t.Helper()
+	storage := &fakeStorage{token: signTestJWT(t)}
+	auth := usecase.NewAuth(fakeExecutor{}, storage, &fakeInput{})
+	remote := &recordingRepoInterface{}
+	cli := NewCli(&fakeUsecaseContainer{auth: auth, repo: usecase.NewRepo(auth, remote, fakeLocalRepo{})}, &fakeConnector{})
+
+	cmd := cli.setupCloneCmd()
+	cmd.SetArgs(append([]string{"http://example.com/org/project", t.TempDir()}, extra...))
+	require.NoError(t, cmd.Execute())
+	return remote
+}
+
+func TestSetupCloneCmd_NoBranchUsesDefaultBranch(t *testing.T) {
+	remote := runCloneWithBranchFlag(t)
+	require.Equal(t, 1, remote.defaultCalls)
+	require.Empty(t, remote.byName)
+	require.Equal(t, []string{"trunk"}, remote.manifest)
+}
+
+func TestSetupCloneCmd_BranchFlag(t *testing.T) {
+	remote := runCloneWithBranchFlag(t, "-b", "feature")
+	require.Zero(t, remote.defaultCalls)
+	require.Equal(t, []string{"feature"}, remote.byName)
+	require.Equal(t, []string{"feature"}, remote.manifest)
+}
+
+func TestSetupCloneCmd_BranchFlagDefault(t *testing.T) {
+	repo, _ := helperAuth(t)
+	flag := newCloneCli(repo).setupCloneCmd().Flags().Lookup("branch")
+	require.NotNil(t, flag)
+	require.Empty(t, flag.DefValue)
+}
