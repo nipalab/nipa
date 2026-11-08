@@ -19,9 +19,11 @@ import (
 	"github.com/nipalab/nipa/internal/usecase"
 )
 
+const testSSHAudience = "nipa.test:8080"
+
 func newSSHLoginServer(t *testing.T, userRepo *stubUserRepo, authRepo *stubAuthRepo, keyRepo *stubSSHKeyRepo) *nipaServer {
 	t.Helper()
-	auth := usecase.NewAuth("test-secret", stubPasswordHasher{}, userRepo, authRepo).WithSSHKeys(keyRepo)
+	auth := usecase.NewAuth("test-secret", stubPasswordHasher{}, userRepo, authRepo).WithSSHKeys(keyRepo).WithSSHAudience(testSSHAudience)
 	return New(&loginMockContainer{auth: auth})
 }
 
@@ -36,7 +38,7 @@ func sshLoginSigner(t *testing.T) ssh.Signer {
 
 func sshLoginSignature(t *testing.T, signer ssh.Signer, nonce string) []byte {
 	t.Helper()
-	sig, err := signer.Sign(rand.Reader, sshkey.LoginPayload(nonce))
+	sig, err := signer.Sign(rand.Reader, sshkey.LoginPayload(testSSHAudience, nonce))
 	require.NoError(t, err)
 	return ssh.Marshal(sig)
 }
@@ -51,6 +53,7 @@ func TestBeginLoginSSHKey_Success(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, resp.Nonce)
 	require.Equal(t, int32(60), resp.ExpiresIn)
+	require.Equal(t, testSSHAudience, resp.Audience)
 	require.Equal(t, "alice@example.com", authRepo.createdEmail)
 	require.Equal(t, resp.Nonce, authRepo.createdNonce)
 	require.WithinDuration(t, time.Now().Add(60*time.Second), authRepo.createdExpiry, 5*time.Second)
@@ -160,7 +163,7 @@ func TestCompleteLoginSSHKey_BadSignature(t *testing.T) {
 	keyRepo := &stubSSHKeyRepo{key: &domain.SSHPublicKey{ID: snow.ID(1), UserID: snow.ID(42)}}
 	srv := newSSHLoginServer(t, &stubUserRepo{user: &domain.User{ID: snow.ID(42), Email: "alice@example.com", EmailVerified: true}}, authRepo, keyRepo)
 
-	sig, err := signer.Sign(rand.Reader, sshkey.LoginPayload("tampered"))
+	sig, err := signer.Sign(rand.Reader, sshkey.LoginPayload("evil.example", "nonce-1"))
 	require.NoError(t, err)
 
 	_, err = srv.CompleteLoginSSHKey(context.Background(), &pb.CompleteLoginSSHKeyRequest{

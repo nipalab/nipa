@@ -17,6 +17,8 @@ import (
 	"github.com/nipalab/nipa/internal/sshkey"
 )
 
+const testSSHAudience = "nipa.test:8080"
+
 func sshLoginTestSigner(t *testing.T) ssh.Signer {
 	t.Helper()
 	_, priv, err := ed25519.GenerateKey(rand.Reader)
@@ -58,6 +60,7 @@ func TestAuth_BeginSSHKeyLogin_Success(t *testing.T) {
 	require.NotEmpty(t, capturedNonce)
 	require.Equal(t, capturedNonce, challenge.Nonce)
 	require.Equal(t, 60, challenge.ExpiresIn)
+	require.Equal(t, testSSHAudience, challenge.Audience)
 	require.WithinDuration(t, time.Now().Add(60*time.Second), capturedExpiry, 5*time.Second)
 }
 
@@ -147,7 +150,7 @@ func TestAuth_CompleteSSHKeyLogin_Success(t *testing.T) {
 		"alice@example.com",
 		nonce,
 		signer.PublicKey().Marshal(),
-		sshLoginTestSignature(t, signer, sshkey.LoginPayload(nonce)),
+		sshLoginTestSignature(t, signer, sshkey.LoginPayload(testSSHAudience, nonce)),
 	)
 	require.NoError(t, err)
 	require.NotEmpty(t, result.AccessToken)
@@ -190,7 +193,7 @@ func TestAuth_CompleteSSHKeyLogin_KeyOnlySuccess(t *testing.T) {
 		"",
 		nonce,
 		signer.PublicKey().Marshal(),
-		sshLoginTestSignature(t, signer, sshkey.LoginPayload(nonce)),
+		sshLoginTestSignature(t, signer, sshkey.LoginPayload(testSSHAudience, nonce)),
 	)
 	require.NoError(t, err)
 	require.NotEmpty(t, result.AccessToken)
@@ -307,7 +310,7 @@ func TestAuth_CompleteSSHKeyLogin_UnknownUser(t *testing.T) {
 
 	_, err := auth.CompleteSSHKeyLogin(
 		context.Background(), "alice@example.com", "nonce",
-		signer.PublicKey().Marshal(), sshLoginTestSignature(t, signer, sshkey.LoginPayload("nonce")),
+		signer.PublicKey().Marshal(), sshLoginTestSignature(t, signer, sshkey.LoginPayload(testSSHAudience, "nonce")),
 	)
 	assertSSHLoginFailed(t, err)
 }
@@ -352,7 +355,7 @@ func TestAuth_CompleteSSHKeyLogin_KeyNotRegistered(t *testing.T) {
 
 	_, err := auth.CompleteSSHKeyLogin(
 		context.Background(), "alice@example.com", "nonce",
-		signer.PublicKey().Marshal(), sshLoginTestSignature(t, signer, sshkey.LoginPayload("nonce")),
+		signer.PublicKey().Marshal(), sshLoginTestSignature(t, signer, sshkey.LoginPayload(testSSHAudience, "nonce")),
 	)
 	assertSSHLoginFailed(t, err)
 }
@@ -381,7 +384,7 @@ func TestAuth_CompleteSSHKeyLogin_KeyBelongsToOtherUser(t *testing.T) {
 
 	_, err := auth.CompleteSSHKeyLogin(
 		context.Background(), "alice@example.com", "nonce",
-		signer.PublicKey().Marshal(), sshLoginTestSignature(t, signer, sshkey.LoginPayload("nonce")),
+		signer.PublicKey().Marshal(), sshLoginTestSignature(t, signer, sshkey.LoginPayload(testSSHAudience, "nonce")),
 	)
 	assertSSHLoginFailed(t, err)
 }
@@ -410,7 +413,7 @@ func TestAuth_CompleteSSHKeyLogin_BadSignature(t *testing.T) {
 
 	_, err := auth.CompleteSSHKeyLogin(
 		context.Background(), "alice@example.com", "nonce",
-		signer.PublicKey().Marshal(), sshLoginTestSignature(t, signer, sshkey.LoginPayload("tampered")),
+		signer.PublicKey().Marshal(), sshLoginTestSignature(t, signer, sshkey.LoginPayload(testSSHAudience, "tampered")),
 	)
 	assertSSHLoginFailed(t, err)
 }
@@ -455,7 +458,7 @@ func TestAuth_CompleteSSHKeyLogin_UserLookupError(t *testing.T) {
 
 	_, err := auth.CompleteSSHKeyLogin(
 		context.Background(), "alice@example.com", "nonce",
-		signer.PublicKey().Marshal(), sshLoginTestSignature(t, signer, sshkey.LoginPayload("nonce")),
+		signer.PublicKey().Marshal(), sshLoginTestSignature(t, signer, sshkey.LoginPayload(testSSHAudience, "nonce")),
 	)
 	require.ErrorIs(t, err, wantErr)
 }
@@ -492,7 +495,75 @@ func TestAuth_CompleteSSHKeyLogin_KeyOnlyUserLookupError(t *testing.T) {
 
 	_, err := auth.CompleteSSHKeyLogin(
 		context.Background(), "", "nonce",
-		signer.PublicKey().Marshal(), sshLoginTestSignature(t, signer, sshkey.LoginPayload("nonce")),
+		signer.PublicKey().Marshal(), sshLoginTestSignature(t, signer, sshkey.LoginPayload(testSSHAudience, "nonce")),
 	)
 	require.ErrorIs(t, err, wantErr)
+}
+
+func completeWithPayload(t *testing.T, auth *Auth, authRepo *MockauthRepository, keyRepo *MockauthSSHKeyRepository, userRepo *MockuserRepository, payload []byte) error {
+	t.Helper()
+	signer := sshLoginTestSigner(t)
+	authRepo.EXPECT().
+		ConsumeSSHLoginChallenge(gomock.Any(), "nonce").
+		Return(&domain.SSHLoginChallenge{Nonce: "nonce", ExpiresAt: time.Now().Add(30 * time.Second)}, nil)
+	keyRepo.EXPECT().
+		GetByFingerprint(gomock.Any(), gomock.Any()).
+		Return(&domain.SSHPublicKey{ID: snow.ID(1), UserID: snow.ID(42)}, nil)
+	userRepo.EXPECT().
+		GetByID(gomock.Any(), snow.ID(42)).
+		Return(&domain.User{ID: snow.ID(42), EmailVerified: true}, nil)
+	_, err := auth.CompleteSSHKeyLogin(
+		context.Background(), "", "nonce",
+		signer.PublicKey().Marshal(), sshLoginTestSignature(t, signer, payload),
+	)
+	return err
+}
+
+func TestAuth_CompleteSSHKeyLogin_RejectsOtherPayloads(t *testing.T) {
+	payloads := map[string][]byte{
+		"v1 format":            []byte("nipa-login:v1:nonce"),
+		"relay other origin":   sshkey.LoginPayload("evil.example", "nonce"),
+		"v2 without origin":    []byte("nipa-login:v2:nonce"),
+		"origin with scheme":   sshkey.LoginPayload("https://"+testSSHAudience, "nonce"),
+		"different nonce":      sshkey.LoginPayload(testSSHAudience, "other"),
+		"origin case mismatch": sshkey.LoginPayload("NIPA.test:8080", "nonce"),
+	}
+	for name, payload := range payloads {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			userRepo := NewMockuserRepository(ctrl)
+			authRepo := NewMockauthRepository(ctrl)
+			keyRepo := NewMockauthSSHKeyRepository(ctrl)
+			auth := newTestAuth("test-secret", true, userRepo, authRepo).WithSSHKeys(keyRepo)
+			assertSSHLoginFailed(t, completeWithPayload(t, auth, authRepo, keyRepo, userRepo, payload))
+		})
+	}
+}
+
+func TestAuth_CompleteSSHKeyLogin_RelayBetweenServers(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	userRepo := NewMockuserRepository(ctrl)
+	authRepo := NewMockauthRepository(ctrl)
+	keyRepo := NewMockauthSSHKeyRepository(ctrl)
+	real := newTestAuth("test-secret", true, userRepo, authRepo).WithSSHKeys(keyRepo).WithSSHAudience("real.example.com")
+
+	signedForHostile := sshkey.LoginPayload("hostile.example.net", "nonce")
+	assertSSHLoginFailed(t, completeWithPayload(t, real, authRepo, keyRepo, userRepo, signedForHostile))
+}
+
+func TestAuth_SSHLogin_RefusedWithoutAudience(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	auth := newTestAuth("test-secret", true, NewMockuserRepository(ctrl), NewMockauthRepository(ctrl)).
+		WithSSHKeys(NewMockauthSSHKeyRepository(ctrl)).
+		WithSSHAudience("")
+
+	_, err := auth.BeginSSHKeyLogin(context.Background(), "")
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 400, domErr.Code)
+	require.Contains(t, domErr.Message, "PUBLIC_BASE_URL")
+
+	_, err = auth.CompleteSSHKeyLogin(context.Background(), "", "nonce", []byte("k"), []byte("s"))
+	require.ErrorAs(t, err, &domErr)
+	require.Contains(t, domErr.Message, "PUBLIC_BASE_URL")
 }

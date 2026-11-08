@@ -84,6 +84,7 @@ CHUNK_URL_SIGNING_KEY: <a different openssl rand -base64 48 output>
 | `JWT_KEY` | Signs access tokens. Required, at least 32 characters, not a sample value; the server refuses to start otherwise. |
 | `CHUNK_URL_SIGNING_KEY` | Signs chunk upload/download URLs. Required, at least 32 characters and different from `JWT_KEY`. |
 | `ALLOW_INSECURE_DEV_SECRETS` | Default `false`. When `true`, weak keys only log a warning and empty keys are replaced by random per-process ones (sessions and chunk URLs reset on restart). Local development only: anyone can forge admin tokens. |
+| `PUBLIC_BASE_URL` | Public address clients use to reach the server (for example `https://nipa.example.com`). SSH key login signatures are bound to its host and port; falls back to the host of `EMAIL_BASE_URL`. When neither is set, SSH key login is refused. |
 | `CHUNK_STORAGE` | Must be `local`; this server stores chunks on disk. |
 | `CHUNK_STORAGE_DIR` | Directory for content-addressed chunks. |
 | `CHUNK_PRESIGN_TTL_SECONDS` | Lifetime of a signed chunk URL (default `3600`). |

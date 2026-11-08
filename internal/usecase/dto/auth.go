@@ -10,5 +10,6 @@ type LoginResult struct {
 
 type SSHKeyChallenge struct {
 	Nonce     string `json:"nonce"`
+	Audience  string `json:"audience"`
 	ExpiresIn int    `json:"expires_in"`
 }

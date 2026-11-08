@@ -282,12 +282,21 @@ user) and are managed over REST only (`GET/POST /api/v1/keys`,
 DSA or certificates) and verifies signatures. Login is a two-RPC
 challenge–response: `BeginLoginSSHKey(email?)` stores a 32-byte nonce (60 s TTL,
 single-use, expired rows swept on insert) in `ssh_login_challenges`, the client
-signs `nipa-login:v1:<nonce>` and `CompleteSSHKeyLogin` consumes the challenge,
+signs `nipa-login:v2:<origin>:<nonce>` (origin = `sshkey.CanonicalOrigin`: lowercase host
+without trailing dot, port only when not 80/443, no scheme or path) and
+`CompleteSSHKeyLogin` consumes the challenge,
 resolves the account from the key fingerprint (key-only, git-style) or checks
 the optional email against the key owner, verifies and returns the usual
 access/refresh pair; every failure is the generic 400
 `invalid email or SSH key` and neither call reveals whether an account exists.
-Both RPCs are in the interceptor's public list. Client-side
+The server's expected origin comes from config, never from the request:
+`PUBLIC_BASE_URL`, else the host of `EMAIL_BASE_URL` (`Config.SSHLoginAudience`,
+`Auth.WithSSHAudience`); with neither, both RPCs answer 400 `SSH key login is not
+enabled` and startup logs a warning. `BeginLoginSSHKey` returns it as `audience`
+and the client refuses to sign unless it equals the canonical origin of the
+address it dialed, so a hostile server can neither obtain nor relay a usable
+signature; v1 (`nipa-login:v1:`) is gone and RSA must sign `rsa-sha2-256/512`
+(`ssh-rsa` SHA-1 is rejected). Both RPCs are in the interceptor's public list. Client-side
 `internal/client/sshkey.Resolve` resolves signers in order: `--ssh-key`,
 `NIPA_SSH_KEY`, config `sshKeyPath`, ssh-agent keys, then
 `~/.ssh/id_ed25519|id_ecdsa|id_rsa` (configured keys fail loudly with a

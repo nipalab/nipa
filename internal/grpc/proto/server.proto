@@ -393,13 +393,14 @@ message BeginLoginSSHKeyRequest {
 message BeginLoginSSHKeyResponse {
     string nonce = 1;
     int32 expires_in = 2;
+    string audience = 3; // canonical origin the server expects in the signed message
 }
 
 message CompleteLoginSSHKeyRequest {
     string email = 1;
     string nonce = 2;
     bytes public_key = 3; // SSH wire-format public key the signature was made with
-    bytes signature = 4; // SSH wire-format signature over "nipa-login:v1:<nonce>"
+    bytes signature = 4; // SSH wire-format signature over "nipa-login:v2:<origin>:<nonce>"
 }
 
 message LoginResponse {

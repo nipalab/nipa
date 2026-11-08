@@ -131,6 +131,7 @@ Caddy proxy); it is not part of the Netlify deployment.
    | `SAAS_MODE` | `1` (enables registration, social login and the storage ledger; the marketing site is served by Caddy from Netlify) |
    | `SAAS_FREE_QUOTA_BYTES` | free-tier quota per new account |
    | `EMAIL_BASE_URL` | `https://nipalab.com` (required in SaaS mode) |
+   | `PUBLIC_BASE_URL` | `https://nipalab.com`, the host clients dial (SSH key login is bound to it; falls back to `EMAIL_BASE_URL`) |
    | `EMAIL_SENDER` + provider keys | e.g. `sendgrid`/`scaleway`/`smtp`; `off` logs a warning and registration emails are not delivered |
    | `OAUTH_BASE_URL`, `OAUTH_*` | optional, enable Google/GitHub sign-in |
    | `LOG_FORMAT` | `json` |

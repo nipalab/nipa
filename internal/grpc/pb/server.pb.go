@@ -3824,6 +3824,7 @@ type BeginLoginSSHKeyResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Nonce         string                 `protobuf:"bytes,1,opt,name=nonce,proto3" json:"nonce,omitempty"`
 	ExpiresIn     int32                  `protobuf:"varint,2,opt,name=expires_in,json=expiresIn,proto3" json:"expires_in,omitempty"`
+	Audience      string                 `protobuf:"bytes,3,opt,name=audience,proto3" json:"audience,omitempty"` // canonical origin the server expects in the signed message
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3872,12 +3873,19 @@ func (x *BeginLoginSSHKeyResponse) GetExpiresIn() int32 {
 	return 0
 }
 
+func (x *BeginLoginSSHKeyResponse) GetAudience() string {
+	if x != nil {
+		return x.Audience
+	}
+	return ""
+}
+
 type CompleteLoginSSHKeyRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Email         string                 `protobuf:"bytes,1,opt,name=email,proto3" json:"email,omitempty"`
 	Nonce         string                 `protobuf:"bytes,2,opt,name=nonce,proto3" json:"nonce,omitempty"`
 	PublicKey     []byte                 `protobuf:"bytes,3,opt,name=public_key,json=publicKey,proto3" json:"public_key,omitempty"` // SSH wire-format public key the signature was made with
-	Signature     []byte                 `protobuf:"bytes,4,opt,name=signature,proto3" json:"signature,omitempty"`                  // SSH wire-format signature over "nipa-login:v1:<nonce>"
+	Signature     []byte                 `protobuf:"bytes,4,opt,name=signature,proto3" json:"signature,omitempty"`                  // SSH wire-format signature over "nipa-login:v2:<origin>:<nonce>"
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -10885,11 +10893,12 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"\x17LoginWithRefreshRequest\x12#\n" +
 	"\rrefresh_token\x18\x01 \x01(\tR\frefreshToken\"/\n" +
 	"\x17BeginLoginSSHKeyRequest\x12\x14\n" +
-	"\x05email\x18\x01 \x01(\tR\x05email\"O\n" +
+	"\x05email\x18\x01 \x01(\tR\x05email\"k\n" +
 	"\x18BeginLoginSSHKeyResponse\x12\x14\n" +
 	"\x05nonce\x18\x01 \x01(\tR\x05nonce\x12\x1d\n" +
 	"\n" +
-	"expires_in\x18\x02 \x01(\x05R\texpiresIn\"\x85\x01\n" +
+	"expires_in\x18\x02 \x01(\x05R\texpiresIn\x12\x1a\n" +
+	"\baudience\x18\x03 \x01(\tR\baudience\"\x85\x01\n" +
 	"\x1aCompleteLoginSSHKeyRequest\x12\x14\n" +
 	"\x05email\x18\x01 \x01(\tR\x05email\x12\x14\n" +
 	"\x05nonce\x18\x02 \x01(\tR\x05nonce\x12\x1d\n" +

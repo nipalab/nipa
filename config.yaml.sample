@@ -1,5 +1,10 @@
 SERVER_ADDRESS: 0.0.0.0
 SERVER_PORT: 6745
+# Public address clients use to reach this server (scheme, host and port as
+# users type them). SSH key login signatures are bound to its host[:port]; when
+# empty the host of EMAIL_BASE_URL is used, and SSH key login is refused if
+# neither is set. See docs/SSH.md.
+PUBLIC_BASE_URL: ''
 # Graceful shutdown drain window in seconds (default 15): on SIGTERM /readyz
 # answers 503 and in-flight requests get this long to finish. For zero-downtime
 # blue/green upgrades keep the unit's TimeoutStopSec above it (docs/DEPLOY.md).

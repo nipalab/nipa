@@ -28,11 +28,20 @@ type Signer struct {
 
 // SignPayload signs the login challenge and returns the SSH wire-format signature.
 func (s Signer) SignPayload(payload []byte) ([]byte, error) {
-	sig, err := s.Sign(rand.Reader, payload)
+	sig, err := s.sign(payload)
 	if err != nil {
 		return nil, err
 	}
 	return ssh.Marshal(sig), nil
+}
+
+func (s Signer) sign(payload []byte) (*ssh.Signature, error) {
+	if as, ok := s.Signer.(ssh.AlgorithmSigner); ok {
+		if pub := s.PublicKey(); pub != nil && pub.Type() == ssh.KeyAlgoRSA {
+			return as.SignWithAlgorithm(rand.Reader, payload, ssh.KeyAlgoRSASHA512)
+		}
+	}
+	return s.Sign(rand.Reader, payload)
 }
 
 // Resolve returns the SSH signers to try for login, in priority order: an
@@ -159,11 +168,22 @@ func (a agentSigner) PublicKey() ssh.PublicKey {
 	return a.pub
 }
 
-func (a agentSigner) Sign(_ io.Reader, data []byte) (*ssh.Signature, error) {
+func (a agentSigner) Sign(r io.Reader, data []byte) (*ssh.Signature, error) {
+	return a.SignWithAlgorithm(r, data, "")
+}
+
+func (a agentSigner) SignWithAlgorithm(_ io.Reader, data []byte, algorithm string) (*ssh.Signature, error) {
 	conn, err := net.Dial("unix", a.socket)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = conn.Close() }()
-	return agent.NewClient(conn).Sign(a.pub, data)
+	var flags agent.SignatureFlags
+	switch algorithm {
+	case ssh.KeyAlgoRSASHA256:
+		flags = agent.SignatureFlagRsaSha256
+	case ssh.KeyAlgoRSASHA512:
+		flags = agent.SignatureFlagRsaSha512
+	}
+	return agent.NewClient(conn).SignWithFlags(a.pub, data, flags)
 }

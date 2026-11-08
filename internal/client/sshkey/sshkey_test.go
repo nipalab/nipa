@@ -3,6 +3,7 @@ package sshkey
 import (
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/rsa"
 	"encoding/pem"
 	"errors"
 	"io"
@@ -185,9 +186,14 @@ func TestResolve_AgentKeys(t *testing.T) {
 
 func serveTestAgent(t *testing.T) string {
 	t.Helper()
+	return serveAgentWithKey(t, generateKey(t))
+}
+
+func serveAgentWithKey(t *testing.T, key any) string {
+	t.Helper()
 	keyring := agent.NewKeyring()
 	require.NoError(t, keyring.Add(agent.AddedKey{
-		PrivateKey: generateKey(t),
+		PrivateKey: key,
 		Comment:    "test@agent",
 	}))
 
@@ -327,4 +333,38 @@ func TestLoad(t *testing.T) {
 	signer, err = Load(plain, "ignored")
 	require.NoError(t, err)
 	require.Equal(t, plain, signer.Name)
+}
+
+func TestSignPayload_RSAUsesSHA2(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+	inner, err := ssh.NewSignerFromKey(key)
+	require.NoError(t, err)
+
+	raw, err := Signer{Signer: inner}.SignPayload([]byte("payload"))
+	require.NoError(t, err)
+	sig := &ssh.Signature{}
+	require.NoError(t, ssh.Unmarshal(raw, sig))
+	require.Equal(t, ssh.KeyAlgoRSASHA512, sig.Format)
+}
+
+func TestResolve_AgentRSAUsesSHA2(t *testing.T) {
+	isolateHome(t)
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+	serveAgentWithKey(t, key)
+
+	signers, err := Resolve("", nil)
+	require.NoError(t, err)
+	require.Len(t, signers, 1)
+	wire, err := signers[0].SignPayload([]byte("payload"))
+	require.NoError(t, err)
+	sig := &ssh.Signature{}
+	require.NoError(t, ssh.Unmarshal(wire, sig))
+	require.Equal(t, ssh.KeyAlgoRSASHA512, sig.Format)
+	require.NoError(t, signers[0].PublicKey().Verify([]byte("payload"), sig))
+
+	plain, err := signers[0].Sign(rand.Reader, []byte("payload"))
+	require.NoError(t, err)
+	require.Equal(t, ssh.KeyAlgoRSA, plain.Format)
 }

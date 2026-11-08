@@ -17,6 +17,7 @@ import (
 	"github.com/nipalab/nipa/internal/client/domain"
 	"github.com/nipalab/nipa/internal/client/sshkey"
 	"github.com/nipalab/nipa/internal/client/usecase"
+	protocol "github.com/nipalab/nipa/internal/sshkey"
 )
 
 type fakeSSHExecutor struct {
@@ -45,9 +46,10 @@ func (f *fakeSSHExecutor) LoginWithRefreshToken(_ context.Context, _, _ string) 
 	return &domain.LoginResult{AccessToken: "tok"}, nil
 }
 
-func (f *fakeSSHExecutor) BeginLoginSSHKey(_ context.Context, _, email string) (*domain.SSHKeyChallenge, error) {
+func (f *fakeSSHExecutor) BeginLoginSSHKey(_ context.Context, host, email string) (*domain.SSHKeyChallenge, error) {
 	f.lastEmail = email
-	return &domain.SSHKeyChallenge{Nonce: "nonce", ExpiresIn: 60}, nil
+	audience, _ := protocol.CanonicalOrigin(host)
+	return &domain.SSHKeyChallenge{Nonce: "nonce", Audience: audience, ExpiresIn: 60}, nil
 }
 
 func (f *fakeSSHExecutor) CompleteLoginSSHKey(_ context.Context, _, _, _ string, _, _ []byte) (*domain.LoginResult, error) {
