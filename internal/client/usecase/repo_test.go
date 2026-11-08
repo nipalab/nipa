@@ -635,7 +635,7 @@ func TestRepo_Clone_MaterializesWorkingCopy(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join(target, "hello.txt"))
 	require.NoError(t, err)
 	require.Equal(t, content, string(data), "clone must download the real file content into the working copy")
-	require.Equal(t, []byte(content), local.storedChunks[chunkHash], "downloaded content must land in the local chunk cache")
+	require.NotContains(t, local.storedChunks, chunkHash, "raw unpinned content is written straight into the working file")
 	require.NotNil(t, local.tree)
 }
 
