@@ -288,7 +288,7 @@ func TestCreateTag_FromCommitHash(t *testing.T) {
 			GetTagByName(gomock.Any(), projectID, "v3.0.0").
 			Return(nil, domain.NewErrorRecordNotFound()),
 		branchRepo.EXPECT().
-			GetCommitByHash(gomock.Any(), hash).
+			GetCommitByHash(gomock.Any(), gomock.Any(), hash).
 			Return(&domain.Commit{ID: commitID, ProjectID: projectID}, nil),
 	)
 

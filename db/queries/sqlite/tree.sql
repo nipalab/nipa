@@ -7,7 +7,7 @@ LIMIT 1;
 -- name: CommitGetByHash :one
 SELECT *
 FROM commits
-WHERE hash = :hash
+WHERE project_id = :project_id AND hash = :hash
 LIMIT 1;
 
 -- name: CommitLog :many

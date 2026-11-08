@@ -648,7 +648,7 @@ func (s *BranchRepositorySuite) TestGetCommitByHash() {
 	hash[31] = 0xfe
 	commitID := seedCommitRow(s.T(), s.db, projectID, treeID, userID.Int64(), hash, sql.NullInt64{}, "pinned commit")
 
-	got, err := repo.GetCommitByHash(ctx, hash)
+	got, err := repo.GetCommitByHash(ctx, projectID, hash)
 	s.Require().NoError(err)
 	s.Equal(commitID, got.ID)
 	s.Equal(projectID, got.ProjectID)
@@ -662,7 +662,38 @@ func (s *BranchRepositorySuite) TestGetCommitByHash_NotFound() {
 
 	var missing domain.Hash
 	missing[0] = 0xde
-	_, err := repo.GetCommitByHash(ctx, missing)
+	_, err := repo.GetCommitByHash(ctx, snow.ID(1), missing)
+	requireRecordNotFound(s.T(), err)
+}
+
+func (s *BranchRepositorySuite) TestCommitHash_ScopedPerProject() {
+	ctx := context.Background()
+	repo := NewBranchRepository(s.db)
+
+	projectA := seedProject(s.T(), s.q, 1, "project-a")
+	projectB := seedProject(s.T(), s.q, 1, "project-b")
+	projectC := seedProject(s.T(), s.q, 1, "project-c")
+	treeID := seedTreeNode(s.T(), s.db, "root", sql.NullInt64{})
+	userID := seedUser(s.T(), s.q, "committer", "committer@example.com", sql.NullString{})
+	var hash domain.Hash
+	hash[0], hash[1] = 0x01, 0x02
+
+	idA := seedCommitRow(s.T(), s.db, projectA, treeID, userID.Int64(), hash, sql.NullInt64{}, "Initial commit")
+	idB := seedCommitRow(s.T(), s.db, projectB, treeID, userID.Int64(), hash, sql.NullInt64{}, "Initial commit")
+
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO commits (id, hash, project_id, tree_id, user_id, message) VALUES ($1, $2, $3, $4, $5, $6)`,
+		snow.ID(12345).Int64(), hash.Bytes(), projectA.Int64(), treeID, userID.Int64(), "dup")
+	s.Require().Error(err, "same hash in the same project stays unique")
+
+	gotA, err := repo.GetCommitByHash(ctx, projectA, hash)
+	s.Require().NoError(err)
+	s.Equal(idA, gotA.ID)
+	gotB, err := repo.GetCommitByHash(ctx, projectB, hash)
+	s.Require().NoError(err)
+	s.Equal(idB, gotB.ID)
+
+	_, err = repo.GetCommitByHash(ctx, projectC, hash)
 	requireRecordNotFound(s.T(), err)
 }
 

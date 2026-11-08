@@ -38,7 +38,7 @@ type branchRepository interface {
 	SetDefaultBranch(ctx context.Context, projectID, branchID snow.ID) error
 	UpdateCommitIf(ctx context.Context, branchID snow.ID, fromCommitID, toCommitID *snow.ID) error
 	GetCommit(ctx context.Context, commitID snow.ID) (*domain.Commit, error)
-	GetCommitByHash(ctx context.Context, hash domain.Hash) (*domain.Commit, error)
+	GetCommitByHash(ctx context.Context, projectID snow.ID, hash domain.Hash) (*domain.Commit, error)
 	GetTreeNode(ctx context.Context, id int64) (*domain.TreeNode, error)
 	GetTreeChildByName(ctx context.Context, parentID int64, name string) (*domain.TreeNode, error)
 	ListTreeChildren(ctx context.Context, parentID int64) ([]*domain.TreeNode, error)
@@ -495,15 +495,12 @@ func (b *Branch) resolveForkPoint(ctx context.Context, projectID snow.ID, fork B
 	}
 
 	if fork.CommitHash != nil {
-		commit, err := b.branchRepo.GetCommitByHash(ctx, *fork.CommitHash)
+		commit, err := b.branchRepo.GetCommitByHash(ctx, projectID, *fork.CommitHash)
 		if err != nil {
 			if domain.IsErrorNotFound(err) {
 				return nil, domain.NewErrorNotFound(fmt.Sprintf("commit %s not found", fork.CommitHash.String()))
 			}
 			return nil, err
-		}
-		if commit.ProjectID != projectID {
-			return nil, domain.NewErrorNotFound(fmt.Sprintf("commit %s not found", fork.CommitHash.String()))
 		}
 		id := commit.ID
 		return &id, nil

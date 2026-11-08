@@ -24,7 +24,7 @@ func emptyHeadTree(repo *MockbranchRepository) {
 	repo.EXPECT().ListFilesByTree(gomock.Any(), int64(100)).Return(nil, nil).AnyTimes()
 	repo.EXPECT().ListFileMetaByTree(gomock.Any(), int64(100)).Return(nil, nil).AnyTimes()
 	repo.EXPECT().ListTreeChildren(gomock.Any(), int64(100)).Return(nil, nil).AnyTimes()
-	repo.EXPECT().GetCommitByHash(gomock.Any(), gomock.Any()).
+	repo.EXPECT().GetCommitByHash(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil, domain.NewErrorNotFound("no parent")).AnyTimes()
 }
 

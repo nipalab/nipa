@@ -207,14 +207,11 @@ func (p *Push) Push(ctx context.Context, projectID snow.ID, branchName, baseTree
 		if err != nil {
 			return nil, domain.NewErrorUser(fmt.Sprintf("invalid parent_2 commit hash %q", parent2CommitHash))
 		}
-		if parent2Commit, err = p.branchRepo.GetCommitByHash(ctx, hash); err != nil {
+		if parent2Commit, err = p.branchRepo.GetCommitByHash(ctx, projectID, hash); err != nil {
 			if domain.IsErrorNotFound(err) {
 				return nil, domain.NewErrorNotFound(fmt.Sprintf("parent_2 commit %s not found", parent2CommitHash))
 			}
 			return nil, err
-		}
-		if parent2Commit.ProjectID != projectID {
-			return nil, domain.NewErrorNotFound(fmt.Sprintf("parent_2 commit %s not found", parent2CommitHash))
 		}
 	}
 

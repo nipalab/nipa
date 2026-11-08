@@ -95,12 +95,17 @@ func (q *Queries) CommitGet(ctx context.Context, id int64) (Commit, error) {
 const commitGetByHash = `-- name: CommitGetByHash :one
 SELECT id, hash, project_id, tree_id, parent_1_id, parent_2_id, user_id, message, created_at
 FROM commits
-WHERE hash = $1
+WHERE project_id = $1 AND hash = $2
 LIMIT 1
 `
 
-func (q *Queries) CommitGetByHash(ctx context.Context, hash []byte) (Commit, error) {
-	row := q.db.QueryRowContext(ctx, commitGetByHash, hash)
+type CommitGetByHashParams struct {
+	ProjectID int64  `json:"project_id"`
+	Hash      []byte `json:"hash"`
+}
+
+func (q *Queries) CommitGetByHash(ctx context.Context, arg CommitGetByHashParams) (Commit, error) {
+	row := q.db.QueryRowContext(ctx, commitGetByHash, arg.ProjectID, arg.Hash)
 	var i Commit
 	err := row.Scan(
 		&i.ID,

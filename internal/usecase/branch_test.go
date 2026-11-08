@@ -1524,7 +1524,7 @@ func TestBranch_CreateBranch_FromCommitHash(t *testing.T) {
 			GetBranchByName(gomock.Any(), projectID, "feature").
 			Return(nil, domain.NewErrorRecordNotFound()),
 		repo.EXPECT().
-			GetCommitByHash(gomock.Any(), forkHash).
+			GetCommitByHash(gomock.Any(), gomock.Any(), forkHash).
 			Return(commit, nil),
 	)
 	repo.EXPECT().ListBranches(gomock.Any(), projectID, 1, nil, snow.ID(0)).
@@ -1562,7 +1562,7 @@ func TestBranch_CreateBranch_FromCommitHash_NotFound(t *testing.T) {
 			GetBranchByName(gomock.Any(), snow.ID(1), "feature").
 			Return(nil, domain.NewErrorRecordNotFound()),
 		repo.EXPECT().
-			GetCommitByHash(gomock.Any(), forkHash).
+			GetCommitByHash(gomock.Any(), gomock.Any(), forkHash).
 			Return(nil, domain.NewErrorRecordNotFound()),
 	)
 
@@ -1581,7 +1581,6 @@ func TestBranch_CreateBranch_FromCommitHash_OtherProject(t *testing.T) {
 
 	hash := commitHashFromBytes([]byte{0xf0, 0x0d})
 	forkHash := hash
-	otherProjectCommit := &domain.Commit{ID: snow.ID(99), ProjectID: snow.ID(2)}
 	perm.EXPECT().
 		HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).
 		Return(true)
@@ -1591,8 +1590,8 @@ func TestBranch_CreateBranch_FromCommitHash_OtherProject(t *testing.T) {
 			GetBranchByName(gomock.Any(), snow.ID(1), "feature").
 			Return(nil, domain.NewErrorRecordNotFound()),
 		repo.EXPECT().
-			GetCommitByHash(gomock.Any(), forkHash).
-			Return(otherProjectCommit, nil),
+			GetCommitByHash(gomock.Any(), snow.ID(1), forkHash).
+			Return(nil, domain.NewErrorRecordNotFound()),
 	)
 
 	uc := NewBranch(perm, repo, newTestBranchNode(t))

@@ -7,7 +7,7 @@ LIMIT 1;
 -- name: CommitGetByHash :one
 SELECT *
 FROM commits
-WHERE hash = sqlc.arg(hash)
+WHERE project_id = sqlc.arg(project_id) AND hash = sqlc.arg(hash)
 LIMIT 1;
 
 -- name: CommitLog :many
