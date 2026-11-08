@@ -359,10 +359,13 @@ func (p *parser) value(inHeader bool) (string, error) {
 	depth := 0
 	for p.pos < len(p.data) {
 		c := p.data[p.pos]
-		if depth == 0 && (c == '\n' || inHeader && (c == ' ' || c == '\t' || c == ']')) {
+		if depth == 0 && (c == '\n' || c == ';' || inHeader && (c == ' ' || c == '\t' || c == ']')) {
 			break
 		}
 		switch c {
+		case ';':
+			p.toLineEnd()
+			continue
 		case '"':
 			if err := p.skipString(); err != nil {
 				return "", err

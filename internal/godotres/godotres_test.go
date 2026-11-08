@@ -164,3 +164,15 @@ func must(v string, ok bool) string {
 	}
 	return v
 }
+
+func TestParseInlineComments(t *testing.T) {
+	in := "[node name=\"A\" type=\"Node\"]\nspeed = 5 ; TODO: use Vector2(x, y)\npoints = [1, ; first (of [two\n2]\ntext = \"a ; b\" ; c\nnext = 3\n"
+	f, err := Parse([]byte(in))
+	require.NoError(t, err)
+	s := f.Sections[0]
+	assert.Equal(t, "5", must(s.Prop("speed")))
+	assert.Equal(t, "[1, ; first (of [two\n2]", must(s.Prop("points")))
+	assert.Equal(t, "\"a ; b\"", must(s.Prop("text")))
+	assert.Equal(t, "3", must(s.Prop("next")))
+	assert.Equal(t, in, string(Write(f)))
+}
