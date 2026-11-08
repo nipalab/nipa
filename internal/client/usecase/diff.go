@@ -319,6 +319,38 @@ func (d *Diff) revisionByCommit(ctx context.Context, nu *clientDomain.NipaUrl, c
 	return &revision{token: commitID, commitID: detail.ID, parentID: detail.Parent1ID, entries: diff.FromTree(detail.Tree)}, nil
 }
 
+// MergeBaseCommit resolves the merge base commit id of two revisions, the
+// old side of a merge-base diff. It is empty when they share no history.
+func (d *Diff) MergeBaseCommit(ctx context.Context, root, revA, revB string) (string, error) {
+	if err := d.localRepo.Init(root); err != nil {
+		return "", err
+	}
+	cfg, err := d.localRepo.LoadConfig()
+	if err != nil {
+		return "", err
+	}
+	nu, err := clientDomain.ParseNipaUrl(cfg.Url)
+	if err != nil {
+		return "", err
+	}
+	if err := d.client.Connect(ctx, nu.Origin); err != nil {
+		return "", err
+	}
+	if err := d.auth.MakeSureLoggedIn(ctx, nu.Host); err != nil {
+		return "", err
+	}
+	base, err := d.resolveRevision(ctx, nu, cfg, revA)
+	if err != nil {
+		return "", err
+	}
+	head, err := d.resolveRevision(ctx, nu, cfg, revB)
+	if err != nil {
+		return "", err
+	}
+	_, id, err := d.mergeBaseEntries(ctx, nu, base, head)
+	return id, err
+}
+
 func (d *Diff) mergeBaseEntries(ctx context.Context, nu *clientDomain.NipaUrl, base, head *revision) (map[string]diff.Entry, string, error) {
 	if base.commitID == "" || head.commitID == "" {
 		return map[string]diff.Entry{}, "", nil

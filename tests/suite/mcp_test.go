@@ -34,6 +34,10 @@ var _ = Describe("nipa mcp", func() {
 			"nipa_mr_threads",
 			"nipa_mr_commits",
 			"nipa_mr_timeline",
+			"nipa_asset_diff",
+			"nipa_describe_changes",
+			"nipa_mr_describe_changes",
+			"nipa_meta_warnings",
 		))
 	})
 
@@ -60,6 +64,10 @@ var _ = Describe("nipa mcp", func() {
 			"nipa_mr_threads",
 			"nipa_mr_commits",
 			"nipa_mr_timeline",
+			"nipa_asset_diff",
+			"nipa_describe_changes",
+			"nipa_mr_describe_changes",
+			"nipa_meta_warnings",
 			"nipa_add",
 			"nipa_restore",
 			"nipa_push",
@@ -71,6 +79,7 @@ var _ = Describe("nipa mcp", func() {
 			"nipa_unlock",
 			"nipa_merge",
 			"nipa_resolve_conflict",
+			"nipa_godot_merge",
 			"nipa_mr_create",
 			"nipa_mr_update",
 			"nipa_mr_comment",
@@ -119,6 +128,57 @@ var _ = Describe("nipa mcp", func() {
 		queryResult.decode(&query)
 		Expect(query.Locked).To(BeTrue())
 		Expect(query.Locks[0].Path).To(Equal("assets"))
+	})
+
+	It("describes asset changes with image thumbnails", func() {
+		project := newProject("mcp-asset-diff")
+		seedRepo(orgSlug, project, map[string][]byte{"tex.png": testPNG(4)}, "seed")
+		parent := workspace()
+		dir := cloneRepo(parent, repoURLFor(orgSlug, project), "work")
+		writeBytes(dir, "tex.png", testPNG(8))
+
+		m := startMCP(dir, false)
+
+		diffResult := m.callTool("nipa_asset_diff", map[string]any{"repo": dir, "path": "tex.png", "include_images": true})
+		Expect(diffResult.IsError).To(BeFalse(), diffResult.text())
+		var asset struct {
+			Kind   string `json:"kind"`
+			Status string `json:"status"`
+			Image  struct {
+				Old struct {
+					Width int `json:"width"`
+				} `json:"old"`
+				New struct {
+					Width int `json:"width"`
+				} `json:"new"`
+			} `json:"image"`
+		}
+		diffResult.decode(&asset)
+		Expect(asset.Kind).To(Equal("image"))
+		Expect(asset.Status).To(Equal("modified"))
+		Expect(asset.Image.Old.Width).To(Equal(4))
+		Expect(asset.Image.New.Width).To(Equal(8))
+		images := 0
+		for _, c := range diffResult.Content {
+			if c.Type == "image" {
+				Expect(c.MimeType).To(Equal("image/png"))
+				images++
+			}
+		}
+		Expect(images).To(Equal(2))
+
+		describeResult := m.callTool("nipa_describe_changes", map[string]any{"repo": dir})
+		Expect(describeResult.IsError).To(BeFalse(), describeResult.text())
+		var summary struct {
+			Files []struct {
+				Path     string `json:"path"`
+				Headline string `json:"headline"`
+			} `json:"files"`
+		}
+		describeResult.decode(&summary)
+		Expect(summary.Files).To(HaveLen(1))
+		Expect(summary.Files[0].Path).To(Equal("tex.png"))
+		Expect(summary.Files[0].Headline).NotTo(BeEmpty())
 	})
 
 	It("rejects unknown capabilities", func() {

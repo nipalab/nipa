@@ -36,8 +36,11 @@ func newMCPCommand(newClient func() *clientgrpc.Client, storage tokenStorage) *c
 		Use:   "mcp",
 		Short: "Run a Model Context Protocol server over stdio",
 		Long: "Serve Nipa as MCP tools for AI agents over stdin/stdout. Read-only tools\n" +
-			"(status, diff, log, branches, tags, locks, conflicts and merge requests with\n" +
-			"their diff, threads, commits and timeline) are always available. Mutating\n" +
+			"(status, diff, log, branches, tags, locks, conflicts, merge requests with\n" +
+			"their diff, threads, commits and timeline, plus asset-aware tools: structured\n" +
+			"asset diffs with image thumbnails, per-file change summaries for the working\n" +
+			"copy, revisions or a merge request, and Unity/Godot sidecar warnings) are\n" +
+			"always available. Mutating\n" +
 			"tools are enabled per capability with --allow (comma list):\n" +
 			"  stage   add, restore\n" +
 			"  push    push\n" +
@@ -46,7 +49,8 @@ func newMCPCommand(newClient func() *clientgrpc.Client, storage tokenStorage) *c
 			"  lock    lock, unlock\n" +
 			"  mr      merge-request create, update/draft/ready, comment, reply, resolve,\n" +
 			"          review, request-review, check report\n" +
-			"  merge   local merge (and abort), conflict resolution, merge-request merge\n" +
+			"  merge   local merge (and abort), conflict resolution, structural Godot\n" +
+			"          .tscn/.tres merge, merge-request merge\n" +
 			"--allow-write grants every capability. Text written through MCP (push\n" +
 			"messages, merge-request descriptions, comments, replies, reviews) gets a\n" +
 			"\"Nipa-Agent: <client>/<version>\" trailer unless --no-agent-trailer is set.\n" +

@@ -106,6 +106,7 @@ func NewServer(opts Options) *mcp.Server {
 	addMRReadTools(srv, s)
 	addWriteTools(srv, s)
 	addMRWriteTools(srv, s)
+	addAssetTools(srv, s)
 	return srv
 }
 

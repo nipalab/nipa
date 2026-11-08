@@ -546,3 +546,57 @@ func TestDiff_ShowErrors(t *testing.T) {
 	_, err = d.Run(context.Background(), t.TempDir(), []string{childID}, DiffOptions{Show: true})
 	require.ErrorContains(t, err, "not found")
 }
+
+func TestDiff_MergeBaseCommit(t *testing.T) {
+	mainID := snow.ID(5).Base36()
+	featureID := snow.ID(6).Base36()
+	baseID := snow.ID(4).Base36()
+	newClient := func() *stubDiffClient {
+		return &stubDiffClient{
+			branches: map[string]*serverDomain.Branch{
+				"main":    {Name: "main", CommitID: ptrID(snow.ID(5))},
+				"feature": {Name: "feature", CommitID: ptrID(snow.ID(6))},
+				"empty":   {Name: "empty"},
+			},
+			commits: map[string]*clientDomain.CommitDetail{
+				mainID:    {ID: mainID, Tree: fileTree(t, "a.txt", "a\n")},
+				featureID: {ID: featureID, Tree: fileTree(t, "a.txt", "b\n")},
+			},
+			mergeBase: &clientDomain.MergeBaseInfo{MergeBaseCommitID: baseID, MergeBaseTree: fileTree(t, "a.txt", "a\n")},
+		}
+	}
+	ctx := context.Background()
+	client := newClient()
+	id, err := NewDiff(diffAuth(t), client, newDiffStub()).MergeBaseCommit(ctx, t.TempDir(), "main", "feature")
+	require.NoError(t, err)
+	require.Equal(t, baseID, id)
+	require.Equal(t, mainID, client.lastMergeTarget.CommitID)
+	require.Equal(t, featureID, client.lastMergeSource.CommitID)
+
+	id, err = NewDiff(diffAuth(t), newClient(), newDiffStub()).MergeBaseCommit(ctx, t.TempDir(), "empty", "feature")
+	require.NoError(t, err)
+	require.Empty(t, id)
+
+	_, err = NewDiff(diffAuth(t), newClient(), newDiffStub()).MergeBaseCommit(ctx, t.TempDir(), "nope", "feature")
+	require.ErrorContains(t, err, `revision "nope" not found`)
+	_, err = NewDiff(diffAuth(t), newClient(), newDiffStub()).MergeBaseCommit(ctx, t.TempDir(), "main", "nope")
+	require.ErrorContains(t, err, `revision "nope" not found`)
+
+	failing := newClient()
+	failing.connectErr = errors.New("offline")
+	_, err = NewDiff(diffAuth(t), failing, newDiffStub()).MergeBaseCommit(ctx, t.TempDir(), "main", "feature")
+	require.ErrorContains(t, err, "offline")
+
+	repo := newDiffStub()
+	repo.initErr = errors.New("init")
+	_, err = NewDiff(diffAuth(t), newClient(), repo).MergeBaseCommit(ctx, t.TempDir(), "main", "feature")
+	require.ErrorContains(t, err, "init")
+	repo = newDiffStub()
+	repo.configErr = errors.New("config")
+	_, err = NewDiff(diffAuth(t), newClient(), repo).MergeBaseCommit(ctx, t.TempDir(), "main", "feature")
+	require.ErrorContains(t, err, "config")
+	repo = newDiffStub()
+	repo.config = &clientDomain.Config{Url: "::bad"}
+	_, err = NewDiff(diffAuth(t), newClient(), repo).MergeBaseCommit(ctx, t.TempDir(), "main", "feature")
+	require.Error(t, err)
+}
