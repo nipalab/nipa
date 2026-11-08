@@ -35,28 +35,25 @@ func newMCPCommand(newClient func() *clientgrpc.Client, storage tokenStorage) *c
 	cmd := &cobra.Command{
 		Use:   "mcp",
 		Short: "Run a Model Context Protocol server over stdio",
-		Long: "Serve Nipa as MCP tools for AI agents over stdin/stdout. Read-only tools\n" +
-			"(status, diff, log, branches, tags, locks, conflicts, merge requests with\n" +
-			"their diff, threads, commits and timeline, plus asset-aware tools: structured\n" +
-			"asset diffs with image thumbnails, per-file change summaries for the working\n" +
-			"copy, revisions or a merge request, and Unity/Godot sidecar warnings) are\n" +
-			"always available. Mutating\n" +
-			"tools are enabled per capability with --allow (comma list):\n" +
+		Long: "Serve the working copy to AI agents as MCP tools over stdin/stdout.\n\n" +
+			"Always available: read tools (status, diff, log, branches, tags, locks,\n" +
+			"conflicts, merge requests with diff/threads/commits/timeline), asset tools\n" +
+			"(structured asset diffs, change summaries, .nipaassets.yml checks, Unity and\n" +
+			"Godot sidecar warnings) and the prompts nipa_commit_message,\n" +
+			"nipa_mr_description and nipa_review_mr.\n\n" +
+			"Write tools are enabled per capability with --allow (comma list):\n" +
 			"  stage   add, restore\n" +
 			"  push    push\n" +
-			"  sync    update, switch (branch or tag)\n" +
+			"  sync    update, switch\n" +
 			"  branch  branch and tag creation\n" +
 			"  lock    lock, unlock\n" +
-			"  mr      merge-request create, update/draft/ready, comment, reply, resolve,\n" +
-			"          review, request-review, check report\n" +
-			"  merge   local merge (and abort), conflict resolution, structural Godot\n" +
-			"          .tscn/.tres merge, merge-request merge\n" +
-			"--allow-write grants every capability. Text written through MCP (push\n" +
-			"messages, merge-request descriptions, comments, replies, reviews) gets a\n" +
-			"\"Nipa-Agent: <client>/<version>\" trailer unless --no-agent-trailer is set.\n" +
-			"Diffs are capped by max_bytes (default 256 KiB, at most 2 MiB), logs by 500\n" +
-			"commits. Tokens come from the same store as the CLI, so log in with a regular\n" +
-			"clone first.",
+			"  mr      merge request create, update, comment, reply, resolve, review,\n" +
+			"          request-review, check\n" +
+			"  merge   merge, conflict resolution, Godot scene merge, merge request merge\n" +
+			"--allow-write grants all of them. Text written through MCP gets a\n" +
+			"\"Nipa-Agent: <client>/<version>\" trailer unless --no-agent-trailer is set.\n\n" +
+			"Authentication never prompts: log in from a terminal first (nipa clone).\n" +
+			"Example: claude mcp add nipa -- nipa mcp --allow mr,lock",
 		Args:          cobra.NoArgs,
 		SilenceErrors: true,
 		SilenceUsage:  true,

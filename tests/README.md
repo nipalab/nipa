@@ -5,7 +5,7 @@ The same Ginkgo suite runs against the free (`nipad`) and enterprise
 (`nipad-ee`) servers so both editions are verified to behave identically from
 the client's point of view.
 
-Coverage (about 280 specs, counted as the `It(`/`PIt(` calls in the
+Coverage (about 310 specs, counted as the `It(`/`PIt(` calls in the
 non-support spec files): every in-repo command and flag — `login` (SSH key:
 key-only sign-in, lazy sign-in for clone through `NIPA_SSH_KEY`,
 unregistered-key rejection, username binding, deleted keys, default
@@ -19,7 +19,10 @@ runtime commands `nipa serve` (daemon gRPC API), `nipa mcp` (MCP over stdio)
 and the webhook delivery pipeline (push/branch/tag/mr events, signatures,
 filters, ping, retries/redelivery), multi-user permission/lock scenarios
 (org owners' implicit full project access and plain members' deny-by-default),
-`NIPA_OUTPUT=json` and the exit-code contract (0/1/2/127). REST-only
+`NIPA_OUTPUT=json` and the exit-code contract (0/1/2/127), and the AI
+surfaces: MCP tools/prompts end to end (merge request review loop, scoped
+`--allow`, asset diffs, Godot merge, locks), `nipa assets check` and
+`nipa push --generate`. REST-only
 surfaces are covered too: email notifications, the admin audit log, users/
 orgs/projects/branches/browser admin routes, signed chunk URLs, storage
 quota, rate limiting and project service tokens (lifecycle, per-scope route
@@ -46,8 +49,10 @@ Useful options and environment:
 
 ```sh
 tests/run.sh free --filter "nipa push"    # Ginkgo focus regex
+tests/run.sh free --filter "nipa mcp"     # all MCP specs (mcp_test.go + mcp_workflow_test.go)
+tests/run.sh free --filter "nipa mcp workflows"  # only the MCP workflow specs
 tests/run.sh ee --keep                    # keep postgres/minio after the run
-SKIP_BUILD=1 tests/run.sh free            # reuse binaries already in bin/
+SKIP_BUILD=1 tests/run.sh free            # reuse binaries already in bin/ (rebuild after server changes)
 NIPA_TEST_PORT=7000 tests/run.sh free     # free server port (default 6745)
 NIPA_TEST_EE_PORT=7001 tests/run.sh ee    # enterprise server port (default 6747)
 NIPA_TEST_EMAIL_TRANSPORT=http tests/run.sh free  # email transport: sendgrid, scaleway or http (all carry Message-ID/In-Reply-To/References)
@@ -146,7 +151,16 @@ tests/
     ssh_test.go           SSH key login (deleted keys, ~/.ssh, ssh-agent)
     daemon_test.go        nipa serve (gRPC API, LoginSSH, JSON bridge token,
                           error mapping and host/origin checks)
-    mcp_test.go           nipa mcp (MCP over stdio)
+    mcp_test.go           nipa mcp (tool lists, --allow, read tools, push/MR
+                          basics, permission errors, prompts list)
+    mcp_workflow_test.go  nipa mcp workflows: MR review loop over MCP
+                          (diff budgets, comments, threads, review by a second
+                          identity, checks, timeline, Nipa-Agent trailers,
+                          nipa_review_mr prompt), --allow scoping, Unity scene
+                          diffs with GUIDs and .meta warnings, MR asset
+                          summaries, Godot structural merge, lock scopes
+    assets_test.go        nipa assets check (.nipaassets.yml, dry run, MCP)
+    generate_test.go      nipa push --generate against a fake LLM endpoint
     webhook_test.go       webhook deliveries (events incl. mr.ready_for_review,
                           filters, signature)
     email_test.go         email notifications (lifecycle, thread headers,
