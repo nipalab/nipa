@@ -21,7 +21,12 @@ SELECT i.id, i.org_id, i.invited_by, i.email, i.role, i.token_hash, i.status, i.
 FROM org_invitations i
 JOIN organizations o ON o.id = i.org_id AND o.deleted = false
 LEFT JOIN users u ON u.id = i.invited_by
-WHERE i.org_id = sqlc.arg(org_id) AND (sqlc.arg(status) = '' OR i.status = sqlc.arg(status))
+WHERE i.org_id = sqlc.arg(org_id) AND (
+    sqlc.arg(status) = ''
+    OR (sqlc.arg(status) = 'pending' AND i.status = 'pending' AND i.expires_at > sqlc.arg(now))
+    OR (sqlc.arg(status) = 'expired' AND (i.status = 'expired' OR (i.status = 'pending' AND i.expires_at <= sqlc.arg(now))))
+    OR (i.status = sqlc.arg(status) AND sqlc.arg(status) <> 'pending' AND sqlc.arg(status) <> 'expired')
+)
 ORDER BY i.id DESC
 LIMIT 200;
 

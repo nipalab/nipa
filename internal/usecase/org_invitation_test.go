@@ -145,6 +145,8 @@ func TestOrgInvitation_Create(t *testing.T) {
 	t.Run("invalid input", func(t *testing.T) {
 		h := newInvHarness(t)
 		requireUserError(t, h.uc.Create(ownerCtx(), testOrgRef, "not-an-email", ""))
+		requireUserError(t, h.uc.Create(ownerCtx(), testOrgRef, "Bob <bob@example.com>", ""))
+		requireUserError(t, h.uc.Create(ownerCtx(), testOrgRef, "<bob@example.com>", ""))
 		requireUserError(t, h.uc.Create(ownerCtx(), testOrgRef, "bob@example.com", "viewer"))
 	})
 
@@ -252,31 +254,21 @@ func TestOrgInvitation_CreateRateLimits(t *testing.T) {
 
 func TestOrgInvitation_List(t *testing.T) {
 	h := newInvHarness(t)
-	live := &domain.OrgInvitation{ID: 1, Status: domain.OrgInvitationPending, ExpiresAt: h.now.Add(time.Hour)}
-	stale := &domain.OrgInvitation{ID: 2, Status: domain.OrgInvitationPending, ExpiresAt: h.now.Add(-time.Hour)}
-	done := &domain.OrgInvitation{ID: 3, Status: domain.OrgInvitationAccepted, ExpiresAt: h.now.Add(-time.Hour)}
-	all := func() []*domain.OrgInvitation {
-		return []*domain.OrgInvitation{{ID: 1, Status: live.Status, ExpiresAt: live.ExpiresAt}, {ID: 2, Status: stale.Status, ExpiresAt: stale.ExpiresAt}, {ID: 3, Status: done.Status, ExpiresAt: done.ExpiresAt}}
+	rows := func() []*domain.OrgInvitation {
+		return []*domain.OrgInvitation{
+			{ID: 1, Status: domain.OrgInvitationPending, ExpiresAt: h.now.Add(time.Hour)},
+			{ID: 2, Status: domain.OrgInvitationPending, ExpiresAt: h.now.Add(-time.Hour)},
+		}
 	}
 
-	h.invs.EXPECT().ListByOrg(gomock.Any(), snow.ID(1), "").Return(all(), nil).Times(3)
+	h.invs.EXPECT().ListByOrg(gomock.Any(), snow.ID(1), "", h.now).Return(rows(), nil)
 	got, err := h.uc.List(ownerCtx(), 1, "")
 	require.NoError(t, err)
-	require.Len(t, got, 3)
-	require.Equal(t, domain.OrgInvitationExpired, got[1].Status)
+	require.Equal(t, domain.OrgInvitationPending, got[0].Status)
+	require.Equal(t, domain.OrgInvitationExpired, got[1].Status, "lazily expired rows read as expired")
 
+	h.invs.EXPECT().ListByOrg(gomock.Any(), snow.ID(1), domain.OrgInvitationPending, h.now).Return(rows()[:1], nil)
 	got, err = h.uc.List(ownerCtx(), 1, domain.OrgInvitationPending)
-	require.NoError(t, err)
-	require.Len(t, got, 1)
-	require.Equal(t, snow.ID(1), got[0].ID)
-
-	got, err = h.uc.List(ownerCtx(), 1, domain.OrgInvitationExpired)
-	require.NoError(t, err)
-	require.Len(t, got, 1)
-	require.Equal(t, snow.ID(2), got[0].ID)
-
-	h.invs.EXPECT().ListByOrg(gomock.Any(), snow.ID(1), domain.OrgInvitationAccepted).Return(all()[2:], nil)
-	got, err = h.uc.List(ownerCtx(), 1, domain.OrgInvitationAccepted)
 	require.NoError(t, err)
 	require.Len(t, got, 1)
 
@@ -287,7 +279,7 @@ func TestOrgInvitation_List(t *testing.T) {
 	_, err = h.uc.List(permissionCtx(9), 1, "")
 	require.True(t, domain.IsErrorNoPermission(err))
 
-	h.invs.EXPECT().ListByOrg(gomock.Any(), snow.ID(1), "").Return(nil, errors.New("boom"))
+	h.invs.EXPECT().ListByOrg(gomock.Any(), snow.ID(1), "", h.now).Return(nil, errors.New("boom"))
 	_, err = h.uc.List(ownerCtx(), 1, "")
 	require.Error(t, err)
 }

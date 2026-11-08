@@ -132,18 +132,18 @@ func (mr *MockorgInvitationRepositoryMockRecorder) GetByTokenHash(ctx, hash any)
 }
 
 // ListByOrg mocks base method.
-func (m *MockorgInvitationRepository) ListByOrg(ctx context.Context, orgID snow.ID, status string) ([]*domain.OrgInvitation, error) {
+func (m *MockorgInvitationRepository) ListByOrg(ctx context.Context, orgID snow.ID, status string, now time.Time) ([]*domain.OrgInvitation, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListByOrg", ctx, orgID, status)
+	ret := m.ctrl.Call(m, "ListByOrg", ctx, orgID, status, now)
 	ret0, _ := ret[0].([]*domain.OrgInvitation)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ListByOrg indicates an expected call of ListByOrg.
-func (mr *MockorgInvitationRepositoryMockRecorder) ListByOrg(ctx, orgID, status any) *gomock.Call {
+func (mr *MockorgInvitationRepositoryMockRecorder) ListByOrg(ctx, orgID, status, now any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListByOrg", reflect.TypeOf((*MockorgInvitationRepository)(nil).ListByOrg), ctx, orgID, status)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListByOrg", reflect.TypeOf((*MockorgInvitationRepository)(nil).ListByOrg), ctx, orgID, status, now)
 }
 
 // ListPendingByEmail mocks base method.

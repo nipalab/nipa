@@ -225,7 +225,12 @@ SELECT i.id, i.org_id, i.invited_by, i.email, i.role, i.token_hash, i.status, i.
 FROM org_invitations i
 JOIN organizations o ON o.id = i.org_id AND o.deleted = false
 LEFT JOIN users u ON u.id = i.invited_by
-WHERE i.org_id = ?1 AND (?2 = '' OR i.status = ?2)
+WHERE i.org_id = ?1 AND (
+    ?2 = ''
+    OR (?2 = 'pending' AND i.status = 'pending' AND i.expires_at > ?3)
+    OR (?2 = 'expired' AND (i.status = 'expired' OR (i.status = 'pending' AND i.expires_at <= ?3)))
+    OR (i.status = ?2 AND ?2 <> 'pending' AND ?2 <> 'expired')
+)
 ORDER BY i.id DESC
 LIMIT 200
 `
@@ -233,6 +238,7 @@ LIMIT 200
 type OrgInvitationListByOrgParams struct {
 	OrgID  int64       `json:"org_id"`
 	Status interface{} `json:"status"`
+	Now    time.Time   `json:"now"`
 }
 
 type OrgInvitationListByOrgRow struct {
@@ -253,7 +259,7 @@ type OrgInvitationListByOrgRow struct {
 }
 
 func (q *Queries) OrgInvitationListByOrg(ctx context.Context, arg OrgInvitationListByOrgParams) ([]OrgInvitationListByOrgRow, error) {
-	rows, err := q.db.QueryContext(ctx, orgInvitationListByOrg, arg.OrgID, arg.Status)
+	rows, err := q.db.QueryContext(ctx, orgInvitationListByOrg, arg.OrgID, arg.Status, arg.Now)
 	if err != nil {
 		return nil, err
 	}

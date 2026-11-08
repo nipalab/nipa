@@ -78,10 +78,10 @@ func TestOrgInvitationRepositorySQLite(t *testing.T) {
 		_, err = repo.FindPending(ctx, orgID, "nobody@example.com")
 		requireRecordNotFound(t, err)
 
-		all, err := repo.ListByOrg(ctx, orgID, "")
+		all, err := repo.ListByOrg(ctx, orgID, "", now)
 		require.NoError(t, err)
 		require.Len(t, all, 1)
-		none, err := repo.ListByOrg(ctx, orgID, domain.OrgInvitationRevoked)
+		none, err := repo.ListByOrg(ctx, orgID, domain.OrgInvitationRevoked, now)
 		require.NoError(t, err)
 		require.Empty(t, none)
 
@@ -146,6 +146,24 @@ func TestOrgInvitationRepositorySQLite(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, domain.OrgInvitationPending, got.Status)
 		require.NoError(t, repo.Create(ctx, newInvitation(t, orgID, inviter, "old@example.com", 7, now.Add(time.Hour))))
+	})
+
+	t.Run("status filters are applied in SQL", func(t *testing.T) {
+		pendingNow, err := repo.ListByOrg(ctx, orgID, domain.OrgInvitationPending, now)
+		require.NoError(t, err)
+		for _, inv := range pendingNow {
+			require.Equal(t, domain.OrgInvitationPending, inv.Status)
+			require.True(t, inv.ExpiresAt.After(now))
+		}
+		pendingLater, err := repo.ListByOrg(ctx, orgID, domain.OrgInvitationPending, now.Add(100*time.Hour))
+		require.NoError(t, err)
+		require.Empty(t, pendingLater, "pending past expiry is not pending")
+		expiredLater, err := repo.ListByOrg(ctx, orgID, domain.OrgInvitationExpired, now.Add(100*time.Hour))
+		require.NoError(t, err)
+		require.NotEmpty(t, expiredLater)
+		accepted, err := repo.ListByOrg(ctx, orgID, domain.OrgInvitationAccepted, now)
+		require.NoError(t, err)
+		require.Len(t, accepted, 1)
 	})
 
 	t.Run("deleted organizations hide their invitations", func(t *testing.T) {

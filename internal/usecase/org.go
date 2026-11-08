@@ -134,13 +134,23 @@ func (o *Org) AddMember(ctx context.Context, orgID, userID snow.ID, role string)
 	if err != nil {
 		return err
 	}
-	return auditedWrite(ctx, o.audit, func(ctx context.Context) error {
+	if err := auditedWrite(ctx, o.audit, func(ctx context.Context) error {
 		return admitSeat(ctx, o.seats, orgID, userID, func(ctx context.Context) error {
 			return o.repo.UpsertMember(ctx, orgID, userID, role)
 		})
 	}, func() *domain.AuditEntry {
 		return o.memberAudit(orgID, userID, oldRole, role)
-	})
+	}); err != nil {
+		return err
+	}
+	o.invalidateCache()
+	return nil
+}
+
+func (o *Org) invalidateCache() {
+	if o.cache != nil {
+		o.cache.InvalidateAll()
+	}
 }
 
 // auditedRole reads the member's current role for the audit entry; "" when
@@ -192,11 +202,15 @@ func (o *Org) UpdateMemberRole(ctx context.Context, orgID, userID snow.ID, role 
 	if o.audit != nil {
 		oldRole = current
 	}
-	return auditedWrite(ctx, o.audit, func(ctx context.Context) error {
+	if err := auditedWrite(ctx, o.audit, func(ctx context.Context) error {
 		return o.repo.UpsertMember(ctx, orgID, userID, role)
 	}, func() *domain.AuditEntry {
 		return o.memberAudit(orgID, userID, oldRole, role)
-	})
+	}); err != nil {
+		return err
+	}
+	o.invalidateCache()
+	return nil
 }
 
 func (o *Org) RemoveMember(ctx context.Context, orgID, userID snow.ID) error {
@@ -217,9 +231,7 @@ func (o *Org) RemoveMember(ctx context.Context, orgID, userID snow.ID) error {
 	}); err != nil {
 		return err
 	}
-	if o.cache != nil {
-		o.cache.InvalidateAll()
-	}
+	o.invalidateCache()
 	return nil
 }
 

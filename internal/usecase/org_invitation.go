@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"html"
+	stdmail "net/mail"
 	"net/url"
 	"strings"
 	"time"
@@ -31,7 +32,7 @@ type orgInvitationRepository interface {
 	Get(ctx context.Context, id snow.ID) (*domain.OrgInvitation, error)
 	GetByTokenHash(ctx context.Context, hash []byte) (*domain.OrgInvitation, error)
 	FindPending(ctx context.Context, orgID snow.ID, email string) (*domain.OrgInvitation, error)
-	ListByOrg(ctx context.Context, orgID snow.ID, status string) ([]*domain.OrgInvitation, error)
+	ListByOrg(ctx context.Context, orgID snow.ID, status string, now time.Time) ([]*domain.OrgInvitation, error)
 	ListPendingByEmail(ctx context.Context, email string, now time.Time) ([]*domain.OrgInvitation, error)
 	ExpireStale(ctx context.Context, orgID snow.ID, email string, now time.Time) error
 	Rotate(ctx context.Context, id snow.ID, tokenHash []byte, expiresAt time.Time) (bool, error)
@@ -126,7 +127,7 @@ func (i *OrgInvitation) Create(ctx context.Context, org *domain.Organization, em
 		return err
 	}
 	email = normalizeEmail(email)
-	if !imail.ValidAddress(email) {
+	if parsed, err := stdmail.ParseAddress(email); err != nil || parsed.Address != email || !imail.ValidAddress(email) {
 		return domain.NewErrorUser("invalid email address")
 	}
 	role = strings.TrimSpace(role)
@@ -228,23 +229,15 @@ func (i *OrgInvitation) List(ctx context.Context, orgID snow.ID, status string) 
 	if status != "" && !domain.IsValidOrgInvitationStatus(status) {
 		return nil, domain.NewErrorUser("invalid invitation status")
 	}
-	query := status
-	if status == domain.OrgInvitationPending || status == domain.OrgInvitationExpired {
-		query = ""
-	}
-	invs, err := i.repo.ListByOrg(ctx, orgID, query)
+	now := i.now()
+	invs, err := i.repo.ListByOrg(ctx, orgID, status, now)
 	if err != nil {
 		return nil, err
 	}
-	now := i.now()
-	out := make([]*domain.OrgInvitation, 0, len(invs))
 	for _, inv := range invs {
 		inv.Status = inv.EffectiveStatus(now)
-		if status == "" || inv.Status == status {
-			out = append(out, inv)
-		}
 	}
-	return out, nil
+	return invs, nil
 }
 
 func (i *OrgInvitation) Revoke(ctx context.Context, orgID, id snow.ID) error {
@@ -441,9 +434,7 @@ func (i *OrgInvitation) accept(ctx context.Context, lookup invitationLookup) (*d
 	if err != nil {
 		return nil, err
 	}
-	if i.orgs.cache != nil {
-		i.orgs.cache.InvalidateAll()
-	}
+	i.orgs.invalidateCache()
 	inv.Status = domain.OrgInvitationAccepted
 	return inv, nil
 }

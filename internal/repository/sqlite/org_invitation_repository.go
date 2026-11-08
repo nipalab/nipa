@@ -58,10 +58,11 @@ func (r *OrgInvitationRepository) FindPending(ctx context.Context, orgID snow.ID
 	return toDomainOrgInvitation(sqlcSqlite.OrgInvitationListByOrgRow(row)), nil
 }
 
-func (r *OrgInvitationRepository) ListByOrg(ctx context.Context, orgID snow.ID, status string) ([]*domain.OrgInvitation, error) {
+func (r *OrgInvitationRepository) ListByOrg(ctx context.Context, orgID snow.ID, status string, now time.Time) ([]*domain.OrgInvitation, error) {
 	rows, err := r.queries.OrgInvitationListByOrg(ctx, sqlcSqlite.OrgInvitationListByOrgParams{
 		OrgID:  orgID.Int64(),
 		Status: status,
+		Now:    now.UTC(),
 	})
 	if err != nil {
 		return nil, handleError(err)
