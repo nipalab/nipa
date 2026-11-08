@@ -30,7 +30,25 @@ func (s *Service) Checkout(ctx context.Context, userID snow.ID, items Items) (st
 	if err != nil {
 		return "", err
 	}
-	return s.provider.CreateCheckout(ctx, account.ProviderCustomerID, userID, items)
+	txn, err := s.provider.CreateCheckout(ctx, account.ProviderCustomerID, userID, items)
+	if err != nil {
+		return "", err
+	}
+	if err := s.record(ctx, domain.AuditEntry{
+		Action:     domain.AuditBillingCheckoutStarted,
+		TargetType: domain.AuditTargetUser,
+		TargetID:   userID.Base36(),
+		Metadata: map[string]any{
+			"seats":          items.Seats,
+			"storage_packs":  items.StoragePacks,
+			"interval":       items.Interval,
+			"transaction_id": txn,
+			"customer_id":    account.ProviderCustomerID,
+		},
+	}); err != nil {
+		return "", err
+	}
+	return txn, nil
 }
 
 // ChangeSubscription replaces the live subscription's seats, storage packs and
@@ -69,7 +87,21 @@ func (s *Service) ChangeSubscription(ctx context.Context, userID snow.ID, items 
 		return Subscription{}, err
 	}
 	sub.UserID = userID
-	if err := s.Apply(ctx, sub); err != nil {
+	if err := s.tx.WithinTx(ctx, func(ctx context.Context) error {
+		if err := s.Apply(ctx, sub); err != nil {
+			return err
+		}
+		return s.record(ctx, domain.AuditEntry{
+			Action:     domain.AuditBillingSubscriptionChanged,
+			TargetType: domain.AuditTargetSubscription,
+			TargetID:   live.ProviderSubscriptionID,
+			Metadata: map[string]any{
+				"owner_id": userID.Base36(),
+				"old":      map[string]any{"seats": live.Seats, "storage_packs": live.StoragePacks, "interval": live.Interval},
+				"new":      map[string]any{"seats": sub.Seats, "storage_packs": sub.StoragePacks, "interval": sub.Interval},
+			},
+		})
+	}); err != nil {
 		return Subscription{}, err
 	}
 	return sub, nil
@@ -137,6 +169,14 @@ func (s *Service) Sync(ctx context.Context, userID snow.ID) (int, error) {
 		if err := s.Apply(ctx, sub); err != nil {
 			return 0, err
 		}
+	}
+	if err := s.record(ctx, domain.AuditEntry{
+		Action:     domain.AuditBillingSync,
+		TargetType: domain.AuditTargetUser,
+		TargetID:   userID.Base36(),
+		Metadata:   map[string]any{"synced": len(subs)},
+	}); err != nil {
+		return 0, err
 	}
 	return len(subs), nil
 }

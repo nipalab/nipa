@@ -153,3 +153,22 @@ func TestTransactor_WithinTx_JoinsTheCallersTransaction(t *testing.T) {
 	require.ErrorIs(t, err, wantErr)
 	require.Zero(t, countItems(t, db), "the nested call must not commit on its own")
 }
+
+func TestDetach_WritesSurviveTheCallerRollback(t *testing.T) {
+	db := newTestDB(t)
+	db.SetMaxOpenConns(2)
+	wrapped := New(db)
+	wantErr := errors.New("boom")
+
+	err := NewTransactor(db).WithinTx(context.Background(), func(ctx context.Context) error {
+		if _, err := wrapped.ExecContext(Detach(ctx), `INSERT INTO items (id, name) VALUES (1, 'kept')`); err != nil {
+			return err
+		}
+		return wantErr
+	})
+	require.ErrorIs(t, err, wantErr)
+	require.Equal(t, 1, countItems(t, db))
+
+	_, inTx := txFromContext(Detach(context.Background()))
+	require.False(t, inTx)
+}

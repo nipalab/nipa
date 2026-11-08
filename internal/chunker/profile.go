@@ -21,6 +21,7 @@ var editableBinaryExtensions = map[string]struct{}{
 	".psd": {}, ".psb": {},
 	".mb": {}, ".max": {}, ".kra": {},
 	".sqlite": {}, ".sqlite3": {}, ".db": {},
+	".scn": {}, ".res": {},
 }
 
 // packedAssetExtensions are formats that are written once or already

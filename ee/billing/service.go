@@ -2,11 +2,13 @@ package billing
 
 import (
 	"context"
+	"maps"
 	"strings"
 
 	"github.com/nipalab/nipa/ee/storageusage"
 	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/snow"
+	"github.com/nipalab/nipa/internal/usecase"
 )
 
 // Subscription is the provider-neutral subscription billing applies.
@@ -34,6 +36,7 @@ type ledger interface {
 	BillingOwner(ctx context.Context, orgID snow.ID) (snow.ID, error)
 	SetComputedQuota(ctx context.Context, userID snow.ID, quota int64) error
 	OwnerStorage(ctx context.Context, userID snow.ID) (*storageusage.OwnerStorage, error)
+	ComputedQuota(ctx context.Context, userID snow.ID) (*int64, error)
 }
 
 // transactor runs fn in one transaction; *dbtx.Transactor satisfies it.
@@ -48,6 +51,7 @@ type Service struct {
 	tx       transactor
 	cfg      Config
 	provider Provider
+	audit    usecase.AuditRecorder
 }
 
 func New(repo repository, ledger ledger, tx transactor, cfg Config) *Service {
@@ -61,10 +65,20 @@ func (s *Service) WithProvider(provider Provider) *Service {
 	return s
 }
 
+// WithAudit records billing changes, subscription updates and seat refusals.
+func (s *Service) WithAudit(rec usecase.AuditRecorder) *Service {
+	s.audit = rec
+	return s
+}
+
 // Apply stores the subscription unless a newer provider update is already
 // stored, then recomputes the user's quota from their live subscription. The
 // admin override is never touched.
 func (s *Service) Apply(ctx context.Context, sub Subscription) error {
+	return s.apply(ctx, sub, nil)
+}
+
+func (s *Service) apply(ctx context.Context, sub Subscription, event *Event) error {
 	if strings.TrimSpace(sub.ProviderSubscriptionID) == "" || sub.UserID == 0 || sub.ProviderUpdatedAt.IsZero() {
 		return domain.NewErrorUser("subscription id, user and provider update time are required")
 	}
@@ -72,15 +86,98 @@ func (s *Service) Apply(ctx context.Context, sub Subscription) error {
 		if err := s.repo.LockOwner(ctx, sub.UserID); err != nil {
 			return err
 		}
-		if _, err := s.repo.UpsertSubscription(ctx, sub); err != nil {
+		before, err := s.auditedState(ctx, sub.UserID)
+		if err != nil {
+			return err
+		}
+		written, err := s.repo.UpsertSubscription(ctx, sub)
+		if err != nil {
 			return err
 		}
 		entitlement, err := s.Entitlement(ctx, sub.UserID)
 		if err != nil {
 			return err
 		}
-		return s.ledger.SetComputedQuota(ctx, sub.UserID, entitlement.QuotaBytes)
+		if err := s.ledger.SetComputedQuota(ctx, sub.UserID, entitlement.QuotaBytes); err != nil {
+			return err
+		}
+		if !written || before == nil {
+			return nil
+		}
+		return s.audit.Record(ctx, s.appliedAudit(ctx, sub, before, entitlement, event))
 	})
+}
+
+type billingState struct {
+	live  *Subscription
+	quota *int64
+}
+
+// auditedState reads the live subscription and stored computed quota before a
+// change; nil when auditing is off.
+func (s *Service) auditedState(ctx context.Context, userID snow.ID) (*billingState, error) {
+	if s.audit == nil {
+		return nil, nil
+	}
+	live, err := s.repo.LiveSubscription(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	quota, err := s.ledger.ComputedQuota(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	return &billingState{live: live, quota: quota}, nil
+}
+
+// appliedAudit attributes the change to the authenticated caller when there
+// is one (plan change, admin sync or replay), otherwise to the provider.
+func (s *Service) appliedAudit(ctx context.Context, sub Subscription, before *billingState, entitlement Entitlement, event *Event) domain.AuditEntry {
+	old := map[string]any{"quota_bytes": nil}
+	if before.quota != nil {
+		old["quota_bytes"] = *before.quota
+	}
+	if before.live != nil {
+		maps.Copy(old, subscriptionFields(*before.live))
+	}
+	updated := subscriptionFields(sub)
+	updated["quota_bytes"] = entitlement.QuotaBytes
+	metadata := map[string]any{"owner_id": sub.UserID.Base36(), "old": old, "new": updated}
+	if event != nil {
+		metadata["event_id"] = event.ID
+		metadata["event_type"] = event.Type
+	}
+	entry := domain.AuditEntry{
+		Action:     domain.AuditBillingSubscriptionApplied,
+		TargetType: domain.AuditTargetSubscription,
+		TargetID:   sub.ProviderSubscriptionID,
+		Metadata:   metadata,
+	}
+	if _, ok := domain.ClaimFromContext(ctx); !ok {
+		entry.ActorType = domain.AuditActorProvider
+		if s.provider != nil {
+			entry.ActorLabel = s.provider.Name()
+		}
+	}
+	return entry
+}
+
+func subscriptionFields(sub Subscription) map[string]any {
+	return map[string]any{
+		"subscription_id": sub.ProviderSubscriptionID,
+		"status":          sub.Status,
+		"seats":           sub.Seats,
+		"storage_packs":   sub.StoragePacks,
+		"interval":        sub.Interval,
+	}
+}
+
+// record stores an entry; a nil recorder records nothing.
+func (s *Service) record(ctx context.Context, entry domain.AuditEntry) error {
+	if s.audit == nil {
+		return nil
+	}
+	return s.audit.Record(ctx, entry)
 }
 
 // Entitlement resolves a user's entitlement from their live subscription.

@@ -208,6 +208,12 @@ func main() {
 		Audit:              postgres.NewAuditRepository(dbConn),
 	}, deps)
 	reg := serverapp.NewRegistry(uc)
+	if storageLedger != nil {
+		storageLedger.WithAudit(uc.Audit)
+	}
+	if billingSetup != nil {
+		billingSetup.service.WithAudit(uc.Audit)
+	}
 	commonUsecase, orgUsecase, authUsecase := uc.Common, uc.Org, uc.Auth
 
 	dispatchers := []serverapp.Dispatcher{webhookDispatcher}

@@ -41,9 +41,15 @@ func WithTx(ctx context.Context, tx *sql.Tx) context.Context {
 	return context.WithValue(ctx, txKey{}, tx)
 }
 
+// Detach returns a context whose queries run outside any transaction ctx
+// carries, e.g. to persist a record that must survive the caller's rollback.
+func Detach(ctx context.Context) context.Context {
+	return context.WithValue(ctx, txKey{}, (*sql.Tx)(nil))
+}
+
 func txFromContext(ctx context.Context) (*sql.Tx, bool) {
 	tx, ok := ctx.Value(txKey{}).(*sql.Tx)
-	return tx, ok
+	return tx, ok && tx != nil
 }
 
 // DB wraps a database handle so queries run inside the transaction carried by

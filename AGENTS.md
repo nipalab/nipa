@@ -63,6 +63,11 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   `preview.DecodeModel` rendered with three.js, audio compare via `AudioDiff`
   (`preview.DecodeAudio` waveforms/spectrograms/LUFS + WAV playback through
   WebAudio), CSV/TSV cell diffs via `TableDiff` (`preview.DiffTables`),
+  Unity YAML scene/prefab/asset structural diffs via `SceneDiff`
+  (`preview.ParseUnityYAML` + `DiffScenes`, GUIDs resolved from a cached
+  per-clone `.meta` index dropped on `.meta` change notices; Godot
+  `.tscn`/`.tres`/`project.godot`/`.import` through
+  `preview.ParseGodotResource`),
   Unity `.meta` warnings via `MetaWarnings` (`internal/unitymeta`),
   clone with sign-in via `AccountStatus`/`SignIn`/`SignInSSH`/
   `ListProjects`/`RemoteBranches`/`RemoteTree`/`Clone` (dialog: server →
@@ -143,7 +148,11 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   `DecodeModel` glTF/GLB/OBJ stats with world bounds and referenced files;
   `DecodeAudio` WAV/AIFF/FLAC/Vorbis/MP3 analysis (peaks, spectrogram,
   BS.1770 loudness, playback WAV); `ParseTable`/`DiffTables` CSV/TSV cell
-  diffs;
+  diffs; `ParseUnityYAML` (Force Text Unity files → `Scene` objects with
+  flattened props, GUIDs through a caller-supplied resolver) and
+  `DiffScenes` (ID-matched object/prop/dependency changes, `KindScene`);
+  `ParseGodotResource` (Godot text resources over `internal/godotres`,
+  nodes keyed by path, ext/sub resource references rendered);
   `MaxPixels` checked before allocating, half of it for float), `Downscale`/
   `DownscaleFloat`/`PackHDR` and `CompareImages` (changed pixels/ratio/max
   delta/bbox; transparent pixels compare equal). Block decoders are checked
@@ -153,6 +162,10 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   for pending changes: missing, orphaned, not staged, GUID changed.
   `internal/godotmeta` is its Godot twin for `.import`/`.uid` sidecars
   (nearest `project.godot`, `.gdignore`/hidden dirs skipped, `UID` parser).
+  `internal/godotres` (pure) parses `.tscn`/`.tres`/`project.godot`/
+  `.import` into header, ordered sections (attrs + raw multi-line props) and
+  `Section.Identity()`, and `Write` round-trips the input byte for byte
+  (fuzzed); the planned `Merge3` builds on it.
 - **Unity plugin** (`plugins/unity/com.nipalab.nipa`, Apache 2.0, design in
   `docs/UNITY_PLUGIN.md`, plan in `docs/plans/UNITY_PLUGIN.md`): UPM package
   over the daemon JSON bridge. `Editor/Core` is engine-free C# (`DaemonClient`
@@ -786,7 +799,16 @@ gRPC interceptors attach `domain.RequestMeta` (client IP through
 `ratelimit.ClientIP` + `RATE_LIMIT_TRUSTED_PROXIES`, user agent); entries
 without a claim are `system` (SaaS signup/OAuth). Super admins read it at
 `GET /api/v1/admin/audit` (actor/org/project/action prefix/target/since/until,
-keyset `after`, `next_cursor`).
+keyset `after`, `next_cursor`). On `nipad-ee`, `ee/billing.Service` and
+`ee/storageusage.Ledger` take the same recorder (`WithAudit`, wired after
+`BuildUsecases` in `ee/cmd/nipad/main.go`) for the `billing.*` actions:
+quota override set/cleared and owner transfers (through the exported
+`usecase.AuditedWrite`), checkout, plan change, sync, replay, and
+`billing.subscription.applied` inside `Apply`'s transaction only when the
+upsert wrote (claim actor when present, otherwise `provider`/`paddle` with the
+event id; old values read from the live subscription and
+`Ledger.ComputedQuota`). `billing.seat.denied` is the exception: written after
+`Admit` rolls back on a `dbtx.Detach`ed context, failures only logged.
 
 Flow for tracing (design in `docs/TRACING.md`): `internal/obs/tracing.go`
 builds an OTLP gRPC tracer provider (`SetupTracing`), installed globally with

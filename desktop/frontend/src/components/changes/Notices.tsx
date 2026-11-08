@@ -33,6 +33,7 @@ const kindNames: Record<string, string> = {
   video: "Video",
   font: "Font",
   table: "Table",
+  scene: "Scene",
   opaque: "Binary",
 };
 

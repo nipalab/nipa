@@ -32,6 +32,7 @@ type Ledger struct {
 	queries      *sqlcPostgres.Queries
 	transactor   *dbtx.Transactor
 	defaultQuota int64
+	audit        usecase.AuditRecorder
 }
 
 // NewLedger builds a ledger over the postgres database.
@@ -41,6 +42,12 @@ func NewLedger(db *sql.DB, cfg Config) *Ledger {
 		transactor:   dbtx.NewTransactor(db),
 		defaultQuota: cfg.DefaultQuotaBytes,
 	}
+}
+
+// WithAudit records quota overrides and billing-owner transfers.
+func (l *Ledger) WithAudit(rec usecase.AuditRecorder) *Ledger {
+	l.audit = rec
+	return l
 }
 
 // ProjectUsage is one project's slice of an organization's storage usage.
@@ -304,6 +311,19 @@ func (l *Ledger) SetComputedQuota(ctx context.Context, userID snow.ID, quota int
 	}))
 }
 
+// ComputedQuota returns the owner's stored computed (billing) quota; nil when
+// none was recorded.
+func (l *Ledger) ComputedQuota(ctx context.Context, userID snow.ID) (*int64, error) {
+	row, err := l.queries.GetOwnerQuota(ctx, userID.Int64())
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && !row.QuotaBytes.Valid) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, dbError(err)
+	}
+	return &row.QuotaBytes.Int64, nil
+}
+
 // SetQuotaOverride sets the admin override of an owner's quota. A nil quota
 // overrides to unlimited.
 func (l *Ledger) SetQuotaOverride(ctx context.Context, userID snow.ID, quota *int64) error {
@@ -317,11 +337,26 @@ func (l *Ledger) SetQuotaOverride(ctx context.Context, userID snow.ID, quota *in
 	if err := l.ensureActiveUser(ctx, userID); err != nil {
 		return err
 	}
-	return dbError(l.queries.SetOwnerQuotaOverride(ctx, sqlcPostgres.SetOwnerQuotaOverrideParams{
-		UserID:            userID.Int64(),
-		DefaultQuotaBytes: l.defaultQuota,
-		OverrideBytes:     override,
-	}))
+	var old *int64
+	return usecase.AuditedWrite(ctx, l.audit, func(ctx context.Context) error {
+		var err error
+		if old, err = l.auditedOverride(ctx, userID); err != nil {
+			return err
+		}
+		return dbError(l.queries.SetOwnerQuotaOverride(ctx, sqlcPostgres.SetOwnerQuotaOverrideParams{
+			UserID:            userID.Int64(),
+			DefaultQuotaBytes: l.defaultQuota,
+			OverrideBytes:     override,
+		}))
+	}, func() *domain.AuditEntry {
+		if old != nil && *old == override {
+			return nil
+		}
+		return ownerAudit(domain.AuditBillingQuotaOverrideSet, userID, map[string]any{
+			"old_override_bytes": optionalBytes(old),
+			"new_override_bytes": override,
+		})
+	})
 }
 
 // ClearQuotaOverride drops the admin override so the computed quota applies.
@@ -329,7 +364,21 @@ func (l *Ledger) ClearQuotaOverride(ctx context.Context, userID snow.ID) error {
 	if err := l.ensureActiveUser(ctx, userID); err != nil {
 		return err
 	}
-	return dbError(l.queries.ClearOwnerQuotaOverride(ctx, userID.Int64()))
+	var old *int64
+	return usecase.AuditedWrite(ctx, l.audit, func(ctx context.Context) error {
+		var err error
+		if old, err = l.auditedOverride(ctx, userID); err != nil {
+			return err
+		}
+		return dbError(l.queries.ClearOwnerQuotaOverride(ctx, userID.Int64()))
+	}, func() *domain.AuditEntry {
+		if old == nil {
+			return nil
+		}
+		return ownerAudit(domain.AuditBillingQuotaOverrideCleared, userID, map[string]any{
+			"old_override_bytes": *old,
+		})
+	})
 }
 
 // SetBillingOwner transfers an organization to another billing owner.
@@ -337,10 +386,71 @@ func (l *Ledger) SetBillingOwner(ctx context.Context, orgID, userID snow.ID) err
 	if err := l.ensureActiveUser(ctx, userID); err != nil {
 		return err
 	}
-	return dbError(l.queries.UpsertBillingOwner(ctx, sqlcPostgres.UpsertBillingOwnerParams{
-		OrgID:  orgID.Int64(),
-		UserID: userID.Int64(),
-	}))
+	var old snow.ID
+	return usecase.AuditedWrite(ctx, l.audit, func(ctx context.Context) error {
+		if l.audit != nil {
+			if _, err := l.queries.LockOrgForBillingOwner(ctx, orgID.Int64()); err != nil {
+				return dbError(err)
+			}
+			var err error
+			if old, err = l.BillingOwner(ctx, orgID); err != nil {
+				return err
+			}
+		}
+		return dbError(l.queries.UpsertBillingOwner(ctx, sqlcPostgres.UpsertBillingOwnerParams{
+			OrgID:  orgID.Int64(),
+			UserID: userID.Int64(),
+		}))
+	}, func() *domain.AuditEntry {
+		if old == userID {
+			return nil
+		}
+		return &domain.AuditEntry{
+			Action:     domain.AuditBillingOwnerTransferred,
+			OrgID:      domain.IDPtr(orgID),
+			TargetType: domain.AuditTargetOrg,
+			TargetID:   orgID.Base36(),
+			Metadata: map[string]any{
+				"old_owner_id": old.Base36(),
+				"new_owner_id": userID.Base36(),
+			},
+		}
+	})
+}
+
+// auditedOverride reads the owner's current override for the audit entry; nil
+// when there is none or auditing is off.
+func (l *Ledger) auditedOverride(ctx context.Context, userID snow.ID) (*int64, error) {
+	if l.audit == nil {
+		return nil, nil
+	}
+	if err := l.queries.LockBillingOwner(ctx, userID.Int64()); err != nil {
+		return nil, dbError(err)
+	}
+	row, err := l.queries.GetOwnerQuota(ctx, userID.Int64())
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && !row.OverrideBytes.Valid) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, dbError(err)
+	}
+	return &row.OverrideBytes.Int64, nil
+}
+
+func ownerAudit(action string, userID snow.ID, metadata map[string]any) *domain.AuditEntry {
+	return &domain.AuditEntry{
+		Action:     action,
+		TargetType: domain.AuditTargetUser,
+		TargetID:   userID.Base36(),
+		Metadata:   metadata,
+	}
+}
+
+func optionalBytes(v *int64) any {
+	if v == nil {
+		return nil
+	}
+	return *v
 }
 
 // ensureActiveUser rejects unknown or deleted users with a 404 instead of

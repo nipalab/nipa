@@ -107,3 +107,37 @@ func FuzzParseTable(f *testing.F) {
 		}
 	})
 }
+
+func FuzzParseUnityYAML(f *testing.F) {
+	addFixtureSeeds(f, "unity/*")
+	f.Add([]byte("%YAML 1.1\n--- !u!1 &1 stripped\nGameObject:\n  m_PrefabInstance: {fileID: 1}\n"))
+	f.Fuzz(func(t *testing.T, data []byte) {
+		s, err := ParseUnityYAML(data, func(g string) string { return "Assets/" + g })
+		if err != nil {
+			return
+		}
+		if d := DiffScenes(s, s); len(d.Changes) != 0 {
+			t.Fatalf("scene differs from itself: %+v", d.Changes[0])
+		}
+		if d := DiffScenes(nil, s); d.Added != len(s.Objects) {
+			t.Fatalf("added %d of %d objects", d.Added, len(s.Objects))
+		}
+	})
+}
+
+func FuzzParseGodotResource(f *testing.F) {
+	addFixtureSeeds(f, "godot/*")
+	f.Add([]byte("[node name=\"A\" parent=\".\" instance=ExtResource(\"1\")]\nx = SubResource(\"2\")\n"))
+	f.Fuzz(func(t *testing.T, data []byte) {
+		s, err := ParseGodotResource(data)
+		if err != nil {
+			return
+		}
+		if d := DiffScenes(s, s); len(d.Changes) != 0 {
+			t.Fatalf("scene differs from itself: %+v", d.Changes[0])
+		}
+		if d := DiffScenes(nil, s); d.Added != len(s.Objects) {
+			t.Fatalf("added %d of %d objects", d.Added, len(s.Objects))
+		}
+	})
+}

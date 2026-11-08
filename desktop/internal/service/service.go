@@ -107,6 +107,7 @@ type Service struct {
 	activity  map[string]RepoActivity
 	pending   *Navigation
 	upd       *updates
+	guids     guidIndex
 }
 
 func New(dial Dialer, store RepoStore, pick FolderPicker) *Service {
@@ -341,6 +342,7 @@ func (s *Service) follow(sess Session, root string) {
 			if err != nil {
 				return
 			}
+			s.invalidateGUIDs(root, change.GetPaths())
 			s.emit(EventRepoChanged, RepoChanged{Root: root, Paths: change.GetPaths()})
 		}
 	}()

@@ -57,7 +57,7 @@ Sonar never compile it.
 - `internal/service`: the Wails-bound API (`Connect`, `Repos`, `PickRepo`,
   `AddRepo`, `RemoveRepo`; Changes screen: `Changes`, `Stage`, `Unstage`,
   `Discard`, `FileDiff`, `ImageDiff`, `ModelDiff`, `AudioDiff`, `TableDiff`,
-  `MetaWarnings`, `Push`, `Update`; Locks: `LockStatus`, `Lock`, `Unlock`,
+  `SceneDiff`, `MetaWarnings`, `Push`, `Update`; Locks: `LockStatus`, `Lock`, `Unlock`,
   `PickFile`, `OpenFile`; Clone: `AccountStatus`, `SignIn`, `SignInSSH`,
   `ListProjects`, `RemoteBranches`, `RemoteTree`, `ChooseFolder`, `Clone`,
   `SetSparse`; History: `History`, `CommitFiles`, `Branches`, `CreateBranch`,
@@ -148,6 +148,25 @@ Sonar never compile it.
   key), otherwise by content. Changed cells show old and new value, added
   and removed rows/columns are tinted, moved rows marked; long tables start
   on "Only changed rows". A switch shows the plain text diff instead.
+- Scene viewer (`SceneDiff.tsx`): `SceneDiff` in the service parses both
+  sides of a Unity Force Text scene, prefab or asset (`.unity .prefab .asset
+  .mat .anim .controller .overrideController .physicMaterial`, 16 MiB each)
+  with `preview.ParseUnityYAML` and returns `preview.DiffScenes`: objects
+  matched by fileID, a collapsible GameObject/component tree with
+  added/removed/changed/moved badges and `old → new` property rows, plus the
+  dependency paths that appeared or disappeared. GUIDs resolve to asset paths
+  through an index of the working copy's `Assets/` and `Packages/` `.meta`
+  files (per clone and Unity project folder, dropped when a `repo:changed`
+  notice touches a `.meta`); revision sides use the same index and an
+  unknown GUID shows as `guid:<guid>`. Binary-serialized assets are refused
+  with a "set Asset Serialization to Force Text" hint. Godot text
+  resources (`.tscn .tres`, plus `project.godot` and `.import` as plain
+  sections) go through `preview.ParseGodotResource` instead and need no
+  index: nodes are matched by their path below the root (resource ids
+  renumber on save), `ExtResource`/`SubResource` values show the resource
+  path or `sub:<type>#<id>`, and connections appear as
+  `signal from → to.method` entries. Binary `.scn`/`.res` stay opaque. A
+  Structure/Text switch shows the line diff (with comments) instead.
 - Unity `.meta` checks: `MetaWarnings` runs `unitymeta.Lint` over the
   status of every Unity project in the clone (an `Assets/` folder next to
   `ProjectSettings/`) and the Changes screen lists the warnings above the
@@ -291,7 +310,9 @@ Linux/macOS/Windows build matrix with a bindings freshness check).
 |---|---|---|
 | MVP | PNG JPEG GIF WebP BMP TIFF TGA | image: side-by-side, swipe, onion skin, pixel heatmap, blink, channels, synced zoom |
 | MVP | DDS KTX2 EXR HDR PSD/PSB | image + mip/face picker, exposure, PSD layer list |
-| MVP | text, code, Unity/Godot YAML, JSON, shaders | text diff (`internal/diff` hunks) |
+| MVP | text, code, JSON, shaders | text diff (`internal/diff` hunks) |
+| v1 | Unity YAML (`.unity .prefab .asset .mat .anim .controller`) | structural scene diff: object tree, property changes, dependencies; text toggle |
+| v1 | Godot text resources (`.tscn .tres`, `project.godot`, `.import`) | same structural scene diff: node tree, properties, connections, `ext_resource` dependencies |
 | v1 | glTF/GLB OBJ FBX USDZ | 3D: synced orbit cameras, wireframe, stats diff |
 | v1 | WAV OGG FLAC MP3 | waveform + spectrogram, synced A/B playback |
 | v1 | CSV/TSV | cell-level table diff |
@@ -304,7 +325,8 @@ Linux/macOS/Windows build matrix with a bindings freshness check).
 Pure package (no client imports), shared by the daemon and later the server.
 
 - `Classify(path, isBinary) Kind` picks the viewer kind
-  (`image/model/audio/video/font/table/text/opaque`).
+  (`image/model/audio/video/font/table/scene/text/opaque`); a binary
+  scene extension is `opaque`.
 - `DecodeImage(name, data)` decodes PNG/JPEG/GIF/BMP/TIFF/WebP (stdlib +
   `golang.org/x/image`) and TGA (own decoder: true-color, gray, color-mapped,
   RLE, 15/16/24/32 bpp, any origin) into `*image.NRGBA`, with format, bit
@@ -358,6 +380,30 @@ Pure package (no client imports), shared by the daemon and later the server.
   `MaxTableCells`), and `DiffTables(old, new)` aligns columns and rows with
   a longest-increasing-subsequence match on unique keys (content rows get an
   occurrence number), so it stays O(n log n) on large localization tables.
+- `ParseUnityYAML(data, resolve)` splits a Unity text file on its
+  `--- !u!<class> &<fileID>[ stripped]` headers, decodes each document with
+  `go.yaml.in/yaml/v3` and returns a `Scene`: object paths from the
+  GameObject/Transform hierarchy (`Root/Child > Component`, prefab
+  instances by name with their children and stripped objects under them),
+  MonoBehaviours named after their script, properties flattened to
+  `key.path → value` (flow vectors kept whole, one-key lists such as
+  material properties keyed by name, long values clipped with a hash, prefab
+  overrides as `override <fileID>.<propertyPath>`) and references rendered
+  as local object paths or `resolve(guid)` asset paths (`Refs` lists the
+  dependencies). `MaxSceneObjects`/`MaxSceneProps` bound it.
+  `DiffScenes(old, new)` matches objects by ID (document order is ignored),
+  reports added/removed/changed/moved (parent changed) objects with their
+  property changes, the changed objects' ancestors for the tree and the
+  dependency changes.
+- `ParseGodotResource(data)` reads Godot text resources through
+  `internal/godotres` (lossless `Parse`/`Write`, ordered sections and raw
+  property values, `Section.Identity()`): node IDs are paths below the root
+  (`.` for the root, display paths start with its name), types come from
+  `type` or the instanced scene, `ExtResource`/`SubResource` references are
+  rendered as paths or `sub:<type>#<id>` (strings untouched),
+  sub_resources, connections and `editable` entries are their own objects,
+  and any other section (`project.godot`, `.import`) is one object per
+  section. Binary resources (`RSRC`) are refused with `ErrUnsupported`.
 - Float sources keep linear samples in `Image.HDR` (`FloatImage`) while
   `Pixels` is their clamped sRGB rendering, used for `CompareImages`.
   `DownscaleFloat` box-filters them and `PackHDR` packs them into an opaque

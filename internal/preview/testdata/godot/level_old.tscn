@@ -1,0 +1,43 @@
+[gd_scene load_steps=5 format=3 uid="uid://c4k2v8d1h7xqa"]
+
+[ext_resource type="Script" uid="uid://b2x7mfr0q1yna" path="res://scripts/level.gd" id="1_aaaaa"]
+[ext_resource type="Texture2D" path="res://art/tiles.png" id="2_bbbbb"]
+[ext_resource type="Texture2D" path="res://art/old_bg.png" id="3_ccccc"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_ab12c"]
+size = Vector2(32, 32)
+
+[sub_resource type="Curve2D" id="Curve2D_p4th0"]
+_data = {
+"points": PackedVector2Array(0, 0, 0, 0, 10, 20,
+0, 0, 0, 0, 100, 40),
+"tilts": PackedFloat32Array(0, 0)
+}
+point_count = 2
+
+[node name="Level" type="Node2D"]
+script = ExtResource("1_aaaaa")
+metadata/_edit_lock_ = true
+
+[node name="Floor" type="Sprite2D" parent="." groups=["solid"]]
+position = Vector2(0, 240)
+texture = ExtResource("2_bbbbb")
+
+[node name="Body" type="StaticBody2D" parent="."]
+
+[node name="Shape" type="CollisionShape2D" parent="Body"]
+shape = SubResource("RectangleShape2D_ab12c")
+
+[node name="Path" type="Path2D" parent="."]
+curve = SubResource("Curve2D_p4th0")
+
+[node name="Background" type="Sprite2D" parent="."]
+texture = ExtResource("3_ccccc")
+
+[node name="Label" type="Label" parent="."]
+text = "Hello \"world\"
+second line ; not a comment"
+theme_override_colors/font_color = Color(1, 0.5, 0, 1)
+
+[connection signal="body_entered" from="Body" to="." method="_on_enemy_hit"]
+[connection signal="ready" from="." to="Floor" method="_on_ready" binds=[1, "a"]]

@@ -18,6 +18,7 @@ const (
 	KindVideo  Kind = "video"
 	KindFont   Kind = "font"
 	KindTable  Kind = "table"
+	KindScene  Kind = "scene"
 	KindOpaque Kind = "opaque"
 )
 
@@ -39,12 +40,19 @@ var kindByExtension = map[string]Kind{
 	".ttf": KindFont, ".otf": KindFont, ".woff": KindFont, ".woff2": KindFont,
 
 	".csv": KindTable, ".tsv": KindTable,
+
+	".unity": KindScene, ".prefab": KindScene, ".asset": KindScene, ".mat": KindScene,
+	".anim": KindScene, ".controller": KindScene, ".overridecontroller": KindScene,
+	".physicmaterial": KindScene,
+
+	".tscn": KindScene, ".tres": KindScene, ".godot": KindScene, ".import": KindScene,
 }
 
 // Classify picks the viewer kind for a path. Unknown extensions fall back to
-// text or opaque depending on the stored binary flag.
+// text or opaque depending on the stored binary flag, and so do
+// binary-serialized scenes.
 func Classify(path string, isBinary bool) Kind {
-	if kind, ok := kindByExtension[strings.ToLower(filepath.Ext(path))]; ok {
+	if kind, ok := kindByExtension[strings.ToLower(filepath.Ext(path))]; ok && (kind != KindScene || !isBinary) {
 		return kind
 	}
 	if isBinary {

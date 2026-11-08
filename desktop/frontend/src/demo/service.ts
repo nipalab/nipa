@@ -73,6 +73,7 @@ export function createService(scenario: string): typeof Real {
       }),
     AudioDiff: () => ok({ old: clone(d.audio.old), new: clone(d.audio.new) }),
     TableDiff: () => ok(clone(d.table)),
+    SceneDiff: () => ok(clone(d.scene)),
     MetaWarnings: () => ok([{ path: d.ICON, kind: "missing", related: `${d.ICON}.meta`, message: "Missing .meta file: Unity will generate a new GUID" }]),
 
     LockStatus: () => ok(d.locks()),

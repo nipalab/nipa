@@ -27,6 +27,7 @@ describe("DiffViewer notices", () => {
     [{ status: "renamed", oldPath: "b.txt", similarity: 100 }, "File renamed"],
     [{ new: side({ mode: 493 }) }, "File mode changed"],
     [{ hunks: null }, "Empty file"],
+    [{ kind: "scene", hunks: null, old: side({ size: 0 }), new: side({ size: 0 }) }, "Empty file"],
   ] as [Partial<FileDiff>, string][])("explains %o", (over, title) => {
     show(diff(over));
     expect(screen.getByText(title)).toBeInTheDocument();

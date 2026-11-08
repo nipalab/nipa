@@ -226,3 +226,23 @@ func TestLedger_Attribute_ConcurrentQuota(t *testing.T) {
 		`SELECT COALESCE((SELECT used_bytes FROM org_usage WHERE org_id = 1), 0)`).Scan(&used))
 	require.Equal(t, int64(100), used)
 }
+
+func TestLedger_Audit_ErrorPaths(t *testing.T) {
+	ctx := context.Background()
+	db, ledger := newErrorLedger(t)
+	_, err := db.ExecContext(ctx, `INSERT INTO users (id, name, email, password) VALUES (5, 'u', 'u@example.com', 'x')`)
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `DROP TABLE owner_quota CASCADE`)
+	require.NoError(t, err)
+	ledger.WithAudit(usecase.NewAudit(nil, nil, nil))
+	quota := int64(1)
+
+	require.Equal(t, 500, errorCode(ledger.SetQuotaOverride(ctx, snow.ID(5), &quota)))
+	require.Equal(t, 500, errorCode(ledger.ClearQuotaOverride(ctx, snow.ID(5))))
+	_, err = ledger.ComputedQuota(ctx, snow.ID(5))
+	require.Equal(t, 500, errorCode(err))
+
+	_, err = db.ExecContext(ctx, `DROP TABLE org_billing_owner CASCADE`)
+	require.NoError(t, err)
+	require.Equal(t, 500, errorCode(ledger.SetBillingOwner(ctx, snow.ID(1), snow.ID(5))))
+}
