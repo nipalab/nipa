@@ -1,8 +1,16 @@
 @tool
 extends EditorContextMenuPlugin
 
+signal history_requested(clone_path: String)
+signal compare_requested(old_ref: Dictionary, new_ref: Dictionary, title: String)
+
 const LOCK := "Nipa: Lock"
 const UNLOCK := "Nipa: Unlock"
+const HISTORY := "Nipa: History"
+const COMPARE := "Nipa: Compare with last pushed"
+const IMAGE_EXTENSIONS := ["png", "jpg", "jpeg", "webp", "bmp", "tga", "exr", "hdr", "dds", "ktx2", "psd", "svg"]
+
+var slot := CONTEXT_SLOT_FILESYSTEM
 
 var _clone_paths := PackedStringArray()
 var _infos: Array = []
@@ -28,6 +36,17 @@ static func entries_for(infos: Array) -> PackedStringArray:
 	return out
 
 
+# History and compare entries for a single selected file (FileSystem dock only).
+static func file_entries(paths: PackedStringArray) -> PackedStringArray:
+	var out := PackedStringArray()
+	if paths.size() != 1 or paths[0].ends_with("/"):
+		return out
+	out.append(HISTORY)
+	if IMAGE_EXTENSIONS.has(paths[0].get_extension().to_lower()):
+		out.append(COMPARE)
+	return out
+
+
 func _popup_menu(paths: PackedStringArray) -> void:
 	var session := _session()
 	_clone_paths = PackedStringArray()
@@ -46,6 +65,10 @@ func _popup_menu(paths: PackedStringArray) -> void:
 				add_context_menu_item(entry, _on_unlock)
 			_:
 				add_context_menu_item(entry, _on_locked_by)
+	if slot != CONTEXT_SLOT_FILESYSTEM:
+		return
+	for entry in file_entries(paths):
+		add_context_menu_item(entry, _on_history if entry == HISTORY else _on_compare)
 
 
 func _session() -> Object:
@@ -78,3 +101,15 @@ func _on_locked_by(_arg: Variant) -> void:
 		if _infos[i].get("state", "free") == "theirs":
 			lines.append("%s is locked by %s" % [_clone_paths[i], _infos[i].get("holder", "")])
 	EditorInterface.get_editor_toaster().push_toast("\n".join(lines), EditorToaster.SEVERITY_WARNING)
+
+
+func _on_history(_arg: Variant) -> void:
+	if _clone_paths.size() == 1:
+		history_requested.emit(_clone_paths[0])
+
+
+func _on_compare(_arg: Variant) -> void:
+	if _clone_paths.size() == 1:
+		var path := _clone_paths[0]
+		compare_requested.emit({"source": "snapshot", "path": path}, {"source": "working", "path": path},
+			"%s: last pushed vs working copy" % path)

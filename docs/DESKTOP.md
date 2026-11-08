@@ -214,6 +214,10 @@ Sonar never compile it.
   is resolved), Skip and Abort. Each other branch offers "Merge into
   <branch>" (confirmation, then the daemon `Merge`); a merge without
   conflicts is pushed right away.
+- Godot scenes: the daemon's `MergeGodotResource` (see `docs/DAEMON.md`)
+  merges a conflicted `.tscn`/`.tres` section by section without markers.
+  The Godot add-on uses it; the desktop Conflicts tab can adopt it as a
+  "Merge scene" action before falling back to the text editor.
 - Conflicts tab (shown while a merge or revert waits with conflicts, with
   the open count): the conflicted files with their kind (both changed, both
   added, deleted on one side) and resolved state; the merge banner reads

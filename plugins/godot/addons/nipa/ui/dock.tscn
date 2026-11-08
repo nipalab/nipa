@@ -24,6 +24,66 @@ text = "Reconnect"
 layout_mode = 2
 text = "Branch: -"
 
+[node name="Refs" type="HBoxContainer" parent="."]
+layout_mode = 2
+
+[node name="RefPicker" type="OptionButton" parent="Refs"]
+layout_mode = 2
+size_flags_horizontal = 3
+tooltip_text = "Switch to a branch, or check out a release tag (detached)."
+fit_to_longest_item = false
+
+[node name="MergeButton" type="Button" parent="Refs"]
+layout_mode = 2
+tooltip_text = "Merge another branch into the current branch."
+text = "Merge branch..."
+
+[node name="DetachedBanner" type="HBoxContainer" parent="."]
+visible = false
+layout_mode = 2
+
+[node name="DetachedLabel" type="Label" parent="DetachedBanner"]
+layout_mode = 2
+size_flags_horizontal = 3
+autowrap_mode = 3
+
+[node name="BackButton" type="Button" parent="DetachedBanner"]
+layout_mode = 2
+text = "Back to branch"
+
+[node name="PendingBanner" type="VBoxContainer" parent="."]
+visible = false
+layout_mode = 2
+
+[node name="PendingLabel" type="Label" parent="PendingBanner"]
+layout_mode = 2
+autowrap_mode = 3
+
+[node name="Buttons" type="HFlowContainer" parent="PendingBanner"]
+layout_mode = 2
+
+[node name="ConflictsButton" type="Button" parent="PendingBanner/Buttons"]
+layout_mode = 2
+text = "Conflicts"
+
+[node name="FinishButton" type="Button" parent="PendingBanner/Buttons"]
+layout_mode = 2
+tooltip_text = "Commit the merge."
+text = "Finish"
+
+[node name="ContinueButton" type="Button" parent="PendingBanner/Buttons"]
+layout_mode = 2
+tooltip_text = "Commit this revert step and go on."
+text = "Continue"
+
+[node name="SkipButton" type="Button" parent="PendingBanner/Buttons"]
+layout_mode = 2
+text = "Skip"
+
+[node name="AbortButton" type="Button" parent="PendingBanner/Buttons"]
+layout_mode = 2
+text = "Abort"
+
 [node name="OutOfDate" type="HBoxContainer" parent="."]
 visible = false
 layout_mode = 2
@@ -79,3 +139,22 @@ title = "Locked by someone else"
 initial_position = 1
 size = Vector2i(420, 140)
 ok_button_text = "Reload from disk"
+
+[node name="MergeDialog" type="ConfirmationDialog" parent="."]
+title = "Merge a branch"
+initial_position = 1
+size = Vector2i(360, 120)
+ok_button_text = "Merge"
+
+[node name="Body" type="VBoxContainer" parent="MergeDialog"]
+offset_left = 8.0
+offset_top = 8.0
+offset_right = 352.0
+offset_bottom = 71.0
+
+[node name="Prompt" type="Label" parent="MergeDialog/Body"]
+layout_mode = 2
+text = "Merge this branch into the current one:"
+
+[node name="BranchPicker" type="OptionButton" parent="MergeDialog/Body"]
+layout_mode = 2

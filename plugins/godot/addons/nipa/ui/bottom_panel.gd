@@ -7,6 +7,9 @@ var _session: Object
 @onready var _refresh_button: Button = $Locks/Toolbar/RefreshButton
 @onready var _release_button: Button = $Locks/Toolbar/ReleaseButton
 @onready var _summary: Label = $Locks/Toolbar/Summary
+@onready var conflicts_tab: Control = $Conflicts
+@onready var history_tab: Control = $History
+@onready var image_diff_tab: Control = get_node("Image diff")
 
 
 func _ready() -> void:
@@ -16,6 +19,8 @@ func _ready() -> void:
 	_refresh_button.pressed.connect(_on_refresh_pressed)
 	_release_button.pressed.connect(_on_release_pressed)
 	_tree.item_selected.connect(_update_release_button)
+	conflicts_tab.compare_requested.connect(show_image_diff)
+	history_tab.compare_requested.connect(show_image_diff)
 	_session = Engine.get_singleton("Nipa") if Engine.has_singleton("Nipa") else null
 	if _session:
 		_session.locks_changed.connect(_on_locks_changed)
@@ -67,3 +72,18 @@ func _on_release_pressed() -> void:
 	var lock := _selected_lock()
 	if _session and lock.get("can_release", false):
 		_session.request_unlock(PackedStringArray([lock.get("path", "")]), true)
+
+
+func show_conflicts() -> void:
+	current_tab = conflicts_tab.get_index()
+	conflicts_tab.refresh_from_daemon()
+
+
+func show_history(clone_path: String) -> void:
+	current_tab = history_tab.get_index()
+	history_tab.show_history(clone_path)
+
+
+func show_image_diff(old_ref: Dictionary, new_ref: Dictionary, title: String) -> void:
+	current_tab = image_diff_tab.get_index()
+	image_diff_tab.show_diff(old_ref, new_ref, title)

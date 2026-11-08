@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <memory>
 #include <optional>
@@ -11,6 +12,7 @@
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
+#include <godot_cpp/variant/packed_byte_array.hpp>
 #include <godot_cpp/variant/packed_string_array.hpp>
 #include <godot_cpp/variant/string.hpp>
 
@@ -71,6 +73,28 @@ public:
                                             const godot::String& passphrase);
     godot::Ref<NipaRequest> request_refresh();
 
+    godot::PackedStringArray get_tag_names() const;
+    godot::Dictionary get_head() const;
+    godot::Dictionary get_conflicts() const;
+    godot::String get_commit_link(const godot::String& commit_id) const;
+    godot::Ref<NipaRequest> request_switch_tag(const godot::String& tag);
+    godot::Ref<NipaRequest> request_merge(const godot::String& source_branch);
+    godot::Ref<NipaRequest> request_merge_abort();
+    godot::Ref<NipaRequest> request_revert(const godot::String& target);
+    godot::Ref<NipaRequest> request_revert_continue();
+    godot::Ref<NipaRequest> request_revert_skip();
+    godot::Ref<NipaRequest> request_revert_abort();
+    godot::Ref<NipaRequest> request_conflicts();
+    godot::Ref<NipaRequest> request_resolve(const godot::String& clone_path, const godot::String& choice,
+                                            const godot::PackedByteArray& content);
+    godot::Ref<NipaRequest> request_merge_godot(const godot::String& clone_path);
+    godot::Ref<NipaRequest> request_prepare_merge_tool(const godot::String& clone_path);
+    godot::PackedStringArray build_merge_command(const godot::String& command, const godot::Dictionary& paths) const;
+    bool has_conflict_markers(const godot::PackedByteArray& content) const;
+    godot::Ref<NipaRequest> request_history(const godot::String& clone_path, const godot::String& start, int limit);
+    godot::Ref<NipaRequest> request_preview(const godot::Dictionary& old_ref, const godot::Dictionary& new_ref,
+                                            int threshold, int max_size);
+
     void configure_locks(const godot::PackedStringArray& extensions, bool strict_read_only);
     godot::Dictionary get_lock_info(const godot::String& clone_path) const;
     godot::Array get_locks() const;
@@ -86,6 +110,7 @@ public:
 
 private:
     godot::Ref<NipaRequest> track(std::int64_t id);
+    godot::Ref<NipaRequest> track_or_closed(const std::function<std::int64_t(session::Session&)>& submit);
     void dispatch(const session::Event& event);
     void apply_lock_options();
 };

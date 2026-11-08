@@ -1598,6 +1598,182 @@ func (x *ResolveConflictRequest) GetContent() []byte {
 	return nil
 }
 
+// MergeGodotResourceRequest runs the Godot-aware three-way merge
+// (internal/godotres) over one conflicted .tscn/.tres of the pending merge or
+// revert. The working copy is not touched: a clean result is applied with
+// ResolveConflict{choice: content}.
+type MergeGodotResourceRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Root          string                 `protobuf:"bytes,1,opt,name=root,proto3" json:"root,omitempty"`
+	Path          string                 `protobuf:"bytes,2,opt,name=path,proto3" json:"path,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MergeGodotResourceRequest) Reset() {
+	*x = MergeGodotResourceRequest{}
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[28]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MergeGodotResourceRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MergeGodotResourceRequest) ProtoMessage() {}
+
+func (x *MergeGodotResourceRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[28]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MergeGodotResourceRequest.ProtoReflect.Descriptor instead.
+func (*MergeGodotResourceRequest) Descriptor() ([]byte, []int) {
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{28}
+}
+
+func (x *MergeGodotResourceRequest) GetRoot() string {
+	if x != nil {
+		return x.Root
+	}
+	return ""
+}
+
+func (x *MergeGodotResourceRequest) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+type GodotMergeConflict struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Section       string                 `protobuf:"bytes,1,opt,name=section,proto3" json:"section,omitempty"` // section identity, e.g. node name="Player" parent="."; empty for the lines before the first section
+	Key           string                 `protobuf:"bytes,2,opt,name=key,proto3" json:"key,omitempty"`         // attribute or property; empty for the whole section
+	Message       string                 `protobuf:"bytes,3,opt,name=message,proto3" json:"message,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GodotMergeConflict) Reset() {
+	*x = GodotMergeConflict{}
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[29]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GodotMergeConflict) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GodotMergeConflict) ProtoMessage() {}
+
+func (x *GodotMergeConflict) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[29]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GodotMergeConflict.ProtoReflect.Descriptor instead.
+func (*GodotMergeConflict) Descriptor() ([]byte, []int) {
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{29}
+}
+
+func (x *GodotMergeConflict) GetSection() string {
+	if x != nil {
+		return x.Section
+	}
+	return ""
+}
+
+func (x *GodotMergeConflict) GetKey() string {
+	if x != nil {
+		return x.Key
+	}
+	return ""
+}
+
+func (x *GodotMergeConflict) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
+type MergeGodotResourceResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Merged        []byte                 `protobuf:"bytes,1,opt,name=merged,proto3" json:"merged,omitempty"` // the merged file; only a best effort (ours wins) when clean is false
+	Clean         bool                   `protobuf:"varint,2,opt,name=clean,proto3" json:"clean,omitempty"`
+	Conflicts     []*GodotMergeConflict  `protobuf:"bytes,3,rep,name=conflicts,proto3" json:"conflicts,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MergeGodotResourceResponse) Reset() {
+	*x = MergeGodotResourceResponse{}
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[30]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MergeGodotResourceResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MergeGodotResourceResponse) ProtoMessage() {}
+
+func (x *MergeGodotResourceResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[30]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MergeGodotResourceResponse.ProtoReflect.Descriptor instead.
+func (*MergeGodotResourceResponse) Descriptor() ([]byte, []int) {
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{30}
+}
+
+func (x *MergeGodotResourceResponse) GetMerged() []byte {
+	if x != nil {
+		return x.Merged
+	}
+	return nil
+}
+
+func (x *MergeGodotResourceResponse) GetClean() bool {
+	if x != nil {
+		return x.Clean
+	}
+	return false
+}
+
+func (x *MergeGodotResourceResponse) GetConflicts() []*GodotMergeConflict {
+	if x != nil {
+		return x.Conflicts
+	}
+	return nil
+}
+
 type DiffRequest struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
 	Root              string                 `protobuf:"bytes,1,opt,name=root,proto3" json:"root,omitempty"`
@@ -1617,7 +1793,7 @@ type DiffRequest struct {
 
 func (x *DiffRequest) Reset() {
 	*x = DiffRequest{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[28]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1629,7 +1805,7 @@ func (x *DiffRequest) String() string {
 func (*DiffRequest) ProtoMessage() {}
 
 func (x *DiffRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[28]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1642,7 +1818,7 @@ func (x *DiffRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DiffRequest.ProtoReflect.Descriptor instead.
 func (*DiffRequest) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{28}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *DiffRequest) GetRoot() string {
@@ -1735,7 +1911,7 @@ type DiffEvent struct {
 
 func (x *DiffEvent) Reset() {
 	*x = DiffEvent{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[29]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1747,7 +1923,7 @@ func (x *DiffEvent) String() string {
 func (*DiffEvent) ProtoMessage() {}
 
 func (x *DiffEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[29]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1760,7 +1936,7 @@ func (x *DiffEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DiffEvent.ProtoReflect.Descriptor instead.
 func (*DiffEvent) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{29}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *DiffEvent) GetEvent() isDiffEvent_Event {
@@ -1819,7 +1995,7 @@ type DiffFileSide struct {
 
 func (x *DiffFileSide) Reset() {
 	*x = DiffFileSide{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[30]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1831,7 +2007,7 @@ func (x *DiffFileSide) String() string {
 func (*DiffFileSide) ProtoMessage() {}
 
 func (x *DiffFileSide) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[30]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1844,7 +2020,7 @@ func (x *DiffFileSide) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DiffFileSide.ProtoReflect.Descriptor instead.
 func (*DiffFileSide) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{30}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *DiffFileSide) GetPath() string {
@@ -1904,7 +2080,7 @@ type DiffFile struct {
 
 func (x *DiffFile) Reset() {
 	*x = DiffFile{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[31]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1916,7 +2092,7 @@ func (x *DiffFile) String() string {
 func (*DiffFile) ProtoMessage() {}
 
 func (x *DiffFile) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[31]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1929,7 +2105,7 @@ func (x *DiffFile) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DiffFile.ProtoReflect.Descriptor instead.
 func (*DiffFile) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{31}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *DiffFile) GetPath() string {
@@ -2022,7 +2198,7 @@ type DiffFileEvent struct {
 
 func (x *DiffFileEvent) Reset() {
 	*x = DiffFileEvent{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[32]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2034,7 +2210,7 @@ func (x *DiffFileEvent) String() string {
 func (*DiffFileEvent) ProtoMessage() {}
 
 func (x *DiffFileEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[32]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2047,7 +2223,7 @@ func (x *DiffFileEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DiffFileEvent.ProtoReflect.Descriptor instead.
 func (*DiffFileEvent) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{32}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *DiffFileEvent) GetEvent() isDiffFileEvent_Event {
@@ -2104,7 +2280,7 @@ type BlobRef struct {
 
 func (x *BlobRef) Reset() {
 	*x = BlobRef{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[33]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2116,7 +2292,7 @@ func (x *BlobRef) String() string {
 func (*BlobRef) ProtoMessage() {}
 
 func (x *BlobRef) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[33]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2129,7 +2305,7 @@ func (x *BlobRef) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BlobRef.ProtoReflect.Descriptor instead.
 func (*BlobRef) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{33}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *BlobRef) GetSource() string {
@@ -2163,7 +2339,7 @@ type ReadBlobRequest struct {
 
 func (x *ReadBlobRequest) Reset() {
 	*x = ReadBlobRequest{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[34]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2175,7 +2351,7 @@ func (x *ReadBlobRequest) String() string {
 func (*ReadBlobRequest) ProtoMessage() {}
 
 func (x *ReadBlobRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[34]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2188,7 +2364,7 @@ func (x *ReadBlobRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadBlobRequest.ProtoReflect.Descriptor instead.
 func (*ReadBlobRequest) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{34}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *ReadBlobRequest) GetRoot() string {
@@ -2218,7 +2394,7 @@ type BlobInfo struct {
 
 func (x *BlobInfo) Reset() {
 	*x = BlobInfo{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[35]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2230,7 +2406,7 @@ func (x *BlobInfo) String() string {
 func (*BlobInfo) ProtoMessage() {}
 
 func (x *BlobInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[35]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2243,7 +2419,7 @@ func (x *BlobInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BlobInfo.ProtoReflect.Descriptor instead.
 func (*BlobInfo) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{35}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *BlobInfo) GetPath() string {
@@ -2296,7 +2472,7 @@ type BlobEvent struct {
 
 func (x *BlobEvent) Reset() {
 	*x = BlobEvent{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[36]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2308,7 +2484,7 @@ func (x *BlobEvent) String() string {
 func (*BlobEvent) ProtoMessage() {}
 
 func (x *BlobEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[36]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2321,7 +2497,7 @@ func (x *BlobEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BlobEvent.ProtoReflect.Descriptor instead.
 func (*BlobEvent) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{36}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *BlobEvent) GetEvent() isBlobEvent_Event {
@@ -2397,7 +2573,7 @@ type PreviewRequest struct {
 
 func (x *PreviewRequest) Reset() {
 	*x = PreviewRequest{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[37]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2409,7 +2585,7 @@ func (x *PreviewRequest) String() string {
 func (*PreviewRequest) ProtoMessage() {}
 
 func (x *PreviewRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[37]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2422,7 +2598,7 @@ func (x *PreviewRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PreviewRequest.ProtoReflect.Descriptor instead.
 func (*PreviewRequest) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{37}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *PreviewRequest) GetRoot() string {
@@ -2494,7 +2670,7 @@ type ImageLayer struct {
 
 func (x *ImageLayer) Reset() {
 	*x = ImageLayer{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[38]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2506,7 +2682,7 @@ func (x *ImageLayer) String() string {
 func (*ImageLayer) ProtoMessage() {}
 
 func (x *ImageLayer) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[38]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2519,7 +2695,7 @@ func (x *ImageLayer) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ImageLayer.ProtoReflect.Descriptor instead.
 func (*ImageLayer) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{38}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *ImageLayer) GetName() string {
@@ -2627,7 +2803,7 @@ type ImagePreview struct {
 
 func (x *ImagePreview) Reset() {
 	*x = ImagePreview{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[39]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2639,7 +2815,7 @@ func (x *ImagePreview) String() string {
 func (*ImagePreview) ProtoMessage() {}
 
 func (x *ImagePreview) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[39]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2652,7 +2828,7 @@ func (x *ImagePreview) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ImagePreview.ProtoReflect.Descriptor instead.
 func (*ImagePreview) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{39}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *ImagePreview) GetSide() string {
@@ -2784,7 +2960,7 @@ type PreviewData struct {
 
 func (x *PreviewData) Reset() {
 	*x = PreviewData{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[40]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2796,7 +2972,7 @@ func (x *PreviewData) String() string {
 func (*PreviewData) ProtoMessage() {}
 
 func (x *PreviewData) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[40]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2809,7 +2985,7 @@ func (x *PreviewData) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PreviewData.ProtoReflect.Descriptor instead.
 func (*PreviewData) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{40}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *PreviewData) GetSide() string {
@@ -2846,7 +3022,7 @@ type ImageDiffStats struct {
 
 func (x *ImageDiffStats) Reset() {
 	*x = ImageDiffStats{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[41]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2858,7 +3034,7 @@ func (x *ImageDiffStats) String() string {
 func (*ImageDiffStats) ProtoMessage() {}
 
 func (x *ImageDiffStats) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[41]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2871,7 +3047,7 @@ func (x *ImageDiffStats) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ImageDiffStats.ProtoReflect.Descriptor instead.
 func (*ImageDiffStats) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{41}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *ImageDiffStats) GetChangedPixels() int64 {
@@ -2975,7 +3151,7 @@ type PreviewEvent struct {
 
 func (x *PreviewEvent) Reset() {
 	*x = PreviewEvent{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[42]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2987,7 +3163,7 @@ func (x *PreviewEvent) String() string {
 func (*PreviewEvent) ProtoMessage() {}
 
 func (x *PreviewEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[42]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3000,7 +3176,7 @@ func (x *PreviewEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PreviewEvent.ProtoReflect.Descriptor instead.
 func (*PreviewEvent) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{42}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *PreviewEvent) GetEvent() isPreviewEvent_Event {
@@ -3083,7 +3259,7 @@ type WatchChangesRequest struct {
 
 func (x *WatchChangesRequest) Reset() {
 	*x = WatchChangesRequest{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[43]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3095,7 +3271,7 @@ func (x *WatchChangesRequest) String() string {
 func (*WatchChangesRequest) ProtoMessage() {}
 
 func (x *WatchChangesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[43]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3108,7 +3284,7 @@ func (x *WatchChangesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WatchChangesRequest.ProtoReflect.Descriptor instead.
 func (*WatchChangesRequest) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{43}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *WatchChangesRequest) GetRoot() string {
@@ -3130,7 +3306,7 @@ type RepoChange struct {
 
 func (x *RepoChange) Reset() {
 	*x = RepoChange{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[44]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3142,7 +3318,7 @@ func (x *RepoChange) String() string {
 func (*RepoChange) ProtoMessage() {}
 
 func (x *RepoChange) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[44]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3155,7 +3331,7 @@ func (x *RepoChange) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RepoChange.ProtoReflect.Descriptor instead.
 func (*RepoChange) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{44}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *RepoChange) GetPaths() []string {
@@ -3175,7 +3351,7 @@ type WatchEventsRequest struct {
 
 func (x *WatchEventsRequest) Reset() {
 	*x = WatchEventsRequest{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[45]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3187,7 +3363,7 @@ func (x *WatchEventsRequest) String() string {
 func (*WatchEventsRequest) ProtoMessage() {}
 
 func (x *WatchEventsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[45]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3200,7 +3376,7 @@ func (x *WatchEventsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WatchEventsRequest.ProtoReflect.Descriptor instead.
 func (*WatchEventsRequest) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{45}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *WatchEventsRequest) GetRoot() string {
@@ -3234,7 +3410,7 @@ type TeamEvent struct {
 
 func (x *TeamEvent) Reset() {
 	*x = TeamEvent{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[46]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3246,7 +3422,7 @@ func (x *TeamEvent) String() string {
 func (*TeamEvent) ProtoMessage() {}
 
 func (x *TeamEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[46]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3259,7 +3435,7 @@ func (x *TeamEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TeamEvent.ProtoReflect.Descriptor instead.
 func (*TeamEvent) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{46}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *TeamEvent) GetKind() string {
@@ -3332,7 +3508,7 @@ type RepoActivity struct {
 
 func (x *RepoActivity) Reset() {
 	*x = RepoActivity{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[47]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3344,7 +3520,7 @@ func (x *RepoActivity) String() string {
 func (*RepoActivity) ProtoMessage() {}
 
 func (x *RepoActivity) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[47]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3357,7 +3533,7 @@ func (x *RepoActivity) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RepoActivity.ProtoReflect.Descriptor instead.
 func (*RepoActivity) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{47}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *RepoActivity) GetEvents() []*TeamEvent {
@@ -3397,7 +3573,7 @@ type OpQueued struct {
 
 func (x *OpQueued) Reset() {
 	*x = OpQueued{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[48]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3409,7 +3585,7 @@ func (x *OpQueued) String() string {
 func (*OpQueued) ProtoMessage() {}
 
 func (x *OpQueued) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[48]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3422,7 +3598,7 @@ func (x *OpQueued) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OpQueued.ProtoReflect.Descriptor instead.
 func (*OpQueued) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{48}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *OpQueued) GetAhead() int32 {
@@ -3441,7 +3617,7 @@ type OpStarted struct {
 
 func (x *OpStarted) Reset() {
 	*x = OpStarted{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[49]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3453,7 +3629,7 @@ func (x *OpStarted) String() string {
 func (*OpStarted) ProtoMessage() {}
 
 func (x *OpStarted) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[49]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3466,7 +3642,7 @@ func (x *OpStarted) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OpStarted.ProtoReflect.Descriptor instead.
 func (*OpStarted) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{49}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *OpStarted) GetPhase() string {
@@ -3489,7 +3665,7 @@ type OpProgress struct {
 
 func (x *OpProgress) Reset() {
 	*x = OpProgress{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[50]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3501,7 +3677,7 @@ func (x *OpProgress) String() string {
 func (*OpProgress) ProtoMessage() {}
 
 func (x *OpProgress) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[50]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3514,7 +3690,7 @@ func (x *OpProgress) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OpProgress.ProtoReflect.Descriptor instead.
 func (*OpProgress) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{50}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *OpProgress) GetPhase() string {
@@ -3562,7 +3738,7 @@ type OpFailure struct {
 
 func (x *OpFailure) Reset() {
 	*x = OpFailure{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[51]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3574,7 +3750,7 @@ func (x *OpFailure) String() string {
 func (*OpFailure) ProtoMessage() {}
 
 func (x *OpFailure) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[51]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3587,7 +3763,7 @@ func (x *OpFailure) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OpFailure.ProtoReflect.Descriptor instead.
 func (*OpFailure) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{51}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *OpFailure) GetCode() int32 {
@@ -3614,7 +3790,7 @@ type SyncResult struct {
 
 func (x *SyncResult) Reset() {
 	*x = SyncResult{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[52]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3626,7 +3802,7 @@ func (x *SyncResult) String() string {
 func (*SyncResult) ProtoMessage() {}
 
 func (x *SyncResult) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[52]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3639,7 +3815,7 @@ func (x *SyncResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SyncResult.ProtoReflect.Descriptor instead.
 func (*SyncResult) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{52}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{55}
 }
 
 func (x *SyncResult) GetBranch() string {
@@ -3667,7 +3843,7 @@ type PushResult struct {
 
 func (x *PushResult) Reset() {
 	*x = PushResult{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[53]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[56]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3679,7 +3855,7 @@ func (x *PushResult) String() string {
 func (*PushResult) ProtoMessage() {}
 
 func (x *PushResult) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[53]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[56]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3692,7 +3868,7 @@ func (x *PushResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PushResult.ProtoReflect.Descriptor instead.
 func (*PushResult) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{53}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{56}
 }
 
 func (x *PushResult) GetCommitId() string {
@@ -3729,7 +3905,7 @@ type MergeResult struct {
 
 func (x *MergeResult) Reset() {
 	*x = MergeResult{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[54]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[57]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3741,7 +3917,7 @@ func (x *MergeResult) String() string {
 func (*MergeResult) ProtoMessage() {}
 
 func (x *MergeResult) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[54]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[57]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3754,7 +3930,7 @@ func (x *MergeResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MergeResult.ProtoReflect.Descriptor instead.
 func (*MergeResult) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{54}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{57}
 }
 
 func (x *MergeResult) GetUpToDate() bool {
@@ -3805,7 +3981,7 @@ type RevertResult struct {
 
 func (x *RevertResult) Reset() {
 	*x = RevertResult{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[55]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[58]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3817,7 +3993,7 @@ func (x *RevertResult) String() string {
 func (*RevertResult) ProtoMessage() {}
 
 func (x *RevertResult) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[55]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[58]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3830,7 +4006,7 @@ func (x *RevertResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RevertResult.ProtoReflect.Descriptor instead.
 func (*RevertResult) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{55}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{58}
 }
 
 func (x *RevertResult) GetCommitted() bool {
@@ -3883,7 +4059,7 @@ type OpResult struct {
 
 func (x *OpResult) Reset() {
 	*x = OpResult{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[56]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[59]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3895,7 +4071,7 @@ func (x *OpResult) String() string {
 func (*OpResult) ProtoMessage() {}
 
 func (x *OpResult) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[56]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[59]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3908,7 +4084,7 @@ func (x *OpResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OpResult.ProtoReflect.Descriptor instead.
 func (*OpResult) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{56}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{59}
 }
 
 func (x *OpResult) GetOutcome() isOpResult_Outcome {
@@ -3998,7 +4174,7 @@ type OpEvent struct {
 
 func (x *OpEvent) Reset() {
 	*x = OpEvent{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[57]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[60]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4010,7 +4186,7 @@ func (x *OpEvent) String() string {
 func (*OpEvent) ProtoMessage() {}
 
 func (x *OpEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[57]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[60]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4023,7 +4199,7 @@ func (x *OpEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OpEvent.ProtoReflect.Descriptor instead.
 func (*OpEvent) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{57}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{60}
 }
 
 func (x *OpEvent) GetEvent() isOpEvent_Event {
@@ -4122,7 +4298,7 @@ type ProxyBranchListRequest struct {
 
 func (x *ProxyBranchListRequest) Reset() {
 	*x = ProxyBranchListRequest{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[58]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[61]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4134,7 +4310,7 @@ func (x *ProxyBranchListRequest) String() string {
 func (*ProxyBranchListRequest) ProtoMessage() {}
 
 func (x *ProxyBranchListRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[58]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[61]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4147,7 +4323,7 @@ func (x *ProxyBranchListRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProxyBranchListRequest.ProtoReflect.Descriptor instead.
 func (*ProxyBranchListRequest) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{58}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{61}
 }
 
 func (x *ProxyBranchListRequest) GetRoot() string {
@@ -4173,7 +4349,7 @@ type ProxyBranchListResponse struct {
 
 func (x *ProxyBranchListResponse) Reset() {
 	*x = ProxyBranchListResponse{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[59]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[62]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4185,7 +4361,7 @@ func (x *ProxyBranchListResponse) String() string {
 func (*ProxyBranchListResponse) ProtoMessage() {}
 
 func (x *ProxyBranchListResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[59]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[62]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4198,7 +4374,7 @@ func (x *ProxyBranchListResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProxyBranchListResponse.ProtoReflect.Descriptor instead.
 func (*ProxyBranchListResponse) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{59}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{62}
 }
 
 func (x *ProxyBranchListResponse) GetResponse() *pb.GetListBranchResponse {
@@ -4218,7 +4394,7 @@ type ProxyBranchCreateRequest struct {
 
 func (x *ProxyBranchCreateRequest) Reset() {
 	*x = ProxyBranchCreateRequest{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[60]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[63]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4230,7 +4406,7 @@ func (x *ProxyBranchCreateRequest) String() string {
 func (*ProxyBranchCreateRequest) ProtoMessage() {}
 
 func (x *ProxyBranchCreateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[60]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[63]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4243,7 +4419,7 @@ func (x *ProxyBranchCreateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProxyBranchCreateRequest.ProtoReflect.Descriptor instead.
 func (*ProxyBranchCreateRequest) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{60}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{63}
 }
 
 func (x *ProxyBranchCreateRequest) GetRoot() string {
@@ -4269,7 +4445,7 @@ type ProxyBranchCreateResponse struct {
 
 func (x *ProxyBranchCreateResponse) Reset() {
 	*x = ProxyBranchCreateResponse{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[61]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[64]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4281,7 +4457,7 @@ func (x *ProxyBranchCreateResponse) String() string {
 func (*ProxyBranchCreateResponse) ProtoMessage() {}
 
 func (x *ProxyBranchCreateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[61]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[64]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4294,7 +4470,7 @@ func (x *ProxyBranchCreateResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProxyBranchCreateResponse.ProtoReflect.Descriptor instead.
 func (*ProxyBranchCreateResponse) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{61}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{64}
 }
 
 func (x *ProxyBranchCreateResponse) GetResponse() *pb.CreateBranchResponse {
@@ -4314,7 +4490,7 @@ type ProxyBranchDeleteRequest struct {
 
 func (x *ProxyBranchDeleteRequest) Reset() {
 	*x = ProxyBranchDeleteRequest{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[62]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[65]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4326,7 +4502,7 @@ func (x *ProxyBranchDeleteRequest) String() string {
 func (*ProxyBranchDeleteRequest) ProtoMessage() {}
 
 func (x *ProxyBranchDeleteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[62]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[65]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4339,7 +4515,7 @@ func (x *ProxyBranchDeleteRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProxyBranchDeleteRequest.ProtoReflect.Descriptor instead.
 func (*ProxyBranchDeleteRequest) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{62}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{65}
 }
 
 func (x *ProxyBranchDeleteRequest) GetRoot() string {
@@ -4365,7 +4541,7 @@ type ProxyBranchDeleteResponse struct {
 
 func (x *ProxyBranchDeleteResponse) Reset() {
 	*x = ProxyBranchDeleteResponse{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[63]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[66]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4377,7 +4553,7 @@ func (x *ProxyBranchDeleteResponse) String() string {
 func (*ProxyBranchDeleteResponse) ProtoMessage() {}
 
 func (x *ProxyBranchDeleteResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[63]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[66]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4390,7 +4566,7 @@ func (x *ProxyBranchDeleteResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProxyBranchDeleteResponse.ProtoReflect.Descriptor instead.
 func (*ProxyBranchDeleteResponse) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{63}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{66}
 }
 
 func (x *ProxyBranchDeleteResponse) GetResponse() *pb.DeleteBranchResponse {
@@ -4410,7 +4586,7 @@ type ProxyTreeManifestRequest struct {
 
 func (x *ProxyTreeManifestRequest) Reset() {
 	*x = ProxyTreeManifestRequest{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[64]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[67]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4422,7 +4598,7 @@ func (x *ProxyTreeManifestRequest) String() string {
 func (*ProxyTreeManifestRequest) ProtoMessage() {}
 
 func (x *ProxyTreeManifestRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[64]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[67]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4435,7 +4611,7 @@ func (x *ProxyTreeManifestRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProxyTreeManifestRequest.ProtoReflect.Descriptor instead.
 func (*ProxyTreeManifestRequest) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{64}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{67}
 }
 
 func (x *ProxyTreeManifestRequest) GetRoot() string {
@@ -4461,7 +4637,7 @@ type ProxyTreeManifestResponse struct {
 
 func (x *ProxyTreeManifestResponse) Reset() {
 	*x = ProxyTreeManifestResponse{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[65]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[68]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4473,7 +4649,7 @@ func (x *ProxyTreeManifestResponse) String() string {
 func (*ProxyTreeManifestResponse) ProtoMessage() {}
 
 func (x *ProxyTreeManifestResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[65]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[68]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4486,7 +4662,7 @@ func (x *ProxyTreeManifestResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProxyTreeManifestResponse.ProtoReflect.Descriptor instead.
 func (*ProxyTreeManifestResponse) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{65}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{68}
 }
 
 func (x *ProxyTreeManifestResponse) GetResponse() *pb.GetTreeManifestResponse {
@@ -4506,7 +4682,7 @@ type ProxyCommitLogRequest struct {
 
 func (x *ProxyCommitLogRequest) Reset() {
 	*x = ProxyCommitLogRequest{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[66]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[69]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4518,7 +4694,7 @@ func (x *ProxyCommitLogRequest) String() string {
 func (*ProxyCommitLogRequest) ProtoMessage() {}
 
 func (x *ProxyCommitLogRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[66]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[69]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4531,7 +4707,7 @@ func (x *ProxyCommitLogRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProxyCommitLogRequest.ProtoReflect.Descriptor instead.
 func (*ProxyCommitLogRequest) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{66}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{69}
 }
 
 func (x *ProxyCommitLogRequest) GetRoot() string {
@@ -4557,7 +4733,7 @@ type ProxyCommitLogResponse struct {
 
 func (x *ProxyCommitLogResponse) Reset() {
 	*x = ProxyCommitLogResponse{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[67]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[70]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4569,7 +4745,7 @@ func (x *ProxyCommitLogResponse) String() string {
 func (*ProxyCommitLogResponse) ProtoMessage() {}
 
 func (x *ProxyCommitLogResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[67]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[70]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4582,7 +4758,7 @@ func (x *ProxyCommitLogResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProxyCommitLogResponse.ProtoReflect.Descriptor instead.
 func (*ProxyCommitLogResponse) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{67}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{70}
 }
 
 func (x *ProxyCommitLogResponse) GetResponse() *pb.GetCommitLogResponse {
@@ -4602,7 +4778,7 @@ type ProxyCommitGetRequest struct {
 
 func (x *ProxyCommitGetRequest) Reset() {
 	*x = ProxyCommitGetRequest{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[68]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[71]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4614,7 +4790,7 @@ func (x *ProxyCommitGetRequest) String() string {
 func (*ProxyCommitGetRequest) ProtoMessage() {}
 
 func (x *ProxyCommitGetRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[68]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[71]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4627,7 +4803,7 @@ func (x *ProxyCommitGetRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProxyCommitGetRequest.ProtoReflect.Descriptor instead.
 func (*ProxyCommitGetRequest) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{68}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{71}
 }
 
 func (x *ProxyCommitGetRequest) GetRoot() string {
@@ -4653,7 +4829,7 @@ type ProxyCommitGetResponse struct {
 
 func (x *ProxyCommitGetResponse) Reset() {
 	*x = ProxyCommitGetResponse{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[69]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[72]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4665,7 +4841,7 @@ func (x *ProxyCommitGetResponse) String() string {
 func (*ProxyCommitGetResponse) ProtoMessage() {}
 
 func (x *ProxyCommitGetResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[69]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[72]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4678,7 +4854,7 @@ func (x *ProxyCommitGetResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProxyCommitGetResponse.ProtoReflect.Descriptor instead.
 func (*ProxyCommitGetResponse) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{69}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{72}
 }
 
 func (x *ProxyCommitGetResponse) GetResponse() *pb.GetCommitResponse {
@@ -4698,7 +4874,7 @@ type ProxyCommitWalkRequest struct {
 
 func (x *ProxyCommitWalkRequest) Reset() {
 	*x = ProxyCommitWalkRequest{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[70]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[73]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4710,7 +4886,7 @@ func (x *ProxyCommitWalkRequest) String() string {
 func (*ProxyCommitWalkRequest) ProtoMessage() {}
 
 func (x *ProxyCommitWalkRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[70]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[73]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4723,7 +4899,7 @@ func (x *ProxyCommitWalkRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProxyCommitWalkRequest.ProtoReflect.Descriptor instead.
 func (*ProxyCommitWalkRequest) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{70}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{73}
 }
 
 func (x *ProxyCommitWalkRequest) GetRoot() string {
@@ -4749,7 +4925,7 @@ type ProxyCommitWalkResponse struct {
 
 func (x *ProxyCommitWalkResponse) Reset() {
 	*x = ProxyCommitWalkResponse{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[71]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[74]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4761,7 +4937,7 @@ func (x *ProxyCommitWalkResponse) String() string {
 func (*ProxyCommitWalkResponse) ProtoMessage() {}
 
 func (x *ProxyCommitWalkResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[71]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[74]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4774,7 +4950,7 @@ func (x *ProxyCommitWalkResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProxyCommitWalkResponse.ProtoReflect.Descriptor instead.
 func (*ProxyCommitWalkResponse) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{71}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{74}
 }
 
 func (x *ProxyCommitWalkResponse) GetResponse() *pb.WalkCommitsResponse {
@@ -4794,7 +4970,7 @@ type ProxyMergeBaseRequest struct {
 
 func (x *ProxyMergeBaseRequest) Reset() {
 	*x = ProxyMergeBaseRequest{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[72]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[75]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4806,7 +4982,7 @@ func (x *ProxyMergeBaseRequest) String() string {
 func (*ProxyMergeBaseRequest) ProtoMessage() {}
 
 func (x *ProxyMergeBaseRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[72]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[75]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4819,7 +4995,7 @@ func (x *ProxyMergeBaseRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProxyMergeBaseRequest.ProtoReflect.Descriptor instead.
 func (*ProxyMergeBaseRequest) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{72}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{75}
 }
 
 func (x *ProxyMergeBaseRequest) GetRoot() string {
@@ -4845,7 +5021,7 @@ type ProxyMergeBaseResponse struct {
 
 func (x *ProxyMergeBaseResponse) Reset() {
 	*x = ProxyMergeBaseResponse{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[73]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[76]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4857,7 +5033,7 @@ func (x *ProxyMergeBaseResponse) String() string {
 func (*ProxyMergeBaseResponse) ProtoMessage() {}
 
 func (x *ProxyMergeBaseResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[73]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[76]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4870,7 +5046,7 @@ func (x *ProxyMergeBaseResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProxyMergeBaseResponse.ProtoReflect.Descriptor instead.
 func (*ProxyMergeBaseResponse) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{73}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{76}
 }
 
 func (x *ProxyMergeBaseResponse) GetResponse() *pb.GetMergeBaseResponse {
@@ -4890,7 +5066,7 @@ type ProxyMergeRequestListRequest struct {
 
 func (x *ProxyMergeRequestListRequest) Reset() {
 	*x = ProxyMergeRequestListRequest{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[74]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[77]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4902,7 +5078,7 @@ func (x *ProxyMergeRequestListRequest) String() string {
 func (*ProxyMergeRequestListRequest) ProtoMessage() {}
 
 func (x *ProxyMergeRequestListRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[74]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[77]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4915,7 +5091,7 @@ func (x *ProxyMergeRequestListRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProxyMergeRequestListRequest.ProtoReflect.Descriptor instead.
 func (*ProxyMergeRequestListRequest) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{74}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{77}
 }
 
 func (x *ProxyMergeRequestListRequest) GetRoot() string {
@@ -4941,7 +5117,7 @@ type ProxyMergeRequestListResponse struct {
 
 func (x *ProxyMergeRequestListResponse) Reset() {
 	*x = ProxyMergeRequestListResponse{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[75]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[78]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4953,7 +5129,7 @@ func (x *ProxyMergeRequestListResponse) String() string {
 func (*ProxyMergeRequestListResponse) ProtoMessage() {}
 
 func (x *ProxyMergeRequestListResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[75]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[78]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4966,7 +5142,7 @@ func (x *ProxyMergeRequestListResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProxyMergeRequestListResponse.ProtoReflect.Descriptor instead.
 func (*ProxyMergeRequestListResponse) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{75}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{78}
 }
 
 func (x *ProxyMergeRequestListResponse) GetResponse() *pb.ListMergeRequestsResponse {
@@ -4986,7 +5162,7 @@ type ProxyMergeRequestCreateRequest struct {
 
 func (x *ProxyMergeRequestCreateRequest) Reset() {
 	*x = ProxyMergeRequestCreateRequest{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[76]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[79]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4998,7 +5174,7 @@ func (x *ProxyMergeRequestCreateRequest) String() string {
 func (*ProxyMergeRequestCreateRequest) ProtoMessage() {}
 
 func (x *ProxyMergeRequestCreateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[76]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[79]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5011,7 +5187,7 @@ func (x *ProxyMergeRequestCreateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProxyMergeRequestCreateRequest.ProtoReflect.Descriptor instead.
 func (*ProxyMergeRequestCreateRequest) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{76}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{79}
 }
 
 func (x *ProxyMergeRequestCreateRequest) GetRoot() string {
@@ -5037,7 +5213,7 @@ type ProxyMergeRequestCreateResponse struct {
 
 func (x *ProxyMergeRequestCreateResponse) Reset() {
 	*x = ProxyMergeRequestCreateResponse{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[77]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[80]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5049,7 +5225,7 @@ func (x *ProxyMergeRequestCreateResponse) String() string {
 func (*ProxyMergeRequestCreateResponse) ProtoMessage() {}
 
 func (x *ProxyMergeRequestCreateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[77]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[80]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5062,7 +5238,7 @@ func (x *ProxyMergeRequestCreateResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProxyMergeRequestCreateResponse.ProtoReflect.Descriptor instead.
 func (*ProxyMergeRequestCreateResponse) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{77}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{80}
 }
 
 func (x *ProxyMergeRequestCreateResponse) GetResponse() *pb.CreateMergeRequestResponse {
@@ -5082,7 +5258,7 @@ type ProxyMergeRequestMergeRequest struct {
 
 func (x *ProxyMergeRequestMergeRequest) Reset() {
 	*x = ProxyMergeRequestMergeRequest{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[78]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[81]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5094,7 +5270,7 @@ func (x *ProxyMergeRequestMergeRequest) String() string {
 func (*ProxyMergeRequestMergeRequest) ProtoMessage() {}
 
 func (x *ProxyMergeRequestMergeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[78]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[81]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5107,7 +5283,7 @@ func (x *ProxyMergeRequestMergeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProxyMergeRequestMergeRequest.ProtoReflect.Descriptor instead.
 func (*ProxyMergeRequestMergeRequest) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{78}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{81}
 }
 
 func (x *ProxyMergeRequestMergeRequest) GetRoot() string {
@@ -5133,7 +5309,7 @@ type ProxyMergeRequestMergeResponse struct {
 
 func (x *ProxyMergeRequestMergeResponse) Reset() {
 	*x = ProxyMergeRequestMergeResponse{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[79]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[82]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5145,7 +5321,7 @@ func (x *ProxyMergeRequestMergeResponse) String() string {
 func (*ProxyMergeRequestMergeResponse) ProtoMessage() {}
 
 func (x *ProxyMergeRequestMergeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[79]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[82]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5158,7 +5334,7 @@ func (x *ProxyMergeRequestMergeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProxyMergeRequestMergeResponse.ProtoReflect.Descriptor instead.
 func (*ProxyMergeRequestMergeResponse) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{79}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{82}
 }
 
 func (x *ProxyMergeRequestMergeResponse) GetResponse() *pb.MergeMergeRequestResponse {
@@ -5178,7 +5354,7 @@ type ProxyMergeRequestCloseRequest struct {
 
 func (x *ProxyMergeRequestCloseRequest) Reset() {
 	*x = ProxyMergeRequestCloseRequest{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[80]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[83]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5190,7 +5366,7 @@ func (x *ProxyMergeRequestCloseRequest) String() string {
 func (*ProxyMergeRequestCloseRequest) ProtoMessage() {}
 
 func (x *ProxyMergeRequestCloseRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[80]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[83]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5203,7 +5379,7 @@ func (x *ProxyMergeRequestCloseRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProxyMergeRequestCloseRequest.ProtoReflect.Descriptor instead.
 func (*ProxyMergeRequestCloseRequest) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{80}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{83}
 }
 
 func (x *ProxyMergeRequestCloseRequest) GetRoot() string {
@@ -5229,7 +5405,7 @@ type ProxyMergeRequestCloseResponse struct {
 
 func (x *ProxyMergeRequestCloseResponse) Reset() {
 	*x = ProxyMergeRequestCloseResponse{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[81]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[84]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5241,7 +5417,7 @@ func (x *ProxyMergeRequestCloseResponse) String() string {
 func (*ProxyMergeRequestCloseResponse) ProtoMessage() {}
 
 func (x *ProxyMergeRequestCloseResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[81]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[84]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5254,7 +5430,7 @@ func (x *ProxyMergeRequestCloseResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProxyMergeRequestCloseResponse.ProtoReflect.Descriptor instead.
 func (*ProxyMergeRequestCloseResponse) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{81}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{84}
 }
 
 func (x *ProxyMergeRequestCloseResponse) GetResponse() *pb.CloseMergeRequestResponse {
@@ -5274,7 +5450,7 @@ type ProxyMergeRequestReviewsRequest struct {
 
 func (x *ProxyMergeRequestReviewsRequest) Reset() {
 	*x = ProxyMergeRequestReviewsRequest{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[82]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[85]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5286,7 +5462,7 @@ func (x *ProxyMergeRequestReviewsRequest) String() string {
 func (*ProxyMergeRequestReviewsRequest) ProtoMessage() {}
 
 func (x *ProxyMergeRequestReviewsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[82]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[85]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5299,7 +5475,7 @@ func (x *ProxyMergeRequestReviewsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProxyMergeRequestReviewsRequest.ProtoReflect.Descriptor instead.
 func (*ProxyMergeRequestReviewsRequest) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{82}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{85}
 }
 
 func (x *ProxyMergeRequestReviewsRequest) GetRoot() string {
@@ -5325,7 +5501,7 @@ type ProxyMergeRequestReviewsResponse struct {
 
 func (x *ProxyMergeRequestReviewsResponse) Reset() {
 	*x = ProxyMergeRequestReviewsResponse{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[83]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[86]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5337,7 +5513,7 @@ func (x *ProxyMergeRequestReviewsResponse) String() string {
 func (*ProxyMergeRequestReviewsResponse) ProtoMessage() {}
 
 func (x *ProxyMergeRequestReviewsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[83]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[86]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5350,7 +5526,7 @@ func (x *ProxyMergeRequestReviewsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProxyMergeRequestReviewsResponse.ProtoReflect.Descriptor instead.
 func (*ProxyMergeRequestReviewsResponse) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{83}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{86}
 }
 
 func (x *ProxyMergeRequestReviewsResponse) GetResponse() *pb.ListMergeRequestReviewsResponse {
@@ -5370,7 +5546,7 @@ type ProxyMergeRequestReviewStateRequest struct {
 
 func (x *ProxyMergeRequestReviewStateRequest) Reset() {
 	*x = ProxyMergeRequestReviewStateRequest{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[84]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[87]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5382,7 +5558,7 @@ func (x *ProxyMergeRequestReviewStateRequest) String() string {
 func (*ProxyMergeRequestReviewStateRequest) ProtoMessage() {}
 
 func (x *ProxyMergeRequestReviewStateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[84]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[87]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5395,7 +5571,7 @@ func (x *ProxyMergeRequestReviewStateRequest) ProtoReflect() protoreflect.Messag
 
 // Deprecated: Use ProxyMergeRequestReviewStateRequest.ProtoReflect.Descriptor instead.
 func (*ProxyMergeRequestReviewStateRequest) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{84}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{87}
 }
 
 func (x *ProxyMergeRequestReviewStateRequest) GetRoot() string {
@@ -5421,7 +5597,7 @@ type ProxyMergeRequestReviewStateResponse struct {
 
 func (x *ProxyMergeRequestReviewStateResponse) Reset() {
 	*x = ProxyMergeRequestReviewStateResponse{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[85]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[88]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5433,7 +5609,7 @@ func (x *ProxyMergeRequestReviewStateResponse) String() string {
 func (*ProxyMergeRequestReviewStateResponse) ProtoMessage() {}
 
 func (x *ProxyMergeRequestReviewStateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[85]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[88]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5446,7 +5622,7 @@ func (x *ProxyMergeRequestReviewStateResponse) ProtoReflect() protoreflect.Messa
 
 // Deprecated: Use ProxyMergeRequestReviewStateResponse.ProtoReflect.Descriptor instead.
 func (*ProxyMergeRequestReviewStateResponse) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{85}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{88}
 }
 
 func (x *ProxyMergeRequestReviewStateResponse) GetResponse() *pb.GetMergeRequestReviewStateResponse {
@@ -5466,7 +5642,7 @@ type ProxyMergeRequestThreadsRequest struct {
 
 func (x *ProxyMergeRequestThreadsRequest) Reset() {
 	*x = ProxyMergeRequestThreadsRequest{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[86]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[89]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5478,7 +5654,7 @@ func (x *ProxyMergeRequestThreadsRequest) String() string {
 func (*ProxyMergeRequestThreadsRequest) ProtoMessage() {}
 
 func (x *ProxyMergeRequestThreadsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[86]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[89]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5491,7 +5667,7 @@ func (x *ProxyMergeRequestThreadsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProxyMergeRequestThreadsRequest.ProtoReflect.Descriptor instead.
 func (*ProxyMergeRequestThreadsRequest) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{86}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{89}
 }
 
 func (x *ProxyMergeRequestThreadsRequest) GetRoot() string {
@@ -5517,7 +5693,7 @@ type ProxyMergeRequestThreadsResponse struct {
 
 func (x *ProxyMergeRequestThreadsResponse) Reset() {
 	*x = ProxyMergeRequestThreadsResponse{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[87]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[90]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5529,7 +5705,7 @@ func (x *ProxyMergeRequestThreadsResponse) String() string {
 func (*ProxyMergeRequestThreadsResponse) ProtoMessage() {}
 
 func (x *ProxyMergeRequestThreadsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[87]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[90]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5542,7 +5718,7 @@ func (x *ProxyMergeRequestThreadsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProxyMergeRequestThreadsResponse.ProtoReflect.Descriptor instead.
 func (*ProxyMergeRequestThreadsResponse) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{87}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{90}
 }
 
 func (x *ProxyMergeRequestThreadsResponse) GetResponse() *pb.ListMergeRequestThreadsResponse {
@@ -5562,7 +5738,7 @@ type ProxyMergeRequestGetRequest struct {
 
 func (x *ProxyMergeRequestGetRequest) Reset() {
 	*x = ProxyMergeRequestGetRequest{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[88]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[91]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5574,7 +5750,7 @@ func (x *ProxyMergeRequestGetRequest) String() string {
 func (*ProxyMergeRequestGetRequest) ProtoMessage() {}
 
 func (x *ProxyMergeRequestGetRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[88]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[91]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5587,7 +5763,7 @@ func (x *ProxyMergeRequestGetRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProxyMergeRequestGetRequest.ProtoReflect.Descriptor instead.
 func (*ProxyMergeRequestGetRequest) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{88}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{91}
 }
 
 func (x *ProxyMergeRequestGetRequest) GetRoot() string {
@@ -5613,7 +5789,7 @@ type ProxyMergeRequestGetResponse struct {
 
 func (x *ProxyMergeRequestGetResponse) Reset() {
 	*x = ProxyMergeRequestGetResponse{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[89]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[92]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5625,7 +5801,7 @@ func (x *ProxyMergeRequestGetResponse) String() string {
 func (*ProxyMergeRequestGetResponse) ProtoMessage() {}
 
 func (x *ProxyMergeRequestGetResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[89]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[92]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5638,7 +5814,7 @@ func (x *ProxyMergeRequestGetResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProxyMergeRequestGetResponse.ProtoReflect.Descriptor instead.
 func (*ProxyMergeRequestGetResponse) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{89}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{92}
 }
 
 func (x *ProxyMergeRequestGetResponse) GetResponse() *pb.GetMergeRequestResponse {
@@ -5658,7 +5834,7 @@ type ProxyMergeRequestCheckRequest struct {
 
 func (x *ProxyMergeRequestCheckRequest) Reset() {
 	*x = ProxyMergeRequestCheckRequest{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[90]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[93]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5670,7 +5846,7 @@ func (x *ProxyMergeRequestCheckRequest) String() string {
 func (*ProxyMergeRequestCheckRequest) ProtoMessage() {}
 
 func (x *ProxyMergeRequestCheckRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[90]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[93]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5683,7 +5859,7 @@ func (x *ProxyMergeRequestCheckRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProxyMergeRequestCheckRequest.ProtoReflect.Descriptor instead.
 func (*ProxyMergeRequestCheckRequest) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{90}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{93}
 }
 
 func (x *ProxyMergeRequestCheckRequest) GetRoot() string {
@@ -5709,7 +5885,7 @@ type ProxyMergeRequestCheckResponse struct {
 
 func (x *ProxyMergeRequestCheckResponse) Reset() {
 	*x = ProxyMergeRequestCheckResponse{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[91]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[94]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5721,7 +5897,7 @@ func (x *ProxyMergeRequestCheckResponse) String() string {
 func (*ProxyMergeRequestCheckResponse) ProtoMessage() {}
 
 func (x *ProxyMergeRequestCheckResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[91]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[94]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5734,7 +5910,7 @@ func (x *ProxyMergeRequestCheckResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProxyMergeRequestCheckResponse.ProtoReflect.Descriptor instead.
 func (*ProxyMergeRequestCheckResponse) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{91}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{94}
 }
 
 func (x *ProxyMergeRequestCheckResponse) GetResponse() *pb.CheckMergeRequestResponse {
@@ -5754,7 +5930,7 @@ type ProxyMergeRequestReopenRequest struct {
 
 func (x *ProxyMergeRequestReopenRequest) Reset() {
 	*x = ProxyMergeRequestReopenRequest{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[92]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[95]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5766,7 +5942,7 @@ func (x *ProxyMergeRequestReopenRequest) String() string {
 func (*ProxyMergeRequestReopenRequest) ProtoMessage() {}
 
 func (x *ProxyMergeRequestReopenRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[92]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[95]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5779,7 +5955,7 @@ func (x *ProxyMergeRequestReopenRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProxyMergeRequestReopenRequest.ProtoReflect.Descriptor instead.
 func (*ProxyMergeRequestReopenRequest) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{92}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{95}
 }
 
 func (x *ProxyMergeRequestReopenRequest) GetRoot() string {
@@ -5805,7 +5981,7 @@ type ProxyMergeRequestReopenResponse struct {
 
 func (x *ProxyMergeRequestReopenResponse) Reset() {
 	*x = ProxyMergeRequestReopenResponse{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[93]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[96]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5817,7 +5993,7 @@ func (x *ProxyMergeRequestReopenResponse) String() string {
 func (*ProxyMergeRequestReopenResponse) ProtoMessage() {}
 
 func (x *ProxyMergeRequestReopenResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[93]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[96]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5830,7 +6006,7 @@ func (x *ProxyMergeRequestReopenResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProxyMergeRequestReopenResponse.ProtoReflect.Descriptor instead.
 func (*ProxyMergeRequestReopenResponse) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{93}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{96}
 }
 
 func (x *ProxyMergeRequestReopenResponse) GetResponse() *pb.ReopenMergeRequestResponse {
@@ -5850,7 +6026,7 @@ type ProxyMergeRequestSubmitReviewRequest struct {
 
 func (x *ProxyMergeRequestSubmitReviewRequest) Reset() {
 	*x = ProxyMergeRequestSubmitReviewRequest{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[94]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[97]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5862,7 +6038,7 @@ func (x *ProxyMergeRequestSubmitReviewRequest) String() string {
 func (*ProxyMergeRequestSubmitReviewRequest) ProtoMessage() {}
 
 func (x *ProxyMergeRequestSubmitReviewRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[94]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[97]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5875,7 +6051,7 @@ func (x *ProxyMergeRequestSubmitReviewRequest) ProtoReflect() protoreflect.Messa
 
 // Deprecated: Use ProxyMergeRequestSubmitReviewRequest.ProtoReflect.Descriptor instead.
 func (*ProxyMergeRequestSubmitReviewRequest) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{94}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{97}
 }
 
 func (x *ProxyMergeRequestSubmitReviewRequest) GetRoot() string {
@@ -5901,7 +6077,7 @@ type ProxyMergeRequestSubmitReviewResponse struct {
 
 func (x *ProxyMergeRequestSubmitReviewResponse) Reset() {
 	*x = ProxyMergeRequestSubmitReviewResponse{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[95]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[98]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5913,7 +6089,7 @@ func (x *ProxyMergeRequestSubmitReviewResponse) String() string {
 func (*ProxyMergeRequestSubmitReviewResponse) ProtoMessage() {}
 
 func (x *ProxyMergeRequestSubmitReviewResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[95]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[98]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5926,7 +6102,7 @@ func (x *ProxyMergeRequestSubmitReviewResponse) ProtoReflect() protoreflect.Mess
 
 // Deprecated: Use ProxyMergeRequestSubmitReviewResponse.ProtoReflect.Descriptor instead.
 func (*ProxyMergeRequestSubmitReviewResponse) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{95}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{98}
 }
 
 func (x *ProxyMergeRequestSubmitReviewResponse) GetResponse() *pb.SubmitMergeRequestReviewResponse {
@@ -5946,7 +6122,7 @@ type ProxyMergeRequestUpdateRequest struct {
 
 func (x *ProxyMergeRequestUpdateRequest) Reset() {
 	*x = ProxyMergeRequestUpdateRequest{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[96]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[99]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5958,7 +6134,7 @@ func (x *ProxyMergeRequestUpdateRequest) String() string {
 func (*ProxyMergeRequestUpdateRequest) ProtoMessage() {}
 
 func (x *ProxyMergeRequestUpdateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[96]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[99]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5971,7 +6147,7 @@ func (x *ProxyMergeRequestUpdateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProxyMergeRequestUpdateRequest.ProtoReflect.Descriptor instead.
 func (*ProxyMergeRequestUpdateRequest) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{96}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{99}
 }
 
 func (x *ProxyMergeRequestUpdateRequest) GetRoot() string {
@@ -5997,7 +6173,7 @@ type ProxyMergeRequestUpdateResponse struct {
 
 func (x *ProxyMergeRequestUpdateResponse) Reset() {
 	*x = ProxyMergeRequestUpdateResponse{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[97]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[100]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6009,7 +6185,7 @@ func (x *ProxyMergeRequestUpdateResponse) String() string {
 func (*ProxyMergeRequestUpdateResponse) ProtoMessage() {}
 
 func (x *ProxyMergeRequestUpdateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[97]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[100]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6022,7 +6198,7 @@ func (x *ProxyMergeRequestUpdateResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProxyMergeRequestUpdateResponse.ProtoReflect.Descriptor instead.
 func (*ProxyMergeRequestUpdateResponse) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{97}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{100}
 }
 
 func (x *ProxyMergeRequestUpdateResponse) GetResponse() *pb.UpdateMergeRequestResponse {
@@ -6042,7 +6218,7 @@ type ProxyMergeRequestCommitsRequest struct {
 
 func (x *ProxyMergeRequestCommitsRequest) Reset() {
 	*x = ProxyMergeRequestCommitsRequest{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[98]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[101]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6054,7 +6230,7 @@ func (x *ProxyMergeRequestCommitsRequest) String() string {
 func (*ProxyMergeRequestCommitsRequest) ProtoMessage() {}
 
 func (x *ProxyMergeRequestCommitsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[98]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[101]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6067,7 +6243,7 @@ func (x *ProxyMergeRequestCommitsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProxyMergeRequestCommitsRequest.ProtoReflect.Descriptor instead.
 func (*ProxyMergeRequestCommitsRequest) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{98}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{101}
 }
 
 func (x *ProxyMergeRequestCommitsRequest) GetRoot() string {
@@ -6093,7 +6269,7 @@ type ProxyMergeRequestCommitsResponse struct {
 
 func (x *ProxyMergeRequestCommitsResponse) Reset() {
 	*x = ProxyMergeRequestCommitsResponse{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[99]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[102]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6105,7 +6281,7 @@ func (x *ProxyMergeRequestCommitsResponse) String() string {
 func (*ProxyMergeRequestCommitsResponse) ProtoMessage() {}
 
 func (x *ProxyMergeRequestCommitsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[99]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[102]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6118,7 +6294,7 @@ func (x *ProxyMergeRequestCommitsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProxyMergeRequestCommitsResponse.ProtoReflect.Descriptor instead.
 func (*ProxyMergeRequestCommitsResponse) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{99}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{102}
 }
 
 func (x *ProxyMergeRequestCommitsResponse) GetResponse() *pb.ListMergeRequestCommitsResponse {
@@ -6138,7 +6314,7 @@ type ProxyMergeRequestChecksRequest struct {
 
 func (x *ProxyMergeRequestChecksRequest) Reset() {
 	*x = ProxyMergeRequestChecksRequest{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[100]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[103]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6150,7 +6326,7 @@ func (x *ProxyMergeRequestChecksRequest) String() string {
 func (*ProxyMergeRequestChecksRequest) ProtoMessage() {}
 
 func (x *ProxyMergeRequestChecksRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[100]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[103]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6163,7 +6339,7 @@ func (x *ProxyMergeRequestChecksRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProxyMergeRequestChecksRequest.ProtoReflect.Descriptor instead.
 func (*ProxyMergeRequestChecksRequest) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{100}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{103}
 }
 
 func (x *ProxyMergeRequestChecksRequest) GetRoot() string {
@@ -6189,7 +6365,7 @@ type ProxyMergeRequestChecksResponse struct {
 
 func (x *ProxyMergeRequestChecksResponse) Reset() {
 	*x = ProxyMergeRequestChecksResponse{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[101]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[104]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6201,7 +6377,7 @@ func (x *ProxyMergeRequestChecksResponse) String() string {
 func (*ProxyMergeRequestChecksResponse) ProtoMessage() {}
 
 func (x *ProxyMergeRequestChecksResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[101]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[104]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6214,7 +6390,7 @@ func (x *ProxyMergeRequestChecksResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProxyMergeRequestChecksResponse.ProtoReflect.Descriptor instead.
 func (*ProxyMergeRequestChecksResponse) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{101}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{104}
 }
 
 func (x *ProxyMergeRequestChecksResponse) GetResponse() *pb.ListMergeRequestChecksResponse {
@@ -6234,7 +6410,7 @@ type ProxyMergeRequestTimelineRequest struct {
 
 func (x *ProxyMergeRequestTimelineRequest) Reset() {
 	*x = ProxyMergeRequestTimelineRequest{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[102]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[105]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6246,7 +6422,7 @@ func (x *ProxyMergeRequestTimelineRequest) String() string {
 func (*ProxyMergeRequestTimelineRequest) ProtoMessage() {}
 
 func (x *ProxyMergeRequestTimelineRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[102]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[105]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6259,7 +6435,7 @@ func (x *ProxyMergeRequestTimelineRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProxyMergeRequestTimelineRequest.ProtoReflect.Descriptor instead.
 func (*ProxyMergeRequestTimelineRequest) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{102}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{105}
 }
 
 func (x *ProxyMergeRequestTimelineRequest) GetRoot() string {
@@ -6285,7 +6461,7 @@ type ProxyMergeRequestTimelineResponse struct {
 
 func (x *ProxyMergeRequestTimelineResponse) Reset() {
 	*x = ProxyMergeRequestTimelineResponse{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[103]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[106]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6297,7 +6473,7 @@ func (x *ProxyMergeRequestTimelineResponse) String() string {
 func (*ProxyMergeRequestTimelineResponse) ProtoMessage() {}
 
 func (x *ProxyMergeRequestTimelineResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[103]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[106]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6310,7 +6486,7 @@ func (x *ProxyMergeRequestTimelineResponse) ProtoReflect() protoreflect.Message 
 
 // Deprecated: Use ProxyMergeRequestTimelineResponse.ProtoReflect.Descriptor instead.
 func (*ProxyMergeRequestTimelineResponse) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{103}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{106}
 }
 
 func (x *ProxyMergeRequestTimelineResponse) GetResponse() *pb.ListMergeRequestTimelineResponse {
@@ -6330,7 +6506,7 @@ type ProxyMergeRequestAddCommentRequest struct {
 
 func (x *ProxyMergeRequestAddCommentRequest) Reset() {
 	*x = ProxyMergeRequestAddCommentRequest{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[104]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[107]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6342,7 +6518,7 @@ func (x *ProxyMergeRequestAddCommentRequest) String() string {
 func (*ProxyMergeRequestAddCommentRequest) ProtoMessage() {}
 
 func (x *ProxyMergeRequestAddCommentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[104]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[107]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6355,7 +6531,7 @@ func (x *ProxyMergeRequestAddCommentRequest) ProtoReflect() protoreflect.Message
 
 // Deprecated: Use ProxyMergeRequestAddCommentRequest.ProtoReflect.Descriptor instead.
 func (*ProxyMergeRequestAddCommentRequest) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{104}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{107}
 }
 
 func (x *ProxyMergeRequestAddCommentRequest) GetRoot() string {
@@ -6381,7 +6557,7 @@ type ProxyMergeRequestAddCommentResponse struct {
 
 func (x *ProxyMergeRequestAddCommentResponse) Reset() {
 	*x = ProxyMergeRequestAddCommentResponse{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[105]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[108]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6393,7 +6569,7 @@ func (x *ProxyMergeRequestAddCommentResponse) String() string {
 func (*ProxyMergeRequestAddCommentResponse) ProtoMessage() {}
 
 func (x *ProxyMergeRequestAddCommentResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[105]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[108]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6406,7 +6582,7 @@ func (x *ProxyMergeRequestAddCommentResponse) ProtoReflect() protoreflect.Messag
 
 // Deprecated: Use ProxyMergeRequestAddCommentResponse.ProtoReflect.Descriptor instead.
 func (*ProxyMergeRequestAddCommentResponse) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{105}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{108}
 }
 
 func (x *ProxyMergeRequestAddCommentResponse) GetResponse() *pb.AddMergeRequestCommentResponse {
@@ -6426,7 +6602,7 @@ type ProxyMergeRequestReplyRequest struct {
 
 func (x *ProxyMergeRequestReplyRequest) Reset() {
 	*x = ProxyMergeRequestReplyRequest{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[106]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[109]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6438,7 +6614,7 @@ func (x *ProxyMergeRequestReplyRequest) String() string {
 func (*ProxyMergeRequestReplyRequest) ProtoMessage() {}
 
 func (x *ProxyMergeRequestReplyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[106]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[109]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6451,7 +6627,7 @@ func (x *ProxyMergeRequestReplyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProxyMergeRequestReplyRequest.ProtoReflect.Descriptor instead.
 func (*ProxyMergeRequestReplyRequest) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{106}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{109}
 }
 
 func (x *ProxyMergeRequestReplyRequest) GetRoot() string {
@@ -6477,7 +6653,7 @@ type ProxyMergeRequestReplyResponse struct {
 
 func (x *ProxyMergeRequestReplyResponse) Reset() {
 	*x = ProxyMergeRequestReplyResponse{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[107]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[110]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6489,7 +6665,7 @@ func (x *ProxyMergeRequestReplyResponse) String() string {
 func (*ProxyMergeRequestReplyResponse) ProtoMessage() {}
 
 func (x *ProxyMergeRequestReplyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[107]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[110]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6502,7 +6678,7 @@ func (x *ProxyMergeRequestReplyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProxyMergeRequestReplyResponse.ProtoReflect.Descriptor instead.
 func (*ProxyMergeRequestReplyResponse) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{107}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{110}
 }
 
 func (x *ProxyMergeRequestReplyResponse) GetResponse() *pb.ReplyMergeRequestThreadResponse {
@@ -6522,7 +6698,7 @@ type ProxyMergeRequestResolveRequest struct {
 
 func (x *ProxyMergeRequestResolveRequest) Reset() {
 	*x = ProxyMergeRequestResolveRequest{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[108]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[111]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6534,7 +6710,7 @@ func (x *ProxyMergeRequestResolveRequest) String() string {
 func (*ProxyMergeRequestResolveRequest) ProtoMessage() {}
 
 func (x *ProxyMergeRequestResolveRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[108]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[111]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6547,7 +6723,7 @@ func (x *ProxyMergeRequestResolveRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProxyMergeRequestResolveRequest.ProtoReflect.Descriptor instead.
 func (*ProxyMergeRequestResolveRequest) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{108}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{111}
 }
 
 func (x *ProxyMergeRequestResolveRequest) GetRoot() string {
@@ -6573,7 +6749,7 @@ type ProxyMergeRequestResolveResponse struct {
 
 func (x *ProxyMergeRequestResolveResponse) Reset() {
 	*x = ProxyMergeRequestResolveResponse{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[109]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[112]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6585,7 +6761,7 @@ func (x *ProxyMergeRequestResolveResponse) String() string {
 func (*ProxyMergeRequestResolveResponse) ProtoMessage() {}
 
 func (x *ProxyMergeRequestResolveResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[109]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[112]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6598,7 +6774,7 @@ func (x *ProxyMergeRequestResolveResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProxyMergeRequestResolveResponse.ProtoReflect.Descriptor instead.
 func (*ProxyMergeRequestResolveResponse) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{109}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{112}
 }
 
 func (x *ProxyMergeRequestResolveResponse) GetResponse() *pb.ResolveMergeRequestThreadResponse {
@@ -6618,7 +6794,7 @@ type ProxyLockFileRequest struct {
 
 func (x *ProxyLockFileRequest) Reset() {
 	*x = ProxyLockFileRequest{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[110]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[113]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6630,7 +6806,7 @@ func (x *ProxyLockFileRequest) String() string {
 func (*ProxyLockFileRequest) ProtoMessage() {}
 
 func (x *ProxyLockFileRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[110]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[113]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6643,7 +6819,7 @@ func (x *ProxyLockFileRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProxyLockFileRequest.ProtoReflect.Descriptor instead.
 func (*ProxyLockFileRequest) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{110}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{113}
 }
 
 func (x *ProxyLockFileRequest) GetRoot() string {
@@ -6669,7 +6845,7 @@ type ProxyLockFileResponse struct {
 
 func (x *ProxyLockFileResponse) Reset() {
 	*x = ProxyLockFileResponse{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[111]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[114]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6681,7 +6857,7 @@ func (x *ProxyLockFileResponse) String() string {
 func (*ProxyLockFileResponse) ProtoMessage() {}
 
 func (x *ProxyLockFileResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[111]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[114]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6694,7 +6870,7 @@ func (x *ProxyLockFileResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProxyLockFileResponse.ProtoReflect.Descriptor instead.
 func (*ProxyLockFileResponse) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{111}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{114}
 }
 
 func (x *ProxyLockFileResponse) GetResponse() *pb.LockFileResponse {
@@ -6714,7 +6890,7 @@ type ProxyUnlockFileRequest struct {
 
 func (x *ProxyUnlockFileRequest) Reset() {
 	*x = ProxyUnlockFileRequest{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[112]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[115]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6726,7 +6902,7 @@ func (x *ProxyUnlockFileRequest) String() string {
 func (*ProxyUnlockFileRequest) ProtoMessage() {}
 
 func (x *ProxyUnlockFileRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[112]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[115]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6739,7 +6915,7 @@ func (x *ProxyUnlockFileRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProxyUnlockFileRequest.ProtoReflect.Descriptor instead.
 func (*ProxyUnlockFileRequest) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{112}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{115}
 }
 
 func (x *ProxyUnlockFileRequest) GetRoot() string {
@@ -6765,7 +6941,7 @@ type ProxyUnlockFileResponse struct {
 
 func (x *ProxyUnlockFileResponse) Reset() {
 	*x = ProxyUnlockFileResponse{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[113]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[116]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6777,7 +6953,7 @@ func (x *ProxyUnlockFileResponse) String() string {
 func (*ProxyUnlockFileResponse) ProtoMessage() {}
 
 func (x *ProxyUnlockFileResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[113]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[116]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6790,7 +6966,7 @@ func (x *ProxyUnlockFileResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProxyUnlockFileResponse.ProtoReflect.Descriptor instead.
 func (*ProxyUnlockFileResponse) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{113}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{116}
 }
 
 func (x *ProxyUnlockFileResponse) GetResponse() *pb.UnlockFileResponse {
@@ -6810,7 +6986,7 @@ type ProxyListFileLocksRequest struct {
 
 func (x *ProxyListFileLocksRequest) Reset() {
 	*x = ProxyListFileLocksRequest{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[114]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[117]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6822,7 +6998,7 @@ func (x *ProxyListFileLocksRequest) String() string {
 func (*ProxyListFileLocksRequest) ProtoMessage() {}
 
 func (x *ProxyListFileLocksRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[114]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[117]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6835,7 +7011,7 @@ func (x *ProxyListFileLocksRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProxyListFileLocksRequest.ProtoReflect.Descriptor instead.
 func (*ProxyListFileLocksRequest) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{114}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{117}
 }
 
 func (x *ProxyListFileLocksRequest) GetRoot() string {
@@ -6861,7 +7037,7 @@ type ProxyListFileLocksResponse struct {
 
 func (x *ProxyListFileLocksResponse) Reset() {
 	*x = ProxyListFileLocksResponse{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[115]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[118]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6873,7 +7049,7 @@ func (x *ProxyListFileLocksResponse) String() string {
 func (*ProxyListFileLocksResponse) ProtoMessage() {}
 
 func (x *ProxyListFileLocksResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[115]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[118]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6886,7 +7062,7 @@ func (x *ProxyListFileLocksResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProxyListFileLocksResponse.ProtoReflect.Descriptor instead.
 func (*ProxyListFileLocksResponse) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{115}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{118}
 }
 
 func (x *ProxyListFileLocksResponse) GetResponse() *pb.ListFileLocksResponse {
@@ -6906,7 +7082,7 @@ type ProxyTagListRequest struct {
 
 func (x *ProxyTagListRequest) Reset() {
 	*x = ProxyTagListRequest{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[116]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[119]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6918,7 +7094,7 @@ func (x *ProxyTagListRequest) String() string {
 func (*ProxyTagListRequest) ProtoMessage() {}
 
 func (x *ProxyTagListRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[116]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[119]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6931,7 +7107,7 @@ func (x *ProxyTagListRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProxyTagListRequest.ProtoReflect.Descriptor instead.
 func (*ProxyTagListRequest) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{116}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{119}
 }
 
 func (x *ProxyTagListRequest) GetRoot() string {
@@ -6957,7 +7133,7 @@ type ProxyTagListResponse struct {
 
 func (x *ProxyTagListResponse) Reset() {
 	*x = ProxyTagListResponse{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[117]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[120]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6969,7 +7145,7 @@ func (x *ProxyTagListResponse) String() string {
 func (*ProxyTagListResponse) ProtoMessage() {}
 
 func (x *ProxyTagListResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[117]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[120]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6982,7 +7158,7 @@ func (x *ProxyTagListResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProxyTagListResponse.ProtoReflect.Descriptor instead.
 func (*ProxyTagListResponse) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{117}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{120}
 }
 
 func (x *ProxyTagListResponse) GetResponse() *pb.ListTagsResponse {
@@ -7002,7 +7178,7 @@ type ProxyTagCreateRequest struct {
 
 func (x *ProxyTagCreateRequest) Reset() {
 	*x = ProxyTagCreateRequest{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[118]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[121]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7014,7 +7190,7 @@ func (x *ProxyTagCreateRequest) String() string {
 func (*ProxyTagCreateRequest) ProtoMessage() {}
 
 func (x *ProxyTagCreateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[118]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[121]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7027,7 +7203,7 @@ func (x *ProxyTagCreateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProxyTagCreateRequest.ProtoReflect.Descriptor instead.
 func (*ProxyTagCreateRequest) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{118}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{121}
 }
 
 func (x *ProxyTagCreateRequest) GetRoot() string {
@@ -7053,7 +7229,7 @@ type ProxyTagCreateResponse struct {
 
 func (x *ProxyTagCreateResponse) Reset() {
 	*x = ProxyTagCreateResponse{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[119]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[122]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7065,7 +7241,7 @@ func (x *ProxyTagCreateResponse) String() string {
 func (*ProxyTagCreateResponse) ProtoMessage() {}
 
 func (x *ProxyTagCreateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[119]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[122]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7078,7 +7254,7 @@ func (x *ProxyTagCreateResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProxyTagCreateResponse.ProtoReflect.Descriptor instead.
 func (*ProxyTagCreateResponse) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{119}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{122}
 }
 
 func (x *ProxyTagCreateResponse) GetResponse() *pb.CreateTagResponse {
@@ -7098,7 +7274,7 @@ type ProxyTagDeleteRequest struct {
 
 func (x *ProxyTagDeleteRequest) Reset() {
 	*x = ProxyTagDeleteRequest{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[120]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[123]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7110,7 +7286,7 @@ func (x *ProxyTagDeleteRequest) String() string {
 func (*ProxyTagDeleteRequest) ProtoMessage() {}
 
 func (x *ProxyTagDeleteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[120]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[123]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7123,7 +7299,7 @@ func (x *ProxyTagDeleteRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProxyTagDeleteRequest.ProtoReflect.Descriptor instead.
 func (*ProxyTagDeleteRequest) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{120}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{123}
 }
 
 func (x *ProxyTagDeleteRequest) GetRoot() string {
@@ -7149,7 +7325,7 @@ type ProxyTagDeleteResponse struct {
 
 func (x *ProxyTagDeleteResponse) Reset() {
 	*x = ProxyTagDeleteResponse{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[121]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[124]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7161,7 +7337,7 @@ func (x *ProxyTagDeleteResponse) String() string {
 func (*ProxyTagDeleteResponse) ProtoMessage() {}
 
 func (x *ProxyTagDeleteResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[121]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[124]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7174,7 +7350,7 @@ func (x *ProxyTagDeleteResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProxyTagDeleteResponse.ProtoReflect.Descriptor instead.
 func (*ProxyTagDeleteResponse) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{121}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{124}
 }
 
 func (x *ProxyTagDeleteResponse) GetResponse() *pb.DeleteTagResponse {
@@ -7194,7 +7370,7 @@ type MetaWarningsRequest struct {
 
 func (x *MetaWarningsRequest) Reset() {
 	*x = MetaWarningsRequest{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[122]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[125]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7206,7 +7382,7 @@ func (x *MetaWarningsRequest) String() string {
 func (*MetaWarningsRequest) ProtoMessage() {}
 
 func (x *MetaWarningsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[122]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[125]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7219,7 +7395,7 @@ func (x *MetaWarningsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MetaWarningsRequest.ProtoReflect.Descriptor instead.
 func (*MetaWarningsRequest) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{122}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{125}
 }
 
 func (x *MetaWarningsRequest) GetRoot() string {
@@ -7248,7 +7424,7 @@ type MetaWarning struct {
 
 func (x *MetaWarning) Reset() {
 	*x = MetaWarning{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[123]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[126]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7260,7 +7436,7 @@ func (x *MetaWarning) String() string {
 func (*MetaWarning) ProtoMessage() {}
 
 func (x *MetaWarning) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[123]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[126]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7273,7 +7449,7 @@ func (x *MetaWarning) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MetaWarning.ProtoReflect.Descriptor instead.
 func (*MetaWarning) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{123}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{126}
 }
 
 func (x *MetaWarning) GetPath() string {
@@ -7313,7 +7489,7 @@ type MetaWarningsResponse struct {
 
 func (x *MetaWarningsResponse) Reset() {
 	*x = MetaWarningsResponse{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[124]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[127]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7325,7 +7501,7 @@ func (x *MetaWarningsResponse) String() string {
 func (*MetaWarningsResponse) ProtoMessage() {}
 
 func (x *MetaWarningsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[124]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[127]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7338,7 +7514,7 @@ func (x *MetaWarningsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MetaWarningsResponse.ProtoReflect.Descriptor instead.
 func (*MetaWarningsResponse) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{124}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{127}
 }
 
 func (x *MetaWarningsResponse) GetWarnings() []*MetaWarning {
@@ -7357,7 +7533,7 @@ type LockStatusRequest struct {
 
 func (x *LockStatusRequest) Reset() {
 	*x = LockStatusRequest{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[125]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[128]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7369,7 +7545,7 @@ func (x *LockStatusRequest) String() string {
 func (*LockStatusRequest) ProtoMessage() {}
 
 func (x *LockStatusRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[125]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[128]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7382,7 +7558,7 @@ func (x *LockStatusRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LockStatusRequest.ProtoReflect.Descriptor instead.
 func (*LockStatusRequest) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{125}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{128}
 }
 
 func (x *LockStatusRequest) GetRoot() string {
@@ -7406,7 +7582,7 @@ type LockStatusResponse struct {
 
 func (x *LockStatusResponse) Reset() {
 	*x = LockStatusResponse{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[126]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[129]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7418,7 +7594,7 @@ func (x *LockStatusResponse) String() string {
 func (*LockStatusResponse) ProtoMessage() {}
 
 func (x *LockStatusResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[126]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[129]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7431,7 +7607,7 @@ func (x *LockStatusResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LockStatusResponse.ProtoReflect.Descriptor instead.
 func (*LockStatusResponse) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{126}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{129}
 }
 
 func (x *LockStatusResponse) GetUserId() string {
@@ -7490,7 +7666,7 @@ type FileLockState struct {
 
 func (x *FileLockState) Reset() {
 	*x = FileLockState{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[127]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[130]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7502,7 +7678,7 @@ func (x *FileLockState) String() string {
 func (*FileLockState) ProtoMessage() {}
 
 func (x *FileLockState) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[127]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[130]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7515,7 +7691,7 @@ func (x *FileLockState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FileLockState.ProtoReflect.Descriptor instead.
 func (*FileLockState) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{127}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{130}
 }
 
 func (x *FileLockState) GetPath() string {
@@ -7569,7 +7745,7 @@ type AccountStatusRequest struct {
 
 func (x *AccountStatusRequest) Reset() {
 	*x = AccountStatusRequest{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[128]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[131]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7581,7 +7757,7 @@ func (x *AccountStatusRequest) String() string {
 func (*AccountStatusRequest) ProtoMessage() {}
 
 func (x *AccountStatusRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[128]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[131]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7594,7 +7770,7 @@ func (x *AccountStatusRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AccountStatusRequest.ProtoReflect.Descriptor instead.
 func (*AccountStatusRequest) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{128}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{131}
 }
 
 func (x *AccountStatusRequest) GetServer() string {
@@ -7617,7 +7793,7 @@ type AccountStatusResponse struct {
 
 func (x *AccountStatusResponse) Reset() {
 	*x = AccountStatusResponse{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[129]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[132]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7629,7 +7805,7 @@ func (x *AccountStatusResponse) String() string {
 func (*AccountStatusResponse) ProtoMessage() {}
 
 func (x *AccountStatusResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[129]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[132]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7642,7 +7818,7 @@ func (x *AccountStatusResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AccountStatusResponse.ProtoReflect.Descriptor instead.
 func (*AccountStatusResponse) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{129}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{132}
 }
 
 func (x *AccountStatusResponse) GetHost() string {
@@ -7692,7 +7868,7 @@ type LoginSSHRequest struct {
 
 func (x *LoginSSHRequest) Reset() {
 	*x = LoginSSHRequest{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[130]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[133]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7704,7 +7880,7 @@ func (x *LoginSSHRequest) String() string {
 func (*LoginSSHRequest) ProtoMessage() {}
 
 func (x *LoginSSHRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[130]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[133]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7717,7 +7893,7 @@ func (x *LoginSSHRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LoginSSHRequest.ProtoReflect.Descriptor instead.
 func (*LoginSSHRequest) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{130}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{133}
 }
 
 func (x *LoginSSHRequest) GetServer() string {
@@ -7757,7 +7933,7 @@ type ListProjectsRequest struct {
 
 func (x *ListProjectsRequest) Reset() {
 	*x = ListProjectsRequest{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[131]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[134]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7769,7 +7945,7 @@ func (x *ListProjectsRequest) String() string {
 func (*ListProjectsRequest) ProtoMessage() {}
 
 func (x *ListProjectsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[131]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[134]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7782,7 +7958,7 @@ func (x *ListProjectsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListProjectsRequest.ProtoReflect.Descriptor instead.
 func (*ListProjectsRequest) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{131}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{134}
 }
 
 func (x *ListProjectsRequest) GetServer() string {
@@ -7801,7 +7977,7 @@ type ListProjectsResponse struct {
 
 func (x *ListProjectsResponse) Reset() {
 	*x = ListProjectsResponse{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[132]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[135]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7813,7 +7989,7 @@ func (x *ListProjectsResponse) String() string {
 func (*ListProjectsResponse) ProtoMessage() {}
 
 func (x *ListProjectsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[132]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[135]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7826,7 +8002,7 @@ func (x *ListProjectsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListProjectsResponse.ProtoReflect.Descriptor instead.
 func (*ListProjectsResponse) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{132}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{135}
 }
 
 func (x *ListProjectsResponse) GetProjects() []*pb.ProjectSummary {
@@ -7847,7 +8023,7 @@ type RemoteBranchesRequest struct {
 
 func (x *RemoteBranchesRequest) Reset() {
 	*x = RemoteBranchesRequest{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[133]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[136]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7859,7 +8035,7 @@ func (x *RemoteBranchesRequest) String() string {
 func (*RemoteBranchesRequest) ProtoMessage() {}
 
 func (x *RemoteBranchesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[133]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[136]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7872,7 +8048,7 @@ func (x *RemoteBranchesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RemoteBranchesRequest.ProtoReflect.Descriptor instead.
 func (*RemoteBranchesRequest) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{133}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{136}
 }
 
 func (x *RemoteBranchesRequest) GetServer() string {
@@ -7905,7 +8081,7 @@ type RemoteBranchesResponse struct {
 
 func (x *RemoteBranchesResponse) Reset() {
 	*x = RemoteBranchesResponse{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[134]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[137]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7917,7 +8093,7 @@ func (x *RemoteBranchesResponse) String() string {
 func (*RemoteBranchesResponse) ProtoMessage() {}
 
 func (x *RemoteBranchesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[134]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[137]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7930,7 +8106,7 @@ func (x *RemoteBranchesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RemoteBranchesResponse.ProtoReflect.Descriptor instead.
 func (*RemoteBranchesResponse) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{134}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{137}
 }
 
 func (x *RemoteBranchesResponse) GetBranches() []*pb.Branch {
@@ -7953,7 +8129,7 @@ type RemoteTreeRequest struct {
 
 func (x *RemoteTreeRequest) Reset() {
 	*x = RemoteTreeRequest{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[135]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[138]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7965,7 +8141,7 @@ func (x *RemoteTreeRequest) String() string {
 func (*RemoteTreeRequest) ProtoMessage() {}
 
 func (x *RemoteTreeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[135]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[138]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7978,7 +8154,7 @@ func (x *RemoteTreeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RemoteTreeRequest.ProtoReflect.Descriptor instead.
 func (*RemoteTreeRequest) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{135}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{138}
 }
 
 func (x *RemoteTreeRequest) GetServer() string {
@@ -8026,7 +8202,7 @@ type RemoteTreeDir struct {
 
 func (x *RemoteTreeDir) Reset() {
 	*x = RemoteTreeDir{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[136]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[139]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8038,7 +8214,7 @@ func (x *RemoteTreeDir) String() string {
 func (*RemoteTreeDir) ProtoMessage() {}
 
 func (x *RemoteTreeDir) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[136]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[139]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8051,7 +8227,7 @@ func (x *RemoteTreeDir) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RemoteTreeDir.ProtoReflect.Descriptor instead.
 func (*RemoteTreeDir) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{136}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{139}
 }
 
 func (x *RemoteTreeDir) GetName() string {
@@ -8079,7 +8255,7 @@ type RemoteTreeResponse struct {
 
 func (x *RemoteTreeResponse) Reset() {
 	*x = RemoteTreeResponse{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[137]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[140]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8091,7 +8267,7 @@ func (x *RemoteTreeResponse) String() string {
 func (*RemoteTreeResponse) ProtoMessage() {}
 
 func (x *RemoteTreeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[137]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[140]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8104,7 +8280,7 @@ func (x *RemoteTreeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RemoteTreeResponse.ProtoReflect.Descriptor instead.
 func (*RemoteTreeResponse) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{137}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{140}
 }
 
 func (x *RemoteTreeResponse) GetDirs() []*RemoteTreeDir {
@@ -8140,7 +8316,7 @@ type CloneRequest struct {
 
 func (x *CloneRequest) Reset() {
 	*x = CloneRequest{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[138]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[141]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8152,7 +8328,7 @@ func (x *CloneRequest) String() string {
 func (*CloneRequest) ProtoMessage() {}
 
 func (x *CloneRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[138]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[141]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8165,7 +8341,7 @@ func (x *CloneRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CloneRequest.ProtoReflect.Descriptor instead.
 func (*CloneRequest) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{138}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{141}
 }
 
 func (x *CloneRequest) GetUrl() string {
@@ -8206,7 +8382,7 @@ type SetSparseRequest struct {
 
 func (x *SetSparseRequest) Reset() {
 	*x = SetSparseRequest{}
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[139]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[142]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8218,7 +8394,7 @@ func (x *SetSparseRequest) String() string {
 func (*SetSparseRequest) ProtoMessage() {}
 
 func (x *SetSparseRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[139]
+	mi := &file_internal_client_grpc_proto_daemon_proto_msgTypes[142]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8231,7 +8407,7 @@ func (x *SetSparseRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetSparseRequest.ProtoReflect.Descriptor instead.
 func (*SetSparseRequest) Descriptor() ([]byte, []int) {
-	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{139}
+	return file_internal_client_grpc_proto_daemon_proto_rawDescGZIP(), []int{142}
 }
 
 func (x *SetSparseRequest) GetRoot() string {
@@ -8354,7 +8530,18 @@ const file_internal_client_grpc_proto_daemon_proto_rawDesc = "" +
 	"\x04root\x18\x01 \x01(\tR\x04root\x12\x12\n" +
 	"\x04path\x18\x02 \x01(\tR\x04path\x12\x16\n" +
 	"\x06choice\x18\x03 \x01(\tR\x06choice\x12\x18\n" +
-	"\acontent\x18\x04 \x01(\fR\acontent\"\xc7\x02\n" +
+	"\acontent\x18\x04 \x01(\fR\acontent\"C\n" +
+	"\x19MergeGodotResourceRequest\x12\x12\n" +
+	"\x04root\x18\x01 \x01(\tR\x04root\x12\x12\n" +
+	"\x04path\x18\x02 \x01(\tR\x04path\"Z\n" +
+	"\x12GodotMergeConflict\x12\x18\n" +
+	"\asection\x18\x01 \x01(\tR\asection\x12\x10\n" +
+	"\x03key\x18\x02 \x01(\tR\x03key\x12\x18\n" +
+	"\amessage\x18\x03 \x01(\tR\amessage\"\x88\x01\n" +
+	"\x1aMergeGodotResourceResponse\x12\x16\n" +
+	"\x06merged\x18\x01 \x01(\fR\x06merged\x12\x14\n" +
+	"\x05clean\x18\x02 \x01(\bR\x05clean\x12<\n" +
+	"\tconflicts\x18\x03 \x03(\v2\x1e.nipadaemon.GodotMergeConflictR\tconflicts\"\xc7\x02\n" +
 	"\vDiffRequest\x12\x12\n" +
 	"\x04root\x18\x01 \x01(\tR\x04root\x12\x1c\n" +
 	"\trevisions\x18\x02 \x03(\tR\trevisions\x12\x14\n" +
@@ -8790,7 +8977,7 @@ const file_internal_client_grpc_proto_daemon_proto_rawDesc = "" +
 	"\x06target\x18\x04 \x01(\tR\x06target\"<\n" +
 	"\x10SetSparseRequest\x12\x12\n" +
 	"\x04root\x18\x01 \x01(\tR\x04root\x12\x14\n" +
-	"\x05paths\x18\x02 \x03(\tR\x05paths2\xd4+\n" +
+	"\x05paths\x18\x02 \x03(\tR\x05paths2\xb9,\n" +
 	"\n" +
 	"NipaDaemon\x129\n" +
 	"\x04Ping\x12\x17.nipadaemon.PingRequest\x1a\x18.nipadaemon.PingResponse\x12E\n" +
@@ -8808,7 +8995,8 @@ const file_internal_client_grpc_proto_daemon_proto_rawDesc = "" +
 	"\x05Merge\x12\x1a.nipadaemon.MergeOpRequest\x1a\x13.nipadaemon.OpEvent0\x01\x12<\n" +
 	"\x06Revert\x12\x1b.nipadaemon.RevertOpRequest\x1a\x13.nipadaemon.OpEvent0\x01\x12H\n" +
 	"\tConflicts\x12\x1c.nipadaemon.ConflictsRequest\x1a\x1d.nipadaemon.ConflictsResponse\x12Q\n" +
-	"\x0fResolveConflict\x12\".nipadaemon.ResolveConflictRequest\x1a\x1a.nipadaemon.StatusResponse\x128\n" +
+	"\x0fResolveConflict\x12\".nipadaemon.ResolveConflictRequest\x1a\x1a.nipadaemon.StatusResponse\x12c\n" +
+	"\x12MergeGodotResource\x12%.nipadaemon.MergeGodotResourceRequest\x1a&.nipadaemon.MergeGodotResourceResponse\x128\n" +
 	"\x04Diff\x12\x17.nipadaemon.DiffRequest\x1a\x15.nipadaemon.DiffEvent0\x01\x12A\n" +
 	"\tDiffFiles\x12\x17.nipadaemon.DiffRequest\x1a\x19.nipadaemon.DiffFileEvent0\x01\x12@\n" +
 	"\bReadBlob\x12\x1b.nipadaemon.ReadBlobRequest\x1a\x15.nipadaemon.BlobEvent0\x01\x12A\n" +
@@ -8872,7 +9060,7 @@ func file_internal_client_grpc_proto_daemon_proto_rawDescGZIP() []byte {
 	return file_internal_client_grpc_proto_daemon_proto_rawDescData
 }
 
-var file_internal_client_grpc_proto_daemon_proto_msgTypes = make([]protoimpl.MessageInfo, 140)
+var file_internal_client_grpc_proto_daemon_proto_msgTypes = make([]protoimpl.MessageInfo, 143)
 var file_internal_client_grpc_proto_daemon_proto_goTypes = []any{
 	(*PingRequest)(nil),                           // 0: nipadaemon.PingRequest
 	(*PingResponse)(nil),                          // 1: nipadaemon.PingResponse
@@ -8902,186 +9090,189 @@ var file_internal_client_grpc_proto_daemon_proto_goTypes = []any{
 	(*ConflictFile)(nil),                          // 25: nipadaemon.ConflictFile
 	(*ConflictsResponse)(nil),                     // 26: nipadaemon.ConflictsResponse
 	(*ResolveConflictRequest)(nil),                // 27: nipadaemon.ResolveConflictRequest
-	(*DiffRequest)(nil),                           // 28: nipadaemon.DiffRequest
-	(*DiffEvent)(nil),                             // 29: nipadaemon.DiffEvent
-	(*DiffFileSide)(nil),                          // 30: nipadaemon.DiffFileSide
-	(*DiffFile)(nil),                              // 31: nipadaemon.DiffFile
-	(*DiffFileEvent)(nil),                         // 32: nipadaemon.DiffFileEvent
-	(*BlobRef)(nil),                               // 33: nipadaemon.BlobRef
-	(*ReadBlobRequest)(nil),                       // 34: nipadaemon.ReadBlobRequest
-	(*BlobInfo)(nil),                              // 35: nipadaemon.BlobInfo
-	(*BlobEvent)(nil),                             // 36: nipadaemon.BlobEvent
-	(*PreviewRequest)(nil),                        // 37: nipadaemon.PreviewRequest
-	(*ImageLayer)(nil),                            // 38: nipadaemon.ImageLayer
-	(*ImagePreview)(nil),                          // 39: nipadaemon.ImagePreview
-	(*PreviewData)(nil),                           // 40: nipadaemon.PreviewData
-	(*ImageDiffStats)(nil),                        // 41: nipadaemon.ImageDiffStats
-	(*PreviewEvent)(nil),                          // 42: nipadaemon.PreviewEvent
-	(*WatchChangesRequest)(nil),                   // 43: nipadaemon.WatchChangesRequest
-	(*RepoChange)(nil),                            // 44: nipadaemon.RepoChange
-	(*WatchEventsRequest)(nil),                    // 45: nipadaemon.WatchEventsRequest
-	(*TeamEvent)(nil),                             // 46: nipadaemon.TeamEvent
-	(*RepoActivity)(nil),                          // 47: nipadaemon.RepoActivity
-	(*OpQueued)(nil),                              // 48: nipadaemon.OpQueued
-	(*OpStarted)(nil),                             // 49: nipadaemon.OpStarted
-	(*OpProgress)(nil),                            // 50: nipadaemon.OpProgress
-	(*OpFailure)(nil),                             // 51: nipadaemon.OpFailure
-	(*SyncResult)(nil),                            // 52: nipadaemon.SyncResult
-	(*PushResult)(nil),                            // 53: nipadaemon.PushResult
-	(*MergeResult)(nil),                           // 54: nipadaemon.MergeResult
-	(*RevertResult)(nil),                          // 55: nipadaemon.RevertResult
-	(*OpResult)(nil),                              // 56: nipadaemon.OpResult
-	(*OpEvent)(nil),                               // 57: nipadaemon.OpEvent
-	(*ProxyBranchListRequest)(nil),                // 58: nipadaemon.ProxyBranchListRequest
-	(*ProxyBranchListResponse)(nil),               // 59: nipadaemon.ProxyBranchListResponse
-	(*ProxyBranchCreateRequest)(nil),              // 60: nipadaemon.ProxyBranchCreateRequest
-	(*ProxyBranchCreateResponse)(nil),             // 61: nipadaemon.ProxyBranchCreateResponse
-	(*ProxyBranchDeleteRequest)(nil),              // 62: nipadaemon.ProxyBranchDeleteRequest
-	(*ProxyBranchDeleteResponse)(nil),             // 63: nipadaemon.ProxyBranchDeleteResponse
-	(*ProxyTreeManifestRequest)(nil),              // 64: nipadaemon.ProxyTreeManifestRequest
-	(*ProxyTreeManifestResponse)(nil),             // 65: nipadaemon.ProxyTreeManifestResponse
-	(*ProxyCommitLogRequest)(nil),                 // 66: nipadaemon.ProxyCommitLogRequest
-	(*ProxyCommitLogResponse)(nil),                // 67: nipadaemon.ProxyCommitLogResponse
-	(*ProxyCommitGetRequest)(nil),                 // 68: nipadaemon.ProxyCommitGetRequest
-	(*ProxyCommitGetResponse)(nil),                // 69: nipadaemon.ProxyCommitGetResponse
-	(*ProxyCommitWalkRequest)(nil),                // 70: nipadaemon.ProxyCommitWalkRequest
-	(*ProxyCommitWalkResponse)(nil),               // 71: nipadaemon.ProxyCommitWalkResponse
-	(*ProxyMergeBaseRequest)(nil),                 // 72: nipadaemon.ProxyMergeBaseRequest
-	(*ProxyMergeBaseResponse)(nil),                // 73: nipadaemon.ProxyMergeBaseResponse
-	(*ProxyMergeRequestListRequest)(nil),          // 74: nipadaemon.ProxyMergeRequestListRequest
-	(*ProxyMergeRequestListResponse)(nil),         // 75: nipadaemon.ProxyMergeRequestListResponse
-	(*ProxyMergeRequestCreateRequest)(nil),        // 76: nipadaemon.ProxyMergeRequestCreateRequest
-	(*ProxyMergeRequestCreateResponse)(nil),       // 77: nipadaemon.ProxyMergeRequestCreateResponse
-	(*ProxyMergeRequestMergeRequest)(nil),         // 78: nipadaemon.ProxyMergeRequestMergeRequest
-	(*ProxyMergeRequestMergeResponse)(nil),        // 79: nipadaemon.ProxyMergeRequestMergeResponse
-	(*ProxyMergeRequestCloseRequest)(nil),         // 80: nipadaemon.ProxyMergeRequestCloseRequest
-	(*ProxyMergeRequestCloseResponse)(nil),        // 81: nipadaemon.ProxyMergeRequestCloseResponse
-	(*ProxyMergeRequestReviewsRequest)(nil),       // 82: nipadaemon.ProxyMergeRequestReviewsRequest
-	(*ProxyMergeRequestReviewsResponse)(nil),      // 83: nipadaemon.ProxyMergeRequestReviewsResponse
-	(*ProxyMergeRequestReviewStateRequest)(nil),   // 84: nipadaemon.ProxyMergeRequestReviewStateRequest
-	(*ProxyMergeRequestReviewStateResponse)(nil),  // 85: nipadaemon.ProxyMergeRequestReviewStateResponse
-	(*ProxyMergeRequestThreadsRequest)(nil),       // 86: nipadaemon.ProxyMergeRequestThreadsRequest
-	(*ProxyMergeRequestThreadsResponse)(nil),      // 87: nipadaemon.ProxyMergeRequestThreadsResponse
-	(*ProxyMergeRequestGetRequest)(nil),           // 88: nipadaemon.ProxyMergeRequestGetRequest
-	(*ProxyMergeRequestGetResponse)(nil),          // 89: nipadaemon.ProxyMergeRequestGetResponse
-	(*ProxyMergeRequestCheckRequest)(nil),         // 90: nipadaemon.ProxyMergeRequestCheckRequest
-	(*ProxyMergeRequestCheckResponse)(nil),        // 91: nipadaemon.ProxyMergeRequestCheckResponse
-	(*ProxyMergeRequestReopenRequest)(nil),        // 92: nipadaemon.ProxyMergeRequestReopenRequest
-	(*ProxyMergeRequestReopenResponse)(nil),       // 93: nipadaemon.ProxyMergeRequestReopenResponse
-	(*ProxyMergeRequestSubmitReviewRequest)(nil),  // 94: nipadaemon.ProxyMergeRequestSubmitReviewRequest
-	(*ProxyMergeRequestSubmitReviewResponse)(nil), // 95: nipadaemon.ProxyMergeRequestSubmitReviewResponse
-	(*ProxyMergeRequestUpdateRequest)(nil),        // 96: nipadaemon.ProxyMergeRequestUpdateRequest
-	(*ProxyMergeRequestUpdateResponse)(nil),       // 97: nipadaemon.ProxyMergeRequestUpdateResponse
-	(*ProxyMergeRequestCommitsRequest)(nil),       // 98: nipadaemon.ProxyMergeRequestCommitsRequest
-	(*ProxyMergeRequestCommitsResponse)(nil),      // 99: nipadaemon.ProxyMergeRequestCommitsResponse
-	(*ProxyMergeRequestChecksRequest)(nil),        // 100: nipadaemon.ProxyMergeRequestChecksRequest
-	(*ProxyMergeRequestChecksResponse)(nil),       // 101: nipadaemon.ProxyMergeRequestChecksResponse
-	(*ProxyMergeRequestTimelineRequest)(nil),      // 102: nipadaemon.ProxyMergeRequestTimelineRequest
-	(*ProxyMergeRequestTimelineResponse)(nil),     // 103: nipadaemon.ProxyMergeRequestTimelineResponse
-	(*ProxyMergeRequestAddCommentRequest)(nil),    // 104: nipadaemon.ProxyMergeRequestAddCommentRequest
-	(*ProxyMergeRequestAddCommentResponse)(nil),   // 105: nipadaemon.ProxyMergeRequestAddCommentResponse
-	(*ProxyMergeRequestReplyRequest)(nil),         // 106: nipadaemon.ProxyMergeRequestReplyRequest
-	(*ProxyMergeRequestReplyResponse)(nil),        // 107: nipadaemon.ProxyMergeRequestReplyResponse
-	(*ProxyMergeRequestResolveRequest)(nil),       // 108: nipadaemon.ProxyMergeRequestResolveRequest
-	(*ProxyMergeRequestResolveResponse)(nil),      // 109: nipadaemon.ProxyMergeRequestResolveResponse
-	(*ProxyLockFileRequest)(nil),                  // 110: nipadaemon.ProxyLockFileRequest
-	(*ProxyLockFileResponse)(nil),                 // 111: nipadaemon.ProxyLockFileResponse
-	(*ProxyUnlockFileRequest)(nil),                // 112: nipadaemon.ProxyUnlockFileRequest
-	(*ProxyUnlockFileResponse)(nil),               // 113: nipadaemon.ProxyUnlockFileResponse
-	(*ProxyListFileLocksRequest)(nil),             // 114: nipadaemon.ProxyListFileLocksRequest
-	(*ProxyListFileLocksResponse)(nil),            // 115: nipadaemon.ProxyListFileLocksResponse
-	(*ProxyTagListRequest)(nil),                   // 116: nipadaemon.ProxyTagListRequest
-	(*ProxyTagListResponse)(nil),                  // 117: nipadaemon.ProxyTagListResponse
-	(*ProxyTagCreateRequest)(nil),                 // 118: nipadaemon.ProxyTagCreateRequest
-	(*ProxyTagCreateResponse)(nil),                // 119: nipadaemon.ProxyTagCreateResponse
-	(*ProxyTagDeleteRequest)(nil),                 // 120: nipadaemon.ProxyTagDeleteRequest
-	(*ProxyTagDeleteResponse)(nil),                // 121: nipadaemon.ProxyTagDeleteResponse
-	(*MetaWarningsRequest)(nil),                   // 122: nipadaemon.MetaWarningsRequest
-	(*MetaWarning)(nil),                           // 123: nipadaemon.MetaWarning
-	(*MetaWarningsResponse)(nil),                  // 124: nipadaemon.MetaWarningsResponse
-	(*LockStatusRequest)(nil),                     // 125: nipadaemon.LockStatusRequest
-	(*LockStatusResponse)(nil),                    // 126: nipadaemon.LockStatusResponse
-	(*FileLockState)(nil),                         // 127: nipadaemon.FileLockState
-	(*AccountStatusRequest)(nil),                  // 128: nipadaemon.AccountStatusRequest
-	(*AccountStatusResponse)(nil),                 // 129: nipadaemon.AccountStatusResponse
-	(*LoginSSHRequest)(nil),                       // 130: nipadaemon.LoginSSHRequest
-	(*ListProjectsRequest)(nil),                   // 131: nipadaemon.ListProjectsRequest
-	(*ListProjectsResponse)(nil),                  // 132: nipadaemon.ListProjectsResponse
-	(*RemoteBranchesRequest)(nil),                 // 133: nipadaemon.RemoteBranchesRequest
-	(*RemoteBranchesResponse)(nil),                // 134: nipadaemon.RemoteBranchesResponse
-	(*RemoteTreeRequest)(nil),                     // 135: nipadaemon.RemoteTreeRequest
-	(*RemoteTreeDir)(nil),                         // 136: nipadaemon.RemoteTreeDir
-	(*RemoteTreeResponse)(nil),                    // 137: nipadaemon.RemoteTreeResponse
-	(*CloneRequest)(nil),                          // 138: nipadaemon.CloneRequest
-	(*SetSparseRequest)(nil),                      // 139: nipadaemon.SetSparseRequest
-	(*pb.DiffHunkDetail)(nil),                     // 140: greet.DiffHunkDetail
-	(*pb.GetListBranchRequest)(nil),               // 141: greet.GetListBranchRequest
-	(*pb.GetListBranchResponse)(nil),              // 142: greet.GetListBranchResponse
-	(*pb.CreateBranchRequest)(nil),                // 143: greet.CreateBranchRequest
-	(*pb.CreateBranchResponse)(nil),               // 144: greet.CreateBranchResponse
-	(*pb.DeleteBranchRequest)(nil),                // 145: greet.DeleteBranchRequest
-	(*pb.DeleteBranchResponse)(nil),               // 146: greet.DeleteBranchResponse
-	(*pb.GetTreeManifestRequest)(nil),             // 147: greet.GetTreeManifestRequest
-	(*pb.GetTreeManifestResponse)(nil),            // 148: greet.GetTreeManifestResponse
-	(*pb.GetCommitLogRequest)(nil),                // 149: greet.GetCommitLogRequest
-	(*pb.GetCommitLogResponse)(nil),               // 150: greet.GetCommitLogResponse
-	(*pb.GetCommitRequest)(nil),                   // 151: greet.GetCommitRequest
-	(*pb.GetCommitResponse)(nil),                  // 152: greet.GetCommitResponse
-	(*pb.WalkCommitsRequest)(nil),                 // 153: greet.WalkCommitsRequest
-	(*pb.WalkCommitsResponse)(nil),                // 154: greet.WalkCommitsResponse
-	(*pb.GetMergeBaseRequest)(nil),                // 155: greet.GetMergeBaseRequest
-	(*pb.GetMergeBaseResponse)(nil),               // 156: greet.GetMergeBaseResponse
-	(*pb.ListMergeRequestsRequest)(nil),           // 157: greet.ListMergeRequestsRequest
-	(*pb.ListMergeRequestsResponse)(nil),          // 158: greet.ListMergeRequestsResponse
-	(*pb.CreateMergeRequestRequest)(nil),          // 159: greet.CreateMergeRequestRequest
-	(*pb.CreateMergeRequestResponse)(nil),         // 160: greet.CreateMergeRequestResponse
-	(*pb.MergeMergeRequestRequest)(nil),           // 161: greet.MergeMergeRequestRequest
-	(*pb.MergeMergeRequestResponse)(nil),          // 162: greet.MergeMergeRequestResponse
-	(*pb.CloseMergeRequestRequest)(nil),           // 163: greet.CloseMergeRequestRequest
-	(*pb.CloseMergeRequestResponse)(nil),          // 164: greet.CloseMergeRequestResponse
-	(*pb.ListMergeRequestReviewsRequest)(nil),     // 165: greet.ListMergeRequestReviewsRequest
-	(*pb.ListMergeRequestReviewsResponse)(nil),    // 166: greet.ListMergeRequestReviewsResponse
-	(*pb.GetMergeRequestReviewStateRequest)(nil),  // 167: greet.GetMergeRequestReviewStateRequest
-	(*pb.GetMergeRequestReviewStateResponse)(nil), // 168: greet.GetMergeRequestReviewStateResponse
-	(*pb.ListMergeRequestThreadsRequest)(nil),     // 169: greet.ListMergeRequestThreadsRequest
-	(*pb.ListMergeRequestThreadsResponse)(nil),    // 170: greet.ListMergeRequestThreadsResponse
-	(*pb.GetMergeRequestRequest)(nil),             // 171: greet.GetMergeRequestRequest
-	(*pb.GetMergeRequestResponse)(nil),            // 172: greet.GetMergeRequestResponse
-	(*pb.CheckMergeRequestRequest)(nil),           // 173: greet.CheckMergeRequestRequest
-	(*pb.CheckMergeRequestResponse)(nil),          // 174: greet.CheckMergeRequestResponse
-	(*pb.ReopenMergeRequestRequest)(nil),          // 175: greet.ReopenMergeRequestRequest
-	(*pb.ReopenMergeRequestResponse)(nil),         // 176: greet.ReopenMergeRequestResponse
-	(*pb.SubmitMergeRequestReviewRequest)(nil),    // 177: greet.SubmitMergeRequestReviewRequest
-	(*pb.SubmitMergeRequestReviewResponse)(nil),   // 178: greet.SubmitMergeRequestReviewResponse
-	(*pb.UpdateMergeRequestRequest)(nil),          // 179: greet.UpdateMergeRequestRequest
-	(*pb.UpdateMergeRequestResponse)(nil),         // 180: greet.UpdateMergeRequestResponse
-	(*pb.ListMergeRequestCommitsRequest)(nil),     // 181: greet.ListMergeRequestCommitsRequest
-	(*pb.ListMergeRequestCommitsResponse)(nil),    // 182: greet.ListMergeRequestCommitsResponse
-	(*pb.ListMergeRequestChecksRequest)(nil),      // 183: greet.ListMergeRequestChecksRequest
-	(*pb.ListMergeRequestChecksResponse)(nil),     // 184: greet.ListMergeRequestChecksResponse
-	(*pb.ListMergeRequestTimelineRequest)(nil),    // 185: greet.ListMergeRequestTimelineRequest
-	(*pb.ListMergeRequestTimelineResponse)(nil),   // 186: greet.ListMergeRequestTimelineResponse
-	(*pb.AddMergeRequestCommentRequest)(nil),      // 187: greet.AddMergeRequestCommentRequest
-	(*pb.AddMergeRequestCommentResponse)(nil),     // 188: greet.AddMergeRequestCommentResponse
-	(*pb.ReplyMergeRequestThreadRequest)(nil),     // 189: greet.ReplyMergeRequestThreadRequest
-	(*pb.ReplyMergeRequestThreadResponse)(nil),    // 190: greet.ReplyMergeRequestThreadResponse
-	(*pb.ResolveMergeRequestThreadRequest)(nil),   // 191: greet.ResolveMergeRequestThreadRequest
-	(*pb.ResolveMergeRequestThreadResponse)(nil),  // 192: greet.ResolveMergeRequestThreadResponse
-	(*pb.LockFileRequest)(nil),                    // 193: greet.LockFileRequest
-	(*pb.LockFileResponse)(nil),                   // 194: greet.LockFileResponse
-	(*pb.UnlockFileRequest)(nil),                  // 195: greet.UnlockFileRequest
-	(*pb.UnlockFileResponse)(nil),                 // 196: greet.UnlockFileResponse
-	(*pb.ListFileLocksRequest)(nil),               // 197: greet.ListFileLocksRequest
-	(*pb.ListFileLocksResponse)(nil),              // 198: greet.ListFileLocksResponse
-	(*pb.ListTagsRequest)(nil),                    // 199: greet.ListTagsRequest
-	(*pb.ListTagsResponse)(nil),                   // 200: greet.ListTagsResponse
-	(*pb.CreateTagRequest)(nil),                   // 201: greet.CreateTagRequest
-	(*pb.CreateTagResponse)(nil),                  // 202: greet.CreateTagResponse
-	(*pb.DeleteTagRequest)(nil),                   // 203: greet.DeleteTagRequest
-	(*pb.DeleteTagResponse)(nil),                  // 204: greet.DeleteTagResponse
-	(*pb.FileLockDetail)(nil),                     // 205: greet.FileLockDetail
-	(*pb.ProjectSummary)(nil),                     // 206: greet.ProjectSummary
-	(*pb.Branch)(nil),                             // 207: greet.Branch
+	(*MergeGodotResourceRequest)(nil),             // 28: nipadaemon.MergeGodotResourceRequest
+	(*GodotMergeConflict)(nil),                    // 29: nipadaemon.GodotMergeConflict
+	(*MergeGodotResourceResponse)(nil),            // 30: nipadaemon.MergeGodotResourceResponse
+	(*DiffRequest)(nil),                           // 31: nipadaemon.DiffRequest
+	(*DiffEvent)(nil),                             // 32: nipadaemon.DiffEvent
+	(*DiffFileSide)(nil),                          // 33: nipadaemon.DiffFileSide
+	(*DiffFile)(nil),                              // 34: nipadaemon.DiffFile
+	(*DiffFileEvent)(nil),                         // 35: nipadaemon.DiffFileEvent
+	(*BlobRef)(nil),                               // 36: nipadaemon.BlobRef
+	(*ReadBlobRequest)(nil),                       // 37: nipadaemon.ReadBlobRequest
+	(*BlobInfo)(nil),                              // 38: nipadaemon.BlobInfo
+	(*BlobEvent)(nil),                             // 39: nipadaemon.BlobEvent
+	(*PreviewRequest)(nil),                        // 40: nipadaemon.PreviewRequest
+	(*ImageLayer)(nil),                            // 41: nipadaemon.ImageLayer
+	(*ImagePreview)(nil),                          // 42: nipadaemon.ImagePreview
+	(*PreviewData)(nil),                           // 43: nipadaemon.PreviewData
+	(*ImageDiffStats)(nil),                        // 44: nipadaemon.ImageDiffStats
+	(*PreviewEvent)(nil),                          // 45: nipadaemon.PreviewEvent
+	(*WatchChangesRequest)(nil),                   // 46: nipadaemon.WatchChangesRequest
+	(*RepoChange)(nil),                            // 47: nipadaemon.RepoChange
+	(*WatchEventsRequest)(nil),                    // 48: nipadaemon.WatchEventsRequest
+	(*TeamEvent)(nil),                             // 49: nipadaemon.TeamEvent
+	(*RepoActivity)(nil),                          // 50: nipadaemon.RepoActivity
+	(*OpQueued)(nil),                              // 51: nipadaemon.OpQueued
+	(*OpStarted)(nil),                             // 52: nipadaemon.OpStarted
+	(*OpProgress)(nil),                            // 53: nipadaemon.OpProgress
+	(*OpFailure)(nil),                             // 54: nipadaemon.OpFailure
+	(*SyncResult)(nil),                            // 55: nipadaemon.SyncResult
+	(*PushResult)(nil),                            // 56: nipadaemon.PushResult
+	(*MergeResult)(nil),                           // 57: nipadaemon.MergeResult
+	(*RevertResult)(nil),                          // 58: nipadaemon.RevertResult
+	(*OpResult)(nil),                              // 59: nipadaemon.OpResult
+	(*OpEvent)(nil),                               // 60: nipadaemon.OpEvent
+	(*ProxyBranchListRequest)(nil),                // 61: nipadaemon.ProxyBranchListRequest
+	(*ProxyBranchListResponse)(nil),               // 62: nipadaemon.ProxyBranchListResponse
+	(*ProxyBranchCreateRequest)(nil),              // 63: nipadaemon.ProxyBranchCreateRequest
+	(*ProxyBranchCreateResponse)(nil),             // 64: nipadaemon.ProxyBranchCreateResponse
+	(*ProxyBranchDeleteRequest)(nil),              // 65: nipadaemon.ProxyBranchDeleteRequest
+	(*ProxyBranchDeleteResponse)(nil),             // 66: nipadaemon.ProxyBranchDeleteResponse
+	(*ProxyTreeManifestRequest)(nil),              // 67: nipadaemon.ProxyTreeManifestRequest
+	(*ProxyTreeManifestResponse)(nil),             // 68: nipadaemon.ProxyTreeManifestResponse
+	(*ProxyCommitLogRequest)(nil),                 // 69: nipadaemon.ProxyCommitLogRequest
+	(*ProxyCommitLogResponse)(nil),                // 70: nipadaemon.ProxyCommitLogResponse
+	(*ProxyCommitGetRequest)(nil),                 // 71: nipadaemon.ProxyCommitGetRequest
+	(*ProxyCommitGetResponse)(nil),                // 72: nipadaemon.ProxyCommitGetResponse
+	(*ProxyCommitWalkRequest)(nil),                // 73: nipadaemon.ProxyCommitWalkRequest
+	(*ProxyCommitWalkResponse)(nil),               // 74: nipadaemon.ProxyCommitWalkResponse
+	(*ProxyMergeBaseRequest)(nil),                 // 75: nipadaemon.ProxyMergeBaseRequest
+	(*ProxyMergeBaseResponse)(nil),                // 76: nipadaemon.ProxyMergeBaseResponse
+	(*ProxyMergeRequestListRequest)(nil),          // 77: nipadaemon.ProxyMergeRequestListRequest
+	(*ProxyMergeRequestListResponse)(nil),         // 78: nipadaemon.ProxyMergeRequestListResponse
+	(*ProxyMergeRequestCreateRequest)(nil),        // 79: nipadaemon.ProxyMergeRequestCreateRequest
+	(*ProxyMergeRequestCreateResponse)(nil),       // 80: nipadaemon.ProxyMergeRequestCreateResponse
+	(*ProxyMergeRequestMergeRequest)(nil),         // 81: nipadaemon.ProxyMergeRequestMergeRequest
+	(*ProxyMergeRequestMergeResponse)(nil),        // 82: nipadaemon.ProxyMergeRequestMergeResponse
+	(*ProxyMergeRequestCloseRequest)(nil),         // 83: nipadaemon.ProxyMergeRequestCloseRequest
+	(*ProxyMergeRequestCloseResponse)(nil),        // 84: nipadaemon.ProxyMergeRequestCloseResponse
+	(*ProxyMergeRequestReviewsRequest)(nil),       // 85: nipadaemon.ProxyMergeRequestReviewsRequest
+	(*ProxyMergeRequestReviewsResponse)(nil),      // 86: nipadaemon.ProxyMergeRequestReviewsResponse
+	(*ProxyMergeRequestReviewStateRequest)(nil),   // 87: nipadaemon.ProxyMergeRequestReviewStateRequest
+	(*ProxyMergeRequestReviewStateResponse)(nil),  // 88: nipadaemon.ProxyMergeRequestReviewStateResponse
+	(*ProxyMergeRequestThreadsRequest)(nil),       // 89: nipadaemon.ProxyMergeRequestThreadsRequest
+	(*ProxyMergeRequestThreadsResponse)(nil),      // 90: nipadaemon.ProxyMergeRequestThreadsResponse
+	(*ProxyMergeRequestGetRequest)(nil),           // 91: nipadaemon.ProxyMergeRequestGetRequest
+	(*ProxyMergeRequestGetResponse)(nil),          // 92: nipadaemon.ProxyMergeRequestGetResponse
+	(*ProxyMergeRequestCheckRequest)(nil),         // 93: nipadaemon.ProxyMergeRequestCheckRequest
+	(*ProxyMergeRequestCheckResponse)(nil),        // 94: nipadaemon.ProxyMergeRequestCheckResponse
+	(*ProxyMergeRequestReopenRequest)(nil),        // 95: nipadaemon.ProxyMergeRequestReopenRequest
+	(*ProxyMergeRequestReopenResponse)(nil),       // 96: nipadaemon.ProxyMergeRequestReopenResponse
+	(*ProxyMergeRequestSubmitReviewRequest)(nil),  // 97: nipadaemon.ProxyMergeRequestSubmitReviewRequest
+	(*ProxyMergeRequestSubmitReviewResponse)(nil), // 98: nipadaemon.ProxyMergeRequestSubmitReviewResponse
+	(*ProxyMergeRequestUpdateRequest)(nil),        // 99: nipadaemon.ProxyMergeRequestUpdateRequest
+	(*ProxyMergeRequestUpdateResponse)(nil),       // 100: nipadaemon.ProxyMergeRequestUpdateResponse
+	(*ProxyMergeRequestCommitsRequest)(nil),       // 101: nipadaemon.ProxyMergeRequestCommitsRequest
+	(*ProxyMergeRequestCommitsResponse)(nil),      // 102: nipadaemon.ProxyMergeRequestCommitsResponse
+	(*ProxyMergeRequestChecksRequest)(nil),        // 103: nipadaemon.ProxyMergeRequestChecksRequest
+	(*ProxyMergeRequestChecksResponse)(nil),       // 104: nipadaemon.ProxyMergeRequestChecksResponse
+	(*ProxyMergeRequestTimelineRequest)(nil),      // 105: nipadaemon.ProxyMergeRequestTimelineRequest
+	(*ProxyMergeRequestTimelineResponse)(nil),     // 106: nipadaemon.ProxyMergeRequestTimelineResponse
+	(*ProxyMergeRequestAddCommentRequest)(nil),    // 107: nipadaemon.ProxyMergeRequestAddCommentRequest
+	(*ProxyMergeRequestAddCommentResponse)(nil),   // 108: nipadaemon.ProxyMergeRequestAddCommentResponse
+	(*ProxyMergeRequestReplyRequest)(nil),         // 109: nipadaemon.ProxyMergeRequestReplyRequest
+	(*ProxyMergeRequestReplyResponse)(nil),        // 110: nipadaemon.ProxyMergeRequestReplyResponse
+	(*ProxyMergeRequestResolveRequest)(nil),       // 111: nipadaemon.ProxyMergeRequestResolveRequest
+	(*ProxyMergeRequestResolveResponse)(nil),      // 112: nipadaemon.ProxyMergeRequestResolveResponse
+	(*ProxyLockFileRequest)(nil),                  // 113: nipadaemon.ProxyLockFileRequest
+	(*ProxyLockFileResponse)(nil),                 // 114: nipadaemon.ProxyLockFileResponse
+	(*ProxyUnlockFileRequest)(nil),                // 115: nipadaemon.ProxyUnlockFileRequest
+	(*ProxyUnlockFileResponse)(nil),               // 116: nipadaemon.ProxyUnlockFileResponse
+	(*ProxyListFileLocksRequest)(nil),             // 117: nipadaemon.ProxyListFileLocksRequest
+	(*ProxyListFileLocksResponse)(nil),            // 118: nipadaemon.ProxyListFileLocksResponse
+	(*ProxyTagListRequest)(nil),                   // 119: nipadaemon.ProxyTagListRequest
+	(*ProxyTagListResponse)(nil),                  // 120: nipadaemon.ProxyTagListResponse
+	(*ProxyTagCreateRequest)(nil),                 // 121: nipadaemon.ProxyTagCreateRequest
+	(*ProxyTagCreateResponse)(nil),                // 122: nipadaemon.ProxyTagCreateResponse
+	(*ProxyTagDeleteRequest)(nil),                 // 123: nipadaemon.ProxyTagDeleteRequest
+	(*ProxyTagDeleteResponse)(nil),                // 124: nipadaemon.ProxyTagDeleteResponse
+	(*MetaWarningsRequest)(nil),                   // 125: nipadaemon.MetaWarningsRequest
+	(*MetaWarning)(nil),                           // 126: nipadaemon.MetaWarning
+	(*MetaWarningsResponse)(nil),                  // 127: nipadaemon.MetaWarningsResponse
+	(*LockStatusRequest)(nil),                     // 128: nipadaemon.LockStatusRequest
+	(*LockStatusResponse)(nil),                    // 129: nipadaemon.LockStatusResponse
+	(*FileLockState)(nil),                         // 130: nipadaemon.FileLockState
+	(*AccountStatusRequest)(nil),                  // 131: nipadaemon.AccountStatusRequest
+	(*AccountStatusResponse)(nil),                 // 132: nipadaemon.AccountStatusResponse
+	(*LoginSSHRequest)(nil),                       // 133: nipadaemon.LoginSSHRequest
+	(*ListProjectsRequest)(nil),                   // 134: nipadaemon.ListProjectsRequest
+	(*ListProjectsResponse)(nil),                  // 135: nipadaemon.ListProjectsResponse
+	(*RemoteBranchesRequest)(nil),                 // 136: nipadaemon.RemoteBranchesRequest
+	(*RemoteBranchesResponse)(nil),                // 137: nipadaemon.RemoteBranchesResponse
+	(*RemoteTreeRequest)(nil),                     // 138: nipadaemon.RemoteTreeRequest
+	(*RemoteTreeDir)(nil),                         // 139: nipadaemon.RemoteTreeDir
+	(*RemoteTreeResponse)(nil),                    // 140: nipadaemon.RemoteTreeResponse
+	(*CloneRequest)(nil),                          // 141: nipadaemon.CloneRequest
+	(*SetSparseRequest)(nil),                      // 142: nipadaemon.SetSparseRequest
+	(*pb.DiffHunkDetail)(nil),                     // 143: greet.DiffHunkDetail
+	(*pb.GetListBranchRequest)(nil),               // 144: greet.GetListBranchRequest
+	(*pb.GetListBranchResponse)(nil),              // 145: greet.GetListBranchResponse
+	(*pb.CreateBranchRequest)(nil),                // 146: greet.CreateBranchRequest
+	(*pb.CreateBranchResponse)(nil),               // 147: greet.CreateBranchResponse
+	(*pb.DeleteBranchRequest)(nil),                // 148: greet.DeleteBranchRequest
+	(*pb.DeleteBranchResponse)(nil),               // 149: greet.DeleteBranchResponse
+	(*pb.GetTreeManifestRequest)(nil),             // 150: greet.GetTreeManifestRequest
+	(*pb.GetTreeManifestResponse)(nil),            // 151: greet.GetTreeManifestResponse
+	(*pb.GetCommitLogRequest)(nil),                // 152: greet.GetCommitLogRequest
+	(*pb.GetCommitLogResponse)(nil),               // 153: greet.GetCommitLogResponse
+	(*pb.GetCommitRequest)(nil),                   // 154: greet.GetCommitRequest
+	(*pb.GetCommitResponse)(nil),                  // 155: greet.GetCommitResponse
+	(*pb.WalkCommitsRequest)(nil),                 // 156: greet.WalkCommitsRequest
+	(*pb.WalkCommitsResponse)(nil),                // 157: greet.WalkCommitsResponse
+	(*pb.GetMergeBaseRequest)(nil),                // 158: greet.GetMergeBaseRequest
+	(*pb.GetMergeBaseResponse)(nil),               // 159: greet.GetMergeBaseResponse
+	(*pb.ListMergeRequestsRequest)(nil),           // 160: greet.ListMergeRequestsRequest
+	(*pb.ListMergeRequestsResponse)(nil),          // 161: greet.ListMergeRequestsResponse
+	(*pb.CreateMergeRequestRequest)(nil),          // 162: greet.CreateMergeRequestRequest
+	(*pb.CreateMergeRequestResponse)(nil),         // 163: greet.CreateMergeRequestResponse
+	(*pb.MergeMergeRequestRequest)(nil),           // 164: greet.MergeMergeRequestRequest
+	(*pb.MergeMergeRequestResponse)(nil),          // 165: greet.MergeMergeRequestResponse
+	(*pb.CloseMergeRequestRequest)(nil),           // 166: greet.CloseMergeRequestRequest
+	(*pb.CloseMergeRequestResponse)(nil),          // 167: greet.CloseMergeRequestResponse
+	(*pb.ListMergeRequestReviewsRequest)(nil),     // 168: greet.ListMergeRequestReviewsRequest
+	(*pb.ListMergeRequestReviewsResponse)(nil),    // 169: greet.ListMergeRequestReviewsResponse
+	(*pb.GetMergeRequestReviewStateRequest)(nil),  // 170: greet.GetMergeRequestReviewStateRequest
+	(*pb.GetMergeRequestReviewStateResponse)(nil), // 171: greet.GetMergeRequestReviewStateResponse
+	(*pb.ListMergeRequestThreadsRequest)(nil),     // 172: greet.ListMergeRequestThreadsRequest
+	(*pb.ListMergeRequestThreadsResponse)(nil),    // 173: greet.ListMergeRequestThreadsResponse
+	(*pb.GetMergeRequestRequest)(nil),             // 174: greet.GetMergeRequestRequest
+	(*pb.GetMergeRequestResponse)(nil),            // 175: greet.GetMergeRequestResponse
+	(*pb.CheckMergeRequestRequest)(nil),           // 176: greet.CheckMergeRequestRequest
+	(*pb.CheckMergeRequestResponse)(nil),          // 177: greet.CheckMergeRequestResponse
+	(*pb.ReopenMergeRequestRequest)(nil),          // 178: greet.ReopenMergeRequestRequest
+	(*pb.ReopenMergeRequestResponse)(nil),         // 179: greet.ReopenMergeRequestResponse
+	(*pb.SubmitMergeRequestReviewRequest)(nil),    // 180: greet.SubmitMergeRequestReviewRequest
+	(*pb.SubmitMergeRequestReviewResponse)(nil),   // 181: greet.SubmitMergeRequestReviewResponse
+	(*pb.UpdateMergeRequestRequest)(nil),          // 182: greet.UpdateMergeRequestRequest
+	(*pb.UpdateMergeRequestResponse)(nil),         // 183: greet.UpdateMergeRequestResponse
+	(*pb.ListMergeRequestCommitsRequest)(nil),     // 184: greet.ListMergeRequestCommitsRequest
+	(*pb.ListMergeRequestCommitsResponse)(nil),    // 185: greet.ListMergeRequestCommitsResponse
+	(*pb.ListMergeRequestChecksRequest)(nil),      // 186: greet.ListMergeRequestChecksRequest
+	(*pb.ListMergeRequestChecksResponse)(nil),     // 187: greet.ListMergeRequestChecksResponse
+	(*pb.ListMergeRequestTimelineRequest)(nil),    // 188: greet.ListMergeRequestTimelineRequest
+	(*pb.ListMergeRequestTimelineResponse)(nil),   // 189: greet.ListMergeRequestTimelineResponse
+	(*pb.AddMergeRequestCommentRequest)(nil),      // 190: greet.AddMergeRequestCommentRequest
+	(*pb.AddMergeRequestCommentResponse)(nil),     // 191: greet.AddMergeRequestCommentResponse
+	(*pb.ReplyMergeRequestThreadRequest)(nil),     // 192: greet.ReplyMergeRequestThreadRequest
+	(*pb.ReplyMergeRequestThreadResponse)(nil),    // 193: greet.ReplyMergeRequestThreadResponse
+	(*pb.ResolveMergeRequestThreadRequest)(nil),   // 194: greet.ResolveMergeRequestThreadRequest
+	(*pb.ResolveMergeRequestThreadResponse)(nil),  // 195: greet.ResolveMergeRequestThreadResponse
+	(*pb.LockFileRequest)(nil),                    // 196: greet.LockFileRequest
+	(*pb.LockFileResponse)(nil),                   // 197: greet.LockFileResponse
+	(*pb.UnlockFileRequest)(nil),                  // 198: greet.UnlockFileRequest
+	(*pb.UnlockFileResponse)(nil),                 // 199: greet.UnlockFileResponse
+	(*pb.ListFileLocksRequest)(nil),               // 200: greet.ListFileLocksRequest
+	(*pb.ListFileLocksResponse)(nil),              // 201: greet.ListFileLocksResponse
+	(*pb.ListTagsRequest)(nil),                    // 202: greet.ListTagsRequest
+	(*pb.ListTagsResponse)(nil),                   // 203: greet.ListTagsResponse
+	(*pb.CreateTagRequest)(nil),                   // 204: greet.CreateTagRequest
+	(*pb.CreateTagResponse)(nil),                  // 205: greet.CreateTagResponse
+	(*pb.DeleteTagRequest)(nil),                   // 206: greet.DeleteTagRequest
+	(*pb.DeleteTagResponse)(nil),                  // 207: greet.DeleteTagResponse
+	(*pb.FileLockDetail)(nil),                     // 208: greet.FileLockDetail
+	(*pb.ProjectSummary)(nil),                     // 209: greet.ProjectSummary
+	(*pb.Branch)(nil),                             // 210: greet.Branch
 }
 var file_internal_client_grpc_proto_daemon_proto_depIdxs = []int32{
 	6,   // 0: nipadaemon.WatchRepoResponse.repo:type_name -> nipadaemon.RepoInfo
@@ -9091,233 +9282,236 @@ var file_internal_client_grpc_proto_daemon_proto_depIdxs = []int32{
 	24,  // 4: nipadaemon.ConflictsResponse.ours:type_name -> nipadaemon.ConflictRevision
 	24,  // 5: nipadaemon.ConflictsResponse.theirs:type_name -> nipadaemon.ConflictRevision
 	25,  // 6: nipadaemon.ConflictsResponse.files:type_name -> nipadaemon.ConflictFile
-	51,  // 7: nipadaemon.DiffEvent.failure:type_name -> nipadaemon.OpFailure
-	30,  // 8: nipadaemon.DiffFile.old:type_name -> nipadaemon.DiffFileSide
-	30,  // 9: nipadaemon.DiffFile.new:type_name -> nipadaemon.DiffFileSide
-	140, // 10: nipadaemon.DiffFile.hunks:type_name -> greet.DiffHunkDetail
-	31,  // 11: nipadaemon.DiffFileEvent.file:type_name -> nipadaemon.DiffFile
-	51,  // 12: nipadaemon.DiffFileEvent.failure:type_name -> nipadaemon.OpFailure
-	33,  // 13: nipadaemon.ReadBlobRequest.blob:type_name -> nipadaemon.BlobRef
-	35,  // 14: nipadaemon.BlobEvent.info:type_name -> nipadaemon.BlobInfo
-	51,  // 15: nipadaemon.BlobEvent.failure:type_name -> nipadaemon.OpFailure
-	33,  // 16: nipadaemon.PreviewRequest.old:type_name -> nipadaemon.BlobRef
-	33,  // 17: nipadaemon.PreviewRequest.new:type_name -> nipadaemon.BlobRef
-	38,  // 18: nipadaemon.ImagePreview.layers:type_name -> nipadaemon.ImageLayer
-	39,  // 19: nipadaemon.PreviewEvent.image:type_name -> nipadaemon.ImagePreview
-	40,  // 20: nipadaemon.PreviewEvent.data:type_name -> nipadaemon.PreviewData
-	41,  // 21: nipadaemon.PreviewEvent.diff:type_name -> nipadaemon.ImageDiffStats
-	51,  // 22: nipadaemon.PreviewEvent.failure:type_name -> nipadaemon.OpFailure
-	46,  // 23: nipadaemon.RepoActivity.events:type_name -> nipadaemon.TeamEvent
-	52,  // 24: nipadaemon.OpResult.sync:type_name -> nipadaemon.SyncResult
-	53,  // 25: nipadaemon.OpResult.push:type_name -> nipadaemon.PushResult
-	54,  // 26: nipadaemon.OpResult.merge:type_name -> nipadaemon.MergeResult
-	55,  // 27: nipadaemon.OpResult.revert:type_name -> nipadaemon.RevertResult
-	48,  // 28: nipadaemon.OpEvent.queued:type_name -> nipadaemon.OpQueued
-	49,  // 29: nipadaemon.OpEvent.started:type_name -> nipadaemon.OpStarted
-	50,  // 30: nipadaemon.OpEvent.progress:type_name -> nipadaemon.OpProgress
-	56,  // 31: nipadaemon.OpEvent.result:type_name -> nipadaemon.OpResult
-	51,  // 32: nipadaemon.OpEvent.failure:type_name -> nipadaemon.OpFailure
-	141, // 33: nipadaemon.ProxyBranchListRequest.request:type_name -> greet.GetListBranchRequest
-	142, // 34: nipadaemon.ProxyBranchListResponse.response:type_name -> greet.GetListBranchResponse
-	143, // 35: nipadaemon.ProxyBranchCreateRequest.request:type_name -> greet.CreateBranchRequest
-	144, // 36: nipadaemon.ProxyBranchCreateResponse.response:type_name -> greet.CreateBranchResponse
-	145, // 37: nipadaemon.ProxyBranchDeleteRequest.request:type_name -> greet.DeleteBranchRequest
-	146, // 38: nipadaemon.ProxyBranchDeleteResponse.response:type_name -> greet.DeleteBranchResponse
-	147, // 39: nipadaemon.ProxyTreeManifestRequest.request:type_name -> greet.GetTreeManifestRequest
-	148, // 40: nipadaemon.ProxyTreeManifestResponse.response:type_name -> greet.GetTreeManifestResponse
-	149, // 41: nipadaemon.ProxyCommitLogRequest.request:type_name -> greet.GetCommitLogRequest
-	150, // 42: nipadaemon.ProxyCommitLogResponse.response:type_name -> greet.GetCommitLogResponse
-	151, // 43: nipadaemon.ProxyCommitGetRequest.request:type_name -> greet.GetCommitRequest
-	152, // 44: nipadaemon.ProxyCommitGetResponse.response:type_name -> greet.GetCommitResponse
-	153, // 45: nipadaemon.ProxyCommitWalkRequest.request:type_name -> greet.WalkCommitsRequest
-	154, // 46: nipadaemon.ProxyCommitWalkResponse.response:type_name -> greet.WalkCommitsResponse
-	155, // 47: nipadaemon.ProxyMergeBaseRequest.request:type_name -> greet.GetMergeBaseRequest
-	156, // 48: nipadaemon.ProxyMergeBaseResponse.response:type_name -> greet.GetMergeBaseResponse
-	157, // 49: nipadaemon.ProxyMergeRequestListRequest.request:type_name -> greet.ListMergeRequestsRequest
-	158, // 50: nipadaemon.ProxyMergeRequestListResponse.response:type_name -> greet.ListMergeRequestsResponse
-	159, // 51: nipadaemon.ProxyMergeRequestCreateRequest.request:type_name -> greet.CreateMergeRequestRequest
-	160, // 52: nipadaemon.ProxyMergeRequestCreateResponse.response:type_name -> greet.CreateMergeRequestResponse
-	161, // 53: nipadaemon.ProxyMergeRequestMergeRequest.request:type_name -> greet.MergeMergeRequestRequest
-	162, // 54: nipadaemon.ProxyMergeRequestMergeResponse.response:type_name -> greet.MergeMergeRequestResponse
-	163, // 55: nipadaemon.ProxyMergeRequestCloseRequest.request:type_name -> greet.CloseMergeRequestRequest
-	164, // 56: nipadaemon.ProxyMergeRequestCloseResponse.response:type_name -> greet.CloseMergeRequestResponse
-	165, // 57: nipadaemon.ProxyMergeRequestReviewsRequest.request:type_name -> greet.ListMergeRequestReviewsRequest
-	166, // 58: nipadaemon.ProxyMergeRequestReviewsResponse.response:type_name -> greet.ListMergeRequestReviewsResponse
-	167, // 59: nipadaemon.ProxyMergeRequestReviewStateRequest.request:type_name -> greet.GetMergeRequestReviewStateRequest
-	168, // 60: nipadaemon.ProxyMergeRequestReviewStateResponse.response:type_name -> greet.GetMergeRequestReviewStateResponse
-	169, // 61: nipadaemon.ProxyMergeRequestThreadsRequest.request:type_name -> greet.ListMergeRequestThreadsRequest
-	170, // 62: nipadaemon.ProxyMergeRequestThreadsResponse.response:type_name -> greet.ListMergeRequestThreadsResponse
-	171, // 63: nipadaemon.ProxyMergeRequestGetRequest.request:type_name -> greet.GetMergeRequestRequest
-	172, // 64: nipadaemon.ProxyMergeRequestGetResponse.response:type_name -> greet.GetMergeRequestResponse
-	173, // 65: nipadaemon.ProxyMergeRequestCheckRequest.request:type_name -> greet.CheckMergeRequestRequest
-	174, // 66: nipadaemon.ProxyMergeRequestCheckResponse.response:type_name -> greet.CheckMergeRequestResponse
-	175, // 67: nipadaemon.ProxyMergeRequestReopenRequest.request:type_name -> greet.ReopenMergeRequestRequest
-	176, // 68: nipadaemon.ProxyMergeRequestReopenResponse.response:type_name -> greet.ReopenMergeRequestResponse
-	177, // 69: nipadaemon.ProxyMergeRequestSubmitReviewRequest.request:type_name -> greet.SubmitMergeRequestReviewRequest
-	178, // 70: nipadaemon.ProxyMergeRequestSubmitReviewResponse.response:type_name -> greet.SubmitMergeRequestReviewResponse
-	179, // 71: nipadaemon.ProxyMergeRequestUpdateRequest.request:type_name -> greet.UpdateMergeRequestRequest
-	180, // 72: nipadaemon.ProxyMergeRequestUpdateResponse.response:type_name -> greet.UpdateMergeRequestResponse
-	181, // 73: nipadaemon.ProxyMergeRequestCommitsRequest.request:type_name -> greet.ListMergeRequestCommitsRequest
-	182, // 74: nipadaemon.ProxyMergeRequestCommitsResponse.response:type_name -> greet.ListMergeRequestCommitsResponse
-	183, // 75: nipadaemon.ProxyMergeRequestChecksRequest.request:type_name -> greet.ListMergeRequestChecksRequest
-	184, // 76: nipadaemon.ProxyMergeRequestChecksResponse.response:type_name -> greet.ListMergeRequestChecksResponse
-	185, // 77: nipadaemon.ProxyMergeRequestTimelineRequest.request:type_name -> greet.ListMergeRequestTimelineRequest
-	186, // 78: nipadaemon.ProxyMergeRequestTimelineResponse.response:type_name -> greet.ListMergeRequestTimelineResponse
-	187, // 79: nipadaemon.ProxyMergeRequestAddCommentRequest.request:type_name -> greet.AddMergeRequestCommentRequest
-	188, // 80: nipadaemon.ProxyMergeRequestAddCommentResponse.response:type_name -> greet.AddMergeRequestCommentResponse
-	189, // 81: nipadaemon.ProxyMergeRequestReplyRequest.request:type_name -> greet.ReplyMergeRequestThreadRequest
-	190, // 82: nipadaemon.ProxyMergeRequestReplyResponse.response:type_name -> greet.ReplyMergeRequestThreadResponse
-	191, // 83: nipadaemon.ProxyMergeRequestResolveRequest.request:type_name -> greet.ResolveMergeRequestThreadRequest
-	192, // 84: nipadaemon.ProxyMergeRequestResolveResponse.response:type_name -> greet.ResolveMergeRequestThreadResponse
-	193, // 85: nipadaemon.ProxyLockFileRequest.request:type_name -> greet.LockFileRequest
-	194, // 86: nipadaemon.ProxyLockFileResponse.response:type_name -> greet.LockFileResponse
-	195, // 87: nipadaemon.ProxyUnlockFileRequest.request:type_name -> greet.UnlockFileRequest
-	196, // 88: nipadaemon.ProxyUnlockFileResponse.response:type_name -> greet.UnlockFileResponse
-	197, // 89: nipadaemon.ProxyListFileLocksRequest.request:type_name -> greet.ListFileLocksRequest
-	198, // 90: nipadaemon.ProxyListFileLocksResponse.response:type_name -> greet.ListFileLocksResponse
-	199, // 91: nipadaemon.ProxyTagListRequest.request:type_name -> greet.ListTagsRequest
-	200, // 92: nipadaemon.ProxyTagListResponse.response:type_name -> greet.ListTagsResponse
-	201, // 93: nipadaemon.ProxyTagCreateRequest.request:type_name -> greet.CreateTagRequest
-	202, // 94: nipadaemon.ProxyTagCreateResponse.response:type_name -> greet.CreateTagResponse
-	203, // 95: nipadaemon.ProxyTagDeleteRequest.request:type_name -> greet.DeleteTagRequest
-	204, // 96: nipadaemon.ProxyTagDeleteResponse.response:type_name -> greet.DeleteTagResponse
-	123, // 97: nipadaemon.MetaWarningsResponse.warnings:type_name -> nipadaemon.MetaWarning
-	205, // 98: nipadaemon.LockStatusResponse.locks:type_name -> greet.FileLockDetail
-	127, // 99: nipadaemon.LockStatusResponse.files:type_name -> nipadaemon.FileLockState
-	206, // 100: nipadaemon.ListProjectsResponse.projects:type_name -> greet.ProjectSummary
-	207, // 101: nipadaemon.RemoteBranchesResponse.branches:type_name -> greet.Branch
-	136, // 102: nipadaemon.RemoteTreeResponse.dirs:type_name -> nipadaemon.RemoteTreeDir
-	0,   // 103: nipadaemon.NipaDaemon.Ping:input_type -> nipadaemon.PingRequest
-	2,   // 104: nipadaemon.NipaDaemon.Shutdown:input_type -> nipadaemon.ShutdownRequest
-	4,   // 105: nipadaemon.NipaDaemon.Login:input_type -> nipadaemon.LoginRequest
-	7,   // 106: nipadaemon.NipaDaemon.WatchRepo:input_type -> nipadaemon.WatchRepoRequest
-	9,   // 107: nipadaemon.NipaDaemon.UnwatchRepo:input_type -> nipadaemon.UnwatchRepoRequest
-	11,  // 108: nipadaemon.NipaDaemon.ListRepos:input_type -> nipadaemon.ListReposRequest
-	13,  // 109: nipadaemon.NipaDaemon.Status:input_type -> nipadaemon.StatusRequest
-	16,  // 110: nipadaemon.NipaDaemon.Stage:input_type -> nipadaemon.StageRequest
-	17,  // 111: nipadaemon.NipaDaemon.Restore:input_type -> nipadaemon.RestoreRequest
-	18,  // 112: nipadaemon.NipaDaemon.Update:input_type -> nipadaemon.UpdateRequest
-	19,  // 113: nipadaemon.NipaDaemon.Switch:input_type -> nipadaemon.SwitchRequest
-	20,  // 114: nipadaemon.NipaDaemon.Push:input_type -> nipadaemon.PushRequest
-	21,  // 115: nipadaemon.NipaDaemon.Merge:input_type -> nipadaemon.MergeOpRequest
-	22,  // 116: nipadaemon.NipaDaemon.Revert:input_type -> nipadaemon.RevertOpRequest
-	23,  // 117: nipadaemon.NipaDaemon.Conflicts:input_type -> nipadaemon.ConflictsRequest
-	27,  // 118: nipadaemon.NipaDaemon.ResolveConflict:input_type -> nipadaemon.ResolveConflictRequest
-	28,  // 119: nipadaemon.NipaDaemon.Diff:input_type -> nipadaemon.DiffRequest
-	28,  // 120: nipadaemon.NipaDaemon.DiffFiles:input_type -> nipadaemon.DiffRequest
-	34,  // 121: nipadaemon.NipaDaemon.ReadBlob:input_type -> nipadaemon.ReadBlobRequest
-	37,  // 122: nipadaemon.NipaDaemon.Preview:input_type -> nipadaemon.PreviewRequest
-	43,  // 123: nipadaemon.NipaDaemon.WatchChanges:input_type -> nipadaemon.WatchChangesRequest
-	45,  // 124: nipadaemon.NipaDaemon.WatchEvents:input_type -> nipadaemon.WatchEventsRequest
-	58,  // 125: nipadaemon.NipaDaemon.ProxyBranchList:input_type -> nipadaemon.ProxyBranchListRequest
-	60,  // 126: nipadaemon.NipaDaemon.ProxyBranchCreate:input_type -> nipadaemon.ProxyBranchCreateRequest
-	62,  // 127: nipadaemon.NipaDaemon.ProxyBranchDelete:input_type -> nipadaemon.ProxyBranchDeleteRequest
-	116, // 128: nipadaemon.NipaDaemon.ProxyTagList:input_type -> nipadaemon.ProxyTagListRequest
-	118, // 129: nipadaemon.NipaDaemon.ProxyTagCreate:input_type -> nipadaemon.ProxyTagCreateRequest
-	120, // 130: nipadaemon.NipaDaemon.ProxyTagDelete:input_type -> nipadaemon.ProxyTagDeleteRequest
-	64,  // 131: nipadaemon.NipaDaemon.ProxyTreeManifest:input_type -> nipadaemon.ProxyTreeManifestRequest
-	66,  // 132: nipadaemon.NipaDaemon.ProxyCommitLog:input_type -> nipadaemon.ProxyCommitLogRequest
-	68,  // 133: nipadaemon.NipaDaemon.ProxyCommitGet:input_type -> nipadaemon.ProxyCommitGetRequest
-	70,  // 134: nipadaemon.NipaDaemon.ProxyCommitWalk:input_type -> nipadaemon.ProxyCommitWalkRequest
-	72,  // 135: nipadaemon.NipaDaemon.ProxyMergeBase:input_type -> nipadaemon.ProxyMergeBaseRequest
-	74,  // 136: nipadaemon.NipaDaemon.ProxyMergeRequestList:input_type -> nipadaemon.ProxyMergeRequestListRequest
-	76,  // 137: nipadaemon.NipaDaemon.ProxyMergeRequestCreate:input_type -> nipadaemon.ProxyMergeRequestCreateRequest
-	78,  // 138: nipadaemon.NipaDaemon.ProxyMergeRequestMerge:input_type -> nipadaemon.ProxyMergeRequestMergeRequest
-	80,  // 139: nipadaemon.NipaDaemon.ProxyMergeRequestClose:input_type -> nipadaemon.ProxyMergeRequestCloseRequest
-	82,  // 140: nipadaemon.NipaDaemon.ProxyMergeRequestReviews:input_type -> nipadaemon.ProxyMergeRequestReviewsRequest
-	84,  // 141: nipadaemon.NipaDaemon.ProxyMergeRequestReviewState:input_type -> nipadaemon.ProxyMergeRequestReviewStateRequest
-	86,  // 142: nipadaemon.NipaDaemon.ProxyMergeRequestThreads:input_type -> nipadaemon.ProxyMergeRequestThreadsRequest
-	88,  // 143: nipadaemon.NipaDaemon.ProxyMergeRequestGet:input_type -> nipadaemon.ProxyMergeRequestGetRequest
-	90,  // 144: nipadaemon.NipaDaemon.ProxyMergeRequestCheck:input_type -> nipadaemon.ProxyMergeRequestCheckRequest
-	92,  // 145: nipadaemon.NipaDaemon.ProxyMergeRequestReopen:input_type -> nipadaemon.ProxyMergeRequestReopenRequest
-	94,  // 146: nipadaemon.NipaDaemon.ProxyMergeRequestSubmitReview:input_type -> nipadaemon.ProxyMergeRequestSubmitReviewRequest
-	96,  // 147: nipadaemon.NipaDaemon.ProxyMergeRequestUpdate:input_type -> nipadaemon.ProxyMergeRequestUpdateRequest
-	98,  // 148: nipadaemon.NipaDaemon.ProxyMergeRequestCommits:input_type -> nipadaemon.ProxyMergeRequestCommitsRequest
-	100, // 149: nipadaemon.NipaDaemon.ProxyMergeRequestChecks:input_type -> nipadaemon.ProxyMergeRequestChecksRequest
-	102, // 150: nipadaemon.NipaDaemon.ProxyMergeRequestTimeline:input_type -> nipadaemon.ProxyMergeRequestTimelineRequest
-	104, // 151: nipadaemon.NipaDaemon.ProxyMergeRequestAddComment:input_type -> nipadaemon.ProxyMergeRequestAddCommentRequest
-	106, // 152: nipadaemon.NipaDaemon.ProxyMergeRequestReply:input_type -> nipadaemon.ProxyMergeRequestReplyRequest
-	108, // 153: nipadaemon.NipaDaemon.ProxyMergeRequestResolve:input_type -> nipadaemon.ProxyMergeRequestResolveRequest
-	110, // 154: nipadaemon.NipaDaemon.ProxyLockFile:input_type -> nipadaemon.ProxyLockFileRequest
-	112, // 155: nipadaemon.NipaDaemon.ProxyUnlockFile:input_type -> nipadaemon.ProxyUnlockFileRequest
-	114, // 156: nipadaemon.NipaDaemon.ProxyListFileLocks:input_type -> nipadaemon.ProxyListFileLocksRequest
-	125, // 157: nipadaemon.NipaDaemon.LockStatus:input_type -> nipadaemon.LockStatusRequest
-	122, // 158: nipadaemon.NipaDaemon.MetaWarnings:input_type -> nipadaemon.MetaWarningsRequest
-	128, // 159: nipadaemon.NipaDaemon.AccountStatus:input_type -> nipadaemon.AccountStatusRequest
-	130, // 160: nipadaemon.NipaDaemon.LoginSSH:input_type -> nipadaemon.LoginSSHRequest
-	131, // 161: nipadaemon.NipaDaemon.ListProjects:input_type -> nipadaemon.ListProjectsRequest
-	133, // 162: nipadaemon.NipaDaemon.RemoteBranches:input_type -> nipadaemon.RemoteBranchesRequest
-	135, // 163: nipadaemon.NipaDaemon.RemoteTree:input_type -> nipadaemon.RemoteTreeRequest
-	138, // 164: nipadaemon.NipaDaemon.Clone:input_type -> nipadaemon.CloneRequest
-	139, // 165: nipadaemon.NipaDaemon.SetSparse:input_type -> nipadaemon.SetSparseRequest
-	1,   // 166: nipadaemon.NipaDaemon.Ping:output_type -> nipadaemon.PingResponse
-	3,   // 167: nipadaemon.NipaDaemon.Shutdown:output_type -> nipadaemon.ShutdownResponse
-	5,   // 168: nipadaemon.NipaDaemon.Login:output_type -> nipadaemon.LoginResponse
-	8,   // 169: nipadaemon.NipaDaemon.WatchRepo:output_type -> nipadaemon.WatchRepoResponse
-	10,  // 170: nipadaemon.NipaDaemon.UnwatchRepo:output_type -> nipadaemon.UnwatchRepoResponse
-	12,  // 171: nipadaemon.NipaDaemon.ListRepos:output_type -> nipadaemon.ListReposResponse
-	14,  // 172: nipadaemon.NipaDaemon.Status:output_type -> nipadaemon.StatusResponse
-	14,  // 173: nipadaemon.NipaDaemon.Stage:output_type -> nipadaemon.StatusResponse
-	14,  // 174: nipadaemon.NipaDaemon.Restore:output_type -> nipadaemon.StatusResponse
-	57,  // 175: nipadaemon.NipaDaemon.Update:output_type -> nipadaemon.OpEvent
-	57,  // 176: nipadaemon.NipaDaemon.Switch:output_type -> nipadaemon.OpEvent
-	57,  // 177: nipadaemon.NipaDaemon.Push:output_type -> nipadaemon.OpEvent
-	57,  // 178: nipadaemon.NipaDaemon.Merge:output_type -> nipadaemon.OpEvent
-	57,  // 179: nipadaemon.NipaDaemon.Revert:output_type -> nipadaemon.OpEvent
-	26,  // 180: nipadaemon.NipaDaemon.Conflicts:output_type -> nipadaemon.ConflictsResponse
-	14,  // 181: nipadaemon.NipaDaemon.ResolveConflict:output_type -> nipadaemon.StatusResponse
-	29,  // 182: nipadaemon.NipaDaemon.Diff:output_type -> nipadaemon.DiffEvent
-	32,  // 183: nipadaemon.NipaDaemon.DiffFiles:output_type -> nipadaemon.DiffFileEvent
-	36,  // 184: nipadaemon.NipaDaemon.ReadBlob:output_type -> nipadaemon.BlobEvent
-	42,  // 185: nipadaemon.NipaDaemon.Preview:output_type -> nipadaemon.PreviewEvent
-	44,  // 186: nipadaemon.NipaDaemon.WatchChanges:output_type -> nipadaemon.RepoChange
-	47,  // 187: nipadaemon.NipaDaemon.WatchEvents:output_type -> nipadaemon.RepoActivity
-	59,  // 188: nipadaemon.NipaDaemon.ProxyBranchList:output_type -> nipadaemon.ProxyBranchListResponse
-	61,  // 189: nipadaemon.NipaDaemon.ProxyBranchCreate:output_type -> nipadaemon.ProxyBranchCreateResponse
-	63,  // 190: nipadaemon.NipaDaemon.ProxyBranchDelete:output_type -> nipadaemon.ProxyBranchDeleteResponse
-	117, // 191: nipadaemon.NipaDaemon.ProxyTagList:output_type -> nipadaemon.ProxyTagListResponse
-	119, // 192: nipadaemon.NipaDaemon.ProxyTagCreate:output_type -> nipadaemon.ProxyTagCreateResponse
-	121, // 193: nipadaemon.NipaDaemon.ProxyTagDelete:output_type -> nipadaemon.ProxyTagDeleteResponse
-	65,  // 194: nipadaemon.NipaDaemon.ProxyTreeManifest:output_type -> nipadaemon.ProxyTreeManifestResponse
-	67,  // 195: nipadaemon.NipaDaemon.ProxyCommitLog:output_type -> nipadaemon.ProxyCommitLogResponse
-	69,  // 196: nipadaemon.NipaDaemon.ProxyCommitGet:output_type -> nipadaemon.ProxyCommitGetResponse
-	71,  // 197: nipadaemon.NipaDaemon.ProxyCommitWalk:output_type -> nipadaemon.ProxyCommitWalkResponse
-	73,  // 198: nipadaemon.NipaDaemon.ProxyMergeBase:output_type -> nipadaemon.ProxyMergeBaseResponse
-	75,  // 199: nipadaemon.NipaDaemon.ProxyMergeRequestList:output_type -> nipadaemon.ProxyMergeRequestListResponse
-	77,  // 200: nipadaemon.NipaDaemon.ProxyMergeRequestCreate:output_type -> nipadaemon.ProxyMergeRequestCreateResponse
-	79,  // 201: nipadaemon.NipaDaemon.ProxyMergeRequestMerge:output_type -> nipadaemon.ProxyMergeRequestMergeResponse
-	81,  // 202: nipadaemon.NipaDaemon.ProxyMergeRequestClose:output_type -> nipadaemon.ProxyMergeRequestCloseResponse
-	83,  // 203: nipadaemon.NipaDaemon.ProxyMergeRequestReviews:output_type -> nipadaemon.ProxyMergeRequestReviewsResponse
-	85,  // 204: nipadaemon.NipaDaemon.ProxyMergeRequestReviewState:output_type -> nipadaemon.ProxyMergeRequestReviewStateResponse
-	87,  // 205: nipadaemon.NipaDaemon.ProxyMergeRequestThreads:output_type -> nipadaemon.ProxyMergeRequestThreadsResponse
-	89,  // 206: nipadaemon.NipaDaemon.ProxyMergeRequestGet:output_type -> nipadaemon.ProxyMergeRequestGetResponse
-	91,  // 207: nipadaemon.NipaDaemon.ProxyMergeRequestCheck:output_type -> nipadaemon.ProxyMergeRequestCheckResponse
-	93,  // 208: nipadaemon.NipaDaemon.ProxyMergeRequestReopen:output_type -> nipadaemon.ProxyMergeRequestReopenResponse
-	95,  // 209: nipadaemon.NipaDaemon.ProxyMergeRequestSubmitReview:output_type -> nipadaemon.ProxyMergeRequestSubmitReviewResponse
-	97,  // 210: nipadaemon.NipaDaemon.ProxyMergeRequestUpdate:output_type -> nipadaemon.ProxyMergeRequestUpdateResponse
-	99,  // 211: nipadaemon.NipaDaemon.ProxyMergeRequestCommits:output_type -> nipadaemon.ProxyMergeRequestCommitsResponse
-	101, // 212: nipadaemon.NipaDaemon.ProxyMergeRequestChecks:output_type -> nipadaemon.ProxyMergeRequestChecksResponse
-	103, // 213: nipadaemon.NipaDaemon.ProxyMergeRequestTimeline:output_type -> nipadaemon.ProxyMergeRequestTimelineResponse
-	105, // 214: nipadaemon.NipaDaemon.ProxyMergeRequestAddComment:output_type -> nipadaemon.ProxyMergeRequestAddCommentResponse
-	107, // 215: nipadaemon.NipaDaemon.ProxyMergeRequestReply:output_type -> nipadaemon.ProxyMergeRequestReplyResponse
-	109, // 216: nipadaemon.NipaDaemon.ProxyMergeRequestResolve:output_type -> nipadaemon.ProxyMergeRequestResolveResponse
-	111, // 217: nipadaemon.NipaDaemon.ProxyLockFile:output_type -> nipadaemon.ProxyLockFileResponse
-	113, // 218: nipadaemon.NipaDaemon.ProxyUnlockFile:output_type -> nipadaemon.ProxyUnlockFileResponse
-	115, // 219: nipadaemon.NipaDaemon.ProxyListFileLocks:output_type -> nipadaemon.ProxyListFileLocksResponse
-	126, // 220: nipadaemon.NipaDaemon.LockStatus:output_type -> nipadaemon.LockStatusResponse
-	124, // 221: nipadaemon.NipaDaemon.MetaWarnings:output_type -> nipadaemon.MetaWarningsResponse
-	129, // 222: nipadaemon.NipaDaemon.AccountStatus:output_type -> nipadaemon.AccountStatusResponse
-	5,   // 223: nipadaemon.NipaDaemon.LoginSSH:output_type -> nipadaemon.LoginResponse
-	132, // 224: nipadaemon.NipaDaemon.ListProjects:output_type -> nipadaemon.ListProjectsResponse
-	134, // 225: nipadaemon.NipaDaemon.RemoteBranches:output_type -> nipadaemon.RemoteBranchesResponse
-	137, // 226: nipadaemon.NipaDaemon.RemoteTree:output_type -> nipadaemon.RemoteTreeResponse
-	57,  // 227: nipadaemon.NipaDaemon.Clone:output_type -> nipadaemon.OpEvent
-	57,  // 228: nipadaemon.NipaDaemon.SetSparse:output_type -> nipadaemon.OpEvent
-	166, // [166:229] is the sub-list for method output_type
-	103, // [103:166] is the sub-list for method input_type
-	103, // [103:103] is the sub-list for extension type_name
-	103, // [103:103] is the sub-list for extension extendee
-	0,   // [0:103] is the sub-list for field type_name
+	29,  // 7: nipadaemon.MergeGodotResourceResponse.conflicts:type_name -> nipadaemon.GodotMergeConflict
+	54,  // 8: nipadaemon.DiffEvent.failure:type_name -> nipadaemon.OpFailure
+	33,  // 9: nipadaemon.DiffFile.old:type_name -> nipadaemon.DiffFileSide
+	33,  // 10: nipadaemon.DiffFile.new:type_name -> nipadaemon.DiffFileSide
+	143, // 11: nipadaemon.DiffFile.hunks:type_name -> greet.DiffHunkDetail
+	34,  // 12: nipadaemon.DiffFileEvent.file:type_name -> nipadaemon.DiffFile
+	54,  // 13: nipadaemon.DiffFileEvent.failure:type_name -> nipadaemon.OpFailure
+	36,  // 14: nipadaemon.ReadBlobRequest.blob:type_name -> nipadaemon.BlobRef
+	38,  // 15: nipadaemon.BlobEvent.info:type_name -> nipadaemon.BlobInfo
+	54,  // 16: nipadaemon.BlobEvent.failure:type_name -> nipadaemon.OpFailure
+	36,  // 17: nipadaemon.PreviewRequest.old:type_name -> nipadaemon.BlobRef
+	36,  // 18: nipadaemon.PreviewRequest.new:type_name -> nipadaemon.BlobRef
+	41,  // 19: nipadaemon.ImagePreview.layers:type_name -> nipadaemon.ImageLayer
+	42,  // 20: nipadaemon.PreviewEvent.image:type_name -> nipadaemon.ImagePreview
+	43,  // 21: nipadaemon.PreviewEvent.data:type_name -> nipadaemon.PreviewData
+	44,  // 22: nipadaemon.PreviewEvent.diff:type_name -> nipadaemon.ImageDiffStats
+	54,  // 23: nipadaemon.PreviewEvent.failure:type_name -> nipadaemon.OpFailure
+	49,  // 24: nipadaemon.RepoActivity.events:type_name -> nipadaemon.TeamEvent
+	55,  // 25: nipadaemon.OpResult.sync:type_name -> nipadaemon.SyncResult
+	56,  // 26: nipadaemon.OpResult.push:type_name -> nipadaemon.PushResult
+	57,  // 27: nipadaemon.OpResult.merge:type_name -> nipadaemon.MergeResult
+	58,  // 28: nipadaemon.OpResult.revert:type_name -> nipadaemon.RevertResult
+	51,  // 29: nipadaemon.OpEvent.queued:type_name -> nipadaemon.OpQueued
+	52,  // 30: nipadaemon.OpEvent.started:type_name -> nipadaemon.OpStarted
+	53,  // 31: nipadaemon.OpEvent.progress:type_name -> nipadaemon.OpProgress
+	59,  // 32: nipadaemon.OpEvent.result:type_name -> nipadaemon.OpResult
+	54,  // 33: nipadaemon.OpEvent.failure:type_name -> nipadaemon.OpFailure
+	144, // 34: nipadaemon.ProxyBranchListRequest.request:type_name -> greet.GetListBranchRequest
+	145, // 35: nipadaemon.ProxyBranchListResponse.response:type_name -> greet.GetListBranchResponse
+	146, // 36: nipadaemon.ProxyBranchCreateRequest.request:type_name -> greet.CreateBranchRequest
+	147, // 37: nipadaemon.ProxyBranchCreateResponse.response:type_name -> greet.CreateBranchResponse
+	148, // 38: nipadaemon.ProxyBranchDeleteRequest.request:type_name -> greet.DeleteBranchRequest
+	149, // 39: nipadaemon.ProxyBranchDeleteResponse.response:type_name -> greet.DeleteBranchResponse
+	150, // 40: nipadaemon.ProxyTreeManifestRequest.request:type_name -> greet.GetTreeManifestRequest
+	151, // 41: nipadaemon.ProxyTreeManifestResponse.response:type_name -> greet.GetTreeManifestResponse
+	152, // 42: nipadaemon.ProxyCommitLogRequest.request:type_name -> greet.GetCommitLogRequest
+	153, // 43: nipadaemon.ProxyCommitLogResponse.response:type_name -> greet.GetCommitLogResponse
+	154, // 44: nipadaemon.ProxyCommitGetRequest.request:type_name -> greet.GetCommitRequest
+	155, // 45: nipadaemon.ProxyCommitGetResponse.response:type_name -> greet.GetCommitResponse
+	156, // 46: nipadaemon.ProxyCommitWalkRequest.request:type_name -> greet.WalkCommitsRequest
+	157, // 47: nipadaemon.ProxyCommitWalkResponse.response:type_name -> greet.WalkCommitsResponse
+	158, // 48: nipadaemon.ProxyMergeBaseRequest.request:type_name -> greet.GetMergeBaseRequest
+	159, // 49: nipadaemon.ProxyMergeBaseResponse.response:type_name -> greet.GetMergeBaseResponse
+	160, // 50: nipadaemon.ProxyMergeRequestListRequest.request:type_name -> greet.ListMergeRequestsRequest
+	161, // 51: nipadaemon.ProxyMergeRequestListResponse.response:type_name -> greet.ListMergeRequestsResponse
+	162, // 52: nipadaemon.ProxyMergeRequestCreateRequest.request:type_name -> greet.CreateMergeRequestRequest
+	163, // 53: nipadaemon.ProxyMergeRequestCreateResponse.response:type_name -> greet.CreateMergeRequestResponse
+	164, // 54: nipadaemon.ProxyMergeRequestMergeRequest.request:type_name -> greet.MergeMergeRequestRequest
+	165, // 55: nipadaemon.ProxyMergeRequestMergeResponse.response:type_name -> greet.MergeMergeRequestResponse
+	166, // 56: nipadaemon.ProxyMergeRequestCloseRequest.request:type_name -> greet.CloseMergeRequestRequest
+	167, // 57: nipadaemon.ProxyMergeRequestCloseResponse.response:type_name -> greet.CloseMergeRequestResponse
+	168, // 58: nipadaemon.ProxyMergeRequestReviewsRequest.request:type_name -> greet.ListMergeRequestReviewsRequest
+	169, // 59: nipadaemon.ProxyMergeRequestReviewsResponse.response:type_name -> greet.ListMergeRequestReviewsResponse
+	170, // 60: nipadaemon.ProxyMergeRequestReviewStateRequest.request:type_name -> greet.GetMergeRequestReviewStateRequest
+	171, // 61: nipadaemon.ProxyMergeRequestReviewStateResponse.response:type_name -> greet.GetMergeRequestReviewStateResponse
+	172, // 62: nipadaemon.ProxyMergeRequestThreadsRequest.request:type_name -> greet.ListMergeRequestThreadsRequest
+	173, // 63: nipadaemon.ProxyMergeRequestThreadsResponse.response:type_name -> greet.ListMergeRequestThreadsResponse
+	174, // 64: nipadaemon.ProxyMergeRequestGetRequest.request:type_name -> greet.GetMergeRequestRequest
+	175, // 65: nipadaemon.ProxyMergeRequestGetResponse.response:type_name -> greet.GetMergeRequestResponse
+	176, // 66: nipadaemon.ProxyMergeRequestCheckRequest.request:type_name -> greet.CheckMergeRequestRequest
+	177, // 67: nipadaemon.ProxyMergeRequestCheckResponse.response:type_name -> greet.CheckMergeRequestResponse
+	178, // 68: nipadaemon.ProxyMergeRequestReopenRequest.request:type_name -> greet.ReopenMergeRequestRequest
+	179, // 69: nipadaemon.ProxyMergeRequestReopenResponse.response:type_name -> greet.ReopenMergeRequestResponse
+	180, // 70: nipadaemon.ProxyMergeRequestSubmitReviewRequest.request:type_name -> greet.SubmitMergeRequestReviewRequest
+	181, // 71: nipadaemon.ProxyMergeRequestSubmitReviewResponse.response:type_name -> greet.SubmitMergeRequestReviewResponse
+	182, // 72: nipadaemon.ProxyMergeRequestUpdateRequest.request:type_name -> greet.UpdateMergeRequestRequest
+	183, // 73: nipadaemon.ProxyMergeRequestUpdateResponse.response:type_name -> greet.UpdateMergeRequestResponse
+	184, // 74: nipadaemon.ProxyMergeRequestCommitsRequest.request:type_name -> greet.ListMergeRequestCommitsRequest
+	185, // 75: nipadaemon.ProxyMergeRequestCommitsResponse.response:type_name -> greet.ListMergeRequestCommitsResponse
+	186, // 76: nipadaemon.ProxyMergeRequestChecksRequest.request:type_name -> greet.ListMergeRequestChecksRequest
+	187, // 77: nipadaemon.ProxyMergeRequestChecksResponse.response:type_name -> greet.ListMergeRequestChecksResponse
+	188, // 78: nipadaemon.ProxyMergeRequestTimelineRequest.request:type_name -> greet.ListMergeRequestTimelineRequest
+	189, // 79: nipadaemon.ProxyMergeRequestTimelineResponse.response:type_name -> greet.ListMergeRequestTimelineResponse
+	190, // 80: nipadaemon.ProxyMergeRequestAddCommentRequest.request:type_name -> greet.AddMergeRequestCommentRequest
+	191, // 81: nipadaemon.ProxyMergeRequestAddCommentResponse.response:type_name -> greet.AddMergeRequestCommentResponse
+	192, // 82: nipadaemon.ProxyMergeRequestReplyRequest.request:type_name -> greet.ReplyMergeRequestThreadRequest
+	193, // 83: nipadaemon.ProxyMergeRequestReplyResponse.response:type_name -> greet.ReplyMergeRequestThreadResponse
+	194, // 84: nipadaemon.ProxyMergeRequestResolveRequest.request:type_name -> greet.ResolveMergeRequestThreadRequest
+	195, // 85: nipadaemon.ProxyMergeRequestResolveResponse.response:type_name -> greet.ResolveMergeRequestThreadResponse
+	196, // 86: nipadaemon.ProxyLockFileRequest.request:type_name -> greet.LockFileRequest
+	197, // 87: nipadaemon.ProxyLockFileResponse.response:type_name -> greet.LockFileResponse
+	198, // 88: nipadaemon.ProxyUnlockFileRequest.request:type_name -> greet.UnlockFileRequest
+	199, // 89: nipadaemon.ProxyUnlockFileResponse.response:type_name -> greet.UnlockFileResponse
+	200, // 90: nipadaemon.ProxyListFileLocksRequest.request:type_name -> greet.ListFileLocksRequest
+	201, // 91: nipadaemon.ProxyListFileLocksResponse.response:type_name -> greet.ListFileLocksResponse
+	202, // 92: nipadaemon.ProxyTagListRequest.request:type_name -> greet.ListTagsRequest
+	203, // 93: nipadaemon.ProxyTagListResponse.response:type_name -> greet.ListTagsResponse
+	204, // 94: nipadaemon.ProxyTagCreateRequest.request:type_name -> greet.CreateTagRequest
+	205, // 95: nipadaemon.ProxyTagCreateResponse.response:type_name -> greet.CreateTagResponse
+	206, // 96: nipadaemon.ProxyTagDeleteRequest.request:type_name -> greet.DeleteTagRequest
+	207, // 97: nipadaemon.ProxyTagDeleteResponse.response:type_name -> greet.DeleteTagResponse
+	126, // 98: nipadaemon.MetaWarningsResponse.warnings:type_name -> nipadaemon.MetaWarning
+	208, // 99: nipadaemon.LockStatusResponse.locks:type_name -> greet.FileLockDetail
+	130, // 100: nipadaemon.LockStatusResponse.files:type_name -> nipadaemon.FileLockState
+	209, // 101: nipadaemon.ListProjectsResponse.projects:type_name -> greet.ProjectSummary
+	210, // 102: nipadaemon.RemoteBranchesResponse.branches:type_name -> greet.Branch
+	139, // 103: nipadaemon.RemoteTreeResponse.dirs:type_name -> nipadaemon.RemoteTreeDir
+	0,   // 104: nipadaemon.NipaDaemon.Ping:input_type -> nipadaemon.PingRequest
+	2,   // 105: nipadaemon.NipaDaemon.Shutdown:input_type -> nipadaemon.ShutdownRequest
+	4,   // 106: nipadaemon.NipaDaemon.Login:input_type -> nipadaemon.LoginRequest
+	7,   // 107: nipadaemon.NipaDaemon.WatchRepo:input_type -> nipadaemon.WatchRepoRequest
+	9,   // 108: nipadaemon.NipaDaemon.UnwatchRepo:input_type -> nipadaemon.UnwatchRepoRequest
+	11,  // 109: nipadaemon.NipaDaemon.ListRepos:input_type -> nipadaemon.ListReposRequest
+	13,  // 110: nipadaemon.NipaDaemon.Status:input_type -> nipadaemon.StatusRequest
+	16,  // 111: nipadaemon.NipaDaemon.Stage:input_type -> nipadaemon.StageRequest
+	17,  // 112: nipadaemon.NipaDaemon.Restore:input_type -> nipadaemon.RestoreRequest
+	18,  // 113: nipadaemon.NipaDaemon.Update:input_type -> nipadaemon.UpdateRequest
+	19,  // 114: nipadaemon.NipaDaemon.Switch:input_type -> nipadaemon.SwitchRequest
+	20,  // 115: nipadaemon.NipaDaemon.Push:input_type -> nipadaemon.PushRequest
+	21,  // 116: nipadaemon.NipaDaemon.Merge:input_type -> nipadaemon.MergeOpRequest
+	22,  // 117: nipadaemon.NipaDaemon.Revert:input_type -> nipadaemon.RevertOpRequest
+	23,  // 118: nipadaemon.NipaDaemon.Conflicts:input_type -> nipadaemon.ConflictsRequest
+	27,  // 119: nipadaemon.NipaDaemon.ResolveConflict:input_type -> nipadaemon.ResolveConflictRequest
+	28,  // 120: nipadaemon.NipaDaemon.MergeGodotResource:input_type -> nipadaemon.MergeGodotResourceRequest
+	31,  // 121: nipadaemon.NipaDaemon.Diff:input_type -> nipadaemon.DiffRequest
+	31,  // 122: nipadaemon.NipaDaemon.DiffFiles:input_type -> nipadaemon.DiffRequest
+	37,  // 123: nipadaemon.NipaDaemon.ReadBlob:input_type -> nipadaemon.ReadBlobRequest
+	40,  // 124: nipadaemon.NipaDaemon.Preview:input_type -> nipadaemon.PreviewRequest
+	46,  // 125: nipadaemon.NipaDaemon.WatchChanges:input_type -> nipadaemon.WatchChangesRequest
+	48,  // 126: nipadaemon.NipaDaemon.WatchEvents:input_type -> nipadaemon.WatchEventsRequest
+	61,  // 127: nipadaemon.NipaDaemon.ProxyBranchList:input_type -> nipadaemon.ProxyBranchListRequest
+	63,  // 128: nipadaemon.NipaDaemon.ProxyBranchCreate:input_type -> nipadaemon.ProxyBranchCreateRequest
+	65,  // 129: nipadaemon.NipaDaemon.ProxyBranchDelete:input_type -> nipadaemon.ProxyBranchDeleteRequest
+	119, // 130: nipadaemon.NipaDaemon.ProxyTagList:input_type -> nipadaemon.ProxyTagListRequest
+	121, // 131: nipadaemon.NipaDaemon.ProxyTagCreate:input_type -> nipadaemon.ProxyTagCreateRequest
+	123, // 132: nipadaemon.NipaDaemon.ProxyTagDelete:input_type -> nipadaemon.ProxyTagDeleteRequest
+	67,  // 133: nipadaemon.NipaDaemon.ProxyTreeManifest:input_type -> nipadaemon.ProxyTreeManifestRequest
+	69,  // 134: nipadaemon.NipaDaemon.ProxyCommitLog:input_type -> nipadaemon.ProxyCommitLogRequest
+	71,  // 135: nipadaemon.NipaDaemon.ProxyCommitGet:input_type -> nipadaemon.ProxyCommitGetRequest
+	73,  // 136: nipadaemon.NipaDaemon.ProxyCommitWalk:input_type -> nipadaemon.ProxyCommitWalkRequest
+	75,  // 137: nipadaemon.NipaDaemon.ProxyMergeBase:input_type -> nipadaemon.ProxyMergeBaseRequest
+	77,  // 138: nipadaemon.NipaDaemon.ProxyMergeRequestList:input_type -> nipadaemon.ProxyMergeRequestListRequest
+	79,  // 139: nipadaemon.NipaDaemon.ProxyMergeRequestCreate:input_type -> nipadaemon.ProxyMergeRequestCreateRequest
+	81,  // 140: nipadaemon.NipaDaemon.ProxyMergeRequestMerge:input_type -> nipadaemon.ProxyMergeRequestMergeRequest
+	83,  // 141: nipadaemon.NipaDaemon.ProxyMergeRequestClose:input_type -> nipadaemon.ProxyMergeRequestCloseRequest
+	85,  // 142: nipadaemon.NipaDaemon.ProxyMergeRequestReviews:input_type -> nipadaemon.ProxyMergeRequestReviewsRequest
+	87,  // 143: nipadaemon.NipaDaemon.ProxyMergeRequestReviewState:input_type -> nipadaemon.ProxyMergeRequestReviewStateRequest
+	89,  // 144: nipadaemon.NipaDaemon.ProxyMergeRequestThreads:input_type -> nipadaemon.ProxyMergeRequestThreadsRequest
+	91,  // 145: nipadaemon.NipaDaemon.ProxyMergeRequestGet:input_type -> nipadaemon.ProxyMergeRequestGetRequest
+	93,  // 146: nipadaemon.NipaDaemon.ProxyMergeRequestCheck:input_type -> nipadaemon.ProxyMergeRequestCheckRequest
+	95,  // 147: nipadaemon.NipaDaemon.ProxyMergeRequestReopen:input_type -> nipadaemon.ProxyMergeRequestReopenRequest
+	97,  // 148: nipadaemon.NipaDaemon.ProxyMergeRequestSubmitReview:input_type -> nipadaemon.ProxyMergeRequestSubmitReviewRequest
+	99,  // 149: nipadaemon.NipaDaemon.ProxyMergeRequestUpdate:input_type -> nipadaemon.ProxyMergeRequestUpdateRequest
+	101, // 150: nipadaemon.NipaDaemon.ProxyMergeRequestCommits:input_type -> nipadaemon.ProxyMergeRequestCommitsRequest
+	103, // 151: nipadaemon.NipaDaemon.ProxyMergeRequestChecks:input_type -> nipadaemon.ProxyMergeRequestChecksRequest
+	105, // 152: nipadaemon.NipaDaemon.ProxyMergeRequestTimeline:input_type -> nipadaemon.ProxyMergeRequestTimelineRequest
+	107, // 153: nipadaemon.NipaDaemon.ProxyMergeRequestAddComment:input_type -> nipadaemon.ProxyMergeRequestAddCommentRequest
+	109, // 154: nipadaemon.NipaDaemon.ProxyMergeRequestReply:input_type -> nipadaemon.ProxyMergeRequestReplyRequest
+	111, // 155: nipadaemon.NipaDaemon.ProxyMergeRequestResolve:input_type -> nipadaemon.ProxyMergeRequestResolveRequest
+	113, // 156: nipadaemon.NipaDaemon.ProxyLockFile:input_type -> nipadaemon.ProxyLockFileRequest
+	115, // 157: nipadaemon.NipaDaemon.ProxyUnlockFile:input_type -> nipadaemon.ProxyUnlockFileRequest
+	117, // 158: nipadaemon.NipaDaemon.ProxyListFileLocks:input_type -> nipadaemon.ProxyListFileLocksRequest
+	128, // 159: nipadaemon.NipaDaemon.LockStatus:input_type -> nipadaemon.LockStatusRequest
+	125, // 160: nipadaemon.NipaDaemon.MetaWarnings:input_type -> nipadaemon.MetaWarningsRequest
+	131, // 161: nipadaemon.NipaDaemon.AccountStatus:input_type -> nipadaemon.AccountStatusRequest
+	133, // 162: nipadaemon.NipaDaemon.LoginSSH:input_type -> nipadaemon.LoginSSHRequest
+	134, // 163: nipadaemon.NipaDaemon.ListProjects:input_type -> nipadaemon.ListProjectsRequest
+	136, // 164: nipadaemon.NipaDaemon.RemoteBranches:input_type -> nipadaemon.RemoteBranchesRequest
+	138, // 165: nipadaemon.NipaDaemon.RemoteTree:input_type -> nipadaemon.RemoteTreeRequest
+	141, // 166: nipadaemon.NipaDaemon.Clone:input_type -> nipadaemon.CloneRequest
+	142, // 167: nipadaemon.NipaDaemon.SetSparse:input_type -> nipadaemon.SetSparseRequest
+	1,   // 168: nipadaemon.NipaDaemon.Ping:output_type -> nipadaemon.PingResponse
+	3,   // 169: nipadaemon.NipaDaemon.Shutdown:output_type -> nipadaemon.ShutdownResponse
+	5,   // 170: nipadaemon.NipaDaemon.Login:output_type -> nipadaemon.LoginResponse
+	8,   // 171: nipadaemon.NipaDaemon.WatchRepo:output_type -> nipadaemon.WatchRepoResponse
+	10,  // 172: nipadaemon.NipaDaemon.UnwatchRepo:output_type -> nipadaemon.UnwatchRepoResponse
+	12,  // 173: nipadaemon.NipaDaemon.ListRepos:output_type -> nipadaemon.ListReposResponse
+	14,  // 174: nipadaemon.NipaDaemon.Status:output_type -> nipadaemon.StatusResponse
+	14,  // 175: nipadaemon.NipaDaemon.Stage:output_type -> nipadaemon.StatusResponse
+	14,  // 176: nipadaemon.NipaDaemon.Restore:output_type -> nipadaemon.StatusResponse
+	60,  // 177: nipadaemon.NipaDaemon.Update:output_type -> nipadaemon.OpEvent
+	60,  // 178: nipadaemon.NipaDaemon.Switch:output_type -> nipadaemon.OpEvent
+	60,  // 179: nipadaemon.NipaDaemon.Push:output_type -> nipadaemon.OpEvent
+	60,  // 180: nipadaemon.NipaDaemon.Merge:output_type -> nipadaemon.OpEvent
+	60,  // 181: nipadaemon.NipaDaemon.Revert:output_type -> nipadaemon.OpEvent
+	26,  // 182: nipadaemon.NipaDaemon.Conflicts:output_type -> nipadaemon.ConflictsResponse
+	14,  // 183: nipadaemon.NipaDaemon.ResolveConflict:output_type -> nipadaemon.StatusResponse
+	30,  // 184: nipadaemon.NipaDaemon.MergeGodotResource:output_type -> nipadaemon.MergeGodotResourceResponse
+	32,  // 185: nipadaemon.NipaDaemon.Diff:output_type -> nipadaemon.DiffEvent
+	35,  // 186: nipadaemon.NipaDaemon.DiffFiles:output_type -> nipadaemon.DiffFileEvent
+	39,  // 187: nipadaemon.NipaDaemon.ReadBlob:output_type -> nipadaemon.BlobEvent
+	45,  // 188: nipadaemon.NipaDaemon.Preview:output_type -> nipadaemon.PreviewEvent
+	47,  // 189: nipadaemon.NipaDaemon.WatchChanges:output_type -> nipadaemon.RepoChange
+	50,  // 190: nipadaemon.NipaDaemon.WatchEvents:output_type -> nipadaemon.RepoActivity
+	62,  // 191: nipadaemon.NipaDaemon.ProxyBranchList:output_type -> nipadaemon.ProxyBranchListResponse
+	64,  // 192: nipadaemon.NipaDaemon.ProxyBranchCreate:output_type -> nipadaemon.ProxyBranchCreateResponse
+	66,  // 193: nipadaemon.NipaDaemon.ProxyBranchDelete:output_type -> nipadaemon.ProxyBranchDeleteResponse
+	120, // 194: nipadaemon.NipaDaemon.ProxyTagList:output_type -> nipadaemon.ProxyTagListResponse
+	122, // 195: nipadaemon.NipaDaemon.ProxyTagCreate:output_type -> nipadaemon.ProxyTagCreateResponse
+	124, // 196: nipadaemon.NipaDaemon.ProxyTagDelete:output_type -> nipadaemon.ProxyTagDeleteResponse
+	68,  // 197: nipadaemon.NipaDaemon.ProxyTreeManifest:output_type -> nipadaemon.ProxyTreeManifestResponse
+	70,  // 198: nipadaemon.NipaDaemon.ProxyCommitLog:output_type -> nipadaemon.ProxyCommitLogResponse
+	72,  // 199: nipadaemon.NipaDaemon.ProxyCommitGet:output_type -> nipadaemon.ProxyCommitGetResponse
+	74,  // 200: nipadaemon.NipaDaemon.ProxyCommitWalk:output_type -> nipadaemon.ProxyCommitWalkResponse
+	76,  // 201: nipadaemon.NipaDaemon.ProxyMergeBase:output_type -> nipadaemon.ProxyMergeBaseResponse
+	78,  // 202: nipadaemon.NipaDaemon.ProxyMergeRequestList:output_type -> nipadaemon.ProxyMergeRequestListResponse
+	80,  // 203: nipadaemon.NipaDaemon.ProxyMergeRequestCreate:output_type -> nipadaemon.ProxyMergeRequestCreateResponse
+	82,  // 204: nipadaemon.NipaDaemon.ProxyMergeRequestMerge:output_type -> nipadaemon.ProxyMergeRequestMergeResponse
+	84,  // 205: nipadaemon.NipaDaemon.ProxyMergeRequestClose:output_type -> nipadaemon.ProxyMergeRequestCloseResponse
+	86,  // 206: nipadaemon.NipaDaemon.ProxyMergeRequestReviews:output_type -> nipadaemon.ProxyMergeRequestReviewsResponse
+	88,  // 207: nipadaemon.NipaDaemon.ProxyMergeRequestReviewState:output_type -> nipadaemon.ProxyMergeRequestReviewStateResponse
+	90,  // 208: nipadaemon.NipaDaemon.ProxyMergeRequestThreads:output_type -> nipadaemon.ProxyMergeRequestThreadsResponse
+	92,  // 209: nipadaemon.NipaDaemon.ProxyMergeRequestGet:output_type -> nipadaemon.ProxyMergeRequestGetResponse
+	94,  // 210: nipadaemon.NipaDaemon.ProxyMergeRequestCheck:output_type -> nipadaemon.ProxyMergeRequestCheckResponse
+	96,  // 211: nipadaemon.NipaDaemon.ProxyMergeRequestReopen:output_type -> nipadaemon.ProxyMergeRequestReopenResponse
+	98,  // 212: nipadaemon.NipaDaemon.ProxyMergeRequestSubmitReview:output_type -> nipadaemon.ProxyMergeRequestSubmitReviewResponse
+	100, // 213: nipadaemon.NipaDaemon.ProxyMergeRequestUpdate:output_type -> nipadaemon.ProxyMergeRequestUpdateResponse
+	102, // 214: nipadaemon.NipaDaemon.ProxyMergeRequestCommits:output_type -> nipadaemon.ProxyMergeRequestCommitsResponse
+	104, // 215: nipadaemon.NipaDaemon.ProxyMergeRequestChecks:output_type -> nipadaemon.ProxyMergeRequestChecksResponse
+	106, // 216: nipadaemon.NipaDaemon.ProxyMergeRequestTimeline:output_type -> nipadaemon.ProxyMergeRequestTimelineResponse
+	108, // 217: nipadaemon.NipaDaemon.ProxyMergeRequestAddComment:output_type -> nipadaemon.ProxyMergeRequestAddCommentResponse
+	110, // 218: nipadaemon.NipaDaemon.ProxyMergeRequestReply:output_type -> nipadaemon.ProxyMergeRequestReplyResponse
+	112, // 219: nipadaemon.NipaDaemon.ProxyMergeRequestResolve:output_type -> nipadaemon.ProxyMergeRequestResolveResponse
+	114, // 220: nipadaemon.NipaDaemon.ProxyLockFile:output_type -> nipadaemon.ProxyLockFileResponse
+	116, // 221: nipadaemon.NipaDaemon.ProxyUnlockFile:output_type -> nipadaemon.ProxyUnlockFileResponse
+	118, // 222: nipadaemon.NipaDaemon.ProxyListFileLocks:output_type -> nipadaemon.ProxyListFileLocksResponse
+	129, // 223: nipadaemon.NipaDaemon.LockStatus:output_type -> nipadaemon.LockStatusResponse
+	127, // 224: nipadaemon.NipaDaemon.MetaWarnings:output_type -> nipadaemon.MetaWarningsResponse
+	132, // 225: nipadaemon.NipaDaemon.AccountStatus:output_type -> nipadaemon.AccountStatusResponse
+	5,   // 226: nipadaemon.NipaDaemon.LoginSSH:output_type -> nipadaemon.LoginResponse
+	135, // 227: nipadaemon.NipaDaemon.ListProjects:output_type -> nipadaemon.ListProjectsResponse
+	137, // 228: nipadaemon.NipaDaemon.RemoteBranches:output_type -> nipadaemon.RemoteBranchesResponse
+	140, // 229: nipadaemon.NipaDaemon.RemoteTree:output_type -> nipadaemon.RemoteTreeResponse
+	60,  // 230: nipadaemon.NipaDaemon.Clone:output_type -> nipadaemon.OpEvent
+	60,  // 231: nipadaemon.NipaDaemon.SetSparse:output_type -> nipadaemon.OpEvent
+	168, // [168:232] is the sub-list for method output_type
+	104, // [104:168] is the sub-list for method input_type
+	104, // [104:104] is the sub-list for extension type_name
+	104, // [104:104] is the sub-list for extension extendee
+	0,   // [0:104] is the sub-list for field type_name
 }
 
 func init() { file_internal_client_grpc_proto_daemon_proto_init() }
@@ -9325,32 +9519,32 @@ func file_internal_client_grpc_proto_daemon_proto_init() {
 	if File_internal_client_grpc_proto_daemon_proto != nil {
 		return
 	}
-	file_internal_client_grpc_proto_daemon_proto_msgTypes[29].OneofWrappers = []any{
+	file_internal_client_grpc_proto_daemon_proto_msgTypes[32].OneofWrappers = []any{
 		(*DiffEvent_Data)(nil),
 		(*DiffEvent_Failure)(nil),
 	}
-	file_internal_client_grpc_proto_daemon_proto_msgTypes[32].OneofWrappers = []any{
+	file_internal_client_grpc_proto_daemon_proto_msgTypes[35].OneofWrappers = []any{
 		(*DiffFileEvent_File)(nil),
 		(*DiffFileEvent_Failure)(nil),
 	}
-	file_internal_client_grpc_proto_daemon_proto_msgTypes[36].OneofWrappers = []any{
+	file_internal_client_grpc_proto_daemon_proto_msgTypes[39].OneofWrappers = []any{
 		(*BlobEvent_Info)(nil),
 		(*BlobEvent_Data)(nil),
 		(*BlobEvent_Failure)(nil),
 	}
-	file_internal_client_grpc_proto_daemon_proto_msgTypes[42].OneofWrappers = []any{
+	file_internal_client_grpc_proto_daemon_proto_msgTypes[45].OneofWrappers = []any{
 		(*PreviewEvent_Image)(nil),
 		(*PreviewEvent_Data)(nil),
 		(*PreviewEvent_Diff)(nil),
 		(*PreviewEvent_Failure)(nil),
 	}
-	file_internal_client_grpc_proto_daemon_proto_msgTypes[56].OneofWrappers = []any{
+	file_internal_client_grpc_proto_daemon_proto_msgTypes[59].OneofWrappers = []any{
 		(*OpResult_Sync)(nil),
 		(*OpResult_Push)(nil),
 		(*OpResult_Merge)(nil),
 		(*OpResult_Revert)(nil),
 	}
-	file_internal_client_grpc_proto_daemon_proto_msgTypes[57].OneofWrappers = []any{
+	file_internal_client_grpc_proto_daemon_proto_msgTypes[60].OneofWrappers = []any{
 		(*OpEvent_Queued)(nil),
 		(*OpEvent_Started)(nil),
 		(*OpEvent_Progress)(nil),
@@ -9363,7 +9557,7 @@ func file_internal_client_grpc_proto_daemon_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_internal_client_grpc_proto_daemon_proto_rawDesc), len(file_internal_client_grpc_proto_daemon_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   140,
+			NumMessages:   143,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

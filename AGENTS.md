@@ -165,7 +165,14 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   `internal/godotres` (pure) parses `.tscn`/`.tres`/`project.godot`/
   `.import` into header, ordered sections (attrs + raw multi-line props) and
   `Section.Identity()`, and `Write` round-trips the input byte for byte
-  (fuzzed); the planned `Merge3` builds on it.
+  (fuzzed). `Merge3(base, ours, theirs)` merges sections by identity and
+  properties/attributes by key (ours' order, theirs' additions after their
+  predecessor), renumbers colliding new ext/sub resource ids with their
+  `ExtResource()`/`SubResource()` references, shifts `load_steps`, and flags
+  conflicts (same key changed differently, delete vs modify, references,
+  parents or order the merge broke) instead of writing markers; fuzzed for
+  `Merge3(x,x,x)==x` and `Merge3(b,o,b)==o`. The daemon's
+  `MergeGodotResource` exposes it.
 - **Unity plugin** (`plugins/unity/com.nipalab.nipa`, Apache 2.0, design in
   `docs/UNITY_PLUGIN.md`, plan in `docs/plans/UNITY_PLUGIN.md`): UPM package
   over the daemon JSON bridge. `Editor/Core` is engine-free C# (`DaemonClient`
@@ -188,16 +195,24 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   VCS mapping and cache, `diff` model and Myers, `locks` (`LockPolicy` port of
   Unity's covering/scope/push-check rules with asset+sidecar lock units, and
   `ReadOnlyGuard` for strict read-only mode, state in `.godot/nipa/readonly.json`),
-  `session` worker, stream loops, lock cache/lock/unlock/blocking push check
-  and events; tested with doctest against `core/tests/fake_daemon`, gcovr gate
+  `session` worker, stream loops, lock cache/lock/unlock/blocking push check,
+  merge/revert/conflicts/resolve/`MergeGodotResource`, merge-tool temp files,
+  tags, paged history and assembled `Preview` PNGs (data ops finish with
+  `Event.data`/`bytes`, surfaced by `NipaRequest.get_result()`), `conflicts`
+  (conflict set, per-file actions, `merge_tool` command split/substitution),
+  `history` (tags, pages, `nipa://` commit links), `preview` (stream
+  assembler) and events; tested with doctest against `core/tests/fake_daemon`, gcovr gate
   80%, `make godot-test`). `extension/` is the godot-cpp GDExtension
   (`NipaVCSInterface` extends `EditorVCSInterface`, singleton `Nipa` =
   `NipaSession`, `NipaRequest`; editor-only, `make godot-build`). `addons/nipa/`
   holds the GDScript `EditorPlugin` (auto-lock on edit, save warnings, lock
-  refresh on focus/timer), `settings.gd` (`nipa/locking/*`), `context_menu.gd`
-  (FileSystem/scene-tab Lock/Unlock), `inspector_plugin.gd`, and the dock,
-  `bottom_panel` (Locks tab) and `lock_badge` scenes; `_commit` runs the lock
-  pre-check. The client treats a removed write bit on a file tracked writable as
+  refresh on focus/timer), `settings.gd` (`nipa/locking/*`, `nipa/merge_tool`),
+  `context_menu.gd` (FileSystem/scene-tab Lock/Unlock, History, Compare with
+  last pushed), `inspector_plugin.gd`, and the dock (branch/tag switcher,
+  Merge branch..., detached-tag and pending merge/revert banners),
+  `bottom_panel` (Locks, Conflicts, History, Image diff tab scenes) and
+  `lock_badge` scenes; `_commit` runs the lock pre-check and refuses while
+  detached at a tag. The client treats a removed write bit on a file tracked writable as
   no mode change (`trackedModeFromPerm`/`pushPerm`), so the guard never leaks
   into status or pushes.
   `tests/project` is the headless smoke project (`check_load.gd`) and the
