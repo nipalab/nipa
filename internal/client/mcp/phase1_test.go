@@ -160,11 +160,12 @@ func TestAllowCaps_RegisterToolsPerCapability(t *testing.T) {
 		CapLock:   {"nipa_lock", "nipa_unlock"},
 		CapMR: {"nipa_mr_create", "nipa_mr_update", "nipa_mr_comment", "nipa_mr_reply", "nipa_mr_resolve",
 			"nipa_mr_review", "nipa_mr_request_review", "nipa_mr_check"},
-		CapMerge: {"nipa_merge", "nipa_resolve_conflict", "nipa_mr_merge"},
+		CapMerge: {"nipa_merge", "nipa_resolve_conflict", "nipa_mr_merge", "nipa_godot_merge"},
 	}
 	reads := []string{"nipa_status", "nipa_diff", "nipa_log", "nipa_branch_list", "nipa_mr_list", "nipa_lock_list",
 		"nipa_lock_query", "nipa_tag_list", "nipa_conflicts", "nipa_mr_view", "nipa_mr_diff", "nipa_mr_threads",
-		"nipa_mr_commits", "nipa_mr_timeline"}
+		"nipa_mr_commits", "nipa_mr_timeline", "nipa_asset_diff", "nipa_describe_changes", "nipa_mr_describe_changes",
+		"nipa_meta_warnings"}
 	for capability := range groups {
 		t.Run(capability, func(t *testing.T) {
 			names := toolNames(t, connect(t, Options{Allow: map[string]bool{capability: true}}))
@@ -185,7 +186,7 @@ func TestToolAnnotations(t *testing.T) {
 	res, err := session.ListTools(context.Background(), nil)
 	require.NoError(t, err)
 	destructiveTools := map[string]bool{"nipa_push": true, "nipa_merge": true, "nipa_mr_merge": true, "nipa_restore": true,
-		"nipa_switch": true, "nipa_update": true, "nipa_unlock": true, "nipa_resolve_conflict": true}
+		"nipa_switch": true, "nipa_update": true, "nipa_unlock": true, "nipa_resolve_conflict": true, "nipa_godot_merge": true}
 	for _, tool := range res.Tools {
 		require.NotNil(t, tool.Annotations, tool.Name)
 		if tool.Annotations.ReadOnlyHint {

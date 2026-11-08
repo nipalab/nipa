@@ -35,8 +35,9 @@ type mcpTool struct {
 
 type mcpToolResult struct {
 	Content []struct {
-		Type string `json:"type"`
-		Text string `json:"text"`
+		Type     string `json:"type"`
+		Text     string `json:"text"`
+		MimeType string `json:"mimeType"`
 	} `json:"content"`
 	StructuredContent json.RawMessage `json:"structuredContent"`
 	IsError           bool            `json:"isError"`

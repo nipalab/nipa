@@ -40,6 +40,10 @@ Read-only tools (always available):
 | `nipa_mr_threads` | conversation threads (top-level and inline) with replies |
 | `nipa_mr_commits` | commits the request adds, newest first |
 | `nipa_mr_timeline` | activity timeline |
+| `nipa_asset_diff` | structured comparison of one asset (`path`, `old_path` for renames, `old` default `snapshot`, `new` default `working`, `max_rows`, `max_changes`); `include_images` attaches old/new PNG thumbnails as MCP image content |
+| `nipa_describe_changes` | one asset-aware headline per changed file, same `revisions`/`paths`/`staged`/`merge_base` arguments as `nipa_diff`; `max_files` default 50, at most 200, the rest counted in `omitted` |
+| `nipa_mr_describe_changes` | the same headlines for a merge request (merge base vs source head; `base.kind` says when the target head or branch stood in for an unknown merge base) |
+| `nipa_meta_warnings` | Unity `.meta` / Godot `.import`/`.uid` sidecar lint of pending changes (`engine` `unity`, `godot`, or detected; offline) |
 
 Mutating tools are enabled per capability with `--allow` (comma list; an
 unknown name fails at startup). `--allow-write` grants every capability.
@@ -52,12 +56,12 @@ unknown name fails at startup). `--allow-write` grants every capability.
 | `branch` | `nipa_branch_create`, `nipa_tag_create` |
 | `lock` | `nipa_lock`, `nipa_unlock` |
 | `mr` | `nipa_mr_create`, `nipa_mr_update` (title, description, `draft` true/false = draft/ready), `nipa_mr_comment` (top-level or `file` + `new_line`/`old_line`), `nipa_mr_reply`, `nipa_mr_resolve`, `nipa_mr_review`, `nipa_mr_request_review`, `nipa_mr_check` |
-| `merge` | `nipa_merge` (incl. `abort`), `nipa_resolve_conflict` (`ours`, `theirs`, `content`, `working`, `delete`), `nipa_mr_merge` (`strategy`, `delete_source`) |
+| `merge` | `nipa_merge` (incl. `abort`), `nipa_resolve_conflict` (`ours`, `theirs`, `content`, `working`, `delete`), `nipa_godot_merge` (structural `.tscn`/`.tres` merge of a conflicted file, written and staged only when clean), `nipa_mr_merge` (`strategy`, `delete_source`) |
 
 For example `nipa mcp --allow stage,mr` lets an agent stage and review but
 never push or merge. Tools that discard or overwrite work (`nipa_push`,
 `nipa_restore`, `nipa_update`, `nipa_switch`, `nipa_unlock`, `nipa_merge`,
-`nipa_resolve_conflict`, `nipa_mr_merge`) carry the MCP `destructiveHint`
+`nipa_resolve_conflict`, `nipa_godot_merge`, `nipa_mr_merge`) carry the MCP `destructiveHint`
 annotation so clients can ask for confirmation.
 
 Agent attribution: text written through MCP (push messages, merge-request
@@ -73,6 +77,15 @@ from the line text); once the budget runs out the current file is cut and
 flagged `"truncated": true` and the remaining files are counted in
 `omitted_files`. Narrow the request with `paths` or raise `max_bytes` to see
 more.
+
+Asset tools sides are `working`, `snapshot` (the last synced version, offline)
+or any revision token (branch, tag, base36 commit id, `HEAD`/`@`); revision
+sides download chunks through the commit-scoped path, so the caller's read
+filter applies. Scenes (Unity YAML, Godot text resources) report object and
+property changes with GUIDs resolved from the clone's `.meta` files, images
+their size/format/pixel delta, models their triangle/vertex/bounds stats,
+audio duration and loudness, CSV/TSV changed cells and text line counts.
+Oversized files are reported in `error` instead of being read.
 
 Tool results carry the same JSON shapes as the CLI `--json` payloads (see
 below). Mutating tools are serialized by the server. Tool failures set
@@ -142,23 +155,14 @@ principle: Nipa stays the system of record and exposes structured data; AI
 lives at the edges (MCP tools, webhook workers), never in the server core or
 request path.
 
-### 1. Asset-aware MCP tools (build first)
+### 1. Asset-aware MCP tools (shipped)
 
-The current MCP tools are workflow tools bound to a local working copy. What
-is missing for agents is asset-centric remote querying, served through the
-daemon's gRPC proxy so a multi-gigabyte repository can be inspected without a
-full clone:
-
-| Proposed tool | Purpose | Backing seam |
-| --- | --- | --- |
-| `nipa_tree_manifest` | list a subtree with `mode`, `size_bytes`, `is_binary`, `chunk_hashes` for a branch/tag/commit, narrowed by path prefixes | `GetTreeManifest` (paths, recursive, `commit_id`) |
-| `nipa_lock_query` | report locks covering a path (exact or directory prefix) and their holders | `ListFileLocks` filtered client-side |
-| `nipa_asset_fetch` | fetch one asset's content for agent-side analysis | presigned `GetChunkDownloadUrls` (commit-scoped) |
-| `nipa_describe_binary_changes` | structured delta per changed binary between two revisions | manifests + chunk-overlap comparison (see 3) |
-
-All four are client-side (`internal/client/mcp` plus the existing gRPC
-transports); no server changes. Every tool must honor the caller's read
-filter, like `Branch.VisibleChunks` already does.
+Shipped as `nipa_asset_diff`, `nipa_describe_changes`,
+`nipa_mr_describe_changes`, `nipa_meta_warnings` and `nipa_godot_merge` (see
+the MCP tables above), plus `nipa_lock_query`. They run client-side over the
+working copy and the commit-scoped chunk downloads; no server changes.
+Remote-only querying without a clone (`nipa_tree_manifest`, server-side MCP)
+stays deferred.
 
 ### 2. Asset quality linters as external workers
 
@@ -178,15 +182,13 @@ work; AI is the judgment layer on top of extracted metadata, not the chunk
 reader. Pair the worker with an asset budget file (below) so linting is
 deterministic first.
 
-### 3. Binary change summaries via chunk deltas
+### 3. Binary change summaries (shipped)
 
-The machinery for a format-agnostic v0 already exists: `diff.DetectRenames`
-computes chunk-overlap similarity, and manifests carry per-file
-`chunk_hashes`. The `nipa_describe_binary_changes` MCP tool returns structured
-deltas (chunk overlap percentage, size delta, encoding change) and the
-connected agent writes the prose summary itself. No LLM runs inside `nipad`;
-if automated summaries on the timeline are wanted later, the webhook worker
-from section 2 posts them as comments or check output.
+`internal/assetdiff` decodes both versions with `internal/preview` and turns
+them into structured deltas and one-line headlines (`nipa_describe_changes`,
+`nipa_mr_describe_changes`); the connected agent writes the prose. No LLM runs
+inside `nipad`; automated timeline summaries remain a webhook-worker idea
+(section 2).
 
 ### 4. Semantic search — metadata first, vectors later
 

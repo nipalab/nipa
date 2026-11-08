@@ -191,8 +191,10 @@ Nipa can be driven by scripts and AI agents as well as by people:
   clone over stdio (Model Context Protocol) so agents such as Claude Code,
   Cursor or Copilot can work with a working copy directly. Read-only tools
   (status, diff, log, branches, tags, locks and lock queries, conflicts, merge
-  requests with their diff, threads, commits and timeline) are always
-  registered; write tools are grouped by capability (`stage`, `push`, `sync`,
+  requests with their diff, threads, commits and timeline) and asset-aware
+  tools (structured asset diffs with image thumbnails, per-file change
+  summaries for the working copy, revisions or a merge request, Unity/Godot
+  sidecar warnings) are always registered; write tools are grouped by capability (`stage`, `push`, `sync`,
   `branch`, `lock`, `mr`, `merge`) and enabled with `--allow` (or all with
   `--allow-write`). Diffs are capped by `max_bytes`, and text written through
   MCP carries a `Nipa-Agent: <client>/<version>` trailer (`--no-agent-trailer`

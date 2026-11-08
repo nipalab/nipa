@@ -95,14 +95,8 @@ type diffInput struct {
 
 func (s *server) diff(ctx context.Context, _ *mcp.CallToolRequest, in diffInput) (*mcp.CallToolResult, output.Diff, error) {
 	var zero output.Diff
-	if len(in.Revisions) > 2 {
-		return nil, zero, toolError(domain.NewUserError("too many revisions (expected at most two)"))
-	}
-	if len(in.Revisions) > 0 && in.Staged {
-		return nil, zero, toolError(domain.NewUserError("staged cannot be combined with revisions"))
-	}
-	if in.MergeBase && len(in.Revisions) != 2 {
-		return nil, zero, toolError(domain.NewUserError("merge_base requires two revisions"))
+	if err := validateRevisions(in.Revisions, in.Staged, in.MergeBase); err != nil {
+		return nil, zero, err
 	}
 	budget, err := diffBudget(in.MaxBytes)
 	if err != nil {
@@ -143,6 +137,18 @@ func (s *server) diff(ctx context.Context, _ *mcp.CallToolRequest, in diffInput)
 	}
 	files = diff.FilterIgnored(files, renderOpts)
 	return nil, capDiff(output.NewDiff(files, renderOpts), budget), nil
+}
+
+func validateRevisions(revisions []string, staged, mergeBase bool) error {
+	switch {
+	case len(revisions) > 2:
+		return toolError(domain.NewUserError("too many revisions (expected at most two)"))
+	case len(revisions) > 0 && staged:
+		return toolError(domain.NewUserError("staged cannot be combined with revisions"))
+	case mergeBase && len(revisions) != 2:
+		return toolError(domain.NewUserError("merge_base requires two revisions"))
+	}
+	return nil
 }
 
 type logInput struct {
