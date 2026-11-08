@@ -32,6 +32,11 @@ config.yaml
 # Client e2e harness scratch state (server logs, tokens, sqlite dbs)
 /tests/.tmp/
 
+# Godot plugin build trees
+/plugins/godot/build*/
+/plugins/godot/addons/nipa/bin/
+/plugins/godot/tests/project/.godot/
+/plugins/godot/tests/project/reports/
 # Local databases (sqlite DSN: nipa.db)
 *.db
 *.db-journal

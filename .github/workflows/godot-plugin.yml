@@ -1,0 +1,141 @@
+name: Godot plugin
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'plugins/godot/**'
+      - '.github/workflows/godot-plugin.yml'
+  pull_request:
+    paths:
+      - 'plugins/godot/**'
+      - '.github/workflows/godot-plugin.yml'
+    types: [opened, synchronize, reopened]
+
+env:
+  GODOT_CPP_TAG: godot-4.4-stable
+
+jobs:
+  core:
+    name: Core tests and coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build
+          python3 -m pip install --user gcovr
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Test with coverage gate
+        run: make godot-test GCOVR=gcovr
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: godot-core-coverage
+          path: plugins/godot/build/**/*.gcov
+
+  thread-sanitizer:
+    name: Session tests under ThreadSanitizer
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build with -fsanitize=thread
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake
+          cmake -S plugins/godot -B plugins/godot/build-tsan \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DNIPA_BUILD_EXTENSION=OFF \
+            -DCMAKE_CXX_FLAGS="-fsanitize=thread -O1 -g" \
+            -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=thread"
+          cmake --build plugins/godot/build-tsan --target nipa_core_tests -j
+
+      - name: Run
+        env:
+          TSAN_OPTIONS: halt_on_error=1 second_deadlock_stack=1
+        run: plugins/godot/build-tsan/nipa_core_tests
+
+  extension:
+    name: GDExtension build (Godot ${{ matrix.godot }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        godot: ['4.4-stable']
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build python3
+
+      - name: Cache godot-cpp build
+        uses: actions/cache@v4
+        with:
+          path: plugins/godot/build-ext/_deps
+          key: godot-cpp-${{ env.GODOT_CPP_TAG }}-${{ runner.os }}-${{ hashFiles('plugins/godot/extension/CMakeLists.txt') }}
+
+      - name: Build
+        run: make godot-build
+
+      - name: Upload library
+        uses: actions/upload-artifact@v4
+        with:
+          name: godot-extension-linux
+          path: plugins/godot/addons/nipa/bin/**
+
+  headless-load:
+    name: Headless load check (Godot ${{ matrix.godot }})
+    needs: extension
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - godot: '4.4'
+            url: 'https://github.com/godotengine/godot/releases/download/4.4-stable/Godot_v4.4-stable_linux.x86_64.zip'
+          - godot: 'latest'
+            url: ''
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build python3
+
+      - name: Build the extension
+        run: make godot-build
+
+      - name: Fetch Godot
+        env:
+          GODOT_URL: ${{ matrix.url }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/godot"
+          url="$GODOT_URL"
+          if [ -z "$url" ]; then
+            url=$(curl -sfL https://api.github.com/repos/godotengine/godot/releases/latest \
+              | python3 -c 'import json,sys; r=json.load(sys.stdin); print(next(a["browser_download_url"] for a in r["assets"] if a["name"].endswith("_linux.x86_64.zip")))')
+          fi
+          echo "fetching $url"
+          curl -sfL -o "$RUNNER_TEMP/godot/godot.zip" "$url"
+          unzip -q -o "$RUNNER_TEMP/godot/godot.zip" -d "$RUNNER_TEMP/godot"
+          chmod +x "$RUNNER_TEMP/godot"/Godot_*.x86_64
+
+      - name: Import project
+        working-directory: plugins/godot/tests/project
+        run: $RUNNER_TEMP/godot/Godot_*.x86_64 --headless --editor --path . --quit
+
+      - name: Load check
+        working-directory: plugins/godot/tests/project
+        run: $RUNNER_TEMP/godot/Godot_*.x86_64 --headless --editor --path . --quit-after 5 --script check_load.gd
+
+      - name: gdUnit4 spec
+        working-directory: plugins/godot/tests/project
+        run: $RUNNER_TEMP/godot/Godot_*.x86_64 --headless --path . -s res://addons/gdUnit4/bin/GdUnitCmdTool.gd -a res://test/ --ignoreHeadlessMode

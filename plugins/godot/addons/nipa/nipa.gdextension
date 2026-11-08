@@ -1,0 +1,11 @@
+[configuration]
+
+entry_symbol = "nipa_library_init"
+compatibility_minimum = "4.4"
+reloadable = true
+
+[libraries]
+
+linux.x86_64.editor = "res://addons/nipa/bin/linux.x86_64/libnipa.linux.x86_64.editor.so"
+windows.x86_64.editor = "res://addons/nipa/bin/windows.x86_64/nipa.windows.x86_64.editor.dll"
+macos.editor = "res://addons/nipa/bin/macos/libnipa.macos.editor.dylib"
