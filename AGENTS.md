@@ -516,8 +516,11 @@ old version while the file is edited; a pin or capture failure is a
 prunes (a local unpin failure is only logged: the server lock is already
 gone); a successful push drops the exact-path pins among the pushed and
 removed paths (`landedPins`, no DB write without one; directory pins stay,
-like `ReleaseLanded`). Locks taken elsewhere are not
-pinned and their reads use the missing-content fallback. Merge requests acquire locks for their changed binary
+like `ReleaseLanded`). Pins are a best-effort cache hint keyed by path only,
+not by lock scope: the same path locked on two branches (or held by a merge
+request) shares one pin, and a push on either branch drops it while the other
+lock is still held. Locks taken elsewhere are not pinned either; in both cases
+reads use the missing-content fallback (download when online). Merge requests acquire locks for their changed binary
 paths at creation (re-checked and topped up at merge — `branchMerger.
 BinaryChangesBetween` is the permission-filter-free three-dot enumeration —
 accepting locks held by the request owner so an admin can merge on their
