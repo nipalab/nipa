@@ -94,8 +94,10 @@ func TestInterceptor_InvalidAuthorizationHeader(t *testing.T) {
 		value string
 	}{
 		{"no bearer prefix", "token123"},
-		{"lowercase bearer", "bearer token123"},
+		{"basic scheme", "Basic dXNlcjpwYXNz"},
 		{"only bearer with no token", "Bearer"},
+		{"empty token", "Bearer "},
+		{"extra segment", "Bearer a b"},
 	}
 
 	for _, tt := range tests {
@@ -280,4 +282,12 @@ func TestInterceptor_RequestMeta(t *testing.T) {
 			return nil
 		})
 	require.NoError(t, err)
+}
+
+func TestBearerToken_CaseInsensitiveScheme(t *testing.T) {
+	for _, header := range []string{"Bearer abc", "bearer abc", "BEARER abc"} {
+		token, ok := bearerToken(header)
+		require.True(t, ok, header)
+		require.Equal(t, "abc", token)
+	}
 }

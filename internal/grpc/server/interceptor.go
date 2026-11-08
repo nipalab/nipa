@@ -82,11 +82,10 @@ func (i *Interceptor) JWTUnary() func(ctx context.Context, req interface{}, info
 			return nil, status.Error(codes.Unauthenticated, "missing authorization header")
 		}
 
-		tokenString := authHeader[0]
-		if len(tokenString) < 7 || tokenString[:7] != "Bearer " {
+		tokenString, ok := bearerToken(authHeader[0])
+		if !ok {
 			return nil, status.Error(codes.Unauthenticated, "invalid authorization header")
 		}
-		tokenString = tokenString[7:]
 
 		claims, err := i.tokenValidator.ValidateToken(ctx, tokenString)
 		if err != nil {
@@ -125,11 +124,10 @@ func (i *Interceptor) JWTStream() grpc.StreamServerInterceptor {
 			return status.Error(codes.Unauthenticated, "missing authorization header")
 		}
 
-		tokenString := authHeader[0]
-		if len(tokenString) < 7 || tokenString[:7] != "Bearer " {
+		tokenString, ok := bearerToken(authHeader[0])
+		if !ok {
 			return status.Error(codes.Unauthenticated, "invalid authorization header")
 		}
-		tokenString = tokenString[7:]
 
 		claims, err := i.tokenValidator.ValidateToken(ss.Context(), tokenString)
 		if err != nil {
@@ -141,4 +139,12 @@ func (i *Interceptor) JWTStream() grpc.StreamServerInterceptor {
 
 		return handler(srv, &wrappedStream{ServerStream: ss, ctx: ctx})
 	}
+}
+
+func bearerToken(header string) (string, bool) {
+	scheme, token, ok := strings.Cut(header, " ")
+	if !ok || !strings.EqualFold(scheme, "Bearer") || token == "" || strings.Contains(token, " ") {
+		return "", false
+	}
+	return token, true
 }

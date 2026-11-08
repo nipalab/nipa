@@ -368,6 +368,22 @@ func TestAuth_ValidateToken_UnexpectedSigningMethod(t *testing.T) {
 	require.Nil(t, got)
 }
 
+func TestAuth_ValidateToken_RejectsNonHS256(t *testing.T) {
+	claims := domain.Claims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:   "42",
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+		},
+		UserID: 42,
+	}
+	token, err := jwt.NewWithClaims(jwt.SigningMethodHS512, claims).SignedString([]byte("secret"))
+	require.NoError(t, err)
+
+	got, err := NewAuth("secret", nil, nil, nil).ValidateToken(context.Background(), token)
+	assertInvalidTokenError(t, err)
+	require.Nil(t, got)
+}
+
 func parseAccessToken(t *testing.T, token string, secret string) *domain.Claims {
 	t.Helper()
 
