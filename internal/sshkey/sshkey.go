@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 
 	"golang.org/x/crypto/ssh"
@@ -15,11 +16,46 @@ import (
 // MinRSABits is the smallest accepted RSA modulus.
 const MinRSABits = 2048
 
-const loginPayloadPrefix = "nipa-login:v1:"
+const loginPayloadPrefix = "nipa-login:v2:"
 
-// LoginPayload returns the message a client signs to complete an SSH key login.
-func LoginPayload(nonce string) []byte {
-	return []byte(loginPayloadPrefix + nonce)
+// LoginPayload returns the message a client signs to complete an SSH key
+// login: it binds the challenge to the canonical origin of the server.
+func LoginPayload(origin, nonce string) []byte {
+	return []byte(loginPayloadPrefix + origin + ":" + nonce)
+}
+
+// CanonicalOrigin reduces a host, host:port or http(s) URL to the form both
+// sides sign: lowercase host without trailing dot, port only when it is not 80
+// or 443, no scheme, userinfo or path.
+func CanonicalOrigin(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", errors.New("origin must not be empty")
+	}
+	if idx := strings.Index(raw, "://"); idx >= 0 {
+		scheme := strings.ToLower(raw[:idx])
+		if scheme != "http" && scheme != "https" {
+			return "", fmt.Errorf("unsupported scheme %q", scheme)
+		}
+	} else {
+		raw = "//" + raw
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.User != nil {
+		return "", fmt.Errorf("invalid origin %q", raw)
+	}
+	host := strings.TrimSuffix(strings.ToLower(u.Hostname()), ".")
+	if host == "" {
+		return "", fmt.Errorf("invalid origin %q", raw)
+	}
+	if strings.Contains(host, ":") {
+		host = "[" + host + "]"
+	}
+	port := u.Port()
+	if port == "" || port == "80" || port == "443" {
+		return host, nil
+	}
+	return host + ":" + port, nil
 }
 
 // ParsedKey is a normalized OpenSSH public key.
@@ -86,6 +122,9 @@ func Verify(pub ssh.PublicKey, payload, signature []byte) error {
 	sig := &ssh.Signature{}
 	if err := ssh.Unmarshal(signature, sig); err != nil {
 		return fmt.Errorf("invalid signature: %w", err)
+	}
+	if pub.Type() == ssh.KeyAlgoRSA && sig.Format != ssh.KeyAlgoRSASHA256 && sig.Format != ssh.KeyAlgoRSASHA512 {
+		return errors.New("signature verification failed")
 	}
 	if err := pub.Verify(payload, sig); err != nil {
 		return errors.New("signature verification failed")

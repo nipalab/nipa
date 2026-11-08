@@ -13,11 +13,13 @@
 #include <thread>
 #include <vector>
 
+#include "core/conflicts/conflicts.h"
 #include "core/daemon/cancel.h"
 #include "core/daemon/client.h"
 #include "core/daemon/connector.h"
 #include "core/daemon/messages.h"
 #include "core/diff/diff.h"
+#include "core/history/history.h"
 #include "core/locks/lock_policy.h"
 #include "core/locks/readonly_guard.h"
 #include "core/session/events.h"
@@ -44,7 +46,10 @@ struct SessionOptions {
 // Event fields: OpQueued/OpStarted/OpFinished carry op_id and name (kind);
 // OpStarted and OpProgress put the phase in message; OpProgress sets done/total;
 // OpFinished sets ok, message and paths (empty = refresh everything).
-// StatusChanged lists paths; Connected carries the version in message.
+// StatusChanged lists paths (empty when only the branch, head or pending
+// operation changed); Connected carries the version in message.
+// Data ops (conflicts, merge-godot, merge-tool, history, preview) finish with
+// their result in OpFinished.data and binary parts in OpFinished.bytes.
 // LocksChanged lists the files strict mode made read-only or writable again.
 class Session {
 public:
@@ -96,6 +101,28 @@ public:
     bool blob_known(const std::string& key) const;
     bool blob_blocking(const std::string& key, std::chrono::milliseconds timeout);
 
+    enum class RevertAction { Start, Continue, Skip, Abort };
+
+    std::vector<history::Tag> tags() const;
+    conflicts::Set conflicts() const;
+    std::int64_t submit_tags();
+    // Merges `source_branch` into the current branch; conflicts wait in the clone.
+    std::int64_t submit_merge(std::string source_branch);
+    std::int64_t submit_merge_abort();
+    std::int64_t submit_revert(RevertAction action, std::string target = {});
+    // data: conflicts::to_json of the pending operation.
+    std::int64_t submit_conflicts();
+    // choice: ours, theirs, content (with `content`), working or delete.
+    std::int64_t submit_resolve(std::string path, std::string choice, std::string content = {});
+    // data: conflicts::to_json(GodotMerge); bytes["merged"].
+    std::int64_t submit_merge_godot(std::string path);
+    // Writes base/ours/theirs and the working copy of `path` under `dir`; data: the four paths.
+    std::int64_t submit_prepare_merge_tool(std::string path, std::string dir);
+    // data: history::to_json(Page).
+    std::int64_t submit_history(std::string path, std::string start, int limit);
+    // data: {"old": info, "new": info, "diff": stats}; bytes["old_png"], bytes["new_png"].
+    std::int64_t submit_preview(nlohmann::json old_ref, nlohmann::json new_ref, int threshold, int max_size);
+
     // Lock-relevant extensions and strict read-only mode; `guard_state_path` persists the guarded files.
     void set_lock_options(std::vector<std::string> extensions, bool strict, std::string guard_state_path);
     locks::LockPolicy locks() const;
@@ -113,9 +140,15 @@ private:
         std::uint64_t generation = 0;
     };
     struct Outcome {
+        Outcome() = default;
+        Outcome(bool ok_, std::string message_, std::vector<std::string> paths_ = {})
+            : ok(ok_), message(std::move(message_)), paths(std::move(paths_)) {}
+
         bool ok = true;
         std::string message;
         std::vector<std::string> paths;
+        nlohmann::json data;
+        std::map<std::string, std::string> bytes;
     };
     struct Task {
         std::int64_t id;
@@ -141,6 +174,9 @@ private:
     bool refresh_locks();
     void apply_lock_options();
     void release_guard();
+    conflicts::Set load_conflicts();
+    void refresh_conflicts_async();
+    std::string read_blob(const nlohmann::json& ref);
     Outcome run_stream_op(std::int64_t id, const std::string& name, const std::string& method,
                           const nlohmann::json& body);
 
@@ -165,6 +201,9 @@ private:
     std::vector<daemon::Branch> branches_;
     std::vector<daemon::Commit> commits_;
     std::vector<std::string> remotes_;
+    std::vector<history::Tag> tags_;
+    conflicts::Set conflicts_;
+    bool conflicts_pending_ = false;
     struct BlobEntry {
         bool ok = false;
         std::string content;

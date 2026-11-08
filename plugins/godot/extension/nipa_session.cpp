@@ -2,16 +2,20 @@
 
 #include <chrono>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <set>
 
 #include <godot_cpp/classes/engine.hpp>
+#include <godot_cpp/classes/json.hpp>
 #include <godot_cpp/classes/main_loop.hpp>
 #include <godot_cpp/classes/project_settings.hpp>
 #include <godot_cpp/classes/scene_tree.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
 
+#include "core/conflicts/merge_tool.h"
 #include "core/daemon/connector.h"
+#include "core/history/history.h"
 #include "core/status/status.h"
 #include "nipa_util.h"
 
@@ -44,6 +48,36 @@ Ref<NipaRequest> done_request(bool ok, const char* message) {
     request.instantiate();
     request->complete(ok, message);
     return request;
+}
+
+Dictionary to_dictionary(const nlohmann::json& data) {
+    if (!data.is_object()) {
+        return Dictionary();
+    }
+    Variant parsed = JSON::parse_string(to_godot(data.dump()));
+    return parsed.get_type() == Variant::DICTIONARY ? Dictionary(parsed) : Dictionary();
+}
+
+PackedByteArray to_bytes(const std::string& data) {
+    PackedByteArray out;
+    out.resize(static_cast<int64_t>(data.size()));
+    if (!data.empty()) {
+        std::memcpy(out.ptrw(), data.data(), data.size());
+    }
+    return out;
+}
+
+std::string from_bytes(const PackedByteArray& bytes) {
+    return std::string(reinterpret_cast<const char*>(bytes.ptr()), static_cast<std::size_t>(bytes.size()));
+}
+
+nlohmann::json blob_ref(const Dictionary& ref) {
+    if (ref.is_empty()) {
+        return nullptr;
+    }
+    return {{"source", from_godot(ref.get("source", "working"))},
+            {"revision", from_godot(ref.get("revision", ""))},
+            {"path", from_godot(ref.get("path", ""))}};
 }
 
 }  // namespace
@@ -82,6 +116,26 @@ void NipaSession::_bind_methods() {
     ClassDB::bind_method(D_METHOD("request_lock", "clone_paths"), &NipaSession::request_lock);
     ClassDB::bind_method(D_METHOD("request_unlock", "clone_paths", "any_holder"), &NipaSession::request_unlock);
     ClassDB::bind_method(D_METHOD("request_lock_refresh"), &NipaSession::request_lock_refresh);
+    ClassDB::bind_method(D_METHOD("get_tag_names"), &NipaSession::get_tag_names);
+    ClassDB::bind_method(D_METHOD("get_head"), &NipaSession::get_head);
+    ClassDB::bind_method(D_METHOD("get_conflicts"), &NipaSession::get_conflicts);
+    ClassDB::bind_method(D_METHOD("get_commit_link", "commit_id"), &NipaSession::get_commit_link);
+    ClassDB::bind_method(D_METHOD("request_switch_tag", "tag"), &NipaSession::request_switch_tag);
+    ClassDB::bind_method(D_METHOD("request_merge", "source_branch"), &NipaSession::request_merge);
+    ClassDB::bind_method(D_METHOD("request_merge_abort"), &NipaSession::request_merge_abort);
+    ClassDB::bind_method(D_METHOD("request_revert", "target"), &NipaSession::request_revert);
+    ClassDB::bind_method(D_METHOD("request_revert_continue"), &NipaSession::request_revert_continue);
+    ClassDB::bind_method(D_METHOD("request_revert_skip"), &NipaSession::request_revert_skip);
+    ClassDB::bind_method(D_METHOD("request_revert_abort"), &NipaSession::request_revert_abort);
+    ClassDB::bind_method(D_METHOD("request_conflicts"), &NipaSession::request_conflicts);
+    ClassDB::bind_method(D_METHOD("request_resolve", "clone_path", "choice", "content"), &NipaSession::request_resolve);
+    ClassDB::bind_method(D_METHOD("request_merge_godot", "clone_path"), &NipaSession::request_merge_godot);
+    ClassDB::bind_method(D_METHOD("request_prepare_merge_tool", "clone_path"), &NipaSession::request_prepare_merge_tool);
+    ClassDB::bind_method(D_METHOD("build_merge_command", "command", "paths"), &NipaSession::build_merge_command);
+    ClassDB::bind_method(D_METHOD("has_conflict_markers", "content"), &NipaSession::has_conflict_markers);
+    ClassDB::bind_method(D_METHOD("request_history", "clone_path", "start", "limit"), &NipaSession::request_history);
+    ClassDB::bind_method(D_METHOD("request_preview", "old_ref", "new_ref", "threshold", "max_size"),
+                         &NipaSession::request_preview);
     ClassDB::bind_method(D_METHOD("drain_events"), &NipaSession::drain_events);
 
     ADD_SIGNAL(MethodInfo("connected", PropertyInfo(Variant::STRING, "version")));
@@ -105,6 +159,8 @@ void NipaSession::_bind_methods() {
                           PropertyInfo(Variant::INT, "review_requests"), PropertyInfo(Variant::STRING, "error")));
     ADD_SIGNAL(MethodInfo("notice", PropertyInfo(Variant::STRING, "text")));
     ADD_SIGNAL(MethodInfo("locks_changed", PropertyInfo(Variant::PACKED_STRING_ARRAY, "guarded_paths")));
+    ADD_SIGNAL(MethodInfo("conflicts_changed"));
+    ADD_SIGNAL(MethodInfo("tags_changed"));
     ADD_SIGNAL(MethodInfo("commit_locks_needed", PropertyInfo(Variant::STRING, "message"),
                           PropertyInfo(Variant::PACKED_STRING_ARRAY, "clone_paths")));
 }
@@ -353,6 +409,7 @@ Ref<NipaRequest> NipaSession::request_refresh() {
     session_->submit_status();
     session_->submit_branches();
     session_->submit_commits();
+    session_->submit_tags();
     return done_request(true, "refreshing");
 }
 
@@ -437,7 +494,11 @@ void NipaSession::dispatch(const session::Event& event) {
             if (found != requests_.end()) {
                 Ref<NipaRequest> request = found->second;
                 requests_.erase(found);
-                request->complete(event.ok, to_godot(event.message));
+                Dictionary result = to_dictionary(event.data);
+                for (const auto& [name, data] : event.bytes) {
+                    result[to_godot(name)] = to_bytes(data);
+                }
+                request->complete(event.ok, to_godot(event.message), result);
             }
             break;
         }
@@ -453,6 +514,12 @@ void NipaSession::dispatch(const session::Event& event) {
         case EventKind::ActivitySummary:
             emit_signal("activity_summary", static_cast<int64_t>(event.done), static_cast<int64_t>(event.total),
                         to_godot(event.message));
+            break;
+        case EventKind::ConflictsChanged:
+            emit_signal("conflicts_changed");
+            break;
+        case EventKind::TagsChanged:
+            emit_signal("tags_changed");
             break;
         case EventKind::LocksChanged: {
             PackedStringArray paths;
@@ -545,6 +612,124 @@ Ref<NipaRequest> NipaSession::request_lock_refresh() {
     }
     session_->submit_locks();
     return done_request(true, "refreshing locks");
+}
+
+Ref<NipaRequest> NipaSession::track_or_closed(const std::function<std::int64_t(session::Session&)>& submit) {
+    if (!session_) {
+        return done_request(false, "session is not open");
+    }
+    return track(submit(*session_));
+}
+
+PackedStringArray NipaSession::get_tag_names() const {
+    PackedStringArray out;
+    if (session_) {
+        for (const auto& tag : session_->tags()) {
+            out.push_back(to_godot(tag.name));
+        }
+    }
+    return out;
+}
+
+Dictionary NipaSession::get_head() const {
+    Dictionary out;
+    status::Snapshot snapshot;
+    if (session_) {
+        snapshot = session_->status_cache().snapshot();
+    }
+    out["branch"] = to_godot(snapshot.branch);
+    out["detached"] = snapshot.detached();
+    out["head_kind"] = to_godot(snapshot.head_kind);
+    out["head_name"] = to_godot(snapshot.head_name);
+    out["pending"] = to_godot(snapshot.pending);
+    out["pending_remaining"] = snapshot.pending_remaining;
+    return out;
+}
+
+Dictionary NipaSession::get_conflicts() const {
+    return session_ ? to_dictionary(conflicts::to_json(session_->conflicts())) : Dictionary();
+}
+
+String NipaSession::get_commit_link(const String& commit_id) const {
+    if (!session_ || session_->remotes().empty()) {
+        return String();
+    }
+    return to_godot(history::commit_link(session_->remotes().front(), from_godot(commit_id)));
+}
+
+Ref<NipaRequest> NipaSession::request_switch_tag(const String& tag) {
+    return track_or_closed([&](session::Session& s) { return s.submit_switch({}, from_godot(tag)); });
+}
+
+Ref<NipaRequest> NipaSession::request_merge(const String& source_branch) {
+    return track_or_closed([&](session::Session& s) { return s.submit_merge(from_godot(source_branch)); });
+}
+
+Ref<NipaRequest> NipaSession::request_merge_abort() {
+    return track_or_closed([](session::Session& s) { return s.submit_merge_abort(); });
+}
+
+Ref<NipaRequest> NipaSession::request_revert(const String& target) {
+    return track_or_closed(
+        [&](session::Session& s) { return s.submit_revert(session::Session::RevertAction::Start, from_godot(target)); });
+}
+
+Ref<NipaRequest> NipaSession::request_revert_continue() {
+    return track_or_closed([](session::Session& s) { return s.submit_revert(session::Session::RevertAction::Continue); });
+}
+
+Ref<NipaRequest> NipaSession::request_revert_skip() {
+    return track_or_closed([](session::Session& s) { return s.submit_revert(session::Session::RevertAction::Skip); });
+}
+
+Ref<NipaRequest> NipaSession::request_revert_abort() {
+    return track_or_closed([](session::Session& s) { return s.submit_revert(session::Session::RevertAction::Abort); });
+}
+
+Ref<NipaRequest> NipaSession::request_conflicts() {
+    return track_or_closed([](session::Session& s) { return s.submit_conflicts(); });
+}
+
+Ref<NipaRequest> NipaSession::request_resolve(const String& clone_path, const String& choice,
+                                              const PackedByteArray& content) {
+    return track_or_closed([&](session::Session& s) {
+        return s.submit_resolve(from_godot(clone_path), from_godot(choice), from_bytes(content));
+    });
+}
+
+Ref<NipaRequest> NipaSession::request_merge_godot(const String& clone_path) {
+    return track_or_closed([&](session::Session& s) { return s.submit_merge_godot(from_godot(clone_path)); });
+}
+
+Ref<NipaRequest> NipaSession::request_prepare_merge_tool(const String& clone_path) {
+    return track_or_closed([&](session::Session& s) {
+        return s.submit_prepare_merge_tool(from_godot(clone_path), project_dir_ + "/.godot/nipa/merge");
+    });
+}
+
+PackedStringArray NipaSession::build_merge_command(const String& command, const Dictionary& paths) const {
+    PackedStringArray out;
+    conflicts::ToolPaths tool{from_godot(paths.get("base", "")), from_godot(paths.get("local", "")),
+                              from_godot(paths.get("remote", "")), from_godot(paths.get("merged", ""))};
+    for (const auto& word : conflicts::build_merge_command(from_godot(command), tool)) {
+        out.push_back(to_godot(word));
+    }
+    return out;
+}
+
+bool NipaSession::has_conflict_markers(const PackedByteArray& content) const {
+    return conflicts::has_conflict_markers(from_bytes(content));
+}
+
+Ref<NipaRequest> NipaSession::request_history(const String& clone_path, const String& start, int limit) {
+    return track_or_closed(
+        [&](session::Session& s) { return s.submit_history(from_godot(clone_path), from_godot(start), limit); });
+}
+
+Ref<NipaRequest> NipaSession::request_preview(const Dictionary& old_ref, const Dictionary& new_ref, int threshold,
+                                              int max_size) {
+    return track_or_closed(
+        [&](session::Session& s) { return s.submit_preview(blob_ref(old_ref), blob_ref(new_ref), threshold, max_size); });
 }
 
 }  // namespace nipa::glue

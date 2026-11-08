@@ -371,3 +371,57 @@ func TestChunk_ConfirmUploads_LinkedChunksAreVerifiedWhenProven(t *testing.T) {
 		require.Error(t, err)
 	})
 }
+
+func TestChunk_ConfirmUploads_QuotaFailureLeavesNoLink(t *testing.T) {
+	ctx := context.Background()
+	data := []byte("payload")
+	hash := chunker.Sum(data)
+	store := newStubChunkStore()
+	store.data[hash] = data
+	uc, repo := newLinkFixture(t, store)
+	ledger := NewMockStorageLedger(gomock.NewController(t))
+	uc.WithStorageLedger(ledger)
+	quota := domain.NewErrorQuotaExceeded("over quota")
+
+	repo.EXPECT().LinkedProjectChunks(gomock.Any(), testProject.ID, gomock.Any()).Return(map[domain.Hash]bool{}, nil)
+	repo.EXPECT().InsertChunkIfNotExists(gomock.Any(), hash, int64(len(data))).Return(nil)
+	ledger.EXPECT().Attribute(gomock.Any(), testOrg, testProject, []LedgerChunk{{Hash: hash, SizeBytes: int64(len(data))}}).Return(quota)
+	repo.EXPECT().LinkProjectChunks(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+
+	_, err := uc.ConfirmUploads(ctx, testOrg, testProject, []domain.Hash{hash}, []ChunkProof{proofFor(t, uc, hash, data)})
+	require.ErrorIs(t, err, quota)
+}
+
+func TestChunk_ConfirmUploads_LinksAfterAttribution(t *testing.T) {
+	ctx := context.Background()
+	data := []byte("payload")
+	hash := chunker.Sum(data)
+	store := newStubChunkStore()
+	store.data[hash] = data
+	uc, repo := newLinkFixture(t, store)
+	ledger := NewMockStorageLedger(gomock.NewController(t))
+	uc.WithStorageLedger(ledger)
+
+	repo.EXPECT().LinkedProjectChunks(gomock.Any(), testProject.ID, gomock.Any()).Return(map[domain.Hash]bool{}, nil)
+	repo.EXPECT().InsertChunkIfNotExists(gomock.Any(), hash, int64(len(data))).Return(nil)
+	attribute := ledger.EXPECT().Attribute(gomock.Any(), testOrg, testProject, gomock.Any()).Return(nil)
+	repo.EXPECT().LinkProjectChunks(gomock.Any(), testProject.ID, []domain.Hash{hash}).Return(nil).After(attribute)
+
+	missing, err := uc.ConfirmUploads(ctx, testOrg, testProject, []domain.Hash{hash}, []ChunkProof{proofFor(t, uc, hash, data)})
+	require.NoError(t, err)
+	require.Empty(t, missing)
+}
+
+func TestChunk_AttributeProjectChunks_QuotaFailureLeavesNoLink(t *testing.T) {
+	hash := chunker.Sum([]byte("merged"))
+	uc, repo := newLinkFixture(t, newStubChunkStore())
+	ledger := NewMockStorageLedger(gomock.NewController(t))
+	uc.WithStorageLedger(ledger)
+	quota := domain.NewErrorQuotaExceeded("over quota")
+	chunks := []LedgerChunk{{Hash: hash, SizeBytes: 6}}
+
+	ledger.EXPECT().AttributeProjectChunks(gomock.Any(), snow.ID(7), chunks).Return(quota)
+	repo.EXPECT().LinkProjectChunk(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+
+	require.ErrorIs(t, uc.AttributeProjectChunks(context.Background(), snow.ID(7), chunks), quota)
+}

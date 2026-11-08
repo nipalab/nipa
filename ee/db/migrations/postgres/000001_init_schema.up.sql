@@ -631,3 +631,26 @@ INSERT INTO organizations (id, slug, name, created_by_user_id) VALUES (1, 'defau
 INSERT INTO projects (id, org_id, slug, name) VALUES (1, 1, 'default', 'Default Project');
 INSERT INTO org_members (org_id, user_id, role) VALUES (1, 1, 'owner');
 INSERT INTO branches (id, project_id, name, key, is_default) VALUES (1, 1, 'main', 'main', TRUE);
+
+CREATE TABLE org_invitations (
+    id          BIGINT PRIMARY KEY,
+    org_id      BIGINT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    invited_by  BIGINT NOT NULL,
+    email       TEXT NOT NULL,
+    role        TEXT NOT NULL DEFAULT 'member',
+    token_hash  BYTEA NOT NULL UNIQUE,
+    status      TEXT NOT NULL DEFAULT 'pending',
+    expires_at  TIMESTAMPTZ NOT NULL,
+    accepted_by BIGINT,
+    accepted_at TIMESTAMPTZ,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CHECK (role IN ('owner', 'member')),
+    CHECK (status IN ('pending', 'accepted', 'declined', 'revoked', 'expired'))
+);
+
+CREATE UNIQUE INDEX idx_org_invitations_pending ON org_invitations (org_id, email) WHERE status = 'pending';
+
+CREATE INDEX idx_org_invitations_email ON org_invitations (email, status);
+
+CREATE INDEX idx_org_invitations_org ON org_invitations (org_id, id DESC);

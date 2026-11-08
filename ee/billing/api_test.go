@@ -178,7 +178,8 @@ func signed() http.Header {
 func TestHTTP_Webhook(t *testing.T) {
 	h := newHTTPHarness(t)
 	h.repo.users = map[snow.ID]*domain.BillingUser{payer: {ID: payer}}
-	h.provider.carried = &EventSubscription{Subscription: Subscription{ProviderSubscriptionID: "sub_1", UserID: payer, Status: StatusActive, Seats: 4, ProviderUpdatedAt: at(1)}}
+	h.repo.accounts = map[snow.ID]*domain.BillingAccount{payer: {UserID: payer, Provider: "stub", ProviderCustomerID: "ctm_1"}}
+	h.provider.carried = &EventSubscription{Subscription: Subscription{ProviderSubscriptionID: "sub_1", UserID: payer, Status: StatusActive, Seats: 4, ProviderUpdatedAt: at(1)}, CustomerID: "ctm_1"}
 	event := `{"id":"evt_1","type":"subscription.activated"}`
 	path := WebhookPath(h.provider)
 	require.Equal(t, "/api/webhooks/stub", path)

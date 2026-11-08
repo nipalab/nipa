@@ -53,7 +53,7 @@ func TestOrgAudit(t *testing.T) {
 		repo.EXPECT().UpsertMember(gomock.Any(), snow.ID(2), snow.ID(9), domain.OrgRoleOwner).Return(nil)
 		require.NoError(t, org.AddMember(superCtx(), 2, 9, domain.OrgRoleOwner))
 
-		repo.EXPECT().MemberRole(gomock.Any(), snow.ID(2), snow.ID(9)).Return(domain.OrgRoleOwner, nil).Times(2)
+		repo.EXPECT().MemberRole(gomock.Any(), snow.ID(2), snow.ID(9)).Return(domain.OrgRoleOwner, nil)
 		repo.EXPECT().CountMembersByRole(gomock.Any(), snow.ID(2), domain.OrgRoleOwner).Return(2, nil)
 		repo.EXPECT().UpsertMember(gomock.Any(), snow.ID(2), snow.ID(9), domain.OrgRoleMember).Return(nil)
 		require.NoError(t, org.UpdateMemberRole(superCtx(), 2, 9, domain.OrgRoleMember))

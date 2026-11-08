@@ -44,7 +44,7 @@ func TestAuth_LoginThrottledPerIdentity(t *testing.T) {
 
 func TestAuth_SSHLoginThrottledOnlyWithEmail(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	auth := NewAuth("secret", nil, NewMockuserRepository(ctrl), NewMockauthRepository(ctrl)).WithLimiter(identityLimiter(1))
+	auth := NewAuth("secret", nil, NewMockuserRepository(ctrl), NewMockauthRepository(ctrl)).WithSSHAudience(testSSHAudience).WithLimiter(identityLimiter(1))
 	ctx := context.Background()
 
 	_, err := auth.CompleteSSHKeyLogin(ctx, "a@example.com", "", nil, nil)

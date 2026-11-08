@@ -24,6 +24,10 @@ func (c *Config) RateLimitRules() map[string]ratelimit.Rule {
 		ratelimit.ScopeAPIUser:  rule(c.RateLimitAPIUserPerMinute, c.RateLimitAPIUserBurst),
 		ratelimit.ScopeChunkIP:  rule(c.RateLimitChunkIPPerMinute, c.RateLimitChunkIPBurst),
 		ratelimit.ScopeGlobalIP: rule(c.RateLimitGlobalIPPerMinute, c.RateLimitGlobalIPBurst),
+
+		ratelimit.ScopeInviteUser:  rule(c.RateLimitInviteUserPerMinute, c.RateLimitInviteUserBurst),
+		ratelimit.ScopeInviteEmail: rule(c.RateLimitInviteEmailPerMinute, c.RateLimitInviteEmailBurst),
+		ratelimit.ScopeInviteToken: rule(c.RateLimitInviteTokenPerMinute, c.RateLimitInviteTokenBurst),
 	}
 }
 

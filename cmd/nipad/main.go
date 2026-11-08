@@ -155,6 +155,7 @@ func main() {
 
 	reg := serverapp.NewRegistry(serverapp.BuildUsecases(usecase.Repositories{
 		Org:                sqlite.NewOrgRepository(dbConn),
+		OrgInvitation:      sqlite.NewOrgInvitationRepository(dbConn),
 		Project:            sqlite.NewProjectRepository(dbConn),
 		Auth:               sqlite.NewAuthRepository(dbConn),
 		SSHKey:             sqlite.NewSSHKeyRepository(dbConn),

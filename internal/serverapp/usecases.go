@@ -42,7 +42,7 @@ func BuildUsecases(repos usecase.Repositories, deps UsecaseDeps) Usecases {
 	transactor := dbtx.NewTransactor(deps.DB)
 
 	auditUsecase := usecase.NewAudit(repos.Audit, node, transactor).WithProjectOrgs(repos.PBAC)
-	authUsecase := usecase.NewAuth(cfg.JWTKey, deps.Hasher, repos.User, repos.Auth).WithSSHKeys(repos.SSHKey).WithLimiter(deps.RateLimiter)
+	authUsecase := usecase.NewAuth(cfg.JWTKey, deps.Hasher, repos.User, repos.Auth).WithSSHKeys(repos.SSHKey).WithLimiter(deps.RateLimiter).WithSSHAudience(sshAudience(cfg))
 	orgUsecase := usecase.NewOrg(repos.Org, node).WithAudit(auditUsecase)
 	permissionUsecase := usecase.NewPermission(repos.PBAC, repos.User, repos.Group, orgUsecase).WithAudit(auditUsecase)
 	orgUsecase.WithPermissionCache(permissionUsecase)
@@ -52,6 +52,7 @@ func BuildUsecases(repos usecase.Repositories, deps UsecaseDeps) Usecases {
 		groupUsecase.WithSeatGate(deps.SeatGate)
 		permissionUsecase.WithSeatGate(deps.SeatGate)
 	}
+	orgInvitationUsecase := usecase.NewOrgInvitation(repos.OrgInvitation, orgUsecase, repos.User, node).WithLimiter(deps.RateLimiter)
 	projectUsecase := usecase.NewProject(repos.Project, node, permissionUsecase, orgUsecase).WithAudit(auditUsecase)
 
 	branchUsecase := usecase.NewBranchWithChunks(permissionUsecase, repos.Branch, node, deps.ChunkStore).WithUsers(repos.User).WithAudit(auditUsecase)
@@ -95,6 +96,7 @@ func BuildUsecases(repos usecase.Repositories, deps UsecaseDeps) Usecases {
 		hookEmitter = hookEmitter.WithNotifier(usecase.NewEmailNotifier(
 			repos.Email, repos.User, repos.MergeRequest, repos.MergeRequestReview, cfg.EmailBaseURL, node,
 		).WithKicker(deps.EmailDispatcher))
+		orgInvitationUsecase = orgInvitationUsecase.WithOutbox(repos.Email, cfg.EmailBaseURL).WithKicker(deps.EmailDispatcher)
 		slog.Info("email notifications enabled", "sender", cfg.EmailSender)
 	}
 
@@ -119,6 +121,7 @@ func BuildUsecases(repos usecase.Repositories, deps UsecaseDeps) Usecases {
 		Permission:         permissionUsecase,
 		Group:              groupUsecase,
 		Org:                orgUsecase,
+		OrgInvitation:      orgInvitationUsecase,
 		Project:            projectUsecase,
 		MergeRequest:       mergeRequestUsecase,
 		MergeRequestReview: reviewUsecase,
@@ -129,4 +132,17 @@ func BuildUsecases(repos usecase.Repositories, deps UsecaseDeps) Usecases {
 		EmailDelivery:      emailDeliveryUsecase,
 		Audit:              auditUsecase,
 	}
+}
+
+func sshAudience(cfg *config.Config) string {
+	origin, err := cfg.SSHLoginAudience()
+	switch {
+	case err != nil:
+		slog.Error("SSH key login disabled", "error", err)
+	case origin == "":
+		slog.Warn("SSH key login disabled: set PUBLIC_BASE_URL (or EMAIL_BASE_URL) to the public address clients use")
+	default:
+		slog.Info("SSH key login bound to origin", "origin", origin)
+	}
+	return origin
 }

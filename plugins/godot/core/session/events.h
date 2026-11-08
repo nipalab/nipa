@@ -2,9 +2,12 @@
 
 #include <cstdint>
 #include <deque>
+#include <map>
 #include <mutex>
 #include <string>
 #include <vector>
+
+#include <nlohmann/json.hpp>
 
 namespace nipa::session {
 
@@ -24,6 +27,8 @@ enum class EventKind {
     Activity,
     ActivitySummary,
     LocksChanged,
+    ConflictsChanged,
+    TagsChanged,
 };
 
 // One flat record; the fields used depend on `kind` (see session.h).
@@ -37,6 +42,8 @@ struct Event {
     long long done = 0;
     long long total = 0;
     std::vector<std::string> paths;
+    nlohmann::json data;                       // OpFinished: structured result of data ops
+    std::map<std::string, std::string> bytes;  // OpFinished: binary results (merged file, preview PNGs)
 };
 
 // Thread-safe FIFO. Workers push; the editor drains it on the main thread.

@@ -13,7 +13,7 @@ func TestRateLimitRules(t *testing.T) {
 	c := &Config{RateLimitAuthIPPerMinute: 60, RateLimitAuthIPBurst: 7}
 	rules := c.RateLimitRules()
 	assert.Equal(t, ratelimit.Rule{Rate: 1, Burst: 7}, rules[ratelimit.ScopeAuthIP])
-	assert.Len(t, rules, 5)
+	assert.Len(t, rules, 8)
 }
 
 func TestRateLimitTrustedProxies(t *testing.T) {

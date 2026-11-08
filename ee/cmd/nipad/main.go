@@ -189,6 +189,7 @@ func main() {
 	}
 	uc := serverapp.BuildUsecases(usecase.Repositories{
 		Org:                postgres.NewOrgRepository(dbConn),
+		OrgInvitation:      postgres.NewOrgInvitationRepository(dbConn),
 		Project:            postgres.NewProjectRepository(dbConn),
 		Auth:               postgres.NewAuthRepository(dbConn),
 		SSHKey:             postgres.NewSSHKeyRepository(dbConn),

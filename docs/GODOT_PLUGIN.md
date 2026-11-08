@@ -41,6 +41,7 @@ Settings:
 | Setting | Where | Default |
 |---|---|---|
 | `nipa/binary_path` | Editor Settings (per user) | empty, which means `NIPA_BIN`, then the library folder, then `PATH` |
+| `nipa/merge_tool` | Editor Settings (per user) | empty; e.g. `meld $LOCAL $BASE $REMOTE -o $MERGED` |
 | `nipa/poll_interval_sec` | Project Settings (shared) | 60, clamped to 15–3600 |
 | `nipa/locking/auto_lock_on_edit` | Project Settings (shared) | true |
 | `nipa/locking/strict_read_only` | Project Settings (shared) | false |
@@ -72,8 +73,26 @@ Settings:
   background; a file locked by someone else gets a warning and, for scenes, an
   offer to reload. Commit checks locks first (see Locks below).
 
-Not yet: conflicts, tags, previews, and the other bottom panel tabs (see the
-phased plan).
+- **Conflicts, tags, history and previews** (Phase 3):
+  - The dock's switcher lists branches and tags. Picking a tag checks it out
+    detached (`Switch{tag}`); a banner says so, and Commit refuses with a
+    `nipa switch <branch>` hint until you switch back.
+  - **Merge branch...** merges another branch into the current one. Conflicts
+    open the bottom panel's Conflicts tab, and the dock shows the pending
+    merge (Finish = commit, Abort) or revert (Continue, Skip, Abort) banner.
+    Finish and Continue stay disabled while a file is still conflicted.
+  - **Conflicts tab:** Mine / Theirs for every file; Merge for
+    `.tscn`/`.tres`; External tool for other text; Compare for images.
+  - **History tab** (FileSystem menu **Nipa: History**, or Whole project):
+    the commits that changed the file, 30 per page with Load more. Open commit
+    follows the `nipa://<server>/<org>/<project>/commits/<id>` link (a plugin
+    cannot select a commit in Godot's own Version Control panel); for images,
+    Compare with previous opens the Image diff tab.
+  - **Image diff tab** (FileSystem menu **Nipa: Compare with last pushed**,
+    History, Conflicts): both sides side by side, changed-pixel statistics and
+    a threshold slider.
+
+Not yet: the Activity tab, the setup checker and FileSystem dock decoration.
 
 ## How Godot's VCS integration works (research)
 
@@ -363,6 +382,27 @@ The Conflicts tab offers **Mine** and **Theirs** for every file (`ResolveConflic
   `nipa/merge_tool`, with git's `$BASE $LOCAL $REMOTE $MERGED` placeholders).
 - **Binaries:** Mine/Theirs plus an image compare through `Preview`.
 
+How the tab resolves (`MergeGodotResource` and `ResolveConflict`, see
+`docs/DAEMON.md`):
+- **Merge** asks the daemon for the merged scene. A clean result is submitted
+  as `ResolveConflict{choice: content}`. Otherwise the tab lists each
+  conflict as `section · key` with its reason, and you pick Mine or Theirs.
+  Besides same-key edits, the merge reports a section one side removed and
+  the other changed, and anything the merge itself would break (a removed
+  parent node, resource or connection endpoint, a second root, a child or
+  resource use placed before its definition): a false conflict is preferred
+  to a broken scene.
+- **External tool** writes `BASE`, `LOCAL`, `REMOTE` (the committed versions)
+  and `MERGED` (the working copy) under `.godot/nipa/merge/`. The command from
+  `nipa/merge_tool` is split like a shell command in `core/conflicts`, with
+  the placeholders substituted per argument (a command without placeholders
+  gets the four paths appended), and started with `OS.create_process`. The tab
+  polls it; when it exits with 0 and `MERGED` has no markers left, the file is
+  submitted as the resolution.
+- The plugin never writes into a Godot file itself: every resolution goes
+  through the daemon, then the FileSystem is rescanned and a resolved open
+  scene is reloaded.
+
 A pending merge offers Finish and Abort; a pending revert offers Continue,
 Skip and Abort. Finish/Continue stay disabled while conflicts remain open,
 matching Unity.
@@ -413,12 +453,15 @@ plugins/godot/
     paths/               project ↔ clone paths, sidecar pairing
     locks/               lock policy (covering lock, scope, strict list, commit pre-check)
     diff/                DiffFile → hunk/line model, Myers for _get_line_diff
+    conflicts/           conflict set, per-file actions, Godot merge result, merge tool command
+    history/             tags, paged commit log, nipa:// commit links
+    preview/             Preview stream assembler (PNG per side, diff stats)
     session/             session (worker thread, op queue, caches, stream loops, events)
   core/tests/            doctest + fake daemon (httplib server)
   extension/             register_types.cpp (EDITOR init level), nipa_vcs_interface.cpp, nipa_session.cpp (signals, deferred dispatch)
   addons/nipa/           what users install
     plugin.cfg  nipa_plugin.gd  nipa.gdextension  bin/<platform>/
-    ui/  dock.tscn/.gd  bottom_panel.tscn/.gd  lock_badge.tscn/.gd  setup_checker.tscn/.gd
+    ui/  dock.tscn/.gd  bottom_panel.tscn/.gd  conflicts_tab  history_tab  image_diff_tab  lock_badge  setup_checker (later)
     context_menu.gd  inspector_plugin.gd  settings.gd  icons/*.svg
     LICENSE.md  CHANGELOG.md
   tests/project/         headless smoke project (gdUnit4) loading addons/nipa
@@ -440,11 +483,17 @@ streams, so hot reload is safe.
   `op_finished(id, ok, message, changed_paths)`
 - `locks_changed(guarded_paths)` (files strict mode just made read-only or writable)
 - `commit_locks_needed(message, clone_paths)`
+- `conflicts_changed()`, `tags_changed()`
 - `activity(kind, actor, detail)`
 - `warnings_changed()`
 
 Its methods return `NipaRequest` handles (`RefCounted` with a `completed(ok,
-result)` signal), so GDScript uses `await`.
+message)` signal), so GDScript uses `await`. Data requests (conflicts,
+`MergeGodotResource`, merge-tool files, history pages, previews) put their
+result in `get_result()`: a `Dictionary`, with the merged file and the preview
+PNGs as `PackedByteArray` values. Preview PNGs are assembled once in `core`,
+decoded with `Image.load_png_from_buffer`, and the textures are released when
+the tab shows another comparison or closes.
 
 ## Testing
 

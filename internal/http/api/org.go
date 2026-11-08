@@ -44,8 +44,9 @@ func setupOrgRouter(ws *restful.WebService, h *handler.Handler) {
 			To(Wrap(h.AddOrgMember)).
 			Param(ws.PathParameter("org", "organization slug")).
 			Reads(model.AddOrgMemberRequest{}).
-			Doc("Add an existing user to the organization (org owner or global admin)").
+			Doc("Add an existing user directly (global admin only); org owners get a 202 invitation for an email and a 400 for a user id").
 			Returns(http.StatusOK, "member", model.OrgMemberResponse{}).
+			Returns(http.StatusAccepted, "invitation requested", model.OrgInvitationRequestedResponse{}).
 			Operation("addOrgMember").
 			Metadata(restfulspec.KeyOpenAPITags, tags))
 

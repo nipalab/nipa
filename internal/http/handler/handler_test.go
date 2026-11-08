@@ -120,6 +120,7 @@ type handlerRegistry struct {
 	common        *usecase.Common
 	permission    *usecase.Permission
 	org           *usecase.Org
+	orgInvitation *usecase.OrgInvitation
 	group         *usecase.Group
 	project       *usecase.Project
 	branch        *usecase.Branch
@@ -163,6 +164,7 @@ func (r *handlerRegistry) FileLock() *usecase.FileLock { return r.fileLock }
 
 func (r *handlerRegistry) Webhook() *usecase.Webhook { return r.webhook }
 
+func (r *handlerRegistry) OrgInvitation() *usecase.OrgInvitation { return r.orgInvitation }
 func (r *handlerRegistry) EmailDelivery() *usecase.EmailDelivery { return r.emailDelivery }
 func (r *handlerRegistry) Audit() *usecase.Audit                 { return r.audit }
 

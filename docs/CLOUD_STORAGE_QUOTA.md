@@ -125,7 +125,9 @@ through external interference. `recount` rewrites both.
 
 ## Enforcement
 
-`Attribute` (confirm batch and merge output), one transaction:
+`Attribute` (confirm batch and merge output; the usecase links the project
+through `project_chunk_uploads` only after it succeeds, so a quota failure
+leaves no link), one transaction:
 
 ```
 owner, quota := ownerQuota(orgID)        -- default quota when no row; 0/NULL = unlimited

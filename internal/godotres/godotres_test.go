@@ -19,8 +19,7 @@ func load(t *testing.T, name string) (*File, []byte) {
 }
 
 func TestRoundTripFixtures(t *testing.T) {
-	files, err := filepath.Glob(filepath.Join("testdata", "*"))
-	require.NoError(t, err)
+	files := fixtureNames(t)
 	require.NotEmpty(t, files)
 	for _, name := range files {
 		f, data := load(t, filepath.Base(name))
@@ -175,4 +174,17 @@ func TestParseInlineComments(t *testing.T) {
 	assert.Equal(t, "\"a ; b\"", must(s.Prop("text")))
 	assert.Equal(t, "3", must(s.Prop("next")))
 	assert.Equal(t, in, string(Write(f)))
+}
+
+func fixtureNames(t *testing.T) []string {
+	t.Helper()
+	entries, err := os.ReadDir("testdata")
+	require.NoError(t, err)
+	var out []string
+	for _, e := range entries {
+		if !e.IsDir() {
+			out = append(out, filepath.Join("testdata", e.Name()))
+		}
+	}
+	return out
 }

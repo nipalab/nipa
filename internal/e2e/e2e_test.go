@@ -124,6 +124,7 @@ func startTestServerWithUsecases(t *testing.T, dbConn *sql.DB) (string, serverap
 	webhookRepo := sqlite.NewWebhookRepository(dbConn)
 	uc := serverapp.BuildUsecases(serverusecase.Repositories{
 		Org:                sqlite.NewOrgRepository(dbConn),
+		OrgInvitation:      sqlite.NewOrgInvitationRepository(dbConn),
 		Project:            sqlite.NewProjectRepository(dbConn),
 		Auth:               sqlite.NewAuthRepository(dbConn),
 		SSHKey:             sqlite.NewSSHKeyRepository(dbConn),

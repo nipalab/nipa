@@ -23,7 +23,7 @@ func (s stubPasswordHasher) Hash(_ string) (string, error) { return "hash", nil 
 func (s stubPasswordHasher) Compare(_, _ string) bool      { return s.match }
 
 func newTestAuth(secret string, match bool, userRepo userRepository, authRepo authRepository) *Auth {
-	return NewAuth(secret, stubPasswordHasher{match: match}, userRepo, authRepo)
+	return NewAuth(secret, stubPasswordHasher{match: match}, userRepo, authRepo).WithSSHAudience(testSSHAudience)
 }
 
 func TestAuth_LoginWithEmailPassword(t *testing.T) {

@@ -11,6 +11,7 @@ type usecaseContainer interface {
 	Common() *usecase.Common
 	Permission() *usecase.Permission
 	Org() *usecase.Org
+	OrgInvitation() *usecase.OrgInvitation
 	Group() *usecase.Group
 	Project() *usecase.Project
 	Branch() *usecase.Branch

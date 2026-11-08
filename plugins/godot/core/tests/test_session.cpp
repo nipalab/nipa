@@ -6,6 +6,8 @@
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <iterator>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <thread>
@@ -869,4 +871,239 @@ TEST_CASE("strict mode guards their locks and restores them when turned off or s
     CHECK(writable(root + "/art/m.png"));
     CHECK(writable(root + "/art/a.png"));
     std::filesystem::remove_all(root);
+}
+
+namespace {
+
+std::string read_all(const std::string& path) {
+    std::ifstream in(path, std::ios::binary);
+    return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+}
+
+json conflict_reply(bool resolved) {
+    return {{"op", "merge"},
+            {"base", {{"id", "b1"}, {"label", "merge base"}}},
+            {"ours", {{"id", "o1"}, {"label", "main"}}},
+            {"theirs", {{"id", "t1"}, {"label", "feature"}}},
+            {"files",
+             {{{"path", "level.tscn"}, {"kind", "text"}, {"viewer", "scene"}, {"resolved", resolved}},
+              {{"path", "player.gd"}, {"kind", "text"}, {"viewer", "text"}}}}};
+}
+
+FakeDaemon::StreamHandler blob_server(std::map<std::string, std::string> files) {
+    return [files](const json& request) {
+        const auto& blob = request["blob"];
+        std::string key = blob.value("source", "") + ":" + blob.value("revision", "") + ":" + blob.value("path", "");
+        StreamScript script;
+        auto found = files.find(key);
+        if (found == files.end()) {
+            script.lines = {R"({"failure":{"code":404,"message":"missing"}})"};
+        } else {
+            script.lines = {json({{"info", {{"path", blob.value("path", "")}}}}).dump(),
+                            json({{"data", nipa::daemon::base64_encode(found->second)}}).dump()};
+        }
+        return script;
+    };
+}
+
+}  // namespace
+
+TEST_CASE("merge, revert and abort stream through the worker and refresh conflicts") {
+    Harness h;
+    std::atomic<bool> resolved{false};
+    h.fake.on_unary("Conflicts", [&](const json&) { return Reply{200, conflict_reply(resolved)}; });
+    h.fake.on_stream("Merge", [](const json& request) {
+        StreamScript script;
+        if (request.value("abort", false)) {
+            script.lines = {R"({"result":{"merge":{"aborted":true}}})"};
+        } else {
+            script.lines = {R"({"result":{"merge":{"conflicts":["level.tscn","player.gd"]}}})"};
+        }
+        return script;
+    });
+    h.fake.on_stream("Revert", [](const json&) {
+        StreamScript script;
+        script.lines = {R"({"result":{"revert":{"committed":true}}})"};
+        return script;
+    });
+    h.start();
+    auto merge = h.session->submit_merge("feature");
+    CHECK(h.wait([&](const Events&) { return h.finished(merge, true); }));
+    const Event* done = h.op_finished(merge);
+    CHECK(done->message == "2 conflict(s) to resolve");
+    CHECK(done->data["merge"]["conflicts"].size() == 2);
+    CHECK(h.wait([&](const Events&) { return h.find(EventKind::ConflictsChanged) != nullptr; }));
+    auto set = h.session->conflicts();
+    CHECK(set.op == "merge");
+    CHECK(set.open_count() == 2);
+    CHECK_FALSE(set.can_finish());
+
+    auto abort = h.session->submit_merge_abort();
+    auto start = h.session->submit_revert(Session::RevertAction::Start, "c1");
+    auto cont = h.session->submit_revert(Session::RevertAction::Continue);
+    auto skip = h.session->submit_revert(Session::RevertAction::Skip);
+    auto stop = h.session->submit_revert(Session::RevertAction::Abort);
+    CHECK(h.wait([&](const Events&) { return h.finished(stop, true); }));
+    CHECK(h.op_finished(abort)->message == "merge aborted");
+    CHECK(h.op_finished(start)->message == "reverted");
+    CHECK(h.finished(cont, true));
+    CHECK(h.finished(skip, true));
+
+    std::vector<json> bodies;
+    for (const auto& r : h.fake.requests()) {
+        if (r.method == "Merge" || r.method == "Revert") {
+            bodies.push_back(r.body);
+        }
+    }
+    REQUIRE(bodies.size() == 6);
+    CHECK(bodies[0]["source_branch"] == "feature");
+    CHECK(bodies[1]["abort"] == true);
+    CHECK(bodies[2]["target"] == "c1");
+    CHECK(bodies[3]["continue"] == true);
+    CHECK(bodies[4]["skip"] == true);
+    CHECK(bodies[5]["abort"] == true);
+
+    resolved = true;
+    auto listed = h.session->submit_conflicts();
+    CHECK(h.wait([&](const Events&) { return h.finished(listed, true); }));
+    CHECK(h.op_finished(listed)->data["open"] == 1);
+    CHECK(h.op_finished(listed)->data["files"][0]["actions"] == json::array({"mine", "theirs", "merge"}));
+}
+
+TEST_CASE("resolve sends the content and refreshes status and conflicts") {
+    Harness h;
+    std::atomic<int> calls{0};
+    h.fake.on_unary("Conflicts", [](const json&) { return Reply{200, conflict_reply(true)}; });
+    h.fake.on_unary("ResolveConflict", [&](const json&) {
+        std::string pending = calls++ == 0 ? "merge" : "revert";
+        return Reply{200, {{"branch", "main"}, {"pending", pending}, {"resolved", {"level.tscn"}}, {"conflicts", {"level.tscn"}}}};
+    });
+    h.start();
+    CHECK(h.session->status_blocking(2s));
+    auto id = h.session->submit_resolve("level.tscn", "content", std::string("a\0b", 3));
+    CHECK(h.wait([&](const Events&) { return h.finished(id, true); }));
+    auto mine = h.session->submit_resolve("player.gd", "ours");
+    CHECK(h.wait([&](const Events&) { return h.finished(mine, true); }));
+    CHECK(h.op_finished(id)->paths == std::vector<std::string>{"level.tscn"});
+    json content_body;
+    json ours_body;
+    for (const auto& r : h.fake.requests()) {
+        if (r.method == "ResolveConflict" && r.body["path"] == "level.tscn") content_body = r.body;
+        if (r.method == "ResolveConflict" && r.body["path"] == "player.gd") ours_body = r.body;
+    }
+    CHECK(content_body["choice"] == "content");
+    CHECK(nipa::daemon::base64_decode(content_body["content"].get<std::string>()) == std::string("a\0b", 3));
+    CHECK_FALSE(ours_body.contains("content"));
+    CHECK(h.session->status_cache().snapshot().pending == "revert");
+    CHECK(h.session->conflicts().open_count() == 1);
+    CHECK(h.wait([&](const Events& e) {
+        return std::any_of(e.begin(), e.end(), [](const Event& ev) {
+            return ev.kind == EventKind::StatusChanged && ev.paths.empty();
+        });
+    }));
+}
+
+TEST_CASE("merge-godot returns the merged bytes and the conflict labels") {
+    Harness h;
+    h.fake.on_unary("MergeGodotResource", [](const json& request) {
+        if (request["path"] == "bad.tscn") {
+            return Reply{400, {{"code", "InvalidArgument"}, {"message", "bad.tscn has no conflict to resolve"}}};
+        }
+        return Reply{200,
+                     {{"merged", nipa::daemon::base64_encode("[gd_scene]\n")},
+                      {"conflicts", {{{"section", "node name=\"A\" parent=\".\""}, {"key", "position"}, {"message", "m"}}}}}};
+    });
+    h.start();
+    auto id = h.session->submit_merge_godot("level.tscn");
+    auto bad = h.session->submit_merge_godot("bad.tscn");
+    CHECK(h.wait([&](const Events&) { return h.finished(id, true) && h.finished(bad, false); }));
+    const Event* done = h.op_finished(id);
+    CHECK(done->message == "1 conflict(s)");
+    CHECK(done->bytes.at("merged") == "[gd_scene]\n");
+    CHECK(done->data["clean"] == false);
+    CHECK(done->data["conflicts"][0]["label"] == "node name=\"A\" parent=\".\" \xc2\xb7 position");
+    CHECK(h.op_finished(bad)->message.find("no conflict") != std::string::npos);
+}
+
+TEST_CASE("merge-tool writes the three versions and the working copy") {
+    Harness h;
+    std::string dir = h.dir + "/merge";
+    h.fake.on_unary("Conflicts", [](const json&) { return Reply{200, conflict_reply(false)}; });
+    h.fake.on_stream("ReadBlob", blob_server({{"revision:o1:player.gd", "ours\n"},
+                                              {"revision:t1:player.gd", "theirs\n"},
+                                              {"working::player.gd", "<<<<<<< ours\n"}}));
+    h.start();
+    auto id = h.session->submit_prepare_merge_tool("player.gd", dir);
+    auto missing = h.session->submit_prepare_merge_tool("other.gd", dir);
+    CHECK(h.wait([&](const Events&) { return h.finished(id, true) && h.finished(missing, false); }));
+    const auto& data = h.op_finished(id)->data;
+    CHECK(read_all(data["base"].get<std::string>()).empty());
+    CHECK(read_all(data["local"].get<std::string>()) == "ours\n");
+    CHECK(read_all(data["remote"].get<std::string>()) == "theirs\n");
+    CHECK(read_all(data["merged"].get<std::string>()) == "<<<<<<< ours\n");
+    CHECK(data["merged"] == dir + "/player.MERGED.gd");
+
+    auto failing = h.session->submit_prepare_merge_tool("level.tscn", dir);
+    CHECK(h.wait([&](const Events&) { return h.finished(failing, false); }));
+    CHECK(h.op_finished(failing)->message == "missing");
+}
+
+TEST_CASE("tags, history pages and previews") {
+    Harness h;
+    h.fake.on_unary("ProxyTagList", [](const json&) {
+        return Reply{200, {{"response", {{"tags", {{{"name", "v1.0"}, {"commit_id", "c1"}}}}}}}};
+    });
+    h.fake.on_unary("ProxyCommitLog", [](const json& request) {
+        json commits = json::array();
+        if (request["request"].contains("path")) {
+            commits = {{{"commit_id", "c3"}, {"parent_1_id", "c2"}}, {{"commit_id", "c2"}, {"parent_1_id", "c1"}}};
+        }
+        return Reply{200, {{"response", {{"commits", commits}}}}};
+    });
+    h.fake.on_stream("Preview", [](const json& request) {
+        StreamScript script;
+        if (request.value("threshold", 0) == 255) {
+            script.lines = {R"({"failure":{"code":415,"message":"no preview for audio files"}})"};
+            return script;
+        }
+        script.lines = {
+            R"({"image":{"side":"old","width":4,"height":2,"preview_width":4,"preview_height":2,"format":"png"}})",
+            json({{"data", {{"side", "old"}, {"png", nipa::daemon::base64_encode("PN")}}}}).dump(),
+            json({{"data", {{"side", "old"}, {"png", nipa::daemon::base64_encode("G1")}}}}).dump(),
+            R"({"image":{"side":"new","width":4,"height":2}})",
+            json({{"data", {{"side", "new"}, {"png", nipa::daemon::base64_encode("PNG2")}}}}).dump(),
+            R"({"diff":{"changed_pixels":"2","total_pixels":"8","changed_ratio":0.25,"max_delta":40}})"};
+        return script;
+    });
+    h.start();
+    CHECK(h.wait([&](const Events&) { return h.find(EventKind::TagsChanged) != nullptr; }));
+    REQUIRE(h.session->tags().size() == 1);
+    CHECK(h.session->tags()[0].name == "v1.0");
+
+    auto page = h.session->submit_history("art/a.png", "c9", 2);
+    auto preview = h.session->submit_preview({{"source", "snapshot"}, {"path", "a.png"}},
+                                             {{"source", "working"}, {"path", "a.png"}}, 8, 512);
+    auto unsupported = h.session->submit_preview(nullptr, {{"source", "working"}, {"path", "a.wav"}}, 255, 0);
+    CHECK(h.wait([&](const Events&) {
+        return h.finished(page, true) && h.finished(preview, true) && h.finished(unsupported, false);
+    }));
+    CHECK(h.op_finished(page)->data["next"] == "c1");
+    CHECK(h.op_finished(page)->data["commits"][0]["id"] == "c3");
+    const Event* shown = h.op_finished(preview);
+    CHECK(shown->bytes.at("old_png") == "PNG1");
+    CHECK(shown->bytes.at("new_png") == "PNG2");
+    CHECK(shown->data["diff"]["changed_pixels"] == 2);
+    CHECK(shown->data["old"]["width"] == 4);
+    CHECK(h.op_finished(unsupported)->message == "no preview for audio files");
+
+    json log_body;
+    json preview_body;
+    for (const auto& r : h.fake.requests()) {
+        if (r.method == "ProxyCommitLog" && r.body["request"].contains("path")) log_body = r.body;
+        if (r.method == "Preview" && r.body["threshold"] == 8) preview_body = r.body;
+    }
+    CHECK(log_body["request"]["start_commit_id"] == "c9");
+    CHECK(log_body["request"]["limit"] == 2);
+    CHECK(preview_body["max_size"] == 512);
+    CHECK(preview_body["old"]["source"] == "snapshot");
 }

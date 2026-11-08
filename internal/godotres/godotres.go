@@ -418,6 +418,9 @@ func writeProps(b *strings.Builder, props []Prop) {
 		if !p.parsed {
 			sep, post = " = ", "\n"
 		}
+		if out := b.String(); out != "" && out[len(out)-1] != '\n' {
+			b.WriteByte('\n')
+		}
 		b.WriteString(p.lead + p.Key + sep + p.Raw + post)
 	}
 }
@@ -426,6 +429,9 @@ func writeSection(b *strings.Builder, s *Section) {
 	lead := s.lead
 	if s.head == "" && b.Len() > 0 {
 		lead = "\n"
+	}
+	if out := b.String(); out != "" && out[len(out)-1] != '\n' {
+		b.WriteByte('\n')
 	}
 	b.WriteString(lead + s.headerText())
 	writeProps(b, s.Props)
@@ -441,6 +447,9 @@ func Write(f *File) []byte {
 	}
 	for _, s := range f.Sections {
 		writeSection(&b, s)
+	}
+	if out := b.String(); f.tail != "" && out != "" && out[len(out)-1] != '\n' {
+		b.WriteByte('\n')
 	}
 	b.WriteString(f.tail)
 	return []byte(b.String())

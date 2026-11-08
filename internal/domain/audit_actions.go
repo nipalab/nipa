@@ -7,6 +7,12 @@ const (
 	AuditOrgMemberRoleChanged = "org.member.role_changed"
 	AuditOrgMemberRemoved     = "org.member.removed"
 
+	AuditOrgInvitationCreated  = "org.invitation.created"
+	AuditOrgInvitationResent   = "org.invitation.resent"
+	AuditOrgInvitationRevoked  = "org.invitation.revoked"
+	AuditOrgInvitationAccepted = "org.invitation.accepted"
+	AuditOrgInvitationDeclined = "org.invitation.declined"
+
 	AuditGroupCreated       = "group.created"
 	AuditGroupMemberAdded   = "group.member.added"
 	AuditGroupMemberRemoved = "group.member.removed"
@@ -53,6 +59,7 @@ const (
 const (
 	AuditTargetOrg            = "org"
 	AuditTargetUser           = "user"
+	AuditTargetInvitation     = "invitation"
 	AuditTargetGroup          = "group"
 	AuditTargetAccessRule     = "access_rule"
 	AuditTargetPathPermission = "path_permission"

@@ -161,6 +161,27 @@ message ResolveConflictRequest {
     bytes content = 4; // the resolved file when choice is content
 }
 
+// MergeGodotResourceRequest runs the Godot-aware three-way merge
+// (internal/godotres) over one conflicted .tscn/.tres of the pending merge or
+// revert. The working copy is not touched: a clean result is applied with
+// ResolveConflict{choice: content}.
+message MergeGodotResourceRequest {
+    string root = 1;
+    string path = 2;
+}
+
+message GodotMergeConflict {
+    string section = 1; // section identity, e.g. node name="Player" parent="."; empty for the lines before the first section
+    string key = 2; // attribute or property; empty for the whole section
+    string message = 3;
+}
+
+message MergeGodotResourceResponse {
+    bytes merged = 1; // the merged file; only a best effort (ours wins) when clean is false
+    bool clean = 2;
+    repeated GodotMergeConflict conflicts = 3;
+}
+
 message DiffRequest {
     string root = 1;
     repeated string revisions = 2; // 0-2 revisions; <a>..<b> shapes are expanded client-side
@@ -845,6 +866,7 @@ service NipaDaemon {
     rpc Revert(RevertOpRequest) returns (stream OpEvent);
     rpc Conflicts(ConflictsRequest) returns (ConflictsResponse);
     rpc ResolveConflict(ResolveConflictRequest) returns (StatusResponse);
+    rpc MergeGodotResource(MergeGodotResourceRequest) returns (MergeGodotResourceResponse);
     rpc Diff(DiffRequest) returns (stream DiffEvent);
     rpc DiffFiles(DiffRequest) returns (stream DiffFileEvent); // structured; format is ignored
     rpc ReadBlob(ReadBlobRequest) returns (stream BlobEvent);
