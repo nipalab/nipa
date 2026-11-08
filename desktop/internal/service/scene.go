@@ -63,9 +63,13 @@ type SceneCompare struct {
 
 type guidKey struct{ root, project string }
 
+// guidIndex caches GUID → path maps; gen counts invalidations per root so a
+// build that raced with one is not stored.
 type guidIndex struct {
 	mu    sync.Mutex
 	cache map[guidKey]map[string]string
+	gen   map[string]uint64
+	build func(dir string) map[string]string
 }
 
 // SceneDiff compares two versions of a Unity YAML scene, prefab or asset
@@ -149,17 +153,25 @@ func (s *Service) guidIndex(root, project string) map[string]string {
 	key := guidKey{root, project}
 	s.guids.mu.Lock()
 	index, ok := s.guids.cache[key]
+	gen := s.guids.gen[root]
+	build := s.guids.build
 	s.guids.mu.Unlock()
 	if ok {
 		return index
 	}
-	index = buildGUIDIndex(filepath.Join(root, filepath.FromSlash(project)))
+	if build == nil {
+		build = buildGUIDIndex
+	}
+	index = build(filepath.Join(root, filepath.FromSlash(project)))
 	s.guids.mu.Lock()
+	defer s.guids.mu.Unlock()
+	if s.guids.gen[root] != gen {
+		return index
+	}
 	if s.guids.cache == nil {
 		s.guids.cache = map[guidKey]map[string]string{}
 	}
 	s.guids.cache[key] = index
-	s.guids.mu.Unlock()
 	return index
 }
 
@@ -178,6 +190,10 @@ func (s *Service) invalidateGUIDs(root string, paths []string) {
 	}
 	s.guids.mu.Lock()
 	defer s.guids.mu.Unlock()
+	if s.guids.gen == nil {
+		s.guids.gen = map[string]uint64{}
+	}
+	s.guids.gen[root]++
 	for key := range s.guids.cache {
 		if key.root == root {
 			delete(s.guids.cache, key)

@@ -88,6 +88,9 @@ type unityParser struct {
 // unresolved GUID renders as guid:<guid>.
 func ParseUnityYAML(data []byte, resolve func(guid string) string) (*Scene, error) {
 	data = bytes.TrimPrefix(data, []byte{0xef, 0xbb, 0xbf})
+	if len(bytes.TrimSpace(data)) == 0 {
+		return &Scene{Engine: "unity", Objects: []SceneObject{}}, nil
+	}
 	if !bytes.HasPrefix(data, []byte("%YAML")) {
 		return nil, fmt.Errorf("%w: binary Unity asset, set Asset Serialization to Force Text", ErrUnsupported)
 	}
@@ -217,10 +220,10 @@ func (p *unityParser) parent(d *unityDoc) string {
 	if d.stripped {
 		return d.ref("m_PrefabInstance")
 	}
-	switch {
-	case d.class == 1:
+	switch d.class {
+	case 1:
 		return p.transformParent(p.docs[p.xform[d.id]])
-	case d.class == 1001:
+	case 1001:
 		if mod := d.field("m_Modification"); mod != nil {
 			if id, _, ok := refOf(mapValue(mod, "m_TransformParent")); ok && id != "0" {
 				return p.transformTarget(id)
@@ -469,6 +472,9 @@ func singleKeys(n *yaml.Node) []string {
 	seen := map[string]bool{}
 	for i, item := range n.Content {
 		if item.Kind != yaml.MappingNode || len(item.Content) != 2 || item.Content[0].Kind != yaml.ScalarNode {
+			return nil
+		}
+		if _, _, isRef := refOf(item); isRef {
 			return nil
 		}
 		name := item.Content[0].Value

@@ -216,3 +216,25 @@ func TestJoinPath(t *testing.T) {
 	assert.True(t, strings.HasPrefix(got, "…é"))
 	assert.Less(t, len(got), maxPathLen+8)
 }
+
+func TestParseUnityYAML_EmptyAndReferenceLists(t *testing.T) {
+	for _, data := range []string{"", "  \n\t", "\xef\xbb\xbf\n"} {
+		s, err := ParseUnityYAML([]byte(data), nil)
+		require.NoError(t, err)
+		assert.Equal(t, "unity", s.Engine)
+		assert.Empty(t, s.Objects)
+	}
+
+	scene := func(targets string) *Scene {
+		s, err := ParseUnityYAML([]byte("%YAML 1.1\n--- !u!1 &200\nGameObject:\n  m_Name: Cam\n--- !u!1 &300\nGameObject:\n  m_Name: Light\n--- !u!114 &1\nMonoBehaviour:\n  m_Name: Rig\n  targets:\n"+targets), resolveTest)
+		require.NoError(t, err)
+		return s
+	}
+	one := objectByID(t, scene("  - {fileID: 200}\n"), "1")
+	assert.Equal(t, "Cam", one.Props["targets[0]"])
+	assert.NotContains(t, one.Props, "targets.fileID")
+	two := scene("  - {fileID: 200}\n  - {fileID: 300}\n")
+	d := DiffScenes(scene("  - {fileID: 200}\n"), two)
+	require.Len(t, d.Changes, 1)
+	assert.Equal(t, []PropChange{{Key: "targets[1]", New: "Light"}}, d.Changes[0].Props)
+}

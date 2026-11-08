@@ -151,3 +151,20 @@ func TestUnityProjectAndInvalidate(t *testing.T) {
 	assert.Len(t, svc.guids.cache, 1)
 	assert.Equal(t, "", readGUID("/missing/file.meta"))
 }
+
+func TestGUIDIndexDropsBuildRacingInvalidation(t *testing.T) {
+	svc := New(nil, &memStore{}, nil)
+	builds := 0
+	svc.guids.build = func(string) map[string]string {
+		builds++
+		if builds == 1 {
+			svc.invalidateGUIDs("/r", []string{"Assets/New.png.meta"})
+		}
+		return map[string]string{"g": "stale"}
+	}
+	assert.Equal(t, "stale", svc.guidIndex("/r", "")["g"])
+	assert.Empty(t, svc.guids.cache, "a build that raced an invalidation is not cached")
+	svc.guidIndex("/r", "")
+	svc.guidIndex("/r", "")
+	assert.Equal(t, 2, builds)
+}

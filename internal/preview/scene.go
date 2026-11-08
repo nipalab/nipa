@@ -170,8 +170,7 @@ func sortedKeys(m map[string]string) []string {
 func treeOf(changes []SceneChange, oldByID, newByID map[string]*SceneObject) []SceneObject {
 	seen := map[string]bool{}
 	out := []SceneObject{}
-	var add func(id string, removed bool)
-	add = func(id string, removed bool) {
+	add := func(id string, removed bool) {
 		for id != "" && !seen[id] {
 			seen[id] = true
 			o := newByID[id]

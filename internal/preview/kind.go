@@ -50,7 +50,7 @@ var kindByExtension = map[string]Kind{
 // text or opaque depending on the stored binary flag, and so do
 // binary-serialized scenes.
 func Classify(path string, isBinary bool) Kind {
-	if kind, ok := kindByExtension[strings.ToLower(filepath.Ext(path))]; ok && !(kind == KindScene && isBinary) {
+	if kind, ok := kindByExtension[strings.ToLower(filepath.Ext(path))]; ok && (kind != KindScene || !isBinary) {
 		return kind
 	}
 	if isBinary {
