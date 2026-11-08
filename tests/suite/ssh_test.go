@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -105,4 +107,160 @@ var _ = Describe("nipa ssh key login", func() {
 		Expect(res.Output()).To(ContainSubstring("refusing to sign"))
 		Expect(fileExists(dir, "tokens.json")).To(BeFalse())
 	})
+
+	It("rejects a deleted key at the next login and session re-authentication", func() {
+		dir := workspace()
+		keyPath, publicKey := newSSHKeyPair(dir)
+		key := api.addSSHKey("deleted key", publicKey)
+		DeferCleanup(func() { removeSSHKeyIfPresent(key.ID) })
+
+		project := newProject("ssh-deleted")
+		seedRepo(orgSlug, project, map[string][]byte{"readme.txt": []byte("ssh\n")}, "seed")
+
+		tokenFile := filepath.Join(dir, "tokens.json")
+		env := append(isolatedSSHEnv(dir, tokenFile), "NIPA_SSH_KEY="+keyPath)
+
+		login := runNipaEnv(dir, env, "login", "--host", cli.host)
+		Expect(login.ExitCode).To(Equal(0), login.Output())
+		Expect(login.Output()).To(ContainSubstring("using SSH key"))
+
+		clone := runNipaEnv(dir, env, "clone", repoURLFor(orgSlug, project), "work")
+		Expect(clone.ExitCode).To(Equal(0), clone.Output())
+		work := filepath.Join(dir, "work")
+
+		invalidateSession(tokenFile)
+		reauth := runNipaEnv(work, env, "branch", "-a")
+		Expect(reauth.ExitCode).To(Equal(0), "a registered key re-authenticates a rejected session: %s", reauth.Output())
+
+		api.removeSSHKey(key.ID)
+
+		relogin := runNipaEnv(dir, env, "login", "--host", cli.host)
+		Expect(relogin.ExitCode).NotTo(Equal(0))
+		Expect(relogin.Output()).To(ContainSubstring("invalid email or SSH key"))
+
+		invalidateSession(tokenFile)
+		denied := runNipaEnv(work, env, "branch", "-a")
+		Expect(denied.ExitCode).NotTo(Equal(0), "a deleted key cannot revive a rejected session: %s", denied.Output())
+		Expect(denied.Output()).To(ContainSubstring("Username:"), "re-authentication falls through to the password prompt")
+	})
+
+	It("discovers the default key in ~/.ssh without flags", func() {
+		home := workspace()
+		Expect(os.MkdirAll(filepath.Join(home, ".ssh"), 0o700)).To(Succeed())
+		_, publicKey := newSSHKeyPair(filepath.Join(home, ".ssh"))
+		key := api.addSSHKey("default key", publicKey)
+		DeferCleanup(func() { removeSSHKeyIfPresent(key.ID) })
+
+		project := newProject("ssh-default")
+		seedRepo(orgSlug, project, map[string][]byte{"readme.txt": []byte("default\n")}, "seed")
+
+		tokenFile := filepath.Join(home, "tokens.json")
+		env := isolatedSSHEnv(home, tokenFile)
+
+		login := runNipaEnv(home, env, "login", "--host", cli.host)
+		Expect(login.ExitCode).To(Equal(0), login.Output())
+		Expect(login.Output()).To(ContainSubstring("using SSH key"))
+		Expect(login.Output()).NotTo(ContainSubstring("Username:"))
+
+		Expect(os.Remove(tokenFile)).To(Succeed())
+		clone := runNipaEnv(home, env, "clone", repoURLFor(orgSlug, project), "work")
+		Expect(clone.ExitCode).To(Equal(0), clone.Output())
+		Expect(readText(filepath.Join(home, "work"), "readme.txt")).To(Equal("default\n"))
+	})
+
+	It("falls back to the password prompt when the default key is unregistered", func() {
+		home := workspace()
+		Expect(os.MkdirAll(filepath.Join(home, ".ssh"), 0o700)).To(Succeed())
+		newSSHKeyPair(filepath.Join(home, ".ssh"))
+
+		tokenFile := filepath.Join(home, "tokens.json")
+		res := runNipaEnv(home, isolatedSSHEnv(home, tokenFile), "login", "--host", cli.host)
+		Expect(res.ExitCode).NotTo(Equal(0))
+		Expect(res.Output()).To(ContainSubstring("SSH key login failed"))
+		Expect(res.Output()).To(ContainSubstring("invalid email or SSH key"))
+		Expect(res.Output()).To(ContainSubstring("Username:"), "an auto-detected key falls back to the password flow")
+		Expect(fileExists(home, "tokens.json")).To(BeFalse())
+	})
+
+	It("logs in with a key held by ssh-agent", func() {
+		agentBin, err := exec.LookPath("ssh-agent")
+		if err != nil {
+			Skip("ssh-agent is not installed")
+		}
+		addBin, err := exec.LookPath("ssh-add")
+		if err != nil {
+			Skip("ssh-add is not installed")
+		}
+
+		home := workspace()
+		keyDir := workspace()
+		keyPath, publicKey := newSSHKeyPair(keyDir)
+		key := api.addSSHKey("agent key", publicKey)
+		DeferCleanup(func() { removeSSHKeyIfPresent(key.ID) })
+
+		sockDir, err := os.MkdirTemp("", "nipa-agent-")
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(func() { _ = os.RemoveAll(sockDir) })
+		socket := filepath.Join(sockDir, "agent.sock")
+
+		agentCmd := exec.Command(agentBin, "-D", "-a", socket)
+		agentCmd.Stdout = GinkgoWriter
+		agentCmd.Stderr = GinkgoWriter
+		Expect(agentCmd.Start()).To(Succeed())
+		DeferCleanup(func() {
+			_ = agentCmd.Process.Kill()
+			_ = agentCmd.Wait()
+		})
+		Eventually(func() bool { return fileExists(sockDir, "agent.sock") }, 10*time.Second, 50*time.Millisecond).
+			Should(BeTrue(), "ssh-agent did not create its socket")
+
+		add := exec.Command(addBin, keyPath)
+		add.Env = append(os.Environ(), "SSH_AUTH_SOCK="+socket)
+		out, err := add.CombinedOutput()
+		Expect(err).NotTo(HaveOccurred(), string(out))
+
+		tokenFile := filepath.Join(home, "tokens.json")
+		env := append(isolatedSSHEnv(home, tokenFile), "SSH_AUTH_SOCK="+socket)
+		res := runNipaEnv(home, env, "login", "--host", cli.host)
+		Expect(res.ExitCode).To(Equal(0), res.Output())
+		Expect(res.Output()).To(ContainSubstring("using SSH key"))
+		Expect(fileExists(home, "tokens.json")).To(BeTrue())
+	})
 })
+
+// isolatedSSHEnv points HOME and the config dir at home and clears the agent
+// socket and NIPA_SSH_KEY, so the developer's keys and agent are never used.
+func isolatedSSHEnv(home, tokenFile string) []string {
+	return []string{
+		"HOME=" + home,
+		"XDG_CONFIG_HOME=" + filepath.Join(home, ".config"),
+		"SSH_AUTH_SOCK=",
+		"NIPA_SSH_KEY=",
+		"NIPA_TOKEN_FILE=" + tokenFile,
+	}
+}
+
+// invalidateSession replaces the stored tokens with ones the server rejects,
+// so the next command must re-authenticate.
+func invalidateSession(tokenFile string) {
+	GinkgoHelper()
+	data, err := os.ReadFile(tokenFile)
+	Expect(err).NotTo(HaveOccurred())
+	var tokens map[string]map[string]any
+	Expect(json.Unmarshal(data, &tokens)).To(Succeed())
+	Expect(tokens).To(HaveKey(cli.host))
+	tokens[cli.host]["access_token"] = "eyJhbGciOiJIUzI1NiJ9.eyJleHAiOjF9.invalid"
+	tokens[cli.host]["refresh_token"] = "invalid-refresh-token"
+	data, err = json.Marshal(tokens)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(os.WriteFile(tokenFile, data, 0o600)).To(Succeed())
+}
+
+func removeSSHKeyIfPresent(id string) {
+	for _, key := range api.listSSHKeys() {
+		if key.ID == id {
+			api.removeSSHKey(id)
+			return
+		}
+	}
+}

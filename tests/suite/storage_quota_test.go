@@ -143,4 +143,31 @@ var _ = Describe("storage quota", func() {
 		Expect(storage.OwnerID).To(Equal(otherID), "usage moves with the organization")
 		Expect(storage.UsedBytes).To(Equal(recounted.UsedBytes))
 	})
+
+	It("registers no billing provider routes without a provider", func() {
+		routes := []struct{ method, path string }{
+			{http.MethodPost, "/billing/checkout"},
+			{http.MethodPatch, "/billing/subscription"},
+			{http.MethodPost, "/billing/portal"},
+			{http.MethodPost, "/admin/billing/owners/1/sync"},
+			{http.MethodPost, "/admin/billing/events/1/replay"},
+		}
+		if cli.edition == "free" {
+			routes = append(routes,
+				struct{ method, path string }{http.MethodGet, "/billing/me"},
+				struct{ method, path string }{http.MethodPut, "/admin/billing/owners/1/quota"},
+				struct{ method, path string }{http.MethodDelete, "/admin/billing/owners/1/quota"},
+			)
+		} else if os.Getenv("NIPA_TEST_STORAGE_LEDGER") == "" {
+			routes = append(routes, struct{ method, path string }{http.MethodGet, "/billing/me"})
+		}
+		for _, route := range routes {
+			status, body := api.doRaw(route.method, route.path, nil)
+			Expect(status).To(Equal(http.StatusNotFound), "%s %s: %s", route.method, route.path, body)
+		}
+
+		root := newAPIClientWithToken("http://"+cli.host, "")
+		status, body := root.doAnonRaw(http.MethodPost, "/api/webhooks/paddle", map[string]string{"event_type": "subscription.created"})
+		Expect(status).To(Equal(http.StatusNotFound), "paddle webhook: %s", body)
+	})
 })
