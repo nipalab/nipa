@@ -387,7 +387,7 @@ start_server() {
 }
 
 run_suite() {
-	local edition="$1" port="$2"
+	local edition="$1" port="$2" focus="${3-$FOCUS}"
 	export NIPA_TEST_HOST="127.0.0.1:$port"
 	export NIPA_TEST_EDITION="$edition"
 	export NIPA_TEST_EMAIL_PORT="$(email_port_for "$port")"
@@ -407,8 +407,8 @@ run_suite() {
 	rm -f "$NIPA_TOKEN_FILE"
 
 	local args=(./tests/... -count=1 -v -timeout 20m)
-	if [[ -n "$FOCUS" ]]; then
-		args+=(-args "--ginkgo.focus=$FOCUS")
+	if [[ -n "$focus" ]]; then
+		args+=(-args "--ginkgo.focus=$focus")
 	fi
 
 	log "running client e2e suite against $edition"
@@ -484,12 +484,13 @@ main() {
 			stop_server
 			stop_compose
 		else
+			local free_focus="$FOCUS"
 			start_server free "$FREE_PORT"
 			if [[ "$RATELIMIT_PROFILE" == "1" ]]; then
 				start_server free "$RATELIMIT_PORT" ratelimit
-				[[ -n "$FOCUS" ]] || FOCUS="rate limiting"
+				[[ -n "$free_focus" ]] || free_focus="rate limiting"
 			fi
-			run_suite free "$FREE_PORT"
+			run_suite free "$FREE_PORT" "$free_focus"
 			stop_server
 		fi
 	done
