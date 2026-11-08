@@ -61,6 +61,11 @@ import type {
   RemoteProject,
   Repo,
   RepoChanged,
+  PropChange,
+  RefChange,
+  SceneChange,
+  SceneCompare,
+  SceneObject,
   TableColumn,
   TableCompare,
   TableRow,
@@ -124,6 +129,7 @@ export type RemoteListing = Omit<RawRemoteListing, "dirs"> & { dirs: RemoteDir[]
 export type LockStatus = Omit<RawLockStatus, "locks" | "files"> & { locks: FileLock[]; files: FileLockState[] };
 export type LockResult = { locked: string[]; failed: LockFailure[] };
 export type { AudioCompare, AudioSide, AudioStats, MetaWarning, TableColumn, TableCompare, TableRow };
+export type { PropChange, RefChange, SceneChange, SceneCompare, SceneObject };
 export type { DaemonInfo, DiffHunk, DiffLine, FileChange, FileDiff, FileSide, ImageCompare, ImageInfo, ImageLayer, ImageOptions, ImageRef, ImageStats, ModelCompare, ModelSide, ModelStats, OpOutcome, OpProgress, Repo, RepoChanged };
 
 export type ChangeSet = {
@@ -169,6 +175,7 @@ export const desktop = {
   modelDiff: (root: string, old: ImageRef | null, next: ImageRef | null): Cancellable<ModelCompare | null> => Service.ModelDiff(root, old, next),
   audioDiff: (root: string, old: ImageRef | null, next: ImageRef | null): Cancellable<AudioCompare | null> => Service.AudioDiff(root, old, next),
   tableDiff: (root: string, old: ImageRef | null, next: ImageRef | null): Cancellable<TableCompare | null> => Service.TableDiff(root, old, next),
+  sceneDiff: (root: string, old: ImageRef | null, next: ImageRef | null): Cancellable<SceneCompare | null> => Service.SceneDiff(root, old, next),
   metaWarnings: async (root: string): Promise<MetaWarning[]> => (await Service.MetaWarnings(root)) ?? [],
   lockStatus: async (root: string): Promise<LockStatus> => {
     const s = await Service.LockStatus(root);

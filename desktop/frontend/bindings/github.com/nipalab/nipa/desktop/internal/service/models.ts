@@ -654,6 +654,21 @@ export interface Person {
     "name": string;
 }
 
+export interface PropChange {
+    "key": string;
+    "old": string;
+    "new": string;
+}
+
+export interface RefChange {
+    "path": string;
+
+    /**
+     * added, removed
+     */
+    "status": string;
+}
+
 export interface Release {
     "version": string;
     "notes": string;
@@ -766,6 +781,40 @@ export interface Review {
     "stale": boolean;
     "dismissed": boolean;
     "createdAt": string;
+}
+
+export interface SceneChange {
+    /**
+     * added, removed, changed, moved
+     */
+    "status": string;
+    "id": string;
+    "path": string;
+    "type": string;
+    "props": PropChange[] | null;
+}
+
+/**
+ * SceneCompare is a structural diff of an engine scene or asset: Objects
+ * holds the changed objects and their ancestors for the tree. Error is set,
+ * and the lists are empty, when a side cannot be parsed.
+ */
+export interface SceneCompare {
+    "engine": string;
+    "objects": SceneObject[] | null;
+    "changes": SceneChange[] | null;
+    "added": number;
+    "removed": number;
+    "changed": number;
+    "refs": RefChange[] | null;
+    "error"?: string;
+}
+
+export interface SceneObject {
+    "id": string;
+    "path": string;
+    "type": string;
+    "parent": string;
 }
 
 export interface TableColumn {

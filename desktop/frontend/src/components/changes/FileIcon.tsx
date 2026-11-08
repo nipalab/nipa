@@ -1,7 +1,7 @@
-import { Box, File, FileText, Film, Image, Music, Sheet, Type } from "lucide-react";
+import { Box, Boxes, File, FileText, Film, Image, Music, Sheet, Type } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const icons = { text: FileText, image: Image, model: Box, audio: Music, video: Film, font: Type, table: Sheet };
+const icons = { text: FileText, image: Image, model: Box, audio: Music, video: Film, font: Type, table: Sheet, scene: Boxes };
 
 export function FileIcon({ kind, className }: { kind: string; className?: string }) {
   const Icon = icons[kind as keyof typeof icons] ?? File;
