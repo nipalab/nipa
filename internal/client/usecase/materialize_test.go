@@ -136,3 +136,122 @@ func TestMaterializeFile_TrackedModeTransitions(t *testing.T) {
 	require.NoError(t, materializeFile(root, file, 2, open))
 	requireReadOnly(t, fp, true)
 }
+
+func storeObjectChunks(t *testing.T, dir string, content []byte, isBinary bool) materializedFile {
+	t.Helper()
+	var hashes []serverDomain.Hash
+	encoding, err := chunker.Encode(bytes.NewReader(content), "f", isBinary, "", func(c chunker.EncodedChunk) error {
+		hashes = append(hashes, c.Hash)
+		return os.WriteFile(filepath.Join(dir, c.Hash.String()), c.Data, 0o644)
+	})
+	require.NoError(t, err)
+	return materializedFile{
+		Mode:        2,
+		SizeBytes:   int64(len(content)),
+		Encoding:    encoding,
+		FileHash:    chunker.FileHash(hashes),
+		ChunkHashes: hashes,
+	}
+}
+
+func TestMaterializeAll_WritesFilesFromStoredChunks(t *testing.T) {
+	objects := t.TempDir()
+	root := t.TempDir()
+	open := func(h serverDomain.Hash) (io.ReadCloser, error) {
+		return os.Open(filepath.Join(objects, h.String()))
+	}
+
+	binary := make([]byte, 3<<20)
+	x := uint32(7)
+	for i := range binary {
+		x = x*1664525 + 1013904223
+		binary[i] = byte(x >> 24)
+	}
+	text := bytes.Repeat([]byte("line of text\n"), 200000)
+
+	want := map[string][]byte{}
+	var jobs []materializeJob
+	for i := range 12 {
+		content, isBinary := text, false
+		if i%2 == 0 {
+			content, isBinary = binary, true
+		}
+		f := storeObjectChunks(t, objects, content, isBinary)
+		f.Path = filepath.ToSlash(filepath.Join("dir", string(rune('a'+i)), "file"))
+		want[f.Path] = content
+		jobs = append(jobs, materializeJob{file: f})
+	}
+
+	entries, err := materializeAll(context.Background(), root, jobs, open)
+	require.NoError(t, err)
+	require.Len(t, entries, len(jobs))
+	for path, content := range want {
+		got, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(path)))
+		require.NoError(t, err)
+		require.Equal(t, content, got, path)
+		require.Equal(t, int64(len(content)), entries[path].SizeBytes)
+	}
+}
+
+func TestMaterializeAll_ReportsTheFailedPath(t *testing.T) {
+	root := t.TempDir()
+	open := func(serverDomain.Hash) (io.ReadCloser, error) {
+		return io.NopCloser(bytes.NewReader([]byte("abc"))), nil
+	}
+	jobs := []materializeJob{
+		{file: materializedFile{Path: "ok.txt", SizeBytes: 3, ChunkHashes: []serverDomain.Hash{{0x01}}}},
+		{file: materializedFile{Path: "bad.txt", SizeBytes: 2, ChunkHashes: []serverDomain.Hash{{0x02}}}},
+	}
+
+	_, err := materializeAll(context.Background(), root, jobs, open)
+	var failed *materializeError
+	require.ErrorAs(t, err, &failed)
+	require.Equal(t, "bad.txt", failed.path)
+	require.ErrorContains(t, err, "content length mismatch")
+}
+
+func TestMaterializeAll_StopsOnCancelledContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	open := func(serverDomain.Hash) (io.ReadCloser, error) {
+		return io.NopCloser(bytes.NewReader(nil)), nil
+	}
+	jobs := make([]materializeJob, 50)
+	for i := range jobs {
+		jobs[i] = materializeJob{file: materializedFile{Path: filepath.ToSlash(filepath.Join("d", string(rune('a'+i))))}}
+	}
+
+	_, err := materializeAll(ctx, t.TempDir(), jobs, open)
+	require.ErrorIs(t, err, context.Canceled)
+}
+
+func TestReadAllInto_GrowsAndReusesTheBuffer(t *testing.T) {
+	data := bytes.Repeat([]byte("x"), 10000)
+	got, err := readAllInto(make([]byte, 0, 4), bytes.NewReader(data))
+	require.NoError(t, err)
+	require.Equal(t, data, got)
+
+	reused, err := readAllInto(got[:0], bytes.NewReader([]byte("short")))
+	require.NoError(t, err)
+	require.Equal(t, "short", string(reused))
+	require.Equal(t, &got[:1][0], &reused[:1][0], "a large enough buffer is reused")
+}
+
+func TestRestore_TrustsAFreshStatFingerprint(t *testing.T) {
+	root := t.TempDir()
+	writeRepoFile(t, root, "a.txt", "same")
+	snapshot := trackedSnapshot(t, "a.txt", "same")
+	info, err := os.Stat(filepath.Join(root, "a.txt"))
+	require.NoError(t, err)
+	local := &stubLocalRepo{
+		snapshot:  snapshot,
+		statCache: map[string]domain.StatEntry{"a.txt": statEntryFromInfo(info, snapshot.Files[0].Hash)},
+	}
+	wc := newWorkingCopy(t, local, root)
+	wc.hashFile = func(string, string) (serverDomain.Hash, error) {
+		t.Fatal("a fresh fingerprint must not be rehashed")
+		return serverDomain.Hash{}, nil
+	}
+
+	require.NoError(t, wc.Restore(context.Background(), []string{"a.txt"}))
+}

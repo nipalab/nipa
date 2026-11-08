@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -18,6 +19,7 @@ import (
 )
 
 type stubDiffRepo struct {
+	mu          sync.Mutex
 	snapshot    *domain.Snapshot
 	staged      []string
 	chunks      map[serverDomain.Hash][]byte
@@ -94,6 +96,8 @@ func (s *stubDiffRepo) StoreChunks(chunks []*serverDomain.ChunkData) error {
 	if s.storeErr != nil {
 		return s.storeErr
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	for _, c := range chunks {
 		s.chunks[c.Hash] = c.Data
 	}
@@ -101,7 +105,9 @@ func (s *stubDiffRepo) StoreChunks(chunks []*serverDomain.ChunkData) error {
 }
 
 func (s *stubDiffRepo) OpenChunk(hash serverDomain.Hash) (io.ReadCloser, error) {
+	s.mu.Lock()
 	data, ok := s.chunks[hash]
+	s.mu.Unlock()
 	if !ok {
 		return nil, errors.New("chunk not found in cache")
 	}

@@ -6,7 +6,10 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
+	"sync/atomic"
 
 	"go.opentelemetry.io/otel/attribute"
 
@@ -392,7 +395,7 @@ func syncWorkingCopy(ctx context.Context, client chunkDownloader, lr workingCopy
 		return err
 	}
 
-	statEntries := make(map[string]clientDomain.StatEntry)
+	var jobs []materializeJob
 	for _, f := range newFiles {
 		base := baseByPath[f.Path]
 		if base.Hash == f.FileHash && base.Mode == f.Mode && fileExists(root, f.Path) {
@@ -401,12 +404,11 @@ func syncWorkingCopy(ctx context.Context, client chunkDownloader, lr workingCopy
 			// it once if it has none.
 			continue
 		}
-		if err := materializeFile(root, f, base.Mode, lr.OpenChunk); err != nil {
-			return err
-		}
-		if entry, err := statEntryFor(root, f.Path, f.FileHash); err == nil {
-			statEntries[f.Path] = entry
-		}
+		jobs = append(jobs, materializeJob{file: f, prevMode: base.Mode})
+	}
+	statEntries, err := materializeAll(ctx, root, jobs, lr.OpenChunk)
+	if err != nil {
+		return err
 	}
 
 	for path, base := range baseByPath {
@@ -426,12 +428,15 @@ func syncWorkingCopy(ctx context.Context, client chunkDownloader, lr workingCopy
 	return nil
 }
 
-var chunkStoreBatchBytes = 8 << 20
+const maxChunkStoreWorkers = 8
 
 type chunkStoreLocalRepo interface {
 	StoreChunks(chunks []*domain.ChunkData) error
 }
 
+// downloadMissing fetches the missing chunks into the local object store. The
+// transport delivers chunks one at a time, so delivery only books progress and
+// hands each chunk to a worker pool that verifies its hash and stores it.
 func downloadMissing(ctx context.Context, client chunkDownloader, lr chunkStoreLocalRepo, scope clientDomain.ChunkScope, missing []domain.Hash, estimatedBytes int64, progress ...DownloadProgress) error {
 	if len(missing) == 0 {
 		return nil
@@ -444,42 +449,56 @@ func downloadMissing(ctx context.Context, client chunkDownloader, lr chunkStoreL
 		prog.DownloadStart(len(missing), estimatedBytes)
 	}
 
-	doneObjects, doneBytes := 0, int64(0)
-	seen := make(map[domain.Hash]bool, len(missing))
-	pending := make([]*domain.ChunkData, 0, 64)
-	pendingBytes := 0
-	flush := func() error {
-		if len(pending) == 0 {
-			return nil
-		}
-		if err := lr.StoreChunks(pending); err != nil {
-			return err
-		}
-		pending = nil
-		pendingBytes = 0
-		return nil
+	workers := max(1, min(runtime.GOMAXPROCS(0), maxChunkStoreWorkers))
+	store := make(chan *domain.ChunkData, workers)
+	var (
+		wg       sync.WaitGroup
+		once     sync.Once
+		storeErr atomic.Pointer[error]
+	)
+	fail := func(err error) { once.Do(func() { storeErr.Store(&err) }) }
+	for range workers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for c := range store {
+				if storeErr.Load() != nil {
+					continue
+				}
+				if chunker.Sum(c.Data) != c.Hash {
+					fail(fmt.Errorf("chunk hash mismatch for %s", c.Hash))
+					continue
+				}
+				if err := lr.StoreChunks([]*domain.ChunkData{c}); err != nil {
+					fail(err)
+				}
+			}
+		}()
 	}
 
+	doneObjects, doneBytes := 0, int64(0)
+	seen := make(map[domain.Hash]bool, len(missing))
 	err := client.DownloadChunks(ctx, scope, missing, func(h domain.Hash, data []byte) error {
+		if failed := storeErr.Load(); failed != nil {
+			return *failed
+		}
 		if seen[h] {
 			return nil
 		}
 		seen[h] = true
-		if chunker.Sum(data) != h {
-			return fmt.Errorf("chunk hash mismatch for %s", h)
-		}
-		pending = append(pending, &domain.ChunkData{Hash: h, Data: data})
-		pendingBytes += len(data)
+		store <- &domain.ChunkData{Hash: h, Data: data}
 		if prog != nil {
 			doneObjects++
 			doneBytes += int64(len(data))
 			prog.DownloadProgress(doneObjects, doneBytes)
 		}
-		if pendingBytes >= chunkStoreBatchBytes {
-			return flush()
-		}
 		return nil
 	})
+	close(store)
+	wg.Wait()
+	if failed := storeErr.Load(); failed != nil {
+		return *failed
+	}
 	if err != nil {
 		return err
 	}
@@ -487,9 +506,6 @@ func downloadMissing(ctx context.Context, client chunkDownloader, lr chunkStoreL
 		if !seen[h] {
 			return fmt.Errorf("server did not return chunk %s", h)
 		}
-	}
-	if err := flush(); err != nil {
-		return err
 	}
 	if prog != nil {
 		prog.DownloadEnd()
@@ -575,68 +591,6 @@ func fileExists(root, path string) bool {
 	fp := filepath.Join(root, filepath.FromSlash(path))
 	_, err := os.Stat(fp)
 	return err == nil
-}
-
-// materializeFile writes f over its working file. prevMode is the mode the file
-// was tracked with before (0 when unknown): a read-only file that the previous
-// tracked mode does not explain is a local lock, so it stays read-only.
-func materializeFile(root string, f materializedFile, prevMode int, openChunk func(domain.Hash) (io.ReadCloser, error)) error {
-	fp := filepath.Join(root, filepath.FromSlash(f.Path))
-	dir := filepath.Dir(fp)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
-	}
-	tmp, err := os.CreateTemp(dir, ".nipa-materialize-*")
-	if err != nil {
-		return err
-	}
-	tmpName := tmp.Name()
-	defer func() { _ = os.Remove(tmpName) }()
-
-	var written int64
-	for _, h := range f.ChunkHashes {
-		rc, err := openChunk(h)
-		if err != nil {
-			_ = tmp.Close()
-			return fmt.Errorf("load chunk %s: %w", h, err)
-		}
-		stored, err := io.ReadAll(rc)
-		_ = rc.Close()
-		if err != nil {
-			_ = tmp.Close()
-			return err
-		}
-		data, err := chunker.Decode(f.Encoding, stored)
-		if err != nil {
-			_ = tmp.Close()
-			return fmt.Errorf("decode chunk %s for %s: %w", h, f.Path, err)
-		}
-		if _, err := tmp.Write(data); err != nil {
-			_ = tmp.Close()
-			return err
-		}
-		written += int64(len(data))
-		if written > f.SizeBytes {
-			_ = tmp.Close()
-			return fmt.Errorf("content length mismatch for %s: got %d want %d", f.Path, written, f.SizeBytes)
-		}
-	}
-	if written != f.SizeBytes {
-		_ = tmp.Close()
-		return fmt.Errorf("content length mismatch for %s: got %d want %d", f.Path, written, f.SizeBytes)
-	}
-	mode := materializedMode(f.Mode)
-	if prevMode != 1 && isReadOnlyFile(fp) {
-		mode &^= 0o222
-	}
-	if err := tmp.Chmod(mode); err != nil {
-		_ = tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	return replaceFile(tmpName, fp)
 }
 
 func isReadOnlyFile(p string) bool {

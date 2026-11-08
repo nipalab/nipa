@@ -105,7 +105,9 @@ func TestWorkingCopy_Restore_SkipsGuardedUnchangedFile(t *testing.T) {
 	wc := newWorkingCopy(t, &stubLocalRepo{snapshot: snapshot}, root)
 	guardFile(t, root, "a.png")
 
-	require.True(t, wc.matchesSnapshot("a.png", snapshot.Files[0]))
+	paths := []string{"a.png"}
+	tracked := map[string]domain.SnapshotFile{"a.png": snapshot.Files[0]}
+	require.Empty(t, wc.changedFromSnapshot(paths, tracked, nil))
 }
 
 func TestDiff_IgnoresReadOnlyGuard(t *testing.T) {

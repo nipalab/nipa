@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -14,7 +15,7 @@ import (
 // Restore discards unpushed changes to the given files or directories by
 // re-materializing them from the last synced tree. Paths with staged changes
 // are refused, since the staged content is not stored separately.
-func (w *WorkingCopy) Restore(_ context.Context, targets []string) error {
+func (w *WorkingCopy) Restore(ctx context.Context, targets []string) error {
 	snapshot, err := w.localRepo.Snapshot()
 	if err != nil {
 		return err
@@ -38,18 +39,21 @@ func (w *WorkingCopy) Restore(_ context.Context, targets []string) error {
 		}
 	}
 
-	statEntries := make(map[string]domain.StatEntry)
-	for _, p := range paths {
-		f := tracked[p]
-		if w.matchesSnapshot(p, f) {
-			continue
-		}
-		if err := materializeFile(w.root, snapshotMaterialized(f), f.Mode, w.localRepo.OpenChunk); err != nil {
-			return fmt.Errorf("restore %s: %w", p, err)
-		}
-		if entry, err := statEntryFor(w.root, p, f.Hash); err == nil {
-			statEntries[p] = entry
-		}
+	statCache, err := w.localRepo.LoadStatCache()
+	if err != nil {
+		return err
+	}
+	var jobs []materializeJob
+	for _, f := range w.changedFromSnapshot(paths, tracked, statCache) {
+		jobs = append(jobs, materializeJob{file: snapshotMaterialized(f), prevMode: f.Mode})
+	}
+	statEntries, err := materializeAll(ctx, w.root, jobs, w.localRepo.OpenChunk)
+	var failed *materializeError
+	if errors.As(err, &failed) {
+		return fmt.Errorf("restore %s: %w", failed.path, failed.err)
+	}
+	if err != nil {
+		return err
 	}
 	if len(statEntries) == 0 {
 		return nil
@@ -57,19 +61,33 @@ func (w *WorkingCopy) Restore(_ context.Context, targets []string) error {
 	return w.localRepo.SaveStatEntries(statEntries)
 }
 
-// matchesSnapshot reports whether the working file already has the snapshot
-// content and mode, so restoring it would be a no-op. Status uses the same
-// mode comparison, so skipping here cannot leave a file reported modified.
-func (w *WorkingCopy) matchesSnapshot(path string, f domain.SnapshotFile) bool {
-	info, err := os.Stat(filepath.Join(w.root, filepath.FromSlash(path)))
-	if err != nil {
-		return false
+// changedFromSnapshot returns the files whose working copy differs from the
+// snapshot content or mode, so restoring the others would be a no-op. A fresh
+// stat fingerprint is trusted like status does; the rest are hashed in
+// parallel. Status uses the same mode comparison, so skipping cannot leave a
+// file reported modified.
+func (w *WorkingCopy) changedFromSnapshot(paths []string, tracked map[string]domain.SnapshotFile, statCache map[string]domain.StatEntry) []domain.SnapshotFile {
+	var changed []domain.SnapshotFile
+	var hashJobs []statusHashJob
+	for _, p := range paths {
+		f := tracked[p]
+		info, err := os.Stat(filepath.Join(w.root, filepath.FromSlash(p)))
+		if err != nil || trackedModeFromPerm(info.Mode(), f.Mode) != normalizedMode(f.Mode) {
+			changed = append(changed, f)
+			continue
+		}
+		if entry, ok := statCache[p]; ok && entry.Hash == f.Hash && statMatches(entry, info) {
+			continue
+		}
+		hashJobs = append(hashJobs, statusHashJob{path: p, encoding: f.Encoding, info: info})
 	}
-	if trackedModeFromPerm(info.Mode(), f.Mode) != normalizedMode(f.Mode) {
-		return false
+	for i, res := range w.rehash(hashJobs) {
+		f := tracked[hashJobs[i].path]
+		if res.err != nil || res.hash != f.Hash {
+			changed = append(changed, f)
+		}
 	}
-	current, err := w.hashFile(path, f.Encoding)
-	return err == nil && current == f.Hash
+	return changed
 }
 
 // restoreTargets expands exact paths and directory prefixes to the tracked
