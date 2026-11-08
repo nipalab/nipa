@@ -111,7 +111,7 @@ Unreal has a real abstraction: `ISourceControlProvider` + `FSourceControlOperati
 
 ### Godot (first engine plugin)
 
-Design: `docs/GODOT_PLUGIN.md`; phased plan: `docs/plans/GODOT_PLUGIN.md`.
+Design: `docs/GODOT_PLUGIN.md`; install and usage: [`docs/GODOT_PLUGIN.md`](GODOT_PLUGIN.md#install); phased plan: `docs/plans/GODOT_PLUGIN.md`.
 
 - **Add-on:** `plugins/godot` (`addons/nipa`, Apache 2.0), Godot 4.4+.
 - **Native VCS class:** Godot only lists `EditorVCSInterface` subclasses registered in `ClassDB`, so `NipaVCSInterface` is a godot-cpp GDExtension. It sits on an engine-free C++ core that talks to the JSON bridge.

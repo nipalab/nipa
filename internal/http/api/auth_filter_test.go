@@ -47,7 +47,7 @@ func TestAuthFilter_MissingAuthorizationHeader(t *testing.T) {
 func TestAuthFilter_WrongAuthorizationFormat(t *testing.T) {
 	filter := NewAuthFilter(&stubTokenValidator{}).Auth()
 
-	for _, header := range []string{"Bearer", "Bearer a b", "token123"} {
+	for _, header := range []string{"Bearer", "Bearer ", "Bearer a b", "token123", "Basic dXNlcjpwYXNz"} {
 		req := httptest.NewRequest(http.MethodGet, "/protected", nil)
 		req.Header.Set("Authorization", header)
 		resp := runFilter(t, filter, restful.NewRequest(req))
@@ -129,4 +129,14 @@ func TestAuthFilter_RequestMeta(t *testing.T) {
 	require.Equal(t, "203.0.113.9", trusted.ClientIP)
 	require.Equal(t, "nipa-web/2", trusted.UserAgent)
 	require.Equal(t, "192.0.2.4", meta("192.0.2.4:5000").ClientIP, "an untrusted peer's forwarded header is ignored")
+}
+
+func TestAuthFilter_SchemeIsCaseInsensitive(t *testing.T) {
+	filter := NewAuthFilter(&stubTokenValidator{claims: &domain.Claims{}}).Auth()
+	for _, header := range []string{"bearer valid-token", "BEARER valid-token"} {
+		req := httptest.NewRequest(http.MethodGet, "/protected", nil)
+		req.Header.Set("Authorization", header)
+		resp := runFilter(t, filter, restful.NewRequest(req))
+		require.Equal(t, http.StatusOK, resp.StatusCode(), header)
+	}
 }

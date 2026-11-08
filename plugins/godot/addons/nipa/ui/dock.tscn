@@ -1,0 +1,64 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://addons/nipa/ui/dock.gd" id="1"]
+
+[node name="NipaDock" type="VBoxContainer"]
+custom_minimum_size = Vector2(240, 0)
+script = ExtResource("1")
+
+[node name="Header" type="HBoxContainer" parent="."]
+layout_mode = 2
+
+[node name="StateLabel" type="Label" parent="Header"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Connecting..."
+text_overrun_behavior = 3
+
+[node name="ReconnectButton" type="Button" parent="Header"]
+layout_mode = 2
+disabled = true
+text = "Reconnect"
+
+[node name="BranchLabel" type="Label" parent="."]
+layout_mode = 2
+text = "Branch: -"
+
+[node name="OutOfDate" type="HBoxContainer" parent="."]
+visible = false
+layout_mode = 2
+
+[node name="OutOfDateLabel" type="Label" parent="OutOfDate"]
+layout_mode = 2
+size_flags_horizontal = 3
+autowrap_mode = 3
+
+[node name="UpdateButton" type="Button" parent="OutOfDate"]
+layout_mode = 2
+text = "Update"
+
+[node name="OpLabel" type="Label" parent="."]
+visible = false
+layout_mode = 2
+autowrap_mode = 3
+
+[node name="OpProgress" type="ProgressBar" parent="."]
+visible = false
+layout_mode = 2
+max_value = 1.0
+show_percentage = false
+
+[node name="OutsideNote" type="Label" parent="."]
+visible = false
+layout_mode = 2
+autowrap_mode = 3
+
+[node name="OpenDesktopButton" type="Button" parent="."]
+layout_mode = 2
+text = "Open in Nipa Desktop"
+
+[node name="SaveDialog" type="ConfirmationDialog" parent="."]
+title = "Save all and continue?"
+initial_position = 1
+size = Vector2i(420, 120)
+dialog_text = "Save all open scenes before this operation rewrites the working copy."

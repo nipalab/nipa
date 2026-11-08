@@ -66,11 +66,11 @@ func (f *AuthFilter) getToken(req *restful.Request) (string, error) {
 	if bearerToken == "" {
 		return "", errors.New("auth token not found")
 	}
-	tokens := strings.Split(bearerToken, " ")
-	if len(tokens) != 2 {
+	scheme, token, ok := strings.Cut(bearerToken, " ")
+	if !ok || !strings.EqualFold(scheme, "Bearer") || token == "" || strings.Contains(token, " ") {
 		return "", errors.New("auth token wrong format")
 	}
-	return tokens[1], nil
+	return token, nil
 }
 
 // RequestMeta resolves the caller's client IP and user agent.

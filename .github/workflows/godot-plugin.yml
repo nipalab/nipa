@@ -1,0 +1,147 @@
+name: Godot plugin
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'plugins/godot/**'
+      - '.github/workflows/godot-plugin.yml'
+  pull_request:
+    paths:
+      - 'plugins/godot/**'
+      - '.github/workflows/godot-plugin.yml'
+    types: [opened, synchronize, reopened]
+
+env:
+  GODOT_CPP_TAG: godot-4.4-stable
+
+jobs:
+  core:
+    name: Core tests and coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build
+          python3 -m pip install --user --only-binary :all: gcovr==8.8
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Test with coverage gate
+        run: make godot-test GCOVR=gcovr
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: godot-core-coverage
+          path: plugins/godot/build/**/*.gcov
+
+  thread-sanitizer:
+    name: Session tests under ThreadSanitizer
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build with -fsanitize=thread
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake
+          cmake -S plugins/godot -B plugins/godot/build-tsan \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DNIPA_BUILD_EXTENSION=OFF \
+            -DCMAKE_CXX_FLAGS="-fsanitize=thread -O1 -g" \
+            -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=thread"
+          cmake --build plugins/godot/build-tsan --target nipa_core_tests -j "$(nproc)"
+
+      - name: Run
+        env:
+          TSAN_OPTIONS: halt_on_error=1 second_deadlock_stack=1
+        run: plugins/godot/build-tsan/nipa_core_tests
+
+  extension:
+    name: GDExtension build (Godot ${{ matrix.godot }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        godot: ['4.4-stable']
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build python3
+
+      - name: Cache godot-cpp build
+        uses: actions/cache@v4
+        with:
+          path: plugins/godot/build-ext/_deps
+          key: godot-cpp-${{ env.GODOT_CPP_TAG }}-${{ runner.os }}-${{ hashFiles('plugins/godot/extension/CMakeLists.txt') }}
+
+      - name: Build
+        run: make godot-build
+
+      - name: Upload library
+        uses: actions/upload-artifact@v4
+        with:
+          name: godot-extension-linux
+          path: plugins/godot/addons/nipa/bin/**
+
+  headless-load:
+    name: Headless load check (Godot ${{ matrix.godot }})
+    needs: extension
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - godot: '4.4'
+            release: '4.4-stable'
+          - godot: 'latest'
+            release: 'latest'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build python3
+
+      - name: Build the extension
+        run: make godot-build
+
+      - name: Fetch Godot
+        env:
+          GODOT_RELEASE: ${{ matrix.release }}
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/godot"
+          mkdir -p "$dir"
+          api=https://api.github.com/repos/godotengine/godot/releases
+          if [ "$GODOT_RELEASE" = "latest" ]; then api="$api/latest"; else api="$api/tags/$GODOT_RELEASE"; fi
+          curl -sfL --proto '=https' --tlsv1.2 -o "$dir/release.json" "$api"
+          read -r zip_name zip_url sums_url < <(python3 -c 'import json,sys; r=json.load(open(sys.argv[1])); a={x["name"]: x["browser_download_url"] for x in r["assets"]}; z=next(n for n in a if n.endswith("_linux.x86_64.zip")); print(z, a[z], a["SHA512-SUMS.txt"])' "$dir/release.json")
+          curl -sfL --proto '=https' --tlsv1.2 -o "$dir/godot.zip" "$zip_url"
+          curl -sfL --proto '=https' --tlsv1.2 -o "$dir/SHA512-SUMS.txt" "$sums_url"
+          grep " ${zip_name}\$" "$dir/SHA512-SUMS.txt" > "$dir/expected.txt"
+          (cd "$dir" && mv godot.zip "$zip_name" && sha512sum -c expected.txt)
+          unzip -q -o "$dir/$zip_name" -d "$dir"
+          chmod +x "$dir"/Godot_*.x86_64
+
+      - name: Link the add-on into the smoke project
+        run: ln -sfn ../../../addons/nipa plugins/godot/tests/project/addons/nipa
+
+      - name: Import project
+        working-directory: plugins/godot/tests/project
+        run: $RUNNER_TEMP/godot/Godot_*.x86_64 --headless --editor --path . --quit
+
+      - name: Load check
+        working-directory: plugins/godot/tests/project
+        run: $RUNNER_TEMP/godot/Godot_*.x86_64 --headless --editor --path . --quit-after 5 --script check_load.gd
+
+      - name: gdUnit4 spec
+        working-directory: plugins/godot/tests/project
+        run: $RUNNER_TEMP/godot/Godot_*.x86_64 --headless --path . -s res://addons/gdUnit4/bin/GdUnitCmdTool.gd -a res://test/ --ignoreHeadlessMode

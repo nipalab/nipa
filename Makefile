@@ -13,9 +13,11 @@ REVISION   ?= $(shell git rev-parse --short HEAD 2>/dev/null)
 LDFLAGS    := $(if $(VERSION),-X 'github.com/nipalab/nipa/internal/version.Version=$(VERSION)') \
               $(if $(REVISION),-X 'github.com/nipalab/nipa/internal/version.Revision=$(REVISION)')
 
-.PHONY: sqlc mock migrate-up migrate-down migrate-up-postgres migrate-down-postgres migrate-create build build-all build-server build-server-ee build-client test test-ee test-client test-client-ee test-client-both unity-test unity-pack lint web web-dev web-install desktop desktop-dev desktop-release desktop-test desktop-screenshots marketing-dist bench-upload bench-download bench-scale bench-scale-files bench-scale-files-ee bench-unit fuzz load-test release
+.PHONY: sqlc mock migrate-up migrate-down migrate-up-postgres migrate-down-postgres migrate-create build build-all build-server build-server-ee build-client test test-ee test-client test-client-ee test-client-both unity-test unity-pack godot-test godot-build lint web web-dev web-install desktop desktop-dev desktop-release desktop-test desktop-screenshots marketing-dist bench-upload bench-download bench-scale bench-scale-files bench-scale-files-ee bench-unit fuzz load-test release
 
 GOLANGCI_LINT_IMAGE ?= docker.io/golangci/golangci-lint:latest
+GCOVR ?= gcovr
+GODOT_JOBS ?= $(shell nproc 2>/dev/null || echo 4)
 
 ## Generate Go code from SQL queries via sqlc.
 sqlc:
@@ -157,6 +159,18 @@ unity-test:
 unity-pack:
 	mkdir -p bin
 	cd plugins/unity/com.nipalab.nipa && npm pack --pack-destination ../../../bin
+
+## Build and test the Godot plugin core (needs CMake >= 3.24, a C++17 compiler and gcovr).
+godot-test:
+	cmake -S plugins/godot -B plugins/godot/build -DCMAKE_BUILD_TYPE=Debug -DNIPA_COVERAGE=ON -DNIPA_BUILD_EXTENSION=OFF
+	cmake --build plugins/godot/build --target nipa_core_tests -j $(GODOT_JOBS)
+	cd plugins/godot/build && ctest --output-on-failure
+	$(GCOVR) -r . --filter 'plugins/godot/core/' --exclude 'plugins/godot/core/tests/' --exclude-throw-branches --exclude-unreachable-branches --fail-under-line 80 --print-summary --sonarqube plugins/godot/coverage.xml plugins/godot/build
+
+## Build the Godot GDExtension for the host platform (fetches godot-cpp 4.4).
+godot-build:
+	cmake -S plugins/godot -B plugins/godot/build-ext -DCMAKE_BUILD_TYPE=Release -DNIPA_BUILD_TESTS=OFF -DNIPA_BUILD_EXTENSION=ON
+	cmake --build plugins/godot/build-ext -j $(GODOT_JOBS)
 
 ## Run the client e2e suite against the free server (see tests/README.md).
 test-client:

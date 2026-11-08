@@ -181,16 +181,18 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   glue (`[VersionControl("Nipa")]` provider with overlays/menus/settings,
   `NipaHost`, `NipaWindow`). Keep Core free of `UnityEngine`/`UnityEditor`
   and C# 9 compatible.
-- **Godot plugin** (planned, `plugins/godot`, Apache 2.0, design in
-  `docs/GODOT_PLUGIN.md`, plan in `docs/plans/GODOT_PLUGIN.md`): Godot 4.4+
-  add-on `addons/nipa`. `NipaVCSInterface` must be a godot-cpp GDExtension
-  class (Godot lists VCS plugins from `ClassDB` only) over an engine-free
-  C++ core (JSON bridge, caches, `LockPolicy` port); GDScript `EditorPlugin`
-  glue adds docks, context menus, inspector lock bar and toasts. Asset +
-  `.import` + `.uid` sidecars move as one unit (`internal/godotmeta`), and
-  `.tscn`/`.tres` conflicts merge via `internal/godotres` (parse/write now,
-  `Merge3` planned).
-
+- **Godot plugin** (`plugins/godot`, Apache 2.0, design in `docs/GODOT_PLUGIN.md`,
+  plan in `docs/plans/GODOT_PLUGIN.md`): Godot 4.4+ add-on `addons/nipa` over
+  the daemon JSON bridge. `core/` is engine-free C++17 (`daemon` client,
+  connector and messages, `paths` project/clone mapping and sidecars, `status`
+  VCS mapping and cache, `diff` model and Myers, `session` worker, stream loops
+  and events; tested with doctest against `core/tests/fake_daemon`, gcovr gate
+  80%, `make godot-test`). `extension/` is the godot-cpp GDExtension
+  (`NipaVCSInterface` extends `EditorVCSInterface`, singleton `Nipa` =
+  `NipaSession`, `NipaRequest`; editor-only, `make godot-build`). `addons/nipa/`
+  holds the GDScript `EditorPlugin`, `settings.gd` and the Nipa dock scene.
+  `tests/project` is the headless smoke project (`check_load.gd`) and the
+  vendored gdUnit4 spec. Vendored code and versions: `plugins/godot/thirdparty/README.md`.
 Flow for `nipa clone <url> <target>`: `cli/clone.go` parses the URL →
 `usecase.Repo.Clone` → ensure empty target → login → resolve default branch (or
 `GetBranchByName` when a branch is given) → fetch tree manifest (gRPC
@@ -870,6 +872,9 @@ already visited for an earlier commit, keyed by path and hash) share the idea.
 ## Commands
 
 From `Makefile`:
+
+- `make godot-test` — CMake + doctest for the Godot plugin `core/` with the gcovr
+  80% line gate; `make godot-build` builds the GDExtension (fetches godot-cpp 4.4).
 
 - `make sqlc` — regenerate all sqlc packages: sqlite +
   `internal/repository/sqlc/localrepo` for the free client/server, and postgres

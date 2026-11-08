@@ -296,7 +296,7 @@ func (a *Auth) ValidateToken(ctx context.Context, tokenString string) (*domain.C
 			return nil, domain.NewErrorUser("unexpected signing method")
 		}
 		return []byte(a.secret), nil
-	})
+	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
 
 	if err != nil {
 		return nil, domain.NewErrorUser("invalid token")
