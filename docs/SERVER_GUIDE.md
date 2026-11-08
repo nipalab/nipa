@@ -83,7 +83,7 @@ CHUNK_URL_SIGNING_KEY: <a different openssl rand -base64 48 output>
 | `DATABASE_DSN` | SQLite database file. It is created on first start. |
 | `JWT_KEY` | Signs access tokens. Required, at least 32 characters, not a sample value; the server refuses to start otherwise. |
 | `CHUNK_URL_SIGNING_KEY` | Signs chunk upload/download URLs. Required, at least 32 characters and different from `JWT_KEY`. |
-| `ALLOW_INSECURE_DEV_SECRETS` | Default `false`. When `true`, weak or missing keys only log a warning. Local development only: anyone can forge admin tokens. |
+| `ALLOW_INSECURE_DEV_SECRETS` | Default `false`. When `true`, weak keys only log a warning and empty keys are replaced by random per-process ones (sessions and chunk URLs reset on restart). Local development only: anyone can forge admin tokens. |
 | `CHUNK_STORAGE` | Must be `local`; this server stores chunks on disk. |
 | `CHUNK_STORAGE_DIR` | Directory for content-addressed chunks. |
 | `CHUNK_PRESIGN_TTL_SECONDS` | Lifetime of a signed chunk URL (default `3600`). |

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
 	"fmt"
 	"log/slog"
@@ -212,7 +213,18 @@ func createDatabaseConnection(dsn string) (*sql.DB, error) {
 }
 
 func guardSecrets(cfg *config.Config) error {
-	return cfg.ValidateSecretsOrWarn(func(msg string, err error) {
+	err := cfg.ValidateSecretsOrWarn(func(msg string, err error) {
 		slog.Warn(msg, "problem", err.Error())
 	})
+	if err != nil {
+		return err
+	}
+	if cfg.AllowInsecureDevSecrets {
+		for _, key := range []*string{&cfg.JWTKey, &cfg.ChunkURLSigningKey} {
+			if *key == "" {
+				*key = rand.Text() + rand.Text()
+			}
+		}
+	}
+	return nil
 }

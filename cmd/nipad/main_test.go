@@ -17,3 +17,15 @@ func TestGuardSecrets(t *testing.T) {
 		ChunkURLSigningKey: "fedcba9876543210fedcba9876543210",
 	}))
 }
+
+func TestGuardSecretsDevGeneratesEphemeralKeys(t *testing.T) {
+	cfg := &config.Config{AllowInsecureDevSecrets: true}
+	require.NoError(t, guardSecrets(cfg))
+	require.GreaterOrEqual(t, len(cfg.JWTKey), 32)
+	require.GreaterOrEqual(t, len(cfg.ChunkURLSigningKey), 32)
+	require.NotEqual(t, cfg.JWTKey, cfg.ChunkURLSigningKey)
+
+	cfg = &config.Config{AllowInsecureDevSecrets: true, JWTKey: "secret"}
+	require.NoError(t, guardSecrets(cfg))
+	require.Equal(t, "secret", cfg.JWTKey)
+}
