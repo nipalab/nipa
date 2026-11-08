@@ -195,11 +195,13 @@ func (s *server) unlock(ctx context.Context, _ *mcp.CallToolRequest, in unlockIn
 }
 
 type mrCreateInput struct {
-	Repo        string `json:"repo,omitempty" jsonschema:"Path inside a nipa working copy (defaults to the server working directory)"`
-	Title       string `json:"title" jsonschema:"Merge request title"`
-	Description string `json:"description,omitempty" jsonschema:"Merge request description"`
-	Source      string `json:"source,omitempty" jsonschema:"Source branch (defaults to the current branch)"`
-	Target      string `json:"target,omitempty" jsonschema:"Target branch (defaults to the project default branch)"`
+	Repo        string   `json:"repo,omitempty" jsonschema:"Path inside a nipa working copy (defaults to the server working directory)"`
+	Title       string   `json:"title" jsonschema:"Merge request title"`
+	Description string   `json:"description,omitempty" jsonschema:"Merge request description"`
+	Source      string   `json:"source,omitempty" jsonschema:"Source branch (defaults to the current branch)"`
+	Target      string   `json:"target,omitempty" jsonschema:"Target branch (defaults to the project default branch)"`
+	Reviewers   []string `json:"reviewers,omitempty" jsonschema:"User ids asked to review the merge request"`
+	Assignees   []string `json:"assignees,omitempty" jsonschema:"User ids assigned to the merge request"`
 }
 
 func (s *server) mrCreate(ctx context.Context, _ *mcp.CallToolRequest, in mrCreateInput) (*mcp.CallToolResult, output.MergeRequest, error) {
@@ -223,6 +225,8 @@ func (s *server) mrCreate(ctx context.Context, _ *mcp.CallToolRequest, in mrCrea
 		Description: in.Description,
 		Source:      in.Source,
 		Target:      in.Target,
+		Reviewers:   in.Reviewers,
+		Assignees:   in.Assignees,
 	})
 	if err != nil {
 		return nil, zero, toolError(err)

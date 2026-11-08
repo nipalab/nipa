@@ -167,8 +167,11 @@ describe("MergeRequestsView list", () => {
     await userEvent.click(within(dialog).getByRole("checkbox"));
     await userEvent.click(submit);
     await waitFor(() => expect(notify).toHaveBeenCalledWith("Could not open the merge request: already open"));
+    expect(api.createMergeRequest).toHaveBeenLastCalledWith("/work/game", { source: "art", target: "main", title: "Sky", description: "New sky", draft: true, reviewers: [], assignees: [] });
+    await userEvent.type(within(dialog).getByRole("textbox", { name: "Reviewers" }), "u2, u3 u2");
+    await userEvent.type(within(dialog).getByRole("textbox", { name: "Assignees" }), "u4");
     await userEvent.click(submit);
-    expect(api.createMergeRequest).toHaveBeenLastCalledWith("/work/game", { source: "art", target: "main", title: "Sky", description: "New sky", draft: true });
+    expect(api.createMergeRequest).toHaveBeenLastCalledWith("/work/game", { source: "art", target: "main", title: "Sky", description: "New sky", draft: true, reviewers: ["u2", "u3"], assignees: ["u4"] });
     await waitFor(() => expect(notify).toHaveBeenCalledWith("Opened !13", "success"));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Drafts" })).toHaveAttribute("aria-pressed", "true");

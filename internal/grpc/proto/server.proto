@@ -563,6 +563,8 @@ message CreateMergeRequestRequest {
     string source_branch = 4;
     string target_branch = 5;
     bool draft = 6;
+    repeated string reviewer_ids = 7;
+    repeated string assignee_ids = 8;
 }
 
 message CreateMergeRequestResponse {

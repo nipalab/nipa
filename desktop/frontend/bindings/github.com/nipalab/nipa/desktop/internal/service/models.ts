@@ -623,6 +623,12 @@ export interface NewMergeRequest {
     "source": string;
     "target": string;
     "draft": boolean;
+
+    /**
+     * Reviewers and Assignees are user ids attached when the request opens.
+     */
+    "reviewers"?: string[] | null;
+    "assignees"?: string[] | null;
 }
 
 export interface OpOutcome {

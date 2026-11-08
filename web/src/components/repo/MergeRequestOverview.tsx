@@ -44,6 +44,7 @@ import { Timestamp } from '../Timestamp'
 import { errorMessage } from '../../hooks'
 import { ThreadCodeContext } from './DiffView'
 import { ThreadCard } from './ThreadCard'
+import { MemberSelect } from './MemberPicker'
 
 const Markdown = lazy(() => import('./Markdown').then((module) => ({ default: module.Markdown })))
 
@@ -837,18 +838,13 @@ export function MergeRequestOverview({
             ))}
             {canWrite && request?.status === 'open' && assigneeCandidates.length > 0 && (
               <Stack direction="vertical" gap="condensed">
-                <Select
-                  aria-label="Add assignee"
+                <MemberSelect
+                  label="Add assignee"
+                  placeholder="Add assignee…"
+                  members={assigneeCandidates}
                   value={assignee}
-                  onChange={(event) => setAssignee(event.target.value)}
-                >
-                  <option value="">Add assignee…</option>
-                  {assigneeCandidates.map((member) => (
-                    <option key={member.user_id} value={member.user_id}>
-                      {member.name || member.email}
-                    </option>
-                  ))}
-                </Select>
+                  onChange={setAssignee}
+                />
                 <Button
                   size="small"
                   disabled={pending || !assignee}
@@ -912,18 +908,13 @@ export function MergeRequestOverview({
             })}
             {canWrite && request?.status === 'open' && candidates.length > 0 && (
               <Stack direction="vertical" gap="condensed">
-                <Select
-                  aria-label="Add reviewer"
+                <MemberSelect
+                  label="Add reviewer"
+                  placeholder="Add reviewer…"
+                  members={candidates}
                   value={reviewer}
-                  onChange={(event) => setReviewer(event.target.value)}
-                >
-                  <option value="">Add reviewer…</option>
-                  {candidates.map((member) => (
-                    <option key={member.user_id} value={member.user_id}>
-                      {member.name || member.email}
-                    </option>
-                  ))}
-                </Select>
+                  onChange={setReviewer}
+                />
                 <Button
                   size="small"
                   disabled={pending || !reviewer}

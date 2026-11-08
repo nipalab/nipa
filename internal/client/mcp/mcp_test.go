@@ -153,11 +153,15 @@ func (f fakeRepoClient) GetCommitLog(context.Context, string, string, string, *s
 type fakeMRClient struct {
 	requests []*domain.MergeRequest
 	err      error
+	created  *domain.NewMergeRequest
 }
 
 func (fakeMRClient) Connect(context.Context, string) error { return nil }
 
-func (fakeMRClient) CreateMergeRequest(context.Context, string, string, string, string, string, string, bool) (*domain.MergeRequest, error) {
+func (f fakeMRClient) CreateMergeRequest(_ context.Context, _, _ string, in domain.NewMergeRequest) (*domain.MergeRequest, error) {
+	if f.created != nil {
+		*f.created = in
+	}
 	return &domain.MergeRequest{Number: 1, Title: "Add b", Status: domain.MergeRequestOpen}, nil
 }
 
@@ -659,6 +663,22 @@ func TestMrCreate_Success(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(toolText(t, res)), &out))
 	require.Equal(t, int64(1), out.Number)
 	require.Equal(t, "open", out.Status)
+}
+
+func TestMrCreate_ReviewersAndAssignees(t *testing.T) {
+	root := setupRepo(t, nil)
+	created := &domain.NewMergeRequest{}
+	session := connect(t, Options{AllowWrite: true, NewUseCases: func() UseCases {
+		return UseCases{MR: usecase.NewMergeRequest(loggedInAuth(), fakeMRClient{created: created}, localrepo.NewLocalRepo())}
+	}})
+
+	res := call(t, session, "nipa_mr_create", map[string]any{
+		"repo": root, "title": "Add b", "target": "release",
+		"reviewers": []string{"r1"}, "assignees": []string{"a1", "a2"},
+	})
+	require.False(t, res.IsError)
+	require.Equal(t, []string{"r1"}, created.ReviewerIDs)
+	require.Equal(t, []string{"a1", "a2"}, created.AssigneeIDs)
 }
 
 func TestStatus_FromRepoDir(t *testing.T) {

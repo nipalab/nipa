@@ -395,3 +395,44 @@ func TestHandler_MergeRequestContextError(t *testing.T) {
 		})
 	}
 }
+
+func TestHandler_CreateMergeRequestWithParticipants(t *testing.T) {
+	env := newHandlerTestEnv(t)
+	mainPush := env.seedFiles(t, map[string]string{"a.txt": "hello"})
+	env.createBranch(t, "feature", "main")
+	env.seedPushTo(t, "feature", mainPush.CommitID.Base36(), map[string]string{"b.txt": "feature"})
+	bob := env.createUser(t, "bob", "bob@example.com")
+
+	claims := &domain.Claims{UserID: env.userID, IsAdmin: true}
+	projectParams := map[string]string{"org": "default", "project": "default"}
+	body := `{"title":"Add b","source_branch":"feature","target_branch":"main","reviewer_ids":["` + bob.ID.Base36() +
+		`"],"assignee_ids":["` + bob.ID.Base36() + `"]}`
+	appCtx := &fakeAppContext{claims: claims, pathParameters: projectParams, body: []byte(body)}
+	env.handler.CreateMergeRequest(appCtx)
+	require.Equal(t, http.StatusOK, appCtx.statusCode)
+	created := appCtx.response.(model.MergeRequestResponse)
+	require.Len(t, created.Assignees, 1)
+	require.Equal(t, bob.ID.Base36(), created.Assignees[0].UserID)
+
+	ctx := domain.ContextWithClaim(context.Background(), *claims)
+	requests, err := env.handler.useCase.MergeRequestReview().ReviewRequests(ctx, snow.ID(1), created.Number)
+	require.NoError(t, err)
+	require.Len(t, requests, 1)
+	require.Equal(t, bob.ID, requests[0].Reviewer.UserID)
+	timeline, err := env.handler.useCase.MergeRequestReview().Timeline(ctx, snow.ID(1), created.Number)
+	require.NoError(t, err)
+	kinds := make([]string, 0, len(timeline))
+	for _, item := range timeline {
+		kinds = append(kinds, item.Kind)
+	}
+	require.Equal(t, []string{domain.MergeRequestEventOpened, domain.MergeRequestEventReviewRequested}, kinds)
+
+	for _, bad := range []string{
+		`{"title":"t","source_branch":"feature","target_branch":"main","reviewer_ids":["!!"]}`,
+		`{"title":"t","source_branch":"feature","target_branch":"main","assignee_ids":["!!"]}`,
+	} {
+		appCtx = &fakeAppContext{claims: claims, pathParameters: projectParams, body: []byte(bad)}
+		env.handler.CreateMergeRequest(appCtx)
+		require.Equal(t, http.StatusBadRequest, appCtx.statusCode)
+	}
+}

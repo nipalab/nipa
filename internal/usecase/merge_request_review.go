@@ -486,6 +486,25 @@ func (r *MergeRequestReview) RequestReview(ctx context.Context, projectID snow.I
 	return request, nil
 }
 
+// addReviewRequest stores a review request and its timeline event without
+// emitting a webhook; the merge request usecase calls it inside the create
+// transaction.
+func (r *MergeRequestReview) addReviewRequest(ctx context.Context, mr *domain.MergeRequest, reviewerID, requestedBy snow.ID) error {
+	if _, err := r.repo.CreateReviewRequest(ctx, domain.MergeRequestReviewRequest{
+		ID:             r.snowNode.Generate(),
+		MergeRequestID: mr.ID,
+		Reviewer:       domain.ReviewActor{UserID: reviewerID},
+		RequestedBy:    domain.ReviewActor{UserID: requestedBy},
+	}); err != nil {
+		return err
+	}
+	return r.addEvent(ctx, mr, domain.MergeRequestTimelineItem{
+		Kind:    domain.MergeRequestEventReviewRequested,
+		Actor:   domain.ReviewActor{UserID: requestedBy},
+		Subject: &domain.ReviewActor{UserID: reviewerID},
+	})
+}
+
 // RemoveReviewRequest withdraws a pending review request.
 func (r *MergeRequestReview) RemoveReviewRequest(ctx context.Context, projectID snow.ID, number int64, reviewerID snow.ID) error {
 	claim, ok := domain.ClaimFromContext(ctx)

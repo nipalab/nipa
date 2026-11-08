@@ -8,6 +8,7 @@ import (
 	"github.com/nipalab/nipa/internal/http"
 	"github.com/nipalab/nipa/internal/http/model"
 	"github.com/nipalab/nipa/internal/snow"
+	"github.com/nipalab/nipa/internal/usecase"
 )
 
 const defaultMergeRequestLimit = 50
@@ -95,9 +96,25 @@ func (h *Handler) CreateMergeRequest(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	request, err := h.useCase.MergeRequest().Create(
-		appCtx.Context(), project.ID, body.Title, body.Description, body.SourceBranch, body.TargetBranch, body.Draft,
-	)
+	reviewerIDs, err := parseUserIDs(body.ReviewerIDs, "invalid reviewer id")
+	if err != nil {
+		appCtx.HandleError(err)
+		return
+	}
+	assigneeIDs, err := parseUserIDs(body.AssigneeIDs, "invalid assignee id")
+	if err != nil {
+		appCtx.HandleError(err)
+		return
+	}
+	request, err := h.useCase.MergeRequest().Create(appCtx.Context(), project.ID, usecase.CreateMergeRequestInput{
+		Title:        body.Title,
+		Description:  body.Description,
+		SourceBranch: body.SourceBranch,
+		TargetBranch: body.TargetBranch,
+		Draft:        body.Draft,
+		ReviewerIDs:  reviewerIDs,
+		AssigneeIDs:  assigneeIDs,
+	})
 	if err != nil {
 		appCtx.HandleError(err)
 		return
@@ -233,14 +250,10 @@ func (h *Handler) SetMergeRequestAssignees(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	userIDs := make([]snow.ID, 0, len(body.UserIDs))
-	for _, raw := range body.UserIDs {
-		id, err := snow.ParseBase36(raw)
-		if err != nil {
-			appCtx.HandleError(domain.NewErrorUser("invalid assignee id"))
-			return
-		}
-		userIDs = append(userIDs, id)
+	userIDs, err := parseUserIDs(body.UserIDs, "invalid assignee id")
+	if err != nil {
+		appCtx.HandleError(err)
+		return
 	}
 	request, err := h.useCase.MergeRequest().SetAssignees(appCtx.Context(), project.ID, number, userIDs)
 	if err != nil {
@@ -456,4 +469,16 @@ func toMergeabilityResponse(info *domain.Mergeability) *model.MergeabilityRespon
 		resp.MergeBaseCommitID = info.MergeBaseCommitID.Base36()
 	}
 	return resp
+}
+
+func parseUserIDs(raw []string, invalid string) ([]snow.ID, error) {
+	ids := make([]snow.ID, 0, len(raw))
+	for _, value := range raw {
+		id, err := snow.ParseBase36(value)
+		if err != nil {
+			return nil, domain.NewErrorUser(invalid)
+		}
+		ids = append(ids, id)
+	}
+	return ids, nil
 }

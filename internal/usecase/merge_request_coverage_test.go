@@ -38,7 +38,7 @@ func TestMergeRequest_Create_WIPTitleDrafts(t *testing.T) {
 			return &in, nil
 		})
 
-	created, err := mr.Create(permissionCtx(7), snow.ID(1), "WIP: feature", "", "feature", "main", false)
+	created, err := mr.Create(permissionCtx(7), snow.ID(1), CreateMergeRequestInput{Title: "WIP: feature", SourceBranch: "feature", TargetBranch: "main"})
 	require.NoError(t, err)
 	require.True(t, created.Draft)
 }

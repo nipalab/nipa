@@ -125,6 +125,9 @@ type NewMergeRequest struct {
 	Source      string `json:"source"`
 	Target      string `json:"target"`
 	Draft       bool   `json:"draft"`
+	// Reviewers and Assignees are user ids attached when the request opens.
+	Reviewers []string `json:"reviewers,omitempty"`
+	Assignees []string `json:"assignees,omitempty"`
 }
 
 // CommentInput starts a thread; Path empty is a conversation comment,
@@ -329,6 +332,7 @@ func (s *Service) CreateMergeRequest(ctx context.Context, root string, in NewMer
 	err := s.call(ctx, root, func(c daemonpb.NipaDaemonClient) (err error) {
 		res, err = c.ProxyMergeRequestCreate(ctx, &daemonpb.ProxyMergeRequestCreateRequest{Root: root, Request: &pb.CreateMergeRequestRequest{
 			Title: in.Title, Description: strings.TrimSpace(in.Description), SourceBranch: in.Source, TargetBranch: in.Target, Draft: in.Draft,
+			ReviewerIds: in.Reviewers, AssigneeIds: in.Assignees,
 		}})
 		return err
 	})

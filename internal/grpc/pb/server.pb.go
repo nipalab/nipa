@@ -5548,6 +5548,8 @@ type CreateMergeRequestRequest struct {
 	SourceBranch  string                 `protobuf:"bytes,4,opt,name=source_branch,json=sourceBranch,proto3" json:"source_branch,omitempty"`
 	TargetBranch  string                 `protobuf:"bytes,5,opt,name=target_branch,json=targetBranch,proto3" json:"target_branch,omitempty"`
 	Draft         bool                   `protobuf:"varint,6,opt,name=draft,proto3" json:"draft,omitempty"`
+	ReviewerIds   []string               `protobuf:"bytes,7,rep,name=reviewer_ids,json=reviewerIds,proto3" json:"reviewer_ids,omitempty"`
+	AssigneeIds   []string               `protobuf:"bytes,8,rep,name=assignee_ids,json=assigneeIds,proto3" json:"assignee_ids,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -5622,6 +5624,20 @@ func (x *CreateMergeRequestRequest) GetDraft() bool {
 		return x.Draft
 	}
 	return false
+}
+
+func (x *CreateMergeRequestRequest) GetReviewerIds() []string {
+	if x != nil {
+		return x.ReviewerIds
+	}
+	return nil
+}
+
+func (x *CreateMergeRequestRequest) GetAssigneeIds() []string {
+	if x != nil {
+		return x.AssigneeIds
+	}
+	return nil
 }
 
 type CreateMergeRequestResponse struct {
@@ -11042,14 +11058,16 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"\x17merged_source_commit_id\x18\x11 \x01(\tH\x02R\x14mergedSourceCommitId\x88\x01\x01B\x12\n" +
 	"\x10_merge_commit_idB\x17\n" +
 	"\x15_merge_base_commit_idB\x1a\n" +
-	"\x18_merged_source_commit_id\"\xe4\x01\n" +
+	"\x18_merged_source_commit_id\"\xaa\x02\n" +
 	"\x19CreateMergeRequestRequest\x12/\n" +
 	"\acontext\x18\x01 \x01(\v2\x15.greet.ProjectContextR\acontext\x12\x14\n" +
 	"\x05title\x18\x02 \x01(\tR\x05title\x12 \n" +
 	"\vdescription\x18\x03 \x01(\tR\vdescription\x12#\n" +
 	"\rsource_branch\x18\x04 \x01(\tR\fsourceBranch\x12#\n" +
 	"\rtarget_branch\x18\x05 \x01(\tR\ftargetBranch\x12\x14\n" +
-	"\x05draft\x18\x06 \x01(\bR\x05draft\"\\\n" +
+	"\x05draft\x18\x06 \x01(\bR\x05draft\x12!\n" +
+	"\freviewer_ids\x18\a \x03(\tR\vreviewerIds\x12!\n" +
+	"\fassignee_ids\x18\b \x03(\tR\vassigneeIds\"\\\n" +
 	"\x1aCreateMergeRequestResponse\x12>\n" +
 	"\rmerge_request\x18\x01 \x01(\v2\x19.greet.MergeRequestDetailR\fmergeRequest\"\xc1\x01\n" +
 	"\x19UpdateMergeRequestRequest\x12/\n" +

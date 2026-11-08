@@ -8,18 +8,20 @@ import (
 	"github.com/nipalab/nipa/internal/grpc/pb"
 )
 
-func (c *Client) CreateMergeRequest(ctx context.Context, org, project, title, description, sourceBranch, targetBranch string, draft bool) (*clientDomain.MergeRequest, error) {
+func (c *Client) CreateMergeRequest(ctx context.Context, org, project string, in clientDomain.NewMergeRequest) (*clientDomain.MergeRequest, error) {
 	client, err := c.transport.NipaServiceClient()
 	if err != nil {
 		return nil, err
 	}
 	res, err := client.CreateMergeRequest(ctx, &pb.CreateMergeRequestRequest{
 		Context:      &pb.ProjectContext{Org: org, Project: project},
-		Title:        title,
-		Description:  description,
-		SourceBranch: sourceBranch,
-		TargetBranch: targetBranch,
-		Draft:        draft,
+		Title:        in.Title,
+		Description:  in.Description,
+		SourceBranch: in.SourceBranch,
+		TargetBranch: in.TargetBranch,
+		Draft:        in.Draft,
+		ReviewerIds:  in.ReviewerIDs,
+		AssigneeIds:  in.AssigneeIDs,
 	})
 	if err != nil {
 		return nil, toDomainError(err)

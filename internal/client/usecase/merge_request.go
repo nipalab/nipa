@@ -12,7 +12,7 @@ import (
 
 type mrClient interface {
 	Connect(ctx context.Context, host string) error
-	CreateMergeRequest(ctx context.Context, org, project, title, description, sourceBranch, targetBranch string, draft bool) (*domain.MergeRequest, error)
+	CreateMergeRequest(ctx context.Context, org, project string, in domain.NewMergeRequest) (*domain.MergeRequest, error)
 	UpdateMergeRequest(ctx context.Context, org, project string, number int64, title, description string, draft *bool) (*domain.MergeRequest, error)
 	SetMergeRequestAssignees(ctx context.Context, org, project string, number int64, userIDs []string) (*domain.MergeRequest, error)
 	ReportMergeRequestCheck(ctx context.Context, org, project string, number int64, name, state, detailsURL, headCommitID string) (*domain.MergeRequestCheck, error)
@@ -50,6 +50,8 @@ type CreateMergeRequestOptions struct {
 	Source      string
 	Target      string
 	Draft       bool
+	Reviewers   []string
+	Assignees   []string
 }
 
 // ListMergeRequestOptions filters and paginates a merge request listing.
@@ -93,7 +95,15 @@ func (m *MergeRequest) Create(ctx context.Context, root string, opts CreateMerge
 	if source == target {
 		return nil, domain.NewUserError(fmt.Sprintf("source and target branches must differ (both are %q); pass --target", source))
 	}
-	return m.client.CreateMergeRequest(ctx, url.Org, url.Project, title, opts.Description, source, target, opts.Draft)
+	return m.client.CreateMergeRequest(ctx, url.Org, url.Project, domain.NewMergeRequest{
+		Title:        title,
+		Description:  opts.Description,
+		SourceBranch: source,
+		TargetBranch: target,
+		Draft:        opts.Draft,
+		ReviewerIDs:  trimIDs(opts.Reviewers),
+		AssigneeIDs:  trimIDs(opts.Assignees),
+	})
 }
 
 // Update patches the title and description and/or toggles the draft state.
@@ -123,13 +133,17 @@ func (m *MergeRequest) SetAssignees(ctx context.Context, root, id string, userID
 	if err != nil {
 		return nil, err
 	}
+	return m.client.SetMergeRequestAssignees(ctx, url.Org, url.Project, number, trimIDs(userIDs))
+}
+
+func trimIDs(userIDs []string) []string {
 	cleaned := make([]string, 0, len(userIDs))
 	for _, userID := range userIDs {
 		if trimmed := strings.TrimSpace(userID); trimmed != "" {
 			cleaned = append(cleaned, trimmed)
 		}
 	}
-	return m.client.SetMergeRequestAssignees(ctx, url.Org, url.Project, number, cleaned)
+	return cleaned
 }
 
 // Checks lists the status checks reported for the request's current head.
