@@ -36,6 +36,7 @@ config.yaml
 /plugins/godot/build*/
 /plugins/godot/addons/nipa/bin/
 /plugins/godot/tests/project/.godot/
+/plugins/godot/tests/project/addons/nipa
 /plugins/godot/tests/project/reports/
 # Local databases (sqlite DSN: nipa.db)
 *.db

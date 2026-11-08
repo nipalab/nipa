@@ -421,6 +421,45 @@ TEST_CASE("a string error field inside a stream item is data, not an error") {
     fake.stop();
 }
 
+TEST_CASE("an error line with non-string fields still maps to DaemonError") {
+    nipa::test::FakeDaemon fake;
+    fake.on_stream("Push", [](const json&) {
+        nipa::test::StreamScript script;
+        script.lines = {R"({"error":{"code":7,"message":["x"]}})"};
+        return script;
+    });
+    fake.start();
+    Client client(endpoint_for(fake));
+    try {
+        client.stream("Push", json::object(), [](const json&) { return true; }, 2s);
+        FAIL("expected DaemonError");
+    } catch (const DaemonError& e) {
+        CHECK(e.http_status == 500);
+        CHECK(std::string(e.what()) == "stream failed");
+    }
+    fake.stop();
+}
+
+TEST_CASE("a throwing consumer leaves no cancel callback behind") {
+    nipa::test::FakeDaemon fake;
+    fake.on_stream("WatchChanges", [](const json&) {
+        nipa::test::StreamScript script;
+        script.lines = {R"({"paths":[]})"};
+        return script;
+    });
+    fake.on_unary("Ping", [](const json&) { return nipa::test::Reply{200, json::object()}; });
+    fake.start();
+    Client client(endpoint_for(fake));
+    CancelToken token;
+    CHECK_THROWS_AS(client.stream("WatchChanges", json::object(), [](const json&) -> bool {
+        throw std::runtime_error("consumer failed");
+    }, 2s, &token), std::runtime_error);
+    CHECK_NOTHROW(client.call("Ping", json::object(), 2s, &token));
+    token.cancel();
+    CHECK(token.cancelled());
+    fake.stop();
+}
+
 TEST_CASE("status codes follow the gRPC mapping") {
     using nipa::daemon::http_status_for_code;
     CHECK(http_status_for_code("InvalidArgument") == 400);

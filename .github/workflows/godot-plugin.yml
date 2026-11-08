@@ -55,7 +55,7 @@ jobs:
             -DNIPA_BUILD_EXTENSION=OFF \
             -DCMAKE_CXX_FLAGS="-fsanitize=thread -O1 -g" \
             -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=thread"
-          cmake --build plugins/godot/build-tsan --target nipa_core_tests -j
+          cmake --build plugins/godot/build-tsan --target nipa_core_tests -j "$(nproc)"
 
       - name: Run
         env:
@@ -130,6 +130,9 @@ jobs:
           (cd "$dir" && mv godot.zip "$zip_name" && sha512sum -c expected.txt)
           unzip -q -o "$dir/$zip_name" -d "$dir"
           chmod +x "$dir"/Godot_*.x86_64
+
+      - name: Link the add-on into the smoke project
+        run: ln -sfn ../../../addons/nipa plugins/godot/tests/project/addons/nipa
 
       - name: Import project
         working-directory: plugins/godot/tests/project

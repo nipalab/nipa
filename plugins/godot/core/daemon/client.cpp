@@ -20,14 +20,19 @@ std::string trim(const std::string& text) {
     return text.substr(begin, end - begin + 1);
 }
 
+std::string string_field(const nlohmann::json& j, const char* key) {
+    auto found = j.find(key);
+    return found != j.end() && found->is_string() ? found->get<std::string>() : std::string();
+}
+
 DaemonError error_from_body(int status, const std::string& body) {
     std::string message;
     std::string code;
     try {
         auto j = nlohmann::json::parse(body);
         if (j.is_object()) {
-            code = j.value("code", std::string());
-            message = j.value("message", std::string());
+            code = string_field(j, "code");
+            message = string_field(j, "message");
         }
     } catch (const nlohmann::json::exception&) {
     }
@@ -38,8 +43,8 @@ DaemonError error_from_body(int status, const std::string& body) {
 }
 
 DaemonError error_from_envelope(const nlohmann::json& error) {
-    std::string code = error.value("code", std::string());
-    std::string message = error.value("message", std::string());
+    std::string code = string_field(error, "code");
+    std::string message = string_field(error, "message");
     if (message.empty()) {
         message = code.empty() ? "stream failed" : code;
     }
@@ -60,6 +65,23 @@ httplib::Client make_client(const Endpoint& ep, std::chrono::milliseconds timeou
     cli.set_write_timeout(timeout);
     return cli;
 }
+
+class CallbackGuard {
+public:
+    CallbackGuard(CancelToken* token, httplib::Client& cli)
+        : token_(token), id_(token ? token->add_callback([&cli] { cli.stop(); }) : 0) {}
+    ~CallbackGuard() {
+        if (token_) {
+            token_->remove_callback(id_);
+        }
+    }
+    CallbackGuard(const CallbackGuard&) = delete;
+    CallbackGuard& operator=(const CallbackGuard&) = delete;
+
+private:
+    CancelToken* token_;
+    std::size_t id_;
+};
 
 }  // namespace
 
@@ -93,13 +115,13 @@ nlohmann::json Client::call(const std::string& method, const nlohmann::json& bod
     }
     httplib::Client cli = make_client(endpoint_, timeout);
     httplib::Headers headers{{kTokenHeader, endpoint_.token}};
-    std::size_t id = cancel ? cancel->add_callback([&cli] { cli.stop(); }) : 0;
-    auto res = cli.Post("/v1/" + method, headers, body.dump(), kJsonType);
-    if (cancel) {
-        cancel->remove_callback(id);
-        if (cancel->cancelled()) {
-            throw CancelledError();
-        }
+    httplib::Result res;
+    {
+        CallbackGuard guard(cancel, cli);
+        res = cli.Post("/v1/" + method, headers, body.dump(), kJsonType);
+    }
+    if (cancel && cancel->cancelled()) {
+        throw CancelledError();
     }
     if (!res) {
         throw *transport_error(res.error(), method);
@@ -179,12 +201,12 @@ void Client::stream(const std::string& method, const nlohmann::json& body, const
         return true;
     };
 
-    std::size_t id = cancel ? cancel->add_callback([&cli] { cli.stop(); }) : 0;
     httplib::Response res;
     httplib::Error error = httplib::Error::Success;
-    bool sent = cli.send(req, res, error);
-    if (cancel) {
-        cancel->remove_callback(id);
+    bool sent = false;
+    {
+        CallbackGuard guard(cancel, cli);
+        sent = cli.send(req, res, error);
     }
     if (cancel && cancel->cancelled()) {
         throw CancelledError();

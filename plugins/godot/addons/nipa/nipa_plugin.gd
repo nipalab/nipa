@@ -6,6 +6,7 @@ const RECONNECT_ITEM := "Nipa: Reconnect"
 
 var dock: Control
 var _op_kinds := {}
+var _scene_times := {}
 var _connected_session: Object
 
 
@@ -37,6 +38,7 @@ func _exit_tree() -> void:
 		dock.queue_free()
 		dock = null
 	_op_kinds.clear()
+	_scene_times.clear()
 
 
 func reconnect() -> void:
@@ -61,27 +63,37 @@ func _session() -> Object:
 
 func _on_op_queued(id: int, kind: String) -> void:
 	_op_kinds[id] = kind
+	var times := {}
+	for scene in EditorInterface.get_open_scenes():
+		times[scene] = FileAccess.get_modified_time(scene)
+	_scene_times[id] = times
 
 
 func _on_op_finished(id: int, ok: bool, message: String, changed_paths: PackedStringArray) -> void:
 	var kind: String = _op_kinds.get(id, "operation")
 	_op_kinds.erase(id)
+	var times: Dictionary = _scene_times.get(id, {})
+	_scene_times.erase(id)
 	EditorInterface.get_resource_filesystem().scan()
-	_reload_changed_scenes(changed_paths)
+	_reload_changed_scenes(changed_paths, times)
 	var severity := EditorToaster.SEVERITY_INFO if ok else EditorToaster.SEVERITY_ERROR
 	var text := "Nipa %s: %s" % [kind, message if not message.is_empty() else ("done" if ok else "failed")]
 	EditorInterface.get_editor_toaster().push_toast(text, severity)
 
 
-func _reload_changed_scenes(changed_paths: PackedStringArray) -> void:
+# Ops report no per-file list, so a scene counts as changed when its file
+# changed on disk while the op ran (or the op named it).
+func _reload_changed_scenes(changed_paths: PackedStringArray, times_before: Dictionary) -> void:
 	var session := _session()
-	if session == null:
-		return
-	var open_scenes := EditorInterface.get_open_scenes()
-	for clone_path in changed_paths:
-		var project_path: String = session.to_project_path(clone_path)
-		if project_path.is_empty():
+	var named := {}
+	if session:
+		for clone_path in changed_paths:
+			var project_path: String = session.to_project_path(clone_path)
+			if not project_path.is_empty():
+				named["res://" + project_path] = true
+	for scene in EditorInterface.get_open_scenes():
+		if not FileAccess.file_exists(scene):
 			continue
-		var res := "res://" + project_path
-		if res.get_extension() in ["tscn", "scn"] and res in open_scenes:
-			EditorInterface.reload_scene_from_path(res)
+		var moved: bool = times_before.has(scene) and FileAccess.get_modified_time(scene) != times_before[scene]
+		if moved or named.has(scene):
+			EditorInterface.reload_scene_from_path(scene)

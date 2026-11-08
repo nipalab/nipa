@@ -6,7 +6,6 @@
 #include <stdexcept>
 #include <random>
 #ifndef _WIN32
-#include <stdlib.h>
 #endif
 
 namespace nipa::test {
@@ -162,19 +161,20 @@ int FakeDaemon::count(const std::string& method) const {
     return total;
 }
 
+// Test dirs live under the build tree (ctest's working directory), never in a shared temp dir.
 std::string make_temp_dir() {
-#ifndef _WIN32
-    std::string path = (std::filesystem::temp_directory_path() / "nipa-godot-XXXXXX").string();
-    if (mkdtemp(path.data()) == nullptr) {
-        throw std::runtime_error("mkdtemp failed for " + path);
-    }
-    return path;
-#else
+    static std::atomic<unsigned> counter{0};
     std::random_device device;
-    auto path = std::filesystem::temp_directory_path() / ("nipa-godot-" + std::to_string(device()));
-    std::filesystem::create_directory(path);
-    return path.string();
-#endif
+    auto base = std::filesystem::current_path() / "test-tmp";
+    std::filesystem::create_directories(base);
+    while (true) {
+        auto path = base / ("nipa-godot-" + std::to_string(device()) + "-" + std::to_string(counter++));
+        if (std::filesystem::create_directory(path)) {
+            std::filesystem::permissions(path, std::filesystem::perms::owner_all,
+                                         std::filesystem::perm_options::replace);
+            return path.string();
+        }
+    }
 }
 
 void write_endpoint(const std::string& path, int json_port, const std::string& token, const std::string& version) {
