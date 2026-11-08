@@ -23,6 +23,8 @@ add_library(nipa_core STATIC
   core/daemon/messages.cpp
   core/daemon/spawn.cpp
   core/paths/project_paths.cpp
+  core/locks/lock_policy.cpp
+  core/locks/readonly_guard.cpp
   core/status/status.cpp
   core/diff/diff.cpp
   core/session/event_queue.cpp
@@ -63,6 +65,8 @@ if(NIPA_BUILD_TESTS)
     core/tests/test_diff.cpp
     core/tests/test_messages.cpp
     core/tests/test_session.cpp
+    core/tests/test_locks.cpp
+    core/tests/test_readonly_guard.cpp
   )
   target_include_directories(nipa_core_tests SYSTEM PRIVATE ${NIPA_THIRDPARTY}/doctest)
   target_link_libraries(nipa_core_tests PRIVATE nipa_core)

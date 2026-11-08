@@ -65,7 +65,7 @@ func (w *WorkingCopy) matchesSnapshot(path string, f domain.SnapshotFile) bool {
 	if err != nil {
 		return false
 	}
-	if serverModeFromPerm(info.Mode()) != normalizedMode(f.Mode) {
+	if trackedModeFromPerm(info.Mode(), f.Mode) != normalizedMode(f.Mode) {
 		return false
 	}
 	current, err := w.hashFile(path, f.Encoding)

@@ -44,6 +44,33 @@ std::vector<std::string> sidecar_candidates(const std::string& path) {
     return {path + ".import", path + ".uid"};
 }
 
+std::string asset_of(const std::string& path) {
+    std::string p = normalize(path);
+    for (const char* suffix : {".import", ".uid"}) {
+        std::string tail(suffix);
+        if (p.size() <= tail.size() || p.compare(p.size() - tail.size(), tail.size(), tail) != 0) {
+            continue;
+        }
+        std::string asset = p.substr(0, p.size() - tail.size());
+        auto slash = asset.find_last_of('/');
+        auto dot = asset.find_last_of('.');
+        bool has_extension = dot != std::string::npos && (slash == std::string::npos || dot > slash + 1);
+        if (has_extension) {
+            return asset;
+        }
+    }
+    return p;
+}
+
+std::vector<std::string> lock_unit(const std::string& path) {
+    std::string asset = asset_of(path);
+    std::vector<std::string> out{asset};
+    for (const auto& sidecar : sidecar_candidates(asset)) {
+        out.push_back(sidecar);
+    }
+    return out;
+}
+
 std::vector<std::string> expand_with_sidecars(const std::vector<std::string>& paths,
                                               const std::set<std::string>& existing) {
     std::vector<std::string> out;

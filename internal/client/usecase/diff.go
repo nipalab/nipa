@@ -436,7 +436,7 @@ func (d *Diff) scanWorking(root string, oldMap map[string]diff.Entry, staged map
 		// unchanged: reuse its metadata and skip reading the content.
 		if tracked {
 			if entry, cached := statCache[p]; cached && statMatches(entry, info) && entry.Hash == old.Hash {
-				old.Mode = serverModeFromPerm(info.Mode())
+				old.Mode = trackedModeFromPerm(info.Mode(), old.Mode)
 				newMap[p] = old
 				continue
 			}
@@ -453,9 +453,13 @@ func (d *Diff) scanWorking(root string, oldMap map[string]diff.Entry, staged map
 			return nil, nil, fmt.Errorf("read %s: %w", p, err)
 		}
 		hashes, sizes := chunkHashesAndSizes(hf.chunks)
+		mode := serverModeFromPerm(info.Mode())
+		if tracked {
+			mode = trackedModeFromPerm(info.Mode(), old.Mode)
+		}
 		newMap[p] = diff.Entry{
 			Path:        p,
-			Mode:        serverModeFromPerm(info.Mode()),
+			Mode:        mode,
 			SizeBytes:   hf.size,
 			IsBinary:    hf.isBinary,
 			Encoding:    hf.encoding,
@@ -530,4 +534,23 @@ func serverModeFromPerm(perm os.FileMode) int {
 		return 1
 	}
 	return 2
+}
+
+// trackedModeFromPerm ignores a removed write bit on a file tracked as
+// writable, so an engine plugin's read-only lock guard never reads as a mode
+// change.
+func trackedModeFromPerm(perm os.FileMode, tracked int) int {
+	mode := serverModeFromPerm(perm)
+	if mode == 1 && normalizedMode(tracked) != 1 {
+		return 2
+	}
+	return mode
+}
+
+// pushPerm restores the owner write bit on a tracked writable file the same way.
+func pushPerm(perm os.FileMode, tracked int) os.FileMode {
+	if tracked != 0 && tracked != 1 && perm&0o222 == 0 {
+		return perm | 0o200
+	}
+	return perm
 }

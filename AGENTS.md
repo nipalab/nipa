@@ -185,12 +185,21 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   plan in `docs/plans/GODOT_PLUGIN.md`): Godot 4.4+ add-on `addons/nipa` over
   the daemon JSON bridge. `core/` is engine-free C++17 (`daemon` client,
   connector and messages, `paths` project/clone mapping and sidecars, `status`
-  VCS mapping and cache, `diff` model and Myers, `session` worker, stream loops
+  VCS mapping and cache, `diff` model and Myers, `locks` (`LockPolicy` port of
+  Unity's covering/scope/push-check rules with asset+sidecar lock units, and
+  `ReadOnlyGuard` for strict read-only mode, state in `.godot/nipa/readonly.json`),
+  `session` worker, stream loops, lock cache/lock/unlock/blocking push check
   and events; tested with doctest against `core/tests/fake_daemon`, gcovr gate
   80%, `make godot-test`). `extension/` is the godot-cpp GDExtension
   (`NipaVCSInterface` extends `EditorVCSInterface`, singleton `Nipa` =
   `NipaSession`, `NipaRequest`; editor-only, `make godot-build`). `addons/nipa/`
-  holds the GDScript `EditorPlugin`, `settings.gd` and the Nipa dock scene.
+  holds the GDScript `EditorPlugin` (auto-lock on edit, save warnings, lock
+  refresh on focus/timer), `settings.gd` (`nipa/locking/*`), `context_menu.gd`
+  (FileSystem/scene-tab Lock/Unlock), `inspector_plugin.gd`, and the dock,
+  `bottom_panel` (Locks tab) and `lock_badge` scenes; `_commit` runs the lock
+  pre-check. The client treats a removed write bit on a file tracked writable as
+  no mode change (`trackedModeFromPerm`/`pushPerm`), so the guard never leaks
+  into status or pushes.
   `tests/project` is the headless smoke project (`check_load.gd`) and the
   vendored gdUnit4 spec. Vendored code and versions: `plugins/godot/thirdparty/README.md`.
 Flow for `nipa clone <url> <target>`: `cli/clone.go` parses the URL →

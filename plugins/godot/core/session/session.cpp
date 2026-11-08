@@ -1,6 +1,7 @@
 #include "core/session/session.h"
 
 #include <algorithm>
+#include <set>
 
 namespace nipa::session {
 namespace {
@@ -9,6 +10,25 @@ using json = nlohmann::json;
 
 json root_body(const std::string& root) {
     return {{"root", root}};
+}
+
+std::string join(const std::vector<std::string>& parts) {
+    std::string out;
+    for (const auto& part : parts) {
+        out += (out.empty() ? "" : "; ") + part;
+    }
+    return out;
+}
+
+std::string fingerprint(const locks::LockStatus& s) {
+    std::string out = s.user_id + "|" + s.branch + (s.default_branch ? "|d" : "|b") + (s.can_release_any ? "a" : "-");
+    for (const auto& l : s.locks) {
+        out += "|" + l.id + ":" + l.path + ":" + l.branch + (l.global ? ":g:" : ":b:") + l.held_by + ":" + l.held_by_name;
+    }
+    for (const auto& f : s.files) {
+        out += "|" + f.path + ":" + f.state + ":" + f.lock_path + ":" + f.held_by_name;
+    }
+    return out;
 }
 
 }  // namespace
@@ -61,6 +81,8 @@ void Session::stop() {
             thread->join();
         }
     }
+
+    release_guard();
 
     std::deque<Task> leftover;
     {
@@ -226,6 +248,7 @@ Session::Link Session::ensure_connected() {
     submit_status();
     submit_branches();
     submit_commits();
+    submit_locks();
     return link;
 }
 
@@ -325,6 +348,7 @@ void Session::watch_activity_body(const daemon::Client& client) {
                     events_.push(std::move(e));
                 }
             }
+            submit_locks();
             Event summary;
             summary.kind = EventKind::ActivitySummary;
             summary.done = daemon::json_int(item, "incoming");
@@ -417,9 +441,11 @@ void Session::refresh_after_op(const std::string& name) {
         submit_status();
         submit_commits();
         submit_branches();
+        submit_locks();
     } else if (name == "push" || name == "update") {
         submit_status();
         submit_commits();
+        submit_locks();
     } else if (name == "branch-create" || name == "branch-delete") {
         submit_branches();
     }
@@ -703,6 +729,220 @@ bool Session::diff_blocking(const std::string& key, std::chrono::milliseconds ti
     std::unique_lock<std::mutex> lock(mu_);
     cache_cv_.wait_for(lock, timeout, [this, &key] { return diffs_.count(key) > 0 || stopping_; });
     return diffs_.count(key) > 0;
+}
+
+void Session::set_lock_options(std::vector<std::string> extensions, bool strict, std::string guard_state_path) {
+    {
+        std::lock_guard<std::mutex> guard(mu_);
+        lock_extensions_ = std::move(extensions);
+        strict_ = strict;
+        guard_state_path_ = std::move(guard_state_path);
+    }
+    enqueue("lock-options", true, [this](std::int64_t) {
+        apply_lock_options();
+        return Outcome{};
+    });
+}
+
+locks::LockPolicy Session::locks() const {
+    std::lock_guard<std::mutex> guard(mu_);
+    return locks_;
+}
+
+void Session::apply_lock_options() {
+    bool strict = false;
+    std::string state_path;
+    {
+        std::lock_guard<std::mutex> guard(mu_);
+        if (locks_.loaded()) {
+            locks_ = locks::LockPolicy(locks_.status(), lock_extensions_);
+        }
+        strict = strict_;
+        state_path = guard_state_path_;
+    }
+    if (!strict) {
+        release_guard();
+    } else if (!guard_) {
+        guard_ = std::make_unique<locks::ReadOnlyGuard>(options_.root, state_path);
+        guard_->load();
+    }
+    Event e;
+    e.kind = EventKind::LocksChanged;
+    events_.push(std::move(e));
+    submit_locks();
+}
+
+void Session::release_guard() {
+    if (!guard_) {
+        return;
+    }
+    auto result = guard_->release_all();
+    guard_.reset();
+    if (result.changed()) {
+        Event e;
+        e.kind = EventKind::LocksChanged;
+        e.paths = result.released;
+        events_.push(std::move(e));
+    }
+}
+
+bool Session::refresh_locks() {
+    json reply;
+    try {
+        run_on_link([&](const daemon::Client& client) {
+            reply = client.call("LockStatus", root_body(options_.root), options_.unary_timeout, &cancel_);
+        });
+    } catch (const daemon::DaemonError&) {
+        return false;
+    }
+    auto status = locks::parse_lock_status(reply);
+    auto print = fingerprint(status);
+    bool changed = false;
+    std::set<std::string> theirs;
+    {
+        std::lock_guard<std::mutex> guard(mu_);
+        locks_ = locks::LockPolicy(std::move(status), lock_extensions_);
+        changed = print != locks_fingerprint_;
+        locks_fingerprint_ = print;
+        theirs = locks_.theirs_paths();
+    }
+    Event e;
+    e.kind = EventKind::LocksChanged;
+    if (guard_) {
+        auto result = guard_->apply(theirs);
+        changed = changed || result.changed();
+        e.paths = result.guarded;
+        e.paths.insert(e.paths.end(), result.released.begin(), result.released.end());
+    }
+    if (changed) {
+        events_.push(std::move(e));
+    }
+    return true;
+}
+
+std::int64_t Session::enqueue_lock_refresh(std::uint64_t ticket) {
+    return enqueue("locks", true, [this, ticket](std::int64_t) {
+        {
+            std::lock_guard<std::mutex> guard(mu_);
+            locks_pending_ = false;
+        }
+        bool ok = false;
+        try {
+            ok = refresh_locks();
+        } catch (...) {
+            std::lock_guard<std::mutex> guard(mu_);
+            locks_ticket_done_ = std::max(locks_ticket_done_, ticket);
+            locks_ok_ = false;
+            cache_cv_.notify_all();
+            throw;
+        }
+        {
+            std::lock_guard<std::mutex> guard(mu_);
+            locks_ticket_done_ = std::max(locks_ticket_done_, ticket);
+            locks_ok_ = ok;
+        }
+        cache_cv_.notify_all();
+        return Outcome{};
+    });
+}
+
+std::int64_t Session::submit_locks() {
+    std::uint64_t ticket = 0;
+    {
+        std::lock_guard<std::mutex> guard(mu_);
+        if (locks_pending_ || stopping_) {
+            return 0;
+        }
+        locks_pending_ = true;
+        ticket = ++locks_ticket_issued_;
+    }
+    return enqueue_lock_refresh(ticket);
+}
+
+std::optional<locks::PushCheck> Session::push_check_blocking(std::chrono::milliseconds timeout) {
+    std::uint64_t ticket = 0;
+    {
+        std::lock_guard<std::mutex> guard(mu_);
+        if (stopping_) {
+            return std::nullopt;
+        }
+        ticket = ++locks_ticket_issued_;
+    }
+    if (enqueue_lock_refresh(ticket) == 0) {
+        return std::nullopt;
+    }
+    std::unique_lock<std::mutex> lock(mu_);
+    cache_cv_.wait_for(lock, timeout, [this, ticket] { return locks_ticket_done_ >= ticket || stopping_; });
+    if (locks_ticket_done_ < ticket || !locks_ok_) {
+        return std::nullopt;
+    }
+    return locks_.check_push();
+}
+
+std::int64_t Session::submit_lock(std::vector<std::string> clone_paths) {
+    return enqueue("lock", false, [this, clone_paths = std::move(clone_paths)](std::int64_t) {
+        if (!locks().loaded() && !refresh_locks()) {
+            return Outcome{false, "lock status is unavailable", {}};
+        }
+        auto policy = locks();
+        std::vector<std::string> failures;
+        int locked = 0;
+        for (const auto& path : clone_paths) {
+            auto info = policy.lookup(path);
+            if (info.state == locks::LockState::Theirs) {
+                failures.push_back(path + " is locked by " + info.holder);
+                continue;
+            }
+            if (policy.held_by_me(path)) {
+                continue;
+            }
+            try {
+                run_on_link([&](const daemon::Client& client) {
+                    client.call("ProxyLockFile",
+                                {{"root", options_.root}, {"request", {{"path", path}, {"branch", policy.lock_branch()}}}},
+                                options_.unary_timeout, &cancel_);
+                });
+                ++locked;
+            } catch (const daemon::DaemonError& error) {
+                failures.push_back(path + ": " + error.what());
+            }
+        }
+        refresh_locks();
+        if (!failures.empty()) {
+            return Outcome{false, join(failures), {}};
+        }
+        return Outcome{true, "locked " + std::to_string(locked) + " file(s)", {}};
+    });
+}
+
+std::int64_t Session::submit_unlock(std::vector<std::string> clone_paths, bool any_holder) {
+    return enqueue("unlock", false, [this, clone_paths = std::move(clone_paths), any_holder](std::int64_t) {
+        if (!locks().loaded() && !refresh_locks()) {
+            return Outcome{false, "lock status is unavailable", {}};
+        }
+        std::vector<std::string> failures;
+        int released = 0;
+        for (const auto& l : locks().releasable(clone_paths, any_holder)) {
+            try {
+                run_on_link([&](const daemon::Client& client) {
+                    client.call("ProxyUnlockFile",
+                                {{"root", options_.root},
+                                 {"request", {{"path", l.path}, {"branch", l.global ? std::string() : l.branch}}}},
+                                options_.unary_timeout, &cancel_);
+                });
+                ++released;
+            } catch (const daemon::DaemonError& error) {
+                if (error.http_status != 404) {
+                    failures.push_back(l.path + ": " + error.what());
+                }
+            }
+        }
+        refresh_locks();
+        if (!failures.empty()) {
+            return Outcome{false, join(failures), {}};
+        }
+        return Outcome{true, "released " + std::to_string(released) + " lock(s)", {}};
+    });
 }
 
 }  // namespace nipa::session

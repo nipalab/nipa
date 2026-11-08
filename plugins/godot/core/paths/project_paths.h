@@ -16,6 +16,12 @@ std::string normalize(const std::string& path);
 // Sidecars of an asset or script: `foo.png` -> `foo.png.import`, `foo.gd` -> `foo.gd.uid`.
 std::vector<std::string> sidecar_candidates(const std::string& path);
 
+// The asset a sidecar belongs to (`foo.png.import` -> `foo.png`); other paths are returned unchanged.
+std::string asset_of(const std::string& path);
+
+// One lock unit: the asset followed by its sidecar candidates.
+std::vector<std::string> lock_unit(const std::string& path);
+
 // Adds the sidecars of each path that exist in `existing`, keeping order and dropping duplicates.
 std::vector<std::string> expand_with_sidecars(const std::vector<std::string>& paths,
                                               const std::set<std::string>& existing);

@@ -4,6 +4,9 @@ extends VBoxContainer
 signal reconnect_requested
 
 var _pending_action: Callable
+var _commit_message := ""
+var _commit_paths := PackedStringArray()
+var _reload_path := ""
 
 @onready var _state_label: Label = $Header/StateLabel
 @onready var _reconnect_button: Button = $Header/ReconnectButton
@@ -16,6 +19,9 @@ var _pending_action: Callable
 @onready var _outside_note: Label = $OutsideNote
 @onready var _open_desktop_button: Button = $OpenDesktopButton
 @onready var _save_dialog: ConfirmationDialog = $SaveDialog
+@onready var _locks_label: Label = $LocksLabel
+@onready var _lock_commit_dialog: ConfirmationDialog = $LockCommitDialog
+@onready var _reload_dialog: ConfirmationDialog = $ReloadDialog
 
 var _session: Object
 
@@ -25,6 +31,8 @@ func _ready() -> void:
 	_update_button.pressed.connect(request_update)
 	_open_desktop_button.pressed.connect(_on_open_desktop_pressed)
 	_save_dialog.confirmed.connect(_on_save_confirmed)
+	_lock_commit_dialog.confirmed.connect(_on_lock_commit_confirmed)
+	_reload_dialog.confirmed.connect(_on_reload_confirmed)
 	_session = Engine.get_singleton("Nipa") if Engine.has_singleton("Nipa") else null
 	if _session:
 		_session.connected.connect(_on_connected)
@@ -36,7 +44,10 @@ func _ready() -> void:
 		_session.op_finished.connect(_on_op_finished)
 		_session.activity_summary.connect(_on_activity_summary)
 		_session.notice.connect(_on_notice)
+		_session.locks_changed.connect(_on_locks_changed)
+		_session.commit_locks_needed.connect(_on_commit_locks_needed)
 	_refresh_branch()
+	_refresh_locks()
 
 
 func _exit_tree() -> void:
@@ -52,6 +63,8 @@ func _exit_tree() -> void:
 		[_session.op_finished, _on_op_finished],
 		[_session.activity_summary, _on_activity_summary],
 		[_session.notice, _on_notice],
+		[_session.locks_changed, _on_locks_changed],
+		[_session.commit_locks_needed, _on_commit_locks_needed],
 	]:
 		if pair[0].is_connected(pair[1]):
 			pair[0].disconnect(pair[1])
@@ -140,3 +153,53 @@ func _on_notice(text: String) -> void:
 func _on_open_desktop_pressed() -> void:
 	if _session and _session.is_open():
 		OS.shell_open("nipa://open?root=" + _session.get_clone_root().uri_encode())
+
+
+static func locks_summary(locks: Array) -> String:
+	var mine := 0
+	for lock in locks:
+		if lock.get("mine", false):
+			mine += 1
+	return "Locks: %d yours, %d by others" % [mine, locks.size() - mine]
+
+
+func _refresh_locks() -> void:
+	var locks: Array = _session.get_locks() if _session and _session.is_open() else []
+	_locks_label.text = locks_summary(locks)
+
+
+func _on_locks_changed(_paths: PackedStringArray) -> void:
+	_refresh_locks()
+
+
+func _on_commit_locks_needed(message: String, paths: PackedStringArray) -> void:
+	_commit_message = message
+	_commit_paths = paths
+	_lock_commit_dialog.dialog_text = "%d changed file(s) need a lock before they can be committed:\n%s" % [
+		paths.size(), "\n".join(paths)]
+	_lock_commit_dialog.ok_button_text = "Lock %d file(s) and commit" % paths.size()
+	_lock_commit_dialog.popup_centered()
+
+
+func _on_lock_commit_confirmed() -> void:
+	if _session == null or _commit_paths.is_empty():
+		return
+	var message := _commit_message
+	var request: RefCounted = _session.request_lock(_commit_paths)
+	_commit_paths = PackedStringArray()
+	await request.completed
+	if request.is_ok() and _session:
+		_session.request_push(message)
+
+
+func offer_reload(res_path: String, holder: String) -> void:
+	_reload_path = res_path
+	_reload_dialog.dialog_text = "%s is locked by %s, your changes cannot be pushed.\nReload it from disk?" % [
+		res_path.get_file(), holder]
+	_reload_dialog.popup_centered()
+
+
+func _on_reload_confirmed() -> void:
+	if not _reload_path.is_empty():
+		EditorInterface.reload_scene_from_path(_reload_path)
+	_reload_path = ""

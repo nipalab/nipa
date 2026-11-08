@@ -18,6 +18,8 @@
 #include "core/daemon/connector.h"
 #include "core/daemon/messages.h"
 #include "core/diff/diff.h"
+#include "core/locks/lock_policy.h"
+#include "core/locks/readonly_guard.h"
 #include "core/session/events.h"
 #include "core/status/status.h"
 
@@ -43,6 +45,7 @@ struct SessionOptions {
 // OpStarted and OpProgress put the phase in message; OpProgress sets done/total;
 // OpFinished sets ok, message and paths (empty = refresh everything).
 // StatusChanged lists paths; Connected carries the version in message.
+// LocksChanged lists the files strict mode made read-only or writable again.
 class Session {
 public:
     explicit Session(SessionOptions options);
@@ -93,6 +96,17 @@ public:
     bool blob_known(const std::string& key) const;
     bool blob_blocking(const std::string& key, std::chrono::milliseconds timeout);
 
+    // Lock-relevant extensions and strict read-only mode; `guard_state_path` persists the guarded files.
+    void set_lock_options(std::vector<std::string> extensions, bool strict, std::string guard_state_path);
+    locks::LockPolicy locks() const;
+    std::int64_t submit_locks();
+    // Locks each clone path (callers pass the whole unit: asset plus its sidecars).
+    std::int64_t submit_lock(std::vector<std::string> clone_paths);
+    // Releases my locks on the assets of `clone_paths`; `any_holder` also releases others' when allowed.
+    std::int64_t submit_unlock(std::vector<std::string> clone_paths, bool any_holder);
+    // Fresh LockStatus push check; nullopt on timeout, stop or a daemon error.
+    std::optional<locks::PushCheck> push_check_blocking(std::chrono::milliseconds timeout);
+
 private:
     struct Link {
         std::shared_ptr<daemon::Client> client;
@@ -123,6 +137,10 @@ private:
     void drop_link(std::uint64_t generation, const std::string& reason);
     void apply_status(const nlohmann::json& reply);
     void refresh_after_op(const std::string& name);
+    std::int64_t enqueue_lock_refresh(std::uint64_t ticket);
+    bool refresh_locks();
+    void apply_lock_options();
+    void release_guard();
     Outcome run_stream_op(std::int64_t id, const std::string& name, const std::string& method,
                           const nlohmann::json& body);
 
@@ -154,6 +172,17 @@ private:
     std::map<std::string, std::vector<diff::File>> diffs_;
     std::map<std::string, std::uint64_t> diff_generation_;
     std::map<std::string, BlobEntry> blobs_;
+
+    locks::LockPolicy locks_;
+    std::string locks_fingerprint_;
+    std::vector<std::string> lock_extensions_ = locks::default_extensions();
+    bool strict_ = false;
+    std::string guard_state_path_;
+    std::unique_ptr<locks::ReadOnlyGuard> guard_;  // worker thread only
+    bool locks_pending_ = false;
+    std::uint64_t locks_ticket_issued_ = 0;
+    std::uint64_t locks_ticket_done_ = 0;
+    bool locks_ok_ = false;
 
     std::mutex connect_mu_;
     std::thread worker_;

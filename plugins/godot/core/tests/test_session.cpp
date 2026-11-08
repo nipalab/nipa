@@ -4,8 +4,10 @@
 #include <atomic>
 #include <chrono>
 #include <filesystem>
+#include <fstream>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <thread>
 
 #include "core/session/session.h"
@@ -655,4 +657,216 @@ TEST_CASE("event queue drains in push order and empties") {
     CHECK(drained[1].name == "b");
     CHECK(queue.size() == 0);
     CHECK(queue.drain().empty());
+}
+
+namespace {
+
+struct LockServer {
+    std::mutex mu;
+    json status = {{"user_id", "me"},
+                   {"branch", "main"},
+                   {"default_branch", true},
+                   {"locks", {{{"id", "1"}, {"path", "art/a.png"}, {"global", true}, {"held_by", "u2"}, {"held_by_name", "Ann"}},
+                              {{"id", "2"}, {"path", "art/m.png"}, {"global", true}, {"held_by", "me"}}}},
+                   {"files", {{{"path", "art/n.png"}, {"state", "needed"}},
+                              {{"path", "art/a.png"}, {"state", "theirs"}, {"held_by_name", "Ann"}}}}};
+    int unlock_status = 200;
+
+    void install(FakeDaemon& fake) {
+        fake.on_unary("LockStatus", [this](const json&) {
+            std::lock_guard<std::mutex> guard(mu);
+            return Reply{200, status};
+        });
+        fake.on_unary("ProxyLockFile", [this](const json& body) {
+            std::lock_guard<std::mutex> guard(mu);
+            auto path = body["request"]["path"].get<std::string>();
+            if (path == "art/denied.png") {
+                return Reply{409, {{"code", "AlreadyExists"}, {"message", "denied"}}};
+            }
+            status["locks"].push_back({{"id", "n-" + path}, {"path", path}, {"global", true}, {"held_by", "me"}});
+            return Reply{200, {{"response", json::object()}}};
+        });
+        fake.on_unary("ProxyUnlockFile", [this](const json& body) {
+            std::lock_guard<std::mutex> guard(mu);
+            if (unlock_status != 200) {
+                return Reply{unlock_status, {{"code", unlock_status == 404 ? "NotFound" : "Internal"}, {"message", "boom"}}};
+            }
+            auto path = body["request"]["path"].get<std::string>();
+            json kept = json::array();
+            for (const auto& l : status["locks"]) {
+                if (l["path"] != path) kept.push_back(l);
+            }
+            status["locks"] = kept;
+            return Reply{200, {{"response", json::object()}}};
+        });
+    }
+
+    void set(const json& locks) {
+        std::lock_guard<std::mutex> guard(mu);
+        status["locks"] = locks;
+    }
+};
+
+bool has_kind(const Events& events, EventKind kind) {
+    return std::any_of(events.begin(), events.end(), [kind](const Event& e) { return e.kind == kind; });
+}
+
+bool writable(const std::filesystem::path& path) {
+    return (std::filesystem::status(path).permissions() & std::filesystem::perms::owner_write) !=
+           std::filesystem::perms::none;
+}
+
+}  // namespace
+
+TEST_CASE("locks load after connecting and answer lookups") {
+    LockServer server;
+    Harness h;
+    server.install(h.fake);
+    h.start();
+    CHECK(h.wait([](const Events& e) { return has_kind(e, EventKind::LocksChanged); }));
+    auto policy = h.session->locks();
+    CHECK(policy.loaded());
+    CHECK(policy.lookup("art/a.png.import").state == nipa::locks::LockState::Theirs);
+    CHECK(policy.lookup("art/m.png").state == nipa::locks::LockState::Mine);
+}
+
+TEST_CASE("lock acquires free paths, skips mine and refuses theirs") {
+    LockServer server;
+    Harness h;
+    server.install(h.fake);
+    h.start();
+    auto id = h.session->submit_lock({"art/b.png", "art/m.png", "art/a.png", "art/denied.png"});
+    CHECK(h.wait([&](const Events&) { return h.op_finished(id) != nullptr; }));
+    const Event* done = h.op_finished(id);
+    CHECK_FALSE(done->ok);
+    CHECK(done->name == "lock");
+    CHECK(done->message.find("art/a.png is locked by Ann") != std::string::npos);
+    CHECK(done->message.find("art/denied.png: denied") != std::string::npos);
+
+    std::vector<std::string> locked;
+    for (const auto& r : h.fake.requests()) {
+        if (r.method == "ProxyLockFile") {
+            locked.push_back(r.body["request"]["path"]);
+            CHECK(r.body["request"]["branch"] == "");
+        }
+    }
+    CHECK(locked == std::vector<std::string>{"art/b.png", "art/denied.png"});
+    CHECK(h.session->locks().lookup("art/b.png").state == nipa::locks::LockState::Mine);
+
+    auto ok = h.session->submit_lock({"art/c.png"});
+    CHECK(h.wait([&](const Events&) { return h.op_finished(ok) != nullptr; }));
+    CHECK(h.op_finished(ok)->ok);
+    CHECK(h.op_finished(ok)->message == "locked 1 file(s)");
+}
+
+TEST_CASE("unlock releases my locks on the unit and tolerates a missing lock") {
+    LockServer server;
+    Harness h;
+    server.install(h.fake);
+    h.start();
+    auto id = h.session->submit_unlock({"art/m.png.import", "art/a.png"}, false);
+    CHECK(h.wait([&](const Events&) { return h.op_finished(id) != nullptr; }));
+    CHECK(h.op_finished(id)->ok);
+    CHECK(h.op_finished(id)->message == "released 1 lock(s)");
+    CHECK(h.fake.count("ProxyUnlockFile") == 1);
+    CHECK(h.session->locks().lookup("art/m.png").state == nipa::locks::LockState::Free);
+
+    server.set({{{"id", "3"}, {"path", "x.png"}, {"global", true}, {"held_by", "me"}}});
+    server.unlock_status = 404;
+    h.session->submit_locks();
+    CHECK(h.wait([&](const Events&) { return h.session->locks().lookup("x.png").state == nipa::locks::LockState::Mine; }));
+    auto missing = h.session->submit_unlock({"x.png"}, false);
+    CHECK(h.wait([&](const Events&) { return h.op_finished(missing) != nullptr; }));
+    CHECK(h.op_finished(missing)->ok);
+
+    server.unlock_status = 500;
+    auto failed = h.session->submit_unlock({"x.png"}, false);
+    CHECK(h.wait([&](const Events&) { return h.op_finished(failed) != nullptr; }));
+    CHECK_FALSE(h.op_finished(failed)->ok);
+    CHECK(h.op_finished(failed)->message.find("x.png") != std::string::npos);
+}
+
+TEST_CASE("lock and unlock fail cleanly without a lock status") {
+    Harness h;
+    h.start();
+    auto lock = h.session->submit_lock({"a.png"});
+    auto unlock = h.session->submit_unlock({"a.png"}, true);
+    CHECK(h.wait([&](const Events&) { return h.op_finished(lock) && h.op_finished(unlock); }));
+    CHECK(h.op_finished(lock)->message == "lock status is unavailable");
+    CHECK(h.op_finished(unlock)->message == "lock status is unavailable");
+    CHECK_FALSE(h.session->push_check_blocking(2s).has_value());
+}
+
+TEST_CASE("push check refreshes the lock status first") {
+    LockServer server;
+    Harness h;
+    server.install(h.fake);
+    h.start();
+    auto check = h.session->push_check_blocking(2s);
+    REQUIRE(check.has_value());
+    CHECK(check->needed == std::vector<std::string>{"art/n.png"});
+    REQUIRE(check->theirs.size() == 1);
+    CHECK(check->theirs_summary() == "art/a.png (Ann)");
+
+    h.session->stop();
+    CHECK_FALSE(h.session->push_check_blocking(10ms).has_value());
+    CHECK(h.session->submit_locks() == 0);
+}
+
+TEST_CASE("activity polls refresh the lock cache") {
+    LockServer server;
+    Harness h;
+    server.install(h.fake);
+    h.fake.on_stream("WatchEvents", [](const json&) {
+        StreamScript script;
+        script.lines = {R"({"events":[{"kind":"lock_released","actor":"Ann","path":"art/a.png"}],"incoming":0})"};
+        script.endless = true;
+        script.delay_ms = 30;
+        return script;
+    });
+    h.start();
+    CHECK(h.wait([&](const Events&) { return h.fake.count("LockStatus") >= 3; }));
+}
+
+TEST_CASE("strict mode guards their locks and restores them when turned off or stopped") {
+    LockServer server;
+    Harness h;
+    server.install(h.fake);
+    std::string root = nipa::test::make_temp_dir();
+    std::filesystem::create_directories(root + "/art");
+    std::ofstream(root + "/art/a.png") << "png";
+    std::ofstream(root + "/art/a.png.import") << "import";
+    std::ofstream(root + "/art/m.png") << "png";
+
+    auto options = h.options();
+    options.root = root;
+    h.session = std::make_unique<Session>(options);
+    h.session->set_lock_options({"png"}, true, root + "/.godot/nipa/readonly.json");
+    h.session->start();
+    CHECK(h.wait([&](const Events& e) {
+        return std::any_of(e.begin(), e.end(), [](const Event& event) {
+            return event.kind == EventKind::LocksChanged && event.paths.size() == 2;
+        });
+    }));
+    CHECK_FALSE(writable(root + "/art/a.png"));
+    CHECK_FALSE(writable(root + "/art/a.png.import"));
+    CHECK(writable(root + "/art/m.png"));
+
+    server.set(json::array());
+    h.session->submit_locks();
+    CHECK(h.wait([&](const Events&) { return writable(root + "/art/a.png"); }));
+
+    server.set({{{"id", "1"}, {"path", "art"}, {"global", true}, {"held_by", "u2"}}});
+    h.session->submit_locks();
+    CHECK(h.wait([&](const Events&) { return !writable(root + "/art/m.png"); }));
+
+    h.session->set_lock_options({"png"}, false, root + "/.godot/nipa/readonly.json");
+    CHECK(h.wait([&](const Events&) { return writable(root + "/art/m.png"); }));
+
+    h.session->set_lock_options({"png"}, true, root + "/.godot/nipa/readonly.json");
+    CHECK(h.wait([&](const Events&) { return !writable(root + "/art/m.png"); }));
+    h.session->stop();
+    CHECK(writable(root + "/art/m.png"));
+    CHECK(writable(root + "/art/a.png"));
+    std::filesystem::remove_all(root);
 }

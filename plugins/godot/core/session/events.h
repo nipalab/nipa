@@ -23,6 +23,7 @@ enum class EventKind {
     BlobReady,
     Activity,
     ActivitySummary,
+    LocksChanged,
 };
 
 // One flat record; the fields used depend on `kind` (see session.h).
