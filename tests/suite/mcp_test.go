@@ -42,6 +42,28 @@ var _ = Describe("nipa mcp", func() {
 		))
 	})
 
+	It("lists the generation prompts and builds a commit message prompt", func() {
+		project := newProject("mcp-prompts")
+		seedRepo(orgSlug, project, map[string][]byte{"a.txt": []byte("a\n")}, "seed")
+		parent := workspace()
+		dir := cloneRepo(parent, repoURLFor(orgSlug, project), "work")
+
+		m := startMCP(dir, false)
+		Expect(m.promptNames()).To(ConsistOf("nipa_commit_message", "nipa_mr_description", "nipa_review_mr"))
+
+		_, rpcErr := m.getPrompt("nipa_commit_message", map[string]string{"repo": dir})
+		Expect(rpcErr).NotTo(BeNil())
+		Expect(rpcErr.Error.Message).To(ContainSubstring("nothing staged"))
+
+		writeText(dir, "a.txt", "a\nprompted\n")
+		Expect(runNipa(dir, "add", "a.txt").ExitCode).To(Equal(0))
+		text, rpcErr := m.getPrompt("nipa_commit_message", map[string]string{"repo": dir})
+		Expect(rpcErr).To(BeNil())
+		Expect(text).To(ContainSubstring("Output only the commit message"))
+		Expect(text).To(ContainSubstring("M a.txt"))
+		Expect(text).To(ContainSubstring("+prompted"))
+	})
+
 	It("registers the mutating tools with --allow-write", func() {
 		project := newProject("mcp-write-tools")
 		seedRepo(orgSlug, project, map[string][]byte{"a.txt": []byte("a\n")}, "seed")

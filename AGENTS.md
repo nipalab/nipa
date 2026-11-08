@@ -313,6 +313,31 @@ matching limits (`Config.NeedsDecode`). Surfaces: `nipa assets check [<rev>
 offline over the plan's staged changes). The budget always comes from the
 working copy; push itself does not enforce it.
 
+Flow for generation (reference in `docs/AI.md`; the server never calls an
+LLM): `internal/client/aiprompt` (pure, deterministic) builds
+`Prompt{System, User}` for `CommitMessage`, `MRDescription` and `ReviewMR`
+from a `Changeset` (`FileText` patch lines via `FromFileDiffs`/`FromMRDiff`,
+`assetdiff` summaries, `assetbudget` violations, diff text capped at
+`DefaultDiffBytes` 64 KiB with `[... N more files omitted]` markers; lines with
+NUL/invalid UTF-8 become `[non-text content omitted]`, binary files only show
+their path), plus `CleanOutput`/`SplitTitle`/`AddTrailer`
+(`Nipa-Generated: <model>`). `internal/client/aicontext.Collector` gathers the
+input over small interfaces (`Differ`, `MRReader`, `History`, `Connector`):
+`Commit` (staged diff, offline), `MRDescription` (merge-base diff + source
+commits since the merge base, default target = the branch with `IsDefault`)
+and `Review` (MR view/diff/commits/threads, sides from `MRSides`, shared with
+the MCP asset tools). The MCP prompts `nipa_commit_message`,
+`nipa_mr_description` and `nipa_review_mr` (`mcp/prompts.go`, always
+registered) return one user message (system text, `---`, user text).
+`nipa push --generate` and `nipa mr create --generate` (`cli/generate.go`)
+call `internal/client/llm` — one non-streaming OpenAI-compatible
+`POST <endpoint>/chat/completions` (endpoint used as-is, trailing `/` trimmed,
+60 s timeout, 1 MiB response cap, key redacted from errors) — configured by
+`config.ResolveLLM` (`llm: {endpoint, model, apiKeyEnv}` in the client config,
+`NIPA_LLM_ENDPOINT`/`NIPA_LLM_MODEL`/`NIPA_LLM_API_KEY` win, keys never stored);
+the draft is confirmed with `y/N` (`--yes` skips, non-TTY refuses) and
+`push --dry-run --generate` only prints it (`generated_message` in JSON).
+
 Flow for release tags (`nipa tag`, `nipa tag -c <name> [-m msg] [--branch <b> |
 --commit <id|hash>]`, `nipa tag -d <name>`, `nipa switch --tag <name>`): a tag
 is an immutable project-scoped name pointing at one commit, with an optional

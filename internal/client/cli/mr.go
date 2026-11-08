@@ -46,6 +46,7 @@ func (c *Cli) setupMrCreateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "create",
 		Short:         "Open a merge request",
+		Long:          "Open a merge request from the current (or --source) branch into --target (default: the project default branch). With --generate, the configured OpenAI-compatible LLM drafts the description, and the title unless --title is given, from the commits since the merge base, the text diff and asset summaries (never binary contents); the draft is shown for confirmation (--yes skips it) and the description gets a Nipa-Generated trailer.",
 		Args:          cobra.NoArgs,
 		SilenceErrors: true,
 		SilenceUsage:  true,
@@ -60,6 +61,11 @@ func (c *Cli) setupMrCreateCmd() *cobra.Command {
 			root, err := localrepo.FindRepoRoot()
 			if err != nil {
 				return err
+			}
+			if generate, _ := cmd.Flags().GetBool("generate"); generate {
+				if title, description, source, target, err = c.generateMergeRequest(cmd, root, title, source, target); err != nil {
+					return err
+				}
 			}
 			mr, err := c.useCase.MR().Create(cmd.Context(), root, usecase.CreateMergeRequestOptions{
 				Title:       title,
@@ -81,8 +87,10 @@ func (c *Cli) setupMrCreateCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().String("title", "", "Merge request title (required)")
+	cmd.Flags().String("title", "", "Merge request title (required unless --generate)")
 	cmd.Flags().StringP("description", "d", "", "Merge request description")
+	addGenerateFlags(cmd, "title and description")
+	cmd.MarkFlagsMutuallyExclusive("description", "generate")
 	cmd.Flags().String("source", "", "Source branch (defaults to the current branch)")
 	cmd.Flags().String("target", "", "Target branch (defaults to the project default branch)")
 	cmd.Flags().Bool("draft", false, "Open the merge request as a draft (cannot be merged until marked ready)")

@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"io"
 
 	"github.com/nipalab/nipa/internal/client/usecase"
 	"github.com/nipalab/nipa/internal/version"
@@ -30,6 +31,7 @@ type connector interface {
 type Cli struct {
 	useCase   usecaseContainer
 	connector connector
+	terminal  func(io.Reader) bool
 }
 
 func NewCli(useCase usecaseContainer, connector connector) *Cli {

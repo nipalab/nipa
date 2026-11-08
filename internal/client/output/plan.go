@@ -17,6 +17,8 @@ type Plan struct {
 	UploadBytes   int64        `json:"upload_bytes,omitempty"`
 
 	AssetViolations []assetbudget.Violation `json:"asset_violations,omitempty"`
+
+	GeneratedMessage string `json:"generated_message,omitempty"`
 }
 
 type PlanChange struct {
