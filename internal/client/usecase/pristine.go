@@ -173,3 +173,18 @@ func (p pristine) download(ctx context.Context, files []clientDomain.SnapshotFil
 	scope := clientDomain.ChunkScope{Org: nu.Org, Project: nu.Project, CommitIDs: commitIDs(commitID), Paths: paths}
 	return downloadMissing(ctx, p.client, p.repo, scope, hashes, estimated)
 }
+
+// cachedInPristine reports whether a snapshot file keeps its content in the
+// object cache: compressed text always does, raw content only under a pin.
+func cachedInPristine(f clientDomain.SnapshotFile, pins []string) bool {
+	return f.Encoding == chunker.EncodingZstd || pinsCover(pins, f.Path)
+}
+
+func pinsCover(pins []string, path string) bool {
+	for _, pin := range pins {
+		if domain.PrefixCovers(pin, path) {
+			return true
+		}
+	}
+	return false
+}

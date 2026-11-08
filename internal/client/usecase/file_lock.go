@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/nipalab/nipa/internal/client/domain"
@@ -46,7 +47,20 @@ func (f *FileLock) Lock(ctx context.Context, root, path, branch string) (*domain
 	if branch == "" {
 		branch = cfg.Branch
 	}
-	return f.client.LockFile(ctx, url.Org, url.Project, path, branch)
+	lock, err := f.client.LockFile(ctx, url.Org, url.Project, path, branch)
+	if err != nil {
+		return nil, err
+	}
+	if pins := f.pins(); pins != nil {
+		pinned := path
+		if lock != nil && lock.Path != "" {
+			pinned = lock.Path
+		}
+		if err := pins.Pin(ctx, root, pinned); err != nil && lock != nil {
+			lock.Warning = fmt.Sprintf("locked, but the old version of %s was not kept locally: %v", pinned, err)
+		}
+	}
+	return lock, nil
 }
 
 func (f *FileLock) Unlock(ctx context.Context, root, path, branch string) error {
@@ -62,7 +76,22 @@ func (f *FileLock) Unlock(ctx context.Context, root, path, branch string) error 
 	if branch == "" {
 		branch = cfg.Branch
 	}
-	return f.client.UnlockFile(ctx, url.Org, url.Project, path, branch)
+	if err := f.client.UnlockFile(ctx, url.Org, url.Project, path, branch); err != nil {
+		return err
+	}
+	if pins := f.pins(); pins != nil {
+		return pins.Unpin(ctx, root, path)
+	}
+	return nil
+}
+
+func (f *FileLock) pins() *LockPins {
+	repo, ok := f.localRepo.(pinLocalRepo)
+	if !ok {
+		return nil
+	}
+	downloader, _ := f.client.(ContentDownloader)
+	return NewLockPins(f.auth, downloader, repo)
 }
 
 func (f *FileLock) List(ctx context.Context, root string) ([]*domain.FileLock, error) {

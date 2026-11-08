@@ -150,8 +150,8 @@ func TestPush_Plan_Errors(t *testing.T) {
 func TestPlanCollector_DedupesChunks(t *testing.T) {
 	collector := newPlanCollector()
 	chunk := &serverDomain.ChunkData{Hash: serverDomain.Hash{0x01}, Data: []byte("abcd")}
-	require.NoError(t, collector.add(chunk))
-	require.NoError(t, collector.add(chunk))
+	require.NoError(t, collector.add(chunk, true))
+	require.NoError(t, collector.add(chunk, true))
 
 	require.Len(t, collector.order, 1)
 	require.Equal(t, int64(4), collector.sizes[serverDomain.Hash{0x01}])

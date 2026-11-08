@@ -30,7 +30,11 @@ type stubCacheRepo struct {
 	pruneErr    error
 	pruned      bool
 	keep        map[serverDomain.Hash]struct{}
+	pins        []string
+	pinsErr     error
 }
+
+func (s *stubCacheRepo) ListPins() ([]string, error) { return s.pins, s.pinsErr }
 
 func (s *stubCacheRepo) Init(string) error { return s.initErr }
 func (s *stubCacheRepo) Snapshot() (*domain.Snapshot, error) {
@@ -46,20 +50,24 @@ func (s *stubCacheRepo) PruneObjects(keep map[serverDomain.Hash]struct{}) (int, 
 	return s.pruneFiles, s.pruneBytes, s.pruneErr
 }
 
-func TestPruneCache_KeepsEverySnapshotChunk(t *testing.T) {
-	a, b, c := serverDomain.Hash{1}, serverDomain.Hash{2}, serverDomain.Hash{3}
+func TestPruneCache_KeepsTextAndPinnedRawChunks(t *testing.T) {
+	a, b, c, d, e := serverDomain.Hash{1}, serverDomain.Hash{2}, serverDomain.Hash{3}, serverDomain.Hash{4}, serverDomain.Hash{5}
 	repo := &stubCacheRepo{
 		snapshot: &domain.Snapshot{Files: []domain.SnapshotFile{
-			{Path: "a", Chunks: []serverDomain.Hash{a, b}},
-			{Path: "b", Chunks: []serverDomain.Hash{b, c}},
+			{Path: "notes.txt", Encoding: "zstd", Chunks: []serverDomain.Hash{a}},
+			{Path: "art/hero.png", Encoding: "raw", Chunks: []serverDomain.Hash{b, c}},
+			{Path: "levels/one.bin", Encoding: "raw", Chunks: []serverDomain.Hash{d}},
+			{Path: "artwork/x.png", Encoding: "raw", Chunks: []serverDomain.Hash{e}},
+			{Path: "legacy.bin", Chunks: []serverDomain.Hash{e}},
 		}},
+		pins:       []string{"art", "levels/one.bin"},
 		pruneFiles: 2,
 		pruneBytes: 10,
 	}
 	res, err := pruneCache(repo)
 	require.NoError(t, err)
 	require.Equal(t, PruneResult{Objects: 2, Bytes: 10}, res)
-	require.Equal(t, map[serverDomain.Hash]struct{}{a: {}, b: {}, c: {}}, repo.keep)
+	require.Equal(t, map[serverDomain.Hash]struct{}{a: {}, b: {}, c: {}, d: {}}, repo.keep)
 }
 
 func TestPruneCache_SkippedWhilePending(t *testing.T) {
@@ -83,6 +91,7 @@ func TestPruneCache_Errors(t *testing.T) {
 		"merge":    {mergeErr: boom},
 		"revert":   {revertErr: boom},
 		"snapshot": {snapshotErr: boom},
+		"pins":     {pinsErr: boom},
 		"prune":    {pruneErr: boom},
 	} {
 		t.Run(name, func(t *testing.T) {

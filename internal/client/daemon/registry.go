@@ -32,6 +32,7 @@ type repo struct {
 	revert RevertRunner
 	diff   DiffRunner
 	proxy  ProxyConn
+	pins   PinRunner
 
 	watcher    *watcher
 	reconciler *reconciler
@@ -165,6 +166,7 @@ func openRepo(root string, runners Runners) (*repo, error) {
 		rp.revert = ops.Revert
 		rp.diff = ops.Diff
 		rp.proxy = ops.Proxy
+		rp.pins = ops.Pins
 		if ops.Downloader != nil {
 			wc.WithDownloader(ops.Auth, ops.Downloader)
 		}

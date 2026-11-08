@@ -16,6 +16,7 @@ type Lock struct {
 	HeldByName         string `json:"held_by_name,omitempty"`
 	MergeRequestNumber *int64 `json:"merge_request_number,omitempty"`
 	AcquiredAt         string `json:"acquired_at"`
+	Warning            string `json:"warning,omitempty"`
 }
 
 func NewLock(lock *clientDomain.FileLock) Lock {
@@ -34,6 +35,7 @@ func NewLock(lock *clientDomain.FileLock) Lock {
 		HeldByName:         lock.HeldByName,
 		MergeRequestNumber: lock.MergeRequestNumber,
 		AcquiredAt:         formatTime(lock.AcquiredAt),
+		Warning:            lock.Warning,
 	}
 }
 

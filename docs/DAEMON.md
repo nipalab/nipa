@@ -209,6 +209,15 @@ has a lockable asset extension (`chunker.IsLockablePath`) gets a state:
 `needed` (tracked, uncovered: the server's push gate would refuse it) or
 `free`.
 
+Lock pins: after the server grants `ProxyLockFile`, the daemon pins the
+lock's path in the clone (`RepoOps.Pins`, `usecase.LockPins`, under the
+root's exclusive slot): the path is recorded in `pinned_paths` and the cached
+old version of the raw files it covers is recaptured from the working file or
+downloaded, so desktop, Unity and Godot get offline compare and restore for
+the files they lock. A pin failure never fails the lock; it comes back in
+`ProxyLockFileResponse.warning`. `ProxyUnlockFile` unpins and prunes after the
+server released the lock (a local failure is only logged).
+
 ---
 
 ## Progress streaming (`OpEvent`)

@@ -10,10 +10,19 @@ import (
 	"github.com/nipalab/nipa/internal/client/localrepo"
 )
 
+func TestSetupGCCmd_RemovesUnpinnedRawContent(t *testing.T) {
+	root := setupRepoWithStoredTree(t, "main", map[string]string{"a.txt": "tracked"})
+
+	out, err := runCmdInDir(t, root, newStageCli().setupGCCmd())
+	require.NoError(t, err)
+	require.Equal(t, "removed 1 object(s), freed 7 B\n", out)
+}
+
 func TestSetupGCCmd_RemovesUnreferencedObjects(t *testing.T) {
 	root := setupRepoWithStoredTree(t, "main", map[string]string{"a.txt": "tracked"})
 	lr := localrepo.NewLocalRepo()
 	require.NoError(t, lr.Init(root))
+	require.NoError(t, lr.PinPaths([]string{"a.txt"}))
 	orphan := []byte("orphan bytes")
 	require.NoError(t, lr.StoreChunk(chunker.Sum(orphan), orphan))
 	require.NoError(t, lr.Close())
@@ -48,6 +57,7 @@ func TestSetupGCCmd_SkippedWhileBusy(t *testing.T) {
 	root := setupRepoWithStoredTree(t, "main", map[string]string{"a.txt": "tracked"})
 	lr := localrepo.NewLocalRepo()
 	require.NoError(t, lr.Init(root))
+	require.NoError(t, lr.PinPaths([]string{"a.txt"}))
 	defer func() { _ = lr.Close() }()
 	orphan := []byte("orphan bytes")
 	require.NoError(t, lr.StoreChunk(chunker.Sum(orphan), orphan))

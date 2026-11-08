@@ -6837,8 +6837,10 @@ func (x *ProxyLockFileRequest) GetRequest() *pb.LockFileRequest {
 }
 
 type ProxyLockFileResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Response      *pb.LockFileResponse   `protobuf:"bytes,1,opt,name=response,proto3" json:"response,omitempty"`
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	Response *pb.LockFileResponse   `protobuf:"bytes,1,opt,name=response,proto3" json:"response,omitempty"`
+	// Set when the lock was granted but keeping its old version locally failed.
+	Warning       string `protobuf:"bytes,2,opt,name=warning,proto3" json:"warning,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -6878,6 +6880,13 @@ func (x *ProxyLockFileResponse) GetResponse() *pb.LockFileResponse {
 		return x.Response
 	}
 	return nil
+}
+
+func (x *ProxyLockFileResponse) GetWarning() string {
+	if x != nil {
+		return x.Warning
+	}
+	return ""
 }
 
 type ProxyUnlockFileRequest struct {
@@ -8876,9 +8885,10 @@ const file_internal_client_grpc_proto_daemon_proto_rawDesc = "" +
 	"\bresponse\x18\x01 \x01(\v2(.greet.ResolveMergeRequestThreadResponseR\bresponse\"\\\n" +
 	"\x14ProxyLockFileRequest\x12\x12\n" +
 	"\x04root\x18\x01 \x01(\tR\x04root\x120\n" +
-	"\arequest\x18\x02 \x01(\v2\x16.greet.LockFileRequestR\arequest\"L\n" +
+	"\arequest\x18\x02 \x01(\v2\x16.greet.LockFileRequestR\arequest\"f\n" +
 	"\x15ProxyLockFileResponse\x123\n" +
-	"\bresponse\x18\x01 \x01(\v2\x17.greet.LockFileResponseR\bresponse\"`\n" +
+	"\bresponse\x18\x01 \x01(\v2\x17.greet.LockFileResponseR\bresponse\x12\x18\n" +
+	"\awarning\x18\x02 \x01(\tR\awarning\"`\n" +
 	"\x16ProxyUnlockFileRequest\x12\x12\n" +
 	"\x04root\x18\x01 \x01(\tR\x04root\x122\n" +
 	"\arequest\x18\x02 \x01(\v2\x18.greet.UnlockFileRequestR\arequest\"P\n" +

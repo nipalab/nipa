@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -43,6 +44,8 @@ type pushLocalRepo interface {
 	ClearRevertState() error
 	LoadCommit() (*domain.LocalCommit, error)
 	SaveStatEntries(entries map[string]domain.StatEntry) error
+	ListPins() ([]string, error)
+	UnpinPaths(paths []string) error
 }
 
 type Push struct {
@@ -242,6 +245,13 @@ func (p *Push) pushStaged(ctx context.Context, root string, nipaUrl *domain.Nipa
 	if err != nil {
 		return nil, err
 	}
+	pins, err := p.localRepo.ListPins()
+	if err != nil {
+		return nil, err
+	}
+	for i := range toRead {
+		toRead[i].cache = !toRead[i].isBinary || pinsCover(pins, toRead[i].path)
+	}
 	var estBytes int64
 	var estObjects int
 	for _, sf := range toRead {
@@ -328,6 +338,13 @@ func (p *Push) pushStaged(ctx context.Context, root string, nipaUrl *domain.Nipa
 	if err := p.localRepo.ClearStaged(); err != nil {
 		return nil, err
 	}
+	landed := append([]string(nil), removed...)
+	for _, f := range files {
+		landed = append(landed, f.Path)
+	}
+	if err := p.localRepo.UnpinPaths(landed); err != nil {
+		slog.Warn("unpin pushed paths failed", "error", err)
+	}
 	return result, nil
 }
 
@@ -355,6 +372,9 @@ type chunkUploader struct {
 
 	batchMu sync.Mutex
 
+	cacheMu sync.Mutex
+	cache   map[serverDomain.Hash]bool
+
 	windows chan []*serverDomain.ChunkData
 	wg      sync.WaitGroup
 
@@ -372,6 +392,7 @@ func newChunkUploader(ctx context.Context, client pushClient, localRepo pushLoca
 		scope:     scope,
 		onChunk:   onChunk,
 		seen:      make(map[serverDomain.Hash]bool),
+		cache:     make(map[serverDomain.Hash]bool),
 		windows:   make(chan []*serverDomain.ChunkData, uploadWindowQueue),
 	}
 	for i := 0; i < uploadWindowWorkers; i++ {
@@ -393,19 +414,38 @@ func (u *chunkUploader) run() {
 
 func (u *chunkUploader) upload(window []*serverDomain.ChunkData) error {
 	if u.localRepo != nil {
-		if err := u.localRepo.StoreChunks(window); err != nil {
-			return err
+		if cached := u.cached(window); len(cached) > 0 {
+			if err := u.localRepo.StoreChunks(cached); err != nil {
+				return err
+			}
 		}
 	}
 	_, _, err := u.client.UploadChunks(u.ctx, u.scope, window, u.onChunk)
 	return err
 }
 
-func (u *chunkUploader) add(ch *serverDomain.ChunkData) error {
+func (u *chunkUploader) cached(window []*serverDomain.ChunkData) []*serverDomain.ChunkData {
+	u.cacheMu.Lock()
+	defer u.cacheMu.Unlock()
+	out := make([]*serverDomain.ChunkData, 0, len(window))
+	for _, ch := range window {
+		if u.cache[ch.Hash] {
+			out = append(out, ch)
+		}
+	}
+	return out
+}
+
+func (u *chunkUploader) add(ch *serverDomain.ChunkData, cache bool) error {
 	u.batchMu.Lock()
 	defer u.batchMu.Unlock()
 	if u.ctx.Err() != nil {
 		return u.failure()
+	}
+	if cache {
+		u.cacheMu.Lock()
+		u.cache[ch.Hash] = true
+		u.cacheMu.Unlock()
 	}
 	if u.seen[ch.Hash] {
 		return nil
@@ -484,6 +524,7 @@ type stagedFile struct {
 	cfg      chunker.Config
 	isBinary bool
 	baseMode int
+	cache    bool
 }
 
 // classifyStaged splits the staged paths into files to read and removals,
@@ -552,7 +593,7 @@ func estimateObjects(size int64, cfg chunker.Config) int {
 }
 
 type chunkSink interface {
-	add(ch *serverDomain.ChunkData) error
+	add(ch *serverDomain.ChunkData, cache bool) error
 }
 
 // planCollector records chunk hashes and encoded sizes without storing or
@@ -566,7 +607,7 @@ func newPlanCollector() *planCollector {
 	return &planCollector{sizes: make(map[serverDomain.Hash]int64)}
 }
 
-func (c *planCollector) add(ch *serverDomain.ChunkData) error {
+func (c *planCollector) add(ch *serverDomain.ChunkData, _ bool) error {
 	if _, ok := c.sizes[ch.Hash]; ok {
 		return nil
 	}
@@ -586,7 +627,7 @@ func scanPushFile(sf stagedFile, sink chunkSink) (*serverDomain.PushFile, error)
 	encoding, err := chunker.Encode(f, sf.path, sf.isBinary, "", func(c chunker.EncodedChunk) error {
 		hashes = append(hashes, c.Hash)
 		rawSize += c.RawSize
-		return sink.add(&serverDomain.ChunkData{Hash: c.Hash, Data: c.Data, RawSize: c.RawSize})
+		return sink.add(&serverDomain.ChunkData{Hash: c.Hash, Data: c.Data, RawSize: c.RawSize}, sf.cache)
 	})
 	if err != nil {
 		return nil, err

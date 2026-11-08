@@ -505,7 +505,17 @@ classification is forced server-side for known asset extensions
 (`markLockableBinaries`, the client flag can only add). `EnsureLocks` enforces
 both lists in the target scope; after `ApplyPush`, `ReleaseLanded` drops the
 pusher's own exact-path, non-request locks while directory locks span the
-editing pass and stay. Merge requests acquire locks for their changed binary
+editing pass and stay. Client side, a lock this client takes is also pinned
+locally (`usecase.LockPins`, used by `FileLock.Lock` and the daemon's
+`ProxyLockFile` through `RepoOps.Pins`, after the server granted the lock):
+the path goes into `pinned_paths` and the raw snapshot files it covers are
+captured with `ensureSnapshotContent`, so offline compare and restore keep the
+old version while the file is edited; a pin or capture failure is a
+`FileLock.Warning` (`nipa lock` prints `warning: ...`, the daemon fills
+`ProxyLockFileResponse.warning`) and never undoes the lock. Unlock unpins and
+prunes; a successful push unpins the exact pushed and removed paths
+(directory pins stay, like `ReleaseLanded`). Locks taken elsewhere are not
+pinned and their reads use the missing-content fallback. Merge requests acquire locks for their changed binary
 paths at creation (re-checked and topped up at merge — `branchMerger.
 BinaryChangesBetween` is the permission-filter-free three-dot enumeration —
 accepting locks held by the request owner so an admin can merge on their
@@ -1182,21 +1192,28 @@ compatible for one release.
   - `meta(key PK, value)` — stores `tree_hash`, the pinned `commit_id` /
     `commit_hash`, and the pending `merge_state` / `revert_state` JSON.
   - `staged_files(path PK, staged_at)`.
-  - `pinned_paths(path PK, pinned_at)` — reserved for lock pins (not used yet).
+  - `pinned_paths(path PK, pinned_at)` — lock pins (`PinPaths`/`UnpinPaths`/
+    `ListPins`), stored normalized like snapshot paths
+    (`NormalizePathPrefix`: slash separated, no leading slash, root not
+    pinnable); a pin covers its exact path or a directory prefix
+    (`domain.PrefixCovers`, so `a/b` never covers `a/bc`).
   - `stat_cache(path PK, size_bytes, mtime_ns, mode, hash, cached_at)` — working
     file fingerprints whose `hash` was validated when the content was last hashed;
     `cached_at` (unix nano) must be newer than `mtime_ns` for the row to be trusted.
 - Content lives in `.nipa/objects/<hash[:2]>/<hash[2:]>` (content-addressed loose
   objects, written temp+rename (`.tmp-*` in the object's directory) so `nipa
   update` can skip unchanged content). `StoreChunks`/`StoreChunk` write objects; `OpenChunk`/`LoadChunk` read
-  them; `MissingChunks` stats them. Update/switch cache every downloaded chunk,
-  merge/revert cache materialized content, and `Push` caches the chunks it uploads
-  before sending them. The DB holds metadata only; file→chunk hashes are stored as
+  them; `MissingChunks` stats them. Update/switch download only the chunks of
+  files they rewrite, merge/revert cache materialized content, and `Push`
+  caches the chunks it uploads before sending them except raw chunks of
+  unpinned paths (the upload windows carry the bytes in memory). The DB holds metadata only; file→chunk hashes are stored as
   the `files.chunks` blob (no chunk catalog table), which is what lets `nipa diff`
   rebuild the old side offline.
 - Object GC: `PruneObjects(keep)` deletes every object not in `keep` plus
-  `.tmp-*` files older than an hour. `usecase.pruneCache` (`gc.go`) keeps every
-  chunk of every `Snapshot()` file and is a no-op while `merge_state` or
+  `.tmp-*` files older than an hour. `usecase.pruneCache` (`gc.go`) keeps the
+  chunks of the `Snapshot()` files `cachedInPristine` accepts (zstd text, or
+  raw content covered by a pin), so binaries are not kept twice, and it is a
+  no-op while `merge_state` or
   `revert_state` is pending. It runs after a successful clone, update, switch,
   tag switch and `Push.Run` (deferred `pruneAfterSuccess`: skipped for repos
   without `PruneObjects`, failures only `slog.Warn`, never fail the operation),
@@ -1347,7 +1364,8 @@ compatible for one release.
   full server tree) and `parent_2_commit_hash` for merge commits.
   `Push.pushStaged` scans into 16MB windows handed to
   two uploader goroutines (queue depth 2), so hashing overlaps with the network;
-  window chunks are cached locally before upload and the scanner only blocks
+  window chunks are cached locally before upload (text and pinned raw files
+  only) and the scanner only blocks
   when the bounded queue is full. Chunk sizes are content-aware
   (`internal/chunker/profile.go`): text and in-place-edited formats (`.blend`,
   `.psd`, `.mb`, `.sqlite`, ...) keep the 64KB default, packed assets (textures,

@@ -134,6 +134,61 @@ func (q *Queries) MetaSet(ctx context.Context, arg MetaSetParams) error {
 	return err
 }
 
+const pinnedPathDelete = `-- name: PinnedPathDelete :exec
+DELETE FROM pinned_paths
+WHERE path = ?1
+`
+
+func (q *Queries) PinnedPathDelete(ctx context.Context, path string) error {
+	_, err := q.db.ExecContext(ctx, pinnedPathDelete, path)
+	return err
+}
+
+const pinnedPathList = `-- name: PinnedPathList :many
+SELECT path
+FROM pinned_paths
+ORDER BY path
+`
+
+func (q *Queries) PinnedPathList(ctx context.Context) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, pinnedPathList)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var path string
+		if err := rows.Scan(&path); err != nil {
+			return nil, err
+		}
+		items = append(items, path)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const pinnedPathUpsert = `-- name: PinnedPathUpsert :exec
+INSERT INTO pinned_paths (path, pinned_at)
+VALUES (?1, ?2)
+ON CONFLICT(path) DO UPDATE SET pinned_at = excluded.pinned_at
+`
+
+type PinnedPathUpsertParams struct {
+	Path     string `json:"path"`
+	PinnedAt int64  `json:"pinned_at"`
+}
+
+func (q *Queries) PinnedPathUpsert(ctx context.Context, arg PinnedPathUpsertParams) error {
+	_, err := q.db.ExecContext(ctx, pinnedPathUpsert, arg.Path, arg.PinnedAt)
+	return err
+}
+
 const snapshotFileList = `-- name: SnapshotFileList :many
 SELECT path, hash, size_bytes, mode, is_binary, encoding, chunks
 FROM files
