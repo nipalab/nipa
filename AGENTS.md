@@ -762,7 +762,7 @@ once), `ChangeSubscription` (404 without a live subscription, 409 below seats
 used or used bytes, applies the PATCH answer immediately), `Portal`,
 `Summary`, `Sync`, `HandleEvent` (stores `billing_events` first, a
 processed/failed duplicate is a no-op, an unfinished one is retried; user from
-`custom_data`, else `billing_accounts.provider_customer_id`; 4xx outcomes such
+`billing_accounts.provider_customer_id` (`custom_data` must match it, unknown customers are rejected, upserts never change `user_id`); 4xx outcomes such
 as unknown/deleted users or unmappable data are marked failed and answered
 200, everything else returns the error), `Replay`; only
 `subscription.created|updated|trialing|activated|past_due|paused|resumed|canceled`

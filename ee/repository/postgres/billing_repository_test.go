@@ -189,6 +189,16 @@ func (s *BillingRepositorySuite) TestSubscriptions_NewerWinsAndLiveSelection() {
 	s.Require().NoError(err)
 	s.False(written, "a replay of the same update is ignored")
 
+	other := s.user("other")
+	written, err = s.repo.UpsertSubscription(ctx, domain.BillingSubscription{
+		ProviderSubscriptionID: "sub_a", UserID: other, Status: "active", ProviderUpdatedAt: at(5).Add(time.Minute),
+	})
+	s.Require().NoError(err)
+	s.False(written, "a subscription never moves to another user")
+	moved, err := s.repo.LiveSubscription(ctx, other)
+	s.Require().NoError(err)
+	s.Nil(moved)
+
 	live, err = s.repo.LiveSubscription(ctx, owner)
 	s.Require().NoError(err)
 	s.Require().NotNil(live)

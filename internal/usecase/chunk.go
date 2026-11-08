@@ -132,17 +132,19 @@ func (c *Chunk) Upload(ctx context.Context, hash domain.Hash, data []byte) (bool
 }
 
 // AttributeProjectChunks links chunks the server produced itself (merge output)
-// to the project and, when a ledger is attached, attributes their bytes.
+// to the project. The ledger attributes first so a quota failure leaves no link.
 func (c *Chunk) AttributeProjectChunks(ctx context.Context, projectID snow.ID, chunks []LedgerChunk) error {
+	if c.ledger != nil && len(chunks) > 0 {
+		if err := c.ledger.AttributeProjectChunks(ctx, projectID, chunks); err != nil {
+			return err
+		}
+	}
 	for _, chunk := range chunks {
 		if err := c.chunkRepo.LinkProjectChunk(ctx, projectID, chunk.Hash); err != nil {
 			return err
 		}
 	}
-	if c.ledger == nil || len(chunks) == 0 {
-		return nil
-	}
-	return c.ledger.AttributeProjectChunks(ctx, projectID, chunks)
+	return nil
 }
 
 // UploadForProject stores server-held content and links it to the project so a
@@ -443,13 +445,13 @@ func (c *Chunk) confirmUploads(ctx context.Context, org *domain.Organization, pr
 			attributed = append(attributed, LedgerChunk{Hash: hash, SizeBytes: size})
 		}
 	}
-	if len(toLink) > 0 {
-		if err := c.chunkRepo.LinkProjectChunks(ctx, project.ID, toLink); err != nil {
+	if len(attributed) > 0 {
+		if err := c.ledger.Attribute(ctx, org, project, attributed); err != nil {
 			return nil, 0, err
 		}
 	}
-	if len(attributed) > 0 {
-		if err := c.ledger.Attribute(ctx, org, project, attributed); err != nil {
+	if len(toLink) > 0 {
+		if err := c.chunkRepo.LinkProjectChunks(ctx, project.ID, toLink); err != nil {
 			return nil, 0, err
 		}
 	}

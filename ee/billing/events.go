@@ -117,27 +117,30 @@ func permanent(err error) bool {
 	return errors.As(err, &domErr) && domErr.Code >= 400 && domErr.Code < 500
 }
 
-// eventUser resolves the event's user from custom_data, falling back to the
-// account holding the provider customer id. Missing or deleted users are a 404.
+// eventUser resolves the event's user from the billing account that holds the
+// provider customer id. custom_data.user_id is only a cross-check, so a payer
+// cannot attach a subscription to another user. An unknown customer, a
+// mismatch or a deleted user is a 4xx outcome.
 func (s *Service) eventUser(ctx context.Context, userID snow.ID, customerID string) (snow.ID, error) {
-	if userID == 0 && customerID != "" {
-		account, err := s.repo.AccountByCustomer(ctx, s.provider.Name(), customerID)
-		if err != nil {
-			return 0, err
-		}
-		if account != nil {
-			userID = account.UserID
-		}
+	if customerID == "" {
+		return 0, domain.NewErrorNotFound("event names no known customer")
 	}
-	if userID == 0 {
-		return 0, domain.NewErrorNotFound("event names no known user")
+	account, err := s.repo.AccountByCustomer(ctx, s.provider.Name(), customerID)
+	if err != nil {
+		return 0, err
 	}
-	user, err := s.repo.User(ctx, userID)
+	if account == nil {
+		return 0, domain.NewErrorNotFound("event customer has no billing account")
+	}
+	if userID != 0 && userID != account.UserID {
+		return 0, domain.NewErrorUser("event user does not match the customer's billing account")
+	}
+	user, err := s.repo.User(ctx, account.UserID)
 	if err != nil {
 		return 0, err
 	}
 	if user.Deleted {
 		return 0, domain.NewErrorNotFound("event user is deleted")
 	}
-	return userID, nil
+	return account.UserID, nil
 }
