@@ -62,6 +62,9 @@ func (d *Diff) ReadBlob(ctx context.Context, root string, req BlobRequest, fn fu
 		if !ok {
 			return missingFile(fmt.Sprintf("%s is not tracked", p))
 		}
+		if err := d.pristine(root).ensureSnapshotContent(ctx, snapshotFilesAt(snapshot, p)); err != nil {
+			return err
+		}
 		return fn(entry, &blobReader{load: d.localRepo.LoadChunk, entry: entry})
 	case BlobRevision:
 		return d.readRevisionBlob(ctx, req.Revision, p, fn)
@@ -219,4 +222,13 @@ func (r *blobReader) Read(p []byte) (int, error) {
 	n := copy(p, r.buf)
 	r.buf = r.buf[n:]
 	return n, nil
+}
+
+func snapshotFilesAt(snapshot *clientDomain.Snapshot, p string) []clientDomain.SnapshotFile {
+	for _, f := range snapshot.Files {
+		if f.Path == p {
+			return []clientDomain.SnapshotFile{f}
+		}
+	}
+	return nil
 }

@@ -313,3 +313,53 @@ func TestStatusToPB_CarriesPendingOperation(t *testing.T) {
 	require.Equal(t, int32(2), res.GetPendingRemaining())
 	require.Equal(t, []string{"a.txt"}, res.GetConflicts())
 }
+
+type stubContentDownloader struct {
+	data  map[serverDomain.Hash][]byte
+	calls int
+}
+
+func (s *stubContentDownloader) Connect(context.Context, string) error { return nil }
+
+func (s *stubContentDownloader) DownloadChunks(_ context.Context, _ clientDomain.ChunkScope, hashes []serverDomain.Hash, onChunk func(serverDomain.Hash, []byte) error) error {
+	s.calls++
+	for _, h := range hashes {
+		if err := onChunk(h, s.data[h]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func TestServer_RestoreDownloadsMissingContent(t *testing.T) {
+	root := newTestCloneWithContent(t, "tracked.txt", "hello")
+	objects := filepath.Join(root, localrepo.ConfigDir, localrepo.ObjectsDir)
+	data := map[serverDomain.Hash][]byte{}
+	require.NoError(t, filepath.WalkDir(objects, func(p string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		h, err := serverDomain.ParseHashHex(filepath.Base(filepath.Dir(p)) + d.Name())
+		if err != nil {
+			return err
+		}
+		b, err := os.ReadFile(p)
+		data[h] = b
+		return err
+	}))
+	require.NoError(t, os.RemoveAll(objects))
+	require.NoError(t, os.MkdirAll(objects, 0o755))
+	dl := &stubContentDownloader{data: data}
+	srv := startTestServer(t, Options{Runners: Runners{New: func(string) RepoOps { return RepoOps{Downloader: dl} }}})
+	ctx := authed(context.Background(), srv.Endpoint().Token)
+	_, err := srv.client.WatchRepo(ctx, &daemonpb.WatchRepoRequest{Root: root})
+	require.NoError(t, err)
+
+	writeWorkingFile(t, root, "tracked.txt", "edited")
+	_, err = srv.client.Restore(ctx, &daemonpb.RestoreRequest{Root: root, Paths: []string{"tracked.txt"}})
+	require.NoError(t, err)
+	require.Equal(t, 1, dl.calls)
+	got, err := os.ReadFile(filepath.Join(root, "tracked.txt"))
+	require.NoError(t, err)
+	require.Equal(t, "hello", string(got))
+}

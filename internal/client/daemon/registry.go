@@ -165,6 +165,9 @@ func openRepo(root string, runners Runners) (*repo, error) {
 		rp.revert = ops.Revert
 		rp.diff = ops.Diff
 		rp.proxy = ops.Proxy
+		if ops.Downloader != nil {
+			wc.WithDownloader(ops.Auth, ops.Downloader)
+		}
 	}
 	return rp, nil
 }

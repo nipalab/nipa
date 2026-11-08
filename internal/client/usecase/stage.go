@@ -33,15 +33,20 @@ type WorkingCopyRepo interface {
 	LoadStatCache() (map[string]domain.StatEntry, error)
 	SaveStatEntries(entries map[string]domain.StatEntry) error
 	OpenChunk(hash serverDomain.Hash) (io.ReadCloser, error)
+	LoadCommit() (*domain.LocalCommit, error)
+	MissingChunks(hashes []serverDomain.Hash) ([]serverDomain.Hash, error)
+	StoreChunks(chunks []*serverDomain.ChunkData) error
 	StageAdd(path string) error
 	StageAddMany(paths []string) error
 	StageRemove(paths []string) error
 }
 
 type WorkingCopy struct {
-	localRepo WorkingCopyRepo
-	root      string
-	hashFile  func(path, encoding string) (serverDomain.Hash, error)
+	localRepo  WorkingCopyRepo
+	root       string
+	hashFile   func(path, encoding string) (serverDomain.Hash, error)
+	auth       *Auth
+	downloader ContentDownloader
 }
 
 func NewWorkingCopy(localRepo WorkingCopyRepo, root string) (*WorkingCopy, error) {
@@ -51,6 +56,18 @@ func NewWorkingCopy(localRepo WorkingCopyRepo, root string) (*WorkingCopy, error
 	w := &WorkingCopy{localRepo: localRepo, root: root}
 	w.hashFile = w.workingFileHash
 	return w, nil
+}
+
+// WithDownloader lets content reads fetch snapshot chunks that are missing
+// from the local cache and cannot be recaptured from the working file.
+func (w *WorkingCopy) WithDownloader(auth *Auth, client ContentDownloader) *WorkingCopy {
+	w.auth = auth
+	w.downloader = client
+	return w
+}
+
+func (w *WorkingCopy) pristine() pristine {
+	return pristine{root: w.root, repo: w.localRepo, auth: w.auth, client: w.downloader}
 }
 
 // AddOptions controls how paths are staged.

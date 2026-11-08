@@ -94,7 +94,15 @@ func (s *stubDiffRepo) MissingChunks(hashes []serverDomain.Hash) ([]serverDomain
 	if s.missing != nil {
 		return s.missing, nil
 	}
-	return hashes, nil
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []serverDomain.Hash
+	for _, h := range hashes {
+		if _, ok := s.chunks[h]; !ok {
+			out = append(out, h)
+		}
+	}
+	return out, nil
 }
 
 func (s *stubDiffRepo) StoreChunks(chunks []*serverDomain.ChunkData) error {

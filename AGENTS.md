@@ -652,14 +652,28 @@ stay stable; refreshed fingerprints are batched into `stat_cache`.
 `materializeFile` and conflict resolution go through `replaceFile`
 (`materialize_other.go` / `materialize_windows.go`, which clears
 `FILE_ATTRIBUTE_READONLY` for the rename): a read-only working file is
-replaced and stays read-only, since engine plugins own that state. Fully
-offline (chunks are cached in `.nipa/objects`); the daemon exposes it as the
-unary `Restore` RPC returning the refreshed status.
+replaced and stays read-only, since engine plugins own that state. Offline
+while the chunks are cached in `.nipa/objects`; snapshot chunks missing from
+the cache go through `pristine.ensureSnapshotContent` (`usecase/pristine.go`):
+each missing chunk is first recaptured by re-chunking the working file with
+`chunker.Encode` + `storedEncoding` (skipped when a fresh `stat_cache` entry
+already shows a different hash; chunks are content addressed, so only the
+missing hashes the re-chunk reproduces are stored), and the rest is downloaded
+with `downloadMissing` scoped to the pinned commit and those paths through the
+optional `WorkingCopy.WithDownloader(auth, client)` seam (CLI `restore`, the
+daemon's cached `WorkingCopy` via `RepoOps.Auth`/`Downloader` from
+`serveRepoOps`, the MCP restore tool via `UseCases.Auth`/`Connector`); with no
+downloader it is a user error `content not cached locally; connect to the
+server`. The daemon exposes it as the unary `Restore` RPC returning the
+refreshed status.
 
 Flow for `nipa diff [<rev1> [<rev2>]] [--] [<path>...]`: `cli/diff.go` splits
 revisions from paths (paths only after `--`; `<a>..<b>`/`<a>...<b>` expand to two
 revisions and `...` sets merge-base mode) → `usecase.Diff.Run`. With no revisions
-it is fully offline: `Snapshot()` (paths, hashes, modes and per-file chunk
+it is offline while the old side is cached (otherwise the old side of
+deletions and modifications, binaries only with `--ext-diff`, goes through
+`ensureSnapshotContent` like restore, using the `Diff`'s own auth/client as the
+downloader; `ReadBlob` with `BlobSnapshot` does the same): `Snapshot()` (paths, hashes, modes and per-file chunk
 hashes) + `ListStaged()` → `walkWorkingFiles` (shared with `WorkingCopy.Status`).
 Tracked files whose `stat_cache` fingerprint is fresh and whose file hash equals
 the old side are reused without reading; everything else (staged additions,

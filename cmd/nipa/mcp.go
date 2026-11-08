@@ -109,6 +109,7 @@ func newMCPUseCases(newClient func() *clientgrpc.Client, storage tokenStorage) m
 		Update:    usecase.NewUpdate(auth, client, newLocalRepo()),
 		Merge:     usecase.NewMerge(auth, client, newLocalRepo(), push),
 		Connector: client,
+		Auth:      auth,
 	}
 	uc.Close = func() {
 		for _, lr := range repos {

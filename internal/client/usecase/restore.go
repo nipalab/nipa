@@ -48,8 +48,12 @@ func (w *WorkingCopy) Restore(ctx context.Context, targets []string) error {
 	if err != nil {
 		return err
 	}
+	changed := w.changedFromSnapshot(paths, tracked, statCache)
+	if err := w.pristine().ensureSnapshotContent(ctx, changed); err != nil {
+		return err
+	}
 	var jobs []materializeJob
-	for _, f := range w.changedFromSnapshot(paths, tracked, statCache) {
+	for _, f := range changed {
 		jobs = append(jobs, materializeJob{file: snapshotMaterialized(f), prevMode: f.Mode})
 	}
 	statEntries, err := materializeAll(ctx, w.root, jobs, w.localRepo.OpenChunk)

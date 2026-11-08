@@ -75,6 +75,7 @@ type UseCases struct {
 	Update    *usecase.Update
 	Merge     *usecase.Merge
 	Connector Connector
+	Auth      *usecase.Auth
 	// Close releases the per-call client connection and local repository
 	// handles. It may be nil.
 	Close func()

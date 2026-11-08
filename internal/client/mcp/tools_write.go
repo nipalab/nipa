@@ -128,6 +128,13 @@ func (s *server) restore(ctx context.Context, _ *mcp.CallToolRequest, in restore
 		return nil, zero, toolError(err)
 	}
 	defer cleanup()
+	if s.opts.NewUseCases != nil {
+		uc := s.opts.NewUseCases()
+		defer uc.close()
+		if dl, ok := uc.Connector.(usecase.ContentDownloader); ok {
+			wc.WithDownloader(uc.Auth, dl)
+		}
+	}
 	if err := wc.Restore(ctx, in.Paths); err != nil {
 		return nil, zero, toolError(err)
 	}
