@@ -311,6 +311,49 @@ func TestReview(t *testing.T) {
 	require.Equal(t, int64(3), in.Number)
 }
 
+func TestReview_BudgetSizes(t *testing.T) {
+	root := t.TempDir()
+	sizeBudget := "version: 1\nrules:\n  - name: archives\n    paths: [\"*.zip\"]\n    max_bytes: 10\n"
+	require.NoError(t, os.WriteFile(filepath.Join(root, ".nipaassets.yml"), []byte(sizeBudget), 0o644))
+	mr := &stubMR{
+		m: &domain.Mergeability{SourceCommitID: "b", MergeBaseCommitID: "a"},
+		files: []*domain.MergeRequestDiffFile{
+			{Path: "big.zip", Status: "A", Binary: true},
+			{Path: "small.zip", Status: "A", Binary: true},
+			{Path: "gone.zip", Status: "D", Binary: true},
+			{Path: "a.txt", Status: "M"},
+		},
+	}
+	d := &stubDiffer{files: []diff.FileDiff{
+		{Change: diff.Change{Path: "big.zip", Status: diff.Added, New: diff.Entry{Path: "big.zip", SizeBytes: 100}}},
+		{Change: diff.Change{Path: "small.zip", Status: diff.Added, New: diff.Entry{Path: "small.zip", SizeBytes: 5}}},
+	}}
+	c := &Collector{Diff: d, MR: mr, Load: memLoader(nil)}
+	in, err := c.Review(context.Background(), root, 1)
+	require.NoError(t, err)
+	require.Equal(t, []string{"a", "b"}, d.revs)
+	require.Equal(t, []string{"big.zip", "small.zip"}, d.opts.Paths)
+	require.Len(t, in.Violations, 1)
+	require.Equal(t, "big.zip", in.Violations[0].Path)
+
+	d.err = errors.New("sizes failed")
+	_, err = c.Review(context.Background(), root, 1)
+	require.ErrorContains(t, err, "sizes failed")
+
+	d.revs = nil
+	mr.m = &domain.Mergeability{SourceCommitID: "b"}
+	in, err = c.Review(context.Background(), root, 1)
+	require.NoError(t, err)
+	require.Nil(t, d.revs, "no base revision: sizes stay unknown")
+	require.Empty(t, in.Violations)
+
+	mr.files = []*domain.MergeRequestDiffFile{{Path: "a.txt", Status: "M"}}
+	mr.m = &domain.Mergeability{SourceCommitID: "b", MergeBaseCommitID: "a"}
+	_, err = c.Review(context.Background(), root, 1)
+	require.NoError(t, err)
+	require.Nil(t, d.revs, "no covered file: no size lookup")
+}
+
 func TestReview_Errors(t *testing.T) {
 	ctx := context.Background()
 	root := t.TempDir()

@@ -103,6 +103,17 @@ func TestReviewMR(t *testing.T) {
 	}
 	p = ReviewMR(ReviewInput{Threads: big})
 	require.Contains(t, p.User, "more threads omitted]")
+
+	long := Thread{}
+	for i := 0; i < 100; i++ {
+		long.Comments = append(long.Comments, Comment{Author: "bob", Body: strings.Repeat("y", 2000)})
+	}
+	p = ReviewMR(ReviewInput{Threads: []Thread{long, {Comments: []Comment{{Body: "after"}}}}})
+	section := p.User[strings.Index(p.User, "<threads>"):strings.Index(p.User, "</threads>")]
+	require.LessOrEqual(t, len(section), maxThreadBytes+100)
+	require.Contains(t, section, "more comments omitted]")
+	require.Contains(t, section, "[... 1 more threads omitted]")
+	require.NotContains(t, section, "after")
 }
 
 func TestRenderDiff_Budget(t *testing.T) {

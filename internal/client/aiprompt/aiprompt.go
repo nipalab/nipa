@@ -209,9 +209,15 @@ func writeThreads(b *strings.Builder, threads []Thread) {
 			state += ", outdated"
 		}
 		fmt.Fprintf(&tb, "- [%s] %s\n", state, threadAnchor(t))
-		for _, c := range t.Comments {
+		for j, c := range t.Comments {
 			body := strings.ReplaceAll(truncate(strings.TrimSpace(c.Body), maxCommentBytes), "\n", "\n    ")
-			fmt.Fprintf(&tb, "  %s: %s\n", clean(c.Author), body)
+			line := fmt.Sprintf("  %s: %s\n", truncate(clean(c.Author), maxLineBytes), body)
+			if j > 0 && used+tb.Len()+len(line) > maxThreadBytes {
+				fmt.Fprintf(&tb, "  [... %d more comments omitted]\n", len(t.Comments)-j)
+				used = maxThreadBytes
+				break
+			}
+			tb.WriteString(line)
 		}
 		used += tb.Len()
 		b.WriteString(tb.String())

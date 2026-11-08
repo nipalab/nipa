@@ -240,7 +240,10 @@ func (c *Collector) Review(ctx context.Context, root string, number int64) (*aip
 	for _, it := range items {
 		changes.Files = append(changes.Files, assetscan.Change{Item: it})
 	}
-	cs, err := c.summarize(ctx, root, aiprompt.FromMRDiff(files), items, changes)
+	sizes := func(ctx context.Context, paths []string) (map[string]int64, error) {
+		return c.newSizes(ctx, root, base.Revision, head.Revision, paths)
+	}
+	cs, err := c.summarize(ctx, root, aiprompt.FromMRDiff(files), items, changes, sizes)
 	if err != nil {
 		return nil, err
 	}
@@ -273,10 +276,53 @@ func (c *Collector) changeset(ctx context.Context, root string, files []diff.Fil
 		items = append(items, it)
 		changes.Files = append(changes.Files, assetscan.Change{Item: it, NewSize: ch.New.SizeBytes})
 	}
-	return c.summarize(ctx, root, aiprompt.FromFileDiffs(files), items, changes)
+	return c.summarize(ctx, root, aiprompt.FromFileDiffs(files), items, changes, nil)
 }
 
-func (c *Collector) summarize(ctx context.Context, root string, text []aiprompt.FileText, items []assetdiff.Item, changes *assetscan.Changes) (aiprompt.Changeset, error) {
+type sizer func(ctx context.Context, paths []string) (map[string]int64, error)
+
+// newSizes reads the new-side sizes of paths from the base..head manifests;
+// binary content is not downloaded.
+func (c *Collector) newSizes(ctx context.Context, root, base, head string, paths []string) (map[string]int64, error) {
+	if base == "" || head == "" {
+		return nil, nil
+	}
+	files, err := c.Diff.Run(ctx, root, []string{base, head}, usecase.DiffOptions{Paths: paths})
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]int64, len(files))
+	for _, f := range files {
+		out[f.Change.Path] = f.Change.New.SizeBytes
+	}
+	return out, nil
+}
+
+// fillSizes sets the new-side size of covered files that have none, so
+// max_bytes rules see it.
+func fillSizes(ctx context.Context, budget *assetbudget.Config, changes *assetscan.Changes, sizes sizer) error {
+	var paths []string
+	for _, ch := range changes.Files {
+		if ch.Item.New != nil && ch.NewSize == 0 && budget.Covers(ch.Item.Path) {
+			paths = append(paths, ch.Item.Path)
+		}
+	}
+	if len(paths) == 0 {
+		return nil
+	}
+	got, err := sizes(ctx, paths)
+	if err != nil {
+		return err
+	}
+	for i := range changes.Files {
+		if ch := &changes.Files[i]; ch.NewSize == 0 {
+			ch.NewSize = got[ch.Item.Path]
+		}
+	}
+	return nil
+}
+
+func (c *Collector) summarize(ctx context.Context, root string, text []aiprompt.FileText, items []assetdiff.Item, changes *assetscan.Changes, sizes sizer) (aiprompt.Changeset, error) {
 	cs := aiprompt.Changeset{Diff: text, DiffBytes: c.DiffBytes}
 	if c.Load == nil || len(items) == 0 {
 		return cs, nil
@@ -293,6 +339,11 @@ func (c *Collector) summarize(ctx context.Context, root string, text []aiprompt.
 	budget, err := assetbudget.Load(root)
 	if err != nil || budget == nil {
 		return cs, err
+	}
+	if sizes != nil {
+		if err := fillSizes(ctx, budget, changes, sizes); err != nil {
+			return cs, err
+		}
 	}
 	report, err := assetscan.CheckChanges(ctx, c.Load, budget, changes)
 	if err != nil {
