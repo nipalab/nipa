@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/nipalab/nipa/internal/pathmatch"
 )
 
 func TestMatcher_Ignores(t *testing.T) {
@@ -43,7 +45,7 @@ func TestMatcher_Ignores(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m := &Matcher{rules: compile(tt.rules)}
+			m := &Matcher{patterns: pathmatch.Parse(tt.rules)}
 			require.Equal(t, tt.ignored, m.Ignores(tt.path, tt.isDir))
 		})
 	}

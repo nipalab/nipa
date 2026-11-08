@@ -84,6 +84,9 @@ func main() {
 		if errors.Is(err, cli.ErrExitCode) {
 			os.Exit(1)
 		}
+		if errors.Is(err, cli.ErrBudgetViolations) {
+			os.Exit(cli.ExitCode(err))
+		}
 		handleError(err)
 	}
 	stopTracing()

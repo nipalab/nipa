@@ -1,15 +1,16 @@
 package cli
 
 import (
-	"github.com/nipalab/nipa/internal/client/localrepo"
 	"github.com/spf13/cobra"
+
+	"github.com/nipalab/nipa/internal/client/localrepo"
 )
 
 func (c *Cli) setupPushCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "push",
 		Short:         "Push staged changes to the server",
-		Long:          "Upload the content of files marked with nipa add and commit them on the configured branch. With --dry-run, report the file changes and the upload estimate without contacting the server, uploading anything or changing local state.",
+		Long:          "Upload the content of files marked with nipa add and commit them on the configured branch. With --dry-run, report the file changes, the upload estimate and any .nipaassets.yml budget violations of the staged files without contacting the server, uploading anything or changing local state.",
 		Args:          cobra.NoArgs,
 		SilenceErrors: true,
 		SilenceUsage:  true,
@@ -28,7 +29,11 @@ func (c *Cli) setupPushCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				return writePlan(cmd, plan)
+				violations, err := c.pushBudget(cmd, root, plan)
+				if err != nil {
+					return err
+				}
+				return writePlanWithBudget(cmd, plan, violations)
 			}
 			return c.useCase.Push().Run(cmd.Context(), root, message, newProgressRenderer(cmd.OutOrStdout()))
 		},

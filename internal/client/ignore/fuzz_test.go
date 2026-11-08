@@ -1,6 +1,10 @@
 package ignore
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/nipalab/nipa/internal/pathmatch"
+)
 
 // FuzzCompileAndMatch checks that arbitrary rule files compile and that
 // matching any path is deterministic and never panics.
@@ -12,7 +16,7 @@ func FuzzCompileAndMatch(f *testing.F) {
 	f.Add("\\#literal\n!\n/\n", "#literal", false)
 
 	f.Fuzz(func(t *testing.T, contents, path string, isDir bool) {
-		m := &Matcher{rules: compile(contents)}
+		m := &Matcher{patterns: pathmatch.Parse(contents)}
 		first := m.Ignores(path, isDir)
 		if second := m.Ignores(path, isDir); first != second {
 			t.Fatalf("Ignores(%q, %v) is not deterministic", path, isDir)

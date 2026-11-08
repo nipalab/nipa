@@ -19,6 +19,7 @@ import (
 
 	"github.com/nipalab/nipa/internal/assetdiff"
 	"github.com/nipalab/nipa/internal/chunker"
+	"github.com/nipalab/nipa/internal/client/assetscan"
 	"github.com/nipalab/nipa/internal/client/domain"
 	"github.com/nipalab/nipa/internal/client/localrepo"
 	"github.com/nipalab/nipa/internal/client/usecase"
@@ -338,21 +339,6 @@ func TestDescribeChanges_Revisions(t *testing.T) {
 	require.Contains(t, toolText(t, res), `revision "nope" not found`)
 }
 
-func TestChangeItem(t *testing.T) {
-	it := changeItem("a", "", "D", "main", "working")
-	require.Equal(t, assetdiff.StatusRemoved, it.Status)
-	require.Nil(t, it.New)
-	require.Equal(t, &assetdiff.Ref{Source: "revision", Revision: "main", Path: "a"}, it.Old)
-
-	it = changeItem("b", "a", "renamed", "snapshot", "working")
-	require.Equal(t, "a", it.OldPath)
-	require.Equal(t, &assetdiff.Ref{Source: "snapshot", Path: "a"}, it.Old)
-
-	it = changeItem("b", "", "M", "", "x")
-	require.Nil(t, it.Old)
-	require.Equal(t, "x", it.New.Revision)
-}
-
 type describeMRClient struct {
 	recordingMRClient
 	mr           *domain.MergeRequest
@@ -591,22 +577,37 @@ func TestGodotMerge_TheirsDeletedAndOffline(t *testing.T) {
 	require.Contains(t, toolText(t, res), "server down")
 }
 
-func TestBlobLoader_TooLarge(t *testing.T) {
-	root := setupRepo(t, map[string]string{"a.txt": "0123456789"})
-	load := blobLoader(usecase.NewDiff(nil, nil, localrepo.NewLocalRepo()), root)
-	_, err := load(context.Background(), assetdiff.Ref{Source: "working", Path: "a.txt"}, 4)
-	require.ErrorIs(t, err, assetdiff.ErrTooLarge)
-	data, err := load(context.Background(), assetdiff.Ref{Source: "snapshot", Path: "a.txt"}, 64)
-	require.NoError(t, err)
-	require.Equal(t, "0123456789", string(data))
-	_, err = load(context.Background(), assetdiff.Ref{Source: "snapshot", Path: "zz.txt"}, 64)
-	require.ErrorIs(t, err, assetdiff.ErrMissing)
-}
-
-func TestSideRef(t *testing.T) {
-	require.Equal(t, &assetdiff.Ref{Source: "working", Path: "a"}, sideRef(" working ", "a"))
-	require.Equal(t, &assetdiff.Ref{Source: "snapshot", Path: "a"}, sideRef("snapshot", "a"))
-	require.Equal(t, &assetdiff.Ref{Source: "revision", Revision: "HEAD", Path: "a"}, sideRef("HEAD", "a"))
+func TestCleanPath(t *testing.T) {
 	require.Equal(t, "a/b", cleanPath(" /a//b/ "))
 	require.Empty(t, cleanPath("  "))
+}
+
+func TestAssetCheck(t *testing.T) {
+	root := setupRepo(t, map[string]string{"tex.png": string(testPNG(t, 4, 4, color.NRGBA{R: 255, A: 255}))})
+	writeFile(t, root, "tex.png", string(testPNG(t, 6, 4, color.NRGBA{B: 255, A: 255})))
+	session := connect(t, Options{NewUseCases: offlineUseCases})
+
+	out := decode[assetscan.Report](t, call(t, session, "nipa_asset_check", map[string]any{"repo": root}))
+	require.False(t, out.Config)
+	require.Empty(t, out.Violations)
+
+	writeFile(t, root, ".nipaassets.yml", "rules:\n  - name: textures\n    paths: ['*.png']\n    power_of_two: true\n")
+	out = decode[assetscan.Report](t, call(t, session, "nipa_asset_check", map[string]any{"repo": root}))
+	require.True(t, out.Config)
+	require.Equal(t, 1, out.Checked)
+	require.Len(t, out.Violations, 1)
+	require.Equal(t, "tex.png", out.Violations[0].Path)
+	require.Equal(t, "power_of_two", out.Violations[0].Limit)
+	require.Equal(t, "textures", out.Violations[0].Rule)
+
+	res := call(t, session, "nipa_asset_check", map[string]any{"repo": root, "revisions": []string{"a"}, "staged": true})
+	require.True(t, res.IsError)
+
+	writeFile(t, root, ".nipaassets.yml", "bogus: true\n")
+	res = call(t, session, "nipa_asset_check", map[string]any{"repo": root})
+	require.True(t, res.IsError)
+	require.Contains(t, toolText(t, res), "field bogus not found")
+
+	res = call(t, session, "nipa_asset_check", map[string]any{"repo": t.TempDir()})
+	require.True(t, res.IsError)
 }

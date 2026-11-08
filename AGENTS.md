@@ -114,7 +114,7 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   key), clone, branch
   (`-a` list, `-c` create+switch, `-d` delete), tag (list, `-c` create, `-d`
   delete), add, remove, restore, status, push, update, switch (branch or `--tag`),
-  merge, revert, log, diff, acl, group, sparse-checkout, mr, lock, unlock, gc, serve), `usecase`
+  merge, revert, log, diff, assets check, acl, group, sparse-checkout, mr, lock, unlock, gc, serve), `usecase`
   (clone/login, push, update/switch (incl. sparse and detached-tag checkout),
   merge, revert, diff, log, tag management,
   permission, merge-request orchestration, file locks over small interfaces; `threeway.go`
@@ -287,8 +287,31 @@ transaction (`StageAddMany`, client DB runs WAL + `synchronous=NORMAL`), so
 `nipa add *` on a large clone is cheap. The matcher is client-side only: a
 hostile client can still push such paths, and a tracked file that later matches
 a rule stays tracked until explicitly removed. Sparse manifests always include the root `.nipaignore`
-(`loadTreeManifest`'s `keepRootIgnoreFile`, still behind the read filter), so
-partial checkouts apply the team rules too.
+(`loadTreeManifest`'s `keepRootTeamFile`, still behind the read filter), so
+partial checkouts apply the team rules too. The pattern compiler itself lives
+in the pure `internal/pathmatch` (`Parse`/`Compile`/`Join`/`Matches`), shared
+with asset budgets.
+
+Flow for asset budgets (`.nipaassets.yml` at the repo root, versioned and kept
+in sparse manifests like `.nipaignore`; reference in `docs/AI.md`): the pure
+`internal/assetbudget` parses it (`go.yaml.in/yaml/v3` with `KnownFields`,
+`version` 1, rules of `paths` globs in `pathmatch` syntax plus
+`max_bytes` (int or human size), `max_texture_size`, `power_of_two`,
+`max_triangles`, `max_vertices`, `max_audio_seconds`, `max_peak_dbfs`,
+`name_pattern`), merges every matching rule in file order (a later rule
+overrides only the keys it sets; violations name the rule that set the limit)
+and `Check`s `assetdiff.Result`s on the new side only (removed files skipped,
+undecoded files only checked for size/name; sorted by path, limit).
+`internal/client/assetscan` is the shared client runner: `Enumerate` (the
+`nipa diff`-style change list as `assetdiff.Item`s, also used by
+`nipa_describe_changes`), `BlobLoader`/`SideRef`/`ChangeItem`, and
+`Check`/`CheckChanges`, which decode only covered images/models/audio with
+matching limits (`Config.NeedsDecode`). Surfaces: `nipa assets check [<rev>
+[<rev>]] [--staged] [--json] [-- <path>...]` (`cli/assets.go`, exit 2 via
+`cli.ErrBudgetViolations`), the MCP read tool `nipa_asset_check`, and
+`nipa push --dry-run` (`asset_violations` in JSON, warning block in text;
+offline over the plan's staged changes). The budget always comes from the
+working copy; push itself does not enforce it.
 
 Flow for release tags (`nipa tag`, `nipa tag -c <name> [-m msg] [--branch <b> |
 --commit <id|hash>]`, `nipa tag -d <name>`, `nipa switch --tag <name>`): a tag
