@@ -178,3 +178,11 @@ func TestAuditedWrite(t *testing.T) {
 	plain.EXPECT().Record(gomock.Any(), gomock.Any()).Return(errors.New("record"))
 	require.EqualError(t, auditedWrite(ctx, plain, write, entry), "record")
 }
+
+func TestAuditedWrite_Exported(t *testing.T) {
+	rec := &captureRecorder{}
+	require.NoError(t, AuditedWrite(context.Background(), rec, func(context.Context) error { return nil },
+		func() *domain.AuditEntry { return &domain.AuditEntry{Action: "x"} }))
+	require.Equal(t, 1, rec.txs)
+	require.Equal(t, "x", rec.only(t).Action)
+}

@@ -7,7 +7,9 @@ import (
 
 	"github.com/nipalab/nipa/ee/repository/postgres"
 	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/repository/dbtx"
 	"github.com/nipalab/nipa/internal/snow"
+	"github.com/nipalab/nipa/internal/usecase"
 )
 
 func (s *billingSuite) TestAdmit_AllEntryPointsAtTheLimit() {
@@ -187,4 +189,84 @@ func (s *billingSuite) TestHandleEvent_DedupAndCustomerFallback() {
 	s.Equal(int64(5), entitlement.SeatLimit)
 	quota, _ := s.quota(owner)
 	s.Equal(testConfig.Entitlement(&Subscription{Status: StatusActive, Seats: 5}).QuotaBytes, quota.Int64)
+}
+
+type failingAudit struct {
+	*usecase.Audit
+}
+
+func (f failingAudit) Record(ctx context.Context, entry domain.AuditEntry) error {
+	if err := f.Audit.Record(ctx, entry); err != nil {
+		return err
+	}
+	return errors.New("audit down")
+}
+
+func (s *billingSuite) newAudit() *usecase.Audit {
+	node, err := snow.NewNode(1)
+	s.Require().NoError(err)
+	return usecase.NewAudit(postgres.NewAuditRepository(s.db), node, dbtx.NewTransactor(s.db))
+}
+
+func (s *billingSuite) auditEntries(action string) []*domain.AuditEntry {
+	s.T().Helper()
+	entries, err := postgres.NewAuditRepository(s.db).List(context.Background(), domain.AuditFilter{ActionPrefix: action, Limit: 100})
+	s.Require().NoError(err)
+	return entries
+}
+
+func (s *billingSuite) TestAudit_ApplyCommitsAndRollsBackWithTheChange() {
+	ctx := context.Background()
+	owner := s.seedUser("owner")
+	s.service.WithProvider(&stubProvider{})
+	sub := Subscription{ProviderSubscriptionID: "sub_a", UserID: owner, Status: StatusActive, Seats: 2, ProviderUpdatedAt: at(1)}
+
+	s.service.WithAudit(failingAudit{s.newAudit()})
+	s.Error(s.service.Apply(ctx, sub))
+	live, err := s.repo.LiveSubscription(ctx, owner)
+	s.Require().NoError(err)
+	s.Nil(live, "the subscription rolled back with its entry")
+	s.Empty(s.auditEntries("billing."))
+
+	s.service.WithAudit(s.newAudit())
+	s.Require().NoError(s.service.Apply(ctx, sub))
+	s.Require().NoError(s.service.Apply(ctx, Subscription{ProviderSubscriptionID: "sub_a", UserID: owner, Status: StatusCanceled, ProviderUpdatedAt: at(0)}))
+	entries := s.auditEntries(domain.AuditBillingSubscriptionApplied)
+	s.Require().Len(entries, 1, "an older update records nothing")
+	s.Equal(domain.AuditActorProvider, entries[0].ActorType)
+	s.Equal("stub", entries[0].ActorLabel)
+	s.Nil(entries[0].ActorUserID)
+	newMeta := entries[0].Metadata["new"].(map[string]any)
+	s.EqualValues(testConfig.Entitlement(&sub).QuotaBytes, newMeta["quota_bytes"])
+	s.Equal(StatusActive, newMeta["status"])
+}
+
+func (s *billingSuite) TestAudit_SeatDeniedSurvivesTheRollback() {
+	ctx := domain.ContextWithClaim(context.Background(), domain.Claims{UserID: 77})
+	owner := s.seedUser("owner")
+	org := s.seedOrg(owner)
+	orgs := postgres.NewOrgRepository(s.db)
+	for range testConfig.FreeSeats - 1 {
+		s.exec(`INSERT INTO org_members (org_id, user_id) VALUES ($1, $2)`, org.Int64(), s.seedUser("member").Int64())
+	}
+	audit := s.newAudit()
+	s.service.WithAudit(audit)
+	outsider := s.seedUser("outsider")
+
+	err := audit.WithinTx(ctx, func(ctx context.Context) error {
+		return s.service.Admit(ctx, org, outsider, func(ctx context.Context) error {
+			return orgs.UpsertMember(ctx, org, outsider, domain.OrgRoleMember)
+		})
+	})
+	s.Equal(402, errorCode(err))
+	_, err = orgs.MemberRole(ctx, org, outsider)
+	s.True(domain.IsErrorNotFound(err), "the membership was not written: %v", err)
+	entries := s.auditEntries(domain.AuditBillingSeatDenied)
+	s.Require().Len(entries, 1, "the refusal is kept although the caller's transaction rolled back")
+	s.Equal(snow.ID(77), *entries[0].ActorUserID)
+	s.Equal(org, *entries[0].OrgID)
+	s.Equal(outsider.Base36(), entries[0].TargetID)
+	s.Equal(owner.Base36(), entries[0].Metadata["billing_owner_id"])
+	s.EqualValues(testConfig.FreeSeats, entries[0].Metadata["used"])
+	s.EqualValues(testConfig.FreeSeats, entries[0].Metadata["limit"])
 }

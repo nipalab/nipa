@@ -218,6 +218,14 @@ or origin filter (`billing.WebhookService`).
 Paddle retries failed deliveries for days, so there is no periodic
 reconciler. Neither admin action has a UI yet.
 
+## Audit trail
+
+Admin overrides, billing-owner transfers, sync and replay, checkouts, plan
+changes, every applied subscription update (old → new status, seats, packs and
+computed quota, with the provider event id) and seat refusals are recorded in
+the audit log (`billing.*` actions, `GET /api/v1/admin/audit?action=billing.`).
+See the Billing section of `docs/AUDIT_LOG.md`.
+
 ## Config
 
 Read only by `ee/cmd/nipad` (`internal/config/billing.go`, `ValidateBilling`).

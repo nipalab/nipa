@@ -119,6 +119,7 @@ type Querier interface {
 	ListProjectUsage(ctx context.Context, orgID int64) ([]ListProjectUsageRow, error)
 	ListProjectsByOrgId(ctx context.Context, orgID int64) ([]Project, error)
 	LockBillingOwner(ctx context.Context, ownerID int64) error
+	LockOrgForBillingOwner(ctx context.Context, orgID int64) (int64, error)
 	LockSeatOwner(ctx context.Context, lockKey int64) error
 	MarkBillingEventFailed(ctx context.Context, arg MarkBillingEventFailedParams) error
 	MarkBillingEventProcessed(ctx context.Context, eventID string) error

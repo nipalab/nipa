@@ -24,6 +24,7 @@ import (
 	"github.com/nipalab/nipa/ee/repository/postgres"
 	"github.com/nipalab/nipa/ee/storageusage"
 	clientdomain "github.com/nipalab/nipa/internal/client/domain"
+	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/http/api"
 	"github.com/nipalab/nipa/internal/repository/dbtx"
 	"github.com/nipalab/nipa/internal/serverapp"
@@ -126,6 +127,18 @@ func signedHeader(secret string, body []byte) http.Header {
 	return header
 }
 
+func billingAudit(rest *restClient, action, target string) []map[string]any {
+	rest.t.Helper()
+	status, body := rest.do(http.MethodGet, "/api/v1/admin/audit?action="+action+"&target="+target+"&limit=200", nil, nil)
+	require.Equal(rest.t, http.StatusOK, status, body)
+	raw, _ := body["entries"].([]any)
+	entries := make([]map[string]any, 0, len(raw))
+	for _, entry := range raw {
+		entries = append(entries, entry.(map[string]any))
+	}
+	return entries
+}
+
 func TestEnterpriseBillingPaddleSmoke(t *testing.T) {
 	ctx := context.Background()
 
@@ -149,6 +162,8 @@ func TestEnterpriseBillingPaddleSmoke(t *testing.T) {
 		ledger:   ledger,
 		seatGate: service,
 		rest: func(reg *serverapp.Registry) http.Handler {
+			service.WithAudit(reg.Audit())
+			ledger.WithAudit(reg.Audit())
 			return api.NewAPI(reg,
 				api.WithRoutes(func(ws *restful.WebService) {
 					storageusage.RegisterRoutes(ws, storageusage.RoutesConfig{Ledger: ledger, Billing: service.Summary})
@@ -220,6 +235,25 @@ func TestEnterpriseBillingPaddleSmoke(t *testing.T) {
 	status, body = rest.do(http.MethodPost, webhook, activated, signedHeader(billingWebhookSecret, activated))
 	require.Equal(t, http.StatusOK, status, body)
 
+	applied := billingAudit(rest, domain.AuditBillingSubscriptionApplied, subID)
+	require.Len(t, applied, 2, "the replayed activation adds no entry")
+	for _, entry := range applied {
+		require.Equal(t, "provider", entry["actor_type"])
+		require.Equal(t, "paddle", entry["actor_label"])
+		require.Nil(t, entry["actor_user_id"])
+	}
+	canceledEntry, activatedEntry := applied[0]["metadata"].(map[string]any), applied[1]["metadata"].(map[string]any)
+	require.Equal(t, "evt_act_"+suffix, activatedEntry["event_id"])
+	require.Equal(t, float64(paidSeats*billingSeatBytes+billingPackBytes), activatedEntry["new"].(map[string]any)["quota_bytes"])
+	require.Equal(t, "evt_can_"+suffix, canceledEntry["event_id"])
+	require.Equal(t, "active", canceledEntry["old"].(map[string]any)["status"])
+	require.Equal(t, float64(paidSeats*billingSeatBytes+billingPackBytes), canceledEntry["old"].(map[string]any)["quota_bytes"])
+	require.Equal(t, "canceled", canceledEntry["new"].(map[string]any)["status"])
+	require.Equal(t, float64(billingFreeQuota), canceledEntry["new"].(map[string]any)["quota_bytes"])
+	checkouts := billingAudit(rest, domain.AuditBillingCheckoutStarted, snow.ID(1).Base36())
+	require.NotEmpty(t, checkouts)
+	require.Equal(t, "txn_e2e", checkouts[0]["metadata"].(map[string]any)["transaction_id"])
+
 	status, me = rest.do(http.MethodGet, "/api/v1/billing/me", nil, nil)
 	require.Equal(t, http.StatusOK, status, me)
 	require.Equal(t, "free", me["plan"], "the replayed activation did not undo the cancel")
@@ -256,6 +290,14 @@ func TestEnterpriseBillingPaddleSmoke(t *testing.T) {
 
 	status, body = rest.do(http.MethodPost, "/api/v1/orgs/default/members", map[string]string{"user_id": paidMember.Base36(), "role": "member"}, nil)
 	require.Less(t, status, 300, "an existing seat is never refused: %v", body)
+
+	denied := billingAudit(rest, domain.AuditBillingSeatDenied, outsider.Base36())
+	require.Len(t, denied, 3, "every refused entry point is recorded")
+	for _, entry := range denied {
+		require.Equal(t, "user", entry["actor_type"])
+		require.Equal(t, snow.ID(1).Base36(), entry["actor_user_id"])
+		require.Equal(t, float64(1), entry["metadata"].(map[string]any)["limit"])
+	}
 
 	fakeAPI.mu.Lock()
 	defer fakeAPI.mu.Unlock()

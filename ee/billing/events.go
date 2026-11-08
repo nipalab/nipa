@@ -59,7 +59,28 @@ func (s *Service) Replay(ctx context.Context, eventID string) (*domain.BillingEv
 			return nil, err
 		}
 	}
-	return s.repo.Event(ctx, eventID)
+	replayed, err := s.repo.Event(ctx, eventID)
+	if err != nil {
+		return nil, err
+	}
+	outcome := "processed"
+	if replayed.ProcessedAt == nil {
+		outcome = "failed"
+	}
+	if err := s.record(ctx, domain.AuditEntry{
+		Action:     domain.AuditBillingEventReplayed,
+		TargetType: domain.AuditTargetBillingEvent,
+		TargetID:   replayed.EventID,
+		Metadata: map[string]any{
+			"event_id":   replayed.EventID,
+			"event_type": replayed.Type,
+			"outcome":    outcome,
+			"error":      replayed.Error,
+		},
+	}); err != nil {
+		return nil, err
+	}
+	return replayed, nil
 }
 
 func (s *Service) process(ctx context.Context, event Event) error {
@@ -75,7 +96,7 @@ func (s *Service) process(ctx context.Context, event Event) error {
 	if err != nil {
 		return s.settle(ctx, event, err)
 	}
-	return s.settle(ctx, event, s.Apply(ctx, sub))
+	return s.settle(ctx, event, s.apply(ctx, sub, &event))
 }
 
 // settle records the outcome: success and permanent failures are final,

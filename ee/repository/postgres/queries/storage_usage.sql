@@ -10,6 +10,9 @@ VALUES (sqlc.arg(org_id), sqlc.arg(user_id))
 ON CONFLICT (org_id) DO UPDATE SET user_id = org_billing_owner.user_id
 RETURNING user_id;
 
+-- name: LockOrgForBillingOwner :one
+SELECT id FROM organizations WHERE id = sqlc.arg(org_id) FOR NO KEY UPDATE;
+
 -- name: UpsertBillingOwner :exec
 INSERT INTO org_billing_owner (org_id, user_id)
 VALUES (sqlc.arg(org_id), sqlc.arg(user_id))

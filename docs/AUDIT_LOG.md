@@ -17,7 +17,7 @@ Reads are never audited.
 | `actor_label` | free label for non-user actors (e.g. `paddle`) |
 | `action` | dotted action name from the catalog below |
 | `org_id`, `project_id` | scope; project-scoped entries get their `org_id` resolved from the project |
-| `target_type`, `target_id` | what was changed (`user`, `org`, `group`, `access_rule`, `path_permission`, `branch`, `lock`, `project`, `webhook`) |
+| `target_type`, `target_id` | what was changed (`user`, `org`, `group`, `access_rule`, `path_permission`, `branch`, `lock`, `project`, `webhook`, `subscription`, `billing_event`) |
 | `metadata` | JSON object with the old/new values of the change |
 | `request_id`, `client_ip`, `user_agent` | request correlation and caller network identity |
 
@@ -58,7 +58,44 @@ Constants live in `internal/domain/audit_actions.go`.
 | `webhook.updated` | `Webhook.Update` (skipped when unchanged) | `old`, `new` with the fields above |
 | `webhook.secret_rotated` | `Webhook.RotateSecret` | `url`, `events` (never the secret) |
 
-Billing actions (`billing.*`) are added by the billing audit follow-up.
+## Billing (enterprise)
+
+`nipad-ee` records the billing changes in the same table. `ee/billing.Service`
+and `ee/storageusage.Ledger` take the core `usecase.Audit` through `WithAudit`
+(wired in `ee/cmd/nipad/main.go`; nil = auditing off). Metadata never holds
+API keys, webhook secrets, Paddle client tokens or webhook payload bodies;
+customer, subscription and transaction ids and item quantities are recorded.
+
+| Action | Recorded by | Actor | Metadata |
+| --- | --- | --- | --- |
+| `billing.quota_override.set` | `Ledger.SetQuotaOverride` (admin `PUT .../owners/{user}/quota`; skipped when unchanged) | super admin | target = owner; `old_override_bytes` (null = none), `new_override_bytes` (0 = unlimited) |
+| `billing.quota_override.cleared` | `Ledger.ClearQuotaOverride` (admin `DELETE`; skipped without an override) | super admin | target = owner; `old_override_bytes` |
+| `billing.owner.transferred` | `Ledger.SetBillingOwner` (admin `PUT .../billing-owner`; skipped when unchanged) | super admin | `org_id`; `old_owner_id`, `new_owner_id` |
+| `billing.checkout.started` | `Service.Checkout`, after the provider created the transaction | user | `seats`, `storage_packs`, `interval`, `transaction_id`, `customer_id` |
+| `billing.subscription.changed` | `Service.ChangeSubscription` | user | target = subscription; `owner_id`, `old`/`new` (`seats`, `storage_packs`, `interval`). `old` is the plan the user changed from, read before the provider call; `new` is the provider's answer. It records who asked for the change even when a webhook applied it first (then `subscription.applied` is attributed to the provider) |
+| `billing.subscription.applied` | `Service.Apply`, only when the upsert stored the update | provider, or the caller (see below) | target = subscription; `owner_id`, `old`/`new` (`subscription_id`, `status`, `seats`, `storage_packs`, `interval`, `quota_bytes`), `event_id`/`event_type` when an event carried it |
+| `billing.sync` | `Service.Sync` (admin sync route) | super admin | target = owner; `synced` |
+| `billing.event.replayed` | `Service.Replay` (admin replay route) | super admin | target = event; `event_id`, `event_type`, `outcome` (`processed`/`failed`), `error` |
+| `billing.seat.denied` | `Service.Admit` refusal | the caller adding the user | `org_id`, target = user; `billing_owner_id`, `used`, `limit` |
+
+`billing.subscription.applied` is attributed to the authenticated caller when
+there is one (a plan change, an admin sync or a replay; the replay keeps the
+event id), and to `actor_type=provider`, `actor_label=<provider>` (`paddle`)
+on the unauthenticated webhook. `old` is read from the live subscription and
+the stored computed quota (`Ledger.ComputedQuota`) before the upsert, in the
+same transaction; `old.quota_bytes` is null when none was stored. Duplicate
+deliveries and older (skipped) provider updates write no entry, so the
+webhook path stays idempotent.
+
+Atomicity: the ledger writes run through `usecase.AuditedWrite` and `Apply`
+records inside its existing transaction, so the entry and the change commit
+or roll back together; `subscription.changed` shares the transaction of the
+apply that follows the provider call. Checkout, sync and replay record after
+the provider call (or the per-subscription applies) succeeded; a failed record
+fails the request, as everywhere else. **Exception:** `billing.seat.denied` is
+written after `Admit`'s transaction, on a context detached from any caller
+transaction (`dbtx.Detach`), because the refusal rolls back everything in it.
+A failure to write it is only logged and the 402 is still returned.
 
 ## Atomicity
 
@@ -73,7 +110,7 @@ context: every repository an audited write touches is built on
 `BranchRepository.SetBranchProtection`,
 `ProjectRepository.CreateWithDefaultBranch`, `WebhookRepository.Delete`) use
 `WithinTx` instead of their own `BeginTx`. The enterprise seat gate joins the
-same transaction.
+same transaction (its refusal entry is the one exception, see Billing).
 
 `usecase.Audit` is the recorder: it fills the actor from the JWT claim (or
 `system` without one), the request id (`obs.RequestIDFromContext`), the client

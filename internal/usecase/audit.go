@@ -180,6 +180,11 @@ func auditedWrite(ctx context.Context, rec AuditRecorder, write func(ctx context
 	return run(ctx)
 }
 
+// AuditedWrite exposes auditedWrite to recorders outside this package.
+func AuditedWrite(ctx context.Context, rec AuditRecorder, write func(ctx context.Context) error, entry func() *domain.AuditEntry) error {
+	return auditedWrite(ctx, rec, write, entry)
+}
+
 func projectAudit(action string, projectID snow.ID, targetType, targetID string, metadata map[string]any) *domain.AuditEntry {
 	return &domain.AuditEntry{
 		Action:     action,

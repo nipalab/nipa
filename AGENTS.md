@@ -788,7 +788,16 @@ gRPC interceptors attach `domain.RequestMeta` (client IP through
 `ratelimit.ClientIP` + `RATE_LIMIT_TRUSTED_PROXIES`, user agent); entries
 without a claim are `system` (SaaS signup/OAuth). Super admins read it at
 `GET /api/v1/admin/audit` (actor/org/project/action prefix/target/since/until,
-keyset `after`, `next_cursor`).
+keyset `after`, `next_cursor`). On `nipad-ee`, `ee/billing.Service` and
+`ee/storageusage.Ledger` take the same recorder (`WithAudit`, wired after
+`BuildUsecases` in `ee/cmd/nipad/main.go`) for the `billing.*` actions:
+quota override set/cleared and owner transfers (through the exported
+`usecase.AuditedWrite`), checkout, plan change, sync, replay, and
+`billing.subscription.applied` inside `Apply`'s transaction only when the
+upsert wrote (claim actor when present, otherwise `provider`/`paddle` with the
+event id; old values read from the live subscription and
+`Ledger.ComputedQuota`). `billing.seat.denied` is the exception: written after
+`Admit` rolls back on a `dbtx.Detach`ed context, failures only logged.
 
 Flow for tracing (design in `docs/TRACING.md`): `internal/obs/tracing.go`
 builds an OTLP gRPC tracer provider (`SetupTracing`), installed globally with
