@@ -58,10 +58,11 @@ pre-release step, not a replacement for the automated gates below.
 
 ## 3. Security
 
-- [ ] **Placeholder-secret guard.** `config.yaml.sample` ships
-  `JWT_KEY: secret` and `CHUNK_URL_SIGNING_KEY: change-me`. Both binaries
-  should refuse to start (or log a prominent warning) on known placeholder
-  values, the same way `nipad-ee` rejects unsupported backends.
+- [x] **Placeholder-secret guard.** `config.yaml.sample` ships blank
+  `JWT_KEY` and `CHUNK_URL_SIGNING_KEY`. Both binaries refuse to start on
+  empty, short or placeholder values; `ALLOW_INSECURE_DEV_SECRETS=true`
+  downgrades this to a warning for local development. Mention the breaking
+  change for free installs with weak keys in the release notes.
 - [ ] **Admin bootstrap story.** Document how a fresh server gets its first
   admin (config seeding; the manual test plan references the seeded
   super-admin) and whether the password must be rotated on first login.

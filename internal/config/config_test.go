@@ -301,6 +301,8 @@ func TestValidateSecrets(t *testing.T) {
 		{"sample chunk", strong, "change-me", "CHUNK_URL_SIGNING_KEY still has the sample value"},
 		{"short chunk", strong, "short", "CHUNK_URL_SIGNING_KEY must be at least 32"},
 		{"identical", strong, strong, "must differ"},
+		{"sample prefix", "Change-Me-To-A-Long-Random-Secret-1234", other, "JWT_KEY still has the sample value"},
+		{"password", "PASSWORD", other, "JWT_KEY still has the sample value"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -312,4 +314,31 @@ func TestValidateSecrets(t *testing.T) {
 			require.ErrorContains(t, err, tc.want)
 		})
 	}
+}
+
+func TestValidateSecretsOrWarn(t *testing.T) {
+	var warned error
+	warn := func(_ string, err error) { warned = err }
+
+	weak := &Config{JWTKey: "secret", ChunkURLSigningKey: "change-me"}
+	require.Error(t, weak.ValidateSecretsOrWarn(warn))
+	require.Nil(t, warned)
+
+	weak.AllowInsecureDevSecrets = true
+	require.NoError(t, weak.ValidateSecretsOrWarn(warn))
+	require.ErrorContains(t, warned, "JWT_KEY")
+
+	warned = nil
+	strong := &Config{JWTKey: "0123456789abcdef0123456789abcdef", ChunkURLSigningKey: "fedcba9876543210fedcba9876543210", AllowInsecureDevSecrets: true}
+	require.NoError(t, strong.ValidateSecretsOrWarn(warn))
+	require.Nil(t, warned)
+}
+
+func TestAllowInsecureDevSecretsDefaultsOff(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "config.yaml", "SERVER_PORT: 1\n")
+	t.Chdir(dir)
+	cfg, err := LoadConfig()
+	require.NoError(t, err)
+	require.False(t, cfg.AllowInsecureDevSecrets)
 }

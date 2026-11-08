@@ -34,6 +34,12 @@ func main() {
 		panic(err)
 	}
 
+	if err := guardSecrets(cfg); err != nil {
+		fmt.Fprintln(os.Stderr, "nipad: "+err.Error())
+		fmt.Fprintln(os.Stderr, "set strong values in config.yaml (openssl rand -base64 48) or ALLOW_INSECURE_DEV_SECRETS=true for local development only")
+		os.Exit(1)
+	}
+
 	serviceName := cfg.TracingServiceName
 	if serviceName == "" {
 		serviceName = "nipad"
@@ -203,4 +209,10 @@ func createChunkStore(cfg *config.Config) (storage.ChunkStore, error) {
 
 func createDatabaseConnection(dsn string) (*sql.DB, error) {
 	return db.OpenSQLite(dsn)
+}
+
+func guardSecrets(cfg *config.Config) error {
+	return cfg.ValidateSecretsOrWarn(func(msg string, err error) {
+		slog.Warn(msg, "problem", err.Error())
+	})
 }

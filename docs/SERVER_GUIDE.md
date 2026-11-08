@@ -71,23 +71,24 @@ the directory that holds its data.
 SERVER_ADDRESS: 0.0.0.0
 SERVER_PORT: 6745
 DATABASE_DSN: nipa.db
-JWT_KEY: change-me-to-a-long-random-secret
+JWT_KEY: <output of openssl rand -base64 48>
 CHUNK_STORAGE: local
 CHUNK_STORAGE_DIR: ./chunks
-CHUNK_URL_SIGNING_KEY: change-me-to-another-random-secret
+CHUNK_URL_SIGNING_KEY: <a different openssl rand -base64 48 output>
 ```
 
 | Setting | Meaning |
 | --- | --- |
 | `SERVER_ADDRESS`, `SERVER_PORT` | Listen address. `0.0.0.0` exposes the port on every interface. |
 | `DATABASE_DSN` | SQLite database file. It is created on first start. |
-| `JWT_KEY` | Signs access tokens. Use a long random value and keep it secret. |
-| `CHUNK_URL_SIGNING_KEY` | Signs chunk upload/download URLs. **The server panics at startup when this is empty.** |
+| `JWT_KEY` | Signs access tokens. Required, at least 32 characters, not a sample value; the server refuses to start otherwise. |
+| `CHUNK_URL_SIGNING_KEY` | Signs chunk upload/download URLs. Required, at least 32 characters and different from `JWT_KEY`. |
+| `ALLOW_INSECURE_DEV_SECRETS` | Default `false`. When `true`, weak or missing keys only log a warning. Local development only: anyone can forge admin tokens. |
 | `CHUNK_STORAGE` | Must be `local`; this server stores chunks on disk. |
 | `CHUNK_STORAGE_DIR` | Directory for content-addressed chunks. |
 | `CHUNK_PRESIGN_TTL_SECONDS` | Lifetime of a signed chunk URL (default `3600`). |
 
-Generate secrets, for example, with `openssl rand -hex 32`.
+Generate secrets, for example, with `openssl rand -base64 48`.
 
 ### Operational settings
 
@@ -243,7 +244,7 @@ backup before upgrading.
 | Symptom | Cause and fix |
 | --- | --- |
 | `panic: Config File "config" Not Found` | No `config.yaml` in the working directory. Run `cp config.yaml.sample config.yaml`. |
-| `panic: CHUNK_URL_SIGNING_KEY must be set` | Set a non-empty signing key in `config.yaml`. |
+| `nipad: JWT_KEY must be set` (or `CHUNK_URL_SIGNING_KEY ...`) | Set strong, distinct keys in `config.yaml` (`openssl rand -base64 48`). |
 | `bind: address already in use` | Another process (often a second server) uses the port. Stop it or change `SERVER_PORT`. |
 | Web UI loads a blank page or an old build | `web/server/dist` holds only the tracked placeholder. Run `make web` and rebuild/restart `nipad`. |
 | `database is locked (5) (SQLITE_BUSY)` | Only one `nipad` may write the same SQLite file. Stop the duplicate instance and check file permissions/disk. |

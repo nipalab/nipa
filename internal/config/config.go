@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/spf13/viper"
 )
@@ -43,6 +44,7 @@ type Config struct {
 	ChunkS3AccessKeyID             string  `mapstructure:"CHUNK_S3_ACCESS_KEY_ID"`
 	ChunkS3SecretAccessKey         string  `mapstructure:"CHUNK_S3_SECRET_ACCESS_KEY"`
 	ChunkURLSigningKey             string  `mapstructure:"CHUNK_URL_SIGNING_KEY"`
+	AllowInsecureDevSecrets        bool    `mapstructure:"ALLOW_INSECURE_DEV_SECRETS"`
 	ChunkPresignTTLSeconds         int     `mapstructure:"CHUNK_PRESIGN_TTL_SECONDS"`
 	ChunkMaxPageSize               int     `mapstructure:"CHUNK_MAX_PAGE_SIZE"`
 	StorageLedger                  string  `mapstructure:"STORAGE_LEDGER"`
@@ -125,6 +127,7 @@ func LoadConfig() (*Config, error) {
 	v.SetDefault("SNOWFLAKE_LEASE_TTL_SECONDS", 60)
 	v.SetDefault("STORAGE_LEDGER_DEFAULT_QUOTA_BYTES", int64(15*1024*1024*1024))
 	v.SetDefault("SAAS_MODE", false)
+	v.SetDefault("ALLOW_INSECURE_DEV_SECRETS", false)
 	v.SetDefault("SAAS_FREE_QUOTA_BYTES", int64(15*1024*1024*1024))
 	v.SetDefault("BILLING_PROVIDER", BillingProviderOff)
 	v.SetDefault("LOG_LEVEL", "info")
@@ -183,7 +186,24 @@ func LoadConfig() (*Config, error) {
 
 const minSecretLength = 32
 
-var sampleSecrets = map[string]bool{"secret": true, "change-me": true, "changeme": true}
+var sampleSecrets = map[string]bool{"secret": true, "change-me": true, "changeme": true, "password": true, "jwt-secret": true, "test": true}
+
+func isSampleSecret(v string) bool {
+	l := strings.ToLower(v)
+	return sampleSecrets[l] || strings.HasPrefix(l, "change-me") || strings.HasPrefix(l, "changeme")
+}
+
+// ValidateSecretsOrWarn behaves like ValidateSecrets unless
+// ALLOW_INSECURE_DEV_SECRETS is set, in which case the problem is handed to
+// warn and startup continues.
+func (c *Config) ValidateSecretsOrWarn(warn func(msg string, err error)) error {
+	err := c.ValidateSecrets()
+	if err == nil || !c.AllowInsecureDevSecrets {
+		return err
+	}
+	warn("ALLOW_INSECURE_DEV_SECRETS is set: running with insecure signing keys, sessions can be forged; never use this in production", err)
+	return nil
+}
 
 // ValidateSecrets rejects missing, sample or short signing keys so a production
 // server never starts with forgeable sessions or chunk URLs.
@@ -195,7 +215,7 @@ func (c *Config) ValidateSecrets() error {
 		switch {
 		case s.value == "":
 			return fmt.Errorf("%s must be set", s.name)
-		case sampleSecrets[s.value]:
+		case isSampleSecret(s.value):
 			return fmt.Errorf("%s still has the sample value; generate one with `openssl rand -base64 48`", s.name)
 		case len(s.value) < minSecretLength:
 			return fmt.Errorf("%s must be at least %d characters", s.name, minSecretLength)

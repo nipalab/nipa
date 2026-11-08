@@ -7,7 +7,11 @@ SHUTDOWN_TIMEOUT_SECONDS: 15
 # SQLite file path for the free `nipad`; postgres connection string for the
 # enterprise `nipad-ee`.
 DATABASE_DSN: nipa.db
-JWT_KEY: secret
+# Required: generate with `openssl rand -base64 48`. The server refuses to start
+# on an empty, short or sample value (set ALLOW_INSECURE_DEV_SECRETS: true for
+# throwaway local development only).
+JWT_KEY: ''
+ALLOW_INSECURE_DEV_SECRETS: false
 # Logging: level is debug|info|warn|error, format is console|json.
 LOG_LEVEL: debug
 LOG_FORMAT: console
@@ -70,7 +74,8 @@ CHUNK_S3_PREFIX: ''
 # EC2/ECS instance metadata providers.
 CHUNK_S3_ACCESS_KEY_ID: ''
 CHUNK_S3_SECRET_ACCESS_KEY: ''
-CHUNK_URL_SIGNING_KEY: change-me
+# Required: a different value from JWT_KEY (`openssl rand -base64 48`).
+CHUNK_URL_SIGNING_KEY: ''
 CHUNK_PRESIGN_TTL_SECONDS: 3600
 CHUNK_MAX_PAGE_SIZE: 1000
 # Enterprise storage accounting and quota (`nipad-ee` only, see
