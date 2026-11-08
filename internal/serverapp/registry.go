@@ -27,6 +27,7 @@ type Usecases struct {
 	MergeRequestCheck  *usecase.MergeRequestCheck
 	FileLock           *usecase.FileLock
 	Webhook            *usecase.Webhook
+	ServiceToken       *usecase.ServiceToken
 	EmailDelivery      *usecase.EmailDelivery
 	Audit              *usecase.Audit
 }
@@ -112,6 +113,10 @@ func (r *Registry) FileLock() *usecase.FileLock {
 
 func (r *Registry) Webhook() *usecase.Webhook {
 	return r.uc.Webhook
+}
+
+func (r *Registry) ServiceToken() *usecase.ServiceToken {
+	return r.uc.ServiceToken
 }
 
 func (r *Registry) EmailDelivery() *usecase.EmailDelivery {

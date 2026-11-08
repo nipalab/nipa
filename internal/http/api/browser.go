@@ -111,6 +111,18 @@ func setupBrowserRouter(ws *restful.WebService, h *handler.Handler) {
 			Metadata(restfulspec.KeyOpenAPITags, tags))
 
 	ws.Route(
+		ws.GET("/orgs/{org}/projects/{project}/commits/{commit}/contains").
+			To(Wrap(h.GetCommitContains)).
+			Param(ws.PathParameter("org", "organization slug")).
+			Param(ws.PathParameter("project", "project slug")).
+			Param(ws.PathParameter("commit", "commit id (base36)")).
+			Param(ws.QueryParameter("ref", "tag, branch, commit id or commit hash")).
+			Doc("Report whether the commit is the ref's commit or one of its ancestors").
+			Returns(http.StatusOK, "ancestry", model.CommitContainsResponse{}).
+			Operation("getCommitContains").
+			Metadata(restfulspec.KeyOpenAPITags, tags))
+
+	ws.Route(
 		ws.GET("/orgs/{org}/projects/{project}/tree").
 			To(Wrap(h.GetTree)).
 			Param(ws.PathParameter("org", "organization slug")).

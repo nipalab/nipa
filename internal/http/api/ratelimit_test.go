@@ -120,4 +120,13 @@ func TestRateLimitUserFilter(t *testing.T) {
 
 	anon := filterContainer(rl.UserFilter(), nil)
 	assert.Equal(t, 200, serve(anon, "/t/ping", "").Code)
+
+	asToken := func(req *restful.Request, resp *restful.Response, chain *restful.FilterChain) {
+		ctx := domain.ContextWithClaim(req.Request.Context(), domain.Claims{UserID: snow.ID(1), ServiceTokenID: snow.ID(9)})
+		req.Request = req.Request.WithContext(ctx)
+		chain.ProcessFilter(req, resp)
+	}
+	tok := filterContainer(rl.UserFilter(), asToken)
+	assert.Equal(t, 200, serve(tok, "/t/ping", "").Code, "a token has its own bucket")
+	assert.Equal(t, 429, serve(tok, "/t/ping", "").Code)
 }

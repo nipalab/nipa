@@ -1,4 +1,5 @@
 DROP TABLE IF EXISTS org_invitations;
+DROP TABLE IF EXISTS project_service_tokens;
 DROP TABLE IF EXISTS audit_log;
 DROP TABLE IF EXISTS email_deliveries;
 DROP TABLE IF EXISTS oauth_login_codes;

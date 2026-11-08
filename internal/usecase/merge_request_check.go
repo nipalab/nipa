@@ -98,7 +98,7 @@ func (c *MergeRequestCheck) Report(ctx context.Context, projectID snow.ID, numbe
 	if *head != reported {
 		return nil, domain.NewErrorConflict("the source branch moved since this check started")
 	}
-	if mr.CreatedBy == claim.UserID {
+	if mr.CreatedBy == claim.UserID && claim.ServiceTokenID == 0 {
 		target, err := c.branchRepo.GetBranchByName(ctx, projectID, mr.TargetBranch)
 		if err != nil {
 			return nil, err

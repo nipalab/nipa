@@ -6,7 +6,9 @@ import type {
   BillingSummary,
   BlobResponse,
   BranchResponse,
+  CommitContainsResponse,
   CommitDiffResponse,
+  CreateServiceTokenInput,
   CommitResponse,
   CreateWebhookInput,
   FileLockResponse,
@@ -23,6 +25,7 @@ import type {
   ReviewResponse,
   ReviewStateResponse,
   SSHKeyResponse,
+  ServiceTokenResponse,
   MessageResponse,
   OrgMemberResponse,
   OrgResponse,
@@ -773,6 +776,35 @@ export function updateUserFlags(
     method: 'PATCH',
     body: JSON.stringify({ is_admin: isAdmin, is_super_admin: isSuperAdmin }),
   })
+}
+
+export function listServiceTokens(org: string, project: string): Promise<ServiceTokenResponse[]> {
+  return apiJson(`${projectBase(org, project)}/service-tokens`)
+}
+
+export function createServiceToken(
+  org: string,
+  project: string,
+  input: CreateServiceTokenInput,
+): Promise<ServiceTokenResponse> {
+  return apiJson(`${projectBase(org, project)}/service-tokens`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
+}
+
+export function revokeServiceToken(org: string, project: string, id: string): Promise<ServiceTokenResponse> {
+  return apiJson(`${projectBase(org, project)}/service-tokens/${encodeURIComponent(id)}`, { method: 'DELETE' })
+}
+
+export function getCommitContains(
+  org: string,
+  project: string,
+  commit: string,
+  ref: string,
+): Promise<CommitContainsResponse> {
+  const params = new URLSearchParams({ ref })
+  return apiJson(`${projectBase(org, project)}/commits/${encodeURIComponent(commit)}/contains?${params.toString()}`)
 }
 
 function webhookBase(org: string, project: string, id: string): string {

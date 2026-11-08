@@ -52,7 +52,7 @@ edition.
 | `/:org/:project/merges[/new]` | merge requests | list with status/author/source/target/assignee filters plus free-text search (status includes a `draft` pseudo-filter) and "Load more" pagination; dedicated create page with a "create as draft" checkbox |
 | `/:org/:project/merges/:id` | merge request detail | GitHub-style conversation (description, timeline, comments, reviewers/participants sidebar, merge box) plus Commits and File changes tabs; author/admin can edit title/description |
 | `/:org/:project/locks` | file locks | list binary asset locks, lock/unlock |
-| `/:org/:project/settings` | project settings | tabs via `?tab=`: General (rename, description, delete for org owners), Access (ACL rules/defaults), Branches (protection), Webhooks, Email deliveries |
+| `/:org/:project/settings` | project settings | tabs via `?tab=`: General (rename, description, delete for org owners), Access (ACL rules/defaults), Branches (protection), Webhooks, Service tokens (create with scopes and optional expiry, token shown once, revoke), Email deliveries |
 | `/:org/settings` | organization settings | tabs via `?tab=`: Members, Groups and Storage (usage, quota, per-project breakdown; the tab is hidden when the server has no ledger); org owner or global admin |
 | `/admin/users` | user administration | list with filter, avatar/role labels and row actions: make/remove admin, edit email, reset password (dialog), deactivate (confirmed) |
 | `/admin/users/new` | new user | dedicated create page (name, email, password) |

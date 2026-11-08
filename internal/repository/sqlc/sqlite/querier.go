@@ -179,6 +179,12 @@ type Querier interface {
 	SSHLoginChallengeConsume(ctx context.Context, nonce string) (SshLoginChallenge, error)
 	SSHLoginChallengeCreate(ctx context.Context, arg SSHLoginChallengeCreateParams) error
 	SSHLoginChallengeDeleteExpired(ctx context.Context, expiresAt time.Time) (int64, error)
+	ServiceTokenCreate(ctx context.Context, arg ServiceTokenCreateParams) (ProjectServiceToken, error)
+	ServiceTokenGet(ctx context.Context, arg ServiceTokenGetParams) (ProjectServiceToken, error)
+	ServiceTokenGetByHash(ctx context.Context, tokenHash string) (ProjectServiceToken, error)
+	ServiceTokenListByProject(ctx context.Context, projectID int64) ([]ProjectServiceToken, error)
+	ServiceTokenRevoke(ctx context.Context, arg ServiceTokenRevokeParams) (ProjectServiceToken, error)
+	ServiceTokenTouch(ctx context.Context, arg ServiceTokenTouchParams) error
 	TagCreate(ctx context.Context, arg TagCreateParams) (Tag, error)
 	TagDelete(ctx context.Context, arg TagDeleteParams) (int64, error)
 	TagGetByName(ctx context.Context, arg TagGetByNameParams) (Tag, error)

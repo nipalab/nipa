@@ -62,6 +62,7 @@ type Branch struct {
 	fileLocks  fileLockGate
 	hooks      hookBranchGate
 	users      userLookup
+	tags       branchTagLookup
 	// mergeCommitter and chunkUploads enable the non-fast-forward merge
 	// strategies; both are wired by the server mains.
 	mergeCommitter mergeCommitter

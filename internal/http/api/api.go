@@ -30,6 +30,7 @@ type usecaseContainer interface {
 	MergeRequestCheck() *usecase.MergeRequestCheck
 	FileLock() *usecase.FileLock
 	Webhook() *usecase.Webhook
+	ServiceToken() *usecase.ServiceToken
 	EmailDelivery() *usecase.EmailDelivery
 	OrgInvitation() *usecase.OrgInvitation
 	Audit() *usecase.Audit
@@ -151,7 +152,7 @@ func (a *API) SetupRoute() http.Handler {
 	apiWs.Path("/api/v1").
 		Filter(cors.Filter).
 		Filter(sameOriginFilter).
-		Filter(NewAuthFilter(a.useCase.Auth()).WithTrustedProxies(a.proxies).Auth()).
+		Filter(NewAuthFilter(a.useCase.Auth()).WithServiceTokens(a.useCase.ServiceToken()).WithTrustedProxies(a.proxies).Auth()).
 		Consumes(restful.MIME_JSON).
 		Produces(restful.MIME_JSON)
 	if a.rateLimit.active() {
@@ -170,6 +171,7 @@ func (a *API) SetupRoute() http.Handler {
 	setupGroupRouter(apiWs, h)
 	setupPermissionRouter(apiWs, h)
 	setupWebhookRouter(apiWs, h)
+	setupServiceTokenRouter(apiWs, h)
 	setupEmailDeliveryRouter(apiWs, h)
 	setupAuditRouter(apiWs, h)
 	for _, register := range a.routes {

@@ -380,3 +380,27 @@ func joinPath(parent, name string) string {
 	}
 	return parent + "/" + name
 }
+
+func (h *Handler) GetCommitContains(appCtx http.AppContext) {
+	_, project, err := h.resolveProject(appCtx)
+	if err != nil {
+		appCtx.HandleError(err)
+		return
+	}
+	commitID, err := parseID(appCtx.PathParameter("commit"), "commit")
+	if err != nil {
+		appCtx.HandleError(err)
+		return
+	}
+	ref := appCtx.QueryParameter("ref")
+	contains, head, err := h.useCase.Branch().Contains(appCtx.Context(), project.ID, commitID, ref)
+	if err != nil {
+		appCtx.HandleError(err)
+		return
+	}
+	resp := model.CommitContainsResponse{Commit: commitID.Base36(), Ref: ref, Contains: contains}
+	if head != 0 {
+		resp.RefCommit = head.Base36()
+	}
+	_ = appCtx.WriteJson(nethttp.StatusOK, resp)
+}

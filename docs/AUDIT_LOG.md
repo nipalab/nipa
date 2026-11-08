@@ -57,6 +57,8 @@ Constants live in `internal/domain/audit_actions.go`.
 | `webhook.created` / `webhook.deleted` | `Webhook.Create` / `Delete` | `name`, `url`, `events`, `path_prefix`, `is_active`, `insecure_tls` |
 | `webhook.updated` | `Webhook.Update` (skipped when unchanged) | `old`, `new` with the fields above |
 | `webhook.secret_rotated` | `Webhook.RotateSecret` | `url`, `events` (never the secret) |
+| `service_token.created` | `ServiceToken.Create` | `name`, `scopes`, `hint`, `expires_at` (never the token) |
+| `service_token.revoked` | `ServiceToken.Revoke` | `name`, `scopes`, `hint` |
 
 ## Billing (enterprise)
 

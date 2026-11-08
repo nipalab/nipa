@@ -103,7 +103,11 @@ func (rl *RateLimit) AuthFilter() restful.FilterFunction {
 func (rl *RateLimit) UserFilter() restful.FilterFunction {
 	return func(req *restful.Request, resp *restful.Response, chain *restful.FilterChain) {
 		if claims, ok := domain.ClaimFromContext(req.Request.Context()); ok {
-			res := rl.Limiter.Allow(req.Request.Context(), ratelimit.ScopeAPIUser, claims.UserID.Base36())
+			key := claims.UserID.Base36()
+			if claims.ServiceTokenID != 0 {
+				key = "token:" + claims.ServiceTokenID.Base36()
+			}
+			res := rl.Limiter.Allow(req.Request.Context(), ratelimit.ScopeAPIUser, key)
 			setRateLimitHeaders(resp.Header(), res)
 			if !res.Allowed {
 				writeTooMany(resp.ResponseWriter, res)

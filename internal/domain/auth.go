@@ -24,4 +24,6 @@ type Claims struct {
 	IsSuperAdmin bool      `json:"is_superadmin"`
 	IsAdmin      bool      `json:"is_admin"`
 	OrgID        []snow.ID `json:"org_id"`
+	// ServiceTokenID is set when a project service token authenticated the request.
+	ServiceTokenID snow.ID `json:"-"`
 }

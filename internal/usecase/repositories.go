@@ -61,5 +61,6 @@ type Repositories struct {
 		emailDeliveryRepository
 		notifierOutbox
 	}
-	Audit auditRepository
+	Audit        auditRepository
+	ServiceToken serviceTokenRepository
 }

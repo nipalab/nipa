@@ -386,6 +386,33 @@ export interface WebhookResponse {
   updated_at: string
 }
 
+export interface ServiceTokenResponse {
+  id: string
+  project_id: string
+  name: string
+  hint: string
+  scopes: string[]
+  created_by: string
+  expires_at?: string
+  last_used_at?: string
+  revoked_at?: string
+  created_at: string
+  token?: string
+}
+
+export interface CreateServiceTokenInput {
+  name: string
+  scopes: string[]
+  expires_at?: string
+}
+
+export interface CommitContainsResponse {
+  commit: string
+  ref: string
+  ref_commit?: string
+  contains: boolean
+}
+
 export interface CreateWebhookInput {
   name: string
   url: string

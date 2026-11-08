@@ -223,6 +223,7 @@ func startEnterpriseServerWith(t *testing.T, dbConn *sql.DB, chunkStore storage.
 		Webhook:            webhookRepo,
 		Email:              postgres.NewEmailRepository(dbConn),
 		Audit:              postgres.NewAuditRepository(dbConn),
+		ServiceToken:       postgres.NewServiceTokenRepository(dbConn),
 	}, deps)
 	reg := serverapp.NewRegistry(uc)
 

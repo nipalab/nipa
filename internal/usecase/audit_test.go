@@ -71,6 +71,20 @@ func TestAudit_RecordFillsActorAndRequestMeta(t *testing.T) {
 	require.NoError(t, audit.Record(ctx, domain.AuditEntry{Action: domain.AuditProjectUpdated, ProjectID: domain.IDPtr(5)}))
 }
 
+func TestAudit_RecordServiceTokenActor(t *testing.T) {
+	audit, repo, _ := newTestAudit(t)
+	ctx := domain.ContextWithClaim(context.Background(), domain.Claims{UserID: 7, ServiceTokenID: 3})
+	repo.EXPECT().Insert(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, entry domain.AuditEntry) error {
+		require.Equal(t, domain.AuditActorUser, entry.ActorType)
+		require.Equal(t, snow.ID(7), *entry.ActorUserID)
+		require.Equal(t, "service_token:"+snow.ID(3).Base36(), entry.ActorLabel)
+		require.Equal(t, snow.ID(3).Base36(), entry.Metadata["service_token_id"])
+		return nil
+	})
+
+	require.NoError(t, audit.Record(ctx, domain.AuditEntry{Action: domain.AuditWebhookCreated}))
+}
+
 func TestAudit_RecordSystemActorAndLookupErrors(t *testing.T) {
 	audit, repo, projects := newTestAudit(t)
 

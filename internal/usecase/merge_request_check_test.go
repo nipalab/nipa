@@ -352,4 +352,15 @@ func TestMergeRequestCheck_Report_HeadPinning(t *testing.T) {
 		_, err := uc.Report(permissionCtx(8), snow.ID(1), 5, "build", "success", "", head.Base36())
 		require.NoError(t, err)
 	})
+
+	t.Run("the author's service token can report when checks are required", func(t *testing.T) {
+		uc, repo, _ := prepare(t)
+		repo.EXPECT().Upsert(gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, check domain.MergeRequestCheck) (*domain.MergeRequestCheck, error) {
+				return &check, nil
+			})
+		ctx := domain.ContextWithClaim(context.Background(), domain.Claims{UserID: 7, ServiceTokenID: 3})
+		_, err := uc.Report(ctx, snow.ID(1), 5, "build", "success", "", head.Base36())
+		require.NoError(t, err)
+	})
 }

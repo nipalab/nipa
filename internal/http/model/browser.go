@@ -99,3 +99,10 @@ type SetBranchProtectionRequest struct {
 	// RequiredChecks is optional: absent keeps the current set.
 	RequiredChecks *[]string `json:"required_checks,omitempty"`
 }
+
+type CommitContainsResponse struct {
+	Commit    string `json:"commit"`
+	Ref       string `json:"ref"`
+	RefCommit string `json:"ref_commit,omitempty"`
+	Contains  bool   `json:"contains"`
+}
