@@ -32,11 +32,64 @@ const EnvTracingOTLPEndpoint = "NIPA_TRACING_OTLP_ENDPOINT"
 // EnvTracingSampleRatio sets the trace sampling ratio in (0, 1].
 const EnvTracingSampleRatio = "NIPA_TRACING_SAMPLE_RATIO"
 
+// LLM environment overrides for --generate. NIPA_LLM_API_KEY holds the key
+// itself; the config file only names the variable that holds it.
+const (
+	EnvLLMEndpoint = "NIPA_LLM_ENDPOINT"
+	EnvLLMModel    = "NIPA_LLM_MODEL"
+	EnvLLMAPIKey   = "NIPA_LLM_API_KEY"
+)
+
 // Config is the user configuration stored in ~/.config/nipa/config.json.
 type Config struct {
-	DiffExternal  string `json:"diffExternal,omitempty"`
-	UploadWorkers int    `json:"uploadWorkers,omitempty"`
-	SSHKeyPath    string `json:"sshKeyPath,omitempty"`
+	DiffExternal  string     `json:"diffExternal,omitempty"`
+	UploadWorkers int        `json:"uploadWorkers,omitempty"`
+	SSHKeyPath    string     `json:"sshKeyPath,omitempty"`
+	LLM           *LLMConfig `json:"llm,omitempty"`
+}
+
+// LLMConfig points --generate at an OpenAI-compatible endpoint. APIKeyEnv
+// names the environment variable holding the key; keys are never stored in
+// the file.
+type LLMConfig struct {
+	Endpoint  string `json:"endpoint,omitempty"`
+	Model     string `json:"model,omitempty"`
+	APIKeyEnv string `json:"apiKeyEnv,omitempty"`
+}
+
+// LLMSettings is the resolved endpoint, model and key.
+type LLMSettings struct {
+	Endpoint string
+	Model    string
+	APIKey   string
+}
+
+// ResolveLLM merges the llm config block with the environment, which takes
+// precedence. The key comes from NIPA_LLM_API_KEY, else from the variable
+// named by apiKeyEnv. Empty fields mean generation is not configured.
+func ResolveLLM() (LLMSettings, error) {
+	cfg, err := Load()
+	if err != nil {
+		return LLMSettings{}, err
+	}
+	var out LLMSettings
+	keyEnv := ""
+	if cfg.LLM != nil {
+		out.Endpoint = strings.TrimSpace(cfg.LLM.Endpoint)
+		out.Model = strings.TrimSpace(cfg.LLM.Model)
+		keyEnv = strings.TrimSpace(cfg.LLM.APIKeyEnv)
+	}
+	if v := strings.TrimSpace(os.Getenv(EnvLLMEndpoint)); v != "" {
+		out.Endpoint = v
+	}
+	if v := strings.TrimSpace(os.Getenv(EnvLLMModel)); v != "" {
+		out.Model = v
+	}
+	out.APIKey = strings.TrimSpace(os.Getenv(EnvLLMAPIKey))
+	if out.APIKey == "" && keyEnv != "" {
+		out.APIKey = strings.TrimSpace(os.Getenv(keyEnv))
+	}
+	return out, nil
 }
 
 // Path returns the user configuration file location.

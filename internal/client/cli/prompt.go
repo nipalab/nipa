@@ -2,7 +2,9 @@ package cli
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -70,4 +72,21 @@ func (p *Prompter) readSecret() (string, error) {
 		return "", err
 	}
 	return string(secret), nil
+}
+
+// confirm asks a yes/no question on out and reads one answer line from in.
+func confirm(in io.Reader, out io.Writer, question string) (bool, error) {
+	if _, err := fmt.Fprint(out, question); err != nil {
+		return false, err
+	}
+	answer, err := bufio.NewReader(in).ReadString('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return false, err
+	}
+	switch strings.ToLower(strings.TrimSpace(answer)) {
+	case "y", "yes":
+		return true, nil
+	default:
+		return false, nil
+	}
 }

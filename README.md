@@ -87,7 +87,7 @@ and flag.
 | `nipa remove <path> [...]`  | Unstage files. `-a` unstages everything.                                    |
 | `nipa restore <path> [...]` | Discard unpushed changes, restoring files from the last synced tree (offline). Refused for staged paths. |
 | `nipa status`               | Show the working copy: `A` staged, `M` modified, `?` untracked, `!` missing, `C` conflict. |
-| `nipa push -m "<message>"`  | Upload staged changes and commit them on the configured branch. `--dry-run` reports the changes and upload estimate without contacting the server. |
+| `nipa push -m "<message>"`  | Upload staged changes and commit them on the configured branch. `--dry-run` reports the changes and upload estimate without contacting the server. `--generate` drafts the message with a configured OpenAI-compatible LLM (local or cloud) and asks for confirmation (`--yes` skips it); see [`docs/AI.md`](docs/AI.md#client-side-generation---generate). |
 | `nipa update`               | Fetch and apply the latest changes of the configured branch (or re-sync the checked-out tag while detached). |
 | `nipa sparse-checkout`      | `list`, `set`, `add`, `remove` or `disable` the sparse directory prefixes, then update the working copy. |
 | `nipa merge <branch>`       | Merge another branch into the current one. Fast-forwards when possible; `--no-ff`, `--ff-only`, `--abort`, `-m` and `--dry-run` are supported. |
@@ -97,7 +97,7 @@ and flag.
 | `nipa assets check [<rev1> [<rev2>]]` | Check changed files against the root `.nipaassets.yml` asset budgets (texture size, power of two, triangles, vertices, audio length/peak, file size, naming). `--staged`, `--json` and `-- <path>` are supported; exits 2 on violations. See [`docs/AI.md`](docs/AI.md#asset-budgets). |
 | `nipa lock <path> [--branch]` | Lock a binary file or a directory prefix. `nipa lock list` shows active locks. |
 | `nipa unlock <path> [--branch]` | Release a lock you hold.                                                  |
-| `nipa mr ...`               | Merge requests: `create [--draft]`, `list`, `view`, `update`, `ready`, `assign`, `review --approve\|--request-changes`, `comment`, `reply`, `resolve`, `request-review`, `timeline`, `diff`, `check`/`checks`, `merge --strategy <ff\|merge\|squash\|rebase> [--delete-source]`, `close`, `reopen`. |
+| `nipa mr ...`               | Merge requests: `create [--draft] [--generate]`, `list`, `view`, `update`, `ready`, `assign`, `review --approve\|--request-changes`, `comment`, `reply`, `resolve`, `request-review`, `timeline`, `diff`, `check`/`checks`, `merge --strategy <ff\|merge\|squash\|rebase> [--delete-source]`, `close`, `reopen`. |
 | `nipa acl ...`              | Manage path-based permission rules (`grant`, `revoke`, `list`, `my`, and `permission list\|set\|remove` for project path permissions). |
 | `nipa group ...`            | Manage groups and their members (`create`, `list`, `add-member`, `remove-member`). |
 | `nipa serve`                | Run the local daemon that GUI clients and engine plugins connect to. See [`docs/DAEMON.md`](docs/DAEMON.md). |
@@ -199,8 +199,16 @@ Nipa can be driven by scripts and AI agents as well as by people:
   `branch`, `lock`, `mr`, `merge`) and enabled with `--allow` (or all with
   `--allow-write`). Diffs are capped by `max_bytes`, and text written through
   MCP carries a `Nipa-Agent: <client>/<version>` trailer (`--no-agent-trailer`
-  disables it). Authentication never prompts (a prompt would corrupt the
-  JSON-RPC stream), so log in with a normal CLI command in the clone first.
+  disables it). The prompts `nipa_commit_message`, `nipa_mr_description` and
+  `nipa_review_mr` hand the agent ready-made context for drafting commit
+  messages, merge request descriptions and review findings. Authentication
+  never prompts (a prompt would corrupt the JSON-RPC stream), so log in with
+  a normal CLI command in the clone first.
+- **Generation** — `nipa push --generate` and `nipa mr create --generate`
+  draft the commit message or merge request text with an OpenAI-compatible
+  endpoint you configure (`NIPA_LLM_ENDPOINT`/`NIPA_LLM_MODEL`, e.g. a local
+  Ollama); only paths, text hunks and structured asset summaries are sent,
+  never binary contents, and the server never calls an LLM.
 - **Machine-readable output** — read commands accept `--json` (`nipa status`,
   `nipa diff`, `nipa log`, `nipa branch`, `nipa tag`, `nipa lock list`,
   `nipa mr list`);
@@ -231,7 +239,9 @@ The full agent-facing reference lives in [`docs/AI.md`](docs/AI.md).
   (clone, push, update, merge, revert, diff and more), `grpc` (transport and
   chunk transfers), `localrepo` (`.nipa/` metadata in SQLite plus a loose
   object cache), `merge` (three-way tree merge and diff3), `daemon`
-  (`nipa serve`) and `mcp` (`nipa mcp`).
+  (`nipa serve`), `mcp` (`nipa mcp`), `aiprompt`/`aicontext` (generation
+  prompts and their repository context) and `llm` (OpenAI-compatible client
+  behind `--generate`).
 - **Shared pure packages**: `internal/diff` (Myers diff, tree comparison,
   rename detection, rendering; also used for server-side merge-request diffs),
   `internal/preview` (asset decoders and visual diffs) and `internal/godotres`

@@ -16,6 +16,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/nipalab/nipa/internal/assetdiff"
+	"github.com/nipalab/nipa/internal/client/aicontext"
 	"github.com/nipalab/nipa/internal/client/assetscan"
 	"github.com/nipalab/nipa/internal/client/domain"
 	"github.com/nipalab/nipa/internal/client/output"
@@ -273,10 +274,7 @@ type mrDescribeInput struct {
 	MaxFiles int    `json:"max_files,omitempty" jsonschema:"Maximum number of files described (default 50, at most 200)"`
 }
 
-type mrSide struct {
-	Revision string `json:"revision"`
-	Kind     string `json:"kind"`
-}
+type mrSide = aicontext.Side
 
 type mrDescribeOutput struct {
 	Number  int64               `json:"number"`
@@ -318,37 +316,8 @@ func (s *server) mrDescribeChanges(ctx context.Context, _ *mcp.CallToolRequest, 
 	return nil, mrDescribeOutput{Number: in.Number, Base: base, Head: head, Files: out.Files, Omitted: out.Omitted}, nil
 }
 
-// mrSides picks the revisions the request diff compares: the live merge base
-// (falling back to the recorded one, then the target head or branch) and the
-// source head commit (falling back to the source branch).
 func mrSides(mr *domain.MergeRequest, m *domain.Mergeability) (mrSide, mrSide) {
-	if m == nil {
-		m = &domain.Mergeability{}
-	}
-	if mr == nil {
-		mr = &domain.MergeRequest{}
-	}
-	var base mrSide
-	switch {
-	case m.MergeBaseCommitID != "":
-		base = mrSide{Revision: m.MergeBaseCommitID, Kind: "merge_base"}
-	case mr.MergeBaseCommitID != "":
-		base = mrSide{Revision: mr.MergeBaseCommitID, Kind: "merge_base"}
-	case m.TargetCommitID != "":
-		base = mrSide{Revision: m.TargetCommitID, Kind: "target_head"}
-	default:
-		base = mrSide{Revision: mr.TargetBranch, Kind: "target_branch"}
-	}
-	var head mrSide
-	switch {
-	case m.SourceCommitID != "":
-		head = mrSide{Revision: m.SourceCommitID, Kind: "source_head"}
-	case mr.Review != nil && mr.Review.HeadCommitID != "":
-		head = mrSide{Revision: mr.Review.HeadCommitID, Kind: "source_head"}
-	default:
-		head = mrSide{Revision: mr.SourceBranch, Kind: "source_branch"}
-	}
-	return base, head
+	return aicontext.MRSides(mr, m)
 }
 
 type metaWarningsInput struct {

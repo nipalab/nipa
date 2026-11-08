@@ -24,16 +24,17 @@ func dryRunRequested(cmd *cobra.Command) (bool, error) {
 }
 
 func writePlan(cmd *cobra.Command, plan *domain.Plan) error {
-	return writePlanWithBudget(cmd, plan, nil)
+	return writePlanWithBudget(cmd, plan, nil, "")
 }
 
-func writePlanWithBudget(cmd *cobra.Command, plan *domain.Plan, violations []assetbudget.Violation) error {
+func writePlanWithBudget(cmd *cobra.Command, plan *domain.Plan, violations []assetbudget.Violation, generated string) error {
 	if plan == nil {
 		return domain.NewUserError("nothing to report")
 	}
 	if jsonRequested(cmd) {
 		out := output.NewPlan(plan)
 		out.AssetViolations = violations
+		out.GeneratedMessage = generated
 		return output.WriteJSON(cmd.OutOrStdout(), out)
 	}
 	out := cmd.OutOrStdout()
@@ -63,6 +64,9 @@ func writePlanWithBudget(cmd *cobra.Command, plan *domain.Plan, violations []ass
 	if len(violations) > 0 {
 		_, _ = fmt.Fprintf(out, "warning: %d asset budget violation(s) (see nipa assets check --staged):\n", len(violations))
 		writeViolations(out, "  ", violations)
+	}
+	if generated != "" {
+		_, _ = fmt.Fprintf(out, "generated commit message:\n\n%s\n", generated)
 	}
 	return nil
 }

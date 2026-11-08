@@ -1,7 +1,8 @@
 # Nipa for AI agents
 
-This page summarizes the interfaces an automated agent can use: the MCP server,
-the machine-readable CLI output, dry runs and the REST API. Everything is
+This page summarizes the interfaces an automated agent can use: the MCP server
+(tools and prompts), the machine-readable CLI output, dry runs, client-side
+text generation and the REST API. Everything is
 served by the regular client and server binaries; no separate agent service
 exists. The final section collects proposed AI-native directions and how they
 would build on these seams.
@@ -92,6 +93,22 @@ Tool results carry the same JSON shapes as the CLI `--json` payloads (see
 below). Mutating tools are serialized by the server. Tool failures set
 `isError` and include the human message plus any `hint:` and `next:` guidance
 from the underlying error.
+
+### MCP prompts
+
+Three read-only prompts (`prompts/list`, `prompts/get`) are always registered.
+Each returns one `user` message: the instructions, a `---` separator, then the
+repository data. The connected agent's own model writes the text; `nipa mcp`
+calls no LLM.
+
+| Prompt | Arguments | Content |
+| --- | --- | --- |
+| `nipa_commit_message` | `repo` | staged changes (offline): changed files, asset summaries, `.nipaassets.yml` violations, text diff |
+| `nipa_mr_description` | `repo`, `source` (default: working copy branch), `target` (default: project default branch) | commits since the merge base, the same change data for merge base vs source |
+| `nipa_review_mr` | `repo`, `number` (required) | merge request metadata, commits, existing threads (capped), change data; asks for findings with path, line and severity, never an approval |
+
+Errors (nothing staged, unknown request, missing configuration) come back as
+JSON-RPC errors with the same `hint:`/`next:` guidance as tool failures.
 
 ## CLI JSON output
 
@@ -204,6 +221,66 @@ Exit code `2` when a budget is exceeded, `0` otherwise. Without the file it
 prints `no .nipaassets.yml` (JSON `{"config":false,"violations":[],"checked":0}`)
 and exits `0`. The MCP tool `nipa_asset_check` returns the same report.
 
+## Client-side generation (`--generate`)
+
+```sh
+nipa push --generate [--yes] [--dry-run [--json]]
+nipa mr create --generate [--yes] [--title <t>] [--source <b>] [--target <b>]
+```
+
+`nipa push --generate` drafts the commit message of the staged changes and
+`nipa mr create --generate` the description (and the title unless `--title`
+is given: first answer line = title, the rest = description) from the
+commits since the merge base and the merge base vs source changes. The draft
+is printed and confirmed with `Use it? [y/N]`; `--yes` (`-y`) skips the
+question, and without a terminal the command refuses unless `--yes` is
+given. `--generate` is mutually exclusive with `-m` (push) and
+`-d`/`--description` (mr create). `nipa push --dry-run --generate` only
+prints the draft (JSON: `generated_message` in the plan payload) and pushes
+nothing. Generated text gets a `Nipa-Generated: <model>` trailer.
+
+The prompts are the same as the MCP prompts above (`internal/client/aiprompt`,
+gathered by `internal/client/aicontext`). The endpoint is any
+OpenAI-compatible chat completion API: nipa sends one non-streaming
+`POST <endpoint>/chat/completions` with `{model, messages: [system, user],
+temperature: 0.2}`, a bearer key when one is set, a 60 s timeout and a 1 MiB
+response cap. The endpoint is used as given (a trailing `/` is dropped) and
+`/chat/completions` is appended, so configure the API base, including `/v1`
+where the server needs it:
+
+| Server | Endpoint |
+| --- | --- |
+| Ollama | `http://localhost:11434/v1` |
+| vLLM / llama.cpp server | `http://localhost:8000/v1` |
+| OpenAI | `https://api.openai.com/v1` |
+
+Configuration (`~/.config/nipa/config.json`, environment wins):
+
+```json
+{ "llm": { "endpoint": "http://localhost:11434/v1", "model": "qwen2.5-coder", "apiKeyEnv": "OPENAI_API_KEY" } }
+```
+
+| Key | Environment | Meaning |
+| --- | --- | --- |
+| `llm.endpoint` | `NIPA_LLM_ENDPOINT` | API base URL (http or https) |
+| `llm.model` | `NIPA_LLM_MODEL` | model name sent in the request and the trailer |
+| `llm.apiKeyEnv` | `NIPA_LLM_API_KEY` | the config names the variable holding the key; `NIPA_LLM_API_KEY` holds the key itself and wins. Keys are never written to the config file, logs or error messages |
+
+Without an endpoint or model `--generate` fails with
+`set NIPA_LLM_ENDPOINT and NIPA_LLM_MODEL or llm in ~/.config/nipa/config.json`;
+nothing is ever sent to a default or cloud endpoint.
+
+Privacy: what leaves the machine is the prompt text only — repo-relative
+paths, change statuses, text diff hunks (64 KiB in total by default, long
+lines cut at 512 bytes, the rest counted as `[... N more files omitted]`),
+commit subjects, merge request title/description and thread comments
+(capped), structured asset summaries (for example image size, triangle
+counts, loudness) and `.nipaassets.yml` violations. Binary file contents never
+leave: binary files appear as a path with `[binary]`, and any patch line with
+NUL bytes or invalid UTF-8 is replaced by `[non-text content omitted]`. Point
+the endpoint at a local server to keep everything on the machine. The Nipa
+server never calls an LLM.
+
 ## REST API
 
 The server exposes an OpenAPI document at `/docs/api.json` (Swagger UI at
@@ -282,8 +359,11 @@ never in the push request path.
   agents can query a remote repository with no clone at all — JWT
   authenticated and permission-filtered. Bigger server surface; the stdio +
   daemon path covers most needs first.
-- **Client-side generation**: `nipa commit`/`nipa mr create --generate`
-  drafting messages from diff data. Pure client work, no server AI.
+- **Client-side generation** (shipped, see
+  [Client-side generation](#client-side-generation---generate) and
+  [MCP prompts](#mcp-prompts)): `nipa push --generate`, `nipa mr create
+  --generate` and the `nipa_commit_message`/`nipa_mr_description`/
+  `nipa_review_mr` prompts. Pure client work, no server AI.
 - **Privacy stance**: studios will not ship unreleased assets to cloud AI.
   Workers must support local models and a rules-only (no-AI) mode; Nipa core
   never calls an LLM.

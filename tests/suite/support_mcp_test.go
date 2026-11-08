@@ -224,3 +224,40 @@ func (m *mcpProc) callTool(name string, args map[string]any) mcpToolResult {
 	Expect(json.Unmarshal(resp.Result, &result)).To(Succeed())
 	return result
 }
+
+func (m *mcpProc) promptNames() []string {
+	GinkgoHelper()
+	resp := m.request("prompts/list", map[string]any{})
+	Expect(resp.Error).To(BeNil())
+	var result struct {
+		Prompts []struct {
+			Name string `json:"name"`
+		} `json:"prompts"`
+	}
+	Expect(json.Unmarshal(resp.Result, &result)).To(Succeed())
+	names := []string{}
+	for _, p := range result.Prompts {
+		names = append(names, p.Name)
+	}
+	return names
+}
+
+func (m *mcpProc) getPrompt(name string, args map[string]string) (string, *mcpMessage) {
+	GinkgoHelper()
+	resp := m.request("prompts/get", map[string]any{"name": name, "arguments": args})
+	if resp.Error != nil {
+		return "", &resp
+	}
+	var result struct {
+		Messages []struct {
+			Role    string `json:"role"`
+			Content struct {
+				Type string `json:"type"`
+				Text string `json:"text"`
+			} `json:"content"`
+		} `json:"messages"`
+	}
+	Expect(json.Unmarshal(resp.Result, &result)).To(Succeed())
+	Expect(result.Messages).To(HaveLen(1))
+	return result.Messages[0].Content.Text, nil
+}
