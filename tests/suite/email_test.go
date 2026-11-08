@@ -123,6 +123,8 @@ var _ = Describe("email notifications", func() {
 		reopened := email.waitForSubject(assignee.email, "Merge request reopened")
 		Expect(reopened.Text).To(ContainSubstring("reopened merge request !1"))
 		expectReply(reopened, assigneeFirst)
+		reviewerReopened := email.waitForSubject(reviewer.email, "Merge request reopened")
+		expectReply(reviewerReopened, reviewerFirst)
 
 		Consistently(func() []int {
 			return []int{
@@ -137,6 +139,7 @@ var _ = Describe("email notifications", func() {
 		}, "2s", "100ms").Should(Equal([]int{0, 0, 0, 0, 0, 0, 0}), "actors are skipped and opening has no other participant yet")
 		Expect(email.countSubject(reviewer.email, "Merge request ready for review")).To(Equal(1))
 		Expect(email.countSubject(assignee.email, "Merge request ready for review")).To(Equal(1))
+		Expect(email.countSubject(reviewer.email, "Merge request reopened")).To(Equal(1), "a past reviewer stays a participant")
 	})
 
 	It("retries failed deliveries and redelivers them from the admin surface", func() {

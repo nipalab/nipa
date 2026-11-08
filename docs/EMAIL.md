@@ -162,7 +162,10 @@ Merge request events produce email to the participants: `mr.created`,
 `mr.ready_for_review`, `mr.review_requested`, `mr.review_submitted`,
 `mr.comment_created`, `mr.synchronized`, `mr.merged`, `mr.closed`,
 `mr.reopened` and failed `mr.check_reported` reports. The recipient set is the
-author, the requested reviewers, the assignees and the commenters; the actor,
+author, the requested reviewers, the assignees and the commenters, plus
+everyone who ever submitted a review (dismissed reviews included, since a
+review answers its request) for comments, pushes, failed checks, merge, close
+and reopen; the actor,
 deleted users, users without a valid email address and users who disabled
 `notify_email` in their profile are skipped, duplicates collapse and one event
 fans out to at most 200 recipients. Each message carries a deep link to the
