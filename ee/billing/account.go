@@ -186,8 +186,9 @@ func (s *Service) checkSeats(ctx context.Context, userID snow.ID, seats int64) e
 	if err != nil {
 		return err
 	}
-	if seats < used {
-		return domain.NewErrorConflict(fmt.Sprintf("%d seats are in use; buy at least that many", used))
+	free := max(s.cfg.FreeSeats, 0)
+	if addSaturating(seats, free) < used {
+		return domain.NewErrorConflict(fmt.Sprintf("%d seats are in use and %d are free; buy at least %d", used, free, used-free))
 	}
 	return nil
 }

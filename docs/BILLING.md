@@ -70,6 +70,10 @@ count seats against the seat limit and refuse with **402
 `seat limit reached: N of M seats in use; ...`**. The insert runs on the same
 transaction, so two concurrent adds cannot both take the last seat.
 
+The first `BILLING_FREE_SEATS` seats are free on every plan: a subscription's
+seat quantity counts paid seats only and adds to them, so the seat limit is
+`paid seats + BILLING_FREE_SEATS` and the paid plan builds on top of Free.
+
 Lowering the limit never removes access: existing seats keep working and only
 new seats are refused.
 
@@ -82,13 +86,14 @@ newest `provider_updated_at`.
 
 | Subscription | Seat limit | Computed quota |
 |---|---|---|
-| `active`, `trialing`, `past_due` | `max(seats, BILLING_FREE_SEATS)` | `max(free, seats * BILLING_SEAT_INCLUDED_BYTES + packs * BILLING_STORAGE_PACK_BYTES)` |
+| `active`, `trialing`, `past_due` | `seats + BILLING_FREE_SEATS` | `free + seats * BILLING_SEAT_INCLUDED_BYTES + packs * BILLING_STORAGE_PACK_BYTES` |
 | `paused`, `canceled`, none | `BILLING_FREE_SEATS` | `free` |
 
+- `seats` is the paid seat quantity (0 for a packs-only subscription).
 - `free` is `SAAS_FREE_QUOTA_BYTES`, the quota new accounts are seeded with.
-  It is the floor of every paid quota. When it is 0 (unlimited), the paid
+  Paid storage is added on top of it. When it is 0 (unlimited), the paid
   quota is unlimited too.
-- The products saturate at the int64 maximum instead of overflowing.
+- The products and sums saturate at the int64 maximum instead of overflowing.
 - `past_due` keeps paid entitlements while Paddle's dunning retries the
   payment. Dunning ends with `subscription.canceled` (or `paused`, per the
   Paddle dashboard setting), which drops to the free tier. nipad keeps no grace
@@ -120,13 +125,16 @@ the editor for super admins.
    `{seats, storage_packs, interval}` (`interval` is `month` or `year`;
    `monthly`/`yearly` are accepted too).
 2. The server refuses with 409 when the caller already has a live
-   subscription or `seats` is below the seats in use, and with 400 for
-   `seats < 1` or negative packs.
+   subscription or `seats + BILLING_FREE_SEATS` is below the seats in use
+   (`N seats are in use and F are free; buy at least N-F`), and with 400 for
+   negative seats or packs or when both are 0 (a subscription needs at least
+   one paid seat or storage pack; cancelling returns to Free).
 3. It ensures the Paddle customer (`POST /customers`; a
    `customer_already_exists` conflict adopts the existing `ctm_` id) and stores
    it in `billing_accounts`.
 4. It creates a Paddle transaction (`POST /transactions`) with the configured
-   price ids for the interval (storage item only when packs > 0) and
+   price ids for the interval (seat item only when seats > 0, storage item
+   only when packs > 0) and
    `custom_data.user_id`, and returns `{transaction_id}`.
 5. The SPA opens the Paddle.js overlay with `Paddle.Checkout.open({ transactionId })`.
    The browser never chooses prices.
@@ -143,7 +151,8 @@ interval change swaps both prices in one update, with
 `on_payment_failure: prevent_change`. It answers:
 
 - 404 without a live subscription,
-- 409 when seats would drop below the seats in use, when the computed quota
+- 400 for negative quantities or zero seats and zero packs,
+- 409 when paid plus free seats would drop below the seats in use, when the computed quota
   would drop below the bytes in use, or when Paddle refuses (a 409 or a
   `subscription_locked*` / `subscription_update_when*` error, for example a
   pending scheduled change),
@@ -165,8 +174,8 @@ cancellation. 404 when the user never checked out.
 `GET /api/v1/billing/me` (owned by `ee/storageusage`) returns the storage
 summary (`user_id`, `used_bytes`, `quota_bytes`, `orgs`) and, when billing is
 on, `plan` (`free` without a live subscription, otherwise `team`), `status`,
-`interval`, `seats` (subscribed quantity, 0 on free), `seats_used`,
-`seat_limit`, `storage_packs`, `current_period_end` and
+`interval`, `seats` (subscribed paid quantity, 0 on free), `seats_used`,
+`seat_limit` (paid plus free seats), `storage_packs`, `current_period_end` and
 `cancel_at_period_end`. It answers 404 when the storage ledger is off.
 
 `GET /api/v1/auth/capabilities` (owned by `ee/registration`) carries
@@ -201,7 +210,7 @@ or origin filter (`billing.WebhookService`).
   subscription, so a late event for an old subscription cannot clobber a newer
   one. `Apply` serializes on the same per-owner advisory lock as `Admit`.
 - **Permanent vs transient failures.** Domain 4xx outcomes (unknown or deleted
-  user, unknown price, mixed intervals, no seat item, malformed data) are
+  user, unknown price, mixed intervals, no items, malformed data) are
   recorded in `billing_events.error` and answered 200 so Paddle stops
   retrying. Anything else (database errors) is answered 500 and Paddle
   retries.
@@ -243,7 +252,7 @@ back to a built-in value.
 | `PADDLE_CLIENT_TOKEN` | client-side token for Paddle.js (public) |
 | `PADDLE_PRICE_SEAT_MONTHLY`, `PADDLE_PRICE_SEAT_YEARLY` | seat price ids |
 | `PADDLE_PRICE_STORAGE_MONTHLY`, `PADDLE_PRICE_STORAGE_YEARLY` | storage pack price ids |
-| `BILLING_FREE_SEATS` | free-tier seats, at least 1 (the owner is a seat) |
+| `BILLING_FREE_SEATS` | seats free on every plan, at least 1 (the owner is a seat); paid seats add to them |
 | `BILLING_SEAT_INCLUDED_BYTES` | storage each paid seat adds, > 0 |
 | `BILLING_STORAGE_PACK_BYTES` | storage each pack adds, > 0 |
 
@@ -260,8 +269,10 @@ capabilities carries `billing` and `/billing/me` carries `plan`, it adds:
 
 - a plan card (plan, status, interval, "Renews on" or "Cancels on", seats used
   of the limit, storage packs, a "Payment past due" warning),
-- an editor with seat and storage-pack steppers (seats never below the seats
-  in use), a monthly/yearly toggle and a price preview from
+- an editor with paid-seat and storage-pack steppers (free seats are derived
+  as `seat_limit - seats` on a paid plan and `seat_limit` on free; paid seats
+  never below the seats in use minus the free seats; the button is disabled at
+  0 seats and 0 packs), a monthly/yearly toggle and a price preview from
   `Paddle.PricePreview` with the configured price ids (a fallback note when the
   preview fails),
 - on the free plan, Upgrade (checkout, then the Paddle overlay, then a pending
@@ -299,8 +310,8 @@ host list).
    expiry, any CVC). The overlay completes, the page shows the pending state
    and switches to the paid plan once `subscription.created`/`activated`
    arrives. Check the new seat limit and quota.
-6. Change seats, packs and interval with "Update plan"; try lowering seats
-   below the seats in use (409 inline).
+6. Change seats, packs and interval with "Update plan"; try lowering paid
+   seats below the seats in use minus the free seats (409 inline).
 7. Open "Manage billing" and schedule a cancellation: the page shows
    "Cancels on". Cancel immediately (or let the simulated period end) and
    check that the plan returns to free and adding a member over the free seats

@@ -123,11 +123,19 @@ func TestMapSubscription(t *testing.T) {
 	require.False(t, sub.CancelAtPeriodEnd)
 	require.Equal(t, "past_due", sub.Status)
 
+	packsOnly := base()
+	packsOnly.Items = append(packsOnly.Items, item("pri_st_m", 3))
+	sub, err = client.mapSubscription(packsOnly)
+	require.NoError(t, err)
+	require.Zero(t, sub.Seats, "a packs-only subscription has no paid seats")
+	require.Equal(t, int64(3), sub.StoragePacks)
+	require.Equal(t, billing.IntervalMonth, sub.Interval)
+
 	for name, mutate := range map[string]func(*subscription){
 		"missing id":     func(s *subscription) { s.ID = "" },
 		"unknown price":  func(s *subscription) { s.Items = append(s.Items, item("pri_other", 1)) },
 		"mixed interval": func(s *subscription) { s.Items = append(s.Items, item("pri_st_y", 1)) },
-		"no seat item":   func(s *subscription) { s.Items = s.Items[:0]; s.Items = append(s.Items, item("pri_st_m", 1)) },
+		"no items":       func(s *subscription) { s.Items = s.Items[:0] },
 		"bad user id":    func(s *subscription) { s.CustomData.UserID = "not base36!" },
 		"empty price id": func(s *subscription) { s.Items = append(s.Items, item("", 1)) },
 	} {

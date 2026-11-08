@@ -145,7 +145,7 @@ const TEAM = {
   status: 'active',
   interval: 'month',
   seats: 4,
-  seat_limit: 4,
+  seat_limit: 7,
   storage_packs: 1,
   current_period_end: '2026-12-01T00:00:00Z',
 }
@@ -278,19 +278,23 @@ describe('BillingPage', () => {
     expect(document.body.textContent).not.toContain('Contact your administrator')
     expect(paddle.load).toHaveBeenCalledWith(CAPABILITIES.billing)
 
-    expect(input('seats')?.value).toBe('2')
+    expect(input('seats')?.value).toBe('0')
+    expect(document.body.textContent).toContain('3 free seats included; at least 0 paid seats needed')
     expect(disabled(iconButton('Decrease seats'))).toBe(true)
-    await waitForText('$10.00 per seat / month · $20.00')
+    expect(disabled(button('Upgrade'))).toBe(true)
+    await waitForText('$10.00 per seat / month')
+    expect(document.body.textContent).not.toContain('per seat / month · ')
     expect(paddle.preview).toHaveBeenLastCalledWith(paddleInstance, [
-      { priceId: 'pri_seat_m', quantity: 2 },
+      { priceId: 'pri_seat_m', quantity: 1 },
       { priceId: 'pri_storage_m', quantity: 1 },
     ])
     expect(document.body.textContent).toContain('$5.00 per pack / month')
 
-    await typeValue(input('seats'), '1')
-    expect(input('seats')?.value).toBe('2')
-    await typeValue(input('seats'), '')
-    expect(input('seats')?.value).toBe('2')
+    await typeValue(input('seats'), '2')
+    await waitForText('$10.00 per seat / month · $20.00')
+    expect(disabled(button('Upgrade'))).toBe(false)
+    await typeValue(input('seats'), '-1')
+    expect(input('seats')?.value).toBe('0')
     await typeValue(input('seats'), '7')
     expect(input('seats')?.value).toBe('7')
     await click(iconButton('Decrease seats'))
@@ -326,6 +330,7 @@ describe('BillingPage', () => {
     })
     await renderBilling()
     await waitForText('2 of 3 seats used')
+    await click(iconButton('Increase seats'))
     await click(button('Upgrade'))
     await waitUntil(() => paddle.open.mock.calls.length > 0)
     expect(disabled(button('Upgrade'))).toBe(true)
@@ -353,6 +358,7 @@ describe('BillingPage', () => {
     await renderBilling()
     await waitForText('Prices could not be loaded')
 
+    await click(iconButton('Increase seats'))
     await click(button('Upgrade'))
     await waitForText('a subscription is already active')
     expect(document.body.textContent).toContain('Could not start checkout')
@@ -372,7 +378,7 @@ describe('BillingPage', () => {
       billing: () => current,
       handle: (call) => {
         if (call.url.endsWith('/api/v1/billing/subscription')) {
-          if (reject) return jsonResponse({ error: '2 seats are in use; buy at least that many' }, 409)
+          if (reject) return jsonResponse({ error: '9 seats are in use and 3 are free; buy at least 6' }, 409)
           current = { ...TEAM, storage_packs: 2 }
           return jsonResponse({ ...TEAM, storage_packs: 2 })
         }
@@ -392,7 +398,7 @@ describe('BillingPage', () => {
     await click(iconButton('Increase storage packs'))
     expect(disabled(button('Update plan'))).toBe(false)
     await click(button('Update plan'))
-    await waitForText('2 seats are in use')
+    await waitForText('9 seats are in use')
     expect(document.body.textContent).toContain('Could not update the plan')
     const patch = calls.find((call) => call.url.endsWith('/api/v1/billing/subscription'))
     expect(patch).toMatchObject({ method: 'PATCH', body: { seats: 4, storage_packs: 2, interval: 'month' } })
@@ -400,7 +406,7 @@ describe('BillingPage', () => {
     reject = false
     await click(button('Update plan'))
     await waitUntil(() => input('storage packs')?.value === '2' && disabled(button('Update plan')) === true)
-    expect(document.body.textContent).not.toContain('2 seats are in use')
+    expect(document.body.textContent).not.toContain('9 seats are in use')
 
     const tab = { opener: {} as unknown, location: { href: '' }, close: vi.fn() }
     const open = vi.spyOn(window, 'open').mockReturnValue(tab as unknown as Window)
@@ -411,13 +417,57 @@ describe('BillingPage', () => {
     expect(tab.opener).toBeNull()
   })
 
-  it('keeps the editor clean when the free-seat floor covers more seats than the subscription', async () => {
-    const calls = stubServer({ capabilities: CAPABILITIES, billing: () => ({ ...TEAM, seats: 2, seats_used: 3, seat_limit: 5 }) })
+  it('starts a paid plan at its paid seats and lets free seats lower the minimum', async () => {
+    const calls = stubServer({ capabilities: CAPABILITIES, billing: () => ({ ...TEAM, seats: 2, seats_used: 4, seat_limit: 5 }) })
     await renderBilling()
     await waitForText('Renews on')
-    expect(input('seats')?.value).toBe('3')
+    expect(input('seats')?.value).toBe('2')
+    expect(document.body.textContent).toContain('3 free seats included; at least 1 paid seats needed')
     expect(disabled(button('Update plan'))).toBe(true)
+    await click(iconButton('Decrease seats'))
+    expect(input('seats')?.value).toBe('1')
+    expect(disabled(iconButton('Decrease seats'))).toBe(true)
+    expect(disabled(button('Update plan'))).toBe(false)
     expect(calls.some((call) => call.url.endsWith('/api/v1/billing/subscription'))).toBe(false)
+  })
+
+  it('refuses to save a paid plan without seats or storage packs', async () => {
+    stubServer({ capabilities: CAPABILITIES, billing: () => ({ ...TEAM, seats: 1, storage_packs: 1, seats_used: 2, seat_limit: 4 }) })
+    await renderBilling()
+    await waitForText('Renews on')
+    await click(iconButton('Decrease seats'))
+    expect(disabled(button('Update plan'))).toBe(false)
+    await click(iconButton('Decrease storage packs'))
+    expect(input('seats')?.value).toBe('0')
+    expect(input('storage packs')?.value).toBe('0')
+    expect(disabled(button('Update plan'))).toBe(true)
+  })
+
+  it('requires paid seats for the users above the free seats', async () => {
+    stubServer({ capabilities: CAPABILITIES, billing: () => ({ ...FREE, seats_used: 5 }) })
+    await renderBilling()
+    await waitForText('5 of 3 seats used')
+    expect(input('seats')?.value).toBe('2')
+    expect(document.body.textContent).toContain('3 free seats included; at least 2 paid seats needed')
+    expect(disabled(iconButton('Decrease seats'))).toBe(true)
+    expect(disabled(button('Upgrade'))).toBe(false)
+  })
+
+  it('checks out storage packs without paid seats', async () => {
+    const calls = stubServer({
+      capabilities: CAPABILITIES,
+      billing: () => FREE,
+      handle: (call) =>
+        call.url.endsWith('/api/v1/billing/checkout') ? jsonResponse({ transaction_id: 'txn_packs' }) : undefined,
+    })
+    await renderBilling()
+    await waitForText('2 of 3 seats used')
+    await click(iconButton('Increase storage packs'))
+    await click(button('Upgrade'))
+    await waitUntil(() => paddle.open.mock.calls.length > 0)
+    const checkout = calls.find((call) => call.url.endsWith('/api/v1/billing/checkout'))
+    expect(checkout).toMatchObject({ method: 'POST', body: { seats: 0, storage_packs: 1, interval: 'month' } })
+    expect(paddle.open).toHaveBeenCalledWith({ transactionId: 'txn_packs' })
   })
 
   it('reports a failed portal request and closes the blank tab', async () => {

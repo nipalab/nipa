@@ -72,8 +72,10 @@ func (c *Client) mapSubscription(raw subscription) (billing.Subscription, error)
 		end := raw.CurrentBillingPeriod.EndsAt
 		sub.CurrentPeriodEnd = &end
 	}
+	if len(raw.Items) == 0 {
+		return billing.Subscription{}, invalidSubscription(raw.ID, "no items")
+	}
 	kinds := c.priceKinds()
-	seatItem := false
 	for _, item := range raw.Items {
 		kind, ok := kinds[item.Price.ID]
 		if !ok || item.Price.ID == "" {
@@ -85,13 +87,9 @@ func (c *Client) mapSubscription(raw subscription) (billing.Subscription, error)
 		sub.Interval = kind.interval
 		if kind.seat {
 			sub.Seats += item.Quantity
-			seatItem = true
 		} else {
 			sub.StoragePacks += item.Quantity
 		}
-	}
-	if !seatItem {
-		return billing.Subscription{}, invalidSubscription(raw.ID, "no seat item")
 	}
 	return sub, nil
 }

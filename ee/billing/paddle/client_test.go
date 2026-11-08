@@ -189,9 +189,14 @@ func TestCreateCheckout(t *testing.T) {
 	require.Equal(t, []any{map[string]any{"price_id": "pri_seat_y", "quantity": float64(1)}}, fake.requests[1].Body["items"],
 		"no storage item without packs")
 
+	_, err = client.CreateCheckout(context.Background(), "ctm_1", snow.ID(5), billing.Items{StoragePacks: 2, Interval: "month"})
+	require.NoError(t, err)
+	require.Equal(t, []any{map[string]any{"price_id": "pri_st_m", "quantity": float64(2)}}, fake.requests[2].Body["items"],
+		"no seat item without paid seats")
+
 	_, err = client.CreateCheckout(context.Background(), "ctm_1", snow.ID(5), billing.Items{Seats: 0, Interval: "month"})
 	require.Equal(t, http.StatusBadRequest, errorCode(err))
-	require.Len(t, fake.requests, 2)
+	require.Len(t, fake.requests, 3)
 
 	failing, _ := newFake(t, func(w http.ResponseWriter, _ recorded) {
 		writeJSON(w, http.StatusInternalServerError, paddleError("internal_error", "x"))

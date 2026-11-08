@@ -54,12 +54,12 @@ func TestAdmit_PaidLimit(t *testing.T) {
 	svc, repo, _, _ := newStubService()
 	repo.live = &Subscription{Status: StatusActive, Seats: 5}
 
-	repo.seats = 4
+	repo.seats = 7
 	require.NoError(t, svc.Admit(context.Background(), 1, 2, func(context.Context) error { return nil }))
 
-	repo.seats = 5
+	repo.seats = 8
 	err := svc.Admit(context.Background(), 1, 2, func(context.Context) error { return nil })
-	require.ErrorContains(t, err, "seat limit reached: 5 of 5")
+	require.ErrorContains(t, err, "seat limit reached: 8 of 8")
 }
 
 func TestAdmit_Errors(t *testing.T) {

@@ -41,11 +41,14 @@ func (i Items) Validate() (Items, error) {
 	default:
 		return i, domain.NewErrorUser("interval must be month or year")
 	}
-	if i.Seats < 1 {
-		return i, domain.NewErrorUser("seats must be at least 1")
+	if i.Seats < 0 {
+		return i, domain.NewErrorUser("seats must not be negative")
 	}
 	if i.StoragePacks < 0 {
 		return i, domain.NewErrorUser("storage_packs must not be negative")
+	}
+	if i.Seats+i.StoragePacks < 1 {
+		return i, domain.NewErrorUser("buy at least one seat or storage pack; cancel the subscription to return to Free")
 	}
 	return i, nil
 }

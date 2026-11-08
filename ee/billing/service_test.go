@@ -21,7 +21,7 @@ func TestApply_StoresAndRecomputesQuota(t *testing.T) {
 	require.Equal(t, []string{"lock", "upsert", "live"}, repo.calls, "the owner lock is taken before anything is written")
 	require.Equal(t, owner, repo.locked[0])
 	require.Equal(t, []Subscription{sub}, repo.upserted)
-	require.Equal(t, int64(5*100+2*5000), ledger.quotas[owner])
+	require.Equal(t, int64(1000+5*100+2*5000), ledger.quotas[owner])
 }
 
 func TestApply_NoLiveSubscriptionWritesTheFreeQuota(t *testing.T) {
