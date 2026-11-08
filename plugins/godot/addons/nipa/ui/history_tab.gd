@@ -70,6 +70,7 @@ func _load_page() -> void:
 		return
 	if not request.is_ok():
 		_detail.text = "History failed: %s" % request.get_message()
+		_more_button.disabled = false
 		return
 	var page: Dictionary = request.get_result()
 	add_page(page.get("commits", []), page.get("next", ""))

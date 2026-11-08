@@ -207,7 +207,13 @@ func _poll_tool() -> void:
 	if code != 0:
 		_detail.text = "The merge tool exited with %d; %s is unchanged." % [code, path]
 		return
+	if not FileAccess.file_exists(_tool_merged):
+		_detail.text = "The merge tool left no result for %s; nothing was resolved." % path
+		return
 	var merged := FileAccess.get_file_as_bytes(_tool_merged)
+	if FileAccess.get_open_error() != OK:
+		_detail.text = "Could not read the merged %s (%s); nothing was resolved." % [path, error_string(FileAccess.get_open_error())]
+		return
 	if _session.has_conflict_markers(merged):
 		_detail.text = "%s still has conflict markers; nothing was resolved." % path
 		return

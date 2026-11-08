@@ -195,3 +195,74 @@ func test_context_menu_offers_history_and_compare() -> void:
 	assert_array(ContextMenu.file_entries(PackedStringArray(["res://level.tscn"]))).contains_exactly([ContextMenu.HISTORY])
 	assert_array(ContextMenu.file_entries(PackedStringArray(["res://art/"]))).is_empty()
 	assert_array(ContextMenu.file_entries(PackedStringArray(["a.png", "b.png"]))).is_empty()
+
+
+class FakeRequest:
+	extends RefCounted
+	signal completed(ok: bool, message: String)
+	var ok := false
+	var message := ""
+
+	func is_ok() -> bool:
+		return ok
+
+	func get_message() -> String:
+		return message
+
+
+class FakeHistorySession:
+	extends RefCounted
+	var pending: FakeRequest
+
+	func is_open() -> bool:
+		return true
+
+	func request_history(_path: String, _start: String, _limit: int) -> RefCounted:
+		pending = FakeRequest.new()
+		return pending
+
+
+class FakeResolveSession:
+	extends RefCounted
+	var resolved := []
+
+	func has_conflict_markers(_content: PackedByteArray) -> bool:
+		return false
+
+	func request_resolve(path: String, choice: String, content: PackedByteArray) -> RefCounted:
+		resolved.append([path, choice, content])
+		return FakeRequest.new()
+
+
+func test_history_load_more_recovers_after_a_failure() -> void:
+	var tab := _scene("res://addons/nipa/ui/history_tab.tscn")
+	var fake := FakeHistorySession.new()
+	tab._session = fake
+	var more: Button = tab.get_node("Toolbar/MoreButton")
+	tab._load_page()
+	assert_bool(more.disabled).is_true()
+	fake.pending.message = "offline"
+	fake.pending.completed.emit(false, "offline")
+	await get_tree().process_frame
+	assert_bool(more.disabled).is_false()
+	assert_str(tab.get_node("Actions/Detail").text).is_equal("History failed: offline")
+	tab._session = null
+	_free(tab)
+
+
+func test_external_tool_without_a_result_resolves_nothing() -> void:
+	var tab := _scene("res://addons/nipa/ui/conflicts_tab.tscn")
+	var fake := FakeResolveSession.new()
+	tab._session = fake
+	var pid := OS.create_process("true", [])
+	assert_int(pid).is_greater(0)
+	while OS.is_process_running(pid):
+		await get_tree().process_frame
+	tab._tool_pid = pid
+	tab._tool_path = "player.gd"
+	tab._tool_merged = "user://nipa-missing/player.MERGED.gd"
+	tab._poll_tool()
+	assert_array(fake.resolved).is_empty()
+	assert_str(tab.get_node("Detail").text).contains("left no result")
+	tab._session = null
+	_free(tab)
