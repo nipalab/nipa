@@ -25,12 +25,24 @@ type recordingDownloader struct {
 	requested []serverDomain.Hash
 	failAfter int
 	failErr   error
+	failHash  *serverDomain.Hash
 }
 
 func (d *recordingDownloader) DownloadChunks(_ context.Context, _ domain.ChunkScope, hashes []serverDomain.Hash, onChunk func(serverDomain.Hash, []byte) error) error {
 	d.mu.Lock()
 	d.requested = append(d.requested, hashes...)
 	d.mu.Unlock()
+	if d.failHash != nil {
+		for _, h := range hashes {
+			if h == *d.failHash {
+				continue
+			}
+			if err := onChunk(h, d.data[h]); err != nil {
+				return err
+			}
+		}
+		return d.failErr
+	}
 	for i, h := range hashes {
 		if d.failErr != nil && i == d.failAfter {
 			return d.failErr
@@ -187,6 +199,69 @@ func TestSyncWorkingCopy_DirectFailureKeepsWorkingFiles(t *testing.T) {
 	requireNoTempFiles(t, root)
 }
 
+func TestSyncWorkingCopy_DirectFailureDefersFinishedFiles(t *testing.T) {
+	lr, root := newDirectRepo(t)
+	data := map[serverDomain.Hash][]byte{}
+	oldTree := &serverDomain.TreeNode{Name: "root", FileChildren: []*serverDomain.File{
+		rawManifestFile("a.bin", data, "old a"),
+		rawManifestFile("b.bin", data, "old b"),
+		rawManifestFile("c.bin", data, "old c"),
+	}}
+	require.NoError(t, syncTree(t, lr, root, &recordingDownloader{data: data}, oldTree))
+
+	a := rawManifestFile("a.bin", data, "new a 1", "new a 2")
+	c := rawManifestFile("c.bin", data, "cached c")
+	require.NoError(t, lr.StoreChunks([]*serverDomain.ChunkData{{Hash: c.Chunks[0].Hash, Data: data[c.Chunks[0].Hash]}}))
+	newTree := &serverDomain.TreeNode{Name: "root", FileChildren: []*serverDomain.File{a, rawManifestFile("b.bin", data, "new b"), c}}
+	wantErr := errors.New("connection reset")
+	failing := a.Chunks[1].Hash
+	err := syncTree(t, lr, root, &recordingDownloader{data: data, failHash: &failing, failErr: wantErr}, newTree)
+	require.ErrorIs(t, err, wantErr)
+
+	require.Equal(t, "old a", string(readRepoFile(t, root, "a.bin")))
+	require.Equal(t, "old b", string(readRepoFile(t, root, "b.bin")), "a fully downloaded file waits for the whole sync")
+	require.Equal(t, "old c", string(readRepoFile(t, root, "c.bin")), "a locally copied file waits for the whole sync")
+	requireNoTempFiles(t, root)
+}
+
+func TestSyncWorkingCopy_MaterializeFailureLeavesDirectFilesUnswapped(t *testing.T) {
+	lr, root := newDirectRepo(t)
+	data := map[serverDomain.Hash][]byte{}
+	require.NoError(t, syncTree(t, lr, root, &recordingDownloader{data: data},
+		&serverDomain.TreeNode{Name: "root", FileChildren: []*serverDomain.File{rawManifestFile("a.bin", data, "old a")}}))
+
+	textHash, textChunks, textStored, textEncoding := testEncodedFile(t, "notes.txt", "hello text")
+	for h, b := range textStored {
+		data[h] = b
+	}
+	tree := &serverDomain.TreeNode{Name: "root", FileChildren: []*serverDomain.File{
+		rawManifestFile("a.bin", data, "new a"),
+		{Name: "notes.txt", Mode: 2, Encoding: textEncoding, Hash: textHash, Chunks: textChunks, SizeBytes: 99},
+	}}
+
+	err := syncTree(t, lr, root, &recordingDownloader{data: data}, tree)
+	require.ErrorContains(t, err, "content length mismatch")
+	require.Equal(t, "old a", string(readRepoFile(t, root, "a.bin")))
+	requireNoTempFiles(t, root)
+}
+
+func TestSyncWorkingCopy_DirectReplaceFailureCleansUp(t *testing.T) {
+	lr, root := newDirectRepo(t)
+	writeRepoFile(t, root, "a.bin/keep", "a directory where a file is wanted")
+	data := map[serverDomain.Hash][]byte{}
+	tree := &serverDomain.TreeNode{Name: "root", FileChildren: []*serverDomain.File{
+		rawManifestFile("a.bin", data, "new a"),
+		rawManifestFile("b.bin", data, "new b"),
+	}}
+
+	err := syncTree(t, lr, root, &recordingDownloader{data: data}, tree)
+	var failed *materializeError
+	require.ErrorAs(t, err, &failed)
+	require.Equal(t, "a.bin", failed.path)
+	requireNoTempFiles(t, root)
+	require.Equal(t, "a directory where a file is wanted", string(readRepoFile(t, root, "a.bin/keep")))
+}
+
 func TestSyncWorkingCopy_DirectLengthMismatch(t *testing.T) {
 	lr, root := newDirectRepo(t)
 	data := map[serverDomain.Hash][]byte{}
@@ -286,7 +361,7 @@ func TestDirectPlan_FinishReportsIncompleteFile(t *testing.T) {
 	f := materializedFile{Path: "a.bin", SizeBytes: 2, ChunkHashes: []serverDomain.Hash{{1}}, ChunkSizes: []int64{2}}
 	plan, err := newDirectPlan(root, []materializeJob{{file: f}})
 	require.NoError(t, err)
-	require.ErrorContains(t, plan.finish(), "incomplete download")
+	require.ErrorContains(t, plan.finish(context.Background()), "incomplete download")
 	plan.cleanup()
 	requireNoTempFiles(t, root)
 }

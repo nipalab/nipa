@@ -468,12 +468,11 @@ func syncWorkingCopy(ctx context.Context, client chunkDownloader, lr workingCopy
 	if err := downloadChunks(ctx, client, scope, missing, estimateBytesToDownload(jobFiles, missing), sink, progress...); err != nil {
 		return err
 	}
-	if err := direct.finish(); err != nil {
-		return err
-	}
-
 	statEntries, err := materializeAll(ctx, root, jobs, lr.OpenChunk)
 	if err != nil {
+		return err
+	}
+	if err := direct.finish(ctx); err != nil {
 		return err
 	}
 	for path, entry := range direct.entries {

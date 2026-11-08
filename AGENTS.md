@@ -259,10 +259,11 @@ fingerprints; raw files no pin covers whose manifest chunk sizes add up to
 the file size are written directly (`direct.go`): a truncated
 `.nipa-materialize-*` temp file per file, chunks already in `.nipa/objects`
 copied locally, the rest written by `downloadChunks`' hash-verifying workers
-at every offset they occupy (open/close per write), and a file is chmodded
-(same read-only rule as `materializeFile`) and `replaceFile`d when its last
-chunk landed; any failure removes the unreplaced temp files, removals still
-run last, and everything else (zstd text, pinned raw, unknown chunk sizes)
+at every offset they occupy (open/close per write), a file is chmodded
+(same read-only rule as `materializeFile`) when its last chunk landed, and
+the working files are `replaceFile`d (bounded pool) only after the whole
+download and `materializeAll` succeeded; any failure removes the unreplaced
+temp files, removals still run last, and everything else (zstd text, pinned raw, unknown chunk sizes)
 goes through the object cache and `materializeAll`) → `SaveTree` → `SaveCommit` (branch head commit id). Clone,
 update and switch record the branch head commit id locally so `HEAD`/`@` (and
 branch creation via `nipa branch -c`, which forks from the pinned commit)

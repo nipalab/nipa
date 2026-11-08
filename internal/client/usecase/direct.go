@@ -48,6 +48,7 @@ type directFile struct {
 	job       materializeJob
 	tmp       string
 	remaining atomic.Int64
+	done      atomic.Bool
 	replaced  atomic.Bool
 }
 
@@ -59,7 +60,7 @@ type directTarget struct {
 
 // directPlan assembles raw files in place: every file gets a preallocated
 // temp file next to its target, chunks are written at their offsets as they
-// arrive, and a file replaces its working copy once its last chunk landed.
+// arrive, and finish swaps the files in after the whole sync succeeded.
 type directPlan struct {
 	root    string
 	files   []*directFile
@@ -172,29 +173,63 @@ func (p *directPlan) writeFile(df *directFile, targets []directTarget, data []by
 
 func (p *directPlan) complete(df *directFile) error {
 	f := df.job.file
-	fp := filepath.Join(p.root, filepath.FromSlash(f.Path))
 	mode := materializedMode(f.Mode)
-	if df.job.prevMode != 1 && isReadOnlyFile(fp) {
+	if df.job.prevMode != 1 && isReadOnlyFile(filepath.Join(p.root, filepath.FromSlash(f.Path))) {
 		mode &^= 0o222
 	}
 	if err := os.Chmod(df.tmp, mode); err != nil {
 		return &materializeError{path: f.Path, err: err}
 	}
-	if err := replaceFile(df.tmp, fp); err != nil {
-		return &materializeError{path: f.Path, err: err}
-	}
-	df.replaced.Store(true)
-	if entry, err := statEntryFor(p.root, f.Path, f.FileHash); err == nil {
-		p.mu.Lock()
-		p.entries[f.Path] = entry
-		p.mu.Unlock()
-	}
+	df.done.Store(true)
 	return nil
 }
 
 // copyLocal writes the chunks the object cache already holds.
 func (p *directPlan) copyLocal(ctx context.Context, hashes []domain.Hash, load func(domain.Hash) ([]byte, error)) error {
-	if len(hashes) == 0 {
+	return runPool(ctx, hashes, func(h domain.Hash) error {
+		data, err := load(h)
+		if err != nil {
+			return fmt.Errorf("load chunk %s: %w", h, err)
+		}
+		return p.write(h, data)
+	})
+}
+
+// finish swaps every assembled file in once the whole sync succeeded, so a
+// failed download never leaves part of the new tree in the working copy.
+func (p *directPlan) finish(ctx context.Context) error {
+	for _, df := range p.files {
+		if !df.done.Load() {
+			return &materializeError{path: df.job.file.Path, err: fmt.Errorf("incomplete download for %s", df.job.file.Path)}
+		}
+	}
+	return runPool(ctx, p.files, func(df *directFile) error {
+		f := df.job.file
+		if err := replaceFile(df.tmp, filepath.Join(p.root, filepath.FromSlash(f.Path))); err != nil {
+			return &materializeError{path: f.Path, err: err}
+		}
+		df.replaced.Store(true)
+		if entry, err := statEntryFor(p.root, f.Path, f.FileHash); err == nil {
+			p.mu.Lock()
+			p.entries[f.Path] = entry
+			p.mu.Unlock()
+		}
+		return nil
+	})
+}
+
+func (p *directPlan) cleanup() {
+	for _, df := range p.files {
+		if !df.replaced.Load() {
+			_ = os.Remove(df.tmp)
+		}
+	}
+}
+
+// runPool calls fn for every item on a bounded worker pool and stops feeding
+// work after the first failure.
+func runPool[T any](ctx context.Context, items []T, fn func(T) error) error {
+	if len(items) == 0 {
 		return nil
 	}
 	ctx, cancel := context.WithCancel(ctx)
@@ -204,19 +239,13 @@ func (p *directPlan) copyLocal(ctx context.Context, hashes []domain.Hash, load f
 		once     sync.Once
 		firstErr error
 	)
-	work := make(chan domain.Hash)
-	for range min(len(hashes), runtime.GOMAXPROCS(0), maxMaterializeWorkers) {
+	work := make(chan T)
+	for range min(len(items), runtime.GOMAXPROCS(0), maxMaterializeWorkers) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for h := range work {
-				data, err := load(h)
-				if err == nil {
-					err = p.write(h, data)
-				} else {
-					err = fmt.Errorf("load chunk %s: %w", h, err)
-				}
-				if err != nil {
+			for item := range work {
+				if err := fn(item); err != nil {
 					once.Do(func() {
 						firstErr = err
 						cancel()
@@ -226,9 +255,9 @@ func (p *directPlan) copyLocal(ctx context.Context, hashes []domain.Hash, load f
 		}()
 	}
 feed:
-	for _, h := range hashes {
+	for _, item := range items {
 		select {
-		case work <- h:
+		case work <- item:
 		case <-ctx.Done():
 			break feed
 		}
@@ -239,21 +268,4 @@ feed:
 		return firstErr
 	}
 	return ctx.Err()
-}
-
-func (p *directPlan) finish() error {
-	for _, df := range p.files {
-		if !df.replaced.Load() {
-			return &materializeError{path: df.job.file.Path, err: fmt.Errorf("incomplete download for %s", df.job.file.Path)}
-		}
-	}
-	return nil
-}
-
-func (p *directPlan) cleanup() {
-	for _, df := range p.files {
-		if !df.replaced.Load() {
-			_ = os.Remove(df.tmp)
-		}
-	}
 }
