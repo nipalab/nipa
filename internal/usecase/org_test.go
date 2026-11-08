@@ -328,6 +328,25 @@ type fakePermissionCache struct{ invalidated int }
 
 func (f *fakePermissionCache) InvalidateAll() { f.invalidated++ }
 
+func TestOrg_AddAndUpdateMember_InvalidatePermissionCache(t *testing.T) {
+	org, repo := newTestOrg(t)
+	cache := &fakePermissionCache{}
+	org.WithPermissionCache(cache)
+	ctx := permissionCtx(42, withAdmin())
+
+	repo.EXPECT().MemberRole(gomock.Any(), snow.ID(1), snow.ID(7)).Return("", domain.NewErrorNotFound("member not found")).AnyTimes()
+	repo.EXPECT().UpsertMember(gomock.Any(), snow.ID(1), snow.ID(7), domain.OrgRoleOwner).Return(nil).Times(2)
+	require.NoError(t, org.AddMember(ctx, snow.ID(1), snow.ID(7), domain.OrgRoleOwner))
+	require.Equal(t, 1, cache.invalidated)
+	require.NoError(t, org.UpdateMemberRole(ctx, snow.ID(1), snow.ID(7), domain.OrgRoleOwner))
+	require.Equal(t, 2, cache.invalidated)
+
+	repo.EXPECT().UpsertMember(gomock.Any(), snow.ID(1), snow.ID(7), domain.OrgRoleOwner).Return(errors.New("boom")).Times(2)
+	require.Error(t, org.AddMember(ctx, snow.ID(1), snow.ID(7), domain.OrgRoleOwner))
+	require.Error(t, org.UpdateMemberRole(ctx, snow.ID(1), snow.ID(7), domain.OrgRoleOwner))
+	require.Equal(t, 2, cache.invalidated)
+}
+
 func TestOrg_RemoveMember_InvalidatesPermissionCache(t *testing.T) {
 	org, repo := newTestOrg(t)
 	cache := &fakePermissionCache{}
