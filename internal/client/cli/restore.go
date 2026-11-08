@@ -2,6 +2,8 @@ package cli
 
 import (
 	"github.com/spf13/cobra"
+
+	"github.com/nipalab/nipa/internal/client/usecase"
 )
 
 func (c *Cli) setupRestoreCmd() *cobra.Command {
@@ -18,6 +20,9 @@ func (c *Cli) setupRestoreCmd() *cobra.Command {
 				return err
 			}
 			defer cleanup()
+			if dl, ok := c.connector.(usecase.ContentDownloader); ok {
+				wc.WithDownloader(c.useCase.Auth(), dl)
+			}
 			return wc.Restore(cmd.Context(), args)
 		},
 	}

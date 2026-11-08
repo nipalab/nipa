@@ -61,12 +61,14 @@ func newServeCommand(auth *usecase.Auth, newClient func() *clientgrpc.Client, st
 func serveRepoOps(auth *usecase.Auth, client *clientgrpc.Client) daemon.RepoOps {
 	push := usecase.NewPush(auth, client, localrepo.NewLocalRepo())
 	return daemon.RepoOps{
-		Update: usecase.NewUpdate(auth, client, localrepo.NewLocalRepo()),
-		Push:   push,
-		Merge:  usecase.NewMerge(auth, client, localrepo.NewLocalRepo(), push),
-		Revert: usecase.NewRevert(auth, client, localrepo.NewLocalRepo(), push),
-		Diff:   daemon.SerialDiff(usecase.NewDiff(auth, client, localrepo.NewLocalRepo())),
-		Proxy:  client,
+		Update:     usecase.NewUpdate(auth, client, localrepo.NewLocalRepo()),
+		Push:       push,
+		Merge:      usecase.NewMerge(auth, client, localrepo.NewLocalRepo(), push),
+		Revert:     usecase.NewRevert(auth, client, localrepo.NewLocalRepo(), push),
+		Diff:       daemon.SerialDiff(usecase.NewDiff(auth, client, localrepo.NewLocalRepo())),
+		Proxy:      client,
+		Auth:       auth,
+		Downloader: client,
 	}
 }
 

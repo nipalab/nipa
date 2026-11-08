@@ -98,7 +98,7 @@ func (d *Diff) dispatch(ctx context.Context, root string, revs []string, cfg *cl
 		if opts.MergeBase {
 			return nil, clientDomain.NewUserError("--merge-base requires two revisions")
 		}
-		return d.workingDiff(root, opts)
+		return d.workingDiff(ctx, root, opts)
 	}
 	if len(revs) > 2 {
 		return nil, clientDomain.NewUserError("too many revisions (expected at most two)")
@@ -125,7 +125,7 @@ func (d *Diff) dispatch(ctx context.Context, root string, revs []string, cfg *cl
 	return d.revisionDiff(ctx, nu, cfg, revs[0], revs[1], opts)
 }
 
-func (d *Diff) workingDiff(root string, opts DiffOptions) ([]diff.FileDiff, error) {
+func (d *Diff) workingDiff(ctx context.Context, root string, opts DiffOptions) ([]diff.FileDiff, error) {
 	snapshot, err := d.localRepo.Snapshot()
 	if err != nil {
 		return nil, err
@@ -140,8 +140,38 @@ func (d *Diff) workingDiff(root string, opts DiffOptions) ([]diff.FileDiff, erro
 		return nil, err
 	}
 	changes := diff.Compare(oldMap, newMap)
+	if err := d.pristine(root).ensureSnapshotContent(ctx, oldSideFiles(snapshot, changes, opts.Binary)); err != nil {
+		return nil, err
+	}
 	changes = diff.DetectRenames(changes, d.similarityLoader(root, contents))
 	return diff.AttachContents(changes, d.attachLoader(root, contents, opts.Binary)), nil
+}
+
+func (d *Diff) pristine(root string) pristine {
+	return pristine{root: root, repo: d.localRepo, auth: d.auth, client: d.client}
+}
+
+// oldSideFiles lists the snapshot files whose cached content the working diff
+// will read: the old side of deletions and modifications, binaries only when
+// their content is loaded.
+func oldSideFiles(snapshot *clientDomain.Snapshot, changes []diff.Change, loadBinary bool) []clientDomain.SnapshotFile {
+	byPath := make(map[string]clientDomain.SnapshotFile, len(snapshot.Files))
+	for _, f := range snapshot.Files {
+		byPath[f.Path] = f
+	}
+	var out []clientDomain.SnapshotFile
+	for _, c := range changes {
+		if c.Status != diff.Deleted && c.Status != diff.Modified {
+			continue
+		}
+		if c.Old.IsBinary && !loadBinary {
+			continue
+		}
+		if f, ok := byPath[c.Old.Path]; ok {
+			out = append(out, f)
+		}
+	}
+	return out
 }
 
 func (d *Diff) workingVsRevision(ctx context.Context, nu *clientDomain.NipaUrl, root string, cfg *clientDomain.Config, token string, opts DiffOptions) ([]diff.FileDiff, error) {

@@ -20,12 +20,14 @@ type Runners struct {
 
 // RepoOps is the long-operation and proxy surface of one watched repo.
 type RepoOps struct {
-	Update UpdateRunner
-	Push   PushRunner
-	Merge  MergeRunner
-	Revert RevertRunner
-	Diff   DiffRunner
-	Proxy  ProxyConn
+	Update     UpdateRunner
+	Push       PushRunner
+	Merge      MergeRunner
+	Revert     RevertRunner
+	Diff       DiffRunner
+	Proxy      ProxyConn
+	Auth       *usecase.Auth
+	Downloader usecase.ContentDownloader
 }
 
 type UpdateRunner interface {
