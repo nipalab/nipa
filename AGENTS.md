@@ -1261,9 +1261,9 @@ compatible for one release.
   (pinned disables tuning). `ConfirmChunkUploads` measures the stored content
   size server-side (never a client-supplied value) and writes the chunk
   metadata rows, so `Push` can rely on them; linked chunks without a proof take
-  their size from the row in one batched `LinkedProjectChunkSizes` lookup and
-  presign answers them `already_stored` without asking the store (the rest is
-  checked with 16 concurrent `Exists` calls); confirmations are
+  their size from the row in one batched `LinkedProjectChunkSizes` lookup
+  (presign checks every ref with 16 concurrent `Exists` calls, so a lost
+  object is uploaded again); confirmations are
   serialized client-side under a mutex so concurrent upload windows never stack
   SQLite metadata writes. Chunks the project is already linked to come back with `already_stored` so
   clients skip the transfer. A project may reference a chunk only after it proved it

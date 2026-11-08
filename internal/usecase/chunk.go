@@ -254,13 +254,13 @@ func (c *Chunk) presignUploadURLs(ctx context.Context, org *domain.Organization,
 	if err != nil {
 		return nil, "", err
 	}
-	exists, err := c.existsUnlinked(ctx, page, linked)
+	exists, err := c.existsAll(ctx, page)
 	if err != nil {
 		return nil, "", err
 	}
 	urls := make([]ChunkURL, 0, len(page))
 	for i, ref := range page {
-		if _, ok := linked[ref.Hash]; ok {
+		if _, ok := linked[ref.Hash]; ok && exists[i] {
 			urls = append(urls, ChunkURL{Hash: ref.Hash, AlreadyStored: true})
 			continue
 		}
@@ -281,14 +281,11 @@ func (c *Chunk) presignUploadURLs(ctx context.Context, org *domain.Organization,
 	return urls, next, nil
 }
 
-func (c *Chunk) existsUnlinked(ctx context.Context, page []ChunkRef, linked map[domain.Hash]int64) ([]bool, error) {
+func (c *Chunk) existsAll(ctx context.Context, page []ChunkRef) ([]bool, error) {
 	exists := make([]bool, len(page))
 	g, gctx := errgroup.WithContext(ctx)
 	g.SetLimit(presignExistsConcurrency)
 	for i, ref := range page {
-		if _, ok := linked[ref.Hash]; ok {
-			continue
-		}
 		g.Go(func() error {
 			ok, err := c.chunkStore.Exists(gctx, ref.Hash)
 			if err != nil {

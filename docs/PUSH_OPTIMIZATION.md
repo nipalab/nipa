@@ -4,16 +4,16 @@ Status: Phase 0 and Phase 1 implemented; Phase 2 deferred.
 
 - Phase 0: `TestEndToEnd_DeltaPush` (`make bench-delta mb=<MiB>`) re-pushes a
   binary after a 64 KiB edit and asserts only the affected chunks are PUT.
-- Phase 1.1/1.2: presign answers `AlreadyStored` for chunks the project is
-  linked to without asking the store and checks the rest concurrently
-  (`errgroup`, 16 workers); confirm reads linked chunk sizes in one batched
-  query (`LinkedProjectChunkSizes`, chunks joined with
+- Phase 1.1/1.2: presign checks `Exists` concurrently (`errgroup`, 16
+  workers) and answers `AlreadyStored` only for linked chunks whose object is
+  present, so a lost object is still uploaded again; confirm reads linked chunk
+  sizes in one batched query (`LinkedProjectChunkSizes`, chunks joined with
   `project_chunk_uploads`) and skips `Size`/`InsertChunkIfNotExists` for linked
-  chunks sent without a proof. Proven or unlinked chunks still go through
-  `verifyPossession`.
+  chunks sent without a proof (presign just saw them). Proven or unlinked
+  chunks still go through `verifyPossession`.
 - Phase 1.3 landed earlier through `internal/repository/pushbatch`.
-- Phase 2 is deferred: with linked chunks skipping the store in presign, the
-  remaining saving is only the ref payload.
+- Phase 2 is deferred: with presign checks concurrent and confirm batched, the
+  remaining saving is the ref payload and the concurrent `Exists` calls.
 
 ## Context
 

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -714,12 +713,10 @@ type countingChunkStore struct {
 	inFlight    atomic.Int64
 	maxInFlight atomic.Int64
 	existsDelay time.Duration
-	asked       sync.Map
 }
 
 func (s *countingChunkStore) Exists(ctx context.Context, hash domain.Hash) (bool, error) {
 	s.existsCalls.Add(1)
-	s.asked.Store(hash, true)
 	n := s.inFlight.Add(1)
 	defer s.inFlight.Add(-1)
 	for {
@@ -737,7 +734,7 @@ func (s *countingChunkStore) Size(ctx context.Context, hash domain.Hash) (int64,
 	return s.stubChunkStore.Size(ctx, hash)
 }
 
-func TestChunk_PresignUploadURLs_ChecksOnlyUnlinkedRefsConcurrently(t *testing.T) {
+func TestChunk_PresignUploadURLs_ChecksTheStoreConcurrently(t *testing.T) {
 	prev := presignExistsConcurrency
 	presignExistsConcurrency = 4
 	t.Cleanup(func() { presignExistsConcurrency = prev })
@@ -748,19 +745,18 @@ func TestChunk_PresignUploadURLs_ChecksOnlyUnlinkedRefsConcurrently(t *testing.T
 
 	refs := make([]ChunkRef, 0, 60)
 	linked := map[domain.Hash]int64{}
-	var unlinked int64
 	for i := 0; i < 60; i++ {
 		data := []byte(fmt.Sprintf("chunk-%d", i))
 		hash := chunker.Sum(data)
 		refs = append(refs, ChunkRef{Hash: hash, SizeBytes: int64(len(data))})
-		switch i % 3 {
+		switch i % 4 {
 		case 0:
 			linked[hash] = int64(len(data))
-		case 1:
 			store.data[hash] = data
-			unlinked++
-		default:
-			unlinked++
+		case 1:
+			linked[hash] = int64(len(data))
+		case 2:
+			store.data[hash] = data
 		}
 	}
 	repo.EXPECT().LinkedProjectChunkSizes(gomock.Any(), testProject.ID, gomock.Any()).Return(linked, nil)
@@ -768,24 +764,21 @@ func TestChunk_PresignUploadURLs_ChecksOnlyUnlinkedRefsConcurrently(t *testing.T
 	urls, _, err := uc.PresignUploadURLs(context.Background(), testOrg, testProject, refs, 100, "")
 	require.NoError(t, err)
 	require.Len(t, urls, len(refs))
-	require.Equal(t, unlinked, store.existsCalls.Load())
+	require.Equal(t, int64(len(refs)), store.existsCalls.Load())
 	require.LessOrEqual(t, store.maxInFlight.Load(), int64(4))
 	require.Greater(t, store.maxInFlight.Load(), int64(1))
 	for i, u := range urls {
 		require.Equal(t, refs[i].Hash, u.Hash)
-		_, wasAsked := store.asked.Load(u.Hash)
-		switch i % 3 {
+		switch i % 4 {
 		case 0:
-			require.False(t, wasAsked)
 			require.True(t, u.AlreadyStored)
 			require.Empty(t, u.ProofChallenge)
-		case 1:
-			require.True(t, wasAsked)
+		case 2:
 			require.False(t, u.AlreadyStored)
 			require.Empty(t, u.URL)
 			require.NotEmpty(t, u.ProofChallenge)
 		default:
-			require.True(t, wasAsked)
+			require.False(t, u.AlreadyStored, "a linked chunk whose object is gone must be uploaded again")
 			require.NotEmpty(t, u.URL)
 			require.NotEmpty(t, u.ProofChallenge)
 		}

@@ -68,18 +68,21 @@ func TestChunk_Presign_NeverOffersToWriteStoredContent(t *testing.T) {
 	require.NoError(t, chunkproof.VerifyChallenge(linkTestKey, testProject.ID, fresh, urls[2].ProofChallenge, uc.now()))
 }
 
-func TestChunk_Presign_LinkedChunksSkipTheStore(t *testing.T) {
-	data := []byte("linked object")
+func TestChunk_Presign_LinkedButMissingObjectIsUploadedAgain(t *testing.T) {
+	data := []byte("lost object")
 	hash := chunker.Sum(data)
-	store := &stubChunkStore{data: map[domain.Hash][]byte{}, existsErr: errors.New("store must not be asked")}
+	store := &stubDirectChunkStore{
+		stubChunkStore: newStubChunkStore(),
+		uploadTarget:   storage.UploadTarget{URL: "https://s3.example.com/put"},
+	}
 	uc, repo := newLinkFixture(t, store)
 	repo.EXPECT().LinkedProjectChunkSizes(gomock.Any(), testProject.ID, gomock.Any()).Return(map[domain.Hash]int64{hash: int64(len(data))}, nil)
 
 	urls, _, err := uc.PresignUploadURLs(context.Background(), testOrg, testProject, []ChunkRef{{Hash: hash, SizeBytes: int64(len(data))}}, 10, "")
 	require.NoError(t, err)
-	require.True(t, urls[0].AlreadyStored)
-	require.Empty(t, urls[0].URL)
-	require.Empty(t, urls[0].ProofChallenge)
+	require.False(t, urls[0].AlreadyStored)
+	require.NotEmpty(t, urls[0].URL)
+	require.NoError(t, chunkproof.VerifyChallenge(linkTestKey, testProject.ID, hash, urls[0].ProofChallenge, uc.now()))
 }
 
 func TestChunk_Presign_ExistsCheckError(t *testing.T) {
