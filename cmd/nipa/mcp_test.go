@@ -14,6 +14,9 @@ func TestNewMCPUseCases_BuildsGraphAndCloses(t *testing.T) {
 	require.NotNil(t, uc.Diff)
 	require.NotNil(t, uc.MR)
 	require.NotNil(t, uc.Lock)
+	require.NotNil(t, uc.Tag)
+	require.NotNil(t, uc.Update)
+	require.NotNil(t, uc.Merge)
 	require.NotNil(t, uc.Connector)
 	require.NotNil(t, uc.Close)
 
@@ -25,6 +28,14 @@ func TestNewMCPCommand_Flags(t *testing.T) {
 	require.Equal(t, "mcp", cmd.Use)
 	require.NotNil(t, cmd.Flags().Lookup("repo"))
 	require.NotNil(t, cmd.Flags().Lookup("allow-write"))
+	require.NotNil(t, cmd.Flags().Lookup("allow"))
+	require.NotNil(t, cmd.Flags().Lookup("no-agent-trailer"))
+}
+
+func TestNewMCPCommand_UnknownCapability(t *testing.T) {
+	cmd := newMCPCommand(newServeTestClient, fakeStorage{})
+	cmd.SetArgs([]string{"--allow", "stage,admin"})
+	require.ErrorContains(t, cmd.Execute(), `unknown capability "admin"`)
 }
 
 func TestNonInteractiveInput(t *testing.T) {
@@ -51,6 +62,6 @@ func TestMCPCommand_EndsOnEOFStdin(t *testing.T) {
 	defer func() { os.Stdin, os.Stdout = oldStdin, oldStdout }()
 
 	cmd := newMCPCommand(newServeTestClient, fakeStorage{})
-	cmd.SetArgs([]string{})
+	cmd.SetArgs([]string{"--allow", "stage,mr", "--allow-write", "--no-agent-trailer"})
 	require.NoError(t, cmd.Execute())
 }

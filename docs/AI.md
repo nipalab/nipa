@@ -9,7 +9,7 @@ would build on these seams.
 ## MCP server
 
 ```sh
-nipa mcp [--repo <dir>] [--allow-write]
+nipa mcp [--repo <dir>] [--allow <caps>] [--allow-write] [--no-agent-trailer]
 ```
 
 `nipa mcp` runs a Model Context Protocol server over stdio (JSON-RPC on
@@ -27,21 +27,52 @@ Read-only tools (always available):
 | Tool | Purpose |
 | --- | --- |
 | `nipa_status` | staged/deleted/modified/untracked/missing/conflicting paths |
-| `nipa_diff` | working-copy or revision diff with structured hunks (offline without revisions) |
-| `nipa_log` | commit history, newest first |
+| `nipa_diff` | working-copy or revision diff with structured hunks (offline without revisions), capped by `max_bytes` |
+| `nipa_log` | commit history, newest first (`limit` default 50, at most 500) |
 | `nipa_branch_list` | branches with head commit and protection state |
-| `nipa_mr_list` | merge requests, optionally filtered by status |
+| `nipa_tag_list` | release tags and the commit each points at |
 | `nipa_lock_list` | active binary file locks |
+| `nipa_lock_query` | locks covering a path (exact or directory prefix) and who holds them |
+| `nipa_conflicts` | pending merge/revert: base/ours/theirs revisions and conflicted files (offline) |
+| `nipa_mr_list` | merge requests, optionally filtered by status (`limit` at most 200) |
+| `nipa_mr_view` | one merge request with mergeability (`blocked_by`), reviews and status checks |
+| `nipa_mr_diff` | merge-request patch per file (merge base vs source head), capped by `max_bytes` |
+| `nipa_mr_threads` | conversation threads (top-level and inline) with replies |
+| `nipa_mr_commits` | commits the request adds, newest first |
+| `nipa_mr_timeline` | activity timeline |
 
-Mutating tools (only with `--allow-write`):
+Mutating tools are enabled per capability with `--allow` (comma list; an
+unknown name fails at startup). `--allow-write` grants every capability.
 
-| Tool | Purpose |
+| Capability | Tools |
 | --- | --- |
-| `nipa_add` | stage paths for the next push |
-| `nipa_push` | commit staged changes and upload them |
-| `nipa_branch_create` | create a branch and switch the local clone to it |
-| `nipa_lock` / `nipa_unlock` | acquire or release a binary file lock |
-| `nipa_mr_create` | open a merge request |
+| `stage` | `nipa_add`, `nipa_restore` |
+| `push` | `nipa_push` |
+| `sync` | `nipa_update`, `nipa_switch` (branch or `tag`) |
+| `branch` | `nipa_branch_create`, `nipa_tag_create` |
+| `lock` | `nipa_lock`, `nipa_unlock` |
+| `mr` | `nipa_mr_create`, `nipa_mr_update` (title, description, `draft` true/false = draft/ready), `nipa_mr_comment` (top-level or `file` + `new_line`/`old_line`), `nipa_mr_reply`, `nipa_mr_resolve`, `nipa_mr_review`, `nipa_mr_request_review`, `nipa_mr_check` |
+| `merge` | `nipa_merge` (incl. `abort`), `nipa_resolve_conflict` (`ours`, `theirs`, `content`, `working`, `delete`), `nipa_mr_merge` (`strategy`, `delete_source`) |
+
+For example `nipa mcp --allow stage,mr` lets an agent stage and review but
+never push or merge. Tools that discard or overwrite work (`nipa_push`,
+`nipa_restore`, `nipa_update`, `nipa_switch`, `nipa_unlock`, `nipa_merge`,
+`nipa_resolve_conflict`, `nipa_mr_merge`) carry the MCP `destructiveHint`
+annotation so clients can ask for confirmation.
+
+Agent attribution: text written through MCP (push messages, merge-request
+descriptions, comments, replies and review bodies) gets a trailer naming the
+MCP client from its `initialize` handshake, for example
+`Nipa-Agent: claude-code/2.1.0`. It is skipped when the client sends no
+name, when the text already has a `Nipa-Agent:` line, for empty text, and
+entirely with `--no-agent-trailer`.
+
+Output budgets keep results inside an agent's context: `nipa_diff` and
+`nipa_mr_diff` take `max_bytes` (default 256 KiB, at most 2 MiB, estimated
+from the line text); once the budget runs out the current file is cut and
+flagged `"truncated": true` and the remaining files are counted in
+`omitted_files`. Narrow the request with `paths` or raise `max_bytes` to see
+more.
 
 Tool results carry the same JSON shapes as the CLI `--json` payloads (see
 below). Mutating tools are serialized by the server. Tool failures set

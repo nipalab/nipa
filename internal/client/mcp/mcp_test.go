@@ -325,7 +325,7 @@ func TestNewServer_ReadOnlyTools(t *testing.T) {
 }
 
 func TestNewServer_WriteToolsGated(t *testing.T) {
-	session := connect(t, Options{NewUseCases: offlineUseCases, AllowWrite: true})
+	session := connect(t, Options{NewUseCases: offlineUseCases, Allow: AllCaps()})
 	names := toolNames(t, session)
 	for _, want := range []string{"nipa_add", "nipa_push", "nipa_branch_create", "nipa_lock", "nipa_unlock", "nipa_mr_create"} {
 		require.True(t, names[want], "expected write tool %s", want)
@@ -426,7 +426,7 @@ func TestMrList_InvalidStatus(t *testing.T) {
 
 func TestMrCreate_EmptyTitle(t *testing.T) {
 	root := setupRepo(t, nil)
-	session := connect(t, Options{AllowWrite: true, NewUseCases: func() UseCases {
+	session := connect(t, Options{Allow: AllCaps(), NewUseCases: func() UseCases {
 		return UseCases{MR: usecase.NewMergeRequest(nil, nil, localrepo.NewLocalRepo())}
 	}})
 
@@ -458,7 +458,7 @@ func TestLockList(t *testing.T) {
 func TestLock_EmptyPath(t *testing.T) {
 	root := setupRepo(t, nil)
 	client := fakeLockClient{}
-	session := connect(t, Options{AllowWrite: true, NewUseCases: func() UseCases {
+	session := connect(t, Options{Allow: AllCaps(), NewUseCases: func() UseCases {
 		return UseCases{Lock: usecase.NewFileLock(nil, client, localrepo.NewLocalRepo())}
 	}})
 
@@ -469,7 +469,7 @@ func TestLock_EmptyPath(t *testing.T) {
 
 func TestLock(t *testing.T) {
 	root := setupRepo(t, nil)
-	session := connect(t, Options{AllowWrite: true, NewUseCases: func() UseCases {
+	session := connect(t, Options{Allow: AllCaps(), NewUseCases: func() UseCases {
 		return UseCases{Lock: usecase.NewFileLock(loggedInAuth(), fakeLockClient{}, localrepo.NewLocalRepo())}
 	}})
 
@@ -485,7 +485,7 @@ func TestLock(t *testing.T) {
 
 func TestUnlock(t *testing.T) {
 	root := setupRepo(t, nil)
-	session := connect(t, Options{AllowWrite: true, NewUseCases: func() UseCases {
+	session := connect(t, Options{Allow: AllCaps(), NewUseCases: func() UseCases {
 		return UseCases{Lock: usecase.NewFileLock(loggedInAuth(), fakeLockClient{}, localrepo.NewLocalRepo())}
 	}})
 
@@ -500,7 +500,7 @@ func TestUnlock(t *testing.T) {
 func TestAdd_StagesAndReportsStatus(t *testing.T) {
 	root := setupRepo(t, nil)
 	writeFile(t, root, "new.txt", "hello\n")
-	session := connect(t, Options{AllowWrite: true, NewUseCases: offlineUseCases})
+	session := connect(t, Options{Allow: AllCaps(), NewUseCases: offlineUseCases})
 
 	res := call(t, session, "nipa_add", map[string]any{"repo": root, "paths": []string{"new.txt"}})
 	require.False(t, res.IsError)
@@ -512,7 +512,7 @@ func TestAdd_StagesAndReportsStatus(t *testing.T) {
 
 func TestAdd_EmptyPaths(t *testing.T) {
 	root := setupRepo(t, nil)
-	session := connect(t, Options{AllowWrite: true, NewUseCases: offlineUseCases})
+	session := connect(t, Options{Allow: AllCaps(), NewUseCases: offlineUseCases})
 
 	res := call(t, session, "nipa_add", map[string]any{"repo": root, "paths": []string{}})
 	require.True(t, res.IsError)
@@ -521,7 +521,7 @@ func TestAdd_EmptyPaths(t *testing.T) {
 
 func TestPush_EmptyMessage(t *testing.T) {
 	root := setupRepo(t, nil)
-	session := connect(t, Options{AllowWrite: true, NewUseCases: func() UseCases {
+	session := connect(t, Options{Allow: AllCaps(), NewUseCases: func() UseCases {
 		return UseCases{Push: usecase.NewPush(nil, nil, localrepo.NewLocalRepo())}
 	}})
 
@@ -532,7 +532,7 @@ func TestPush_EmptyMessage(t *testing.T) {
 
 func TestBranchCreate_EmptyName(t *testing.T) {
 	root := setupRepo(t, nil)
-	session := connect(t, Options{AllowWrite: true, NewUseCases: func() UseCases {
+	session := connect(t, Options{Allow: AllCaps(), NewUseCases: func() UseCases {
 		return UseCases{
 			Repo:      usecase.NewRepo(nil, nil, localrepo.NewLocalRepo()),
 			Connector: fakeConnector{},
@@ -616,7 +616,7 @@ func TestBranchList_Success(t *testing.T) {
 
 func TestBranchCreate_Success(t *testing.T) {
 	root := setupRepo(t, nil)
-	session := connect(t, Options{AllowWrite: true, NewUseCases: func() UseCases {
+	session := connect(t, Options{Allow: AllCaps(), NewUseCases: func() UseCases {
 		return UseCases{
 			Repo:      usecase.NewRepo(loggedInAuth(), fakeRepoClient{}, localrepo.NewLocalRepo()),
 			Connector: fakeConnector{},
@@ -652,7 +652,7 @@ func TestMrList_Success(t *testing.T) {
 
 func TestMrCreate_Success(t *testing.T) {
 	root := setupRepo(t, nil)
-	session := connect(t, Options{AllowWrite: true, NewUseCases: func() UseCases {
+	session := connect(t, Options{Allow: AllCaps(), NewUseCases: func() UseCases {
 		return UseCases{MR: usecase.NewMergeRequest(loggedInAuth(), fakeMRClient{}, localrepo.NewLocalRepo())}
 	}})
 
@@ -668,7 +668,7 @@ func TestMrCreate_Success(t *testing.T) {
 func TestMrCreate_ReviewersAndAssignees(t *testing.T) {
 	root := setupRepo(t, nil)
 	created := &domain.NewMergeRequest{}
-	session := connect(t, Options{AllowWrite: true, NewUseCases: func() UseCases {
+	session := connect(t, Options{Allow: AllCaps(), NewUseCases: func() UseCases {
 		return UseCases{MR: usecase.NewMergeRequest(loggedInAuth(), fakeMRClient{created: created}, localrepo.NewLocalRepo())}
 	}})
 
@@ -768,7 +768,7 @@ func TestTools_NotConfigured(t *testing.T) {
 	root := setupRepo(t, nil)
 	empty := func() UseCases { return UseCases{} }
 	readSession := connect(t, Options{NewUseCases: empty})
-	writeSession := connect(t, Options{AllowWrite: true, NewUseCases: empty})
+	writeSession := connect(t, Options{Allow: AllCaps(), NewUseCases: empty})
 
 	cases := []struct {
 		name    string
@@ -798,14 +798,14 @@ func TestPush_Success(t *testing.T) {
 	root := setupRepo(t, nil)
 	writeFile(t, root, "a.txt", "hello\n")
 	stageFile(t, root, "a.txt")
-	session := connect(t, Options{AllowWrite: true, NewUseCases: func() UseCases {
+	session := connect(t, Options{Allow: AllCaps(), NewUseCases: func() UseCases {
 		return UseCases{Push: usecase.NewPush(loggedInAuth(), fakePushClient{}, localrepo.NewLocalRepo())}
 	}})
 
 	res := call(t, session, "nipa_push", map[string]any{"repo": root, "message": "add a"})
 	require.False(t, res.IsError)
 
-	var out pushOutput
+	var out headOutput
 	require.NoError(t, json.Unmarshal([]byte(toolText(t, res)), &out))
 	require.Equal(t, "main", out.Branch)
 	require.Equal(t, "6y2", out.CommitID)
@@ -814,7 +814,7 @@ func TestPush_Success(t *testing.T) {
 func TestTools_NoFactory(t *testing.T) {
 	root := setupRepo(t, nil)
 	readSession := connect(t, Options{})
-	writeSession := connect(t, Options{AllowWrite: true})
+	writeSession := connect(t, Options{Allow: AllCaps()})
 
 	cases := []struct {
 		name    string
@@ -914,21 +914,21 @@ func TestWorkingCopy_InitError(t *testing.T) {
 	res := call(t, readSession, "nipa_status", map[string]any{"repo": root})
 	require.True(t, res.IsError)
 
-	writeSession := connect(t, Options{AllowWrite: true, NewUseCases: offlineUseCases})
+	writeSession := connect(t, Options{Allow: AllCaps(), NewUseCases: offlineUseCases})
 	res = call(t, writeSession, "nipa_add", map[string]any{"repo": root, "paths": []string{"a.txt"}})
 	require.True(t, res.IsError)
 }
 
 func TestAdd_PathError(t *testing.T) {
 	root := setupRepo(t, nil)
-	session := connect(t, Options{AllowWrite: true, NewUseCases: offlineUseCases})
+	session := connect(t, Options{Allow: AllCaps(), NewUseCases: offlineUseCases})
 
 	res := call(t, session, "nipa_add", map[string]any{"repo": root, "paths": []string{"missing.txt"}})
 	require.True(t, res.IsError)
 }
 
 func TestPush_RepoRootError(t *testing.T) {
-	session := connect(t, Options{AllowWrite: true, NewUseCases: func() UseCases {
+	session := connect(t, Options{Allow: AllCaps(), NewUseCases: func() UseCases {
 		return UseCases{Push: usecase.NewPush(nil, nil, localrepo.NewLocalRepo())}
 	}})
 

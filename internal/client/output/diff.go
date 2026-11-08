@@ -7,7 +7,8 @@ import (
 )
 
 type Diff struct {
-	Changes []DiffFile `json:"changes"`
+	Changes      []DiffFile `json:"changes"`
+	OmittedFiles int        `json:"omitted_files,omitempty"`
 }
 
 type DiffFile struct {
@@ -20,6 +21,7 @@ type DiffFile struct {
 	New                *DiffEntry `json:"new,omitempty"`
 	ContentUnavailable bool       `json:"content_unavailable,omitempty"`
 	Hunks              []DiffHunk `json:"hunks"`
+	Truncated          bool       `json:"truncated,omitempty"`
 }
 
 type DiffEntry struct {

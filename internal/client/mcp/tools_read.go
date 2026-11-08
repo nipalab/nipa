@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"context"
+	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/nipalab/nipa/internal/client/output"
 	"github.com/nipalab/nipa/internal/client/usecase"
 	"github.com/nipalab/nipa/internal/diff"
+	serverDomain "github.com/nipalab/nipa/internal/domain"
 )
 
 func addReadTools(srv *mcp.Server, s *server) {
@@ -19,12 +21,12 @@ func addReadTools(srv *mcp.Server, s *server) {
 	}, s.status)
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "nipa_diff",
-		Description: "Show working-copy or revision changes with structured hunks. Runs offline without revisions; renames, binary and content-unavailable markers included.",
+		Description: "Show working-copy or revision changes with structured hunks. Runs offline without revisions; renames, binary and content-unavailable markers included. Output is capped by max_bytes: truncated files are flagged and dropped files counted in omitted_files.",
 		Annotations: readOnly(),
 	}, s.diff)
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "nipa_log",
-		Description: "Show the commit history of the current branch, newest first.",
+		Description: "Show the commit history of the current branch, newest first (default 50 commits, at most 500).",
 		Annotations: readOnly(),
 	}, s.log)
 	mcp.AddTool(srv, &mcp.Tool{
@@ -34,7 +36,7 @@ func addReadTools(srv *mcp.Server, s *server) {
 	}, s.branchList)
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "nipa_mr_list",
-		Description: "List merge requests of the project, optionally filtered by status (open, merged, closed).",
+		Description: "List merge requests of the project, optionally filtered by status (open, merged, closed). At most 200 per call.",
 		Annotations: readOnly(),
 	}, s.mrList)
 	mcp.AddTool(srv, &mcp.Tool{
@@ -42,6 +44,21 @@ func addReadTools(srv *mcp.Server, s *server) {
 		Description: "List active binary file locks: path, scope (mainline or branch), holder and acquisition time.",
 		Annotations: readOnly(),
 	}, s.lockList)
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "nipa_lock_query",
+		Description: "Tell whether a file or directory is covered by a binary lock (exact path or a locking directory prefix) and who holds it.",
+		Annotations: readOnly(),
+	}, s.lockQuery)
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "nipa_tag_list",
+		Description: "List the release tags of the project with the commit each one points at.",
+		Annotations: readOnly(),
+	}, s.tagList)
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "nipa_conflicts",
+		Description: "Describe the merge or revert waiting in the working copy: the base/ours/theirs revisions and each conflicted file (kind, binary, resolved). Runs offline; empty when nothing is pending.",
+		Annotations: readOnly(),
+	}, s.conflicts)
 }
 
 type statusInput struct {
@@ -73,6 +90,7 @@ type diffInput struct {
 	IgnoreAllSpace    bool     `json:"ignore_all_space,omitempty" jsonschema:"Ignore all whitespace when comparing lines"`
 	IgnoreSpaceChange bool     `json:"ignore_space_change,omitempty" jsonschema:"Ignore changes in the amount of whitespace"`
 	NoCache           bool     `json:"no_cache,omitempty" jsonschema:"Read every working file instead of trusting the stat cache"`
+	MaxBytes          int      `json:"max_bytes,omitempty" jsonschema:"Approximate output budget in bytes (default 262144, at most 2097152)"`
 }
 
 func (s *server) diff(ctx context.Context, _ *mcp.CallToolRequest, in diffInput) (*mcp.CallToolResult, output.Diff, error) {
@@ -85,6 +103,10 @@ func (s *server) diff(ctx context.Context, _ *mcp.CallToolRequest, in diffInput)
 	}
 	if in.MergeBase && len(in.Revisions) != 2 {
 		return nil, zero, toolError(domain.NewUserError("merge_base requires two revisions"))
+	}
+	budget, err := diffBudget(in.MaxBytes)
+	if err != nil {
+		return nil, zero, err
 	}
 	contextLines := diff.DefaultContext
 	if in.Unified != nil {
@@ -120,12 +142,12 @@ func (s *server) diff(ctx context.Context, _ *mcp.CallToolRequest, in diffInput)
 		IgnoreSpaceChange: in.IgnoreSpaceChange,
 	}
 	files = diff.FilterIgnored(files, renderOpts)
-	return nil, output.NewDiff(files, renderOpts), nil
+	return nil, capDiff(output.NewDiff(files, renderOpts), budget), nil
 }
 
 type logInput struct {
 	Repo  string `json:"repo,omitempty" jsonschema:"Path inside a nipa working copy (defaults to the server working directory)"`
-	Limit int    `json:"limit,omitempty" jsonschema:"Maximum number of commits (0 = full history)"`
+	Limit int    `json:"limit,omitempty" jsonschema:"Maximum number of commits (default 50, at most 500)"`
 }
 
 func (s *server) log(ctx context.Context, _ *mcp.CallToolRequest, in logInput) (*mcp.CallToolResult, output.Log, error) {
@@ -135,11 +157,8 @@ func (s *server) log(ctx context.Context, _ *mcp.CallToolRequest, in logInput) (
 		return nil, zero, toolError(err)
 	}
 	defer uc.close()
-	opts := []usecase.CommitLogOption{}
-	if in.Limit > 0 {
-		opts = append(opts, usecase.WithCommitLogMax(in.Limit))
-	}
-	entries, err := uc.Repo.Log(ctx, url.Host, url.Org, url.Project, cfg.Branch, opts...)
+	limit := clampLimit(in.Limit, defaultLogLimit, maxLogLimit)
+	entries, err := uc.Repo.Log(ctx, url.Host, url.Org, url.Project, cfg.Branch, usecase.WithCommitLogMax(limit))
 	if err != nil {
 		return nil, zero, toolError(err)
 	}
@@ -167,7 +186,7 @@ func (s *server) branchList(ctx context.Context, _ *mcp.CallToolRequest, in bran
 type mrListInput struct {
 	Repo   string `json:"repo,omitempty" jsonschema:"Path inside a nipa working copy (defaults to the server working directory)"`
 	Status string `json:"status,omitempty" jsonschema:"Filter by status: open, merged, closed"`
-	Limit  int    `json:"limit,omitempty" jsonschema:"Maximum number of merge requests (default 50)"`
+	Limit  int    `json:"limit,omitempty" jsonschema:"Maximum number of merge requests (default 50, at most 200)"`
 }
 
 func (s *server) mrList(ctx context.Context, _ *mcp.CallToolRequest, in mrListInput) (*mcp.CallToolResult, output.MergeRequests, error) {
@@ -186,7 +205,7 @@ func (s *server) mrList(ctx context.Context, _ *mcp.CallToolRequest, in mrListIn
 	}
 	requests, _, err := uc.MR.List(ctx, root, usecase.ListMergeRequestOptions{
 		Status: in.Status,
-		Limit:  in.Limit,
+		Limit:  clampLimit(in.Limit, 50, maxMRListLimit),
 	})
 	if err != nil {
 		return nil, zero, toolError(err)
@@ -247,4 +266,116 @@ func (s *server) connectContext(ctx context.Context, repo string) (string, *doma
 		return "", nil, nil, UseCases{}, err
 	}
 	return root, cfg, url, uc, nil
+}
+
+type lockQueryInput struct {
+	Repo string `json:"repo,omitempty" jsonschema:"Path inside a nipa working copy (defaults to the server working directory)"`
+	Path string `json:"path" jsonschema:"Repo-relative file or directory path to check"`
+}
+
+type lockQueryOutput struct {
+	Path   string        `json:"path"`
+	Locked bool          `json:"locked"`
+	Locks  []output.Lock `json:"locks"`
+}
+
+func (s *server) lockQuery(ctx context.Context, _ *mcp.CallToolRequest, in lockQueryInput) (*mcp.CallToolResult, lockQueryOutput, error) {
+	var zero lockQueryOutput
+	path := strings.Trim(strings.TrimSpace(in.Path), "/")
+	if path == "" {
+		return nil, zero, toolError(domain.NewUserError("a path is required"))
+	}
+	root, uc, err := s.open(in.Repo)
+	if err != nil {
+		return nil, zero, toolError(err)
+	}
+	defer uc.close()
+	if uc.Lock == nil {
+		return nil, zero, notConfigured("locks are")
+	}
+	locks, err := uc.Lock.List(ctx, root)
+	if err != nil {
+		return nil, zero, toolError(err)
+	}
+	out := lockQueryOutput{Path: path, Locks: []output.Lock{}}
+	for _, lock := range locks {
+		if lock == nil || !serverDomain.PrefixCovers(strings.Trim(lock.Path, "/"), path) {
+			continue
+		}
+		out.Locks = append(out.Locks, output.NewLock(lock))
+	}
+	out.Locked = len(out.Locks) > 0
+	return nil, out, nil
+}
+
+type tagListInput struct {
+	Repo string `json:"repo,omitempty" jsonschema:"Path inside a nipa working copy (defaults to the server working directory)"`
+}
+
+func (s *server) tagList(ctx context.Context, _ *mcp.CallToolRequest, in tagListInput) (*mcp.CallToolResult, output.Tags, error) {
+	var zero output.Tags
+	root, uc, err := s.open(in.Repo)
+	if err != nil {
+		return nil, zero, toolError(err)
+	}
+	defer uc.close()
+	if uc.Tag == nil {
+		return nil, zero, notConfigured("tags are")
+	}
+	tags, err := uc.Tag.List(ctx, root)
+	if err != nil {
+		return nil, zero, toolError(err)
+	}
+	return nil, output.NewTags(tags), nil
+}
+
+type conflictsInput struct {
+	Repo string `json:"repo,omitempty" jsonschema:"Path inside a nipa working copy (defaults to the server working directory)"`
+}
+
+type conflictRevision struct {
+	ID    string `json:"id,omitempty"`
+	Label string `json:"label,omitempty"`
+}
+
+type conflictFile struct {
+	Path     string `json:"path"`
+	Kind     string `json:"kind,omitempty"`
+	Binary   bool   `json:"binary,omitempty"`
+	Resolved bool   `json:"resolved,omitempty"`
+}
+
+type conflictsOutput struct {
+	Op     string           `json:"op,omitempty"`
+	Base   conflictRevision `json:"base"`
+	Ours   conflictRevision `json:"ours"`
+	Theirs conflictRevision `json:"theirs"`
+	Files  []conflictFile   `json:"files"`
+}
+
+func newConflictsOutput(set *domain.ConflictSet) conflictsOutput {
+	out := conflictsOutput{Files: []conflictFile{}}
+	if set == nil {
+		return out
+	}
+	rev := func(r domain.ConflictRevision) conflictRevision { return conflictRevision{ID: r.ID, Label: r.Label} }
+	out.Op, out.Base, out.Ours, out.Theirs = set.Op, rev(set.Base), rev(set.Ours), rev(set.Theirs)
+	for _, f := range set.Files {
+		out.Files = append(out.Files, conflictFile{Path: f.Path, Kind: f.Kind, Binary: f.Binary, Resolved: f.Resolved})
+	}
+	return out
+}
+
+func (s *server) conflicts(_ context.Context, _ *mcp.CallToolRequest, in conflictsInput) (*mcp.CallToolResult, conflictsOutput, error) {
+	var zero conflictsOutput
+	wc, lr, root, cleanup, err := s.localWorkingCopy(in.Repo)
+	if err != nil {
+		return nil, zero, toolError(err)
+	}
+	defer cleanup()
+	set, err := usecase.NewConflicts(lr, wc, root).List()
+	if err != nil {
+		return nil, zero, toolError(err)
+	}
+	return nil, newConflictsOutput(set), nil
 }
