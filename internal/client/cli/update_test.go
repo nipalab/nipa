@@ -159,7 +159,19 @@ func TestSetupUpdateCmd_NotARepo(t *testing.T) {
 }
 
 func TestSetupUpdateCmd_StoresChunksInCache(t *testing.T) {
+	for name, pinned := range map[string]bool{"pinned raw file is kept": true, "unpinned raw file is pruned": false} {
+		t.Run(name, func(t *testing.T) { testUpdateCachePolicy(t, pinned) })
+	}
+}
+
+func testUpdateCachePolicy(t *testing.T, pinned bool) {
 	root := setupRepo(t, "main")
+	if pinned {
+		pin := localrepo.NewLocalRepo()
+		require.NoError(t, pin.Init(root))
+		require.NoError(t, pin.PinPaths([]string{"a.txt"}))
+		require.NoError(t, pin.Close())
+	}
 	content := "cached content"
 	chunks := chunksOf(t, content)
 
@@ -184,6 +196,10 @@ func TestSetupUpdateCmd_StoresChunksInCache(t *testing.T) {
 	require.NoError(t, lr.Init(root))
 	defer func() { _ = lr.Close() }()
 	data, err := lr.LoadChunk(chunks[0].Hash)
+	if !pinned {
+		require.Error(t, err)
+		return
+	}
 	require.NoError(t, err)
 	require.Equal(t, content, string(data))
 }

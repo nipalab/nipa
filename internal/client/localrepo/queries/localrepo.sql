@@ -90,3 +90,17 @@ ON CONFLICT(path) DO UPDATE SET
 -- name: StatCacheSweep :exec
 DELETE FROM stat_cache
 WHERE path NOT IN (SELECT ltrim(path, '/') FROM files);
+
+-- name: PinnedPathUpsert :exec
+INSERT INTO pinned_paths (path, pinned_at)
+VALUES (:path, :pinned_at)
+ON CONFLICT(path) DO UPDATE SET pinned_at = excluded.pinned_at;
+
+-- name: PinnedPathDelete :exec
+DELETE FROM pinned_paths
+WHERE path = :path;
+
+-- name: PinnedPathList :many
+SELECT path
+FROM pinned_paths
+ORDER BY path;

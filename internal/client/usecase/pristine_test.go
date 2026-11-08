@@ -79,6 +79,7 @@ func newPristineFixture(t *testing.T, files map[string]string) *pristineFixture 
 		tree.FileChildren = append(tree.FileChildren, &serverDomain.File{
 			Name: name, Mode: 2, SizeBytes: int64(len(content)), IsBinary: chunker.IsBinary([]byte(content)), Encoding: encoding, Hash: fileHash, Chunks: chunks,
 		})
+		require.NoError(t, os.MkdirAll(filepath.Dir(filepath.Join(fx.root, name)), 0o755))
 		require.NoError(t, os.WriteFile(filepath.Join(fx.root, name), []byte(content), 0o644))
 	}
 	require.NoError(t, fx.lr.SaveTree(tree))

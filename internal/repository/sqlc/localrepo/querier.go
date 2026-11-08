@@ -15,6 +15,9 @@ type Querier interface {
 	MetaDelete(ctx context.Context, key string) error
 	MetaGet(ctx context.Context, key string) (string, error)
 	MetaSet(ctx context.Context, arg MetaSetParams) error
+	PinnedPathDelete(ctx context.Context, path string) error
+	PinnedPathList(ctx context.Context) ([]string, error)
+	PinnedPathUpsert(ctx context.Context, arg PinnedPathUpsertParams) error
 	SnapshotFileList(ctx context.Context) ([]SnapshotFileListRow, error)
 	StagedFileDelete(ctx context.Context, path string) error
 	StagedFileDeleteAll(ctx context.Context) error

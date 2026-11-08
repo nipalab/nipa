@@ -155,6 +155,28 @@ type stubLocalRepo struct {
 	savedStats   map[string]domain.StatEntry
 	saveStatsErr error
 	lockErr      error
+	pins         []string
+	pinsErr      error
+	pinErr       error
+	unpinned     []string
+	unpinErr     error
+}
+
+func (s *stubLocalRepo) ListPins() ([]string, error) {
+	return s.pins, s.pinsErr
+}
+
+func (s *stubLocalRepo) PinPaths(paths []string) error {
+	if s.pinErr != nil {
+		return s.pinErr
+	}
+	s.pins = append(s.pins, paths...)
+	return nil
+}
+
+func (s *stubLocalRepo) UnpinPaths(paths []string) error {
+	s.unpinned = append(s.unpinned, paths...)
+	return s.unpinErr
 }
 
 func (s *stubLocalRepo) LockShared() (func(), error) {

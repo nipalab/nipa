@@ -669,7 +669,7 @@ type lockedChunkSink struct {
 	err    error
 }
 
-func (s *lockedChunkSink) add(ch *serverDomain.ChunkData) error {
+func (s *lockedChunkSink) add(ch *serverDomain.ChunkData, _ bool) error {
 	if s.err != nil {
 		return s.err
 	}

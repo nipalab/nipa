@@ -140,3 +140,15 @@ func TestLock_NotARepo(t *testing.T) {
 	_, err := runCmdInDir(t, t.TempDir(), cli.setupLockCmd(), "art/tex.png")
 	require.EqualError(t, err, "not a nipa repository (or any of the parent directories)")
 }
+
+func TestSetupLockCmd_PrintsPinWarning(t *testing.T) {
+	root := setupRepoWithStoredTree(t, "main", map[string]string{"a.bin": "\x00original\x01"})
+	dropObjects(t, root)
+	writeFile(t, root, "a.bin", "\x00edited\x02")
+	client := &fakeLockClient{lockResult: &domain.FileLock{Path: "a.bin", Global: true}}
+
+	out, err := runCmdInDir(t, root, newLockCli(t, client).setupLockCmd(), "a.bin")
+	require.NoError(t, err)
+	require.Contains(t, out, "Locked a.bin (mainline).")
+	require.Contains(t, out, "warning: locked, but the old version of a.bin was not kept locally")
+}

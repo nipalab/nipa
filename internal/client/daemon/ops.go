@@ -26,8 +26,16 @@ type RepoOps struct {
 	Revert     RevertRunner
 	Diff       DiffRunner
 	Proxy      ProxyConn
+	Pins       PinRunner
 	Auth       *usecase.Auth
 	Downloader usecase.ContentDownloader
+}
+
+// PinRunner keeps the cached old version of files under a lock this daemon
+// took (usecase.LockPins).
+type PinRunner interface {
+	Pin(ctx context.Context, root, path string) error
+	Unpin(ctx context.Context, root, path string) error
 }
 
 type UpdateRunner interface {

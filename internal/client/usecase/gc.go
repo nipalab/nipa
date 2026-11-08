@@ -12,6 +12,7 @@ type cacheLocalRepo interface {
 	LoadMergeState() (*clientDomain.MergeState, error)
 	LoadRevertState() (*clientDomain.RevertState, error)
 	PruneObjects(keep map[domain.Hash]struct{}) (int, int64, error)
+	ListPins() ([]string, error)
 }
 
 type gcLocalRepo interface {
@@ -87,9 +88,16 @@ func pruneCache(lr cacheLocalRepo) (PruneResult, error) {
 	if err != nil {
 		return PruneResult{}, err
 	}
+	pins, err := lr.ListPins()
+	if err != nil {
+		return PruneResult{}, err
+	}
 	keep := make(map[domain.Hash]struct{})
 	if snapshot != nil {
 		for _, f := range snapshot.Files {
+			if !cachedInPristine(f, pins) {
+				continue
+			}
 			for _, h := range f.Chunks {
 				keep[h] = struct{}{}
 			}

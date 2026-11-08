@@ -2,6 +2,8 @@ package daemon
 
 import (
 	"context"
+	"fmt"
+	"log/slog"
 
 	clientDomain "github.com/nipalab/nipa/internal/client/domain"
 	"github.com/nipalab/nipa/internal/client/grpc/daemonpb"
@@ -226,7 +228,15 @@ func (s *Server) ProxyLockFile(ctx context.Context, req *daemonpb.ProxyLockFileR
 	if err != nil {
 		return nil, toStatusError(err)
 	}
-	return &daemonpb.ProxyLockFileResponse{Response: res}, nil
+	path := res.GetLock().GetPath()
+	if path == "" {
+		path = req.GetRequest().GetPath()
+	}
+	out := &daemonpb.ProxyLockFileResponse{Response: res}
+	if err := s.withPins(ctx, req.GetRoot(), func(rp *repo) error { return rp.pins.Pin(ctx, rp.root, path) }); err != nil {
+		out.Warning = fmt.Sprintf("locked, but the old version of %s was not kept locally: %v", path, err)
+	}
+	return out, nil
 }
 
 // ProxyUnlockFile releases a file lock.
@@ -245,7 +255,20 @@ func (s *Server) ProxyUnlockFile(ctx context.Context, req *daemonpb.ProxyUnlockF
 	if err != nil {
 		return nil, toStatusError(err)
 	}
+	path := req.GetRequest().GetPath()
+	if err := s.withPins(ctx, req.GetRoot(), func(rp *repo) error { return rp.pins.Unpin(ctx, rp.root, path) }); err != nil {
+		slog.Warn("daemon unpin failed", "root", req.GetRoot(), "path", path, "error", err)
+	}
 	return &daemonpb.ProxyUnlockFileResponse{Response: res}, nil
+}
+
+func (s *Server) withPins(ctx context.Context, root string, fn func(*repo) error) error {
+	return s.repos.withRepo(ctx, root, true, func(rp *repo) error {
+		if rp.pins == nil {
+			return nil
+		}
+		return fn(rp)
+	})
 }
 
 // ProxyListFileLocks lists the locks visible in the project.

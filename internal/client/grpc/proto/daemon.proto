@@ -693,6 +693,8 @@ message ProxyLockFileRequest {
 
 message ProxyLockFileResponse {
     greet.LockFileResponse response = 1;
+    // Set when the lock was granted but keeping its old version locally failed.
+    string warning = 2;
 }
 
 message ProxyUnlockFileRequest {

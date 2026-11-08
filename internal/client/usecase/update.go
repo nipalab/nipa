@@ -399,22 +399,11 @@ func syncWorkingCopy(ctx context.Context, client chunkDownloader, lr workingCopy
 	newFiles := flattenTree(tree, "")
 	newByPath := make(map[string]materializedFile, len(newFiles))
 
+	var jobs []materializeJob
+	var jobFiles []materializedFile
 	var want []domain.Hash
 	for _, f := range newFiles {
 		newByPath[f.Path] = f
-		want = append(want, f.ChunkHashes...)
-	}
-
-	missing, err := lr.MissingChunks(want)
-	if err != nil {
-		return err
-	}
-	if err := downloadMissing(ctx, client, lr, scope, missing, estimateBytesToDownload(newFiles, missing), progress...); err != nil {
-		return err
-	}
-
-	var jobs []materializeJob
-	for _, f := range newFiles {
 		base := baseByPath[f.Path]
 		if base.Hash == f.FileHash && base.Mode == f.Mode && fileExists(root, f.Path) {
 			// The file was not rewritten and its content was not verified, so
@@ -423,7 +412,18 @@ func syncWorkingCopy(ctx context.Context, client chunkDownloader, lr workingCopy
 			continue
 		}
 		jobs = append(jobs, materializeJob{file: f, prevMode: base.Mode})
+		jobFiles = append(jobFiles, f)
+		want = append(want, f.ChunkHashes...)
 	}
+
+	missing, err := lr.MissingChunks(want)
+	if err != nil {
+		return err
+	}
+	if err := downloadMissing(ctx, client, lr, scope, missing, estimateBytesToDownload(jobFiles, missing), progress...); err != nil {
+		return err
+	}
+
 	statEntries, err := materializeAll(ctx, root, jobs, lr.OpenChunk)
 	if err != nil {
 		return err

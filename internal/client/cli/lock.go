@@ -29,6 +29,9 @@ func (c *Cli) setupLockCmd() *cobra.Command {
 				return err
 			}
 			cmd.Printf("Locked %s (%s).\n", lock.Path, describeLockScope(lock))
+			if lock.Warning != "" {
+				cmd.PrintErrf("warning: %s\n", lock.Warning)
+			}
 			return nil
 		},
 	}
