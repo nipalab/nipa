@@ -1,6 +1,5 @@
 #include <doctest.h>
 
-#include <random>
 #include <string>
 
 #include "core/diff/diff.h"
@@ -115,15 +114,13 @@ TEST_CASE("a missing final newline still diffs the last line") {
     CHECK(hunks[0].lines.back().content == "c");
 }
 
-TEST_CASE("random edits replay to the original texts") {
-    std::mt19937 engine(1234);
-    std::uniform_int_distribution<int> pick(0, 4);
+TEST_CASE("generated edits replay to the original texts") {
     const char* words[] = {"alpha", "beta", "gamma", "delta", "eps"};
     for (int round = 0; round < 200; ++round) {
         std::vector<std::string> a;
         std::vector<std::string> b;
-        for (int i = 0; i < 12; ++i) a.push_back(words[pick(engine)]);
-        for (int i = 0; i < 12; ++i) b.push_back(words[pick(engine)]);
+        for (int i = 0; i < 12; ++i) a.push_back(words[(round * 31 + i * i + i * 7) % 5]);
+        for (int i = 0; i < 12; ++i) b.push_back(words[(round * 17 + i * 3 + 1) % 5]);
         auto full = replay(line_diff(join(a), join(b), 1000));
         CHECK(full.first == join(a));
         CHECK(full.second == join(b));
@@ -136,6 +133,18 @@ TEST_CASE("random edits replay to the original texts") {
             }
         }
     }
+}
+
+TEST_CASE("very large rewrites fall back to a replace and still replay") {
+    std::string old_text;
+    std::string new_text;
+    for (int i = 0; i < 2500; ++i) {
+        old_text += "old " + std::to_string(i) + "\n";
+        new_text += "new " + std::to_string(i) + "\n";
+    }
+    auto full = replay(line_diff(old_text, new_text, 0));
+    CHECK(full.first == old_text);
+    CHECK(full.second == new_text);
 }
 
 TEST_CASE("placeholder hunk names the kind and sizes") {

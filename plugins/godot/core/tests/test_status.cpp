@@ -37,6 +37,12 @@ TEST_CASE("staged and deleted is DELETED staged") {
     CHECK(has(entries_for(s), "gone.tscn", kDeleted, kStaged));
 }
 
+TEST_CASE("staged deletion reported only in deleted is DELETED staged") {
+    Snapshot s;
+    s.deleted = {"removed.tscn"};
+    CHECK(has(entries_for(s), "removed.tscn", kDeleted, kStaged));
+}
+
 TEST_CASE("other staged files are MODIFIED staged") {
     Snapshot s;
     s.staged = {"level.tscn"};

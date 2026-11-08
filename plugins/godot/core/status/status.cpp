@@ -39,6 +39,11 @@ std::vector<VcsEntry> to_vcs_entries(const Snapshot& snapshot) {
         }
         add(out, path, deleted.count(path) ? kDeleted : kModified, kStaged);
     }
+    for (const auto& path : snapshot.deleted) {
+        if (!added.count(path) && !resolved.count(path)) {
+            add(out, path, kDeleted, kStaged);
+        }
+    }
     for (const auto& path : snapshot.modified) {
         if (!staged.count(path)) {
             add(out, path, kModified, kUnstaged);

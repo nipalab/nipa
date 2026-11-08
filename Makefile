@@ -164,7 +164,7 @@ godot-test:
 	cmake -S plugins/godot -B plugins/godot/build -DCMAKE_BUILD_TYPE=Debug -DNIPA_COVERAGE=ON -DNIPA_BUILD_EXTENSION=OFF
 	cmake --build plugins/godot/build --target nipa_core_tests -j
 	cd plugins/godot/build && ctest --output-on-failure
-	$(GCOVR) -r plugins/godot --filter 'plugins/godot/core/' --exclude 'plugins/godot/core/tests/' --fail-under-line 80 --print-summary plugins/godot/build
+	$(GCOVR) -r . --filter 'plugins/godot/core/' --exclude 'plugins/godot/core/tests/' --fail-under-line 80 --print-summary --sonarqube plugins/godot/coverage.xml plugins/godot/build
 
 ## Build the Godot GDExtension for the host platform (fetches godot-cpp 4.4).
 godot-build:

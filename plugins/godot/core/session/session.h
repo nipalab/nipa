@@ -90,6 +90,7 @@ public:
     // Reads the snapshot (last synced) content of `path`, kept under `key` (BlobReady).
     std::int64_t submit_read_blob(const std::string& key, const std::string& path);
     std::optional<std::string> blob_result(const std::string& key) const;
+    bool blob_known(const std::string& key) const;
     bool blob_blocking(const std::string& key, std::chrono::milliseconds timeout);
 
 private:
@@ -146,8 +147,13 @@ private:
     std::vector<daemon::Branch> branches_;
     std::vector<daemon::Commit> commits_;
     std::vector<std::string> remotes_;
+    struct BlobEntry {
+        bool ok = false;
+        std::string content;
+    };
     std::map<std::string, std::vector<diff::File>> diffs_;
-    std::map<std::string, std::string> blobs_;
+    std::map<std::string, std::uint64_t> diff_generation_;
+    std::map<std::string, BlobEntry> blobs_;
 
     std::mutex connect_mu_;
     std::thread worker_;

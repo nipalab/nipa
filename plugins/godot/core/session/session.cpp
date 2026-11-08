@@ -16,7 +16,10 @@ json root_body(const std::string& root) {
 Session::Session(SessionOptions options) : options_(std::move(options)) {}
 
 Session::~Session() {
-    stop();
+    try {
+        stop();
+    } catch (...) {
+    }
 }
 
 void Session::start() {
@@ -164,6 +167,12 @@ void Session::worker_loop() {
             outcome = Outcome{false, e.what(), {}};
         }
         if (!task.quiet) {
+            {
+                std::lock_guard<std::mutex> guard(mu_);
+                diffs_.clear();
+                blobs_.clear();
+            }
+            cache_cv_.notify_all();
             Event e;
             e.kind = EventKind::OpFinished;
             e.op_id = task.id;
@@ -562,7 +571,13 @@ std::int64_t Session::submit_sign_in(std::string server, std::string username, s
 }
 
 std::int64_t Session::submit_diff(const std::string& key, json body) {
-    return enqueue("diff", true, [this, key, body = std::move(body)](std::int64_t) {
+    std::uint64_t generation = 0;
+    {
+        std::lock_guard<std::mutex> guard(mu_);
+        generation = ++diff_generation_[key];
+        diffs_.erase(key);
+    }
+    return enqueue("diff", true, [this, key, generation, body = std::move(body)](std::int64_t) {
         std::vector<diff::File> files;
         std::string error;
         bool ok = true;
@@ -594,7 +609,9 @@ std::int64_t Session::submit_diff(const std::string& key, json body) {
         });
         if (ok) {
             std::lock_guard<std::mutex> guard(mu_);
-            diffs_[key] = files;
+            if (diff_generation_[key] == generation) {
+                diffs_[key] = files;
+            }
         }
         cache_cv_.notify_all();
         Event e;
@@ -638,9 +655,9 @@ std::int64_t Session::submit_read_blob(const std::string& key, const std::string
                 error = e.what();
             }
         });
-        if (ok) {
+        {
             std::lock_guard<std::mutex> guard(mu_);
-            blobs_[key] = content;
+            blobs_[key] = BlobEntry{ok, ok ? content : std::string()};
         }
         cache_cv_.notify_all();
         Event e;
@@ -656,10 +673,15 @@ std::int64_t Session::submit_read_blob(const std::string& key, const std::string
 std::optional<std::string> Session::blob_result(const std::string& key) const {
     std::lock_guard<std::mutex> guard(mu_);
     auto found = blobs_.find(key);
-    if (found == blobs_.end()) {
+    if (found == blobs_.end() || !found->second.ok) {
         return std::nullopt;
     }
-    return found->second;
+    return found->second.content;
+}
+
+bool Session::blob_known(const std::string& key) const {
+    std::lock_guard<std::mutex> guard(mu_);
+    return blobs_.count(key) > 0;
 }
 
 bool Session::blob_blocking(const std::string& key, std::chrono::milliseconds timeout) {

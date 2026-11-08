@@ -14,8 +14,17 @@ struct Op {
     long long b;  // new index for Equal/Insert
 };
 
-// Shortest edit script via the classic Myers O(ND) search. Each step stores the
-// frontier so the path can be walked back from the end.
+std::vector<long long> window(const std::vector<long long>& v, long long offset, long long d) {
+    auto first = v.begin() + static_cast<std::ptrdiff_t>(offset - d);
+    return std::vector<long long>(first, first + static_cast<std::ptrdiff_t>(2 * d + 1));
+}
+
+constexpr long long kMaxEditDistance = 2000;
+
+// Shortest edit script via the classic Myers O(ND) search. Each step keeps only
+// its diagonal window, so the trace is O(D^2) instead of O((N+M)·D). Beyond
+// kMaxEditDistance the script is a plain replace of every line, which still
+// replays to both texts.
 std::vector<Op> myers(const std::vector<std::string>& a, const std::vector<std::string>& b) {
     const long long n = static_cast<long long>(a.size());
     const long long m = static_cast<long long>(b.size());
@@ -25,7 +34,12 @@ std::vector<Op> myers(const std::vector<std::string>& a, const std::vector<std::
     std::vector<std::vector<long long>> trace;
 
     for (long long d = 0; d <= max; ++d) {
-        trace.push_back(v);
+        if (d > kMaxEditDistance) {
+            std::vector<Op> ops;
+            for (long long i = 0; i < n; ++i) ops.push_back({OpKind::Delete, i, -1});
+            for (long long j = 0; j < m; ++j) ops.push_back({OpKind::Insert, -1, j});
+            return ops;
+        }
         for (long long k = -d; k <= d; k += 2) {
             long long x = 0;
             if (k == -d || (k != d && v[static_cast<std::size_t>(offset + k - 1)] <
@@ -45,18 +59,22 @@ std::vector<Op> myers(const std::vector<std::string>& a, const std::vector<std::
                 long long cx = n;
                 long long cy = m;
                 for (long long back = d; back >= 0; --back) {
-                    const auto& frontier = trace[static_cast<std::size_t>(back)];
                     long long ck = cx - cy;
-                    long long prev_k;
-                    if (ck == -back ||
-                        (ck != back && frontier[static_cast<std::size_t>(offset + ck - 1)] <
-                                           frontier[static_cast<std::size_t>(offset + ck + 1)])) {
-                        prev_k = ck + 1;
-                    } else {
-                        prev_k = ck - 1;
-                    }
-                    long long prev_x = back == 0 ? 0 : frontier[static_cast<std::size_t>(offset + prev_k)];
+                    long long prev_k = ck + 1;
+                    long long prev_x = 0;
                     long long prev_y = prev_x - prev_k;
+                    if (back > 0) {
+                        const auto& frontier = trace[static_cast<std::size_t>(back - 1)];
+                        const long long shift = back - 1;
+                        auto at = [&](long long kk) { return frontier[static_cast<std::size_t>(kk + shift)]; };
+                        if (ck == -back || (ck != back && at(ck - 1) < at(ck + 1))) {
+                            prev_k = ck + 1;
+                        } else {
+                            prev_k = ck - 1;
+                        }
+                        prev_x = at(prev_k);
+                        prev_y = prev_x - prev_k;
+                    }
                     long long mid_x = prev_k == ck + 1 ? prev_x : prev_x + 1;
                     long long mid_y = mid_x - ck;
                     while (cx > mid_x && cy > mid_y) {
@@ -78,6 +96,7 @@ std::vector<Op> myers(const std::vector<std::string>& a, const std::vector<std::
                 return ops;
             }
         }
+        trace.push_back(window(v, offset, d));
     }
     return {};
 }

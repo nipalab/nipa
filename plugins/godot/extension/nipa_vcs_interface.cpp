@@ -337,7 +337,7 @@ TypedArray<Dictionary> NipaVCSInterface::_get_line_diff(const String& p_file_pat
     std::string key = "blob:" + from_godot(p_file_path);
     auto session = node->session();
     std::string clone_path = from_godot(node->to_clone_path(p_file_path));
-    if (!session->blob_result(key)) {
+    if (!session->blob_known(key)) {
         session->submit_read_blob(key, clone_path);
         session->blob_blocking(key, kDiffBudget);
     }

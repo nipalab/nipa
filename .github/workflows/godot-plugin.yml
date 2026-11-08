@@ -27,7 +27,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build
-          python3 -m pip install --user gcovr
+          python3 -m pip install --user --only-binary :all: gcovr==8.8
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Test with coverage gate
@@ -101,9 +101,9 @@ jobs:
       matrix:
         include:
           - godot: '4.4'
-            url: 'https://github.com/godotengine/godot/releases/download/4.4-stable/Godot_v4.4-stable_linux.x86_64.zip'
+            release: '4.4-stable'
           - godot: 'latest'
-            url: ''
+            release: 'latest'
     steps:
       - uses: actions/checkout@v4
 
@@ -115,18 +115,21 @@ jobs:
 
       - name: Fetch Godot
         env:
-          GODOT_URL: ${{ matrix.url }}
+          GODOT_RELEASE: ${{ matrix.release }}
         run: |
-          mkdir -p "$RUNNER_TEMP/godot"
-          url="$GODOT_URL"
-          if [ -z "$url" ]; then
-            url=$(curl -sfL https://api.github.com/repos/godotengine/godot/releases/latest \
-              | python3 -c 'import json,sys; r=json.load(sys.stdin); print(next(a["browser_download_url"] for a in r["assets"] if a["name"].endswith("_linux.x86_64.zip")))')
-          fi
-          echo "fetching $url"
-          curl -sfL -o "$RUNNER_TEMP/godot/godot.zip" "$url"
-          unzip -q -o "$RUNNER_TEMP/godot/godot.zip" -d "$RUNNER_TEMP/godot"
-          chmod +x "$RUNNER_TEMP/godot"/Godot_*.x86_64
+          set -euo pipefail
+          dir="$RUNNER_TEMP/godot"
+          mkdir -p "$dir"
+          api=https://api.github.com/repos/godotengine/godot/releases
+          if [ "$GODOT_RELEASE" = "latest" ]; then api="$api/latest"; else api="$api/tags/$GODOT_RELEASE"; fi
+          curl -sfL --proto '=https' --tlsv1.2 -o "$dir/release.json" "$api"
+          read -r zip_name zip_url sums_url < <(python3 -c 'import json,sys; r=json.load(open(sys.argv[1])); a={x["name"]: x["browser_download_url"] for x in r["assets"]}; z=next(n for n in a if n.endswith("_linux.x86_64.zip")); print(z, a[z], a["SHA512-SUMS.txt"])' "$dir/release.json")
+          curl -sfL --proto '=https' --tlsv1.2 -o "$dir/godot.zip" "$zip_url"
+          curl -sfL --proto '=https' --tlsv1.2 -o "$dir/SHA512-SUMS.txt" "$sums_url"
+          grep " ${zip_name}\$" "$dir/SHA512-SUMS.txt" > "$dir/expected.txt"
+          (cd "$dir" && mv godot.zip "$zip_name" && sha512sum -c expected.txt)
+          unzip -q -o "$dir/$zip_name" -d "$dir"
+          chmod +x "$dir"/Godot_*.x86_64
 
       - name: Import project
         working-directory: plugins/godot/tests/project

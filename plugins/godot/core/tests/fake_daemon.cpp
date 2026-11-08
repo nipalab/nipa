@@ -3,7 +3,11 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <stdexcept>
 #include <random>
+#ifndef _WIN32
+#include <stdlib.h>
+#endif
 
 namespace nipa::test {
 namespace {
@@ -49,12 +53,18 @@ FakeDaemon::FakeDaemon(std::string token) : token_(std::move(token)) {
             return;
         }
 
-        std::unique_lock<std::mutex> lock(mu_);
-        auto stream_it = stream_.find(method);
-        if (stream_it != stream_.end()) {
-            auto handler = stream_it->second;
-            lock.unlock();
-            StreamScript script = handler(body);
+        StreamHandler stream_handler;
+        UnaryHandler unary_handler;
+        {
+            std::lock_guard<std::mutex> guard(mu_);
+            if (auto it = stream_.find(method); it != stream_.end()) {
+                stream_handler = it->second;
+            } else if (auto found = unary_.find(method); found != unary_.end()) {
+                unary_handler = found->second;
+            }
+        }
+        if (stream_handler) {
+            StreamScript script = stream_handler(body);
             if (script.status != 200) {
                 write_json(res, script.status, {{"code", "NotFound"}, {"message", "stream refused"}});
                 return;
@@ -93,15 +103,11 @@ FakeDaemon::FakeDaemon(std::string token) : token_(std::move(token)) {
             return;
         }
 
-        auto unary_it = unary_.find(method);
-        if (unary_it == unary_.end()) {
-            lock.unlock();
+        if (!unary_handler) {
             write_json(res, 501, {{"code", "Unimplemented"}, {"message", "no handler for " + method}});
             return;
         }
-        auto handler = unary_it->second;
-        lock.unlock();
-        Reply reply = handler(body);
+        Reply reply = unary_handler(body);
         if (reply.raw) {
             res.status = reply.status;
             res.set_content(*reply.raw, "application/json");
@@ -157,11 +163,18 @@ int FakeDaemon::count(const std::string& method) const {
 }
 
 std::string make_temp_dir() {
+#ifndef _WIN32
+    std::string path = (std::filesystem::temp_directory_path() / "nipa-godot-XXXXXX").string();
+    if (mkdtemp(path.data()) == nullptr) {
+        throw std::runtime_error("mkdtemp failed for " + path);
+    }
+    return path;
+#else
     std::random_device device;
-    std::mt19937_64 engine(device());
-    auto path = std::filesystem::temp_directory_path() / ("nipa-godot-" + std::to_string(engine()));
-    std::filesystem::create_directories(path);
+    auto path = std::filesystem::temp_directory_path() / ("nipa-godot-" + std::to_string(device()));
+    std::filesystem::create_directory(path);
     return path.string();
+#endif
 }
 
 void write_endpoint(const std::string& path, int json_port, const std::string& token, const std::string& version) {

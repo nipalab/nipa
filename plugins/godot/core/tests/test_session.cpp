@@ -544,7 +544,25 @@ TEST_CASE("a failed blob read is reported and not cached") {
     h.session->submit_read_blob("snap:x", "x");
     CHECK(h.wait([&](const Events&) { return h.find(EventKind::BlobReady) != nullptr; }));
     CHECK_FALSE(h.find(EventKind::BlobReady)->ok);
-    CHECK_FALSE(h.session->blob_blocking("snap:x", 50ms));
+    CHECK(h.session->blob_known("snap:x"));
+    CHECK_FALSE(h.session->blob_result("snap:x").has_value());
+    CHECK(h.session->blob_blocking("snap:x", 50ms));
+}
+
+TEST_CASE("resubmitting a diff drops the previous result at once") {
+    Harness h;
+    h.fake.on_stream("DiffFiles", [](const json&) {
+        StreamScript script;
+        script.lines = {R"({"file":{"path":"a.tscn","status":"modified","kind":"text"}})"};
+        script.endless = false;
+        return script;
+    });
+    h.start();
+    h.session->submit_diff("work:a", json{{"paths", {"a.tscn"}}});
+    CHECK(h.wait([&](const Events&) { return h.find(EventKind::DiffReady) != nullptr; }));
+    CHECK(h.session->diff_result("work:a").has_value());
+    h.session->submit_diff("work:a", json{{"paths", {"a.tscn"}}});
+    CHECK_FALSE(h.session->diff_result("work:a").has_value());
 }
 
 TEST_CASE("a failed diff reports through DiffReady and never fills the cache") {
