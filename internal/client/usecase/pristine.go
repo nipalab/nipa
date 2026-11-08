@@ -43,7 +43,6 @@ func (p pristine) ensureSnapshotContent(ctx context.Context, files []clientDomai
 	if err != nil {
 		return err
 	}
-	var pending []clientDomain.SnapshotFile
 	for _, f := range files {
 		if !needsAny(f, missing) {
 			continue
@@ -51,6 +50,9 @@ func (p pristine) ensureSnapshotContent(ctx context.Context, files []clientDomai
 		if err := p.recapture(f, statCache, missing); err != nil {
 			return err
 		}
+	}
+	var pending []clientDomain.SnapshotFile
+	for _, f := range files {
 		if needsAny(f, missing) {
 			pending = append(pending, f)
 		}

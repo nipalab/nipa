@@ -427,3 +427,15 @@ func writeFileAt(t *testing.T, root, name, content string) {
 	path := filepath.Join(root, filepath.FromSlash(name))
 	require.NoError(t, os.WriteFile(path, []byte(content), 0o644))
 }
+
+func TestEnsureSnapshotContent_SharedChunkRecapturedByLaterFile(t *testing.T) {
+	fx := newPristineFixture(t, map[string]string{"a.txt": "same content\n", "b.txt": "same content\n"})
+	a, b := fx.snapshotFile(t, "a.txt"), fx.snapshotFile(t, "b.txt")
+	require.Equal(t, a.Chunks, b.Chunks)
+	fx.dropObjects(t)
+	writeFileAt(t, fx.root, "a.txt", "edited\n")
+
+	p := pristine{root: fx.root, repo: fx.lr}
+	require.NoError(t, p.ensureSnapshotContent(context.Background(), []clientDomain.SnapshotFile{a, b}))
+	fx.requireCached(t, "a.txt")
+}
