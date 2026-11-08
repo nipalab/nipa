@@ -5,9 +5,11 @@ The same Ginkgo suite runs against the free (`nipad`) and enterprise
 (`nipad-ee`) servers so both editions are verified to behave identically from
 the client's point of view.
 
-Coverage (220 specs): every in-repo command and flag — `login` (SSH key:
+Coverage (about 280 specs, counted as the `It(`/`PIt(` calls in the
+non-support spec files): every in-repo command and flag — `login` (SSH key:
 key-only sign-in, lazy sign-in for clone through `NIPA_SSH_KEY`,
-unregistered-key rejection and username binding), `clone`, `branch`,
+unregistered-key rejection, username binding, deleted keys, default
+`~/.ssh` key discovery and ssh-agent), `clone`, `branch`,
 `add`, `remove`, `restore`, `status`, `push`, `update`, `switch` (branch and
 `--tag` detach), `merge`, `revert` (single, range, conflicts, `--mainline`),
 `log`,
@@ -17,7 +19,10 @@ runtime commands `nipa serve` (daemon gRPC API), `nipa mcp` (MCP over stdio)
 and the webhook delivery pipeline (push/branch/tag/mr events, signatures,
 filters, ping, retries/redelivery), multi-user permission/lock scenarios
 (org owners' implicit full project access and plain members' deny-by-default),
-`NIPA_OUTPUT=json` and the exit-code contract (0/1/2/127).
+`NIPA_OUTPUT=json` and the exit-code contract (0/1/2/127). REST-only
+surfaces are covered too: email notifications, the admin audit log, users/
+orgs/projects/branches/browser admin routes, signed chunk URLs, storage
+quota and rate limiting.
 
 The enterprise run additionally enables the SaaS onboarding stack
 (`SAAS_MODE`) and covers it through the REST surface: registration with the
@@ -43,12 +48,22 @@ tests/run.sh ee --keep                    # keep postgres/minio after the run
 SKIP_BUILD=1 tests/run.sh free            # reuse binaries already in bin/
 NIPA_TEST_PORT=7000 tests/run.sh free     # free server port (default 6745)
 NIPA_TEST_EE_PORT=7001 tests/run.sh ee    # enterprise server port (default 6747)
-NIPA_TEST_EMAIL_TRANSPORT=http tests/run.sh free  # email transport: sendgrid, scaleway or http
+NIPA_TEST_EMAIL_TRANSPORT=http tests/run.sh free  # email transport: sendgrid, scaleway or http (all carry Message-ID/In-Reply-To/References)
 NIPA_TEST_SAAS= tests/run.sh ee           # disable the SaaS onboarding config + spec
 NIPA_TEST_POSTGRES_DSN=... NIPA_TEST_S3_ENDPOINT=... tests/run.sh ee   # external services
 NIPA_TEST_REDIS_PORT=6380 tests/run.sh ee # redis port for the ee rate limit store (default 6379)
 NIPA_TEST_REDIS_ADDR=host:6379 tests/run.sh ee # external redis; with external postgres/s3 and no address the ee run uses the memory store
+NIPA_TEST_RATELIMIT=1 tests/run.sh free   # rate-limit profile (see below)
 ```
+
+Rate-limit profile (free only): `NIPA_TEST_RATELIMIT=1` also starts a second
+free `nipad` with low per-scope limits (`auth_ip`, `api_user`, `chunk_ip`,
+`global_ip`; trusted proxies `127.0.0.1/32`) on `NIPA_TEST_RATELIMIT_PORT`
+(default 6749, log in `tests/.tmp/logs/free-ratelimit.log`), exports its
+address as `NIPA_TEST_RATELIMIT_HOST` and focuses the run on
+`"rate limiting"` unless `--filter` is given. The per-identity `auth_id`
+specs run against the regular server on every run; the low-limit specs skip
+without `NIPA_TEST_RATELIMIT_HOST`.
 
 Makefile shortcuts: `make test-client`, `make test-client-ee`,
 `make test-client-both`.
@@ -99,7 +114,10 @@ tests/
   suite/
     suite_test.go         RunSpecs, BeforeSuite (login + org), project factory
     support_*.go          env, CLI exec, REST, auth/identities, JSON DTOs,
-                          workspaces, seeds, external diff, daemon, MCP
+                          workspaces, seeds, external diff, daemon, MCP,
+                          SSH keys, hook/email receivers, pipe/PTY runners
+                          (support_pty_test.go: runNipaPiped, runNipaPTY,
+                          colorEnv)
     clone_test.go         nipa clone
     branch_test.go        nipa branch
     push_test.go          nipa push (+ add/remove/status glue)
@@ -108,21 +126,34 @@ tests/
     switch_test.go        nipa switch (branches, detached tags)
     merge_test.go         nipa merge
     revert_test.go        nipa revert (ranges, conflicts, mainline)
-    log_test.go           nipa log
-    diff_test.go          nipa diff (formats, revisions, ext-diff)
+    status_test.go        nipa status/add/remove staging (--no-cache, dirs)
+    log_test.go           nipa log (detached, pager only on a terminal)
+    diff_test.go          nipa diff (formats, revisions, ext-diff, color)
     ignore_test.go        .nipaignore / .nipa/ignore rules (add -f, sparse)
     sparse_test.go        nipa sparse-checkout
     tag_test.go           nipa tag
-    lock_test.go          nipa lock/unlock
-    mr_test.go            nipa mr
+    lock_test.go          nipa lock/unlock (branch scope, released on delete)
+    mr_test.go            nipa mr (reviews, threads, assignees, checks)
     acl_test.go           nipa acl + permission defaults
     org_owner_test.go     org owners' implicit project access vs. members
     group_test.go         nipa group
     meta_test.go          JSON output modes and error envelopes
     onboarding_test.go    SaaS registration + email confirmation (ee only)
-    daemon_test.go        nipa serve (daemon gRPC API)
+    org_invitation_test.go organization invitations
+    profile_test.go       profile email-notification toggle
+    ssh_test.go           SSH key login (deleted keys, ~/.ssh, ssh-agent)
+    daemon_test.go        nipa serve (gRPC API, LoginSSH, JSON bridge token,
+                          error mapping and host/origin checks)
     mcp_test.go           nipa mcp (MCP over stdio)
-    webhook_test.go       webhook deliveries (events, filters, signature)
+    webhook_test.go       webhook deliveries (events incl. mr.ready_for_review,
+                          filters, signature)
+    email_test.go         email notifications (lifecycle, thread headers,
+                          retries/redelivery)
+    audit_test.go         admin audit log REST API
+    admin_rest_test.go    admin REST (auth refresh/logout, users, orgs,
+                          projects, branches, browser, signed chunk URLs)
+    storage_quota_test.go storage quota (ee) / absent routes incl. billing
+    ratelimit_test.go     rate limiting (auth_id; low-limit profile scopes)
 ```
 
 ## Adding specs
@@ -150,3 +181,10 @@ tests/
   The generated server config sets `WEBHOOK_EGRESS_ALLOWLIST: 127.0.0.1` so the
   loopback receiver is reachable; deliveries are asynchronous, so specs wait on
   the receiver (`wait`/`waitCount`) or the delivery ledger with `Eventually`.
+- `admin_rest_test.go` signs expired chunk URLs itself with `chunkSigningKey`,
+  a copy of `CHUNK_URL_SIGNING_KEY` from `run.sh`; keep the two in sync.
+- Known product bugs are kept as pending specs (`PIt`) naming the cause, so the
+  run stays green and the spec flips to `It` with the fix. Currently:
+  `nipa add .` rejected by `validateRelPath` (`status_test.go`) and clone
+  defaulting `--branch` to `main` instead of the server default branch
+  (`admin_rest_test.go`).
