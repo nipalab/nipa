@@ -388,3 +388,39 @@ func (s *PushRepositorySuite) TestLinkProjectChunksBatch() {
 	s.Require().NoError(err)
 	s.Equal(map[domain.Hash]bool{first: true, second: true}, got)
 }
+
+func (s *PushRepositorySuite) TestIdenticalRootCommitInTwoProjects() {
+	ctx := context.Background()
+	repo, branchRepo, projectA, branchA := s.newPushTestEnv()
+	projectB := seedProject(s.T(), s.q, 1, "other-project")
+	branchB := seedBranch(s.T(), s.db, projectB, "main", sql.NullInt64{})
+
+	treeHash := treehash.TreeHash(nil, nil)
+	commitHash := treehash.CommitHash(treeHash, nil, "Initial commit")
+	push := func(project, branch, commit snow.ID) error {
+		return repo.ApplyPush(ctx, usecase.ApplyPushRequest{
+			ProjectID:  project,
+			BranchID:   branch,
+			CommitID:   commit,
+			CommitHash: commitHash,
+			UserID:     snow.ID(1),
+			Message:    "Initial commit",
+			Nodes:      []usecase.PushNodeRow{{ID: 1, Hash: treeHash, Name: "root", Mode: 0o444}},
+		})
+	}
+
+	s.Require().NoError(push(projectA, branchA, snow.ID(101)))
+	s.Require().NoError(push(projectB, branchB, snow.ID(102)))
+
+	gotA, err := branchRepo.GetCommitByHash(ctx, projectA, commitHash)
+	s.Require().NoError(err)
+	s.Equal(snow.ID(101), gotA.ID)
+	gotB, err := branchRepo.GetCommitByHash(ctx, projectB, commitHash)
+	s.Require().NoError(err)
+	s.Equal(snow.ID(102), gotB.ID)
+
+	err = push(projectA, branchA, snow.ID(103))
+	var domErr *domain.Error
+	s.Require().ErrorAs(err, &domErr)
+	s.Equal(409, domErr.Code)
+}

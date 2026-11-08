@@ -925,7 +925,7 @@ func TestCreateBranch_FromCommitHash(t *testing.T) {
 			GetBranchByName(gomock.Any(), projectID, "feature").
 			Return(nil, domain.NewErrorRecordNotFound()),
 		repo.EXPECT().
-			GetCommitByHash(gomock.Any(), wantHash).
+			GetCommitByHash(gomock.Any(), gomock.Any(), wantHash).
 			Return(commit, nil),
 	)
 	repo.EXPECT().ListBranches(gomock.Any(), projectID, 1, gomock.Nil(), snow.ID(0)).

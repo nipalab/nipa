@@ -762,7 +762,7 @@ func TestBranchRepositorySQLite_GetCommitByHash(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	got, err := repo.GetCommitByHash(ctx, hash)
+	got, err := repo.GetCommitByHash(ctx, projectID, hash)
 	require.NoError(t, err)
 	require.Equal(t, commitID, got.ID)
 	require.Equal(t, projectID, got.ProjectID)
@@ -777,7 +777,46 @@ func TestBranchRepositorySQLite_GetCommitByHash_NotFound(t *testing.T) {
 
 	var missing domain.Hash
 	missing[0] = 0xde
-	_, err := repo.GetCommitByHash(ctx, missing)
+	_, err := repo.GetCommitByHash(ctx, snow.ID(1), missing)
+	requireRecordNotFound(t, err)
+}
+
+func TestBranchRepositorySQLite_CommitHash_ScopedPerProject(t *testing.T) {
+	ctx := context.Background()
+	db, q := newSQLiteTestDB(t)
+	repo := NewBranchRepository(db)
+
+	projectA := seedProject(t, q, 1, "project-a")
+	projectB := seedProject(t, q, 1, "project-b")
+	treeID := seedTreeNode(t, db, "root", sql.NullInt64{})
+	userID := seedUser(t, q, "committer", "committer@example.com", sql.NullString{})
+	var hash domain.Hash
+	hash[0], hash[1] = 0x01, 0x02
+	node := newTestNode(t)
+	insert := func(project snow.ID) (sql.Result, snow.ID, error) {
+		id := node.Generate()
+		res, err := db.ExecContext(ctx,
+			`INSERT INTO commits (id, hash, project_id, tree_id, user_id, message) VALUES (?, ?, ?, ?, ?, ?)`,
+			id.Int64(), hash.Bytes(), project.Int64(), treeID, userID.Int64(), "Initial commit")
+		return res, id, err
+	}
+
+	_, idA, err := insert(projectA)
+	require.NoError(t, err)
+	_, idB, err := insert(projectB)
+	require.NoError(t, err, "identical commit hash must be allowed in another project")
+	_, _, err = insert(projectA)
+	require.Error(t, err, "same hash in the same project stays unique")
+
+	gotA, err := repo.GetCommitByHash(ctx, projectA, hash)
+	require.NoError(t, err)
+	require.Equal(t, idA, gotA.ID)
+	gotB, err := repo.GetCommitByHash(ctx, projectB, hash)
+	require.NoError(t, err)
+	require.Equal(t, idB, gotB.ID)
+
+	projectC := seedProject(t, q, 1, "project-c")
+	_, err = repo.GetCommitByHash(ctx, projectC, hash)
 	requireRecordNotFound(t, err)
 }
 

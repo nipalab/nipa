@@ -635,7 +635,7 @@ func TestTag_CreateTag_FromCommitHash(t *testing.T) {
 			GetTagByName(gomock.Any(), snow.ID(1), "v4.0.0").
 			Return(nil, domain.NewErrorRecordNotFound()),
 		branchRepo.EXPECT().
-			GetCommitByHash(gomock.Any(), hash).
+			GetCommitByHash(gomock.Any(), gomock.Any(), hash).
 			Return(&domain.Commit{ID: commitID, ProjectID: 1}, nil),
 	)
 
@@ -671,7 +671,7 @@ func TestTag_CreateTag_FromCommitHash_NotFound(t *testing.T) {
 			GetTagByName(gomock.Any(), snow.ID(1), "v4.0.0").
 			Return(nil, domain.NewErrorRecordNotFound()),
 		branchRepo.EXPECT().
-			GetCommitByHash(gomock.Any(), hash).
+			GetCommitByHash(gomock.Any(), gomock.Any(), hash).
 			Return(nil, domain.NewErrorRecordNotFound()),
 	)
 
@@ -701,8 +701,8 @@ func TestTag_CreateTag_FromCommitHash_OtherProject(t *testing.T) {
 			GetTagByName(gomock.Any(), snow.ID(1), "v4.0.0").
 			Return(nil, domain.NewErrorRecordNotFound()),
 		branchRepo.EXPECT().
-			GetCommitByHash(gomock.Any(), hash).
-			Return(&domain.Commit{ID: 42, ProjectID: 2}, nil),
+			GetCommitByHash(gomock.Any(), snow.ID(1), hash).
+			Return(nil, domain.NewErrorRecordNotFound()),
 	)
 
 	uc := NewTag(perm, repo, branchRepo, newTestBranchNode(t))

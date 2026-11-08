@@ -10,6 +10,7 @@ import (
 
 	"github.com/nipalab/nipa/internal/chunker"
 	"github.com/nipalab/nipa/internal/domain"
+	sqlcSqlite "github.com/nipalab/nipa/internal/repository/sqlc/sqlite"
 	"github.com/nipalab/nipa/internal/snow"
 	"github.com/nipalab/nipa/internal/treehash"
 	"github.com/nipalab/nipa/internal/usecase"
@@ -407,4 +408,41 @@ func TestPushRepositorySQLite_LinkProjectChunksBatch(t *testing.T) {
 	got, err := repo.LinkedProjectChunks(ctx, projectID, []domain.Hash{first, second})
 	require.NoError(t, err)
 	require.Equal(t, map[domain.Hash]bool{first: true, second: true}, got)
+}
+
+func TestPushRepositorySQLite_IdenticalRootCommitInTwoProjects(t *testing.T) {
+	ctx := context.Background()
+	repo, branchRepo, db, projectA, branchA := newPushTestEnv(t)
+	q := sqlcSqlite.New(db)
+	projectB := seedProject(t, q, 1, "other-project")
+	branchB := seedBranch(t, db, projectB, "main", sql.NullInt64{})
+
+	treeHash := treehash.TreeHash(nil, nil)
+	commitHash := treehash.CommitHash(treeHash, nil, "Initial commit")
+	push := func(project, branch, commit snow.ID) error {
+		return repo.ApplyPush(ctx, usecase.ApplyPushRequest{
+			ProjectID:  project,
+			BranchID:   branch,
+			CommitID:   commit,
+			CommitHash: commitHash,
+			UserID:     snow.ID(1),
+			Message:    "Initial commit",
+			Nodes:      []usecase.PushNodeRow{{ID: 1, Hash: treeHash, Name: "root", Mode: 0o444}},
+		})
+	}
+
+	require.NoError(t, push(projectA, branchA, snow.ID(101)))
+	require.NoError(t, push(projectB, branchB, snow.ID(102)))
+
+	gotA, err := branchRepo.GetCommitByHash(ctx, projectA, commitHash)
+	require.NoError(t, err)
+	require.Equal(t, snow.ID(101), gotA.ID)
+	gotB, err := branchRepo.GetCommitByHash(ctx, projectB, commitHash)
+	require.NoError(t, err)
+	require.Equal(t, snow.ID(102), gotB.ID)
+
+	err = push(projectA, branchA, snow.ID(103))
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 409, domErr.Code)
 }

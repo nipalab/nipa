@@ -462,7 +462,7 @@ func TestPush_MergeWithParent2(t *testing.T) {
 
 	parent2ID := snow.ID(12)
 	parent2Hash := domain.Hash{6}
-	repo.EXPECT().GetCommitByHash(gomock.Any(), parent2Hash).
+	repo.EXPECT().GetCommitByHash(gomock.Any(), gomock.Any(), parent2Hash).
 		Return(&domain.Commit{ID: parent2ID, TreeID: 200, Hash: parent2Hash, ProjectID: 1}, nil)
 
 	ch, fh := chunkAndFileHash(t, "a")
@@ -506,7 +506,7 @@ func TestPush_MergeParent2NotFound(t *testing.T) {
 	repo.EXPECT().GetCommit(gomock.Any(), snow.ID(9)).
 		Return(&domain.Commit{ID: 9, TreeID: 100, Hash: domain.Hash{5}, ProjectID: 1}, nil)
 
-	repo.EXPECT().GetCommitByHash(gomock.Any(), gomock.Any()).
+	repo.EXPECT().GetCommitByHash(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil, domain.NewErrorRecordNotFound())
 
 	_, err := uc.Push(ctx, snow.ID(1), "main", "", "merge msg", nil, nil, domain.Hash{9}.String(), "")
@@ -528,7 +528,7 @@ func TestPush_MergeParent2InvalidHash(t *testing.T) {
 	require400(t, err, "invalid parent_2 commit hash")
 }
 
-func TestPush_MergeParent2WrongProject(t *testing.T) {
+func TestPush_MergeParent2LookupScopedToProject(t *testing.T) {
 	uc, perm, repo, _, ctx := newPushFixture(t)
 	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionWrite).Return(true)
 
@@ -538,8 +538,8 @@ func TestPush_MergeParent2WrongProject(t *testing.T) {
 		Return(&domain.Commit{ID: 9, TreeID: 100, Hash: domain.Hash{5}, ProjectID: 1}, nil)
 
 	parent2Hash := domain.Hash{6}
-	repo.EXPECT().GetCommitByHash(gomock.Any(), parent2Hash).
-		Return(&domain.Commit{ID: 12, TreeID: 200, Hash: parent2Hash, ProjectID: 99}, nil)
+	repo.EXPECT().GetCommitByHash(gomock.Any(), snow.ID(1), parent2Hash).
+		Return(nil, domain.NewErrorRecordNotFound())
 
 	_, err := uc.Push(ctx, snow.ID(1), "main", "", "merge msg", nil, nil, parent2Hash.String(), "")
 	require.Error(t, err)
