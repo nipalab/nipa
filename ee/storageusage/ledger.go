@@ -424,6 +424,9 @@ func (l *Ledger) auditedOverride(ctx context.Context, userID snow.ID) (*int64, e
 	if l.audit == nil {
 		return nil, nil
 	}
+	if err := l.queries.LockBillingOwner(ctx, userID.Int64()); err != nil {
+		return nil, dbError(err)
+	}
 	row, err := l.queries.GetOwnerQuota(ctx, userID.Int64())
 	if errors.Is(err, sql.ErrNoRows) || (err == nil && !row.OverrideBytes.Valid) {
 		return nil, nil

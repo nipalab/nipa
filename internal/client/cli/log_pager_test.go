@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 
@@ -62,8 +63,11 @@ func TestRunLogPager_Resize(t *testing.T) {
 
 	var height atomic.Int32
 	height.Store(24)
+	started := make(chan struct{})
+	var startOnce sync.Once
 	sawResize := make(chan struct{})
 	getSize := func() (int, int) {
+		startOnce.Do(func() { close(started) })
 		if height.Load() == 10 {
 			select {
 			case <-sawResize:
@@ -78,8 +82,9 @@ func TestRunLogPager_Resize(t *testing.T) {
 	go func() {
 		done <- runLogPager(&out, in, testEntries(), false, getSize, sigs)
 	}()
-	sigs <- os.Interrupt
+	<-started
 	height.Store(10)
+	sigs <- os.Interrupt
 	<-sawResize
 	in.ch <- []byte("q")
 	close(in.ch)

@@ -134,6 +134,28 @@ func (s *ledgerSuite) TestAudit_TransferLocksTheOrgUntilCommit() {
 	s.Empty(s.auditEntries(domain.AuditBillingOwnerTransferred), "the held transfer rolled back")
 }
 
+func (s *ledgerSuite) TestAudit_OverrideLocksTheOwnerUntilCommit() {
+	ctx := adminCtx()
+	owner := s.seedUser("override-lock")
+	ledger := NewLedger(s.db, Config{}).WithAudit(s.newAudit())
+	errHold := errors.New("hold")
+	quota := int64(9)
+
+	for name, change := range map[string]func(context.Context) error{
+		"set":   func(ctx context.Context) error { return ledger.SetQuotaOverride(ctx, owner, &quota) },
+		"clear": func(ctx context.Context) error { return ledger.ClearQuotaOverride(ctx, owner) },
+	} {
+		err := dbtx.NewTransactor(s.db).WithinTx(ctx, func(txCtx context.Context) error {
+			s.Require().NoError(change(txCtx), name)
+			var free bool
+			s.Require().NoError(s.db.QueryRowContext(ctx, `SELECT pg_try_advisory_xact_lock($1)`, owner.Int64()).Scan(&free))
+			s.False(free, "%s: a concurrent override change must wait until this one commits", name)
+			return errHold
+		})
+		s.ErrorIs(err, errHold, name)
+	}
+}
+
 func (s *ledgerSuite) TestComputedQuota() {
 	ctx := context.Background()
 	owner := s.seedUser("computed")
