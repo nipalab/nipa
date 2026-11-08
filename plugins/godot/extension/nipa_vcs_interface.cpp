@@ -4,7 +4,10 @@
 #include <fstream>
 #include <sstream>
 
+#include <godot_cpp/classes/editor_interface.hpp>
+#include <godot_cpp/classes/editor_settings.hpp>
 #include <godot_cpp/classes/engine.hpp>
+#include <godot_cpp/classes/project_settings.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
 
 #include <nlohmann/json.hpp>
@@ -20,6 +23,8 @@ namespace nipa::glue {
 namespace {
 
 constexpr std::chrono::milliseconds kDiffBudget{1000};
+constexpr const char* kBinarySetting = "nipa/binary_path";
+constexpr const char* kPollSetting = "nipa/poll_interval_sec";
 
 Dictionary diff_line_dict(EditorVCSInterface* vcs, const diff::Line& line) {
     return vcs->create_diff_line(static_cast<int32_t>(line.new_no), static_cast<int32_t>(line.old_no),
@@ -115,7 +120,22 @@ NipaSession* NipaVCSInterface::session_node() const {
 
 bool NipaVCSInterface::_initialize(const String& p_project_path) {
     NipaSession* node = session_node();
-    return node != nullptr && node->open_project(p_project_path, String(), 60);
+    if (node == nullptr) {
+        return false;
+    }
+    String binary_path;
+    if (EditorInterface* editor = EditorInterface::get_singleton()) {
+        Ref<EditorSettings> settings = editor->get_editor_settings();
+        if (settings.is_valid() && settings->has_setting(kBinarySetting)) {
+            binary_path = settings->get_setting(kBinarySetting);
+        }
+    }
+    int poll_seconds = 60;
+    ProjectSettings* project = ProjectSettings::get_singleton();
+    if (project != nullptr && project->has_setting(kPollSetting)) {
+        poll_seconds = static_cast<int>(project->get_setting(kPollSetting));
+    }
+    return node->open_project(p_project_path, binary_path, poll_seconds);
 }
 
 void NipaVCSInterface::_set_credentials(const String& p_username, const String& p_password,

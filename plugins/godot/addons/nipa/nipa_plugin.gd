@@ -6,7 +6,7 @@ const RECONNECT_ITEM := "Nipa: Reconnect"
 
 var dock: Control
 var _op_kinds := {}
-var _scene_times := {}
+var _scene_hashes := {}
 var _connected_session: Object
 
 
@@ -38,7 +38,7 @@ func _exit_tree() -> void:
 		dock.queue_free()
 		dock = null
 	_op_kinds.clear()
-	_scene_times.clear()
+	_scene_hashes.clear()
 
 
 func reconnect() -> void:
@@ -63,27 +63,27 @@ func _session() -> Object:
 
 func _on_op_queued(id: int, kind: String) -> void:
 	_op_kinds[id] = kind
-	var times := {}
+	var hashes := {}
 	for scene in EditorInterface.get_open_scenes():
-		times[scene] = FileAccess.get_modified_time(scene)
-	_scene_times[id] = times
+		hashes[scene] = FileAccess.get_md5(scene)
+	_scene_hashes[id] = hashes
 
 
 func _on_op_finished(id: int, ok: bool, message: String, changed_paths: PackedStringArray) -> void:
 	var kind: String = _op_kinds.get(id, "operation")
 	_op_kinds.erase(id)
-	var times: Dictionary = _scene_times.get(id, {})
-	_scene_times.erase(id)
+	var hashes: Dictionary = _scene_hashes.get(id, {})
+	_scene_hashes.erase(id)
 	EditorInterface.get_resource_filesystem().scan()
-	_reload_changed_scenes(changed_paths, times)
+	_reload_changed_scenes(changed_paths, hashes)
 	var severity := EditorToaster.SEVERITY_INFO if ok else EditorToaster.SEVERITY_ERROR
 	var text := "Nipa %s: %s" % [kind, message if not message.is_empty() else ("done" if ok else "failed")]
 	EditorInterface.get_editor_toaster().push_toast(text, severity)
 
 
 # Ops report no per-file list, so a scene counts as changed when its file
-# changed on disk while the op ran (or the op named it).
-func _reload_changed_scenes(changed_paths: PackedStringArray, times_before: Dictionary) -> void:
+# content changed on disk while the op ran (or the op named it).
+func _reload_changed_scenes(changed_paths: PackedStringArray, hashes_before: Dictionary) -> void:
 	var session := _session()
 	var named := {}
 	if session:
@@ -94,6 +94,6 @@ func _reload_changed_scenes(changed_paths: PackedStringArray, times_before: Dict
 	for scene in EditorInterface.get_open_scenes():
 		if not FileAccess.file_exists(scene):
 			continue
-		var moved: bool = times_before.has(scene) and FileAccess.get_modified_time(scene) != times_before[scene]
+		var moved: bool = hashes_before.has(scene) and FileAccess.get_md5(scene) != hashes_before[scene]
 		if moved or named.has(scene):
 			EditorInterface.reload_scene_from_path(scene)

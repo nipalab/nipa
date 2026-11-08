@@ -7,6 +7,7 @@
 
 #include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/classes/main_loop.hpp>
+#include <godot_cpp/classes/project_settings.hpp>
 #include <godot_cpp/classes/scene_tree.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
 
@@ -26,6 +27,16 @@ constexpr int kMaxPollSeconds = 3600;
 bool path_exists(const std::string& path) {
     std::error_code error;
     return std::filesystem::exists(path, error);
+}
+
+// Directory of this extension library, where a bundled `nipa` binary sits.
+std::string library_dir() {
+    String path;
+    internal::gdextension_interface_get_library_path(internal::library, path._native_ptr());
+    if (path.is_empty()) {
+        return {};
+    }
+    return from_godot(ProjectSettings::get_singleton()->globalize_path(path).get_base_dir());
 }
 
 Ref<NipaRequest> done_request(bool ok, const char* message) {
@@ -109,6 +120,7 @@ bool NipaSession::open_project(const String& project_dir, const String& binary_p
         return value ? std::string(value) : std::string();
     };
     options.connect.file_exists = path_exists;
+    options.connect.library_dir = library_dir();
     options.root = located->clone_root();
     int seconds = poll_seconds < kMinPollSeconds ? kMinPollSeconds : poll_seconds;
     seconds = seconds > kMaxPollSeconds ? kMaxPollSeconds : seconds;
