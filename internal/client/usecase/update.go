@@ -399,9 +399,15 @@ func syncWorkingCopy(ctx context.Context, client chunkDownloader, lr workingCopy
 	newFiles := flattenTree(tree, "")
 	newByPath := make(map[string]materializedFile, len(newFiles))
 
-	var jobs []materializeJob
+	pins, err := loadPins(lr)
+	if err != nil {
+		return err
+	}
+
+	var jobs, directJobs []materializeJob
 	var jobFiles []materializedFile
 	var want []domain.Hash
+	cached := make(map[domain.Hash]struct{})
 	for _, f := range newFiles {
 		newByPath[f.Path] = f
 		base := baseByPath[f.Path]
@@ -411,7 +417,15 @@ func syncWorkingCopy(ctx context.Context, client chunkDownloader, lr workingCopy
 			// it once if it has none.
 			continue
 		}
-		jobs = append(jobs, materializeJob{file: f, prevMode: base.Mode})
+		job := materializeJob{file: f, prevMode: base.Mode}
+		if directEligible(f, pins) {
+			directJobs = append(directJobs, job)
+		} else {
+			jobs = append(jobs, job)
+			for _, h := range f.ChunkHashes {
+				cached[h] = struct{}{}
+			}
+		}
 		jobFiles = append(jobFiles, f)
 		want = append(want, f.ChunkHashes...)
 	}
@@ -420,13 +434,50 @@ func syncWorkingCopy(ctx context.Context, client chunkDownloader, lr workingCopy
 	if err != nil {
 		return err
 	}
-	if err := downloadMissing(ctx, client, lr, scope, missing, estimateBytesToDownload(jobFiles, missing), progress...); err != nil {
+
+	direct, err := newDirectPlan(root, directJobs)
+	if err != nil {
+		return err
+	}
+	defer direct.cleanup()
+	missingSet := make(map[domain.Hash]struct{}, len(missing))
+	for _, h := range missing {
+		missingSet[h] = struct{}{}
+	}
+	local := make([]domain.Hash, 0, len(direct.targets))
+	for h := range direct.targets {
+		if _, gone := missingSet[h]; !gone {
+			local = append(local, h)
+		}
+	}
+	if err := direct.copyLocal(ctx, local, lr.LoadChunk); err != nil {
+		return err
+	}
+
+	sink := func(c *domain.ChunkData) error {
+		if _, ok := cached[c.Hash]; ok {
+			if err := lr.StoreChunks([]*domain.ChunkData{c}); err != nil {
+				return err
+			}
+		}
+		if direct.wants(c.Hash) {
+			return direct.write(c.Hash, c.Data)
+		}
+		return nil
+	}
+	if err := downloadChunks(ctx, client, scope, missing, estimateBytesToDownload(jobFiles, missing), sink, progress...); err != nil {
+		return err
+	}
+	if err := direct.finish(); err != nil {
 		return err
 	}
 
 	statEntries, err := materializeAll(ctx, root, jobs, lr.OpenChunk)
 	if err != nil {
 		return err
+	}
+	for path, entry := range direct.entries {
+		statEntries[path] = entry
 	}
 
 	for path, base := range baseByPath {
@@ -452,10 +503,16 @@ type chunkStoreLocalRepo interface {
 	StoreChunks(chunks []*domain.ChunkData) error
 }
 
-// downloadMissing fetches the missing chunks into the local object store. The
-// transport delivers chunks one at a time, so delivery only books progress and
-// hands each chunk to a worker pool that verifies its hash and stores it.
+// downloadMissing fetches the missing chunks into the local object store.
 func downloadMissing(ctx context.Context, client chunkDownloader, lr chunkStoreLocalRepo, scope clientDomain.ChunkScope, missing []domain.Hash, estimatedBytes int64, progress ...DownloadProgress) error {
+	store := func(c *domain.ChunkData) error { return lr.StoreChunks([]*domain.ChunkData{c}) }
+	return downloadChunks(ctx, client, scope, missing, estimatedBytes, store, progress...)
+}
+
+// downloadChunks fetches the missing chunks. The transport delivers chunks one
+// at a time, so delivery only books progress and hands each chunk to a worker
+// pool that verifies its hash and passes it to sink.
+func downloadChunks(ctx context.Context, client chunkDownloader, scope clientDomain.ChunkScope, missing []domain.Hash, estimatedBytes int64, sink func(*domain.ChunkData) error, progress ...DownloadProgress) error {
 	if len(missing) == 0 {
 		return nil
 	}
@@ -487,7 +544,7 @@ func downloadMissing(ctx context.Context, client chunkDownloader, lr chunkStoreL
 					fail(fmt.Errorf("chunk hash mismatch for %s", c.Hash))
 					continue
 				}
-				if err := lr.StoreChunks([]*domain.ChunkData{c}); err != nil {
+				if err := sink(c); err != nil {
 					fail(err)
 				}
 			}

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -337,6 +338,9 @@ func TestEndToEnd_CloneThroughput(t *testing.T) {
 	t.Logf("clone: %d files, %.0f MiB in %s (%.1f MiB/s) gets=%d wire=%.1f MiB",
 		len(cases), totalMiB, elapsed.Round(time.Millisecond), rate,
 		gets-beforeGets, float64(getBytes-beforeBytes)/(1<<20))
+	objects := benchDirSize(t, filepath.Join(checkout, ".nipa", "objects"), "")
+	worktree := benchDirSize(t, checkout, filepath.Join(checkout, ".nipa"))
+	t.Logf("clone disk: worktree=%.1f MiB objects=%.1f MiB (%d bytes)", float64(worktree)/(1<<20), float64(objects)/(1<<20), objects)
 
 	for _, tc := range cases {
 		want := hashBenchFile(t, filepath.Join(dir, filepath.FromSlash(tc.path)))
@@ -349,6 +353,32 @@ func TestEndToEnd_CloneThroughput(t *testing.T) {
 	require.NoError(t, updater.Run(ctx, checkout))
 	t.Logf("no-op update: %s", time.Since(start).Round(time.Millisecond))
 	require.Greater(t, rate, 0.0)
+}
+
+func benchDirSize(t *testing.T, root, skip string) int64 {
+	t.Helper()
+	var total int64
+	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() && p == skip {
+			return filepath.SkipDir
+		}
+		if d.Type().IsRegular() {
+			info, err := d.Info()
+			if err != nil {
+				return err
+			}
+			total += info.Size()
+		}
+		return nil
+	})
+	if os.IsNotExist(err) {
+		return 0
+	}
+	require.NoError(t, err)
+	return total
 }
 
 // memSampler tracks the process peak heap while a benchmark runs. Client and

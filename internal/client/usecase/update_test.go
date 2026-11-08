@@ -890,7 +890,7 @@ func TestUpdate_Run_Error_ContentLengthMismatch(t *testing.T) {
 	require.Contains(t, err.Error(), "content length mismatch")
 }
 
-func TestUpdate_Run_StoresEveryChunk(t *testing.T) {
+func TestUpdate_Run_WritesRawChunksDirectly(t *testing.T) {
 	content := make([]byte, 1<<20)
 	x := uint32(12345)
 	for i := range content {
@@ -932,8 +932,7 @@ func TestUpdate_Run_StoresEveryChunk(t *testing.T) {
 	root := t.TempDir()
 
 	require.NoError(t, updater.Run(context.Background(), root))
-	require.Equal(t, len(chunked), local.storeCalls, "every chunk is stored once")
-	require.Len(t, local.storedChunks, len(chunked))
+	require.Zero(t, local.storeCalls, "raw unpinned chunks skip the object cache")
 
 	got, err := os.ReadFile(filepath.Join(root, "big.bin"))
 	require.NoError(t, err)

@@ -255,7 +255,15 @@ Flow for `nipa clone <url> <target>`: `cli/clone.go` parses the URL →
 `SaveConfig` (`.nipa/config` json: url + branch + sparse prefixes) →
 `syncWorkingCopy` (shared with update/switch: download missing chunks through
 the commit-scoped `ChunkScope`, materialize files, record `stat_cache`
-fingerprints) → `SaveTree` → `SaveCommit` (branch head commit id). Clone,
+fingerprints; raw files no pin covers whose manifest chunk sizes add up to
+the file size are written directly (`direct.go`): a truncated
+`.nipa-materialize-*` temp file per file, chunks already in `.nipa/objects`
+copied locally, the rest written by `downloadChunks`' hash-verifying workers
+at every offset they occupy (open/close per write), and a file is chmodded
+(same read-only rule as `materializeFile`) and `replaceFile`d when its last
+chunk landed; any failure removes the unreplaced temp files, removals still
+run last, and everything else (zstd text, pinned raw, unknown chunk sizes)
+goes through the object cache and `materializeAll`) → `SaveTree` → `SaveCommit` (branch head commit id). Clone,
 update and switch record the branch head commit id locally so `HEAD`/`@` (and
 branch creation via `nipa branch -c`, which forks from the pinned commit)
 resolve offline.
@@ -1268,7 +1276,10 @@ compatible for one release.
   objects, written temp+rename (`.tmp-*` in the object's directory) so `nipa
   update` can skip unchanged content). `StoreChunks`/`StoreChunk` write objects; `OpenChunk`/`LoadChunk` read
   them; `MissingChunks` stats them. Update/switch download only the chunks of
-  files they rewrite, merge/revert cache materialized content, and `Push`
+  files they rewrite and store only those of cached files (zstd text, pinned
+  raw content, raw files without known chunk sizes): raw unpinned chunks go
+  straight into the working file and never touch `.nipa/objects`, so there is
+  no temporary 2× disk peak. Merge/revert cache materialized content, and `Push`
   caches the chunks it uploads before sending them except raw chunks of
   unpinned paths (the upload windows carry the bytes in memory). The DB holds metadata only; file→chunk hashes are stored as
   the `files.chunks` blob (no chunk catalog table), which is what lets `nipa diff`
@@ -1462,7 +1473,10 @@ compatible for one release.
   `internal/client/grpc/chunks.go`'s `UploadChunks`/`DownloadChunks` take the
   `ChunkScope{Org, Project, CommitIDs, Paths}` that scopes download visibility;
   download callbacks are
-  serialized under a mutex because transfers run concurrently. Downloads request
+  serialized under a mutex because transfers run concurrently (the client
+  usecase's `downloadChunks` hands each delivered chunk to a worker pool that
+  verifies its hash and passes it to a sink: `StoreChunks`, a direct
+  `WriteAt` into working-file temp files, or both). Downloads request
   signed URLs in windows of 1000 hashes (the server's default page size) and
   prefetch the next window while the current one transfers, so URLs never wait
   behind a long clone past their TTL and the worker pool is fed continuously
