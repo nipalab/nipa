@@ -164,6 +164,7 @@ func (t *Transport) BeginLoginSSHKey(ctx context.Context, host, email string) (*
 	}
 	return &domain.SSHKeyChallenge{
 		Nonce:     res.GetNonce(),
+		Audience:  res.GetAudience(),
 		ExpiresIn: int(res.GetExpiresIn()),
 	}, nil
 }

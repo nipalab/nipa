@@ -37,6 +37,7 @@ func (n *nipaServer) BeginLoginSSHKey(ctx context.Context, req *pb.BeginLoginSSH
 	}
 	return &pb.BeginLoginSSHKeyResponse{
 		Nonce:     challenge.Nonce,
+		Audience:  challenge.Audience,
 		ExpiresIn: int32(challenge.ExpiresIn),
 	}, nil
 }

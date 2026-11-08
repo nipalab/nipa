@@ -157,11 +157,12 @@ func TestDaemonInput(t *testing.T) {
 type sshLoginServer struct {
 	pb.UnimplementedNipaServiceServer
 	registered ssh.PublicKey
+	audience   string
 	seen       [][]byte
 }
 
 func (s *sshLoginServer) BeginLoginSSHKey(context.Context, *pb.BeginLoginSSHKeyRequest) (*pb.BeginLoginSSHKeyResponse, error) {
-	return &pb.BeginLoginSSHKeyResponse{Nonce: "n1", ExpiresIn: 60}, nil
+	return &pb.BeginLoginSSHKeyResponse{Nonce: "n1", Audience: s.audience, ExpiresIn: 60}, nil
 }
 
 func (s *sshLoginServer) CompleteLoginSSHKey(_ context.Context, req *pb.CompleteLoginSSHKeyRequest) (*pb.LoginResponse, error) {
@@ -176,7 +177,7 @@ func startSSHLoginServer(t *testing.T, registered ssh.PublicKey) (*sshLoginServe
 	t.Helper()
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
-	fake := &sshLoginServer{registered: registered}
+	fake := &sshLoginServer{registered: registered, audience: lis.Addr().String()}
 	srv := grpc.NewServer()
 	pb.RegisterNipaServiceServer(srv, fake)
 	go func() { _ = srv.Serve(lis) }()

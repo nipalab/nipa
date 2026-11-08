@@ -74,10 +74,13 @@ registering a fingerprint that already exists (including another account's) is
 Two public gRPC RPCs (`internal/grpc/proto/server.proto`, handlers in
 `internal/grpc/server/login.go`, both in the interceptor's public list):
 
-1. `BeginLoginSSHKey(email?)` → `{nonce, expires_in: 60}`. The email is
-   optional and is **not** resolved here, so the call cannot be used to
-   enumerate accounts; an unknown email fails only at completion.
-2. The client signs `sshkey.LoginPayload(nonce)` = `nipa-login:v1:<nonce>` with
+1. `BeginLoginSSHKey(email?)` → `{nonce, expires_in: 60, audience}`. The email
+   is optional and is **not** resolved here, so the call cannot be used to
+   enumerate accounts; an unknown email fails only at completion. `audience`
+   is the canonical origin the server expects (see below).
+2. The client checks that `audience` equals the canonical origin of the address
+   it dialed (otherwise it refuses to sign), signs
+   `sshkey.LoginPayload(origin, nonce)` = `nipa-login:v2:<origin>:<nonce>` with
    its private key and calls
    `CompleteLoginSSHKey(email?, nonce, public_key, signature)` →
    the standard `LoginResponse` (access token, refresh token, `expires_in`).
@@ -91,6 +94,36 @@ verifies the signature and issues tokens through the same
 `generateLoginResult` path as password login. Every verification failure
 (bad nonce, expired, unregistered key, foreign key, bad signature) returns the
 same generic `400 invalid email or SSH key`.
+
+## Origin binding
+
+The signature covers the server identity so a hostile server a user connects
+to cannot relay the challenge to the real server and obtain tokens.
+
+- `sshkey.CanonicalOrigin` is shared by client and server: lowercase host
+  without a trailing dot, `:port` only when the port is not 80 or 443, IPv6 in
+  brackets, no scheme, userinfo or path. `https://Nipa.Example.com:443/x` and
+  `nipa.example.com` are both `nipa.example.com`; `http://127.0.0.1:6745` is
+  `127.0.0.1:6745`.
+- The server takes its origin from config, never from the request (a relaying
+  attacker controls the request authority): `PUBLIC_BASE_URL`, else the host of
+  `EMAIL_BASE_URL`. Set it to the public address clients use, which behind a
+  proxy is the proxy's host, not the backend's. The effective origin is logged
+  at startup.
+- With neither setting (or an invalid one) SSH key login is disabled: both
+  RPCs answer `400 SSH key login is not enabled on this server: set
+  PUBLIC_BASE_URL`, and a warning is logged at startup. The server never
+  derives the origin from the request; `nipa login` then falls back to the
+  password flow.
+- `CompleteSSHKeyLogin` verifies exactly the v2 message. There is no v1
+  format and no downgrade path; a signature made for another origin, or over
+  the bare nonce, fails like any bad signature.
+- RSA keys must sign with `rsa-sha2-256` or `rsa-sha2-512`; `ssh-rsa` (SHA-1)
+  signatures are rejected. The client signs RSA with `rsa-sha2-512`, also
+  through ssh-agent.
+- Every client path (CLI, implicit login, session re-authentication, the
+  daemon `LoginSSH` used by the desktop app and the Unity plugin) signs in
+  `loginWithSSHKey`, with the host of the address it connected to.
 
 ## Client
 
@@ -141,8 +174,8 @@ for scripting and CI.
   exists; all completion failures share one generic error.
 - The fingerprint is globally unique, so a key cannot be registered to two
   accounts and a login always resolves exactly one owner.
-- The signed payload carries the `nipa-login:v1:` domain prefix to prevent
-  cross-protocol signature reuse.
+- The signed payload carries the `nipa-login:v2:` domain prefix and the server
+  origin, preventing cross-protocol reuse and relaying to another server.
 - Weak or unsupported key material (DSA, RSA < 2048 bits, certificates) is
   rejected at registration and again at login.
 

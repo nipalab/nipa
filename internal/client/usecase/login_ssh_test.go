@@ -14,6 +14,7 @@ import (
 
 	"github.com/nipalab/nipa/internal/client/domain"
 	"github.com/nipalab/nipa/internal/client/sshkey"
+	protocol "github.com/nipalab/nipa/internal/sshkey"
 )
 
 func testSSHSigner(t *testing.T, name string) sshkey.Signer {
@@ -41,9 +42,13 @@ type stubSSHExecutor struct {
 	completeErrs  []error
 	completeCalls int
 	lastEmail     string
+	audience      string
+	lastNonce     string
+	lastSignature []byte
+	lastPublicKey []byte
 }
 
-func (s *stubSSHExecutor) BeginLoginSSHKey(_ context.Context, _, email string) (*domain.SSHKeyChallenge, error) {
+func (s *stubSSHExecutor) BeginLoginSSHKey(_ context.Context, host, email string) (*domain.SSHKeyChallenge, error) {
 	s.lastEmail = email
 	if s.beginErr != nil {
 		return nil, s.beginErr
@@ -52,10 +57,15 @@ func (s *stubSSHExecutor) BeginLoginSSHKey(_ context.Context, _, email string) (
 	if nonce == "" {
 		nonce = "nonce"
 	}
-	return &domain.SSHKeyChallenge{Nonce: nonce, ExpiresIn: 60}, nil
+	audience := s.audience
+	if audience == "" {
+		audience, _ = protocol.CanonicalOrigin(host)
+	}
+	return &domain.SSHKeyChallenge{Nonce: nonce, Audience: audience, ExpiresIn: 60}, nil
 }
 
-func (s *stubSSHExecutor) CompleteLoginSSHKey(_ context.Context, _, _, _ string, _, _ []byte) (*domain.LoginResult, error) {
+func (s *stubSSHExecutor) CompleteLoginSSHKey(_ context.Context, _, _, nonce string, publicKey, signature []byte) (*domain.LoginResult, error) {
+	s.lastNonce, s.lastPublicKey, s.lastSignature = nonce, publicKey, signature
 	i := s.completeCalls
 	s.completeCalls++
 	var result *domain.LoginResult
@@ -451,4 +461,52 @@ func TestSession_Reauth_SaveError(t *testing.T) {
 
 	_, err := session.Refresh(context.Background(), "example.com")
 	require.ErrorContains(t, err, "refresh token expired")
+}
+
+func verifyLastSignature(t *testing.T, executor *stubSSHExecutor, origin string) error {
+	t.Helper()
+	pub, err := ssh.ParsePublicKey(executor.lastPublicKey)
+	require.NoError(t, err)
+	return protocol.Verify(pub, protocol.LoginPayload(origin, executor.lastNonce), executor.lastSignature)
+}
+
+func TestLoginWithSSHKey_SignsDialedOrigin(t *testing.T) {
+	for address, origin := range map[string]string{
+		"Nipa.Example.com:443":      "nipa.example.com",
+		"https://nipa.example.com/": "nipa.example.com",
+		"127.0.0.1:50051":           "127.0.0.1:50051",
+	} {
+		executor := &stubSSHExecutor{results: []*domain.LoginResult{{AccessToken: "tok"}}}
+		auth := newSSHTestAuth(executor, &stubSecureStorage{})
+
+		err := auth.LoginWithSSHKey(context.Background(), address, "", testSigners(t, "key"))
+		require.NoError(t, err, address)
+		require.NoError(t, verifyLastSignature(t, executor, origin), address)
+		require.Error(t, verifyLastSignature(t, executor, "evil.example"), address)
+	}
+}
+
+func TestLoginWithSSHKey_RefusesMismatchedAudience(t *testing.T) {
+	for _, audience := range []string{"real.example.com", "", "hostile.example.net:443"} {
+		executor := &stubSSHExecutor{audience: audience, results: []*domain.LoginResult{{AccessToken: "tok"}}}
+		if audience == "" {
+			executor.audience = "-"
+		}
+		storage := &stubSecureStorage{}
+		auth := newSSHTestAuth(executor, storage)
+
+		err := auth.LoginWithSSHKey(context.Background(), "hostile.example.net", "", testSigners(t, "a", "b"))
+		var domErr *domain.Error
+		require.ErrorAs(t, err, &domErr, audience)
+		require.Contains(t, domErr.Message, "refusing to sign")
+		require.Zero(t, executor.completeCalls)
+		require.Empty(t, storage.savedTokens)
+	}
+}
+
+func TestLoginWithSSHKey_InvalidAddress(t *testing.T) {
+	_, err := loginWithSSHKey(context.Background(), &stubSSHExecutor{}, "ftp://x", "", testSigners(t, "key"))
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 400, domErr.Code)
 }

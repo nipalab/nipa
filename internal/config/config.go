@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	"github.com/spf13/viper"
+
+	"github.com/nipalab/nipa/internal/sshkey"
 )
 
 type Config struct {
@@ -74,6 +76,7 @@ type Config struct {
 	EmailFrom                      string  `mapstructure:"EMAIL_FROM"`
 	EmailReplyTo                   string  `mapstructure:"EMAIL_REPLY_TO"`
 	EmailBaseURL                   string  `mapstructure:"EMAIL_BASE_URL"`
+	PublicBaseURL                  string  `mapstructure:"PUBLIC_BASE_URL"`
 	EmailTimeoutSeconds            int     `mapstructure:"EMAIL_TIMEOUT_SECONDS"`
 	EmailMaxAttempts               int     `mapstructure:"EMAIL_MAX_ATTEMPTS"`
 	EmailRetryBackoffSecs          int     `mapstructure:"EMAIL_RETRY_BACKOFF_SECONDS"`
@@ -165,7 +168,7 @@ func LoadConfig() (*Config, error) {
 	v.AutomaticEnv()
 	// AutomaticEnv alone does not feed Unmarshal for keys missing from the
 	// config file, so the per-color systemd env files must bind explicitly.
-	for _, key := range []string{"SERVER_ADDRESS", "SERVER_PORT", "SHUTDOWN_TIMEOUT_SECONDS", "SNOWFLAKE_NODE_ID",
+	for _, key := range []string{"SERVER_ADDRESS", "SERVER_PORT", "SHUTDOWN_TIMEOUT_SECONDS", "SNOWFLAKE_NODE_ID", "PUBLIC_BASE_URL",
 		"RATE_LIMIT_STORE", "RATE_LIMIT_REDIS_ADDR", "RATE_LIMIT_REDIS_PASSWORD", "RATE_LIMIT_REDIS_DB", "RATE_LIMIT_REDIS_TLS",
 		"BILLING_FREE_SEATS", "BILLING_SEAT_INCLUDED_BYTES", "BILLING_STORAGE_PACK_BYTES", "PADDLE_ENVIRONMENT",
 		"PADDLE_API_KEY", "PADDLE_WEBHOOK_SECRET", "PADDLE_CLIENT_TOKEN", "PADDLE_PRICE_SEAT_MONTHLY",
@@ -182,6 +185,23 @@ func LoadConfig() (*Config, error) {
 	cfg.SnowflakeNodeIDSet = v.IsSet("SNOWFLAKE_NODE_ID")
 
 	return &cfg, nil
+}
+
+// SSHLoginAudience returns the canonical origin SSH login signatures must be
+// bound to: PUBLIC_BASE_URL, else the host of EMAIL_BASE_URL. It is empty when
+// neither is set (SSH login is then refused).
+func (c *Config) SSHLoginAudience() (string, error) {
+	for _, raw := range []string{c.PublicBaseURL, c.EmailBaseURL} {
+		if strings.TrimSpace(raw) == "" {
+			continue
+		}
+		origin, err := sshkey.CanonicalOrigin(raw)
+		if err != nil {
+			return "", fmt.Errorf("invalid public base URL %q: %w", raw, err)
+		}
+		return origin, nil
+	}
+	return "", nil
 }
 
 const minSecretLength = 32

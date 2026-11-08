@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/nipalab/nipa/internal/client/domain"
@@ -101,13 +102,20 @@ func (l *Auth) LoginWithSSHKey(ctx context.Context, address, email string, signe
 // one is accepted; a rejected key moves on to the next, while transport or
 // server failures stop the attempt.
 func loginWithSSHKey(ctx context.Context, executor sshLoginExecutor, host, email string, signers []sshkey.Signer) (*domain.LoginResult, error) {
+	origin, err := protocol.CanonicalOrigin(host)
+	if err != nil {
+		return nil, domain.NewUserError(fmt.Sprintf("invalid server address %q", host))
+	}
 	var lastErr error
 	for _, signer := range signers {
 		challenge, err := executor.BeginLoginSSHKey(ctx, host, email)
 		if err != nil {
 			return nil, err
 		}
-		signature, err := signer.SignPayload(protocol.LoginPayload(challenge.Nonce))
+		if challenge.Audience != origin {
+			return nil, domain.NewUserError(fmt.Sprintf("server expects SSH login for %q but %q was dialed; refusing to sign", challenge.Audience, origin))
+		}
+		signature, err := signer.SignPayload(protocol.LoginPayload(origin, challenge.Nonce))
 		if err != nil {
 			lastErr = err
 			continue

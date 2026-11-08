@@ -2,6 +2,7 @@ package suite_test
 
 import (
 	"encoding/json"
+	"net"
 	"os"
 	"path/filepath"
 
@@ -84,5 +85,24 @@ var _ = Describe("nipa ssh key login", func() {
 			"login", "--host", cli.host, "--username", "someone-else@example.com", "--ssh-key", keyPath)
 		Expect(res.ExitCode).NotTo(Equal(0))
 		Expect(res.Output()).To(ContainSubstring("invalid email or SSH key"))
+	})
+
+	It("refuses to sign for a server that advertises another origin", func() {
+		dir := workspace()
+		keyPath, publicKey := newSSHKeyPair(dir)
+
+		key := api.addSSHKey("alias key", publicKey)
+		DeferCleanup(func() { api.removeSSHKey(key.ID) })
+
+		_, port, err := net.SplitHostPort(cli.host)
+		Expect(err).NotTo(HaveOccurred())
+		alias := net.JoinHostPort("localhost", port)
+
+		tokenFile := filepath.Join(dir, "tokens.json")
+		res := runNipaEnv(dir, []string{"NIPA_TOKEN_FILE=" + tokenFile},
+			"login", "--host", alias, "--ssh-key", keyPath)
+		Expect(res.ExitCode).NotTo(Equal(0))
+		Expect(res.Output()).To(ContainSubstring("refusing to sign"))
+		Expect(fileExists(dir, "tokens.json")).To(BeFalse())
 	})
 })

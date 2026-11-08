@@ -114,7 +114,7 @@ func signWire(t *testing.T, signer ssh.Signer, payload []byte) []byte {
 
 func TestVerify_RoundTrip(t *testing.T) {
 	signer := ed25519Signer(t)
-	payload := []byte("nipa-login:v1:nonce")
+	payload := LoginPayload("nipa.example.com", "nonce")
 
 	pub, err := ssh.ParsePublicKey(signer.PublicKey().Marshal())
 	require.NoError(t, err)
@@ -141,4 +141,61 @@ func TestVerify_WrongKey(t *testing.T) {
 
 	err := Verify(bob.PublicKey(), []byte("payload"), signWire(t, alice, []byte("payload")))
 	require.ErrorContains(t, err, "verification failed")
+}
+
+func TestLoginPayload(t *testing.T) {
+	require.Equal(t, "nipa-login:v2:nipa.example.com:8080:n1", string(LoginPayload("nipa.example.com:8080", "n1")))
+}
+
+func TestCanonicalOrigin(t *testing.T) {
+	cases := map[string]string{
+		"nipa.example.com":                   "nipa.example.com",
+		"NIPA.Example.COM":                   "nipa.example.com",
+		"nipa.example.com.":                  "nipa.example.com",
+		"nipa.example.com:443":               "nipa.example.com",
+		"nipa.example.com:80":                "nipa.example.com",
+		"nipa.example.com:8080":              "nipa.example.com:8080",
+		"https://nipa.example.com":           "nipa.example.com",
+		"HTTPS://Nipa.Example.com:443/":      "nipa.example.com",
+		"http://nipa.example.com:80/a/b?c=d": "nipa.example.com",
+		"http://127.0.0.1:50051":             "127.0.0.1:50051",
+		"https://127.0.0.1:8443/path":        "127.0.0.1:8443",
+		"[::1]:8080":                         "[::1]:8080",
+		"http://[::1]":                       "[::1]",
+		"https://[2001:DB8::1]:443":          "[2001:db8::1]",
+		"  localhost:9000  ":                 "localhost:9000",
+	}
+	for in, want := range cases {
+		got, err := CanonicalOrigin(in)
+		require.NoError(t, err, in)
+		require.Equal(t, want, got, in)
+	}
+}
+
+func TestCanonicalOrigin_Invalid(t *testing.T) {
+	for _, in := range []string{"", "   ", "ftp://host", "ssh://host:22", "user@host", "user:pw@host:80", "http://", "http://:8080", "ho st"} {
+		_, err := CanonicalOrigin(in)
+		require.Error(t, err, in)
+	}
+}
+
+func TestVerify_RejectsSHA1RSA(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+	signer, err := ssh.NewSignerFromKey(key)
+	require.NoError(t, err)
+	as, ok := signer.(ssh.AlgorithmSigner)
+	require.True(t, ok)
+	payload := []byte("payload")
+
+	for algo, ok := range map[string]bool{ssh.KeyAlgoRSA: false, ssh.KeyAlgoRSASHA256: true, ssh.KeyAlgoRSASHA512: true} {
+		sig, err := as.SignWithAlgorithm(rand.Reader, payload, algo)
+		require.NoError(t, err)
+		err = Verify(signer.PublicKey(), payload, ssh.Marshal(sig))
+		if ok {
+			require.NoError(t, err, algo)
+		} else {
+			require.ErrorContains(t, err, "verification failed", algo)
+		}
+	}
 }

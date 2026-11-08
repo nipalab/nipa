@@ -58,6 +58,7 @@ type Auth struct {
 	userRepo       userRepository
 	authRepo       authRepository
 	sshKeyRepo     authSSHKeyRepository
+	sshAudience    string
 	dummyOnce      sync.Once
 	dummyHash      string
 }
@@ -93,6 +94,20 @@ func (a *Auth) throttleIdentity(ctx context.Context, email string) error {
 func (a *Auth) WithSSHKeys(repo authSSHKeyRepository) *Auth {
 	a.sshKeyRepo = repo
 	return a
+}
+
+// WithSSHAudience sets the canonical origin SSH login signatures must be bound
+// to; while it is empty SSH key login is refused.
+func (a *Auth) WithSSHAudience(origin string) *Auth {
+	a.sshAudience = origin
+	return a
+}
+
+func (a *Auth) sshAudienceConfigured() error {
+	if a.sshAudience == "" {
+		return domain.NewErrorUser("SSH key login is not enabled on this server: set PUBLIC_BASE_URL")
+	}
+	return nil
 }
 
 func (a *Auth) LoginWithEmailPassword(ctx context.Context, email string, password string) (*dto.LoginResult, error) {
@@ -160,6 +175,9 @@ func errEmailNotVerified() error {
 // that account; when empty, the key itself identifies the account.
 func (a *Auth) BeginSSHKeyLogin(ctx context.Context, email string) (*dto.SSHKeyChallenge, error) {
 	email = strings.TrimSpace(email)
+	if err := a.sshAudienceConfigured(); err != nil {
+		return nil, err
+	}
 	if err := a.throttleIdentity(ctx, email); err != nil {
 		return nil, err
 	}
@@ -176,12 +194,16 @@ func (a *Auth) BeginSSHKeyLogin(ctx context.Context, email string) (*dto.SSHKeyC
 	}
 	return &dto.SSHKeyChallenge{
 		Nonce:     nonce,
+		Audience:  a.sshAudience,
 		ExpiresIn: int(sshLoginChallengeTTL.Seconds()),
 	}, nil
 }
 
 func (a *Auth) CompleteSSHKeyLogin(ctx context.Context, email, nonce string, publicKey, signature []byte) (*dto.LoginResult, error) {
 	email = strings.TrimSpace(email)
+	if err := a.sshAudienceConfigured(); err != nil {
+		return nil, err
+	}
 	if err := a.throttleIdentity(ctx, email); err != nil {
 		return nil, err
 	}
@@ -227,7 +249,7 @@ func (a *Auth) CompleteSSHKeyLogin(ctx context.Context, email, nonce string, pub
 		return nil, err
 	}
 
-	if err := sshkey.Verify(pub, sshkey.LoginPayload(nonce), signature); err != nil {
+	if err := sshkey.Verify(pub, sshkey.LoginPayload(a.sshAudience, nonce), signature); err != nil {
 		return nil, sshLoginFailed()
 	}
 	return a.LoginResult(ctx, user)
