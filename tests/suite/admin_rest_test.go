@@ -484,9 +484,7 @@ var _ = Describe("branches REST API", func() {
 		Expect(list.Output()).NotTo(ContainSubstring("feature"))
 	})
 
-	// Bug: `nipa clone` defaults --branch to "main" (internal/client/cli/clone.go:39),
-	// so Repo.Clone never reaches its GetDefaultBranch path.
-	PIt("clones the new default branch when --branch is omitted", func() {
+	It("clones the new default branch when --branch is omitted", func() {
 		project := newProject("rest-branch-default")
 		seedRenamedDefault(project)
 

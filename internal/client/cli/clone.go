@@ -36,7 +36,7 @@ func (c *Cli) setupCloneCmd() *cobra.Command {
 			return c.useCase.Repo().Clone(ctx, nipaUrl.Url, nipaUrl.Host, nipaUrl.Org, nipaUrl.Project, branch, paths, target, newProgressRenderer(cmd.OutOrStdout()))
 		},
 	}
-	cmd.Flags().StringP("branch", "b", "main", "Specify the branch to clone")
+	cmd.Flags().StringP("branch", "b", "", "Branch to clone (default: the project's default branch)")
 	cmd.Flags().StringSlice("sparse", nil, "Directory prefixes to check out (comma separated, repeatable)")
 	return cmd
 }

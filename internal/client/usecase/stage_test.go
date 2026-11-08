@@ -312,6 +312,75 @@ func TestWorkingCopy_Remove_WholeRepo(t *testing.T) {
 	require.Equal(t, []string{"a.txt", "b/c.txt"}, local.stageRemove)
 }
 
+func TestNormalizeTarget(t *testing.T) {
+	for in, want := range map[string]string{
+		"":         "",
+		".":        "",
+		"./":       "",
+		"./a/../":  "",
+		"a/./b":    "a/b",
+		"./docs/":  "docs",
+		"a/../b":   "b",
+		"..foo":    "..foo",
+		"docs/x.y": "docs/x.y",
+	} {
+		got, err := normalizeTarget(in)
+		require.NoError(t, err, in)
+		require.Equal(t, want, got, in)
+	}
+	for _, in := range []string{"..", "../x", "./..", "a/../../b"} {
+		_, err := normalizeTarget(in)
+		require.ErrorContains(t, err, "outside the repository", in)
+	}
+	_, err := normalizeTarget(filepath.Join(t.TempDir(), "abs"))
+	require.ErrorContains(t, err, "must be relative")
+}
+
+func TestWorkingCopy_Add_DotStagesWholeRepo(t *testing.T) {
+	root := t.TempDir()
+	writeRepoFile(t, root, "root.txt", "root")
+	writeRepoFile(t, root, "nested/leaf.txt", "leaf")
+	writeRepoFile(t, root, ".nipa/ignored.bin", "secret")
+	local := &stubLocalRepo{snapshot: &domain.Snapshot{Files: []domain.SnapshotFile{
+		{Path: "gone.txt", Hash: contentHash(t, "gone")},
+	}}}
+	wc := newWorkingCopy(t, local, root)
+
+	require.NoError(t, wc.Add(context.Background(), []string{"."}))
+	require.Equal(t, []string{"gone.txt", "nested/leaf.txt", "root.txt"}, local.stageAdd)
+}
+
+func TestWorkingCopy_Add_NormalizesDirectoryTarget(t *testing.T) {
+	root := t.TempDir()
+	writeRepoFile(t, root, "docs/a.txt", "a")
+	writeRepoFile(t, root, "other.txt", "o")
+	local := &stubLocalRepo{snapshot: &domain.Snapshot{}}
+	wc := newWorkingCopy(t, local, root)
+
+	require.NoError(t, wc.Add(context.Background(), []string{"./docs/"}))
+	require.Equal(t, []string{"docs/a.txt"}, local.stageAdd)
+}
+
+func TestWorkingCopy_Add_DotDotStillRejected(t *testing.T) {
+	wc := newWorkingCopy(t, &stubLocalRepo{snapshot: &domain.Snapshot{}}, t.TempDir())
+	err := wc.Add(context.Background(), []string{".."})
+	require.ErrorContains(t, err, "outside the repository")
+}
+
+func TestWorkingCopy_Remove_DotUnstagesEverything(t *testing.T) {
+	local := &stubLocalRepo{staged: []string{"a.txt", "b/c.txt"}}
+	wc := newWorkingCopy(t, local, t.TempDir())
+	require.NoError(t, wc.Remove(context.Background(), []string{"."}))
+	require.Equal(t, []string{"a.txt", "b/c.txt"}, local.stageRemove)
+}
+
+func TestWorkingCopy_Remove_NormalizesTarget(t *testing.T) {
+	local := &stubLocalRepo{staged: []string{"a.txt", "b/c.txt"}}
+	wc := newWorkingCopy(t, local, t.TempDir())
+	require.NoError(t, wc.Remove(context.Background(), []string{"./b/"}))
+	require.Equal(t, []string{"b/c.txt"}, local.stageRemove)
+}
+
 func TestWorkingCopy_Remove_PathOutsideRepo(t *testing.T) {
 	wc := newWorkingCopy(t, &stubLocalRepo{}, t.TempDir())
 	err := wc.Remove(context.Background(), []string{"../outside.txt"})

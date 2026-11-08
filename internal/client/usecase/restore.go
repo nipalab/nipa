@@ -77,20 +77,20 @@ func (w *WorkingCopy) matchesSnapshot(path string, f domain.SnapshotFile) bool {
 func restoreTargets(targets []string, tracked map[string]domain.SnapshotFile) ([]string, error) {
 	seen := make(map[string]bool, len(tracked))
 	var paths []string
-	for _, t := range targets {
-		if err := validateRelPath(t); err != nil {
-			return nil, err
-		}
-		if isNipaPath(t) {
-			return nil, fmt.Errorf("cannot operate on path inside %q", nipaDir)
-		}
-		if t == "" {
+	for _, raw := range targets {
+		if raw == "" {
 			return nil, fmt.Errorf("a path is required")
 		}
-		target := filepath.ToSlash(filepath.Clean(t))
+		target, err := normalizeTarget(raw)
+		if err != nil {
+			return nil, err
+		}
+		if isNipaPath(target) {
+			return nil, fmt.Errorf("cannot operate on path inside %q", nipaDir)
+		}
 		matched := false
 		for p := range tracked {
-			if p != target && !strings.HasPrefix(p, target+"/") {
+			if target != "" && p != target && !strings.HasPrefix(p, target+"/") {
 				continue
 			}
 			matched = true
@@ -100,7 +100,7 @@ func restoreTargets(targets []string, tracked map[string]domain.SnapshotFile) ([
 			}
 		}
 		if !matched {
-			return nil, fmt.Errorf("path %q is not tracked", t)
+			return nil, fmt.Errorf("path %q is not tracked", raw)
 		}
 	}
 	sort.Strings(paths)

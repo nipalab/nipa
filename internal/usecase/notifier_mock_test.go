@@ -164,6 +164,21 @@ func (mr *MocknotifierReviewRepositoryMockRecorder) ListReviewRequests(ctx, merg
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListReviewRequests", reflect.TypeOf((*MocknotifierReviewRepository)(nil).ListReviewRequests), ctx, mergeRequestID)
 }
 
+// ListReviews mocks base method.
+func (m *MocknotifierReviewRepository) ListReviews(ctx context.Context, mergeRequestID int64) ([]*domain.MergeRequestReview, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListReviews", ctx, mergeRequestID)
+	ret0, _ := ret[0].([]*domain.MergeRequestReview)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListReviews indicates an expected call of ListReviews.
+func (mr *MocknotifierReviewRepositoryMockRecorder) ListReviews(ctx, mergeRequestID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListReviews", reflect.TypeOf((*MocknotifierReviewRepository)(nil).ListReviews), ctx, mergeRequestID)
+}
+
 // MockdispatcherKicker is a mock of dispatcherKicker interface.
 type MockdispatcherKicker struct {
 	ctrl     *gomock.Controller

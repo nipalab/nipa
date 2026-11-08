@@ -123,7 +123,7 @@ var _ = Describe("nipa status", func() {
 		Expect(readText(fresh, "outside.txt")).To(Equal("outside\n"))
 	})
 
-	PIt("stages the whole working copy with add . (validateRelPath rejects \".\")", func() {
+	It("stages the whole working copy with add .", func() {
 		project := newProject("status-add-dot")
 		seedRepo(orgSlug, project, map[string][]byte{
 			"kept.txt": []byte("kept\n"),

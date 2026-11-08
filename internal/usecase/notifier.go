@@ -31,6 +31,7 @@ type notifierMRRepository interface {
 
 type notifierReviewRepository interface {
 	ListReviewRequests(ctx context.Context, mergeRequestID int64) ([]*domain.MergeRequestReviewRequest, error)
+	ListReviews(ctx context.Context, mergeRequestID int64) ([]*domain.MergeRequestReview, error)
 	ListComments(ctx context.Context, mergeRequestID int64) ([]*domain.MergeRequestComment, error)
 }
 
@@ -204,92 +205,36 @@ func (n *EmailNotifier) recipients(ctx context.Context, event NotifyEvent) ([]*d
 	return recipients, nil
 }
 
+type participantSource func(*EmailNotifier, context.Context, *domain.MergeRequest) ([]snow.ID, error)
+
+// eventParticipants lists, per event, who is notified besides the author.
+var eventParticipants = func() map[string][]participantSource {
+	reviewers := (*EmailNotifier).reviewerIDs
+	submitters := (*EmailNotifier).reviewSubmitterIDs
+	assignees := (*EmailNotifier).assigneeIDs
+	commenters := (*EmailNotifier).commenterIDs
+	return map[string][]participantSource{
+		domain.WebhookEventMRCreated:         {reviewers, assignees},
+		domain.WebhookEventMRReady:           {reviewers, assignees},
+		domain.WebhookEventMRReviewRequested: {reviewers, assignees},
+		domain.WebhookEventMRReviewSubmitted: {assignees, commenters},
+		domain.WebhookEventMRCommentCreated:  {reviewers, submitters, assignees, commenters},
+		domain.WebhookEventMRSynchronized:    {reviewers, submitters, assignees},
+		domain.WebhookEventMRMerged:          {reviewers, submitters, assignees, commenters},
+		domain.WebhookEventMRClosed:          {reviewers, submitters, assignees, commenters},
+		domain.WebhookEventMRReopened:        {reviewers, submitters, assignees, commenters},
+		domain.WebhookEventMRCheckReported:   {reviewers, submitters, assignees},
+	}
+}()
+
 func (n *EmailNotifier) recipientIDs(ctx context.Context, event NotifyEvent) ([]snow.ID, error) {
-	mr := event.MR
-	var ids []snow.ID
-	switch event.Event {
-	case domain.WebhookEventMRCreated, domain.WebhookEventMRReady, domain.WebhookEventMRReviewRequested:
-		ids = append(ids, mr.CreatedBy)
-		reviewers, err := n.reviewerIDs(ctx, mr)
+	ids := []snow.ID{event.MR.CreatedBy}
+	for _, source := range eventParticipants[event.Event] {
+		more, err := source(n, ctx, event.MR)
 		if err != nil {
 			return nil, err
 		}
-		ids = append(ids, reviewers...)
-		assignees, err := n.assigneeIDs(ctx, mr)
-		if err != nil {
-			return nil, err
-		}
-		ids = append(ids, assignees...)
-	case domain.WebhookEventMRReviewSubmitted:
-		ids = append(ids, mr.CreatedBy)
-		assignees, err := n.assigneeIDs(ctx, mr)
-		if err != nil {
-			return nil, err
-		}
-		ids = append(ids, assignees...)
-		commenters, err := n.commenterIDs(ctx, mr)
-		if err != nil {
-			return nil, err
-		}
-		ids = append(ids, commenters...)
-	case domain.WebhookEventMRCommentCreated:
-		ids = append(ids, mr.CreatedBy)
-		reviewers, err := n.reviewerIDs(ctx, mr)
-		if err != nil {
-			return nil, err
-		}
-		ids = append(ids, reviewers...)
-		assignees, err := n.assigneeIDs(ctx, mr)
-		if err != nil {
-			return nil, err
-		}
-		ids = append(ids, assignees...)
-		commenters, err := n.commenterIDs(ctx, mr)
-		if err != nil {
-			return nil, err
-		}
-		ids = append(ids, commenters...)
-	case domain.WebhookEventMRSynchronized:
-		ids = append(ids, mr.CreatedBy)
-		reviewers, err := n.reviewerIDs(ctx, mr)
-		if err != nil {
-			return nil, err
-		}
-		ids = append(ids, reviewers...)
-		assignees, err := n.assigneeIDs(ctx, mr)
-		if err != nil {
-			return nil, err
-		}
-		ids = append(ids, assignees...)
-	case domain.WebhookEventMRMerged, domain.WebhookEventMRClosed, domain.WebhookEventMRReopened:
-		ids = append(ids, mr.CreatedBy)
-		reviewers, err := n.reviewerIDs(ctx, mr)
-		if err != nil {
-			return nil, err
-		}
-		ids = append(ids, reviewers...)
-		assignees, err := n.assigneeIDs(ctx, mr)
-		if err != nil {
-			return nil, err
-		}
-		ids = append(ids, assignees...)
-		commenters, err := n.commenterIDs(ctx, mr)
-		if err != nil {
-			return nil, err
-		}
-		ids = append(ids, commenters...)
-	case domain.WebhookEventMRCheckReported:
-		ids = append(ids, mr.CreatedBy)
-		reviewers, err := n.reviewerIDs(ctx, mr)
-		if err != nil {
-			return nil, err
-		}
-		ids = append(ids, reviewers...)
-		assignees, err := n.assigneeIDs(ctx, mr)
-		if err != nil {
-			return nil, err
-		}
-		ids = append(ids, assignees...)
+		ids = append(ids, more...)
 	}
 	return ids, nil
 }
@@ -302,6 +247,20 @@ func (n *EmailNotifier) reviewerIDs(ctx context.Context, mr *domain.MergeRequest
 	ids := make([]snow.ID, 0, len(requests))
 	for _, request := range requests {
 		ids = append(ids, request.Reviewer.UserID)
+	}
+	return ids, nil
+}
+
+// reviewSubmitterIDs lists everyone who ever reviewed the request, dismissed
+// reviews included: submitting a review answers the reviewer's request.
+func (n *EmailNotifier) reviewSubmitterIDs(ctx context.Context, mr *domain.MergeRequest) ([]snow.ID, error) {
+	reviews, err := n.reviews.ListReviews(ctx, mr.ID)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]snow.ID, 0, len(reviews))
+	for _, review := range reviews {
+		ids = append(ids, review.Reviewer.UserID)
 	}
 	return ids, nil
 }

@@ -101,6 +101,8 @@ func TestEmailNotifier_CommentRecipients(t *testing.T) {
 
 	deps.reviews.EXPECT().ListReviewRequests(gomock.Any(), int64(5)).
 		Return([]*domain.MergeRequestReviewRequest{{Reviewer: domain.ReviewActor{UserID: 20}}}, nil)
+	deps.reviews.EXPECT().ListReviews(gomock.Any(), int64(5)).
+		Return([]*domain.MergeRequestReview{{Reviewer: domain.ReviewActor{UserID: 20}}}, nil)
 	deps.mrs.EXPECT().ListAssigneesByMergeRequest(gomock.Any(), int64(5)).
 		Return([]domain.ReviewActor{{UserID: 30}}, nil)
 	deps.reviews.EXPECT().ListComments(gomock.Any(), int64(5)).
@@ -168,6 +170,7 @@ func TestEmailNotifier_SkipsActorAndUndeliverableUsers(t *testing.T) {
 
 	deps.reviews.EXPECT().ListReviewRequests(gomock.Any(), int64(5)).
 		Return([]*domain.MergeRequestReviewRequest{{Reviewer: domain.ReviewActor{UserID: 20}}}, nil)
+	deps.reviews.EXPECT().ListReviews(gomock.Any(), int64(5)).Return(nil, nil)
 	deps.mrs.EXPECT().ListAssigneesByMergeRequest(gomock.Any(), int64(5)).
 		Return([]domain.ReviewActor{{UserID: 30}}, nil)
 	deps.reviews.EXPECT().ListComments(gomock.Any(), int64(5)).
@@ -202,6 +205,7 @@ func TestEmailNotifier_CheckEvent(t *testing.T) {
 	failed := testNotifyEvent(domain.WebhookEventMRCheckReported)
 	failed.Check = &domain.MergeRequestCheck{Name: "build", State: domain.MergeRequestCheckFailed}
 	deps.reviews.EXPECT().ListReviewRequests(gomock.Any(), int64(5)).Return(nil, nil)
+	deps.reviews.EXPECT().ListReviews(gomock.Any(), int64(5)).Return(nil, nil)
 	deps.mrs.EXPECT().ListAssigneesByMergeRequest(gomock.Any(), int64(5)).Return(nil, nil)
 	deps.users.EXPECT().GetByID(gomock.Any(), snow.ID(10)).
 		Return(testNotifierUser(10, "author@example.com"), nil)
@@ -267,6 +271,7 @@ func TestEmailNotifier_NoBaseURL(t *testing.T) {
 	event.MR.CreatedBy = 0
 
 	deps.reviews.EXPECT().ListReviewRequests(gomock.Any(), int64(5)).Return(nil, nil)
+	deps.reviews.EXPECT().ListReviews(gomock.Any(), int64(5)).Return(nil, nil)
 	deps.mrs.EXPECT().ListAssigneesByMergeRequest(gomock.Any(), int64(5)).Return(nil, nil)
 	deps.reviews.EXPECT().ListComments(gomock.Any(), int64(5)).
 		Return([]*domain.MergeRequestComment{{User: domain.ReviewActor{UserID: 20}}}, nil)
@@ -296,6 +301,7 @@ func TestEmailNotifier_ThreadsReplies(t *testing.T) {
 	event := testNotifyEvent(domain.WebhookEventMRCommentCreated)
 
 	deps.reviews.EXPECT().ListReviewRequests(gomock.Any(), int64(5)).Return(nil, nil)
+	deps.reviews.EXPECT().ListReviews(gomock.Any(), int64(5)).Return(nil, nil)
 	deps.mrs.EXPECT().ListAssigneesByMergeRequest(gomock.Any(), int64(5)).Return(nil, nil)
 	deps.reviews.EXPECT().ListComments(gomock.Any(), int64(5)).
 		Return([]*domain.MergeRequestComment{{User: domain.ReviewActor{UserID: 20}}}, nil)
@@ -339,18 +345,20 @@ func TestEmailNotifier_RecipientSets(t *testing.T) {
 	cases := []struct {
 		event      string
 		reviewers  bool
+		submitters bool
 		assignees  bool
 		commenters bool
 	}{
-		{domain.WebhookEventMRCreated, true, true, false},
-		{domain.WebhookEventMRReady, true, true, false},
-		{domain.WebhookEventMRReviewRequested, true, true, false},
-		{domain.WebhookEventMRReviewSubmitted, false, true, true},
-		{domain.WebhookEventMRSynchronized, true, true, false},
-		{domain.WebhookEventMRMerged, true, true, true},
-		{domain.WebhookEventMRClosed, true, true, true},
-		{domain.WebhookEventMRReopened, true, true, true},
-		{domain.WebhookEventMRCheckReported, true, true, false},
+		{domain.WebhookEventMRCreated, true, false, true, false},
+		{domain.WebhookEventMRReady, true, false, true, false},
+		{domain.WebhookEventMRReviewRequested, true, false, true, false},
+		{domain.WebhookEventMRReviewSubmitted, false, false, true, true},
+		{domain.WebhookEventMRCommentCreated, true, true, true, true},
+		{domain.WebhookEventMRSynchronized, true, true, true, false},
+		{domain.WebhookEventMRMerged, true, true, true, true},
+		{domain.WebhookEventMRClosed, true, true, true, true},
+		{domain.WebhookEventMRReopened, true, true, true, true},
+		{domain.WebhookEventMRCheckReported, true, true, true, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.event, func(t *testing.T) {
@@ -362,6 +370,10 @@ func TestEmailNotifier_RecipientSets(t *testing.T) {
 			if tc.reviewers {
 				deps.reviews.EXPECT().ListReviewRequests(gomock.Any(), int64(5)).
 					Return([]*domain.MergeRequestReviewRequest{{Reviewer: domain.ReviewActor{UserID: 20}}}, nil)
+			}
+			if tc.submitters {
+				deps.reviews.EXPECT().ListReviews(gomock.Any(), int64(5)).
+					Return([]*domain.MergeRequestReview{{Reviewer: domain.ReviewActor{UserID: 25}}}, nil)
 			}
 			if tc.assignees {
 				deps.mrs.EXPECT().ListAssigneesByMergeRequest(gomock.Any(), int64(5)).
@@ -391,6 +403,7 @@ func TestEmailNotifier_RecipientSets(t *testing.T) {
 			}
 			require.True(t, recipients[snow.ID(10)], "the author is a recipient")
 			require.Equal(t, tc.reviewers, recipients[snow.ID(20)], "reviewer recipient")
+			require.Equal(t, tc.submitters, recipients[snow.ID(25)], "past reviewer recipient")
 			require.Equal(t, tc.assignees, recipients[snow.ID(30)], "assignee recipient")
 			require.Equal(t, tc.commenters, recipients[snow.ID(40)], "commenter recipient")
 		})
@@ -401,15 +414,23 @@ func TestEmailNotifier_RecipientSourceErrors(t *testing.T) {
 	synchronized := newNotifierDeps(t)
 	event := testNotifyEvent(domain.WebhookEventMRSynchronized)
 	synchronized.reviews.EXPECT().ListReviewRequests(gomock.Any(), int64(5)).Return(nil, nil)
+	synchronized.reviews.EXPECT().ListReviews(gomock.Any(), int64(5)).Return(nil, nil)
 	synchronized.mrs.EXPECT().ListAssigneesByMergeRequest(gomock.Any(), int64(5)).Return(nil, errors.New("assignees down"))
 	require.ErrorContains(t, synchronized.notifier.Notify(context.Background(), event), "assignees down")
 
 	merged := newNotifierDeps(t)
 	event = testNotifyEvent(domain.WebhookEventMRMerged)
 	merged.reviews.EXPECT().ListReviewRequests(gomock.Any(), int64(5)).Return(nil, nil)
+	merged.reviews.EXPECT().ListReviews(gomock.Any(), int64(5)).Return(nil, nil)
 	merged.mrs.EXPECT().ListAssigneesByMergeRequest(gomock.Any(), int64(5)).Return(nil, nil)
 	merged.reviews.EXPECT().ListComments(gomock.Any(), int64(5)).Return(nil, errors.New("comments down"))
 	require.ErrorContains(t, merged.notifier.Notify(context.Background(), event), "comments down")
+
+	reviewed := newNotifierDeps(t)
+	event = testNotifyEvent(domain.WebhookEventMRReopened)
+	reviewed.reviews.EXPECT().ListReviewRequests(gomock.Any(), int64(5)).Return(nil, nil)
+	reviewed.reviews.EXPECT().ListReviews(gomock.Any(), int64(5)).Return(nil, errors.New("reviews down"))
+	require.ErrorContains(t, reviewed.notifier.Notify(context.Background(), event), "reviews down")
 }
 
 func TestEmailNotifier_IgnoresUnwantedAndMissingRequests(t *testing.T) {
@@ -431,4 +452,77 @@ func TestEmailNotifier_RepoError(t *testing.T) {
 	deps.reviews.EXPECT().ListReviewRequests(gomock.Any(), int64(5)).Return(nil, errors.New("db down"))
 	err := deps.notifier.Notify(context.Background(), event)
 	require.ErrorContains(t, err, "db down")
+}
+
+func captureNotifierDeliveries(t *testing.T, deps *notifierDeps) *[]*domain.EmailDelivery {
+	t.Helper()
+	var captured []*domain.EmailDelivery
+	deps.users.EXPECT().GetByID(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, id snow.ID) (*domain.User, error) {
+			return testNotifierUser(id, fmt.Sprintf("user%d@example.com", id)), nil
+		}).AnyTimes()
+	deps.outbox.EXPECT().ThreadRecipients(gomock.Any(), snow.ID(1), "acme/game/mr42").Return(nil, nil)
+	deps.outbox.EXPECT().Enqueue(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, deliveries []*domain.EmailDelivery) error {
+			captured = deliveries
+			return nil
+		})
+	return &captured
+}
+
+func deliveryCounts(deliveries []*domain.EmailDelivery) map[snow.ID]int {
+	counts := map[snow.ID]int{}
+	for _, delivery := range deliveries {
+		counts[delivery.UserID]++
+	}
+	return counts
+}
+
+func TestEmailNotifier_PastReviewersStayParticipants(t *testing.T) {
+	dismissedAt := time.Unix(900, 0).UTC()
+	withCommenters := map[string]bool{
+		domain.WebhookEventMRMerged:         true,
+		domain.WebhookEventMRClosed:         true,
+		domain.WebhookEventMRReopened:       true,
+		domain.WebhookEventMRSynchronized:   false,
+		domain.WebhookEventMRCommentCreated: true,
+		domain.WebhookEventMRCheckReported:  false,
+	}
+	for name, commenters := range withCommenters {
+		t.Run(name, func(t *testing.T) {
+			deps := newNotifierDeps(t)
+			event := testNotifyEvent(name)
+			event.Actor = 70
+			if name == domain.WebhookEventMRCheckReported {
+				event.Check = &domain.MergeRequestCheck{Name: "build", State: domain.MergeRequestCheckFailed}
+			}
+			deps.reviews.EXPECT().ListReviewRequests(gomock.Any(), int64(5)).
+				Return([]*domain.MergeRequestReviewRequest{{Reviewer: domain.ReviewActor{UserID: 60}}}, nil)
+			deps.reviews.EXPECT().ListReviews(gomock.Any(), int64(5)).
+				Return([]*domain.MergeRequestReview{
+					{Reviewer: domain.ReviewActor{UserID: 20}, State: domain.MergeRequestReviewApproved},
+					{
+						Reviewer: domain.ReviewActor{UserID: 50}, State: domain.MergeRequestReviewChangesRequested,
+						DismissedAt: &dismissedAt, DismissedReason: "new_commits",
+					},
+					{Reviewer: domain.ReviewActor{UserID: 60}, State: domain.MergeRequestReviewCommented},
+					{Reviewer: domain.ReviewActor{UserID: 70}, State: domain.MergeRequestReviewApproved},
+					{Reviewer: domain.ReviewActor{UserID: 20}, State: domain.MergeRequestReviewApproved},
+				}, nil)
+			deps.mrs.EXPECT().ListAssigneesByMergeRequest(gomock.Any(), int64(5)).Return(nil, nil)
+			if commenters {
+				deps.reviews.EXPECT().ListComments(gomock.Any(), int64(5)).Return(nil, nil)
+			}
+			captured := captureNotifierDeliveries(t, deps)
+
+			require.NoError(t, deps.notifier.Notify(context.Background(), event))
+			counts := deliveryCounts(*captured)
+			require.Equal(t, 1, counts[snow.ID(10)], "author")
+			require.Equal(t, 1, counts[snow.ID(20)], "a reviewer whose request was answered by a review")
+			require.Equal(t, 1, counts[snow.ID(50)], "a dismissed review still counts")
+			require.Equal(t, 1, counts[snow.ID(60)], "open request plus review is one email")
+			require.Zero(t, counts[snow.ID(70)], "the actor is skipped even as a past reviewer")
+			require.Len(t, *captured, 4)
+		})
+	}
 }

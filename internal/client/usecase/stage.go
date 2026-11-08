@@ -123,8 +123,9 @@ func (w *WorkingCopy) Remove(ctx context.Context, targets []string) error {
 	}
 
 	removed := make(map[string]bool)
-	for _, t := range targets {
-		if err := validateRelPath(t); err != nil {
+	for _, raw := range targets {
+		t, err := normalizeTarget(raw)
+		if err != nil {
 			return err
 		}
 		if isNipaPath(t) {
@@ -575,8 +576,9 @@ func (w *WorkingCopy) expandAddTargets(snapshot *domain.Snapshot, targets []stri
 			seen[p] = true
 		}
 	}
-	for _, t := range targets {
-		if err := validateRelPath(t); err != nil {
+	for _, raw := range targets {
+		t, err := normalizeTarget(raw)
+		if err != nil {
 			return nil, err
 		}
 		if isNipaPath(t) {
@@ -775,21 +777,23 @@ func chunkReader(r io.ReadSeeker, path string, isBinary bool, encoding string) (
 	return chunker.FileHash(hashes), wrapped, encoding, nil
 }
 
-func validateRelPath(t string) error {
+// normalizeTarget cleans a repository-relative target; "" and "." both mean
+// the whole working copy and come back as "".
+func normalizeTarget(t string) (string, error) {
 	if t == "" {
-		return nil
+		return "", nil
 	}
 	if filepath.IsAbs(t) {
-		return fmt.Errorf("path %q must be relative to the repository root", t)
+		return "", fmt.Errorf("path %q must be relative to the repository root", t)
 	}
 	clean := filepath.Clean(t)
-	if clean == "." || clean == ".." {
-		return fmt.Errorf("path %q is outside the repository", t)
+	if clean == "." {
+		return "", nil
 	}
-	if strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
-		return fmt.Errorf("path %q is outside the repository", t)
+	if clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("path %q is outside the repository", t)
 	}
-	return nil
+	return filepath.ToSlash(clean), nil
 }
 
 func isNipaPath(p string) bool {
