@@ -22,7 +22,9 @@ filters, ping, retries/redelivery), multi-user permission/lock scenarios
 `NIPA_OUTPUT=json` and the exit-code contract (0/1/2/127). REST-only
 surfaces are covered too: email notifications, the admin audit log, users/
 orgs/projects/branches/browser admin routes, signed chunk URLs, storage
-quota and rate limiting.
+quota, rate limiting and project service tokens (lifecycle, per-scope route
+allowlist, commit ancestry, CI checks, webhook management, audit tagging,
+expiry and creator demotion/deletion).
 
 The enterprise run additionally enables the SaaS onboarding stack
 (`SAAS_MODE`) and covers it through the REST surface: registration with the
