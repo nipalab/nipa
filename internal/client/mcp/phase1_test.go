@@ -703,6 +703,14 @@ func TestConflictTools(t *testing.T) {
 	require.True(t, res.IsError)
 	require.Contains(t, toolText(t, res), "diff is not configured")
 
+	for _, padded := range []string{" theirs", "theirs\n", "THEIRS"} {
+		res = call(t, session, "nipa_resolve_conflict", map[string]any{"repo": root, "path": "d.txt", "choice": padded})
+		require.True(t, res.IsError, padded)
+		require.Contains(t, toolText(t, res), "diff is not configured", padded)
+	}
+	_, err = os.Stat(filepath.Join(root, "d.txt"))
+	require.NoError(t, err)
+
 	res = call(t, session, "nipa_resolve_conflict", map[string]any{"repo": root, "path": "d.txt", "choice": "bogus"})
 	require.True(t, res.IsError)
 	require.Contains(t, toolText(t, res), "choice must be one of")

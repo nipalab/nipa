@@ -419,7 +419,8 @@ func (s *server) resolveConflict(ctx context.Context, _ *mcp.CallToolRequest, in
 	}
 	defer cleanup()
 	c := usecase.NewConflicts(lr, wc, root)
-	switch strings.TrimSpace(in.Choice) {
+	choice := strings.ToLower(strings.TrimSpace(in.Choice))
+	switch choice {
 	case "content":
 		err = c.Resolve(ctx, in.Path, usecase.Resolution{Content: strings.NewReader(in.Content)})
 	case "working":
@@ -427,7 +428,7 @@ func (s *server) resolveConflict(ctx context.Context, _ *mcp.CallToolRequest, in
 	case "delete":
 		err = c.Resolve(ctx, in.Path, usecase.Resolution{Delete: true})
 	case "ours", "theirs":
-		err = s.takeVersion(ctx, c, root, in.Path, in.Choice == "theirs")
+		err = s.takeVersion(ctx, c, root, in.Path, choice == "theirs")
 	default:
 		err = domain.NewUserError("choice must be one of ours, theirs, content, working, delete")
 	}
