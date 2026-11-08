@@ -223,6 +223,7 @@ type Querier interface {
 	ServiceTokenGet(ctx context.Context, arg ServiceTokenGetParams) (ProjectServiceToken, error)
 	ServiceTokenGetByHash(ctx context.Context, tokenHash string) (ProjectServiceToken, error)
 	ServiceTokenListByProject(ctx context.Context, projectID int64) ([]ProjectServiceToken, error)
+	ServiceTokenLockProject(ctx context.Context, lockKey int64) error
 	ServiceTokenRevoke(ctx context.Context, arg ServiceTokenRevokeParams) (ProjectServiceToken, error)
 	ServiceTokenTouch(ctx context.Context, arg ServiceTokenTouchParams) error
 	SetOrgUsageFromProjects(ctx context.Context, orgID int64) error

@@ -103,6 +103,20 @@ func (mr *MockserviceTokenRepositoryMockRecorder) ListByProject(ctx, projectID a
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListByProject", reflect.TypeOf((*MockserviceTokenRepository)(nil).ListByProject), ctx, projectID)
 }
 
+// LockProject mocks base method.
+func (m *MockserviceTokenRepository) LockProject(ctx context.Context, projectID snow.ID) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "LockProject", ctx, projectID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// LockProject indicates an expected call of LockProject.
+func (mr *MockserviceTokenRepositoryMockRecorder) LockProject(ctx, projectID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LockProject", reflect.TypeOf((*MockserviceTokenRepository)(nil).LockProject), ctx, projectID)
+}
+
 // Revoke mocks base method.
 func (m *MockserviceTokenRepository) Revoke(ctx context.Context, projectID, id snow.ID, at time.Time) (*domain.ServiceToken, error) {
 	m.ctrl.T.Helper()

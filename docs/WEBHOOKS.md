@@ -106,10 +106,13 @@ else answers 403):
 | `checks:write` | `POST /merge-requests/{id}/checks` |
 | `webhooks:write` | `GET`/`POST /webhooks`, `GET`/`PATCH`/`DELETE /webhooks/{id}`, `POST /webhooks/{id}/test`, `GET /webhooks/{id}/deliveries`, `POST /webhooks/{id}/deliveries/{deliveryId}/redeliver` |
 
-Unknown, revoked or expired tokens answer 401. Because the token uses its
-creator's permissions, it stops working for writes when the creator loses
-admin rights, and a check reported with it names the creator as reporter (the
-author of a merge request cannot report checks on a target that requires them).
+Unknown, revoked or expired tokens, and tokens whose creator was deleted or is
+unverified, answer 401. A token stops working (403) as soon as its creator is
+no longer a project admin. Checks reported with it name the creator as
+reporter; unlike the creator's own session, a token may report checks on the
+creator's merge requests even when the target requires them. Audit entries
+written through a token carry its id (`service_token_id`), and each token has
+its own per-user rate-limit bucket. A project has at most 50 active tokens.
 
 ## Commit ancestry
 
@@ -117,7 +120,7 @@ author of a merge request cannot report checks on a target that requires them).
 answers whether `commit` is the commit `ref` points at or one of its
 ancestors. `ref` is resolved as a tag name, a branch name, a base36 commit id
 or a commit hash, in that order. Read permission (or the `read` scope) is
-required.
+required. The walk stops after 10000 commits and answers 400 rather than guess.
 
 ```json
 {"commit": "c1", "ref": "v0.2", "ref_commit": "c2", "contains": true}

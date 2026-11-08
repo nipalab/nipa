@@ -16,6 +16,11 @@ export const SERVICE_TOKEN_SCOPES: { value: string; label: string }[] = [
   { value: 'webhooks:write', label: 'Manage webhooks' },
 ]
 
+export function endOfLocalDay(date: string): string {
+  const [year, month, day] = date.split('-').map(Number)
+  return new Date(year, month - 1, day, 23, 59, 59).toISOString()
+}
+
 function tokenState(token: ServiceTokenResponse): string {
   if (token.revoked_at) return 'Revoked'
   if (token.expires_at && new Date(token.expires_at).getTime() <= Date.now()) return 'Expired'
@@ -154,7 +159,7 @@ function CreateServiceTokenDialog({
         onCreate({
           name,
           scopes,
-          ...(expires ? { expires_at: new Date(`${expires}T00:00:00Z`).toISOString() } : {}),
+          ...(expires ? { expires_at: endOfLocalDay(expires) } : {}),
         })
       }
     >

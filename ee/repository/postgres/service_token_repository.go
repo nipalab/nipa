@@ -79,6 +79,16 @@ func (r *ServiceTokenRepository) Revoke(ctx context.Context, projectID, id snow.
 	return serviceTokenToDomain(row), nil
 }
 
+// serviceTokenAdvisoryNamespace keeps the per-project token lock apart from
+// the other advisory locks.
+const serviceTokenAdvisoryNamespace int64 = 0x4e495053544f4b
+
+// LockProject takes the project's transaction-scoped token lock. It must run
+// inside a transaction carried by ctx.
+func (r *ServiceTokenRepository) LockProject(ctx context.Context, projectID snow.ID) error {
+	return handleError(r.queries.ServiceTokenLockProject(ctx, projectID.Int64()^serviceTokenAdvisoryNamespace))
+}
+
 func (r *ServiceTokenRepository) TouchLastUsed(ctx context.Context, id snow.ID, at time.Time) error {
 	return handleError(r.queries.ServiceTokenTouch(ctx, sqlcPostgres.ServiceTokenTouchParams{
 		LastUsedAt: sql.NullTime{Time: at, Valid: true},

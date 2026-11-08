@@ -55,7 +55,7 @@ func BuildUsecases(repos usecase.Repositories, deps UsecaseDeps) Usecases {
 	orgInvitationUsecase := usecase.NewOrgInvitation(repos.OrgInvitation, orgUsecase, repos.User, node).WithLimiter(deps.RateLimiter)
 	projectUsecase := usecase.NewProject(repos.Project, node, permissionUsecase, orgUsecase).WithAudit(auditUsecase)
 
-	branchUsecase := usecase.NewBranchWithChunks(permissionUsecase, repos.Branch, node, deps.ChunkStore).WithUsers(repos.User).WithAudit(auditUsecase)
+	branchUsecase := usecase.NewBranchWithChunks(permissionUsecase, repos.Branch, node, deps.ChunkStore).WithUsers(repos.User).WithTags(repos.Tag).WithAudit(auditUsecase)
 	fileLockUsecase := usecase.NewFileLock(repos.FileLock, repos.Branch, permissionUsecase, node).WithAudit(auditUsecase)
 	if repos.FileLockSerializer != nil {
 		fileLockUsecase = fileLockUsecase.WithSerializer(transactor, repos.FileLockSerializer)

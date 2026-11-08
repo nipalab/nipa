@@ -67,6 +67,13 @@ func (a *Audit) Record(ctx context.Context, entry domain.AuditEntry) error {
 		if claim, ok := domain.ClaimFromContext(ctx); ok {
 			entry.ActorType = domain.AuditActorUser
 			entry.ActorUserID = domain.IDPtr(claim.UserID)
+			if claim.ServiceTokenID != 0 {
+				entry.ActorLabel = "service_token:" + claim.ServiceTokenID.Base36()
+				if entry.Metadata == nil {
+					entry.Metadata = map[string]any{}
+				}
+				entry.Metadata["service_token_id"] = claim.ServiceTokenID.Base36()
+			}
 		} else {
 			entry.ActorType = domain.AuditActorSystem
 		}

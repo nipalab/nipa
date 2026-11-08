@@ -13,7 +13,7 @@ import (
 )
 
 type containsFixture struct {
-	uc         *Tag
+	uc         *Branch
 	perm       *MockpermissionUsecase
 	tags       *MocktagRepository
 	branchRepo *MockbranchRepository
@@ -26,7 +26,7 @@ func newContainsFixture(t *testing.T) containsFixture {
 		tags:       NewMocktagRepository(ctrl),
 		branchRepo: NewMockbranchRepository(ctrl),
 	}
-	f.uc = NewTag(f.perm, f.tags, f.branchRepo, newTestBranchNode(t))
+	f.uc = NewBranch(f.perm, f.branchRepo, newTestBranchNode(t)).WithTags(f.tags)
 	return f
 }
 
@@ -53,7 +53,7 @@ func (f containsFixture) read(allowed bool) {
 	f.perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(allowed)
 }
 
-func TestTag_Contains_Tag(t *testing.T) {
+func TestBranch_Contains_Tag(t *testing.T) {
 	f := newContainsFixture(t)
 	f.history()
 	f.read(true)
@@ -65,7 +65,7 @@ func TestTag_Contains_Tag(t *testing.T) {
 	require.Equal(t, snow.ID(40), head)
 }
 
-func TestTag_Contains_EqualAndNotContained(t *testing.T) {
+func TestBranch_Contains_EqualAndNotContained(t *testing.T) {
 	f := newContainsFixture(t)
 	f.history()
 	f.read(true)
@@ -82,7 +82,7 @@ func TestTag_Contains_EqualAndNotContained(t *testing.T) {
 	require.False(t, ok)
 }
 
-func TestTag_Contains_CommitIDAndHashRefs(t *testing.T) {
+func TestBranch_Contains_CommitIDAndHashRefs(t *testing.T) {
 	f := newContainsFixture(t)
 	f.history()
 	f.read(true)
@@ -109,7 +109,7 @@ func TestTag_Contains_CommitIDAndHashRefs(t *testing.T) {
 	require.True(t, domain.IsErrorNotFound(err))
 }
 
-func TestTag_Contains_Errors(t *testing.T) {
+func TestBranch_Contains_Errors(t *testing.T) {
 	f := newContainsFixture(t)
 	f.history()
 
@@ -149,7 +149,7 @@ func TestTag_Contains_Errors(t *testing.T) {
 	require.False(t, ok, "an empty branch contains nothing")
 }
 
-func TestTag_Contains_WalkError(t *testing.T) {
+func TestBranch_Contains_WalkError(t *testing.T) {
 	f := newContainsFixture(t)
 	boom := errors.New("boom")
 	f.read(true)
@@ -163,4 +163,53 @@ func TestTag_Contains_WalkError(t *testing.T) {
 	f.branchRepo.EXPECT().GetCommit(gomock.Any(), snow.ID(11)).Return(nil, boom)
 	_, _, err = f.uc.Contains(context.Background(), 1, 11, "v")
 	require.ErrorIs(t, err, boom)
+}
+
+func TestBranch_Contains_IgnoresIDOrder(t *testing.T) {
+	f := newContainsFixture(t)
+	commits := map[snow.ID]*domain.Commit{
+		50: {ID: 50, ProjectID: 1},
+		45: {ID: 45, ProjectID: 1, Parent1ID: idPtr(50)},
+		60: {ID: 60, ProjectID: 1, Parent1ID: idPtr(45)},
+	}
+	f.branchRepo.EXPECT().GetCommit(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, id snow.ID) (*domain.Commit, error) { return commits[id], nil }).AnyTimes()
+	f.read(true)
+	f.tags.EXPECT().GetTagByName(gomock.Any(), snow.ID(1), "v").Return(&domain.Tag{CommitID: 60}, nil)
+
+	ok, _, err := f.uc.Contains(context.Background(), 1, 50, "v")
+	require.NoError(t, err)
+	require.True(t, ok, "a child stored with a lower id than its parent is still walked")
+}
+
+func TestBranch_Contains_WalkCap(t *testing.T) {
+	f := newContainsFixture(t)
+	f.branchRepo.EXPECT().GetCommit(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, id snow.ID) (*domain.Commit, error) {
+			if id == 1 {
+				return &domain.Commit{ID: 1, ProjectID: 1}, nil
+			}
+			return &domain.Commit{ID: id, ProjectID: 1, Parent1ID: idPtr(id - 1)}, nil
+		}).AnyTimes()
+	f.read(true)
+	f.tags.EXPECT().GetTagByName(gomock.Any(), snow.ID(1), "v").Return(&domain.Tag{CommitID: maxContainsWalk + 100}, nil)
+
+	_, _, err := f.uc.Contains(context.Background(), 1, 1, "v")
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 400, domErr.Code)
+}
+
+func TestBranch_Contains_WithoutTags(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	perm := newAllowAllPerm(ctrl)
+	repo := NewMockbranchRepository(ctrl)
+	uc := NewBranch(perm, repo, newTestBranchNode(t))
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
+	repo.EXPECT().GetCommit(gomock.Any(), snow.ID(10)).Return(&domain.Commit{ID: 10, ProjectID: 1}, nil)
+	repo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(1), "main").Return(&domain.Branch{CommitID: idPtr(10)}, nil)
+
+	ok, _, err := uc.Contains(context.Background(), 1, 10, "main")
+	require.NoError(t, err)
+	require.True(t, ok)
 }

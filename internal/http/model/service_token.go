@@ -22,10 +22,3 @@ type CreateServiceTokenRequest struct {
 	Scopes    []string   `json:"scopes"`
 	ExpiresAt *time.Time `json:"expires_at"`
 }
-
-type CommitContainsResponse struct {
-	Commit    string `json:"commit"`
-	Ref       string `json:"ref"`
-	RefCommit string `json:"ref_commit,omitempty"`
-	Contains  bool   `json:"contains"`
-}

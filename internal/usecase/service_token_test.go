@@ -46,6 +46,7 @@ func (f serviceTokenFixture) admin(ok bool) {
 func TestServiceToken_Create(t *testing.T) {
 	f := newServiceTokenFixture(t)
 	f.admin(true)
+	f.repo.EXPECT().LockProject(gomock.Any(), snow.ID(1)).Return(nil)
 	f.repo.EXPECT().ListByProject(gomock.Any(), snow.ID(1)).Return([]*domain.ServiceToken{{RevokedAt: &f.now}}, nil)
 	expires := f.now.Add(24 * time.Hour)
 	var stored domain.ServiceToken
@@ -108,6 +109,12 @@ func TestServiceToken_CreateValidation(t *testing.T) {
 
 	boom := errors.New("boom")
 	f.admin(true)
+	f.repo.EXPECT().LockProject(gomock.Any(), snow.ID(1)).Return(boom)
+	_, _, err = f.uc.Create(ctx, 1, ServiceTokenInput{Name: "x", Scopes: []string{"read"}})
+	require.ErrorIs(t, err, boom)
+
+	f.admin(true)
+	f.repo.EXPECT().LockProject(gomock.Any(), snow.ID(1)).Return(nil)
 	f.repo.EXPECT().ListByProject(gomock.Any(), snow.ID(1)).Return(nil, boom)
 	_, _, err = f.uc.Create(ctx, 1, ServiceTokenInput{Name: "x", Scopes: []string{"read"}})
 	require.ErrorIs(t, err, boom)
@@ -117,11 +124,13 @@ func TestServiceToken_CreateValidation(t *testing.T) {
 		many[i] = &domain.ServiceToken{}
 	}
 	f.admin(true)
+	f.repo.EXPECT().LockProject(gomock.Any(), snow.ID(1)).Return(nil)
 	f.repo.EXPECT().ListByProject(gomock.Any(), snow.ID(1)).Return(many, nil)
 	_, _, err = f.uc.Create(ctx, 1, ServiceTokenInput{Name: "x", Scopes: []string{"read"}})
 	require.ErrorContains(t, err, "at most")
 
 	f.admin(true)
+	f.repo.EXPECT().LockProject(gomock.Any(), snow.ID(1)).Return(nil)
 	f.repo.EXPECT().ListByProject(gomock.Any(), snow.ID(1)).Return(nil, nil)
 	f.repo.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil, boom)
 	_, _, err = f.uc.Create(ctx, 1, ServiceTokenInput{Name: "x", Scopes: []string{"read"}})
@@ -172,18 +181,27 @@ func TestServiceToken_Authenticate(t *testing.T) {
 
 	f.token(plain, tok, nil)
 	f.projects.EXPECT().ResolveBySlug(gomock.Any(), "acme", "rocket").Return(&domain.Organization{}, &domain.Project{ID: 1}, nil)
-	f.users.EXPECT().GetByID(gomock.Any(), snow.ID(7)).Return(&domain.User{ID: 7, IsAdmin: true}, nil)
+	f.users.EXPECT().GetByID(gomock.Any(), snow.ID(7)).Return(&domain.User{ID: 7, IsAdmin: true, EmailVerified: true}, nil)
+	f.perm.EXPECT().AdminHasProject(gomock.Any(), snow.ID(1)).DoAndReturn(func(ctx context.Context, _ snow.ID) bool {
+		claim, ok := domain.ClaimFromContext(ctx)
+		require.True(t, ok)
+		require.Equal(t, snow.ID(7), claim.UserID)
+		require.Equal(t, snow.ID(3), claim.ServiceTokenID)
+		return true
+	})
 	f.repo.EXPECT().TouchLastUsed(gomock.Any(), snow.ID(3), f.now).Return(nil)
 	claims, err := f.uc.Authenticate(ctx, plain, "acme", "rocket", "read")
 	require.NoError(t, err)
 	require.Equal(t, snow.ID(7), claims.UserID)
+	require.Equal(t, snow.ID(3), claims.ServiceTokenID)
 	require.True(t, claims.IsAdmin)
 
 	recent := f.now.Add(-time.Second)
 	tok.LastUsedAt = &recent
 	f.token(plain, tok, nil)
 	f.projects.EXPECT().ResolveBySlug(gomock.Any(), "acme", "rocket").Return(&domain.Organization{}, &domain.Project{ID: 1}, nil)
-	f.users.EXPECT().GetByID(gomock.Any(), snow.ID(7)).Return(&domain.User{ID: 7}, nil)
+	f.users.EXPECT().GetByID(gomock.Any(), snow.ID(7)).Return(&domain.User{ID: 7, EmailVerified: true}, nil)
+	f.admin(true)
 	_, err = f.uc.Authenticate(ctx, plain, "acme", "rocket", "checks:write")
 	require.NoError(t, err, "a recently used token is not touched again")
 }
@@ -246,7 +264,8 @@ func TestServiceToken_AuthenticateRejects(t *testing.T) {
 		want int
 	}{
 		{nil, domain.NewErrorRecordNotFound(), 401},
-		{&domain.User{ID: 7, Deleted: true}, nil, 401},
+		{&domain.User{ID: 7, Deleted: true, EmailVerified: true}, nil, 401},
+		{&domain.User{ID: 7}, nil, 401},
 		{nil, boom, 500},
 	} {
 		f.token(plain, tok, nil)
@@ -259,4 +278,11 @@ func TestServiceToken_AuthenticateRejects(t *testing.T) {
 		}
 		require.Equal(t, tc.want, code(err))
 	}
+
+	f.token(plain, tok, nil)
+	f.projects.EXPECT().ResolveBySlug(gomock.Any(), "acme", "rocket").Return(&domain.Organization{}, &domain.Project{ID: 1}, nil)
+	f.users.EXPECT().GetByID(gomock.Any(), snow.ID(7)).Return(&domain.User{ID: 7, EmailVerified: true}, nil)
+	f.admin(false)
+	_, err = f.uc.Authenticate(ctx, plain, "acme", "rocket", "read")
+	require.Equal(t, 403, code(err), "a creator who lost admin cannot use the token")
 }

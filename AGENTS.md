@@ -297,12 +297,19 @@ plaintext `nipa_st_...` is returned once. The REST `AuthFilter` sends
 `Bearer nipa_st_...` to `ServiceToken.Authenticate` only for the
 `serviceTokenRoutes` allowlist (method + selected route path → scope; every
 other route is 403), which checks the token is active, the `{org}/{project}`
-path names its project and the scope matches, touches `last_used_at` at most
-once a minute and returns the creator's claims, so the usual usecase permission
-checks still apply. `GET .../commits/{commit}/contains?ref=` (`Tag.Contains`)
-resolves `ref` as tag, branch, base36 commit id or hash and walks the ref's
-parents (skipping commits with a smaller snowflake id than the target) to
-answer `{contains}`; read permission required. Service tokens are REST only.
+path names its project and the scope matches, the creator is active, verified
+and still a project admin (else 403), touches `last_used_at` at most once a
+minute and returns the creator's claims tagged with `Claims.ServiceTokenID`, so
+the usual usecase permission checks still apply; the tag puts the token id in
+audit entries (`ActorLabel` `service_token:<id>`), gives the token its own
+`api_user` rate-limit bucket (`token:<id>`) and exempts it from the "author
+cannot report required checks" rule. Creation counts the 50 active tokens
+inside the insert transaction behind `LockProject` (postgres advisory lock,
+sqlite immediate tx). `GET .../commits/{commit}/contains?ref=`
+(`Branch.Contains`, `WithTags` for tag refs) resolves `ref` as tag, branch,
+base36 commit id or hash and walks the ref's parents (no id-order pruning,
+capped at 10000 commits, then 400) to answer `{contains}`; read permission
+required. Service tokens are REST only.
 
 Flow for SSH key login (design in `docs/SSH.md`: `nipa login`, the implicit
 login behind every command, the profile page card): an SSH key is an alternate

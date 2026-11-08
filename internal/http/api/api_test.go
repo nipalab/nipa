@@ -124,7 +124,7 @@ func TestAPIRoutes(t *testing.T) {
 	chunkStore, err := storage.NewLocalStore(t.TempDir())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = chunkStore.Close() })
-	branchUc := usecase.NewBranchWithChunks(permissionUc, branchRepo, node, chunkStore).WithAudit(auditUc)
+	branchUc := usecase.NewBranchWithChunks(permissionUc, branchRepo, node, chunkStore).WithTags(sqlite.NewTagRepository(dbConn)).WithAudit(auditUc)
 	reviewUc := usecase.NewMergeRequestReview(
 		sqlite.NewMergeRequestReviewRepository(dbConn),
 		sqlite.NewMergeRequestRepository(dbConn),

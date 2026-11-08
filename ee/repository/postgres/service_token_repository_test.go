@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/repository/dbtx"
 	"github.com/nipalab/nipa/internal/snow"
 )
 
@@ -72,4 +73,25 @@ func (s *ServiceTokenRepositorySuite) TestLifecycle() {
 	_, err = repo.Revoke(ctx, projectID, 10, used)
 	s.Require().ErrorAs(err, &domErr)
 	s.Equal(404, domErr.Code)
+}
+
+func (s *ServiceTokenRepositorySuite) TestLockProject_SerializesPerProject() {
+	ctx := context.Background()
+	repo := NewServiceTokenRepository(s.db)
+	transactor := dbtx.NewTransactor(s.db)
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	s.Require().NoError(err)
+	s.Require().NoError(repo.LockProject(dbtx.WithTx(ctx, tx), 1))
+
+	blocked, cancel := context.WithTimeout(ctx, 300*time.Millisecond)
+	defer cancel()
+	s.Error(transactor.WithinTx(blocked, func(ctx context.Context) error {
+		return repo.LockProject(ctx, 1)
+	}), "a second creator waits for the project lock")
+	s.NoError(transactor.WithinTx(ctx, func(ctx context.Context) error {
+		return repo.LockProject(ctx, 2)
+	}), "other projects are not blocked")
+
+	s.Require().NoError(tx.Rollback())
 }

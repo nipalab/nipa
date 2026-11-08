@@ -79,6 +79,12 @@ func (r *ServiceTokenRepository) Revoke(ctx context.Context, projectID, id snow.
 	return serviceTokenToDomain(row), nil
 }
 
+// LockProject is a no-op: sqlite write transactions are immediate and already
+// serialize token creation.
+func (r *ServiceTokenRepository) LockProject(context.Context, snow.ID) error {
+	return nil
+}
+
 func (r *ServiceTokenRepository) TouchLastUsed(ctx context.Context, id snow.ID, at time.Time) error {
 	return handleError(r.queries.ServiceTokenTouch(ctx, sqlcSqlite.ServiceTokenTouchParams{
 		LastUsedAt: sql.NullTime{Time: at, Valid: true},

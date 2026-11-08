@@ -154,6 +154,15 @@ func (q *Queries) ServiceTokenListByProject(ctx context.Context, projectID int64
 	return items, nil
 }
 
+const serviceTokenLockProject = `-- name: ServiceTokenLockProject :exec
+SELECT pg_advisory_xact_lock($1::bigint)
+`
+
+func (q *Queries) ServiceTokenLockProject(ctx context.Context, lockKey int64) error {
+	_, err := q.db.ExecContext(ctx, serviceTokenLockProject, lockKey)
+	return err
+}
+
 const serviceTokenRevoke = `-- name: ServiceTokenRevoke :one
 UPDATE project_service_tokens
 SET revoked_at = $1

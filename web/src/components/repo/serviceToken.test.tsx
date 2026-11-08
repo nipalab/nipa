@@ -2,7 +2,7 @@ import { act } from 'react'
 import type { ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ServiceTokenSettings } from './ServiceTokenSettings'
+import { ServiceTokenSettings, endOfLocalDay } from './ServiceTokenSettings'
 import type { ServiceTokenResponse } from '../../api/models'
 
 vi.mock('../../api/endpoints', async (importOriginal) => {
@@ -77,6 +77,19 @@ afterEach(() => {
   document.body.innerHTML = ''
 })
 
+describe('endOfLocalDay', () => {
+  it('ends the picked day in local time', () => {
+    const end = new Date(endOfLocalDay('2030-01-02'))
+    expect([end.getFullYear(), end.getMonth(), end.getDate(), end.getHours(), end.getMinutes()]).toEqual([2030, 0, 2, 23, 59])
+  })
+
+  it('keeps today in the future', () => {
+    const now = new Date()
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+    expect(new Date(endOfLocalDay(today)).getTime()).toBeGreaterThan(now.getTime() - 1000)
+  })
+})
+
 describe('ServiceTokenSettings', () => {
   it('lists tokens with their state', async () => {
     vi.mocked(endpoints.listServiceTokens).mockResolvedValue([
@@ -116,7 +129,7 @@ describe('ServiceTokenSettings', () => {
     expect(endpoints.createServiceToken).toHaveBeenCalledWith('acme', 'game', {
       name: 'bugbase',
       scopes: ['checks:write', 'read'],
-      expires_at: '2030-01-02T00:00:00.000Z',
+      expires_at: new Date(2030, 0, 2, 23, 59, 59).toISOString(),
     })
     click(container.querySelector('button[class*="BannerDismiss"]'))
     await waitFor(() => !(container.textContent?.includes('nipa_st_secretvalue') ?? false))

@@ -69,30 +69,6 @@ func (h *Handler) RevokeServiceToken(appCtx http.AppContext) {
 	_ = appCtx.WriteJson(nethttp.StatusOK, toServiceTokenResponse(revoked, ""))
 }
 
-func (h *Handler) GetCommitContains(appCtx http.AppContext) {
-	_, project, err := h.resolveProject(appCtx)
-	if err != nil {
-		appCtx.HandleError(err)
-		return
-	}
-	commitID, err := parseID(appCtx.PathParameter("commit"), "commit")
-	if err != nil {
-		appCtx.HandleError(err)
-		return
-	}
-	ref := appCtx.QueryParameter("ref")
-	contains, head, err := h.useCase.Tag().Contains(appCtx.Context(), project.ID, commitID, ref)
-	if err != nil {
-		appCtx.HandleError(err)
-		return
-	}
-	resp := model.CommitContainsResponse{Commit: commitID.Base36(), Ref: ref, Contains: contains}
-	if head != 0 {
-		resp.RefCommit = head.Base36()
-	}
-	_ = appCtx.WriteJson(nethttp.StatusOK, resp)
-}
-
 func toServiceTokenResponse(token *domain.ServiceToken, plaintext string) model.ServiceTokenResponse {
 	scopes := token.Scopes
 	if scopes == nil {

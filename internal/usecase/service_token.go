@@ -30,6 +30,7 @@ type serviceTokenRepository interface {
 	Get(ctx context.Context, projectID, id snow.ID) (*domain.ServiceToken, error)
 	GetByHash(ctx context.Context, hash string) (*domain.ServiceToken, error)
 	ListByProject(ctx context.Context, projectID snow.ID) ([]*domain.ServiceToken, error)
+	LockProject(ctx context.Context, projectID snow.ID) error
 	Revoke(ctx context.Context, projectID, id snow.ID, at time.Time) (*domain.ServiceToken, error)
 	TouchLastUsed(ctx context.Context, id snow.ID, at time.Time) error
 }
@@ -95,26 +96,28 @@ func (s *ServiceToken) Create(ctx context.Context, projectID snow.ID, input Serv
 	if input.ExpiresAt != nil && !input.ExpiresAt.After(s.now()) {
 		return nil, "", domain.NewErrorUser("expires_at must be in the future")
 	}
-	existing, err := s.repo.ListByProject(ctx, projectID)
-	if err != nil {
-		return nil, "", err
-	}
-	active := 0
-	for _, token := range existing {
-		if token.Active(s.now()) {
-			active++
-		}
-	}
-	if active >= maxServiceTokensActive {
-		return nil, "", domain.NewErrorUser(fmt.Sprintf("at most %d active service tokens are allowed per project", maxServiceTokensActive))
-	}
 	plaintext, err := generateServiceToken()
 	if err != nil {
 		return nil, "", domain.NewErrorInternalServer("generate service token: " + err.Error())
 	}
 	var created *domain.ServiceToken
 	err = auditedWrite(ctx, s.audit, func(ctx context.Context) error {
-		var err error
+		if err := s.repo.LockProject(ctx, projectID); err != nil {
+			return err
+		}
+		existing, err := s.repo.ListByProject(ctx, projectID)
+		if err != nil {
+			return err
+		}
+		active := 0
+		for _, token := range existing {
+			if token.Active(s.now()) {
+				active++
+			}
+		}
+		if active >= maxServiceTokensActive {
+			return domain.NewErrorUser(fmt.Sprintf("at most %d active service tokens are allowed per project", maxServiceTokensActive))
+		}
 		created, err = s.repo.Create(ctx, domain.ServiceToken{
 			ID:        s.snowNode.Generate(),
 			ProjectID: projectID,
@@ -170,8 +173,9 @@ func (s *ServiceToken) Revoke(ctx context.Context, projectID, id snow.ID) (*doma
 
 // Authenticate resolves a service token for a request on the project named by
 // orgSlug/projectSlug that needs scope. It returns the claims of the admin who
-// created the token. Unknown, revoked or expired tokens are 401; a token used
-// outside its project or scopes is 403.
+// created the token, tagged with the token id. Unknown, revoked or expired
+// tokens and inactive creators are 401; a token used outside its project or
+// scopes, or whose creator is no longer a project admin, is 403.
 func (s *ServiceToken) Authenticate(ctx context.Context, plaintext, orgSlug, projectSlug, scope string) (*domain.Claims, error) {
 	unauthorized := domain.NewErrorUnauthorized("unauthorized access, token not valid")
 	if !strings.HasPrefix(plaintext, domain.ServiceTokenPrefix) {
@@ -208,18 +212,23 @@ func (s *ServiceToken) Authenticate(ctx context.Context, plaintext, orgSlug, pro
 		}
 		return nil, err
 	}
-	if user.Deleted {
+	if user.Deleted || !user.EmailVerified {
 		return nil, unauthorized
+	}
+	claims := domain.Claims{
+		UserID:         user.ID,
+		IsSuperAdmin:   user.IsSuperAdmin,
+		IsAdmin:        user.IsAdmin,
+		OrgID:          []snow.ID{},
+		ServiceTokenID: token.ID,
+	}
+	if !s.perm.AdminHasProject(domain.ContextWithClaim(ctx, claims), token.ProjectID) {
+		return nil, domain.NewErrorForbidden("the service token creator is no longer a project admin")
 	}
 	if token.LastUsedAt == nil || now.Sub(*token.LastUsedAt) >= serviceTokenTouchEvery {
 		_ = s.repo.TouchLastUsed(ctx, token.ID, now)
 	}
-	return &domain.Claims{
-		UserID:       user.ID,
-		IsSuperAdmin: user.IsSuperAdmin,
-		IsAdmin:      user.IsAdmin,
-		OrgID:        []snow.ID{},
-	}, nil
+	return &claims, nil
 }
 
 func normalizeServiceTokenScopes(raw []string) ([]string, error) {

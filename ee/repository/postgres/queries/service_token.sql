@@ -31,3 +31,6 @@ RETURNING *;
 UPDATE project_service_tokens
 SET last_used_at = sqlc.arg(last_used_at)
 WHERE id = sqlc.arg(id);
+
+-- name: ServiceTokenLockProject :exec
+SELECT pg_advisory_xact_lock(sqlc.arg(lock_key)::bigint);

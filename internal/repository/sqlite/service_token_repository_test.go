@@ -16,6 +16,7 @@ func TestServiceTokenRepositorySQLite_Lifecycle(t *testing.T) {
 	ctx := context.Background()
 	db, q := newSQLiteTestDB(t)
 	repo := NewServiceTokenRepository(db)
+	require.NoError(t, repo.LockProject(ctx, 1))
 	projectID := seedProject(t, q, 1, "game")
 	otherProjectID := seedProject(t, q, 1, "other")
 	userID := seedUser(t, q, "alice", "alice@example.com", sql.NullString{})
