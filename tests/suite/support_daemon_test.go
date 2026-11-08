@@ -256,9 +256,17 @@ func metadataAppend(_ context.Context, token string) context.Context {
 
 func (d *daemonProc) jsonPost(path, body string) (*http.Response, []byte) {
 	GinkgoHelper()
-	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("http://127.0.0.1:%d%s", d.info.JSONPort, path), strings.NewReader(body))
+	return d.jsonDo(http.MethodPost, path, body, nil)
+}
+
+func (d *daemonProc) jsonDo(method, path, body string, edit func(*http.Request)) (*http.Response, []byte) {
+	GinkgoHelper()
+	req, err := http.NewRequest(method, fmt.Sprintf("http://127.0.0.1:%d%s", d.info.JSONPort, path), strings.NewReader(body))
 	Expect(err).NotTo(HaveOccurred())
 	req.Header.Set(daemon.TokenHeader, d.info.Token)
+	if edit != nil {
+		edit(req)
+	}
 	resp, err := http.DefaultClient.Do(req)
 	Expect(err).NotTo(HaveOccurred())
 	defer func() { _ = resp.Body.Close() }()
