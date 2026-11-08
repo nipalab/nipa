@@ -36,8 +36,21 @@ bool set_perms(const fs::path& path, fs::perms perms) {
     return !error;
 }
 
-bool inside_metadata(const std::string& relative) {
-    return relative == ".nipa" || relative.rfind(".nipa/", 0) == 0;
+// Clone metadata and Godot's import/editor cache are never part of a lock.
+bool local_only(const std::string& relative) {
+    std::size_t start = 0;
+    while (start <= relative.size()) {
+        auto end = relative.find('/', start);
+        auto segment = relative.substr(start, end == std::string::npos ? std::string::npos : end - start);
+        if (segment == ".nipa" || segment == ".godot") {
+            return true;
+        }
+        if (end == std::string::npos) {
+            break;
+        }
+        start = end + 1;
+    }
+    return false;
 }
 
 }  // namespace
@@ -88,15 +101,18 @@ std::set<std::string> ReadOnlyGuard::expand(const std::set<std::string>& lock_pa
     std::set<std::string> out;
     const fs::path root(clone_root_);
     for (const auto& lock_path : lock_paths) {
-        if (lock_path.empty() || inside_metadata(lock_path)) {
+        if (lock_path.empty() || local_only(lock_path)) {
             continue;
         }
         std::error_code error;
         if (fs::is_directory(root / lock_path, error)) {
             fs::recursive_directory_iterator it(root / lock_path, fs::directory_options::skip_permission_denied, error);
             for (; !error && it != fs::recursive_directory_iterator(); it.increment(error)) {
-                if (it->is_regular_file(error)) {
-                    out.insert(paths::normalize(fs::relative(it->path(), root, error).generic_string()));
+                auto relative = paths::normalize(fs::relative(it->path(), root, error).generic_string());
+                if (local_only(relative)) {
+                    it.disable_recursion_pending();
+                } else if (it->is_regular_file(error)) {
+                    out.insert(relative);
                 }
             }
             continue;
@@ -119,12 +135,14 @@ ReadOnlyGuard::Result ReadOnlyGuard::apply(const std::set<std::string>& lock_pat
             ++it;
             continue;
         }
-        if (is_regular(root / it->first)) {
-            if (set_perms(root / it->first, static_cast<fs::perms>(it->second))) {
-                result.released.push_back(it->first);
-            } else {
-                result.failed.push_back(it->first);
-            }
+        bool present = is_regular(root / it->first);
+        if (present && !set_perms(root / it->first, static_cast<fs::perms>(it->second))) {
+            result.failed.push_back(it->first);
+            ++it;
+            continue;
+        }
+        if (present) {
+            result.released.push_back(it->first);
         }
         it = guarded_.erase(it);
     }

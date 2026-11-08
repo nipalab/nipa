@@ -319,9 +319,9 @@ one lock unit.
   `IsOpenForEdit`. `core/locks/readonly_guard` does it with
   `std::filesystem::permissions` (the read-only attribute on Windows) after
   every lock refresh, expands directory locks to their files, never touches
-  `.nipa/` or files that were already read-only, and restores the original
-  permission when the lock goes away, strict mode is turned off or the editor
-  closes. The guarded set is kept in `.godot/nipa/readonly.json`, so a crashed
+  `.nipa/`, `.godot/` or files that were already read-only, and restores the
+  original permission when the lock goes away, strict mode is turned off or the
+  editor closes (a failed restore stays recorded and is retried). The guarded set is kept in `.godot/nipa/readonly.json`, so a crashed
   editor gives the permission back on the next start. Update/restore keep a
   guarded file read-only, and the client ignores a removed write bit on a
   file tracked writable, so the guard never shows in status or reaches the

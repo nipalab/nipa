@@ -6,6 +6,10 @@
 #include "core/locks/readonly_guard.h"
 #include "fake_daemon.h"
 
+#ifndef _WIN32
+#include <unistd.h>
+#endif
+
 namespace fs = std::filesystem;
 using nipa::locks::ReadOnlyGuard;
 
@@ -64,17 +68,26 @@ TEST_CASE("guard makes a locked unit read-only and restores it on release") {
     CHECK_FALSE(fs::exists(clone.state()));
 }
 
-TEST_CASE("guard covers every file under a directory lock but never .nipa") {
+TEST_CASE("guard covers every file under a directory lock but never .nipa or .godot") {
     Clone clone;
     clone.write("levels/one.tscn");
     clone.write("levels/sub/two.tscn");
     clone.write(".nipa/config");
+    clone.write("game/main.tscn");
+    clone.write("game/.godot/imported/a.ctex");
+    clone.write("game/.godot/editor/state.cfg");
 
     ReadOnlyGuard guard(clone.root, "");
-    auto result = guard.apply({"levels", ".nipa", "", "missing.png"});
+    auto result = guard.apply({"levels", ".nipa", "", "missing.png", "game/.godot/imported/a.ctex"});
     CHECK(guard.guarded() == std::set<std::string>{"levels/one.tscn", "levels/sub/two.tscn"});
     CHECK(result.guarded.size() == 2);
     CHECK(clone.writable(".nipa/config"));
+    CHECK(clone.writable("game/.godot/imported/a.ctex"));
+
+    guard.apply({"game"});
+    CHECK(guard.guarded() == std::set<std::string>{"game/main.tscn"});
+    CHECK(clone.writable("game/.godot/imported/a.ctex"));
+    CHECK(clone.writable("game/.godot/editor/state.cfg"));
 
     guard.apply({"levels/one.tscn"});
     CHECK(clone.writable("levels/sub/two.tscn"));
@@ -146,3 +159,32 @@ TEST_CASE("guard ignores a missing or malformed state file") {
     memory.load();
     CHECK(memory.guarded().empty());
 }
+
+#ifndef _WIN32
+TEST_CASE("a failed release keeps the file guarded so a later pass retries") {
+    const fs::path foreign("/etc/hostname");
+    std::error_code error;
+    if (getuid() == 0 || !fs::is_regular_file(foreign, error)) {
+        return;
+    }
+    Clone clone;
+    clone.write("a.png");
+    ReadOnlyGuard guard(clone.root, clone.state());
+    guard.apply({"a.png"});
+
+    fs::remove(fs::path(clone.root) / "a.png");
+    fs::create_symlink(foreign, fs::path(clone.root) / "a.png");
+    auto result = guard.release_all();
+    CHECK(result.failed == std::vector<std::string>{"a.png"});
+    CHECK(result.released.empty());
+    CHECK(guard.guarded() == std::set<std::string>{"a.png"});
+
+    ReadOnlyGuard reloaded(clone.root, clone.state());
+    reloaded.load();
+    CHECK(reloaded.guarded() == std::set<std::string>{"a.png"});
+
+    fs::remove(fs::path(clone.root) / "a.png");
+    CHECK(guard.release_all().failed.empty());
+    CHECK(guard.guarded().empty());
+}
+#endif
