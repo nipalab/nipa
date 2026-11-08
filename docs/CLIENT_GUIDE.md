@@ -64,7 +64,8 @@ nipa update
 `nipa clone <url> <target>`:
 
 - URL format: `[scheme://]host[:port]/<org>/<project>[/<path>]`.
-- `-b, --branch <name>` selects the starting branch (default `main`).
+- `-b, --branch <name>` selects the starting branch (default: the
+  project's default branch).
 - `--sparse <prefix,...>` checks out only the given directory prefixes
   (repeatable, comma separated). A URL path (`.../project/assets`) also acts as
   a sparse prefix.
