@@ -33,9 +33,11 @@ WHERE id = sqlc.arg(id) AND deleted = FALSE;
 INSERT INTO project_chunk_uploads (project_id, hash) VALUES (sqlc.arg(project_id), sqlc.arg(hash))
 ON CONFLICT (project_id, hash) DO NOTHING;
 
--- name: ProjectChunkUploadList :many
-SELECT hash FROM project_chunk_uploads
-WHERE project_id = sqlc.arg(project_id) AND hash = ANY(sqlc.arg(hashes)::bytea[]);
+-- name: ProjectChunkLinkedSizes :many
+SELECT c.hash, c.size_bytes
+FROM chunks c
+JOIN project_chunk_uploads u ON u.hash = c.hash
+WHERE u.project_id = sqlc.arg(project_id) AND c.hash = ANY(sqlc.arg(hashes)::bytea[]);
 
 -- name: ChunkListByHashesForProject :many
 SELECT c.id, c.hash

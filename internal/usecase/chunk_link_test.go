@@ -43,8 +43,8 @@ func TestChunk_Presign_NeverOffersToWriteStoredContent(t *testing.T) {
 	store.data[linked] = linkedData
 	store.data[foreign] = foreignData
 	uc, repo := newLinkFixture(t, store)
-	repo.EXPECT().LinkedProjectChunks(gomock.Any(), testProject.ID, []domain.Hash{linked, foreign, fresh}).
-		Return(map[domain.Hash]bool{linked: true}, nil)
+	repo.EXPECT().LinkedProjectChunkSizes(gomock.Any(), testProject.ID, []domain.Hash{linked, foreign, fresh}).
+		Return(map[domain.Hash]int64{linked: int64(len(linkedData))}, nil)
 
 	urls, _, err := uc.PresignUploadURLs(ctx, testOrg, testProject, []ChunkRef{
 		{Hash: linked, SizeBytes: int64(len(linkedData))},
@@ -68,26 +68,24 @@ func TestChunk_Presign_NeverOffersToWriteStoredContent(t *testing.T) {
 	require.NoError(t, chunkproof.VerifyChallenge(linkTestKey, testProject.ID, fresh, urls[2].ProofChallenge, uc.now()))
 }
 
-func TestChunk_Presign_LinkedButMissingObjectIsUploadedAgain(t *testing.T) {
-	data := []byte("lost object")
+func TestChunk_Presign_LinkedChunksSkipTheStore(t *testing.T) {
+	data := []byte("linked object")
 	hash := chunker.Sum(data)
-	store := &stubDirectChunkStore{
-		stubChunkStore: newStubChunkStore(),
-		uploadTarget:   storage.UploadTarget{URL: "https://s3.example.com/put"},
-	}
+	store := &stubChunkStore{data: map[domain.Hash][]byte{}, existsErr: errors.New("store must not be asked")}
 	uc, repo := newLinkFixture(t, store)
-	repo.EXPECT().LinkedProjectChunks(gomock.Any(), testProject.ID, gomock.Any()).Return(map[domain.Hash]bool{hash: true}, nil)
+	repo.EXPECT().LinkedProjectChunkSizes(gomock.Any(), testProject.ID, gomock.Any()).Return(map[domain.Hash]int64{hash: int64(len(data))}, nil)
 
 	urls, _, err := uc.PresignUploadURLs(context.Background(), testOrg, testProject, []ChunkRef{{Hash: hash, SizeBytes: int64(len(data))}}, 10, "")
 	require.NoError(t, err)
-	require.False(t, urls[0].AlreadyStored)
-	require.NotEmpty(t, urls[0].URL)
+	require.True(t, urls[0].AlreadyStored)
+	require.Empty(t, urls[0].URL)
+	require.Empty(t, urls[0].ProofChallenge)
 }
 
 func TestChunk_Presign_ExistsCheckError(t *testing.T) {
 	store := &stubChunkStore{data: map[domain.Hash][]byte{}, existsErr: errors.New("boom")}
 	uc, repo := newLinkFixture(t, store)
-	repo.EXPECT().LinkedProjectChunks(gomock.Any(), testProject.ID, gomock.Any()).Return(map[domain.Hash]bool{}, nil)
+	repo.EXPECT().LinkedProjectChunkSizes(gomock.Any(), testProject.ID, gomock.Any()).Return(map[domain.Hash]int64{}, nil)
 
 	_, _, err := uc.PresignUploadURLs(context.Background(), testOrg, testProject,
 		[]ChunkRef{{Hash: chunker.Sum([]byte("x")), SizeBytes: 1}}, 10, "")
@@ -96,7 +94,7 @@ func TestChunk_Presign_ExistsCheckError(t *testing.T) {
 
 func TestChunk_Presign_LinkLookupError(t *testing.T) {
 	uc, repo := newLinkFixture(t, newStubChunkStore())
-	repo.EXPECT().LinkedProjectChunks(gomock.Any(), testProject.ID, gomock.Any()).Return(nil, errors.New("boom"))
+	repo.EXPECT().LinkedProjectChunkSizes(gomock.Any(), testProject.ID, gomock.Any()).Return(nil, errors.New("boom"))
 
 	_, _, err := uc.PresignUploadURLs(context.Background(), testOrg, testProject,
 		[]ChunkRef{{Hash: chunker.Sum([]byte("x")), SizeBytes: 1}}, 10, "")
@@ -120,8 +118,8 @@ func TestChunk_ConfirmUploads_LinksOnlyWithAValidProof(t *testing.T) {
 		store := newStubChunkStore()
 		store.data[hash] = data
 		uc, repo := newLinkFixture(t, store)
-		repo.EXPECT().LinkedProjectChunks(gomock.Any(), testProject.ID, gomock.Any()).
-			Return(map[domain.Hash]bool{}, nil)
+		repo.EXPECT().LinkedProjectChunkSizes(gomock.Any(), testProject.ID, gomock.Any()).
+			Return(map[domain.Hash]int64{}, nil)
 		return uc, repo
 	}
 
@@ -179,7 +177,7 @@ func TestChunk_ConfirmUploads_LinksOnlyWithAValidProof(t *testing.T) {
 
 	t.Run("a missing object cannot be proven", func(t *testing.T) {
 		uc, repo := newLinkFixture(t, newStubChunkStore())
-		repo.EXPECT().LinkedProjectChunks(gomock.Any(), testProject.ID, gomock.Any()).Return(map[domain.Hash]bool{}, nil)
+		repo.EXPECT().LinkedProjectChunkSizes(gomock.Any(), testProject.ID, gomock.Any()).Return(map[domain.Hash]int64{}, nil)
 		missing, err := uc.ConfirmUploads(ctx, testOrg, testProject, []domain.Hash{hash}, []ChunkProof{proofFor(t, uc, hash, data)})
 		require.NoError(t, err)
 		require.Equal(t, []domain.Hash{hash}, missing)
@@ -188,7 +186,7 @@ func TestChunk_ConfirmUploads_LinksOnlyWithAValidProof(t *testing.T) {
 	t.Run("read errors surface", func(t *testing.T) {
 		store := &stubChunkStore{data: map[domain.Hash][]byte{hash: data}, getErr: errors.New("disk down")}
 		uc, repo := newLinkFixture(t, store)
-		repo.EXPECT().LinkedProjectChunks(gomock.Any(), testProject.ID, gomock.Any()).Return(map[domain.Hash]bool{}, nil)
+		repo.EXPECT().LinkedProjectChunkSizes(gomock.Any(), testProject.ID, gomock.Any()).Return(map[domain.Hash]int64{}, nil)
 		_, err := uc.ConfirmUploads(ctx, testOrg, testProject, []domain.Hash{hash}, []ChunkProof{proofFor(t, uc, hash, data)})
 		require.Error(t, err)
 	})
@@ -203,7 +201,7 @@ func TestChunk_ConfirmUploads_LinksOnlyWithAValidProof(t *testing.T) {
 
 	t.Run("lookup error", func(t *testing.T) {
 		uc, repo := newLinkFixture(t, newStubChunkStore())
-		repo.EXPECT().LinkedProjectChunks(gomock.Any(), testProject.ID, gomock.Any()).Return(nil, errors.New("boom"))
+		repo.EXPECT().LinkedProjectChunkSizes(gomock.Any(), testProject.ID, gomock.Any()).Return(nil, errors.New("boom"))
 		_, err := uc.ConfirmUploads(ctx, testOrg, testProject, []domain.Hash{hash}, nil)
 		require.EqualError(t, err, "boom")
 	})
@@ -212,9 +210,8 @@ func TestChunk_ConfirmUploads_LinksOnlyWithAValidProof(t *testing.T) {
 		store := newStubChunkStore()
 		store.data[hash] = data
 		uc, repo := newLinkFixture(t, store)
-		repo.EXPECT().LinkedProjectChunks(gomock.Any(), testProject.ID, gomock.Any()).
-			Return(map[domain.Hash]bool{hash: true}, nil)
-		repo.EXPECT().InsertChunkIfNotExists(gomock.Any(), hash, int64(len(data))).Return(nil)
+		repo.EXPECT().LinkedProjectChunkSizes(gomock.Any(), testProject.ID, gomock.Any()).
+			Return(map[domain.Hash]int64{hash: int64(len(data))}, nil)
 
 		missing, err := uc.ConfirmUploads(ctx, testOrg, testProject, []domain.Hash{hash}, nil)
 		require.NoError(t, err)
@@ -230,7 +227,7 @@ func TestChunk_ConfirmUploads_DirectStoreVerifiesWhatClientsWrote(t *testing.T) 
 	setup := func(t *testing.T) (*Chunk, *MockchunkRepository, *stubDirectChunkStore) {
 		store := &stubDirectChunkStore{stubChunkStore: newStubChunkStore()}
 		uc, repo := newLinkFixture(t, store)
-		repo.EXPECT().LinkedProjectChunks(gomock.Any(), testProject.ID, gomock.Any()).Return(map[domain.Hash]bool{}, nil)
+		repo.EXPECT().LinkedProjectChunkSizes(gomock.Any(), testProject.ID, gomock.Any()).Return(map[domain.Hash]int64{}, nil)
 		return uc, repo, store
 	}
 
@@ -333,7 +330,7 @@ func TestChunk_ConfirmUploads_LinkedChunksAreVerifiedWhenProven(t *testing.T) {
 			store.data[hash] = stored
 		}
 		uc, repo := newLinkFixture(t, store)
-		repo.EXPECT().LinkedProjectChunks(gomock.Any(), testProject.ID, gomock.Any()).Return(map[domain.Hash]bool{hash: true}, nil)
+		repo.EXPECT().LinkedProjectChunkSizes(gomock.Any(), testProject.ID, gomock.Any()).Return(map[domain.Hash]int64{hash: int64(len(data))}, nil)
 		return uc, repo, store
 	}
 
@@ -366,7 +363,7 @@ func TestChunk_ConfirmUploads_LinkedChunksAreVerifiedWhenProven(t *testing.T) {
 	t.Run("a read error while verifying surfaces", func(t *testing.T) {
 		store := &stubChunkStore{data: map[domain.Hash][]byte{hash: data}, getErr: errors.New("disk down")}
 		uc, repo := newLinkFixture(t, store)
-		repo.EXPECT().LinkedProjectChunks(gomock.Any(), testProject.ID, gomock.Any()).Return(map[domain.Hash]bool{hash: true}, nil)
+		repo.EXPECT().LinkedProjectChunkSizes(gomock.Any(), testProject.ID, gomock.Any()).Return(map[domain.Hash]int64{hash: int64(len(data))}, nil)
 		_, err := uc.ConfirmUploads(ctx, testOrg, testProject, []domain.Hash{hash}, []ChunkProof{proofFor(t, uc, hash, data)})
 		require.Error(t, err)
 	})
@@ -383,7 +380,7 @@ func TestChunk_ConfirmUploads_QuotaFailureLeavesNoLink(t *testing.T) {
 	uc.WithStorageLedger(ledger)
 	quota := domain.NewErrorQuotaExceeded("over quota")
 
-	repo.EXPECT().LinkedProjectChunks(gomock.Any(), testProject.ID, gomock.Any()).Return(map[domain.Hash]bool{}, nil)
+	repo.EXPECT().LinkedProjectChunkSizes(gomock.Any(), testProject.ID, gomock.Any()).Return(map[domain.Hash]int64{}, nil)
 	repo.EXPECT().InsertChunkIfNotExists(gomock.Any(), hash, int64(len(data))).Return(nil)
 	ledger.EXPECT().Attribute(gomock.Any(), testOrg, testProject, []LedgerChunk{{Hash: hash, SizeBytes: int64(len(data))}}).Return(quota)
 	repo.EXPECT().LinkProjectChunks(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
@@ -402,7 +399,7 @@ func TestChunk_ConfirmUploads_LinksAfterAttribution(t *testing.T) {
 	ledger := NewMockStorageLedger(gomock.NewController(t))
 	uc.WithStorageLedger(ledger)
 
-	repo.EXPECT().LinkedProjectChunks(gomock.Any(), testProject.ID, gomock.Any()).Return(map[domain.Hash]bool{}, nil)
+	repo.EXPECT().LinkedProjectChunkSizes(gomock.Any(), testProject.ID, gomock.Any()).Return(map[domain.Hash]int64{}, nil)
 	repo.EXPECT().InsertChunkIfNotExists(gomock.Any(), hash, int64(len(data))).Return(nil)
 	attribute := ledger.EXPECT().Attribute(gomock.Any(), testOrg, testProject, gomock.Any()).Return(nil)
 	repo.EXPECT().LinkProjectChunks(gomock.Any(), testProject.ID, []domain.Hash{hash}).Return(nil).After(attribute)

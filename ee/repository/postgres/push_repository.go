@@ -71,31 +71,31 @@ func (p *PushRepository) LinkProjectChunks(ctx context.Context, projectID snow.I
 
 const linkedChunkBatch = 500
 
-func (p *PushRepository) LinkedProjectChunks(ctx context.Context, projectID snow.ID, hashes []domain.Hash) (map[domain.Hash]bool, error) {
+func (p *PushRepository) LinkedProjectChunkSizes(ctx context.Context, projectID snow.ID, hashes []domain.Hash) (map[domain.Hash]int64, error) {
 	q := sqlcPostgres.New(p.db)
-	linked := make(map[domain.Hash]bool, len(hashes))
+	sizes := make(map[domain.Hash]int64, len(hashes))
 	for start := 0; start < len(hashes); start += linkedChunkBatch {
 		end := min(start+linkedChunkBatch, len(hashes))
 		batch := make([][]byte, 0, end-start)
 		for _, hash := range hashes[start:end] {
 			batch = append(batch, hash.Bytes())
 		}
-		rows, err := q.ProjectChunkUploadList(ctx, sqlcPostgres.ProjectChunkUploadListParams{
+		rows, err := q.ProjectChunkLinkedSizes(ctx, sqlcPostgres.ProjectChunkLinkedSizesParams{
 			ProjectID: projectID.Int64(),
 			Hashes:    batch,
 		})
 		if err != nil {
 			return nil, handleError(err)
 		}
-		for _, raw := range rows {
-			hash, err := domain.HashFromBytes(raw)
+		for _, row := range rows {
+			hash, err := domain.HashFromBytes(row.Hash)
 			if err != nil {
 				return nil, domain.NewErrorDatabase(err.Error())
 			}
-			linked[hash] = true
+			sizes[hash] = row.SizeBytes
 		}
 	}
-	return linked, nil
+	return sizes, nil
 }
 
 func (p *PushRepository) ApplyPush(ctx context.Context, req usecase.ApplyPushRequest) error {

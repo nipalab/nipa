@@ -218,6 +218,69 @@ func TestEndToEnd_UploadThroughput(t *testing.T) {
 	}
 }
 
+// TestEndToEnd_DeltaPush measures re-pushing a large binary after a small
+// in-place edit: only the chunks covering the edit should travel. Skipped
+// unless NIPA_BENCH_MB is set.
+func TestEndToEnd_DeltaPush(t *testing.T) {
+	if testing.Short() {
+		t.Skip("throughput harness skipped in short mode")
+	}
+	sizeMB, err := strconv.Atoi(os.Getenv("NIPA_BENCH_MB"))
+	if err != nil || sizeMB <= 0 {
+		t.Skip("set NIPA_BENCH_MB=<MiB> to run the delta push harness")
+	}
+	size := sizeMB << 20
+	const path = "delta.bin"
+	const editSize = 64 << 10
+
+	ctx := context.Background()
+	host := startTestServer(t, openTestDB(t))
+	grpcClient, auth, counter := newBenchClient(t, host)
+	pusher := clientusecase.NewPush(auth, grpcClient, localrepo.NewLocalRepo())
+
+	dir := cloneWorktree(t, grpcClient, auth, host, "main")
+	writeBenchFile(t, dir, path, size, false)
+	stagePath(t, dir, path)
+
+	start := time.Now()
+	require.NoError(t, pusher.Run(ctx, dir, "delta base"))
+	firstElapsed := time.Since(start)
+	firstPuts, firstBytes := counter.snapshot()
+	chunks := len(benchSnapshotFile(t, dir, path).Chunks)
+	t.Logf("first push: %d MiB in %s chunks=%d puts=%d wire=%.1f MiB",
+		sizeMB, firstElapsed.Round(time.Millisecond), chunks, firstPuts, float64(firstBytes)/(1<<20))
+
+	edit := make([]byte, editSize)
+	for i := range edit {
+		edit[i] = byte(i*7 + 1)
+	}
+	_, err = clientusecase.NewFileLock(auth, grpcClient, localrepo.NewLocalRepo()).Lock(ctx, dir, path, "")
+	require.NoError(t, err)
+	f, err := os.OpenFile(filepath.Join(dir, path), os.O_WRONLY, 0)
+	require.NoError(t, err)
+	_, err = f.WriteAt(edit, int64(size/2))
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+	stagePath(t, dir, path)
+
+	start = time.Now()
+	require.NoError(t, pusher.Run(ctx, dir, "delta edit"))
+	deltaElapsed := time.Since(start)
+	puts, putBytes := counter.snapshot()
+	deltaPuts, deltaBytes := puts-firstPuts, putBytes-firstBytes
+	t.Logf("delta push: %d KiB edit in %d MiB file in %s chunks=%d puts=%d wire=%.1f KiB",
+		editSize>>10, sizeMB, deltaElapsed.Round(time.Millisecond), len(benchSnapshotFile(t, dir, path).Chunks),
+		deltaPuts, float64(deltaBytes)/(1<<10))
+	require.Greater(t, deltaPuts, 0)
+	require.LessOrEqual(t, deltaPuts, 4, "only the chunks covering the edit may be uploaded")
+	require.Less(t, deltaBytes, firstBytes/2)
+
+	checkout := cloneWorktree(t, grpcClient, auth, host, "main")
+	want := hashBenchFile(t, filepath.Join(dir, path))
+	got := hashBenchFile(t, filepath.Join(checkout, path))
+	require.Equal(t, want, got, "cloned bytes must match the edited file")
+}
+
 func benchSnapshotFile(t *testing.T, dir, path string) clientDomain.SnapshotFile {
 	t.Helper()
 	for _, f := range snapshotOf(t, dir).Files {

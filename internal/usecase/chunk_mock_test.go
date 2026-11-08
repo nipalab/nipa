@@ -99,17 +99,17 @@ func (mr *MockchunkRepositoryMockRecorder) LinkProjectChunks(ctx, projectID, has
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LinkProjectChunks", reflect.TypeOf((*MockchunkRepository)(nil).LinkProjectChunks), ctx, projectID, hashes)
 }
 
-// LinkedProjectChunks mocks base method.
-func (m *MockchunkRepository) LinkedProjectChunks(ctx context.Context, projectID snow.ID, hashes []domain.Hash) (map[domain.Hash]bool, error) {
+// LinkedProjectChunkSizes mocks base method.
+func (m *MockchunkRepository) LinkedProjectChunkSizes(ctx context.Context, projectID snow.ID, hashes []domain.Hash) (map[domain.Hash]int64, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "LinkedProjectChunks", ctx, projectID, hashes)
-	ret0, _ := ret[0].(map[domain.Hash]bool)
+	ret := m.ctrl.Call(m, "LinkedProjectChunkSizes", ctx, projectID, hashes)
+	ret0, _ := ret[0].(map[domain.Hash]int64)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// LinkedProjectChunks indicates an expected call of LinkedProjectChunks.
-func (mr *MockchunkRepositoryMockRecorder) LinkedProjectChunks(ctx, projectID, hashes any) *gomock.Call {
+// LinkedProjectChunkSizes indicates an expected call of LinkedProjectChunkSizes.
+func (mr *MockchunkRepositoryMockRecorder) LinkedProjectChunkSizes(ctx, projectID, hashes any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LinkedProjectChunks", reflect.TypeOf((*MockchunkRepository)(nil).LinkedProjectChunks), ctx, projectID, hashes)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LinkedProjectChunkSizes", reflect.TypeOf((*MockchunkRepository)(nil).LinkedProjectChunkSizes), ctx, projectID, hashes)
 }

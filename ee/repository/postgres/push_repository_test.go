@@ -3,6 +3,8 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -346,14 +348,17 @@ func (s *PushRepositorySuite) TestChunkLinks() {
 
 	linked, size, fileHash := chunkRow(s.T(), "linked")
 	other, _, _ := chunkRow(s.T(), "other")
+	rowless, _, _ := chunkRow(s.T(), "rowless")
+	s.Require().NoError(repo.InsertChunkIfNotExists(ctx, linked, size))
 	s.Require().NoError(repo.LinkProjectChunk(ctx, projectID, linked))
 	s.Require().NoError(repo.LinkProjectChunk(ctx, projectID, linked))
+	s.Require().NoError(repo.LinkProjectChunk(ctx, projectID, rowless))
 
-	got, err := repo.LinkedProjectChunks(ctx, projectID, []domain.Hash{linked, other})
+	got, err := repo.LinkedProjectChunkSizes(ctx, projectID, []domain.Hash{linked, other, rowless})
 	s.Require().NoError(err)
-	s.Equal(map[domain.Hash]bool{linked: true}, got)
+	s.Equal(map[domain.Hash]int64{linked: size}, got)
 
-	got, err = repo.LinkedProjectChunks(ctx, snow.ID(999), []domain.Hash{linked})
+	got, err = repo.LinkedProjectChunkSizes(ctx, snow.ID(999), []domain.Hash{linked})
 	s.Require().NoError(err)
 	s.Empty(got)
 
@@ -378,15 +383,46 @@ func (s *PushRepositorySuite) TestLinkProjectChunksBatch() {
 	ctx := context.Background()
 	repo, _, projectID, _ := s.newPushTestEnv()
 
-	first, _, _ := chunkRow(s.T(), "first")
-	second, _, _ := chunkRow(s.T(), "second")
+	first, firstSize, _ := chunkRow(s.T(), "first")
+	second, secondSize, _ := chunkRow(s.T(), "second")
+	s.Require().NoError(repo.InsertChunkIfNotExists(ctx, first, firstSize))
+	s.Require().NoError(repo.InsertChunkIfNotExists(ctx, second, secondSize))
 	s.Require().NoError(repo.LinkProjectChunks(ctx, projectID, nil))
 	s.Require().NoError(repo.LinkProjectChunk(ctx, projectID, first))
 	s.Require().NoError(repo.LinkProjectChunks(ctx, projectID, []domain.Hash{first, second}))
 
-	got, err := repo.LinkedProjectChunks(ctx, projectID, []domain.Hash{first, second})
+	got, err := repo.LinkedProjectChunkSizes(ctx, projectID, []domain.Hash{first, second})
 	s.Require().NoError(err)
-	s.Equal(map[domain.Hash]bool{first: true, second: true}, got)
+	s.Equal(map[domain.Hash]int64{first: firstSize, second: secondSize}, got)
+}
+
+func (s *PushRepositorySuite) TestLinkedProjectChunkSizesBatches() {
+	ctx := context.Background()
+	repo, _, projectID, _ := s.newPushTestEnv()
+
+	total := 2*linkedChunkBatch + 10
+	hashes := make([]domain.Hash, 0, total+1)
+	want := make(map[domain.Hash]int64, total)
+	for i := 0; i < total; i++ {
+		hash, size, _ := chunkRow(s.T(), fmt.Sprintf("chunk-%d-%s", i, strings.Repeat("x", i%7)))
+		s.Require().NoError(repo.InsertChunkIfNotExists(ctx, hash, size))
+		hashes = append(hashes, hash)
+		if i%5 == 0 {
+			continue
+		}
+		want[hash] = size
+	}
+	linkable := make([]domain.Hash, 0, len(want))
+	for hash := range want {
+		linkable = append(linkable, hash)
+	}
+	s.Require().NoError(repo.LinkProjectChunks(ctx, projectID, linkable))
+	unknown, _, _ := chunkRow(s.T(), "unknown")
+	hashes = append(hashes, unknown)
+
+	got, err := repo.LinkedProjectChunkSizes(ctx, projectID, hashes)
+	s.Require().NoError(err)
+	s.Equal(want, got)
 }
 
 func (s *PushRepositorySuite) TestIdenticalRootCommitInTwoProjects() {
