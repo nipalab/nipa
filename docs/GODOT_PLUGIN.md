@@ -113,7 +113,7 @@ Settings:
     | Check | Fix |
     |---|---|
     | `editor/version_control/plugin_name = "NipaVCSInterface"` and `autoload_on_startup = true` | "Use NipaVCSInterface" sets both and saves `project.godot` (restart the editor to load it) |
-    | `.nipaignore` exists at the clone root and ignores the project's `.godot/` | "Create .nipaignore" / "Add Godot patterns" appends the missing template lines (below), never duplicating one |
+    | `.nipaignore` exists at the clone root and ignores the project's `.godot/` | "Create .nipaignore" / "Add Godot patterns" appends the missing template lines (below), never duplicating one; when a later rule re-includes `.godot/` (e.g. `!.godot/`), it also appends an anchored `/<project>/.godot/` rule, which wins as the last match |
     | `.godot/` is not versioned | staged `.godot/` files: "Unstage them"; untracked ones: "Add Godot patterns"; versioned on the server: instructions only |
     | Sidecar warnings (`MetaWarnings{engine: "godot"}`) | "Stage sidecars" stages the `sidecar-not-staged` paths |
     | Daemon version against the connector minimum, plugin version, which `nipa` binary would be started | — |

@@ -41,6 +41,13 @@ std::vector<std::string> missing_ignore_lines(const std::string& content, const 
 // `content` with the missing lines appended, keeping its line endings.
 std::string merge_ignore(const std::string& content, const std::vector<std::string>& wanted);
 
+// `content` with `lines` appended, keeping its line endings.
+std::string append_lines(const std::string& content, const std::vector<std::string>& lines);
+
+// The template merged in; when a later rule still re-includes the project's
+// `.godot/`, an anchored `/<project>/.godot/` rule is appended (last match wins).
+std::string complete_ignore(const std::string& content, const std::string& project_prefix);
+
 // True when the project's `.godot/` folder is ignored by `content`.
 bool ignores_godot_dir(const std::string& content, const std::string& project_prefix);
 

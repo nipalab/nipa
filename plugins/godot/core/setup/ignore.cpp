@@ -184,9 +184,8 @@ std::vector<std::string> missing_ignore_lines(const std::string& content, const 
     return out;
 }
 
-std::string merge_ignore(const std::string& content, const std::vector<std::string>& wanted) {
-    auto missing = missing_ignore_lines(content, wanted);
-    if (missing.empty()) {
+std::string append_lines(const std::string& content, const std::vector<std::string>& lines) {
+    if (lines.empty()) {
         return content;
     }
     std::string eol = content.find("\r\n") != std::string::npos ? "\r\n" : "\n";
@@ -194,10 +193,22 @@ std::string merge_ignore(const std::string& content, const std::vector<std::stri
     if (!out.empty() && out.back() != '\n') {
         out += eol;
     }
-    for (const auto& line : missing) {
+    for (const auto& line : lines) {
         out += line + eol;
     }
     return out;
+}
+
+std::string merge_ignore(const std::string& content, const std::vector<std::string>& wanted) {
+    return append_lines(content, missing_ignore_lines(content, wanted));
+}
+
+std::string complete_ignore(const std::string& content, const std::string& project_prefix) {
+    std::string merged = merge_ignore(content, ignore_template(project_prefix));
+    if (ignores_godot_dir(merged, project_prefix)) {
+        return merged;
+    }
+    return append_lines(merged, {"/" + godot_dir(project_prefix) + "/"});
 }
 
 std::string godot_dir(const std::string& project_prefix) {
@@ -221,7 +232,7 @@ WriteResult write_ignore(const std::string& clone_root, const std::string& proje
     WriteResult result;
     auto existing = read_ignore(clone_root);
     std::string content = existing.value_or(std::string());
-    std::string merged = merge_ignore(content, ignore_template(project_prefix));
+    std::string merged = complete_ignore(content, project_prefix);
     if (existing && merged == content) {
         result.ok = true;
         return result;

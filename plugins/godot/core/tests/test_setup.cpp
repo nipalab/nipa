@@ -146,6 +146,29 @@ TEST_CASE("write_ignore creates, completes and then leaves .nipaignore alone") {
     std::filesystem::remove_all(dir);
 }
 
+TEST_CASE("the ignore fix overrides a rule that re-includes .godot") {
+    std::string negated = ".godot/\n!.godot/\n";
+    CHECK_FALSE(ignores_godot_dir(negated, ""));
+    auto fixed = complete_ignore(negated, "");
+    CHECK(fixed.rfind(negated, 0) == 0);
+    CHECK(fixed.substr(fixed.size() - 9) == "/.godot/\n");
+    CHECK(ignores_godot_dir(fixed, ""));
+    CHECK(complete_ignore(fixed, "") == fixed);
+    CHECK(ignores_godot_dir(complete_ignore("!game/.godot/\n", "game"), "game"));
+    CHECK(complete_ignore("!game/.godot/\n", "game").find("/game/.godot/\n") == std::string::npos);
+
+    auto dir = std::filesystem::path(nipa::test::make_temp_dir());
+    write_file(dir / kIgnoreFile, std::string(".godot/\r\n!.godot/\r\n/android/\r\n*.tmp\r\nexport_credentials.cfg\r\n") +
+                                      ".mono/\r\nmono_crash.*.json\r\ndata_*/\r\n");
+    auto result = write_ignore(dir.string(), "");
+    CHECK(result.changed);
+    auto content = read_file(dir / kIgnoreFile);
+    CHECK(content.substr(content.size() - 10) == "/.godot/\r\n");
+    CHECK(ignores_godot_dir(content, ""));
+    CHECK_FALSE(write_ignore(dir.string(), "").changed);
+    std::filesystem::remove_all(dir);
+}
+
 TEST_CASE("meta warnings parse and only unstaged sidecars are stageable") {
     auto warnings = parse_meta_warnings(json::parse(R"({"warnings":[
         {"path":"a.png.import","kind":"sidecar-not-staged","related":"a.png","message":"is not staged"},
