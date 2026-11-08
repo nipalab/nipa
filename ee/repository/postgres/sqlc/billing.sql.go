@@ -274,7 +274,6 @@ INSERT INTO billing_subscriptions (
     $10, now()
 )
 ON CONFLICT (provider_subscription_id) DO UPDATE SET
-    user_id = EXCLUDED.user_id,
     plan = EXCLUDED.plan,
     status = EXCLUDED.status,
     interval = EXCLUDED.interval,
@@ -284,7 +283,8 @@ ON CONFLICT (provider_subscription_id) DO UPDATE SET
     cancel_at_period_end = EXCLUDED.cancel_at_period_end,
     provider_updated_at = EXCLUDED.provider_updated_at,
     updated_at = now()
-WHERE billing_subscriptions.provider_updated_at < EXCLUDED.provider_updated_at
+WHERE billing_subscriptions.user_id = EXCLUDED.user_id
+  AND billing_subscriptions.provider_updated_at < EXCLUDED.provider_updated_at
 `
 
 type UpsertSubscriptionParams struct {

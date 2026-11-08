@@ -171,7 +171,7 @@ func (s *billingSuite) TestHandleEvent_DedupAndCustomerFallback() {
 	s.NoError(s.service.HandleEvent(ctx, event), "an unknown customer is a permanent failure")
 	stored, err := s.repo.Event(ctx, "evt_pg")
 	s.Require().NoError(err)
-	s.Equal("event names no known user", stored.Error)
+	s.Equal("event customer has no billing account", stored.Error)
 
 	s.Require().NoError(s.repo.InsertAccount(ctx, domain.BillingAccount{UserID: owner, Provider: "stub", ProviderCustomerID: "ctm_pg"}))
 	s.NoError(s.service.HandleEvent(ctx, event))

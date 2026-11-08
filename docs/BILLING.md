@@ -191,8 +191,10 @@ or origin filter (`billing.WebhookService`).
 - **Event types.** `subscription.created`, `updated`, `trialing`,
   `activated`, `past_due`, `paused`, `resumed` and `canceled` are applied.
   Every other type is stored and marked processed.
-- **User resolution.** The user comes from `custom_data.user_id` (base36),
-  falling back to the account holding the event's `customer_id`.
+- **User resolution.** The user is the owner of the `billing_accounts` row
+  holding the event's `customer_id`; `custom_data.user_id` (base36) is only a
+  cross-check. An unknown customer or a differing `user_id` is a permanent
+  failure, and a subscription row never changes its `user_id`.
 - **Ordering.** `Apply` upserts by `provider_subscription_id` only when the
   event's `updated_at` is newer than the stored one, so late or reordered
   deliveries are dropped. Entitlements always come from the live

@@ -18,6 +18,10 @@ func activatedEvent(id string) Event {
 func eventService(userID snow.ID, customerID string) (*Service, *stubRepo, *stubLedger, *stubProvider) {
 	svc, repo, ledger, provider := newProviderService()
 	repo.users = map[snow.ID]*domain.BillingUser{payer: {ID: payer}}
+	repo.accounts = map[snow.ID]*domain.BillingAccount{payer: {UserID: payer, Provider: "stub", ProviderCustomerID: "ctm_1"}}
+	if customerID == "" {
+		customerID = "ctm_1"
+	}
 	provider.carried = &EventSubscription{
 		Subscription: Subscription{ProviderSubscriptionID: "sub_1", UserID: userID, Status: StatusActive, Seats: 5, ProviderUpdatedAt: at(1)},
 		CustomerID:   customerID,
@@ -54,7 +58,6 @@ func TestHandleEvent_RetriesAnUnfinishedDuplicate(t *testing.T) {
 
 func TestHandleEvent_FallsBackToCustomer(t *testing.T) {
 	svc, repo, _, _ := eventService(0, "ctm_1")
-	repo.accounts = map[snow.ID]*domain.BillingAccount{payer: {UserID: payer, Provider: "stub", ProviderCustomerID: "ctm_1"}}
 
 	require.NoError(t, svc.HandleEvent(context.Background(), activatedEvent("evt_1")))
 	require.Equal(t, payer, repo.upserted[0].UserID)
@@ -62,9 +65,13 @@ func TestHandleEvent_FallsBackToCustomer(t *testing.T) {
 
 func TestHandleEvent_PermanentFailuresAreStored(t *testing.T) {
 	cases := map[string]func(*stubRepo, *stubProvider){
-		"no user":       func(_ *stubRepo, p *stubProvider) { p.carried.Subscription.UserID = 0 },
+		"no customer": func(_ *stubRepo, p *stubProvider) { p.carried.CustomerID = "" },
+		"mismatch": func(r *stubRepo, p *stubProvider) {
+			p.carried.Subscription.UserID = 99
+			r.users[99] = &domain.BillingUser{ID: 99}
+		},
 		"unknown cust":  func(_ *stubRepo, p *stubProvider) { p.carried.Subscription.UserID = 0; p.carried.CustomerID = "ctm_x" },
-		"unknown user":  func(_ *stubRepo, p *stubProvider) { p.carried.Subscription.UserID = 99 },
+		"unknown user":  func(r *stubRepo, _ *stubProvider) { delete(r.users, payer) },
 		"deleted user":  func(r *stubRepo, _ *stubProvider) { r.users[payer].Deleted = true },
 		"unmappable":    func(_ *stubRepo, p *stubProvider) { p.carriedErr = domain.NewErrorUser("unknown price") },
 		"invalid apply": func(_ *stubRepo, p *stubProvider) { p.carried.Subscription.ProviderSubscriptionID = "" },
@@ -151,4 +158,25 @@ func TestReplay(t *testing.T) {
 	repo.markErr = errors.New("boom")
 	_, err = svc.Replay(ctx, "evt_bad")
 	require.Error(t, err)
+}
+
+func TestHandleEvent_CustomDataCannotRedirectToAnotherUser(t *testing.T) {
+	victim := snow.ID(77)
+	attacker := payer
+	svc, repo, _, _ := eventService(victim, "ctm_attacker")
+	repo.users[victim] = &domain.BillingUser{ID: victim}
+	repo.accounts = map[snow.ID]*domain.BillingAccount{attacker: {UserID: attacker, Provider: "stub", ProviderCustomerID: "ctm_attacker"}}
+
+	require.NoError(t, svc.HandleEvent(context.Background(), activatedEvent("evt_x")))
+	require.Empty(t, repo.upserted)
+	require.Nil(t, repo.events["evt_x"].ProcessedAt)
+	require.NotEmpty(t, repo.events["evt_x"].Error)
+}
+
+func TestHandleEvent_UnknownCustomerWithCustomDataIsRejected(t *testing.T) {
+	svc, repo, _, _ := eventService(payer, "ctm_unknown")
+
+	require.NoError(t, svc.HandleEvent(context.Background(), activatedEvent("evt_x")))
+	require.Empty(t, repo.upserted)
+	require.NotEmpty(t, repo.events["evt_x"].Error)
 }
