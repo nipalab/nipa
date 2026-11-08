@@ -201,15 +201,25 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   `Event.data`/`bytes`, surfaced by `NipaRequest.get_result()`), `conflicts`
   (conflict set, per-file actions, `merge_tool` command split/substitution),
   `history` (tags, pages, `nipa://` commit links), `preview` (stream
-  assembler) and events; tested with doctest against `core/tests/fake_daemon`, gcovr gate
+  assembler), `setup` (setup checker rows, `.nipaignore` Godot template merge
+  and gitignore-subset matcher, `MetaWarnings` parsing; the session's
+  `submit_setup_check` adds the `.godot/` probe via status + non-recursive
+  `ProxyTreeManifest` and `submit_meta_warnings` feeds `warnings_changed`),
+  `decor` (FileSystem dock color/tooltip per status and lock, folder
+  summaries) and events; tested with doctest against `core/tests/fake_daemon`, gcovr gate
   80%, `make godot-test`). `extension/` is the godot-cpp GDExtension
   (`NipaVCSInterface` extends `EditorVCSInterface`, singleton `Nipa` =
   `NipaSession`, `NipaRequest`; editor-only, `make godot-build`). `addons/nipa/`
   holds the GDScript `EditorPlugin` (auto-lock on edit, save warnings, lock
-  refresh on focus/timer), `settings.gd` (`nipa/locking/*`, `nipa/merge_tool`),
+  refresh on focus/timer, Project › Tools › Nipa: Setup checker...),
+  `settings.gd` (`nipa/locking/*`, `nipa/merge_tool`,
+  `nipa/decorate_filesystem_dock`), `filesystem_decorator.gd` (opt-in,
+  version/shape-guarded colors and tooltips on the FileSystem dock's own
+  Tree/ItemList, restored on disable),
   `context_menu.gd` (FileSystem/scene-tab Lock/Unlock, History, Compare with
   last pushed), `inspector_plugin.gd`, and the dock (branch/tag switcher,
-  Merge branch..., detached-tag and pending merge/revert banners),
+  Merge branch..., detached-tag, pending merge/revert and sidecar banners),
+  `setup_checker`/`setup_row` scenes,
   `bottom_panel` (Locks, Conflicts, History, Image diff tab scenes) and
   `lock_badge` scenes; `_commit` runs the lock pre-check and refuses while
   detached at a tag. The client treats a removed write bit on a file tracked writable as
@@ -217,6 +227,13 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   into status or pushes.
   `tests/project` is the headless smoke project (`check_load.gd`) and the
   vendored gdUnit4 spec. Vendored code and versions: `plugins/godot/thirdparty/README.md`.
+  `make godot-pack` (`plugins/godot/tools/pack.sh`) builds a reproducible
+  `bin/nipa-godot-vX.Y.Z.zip` from `addons/nipa` with whatever libraries exist;
+  `.github/workflows/godot-release.yml` (tag `godot-v*`) builds Windows MSVC,
+  Linux x86_64/arm64 and macOS universal libraries (names must match
+  `nipa.gdextension`; optional companion `nipa` CLI, macOS signing/notarization
+  gated on secrets), smoke-loads the zip in Godot 4.4 and attaches it to the
+  release with `--latest=false` (the desktop updater owns `releases/latest`).
 Flow for `nipa clone <url> <target>`: `cli/clone.go` parses the URL →
 `usecase.Repo.Clone` → ensure empty target → login → resolve default branch (or
 `GetBranchByName` when a branch is given) → fetch tree manifest (gRPC

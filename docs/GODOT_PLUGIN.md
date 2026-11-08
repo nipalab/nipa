@@ -18,20 +18,32 @@ the `.uid` sidecar files that the plugin must track. Godot 3 is out of scope.
 
 ## Install
 
-Phase 1 is a local copy. Nothing is published to the Asset Library yet.
-
 1. Install the `nipa` CLI (`make build-client`, or a release build) and make
    sure the clone you work in was made with it (`nipa clone`).
-2. Get the add-on folder: `addons/nipa/` from this repository, with the
-   editor library in `addons/nipa/bin/<platform>/`. Build it from a checkout
-   with `make godot-build` (CMake ≥ 3.24, a C++17 compiler; godot-cpp 4.4 is
-   fetched), or copy a prebuilt library into place.
-3. Copy `addons/nipa/` into your Godot project's `addons/` folder, or link it
-   (`ln -s`), then restart the editor.
-4. Enable it in **Project › Project Settings › Plugins** ("Nipa").
-5. Pick the native VCS in **Project › Version Control › Plugin Name**:
-   `NipaVCSInterface`, and enable autoload on startup. The Nipa dock appears on
-   the right-hand side.
+2. Get the add-on, one of:
+   - **Release zip:** download `nipa-godot-vX.Y.Z.zip` from the GitHub
+     release tagged `godot-vX.Y.Z`. It holds
+     `nipa-godot-vX.Y.Z/addons/nipa/` with the editor libraries for Windows
+     x86_64, Linux x86_64 and arm64, and macOS (universal). Copy its `addons/`
+     folder into your project. In the editor's **AssetLib › Import...**, keep
+     "Ignore asset root" on so the files land in `res://addons/nipa/`.
+   - **Asset Library:** search for "Nipa" in the AssetLib tab and install it
+     (same zip).
+   - **From source:** `make godot-build` (CMake ≥ 3.24, a C++17 compiler;
+     godot-cpp 4.4 is fetched) writes the host library into
+     `addons/nipa/bin/<platform>/`; copy or link (`ln -s`) `addons/nipa/` into
+     your project. `make godot-pack` zips whatever libraries are present.
+3. Restart the editor and enable the add-on in **Project › Project Settings ›
+   Plugins** ("Nipa").
+4. Open **Project › Tools › Nipa: Setup checker...** and apply what it offers
+   (it selects `NipaVCSInterface` with autoload, see Setup checker below), then
+   restart the editor. The Nipa dock appears on the right-hand side.
+
+The add-on finds the `nipa` binary in this order: the `nipa/binary_path`
+editor setting, `NIPA_BIN`, a `nipa` (`nipa.exe`) next to the editor library in
+`addons/nipa/bin/<platform>/`, then `PATH`. Release zips can carry that
+companion CLI (an opt-in of the release workflow); otherwise install the CLI
+yourself.
 
 The project folder can be the clone root or a subfolder of it (the folder that
 holds `project.godot`). The add-on looks up `.nipa/config` up to 32 parents.
@@ -42,6 +54,7 @@ Settings:
 |---|---|---|
 | `nipa/binary_path` | Editor Settings (per user) | empty, which means `NIPA_BIN`, then the library folder, then `PATH` |
 | `nipa/merge_tool` | Editor Settings (per user) | empty; e.g. `meld $LOCAL $BASE $REMOTE -o $MERGED` |
+| `nipa/decorate_filesystem_dock` | Editor Settings (per user) | false |
 | `nipa/poll_interval_sec` | Project Settings (shared) | 60, clamped to 15–3600 |
 | `nipa/locking/auto_lock_on_edit` | Project Settings (shared) | true |
 | `nipa/locking/strict_read_only` | Project Settings (shared) | false |
@@ -92,7 +105,43 @@ Settings:
     History, Conflicts): both sides side by side, changed-pixel statistics and
     a threshold slider.
 
-Not yet: the Activity tab, the setup checker and FileSystem dock decoration.
+- **Setup and distribution** (Phase 4):
+  - **Setup checker** (Project › Tools › Nipa: Setup checker..., or the dock's
+    sidecar banner): one row per check with a one-click fix where one exists.
+    Nothing is written until you click a fix, and every fix is idempotent.
+
+    | Check | Fix |
+    |---|---|
+    | `editor/version_control/plugin_name = "NipaVCSInterface"` and `autoload_on_startup = true` | "Use NipaVCSInterface" sets both and saves `project.godot` (restart the editor to load it) |
+    | `.nipaignore` exists at the clone root and ignores the project's `.godot/` | "Create .nipaignore" / "Add Godot patterns" appends the missing template lines (below), never duplicating one |
+    | `.godot/` is not versioned | staged `.godot/` files: "Unstage them"; untracked ones: "Add Godot patterns"; versioned on the server: instructions only |
+    | Sidecar warnings (`MetaWarnings{engine: "godot"}`) | "Stage sidecars" stages the `sidecar-not-staged` paths |
+    | Daemon version against the connector minimum, plugin version, which `nipa` binary would be started | — |
+
+    The template is `.godot/`, `/android/`, `*.tmp`,
+    `export_credentials.cfg`, `.mono/`, `mono_crash.*.json`, `data_*/`
+    (anchored entries are moved under the project folder when the project is
+    a subfolder of the clone). The `.godot/` check reads the status cache
+    (staged, changed and untracked paths below it) and asks the server with a
+    non-recursive `ProxyTreeManifest{path: "<project>/.godot"}`: a 404 for the
+    path means it is not versioned. It is one cheap call, and the local status
+    alone cannot tell an ignored folder from a versioned, unchanged one.
+  - **Sidecar banner** in the Nipa dock, fed by the same `MetaWarnings` data
+    (refreshed after status changes, `warnings_changed`), with "Stage sidecars"
+    and a link to the setup checker.
+  - **FileSystem dock decoration** (opt-in, Editor Settings
+    `nipa/decorate_filesystem_dock`): changed files get a status color and a
+    "Nipa: ..." tooltip line (new, modified, deleted, conflicted, locked by you
+    or by someone else), and folders summarize the changes below them. It only
+    sets item colors and tooltips on the dock's own Tree and file list, puts
+    the originals back when it is turned off or the add-on unloads, and
+    re-applies when the dock rebuilds its items (checked on `draw`, no
+    per-frame work). It needs Godot 4.4+ and the expected dock layout (one
+    Tree, at most one ItemList, item metadata `res://...`); otherwise it turns
+    itself off with one toast. Rich resource tooltips of the dock may hide
+    the tooltip line; the color stays.
+
+Not yet: the Activity tab.
 
 ## How Godot's VCS integration works (research)
 
@@ -224,8 +273,8 @@ Source: `editor/version_control/version_control_editor_plugin.cpp` and the
    Unity applies to `.meta`.
 8. **No FileSystem dock hacks by default.** Status lives in the native Commit
    dock and the Nipa dock. Painting status onto the FileSystem tree means
-   walking private dock nodes, so it ships later as an opt-in, version-guarded
-   setting.
+   walking private dock nodes, so it is an opt-in, version-guarded setting
+   (`nipa/decorate_filesystem_dock`).
 9. **License and location:** `plugins/godot/` (Apache 2.0, OSS, like Unity).
    It ships as a zip of `addons/nipa/` with prebuilt editor binaries, through
    GitHub releases and the Godot Asset Library.
@@ -420,7 +469,9 @@ warning:
 - `uid-changed`: the `uid="uid://…"` in `.import`, or the content of `.uid`,
   differs from the snapshot, which breaks `uid://` references
 
-The dock shows them as a banner with "Stage sidecars" as the fix.
+The dock shows them as a banner with "Stage sidecars" as the fix (it stages the
+`sidecar-not-staged` paths, the only kind with a safe one-click fix), and the
+setup checker lists them all.
 
 ---
 
@@ -430,7 +481,7 @@ The dock shows them as a banner with "Stage sidecars" as the fix.
 |---|---|---|
 | `nipa/binary_path` | `EditorSettings` (per user) | empty → `NIPA_BIN` → binary next to the extension → `PATH` |
 | `nipa/merge_tool` | `EditorSettings` | empty |
-| `nipa/decorate_filesystem_dock` | `EditorSettings` | false (later phase) |
+| `nipa/decorate_filesystem_dock` | `EditorSettings` | false |
 | `nipa/poll_interval_sec` | `ProjectSettings` (`project.godot`, shared) | 60, clamped 15–3600 |
 | `nipa/locking/auto_lock_on_edit` | `ProjectSettings` | true |
 | `nipa/locking/strict_read_only` | `ProjectSettings` | false |
@@ -456,15 +507,18 @@ plugins/godot/
     conflicts/           conflict set, per-file actions, Godot merge result, merge tool command
     history/             tags, paged commit log, nipa:// commit links
     preview/             Preview stream assembler (PNG per side, diff stats)
+    setup/               setup checker rows, .nipaignore template/merge/matcher, MetaWarnings parsing
+    decor/               FileSystem dock decorations (status/lock → color + tooltip, folder summaries)
     session/             session (worker thread, op queue, caches, stream loops, events)
   core/tests/            doctest + fake daemon (httplib server)
   extension/             register_types.cpp (EDITOR init level), nipa_vcs_interface.cpp, nipa_session.cpp (signals, deferred dispatch)
   addons/nipa/           what users install
     plugin.cfg  nipa_plugin.gd  nipa.gdextension  bin/<platform>/
-    ui/  dock.tscn/.gd  bottom_panel.tscn/.gd  conflicts_tab  history_tab  image_diff_tab  lock_badge  setup_checker (later)
-    context_menu.gd  inspector_plugin.gd  settings.gd  icons/*.svg
+    ui/  dock.tscn/.gd  bottom_panel.tscn/.gd  conflicts_tab  history_tab  image_diff_tab  lock_badge  setup_checker  setup_row
+    context_menu.gd  inspector_plugin.gd  settings.gd  filesystem_decorator.gd
     LICENSE.md  CHANGELOG.md
   tests/project/         headless smoke project (gdUnit4) loading addons/nipa
+  tools/pack.sh          reproducible release zip (make godot-pack)
   thirdparty/            cpp-httplib, nlohmann/json, doctest
 ```
 
@@ -511,7 +565,62 @@ binding generator), git (FetchContent). `gcovr` for the coverage gate
     `NipaVCSInterface` is listed.
   - A gdUnit4 suite (`--headless`) drives the GDScript glue against
     `nipa serve` plus a real `nipad`, as in `tests/suite`.
+- `make godot-pack`: `plugins/godot/tools/pack.sh` zips `addons/nipa/` with
+  whatever `bin/<platform>/` libraries exist into
+  `bin/nipa-godot-vX.Y.Z.zip` (version from `plugin.cfg`). Entries are sorted,
+  timestamps and modes fixed, and build leftovers (`.lib`, `.exp`, `.pdb`)
+  dropped, so the same inputs give the same bytes.
 - CI `.github/workflows/godot-plugin.yml` runs the core tests and coverage on
-  PRs that touch `plugins/godot/**`. The headless smoke runs on Godot 4.4 and
-  the latest stable, and a tag `godot-v*` builds the platform matrix and
-  attaches the Asset Library zip.
+  PRs that touch `plugins/godot/**`, builds and packs the Linux library, and
+  runs the headless smoke on Godot 4.4 and the latest stable.
+
+## Release
+
+`.github/workflows/godot-release.yml` runs on a `godot-vX.Y.Z` tag (or by hand
+with `tag`):
+
+1. The tag, `plugin.cfg` and `core/version.h` must name the same version.
+2. One editor library per platform: Windows x86_64 (MSVC, static runtime),
+   Linux x86_64 and arm64 (Ubuntu 22.04 runners, for an older glibc), macOS
+   universal (`CMAKE_OSX_ARCHITECTURES="arm64;x86_64"`, checked with `lipo`).
+   Each build checks that its file name is the one `nipa.gdextension` lists.
+3. Optional companion CLI: with the dispatch input `include_cli` (or the
+   repository variable `GODOT_RELEASE_INCLUDE_CLI=true`) each job also builds
+   `nipa` (`CGO_ENABLED=0`, a universal binary on macOS) into
+   `bin/<platform>/`, where the connector finds it.
+4. macOS signing and notarization run only when the secrets exist:
+   `MACOS_CERTIFICATE` (base64 .p12), `MACOS_CERTIFICATE_PASSWORD`,
+   `MACOS_SIGN_IDENTITY`, and for notarization `MACOS_NOTARY_KEY_P8`,
+   `MACOS_NOTARY_KEY_ID`, `MACOS_NOTARY_ISSUER_ID` (the same names as the
+   desktop release). Libraries are signed with the hardened runtime and
+   submitted with `notarytool`; a dylib cannot be stapled, so Gatekeeper
+   checks the ticket online.
+5. The package job puts every library under `addons/nipa/bin/`, fails when a
+   `nipa.gdextension` path has no file, runs `tools/pack.sh`, writes a
+   `.sha256`, and loads the packed add-on in Godot 4.4 (downloaded over HTTPS
+   and checked against the release's `SHA512-SUMS.txt`) with `check_load.gd`.
+6. The zip is attached to the GitHub release of the tag, created with
+   `--latest=false` so `releases/latest` stays on the desktop app (its updater
+   reads it). Tags such as `godot-v0.2.0-rc1` become prereleases.
+
+Actions are pinned by commit SHA.
+
+### Asset Library submission
+
+The Godot Asset Library takes a repository URL plus a download URL and does
+not host files. Submit (and update) the asset at
+`https://godotengine.org/asset-library/asset/submit` by hand:
+
+- Category *Tools*, Godot version 4.4, license Apache-2.0, repository
+  `https://github.com/nipalab/nipa`, issues URL of the repository.
+- Download provider *Custom*, download URL: the release asset
+  `https://github.com/nipalab/nipa/releases/download/godot-vX.Y.Z/nipa-godot-vX.Y.Z.zip`,
+  download commit: the tag. The zip's single root folder is stripped by the
+  installer, so the files land in `res://addons/nipa/`.
+- Version string: `X.Y.Z` (the same as `plugin.cfg`), icon URL: a raw 128×128
+  PNG from the repository.
+- Description: needs the `nipa` CLI and a Nipa server; lists the platforms the
+  zip carries.
+
+Each new release needs an edit of the asset with the new version and URL;
+moderators review every edit.

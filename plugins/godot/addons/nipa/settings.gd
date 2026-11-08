@@ -5,6 +5,7 @@ extends RefCounted
 const POLL_SETTING := "nipa/poll_interval_sec"
 const BINARY_SETTING := "nipa/binary_path"
 const MERGE_TOOL_SETTING := "nipa/merge_tool"
+const DECORATE_SETTING := "nipa/decorate_filesystem_dock"
 const AUTO_LOCK_SETTING := "nipa/locking/auto_lock_on_edit"
 const STRICT_SETTING := "nipa/locking/strict_read_only"
 const EXTENSIONS_SETTING := "nipa/locking/extensions"
@@ -30,6 +31,10 @@ static func register() -> void:
 	editor.add_property_info({"name": BINARY_SETTING, "type": TYPE_STRING, "hint": PROPERTY_HINT_GLOBAL_FILE})
 	editor.add_property_info({"name": MERGE_TOOL_SETTING, "type": TYPE_STRING, "hint": PROPERTY_HINT_PLACEHOLDER_TEXT,
 		"hint_string": "meld $LOCAL $BASE $REMOTE -o $MERGED"})
+	if not editor.has_setting(DECORATE_SETTING):
+		editor.set_setting(DECORATE_SETTING, false)
+	editor.set_initial_value(DECORATE_SETTING, false, false)
+	editor.add_property_info({"name": DECORATE_SETTING, "type": TYPE_BOOL})
 
 
 static func poll_interval() -> int:
@@ -44,6 +49,12 @@ static func binary_path() -> String:
 static func merge_tool() -> String:
 	var editor := EditorInterface.get_editor_settings()
 	return editor.get_setting(MERGE_TOOL_SETTING) if editor.has_setting(MERGE_TOOL_SETTING) else ""
+
+
+# Opt-in status colors in the FileSystem dock.
+static func decorate_filesystem_dock() -> bool:
+	var editor := EditorInterface.get_editor_settings()
+	return editor.has_setting(DECORATE_SETTING) and editor.get_setting(DECORATE_SETTING)
 
 
 static func auto_lock() -> bool:

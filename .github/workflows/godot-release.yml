@@ -1,0 +1,305 @@
+name: Godot plugin release
+
+# On a godot-v* tag: builds the editor library for every platform, packs
+# nipa-godot-vX.Y.Z.zip (addons/nipa/ with all binaries, see `make godot-pack`)
+# and attaches it to the GitHub release of that tag.
+#
+# Optional macOS signing and notarization run only when these secrets exist:
+#   MACOS_CERTIFICATE           base64 Developer ID Application .p12
+#   MACOS_CERTIFICATE_PASSWORD  password of that .p12
+#   MACOS_SIGN_IDENTITY         e.g. "Developer ID Application: Nipa Lab (TEAMID)"
+#   MACOS_NOTARY_KEY_P8         App Store Connect API key (.p8 content)
+#   MACOS_NOTARY_KEY_ID         its key id
+#   MACOS_NOTARY_ISSUER_ID      its issuer id
+# The nipa CLI is bundled next to each library (bin/<platform>/nipa[.exe]) when
+# the dispatch input include_cli is set, or the repository variable
+# GODOT_RELEASE_INCLUDE_CLI is "true".
+on:
+  push:
+    tags:
+      - 'godot-v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to (re)build, e.g. godot-v0.1.0
+        required: true
+      include_cli:
+        description: Bundle the nipa CLI next to each library
+        type: boolean
+        default: false
+
+permissions: {}
+
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
+  INCLUDE_CLI: ${{ (github.event_name == 'workflow_dispatch' && inputs.include_cli) || vars.GODOT_RELEASE_INCLUDE_CLI == 'true' }}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  version:
+    name: Check the version
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ env.TAG }}
+          persist-credentials: false
+
+      - name: Tag, plugin.cfg and core/version.h agree
+        id: check
+        run: |
+          version="${TAG#godot-v}"
+          cfg="$(sed -n 's/^version="\(.*\)"/\1/p' plugins/godot/addons/nipa/plugin.cfg)"
+          core="$(sed -n 's/.*kPluginVersion = "\(.*\)";/\1/p' plugins/godot/core/version.h)"
+          if [ "$version" != "$cfg" ] || [ "$version" != "$core" ]; then
+            echo "::error::tag $TAG, plugin.cfg $cfg and core/version.h $core must name the same version"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Editor library (${{ matrix.platform }})
+    needs: version
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - os: windows-2022
+            platform: windows.x86_64
+            library: nipa.windows.x86_64.editor.dll
+            goos: windows
+            goarch: amd64
+          - os: ubuntu-22.04
+            platform: linux.x86_64
+            library: libnipa.linux.x86_64.editor.so
+            goos: linux
+            goarch: amd64
+          - os: ubuntu-22.04-arm
+            platform: linux.arm64
+            library: libnipa.linux.arm64.editor.so
+            goos: linux
+            goarch: arm64
+          - os: macos-14
+            platform: macos
+            library: libnipa.macos.editor.dylib
+            goos: darwin
+            goarch: universal
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    env:
+      BIN_DIR: plugins/godot/addons/nipa/bin/${{ matrix.platform }}
+      MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ env.TAG }}
+          persist-credentials: false
+          fetch-depth: ${{ env.INCLUDE_CLI == 'true' && 0 || 1 }}
+
+      - name: Configure (Windows, MSVC)
+        if: runner.os == 'Windows'
+        run: >
+          cmake -S plugins/godot -B plugins/godot/build-ext -G "Visual Studio 17 2022" -A x64
+          -DNIPA_BUILD_TESTS=OFF -DNIPA_BUILD_EXTENSION=ON -DNIPA_WERROR=OFF
+          -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+
+      - name: Configure (Linux)
+        if: runner.os == 'Linux'
+        run: >
+          cmake -S plugins/godot -B plugins/godot/build-ext -DCMAKE_BUILD_TYPE=Release
+          -DNIPA_BUILD_TESTS=OFF -DNIPA_BUILD_EXTENSION=ON -DNIPA_WERROR=OFF
+
+      - name: Configure (macOS, universal)
+        if: runner.os == 'macOS'
+        run: >
+          cmake -S plugins/godot -B plugins/godot/build-ext -DCMAKE_BUILD_TYPE=Release
+          -DNIPA_BUILD_TESTS=OFF -DNIPA_BUILD_EXTENSION=ON -DNIPA_WERROR=OFF
+          "-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64" -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
+
+      - name: Build
+        run: cmake --build plugins/godot/build-ext --config Release --parallel 4
+
+      - name: Check the library name and architecture
+        env:
+          LIBRARY: ${{ matrix.library }}
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          test -f "$BIN_DIR/$LIBRARY"
+          grep -q "\"res://addons/nipa/bin/$PLATFORM/$LIBRARY\"" plugins/godot/addons/nipa/nipa.gdextension
+          case "$PLATFORM" in
+            macos) lipo "$BIN_DIR/$LIBRARY" -verify_arch arm64 x86_64 ;;
+            linux.arm64) file "$BIN_DIR/$LIBRARY" | grep -q aarch64 ;;
+            linux.x86_64) file "$BIN_DIR/$LIBRARY" | grep -q x86-64 ;;
+          esac
+
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        if: env.INCLUDE_CLI == 'true'
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Build the companion nipa CLI
+        if: env.INCLUDE_CLI == 'true'
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH_MATRIX: ${{ matrix.goarch }}
+          CGO_ENABLED: '0'
+        run: |
+          cli_version="$(git describe --tags --match 'v*' --always 2>/dev/null || git rev-parse --short HEAD)"
+          flags=(-trimpath -buildvcs=false -ldflags "-w -s -X github.com/nipalab/nipa/internal/version.Version=$cli_version")
+          if [ "$GOARCH_MATRIX" = universal ]; then
+            GOARCH=arm64 go build "${flags[@]}" -o "$RUNNER_TEMP/nipa-arm64" ./cmd/nipa
+            GOARCH=amd64 go build "${flags[@]}" -o "$RUNNER_TEMP/nipa-amd64" ./cmd/nipa
+            lipo -create -output "$BIN_DIR/nipa" "$RUNNER_TEMP/nipa-arm64" "$RUNNER_TEMP/nipa-amd64"
+          else
+            exe=""
+            [ "$GOOS" = windows ] && exe=".exe"
+            GOARCH="$GOARCH_MATRIX" go build "${flags[@]}" -o "$BIN_DIR/nipa$exe" ./cmd/nipa
+          fi
+
+      - name: Sign and notarize (macOS)
+        if: runner.os == 'macOS' && env.MACOS_CERTIFICATE != ''
+        env:
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+          MACOS_NOTARY_KEY_P8: ${{ secrets.MACOS_NOTARY_KEY_P8 }}
+          MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+          MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
+        run: |
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          pass="$(openssl rand -hex 16)"
+          echo "$MACOS_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$pass" "$keychain"
+          security set-keychain-settings -lut 3600 "$keychain"
+          security unlock-keychain -p "$pass" "$keychain"
+          security import "$RUNNER_TEMP/cert.p12" -P "$MACOS_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
+          security set-key-partition-list -S apple-tool:,apple: -k "$pass" "$keychain"
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          rm -f "$RUNNER_TEMP/cert.p12"
+          for file in "$BIN_DIR"/*; do
+            codesign --force --timestamp --options runtime --sign "$MACOS_SIGN_IDENTITY" "$file"
+            codesign --verify --strict "$file"
+          done
+          if [ -n "$MACOS_NOTARY_KEY_P8" ]; then
+            echo "$MACOS_NOTARY_KEY_P8" > "$RUNNER_TEMP/notary.p8"
+            ditto -c -k --keepParent "$BIN_DIR" "$RUNNER_TEMP/notarize.zip"
+            xcrun notarytool submit "$RUNNER_TEMP/notarize.zip" --key "$RUNNER_TEMP/notary.p8" \
+              --key-id "$MACOS_NOTARY_KEY_ID" --issuer "$MACOS_NOTARY_ISSUER_ID" --wait
+            rm -f "$RUNNER_TEMP/notary.p8"
+          fi
+          security delete-keychain "$keychain"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: godot-bin-${{ matrix.platform }}
+          path: |
+            ${{ env.BIN_DIR }}/${{ matrix.library }}
+            ${{ env.BIN_DIR }}/nipa
+            ${{ env.BIN_DIR }}/nipa.exe
+          if-no-files-found: error
+
+  package:
+    name: Pack and smoke test
+    needs: [version, build]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ env.TAG }}
+          persist-credentials: false
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: godot-bin-*
+          path: ${{ runner.temp }}/bins
+
+      - name: Put every library into addons/nipa/bin
+        run: |
+          for dir in "$RUNNER_TEMP"/bins/godot-bin-*; do
+            platform="${dir##*/godot-bin-}"
+            mkdir -p "plugins/godot/addons/nipa/bin/$platform"
+            cp -R "$dir"/. "plugins/godot/addons/nipa/bin/$platform/"
+          done
+          missing=0
+          while read -r path; do
+            file="plugins/godot/${path#res://}"
+            if [ ! -f "$file" ]; then
+              echo "::error::nipa.gdextension names $path, which no build produced"
+              missing=1
+            fi
+          done < <(sed -n 's/^[a-z0-9_.]*\.editor = "\(res:\/\/[^"]*\)"/\1/p' plugins/godot/addons/nipa/nipa.gdextension)
+          exit "$missing"
+
+      - name: Pack
+        run: |
+          plugins/godot/tools/pack.sh "$VERSION" "dist/nipa-godot-v$VERSION.zip"
+          unzip -l "dist/nipa-godot-v$VERSION.zip"
+          (cd dist && sha256sum "nipa-godot-v$VERSION.zip" > "nipa-godot-v$VERSION.zip.sha256")
+
+      - name: Fetch Godot 4.4
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/godot"
+          mkdir -p "$dir"
+          api=https://api.github.com/repos/godotengine/godot/releases/tags/4.4-stable
+          curl -sfL --proto '=https' --tlsv1.2 -o "$dir/release.json" "$api"
+          read -r zip_name zip_url sums_url < <(python3 -c 'import json,sys; r=json.load(open(sys.argv[1])); a={x["name"]: x["browser_download_url"] for x in r["assets"]}; z=next(n for n in a if n.endswith("_linux.x86_64.zip")); print(z, a[z], a["SHA512-SUMS.txt"])' "$dir/release.json")
+          curl -sfL --proto '=https' --tlsv1.2 -o "$dir/godot.zip" "$zip_url"
+          curl -sfL --proto '=https' --tlsv1.2 -o "$dir/SHA512-SUMS.txt" "$sums_url"
+          grep " ${zip_name}\$" "$dir/SHA512-SUMS.txt" > "$dir/expected.txt"
+          (cd "$dir" && mv godot.zip "$zip_name" && sha512sum -c expected.txt)
+          unzip -q -o "$dir/$zip_name" -d "$dir"
+          chmod +x "$dir"/Godot_*.x86_64
+
+      - name: Load the packed add-on
+        working-directory: plugins/godot/tests/project
+        run: |
+          unzip -q "../../../../dist/nipa-godot-v$VERSION.zip" -d "$RUNNER_TEMP/packed"
+          rm -rf addons/nipa
+          cp -R "$RUNNER_TEMP/packed/nipa-godot-v$VERSION/addons/nipa" addons/nipa
+          "$RUNNER_TEMP"/godot/Godot_*.x86_64 --headless --editor --path . --quit
+          "$RUNNER_TEMP"/godot/Godot_*.x86_64 --headless --editor --path . --quit-after 5 --script check_load.gd
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: nipa-godot
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    name: Attach to the GitHub release
+    needs: [version, package]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: nipa-godot
+          path: dist
+
+      - name: Upload
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          prerelease=""
+          case "$TAG" in godot-v*-*) prerelease="--prerelease" ;; esac
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            # --latest=false keeps releases/latest on the desktop app (its updater polls it).
+            gh release create "$TAG" --verify-tag --latest=false --title "Nipa Godot plugin ${TAG#godot-}" \
+              --notes "Godot 4.4+ editor add-on. Unzip and copy addons/ into your project, see docs/GODOT_PLUGIN.md." $prerelease
+          fi
+          gh release upload "$TAG" dist/* --clobber

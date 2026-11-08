@@ -29,6 +29,7 @@ enum class EventKind {
     LocksChanged,
     ConflictsChanged,
     TagsChanged,
+    WarningsChanged,
 };
 
 // One flat record; the fields used depend on `kind` (see session.h).

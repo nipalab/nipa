@@ -7,5 +7,6 @@ reloadable = true
 [libraries]
 
 linux.x86_64.editor = "res://addons/nipa/bin/linux.x86_64/libnipa.linux.x86_64.editor.so"
+linux.arm64.editor = "res://addons/nipa/bin/linux.arm64/libnipa.linux.arm64.editor.so"
 windows.x86_64.editor = "res://addons/nipa/bin/windows.x86_64/nipa.windows.x86_64.editor.dll"
 macos.editor = "res://addons/nipa/bin/macos/libnipa.macos.editor.dylib"

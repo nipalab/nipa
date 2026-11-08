@@ -22,6 +22,7 @@
 #include "core/history/history.h"
 #include "core/locks/lock_policy.h"
 #include "core/locks/readonly_guard.h"
+#include "core/setup/checker.h"
 #include "core/session/events.h"
 #include "core/status/status.h"
 
@@ -36,6 +37,7 @@ struct SessionOptions {
     std::chrono::milliseconds reconnect_max{30000};
     std::chrono::seconds activity_interval{60};
     bool watch_activity = true;
+    bool watch_sidecars = true;  // MetaWarnings after status changes
 };
 
 // Owns the daemon connection, one worker thread for requests and operations
@@ -51,6 +53,7 @@ struct SessionOptions {
 // Data ops (conflicts, merge-godot, merge-tool, history, preview) finish with
 // their result in OpFinished.data and binary parts in OpFinished.bytes.
 // LocksChanged lists the files strict mode made read-only or writable again.
+// WarningsChanged follows a changed MetaWarnings answer (sidecar_warnings()).
 class Session {
 public:
     explicit Session(SessionOptions options);
@@ -134,6 +137,14 @@ public:
     // Fresh LockStatus push check; nullopt on timeout, stop or a daemon error.
     std::optional<locks::PushCheck> push_check_blocking(std::chrono::milliseconds timeout);
 
+    std::vector<setup::SidecarWarning> sidecar_warnings() const;
+    // Refreshes sidecar_warnings() from MetaWarnings{engine: godot}.
+    std::int64_t submit_meta_warnings();
+    // Completes `base` (editor settings, project prefix, minimum version) with
+    // .nipaignore, the .godot/ state, sidecar warnings and the daemon version;
+    // data: {"rows": setup::to_json(rows), "warnings": [...]}.
+    std::int64_t submit_setup_check(setup::Inputs base);
+
 private:
     struct Link {
         std::shared_ptr<daemon::Client> client;
@@ -176,6 +187,8 @@ private:
     void release_guard();
     conflicts::Set load_conflicts();
     void refresh_conflicts_async();
+    bool load_meta_warnings();
+    setup::GodotDirState probe_godot_dir(const std::string& project_prefix);
     std::string read_blob(const nlohmann::json& ref);
     Outcome run_stream_op(std::int64_t id, const std::string& name, const std::string& method,
                           const nlohmann::json& body);
@@ -204,6 +217,8 @@ private:
     std::vector<history::Tag> tags_;
     conflicts::Set conflicts_;
     bool conflicts_pending_ = false;
+    std::vector<setup::SidecarWarning> warnings_;
+    bool warnings_pending_ = false;
     struct BlobEntry {
         bool ok = false;
         std::string content;

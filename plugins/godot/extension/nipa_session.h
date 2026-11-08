@@ -102,6 +102,11 @@ public:
     godot::Ref<NipaRequest> request_unlock(const godot::PackedStringArray& clone_paths, bool any_holder);
     godot::Ref<NipaRequest> request_lock_refresh();
 
+    godot::Ref<NipaRequest> request_setup_check();
+    godot::Dictionary apply_ignore_template();
+    godot::Array get_sidecar_warnings() const;
+    godot::Dictionary get_decorations(const godot::PackedStringArray& res_paths) const;
+
     void drain_events();
 
     session::Session* session() const { return session_.get(); }
