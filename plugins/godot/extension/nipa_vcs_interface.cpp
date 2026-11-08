@@ -294,7 +294,7 @@ TypedArray<String> NipaVCSInterface::_get_remotes() {
 void NipaVCSInterface::_create_branch(const String& p_branch_name) {
     NipaSession* node = session_node();
     if (node != nullptr && node->is_open()) {
-        node->request_branch_create(p_branch_name, node->get_branch_name());
+        node->request_branch_create(p_branch_name, to_godot(node->session()->status_cache().snapshot().branch));
     }
 }
 

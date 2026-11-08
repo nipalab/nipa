@@ -21,10 +21,17 @@ func _enter_tree() -> void:
 		_connected_session = session
 		session.op_queued.connect(_on_op_queued)
 		session.op_finished.connect(_on_op_finished)
+	scene_saved.connect(_remember_scene)
+	scene_changed.connect(_on_scene_changed)
+	_remember_open_scenes()
 	_connect_open_project()
 
 
 func _exit_tree() -> void:
+	if scene_saved.is_connected(_remember_scene):
+		scene_saved.disconnect(_remember_scene)
+	if scene_changed.is_connected(_on_scene_changed):
+		scene_changed.disconnect(_on_scene_changed)
 	if _connected_session:
 		if _connected_session.op_queued.is_connected(_on_op_queued):
 			_connected_session.op_queued.disconnect(_on_op_queued)
@@ -63,27 +70,37 @@ func _session() -> Object:
 
 func _on_op_queued(id: int, kind: String) -> void:
 	_op_kinds[id] = kind
-	var hashes := {}
-	for scene in EditorInterface.get_open_scenes():
-		hashes[scene] = FileAccess.get_md5(scene)
-	_scene_hashes[id] = hashes
 
 
 func _on_op_finished(id: int, ok: bool, message: String, changed_paths: PackedStringArray) -> void:
 	var kind: String = _op_kinds.get(id, "operation")
 	_op_kinds.erase(id)
-	var hashes: Dictionary = _scene_hashes.get(id, {})
-	_scene_hashes.erase(id)
 	EditorInterface.get_resource_filesystem().scan()
-	_reload_changed_scenes(changed_paths, hashes)
+	_reload_changed_scenes(changed_paths)
 	var severity := EditorToaster.SEVERITY_INFO if ok else EditorToaster.SEVERITY_ERROR
 	var text := "Nipa %s: %s" % [kind, message if not message.is_empty() else ("done" if ok else "failed")]
 	EditorInterface.get_editor_toaster().push_toast(text, severity)
 
 
-# Ops report no per-file list, so a scene counts as changed when its file
-# content changed on disk while the op ran (or the op named it).
-func _reload_changed_scenes(changed_paths: PackedStringArray, hashes_before: Dictionary) -> void:
+# The on-disk content of each open scene as the editor last loaded or saved it.
+func _remember_scene(path: String) -> void:
+	if FileAccess.file_exists(path):
+		_scene_hashes[path] = FileAccess.get_md5(path)
+
+
+func _remember_open_scenes() -> void:
+	for scene in EditorInterface.get_open_scenes():
+		if not _scene_hashes.has(scene):
+			_remember_scene(scene)
+
+
+func _on_scene_changed(_scene_root: Node) -> void:
+	_remember_open_scenes()
+
+
+# Ops report no per-file list, so an open scene counts as changed when its file
+# no longer matches what the editor loaded or saved (or the op named it).
+func _reload_changed_scenes(changed_paths: PackedStringArray) -> void:
 	var session := _session()
 	var named := {}
 	if session:
@@ -94,6 +111,7 @@ func _reload_changed_scenes(changed_paths: PackedStringArray, hashes_before: Dic
 	for scene in EditorInterface.get_open_scenes():
 		if not FileAccess.file_exists(scene):
 			continue
-		var moved: bool = hashes_before.has(scene) and FileAccess.get_md5(scene) != hashes_before[scene]
-		if moved or named.has(scene):
+		var current := FileAccess.get_md5(scene)
+		if named.has(scene) or (_scene_hashes.has(scene) and _scene_hashes[scene] != current):
 			EditorInterface.reload_scene_from_path(scene)
+		_scene_hashes[scene] = current
