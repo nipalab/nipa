@@ -332,4 +332,30 @@ var _ = Describe("nipa diff", func() {
 		Expect(fresh.ExitCode).To(Equal(0), fresh.Output())
 		Expect(fresh.Stdout).To(ContainSubstring("+v2"))
 	})
+
+	It("colors patches only on a terminal and never with --no-color or NO_COLOR", func() {
+		project := newProject("diff-color")
+		seedRepo(orgSlug, project, map[string][]byte{"a.txt": []byte("v1\n")}, "seed")
+		dir := cloneRepo(workspace(), repoURLFor(orgSlug, project), "work")
+		writeText(dir, "a.txt", "v2\n")
+
+		for _, args := range [][]string{{"diff"}, {"diff", "--no-pager"}, {"diff", "--no-pager", "--no-color"}} {
+			piped := runNipaPiped(dir, args...)
+			Expect(piped.ExitCode).To(Equal(0), piped.Output())
+			Expect(piped.Stdout).To(ContainSubstring("+v2"))
+			Expect(piped.Stdout).NotTo(ContainSubstring(ansiEscape), "piped %v output carries ANSI codes", args)
+		}
+
+		colored := runNipaPTY(dir, nil, "diff", "--no-pager")
+		Expect(colored).To(ContainSubstring("v2"))
+		Expect(colored).To(ContainSubstring(ansiEscape), "a terminal gets colored patches")
+
+		plain := runNipaPTY(dir, nil, "diff", "--no-pager", "--no-color")
+		Expect(plain).To(ContainSubstring("+v2"))
+		Expect(plain).NotTo(ContainSubstring(ansiEscape))
+
+		envPlain := runNipaPTY(dir, []string{"NO_COLOR=1"}, "diff", "--no-pager")
+		Expect(envPlain).To(ContainSubstring("+v2"))
+		Expect(envPlain).NotTo(ContainSubstring(ansiEscape))
+	})
 })

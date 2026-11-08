@@ -151,6 +151,8 @@ type mergeRequestThreadsJSON struct {
 	Threads []struct {
 		ID       string `json:"id"`
 		FilePath string `json:"file_path"`
+		OldLine  *int64 `json:"old_line"`
+		NewLine  *int64 `json:"new_line"`
 		Side     string `json:"side"`
 		Resolved bool   `json:"resolved"`
 		Comments []struct {
@@ -158,6 +160,14 @@ type mergeRequestThreadsJSON struct {
 			Body string `json:"body"`
 		} `json:"comments"`
 	} `json:"threads"`
+}
+
+type mergeRequestChecksJSON struct {
+	Checks []struct {
+		Name       string `json:"name"`
+		State      string `json:"state"`
+		DetailsURL string `json:"details_url"`
+	} `json:"checks"`
 }
 
 type mergeRequestTimelineJSON struct {

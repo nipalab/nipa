@@ -1034,4 +1034,154 @@ var _ = Describe("nipa mr", func() {
 		view := runNipa(dir, "mr", "view", "1")
 		Expect(view.Output()).To(ContainSubstring("status: open"))
 	})
+
+	It("assigns and clears assignees from the CLI", func() {
+		project := newProject("mr-assign-cli")
+		seedRepo(orgSlug, project, map[string][]byte{"base.txt": []byte("base\n")}, "seed")
+		dir := cloneRepo(workspace(), repoURLFor(orgSlug, project), "work")
+		Expect(runNipa(dir, "branch", "-c", "feature").ExitCode).To(Equal(0))
+		writeText(dir, "feature.txt", "feature\n")
+		Expect(runNipa(dir, "add", "feature.txt").ExitCode).To(Equal(0))
+		Expect(pushRepo(dir, "feature work").ExitCode).To(Equal(0))
+		title := uniqueMessage("Assigned via CLI")
+		Expect(runNipa(dir, "mr", "create", "--title", title).ExitCode).To(Equal(0))
+
+		first := newIdentity("mr-cli-assignee")
+		second := newIdentity("mr-cli-second")
+		api.createPathRule(orgSlug, project, first.userID, "", 1)
+		api.createPathRule(orgSlug, project, second.userID, "", 1)
+
+		assign := runNipa(dir, "mr", "assign", "1", first.userID, second.userID)
+		Expect(assign.ExitCode).To(Equal(0), assign.Output())
+		Expect(assign.Output()).To(ContainSubstring("Merge request #1 assigned to"))
+		Expect(assign.Output()).To(ContainSubstring("mr-cli-assignee"))
+		Expect(assign.Output()).To(ContainSubstring("mr-cli-second"))
+
+		view := runNipa(dir, "mr", "view", "1")
+		Expect(view.ExitCode).To(Equal(0), view.Output())
+		Expect(view.Output()).To(MatchRegexp(`assignees: .*mr-cli-assignee`))
+		Expect(view.Output()).To(MatchRegexp(`assignees: .*mr-cli-second`))
+
+		var byFirst mergeRequestsJSON
+		runJSONInto(dir, &byFirst, "mr", "list", "--assignee", first.userID, "--json")
+		Expect(byFirst.MergeRequests).To(HaveLen(1))
+		Expect(byFirst.MergeRequests[0].Title).To(Equal(title))
+
+		Expect(runNipa(dir, "mr", "assign", "1", second.userID).ExitCode).To(Equal(0))
+		var afterReplace mergeRequestsJSON
+		runJSONInto(dir, &afterReplace, "mr", "list", "--assignee", first.userID, "--json")
+		Expect(afterReplace.MergeRequests).To(BeEmpty(), "assign replaces the whole assignee set")
+		runJSONInto(dir, &afterReplace, "mr", "list", "--assignee", second.userID, "--json")
+		Expect(afterReplace.MergeRequests).To(HaveLen(1))
+
+		cleared := runNipa(dir, "mr", "assign", "1")
+		Expect(cleared.ExitCode).To(Equal(0), cleared.Output())
+		Expect(cleared.Output()).To(ContainSubstring("Merge request #1 has no assignees."))
+		view = runNipa(dir, "mr", "view", "1")
+		Expect(view.Output()).NotTo(ContainSubstring("assignees:"))
+	})
+
+	It("anchors a comment to a removed line and reopens a resolved thread", func() {
+		project := newProject("mr-old-line")
+		seedRepo(orgSlug, project, map[string][]byte{"notes.txt": []byte("keep\ndrop me\ntail\n")}, "seed")
+		dir := cloneRepo(workspace(), repoURLFor(orgSlug, project), "work")
+		Expect(runNipa(dir, "branch", "-c", "feature").ExitCode).To(Equal(0))
+		writeText(dir, "notes.txt", "keep\ntail\n")
+		Expect(runNipa(dir, "add", "notes.txt").ExitCode).To(Equal(0))
+		Expect(pushRepo(dir, "drop a line").ExitCode).To(Equal(0))
+		Expect(runNipa(dir, "mr", "create", "--title", uniqueMessage("Old line anchor")).ExitCode).To(Equal(0))
+
+		comment := runNipa(dir, "mr", "comment", "1", "-m", "why remove this?", "--file", "notes.txt", "--old-line", "2")
+		Expect(comment.ExitCode).To(Equal(0), comment.Output())
+		Expect(comment.Output()).To(ContainSubstring("opened"))
+
+		var threads mergeRequestThreadsJSON
+		runJSONInto(dir, &threads, "mr", "comments", "1", "--json")
+		Expect(threads.Threads).To(HaveLen(1))
+		thread := threads.Threads[0]
+		Expect(thread.FilePath).To(Equal("notes.txt"))
+		Expect(thread.OldLine).NotTo(BeNil())
+		Expect(*thread.OldLine).To(Equal(int64(2)))
+		Expect(thread.NewLine).To(BeNil())
+		Expect(thread.Resolved).To(BeFalse())
+		Expect(thread.Comments).To(HaveLen(1))
+		Expect(thread.Comments[0].Body).To(Equal("why remove this?"))
+
+		listed := runNipa(dir, "mr", "comments", "1")
+		Expect(listed.ExitCode).To(Equal(0), listed.Output())
+		Expect(listed.Output()).To(ContainSubstring("thread " + thread.ID + " (notes.txt(old):2, open)"))
+
+		bad := runNipa(dir, "mr", "comment", "1", "-m", "off the diff", "--file", "notes.txt", "--old-line", "40")
+		Expect(bad.ExitCode).NotTo(Equal(0), "an old line the diff does not show cannot be anchored")
+
+		resolve := runNipa(dir, "mr", "resolve", "1", thread.ID)
+		Expect(resolve.ExitCode).To(Equal(0), resolve.Output())
+		Expect(resolve.Output()).To(ContainSubstring("thread " + thread.ID + " resolved"))
+		runJSONInto(dir, &threads, "mr", "comments", "1", "--json")
+		Expect(threads.Threads).To(HaveLen(1))
+		Expect(threads.Threads[0].Resolved).To(BeTrue())
+		Expect(runNipa(dir, "mr", "comments", "1").Output()).To(ContainSubstring("(notes.txt(old):2, resolved)"))
+
+		reopen := runNipa(dir, "mr", "resolve", "1", thread.ID, "--unresolve")
+		Expect(reopen.ExitCode).To(Equal(0), reopen.Output())
+		Expect(reopen.Output()).To(ContainSubstring("thread " + thread.ID + " reopened"))
+		threads = mergeRequestThreadsJSON{}
+		runJSONInto(dir, &threads, "mr", "comments", "1", "--json")
+		Expect(threads.Threads).To(HaveLen(1))
+		Expect(threads.Threads[0].Resolved).To(BeFalse())
+		Expect(runNipa(dir, "mr", "comments", "1").Output()).To(ContainSubstring("(notes.txt(old):2, open)"))
+	})
+
+	It("reports checks with a details URL against an explicit commit", func() {
+		project := newProject("mr-check-flags")
+		seedRepo(orgSlug, project, map[string][]byte{"base.txt": []byte("base\n")}, "seed")
+		dir := cloneRepo(workspace(), repoURLFor(orgSlug, project), "work")
+		Expect(runNipa(dir, "branch", "-c", "feature").ExitCode).To(Equal(0))
+		writeText(dir, "feature.txt", "v1\n")
+		Expect(runNipa(dir, "add", "feature.txt").ExitCode).To(Equal(0))
+		Expect(pushRepo(dir, "feature work").ExitCode).To(Equal(0))
+		Expect(runNipa(dir, "mr", "create", "--title", uniqueMessage("Check flags")).ExitCode).To(Equal(0))
+
+		var history logJSON
+		runJSONInto(dir, &history, "log", "--json", "-n", "1")
+		Expect(history.Commits).To(HaveLen(1))
+		firstHead := history.Commits[0].ID
+
+		withURL := runNipa(dir, "mr", "check", "1", "--name", "lint", "--state", "success", "--url", "https://ci.example/run/7")
+		Expect(withURL.ExitCode).To(Equal(0), withURL.Output())
+		Expect(withURL.Output()).To(ContainSubstring(`Check "lint" reported as success.`))
+
+		pinned := runNipa(dir, "mr", "check", "1", "--name", "build", "--state", "pending", "--commit", firstHead)
+		Expect(pinned.ExitCode).To(Equal(0), pinned.Output())
+
+		var checks mergeRequestChecksJSON
+		runJSONInto(dir, &checks, "mr", "checks", "1", "--json")
+		byName := map[string]string{}
+		urls := map[string]string{}
+		for _, check := range checks.Checks {
+			byName[check.Name] = check.State
+			urls[check.Name] = check.DetailsURL
+		}
+		Expect(byName).To(Equal(map[string]string{"lint": "success", "build": "pending"}))
+		Expect(urls["lint"]).To(Equal("https://ci.example/run/7"))
+		Expect(urls["build"]).To(BeEmpty())
+
+		writeText(dir, "feature.txt", "v2\n")
+		Expect(runNipa(dir, "add", "feature.txt").ExitCode).To(Equal(0))
+		Expect(pushRepo(dir, "move the head").ExitCode).To(Equal(0))
+
+		stale := runNipa(dir, "mr", "check", "1", "--name", "build", "--state", "success", "--commit", firstHead)
+		Expect(stale.ExitCode).To(Equal(2), "a result for an old head is a 409: %s", stale.Output())
+
+		checks = mergeRequestChecksJSON{}
+		runJSONInto(dir, &checks, "mr", "checks", "1", "--json")
+		Expect(checks.Checks).To(BeEmpty(), "the new head starts with no checks")
+
+		current := runNipa(dir, "mr", "check", "1", "--name", "build", "--state", "success")
+		Expect(current.ExitCode).To(Equal(0), current.Output())
+		runJSONInto(dir, &checks, "mr", "checks", "1", "--json")
+		Expect(checks.Checks).To(HaveLen(1))
+		Expect(checks.Checks[0].Name).To(Equal("build"))
+		Expect(checks.Checks[0].State).To(Equal("success"))
+	})
 })
