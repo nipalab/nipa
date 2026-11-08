@@ -3,6 +3,7 @@ package preview
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -170,4 +171,23 @@ func TestParseGodotLimits(t *testing.T) {
 	assert.ErrorIs(t, err, errSceneTooLarge)
 	_, err = ParseGodotResource([]byte("[node name=\"A\" type=\"Node\"]\nx = 1\n"))
 	assert.ErrorIs(t, err, errSceneTooLarge)
+}
+
+func TestParseGodotResource_DuplicateIDs(t *testing.T) {
+	var b strings.Builder
+	b.WriteString("[node name=\"Root\" type=\"Node\"]\n[node name=\"X~3\" parent=\".\"]\n")
+	for range 5000 {
+		b.WriteString("[node name=\"X\" parent=\".\"]\n")
+	}
+	s, err := ParseGodotResource([]byte(b.String()))
+	require.NoError(t, err)
+	seen := map[string]bool{}
+	for _, o := range s.Objects {
+		require.False(t, seen[o.ID], "duplicate id %q", o.ID)
+		seen[o.ID] = true
+	}
+	assert.Len(t, s.Objects, 5002)
+	assert.True(t, seen["X~2"])
+	assert.True(t, seen["X~4"])
+	assert.True(t, seen["X~5000"])
 }

@@ -18,6 +18,7 @@ type godotParser struct {
 	sub   map[string]string
 	refs  map[string]bool
 	ids   map[string]bool
+	next  map[string]int
 	props int
 	scene *Scene
 }
@@ -33,7 +34,7 @@ func ParseGodotResource(data []byte) (*Scene, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", errScene, strings.TrimPrefix(err.Error(), "godotres: "))
 	}
-	p := &godotParser{ext: map[string]string{}, sub: map[string]string{}, refs: map[string]bool{}, ids: map[string]bool{}, scene: &Scene{Engine: "godot", Objects: []SceneObject{}}}
+	p := &godotParser{ext: map[string]string{}, sub: map[string]string{}, refs: map[string]bool{}, ids: map[string]bool{}, next: map[string]int{}, scene: &Scene{Engine: "godot", Objects: []SceneObject{}}}
 	for _, s := range f.Sections {
 		switch s.Kind {
 		case "ext_resource":
@@ -140,8 +141,12 @@ func (p *godotParser) add(id, path, typ, parent string, attrs map[string]string,
 	if len(p.scene.Objects) >= MaxSceneObjects {
 		return fmt.Errorf("%w: more than %d objects", errSceneTooLarge, MaxSceneObjects)
 	}
-	for n, base := 2, id; p.ids[id]; n++ {
-		id = base + "~" + strconv.Itoa(n)
+	if p.ids[id] {
+		base, n := id, max(p.next[id], 2)
+		for id = base + "~" + strconv.Itoa(n); p.ids[id]; id = base + "~" + strconv.Itoa(n) {
+			n++
+		}
+		p.next[base] = n + 1
 	}
 	p.ids[id] = true
 	obj := SceneObject{ID: id, Path: path, Type: clip(typ), Parent: parent, Props: make(map[string]string, len(attrs)+len(props))}
