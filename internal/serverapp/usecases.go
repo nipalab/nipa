@@ -52,6 +52,7 @@ func BuildUsecases(repos usecase.Repositories, deps UsecaseDeps) Usecases {
 		groupUsecase.WithSeatGate(deps.SeatGate)
 		permissionUsecase.WithSeatGate(deps.SeatGate)
 	}
+	orgInvitationUsecase := usecase.NewOrgInvitation(repos.OrgInvitation, orgUsecase, repos.User, node).WithLimiter(deps.RateLimiter)
 	projectUsecase := usecase.NewProject(repos.Project, node, permissionUsecase, orgUsecase).WithAudit(auditUsecase)
 
 	branchUsecase := usecase.NewBranchWithChunks(permissionUsecase, repos.Branch, node, deps.ChunkStore).WithUsers(repos.User).WithAudit(auditUsecase)
@@ -93,6 +94,7 @@ func BuildUsecases(repos usecase.Repositories, deps UsecaseDeps) Usecases {
 		hookEmitter = hookEmitter.WithNotifier(usecase.NewEmailNotifier(
 			repos.Email, repos.User, repos.MergeRequest, repos.MergeRequestReview, cfg.EmailBaseURL, node,
 		).WithKicker(deps.EmailDispatcher))
+		orgInvitationUsecase = orgInvitationUsecase.WithOutbox(repos.Email, cfg.EmailBaseURL).WithKicker(deps.EmailDispatcher)
 		slog.Info("email notifications enabled", "sender", cfg.EmailSender)
 	}
 
@@ -117,6 +119,7 @@ func BuildUsecases(repos usecase.Repositories, deps UsecaseDeps) Usecases {
 		Permission:         permissionUsecase,
 		Group:              groupUsecase,
 		Org:                orgUsecase,
+		OrgInvitation:      orgInvitationUsecase,
 		Project:            projectUsecase,
 		MergeRequest:       mergeRequestUsecase,
 		MergeRequestReview: reviewUsecase,

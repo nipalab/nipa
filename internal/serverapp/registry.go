@@ -20,6 +20,7 @@ type Usecases struct {
 	Permission         *usecase.Permission
 	Group              *usecase.Group
 	Org                *usecase.Org
+	OrgInvitation      *usecase.OrgInvitation
 	Project            *usecase.Project
 	MergeRequest       *usecase.MergeRequest
 	MergeRequestReview *usecase.MergeRequestReview
@@ -83,6 +84,10 @@ func (r *Registry) Group() *usecase.Group {
 
 func (r *Registry) Org() *usecase.Org {
 	return r.uc.Org
+}
+
+func (r *Registry) OrgInvitation() *usecase.OrgInvitation {
+	return r.uc.OrgInvitation
 }
 
 func (r *Registry) Project() *usecase.Project {

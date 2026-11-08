@@ -116,8 +116,10 @@ func (o *Org) EnsureOwner(ctx context.Context, orgID snow.ID) error {
 	return o.requireOrgOwner(ctx, orgID)
 }
 
+// AddMember adds a user without their consent and is therefore reserved for
+// global admins; org owners bring people in through OrgInvitation.
 func (o *Org) AddMember(ctx context.Context, orgID, userID snow.ID, role string) error {
-	if err := o.requireOrgOwner(ctx, orgID); err != nil {
+	if err := requireGlobalAdmin(ctx); err != nil {
 		return err
 	}
 	if !domain.IsValidOrgRole(role) {
@@ -184,14 +186,21 @@ func (o *Org) UpdateMemberRole(ctx context.Context, orgID, userID snow.ID, role 
 	if !domain.IsValidOrgRole(role) {
 		return domain.NewErrorUser("invalid org role")
 	}
-	if role == domain.OrgRoleMember {
-		if err := o.ensureNotLastOwner(ctx, orgID, userID); err != nil {
+	current, err := o.repo.MemberRole(ctx, orgID, userID)
+	if domain.IsErrorNotFound(err) {
+		return domain.NewErrorNotFound("member not found")
+	}
+	if err != nil {
+		return err
+	}
+	if role == domain.OrgRoleMember && current == domain.OrgRoleOwner {
+		if err := o.ensureOwnerRemains(ctx, orgID); err != nil {
 			return err
 		}
 	}
-	oldRole, err := o.auditedRole(ctx, orgID, userID)
-	if err != nil {
-		return err
+	oldRole := ""
+	if o.audit != nil {
+		oldRole = current
 	}
 	if err := auditedWrite(ctx, o.audit, func(ctx context.Context) error {
 		return o.repo.UpsertMember(ctx, orgID, userID, role)
@@ -266,6 +275,10 @@ func (o *Org) ensureNotLastOwner(ctx context.Context, orgID, userID snow.ID) err
 	if role != domain.OrgRoleOwner {
 		return nil
 	}
+	return o.ensureOwnerRemains(ctx, orgID)
+}
+
+func (o *Org) ensureOwnerRemains(ctx context.Context, orgID snow.ID) error {
 	owners, err := o.repo.CountMembersByRole(ctx, orgID, domain.OrgRoleOwner)
 	if err != nil {
 		return err

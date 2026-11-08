@@ -29,7 +29,8 @@ var _ = Describe("organization owner project access", func() {
 
 		// A plain org member still needs PBAC rules.
 		member := newIdentity("org-member")
-		ownerAPI.addOrgMember(org, member.email, "member")
+		ownerAPI.inviteOrgMember(org, member.email, "member")
+		newAPIClient(cli.apiURL, member.email, member.password).acceptInvitation(org)
 		denied := runNipaAs(member, workspace(), "clone", url, "member-work")
 		Expect(denied.ExitCode).NotTo(Equal(0))
 		Expect(denied.Output()).NotTo(BeEmpty())

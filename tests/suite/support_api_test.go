@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
 
@@ -65,12 +66,28 @@ func (c *apiClient) createUser(name, email, password string) string {
 	return resp.ID
 }
 
-// addOrgMember adds an existing user to an organization by email.
-func (c *apiClient) addOrgMember(org, email, role string) {
-	c.do(http.MethodPost, "/orgs/"+org+"/members", map[string]string{
+// inviteOrgMember invites an email address to an organization.
+func (c *apiClient) inviteOrgMember(org, email, role string) {
+	c.do(http.MethodPost, "/orgs/"+org+"/invitations", map[string]string{
 		"email": email,
 		"role":  role,
 	}, nil, true)
+}
+
+// acceptInvitation accepts the caller's live invitation to org.
+func (c *apiClient) acceptInvitation(org string) {
+	var mine []struct {
+		ID      string `json:"id"`
+		OrgSlug string `json:"org_slug"`
+	}
+	c.do(http.MethodGet, "/me/invitations", nil, &mine, true)
+	for _, inv := range mine {
+		if inv.OrgSlug == org {
+			c.do(http.MethodPost, "/me/invitations/"+inv.ID+"/accept", nil, nil, true)
+			return
+		}
+	}
+	Fail("no pending invitation for " + org)
 }
 
 // createPathRule grants a user a path prefix permission; permission is the

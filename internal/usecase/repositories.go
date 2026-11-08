@@ -9,7 +9,8 @@ type Repositories struct {
 		orgSlugLookup
 		hookOrgLookup
 	}
-	Project interface {
+	OrgInvitation orgInvitationRepository
+	Project       interface {
 		projectRepository
 		projectSlugLookup
 		hookProjectLookup

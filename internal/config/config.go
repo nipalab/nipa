@@ -113,6 +113,12 @@ type Config struct {
 	RateLimitChunkIPBurst          int     `mapstructure:"RATE_LIMIT_CHUNK_IP_BURST"`
 	RateLimitGlobalIPPerMinute     float64 `mapstructure:"RATE_LIMIT_GLOBAL_IP_PER_MINUTE"`
 	RateLimitGlobalIPBurst         int     `mapstructure:"RATE_LIMIT_GLOBAL_IP_BURST"`
+	RateLimitInviteUserPerMinute   float64 `mapstructure:"RATE_LIMIT_INVITE_USER_PER_MINUTE"`
+	RateLimitInviteUserBurst       int     `mapstructure:"RATE_LIMIT_INVITE_USER_BURST"`
+	RateLimitInviteEmailPerMinute  float64 `mapstructure:"RATE_LIMIT_INVITE_EMAIL_PER_MINUTE"`
+	RateLimitInviteEmailBurst      int     `mapstructure:"RATE_LIMIT_INVITE_EMAIL_BURST"`
+	RateLimitInviteTokenPerMinute  float64 `mapstructure:"RATE_LIMIT_INVITE_TOKEN_PER_MINUTE"`
+	RateLimitInviteTokenBurst      int     `mapstructure:"RATE_LIMIT_INVITE_TOKEN_BURST"`
 }
 
 func LoadConfig() (*Config, error) {
@@ -151,6 +157,12 @@ func LoadConfig() (*Config, error) {
 	v.SetDefault("RATE_LIMIT_API_USER_BURST", 200)
 	v.SetDefault("RATE_LIMIT_CHUNK_IP_PER_MINUTE", 60000.0)
 	v.SetDefault("RATE_LIMIT_CHUNK_IP_BURST", 5000)
+	v.SetDefault("RATE_LIMIT_INVITE_USER_PER_MINUTE", 0.5)
+	v.SetDefault("RATE_LIMIT_INVITE_USER_BURST", 20)
+	v.SetDefault("RATE_LIMIT_INVITE_EMAIL_PER_MINUTE", 0.1)
+	v.SetDefault("RATE_LIMIT_INVITE_EMAIL_BURST", 3)
+	v.SetDefault("RATE_LIMIT_INVITE_TOKEN_PER_MINUTE", 20.0)
+	v.SetDefault("RATE_LIMIT_INVITE_TOKEN_BURST", 10)
 	v.SetDefault("RATE_LIMIT_GLOBAL_IP_PER_MINUTE", 6000.0)
 	v.SetDefault("RATE_LIMIT_GLOBAL_IP_BURST", 300)
 
