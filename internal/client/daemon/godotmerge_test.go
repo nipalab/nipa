@@ -11,6 +11,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/nipalab/nipa/internal/assetdiff"
 	clientDomain "github.com/nipalab/nipa/internal/client/domain"
 	"github.com/nipalab/nipa/internal/client/grpc/daemonpb"
 	"github.com/nipalab/nipa/internal/client/localrepo"
@@ -119,7 +120,7 @@ func TestServer_MergeGodotResourceReadFailures(t *testing.T) {
 	require.ErrorContains(t, err, "offline")
 
 	huge := newOpServer(t, RepoOps{Diff: &stubDiffRunner{readBlob: func(_ context.Context, _ string, req usecase.BlobRequest, fn func(diff.Entry, io.Reader) error) error {
-		return fn(diff.Entry{Path: req.Path}, io.LimitReader(zeros{}, maxGodotMergeBytes+2))
+		return fn(diff.Entry{Path: req.Path}, io.LimitReader(zeros{}, assetdiff.MaxGodotMergeBytes+2))
 	}}})
 	_, err = huge.repos.watch(root)
 	require.NoError(t, err)

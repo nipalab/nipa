@@ -3,23 +3,16 @@ package service
 import (
 	"context"
 	"errors"
-	"io"
-	"io/fs"
-	"os"
-	"path"
 	"path/filepath"
 	"strings"
 	"sync"
 
+	"github.com/nipalab/nipa/internal/assetdiff"
 	"github.com/nipalab/nipa/internal/client/grpc/daemonpb"
 	"github.com/nipalab/nipa/internal/preview"
-	"github.com/nipalab/nipa/internal/unitymeta"
 )
 
-const (
-	maxSceneBytes = 16 << 20
-	maxMetaBytes  = 4 << 10
-)
+const maxSceneBytes = assetdiff.MaxSceneBytes
 
 type SceneObject struct {
 	ID     string `json:"id"`
@@ -93,7 +86,7 @@ func (s *Service) SceneDiff(ctx context.Context, root string, old, new *ImageRef
 			return nil, err
 		}
 		if msg != "" {
-			return &SceneCompare{Engine: sceneEngine(ref.Path), Objects: []SceneObject{}, Changes: []SceneChange{}, Refs: []RefChange{}, Error: msg}, nil
+			return &SceneCompare{Engine: assetdiff.SceneEngine(ref.Path), Objects: []SceneObject{}, Changes: []SceneChange{}, Refs: []RefChange{}, Error: msg}, nil
 		}
 		scenes[i] = sc
 	}
@@ -123,7 +116,7 @@ func (s *Service) loadScene(ctx context.Context, client daemonpb.NipaDaemonClien
 	if errors.Is(err, errBlobTooLarge) {
 		return nil, "the file is too large to compare as a scene", nil
 	}
-	engine := sceneEngine(ref.Path)
+	engine := assetdiff.SceneEngine(ref.Path)
 	if errors.Is(err, errBlobMissing) {
 		return &preview.Scene{Engine: engine}, "", nil
 	}
@@ -134,34 +127,13 @@ func (s *Service) loadScene(ctx context.Context, client daemonpb.NipaDaemonClien
 	if engine == "godot" {
 		sc, err = preview.ParseGodotResource(data)
 	} else {
-		index := s.guidIndex(root, unityProject(ref.Path))
+		index := s.guidIndex(root, assetdiff.UnityProject(ref.Path))
 		sc, err = preview.ParseUnityYAML(data, func(guid string) string { return index[guid] })
 	}
 	if err != nil {
 		return nil, strings.TrimPrefix(err.Error(), "preview: "), nil
 	}
 	return sc, "", nil
-}
-
-var godotSceneExts = map[string]bool{".tscn": true, ".tres": true, ".godot": true, ".import": true}
-
-func sceneEngine(p string) string {
-	if godotSceneExts[strings.ToLower(path.Ext(p))] {
-		return "godot"
-	}
-	return "unity"
-}
-
-// unityProject returns the clone-relative folder holding the Unity project a
-// path belongs to: whatever precedes its Assets or Packages folder.
-func unityProject(p string) string {
-	parts := strings.Split(path.Clean(filepath.ToSlash(p)), "/")
-	for i, part := range parts {
-		if part == "Assets" || part == "Packages" {
-			return strings.Join(parts[:i], "/")
-		}
-	}
-	return ""
 }
 
 func (s *Service) guidIndex(root, project string) map[string]string {
@@ -175,7 +147,7 @@ func (s *Service) guidIndex(root, project string) map[string]string {
 		return index
 	}
 	if build == nil {
-		build = buildGUIDIndex
+		build = assetdiff.BuildGUIDIndex
 	}
 	index = build(filepath.Join(root, filepath.FromSlash(project)))
 	s.guids.mu.Lock()
@@ -214,34 +186,4 @@ func (s *Service) invalidateGUIDs(root string, paths []string) {
 			delete(s.guids.cache, key)
 		}
 	}
-}
-
-func buildGUIDIndex(dir string) map[string]string {
-	index := map[string]string{}
-	for _, top := range []string{"Assets", "Packages"} {
-		_ = filepath.WalkDir(filepath.Join(dir, top), func(p string, e fs.DirEntry, err error) error {
-			if err != nil || e.IsDir() || !strings.HasSuffix(p, ".meta") {
-				return nil
-			}
-			guid := readGUID(p)
-			if guid == "" {
-				return nil
-			}
-			if rel, err := filepath.Rel(dir, strings.TrimSuffix(p, ".meta")); err == nil {
-				index[guid] = filepath.ToSlash(rel)
-			}
-			return nil
-		})
-	}
-	return index
-}
-
-func readGUID(p string) string {
-	f, err := os.Open(p)
-	if err != nil {
-		return ""
-	}
-	defer f.Close()
-	data, _ := io.ReadAll(io.LimitReader(f, maxMetaBytes))
-	return unitymeta.GUID(data)
 }
