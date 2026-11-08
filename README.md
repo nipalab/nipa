@@ -87,7 +87,7 @@ and flag.
 | `nipa remove <path> [...]`  | Unstage files. `-a` unstages everything.                                    |
 | `nipa restore <path> [...]` | Discard unpushed changes, restoring files from the last synced tree (offline). Refused for staged paths. |
 | `nipa status`               | Show the working copy: `A` staged, `M` modified, `?` untracked, `!` missing, `C` conflict. |
-| `nipa push -m "<message>"`  | Upload staged changes and commit them on the configured branch. `--dry-run` reports the changes and upload estimate without contacting the server. `--generate` drafts the message with a configured OpenAI-compatible LLM (local or cloud) and asks for confirmation (`--yes` skips it); see [`docs/AI.md`](docs/AI.md#client-side-generation---generate). |
+| `nipa push -m "<message>"`  | Upload staged changes and commit them on the configured branch. `--dry-run` reports the changes and upload estimate without contacting the server. `--generate` drafts the message with a configured OpenAI-compatible LLM (local or cloud) and asks for confirmation (`--yes` skips it); see [`docs/AI.md`](docs/AI.md#generation---generate). |
 | `nipa update`               | Fetch and apply the latest changes of the configured branch (or re-sync the checked-out tag while detached). |
 | `nipa sparse-checkout`      | `list`, `set`, `add`, `remove` or `disable` the sparse directory prefixes, then update the working copy. |
 | `nipa merge <branch>`       | Merge another branch into the current one. Fast-forwards when possible; `--no-ff`, `--ff-only`, `--abort`, `-m` and `--dry-run` are supported. |
@@ -101,7 +101,7 @@ and flag.
 | `nipa acl ...`              | Manage path-based permission rules (`grant`, `revoke`, `list`, `my`, and `permission list\|set\|remove` for project path permissions). |
 | `nipa group ...`            | Manage groups and their members (`create`, `list`, `add-member`, `remove-member`). |
 | `nipa serve`                | Run the local daemon that GUI clients and engine plugins connect to. See [`docs/DAEMON.md`](docs/DAEMON.md). |
-| `nipa mcp [--repo <dir>] [--allow <caps>] [--allow-write] [--no-agent-trailer]` | Serve the working copy as a Model Context Protocol server over stdio so AI agents can inspect and change it directly. Read-only tools by default; mutating tools are enabled per capability (`stage`, `push`, `sync`, `branch`, `lock`, `mr`, `merge`) with `--allow`, or all with `--allow-write`. See [AI agents and automation](#ai-agents-and-automation). |
+| `nipa mcp [--repo <dir>] [--allow <caps>] [--allow-write] [--no-agent-trailer]` | Serve the working copy to AI agents as a Model Context Protocol server over stdio: read and asset-aware tools plus the generation prompts always, write tools per capability (`stage`, `push`, `sync`, `branch`, `lock`, `mr`, `merge`) with `--allow` or all with `--allow-write`. See [`docs/AI.md`](docs/AI.md). |
 | `nipa version [--server] [url]` | Print the client version and, with `--server`, the server's version.     |
 
 ### Branches and tags
@@ -186,46 +186,42 @@ nipa serve   # publishes its endpoint and token in ~/.config/nipa/daemon.json
 
 ## AI agents and automation
 
-Nipa can be driven by scripts and AI agents as well as by people:
+Nipa can be driven by scripts and AI agents as well as by people. Everything
+runs client-side; the server never calls an LLM.
 
-- **MCP server** — `nipa mcp [--repo <dir>] [--allow <caps>]` serves the
-  clone over stdio (Model Context Protocol) so agents such as Claude Code,
-  Cursor or Copilot can work with a working copy directly. Read-only tools
-  (status, diff, log, branches, tags, locks and lock queries, conflicts, merge
-  requests with their diff, threads, commits and timeline) and asset-aware
-  tools (structured asset diffs with image thumbnails, per-file change
-  summaries for the working copy, revisions or a merge request, Unity/Godot
-  sidecar warnings, `.nipaassets.yml` budget checks) are always registered; write tools are grouped by capability (`stage`, `push`, `sync`,
-  `branch`, `lock`, `mr`, `merge`) and enabled with `--allow` (or all with
-  `--allow-write`). Diffs are capped by `max_bytes`, and text written through
-  MCP carries a `Nipa-Agent: <client>/<version>` trailer (`--no-agent-trailer`
-  disables it). The prompts `nipa_commit_message`, `nipa_mr_description` and
-  `nipa_review_mr` hand the agent ready-made context for drafting commit
-  messages, merge request descriptions and review findings. Authentication
-  never prompts (a prompt would corrupt the JSON-RPC stream), so log in with
-  a normal CLI command in the clone first.
+- **MCP server** — `nipa mcp` serves a clone over stdio (Model Context
+  Protocol) for Claude Code, Cursor and other MCP clients, e.g.
+  `claude mcp add nipa -- nipa mcp --allow mr,lock`. Read tools (status,
+  diff, log, branches, tags, locks, conflicts, merge requests with their
+  diff, threads, commits and timeline) and asset tools (structured diffs of
+  Unity/Godot scenes, images, models, audio and tables with GUIDs resolved,
+  per-file change summaries, `.nipaassets.yml` checks, `.meta`/`.import`
+  sidecar warnings) are always on. Write tools are enabled per capability
+  with `--allow stage,push,sync,branch,lock,mr,merge` (or `--allow-write`).
+  Results are capped (`max_bytes`, `limit`), text written through MCP gets a
+  `Nipa-Agent: <client>/<version>` trailer (`--no-agent-trailer` disables it),
+  and the prompts `nipa_commit_message`, `nipa_mr_description` and
+  `nipa_review_mr` hand the agent ready-made context. Log in from a terminal
+  first: `nipa mcp` never prompts.
 - **Generation** — `nipa push --generate` and `nipa mr create --generate`
   draft the commit message or merge request text with an OpenAI-compatible
   endpoint you configure (`NIPA_LLM_ENDPOINT`/`NIPA_LLM_MODEL`, e.g. a local
-  Ollama); only paths, text hunks and structured asset summaries are sent,
-  never binary contents, and the server never calls an LLM.
-- **Machine-readable output** — read commands accept `--json` (`nipa status`,
-  `nipa diff`, `nipa log`, `nipa branch`, `nipa tag`, `nipa lock list`,
-  `nipa mr list`);
-  `NIPA_OUTPUT=json` enables it globally. Payloads go to stdout; failures are a
-  single `{"error":{"code","message","hint","action"}}` envelope on stderr, and
-  exit codes are stable: `0` success, `1` generic failure, `2`
-  locked/precondition, `127` not found.
-- **Dry runs** — `nipa push|merge|revert --dry-run [--json]` report the
-  file-level changes, conflicts and (for push) the upload estimate and
-  `asset_violations` without staging, committing, pushing or rewriting the
-  working copy.
+  Ollama). Only paths, text hunks and structured asset summaries are sent,
+  never binary contents; without configuration nothing is sent.
 - **Asset budgets** — a versioned `.nipaassets.yml` sets per-path texture,
-  mesh, audio, size and naming limits; `nipa assets check [--json]` (exit 2 on
-  violations) and the `nipa_asset_check` MCP tool report breaches.
-- **REST API** — the server publishes its OpenAPI document at
-  `/docs/api.json` (Swagger UI at `/docs/`), covering browsing, merge
-  requests, reviews, file locks, permissions and groups.
+  mesh, audio, size and naming limits; `nipa assets check [--json]` (exit 2
+  on violations), `nipa push --dry-run` and `nipa_asset_check` report
+  breaches.
+- **Machine-readable output** — `--json` on `status`, `diff`, `log`,
+  `branch`, `tag`, `lock list`, `mr list|view|diff|comments|timeline|checks`
+  and `assets check` (`NIPA_OUTPUT=json` enables it globally). Failures are a
+  single `{"error":{"code","message","hint","action"}}` envelope on stderr,
+  and exit codes are stable: `0` success, `1` generic failure, `2`
+  locked/precondition, `127` not found.
+- **Dry runs** — `nipa push|merge|revert --dry-run [--json]` report changes,
+  conflicts, the upload estimate and `asset_violations` without touching the
+  working copy or the server.
+- **REST API** — OpenAPI at `/docs/api.json` (Swagger UI at `/docs/`).
 
 The full agent-facing reference lives in [`docs/AI.md`](docs/AI.md).
 

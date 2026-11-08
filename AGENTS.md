@@ -114,7 +114,7 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   key), clone, branch
   (`-a` list, `-c` create+switch, `-d` delete), tag (list, `-c` create, `-d`
   delete), add, remove, restore, status, push, update, switch (branch or `--tag`),
-  merge, revert, log, diff, assets check, acl, group, sparse-checkout, mr, lock, unlock, gc, serve), `usecase`
+  merge, revert, log, diff, assets check, acl, group, sparse-checkout, mr, lock, unlock, gc, serve, mcp), `usecase`
   (clone/login, push, update/switch (incl. sparse and detached-tag checkout),
   merge, revert, diff, log, tag management,
   permission, merge-request orchestration, file locks over small interfaces; `threeway.go`
@@ -122,12 +122,14 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   converts pb→server domain types; `Client.ServiceClient()` exposes the typed
   pb client for the daemon proxy), `merge` (three-way tree decisions + diff3
   text merge), `securestorage` (keyring-backed token store), `config`
-  (`~/.config/nipa/config.json`: `diffExternal`, `uploadWorkers`), `difftool`
+  (`~/.config/nipa/config.json`: `diffExternal`, `uploadWorkers`, `llm`), `difftool`
   (external diff runner), `ignore` (root `.nipaignore` + local `.nipa/ignore`
   pattern matcher for untracked working files), `domain` (client
   config/url/errors/commit/pending state), `localrepo` (`.nipa/` local metadata
   + SQLite),
-  `daemon` (the loopback gRPC service behind `nipa serve`, see the flow below).
+  `daemon` (the loopback gRPC service behind `nipa serve`, see the flow below),
+  `mcp` (the stdio MCP server behind `nipa mcp`), `assetscan` (asset change
+  runner), `aiprompt`/`aicontext`/`llm` (generation; flows below).
   `localrepo.FindRepoRoot`
   searches up to 32 parent directories for a `.nipa/config` so every in-repo
   command works from subdirectories.
@@ -291,6 +293,38 @@ a rule stays tracked until explicitly removed. Sparse manifests always include t
 partial checkouts apply the team rules too. The pattern compiler itself lives
 in the pure `internal/pathmatch` (`Parse`/`Compile`/`Join`/`Matches`), shared
 with asset budgets.
+
+Flow for `nipa mcp` (reference in `docs/AI.md`): `internal/client/mcp` is a
+go-sdk MCP server over stdio (`Serve`/`NewServer`; `cmd/nipa/mcp.go` wires a
+`nonInteractiveInput` prompter, since a login prompt would corrupt stdout).
+`Options.NewUseCases` (`newMCPUseCases`) builds a fresh `UseCases` graph per
+call (one gRPC client binds one host) whose `Close` releases the client and
+localrepo handles; the working copy is the `repo` argument, then `--repo`,
+then the cwd (`FindRepoRootFrom`). Read tools (`tools_read.go`,
+`tools_mr.go`, `tools_asset.go`) are always registered; write tools only per
+capability in `Options.Allow` (`ParseAllow`, unknown names fail; `--allow-write`
+= `AllCaps`): `stage` add/restore, `push`, `sync` update/switch, `branch`
+branch/tag create, `lock` lock/unlock, `mr` create/update/comment/reply/
+resolve/review/request-review/check, `merge` merge/resolve-conflict/
+`nipa_godot_merge`/`nipa_mr_merge`; an unregistered tool is a JSON-RPC
+error. Writes are serialized by `writeMu` and annotated `DestructiveHint`
+when they discard or overwrite work. `withAgentTrailer` appends
+`Nipa-Agent: <clientInfo.name>/<version>` from the initialize handshake to
+push messages, MR descriptions, comments, replies and review bodies (not
+titles; skipped for blank text, an existing trailer or `--no-agent-trailer`).
+Budgets (`budget.go`): `capDiff`/`capMRDiff` trim `nipa_diff`/`nipa_mr_diff`
+to `max_bytes` (default 256 KiB, max 2 MiB; `truncated` per file,
+`omitted_files`), `nipa_log` 50/500, `nipa_mr_list` ≤200, summaries 50/200
+files, asset tables 200/2000 rows, scene changes 500/5000. Asset tools read
+both sides through `assetscan.BlobLoader` over `usecase.Diff.ReadBlob`
+(working/snapshot offline, revisions through the commit-scoped download) with
+`assetdiff.WorkingGUIDs`; `nipa_meta_warnings` lints status through
+`unitymeta`/`godotmeta`; `nipa_godot_merge` runs `assetdiff.MergeGodot` on the
+pending merge's base/ours/theirs and resolves only a clean result. Prompts
+(`prompts.go`) are always registered and call no LLM. `toolError` appends the
+domain `hint:`/`next:` to failures. Unit tests stub the usecases
+(`mcp_test.go`, `phase1_test.go`, `tools_asset_test.go`, `prompts_test.go`);
+e2e in `tests/suite/mcp_test.go` + `mcp_workflow_test.go`.
 
 Flow for asset budgets (`.nipaassets.yml` at the repo root, versioned and kept
 in sparse manifests like `.nipaignore`; reference in `docs/AI.md`): the pure
