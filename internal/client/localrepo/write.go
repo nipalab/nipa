@@ -6,7 +6,7 @@ import (
 )
 
 func atomicWrite(path string, data []byte, perm os.FileMode) error {
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".tmp-*")
+	tmp, err := os.CreateTemp(filepath.Dir(path), tempFilePrefix+"*")
 	if err != nil {
 		return err
 	}

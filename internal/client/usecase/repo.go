@@ -64,6 +64,7 @@ func (r *Repo) Clone(ctx context.Context, url, host, org, project, branch string
 		attribute.String(obs.AttrProject, project),
 		attribute.String(obs.AttrBranch, branch))
 	defer func() { obs.FinishSpan(span, err) }()
+	defer func() { pruneAfterSuccess(r.localRepo, err) }()
 
 	if err := ensureEmptyTarget(target); err != nil {
 		return err

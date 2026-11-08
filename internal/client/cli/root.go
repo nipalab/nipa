@@ -66,6 +66,7 @@ func (c *Cli) Run(extra ...*cobra.Command) error {
 	rootCmd.AddCommand(c.setupLockCmd())
 	rootCmd.AddCommand(c.setupUnlockCmd())
 	rootCmd.AddCommand(c.setupTagCmd())
+	rootCmd.AddCommand(c.setupGCCmd())
 	rootCmd.AddCommand(c.setupVersionCmd())
 	rootCmd.AddCommand(extra...)
 	return rootCmd.Execute()

@@ -2,8 +2,7 @@ CREATE TABLE IF NOT EXISTS tree_nodes (
     path TEXT PRIMARY KEY,
     parent_path TEXT NOT NULL,
     hash BLOB NOT NULL,
-    mode INTEGER NOT NULL DEFAULT 444,
-    snapshot_id TEXT NOT NULL
+    mode INTEGER NOT NULL DEFAULT 444
 );
 
 CREATE TABLE IF NOT EXISTS files (
@@ -14,8 +13,7 @@ CREATE TABLE IF NOT EXISTS files (
     mode INTEGER NOT NULL DEFAULT 444,
     is_binary BOOLEAN NOT NULL DEFAULT FALSE,
     encoding TEXT NOT NULL DEFAULT 'raw',
-    chunks BLOB NOT NULL DEFAULT X'',
-    snapshot_id TEXT NOT NULL
+    chunks BLOB NOT NULL DEFAULT X''
 );
 
 CREATE TABLE IF NOT EXISTS meta (
@@ -37,7 +35,10 @@ CREATE TABLE IF NOT EXISTS staged_files (
     staged_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS pinned_paths (
+    path TEXT PRIMARY KEY,
+    pinned_at INTEGER NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_tree_nodes_parent ON tree_nodes(parent_path);
 CREATE INDEX IF NOT EXISTS idx_files_tree ON files(tree_path);
-CREATE INDEX IF NOT EXISTS idx_tree_nodes_snapshot ON tree_nodes(snapshot_id);
-CREATE INDEX IF NOT EXISTS idx_files_snapshot ON files(snapshot_id);

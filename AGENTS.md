@@ -114,7 +114,7 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   key), clone, branch
   (`-a` list, `-c` create+switch, `-d` delete), tag (list, `-c` create, `-d`
   delete), add, remove, restore, status, push, update, switch (branch or `--tag`),
-  merge, revert, log, diff, acl, group, sparse-checkout, mr, lock, unlock, serve), `usecase`
+  merge, revert, log, diff, acl, group, sparse-checkout, mr, lock, unlock, gc, serve), `usecase`
   (clone/login, push, update/switch (incl. sparse and detached-tag checkout),
   merge, revert, diff, log, tag management,
   permission, merge-request orchestration, file locks over small interfaces; `threeway.go`
@@ -1125,25 +1125,34 @@ compatible for one release.
   `_pragma=foreign_keys(ON)` in the DSN — cascades silently don't fire otherwise),
   and `objects/` with Git-style loose chunk objects.
 - Schema (in `schema/schema.sql`, embedded via `//go:embed`, also the sqlc source):
-  - `tree_nodes(path TEXT PRIMARY KEY, parent_path, hash BLOB, mode, snapshot_id)`
+  - `tree_nodes(path TEXT PRIMARY KEY, parent_path, hash BLOB, mode)`
   - `files(path TEXT PRIMARY KEY, tree_path FK->tree_nodes ON DELETE CASCADE, hash,
-    size_bytes, mode, is_binary, encoding, chunks BLOB, snapshot_id)` — `chunks` is
+    size_bytes, mode, is_binary, encoding, chunks BLOB)` — `chunks` is
     the concatenated 32-byte hashes of the file's chunks (metadata only, no
     content); `encoding` is `raw` or `zstd` and refers to the stored chunk bytes.
   - `meta(key PK, value)` — stores `tree_hash`, the pinned `commit_id` /
     `commit_hash`, and the pending `merge_state` / `revert_state` JSON.
   - `staged_files(path PK, staged_at)`.
+  - `pinned_paths(path PK, pinned_at)` — reserved for lock pins (not used yet).
   - `stat_cache(path PK, size_bytes, mtime_ns, mode, hash, cached_at)` — working
     file fingerprints whose `hash` was validated when the content was last hashed;
     `cached_at` (unix nano) must be newer than `mtime_ns` for the row to be trusted.
 - Content lives in `.nipa/objects/<hash[:2]>/<hash[2:]>` (content-addressed loose
-  objects, written temp+rename, never erased so `nipa update` can skip unchanged
-  content). `StoreChunks`/`StoreChunk` write objects; `OpenChunk`/`LoadChunk` read
+  objects, written temp+rename (`.tmp-*` in the object's directory) so `nipa
+  update` can skip unchanged content). `StoreChunks`/`StoreChunk` write objects; `OpenChunk`/`LoadChunk` read
   them; `MissingChunks` stats them. Update/switch cache every downloaded chunk,
   merge/revert cache materialized content, and `Push` caches the chunks it uploads
   before sending them. The DB holds metadata only; file→chunk hashes are stored as
   the `files.chunks` blob (no chunk catalog table), which is what lets `nipa diff`
   rebuild the old side offline.
+- Object GC: `PruneObjects(keep)` deletes every object not in `keep` plus
+  `.tmp-*` files older than an hour. `usecase.pruneCache` (`gc.go`) keeps every
+  chunk of every `Snapshot()` file and is a no-op while `merge_state` or
+  `revert_state` is pending. It runs after a successful clone, update, switch,
+  tag switch and `Push.Run` (deferred `pruneAfterSuccess`: skipped for repos
+  without `PruneObjects`, failures only `slog.Warn`, never fail the operation),
+  and on demand through `nipa gc` (`usecase.GC`), which prints the objects and
+  bytes freed.
 - `SaveTree` semantics (see `store.go`): one transaction. The wanted tree is
   flattened (nodes parent-first) and diffed in memory against the stored
   `tree_nodes`/`files` rows (`syncRows`): parent, hash, mode, size, binary flag,
@@ -1152,11 +1161,9 @@ compatible for one release.
   hashes mean equal rows. Only new or differing rows are upserted and rows that
   left the tree are deleted one by one, so saving a 10k-file clone with 5
   changes reads the stored rows and writes ~5 files plus their ancestor nodes
-  (~20 ms), not the whole table. `snapshot_id` is still written so existing
-  clones keep working, but nothing reads it: `Snapshot()` returns every `files`
-  row. The same transaction drops `stat_cache` rows whose path left `files`.
+  (~20 ms), not the whole table. `Snapshot()` returns every `files` row. The same transaction drops `stat_cache` rows whose path left `files`.
   `meta_tree_hash` is re-set each save. `SaveTree(nil)` deletes every row.
-  Cached objects are never touched by `SaveTree`.
+  Cached objects are never touched by `SaveTree`; only the GC above removes them.
 - `stat_cache` is what keeps `nipa status`/`nipa diff` cheap on big binaries: a
   tracked file whose `(size, mtime)` match a fresh fingerprint (`mtime < cached_at`)
   is trusted without reading, while misses are rehashed (bounded worker pool in

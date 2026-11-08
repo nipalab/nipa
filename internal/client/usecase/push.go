@@ -62,6 +62,7 @@ func NewPush(auth *Auth, pushClient pushClient, localRepo pushLocalRepo) *Push {
 func (p *Push) Run(ctx context.Context, root, message string, progress ...UploadProgress) (err error) {
 	ctx, span := obs.StartSpan(ctx, "nipa.push")
 	defer func() { obs.FinishSpan(span, err) }()
+	defer func() { pruneAfterSuccess(p.localRepo, err) }()
 
 	if strings.TrimSpace(message) == "" {
 		return domain.NewUserError("commit message is required")

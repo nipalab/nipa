@@ -14,17 +14,16 @@ DELETE FROM meta
 WHERE key = :key;
 
 -- name: TreeNodeUpsert :exec
-INSERT INTO tree_nodes (path, parent_path, hash, mode, snapshot_id)
-VALUES (:path, :parent_path, :hash, :mode, :snapshot_id)
+INSERT INTO tree_nodes (path, parent_path, hash, mode)
+VALUES (:path, :parent_path, :hash, :mode)
 ON CONFLICT(path) DO UPDATE SET
     parent_path = excluded.parent_path,
     hash = excluded.hash,
-    mode = excluded.mode,
-    snapshot_id = excluded.snapshot_id;
+    mode = excluded.mode;
 
 -- name: FileUpsert :exec
-INSERT INTO files (path, tree_path, hash, size_bytes, mode, is_binary, encoding, chunks, snapshot_id)
-VALUES (:path, :tree_path, :hash, :size_bytes, :mode, :is_binary, :encoding, :chunks, :snapshot_id)
+INSERT INTO files (path, tree_path, hash, size_bytes, mode, is_binary, encoding, chunks)
+VALUES (:path, :tree_path, :hash, :size_bytes, :mode, :is_binary, :encoding, :chunks)
 ON CONFLICT(path) DO UPDATE SET
     tree_path = excluded.tree_path,
     hash = excluded.hash,
@@ -32,8 +31,7 @@ ON CONFLICT(path) DO UPDATE SET
     mode = excluded.mode,
     is_binary = excluded.is_binary,
     encoding = excluded.encoding,
-    chunks = excluded.chunks,
-    snapshot_id = excluded.snapshot_id;
+    chunks = excluded.chunks;
 
 -- name: TreeNodeList :many
 SELECT path, parent_path, hash, mode

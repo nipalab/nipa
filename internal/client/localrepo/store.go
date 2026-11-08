@@ -97,7 +97,7 @@ func (l *LocalRepo) SaveTree(root *domain.TreeNode) error {
 		return err
 	}
 
-	nodes, files := flattenTree(root, token)
+	nodes, files := flattenTree(root)
 	if err := l.syncRows(ctx, q, nodes, files); err != nil {
 		return err
 	}
@@ -109,7 +109,7 @@ func (l *LocalRepo) SaveTree(root *domain.TreeNode) error {
 	return tx.Commit()
 }
 
-func flattenTree(root *domain.TreeNode, token string) ([]sqlcLocalrepo.TreeNodeUpsertParams, []sqlcLocalrepo.FileUpsertParams) {
+func flattenTree(root *domain.TreeNode) ([]sqlcLocalrepo.TreeNodeUpsertParams, []sqlcLocalrepo.FileUpsertParams) {
 	var (
 		nodes []sqlcLocalrepo.TreeNodeUpsertParams
 		files []sqlcLocalrepo.FileUpsertParams
@@ -121,7 +121,6 @@ func flattenTree(root *domain.TreeNode, token string) ([]sqlcLocalrepo.TreeNodeU
 			ParentPath: parentPath,
 			Hash:       node.Hash.Bytes(),
 			Mode:       int64(node.Mode),
-			SnapshotID: token,
 		})
 		for _, file := range node.FileChildren {
 			hashes := make([]domain.Hash, 0, len(file.Chunks))
@@ -129,15 +128,14 @@ func flattenTree(root *domain.TreeNode, token string) ([]sqlcLocalrepo.TreeNodeU
 				hashes = append(hashes, c.Hash)
 			}
 			files = append(files, sqlcLocalrepo.FileUpsertParams{
-				Path:       path + "/" + file.Name,
-				TreePath:   path,
-				Hash:       file.Hash.Bytes(),
-				SizeBytes:  file.SizeBytes,
-				Mode:       int64(file.Mode),
-				IsBinary:   file.IsBinary,
-				Encoding:   file.Encoding,
-				Chunks:     encodeChunkHashes(hashes),
-				SnapshotID: token,
+				Path:      path + "/" + file.Name,
+				TreePath:  path,
+				Hash:      file.Hash.Bytes(),
+				SizeBytes: file.SizeBytes,
+				Mode:      int64(file.Mode),
+				IsBinary:  file.IsBinary,
+				Encoding:  file.Encoding,
+				Chunks:    encodeChunkHashes(hashes),
 			})
 		}
 		for _, child := range node.TreeChildren {
@@ -164,11 +162,11 @@ func (l *LocalRepo) syncRows(ctx context.Context, q *sqlcLocalrepo.Queries, node
 		return err
 	}
 
-	nodeByPath := make(map[string]sqlcLocalrepo.TreeNodeListRow, len(storedNodes))
+	nodeByPath := make(map[string]sqlcLocalrepo.TreeNode, len(storedNodes))
 	for _, n := range storedNodes {
 		nodeByPath[n.Path] = n
 	}
-	fileByPath := make(map[string]sqlcLocalrepo.FileListRow, len(storedFiles))
+	fileByPath := make(map[string]sqlcLocalrepo.File, len(storedFiles))
 	for _, f := range storedFiles {
 		fileByPath[f.Path] = f
 	}
@@ -207,13 +205,13 @@ func (l *LocalRepo) syncRows(ctx context.Context, q *sqlcLocalrepo.Queries, node
 	return nil
 }
 
-func sameNode(stored sqlcLocalrepo.TreeNodeListRow, want sqlcLocalrepo.TreeNodeUpsertParams) bool {
+func sameNode(stored sqlcLocalrepo.TreeNode, want sqlcLocalrepo.TreeNodeUpsertParams) bool {
 	return stored.ParentPath == want.ParentPath &&
 		stored.Mode == want.Mode &&
 		bytes.Equal(stored.Hash, want.Hash)
 }
 
-func sameFile(stored sqlcLocalrepo.FileListRow, want sqlcLocalrepo.FileUpsertParams) bool {
+func sameFile(stored sqlcLocalrepo.File, want sqlcLocalrepo.FileUpsertParams) bool {
 	return stored.TreePath == want.TreePath &&
 		stored.SizeBytes == want.SizeBytes &&
 		stored.Mode == want.Mode &&
