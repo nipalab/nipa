@@ -341,8 +341,13 @@ func TestClient_CreateMergeRequest_Success(t *testing.T) {
 	fs := &fakeMergeRequestServer{createResp: &pb.CreateMergeRequestResponse{MergeRequest: mergeRequestDetail()}}
 	c := newMergeRequestTestClient(t, fs)
 
-	got, err := c.CreateMergeRequest(context.Background(), "default", "sample", "Add feature", "body", "feature", "main", false)
+	got, err := c.CreateMergeRequest(context.Background(), "default", "sample", clientDomain.NewMergeRequest{
+		Title: "Add feature", Description: "body", SourceBranch: "feature", TargetBranch: "main",
+		ReviewerIDs: []string{"r1"}, AssigneeIDs: []string{"a1", "a2"},
+	})
 	require.NoError(t, err)
+	require.Equal(t, []string{"r1"}, fs.createReq.GetReviewerIds())
+	require.Equal(t, []string{"a1", "a2"}, fs.createReq.GetAssigneeIds())
 	require.NotNil(t, fs.createReq)
 	require.Equal(t, "default", fs.createReq.GetContext().GetOrg())
 	require.Equal(t, "sample", fs.createReq.GetContext().GetProject())
@@ -371,7 +376,7 @@ func TestClient_CreateMergeRequest_Error(t *testing.T) {
 	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
 	require.NoError(t, c.Connect(context.Background(), addr))
 
-	_, err := c.CreateMergeRequest(context.Background(), "default", "sample", "t", "", "feature", "main", false)
+	_, err := c.CreateMergeRequest(context.Background(), "default", "sample", clientDomain.NewMergeRequest{Title: "t", Description: "", SourceBranch: "feature", TargetBranch: "main", Draft: false})
 	require.Error(t, err)
 
 	var domErr *clientDomain.Error
@@ -383,7 +388,7 @@ func TestClient_CreateMergeRequest_Error(t *testing.T) {
 func TestClient_CreateMergeRequest_NotConnected(t *testing.T) {
 	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
 
-	_, err := c.CreateMergeRequest(context.Background(), "default", "sample", "t", "", "feature", "main", false)
+	_, err := c.CreateMergeRequest(context.Background(), "default", "sample", clientDomain.NewMergeRequest{Title: "t", Description: "", SourceBranch: "feature", TargetBranch: "main", Draft: false})
 	require.EqualError(t, err, "not connected to a nipa server")
 }
 

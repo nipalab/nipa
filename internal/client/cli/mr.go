@@ -55,6 +55,8 @@ func (c *Cli) setupMrCreateCmd() *cobra.Command {
 			source, _ := cmd.Flags().GetString("source")
 			target, _ := cmd.Flags().GetString("target")
 			draft, _ := cmd.Flags().GetBool("draft")
+			reviewers, _ := cmd.Flags().GetStringSlice("reviewer")
+			assignees, _ := cmd.Flags().GetStringSlice("assignee")
 			root, err := localrepo.FindRepoRoot()
 			if err != nil {
 				return err
@@ -65,6 +67,8 @@ func (c *Cli) setupMrCreateCmd() *cobra.Command {
 				Source:      source,
 				Target:      target,
 				Draft:       draft,
+				Reviewers:   reviewers,
+				Assignees:   assignees,
 			})
 			if err != nil {
 				return err
@@ -82,6 +86,8 @@ func (c *Cli) setupMrCreateCmd() *cobra.Command {
 	cmd.Flags().String("source", "", "Source branch (defaults to the current branch)")
 	cmd.Flags().String("target", "", "Target branch (defaults to the project default branch)")
 	cmd.Flags().Bool("draft", false, "Open the merge request as a draft (cannot be merged until marked ready)")
+	cmd.Flags().StringSlice("reviewer", nil, "Request a review from this user id (repeatable)")
+	cmd.Flags().StringSlice("assignee", nil, "Assign this user id (repeatable)")
 	return cmd
 }
 

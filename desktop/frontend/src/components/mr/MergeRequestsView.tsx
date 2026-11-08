@@ -172,10 +172,12 @@ function NewMergeRequestDialog({ root, branch, notify, onClose, onCreated }: New
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [draft, setDraft] = useState(false);
+  const [reviewers, setReviewers] = useState("");
+  const [assignees, setAssignees] = useState("");
   const into = target || (defaultTarget !== source ? defaultTarget : "");
 
   const create = useMutation({
-    mutationFn: () => desktop.createMergeRequest(root, { source, target: into, title, description, draft }),
+    mutationFn: () => desktop.createMergeRequest(root, { source, target: into, title, description, draft, reviewers: userIds(reviewers), assignees: userIds(assignees) }),
     onSuccess: (mr) => {
       void queryClient.invalidateQueries({ queryKey: ["mrs", root] });
       notify(`Opened !${mr.number}`, "success");
@@ -231,6 +233,16 @@ function NewMergeRequestDialog({ root, branch, notify, onClose, onCreated }: New
           <span className="text-muted-foreground">Description</span>
           <textarea value={description} onChange={(e) => setDescription(e.target.value)} aria-label="Description" rows={4} className="w-full resize-y rounded-md border border-border bg-background px-2 py-1.5 outline-none focus:border-accent" />
         </label>
+        <div className="flex gap-2">
+          <label className="flex-1 space-y-1">
+            <span className="text-muted-foreground">Reviewers</span>
+            <input value={reviewers} onChange={(e) => setReviewers(e.target.value)} aria-label="Reviewers" placeholder="user ids" className="w-full rounded-md border border-border bg-background px-2 py-1.5 font-mono outline-none focus:border-accent" />
+          </label>
+          <label className="flex-1 space-y-1">
+            <span className="text-muted-foreground">Assignees</span>
+            <input value={assignees} onChange={(e) => setAssignees(e.target.value)} aria-label="Assignees" placeholder="user ids" className="w-full rounded-md border border-border bg-background px-2 py-1.5 font-mono outline-none focus:border-accent" />
+          </label>
+        </div>
         <label className="flex items-center gap-1.5">
           <input type="checkbox" checked={draft} onChange={(e) => setDraft(e.target.checked)} />
           Open as a draft (cannot be merged until marked ready)
@@ -248,6 +260,10 @@ function NewMergeRequestDialog({ root, branch, notify, onClose, onCreated }: New
       </form>
     </div>
   );
+}
+
+function userIds(text: string): string[] {
+  return [...new Set(text.split(/[\s,]+/).filter(Boolean))];
 }
 
 function Centered({ children }: { children: ReactNode }) {

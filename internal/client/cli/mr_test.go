@@ -20,6 +20,7 @@ type fakeMRClient struct {
 
 	createOrg, createProject, createTitle, createDescription, createSource, createTarget string
 	createDraft                                                                          bool
+	createReviewers, createAssignees                                                     []string
 	createResult                                                                         *domain.MergeRequest
 	createErr                                                                            error
 
@@ -123,11 +124,12 @@ func (f *fakeMRClient) Connect(ctx context.Context, host string) error {
 	return f.connectErr
 }
 
-func (f *fakeMRClient) CreateMergeRequest(_ context.Context, org, project, title, description, sourceBranch, targetBranch string, draft bool) (*domain.MergeRequest, error) {
+func (f *fakeMRClient) CreateMergeRequest(_ context.Context, org, project string, in domain.NewMergeRequest) (*domain.MergeRequest, error) {
 	f.createOrg, f.createProject = org, project
-	f.createTitle, f.createDescription = title, description
-	f.createSource, f.createTarget = sourceBranch, targetBranch
-	f.createDraft = draft
+	f.createTitle, f.createDescription = in.Title, in.Description
+	f.createSource, f.createTarget = in.SourceBranch, in.TargetBranch
+	f.createDraft = in.Draft
+	f.createReviewers, f.createAssignees = in.ReviewerIDs, in.AssigneeIDs
 	return f.createResult, f.createErr
 }
 
@@ -264,6 +266,21 @@ func TestSetupMrCreateCmd_Success(t *testing.T) {
 	require.Equal(t, "body", client.createDescription)
 	require.Equal(t, "feature", client.createSource)
 	require.Equal(t, "main", client.createTarget)
+}
+
+func TestSetupMrCreateCmd_ReviewersAndAssignees(t *testing.T) {
+	root := setupRepo(t, "feature")
+	client := &fakeMRClient{
+		defaultBranch: &serverDomain.Branch{Name: "main"},
+		createResult:  &domain.MergeRequest{Number: 1},
+	}
+	cli := newMRCli(t, client)
+
+	_, err := runCmdInDir(t, root, cli.setupMrCmd(), "create", "--title", "Add b",
+		"--reviewer", "r1", "--reviewer", " r2 ", "--assignee", "a1,a2")
+	require.NoError(t, err)
+	require.Equal(t, []string{"r1", "r2"}, client.createReviewers)
+	require.Equal(t, []string{"a1", "a2"}, client.createAssignees)
 }
 
 func TestSetupMrCreateCmd_ExplicitTarget(t *testing.T) {

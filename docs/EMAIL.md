@@ -174,6 +174,11 @@ about a merge request uses a per-recipient thread `Message-ID` that later
 messages reference with `In-Reply-To`/`References`, so mail clients group the
 conversation.
 
+`mr.created` goes to the reviewers and assignees given at creation
+(`reviewer_ids`/`assignee_ids`, `nipa mr create --reviewer/--assignee`); the
+author is the actor and is skipped. Those reviewers get only the "opened"
+email, not a separate "Review requested" one.
+
 ## Inspecting and redelivering
 
 Project admins can inspect the outbox and retry deliveries:

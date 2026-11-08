@@ -29,6 +29,7 @@ type stubMergeRequestRepository struct {
 	draftFn       func(id int64, draft bool) (*domain.MergeRequest, error)
 	status        string
 	mergeCommitID *snow.ID
+	assigned      []snow.ID
 }
 
 func (s *stubMergeRequestRepository) Create(_ context.Context, mr domain.MergeRequest) (*domain.MergeRequest, error) {
@@ -67,7 +68,8 @@ func (s *stubMergeRequestRepository) SetDraft(_ context.Context, _ snow.ID, id i
 	return s.draftFn(id, draft)
 }
 
-func (s *stubMergeRequestRepository) AddAssignee(_ context.Context, _ int64, _ snow.ID) error {
+func (s *stubMergeRequestRepository) AddAssignee(_ context.Context, _ int64, id snow.ID) error {
+	s.assigned = append(s.assigned, id)
 	return nil
 }
 
@@ -226,6 +228,39 @@ func TestMergeRequestHandler_CreateValidation(t *testing.T) {
 		TargetBranch: "main",
 	})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
+}
+
+func TestMergeRequestHandler_CreateWithParticipants(t *testing.T) {
+	repo := &stubMergeRequestRepository{}
+	merger := &stubBranchMerger{base: &usecase.MergeBaseInfo{MergeBaseCommitID: ptrSnow(12)}}
+	srv, branchRepo, perm := newTestMergeRequestServer(t, repo, merger)
+	sourceHead, targetHead := snow.ID(11), snow.ID(12)
+	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(42), domain.PermissionWrite).Return(true)
+	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(42), "feature").
+		Return(&domain.Branch{ID: 3, ProjectID: 42, CommitID: &sourceHead}, nil)
+	branchRepo.EXPECT().GetBranchByName(gomock.Any(), snow.ID(42), "main").
+		Return(&domain.Branch{ID: 2, ProjectID: 42, CommitID: &targetHead}, nil)
+	ctx := domain.ContextWithClaim(context.Background(), domain.Claims{UserID: snow.ID(7)})
+
+	_, err := srv.CreateMergeRequest(ctx, &pb.CreateMergeRequestRequest{
+		Context:      &pb.ProjectContext{Org: "org", Project: "proj"},
+		Title:        "Add feature",
+		SourceBranch: "feature",
+		TargetBranch: "main",
+		AssigneeIds:  []string{snow.ID(8).Base36()},
+	})
+	require.NoError(t, err)
+	require.Equal(t, []snow.ID{8}, repo.assigned)
+
+	for _, req := range []*pb.CreateMergeRequestRequest{
+		{ReviewerIds: []string{"not-base36!"}},
+		{AssigneeIds: []string{"not-base36!"}},
+	} {
+		req.Context = &pb.ProjectContext{Org: "org", Project: "proj"}
+		req.Title = "t"
+		_, err := srv.CreateMergeRequest(ctx, req)
+		require.Equal(t, codes.InvalidArgument, status.Code(err))
+	}
 }
 
 func TestMergeRequestHandler_Update(t *testing.T) {

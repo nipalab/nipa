@@ -251,7 +251,7 @@ working copy. `<number>` is the merge request number shown by `mr list`.
 
 | Command | Purpose |
 | --- | --- |
-| `nipa mr create --title <t> [-d <desc>] [--source <b>] [--target <b>] [--draft]` | Open a request. Source defaults to the current branch, target to the project default branch. |
+| `nipa mr create --title <t> [-d <desc>] [--source <b>] [--target <b>] [--draft] [--reviewer <user-id>]... [--assignee <user-id>]...` | Open a request. Source defaults to the current branch, target to the project default branch. Reviewers and assignees (project write required) get the "opened" email. |
 | `nipa mr list [--status open\|merged\|closed\|draft] [--author <id>] [--source <b>] [--target <b>] [--search <text>] [--assignee <id>] [--after <n>] [--limit <n>]` | List requests; `--after` continues from the last number of the previous page. |
 | `nipa mr view <n>` | Detail: status, mergeability/blockers, assignees, commits, review summary and description. |
 | `nipa mr update <n> [--title <t>] [-d <desc>] [--draft=false]` | Edit title/description or toggle draft. |

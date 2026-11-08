@@ -62,6 +62,10 @@ describe("demo service", () => {
     expect((await s.Comment(ROOT, 42, input))!.comments![0].body).toBe("hi");
     expect((await s.Reply(ROOT, 42, "t1", "yo"))!.body).toBe("yo");
     expect((await s.CreateMergeRequest(ROOT, { title: "T", description: "", source: "a", target: "b", draft: true }))!.draft).toBe(true);
+    expect((await s.CreateMergeRequest(ROOT, { title: "T", description: "", source: "a", target: "b", draft: false, assignees: ["u-mina", "u-x"] }))!.assignees).toEqual([
+      { id: "u-mina", name: "Mina Okafor" },
+      { id: "u-x", name: "u-x" },
+    ]);
     expect((await s.EditMergeRequest(ROOT, 42, "N", "D"))!.title).toBe("N");
     expect((await s.SetDraft(ROOT, 42, true))!.draft).toBe(true);
     expect((await s.MergeMergeRequest(ROOT, 42, "ff", false))!.request.status).toBe("merged");

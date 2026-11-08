@@ -8,6 +8,7 @@ import (
 	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/grpc/pb"
 	"github.com/nipalab/nipa/internal/snow"
+	"github.com/nipalab/nipa/internal/usecase"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -18,9 +19,23 @@ func (n *nipaServer) CreateMergeRequest(ctx context.Context, req *pb.CreateMerge
 	if err != nil {
 		return nil, handleError(err)
 	}
-	request, err := n.uc.MergeRequest().Create(
-		ctx, project.ID, req.GetTitle(), req.GetDescription(), req.GetSourceBranch(), req.GetTargetBranch(), req.GetDraft(),
-	)
+	reviewerIDs, err := parseUserIDs(req.GetReviewerIds(), "invalid reviewer id")
+	if err != nil {
+		return nil, handleError(err)
+	}
+	assigneeIDs, err := parseUserIDs(req.GetAssigneeIds(), "invalid assignee id")
+	if err != nil {
+		return nil, handleError(err)
+	}
+	request, err := n.uc.MergeRequest().Create(ctx, project.ID, usecase.CreateMergeRequestInput{
+		Title:        req.GetTitle(),
+		Description:  req.GetDescription(),
+		SourceBranch: req.GetSourceBranch(),
+		TargetBranch: req.GetTargetBranch(),
+		Draft:        req.GetDraft(),
+		ReviewerIDs:  reviewerIDs,
+		AssigneeIDs:  assigneeIDs,
+	})
 	if err != nil {
 		return nil, handleError(err)
 	}
@@ -139,13 +154,9 @@ func (n *nipaServer) SetMergeRequestAssignees(ctx context.Context, req *pb.SetMe
 	if err != nil {
 		return nil, handleError(err)
 	}
-	userIDs := make([]snow.ID, 0, len(req.GetUserIds()))
-	for _, raw := range req.GetUserIds() {
-		id, err := snow.ParseBase36(raw)
-		if err != nil {
-			return nil, handleError(domain.NewErrorUser("invalid assignee id"))
-		}
-		userIDs = append(userIDs, id)
+	userIDs, err := parseUserIDs(req.GetUserIds(), "invalid assignee id")
+	if err != nil {
+		return nil, handleError(err)
 	}
 	request, err := n.uc.MergeRequest().SetAssignees(ctx, project.ID, req.GetNumber(), userIDs)
 	if err != nil {
@@ -327,4 +338,16 @@ func diffHunksToPB(hunks []diff.Hunk) []*pb.DiffHunkDetail {
 		})
 	}
 	return out
+}
+
+func parseUserIDs(raw []string, invalid string) ([]snow.ID, error) {
+	ids := make([]snow.ID, 0, len(raw))
+	for _, value := range raw {
+		id, err := snow.ParseBase36(value)
+		if err != nil {
+			return nil, domain.NewErrorUser(invalid)
+		}
+		ids = append(ids, id)
+	}
+	return ids, nil
 }

@@ -143,7 +143,7 @@ func TestMergeRequest_Create_FileLocks(t *testing.T) {
 		},
 	)
 
-	created, err := mr.WithFileLocks(gate).Create(ctx, snow.ID(1), "Hero art", "", "feature", "main", false)
+	created, err := mr.WithFileLocks(gate).Create(ctx, snow.ID(1), CreateMergeRequestInput{Title: "Hero art", SourceBranch: "feature", TargetBranch: "main"})
 	require.NoError(t, err)
 	require.Equal(t, "Hero art", created.Title)
 }
@@ -167,7 +167,7 @@ func TestMergeRequest_Create_FileLockConflict(t *testing.T) {
 	gate.EXPECT().EnsureMergeRequestLocks(gomock.Any(), snow.ID(1), gomock.Any(), gomock.Any(), []string{"tex.png"}, snow.ID(7), snow.ID(7)).
 		Return(domain.NewErrorConflict("locked by bob"))
 
-	_, err := mr.WithFileLocks(gate).Create(ctx, snow.ID(1), "Hero art", "", "feature", "main", false)
+	_, err := mr.WithFileLocks(gate).Create(ctx, snow.ID(1), CreateMergeRequestInput{Title: "Hero art", SourceBranch: "feature", TargetBranch: "main"})
 	require.True(t, domain.IsErrorConflict(err))
 }
 
@@ -231,7 +231,7 @@ func TestMergeRequest_Create_BinaryChangesError(t *testing.T) {
 	wantErr := errors.New("db down")
 	merger.EXPECT().BinaryChangesBetween(gomock.Any(), snow.ID(1), &targetHead, &sourceHead).Return(nil, wantErr)
 
-	_, err := mr.WithFileLocks(gate).Create(permissionCtx(7), snow.ID(1), "t", "", "feature", "main", false)
+	_, err := mr.WithFileLocks(gate).Create(permissionCtx(7), snow.ID(1), CreateMergeRequestInput{Title: "t", SourceBranch: "feature", TargetBranch: "main"})
 	require.ErrorIs(t, err, wantErr)
 }
 
@@ -252,7 +252,7 @@ func TestMergeRequest_Create_RepoError(t *testing.T) {
 	wantErr := errors.New("db down")
 	repo.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil, wantErr)
 
-	_, err := mr.WithFileLocks(gate).Create(permissionCtx(7), snow.ID(1), "t", "", "feature", "main", false)
+	_, err := mr.WithFileLocks(gate).Create(permissionCtx(7), snow.ID(1), CreateMergeRequestInput{Title: "t", SourceBranch: "feature", TargetBranch: "main"})
 	require.ErrorIs(t, err, wantErr)
 }
 

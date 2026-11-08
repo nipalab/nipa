@@ -365,10 +365,14 @@ export function createMergeRequest(
   sourceBranch: string,
   targetBranch: string,
   draft = false,
+  participants: { reviewerIds?: string[]; assigneeIds?: string[] } = {},
 ): Promise<MergeRequestResponse> {
+  const body: Record<string, unknown> = { title, description, source_branch: sourceBranch, target_branch: targetBranch, draft }
+  if (participants.reviewerIds?.length) body.reviewer_ids = participants.reviewerIds
+  if (participants.assigneeIds?.length) body.assignee_ids = participants.assigneeIds
   return apiJson(`${projectBase(org, project)}/merge-requests`, {
     method: 'POST',
-    body: JSON.stringify({ title, description, source_branch: sourceBranch, target_branch: targetBranch, draft }),
+    body: JSON.stringify(body),
   })
 }
 

@@ -136,7 +136,15 @@ export function createService(scenario: string): typeof Real {
     },
     MergeRequestActivity: (_root, n) => ok(d.activityFor(Number(n) || 0)),
     MergeRequestCommits: () => ok(clone(d.commits.slice(0, 3))),
-    CreateMergeRequest: (_root, input) => ok({ ...d.mergeRequests[0], title: input.title, source: input.source, target: input.target, draft: input.draft }),
+    CreateMergeRequest: (_root, input) =>
+      ok({
+        ...d.mergeRequests[0],
+        title: input.title,
+        source: input.source,
+        target: input.target,
+        draft: input.draft,
+        assignees: (input.assignees ?? []).map((id) => Object.values(d.people).find((p) => p.id === id) ?? { id, name: id }),
+      }),
     EditMergeRequest: (_root, n, title, description) => ok({ ...(d.mergeRequests.find((m) => m.number === n) ?? d.mergeRequests[0]), title, description }),
     SetDraft: (_root, n, draft) => ok({ ...(d.mergeRequests.find((m) => m.number === n) ?? d.mergeRequests[0]), draft }),
     MergeMergeRequest: (root, n) => ok({ request: { ...d.mergeRequests[0], number: n, status: "merged" }, mergeability: { status: "merged", blockedBy: "", sourceCommitId: "c12", targetCommitId: "c12", mergeBaseId: "c8" }, outstanding: [] }),

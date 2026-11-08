@@ -86,22 +86,22 @@ var _ = Describe("email notifications", func() {
 		Expect(runNipaAs(author, dir, "add", "feature.txt").ExitCode).To(Equal(0))
 		push := runNipaAs(author, dir, "push", "-m", uniqueMessage("email lifecycle work"))
 		Expect(push.ExitCode).To(Equal(0), push.Output())
-		create := runNipaAs(author, dir, "mr", "create", "--draft", "--title", uniqueMessage("Email lifecycle MR"))
+		create := runNipaAs(author, dir, "mr", "create", "--draft", "--title", uniqueMessage("Email lifecycle MR"),
+			"--reviewer", reviewer.userID, "--assignee", assignee.userID)
 		Expect(create.ExitCode).To(Equal(0), create.Output())
 
-		request := runNipaAs(author, dir, "mr", "request-review", "1", reviewer.userID)
-		Expect(request.ExitCode).To(Equal(0), request.Output())
-		reviewerFirst := email.waitForSubject(reviewer.email, "Review requested")
+		reviewerFirst := email.waitForSubject(reviewer.email, "Merge request opened")
+		Expect(reviewerFirst.Subject).To(ContainSubstring("[" + project + "]"))
+		Expect(reviewerFirst.Text).To(ContainSubstring("opened merge request !1"))
 		expectRoot(reviewerFirst, reviewer)
-		assign := runNipaAs(author, dir, "mr", "assign", "1", assignee.userID)
-		Expect(assign.ExitCode).To(Equal(0), assign.Output())
+		assigneeFirst := email.waitForSubject(assignee.email, "Merge request opened")
+		expectRoot(assigneeFirst, assignee)
 
 		ready := runNipaAs(author, dir, "mr", "ready", "1")
 		Expect(ready.ExitCode).To(Equal(0), ready.Output())
-		assigneeFirst := email.waitForSubject(assignee.email, "Merge request ready for review")
-		Expect(assigneeFirst.Subject).To(ContainSubstring("[" + project + "]"))
-		Expect(assigneeFirst.Text).To(ContainSubstring("marked ready for review merge request !1"))
-		expectRoot(assigneeFirst, assignee)
+		assigneeReady := email.waitForSubject(assignee.email, "Merge request ready for review")
+		Expect(assigneeReady.Text).To(ContainSubstring("marked ready for review merge request !1"))
+		expectReply(assigneeReady, assigneeFirst)
 		expectReply(email.waitForSubject(reviewer.email, "Merge request ready for review"), reviewerFirst)
 
 		review := runNipaAs(reviewer, dir, "mr", "review", "1", "--approve", "-m", "lgtm")
@@ -133,10 +133,11 @@ var _ = Describe("email notifications", func() {
 				email.countSubject(author.email, "Merge request reopened"),
 				email.countSubject(reviewer.email, "Review submitted"),
 				email.countSubject(reviewer.email, "Merge request closed"),
-				email.countSubject(reviewer.email, "Merge request opened"),
-				email.countSubject(assignee.email, "Merge request opened"),
+				email.countSubject(reviewer.email, "Review requested"),
 			}
-		}, "2s", "100ms").Should(Equal([]int{0, 0, 0, 0, 0, 0, 0}), "actors are skipped and opening has no other participant yet")
+		}, "2s", "100ms").Should(Equal([]int{0, 0, 0, 0, 0, 0}), "actors are skipped and create-time reviewers only get the opened email")
+		Expect(email.countSubject(reviewer.email, "Merge request opened")).To(Equal(1))
+		Expect(email.countSubject(assignee.email, "Merge request opened")).To(Equal(1))
 		Expect(email.countSubject(reviewer.email, "Merge request ready for review")).To(Equal(1))
 		Expect(email.countSubject(assignee.email, "Merge request ready for review")).To(Equal(1))
 		Expect(email.countSubject(reviewer.email, "Merge request reopened")).To(Equal(1), "a past reviewer stays a participant")

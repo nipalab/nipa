@@ -234,19 +234,27 @@ func TestService_MergeRequestCommitsAndFiles(t *testing.T) {
 
 func TestService_CreateAndEditMergeRequest(t *testing.T) {
 	svc, d := newMergeRequests(t)
-	mr, err := svc.CreateMergeRequest(ctx, "/work/game", NewMergeRequest{Title: " Hero pass ", Description: " body ", Source: "art", Target: "main", Draft: true})
+	mr, err := svc.CreateMergeRequest(ctx, "/work/game", NewMergeRequest{
+		Title: " Hero pass ", Description: " body ", Source: "art", Target: "main", Draft: true,
+		Reviewers: []string{"r1"}, Assignees: []string{"a1", "a2"},
+	})
 	require.NoError(t, err)
 	assert.Equal(t, int64(7), mr.Number)
 	assert.True(t, mr.Draft)
 	assert.Equal(t, "body", d.created.GetDescription())
+	assert.Equal(t, []string{"r1"}, d.created.GetReviewerIds())
+	assert.Equal(t, []string{"a1", "a2"}, d.created.GetAssigneeIds())
 
-	for in, msg := range map[NewMergeRequest]string{
-		{Source: "a", Target: "b"}:             "enter a title",
-		{Title: "x", Source: "a"}:              "choose both branches",
-		{Title: "x", Source: "a", Target: "a"}: "choose two different branches",
+	for _, tc := range []struct {
+		in  NewMergeRequest
+		msg string
+	}{
+		{NewMergeRequest{Source: "a", Target: "b"}, "enter a title"},
+		{NewMergeRequest{Title: "x", Source: "a"}, "choose both branches"},
+		{NewMergeRequest{Title: "x", Source: "a", Target: "a"}, "choose two different branches"},
 	} {
-		_, err := svc.CreateMergeRequest(ctx, "/work/game", in)
-		require.EqualError(t, err, msg)
+		_, err := svc.CreateMergeRequest(ctx, "/work/game", tc.in)
+		require.EqualError(t, err, tc.msg)
 	}
 	d.failAt = "create"
 	_, err = svc.CreateMergeRequest(ctx, "/work/game", NewMergeRequest{Title: "x", Source: "a", Target: "b"})

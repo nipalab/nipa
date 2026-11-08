@@ -418,6 +418,76 @@ describe('MergeRequestsPage', () => {
     act(() => root.unmount())
   })
 
+  it('creates a merge request with reviewers and assignees', async () => {
+    const calls: { url: string; method: string; body: unknown }[] = []
+    const members = [
+      { user_id: '1', name: 'Alice', email: 'alice@example.com', photo_url: '', is_admin: true, is_super_admin: false, role: 'owner' },
+      { user_id: '2', name: 'Bob', email: 'bob@example.com', photo_url: '', is_admin: false, is_super_admin: false, role: 'member' },
+      { user_id: '3', name: '', email: 'carol@example.com', photo_url: '', is_admin: false, is_super_admin: false, role: 'member' },
+    ]
+    stubRepoRoutes((url, init) => {
+      const method = init?.method ?? 'GET'
+      calls.push({ url, method, body: init?.body ? JSON.parse(String(init.body)) : undefined })
+      if (url.includes('/orgs/studio/members')) return jsonResponse(members)
+      if (url.includes('/merge-requests') && method === 'POST') return jsonResponse({ error: 'boom' }, 400)
+      if (url.includes('/branches') && method === 'GET') return jsonResponse(TWO_BRANCHES)
+      return null
+    })
+
+    const { container, root } = await renderApp('/studio/game/merges/new')
+    await waitFor(() => container.querySelector('select[aria-label="Add reviewer"]') !== null)
+    const reviewerOptions = Array.from(
+      container.querySelectorAll('select[aria-label="Add reviewer"] option'),
+    ).map((option) => option.textContent)
+    expect(reviewerOptions).toEqual(['Add reviewer…', 'Bob', 'carol@example.com'])
+
+    const titleInput = container.querySelector('input') as HTMLInputElement
+    const [sourceSelect, targetSelect] = Array.from(container.querySelectorAll('select')) as HTMLSelectElement[]
+    await act(async () => {
+      setInputValue(titleInput, 'Add feature')
+      setSelectValue(sourceSelect, 'feature')
+      setSelectValue(targetSelect, 'main')
+    })
+    await act(async () => {
+      setSelectValue(container.querySelector('select[aria-label="Add reviewer"]') as HTMLSelectElement, '2')
+    })
+    await act(async () => {
+      setSelectValue(container.querySelector('select[aria-label="Add reviewer"]') as HTMLSelectElement, '3')
+    })
+    await act(async () => {
+      setSelectValue(container.querySelector('select[aria-label="Add assignee"]') as HTMLSelectElement, '1')
+    })
+    await act(async () => {
+      setSelectValue(container.querySelector('select[aria-label="Add assignee"]') as HTMLSelectElement, '3')
+    })
+    await act(async () => {
+      const removers = [...container.querySelectorAll<HTMLElement>('button[aria-labelledby]')].filter((element) =>
+        (element.getAttribute('aria-labelledby') ?? '')
+          .split(' ')
+          .some((id) => document.getElementById(id)?.textContent === 'remove carol@example.com'),
+      )
+      removers[removers.length - 1].click()
+    })
+    expect(container.querySelector('select[aria-label="Add reviewer"]')).toBeNull()
+    expect(container.querySelector('select[aria-label="Add assignee"]')).not.toBeNull()
+    await act(async () => {
+      findButton('Create merge request').click()
+    })
+    await waitFor(() => calls.some((call) => call.method === 'POST' && call.url.includes('/merge-requests')))
+    const post = calls.find((call) => call.method === 'POST' && call.url.includes('/merge-requests'))
+    expect(post?.body).toEqual({
+      title: 'Add feature',
+      description: '',
+      source_branch: 'feature',
+      target_branch: 'main',
+      draft: false,
+      reviewer_ids: ['2', '3'],
+      assignee_ids: ['1'],
+    })
+    await waitForText(container, 'boom')
+    act(() => root.unmount())
+  })
+
   it('filters and paginates the list', async () => {
     const calls: string[] = []
     const page = (numbers: number[], next?: string) => ({

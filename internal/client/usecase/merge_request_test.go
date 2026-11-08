@@ -14,6 +14,7 @@ import (
 type stubMRCreateCall struct {
 	org, project, title, description, source, target string
 	draft                                            bool
+	reviewers, assignees                             []string
 }
 
 type stubMRClient struct {
@@ -138,10 +139,11 @@ func (s *stubMRClient) Connect(_ context.Context, host string) error {
 	return s.connectErr
 }
 
-func (s *stubMRClient) CreateMergeRequest(_ context.Context, org, project, title, description, sourceBranch, targetBranch string, draft bool) (*domain.MergeRequest, error) {
+func (s *stubMRClient) CreateMergeRequest(_ context.Context, org, project string, in domain.NewMergeRequest) (*domain.MergeRequest, error) {
 	s.createCalls = append(s.createCalls, stubMRCreateCall{
-		org: org, project: project, title: title, description: description,
-		source: sourceBranch, target: targetBranch, draft: draft,
+		org: org, project: project, title: in.Title, description: in.Description,
+		source: in.SourceBranch, target: in.TargetBranch, draft: in.Draft,
+		reviewers: in.ReviewerIDs, assignees: in.AssigneeIDs,
 	})
 	return s.createResult, s.createErr
 }
@@ -293,6 +295,20 @@ func TestMergeRequest_Create_Defaults(t *testing.T) {
 	require.Equal(t, "T", call.title)
 	require.Equal(t, "feature", call.source)
 	require.Equal(t, "main", call.target)
+	require.Empty(t, call.reviewers)
+}
+
+func TestMergeRequest_Create_Participants(t *testing.T) {
+	local := &stubLocalRepo{
+		loadConfig: &domain.Config{Url: "http://example.com/org/project", Branch: "feature"},
+	}
+	client := &stubMRClient{createResult: &domain.MergeRequest{Number: 1}}
+	_, err := newTestMergeRequest(t, local, client).Create(context.Background(), t.TempDir(), CreateMergeRequestOptions{
+		Title: "T", Target: "main", Reviewers: []string{" r1 ", ""}, Assignees: []string{"a1"},
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{"r1"}, client.createCalls[0].reviewers)
+	require.Equal(t, []string{"a1"}, client.createCalls[0].assignees)
 }
 
 func TestMergeRequest_Create_ExplicitTarget(t *testing.T) {

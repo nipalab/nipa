@@ -119,17 +119,50 @@ func (m *MergeRequest) WithChecks(checks *MergeRequestCheck) *MergeRequest {
 	return m
 }
 
-func (m *MergeRequest) Create(ctx context.Context, projectID snow.ID, title, description, sourceBranch, targetBranch string, draft bool) (*domain.MergeRequest, error) {
+// CreateMergeRequestInput describes a new merge request. Reviewers are asked
+// for a review and assignees attached as part of the creation.
+type CreateMergeRequestInput struct {
+	Title        string
+	Description  string
+	SourceBranch string
+	TargetBranch string
+	Draft        bool
+	ReviewerIDs  []snow.ID
+	AssigneeIDs  []snow.ID
+}
+
+func (m *MergeRequest) Create(ctx context.Context, projectID snow.ID, in CreateMergeRequestInput) (*domain.MergeRequest, error) {
+	title, description, sourceBranch, targetBranch, draft := in.Title, in.Description, in.SourceBranch, in.TargetBranch, in.Draft
 	claim, ok := domain.ClaimFromContext(ctx)
 	if !ok {
 		return nil, domain.NewErrorNoPermission()
 	}
-	if !m.perm.HasProjectAccess(ctx, projectID, domain.PermissionRead) {
+	required := domain.PermissionRead
+	if len(in.ReviewerIDs) > 0 || len(in.AssigneeIDs) > 0 {
+		required = domain.PermissionWrite
+	}
+	if !m.perm.HasProjectAccess(ctx, projectID, required) {
 		return nil, domain.NewErrorNoPermission()
 	}
 	title = strings.TrimSpace(title)
 	if title == "" {
 		return nil, domain.NewErrorUser("title is required")
+	}
+	if len(in.ReviewerIDs) > 0 && m.review == nil {
+		return nil, domain.NewErrorUser("review requests are not enabled")
+	}
+	for _, id := range in.ReviewerIDs {
+		if id == claim.UserID {
+			return nil, domain.NewErrorUser("you cannot request a review from yourself")
+		}
+	}
+	reviewers, err := m.participants(ctx, projectID, in.ReviewerIDs)
+	if err != nil {
+		return nil, err
+	}
+	assignees, err := m.participants(ctx, projectID, in.AssigneeIDs)
+	if err != nil {
+		return nil, err
 	}
 	sourceBranch = strings.TrimSpace(sourceBranch)
 	targetBranch = strings.TrimSpace(targetBranch)
@@ -207,10 +240,28 @@ func (m *MergeRequest) Create(ctx context.Context, projectID snow.ID, title, des
 				return err
 			}
 		}
-		return m.appendEvent(txCtx, domain.MergeRequestEventOpened, created, nil, "", claim.UserID)
+		if err := m.appendEvent(txCtx, domain.MergeRequestEventOpened, created, nil, "", claim.UserID); err != nil {
+			return err
+		}
+		for _, id := range assignees {
+			if err := m.repo.AddAssignee(txCtx, created.ID, id); err != nil {
+				return err
+			}
+		}
+		for _, id := range reviewers {
+			if err := m.review.addReviewRequest(txCtx, created, id, claim.UserID); err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 	if err != nil {
 		return nil, err
+	}
+	if len(assignees) > 0 {
+		if err := m.attachAssignees(ctx, projectID, []*domain.MergeRequest{created}); err != nil {
+			slog.Warn("loading merge request assignees failed", "merge_request", created.Number, "error", err)
+		}
 	}
 
 	m.emitHook(ctx, domain.WebhookEventMRCreated, projectID, created, claim.UserID)
@@ -283,24 +334,9 @@ func (m *MergeRequest) SetAssignees(ctx context.Context, projectID snow.ID, numb
 	if mr.Status != domain.MergeRequestOpen {
 		return nil, domain.NewErrorConflict(fmt.Sprintf("merge request is %s", mr.Status))
 	}
-	unique := make([]snow.ID, 0, len(userIDs))
-	seen := map[snow.ID]bool{}
-	for _, id := range userIDs {
-		if seen[id] {
-			continue
-		}
-		seen[id] = true
-		unique = append(unique, id)
-	}
-	if m.users != nil {
-		for _, id := range unique {
-			if _, err := m.users.GetByID(ctx, id); err != nil {
-				return nil, domain.NewErrorUser(fmt.Sprintf("user %s not found", id.Base36()))
-			}
-			if m.access != nil && !m.access.UserHasProjectAccess(ctx, projectID, id, domain.PermissionRead) {
-				return nil, domain.NewErrorUser(fmt.Sprintf("user %s not found", id.Base36()))
-			}
-		}
+	unique, err := m.participants(ctx, projectID, userIDs)
+	if err != nil {
+		return nil, err
 	}
 	err = m.transactor.WithinTx(ctx, func(txCtx context.Context) error {
 		if err := m.repo.ClearAssignees(txCtx, mr.ID); err != nil {
@@ -324,6 +360,32 @@ func (m *MergeRequest) SetAssignees(ctx context.Context, projectID snow.ID, numb
 		m.emitHook(ctx, domain.WebhookEventMRUpdated, projectID, updated, claim.UserID)
 	}
 	return updated, nil
+}
+
+// participants dedupes user ids and checks each names a real account that can
+// read the project.
+func (m *MergeRequest) participants(ctx context.Context, projectID snow.ID, userIDs []snow.ID) ([]snow.ID, error) {
+	unique := make([]snow.ID, 0, len(userIDs))
+	seen := map[snow.ID]bool{}
+	for _, id := range userIDs {
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		unique = append(unique, id)
+	}
+	if m.users == nil {
+		return unique, nil
+	}
+	for _, id := range unique {
+		if _, err := m.users.GetByID(ctx, id); err != nil {
+			return nil, domain.NewErrorUser(fmt.Sprintf("user %s not found", id.Base36()))
+		}
+		if m.access != nil && !m.access.UserHasProjectAccess(ctx, projectID, id, domain.PermissionRead) {
+			return nil, domain.NewErrorUser(fmt.Sprintf("user %s not found", id.Base36()))
+		}
+	}
+	return unique, nil
 }
 
 func (m *MergeRequest) Update(ctx context.Context, projectID snow.ID, number int64, title, description string) (*domain.MergeRequest, error) {

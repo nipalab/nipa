@@ -43,6 +43,9 @@ type CreateMergeRequestRequest struct {
 	SourceBranch string `json:"source_branch"`
 	TargetBranch string `json:"target_branch"`
 	Draft        bool   `json:"draft"`
+	// ReviewerIDs and AssigneeIDs are base36 user ids; either needs project write.
+	ReviewerIDs []string `json:"reviewer_ids,omitempty"`
+	AssigneeIDs []string `json:"assignee_ids,omitempty"`
 }
 
 type UpdateMergeRequestRequest struct {

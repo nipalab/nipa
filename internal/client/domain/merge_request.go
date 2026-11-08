@@ -35,6 +35,18 @@ type MergeRequestReviewState struct {
 	OutstandingReviewers []string `json:"outstanding_reviewers"`
 }
 
+// NewMergeRequest is the payload of a merge request creation. ReviewerIDs and
+// AssigneeIDs are base36 user ids.
+type NewMergeRequest struct {
+	Title        string
+	Description  string
+	SourceBranch string
+	TargetBranch string
+	Draft        bool
+	ReviewerIDs  []string
+	AssigneeIDs  []string
+}
+
 // ListMergeRequestOptions filters and paginates a merge request listing.
 // After is the cursor returned by the previous page (0 starts from the newest).
 type ListMergeRequestOptions struct {

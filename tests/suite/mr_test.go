@@ -1081,6 +1081,47 @@ var _ = Describe("nipa mr", func() {
 		Expect(view.Output()).NotTo(ContainSubstring("assignees:"))
 	})
 
+	It("attaches reviewers and assignees when creating from the CLI", func() {
+		project := newProject("mr-create-participants")
+		seedRepo(orgSlug, project, map[string][]byte{"base.txt": []byte("base\n")}, "seed")
+		dir := cloneRepo(workspace(), repoURLFor(orgSlug, project), "work")
+		Expect(runNipa(dir, "branch", "-c", "feature").ExitCode).To(Equal(0))
+		writeText(dir, "feature.txt", "feature\n")
+		Expect(runNipa(dir, "add", "feature.txt").ExitCode).To(Equal(0))
+		Expect(pushRepo(dir, "feature work").ExitCode).To(Equal(0))
+
+		reviewer := newIdentity("mr-create-reviewer")
+		assignee := newIdentity("mr-create-assignee")
+		outsider := newIdentity("mr-create-outsider")
+		api.createPathRule(orgSlug, project, reviewer.userID, "", 1)
+		api.createPathRule(orgSlug, project, assignee.userID, "", 1)
+
+		rejected := runNipa(dir, "mr", "create", "--title", uniqueMessage("Outsider"), "--reviewer", outsider.userID)
+		Expect(rejected.ExitCode).NotTo(Equal(0), rejected.Output())
+		Expect(rejected.Output()).To(ContainSubstring("not found"))
+
+		create := runNipa(dir, "mr", "create", "--title", uniqueMessage("Create with participants"),
+			"--reviewer", reviewer.userID, "--assignee", assignee.userID, "--assignee", reviewer.userID)
+		Expect(create.ExitCode).To(Equal(0), create.Output())
+
+		view := runNipa(dir, "mr", "view", "1")
+		Expect(view.ExitCode).To(Equal(0), view.Output())
+		Expect(view.Output()).To(MatchRegexp(`assignees: .*mr-create-assignee`))
+		Expect(view.Output()).To(MatchRegexp(`assignees: .*mr-create-reviewer`))
+
+		requests := runNipa(dir, "mr", "requests", "1")
+		Expect(requests.ExitCode).To(Equal(0), requests.Output())
+		Expect(requests.Output()).To(ContainSubstring("mr-create-reviewer"))
+
+		var timeline mergeRequestTimelineJSON
+		runJSONInto(dir, &timeline, "mr", "timeline", "1", "--json")
+		kinds := make([]string, 0, len(timeline.Timeline))
+		for _, item := range timeline.Timeline {
+			kinds = append(kinds, item.Kind)
+		}
+		Expect(kinds).To(Equal([]string{"opened", "review_requested"}))
+	})
+
 	It("anchors a comment to a removed line and reopens a resolved thread", func() {
 		project := newProject("mr-old-line")
 		seedRepo(orgSlug, project, map[string][]byte{"notes.txt": []byte("keep\ndrop me\ntail\n")}, "seed")

@@ -541,7 +541,7 @@ filter (the CLI's `--status draft` maps to open+draft). A WIP/Draft title
 prefix (`wip:`, `draft:`, `[wip]`, ...) auto-drafts on create and on rename,
 and removing the prefix from a title-drafted request marks it ready. The SPA
 marks drafts in the list, the page header, the edit dialog and the merge box;
-the CLI adds `mr create --draft`, `mr update --draft=false` and
+the CLI adds `mr create --draft [--reviewer <id>] [--assignee <id>]`, `mr update --draft=false` and
 `mr ready <number>`.
 `SetBranchProtection` carries `dismiss_stale_approvals` (default on; off
 carries live decisions onto the new head through `CarryOverReviews` instead of
@@ -560,6 +560,14 @@ when the target requires status checks; a target branch with
 every required name succeeded for the current source head — a push starts a
 clean slate. `List`/`nipa mr checks` return the head's checks; reporting emits
 `mr.check_reported`.
+
+Create takes `usecase.CreateMergeRequestInput`; optional `ReviewerIDs`/
+`AssigneeIDs` (REST `reviewer_ids`/`assignee_ids`, gRPC fields 7/8, SPA/desktop
+create forms, MCP `reviewers`/`assignees`) need project write, are deduped and
+validated like `SetAssignees` (self review rejected, nil review seam = 400) and
+are written in the create transaction after the `opened` event (review
+requests + `review_requested` events, no separate webhook), so only
+`mr.created` fires and they get the "opened" email.
 
 Assignees: `merge_request_assignees` (base-set through
 `SetAssignees` / `POST .../assignees` / gRPC `SetMergeRequestAssignees` /
