@@ -128,7 +128,7 @@ EOF
 		email_lines=$(cat <<EOF
 EMAIL_SENDER: http
 EMAIL_HTTP_ENDPOINT: 'http://127.0.0.1:$email_port/email'
-EMAIL_HTTP_BODY_TEMPLATE: '{"personalizations":[{"to":[{"email":{{json (index .To 0)}}}],"headers":{"Message-ID":{{json .MessageID}},"In-Reply-To":{{json .InReplyTo}}}}],"from":{"email":{{json .FromEmail}}},"subject":{{json .Subject}},"content":[{"type":"text/plain","value":{{json .Text}}},{"type":"text/html","value":{{json .HTML}}}]}'
+EMAIL_HTTP_BODY_TEMPLATE: '{"personalizations":[{"to":[{"email":{{json (index .To 0)}}}],"headers":{"Message-ID":{{json .MessageID}},"In-Reply-To":{{json .InReplyTo}}}}],"references":{{json .References}},"from":{"email":{{json .FromEmail}}},"subject":{{json .Subject}},"content":[{"type":"text/plain","value":{{json .Text}}},{"type":"text/html","value":{{json .HTML}}}]}'
 EOF
 )
 		;;

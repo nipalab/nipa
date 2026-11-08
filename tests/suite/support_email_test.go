@@ -16,14 +16,15 @@ import (
 )
 
 type receivedEmail struct {
-	From      string
-	To        []string
-	Subject   string
-	Text      string
-	HTML      string
-	MessageID string
-	InReplyTo string
-	At        time.Time
+	From       string
+	To         []string
+	Subject    string
+	Text       string
+	HTML       string
+	MessageID  string
+	InReplyTo  string
+	References string
+	At         time.Time
 }
 
 type receivedAddress struct {
@@ -39,10 +40,11 @@ type sentEmailPayload struct {
 		To      []receivedAddress `json:"to"`
 		Headers map[string]string `json:"headers"`
 	} `json:"personalizations"`
-	From    receivedAddress   `json:"from"`
-	To      []receivedAddress `json:"to"`
-	Subject string            `json:"subject"`
-	Content []struct {
+	From       receivedAddress   `json:"from"`
+	To         []receivedAddress `json:"to"`
+	Subject    string            `json:"subject"`
+	References []string          `json:"references"`
+	Content    []struct {
 		Type  string `json:"type"`
 		Value string `json:"value"`
 	} `json:"content"`
@@ -102,6 +104,10 @@ func startEmailReceiver() *emailReceiver {
 				}
 				email.MessageID = personalization.Headers["Message-ID"]
 				email.InReplyTo = personalization.Headers["In-Reply-To"]
+				email.References = personalization.Headers["References"]
+			}
+			if len(payload.References) > 0 {
+				email.References = strings.Join(payload.References, " ")
 			}
 		} else {
 			for _, to := range payload.To {
@@ -109,6 +115,7 @@ func startEmailReceiver() *emailReceiver {
 			}
 			email.MessageID = additionalHeader(payload, "Message-ID")
 			email.InReplyTo = additionalHeader(payload, "In-Reply-To")
+			email.References = additionalHeader(payload, "References")
 		}
 		if receiver.consumeFailure(email.To) {
 			w.WriteHeader(http.StatusInternalServerError)
@@ -174,6 +181,16 @@ func (r *emailReceiver) countFor(address string) int {
 			if to == address {
 				count++
 			}
+		}
+	}
+	return count
+}
+
+func (r *emailReceiver) countSubject(address, subject string) int {
+	count := 0
+	for _, email := range r.all() {
+		if contains(email.To, address) && strings.Contains(email.Subject, subject) {
+			count++
 		}
 	}
 	return count
