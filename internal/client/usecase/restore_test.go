@@ -221,6 +221,48 @@ func TestWorkingCopy_Restore_RejectsEscapingPath(t *testing.T) {
 	require.ErrorContains(t, err, "outside the repository")
 }
 
+func TestWorkingCopy_Restore_DotRestoresEveryTrackedFile(t *testing.T) {
+	root := t.TempDir()
+	writeRepoFile(t, root, "a.txt", "edited")
+	writeRepoFile(t, root, "docs/b.txt", "edited too")
+	writeRepoFile(t, root, "untracked.txt", "keep me")
+	a, aStored := snapshotFileWithContent(t, "a.txt", "a", chunker.EncodingRaw)
+	b, bStored := snapshotFileWithContent(t, "docs/b.txt", "b", chunker.EncodingRaw)
+	local := &stubLocalRepo{
+		snapshot:     &domain.Snapshot{Files: []domain.SnapshotFile{a, b}},
+		storedChunks: mergeStored(aStored, bStored),
+	}
+	wc := newWorkingCopy(t, local, root)
+
+	require.NoError(t, wc.Restore(context.Background(), []string{"."}))
+	for path, want := range map[string]string{"a.txt": "a", "docs/b.txt": "b", "untracked.txt": "keep me"} {
+		got, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(path)))
+		require.NoError(t, err)
+		require.Equal(t, want, string(got), path)
+	}
+}
+
+func TestWorkingCopy_Restore_DotWithNothingTracked(t *testing.T) {
+	wc := newWorkingCopy(t, &stubLocalRepo{snapshot: &domain.Snapshot{}}, t.TempDir())
+	err := wc.Restore(context.Background(), []string{"."})
+	require.ErrorContains(t, err, `path "." is not tracked`)
+}
+
+func TestWorkingCopy_Restore_DotRefusesStagedChanges(t *testing.T) {
+	root := t.TempDir()
+	writeRepoFile(t, root, "a.txt", "edited")
+	a, aStored := snapshotFileWithContent(t, "a.txt", "a", chunker.EncodingRaw)
+	local := &stubLocalRepo{
+		snapshot:     &domain.Snapshot{Files: []domain.SnapshotFile{a}},
+		storedChunks: aStored,
+		staged:       []string{"a.txt"},
+	}
+	wc := newWorkingCopy(t, local, root)
+
+	err := wc.Restore(context.Background(), []string{"."})
+	require.ErrorContains(t, err, "staged changes")
+}
+
 func TestWorkingCopy_Restore_RejectsEmptyTarget(t *testing.T) {
 	wc := newWorkingCopy(t, &stubLocalRepo{snapshot: &domain.Snapshot{}}, t.TempDir())
 	err := wc.Restore(context.Background(), []string{""})
