@@ -84,6 +84,26 @@ text = "Skip"
 layout_mode = 2
 text = "Abort"
 
+[node name="SidecarBanner" type="VBoxContainer" parent="."]
+visible = false
+layout_mode = 2
+
+[node name="SidecarLabel" type="Label" parent="SidecarBanner"]
+layout_mode = 2
+autowrap_mode = 3
+
+[node name="Buttons" type="HFlowContainer" parent="SidecarBanner"]
+layout_mode = 2
+
+[node name="StageSidecarsButton" type="Button" parent="SidecarBanner/Buttons"]
+layout_mode = 2
+tooltip_text = "Stage the .import/.uid files that belong to staged assets."
+text = "Stage sidecars"
+
+[node name="SetupButton" type="Button" parent="SidecarBanner/Buttons"]
+layout_mode = 2
+text = "Setup checker..."
+
 [node name="OutOfDate" type="HBoxContainer" parent="."]
 visible = false
 layout_mode = 2

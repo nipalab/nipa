@@ -86,11 +86,16 @@ jobs:
       - name: Build
         run: make godot-build
 
+      - name: Pack
+        run: make godot-pack
+
       - name: Upload library
         uses: actions/upload-artifact@v4
         with:
           name: godot-extension-linux
-          path: plugins/godot/addons/nipa/bin/**
+          path: |
+            plugins/godot/addons/nipa/bin/**
+            bin/nipa-godot-v*.zip
 
   headless-load:
     name: Headless load check (Godot ${{ matrix.godot }})

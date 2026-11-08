@@ -1,0 +1,31 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://addons/nipa/ui/setup_row.gd" id="1"]
+
+[node name="SetupRow" type="HBoxContainer"]
+script = ExtResource("1")
+
+[node name="LevelLabel" type="Label" parent="."]
+custom_minimum_size = Vector2(72, 0)
+layout_mode = 2
+size_flags_vertical = 0
+text = "-"
+
+[node name="Body" type="VBoxContainer" parent="."]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="TitleLabel" type="Label" parent="Body"]
+layout_mode = 2
+autowrap_mode = 3
+
+[node name="DetailLabel" type="Label" parent="Body"]
+modulate = Color(1, 1, 1, 0.7)
+layout_mode = 2
+autowrap_mode = 3
+
+[node name="FixButton" type="Button" parent="."]
+visible = false
+layout_mode = 2
+size_flags_vertical = 0
+text = "Fix"

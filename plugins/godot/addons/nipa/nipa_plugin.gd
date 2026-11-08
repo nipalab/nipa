@@ -4,11 +4,14 @@ extends EditorPlugin
 const DOCK_SCENE := preload("res://addons/nipa/ui/dock.tscn")
 const BOTTOM_PANEL_SCENE := preload("res://addons/nipa/ui/bottom_panel.tscn")
 const BADGE_SCENE := preload("res://addons/nipa/ui/lock_badge.tscn")
+const SETUP_SCENE := preload("res://addons/nipa/ui/setup_checker.tscn")
+const FileSystemDecorator := preload("res://addons/nipa/filesystem_decorator.gd")
 const ContextMenu := preload("res://addons/nipa/context_menu.gd")
 const InspectorPlugin := preload("res://addons/nipa/inspector_plugin.gd")
 const RECONNECT_ITEM := "Nipa: Reconnect"
+const SETUP_ITEM := "Nipa: Setup checker..."
 const QUIET_OPS := ["lock", "unlock", "conflicts", "merge-godot", "merge-tool", "history", "preview"]
-const SILENT_OPS := ["conflicts", "merge-godot", "merge-tool", "history", "preview"]
+const SILENT_OPS := ["conflicts", "merge-godot", "merge-tool", "history", "preview", "setup"]
 
 var dock: Control
 var bottom_panel: Control
@@ -21,6 +24,9 @@ var _badges: Array = []
 var _lock_timer: Timer
 var _lock_requested := {}
 var _warned := {}
+var _setup_checker: AcceptDialog
+var _decorator: RefCounted
+var _decoration_failed := false
 
 
 # What an edit of a file does: "lock" it, "warn" that someone else holds it, or nothing.
@@ -43,7 +49,9 @@ func _enter_tree() -> void:
 	bottom_panel = BOTTOM_PANEL_SCENE.instantiate()
 	add_control_to_bottom_panel(bottom_panel, "Nipa")
 	dock.conflicts_requested.connect(_show_conflicts)
+	dock.setup_requested.connect(show_setup_checker)
 	add_tool_menu_item(RECONNECT_ITEM, reconnect)
+	add_tool_menu_item(SETUP_ITEM, show_setup_checker)
 	for slot in [EditorContextMenuPlugin.CONTEXT_SLOT_FILESYSTEM, EditorContextMenuPlugin.CONTEXT_SLOT_SCENE_TABS]:
 		var menu := ContextMenu.new()
 		menu.slot = slot
@@ -75,10 +83,12 @@ func _enter_tree() -> void:
 	get_undo_redo().history_changed.connect(_on_history_changed)
 	EditorInterface.get_inspector().property_edited.connect(_on_property_edited)
 	ProjectSettings.settings_changed.connect(_apply_lock_settings)
+	EditorInterface.get_editor_settings().settings_changed.connect(_apply_decoration_setting)
 	_remember_open_scenes()
 	_connect_open_project()
 	_apply_lock_settings()
 	_refresh_badges()
+	_apply_decoration_setting()
 
 
 func _exit_tree() -> void:
@@ -89,9 +99,16 @@ func _exit_tree() -> void:
 		[get_undo_redo().history_changed, _on_history_changed],
 		[EditorInterface.get_inspector().property_edited, _on_property_edited],
 		[ProjectSettings.settings_changed, _apply_lock_settings],
+		[EditorInterface.get_editor_settings().settings_changed, _apply_decoration_setting],
 	]:
 		if pair[0].is_connected(pair[1]):
 			pair[0].disconnect(pair[1])
+	if _decorator:
+		_decorator.disable()
+		_decorator = null
+	if _setup_checker:
+		_setup_checker.queue_free()
+		_setup_checker = null
 	if _connected_session:
 		for pair in [
 			[_connected_session.op_queued, _on_op_queued],
@@ -119,6 +136,7 @@ func _exit_tree() -> void:
 		remove_context_menu_plugin(menu)
 	_context_menus.clear()
 	remove_tool_menu_item(RECONNECT_ITEM)
+	remove_tool_menu_item(SETUP_ITEM)
 	if bottom_panel:
 		remove_control_from_bottom_panel(bottom_panel)
 		bottom_panel.queue_free()
@@ -126,6 +144,7 @@ func _exit_tree() -> void:
 	if dock:
 		dock.reconnect_requested.disconnect(reconnect)
 		dock.conflicts_requested.disconnect(_show_conflicts)
+		dock.setup_requested.disconnect(show_setup_checker)
 		remove_control_from_docks(dock)
 		dock.queue_free()
 		dock = null
@@ -148,6 +167,35 @@ func reconnect() -> void:
 		return
 	session.close_project()
 	_connect_open_project()
+
+
+func show_setup_checker() -> void:
+	if _setup_checker == null:
+		_setup_checker = SETUP_SCENE.instantiate()
+		EditorInterface.get_base_control().add_child(_setup_checker)
+	_setup_checker.session = _session()
+	_setup_checker.popup_centered()
+	_setup_checker.refresh()
+
+
+func _apply_decoration_setting() -> void:
+	var wanted := NipaSettings.decorate_filesystem_dock()
+	if not wanted:
+		_decoration_failed = false
+		if _decorator:
+			_decorator.disable()
+			_decorator = null
+		return
+	if _decorator or _decoration_failed:
+		return
+	var decorator := FileSystemDecorator.new()
+	var error: String = decorator.enable(EditorInterface.get_file_system_dock(), _session())
+	if error.is_empty():
+		_decorator = decorator
+		return
+	_decoration_failed = true
+	EditorInterface.get_editor_toaster().push_toast(
+		"Nipa: FileSystem dock decoration is off (%s)." % error, EditorToaster.SEVERITY_WARNING)
 
 
 func _connect_open_project() -> void:

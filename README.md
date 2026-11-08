@@ -190,7 +190,11 @@ The full agent-facing reference lives in [`docs/AI.md`](docs/AI.md).
   [`docs/DAEMON.md`](docs/DAEMON.md). The Unity Editor plugin
   (`plugins/unity/com.nipalab.nipa`, install from a git URL or tarball, setup
   checker included) is documented in
-  [`docs/UNITY_PLUGIN.md`](docs/UNITY_PLUGIN.md).
+  [`docs/UNITY_PLUGIN.md`](docs/UNITY_PLUGIN.md). The Godot 4.4+ add-on
+  (`plugins/godot`, a native `NipaVCSInterface` plus the Nipa dock, locks,
+  conflicts and a setup checker) ships as `nipa-godot-vX.Y.Z.zip` on GitHub
+  releases tagged `godot-v*` and through the Godot Asset Library; see
+  [`docs/GODOT_PLUGIN.md`](docs/GODOT_PLUGIN.md#install).
 - Local state lives in `.nipa/` inside the clone target: a JSON `config` with
   the repository URL, current branch, sparse prefixes and (while detached at a
   tag) the head marker, and a SQLite database tracking the tree

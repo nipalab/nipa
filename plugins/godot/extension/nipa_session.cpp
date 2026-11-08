@@ -15,6 +15,8 @@
 
 #include "core/conflicts/merge_tool.h"
 #include "core/daemon/connector.h"
+#include "core/decor/decor.h"
+#include "core/setup/ignore.h"
 #include "core/history/history.h"
 #include "core/status/status.h"
 #include "nipa_util.h"
@@ -136,6 +138,10 @@ void NipaSession::_bind_methods() {
     ClassDB::bind_method(D_METHOD("request_history", "clone_path", "start", "limit"), &NipaSession::request_history);
     ClassDB::bind_method(D_METHOD("request_preview", "old_ref", "new_ref", "threshold", "max_size"),
                          &NipaSession::request_preview);
+    ClassDB::bind_method(D_METHOD("request_setup_check"), &NipaSession::request_setup_check);
+    ClassDB::bind_method(D_METHOD("apply_ignore_template"), &NipaSession::apply_ignore_template);
+    ClassDB::bind_method(D_METHOD("get_sidecar_warnings"), &NipaSession::get_sidecar_warnings);
+    ClassDB::bind_method(D_METHOD("get_decorations", "res_paths"), &NipaSession::get_decorations);
     ClassDB::bind_method(D_METHOD("drain_events"), &NipaSession::drain_events);
 
     ADD_SIGNAL(MethodInfo("connected", PropertyInfo(Variant::STRING, "version")));
@@ -161,6 +167,7 @@ void NipaSession::_bind_methods() {
     ADD_SIGNAL(MethodInfo("locks_changed", PropertyInfo(Variant::PACKED_STRING_ARRAY, "guarded_paths")));
     ADD_SIGNAL(MethodInfo("conflicts_changed"));
     ADD_SIGNAL(MethodInfo("tags_changed"));
+    ADD_SIGNAL(MethodInfo("warnings_changed"));
     ADD_SIGNAL(MethodInfo("commit_locks_needed", PropertyInfo(Variant::STRING, "message"),
                           PropertyInfo(Variant::PACKED_STRING_ARRAY, "clone_paths")));
 }
@@ -521,6 +528,9 @@ void NipaSession::dispatch(const session::Event& event) {
         case EventKind::TagsChanged:
             emit_signal("tags_changed");
             break;
+        case EventKind::WarningsChanged:
+            emit_signal("warnings_changed");
+            break;
         case EventKind::LocksChanged: {
             PackedStringArray paths;
             for (const auto& p : event.paths) paths.push_back(to_godot(p));
@@ -730,6 +740,77 @@ Ref<NipaRequest> NipaSession::request_preview(const Dictionary& old_ref, const D
                                               int max_size) {
     return track_or_closed(
         [&](session::Session& s) { return s.submit_preview(blob_ref(old_ref), blob_ref(new_ref), threshold, max_size); });
+}
+
+Ref<NipaRequest> NipaSession::request_setup_check() {
+    if (!session_ || !paths_) {
+        return done_request(false, "session is not open");
+    }
+    auto* settings = ProjectSettings::get_singleton();
+    setup::Inputs base;
+    base.vcs_plugin_name = from_godot(String(settings->get_setting("editor/version_control/plugin_name", "")));
+    base.vcs_autoload = bool(settings->get_setting("editor/version_control/autoload_on_startup", false));
+    base.project_prefix = paths_->project_prefix();
+    return track(session_->submit_setup_check(std::move(base)));
+}
+
+Dictionary NipaSession::apply_ignore_template() {
+    Dictionary out;
+    out["ok"] = false;
+    out["changed"] = false;
+    out["message"] = "";
+    if (!paths_) {
+        out["message"] = "session is not open";
+        return out;
+    }
+    auto result = setup::write_ignore(paths_->clone_root(), paths_->project_prefix());
+    out["ok"] = result.ok;
+    out["changed"] = result.changed;
+    if (!result.ok) {
+        out["message"] = to_godot(result.error);
+    } else {
+        out["message"] = result.changed ? ".nipaignore updated." : ".nipaignore already has the Godot patterns.";
+    }
+    if (session_) {
+        session_->submit_status();
+    }
+    return out;
+}
+
+Array NipaSession::get_sidecar_warnings() const {
+    Array out;
+    if (!session_) {
+        return out;
+    }
+    for (const auto& w : session_->sidecar_warnings()) {
+        Dictionary item;
+        item["path"] = to_godot(w.path);
+        item["kind"] = to_godot(w.kind);
+        item["related"] = to_godot(w.related);
+        item["message"] = to_godot(w.message);
+        item["stageable"] = w.stageable();
+        out.push_back(item);
+    }
+    return out;
+}
+
+Dictionary NipaSession::get_decorations(const PackedStringArray& res_paths) const {
+    Dictionary out;
+    if (!session_ || !paths_) {
+        return out;
+    }
+    decor::Index index(session_->status_cache().snapshot(), session_->locks(), *paths_);
+    for (int i = 0; i < res_paths.size(); ++i) {
+        auto decoration = index.lookup(from_godot(res_paths[i]));
+        if (decoration.empty()) {
+            continue;
+        }
+        Dictionary item;
+        item["color"] = to_godot(decoration.color);
+        item["tooltip"] = to_godot(decoration.tooltip);
+        out[res_paths[i]] = item;
+    }
+    return out;
 }
 
 }  // namespace nipa::glue

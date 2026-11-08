@@ -382,6 +382,9 @@ void Session::apply_status(const json& reply) {
     if (conflicts) {
         refresh_conflicts_async();
     }
+    if (!changed.empty() && options_.watch_sidecars) {
+        submit_meta_warnings();
+    }
     if (!changed.empty() || meta) {
         Event e;
         e.kind = EventKind::StatusChanged;

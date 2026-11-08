@@ -9,6 +9,12 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 option(NIPA_BUILD_TESTS "Build the core unit tests" ON)
 option(NIPA_BUILD_EXTENSION "Build the godot-cpp GDExtension" OFF)
 option(NIPA_COVERAGE "Instrument core and tests for gcov" OFF)
+option(NIPA_WERROR "Treat core warnings as errors" ON)
+
+if(MSVC AND NIPA_BUILD_EXTENSION)
+  # godot-cpp links the static MSVC runtime; the core has to match it.
+  set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded" CACHE STRING "MSVC runtime library")
+endif()
 
 find_package(Threads REQUIRED)
 
@@ -30,6 +36,10 @@ add_library(nipa_core STATIC
   core/session/event_queue.cpp
   core/session/session.cpp
   core/session/session_ops.cpp
+  core/session/session_setup.cpp
+  core/setup/checker.cpp
+  core/setup/ignore.cpp
+  core/decor/decor.cpp
   core/conflicts/conflicts.cpp
   core/conflicts/merge_tool.cpp
   core/history/history.cpp
@@ -43,12 +53,13 @@ target_include_directories(nipa_core SYSTEM PUBLIC
 target_link_libraries(nipa_core PUBLIC Threads::Threads)
 if(WIN32)
   target_link_libraries(nipa_core PUBLIC ws2_32)
+  target_compile_definitions(nipa_core PUBLIC NOMINMAX)
 endif()
 
 if(MSVC)
-  target_compile_options(nipa_core PRIVATE /W4 /WX)
+  target_compile_options(nipa_core PRIVATE /W4 $<$<BOOL:${NIPA_WERROR}>:/WX>)
 else()
-  target_compile_options(nipa_core PRIVATE -Wall -Wextra -Wpedantic -Werror)
+  target_compile_options(nipa_core PRIVATE -Wall -Wextra -Wpedantic $<$<BOOL:${NIPA_WERROR}>:-Werror>)
 endif()
 
 if(NIPA_COVERAGE AND NOT MSVC)
@@ -75,6 +86,8 @@ if(NIPA_BUILD_TESTS)
     core/tests/test_conflicts.cpp
     core/tests/test_merge_tool.cpp
     core/tests/test_history.cpp
+    core/tests/test_setup.cpp
+    core/tests/test_decor.cpp
   )
   target_include_directories(nipa_core_tests SYSTEM PRIVATE ${NIPA_THIRDPARTY}/doctest)
   target_link_libraries(nipa_core_tests PRIVATE nipa_core)

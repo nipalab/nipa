@@ -3,13 +3,15 @@ extends VBoxContainer
 
 signal reconnect_requested
 signal conflicts_requested
+signal setup_requested
 
-const DATA_OPS := ["conflicts", "merge-godot", "merge-tool", "history", "preview", "resolve"]
+const DATA_OPS := ["conflicts", "merge-godot", "merge-tool", "history", "preview", "resolve", "setup"]
 
 var _pending_action: Callable
 var _commit_message := ""
 var _commit_paths := PackedStringArray()
 var _reload_path := ""
+var _sidecar_paths := PackedStringArray()
 
 @onready var _state_label: Label = $Header/StateLabel
 @onready var _reconnect_button: Button = $Header/ReconnectButton
@@ -39,6 +41,10 @@ var _reload_path := ""
 @onready var _abort_button: Button = $PendingBanner/Buttons/AbortButton
 @onready var _merge_dialog: ConfirmationDialog = $MergeDialog
 @onready var _branch_picker: OptionButton = $MergeDialog/Body/BranchPicker
+@onready var _sidecar_banner: VBoxContainer = $SidecarBanner
+@onready var _sidecar_label: Label = $SidecarBanner/SidecarLabel
+@onready var _stage_sidecars_button: Button = $SidecarBanner/Buttons/StageSidecarsButton
+@onready var _setup_button: Button = $SidecarBanner/Buttons/SetupButton
 
 var _session: Object
 
@@ -59,6 +65,8 @@ func _ready() -> void:
 	_continue_button.pressed.connect(_on_revert_step.bind("continue"))
 	_skip_button.pressed.connect(_on_revert_step.bind("skip"))
 	_abort_button.pressed.connect(_on_abort_pressed)
+	_stage_sidecars_button.pressed.connect(_on_stage_sidecars_pressed)
+	_setup_button.pressed.connect(func(): setup_requested.emit())
 	_session = Engine.get_singleton("Nipa") if Engine.has_singleton("Nipa") else null
 	if _session:
 		_session.connected.connect(_on_connected)
@@ -74,8 +82,10 @@ func _ready() -> void:
 		_session.commit_locks_needed.connect(_on_commit_locks_needed)
 		_session.tags_changed.connect(_refresh_refs)
 		_session.conflicts_changed.connect(_refresh_banners)
+		_session.warnings_changed.connect(_refresh_sidecars)
 	_refresh_branch()
 	_refresh_locks()
+	_refresh_sidecars()
 
 
 func _exit_tree() -> void:
@@ -95,6 +105,7 @@ func _exit_tree() -> void:
 		[_session.commit_locks_needed, _on_commit_locks_needed],
 		[_session.tags_changed, _refresh_refs],
 		[_session.conflicts_changed, _refresh_banners],
+		[_session.warnings_changed, _refresh_sidecars],
 	]:
 		if pair[0].is_connected(pair[1]):
 			pair[0].disconnect(pair[1])
@@ -317,6 +328,32 @@ func _on_notice(text: String) -> void:
 func _on_open_desktop_pressed() -> void:
 	if _session and _session.is_open():
 		OS.shell_open("nipa://open?root=" + _session.get_clone_root().uri_encode())
+
+
+# The sidecar banner for get_sidecar_warnings(): {visible, text, stage_paths}.
+static func sidecar_banner(warnings: Array) -> Dictionary:
+	var paths := PackedStringArray()
+	for warning in warnings:
+		if warning.get("stageable", false) and not paths.has(warning.get("path", "")):
+			paths.append(warning.get("path", ""))
+	var text := ""
+	if not warnings.is_empty():
+		var first: Dictionary = warnings[0]
+		text = "%d sidecar warning(s). %s %s" % [warnings.size(), first.get("path", ""), first.get("message", "")]
+	return {"visible": not warnings.is_empty(), "text": text, "stage_paths": paths}
+
+
+func _refresh_sidecars() -> void:
+	var state := sidecar_banner(_session.get_sidecar_warnings() if _session and _session.is_open() else [])
+	_sidecar_banner.visible = state.visible
+	_sidecar_label.text = state.text
+	_stage_sidecars_button.visible = not state.stage_paths.is_empty()
+	_sidecar_paths = state.stage_paths
+
+
+func _on_stage_sidecars_pressed() -> void:
+	if _session and not _sidecar_paths.is_empty():
+		_session.request_stage(_sidecar_paths, PackedStringArray())
 
 
 static func locks_summary(locks: Array) -> String:
