@@ -1,6 +1,8 @@
 package diff
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -98,4 +100,77 @@ func TestDetectRenames_ChunkOverlapForBinary(t *testing.T) {
 	got := DetectRenames(changes, nil)
 	require.Len(t, got, 1)
 	require.Equal(t, Renamed, got[0].Status)
+}
+
+func TestDetectRenames_LoadsEachFileOnce(t *testing.T) {
+	contents := map[string]string{}
+	var changes []Change
+	for i := 0; i < 4; i++ {
+		oldPath, newPath := fmt.Sprintf("old%d.txt", i), fmt.Sprintf("new%d.txt", i)
+		body := strings.Repeat(fmt.Sprintf("line of file %d\n", i), 10)
+		contents[oldPath] = body + "old tail\n"
+		contents[newPath] = body + "new tail\n"
+		changes = append(changes,
+			Change{Path: oldPath, Status: Deleted, Old: entryOf(oldPath, contents[oldPath])},
+			Change{Path: newPath, Status: Added, New: entryOf(newPath, contents[newPath])})
+	}
+	loads := map[string]int{}
+	load := func(e Entry) ([]byte, bool) {
+		loads[e.Path]++
+		return []byte(contents[e.Path]), true
+	}
+
+	got := DetectRenames(changes, load)
+	require.Len(t, got, 4)
+	for _, c := range got {
+		require.Equal(t, Renamed, c.Status)
+		require.Equal(t, strings.TrimPrefix(c.Path, "new"), strings.TrimPrefix(c.Old.Path, "old"))
+	}
+	for path, n := range loads {
+		require.Equal(t, 1, n, path)
+	}
+}
+
+func TestDetectRenames_SkipsPairsThatCannotReachThreshold(t *testing.T) {
+	short, long := "one\n", strings.Repeat("one\n", 10)
+	changes := []Change{
+		{Path: "old.txt", Status: Deleted, Old: entryOf("old.txt", short)},
+		{Path: "new.txt", Status: Added, New: entryOf("new.txt", long)},
+	}
+	got := DetectRenames(changes, contentLoader(map[string]string{"old.txt": short, "new.txt": long}))
+	require.Len(t, got, 2)
+}
+
+func TestDetectRenames_OverLimitKeepsExactRenamesOnly(t *testing.T) {
+	side := 230
+	require.Greater(t, side*side, maxRenameComparisons)
+	var changes []Change
+	for i := 0; i < side; i++ {
+		changes = append(changes,
+			Change{Path: fmt.Sprintf("a/%d.txt", i), Status: Deleted, Old: entryOf(fmt.Sprintf("a/%d.txt", i), fmt.Sprintf("old %d\nshared\n", i))},
+			Change{Path: fmt.Sprintf("b/%d.txt", i), Status: Added, New: entryOf(fmt.Sprintf("b/%d.txt", i), fmt.Sprintf("new %d\nshared\n", i))})
+	}
+	moved := entryOf("moved.txt", "exact\n")
+	changes = append(changes,
+		Change{Path: "src/moved.txt", Status: Deleted, Old: Entry{Path: "src/moved.txt", Hash: moved.Hash, ChunkHashes: moved.ChunkHashes}},
+		Change{Path: "dst/moved.txt", Status: Added, New: Entry{Path: "dst/moved.txt", Hash: moved.Hash, ChunkHashes: moved.ChunkHashes}})
+	loaded := false
+	got := DetectRenames(changes, func(Entry) ([]byte, bool) { loaded = true; return nil, false })
+
+	require.False(t, loaded)
+	renamed := 0
+	for _, c := range got {
+		if c.Status == Renamed {
+			renamed++
+			require.Equal(t, "dst/moved.txt", c.Path)
+		}
+	}
+	require.Equal(t, 1, renamed)
+}
+
+func TestCanReach(t *testing.T) {
+	require.True(t, canReach(5, 10, 50))
+	require.False(t, canReach(4, 10, 50))
+	require.False(t, canReach(0, 0, 50))
+	require.True(t, canReach(0, 0, 0))
 }

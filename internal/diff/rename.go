@@ -36,14 +36,9 @@ func detectRenames(changes []Change, load func(Entry) ([]byte, bool), threshold 
 		return changes
 	}
 
-	var pairs []renamePair
-	for _, di := range deleted {
-		for _, ai := range added {
-			score := similarity(changes[di].Old, changes[ai].New, load)
-			if score >= threshold {
-				pairs = append(pairs, renamePair{oldIdx: di, newIdx: ai, score: score})
-			}
-		}
+	pairs := exactRenamePairs(changes, deleted, added)
+	if len(deleted)*len(added) <= maxRenameComparisons {
+		pairs = append(pairs, similarRenamePairs(changes, deleted, added, load, threshold)...)
 	}
 	sort.Slice(pairs, func(i, j int) bool {
 		if pairs[i].score != pairs[j].score {
@@ -90,33 +85,106 @@ func detectRenames(changes []Change, load func(Entry) ([]byte, bool), threshold 
 	return out
 }
 
-func similarity(old, new Entry, load func(Entry) ([]byte, bool)) int {
-	if old.Hash == new.Hash {
-		return 100
+// maxRenameComparisons bounds the content comparisons of one rename pass, like
+// git's diff.renameLimit: past it only exact (equal hash) renames are found.
+const maxRenameComparisons = 50_000
+
+func exactRenamePairs(changes []Change, deleted, added []int) []renamePair {
+	byHash := make(map[serverDomain.Hash][]int, len(deleted))
+	for _, di := range deleted {
+		h := changes[di].Old.Hash
+		byHash[h] = append(byHash[h], di)
 	}
-	if load != nil && !old.IsBinary && !new.IsBinary {
-		oldContent, okOld := load(old)
-		newContent, okNew := load(new)
-		if okOld && okNew {
-			return lineSimilarity(oldContent, newContent)
+	var pairs []renamePair
+	for _, ai := range added {
+		for _, di := range byHash[changes[ai].New.Hash] {
+			pairs = append(pairs, renamePair{oldIdx: di, newIdx: ai, score: 100})
 		}
 	}
-	return chunkSimilarity(old, new)
+	return pairs
 }
 
-func lineSimilarity(a, b []byte) int {
-	fa, fb := lineFingerprint(a), lineFingerprint(b)
-	common, totalA, totalB := 0, 0, 0
-	for h, n := range fa {
-		totalA += n
-		if m := fb[h]; m > 0 {
+// renameSide caches one file's line fingerprint so every candidate pair reuses
+// it instead of loading and hashing the content again.
+type renameSide struct {
+	ok    bool
+	lines int
+	fp    map[uint64]int
+}
+
+func similarRenamePairs(changes []Change, deleted, added []int, load func(Entry) ([]byte, bool), threshold int) []renamePair {
+	sides := make(map[int]*renameSide, len(deleted)+len(added))
+	side := func(idx int, e Entry) *renameSide {
+		if s, ok := sides[idx]; ok {
+			return s
+		}
+		s := &renameSide{}
+		if load != nil && !e.IsBinary {
+			if content, ok := load(e); ok {
+				s.ok = true
+				s.fp = lineFingerprint(content)
+				for _, n := range s.fp {
+					s.lines += n
+				}
+			}
+		}
+		sides[idx] = s
+		return s
+	}
+
+	var pairs []renamePair
+	for _, di := range deleted {
+		old := changes[di].Old
+		for _, ai := range added {
+			cur := changes[ai].New
+			if old.Hash == cur.Hash {
+				continue
+			}
+			var score int
+			if !old.IsBinary && !cur.IsBinary && load != nil {
+				a, b := side(di, old), side(ai, cur)
+				if a.ok && b.ok {
+					if !canReach(a.lines, b.lines, threshold) {
+						continue
+					}
+					score = fingerprintSimilarity(a, b)
+				} else {
+					score = chunkSimilarity(old, cur)
+				}
+			} else {
+				score = chunkSimilarity(old, cur)
+			}
+			if score >= threshold {
+				pairs = append(pairs, renamePair{oldIdx: di, newIdx: ai, score: score})
+			}
+		}
+	}
+	return pairs
+}
+
+// canReach reports whether two files of a and b lines can still score
+// threshold: the shared lines are at most the smaller count, and the score
+// divides by the larger one.
+func canReach(a, b, threshold int) bool {
+	hi := max(a, b)
+	if hi == 0 {
+		return threshold <= 0
+	}
+	return min(a, b)*100/hi >= threshold
+}
+
+func fingerprintSimilarity(a, b *renameSide) int {
+	small, large := a.fp, b.fp
+	if len(small) > len(large) {
+		small, large = large, small
+	}
+	common := 0
+	for h, n := range small {
+		if m := large[h]; m > 0 {
 			common += min(n, m)
 		}
 	}
-	for _, n := range fb {
-		totalB += n
-	}
-	denom := max(totalA, totalB)
+	denom := max(a.lines, b.lines)
 	if denom == 0 {
 		return 0
 	}
