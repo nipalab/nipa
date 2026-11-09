@@ -130,7 +130,6 @@ export default function TagsPage() {
       active="tags"
       rev={defaultBranch}
       canAdmin={canAdmin}
-      canWrite={canWrite}
       heading={
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--base-size-8)' }}>
           Tags {items.length > 0 && <Label>{hasMore ? `${items.length}+` : items.length}</Label>}

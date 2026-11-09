@@ -118,7 +118,6 @@ export default function BlobPage() {
       active="code"
       rev={linkRev}
       canAdmin={canAdmin}
-      canWrite={canWrite}
     >
       <Stack direction="horizontal" gap="normal" align="center" justify="space-between">
         <Stack direction="horizontal" gap="normal" align="center" style={{ minWidth: 0 }}>

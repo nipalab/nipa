@@ -72,7 +72,6 @@ export default function LocksPage() {
       active="locks"
       rev={defaultBranch}
       canAdmin={canAdmin}
-      canWrite={canWrite}
       heading="File locks"
     >
       <ErrorBanner error={actionError ?? error} onDismiss={actionError ? clearError : undefined} />

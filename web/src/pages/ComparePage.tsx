@@ -13,7 +13,7 @@ import { useAsync } from '../hooks'
 export default function ComparePage() {
   const { org = '', project = '' } = useParams()
   const [params, setParams] = useSearchParams()
-  const { branches, branchesLoading, canWrite, canAdmin, defaultBranch } = useRepoChrome(org, project)
+  const { branches, branchesLoading, canAdmin, defaultBranch } = useRepoChrome(org, project)
   const { tags, load: loadTags } = useTags(org, project)
 
   const base = params.get('base') ?? defaultBranch
@@ -56,7 +56,6 @@ export default function ComparePage() {
       active="commits"
       rev={defaultBranch}
       canAdmin={canAdmin}
-      canWrite={canWrite}
       heading="Compare changes"
       wide
       crumbs={[{ label: 'Branches', to: `/${org}/${project}/branches` }, { label: 'Compare' }]}

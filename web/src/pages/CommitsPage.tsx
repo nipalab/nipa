@@ -19,7 +19,7 @@ export default function CommitsPage() {
   const [params] = useSearchParams()
   const branch = params.get('branch') ?? ''
   const path = params.get('path') ?? ''
-  const { canWrite, canAdmin, defaultBranch, branchesLoading, emptyProject } = useRepoChrome(org, project)
+  const { canAdmin, defaultBranch, branchesLoading, emptyProject } = useRepoChrome(org, project)
   const skipCommits = branchesLoading || emptyProject
   const {
     items: commits,
@@ -78,7 +78,6 @@ export default function CommitsPage() {
       rev={rev}
       wide={Boolean(commit)}
       canAdmin={canAdmin}
-      canWrite={canWrite}
       heading={`Commits${branch ? ` · ${branch}` : ''}${path ? ` · ${path}` : ''}`}
     >
       {path && (

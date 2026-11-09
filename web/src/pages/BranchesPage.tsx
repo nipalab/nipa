@@ -153,7 +153,6 @@ export default function BranchesPage() {
       active="branches"
       rev={defaultBranch}
       canAdmin={canAdmin}
-      canWrite={canWrite}
       heading="Branches"
       actions={
         <>

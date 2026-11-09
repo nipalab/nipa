@@ -37,7 +37,7 @@ export default function RepoPage() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const [findOpen, setFindOpen] = useState(false)
-  const { branches, branchesLoading, emptyProject, canWrite, canAdmin, defaultBranch } = useRepoChrome(org, project)
+  const { branches, branchesLoading, emptyProject, canAdmin, defaultBranch } = useRepoChrome(org, project)
   const { tags, load: loadTags } = useTags(org, project)
 
   const legacyRev = searchParams.get('rev') ?? ''
@@ -66,7 +66,6 @@ export default function RepoPage() {
       active="code"
       rev={linkRev}
       canAdmin={canAdmin}
-      canWrite={canWrite}
     >
       <Stack direction="horizontal" gap="normal" align="center" justify="space-between">
         <Stack direction="horizontal" gap="normal" align="center" style={{ minWidth: 0 }}>

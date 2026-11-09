@@ -72,7 +72,6 @@ export default function MergeRequestsPage() {
       active="merges"
       rev={defaultBranch}
       canAdmin={canAdmin}
-      canWrite={canWrite}
       heading="Merge requests"
       actions={
         canWrite && (
