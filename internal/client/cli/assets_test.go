@@ -2,14 +2,19 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"image"
 	"image/png"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
 
+	"github.com/nipalab/nipa/internal/assetrefs"
 	"github.com/nipalab/nipa/internal/client/assetscan"
 	"github.com/nipalab/nipa/internal/client/domain"
 	"github.com/nipalab/nipa/internal/client/localrepo"
@@ -112,6 +117,64 @@ func newPushDiffCli(t *testing.T) *Cli {
 		push: usecase.NewPush(auth, &fakePushClient{}, localrepo.NewLocalRepo()),
 		diff: usecase.NewDiff(nil, nil, localrepo.NewLocalRepo()),
 	}, &fakeConnector{})
+}
+
+func TestSetupPushCmd_DryRunAssetImpact(t *testing.T) {
+	tex := strings.Repeat("a", 32)
+	files := map[string]string{
+		"Assets/hero.png":      "png",
+		"Assets/hero.png.meta": "guid: " + tex + "\n",
+		"Assets/hero.mat":      "%YAML 1.1\n--- !u!21 &1\nMaterial:\n  t: {fileID: 1, guid: " + tex + ", type: 3}\n",
+		"notes.txt":            "n\n",
+	}
+	root := setupRepoWithStoredTree(t, "main", files)
+	for name, content := range files {
+		writeFile(t, root, name, content)
+	}
+	writeFile(t, root, "notes.txt", "changed\n")
+	stagePath(t, root, "notes.txt")
+	out, err := runCmdInDir(t, root, newPushDiffCli(t).setupPushCmd(), "--dry-run", "--json")
+	require.NoError(t, err)
+	require.NotContains(t, out, "asset_impact")
+
+	for _, p := range []string{"Assets/hero.png", "Assets/hero.png.meta"} {
+		require.NoError(t, os.Remove(filepath.Join(root, filepath.FromSlash(p))))
+		stagePath(t, root, p)
+	}
+	out, err = runCmdInDir(t, root, newPushDiffCli(t).setupPushCmd(), "--dry-run", "--json")
+	require.NoError(t, err)
+	var plan output.Plan
+	require.NoError(t, json.Unmarshal([]byte(out), &plan))
+	require.NotNil(t, plan.AssetImpact)
+	require.Equal(t, []assetrefs.BrokenRef{{From: "Assets/hero.mat", Raw: "guid:" + tex, Target: "Assets/hero.png", Reason: "removed"}}, plan.AssetImpact.Broken)
+
+	out, err = runCmdInDir(t, root, newPushDiffCli(t).setupPushCmd(), "--dry-run")
+	require.NoError(t, err)
+	require.Contains(t, out, "warning: 1 broken reference(s), 0 newly unused asset(s)")
+	require.Contains(t, out, "  Assets/hero.mat -> guid:"+tex+" (removed: Assets/hero.png)\n")
+}
+
+func TestWriteImpact(t *testing.T) {
+	var buf bytes.Buffer
+	writeImpact(&buf, &assetrefs.Impact{
+		Broken:      []assetrefs.BrokenRef{{From: "a.prefab", Raw: "guid:x", Reason: "unresolved"}},
+		NewlyUnused: []string{"old.png"},
+		Scanned:     5, Truncated: true,
+	})
+	require.Equal(t, "warning: 1 broken reference(s), 1 newly unused asset(s) (unstaged working changes included):\n"+
+		"  a.prefab -> guid:x (unresolved)\n  unused: old.png\n  (scan truncated after 5 files)\n", buf.String())
+}
+
+func TestPushImpact_SkipsOnError(t *testing.T) {
+	c := newPushDiffCli(t)
+	cmd := &cobra.Command{}
+	var errOut bytes.Buffer
+	cmd.SetErr(&errOut)
+	cmd.SetContext(context.Background())
+	plan := &domain.Plan{Changes: []domain.PlanChange{{Path: "Assets/a.png", Status: "A"}}}
+	require.Nil(t, c.pushImpact(cmd, filepath.Join(t.TempDir(), "missing"), plan))
+	require.Contains(t, errOut.String(), "warning: impact check skipped:")
+	require.Nil(t, c.pushImpact(cmd, t.TempDir(), nil))
 }
 
 func TestSetupPushCmd_DryRunAssetViolations(t *testing.T) {

@@ -68,6 +68,7 @@ func TestSidecars(t *testing.T) {
 	assert.True(t, IsSidecar("b.gd.uid"))
 	assert.False(t, IsSidecar("a/.import"))
 	assert.False(t, IsSidecar("a/b.png"))
-	assert.Equal(t, "a/b.png", assetOf("a/b.png.import"))
-	assert.Equal(t, "b.gd", assetOf("b.gd.uid"))
+	assert.Equal(t, "a/b.png", AssetOf("a/b.png.import"))
+	assert.Equal(t, "b.gd", AssetOf("b.gd.uid"))
+	assert.Equal(t, "dir/c.png", AssetOf("dir/c.png"))
 }

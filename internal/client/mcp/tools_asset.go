@@ -16,6 +16,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/nipalab/nipa/internal/assetdiff"
+	"github.com/nipalab/nipa/internal/assetrefs"
 	"github.com/nipalab/nipa/internal/client/aicontext"
 	"github.com/nipalab/nipa/internal/client/assetscan"
 	"github.com/nipalab/nipa/internal/client/domain"
@@ -77,6 +78,16 @@ func addAssetTools(srv *mcp.Server, s *server) {
 		Description: "Lint pending changes of Unity (.meta) or Godot (.import, .uid) projects for sidecar mistakes: missing, orphaned, not staged or changed GUID/UID. The engine is detected from project.godot or ProjectSettings/ProjectVersion.txt when omitted. Runs offline.",
 		Annotations: readOnly(),
 	}, s.metaWarnings)
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "nipa_asset_refs",
+		Description: "List what one Unity (Force Text) or Godot text asset references by GUID, uid:// or res:// path (uses) and which scenes, prefabs or resources reference it (used_by), from the working copy. Ask before deleting, moving or regenerating the .meta of an asset. References into paths a sparse clone does not hold are listed as unknown. At most max_files source files are parsed (default 5000, at most 20000); truncated is set beyond. Runs offline.",
+		Annotations: readOnly(),
+	}, s.assetRefs)
+	mcp.AddTool(srv, &mcp.Tool{
+		Name:        "nipa_asset_impact",
+		Description: "Check pending changes (working copy against the last synced snapshot) for broken Unity/Godot asset references: removed or renamed assets, changed GUID/UID or new references that do not resolve (references that were already unresolved are not reported), plus assets left unused (scenes, scripts, Resources/StreamingAssets/Editor/Plugins/addons excluded; omitted when the scan is truncated or the clone is sparse). Unstaged working changes are part of the new side. Warn-only, runs offline.",
+		Annotations: readOnly(),
+	}, s.assetImpact)
 	if s.allowed(CapMerge) {
 		mcp.AddTool(srv, &mcp.Tool{
 			Name:        "nipa_godot_merge",
@@ -414,6 +425,56 @@ func readSnapshotSmall(ctx context.Context, d *usecase.Diff, root, p string) ([]
 		return err
 	})
 	return data, err
+}
+
+type assetRefsInput struct {
+	Repo     string `json:"repo,omitempty" jsonschema:"Path inside a nipa working copy (defaults to the server working directory)"`
+	Path     string `json:"path" jsonschema:"Repo-relative path of the asset"`
+	MaxFiles int    `json:"max_files,omitempty" jsonschema:"Maximum source files parsed (default 5000, at most 20000)"`
+}
+
+func (s *server) assetRefs(ctx context.Context, _ *mcp.CallToolRequest, in assetRefsInput) (*mcp.CallToolResult, *assetscan.RefsReport, error) {
+	p := cleanPath(in.Path)
+	if p == "" {
+		return nil, nil, toolError(domain.NewUserError("a path is required"))
+	}
+	root, uc, err := s.openDiff(in.Repo)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer uc.close()
+	report, err := assetscan.Refs(ctx, uc.Diff, root, p, assetrefs.Options{MaxFiles: in.MaxFiles})
+	if err != nil {
+		return nil, nil, toolError(err)
+	}
+	return nil, report, nil
+}
+
+type assetImpactInput struct {
+	Repo     string   `json:"repo,omitempty" jsonschema:"Path inside a nipa working copy (defaults to the server working directory)"`
+	Paths    []string `json:"paths,omitempty" jsonschema:"Limit the checked changes to these repo-relative file or directory paths"`
+	Staged   bool     `json:"staged,omitempty" jsonschema:"Only check changes staged for the next push"`
+	MaxFiles int      `json:"max_files,omitempty" jsonschema:"Maximum source files parsed (default 5000, at most 20000)"`
+}
+
+func (s *server) assetImpact(ctx context.Context, _ *mcp.CallToolRequest, in assetImpactInput) (*mcp.CallToolResult, *assetrefs.Impact, error) {
+	root, uc, err := s.openDiff(in.Repo)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer uc.close()
+	changes, err := assetscan.Enumerate(ctx, uc.Diff, root, assetscan.Request{Paths: in.Paths, Staged: in.Staged})
+	if err != nil {
+		return nil, nil, toolError(err)
+	}
+	out, err := assetscan.Impact(ctx, uc.Diff, root, changes, assetrefs.Options{MaxFiles: in.MaxFiles})
+	if err != nil {
+		return nil, nil, toolError(err)
+	}
+	if out == nil {
+		out = &assetrefs.Impact{Broken: []assetrefs.BrokenRef{}, NewlyUnused: []string{}}
+	}
+	return nil, out, nil
 }
 
 type godotMergeInput struct {

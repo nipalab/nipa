@@ -144,6 +144,8 @@ Revision tokens everywhere are branch names, tag names, base36 commit ids or
 | `nipa_mr_describe_changes` | `number`, `max_files` | `base`/`head` (`revision`, `kind`: which revision stood in for the merge base), `files`, `omitted` |
 | `nipa_asset_check` | same as `nipa_describe_changes` without `max_files` | `.nipaassets.yml` report: `config`, `old`, `new`, `violations`, `checked`, `skipped` |
 | `nipa_meta_warnings` | `engine` (`unity`, `godot`, empty = detect from `project.godot` or `ProjectSettings/ProjectVersion.txt`) | `engine`, `warnings` (`path`, `kind`: `missing-meta`, `orphan-meta`, `meta-not-staged`, `guid-changed`; Godot: `missing-sidecar`, `orphan-sidecar`, `sidecar-not-staged`, `uid-changed`), `related`, `message`); offline |
+| `nipa_asset_refs` | `path`, `max_files` | `path`, `uses[]` (`path`, `raw`, `resolved`), `used_by[]`, `unknown[]`, `scanned`, `truncated`; offline |
+| `nipa_asset_impact` | `paths`, `staged`, `max_files` | `broken[]` (`from`, `raw`, `target`, `reason`), `newly_unused[]`, `scanned`, `truncated`; offline |
 
 Asset sides are `working`, `snapshot` (the last synced version, offline) or a
 revision. Revision sides download chunks through the commit-scoped path, so
@@ -166,6 +168,39 @@ the caller's read filter applies.
 
 Files over the per-kind limit (16 MiB scenes and tables, 256 MiB images,
 models and audio) are reported in `error` instead of being read.
+
+### Asset references
+
+`nipa_asset_refs` and `nipa_asset_impact` (`internal/assetrefs`, client-side
+only) build a reference graph of the working copy: Unity Force Text sources
+(`.unity`, `.prefab`, `.asset`, `.mat`, `.controller`, `.anim`, ...) point to
+assets by GUID, resolved through the `.meta` files of the same Unity project;
+Godot `.tscn`/`.tres` `ext_resource`s point by `uid://` (from `.uid`,
+`.import` and resource headers) or `res://` (below the nearest
+`project.godot`), the uid winning so a stale path with a valid uid still
+resolves. At most `max_files` sources are parsed (default 5000, at most
+20000) and files over 8 MiB are skipped; either sets `truncated`. In a sparse
+clone, references that cannot be resolved are `unknown`, not broken.
+
+`nipa_asset_impact` compares pending changes (snapshot to working copy, like
+`nipa_describe_changes` without revisions) and reports:
+
+- `broken`: references whose target was `removed`, `renamed` (Godot paths
+  without a uid; a Unity move with its `.meta` keeps the GUID and is fine) or
+  whose `.meta`/sidecar changed id (`guid_changed`, `uid_changed`), plus new
+  references in changed files that do not resolve (`unresolved`). A reference
+  that was already unresolved before the change (for example into registry
+  packages under `Library/PackageCache`) is never reported.
+- `newly_unused`: assets that lost their last referrer through a changed or
+  removed source. Scenes, scripts and anything under `Resources/`,
+  `StreamingAssets/`, `Editor/`, `Plugins/` or `addons/` are never reported,
+  and the list stays empty when the scan was truncated or the clone is sparse
+  (files outside the sparse set may still reference the asset).
+
+The new side is always the working copy, so unstaged edits are included even
+for `staged` or `push --dry-run`. Only references written in the assets are
+seen: code (`Resources.Load`, `preload`), Addressables and build settings
+outside the scanned files are not.
 
 ### Write tools
 
@@ -285,7 +320,10 @@ Surfaces:
   file: `{"config":false,"violations":[],"checked":0}`).
 - `nipa push --dry-run [--json]` checks the staged files and adds
   `asset_violations` (JSON) or a warning block (text). The push itself does
-  not enforce budgets.
+  not enforce budgets. When a staged change touches a Unity or Godot asset it
+  also adds `asset_impact` (the `nipa_asset_impact` result, omitted when
+  empty) or a `broken reference(s)` warning block; a failed check only prints
+  `warning: impact check skipped: ...` to stderr, and push is never blocked.
 - The MCP tool `nipa_asset_check` returns the same report, and the prompts
   include violations in `<budget_violations>`.
 
@@ -359,7 +397,7 @@ pending state.
 
 - `nipa push --dry-run` is offline. `upload_objects` / `upload_bytes` count
   chunks missing from the local object cache (an upper bound of the
-  transfer), plus `asset_violations`.
+  transfer), plus `asset_violations` and `asset_impact`.
 - `nipa merge <branch> --dry-run` resolves the merge base and both trees on
   the server and reports `up_to_date`, `fast_forward` and the would-land
   changes; conflicts do not fail the command.

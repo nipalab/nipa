@@ -6,6 +6,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/nipalab/nipa/internal/assetbudget"
+	"github.com/nipalab/nipa/internal/assetrefs"
 	"github.com/nipalab/nipa/internal/client/domain"
 	"github.com/nipalab/nipa/internal/client/output"
 )
@@ -23,18 +24,25 @@ func dryRunRequested(cmd *cobra.Command) (bool, error) {
 	return dryRun, nil
 }
 
-func writePlan(cmd *cobra.Command, plan *domain.Plan) error {
-	return writePlanWithBudget(cmd, plan, nil, "")
+type planReport struct {
+	Violations []assetbudget.Violation
+	Impact     *assetrefs.Impact
+	Generated  string
 }
 
-func writePlanWithBudget(cmd *cobra.Command, plan *domain.Plan, violations []assetbudget.Violation, generated string) error {
+func writePlan(cmd *cobra.Command, plan *domain.Plan) error {
+	return writePlanReport(cmd, plan, planReport{})
+}
+
+func writePlanReport(cmd *cobra.Command, plan *domain.Plan, report planReport) error {
 	if plan == nil {
 		return domain.NewUserError("nothing to report")
 	}
 	if jsonRequested(cmd) {
 		out := output.NewPlan(plan)
-		out.AssetViolations = violations
-		out.GeneratedMessage = generated
+		out.AssetViolations = report.Violations
+		out.AssetImpact = report.Impact
+		out.GeneratedMessage = report.Generated
 		return output.WriteJSON(cmd.OutOrStdout(), out)
 	}
 	out := cmd.OutOrStdout()
@@ -61,12 +69,15 @@ func writePlanWithBudget(cmd *cobra.Command, plan *domain.Plan, violations []ass
 	case "revert":
 		_, _ = fmt.Fprintf(out, "would revert %d file(s), %d conflict(s)\n", len(plan.Changes), len(plan.Conflicts))
 	}
-	if len(violations) > 0 {
-		_, _ = fmt.Fprintf(out, "warning: %d asset budget violation(s) (see nipa assets check --staged):\n", len(violations))
-		writeViolations(out, "  ", violations)
+	if len(report.Violations) > 0 {
+		_, _ = fmt.Fprintf(out, "warning: %d asset budget violation(s) (see nipa assets check --staged):\n", len(report.Violations))
+		writeViolations(out, "  ", report.Violations)
 	}
-	if generated != "" {
-		_, _ = fmt.Fprintf(out, "generated commit message:\n\n%s\n", generated)
+	if report.Impact != nil {
+		writeImpact(out, report.Impact)
+	}
+	if report.Generated != "" {
+		_, _ = fmt.Fprintf(out, "generated commit message:\n\n%s\n", report.Generated)
 	}
 	return nil
 }
