@@ -13,6 +13,7 @@ export function RepoPageShell({
   heading,
   actions,
   crumbs,
+  wide = false,
   children,
 }: {
   org: string
@@ -24,11 +25,13 @@ export function RepoPageShell({
   heading?: ReactNode
   actions?: ReactNode
   crumbs?: Crumb[]
+  wide?: boolean
   children: ReactNode
 }) {
   return (
     <Page
       breadcrumbs={crumbs}
+      wide={wide}
       title={
         <>
           <span style={{ color: 'var(--fgColor-muted)', fontWeight: 400 }}>{org} /</span> {project}

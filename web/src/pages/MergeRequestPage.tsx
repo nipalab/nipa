@@ -196,6 +196,7 @@ export default function MergeRequestPage() {
       project={project}
       active="merges"
       rev={defaultBranch}
+      wide={tab === 'files'}
       canAdmin={canAdmin}
       canWrite={canWrite}
       crumbs={[{ label: 'Merge requests', to: `/${org}/${project}/merges` }, { label: `#${id}` }]}

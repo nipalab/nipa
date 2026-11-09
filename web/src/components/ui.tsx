@@ -14,21 +14,31 @@ const PAGE_STYLE: CSSProperties = {
   padding: '0 var(--base-size-16)',
 }
 
+// wide drops the max width so diffs can use the whole window, like GitHub's
+// Files changed tab.
+const WIDE_PAGE_STYLE: CSSProperties = {
+  ...PAGE_STYLE,
+  maxWidth: 'none',
+  padding: '0 var(--base-size-24)',
+}
+
 export function Page({
   title,
   subtitle,
   actions,
   breadcrumbs,
+  wide = false,
   children,
 }: {
   title?: ReactNode
   subtitle?: ReactNode
   actions?: ReactNode
   breadcrumbs?: Crumb[]
+  wide?: boolean
   children: ReactNode
 }) {
   return (
-    <div style={PAGE_STYLE}>
+    <div style={wide ? WIDE_PAGE_STYLE : PAGE_STYLE}>
       {breadcrumbs && breadcrumbs.length > 0 && (
         <nav aria-label="Breadcrumb" style={{ marginBottom: 'var(--base-size-8)' }}>
           <Breadcrumbs>

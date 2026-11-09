@@ -650,6 +650,33 @@ describe('MergeRequestPage', () => {
     act(() => root.unmount())
   })
 
+  it('uses the full window width on the file changes tab only', async () => {
+    stubRepoRoutes((url, init) => {
+      const method = init?.method ?? 'GET'
+      if (url.includes('/merge-requests/7/diff') && method === 'GET') return jsonResponse({ files: FILES })
+      if (url.includes('/merge-requests/7/commits') && method === 'GET') return jsonResponse([])
+      if (url.includes('/merge-requests/7/review-state') && method === 'GET') {
+        return jsonResponse({ approvals: 0, changes_requested: 0, dismissed_approvals: 0, outstanding_reviewers: [] })
+      }
+      if (url.includes('/merge-requests/7/') && method === 'GET') return jsonResponse([])
+      if (url.endsWith('/merge-requests/7') && method === 'GET') return jsonResponse(MR)
+      if (url.includes('/branches') && method === 'GET') return jsonResponse(BRANCHES)
+      return null
+    })
+    const pageWidth = (container: HTMLElement) =>
+      (container.querySelector('nav[aria-label="Breadcrumb"]')?.parentElement as HTMLElement).style.maxWidth
+
+    const files = await renderApp('/acme/game/merges/7?tab=files')
+    await waitFor(() => files.container.querySelector('nav[aria-label="Breadcrumb"]') !== null)
+    expect(pageWidth(files.container)).toBe('none')
+    act(() => files.root.unmount())
+
+    const conversation = await renderApp('/acme/game/merges/7')
+    await waitFor(() => conversation.container.querySelector('nav[aria-label="Breadcrumb"]') !== null)
+    expect(pageWidth(conversation.container)).toBe('1100px')
+    act(() => conversation.root.unmount())
+  })
+
   it('closes the request only after confirmation', async () => {
     let closed = 0
     stubRepoRoutes((url, init) => {

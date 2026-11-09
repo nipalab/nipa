@@ -58,6 +58,7 @@ export default function ComparePage() {
       canAdmin={canAdmin}
       canWrite={canWrite}
       heading="Compare changes"
+      wide
       crumbs={[{ label: 'Branches', to: `/${org}/${project}/branches` }, { label: 'Compare' }]}
     >
       <Text as="p" style={{ margin: 0, color: 'var(--fgColor-muted)' }}>

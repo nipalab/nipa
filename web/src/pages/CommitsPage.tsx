@@ -76,6 +76,7 @@ export default function CommitsPage() {
       project={project}
       active="commits"
       rev={rev}
+      wide={Boolean(commit)}
       canAdmin={canAdmin}
       canWrite={canWrite}
       heading={`Commits${branch ? ` · ${branch}` : ''}${path ? ` · ${path}` : ''}`}
