@@ -218,6 +218,17 @@ the files they lock. A pin failure never fails the lock; it comes back in
 `ProxyLockFileResponse.warning`. `ProxyUnlockFile` unpins and prunes after the
 server released the lock (a local failure is only logged).
 
+Cache prune: `Diff`, `DiffFiles`, `ReadBlob`, `Preview` and `Restore` can
+download snapshot content into `.nipa/objects` (the pristine fallback), but
+the GUI reads the same file several times in a row, so they do not prune
+inline. Each call instead arms the root's `cachePruner` (`prune.go`); every
+coordinator admission restarts its quiet period (`Options.PruneQuiet`,
+default 30 s), and when it elapses the pruner takes the exclusive slot only if
+the root is idle (`tryAcquireExclusive`, never queued) and runs
+`usecase.PruneCache`. A busy root, or a `repository busy` skip from another
+process holding `.nipa/lock`, re-arms it; unwatch cancels it and waits for a
+running prune.
+
 ---
 
 ## Progress streaming (`OpEvent`)

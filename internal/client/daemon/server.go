@@ -38,6 +38,7 @@ type Options struct {
 	Login        LoginFunc
 	Runners      Runners // per-root long-operation usecase factories
 	Accounts     Accounts
+	PruneQuiet   time.Duration // quiet period before GUI reads are pruned from the cache; defaults to 30 s
 }
 
 // Server hosts the loopback gRPC API for GUI clients. It owns no working-copy
@@ -124,6 +125,7 @@ func NewServer(opts Options) (*Server, error) {
 		stop:         make(chan struct{}),
 		eventEvery:   eventEvery,
 	}
+	s.repos.pruneQuiet = opts.PruneQuiet
 	s.grpc = grpc.NewServer(
 		grpc.MaxRecvMsgSize(maxRecvMsgSize),
 		grpc.UnaryInterceptor(s.unaryAuth),

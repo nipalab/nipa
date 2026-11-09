@@ -88,6 +88,7 @@ func (s *Server) Restore(ctx context.Context, req *daemonpb.RestoreRequest) (*da
 	var status *clientDomain.Status
 	err := s.repos.withRepo(ctx, req.GetRoot(), false, func(rp *repo) error {
 		defer rp.changes.publish(nil)
+		defer rp.pruner.request()
 		if err := rp.wc.Restore(ctx, req.GetPaths()); err != nil {
 			return err
 		}

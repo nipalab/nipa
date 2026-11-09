@@ -133,7 +133,8 @@ type FileNode struct {
 	SizeBytes     int64                  `protobuf:"varint,3,opt,name=size_bytes,json=sizeBytes,proto3" json:"size_bytes,omitempty"`
 	IsBinary      bool                   `protobuf:"varint,4,opt,name=is_binary,json=isBinary,proto3" json:"is_binary,omitempty"`
 	ChunkHashes   []string               `protobuf:"bytes,5,rep,name=chunk_hashes,json=chunkHashes,proto3" json:"chunk_hashes,omitempty"`
-	Encoding      string                 `protobuf:"bytes,6,opt,name=encoding,proto3" json:"encoding,omitempty"` // raw or zstd; hashes refer to the stored bytes
+	Encoding      string                 `protobuf:"bytes,6,opt,name=encoding,proto3" json:"encoding,omitempty"`                               // raw or zstd; hashes refer to the stored bytes
+	ChunkSizes    []int64                `protobuf:"varint,7,rep,packed,name=chunk_sizes,json=chunkSizes,proto3" json:"chunk_sizes,omitempty"` // stored size of each chunk, parallel to chunk_hashes; empty when unknown
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -208,6 +209,13 @@ func (x *FileNode) GetEncoding() string {
 		return x.Encoding
 	}
 	return ""
+}
+
+func (x *FileNode) GetChunkSizes() []int64 {
+	if x != nil {
+		return x.ChunkSizes
+	}
+	return nil
 }
 
 type TreeManifest struct {
@@ -10599,7 +10607,7 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	" internal/grpc/proto/server.proto\x12\x05greet\x1a\x1fgoogle/protobuf/timestamp.proto\"<\n" +
 	"\x0eProjectContext\x12\x10\n" +
 	"\x03org\x18\x01 \x01(\tR\x03org\x12\x18\n" +
-	"\aproject\x18\x02 \x01(\tR\aproject\"\xbe\x01\n" +
+	"\aproject\x18\x02 \x01(\tR\aproject\"\xdf\x01\n" +
 	"\bFileNode\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12#\n" +
 	"\x04mode\x18\x02 \x01(\x0e2\x0f.greet.FileModeR\x04mode\x12\x1d\n" +
@@ -10607,7 +10615,9 @@ const file_internal_grpc_proto_server_proto_rawDesc = "" +
 	"size_bytes\x18\x03 \x01(\x03R\tsizeBytes\x12\x1b\n" +
 	"\tis_binary\x18\x04 \x01(\bR\bisBinary\x12!\n" +
 	"\fchunk_hashes\x18\x05 \x03(\tR\vchunkHashes\x12\x1a\n" +
-	"\bencoding\x18\x06 \x01(\tR\bencoding\"\x98\x01\n" +
+	"\bencoding\x18\x06 \x01(\tR\bencoding\x12\x1f\n" +
+	"\vchunk_sizes\x18\a \x03(\x03R\n" +
+	"chunkSizes\"\x98\x01\n" +
 	"\fTreeManifest\x12\x1b\n" +
 	"\ttree_hash\x18\x01 \x01(\tR\btreeHash\x12\x12\n" +
 	"\x04path\x18\x02 \x01(\tR\x04path\x120\n" +

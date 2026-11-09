@@ -625,6 +625,8 @@ func TestBranchRepositorySQLite_ListFilesByTree(t *testing.T) {
 	require.Len(t, files[0].Chunks, 2)
 	require.Equal(t, chunkIdx0, files[0].Chunks[0].ID)
 	require.Equal(t, chunkIdx1, files[0].Chunks[1].ID)
+	require.Equal(t, int64(100), files[0].Chunks[0].SizeBytes, "manifest chunk sizes come from the same query")
+	require.Equal(t, int64(100), files[0].Chunks[1].SizeBytes)
 
 	require.Equal(t, "b.txt", files[1].Name)
 	require.Empty(t, files[1].Chunks)

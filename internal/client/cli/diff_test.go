@@ -40,20 +40,22 @@ func setupDiffRepo(t *testing.T, files map[string]string) string {
 	var pending []*serverDomain.ChunkData
 	for _, name := range names {
 		content := []byte(files[name])
-		chunks, err := chunker.ChunkAll(content)
+		isBinary := chunker.IsBinary(content)
+		encoding, chunks, err := chunker.EncodeBytes(content, name, isBinary, "")
 		require.NoError(t, err)
 		hashes := make([]serverDomain.Hash, len(chunks))
 		fileChunks := make([]serverDomain.Chunk, len(chunks))
 		for i, c := range chunks {
 			hashes[i] = c.Hash
-			fileChunks[i] = serverDomain.Chunk{Hash: c.Hash, SizeBytes: int64(len(c.Data))}
+			fileChunks[i] = serverDomain.Chunk{Hash: c.Hash, SizeBytes: c.SizeBytes}
 			pending = append(pending, &serverDomain.ChunkData{Hash: c.Hash, Data: c.Data})
 		}
 		children = append(children, &serverDomain.File{
 			Name:      name,
 			Mode:      2,
 			SizeBytes: int64(len(content)),
-			IsBinary:  chunker.IsBinary(content),
+			IsBinary:  isBinary,
+			Encoding:  encoding,
 			Hash:      chunker.FileHash(hashes),
 			Chunks:    fileChunks,
 		})
@@ -287,6 +289,29 @@ func TestDiffCmd_RenamePatch(t *testing.T) {
 	require.Contains(t, out, "rename from old.txt")
 	require.Contains(t, out, "rename to new.txt")
 	require.Contains(t, out, "+three")
+}
+
+func TestDiffCmd_PrunesUnpinnedBinariesAfterRun(t *testing.T) {
+	root := setupDiffRepo(t, map[string]string{"a.txt": "a\n", "img.bin": "\x00\x01binary\x02"})
+	writeFile(t, root, "a.txt", "b\n")
+	require.Equal(t, 2, countObjects(t, root))
+
+	out, err := runCmdInDir(t, root, newDiffCmd(t), "--name-only")
+	require.NoError(t, err)
+	require.Equal(t, "a.txt\n", out)
+	require.Equal(t, 1, countObjects(t, root), "only the zstd text chunk stays cached")
+}
+
+func countObjects(t *testing.T, root string) int {
+	t.Helper()
+	n := 0
+	require.NoError(t, filepath.WalkDir(filepath.Join(root, ".nipa", "objects"), func(_ string, d os.DirEntry, err error) error {
+		if err == nil && !d.IsDir() {
+			n++
+		}
+		return err
+	}))
+	return n
 }
 
 func TestDiffCmd_ExternalDiff(t *testing.T) {

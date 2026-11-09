@@ -29,7 +29,7 @@ type exclusiveLocker interface {
 }
 
 const (
-	pruneSkipBusy    = "repository busy"
+	PruneSkipBusy    = "repository busy"
 	pruneSkipPending = "a merge or revert is in progress"
 )
 
@@ -69,7 +69,7 @@ func pruneCache(lr cacheLocalRepo) (PruneResult, error) {
 			return PruneResult{}, err
 		}
 		if !acquired {
-			return PruneResult{Skipped: true, SkipReason: pruneSkipBusy}, nil
+			return PruneResult{Skipped: true, SkipReason: PruneSkipBusy}, nil
 		}
 		defer release()
 	}
@@ -105,6 +105,12 @@ func pruneCache(lr cacheLocalRepo) (PruneResult, error) {
 	}
 	files, freed, err := lr.PruneObjects(keep)
 	return PruneResult{Objects: files, Bytes: freed}, err
+}
+
+// PruneCache drops cached objects no snapshot file keeps. It is a no-op while
+// the repository is busy or a merge or revert is pending.
+func PruneCache(lr cacheLocalRepo) (PruneResult, error) {
+	return pruneCache(lr)
 }
 
 func pruneAfterSuccess(lr any, err error) {

@@ -330,9 +330,13 @@ func TestEndToEnd_CloneThroughput(t *testing.T) {
 
 	totalMiB := float64(sizeMB * len(cases))
 	beforeGets, beforeBytes := counter.snapshotGets()
+	checkout := filepath.Join(t.TempDir(), "checkout")
+	stopSampling, peakObjects := sampleDirPeak(t, filepath.Join(checkout, ".nipa", "objects"))
 	start := time.Now()
-	checkout := cloneWorktree(t, grpcClient, auth, host, "main")
+	url := "http://" + host + "/" + e2eOrgSlug + "/" + e2eProjectSlug
+	require.NoError(t, clientusecase.NewRepo(auth, grpcClient, localrepo.NewLocalRepo()).Clone(ctx, url, host, e2eOrgSlug, e2eProjectSlug, "", nil, checkout))
 	elapsed := time.Since(start)
+	stopSampling()
 	gets, getBytes := counter.snapshotGets()
 	rate := totalMiB / elapsed.Seconds()
 	t.Logf("clone: %d files, %.0f MiB in %s (%.1f MiB/s) gets=%d wire=%.1f MiB",
@@ -340,7 +344,7 @@ func TestEndToEnd_CloneThroughput(t *testing.T) {
 		gets-beforeGets, float64(getBytes-beforeBytes)/(1<<20))
 	objects := benchDirSize(t, filepath.Join(checkout, ".nipa", "objects"), "")
 	worktree := benchDirSize(t, checkout, filepath.Join(checkout, ".nipa"))
-	t.Logf("clone disk: worktree=%.1f MiB objects=%.1f MiB (%d bytes)", float64(worktree)/(1<<20), float64(objects)/(1<<20), objects)
+	t.Logf("clone disk: worktree=%.1f MiB objects=%.1f MiB (%d bytes) peak objects=%.1f MiB", float64(worktree)/(1<<20), float64(objects)/(1<<20), objects, float64(*peakObjects)/(1<<20))
 
 	for _, tc := range cases {
 		want := hashBenchFile(t, filepath.Join(dir, filepath.FromSlash(tc.path)))
@@ -353,6 +357,50 @@ func TestEndToEnd_CloneThroughput(t *testing.T) {
 	require.NoError(t, updater.Run(ctx, checkout))
 	t.Logf("no-op update: %s", time.Since(start).Round(time.Millisecond))
 	require.Greater(t, rate, 0.0)
+}
+
+// sampleDirPeak polls the size of dir until stop is called and records the
+// largest size seen.
+func sampleDirPeak(t *testing.T, dir string) (stop func(), peak *int64) {
+	t.Helper()
+	peak = new(int64)
+	done := make(chan struct{})
+	finished := make(chan struct{})
+	go func() {
+		defer close(finished)
+		ticker := time.NewTicker(5 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			if size := dirSizeQuiet(dir); size > *peak {
+				*peak = size
+			}
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+			}
+		}
+	}()
+	return func() {
+		close(done)
+		<-finished
+	}, peak
+}
+
+func dirSizeQuiet(root string) int64 {
+	var total int64
+	_ = filepath.WalkDir(root, func(_ string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if d.Type().IsRegular() {
+			if info, err := d.Info(); err == nil {
+				total += info.Size()
+			}
+		}
+		return nil
+	})
+	return total
 }
 
 func benchDirSize(t *testing.T, root, skip string) int64 {

@@ -109,6 +109,7 @@ func newMCPUseCases(newClient func() *clientgrpc.Client, storage tokenStorage) m
 		Auth:      auth,
 	}
 	uc.Close = func() {
+		uc.Diff.PruneCache()
 		for _, lr := range repos {
 			_ = lr.Close()
 		}

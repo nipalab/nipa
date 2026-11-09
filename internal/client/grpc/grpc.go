@@ -649,11 +649,19 @@ func toServerFile(node *pb.FileNode) *serverDomain.File {
 		IsBinary:  node.GetIsBinary(),
 		Encoding:  node.GetEncoding(),
 	}
+	sizes := node.GetChunkSizes()
+	if len(sizes) != len(node.GetChunkHashes()) {
+		sizes = nil
+	}
 	var hashes []serverDomain.Hash
-	for _, h := range node.GetChunkHashes() {
+	for i, h := range node.GetChunkHashes() {
 		if hash, err := decodeHash(h); err == nil {
 			hashes = append(hashes, hash)
-			file.Chunks = append(file.Chunks, serverDomain.Chunk{Hash: hash})
+			chunk := serverDomain.Chunk{Hash: hash}
+			if sizes != nil {
+				chunk.SizeBytes = sizes[i]
+			}
+			file.Chunks = append(file.Chunks, chunk)
 		}
 	}
 	file.Hash = chunker.FileHash(hashes)

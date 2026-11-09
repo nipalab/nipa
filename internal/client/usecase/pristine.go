@@ -4,8 +4,12 @@ import (
 	"context"
 	"errors"
 	"io/fs"
+	"net"
 	"os"
 	"path/filepath"
+
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/nipalab/nipa/internal/chunker"
 	clientDomain "github.com/nipalab/nipa/internal/client/domain"
@@ -60,7 +64,25 @@ func (p pristine) ensureSnapshotContent(ctx context.Context, files []clientDomai
 	if len(pending) == 0 {
 		return nil
 	}
-	return p.download(ctx, pending, missing)
+	return offlineError(p.download(ctx, pending, missing))
+}
+
+const errNotCached = "content not cached locally; connect to the server"
+
+// offlineError turns a failure to reach the server into the user error the
+// missing-client case reports; every other error is returned unchanged.
+func offlineError(err error) error {
+	if err == nil {
+		return nil
+	}
+	if status.Code(err) == codes.Unavailable {
+		return clientDomain.NewUserError(errNotCached)
+	}
+	var opErr *net.OpError
+	if errors.As(err, &opErr) && opErr.Op == "dial" {
+		return clientDomain.NewUserError(errNotCached)
+	}
+	return err
 }
 
 func (p pristine) missingSet(files []clientDomain.SnapshotFile) (map[domain.Hash]struct{}, error) {
@@ -136,7 +158,7 @@ func (p pristine) recapture(f clientDomain.SnapshotFile, statCache map[string]cl
 
 func (p pristine) download(ctx context.Context, files []clientDomain.SnapshotFile, missing map[domain.Hash]struct{}) error {
 	if p.client == nil {
-		return clientDomain.NewUserError("content not cached locally; connect to the server")
+		return clientDomain.NewUserError(errNotCached)
 	}
 	cfg, err := p.repo.LoadConfig()
 	if err != nil {

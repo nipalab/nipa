@@ -155,6 +155,7 @@ func (s *Server) acquireDiff(ctx context.Context, root string) (*repo, func(), e
 	}
 	done := func() {
 		release()
+		rp.pruner.request()
 		unref()
 	}
 	if rp.diff == nil {

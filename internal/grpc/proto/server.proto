@@ -24,6 +24,7 @@ message FileNode {
     bool is_binary = 4;
     repeated string chunk_hashes = 5;
     string encoding = 6; // raw or zstd; hashes refer to the stored bytes
+    repeated int64 chunk_sizes = 7; // stored size of each chunk, parallel to chunk_hashes; empty when unknown
 }
 
 message TreeManifest {
