@@ -19,6 +19,7 @@ const (
 	LimitAudioSeconds = "max_audio_seconds"
 	LimitPeakDBFS     = "max_peak_dbfs"
 	LimitNamePattern  = "name_pattern"
+	LimitProvenance   = "require_provenance"
 )
 
 // Violation is one limit a file breaks; Rule names the rule that set it.
@@ -54,6 +55,7 @@ type Limits struct {
 	seconds     setting[float64]
 	peak        setting[float64]
 	name        setting[*regexp.Regexp]
+	provenance  setting[bool]
 	matched     bool
 }
 
@@ -76,6 +78,7 @@ func (c *Config) For(p string) Limits {
 		l.vertices.apply(r.MaxVertices, r.Name)
 		l.seconds.apply(r.MaxAudioSeconds, r.Name)
 		l.peak.apply(r.MaxPeakDBFS, r.Name)
+		l.provenance.apply(r.RequireProvenance, r.Name)
 		if r.nameRE != nil {
 			l.name.apply(&r.nameRE, r.Name)
 		}
@@ -109,10 +112,29 @@ func (c *Config) NeedsDecode(p string) bool {
 	return c.For(p).NeedsDecode(preview.Classify(p, false))
 }
 
+// CheckOptions carries the facts a check needs beyond the results.
+type CheckOptions struct {
+	// HasRecord reports whether a path has a provenance record; nil means
+	// no file has one.
+	HasRecord func(path string) bool
+}
+
+// RequiresProvenance reports whether any rule asks path for a provenance
+// record.
+func (c *Config) RequiresProvenance(p string) bool {
+	l := c.For(p)
+	return l.provenance.set && l.provenance.value
+}
+
 // Check evaluates the new side of every result against the budget, sorted
 // by path and limit. Removed files are skipped, and results without decoded
 // metadata (too large, unparseable) are only checked for size and name.
 func Check(cfg *Config, results []*assetdiff.Result) []Violation {
+	return CheckWith(cfg, results, CheckOptions{})
+}
+
+// CheckWith is Check with provenance records for require_provenance.
+func CheckWith(cfg *Config, results []*assetdiff.Result, opts CheckOptions) []Violation {
 	out := []Violation{}
 	if cfg == nil {
 		return out
@@ -121,7 +143,11 @@ func Check(cfg *Config, results []*assetdiff.Result) []Violation {
 		if res == nil || res.Status == assetdiff.StatusRemoved {
 			continue
 		}
-		out = append(out, cfg.For(res.Path).check(res)...)
+		l := cfg.For(res.Path)
+		out = append(out, l.check(res)...)
+		if l.provenance.set && l.provenance.value && (opts.HasRecord == nil || !opts.HasRecord(res.Path)) {
+			out = append(out, Violation{Path: res.Path, Rule: l.provenance.rule, Limit: LimitProvenance, Actual: false, Max: true, Message: "no provenance record"})
+		}
 	}
 	sort.SliceStable(out, func(i, j int) bool {
 		if out[i].Path != out[j].Path {

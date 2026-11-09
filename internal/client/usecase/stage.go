@@ -19,6 +19,7 @@ import (
 	"github.com/nipalab/nipa/internal/client/domain"
 	"github.com/nipalab/nipa/internal/client/ignore"
 	serverDomain "github.com/nipalab/nipa/internal/domain"
+	"github.com/nipalab/nipa/internal/provenance"
 )
 
 const nipaDir = ".nipa"
@@ -74,23 +75,45 @@ func (w *WorkingCopy) pristine() pristine {
 type AddOptions struct {
 	// Force stages paths even when they match the ignore rules.
 	Force bool
+	// NoProvenance skips recording provenance for the staged files.
+	NoProvenance bool
 }
 
 func (w *WorkingCopy) Add(ctx context.Context, targets []string, opts ...AddOptions) error {
-	force := len(opts) > 0 && opts[0].Force
+	_, err := w.AddWithReport(ctx, targets, opts...)
+	return err
+}
+
+// AddWithReport stages like Add and reports the provenance records it
+// wrote when the repository has a .nipaprovenance.yml.
+func (w *WorkingCopy) AddWithReport(ctx context.Context, targets []string, opts ...AddOptions) (ProvenanceReport, error) {
+	var opt AddOptions
+	if len(opts) > 0 {
+		opt = opts[0]
+	}
+	var rep ProvenanceReport
 	snapshot, err := w.localRepo.Snapshot()
 	if err != nil {
-		return err
+		return rep, err
 	}
-	paths, err := w.expandAddTargets(snapshot, targets, force)
+	paths, err := w.expandAddTargets(snapshot, targets, opt.Force)
 	if err != nil {
-		return err
+		return rep, err
 	}
 	paths, err = w.withoutUnchanged(snapshot, paths)
 	if err != nil {
-		return err
+		return rep, err
 	}
-	return w.localRepo.StageAddMany(paths)
+	if !opt.NoProvenance {
+		var changed bool
+		if rep, changed, err = w.recordProvenance(paths); err != nil {
+			return rep, err
+		}
+		if changed {
+			paths = withProvenanceFile(paths)
+		}
+	}
+	return rep, w.localRepo.StageAddMany(paths)
 }
 
 // withoutUnchanged drops tracked paths whose cached fingerprint still matches
@@ -173,7 +196,17 @@ func (w *WorkingCopy) Remove(ctx context.Context, targets []string) error {
 	if len(paths) == 0 {
 		return nil
 	}
-	return w.localRepo.StageRemove(paths)
+	_, changed, err := w.forgetProvenance(paths)
+	if err != nil {
+		return err
+	}
+	if err := w.localRepo.StageRemove(paths); err != nil {
+		return err
+	}
+	if changed {
+		return w.localRepo.StageAdd(provenance.FileName)
+	}
+	return nil
 }
 
 // StatusOptions controls how status verifies working files.

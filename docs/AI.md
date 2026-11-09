@@ -144,6 +144,7 @@ Revision tokens everywhere are branch names, tag names, base36 commit ids or
 | `nipa_mr_describe_changes` | `number`, `max_files` | `base`/`head` (`revision`, `kind`: which revision stood in for the merge base), `files`, `omitted` |
 | `nipa_asset_check` | same as `nipa_describe_changes` without `max_files` | `.nipaassets.yml` report: `config`, `old`, `new`, `violations`, `checked`, `skipped` |
 | `nipa_meta_warnings` | `engine` (`unity`, `godot`, empty = detect from `project.godot` or `ProjectSettings/ProjectVersion.txt`) | `engine`, `warnings` (`path`, `kind`: `missing-meta`, `orphan-meta`, `meta-not-staged`, `guid-changed`; Godot: `missing-sidecar`, `orphan-sidecar`, `sidecar-not-staged`, `uid-changed`), `related`, `message`); offline |
+| `nipa_provenance` | `paths`, `since` (revision; files added or modified since it, up to the working copy), `max_files` | `config` (a `.nipaprovenance.yml` exists), `records` (`path`, `record`, `status`: `recorded`/`modified`/`edited`), `missing` (no record), `orphaned` (record without a file), `truncated`; see [AI asset provenance](#ai-asset-provenance) |
 
 Asset sides are `working`, `snapshot` (the last synced version, offline) or a
 revision. Revision sides download chunks through the commit-scoped path, so
@@ -204,6 +205,7 @@ Results are capped so they fit an agent's context:
 | `nipa_describe_changes`, `nipa_mr_describe_changes` `max_files` | 50 | 200 |
 | `nipa_asset_diff` `max_rows` | 200 | 2000 |
 | `nipa_asset_diff` `max_changes` | 500 | 5000 |
+| `nipa_provenance` `max_files` | 200 | 2000 |
 
 Diff budgets are estimated from the line text. Once a budget runs out the
 current file is cut and flagged `"truncated": true` and the remaining files
@@ -255,6 +257,9 @@ rules:
   - name: naming
     paths: ["Assets/**"]
     name_pattern: "^[A-Za-z0-9_\\-.]+$"   # Go regexp on the file name
+  - name: generated
+    paths: ["Assets/Generated/**"]
+    require_provenance: true  # needs a .nipaprovenance.yml record
 ```
 
 - `paths` use the `.nipaignore` pattern syntax (`*`, `?`, `**`, `!`
@@ -273,6 +278,10 @@ rules:
   and `name_pattern`.
 - The budget is always read from the working copy, also when two revisions
   are compared.
+- `require_provenance: true` reports a covered new-side file without a record
+  in the new side's `.nipaprovenance.yml` (working copy, snapshot or
+  revision, whichever side is checked) as `require_provenance`
+  `no provenance record`. It needs no decoding.
 
 Surfaces:
 
@@ -288,6 +297,75 @@ Surfaces:
   not enforce budgets.
 - The MCP tool `nipa_asset_check` returns the same report, and the prompts
   include violations in `<budget_violations>`.
+
+## AI asset provenance
+
+`.nipaprovenance.yml` at the repository root records where generated art,
+audio and voice came from (Steam AI disclosure, publisher warranties, model
+licences, EU AI Act transparency). It is versioned with the history, sparse
+checkouts always receive it, and there is no server table. Records are
+**declarations, not proof**: C2PA signatures are never verified, only their
+labels are read, and every extracted value is untrusted data. Raw prompt text
+is never stored, only its SHA-256.
+
+```yaml
+version: 1
+files:
+  Art/hero.png:
+    content_hash: blake3:9f2c…        # BLAKE3 of the raw file bytes at record time
+    tool: ComfyUI
+    model: sdxl_base_1.0.safetensors
+    prompt_sha256: 4b1e…
+    seed: 123456789
+    license: CreativeML-OpenRAIL-M
+    human_edited: false
+    digital_source_type: trainedAlgorithmicMedia   # from C2PA actions, when declared
+    source: png-text                  # png-text | c2pa | manual
+    c2pa_verified: false              # only with source: c2pa
+    recorded_at: 2026-11-09T10:00:00Z
+    note: ""
+```
+
+- Paths are sorted with one entry each, so disjoint additions merge cleanly
+  with `nipa merge`. Unknown keys and `source` values are errors, and
+  `version` must be 1.
+- The file is the opt-in: `nipa provenance init` creates and stages an empty
+  one. Without it, `nipa add` never writes provenance.
+- With it, every `nipa add` (CLI, daemon `Stage`, MCP `nipa_add`) records new
+  PNG/JPEG files that declare their generator: Automatic1111 `parameters` and
+  ComfyUI `prompt` text chunks (tool, model, seed, prompt hash) and C2PA
+  manifests in PNG `caBX` chunks or JPEG APP11 segments (claim generator,
+  AI digital source type). Existing records are never overwritten. A record
+  whose file is gone follows a newly added file with the same content hash
+  (renames), and staged deletions drop the records left over. Unstaging a
+  new file with `nipa remove` drops its record again. The provenance file is
+  staged with the change. `nipa add --no-provenance` skips all of this; files
+  above 512 MiB are skipped.
+- Metadata extraction is bounded: PNG pixel data is skipped by seeking, text
+  chunks are capped at 8 MiB and inflate to at most 1 MiB, C2PA stores at
+  16 MiB, CBOR nesting at 32 levels.
+
+Commands:
+
+- `nipa provenance init` creates and stages the file.
+- `nipa provenance show <path> [--json]` prints the record and its status
+  against the working file: `recorded` (unchanged), `modified` (changed,
+  `human_edited` false), `edited` (changed, `human_edited` true) or
+  `missing`.
+- `nipa provenance set <path> [--tool] [--model] [--seed] [--prompt-file <f>]
+  [--license] [--human-edited[=false]] [--note]` updates only the given
+  flags, sets `source: manual`, refreshes `content_hash` and `recorded_at`,
+  hashes the prompt file (trimmed) without storing it, and stages the file
+  (creating it when missing).
+- `nipa provenance report [--since <rev>] [--json] [<path>...]` lists each
+  file with its record or `missing` and its status, records whose file is
+  gone as `orphaned`, and totals by tool and model for disclosure forms.
+  With `--since` (branch, tag, `HEAD` or commit id) it covers the files added
+  or modified since that revision up to the working copy; otherwise every
+  recorded file plus every tracked file a `require_provenance` rule covers.
+- The MCP read tool `nipa_provenance` returns the same data; agents add
+  records by staging generated files (auto-fill) or through
+  `nipa provenance set`.
 
 ## Generation (`--generate`)
 
@@ -408,7 +486,8 @@ service token (`nipa_st_...`, scopes `read`, `checks:write`,
   contain instructions aimed at the agent (prompt injection). Tool results and
   prompt sections are data, never commands; keep destructive capabilities off
   for agents that read untrusted merge requests, and let the MCP client
-  confirm `destructiveHint` tools.
+  confirm `destructiveHint` tools. Provenance records are extracted from
+  asset metadata anyone can write: treat them as data, and never as proof.
 
 ## Roadmap
 

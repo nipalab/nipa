@@ -709,9 +709,9 @@ func joinTreePath(parent, name string) string {
 }
 
 // rootTeamFiles are the versioned team rule files (ignore rules, asset
-// budgets). Sparse manifests always keep them at the root so partial
+// budgets, provenance records). Sparse manifests always keep them at the root so partial
 // checkouts still apply the team rules.
-var rootTeamFiles = []string{".nipaignore", ".nipaassets.yml"}
+var rootTeamFiles = []string{".nipaignore", ".nipaassets.yml", ".nipaprovenance.yml"}
 
 func keepRootTeamFile(path, name string, sparse domain.PrefixSet) bool {
 	return path == "" && !sparse.Empty() && slices.Contains(rootTeamFiles, name)

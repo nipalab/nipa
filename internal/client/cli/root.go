@@ -62,6 +62,7 @@ func (c *Cli) Run(extra ...*cobra.Command) error {
 	rootCmd.AddCommand(c.setupLogCmd())
 	rootCmd.AddCommand(c.setupDiffCmd())
 	rootCmd.AddCommand(c.setupAssetsCmd())
+	rootCmd.AddCommand(c.setupProvenanceCmd())
 	rootCmd.AddCommand(c.setupAclCmd())
 	rootCmd.AddCommand(c.setupGroupCmd())
 	rootCmd.AddCommand(c.setupSparseCheckoutCmd())

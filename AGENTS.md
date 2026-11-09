@@ -114,7 +114,7 @@ Dual-licensed (Apache 2.0; everything under `ee/` is enterprise).
   key), clone, branch
   (`-a` list, `-c` create+switch, `-d` delete), tag (list, `-c` create, `-d`
   delete), add, remove, restore, status, push, update, switch (branch or `--tag`),
-  merge, revert, log, diff, assets check, acl, group, sparse-checkout, mr, lock, unlock, gc, serve, mcp), `usecase`
+  merge, revert, log, diff, assets check, provenance, acl, group, sparse-checkout, mr, lock, unlock, gc, serve, mcp), `usecase`
   (clone/login, push, update/switch (incl. sparse and detached-tag checkout),
   merge, revert, diff, log, tag management,
   permission, merge-request orchestration, file locks over small interfaces; `threeway.go`
@@ -299,7 +299,7 @@ skipped (no content is read), and the remaining paths are staged in one
 transaction (`StageAddMany`, client DB runs WAL + `synchronous=NORMAL`), so
 `nipa add *` on a large clone is cheap. The matcher is client-side only: a
 hostile client can still push such paths, and a tracked file that later matches
-a rule stays tracked until explicitly removed. Sparse manifests always include the root `.nipaignore`
+a rule stays tracked until explicitly removed. Sparse manifests always include the root `.nipaignore` (and `.nipaassets.yml`, `.nipaprovenance.yml`)
 (`loadTreeManifest`'s `keepRootTeamFile`, still behind the read filter), so
 partial checkouts apply the team rules too. The pattern compiler itself lives
 in the pure `internal/pathmatch` (`Parse`/`Compile`/`Join`/`Matches`), shared
@@ -312,7 +312,7 @@ go-sdk MCP server over stdio (`Serve`/`NewServer`; `cmd/nipa/mcp.go` wires a
 call (one gRPC client binds one host) whose `Close` releases the client and
 localrepo handles; the working copy is the `repo` argument, then `--repo`,
 then the cwd (`FindRepoRootFrom`). Read tools (`tools_read.go`,
-`tools_mr.go`, `tools_asset.go`) are always registered; write tools only per
+`tools_mr.go`, `tools_asset.go`, `tools_provenance.go`) are always registered; write tools only per
 capability in `Options.Allow` (`ParseAllow`, unknown names fail; `--allow-write`
 = `AllCaps`): `stage` add/restore, `push`, `sync` update/switch, `branch`
 branch/tag create, `lock` lock/unlock, `mr` create/update/comment/reply/
@@ -349,10 +349,14 @@ in sparse manifests like `.nipaignore`; reference in `docs/AI.md`): the pure
 `version` 1, rules of `paths` globs in `pathmatch` syntax plus
 `max_bytes` (int or human size), `max_texture_size`, `power_of_two`,
 `max_triangles`, `max_vertices`, `max_audio_seconds`, `max_peak_dbfs`,
-`name_pattern`), merges every matching rule in file order (a later rule
+`name_pattern`, `require_provenance`), merges every matching rule in file order (a later rule
 overrides only the keys it sets; violations name the rule that set the limit)
 and `Check`s `assetdiff.Result`s on the new side only (removed files skipped,
 undecoded files only checked for size/name; sorted by path, limit).
+`CheckWith(cfg, results, CheckOptions{HasRecord})` adds the
+`require_provenance` violation (`no provenance record`); `CheckChanges` reads
+`.nipaprovenance.yml` from the new side through the loader
+(`assetscan.LoadProvenance`) only when a covered file requires it.
 `internal/client/assetscan` is the shared client runner: `Enumerate` (the
 `nipa diff`-style change list as `assetdiff.Item`s, also used by
 `nipa_describe_changes`), `BlobLoader`/`SideRef`/`ChangeItem`, and
@@ -363,6 +367,40 @@ matching limits (`Config.NeedsDecode`). Surfaces: `nipa assets check [<rev>
 `nipa push --dry-run` (`asset_violations` in JSON, warning block in text;
 offline over the plan's staged changes). The budget always comes from the
 working copy; push itself does not enforce it.
+
+Flow for AI asset provenance (`.nipaprovenance.yml` at the repo root,
+versioned, in `rootTeamFiles` so sparse manifests keep it; reference in
+`docs/AI.md`): the pure `internal/provenance` (no client imports) parses it
+(`version` 1, `KnownFields`, paths normalized like `NormalizePathPrefix`,
+`source` `png-text|c2pa|manual`, `c2pa_verified` only with `c2pa`) and
+`Marshal`s sorted paths in a fixed field order so disjoint additions merge as
+text; `Set`/`Get`/`Delete`/`Move`, `HashContent` (`blake3:<hex>` of the raw
+bytes, independent of chunker encodings), `PromptHash` (SHA-256; raw prompts
+are never stored) and `Status` (`recorded`/`modified`/`edited`/`missing`).
+`Extract` reads PNG (`IDAT` skipped by `Seek`, chunks ≤8 MiB, `zTXt`/`iTXt`
+inflate ≤1 MiB, A1111 `parameters`, ComfyUI `prompt` graph: first
+`KSampler*` seed, `CheckpointLoader*` model, positive `CLIPTextEncode*` text
+hash) and C2PA JUMBF (PNG `caBX`, JPEG APP11 reassembled by box instance and
+sequence; active manifest's `c2pa.claim*` via the bounded in-package CBOR
+reader, `c2pa.actions*` AI `digitalSourceType`; never verified). Fuzzed
+(`FuzzParseFile`, `FuzzExtractPNG`, `FuzzExtractJPEG`, `FuzzParseC2PA`,
+`FuzzDecodeCBOR`) with bomb tests; fixtures in `testdata` are regenerated by
+`NIPA_PROVENANCE_GEN=1 go test -run TestWriteFixtures`. Client side
+(`usecase/provenance.go`): the file's presence is the opt-in
+(`LoadProvenance` nil otherwise). `WorkingCopy.AddWithReport` (`Add` wraps
+it; CLI, daemon `Stage` and MCP `nipa_add` all go through it) runs after
+`withoutUnchanged` unless `AddOptions.NoProvenance`: records whose file is
+gone follow a staged path with the same content hash (`Move`, no
+re-extraction), new supported files (≤512 MiB) get `Extract` + content hash +
+`recorded_at`, existing records are never overwritten, staged deletions drop
+what is left, and a changed file is written atomically (`SaveProvenance`) and
+staged in the same `StageAddMany`. `Remove` (unstage) drops records of
+untracked paths only and re-stages the file. `assetscan.ScanProvenance`
+builds the report (since a revision against the working copy via `Enumerate`,
+else recorded + `require_provenance`-covered tracked paths; orphaned records;
+totals by tool/model) behind `nipa provenance init|show|set|report`
+(`cli/provenance.go`, `nipa add --no-provenance`) and the MCP read tool
+`nipa_provenance` (`tools_provenance.go`, `max_files` 200/2000).
 
 Flow for generation (reference in `docs/AI.md`; the server never calls an
 LLM): `internal/client/aiprompt` (pure, deterministic) builds
