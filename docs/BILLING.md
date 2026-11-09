@@ -141,25 +141,43 @@ the editor for super admins.
 ### Upgrade
 
 1. The SPA (`/settings/billing`) calls `POST /api/v1/billing/checkout`
-   `{seats, storage_packs, interval}` (`interval` is `month` or `year`;
-   `monthly`/`yearly` are accepted too).
+   `{seats, storage_packs, interval, discount_code?}` (`interval` is `month`
+   or `year`; `monthly`/`yearly` are accepted too; `discount_code` is optional
+   and trimmed, blank means none).
 2. The server refuses with 409 when the caller already has a live
    subscription or `seats + BILLING_FREE_SEATS` is below the seats in use
    (`N seats are in use and F are free; buy at least N-F`), and with 400 for
    negative seats or packs or when both are 0 (a subscription needs at least
    one paid seat or storage pack; cancelling returns to Free).
-3. It ensures the Paddle customer (`POST /customers`; a
+3. With a discount code it resolves the code before touching the customer:
+   `GET /discounts?code=<code>&status=active`, taking the first discount whose
+   code matches (case-insensitive), that is `enabled_for_checkout`, not past
+   `expires_at` and below its `usage_limit`. Anything else is a 400
+   `discount code is not valid`, and no Paddle customer is created.
+4. It ensures the Paddle customer (`POST /customers`; a
    `customer_already_exists` conflict adopts the existing `ctm_` id) and stores
    it in `billing_accounts`.
-4. It creates a Paddle transaction (`POST /transactions`) with the configured
+5. It creates a Paddle transaction (`POST /transactions`) with the configured
    price ids for the interval (seat item only when seats > 0, storage item
-   only when packs > 0) and
-   `custom_data.user_id`, and returns `{transaction_id}`.
-5. The SPA opens the Paddle.js overlay with `Paddle.Checkout.open({ transactionId })`.
-   The browser never chooses prices.
-6. Paddle creates the subscription and posts webhooks. After the
+   only when packs > 0), `custom_data.user_id` and, with a resolved code,
+   `discount_id`, and returns `{transaction_id}`. A Paddle 4xx whose error code
+   names a discount (for example `transaction_discount_not_eligible`) is also
+   answered with the generic 400. The `billing.checkout.started` audit entry
+   carries `discount_code` when one was used.
+6. The SPA opens the Paddle.js overlay with `Paddle.Checkout.open({ transactionId })`.
+   The browser never chooses prices or discounts.
+7. Paddle creates the subscription and posts webhooks. After the
    `checkout.completed` event the SPA polls `GET /billing/me` for a short while
    until the plan is no longer `free`.
+
+Discount codes (indie or education pricing, for example) are created and
+managed in the Paddle dashboard; a code must be active and enabled for
+checkout to be accepted here. Whether it recurs, for how many billing periods
+and which prices it applies to come from the Paddle discount's own settings
+(`recur`, `maximum_recurring_intervals`, `restrict_to`); the server only
+attaches it to the first transaction. The SPA shows the field only before the
+first checkout (not for plan changes), keeps price previews undiscounted and
+shows a refused code under the field.
 
 ### Change seats, storage or interval
 

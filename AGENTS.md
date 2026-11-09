@@ -948,17 +948,19 @@ bytes > 0); `ee/cmd/nipad/billing.go` (`buildBilling`) wires nothing with
 `off`, otherwise builds the Paddle client and the service, passes it as
 `UsecaseDeps.SeatGate`, registers the routes, the webhook root and the
 `/billing/me` hook. The provider seam is `billing.Provider`
-(`ee/billing/provider.go`: `EnsureCustomer`, `CreateCheckout`,
-`UpdateSubscription`, `Get/ListSubscriptions`, `PortalURL`, `ParseWebhook`,
+(`ee/billing/provider.go`: `EnsureCustomer`, `ResolveDiscount`,
+`CreateCheckout` (optional discount id), `UpdateSubscription`, `Get/ListSubscriptions`, `PortalURL`, `ParseWebhook`,
 `DecodeEvent`, `EventSubscription`; `Items{seats, storage_packs, interval
 month|year}`, seats = paid seats, `Validate` needs seats + packs ≥ 1, price
 ids always come from config). `ee/billing/paddle`
 implements it over the Paddle Billing REST API (`sandbox-api.paddle.com` /
 `api.paddle.com` by `PADDLE_ENVIRONMENT`, bearer key, 15 s timeout):
 `POST /customers` (a `customer_already_exists` 409 adopts the `ctm_` id from
-the error detail, else `GET /customers?email=`), `POST /transactions` with
-`custom_data.user_id` (base36; seat/storage items only for a non-zero
-quantity), `PATCH /subscriptions/{id}`
+the error detail, else `GET /customers?email=`), `GET
+/discounts?code=&status=active` (first match that is enabled for checkout, not
+expired and under its usage limit, else 400 `discount code is not valid`),
+`POST /transactions` with `custom_data.user_id` (base36; seat/storage items
+only for a non-zero quantity; `discount_id` only when set), `PATCH /subscriptions/{id}`
 (`prorated_immediately`, `on_payment_failure: prevent_change`, full item list),
 `GET /subscriptions?customer_id=` (cursor `after`), `POST
 /customers/{id}/portal-sessions` (`urls.general.overview`). Mapping: seats and
@@ -966,11 +968,15 @@ packs are the quantities of the configured seat/storage prices, the interval
 is the matched price's, an unknown price, mixed intervals or no items is an
 error (packs-only maps to 0 seats),
 `cancel_at_period_end` = `scheduled_change.action == "cancel"`. Paddle 409s and
-`subscription_locked*`/`subscription_update_when*` codes become 409, the rest
+`subscription_locked*`/`subscription_update_when*` codes become 409, other
+4xx codes naming a discount the generic 400, the rest
 502 (detail internal, never the key). Webhooks verify `Paddle-Signature`
 (`ts=…;h1=…`, HMAC-SHA256 over `ts:rawBody`, any `h1`, 5 min tolerance;
-`paddle.Sign` builds one for tests). `Service`: `Checkout` (409 with a live
-subscription or when paid seats < seats used − free seats; customer stored in
+`paddle.Sign` builds one for tests). `Service`: `Checkout` (body
+`{seats, storage_packs, interval, discount_code?}`; 409 with a live
+subscription or when paid seats < seats used − free seats; a trimmed
+non-empty code is resolved after those checks and before the customer is
+ensured, audited as `discount_code`; customer stored in
 `billing_accounts` once), `ChangeSubscription` (404 without a live
 subscription, 409 for the same seat rule or below used bytes, applies the PATCH answer immediately), `Portal`,
 `Summary`, `Sync`, `HandleEvent` (stores `billing_events` first, a
@@ -1629,7 +1635,9 @@ compatible for one release.
   before `Initialize`, events fanned out through `subscribePaddleEvents`,
   `previewPrices` over `PricePreview`) and is mocked in tests. Checkout opens
   `Paddle.Checkout.open({ transactionId })` from `createCheckout`, never with
-  client-side price ids. `FormDialog` renders a seat-limit 402 as
+  client-side price ids; before the first checkout the editor has an optional
+  discount code field (`#billing-discount-code`, sent as `discount_code`, a
+  400 shown under the field, previews stay undiscounted). `FormDialog` renders a seat-limit 402 as
   `SeatLimitBanner` (link to `/settings/billing`). The app has no CSP; adding
   one must allow Paddle.js and its checkout frames.
 - Keep `web/src/api/endpoints.ts` in sync with the REST handlers under

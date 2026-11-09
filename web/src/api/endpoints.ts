@@ -2,6 +2,7 @@ import { apiFetch, apiJson, errorFromResponse } from './client'
 import type {
   AuditListFilters,
   AuditListResponse,
+  BillingCheckoutRequest,
   BillingItemsRequest,
   BillingSummary,
   BlobResponse,
@@ -925,8 +926,8 @@ export async function getMyBilling(): Promise<OwnerStorageResponse | null> {
   return (await res.json()) as OwnerStorageResponse
 }
 
-export function createCheckout(items: BillingItemsRequest): Promise<{ transaction_id: string }> {
-  return apiJson('/api/v1/billing/checkout', { method: 'POST', body: JSON.stringify(items) })
+export function createCheckout(request: BillingCheckoutRequest): Promise<{ transaction_id: string }> {
+  return apiJson('/api/v1/billing/checkout', { method: 'POST', body: JSON.stringify(request) })
 }
 
 export function updateSubscription(items: BillingItemsRequest): Promise<BillingSummary> {

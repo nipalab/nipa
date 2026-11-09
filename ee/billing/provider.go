@@ -72,7 +72,8 @@ type EventSubscription struct {
 type Provider interface {
 	Name() string
 	EnsureCustomer(ctx context.Context, userID snow.ID, email, name string) (string, error)
-	CreateCheckout(ctx context.Context, customerID string, userID snow.ID, items Items) (string, error)
+	ResolveDiscount(ctx context.Context, code string) (string, error)
+	CreateCheckout(ctx context.Context, customerID string, userID snow.ID, items Items, discountID string) (string, error)
 	UpdateSubscription(ctx context.Context, subscriptionID string, items Items) (Subscription, error)
 	GetSubscription(ctx context.Context, subscriptionID string) (Subscription, error)
 	ListSubscriptions(ctx context.Context, customerID string) ([]Subscription, error)

@@ -123,7 +123,7 @@ func TestAudit_Checkout(t *testing.T) {
 	provider.checkoutID = "txn_1"
 	ctx := claimCtx(payer)
 
-	_, err := svc.Checkout(ctx, payer, Items{Seats: 2, StoragePacks: 1, Interval: "month"})
+	_, err := svc.Checkout(ctx, payer, Items{Seats: 2, StoragePacks: 1, Interval: "month"}, "")
 	require.NoError(t, err)
 	require.Len(t, rec.entries, 1)
 	entry := rec.entries[0]
@@ -135,12 +135,19 @@ func TestAudit_Checkout(t *testing.T) {
 		"transaction_id": "txn_1", "customer_id": "ctm_1",
 	}, entry.Metadata)
 
+	provider.discountID = "dsc_edu"
+	_, err = svc.Checkout(ctx, payer, Items{Seats: 2, Interval: "month"}, " EDU ")
+	require.NoError(t, err)
+	require.Len(t, rec.entries, 2)
+	require.Equal(t, "EDU", rec.entries[1].Metadata["discount_code"])
+	require.NotContains(t, rec.entries[0].Metadata, "discount_code")
+
 	rec.err = errAudit
-	_, err = svc.Checkout(ctx, payer, Items{Seats: 2, Interval: "month"})
+	_, err = svc.Checkout(ctx, payer, Items{Seats: 2, Interval: "month"}, "")
 	require.ErrorIs(t, err, errAudit, "a failed record fails the checkout")
 
 	provider.checkoutErr = errors.New("paddle down")
-	_, err = svc.Checkout(ctx, payer, Items{Seats: 2, Interval: "month"})
+	_, err = svc.Checkout(ctx, payer, Items{Seats: 2, Interval: "month"}, "")
 	require.EqualError(t, err, "paddle down")
 }
 

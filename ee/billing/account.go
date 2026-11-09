@@ -3,6 +3,7 @@ package billing
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/nipalab/nipa/ee/storageusage"
 	"github.com/nipalab/nipa/internal/domain"
@@ -10,8 +11,9 @@ import (
 )
 
 // Checkout starts a first subscription and returns the provider transaction
-// the browser completes.
-func (s *Service) Checkout(ctx context.Context, userID snow.ID, items Items) (string, error) {
+// the browser completes. A non-empty discount code is resolved before any
+// provider customer is created.
+func (s *Service) Checkout(ctx context.Context, userID snow.ID, items Items, discountCode string) (string, error) {
 	items, err := items.Validate()
 	if err != nil {
 		return "", err
@@ -26,25 +28,36 @@ func (s *Service) Checkout(ctx context.Context, userID snow.ID, items Items) (st
 	if err := s.checkSeats(ctx, userID, items.Seats); err != nil {
 		return "", err
 	}
+	discountCode = strings.TrimSpace(discountCode)
+	discountID := ""
+	if discountCode != "" {
+		if discountID, err = s.provider.ResolveDiscount(ctx, discountCode); err != nil {
+			return "", err
+		}
+	}
 	account, err := s.ensureAccount(ctx, userID)
 	if err != nil {
 		return "", err
 	}
-	txn, err := s.provider.CreateCheckout(ctx, account.ProviderCustomerID, userID, items)
+	txn, err := s.provider.CreateCheckout(ctx, account.ProviderCustomerID, userID, items, discountID)
 	if err != nil {
 		return "", err
+	}
+	metadata := map[string]any{
+		"seats":          items.Seats,
+		"storage_packs":  items.StoragePacks,
+		"interval":       items.Interval,
+		"transaction_id": txn,
+		"customer_id":    account.ProviderCustomerID,
+	}
+	if discountCode != "" {
+		metadata["discount_code"] = discountCode
 	}
 	if err := s.record(ctx, domain.AuditEntry{
 		Action:     domain.AuditBillingCheckoutStarted,
 		TargetType: domain.AuditTargetUser,
 		TargetID:   userID.Base36(),
-		Metadata: map[string]any{
-			"seats":          items.Seats,
-			"storage_packs":  items.StoragePacks,
-			"interval":       items.Interval,
-			"transaction_id": txn,
-			"customer_id":    account.ProviderCustomerID,
-		},
+		Metadata:   metadata,
 	}); err != nil {
 		return "", err
 	}

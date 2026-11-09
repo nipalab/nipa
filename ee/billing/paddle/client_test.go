@@ -171,7 +171,7 @@ func TestCreateCheckout(t *testing.T) {
 	client, fake := newFake(t, func(w http.ResponseWriter, _ recorded) {
 		writeJSON(w, http.StatusCreated, `{"data":{"id":"txn_1","status":"draft"}}`)
 	})
-	id, err := client.CreateCheckout(context.Background(), "ctm_1", snow.ID(5), billing.Items{Seats: 3, StoragePacks: 2, Interval: "month"})
+	id, err := client.CreateCheckout(context.Background(), "ctm_1", snow.ID(5), billing.Items{Seats: 3, StoragePacks: 2, Interval: "month"}, "")
 	require.NoError(t, err)
 	require.Equal(t, "txn_1", id)
 	require.Equal(t, "/transactions", fake.requests[0].Path)
@@ -184,24 +184,24 @@ func TestCreateCheckout(t *testing.T) {
 		},
 	}, fake.requests[0].Body)
 
-	_, err = client.CreateCheckout(context.Background(), "ctm_1", snow.ID(5), billing.Items{Seats: 1, Interval: "yearly"})
+	_, err = client.CreateCheckout(context.Background(), "ctm_1", snow.ID(5), billing.Items{Seats: 1, Interval: "yearly"}, "")
 	require.NoError(t, err)
 	require.Equal(t, []any{map[string]any{"price_id": "pri_seat_y", "quantity": float64(1)}}, fake.requests[1].Body["items"],
 		"no storage item without packs")
 
-	_, err = client.CreateCheckout(context.Background(), "ctm_1", snow.ID(5), billing.Items{StoragePacks: 2, Interval: "month"})
+	_, err = client.CreateCheckout(context.Background(), "ctm_1", snow.ID(5), billing.Items{StoragePacks: 2, Interval: "month"}, "")
 	require.NoError(t, err)
 	require.Equal(t, []any{map[string]any{"price_id": "pri_st_m", "quantity": float64(2)}}, fake.requests[2].Body["items"],
 		"no seat item without paid seats")
 
-	_, err = client.CreateCheckout(context.Background(), "ctm_1", snow.ID(5), billing.Items{Seats: 0, Interval: "month"})
+	_, err = client.CreateCheckout(context.Background(), "ctm_1", snow.ID(5), billing.Items{Seats: 0, Interval: "month"}, "")
 	require.Equal(t, http.StatusBadRequest, errorCode(err))
 	require.Len(t, fake.requests, 3)
 
 	failing, _ := newFake(t, func(w http.ResponseWriter, _ recorded) {
 		writeJSON(w, http.StatusInternalServerError, paddleError("internal_error", "x"))
 	})
-	_, err = failing.CreateCheckout(context.Background(), "ctm_1", snow.ID(5), billing.Items{Seats: 1, Interval: "month"})
+	_, err = failing.CreateCheckout(context.Background(), "ctm_1", snow.ID(5), billing.Items{Seats: 1, Interval: "month"}, "")
 	require.Equal(t, http.StatusBadGateway, errorCode(err))
 }
 
@@ -341,4 +341,99 @@ func TestDo_TransportError(t *testing.T) {
 	_, err := client.GetSubscription(context.Background(), "sub_1")
 	require.Equal(t, http.StatusBadGateway, errorCode(err))
 	require.NotContains(t, err.Error(), testAPIKey)
+}
+
+func TestCreateCheckout_WithDiscount(t *testing.T) {
+	client, fake := newFake(t, func(w http.ResponseWriter, _ recorded) {
+		writeJSON(w, http.StatusCreated, `{"data":{"id":"txn_2"}}`)
+	})
+	id, err := client.CreateCheckout(context.Background(), "ctm_1", snow.ID(5), billing.Items{Seats: 1, Interval: "month"}, "dsc_edu")
+	require.NoError(t, err)
+	require.Equal(t, "txn_2", id)
+	require.Equal(t, map[string]any{
+		"customer_id": "ctm_1",
+		"custom_data": map[string]any{"user_id": "5"},
+		"discount_id": "dsc_edu",
+		"items":       []any{map[string]any{"price_id": "pri_seat_m", "quantity": float64(1)}},
+	}, fake.requests[0].Body)
+}
+
+func TestCreateCheckout_DiscountRefused(t *testing.T) {
+	client, _ := newFake(t, func(w http.ResponseWriter, _ recorded) {
+		writeJSON(w, http.StatusBadRequest, paddleError("transaction_discount_not_eligible", "internal detail"))
+	})
+	_, err := client.CreateCheckout(context.Background(), "ctm_1", snow.ID(5), billing.Items{Seats: 1, Interval: "month"}, "dsc_edu")
+	require.Equal(t, http.StatusBadRequest, errorCode(err))
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, "discount code is not valid", domErr.Message)
+	require.Contains(t, domErr.InternalMessage, "transaction_discount_not_eligible")
+}
+
+func TestToDomain_DiscountMapping(t *testing.T) {
+	for _, tc := range []struct {
+		status int
+		code   string
+		want   int
+	}{
+		{http.StatusBadRequest, "transaction_discount_not_found", http.StatusBadRequest},
+		{http.StatusBadRequest, "discount_expired", http.StatusBadRequest},
+		{http.StatusNotFound, "transaction_discount_not_found", http.StatusBadRequest},
+		{http.StatusConflict, "discount_code_conflict", http.StatusConflict},
+		{http.StatusInternalServerError, "discount_internal", http.StatusBadGateway},
+		{http.StatusBadRequest, "invalid_field", http.StatusBadGateway},
+	} {
+		err := toDomain("op", &apiError{Status: tc.status, Code: tc.code})
+		require.Equal(t, tc.want, errorCode(err), tc.code)
+	}
+	require.Equal(t, http.StatusBadGateway, errorCode(toDomain("op", errors.New("network"))))
+}
+
+func TestResolveDiscount(t *testing.T) {
+	now := time.Date(2026, 11, 9, 12, 0, 0, 0, time.UTC)
+	for _, tc := range []struct {
+		name string
+		data string
+		want string
+	}{
+		{"found", `[{"id":"dsc_1","code":"edu","status":"active","enabled_for_checkout":true,"expires_at":null}]`, "dsc_1"},
+		{"skips unusable", `[{"id":"dsc_off","code":"EDU","status":"active","enabled_for_checkout":false},
+			{"id":"dsc_2","code":"EDU","status":"active","enabled_for_checkout":true,"expires_at":"2027-01-01T00:00:00Z","usage_limit":5,"times_used":4}]`, "dsc_2"},
+		{"not found", `[]`, ""},
+		{"other code", `[{"id":"dsc_1","code":"OTHER","status":"active","enabled_for_checkout":true}]`, ""},
+		{"archived", `[{"id":"dsc_1","code":"EDU","status":"archived","enabled_for_checkout":true}]`, ""},
+		{"disabled for checkout", `[{"id":"dsc_1","code":"EDU","status":"active","enabled_for_checkout":false}]`, ""},
+		{"expired", `[{"id":"dsc_1","code":"EDU","status":"active","enabled_for_checkout":true,"expires_at":"2026-11-09T11:59:59Z"}]`, ""},
+		{"used up", `[{"id":"dsc_1","code":"EDU","status":"active","enabled_for_checkout":true,"usage_limit":3,"times_used":3}]`, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			client, fake := newFake(t, func(w http.ResponseWriter, _ recorded) {
+				writeJSON(w, http.StatusOK, `{"data":`+tc.data+`,"meta":{}}`)
+			})
+			client.now = func() time.Time { return now }
+			id, err := client.ResolveDiscount(context.Background(), " EDU ")
+			require.Equal(t, http.MethodGet, fake.requests[0].Method)
+			require.Equal(t, "/discounts", fake.requests[0].Path)
+			require.Equal(t, "code=EDU&status=active", fake.requests[0].Query)
+			if tc.want == "" {
+				require.Equal(t, http.StatusBadRequest, errorCode(err))
+				require.ErrorContains(t, err, "discount code is not valid")
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.want, id)
+		})
+	}
+}
+
+func TestResolveDiscount_Errors(t *testing.T) {
+	client, fake := newFake(t, func(w http.ResponseWriter, _ recorded) {
+		writeJSON(w, http.StatusInternalServerError, paddleError("internal_error", "x"))
+	})
+	_, err := client.ResolveDiscount(context.Background(), "EDU")
+	require.Equal(t, http.StatusBadGateway, errorCode(err))
+
+	_, err = client.ResolveDiscount(context.Background(), "  ")
+	require.Equal(t, http.StatusBadRequest, errorCode(err))
+	require.Len(t, fake.requests, 1, "a blank code never reaches Paddle")
 }

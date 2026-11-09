@@ -103,10 +103,22 @@ func (e *apiError) Error() string {
 	return fmt.Sprintf("paddle api error %d %s: %s", e.Status, e.Code, e.Detail)
 }
 
-// toDomain maps a Paddle failure to a domain error: conflicts and locked
-// subscriptions are 409, everything else a 502 with the detail kept internal.
+const invalidDiscount = "discount code is not valid"
+
+// toDomain maps a Paddle failure to a domain error: a refused discount is 400,
+// conflicts and locked subscriptions are 409, everything else a 502 with the
+// detail kept internal.
 func toDomain(op string, err error) error {
 	apiErr, ok := err.(*apiError)
+	if ok && apiErr.Status >= 400 && apiErr.Status < 500 && apiErr.Status != http.StatusConflict &&
+		strings.Contains(apiErr.Code, "discount") {
+		return &domain.Error{
+			Code:            http.StatusBadRequest,
+			Message:         invalidDiscount,
+			InternalMessage: op + ": " + apiErr.Error(),
+			Cause:           err,
+		}
+	}
 	if ok && (apiErr.Status == http.StatusConflict || strings.HasPrefix(apiErr.Code, "subscription_locked") ||
 		strings.HasPrefix(apiErr.Code, "subscription_update_when")) {
 		return &domain.Error{
@@ -240,20 +252,62 @@ func (c *Client) itemList(items billing.Items) ([]itemRequest, error) {
 	return list, nil
 }
 
+type discount struct {
+	ID                 string     `json:"id"`
+	Code               string     `json:"code"`
+	Status             string     `json:"status"`
+	EnabledForCheckout bool       `json:"enabled_for_checkout"`
+	ExpiresAt          *time.Time `json:"expires_at"`
+	UsageLimit         *int64     `json:"usage_limit"`
+	TimesUsed          int64      `json:"times_used"`
+}
+
+func (d discount) usable(code string, now time.Time) bool {
+	return d.ID != "" && strings.EqualFold(d.Code, code) && d.Status == "active" && d.EnabledForCheckout &&
+		(d.ExpiresAt == nil || d.ExpiresAt.After(now)) &&
+		(d.UsageLimit == nil || d.TimesUsed < *d.UsageLimit)
+}
+
+// ResolveDiscount returns the id of the active, checkout-enabled discount
+// carrying the code.
+func (c *Client) ResolveDiscount(ctx context.Context, code string) (string, error) {
+	code = strings.TrimSpace(code)
+	if code == "" {
+		return "", domain.NewErrorUser(invalidDiscount)
+	}
+	var listed struct {
+		Data []discount `json:"data"`
+	}
+	if err := c.do(ctx, http.MethodGet, "/discounts", url.Values{"code": {code}, "status": {"active"}}, nil, &listed); err != nil {
+		return "", toDomain("list discounts", err)
+	}
+	now := c.now()
+	for _, d := range listed.Data {
+		if d.usable(code, now) {
+			return d.ID, nil
+		}
+	}
+	return "", domain.NewErrorUser(invalidDiscount)
+}
+
 // CreateCheckout creates a transaction the browser opens with Paddle.js.
-func (c *Client) CreateCheckout(ctx context.Context, customerID string, userID snow.ID, items billing.Items) (string, error) {
+func (c *Client) CreateCheckout(ctx context.Context, customerID string, userID snow.ID, items billing.Items, discountID string) (string, error) {
 	list, err := c.itemList(items)
 	if err != nil {
 		return "", err
 	}
-	var created struct {
-		Data entityID `json:"data"`
-	}
-	if err := c.do(ctx, http.MethodPost, "/transactions", nil, map[string]any{
+	body := map[string]any{
 		"items":       list,
 		"customer_id": customerID,
 		"custom_data": customData{UserID: userID.Base36()},
-	}, &created); err != nil {
+	}
+	if discountID != "" {
+		body["discount_id"] = discountID
+	}
+	var created struct {
+		Data entityID `json:"data"`
+	}
+	if err := c.do(ctx, http.MethodPost, "/transactions", nil, body, &created); err != nil {
 		return "", toDomain("create transaction", err)
 	}
 	return created.Data.ID, nil

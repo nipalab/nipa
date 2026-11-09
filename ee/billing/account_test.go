@@ -47,13 +47,13 @@ func TestCheckout_CreatesCustomerOnce(t *testing.T) {
 	provider.customerID = "ctm_1"
 	provider.checkoutID = "txn_1"
 
-	txn, err := svc.Checkout(context.Background(), payer, Items{Seats: 2, StoragePacks: 1, Interval: "month"})
+	txn, err := svc.Checkout(context.Background(), payer, Items{Seats: 2, StoragePacks: 1, Interval: "month"}, "")
 	require.NoError(t, err)
 	require.Equal(t, "txn_1", txn)
 	require.Equal(t, &domain.BillingAccount{UserID: payer, Provider: "stub", ProviderCustomerID: "ctm_1"}, repo.accounts[payer])
 	require.Equal(t, []Items{{Seats: 2, StoragePacks: 1, Interval: IntervalMonth}}, provider.checkouts)
 
-	_, err = svc.Checkout(context.Background(), payer, Items{Seats: 3, Interval: "year"})
+	_, err = svc.Checkout(context.Background(), payer, Items{Seats: 3, Interval: "year"}, "")
 	require.NoError(t, err)
 	require.Equal(t, []string{"ensure_customer", "checkout", "checkout"}, provider.calls, "the stored account is reused")
 }
@@ -62,32 +62,77 @@ func TestCheckout_Refusals(t *testing.T) {
 	ctx := context.Background()
 
 	svc, repo, _, provider := newProviderService()
-	_, err := svc.Checkout(ctx, payer, Items{Seats: 1, Interval: "day"})
+	_, err := svc.Checkout(ctx, payer, Items{Seats: 1, Interval: "day"}, "")
 	require.Equal(t, 400, errorCode(err))
 
 	repo.live = liveSub()
-	_, err = svc.Checkout(ctx, payer, Items{Seats: 5, Interval: "month"})
+	_, err = svc.Checkout(ctx, payer, Items{Seats: 5, Interval: "month"}, "")
 	require.Equal(t, 409, errorCode(err), "a live subscription blocks a second checkout")
 
 	repo.live = nil
-	_, err = svc.Checkout(ctx, payer, Items{Interval: "month"})
+	_, err = svc.Checkout(ctx, payer, Items{Interval: "month"}, "")
 	require.Equal(t, 400, errorCode(err), "nothing to buy")
 
 	repo.seats = 5
-	_, err = svc.Checkout(ctx, payer, Items{Seats: 1, Interval: "month"})
+	_, err = svc.Checkout(ctx, payer, Items{Seats: 1, Interval: "month"}, "")
 	require.Equal(t, 409, errorCode(err), "fewer paid seats than in use beyond the free ones")
 	require.ErrorContains(t, err, "5 seats are in use and 3 are free; buy at least 2")
-	_, err = svc.Checkout(ctx, payer, Items{StoragePacks: 1, Interval: "month"})
+	_, err = svc.Checkout(ctx, payer, Items{StoragePacks: 1, Interval: "month"}, "")
 	require.Equal(t, 409, errorCode(err), "packs alone do not cover extra users")
 	require.Empty(t, provider.calls)
 
-	_, err = svc.Checkout(ctx, payer, Items{Seats: 2, Interval: "month"})
+	_, err = svc.Checkout(ctx, payer, Items{Seats: 2, Interval: "month"}, "")
 	require.Equal(t, 404, errorCode(err), "unknown user")
 
 	repo.users = map[snow.ID]*domain.BillingUser{payer: {ID: payer, Deleted: true}}
-	_, err = svc.Checkout(ctx, payer, Items{Seats: 2, Interval: "month"})
+	_, err = svc.Checkout(ctx, payer, Items{Seats: 2, Interval: "month"}, "")
 	require.Equal(t, 404, errorCode(err), "deleted user")
 	require.Empty(t, provider.calls)
+}
+
+func TestCheckout_DiscountCode(t *testing.T) {
+	ctx := context.Background()
+	setup := func() (*Service, *stubRepo, *stubProvider) {
+		svc, repo, _, provider := newProviderService()
+		repo.users = map[snow.ID]*domain.BillingUser{payer: {ID: payer, Email: "pat@example.com"}}
+		provider.customerID = "ctm_1"
+		provider.checkoutID = "txn_1"
+		return svc, repo, provider
+	}
+
+	svc, repo, provider := setup()
+	provider.discountErr = domain.NewErrorUser("discount code is not valid")
+	_, err := svc.Checkout(ctx, payer, Items{Seats: 1, Interval: "month"}, "BOGUS")
+	require.Equal(t, 400, errorCode(err))
+	require.ErrorContains(t, err, "discount code is not valid")
+	require.Equal(t, []string{"resolve_discount"}, provider.calls, "an invalid code creates no customer")
+	require.Empty(t, repo.accounts)
+
+	svc, _, provider = setup()
+	provider.discountID = "dsc_edu"
+	_, err = svc.Checkout(ctx, payer, Items{Seats: 1, Interval: "month"}, "  EDU ")
+	require.NoError(t, err)
+	require.Equal(t, []string{"EDU"}, provider.resolved)
+	require.Equal(t, []string{"dsc_edu"}, provider.discountIDs)
+	require.Equal(t, []string{"resolve_discount", "ensure_customer", "checkout"}, provider.calls)
+
+	svc, _, provider = setup()
+	_, err = svc.Checkout(ctx, payer, Items{Seats: 1, Interval: "month"}, "   ")
+	require.NoError(t, err)
+	require.Empty(t, provider.resolved, "a blank code is ignored")
+	require.Equal(t, []string{""}, provider.discountIDs)
+
+	svc, _, provider = setup()
+	provider.discountID = "dsc_edu"
+	_, err = svc.Checkout(ctx, payer, Items{Seats: 1, Interval: "day"}, "EDU")
+	require.Equal(t, 400, errorCode(err))
+	require.Empty(t, provider.calls, "the code is resolved after validation")
+
+	svc, _, provider = setup()
+	boom := errors.New("boom")
+	provider.discountErr = boom
+	_, err = svc.Checkout(ctx, payer, Items{Seats: 1, Interval: "month"}, "EDU")
+	require.ErrorIs(t, err, boom)
 }
 
 func TestCheckout_PacksOnlyWithinFreeSeats(t *testing.T) {
@@ -97,7 +142,7 @@ func TestCheckout_PacksOnlyWithinFreeSeats(t *testing.T) {
 	provider.customerID = "ctm_1"
 	provider.checkoutID = "txn_1"
 
-	_, err := svc.Checkout(context.Background(), payer, Items{StoragePacks: 1, Interval: "month"})
+	_, err := svc.Checkout(context.Background(), payer, Items{StoragePacks: 1, Interval: "month"}, "")
 	require.NoError(t, err)
 	require.Equal(t, []Items{{StoragePacks: 1, Interval: IntervalMonth}}, provider.checkouts)
 }
@@ -108,7 +153,7 @@ func TestCheckout_CustomerOwnedByAnotherUser(t *testing.T) {
 	repo.accounts = map[snow.ID]*domain.BillingAccount{7: {UserID: 7, Provider: "stub", ProviderCustomerID: "ctm_shared"}}
 	provider.customerID = "ctm_shared"
 
-	_, err := svc.Checkout(context.Background(), payer, Items{Seats: 1, Interval: "month"})
+	_, err := svc.Checkout(context.Background(), payer, Items{Seats: 1, Interval: "month"}, "")
 	require.Equal(t, 409, errorCode(err))
 	require.NotContains(t, provider.calls, "checkout")
 }
@@ -130,7 +175,7 @@ func TestCheckout_Errors(t *testing.T) {
 			repo.users = map[snow.ID]*domain.BillingUser{payer: {ID: payer, Email: "pat@example.com"}}
 			provider.customerID = "ctm_1"
 			mutate(repo, provider)
-			_, err := svc.Checkout(context.Background(), payer, Items{Seats: 1, Interval: "month"})
+			_, err := svc.Checkout(context.Background(), payer, Items{Seats: 1, Interval: "month"}, "")
 			require.ErrorIs(t, err, boom)
 		})
 	}

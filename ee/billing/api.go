@@ -18,6 +18,13 @@ type itemsRequest struct {
 	Interval     string `json:"interval"`
 }
 
+type checkoutRequest struct {
+	Seats        int64  `json:"seats"`
+	StoragePacks int64  `json:"storage_packs"`
+	Interval     string `json:"interval"`
+	DiscountCode string `json:"discount_code,omitempty"`
+}
+
 type checkoutResponse struct {
 	TransactionID string `json:"transaction_id"`
 }
@@ -43,7 +50,7 @@ type eventResponse struct {
 func RegisterRoutes(ws *restful.WebService, svc *Service) {
 	ws.Route(ws.POST("/billing/checkout").
 		To(svc.checkout).
-		Reads(itemsRequest{}).
+		Reads(checkoutRequest{}).
 		Doc("Start a subscription; returns the provider transaction to open in the checkout").
 		Returns(http.StatusOK, "checkout transaction", checkoutResponse{}).
 		Operation("billingCheckout"))
@@ -106,12 +113,13 @@ func (s *Service) checkout(req *restful.Request, resp *restful.Response) {
 	if !ok {
 		return
 	}
-	items, err := readItems(req)
-	if err != nil {
-		writeError(resp, err)
+	var body checkoutRequest
+	if err := req.ReadEntity(&body); err != nil {
+		writeError(resp, domain.NewErrorUser("invalid request body"))
 		return
 	}
-	txn, err := s.Checkout(req.Request.Context(), userID, items)
+	items := Items{Seats: body.Seats, StoragePacks: body.StoragePacks, Interval: body.Interval}
+	txn, err := s.Checkout(req.Request.Context(), userID, items, body.DiscountCode)
 	if err != nil {
 		writeError(resp, err)
 		return

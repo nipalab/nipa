@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Banner, Button, IconButton, Label, SegmentedControl, Stack, Text, TextInput } from '@primer/react'
+import { Banner, Button, FormControl, IconButton, Label, SegmentedControl, Stack, Text, TextInput } from '@primer/react'
 import { DashIcon, LinkExternalIcon, PlusIcon } from '@primer/octicons-react'
+import { ApiError } from '../api/client'
 import { createCheckout, getMyBilling, openBillingPortal, updateSubscription } from '../api/endpoints'
 import type { BillingCapabilities, BillingInterval, BillingSummary } from '../api/models'
 import { hasEntitlementSizes, planStorageLabel } from '../billing/entitlement'
@@ -201,6 +202,8 @@ export function PlanEditor({
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
+  const [discountCode, setDiscountCode] = useState('')
+  const [discountError, setDiscountError] = useState<string | null>(null)
   const { paddle, failed: paddleFailed } = usePaddle(config)
   const preview = usePricePreview(paddle, config, seats, packs, interval)
 
@@ -257,13 +260,19 @@ export function PlanEditor({
   async function upgrade() {
     setBusy(true)
     setError(null)
+    setDiscountError(null)
     setNotice(null)
+    const code = discountCode.trim()
     try {
-      const { transaction_id } = await createCheckout(items)
+      const { transaction_id } = await createCheckout(code ? { ...items, discount_code: code } : items)
       const instance = await loadPaddle(config)
       instance.Checkout.open({ transactionId: transaction_id })
     } catch (err) {
-      setError(errorMessage(err))
+      if (code && err instanceof ApiError && err.status === 400) {
+        setDiscountError(err.message)
+      } else {
+        setError(errorMessage(err))
+      }
       setBusy(false)
     }
   }
@@ -377,6 +386,22 @@ export function PlanEditor({
       {sizes && (
         <SettingsRow label="Your plan">
           <Text>{`${seats + freeSeats} users · ${planStorageLabel(sizes, seats, packs)} storage`}</Text>
+        </SettingsRow>
+      )}
+      {!paid && (
+        <SettingsRow label="Discount code" subtext="Optional. Applied at checkout; the prices shown do not include it.">
+          <FormControl id="billing-discount-code">
+            <FormControl.Label visuallyHidden>Discount code</FormControl.Label>
+            <TextInput
+              value={discountCode}
+              validationStatus={discountError ? 'error' : undefined}
+              onChange={(event) => {
+                setDiscountCode(event.target.value)
+                setDiscountError(null)
+              }}
+            />
+            {discountError && <FormControl.Validation variant="error">{discountError}</FormControl.Validation>}
+          </FormControl>
         </SettingsRow>
       )}
       <SettingsRow label="Price">
