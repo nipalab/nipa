@@ -118,6 +118,7 @@ func (c *Cli) runDiff(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	defer c.useCase.Diff().PruneCache()
 	files = diff.FilterIgnored(files, renderOpts)
 	if jsonMode {
 		if err := output.WriteJSON(cmd.OutOrStdout(), output.NewDiff(files, renderOpts)); err != nil {

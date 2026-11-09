@@ -1296,11 +1296,14 @@ compatible for one release.
   raw content covered by a pin), so binaries are not kept twice, and it is a
   no-op while `merge_state` or
   `revert_state` is pending. It runs after a successful clone, update, switch,
-  tag switch, `Push.Run`, `WorkingCopy.Restore` and `Diff.Run` built with
-  `WithPrune` (CLI and MCP; the daemon's `Diff` leaves it off and its
-  `cachePruner` (`daemon/prune.go`) prunes a root once no operation was
-  admitted for `Options.PruneQuiet`, default 30 s, after a diff, blob,
-  preview or restore call) (deferred `pruneAfterSuccess`: skipped for repos
+  tag switch, `Push.Run` and `WorkingCopy.Restore`. `Diff.Run`/`ReadBlob`
+  never prune mid-flow, because callers such as `aicontext` (`--generate`),
+  `assetscan.BlobLoader` and the MCP asset tools read blobs after `Run`;
+  `Diff.PruneCache` runs at the boundary instead: the end of `nipa diff` and
+  the MCP per-call `UseCases.Close` (no-op when no clone was opened). The
+  daemon's `cachePruner` (`daemon/prune.go`) prunes a root once no operation
+  was admitted for `Options.PruneQuiet`, default 30 s, after a diff, blob,
+  preview or restore call (deferred `pruneAfterSuccess`: skipped for repos
   without `PruneObjects`, failures only `slog.Warn`, never fail the operation),
   and on demand through `nipa gc` (`usecase.GC`), which prints the objects and
   bytes freed. Processes coordinate through `.nipa/lock` (`localrepo/lock.go`,

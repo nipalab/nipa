@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"testing"
 
@@ -12,6 +13,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	clientDomain "github.com/nipalab/nipa/internal/client/domain"
+	"github.com/nipalab/nipa/internal/diff"
 )
 
 func TestRestore_PrunesDownloadedBinaryKeepsText(t *testing.T) {
@@ -40,37 +42,49 @@ func TestRestore_KeepsPinnedBinary(t *testing.T) {
 	fx.requireCached(t, "a.bin")
 }
 
-func TestDiff_WithPrunePrunesDownloadedOldSide(t *testing.T) {
-	for _, prune := range []bool{true, false} {
-		t.Run(fmt.Sprintf("prune=%v", prune), func(t *testing.T) {
-			fx := newPristineFixture(t, map[string]string{"a.bin": "\x00old\x01"})
-			fx.dropObjects(t)
-			writeFileAt(t, fx.root, "a.bin", "\x00new\x02")
-			client := &stubDiffClient{download: fx.stored}
-			d := NewDiff(diffAuth(t), client, fx.lr)
-			if prune {
-				d = d.WithPrune()
-			}
+func TestDiff_RunKeepsContentForLaterReadsUntilPruneCache(t *testing.T) {
+	fx := newPristineFixture(t, map[string]string{"a.bin": "\x00old\x01"})
+	fx.dropObjects(t)
+	writeFileAt(t, fx.root, "a.bin", "\x00new\x02")
+	client := &stubDiffClient{download: fx.stored}
+	d := NewDiff(diffAuth(t), client, fx.lr)
 
-			files, err := d.Run(context.Background(), fx.root, nil, DiffOptions{Binary: true})
-			require.NoError(t, err)
-			require.NotEmpty(t, client.downloaded)
-			require.Equal(t, "\x00old\x01", string(workingDiffFile(t, files, "a.bin").Old))
-			if prune {
-				fx.requirePruned(t, "a.bin")
-			} else {
-				fx.requireCached(t, "a.bin")
-			}
-		})
-	}
+	files, err := d.Run(context.Background(), fx.root, nil, DiffOptions{Binary: true})
+	require.NoError(t, err)
+	require.Equal(t, "\x00old\x01", string(workingDiffFile(t, files, "a.bin").Old))
+	fx.requireCached(t, "a.bin")
+	downloads := len(client.downloaded)
+	require.NotZero(t, downloads)
+
+	var old []byte
+	require.NoError(t, d.ReadBlob(context.Background(), fx.root, BlobRequest{Source: BlobSnapshot, Path: "a.bin"}, func(_ diff.Entry, r io.Reader) error {
+		var readErr error
+		old, readErr = io.ReadAll(r)
+		return readErr
+	}))
+	require.Equal(t, "\x00old\x01", string(old))
+	require.Len(t, client.downloaded, downloads)
+
+	d.PruneCache()
+	fx.requirePruned(t, "a.bin")
 }
 
-func TestDiff_WithPruneSkipsOnFailure(t *testing.T) {
+func TestDiff_PruneCacheIsNoopBeforeAnyRead(t *testing.T) {
 	fx := newPristineFixture(t, map[string]string{"a.bin": "\x00old\x01"})
 
-	_, err := NewDiff(nil, nil, fx.lr).WithPrune().Run(context.Background(), fx.root, []string{"a", "b", "c"}, DiffOptions{})
+	NewDiff(nil, nil, fx.lr).PruneCache()
+	fx.requireCached(t, "a.bin")
+}
+
+func TestDiff_PruneCacheAfterFailedRunStillOpened(t *testing.T) {
+	fx := newPristineFixture(t, map[string]string{"a.bin": "\x00old\x01"})
+	d := NewDiff(nil, nil, fx.lr)
+
+	_, err := d.Run(context.Background(), fx.root, []string{"a", "b", "c"}, DiffOptions{})
 	require.ErrorContains(t, err, "too many revisions")
 	fx.requireCached(t, "a.bin")
+	d.PruneCache()
+	fx.requirePruned(t, "a.bin")
 }
 
 func TestOfflineError(t *testing.T) {

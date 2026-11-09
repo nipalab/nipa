@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 
 	clientDomain "github.com/nipalab/nipa/internal/client/domain"
 	"github.com/nipalab/nipa/internal/diff"
@@ -58,18 +59,22 @@ type Diff struct {
 	auth      *Auth
 	client    diffClient
 	localRepo diffLocalRepo
-	prune     bool
+	opened    atomic.Bool
 }
 
 func NewDiff(auth *Auth, client diffClient, localRepo diffLocalRepo) *Diff {
 	return &Diff{auth: auth, client: client, localRepo: localRepo}
 }
 
-// WithPrune drops the content a successful Run downloaded from the object
-// cache. The daemon leaves it off and prunes after a quiet period instead.
-func (d *Diff) WithPrune() *Diff {
-	d.prune = true
-	return d
+// PruneCache drops what Run and ReadBlob downloaded into the object cache. Call
+// it once the whole command or tool is done reading, never between reads; it
+// is a no-op when no clone was opened. The daemon prunes after a quiet period
+// instead.
+func (d *Diff) PruneCache() {
+	if !d.opened.Load() {
+		return
+	}
+	pruneAfterSuccess(d.localRepo, nil)
 }
 
 type revision struct {
@@ -86,9 +91,7 @@ func (d *Diff) Run(ctx context.Context, root string, revs []string, opts DiffOpt
 	if err := d.localRepo.Init(root); err != nil {
 		return nil, err
 	}
-	if d.prune {
-		defer func() { pruneAfterSuccess(d.localRepo, err) }()
-	}
+	d.opened.Store(true)
 	unlock, err := lockShared(d.localRepo)
 	if err != nil {
 		return nil, err

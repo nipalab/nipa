@@ -45,6 +45,7 @@ func (d *Diff) ReadBlob(ctx context.Context, root string, req BlobRequest, fn fu
 	if err := d.localRepo.Init(root); err != nil {
 		return err
 	}
+	d.opened.Store(true)
 	unlock, err := lockShared(d.localRepo)
 	if err != nil {
 		return err
