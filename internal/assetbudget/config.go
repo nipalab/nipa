@@ -71,16 +71,17 @@ func (s *Size) UnmarshalYAML(n *yaml.Node) error {
 
 // Rule is one budget entry. Unset limits leave earlier rules' values alone.
 type Rule struct {
-	Name            string   `yaml:"name" json:"name,omitempty"`
-	Paths           []string `yaml:"paths" json:"paths"`
-	MaxBytes        *Size    `yaml:"max_bytes" json:"max_bytes,omitempty"`
-	MaxTextureSize  *int     `yaml:"max_texture_size" json:"max_texture_size,omitempty"`
-	PowerOfTwo      *bool    `yaml:"power_of_two" json:"power_of_two,omitempty"`
-	MaxTriangles    *int     `yaml:"max_triangles" json:"max_triangles,omitempty"`
-	MaxVertices     *int     `yaml:"max_vertices" json:"max_vertices,omitempty"`
-	MaxAudioSeconds *float64 `yaml:"max_audio_seconds" json:"max_audio_seconds,omitempty"`
-	MaxPeakDBFS     *float64 `yaml:"max_peak_dbfs" json:"max_peak_dbfs,omitempty"`
-	NamePattern     string   `yaml:"name_pattern" json:"name_pattern,omitempty"`
+	Name              string   `yaml:"name" json:"name,omitempty"`
+	Paths             []string `yaml:"paths" json:"paths"`
+	MaxBytes          *Size    `yaml:"max_bytes" json:"max_bytes,omitempty"`
+	MaxTextureSize    *int     `yaml:"max_texture_size" json:"max_texture_size,omitempty"`
+	PowerOfTwo        *bool    `yaml:"power_of_two" json:"power_of_two,omitempty"`
+	RequireProvenance *bool    `yaml:"require_provenance" json:"require_provenance,omitempty"`
+	MaxTriangles      *int     `yaml:"max_triangles" json:"max_triangles,omitempty"`
+	MaxVertices       *int     `yaml:"max_vertices" json:"max_vertices,omitempty"`
+	MaxAudioSeconds   *float64 `yaml:"max_audio_seconds" json:"max_audio_seconds,omitempty"`
+	MaxPeakDBFS       *float64 `yaml:"max_peak_dbfs" json:"max_peak_dbfs,omitempty"`
+	NamePattern       string   `yaml:"name_pattern" json:"name_pattern,omitempty"`
 
 	patterns *pathmatch.Patterns
 	nameRE   *regexp.Regexp

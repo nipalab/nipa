@@ -6,6 +6,7 @@ package assetscan
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"strings"
 
@@ -13,7 +14,28 @@ import (
 	"github.com/nipalab/nipa/internal/assetdiff"
 	"github.com/nipalab/nipa/internal/client/usecase"
 	"github.com/nipalab/nipa/internal/diff"
+	"github.com/nipalab/nipa/internal/provenance"
 )
+
+// MaxProvenanceBytes caps the .nipaprovenance.yml read from any side.
+const MaxProvenanceBytes = usecase.MaxProvenanceFileBytes
+
+// LoadProvenance reads the provenance file of side through load; a missing
+// file is nil and no error.
+func LoadProvenance(ctx context.Context, load assetdiff.Loader, side string) (*provenance.File, error) {
+	data, err := load(ctx, *SideRef(side, provenance.FileName), MaxProvenanceBytes)
+	if errors.Is(err, assetdiff.ErrMissing) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	f, err := provenance.Parse(data)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", provenance.FileName, err)
+	}
+	return f, nil
+}
 
 const (
 	SideWorking  = "working"
@@ -169,10 +191,12 @@ func Check(ctx context.Context, d *usecase.Diff, root string, req Request) (*Rep
 
 // CheckChanges checks enumerated changes against cfg. Only files a rule
 // covers are counted, and only those with image, model or audio limits are
-// decoded (new side only).
+// decoded (new side only). Provenance records come from the new side's
+// .nipaprovenance.yml, read only when a covered file requires one.
 func CheckChanges(ctx context.Context, load assetdiff.Loader, cfg *assetbudget.Config, changes *Changes) (*Report, error) {
 	out := &Report{Config: true, Old: changes.Old, New: changes.New}
 	var results []*assetdiff.Result
+	needRecords := false
 	for _, c := range changes.Files {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -182,6 +206,7 @@ func CheckChanges(ctx context.Context, load assetdiff.Loader, cfg *assetbudget.C
 			continue
 		}
 		out.Checked++
+		needRecords = needRecords || cfg.RequiresProvenance(it.Path)
 		res := &assetdiff.Result{Path: it.Path, Status: it.Status, NewSize: c.NewSize}
 		if cfg.NeedsDecode(it.Path) {
 			decoded, err := assetdiff.Compare(ctx, load, nil, it.New, assetdiff.Options{})
@@ -205,6 +230,16 @@ func CheckChanges(ctx context.Context, load assetdiff.Loader, cfg *assetbudget.C
 		}
 		results = append(results, res)
 	}
-	out.Violations = assetbudget.Check(cfg, results)
+	var opts assetbudget.CheckOptions
+	if needRecords {
+		records, err := LoadProvenance(ctx, load, changes.New)
+		if err != nil {
+			return nil, err
+		}
+		if records != nil {
+			opts.HasRecord = func(p string) bool { return records.Get(p) != nil }
+		}
+	}
+	out.Violations = assetbudget.CheckWith(cfg, results, opts)
 	return out, nil
 }

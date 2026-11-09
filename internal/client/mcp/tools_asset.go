@@ -53,6 +53,7 @@ var (
 )
 
 func addAssetTools(srv *mcp.Server, s *server) {
+	addProvenanceTool(srv, s)
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "nipa_asset_diff",
 		Description: "Compare two versions of one asset structurally: Unity/Godot scene objects and properties, image size/format/pixel changes, 3D model stats, audio loudness and duration, CSV/TSV cells or text lines. Sides are working, snapshot (last synced version) or a revision (branch, tag, base36 commit id, HEAD). include_images attaches old/new PNG thumbnails as image content.",

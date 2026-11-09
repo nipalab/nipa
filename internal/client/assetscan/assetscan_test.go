@@ -238,6 +238,51 @@ func TestCheckChanges_LoaderOutcomes(t *testing.T) {
 	require.ErrorIs(t, err, context.Canceled)
 }
 
+func TestCheckChanges_ProvenanceFromNewSide(t *testing.T) {
+	cfg, err := assetbudget.Parse([]byte("rules:\n  - name: gen\n    paths: [\"art/**\"]\n    require_provenance: true\n"))
+	require.NoError(t, err)
+	changes := &Changes{Old: "v1", New: "HEAD", Files: []Change{
+		{Item: ChangeItem("art/a.png", "", "A", "v1", "HEAD")},
+		{Item: ChangeItem("art/b.png", "", "A", "v1", "HEAD")},
+	}}
+	var sides []assetdiff.Ref
+	files := map[string]string{}
+	load := func(_ context.Context, ref assetdiff.Ref, _ int64) ([]byte, error) {
+		sides = append(sides, ref)
+		content, ok := files[ref.Path]
+		if !ok {
+			return nil, assetdiff.ErrMissing
+		}
+		if content == "fail" {
+			return nil, errors.New("offline")
+		}
+		return []byte(content), nil
+	}
+	report, err := CheckChanges(context.Background(), load, cfg, changes)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"art/a.png require_provenance gen", "art/b.png require_provenance gen"}, limits(report))
+	require.Equal(t, []assetdiff.Ref{{Source: "revision", Revision: "HEAD", Path: ".nipaprovenance.yml"}}, sides)
+
+	files[".nipaprovenance.yml"] = "version: 1\nfiles:\n  art/a.png: {tool: x}\n"
+	report, err = CheckChanges(context.Background(), load, cfg, changes)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"art/b.png require_provenance gen"}, limits(report))
+
+	files[".nipaprovenance.yml"] = "version: 9\n"
+	_, err = CheckChanges(context.Background(), load, cfg, changes)
+	require.ErrorContains(t, err, ".nipaprovenance.yml: unsupported version 9")
+	files[".nipaprovenance.yml"] = "fail"
+	_, err = CheckChanges(context.Background(), load, cfg, changes)
+	require.ErrorContains(t, err, "offline")
+
+	sides = nil
+	plain, err := assetbudget.Parse([]byte(budget))
+	require.NoError(t, err)
+	_, err = CheckChanges(context.Background(), load, plain, &Changes{New: "HEAD", Files: []Change{{Item: ChangeItem("x.txt", "", "A", "", "HEAD")}}})
+	require.NoError(t, err)
+	require.Empty(t, sides, "the provenance file is only read when a rule requires it")
+}
+
 func TestBlobLoader(t *testing.T) {
 	root := setupRepo(t, map[string]string{"a.txt": "0123456789"})
 	load := BlobLoader(offlineDiff(), root)

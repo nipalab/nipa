@@ -231,3 +231,40 @@ func TestHelpers(t *testing.T) {
 	assert.Equal(t, "3.0 GiB", humanSize(3<<30))
 	assert.Equal(t, "2.0 TiB", humanSize(2<<40))
 }
+
+func TestCheckWith_RequireProvenance(t *testing.T) {
+	cfg := mustParse(t, `version: 1
+rules:
+  - name: generated
+    paths: ["Art/**"]
+    require_provenance: true
+  - name: sketches
+    paths: ["Art/Sketches/**"]
+    require_provenance: false
+  - name: size
+    paths: ["Art/**"]
+    max_bytes: 1KiB
+`)
+	assert.True(t, cfg.RequiresProvenance("Art/hero.png"))
+	assert.False(t, cfg.RequiresProvenance("Art/Sketches/a.png"))
+	assert.False(t, cfg.RequiresProvenance("Other/a.png"))
+	assert.False(t, cfg.NeedsDecode("Art/hero.png"))
+
+	results := []*assetdiff.Result{
+		{Path: "Art/hero.png", Status: assetdiff.StatusAdded, NewSize: 10},
+		{Path: "Art/known.png", Status: assetdiff.StatusAdded, NewSize: 10},
+		{Path: "Art/Sketches/a.png", Status: assetdiff.StatusAdded, NewSize: 10},
+		{Path: "Art/gone.png", Status: assetdiff.StatusRemoved},
+	}
+	got := CheckWith(cfg, results, CheckOptions{HasRecord: func(p string) bool { return p == "Art/known.png" }})
+	require.Len(t, got, 1)
+	assert.Equal(t, Violation{Path: "Art/hero.png", Rule: "generated", Limit: LimitProvenance, Actual: false, Max: true, Message: "no provenance record"}, got[0])
+
+	all := Check(cfg, results)
+	require.Len(t, all, 2)
+	assert.Equal(t, "Art/known.png", all[1].Path)
+
+	var r Rule
+	require.NoError(t, json.Unmarshal([]byte(`{"require_provenance":true}`), &r))
+	assert.True(t, *r.RequireProvenance)
+}
