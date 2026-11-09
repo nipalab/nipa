@@ -53,6 +53,7 @@ const (
 	AuditBillingSync                 = "billing.sync"
 	AuditBillingEventReplayed        = "billing.event.replayed"
 	AuditBillingSeatDenied           = "billing.seat.denied"
+	AuditBillingQuotasReconciled     = "billing.quotas.reconciled"
 )
 
 // Audit target types.

@@ -50,6 +50,20 @@ func (r *BillingRepository) IsSeat(ctx context.Context, owner, user snow.ID) (bo
 	return seat, nil
 }
 
+// QuotaOwners returns up to limit owner_quota user ids greater than after,
+// in ascending order.
+func (r *BillingRepository) QuotaOwners(ctx context.Context, after snow.ID, limit int64) ([]snow.ID, error) {
+	rows, err := r.queries.ListQuotaOwners(ctx, sqlcPostgres.ListQuotaOwnersParams{After: after.Int64(), Limit: limit})
+	if err != nil {
+		return nil, handleError(err)
+	}
+	ids := make([]snow.ID, len(rows))
+	for i, row := range rows {
+		ids[i] = snow.ID(row)
+	}
+	return ids, nil
+}
+
 // LiveSubscription returns the user's newest active, trialing or past_due
 // subscription, or nil when there is none.
 func (r *BillingRepository) LiveSubscription(ctx context.Context, user snow.ID) (*domain.BillingSubscription, error) {

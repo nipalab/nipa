@@ -368,3 +368,28 @@ func (s *BillingRepositorySuite) TestEvents() {
 	_, err = s.repo.Event(ctx, "evt_missing")
 	s.True(domain.IsErrorNotFound(err))
 }
+
+func (s *BillingRepositorySuite) TestQuotaOwners_KeysetPages() {
+	ctx := context.Background()
+	var owners []snow.ID
+	for i := 0; i < 5; i++ {
+		owner := s.user("quota")
+		owners = append(owners, owner)
+		s.exec(`INSERT INTO owner_quota (user_id, quota_bytes) VALUES ($1, 10)`, owner.Int64())
+	}
+	s.user("no-row")
+
+	first, err := s.repo.QuotaOwners(ctx, 0, 2)
+	s.Require().NoError(err)
+	s.Equal(owners[:2], first)
+	rest, err := s.repo.QuotaOwners(ctx, first[1], 10)
+	s.Require().NoError(err)
+	s.Equal(owners[2:], rest)
+	none, err := s.repo.QuotaOwners(ctx, owners[4], 10)
+	s.Require().NoError(err)
+	s.Empty(none)
+
+	s.exec(`DROP TABLE owner_quota`)
+	_, err = s.repo.QuotaOwners(ctx, 0, 10)
+	requireDatabaseError(s.T(), err)
+}

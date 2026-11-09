@@ -1,10 +1,12 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/emicklei/go-restful/v3"
 
@@ -16,7 +18,10 @@ import (
 	"github.com/nipalab/nipa/internal/config"
 	"github.com/nipalab/nipa/internal/repository/dbtx"
 	"github.com/nipalab/nipa/internal/serverapp"
+	"github.com/nipalab/nipa/internal/usecase"
 )
+
+const quotaReconcileTimeout = 2 * time.Minute
 
 type billingSetup struct {
 	service      *billing.Service
@@ -47,12 +52,7 @@ func buildBilling(cfg *config.Config, dbConn *sql.DB, ledger *storageusage.Ledge
 			StorageYearly:  cfg.PaddlePriceStorageYearly,
 		},
 	})
-	service := billing.New(postgres.NewBillingRepository(dbConn), ledger, dbtx.NewTransactor(dbConn), billing.Config{
-		FreeSeats:         cfg.BillingFreeSeats,
-		FreeQuotaBytes:    cfg.SaasFreeQuotaBytes,
-		SeatIncludedBytes: cfg.BillingSeatIncludedBytes,
-		StoragePackBytes:  cfg.BillingStoragePackBytes,
-	}).WithProvider(provider)
+	service := newBillingService(cfg, dbConn, ledger).WithProvider(provider)
 	slog.Info("billing enabled", "provider", provider.Name(), "environment", environment, "free_seats", cfg.BillingFreeSeats)
 	return &billingSetup{
 		service: service,
@@ -86,4 +86,43 @@ func (b *billingSetup) capabilitiesOrNil() *registration.BillingCapabilities {
 		return nil
 	}
 	return b.capabilities
+}
+
+func newBillingService(cfg *config.Config, dbConn *sql.DB, ledger *storageusage.Ledger) *billing.Service {
+	return billing.New(postgres.NewBillingRepository(dbConn), ledger, dbtx.NewTransactor(dbConn), billing.Config{
+		FreeSeats:         cfg.BillingFreeSeats,
+		FreeQuotaBytes:    cfg.SaasFreeQuotaBytes,
+		SeatIncludedBytes: cfg.BillingSeatIncludedBytes,
+		StoragePackBytes:  cfg.BillingStoragePackBytes,
+	})
+}
+
+// quotaReconciler returns the service that recomputes stored owner quotas at
+// startup in SaaS mode: the billing service, or a provider-less one (free
+// entitlement for everyone) when billing is off.
+func quotaReconciler(cfg *config.Config, dbConn *sql.DB, ledger *storageusage.Ledger, setup *billingSetup, audit usecase.AuditRecorder) *billing.Service {
+	if !cfg.SaaSMode || ledger == nil {
+		return nil
+	}
+	if setup != nil {
+		return setup.service
+	}
+	return newBillingService(cfg, dbConn, ledger).WithAudit(audit)
+}
+
+type quotaReconcile interface {
+	ReconcileQuotas(ctx context.Context) (int, error)
+}
+
+// reconcileQuotas runs before the server starts serving; a failure is only
+// logged so startup goes on with the stored quotas.
+func reconcileQuotas(ctx context.Context, r quotaReconcile) {
+	ctx, cancel := context.WithTimeout(ctx, quotaReconcileTimeout)
+	defer cancel()
+	updated, err := r.ReconcileQuotas(ctx)
+	if err != nil {
+		slog.Warn("owner quota reconcile failed", "updated", updated, "err", err)
+		return
+	}
+	slog.Info("owner quotas reconciled", "updated", updated)
 }

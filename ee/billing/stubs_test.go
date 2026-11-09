@@ -31,6 +31,23 @@ type stubRepo struct {
 	events       map[string]*domain.BillingEvent
 	eventErr     error
 	markErr      error
+	owners       []snow.ID
+	ownersErr    error
+	ownerPages   int
+}
+
+func (r *stubRepo) QuotaOwners(_ context.Context, after snow.ID, limit int64) ([]snow.ID, error) {
+	r.ownerPages++
+	if r.ownersErr != nil {
+		return nil, r.ownersErr
+	}
+	var page []snow.ID
+	for _, id := range r.owners {
+		if id > after && int64(len(page)) < limit {
+			page = append(page, id)
+		}
+	}
+	return page, nil
 }
 
 func (r *stubRepo) Account(_ context.Context, user snow.ID) (*domain.BillingAccount, error) {
@@ -173,9 +190,14 @@ type stubLedger struct {
 	usageErr error
 	computed *int64
 	compErr  error
+	stored   map[snow.ID]*int64
+	deleted  map[snow.ID]bool
 }
 
-func (l *stubLedger) ComputedQuota(context.Context, snow.ID) (*int64, error) {
+func (l *stubLedger) ComputedQuota(_ context.Context, userID snow.ID) (*int64, error) {
+	if quota, ok := l.stored[userID]; ok {
+		return quota, l.compErr
+	}
 	return l.computed, l.compErr
 }
 
@@ -193,6 +215,9 @@ func (l *stubLedger) BillingOwner(context.Context, snow.ID) (snow.ID, error) {
 func (l *stubLedger) SetComputedQuota(_ context.Context, userID snow.ID, quota int64) error {
 	if l.quotaErr != nil {
 		return l.quotaErr
+	}
+	if l.deleted[userID] {
+		return domain.NewErrorNotFound("user not found")
 	}
 	if l.quotas == nil {
 		l.quotas = map[snow.ID]int64{}

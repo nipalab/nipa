@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -62,4 +64,43 @@ func TestBuildBilling(t *testing.T) {
 			Storage: registration.IntervalPrices{Monthly: "c", Yearly: "d"},
 		},
 	}, setup.capabilitiesOrNil())
+}
+
+func TestLedgerDefaultQuotaBytes(t *testing.T) {
+	cfg := &config.Config{StorageLedgerDefaultQuotaBytes: 15, SaasFreeQuotaBytes: 50}
+	require.Equal(t, int64(15), ledgerDefaultQuotaBytes(cfg))
+	cfg.SaaSMode = true
+	require.Equal(t, int64(50), ledgerDefaultQuotaBytes(cfg), "SaaS owners without a row get the free tier")
+}
+
+func TestQuotaReconciler(t *testing.T) {
+	ledger := storageusage.NewLedger(nil, storageusage.Config{})
+	require.Nil(t, quotaReconciler(&config.Config{}, nil, ledger, nil, nil), "outside SaaS mode")
+	require.Nil(t, quotaReconciler(&config.Config{SaaSMode: true}, nil, nil, nil, nil), "without a ledger")
+	require.NotNil(t, quotaReconciler(&config.Config{SaaSMode: true}, nil, ledger, nil, nil), "billing off builds a provider-less service")
+
+	setup, err := buildBilling(paddleConfig(), nil, ledger)
+	require.NoError(t, err)
+	require.Same(t, setup.service, quotaReconciler(paddleConfig(), nil, ledger, setup, nil))
+}
+
+type stubReconcile struct {
+	updated  int
+	err      error
+	deadline bool
+}
+
+func (s *stubReconcile) ReconcileQuotas(ctx context.Context) (int, error) {
+	_, s.deadline = ctx.Deadline()
+	return s.updated, s.err
+}
+
+func TestReconcileQuotas(t *testing.T) {
+	ok := &stubReconcile{updated: 3}
+	reconcileQuotas(context.Background(), ok)
+	require.True(t, ok.deadline, "the run is bounded")
+
+	failing := &stubReconcile{err: errors.New("db down")}
+	reconcileQuotas(context.Background(), failing)
+	require.True(t, failing.deadline)
 }

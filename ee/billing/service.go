@@ -28,6 +28,7 @@ type repository interface {
 	Event(ctx context.Context, eventID string) (*domain.BillingEvent, error)
 	MarkEventProcessed(ctx context.Context, eventID string) error
 	MarkEventFailed(ctx context.Context, eventID, reason string) error
+	QuotaOwners(ctx context.Context, after snow.ID, limit int64) ([]snow.ID, error)
 }
 
 // ledger is the slice of the storage ledger billing drives;

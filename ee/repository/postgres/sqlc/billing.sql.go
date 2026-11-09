@@ -231,6 +231,41 @@ func (q *Queries) IsOwnerSeat(ctx context.Context, arg IsOwnerSeatParams) (bool,
 	return is_seat, err
 }
 
+const listQuotaOwners = `-- name: ListQuotaOwners :many
+SELECT user_id FROM owner_quota
+WHERE user_id > $1::bigint
+ORDER BY user_id
+LIMIT $2::bigint
+`
+
+type ListQuotaOwnersParams struct {
+	After int64 `json:"after"`
+	Limit int64 `json:"limit"`
+}
+
+func (q *Queries) ListQuotaOwners(ctx context.Context, arg ListQuotaOwnersParams) ([]int64, error) {
+	rows, err := q.db.QueryContext(ctx, listQuotaOwners, arg.After, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var user_id int64
+		if err := rows.Scan(&user_id); err != nil {
+			return nil, err
+		}
+		items = append(items, user_id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockSeatOwner = `-- name: LockSeatOwner :exec
 SELECT pg_advisory_xact_lock($1::bigint)
 `

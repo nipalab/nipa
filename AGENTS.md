@@ -889,7 +889,7 @@ every org to one owner user (lazily seeded from
 `organizations.created_by_user_id`), tracks per-project chunk links with
 cached project/org counters, and enforces `owner_quota` (NULL/0 =
 unlimited; missing row = `STORAGE_LEDGER_DEFAULT_QUOTA_BYTES`, default
-15 GiB). `RecountOrg`
+15 GiB, or `SAAS_FREE_QUOTA_BYTES` in SaaS mode via `ledgerDefaultQuotaBytes`). `RecountOrg`
 rebuilds links and counters from the stored history. REST routes
 (`/orgs/{org}/storage`, `/billing/me`, admin quota/transfer/recount) are
 registered on the shared `/api/v1` WebService via `serverapp.WithRoutes` only
@@ -930,7 +930,12 @@ upserts it by `provider_subscription_id` only when `provider_updated_at` is
 newer, and recomputes `quota_bytes` from the live subscription
 (`active|trialing|past_due`, newest update) with
 `entitlement.go` (`free + seats*seat_bytes + packs*pack_bytes`, 0 free =
-unlimited, saturating); it never touches `override_bytes`. `internal/config` carries
+unlimited, saturating); it never touches `override_bytes`.
+`Service.ReconcileQuotas` (`reconcile.go`) runs synchronously at SaaS startup
+before `serverapp.Run` (provider-less service when billing is off, failures
+only logged): it keyset-pages `owner_quota` (`QuotaOwners`, 500), recomputes
+each owner under `LockOwner`, rewrites only differing `quota_bytes`, skips
+deleted users and audits `billing.quotas.reconciled` when anything changed. `internal/config` carries
 `BILLING_PROVIDER` (`off` default), `PADDLE_*` and `BILLING_*` keys with
 `ValidateBilling` (every key, `SAAS_MODE=1`, the ledger, free seats ≥ 1,
 bytes > 0); `ee/cmd/nipad/billing.go` (`buildBilling`) wires nothing with
