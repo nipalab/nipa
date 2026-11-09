@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -93,6 +94,60 @@ var _ = Describe("nipa assets check", func() {
 		Expect(err).NotTo(HaveOccurred())
 		_, err = os.Stat(filepath.Join(dir, "docs", "b.txt"))
 		Expect(os.IsNotExist(err)).To(BeTrue())
+	})
+
+	It("warns about broken asset references in dry runs and through MCP", func() {
+		project := newProject("assets-refs")
+		tex := strings.Repeat("a", 32)
+		seedRepo(orgSlug, project, map[string][]byte{
+			"Assets/hero.png":      testPNG(4),
+			"Assets/hero.png.meta": []byte("fileFormatVersion: 2\nguid: " + tex + "\n"),
+			"Assets/hero.mat":      []byte("%YAML 1.1\n--- !u!21 &2100000\nMaterial:\n  m_Tex: {fileID: 2800000, guid: " + tex + ", type: 3}\n"),
+		}, "seed")
+		dir := cloneRepo(workspace(), repoURLFor(orgSlug, project), "work")
+
+		m := startMCP(dir, false)
+		refs := m.callTool("nipa_asset_refs", map[string]any{"repo": dir, "path": "Assets/hero.png"})
+		Expect(refs.IsError).To(BeFalse(), refs.text())
+		var used struct {
+			UsedBy []string `json:"used_by"`
+		}
+		refs.decode(&used)
+		Expect(used.UsedBy).To(Equal([]string{"Assets/hero.mat"}))
+
+		Expect(runNipa(dir, "lock", "Assets/hero.png").ExitCode).To(Equal(0))
+		Expect(os.Remove(filepath.Join(dir, "Assets", "hero.png"))).To(Succeed())
+		Expect(os.Remove(filepath.Join(dir, "Assets", "hero.png.meta"))).To(Succeed())
+		Expect(runNipa(dir, "add", "Assets/hero.png", "Assets/hero.png.meta").ExitCode).To(Equal(0))
+		type broken struct {
+			From   string `json:"from"`
+			Target string `json:"target"`
+			Reason string `json:"reason"`
+		}
+		want := broken{From: "Assets/hero.mat", Target: "Assets/hero.png", Reason: "removed"}
+
+		dry := runNipa(dir, "push", "--dry-run", "--json")
+		Expect(dry.ExitCode).To(Equal(0), dry.Output())
+		var plan struct {
+			AssetImpact struct {
+				Broken []broken `json:"broken"`
+			} `json:"asset_impact"`
+		}
+		Expect(json.Unmarshal([]byte(dry.Stdout), &plan)).To(Succeed())
+		Expect(plan.AssetImpact.Broken).To(Equal([]broken{want}))
+
+		impact := m.callTool("nipa_asset_impact", map[string]any{"repo": dir, "staged": true})
+		Expect(impact.IsError).To(BeFalse(), impact.text())
+		var out struct {
+			Broken []broken `json:"broken"`
+		}
+		impact.decode(&out)
+		Expect(out.Broken).To(Equal([]broken{want}))
+
+		text := runNipa(dir, "push", "--dry-run")
+		Expect(text.Stdout).To(ContainSubstring("warning: 1 broken reference(s)"))
+		pushed := runNipa(dir, "push", "-m", "remove hero")
+		Expect(pushed.ExitCode).To(Equal(0), pushed.Output())
 	})
 
 	It("exits 0 without a budget file", func() {

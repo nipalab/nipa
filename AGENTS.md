@@ -330,7 +330,8 @@ files, asset tables 200/2000 rows, scene changes 500/5000. Asset tools read
 both sides through `assetscan.BlobLoader` over `usecase.Diff.ReadBlob`
 (working/snapshot offline, revisions through the commit-scoped download) with
 `assetdiff.WorkingGUIDs`; `nipa_meta_warnings` lints status through
-`unitymeta`/`godotmeta`; `nipa_godot_merge` runs `assetdiff.MergeGodot` on the
+`unitymeta`/`godotmeta`; `nipa_asset_refs`/`nipa_asset_impact` run
+`assetscan.Refs`/`Impact` (asset references flow below); `nipa_godot_merge` runs `assetdiff.MergeGodot` on the
 pending merge's base/ours/theirs and resolves only a clean result. Prompts
 (`prompts.go`) are always registered and call no LLM. `toolError` appends the
 domain `hint:`/`next:` to failures. Unit tests stub the usecases
@@ -357,6 +358,32 @@ matching limits (`Config.NeedsDecode`). Surfaces: `nipa assets check [<rev>
 `nipa push --dry-run` (`asset_violations` in JSON, warning block in text;
 offline over the plan's staged changes). The budget always comes from the
 working copy; push itself does not enforce it.
+
+Flow for asset references (reference in `docs/AI.md`, client-side only, warn
+only): the pure `internal/assetrefs` (fs.FS based, no client imports)
+`Build`s a graph from the working file list: Unity Force Text sources
+(`.unity`, `.prefab`, `.asset`, `.mat`, ...; `IsSource`) are byte-scanned for
+`guid: <32 hex>` (built-ins skipped, `ParseRefs`, fuzzed) and resolved per
+Unity project (folder before `Assets`/`Packages`/`ProjectSettings`) through
+the `.meta` files whose asset exists (folders count); Godot `.tscn`/`.tres`
+`ext_resource`s resolve `uid://` first (`.uid`/`.import` via
+`godotmeta.AssetOf`, resource headers) then `res://` below the nearest
+`project.godot`. Caps: 5000 sources (max 20000), 8 MiB per file, either sets
+`Truncated`; `Options.Outside` (sparse prefixes) turns unresolvable refs into
+`Unknown`. `ComputeImpact` reads the old side of changed sidecars/sources
+through an `assetdiff.Loader` (unreadable = truncated) and reports `Broken`
+(removed/renamed/`guid_changed`/`uid_changed` targets, or new unresolved
+refs of changed sources; refs already unresolved before stay quiet; Unity
+GUID ids are keyed per project) and `NewlyUnused` (lost last referrer;
+scenes, scripts, `Resources`/`StreamingAssets`/`Editor`/`Plugins`/`addons`
+excluded; empty when truncated). `assetscan.Graph`/`Refs`/`Impact`
+(`refs.go`) list files through `usecase.Diff.WorkingFiles` (walk + ignores +
+sparse) and skip the scan unless `Relevant` (an engine asset or sidecar
+changed). Surfaces: MCP read tools `nipa_asset_refs` / `nipa_asset_impact`
+and `nipa push --dry-run` (`pushImpact`: `asset_impact` in JSON, warning
+block in text, a failure only warns on stderr; `planReport` in
+`cli/dryrun.go`). The new side is the working copy, so unstaged edits are
+included.
 
 Flow for generation (reference in `docs/AI.md`; the server never calls an
 LLM): `internal/client/aiprompt` (pure, deterministic) builds

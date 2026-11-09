@@ -176,7 +176,7 @@ func (l *linter) check(p string) {
 
 func (l *linter) checkSidecar(p string) {
 	s := l.states[p]
-	asset := assetOf(p)
+	asset := AssetOf(p)
 	switch {
 	case s.deleted:
 		if l.exists(asset) && !l.states[asset].deleted {

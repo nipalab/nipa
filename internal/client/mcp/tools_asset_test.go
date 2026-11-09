@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/nipalab/nipa/internal/assetdiff"
+	"github.com/nipalab/nipa/internal/assetrefs"
 	"github.com/nipalab/nipa/internal/chunker"
 	"github.com/nipalab/nipa/internal/client/assetscan"
 	"github.com/nipalab/nipa/internal/client/domain"
@@ -452,6 +453,56 @@ func TestMetaWarnings(t *testing.T) {
 	res = call(t, connect(t, Options{NewUseCases: func() UseCases { return UseCases{} }}), "nipa_meta_warnings", map[string]any{"repo": none})
 	require.True(t, res.IsError)
 	require.Contains(t, toolText(t, res), "diff is not configured")
+}
+
+func TestAssetRefsAndImpact(t *testing.T) {
+	tex, mat := strings.Repeat("a", 32), strings.Repeat("b", 32)
+	yaml := func(guid string) string {
+		return "%YAML 1.1\n--- !u!21 &1\nMaterial:\n  t: {fileID: 1, guid: " + guid + ", type: 3}\n"
+	}
+	root := setupRepo(t, map[string]string{
+		"Assets/hero.png": "png", "Assets/hero.png.meta": "guid: " + tex + "\n",
+		"Assets/hero.mat": yaml(tex), "Assets/hero.mat.meta": "guid: " + mat + "\n",
+		"Assets/Hero.prefab": yaml(mat),
+	})
+	session := connect(t, Options{NewUseCases: offlineUseCases})
+
+	refs := decode[assetscan.RefsReport](t, call(t, session, "nipa_asset_refs", map[string]any{"repo": root, "path": "/Assets/hero.mat"}))
+	require.Equal(t, "Assets/hero.mat", refs.Path)
+	require.Equal(t, []string{"Assets/Hero.prefab"}, refs.UsedBy)
+	require.Len(t, refs.Uses, 1)
+	require.Equal(t, "Assets/hero.png", refs.Uses[0].Path)
+
+	none := decode[assetscan.RefsReport](t, call(t, session, "nipa_asset_refs", map[string]any{"repo": root, "path": "nope.png"}))
+	require.NotNil(t, none.Uses)
+	require.Empty(t, none.UsedBy)
+
+	capped := decode[assetscan.RefsReport](t, call(t, session, "nipa_asset_refs", map[string]any{"repo": root, "path": "Assets/hero.mat", "max_files": 1}))
+	require.True(t, capped.Truncated)
+	require.Equal(t, 1, capped.Scanned)
+
+	clean := decode[assetrefs.Impact](t, call(t, session, "nipa_asset_impact", map[string]any{"repo": root}))
+	require.NotNil(t, clean.Broken)
+	require.Empty(t, clean.Broken)
+
+	for _, p := range []string{"Assets/hero.png", "Assets/hero.png.meta"} {
+		require.NoError(t, os.Remove(filepath.Join(root, filepath.FromSlash(p))))
+	}
+	impact := decode[assetrefs.Impact](t, call(t, session, "nipa_asset_impact", map[string]any{"repo": root}))
+	require.Len(t, impact.Broken, 1)
+	require.Equal(t, assetrefs.BrokenRef{From: "Assets/hero.mat", Raw: "guid:" + tex, Target: "Assets/hero.png", Reason: "removed"}, impact.Broken[0])
+	staged := decode[assetrefs.Impact](t, call(t, session, "nipa_asset_impact", map[string]any{"repo": root, "staged": true}))
+	require.Empty(t, staged.Broken)
+
+	res := call(t, session, "nipa_asset_refs", map[string]any{"repo": root, "path": " "})
+	require.True(t, res.IsError)
+	require.Contains(t, toolText(t, res), "a path is required")
+	missing := filepath.Join(t.TempDir(), "missing")
+	require.True(t, call(t, session, "nipa_asset_refs", map[string]any{"repo": missing, "path": "a"}).IsError)
+	require.True(t, call(t, session, "nipa_asset_impact", map[string]any{"repo": missing}).IsError)
+	empty := connect(t, Options{NewUseCases: func() UseCases { return UseCases{} }})
+	require.True(t, call(t, empty, "nipa_asset_refs", map[string]any{"repo": root, "path": "a"}).IsError)
+	require.True(t, call(t, empty, "nipa_asset_impact", map[string]any{"repo": root}).IsError)
 }
 
 func TestReadSnapshotSmall(t *testing.T) {

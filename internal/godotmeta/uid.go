@@ -60,7 +60,8 @@ func IsSidecar(p string) bool {
 	return false
 }
 
-func assetOf(sidecar string) string {
+// AssetOf returns the asset a .import or .uid sidecar belongs to.
+func AssetOf(sidecar string) string {
 	if s, ok := strings.CutSuffix(sidecar, importExt); ok {
 		return s
 	}
