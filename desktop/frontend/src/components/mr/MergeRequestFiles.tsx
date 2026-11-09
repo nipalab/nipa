@@ -17,6 +17,7 @@ type MergeRequestFilesProps = {
   root: string;
   base: string;
   head: string;
+  focus?: string;
   threads: Thread[];
   busy: boolean;
   canComment: boolean;
@@ -25,10 +26,10 @@ type MergeRequestFilesProps = {
   onResolve: (threadId: string, resolved: boolean) => void;
 };
 
-export function MergeRequestFiles({ root, base, head, threads, busy, canComment, onComment, onReply, onResolve }: MergeRequestFilesProps) {
+export function MergeRequestFiles({ root, base, head, focus = "", threads, busy, canComment, onComment, onReply, onResolve }: MergeRequestFilesProps) {
   const filesSize = useResizableWidth("mr-files", { initial: 256, min: 160, max: 560 });
   const files = useQuery({ queryKey: ["commit", root, head, "vs", base], queryFn: () => desktop.revisionFiles(root, base, head), enabled: !!base && !!head, staleTime: Infinity });
-  const [picked, setPicked] = useState("");
+  const [picked, setPicked] = useState(focus);
   const [drafting, setDrafting] = useState<LineAnchor | null>(null);
   const [layout, setLayoutState] = useState<DiffLayout>(() => (readSetting(LAYOUT_KEY) === "split" ? "split" : "unified"));
   const setLayout = (next: DiffLayout) => {
@@ -37,7 +38,7 @@ export function MergeRequestFiles({ root, base, head, threads, busy, canComment,
   };
 
   const list = files.data ?? [];
-  const selected: FileDiff | undefined = list.find((f) => f.path === picked) ?? list[0];
+  const selected: FileDiff | undefined = list.find((f) => f.path === picked) ?? list.find((f) => !!f.oldPath && f.oldPath === picked) ?? list[0];
   const counts = useMemo(() => {
     const out = new Map<string, number>();
     for (const t of threads) if (t.path) out.set(t.path, (out.get(t.path) ?? 0) + 1);

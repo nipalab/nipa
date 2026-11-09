@@ -27,7 +27,7 @@ import type { Notify } from "@/hooks/useLocks";
 import { useLockStatus } from "@/hooks/useLocks";
 import { useMergeRequest, type ReviewState } from "@/hooks/useMergeRequest";
 import { commitTitle, shortId } from "@/lib/history";
-import { blockedReason, conversation, eventText, mergeabilityText, reviewText, strategies, type Strategy } from "@/lib/mergeRequests";
+import { blockedReason, conversation, eventText, mergeabilityText, reviewText, strategies, threadSnippet, type Strategy } from "@/lib/mergeRequests";
 import { timeAgo } from "@/lib/time";
 import { cn, errorMessage, readSetting, writeSetting } from "@/lib/utils";
 
@@ -72,6 +72,7 @@ type DetailProps = { root: string; number: number; notify: Notify };
 export function MergeRequestDetail({ root, number, notify }: DetailProps) {
   const mr = useMergeRequest(root, number, notify);
   const [tab, setTab] = useState<Tab>("conversation");
+  const [focusPath, setFocusPath] = useState("");
   const needsSourceHead = !!mr.detail.data && !mr.detail.data.mergeability.sourceCommitId && !mr.detail.data.request.mergedSourceId;
   const branches = useQuery({ queryKey: ["branches", root], queryFn: () => desktop.branches(root), enabled: needsSourceHead });
 
@@ -127,7 +128,10 @@ export function MergeRequestDetail({ root, number, notify }: DetailProps) {
             type="button"
             role="tab"
             aria-selected={tab === id}
-            onClick={() => setTab(id)}
+            onClick={() => {
+              setFocusPath("");
+              setTab(id);
+            }}
             className={cn("flex items-center gap-1.5 border-b-2 px-2 py-1.5 text-[12px]", tab === id ? "border-accent font-medium" : "border-transparent text-muted-foreground hover:text-foreground")}
           >
             <Icon className="size-3.5" />
@@ -137,7 +141,19 @@ export function MergeRequestDetail({ root, number, notify }: DetailProps) {
       </nav>
       <div className="min-h-0 flex-1">
         {tab === "conversation" ? (
-          <Conversation root={root} detail={mr.detail.data} activity={activity} activityError={mr.activity.error} mr={mr} />
+          <Conversation
+            root={root}
+            detail={mr.detail.data}
+            activity={activity}
+            activityError={mr.activity.error}
+            mr={mr}
+            base={base}
+            head={head}
+            onOpenFile={(path) => {
+              setFocusPath(path);
+              setTab("files");
+            }}
+          />
         ) : tab === "commits" ? (
           <Commits root={root} number={number} />
         ) : (
@@ -145,6 +161,7 @@ export function MergeRequestDetail({ root, number, notify }: DetailProps) {
             root={root}
             base={base}
             head={head}
+            focus={focusPath}
             threads={threads}
             busy={mr.busy}
             canComment={request.status === "open"}
@@ -215,10 +232,14 @@ function TitleRow({ request, busy, onSave }: { request: MergeRequest; busy: bool
 
 type Actions = ReturnType<typeof useMergeRequest>;
 
-function Conversation({ root, detail, activity, activityError, mr }: { root: string; detail: Detail; activity?: Activity; activityError: unknown; mr: Actions }) {
+type ConversationProps = { root: string; detail: Detail; activity?: Activity; activityError: unknown; mr: Actions; base: string; head: string; onOpenFile: (path: string) => void };
+
+function Conversation({ root, detail, activity, activityError, mr, base, head, onOpenFile }: ConversationProps) {
   const { request } = detail;
   const open = request.status === "open";
   const me = useLockStatus(root).data?.userId;
+  const hasLineThreads = (activity?.threads ?? []).some((t) => !!t.path);
+  const files = useQuery({ queryKey: ["commit", root, head, "vs", base], queryFn: () => desktop.revisionFiles(root, base, head), enabled: hasLineThreads && !!base && !!head, staleTime: Infinity });
   return (
     <div className="h-full overflow-auto">
       <div className="mx-auto max-w-3xl space-y-3 p-4">
@@ -260,7 +281,14 @@ function Conversation({ root, detail, activity, activityError, mr }: { root: str
                     {item.review.body && <p className="mt-1 select-text whitespace-pre-wrap break-words">{item.review.body}</p>}
                   </div>
                 ) : (
-                  <ThreadCard thread={item.thread} busy={mr.busy} onReply={(body) => mr.reply.mutateAsync({ threadId: item.thread.id, body })} onResolve={(resolved) => mr.resolve.mutate({ threadId: item.thread.id, resolved })} />
+                  <ThreadCard
+                    thread={item.thread}
+                    busy={mr.busy}
+                    snippet={item.thread.outdated ? undefined : threadSnippet(files.data ?? [], item.thread)}
+                    onOpenFile={item.thread.path ? () => onOpenFile(item.thread.path) : undefined}
+                    onReply={(body) => mr.reply.mutateAsync({ threadId: item.thread.id, body })}
+                    onResolve={(resolved) => mr.resolve.mutate({ threadId: item.thread.id, resolved })}
+                  />
                 )}
               </li>
             ))}
