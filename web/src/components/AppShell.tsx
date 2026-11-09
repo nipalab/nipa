@@ -2,6 +2,7 @@ import { Link as PrimerLink } from '@primer/react'
 import { Link, Outlet } from 'react-router-dom'
 import { useAuth } from '../auth'
 import { APP_HOME } from '../routes'
+import { NipaLogo } from './NipaLogo'
 import { UserMenu } from './UserMenu'
 
 export default function AppShell() {
@@ -18,7 +19,13 @@ export default function AppShell() {
           gap: 'var(--base-size-16)',
         }}
       >
-        <PrimerLink as={Link} to={APP_HOME} style={{ fontWeight: 700, fontSize: 18 }}>
+        <PrimerLink
+          as={Link}
+          to={APP_HOME}
+          aria-label="Nipa home"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--base-size-8)', fontWeight: 700, fontSize: 18, color: 'var(--fgColor-default)' }}
+        >
+          <NipaLogo size={32} />
           Nipa
         </PrimerLink>
         <div style={{ flex: 1 }} />
