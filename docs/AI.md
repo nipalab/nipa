@@ -187,7 +187,8 @@ clone, references that cannot be resolved are `unknown`, not broken.
 - `newly_unused`: assets that lost their last referrer through a changed or
   removed source. Scenes, scripts and anything under `Resources/`,
   `StreamingAssets/`, `Editor/`, `Plugins/` or `addons/` are never reported,
-  and the list stays empty when the scan was truncated.
+  and the list stays empty when the scan was truncated or the clone is sparse
+  (files outside the sparse set may still reference the asset).
 
 The new side is always the working copy, so unstaged edits are included even
 for `staged` or `push --dry-run`. Only references written in the assets are

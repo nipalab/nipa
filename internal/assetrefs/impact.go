@@ -65,9 +65,10 @@ type impactRun struct {
 // ComputeImpact reports the references the changes break and the assets
 // they leave unused. g is the graph of the new side; the old side of each
 // change is read through load (sidecars and sources only); an unreadable old
-// side marks the result truncated. A reference that
-// was already unresolved before the change is not reported, and nothing is
-// reported unused when the scan was truncated.
+// side marks the result truncated. A reference that was already unresolved
+// before the change is not reported, and nothing is reported unused when the
+// scan was truncated or the clone is partial (files outside it may still
+// reference the asset).
 func ComputeImpact(ctx context.Context, g *Graph, changes []assetdiff.Item, load assetdiff.Loader) (*Impact, error) {
 	r := &impactRun{
 		ctx: ctx, g: g, load: load,
@@ -80,7 +81,7 @@ func ComputeImpact(ctx context.Context, g *Graph, changes []assetdiff.Item, load
 		}
 	}
 	out := &Impact{Broken: r.broken(), NewlyUnused: []string{}, Scanned: g.Scanned, Truncated: g.Truncated || r.truncated}
-	if !out.Truncated {
+	if !out.Truncated && !g.Partial() {
 		out.NewlyUnused = r.unused()
 	}
 	return out, nil

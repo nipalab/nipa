@@ -189,6 +189,10 @@ func Build(fsys fs.FS, files []string, opts Options) *Graph {
 
 func (g *Graph) exists(p string) bool { return g.files[p] || g.dirs[p] }
 
+// Partial reports whether the scanned file set is a sparse subset of the
+// repository, so UsedBy can miss referrers outside it.
+func (g *Graph) Partial() bool { return g.opts.Outside != nil }
+
 // Exists reports whether p is a file or directory of the scanned file set.
 func (g *Graph) Exists(p string) bool { return g.exists(p) }
 

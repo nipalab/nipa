@@ -376,7 +376,7 @@ through an `assetdiff.Loader` (unreadable = truncated) and reports `Broken`
 refs of changed sources; refs already unresolved before stay quiet; Unity
 GUID ids are keyed per project) and `NewlyUnused` (lost last referrer;
 scenes, scripts, `Resources`/`StreamingAssets`/`Editor`/`Plugins`/`addons`
-excluded; empty when truncated). `assetscan.Graph`/`Refs`/`Impact`
+excluded; empty when truncated or `Graph.Partial` (sparse)). `assetscan.Graph`/`Refs`/`Impact`
 (`refs.go`) list files through `usecase.Diff.WorkingFiles` (walk + ignores +
 sparse) and skip the scan unless `Relevant` (an engine asset or sidecar
 changed). Surfaces: MCP read tools `nipa_asset_refs` / `nipa_asset_impact`

@@ -3,6 +3,7 @@ package assetrefs
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -153,6 +154,19 @@ func TestImpact_TruncatedSuppressesUnused(t *testing.T) {
 	out, err = ComputeImpact(context.Background(), Build(fsys, files, Options{MaxFileBytes: 150}), []assetdiff.Item{item("Assets/Mat/hero.mat", assetdiff.StatusModified)}, mapLoader(big))
 	require.NoError(t, err)
 	assert.True(t, out.Truncated)
+}
+
+func TestImpact_PartialCloneSuppressesUnused(t *testing.T) {
+	old := unityFiles()
+	now := with(old, "Assets/Mat/hero.mat", unityAsset())
+	fsys, files := mapFS(now)
+	g := Build(fsys, files, Options{Outside: func(p string) bool { return strings.HasPrefix(p, "Other/") }})
+	require.True(t, g.Partial())
+	out, err := ComputeImpact(context.Background(), g, []assetdiff.Item{item("Assets/Mat/hero.mat", assetdiff.StatusModified)}, mapLoader(old))
+	require.NoError(t, err)
+	assert.False(t, out.Truncated)
+	assert.NotNil(t, out.NewlyUnused)
+	assert.Empty(t, out.NewlyUnused, "a referrer outside the sparse set is not visible")
 }
 
 func TestImpact_Godot(t *testing.T) {

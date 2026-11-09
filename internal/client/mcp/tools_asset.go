@@ -85,7 +85,7 @@ func addAssetTools(srv *mcp.Server, s *server) {
 	}, s.assetRefs)
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "nipa_asset_impact",
-		Description: "Check pending changes (working copy against the last synced snapshot) for broken Unity/Godot asset references: removed or renamed assets, changed GUID/UID or new references that do not resolve (references that were already unresolved are not reported), plus assets left unused (scenes, scripts, Resources/StreamingAssets/Editor/Plugins/addons excluded; omitted when the scan is truncated). Unstaged working changes are part of the new side. Warn-only, runs offline.",
+		Description: "Check pending changes (working copy against the last synced snapshot) for broken Unity/Godot asset references: removed or renamed assets, changed GUID/UID or new references that do not resolve (references that were already unresolved are not reported), plus assets left unused (scenes, scripts, Resources/StreamingAssets/Editor/Plugins/addons excluded; omitted when the scan is truncated or the clone is sparse). Unstaged working changes are part of the new side. Warn-only, runs offline.",
 		Annotations: readOnly(),
 	}, s.assetImpact)
 	if s.allowed(CapMerge) {
