@@ -147,12 +147,9 @@ func Build(fsys fs.FS, files []string, opts Options) *Graph {
 	hasUnity := false
 	for _, src := range sources {
 		data, err := readCapped(fsys, src, g.opts.MaxFileBytes)
-		if errors.Is(err, errTooLarge) {
+		if err != nil {
 			g.Skipped++
 			g.Truncated = true
-			continue
-		}
-		if err != nil {
 			continue
 		}
 		g.Scanned++

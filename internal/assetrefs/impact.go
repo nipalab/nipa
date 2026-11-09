@@ -56,6 +56,7 @@ type impactRun struct {
 	ids       map[string]lostID
 	paths     map[string]lostID
 	oldRaw    map[string]map[string]bool
+	oldLost   map[string]bool
 	changed   map[string]bool
 	sources   []oldSource
 	truncated bool
@@ -71,7 +72,7 @@ func ComputeImpact(ctx context.Context, g *Graph, changes []assetdiff.Item, load
 	r := &impactRun{
 		ctx: ctx, g: g, load: load,
 		ids: map[string]lostID{}, paths: map[string]lostID{},
-		oldRaw: map[string]map[string]bool{}, changed: map[string]bool{},
+		oldRaw: map[string]map[string]bool{}, oldLost: map[string]bool{}, changed: map[string]bool{},
 	}
 	for _, it := range changes {
 		if err := r.collect(it); err != nil {
@@ -85,20 +86,22 @@ func ComputeImpact(ctx context.Context, g *Graph, changes []assetdiff.Item, load
 	return out, nil
 }
 
-func (r *impactRun) read(it assetdiff.Item, p string, limit int64) ([]byte, error) {
+// read loads p from the old side; known is false when the old content could
+// not be read, as opposed to a file that did not exist.
+func (r *impactRun) read(it assetdiff.Item, p string, limit int64) (data []byte, known bool, err error) {
 	ref := *it.Old
 	ref.Path = p
-	data, err := r.load(r.ctx, ref, limit)
+	data, err = r.load(r.ctx, ref, limit)
 	switch {
 	case r.ctx.Err() != nil:
-		return nil, r.ctx.Err()
+		return nil, false, r.ctx.Err()
 	case errors.Is(err, assetdiff.ErrMissing):
-		return nil, nil
+		return nil, true, nil
 	case err != nil:
 		r.truncated = true
-		return nil, nil
+		return nil, false, nil
 	}
-	return data, nil
+	return data, true, nil
 }
 
 func (r *impactRun) collect(it assetdiff.Item) error {
@@ -144,11 +147,16 @@ func (r *impactRun) collect(it assetdiff.Item) error {
 	}
 	if len(r.sources) >= r.g.opts.MaxFiles {
 		r.truncated = true
+		r.oldLost[it.Path] = true
 		return nil
 	}
-	data, err := r.read(it, oldPath, r.g.opts.MaxFileBytes)
-	if err != nil || data == nil {
+	data, known, err := r.read(it, oldPath, r.g.opts.MaxFileBytes)
+	if err != nil {
 		return err
+	}
+	if !known {
+		r.oldLost[it.Path] = true
+		return nil
 	}
 	refs, self := parseRaw(oldPath, data)
 	if self != "" && gone != "" && r.g.uids[self] == "" {
@@ -173,7 +181,7 @@ func renameTarget(it assetdiff.Item, gone string) string {
 }
 
 func (r *impactRun) lostGUID(it assetdiff.Item, meta, asset, gone string) error {
-	data, err := r.read(it, meta, maxSidecarBytes)
+	data, _, err := r.read(it, meta, maxSidecarBytes)
 	if err != nil {
 		return err
 	}
@@ -193,7 +201,7 @@ func (r *impactRun) lostGUID(it assetdiff.Item, meta, asset, gone string) error 
 }
 
 func (r *impactRun) lostUID(it assetdiff.Item, sidecar, asset, gone string) error {
-	data, err := r.read(it, sidecar, maxSidecarBytes)
+	data, _, err := r.read(it, sidecar, maxSidecarBytes)
 	if err != nil {
 		return err
 	}
@@ -231,7 +239,7 @@ func (r *impactRun) broken() []BrokenRef {
 				out = append(out, brokenFrom(src, ref.Raw, l))
 				continue
 			}
-			if ref.Unknown || !r.changed[src] || r.oldRaw[src][ref.Raw] {
+			if ref.Unknown || !r.changed[src] || r.oldLost[src] || r.oldRaw[src][ref.Raw] {
 				continue
 			}
 			out = append(out, BrokenRef{From: src, Raw: ref.Raw, Target: ref.Path, Reason: ReasonUnresolved})

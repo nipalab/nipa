@@ -1,6 +1,7 @@
 package assetrefs
 
 import (
+	"io/fs"
 	"sort"
 	"strings"
 	"testing"
@@ -87,6 +88,15 @@ func TestBuild_Caps(t *testing.T) {
 	assert.Positive(t, g.Skipped)
 
 	assert.Equal(t, HardMaxFiles, Options{MaxFiles: 1 << 30}.normalized().MaxFiles)
+}
+
+func TestBuild_UnreadableSourceTruncates(t *testing.T) {
+	fsys, files := mapFS(unityFiles())
+	fsys["Assets/Mat/hero.mat"] = &fstest.MapFile{Mode: fs.ModeDir}
+	g := Build(fsys, files, Options{})
+	assert.True(t, g.Truncated)
+	assert.Equal(t, 1, g.Skipped)
+	assert.Empty(t, g.UsedBy("Assets/Art/hero.png"))
 }
 
 func TestBuild_OutsideIsUnknown(t *testing.T) {

@@ -192,6 +192,31 @@ func TestImpact_LoaderError(t *testing.T) {
 	require.ErrorIs(t, err, context.Canceled)
 }
 
+func TestImpact_UnknownOldSideIsNotNewBreakage(t *testing.T) {
+	old := unityFiles()
+	now := with(old, "Assets/Prefabs/Hero.prefab", unityAsset(guid("b"), guid("c"))+"  m_Name: changed\n")
+	changes := []assetdiff.Item{item("Assets/Prefabs/Hero.prefab", assetdiff.StatusModified)}
+	fsys, files := mapFS(now)
+	g := Build(fsys, files, Options{})
+
+	failing := func(context.Context, assetdiff.Ref, int64) ([]byte, error) { return nil, errors.New("locked") }
+	out, err := ComputeImpact(context.Background(), g, changes, failing)
+	require.NoError(t, err)
+	assert.True(t, out.Truncated)
+	assert.Empty(t, out.Broken, "guid c was already unresolved; an unreadable old side must not make it new")
+
+	g.opts.MaxFiles = 0
+	out, err = ComputeImpact(context.Background(), g, changes, mapLoader(old))
+	require.NoError(t, err)
+	assert.True(t, out.Truncated)
+	assert.Empty(t, out.Broken, "a source past the cap has no old side either")
+
+	gone := without(old, "Assets/Prefabs/Hero.prefab")
+	out = impact(t, gone, now, changes...)
+	assert.Equal(t, []BrokenRef{{From: "Assets/Prefabs/Hero.prefab", Raw: "guid:" + guid("c"), Reason: ReasonUnresolved}}, out.Broken,
+		"an old side that did not exist is known and empty")
+}
+
 func TestNeverUnused(t *testing.T) {
 	for p, want := range map[string]bool{
 		"Assets/Scenes/Main.unity":       true,
