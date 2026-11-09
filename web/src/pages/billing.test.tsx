@@ -376,6 +376,75 @@ describe('BillingPage', () => {
     expect(paddle.open).not.toHaveBeenCalled()
   })
 
+  it('sends an optional discount code and shows a refused code under the field', async () => {
+    let refuse = true
+    const calls = stubServer({
+      capabilities: CAPABILITIES,
+      billing: () => FREE,
+      handle: (call) => {
+        if (!call.url.endsWith('/api/v1/billing/checkout')) return undefined
+        const body = call.body as { discount_code?: string }
+        if (body.discount_code && refuse) return jsonResponse({ error: 'discount code is not valid' }, 400)
+        return jsonResponse({ transaction_id: 'txn_d' })
+      },
+    })
+    await renderBilling()
+    await waitForText('2 of 3 seats used')
+    const field = () => document.getElementById('billing-discount-code') as HTMLInputElement | null
+    expect(field()).not.toBeNull()
+    expect(document.body.textContent).toContain('Applied at checkout')
+    await click(iconButton('Increase seats'))
+
+    await typeValue(field(), '  BOGUS ')
+    await click(button('Upgrade'))
+    await waitForText('discount code is not valid')
+    expect(document.body.textContent).not.toContain('Could not start checkout')
+    expect(paddle.open).not.toHaveBeenCalled()
+    expect(disabled(button('Upgrade'))).toBe(false)
+    expect(calls.filter((call) => call.url.endsWith('/api/v1/billing/checkout')).at(-1)?.body).toEqual({
+      seats: 1,
+      storage_packs: 0,
+      interval: 'month',
+      discount_code: 'BOGUS',
+    })
+
+    await typeValue(field(), 'EDU')
+    expect(document.body.textContent).not.toContain('discount code is not valid')
+    refuse = false
+    await click(button('Upgrade'))
+    await waitUntil(() => paddle.open.mock.calls.length > 0)
+    expect(paddle.open).toHaveBeenCalledWith({ transactionId: 'txn_d' })
+    expect(calls.filter((call) => call.url.endsWith('/api/v1/billing/checkout')).at(-1)?.body).toMatchObject({
+      discount_code: 'EDU',
+    })
+
+    await act(async () => paddle.listeners.forEach((listener) => listener({ name: 'checkout.closed' })))
+    await typeValue(field(), '   ')
+    await click(button('Upgrade'))
+    await waitUntil(() => paddle.open.mock.calls.length > 1)
+    expect(calls.filter((call) => call.url.endsWith('/api/v1/billing/checkout')).at(-1)?.body).toEqual({
+      seats: 1,
+      storage_packs: 0,
+      interval: 'month',
+    })
+  })
+
+  it('keeps non-discount checkout errors in the banner when a code was entered', async () => {
+    stubServer({
+      capabilities: CAPABILITIES,
+      billing: () => FREE,
+      handle: (call) =>
+        call.url.endsWith('/api/v1/billing/checkout') ? jsonResponse({ error: 'billing provider request failed' }, 502) : undefined,
+    })
+    await renderBilling()
+    await waitForText('2 of 3 seats used')
+    await click(iconButton('Increase seats'))
+    await typeValue(document.getElementById('billing-discount-code') as HTMLInputElement, 'EDU')
+    await click(button('Upgrade'))
+    await waitForText('billing provider request failed')
+    expect(document.body.textContent).toContain('Could not start checkout')
+  })
+
   it('updates a paid plan, shows 409s inline and opens the billing portal', async () => {
     let current: unknown = TEAM
     let reject = true
@@ -400,6 +469,8 @@ describe('BillingPage', () => {
     expect(input('seats')?.value).toBe('4')
     expect(input('storage packs')?.value).toBe('1')
     expect(disabled(button('Update plan'))).toBe(true)
+    expect(document.getElementById('billing-discount-code')).toBeNull()
+    expect(document.body.textContent).not.toContain('Discount code')
 
     await click(iconButton('Increase storage packs'))
     expect(disabled(button('Update plan'))).toBe(false)

@@ -41,8 +41,9 @@ const (
 var billingPrices = paddle.Prices{SeatMonthly: "pri_seat_m", SeatYearly: "pri_seat_y", StorageMonthly: "pri_st_m", StorageYearly: "pri_st_y"}
 
 type fakePaddleAPI struct {
-	mu    sync.Mutex
-	calls []string
+	mu          sync.Mutex
+	calls       []string
+	discountIDs []any
 }
 
 func (f *fakePaddleAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -54,7 +55,18 @@ func (f *fakePaddleAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case r.Method == http.MethodPost && r.URL.Path == "/customers":
 		w.WriteHeader(http.StatusCreated)
 		_, _ = io.WriteString(w, `{"data":{"id":"ctm_e2e"}}`)
+	case r.Method == http.MethodGet && r.URL.Path == "/discounts":
+		if r.URL.Query().Get("code") != "EDU" || r.URL.Query().Get("status") != "active" {
+			_, _ = io.WriteString(w, `{"data":[]}`)
+			return
+		}
+		_, _ = io.WriteString(w, `{"data":[{"id":"dsc_edu","code":"EDU","status":"active","enabled_for_checkout":true,"expires_at":null}]}`)
 	case r.Method == http.MethodPost && r.URL.Path == "/transactions":
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		f.mu.Lock()
+		f.discountIDs = append(f.discountIDs, body["discount_id"])
+		f.mu.Unlock()
 		w.WriteHeader(http.StatusCreated)
 		_, _ = io.WriteString(w, `{"data":{"id":"txn_e2e","status":"draft"}}`)
 	default:
@@ -183,7 +195,14 @@ func TestEnterpriseBillingPaddleSmoke(t *testing.T) {
 	require.NoError(t, err)
 	paidSeats := seatsUsed + 1
 
-	status, body := rest.do(http.MethodPost, "/api/v1/billing/checkout", map[string]any{"seats": paidSeats, "interval": "month"}, nil)
+	status, body := rest.do(http.MethodPost, "/api/v1/billing/checkout", map[string]any{"seats": paidSeats, "interval": "month", "discount_code": "NOPE"}, nil)
+	require.Equal(t, http.StatusBadRequest, status, body)
+	require.Equal(t, "discount code is not valid", body["error"])
+	noAccount, err := repo.Account(ctx, snow.ID(1))
+	require.NoError(t, err)
+	require.Nil(t, noAccount, "an invalid code creates no customer")
+
+	status, body = rest.do(http.MethodPost, "/api/v1/billing/checkout", map[string]any{"seats": paidSeats, "interval": "month", "discount_code": " EDU "}, nil)
 	require.Equal(t, http.StatusOK, status, body)
 	require.Equal(t, "txn_e2e", body["transaction_id"])
 	account, err := repo.Account(ctx, snow.ID(1))
@@ -253,6 +272,7 @@ func TestEnterpriseBillingPaddleSmoke(t *testing.T) {
 	checkouts := billingAudit(rest, domain.AuditBillingCheckoutStarted, snow.ID(1).Base36())
 	require.NotEmpty(t, checkouts)
 	require.Equal(t, "txn_e2e", checkouts[0]["metadata"].(map[string]any)["transaction_id"])
+	require.Equal(t, "EDU", checkouts[0]["metadata"].(map[string]any)["discount_code"])
 
 	status, me = rest.do(http.MethodGet, "/api/v1/billing/me", nil, nil)
 	require.Equal(t, http.StatusOK, status, me)
@@ -301,5 +321,7 @@ func TestEnterpriseBillingPaddleSmoke(t *testing.T) {
 
 	fakeAPI.mu.Lock()
 	defer fakeAPI.mu.Unlock()
-	require.Equal(t, []string{"POST /customers", "POST /transactions"}, fakeAPI.calls, "webhooks never call Paddle")
+	require.Equal(t, []string{"GET /discounts", "GET /discounts", "POST /customers", "POST /transactions"}, fakeAPI.calls,
+		"an invalid code creates no customer and webhooks never call Paddle")
+	require.Equal(t, []any{"dsc_edu"}, fakeAPI.discountIDs)
 }

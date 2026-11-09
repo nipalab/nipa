@@ -551,6 +551,10 @@ export interface BillingItemsRequest {
   interval?: BillingInterval
 }
 
+export interface BillingCheckoutRequest extends BillingItemsRequest {
+  discount_code?: string
+}
+
 export const PERMISSION_READ = 1
 export const PERMISSION_WRITE = 2
 export const PERMISSION_LOCK = 4

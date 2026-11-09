@@ -86,6 +86,19 @@ func TestHTTP_Checkout(t *testing.T) {
 	require.Equal(t, http.StatusOK, status, body)
 	require.Equal(t, "txn_1", body["transaction_id"])
 	require.Equal(t, []Items{{Seats: 2, StoragePacks: 1, Interval: IntervalYear}}, h.provider.checkouts)
+	require.Empty(t, h.provider.resolved)
+
+	h.provider.discountID = "dsc_edu"
+	status, body = h.do(http.MethodPost, "/api/v1/billing/checkout", "payer", `{"seats":1,"interval":"month","discount_code":"EDU"}`, nil)
+	require.Equal(t, http.StatusOK, status, body)
+	require.Equal(t, []string{"EDU"}, h.provider.resolved)
+	require.Equal(t, []string{"", "dsc_edu"}, h.provider.discountIDs)
+
+	h.provider.discountErr = domain.NewErrorUser("discount code is not valid")
+	status, body = h.do(http.MethodPost, "/api/v1/billing/checkout", "payer", `{"seats":1,"interval":"month","discount_code":"NOPE"}`, nil)
+	require.Equal(t, http.StatusBadRequest, status)
+	require.Equal(t, "discount code is not valid", body["error"])
+	h.provider.discountErr = nil
 
 	status, _ = h.do(http.MethodPost, "/api/v1/billing/checkout", "payer", `{"seats":0,"interval":"year"}`, nil)
 	require.Equal(t, http.StatusBadRequest, status)

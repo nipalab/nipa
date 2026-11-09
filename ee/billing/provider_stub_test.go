@@ -17,6 +17,10 @@ type stubProvider struct {
 	checkoutID  string
 	checkoutErr error
 	checkouts   []Items
+	discountIDs []string
+	discountID  string
+	discountErr error
+	resolved    []string
 	updated     Subscription
 	updateErr   error
 	updates     []Items
@@ -37,9 +41,16 @@ func (p *stubProvider) EnsureCustomer(context.Context, snow.ID, string, string) 
 	return p.customerID, p.customerErr
 }
 
-func (p *stubProvider) CreateCheckout(_ context.Context, _ string, _ snow.ID, items Items) (string, error) {
+func (p *stubProvider) ResolveDiscount(_ context.Context, code string) (string, error) {
+	p.calls = append(p.calls, "resolve_discount")
+	p.resolved = append(p.resolved, code)
+	return p.discountID, p.discountErr
+}
+
+func (p *stubProvider) CreateCheckout(_ context.Context, _ string, _ snow.ID, items Items, discountID string) (string, error) {
 	p.calls = append(p.calls, "checkout")
 	p.checkouts = append(p.checkouts, items)
+	p.discountIDs = append(p.discountIDs, discountID)
 	return p.checkoutID, p.checkoutErr
 }
 
