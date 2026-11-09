@@ -43,7 +43,7 @@ func (b *Branch) Contains(ctx context.Context, projectID, commitID snow.ID, ref 
 	if head == nil {
 		return false, 0, nil
 	}
-	contains, err := b.isAncestor(ctx, commitID, *head)
+	contains, err := b.isAncestor(ctx, projectID, commitID, *head)
 	return contains, *head, err
 }
 
@@ -77,7 +77,8 @@ func (b *Branch) resolveRef(ctx context.Context, projectID snow.ID, ref string) 
 	return nil, domain.NewErrorNotFound(fmt.Sprintf("ref %q not found", ref))
 }
 
-func (b *Branch) isAncestor(ctx context.Context, target, head snow.ID) (bool, error) {
+func (b *Branch) isAncestor(ctx context.Context, projectID, target, head snow.ID) (bool, error) {
+	graph := newCommitGraph(b.branchRepo, projectID, false)
 	seen := map[snow.ID]bool{head: true}
 	queue := []snow.ID{head}
 	for walked := 0; len(queue) > 0; walked++ {
@@ -89,7 +90,7 @@ func (b *Branch) isAncestor(ctx context.Context, target, head snow.ID) (bool, er
 		if walked >= maxContainsWalk {
 			return false, domain.NewErrorUser(fmt.Sprintf("ancestry check exceeded %d commits", maxContainsWalk))
 		}
-		commit, err := b.branchRepo.GetCommit(ctx, id)
+		commit, err := graph.get(ctx, id)
 		if err != nil {
 			return false, err
 		}
