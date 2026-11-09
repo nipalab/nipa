@@ -1,0 +1,28 @@
+.nipa-user-menu-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--fgColor-muted);
+  cursor: pointer;
+  border-radius: 999px;
+}
+
+.nipa-user-menu-button:hover {
+  color: var(--fgColor-default);
+}
+
+.nipa-user-menu-button:focus-visible {
+  outline: 2px solid var(--focus-outlineColor);
+  outline-offset: 2px;
+}
+
+.nipa-user-menu-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px 8px;
+  border-bottom: 1px solid var(--borderColor-muted);
+}
