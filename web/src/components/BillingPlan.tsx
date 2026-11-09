@@ -150,7 +150,7 @@ function usePricePreview(
     let active = true
     const timer = setTimeout(() => {
       previewPrices(paddle, [
-        { priceId: seatPrice, quantity: seats },
+        { priceId: seatPrice, quantity: Math.max(seats, 1) },
         { priceId: storagePrice, quantity: Math.max(packs, 1) },
       ])
         .then((result) => {
@@ -179,8 +179,9 @@ export function PlanEditor({
   onChanged: () => void
 }) {
   const paid = isPaidPlan(summary)
-  const minSeats = Math.max(summary.seats_used, 1)
-  const initialSeats = Math.max(paid ? summary.seats || summary.seat_limit : minSeats, minSeats)
+  const freeSeats = Math.max(paid ? summary.seat_limit - summary.seats : summary.seat_limit, 0)
+  const minSeats = Math.max(summary.seats_used - freeSeats, 0)
+  const initialSeats = Math.max(paid ? summary.seats : minSeats, minSeats)
   const initialPacks = paid ? summary.storage_packs : 0
   const initialInterval: BillingInterval = summary.interval === 'year' ? 'year' : 'month'
 
@@ -241,6 +242,7 @@ export function PlanEditor({
   }, [pending, onChanged])
 
   const unchanged = seats === initialSeats && packs === initialPacks && interval === initialInterval
+  const empty = seats + packs === 0
   const items = { seats, storage_packs: packs, interval }
 
   async function upgrade() {
@@ -330,11 +332,16 @@ export function PlanEditor({
           <SegmentedControl.Button selected={interval === 'year'}>Yearly</SegmentedControl.Button>
         </SegmentedControl>
       </SettingsRow>
-      <SettingsRow label="Seats" subtext={`At least ${minSeats}: seats in use`}>
+      <SettingsRow
+        label="Paid seats"
+        subtext={`${freeSeats} free seats included; at least ${minSeats} paid seats needed for the seats in use`}
+      >
         <Stepper label="seats" value={seats} min={minSeats} onChange={setSeats} />
         {preview.seat && (
           <Text as="p" style={{ margin: 'var(--base-size-8) 0 0', color: 'var(--fgColor-muted)' }}>
-            {`${preview.seat.unit} per seat / ${per} · ${preview.seat.total}`}
+            {seats > 0
+              ? `${preview.seat.unit} per seat / ${per} · ${preview.seat.total}`
+              : `${preview.seat.unit} per seat / ${per}`}
           </Text>
         )}
       </SettingsRow>
@@ -366,11 +373,11 @@ export function PlanEditor({
         }}
       >
         {paid ? (
-          <Button variant="primary" loading={busy} disabled={busy || unchanged} onClick={() => void update()}>
+          <Button variant="primary" loading={busy} disabled={busy || unchanged || empty} onClick={() => void update()}>
             Update plan
           </Button>
         ) : (
-          <Button variant="primary" loading={busy || pending} disabled={busy || pending} onClick={() => void upgrade()}>
+          <Button variant="primary" loading={busy || pending} disabled={busy || pending || empty} onClick={() => void upgrade()}>
             Upgrade
           </Button>
         )}

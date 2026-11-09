@@ -57,12 +57,11 @@ func (c Config) Entitlement(sub *Subscription) Entitlement {
 	packs := max(sub.StoragePacks, 0)
 	quota := int64(0)
 	if c.FreeQuotaBytes > 0 {
-		computed := addSaturating(mulSaturating(seats, c.SeatIncludedBytes), mulSaturating(packs, c.StoragePackBytes))
-		quota = max(c.FreeQuotaBytes, computed)
+		quota = addSaturating(c.FreeQuotaBytes, addSaturating(mulSaturating(seats, c.SeatIncludedBytes), mulSaturating(packs, c.StoragePackBytes)))
 	}
 	return Entitlement{
 		Paid:       true,
-		SeatLimit:  max(seats, c.FreeSeats),
+		SeatLimit:  addSaturating(seats, max(c.FreeSeats, 0)),
 		QuotaBytes: quota,
 	}
 }

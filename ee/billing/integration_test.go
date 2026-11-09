@@ -123,13 +123,13 @@ func (s *billingSuite) TestApply_OrderingAndQuota() {
 		ProviderSubscriptionID: "sub_old", UserID: owner, Status: StatusCanceled, Seats: 2, ProviderUpdatedAt: at(9),
 	}))
 	quota, _ := s.quota(owner)
-	s.Equal(int64(3*100+5000), quota.Int64, "a late cancel of the old subscription keeps the newer live one")
+	s.Equal(int64(1000+3*100+5000), quota.Int64, "a late cancel of the old subscription keeps the newer live one")
 
 	s.Require().NoError(s.service.Apply(ctx, Subscription{
 		ProviderSubscriptionID: "sub_new", UserID: owner, Status: StatusCanceled, ProviderUpdatedAt: at(1),
 	}))
 	quota, _ = s.quota(owner)
-	s.Equal(int64(3*100+5000), quota.Int64, "an older event is ignored")
+	s.Equal(int64(1000+3*100+5000), quota.Int64, "an older event is ignored")
 
 	s.Require().NoError(s.service.Apply(ctx, Subscription{
 		ProviderSubscriptionID: "sub_new", UserID: owner, Status: StatusCanceled, ProviderUpdatedAt: at(10),
@@ -148,7 +148,7 @@ func (s *billingSuite) TestApply_KeepsOverride() {
 		ProviderSubscriptionID: "sub_1", UserID: owner, Status: StatusPastDue, Seats: 1, StoragePacks: 1, ProviderUpdatedAt: at(1),
 	}))
 	quota, stored := s.quota(owner)
-	s.Equal(int64(5100), quota.Int64)
+	s.Equal(int64(1000+100+5000), quota.Int64)
 	s.True(stored.Valid)
 	s.Equal(int64(42), stored.Int64, "billing never touches the admin override")
 
@@ -186,7 +186,7 @@ func (s *billingSuite) TestHandleEvent_DedupAndCustomerFallback() {
 	entitlement, err = s.service.Entitlement(ctx, owner)
 	s.Require().NoError(err)
 	s.True(entitlement.Paid)
-	s.Equal(int64(5), entitlement.SeatLimit)
+	s.Equal(int64(5)+testConfig.FreeSeats, entitlement.SeatLimit)
 	quota, _ := s.quota(owner)
 	s.Equal(testConfig.Entitlement(&Subscription{Status: StatusActive, Seats: 5}).QuotaBytes, quota.Int64)
 }

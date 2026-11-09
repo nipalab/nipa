@@ -27,10 +27,17 @@ func TestItemsValidate(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, IntervalYear, items.Interval)
 
-	for _, bad := range []Items{{Seats: 1, Interval: "week"}, {Seats: 0, Interval: "month"}, {Seats: 1, StoragePacks: -1, Interval: "year"}} {
+	items, err = Items{StoragePacks: 1, Interval: "month"}.Validate()
+	require.NoError(t, err, "a packs-only plan needs no paid seat")
+	require.Zero(t, items.Seats)
+
+	for _, bad := range []Items{{Seats: 1, Interval: "week"}, {Seats: -1, StoragePacks: 2, Interval: "month"}, {Seats: 1, StoragePacks: -1, Interval: "year"}} {
 		_, err := bad.Validate()
 		require.Equal(t, 400, errorCode(err))
 	}
+	_, err = Items{Interval: "month"}.Validate()
+	require.Equal(t, 400, errorCode(err))
+	require.ErrorContains(t, err, "buy at least one seat or storage pack")
 }
 
 func TestCheckout_CreatesCustomerOnce(t *testing.T) {
@@ -63,18 +70,36 @@ func TestCheckout_Refusals(t *testing.T) {
 	require.Equal(t, 409, errorCode(err), "a live subscription blocks a second checkout")
 
 	repo.live = nil
-	repo.seats = 3
-	_, err = svc.Checkout(ctx, payer, Items{Seats: 2, Interval: "month"})
-	require.Equal(t, 409, errorCode(err), "fewer seats than in use")
+	_, err = svc.Checkout(ctx, payer, Items{Interval: "month"})
+	require.Equal(t, 400, errorCode(err), "nothing to buy")
+
+	repo.seats = 5
+	_, err = svc.Checkout(ctx, payer, Items{Seats: 1, Interval: "month"})
+	require.Equal(t, 409, errorCode(err), "fewer paid seats than in use beyond the free ones")
+	require.ErrorContains(t, err, "5 seats are in use and 3 are free; buy at least 2")
+	_, err = svc.Checkout(ctx, payer, Items{StoragePacks: 1, Interval: "month"})
+	require.Equal(t, 409, errorCode(err), "packs alone do not cover extra users")
 	require.Empty(t, provider.calls)
 
-	_, err = svc.Checkout(ctx, payer, Items{Seats: 3, Interval: "month"})
+	_, err = svc.Checkout(ctx, payer, Items{Seats: 2, Interval: "month"})
 	require.Equal(t, 404, errorCode(err), "unknown user")
 
 	repo.users = map[snow.ID]*domain.BillingUser{payer: {ID: payer, Deleted: true}}
-	_, err = svc.Checkout(ctx, payer, Items{Seats: 3, Interval: "month"})
+	_, err = svc.Checkout(ctx, payer, Items{Seats: 2, Interval: "month"})
 	require.Equal(t, 404, errorCode(err), "deleted user")
 	require.Empty(t, provider.calls)
+}
+
+func TestCheckout_PacksOnlyWithinFreeSeats(t *testing.T) {
+	svc, repo, _, provider := newProviderService()
+	repo.seats = testConfig.FreeSeats
+	repo.users = map[snow.ID]*domain.BillingUser{payer: {ID: payer, Email: "pat@example.com"}}
+	provider.customerID = "ctm_1"
+	provider.checkoutID = "txn_1"
+
+	_, err := svc.Checkout(context.Background(), payer, Items{StoragePacks: 1, Interval: "month"})
+	require.NoError(t, err)
+	require.Equal(t, []Items{{StoragePacks: 1, Interval: IntervalMonth}}, provider.checkouts)
 }
 
 func TestCheckout_CustomerOwnedByAnotherUser(t *testing.T) {
@@ -140,21 +165,24 @@ func TestChangeSubscription_Refusals(t *testing.T) {
 	_, err = svc.ChangeSubscription(ctx, payer, Items{Seats: 3, Interval: "fortnight"})
 	require.Equal(t, 400, errorCode(err))
 
-	repo.seats = 4
+	_, err = svc.ChangeSubscription(ctx, payer, Items{})
+	require.Equal(t, 400, errorCode(err), "zero seats and packs")
+
+	repo.seats = 7
 	_, err = svc.ChangeSubscription(ctx, payer, Items{Seats: 3})
 	require.Equal(t, 409, errorCode(err), "fewer seats than in use")
 
-	ledger.used = 4*testConfig.SeatIncludedBytes + 1
+	ledger.used = testConfig.FreeQuotaBytes + 4*testConfig.SeatIncludedBytes
 	_, err = svc.ChangeSubscription(ctx, payer, Items{Seats: 4})
-	require.NoError(t, err, "the free quota floor still covers the usage")
+	require.NoError(t, err, "free plus seat storage covers the usage")
 
-	ledger.used = testConfig.FreeQuotaBytes + 1
+	ledger.used = testConfig.FreeQuotaBytes + 4*testConfig.SeatIncludedBytes + 1
 	_, err = svc.ChangeSubscription(ctx, payer, Items{Seats: 4})
 	require.Equal(t, 409, errorCode(err), "usage above the new quota")
 	require.Len(t, provider.updates, 1)
 
 	unlimited := New(repo, ledger, &stubTx{}, Config{FreeSeats: 1}).WithProvider(provider)
-	_, err = unlimited.ChangeSubscription(ctx, payer, Items{Seats: 4})
+	_, err = unlimited.ChangeSubscription(ctx, payer, Items{Seats: 6})
 	require.NoError(t, err, "a zero free quota is unlimited, so usage never blocks")
 }
 
@@ -228,7 +256,8 @@ func TestSummary(t *testing.T) {
 	require.Equal(t, PlanTeam, summary.Plan)
 	require.Equal(t, StatusActive, summary.Status)
 	require.Equal(t, IntervalYear, summary.Interval)
-	require.Equal(t, int64(4), summary.SeatLimit)
+	require.Equal(t, repo.live.Seats+testConfig.FreeSeats, summary.SeatLimit)
+	require.Equal(t, int64(7), summary.SeatLimit)
 	require.Equal(t, repo.live.Seats, summary.Seats)
 	require.Equal(t, int64(1), summary.StoragePacks)
 	require.Equal(t, repo.live.CurrentPeriodEnd, summary.CurrentPeriodEnd)

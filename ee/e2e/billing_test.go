@@ -210,10 +210,10 @@ func TestEnterpriseBillingPaddleSmoke(t *testing.T) {
 	require.Equal(t, "team", me["plan"])
 	require.Equal(t, "active", me["status"])
 	require.Equal(t, "month", me["interval"])
-	require.Equal(t, float64(paidSeats), me["seat_limit"])
+	require.Equal(t, float64(paidSeats+1), me["seat_limit"], "paid seats come on top of the free one")
 	require.Equal(t, float64(paidSeats), me["seats"])
 	require.Equal(t, float64(1), me["storage_packs"])
-	require.Equal(t, float64(paidSeats*billingSeatBytes+billingPackBytes), me["quota_bytes"])
+	require.Equal(t, float64(billingFreeQuota+paidSeats*billingSeatBytes+billingPackBytes), me["quota_bytes"])
 
 	newUser := func(name string) snow.ID {
 		t.Helper()
@@ -244,10 +244,10 @@ func TestEnterpriseBillingPaddleSmoke(t *testing.T) {
 	}
 	canceledEntry, activatedEntry := applied[0]["metadata"].(map[string]any), applied[1]["metadata"].(map[string]any)
 	require.Equal(t, "evt_act_"+suffix, activatedEntry["event_id"])
-	require.Equal(t, float64(paidSeats*billingSeatBytes+billingPackBytes), activatedEntry["new"].(map[string]any)["quota_bytes"])
+	require.Equal(t, float64(billingFreeQuota+paidSeats*billingSeatBytes+billingPackBytes), activatedEntry["new"].(map[string]any)["quota_bytes"])
 	require.Equal(t, "evt_can_"+suffix, canceledEntry["event_id"])
 	require.Equal(t, "active", canceledEntry["old"].(map[string]any)["status"])
-	require.Equal(t, float64(paidSeats*billingSeatBytes+billingPackBytes), canceledEntry["old"].(map[string]any)["quota_bytes"])
+	require.Equal(t, float64(billingFreeQuota+paidSeats*billingSeatBytes+billingPackBytes), canceledEntry["old"].(map[string]any)["quota_bytes"])
 	require.Equal(t, "canceled", canceledEntry["new"].(map[string]any)["status"])
 	require.Equal(t, float64(billingFreeQuota), canceledEntry["new"].(map[string]any)["quota_bytes"])
 	checkouts := billingAudit(rest, domain.AuditBillingCheckoutStarted, snow.ID(1).Base36())

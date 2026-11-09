@@ -921,14 +921,16 @@ per-owner `pg_advisory_xact_lock` (`LockOwner`, own key namespace), admit
 users that already hold a seat (`IsSeat`), otherwise count seats
 (`CountSeats`: distinct non-deleted users reached through `org_members`,
 `group_members` of non-deleted groups and user `pbac_rules` of the owner's
-non-deleted orgs, owner included) against the live subscription's seat
-limit or `BILLING_FREE_SEATS`, and refuse with a 402 `seat limit reached`.
+non-deleted orgs, owner included) against the seat limit (live
+subscription's paid seats + `BILLING_FREE_SEATS`: the first free seats come
+with every plan; `BILLING_FREE_SEATS` alone without one), and refuse with a
+402 `seat limit reached`.
 `Service.Apply` takes a provider-neutral `domain.BillingSubscription`,
 upserts it by `provider_subscription_id` only when `provider_updated_at` is
 newer, and recomputes `quota_bytes` from the live subscription
 (`active|trialing|past_due`, newest update) with
-`entitlement.go` (`max(free, seats*seat_bytes + packs*pack_bytes)`,
-saturating); it never touches `override_bytes`. `internal/config` carries
+`entitlement.go` (`free + seats*seat_bytes + packs*pack_bytes`, 0 free =
+unlimited, saturating); it never touches `override_bytes`. `internal/config` carries
 `BILLING_PROVIDER` (`off` default), `PADDLE_*` and `BILLING_*` keys with
 `ValidateBilling` (every key, `SAAS_MODE=1`, the ledger, free seats ≥ 1,
 bytes > 0); `ee/cmd/nipad/billing.go` (`buildBilling`) wires nothing with
@@ -938,25 +940,28 @@ bytes > 0); `ee/cmd/nipad/billing.go` (`buildBilling`) wires nothing with
 (`ee/billing/provider.go`: `EnsureCustomer`, `CreateCheckout`,
 `UpdateSubscription`, `Get/ListSubscriptions`, `PortalURL`, `ParseWebhook`,
 `DecodeEvent`, `EventSubscription`; `Items{seats, storage_packs, interval
-month|year}`, price ids always come from config). `ee/billing/paddle`
+month|year}`, seats = paid seats, `Validate` needs seats + packs ≥ 1, price
+ids always come from config). `ee/billing/paddle`
 implements it over the Paddle Billing REST API (`sandbox-api.paddle.com` /
 `api.paddle.com` by `PADDLE_ENVIRONMENT`, bearer key, 15 s timeout):
 `POST /customers` (a `customer_already_exists` 409 adopts the `ctm_` id from
 the error detail, else `GET /customers?email=`), `POST /transactions` with
-`custom_data.user_id` (base36), `PATCH /subscriptions/{id}`
+`custom_data.user_id` (base36; seat/storage items only for a non-zero
+quantity), `PATCH /subscriptions/{id}`
 (`prorated_immediately`, `on_payment_failure: prevent_change`, full item list),
 `GET /subscriptions?customer_id=` (cursor `after`), `POST
 /customers/{id}/portal-sessions` (`urls.general.overview`). Mapping: seats and
 packs are the quantities of the configured seat/storage prices, the interval
-is the matched price's, an unknown price or mixed intervals is an error,
+is the matched price's, an unknown price, mixed intervals or no items is an
+error (packs-only maps to 0 seats),
 `cancel_at_period_end` = `scheduled_change.action == "cancel"`. Paddle 409s and
 `subscription_locked*`/`subscription_update_when*` codes become 409, the rest
 502 (detail internal, never the key). Webhooks verify `Paddle-Signature`
 (`ts=…;h1=…`, HMAC-SHA256 over `ts:rawBody`, any `h1`, 5 min tolerance;
 `paddle.Sign` builds one for tests). `Service`: `Checkout` (409 with a live
-subscription or fewer seats than used; customer stored in `billing_accounts`
-once), `ChangeSubscription` (404 without a live subscription, 409 below seats
-used or used bytes, applies the PATCH answer immediately), `Portal`,
+subscription or when paid seats < seats used − free seats; customer stored in
+`billing_accounts` once), `ChangeSubscription` (404 without a live
+subscription, 409 for the same seat rule or below used bytes, applies the PATCH answer immediately), `Portal`,
 `Summary`, `Sync`, `HandleEvent` (stores `billing_events` first, a
 processed/failed duplicate is a no-op, an unfinished one is retried; user from
 `billing_accounts.provider_customer_id` (`custom_data` must match it, unknown customers are rejected, upserts never change `user_id`); 4xx outcomes such
@@ -972,7 +977,7 @@ is its own WebService (`billing.WebhookService` through
 /admin/billing/owners/{user}/sync` and `POST
 /admin/billing/events/{id}/replay`; `GET /billing/me` stays in
 `ee/storageusage` and merges `storageusage.BillingSummary` (plan, status,
-interval, seats (subscribed quantity), seats_used, seat_limit, storage_packs,
+interval, seats (paid quantity), seats_used, seat_limit (paid + free), storage_packs,
 current_period_end, cancel_at_period_end) through `RoutesConfig.Billing` only when set;
 `registration.WithBilling` adds `billing: {provider, environment,
 client_token, prices}` to `GET /api/v1/auth/capabilities`. The `ee/e2e`

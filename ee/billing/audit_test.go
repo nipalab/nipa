@@ -74,7 +74,7 @@ func TestAudit_ApplyFromWebhookUsesTheProviderActor(t *testing.T) {
 	newMeta := entry.Metadata["new"].(map[string]any)
 	require.Equal(t, StatusActive, newMeta["status"])
 	require.Equal(t, int64(5), newMeta["seats"])
-	require.Equal(t, testConfig.Entitlement(&Subscription{Status: StatusActive, Seats: 5}).QuotaBytes, newMeta["quota_bytes"])
+	require.Equal(t, testConfig.Entitlement(repo.live).QuotaBytes, newMeta["quota_bytes"], "the stub keeps serving the stored live row")
 
 	require.NoError(t, svc.HandleEvent(context.Background(), activatedEvent("evt_1")))
 	require.Len(t, rec.entries, 1, "a duplicate delivery records nothing")

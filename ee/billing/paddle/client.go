@@ -230,7 +230,10 @@ func (c *Client) itemList(items billing.Items) ([]itemRequest, error) {
 	if items.Interval == billing.IntervalYear {
 		seat, storage = c.prices.SeatYearly, c.prices.StorageYearly
 	}
-	list := []itemRequest{{PriceID: seat, Quantity: items.Seats}}
+	var list []itemRequest
+	if items.Seats > 0 {
+		list = append(list, itemRequest{PriceID: seat, Quantity: items.Seats})
+	}
 	if items.StoragePacks > 0 {
 		list = append(list, itemRequest{PriceID: storage, Quantity: items.StoragePacks})
 	}
