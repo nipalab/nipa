@@ -991,7 +991,8 @@ is its own WebService (`billing.WebhookService` through
 interval, seats (paid quantity), seats_used, seat_limit (paid + free), storage_packs,
 current_period_end, cancel_at_period_end) through `RoutesConfig.Billing` only when set;
 `registration.WithBilling` adds `billing: {provider, environment,
-client_token, prices}` to `GET /api/v1/auth/capabilities`. The `ee/e2e`
+client_token, prices, free_seats, free_quota_bytes, seat_included_bytes,
+storage_pack_bytes}` to `GET /api/v1/auth/capabilities`. The `ee/e2e`
 smoke (`TestEnterpriseBillingPaddleSmoke`) drives signed fake events against a
 fake Paddle. The SPA side is the `/settings/billing` plan card and editor (see
 Web UI below).
@@ -1622,7 +1623,8 @@ compatible for one release.
   delete, ref-picker tab).
 - Billing (`docs/BILLING.md`): `BillingPage` + `components/BillingPlan.tsx`
   show the plan card and editor only when `GET /auth/capabilities` carries
-  `billing`; `web/src/billing/paddle.ts` injects Paddle.js v2 from
+  `billing`, the editor showing the storage each seat/pack adds and the plan
+  total (`web/src/billing/entitlement.ts`); `web/src/billing/paddle.ts` injects Paddle.js v2 from
   `cdn.paddle.com` on demand (once per page, `Environment.set("sandbox")`
   before `Initialize`, events fanned out through `subscribePaddleEvents`,
   `previewPrices` over `PricePreview`) and is mocked in tests. Checkout opens

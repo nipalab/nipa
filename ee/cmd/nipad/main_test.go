@@ -34,7 +34,7 @@ func paddleConfig() *config.Config {
 		BillingProvider: "paddle", SaaSMode: true, PaddleEnvironment: " Sandbox ",
 		PaddleAPIKey: "k", PaddleWebhookSecret: "s", PaddleClientToken: "t",
 		PaddlePriceSeatMonthly: "a", PaddlePriceSeatYearly: "b", PaddlePriceStorageMonthly: "c", PaddlePriceStorageYearly: "d",
-		BillingFreeSeats: 1, BillingSeatIncludedBytes: 1, BillingStoragePackBytes: 1,
+		BillingFreeSeats: 3, BillingSeatIncludedBytes: 50, BillingStoragePackBytes: 100, SaasFreeQuotaBytes: 10,
 	}
 }
 
@@ -63,6 +63,7 @@ func TestBuildBilling(t *testing.T) {
 			Seat:    registration.IntervalPrices{Monthly: "a", Yearly: "b"},
 			Storage: registration.IntervalPrices{Monthly: "c", Yearly: "d"},
 		},
+		FreeSeats: 3, FreeQuotaBytes: 10, SeatIncludedBytes: 50, StoragePackBytes: 100,
 	}, setup.capabilitiesOrNil())
 }
 

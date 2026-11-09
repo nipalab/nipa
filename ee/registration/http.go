@@ -22,12 +22,18 @@ type Handler struct {
 }
 
 // BillingCapabilities tells the SPA which billing provider runs and which
-// prices it may preview. Price ids and the client token are public by design.
+// prices it may preview, plus the entitlement sizes the plan editor shows.
+// Price ids and the client token are public by design.
 type BillingCapabilities struct {
 	Provider    string        `json:"provider"`
 	Environment string        `json:"environment"`
 	ClientToken string        `json:"client_token"`
 	Prices      BillingPrices `json:"prices"`
+
+	FreeSeats         int64 `json:"free_seats"`
+	FreeQuotaBytes    int64 `json:"free_quota_bytes"`
+	SeatIncludedBytes int64 `json:"seat_included_bytes"`
+	StoragePackBytes  int64 `json:"storage_pack_bytes"`
 }
 
 type BillingPrices struct {

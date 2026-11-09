@@ -43,7 +43,7 @@ export default function BillingPage() {
 
         {summary && billingConfig && (
           <>
-            <PlanCard summary={summary} />
+            <PlanCard summary={summary} config={billingConfig} />
             <PlanEditor key={planKey(summary)} summary={summary} config={billingConfig} onChanged={reload} />
           </>
         )}

@@ -33,6 +33,10 @@ export interface BillingCapabilities {
     seat: BillingIntervalPrices
     storage: BillingIntervalPrices
   }
+  free_seats?: number
+  free_quota_bytes?: number
+  seat_included_bytes?: number
+  storage_pack_bytes?: number
 }
 
 export interface OnboardingCapabilities {

@@ -118,12 +118,14 @@ func TestCapabilitiesReportsBilling(t *testing.T) {
 			Seat:    IntervalPrices{Monthly: "pri_sm", Yearly: "pri_sy"},
 			Storage: IntervalPrices{Monthly: "pri_stm", Yearly: "pri_sty"},
 		},
+		FreeSeats: 3, FreeQuotaBytes: 10, SeatIncludedBytes: 50, StoragePackBytes: 100,
 	})
 	resp, body := server.do(t, http.MethodGet, "/api/v1/auth/capabilities", "")
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.JSONEq(t, `{"registration": true, "providers": [], "billing": {
 		"provider": "paddle", "environment": "sandbox", "client_token": "test_token",
-		"prices": {"seat": {"monthly": "pri_sm", "yearly": "pri_sy"}, "storage": {"monthly": "pri_stm", "yearly": "pri_sty"}}}}`, body)
+		"prices": {"seat": {"monthly": "pri_sm", "yearly": "pri_sy"}, "storage": {"monthly": "pri_stm", "yearly": "pri_sty"}},
+		"free_seats": 3, "free_quota_bytes": 10, "seat_included_bytes": 50, "storage_pack_bytes": 100}}`, body)
 }
 
 func TestRegisterEndpoint(t *testing.T) {

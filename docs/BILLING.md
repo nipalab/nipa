@@ -199,9 +199,12 @@ on, `plan` (`free` without a live subscription, otherwise `team`), `status`,
 
 `GET /api/v1/auth/capabilities` (owned by `ee/registration`) carries
 `billing: {provider, environment, client_token, prices: {seat: {monthly,
-yearly}, storage: {monthly, yearly}}}` when billing is on, and omits it
+yearly}, storage: {monthly, yearly}}, free_seats, free_quota_bytes,
+seat_included_bytes, storage_pack_bytes}` when billing is on, and omits it
 otherwise. Price ids and the client token are public by design; the SPA needs
-them for Paddle.js price previews.
+them for Paddle.js price previews. The four sizes (`BILLING_FREE_SEATS`,
+`SAAS_FREE_QUOTA_BYTES`, `BILLING_SEAT_INCLUDED_BYTES`,
+`BILLING_STORAGE_PACK_BYTES`) let the editor show what a plan includes.
 
 ## Webhooks
 
@@ -287,9 +290,14 @@ blue/green colors must use the same values.
 capabilities carries `billing` and `/billing/me` carries `plan`, it adds:
 
 - a plan card (plan, status, interval, "Renews on" or "Cancels on", seats used
-  of the limit, storage packs, a "Payment past due" warning),
-- an editor with paid-seat and storage-pack steppers (free seats are derived
-  as `seat_limit - seats` on a paid plan and `seat_limit` on free; paid seats
+  of the limit, storage packs, included storage on a paid plan, a "Payment
+  past due" warning),
+- an editor with paid-seat and storage-pack steppers (free seats come from
+  capabilities `free_seats`, falling back to `seat_limit - seats` on a paid
+  plan and `seat_limit` on free for older servers; each row shows the storage
+  a seat or pack adds and a "Your plan" row totals users and storage, mirroring
+  `Config.Entitlement` with "Unlimited" when `free_quota_bytes` is 0
+  (`web/src/billing/entitlement.ts`); paid seats
   never below the seats in use minus the free seats; the button is disabled at
   0 seats and 0 packs), a monthly/yearly toggle and a price preview from
   `Paddle.PricePreview` with the configured price ids (a fallback note when the
