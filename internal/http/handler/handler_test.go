@@ -395,6 +395,8 @@ func TestHandler_AuthRefreshToken_Expired(t *testing.T) {
 
 	require.NoError(t, authRepo.SaveRefreshToken(
 		context.Background(), userID, "expired-refresh-token", time.Now().Add(-time.Hour)))
+	require.NoError(t, authRepo.SaveRefreshToken(
+		context.Background(), userID, "login-on-other-device", time.Now().Add(time.Hour)))
 
 	appCtx := &fakeAppContext{
 		body:    []byte(`{}`),

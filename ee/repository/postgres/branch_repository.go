@@ -231,6 +231,18 @@ func (b *BranchRepository) GetCommit(ctx context.Context, commitID snow.ID) (*do
 	return commitToDomain(row), nil
 }
 
+func (b *BranchRepository) CommitAncestors(ctx context.Context, projectID, startID snow.ID, limit int) ([]*domain.Commit, error) {
+	rows, err := b.queries.CommitAncestors(ctx, sqlcPostgres.CommitAncestorsParams{
+		ProjectID:     projectID.Int64(),
+		StartCommitID: startID.Int64(),
+		Limit:         int64(limit),
+	})
+	if err != nil {
+		return nil, handleError(err)
+	}
+	return slices.Map(rows, commitToDomain), nil
+}
+
 func (b *BranchRepository) GetCommitByHash(ctx context.Context, projectID snow.ID, hash domain.Hash) (*domain.Commit, error) {
 	row, err := b.queries.CommitGetByHash(ctx, sqlcPostgres.CommitGetByHashParams{ProjectID: projectID.Int64(), Hash: hash.Bytes()})
 	if err != nil {

@@ -73,7 +73,7 @@ func (s *stubMergeRequestRepository) AddAssignee(_ context.Context, _ int64, id 
 	return nil
 }
 
-func (s *stubMergeRequestRepository) ListAssignees(_ context.Context, _ snow.ID) (map[int64][]domain.ReviewActor, error) {
+func (s *stubMergeRequestRepository) ListAssignees(_ context.Context, _ snow.ID, _ []int64) (map[int64][]domain.ReviewActor, error) {
 	return nil, nil
 }
 

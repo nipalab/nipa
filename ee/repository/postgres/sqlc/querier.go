@@ -40,6 +40,7 @@ type Querier interface {
 	ChunkListByHashesForProject(ctx context.Context, arg ChunkListByHashesForProjectParams) ([]ChunkListByHashesForProjectRow, error)
 	ChunkListByTree(ctx context.Context, treeID int64) ([]ChunkListByTreeRow, error)
 	ClearOwnerQuotaOverride(ctx context.Context, userID int64) error
+	CommitAncestors(ctx context.Context, arg CommitAncestorsParams) ([]Commit, error)
 	CommitGet(ctx context.Context, id int64) (Commit, error)
 	CommitGetByHash(ctx context.Context, arg CommitGetByHashParams) (Commit, error)
 	CommitInsert(ctx context.Context, arg CommitInsertParams) error
@@ -125,7 +126,7 @@ type Querier interface {
 	MarkBillingEventProcessed(ctx context.Context, eventID string) error
 	MergeRequestAssigneeAdd(ctx context.Context, arg MergeRequestAssigneeAddParams) error
 	MergeRequestAssigneeClear(ctx context.Context, mergeRequestID int64) error
-	MergeRequestAssigneeList(ctx context.Context, projectID int64) ([]MergeRequestAssigneeListRow, error)
+	MergeRequestAssigneeList(ctx context.Context, arg MergeRequestAssigneeListParams) ([]MergeRequestAssigneeListRow, error)
 	MergeRequestAssigneeListByMergeRequest(ctx context.Context, mergeRequestID int64) ([]MergeRequestAssigneeListByMergeRequestRow, error)
 	MergeRequestCheckList(ctx context.Context, arg MergeRequestCheckListParams) ([]MergeRequestCheckListRow, error)
 	MergeRequestCheckUpsert(ctx context.Context, arg MergeRequestCheckUpsertParams) (MergeRequestCheck, error)
@@ -161,7 +162,7 @@ type Querier interface {
 	MergeRequestReviewRequestList(ctx context.Context, mergeRequestID int64) ([]MergeRequestReviewRequestListRow, error)
 	MergeRequestReviewStaleList(ctx context.Context, arg MergeRequestReviewStaleListParams) ([]MergeRequestReview, error)
 	// Aggregates the live review decisions per merge request for the list view.
-	MergeRequestReviewSummary(ctx context.Context, projectID int64) ([]MergeRequestReviewSummaryRow, error)
+	MergeRequestReviewSummary(ctx context.Context, arg MergeRequestReviewSummaryParams) ([]MergeRequestReviewSummaryRow, error)
 	MergeRequestReviewUpsert(ctx context.Context, arg MergeRequestReviewUpsertParams) (MergeRequestReview, error)
 	MergeRequestSetDraft(ctx context.Context, arg MergeRequestSetDraftParams) (MergeRequest, error)
 	MergeRequestThreadCreate(ctx context.Context, arg MergeRequestThreadCreateParams) (MergeRequestThread, error)
@@ -210,6 +211,7 @@ type Querier interface {
 	RefreshTokenCreate(ctx context.Context, arg RefreshTokenCreateParams) (int64, error)
 	RefreshTokenDeleteByToken(ctx context.Context, token string) (RefreshToken, error)
 	RefreshTokenDeleteByUser(ctx context.Context, userID int64) error
+	RefreshTokenDeleteExpiredByUser(ctx context.Context, arg RefreshTokenDeleteExpiredByUserParams) error
 	SSHKeyCountByUser(ctx context.Context, userID int64) (int64, error)
 	SSHKeyCreate(ctx context.Context, arg SSHKeyCreateParams) (SshPublicKey, error)
 	SSHKeyDelete(ctx context.Context, arg SSHKeyDeleteParams) (int64, error)

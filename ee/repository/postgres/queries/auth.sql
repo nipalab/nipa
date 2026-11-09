@@ -20,3 +20,6 @@ RETURNING *;
 
 -- name: RefreshTokenDeleteByUser :exec
 DELETE FROM refresh_tokens WHERE user_id = sqlc.arg(user_id);
+
+-- name: RefreshTokenDeleteExpiredByUser :exec
+DELETE FROM refresh_tokens WHERE user_id = sqlc.arg(user_id) AND expires_at < sqlc.arg(expires_at);

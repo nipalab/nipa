@@ -161,6 +161,36 @@ func (s *BillingRepositorySuite) TestSeats_FollowBillingOwnerMapping() {
 	s.True(s.isSeat(payer, payer))
 }
 
+func (s *BillingRepositorySuite) TestSeats_OwnerOrgsMappedUnmappedAndDeleted() {
+	creator := s.user("creator")
+	payer := s.user("payer")
+	mapped := s.org(creator)
+	unmapped := s.org(creator)
+	mappedMember := s.user("mapped-member")
+	unmappedMember := s.user("unmapped-member")
+	s.member(mapped, mappedMember)
+	s.member(unmapped, unmappedMember)
+	s.exec(`INSERT INTO org_billing_owner (org_id, user_id) VALUES ($1, $2)`, mapped.Int64(), payer.Int64())
+
+	s.Equal(int64(2), s.seats(creator), "the creator only keeps the unmapped org")
+	s.True(s.isSeat(creator, unmappedMember))
+	s.False(s.isSeat(creator, mappedMember))
+	s.Equal(int64(3), s.seats(payer), "the payer, the creator and the mapped member")
+	s.True(s.isSeat(payer, mappedMember))
+	s.True(s.isSeat(payer, creator))
+	s.False(s.isSeat(payer, unmappedMember))
+
+	s.exec(`UPDATE organizations SET deleted = true, deleted_at = now() WHERE id = $1`, mapped.Int64())
+	s.Equal(int64(1), s.seats(payer), "a deleted mapped org no longer counts")
+	s.False(s.isSeat(payer, mappedMember))
+	s.Equal(int64(2), s.seats(creator), "a deleted mapped org does not fall back to its creator")
+	s.False(s.isSeat(creator, mappedMember))
+
+	s.exec(`UPDATE organizations SET deleted = true, deleted_at = now() WHERE id = $1`, unmapped.Int64())
+	s.Equal(int64(1), s.seats(creator))
+	s.False(s.isSeat(creator, unmappedMember))
+}
+
 func (s *BillingRepositorySuite) TestSubscriptions_NewerWinsAndLiveSelection() {
 	ctx := context.Background()
 	owner := s.user("owner")

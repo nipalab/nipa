@@ -16,8 +16,8 @@ import (
 //
 // Every method takes the merge request row id (merge_requests.id, the
 // domain.MergeRequest.ID), not its per-project number, because that is what the
-// review tables reference. ReviewSummaries is the exception: it aggregates for a
-// whole project and is therefore keyed by merge request number, and it leaves
+// review tables reference. ReviewSummaries is the exception: it aggregates a page of
+// merge request numbers and is therefore keyed by them, and it leaves
 // merge requests out that carry no live decision.
 type MergeRequestReviewRepository struct {
 	queries *sqlcSqlite.Queries
@@ -129,11 +129,17 @@ func (r *MergeRequestReviewRepository) StaleReviews(ctx context.Context, mergeRe
 	return reviews, nil
 }
 
-// ReviewSummaries aggregates the live review decisions of a project's merge
-// requests, keyed by merge request number. Reviews given for a head other than
+// ReviewSummaries aggregates the live review decisions of the given merge
+// requests of a project, keyed by merge request number. Reviews given for a head other than
 // the current source head are excluded, matching the read-time staleness rule.
-func (r *MergeRequestReviewRepository) ReviewSummaries(ctx context.Context, projectID snow.ID) (map[int64]*domain.MergeRequestReviewState, error) {
-	rows, err := r.queries.MergeRequestReviewSummary(ctx, projectID.Int64())
+func (r *MergeRequestReviewRepository) ReviewSummaries(ctx context.Context, projectID snow.ID, numbers []int64) (map[int64]*domain.MergeRequestReviewState, error) {
+	if len(numbers) == 0 {
+		return map[int64]*domain.MergeRequestReviewState{}, nil
+	}
+	rows, err := r.queries.MergeRequestReviewSummary(ctx, sqlcSqlite.MergeRequestReviewSummaryParams{
+		ProjectID: projectID.Int64(),
+		Numbers:   numbers,
+	})
 	if err != nil {
 		return nil, handleError(err)
 	}

@@ -134,8 +134,14 @@ func (r *MergeRequestRepository) RecordMerge(ctx context.Context, projectID snow
 	return handleError(err)
 }
 
-func (r *MergeRequestRepository) ListAssignees(ctx context.Context, projectID snow.ID) (map[int64][]domain.ReviewActor, error) {
-	rows, err := r.queries.MergeRequestAssigneeList(ctx, projectID.Int64())
+func (r *MergeRequestRepository) ListAssignees(ctx context.Context, projectID snow.ID, numbers []int64) (map[int64][]domain.ReviewActor, error) {
+	if len(numbers) == 0 {
+		return map[int64][]domain.ReviewActor{}, nil
+	}
+	rows, err := r.queries.MergeRequestAssigneeList(ctx, sqlcPostgres.MergeRequestAssigneeListParams{
+		ProjectID: projectID.Int64(),
+		Numbers:   numbers,
+	})
 	if err != nil {
 		return nil, handleError(err)
 	}

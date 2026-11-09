@@ -13,10 +13,12 @@ SELECT * FROM audit_log
 WHERE (sqlc.narg('actor_user_id') IS NULL OR actor_user_id = sqlc.narg('actor_user_id'))
   AND (sqlc.narg('org_id') IS NULL OR org_id = sqlc.narg('org_id'))
   AND (sqlc.narg('project_id') IS NULL OR project_id = sqlc.narg('project_id'))
-  AND (sqlc.narg('action_prefix') IS NULL OR substr(action, 1, length(sqlc.narg('action_prefix'))) = sqlc.narg('action_prefix'))
+  AND (sqlc.narg('action_prefix') IS NULL OR (action >= sqlc.narg('action_prefix') AND action < sqlc.narg('action_prefix') || char(1114111)))
   AND (sqlc.narg('target_id') IS NULL OR target_id = sqlc.narg('target_id'))
   AND (sqlc.narg('since') IS NULL OR occurred_at >= sqlc.narg('since'))
   AND (sqlc.narg('until') IS NULL OR occurred_at < sqlc.narg('until'))
+  AND (sqlc.narg('min_id') IS NULL OR id >= sqlc.narg('min_id'))
+  AND (sqlc.narg('max_id') IS NULL OR id < sqlc.narg('max_id'))
   AND (sqlc.narg('after') IS NULL OR id < sqlc.narg('after'))
 ORDER BY id DESC
 LIMIT sqlc.arg('limit');

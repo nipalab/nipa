@@ -64,13 +64,15 @@ SELECT id, occurred_at, actor_type, actor_user_id, actor_label, "action", org_id
 WHERE (?1 IS NULL OR actor_user_id = ?1)
   AND (?2 IS NULL OR org_id = ?2)
   AND (?3 IS NULL OR project_id = ?3)
-  AND (?4 IS NULL OR substr(action, 1, length(?4)) = ?4)
+  AND (?4 IS NULL OR (action >= ?4 AND action < ?4 || char(1114111)))
   AND (?5 IS NULL OR target_id = ?5)
   AND (?6 IS NULL OR occurred_at >= ?6)
   AND (?7 IS NULL OR occurred_at < ?7)
-  AND (?8 IS NULL OR id < ?8)
+  AND (?8 IS NULL OR id >= ?8)
+  AND (?9 IS NULL OR id < ?9)
+  AND (?10 IS NULL OR id < ?10)
 ORDER BY id DESC
-LIMIT ?9
+LIMIT ?11
 `
 
 type AuditLogListParams struct {
@@ -81,6 +83,8 @@ type AuditLogListParams struct {
 	TargetID     interface{} `json:"target_id"`
 	Since        interface{} `json:"since"`
 	Until        interface{} `json:"until"`
+	MinID        interface{} `json:"min_id"`
+	MaxID        interface{} `json:"max_id"`
 	After        interface{} `json:"after"`
 	Limit        int64       `json:"limit"`
 }
@@ -94,6 +98,8 @@ func (q *Queries) AuditLogList(ctx context.Context, arg AuditLogListParams) ([]A
 		arg.TargetID,
 		arg.Since,
 		arg.Until,
+		arg.MinID,
+		arg.MaxID,
 		arg.After,
 		arg.Limit,
 	)

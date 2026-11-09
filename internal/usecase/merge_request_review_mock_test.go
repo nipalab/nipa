@@ -337,18 +337,18 @@ func (mr *MockmergeRequestReviewRepositoryMockRecorder) ListThreads(ctx, mergeRe
 }
 
 // ReviewSummaries mocks base method.
-func (m *MockmergeRequestReviewRepository) ReviewSummaries(ctx context.Context, projectID snow.ID) (map[int64]*domain.MergeRequestReviewState, error) {
+func (m *MockmergeRequestReviewRepository) ReviewSummaries(ctx context.Context, projectID snow.ID, numbers []int64) (map[int64]*domain.MergeRequestReviewState, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ReviewSummaries", ctx, projectID)
+	ret := m.ctrl.Call(m, "ReviewSummaries", ctx, projectID, numbers)
 	ret0, _ := ret[0].(map[int64]*domain.MergeRequestReviewState)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ReviewSummaries indicates an expected call of ReviewSummaries.
-func (mr *MockmergeRequestReviewRepositoryMockRecorder) ReviewSummaries(ctx, projectID any) *gomock.Call {
+func (mr *MockmergeRequestReviewRepositoryMockRecorder) ReviewSummaries(ctx, projectID, numbers any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReviewSummaries", reflect.TypeOf((*MockmergeRequestReviewRepository)(nil).ReviewSummaries), ctx, projectID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReviewSummaries", reflect.TypeOf((*MockmergeRequestReviewRepository)(nil).ReviewSummaries), ctx, projectID, numbers)
 }
 
 // SetThreadResolved mocks base method.

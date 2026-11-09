@@ -8,6 +8,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"strings"
 	"time"
 )
 
@@ -45,8 +46,14 @@ FROM merge_request_assignees a
 JOIN merge_requests mr ON mr.id = a.merge_request_id
 JOIN users u ON u.id = a.user_id
 WHERE mr.project_id = ?1
+  AND mr.number IN (/*SLICE:numbers*/?)
 ORDER BY mr.number, u.id
 `
+
+type MergeRequestAssigneeListParams struct {
+	ProjectID int64   `json:"project_id"`
+	Numbers   []int64 `json:"numbers"`
+}
 
 type MergeRequestAssigneeListRow struct {
 	MergeRequestNumber int64          `json:"merge_request_number"`
@@ -55,8 +62,19 @@ type MergeRequestAssigneeListRow struct {
 	UserPhotoUrl       sql.NullString `json:"user_photo_url"`
 }
 
-func (q *Queries) MergeRequestAssigneeList(ctx context.Context, projectID int64) ([]MergeRequestAssigneeListRow, error) {
-	rows, err := q.db.QueryContext(ctx, mergeRequestAssigneeList, projectID)
+func (q *Queries) MergeRequestAssigneeList(ctx context.Context, arg MergeRequestAssigneeListParams) ([]MergeRequestAssigneeListRow, error) {
+	query := mergeRequestAssigneeList
+	var queryParams []interface{}
+	queryParams = append(queryParams, arg.ProjectID)
+	if len(arg.Numbers) > 0 {
+		for _, v := range arg.Numbers {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:numbers*/?", strings.Repeat(",?", len(arg.Numbers))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:numbers*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
 		return nil, err
 	}

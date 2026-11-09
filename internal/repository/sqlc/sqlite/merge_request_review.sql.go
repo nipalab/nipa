@@ -8,6 +8,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"strings"
 	"time"
 )
 
@@ -702,11 +703,17 @@ FROM merge_request_reviews r
 JOIN merge_requests mr ON mr.id = r.merge_request_id
 LEFT JOIN branches b ON b.id = mr.source_branch_id AND b.deleted = FALSE
 WHERE mr.project_id = ?1
+  AND mr.number IN (/*SLICE:numbers*/?)
   AND r.dismissed_at IS NULL
   AND r.state != 'commented'
   AND r.head_commit_id = COALESCE(b.commit_id, r.head_commit_id)
 GROUP BY mr.number, b.commit_id, r.state
 `
+
+type MergeRequestReviewSummaryParams struct {
+	ProjectID int64   `json:"project_id"`
+	Numbers   []int64 `json:"numbers"`
+}
 
 type MergeRequestReviewSummaryRow struct {
 	MergeRequestNumber int64         `json:"merge_request_number"`
@@ -719,8 +726,19 @@ type MergeRequestReviewSummaryRow struct {
 // The head comparison mirrors the read-time staleness rule the usecase applies
 // to individual reviews: a decision given for a head other than the current
 // source branch head no longer counts.
-func (q *Queries) MergeRequestReviewSummary(ctx context.Context, projectID int64) ([]MergeRequestReviewSummaryRow, error) {
-	rows, err := q.db.QueryContext(ctx, mergeRequestReviewSummary, projectID)
+func (q *Queries) MergeRequestReviewSummary(ctx context.Context, arg MergeRequestReviewSummaryParams) ([]MergeRequestReviewSummaryRow, error) {
+	query := mergeRequestReviewSummary
+	var queryParams []interface{}
+	queryParams = append(queryParams, arg.ProjectID)
+	if len(arg.Numbers) > 0 {
+		for _, v := range arg.Numbers {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:numbers*/?", strings.Repeat(",?", len(arg.Numbers))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:numbers*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
 		return nil, err
 	}

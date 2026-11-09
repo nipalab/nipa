@@ -56,7 +56,7 @@ func TestMergeRequest_List_Errors(t *testing.T) {
 		mr, repo, _, perm, _ := newTestMergeRequest(t)
 		perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
 		repo.EXPECT().List(gomock.Any(), snow.ID(1), gomock.Any()).Return([]*domain.MergeRequest{openMergeRequest()}, nil)
-		repo.EXPECT().ListAssignees(gomock.Any(), snow.ID(1)).Return(nil, errors.New("boom"))
+		repo.EXPECT().ListAssignees(gomock.Any(), snow.ID(1), gomock.Any()).Return(nil, errors.New("boom"))
 		_, err := mr.List(permissionCtx(7), snow.ID(1), domain.MergeRequestListOptions{})
 		require.EqualError(t, err, "boom")
 	})
@@ -66,7 +66,7 @@ func TestMergeRequest_Get_AttachAssigneesError(t *testing.T) {
 	mr, repo, _, perm, _ := newTestMergeRequest(t)
 	perm.EXPECT().HasProjectAccess(gomock.Any(), snow.ID(1), domain.PermissionRead).Return(true)
 	repo.EXPECT().Get(gomock.Any(), snow.ID(1), int64(5)).Return(openMergeRequest(), nil)
-	repo.EXPECT().ListAssignees(gomock.Any(), snow.ID(1)).Return(nil, errors.New("boom"))
+	repo.EXPECT().ListAssignees(gomock.Any(), snow.ID(1), gomock.Any()).Return(nil, errors.New("boom"))
 
 	_, err := mr.Get(permissionCtx(7), snow.ID(1), 5)
 	require.EqualError(t, err, "boom")

@@ -18,8 +18,19 @@ func NewAuthRepository(db *sql.DB) *Auth {
 	return &Auth{queries: sqlcPostgres.New(db)}
 }
 
+// Expired tokens stay for a grace period so a stale cookie is still answered
+// with "expired" (and cleared) rather than "not found" (kept for a retry).
+const refreshTokenPruneGrace = 24 * time.Hour
+
 func (a *Auth) SaveRefreshToken(ctx context.Context, userID snow.ID, refreshToken string, expiresAt time.Time) error {
-	_, err := a.queries.RefreshTokenCreate(ctx, sqlcPostgres.RefreshTokenCreateParams{
+	err := a.queries.RefreshTokenDeleteExpiredByUser(ctx, sqlcPostgres.RefreshTokenDeleteExpiredByUserParams{
+		UserID:    userID.Int64(),
+		ExpiresAt: time.Now().Add(-refreshTokenPruneGrace),
+	})
+	if err != nil {
+		return handleError(err)
+	}
+	_, err = a.queries.RefreshTokenCreate(ctx, sqlcPostgres.RefreshTokenCreateParams{
 		UserID:    userID.Int64(),
 		Token:     refreshToken,
 		ExpiresAt: expiresAt,

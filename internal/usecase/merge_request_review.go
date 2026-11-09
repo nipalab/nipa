@@ -22,7 +22,7 @@ type mergeRequestReviewRepository interface {
 	DismissStaleReviews(ctx context.Context, mergeRequestID int64, headCommitID, dismissedBy snow.ID, reason string, at time.Time) error
 	CarryOverReviews(ctx context.Context, mergeRequestID int64, headCommitID snow.ID) error
 	StaleReviews(ctx context.Context, mergeRequestID int64, headCommitID snow.ID) ([]*domain.MergeRequestReview, error)
-	ReviewSummaries(ctx context.Context, projectID snow.ID) (map[int64]*domain.MergeRequestReviewState, error)
+	ReviewSummaries(ctx context.Context, projectID snow.ID, numbers []int64) (map[int64]*domain.MergeRequestReviewState, error)
 	CreateThread(ctx context.Context, thread domain.MergeRequestThread) (*domain.MergeRequestThread, error)
 	GetThread(ctx context.Context, mergeRequestID int64, threadID snow.ID) (*domain.MergeRequestThread, error)
 	ListThreads(ctx context.Context, mergeRequestID int64, resolved *bool) ([]*domain.MergeRequestThread, error)
@@ -121,7 +121,7 @@ func (r *MergeRequestReview) ReviewState(ctx context.Context, projectID snow.ID,
 // AttachSummaries fills in the review summary of every merge request of a
 // project, for list views.
 func (r *MergeRequestReview) AttachSummaries(ctx context.Context, projectID snow.ID, requests []*domain.MergeRequest) error {
-	summaries, err := r.repo.ReviewSummaries(ctx, projectID)
+	summaries, err := r.repo.ReviewSummaries(ctx, projectID, mergeRequestNumbers(requests))
 	if err != nil {
 		return err
 	}

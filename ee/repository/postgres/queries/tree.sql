@@ -15,7 +15,7 @@ WITH RECURSIVE commit_chain(id, depth) AS (
     SELECT sqlc.arg(start_commit_id)::bigint AS id, 0 AS depth
     UNION ALL
     SELECT c.parent_1_id, cc.depth + 1 FROM commits c JOIN commit_chain cc ON c.id = cc.id
-    WHERE c.parent_1_id IS NOT NULL
+    WHERE c.parent_1_id IS NOT NULL AND cc.depth + 1 < sqlc.arg('limit')::bigint
 )
 SELECT c.id, c.hash, c.project_id, c.tree_id, c.parent_1_id, c.parent_2_id, c.user_id, c.message, c.created_at,
        u.name AS author_name, u.email AS author_email
@@ -35,7 +35,7 @@ WITH RECURSIVE commit_chain(id, depth) AS (
     SELECT sqlc.arg(start_commit_id)::bigint AS id, 0 AS depth
     UNION ALL
     SELECT c.parent_1_id, cc.depth + 1 FROM commits c JOIN commit_chain cc ON c.id = cc.id
-    WHERE c.parent_1_id IS NOT NULL AND c.id <> sqlc.arg(stop_commit_id)::bigint
+    WHERE c.parent_1_id IS NOT NULL AND c.id <> sqlc.arg(stop_commit_id)::bigint AND cc.depth + 1 < sqlc.arg('limit')::bigint
 )
 SELECT c.id, c.hash, c.project_id, c.tree_id, c.parent_1_id, c.parent_2_id, c.user_id, c.message, c.created_at,
        u.name AS author_name, u.email AS author_email
@@ -119,3 +119,18 @@ WHERE file_chunks.file_id IN (
             )
     )
 ORDER BY file_chunks.file_id, file_chunks.chunk_index;
+
+-- name: CommitAncestors :many
+WITH RECURSIVE anc(id) AS (
+    SELECT sqlc.arg(start_commit_id)::bigint
+    UNION
+    SELECT p.id
+    FROM anc
+    JOIN commits c ON c.id = anc.id
+    CROSS JOIN LATERAL (VALUES (c.parent_1_id), (c.parent_2_id)) AS p(id)
+    WHERE p.id IS NOT NULL
+)
+SELECT c.*
+FROM (SELECT anc.id FROM anc LIMIT sqlc.arg('limit')::bigint) a
+JOIN commits c ON c.id = a.id
+WHERE c.project_id = sqlc.arg(project_id);

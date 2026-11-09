@@ -123,7 +123,7 @@ func TestMergeRequest_List(t *testing.T) {
 
 	repo.EXPECT().List(gomock.Any(), snow.ID(1), domain.MergeRequestListOptions{Limit: 50}).
 		Return([]*domain.MergeRequest{openMergeRequest()}, nil)
-	repo.EXPECT().ListAssignees(gomock.Any(), snow.ID(1)).Return(nil, nil)
+	repo.EXPECT().ListAssignees(gomock.Any(), snow.ID(1), []int64{5}).Return(nil, nil)
 	got, err := mr.List(permissionCtx(7), snow.ID(1), domain.MergeRequestListOptions{})
 	require.NoError(t, err)
 	require.Len(t, got, 1)
@@ -1227,7 +1227,7 @@ func TestMergeRequest_SetAssignees(t *testing.T) {
 		repo.EXPECT().ClearAssignees(gomock.Any(), int64(5)).Return(nil)
 		repo.EXPECT().AddAssignee(gomock.Any(), int64(5), snow.ID(8)).Return(nil)
 		repo.EXPECT().AddAssignee(gomock.Any(), int64(5), snow.ID(9)).Return(nil)
-		repo.EXPECT().ListAssignees(gomock.Any(), snow.ID(1)).
+		repo.EXPECT().ListAssignees(gomock.Any(), snow.ID(1), gomock.Any()).
 			Return(map[int64][]domain.ReviewActor{5: {{UserID: 8}, {UserID: 9}}}, nil)
 
 		updated, err := mr.SetAssignees(permissionCtx(7), snow.ID(1), 5, []snow.ID{8, 8, 9})

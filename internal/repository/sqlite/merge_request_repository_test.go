@@ -153,8 +153,18 @@ func TestMergeRequestRepositorySQLite_AssigneesAndSearch(t *testing.T) {
 	require.NoError(t, repo.AddAssignee(ctx, first.ID, userID))
 	require.NoError(t, repo.AddAssignee(ctx, first.ID, otherID))
 
-	assignees, err := repo.ListAssignees(ctx, projectID)
+	require.NoError(t, repo.AddAssignee(ctx, second.ID, otherID))
+	empty, err := repo.ListAssignees(ctx, projectID, nil)
 	require.NoError(t, err)
+	require.Empty(t, empty)
+	only, err := repo.ListAssignees(ctx, projectID, []int64{second.Number})
+	require.NoError(t, err)
+	require.Len(t, only, 1)
+	require.Len(t, only[second.Number], 1)
+
+	assignees, err := repo.ListAssignees(ctx, projectID, []int64{first.Number})
+	require.NoError(t, err)
+	require.Len(t, assignees, 1)
 	require.Len(t, assignees[first.Number], 2)
 	names := []string{assignees[first.Number][0].Name, assignees[first.Number][1].Name}
 	require.Contains(t, names, "user42")
@@ -171,7 +181,7 @@ func TestMergeRequestRepositorySQLite_AssigneesAndSearch(t *testing.T) {
 	require.Equal(t, second.Number, searched[0].Number)
 
 	require.NoError(t, repo.ClearAssignees(ctx, first.ID))
-	assignees, err = repo.ListAssignees(ctx, projectID)
+	assignees, err = repo.ListAssignees(ctx, projectID, []int64{first.Number, second.Number})
 	require.NoError(t, err)
 	require.Empty(t, assignees[first.Number])
 }
@@ -188,7 +198,7 @@ func TestMergeRequestRepositorySQLite_Errors(t *testing.T) {
 	_, err = repo.List(ctx, 1, domain.MergeRequestListOptions{Limit: 1})
 	require.Error(t, err)
 
-	_, err = repo.ListAssignees(ctx, 1)
+	_, err = repo.ListAssignees(ctx, 1, []int64{1})
 	require.Error(t, err)
 
 	require.Error(t, repo.ClearAssignees(ctx, 1))

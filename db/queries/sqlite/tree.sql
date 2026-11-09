@@ -15,7 +15,7 @@ WITH RECURSIVE commit_chain(id, depth) AS (
     SELECT :start_commit_id AS id, 0 AS depth
     UNION ALL
     SELECT c.parent_1_id, cc.depth + 1 FROM commits c JOIN commit_chain cc ON c.id = cc.id
-    WHERE c.parent_1_id IS NOT NULL
+    WHERE c.parent_1_id IS NOT NULL AND cc.depth + 1 < :limit
 )
 SELECT c.id, c.hash, c.project_id, c.tree_id, c.parent_1_id, c.parent_2_id, c.user_id, c.message, c.created_at,
        u.name AS author_name, u.email AS author_email
@@ -35,7 +35,7 @@ WITH RECURSIVE commit_chain(id, depth) AS (
     SELECT :start_commit_id AS id, 0 AS depth
     UNION ALL
     SELECT c.parent_1_id, cc.depth + 1 FROM commits c JOIN commit_chain cc ON c.id = cc.id
-    WHERE c.parent_1_id IS NOT NULL AND c.id <> :stop_commit_id
+    WHERE c.parent_1_id IS NOT NULL AND c.id <> :stop_commit_id AND cc.depth + 1 < :limit
 )
 SELECT c.id, c.hash, c.project_id, c.tree_id, c.parent_1_id, c.parent_2_id, c.user_id, c.message, c.created_at,
        u.name AS author_name, u.email AS author_email
@@ -119,3 +119,17 @@ WHERE file_chunks.file_id IN (
             )
     )
 ORDER BY file_chunks.file_id, file_chunks.chunk_index;
+
+-- name: CommitAncestors :many
+WITH RECURSIVE anc(id) AS (
+    SELECT :start_commit_id AS id
+    UNION
+    SELECT c.parent_1_id FROM anc JOIN commits c ON c.id = anc.id WHERE c.parent_1_id IS NOT NULL
+    UNION
+    SELECT c.parent_2_id FROM anc JOIN commits c ON c.id = anc.id WHERE c.parent_2_id IS NOT NULL
+    LIMIT :limit
+)
+SELECT c.*
+FROM anc
+JOIN commits c ON c.id = anc.id
+WHERE c.project_id = :project_id;

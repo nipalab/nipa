@@ -3,6 +3,7 @@ package snow
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"sync"
 	"testing"
 	"time"
@@ -227,4 +228,21 @@ func TestID_UnmarshalJSON_Errors(t *testing.T) {
 func TestJSONSyntaxError_Message(t *testing.T) {
 	err := JSONSyntaxError{original: []byte(`oops`)}
 	require.Equal(t, `invalid snowflake ID "oops"`, err.Error())
+}
+
+func TestFloorAt(t *testing.T) {
+	start := time.UnixMilli(epoch)
+	assert.Equal(t, ID(0), FloorAt(start))
+	assert.Equal(t, ID(0), FloorAt(start.Add(-time.Hour)))
+	assert.Equal(t, ID(1<<timeShift), FloorAt(start.Add(time.Millisecond)))
+	assert.Equal(t, ID(1000<<timeShift), FloorAt(start.Add(time.Second+500*time.Microsecond)))
+	assert.Equal(t, ID(math.MaxInt64), FloorAt(time.Date(2999, 1, 1, 0, 0, 0, 0, time.UTC)))
+
+	n, err := NewNode(nodeMax)
+	require.NoError(t, err)
+	before := time.Now().Add(-time.Millisecond)
+	id := n.Generate()
+	after := time.Now().Add(time.Millisecond)
+	assert.LessOrEqual(t, FloorAt(before), id)
+	assert.Less(t, id, FloorAt(after))
 }

@@ -159,7 +159,14 @@ func (s *MergeRequestReviewRepositorySuite) TestSummariesFollowSourceHead() {
 	review(6001, f.reviewerID, domain.MergeRequestReviewApproved, f.headCommit)
 	review(6002, f.authorID, domain.MergeRequestReviewChangesRequested, f.headCommit)
 
-	summaries, err := f.repo.ReviewSummaries(ctx, f.projectID)
+	none, err := f.repo.ReviewSummaries(ctx, f.projectID, nil)
+	s.Require().NoError(err)
+	s.Empty(none)
+	other, err := f.repo.ReviewSummaries(ctx, f.projectID, []int64{f.mrNumber + 1})
+	s.Require().NoError(err)
+	s.Empty(other)
+
+	summaries, err := f.repo.ReviewSummaries(ctx, f.projectID, []int64{f.mrNumber})
 	s.Require().NoError(err)
 	s.Equal(1, summaries[f.mrNumber].Approvals)
 	s.Equal(1, summaries[f.mrNumber].ChangesRequested)
@@ -168,13 +175,13 @@ func (s *MergeRequestReviewRepositorySuite) TestSummariesFollowSourceHead() {
 	// a new head invalidates both decisions, leaving the merge request absent
 	// from the summary map until a decision is given for the new head
 	newHead := f.pushSourceHead(s.T())
-	summaries, err = f.repo.ReviewSummaries(ctx, f.projectID)
+	summaries, err = f.repo.ReviewSummaries(ctx, f.projectID, []int64{f.mrNumber})
 	s.Require().NoError(err)
 	s.NotContains(summaries, f.mrNumber)
 
 	review(6003, f.reviewerID, domain.MergeRequestReviewApproved, newHead)
 	review(6004, f.authorID, domain.MergeRequestReviewApproved, newHead)
-	summaries, err = f.repo.ReviewSummaries(ctx, f.projectID)
+	summaries, err = f.repo.ReviewSummaries(ctx, f.projectID, []int64{f.mrNumber})
 	s.Require().NoError(err)
 	s.Equal(2, summaries[f.mrNumber].Approvals)
 	s.Equal(newHead, summaries[f.mrNumber].HeadCommitID)

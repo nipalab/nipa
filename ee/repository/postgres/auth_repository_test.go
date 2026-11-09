@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/suite"
+
+	sqlcPostgres "github.com/nipalab/nipa/ee/repository/postgres/sqlc"
 )
 
 type AuthRepositorySuite struct {
@@ -98,4 +100,40 @@ func (s *AuthRepositorySuite) TestSSHLoginChallengeDeleteExpired() {
 	got, err := repo.ConsumeSSHLoginChallenge(ctx, "live")
 	s.Require().NoError(err)
 	s.Equal("live", got.Nonce)
+}
+
+func (s *AuthRepositorySuite) TestSaveRefreshTokenPrunesExpired() {
+	ctx := context.Background()
+	repo := NewAuthRepository(s.db)
+
+	alice := seedUser(s.T(), s.q, "alice", "alice@example.com", sql.NullString{})
+	bob := seedPBACUser(s.T(), s.db, 43)
+	past := time.Now().Add(-48 * time.Hour)
+	recent := time.Now().Add(-time.Hour)
+	for _, row := range []sqlcPostgres.RefreshTokenCreateParams{
+		{UserID: alice.Int64(), Token: "alice-old", ExpiresAt: past},
+		{UserID: bob.Int64(), Token: "bob-old", ExpiresAt: past},
+		{UserID: alice.Int64(), Token: "alice-recent", ExpiresAt: recent},
+	} {
+		_, err := s.q.RefreshTokenCreate(ctx, row)
+		s.Require().NoError(err)
+	}
+	s.Require().NoError(repo.SaveRefreshToken(ctx, alice, "alice-live", time.Now().Add(time.Hour)))
+	s.Require().NoError(repo.SaveRefreshToken(ctx, alice, "alice-new", time.Now().Add(2*time.Hour)))
+
+	rows, err := s.db.QueryContext(ctx, "SELECT token FROM refresh_tokens ORDER BY token")
+	s.Require().NoError(err)
+	defer func() { _ = rows.Close() }()
+	var tokens []string
+	for rows.Next() {
+		var token string
+		s.Require().NoError(rows.Scan(&token))
+		tokens = append(tokens, token)
+	}
+	s.Require().NoError(rows.Err())
+	s.Equal([]string{"alice-live", "alice-new", "alice-recent", "bob-old"}, tokens)
+
+	s.Error(repo.SaveRefreshToken(ctx, alice, "alice-live", time.Now().Add(time.Hour)))
+	s.Require().NoError(s.db.Close())
+	s.Error(repo.SaveRefreshToken(ctx, alice, "after-close", time.Now().Add(time.Hour)))
 }

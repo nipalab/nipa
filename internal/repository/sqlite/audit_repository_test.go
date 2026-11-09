@@ -83,17 +83,12 @@ func TestAuditRepositorySQLite_InsertAndList(t *testing.T) {
 		}
 		return out
 	}
-	since := base.Add(30 * time.Minute)
-	until := base.Add(90 * time.Minute)
 	require.Equal(t, []snow.ID{2, 1}, ids(domain.AuditFilter{ActorUserID: domain.IDPtr(7)}))
 	require.Equal(t, []snow.ID{2, 1}, ids(domain.AuditFilter{OrgID: domain.IDPtr(2)}))
 	require.Equal(t, []snow.ID{2, 1}, ids(domain.AuditFilter{ProjectID: domain.IDPtr(3)}))
 	require.Equal(t, []snow.ID{2, 1}, ids(domain.AuditFilter{ActionPrefix: "org.member"}))
 	require.Equal(t, []snow.ID{}, ids(domain.AuditFilter{ActionPrefix: "org.member_"}))
 	require.Equal(t, []snow.ID{1}, ids(domain.AuditFilter{TargetID: "t" + domain.AuditOrgMemberAdded}))
-	require.Equal(t, []snow.ID{3, 2}, ids(domain.AuditFilter{Since: &since}))
-	require.Equal(t, []snow.ID{2, 1}, ids(domain.AuditFilter{Until: &until}))
-	require.Equal(t, []snow.ID{2}, ids(domain.AuditFilter{Since: &since, Until: &until}))
 	require.Equal(t, []snow.ID{2, 1}, ids(domain.AuditFilter{After: domain.IDPtr(3)}))
 
 	page, err := repo.List(ctx, domain.AuditFilter{Limit: 2})
@@ -103,6 +98,54 @@ func TestAuditRepositorySQLite_InsertAndList(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, rest, 1)
 	require.Equal(t, snow.ID(1), rest[0].ID)
+}
+
+func TestAuditRepositorySQLite_PrefixAndTimeFilters(t *testing.T) {
+	ctx := context.Background()
+	repo := NewAuditRepository(newAuditTestDB(t))
+	base := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+
+	insert := func(action string, at time.Time, idAt time.Time) snow.ID {
+		t.Helper()
+		id := snow.FloorAt(idAt) + 1
+		require.NoError(t, repo.Insert(ctx, auditEntry(int64(id), action, at)))
+		return id
+	}
+	added := insert("org.member.added", base, base)
+	removed := insert("org.member.removed", base.Add(time.Hour), base.Add(time.Hour))
+	membership := insert("org.membership", base.Add(2*time.Hour), base.Add(2*time.Hour))
+	org := insert("org", base.Add(3*time.Hour), base.Add(3*time.Hour))
+	skewed := insert("ünïcode.ëvent", base.Add(4*time.Hour), base.Add(4*time.Hour-30*time.Second))
+
+	ids := func(filter domain.AuditFilter) []snow.ID {
+		t.Helper()
+		filter.Limit = 10
+		entries, err := repo.List(ctx, filter)
+		require.NoError(t, err)
+		out := []snow.ID{}
+		for _, e := range entries {
+			out = append(out, e.ID)
+		}
+		return out
+	}
+	require.Equal(t, []snow.ID{membership, removed, added}, ids(domain.AuditFilter{ActionPrefix: "org.member"}))
+	require.Equal(t, []snow.ID{removed, added}, ids(domain.AuditFilter{ActionPrefix: "org.member."}))
+	require.Equal(t, []snow.ID{added}, ids(domain.AuditFilter{ActionPrefix: "org.member.added"}))
+	require.Equal(t, []snow.ID{org, membership, removed, added}, ids(domain.AuditFilter{ActionPrefix: "org"}))
+	require.Equal(t, []snow.ID{}, ids(domain.AuditFilter{ActionPrefix: "org.x"}))
+	require.Equal(t, []snow.ID{}, ids(domain.AuditFilter{ActionPrefix: "org.member.added.more"}))
+	require.Equal(t, []snow.ID{skewed}, ids(domain.AuditFilter{ActionPrefix: "ünï"}))
+	require.Equal(t, []snow.ID{}, ids(domain.AuditFilter{ActionPrefix: "üx"}))
+
+	since := base.Add(time.Hour)
+	until := base.Add(3 * time.Hour)
+	require.Equal(t, []snow.ID{membership, removed}, ids(domain.AuditFilter{Since: &since, Until: &until}))
+	require.Equal(t, []snow.ID{skewed, org, membership, removed}, ids(domain.AuditFilter{Since: &since}))
+	require.Equal(t, []snow.ID{membership, removed, added}, ids(domain.AuditFilter{Until: &until}))
+	skewedAt := base.Add(4 * time.Hour)
+	require.Equal(t, []snow.ID{skewed}, ids(domain.AuditFilter{Since: &skewedAt}))
+	justBefore := skewedAt.Add(-time.Nanosecond)
+	require.Equal(t, []snow.ID{org, membership, removed, added}, ids(domain.AuditFilter{Until: &justBefore}))
 }
 
 func TestAuditRepositorySQLite_JoinsCallerTx(t *testing.T) {

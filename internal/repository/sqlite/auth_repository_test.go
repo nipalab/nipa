@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	sqlcSqlite "github.com/nipalab/nipa/internal/repository/sqlc/sqlite"
 )
 
 func TestAuthRepositorySQLite_SaveAndGetAndDeleteRefreshToken(t *testing.T) {
@@ -95,4 +97,41 @@ func TestAuthRepositorySQLite_SSHLoginChallengeDeleteExpired(t *testing.T) {
 	got, err := repo.ConsumeSSHLoginChallenge(ctx, "live")
 	require.NoError(t, err)
 	require.Equal(t, "live", got.Nonce)
+}
+
+func TestAuthRepositorySQLite_SaveRefreshTokenPrunesExpired(t *testing.T) {
+	ctx := context.Background()
+	db, q := newSQLiteTestDB(t)
+	repo := NewAuthRepository(db)
+
+	alice := seedUser(t, q, "alice", "alice@example.com", sql.NullString{})
+	bob := seedPBACUser(t, db, 43)
+	past := time.Now().Add(-48 * time.Hour)
+	recent := time.Now().Add(-time.Hour)
+	for _, row := range []sqlcSqlite.RefreshTokenCreateParams{
+		{UserID: alice.Int64(), Token: "alice-old", ExpiresAt: past},
+		{UserID: bob.Int64(), Token: "bob-old", ExpiresAt: past},
+		{UserID: alice.Int64(), Token: "alice-recent", ExpiresAt: recent},
+	} {
+		_, err := q.RefreshTokenCreate(ctx, row)
+		require.NoError(t, err)
+	}
+	require.NoError(t, repo.SaveRefreshToken(ctx, alice, "alice-live", time.Now().Add(time.Hour)))
+	require.NoError(t, repo.SaveRefreshToken(ctx, alice, "alice-new", time.Now().Add(2*time.Hour)))
+
+	rows, err := db.QueryContext(ctx, "SELECT token FROM refresh_tokens ORDER BY token")
+	require.NoError(t, err)
+	defer func() { _ = rows.Close() }()
+	var tokens []string
+	for rows.Next() {
+		var token string
+		require.NoError(t, rows.Scan(&token))
+		tokens = append(tokens, token)
+	}
+	require.NoError(t, rows.Err())
+	require.Equal(t, []string{"alice-live", "alice-new", "alice-recent", "bob-old"}, tokens)
+
+	require.Error(t, repo.SaveRefreshToken(ctx, alice, "alice-live", time.Now().Add(time.Hour)))
+	require.NoError(t, db.Close())
+	require.Error(t, repo.SaveRefreshToken(ctx, alice, "after-close", time.Now().Add(time.Hour)))
 }
