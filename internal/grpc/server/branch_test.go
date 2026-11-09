@@ -558,7 +558,7 @@ func TestGetTreeManifest_Success(t *testing.T) {
 	repo.EXPECT().
 		ListFilesByTree(gomock.Any(), int64(100)).
 		Return([]*domain.File{
-			{ID: 1, Name: "a.txt", Mode: 0o644, SizeBytes: 10, Hash: hash, Chunks: []domain.Chunk{{ID: 1, Hash: hash}}},
+			{ID: 1, Name: "a.txt", Mode: 0o644, SizeBytes: 10, Hash: hash, Chunks: []domain.Chunk{{ID: 1, Hash: hash, SizeBytes: 10}}},
 		}, nil)
 	repo.EXPECT().
 		ListTreeChildren(gomock.Any(), int64(100)).
@@ -591,9 +591,26 @@ func TestGetTreeManifest_Success(t *testing.T) {
 	require.Equal(t, pb.FileMode_FILE_MODE_READ_WRITE, resp.RootTree.Files[0].Mode)
 	require.Equal(t, int64(10), resp.RootTree.Files[0].SizeBytes)
 	require.Equal(t, []string{hash.String()}, resp.RootTree.Files[0].ChunkHashes)
+	require.Equal(t, []int64{10}, resp.RootTree.Files[0].ChunkSizes)
 	require.Len(t, resp.RootTree.SubTrees, 1)
 	require.Equal(t, "assets", resp.RootTree.SubTrees[0].Path)
 	require.Equal(t, wantAssetsHash.String(), resp.RootTree.SubTrees[0].TreeHash)
+}
+
+func TestDomainFileToPB_ChunkSizes(t *testing.T) {
+	a, b := domain.Hash{0x0a}, domain.Hash{0x0b}
+
+	known := domainFileToPB(&domain.File{Name: "hero.png", SizeBytes: 7, Chunks: []domain.Chunk{{Hash: a, SizeBytes: 4}, {Hash: b, SizeBytes: 3}}})
+	require.Equal(t, []string{a.String(), b.String()}, known.ChunkHashes)
+	require.Equal(t, []int64{4, 3}, known.ChunkSizes)
+
+	partial := domainFileToPB(&domain.File{Name: "hero.png", Chunks: []domain.Chunk{{Hash: a, SizeBytes: 4}, {Hash: b}}})
+	require.Len(t, partial.ChunkHashes, 2)
+	require.Empty(t, partial.ChunkSizes, "sizes are sent only when every chunk has one")
+
+	empty := domainFileToPB(&domain.File{Name: "empty.txt"})
+	require.Empty(t, empty.ChunkHashes)
+	require.Empty(t, empty.ChunkSizes)
 }
 
 func TestGetTreeManifest_CommitID(t *testing.T) {

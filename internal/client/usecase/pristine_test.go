@@ -103,6 +103,15 @@ func (fx *pristineFixture) requireCached(t *testing.T, name string) {
 	}
 }
 
+func (fx *pristineFixture) requirePruned(t *testing.T, name string) {
+	t.Helper()
+	for _, c := range fx.chunks[name] {
+		missing, err := fx.lr.MissingChunks([]serverDomain.Hash{c.Hash})
+		require.NoError(t, err)
+		require.Len(t, missing, 1, "restore prunes raw content it fetched")
+	}
+}
+
 func (fx *pristineFixture) snapshotFile(t *testing.T, name string) clientDomain.SnapshotFile {
 	t.Helper()
 	snap, err := fx.lr.Snapshot()
@@ -141,7 +150,7 @@ func TestRestore_RecapturesModeOnlyChangeOffline(t *testing.T) {
 
 	require.NoError(t, fx.workingCopy(t, dl).Restore(context.Background(), []string{"a.bin"}))
 	require.Zero(t, dl.calls)
-	fx.requireCached(t, "a.bin")
+	fx.requirePruned(t, "a.bin")
 	info, err := os.Stat(filepath.Join(fx.root, "a.bin"))
 	require.NoError(t, err)
 	require.Equal(t, os.FileMode(0o644), info.Mode().Perm())

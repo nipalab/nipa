@@ -58,10 +58,18 @@ type Diff struct {
 	auth      *Auth
 	client    diffClient
 	localRepo diffLocalRepo
+	prune     bool
 }
 
 func NewDiff(auth *Auth, client diffClient, localRepo diffLocalRepo) *Diff {
 	return &Diff{auth: auth, client: client, localRepo: localRepo}
+}
+
+// WithPrune drops the content a successful Run downloaded from the object
+// cache. The daemon leaves it off and prunes after a quiet period instead.
+func (d *Diff) WithPrune() *Diff {
+	d.prune = true
+	return d
 }
 
 type revision struct {
@@ -74,9 +82,12 @@ type revision struct {
 // Run compares the working tree against the last synced snapshot (no
 // revisions, offline), a revision against the working tree (one revision), or
 // two revisions against each other.
-func (d *Diff) Run(ctx context.Context, root string, revs []string, opts DiffOptions) ([]diff.FileDiff, error) {
+func (d *Diff) Run(ctx context.Context, root string, revs []string, opts DiffOptions) (files []diff.FileDiff, err error) {
 	if err := d.localRepo.Init(root); err != nil {
 		return nil, err
+	}
+	if d.prune {
+		defer func() { pruneAfterSuccess(d.localRepo, err) }()
 	}
 	unlock, err := lockShared(d.localRepo)
 	if err != nil {

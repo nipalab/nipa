@@ -15,6 +15,7 @@ type coordinator struct {
 	exclusive bool
 	shared    int
 	waiters   []*ticket
+	activity  func()
 }
 
 type ticket struct {
@@ -32,6 +33,9 @@ func newCoordinator() *coordinator {
 // queued when this caller arrived.
 func (c *coordinator) Acquire(ctx context.Context, exclusive bool) (release func(), ahead int, err error) {
 	t := &ticket{ctx: ctx, exclusive: exclusive, ready: make(chan error, 1)}
+	if c.activity != nil {
+		c.activity()
+	}
 
 	c.mu.Lock()
 	ahead = c.exclusiveAheadLocked()
@@ -69,6 +73,22 @@ func (c *coordinator) Acquire(ctx context.Context, exclusive bool) (release func
 		c.releaseLocked(exclusive)
 		c.mu.Unlock()
 	}, ahead, nil
+}
+
+// tryAcquireExclusive takes the exclusive slot only when the root is idle,
+// without queueing.
+func (c *coordinator) tryAcquireExclusive() (func(), bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.exclusive || c.shared > 0 || len(c.waiters) > 0 {
+		return nil, false
+	}
+	c.exclusive = true
+	return func() {
+		c.mu.Lock()
+		c.releaseLocked(true)
+		c.mu.Unlock()
+	}, true
 }
 
 func (c *coordinator) releaseLocked(exclusive bool) {

@@ -37,11 +37,15 @@ type repo struct {
 	watcher    *watcher
 	reconciler *reconciler
 	changes    *changeHub
+	pruner     *cachePruner
 
 	refs int
 }
 
 func (r *repo) close() error {
+	if r.pruner != nil {
+		r.pruner.close()
+	}
 	if r.reconciler != nil {
 		r.reconciler.stop()
 	}
@@ -104,10 +108,11 @@ func (r *repo) info() *daemonpb.RepoInfo {
 // unwatch can wait for in-flight operations before closing a handle; no new
 // ref can be handed out once the root is removed from the map.
 type registry struct {
-	mu      sync.Mutex
-	cond    *sync.Cond
-	repos   map[string]*repo
-	runners Runners
+	mu         sync.Mutex
+	cond       *sync.Cond
+	repos      map[string]*repo
+	runners    Runners
+	pruneQuiet time.Duration
 }
 
 func newRegistry(runners Runners) *registry {
@@ -158,6 +163,11 @@ func openRepo(root string, runners Runners) (*repo, error) {
 		coord:     newCoordinator(),
 		changes:   newChangeHub(),
 	}
+	rp.pruner = newCachePruner(root, rp.coord, defaultPruneQuiet, func() (bool, error) {
+		res, err := usecase.PruneCache(lr)
+		return res.Skipped && res.SkipReason == usecase.PruneSkipBusy, err
+	})
+	rp.coord.activity = rp.pruner.touch
 	if runners.New != nil {
 		ops := runners.New(root)
 		rp.update = ops.Update
@@ -188,6 +198,9 @@ func (r *registry) watch(path string) (*repo, error) {
 	opened, err := openRepo(root, r.runners)
 	if err != nil {
 		return nil, err
+	}
+	if r.pruneQuiet > 0 {
+		opened.pruner.quiet = r.pruneQuiet
 	}
 	opened.startWatching()
 	r.repos[root] = opened

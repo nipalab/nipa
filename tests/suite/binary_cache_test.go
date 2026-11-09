@@ -1,6 +1,7 @@
 package suite_test
 
 import (
+	"encoding/json"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -21,6 +22,25 @@ func goOffline(dir string) func() {
 	offline := strings.Replace(string(original), cfg.URL, strings.Replace(cfg.URL, u.Host, "127.0.0.1:1", 1), 1)
 	Expect(os.WriteFile(path, []byte(offline), 0o644)).To(Succeed())
 	return func() { Expect(os.WriteFile(path, original, 0o644)).To(Succeed()) }
+}
+
+// offlineTokenFile copies the CLI session to the unreachable host goOffline
+// points clones at, so commands get past login and fail on the connection.
+func offlineTokenFile() string {
+	GinkgoHelper()
+	data, err := os.ReadFile(cli.tokenFile)
+	Expect(err).NotTo(HaveOccurred())
+	tokens := map[string]map[string]any{}
+	Expect(json.Unmarshal(data, &tokens)).To(Succeed())
+	session, ok := tokens[cli.host]
+	Expect(ok).To(BeTrue(), "no CLI session for %s", cli.host)
+	session["host"] = "127.0.0.1:1"
+	tokens["127.0.0.1:1"] = session
+	out, err := json.Marshal(tokens)
+	Expect(err).NotTo(HaveOccurred())
+	path := filepath.Join(GinkgoT().TempDir(), "tokens.json")
+	Expect(os.WriteFile(path, out, 0o600)).To(Succeed())
+	return path
 }
 
 var _ = Describe("nipa clone binary cache", func() {
@@ -81,6 +101,37 @@ var _ = Describe("nipa lock pins", func() {
 		res := runNipa(dir, "restore", "assets/hero.bin")
 		Expect(res.ExitCode).To(Equal(0), res.Output())
 		Expect(readBytes(dir, "assets/hero.bin")).To(Equal(original))
+		Expect(cachedObjects(dir)).To(BeEmpty(), "restore prunes the downloaded binary")
 		assertCleanStatus(dir)
+	})
+
+	It("prunes the old side nipa diff --ext-diff downloaded", func() {
+		project := newProject("cache-binary-extdiff")
+		seedRepo(orgSlug, project, map[string][]byte{"assets/hero.bin": append([]byte{0x00}, randomBytes(32<<10)...)}, "seed")
+		parent := workspace()
+		dir := cloneRepo(parent, repoURLFor(orgSlug, project), "work")
+		writeBytes(dir, "assets/hero.bin", append([]byte{0x00}, randomBytes(1024)...))
+
+		script, logPath := externalDiffTool(parent)
+		res := runNipaEnv(dir, externalDiffEnv(script, logPath), "diff", "--ext-diff")
+		Expect(res.ExitCode).To(Equal(0), res.Output())
+		data, err := os.ReadFile(logPath)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(data)).To(ContainSubstring("assets/hero.bin"))
+		Expect(cachedObjects(dir)).To(BeEmpty(), "the downloaded old side is pruned after the diff")
+	})
+
+	It("reports an unreachable server as content not cached", func() {
+		project := newProject("cache-binary-offline")
+		seedRepo(orgSlug, project, map[string][]byte{"assets/hero.bin": append([]byte{0x00}, randomBytes(32<<10)...)}, "seed")
+		dir := cloneRepo(workspace(), repoURLFor(orgSlug, project), "work")
+		writeBytes(dir, "assets/hero.bin", append([]byte{0x00}, randomBytes(1024)...))
+		restore := goOffline(dir)
+		defer restore()
+
+		res := runNipaEnv(dir, []string{"NIPA_TOKEN_FILE=" + offlineTokenFile()}, "restore", "assets/hero.bin")
+		Expect(res.ExitCode).NotTo(Equal(0))
+		Expect(res.Stderr).To(ContainSubstring("content not cached locally; connect to the server"))
+		Expect(res.Stderr).NotTo(ContainSubstring("rpc error"))
 	})
 })

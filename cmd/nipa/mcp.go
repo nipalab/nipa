@@ -99,7 +99,7 @@ func newMCPUseCases(newClient func() *clientgrpc.Client, storage tokenStorage) m
 	uc := mcpserver.UseCases{
 		Repo:      usecase.NewRepo(auth, client, newLocalRepo()),
 		Push:      push,
-		Diff:      usecase.NewDiff(auth, client, newLocalRepo()),
+		Diff:      usecase.NewDiff(auth, client, newLocalRepo()).WithPrune(),
 		MR:        usecase.NewMergeRequest(auth, client, newLocalRepo()),
 		Lock:      usecase.NewFileLock(auth, client, newLocalRepo()),
 		Tag:       usecase.NewTag(auth, client, newLocalRepo()),

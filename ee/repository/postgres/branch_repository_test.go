@@ -521,6 +521,8 @@ func (s *BranchRepositorySuite) TestListFilesByTree() {
 	s.Len(files[0].Chunks, 2)
 	s.Equal(chunkIdx0, files[0].Chunks[0].ID)
 	s.Equal(chunkIdx1, files[0].Chunks[1].ID)
+	s.Equal(int64(100), files[0].Chunks[0].SizeBytes, "manifest chunk sizes come from the same query")
+	s.Equal(int64(100), files[0].Chunks[1].SizeBytes)
 
 	s.Equal("b.txt", files[1].Name)
 	s.Empty(files[1].Chunks)

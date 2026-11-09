@@ -342,8 +342,17 @@ func domainFileToPB(file *domain.File) *pb.FileNode {
 		IsBinary:  file.IsBinary,
 		Encoding:  file.Encoding,
 	}
+	sizes := make([]int64, 0, len(file.Chunks))
 	for _, chunk := range file.Chunks {
 		node.ChunkHashes = append(node.ChunkHashes, chunk.Hash.String())
+		if chunk.SizeBytes > 0 && sizes != nil {
+			sizes = append(sizes, chunk.SizeBytes)
+		} else {
+			sizes = nil
+		}
+	}
+	if len(sizes) > 0 {
+		node.ChunkSizes = sizes
 	}
 	return node
 }

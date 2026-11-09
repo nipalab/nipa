@@ -15,7 +15,8 @@ import (
 // Restore discards unpushed changes to the given files or directories by
 // re-materializing them from the last synced tree. Paths with staged changes
 // are refused, since the staged content is not stored separately.
-func (w *WorkingCopy) Restore(ctx context.Context, targets []string) error {
+func (w *WorkingCopy) Restore(ctx context.Context, targets []string) (err error) {
+	defer func() { pruneAfterSuccess(w.localRepo, err) }()
 	unlock, err := lockShared(w.localRepo)
 	if err != nil {
 		return err

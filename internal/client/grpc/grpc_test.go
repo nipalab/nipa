@@ -859,6 +859,26 @@ func TestToServerFile(t *testing.T) {
 	require.Equal(t, int64(42), got.SizeBytes)
 	require.Len(t, got.Chunks, 1)
 	require.Equal(t, h, got.Chunks[0].Hash)
+	require.Zero(t, got.Chunks[0].SizeBytes)
+}
+
+func TestToServerFile_ChunkSizes(t *testing.T) {
+	a, b := serverDomain.Hash{0x0a}, serverDomain.Hash{0x0b}
+
+	got := toServerFile(&pb.FileNode{
+		Path:        "hero.png",
+		SizeBytes:   7,
+		ChunkHashes: []string{a.String(), b.String()},
+		ChunkSizes:  []int64{4, 3},
+	})
+	require.Equal(t, []serverDomain.Chunk{{Hash: a, SizeBytes: 4}, {Hash: b, SizeBytes: 3}}, got.Chunks)
+
+	mismatched := toServerFile(&pb.FileNode{
+		Path:        "hero.png",
+		ChunkHashes: []string{a.String(), b.String()},
+		ChunkSizes:  []int64{4},
+	})
+	require.Equal(t, []serverDomain.Chunk{{Hash: a}, {Hash: b}}, mismatched.Chunks, "a size list that does not line up is ignored")
 }
 
 func TestDecodeHash(t *testing.T) {

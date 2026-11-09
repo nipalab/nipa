@@ -255,7 +255,9 @@ Flow for `nipa clone <url> <target>`: `cli/clone.go` parses the URL →
 `SaveConfig` (`.nipa/config` json: url + branch + sparse prefixes) →
 `syncWorkingCopy` (shared with update/switch: download missing chunks through
 the commit-scoped `ChunkScope`, materialize files, record `stat_cache`
-fingerprints; raw files no pin covers whose manifest chunk sizes add up to
+fingerprints; raw files no pin covers whose manifest chunk sizes
+(`FileNode.chunk_sizes`, mapped by `client/grpc.toServerFile` into
+`Chunk.SizeBytes`; older servers send none and take the cache path) add up to
 the file size are written directly (`direct.go`): a truncated
 `.nipa-materialize-*` temp file per file, chunks already in `.nipa/objects`
 copied locally, the rest written by `downloadChunks`' hash-verifying workers
@@ -769,9 +771,12 @@ with `downloadMissing` scoped to the pinned commit and those paths through the
 optional `WorkingCopy.WithDownloader(auth, client)` seam (CLI `restore`, the
 daemon's cached `WorkingCopy` via `RepoOps.Auth`/`Downloader` from
 `serveRepoOps`, the MCP restore tool via `UseCases.Auth`/`Connector`); with no
-downloader it is a user error `content not cached locally; connect to the
-server`. The daemon exposes it as the unary `Restore` RPC returning the
-refreshed status.
+downloader, or when the server is unreachable (gRPC `Unavailable` or a
+dial `net.OpError`, `offlineError`; other errors pass through), it is a user
+error `content not cached locally; connect to the server`. A successful
+restore prunes the cache like update does (`pruneAfterSuccess`), so a
+downloaded unpinned binary does not stay in `.nipa/objects`. The daemon
+exposes it as the unary `Restore` RPC returning the refreshed status.
 
 Flow for `nipa diff [<rev1> [<rev2>]] [--] [<path>...]`: `cli/diff.go` splits
 revisions from paths (paths only after `--`; `<a>..<b>`/`<a>...<b>` expand to two
@@ -1291,7 +1296,11 @@ compatible for one release.
   raw content covered by a pin), so binaries are not kept twice, and it is a
   no-op while `merge_state` or
   `revert_state` is pending. It runs after a successful clone, update, switch,
-  tag switch and `Push.Run` (deferred `pruneAfterSuccess`: skipped for repos
+  tag switch, `Push.Run`, `WorkingCopy.Restore` and `Diff.Run` built with
+  `WithPrune` (CLI and MCP; the daemon's `Diff` leaves it off and its
+  `cachePruner` (`daemon/prune.go`) prunes a root once no operation was
+  admitted for `Options.PruneQuiet`, default 30 s, after a diff, blob,
+  preview or restore call) (deferred `pruneAfterSuccess`: skipped for repos
   without `PruneObjects`, failures only `slog.Warn`, never fail the operation),
   and on demand through `nipa gc` (`usecase.GC`), which prints the objects and
   bytes freed. Processes coordinate through `.nipa/lock` (`localrepo/lock.go`,
@@ -1384,7 +1393,10 @@ compatible for one release.
   commit must belong to the project, and `tree_hash` is then ignored) and
   returns
   `{branch, root_tree}`. `TreeManifest` carries `tree_hash`, `path`, `sub_trees`,
-  `files` (`path, mode, size_bytes, is_binary, chunk_hashes`). `GetBranch` takes
+  `files` (`path, mode, size_bytes, is_binary, chunk_hashes, encoding,
+  chunk_sizes`; `chunk_sizes` parallels `chunk_hashes` and is filled by
+  `domainFileToPB` from the chunk rows `ListFilesByTree` already joins, so it
+  costs no query, and left empty unless every chunk has a size). `GetBranch` takes
   `branch_id` (base36) and `GetBranchByName` takes `name`; both return the branch
   with its head `commit_id`. `CreateBranch` takes `from_branch` and/or
   `from_commit_id`/`from_commit_hash` (exact fork point, base36/hex).

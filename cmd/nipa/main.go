@@ -46,7 +46,7 @@ func main() {
 	updateUsecase := usecase.NewUpdate(authUsecase, grpcClient, localrepo.NewLocalRepo())
 	mergeUsecase := usecase.NewMerge(authUsecase, grpcClient, localrepo.NewLocalRepo(), pushUsecase)
 	revertUsecase := usecase.NewRevert(authUsecase, grpcClient, localrepo.NewLocalRepo(), pushUsecase)
-	diffUsecase := usecase.NewDiff(authUsecase, grpcClient, localrepo.NewLocalRepo())
+	diffUsecase := usecase.NewDiff(authUsecase, grpcClient, localrepo.NewLocalRepo()).WithPrune()
 	permissionUsecase := usecase.NewPermission(authUsecase, grpcClient)
 	mrUsecase := usecase.NewMergeRequest(authUsecase, grpcClient, localrepo.NewLocalRepo())
 	lockUsecase := usecase.NewFileLock(authUsecase, grpcClient, localrepo.NewLocalRepo())
