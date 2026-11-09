@@ -6,6 +6,7 @@ import (
 	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/http"
 	"github.com/nipalab/nipa/internal/http/model"
+	"github.com/nipalab/nipa/internal/usecase"
 )
 
 func (h *Handler) ListFileLocks(appCtx http.AppContext) {
@@ -37,7 +38,11 @@ func (h *Handler) LockFile(appCtx http.AppContext) {
 		appCtx.HandleError(err)
 		return
 	}
-	lock, err := h.useCase.FileLock().Acquire(appCtx.Context(), project.ID, body.Branch, body.Path)
+	var opts []usecase.AcquireOption
+	if body.TTLSeconds != nil {
+		opts = append(opts, usecase.LockTTLSeconds(*body.TTLSeconds))
+	}
+	lock, err := h.useCase.FileLock().Acquire(appCtx.Context(), project.ID, body.Branch, body.Path, opts...)
 	if err != nil {
 		appCtx.HandleError(err)
 		return
@@ -73,6 +78,7 @@ func toFileLockResponse(lock *domain.FileLock) model.FileLockResponse {
 		HeldByName:         lock.HeldByName,
 		MergeRequestNumber: lock.MergeRequestNumber,
 		AcquiredAt:         lock.AcquiredAt,
+		ExpiresAt:          lock.ExpiresAt,
 	}
 	return resp
 }

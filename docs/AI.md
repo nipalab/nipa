@@ -87,6 +87,13 @@ server. Tools that discard or overwrite work (`nipa_restore`, `nipa_push`,
 `destructiveHint` annotation so clients can ask for confirmation; read tools
 carry `readOnlyHint`.
 
+**Agent locks expire.** `nipa_lock` always takes a lock with a TTL (`ttl`,
+default `10m`, 1m to 168h). While `nipa mcp` runs it renews every lock it took
+every ttl/3, and stops on `nipa_unlock`, after a push released the lock, when a
+renewal fails, or on shutdown. A crashed or killed agent therefore frees its
+locks within one TTL, while a live one never loses them. Locks taken with
+`nipa lock` stay permanent unless `--ttl` is given.
+
 **Agent trailer.** Text written through MCP (push messages, merge request
 descriptions, comments, replies and review bodies; not titles) gets a trailer
 naming the MCP client from its `initialize` handshake:
@@ -171,7 +178,7 @@ models and audio) are reported in `error` instead of being read.
 | `nipa_switch` | `sync` | `branch` or `tag` | a tag detaches |
 | `nipa_branch_create` | `branch` | `name` | forks from the pinned commit and switches |
 | `nipa_tag_create` | `branch` | `name`, `message`, `branch` or `commit` | |
-| `nipa_lock` / `nipa_unlock` | `lock` | `path`, `branch` | the default branch locks project-wide |
+| `nipa_lock` / `nipa_unlock` | `lock` | `path`, `branch`, `ttl` (lock only, default `10m`) | the default branch locks project-wide; lock output carries `expires_at` |
 | `nipa_mr_create` | `mr` | `title`, `description`, `source`, `target`, `draft`, `reviewers`, `assignees` | |
 | `nipa_mr_update` | `mr` | `number`, `title`, `description`, `draft` (true = draft, false = ready) | |
 | `nipa_mr_comment` | `mr` | `number`, `body`, `file` + `new_line` / `old_line` | top-level without `file` |

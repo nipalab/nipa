@@ -6,7 +6,9 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -78,7 +80,7 @@ func TestEndToEnd_FileLockPushLifecycle(t *testing.T) {
 	require.Equal(t, 409, domErr.Code)
 	require.Contains(t, domErr.Message, "requires a lock")
 
-	lock, err := locks.Lock(ctx, dir, "art/tex.png", "")
+	lock, err := locks.Lock(ctx, dir, "art/tex.png", clientusecase.LockOptions{})
 	require.NoError(t, err)
 	require.True(t, lock.Global, "the default branch gets a project-global lock")
 
@@ -114,14 +116,14 @@ func TestEndToEnd_FileLockConflictAndBranchScope(t *testing.T) {
 	require.Equal(t, 409, domErr.Code)
 	require.Contains(t, domErr.Message, "bob")
 
-	_, err = locks.Lock(ctx, mainDir, "tex.png", "")
+	_, err = locks.Lock(ctx, mainDir, "tex.png", clientusecase.LockOptions{})
 	require.Error(t, err, "the mainline lock is already held by another user")
 
 	_, err = grpcClient.CreateBranch(ctx, e2eOrgSlug, e2eProjectSlug, "artwork", "main", "", "")
 	require.NoError(t, err)
 	artDir := cloneWorktree(t, grpcClient, auth, host, "artwork")
 
-	devLock, err := locks.Lock(ctx, artDir, "tex.png", "")
+	devLock, err := locks.Lock(ctx, artDir, "tex.png", clientusecase.LockOptions{})
 	require.NoError(t, err, "a development branch has its own lock scope")
 	require.False(t, devLock.Global)
 	require.Equal(t, "artwork", devLock.Branch)
@@ -136,14 +138,14 @@ func TestEndToEnd_FileLockConflictAndBranchScope(t *testing.T) {
 	require.Equal(t, "bob", list[0].HeldByName)
 
 	dirDir := cloneWorktree(t, grpcClient, auth, host, "main")
-	dirLock, err := locks.Lock(ctx, dirDir, "assets/", "")
+	dirLock, err := locks.Lock(ctx, dirDir, "assets/", clientusecase.LockOptions{})
 	require.NoError(t, err)
 	require.Equal(t, "assets", dirLock.Path)
 	writeBinaryFile(t, dirDir, "assets/orc.png")
 	stagePath(t, dirDir, "assets/orc.png")
 	require.NoError(t, pusher.Run(ctx, dirDir, "directory lock covers new binaries"))
 
-	_, err = locks.Lock(ctx, artDir, "wip.png", "")
+	_, err = locks.Lock(ctx, artDir, "wip.png", clientusecase.LockOptions{})
 	require.NoError(t, err)
 	require.NoError(t, grpcClient.DeleteBranch(ctx, e2eOrgSlug, e2eProjectSlug, "artwork"))
 
@@ -175,14 +177,14 @@ func TestEndToEnd_FileLockMergeRequest(t *testing.T) {
 
 	writeBinaryFile(t, heroDir, "hero.png")
 	stagePath(t, heroDir, "hero.png")
-	_, err = locks.Lock(ctx, heroDir, "hero.png", "")
+	_, err = locks.Lock(ctx, heroDir, "hero.png", clientusecase.LockOptions{})
 	require.NoError(t, err)
 	require.NoError(t, pusher.Run(ctx, heroDir, "add hero art"))
 
 	seedOtherUserLock(t, dbConn, "blocked.png")
 	writeBinaryFile(t, heroDir, "blocked.png")
 	stagePath(t, heroDir, "blocked.png")
-	_, err = locks.Lock(ctx, heroDir, "blocked.png", "")
+	_, err = locks.Lock(ctx, heroDir, "blocked.png", clientusecase.LockOptions{})
 	require.NoError(t, err)
 	require.NoError(t, pusher.Run(ctx, heroDir, "add blocked art"))
 
@@ -273,7 +275,7 @@ func TestEndToEnd_FileLockAdminMergesAuthorRequest(t *testing.T) {
 
 	writeBinaryFile(t, authorDir, "hero.png")
 	stagePath(t, authorDir, "hero.png")
-	_, err = authorLocks.Lock(ctx, authorDir, "hero.png", "")
+	_, err = authorLocks.Lock(ctx, authorDir, "hero.png", clientusecase.LockOptions{})
 	require.NoError(t, err)
 	require.NoError(t, authorPusher.Run(ctx, authorDir, "author art"))
 
@@ -295,4 +297,66 @@ func TestEndToEnd_FileLockAdminMergesAuthorRequest(t *testing.T) {
 	list, err = authorLocks.List(ctx, authorDir)
 	require.NoError(t, err)
 	require.Empty(t, list)
+}
+
+func TestEndToEnd_FileLockExpiry(t *testing.T) {
+	ctx := context.Background()
+	dbConn := openTestDB(t)
+	host, uc := startTestServerWithUsecases(t, dbConn)
+	var clock atomic.Int64
+	clock.Store(time.Now().UnixNano())
+	now := func() time.Time { return time.Unix(0, clock.Load()) }
+	advance := func(d time.Duration) { clock.Add(int64(d)) }
+	uc.FileLock.WithClock(now)
+
+	grpcClient, auth := newLoggedInClient(t, host)
+	locks := clientusecase.NewFileLock(auth, grpcClient, localrepo.NewLocalRepo())
+	dir := cloneWorktree(t, grpcClient, auth, host, "main")
+
+	_, err := dbConn.ExecContext(ctx,
+		`INSERT INTO users (id, name, email, password) VALUES (9001, 'bob', 'bob@example.com', 'x')`)
+	require.NoError(t, err)
+	bobExpiry := now().Add(2 * time.Minute)
+	_, err = sqlite.NewFileLockRepository(dbConn).Create(ctx, serverDomain.FileLock{
+		ID: 9100, ProjectID: projectIDFromDB(t, dbConn), Path: "tex.png", HeldBy: 9001, ExpiresAt: &bobExpiry,
+	})
+	require.NoError(t, err)
+
+	_, err = locks.Lock(ctx, dir, "tex.png", clientusecase.LockOptions{})
+	var domErr *domain.Error
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 409, domErr.Code)
+	require.Contains(t, domErr.Message, "bob")
+	require.Contains(t, domErr.Message, "expires")
+
+	advance(3 * time.Minute)
+	taken, err := locks.Lock(ctx, dir, "tex.png", clientusecase.LockOptions{})
+	require.NoError(t, err, "an expired lock no longer blocks anyone")
+	require.Nil(t, taken.ExpiresAt)
+
+	_, err = locks.Lock(ctx, dir, "mine.png", clientusecase.LockOptions{TTL: time.Second})
+	require.ErrorAs(t, err, &domErr)
+	require.Equal(t, 400, domErr.Code)
+
+	mine, err := locks.Lock(ctx, dir, "mine.png", clientusecase.LockOptions{TTL: time.Minute})
+	require.NoError(t, err)
+	require.WithinDuration(t, now().Add(time.Minute), *mine.ExpiresAt, time.Second)
+
+	renewed, err := locks.Lock(ctx, dir, "mine.png", clientusecase.LockOptions{TTL: 10 * time.Minute})
+	require.NoError(t, err)
+	require.WithinDuration(t, now().Add(10*time.Minute), *renewed.ExpiresAt, time.Second)
+
+	kept, err := locks.Lock(ctx, dir, "mine.png", clientusecase.LockOptions{})
+	require.NoError(t, err)
+	require.WithinDuration(t, *renewed.ExpiresAt, *kept.ExpiresAt, time.Second, "a re-lock without a ttl keeps the expiry")
+
+	list, err := locks.List(ctx, dir)
+	require.NoError(t, err)
+	require.Len(t, list, 2)
+
+	advance(11 * time.Minute)
+	list, err = locks.List(ctx, dir)
+	require.NoError(t, err)
+	require.Len(t, list, 1)
+	require.Equal(t, "tex.png", list[0].Path)
 }

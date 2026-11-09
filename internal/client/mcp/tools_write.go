@@ -3,8 +3,11 @@ package mcp
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
+	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -12,6 +15,7 @@ import (
 	"github.com/nipalab/nipa/internal/client/output"
 	"github.com/nipalab/nipa/internal/client/usecase"
 	"github.com/nipalab/nipa/internal/diff"
+	serverDomain "github.com/nipalab/nipa/internal/domain"
 )
 
 func addWriteTools(srv *mcp.Server, s *server) {
@@ -61,7 +65,7 @@ func addWriteTools(srv *mcp.Server, s *server) {
 	if s.allowed(CapLock) {
 		mcp.AddTool(srv, &mcp.Tool{
 			Name:        "nipa_lock",
-			Description: "Lock a binary file or directory prefix so only the holder can change it. Binary changes must be locked before they can land.",
+			Description: "Lock a binary file or directory prefix so only the holder can change it. Binary changes must be locked before they can land. The lock expires after ttl (default 10m) and this server renews it every ttl/3 until nipa_unlock or shutdown, so a crashed agent never blocks the team for long.",
 			Annotations: nonDestructive(),
 		}, s.lock)
 		mcp.AddTool(srv, &mcp.Tool{
@@ -185,6 +189,7 @@ func (s *server) push(ctx context.Context, req *mcp.CallToolRequest, in pushInpu
 	if err := uc.Push.Run(ctx, root, s.withAgentTrailer(in.Message, req)); err != nil {
 		return nil, zero, toolError(err)
 	}
+	s.forgetLanded(ctx, root, uc)
 	return nil, currentHead(root), nil
 }
 
@@ -304,10 +309,19 @@ type lockInput struct {
 	Repo   string `json:"repo,omitempty" jsonschema:"Path inside a nipa working copy (defaults to the server working directory)"`
 	Path   string `json:"path" jsonschema:"Repo-relative file or directory prefix to lock"`
 	Branch string `json:"branch,omitempty" jsonschema:"Branch scope (defaults to the current branch; the default branch is project-global)"`
+	TTL    string `json:"ttl,omitempty" jsonschema:"Lock expiry as a duration between 1m and 168h (default 10m); renewed automatically while this server runs"`
 }
 
 func (s *server) lock(ctx context.Context, _ *mcp.CallToolRequest, in lockInput) (*mcp.CallToolResult, output.Lock, error) {
 	var zero output.Lock
+	ttl := defaultAgentLockTTL
+	if raw := strings.TrimSpace(in.TTL); raw != "" {
+		parsed, err := time.ParseDuration(raw)
+		if err != nil || parsed <= 0 {
+			return nil, zero, toolError(domain.NewUserError(fmt.Sprintf("invalid ttl %q: use a duration such as 10m or 1h", in.TTL)))
+		}
+		ttl = parsed
+	}
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 	root, uc, err := s.open(in.Repo)
@@ -318,11 +332,69 @@ func (s *server) lock(ctx context.Context, _ *mcp.CallToolRequest, in lockInput)
 	if uc.Lock == nil {
 		return nil, zero, notConfigured("locks are")
 	}
-	lock, err := uc.Lock.Lock(ctx, root, in.Path, in.Branch)
+	branch := lockBranch(root, in.Branch)
+	lock, err := uc.Lock.Lock(ctx, root, in.Path, usecase.LockOptions{Branch: branch, TTL: ttl})
 	if err != nil {
 		return nil, zero, toolError(err)
 	}
+	if lock != nil && lock.ExpiresAt != nil {
+		s.keepAlive.track(lockKey(root, branch, lock.Path), ttl, lock.ID)
+	}
 	return nil, output.NewLock(lock), nil
+}
+
+// lockBranch pins an empty branch to the clone's current one, so renewals keep
+// the scope after the agent switches branches.
+func lockBranch(root, branch string) string {
+	branch = strings.TrimSpace(branch)
+	if branch != "" {
+		return branch
+	}
+	if cfg, err := loadConfig(root); err == nil && cfg != nil {
+		return cfg.Branch
+	}
+	return ""
+}
+
+func lockKey(root, branch, path string) keepAliveKey {
+	if norm, err := serverDomain.NormalizePathPrefix(path); err == nil {
+		path = norm
+	}
+	return keepAliveKey{root: root, branch: branch, path: path}
+}
+
+func (s *server) renewLock(ctx context.Context, key keepAliveKey, ttl time.Duration) (string, error) {
+	uc, err := s.useCases()
+	if err != nil {
+		return "", err
+	}
+	defer uc.close()
+	if uc.Lock == nil {
+		return "", errors.New("locks are not configured")
+	}
+	lock, err := uc.Lock.Lock(ctx, key.root, key.path, usecase.LockOptions{Branch: key.branch, TTL: ttl})
+	if err != nil || lock == nil {
+		return "", err
+	}
+	return lock.ID, nil
+}
+
+// forgetLanded stops renewing exact-path locks the server released when the
+// push landed them; renewing would otherwise take them again.
+func (s *server) forgetLanded(ctx context.Context, root string, uc UseCases) {
+	if uc.Lock == nil || !s.keepAlive.tracking(root) {
+		return
+	}
+	locks, err := uc.Lock.List(ctx, root)
+	if err != nil {
+		slog.Warn("could not refresh renewed locks after push", "error", err)
+		return
+	}
+	held := make(map[string]bool, len(locks))
+	for _, lock := range locks {
+		held[lock.ID] = true
+	}
+	s.keepAlive.retain(root, held)
 }
 
 type unlockInput struct {
@@ -347,7 +419,15 @@ func (s *server) unlock(ctx context.Context, _ *mcp.CallToolRequest, in unlockIn
 	if uc.Lock == nil {
 		return nil, zero, notConfigured("locks are")
 	}
-	if err := uc.Lock.Unlock(ctx, root, in.Path, in.Branch); err != nil {
+	branch := lockBranch(root, in.Branch)
+	key := lockKey(root, branch, in.Path)
+	entry, tracked := s.keepAlive.untrack(key)
+	if err := uc.Lock.Unlock(ctx, root, in.Path, branch); err != nil {
+		var derr *domain.Error
+		gone := errors.As(err, &derr) && derr.Code == 404
+		if tracked && !gone {
+			s.keepAlive.track(key, entry.ttl, entry.lockID)
+		}
 		return nil, zero, toolError(err)
 	}
 	return nil, unlockedOutput{Path: in.Path}, nil

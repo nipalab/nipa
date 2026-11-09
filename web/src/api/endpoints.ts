@@ -627,10 +627,16 @@ export function listFileLocks(org: string, project: string): Promise<FileLockRes
   return apiJson(`${projectBase(org, project)}/locks`)
 }
 
-export function lockFile(org: string, project: string, path: string, branch: string): Promise<FileLockResponse> {
+export function lockFile(
+  org: string,
+  project: string,
+  path: string,
+  branch: string,
+  ttlSeconds?: number,
+): Promise<FileLockResponse> {
   return apiJson(`${projectBase(org, project)}/locks`, {
     method: 'POST',
-    body: JSON.stringify({ path, branch }),
+    body: JSON.stringify(ttlSeconds === undefined ? { path, branch } : { path, branch, ttl_seconds: ttlSeconds }),
   })
 }
 

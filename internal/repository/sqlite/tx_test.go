@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -51,7 +52,7 @@ func TestMergeRequestAndFileLockTx_RollsBackTogether(t *testing.T) {
 	_, err = mrRepo.Get(ctx, projectID, 1)
 	requireRecordNotFound(t, err)
 
-	locks, err := lockRepo.ListProject(ctx, projectID)
+	locks, err := lockRepo.ListProject(ctx, projectID, time.Now())
 	require.NoError(t, err)
 	require.Empty(t, locks)
 }

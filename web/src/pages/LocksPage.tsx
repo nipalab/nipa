@@ -52,6 +52,7 @@ export default function LocksPage() {
       ),
     },
     { id: 'acquired', header: 'Acquired', renderCell: (lock) => <Timestamp value={lock.acquired_at} /> },
+    { id: 'expires', header: 'Expires', renderCell: (lock) => <Timestamp value={lock.expires_at} fallback="never" /> },
     {
       id: 'actions',
       header: '',

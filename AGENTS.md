@@ -319,7 +319,13 @@ branch/tag create, `lock` lock/unlock, `mr` create/update/comment/reply/
 resolve/review/request-review/check, `merge` merge/resolve-conflict/
 `nipa_godot_merge`/`nipa_mr_merge`; an unregistered tool is a JSON-RPC
 error. Writes are serialized by `writeMu` and annotated `DestructiveHint`
-when they discard or overwrite work. `withAgentTrailer` appends
+when they discard or overwrite work. `nipa_lock` takes a `ttl` (default
+10m); `keepalive.go` re-locks every TTL lock the server took every ttl/3
+(re-lock = renew, injectable ticker; a permanent covering lock is not
+tracked, entries are matched by lock id), drops a lock on a successful
+`nipa_unlock` (a failed non-404 unlock keeps renewing), a failed renew
+(`slog.Warn`) or when a push landed it (`forgetLanded`), and stops on
+shutdown, so a crashed agent frees its locks within one TTL. `withAgentTrailer` appends
 `Nipa-Agent: <clientInfo.name>/<version>` from the initialize handshake to
 push messages, MR descriptions, comments, replies and review bodies (not
 titles; skipped for blank text, an existing trailer or `--no-agent-trailer`).
@@ -603,6 +609,17 @@ via `BinaryLockPlan` (required vs checked paths); `Branch.Delete` releases the
 branch's scoped locks (soft delete ⇒ no FK cascade). The `/locks` REST routes,
 `LockFile`/`UnlockFile`/`ListFileLocks` RPCs and the web Locks page expose
 acquire/release/list.
+Locks may expire: `file_locks.expires_at` (NULL = permanent) is set from an
+optional TTL (`LockFileRequest.ttl_seconds`, REST `ttl_seconds`, `nipa lock
+--ttl 2h`, client `LockOptions{Branch, TTL}`, usecase `LockTTL`/
+`LockTTLSeconds`, 1m..7d else 400). `Get`/`ListProject` filter expired rows
+with a `now` passed from Go (`FileLock.WithClock` seam), and `Acquire` and
+`ensureMergeRequestLocks` purge them (`DeleteExpired`) inside the serialized
+section first, since expired rows still occupy the unique indexes. A re-lock
+with a TTL by the holder renews it (`SetExpiry`; permanent covering directory
+locks and MR locks are left alone), without a TTL the expiry is unchanged; MR
+locks never expire and conflict messages name the expiry. Purges are not
+audited, and `WatchEvents` reports an expired lock as `lock_released`.
 
 Flow for merge request reviews: a review is one decision per reviewer per source
 head round (`approved`/`changes_requested`/`commented`); a review for an older

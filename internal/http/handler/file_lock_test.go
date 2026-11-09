@@ -3,6 +3,7 @@ package handler
 import (
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -106,4 +107,21 @@ func TestHandler_FileLockContextError(t *testing.T) {
 			require.Equal(t, http.StatusInternalServerError, appCtx.statusCode)
 		})
 	}
+}
+
+func TestHandler_FileLockTTL(t *testing.T) {
+	env := newHandlerTestEnv(t)
+	claims := &domain.Claims{UserID: env.userID, IsAdmin: true}
+	projectParams := map[string]string{"org": "default", "project": "default"}
+
+	appCtx := &fakeAppContext{claims: claims, pathParameters: projectParams, body: []byte(`{"path":"a.png","ttl_seconds":600}`)}
+	env.handler.LockFile(appCtx)
+	require.Equal(t, http.StatusOK, appCtx.statusCode)
+	lock := appCtx.response.(model.FileLockResponse)
+	require.NotNil(t, lock.ExpiresAt)
+	require.WithinDuration(t, time.Now().Add(10*time.Minute), *lock.ExpiresAt, time.Minute)
+
+	appCtx = &fakeAppContext{claims: claims, pathParameters: projectParams, body: []byte(`{"path":"b.png","ttl_seconds":1}`)}
+	env.handler.LockFile(appCtx)
+	require.Equal(t, http.StatusBadRequest, appCtx.statusCode)
 }

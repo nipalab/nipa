@@ -520,12 +520,14 @@ func TestServer_ProxyPassesMRAndLockFields(t *testing.T) {
 	require.Equal(t, "main", gotMR.GetTargetBranch())
 	require.EqualValues(t, 7, mrRes.GetResponse().GetMergeRequest().GetNumber())
 
+	ttl := int64(600)
 	lockRes, err := srv.ProxyLockFile(context.Background(), &daemonpb.ProxyLockFileRequest{
 		Root:    root,
-		Request: &pb.LockFileRequest{Path: "assets/logo.png"},
+		Request: &pb.LockFileRequest{Path: "assets/logo.png", TtlSeconds: &ttl},
 	})
 	require.NoError(t, err)
 	require.Equal(t, "assets/logo.png", gotLock.GetPath())
+	require.Equal(t, int64(600), gotLock.GetTtlSeconds(), "the ttl passes through unchanged")
 	require.True(t, lockRes.GetResponse().GetLock().GetGlobal())
 }
 

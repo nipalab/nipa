@@ -12,6 +12,7 @@ type FileLock struct {
 	HeldByName         string
 	MergeRequestNumber *int64
 	AcquiredAt         time.Time
+	ExpiresAt          *time.Time
 	// Warning reports a local follow-up (pinning, capturing the old version)
 	// that failed after the server granted the lock.
 	Warning string

@@ -12,6 +12,7 @@ package usecase
 import (
 	context "context"
 	reflect "reflect"
+	time "time"
 
 	domain "github.com/nipalab/nipa/internal/domain"
 	snow "github.com/nipalab/nipa/internal/snow"
@@ -99,34 +100,62 @@ func (mr *MockfileLockRepositoryMockRecorder) DeleteByMergeRequest(ctx, projectI
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteByMergeRequest", reflect.TypeOf((*MockfileLockRepository)(nil).DeleteByMergeRequest), ctx, projectID, mergeRequestID)
 }
 
-// Get mocks base method.
-func (m *MockfileLockRepository) Get(ctx context.Context, projectID snow.ID, path string, branchID *snow.ID) (*domain.FileLock, error) {
+// DeleteExpired mocks base method.
+func (m *MockfileLockRepository) DeleteExpired(ctx context.Context, projectID snow.ID, now time.Time) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Get", ctx, projectID, path, branchID)
+	ret := m.ctrl.Call(m, "DeleteExpired", ctx, projectID, now)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteExpired indicates an expected call of DeleteExpired.
+func (mr *MockfileLockRepositoryMockRecorder) DeleteExpired(ctx, projectID, now any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteExpired", reflect.TypeOf((*MockfileLockRepository)(nil).DeleteExpired), ctx, projectID, now)
+}
+
+// Get mocks base method.
+func (m *MockfileLockRepository) Get(ctx context.Context, projectID snow.ID, path string, branchID *snow.ID, now time.Time) (*domain.FileLock, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Get", ctx, projectID, path, branchID, now)
 	ret0, _ := ret[0].(*domain.FileLock)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Get indicates an expected call of Get.
-func (mr *MockfileLockRepositoryMockRecorder) Get(ctx, projectID, path, branchID any) *gomock.Call {
+func (mr *MockfileLockRepositoryMockRecorder) Get(ctx, projectID, path, branchID, now any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockfileLockRepository)(nil).Get), ctx, projectID, path, branchID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockfileLockRepository)(nil).Get), ctx, projectID, path, branchID, now)
 }
 
 // ListProject mocks base method.
-func (m *MockfileLockRepository) ListProject(ctx context.Context, projectID snow.ID) ([]*domain.FileLock, error) {
+func (m *MockfileLockRepository) ListProject(ctx context.Context, projectID snow.ID, now time.Time) ([]*domain.FileLock, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListProject", ctx, projectID)
+	ret := m.ctrl.Call(m, "ListProject", ctx, projectID, now)
 	ret0, _ := ret[0].([]*domain.FileLock)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ListProject indicates an expected call of ListProject.
-func (mr *MockfileLockRepositoryMockRecorder) ListProject(ctx, projectID any) *gomock.Call {
+func (mr *MockfileLockRepositoryMockRecorder) ListProject(ctx, projectID, now any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListProject", reflect.TypeOf((*MockfileLockRepository)(nil).ListProject), ctx, projectID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListProject", reflect.TypeOf((*MockfileLockRepository)(nil).ListProject), ctx, projectID, now)
+}
+
+// SetExpiry mocks base method.
+func (m *MockfileLockRepository) SetExpiry(ctx context.Context, id, holder snow.ID, expiresAt time.Time) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetExpiry", ctx, id, holder, expiresAt)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetExpiry indicates an expected call of SetExpiry.
+func (mr *MockfileLockRepositoryMockRecorder) SetExpiry(ctx, id, holder, expiresAt any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetExpiry", reflect.TypeOf((*MockfileLockRepository)(nil).SetExpiry), ctx, id, holder, expiresAt)
 }
 
 // MockfileLockGate is a mock of fileLockGate interface.

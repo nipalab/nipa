@@ -14,9 +14,11 @@ import (
 //go:generate go run go.uber.org/mock/mockgen -source=$GOFILE -destination=file_lock_mock_test.go -package=usecase
 type fileLockRepository interface {
 	Create(ctx context.Context, lock domain.FileLock) (*domain.FileLock, error)
-	Get(ctx context.Context, projectID snow.ID, path string, branchID *snow.ID) (*domain.FileLock, error)
-	ListProject(ctx context.Context, projectID snow.ID) ([]*domain.FileLock, error)
+	Get(ctx context.Context, projectID snow.ID, path string, branchID *snow.ID, now time.Time) (*domain.FileLock, error)
+	ListProject(ctx context.Context, projectID snow.ID, now time.Time) ([]*domain.FileLock, error)
 	Delete(ctx context.Context, id snow.ID) error
+	DeleteExpired(ctx context.Context, projectID snow.ID, now time.Time) error
+	SetExpiry(ctx context.Context, id, holder snow.ID, expiresAt time.Time) error
 	DeleteByMergeRequest(ctx context.Context, projectID, mergeRequestID snow.ID) error
 	DeleteByBranch(ctx context.Context, projectID, branchID snow.ID) error
 }
@@ -45,6 +47,7 @@ type FileLock struct {
 	perm       permissionUsecase
 	snowNode   snow.Node
 	audit      AuditRecorder
+	now        func() time.Time
 
 	// acquireMu serializes overlap check + insert. The unique indexes only
 	// catch identical (project, branch, path) rows, so distinct-but-overlapping
@@ -59,7 +62,47 @@ func NewFileLock(repo fileLockRepository, branchRepo branchRepository, perm perm
 		branchRepo: branchRepo,
 		perm:       perm,
 		snowNode:   snowNode,
+		now:        time.Now,
 	}
+}
+
+const (
+	MinLockTTL = time.Minute
+	MaxLockTTL = 7 * 24 * time.Hour
+)
+
+type acquireOptions struct {
+	ttl    time.Duration
+	hasTTL bool
+}
+
+// AcquireOption tunes a lock grant.
+type AcquireOption func(*acquireOptions)
+
+// LockTTL makes the lock expire ttl after it is granted; a re-lock by the same
+// holder renews it.
+func LockTTL(ttl time.Duration) AcquireOption {
+	return func(o *acquireOptions) {
+		o.ttl = ttl
+		o.hasTTL = true
+	}
+}
+
+// LockTTLSeconds is LockTTL for wire values, out-of-range input stays invalid.
+func LockTTLSeconds(seconds int64) AcquireOption {
+	if seconds > int64(MaxLockTTL/time.Second) {
+		return LockTTL(MaxLockTTL + time.Second)
+	}
+	if seconds < int64(MinLockTTL/time.Second) {
+		return LockTTL(MinLockTTL - time.Second)
+	}
+	return LockTTL(time.Duration(seconds) * time.Second)
+}
+
+// WithClock replaces the clock used for lock expiry.
+func (f *FileLock) WithClock(now func() time.Time) *FileLock {
+	f.now = now
+	return f
 }
 
 // WithAudit records locks released by someone other than their holder.
@@ -79,10 +122,17 @@ func (f *FileLock) WithSerializer(tx transactor, serializer lockSerializer) *Fil
 
 // Acquire takes an exclusive lock on a binary path or path prefix. Locks on
 // the default branch are project-global; other branches are lock-scoped.
-func (f *FileLock) Acquire(ctx context.Context, projectID snow.ID, branchName, path string) (*domain.FileLock, error) {
+func (f *FileLock) Acquire(ctx context.Context, projectID snow.ID, branchName, path string, opts ...AcquireOption) (*domain.FileLock, error) {
 	claim, ok := domain.ClaimFromContext(ctx)
 	if !ok {
 		return nil, domain.NewErrorNoPermission()
+	}
+	var options acquireOptions
+	for _, opt := range opts {
+		opt(&options)
+	}
+	if options.hasTTL && (options.ttl < MinLockTTL || options.ttl > MaxLockTTL) {
+		return nil, domain.NewErrorUser(fmt.Sprintf("lock ttl must be between %s and %s", MinLockTTL, MaxLockTTL))
 	}
 	if !f.perm.HasProjectAccess(ctx, projectID, domain.PermissionWrite) {
 		return nil, domain.NewErrorNoPermission()
@@ -104,8 +154,12 @@ func (f *FileLock) Acquire(ctx context.Context, projectID snow.ID, branchName, p
 
 	var granted *domain.FileLock
 	err = f.serialized(ctx, projectID, func(ctx context.Context) error {
+		now := f.now()
+		if err := f.repo.DeleteExpired(ctx, projectID, now); err != nil {
+			return err
+		}
 		var err error
-		granted, err = f.grant(ctx, projectID, norm, *scope, claim.UserID)
+		granted, err = f.grant(ctx, projectID, norm, *scope, claim.UserID, now, options)
 		return err
 	})
 	if err != nil {
@@ -130,8 +184,8 @@ func (f *FileLock) serialized(ctx context.Context, projectID snow.ID, fn func(ct
 	})
 }
 
-func (f *FileLock) grant(ctx context.Context, projectID snow.ID, norm string, scope lockScope, holder snow.ID) (*domain.FileLock, error) {
-	locks, err := f.repo.ListProject(ctx, projectID)
+func (f *FileLock) grant(ctx context.Context, projectID snow.ID, norm string, scope lockScope, holder snow.ID, now time.Time, options acquireOptions) (*domain.FileLock, error) {
+	locks, err := f.repo.ListProject(ctx, projectID, now)
 	if err != nil {
 		return nil, err
 	}
@@ -143,11 +197,16 @@ func (f *FileLock) grant(ctx context.Context, projectID snow.ID, norm string, sc
 		// only overlaps without covering the request (file held, dir wanted).
 		if lock.HeldBy == holder {
 			if domain.PrefixCovers(lock.Path, norm) {
-				return lock, nil
+				return f.renew(ctx, lock, norm, now, options)
 			}
 			continue
 		}
 		return nil, lockConflictError(lock, norm)
+	}
+	var expiresAt *time.Time
+	if options.hasTTL {
+		at := now.Add(options.ttl)
+		expiresAt = &at
 	}
 	created, err := f.repo.Create(ctx, domain.FileLock{
 		ID:        f.snowNode.Generate(),
@@ -155,18 +214,34 @@ func (f *FileLock) grant(ctx context.Context, projectID snow.ID, norm string, sc
 		BranchID:  scope.branchID,
 		Path:      norm,
 		HeldBy:    holder,
+		ExpiresAt: expiresAt,
 	})
 	if err != nil {
-		if existing, getErr := f.repo.Get(ctx, projectID, norm, scope.branchID); getErr == nil {
+		if existing, getErr := f.repo.Get(ctx, projectID, norm, scope.branchID, now); getErr == nil {
 			if existing.HeldBy != holder {
 				return nil, lockConflictError(existing, norm)
 			}
-			return existing, nil
+			return f.renew(ctx, existing, norm, now, options)
 		}
 		return nil, err
 	}
 	created.Branch = scope.branchName
 	return created, nil
+}
+
+// renew moves the expiry of the holder's covering lock when the request carries
+// a TTL. Permanent directory locks and merge-request locks are left alone.
+func (f *FileLock) renew(ctx context.Context, lock *domain.FileLock, norm string, now time.Time, options acquireOptions) (*domain.FileLock, error) {
+	if !options.hasTTL || lock.MergeRequestID != nil || (lock.ExpiresAt == nil && lock.Path != norm) {
+		return lock, nil
+	}
+	expiresAt := now.Add(options.ttl)
+	if err := f.repo.SetExpiry(ctx, lock.ID, lock.HeldBy, expiresAt); err != nil {
+		return nil, err
+	}
+	renewed := *lock
+	renewed.ExpiresAt = &expiresAt
+	return &renewed, nil
 }
 
 // Release removes a lock. The holder and project admins may release it.
@@ -186,7 +261,7 @@ func (f *FileLock) Release(ctx context.Context, projectID snow.ID, branchName, p
 	if err != nil {
 		return err
 	}
-	lock, err := f.repo.Get(ctx, projectID, norm, scope.branchID)
+	lock, err := f.repo.Get(ctx, projectID, norm, scope.branchID, f.now())
 	if domain.IsErrorNotFound(err) {
 		return domain.NewErrorNotFound(fmt.Sprintf("no lock on %q in %s", norm, scope.describe()))
 	}
@@ -217,7 +292,7 @@ func (f *FileLock) List(ctx context.Context, projectID snow.ID) ([]*domain.FileL
 	if !f.perm.HasProjectAccess(ctx, projectID, domain.PermissionRead) {
 		return nil, domain.NewErrorNoPermission()
 	}
-	locks, err := f.repo.ListProject(ctx, projectID)
+	locks, err := f.repo.ListProject(ctx, projectID, f.now())
 	if err != nil {
 		return nil, err
 	}
@@ -243,7 +318,7 @@ func (f *FileLock) EnsureLocks(ctx context.Context, projectID snow.ID, branch *d
 	if len(required) == 0 && len(checked) == 0 {
 		return nil
 	}
-	locks, err := f.repo.ListProject(ctx, projectID)
+	locks, err := f.repo.ListProject(ctx, projectID, f.now())
 	if err != nil {
 		return err
 	}
@@ -272,7 +347,7 @@ func (f *FileLock) ReleaseLanded(ctx context.Context, projectID snow.ID, branch 
 	if len(paths) == 0 {
 		return nil
 	}
-	locks, err := f.repo.ListProject(ctx, projectID)
+	locks, err := f.repo.ListProject(ctx, projectID, f.now())
 	if err != nil {
 		return err
 	}
@@ -312,7 +387,11 @@ func (f *FileLock) EnsureMergeRequestLocks(ctx context.Context, projectID snow.I
 }
 
 func (f *FileLock) ensureMergeRequestLocks(ctx context.Context, projectID snow.ID, mergeRequestID snow.ID, target *domain.Branch, paths []string, holder, author snow.ID) error {
-	locks, err := f.repo.ListProject(ctx, projectID)
+	now := f.now()
+	if err := f.repo.DeleteExpired(ctx, projectID, now); err != nil {
+		return err
+	}
+	locks, err := f.repo.ListProject(ctx, projectID, now)
 	if err != nil {
 		return err
 	}
@@ -335,7 +414,7 @@ func (f *FileLock) ensureMergeRequestLocks(ctx context.Context, projectID snow.I
 			MergeRequestID: &mrID,
 		})
 		if err != nil {
-			if existing, getErr := f.repo.Get(ctx, projectID, path, scopeID); getErr == nil {
+			if existing, getErr := f.repo.Get(ctx, projectID, path, scopeID, now); getErr == nil {
 				if !mergeRequestLockAccepted(existing, mergeRequestID, holder, author) {
 					return lockConflictError(existing, path)
 				}
@@ -454,8 +533,12 @@ func lockConflictError(lock *domain.FileLock, path string) error {
 	if lock.MergeRequestNumber != nil {
 		via = fmt.Sprintf(" via merge request #%d", *lock.MergeRequestNumber)
 	}
+	expiry := ""
+	if lock.ExpiresAt != nil {
+		expiry = fmt.Sprintf(", expires %s", lock.ExpiresAt.UTC().Format(time.RFC3339))
+	}
 	return domain.NewErrorConflict(fmt.Sprintf(
-		"%q is locked by %s on %s%s since %s",
-		path, holder, scope, via, lock.AcquiredAt.UTC().Format(time.RFC3339),
+		"%q is locked by %s on %s%s since %s%s",
+		path, holder, scope, via, lock.AcquiredAt.UTC().Format(time.RFC3339), expiry,
 	))
 }

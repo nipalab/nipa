@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -93,15 +94,24 @@ type Options struct {
 	Allow          map[string]bool
 	NoAgentTrailer bool
 	Version        string
+
+	newTicker func(time.Duration) ticker
 }
 
 type server struct {
-	opts    Options
-	writeMu sync.Mutex
+	opts      Options
+	writeMu   sync.Mutex
+	keepAlive *keepAlive
 }
 
 func NewServer(opts Options) *mcp.Server {
+	_, srv := newServer(opts)
+	return srv
+}
+
+func newServer(opts Options) (*server, *mcp.Server) {
 	s := &server{opts: opts}
+	s.keepAlive = newKeepAlive(opts.newTicker, s.renewLock)
 	srv := mcp.NewServer(&mcp.Implementation{Name: "nipa", Version: opts.Version}, nil)
 	addReadTools(srv, s)
 	addMRReadTools(srv, s)
@@ -109,11 +119,15 @@ func NewServer(opts Options) *mcp.Server {
 	addMRWriteTools(srv, s)
 	addAssetTools(srv, s)
 	addPrompts(srv, s)
-	return srv
+	return s, srv
 }
 
+// Serve runs the stdio server until ctx ends or the client disconnects, then
+// stops renewing the locks it took.
 func Serve(ctx context.Context, opts Options) error {
-	return NewServer(opts).Run(ctx, &mcp.StdioTransport{})
+	s, srv := newServer(opts)
+	defer s.keepAlive.stop()
+	return srv.Run(ctx, &mcp.StdioTransport{})
 }
 
 func (s *server) allowed(capability string) bool {
