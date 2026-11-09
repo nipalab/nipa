@@ -77,6 +77,16 @@ describe('LocksPage', () => {
     expect(container.textContent).toContain('Dana')
     expect(container.textContent).toContain('branch feature')
     expect(container.textContent).toContain('MR #7')
+    expect(container.textContent).toContain('never')
+  })
+
+  it('shows when a lock expires', async () => {
+    const expires = new Date(Date.now() + 10 * 60 * 1000).toISOString()
+    api.listFileLocks.mockResolvedValue([lock({ expires_at: expires })])
+    const { container } = await renderRoute(pattern, url, <LocksPage />)
+    await waitFor(() => (container.textContent ?? '').includes('assets/orc.png'))
+    expect(container.querySelector(`time[datetime="${expires}"]`)).not.toBeNull()
+    expect(container.textContent).not.toContain('never')
   })
 
   it('shows the empty message when there are no locks', async () => {

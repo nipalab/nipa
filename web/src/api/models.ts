@@ -332,6 +332,7 @@ export interface FileLockResponse {
   held_by_name: string
   merge_request_number?: number
   acquired_at: string
+  expires_at?: string
 }
 
 export interface GroupMemberResponse {

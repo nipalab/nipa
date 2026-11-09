@@ -52,7 +52,7 @@ func TestFileLock_LockPinsAndCapturesCoveredRawFiles(t *testing.T) {
 	fx.dropObjects(t)
 	client := &stubLockDownloadClient{stubLockClient: &stubLockClient{lockResult: &clientDomain.FileLock{Path: "/art"}}}
 
-	lock, err := newTestFileLockUsecase(t, fx.lr, client).Lock(context.Background(), fx.root, "art", "")
+	lock, err := newTestFileLockUsecase(t, fx.lr, client).Lock(context.Background(), fx.root, "art", LockOptions{})
 	require.NoError(t, err)
 	require.Empty(t, lock.Warning)
 	pins, err := fx.lr.ListPins()
@@ -70,7 +70,7 @@ func TestFileLock_LockDownloadsEditedFile(t *testing.T) {
 	writeFileAt(t, fx.root, "art/hero.bin", "\x00edited before locking\x03")
 	client := &stubLockDownloadClient{stubLockClient: &stubLockClient{lockResult: &clientDomain.FileLock{Path: "art/hero.bin"}}, data: fx.stored}
 
-	lock, err := newTestFileLockUsecase(t, fx.lr, client).Lock(context.Background(), fx.root, "art/hero.bin", "")
+	lock, err := newTestFileLockUsecase(t, fx.lr, client).Lock(context.Background(), fx.root, "art/hero.bin", LockOptions{})
 	require.NoError(t, err)
 	require.Empty(t, lock.Warning)
 	require.Equal(t, 1, client.calls)
@@ -83,7 +83,7 @@ func TestFileLock_LockCaptureFailureIsWarning(t *testing.T) {
 	writeFileAt(t, fx.root, "art/hero.bin", "\x00edited\x03")
 	client := &stubLockClient{lockResult: &clientDomain.FileLock{Path: "art/hero.bin"}}
 
-	lock, err := newTestFileLockUsecase(t, fx.lr, client).Lock(context.Background(), fx.root, "art/hero.bin", "")
+	lock, err := newTestFileLockUsecase(t, fx.lr, client).Lock(context.Background(), fx.root, "art/hero.bin", LockOptions{})
 	require.NoError(t, err)
 	require.Contains(t, lock.Warning, "content not cached locally")
 	pins, err := fx.lr.ListPins()
@@ -145,7 +145,7 @@ func TestLockPins_Errors(t *testing.T) {
 
 func TestFileLock_LockWithoutPinRepoReturnsServerLock(t *testing.T) {
 	lock := &clientDomain.FileLock{Path: "a.bin"}
-	got, err := newTestFileLockUsecase(t, lockOnlyRepo{}, &stubLockClient{lockResult: lock}).Lock(context.Background(), t.TempDir(), "a.bin", "")
+	got, err := newTestFileLockUsecase(t, lockOnlyRepo{}, &stubLockClient{lockResult: lock}).Lock(context.Background(), t.TempDir(), "a.bin", LockOptions{})
 	require.NoError(t, err)
 	require.Same(t, lock, got)
 	require.NoError(t, newTestFileLockUsecase(t, lockOnlyRepo{}, &stubLockClient{}).Unlock(context.Background(), t.TempDir(), "a.bin", ""))

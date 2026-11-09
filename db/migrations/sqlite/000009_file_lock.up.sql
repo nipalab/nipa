@@ -5,7 +5,8 @@ CREATE TABLE file_locks (
     path TEXT NOT NULL,
     held_by INTEGER NOT NULL REFERENCES users(id),
     merge_request_id INTEGER REFERENCES merge_requests(id),
-    acquired_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    acquired_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at DATETIME
 );
 
 CREATE UNIQUE INDEX idx_file_locks_global ON file_locks (project_id, path) WHERE branch_id IS NULL;

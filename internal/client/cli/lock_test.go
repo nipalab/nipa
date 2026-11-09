@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -18,6 +19,7 @@ type fakeLockClient struct {
 
 	lockPath   string
 	lockBranch string
+	lockTTL    time.Duration
 	lockResult *domain.FileLock
 	lockErr    error
 
@@ -34,8 +36,8 @@ func (f *fakeLockClient) Connect(_ context.Context, host string) error {
 	return f.connectErr
 }
 
-func (f *fakeLockClient) LockFile(_ context.Context, _, _, path, branch string) (*domain.FileLock, error) {
-	f.lockPath, f.lockBranch = path, branch
+func (f *fakeLockClient) LockFile(_ context.Context, _, _, path, branch string, ttl time.Duration) (*domain.FileLock, error) {
+	f.lockPath, f.lockBranch, f.lockTTL = path, branch, ttl
 	return f.lockResult, f.lockErr
 }
 
@@ -64,6 +66,30 @@ func TestSetupLockCmd_Success(t *testing.T) {
 	require.Contains(t, out, `Locked art/tex.png (branch "feature").`)
 	require.Equal(t, "art/tex.png", client.lockPath)
 	require.Equal(t, "feature", client.lockBranch, "locks default to the current branch")
+	require.Zero(t, client.lockTTL, "without --ttl the lock is permanent")
+}
+
+func TestSetupLockCmd_TTL(t *testing.T) {
+	root := setupRepo(t, "feature")
+	expires := time.Now().Add(2 * time.Hour)
+	client := &fakeLockClient{lockResult: &domain.FileLock{Path: "art/tex.png", Branch: "feature", ExpiresAt: &expires}}
+	cli := newLockCli(t, client)
+
+	out, err := runCmdInDir(t, root, cli.setupLockCmd(), "art/tex.png", "--ttl", "2h")
+	require.NoError(t, err)
+	require.Equal(t, 2*time.Hour, client.lockTTL)
+	require.Contains(t, out, "expires in 2h0m0s")
+
+	_, err = runCmdInDir(t, root, cli.setupLockCmd(), "art/tex.png", "--ttl", "soon")
+	require.ErrorContains(t, err, "invalid --ttl")
+	_, err = runCmdInDir(t, root, cli.setupLockCmd(), "art/tex.png", "--ttl", "-5m")
+	require.ErrorContains(t, err, "invalid --ttl")
+}
+
+func TestFormatLockRemaining(t *testing.T) {
+	require.Equal(t, "0s", formatLockRemaining(-time.Second))
+	require.Equal(t, "42s", formatLockRemaining(42*time.Second+300*time.Millisecond))
+	require.Equal(t, "5m0s", formatLockRemaining(5*time.Minute+10*time.Second))
 }
 
 func TestSetupLockCmd_BranchFlag(t *testing.T) {
@@ -102,6 +128,20 @@ func TestSetupLockListCmd_Rows(t *testing.T) {
 	require.Contains(t, out, "bob")
 	require.Contains(t, out, "MR #3")
 	require.Contains(t, out, `branch "feature"`)
+	require.Contains(t, out, "never")
+}
+
+func TestSetupLockListCmd_Expiry(t *testing.T) {
+	root := setupRepo(t, "feature")
+	expires := time.Now().Add(10 * time.Minute)
+	cli := newLockCli(t, &fakeLockClient{listResult: []*domain.FileLock{
+		{Path: "art/tex.png", Global: true, HeldByName: "bob", ExpiresAt: &expires},
+	}})
+
+	out, err := runCmdInDir(t, root, cli.setupLockCmd(), "list")
+	require.NoError(t, err)
+	require.Contains(t, out, "in 10m0s")
+	require.NotContains(t, out, "never")
 }
 
 func TestSetupLockListCmd_Empty(t *testing.T) {

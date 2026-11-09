@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
@@ -101,4 +102,27 @@ func TestFileLockHandlers_Errors(t *testing.T) {
 		Context: &pb.ProjectContext{Org: "default", Project: "ghost"},
 	})
 	require.Equal(t, codes.NotFound, status.Code(err))
+}
+
+func TestFileLockHandlers_TTL(t *testing.T) {
+	srv, ctx := newFileLockTestServer(t)
+	project := &pb.ProjectContext{Org: "default", Project: "default"}
+
+	ttl := int64(600)
+	resp, err := srv.LockFile(ctx, &pb.LockFileRequest{Context: project, Path: "a.png", TtlSeconds: &ttl})
+	require.NoError(t, err)
+	require.NotNil(t, resp.GetLock().GetExpiresAt())
+	require.WithinDuration(t, time.Now().Add(10*time.Minute), resp.GetLock().GetExpiresAt().AsTime(), time.Minute)
+
+	listResp, err := srv.ListFileLocks(ctx, &pb.ListFileLocksRequest{Context: project})
+	require.NoError(t, err)
+	require.NotNil(t, listResp.GetLocks()[0].GetExpiresAt())
+
+	permanent, err := srv.LockFile(ctx, &pb.LockFileRequest{Context: project, Path: "b.png"})
+	require.NoError(t, err)
+	require.Nil(t, permanent.GetLock().GetExpiresAt())
+
+	short := int64(5)
+	_, err = srv.LockFile(ctx, &pb.LockFileRequest{Context: project, Path: "c.png", TtlSeconds: &short})
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
 }

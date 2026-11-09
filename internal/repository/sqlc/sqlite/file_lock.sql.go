@@ -12,9 +12,9 @@ import (
 )
 
 const fileLockCreate = `-- name: FileLockCreate :one
-INSERT INTO file_locks (id, project_id, branch_id, path, held_by, merge_request_id)
-VALUES (?, ?, ?, ?, ?, ?)
-RETURNING id, project_id, branch_id, path, held_by, merge_request_id, acquired_at
+INSERT INTO file_locks (id, project_id, branch_id, path, held_by, merge_request_id, expires_at)
+VALUES (?, ?, ?, ?, ?, ?, ?)
+RETURNING id, project_id, branch_id, path, held_by, merge_request_id, acquired_at, expires_at
 `
 
 type FileLockCreateParams struct {
@@ -24,6 +24,7 @@ type FileLockCreateParams struct {
 	Path           string        `json:"path"`
 	HeldBy         int64         `json:"held_by"`
 	MergeRequestID sql.NullInt64 `json:"merge_request_id"`
+	ExpiresAt      sql.NullTime  `json:"expires_at"`
 }
 
 func (q *Queries) FileLockCreate(ctx context.Context, arg FileLockCreateParams) (FileLock, error) {
@@ -34,6 +35,7 @@ func (q *Queries) FileLockCreate(ctx context.Context, arg FileLockCreateParams) 
 		arg.Path,
 		arg.HeldBy,
 		arg.MergeRequestID,
+		arg.ExpiresAt,
 	)
 	var i FileLock
 	err := row.Scan(
@@ -44,6 +46,7 @@ func (q *Queries) FileLockCreate(ctx context.Context, arg FileLockCreateParams) 
 		&i.HeldBy,
 		&i.MergeRequestID,
 		&i.AcquiredAt,
+		&i.ExpiresAt,
 	)
 	return i, err
 }
@@ -94,19 +97,44 @@ func (q *Queries) FileLockDeleteByMergeRequest(ctx context.Context, arg FileLock
 	return result.RowsAffected()
 }
 
+const fileLockDeleteExpired = `-- name: FileLockDeleteExpired :execrows
+DELETE FROM file_locks
+WHERE project_id = ?1 AND expires_at IS NOT NULL AND expires_at <= ?2
+`
+
+type FileLockDeleteExpiredParams struct {
+	ProjectID int64        `json:"project_id"`
+	Now       sql.NullTime `json:"now"`
+}
+
+func (q *Queries) FileLockDeleteExpired(ctx context.Context, arg FileLockDeleteExpiredParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, fileLockDeleteExpired, arg.ProjectID, arg.Now)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const fileLockGet = `-- name: FileLockGet :one
-SELECT id, project_id, branch_id, path, held_by, merge_request_id, acquired_at FROM file_locks
-WHERE project_id = ? AND path = ? AND branch_id IS ?3
+SELECT id, project_id, branch_id, path, held_by, merge_request_id, acquired_at, expires_at FROM file_locks
+WHERE project_id = ?1 AND path = ?2 AND branch_id IS ?3
+  AND (expires_at IS NULL OR expires_at > ?4)
 `
 
 type FileLockGetParams struct {
 	ProjectID int64         `json:"project_id"`
 	Path      string        `json:"path"`
 	BranchID  sql.NullInt64 `json:"branch_id"`
+	Now       sql.NullTime  `json:"now"`
 }
 
 func (q *Queries) FileLockGet(ctx context.Context, arg FileLockGetParams) (FileLock, error) {
-	row := q.db.QueryRowContext(ctx, fileLockGet, arg.ProjectID, arg.Path, arg.BranchID)
+	row := q.db.QueryRowContext(ctx, fileLockGet,
+		arg.ProjectID,
+		arg.Path,
+		arg.BranchID,
+		arg.Now,
+	)
 	var i FileLock
 	err := row.Scan(
 		&i.ID,
@@ -116,13 +144,14 @@ func (q *Queries) FileLockGet(ctx context.Context, arg FileLockGetParams) (FileL
 		&i.HeldBy,
 		&i.MergeRequestID,
 		&i.AcquiredAt,
+		&i.ExpiresAt,
 	)
 	return i, err
 }
 
 const fileLockListProject = `-- name: FileLockListProject :many
 SELECT
-    fl.id, fl.project_id, fl.branch_id, fl.path, fl.held_by, fl.merge_request_id, fl.acquired_at,
+    fl.id, fl.project_id, fl.branch_id, fl.path, fl.held_by, fl.merge_request_id, fl.acquired_at, fl.expires_at,
     u.name AS held_by_name,
     b.name AS branch_name,
     mr.number AS merge_request_number
@@ -130,9 +159,15 @@ FROM file_locks fl
 JOIN users u ON u.id = fl.held_by
 LEFT JOIN branches b ON b.id = fl.branch_id
 LEFT JOIN merge_requests mr ON mr.id = fl.merge_request_id
-WHERE fl.project_id = ?
+WHERE fl.project_id = ?1
+  AND (fl.expires_at IS NULL OR fl.expires_at > ?2)
 ORDER BY fl.path
 `
+
+type FileLockListProjectParams struct {
+	ProjectID int64        `json:"project_id"`
+	Now       sql.NullTime `json:"now"`
+}
 
 type FileLockListProjectRow struct {
 	ID                 int64          `json:"id"`
@@ -142,13 +177,14 @@ type FileLockListProjectRow struct {
 	HeldBy             int64          `json:"held_by"`
 	MergeRequestID     sql.NullInt64  `json:"merge_request_id"`
 	AcquiredAt         time.Time      `json:"acquired_at"`
+	ExpiresAt          sql.NullTime   `json:"expires_at"`
 	HeldByName         string         `json:"held_by_name"`
 	BranchName         sql.NullString `json:"branch_name"`
 	MergeRequestNumber sql.NullInt64  `json:"merge_request_number"`
 }
 
-func (q *Queries) FileLockListProject(ctx context.Context, projectID int64) ([]FileLockListProjectRow, error) {
-	rows, err := q.db.QueryContext(ctx, fileLockListProject, projectID)
+func (q *Queries) FileLockListProject(ctx context.Context, arg FileLockListProjectParams) ([]FileLockListProjectRow, error) {
+	rows, err := q.db.QueryContext(ctx, fileLockListProject, arg.ProjectID, arg.Now)
 	if err != nil {
 		return nil, err
 	}
@@ -164,6 +200,7 @@ func (q *Queries) FileLockListProject(ctx context.Context, projectID int64) ([]F
 			&i.HeldBy,
 			&i.MergeRequestID,
 			&i.AcquiredAt,
+			&i.ExpiresAt,
 			&i.HeldByName,
 			&i.BranchName,
 			&i.MergeRequestNumber,
@@ -179,4 +216,23 @@ func (q *Queries) FileLockListProject(ctx context.Context, projectID int64) ([]F
 		return nil, err
 	}
 	return items, nil
+}
+
+const fileLockSetExpiry = `-- name: FileLockSetExpiry :execrows
+UPDATE file_locks SET expires_at = ?1
+WHERE id = ?2 AND held_by = ?3
+`
+
+type FileLockSetExpiryParams struct {
+	ExpiresAt sql.NullTime `json:"expires_at"`
+	ID        int64        `json:"id"`
+	HeldBy    int64        `json:"held_by"`
+}
+
+func (q *Queries) FileLockSetExpiry(ctx context.Context, arg FileLockSetExpiryParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, fileLockSetExpiry, arg.ExpiresAt, arg.ID, arg.HeldBy)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }

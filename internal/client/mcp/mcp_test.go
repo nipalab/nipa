@@ -103,8 +103,13 @@ type fakeLockClient struct {
 
 func (fakeLockClient) Connect(context.Context, string) error { return nil }
 
-func (fakeLockClient) LockFile(_ context.Context, _, _, path, branch string) (*domain.FileLock, error) {
-	return &domain.FileLock{Path: path, Branch: branch, HeldByName: "alice"}, nil
+func (fakeLockClient) LockFile(_ context.Context, _, _, path, branch string, ttl time.Duration) (*domain.FileLock, error) {
+	lock := &domain.FileLock{Path: path, Branch: branch, HeldByName: "alice"}
+	if ttl > 0 {
+		expires := time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC).Add(ttl)
+		lock.ExpiresAt = &expires
+	}
+	return lock, nil
 }
 
 func (fakeLockClient) UnlockFile(context.Context, string, string, string, string) error { return nil }

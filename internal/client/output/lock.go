@@ -16,6 +16,7 @@ type Lock struct {
 	HeldByName         string `json:"held_by_name,omitempty"`
 	MergeRequestNumber *int64 `json:"merge_request_number,omitempty"`
 	AcquiredAt         string `json:"acquired_at"`
+	ExpiresAt          string `json:"expires_at,omitempty"`
 	Warning            string `json:"warning,omitempty"`
 }
 
@@ -27,7 +28,7 @@ func NewLock(lock *clientDomain.FileLock) Lock {
 	if lock.Global {
 		scope = "mainline"
 	}
-	return Lock{
+	out := Lock{
 		Path:               lock.Path,
 		Scope:              scope,
 		Branch:             lock.Branch,
@@ -37,6 +38,10 @@ func NewLock(lock *clientDomain.FileLock) Lock {
 		AcquiredAt:         formatTime(lock.AcquiredAt),
 		Warning:            lock.Warning,
 	}
+	if lock.ExpiresAt != nil {
+		out.ExpiresAt = formatTime(*lock.ExpiresAt)
+	}
+	return out
 }
 
 func NewLocks(locks []*clientDomain.FileLock) Locks {

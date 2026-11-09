@@ -68,8 +68,10 @@ type Querier interface {
 	FileLockDelete(ctx context.Context, id int64) (int64, error)
 	FileLockDeleteByBranch(ctx context.Context, arg FileLockDeleteByBranchParams) (int64, error)
 	FileLockDeleteByMergeRequest(ctx context.Context, arg FileLockDeleteByMergeRequestParams) (int64, error)
+	FileLockDeleteExpired(ctx context.Context, arg FileLockDeleteExpiredParams) (int64, error)
 	FileLockGet(ctx context.Context, arg FileLockGetParams) (FileLock, error)
-	FileLockListProject(ctx context.Context, projectID int64) ([]FileLockListProjectRow, error)
+	FileLockListProject(ctx context.Context, arg FileLockListProjectParams) ([]FileLockListProjectRow, error)
+	FileLockSetExpiry(ctx context.Context, arg FileLockSetExpiryParams) (int64, error)
 	FileSetTree(ctx context.Context, arg FileSetTreeParams) error
 	GetOrganization(ctx context.Context, id int64) (Organization, error)
 	GetOrganizationBySlug(ctx context.Context, slug string) (Organization, error)

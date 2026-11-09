@@ -54,14 +54,14 @@ func (s *FileLockRepositorySuite) TestCRUD() {
 	})
 	s.Require().Error(err, "a second branch lock on the same path must be rejected")
 
-	got, err := repo.Get(ctx, projectID, "assets", nil)
+	got, err := repo.Get(ctx, projectID, "assets", nil, time.Now())
 	s.Require().NoError(err)
 	s.Equal(snow.ID(1001), got.ID)
 
-	_, err = repo.Get(ctx, projectID, "assets", &devID)
+	_, err = repo.Get(ctx, projectID, "assets", &devID, time.Now())
 	s.Require().NoError(err)
 
-	_, err = repo.Get(ctx, projectID, "missing", nil)
+	_, err = repo.Get(ctx, projectID, "missing", nil, time.Now())
 	requireRecordNotFound(s.T(), err)
 
 	mr, err := s.q.MergeRequestCreate(ctx, sqlcPostgres.MergeRequestCreateParams{
@@ -77,7 +77,7 @@ func (s *FileLockRepositorySuite) TestCRUD() {
 	s.Require().NoError(err)
 	s.Require().NotNil(linked.MergeRequestID)
 
-	list, err := repo.ListProject(ctx, projectID)
+	list, err := repo.ListProject(ctx, projectID, time.Now())
 	s.Require().NoError(err)
 	s.Len(list, 3)
 	var globalRow, featureRow, linkedRow *domain.FileLock
@@ -101,16 +101,16 @@ func (s *FileLockRepositorySuite) TestCRUD() {
 	s.Equal(int64(1), *linkedRow.MergeRequestNumber)
 
 	s.Require().NoError(repo.Delete(ctx, got.ID))
-	_, err = repo.Get(ctx, projectID, "assets", nil)
+	_, err = repo.Get(ctx, projectID, "assets", nil, time.Now())
 	requireRecordNotFound(s.T(), err)
 	requireRecordNotFound(s.T(), repo.Delete(ctx, snow.ID(9999)))
 
 	s.Require().NoError(repo.DeleteByBranch(ctx, projectID, devID))
-	_, err = repo.Get(ctx, projectID, "assets", &devID)
+	_, err = repo.Get(ctx, projectID, "assets", &devID, time.Now())
 	requireRecordNotFound(s.T(), err)
 
 	s.Require().NoError(repo.DeleteByMergeRequest(ctx, projectID, snow.ID(mr.ID)))
-	_, err = repo.Get(ctx, projectID, "assets/orc.png", nil)
+	_, err = repo.Get(ctx, projectID, "assets/orc.png", nil, time.Now())
 	requireRecordNotFound(s.T(), err)
 }
 
@@ -119,7 +119,7 @@ func (s *FileLockRepositorySuite) TestListEmpty() {
 	repo := NewFileLockRepository(s.db)
 	projectID := seedProject(s.T(), s.q, 1, "game")
 
-	list, err := repo.ListProject(ctx, projectID)
+	list, err := repo.ListProject(ctx, projectID, time.Now())
 	s.Require().NoError(err)
 	s.Empty(list)
 }
@@ -216,4 +216,45 @@ func (s *FileLockRepositorySuite) TestLockProjectJoinsAnOuterTransaction() {
 	close(release)
 	s.Require().NoError(<-outerDone)
 	s.Require().NoError(<-waiter)
+}
+
+func (s *FileLockRepositorySuite) TestExpiry() {
+	ctx := context.Background()
+	repo := NewFileLockRepository(s.db)
+	projectID := seedProject(s.T(), s.q, 1, "game")
+	userID := seedPBACUser(s.T(), s.db, 42)
+
+	now := time.Now().Truncate(time.Microsecond)
+	expires := now.Add(10 * time.Minute)
+	created, err := repo.Create(ctx, domain.FileLock{ID: 1, ProjectID: projectID, Path: "a.png", HeldBy: userID, ExpiresAt: &expires})
+	s.Require().NoError(err)
+	s.Require().NotNil(created.ExpiresAt)
+	s.True(created.ExpiresAt.Equal(expires))
+	_, err = repo.Create(ctx, domain.FileLock{ID: 2, ProjectID: projectID, Path: "b.png", HeldBy: userID})
+	s.Require().NoError(err)
+
+	list, err := repo.ListProject(ctx, projectID, now)
+	s.Require().NoError(err)
+	s.Require().Len(list, 2)
+
+	later := expires.Add(time.Second)
+	list, err = repo.ListProject(ctx, projectID, later)
+	s.Require().NoError(err)
+	s.Require().Len(list, 1)
+	s.Equal("b.png", list[0].Path)
+	_, err = repo.Get(ctx, projectID, "a.png", nil, later)
+	requireRecordNotFound(s.T(), err)
+
+	requireRecordNotFound(s.T(), repo.SetExpiry(ctx, 1, 999, later.Add(time.Hour)))
+	s.Require().NoError(repo.SetExpiry(ctx, 1, userID, later.Add(time.Hour)))
+	got, err := repo.Get(ctx, projectID, "a.png", nil, later)
+	s.Require().NoError(err)
+	s.True(got.ExpiresAt.Equal(later.Add(time.Hour)))
+
+	s.Require().NoError(repo.DeleteExpired(ctx, projectID, later.Add(2*time.Hour)))
+	list, err = repo.ListProject(ctx, projectID, now)
+	s.Require().NoError(err)
+	s.Require().Len(list, 1)
+	_, err = repo.Create(ctx, domain.FileLock{ID: 3, ProjectID: projectID, Path: "a.png", HeldBy: userID})
+	s.Require().NoError(err)
 }

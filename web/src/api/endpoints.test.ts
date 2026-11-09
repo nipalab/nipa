@@ -47,3 +47,17 @@ describe('service tokens and commit ancestry', () => {
     expect(fetchMock.mock.calls[2][1]).toMatchObject({ method: 'DELETE' })
   })
 })
+
+describe('lockFile', () => {
+  it('sends ttl_seconds only when given', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({}) } as Response)
+    vi.stubGlobal('fetch', fetchMock)
+    const { lockFile } = await import('./endpoints')
+
+    await lockFile('acme', 'game', 'a.png', '')
+    await lockFile('acme', 'game', 'a.png', 'feature', 600)
+
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ path: 'a.png', branch: '' })
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ path: 'a.png', branch: 'feature', ttl_seconds: 600 })
+  })
+})

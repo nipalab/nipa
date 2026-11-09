@@ -255,7 +255,7 @@ func TestEndToEnd_DeltaPush(t *testing.T) {
 	for i := range edit {
 		edit[i] = byte(i*7 + 1)
 	}
-	_, err = clientusecase.NewFileLock(auth, grpcClient, localrepo.NewLocalRepo()).Lock(ctx, dir, path, "")
+	_, err = clientusecase.NewFileLock(auth, grpcClient, localrepo.NewLocalRepo()).Lock(ctx, dir, path, clientusecase.LockOptions{})
 	require.NoError(t, err)
 	f, err := os.OpenFile(filepath.Join(dir, path), os.O_WRONLY, 0)
 	require.NoError(t, err)

@@ -5,6 +5,7 @@ import (
 
 	"github.com/nipalab/nipa/internal/domain"
 	"github.com/nipalab/nipa/internal/grpc/pb"
+	"github.com/nipalab/nipa/internal/usecase"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -13,7 +14,11 @@ func (n *nipaServer) LockFile(ctx context.Context, req *pb.LockFileRequest) (*pb
 	if err != nil {
 		return nil, handleError(err)
 	}
-	lock, err := n.uc.FileLock().Acquire(ctx, project.ID, req.GetBranch(), req.GetPath())
+	var opts []usecase.AcquireOption
+	if req.TtlSeconds != nil {
+		opts = append(opts, usecase.LockTTLSeconds(req.GetTtlSeconds()))
+	}
+	lock, err := n.uc.FileLock().Acquire(ctx, project.ID, req.GetBranch(), req.GetPath(), opts...)
 	if err != nil {
 		return nil, handleError(err)
 	}
@@ -59,6 +64,9 @@ func domainFileLockToPB(lock *domain.FileLock) *pb.FileLockDetail {
 	}
 	if lock.MergeRequestNumber != nil {
 		detail.MergeRequestNumber = lock.MergeRequestNumber
+	}
+	if lock.ExpiresAt != nil {
+		detail.ExpiresAt = timestamppb.New(*lock.ExpiresAt)
 	}
 	return detail
 }

@@ -52,7 +52,7 @@ func TestEndToEnd_CloneAndUpdateWriteBinariesDirectly(t *testing.T) {
 	require.Empty(t, materializeTemps(t, target))
 
 	locker := clientusecase.NewFileLock(auth, grpcClient, localrepo.NewLocalRepo())
-	_, err := locker.Lock(ctx, dir, "assets/level.bin", "")
+	_, err := locker.Lock(ctx, dir, "assets/level.bin", clientusecase.LockOptions{})
 	require.NoError(t, err)
 	writeBenchFile(t, dir, "assets/level.bin", binSize+4096, false)
 	stagePath(t, dir, "assets/level.bin")

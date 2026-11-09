@@ -991,12 +991,14 @@ message FileLockDetail {
     string held_by_name = 6;
     optional int64 merge_request_number = 7;
     google.protobuf.Timestamp acquired_at = 8;
+    google.protobuf.Timestamp expires_at = 9; // unset for locks that never expire
 }
 
 message LockFileRequest {
     ProjectContext context = 1;
     string path = 2;
     string branch = 3; // empty locks the default branch (mainline)
+    optional int64 ttl_seconds = 4; // lock expiry (60..604800); re-locking with a ttl renews it
 }
 
 message LockFileResponse {

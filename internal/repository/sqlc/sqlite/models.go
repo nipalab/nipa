@@ -117,6 +117,7 @@ type FileLock struct {
 	HeldBy         int64         `json:"held_by"`
 	MergeRequestID sql.NullInt64 `json:"merge_request_id"`
 	AcquiredAt     time.Time     `json:"acquired_at"`
+	ExpiresAt      sql.NullTime  `json:"expires_at"`
 }
 
 type Group struct {

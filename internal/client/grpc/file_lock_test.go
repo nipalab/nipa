@@ -78,7 +78,7 @@ func TestClient_LockFile_Success(t *testing.T) {
 	fs := &fakeFileLockServer{lockResp: &pb.LockFileResponse{Lock: fileLockDetail()}}
 	c := newFileLockTestClient(t, fs)
 
-	got, err := c.LockFile(context.Background(), "default", "sample", "assets/orc.png", "main")
+	got, err := c.LockFile(context.Background(), "default", "sample", "assets/orc.png", "main", 0)
 	require.NoError(t, err)
 	require.NotNil(t, fs.lockReq)
 	require.Equal(t, "default", fs.lockReq.GetContext().GetOrg())
@@ -102,7 +102,7 @@ func TestClient_LockFile_Error(t *testing.T) {
 	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
 	require.NoError(t, c.Connect(context.Background(), addr))
 
-	_, err := c.LockFile(context.Background(), "default", "sample", "a.png", "")
+	_, err := c.LockFile(context.Background(), "default", "sample", "a.png", "", 0)
 	require.Error(t, err)
 
 	var domErr *clientDomain.Error
@@ -113,7 +113,7 @@ func TestClient_LockFile_Error(t *testing.T) {
 
 func TestClient_LockFile_NotConnected(t *testing.T) {
 	c := NewClient(NewTransport(), &stubSession{accessToken: "tok"})
-	_, err := c.LockFile(context.Background(), "default", "sample", "a.png", "")
+	_, err := c.LockFile(context.Background(), "default", "sample", "a.png", "", 0)
 	require.EqualError(t, err, "not connected to a nipa server")
 }
 
@@ -179,4 +179,23 @@ func TestClient_ListFileLocks_NotConnected(t *testing.T) {
 
 func TestToClientFileLock_Nil(t *testing.T) {
 	require.Nil(t, toClientFileLock(nil))
+}
+
+func TestClient_LockFile_TTL(t *testing.T) {
+	detail := fileLockDetail()
+	detail.ExpiresAt = timestamppb.New(time.Unix(700, 0))
+	fs := &fakeFileLockServer{lockResp: &pb.LockFileResponse{Lock: detail}}
+	c := newFileLockTestClient(t, fs)
+
+	got, err := c.LockFile(context.Background(), "default", "sample", "a.png", "", 1500*time.Millisecond+time.Minute)
+	require.NoError(t, err)
+	require.NotNil(t, fs.lockReq.TtlSeconds)
+	require.Equal(t, int64(62), fs.lockReq.GetTtlSeconds())
+	require.NotNil(t, got.ExpiresAt)
+	require.Equal(t, time.Unix(700, 0).UTC(), got.ExpiresAt.UTC())
+
+	got, err = c.LockFile(context.Background(), "default", "sample", "a.png", "", 0)
+	require.NoError(t, err)
+	require.Nil(t, fs.lockReq.TtlSeconds)
+	require.NotNil(t, got.ExpiresAt)
 }

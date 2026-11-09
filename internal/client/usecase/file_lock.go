@@ -5,13 +5,14 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/nipalab/nipa/internal/client/domain"
 )
 
 type lockClient interface {
 	Connect(ctx context.Context, host string) error
-	LockFile(ctx context.Context, org, project, path, branch string) (*domain.FileLock, error)
+	LockFile(ctx context.Context, org, project, path, branch string, ttl time.Duration) (*domain.FileLock, error)
 	UnlockFile(ctx context.Context, org, project, path, branch string) error
 	ListFileLocks(ctx context.Context, org, project string) ([]*domain.FileLock, error)
 }
@@ -35,7 +36,14 @@ func NewFileLock(auth *Auth, client lockClient, localRepo lockLocalRepo) *FileLo
 	}
 }
 
-func (f *FileLock) Lock(ctx context.Context, root, path, branch string) (*domain.FileLock, error) {
+// LockOptions scopes a lock to a branch (empty = the clone's branch) and makes
+// it expire after TTL (zero = permanent). Re-locking with a TTL renews it.
+type LockOptions struct {
+	Branch string
+	TTL    time.Duration
+}
+
+func (f *FileLock) Lock(ctx context.Context, root, path string, opts LockOptions) (*domain.FileLock, error) {
 	path = strings.TrimSpace(path)
 	if path == "" {
 		return nil, domain.NewUserError("a path is required")
@@ -44,11 +52,11 @@ func (f *FileLock) Lock(ctx context.Context, root, path, branch string) (*domain
 	if err != nil {
 		return nil, err
 	}
-	branch = strings.TrimSpace(branch)
+	branch := strings.TrimSpace(opts.Branch)
 	if branch == "" {
 		branch = cfg.Branch
 	}
-	lock, err := f.client.LockFile(ctx, url.Org, url.Project, path, branch)
+	lock, err := f.client.LockFile(ctx, url.Org, url.Project, path, branch, opts.TTL)
 	if err != nil {
 		return nil, err
 	}

@@ -161,6 +161,7 @@ func TestNewBranches(t *testing.T) {
 
 func TestNewLocks(t *testing.T) {
 	mrNumber := int64(3)
+	expires := time.Date(2026, 1, 1, 0, 10, 0, 0, time.UTC)
 	out := NewLocks([]*clientDomain.FileLock{
 		{
 			Path:               "art/tex.png",
@@ -169,6 +170,7 @@ func TestNewLocks(t *testing.T) {
 			HeldByName:         "bob",
 			MergeRequestNumber: &mrNumber,
 			AcquiredAt:         time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+			ExpiresAt:          &expires,
 		},
 		{Path: "audio/loop.wav", Branch: "feature", HeldBy: "u2"},
 		nil,
@@ -177,6 +179,8 @@ func TestNewLocks(t *testing.T) {
 	require.Equal(t, "mainline", out.Locks[0].Scope)
 	require.Equal(t, int64(3), *out.Locks[0].MergeRequestNumber)
 	require.Equal(t, "2026-01-01T00:00:00Z", out.Locks[0].AcquiredAt)
+	require.Equal(t, "2026-01-01T00:10:00Z", out.Locks[0].ExpiresAt)
+	require.Empty(t, out.Locks[1].ExpiresAt)
 	require.Equal(t, "branch", out.Locks[1].Scope)
 	require.Equal(t, "feature", out.Locks[1].Branch)
 	require.Nil(t, out.Locks[1].MergeRequestNumber)
