@@ -89,16 +89,37 @@ func detectRenames(changes []Change, load func(Entry) ([]byte, bool), threshold 
 // git's diff.renameLimit: past it only exact (equal hash) renames are found.
 const maxRenameComparisons = 50_000
 
+// exactRenamePairs pairs deleted and added files with equal hashes. Within one
+// hash the greedy selection would match them in path order anyway, so only
+// those pairs are emitted: linear in the number of changes, not deleted×added.
 func exactRenamePairs(changes []Change, deleted, added []int) []renamePair {
-	byHash := make(map[serverDomain.Hash][]int, len(deleted))
+	oldByHash := make(map[serverDomain.Hash][]int, len(deleted))
 	for _, di := range deleted {
 		h := changes[di].Old.Hash
-		byHash[h] = append(byHash[h], di)
+		oldByHash[h] = append(oldByHash[h], di)
+	}
+	newByHash := make(map[serverDomain.Hash][]int)
+	var hashes []serverDomain.Hash
+	for _, ai := range added {
+		h := changes[ai].New.Hash
+		if _, ok := oldByHash[h]; !ok {
+			continue
+		}
+		if _, seen := newByHash[h]; !seen {
+			hashes = append(hashes, h)
+		}
+		newByHash[h] = append(newByHash[h], ai)
+	}
+	byPath := func(idx []int, path func(int) string) {
+		sort.SliceStable(idx, func(i, j int) bool { return path(idx[i]) < path(idx[j]) })
 	}
 	var pairs []renamePair
-	for _, ai := range added {
-		for _, di := range byHash[changes[ai].New.Hash] {
-			pairs = append(pairs, renamePair{oldIdx: di, newIdx: ai, score: 100})
+	for _, h := range hashes {
+		olds, news := oldByHash[h], newByHash[h]
+		byPath(olds, func(i int) string { return changes[i].Path })
+		byPath(news, func(i int) string { return changes[i].Path })
+		for i := 0; i < len(olds) && i < len(news); i++ {
+			pairs = append(pairs, renamePair{oldIdx: olds[i], newIdx: news[i], score: 100})
 		}
 	}
 	return pairs

@@ -174,3 +174,40 @@ func TestCanReach(t *testing.T) {
 	require.False(t, canReach(0, 0, 50))
 	require.True(t, canReach(0, 0, 0))
 }
+
+func TestDetectRenames_IdenticalFilesPairInPathOrderWithoutCrossProduct(t *testing.T) {
+	const n = 3000
+	empty := entryOf("x", "")
+	var changes []Change
+	for i := 0; i < n; i++ {
+		oldPath, newPath := fmt.Sprintf("old/%05d.keep", i), fmt.Sprintf("new/%05d.keep", n-1-i)
+		changes = append(changes,
+			Change{Path: oldPath, Status: Deleted, Old: Entry{Path: oldPath, Hash: empty.Hash}},
+			Change{Path: newPath, Status: Added, New: Entry{Path: newPath, Hash: empty.Hash}})
+	}
+	changes = append(changes, Change{Path: "new/extra.keep", Status: Added, New: Entry{Path: "new/extra.keep", Hash: empty.Hash}})
+
+	require.Len(t, exactRenamePairs(changes, indexesOf(changes, Deleted), indexesOf(changes, Added)), n)
+
+	got := DetectRenames(changes, nil)
+	renamed := 0
+	for _, c := range got {
+		if c.Status == Renamed {
+			renamed++
+			require.Equal(t, strings.TrimPrefix(c.Old.Path, "old/"), strings.TrimPrefix(c.Path, "new/"))
+		}
+	}
+	require.Equal(t, n, renamed)
+	require.Equal(t, Added, got[len(got)-1].Status)
+	require.Equal(t, "new/extra.keep", got[len(got)-1].Path)
+}
+
+func indexesOf(changes []Change, status Status) []int {
+	var out []int
+	for i, c := range changes {
+		if c.Status == status {
+			out = append(out, i)
+		}
+	}
+	return out
+}
