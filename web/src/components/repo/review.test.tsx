@@ -369,14 +369,21 @@ describe('MergeRequestOverview', () => {
   it('shows the review summary and submits a decision', async () => {
     const onChanged = vi.fn()
     const { container } = await render(<MergeRequestOverview {...base} onChanged={onChanged} />)
-    expect(container.textContent).toContain('1 approved')
+    expect(container.textContent).toContain('Changes approved')
+    expect(container.textContent).toContain('1 approved review')
     expect(container.textContent).toContain('opened this merge request')
     expect(container.textContent).toContain('Please merge this')
 
-    type(container.querySelector('textarea'), 'looks good')
+    const button = (label: string) =>
+      [...container.querySelectorAll('button')].find((entry) => entry.textContent === label) as HTMLButtonElement
+    expect(button('Approve')).toBeUndefined()
+    click(button('Review changes'))
+    expect(button('Comment')).toBeUndefined()
+    click(container.querySelector('input[type="radio"][value="approved"]'))
+    expect(button('Submit review').disabled).toBe(true)
+    type(container.querySelector('[aria-label="Add a comment"]'), 'looks good')
     await act(async () => {
-      const approve = [...container.querySelectorAll('button')].find((button) => button.textContent === 'Approve')
-      ;(approve as HTMLElement).dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      button('Submit review').dispatchEvent(new MouseEvent('click', { bubbles: true }))
     })
     expect(endpoints.submitMergeRequestReview).toHaveBeenCalledWith('acme', 'game', '7', {
       state: 'approved',
@@ -384,14 +391,34 @@ describe('MergeRequestOverview', () => {
       comments: [],
     })
     expect(onChanged).toHaveBeenCalled()
+    expect(button('Review changes')).toBeDefined()
+  })
+
+  it('cancels a review and requests changes', async () => {
+    const { container } = await render(<MergeRequestOverview {...base} />)
+    const button = (label: string) =>
+      [...container.querySelectorAll('button')].find((entry) => entry.textContent === label) as HTMLButtonElement
+    click(button('Review changes'))
+    click(button('Cancel review'))
+    expect(container.querySelector('[aria-label="Review decision"]')).toBeNull()
+    click(button('Review changes'))
+    click(container.querySelector('input[type="radio"][value="changes_requested"]'))
+    type(container.querySelector('[aria-label="Add a comment"]'), 'needs work')
+    await act(async () => {
+      button('Submit review').dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+    expect(endpoints.submitMergeRequestReview).toHaveBeenCalledWith('acme', 'game', '7', {
+      state: 'changes_requested',
+      body: 'needs work',
+      comments: [],
+    })
   })
 
   it('lets the author comment but not decide', async () => {
     const { container } = await render(<MergeRequestOverview {...base} me="u1" />)
-    expect(container.textContent).toContain('You cannot review your own merge request')
-    expect([...container.querySelectorAll('button')].some((button) => button.textContent === 'Approve')).toBe(false)
+    expect([...container.querySelectorAll('button')].some((button) => button.textContent === 'Review changes')).toBe(false)
 
-    type(container.querySelector('textarea'), 'nice work')
+    type(container.querySelector('[aria-label="Add a comment"]'), 'nice work')
     await act(async () => {
       const comment = [...container.querySelectorAll('button')].find((button) => button.textContent === 'Comment')
       ;(comment as HTMLElement).dispatchEvent(new MouseEvent('click', { bubbles: true }))
@@ -549,22 +576,26 @@ describe('MergeRequestOverview', () => {
     expect(container.textContent).not.toContain('review is locked')
   })
 
-  it('filters conversation threads by resolved state', async () => {
+  it('collapses resolved line conversations until shown', async () => {
     const open: ThreadResponse = { ...thread, id: 'ta', resolved: false, comments: [{ ...thread.comments[0], id: 'ca', body: 'still open body' }] }
-    const done: ThreadResponse = { ...thread, id: 'tb', resolved: true, comments: [{ ...thread.comments[0], id: 'cb', body: 'already fixed body' }] }
+    const done: ThreadResponse = {
+      ...thread,
+      id: 'tb',
+      resolved: true,
+      resolved_by: { user_id: 'u3', name: 'Peer' },
+      comments: [{ ...thread.comments[0], id: 'cb', body: 'already fixed body' }],
+    }
     const { container } = await render(<MergeRequestOverview {...base} threads={[open, done]} />)
-    const choose = (label: string) =>
-      click([...container.querySelectorAll('button')].find((button) => button.textContent === label))
-    expect(container.textContent).toContain('still open body')
-    expect(container.textContent).toContain('already fixed body')
-    choose('Unresolved')
+    const button = (label: string) =>
+      [...container.querySelectorAll('button')].find((entry) => entry.textContent === label) as HTMLButtonElement
     expect(container.textContent).toContain('still open body')
     expect(container.textContent).not.toContain('already fixed body')
-    choose('Resolved')
-    expect(container.textContent).not.toContain('still open body')
+    expect(container.textContent).toContain('Peer resolved a conversation on')
+    click(button('Show resolved'))
     expect(container.textContent).toContain('already fixed body')
-    choose('All threads')
-    expect(container.textContent).toContain('still open body')
+    expect(container.textContent).toContain('Resolved')
+    click(button('Hide resolved'))
+    expect(container.textContent).not.toContain('already fixed body')
   })
 
   it('shows inline code threads with a link to the file', async () => {
@@ -636,39 +667,108 @@ describe('MergeRequestOverview', () => {
     expect(byLabel(container, 'unassign Dana')).not.toBeNull()
   })
 
-  it('attaches inline comments to a review decision', async () => {
-    const { container } = await render(<MergeRequestOverview {...base} files={[file]} />)
-    click([...container.querySelectorAll('button')].find((button) => button.textContent === '+ Add inline comment'))
-    selectOption(container.querySelector('[aria-label="Inline comment file"]'), 'code.txt')
-    selectOption(container.querySelector('[aria-label="Inline comment side"]'), 'new')
-    typeInput(container.querySelector('[aria-label="Inline comment line"]'), '2')
-    type(container.querySelector('[aria-label="Inline comment body"]'), 'rename this')
-    click([...container.querySelectorAll('button')].find((button) => button.textContent === 'Add inline comment'))
-    expect(container.textContent).toContain('new line 2')
-    expect(container.textContent).toContain('rename this')
+  it('shows merged and closed requests', async () => {
+    const merged = { ...base.request, status: 'merged', merge_commit_id: 'abcdef1234567' }
+    const first = await render(<MergeRequestOverview {...base} request={merged} />)
+    expect(first.container.textContent).toContain('Merge request successfully merged')
+    expect(first.container.textContent).toContain('abcdef1234')
+    expect([...first.container.querySelectorAll('button')].some((entry) => entry.textContent === 'Close merge request')).toBe(false)
 
-    await act(async () => {
-      const approve = [...container.querySelectorAll('button')].find((button) => button.textContent === 'Approve')
-      ;(approve as HTMLElement).dispatchEvent(new MouseEvent('click', { bubbles: true }))
-    })
-    expect(endpoints.submitMergeRequestReview).toHaveBeenCalledWith('acme', 'game', '7', {
-      state: 'approved',
-      body: '',
-      comments: [{ file_path: 'code.txt', new_line: 2, body: 'rename this' }],
-    })
+    const onReopen = vi.fn()
+    const closed = { ...base.request, status: 'closed' }
+    const second = await render(<MergeRequestOverview {...base} request={closed} onReopen={onReopen} />)
+    expect(second.container.textContent).toContain('Closed with unmerged commits')
+    click([...second.container.querySelectorAll('button')].find((entry) => entry.textContent === 'Reopen merge request'))
+    expect(onReopen).toHaveBeenCalled()
   })
 
-  it('removes an inline comment draft before submitting', async () => {
-    const { container } = await render(<MergeRequestOverview {...base} files={[file]} />)
-    click([...container.querySelectorAll('button')].find((button) => button.textContent === '+ Add inline comment'))
-    selectOption(container.querySelector('[aria-label="Inline comment file"]'), 'code.txt')
-    typeInput(container.querySelector('[aria-label="Inline comment line"]'), '2')
-    type(container.querySelector('[aria-label="Inline comment body"]'), 'drop me')
-    click([...container.querySelectorAll('button')].find((button) => button.textContent === 'Add inline comment'))
-    expect(container.textContent).toContain('drop me')
+  it('closes from the comment box', async () => {
+    const onClose = vi.fn()
+    const { container } = await render(<MergeRequestOverview {...base} onClose={onClose} />)
+    click([...container.querySelectorAll('button')].find((entry) => entry.textContent === 'Close merge request'))
+    expect(onClose).toHaveBeenCalled()
+  })
 
-    click(byLabel(container, 'Remove inline comment on code.txt'))
-    expect(container.textContent).not.toContain('drop me')
+  it('summarizes checks, reviews and drafts in the merge box', async () => {
+    const checks = [
+      { id: 'k1', name: 'build', state: 'success', details_url: 'https://ci.test/1' },
+      { id: 'k2', name: 'lint', state: 'failed' },
+      { id: 'k3', name: 'e2e', state: 'pending' },
+    ] as MergeRequestCheckResponse[]
+    const draft = { ...base.request, draft: true, mergeability: { status: 'mergeable', blocked_by: 'draft' } }
+    const { container } = await render(
+      <MergeRequestOverview {...base} request={draft} checks={checks} state={{ ...base.state, approvals: 0, changes_requested: 2 }} />,
+    )
+    const text = container.textContent ?? ''
+    expect(text).toContain('Changes requested')
+    expect(text).toContain('2 reviews requesting changes')
+    expect(text).toContain('Some checks were not successful')
+    expect(text).toContain('1 successful, 1 failing, 1 pending')
+    expect(container.querySelector('a[href="https://ci.test/1"]')).not.toBeNull()
+    expect(text).toContain('This merge request is still a work in progress.')
+
+    const pendingOnly = await render(
+      <MergeRequestOverview
+        {...base}
+        checks={[{ id: 'k3', name: 'e2e', state: 'pending' }] as MergeRequestCheckResponse[]}
+        state={{ ...base.state, approvals: 0 }}
+        request={{ ...base.request, mergeability: { status: 'mergeable', blocked_by: 'insufficient_approvals' } }}
+      />,
+    )
+    expect(pendingOnly.container.textContent).toContain("Some checks haven't completed yet")
+    expect(pendingOnly.container.textContent).toContain('Review required')
+
+    const passing = await render(
+      <MergeRequestOverview
+        {...base}
+        checks={[{ id: 'k1', name: 'build', state: 'success' }] as MergeRequestCheckResponse[]}
+        state={null}
+      />,
+    )
+    expect(passing.container.textContent).toContain('All checks have passed')
+    expect(passing.container.textContent).toContain('No reviews yet')
+  })
+
+  it('labels every timeline event', async () => {
+    const actor = { user_id: 'u1', name: 'Author' }
+    const events: TimelineItemResponse[] = [
+      { id: 'e1', kind: 'pushed', actor, commit_id: 'abc1234567', commit_hash: 'deadbeef99', created_at: '2024-01-02T00:00:00Z' },
+      { id: 'e2', kind: 'review_request_removed', actor, subject: { user_id: 'u3', name: 'Peer' }, created_at: '2024-01-03T00:00:00Z' },
+      { id: 'e3', kind: 'review_dismissed', actor, created_at: '2024-01-04T00:00:00Z' },
+      { id: 'e4', kind: 'closed', actor, created_at: '2024-01-05T00:00:00Z' },
+      { id: 'e5', kind: 'reopened', actor, created_at: '2024-01-06T00:00:00Z' },
+      { id: 'e6', kind: 'ready_for_review', actor, created_at: '2024-01-07T00:00:00Z' },
+      { id: 'e7', kind: 'merged', actor, commit_hash: 'cafebabe11', created_at: '2024-01-08T00:00:00Z' },
+      { id: 'e8', kind: 'labels_changed', actor, created_at: '2024-01-09T00:00:00Z' },
+      { id: 'e9', kind: 'opened', actor, created_at: '2024-01-01T00:00:00Z' },
+    ]
+    const { container } = await render(<MergeRequestOverview {...base} timeline={events} />)
+    const text = container.textContent ?? ''
+    expect(text).toContain('Author pushed new commits deadbee')
+    expect(container.querySelector('a[href="/acme/game/commits/abc1234567"]')).not.toBeNull()
+    expect(text).toContain('Author removed the review request for Peer')
+    expect(text).toContain('Author dismissed a review')
+    expect(text).toContain('Author closed this merge request')
+    expect(text).toContain('Author reopened this merge request')
+    expect(text).toContain('Author marked this merge request as ready for review')
+    expect(text).toContain('Author merged commit cafebab')
+    expect(text).toContain('Author labels changed')
+  })
+
+  it('shows reviews with a comment box and reviewer states in the sidebar', async () => {
+    const reviews: ReviewResponse[] = [
+      { ...liveReview({ user_id: 'u3', name: 'Peer' }), id: 'r1', state: 'changes_requested', body: 'fix the **name**' },
+      { ...liveReview({ user_id: 'u4', name: 'Quin' }), id: 'r2', state: 'commented', body: '' },
+    ]
+    const { container } = await render(<MergeRequestOverview {...base} reviews={reviews} />)
+    const text = container.textContent ?? ''
+    expect(text).toContain('Peer requested changes')
+    expect(text).toContain('Peer left a comment')
+    expect(text).toContain('Quin reviewed')
+    expect(text).not.toContain('Quin left a comment')
+    expect(container.querySelector('[title="requested changes"]')).not.toBeNull()
+    expect(container.querySelector('[title="reviewed"]')).not.toBeNull()
+    expect(text).toContain('No one assigned')
   })
 })
 
