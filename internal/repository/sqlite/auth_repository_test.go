@@ -106,10 +106,12 @@ func TestAuthRepositorySQLite_SaveRefreshTokenPrunesExpired(t *testing.T) {
 
 	alice := seedUser(t, q, "alice", "alice@example.com", sql.NullString{})
 	bob := seedPBACUser(t, db, 43)
-	past := time.Now().Add(-time.Hour)
+	past := time.Now().Add(-48 * time.Hour)
+	recent := time.Now().Add(-time.Hour)
 	for _, row := range []sqlcSqlite.RefreshTokenCreateParams{
 		{UserID: alice.Int64(), Token: "alice-old", ExpiresAt: past},
 		{UserID: bob.Int64(), Token: "bob-old", ExpiresAt: past},
+		{UserID: alice.Int64(), Token: "alice-recent", ExpiresAt: recent},
 	} {
 		_, err := q.RefreshTokenCreate(ctx, row)
 		require.NoError(t, err)
@@ -119,7 +121,7 @@ func TestAuthRepositorySQLite_SaveRefreshTokenPrunesExpired(t *testing.T) {
 
 	rows, err := db.QueryContext(ctx, "SELECT token FROM refresh_tokens ORDER BY token")
 	require.NoError(t, err)
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var tokens []string
 	for rows.Next() {
 		var token string
@@ -127,7 +129,7 @@ func TestAuthRepositorySQLite_SaveRefreshTokenPrunesExpired(t *testing.T) {
 		tokens = append(tokens, token)
 	}
 	require.NoError(t, rows.Err())
-	require.Equal(t, []string{"alice-live", "alice-new", "bob-old"}, tokens)
+	require.Equal(t, []string{"alice-live", "alice-new", "alice-recent", "bob-old"}, tokens)
 
 	require.Error(t, repo.SaveRefreshToken(ctx, alice, "alice-live", time.Now().Add(time.Hour)))
 	require.NoError(t, db.Close())
