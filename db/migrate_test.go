@@ -62,22 +62,24 @@ func requireQueryPerformanceUp(t *testing.T, conn *sql.DB) {
 	require.Contains(t, indexes["idx_branches_project_updated_id"], "WHERE deleted = FALSE")
 }
 
+const queryPerformanceVersion uint = 18
+
 func TestMigrateQueryPerformanceRoundTrip(t *testing.T) {
 	conn := openMigrateTestDB(t)
-	require.NoError(t, MigrateUp(conn, "sqlite3"))
-	requireQueryPerformanceUp(t, conn)
-
 	m, err := newMigrator(conn, "sqlite3")
 	require.NoError(t, err)
+
+	require.NoError(t, m.Migrate(queryPerformanceVersion))
 	version, dirty, err := m.Version()
 	require.NoError(t, err)
 	require.False(t, dirty)
-	require.Equal(t, uint(18), version)
+	require.Equal(t, queryPerformanceVersion, version)
+	requireQueryPerformanceUp(t, conn)
 
-	require.NoError(t, m.Steps(-1))
+	require.NoError(t, m.Migrate(queryPerformanceVersion-1))
 	version, _, err = m.Version()
 	require.NoError(t, err)
-	require.Equal(t, uint(17), version)
+	require.Equal(t, queryPerformanceVersion-1, version)
 
 	indexes := sqliteIndexes(t, conn)
 	for _, name := range queryPerformanceDropped {
@@ -89,8 +91,9 @@ func TestMigrateQueryPerformanceRoundTrip(t *testing.T) {
 	require.Contains(t, indexes, "idx_branches_project_updated_id")
 	require.NotContains(t, indexes["idx_branches_project_updated_id"], "WHERE")
 
-	require.NoError(t, MigrateUp(conn, "sqlite3"))
+	require.NoError(t, m.Migrate(queryPerformanceVersion))
 	requireQueryPerformanceUp(t, conn)
+	require.NoError(t, MigrateUp(conn, "sqlite3"))
 }
 
 func TestMigrateDownRemovesSchema(t *testing.T) {
