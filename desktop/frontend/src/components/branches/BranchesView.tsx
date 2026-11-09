@@ -30,14 +30,20 @@ export function BranchesView({ root, branch, detached, busy, notify, onSwitch, o
   const branches = useQuery({ queryKey: ["branches", root], queryFn: () => desktop.branches(root) });
   const tags = useQuery({ queryKey: ["tags", root], queryFn: () => desktop.tags(root) });
 
+  const baseHead = branches.data?.find((b) => b.name === branch)?.commitId;
+  const baseLabel = baseHead ? `${branch} (${shortId(baseHead)})` : branch;
+
   const done = (key: string, message: string) => {
     setDialog(null);
     void queryClient.invalidateQueries({ queryKey: [key, root] });
     notify(message, "success");
   };
   const createBranch = useMutation({
-    mutationFn: (name: string) => desktop.createBranch(root, name, { branch }),
-    onSuccess: (b) => done("branches", `Created branch ${b.name} from ${branch}`),
+    mutationFn: ({ name }: { name: string; switchTo: boolean }) => desktop.createBranch(root, name, { branch }),
+    onSuccess: (b, vars) => {
+      done("branches", `Created branch ${b.name} from ${branch}`);
+      if (vars.switchTo) onSwitch(b.name);
+    },
     onError: (err) => notify(`Could not create the branch: ${errorMessage(err)}`),
   });
   const deleteBranch = useMutation({
@@ -156,11 +162,13 @@ export function BranchesView({ root, branch, detached, busy, notify, onSwitch, o
           title="New branch"
           label="Branch name"
           placeholder="feature/new-level"
-          note={`The branch starts at the head of ${branch} on the server. Switch to it to work there.`}
+          base={{ label: "Based on", value: baseLabel }}
+          note="The branch starts at the current head of that branch on the server, not at unpushed local changes."
+          option={{ label: "Switch to the new branch", defaultChecked: true }}
           confirmLabel="Create branch"
           busy={createBranch.isPending}
           onCancel={() => setDialog(null)}
-          onConfirm={(name) => createBranch.mutate(name)}
+          onConfirm={(name, _message, switchTo) => createBranch.mutate({ name, switchTo })}
         />
       )}
       {dialog?.kind === "new-tag" && (

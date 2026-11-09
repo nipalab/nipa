@@ -205,6 +205,33 @@ describe("MergeRequestDetail", () => {
     expect(screen.getByRole("region", { name: "Merge" })).toHaveTextContent("Ready to merge");
   });
 
+  it("shows line comments in the conversation with their code", async () => {
+    api.mergeRequestActivity.mockResolvedValue(
+      activity({
+        threads: [
+          thread({ id: "t2", path: "src/player.go", newLine: 2, comments: [{ id: "c2", author: { id: "u2", name: "Bo" }, body: "Why 2?", createdAt: "2026-11-05T09:40:00Z", edited: false }] }),
+          thread({ id: "t3", path: "art/hero.png", newLine: 1, outdated: true, comments: [{ id: "c3", author: { id: "u2", name: "Bo" }, body: "Too bright", createdAt: "2026-11-05T09:50:00Z", edited: false }] }),
+        ],
+      }),
+    );
+    view();
+    const feed = await screen.findByRole("list", { name: "Activity" });
+    const inline = within(feed).getByRole("group", { name: "Thread t2" });
+    expect(inline).toHaveTextContent("src/player.go:2");
+    expect(inline).toHaveTextContent("Why 2?");
+    const code = await within(inline).findByLabelText("Commented code");
+    expect(code).toHaveTextContent("package main");
+    expect(code).toHaveTextContent("var speed = 2");
+    expect(api.revisionFiles).toHaveBeenCalledWith("/work/game", "b1", "s2");
+
+    const outdated = within(feed).getByRole("group", { name: "Thread t3" });
+    expect(outdated).toHaveTextContent("outdated");
+    expect(within(outdated).queryByLabelText("Commented code")).not.toBeInTheDocument();
+
+    await userEvent.click(within(outdated).getByRole("button", { name: "View file" }));
+    expect(await screen.findByRole("button", { name: /hero\.png/, current: true })).toBeInTheDocument();
+  });
+
   it("blocks approving your own request", async () => {
     api.lockStatus.mockResolvedValue({ userId: "u1", branch: "main", defaultBranch: true, canReleaseAny: false, locks: [], files: [] });
     view();

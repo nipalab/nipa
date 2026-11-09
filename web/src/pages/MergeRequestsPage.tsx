@@ -1,15 +1,41 @@
 import { useState } from 'react'
-import { Button, Link as PrimerLink, Select, TextInput } from '@primer/react'
+import { Button, Label, Link as PrimerLink, TextInput } from '@primer/react'
+import {
+  GitMergeIcon,
+  GitPullRequestClosedIcon,
+  GitPullRequestDraftIcon,
+  GitPullRequestIcon,
+  ListUnorderedIcon,
+  SearchIcon,
+  XIcon,
+  type Icon,
+} from '@primer/octicons-react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { listMergeRequests } from '../api/endpoints'
 import type { MergeRequestResponse } from '../api/models'
+import { ActorAvatar, actorName } from '../components/ActorAvatar'
+import { FilterButton, branchOptions, memberOptions } from '../components/repo/MemberPicker'
 import { RepoPageShell } from '../components/repo/RepoPageShell'
 import { useRepoChrome } from '../components/repo/useRepoChrome'
-import { Row, RowList } from '../components/RowList'
-import { StateBadge } from '../components/StateBadge'
-import { EmptyState, ErrorBanner, Loading } from '../components/ui'
+import { Timestamp } from '../components/Timestamp'
+import { EmptyState, ErrorBanner, Loading, Mono } from '../components/ui'
 import { errorMessage, useAsync } from '../hooks'
 import { useOrgMembers } from '../orgHooks'
+
+const STATUS_TABS: { value: string; label: string; Icon: Icon }[] = [
+  { value: 'open', label: 'Open', Icon: GitPullRequestIcon },
+  { value: 'draft', label: 'Draft', Icon: GitPullRequestDraftIcon },
+  { value: 'merged', label: 'Merged', Icon: GitMergeIcon },
+  { value: 'closed', label: 'Closed', Icon: GitPullRequestClosedIcon },
+  { value: '', label: 'All', Icon: ListUnorderedIcon },
+]
+
+function stateIcon(request: MergeRequestResponse): { Icon: Icon; color: string; label: string } {
+  if (request.status === 'merged') return { Icon: GitMergeIcon, color: 'var(--fgColor-done)', label: 'Merged' }
+  if (request.status === 'closed') return { Icon: GitPullRequestClosedIcon, color: 'var(--fgColor-closed)', label: 'Closed' }
+  if (request.draft) return { Icon: GitPullRequestDraftIcon, color: 'var(--fgColor-muted)', label: 'Draft' }
+  return { Icon: GitPullRequestIcon, color: 'var(--fgColor-open)', label: 'Open' }
+}
 
 export default function MergeRequestsPage() {
   const { org = '', project = '' } = useParams()
@@ -24,7 +50,7 @@ export default function MergeRequestsPage() {
   const [extraCursor, setExtraCursor] = useState<string | null>(null)
   const [loadingMore, setLoadingMore] = useState(false)
   const [moreError, setMoreError] = useState<string | null>(null)
-  const { canWrite, canAdmin, defaultBranch } = useRepoChrome(org, project)
+  const { branches, canWrite, canAdmin, defaultBranch } = useRepoChrome(org, project)
   const draftFilter = status === 'draft'
   const listParams = (after?: string) => ({
     ...(draftFilter ? { status: 'open', draft: true } : { status }),
@@ -42,6 +68,7 @@ export default function MergeRequestsPage() {
   const { data: members } = useOrgMembers(org)
 
   const requests = [...(data?.merge_requests ?? []), ...extra]
+  const filtered = Boolean(search || author || assignee || source || target || status !== 'open')
   const nextCursor = extraCursor ?? data?.next_cursor ?? ''
 
   function changeFilter(apply: () => void) {
@@ -72,7 +99,6 @@ export default function MergeRequestsPage() {
       active="merges"
       rev={defaultBranch}
       canAdmin={canAdmin}
-      canWrite={canWrite}
       heading="Merge requests"
       actions={
         canWrite && (
@@ -82,85 +108,131 @@ export default function MergeRequestsPage() {
         )
       }
     >
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 'var(--base-size-8)', flexWrap: 'wrap' }}>
-        <TextInput
-          aria-label="Search merge requests"
-          placeholder="search title or description"
-          value={search}
-          onChange={(event) => changeFilter(() => setSearch(event.target.value))}
-        />
-        <TextInput
-          aria-label="Filter by source branch"
-          placeholder="source branch"
-          value={source}
-          onChange={(event) => changeFilter(() => setSource(event.target.value))}
-        />
-        <TextInput
-          aria-label="Filter by target branch"
-          placeholder="target branch"
-          value={target}
-          onChange={(event) => changeFilter(() => setTarget(event.target.value))}
-        />
-        <Select aria-label="Filter by author" value={author} onChange={(event) => changeFilter(() => setAuthor(event.target.value))}>
-          <Select.Option value="">any author</Select.Option>
-          {(members ?? []).map((member) => (
-            <Select.Option key={member.user_id} value={member.user_id}>
-              {member.name}
-            </Select.Option>
-          ))}
-        </Select>
-        <Select aria-label="Filter by assignee" value={assignee} onChange={(event) => changeFilter(() => setAssignee(event.target.value))}>
-          <Select.Option value="">any assignee</Select.Option>
-          {(members ?? []).map((member) => (
-            <Select.Option key={member.user_id} value={member.user_id}>
-              {member.name}
-            </Select.Option>
-          ))}
-        </Select>
-        <Select aria-label="Filter by status" value={status} onChange={(event) => changeFilter(() => setStatus(event.target.value))}>
-          <Select.Option value="open">open</Select.Option>
-          <Select.Option value="draft">draft</Select.Option>
-          <Select.Option value="merged">merged</Select.Option>
-          <Select.Option value="closed">closed</Select.Option>
-          <Select.Option value="">all</Select.Option>
-        </Select>
-      </div>
+      <TextInput
+        block
+        leadingVisual={SearchIcon}
+        aria-label="Search merge requests"
+        placeholder="Search titles and descriptions"
+        value={search}
+        onChange={(event) => changeFilter(() => setSearch(event.target.value))}
+      />
       <ErrorBanner error={error ?? moreError} />
-      {loading && <Loading />}
-      {!loading && requests.length === 0 && <EmptyState>No merge requests.</EmptyState>}
-      {requests.length > 0 && (
-        <RowList>
-          {requests.map((request, index) => (
-            <Row
-              key={request.id}
-              first={index === 0}
-              title={
-                <PrimerLink as={Link} to={`/${org}/${project}/merges/${request.number}`}>
-                  #{request.number} {request.title}
-                </PrimerLink>
-              }
-              meta={
-                <>
-                  {request.source_branch} → {request.target_branch} ·{' '}
-                  <StateBadge status={request.draft ? 'draft' : request.status} />
-                  {request.review && (
-                    <>
-                      {' · '}
-                      <span style={{ color: 'var(--fgColor-success)' }}>{request.review.approvals} approved</span>
-                      {request.review.changes_requested > 0 && (
-                        <span style={{ color: 'var(--fgColor-danger)' }}>
-                          {' '}
-                          · {request.review.changes_requested} changes requested
-                        </span>
-                      )}
-                    </>
-                  )}
-                </>
-              }
+      <div className="nipa-list-box">
+        <div className="nipa-list-header">
+          <nav className="nipa-state-tabs" aria-label="Merge request state">
+            {STATUS_TABS.map((entry) => (
+              <button
+                key={entry.value}
+                type="button"
+                aria-pressed={status === entry.value}
+                className={status === entry.value ? 'nipa-state-tab nipa-state-tab-active' : 'nipa-state-tab'}
+                onClick={() => changeFilter(() => setStatus(entry.value))}
+              >
+                <entry.Icon />
+                {entry.label}
+              </button>
+            ))}
+          </nav>
+          <div className="nipa-list-filters">
+            <FilterButton
+              label="Author"
+              title="Filter by author"
+              options={memberOptions(members ?? [])}
+              value={author}
+              onChange={(value) => changeFilter(() => setAuthor(value))}
             />
-          ))}
-        </RowList>
-      )}
+            <FilterButton
+              label="Assignee"
+              title="Filter by assignee"
+              options={memberOptions(members ?? [])}
+              value={assignee}
+              onChange={(value) => changeFilter(() => setAssignee(value))}
+            />
+            <FilterButton
+              label="Source"
+              title="Filter by source branch"
+              options={branchOptions(branches ?? [])}
+              value={source}
+              onChange={(value) => changeFilter(() => setSource(value))}
+            />
+            <FilterButton
+              label="Target"
+              title="Filter by target branch"
+              options={branchOptions(branches ?? [])}
+              value={target}
+              onChange={(value) => changeFilter(() => setTarget(value))}
+            />
+          </div>
+        </div>
+        {filtered && (
+          <div className="nipa-list-clear">
+            <Button
+              variant="invisible"
+              size="small"
+              leadingVisual={XIcon}
+              onClick={() =>
+                changeFilter(() => {
+                  setSearch('')
+                  setAuthor('')
+                  setAssignee('')
+                  setSource('')
+                  setTarget('')
+                  setStatus('open')
+                })
+              }
+            >
+              Clear current search and filters
+            </Button>
+          </div>
+        )}
+        {loading && <Loading />}
+        {!loading && requests.length === 0 && (
+          <EmptyState bordered={false}>{filtered ? 'No merge requests match these filters.' : 'No merge requests.'}</EmptyState>
+        )}
+        {requests.map((request) => {
+          const state = stateIcon(request)
+          const authorName = (members ?? []).find((member) => member.user_id === request.created_by)
+          return (
+            <div key={request.id} className="nipa-list-row">
+              <span className="nipa-list-row-icon" style={{ color: state.color }} title={state.label}>
+                <state.Icon />
+              </span>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <PrimerLink as={Link} to={`/${org}/${project}/merges/${request.number}`} className="nipa-list-row-title">
+                  {request.title}
+                </PrimerLink>
+                {request.draft && request.status === 'open' && (
+                  <Label size="small" style={{ marginLeft: 8 }}>
+                    Draft
+                  </Label>
+                )}
+                <div className="nipa-list-row-meta">
+                  #{request.number} opened <Timestamp value={request.created_at} />
+                  {authorName && <> by {authorName.name || authorName.email}</>} ·{' '}
+                  <Mono>{request.source_branch}</Mono> → <Mono>{request.target_branch}</Mono>
+                  {request.review && request.review.changes_requested > 0 ? (
+                    <span style={{ color: 'var(--fgColor-danger)' }}> · Changes requested</span>
+                  ) : request.review && request.review.approvals > 0 ? (
+                    <span style={{ color: 'var(--fgColor-success)' }}>
+                      {' '}
+                      · {request.review.approvals} approved
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+              {(request.assignees ?? []).length > 0 && (
+                <span className="nipa-list-row-assignees">
+                  {(request.assignees ?? []).slice(0, 3).map((entry) => (
+                    <span key={entry.user_id} title={actorName(entry)}>
+                      <ActorAvatar actor={entry} size={20} />
+                    </span>
+                  ))}
+                </span>
+              )}
+            </div>
+          )
+        })}
+      </div>
       {nextCursor && !loading && (
         <div style={{ display: 'flex', justifyContent: 'center' }}>
           <Button onClick={loadMore} loading={loadingMore}>

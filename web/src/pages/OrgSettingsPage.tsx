@@ -1,6 +1,29 @@
 import { useState } from 'react'
-import { Button, FormControl, Label, Select, Stack, TextInput } from '@primer/react'
-import { PeopleIcon, PersonIcon, DatabaseIcon } from '@primer/octicons-react'
+import {
+  ActionList,
+  ActionMenu,
+  Button,
+  FormControl,
+  IconButton,
+  Label,
+  Link as PrimerLink,
+  Radio,
+  RadioGroup,
+  Stack,
+  Text,
+  Textarea,
+  TextInput,
+} from '@primer/react'
+import {
+  ArrowLeftIcon,
+  DatabaseIcon,
+  KebabHorizontalIcon,
+  PeopleIcon,
+  PersonAddIcon,
+  PersonIcon,
+  SearchIcon,
+  ShieldIcon,
+} from '@primer/octicons-react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import {
   addGroupMember,
@@ -13,18 +36,17 @@ import {
   removeOrgMember,
   updateOrgMember,
 } from '../api/endpoints'
-import type { GroupResponse, OrgMemberResponse } from '../api/models'
+import type { GroupMemberResponse, OrgMemberResponse } from '../api/models'
+import { useAuth } from '../auth'
 import { ActorAvatar } from '../components/ActorAvatar'
 import { useConfirmAction } from '../components/confirm'
-import { DataTable, type Column } from '../components/DataTable'
 import { FormDialog } from '../components/FormDialog'
 import { OrgNav } from '../components/OrgNav'
-import { Row } from '../components/RowList'
-import { SettingsCard } from '../components/SettingsCard'
+import { PickedSubject } from '../components/PickedSubject'
 import { SettingsLayout, type SettingsNavItem } from '../components/SettingsLayout'
 import StorageCard from '../components/StorageCard'
-import { UserGroupPicker } from '../components/UserGroupPicker'
-import { EmptyState, ErrorBanner, Loading, Mono, NoPermission, Page } from '../components/ui'
+import { UserGroupPicker, type PickerEntry } from '../components/UserGroupPicker'
+import { EmptyState, ErrorBanner, Loading, NoPermission, Page } from '../components/ui'
 import { useAction, useAsync } from '../hooks'
 import { useOrgMembers, useOrgRole } from '../orgHooks'
 
@@ -70,11 +92,16 @@ export default function OrgSettingsPage() {
   )
 }
 
+type RoleFilter = 'all' | 'owner' | 'member'
+
 function MembersTab({ org }: { org: string }) {
   const confirm = useConfirmAction()
+  const { me } = useAuth()
   const { data: members, error, loading, reload } = useOrgMembers(org)
   const { run, error: actionError, clearError } = useAction(reload)
   const [adding, setAdding] = useState(false)
+  const [query, setQuery] = useState('')
+  const [role, setRole] = useState<RoleFilter>('all')
 
   async function toggleRole(member: OrgMemberResponse) {
     const next = member.role === 'owner' ? 'member' : 'owner'
@@ -92,78 +119,125 @@ function MembersTab({ org }: { org: string }) {
 
   async function remove(member: OrgMemberResponse) {
     const ok = await confirm({
-      title: 'Remove member',
-      content: `Remove ${member.name} (${member.email}) from this organization?`,
+      title: `Remove ${member.name} from ${org}?`,
+      content: `${member.email} loses their membership and owner rights in ${org}.`,
       confirmLabel: 'Remove',
     })
     if (ok) await run(() => removeOrgMember(org, member.user_id))
   }
 
-  const columns: Column<OrgMemberResponse & { id: string }>[] = [
-    {
-      id: 'member',
-      header: 'Member',
-      rowHeader: true,
-      renderCell: (member) => (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--base-size-12)' }}>
-          <ActorAvatar actor={{ user_id: member.user_id, name: member.name, photo_url: member.photo_url }} size={28} />
-          <div>
-            <div style={{ fontWeight: 600 }}>{member.name}</div>
-            <div style={{ color: 'var(--fgColor-muted)', fontSize: 12 }}>{member.email}</div>
-          </div>
-        </div>
-      ),
-    },
-    {
-      id: 'role',
-      header: 'Role',
-      renderCell: (member) => (
-        <Stack direction="horizontal" gap="condensed" wrap="wrap">
-          {member.role === 'owner' ? <Label variant="danger">Owner</Label> : <Label>Member</Label>}
-          {member.is_super_admin && <Label variant="attention">Super admin</Label>}
-          {member.is_admin && !member.is_super_admin && <Label variant="attention">Admin</Label>}
-        </Stack>
-      ),
-    },
-    {
-      id: 'actions',
-      header: 'Actions',
-      align: 'end',
-      renderCell: (member) => (
-        <Stack direction="horizontal" gap="condensed" justify="end">
-          <Button size="small" onClick={() => void toggleRole(member)}>
-            {member.role === 'owner' ? 'Make member' : 'Make owner'}
-          </Button>
-          <Button size="small" variant="danger" onClick={() => void remove(member)}>
-            Remove
-          </Button>
-        </Stack>
-      ),
-    },
+  const all = members ?? []
+  const counts: Record<RoleFilter, number> = {
+    all: all.length,
+    owner: all.filter((member) => member.role === 'owner').length,
+    member: all.filter((member) => member.role !== 'owner').length,
+  }
+  const needle = query.trim().toLowerCase()
+  const visible = all
+    .filter((member) => role === 'all' || (role === 'owner') === (member.role === 'owner'))
+    .filter((member) => !needle || member.name.toLowerCase().includes(needle) || member.email.toLowerCase().includes(needle))
+  const tabs: { key: RoleFilter; label: string }[] = [
+    { key: 'all', label: 'All' },
+    { key: 'owner', label: 'Owners' },
+    { key: 'member', label: 'Members' },
   ]
 
   return (
     <Stack direction="vertical" gap="normal">
-      <SettingsCard
-        title="Members"
-        description="Manage who has access to this organization and their roles."
-        actions={
-          <Button size="small" variant="primary" onClick={() => setAdding(true)}>
-            Add member
-          </Button>
-        }
-      >
-        <ErrorBanner error={actionError ?? error} onDismiss={actionError ? clearError : undefined} />
-      </SettingsCard>
-      <DataTable
-        label="Members"
-        loading={loading}
-        data={(members ?? []).map((member) => ({ ...member, id: member.user_id }))}
-        columns={columns}
-        empty="No members."
+      <div className="nipa-section-head">
+        <div>
+          <Text as="h2" className="nipa-section-title">
+            Members
+          </Text>
+          <Text as="p" className="nipa-section-desc">
+            People in {org} and their roles. Repository access comes from owner rights or access rules.
+          </Text>
+        </div>
+        <Button variant="primary" leadingVisual={PersonAddIcon} onClick={() => setAdding(true)}>
+          Add member
+        </Button>
+      </div>
+      <ErrorBanner error={actionError ?? error} onDismiss={actionError ? clearError : undefined} />
+      <TextInput
+        block
+        leadingVisual={SearchIcon}
+        aria-label="Find a member"
+        placeholder="Find a member…"
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
       />
+      <div className="nipa-list-box">
+        <div className="nipa-list-header">
+          <nav className="nipa-state-tabs" aria-label="Member role">
+            {tabs.map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                aria-pressed={role === tab.key}
+                className={role === tab.key ? 'nipa-state-tab nipa-state-tab-active' : 'nipa-state-tab'}
+                onClick={() => setRole(tab.key)}
+              >
+                {tab.label}
+                <span className="nipa-count">{counts[tab.key]}</span>
+              </button>
+            ))}
+          </nav>
+        </div>
+        {loading && <Loading />}
+        {!loading && visible.length === 0 && (
+          <EmptyState bordered={false}>{all.length === 0 ? 'No members.' : 'No members match these filters.'}</EmptyState>
+        )}
+        {visible.map((member) => (
+          <div key={member.user_id} className="nipa-list-row" style={{ alignItems: 'center' }}>
+            <ActorAvatar actor={{ user_id: member.user_id, name: member.name, photo_url: member.photo_url }} size={32} />
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <span style={{ fontWeight: 600 }}>{member.name || member.email}</span>
+                {me?.id === member.user_id && <Label variant="secondary">You</Label>}
+                {member.is_super_admin && <Label variant="done">Super admin</Label>}
+                {member.is_admin && !member.is_super_admin && <Label variant="accent">Admin</Label>}
+              </div>
+              <div className="nipa-list-row-meta">{member.email}</div>
+            </div>
+            <span className="nipa-role-text">{member.role === 'owner' ? 'Owner' : 'Member'}</span>
+            <ActionMenu>
+              <ActionMenu.Anchor>
+                <IconButton icon={KebabHorizontalIcon} variant="invisible" aria-label={`Manage ${member.name || member.email}`} />
+              </ActionMenu.Anchor>
+              <ActionMenu.Overlay width="medium" align="end">
+                <ActionList>
+                  <ActionList.Item onSelect={() => void toggleRole(member)}>
+                    <ActionList.LeadingVisual>
+                      <ShieldIcon />
+                    </ActionList.LeadingVisual>
+                    {member.role === 'owner' ? 'Change role to member' : 'Change role to owner'}
+                  </ActionList.Item>
+                  <ActionList.Divider />
+                  <ActionList.Item variant="danger" onSelect={() => void remove(member)}>
+                    <ActionList.LeadingVisual>
+                      <PersonIcon />
+                    </ActionList.LeadingVisual>
+                    Remove from organization
+                  </ActionList.Item>
+                </ActionList>
+              </ActionMenu.Overlay>
+            </ActionMenu>
+          </div>
+        ))}
+      </div>
       {adding && <AddMemberDialog org={org} onClose={() => setAdding(false)} onAdded={reload} />}
     </Stack>
+  )
+}
+
+function AvatarStack({ members }: { members: GroupMemberResponse[] }) {
+  const shown = members.slice(0, 5)
+  return (
+    <span className="nipa-avatar-stack" aria-hidden="true">
+      {shown.map((member) => (
+        <ActorAvatar key={member.user_id} actor={{ user_id: member.user_id, name: member.name }} size={20} />
+      ))}
+    </span>
   )
 }
 
@@ -172,6 +246,7 @@ function GroupsTab({ org }: { org: string }) {
   const { data: groups, error, loading, reload: reloadGroups } = useAsync(() => listGroups(org), [org])
   const { data: members } = useOrgMembers(org)
   const [selected, setSelected] = useState<string | null>(null)
+  const [query, setQuery] = useState('')
   const {
     data: detail,
     error: detailError,
@@ -191,146 +266,192 @@ function GroupsTab({ org }: { org: string }) {
     if (!selected) return
     const label = (detail?.members ?? []).find((m) => m.user_id === userId)?.name ?? membersById.get(userId)?.name
     const ok = await confirm({
-      title: 'Remove group member',
-      content: `Remove ${label ?? `user ${userId}`} from this group?`,
+      title: `Remove ${label ?? `user ${userId}`} from ${detail?.name ?? 'this group'}?`,
+      content: 'They lose the access granted through this group but stay in the organization.',
       confirmLabel: 'Remove',
     })
     if (ok) await run(() => removeGroupMember(org, selected, userId))
   }
 
-  const columns: Column<GroupResponse>[] = [
-    {
-      id: 'group',
-      header: 'Group',
-      rowHeader: true,
-      renderCell: (group) => (
-        <div>
-          <div style={{ fontWeight: 600 }}>{group.name}</div>
-          {group.description && <div style={{ color: 'var(--fgColor-muted)', fontSize: 12 }}>{group.description}</div>}
-        </div>
-      ),
-    },
-    { id: 'members', header: 'Members', renderCell: (group) => <Mono>{group.member_count}</Mono> },
-    {
-      id: 'actions',
-      header: 'Actions',
-      align: 'end',
-      renderCell: (group) => (
-        <Button size="small" onClick={() => setSelected(selected === group.id ? null : group.id)}>
-          {selected === group.id ? 'Hide' : 'View'}
-        </Button>
-      ),
-    },
-  ]
+  if (selected) {
+    const groupMembers = detail && detail.id === selected ? (detail.members ?? []) : []
+    return (
+      <Stack direction="vertical" gap="normal">
+        <PrimerLink as="button" className="nipa-back-link" onClick={() => setSelected(null)}>
+          <ArrowLeftIcon /> All groups
+        </PrimerLink>
+        <ErrorBanner error={actionError ?? detailError} onDismiss={actionError ? clearError : undefined} />
+        {detailLoading && !detail && <Loading variant="skeleton" />}
+        {detail && detail.id === selected && (
+          <>
+            <div className="nipa-section-head">
+              <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+                <span className="nipa-group-icon nipa-group-icon-large">
+                  <PeopleIcon size={24} />
+                </span>
+                <div>
+                  <Text as="h2" className="nipa-section-title">
+                    {detail.name}
+                  </Text>
+                  <Text as="p" className="nipa-section-desc">
+                    {detail.description || 'No description.'}
+                  </Text>
+                </div>
+              </div>
+              <Button variant="primary" leadingVisual={PersonAddIcon} onClick={() => setAddingMember(true)}>
+                Add member
+              </Button>
+            </div>
+            <div className="nipa-list-box">
+              <div className="nipa-list-header">
+                <Text style={{ fontWeight: 600 }}>
+                  Members <span className="nipa-count">{groupMembers.length}</span>
+                </Text>
+              </div>
+              {groupMembers.length === 0 && (
+                <EmptyState bordered={false}>This group has no members yet. Add people to grant them its access in one step.</EmptyState>
+              )}
+              {groupMembers.map((member) => (
+                <div key={member.user_id} className="nipa-list-row" style={{ alignItems: 'center' }}>
+                  <ActorAvatar
+                    actor={{ user_id: member.user_id, name: member.name, photo_url: membersById.get(member.user_id)?.photo_url }}
+                    size={32}
+                  />
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontWeight: 600 }}>{member.name}</div>
+                    <div className="nipa-list-row-meta">{member.email}</div>
+                  </div>
+                  <Button size="small" onClick={() => void removeMember(member.user_id)}>
+                    Remove
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+        {addingMember && (
+          <AddGroupMemberDialog
+            org={org}
+            group={detail?.name ?? ''}
+            onClose={() => setAddingMember(false)}
+            onAdded={(userId) =>
+              addGroupMember(org, selected, userId).then(() => {
+                reloadDetail()
+                reloadGroups()
+              })
+            }
+          />
+        )}
+      </Stack>
+    )
+  }
+
+  const needle = query.trim().toLowerCase()
+  const visible = (groups ?? []).filter(
+    (group) => !needle || group.name.toLowerCase().includes(needle) || group.description.toLowerCase().includes(needle),
+  )
 
   return (
     <Stack direction="vertical" gap="normal">
-      <SettingsCard
-        title="Groups"
-        description="Organize members into groups for easier access management."
-        actions={
-          <Button size="small" variant="primary" onClick={() => setCreating(true)}>
-            Create group
-          </Button>
-        }
-      >
-        <ErrorBanner
-          error={actionError ?? error ?? detailError}
-          onDismiss={actionError ? clearError : undefined}
-        />
-      </SettingsCard>
-      <DataTable
-        label="Groups"
-        loading={loading}
-        data={groups ?? []}
-        columns={columns}
-        empty="No groups. Create one to organize members."
+      <div className="nipa-section-head">
+        <div>
+          <Text as="h2" className="nipa-section-title">
+            Groups
+          </Text>
+          <Text as="p" className="nipa-section-desc">
+            Group people to give them repository access together through access rules.
+          </Text>
+        </div>
+        <Button variant="primary" leadingVisual={PeopleIcon} onClick={() => setCreating(true)}>
+          New group
+        </Button>
+      </div>
+      <ErrorBanner error={actionError ?? error} onDismiss={actionError ? clearError : undefined} />
+      <TextInput
+        block
+        leadingVisual={SearchIcon}
+        aria-label="Find a group"
+        placeholder="Find a group…"
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
       />
-
-      {selected && detail && detail.id === selected && (
-        <SettingsCard
-          title={`${detail.name} members`}
-          actions={
-            <Button size="small" variant="primary" onClick={() => setAddingMember(true)}>
-              Add member
-            </Button>
-          }
-        >
-          {(detail.members ?? []).length === 0 && <EmptyState>No members.</EmptyState>}
-          {(detail.members ?? []).map((member, index) => (
-            <Row
-              key={member.user_id}
-              first={index === 0}
-              title={
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--base-size-12)' }}>
-                  <ActorAvatar
-                    actor={{
-                      user_id: member.user_id,
-                      name: member.name,
-                      photo_url: membersById.get(member.user_id)?.photo_url,
-                    }}
-                    size={28}
-                  />
-                  {member.name}
-                </span>
-              }
-              meta={member.email}
-              actions={
-                <Button size="small" variant="danger" onClick={() => void removeMember(member.user_id)}>
-                  Remove
-                </Button>
-              }
-            />
-          ))}
-        </SettingsCard>
-      )}
-      {selected && !detail && detailLoading && <Loading variant="skeleton" />}
-
+      <div className="nipa-list-box">
+        <div className="nipa-list-header">
+          <Text style={{ fontWeight: 600 }}>
+            Groups <span className="nipa-count">{(groups ?? []).length}</span>
+          </Text>
+        </div>
+        {loading && <Loading />}
+        {!loading && visible.length === 0 && (
+          <EmptyState bordered={false}>
+            {(groups ?? []).length === 0 ? 'No groups. Create one to organize members.' : 'No groups match this search.'}
+          </EmptyState>
+        )}
+        {visible.map((group) => (
+          <div key={group.id} className="nipa-list-row" style={{ alignItems: 'center' }}>
+            <span className="nipa-group-icon">
+              <PeopleIcon />
+            </span>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <PrimerLink as="button" className="nipa-list-row-title nipa-link-button" onClick={() => setSelected(group.id)}>
+                {group.name}
+              </PrimerLink>
+              {group.description && <div className="nipa-list-row-meta">{group.description}</div>}
+            </div>
+            {group.members && group.members.length > 0 && <AvatarStack members={group.members} />}
+            <span className="nipa-role-text">
+              {group.member_count} {group.member_count === 1 ? 'member' : 'members'}
+            </span>
+          </div>
+        ))}
+      </div>
       {creating && <CreateGroupDialog org={org} onClose={() => setCreating(false)} onCreated={reloadGroups} />}
-      {addingMember && selected && (
-        <AddGroupMemberDialog
-          org={org}
-          onClose={() => setAddingMember(false)}
-          onAdded={(userId) => addGroupMember(org, selected, userId).then(() => {
-            reloadDetail()
-            reloadGroups()
-          })}
-        />
-      )}
     </Stack>
   )
 }
 
+function RoleChoice({ value, onChange }: { value: string; onChange: (role: string) => void }) {
+  return (
+    <RadioGroup name="org-role">
+      <RadioGroup.Label>Role</RadioGroup.Label>
+      <FormControl>
+        <Radio value="member" checked={value === 'member'} onChange={() => onChange('member')} />
+        <FormControl.Label>Member</FormControl.Label>
+        <FormControl.Caption>Sees the organization and works in the repositories access rules open to them.</FormControl.Caption>
+      </FormControl>
+      <FormControl>
+        <Radio value="owner" checked={value === 'owner'} onChange={() => onChange('owner')} />
+        <FormControl.Label>Owner</FormControl.Label>
+        <FormControl.Caption>Full access to every repository and to members, groups and settings.</FormControl.Caption>
+      </FormControl>
+    </RadioGroup>
+  )
+}
+
 function AddMemberDialog({ org, onClose, onAdded }: { org: string; onClose: () => void; onAdded: () => void }) {
-  const [userId, setUserId] = useState('')
+  const [subject, setSubject] = useState<PickerEntry | null>(null)
   const [role, setRole] = useState('member')
   return (
     <FormDialog
-      title="Add member"
+      title={`Add a member to ${org}`}
       submitLabel="Add member"
-      submitDisabled={!userId}
+      submitDisabled={!subject}
       onClose={onClose}
       onSubmit={async () => {
-        await addOrgMember(org, userId, role)
+        if (!subject) return
+        await addOrgMember(org, subject.id, role)
         onAdded()
       }}
     >
       <FormControl required>
         <FormControl.Label>User</FormControl.Label>
-        <UserGroupPicker
-          org={org}
-          kind="user"
-          onSelect={(entry) => setUserId(entry.id)}
-          placeholder="Search users by name or email…"
-        />
+        {subject ? (
+          <PickedSubject subject={subject} onChange={() => setSubject(null)} />
+        ) : (
+          <UserGroupPicker org={org} kind="user" inline onSelect={setSubject} placeholder="Search by name or email…" />
+        )}
       </FormControl>
-      <FormControl required>
-        <FormControl.Label>Role</FormControl.Label>
-        <Select block value={role} onChange={(event) => setRole(event.target.value)}>
-          <Select.Option value="member">Member</Select.Option>
-          <Select.Option value="owner">Owner</Select.Option>
-        </Select>
-      </FormControl>
+      <RoleChoice value={role} onChange={setRole} />
     </FormDialog>
   )
 }
@@ -340,7 +461,7 @@ function CreateGroupDialog({ org, onClose, onCreated }: { org: string; onClose: 
   const [description, setDescription] = useState('')
   return (
     <FormDialog
-      title="Create group"
+      title="Create a new group"
       submitLabel="Create group"
       submitDisabled={!name.trim()}
       onClose={onClose}
@@ -351,13 +472,22 @@ function CreateGroupDialog({ org, onClose, onCreated }: { org: string; onClose: 
     >
       <FormControl required>
         <FormControl.Label>Group name</FormControl.Label>
-        <TextInput block autoFocus placeholder="e.g. texture-artists" value={name} onChange={(e) => setName(e.target.value)} />
+        <TextInput
+          block
+          autoFocus
+          leadingVisual={PeopleIcon}
+          placeholder="e.g. texture-artists"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
+        <FormControl.Caption>Use a name people recognize, such as a team or discipline.</FormControl.Caption>
       </FormControl>
       <FormControl>
         <FormControl.Label>Description</FormControl.Label>
-        <TextInput
+        <Textarea
           block
-          placeholder="Optional description"
+          rows={3}
+          placeholder="What is this group for?"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
         />
@@ -368,30 +498,32 @@ function CreateGroupDialog({ org, onClose, onCreated }: { org: string; onClose: 
 
 function AddGroupMemberDialog({
   org,
+  group,
   onClose,
   onAdded,
 }: {
   org: string
+  group: string
   onClose: () => void
   onAdded: (userId: string) => Promise<unknown>
 }) {
-  const [userId, setUserId] = useState('')
+  const [subject, setSubject] = useState<PickerEntry | null>(null)
   return (
     <FormDialog
-      title="Add group member"
+      title={group ? `Add a member to ${group}` : 'Add group member'}
       submitLabel="Add member"
-      submitDisabled={!userId}
+      submitDisabled={!subject}
       onClose={onClose}
-      onSubmit={() => onAdded(userId)}
+      onSubmit={() => onAdded(subject?.id ?? '')}
     >
       <FormControl required>
         <FormControl.Label>User</FormControl.Label>
-        <UserGroupPicker
-          org={org}
-          kind="user"
-          onSelect={(entry) => setUserId(entry.id)}
-          placeholder="Search users by name or email…"
-        />
+        {subject ? (
+          <PickedSubject subject={subject} onChange={() => setSubject(null)} />
+        ) : (
+          <UserGroupPicker org={org} kind="user" inline onSelect={setSubject} placeholder="Search by name or email…" />
+        )}
+        <FormControl.Caption>Group members get every access rule granted to the group.</FormControl.Caption>
       </FormControl>
     </FormDialog>
   )

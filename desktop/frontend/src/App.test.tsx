@@ -43,7 +43,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   api.connect.mockResolvedValue(daemon);
   api.repos.mockResolvedValue([game, tools]);
-  api.changes.mockResolvedValue({ branch: "main", staged: [], unstaged: [], conflicts: [] });
+  api.changes.mockImplementation(async (root: string) => ({ branch: root === tools.root ? tools.branch : game.branch, staged: [], unstaged: [], conflicts: [] }));
   api.onRepoChanged.mockReturnValue(() => {});
   api.onOpProgress.mockReturnValue(() => {});
   api.activity.mockResolvedValue([]);

@@ -57,6 +57,23 @@ describe("BranchesView", () => {
     expect(onSwitch).toHaveBeenCalledWith("art-pass");
   });
 
+  it("shows the base and only switches when asked", async () => {
+    api.createBranch.mockResolvedValueOnce({ name: "stay" });
+    view();
+    await screen.findByText("art-pass");
+
+    await userEvent.click(screen.getByRole("button", { name: "New branch" }));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText("Based on:")).toBeInTheDocument();
+    expect(within(dialog).getByText(/^main \(/)).toBeInTheDocument();
+    const toggle = within(dialog).getByRole("checkbox", { name: "Switch to the new branch" });
+    expect(toggle).toBeChecked();
+    await userEvent.click(toggle);
+    await userEvent.type(within(dialog).getByRole("textbox", { name: "Branch name" }), "stay{Enter}");
+    await waitFor(() => expect(notify).toHaveBeenCalledWith("Created branch stay from main", "success"));
+    expect(onSwitch).not.toHaveBeenCalled();
+  });
+
   it("creates branches and tags from the current branch", async () => {
     api.createBranch.mockResolvedValueOnce({ name: "fx" }).mockRejectedValueOnce(new Error("branch exists"));
     api.createTag.mockResolvedValueOnce({ name: "v1.1" }).mockRejectedValueOnce(new Error("tag exists"));
@@ -67,6 +84,7 @@ describe("BranchesView", () => {
     await userEvent.type(screen.getByRole("textbox", { name: "Branch name" }), "fx{Enter}");
     expect(api.createBranch).toHaveBeenCalledWith("/work/game", "fx", { branch: "main" });
     await waitFor(() => expect(notify).toHaveBeenCalledWith("Created branch fx from main", "success"));
+    expect(onSwitch).toHaveBeenCalledWith("fx");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "New branch" }));
     await userEvent.type(screen.getByRole("textbox", { name: "Branch name" }), "fx{Enter}");

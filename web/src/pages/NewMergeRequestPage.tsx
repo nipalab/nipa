@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { Button, Checkbox, FormControl, Select, Textarea, TextInput } from '@primer/react'
+import { Button, Checkbox, FormControl, Text, Textarea, TextInput } from '@primer/react'
+import { ArrowLeftIcon } from '@primer/octicons-react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { createMergeRequest } from '../api/endpoints'
 import { useAuth } from '../auth'
-import { MemberMultiPicker } from '../components/repo/MemberPicker'
+import { BranchPicker, MemberMultiPicker } from '../components/repo/MemberPicker'
 import { RepoPageShell } from '../components/repo/RepoPageShell'
 import { useRepoChrome } from '../components/repo/useRepoChrome'
 import { FormCard } from '../components/SettingsCard'
@@ -28,7 +29,8 @@ export default function NewMergeRequestPage() {
   const [saving, setSaving] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
 
-  const canSubmit = title.trim() !== '' && source !== '' && target !== '' && !saving
+  const targetBranch = target || defaultBranch
+  const canSubmit = title.trim() !== '' && source !== '' && targetBranch !== '' && source !== targetBranch && !saving
   const shell = {
     org,
     project,
@@ -56,7 +58,7 @@ export default function NewMergeRequestPage() {
     setSaving(true)
     setActionError(null)
     try {
-      const request = await createMergeRequest(org, project, title.trim(), description, source, target, draft, {
+      const request = await createMergeRequest(org, project, title.trim(), description, source, targetBranch, draft, {
         reviewerIds: reviewers,
         assigneeIds: assignees,
       })
@@ -79,36 +81,26 @@ export default function NewMergeRequestPage() {
           <FormControl.Label>Description</FormControl.Label>
           <Textarea block rows={4} value={description} onChange={(event) => setDescription(event.target.value)} />
         </FormControl>
-        <FormControl required>
-          <FormControl.Label>Source branch</FormControl.Label>
-          <Select block value={source} onChange={(event) => setSource(event.target.value)}>
-            <Select.Option value="">select a branch</Select.Option>
-            {branches?.map((branch) => (
-              <Select.Option key={branch.id} value={branch.name}>
-                {branch.name}
-              </Select.Option>
-            ))}
-          </Select>
-        </FormControl>
-        <FormControl required>
-          <FormControl.Label>Target branch</FormControl.Label>
-          <Select block value={target} onChange={(event) => setTarget(event.target.value)}>
-            <Select.Option value="">select a branch</Select.Option>
-            {branches?.map((branch) => (
-              <Select.Option key={branch.id} value={branch.name}>
-                {branch.name}
-                {branch.is_default ? ' (default)' : ''}
-              </Select.Option>
-            ))}
-          </Select>
-        </FormControl>
+        <div className="nipa-branch-pair">
+          <div>
+            <span className="nipa-field-label">Base (target)</span>
+            <BranchPicker label="Choose the target branch" branches={branches ?? []} value={targetBranch} onChange={setTarget} />
+          </div>
+          <ArrowLeftIcon className="nipa-branch-arrow" />
+          <div>
+            <span className="nipa-field-label">Compare (source)</span>
+            <BranchPicker label="Choose the source branch" branches={branches ?? []} value={source} onChange={setSource} />
+          </div>
+        </div>
+        {source !== '' && source === targetBranch && (
+          <Text style={{ color: 'var(--fgColor-attention)', fontSize: 12 }}>The source and target branches are the same.</Text>
+        )}
         {(members ?? []).length > 0 && (
           <>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <span style={{ fontSize: 14, fontWeight: 600 }}>Reviewers</span>
+              <span className="nipa-field-label">Reviewers</span>
               <MemberMultiPicker
-                label="Add reviewer"
-                placeholder="Add reviewer…"
+                label="Add reviewers"
                 members={reviewerCandidates}
                 selected={reviewers}
                 onChange={setReviewers}
@@ -116,10 +108,9 @@ export default function NewMergeRequestPage() {
               />
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <span style={{ fontSize: 14, fontWeight: 600 }}>Assignees</span>
+              <span className="nipa-field-label">Assignees</span>
               <MemberMultiPicker
-                label="Add assignee"
-                placeholder="Add assignee…"
+                label="Add assignees"
                 members={members ?? []}
                 selected={assignees}
                 onChange={setAssignees}

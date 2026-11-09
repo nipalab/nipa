@@ -1,18 +1,32 @@
-import type { Activity, Review, Thread, TimelineEvent } from "@/api/desktop";
+import type { Activity, DiffLine, FileDiff, Review, Thread, TimelineEvent } from "@/api/desktop";
 import type { LineAnchor } from "@/components/changes/TextDiff";
 
 export type ConversationItem = { kind: "event"; at: string; event: TimelineEvent } | { kind: "review"; at: string; review: Review } | { kind: "thread"; at: string; thread: Thread };
 
-// conversation merges the timeline, review decisions and top-level threads
-// in time order; review events are shown through their review, which knows
-// the decision.
+// conversation merges the timeline, review decisions and every thread, line
+// comments included, in time order; review events are shown through their
+// review, which knows the decision.
 export function conversation(activity: Activity): ConversationItem[] {
   const items: ConversationItem[] = [
     ...activity.timeline.filter((e) => e.kind !== "review_submitted").map((event) => ({ kind: "event" as const, at: event.createdAt, event })),
     ...activity.reviews.map((review) => ({ kind: "review" as const, at: review.createdAt, review })),
-    ...activity.threads.filter((t) => !t.path).map((thread) => ({ kind: "thread" as const, at: thread.createdAt, thread })),
+    ...activity.threads.map((thread) => ({ kind: "thread" as const, at: thread.createdAt, thread })),
   ];
   return items.sort((a, b) => a.at.localeCompare(b.at));
+}
+
+// threadSnippet returns the diff lines a line comment points at: the anchored
+// line and up to context lines above it within the same hunk. It is empty for
+// top-level threads and anchors the diff no longer shows.
+export function threadSnippet(files: FileDiff[], thread: Thread, context = 3): DiffLine[] {
+  if (!thread.path) return [];
+  const file = files.find((f) => f.path === thread.path || (!!f.oldPath && f.oldPath === thread.path));
+  for (const hunk of file?.hunks ?? []) {
+    const lines = hunk.lines ?? [];
+    const at = lines.findIndex((l) => (thread.newLine ? l.new === thread.newLine : l.old === thread.oldLine && l.kind !== "added"));
+    if (at >= 0) return lines.slice(Math.max(0, at - context), at + 1);
+  }
+  return [];
 }
 
 export function threadAt(thread: Thread, anchor: LineAnchor): boolean {

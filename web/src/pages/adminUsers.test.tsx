@@ -102,8 +102,7 @@ describe('AdminUsersPage', () => {
     await waitForText(container, 'Alice')
     expect(container.textContent).toContain('Super admin')
     expect(container.textContent).toContain('Admin')
-    expect(container.textContent).toContain('Member')
-    expect(container.textContent).toContain('(you)')
+    expect(container.textContent).toContain('You')
 
     await act(async () => {
       setInputValue(container.querySelector('[aria-label="Filter users"]') as HTMLInputElement, 'bob')
@@ -138,13 +137,14 @@ describe('AdminUsersPage', () => {
       findButton('New user').click()
     })
     await waitFor(() => window.location.pathname === '/admin/users/new')
-    await waitFor(() => container.querySelectorAll('input').length >= 3)
+    await waitFor(() => container.querySelectorAll('input').length >= 4)
 
-    const inputs = container.querySelectorAll('input')
+    const passwords = container.querySelectorAll<HTMLInputElement>('input[autocomplete="new-password"]')
     await act(async () => {
-      setInputValue(inputs[0] as HTMLInputElement, 'Carol')
-      setInputValue(inputs[1] as HTMLInputElement, 'carol@example.com')
-      setInputValue(inputs[2] as HTMLInputElement, 'secret123')
+      setInputValue(container.querySelector('input[placeholder="e.g. Dana Smith"]') as HTMLInputElement, 'Carol')
+      setInputValue(container.querySelector('input[type="email"]') as HTMLInputElement, 'carol@example.com')
+      setInputValue(passwords[0], 'secret123')
+      setInputValue(passwords[1], 'secret123')
     })
     await act(async () => {
       findButton('Create user').click()

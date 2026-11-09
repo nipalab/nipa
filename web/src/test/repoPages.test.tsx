@@ -6,7 +6,6 @@ import BranchesPage from '../pages/BranchesPage'
 import LocksPage from '../pages/LocksPage'
 import {
   buttonByText,
-  buttonsByText,
   cancelDialog,
   click,
   confirmDialog,
@@ -62,31 +61,50 @@ afterEach(() => {
   document.body.innerHTML = ''
 })
 
+function byName(name: string): HTMLElement | null {
+  return (
+    [...document.querySelectorAll<HTMLElement>('[aria-label], [aria-labelledby]')].find(
+      (element) =>
+        element.getAttribute('aria-label') === name ||
+        (element.getAttribute('aria-labelledby') ?? '')
+          .split(' ')
+          .some((id) => document.getElementById(id)?.textContent === name),
+    ) ?? null
+  )
+}
+
+async function menuItem(anchor: string, label: string) {
+  await click(byName(anchor))
+  await waitFor(() => document.querySelector('[role="menuitem"]') !== null)
+  const item = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((entry) => entry.textContent?.includes(label))
+  if (!item) throw new Error(`menu item ${label} not found`)
+  await click(item)
+}
+
 describe('LocksPage', () => {
   const url = '/acme/game/locks'
   const pattern = '/:org/:project/locks'
 
-  it('lists locks with scope, holder and merge request', async () => {
+  it('lists locks with scope, holder, merge request and expiry', async () => {
+    const expires = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString()
     api.listFileLocks.mockResolvedValue([
       lock(),
-      lock({ id: 'l2', path: 'assets/hero.fbx', global: false, branch: 'feature', merge_request_number: 7, held_by_name: '' }),
+      lock({ id: 'l2', path: 'assets/hero.fbx', global: false, branch: 'feature', merge_request_number: 7, held_by_name: '', expires_at: expires }),
+      lock({ id: 'l3', path: 'assets/textures', held_by: '1', held_by_name: 'Me' }),
     ])
     const { container } = await renderRoute(pattern, url, <LocksPage />)
     await waitFor(() => (container.textContent ?? '').includes('assets/orc.png'))
-    expect(container.textContent).toContain('mainline')
-    expect(container.textContent).toContain('Dana')
-    expect(container.textContent).toContain('branch feature')
-    expect(container.textContent).toContain('MR #7')
-    expect(container.textContent).toContain('never')
-  })
-
-  it('shows when a lock expires', async () => {
-    const expires = new Date(Date.now() + 10 * 60 * 1000).toISOString()
-    api.listFileLocks.mockResolvedValue([lock({ expires_at: expires })])
-    const { container } = await renderRoute(pattern, url, <LocksPage />)
-    await waitFor(() => (container.textContent ?? '').includes('assets/orc.png'))
-    expect(container.querySelector(`time[datetime="${expires}"]`)).not.toBeNull()
-    expect(container.textContent).not.toContain('never')
+    const text = container.textContent ?? ''
+    expect(text).toContain('Mainline')
+    expect(text).toContain('Dana locked')
+    expect(text).toContain('feature')
+    expect(text).toContain('MR #7')
+    expect(text).toContain('expires in 2 hours')
+    expect(text).toContain('You locked')
+    expect(container.querySelector('a[href="/acme/game/blob/main/assets/orc.png"]')).not.toBeNull()
+    expect(container.querySelector('a[href="/acme/game/blob/feature/assets/hero.fbx"]')).not.toBeNull()
+    expect(container.querySelector('a[href="/acme/game/tree/main/assets/textures"]')).not.toBeNull()
+    expect(container.querySelector('a[href="/acme/game/merges/7"]')).not.toBeNull()
   })
 
   it('shows the empty message when there are no locks', async () => {
@@ -95,57 +113,92 @@ describe('LocksPage', () => {
     await waitFor(() => (container.textContent ?? '').includes('No locks.'))
   })
 
-  it('releases a mainline lock after confirmation and a branch lock with its scope', async () => {
+  it('unlocks your own lock and force unlocks others as an admin', async () => {
     api.listFileLocks.mockResolvedValue([
-      lock(),
+      lock({ held_by: '1', held_by_name: 'Me' }),
       lock({ id: 'l2', path: 'assets/hero.fbx', global: false, branch: 'feature' }),
     ])
     api.unlockFile.mockResolvedValue({ message: 'ok' })
     const { container } = await renderRoute(pattern, url, <LocksPage />)
-    await waitFor(() => buttonsByText(container, 'Unlock').length === 2)
+    await waitFor(() => buttonByText(container, 'Unlock') !== null)
 
-    await click(buttonsByText(container, 'Unlock')[0])
+    await click(buttonByText(container, 'Unlock'))
     await confirmDialog('Unlock')
     expect(api.unlockFile).toHaveBeenCalledWith('acme', 'game', 'assets/orc.png', '')
 
-    await click(buttonsByText(container, 'Unlock')[1])
-    await confirmDialog('Unlock')
+    await click(buttonByText(container, 'Force unlock'))
+    await confirmDialog('Force unlock')
     expect(api.unlockFile).toHaveBeenCalledWith('acme', 'game', 'assets/hero.fbx', 'feature')
   })
 
   it('keeps the lock when the confirmation is cancelled', async () => {
-    api.listFileLocks.mockResolvedValue([lock()])
+    api.listFileLocks.mockResolvedValue([lock({ held_by: '1' })])
     const { container } = await renderRoute(pattern, url, <LocksPage />)
-    await waitFor(() => buttonsByText(container, 'Unlock').length === 1)
-    await click(buttonsByText(container, 'Unlock')[0])
+    await waitFor(() => buttonByText(container, 'Unlock') !== null)
+    await click(buttonByText(container, 'Unlock'))
     await cancelDialog()
     expect(api.unlockFile).not.toHaveBeenCalled()
   })
 
-  it('locks a path and clears the field, and reports failures', async () => {
-    api.listFileLocks.mockResolvedValue([])
-    api.lockFile.mockResolvedValueOnce(lock()).mockRejectedValueOnce(new Error('already locked'))
+  it('filters to my locks and by path', async () => {
+    api.listFileLocks.mockResolvedValue([lock(), lock({ id: 'l3', path: 'docs/plan.psd', held_by: '1', held_by_name: 'Me' })])
     const { container } = await renderRoute(pattern, url, <LocksPage />)
-    await waitFor(() => container.querySelector('input') !== null)
-    const input = container.querySelector('input') as HTMLInputElement
-
-    await type(input, 'assets/orc.png')
-    await click(buttonByText(container, 'Lock'))
-    await flush()
-    expect(api.lockFile).toHaveBeenCalledWith('acme', 'game', 'assets/orc.png', '')
-    expect(input.value).toBe('')
-
-    await type(input, 'assets/hero.fbx')
-    await click(buttonByText(container, 'Lock'))
-    await waitFor(() => (container.textContent ?? '').includes('already locked'))
+    await waitFor(() => (container.textContent ?? '').includes('assets/orc.png'))
+    const tab = (label: string) =>
+      [...container.querySelectorAll<HTMLButtonElement>('nav[aria-label="Lock filter"] button')].find((button) =>
+        button.textContent?.startsWith(label),
+      ) as HTMLButtonElement
+    expect(tab('All locks').textContent).toBe('All locks2')
+    await click(tab('Mine'))
+    expect(container.textContent).not.toContain('assets/orc.png')
+    expect(container.textContent).toContain('docs/plan.psd')
+    await type(container.querySelector<HTMLInputElement>('[aria-label="Search locks"]'), 'nothing')
+    expect(container.textContent).toContain('No locks match these filters.')
+    await type(container.querySelector<HTMLInputElement>('[aria-label="Search locks"]'), '')
+    api.listFileLocks.mockResolvedValue([lock()])
   })
 
-  it('hides the lock form for read-only users', async () => {
-    allow(PERMISSION_READ)
+  it('locks a path through the dialog, on mainline or a branch, and reports failures', async () => {
     api.listFileLocks.mockResolvedValue([])
+    api.lockFile.mockResolvedValueOnce(lock()).mockResolvedValueOnce(lock()).mockRejectedValueOnce(new Error('already locked'))
     const { container } = await renderRoute(pattern, url, <LocksPage />)
-    await waitFor(() => (container.textContent ?? '').includes('No locks.'))
-    expect(container.textContent).not.toContain('Lock a binary file or directory')
+    await waitFor(() => buttonByText(container, 'Lock file') !== null)
+
+    await click(buttonByText(container, 'Lock file'))
+    await waitFor(() => document.body.textContent?.includes('Lock a file or folder') ?? false)
+    expect(document.body.textContent).toContain('mainline lock')
+    const submit = () => document.body.querySelector<HTMLButtonElement>('button[type="submit"]')
+    expect(submit()?.disabled).toBe(true)
+    await type(document.body.querySelector<HTMLInputElement>('[role="dialog"] input'), '/assets/orc.png/')
+    await click(submit())
+    await flush()
+    expect(api.lockFile).toHaveBeenCalledWith('acme', 'game', 'assets/orc.png', '')
+
+    await click(buttonByText(container, 'Lock file'))
+    await waitFor(() => document.body.querySelector('[role="dialog"] input') !== null)
+    await type(document.body.querySelector<HTMLInputElement>('[role="dialog"] input'), 'assets/hero.fbx')
+    await click(byName('Choose the lock branch'))
+    await waitFor(() => document.querySelector('[role="option"]') !== null)
+    await click([...document.querySelectorAll<HTMLElement>('[role="option"]')].find((option) => option.textContent?.includes('feature')))
+    expect(document.body.textContent).toContain('only applies to pushes to feature')
+    await click(submit())
+    await flush()
+    expect(api.lockFile).toHaveBeenLastCalledWith('acme', 'game', 'assets/hero.fbx', 'feature')
+
+    await click(buttonByText(container, 'Lock file'))
+    await waitFor(() => document.body.querySelector('[role="dialog"] input') !== null)
+    await type(document.body.querySelector<HTMLInputElement>('[role="dialog"] input'), 'assets/x.png')
+    await click(submit())
+    await waitFor(() => (document.body.textContent ?? '').includes('already locked'))
+  })
+
+  it('hides lock and unlock buttons for readers', async () => {
+    allow(PERMISSION_READ)
+    api.listFileLocks.mockResolvedValue([lock()])
+    const { container } = await renderRoute(pattern, url, <LocksPage />)
+    await waitFor(() => (container.textContent ?? '').includes('assets/orc.png'))
+    expect(buttonByText(container, 'Lock file')).toBeNull()
+    expect(buttonByText(container, 'Force unlock')).toBeNull()
   })
 
   it('shows a load error', async () => {
@@ -159,56 +212,67 @@ describe('BranchesPage', () => {
   const url = '/acme/game/branches'
   const pattern = '/:org/:project/branches'
 
-  it('lists branches with default and protected labels', async () => {
+  it('lists the default branch apart from the others with labels and heads', async () => {
     api.listBranches.mockResolvedValue([
       branch({ is_protected: true }),
       branch({ id: 'b2', name: 'feature', is_default: false, commit_id: undefined }),
     ])
     const { container } = await renderRoute(pattern, url, <BranchesPage />)
     await waitFor(() => (container.textContent ?? '').includes('feature'))
-    expect(container.textContent).toContain('default')
-    expect(container.textContent).toContain('protected')
-    expect(container.textContent).toContain('abcdef0123')
-    expect(container.textContent).toContain('empty')
+    const defaults = container.querySelector('section[aria-label="Default branch"]') as HTMLElement
+    const others = container.querySelector('section[aria-label="Other branches"]') as HTMLElement
+    expect(defaults.textContent).toContain('main')
+    expect(defaults.textContent).toContain('Default')
+    expect(defaults.textContent).toContain('Protected')
+    expect(defaults.textContent).toContain('abcdef0')
+    expect(others.textContent).toContain('feature')
+    expect(others.textContent).toContain('No commits yet')
+
+    await type(container.querySelector<HTMLInputElement>('[aria-label="Search branches"]'), 'feat')
+    expect(container.querySelector('section[aria-label="Default branch"]')).toBeNull()
+    expect(container.textContent).toContain('Matching branches')
+    await type(container.querySelector<HTMLInputElement>('[aria-label="Search branches"]'), 'zzz')
+    expect(container.textContent).toContain('No branches match')
   })
 
-  it('sets the default branch and protects a branch', async () => {
+  it('makes a branch default and protects one from the menu', async () => {
     api.setDefaultBranch.mockResolvedValue(branch())
     api.setBranchProtection.mockResolvedValue(branch())
     const { container } = await renderRoute(pattern, url, <BranchesPage />)
-    await waitFor(() => buttonsByText(container, 'Make default').length === 1)
+    await waitFor(() => byName('More actions for feature') !== null)
 
-    await click(buttonByText(container, 'Make default'))
-    await flush()
+    await menuItem('More actions for feature', 'Make default')
+    await confirmDialog('Make default')
     expect(api.setDefaultBranch).toHaveBeenCalledWith('acme', 'game', 'feature')
 
-    await click(buttonsByText(container, 'Protect')[0])
+    await menuItem('More actions for main', 'Protect')
     await flush()
     expect(api.setBranchProtection).toHaveBeenCalledWith('acme', 'game', 'main', true)
+    expect(container).toBeTruthy()
   })
 
   it('asks before unprotecting', async () => {
     api.listBranches.mockResolvedValue([branch({ is_protected: true })])
     api.setBranchProtection.mockResolvedValue(branch())
-    const { container } = await renderRoute(pattern, url, <BranchesPage />)
-    await waitFor(() => buttonsByText(container, 'Unprotect').length === 1)
+    await renderRoute(pattern, url, <BranchesPage />)
+    await waitFor(() => byName('More actions for main') !== null)
 
-    await click(buttonByText(container, 'Unprotect'))
+    await menuItem('More actions for main', 'Unprotect')
     await cancelDialog()
     expect(api.setBranchProtection).not.toHaveBeenCalled()
 
-    await click(buttonByText(container, 'Unprotect'))
+    await menuItem('More actions for main', 'Unprotect')
     await confirmDialog('Unprotect')
     expect(api.setBranchProtection).toHaveBeenCalledWith('acme', 'game', 'main', false)
   })
 
   it('renames through a dialog and keeps submit disabled for unchanged names', async () => {
     api.renameBranch.mockResolvedValue(branch({ name: 'trunk' }))
-    const { container } = await renderRoute(pattern, url, <BranchesPage />)
-    await waitFor(() => buttonsByText(container, 'Rename').length === 2)
+    await renderRoute(pattern, url, <BranchesPage />)
+    await waitFor(() => byName('More actions for main') !== null)
 
-    await click(buttonsByText(container, 'Rename')[0])
-    await waitFor(() => document.body.textContent?.includes('New branch name') ?? false)
+    await menuItem('More actions for main', 'Rename')
+    await waitFor(() => document.body.textContent?.includes('Rename this branch to:') ?? false)
     const submit = () => document.body.querySelector<HTMLButtonElement>('button[type="submit"]')
     expect(submit()?.disabled).toBe(true)
 
@@ -221,10 +285,11 @@ describe('BranchesPage', () => {
 
   it('deletes a non-default branch after confirmation', async () => {
     api.deleteBranch.mockResolvedValue({ message: 'ok' })
-    const { container } = await renderRoute(pattern, url, <BranchesPage />)
-    await waitFor(() => buttonsByText(container, 'Delete').length === 1)
+    await renderRoute(pattern, url, <BranchesPage />)
+    await waitFor(() => byName('Delete branch feature') !== null)
+    expect(byName('Delete branch main')).toBeNull()
 
-    await click(buttonByText(container, 'Delete'))
+    await click(byName('Delete branch feature'))
     await confirmDialog('Delete branch')
     expect(api.deleteBranch).toHaveBeenCalledWith('acme', 'game', 'feature')
   })
@@ -232,25 +297,27 @@ describe('BranchesPage', () => {
   it('reports action failures and can be dismissed', async () => {
     api.setDefaultBranch.mockRejectedValue(new Error('nope'))
     const { container } = await renderRoute(pattern, url, <BranchesPage />)
-    await waitFor(() => buttonsByText(container, 'Make default').length === 1)
-    await click(buttonByText(container, 'Make default'))
+    await waitFor(() => byName('More actions for feature') !== null)
+    await menuItem('More actions for feature', 'Make default')
+    await confirmDialog('Make default')
     await waitFor(() => (container.textContent ?? '').includes('nope'))
     await click(container.querySelector('button[class*="BannerDismiss"]'))
     expect(container.textContent).not.toContain('nope')
   })
 
-  it('hides admin actions for writers and offers Add branch', async () => {
+  it('hides admin actions for writers and offers New branch', async () => {
     allow(PERMISSION_READ | PERMISSION_WRITE)
     const { container, location } = await renderRoute(pattern, url, <BranchesPage />)
     await waitFor(() => (container.textContent ?? '').includes('feature'))
-    expect(buttonsByText(container, 'Rename')).toHaveLength(0)
-    await click(buttonByText(container, 'Add branch'))
+    expect(byName('More actions for feature')).toBeNull()
+    expect(byName('Delete branch feature')).toBeNull()
+    await click(buttonByText(container, 'New branch'))
     await waitFor(() => location() === '/acme/game/branches/new')
   })
 
   it('shows the empty message', async () => {
     api.listBranches.mockResolvedValue([])
     const { container } = await renderRoute(pattern, url, <BranchesPage />)
-    await waitFor(() => (container.textContent ?? '').includes('No branches.'))
+    await waitFor(() => (container.textContent ?? '').includes('No branches yet.'))
   })
 })

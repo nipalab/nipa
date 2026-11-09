@@ -1,20 +1,55 @@
 import { useState } from 'react'
-import { Banner, Button, Checkbox, FormControl, Stack, Text, TextInput } from '@primer/react'
+import { ActionList, ActionMenu, Button, Checkbox, CheckboxGroup, FormControl, Stack, TextInput } from '@primer/react'
 import { createServiceToken, listServiceTokens, revokeServiceToken } from '../../api/endpoints'
 import type { CreateServiceTokenInput, ServiceTokenResponse } from '../../api/models'
 import { useAction, useAsync } from '../../hooks'
 import { useConfirmAction } from '../confirm'
 import { DataTable, type Column } from '../DataTable'
 import { FormDialog } from '../FormDialog'
+import { SecretReveal } from '../SecretReveal'
 import { SettingsCard } from '../SettingsCard'
 import { Timestamp } from '../Timestamp'
 import { ErrorBanner, Mono } from '../ui'
 
-export const SERVICE_TOKEN_SCOPES: { value: string; label: string }[] = [
-  { value: 'read', label: 'Read commits, tags, branches and merge requests' },
-  { value: 'checks:write', label: 'Report merge request status checks' },
-  { value: 'webhooks:write', label: 'Manage webhooks' },
+export const SERVICE_TOKEN_SCOPES: { value: string; title: string; label: string }[] = [
+  { value: 'read', title: 'Read', label: 'Read commits, tags, branches and merge requests.' },
+  { value: 'checks:write', title: 'Status checks', label: 'Report merge request status checks, for example from CI.' },
+  { value: 'webhooks:write', title: 'Webhooks', label: 'Create, update and delete the project webhooks.' },
 ]
+
+const EXPIRATION_OPTIONS: { value: string; label: string; days?: number }[] = [
+  { value: '7', label: '7 days', days: 7 },
+  { value: '30', label: '30 days', days: 30 },
+  { value: '60', label: '60 days', days: 60 },
+  { value: '90', label: '90 days', days: 90 },
+  { value: 'custom', label: 'Custom…' },
+  { value: 'never', label: 'No expiration' },
+]
+
+function localDate(date: Date): string {
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+}
+
+// expiryDay turns an expiration choice into the local YYYY-MM-DD day the token
+// stops working on, or '' when it never expires (or no custom day is picked).
+export function expiryDay(choice: string, custom: string, now = new Date()): string {
+  if (choice === 'never') return ''
+  if (choice === 'custom') return custom
+  const days = EXPIRATION_OPTIONS.find((option) => option.value === choice)?.days ?? 30
+  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + days)
+  return localDate(end)
+}
+
+function formatDay(day: string): string {
+  const [year, month, date] = day.split('-').map(Number)
+  return new Date(year, month - 1, date).toLocaleDateString(undefined, {
+    weekday: 'short',
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  })
+}
 
 export function endOfLocalDay(date: string): string {
   const [year, month, day] = date.split('-').map(Number)
@@ -99,14 +134,13 @@ export function ServiceTokenSettings({ org, project }: { org: string; project: s
       >
         <ErrorBanner error={actionError ?? error} onDismiss={actionError ? clearError : undefined} />
         {revealed && (
-          <Banner variant="warning" title={`Token for ${revealed.name}`} onDismiss={() => setRevealed(null)}>
-            <Stack direction="vertical" gap="condensed">
-              <Mono>{revealed.token}</Mono>
-              <Text as="p" style={{ color: 'var(--fgColor-muted)' }}>
-                Copy it now: the token is only shown once.
-              </Text>
-            </Stack>
-          </Banner>
+          <SecretReveal
+            title={`Token ${revealed.name} created`}
+            message="Make sure to copy your service token now. You won't be able to see it again."
+            secret={revealed.token}
+            copyLabel="Copy token"
+            onDismiss={() => setRevealed(null)}
+          />
         )}
       </SettingsCard>
 
@@ -143,7 +177,12 @@ function CreateServiceTokenDialog({
 }) {
   const [name, setName] = useState('')
   const [scopes, setScopes] = useState<string[]>(['read'])
-  const [expires, setExpires] = useState('')
+  const [expiration, setExpiration] = useState('30')
+  const [custom, setCustom] = useState('')
+  const day = expiryDay(expiration, custom)
+  const today = localDate(new Date())
+  const customInvalid = expiration === 'custom' && (custom === '' || custom < today)
+  const expirationLabel = EXPIRATION_OPTIONS.find((option) => option.value === expiration)?.label ?? '30 days'
 
   function toggleScope(value: string) {
     setScopes((current) => (current.includes(value) ? current.filter((entry) => entry !== value) : [...current, value]))
@@ -151,37 +190,82 @@ function CreateServiceTokenDialog({
 
   return (
     <FormDialog
-      title="Create service token"
-      submitLabel="Create"
-      submitDisabled={name.trim() === '' || scopes.length === 0}
+      title="New service token"
+      submitLabel="Generate token"
+      submitDisabled={name.trim() === '' || scopes.length === 0 || customInvalid}
       onClose={onClose}
       onSubmit={() =>
         onCreate({
-          name,
-          scopes,
-          ...(expires ? { expires_at: endOfLocalDay(expires) } : {}),
+          name: name.trim(),
+          scopes: SERVICE_TOKEN_SCOPES.map((entry) => entry.value).filter((value) => scopes.includes(value)),
+          ...(day ? { expires_at: endOfLocalDay(day) } : {}),
         })
       }
     >
       <FormControl required>
-        <FormControl.Label>Name</FormControl.Label>
-        <TextInput block autoFocus value={name} onChange={(event) => setName(event.target.value)} />
+        <FormControl.Label>Token name</FormControl.Label>
+        <TextInput
+          block
+          autoFocus
+          placeholder="e.g. BugBase integration"
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+        />
+        <FormControl.Caption>A unique name that tells you what this token is used for.</FormControl.Caption>
       </FormControl>
+
       <FormControl>
-        <FormControl.Label>Scopes</FormControl.Label>
-        <Stack direction="vertical" gap="condensed">
-          {SERVICE_TOKEN_SCOPES.map((entry) => (
-            <label key={entry.value} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-              <Checkbox checked={scopes.includes(entry.value)} onChange={() => toggleScope(entry.value)} />
-              <Mono>{entry.value}</Mono> {entry.label}
-            </label>
-          ))}
+        <FormControl.Label>Expiration</FormControl.Label>
+        <Stack direction="horizontal" gap="condensed" align="center" wrap="wrap">
+          <ActionMenu>
+            <ActionMenu.Button aria-label="Token expiration">{expirationLabel}</ActionMenu.Button>
+            <ActionMenu.Overlay width="small">
+              <ActionList selectionVariant="single" aria-label="Expiration">
+                {EXPIRATION_OPTIONS.map((option) => (
+                  <ActionList.Item key={option.value} selected={option.value === expiration} onSelect={() => setExpiration(option.value)}>
+                    {option.label}
+                  </ActionList.Item>
+                ))}
+              </ActionList>
+            </ActionMenu.Overlay>
+          </ActionMenu>
+          {expiration === 'custom' && (
+            <TextInput
+              type="date"
+              aria-label="Expiration date"
+              min={today}
+              value={custom}
+              onChange={(event) => setCustom(event.target.value)}
+            />
+          )}
         </Stack>
+        {expiration === 'never' ? (
+          <FormControl.Caption>
+            <span style={{ color: 'var(--fgColor-attention)' }}>
+              The token never expires and stays valid until revoked; an expiration date is recommended.
+            </span>
+          </FormControl.Caption>
+        ) : day ? (
+          <FormControl.Caption>The token will expire on {formatDay(day)}.</FormControl.Caption>
+        ) : (
+          <FormControl.Caption>Pick the last day the token works.</FormControl.Caption>
+        )}
       </FormControl>
-      <FormControl>
-        <FormControl.Label>Expires on (optional)</FormControl.Label>
-        <TextInput block type="date" value={expires} onChange={(event) => setExpires(event.target.value)} />
-      </FormControl>
+
+      <CheckboxGroup>
+        <CheckboxGroup.Label>Scopes</CheckboxGroup.Label>
+        <CheckboxGroup.Caption>The token acts as you, limited to this project and the scopes below.</CheckboxGroup.Caption>
+        {SERVICE_TOKEN_SCOPES.map((entry) => (
+          <FormControl key={entry.value}>
+            <Checkbox value={entry.value} checked={scopes.includes(entry.value)} onChange={() => toggleScope(entry.value)} />
+            <FormControl.Label>
+              {entry.title} <Mono style={{ color: 'var(--fgColor-muted)', fontWeight: 400 }}>{entry.value}</Mono>
+            </FormControl.Label>
+            <FormControl.Caption>{entry.label}</FormControl.Caption>
+          </FormControl>
+        ))}
+        {scopes.length === 0 && <CheckboxGroup.Validation variant="error">Choose at least one scope.</CheckboxGroup.Validation>}
+      </CheckboxGroup>
     </FormDialog>
   )
 }

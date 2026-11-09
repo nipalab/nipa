@@ -77,6 +77,7 @@ const pngInfo = {
 
 const notify = vi.fn();
 const onRevert = vi.fn();
+const onSwitch = vi.fn();
 
 beforeEach(() => {
   vi.resetAllMocks();
@@ -91,7 +92,7 @@ beforeEach(() => {
 });
 
 const view = (props: Partial<Parameters<typeof HistoryView>[0]> = {}) =>
-  renderWithProviders(<HistoryView root="/work/game" branch="main" busy={false} notify={notify} onRevert={onRevert} {...props} />);
+  renderWithProviders(<HistoryView root="/work/game" branch="main" busy={false} notify={notify} onRevert={onRevert} onSwitch={onSwitch} {...props} />);
 
 const commitList = () => screen.findByRole("list", { name: "Commits" });
 
@@ -186,7 +187,7 @@ describe("HistoryView", () => {
 
   it("tags a commit and creates a branch from it", async () => {
     api.createTag.mockResolvedValueOnce({ name: "v1.1", commitId: "c3" }).mockRejectedValueOnce(new Error("tag exists"));
-    api.createBranch.mockResolvedValueOnce({ name: "hotfix" }).mockRejectedValueOnce(new Error("bad name"));
+    api.createBranch.mockResolvedValueOnce({ name: "hotfix" }).mockResolvedValueOnce({ name: "keep" }).mockRejectedValueOnce(new Error("bad name"));
     view();
     await screen.findByRole("heading", { name: "Merge feature" });
 
@@ -208,7 +209,14 @@ describe("HistoryView", () => {
     await userEvent.click(screen.getByRole("button", { name: /Branch…/ }));
     await userEvent.type(screen.getByRole("textbox", { name: "Branch name" }), "hotfix{Enter}");
     expect(api.createBranch).toHaveBeenCalledWith("/work/game", "hotfix", { commit: "c3" });
-    await waitFor(() => expect(notify).toHaveBeenCalledWith("Created branch hotfix. Switch to it from Branches & tags.", "success"));
+    await waitFor(() => expect(onSwitch).toHaveBeenCalledWith("hotfix"));
+
+    await userEvent.click(screen.getByRole("button", { name: /Branch…/ }));
+    expect(screen.getByText("Based on commit:")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("checkbox", { name: "Switch to the new branch" }));
+    await userEvent.type(screen.getByRole("textbox", { name: "Branch name" }), "keep{Enter}");
+    await waitFor(() => expect(notify).toHaveBeenCalledWith("Created branch keep. Switch to it from Branches & tags.", "success"));
+    expect(onSwitch).toHaveBeenCalledTimes(1);
 
     await userEvent.click(screen.getByRole("button", { name: /Branch…/ }));
     await userEvent.type(screen.getByRole("textbox", { name: "Branch name" }), "bad{Enter}");

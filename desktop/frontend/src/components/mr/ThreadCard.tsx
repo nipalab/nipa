@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
-import { CheckCircle2, MessageSquare, RotateCcw } from "lucide-react";
-import type { Thread } from "@/api/desktop";
+import { CheckCircle2, FileDiff, MessageSquare, RotateCcw } from "lucide-react";
+import type { DiffLine, Thread } from "@/api/desktop";
 import { Button } from "@/components/ui/button";
 import { timeAgo } from "@/lib/time";
 import { cn } from "@/lib/utils";
@@ -11,9 +11,11 @@ type ThreadCardProps = {
   onReply: (body: string) => Promise<unknown>;
   onResolve: (resolved: boolean) => void;
   compact?: boolean;
+  snippet?: DiffLine[];
+  onOpenFile?: () => void;
 };
 
-export function ThreadCard({ thread, busy, onReply, onResolve, compact }: ThreadCardProps) {
+export function ThreadCard({ thread, busy, onReply, onResolve, compact, snippet, onOpenFile }: ThreadCardProps) {
   const [open, setOpen] = useState(!thread.resolved);
   const where = thread.path ? `${thread.path}:${thread.newLine || thread.oldLine}` : "";
   if (thread.resolved && !open) {
@@ -36,8 +38,15 @@ export function ThreadCard({ thread, busy, onReply, onResolve, compact }: Thread
           <MessageSquare className="size-3" />
           {where}
           {thread.outdated && <span className="ml-1 rounded bg-muted px-1 font-sans">outdated</span>}
+          {onOpenFile && (
+            <Button size="sm" variant="ghost" className="ml-auto font-sans" onClick={onOpenFile}>
+              <FileDiff />
+              View file
+            </Button>
+          )}
         </p>
       )}
+      {!compact && snippet && snippet.length > 0 && <Snippet lines={snippet} />}
       {thread.comments.map((c) => (
         <div key={c.id} className="space-y-0.5">
           <p className="text-[11px] text-muted-foreground">
@@ -129,5 +138,19 @@ export function CommentBox({ label, placeholder, busy, autoFocus, onSubmit, onCa
         </Button>
       </div>
     </form>
+  );
+}
+
+function Snippet({ lines }: { lines: DiffLine[] }) {
+  return (
+    <pre aria-label="Commented code" className="overflow-x-auto rounded border border-border bg-background py-1 font-mono text-[11px] leading-5">
+      {lines.map((l, i) => (
+        <div key={i} className={cn("flex gap-2 px-2", l.kind === "added" && "bg-success/10", l.kind === "removed" && "bg-danger/10", i === lines.length - 1 && "font-semibold")}>
+          <span className="w-8 shrink-0 select-none text-right text-muted-foreground">{l.new || l.old}</span>
+          <span className="w-2 shrink-0 select-none text-muted-foreground">{l.kind === "added" ? "+" : l.kind === "removed" ? "-" : " "}</span>
+          <span className="whitespace-pre">{l.text}</span>
+        </div>
+      ))}
+    </pre>
   );
 }

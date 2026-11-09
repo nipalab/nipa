@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Button, FormControl, Select, Stack } from '@primer/react'
+import { ActionList, ActionMenu, Button, Stack } from '@primer/react'
 import { listEmailDeliveries, redeliverEmailDelivery } from '../../api/endpoints'
 import type { EmailDeliveryResponse } from '../../api/models'
 import { useAction, useAsync } from '../../hooks'
@@ -32,6 +32,7 @@ export function EmailSettings({ org, project }: { org: string; project: string }
     [org, project, state],
   )
   const { run, error: actionError, clearError } = useAction(reload)
+  const stateLabel = STATE_OPTIONS.find((option) => option.value === state)?.label ?? 'All states'
   const [redelivering, setRedelivering] = useState<string | null>(null)
 
   async function redeliver(delivery: EmailDeliveryResponse) {
@@ -82,16 +83,24 @@ export function EmailSettings({ org, project }: { org: string; project: string }
         title="Email deliveries"
         description="Notification emails queued for this project, newest first. Failed deliveries retry automatically; redelivering re-queues a delivered or failed notification."
         actions={
-          <FormControl>
-            <FormControl.Label visuallyHidden>State</FormControl.Label>
-            <Select aria-label="Delivery state" value={state} onChange={(event) => setState(event.target.value)}>
-              {STATE_OPTIONS.map((option) => (
-                <Select.Option key={option.value} value={option.value}>
-                  {option.label}
-                </Select.Option>
-              ))}
-            </Select>
-          </FormControl>
+          <ActionMenu>
+            <ActionMenu.Button aria-label="Filter by delivery state">
+              <span style={{ color: 'var(--fgColor-muted)' }}>State:</span> {stateLabel}
+            </ActionMenu.Button>
+            <ActionMenu.Overlay width="small" align="end">
+              <ActionList selectionVariant="single" aria-label="Delivery state">
+                {STATE_OPTIONS.map((option) => (
+                  <ActionList.Item
+                    key={option.value}
+                    selected={option.value === state}
+                    onSelect={() => setState(option.value)}
+                  >
+                    {option.label}
+                  </ActionList.Item>
+                ))}
+              </ActionList>
+            </ActionMenu.Overlay>
+          </ActionMenu>
         }
       >
         <ErrorBanner error={actionError ?? error} onDismiss={actionError ? clearError : undefined} />

@@ -84,16 +84,48 @@ function findButton(text: string): HTMLButtonElement {
   return button as HTMLButtonElement
 }
 
+function byName(name: string): HTMLElement | null {
+  const button = [...document.querySelectorAll<HTMLElement>('button')].find((entry) => entry.textContent?.trim() === name)
+  if (button) return button
+  return (
+    [...document.querySelectorAll<HTMLElement>('[aria-label], [aria-labelledby]')].find(
+      (element) =>
+        element.getAttribute('aria-label') === name ||
+        (element.getAttribute('aria-labelledby') ?? '')
+          .split(' ')
+          .some((id) => document.getElementById(id)?.textContent === name),
+    ) ?? null
+  )
+}
+
+async function openPicker(name: string): Promise<HTMLElement[]> {
+  await act(async () => {
+    byName(name)?.click()
+  })
+  await waitFor(() => document.querySelector('[role="option"]') !== null)
+  return [...document.querySelectorAll<HTMLElement>('[role="option"]')]
+}
+
+async function pick(name: string, text: string) {
+  const options = await openPicker(name)
+  const option = options.find((entry) => entry.textContent?.includes(text))
+  if (!option) throw new Error(`option ${text} not found in ${name}`)
+  await act(async () => {
+    option.click()
+  })
+}
+
+async function closePicker() {
+  await act(async () => {
+    ;(document.activeElement ?? document.body).dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+  })
+  await waitFor(() => document.querySelector('[role="option"]') === null)
+}
+
 function setInputValue(el: HTMLInputElement, value: string) {
   const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set
   setter?.call(el, value)
   el.dispatchEvent(new Event('input', { bubbles: true }))
-}
-
-function setSelectValue(el: HTMLSelectElement, value: string) {
-  const setter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value')?.set
-  setter?.call(el, value)
-  el.dispatchEvent(new Event('change', { bubbles: true }))
 }
 
 function setTextareaValue(el: HTMLTextAreaElement, value: string) {
@@ -396,12 +428,16 @@ describe('MergeRequestsPage', () => {
     await waitFor(() => container.querySelector('form') !== null)
 
     const titleInput = container.querySelector('input') as HTMLInputElement
-    const [sourceSelect, targetSelect] = Array.from(container.querySelectorAll('select')) as HTMLSelectElement[]
     await act(async () => {
       setInputValue(titleInput, 'Add feature')
-      setSelectValue(sourceSelect, 'feature')
-      setSelectValue(targetSelect, 'main')
     })
+    expect(byName('Choose the target branch')?.textContent).toContain('main')
+    expect(findButton('Create merge request').disabled).toBe(true)
+    await pick('Choose the source branch', 'main')
+    expect(container.textContent).toContain('The source and target branches are the same.')
+    expect(findButton('Create merge request').disabled).toBe(true)
+    await pick('Choose the source branch', 'feature')
+    expect(byName('Choose the source branch')?.textContent).toContain('feature')
     await act(async () => {
       findButton('Create merge request').click()
     })
@@ -435,31 +471,33 @@ describe('MergeRequestsPage', () => {
     })
 
     const { container, root } = await renderApp('/studio/game/merges/new')
-    await waitFor(() => container.querySelector('select[aria-label="Add reviewer"]') !== null)
-    const reviewerOptions = Array.from(
-      container.querySelectorAll('select[aria-label="Add reviewer"] option'),
-    ).map((option) => option.textContent)
-    expect(reviewerOptions).toEqual(['Add reviewer…', 'Bob', 'carol@example.com'])
+    await waitFor(() => byName('Add reviewers') !== null)
+    const reviewerOptions = await openPicker('Add reviewers')
+    expect(reviewerOptions.map((option) => option.textContent?.includes('Alice'))).toEqual([false, false])
+    expect(reviewerOptions.map((option) => option.textContent?.includes('Bob') || option.textContent?.includes('carol@example.com'))).toEqual([
+      true,
+      true,
+    ])
+    const currentOption = (index: number) => [...document.querySelectorAll<HTMLElement>('[role="option"]')][index]
+    await act(async () => {
+      currentOption(0).click()
+    })
+    await act(async () => {
+      currentOption(1).click()
+    })
+    await closePicker()
+
+    await pick('Add assignees', 'Alice')
+    await act(async () => {
+      ;[...document.querySelectorAll<HTMLElement>('[role="option"]')].find((option) => option.textContent?.includes('carol'))?.click()
+    })
+    await closePicker()
 
     const titleInput = container.querySelector('input') as HTMLInputElement
-    const [sourceSelect, targetSelect] = Array.from(container.querySelectorAll('select')) as HTMLSelectElement[]
     await act(async () => {
       setInputValue(titleInput, 'Add feature')
-      setSelectValue(sourceSelect, 'feature')
-      setSelectValue(targetSelect, 'main')
     })
-    await act(async () => {
-      setSelectValue(container.querySelector('select[aria-label="Add reviewer"]') as HTMLSelectElement, '2')
-    })
-    await act(async () => {
-      setSelectValue(container.querySelector('select[aria-label="Add reviewer"]') as HTMLSelectElement, '3')
-    })
-    await act(async () => {
-      setSelectValue(container.querySelector('select[aria-label="Add assignee"]') as HTMLSelectElement, '1')
-    })
-    await act(async () => {
-      setSelectValue(container.querySelector('select[aria-label="Add assignee"]') as HTMLSelectElement, '3')
-    })
+    await pick('Choose the source branch', 'feature')
     await act(async () => {
       const removers = [...container.querySelectorAll<HTMLElement>('button[aria-labelledby]')].filter((element) =>
         (element.getAttribute('aria-labelledby') ?? '')
@@ -468,8 +506,6 @@ describe('MergeRequestsPage', () => {
       )
       removers[removers.length - 1].click()
     })
-    expect(container.querySelector('select[aria-label="Add reviewer"]')).toBeNull()
-    expect(container.querySelector('select[aria-label="Add assignee"]')).not.toBeNull()
     await act(async () => {
       findButton('Create merge request').click()
     })
@@ -512,6 +548,7 @@ describe('MergeRequestsPage', () => {
           { user_id: '1', name: 'Alice', email: 'a@example.com', photo_url: '', is_admin: true, is_super_admin: false, role: 'owner' },
         ])
       }
+      if (url.includes('/branches')) return jsonResponse(TWO_BRANCHES)
       if (url.includes('/merge-requests')) {
         calls.push(url)
         if (url.includes('after=2')) return jsonResponse(page([1]))
@@ -522,18 +559,32 @@ describe('MergeRequestsPage', () => {
     })
 
     const { container, root } = await renderApp('/acme/game/merges')
-    await waitForText(container, '#2 Two')
+    await waitForText(container, 'Two')
+    expect(container.textContent).toContain('#2 opened')
     await act(async () => {
       findButton('Load more').click()
     })
-    await waitForText(container, '#1 One')
+    await waitForText(container, '#1 opened')
+
+    await pick('Filter by source', 'feature')
+    await waitFor(() => calls.some((url) => url.includes('source=feature')))
+    await waitFor(() => !(container.textContent ?? '').includes('#2 opened'))
+    expect(container.textContent).toContain('#1 opened')
+    expect(byName('Filter by source')?.textContent).toContain('Source: feature')
 
     await act(async () => {
-      setInputValue(container.querySelector('[aria-label="Filter by source branch"]') as HTMLInputElement, 'feature')
+      findButton('Merged').click()
     })
-    await waitFor(() => calls.some((url) => url.includes('source=feature')))
-    await waitForText(container, '#1 One')
-    expect(container.textContent).not.toContain('#2 Two')
+    await waitFor(() => calls.some((url) => url.includes('status=merged')))
+    await act(async () => {
+      findButton('Draft').click()
+    })
+    await waitFor(() => calls.some((url) => url.includes('draft=true')))
+    await act(async () => {
+      findButton('Clear current search and filters').click()
+    })
+    await waitFor(() => !(container.textContent ?? '').includes('Clear current search and filters'))
+    expect(byName('Filter by source')?.textContent).toBe('Source')
     act(() => root.unmount())
   })
 })
@@ -648,6 +699,33 @@ describe('MergeRequestPage', () => {
     expect(container.textContent).toContain('opened this merge request')
     expect(container.textContent).toContain('new line')
     act(() => root.unmount())
+  })
+
+  it('uses the full window width on the file changes tab only', async () => {
+    stubRepoRoutes((url, init) => {
+      const method = init?.method ?? 'GET'
+      if (url.includes('/merge-requests/7/diff') && method === 'GET') return jsonResponse({ files: FILES })
+      if (url.includes('/merge-requests/7/commits') && method === 'GET') return jsonResponse([])
+      if (url.includes('/merge-requests/7/review-state') && method === 'GET') {
+        return jsonResponse({ approvals: 0, changes_requested: 0, dismissed_approvals: 0, outstanding_reviewers: [] })
+      }
+      if (url.includes('/merge-requests/7/') && method === 'GET') return jsonResponse([])
+      if (url.endsWith('/merge-requests/7') && method === 'GET') return jsonResponse(MR)
+      if (url.includes('/branches') && method === 'GET') return jsonResponse(BRANCHES)
+      return null
+    })
+    const pageWidth = (container: HTMLElement) =>
+      (container.querySelector('nav[aria-label="Breadcrumb"]')?.parentElement as HTMLElement).style.maxWidth
+
+    const files = await renderApp('/acme/game/merges/7?tab=files')
+    await waitFor(() => files.container.querySelector('nav[aria-label="Breadcrumb"]') !== null)
+    expect(pageWidth(files.container)).toBe('none')
+    act(() => files.root.unmount())
+
+    const conversation = await renderApp('/acme/game/merges/7')
+    await waitFor(() => conversation.container.querySelector('nav[aria-label="Breadcrumb"]') !== null)
+    expect(pageWidth(conversation.container)).toBe('1100px')
+    act(() => conversation.root.unmount())
   })
 
   it('closes the request only after confirmation', async () => {
@@ -791,12 +869,13 @@ describe('BranchesPage', () => {
     const { container, root } = await renderApp('/acme/game/branches')
     await waitForText(container, 'feature')
     await act(async () => {
-      findButton('Add branch').click()
+      findButton('New branch').click()
     })
     await waitFor(() => window.location.pathname === '/acme/game/branches/new')
-    await waitFor(() => container.querySelector('input') !== null)
+    await waitFor(() => container.querySelector('input[placeholder="e.g. feature-new-level"]') !== null)
+    expect(byName('Choose a source branch')?.textContent).toContain('main')
 
-    const nameInput = container.querySelector('input') as HTMLInputElement
+    const nameInput = container.querySelector('input[placeholder="e.g. feature-new-level"]') as HTMLInputElement
     await act(async () => {
       setInputValue(nameInput, 'feature')
     })
@@ -824,8 +903,9 @@ describe('BranchesPage', () => {
 
     const { container, root } = await renderApp('/acme/game/branches')
     await waitForText(container, 'feature')
+    expect(byName('Delete branch main')).toBeNull()
     await act(async () => {
-      findButton('Delete').click()
+      byName('Delete branch feature')?.click()
     })
     await waitFor(() => (document.body.textContent?.includes('Delete branch feature') ?? false))
     await act(async () => {
@@ -850,10 +930,7 @@ describe('BranchesPage', () => {
 
     const { container, root } = await renderApp('/acme/game/branches')
     await waitForText(container, 'trunk')
-    const deleteButton = Array.from(container.querySelectorAll('button')).find(
-      (button) => button.textContent?.trim() === 'Delete',
-    )
-    expect(deleteButton).toBeUndefined()
+    expect(byName('Delete branch trunk')).toBeNull()
     act(() => root.unmount())
   })
 })
@@ -874,7 +951,101 @@ describe('CommitsPage', () => {
     const { container, root } = await renderApp('/acme/game/commits?branch=main&path=src/main.ts')
     await waitForText(container, 'touch file')
     expect(urls.some((url) => url.includes('path=src%2Fmain.ts'))).toBe(true)
-    expect(container.textContent).toContain('src/main.ts')
+    expect(container.textContent).toContain('History for src/main.ts')
+    expect(container.textContent).toContain('Bob committed')
+    expect(container.textContent).toMatch(/Commits on /)
+    expect(container.querySelector('a[href="/acme/game/commits/c2?branch=main"]')).not.toBeNull()
+    expect(container.querySelector('a[href="/acme/game/tree/c2"]')).not.toBeNull()
+    act(() => root.unmount())
+  })
+
+  it('shows a commit page with its header and diff summary', async () => {
+    stubRepoRoutes((url) => {
+      if (url.includes('/commits/c2/diff')) {
+        return jsonResponse({
+          commit_id: 'c2',
+          files: [
+            {
+              path: 'src/main.ts',
+              status: 'modified',
+              binary: false,
+              additions: 3,
+              deletions: 1,
+              hunks: [{ old_start: 1, old_lines: 1, new_start: 1, new_lines: 1, lines: [{ kind: 'add', new_line: 1, text: 'hello' }] }],
+            },
+          ],
+        })
+      }
+      if (url.includes('/commits?')) {
+        expect(url).toContain('start=c2')
+        return jsonResponse([
+          {
+            id: 'c2',
+            parent_1_id: 'c1',
+            message: 'touch file\n\nlonger body',
+            author_name: 'Bob',
+            created_at: new Date().toISOString(),
+          },
+        ])
+      }
+      return null
+    })
+
+    const { container, root } = await renderApp('/acme/game/commits/c2')
+    await waitForText(container, 'longer body')
+    expect(container.querySelector('.nipa-commit-title')?.textContent).toBe('touch file')
+    expect(container.textContent).toContain('Bob committed')
+    expect(container.textContent).toContain('1 parent c1')
+    expect(container.textContent).toContain('commit c2')
+    expect(container.textContent).toContain('Showing 1 changed file with 3 additions and 1 deletions.')
+    expect(container.querySelector('a[href="/acme/game/tree/c2"]')?.textContent).toContain('Browse files')
+    expect(container.querySelector('a[href="/acme/game/commits"]')?.textContent).toContain('Commits')
+    act(() => root.unmount())
+  })
+})
+
+describe('RepoPage toolbar', () => {
+  it('offers clone instructions, branch counts and a parent directory row', async () => {
+    stubRepoRoutes((url) => {
+      if (url.includes('/tree')) {
+        return jsonResponse({
+          path: 'src',
+          entries: [{ name: 'main.ts', path: 'src/main.ts', type: 'file', size: 10 }],
+          latest_commit: { id: 'abcdef1234', message: 'touch file\nbody', author_name: 'Bob', created_at: new Date().toISOString() },
+        })
+      }
+      return null
+    })
+    const { container, root } = await renderApp('/acme/game/tree/main')
+    await waitForText(container, 'main.ts')
+    expect(container.textContent).toContain('1 branch')
+    expect(container.querySelector('a[href="/acme/game/tags"]')).not.toBeNull()
+    expect(container.textContent).toContain('Bob')
+    expect(container.querySelector('a[href="/acme/game/commits/abcdef1234?branch=main"]')?.textContent).toBe('touch file')
+    expect(container.textContent).toContain('abcdef1')
+
+    await act(async () => {
+      findButton('Code').click()
+    })
+    await waitFor(() => (document.body.textContent ?? '').includes('Clone with the nipa CLI'))
+    expect(document.body.textContent).toContain(`nipa clone ${window.location.origin}/acme/game`)
+    act(() => root.unmount())
+
+    const nested = await renderApp('/acme/game/tree/main/src')
+    await waitForText(nested.container, 'main.ts')
+    expect(nested.container.querySelector('a[aria-label="Parent directory"]')?.getAttribute('href')).toBe('/acme/game/tree/main')
+    act(() => nested.root.unmount())
+  })
+
+  it('shows quick setup for an empty repository', async () => {
+    stubRepoRoutes((url) => {
+      if (url.includes('/branches')) return jsonResponse([])
+      return null
+    })
+    const { container, root } = await renderApp('/acme/game')
+    await waitForText(container, 'Quick setup')
+    expect(container.textContent).toContain('nipa push -m "Initial commit"')
+    expect(container.textContent).toContain('cd game')
     act(() => root.unmount())
   })
 })

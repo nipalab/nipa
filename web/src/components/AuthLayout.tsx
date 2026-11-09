@@ -1,6 +1,7 @@
 import type { FormEventHandler, ReactNode } from 'react'
 import { Heading, Stack } from '@primer/react'
-import { RepoIcon } from '@primer/octicons-react'
+import { Link } from 'react-router-dom'
+import { NipaLogo } from './NipaLogo'
 
 export function AuthLayout({
   title = 'Nipa',
@@ -14,8 +15,11 @@ export function AuthLayout({
   return (
     <div style={{ maxWidth: width, margin: 'var(--base-size-48) auto 0', padding: '0 var(--base-size-16)' }}>
       <Stack direction="vertical" gap="spacious" align="center">
-        <Heading as="h1">
-          <RepoIcon size={24} verticalAlign="middle" /> {title}
+        <Link to="/" aria-label="Nipa home">
+          <NipaLogo size={48} />
+        </Link>
+        <Heading as="h1" style={{ fontSize: 24, fontWeight: 300, textAlign: 'center' }}>
+          {title}
         </Heading>
         {children}
       </Stack>

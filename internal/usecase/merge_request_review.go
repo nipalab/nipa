@@ -812,6 +812,9 @@ func (r *MergeRequestReview) load(ctx context.Context, projectID snow.ID, number
 }
 
 func (r *MergeRequestReview) sourceHead(ctx context.Context, projectID snow.ID, mr *domain.MergeRequest) (*snow.ID, error) {
+	if mr.Status == domain.MergeRequestMerged && mr.MergedSourceCommitID != nil {
+		return mr.MergedSourceCommitID, nil
+	}
 	source, err := r.branchRepo.GetBranchByName(ctx, projectID, mr.SourceBranch)
 	if domain.IsErrorNotFound(err) {
 		return nil, nil
@@ -848,6 +851,9 @@ func (r *MergeRequestReview) diff(ctx context.Context, projectID snow.ID, mr *do
 	}
 	if source == nil {
 		return nil, nil
+	}
+	if mr.Status == domain.MergeRequestMerged && mr.MergedSourceCommitID != nil {
+		return r.merger.TreeDiffBetween(ctx, projectID, mr.MergeBaseCommitID, *source)
 	}
 	var baseID *snow.ID
 	target, err := r.branchRepo.GetBranchByName(ctx, projectID, mr.TargetBranch)

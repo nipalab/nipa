@@ -76,11 +76,13 @@ export function UserGroupPicker({
   kind,
   onSelect,
   placeholder = 'Search users or groups…',
+  inline = false,
 }: {
   org: string
   kind: PickerKind
   onSelect: (entry: PickerEntry) => void
   placeholder?: string
+  inline?: boolean
 }) {
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
@@ -211,6 +213,7 @@ export function UserGroupPicker({
   return (
     <div ref={containerRef} style={{ position: 'relative' }}>
       <TextInput
+        block={inline}
         leadingVisual={SearchIcon}
         placeholder={placeholder}
         value={query}
@@ -224,16 +227,15 @@ export function UserGroupPicker({
       />
       {open && query.trim() && (
         <div
+          role="listbox"
+          aria-label="Matches"
           style={{
-            position: 'absolute',
-            top: '100%',
-            left: 0,
-            right: 0,
+            ...(inline ? { position: 'static' as const } : { position: 'absolute' as const, top: '100%', left: 0, right: 0 }),
             marginTop: 4,
             background: 'var(--bgColor-default)',
             border: '1px solid var(--borderColor-default)',
             borderRadius: 'var(--borderRadius-medium)',
-            boxShadow: 'var(--shadow-floating-medium)',
+            boxShadow: inline ? undefined : 'var(--shadow-floating-medium)',
             zIndex: 100,
             maxHeight: 280,
             overflowY: 'auto',

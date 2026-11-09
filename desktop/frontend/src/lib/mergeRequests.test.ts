@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Thread } from "@/api/desktop";
-import { blockedReason, conversation, eventText, fileThreads, mergeabilityText, threadAt } from "./mergeRequests";
+import { blockedReason, conversation, eventText, fileThreads, mergeabilityText, threadAt, threadSnippet } from "./mergeRequests";
 
 const thread = (over: Partial<Thread>): Thread => ({ id: "t", path: "", oldLine: 0, newLine: 0, outdated: false, resolved: false, resolvedBy: "", createdAt: "", comments: [], ...over });
 
@@ -15,7 +15,34 @@ describe("merge request helpers", () => {
       threads: [thread({ id: "t1", createdAt: "2026-11-05T10:00:00Z" }), thread({ id: "t2", path: "a.go", createdAt: "2026-11-05T08:00:00Z" })],
       checks: [],
     });
-    expect(items.map((i) => i.kind)).toEqual(["event", "thread", "review"]);
+    expect(items.map((i) => i.kind)).toEqual(["thread", "event", "thread", "review"]);
+    expect(items[0].kind === "thread" && items[0].thread.id).toBe("t2");
+  });
+
+  it("finds the code a line comment points at", () => {
+    const line = (kind: string, old: number, n: number, text: string) => ({ kind, old, new: n, text });
+    const files = [
+      {
+        path: "b.go",
+        oldPath: "a.go",
+        status: "renamed",
+        kind: "text",
+        old: null,
+        new: null,
+        additions: 1,
+        deletions: 1,
+        hunks: [
+          { oldStart: 1, oldLines: 5, newStart: 1, newLines: 5, lines: [line("context", 1, 1, "one"), line("context", 2, 2, "two"), line("context", 3, 3, "three"), line("context", 4, 4, "four"), line("removed", 5, 0, "five"), line("added", 0, 5, "FIVE")] },
+          { oldStart: 9, oldLines: 1, newStart: 9, newLines: 1, lines: null },
+        ],
+      },
+    ];
+    expect(threadSnippet(files, thread({ path: "b.go", newLine: 5 })).map((l) => l.text)).toEqual(["three", "four", "five", "FIVE"]);
+    expect(threadSnippet(files, thread({ path: "a.go", oldLine: 5 })).map((l) => l.text)).toEqual(["two", "three", "four", "five"]);
+    expect(threadSnippet(files, thread({ path: "b.go", newLine: 1 })).map((l) => l.text)).toEqual(["one"]);
+    expect(threadSnippet(files, thread({ path: "b.go", newLine: 42 }))).toEqual([]);
+    expect(threadSnippet(files, thread({ path: "c.go", newLine: 1 }))).toEqual([]);
+    expect(threadSnippet(files, thread({}))).toEqual([]);
   });
 
   it("anchors threads to lines and splits outdated ones", () => {

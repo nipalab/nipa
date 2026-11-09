@@ -41,3 +41,14 @@ if (!('ResizeObserver' in globalThis)) {
 }
 
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+
+// jsdom lacks element scrolling and Primer's live-region announcer, which
+// SelectPanel uses while it is open.
+if (typeof Element.prototype.scrollTo !== 'function') {
+  Element.prototype.scrollTo = () => undefined
+}
+for (const method of ['announce', 'announceFromElement', 'clear'] as const) {
+  if (!(method in HTMLElement.prototype)) {
+    Object.defineProperty(HTMLElement.prototype, method, { configurable: true, writable: true, value: () => Promise.resolve() })
+  }
+}

@@ -171,8 +171,8 @@ describe('OrgSettingsPage groups', () => {
     })
     await waitForText('Coder')
 
-    const row = Array.from(document.querySelectorAll('tr')).find((item) => item.textContent?.includes('Coder'))
-    expect(row?.textContent).toContain('3')
+    const row = Array.from(document.querySelectorAll('.nipa-list-row')).find((item) => item.textContent?.includes('Coder'))
+    expect(row?.textContent).toContain('3 members')
     act(() => root.unmount())
   })
 
@@ -191,10 +191,10 @@ describe('OrgSettingsPage groups', () => {
     expect(document.body.textContent).not.toContain('user1@gmail.com')
 
     await act(async () => {
-      findButton('View').click()
+      findButton('Coder').click()
     })
     await waitForText('user1@gmail.com')
-    await waitForText('Coder members')
+    await waitForText('All groups')
 
     expect(document.body.textContent).not.toContain('u9')
     act(() => root.unmount())
@@ -249,7 +249,7 @@ describe('OrgSettingsPage groups', () => {
     await waitForText('Coder')
 
     await act(async () => {
-      findButton('View').click()
+      findButton('Coder').click()
     })
     await waitForText('user1@gmail.com')
 
@@ -272,11 +272,15 @@ describe('OrgSettingsPage groups', () => {
       confirm?.click()
     })
 
-    await waitFor(() => {
-      const row = Array.from(document.querySelectorAll('tr')).find((item) => item.textContent?.includes('Coder'))
-      return row?.textContent?.includes('0') ?? false
-    })
+    await waitForText('This group has no members yet')
     expect(groupListCalls).toBeGreaterThanOrEqual(2)
+    await act(async () => {
+      findButton('All groups').click()
+    })
+    await waitFor(() => {
+      const row = Array.from(document.querySelectorAll('.nipa-list-row')).find((item) => item.textContent?.includes('Coder'))
+      return row?.textContent?.includes('0 members') ?? false
+    })
     act(() => root.unmount())
   })
 })

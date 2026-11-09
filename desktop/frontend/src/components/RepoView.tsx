@@ -16,6 +16,8 @@ import { Button } from "@/components/ui/button";
 import { useRepoOperation, type OpName } from "@/hooks/useRepoOperation";
 import { cn, errorMessage } from "@/lib/utils";
 
+const REPO_POLL_MS = 30_000;
+
 export type Notify = (message: string, tone?: "error" | "success") => void;
 
 export type TabId = "changes" | "conflicts" | "history" | "branches" | "mrs" | "locks" | "details";
@@ -49,7 +51,13 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
   const [message, setMessage] = useState("");
   const [editingSparse, setEditingSparse] = useState(false);
 
-  const changes = useQuery({ queryKey: ["changes", repo.root], queryFn: () => desktop.changes(repo.root), enabled: !repo.error });
+  const changes = useQuery({ queryKey: ["changes", repo.root], queryFn: () => desktop.changes(repo.root), enabled: !repo.error, refetchInterval: REPO_POLL_MS });
+  const liveBranch = changes.data?.branch;
+  useEffect(() => {
+    if (!liveBranch || liveBranch === repo.branch) return;
+    void queryClient.invalidateQueries({ queryKey: ["repos"] });
+    for (const key of ["branches", "tags", "history"]) void queryClient.invalidateQueries({ queryKey: [key, repo.root] });
+  }, [liveBranch, repo.branch, repo.root, queryClient]);
   const pending = changes.data?.pending;
   const conflicts = useQuery({ queryKey: ["conflicts", repo.root], queryFn: () => desktop.conflicts(repo.root), enabled: !repo.error && !!pending });
   const refresh = () => {
@@ -222,6 +230,7 @@ export function RepoView({ repo, removing, onRemove, notify, activity, intent, l
                 busy={!!op}
                 notify={notify}
                 onRevert={(commit) => operation.run("revert", () => desktop.revert(repo.root, { target: commit.id }))}
+                onSwitch={switchTo}
                 open={openCommit}
               />
             ) : current === "branches" ? (

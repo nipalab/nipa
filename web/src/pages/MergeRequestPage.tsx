@@ -25,10 +25,9 @@ import {
 import type { MergeRequestResponse } from '../api/models'
 import { useAuth } from '../auth'
 import { DiffAnchor } from '../components/repo/DiffView'
-import { ActorAvatar, actorName, actorsFrom, type ActorLike } from '../components/ActorAvatar'
+import { actorName, actorsFrom, type ActorLike } from '../components/ActorAvatar'
 import { useConfirmAction } from '../components/confirm'
 import { FormDialog } from '../components/FormDialog'
-import { StateBadge } from '../components/StateBadge'
 import { ChangesView } from '../components/repo/ChangesView'
 import { MergeRequestCommits } from '../components/repo/MergeRequestCommits'
 import { MergeRequestOverview } from '../components/repo/MergeRequestOverview'
@@ -197,15 +196,14 @@ export default function MergeRequestPage() {
       project={project}
       active="merges"
       rev={defaultBranch}
+      wide={tab === 'files'}
       canAdmin={canAdmin}
-      canWrite={canWrite}
       crumbs={[{ label: 'Merge requests', to: `/${org}/${project}/merges` }, { label: `#${id}` }]}
       heading={
         request && (
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--base-size-8)', flexWrap: 'wrap' }}>
-            #{request.number} {request.title}
-            <StateLabel status={stateLabelStatus(request.status)}>{stateLabelText(request.status)}</StateLabel>
-            {request.draft && <StateBadge status="draft" />}
+          <span>
+            {request.title}{' '}
+            <span style={{ color: 'var(--fgColor-muted)', fontWeight: 400 }}>#{request.number}</span>
           </span>
         )
       }
@@ -235,12 +233,15 @@ export default function MergeRequestPage() {
             fontSize: 13,
           }}
         >
-          <ActorAvatar actor={author} size={20} />
+          <StateLabel status={request.draft && request.status === 'open' ? 'draft' : stateLabelStatus(request.status)}>
+            {request.draft && request.status === 'open' ? 'Draft' : stateLabelText(request.status)}
+          </StateLabel>
           <span>
-            <strong style={{ color: 'var(--fgColor-default)' }}>{actorName(author)}</strong> wants to merge{' '}
-            {commits?.length ?? 0} commit{(commits?.length ?? 0) === 1 ? '' : 's'} into{' '}
-            <Mono style={{ color: 'var(--fgColor-accent)' }}>{request.target_branch}</Mono> from{' '}
-            <Mono style={{ color: 'var(--fgColor-accent)' }}>{request.source_branch}</Mono>
+            <strong style={{ color: 'var(--fgColor-default)' }}>{actorName(author)}</strong>{' '}
+            {request.status === 'merged' ? 'merged' : 'wants to merge'} {commits?.length ?? 0} commit
+            {(commits?.length ?? 0) === 1 ? '' : 's'} into{' '}
+            <Mono style={BRANCH_CHIP}>{request.target_branch}</Mono> from{' '}
+            <Mono style={BRANCH_CHIP}>{request.source_branch}</Mono>
           </span>
         </div>
       )}
@@ -393,7 +394,15 @@ function EditMergeRequestDialog({
   )
 }
 
-function stateLabelStatus(status: string): 'pullOpened' | 'pullClosed' | 'pullMerged' {
+const BRANCH_CHIP = {
+  color: 'var(--fgColor-accent)',
+  background: 'var(--bgColor-accent-muted)',
+  padding: '2px 6px',
+  borderRadius: 6,
+  fontSize: 12,
+}
+
+function stateLabelStatus(status: string): 'pullOpened' | 'pullClosed' | 'pullMerged' | 'draft' {
   if (status === 'merged') return 'pullMerged'
   if (status === 'closed') return 'pullClosed'
   return 'pullOpened'

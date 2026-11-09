@@ -1,8 +1,10 @@
 import { Link as PrimerLink, Text } from '@primer/react'
+import { HistoryIcon } from '@primer/octicons-react'
 import { Link } from 'react-router-dom'
 import type { CommitResponse } from '../../api/models'
-import { absoluteTime, commitTitle, relativeTime } from './format'
-import { commitsUrl } from './repoPaths'
+import { ActorAvatar } from '../ActorAvatar'
+import { absoluteTime, commitTitle, relativeTime, shortSha } from './format'
+import { commitUrl, commitsUrl } from './repoPaths'
 
 export function CommitBar({
   org,
@@ -19,33 +21,26 @@ export function CommitBar({
 }) {
   const author = commit.author_name || commit.author_email || 'unknown'
   return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 12,
-        padding: '10px 16px',
-        background: 'var(--bgColor-muted)',
-        borderBottom: '1px solid var(--borderColor-default)',
-      }}
-    >
-      <Text style={{ color: 'var(--fgColor-muted)', flexShrink: 0 }}>
-        <strong style={{ color: 'var(--fgColor-default)' }}>{author}</strong> committed{' '}
-        <span title={absoluteTime(commit.created_at)}>{relativeTime(commit.created_at)}</span>
-      </Text>
-      <span
-        style={{
-          flex: 1,
-          minWidth: 0,
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-        }}
+    <div className="nipa-commit-bar">
+      <ActorAvatar actor={{ user_id: commit.author_email ?? author, name: author }} size={24} />
+      <strong style={{ flexShrink: 0 }}>{author}</strong>
+      <PrimerLink
+        as={Link}
+        to={commitUrl(org, project, commit.id, rev)}
+        title={commit.message}
+        className="nipa-commit-bar-message"
       >
         {commitTitle(commit.message)}
-      </span>
-      <PrimerLink as={Link} to={commitsUrl(org, project, rev, path)} style={{ flexShrink: 0 }}>
-        History
+      </PrimerLink>
+      <Text className="nipa-commit-bar-meta">
+        <PrimerLink as={Link} to={commitUrl(org, project, commit.id, rev)} className="nipa-mono-link">
+          {shortSha(commit.id, 7)}
+        </PrimerLink>
+        {' · '}
+        <span title={absoluteTime(commit.created_at)}>{relativeTime(commit.created_at)}</span>
+      </Text>
+      <PrimerLink as={Link} to={commitsUrl(org, project, rev, path)} className="nipa-commit-bar-history">
+        <HistoryIcon /> History
       </PrimerLink>
     </div>
   )
