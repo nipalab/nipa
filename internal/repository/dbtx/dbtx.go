@@ -5,6 +5,7 @@ package dbtx
 import (
 	"context"
 	"database/sql"
+	"sync"
 )
 
 type txKey struct{}
@@ -56,10 +57,43 @@ func txFromContext(ctx context.Context) (*sql.Tx, bool) {
 // the context, when present.
 type DB struct {
 	db *sql.DB
+
+	mu    sync.RWMutex
+	stmts map[string]*sql.Stmt
 }
 
+// maxCachedStmts bounds the prepared statements kept per handle, so queries
+// built from dynamic SQL cannot grow the cache without limit.
+const maxCachedStmts = 512
+
 func New(db *sql.DB) *DB {
-	return &DB{db: db}
+	return &DB{db: db, stmts: map[string]*sql.Stmt{}}
+}
+
+// stmt returns the prepared statement for query, preparing it on first use so
+// hot read paths skip re-parsing the SQL on every call. It returns nil when the
+// statement cannot be cached.
+func (h *DB) stmt(ctx context.Context, query string) *sql.Stmt {
+	h.mu.RLock()
+	st, ok := h.stmts[query]
+	h.mu.RUnlock()
+	if ok {
+		return st
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if st, ok := h.stmts[query]; ok {
+		return st
+	}
+	if len(h.stmts) >= maxCachedStmts {
+		return nil
+	}
+	st, err := h.db.PrepareContext(ctx, query)
+	if err != nil {
+		return nil
+	}
+	h.stmts[query] = st
+	return st
 }
 
 func (h *DB) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
@@ -80,12 +114,18 @@ func (h *DB) QueryContext(ctx context.Context, query string, args ...any) (*sql.
 	if tx, ok := txFromContext(ctx); ok {
 		return tx.QueryContext(ctx, query, args...)
 	}
+	if st := h.stmt(ctx, query); st != nil {
+		return st.QueryContext(ctx, args...)
+	}
 	return h.db.QueryContext(ctx, query, args...)
 }
 
 func (h *DB) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
 	if tx, ok := txFromContext(ctx); ok {
 		return tx.QueryRowContext(ctx, query, args...)
+	}
+	if st := h.stmt(ctx, query); st != nil {
+		return st.QueryRowContext(ctx, args...)
 	}
 	return h.db.QueryRowContext(ctx, query, args...)
 }

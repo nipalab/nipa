@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"testing"
 
@@ -171,4 +172,48 @@ func TestDetach_WritesSurviveTheCallerRollback(t *testing.T) {
 
 	_, inTx := txFromContext(Detach(context.Background()))
 	require.False(t, inTx)
+}
+
+func TestDB_CachesPreparedStatements(t *testing.T) {
+	db := newTestDB(t)
+	wrapped := New(db)
+	ctx := context.Background()
+	_, err := db.Exec(`INSERT INTO items (id, name) VALUES (1, 'a'), (2, 'b')`)
+	require.NoError(t, err)
+
+	for i := 0; i < 3; i++ {
+		rows, err := wrapped.QueryContext(ctx, `SELECT name FROM items WHERE id = ?`, 2)
+		require.NoError(t, err)
+		require.True(t, rows.Next())
+		var name string
+		require.NoError(t, rows.Scan(&name))
+		require.Equal(t, "b", name)
+		require.NoError(t, rows.Close())
+
+		require.NoError(t, wrapped.QueryRowContext(ctx, `SELECT name FROM items WHERE id = ?`, 1).Scan(&name))
+		require.Equal(t, "a", name)
+	}
+	require.Len(t, wrapped.stmts, 1)
+}
+
+func TestDB_StatementCacheIsBounded(t *testing.T) {
+	db := newTestDB(t)
+	wrapped := New(db)
+	ctx := context.Background()
+
+	for i := 0; i < maxCachedStmts+10; i++ {
+		var n int
+		query := `SELECT COUNT(*) + ` + fmt.Sprint(i) + ` FROM items`
+		require.NoError(t, wrapped.QueryRowContext(ctx, query).Scan(&n))
+		require.Equal(t, i, n)
+	}
+	require.Len(t, wrapped.stmts, maxCachedStmts)
+}
+
+func TestDB_InvalidQueryIsNotCached(t *testing.T) {
+	wrapped := New(newTestDB(t))
+
+	_, err := wrapped.QueryContext(context.Background(), `SELECT nope FROM missing`)
+	require.Error(t, err)
+	require.Empty(t, wrapped.stmts)
 }
