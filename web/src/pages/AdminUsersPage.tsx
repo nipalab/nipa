@@ -1,37 +1,74 @@
 import { useState } from 'react'
-import { Button, FormControl, Label, Stack, TextInput } from '@primer/react'
-import { SearchIcon } from '@primer/octicons-react'
+import { ActionList, ActionMenu, Button, FormControl, IconButton, Label, Text, TextInput } from '@primer/react'
+import {
+  KebabHorizontalIcon,
+  KeyIcon,
+  MailIcon,
+  PeopleIcon,
+  PersonAddIcon,
+  SearchIcon,
+  ShieldCheckIcon,
+  ShieldIcon,
+  ShieldLockIcon,
+  StopIcon,
+} from '@primer/octicons-react'
 import { useNavigate } from 'react-router-dom'
 import { deactivateUser, listUsers, resetUserPassword, updateUserEmail, updateUserFlags } from '../api/endpoints'
 import type { UserResponse } from '../api/models'
 import { useAuth } from '../auth'
 import { ActorAvatar } from '../components/ActorAvatar'
 import { useConfirmAction } from '../components/confirm'
-import { DataTable, type Column } from '../components/DataTable'
 import { FormDialog } from '../components/FormDialog'
-import { ErrorBanner, Page } from '../components/ui'
+import { PasswordFields, passwordProblem } from '../components/PasswordFields'
+import { EmptyState, ErrorBanner, Loading, NoPermission, Page } from '../components/ui'
 import { useAction, useAsync } from '../hooks'
 
-function roleLabel(user: UserResponse) {
-  if (user.is_super_admin) return <Label variant="danger">Super admin</Label>
-  if (user.is_admin) return <Label variant="attention">Admin</Label>
-  return <Label>Member</Label>
+type RoleFilter = 'all' | 'admins' | 'members'
+
+const isAdmin = (user: UserResponse) => user.is_admin || user.is_super_admin
+
+function RoleLabel({ user }: { user: UserResponse }) {
+  if (user.is_super_admin) {
+    return (
+      <Label variant="done">
+        <ShieldLockIcon size={12} /> Super admin
+      </Label>
+    )
+  }
+  if (user.is_admin) {
+    return (
+      <Label variant="accent">
+        <ShieldIcon size={12} /> Admin
+      </Label>
+    )
+  }
+  return null
 }
 
 function ResetPasswordDialog({ user, onClose }: { user: UserResponse; onClose: () => void }) {
   const [password, setPassword] = useState('')
+  const [confirm, setConfirm] = useState('')
   return (
     <FormDialog
-      title={`Reset password for ${user.email}`}
+      title="Reset password"
       submitLabel="Reset password"
-      submitDisabled={password === ''}
+      submitDisabled={passwordProblem(password, confirm) !== null}
       onClose={onClose}
       onSubmit={() => resetUserPassword(user.id, password)}
     >
-      <FormControl required>
-        <FormControl.Label>New password</FormControl.Label>
-        <TextInput block autoFocus type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
-      </FormControl>
+      <Text as="p" style={{ margin: 0, color: 'var(--fgColor-muted)', fontSize: 14 }}>
+        Set a new password for <strong style={{ color: 'var(--fgColor-default)' }}>{user.name}</strong> ({user.email}).
+      </Text>
+      <PasswordFields
+        label="New password"
+        autoFocus
+        password={password}
+        confirm={confirm}
+        onChange={(nextPassword, nextConfirm) => {
+          setPassword(nextPassword)
+          setConfirm(nextConfirm)
+        }}
+      />
     </FormDialog>
   )
 }
@@ -41,7 +78,7 @@ function EditEmailDialog({ user, onClose, onSaved }: { user: UserResponse; onClo
   const next = email.trim()
   return (
     <FormDialog
-      title={`Change email for ${user.name}`}
+      title="Change email"
       submitLabel="Save email"
       submitDisabled={next === '' || next === user.email}
       onClose={onClose}
@@ -53,6 +90,7 @@ function EditEmailDialog({ user, onClose, onSaved }: { user: UserResponse; onClo
       <FormControl required>
         <FormControl.Label>Email</FormControl.Label>
         <TextInput block autoFocus type="email" value={email} onChange={(event) => setEmail(event.target.value)} />
+        <FormControl.Caption>{user.name} signs in with this address and receives notifications at it.</FormControl.Caption>
       </FormControl>
     </FormDialog>
   )
@@ -65,98 +103,161 @@ export default function AdminUsersPage() {
   const { data: users, error, loading, reload } = useAsync(listUsers, [])
   const { run, error: actionError, clearError } = useAction(reload)
   const [filter, setFilter] = useState('')
+  const [role, setRole] = useState<RoleFilter>('all')
   const [resetting, setResetting] = useState<UserResponse | null>(null)
   const [editing, setEditing] = useState<UserResponse | null>(null)
 
+  if (me && !me.is_admin && !me.is_super_admin) {
+    return (
+      <Page title="Users">
+        <NoPermission>You need global admin permission to manage users.</NoPermission>
+      </Page>
+    )
+  }
+
+  const all = users ?? []
+  const counts: Record<RoleFilter, number> = {
+    all: all.length,
+    admins: all.filter(isAdmin).length,
+    members: all.filter((user) => !isAdmin(user)).length,
+  }
   const query = filter.trim().toLowerCase()
-  const visible = (users ?? []).filter(
-    (user) =>
-      query === '' ||
-      user.name.toLowerCase().includes(query) ||
-      user.email.toLowerCase().includes(query) ||
-      user.id.includes(query),
-  )
+  const visible = all
+    .filter((user) => role === 'all' || (role === 'admins') === isAdmin(user))
+    .filter(
+      (user) =>
+        query === '' ||
+        user.name.toLowerCase().includes(query) ||
+        user.email.toLowerCase().includes(query) ||
+        user.id.includes(query),
+    )
 
   async function deactivate(user: UserResponse) {
     const ok = await confirm({
       title: `Deactivate ${user.name}?`,
-      content: `${user.email} will no longer be able to sign in.`,
+      content: `${user.email} will be signed out everywhere and can no longer sign in. Their history stays.`,
       confirmLabel: 'Deactivate',
     })
     if (ok) await run(() => deactivateUser(user.id))
   }
 
-  const columns: Column<UserResponse>[] = [
-    {
-      id: 'user',
-      header: 'User',
-      rowHeader: true,
-      renderCell: (user) => (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--base-size-12)' }}>
-          <ActorAvatar actor={{ user_id: user.id, name: user.name, photo_url: user.photo_url }} size={28} />
-          <div>
-            <div style={{ fontWeight: 600 }}>
-              {user.name}
-              {me?.id === user.id && <span style={{ color: 'var(--fgColor-muted)', fontWeight: 400 }}> (you)</span>}
-            </div>
-            <div style={{ color: 'var(--fgColor-muted)', fontSize: 12 }}>{user.email}</div>
-          </div>
-        </div>
-      ),
-    },
-    { id: 'role', header: 'Role', renderCell: roleLabel },
-    {
-      id: 'actions',
-      header: 'Actions',
-      align: 'end',
-      renderCell: (user) => (
-        <Stack direction="horizontal" gap="condensed" justify="end">
-          {me?.is_super_admin && (
-            <Button size="small" onClick={() => void run(() => updateUserFlags(user.id, !user.is_admin, user.is_super_admin))}>
-              {user.is_admin ? 'Remove admin' : 'Make admin'}
-            </Button>
-          )}
-          <Button size="small" onClick={() => setEditing(user)}>
-            Edit email
-          </Button>
-          <Button size="small" onClick={() => setResetting(user)}>
-            Reset password
-          </Button>
-          <Button size="small" variant="danger" onClick={() => void deactivate(user)}>
-            Deactivate
-          </Button>
-        </Stack>
-      ),
-    },
+  async function toggleAdmin(user: UserResponse) {
+    const promote = !user.is_admin
+    const ok = await confirm({
+      title: promote ? `Make ${user.name} an admin?` : `Remove admin from ${user.name}?`,
+      content: promote
+        ? 'Admins can manage users and every organization on this server.'
+        : `${user.name} keeps their organization and project access but can no longer manage users.`,
+      confirmLabel: promote ? 'Make admin' : 'Remove admin',
+    })
+    if (ok) await run(() => updateUserFlags(user.id, promote, user.is_super_admin))
+  }
+
+  const tabs: { key: RoleFilter; label: string }[] = [
+    { key: 'all', label: 'All' },
+    { key: 'admins', label: 'Admins' },
+    { key: 'members', label: 'Members' },
   ]
 
   return (
     <Page
       title="Users"
-      subtitle="Global administration"
+      subtitle="Everyone who can sign in to this Nipa server."
       actions={
-        <Stack direction="horizontal" gap="condensed" align="center">
-          <TextInput
-            leadingVisual={SearchIcon}
-            placeholder="Filter users…"
-            aria-label="Filter users"
-            value={filter}
-            onChange={(event) => setFilter(event.target.value)}
-          />
-          <Button variant="primary" onClick={() => navigate('/admin/users/new')}>
-            New user
-          </Button>
-        </Stack>
+        <Button variant="primary" leadingVisual={PersonAddIcon} onClick={() => navigate('/admin/users/new')}>
+          New user
+        </Button>
       }
     >
       <ErrorBanner error={actionError ?? error} onDismiss={actionError ? clearError : undefined} />
-      <DataTable
-        label="Users"
-        loading={loading}
-        data={visible}
-        columns={columns}
-        empty={query ? 'No users match the filter.' : 'No users.'}
+      <TextInput
+        block
+        leadingVisual={SearchIcon}
+        placeholder="Find a user by name or email…"
+        aria-label="Filter users"
+        value={filter}
+        onChange={(event) => setFilter(event.target.value)}
       />
+      <div className="nipa-list-box">
+        <div className="nipa-list-header">
+          <nav className="nipa-state-tabs" aria-label="User role">
+            {tabs.map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                aria-pressed={role === tab.key}
+                className={role === tab.key ? 'nipa-state-tab nipa-state-tab-active' : 'nipa-state-tab'}
+                onClick={() => setRole(tab.key)}
+              >
+                {tab.key === 'admins' ? <ShieldIcon /> : <PeopleIcon />}
+                {tab.label}
+                <span className="nipa-count">{counts[tab.key]}</span>
+              </button>
+            ))}
+          </nav>
+        </div>
+        {loading && <Loading />}
+        {!loading && visible.length === 0 && (
+          <EmptyState bordered={false}>{query || role !== 'all' ? 'No users match these filters.' : 'No users yet.'}</EmptyState>
+        )}
+        {visible.map((user) => {
+          const self = me?.id === user.id
+          const canToggleAdmin = Boolean(me?.is_super_admin) && !self && !user.is_super_admin
+          return (
+            <div key={user.id} className="nipa-list-row" style={{ alignItems: 'center' }}>
+              <ActorAvatar actor={{ user_id: user.id, name: user.name, photo_url: user.photo_url }} size={32} />
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--base-size-8)', flexWrap: 'wrap' }}>
+                  <span style={{ fontWeight: 600 }}>{user.name}</span>
+                  {self && <Label variant="secondary">You</Label>}
+                  <RoleLabel user={user} />
+                </div>
+                <div className="nipa-list-row-meta">{user.email}</div>
+              </div>
+              <ActionMenu>
+                <ActionMenu.Anchor>
+                  <IconButton icon={KebabHorizontalIcon} variant="invisible" aria-label={`Manage ${user.name}`} />
+                </ActionMenu.Anchor>
+                <ActionMenu.Overlay width="small" align="end">
+                  <ActionList>
+                    <ActionList.Item onSelect={() => setEditing(user)}>
+                      <ActionList.LeadingVisual>
+                        <MailIcon />
+                      </ActionList.LeadingVisual>
+                      Edit email
+                    </ActionList.Item>
+                    <ActionList.Item onSelect={() => setResetting(user)}>
+                      <ActionList.LeadingVisual>
+                        <KeyIcon />
+                      </ActionList.LeadingVisual>
+                      Reset password
+                    </ActionList.Item>
+                    {canToggleAdmin && (
+                      <ActionList.Item onSelect={() => void toggleAdmin(user)}>
+                        <ActionList.LeadingVisual>
+                          <ShieldCheckIcon />
+                        </ActionList.LeadingVisual>
+                        {user.is_admin ? 'Remove admin' : 'Make admin'}
+                      </ActionList.Item>
+                    )}
+                    {!self && (
+                      <>
+                        <ActionList.Divider />
+                        <ActionList.Item variant="danger" onSelect={() => void deactivate(user)}>
+                          <ActionList.LeadingVisual>
+                            <StopIcon />
+                          </ActionList.LeadingVisual>
+                          Deactivate
+                        </ActionList.Item>
+                      </>
+                    )}
+                  </ActionList>
+                </ActionMenu.Overlay>
+              </ActionMenu>
+            </div>
+          )
+        })}
+      </div>
       {resetting && <ResetPasswordDialog user={resetting} onClose={() => setResetting(null)} />}
       {editing && <EditEmailDialog user={editing} onClose={() => setEditing(null)} onSaved={reload} />}
     </Page>

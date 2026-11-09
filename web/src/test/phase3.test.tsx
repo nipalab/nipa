@@ -511,9 +511,15 @@ describe('AdminUsersPage edit email', () => {
     api.listUsers.mockResolvedValue([user()])
     api.updateUserEmail.mockResolvedValue(user({ email: 'new@example.com' }))
     const { container } = await renderRoute('/admin/users', '/admin/users', <AdminUsersPage />)
-    await waitFor(() => buttonByText(container, 'Edit email') !== null)
-    await click(buttonByText(container, 'Edit email'))
-    await waitFor(() => document.body.textContent?.includes('Change email for Dana') ?? false)
+    await waitFor(() => (container.textContent ?? '').includes('Dana'))
+    const manage = [...document.querySelectorAll<HTMLElement>('[aria-labelledby]')].find((element) =>
+      (element.getAttribute('aria-labelledby') ?? '').split(' ').some((id) => document.getElementById(id)?.textContent === 'Manage Dana'),
+    )
+    await click(manage)
+    await waitFor(() => document.querySelector('[role="menuitem"]') !== null)
+    await click([...document.querySelectorAll('[role="menuitem"]')].find((item) => item.textContent?.includes('Edit email')))
+    await waitFor(() => document.body.textContent?.includes('Change email') ?? false)
+    expect(document.body.textContent).toContain('Dana signs in with this address')
     const submit = () => document.body.querySelector<HTMLButtonElement>('button[type="submit"]')
     expect(submit()?.disabled).toBe(true)
     await type(document.body.querySelector<HTMLInputElement>('[role="dialog"] input'), 'new@example.com')

@@ -1,3 +1,4 @@
+import { act } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import * as endpoints from '../api/endpoints'
 import type { OrgStorageResponse, UserResponse } from '../api/models'
@@ -6,7 +7,7 @@ import StorageCard from '../components/StorageCard'
 import AdminUsersPage from '../pages/AdminUsersPage'
 import BillingPage from '../pages/BillingPage'
 import NewUserPage from '../pages/NewUserPage'
-import { buttonByText, buttonsByText, click, confirmDialog, flush, render, renderRoute, type, waitFor } from './render'
+import { buttonByText, click, confirmDialog, flush, render, renderRoute, type, waitFor } from './render'
 
 vi.mock('../api/endpoints')
 vi.mock('../components/UserGroupPicker', () => ({
@@ -46,71 +47,178 @@ afterEach(() => {
   document.body.innerHTML = ''
 })
 
+function byName(name: string): HTMLElement | null {
+  return (
+    [...document.querySelectorAll<HTMLElement>('[aria-label], [aria-labelledby]')].find(
+      (element) =>
+        element.getAttribute('aria-label') === name ||
+        (element.getAttribute('aria-labelledby') ?? '')
+          .split(' ')
+          .some((id) => document.getElementById(id)?.textContent === name),
+    ) ?? null
+  )
+}
+
+async function menuItems(userName: string): Promise<HTMLElement[]> {
+  await click(byName(`Manage ${userName}`))
+  await waitFor(() => document.querySelector('[role="menuitem"]') !== null)
+  return [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')]
+}
+
+async function chooseMenu(userName: string, label: string) {
+  const item = (await menuItems(userName)).find((entry) => entry.textContent?.includes(label))
+  if (!item) throw new Error(`menu item ${label} not found`)
+  await click(item)
+}
+
 describe('AdminUsersPage', () => {
   it('toggles admin, resets a password through a dialog and deactivates after confirmation', async () => {
-    api.listUsers.mockResolvedValue([user(), user({ id: '3', name: 'Bob', email: 'bob@example.com', is_admin: true })])
+    api.listUsers.mockResolvedValue([
+      user({ id: '1', name: 'Root', email: 'root@example.com', is_admin: true, is_super_admin: true }),
+      user(),
+      user({ id: '3', name: 'Bob', email: 'bob@example.com', is_admin: true }),
+    ])
     api.updateUserFlags.mockResolvedValue(user())
     api.resetUserPassword.mockResolvedValue({ message: 'ok' })
     api.deactivateUser.mockResolvedValue({ message: 'ok' })
     const { container } = await renderRoute('/admin/users', '/admin/users', <AdminUsersPage />)
     await waitFor(() => (container.textContent ?? '').includes('Dana'))
+    expect(container.textContent).toContain('You')
+    expect(container.textContent).toContain('Super admin')
 
-    await click(buttonByText(container, 'Make admin'))
-    await flush()
+    const own = (await menuItems('Root')).map((item) => item.textContent)
+    expect(own.some((text) => text?.includes('Deactivate'))).toBe(false)
+    expect(own.some((text) => text?.includes('admin'))).toBe(false)
+    await act(async () => {
+      ;(document.activeElement ?? document.body).dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    })
+
+    await chooseMenu('Dana', 'Make admin')
+    await confirmDialog('Make admin')
     expect(api.updateUserFlags).toHaveBeenCalledWith('2', true, false)
-    await click(buttonByText(container, 'Remove admin'))
-    await flush()
+    await chooseMenu('Bob', 'Remove admin')
+    await confirmDialog('Remove admin')
     expect(api.updateUserFlags).toHaveBeenCalledWith('3', false, false)
 
-    await click(buttonsByText(container, 'Reset password')[0])
+    await chooseMenu('Dana', 'Reset password')
     await waitFor(() => document.body.textContent?.includes('New password') ?? false)
     const submit = () => document.body.querySelector<HTMLButtonElement>('button[type="submit"]')
+    const passwords = () => document.body.querySelectorAll<HTMLInputElement>('[role="dialog"] input[autocomplete="new-password"]')
     expect(submit()?.disabled).toBe(true)
-    await type(document.body.querySelector<HTMLInputElement>('[role="dialog"] input'), 'new-secret')
+    await type(passwords()[0], 'short')
+    expect(document.body.textContent).toContain('Use at least 8 characters.')
+    await type(passwords()[0], 'new-secret')
+    await type(passwords()[1], 'new-secrex')
+    expect(document.body.textContent).toContain('The passwords do not match.')
+    expect(submit()?.disabled).toBe(true)
+    await type(passwords()[1], 'new-secret')
     await click(submit())
     await flush()
     expect(api.resetUserPassword).toHaveBeenCalledWith('2', 'new-secret')
 
-    await click(buttonsByText(container, 'Deactivate')[0])
+    await chooseMenu('Dana', 'Deactivate')
     await confirmDialog('Deactivate')
     expect(api.deactivateUser).toHaveBeenCalledWith('2')
   })
 
-  it('shows an error and hides the admin toggle for plain admins', async () => {
-    auth.me = { id: '1', is_admin: true, is_super_admin: false }
+  it('generates a password to hand over', async () => {
     api.listUsers.mockResolvedValue([user()])
+    api.resetUserPassword.mockResolvedValue({ message: 'ok' })
+    const writeText = vi.fn(async () => {})
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    const { container } = await renderRoute('/admin/users', '/admin/users', <AdminUsersPage />)
+    await waitFor(() => (container.textContent ?? '').includes('Dana'))
+    await chooseMenu('Dana', 'Reset password')
+    await waitFor(() => buttonByText(document.body, 'Generate') !== null)
+    await click(buttonByText(document.body, 'Generate'))
+    const [first, second] = [...document.body.querySelectorAll<HTMLInputElement>('[role="dialog"] input[autocomplete="new-password"]')]
+    expect(first.value).toHaveLength(16)
+    expect(second.value).toBe(first.value)
+    expect(first.type).toBe('text')
+    await click(byName('Copy password'))
+    await flush()
+    expect(writeText).toHaveBeenCalledWith(first.value)
+    await click(byName('Hide password'))
+    expect(first.type).toBe('password')
+    await click(document.body.querySelector('button[type="submit"]'))
+    await flush()
+    expect(api.resetUserPassword).toHaveBeenCalledWith('2', first.value)
+  })
+
+  it('filters by role, shows an error and hides the admin toggle for plain admins', async () => {
+    auth.me = { id: '1', is_admin: true, is_super_admin: false }
+    api.listUsers.mockResolvedValue([user(), user({ id: '3', name: 'Bob', email: 'bob@example.com', is_admin: true })])
     api.deactivateUser.mockRejectedValue(new Error('cannot deactivate'))
     const { container } = await renderRoute('/admin/users', '/admin/users', <AdminUsersPage />)
     await waitFor(() => (container.textContent ?? '').includes('Dana'))
-    expect(buttonByText(container, 'Make admin')).toBeNull()
-    await click(buttonByText(container, 'Deactivate'))
+    const tab = (label: string) =>
+      [...container.querySelectorAll<HTMLButtonElement>('nav[aria-label="User role"] button')].find((button) =>
+        button.textContent?.startsWith(label),
+      ) as HTMLButtonElement
+    expect(tab('All').textContent).toBe('All2')
+    await click(tab('Admins'))
+    expect(container.textContent).not.toContain('Dana')
+    await click(tab('Members'))
+    expect(container.textContent).not.toContain('Bob')
+    expect(tab('Members').getAttribute('aria-pressed')).toBe('true')
+
+    const items = await menuItems('Dana')
+    expect(items.some((item) => item.textContent?.includes('Make admin'))).toBe(false)
+    await click(items.find((item) => item.textContent?.includes('Deactivate')))
     await confirmDialog('Deactivate')
     await waitFor(() => (container.textContent ?? '').includes('cannot deactivate'))
+
+    await type(container.querySelector<HTMLInputElement>('[aria-label="Filter users"]'), 'nobody')
+    expect(container.textContent).toContain('No users match these filters.')
+  })
+
+  it('refuses users without admin rights', async () => {
+    auth.me = { id: '1', is_admin: false, is_super_admin: false }
+    api.listUsers.mockResolvedValue([])
+    const { container } = await renderRoute('/admin/users', '/admin/users', <AdminUsersPage />)
+    expect(container.textContent).toContain('You need global admin permission to manage users.')
   })
 })
 
 describe('NewUserPage', () => {
-  it('creates a user and returns to the list', async () => {
-    api.createUser.mockResolvedValue(user())
+  async function fill(container: HTMLElement, email = 'carol@example.com') {
+    await type(container.querySelector<HTMLInputElement>('input[placeholder="e.g. Dana Smith"]'), 'Carol')
+    await type(container.querySelector<HTMLInputElement>('input[type="email"]'), email)
+    const passwords = container.querySelectorAll<HTMLInputElement>('input[autocomplete="new-password"]')
+    await type(passwords[0], 'secret123')
+    await type(passwords[1], 'secret123')
+  }
+
+  it('creates an admin user and returns to the list', async () => {
+    api.createUser.mockResolvedValue(user({ id: '9' }))
+    api.updateUserFlags.mockResolvedValue(user({ id: '9', is_admin: true }))
     const { container, location } = await renderRoute('/admin/users/new', '/admin/users/new', <NewUserPage />)
-    const inputs = container.querySelectorAll('input')
-    await type(inputs[0], 'Carol')
-    await type(inputs[1], 'carol@example.com')
-    await type(inputs[2], 'secret123')
+    await fill(container, 'carol@')
+    expect(container.textContent).toContain('Enter a valid email address.')
+    expect(buttonByText(container, 'Create user')?.disabled).toBe(true)
+    await type(container.querySelector<HTMLInputElement>('input[type="email"]'), 'carol@example.com')
+    await click(container.querySelector('input[type="checkbox"]'))
     await click(buttonByText(container, 'Create user'))
     await waitFor(() => location() === '/admin/users')
     expect(api.createUser).toHaveBeenCalledWith('Carol', 'carol@example.com', 'secret123')
+    expect(api.updateUserFlags).toHaveBeenCalledWith('9', true, false)
   })
 
-  it('shows the server error', async () => {
+  it('shows the server error and cancels back to the list', async () => {
     api.createUser.mockRejectedValue(new Error('email taken'))
-    const { container } = await renderRoute('/admin/users/new', '/admin/users/new', <NewUserPage />)
-    const inputs = container.querySelectorAll('input')
-    await type(inputs[0], 'Carol')
-    await type(inputs[1], 'carol@example.com')
-    await type(inputs[2], 'secret123')
+    const { container, location } = await renderRoute('/admin/users/new', '/admin/users/new', <NewUserPage />)
+    await fill(container)
     await click(buttonByText(container, 'Create user'))
     await waitFor(() => (container.textContent ?? '').includes('email taken'))
+    expect(api.updateUserFlags).not.toHaveBeenCalled()
+    await click(buttonByText(container, 'Cancel'))
+    await waitFor(() => location() === '/admin/users')
+  })
+
+  it('only lets super admins grant admin', async () => {
+    auth.me = { id: '1', is_admin: true, is_super_admin: false }
+    const { container } = await renderRoute('/admin/users/new', '/admin/users/new', <NewUserPage />)
+    expect(container.textContent).not.toContain('Make this user an administrator')
   })
 
   it('refuses non-admins', async () => {
